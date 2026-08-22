@@ -28,13 +28,22 @@ else
 fi
 
 export STRIPE_PRICE_PRO STRIPE_PRICE_SCALE
-export DATABASE_URL="${DATABASE_URL:-placeholder}"
-export API_KEY_PEPPER="${API_KEY_PEPPER:-placeholder}"
-export DASHBOARD_SESSION_SECRET="${DASHBOARD_SESSION_SECRET:-placeholder}"
-export ADMIN_SECRET="${ADMIN_SECRET:-placeholder}"
-export CRON_SECRET="${CRON_SECRET:-placeholder}"
 
-echo "==> Pushing Stripe env to Vercel production"
+# 2026-08-23 監査 C-6: ここで DATABASE_URL / API_KEY_PEPPER /
+# DASHBOARD_SESSION_SECRET / ADMIN_SECRET / CRON_SECRET を `placeholder` 既定で
+# export し、下の vercel-env-production.sh が --force で本番へ上書きしていた。
+# 環境変数を揃えずに1回叩けば本番が死ぬ。**このスクリプトは Stripe の設定を
+# 終わらせるためのもので、コアの秘密を触る理由が無い。**
+# VERCEL_ENV_ONLY で対象を Stripe 関連だけに絞る。
+
+echo "==> Pushing Stripe env to Vercel production (Stripe vars only)"
+VERCEL_ENV_ONLY="STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET STRIPE_PRICE_PRO STRIPE_PRICE_SCALE NEXT_PUBLIC_APP_URL" \
+VERCEL_ENV_FORCE="${VERCEL_ENV_FORCE:-1}" \
+DATABASE_URL="${DATABASE_URL:-skip}" \
+API_KEY_PEPPER="${API_KEY_PEPPER:-skip}" \
+DASHBOARD_SESSION_SECRET="${DASHBOARD_SESSION_SECRET:-skip}" \
+ADMIN_SECRET="${ADMIN_SECRET:-skip}" \
+CRON_SECRET="${CRON_SECRET:-skip}" \
 STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
 STRIPE_WEBHOOK_SECRET="${STRIPE_WEBHOOK_SECRET:-}" \
 STRIPE_PRICE_PRO="$STRIPE_PRICE_PRO" \
