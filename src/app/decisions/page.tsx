@@ -28,6 +28,7 @@ const DECISION_LABEL: Record<string, string> = {
   refused_wall_unpayable: "REFUSED — wall not machine-payable",
   paid_settled: "PAID — settled, receipt on-chain",
   paid_delivered_no_receipt: "PAID — delivered, no receipt",
+  paid_settlement_claim_unverifiable: "PAID — settlement claim not verifiable",
   paid_no_settlement: "PAID — no settlement (loss, published)",
 };
 

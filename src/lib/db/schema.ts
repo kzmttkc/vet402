@@ -692,10 +692,16 @@ export const x402L1Purchases = pgTable(
     endpointId: uuid("endpoint_id").notNull(),
     attemptedAt: timestamp("attempted_at", { withTimezone: true }).defaultNow(),
     /**
-     * settled | settle_failed | delivered_no_receipt | no_402 |
+     * settled | settle_failed | delivered_no_receipt |
+     * settle_claimed_unverifiable | no_402 |
      * no_eligible_accept | price_mismatch | payto_mismatch |
      * payto_operator_self | over_cap | budget_denied |
      * request_error | in_flight.
+     * `settle_claimed_unverifiable` (2026-08-23): the wall returned
+     * PAYMENT-RESPONSE with success:true, but the `transaction` value is not a
+     * well-formed transaction id for that chain. We paid (spent_units stands)
+     * and we do NOT call it settled — an identifier we cannot look up is not a
+     * receipt.
      * `payto_mismatch` / `payto_operator_self` are the 2026-08-22 payee gates:
      * the wall named a recipient other than the catalog-declared one, or named
      * vet402's own receiving address. Both are refusals BEFORE signing, so

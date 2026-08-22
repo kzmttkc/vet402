@@ -252,8 +252,10 @@ export type EndpointDetail = {
 /**
  * A "paid attempt" is one where money actually moved (or was committed): the
  * seller answered 402, we signed, and the on-chain settlement either succeeded
- * (`settled`), failed after the paid retry (`settle_failed`), or delivered
- * goods with no receipt header (`delivered_no_receipt`). Every other status —
+ * (`settled`), failed after the paid retry (`settle_failed`), delivered
+ * goods with no receipt header (`delivered_no_receipt`), or came back with a
+ * settlement claim whose transaction id is not even well-formed
+ * (`settle_claimed_unverifiable`, 2026-08-23). Every other status —
  * `budget_denied` (our own daily-cap throttle), `request_error`, `no_402`,
  * `no_eligible_accept`, `price_mismatch`, `payto_mismatch`,
  * `payto_operator_self`, `over_cap`, `in_flight` — is NOT a
@@ -267,6 +269,9 @@ export const PAID_ATTEMPT_STATUSES = [
   "settled",
   "settle_failed",
   "delivered_no_receipt",
+  // 2026-08-23: 署名して実際に払った試行なので分母に入れる。ここから外すと、
+  // 不都合な結果を自分の公表決済率から静かに落とすことになる。
+  "settle_claimed_unverifiable",
 ] as const;
 
 /**
@@ -577,7 +582,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
                count(*) FILTER (WHERE status = 'settled')::int AS settled,
                count(DISTINCT endpoint_id)::int AS endpoints
         FROM x402_l1_purchases
-        WHERE status IN ('settled', 'settle_failed', 'delivered_no_receipt')
+        WHERE status IN ('settled', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable')
       `);
       const l1List = (Array.isArray(l1Raw) ? l1Raw : (l1Raw as { rows?: unknown[] }).rows ?? []) as {
         attempts: number;

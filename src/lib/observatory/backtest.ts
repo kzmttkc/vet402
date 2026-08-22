@@ -10,14 +10,15 @@
 //
 // forgone を必ず併記する。「回避できた額」だけ出せば宣伝であり、
 // 両面出せば測定になる——このプロダクトの語法は後者しかない。
-// 対象は署名済み試行（settled / settle_failed / delivered_no_receipt）。
+// 対象は署名済み試行（settled / settle_failed / delivered_no_receipt /
+// settle_claimed_unverifiable）。
 // budget_denied / request_error / in_flight は我々側の都合なので母数外。
 // ============================================================
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 
 export const BACKTEST_DEFINITION =
-  "prior signal = at attempt time, (a) the two most recent L0 probes of the endpoint were both fail (two consecutive fails — the same threshold the public register uses), or (b) an earlier settle_failed purchase existed on the same endpoint. avoided = signalled attempts that did not settle; forgone = signalled attempts that settled anyway. Denominator: signed attempts only (settled / settle_failed / delivered_no_receipt).";
+  "prior signal = at attempt time, (a) the two most recent L0 probes of the endpoint were both fail (two consecutive fails — the same threshold the public register uses), or (b) an earlier settle_failed purchase existed on the same endpoint. avoided = signalled attempts that did not settle; forgone = signalled attempts that settled anyway. Denominator: signed attempts only (settled / settle_failed / delivered_no_receipt / settle_claimed_unverifiable).";
 
 export type BacktestResult = {
   attemptsTotal: number;
@@ -49,7 +50,7 @@ export async function computeSpendGuardBacktest(): Promise<BacktestResult> {
                ) t
              ) AS two_consecutive_l0_fails
       FROM x402_l1_purchases pu
-      WHERE pu.status IN ('settled', 'settle_failed', 'delivered_no_receipt')
+      WHERE pu.status IN ('settled', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable')
     )
     SELECT
       count(*)::int AS attempts_total,

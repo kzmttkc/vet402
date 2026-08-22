@@ -10,14 +10,20 @@
 //
 // 候補の定義は registry-hook.ts の分岐と 1:1:
 //   l1-runner が fireL1RegistryHook を呼ぶのは paid retry まで到達した
-//   終局3状態（settled / settle_failed / delivered_no_receipt）だけ。
+//   終局4状態（settled / settle_failed / delivered_no_receipt /
+//   settle_claimed_unverifiable）だけ。
 //   payTo が EVM アドレスでなければ not_evm（Solana 等）。
 //   同じ (endpoint, verdict) は requestHash が同じ → 台帳の一意制約で
 //   2度目以降は duplicate（チェーン呼び出しゼロ）。
 // ============================================================
 import { isAddress, parseGwei } from "viem";
 
-export const HOOK_OUTCOME_STATUSES = ["settled", "settle_failed", "delivered_no_receipt"] as const;
+export const HOOK_OUTCOME_STATUSES = [
+  "settled",
+  "settle_failed",
+  "delivered_no_receipt",
+  "settle_claimed_unverifiable",
+] as const;
 
 /** registry.ts の DEFAULT_MAX_FEE_GWEI と同値（片方だけ変えない）。 */
 export const DEFAULT_MAX_FEE_GWEI = 0.5;

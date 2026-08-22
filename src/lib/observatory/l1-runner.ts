@@ -45,6 +45,7 @@ import {
   signX402Payment,
 } from "./x402-payer";
 import { logServerError } from "@/lib/util/log";
+import { isWellFormedSettlementTx } from "@/lib/validation/settlement-tx";
 import { fireL1RegistryHook } from "@/lib/chain/registry-hook";
 import { Keypair } from "@solana/web3.js";
 import {
@@ -824,14 +825,31 @@ async function purchaseOne(input: {
     l2Schema = checkL2(candidate.declaredSchema, paidBody, contentType);
   }
 
-  const settled = settlement?.success === true && !!settlement.transaction;
+  // 2026-08-23 監査: ここまで `transaction` は「空でない文字列」以外を何も見ていなかった。
+  // 値は売り手の PAYMENT-RESPONSE ヘッダそのままで、決済せずに success:true と
+  // 架空の文字列を返すだけで「決済成功」の行を作れた。その行は公開台帳になり、
+  // 2026-08-22 以降は observed_purchases 経由でスコアの最上位軸にも流れる。
+  //
+  // 形式検査は権威ではない（形だけ正しい偽ハッシュは通る）。本当の関門は
+  // オンチェーン照合で、それが入るまでは「売り手申告＋形式検査済み」と公開面に書く。
+  // ここで分けるのは「決済したと言い、識別子も筋が通っている」ことと
+  // 「決済したと言うが、識別子がトランザクションIDですらない」ことの区別——
+  // 後者は売り手についての所見なので、delivered_no_receipt（レシートを主張して
+  // いない）に潰さず独立した status にする。
+  const claimedSettlement = settlement?.success === true && !!settlement.transaction;
+  const settlementTxWellFormed =
+    claimedSettlement &&
+    isWellFormedSettlementTx(settlement!.transaction, isSolana ? "solana" : "evm");
+  const settled = claimedSettlement && settlementTxWellFormed;
   const status = !paid
     ? "settle_failed"
     : settled
       ? "settled"
-      : paid.status === 200
-        ? "delivered_no_receipt" // goods returned but no settlement receipt header
-        : "settle_failed";
+      : claimedSettlement
+        ? "settle_claimed_unverifiable" // 決済したと主張したが識別子が形式不正
+        : paid.status === 200
+          ? "delivered_no_receipt" // goods returned but no settlement receipt header
+          : "settle_failed";
 
   // Resolve the reservation in place — spent_units stays exactly what was
   // reserved (signed = counted, success or not); only the outcome is filled in.
