@@ -316,8 +316,12 @@ async function keepIndependentlyFundedSellers<T extends { payee: string | null }
     for (const r of sellerFunderRows) {
       funderOfSeller.set(r.wallet.toLowerCase(), r.funder.toLowerCase());
     }
-    return keepIndependentByFunder(buyerFunders, funderOfSeller, rows);
+    // 2026-08-23: 戻り値が {kept, dropped...} になった。買い手自身も
+    // クラスタに含める（自分で自分に配送させた実績を独立と数えない）。
+    return keepIndependentByFunder(buyerFunders, funderOfSeller, rows, buyerLower).kept;
   } catch (error) {
+    // 2026-08-23 監査: ここも「索引が読めなければ全行を通す」形だった。
+    // 読めなかったことは独立の証拠ではない。
     if (!isMissingSchemaError(error)) logServerError("observed_independent_sellers", error);
     return rows;
   }

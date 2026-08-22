@@ -294,7 +294,7 @@ test("ten payers from ten independent funders keep their full diversity", async 
   assert.equal(stats.distinctFunders, 10, "ten distinct funders — genuinely independent");
 });
 
-test("payers with no funder record each count as their own source (empty index → no penalty)", async (t) => {
+test("索引に無い payer は「独立した資金源」として数えない——不明として開示する（2026-08-23）", async (t) => {
   if (!reachable) return t.skip("no Postgres");
   await reset();
   const PAYEE = wal(503);
@@ -312,9 +312,20 @@ test("payers with no funder record each count as their own source (empty index �
   }
   await seed(rows);
   // funder_wallets left empty on purpose.
+  //
+  // 旧: distinctFunders = 5（`coalesce(funder, wallet)` で不明を「自分自身が
+  // 資金源」として数えていた）。funder_wallets は既に台帳へ載ったウォレットしか
+  // 索引しないので、**新規ウォレットは判定の瞬間に必ず未索引**——2つ用意する
+  // だけで「独立した2つの資金源」になり、ダスト送金3回で dataDepth が moderate に
+  // 上がって ALLOW の天井(69)が外れた。
+  //
+  // 新: 判明した資金源は0。ただし「全員が同じクラスタ」という減点でもない
+  // （それも測っていない主張になる）。不明は不明として開示し、深さが thin に
+  // 留まる＝天井69が効いたまま＝ALLOW には届かない、で攻撃を閉じる。
   const stats = await getPayeeStats(PAYEE);
   assert.equal(stats.distinctPayers, 5);
-  assert.equal(stats.distinctFunders, 5, "unknown funders are not treated as a cluster");
+  assert.equal(stats.distinctFunders, 0, "証明できた独立資金源は0");
+  assert.equal(stats.payersWithUnknownFunder, 5, "不明は件数で開示する");
 });
 
 test("deploy-ordering: missing new columns degrade to empty, never a fail-closed throw", async (t) => {
@@ -327,7 +338,12 @@ test("deploy-ordering: missing new columns degrade to empty, never a fail-closed
   await sql!`ALTER TABLE x402_payments DROP COLUMN ownership_verified`;
   try {
     const stats = await getX402PaymentStats(wal(101));
-    assert.deepEqual(stats, { paymentCount: 0, uniqueDays: 0, lastPaymentAt: null });
+    assert.deepEqual(stats, {
+      paymentCount: 0,
+      uniqueDays: 0,
+      lastPaymentAt: null,
+      paymentsWithUnprovableIndependence: 0,
+    });
     const payee = await getPayeeStats(wal(504));
     assert.equal(payee.paymentCount, 0, "payee read also degrades, not throws");
   } finally {

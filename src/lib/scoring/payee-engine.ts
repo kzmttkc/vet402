@@ -667,6 +667,12 @@ export async function scorePayeeWallet(address: string): Promise<PayeeScoreResul
     ...(walletMetrics ? [] : ["wallet_metrics"]),
     ...drainSignal.unmeasured,
     ...(outcomeHistoryRead ? [] : ["outcome_history"]),
+    // 2026-08-23 監査: 資金源が索引に無い payer は、以前は「自分自身が資金源」
+    // として独立に数えられていた（新規ウォレットは必ず未索引なので、2つ用意する
+    // だけで「独立した2者」になった）。今は数えないが、**黙って落とすだけでは
+    // 同じ規律違反**——測れなかったことを開示して、呼び手が
+    // partiallyMeasured として扱えるようにする。
+    ...(stats.payersWithUnknownFunder > 0 ? ["payer_funding_independence"] : []),
   ];
 
   const rawWalletScore = normalizeWalletScore({

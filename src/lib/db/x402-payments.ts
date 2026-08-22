@@ -47,6 +47,24 @@ const X402_MIN_SETTLEMENT_UNITS = (() => {
  * Legacy rows (NULL on the new columns) are excluded, which is correct: that
  * history was forgeable and must not keep counting.
  */
+/**
+ * 「受け取った証拠」として数えてよい行の述語（2026-08-23 監査）。
+ *
+ * 支払側 getX402PaymentStats は以前からこの3つを掛けていたのに、受取側
+ * getPayeeStats には1つも無かった。同じ台帳を2つの経路が読むなら、述語は
+ * 1箇所から共有する——片側だけ直すのを繰り返してきた（payTo突合もSolana先行・
+ * EVM後追いだった）ので、定数にして非対称が再発しない形にする。
+ */
+function RECEIVING_EVIDENCE_PREDICATES(counterpartyLower: string) {
+  return [
+    sql`${x402Payments.onchainAmount} IS NOT NULL`,
+    sql`(${x402Payments.onchainAmount})::numeric >= ${X402_MIN_SETTLEMENT_UNITS.toString()}`,
+    // 自己送金は証拠ではない。所有権検証は「払った側の署名」なので、
+    // 自分に払えば必ず通ってしまう。
+    sql`lower(${x402Payments.wallet}) <> ${counterpartyLower}`,
+  ];
+}
+
 const scoreEligible = and(
   eq(x402Payments.token, BASE_USDC_ADDRESS.toLowerCase()),
   eq(x402Payments.amountVerified, true),
@@ -66,6 +84,13 @@ export type X402PaymentStats = {
   paymentCount: number;
   uniqueDays: number;
   lastPaymentAt: string | null;
+  /**
+   * 2026-08-23 監査: 独立性を証明できずに証拠から落とした支払い件数
+   * （資金源が索引に無い／payer と同じクラスタ）。0 より大きいときは
+   * 「独立した支払い実績」と言い切れない——測れなかったことを
+   * 問題なしとして数えないための開示。
+   */
+  paymentsWithUnprovableIndependence: number;
 };
 
 export type RecordX402PaymentInput = {
@@ -198,7 +223,12 @@ export async function recordX402Payment(
  */
 export async function getX402PaymentStats(wallet: string): Promise<X402PaymentStats> {
   const db = getDb();
-  const empty: X402PaymentStats = { paymentCount: 0, uniqueDays: 0, lastPaymentAt: null };
+  const empty: X402PaymentStats = {
+    paymentCount: 0,
+    uniqueDays: 0,
+    lastPaymentAt: null,
+    paymentsWithUnprovableIndependence: 0,
+  };
   if (!db) return empty;
 
   const walletLower = wallet.toLowerCase();
@@ -227,7 +257,8 @@ export async function getX402PaymentStats(wallet: string): Promise<X402PaymentSt
         ),
       );
 
-    const independentRows = await keepIndependentlyFundedRecipients(db, walletLower, rows);
+    const independent = await keepIndependentlyFundedRecipients(db, walletLower, rows);
+    const independentRows = independent.kept;
 
     const uniqueDays = new Set(
       independentRows.map((r) => r.day).filter((d): d is string => d !== null),
@@ -243,6 +274,9 @@ export async function getX402PaymentStats(wallet: string): Promise<X402PaymentSt
       paymentCount: independentRows.length,
       uniqueDays,
       lastPaymentAt,
+      // 2026-08-23: 独立を証明できずに落とした件数。0 でないなら
+      // 「独立した支払い実績がこれだけある」と言い切れない。
+      paymentsWithUnprovableIndependence: independent.unprovenIndependence,
     };
   } catch (error) {
     // Deploy-ordering safety (vet402 2026-08-13). The score-eligibility filter
@@ -276,10 +310,27 @@ export async function getX402PaymentStats(wallet: string): Promise<X402PaymentSt
 /**
  * Pure decision half of hole 2, unit-tested without a DB
  * (tests/vet402-x402-self-dealing.test.ts). Keeps a payment only when its payee
- * is funded independently of the payer:
- *   - payee funder UNKNOWN  → its own source → kept (permissive degrade)
- *   - payee funder ∈ payer's funders → same cluster → dropped
- *   - otherwise → kept
+ * is PROVABLY funded independently of the payer.
+ *
+ * 2026-08-23 監査で2つ直した。
+ *
+ * 1. **payer 自身が資金源のときに素通りしていた。** 判定は
+ *    「payee の資金源 ∈ payer の資金源集合」だけを見ていたが、payer が payee へ
+ *    直接送金した場合 payee の資金源は payer になる。payer は「payer の資金源」に
+ *    含まれないので、自分で作った受取先が **独立と判定された**。
+ *    → `payerSelf` を受け取り、集合に含めて比較する。
+ *
+ * 2. **資金源が不明な payee を、独立の証拠として黙って数えていた**
+ *    （"permissive degrade"）。索引に無いのは「独立の証拠が無い」であって
+ *    「独立」ではない。funder_wallets は既に台帳に載ったウォレットしか
+ *    索引しないので、新規に用意された受取先は必ずここを通り抜けた。
+ *    → **観測そのものは消さない**（索引が空なら正直な実績まで全部消えてしまう。
+ *    本番の funder_wallets は17行しかない）。行は残すが `unprovenIndependence`
+ *    として件数を返し、呼び手が「独立を証明できていない」と開示できるようにする。
+ *    攻撃（数円で ALLOW の天井を外す）を閉じるのは受取側の深さ判定の方で、
+ *    そこでは不明を独立な資金源として**数えない**——天井が外れなければ
+ *    ALLOW には届かない。観測を消すのは、攻撃を止めるために必要な量を超えている。
+ *
  * A row whose payee is null was already excluded upstream, but is dropped here
  * too for safety (an unresolved recipient is not provable evidence).
  */
@@ -287,14 +338,32 @@ export function keepIndependentByFunder<T extends { payee: string | null }>(
   payerFunders: Set<string>,
   funderOfPayee: Map<string, string>,
   rows: T[],
-): T[] {
-  return rows.filter((r) => {
+  payerSelf?: string,
+): { kept: T[]; droppedSameCluster: number; unprovenIndependence: number } {
+  const cluster = new Set(payerFunders);
+  if (payerSelf) cluster.add(payerSelf.toLowerCase());
+
+  const kept: T[] = [];
+  let droppedSameCluster = 0;
+  let unprovenIndependence = 0;
+  for (const r of rows) {
     const payee = r.payee?.toLowerCase();
-    if (!payee) return false;
+    if (!payee) continue;
     const payeeFunder = funderOfPayee.get(payee);
-    if (payeeFunder === undefined) return true;
-    return !payerFunders.has(payeeFunder);
-  });
+    if (payeeFunder === undefined) {
+      // 証明できていないが、観測は消さない。件数で開示する。
+      unprovenIndependence++;
+      kept.push(r);
+      continue;
+    }
+    if (cluster.has(payeeFunder)) {
+      // 同じクラスタ＝独立でないことが**判明した**。これは落とす。
+      droppedSameCluster++;
+      continue;
+    }
+    kept.push(r);
+  }
+  return { kept, droppedSameCluster, unprovenIndependence };
 }
 
 async function keepIndependentlyFundedRecipients<
@@ -303,8 +372,10 @@ async function keepIndependentlyFundedRecipients<
   db: NonNullable<ReturnType<typeof getDb>>,
   payerLower: string,
   rows: T[],
-): Promise<T[]> {
-  if (rows.length === 0) return rows;
+): Promise<{ kept: T[]; droppedSameCluster: number; unprovenIndependence: number }> {
+  if (rows.length === 0) {
+    return { kept: rows, droppedSameCluster: 0, unprovenIndependence: 0 };
+  }
 
   const payeeLowers = [
     ...new Set(
@@ -313,7 +384,9 @@ async function keepIndependentlyFundedRecipients<
         .filter((p): p is string => p !== undefined && p !== null),
     ),
   ];
-  if (payeeLowers.length === 0) return [];
+  if (payeeLowers.length === 0) {
+    return { kept: [], droppedSameCluster: 0, unprovenIndependence: 0 };
+  }
 
   try {
     const payerFunderRows = await db
@@ -331,15 +404,18 @@ async function keepIndependentlyFundedRecipients<
       funderOfPayee.set(r.wallet.toLowerCase(), r.funder.toLowerCase());
     }
 
-    return keepIndependentByFunder(payerFunders, funderOfPayee, rows);
+    return keepIndependentByFunder(payerFunders, funderOfPayee, rows, payerLower);
   } catch (error) {
-    // The funder index is an optimization, not a correctness gate. If it cannot
-    // be read (e.g. funder_wallets not migrated), fall back to the self-send +
-    // dust filtering already applied in SQL rather than failing the whole read.
+    // 2026-08-23 監査: ここも「索引が読めなければ全行を通す」形だった。
+    // 読めなかったことは独立の証拠ではない。SQL側の自己送金・ダスト除外は
+    // 既に効いているので読み取り自体は落とさないが、**独立を証明できた行は0**
+    // として返し、件数で開示する。
     if (!isMissingSchemaError(error)) {
       logServerError("x402_independent_recipients", error);
     }
-    return rows;
+    // 索引が読めなかった。SQL側の自己送金・ダスト除外は既に効いているので観測は
+    // 残すが、独立は1件も証明できていないと開示する。
+    return { kept: rows, droppedSameCluster: 0, unprovenIndependence: rows.length };
   }
 }
 
@@ -352,12 +428,27 @@ export type PayeeStats = {
    * distinct payers, not the raw payer count. Ten wallets all funded by one
    * address are one sybil cluster wearing ten faces, not ten independent
    * customers; counting them as ten let a payee buy a full receiving-diversity
-   * bonus from a single funder. Computed from the funder index (same source as
-   * the payer-side funding_cluster check); a payer whose funder is unknown
-   * counts as its own source, so an unpopulated index degrades to
-   * distinctFunders == distinctPayers (no penalty we cannot justify).
+   * bonus from a single funder.
+   *
+   * 2026-08-23 監査で意味論を変更。以前は `coalesce(funder, wallet)` で
+   * **索引に無い payer を「自分自身が資金源」として数えていた**。funder_wallets は
+   * 既に台帳へ載ったウォレットしか索引しないので、新規ウォレットは判定の瞬間に
+   * 必ず未索引。つまり新規ウォレットを2つ用意するだけで「独立した2つの資金源」に
+   * なり、ダスト送金3回で dataDepth が moderate に上がって ALLOW の天井が外れた。
+   * 旧docstringは「正当化できない減点はしない」と書いていたが、それは
+   * **測れなかったものを問題なしとして数える**ことだった——vet402が市場に売っている
+   * 規律そのものを自社実装で破っていた。
+   *
+   * 今は **資金源が判明している payer だけ**を数える。判明しない分は減点でも
+   * 加点でもなく `payersWithUnknownFunder` として開示し、呼び手が
+   * 「測れなかった」として扱えるようにする。
    */
   distinctFunders: number;
+  /**
+   * 資金源が索引に無く、独立性を証明できなかった payer の数（2026-08-23）。
+   * 0 より大きいときは「独立した支払者がこれだけ居た」と言い切れない。
+   */
+  payersWithUnknownFunder: number;
   firstPaymentAt: string | null;
   lastPaymentAt: string | null;
 };
@@ -376,6 +467,7 @@ export async function getPayeeStats(payee: string): Promise<PayeeStats> {
     uniqueDays: 0,
     distinctPayers: 0,
     distinctFunders: 0,
+    payersWithUnknownFunder: 0,
     firstPaymentAt: null,
     lastPaymentAt: null,
   };
@@ -392,16 +484,27 @@ export async function getPayeeStats(payee: string): Promise<PayeeStats> {
         lastPaymentAt: sql<string | null>`max(${settledAt})`,
       })
       .from(x402Payments)
-      .where(and(eq(x402Payments.payee, payeeLower), scoreEligible));
+      // 2026-08-23 監査: ここは `eq(payee) + scoreEligible` だけで、支払側
+      // (getX402PaymentStats) が持つ3つの防御述語——金額非NULL・ダスト下限・
+      // **自己送金の除外**——が丸ごと欠けていた。scoreEligible が見るのは
+      // トークン・金額検証・所有権検証だけで、所有権検証は「払った側の署名」
+      // なので、自分に払えば必ず成立する。書き込みAPIにも wallet≠payee の
+      // ガードは無い。結果、売り手はダスト送金を数回足すだけで paymentCount と
+      // distinctPayers を積め、dataDepth を moderate に上げて ALLOW の天井
+      // (PAYEE_THIN_SCORE_CEILING) を外せた。**同じ台帳を読む2つの経路で、
+      // 片方だけに防御述語がある**という非対称は、それ自体が欠陥。
+      .where(and(eq(x402Payments.payee, payeeLower), scoreEligible, ...RECEIVING_EVIDENCE_PREDICATES(payeeLower)));
 
     const row = rows[0];
     const distinctPayers = Number(row?.distinctPayers ?? 0);
+    const funders = await countDistinctFunders(db, payeeLower, distinctPayers);
 
     return {
       paymentCount: Number(row?.paymentCount ?? 0),
       uniqueDays: Number(row?.uniqueDays ?? 0),
       distinctPayers,
-      distinctFunders: await countDistinctFunders(db, payeeLower, distinctPayers),
+      distinctFunders: funders.knownFunders,
+      payersWithUnknownFunder: funders.unknownPayers,
       firstPaymentAt: row?.firstPaymentAt ?? null,
       lastPaymentAt: row?.lastPaymentAt ?? null,
     };
@@ -419,44 +522,63 @@ export async function getPayeeStats(payee: string): Promise<PayeeStats> {
  * vet402 2026-08-13 — collapse a payee's distinct payers down to their distinct
  * funding sources. Sybil clusters share one funder, so counting funders instead
  * of wallets stops a payee from manufacturing "many independent customers" out
- * of one funded set. A payer with no funder row counts as its own source
- * (coalesce to the wallet), so an empty/lagging funder index simply returns the
- * raw payer count — the diversity bonus is never penalized on data we lack.
- * Reads the same funder_wallets index the payer-side funding_cluster check
- * uses (populated only by the trusted indexer, never by API scoring).
+ * of one funded set. Reads the same funder_wallets index the payer-side
+ * funding_cluster check uses (populated only by the trusted indexer, never by
+ * API scoring).
+ *
+ * 2026-08-23 監査で意味論を変更。旧実装は
+ *   count(distinct coalesce(funder_wallets.funder, payers.wallet))
+ * で、**索引に行が無い payer を「自分自身が資金源」として数えていた**。
+ * funder_wallets の母集団は既に trust_events / customer_lists に載った
+ * ウォレットだけなので（funder-indexer.ts:34-41）、**新規ウォレットは判定の
+ * 瞬間に必ず未索引**。したがって新規ウォレット2つが自動的に「独立した2つの
+ * 資金源」になり、C-1（ダスト自己送金）と噛み合って ALLOW の天井を外せた。
+ *
+ * 今は「判明した資金源の数」と「判明しなかった payer の数」を分けて返す。
+ * 不明を独立として数えない代わりに、減点もしない——呼び手が
+ * `payersWithUnknownFunder` を見て「測れなかった」と開示できる。
  */
 async function countDistinctFunders(
   db: NonNullable<ReturnType<typeof getDb>>,
   payeeLower: string,
   distinctPayers: number,
-): Promise<number> {
-  if (distinctPayers === 0) return 0;
+): Promise<{ knownFunders: number; unknownPayers: number }> {
+  if (distinctPayers === 0) return { knownFunders: 0, unknownPayers: 0 };
   try {
     const payers = db
       .selectDistinct({ wallet: x402Payments.wallet })
       .from(x402Payments)
-      .where(and(eq(x402Payments.payee, payeeLower), scoreEligible))
+      .where(
+        and(
+          eq(x402Payments.payee, payeeLower),
+          scoreEligible,
+          ...RECEIVING_EVIDENCE_PREDICATES(payeeLower),
+        ),
+      )
       .as("payers");
 
     const rows = await db
       .select({
-        distinctFunders: sql<number>`count(distinct coalesce(${funderWallets.funder}, ${payers.wallet}))`,
+        knownFunders: sql<number>`count(distinct ${funderWallets.funder})`,
+        unknownPayers: sql<number>`count(*) FILTER (WHERE ${funderWallets.funder} IS NULL)`,
       })
       .from(payers)
       .leftJoin(funderWallets, sql`lower(${funderWallets.wallet}) = ${payers.wallet}`);
 
-    const value = Number(rows[0]?.distinctFunders ?? distinctPayers);
+    const known = Number(rows[0]?.knownFunders ?? 0);
+    const unknown = Number(rows[0]?.unknownPayers ?? 0);
     // Never report MORE funding sources than payers — a defensive floor in case
     // a wallet somehow carries multiple funder rows in the index.
-    return Math.min(value, distinctPayers);
+    return { knownFunders: Math.min(known, distinctPayers), unknownPayers: unknown };
   } catch (error) {
-    // The funder index is an optimization for a sybil discount, not a
-    // correctness gate: if it cannot be read (e.g. funder_wallets not migrated),
-    // fall back to the raw payer count rather than failing the whole payee read.
+    // 2026-08-23 監査: ここも「索引が読めなければ raw payer count を返す」＝
+    // **全員が独立した資金源だと主張する**形だった。読めなかったのは事実であって
+    // 独立の証拠ではない。判明0・全員不明として返し、呼び手に開示させる
+    // （payee 読み取り自体は落とさない——degrade はするが嘘はつかない）。
     if (!isMissingSchemaError(error)) {
       logServerError("payee_distinct_funders", error);
     }
-    return distinctPayers;
+    return { knownFunders: 0, unknownPayers: distinctPayers };
   }
 }
 

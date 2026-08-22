@@ -68,7 +68,8 @@ Solana real-purchase (payer exists, default-off, no funds) is **not** a hackatho
 ### P0 — this week, no new product code
 
 1. **ETHOnline + Tokyo Continuity apply** still wins the calendar. Grants do not jump the queue.
-2. **Base Builder Grants (retro, typically 1–5 ETH).** Shipped, Base-native, public good. Discovery is the team + nominations ([docs](https://docs.base.org/get-started/get-funded), [call](https://paragraph.com/@grants.base.eth/calling-based-builders)).  
+2. **Base Builder Grants (retro, typically 1–5 ETH).** Submission pack, field by field: [`../applications/base-builder-grant-nomination.md`](../applications/base-builder-grant-nomination.md).
+   Base is **not** an ETHOnline 2026 partner ([`../ethonline-2026/PRIZES.md`](../ethonline-2026/PRIZES.md), measured 2026-08-23), so prizes cannot route Base money to us this autumn. Grants are the only Base path, and this one is retroactive. Shipped, Base-native, public good. Discovery is the team + nominations ([docs](https://docs.base.org/get-started/get-funded), [call](https://paragraph.com/@grants.base.eth/calling-based-builders)).  
    Human: nominate / apply with `why-base.md` + `impact-one-pager.md` + live state JSON. Same-day figures. Farcaster/X pointer to `/observatory` and `/impact`.  
    Do not promise `payOrRefuse`.
 3. **OP Atlas / Retro Funding.** Register the project as a Superchain public good. Track usage. This is a profile, not a weekend build.
@@ -92,6 +93,7 @@ Solana real-purchase (payer exists, default-off, no funds) is **not** a hackatho
 
 - Gitcoin / Octant / similar QF rounds: enter when a round matches “independent measurement / agent payments.” Use live JSON, not a new feature.
 - Base Batches / Ecosystem Fund: only if we want equity-shaped capital. Default is **no** — neutrality and public-good posture first.
+  **Decided 2026-08-23 (CEO): we are not applying to Base Batches 004** (deadline "Applications close September 9", **$100K investment** from the Base Ecosystem Fund, Demo Day New York November 2026 — [base.org/batches](https://www.base.org/batches), primary check 2026-08-23). Accepting the investment is a condition of the program. Three reasons, in order: (1) the fund belongs to the ecosystem whose catalog we grade — a shareholder relationship is the one attack on our dataset we cannot answer with evidence; (2) we have nothing to sell to the measured catalog, so an investor-track pitch would have to invent a revenue story that neutrality forbids; (3) Demo Day lands on Devcon / ETHMumbai week. The 2026-08-20 GO decision and the owner-approved essay are superseded. Reversible until 09-09 on one line from the owner. The recording effort that this needed goes to the Base Builder Grants 1-minute demo instead — non-dilutive, retroactive, no conflict.
 - Guarantee underwriting (`guarantee-underwriting-design.md`): dormant. Do not put it in a grant until legal says so.
 
 ---
@@ -144,7 +146,7 @@ Between events, product ops (probes, Base L1, bugfixes) may continue and must be
 ## 7. This month (grants only)
 
 1. Finish ETHOnline Continuity apply first.
-2. Refresh figures → nominate / apply **Base Builder Grants** with the existing Base memo.
+2. ~~Refresh figures~~ **done 2026-08-23** (`scripts/grant-figures.py`; all application docs now agree with live state and `--check` fails loudly when they do not) → nominate / apply **Base Builder Grants**. Blocked on three owner-side gaps listed in the nomination pack: 1-minute demo, Farcaster handle, receiving wallet.
 3. Create or update an OP Atlas profile.
 4. Fill legal entity + email on the Solana draft; **do not start Solana L1 implementation** until ETHOnline is submitted (or a clearly separate branch after 09-16).
 5. Book Devcon ESP / EF conversations as Mumbai prize work that can also unlock a Wishlist match.

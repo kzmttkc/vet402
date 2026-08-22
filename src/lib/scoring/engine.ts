@@ -197,7 +197,12 @@ export async function scoreAgentById(
           .catch((error: unknown) => ({ ok: false as const, error }))
       : Promise.resolve({
           ok: true as const,
-          value: { paymentCount: 0, uniqueDays: 0, lastPaymentAt: null },
+          value: {
+            paymentCount: 0,
+            uniqueDays: 0,
+            lastPaymentAt: null,
+            paymentsWithUnprovableIndependence: 0,
+          },
         }),
 
     // vet402 2026-08-14 — L1 observed purchases, the PREMIUM economic-activity
@@ -252,7 +257,7 @@ export async function scoreAgentById(
   const x402StatsUnavailable = !x402Result.ok;
   const x402Stats: Awaited<ReturnType<typeof getX402PaymentStats>> = x402Result.ok
     ? x402Result.value
-    : { paymentCount: 0, uniqueDays: 0, lastPaymentAt: null };
+    : { paymentCount: 0, uniqueDays: 0, lastPaymentAt: null, paymentsWithUnprovableIndependence: 0 };
   if (!x402Result.ok) logSignalDegraded("x402_stats", x402Result.error);
 
   const l1Stats: Awaited<ReturnType<typeof getObservedPurchaseStats>> = l1Result.ok
@@ -471,6 +476,7 @@ export async function scoreWallet(
     paymentCount: 0,
     uniqueDays: 0,
     lastPaymentAt: null,
+    paymentsWithUnprovableIndependence: 0,
   };
   let x402StatsUnavailable = false;
   try {

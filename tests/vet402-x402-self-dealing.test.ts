@@ -31,44 +31,69 @@ test("ATTACK: A→B where both are funded by the payer's own funder is dropped",
   // attacker's funding wallet). Not independent → not a settlement.
   const payerFunders = new Set([PAYER_FUNDER]);
   const funderOfPayee = new Map([["0xsockpuppet", PAYER_FUNDER]]);
-  const kept = keepIndependentByFunder(payerFunders, funderOfPayee, [row("p1", "0xsockpuppet")]);
-  assert.deepEqual(kept, [], "a same-cluster recipient must not count");
+  const r = keepIndependentByFunder(payerFunders, funderOfPayee, [row("p1", "0xsockpuppet")]);
+  assert.deepEqual(r.kept, [], "a same-cluster recipient must not count");
+  assert.equal(r.droppedSameCluster, 1);
+});
+
+test("ATTACK(2026-08-23): payer が payee へ**直接**送金した場合も独立ではない", () => {
+  // 旧実装は「payee の資金源 ∈ payer の資金源集合」だけを見ていた。payer が
+  // 直接送金すると payee の資金源は payer 自身になるが、payer は「payer の
+  // 資金源」に含まれないので **独立と判定されて素通り**していた。
+  const payer = "0xpayer";
+  const r = keepIndependentByFunder(
+    new Set([PAYER_FUNDER]),
+    new Map([["0xmyownpayee", payer]]),
+    [row("p1", "0xmyownpayee")],
+    payer,
+  );
+  assert.deepEqual(r.kept, [], "自分で資金を出した受取先を独立と数えてはいけない");
+  assert.equal(r.droppedSameCluster, 1);
 });
 
 test("a payment to an INDEPENDENTLY funded recipient is kept", () => {
   const payerFunders = new Set([PAYER_FUNDER]);
   const funderOfPayee = new Map([["0xrealcustomer", "0xfunder_z"]]);
-  const kept = keepIndependentByFunder(payerFunders, funderOfPayee, [row("p1", "0xrealcustomer")]);
-  assert.equal(kept.length, 1, "a genuinely independent recipient is real evidence");
+  const r = keepIndependentByFunder(payerFunders, funderOfPayee, [row("p1", "0xrealcustomer")]);
+  assert.equal(r.kept.length, 1, "a genuinely independent recipient is real evidence");
 });
 
-test("an UNKNOWN funder degrades permissively — its own source, kept", () => {
-  // Matches countDistinctFunders: the index is a sybil discount, not a
-  // correctness gate. A recipient not yet in funder_wallets counts.
-  const kept = keepIndependentByFunder(new Set([PAYER_FUNDER]), new Map(), [row("p1", "0xnewpayee")]);
-  assert.equal(kept.length, 1);
+test("UNKNOWN funder は観測を残すが「独立を証明できた」とは数えない（2026-08-23）", () => {
+  // 旧テストは "degrades permissively — its own source, kept" を固定し、
+  // 不明を**独立の証拠として黙って数えて**いた。funder_wallets は既に台帳へ
+  // 載ったウォレットしか索引しないので、新規に用意した受取先は必ず通り抜けた。
+  //
+  // ただし観測ごと消すのは行き過ぎ（本番の funder_wallets は17行。索引が
+  // 空なら正直な実績まで全部消える）。行は残し、証明できていない件数を返して
+  // 開示する。ALLOW の天井を外させないのは受取側の深さ判定の役目。
+  const r = keepIndependentByFunder(new Set([PAYER_FUNDER]), new Map(), [row("p1", "0xnewpayee")]);
+  assert.equal(r.kept.length, 1, "観測そのものは消さない");
+  assert.equal(r.unprovenIndependence, 1, "独立は証明できていないと開示する");
 });
 
 test("a null payee never counts as evidence", () => {
-  const kept = keepIndependentByFunder(new Set(), new Map(), [row("p1", null)]);
-  assert.deepEqual(kept, []);
+  const r = keepIndependentByFunder(new Set(), new Map(), [row("p1", null)]);
+  assert.deepEqual(r.kept, []);
 });
 
-test("mixed batch: only the independently funded, non-sockpuppet recipients survive", () => {
+test("mixed batch: 証明できた独立分だけが残り、残りは理由別に数えられる", () => {
   const payerFunders = new Set([PAYER_FUNDER]);
   const funderOfPayee = new Map<string, string>([
     ["0xsock1", PAYER_FUNDER], // same cluster → drop
     ["0xsock2", PAYER_FUNDER], // same cluster → drop
     ["0xreal", "0xfunder_z"], // independent → keep
-    // 0xunknown absent from map → kept
+    // 0xunknown absent from map → 証明できないので落とす（2026-08-23 変更）
   ]);
-  const kept = keepIndependentByFunder(payerFunders, funderOfPayee, [
+  const r = keepIndependentByFunder(payerFunders, funderOfPayee, [
     row("p1", "0xsock1"),
     row("p2", "0xsock2"),
     row("p3", "0xreal"),
     row("p4", "0xunknown"),
   ]);
-  assert.deepEqual(kept.map((r) => r.id).sort(), ["p3", "p4"]);
+  // 同じクラスタ（＝独立でないと**判明した**）だけ落ちる。不明は残るが数えられる。
+  assert.deepEqual(r.kept.map((x) => x.id).sort(), ["p3", "p4"]);
+  assert.equal(r.droppedSameCluster, 2);
+  assert.equal(r.unprovenIndependence, 1);
 });
 
 // ---- the SQL-level filters (source-pinned) ---------------------------------
