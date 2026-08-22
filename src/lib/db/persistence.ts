@@ -31,7 +31,11 @@ export async function persistScoreResult(
     wallet: result.wallet,
     trustScore: result.trustScore,
     recommendation: result.recommendation,
-    signals: result.signals,
+    // 2026-08-23 監査: この経路だけ `kind` が無く、結果として outcome-detector の
+    // 監視集合（除外述語が `kind IS DISTINCT FROM 'payee_score'`）に入っていた。
+    // 否定形の除外は「知らない種類は全部監視する」という意味になり、新しい書き手が
+    // 増えるたび黙って監視対象が広がる。種類を名乗らせて肯定形で選ばせる。
+    signals: { kind: "seller_score", ...result.signals },
     manualOverride: result.manualOverride ? "true" : "false",
     blockReason: result.blockReason ?? null,
     disclaimer: result.disclaimer,

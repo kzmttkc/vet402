@@ -108,14 +108,14 @@ export async function collectWatchedTrustEvents(
         and(
           gte(trustEvents.createdAt, since),
           isNotNull(trustEvents.wallet),
-          sql`(${trustEvents.signals}->>'kind') IS DISTINCT FROM 'payee_score'`,
-          // Benchmark seeds (2026-08-06, src/lib/benchmark/) are excluded
-          // too: their ground-truth outcome is written by the runner at scan
-          // time, so letting the auto detector also scan them could attach a
-          // second, conflicting auto outcome to the same seeded verdict —
-          // and OFAC-listed wallets are dormant on Base, so it would mostly
-          // manufacture wallet_dormant noise. NULL-safe like the line above.
-          sql`(${trustEvents.signals}->>'kind') IS DISTINCT FROM 'benchmark_seed'`,
+          // 2026-08-23 監査: ここは「payee_score でない」「benchmark_seed でない」
+          // という**否定形の除外**だった。否定形は「知らない種類は全部監視する」を
+          // 意味するので、kind を名乗らない書き手（買い手側 persistScoreResult が
+          // まさにそれだった）が黙って監視対象に入る。実際そこから
+          // /v1/wallets/{任意アドレス}/score → rug_pull_outflow → BLOCK固定 という
+          // 経路が開いていた。**監視するものを肯定形で名指す**形へ反転する。
+          // 既存の kind 無し行は監視対象から外れる——誤検知が減る方向なので安全。
+          sql`(${trustEvents.signals}->>'kind') = 'seller_score'`,
           notInArray(trustEvents.id, alreadyTerminal),
         ),
       )

@@ -133,7 +133,16 @@ async function classifyWalletActivity(
       console.error(`outcome-detector: balance lookup failed for ${wallet}`, err);
     }
 
-    const repeatedWithdrawals = outgoing.length >= RUG_PULL_MIN_OUTFLOW_COUNT;
+    // 2026-08-23 監査: repeatedWithdrawals に**金額下限が無かった**。
+    // `outgoing` は value > 0 しか要求しないので、ダストのETH送金2回＋12時間の
+    // 静穏だけで rug_pull_outflow が自動記録され、outcome-adjustment が
+    // Math.min(score, 15) で payee スコアを BLOCK に固定した。
+    // 公開の /v1/wallets/{任意アドレス}/score を叩けば任意のウォレットを監視集合に
+    // 入れられるので、**APIキー1つで正直な売り手を潰せた**。
+    // 「2回引き出した」は金額を見なければ何の所見でもない。比率側と同じ下限を課す。
+    const repeatedWithdrawals =
+      outgoing.length >= RUG_PULL_MIN_OUTFLOW_COUNT &&
+      outgoingValueTotal >= RUG_PULL_MIN_DRAIN_VALUE_WEI;
     const highDrainRatio =
       drainRatio !== null &&
       drainRatio >= RUG_PULL_HIGH_DRAIN_RATIO &&
