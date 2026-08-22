@@ -196,7 +196,7 @@ SpendGuard の穴（提出の物語）: エージェントは `evaluate()` を�
 
 ### 5.5 賞のヒューリスティック
 
-公式リストは 9/4・9/9・9/12 に読む。デモが存在してから確定。
+**2026-08-23 訂正:** 公式リストは既に公開済みだった（パートナー9社・$77,000）。実測の正典は [`../ethonline-2026/PRIZES.md`](../ethonline-2026/PRIZES.md)。**Base / Coinbase CDP / x402 facilitator はこの大会にいない**ので、下の1位は選べない。動詞と正面一致するのは **Hedera 🤖 AI & Agentic Payments $6,000**（要件: Hedera 上の x402 ゲート付きサービス＋Blocky402 facilitator＋実有償リクエスト1件）。詳細 coming soon の5社があるため 9/4・9/9・9/12 に再読する。デモが存在してから確定。
 
 1. Base / Coinbase CDP / x402 facilitator（ALLOW がそのレールを通った）。
 2. デモが呼んだエージェント / MCP / ウォレット。

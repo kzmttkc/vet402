@@ -23,6 +23,7 @@ Do not implement the next event’s verb before that event’s kickoff.
 | [`2026-autumn-continuity.md`](./2026-autumn-continuity.md) | 3連戦の運用計画（動詞・凍結・申請文・カレンダー） |
 | [`../ethonline-2026/ROADMAP.md`](../ethonline-2026/ROADMAP.md) | ETHOnline 日次ロードマップ |
 | [`../ethonline-2026/WIN_EV.md`](../ethonline-2026/WIN_EV.md) | ETHOnline 受賞確度の最大化 |
+| [`../ethonline-2026/PRIZES.md`](../ethonline-2026/PRIZES.md) | ETHOnline 公式賞リストの実測（2026-08-23。Base/CDP/x402 は不在・Hedera $6k が本命） |
 | [`../ethonline-2026/GIT_RULES.md`](../ethonline-2026/GIT_RULES.md) | Continuity の git 境界 |
 | [`../ethonline-2026/README_CONTINUITY_SECTION.md`](../ethonline-2026/README_CONTINUITY_SECTION.md) | 提出直前まで README に貼らない草案 |
 | [`../ethonline-2026/CHANGED_FILES.md`](../ethonline-2026/CHANGED_FILES.md) | 既存ファイルを触った記録 |

@@ -40,7 +40,7 @@ Neutrality (never trade this for a grant):
 - Sellers cannot pay for a better result.
 - No marketing line item aimed at the catalog.
 
-Figures in application drafts are dated **2026-08-20**. Re-`curl` the state API on the submission day. Never invent amounts (`milestones-budget-template.md`).
+Figures in application drafts are dated **2026-08-23** (except `solana-grant-proposal.md`, whose cost basis is a coherent 2026-08-20 snapshot and is re-quoted whole at submission). Re-`curl` the state API on the submission day. Never invent amounts (`milestones-budget-template.md`).
 
 ---
 
@@ -76,7 +76,7 @@ Solana real-purchase (payer exists, default-off, no funds) is **not** a hackatho
 ### P1 — after Continuity paperwork, still no frozen verbs
 
 4. **Solana Foundation / Superteam** — proposal already drafted (`solana-grant-proposal.md`). Ask is cost-basis, labor $0, purchase capital + list-price infra. Submit when the human can own the legal entity / contact fields. Implementation only on a **non-hackathon** branch, after ETHOnline submit if it would steal September focus.
-5. **x402 / CDP / Coinbase-adjacent grants** if a public form exists. Pitch: we are the independent settle-through dataset for the catalog they host. Retro first (845 attempts, 341 settled). Prospective only for purchase budget, not for a new protocol.
+5. **x402 / CDP / Coinbase-adjacent grants** if a public form exists. Pitch: we are the independent settle-through dataset for the catalog they host. Retro first (1,133 attempts, 496 settled). Prospective only for purchase budget, not for a new protocol.
 
 ### P2 — timed to events (evidence, then ask)
 
@@ -155,6 +155,6 @@ Between events, product ops (probes, Base L1, bugfixes) may continue and must be
 
 - Ask a grant to fund a frozen Continuity verb.
 - Pad labor or marketing against the catalog we measure.
-- Submit stale 2026-08-20 numbers as if they were today.
+- Submit stale numbers as if they were today (`python3 scripts/grant-figures.py --check` before every send).
 - Treat Devfolio ETHMumbai / Origins prize pages as grant programs.
 - Soften the AI-operated disclosure to look like a conventional startup team.

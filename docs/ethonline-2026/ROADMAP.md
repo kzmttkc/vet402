@@ -242,7 +242,7 @@ No features, no submission edits. Prepare 4 min live demo + 3 min Q&A if Finalis
 
 ## 7. Prize protocol
 
-Re-read the official prize page on 09-04, 09-09, 09-12. Pick **after** `payOrRefuse` exists, not before.
+**2026-08-23 実測: 賞リストは既に全パートナー公開済み。正典 = [`PRIZES.md`](./PRIZES.md)。Base / CDP / x402 facilitator はこの大会のパートナーに存在しない**（下の優先順位1位は ETHOnline では選べない）。詳細 coming soon の5社があるので、再読は 09-04, 09-09, 09-12。Pick **after** `payOrRefuse` exists, not before.
 
 Order:
 
