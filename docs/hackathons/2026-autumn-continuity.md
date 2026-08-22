@@ -1,6 +1,7 @@
 # 2026 Autumn Continuity Campaign
 
 > Status: locked 2026-08-22. This is the operating plan for ETHOnline, ETHGlobal Tokyo, and ETHGlobal Mumbai.
+> Full narrative (rules, Token2049, AI, Devcon): [`STRATEGY.md`](./STRATEGY.md). File map: [`README.md`](./README.md).
 > Repo: https://github.com/kzmttkc/vet402 · Site: https://vet402.com
 > Do not implement the next event's verb before that event's kickoff.
 
@@ -18,7 +19,7 @@ A submission wins when a judge can answer, in 60 seconds of video:
 
 | Event | Window | Verb | One sentence |
 |---|---|---|---|
-| ETHOnline 2026 | 2026-09-04 → 09-16 | `payOrRefuse` | スコアを見てから払うな。拒めるなら、払うな。 |
+| ETHOnline 2026 | 2026-09-04 → 09-16（提出締切 09-13 12:00 EDT） | `payOrRefuse` | スコアを見てから払うな。拒めるなら、払うな。 |
 | ETHGlobal Tokyo | 2026-09-25 → 09-27 | `resolve-then-pay` | エージェントはアドレスではなく、名前に払う。 |
 | ETHGlobal Mumbai | 2026-11-06 → 11-08 | `write the registry` | 支払いの証明はある。履行の証明を、空のレジストリに書く。 |
 
@@ -60,10 +61,11 @@ Do **not** go to Devcon if you skip Mumbai. Do **not** skip Devcon if you do Mum
 | 2026-08-22 → 08-29 | Devcon ticket. Hotel Mumbai 11-02 night → 11-08. | Human |
 | 2026-08-22 → 09-03 | Spec and rehearsal only. No `payOrRefuse` code. | Both |
 | **2026-09-03** | Tag `pre-ethonline-2026` on `main`. Branch `ethonline-2026`. | Human (or agent with approval) |
-| 2026-09-04 → 09-16 | ETHOnline build + submit. | Both |
+| 2026-09-04 → 09-13 | ETHOnline build. **Submit by 09-13 12:00 EDT = 09-14 01:00 JST**（一次確認 2026-08-23）。09-14→16 は審査期間。 | Both |
 | 2026-09-17 → 09-24 | ENS rehearsal and spec only. No Tokyo feature code. Confirm Tokyo stake / travel. | Both |
 | **2026-09-24** | Tag `pre-tokyo-2026` on `main`. Branch `tokyo-2026`. | Human |
 | 2026-09-25 → 09-27 | Tokyo build + submit. | Both |
+| 2026-10-05 → 10-11 | TOKEN2049 Singapore week. Meetings only. **Do not enter Origins with this repo.** NEXUS pitch is optional. | Human |
 | 2026-09-28 → 11-04 | Operate the product. ERC-8004 write spec and testnet rehearsal. **No mainnet registry writes** that would become the Mumbai demo. | Both |
 | **2026-11-05** | Tag `pre-mumbai-2026` on `main`. Branch `mumbai-2026`. | Human |
 | 2026-11-03 → 11-05 | Devcon meetings. | Human |
@@ -75,7 +77,8 @@ Between events, product ops (probes, purchases, bugfixes unrelated to the next v
 
 ## Event 1 — ETHOnline (async, 12 days)
 
-Operating plan (day-by-day): [`docs/ethonline-2026/ROADMAP.md`](../ethonline-2026/ROADMAP.md). That file wins if anything here is shorter.
+Operating plan (day-by-day): [`docs/ethonline-2026/ROADMAP.md`](../ethonline-2026/ROADMAP.md).
+Win-probability overrides: [`docs/ethonline-2026/WIN_EV.md`](../ethonline-2026/WIN_EV.md). WIN_EV wins if this section is shorter or disagrees.
 
 ### Scope (already committed in `docs/ethonline-2026/`)
 
@@ -94,17 +97,18 @@ Select after the official list is published. Heuristic, in order:
 
 1. Base / Coinbase CDP / x402 facilitator
 2. Agent framework / MCP / wallet that `payOrRefuse` actually calls
-3. ENS only if a **name is not required** to demo (do not implement Tokyo's verb)
+3. Continuity-only bounty the **new** verb uses. Do not implement Tokyo's ENS verb here.
 
 Skip anything that needs a new chain or a swap. Max 3 partners. Submit **Finalist and Partner Prizes** (async first round is free optionality).
 
 ### Demo video (2–4 min, ≥720p, human voice, no AI voiceover)
 
-1. 15s — live observatory: we already buy, we already publish failures.
-2. 45s — BLOCK path: agent attempts pay, **no signature**, reasons on screen.
-3. 60s — ALLOW path: real USDC on Base, tx hash, attest, `/decisions`.
-4. 30s — git boundary: `git log pre-ethonline-2026..ethonline-2026`.
-5. 20s — what this enables next (name, then registry) without claiming it shipped.
+WIN_EV shot list (do not open on the observatory; do not use `docs/applications/video-script.md`):
+
+1. 10s — `git log pre-ethonline-2026..ethonline-2026`
+2. 25s — `run.ts block` → no signature
+3. 25s — `run.ts allow` → Base explorer tx
+4. One sentence — we already buy and publish; this window closed “ignore the score and sign anyway.”
 
 ### Done when
 
@@ -229,6 +233,14 @@ AI policy: ETHGlobal allows Cursor / Claude. Disclose with `docs/applications/ai
 
 ---
 
+## TOKEN2049 Singapore — attend, do not hack this repo
+
+Conference 2026-10-07–08. Official hackathon: Origins (10-06–08), from-scratch only, no Continuity. Full decision: [`STRATEGY.md`](./STRATEGY.md) §8.
+
+Default: skip Origins for vet402. Use the week for the same job as Devcon (x402 / Base / Circle / ENS / VC). NEXUS is an optional pitch of the existing product. An Origins entry, if ever, is an empty-repo client that calls `vet402.com` as a disclosed dependency and does not touch this repository.
+
+---
+
 ## What we will not do
 
 - Submit the same dashboard three times with a thin skin.
@@ -236,3 +248,5 @@ AI policy: ETHGlobal allows Cursor / Claude. Disclose with `docs/applications/ai
 - Start Tokyo or Mumbai features "a little early" because the first event went well.
 - Soften the AI disclosure.
 - Sit through Devcon talks instead of booking the eight conversations.
+- Enter TOKEN2049 Origins with `kzmttkc/vet402`.
+- Use `docs/applications/video-script.md` for an ETHGlobal Continuity video.

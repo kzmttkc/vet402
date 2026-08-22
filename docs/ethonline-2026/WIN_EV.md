@@ -2,6 +2,8 @@
 
 > Locked 2026-08-22. This file **overrides** [`ROADMAP.md`](./ROADMAP.md) where they differ.
 > Roadmap is the calendar. This file is the bet.
+> **2026-08-23 訂正:** 提出締切は **2026-09-13 12:00 EDT（= 09-14 01:00 JST）**。出典 https://ethglobal.com/events/ethonline2026/info/details （一次確認 2026-08-23・「Sunday, September 13th 2026 at 12:00 pm EDT」）。会期 09-04→09-16 の後半は審査期間で、提出はできない。旧記載の 09-15 提出は全て前倒し済み。
+> Full record: [`../hackathons/STRATEGY.md`](../hackathons/STRATEGY.md).
 
 ## The bet
 
@@ -30,7 +32,7 @@ These lose more often than a weaker idea.
 | Undisclosed old work | Tag `pre-ethonline-2026` on 09-03. README Continuity section is past tense of **what exists**. |
 | L1 contamination | Demo rows never enter `x402_l1_purchases`. |
 | AI-only submission | Human: apply, keys, first live ALLOW, voiceover, sponsor Discord, submit click. Agents write code. Disclose without softening. |
-| Video auto-reject | Dry-run upload 09-12. Final 09-14. Human voice, ≥720p, 2:00–3:50, no AI voice, no phone, no speed-up, no music-over-text. |
+| Video auto-reject | Dry-run upload 09-11. Final 09-12. Human voice, ≥720p, 2:00–3:50, no AI voice, no phone, no speed-up, no music-over-text. |
 | Fake or catalog-only ALLOW | See §2. We do not claim a payment we cannot open on a public explorer. |
 
 Do **not** use `docs/applications/video-script.md`. That is the old product film. Using it makes Continuity look like a reskin.
@@ -53,9 +55,9 @@ Roadmap Day 4–5 order is hereby:
 2. Then BLOCK against a live catalog payee.
 3. Catalog ALLOW only if time remains.
 
-The 09-14 “refuse-only” fallback in the roadmap is last resort. Plan A is a real tx by **09-10**.
+The 09-11 “refuse-only” fallback in the roadmap is last resort. Plan A is a real tx by **09-09**.
 
-BLOCK fixture: pick a live BLOCK/WARN payee and re-check 09-04 / 09-10 / 09-14. If it flips, swap. Do not fake a score.
+BLOCK fixture: pick a live BLOCK/WARN payee and re-check 09-04 / 09-09 / 09-12. If it flips, swap. Do not fake a score.
 
 ---
 
@@ -66,7 +68,7 @@ Max 3 partners. One partner with many tracks still counts as 1.
 ### Lock moment
 
 - **09-04 kickoff:** screenshot the prize page. Write 3 names in `docs/ethonline-2026/PRIZES.md` (create that day).
-- Re-open 09-10 and 09-14. Swap only if the demo does not actually use a pick.
+- Re-open 09-09 and 09-12. Swap only if the demo does not actually use a pick.
 
 ### Heuristic (fill after the list exists)
 
@@ -78,9 +80,9 @@ Max 3 partners. One partner with many tracks still counts as 1.
 
 Never: ENS (Tokyo), Sui, Uniswap-without-a-swap, a logo we did not import.
 
-### 4-hour adapter budget (09-11 only)
+### 4-hour adapter budget (09-11 morning only)
 
-If P1–P3 need a thin import (CDP facilitator client, AgentKit signer, official `@x402/*`), do it on **09-11 afternoon** after both demo commands work. Not before. Not a fourth verb.
+If P1–P3 need a thin import (CDP facilitator client, AgentKit signer, official `@x402/*`), do it on **09-11 morning** after both demo commands work. Not before. Not a fourth verb.
 
 ### Sponsor Discord (human, daily after 09-08)
 
@@ -124,12 +126,12 @@ The disclosure (`docs/applications/ai-usage-disclosure.md`) stays blunt.
 |---|---|
 | 08-24 | Continuity apply or nothing else matters |
 | 09-04 | Prize screenshot → `PRIZES.md` |
-| 09-08–10 | Own seller + first public tx (not catalog) |
-| 09-11 PM | At most one prize adapter |
-| 09-12 | Video dry-run (reject-checklist) |
-| 09-14 | Final video; speak same-day `/observatory/state` numbers only if used at all |
-| 09-15 **morning** | Merge `--no-ff`, submit Finalist **and** Partner Prizes |
-| 09-16 | Upload fixes only |
+| 09-08–09 | Own seller + first public tx (not catalog) |
+| 09-11 AM | At most one prize adapter |
+| 09-11 PM | Video dry-run (reject-checklist); feature freeze 18:00 JST |
+| 09-12 | Final video; speak same-day `/observatory/state` numbers only if used at all |
+| 09-13 **morning JST** | Merge `--no-ff`, submit Finalist **and** Partner Prizes |
+| **09-13 12:00 EDT = 09-14 01:00 JST** | **Hard deadline. Late submissions are not accepted. Nothing changes after this.** |
 
 During the window: no Origins, no ENS, no registry write, no product roadmap extras. Tokyo apply is already a 15-minute pre-window task.
 

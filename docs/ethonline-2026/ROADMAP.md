@@ -2,11 +2,13 @@
 
 > Locked 2026-08-22. Follow this file; do not expand scope.
 > Win-probability overrides: [`WIN_EV.md`](./WIN_EV.md) wins if the two conflict.
-> Window: **2026-09-04 00:00 UTC → 2026-09-16** (submit by **2026-09-15 18:00 UTC**).
+> Window: **2026-09-04 00:00 UTC → 2026-09-16**（09-13 の提出後は審査期間）。
+> **Submission deadline: 2026-09-13 12:00 EDT = 09-14 01:00 JST**（一次確認 2026-08-23 https://ethglobal.com/events/ethonline2026/info/details ・原文「Sunday, September 13th 2026 at 12:00 pm EDT」）。提出目標は **09-13 12:00 JST**（13時間の余裕）。旧記載「09-15 18:00 UTC」は誤りで、全日程を2日前倒しした。
 > Track: Continuity · Extend Open Source · https://github.com/kzmttkc/vet402
 > Verb: **payOrRefuse** — スコアを見てから払うな。拒めるなら、払うな。
 
 Parent campaign: [`docs/hackathons/2026-autumn-continuity.md`](../hackathons/2026-autumn-continuity.md).
+Full strategy record: [`docs/hackathons/STRATEGY.md`](../hackathons/STRATEGY.md). File map: [`docs/hackathons/README.md`](../hackathons/README.md).
 Git rules: [`GIT_RULES.md`](./GIT_RULES.md). Continuity README draft: [`README_CONTINUITY_SECTION.md`](./README_CONTINUITY_SECTION.md).
 
 ---
@@ -95,7 +97,7 @@ Public page: L1 block unchanged; a clearly labeled “Agent demo (ETHOnline)” 
 
 ### 4.3 Demo payees (pick in pre-window, freeze IDs on 09-03)
 
-- **BLOCK fixture:** a live payee whose `GET /api/v1/payees/{addr}/score` is BLOCK (or WARN). Prefer an observatory-published non-settling / thin / flagged wallet. Re-check on 09-04 and 09-14; if it flipped to ALLOW, swap to another live BLOCK — do not fake a score.
+- **BLOCK fixture:** a live payee whose `GET /api/v1/payees/{addr}/score` is BLOCK (or WARN). Prefer an observatory-published non-settling / thin / flagged wallet. Re-check on 09-04, 09-09 and 09-12; if it flipped to ALLOW, swap to another live BLOCK — do not fake a score.
 - **ALLOW fixture:** a payee that is clean ALLOW **and** exposes a payable x402 `exact` resource on Base USDC at ≤ $1. Prefer an endpoint we have already L1-settled (receipt exists) so delivery risk is known. If no such public seller exists that week, stand up a **disclosed** own `exact` seller for the ALLOW path only, and say so in the video.
 
 ---
@@ -119,7 +121,7 @@ Product code = anything under `packages/`, `src/`, `examples/` that implements t
 |---|---|---|---|
 | B1 | From production, list 3 BLOCK and 3 ALLOW candidates. Save addresses + score JSON + date in `docs/ethonline-2026/fixtures.md` (facts only, no feature claims). | Agent + Human confirm | File exists with retrieval date |
 | B2 | For each ALLOW candidate, confirm a live 402 `exact` / Base USDC / ≤ $1. | Agent | One row marked `primary` |
-| B3 | Bookmark the ETHOnline **prizes** page. Re-check 09-04, 09-10, 09-14. | Human | Calendar reminders |
+| B3 | Bookmark the ETHOnline **prizes** page. Re-check 09-04, 09-09, 09-12. | Human | Calendar reminders |
 | B4 | Read `@x402` client + CDP facilitator docs enough to call `exact` from the SDK during the window. No code in our repo. | Agent | One-page notes in `docs/ethonline-2026/x402-client-notes.md` (links + steps, no implementation) |
 
 ### 2026-08-29 – 09-02  Rehearsal (existing product only)
@@ -143,7 +145,7 @@ If A1 is not done by 08-24, drop everything else until it is. Continuity is opt-
 
 ---
 
-## 6. Window (2026-09-04 → 09-15)
+## 6. Window (2026-09-04 → 09-13 submit)
 
 All commits on `ethonline-2026`, prefix `ethonline:`. One purpose per commit. Pre-existing file touched → line in `CHANGED_FILES.md` in the **same** commit. Do not paste Continuity text into `README.md` until the work exists.
 
@@ -175,24 +177,24 @@ Implement `payOrRefuse` in the SDK until the four SDK tests go green. Prefer wra
 
 **Day-3 done:** MCP tests green. `CHANGED_FILES.md` lists any pre-existing MCP index edits.
 
-### Day 4–5 — Tue 09-08 / Wed 09-09  Own seller + first public tx
+### Day 4 — Tue 09-08  Own seller + first public tx（予備日 09-09）
 
 1. `examples/ethonline-2026-agent/seller` — disclosed `exact` resource, Base USDC, ≤ $1.
 2. Human approves first `payOrRefuse` ALLOW against that seller.
 3. BLOCK path against a live catalog payee.
 4. Catalog ALLOW only if both of the above are green.
 
-**Day-5 done:** public Base `txHash` from `payOrRefuse` → own seller. Explorer link in the demo README.
+**Day-4 done:** public Base `txHash` from `payOrRefuse` → own seller. Explorer link in the demo README.
 
-If settle is blocked: debug through 09-10 (WIN_EV). Do not invent a fake tx. Do not skip the seller to chase a catalog payee.
+If settle is blocked: debug through 09-09 (WIN_EV). Do not invent a fake tx. Do not skip the seller to chase a catalog payee.
 
-### Day 6 — Thu 09-10  Agent-demo decisions
+### Day 5 — Wed 09-09  Agent-demo decisions
 
 Separate store + labeled UI/JSON. L1 definition string unchanged. Tests: L1 feed ignores demo rows; demo feed ignores L1 rows.
 
-**Day-6 done:** a local refused decision appears as `source: agent-demo` and does not increment L1 `refused` totals.
+**Day-5 done:** a local refused decision appears as `source: agent-demo` and does not increment L1 `refused` totals.
 
-### Day 7–8 — Fri 09-11 / Sat 09-12  Demo agent
+### Day 6 — Thu 09-10  Demo agent
 
 `examples/ethonline-2026-agent/`:
 
@@ -201,9 +203,17 @@ Separate store + labeled UI/JSON. L1 definition string unchanged. Tests: L1 feed
 
 Human: record both terminal transcripts. Re-score fixtures; swap if drifted.
 
-**Day-8 done:** both commands work against production API. ALLOW has a public tx **or** we have formally switched to refuse-only wow (see §1).
+**Day-6 done:** both commands work against production API. ALLOW has a public tx **or** we have formally switched to refuse-only wow (see §1).
 
-### Day 9 — Sun 09-13  Freeze features
+### Day 7 — Fri 09-11  Prize adapter (AM) → freeze (PM)
+
+Morning: at most one thin prize adapter, 4 hours, only after both demo commands work (WIN_EV §4). Afternoon: video dry-run against the reject checklist, fixture re-score, **feature freeze at 18:00 JST**.
+
+**Day-7 done:** no code path left unproven; dry-run video uploads without a reject.
+
+### Day 8 — Sat 09-12  Video + docs
+
+Record per §8. Human voice, ≥720p, 2:00–3:50, no AI voiceover, no music-over-text, no phone camera, no speed-up. Re-pull `https://vet402.com/api/v1/observatory/state` the same day; speak only those numbers.
 
 No new functions. Docs only:
 
@@ -212,17 +222,9 @@ No new functions. Docs only:
 - `docs/ethonline-2026/AI_USAGE.md` from `docs/applications/ai-usage-disclosure.md` (do not soften).
 - Prize-form drafts: how `payOrRefuse` uses each of the 3 partners (empty until prize list is known).
 
-**Day-9 done:** `git log --oneline pre-ethonline-2026..HEAD` is the complete work list and reads as the four scope items.
+**Day-8 done:** mp4 uploaded privately (duration/resolution checked) and `git log --oneline pre-ethonline-2026..HEAD` reads as the four scope items.
 
-### Day 10 — Mon 09-14  Video
-
-Record per §8. Human voice, ≥720p, 2:00–3:50, no AI voiceover, no music-over-text, no phone camera, no speed-up.
-
-Re-pull `https://vet402.com/api/v1/observatory/state` the same day; speak only those numbers.
-
-**Day-10 done:** mp4 uploaded privately; duration and resolution checked.
-
-### Day 11 — Tue 09-15  Submit (buffer day is 09-16)
+### Day 9 — Sun 09-13  Submit（締切当日・JST午前に出す）
 
 1. `git merge --no-ff ethonline-2026` into `main`. Push.
 2. Hacker Dashboard: **Finalist and Partner Prizes**.
@@ -230,17 +232,17 @@ Re-pull `https://vet402.com/api/v1/observatory/state` the same day; speak only t
 4. Repo, video, Continuity explanation, AI disclosure, prize comments.
 5. Confirm `git log pre-ethonline-2026..ethonline-2026` in the submission text.
 
-**Day-11 done:** dashboard shows submitted. Stake refund path intact.
+**Day-9 done:** dashboard shows submitted by **09-13 12:00 JST**. Stake refund path intact. Hard cutoff is 09-13 12:00 EDT (= 09-14 01:00 JST); after it nothing can be edited or uploaded.
 
-### Day 12 — Wed 09-16  Buffer only
+### 09-14 → 09-16  Judging window
 
-Fix upload rejects (video length/resolution). No features. Prepare 4 min live demo + 3 min Q&A if Finalist.
+No features, no submission edits. Prepare 4 min live demo + 3 min Q&A if Finalist, and answer partner threads.
 
 ---
 
 ## 7. Prize protocol
 
-Re-read the official prize page on 09-04, 09-10, 09-14. Pick **after** `payOrRefuse` exists, not before.
+Re-read the official prize page on 09-04, 09-09, 09-12. Pick **after** `payOrRefuse` exists, not before.
 
 Order:
 
@@ -314,7 +316,7 @@ If ALLOW has no tx: extend the BLOCK segment; say “payment is implemented and 
 |---|---|
 | Continuity not accepted by kickoff | Email hello@ethglobal.com the same day. Do not start Classic with this repo. |
 | ALLOW fixture dies | Swap from the B1 backup list. Do not fake ALLOW. |
-| Live pay still broken on 09-12 | Submit refuse-as-wow. Do not mint a fake tx. |
+| Live pay still broken on 09-11 | Submit refuse-as-wow. Do not mint a fake tx. |
 | Scope creep (ENS, registry write, extra UI) | Revert. Four items only. |
 | Giant single commit | Split before submit. Unqualified by default under ETHGlobal rules. |
 

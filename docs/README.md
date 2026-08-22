@@ -12,6 +12,8 @@ Load only what the current task needs. PRODUCT.md and DESIGN.md at the repo root
 | x402 gate | `x402-integration.md` |
 | MCP | `mcp-setup.md` |
 | npm packages | `packages/*/README.md` |
+| ETHGlobal / Continuity strategy | `hackathons/README.md` → `hackathons/STRATEGY.md` |
+| Grants (vs hackathon freeze) | `hackathons/GRANTS.md` |
 
 ## Do not load unless asked
 
