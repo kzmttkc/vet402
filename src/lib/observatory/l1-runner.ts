@@ -35,7 +35,7 @@ import { readBodyCapped } from "@/lib/net/read-capped";
 import { UnsafeTargetError, createSafeFetchImpl } from "@/lib/net/safe-fetch";
 import { createDeadline } from "@/lib/util/deadline";
 import { checkL1Budget, isL1Enabled, DAILY_BUDGET_USD } from "./budget";
-import { isOperatorPayTo, operatorPayToDenylist } from "./operator";
+import { addDerivedOperatorAddresses, isOperatorPayTo, operatorPayToDenylist } from "./operator";
 import {
   buildAuthorization,
   encodePaymentHeader,
@@ -428,6 +428,15 @@ export async function runL1Batch(
   // （試行すらしない）。予算・台帳は Base と共有（USDC 基本単位が共通）。
   const solanaKeypair = isSolanaL1Enabled() ? loadSolanaKeypair() : null;
   const solanaReady = solanaKeypair !== null;
+
+  // 2026-08-23 監査: 自己除外が VET402_OPERATOR_PAYTO の手入力だけに依存していて、
+  // **本番では未設定＝完全な no-op** だった。中立性は堀そのものなので、忘れられる
+  // 場所に置かない。いま鍵を読んだアドレス（＝我々が署名できる＝定義上そこへの
+  // 支払いは自己取引）を実行時に注入し、環境変数のリストと合併する。
+  addDerivedOperatorAddresses([
+    account.address,
+    solanaKeypair?.publicKey.toBase58() ?? null,
+  ]);
 
   // 1.5 Resolve orphaned reservations from earlier runs BEFORE anything else
   //     reads the ledger. Ordering is safe by construction: the sweep never
