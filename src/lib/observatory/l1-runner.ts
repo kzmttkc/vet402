@@ -326,6 +326,19 @@ export function isDeliveryVerified(input: {
  * cron の maxDuration = 300s が上限。30分はその6倍あるので、**実行中の
  * 別インボケーションの行を誤って回収することはあり得ない**。
  */
+/**
+ * 署名後失敗が何回続いたら冷却へ入れるか（2026-08-24 監査）。
+ *
+ * 1回では外さない——正直な売り手も一時的に落ちるし、ネットワークの都合でも
+ * 決済は失敗する。3回連続で「署名させたが決済に至らない」なら、それは
+ * その壁についての所見であり、予算を投じ続ける理由がない。
+ *
+ * 冷却は永久ではない: スイープ窓（既定6日・優先1日）を過ぎれば、上の
+ * NOT EXISTS が古い試行を見なくなるので自然に対象へ戻る。回復の道を
+ * 残さない排除にはしない。
+ */
+export const NON_SETTLING_COOLDOWN_STREAK = 3;
+
 export const ORPHAN_IN_FLIGHT_MINUTES = 30;
 
 /**
@@ -507,6 +520,35 @@ export async function runL1Batch(
             WHEN e.resource_key ILIKE ANY(${prioritySqlArray()}) THEN ${PRIORITY_SWEEP_WINDOW_DAYS}::int
             ELSE ${SWEEP_WINDOW_DAYS}::int
           END))
+      )
+      -- 2026-08-24 監査: 署名後失敗による予算 Griefing への耐性。
+      -- reserveSpend は署名の前に計上する（正しい——署名済み EIP-3009 は
+      -- validBefore まで生きた金）。だが売り手が決済しなければ、我々は金を
+      -- 一円も渡していないのに日次$25の観測予算だけが減る。敵対的な売り手が
+      -- 「署名だけさせて決済しない」を繰り返すと、**スコアを偽造しなくても
+      -- 検証者の観測能力を枯らせる**。スコアの穴ではなく可用性への攻撃。
+      --
+      -- 守り方は「疑わしきを罰する」ではなく「無駄撃ちを止める」。直近の
+      -- 有料試行が連続で決済に至っていないエンドポイントは、冷却期間のあいだ
+      -- 対象から外す。1回の失敗では外さない（正直な売り手も一時的に落ちる）。
+      -- 外れている間もL0の観測は続くので、公開台帳から消えるわけではない。
+      AND NOT EXISTS (
+        SELECT 1
+        FROM (
+          SELECT pu.status
+          FROM x402_l1_purchases pu
+          WHERE pu.endpoint_id = e.id
+            AND pu.status IN (
+              'settled', 'settle_claimed', 'settle_claim_refuted',
+              'settle_claimed_unverifiable', 'delivered_no_receipt', 'settle_failed'
+            )
+          ORDER BY pu.attempted_at DESC
+          LIMIT ${NON_SETTLING_COOLDOWN_STREAK}
+        ) recent
+        HAVING count(*) = ${NON_SETTLING_COOLDOWN_STREAK}
+           AND count(*) FILTER (
+                 WHERE recent.status IN ('settled', 'settle_claimed')
+               ) = 0
       )
     ORDER BY (e.resource_key ILIKE ANY(${prioritySqlArray()})) DESC,
              e.quality_payers_30d DESC NULLS LAST, e.quality_calls_30d DESC NULLS LAST
