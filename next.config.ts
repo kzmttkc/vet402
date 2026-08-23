@@ -68,6 +68,18 @@ const nextConfig: NextConfig = {
         destination: "/#pricing",
         permanent: false,
       },
+      // 2026-08-23 UX監査: ヘッダーの Method は /#methodology、Verify は /payee を
+      // 指しており（内部リンク32本を本番実測して404は0件）、ナビ自体は死んで
+      // いない。だが /method・/verify・/methodology はいずれも読者が推測して
+      // 打つ形で、実測すると 404 だった。/pricing と同じ話——アンカーやネストした
+      // 正典URLは、直打ちと外部からの被リンクでは素の短いパスとして書かれる。
+      //
+      // /pricing と同じく 307（permanent:false）。将来 Method を独立ページへ
+      // 昇格させる可能性があり、恒久リダイレクトのキャッシュと戦いたくない。
+      { source: "/method", destination: "/#methodology", permanent: false },
+      // 正典は /observatory/methodology。短い方を打った読者を正典へ送る。
+      { source: "/methodology", destination: "/observatory/methodology", permanent: false },
+      { source: "/verify", destination: "/payee", permanent: false },
       // 2026-08-19: note.com's link auto-embed (and its explicit "埋め込み"
       // insert command) silently fails to build a card for any URL with a
       // query string — verified by hand in the Sen note.com editor and
