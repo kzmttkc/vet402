@@ -27,7 +27,7 @@ These lose more often than a weaker idea.
 
 | Risk | Rule |
 |---|---|
-| Continuity not on file | Apply by **2026-08-24**. If the form has no field, email `hello@ethglobal.com` the same day. Do not start the window without a written acknowledgement. |
+| Continuity not on file | **Closed 2026-08-23**: the application form carries the track selector; `continuity-track` is selected and submitted. Status is "still being reviewed". Track cannot be switched later. Watch for the acceptance email, then stake ETH. |
 | One giant commit | Day 0 is red tests. Every later day is small `ethonline:` commits. |
 | Undisclosed old work | Tag `pre-ethonline-2026` on 09-03. README Continuity section is past tense of **what exists**. |
 | L1 contamination | Demo rows never enter `x402_l1_purchases`. |
@@ -124,7 +124,7 @@ The disclosure (`docs/applications/ai-usage-disclosure.md`) stays blunt.
 
 | When | Override |
 |---|---|
-| 08-24 | Continuity apply or nothing else matters |
+| ~~08-24~~ 08-23 | Continuity apply — **done**, under review |
 | 09-04 | Prize screenshot → `PRIZES.md` |
 | 09-08–09 | Own seller + first public tx (not catalog) |
 | 09-11 AM | At most one prize adapter |

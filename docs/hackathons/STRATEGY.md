@@ -44,7 +44,7 @@
 - 期間中に**実質的な**新機能・改善を入れる。
 - 期間中に足した部分はオープンソース。
 - ETHGlobal へ事前成果を書面で開示する。
-- 申請はオプトイン。フォームに欄が無ければ `hello@ethglobal.com`。
+- 申請はオプトイン。**2026-08-23 実測: ETHOnline の Hacker Application 内に「Hackathon Track」欄があり、`continuity-track`（Hack on Existing Project）を選んで提出済み**。メールでの別途申請は不要だった。トラックは後から変更できない。
 - Partner 賞の Continuity 専用枠はイベント・スポンサーごとに違う。
 
 vet402 は **Extend Open Source**（MIT、このチームがメンテする公開リポ）。

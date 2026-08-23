@@ -110,7 +110,7 @@ Product code = anything under `packages/`, `src/`, `examples/` that implements t
 
 | # | Task | Owner | Done when |
 |---|---|---|---|
-| A1 | ETHOnline apply. Track **Extend Open Source**. Paste §10. Email `hello@ethglobal.com` if the form has no Continuity field. | Human | Dashboard shows Continuity accepted or email sent |
+| A1 | ~~ETHOnline apply~~ **DONE 2026-08-23.** Hacker application submitted with track **Hack on Existing Project (continuity-track)** selected inside the form itself — no email needed, the field exists. Dashboard: "Your application is still being reviewed." | Human + agent | Dashboard reachable, application under review |
 | A2 | Tokyo Continuity apply in the same sitting (deadline 09-23; 15 min). | Human | Submitted |
 | A3 | Dedicated demo wallet on Base. Fund: gas + **$5 USDC** (five $1 ALLOW attempts). Key stays with the human. | Human | Address written in a **local** note, not in git |
 | A4 | API key for the demo (free tier). | Human | Key in local env only |
@@ -141,7 +141,7 @@ Product code = anything under `packages/`, `src/`, `examples/` that implements t
 | D2 | Do **not** cut `ethonline-2026` until 09-04 00:00 UTC. | Human | No branch yet |
 | D3 | Freeze fixture addresses in `fixtures.md`. | Human | File dated 09-03 |
 
-If A1 is not done by 08-24, drop everything else until it is. Continuity is opt-in; late notice can void Partner + Finalist eligibility.
+A1 landed on 08-23. What remains from that block: the **ETH stake is only required after acceptance** (Takeshi executes it — funds move), and the acceptance email must be watched for. Continuity is opt-in and it is now on file inside the application.
 
 ---
 
