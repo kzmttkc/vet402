@@ -74,6 +74,12 @@ state API ──► facts composer (locked template) ──► queue
 
 **Implementation constraint (existing law).** This repository does not hold post secrets and does not fire webhooks to social APIs. If an auto facts job is built, it lives in owner infra (`Takeshi_Automation` or equivalent), reads the **public** state endpoint, and uses a template that cannot emit a number not present in the JSON. A dry-run log is kept. First 4 weeks: approve-all, then X/Farcaster weekly auto if zero incidents.
 
+**Built 2026-08-24 — where it actually lives.** Owner infra, as required above: `Takeshi_Automation/scripts/vet402_weekly_facts.py`, fired by `com.kizuna.vet402-weekly-facts` (daily 09:10 JST, `--if-missing`, acts once per ISO week from Thursday — not a fixed weekday, so a sleeping machine loses no week). It reads only the public state endpoint and holds no vet402 secret. The rules above are code, not custom: fail-closed key access (a missing key drops its line, never emits `0`), two fetches ≥30s apart that must agree before anything is published, `l1.attempts − l1.settled` for non-settlement, the chain line gated on `byChainScope == "mainnet_only"`, silence when no number moved since last week, evaluative-word refusal, and weighted length ≤280 by dropping optional lines rather than rounding numbers. Every run — posted, skipped, or aborted — appends to `state/vet402_weekly_facts_log.jsonl`; aborts also land in `state/ALERTS.md`. Weeks 1–4 write a draft to `output/` and post nothing until `--approve` re-fetches and confirms the numbers have not moved; the fifth week onward posts on its own.
+
+**X cadence is enforced, not intended.** The pre-existing daily queue job for the account was posting 7×/week against §4.1's 2–4. It now runs Monday and Friday only; the facts template goes out Thursday. Three per week, machine-limited.
+
+**Farcaster is not wired yet.** Measured 2026-08-24: `fnames.farcaster.xyz` has no `vet402` — the account does not exist. Creating it needs an onchain FID registration plus one storage unit ($7/year, 5,000 casts — docs.farcaster.xyz). Once it exists, casting is automated with a signer key posting straight to a hub; no paid API tier is involved. Until then this section's "X + Farcaster" reads "X only," and saying otherwise would be the kind of claim this file exists to prevent.
+
 **Anti-patterns that look like “optimal automation” and are not:** Buffer blasting 7 networks; LLM-generated thought leadership; commenting bots; upvote rings; Discord announcement spam; “value tweets” with stock rockets.
 
 ---
