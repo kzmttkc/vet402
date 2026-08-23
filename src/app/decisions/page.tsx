@@ -29,6 +29,8 @@ const DECISION_LABEL: Record<string, string> = {
   paid_settled: "PAID — settled, receipt on-chain",
   paid_delivered_no_receipt: "PAID — delivered, no receipt",
   paid_settlement_claim_unverifiable: "PAID — settlement claim not verifiable",
+  paid_settlement_claim_unverified: "PAID — settlement claim not yet re-read on-chain",
+  paid_settlement_claim_refuted: "PAID — settlement claim refuted on-chain",
   paid_no_settlement: "PAID — no settlement (loss, published)",
 };
 

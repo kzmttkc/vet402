@@ -849,16 +849,26 @@ async function purchaseOne(input: {
   const settlementTxWellFormed =
     claimedSettlement &&
     isWellFormedSettlementTx(settlement!.transaction, isSolana ? "solana" : "evm");
-  const settled = claimedSettlement && settlementTxWellFormed;
+
+  // 2026-08-23 監査 C-4: ここで `settled` と名乗らない。
+  // settled の定義は「我々がチェーンで確認した」であって、売り手が success:true と
+  // 返したことではない。購入直後にチェーンを読みに行くと、確定を待つ間に
+  // バッチのデッドラインを食い潰す（しかも確定前の tx を確認済みと刻む事故になる）。
+  // だから購入は `settle_claimed` で置き、日次の照合 cron が
+  // `settled` / `settle_claim_refuted` へ確定させる。
+  const claimedAndWellFormed = claimedSettlement && settlementTxWellFormed;
   const status = !paid
     ? "settle_failed"
-    : settled
-      ? "settled"
+    : claimedAndWellFormed
+      ? "settle_claimed"
       : claimedSettlement
         ? "settle_claimed_unverifiable" // 決済したと主張したが識別子が形式不正
         : paid.status === 200
           ? "delivered_no_receipt" // goods returned but no settlement receipt header
           : "settle_failed";
+  // summary の互換のため「売り手が決済を主張したか」は残すが、これは
+  // settled ではない。名前で取り違えないよう別名にしてある。
+  const settled = claimedAndWellFormed;
 
   // Resolve the reservation in place — spent_units stays exactly what was
   // reserved (signed = counted, success or not); only the outcome is filled in.
@@ -918,27 +928,16 @@ async function purchaseOne(input: {
   //
   // graceful: ここで何が起きても購入の記帳（正典は x402_l1_purchases）は
   // 既に完了している。ただし黙って消さない——失敗は logServerError に残す。
-  if (settled && settlement?.transaction) {
-    const deliveryVerified = isDeliveryVerified({
-      httpStatusPaid: paid?.status ?? null,
-      payloadNonEmpty,
-      l2Schema,
-    });
-    try {
-      await recordObservedPurchase({
-        wallet: payerLabel,
-        counterparty: accept.payTo,
-        amount: String(amount),
-        txHash: settlement.transaction,
-        resource: candidate.resourceUrl,
-        blockTimestamp: null,
-        deliveryVerified,
-        observedBy: `observatory-l1:${candidate.id}`,
-      });
-    } catch (error) {
-      logServerError("observatory.l1.observed_purchase", error);
-    }
-  }
+  // 2026-08-23 監査 C-4: **ここでは書かない。** 上の長いコメントが説明している
+  // 配線は 2026-08-22 に入れたもので方向は正しかったが、当時の `settled` は
+  // 「売り手が success:true と言った」でしかなかった。つまり売り手の自己申告が
+  // そのままスコアの最上位軸へ流れていた。
+  //
+  // observed_purchases への書き込みは
+  // src/lib/observatory/settlement-verifier.ts へ移した。オンチェーンで
+  // 宛先・金額・トークン・チェーン・確定数を確認できた行だけが証拠になる。
+  // delivery_verified の判定規則（isDeliveryVerified）は共有していて、
+  // 遡及行と実時間行が食い違わないようにしてある。
 
   // ERC-8004 への公開（C4）。フラグOFF既定・graceful——購入の記帳には
   // 何があっても影響しない（registry-hook.ts 冒頭）。バッチ末尾で待てるよう

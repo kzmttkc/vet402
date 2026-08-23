@@ -50,7 +50,7 @@ export async function computeSpendGuardBacktest(): Promise<BacktestResult> {
                ) t
              ) AS two_consecutive_l0_fails
       FROM x402_l1_purchases pu
-      WHERE pu.status IN ('settled', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable')
+      WHERE pu.status IN ('settled', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable', 'settle_claimed', 'settle_claim_refuted')
     )
     SELECT
       count(*)::int AS attempts_total,

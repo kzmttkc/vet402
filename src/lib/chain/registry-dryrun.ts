@@ -23,6 +23,7 @@ export const HOOK_OUTCOME_STATUSES = [
   "settle_failed",
   "delivered_no_receipt",
   "settle_claimed_unverifiable",
+  "settle_claim_refuted",
 ] as const;
 
 /** registry.ts の DEFAULT_MAX_FEE_GWEI と同値（片方だけ変えない）。 */

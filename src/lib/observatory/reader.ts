@@ -272,6 +272,10 @@ export const PAID_ATTEMPT_STATUSES = [
   // 2026-08-23: 署名して実際に払った試行なので分母に入れる。ここから外すと、
   // 不都合な結果を自分の公表決済率から静かに落とすことになる。
   "settle_claimed_unverifiable",
+  // 2026-08-23 C-4: 決済を主張されたがまだ照合していない / 照合して一致しなかった。
+  // どちらも我々は実際に払っている。分母から外せば決済率が都合よく上がる。
+  "settle_claimed",
+  "settle_claim_refuted",
 ] as const;
 
 /**
@@ -582,7 +586,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
                count(*) FILTER (WHERE status = 'settled')::int AS settled,
                count(DISTINCT endpoint_id)::int AS endpoints
         FROM x402_l1_purchases
-        WHERE status IN ('settled', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable')
+        WHERE status IN ('settled', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable', 'settle_claimed', 'settle_claim_refuted')
       `);
       const l1List = (Array.isArray(l1Raw) ? l1Raw : (l1Raw as { rows?: unknown[] }).rows ?? []) as {
         attempts: number;

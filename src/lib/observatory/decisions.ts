@@ -25,7 +25,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 
 export const DECISION_DEFINITION =
-  "Each row is a decision the daily L1 runner actually made with real funds at stake, mapped 1:1 from the public ledger: refused_price_mismatch / refused_over_cap (wall demanded more than declared or over the hard cap — nothing signed), refused_payto_mismatch (wall named a payee other than the one the catalog declared — nothing signed), refused_payto_operator_self (wall named vet402's own receiving address — nothing signed), refused_wall_unpayable (no valid 402 / no machine-payable accept), paid_settled, paid_delivered_no_receipt, paid_settlement_claim_unverifiable (the wall claimed a successful settlement but the transaction identifier it returned is not even well-formed for that chain — a finding about the seller, not about us), paid_no_settlement. Excluded as non-decisions: budget_denied, request_error, in_flight (vet402-side states).";
+  "Each row is a decision the daily L1 runner actually made with real funds at stake, mapped 1:1 from the public ledger: refused_price_mismatch / refused_over_cap (wall demanded more than declared or over the hard cap — nothing signed), refused_payto_mismatch (wall named a payee other than the one the catalog declared — nothing signed), refused_payto_operator_self (wall named vet402's own receiving address — nothing signed), refused_wall_unpayable (no valid 402 / no machine-payable accept), paid_settled, paid_delivered_no_receipt, paid_settlement_claim_unverifiable (the wall claimed a successful settlement but the transaction identifier it returned is not even well-formed for that chain), paid_settlement_claim_unverified (claimed with a well-formed id, not yet re-read on-chain by us), paid_settlement_claim_refuted (we re-read it on-chain and the expected USDC transfer to the declared payee is not there — a finding about the seller, not about us), paid_no_settlement. As of 2026-08-23, paid_settled means vet402 confirmed the transfer on-chain (recipient, amount, token, chain, confirmations), not that the seller asserted it. Excluded as non-decisions: budget_denied, request_error, in_flight (vet402-side states).";
 
 const STATUS_TO_DECISION: Record<string, string> = {
   price_mismatch: "refused_price_mismatch",
@@ -37,6 +37,8 @@ const STATUS_TO_DECISION: Record<string, string> = {
   settled: "paid_settled",
   delivered_no_receipt: "paid_delivered_no_receipt",
   settle_claimed_unverifiable: "paid_settlement_claim_unverifiable",
+  settle_claimed: "paid_settlement_claim_unverified",
+  settle_claim_refuted: "paid_settlement_claim_refuted",
   settle_failed: "paid_no_settlement",
 };
 
@@ -74,7 +76,7 @@ export async function getDecisionFeed(days: number, limit = 200): Promise<Decisi
     FROM x402_l1_purchases pu
     JOIN x402_endpoints e ON e.id = pu.endpoint_id
     WHERE pu.attempted_at >= now() - make_interval(days => ${span}::int)
-      AND pu.status IN ('price_mismatch','payto_mismatch','payto_operator_self','over_cap','no_402','no_eligible_accept','settled','delivered_no_receipt','settle_claimed_unverifiable','settle_failed')
+      AND pu.status IN ('price_mismatch','payto_mismatch','payto_operator_self','over_cap','no_402','no_eligible_accept','settled','delivered_no_receipt','settle_claimed_unverifiable','settle_claimed','settle_claim_refuted','settle_failed')
     ORDER BY pu.attempted_at DESC
     LIMIT ${cap}
   `);

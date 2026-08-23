@@ -692,16 +692,21 @@ export const x402L1Purchases = pgTable(
     endpointId: uuid("endpoint_id").notNull(),
     attemptedAt: timestamp("attempted_at", { withTimezone: true }).defaultNow(),
     /**
-     * settled | settle_failed | delivered_no_receipt |
-     * settle_claimed_unverifiable | no_402 |
+     * settled | settle_claimed | settle_claim_refuted | settle_failed |
+     * delivered_no_receipt | settle_claimed_unverifiable | no_402 |
      * no_eligible_accept | price_mismatch | payto_mismatch |
      * payto_operator_self | over_cap | budget_denied |
      * request_error | in_flight.
-     * `settle_claimed_unverifiable` (2026-08-23): the wall returned
-     * PAYMENT-RESPONSE with success:true, but the `transaction` value is not a
-     * well-formed transaction id for that chain. We paid (spent_units stands)
-     * and we do NOT call it settled — an identifier we cannot look up is not a
-     * receipt.
+     * 2026-08-23 監査 C-4 — `settled` の定義を置き換えた。
+     * 旧: 売り手が PAYMENT-RESPONSE で success:true と何かの文字列を返した。
+     * 新: **我々がチェーンで確認した**（宛先・金額・トークン・チェーン・確定数）。
+     *   `settle_claimed`            購入直後。売り手が主張し形式も正しいが未照合。
+     *   `settled`                   照合 cron がオンチェーンで確認した。
+     *   `settle_claim_refuted`      見に行って一致しなかった（売り手についての所見）。
+     *   `settle_claimed_unverifiable` 主張はあるが tx がそのチェーンの識別子の形ですらない。
+     * いずれも支払い済み（spent_units は立つ）。照合の結果は
+     * settlement_verified / settlement_verified_at / settlement_verify_reason
+     * / settlement_block_number に残る。
      * `payto_mismatch` / `payto_operator_self` are the 2026-08-22 payee gates:
      * the wall named a recipient other than the catalog-declared one, or named
      * vet402's own receiving address. Both are refusals BEFORE signing, so
@@ -733,6 +738,16 @@ export const x402L1Purchases = pgTable(
     l2Schema: text("l2_schema"),
     rawSettlement: jsonb("raw_settlement"),
     rawResponseMeta: jsonb("raw_response_meta"),
+    /**
+     * 2026-08-23 C-4: オンチェーン照合の結果。null = まだ見ていない。
+     * true/false は「見た上での結論」で、null との違いが本質——
+     * 測っていないことを測った結果として扱わないため、3値で持つ。
+     */
+    settlementVerified: boolean("settlement_verified"),
+    settlementVerifiedAt: timestamp("settlement_verified_at", { withTimezone: true }),
+    /** 照合が通らなかった理由（wrong_chain / tx_reverted / no_matching_transfer 等）。 */
+    settlementVerifyReason: text("settlement_verify_reason"),
+    settlementBlockNumber: bigint("settlement_block_number", { mode: "bigint" }),
   },
   (t) => [
     index("x402_l1_purchases_endpoint_idx").on(t.endpointId, t.attemptedAt),

@@ -35,7 +35,7 @@ export async function computePayToGraph(payTo: string): Promise<PayToGraph | nul
 
   const opRaw = await db.execute(sql`
     SELECT e.id::text AS id, e.resource_key, e.network,
-           coalesce(count(pu.id) FILTER (WHERE pu.status IN ('settled','settle_failed','delivered_no_receipt','settle_claimed_unverifiable')), 0)::int AS attempts,
+           coalesce(count(pu.id) FILTER (WHERE pu.status IN ('settled','settle_failed','delivered_no_receipt','settle_claimed_unverifiable','settle_claimed','settle_claim_refuted')), 0)::int AS attempts,
            coalesce(count(pu.id) FILTER (WHERE pu.status = 'settled'), 0)::int AS settled
     FROM x402_endpoints e
     LEFT JOIN x402_l1_purchases pu ON pu.endpoint_id = e.id

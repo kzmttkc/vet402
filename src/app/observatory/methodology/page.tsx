@@ -191,26 +191,29 @@ export default async function ObservatoryMethodologyPage() {
           is live money the moment it exists.
         </p>
         <p className="doc-p">
-          <strong>settled</strong> — the paid request returned a settlement receipt confirming
-          success, with a transaction hash. <strong>delivered_no_receipt</strong> — the seller
-          returned <code>200</code> but the response carried no settlement receipt.{" "}
-          <strong>settle_claimed_unverifiable</strong> — the seller claimed a successful
-          settlement, but the transaction id it returned is not even well-formed for that chain,
-          so we do not call it settled. <strong>settle_failed</strong> — no successful paid
-          response came back at all. Every attempt, including refusals before any money moved, is
-          visible on the endpoint&apos;s page with its evidence.
+          <strong>settled</strong> — <em>vet402 re-read the transaction on-chain</em> and found
+          the exact USDC transfer it paid for: from our payer, to the catalog-declared payee, for
+          the declared amount, in the canonical USDC contract, on Base, with at least 32
+          confirmations. <strong>settle_claimed</strong> — the seller returned a settlement
+          receipt with a well-formed transaction id, and we have not re-read it on-chain yet.{" "}
+          <strong>settle_claim_refuted</strong> — we re-read it and that transfer is not there.{" "}
+          <strong>settle_claimed_unverifiable</strong> — the id returned is not even well-formed
+          for that chain. <strong>delivered_no_receipt</strong> — the seller returned{" "}
+          <code>200</code> but the response carried no settlement receipt.{" "}
+          <strong>settle_failed</strong> — no successful paid response came back at all. Every
+          attempt, including refusals before any money moved, is visible on the endpoint&apos;s
+          page with its evidence.
         </p>
         <p className="doc-p">
-          <strong>What we have not verified yet, stated plainly.</strong> The transaction id on a{" "}
-          <code>settled</code> row comes from the seller&apos;s own{" "}
-          <code>PAYMENT-RESPONSE</code> header. As of 2026-08-23 we check that it is well-formed
-          for the chain, and we publish the raw header alongside it, but{" "}
-          <strong>we do not yet re-read the transaction on-chain ourselves</strong> to confirm the
-          recipient, amount, token and chain. A seller could therefore return a well-formed id for
-          a transaction that does not settle what it claims. On-chain confirmation is being built;
-          until it ships, read <code>settled</code> as &ldquo;the seller asserted settlement and
-          the receipt is well-formed&rdquo;, not as &ldquo;vet402 confirmed it on-chain&rdquo;. We
-          would rather say this than let you assume a check we are not doing.
+          <strong>What changed on 2026-08-23, and what is still open.</strong> Until that date,{" "}
+          <code>settled</code> meant only that the seller had asserted success in its own{" "}
+          <code>PAYMENT-RESPONSE</code> header — we published that assertion without ever
+          re-reading the chain. It is now a measurement we make: the definition of{" "}
+          <code>settled</code> is &ldquo;vet402 confirmed it on-chain&rdquo;. Still open, stated
+          plainly: <strong>Solana settlements are not yet re-read</strong> — that chain needs a
+          different verifier, so those rows stay <code>settle_claimed</code> rather than being
+          called settled on evidence we do not have. We would rather name the gap than let you
+          assume a check we are not doing.
         </p>
 
         <h2 className="sec-head">
