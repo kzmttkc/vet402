@@ -306,6 +306,11 @@ a {
     .doc-head {
       flex-direction: column;
       gap: 0.9rem;
+      /* 2026-08-23 UX: 640px 未満では2列が縦に積まれるので、1.7 の行間だと
+         メタデータだけで最初の一画面をかなり食う。表題より先にヘッダが
+         主役になるのは RFC の版面でも正しくない。狭い幅のときだけ 1.5 へ。
+         フォント・色・順序は変えていない。 */
+      line-height: 1.5;
     }
     .doc-head-col:last-child {
       text-align: left;
