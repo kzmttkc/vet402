@@ -72,7 +72,7 @@ Solana real-purchase (payer exists, default-off, no funds) is **not** a hackatho
    Base is **not** an ETHOnline 2026 partner ([`../ethonline-2026/PRIZES.md`](../ethonline-2026/PRIZES.md), measured 2026-08-23), so prizes cannot route Base money to us this autumn. Grants are the only Base path, and this one is retroactive. Shipped, Base-native, public good. Discovery is the team + nominations ([docs](https://docs.base.org/get-started/get-funded), [call](https://paragraph.com/@grants.base.eth/calling-based-builders)).  
    Human: nominate / apply with `why-base.md` + `impact-one-pager.md` + live state JSON. Same-day figures. Farcaster/X pointer to `/observatory` and `/impact`.  
    Do not promise `payOrRefuse`.
-3. **OP Atlas / Retro Funding.** Register the project as a Superchain public good. Track usage. This is a profile, not a weekend build.
+3. ~~**OP Atlas / Retro Funding.**~~ **Dropped 2026-08-23** (read in-browser): atlas.optimism.io announces *"Atlas will be discontinued on September 18, 2026"*; the Onchain Builders mission is **Closed** (season Jul 31–Dec 24 **2025**); and its first eligibility gate is *"My project has deployed contracts on a supported chain"* — vet402 deploys no contracts, it buys from other people's. It was never eligible. Do not spend owner time on a profile there.
 
 ### P1 — after Continuity paperwork, still no frozen verbs
 
@@ -147,7 +147,7 @@ Between events, product ops (probes, Base L1, bugfixes) may continue and must be
 
 1. Finish ETHOnline Continuity apply first.
 2. ~~Refresh figures~~ **done 2026-08-23** (`scripts/grant-figures.py`; all application docs now agree with live state and `--check` fails loudly when they do not) → nominate / apply **Base Builder Grants**. Blocked on three owner-side gaps listed in the nomination pack: 1-minute demo, Farcaster handle, receiving wallet.
-3. Create or update an OP Atlas profile.
+3. ~~Create or update an OP Atlas profile.~~ Dropped — Atlas is being discontinued 2026-09-18 and vet402 was never eligible (no deployed contracts). See P0-3.
 4. Fill legal entity + email on the Solana draft; **do not start Solana L1 implementation** until ETHOnline is submitted (or a clearly separate branch after 09-16).
 5. Book Devcon ESP / EF conversations as Mumbai prize work that can also unlock a Wishlist match.
 
