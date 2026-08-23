@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
+import { acquireLease } from "@/lib/cron/lease";
 import { runSettlementVerification } from "@/lib/observatory/settlement-verifier";
 import { logServerError } from "@/lib/util/log";
 
@@ -18,6 +19,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
+  // 2026-08-24 監査: 照合も二重起動すると同じ行を2回見に行き、RPC を無駄に叩き、
+  // summary が実態とずれる。購入ほど危険ではないが、排他の理由は同じ。
+  const lease = await acquireLease("verify-settlements", 330);
+  if (!lease.acquired) {
+    return NextResponse.json({ ok: true, skipped: "already_running" }, { status: 409 });
+  }
+
   try {
     // maxDuration 300s に対し予算 240s。1件あたり RPC 3往復ぶんの余裕を見て
     // 残り 8s を切ったら次回へ回す（途中で殺されるより明示的に繰り越す）。
@@ -26,5 +34,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     logServerError("cron.verify_settlements", error);
     return NextResponse.json({ ok: false, error: "verify_failed" }, { status: 500 });
+  } finally {
+    await lease.release();
   }
 }
