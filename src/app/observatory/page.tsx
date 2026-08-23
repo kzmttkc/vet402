@@ -5,6 +5,7 @@ import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { SITE_URL } from "@/lib/site-url";
 import { TableScroll } from "@/components/site/TableScroll";
+import { buttonClass } from "@/components/ui/Button";
 import { getObservatoryOverview } from "@/lib/observatory/reader";
 import {
   parseObservatorySearchParams,
@@ -140,30 +141,34 @@ export default async function ObservatoryPage({
         </div>
 
         <h1 className="doc-title mt-10">The x402 Observatory</h1>
+        {/* 2026-08-23 UX: 表が何であるかを、Abstract を読む前に1行で言う。
+            RFC の版面を壊さないよう新しい枠は足さず、表題直下の弱いインクの
+            1行として置く。 */}
+        <p className="mt-2 text-brand-lift">
+          This page lists live endpoint checks. Values here are measurements, not opinions.
+        </p>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 
         <div className="mt-8 flex flex-col gap-1 sm:flex-row sm:gap-0">
           <p className="shrink-0 text-brand-deep sm:w-[10ch]">Abstract</p>
           <p className="min-w-0 max-w-[62ch] text-brand">
+            {/* 2026-08-23 UX: 約120語・リンク7本を1段落に詰めており、初見の読者が
+                表へ到達するまでが遠かった。残したのは (a) 何を測っているか
+                (b) pass/fail/unverified は意見ではない (c) L1 は別ページ、の3点。
+                落としたのは「No account」「キーはスコアAPI専用」「headline numbers」
+                といった、表を読む前には要らない但し書き——消したのではなく、
+                すぐ下の §1 と既存のリンク群が同じことを言っている。 */}
             Every endpoint in the public x402 discovery catalog, observed daily: is it still
             listed, and does its payment wall answer a valid <code>402</code> challenge when
-            approached with the method it declares. This table is L0: no purchase is attached; the
-            challenge itself is the observable. L1 settle-through purchases, when made, are on each
-            endpoint&apos;s page — they are not mixed into these cells.{" "}
+            approached with the method it declares. This table is L0 — no purchase is attached;
+            L1 settle-through purchases are on each endpoint&apos;s page, never mixed into these
+            cells.{" "}
             <strong>pass / fail / unverified</strong> are defined measurements, not opinions —{" "}
             <Link href="/observatory/methodology" className="underline">
               definitions here
             </Link>
-            . <em>unverified is not a failure</em>: it means the catalog entry does not declare
-            enough for a machine to check. No account. To verify a payee before you pay,{" "}
-            <Link href="/payee" className="underline">
-              verify a payee
-            </Link>
-            ; a key is only for the score API. Headline numbers:{" "}
-            <Link href="/observatory/state" className="underline">
-              State of x402
-            </Link>
-            .
+            . <em>unverified is not a failure</em>: the catalog entry does not declare enough for a
+            machine to check.
           </p>
         </div>
 
@@ -201,13 +206,22 @@ export default async function ObservatoryPage({
                 className="doc-input mt-1"
               />
             </label>
-            <button type="submit" className="text-[0.8125rem] text-brand-deep underline">
+            {/* 2026-08-23 UX: underline のテキストリンクに見えており、フィルタを
+                確定する主操作だと分からなかった。既存の buttonClass（紙面の
+                ボタン表現）へ寄せる——新しい色も角丸も足していない。 */}
+            <button type="submit" className={buttonClass({ size: "sm" })}>
               Apply
             </button>
           </div>
         </form>
 
-        <h2 className="sec-head">
+        {/* 2026-08-23 UX: .sec-head の既定は margin-top 3.5rem（56px）で、
+            フィルタと、そのフィルタが操作する表とが無関係な2つの節に見えていた。
+            ここだけ 24px へ寄せて1つのまとまりにする。globals.css が
+            「Tailwind のユーティリティに負ける必要があるので @layer components」と
+            明記しているとおり、局所の上書きが正規の手段。他ページの版面律動は
+            触っていない。 */}
+        <h2 className="sec-head mt-6">
           <span className="sec-no">1.</span>
           <span>Observed endpoints</span>
         </h2>
