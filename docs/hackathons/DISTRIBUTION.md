@@ -176,6 +176,26 @@ Keep OUTBOUND_READY order: Magicians → Dev.to → x402 replies → Zenn after 
 
 The repo *is* a channel. Good README boundary, issues that are real, no “social proof” stars farming. Hackathon tags and Continuity section (past tense only when true).
 
+### 4.12 Machines — the channel the other eleven exist to feed
+
+The audience this strategy is aimed at (grant scouts, ERC-8004 authors, agent frameworks) arrives by **citation and by other agents**, not by a launch post. Four machine surfaces are already live and none of §4.1–4.11 covers them. All four checked 2026-08-23.
+
+| Surface | State today | Distribution job |
+|---|---|---|
+| `GET /api/v1/observatory/export.csv` | 200, 180 KB, one row per L1 attempt with `tx_hash`, back to 2026-08-14 | Be the dataset other people quote. Needs a stated licence, a retrieval date, and a “how to cite vet402” block |
+| `GET /api/v1/observatory/history` | 200, daily rows per chain | A time series a third party can replot without asking us |
+| `llms.txt` (and `/.well-known/llms.txt`) | 200, 13 KB | The one file an agent reads before quoting us. Endpoints in, numbers out (numbers go stale, endpoints do not) |
+| npm `@vouchscore/mcp-server` | published, latest **0.1.1** (2026-08-21), 119 monthly / 30 weekly downloads (downloads, not people — mirrors and CI count) | The only surface with non-zero pull today |
+
+Same law as everywhere: **publish, do not pitch.** No “integrate with us” DMs to framework maintainers; a working package and a citable dataset are the pitch.
+
+Two open defects here — facts, not opinions:
+
+1. **The package still ships as Vouch.** Name `@vouchscore/mcp-server`, bin `vouch-mcp` — a direct contradiction of §0 (“keep posting as Vouch” is on the forbidden list, and shipping as Vouch is louder than posting as Vouch). A rename breaks existing installs, so the fix is a `@vet402/mcp-server` publish plus a deprecation pointer on the old name, not a silent rename.
+2. **This week’s strongest trust artifact is not distributed.** The fail-closed decision types (`decision` / `safe_to_pay` / `refuse_reasons`, commit `af034e5`, 2026-08-23) are in git; npm latest is still 0.1.1 from 08-21. Shipping it is worth more than any post in §4 this month.
+
+npm publish is an external publication: owner approval, then a human release with the version and the changelog line stated up front.
+
 ---
 
 ## 5. Calendar (next 90 days)
