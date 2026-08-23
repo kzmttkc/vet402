@@ -44,6 +44,23 @@ export function hasUnavailableInput(flags: readonly string[]): boolean {
   return flags.some((flag) => flag.endsWith("_unavailable"));
 }
 
+/**
+ * 無条件 BLOCK の票数に数えないフラグ（2026-08-23 監査）。
+ *
+ * 「主体が何か悪いことをした」ではなく、「我々の計測が遅れている」または
+ * 「正当だが目立つ構成である」ことを表すもの。開示は続けるし、スコアの割引も
+ * そのまま効く——票数だけから外す。
+ *
+ * denylist にしているのは意図的。新しいフラグは既定で**数える**ので、
+ * 追加時に忘れても fail-open しない。
+ */
+const SOFT_FLAGS = new Set(["owner_index_stale", "multi_agent_owner"]);
+
+/** 主体についての所見だけを数える。 */
+export function countHardFlags(flags: readonly string[]): number {
+  return flags.filter((f) => !SOFT_FLAGS.has(f)).length;
+}
+
 export function assessSybilRisk(flags: string[]): SybilRisk {
   if (flags.includes("wallet_mismatch")) return "high";
   if (flags.includes("wallet_verification_failed")) return "high";
@@ -61,7 +78,23 @@ export function assessSybilRisk(flags: string[]): SybilRisk {
   if (flags.includes("no_bound_wallet") && flags.includes("review_velocity_anomaly")) {
     return "high";
   }
-  if (flags.length >= 3) return "high";
+  // 2026-08-23 監査: ここは「フラグが3本立ったら無条件 BLOCK」だが、
+  // 数えていた中に**主体の行いではないもの**が混ざっていた。
+  //   owner_index_stale  — 我々の索引が遅れているだけ。相手に非はない
+  //                        （chain/config.ts は「hard-block ではない控えめな
+  //                        −5 の割引」と定義している）
+  //   multi_agent_owner  — 3体以上を運用する正当な運営者。単独では通常の構成で、
+  //                        sybil を示すのは funding_cluster との同時成立
+  //                        （その組み合わせは下で明示的に high にしている）
+  // この2つが票に入ると、
+  //   索引が少し遅れている + 複数エージェント + 新しい運用ウォレット = 3
+  // という**何も悪いことをしていない運営者**が、スコアがいくつであろうと
+  // 無条件 BLOCK になった。「測れなかった／柔らかい不確実性」を
+  // 「高リスク確定」に変換するのは、この製品が直してきた欠陥と同じ形。
+  //
+  // 除外は allowlist ではなく denylist にしてある。将来フラグが増えたとき、
+  // 数え漏れ（fail-open）ではなく数えすぎ（fail-closed）へ倒れる方が安全。
+  if (countHardFlags(flags) >= 3) return "high";
   if (flags.includes("funding_cluster") && flags.includes("multi_agent_owner")) {
     return "high";
   }
