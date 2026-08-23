@@ -21,8 +21,13 @@ console.log(`\n${head}`);
 if (!set) {
   console.log(
     "  These cover the highest money-risk paths (L1 atomic reservation, daily cap,\n" +
-      "  orphan sweep, observed_purchases ingest). CI runs them on every push via the\n" +
-      "  `db-tests` job; locally, run:  npm run test:db  with TEST_DATABASE_URL set.",
+      "  orphan sweep, settlement verification). CI runs them on every push via the\n" +
+      "  `db-tests` job. To run them here (2026-08-23, measured on this machine):\n" +
+      "    createdb vet402test\n" +
+      "    export TEST_DATABASE_URL=postgres://$USER@localhost:5432/vet402test\n" +
+      "    DATABASE_URL=$TEST_DATABASE_URL npm run db:push -- --force\n" +
+      "    npm run test:db\n" +
+      "  約2分・143件。資金経路の意味論を変えたら、push する前にここを通すこと。",
   );
   for (const f of gated) console.log(`    - tests/${f}`);
 }

@@ -142,7 +142,7 @@ if (!TEST_DB) {
           headers: {
             "content-type": "application/json",
             "PAYMENT-RESPONSE": Buffer.from(
-              JSON.stringify({ success: true, transaction: "0xdeadbeef", network: "eip155:8453", payer: "0xf39F" }),
+              JSON.stringify({ success: true, transaction: "0xdeadbeef00000000000000000000000000000000000000000000000000000000", network: "eip155:8453", payer: "0xf39F" }),
             ).toString("base64"),
           },
         });
@@ -157,33 +157,46 @@ if (!TEST_DB) {
 
       const rows = await db.select().from(schema.x402L1Purchases);
       assert.equal(rows.length, 1);
-      assert.equal(rows[0].status, "settled");
-      assert.equal(rows[0].txHash, "0xdeadbeef");
+      // 2026-08-23 監査 C-4: 購入バッチは settled を名乗らない。settled の定義は
+      // 「我々がチェーンで確認した」で、売り手が success:true と返したことでは
+      // ない。照合 cron（settlement-verifier）が settled / settle_claim_refuted
+      // へ確定させる。
+      assert.equal(rows[0].status, "settle_claimed");
+      assert.equal(rows[0].settlementVerified, null, "購入時点では未照合");
+      assert.equal(rows[0].txHash, "0xdeadbeef00000000000000000000000000000000000000000000000000000000");
       assert.equal(rows[0].spentUnits, "3000");
       assert.equal(rows[0].payloadNonEmpty, true);
       assert.equal(rows[0].contentTypeMatch, true);
       assert.equal(rows[0].httpStatusPaid, 200);
 
-      // 2026-08-22 監査・項目1: この購入が observed_purchases に入ること。
-      // ここが空だと scoreEconomicActivity（重み0.40）の L1 枝と
-      // scoreL1Receiving が永久に不発になる（本番で実際にそうなっていた）。
+      // 2026-08-23 監査 C-4: **購入バッチは observed_purchases を書かない。**
+      // 2026-08-22 にここへ配線を入れたのは方向として正しかったが、当時の
+      // settled は「売り手が success:true と言った」でしかなく、自己申告が
+      // そのままスコアの最上位軸へ流れていた。証拠を書くのは照合器
+      // （settlement-verifier）だけ——オンチェーンで宛先・金額・トークン・
+      // チェーン・確定数を確認できた行のみ。
       const observed = await db.select().from(schema.observedPurchases);
-      assert.equal(observed.length, 1, "L1 の決済は observed_purchases の唯一の書き手");
-      assert.equal(observed[0].txHash, "0xdeadbeef");
-      assert.equal(observed[0].wallet, rows[0].payer, "買い手＝台帳の payer");
-      assert.equal(observed[0].counterparty, payToFor(1).toLowerCase(), "売り手＝壁の payTo");
-      assert.equal(observed[0].amount, "3000");
-      assert.equal(observed[0].resource, "https://seller1.example/api");
-      assert.equal(observed[0].deliveryVerified, true, "200 + 本文あり → 配送確認済み");
-      assert.equal(observed[0].blockTimestamp, null, "ブロック時刻は持っていない（推測で埋めない）");
+      assert.equal(
+        observed.length,
+        0,
+        "未照合の決済主張がスコア証拠に入っている——照合前に証拠を作ってはいけない",
+      );
 
-      // 冪等: 同じ決済を再観測しても2行目は生まれない。
+      // 冪等の性質そのものは維持されている（照合器が二重に書かない根拠）。
       const { recordObservedPurchase } = await import("@/lib/db/observed-purchases");
+      const first = await recordObservedPurchase({
+        wallet: rows[0].payer!,
+        counterparty: payToFor(1),
+        amount: "3000",
+        txHash: "0xdeadbeef00000000000000000000000000000000000000000000000000000000",
+        deliveryVerified: true,
+      });
+      assert.equal(first.created, true);
       const again = await recordObservedPurchase({
         wallet: rows[0].payer!,
         counterparty: payToFor(1),
         amount: "3000",
-        txHash: "0xdeadbeef",
+        txHash: "0xdeadbeef00000000000000000000000000000000000000000000000000000000",
         deliveryVerified: true,
       });
       assert.equal(again.created, false);
@@ -315,7 +328,7 @@ if (!TEST_DB) {
             headers: {
               "content-type": "application/json",
               "PAYMENT-RESPONSE": Buffer.from(
-                JSON.stringify({ success: true, transaction: "5SolSigBase58xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", network: SOL_CAIP2, payer: FEE_PAYER }),
+                JSON.stringify({ success: true, transaction: "5SoLSigBase58abcdefghijkmnopqrstuvwxyzabcdefghijkmnopqrstuvwxyzabcdefghijkmnopqrstuvwxyz", network: SOL_CAIP2, payer: FEE_PAYER }),
               ).toString("base64"),
             },
           });
@@ -325,7 +338,10 @@ if (!TEST_DB) {
       const rows = await db.select().from(schema.x402L1Purchases);
       const solRow = rows.find((r) => r.network === SOL_CAIP2);
       assert.ok(solRow, "solana ledger row exists");
-      assert.equal(solRow!.status, "settled");
+      // C-4: Solana も購入直後は settle_claimed。しかも Solana は照合器が
+      // まだ無いので、cron は chain_not_yet_verifiable として繰り越す
+      // （「読めなかった」を「偽物」と言わない）。
+      assert.equal(solRow!.status, "settle_claimed");
       assert.equal(solRow!.payer, solKeypair.publicKey.toBase58(), "payer is base58, not lowercased");
       assert.equal(solRow!.payTo, SOL_PAY_TO, "payTo preserved base58 case");
       assert.equal(solRow!.spentUnits, "4000");
@@ -478,7 +494,9 @@ if (!TEST_DB) {
       const [ep] = await db.select({ id: schema.x402Endpoints.id }).from(schema.x402Endpoints).limit(1);
       await db.insert(schema.x402L1Purchases).values({
         endpointId: ep.id,
-        status: "settled",
+        // 予算は status を問わず合算する。実際に積まれるのは購入直後の
+        // settle_claimed なので、見立てもそれに合わせる。
+        status: "settle_claimed",
         spentUnits: "24999000",
         amountUnits: "24999000",
       });
@@ -498,7 +516,7 @@ if (!TEST_DB) {
       const [ep] = await db.select({ id: schema.x402Endpoints.id }).from(schema.x402Endpoints).limit(1);
       await db.insert(schema.x402L1Purchases).values({
         endpointId: ep.id,
-        status: "settled",
+        status: "settle_claimed",
         spentUnits: "24997000",
         amountUnits: "24997000",
       });
@@ -510,7 +528,7 @@ if (!TEST_DB) {
             headers: {
               "content-type": "application/json",
               "PAYMENT-RESPONSE": Buffer.from(
-                JSON.stringify({ success: true, transaction: "0xline", network: "eip155:8453" }),
+                JSON.stringify({ success: true, transaction: "0x11fe000000000000000000000000000000000000000000000000000000000000", network: "eip155:8453" }),
               ).toString("base64"),
             },
           });
@@ -564,7 +582,7 @@ if (!TEST_DB) {
             headers: {
               "content-type": "application/json",
               "PAYMENT-RESPONSE": Buffer.from(
-                JSON.stringify({ success: true, transaction: "0xfeed", network: "eip155:8453" }),
+                JSON.stringify({ success: true, transaction: "0xfeed000000000000000000000000000000000000000000000000000000000000", network: "eip155:8453" }),
               ).toString("base64"),
             },
           });
@@ -583,9 +601,9 @@ if (!TEST_DB) {
       );
       const rows = await db.select().from(schema.x402L1Purchases);
       assert.equal(rows.length, 1, "the reservation is updated in place, not duplicated");
-      assert.equal(rows[0].status, "settled");
+      assert.equal(rows[0].status, "settle_claimed");
       assert.equal(rows[0].spentUnits, "3000");
-      assert.equal(rows[0].txHash, "0xfeed");
+      assert.equal(rows[0].txHash, "0xfeed000000000000000000000000000000000000000000000000000000000000");
     });
 
     // Security (2026-08-15 audit): TOCTOU. Today's spend is read once per
@@ -646,7 +664,7 @@ if (!TEST_DB) {
             headers: {
               "content-type": "application/json",
               "PAYMENT-RESPONSE": Buffer.from(
-                JSON.stringify({ success: true, transaction: "0xrace", network: "eip155:8453" }),
+                JSON.stringify({ success: true, transaction: "0xacce550000000000000000000000000000000000000000000000000000000000", network: "eip155:8453" }),
               ).toString("base64"),
             },
           });
