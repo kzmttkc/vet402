@@ -310,7 +310,7 @@ WIN_EV がキャンペーン草案より優先。カタログから始めない�
 
 詳細は [`GRANTS.md`](./GRANTS.md)。ハッカソンは「新しい動詞の証明」、グラントは「測り続ける資金」です。同じ成果を二度売らない。
 
-- 今すぐ（新コードなし）: Base Builder Grants（レトロ、1–5 ETH 目安）と OP Atlas。数字は提出当日に `curl`。
+- 今すぐ（新コードなし）: Base Builder Grants（レトロ、1–5 ETH 目安）。**OP Atlas は 2026-08-23 に対象外と確定**（Atlas は 2026-09-18 に廃止告知・ミッションは Closed・要件の「デプロイ済みコントラクト」に元々非該当。[`GRANTS.md`](./GRANTS.md) P0-3）。数字は提出当日に `curl`。
 - Continuity 申請のあと: 既存の Solana 案（実費 $5,907.75、人件費ゼロ）。実装はハッカソン枝に載せない。ETHOnline 提出後がよい。
 - 各大会の提出後: その動詞を「これから作る」ではなく **証拠** として次の助成に使う（ETHOnline→Base/x402、Tokyo→ENS DAO、Mumbai→EF/8004）。
 - ESP は公募窓口ではない。Devcon の Office Hours で Wishlist/RFP に合わせる。
@@ -318,11 +318,11 @@ WIN_EV がキャンペーン草案より優先。カタログから始めない�
 
 ## 12. 今週（戦略ファイル化時点）
 
-1. ETHOnline Continuity 申請（8/24 まで。文面は §5.7）。**これが先。**
+1. ~~ETHOnline Continuity 申請~~ → **2026-08-23 提出済み**（フォーム内のトラック欄で `continuity-track` を選択・審査中）。次は採択メールと **ETH ステーク**（Takeshi の手番・資金移動）。
 2. Tokyo Continuity 申請（15分。締切 9/23）。
 3. デモ用ウォレット、ガス、USDC $5、API キー（git 外）。
 4. Devcon チケットとムンバイのホテル。
-5. 数字を当日更新し、Base Builder Grants に既存メモで申請／ノミネート。OP Atlas を作る。
+5. 数字を当日更新し、Base Builder Grants に既存メモで申請／ノミネート（OP Atlas は対象外と確定したので作らない）。
 6. `payOrRefuse` は実装しない。Solana L1 も ETHOnline 提出まで始めない。
 
 ---
