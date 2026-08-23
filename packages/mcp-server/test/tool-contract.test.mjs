@@ -128,33 +128,48 @@ test("every tool reports failures as isError with a sanitized message", () => {
         "protocol error instead of a tool result the model can act on",
     );
 
+    // 2026-08-23: catch の中身を直に見る形から、**どこかで** isError と
+    // サニタイズが効いていることを見る形へ。スコア系3ツールは共有ヘルパ
+    // scoreToolFailure() に降りたので、リテラルの照合では偽陽性になる。
+    // 守りたい不変条件は「失敗が答えに見えないこと」で、書き方ではない。
     const body = catchClause.block.getText(sf);
-    assert.match(
-      body,
-      /isError:\s*true/,
-      `${name}: the catch block does not set isError: true — the model would ` +
-        "read the failure as an answer",
-    );
-    assert.match(
-      body,
-      /sanitizeToolError\(/,
-      `${name}: the catch block does not sanitize the error before returning it`,
-    );
+    const viaHelper = /scoreToolFailure\(/.test(body);
+    if (!viaHelper) {
+      assert.match(
+        body,
+        /isError:\s*true/,
+        `${name}: the catch block does not set isError: true — the model would ` +
+          "read the failure as an answer",
+      );
+      assert.match(
+        body,
+        /sanitizeToolError\(/,
+        `${name}: the catch block does not sanitize the error before returning it`,
+      );
+    }
   }
 });
 
-test("check_payee_trust tells the model that degraded outranks the recommendation", () => {
-  const payee = registeredTools().find((t) => t.name === "check_payee_trust");
-  assert.ok(payee, "check_payee_trust is not registered");
-  const description = payee.description;
-  // The raw JSON always carried these fields; nothing told the model they
-  // outrank `recommendation`. That instruction is the whole point here.
-  assert.match(description, /degraded/);
-  assert.match(description, /signalsUnavailable/);
-  assert.match(
-    description,
-    /DO NOT treat the payee as ALLOW/,
-    "the description must say, in words, not to treat a degraded or partially " +
-      "measured payee as ALLOW",
-  );
+test("スコア系ツールは判定を型で返す（散文の約束に依存しない）", () => {
+  // 2026-08-23 監査で契約を強くした。以前はここで「説明文が degraded は
+  // recommendation より優先すると**言っている**か」を検査していた。だが散文は
+  // モデルが無視できる。SDK の SpendGuard は同じ規律を型と分岐で強制していたのに、
+  // エージェント統合の主経路である MCP だけが読解に依存していた。
+  // いまの契約は decision / safe_to_pay というフィールドで、説明文は補助。
+  // 判定そのものの不変条件は test/decision.test.mjs が固定する。
+  const src = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+  assert.match(src, /scoreToolResult\(/, "構造化判定を通さずに応答を返している");
+  assert.match(src, /decideFromScore/, "判定関数が使われていない");
+
+  for (const name of ["check_payee_trust", "check_agent_trust", "check_wallet_trust"]) {
+    const tool = registeredTools().find((t) => t.name === name);
+    assert.ok(tool, `${name} is not registered`);
+    assert.match(tool.description, /decision/, `${name}: 説明が decision を指していない`);
+    assert.match(tool.description, /safe_to_pay/, `${name}: 説明が safe_to_pay を指していない`);
+    assert.match(
+      tool.description,
+      /no answer is not an ALLOW/i,
+      `${name}: 沈黙が ALLOW でないことを言っていない`,
+    );
+  }
 });
