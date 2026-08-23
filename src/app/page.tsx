@@ -228,6 +228,15 @@ export default async function Home() {
         <p className="mx-auto mt-2 max-w-[52ch] text-center text-brand-lift sm:mt-3">
           We buy. We settle. We publish the measurements.
         </p>
+        {/* 2026-08-23 UX: タグラインは我々の**手順**を3語で言うが、初見の読者が
+            5秒で欲しいのは「これは何をしてくれるのか」。Abstract（§下）は正確な
+            代わりに専門語から入るので、その手前に平易な1文を置く。
+            RFC のトーンを壊さないよう、新しい枠も装飾も足さず、タグラインと同じ
+            中央寄せ・同じ弱いインクで続けるだけ。文は1つに留める。 */}
+        <p className="mx-auto mt-2 max-w-[62ch] text-center text-brand-lift">
+          Before an agent pays an x402 endpoint, vet402 checks whether that endpoint actually
+          delivers — by buying it.
+        </p>
 
         <div className="rule-double mx-auto mt-3 w-full max-w-[34ch] sm:mt-4" />
 
@@ -261,18 +270,24 @@ export default async function Home() {
             (hero vs final vs pricing), which a plain /signup pageview can never
             attribute. */}
         <div className="mt-4 flex flex-wrap gap-3 sm:mt-5 sm:pl-[10ch]">
-          <TrackedLink
-            href="#methodology"
-            event="lp_cta_click"
-            props={{ position: "hero_method" }}
-            className={buttonClass({ size: "md", className: "w-full sm:w-auto" })}
-          >
-            Read the methodology
-          </TrackedLink>
+          {/* 2026-08-23 UX: 主従を入れ替えた。以前は "Read the methodology" が
+              primary、"Verify a payee now" が secondary だったが、初見の読者が
+              最初に取れる行動は後者（アカウント不要・その場で結果が出る）。
+              方法論は「なぜ信じられるか」の裏取りで、先に読むものではない。
+              並び順も primary を先頭へ。イベント名と position は変えていない
+              （lp_cta_click の時系列比較を壊さないため）。 */}
           <TrackedLink
             href="/payee"
             event="lp_cta_click"
             props={{ position: "hero_verify" }}
+            className={buttonClass({ size: "md", className: "w-full sm:w-auto" })}
+          >
+            Verify a payee now
+          </TrackedLink>
+          <TrackedLink
+            href="#methodology"
+            event="lp_cta_click"
+            props={{ position: "hero_method" }}
             className={buttonClass({
               variant: "secondary",
               size: "md",
@@ -280,7 +295,7 @@ export default async function Home() {
               className: "w-full sm:w-auto",
             })}
           >
-            Verify a payee now
+            Read the methodology
           </TrackedLink>
         </div>
 
