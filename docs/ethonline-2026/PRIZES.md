@@ -54,7 +54,28 @@ Continuity トラック自体（Extend Open Source）は全体ルールであり
 「Continuity 参加者だけが応募できるスポンサー賞」。**取れないからといって Continuity 申請が不要になるわけではない**
 ——既存コードを持ち込む以上、申請しなければ Partner / Finalist の資格そのものを失う。
 
-## 賞の選び方（2026-08-23 版・確定は 09-09 の再読後）
+## 未解決（この大会で一番重い論点・2026-08-23 夜）
+
+ETHGlobal 運営（Pascal）の Discord 回答: **vet402 の既存公開 API に依存する提出は continuity 扱いになり、
+`continuity track` ラベルの付いた賞のみ対象。パートナー各社はまだそのラベルを用意していない。**
+（受領 2026-08-23。全文は `~/Takeshi_Automation/output/0819/vet402_ethglobal_ビルド&ピッチ_playbook_2026-08-19.md` §4）
+
+これが額面どおりなら、Continuity トラックで出す我々が狙える賞は現時点で**3件しかなく、しかも3件とも要件が合わない**
+（Hedera ♻️ は「以前から Hedera 上に存在」・1inch/Uniswap は各社スタック必須）。
+つまり **Hedera 🤖 AI & Agentic Payments $6,000 が Continuity 提出でも対象になるのか**が、
+この大会の賞金の有無をほぼ一手に決める。
+
+やること（順に）:
+
+1. Hedera と ETHGlobal に**名指しで聞く**: 「continuity track の提出は AI & Agentic Payments の対象か。
+   対象外なら、その枠に continuity ブラケットを追加する予定はあるか」。答えが「対象」なら Hedera 実装は最優先、
+   「対象外」なら会期の実装は Base のままでよく、Hedera 対応は次の大会かグラント材料へ回す。
+2. 賞ページを 09-04 / 09-09 / 09-12 に再読し、**continuity ブラケットが増えていないか**を毎回見る
+   （運営は「まだ用意していない」と言っており、増える余地がある）。
+3. 賞が1件も取れないと確定した場合でも、Continuity 提出自体は続ける
+   （既存コードを Classic に持ち込むのは規約違反で失格。Finalist 枠と会期中の証拠は残る）。
+
+## 賞の選び方（2026-08-23 版・確定は 09-09 の再読後 / 上の未解決が先）
 
 1. **Hedera 🤖 AI & Agentic Payments $6,000** — 唯一、動詞と要件が正面一致。Hedera 対応が前提。
 2. 詳細待ち5社のうち、`payOrRefuse` が実際に呼ぶもの（The Graph=観測データの subgraph、0G=AI エージェント、
