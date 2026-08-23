@@ -56,9 +56,23 @@ test("a single soft flag is medium, not high", () => {
   assert.equal(assessSybilRisk(["no_bound_wallet"]), "medium");
 });
 
-test("three soft flags together are high", () => {
+test("主体についての所見が3本なら high（ソフトフラグは票に数えない）", () => {
+  // 2026-08-24 監査で意味論を変更。このテストは以前
+  //   ["new_burner_wallet", "multi_agent_owner", "no_bound_wallet"] → high
+  // を固定していた。テスト名が自ら "soft flags" と呼んでいるとおり、柔らかい
+  // フラグだと認識しながら無条件BLOCKの票に数えていた。
+  // multi_agent_owner は3体以上を運用する**正当な運営者**にも付き、
+  // sybil を示すのは funding_cluster との同時成立（下のテストが固定）。
+  // 主体の行いでないものを票にすると、何も悪いことをしていない運営者が
+  // スコアに関係なく BLOCK になる。
   assert.equal(
     assessSybilRisk(["new_burner_wallet", "multi_agent_owner", "no_bound_wallet"]),
+    "medium",
+    "正当な複数エージェント運用を票に数えてBLOCKにしている",
+  );
+  // 主体についての所見が3本なら従来どおり high。
+  assert.equal(
+    assessSybilRisk(["new_burner_wallet", "no_bound_wallet", "funding_cluster"]),
     "high",
   );
   assert.equal(assessSybilRisk(["new_burner_wallet", "multi_agent_owner"]), "medium");
