@@ -29,6 +29,8 @@ Do not implement the next event’s verb before that event’s kickoff.
 |---|---|
 | [`STRATEGY.md`](./STRATEGY.md) | 会話で決めた戦略の全文（ルール・3大会・Devcon・Token2049・AI分担） |
 | [`GRANTS.md`](./GRANTS.md) | グラント獲得（レトロ優先、ハッカソン動詞とは分離） |
+| [`REVENUE_GOAL.md`](./REVENUE_GOAL.md) | コア収益: 課金で生きる / バイアウトは中立な出口 |
+| [`DISTRIBUTION.md`](./DISTRIBUTION.md) | X/Magicians/PH/Reddit/IH/Slack/Discord/HN。自動は週次の実測だけ |
 | [`2026-autumn-continuity.md`](./2026-autumn-continuity.md) | 3連戦の運用計画（動詞・凍結・申請文・カレンダー） |
 | [`../ethonline-2026/ROADMAP.md`](../ethonline-2026/ROADMAP.md) | ETHOnline 日次ロードマップ |
 | [`../ethonline-2026/WIN_EV.md`](../ethonline-2026/WIN_EV.md) | ETHOnline 受賞確度の最大化 |

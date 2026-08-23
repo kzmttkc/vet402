@@ -21,6 +21,8 @@
 | ETHOnline の詳細ロードマップ | `docs/ethonline-2026/ROADMAP.md` |
 | 受賞確度の最大化 | `docs/ethonline-2026/WIN_EV.md`（Partner 3本、自前 seller で ALLOW を保証、失格を潰す） |
 | グラント獲得 | `docs/hackathons/GRANTS.md`（レトロ優先。凍結中の動詞は助成のマイルストーンにしない） |
+| 課金かバイアウトか | `docs/hackathons/REVENUE_GOAL.md`（生きる＝買い手側課金。出口＝中立な台帳の移管。二者択一にしない） |
+| 各SNS・コミュニティ | `docs/hackathons/DISTRIBUTION.md`（自動は実測テンプレのみ。議論の場は人手） |
 
 ---
 
