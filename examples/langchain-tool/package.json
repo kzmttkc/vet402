@@ -1,5 +1,5 @@
 {
-  "name": "@vouchscore/langchain-tool",
+  "name": "@vet402/langchain-tool",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@langchain/core": "^0.3.42",
-    "@vouchscore/sdk": "file:../../packages/sdk",
+    "@vet402/sdk": "file:../../packages/sdk",
     "zod": "^3.24.1"
   },
   "devDependencies": {

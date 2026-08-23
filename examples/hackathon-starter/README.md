@@ -32,7 +32,7 @@ stops it from paying a scam?". This template is that answer in ~150 lines:
 score the payee, gate the payment on a fail-closed policy, and (commented, in
 `index.ts`) execute on Base Sepolia testnet and attest the settlement back so
 the next agent's score is smarter. Fork it, swap in your wallet stack, keep
-building after the weekend — the SDK ([`@vouchscore/sdk`](../../packages/sdk/))
+building after the weekend — the SDK ([`@vet402/sdk`](../../packages/sdk/))
 and API stay up.
 
 ## Where to go deeper

@@ -26,7 +26,7 @@ import {
   type SpendDecision,
   type SpendGuardPolicy,
   type VouchClientOptions,
-} from "@vouchscore/sdk";
+} from "@vet402/sdk";
 
 const spendGuardSchema = z.object({
   payee: z

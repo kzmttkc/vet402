@@ -24,7 +24,7 @@ import {
   createVouchClient,
   VouchApiError,
   type SpendDecision,
-} from "@vouchscore/sdk";
+} from "@vet402/sdk";
 
 // Any syntactically valid address works; unknown payees still score
 // (dataDepth: "thin") instead of 404ing. Override with DEMO_PAYEE.

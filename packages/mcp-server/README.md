@@ -1,4 +1,4 @@
-# @vouchscore/mcp-server
+# @vet402/mcp-server
 
 MCP tools for checking [vet402](https://vet402.com) trust scores from Claude
 Desktop, Cursor, or any MCP client — so an agent can ask *"is this wallet safe
@@ -7,7 +7,7 @@ to pay?"* before it pays.
 Published on npm. No clone, no build: your MCP client launches it with `npx`.
 
 ```bash
-npm install -g @vouchscore/mcp-server   # optional — the configs below use npx
+npm install -g @vet402/mcp-server   # optional — the configs below use npx
 ```
 
 ## Tools
@@ -46,7 +46,7 @@ then add this to `~/Library/Application Support/Claude/claude_desktop_config.jso
   "mcpServers": {
     "vouch": {
       "command": "npx",
-      "args": ["-y", "@vouchscore/mcp-server"],
+      "args": ["-y", "@vet402/mcp-server"],
       "env": {
         "VOUCH_API_URL": "https://vet402.com/api/v1",
         "VOUCH_API_KEY": "vouch_live_your_key_here"
@@ -65,7 +65,7 @@ Same block in `~/.cursor/mcp.json` (or a project-local `.cursor/mcp.json`):
   "mcpServers": {
     "vouch": {
       "command": "npx",
-      "args": ["-y", "@vouchscore/mcp-server"],
+      "args": ["-y", "@vet402/mcp-server"],
       "env": {
         "VOUCH_API_URL": "https://vet402.com/api/v1",
         "VOUCH_API_KEY": "vouch_live_your_key_here"
@@ -79,11 +79,11 @@ Confirm it starts before wiring it into a client:
 
 ```bash
 echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}' \
-  | VOUCH_API_KEY=vouch_live_your_key_here npx -y @vouchscore/mcp-server
+  | VOUCH_API_KEY=vouch_live_your_key_here npx -y @vet402/mcp-server
 ```
 
 A `serverInfo` line comes back on stdout. The package also installs a
-`vouch-mcp` binary, if you prefer `npx -p @vouchscore/mcp-server vouch-mcp`.
+`vet402-mcp` binary, if you prefer `npx -p @vet402/mcp-server vet402-mcp`.
 
 ## Environment
 
@@ -117,7 +117,7 @@ cd agent-trust/packages/mcp-server && npm install && npm run build
 
 - [MCP setup guide](https://github.com/kzmttkc/vet402/blob/main/docs/mcp-setup.md)
 - [API docs](https://vet402.com/docs/api) · [OpenAPI spec](https://github.com/kzmttkc/vet402/blob/main/docs/openapi.yaml)
-- [`@vouchscore/sdk`](https://www.npmjs.com/package/@vouchscore/sdk) — buyer side (SpendGuard)
-- [`@vouchscore/middleware`](https://www.npmjs.com/package/@vouchscore/middleware) — seller side (x402 request gate)
+- [`@vet402/sdk`](https://www.npmjs.com/package/@vet402/sdk) — buyer side (SpendGuard)
+- [`@vet402/middleware`](https://www.npmjs.com/package/@vet402/middleware) — seller side (x402 request gate)
 
 MIT · [vet402](https://vet402.com)

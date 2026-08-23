@@ -1,17 +1,17 @@
-# @vouchscore/sdk
+# @vet402/sdk
 
 Thin TypeScript client for the [vet402](https://vet402.com) Trust API. Node 20+,
 ESM, zero runtime dependencies.
 
 ```bash
-npm install @vouchscore/sdk
+npm install @vet402/sdk
 ```
 
 Get a key at [vet402.com/dashboard/keys](https://vet402.com/dashboard/keys),
 export it as `VOUCH_API_KEY`, and this runs as-is:
 
 ```typescript
-import { createVouchClient } from "@vouchscore/sdk";
+import { createVouchClient } from "@vet402/sdk";
 
 // apiUrl defaults to https://vet402.com/api/v1 — pass it only to point at
 // another deployment (a local dev server, say).
@@ -70,7 +70,7 @@ settlement flow. This surface never computes: it returns the engine's already
 pinned verdict, or an honest `cache_cold`.
 
 ```typescript
-import { payeeVerdictFastAllows } from "@vouchscore/sdk";
+import { payeeVerdictFastAllows } from "@vet402/sdk";
 
 const verdict = await vouch.getPayeeVerdictFast(payee);
 if (!payeeVerdictFastAllows(verdict)) {
@@ -84,7 +84,7 @@ bands and its own `maxScoreAgeMs` and reports the full `payeeScore`, none of
 which the fast body can supply. It is a pre-check, not a replacement for
 `getPayeeScore`.
 
-> **On 0.1.0?** Check with `npm ls @vouchscore/sdk`. That release predates
+> **On 0.1.0?** Check with `npm ls @vet402/sdk`. That release predates
 > three things documented here: the `apiUrl` default (pass
 > `apiUrl: "https://vet402.com/api/v1"` explicitly), the `VouchApiError` class
 > (errors are plain `Error`s whose `message` is the API's code), and the
@@ -98,7 +98,7 @@ code and the HTTP status, so you can tell *your key is wrong* from *we are
 having a bad day* without parsing strings:
 
 ```typescript
-import { VouchApiError } from "@vouchscore/sdk";
+import { VouchApiError } from "@vet402/sdk";
 
 try {
   await vouch.getPayeeScore("0x...");
@@ -135,7 +135,7 @@ Privy, ...).
 > only the rules you set apply, and the lookup only runs when
 > `minPayeeScore` / `blockOnRecommendation` is set).
 >
-> **Which default do you have?** Check with `npm ls @vouchscore/sdk`. **0.1.0**
+> **Which default do you have?** Check with `npm ls @vet402/sdk`. **0.1.0**
 > has no `trustPolicy` option: the lookup runs only when you set
 > `minPayeeScore` / `blockOnRecommendation`, which is what `"custom"` means
 > here. **0.2.0 and later** are fail-closed out of the box.
@@ -189,7 +189,7 @@ Absolute, because relative repo paths do not resolve on the npm package page.
 - [API docs](https://vet402.com/docs/api) · [OpenAPI spec](https://github.com/kzmttkc/vet402/blob/main/docs/openapi.yaml)
 - [Runnable AgentKit SpendGuard demo](https://github.com/kzmttkc/vet402/tree/main/examples/agentkit-spend-guard)
 - [x402 integration guide](https://github.com/kzmttkc/vet402/blob/main/docs/x402-integration.md)
-- [`@vouchscore/middleware`](https://www.npmjs.com/package/@vouchscore/middleware) — seller side (x402 request gate)
-- [`@vouchscore/mcp-server`](https://www.npmjs.com/package/@vouchscore/mcp-server) — MCP tool
+- [`@vet402/middleware`](https://www.npmjs.com/package/@vet402/middleware) — seller side (x402 request gate)
+- [`@vet402/mcp-server`](https://www.npmjs.com/package/@vet402/mcp-server) — MCP tool
 
 MIT · [vet402](https://vet402.com)

@@ -1,4 +1,4 @@
-# @vouchscore/middleware
+# @vet402/middleware
 
 Drop-in **x402 transaction gate**. Score the payment counterparty and
 **ALLOW / WARN / BLOCK** before the payment settles — from Express, Next.js,
@@ -18,10 +18,10 @@ reference adapters. The x402 payment gate stays your beacon; this middleware
 reads Vouch before it settles.
 
 ```bash
-npm install @vouchscore/middleware
+npm install @vet402/middleware
 ```
 
-> **Which default do you have?** Check with `npm ls @vouchscore/middleware`.
+> **Which default do you have?** Check with `npm ls @vet402/middleware`.
 > **0.1.0** ships the old lenient default (a `WARN` passes downstream) and has
 > no `policy` option — set `blockOn: ["BLOCK", "WARN"]` to get the fail-closed
 > posture today. **0.2.0 and later** are fail-closed out of the box, and the
@@ -30,7 +30,7 @@ npm install @vouchscore/middleware
 ## Express — three lines
 
 ```typescript
-import { createExpressGate } from "@vouchscore/middleware/express";
+import { createExpressGate } from "@vet402/middleware/express";
 
 // Mount AFTER x402 verification so `req.payer` is set.
 app.use("/api/paid", createExpressGate({
@@ -48,7 +48,7 @@ opt-outs a `WARN` also continues and fires `onWarn`.
 ## Next.js (App Router)
 
 ```typescript
-import { withVouchGate } from "@vouchscore/middleware/next";
+import { withVouchGate } from "@vet402/middleware/next";
 
 export const POST = withVouchGate(
   {
@@ -66,7 +66,7 @@ returning `response` when it is non-null.
 ## Hono
 
 ```typescript
-import { createHonoGate } from "@vouchscore/middleware/hono";
+import { createHonoGate } from "@vet402/middleware/hono";
 
 app.use("/api/paid/*", createHonoGate({
   apiUrl: process.env.VOUCH_API_URL!,
@@ -117,7 +117,7 @@ signing, or transaction submission — settlement stays with your x402 stack.
 - [API key](https://vet402.com/dashboard/keys) — `VOUCH_API_KEY`
 - [API docs](https://vet402.com/docs/api) · [OpenAPI spec](https://github.com/kzmttkc/vet402/blob/main/docs/openapi.yaml)
 - [x402 integration guide](https://github.com/kzmttkc/vet402/blob/main/docs/x402-integration.md)
-- [`@vouchscore/sdk`](https://www.npmjs.com/package/@vouchscore/sdk) — buyer side (SpendGuard)
-- [`@vouchscore/mcp-server`](https://www.npmjs.com/package/@vouchscore/mcp-server) — MCP tool
+- [`@vet402/sdk`](https://www.npmjs.com/package/@vet402/sdk) — buyer side (SpendGuard)
+- [`@vet402/mcp-server`](https://www.npmjs.com/package/@vet402/mcp-server) — MCP tool
 
 MIT · [vet402](https://vet402.com)

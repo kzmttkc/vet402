@@ -43,7 +43,7 @@ import {
   SpendGuard,
   type SpendDecision,
   type VouchClient,
-} from "@vouchscore/sdk";
+} from "@vet402/sdk";
 
 // --- Minimal structural mirrors of solana-agent-kit v2 types ---------------
 

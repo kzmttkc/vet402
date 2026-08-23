@@ -1,8 +1,9 @@
 {
-  "name": "@vouchscore/mcp-server",
-  "version": "0.1.1",
+  "name": "@vet402/mcp-server",
+  "version": "0.2.0",
   "type": "module",
   "bin": {
+    "vet402-mcp": "./dist/index.js",
     "vouch-mcp": "./dist/index.js"
   },
   "scripts": {
@@ -20,7 +21,7 @@
     "tsx": "^4.20.3",
     "typescript": "^5"
   },
-  "description": "MCP server for Vouch: ask an agent's trust score, a wallet's, or a payee's before your agent pays them.",
+  "description": "MCP server for vet402: ask an agent's trust score, a wallet's, or a payee's before your agent pays them.",
   "license": "MIT",
   "author": "KIZUNA Creation",
   "homepage": "https://vet402.com",
