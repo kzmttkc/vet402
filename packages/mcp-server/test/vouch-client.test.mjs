@@ -1,8 +1,8 @@
-// @vouchscore/mcp-server — transport contract (node:test, no framework —
+// @vet402/mcp-server — transport contract (node:test, no framework —
 // run with `npm test` after `npm run build`).
 //
 // 2026-08-22 (audit): this package had NO tests at all and no `test` script,
-// while shipping a published npm binary (`bin: vouch-mcp`) that an MCP client
+// while shipping a published npm binary (`bin: vet402-mcp`) that an MCP client
 // launches with `npx`. Everything below is the minimum a binary that gates
 // payments owes: arguments are validated before anything leaves the process,
 // failures carry the API's own code, and no request can hang forever.

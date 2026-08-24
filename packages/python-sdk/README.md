@@ -4,7 +4,7 @@ Python client for the [vet402](https://vet402.com) Trust API — check a payee
 before your agent pays, and never pay without an explicit `ALLOW`.
 
 Python 3.10+, single runtime dependency (`httpx`). Semantics mirror the
-TypeScript SDK ([`@vouchscore/sdk`](https://www.npmjs.com/package/@vouchscore/sdk)
+TypeScript SDK ([`@vet402/sdk`](https://www.npmjs.com/package/@vet402/sdk)
 0.2.x): fail-closed SpendGuard by default, identical machine-readable reason
 codes, identical error contract.
 
@@ -169,8 +169,8 @@ vouch = VouchClient("vk_test", transport=httpx.MockTransport(handler))
 
 - [API key](https://vet402.com/dashboard/keys) — `VOUCH_API_KEY`
 - [API docs](https://vet402.com/docs/api) · [OpenAPI spec](https://github.com/kzmttkc/vet402/blob/main/docs/openapi.yaml)
-- [`@vouchscore/sdk`](https://www.npmjs.com/package/@vouchscore/sdk) — TypeScript twin of this package
-- [`@vouchscore/middleware`](https://www.npmjs.com/package/@vouchscore/middleware) — seller side (x402 request gate)
-- [`@vouchscore/mcp-server`](https://www.npmjs.com/package/@vouchscore/mcp-server) — MCP tool
+- [`@vet402/sdk`](https://www.npmjs.com/package/@vet402/sdk) — TypeScript twin of this package
+- [`@vet402/middleware`](https://www.npmjs.com/package/@vet402/middleware) — seller side (x402 request gate)
+- [`@vet402/mcp-server`](https://www.npmjs.com/package/@vet402/mcp-server) — MCP tool
 
 MIT · [vet402](https://vet402.com)

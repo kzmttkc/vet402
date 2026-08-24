@@ -34,7 +34,7 @@ Retrieved 2026-08-20 from `https://vet402.com/api/v1/observatory/state` (key-les
 | **Solana in the catalog** | **218 endpoints tracked (194 active) — second-largest chain after Base (17,313)** |
 | **Solana L0 (probe-level) verification** | **40 published pass — already running, chain-agnostic, $0** |
 
-Also live: per-chain aggregates (`byChain` in the state API), daily per-chain history (`/api/v1/observatory/history`), per-endpoint purchase evidence pages, a public accuracy/corrections ledger (<https://vet402.com/accuracy>), and MIT-licensed tooling (`@vouchscore/sdk`, `@vouchscore/middleware`, `@vouchscore/mcp-server` on npm).
+Also live: per-chain aggregates (`byChain` in the state API), daily per-chain history (`/api/v1/observatory/history`), per-endpoint purchase evidence pages, a public accuracy/corrections ledger (<https://vet402.com/accuracy>), and MIT-licensed tooling (`@vet402/sdk`, `@vet402/middleware`, `@vet402/mcp-server` on npm).
 
 **Honest status: vet402 does not settle real purchases on Solana today.** All 845 L1 attempts to date used the x402 `exact` scheme with EIP-3009 USDC on Base. A Solana payer implementing the official SVM exact scheme (`scheme_exact_svm.md`: partially-signed versioned transaction, facilitator fee-payer, TransferChecked + Memo) has been written and unit-verified against the spec's MUSTs, but it is **not deployed and holds no funds** — it ships behind a default-off flag, pending exactly the funding this proposal requests.
 

@@ -29,7 +29,7 @@ from conftest import PAYEE
 
 def test_default_timeout_is_ten_seconds_and_actually_reaches_httpx() -> None:
     # Matches the TypeScript SDK's DEFAULT_REQUEST_TIMEOUT_MS (10_000).
-    # Deliberately NOT @vouchscore/middleware's 5s — see DEFAULT_TIMEOUT_SECONDS.
+    # Deliberately NOT @vet402/middleware's 5s — see DEFAULT_TIMEOUT_SECONDS.
     assert DEFAULT_TIMEOUT_SECONDS == 10.0
     client = create_vouch_client("vk_test_key")
     # Asserted on the httpx client, not on the argument: the point is that the

@@ -1,5 +1,5 @@
 // ============================================================
-// @vouchscore/middleware/next — Next.js App Router gate.
+// @vet402/middleware/next — Next.js App Router gate.
 //
 // Two shapes: `withVouchGate` wraps a route handler, and `createNextGate`
 // gives you a `check()` you can call inline. Both use the Web `Request` /

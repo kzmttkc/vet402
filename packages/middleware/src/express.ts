@@ -1,5 +1,5 @@
 // ============================================================
-// @vouchscore/middleware/express — Express drop-in gate.
+// @vet402/middleware/express — Express drop-in gate.
 //
 // Mount AFTER your x402 payment verification so the counterparty address is
 // known (req.payer or similar). The framework is typed structurally so this

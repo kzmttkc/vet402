@@ -40,7 +40,7 @@ A result never moves up a level: a probe is never reported as settlement; an opi
 1. **Ground truth by purchase.** The only way to know if an endpoint delivers is to buy from it. We do, with real money, and publish the receipt.
 2. **Failures carry equal weight.** Non-settling attempts are published on the same public pages as successes. Verification that hides failures is advertising.
 3. **Structural neutrality.** We sell nothing on the catalog we measure. Verification is unsolicited and free; measured operators are not customers; sellers cannot pay for a better result. Our own corrections are public (<https://vet402.com/accuracy>).
-4. **Everything is independently checkable.** Tx hashes on-chain, snapshots dated, aggregate state as public JSON, methodology published, SDK/middleware/MCP server open-source (MIT, `@vouchscore/*` on npm).
+4. **Everything is independently checkable.** Tx hashes on-chain, snapshots dated, aggregate state as public JSON, methodology published, SDK/middleware/MCP server open-source (MIT, `@vet402/*` on npm).
 
 ## Stack
 

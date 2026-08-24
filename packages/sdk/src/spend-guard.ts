@@ -132,7 +132,7 @@ export const DEFAULT_MAX_SCORE_AGE_MS = 5 * 60 * 1000;
  * so a lax bound can never resurrect a score past its declared expiry.
  *
  * DELIBERATELY NOT THE SAME FUNCTION as `isScoreStale` in
- * `@vouchscore/middleware` (packages/middleware/src/core.ts), which answers
+ * `@vet402/middleware` (packages/middleware/src/core.ts), which answers
  * differently for a body carrying NEITHER timestamp: it returns FRESH, this
  * one returns STALE. Both are right for their input, and the divergence is
  * kept on purpose (2026-08-22 audit — the two were flagged as "one name, two

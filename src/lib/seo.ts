@@ -25,7 +25,7 @@ export const TWITTER_SITE = "@vet_402";
 export const ORG_SAME_AS = [
   "https://x.com/vet_402",
   "https://github.com/kzmttkc/vet402",
-  "https://www.npmjs.com/package/@vouchscore/sdk",
+  "https://www.npmjs.com/package/@vet402/sdk",
 ] as const;
 
 export function publisherOrg() {

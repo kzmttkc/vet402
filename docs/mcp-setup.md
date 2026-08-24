@@ -2,7 +2,7 @@
 
 Connect vet402 trust tools to Claude Desktop, Cursor, or any MCP client.
 
-The server is published as [`@vouchscore/mcp-server`](https://www.npmjs.com/package/@vouchscore/mcp-server).
+The server is published as [`@vet402/mcp-server`](https://www.npmjs.com/package/@vet402/mcp-server).
 There is nothing to clone or build — your MCP client launches it with `npx`.
 
 ## Prerequisites
@@ -20,7 +20,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`
   "mcpServers": {
     "vouch": {
       "command": "npx",
-      "args": ["-y", "@vouchscore/mcp-server"],
+      "args": ["-y", "@vet402/mcp-server"],
       "env": {
         "VOUCH_API_URL": "https://vet402.com/api/v1",
         "VOUCH_API_KEY": "vouch_live_..."
@@ -46,7 +46,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`
 
 ```bash
 echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}' \
-  | VOUCH_API_KEY=vouch_live_... npx -y @vouchscore/mcp-server
+  | VOUCH_API_KEY=vouch_live_... npx -y @vet402/mcp-server
 ```
 
 A `serverInfo` line on stdout means the server starts and speaks MCP.
@@ -93,7 +93,7 @@ cd packages/mcp-server && npm install && npm run build
 | `VOUCH_API_KEY is required` | The `env` block is missing the key, or the client did not pass it through |
 | `invalid_api_key` | Use a database-backed key, not `DEV_API_KEY` in production |
 | Connection refused | `VOUCH_API_URL` points at localhost — set it to `https://vet402.com/api/v1`, or start the local API |
-| MCP server not listed | Restart the client; verify the JSON parses and `npx -y @vouchscore/mcp-server` runs standalone |
+| MCP server not listed | Restart the client; verify the JSON parses and `npx -y @vet402/mcp-server` runs standalone |
 | Tools return errors | Verify `VOUCH_API_URL` includes `/api/v1` and has no trailing slash |
 
 ## Use cases

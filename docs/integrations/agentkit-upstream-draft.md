@@ -27,7 +27,7 @@ verified against branch `main` on 2026-08-20 via the GitHub API).
 Design decisions taken to match upstream conventions:
 
 - **Zero new dependencies.** The provider calls the vet402 REST API with the
-  built-in `fetch` (pyth/defillama precedent), not `@vouchscore/sdk`.
+  built-in `fetch` (pyth/defillama precedent), not `@vet402/sdk`.
 - **Read-only provider.** No `WalletProvider` parameter anywhere: the provider
   never sees keys, never signs, never submits. It returns decisions.
 - **Per-request cap, no daily-budget state.** Mirrors the x402 provider's
@@ -677,7 +677,7 @@ Prompt: Before paying 0x..., check whether it is safe to pay $0.50 there.
   draw "why upstream rather than a community provider" review. Mitigation in
   the PR body: zero deps, read-only, fail-closed, free tier. If rejected,
   the identical code ships as a standalone npm package
-  (`@vouchscore/agentkit-provider`) usable via `customActionProvider` or
+  (`@vet402/agentkit-provider`) usable via `customActionProvider` or
   direct import — no wasted work.
 - **Exposed action names** are `Vet402ActionProvider_check_payee_trust` /
   `Vet402ActionProvider_evaluate_spend` (class-name prefix is added by

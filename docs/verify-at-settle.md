@@ -25,10 +25,10 @@ endpoint (same cache, TTL 5 minutes); retry the fast surface afterwards.
 
 ## SDK support
 
-`@vouchscore/sdk` (0.3.x) exposes this surface as two pieces:
+`@vet402/sdk` (0.3.x) exposes this surface as two pieces:
 
 ```ts
-import { createVouchClient, payeeVerdictFastAllows } from "@vouchscore/sdk";
+import { createVouchClient, payeeVerdictFastAllows } from "@vet402/sdk";
 
 const vouch = createVouchClient({ apiKey: process.env.VOUCH_API_KEY! });
 
@@ -52,7 +52,7 @@ surface is a pre-check for a settlement path that already has its own deadline;
 surface at all** (2026-08-22): it has `get_payee_score` and `SpendGuard` only.
 
 > Corrected 2026-08-22. This section previously claimed the fail-closed reading
-> of `cache_cold` was "exactly what `@vouchscore/sdk` / the Python SDK do by
+> of `cache_cold` was "exactly what `@vet402/sdk` / the Python SDK do by
 > default". Measured at the time: `verdict-fast` appeared **nowhere** under
 > `packages/` — both SDKs only ever called `/payees/{address}/score`. The
 > document described a code path that did not exist. The TypeScript half now

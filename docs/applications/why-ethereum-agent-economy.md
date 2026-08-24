@@ -38,7 +38,7 @@ From operating one in production, we argue it needs four properties:
 
 - Live: <https://vet402.com> · JSON state: <https://vet402.com/api/v1/observatory/state>
 - Methodology: <https://vet402.com/observatory/methodology> · Accuracy ledger: <https://vet402.com/accuracy>
-- Open-source (MIT): SDK / x402 middleware / MCP server published as `@vouchscore/*` on npm
+- Open-source (MIT): SDK / x402 middleware / MCP server published as `@vet402/*` on npm
 
 ---
 

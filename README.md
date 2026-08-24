@@ -6,7 +6,7 @@
 
 vet402 buys what x402 endpoints actually sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence.
 
-> **Formerly Vouch.** The repository name (`agent-trust`), npm scope (`@vouchscore/*`) and API key prefix (`vouch_`) retain the old name for backward compatibility.
+> **Formerly Vouch.** The repository name (`agent-trust`), npm scope (`@vet402/*`) and API key prefix (`vouch_`) retain the old name for backward compatibility.
 
 **Site:** <https://vet402.com> · **Live demo:** <https://vet402.com/playground> · **API reference:** <https://vet402.com/docs/api> · **Accuracy ledger:** <https://vet402.com/accuracy>
 
@@ -17,19 +17,19 @@ This repository is the source of the vet402 service and of the three npm package
 ## Install
 
 ```bash
-npm i @vouchscore/sdk          # TypeScript API client
-npm i @vouchscore/middleware   # x402 transaction gate (Express / Next.js / Hono)
-npm i @vouchscore/mcp-server   # MCP tools for Cursor / Claude Desktop
+npm i @vet402/sdk          # TypeScript API client
+npm i @vet402/middleware   # x402 transaction gate (Express / Next.js / Hono)
+npm i @vet402/mcp-server   # MCP tools for Cursor / Claude Desktop
 ```
 
-> **Use the scoped names exactly as written above.** The unscoped npm package `vouch-sdk` is an unrelated project published by a different vendor and has nothing to do with vet402. Only `@vouchscore/*` packages are ours.
+> **Use the scoped names exactly as written above.** The unscoped npm package `vouch-sdk` is an unrelated project published by a different vendor and has nothing to do with vet402. Only `@vet402/*` packages are ours.
 
-- [@vouchscore/sdk](https://www.npmjs.com/package/@vouchscore/sdk)
-- [@vouchscore/middleware](https://www.npmjs.com/package/@vouchscore/middleware)
-- [@vouchscore/mcp-server](https://www.npmjs.com/package/@vouchscore/mcp-server)
+- [@vet402/sdk](https://www.npmjs.com/package/@vet402/sdk)
+- [@vet402/middleware](https://www.npmjs.com/package/@vet402/middleware)
+- [@vet402/mcp-server](https://www.npmjs.com/package/@vet402/mcp-server)
 
 ```typescript
-import { createVouchClient } from "@vouchscore/sdk";
+import { createVouchClient } from "@vet402/sdk";
 ```
 
 Get a free API key at <https://vet402.com/signup> (1,000 lookups/month, no card required).
@@ -221,7 +221,7 @@ cd packages/sdk && npm install && npm run build
 ```
 
 ```typescript
-import { createVouchClient } from "@vouchscore/sdk";
+import { createVouchClient } from "@vet402/sdk";
 ```
 
 ## x402 sample middleware (M4)
@@ -252,9 +252,9 @@ docs/
   deployment.md
   openapi.yaml
 packages/
-  mcp-server/          # @vouchscore/mcp-server — MCP tools for Cursor / Claude
-  sdk/                 # @vouchscore/sdk — thin TypeScript API client
-  middleware/          # @vouchscore/middleware — x402 gate (Express / Next.js / Hono)
+  mcp-server/          # @vet402/mcp-server — MCP tools for Cursor / Claude
+  sdk/                 # @vet402/sdk — thin TypeScript API client
+  middleware/          # @vet402/middleware — x402 gate (Express / Next.js / Hono)
 examples/
   x402-trust-gate/     # Express middleware sample
 ```
@@ -274,4 +274,4 @@ examples/
 
 ## License
 
-[MIT](./LICENSE) © KIZUNA Creation. The published `@vouchscore/*` packages carry the same license.
+[MIT](./LICENSE) © KIZUNA Creation. The published `@vet402/*` packages carry the same license.

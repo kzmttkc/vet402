@@ -1,5 +1,5 @@
 // ============================================================
-// @vouchscore/middleware/hono — Hono drop-in gate.
+// @vet402/middleware/hono — Hono drop-in gate.
 //
 // Hono's Context is typed structurally (c.json returns a Response, c.set
 // stashes per-request state), so this file never imports hono. Mount after

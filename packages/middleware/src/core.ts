@@ -1,5 +1,5 @@
 // ============================================================
-// @vouchscore/middleware — framework-agnostic core.
+// @vet402/middleware — framework-agnostic core.
 //
 // WHY THIS EXISTS. The score API is a request/response you have to wire in by
 // hand, and the facilitator-gate / x402-trust-gate examples showed the same
@@ -9,7 +9,7 @@
 // adapters (./express, ./next, ./hono) that call it. The x402 gate stays a
 // beacon — this is the drop-in that reads it before a payment settles.
 //
-// Design rules kept in lock-step with @vouchscore/sdk and the examples:
+// Design rules kept in lock-step with @vet402/sdk and the examples:
 //   - fail-CLOSED by default, in BOTH senses (BREAKING, 0.2.0): a score you
 //     cannot fetch blocks the payment, AND only a clean ALLOW verdict passes —
 //     the default `policy: "allow-only"` blocks WARN too. Letting WARN through
@@ -170,7 +170,7 @@ export const DEFAULT_MAX_SCORE_AGE_MS = 5 * 60 * 1000;
  *      independent of maxScoreAgeMs), and an unparseable `scoredAt` is STILL
  *      stale. So +Infinity turns off "too old", not "well-formed".
  *
- * DELIBERATELY NOT THE SAME FUNCTION as `isScoreStale` in `@vouchscore/sdk`
+ * DELIBERATELY NOT THE SAME FUNCTION as `isScoreStale` in `@vet402/sdk`
  * (packages/sdk/src/spend-guard.ts), which for a body carrying NEITHER
  * timestamp answers STALE where this one answers FRESH. The divergence is
  * kept on purpose (2026-08-22 audit — the two were flagged as "one name, two

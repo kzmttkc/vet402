@@ -1,6 +1,6 @@
 """VouchClient: thin synchronous client for the vet402 Trust API.
 
-Mirrors the TypeScript SDK (``@vouchscore/sdk``): same endpoints, same
+Mirrors the TypeScript SDK (``@vet402/sdk``): same endpoints, same
 validation, same error contract (:class:`~vet402.errors.VouchApiError` with
 the API's machine-readable code plus HTTP status).
 """
@@ -38,7 +38,7 @@ DEFAULT_API_URL = "https://vet402.com/api/v1"
 #: ``payee_trust_unavailable``.
 #:
 #: 10 s, matching the TypeScript SDK's ``DEFAULT_REQUEST_TIMEOUT_MS``. It is
-#: deliberately looser than ``@vouchscore/middleware``'s 5000 ms: the
+#: deliberately looser than ``@vet402/middleware``'s 5000 ms: the
 #: middleware answers inside somebody else's HTTP handler, while
 #: ``GET /api/v1/payees/{address}/score`` declares ``maxDuration = 30`` for a
 #: COLD score. Because the guard fails closed, a bound tighter than the

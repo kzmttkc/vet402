@@ -37,8 +37,8 @@ export default function DashboardIntegrationsPage() {
             API reference
           </a>
           {" · "}
-          <a className="underline" href="https://www.npmjs.com/package/@vouchscore/sdk">
-            npm i @vouchscore/sdk
+          <a className="underline" href="https://www.npmjs.com/package/@vet402/sdk">
+            npm i @vet402/sdk
           </a>
         </p>
       </section>
@@ -51,8 +51,8 @@ export default function DashboardIntegrationsPage() {
           <code>attest_x402_payment</code>.
         </p>
         <p className="text-sm text-zinc-700">
-          <a className="underline" href="https://www.npmjs.com/package/@vouchscore/mcp-server">
-            npm i @vouchscore/mcp-server
+          <a className="underline" href="https://www.npmjs.com/package/@vet402/mcp-server">
+            npm i @vet402/mcp-server
           </a>
           {" · "}
           <a className="underline" href="/docs/api">
@@ -67,8 +67,8 @@ export default function DashboardIntegrationsPage() {
           Middleware that blocks <code>BLOCK</code> payers and can write settlements back.
         </p>
         <p className="text-sm text-zinc-700">
-          <a className="underline" href="https://www.npmjs.com/package/@vouchscore/middleware">
-            npm i @vouchscore/middleware
+          <a className="underline" href="https://www.npmjs.com/package/@vet402/middleware">
+            npm i @vet402/middleware
           </a>
           {" · "}
           <a className="underline" href="/docs/api">

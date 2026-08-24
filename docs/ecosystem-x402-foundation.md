@@ -7,7 +7,7 @@ Participation in x402 Foundation RFCs/PRs (for example Dominions / gate hooks) i
 
 1. **Problem:** x402 proves *payment*; it does not prove *payer trust* (sybil, burner wallets, thin ERC-8004 history).
 2. **Fit:** After payment verification, call Vouch `GET /v1/wallets/{payer}/score` before serving the paid route; optionally `POST /v1/payments/x402` so settlement history strengthens future scores.
-3. **Artifacts:** [x402-integration.md](./x402-integration.md), [openapi.yaml](./openapi.yaml), `examples/x402-trust-gate`, `@vouchscore/sdk`.
+3. **Artifacts:** [x402-integration.md](./x402-integration.md), [openapi.yaml](./openapi.yaml), `examples/x402-trust-gate`, `@vet402/sdk`.
 
 ## What not to do
 

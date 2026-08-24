@@ -15,7 +15,7 @@ built during it, so judges can verify the boundary from git history alone.
   pipeline with an atomic daily budget, L2 conformance check, public receipt pages,
   hash-chained ledger (`/api/v1/observatory/anchors`), decisions feed, CSV export.
 - Scoring engine and verdict bands (ALLOW ≥70 / WARN 40–69 / BLOCK <40, fail-closed
-  SpendGuard in `@vouchscore/sdk`), MCP server `vouch-trust` with `check_*` /
+  SpendGuard in `@vet402/sdk`), MCP server `vouch-trust` with `check_*` /
   `explain_trust_score` / `attest_x402_payment` tools, Python SDK, framework adapters
   under `examples/`.
 - Everything on `main` at tag `pre-ethonline-2026` (created 2026-09-03).

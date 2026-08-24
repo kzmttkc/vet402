@@ -1,7 +1,7 @@
 """vet402 Python SDK — check a payee before your agent pays, and never pay
 without an explicit ALLOW.
 
-Semantics mirror the TypeScript SDK (``@vouchscore/sdk`` 0.2.x): fail-closed
+Semantics mirror the TypeScript SDK (``@vet402/sdk`` 0.2.x): fail-closed
 SpendGuard by default, same machine-readable reason codes, same error
 contract.
 """

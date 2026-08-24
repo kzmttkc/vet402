@@ -623,9 +623,9 @@ export default async function Home() {
                 spending agent should ask before it pays.
                 <span className="mt-3 block text-[0.8125rem] text-brand-lift">
                   On npm:{" "}
-                  <code className="break-all text-brand-deep">npm i @vouchscore/sdk</code>,{" "}
-                  <code className="break-all text-brand-deep">@vouchscore/middleware</code>,{" "}
-                  <code className="break-all text-brand-deep">@vouchscore/mcp-server</code>. The{" "}
+                  <code className="break-all text-brand-deep">npm i @vet402/sdk</code>,{" "}
+                  <code className="break-all text-brand-deep">@vet402/middleware</code>,{" "}
+                  <code className="break-all text-brand-deep">@vet402/mcp-server</code>. The{" "}
                   <code className="text-brand-deep">@vouchscore</code> scope is the only one that
                   is ours &mdash; unscoped <code>vouch-sdk</code> and{" "}
                   <code>@getvouch/sdk</code> on npm are unrelated packages by other publishers.

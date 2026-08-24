@@ -25,7 +25,7 @@ AI agents run day-to-day operation: catalog snapshots, L0 probes, L1 real-purcha
 - Settlements: on-chain tx hashes published per endpoint (Base mainnet).
 - Aggregates: public JSON at <https://vet402.com/api/v1/observatory/state>; methodology at <https://vet402.com/observatory/methodology>.
 - Mistakes: public accuracy ledger at <https://vet402.com/accuracy>.
-- Code: MIT-licensed packages (`@vouchscore/*` on npm) [+ REPO LINK IF THE PROGRAM REQUIRES SOURCE ACCESS].
+- Code: MIT-licensed packages (`@vet402/*` on npm) [+ REPO LINK IF THE PROGRAM REQUIRES SOURCE ACCESS].
 
 **6. Original-work statement (hackathon variant)**
 All hackathon-period work is new and authored during the event window by the team described above. [IF APPLICABLE: "It consumes our pre-existing public HTTP API (vet402.com) as an external, disclosed dependency; no pre-existing source code is included in the submission, and the core flow works without it."] AI assistance is disclosed above; no other party's non-public code or content is included.

@@ -121,7 +121,7 @@ flowchart TD
 | `src/lib/chain/` | viem・ERC-8004・ウォレット指標・インデクサ窓 |
 | `src/lib/db/` | Drizzleスキーマ + reader/writer |
 | `src/lib/demo/` | `/playground` のライブ検証コア（何も書き込まない） |
-| `packages/` | `@vouchscore/sdk` / `middleware` / `mcp-server` |
+| `packages/` | `@vet402/sdk` / `middleware` / `mcp-server` |
 | `examples/` | `hackathon-starter` / `agentkit-spend-guard` / `x402-trust-gate` |
 | `tests/` | `tsx --test`。DB系は `TEST_DATABASE_URL` でゲート |
 | `docs/` | 本書・OpenAPI・ランブック・申請素材（`docs/applications/`） |

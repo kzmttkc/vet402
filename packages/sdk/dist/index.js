@@ -40,7 +40,7 @@ export const DEFAULT_API_URL = "https://vet402.com/api/v1";
  * Default per-request timeout (10 s). A timeout surfaces as a lookup failure,
  * which SpendGuard denies as `payee_trust_unavailable` — fail-closed.
  *
- * WHY 10 s AND NOT THE MIDDLEWARE'S 5 s (2026-08-22). @vouchscore/middleware
+ * WHY 10 s AND NOT THE MIDDLEWARE'S 5 s (2026-08-22). @vet402/middleware
  * defaults to 5000 ms and is right to: it runs INSIDE an HTTP handler that has
  * its own deadline, so it must give the framework its answer back quickly. An
  * SDK does not necessarily run inside a request at all. Two measured facts set
@@ -195,7 +195,7 @@ export class VouchClient {
         // that accepts the connection and never answers would keep the agent
         // waiting indefinitely, neither allowing nor denying. The abort surfaces
         // as a rejection, which SpendGuard classifies `payee_trust_unavailable`.
-        // Mirrors @vouchscore/middleware's AbortSignal.timeout (core.ts); the
+        // Mirrors @vet402/middleware's AbortSignal.timeout (core.ts); the
         // different default is justified at DEFAULT_REQUEST_TIMEOUT_MS.
         const response = await this.fetchFn(`${this.apiUrl}${path}`, {
             ...init,

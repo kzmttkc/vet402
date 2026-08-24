@@ -1,7 +1,7 @@
 // verify-at-settle fast surface (node:test — run with `npm test` after build).
 //
 // 2026-08-22 (audit): docs/verify-at-settle.md claimed the caller-side
-// fail-closed reading of `cache_cold` was "exactly what @vouchscore/sdk / the
+// fail-closed reading of `cache_cold` was "exactly what @vet402/sdk / the
 // Python SDK do by default". Measured: `verdict-fast` appeared NOWHERE under
 // packages/ — the SDK only ever called /payees/{a}/score. The doc described a
 // code path that did not exist. These tests pin the path that now does, and

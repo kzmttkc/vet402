@@ -28,7 +28,7 @@
 - **未実装機能に言及しない**。各原稿末尾の「主張→実装マップ」に無い主張を足さない
   （Verilot の「未出荷誤記3回再発」の教訓）。特に保証引受（guarantee underwriting）は**休眠・env OFF**なので
   発信で一切触れない
-- SDK 名は **`@vouchscore/sdk`** / MCP は **`@vouchscore/mcp-server`**（`@vouch/sdk` は誤り）
+- SDK 名は **`@vet402/sdk`** / MCP は **`@vet402/mcp-server`**（`@vouch/sdk` は誤り）
 - 本番 URL は `https://agent-trust-tawny.vercel.app`、リポは `github.com/kzmttkc/agent-trust`
 - スコア閾値・重み・レート値を本文に書くときは実装値と一致させる（ALLOW≥70 / WARN40–69 / BLOCK<40、x402重み10%）
 

@@ -29,7 +29,7 @@ Live, MIT, independently checkable:
 - Observatory L0–L2, real USDC L1 on **Base**, failures published with the same weight
 - Public JSON: `https://vet402.com/api/v1/observatory/state`
 - Methodology, accuracy ledger, `/impact`
-- `@vouchscore/sdk` / middleware / MCP
+- `@vet402/sdk` / middleware / MCP
 - ERC-8004 **reads** + Validation Registry **dry-run** (not writes)
 - SpendGuard that **decides** and does not pay (until ETHOnline)
 

@@ -20,7 +20,7 @@
 - L0 machine verification: 1,038 published pass
 - L1 real purchases: 1,133 attempts / 496 settled, every settlement published with its Base tx hash; non-settles published with the same weight
 - Lifecycle event stream: 3,534 delists, 275 relists, 3 settle-drops
-- Open-source (MIT): `@vouchscore/sdk`, `@vouchscore/middleware`, `@vouchscore/mcp-server` on npm
+- Open-source (MIT): `@vet402/sdk`, `@vet402/middleware`, `@vet402/mcp-server` on npm
 
 ## Proposed milestones
 

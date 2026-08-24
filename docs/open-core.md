@@ -15,8 +15,8 @@ All of the following is MIT-licensed and reproducible by anyone:
 - **The full service source** — Observatory catalog sync, L0 prober, L1
   purchase runner, L2 conformance diff, scoring engine, SpendGuard verdict,
   accuracy ledger, all API routes and pages.
-- **The npm packages** — `@vouchscore/sdk`, `@vouchscore/middleware`,
-  `@vouchscore/mcp-server` (published from `packages/`).
+- **The npm packages** — `@vet402/sdk`, `@vet402/middleware`,
+  `@vet402/mcp-server` (published from `packages/`).
 - **The self-host path** — `docker compose up` brings up Postgres + the app
   (see `CONTRIBUTING.md`, `docs/deployment.md`). Nothing in the verification
   logic is held back from the self-host build.

@@ -3,7 +3,7 @@
 Answers "may my agent send this payment?" and nothing else. It never touches
 keys, funds, signing, or transaction submission — execution stays with the
 agent's own wallet stack. Semantics mirror the TypeScript SDK's ``SpendGuard``
-(``@vouchscore/sdk`` 0.2.x): fail-closed by default, same machine-readable
+(``@vet402/sdk`` 0.2.x): fail-closed by default, same machine-readable
 reason codes, same optimistic daily-budget reservation.
 """
 

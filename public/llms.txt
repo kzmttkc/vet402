@@ -76,7 +76,7 @@ Full machine-readable schema (OpenAPI 3.1, covering every public endpoint listed
 
 ## Packages
 
-On npm, all from the same repository: `@vouchscore/sdk` (spend guard), `@vouchscore/middleware` (x402 request gate), `@vouchscore/mcp-server` (MCP tool). The SDK and the middleware both default to fail-closed — only an ALLOW passes, and a WARN, a BLOCK, a degraded verdict, or a partially measured one is denied unless the caller explicitly opts out.
+On npm, all from the same repository: `@vet402/sdk` (spend guard), `@vet402/middleware` (x402 request gate), `@vet402/mcp-server` (MCP tool). The SDK and the middleware both default to fail-closed — only an ALLOW passes, and a WARN, a BLOCK, a degraded verdict, or a partially measured one is denied unless the caller explicitly opts out.
 
 ## Implemented and live
 

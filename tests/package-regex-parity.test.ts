@@ -10,8 +10,8 @@
 // WHY NOT DEDUPLICATE INSTEAD. mcp-server を sdk に依存させれば1本にできるが、
 // このリポは npm workspaces を使っておらず（root package.json に workspaces
 // フィールドが無い）、各パッケージが自前の package-lock.json を持つ。
-// つまり mcp-server から見た @vouchscore/sdk は **レジストリ上の公開版** に
-// なり、ローカルの src とずれ得る。公開バイナリ（bin: vouch-mcp）の依存を
+// つまり mcp-server から見た @vet402/sdk は **レジストリ上の公開版** に
+// なり、ローカルの src とずれ得る。公開バイナリ（bin: vet402-mcp）の依存を
 // 増やすリスクに対して、得られるのは3行の削減でしかない。
 // 依存を足さずに意図を明示する方が安全なので、「同一であること」を検査する。
 //

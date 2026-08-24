@@ -110,9 +110,9 @@ test("methodology opens with a 60-second skim", () => {
 
 test("integrations point at npm packages, not repository paths", () => {
   const page = read("src/app/dashboard/integrations/page.tsx");
-  assert.ok(page.includes("npmjs.com/package/@vouchscore/sdk"));
-  assert.ok(page.includes("npmjs.com/package/@vouchscore/mcp-server"));
-  assert.ok(page.includes("npmjs.com/package/@vouchscore/middleware"));
+  assert.ok(page.includes("npmjs.com/package/@vet402/sdk"));
+  assert.ok(page.includes("npmjs.com/package/@vet402/mcp-server"));
+  assert.ok(page.includes("npmjs.com/package/@vet402/middleware"));
   assert.ok(!page.includes("packages/sdk"));
   assert.ok(!page.includes("docs/mcp-setup.md"));
 });

@@ -1,4 +1,4 @@
-// @vouchscore/mcp-server — tool contract (node:test).
+// @vet402/mcp-server — tool contract (node:test).
 //
 // Two things this package promises the model, neither of which had a test:
 //

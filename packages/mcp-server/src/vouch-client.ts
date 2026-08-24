@@ -120,7 +120,7 @@ const AGENT_ID_RE = /^\d+$/;
  * 2026-08-13 (hackathon persona R2): this defaulted to
  * `http://localhost:3000/api/v1`. That is the right default for whoever is
  * developing this server and the wrong one for everybody who installs it: an
- * MCP client launched via `npx @vouchscore/mcp-server` with only a key set
+ * MCP client launched via `npx @vet402/mcp-server` with only a key set
  * would silently point at a port on the user's own machine and fail with a
  * connection error that names nothing. A published binary defaults to the
  * published API; local development sets the env var.
@@ -138,7 +138,7 @@ const DEFAULT_API_URL = "https://vet402.com/api/v1";
  * closed on a payee it could not check — the worst of both. A bounded failure
  * is a result; a hang is not.
  *
- * WHY 10 s AND NOT @vouchscore/middleware's 5 s: matched to the sibling SDKs
+ * WHY 10 s AND NOT @vet402/middleware's 5 s: matched to the sibling SDKs
  * (packages/sdk DEFAULT_REQUEST_TIMEOUT_MS, packages/python-sdk's 10.0 s), and
  * `GET /api/v1/payees/{address}/score` declares `maxDuration = 30` — the
  * server budgets up to 30 s for a cold score, so a tighter bound would time

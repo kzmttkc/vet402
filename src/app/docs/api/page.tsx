@@ -509,9 +509,9 @@ export default async function ApiDocsPage() {
         </p>
         <CodeBlock
           label="npm: install the vet402 packages"
-          code={`npm i @vouchscore/sdk          # spend guard for an agent about to pay
-npm i @vouchscore/middleware   # x402 request gate for an API provider
-npm i @vouchscore/mcp-server   # MCP tool, so an agent can ask before it pays`}
+          code={`npm i @vet402/sdk          # spend guard for an agent about to pay
+npm i @vet402/middleware   # x402 request gate for an API provider
+npm i @vet402/mcp-server   # MCP tool, so an agent can ask before it pays`}
         />
         <p className="text-sm text-brand-lift">
           The <code className="text-brand-deep">@vouchscore</code> scope is the only one that is
@@ -531,8 +531,8 @@ npm i @vouchscore/mcp-server   # MCP tool, so an agent can ask before it pays`}
           supply. Copy this into a <code>.mjs</code> file and it runs.
         </p>
         <CodeBlock
-          label="TypeScript: read a wallet score and a payee score with @vouchscore/sdk"
-          code={`import { createVouchClient } from "@vouchscore/sdk";
+          label="TypeScript: read a wallet score and a payee score with @vet402/sdk"
+          code={`import { createVouchClient } from "@vet402/sdk";
 
 const vouch = createVouchClient({ apiKey: process.env.VOUCH_API_KEY });
 
@@ -577,8 +577,8 @@ if (decision.allow) {
           Middleware: gate an x402 endpoint
         </h3>
         <CodeBlock
-          label="TypeScript: Express x402 gate with @vouchscore/middleware"
-          code={`import { createExpressGate } from "@vouchscore/middleware/express";
+          label="TypeScript: Express x402 gate with @vet402/middleware"
+          code={`import { createExpressGate } from "@vet402/middleware/express";
 
 // Mount AFTER x402 verification, so \`req.payer\` is set.
 app.use("/api/paid", createExpressGate({
@@ -609,19 +609,19 @@ app.use("/api/paid", createExpressGate({
             止まる。設定は packages/mcp-server/README.md の実物をそのまま写す。 */}
         <h3 className="text-base font-semibold text-brand-deep">MCP: let an agent ask before it pays</h3>
         <p className="text-sm text-brand">
-          <code>@vouchscore/mcp-server</code> exposes the score as Model Context Protocol tools, so an
+          <code>@vet402/mcp-server</code> exposes the score as Model Context Protocol tools, so an
           MCP-capable agent (Claude Desktop and other MCP clients) can check a counterparty before it
           settles. Your client launches it with <code>npx</code> — no clone, no build. Add this to the
           client config (<code>~/Library/Application&nbsp;Support/Claude/claude_desktop_config.json</code>{" "}
           on macOS, <code>%APPDATA%\Claude\claude_desktop_config.json</code> on Windows) and restart:
         </p>
         <CodeBlock
-          label="MCP client config for @vouchscore/mcp-server"
+          label="MCP client config for @vet402/mcp-server"
           code={`{
   "mcpServers": {
     "vouch-trust": {
       "command": "npx",
-      "args": ["-y", "@vouchscore/mcp-server"],
+      "args": ["-y", "@vet402/mcp-server"],
       "env": {
         "VOUCH_API_KEY": "vouch_live_your_key_here"
       }
@@ -715,7 +715,7 @@ app.use("/api/paid", createExpressGate({
           </li>
           <li>
             <strong>The default is allow-only, and that is the point.</strong>{" "}
-            <code>@vouchscore/sdk</code> and <code>@vouchscore/middleware</code> deny everything
+            <code>@vet402/sdk</code> and <code>@vet402/middleware</code> deny everything
             that is not <code>ALLOW</code> unless you opt out explicitly. The asymmetry is
             deliberate: declining a good payee costs a retry, paying a bad one is final and
             irreversible on x402.

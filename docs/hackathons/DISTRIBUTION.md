@@ -191,14 +191,16 @@ The audience this strategy is aimed at (grant scouts, ERC-8004 authors, agent fr
 | `GET /api/v1/observatory/export.csv` | 200, 180 KB, one row per L1 attempt with `tx_hash`, back to 2026-08-14 | Be the dataset other people quote. Needs a stated licence, a retrieval date, and a “how to cite vet402” block |
 | `GET /api/v1/observatory/history` | 200, daily rows per chain | A time series a third party can replot without asking us |
 | `llms.txt` (and `/.well-known/llms.txt`) | 200, 13 KB | The one file an agent reads before quoting us. Endpoints in, numbers out (numbers go stale, endpoints do not) |
-| npm `@vouchscore/mcp-server` | published, latest **0.1.1** (2026-08-21), 119 monthly / 30 weekly downloads (downloads, not people — mirrors and CI count) | The only surface with non-zero pull today |
+| npm `@vet402/sdk` · `@vet402/middleware` · `@vet402/mcp-server` | published **2026-08-24** at 0.4.0 / 0.4.0 / 0.2.0. The `@vouchscore/*` line is deprecated with a pointer, not removed. Weekly downloads on the old line before the move: 25 / 31 / 28 (downloads, not people — mirrors and CI count) | The only surface with non-zero pull today |
 
 Same law as everywhere: **publish, do not pitch.** No “integrate with us” DMs to framework maintainers; a working package and a citable dataset are the pitch.
 
-Two open defects here — facts, not opinions:
+Both defects found here on 2026-08-24 are **closed**, and the record is kept because the shape recurs:
 
-1. **The package still ships as Vouch.** Name `@vouchscore/mcp-server`, bin `vouch-mcp` — a direct contradiction of §0 (“keep posting as Vouch” is on the forbidden list, and shipping as Vouch is louder than posting as Vouch). A rename breaks existing installs, so the fix is a `@vet402/mcp-server` publish plus a deprecation pointer on the old name, not a silent rename.
-2. **This week’s strongest trust artifact is not distributed.** The fail-closed decision types (`decision` / `safe_to_pay` / `refuse_reasons`, commit `af034e5`, 2026-08-23) are in git; npm latest is still 0.1.1 from 08-21. Shipping it is worth more than any post in §4 this month.
+1. **The package shipped as Vouch** (`@vouchscore/mcp-server`, bin `vouch-mcp`) — a contradiction of §0 louder than any post. Fixed by publishing the `@vet402/*` line and deprecating the old one with a message that names the successor; existing installs keep working, and `vet402-mcp` ships alongside the old `vouch-mcp` bin for the same reason.
+2. **The strongest trust artifact was not distributed.** The fail-closed decision types (`decision` / `safe_to_pay` / `refuse_reasons`, commit `af034e5`) sat in git while npm served 0.1.1 from 08-21. They are in `@vet402/mcp-server` 0.2.0.
+
+The rule the two share: **a repository is not a distribution channel.** Something is distributed when the thing a stranger installs, or a machine reads, has changed — not when the commit lands. Every entry in this table gets checked against that, not against the git log.
 
 npm publish is an external publication: owner approval, then a human release with the version and the changelog line stated up front.
 

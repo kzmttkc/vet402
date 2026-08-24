@@ -11,9 +11,9 @@
 | # | 資産 | 現状 (2026-08-20 実測) | 名義/管理主体 | 所有の証明方法（第三者が検証できる手順） |
 |---|---|---|---|---|
 | 1 | ドメイン `vet402.com` | 取得済み・稼働中（本番サイト）。登録 2026-08-12、期限 **2027-08-12**、レジストラ **Porkbun LLC**（whois実測） | KIZUNA Creation（Porkbunアカウント） | `whois vet402.com`（Registrar/Creation/Expiry）＋Porkbunダッシュボードのログイン実演。DNS変更権限の実演（TXTレコード追加）が最終証明 |
-| 2 | npm `@vouchscore/sdk` | **v0.3.0 公開済み**（`npm view @vouchscore/sdk version` 実測） | npmアカウント（publish権限保持者） | `npm view @vouchscore/sdk` の maintainers 表示＋新バージョンのpublish実演。リポ内 `packages/` との対応 |
-| 3 | npm `@vouchscore/middleware` | **v0.3.0 公開済み**（同上実測） | 同上 | 同上 |
-| 4 | npm `@vouchscore/mcp-server` | **v0.1.1 公開済み**（同上実測） | 同上 | 同上 |
+| 2 | npm `@vet402/sdk` | **v0.3.0 公開済み**（`npm view @vet402/sdk version` 実測） | npmアカウント（publish権限保持者） | `npm view @vet402/sdk` の maintainers 表示＋新バージョンのpublish実演。リポ内 `packages/` との対応 |
+| 3 | npm `@vet402/middleware` | **v0.3.0 公開済み**（同上実測） | 同上 | 同上 |
+| 4 | npm `@vet402/mcp-server` | **v0.1.1 公開済み**（同上実測） | 同上 | 同上 |
 | 5 | npm org/scope `@vet402` | **未取得**（2026-08-20 実測: `registry.npmjs.org/@vet402/…` は404＝スコープ配下パッケージ無し。org頁は403でorg存在自体は未確定）。**取得はTakeshi手番（TODO）** | — | 取得後: npm orgの管理画面＋`npm org ls vet402`。取得前に第三者に取られるリスクがある点に注意（squatting） |
 | 6 | X (Twitter) アカウント `@vet_402` | 運用中（製品公式） | KIZUNA Creation（ペルソナ運用） | アカウントへのログイン実演／プロフィールからvet402.comへの相互リンク（サイト側フッターに逆リンクがあること） |
 | 7 | GitHub リポジトリ `kzmttkc/vet402` | 稼働中（このリポの origin。`git remote -v` 実測: `https://github.com/kzmttkc/vet402.git`） | GitHubアカウント `kzmttkc` | リポのAdmin画面実演／`kzmttkc` としての署名付きコミット。コミット履歴の連続性がそのまま開発事実の証明になる |

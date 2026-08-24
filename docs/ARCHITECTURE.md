@@ -98,9 +98,9 @@ flowchart LR
     chain --> ENGINE
     ENGINE --> VERDICT[verdict.ts<br/>ALLOW / DENY]
     VERDICT --> API["/api/v1/scores, /payees"]
-    API --> SDK["@vouchscore/sdk"]
-    API --> MW["@vouchscore/middleware"]
-    API --> MCP["@vouchscore/mcp-server"]
+    API --> SDK["@vet402/sdk"]
+    API --> MW["@vet402/middleware"]
+    API --> MCP["@vet402/mcp-server"]
     SDK --> AGENT[agent: check trust<br/>BEFORE paying]
 ```
 
@@ -152,7 +152,7 @@ flowchart LR
 | `src/lib/chain/` | viem client, ERC-8004, wallet metrics, indexer windows |
 | `src/lib/db/` | Drizzle schema + writers/readers |
 | `src/lib/demo/` | `/playground` live-verification core (writes nothing) |
-| `packages/` | `@vouchscore/sdk`, `@vouchscore/middleware`, `@vouchscore/mcp-server` |
+| `packages/` | `@vet402/sdk`, `@vet402/middleware`, `@vet402/mcp-server` |
 | `examples/` | `hackathon-starter`, `agentkit-spend-guard`, `x402-trust-gate` |
 | `tests/` | `tsx --test`; DB-backed tests gate on `TEST_DATABASE_URL` |
 | `docs/` | This file, OpenAPI spec, runbooks, grant materials (`docs/applications/`) |

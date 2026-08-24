@@ -13,7 +13,7 @@ vet402 は x402 エンドポイントが実際に売っているものを**実�
 - 観測所（毎日の実測）: <https://vet402.com/observatory>
 - 集計JSON: <https://vet402.com/api/v1/observatory/state>
 
-> **旧称 Vouch。** npm スコープ（`@vouchscore/*`）と API キー接頭辞（`vouch_`）は
+> **旧称 Vouch。** npm スコープ（`@vet402/*`）と API キー接頭辞（`vouch_`）は
 > 後方互換のため旧名のまま。
 
 ## 何が他と違うか
@@ -34,9 +34,9 @@ vet402 は x402 エンドポイントが実際に売っているものを**実�
 ## 使う（顧客として）
 
 ```bash
-npm i @vouchscore/sdk          # TypeScript APIクライアント
-npm i @vouchscore/middleware   # x402トランザクションゲート（Express / Next.js / Hono）
-npm i @vouchscore/mcp-server   # Cursor / Claude Desktop向けMCPツール
+npm i @vet402/sdk          # TypeScript APIクライアント
+npm i @vet402/middleware   # x402トランザクションゲート（Express / Next.js / Hono）
+npm i @vet402/mcp-server   # Cursor / Claude Desktop向けMCPツール
 ```
 
 APIキーは <https://vet402.com/signup>（無料枠 1,000 lookups/月・カード不要）。
