@@ -45,6 +45,9 @@ def fetch():
         "baseSharePct": round(100 * base.get("totalEndpoints", 0) / mainnet_total, 1),
         "settleRatePct": round(100 * l1["settled"] / l1["attempts"], 1),
         "coverage7dPct": s["coverage7d"]["pct"],
+        "solTotal": by.get("Solana", {}).get("totalEndpoints"),
+        "solActive": by.get("Solana", {}).get("activeEndpoints"),
+        "solPass": by.get("Solana", {}).get("publishedPass"),
     }
 
 
@@ -66,18 +69,92 @@ Footer to paste: *Figures retrieved from /api/v1/observatory/state on {today}.*
 """
 
 
-# (regex, live key) — every match in a doc must equal the live value.
+# (regex, [live keys — one per capture group]) — every match must equal the live value(s).
 ANCHORS = [
-    (r"([\d,]{3,})\s+(?:real\s+)?(?:purchase\s+)?attempts\b(?!\s+that did not settle)", "attempts"),
-    (r"([\d,]{3,})\s+settled\b", "settled"),
-    (r"([\d,]{3,})\s+(?:non-settles|attempts that did not settle)\b", "nonsettled"),
-    (r"([\d,]{3,})\s+endpoints? (?:vet402 tracks|tracked|have appeared)\b", "total"),
-    (r"([\d,]{3,})\s+delist events\b", "delistEvents"),
-    (r"([\d,]{3,})\s+relists\b", "relistEvents"),
-    (r"latest:? (\d{4}-\d{2}-\d{2})", "snapshotDate"),
-    (r"Latest (\d{4}-\d{2}-\d{2})", "snapshotDate"),
+    (r"([\d,]{3,})\s+(?:real\s+)?(?:purchase\s+)?attempts\b(?!\s+that did not settle)", ["attempts"]),
+    (r"([\d,]{3,})\s+settled\b", ["settled"]),
+    (r"([\d,]{3,})\s+(?:non-settles|attempts that did not settle)\b", ["nonsettled"]),
+    (r"([\d,]{3,})\s+endpoints? (?:vet402 tracks|tracked|have appeared)\b", ["total"]),
+    (r"([\d,]{3,})\s+delist events\b", ["delistEvents"]),
+    (r"([\d,]{3,})\s+relists\b", ["relistEvents"]),
+    (r"latest:? (\d{4}-\d{2}-\d{2})", ["snapshotDate"]),
+    (r"Latest (\d{4}-\d{2}-\d{2})", ["snapshotDate"]),
+    (r"([\d,]{3,}) \(([\d,]{3,}) active, ([\d,]{3,}) delisted\)", ["total", "active", "delisted"]),
+    (r"([\d,]{3,}) published \(([\d,]{3,}) not machine-checkable", ["pass", "unverified"]),
+    (r"only ([\d,]{3,}) currently have a machine-verified L0 pass; ([\d,]{3,}) are", ["pass", "unverified"]),
+    (r"\"([\d,]{3,}) listed\" and \"([\d,]{3,}) active with ([\d,]{3,}) machine-verified live\"", ["total", "active", "pass"]),
+    (r"([\d,]{3,}) endpoints fetched", ["snapshotFetched"]),
+    (r"([\d,]{3,}) fetched\)", ["snapshotFetched"]),
+    (r"\*\*([\d,]{3,}) are on Base mainnet\*\* \(mainnet-only chain breakdown\) — ([\d,]{3,}) of them currently active, and ([\d.]+)% of every mainnet endpoint", ["baseTotal", "baseActive", "baseSharePct"]),
+    (r"\| \*\*Base\*\* \| \*\*([\d,]{3,})\*\* \| \*\*([\d,]{3,})\*\* \| \*\*([\d,]{3,})\*\* \|", ["baseTotal", "baseActive", "basePass"]),
+    (r"\(after Base at ([\d,]{3,})\)", ["baseTotal"]),
+    (r"Base ([\d,]{3,}) · Solana", ["baseTotal"]),
+    (r"of which ([\d,]{3,}) settled \(([\d.]+)%\)", ["settled", "settleRatePct"]),
+    (r"L0 machine verification: ([\d,]{3,}) published pass", ["pass"]),
+    (r"catalog tracking: ([\d,]{3,}) endpoints \(([\d,]{3,}) active\)", ["total", "active"]),
+    (r"L1 real purchases: ([\d,]{3,}) attempts / ([\d,]{3,}) settled", ["attempts", "settled"]),
+    (r"Lifecycle event stream: ([\d,]{3,}) delists, ([\d,]{3,}) relists", ["delistEvents", "relistEvents"]),
+    (r"([\d,]{3,}) delists · ([\d,]{3,}) relists · (\d+) settle-drops", ["delistEvents", "relistEvents", "settleDrops"]),
+    (r"\(([\d,]{3,}) delists, ([\d,]{3,}) relists recorded\)", ["delistEvents", "relistEvents"]),
+    (r"([\d,]{3,}) endpoints have appeared; ([\d,]{3,}) are currently delisted", ["total", "delisted"]),
+    (r"([\d,]{3,}) endpoints, ([\d,]{3,}) of them on Base", ["total", "baseTotal"]),
+    (r"attempts across ([\d,]{3,}) (?:distinct )?endpoints", ["endpointsAttempted"]),
+    (r"([\d,]{3,}) endpoints are currently delisted", ["delisted"]),
+    (r"relists, and (\d+) settle-drops", ["settleDrops"]),
+    (r"\| Solana \| ([\d,]+) \| ([\d,]+) \| ([\d,]+) \|", ["solTotal", "solActive", "solPass"]),
+    (r"The next-largest chain, Solana, has ([\d,]+)\.", ["solTotal"]),
 ]
 
+
+def fmt(v):
+    return v if isinstance(v, str) else (f"{v:,}" if isinstance(v, int) else str(v))
+
+
+def rewrite(f, today):
+    """--write: patch every anchored figure to the live value, then re-stamp the date."""
+    changed = []
+    for p in sorted(DOCS.glob("*.md")):
+        if p.name in SKIP:
+            continue
+        s0 = p.read_text()
+        s = s0
+        for rx, keys in ANCHORS:
+            def sub(m):
+                # rebuild by span, never by str.replace — a value like "3" also
+                # occurs inside "3,876" and would corrupt the neighbouring number
+                out, base = [], m.start(0)
+                cursor = 0
+                for gi, key in enumerate(keys, start=1):
+                    a, b = m.start(gi) - base, m.end(gi) - base
+                    out.append(m.group(0)[cursor:a])
+                    out.append(fmt(f[key]))
+                    cursor = b
+                out.append(m.group(0)[cursor:])
+                return "".join(out)
+            s = re.sub(rx, sub, s)
+        s = re.sub(r"(Figures retrieved from [^ ]+ on )\d{4}-\d{2}-\d{2}", r"\g<1>" + today, s)
+        s = re.sub(r"(Pre-grant figures retrieved from [^ ]+ on )\d{4}-\d{2}-\d{2}", r"\g<1>" + today, s)
+        s = re.sub(r"(checked )\d{4}-\d{2}-\d{2}", r"\g<1>" + today, s)
+        if s != s0:
+            p.write_text(s)
+            changed.append(p.name)
+    print("rewrote: " + (", ".join(changed) if changed else "nothing"))
+    return 0
+
+
+
+def unanchored(f, ):
+    """Numbers the anchors never look at are the checker's blind spot. Flag them."""
+    live = {fmt(v) for v in f.values() if isinstance(v, int)}
+    out = []
+    for p in sorted(DOCS.glob("*.md")):
+        if p.name in SKIP:
+            continue
+        for i, line in enumerate(p.read_text().splitlines(), 1):
+            for m in re.finditer(r"(?<![$\d.])\b\d{1,3}(?:,\d{3})+\b", line):
+                if m.group(0) not in live:
+                    out.append(f"{p.name}:{i}  {m.group(0)} matches no live value — anchor it or remove it")
+    return out
 
 def check(f, today):
     bad = []
@@ -85,15 +162,16 @@ def check(f, today):
         if p.name in SKIP:
             continue
         for i, line in enumerate(p.read_text().splitlines(), 1):
-            for rx, key in ANCHORS:
+            for rx, keys in ANCHORS:
                 for m in re.finditer(rx, line):
-                    got, want = m.group(1), f[key]
-                    want_s = want if isinstance(want, str) else f"{want:,}"
-                    if got.replace(",", "") != want_s.replace(",", ""):
-                        bad.append(f"{p.name}:{i}  {key}: doc says {got}, live is {want_s}")
+                    for gi, key in enumerate(keys, start=1):
+                        got, want_s = m.group(gi), fmt(f[key])
+                        if got.replace(",", "") != want_s.replace(",", ""):
+                            bad.append(f"{p.name}:{i}  {key}: doc says {got}, live is {want_s}")
         foot = re.search(r"Figures retrieved from [^ ]+ on (\d{4}-\d{2}-\d{2})", p.read_text())
         if foot and foot.group(1) != today:
             bad.append(f"{p.name}  retrieval date {foot.group(1)} is not today ({today})")
+    bad += unanchored(f)
     if bad:
         print("STALE — do not submit until fixed:")
         for b in bad:
@@ -106,6 +184,9 @@ def check(f, today):
 if __name__ == "__main__":
     figures = fetch()
     today = datetime.date.today().isoformat()
+    if "--write" in sys.argv:
+        rewrite(figures, today)
+        sys.exit(check(figures, today))
     if "--check" in sys.argv:
         sys.exit(check(figures, today))
     print(block(figures, today))

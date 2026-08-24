@@ -13,8 +13,8 @@ Base is **not** an ETHOnline 2026 partner (`../ethonline-2026/PRIZES.md`, measur
 
 | # | Field | Answer |
 |---|---|---|
-| 1 | Email * | owner's email — typed by the owner at submission, not stored in this public repo |
-| 2 | Nominator Name * | owner's name (self-nomination; the post permits nominating "someone", and the project is the builder) |
+| 1 | Email * | the owner's contact address (known internally; not written into this public repo) |
+| 2 | Nominator Name * | `Kazumoto Takeshi` — the owner, self-nominating (`steering/business-facts.md`: sole proprietor, trading as KIZUNA Creation) |
 | 3 | Project Name * | `vet402` |
 | 4 | Project URL * | `https://vet402.com` |
 | 5 | Project Twitter * | `@vet_402` |
@@ -27,9 +27,9 @@ Base is **not** an ETHOnline 2026 partner (`../ethonline-2026/PRIZES.md`, measur
 | 12 | Multimedia Assets License Agreement * | tick (authorizes Coinbase to use submitted materials — acceptable: every asset we would submit is already public) |
 | 13 | Marketing opt-in | owner's choice |
 
-## Answer to Q10 (148 words, checked)
+## Answer to Q10 (149 words, checked 2026-08-25)
 
-> vet402 is the only public record of whether Base x402 endpoints actually deliver after they are paid. We buy: 1,133 real USDC purchases on Base mainnet across 865 endpoints, 496 settled, each published with its transaction hash — and the 637 that did not settle published on the same pages, with the same weight. We track the whole catalog (18,372 endpoints, 17,941 of them on Base) with daily snapshots, so builders can see what disappeared, not only what exists. It is live, MIT-licensed and free: SDK, middleware, MCP server, and a public JSON API anyone can curl. We sell nothing on the catalog we measure, so no seller can pay for a better result. Base is where the agent economy is already transacting; this is the independent evidence layer that lets agents pay it without paying blind. Every number above is checkable today, by anyone, without trusting us.
+> vet402 is the only public record of whether Base x402 endpoints actually deliver after they are paid. We buy: 1,233 real USDC purchases on Base mainnet across 886 endpoints, 531 settled, each published with its transaction hash — and the 702 that did not settle published on the same pages, with the same weight. We track the whole catalog (18,832 endpoints, 18,363 of them on Base) with daily snapshots, so builders can see what disappeared, not only what exists. It is live, MIT-licensed and free: SDK, middleware, MCP server, and a public JSON API anyone can curl. We sell nothing on the catalog we measure, so no seller can pay for a better result. Base is where the agent economy is already transacting; this is the independent evidence layer that lets agents pay it without paying blind. Every number above is checkable today, by anyone, without trusting us.
 
 Figures are 2026-08-23. **Re-run `python3 scripts/grant-figures.py --check` on the submission day and re-paste; a stale number in a verification project's own application is the worst possible first impression.**
 
