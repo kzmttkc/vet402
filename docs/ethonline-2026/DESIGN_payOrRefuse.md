@@ -39,8 +39,17 @@ type PayPolicy = {
   maxAmountUnits?: bigint;      // 既定 1_000_000（= $1 USDC）
   requireChain?: string;        // 既定 "eip155:8453"
   requireAsset?: string;        // 既定 Base 正規 USDC
+  /**
+   * 払う側の条件（World「AgentKit Continuity」$3,500 に正面から当たる枠・2026-08-25 追加）。
+   * 人間裏付けのあるエージェントにだけ上限を上げる: 未証明なら既定上限、AgentKit の
+   * 人間裏付け認可を提示できたときだけ上限を引き上げる。動詞は増えず、条件が1つ増えるだけ。
+   */
+  payer?: { requireHumanBacked?: boolean; raisedCeilingUnits?: bigint };
 };
 ```
+
+`payer.requireHumanBacked` を満たさないときの拒否理由は `payer_not_human_backed`。
+既存の agent 面（`/api/v1/agents/*`・agent passports）が AgentBook の登録/解決に対応する。
 
 `payOrRefuse` は、**すべての条件を通過したときにだけ** signer を呼ぶ。
 1つでも欠ければ署名前に返る（RPC send も `signTypedData` も facilitator settle もゼロ）。

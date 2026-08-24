@@ -262,16 +262,20 @@ Each prize comment: 4 sentences — what existed, what `payOrRefuse` added, whic
 
 ## 8. Video (2–4 minutes)
 
+**2026-08-25 更新。** 30件測って 30/30 が WARN だった以上、「BLOCK だから止める」は撮れない
+（[`fixtures.md`](./fixtures.md)・[`DESIGN_payOrRefuse.md`](./DESIGN_payOrRefuse.md)）。
+
 | t | Screen | Say |
 |---|---|---|
 | 0:00–0:15 | vet402.com + `/observatory` | We already buy. We already publish failures. That is not this submission. |
 | 0:15–0:35 | `git log pre-ethonline-2026..ethonline-2026` | Continuity boundary. Only these commits are new. |
-| 0:35–1:20 | Terminal: `run.ts block` | Agent tries to pay. SpendGuard is BLOCK. **No signature.** Reasons on screen. `/decisions` row `source: agent-demo`. |
-| 1:20–2:20 | Terminal: `run.ts allow` → Base explorer | ALLOW. One `exact` payment. Tx hash. Attest. Same feed, paid row. |
-| 2:20–2:50 | SDK snippet: signer behind `if (decision.allow)` | The payment path is unreachable otherwise. That is the primitive. |
-| 2:50–3:20 | Close | Independent verification, now a pay-or-refuse handle. |
+| 0:35–1:20 | Terminal: `run.ts catalog` | 既定 policy をライブのカタログに当てる。**署名0件**。スコアが甘いからではない——**独立した受領証拠が誰にも無い**から止まる。理由は機械可読の1語で出る。 |
+| 1:20–2:20 | Terminal: `run.ts pay` → Base explorer | 開示した evidence policy（21日で3件以上・settle率0.9以上）。48/48 settled の相手に **1件だけ** `exact` で払う。tx hash → attest → `/decisions` の `source: agent-demo`。同じ policy が 0/77 の相手を署名前に拒む。 |
+| 2:20–2:50 | SDK snippet: signer は policy 通過後にしか渡らない | 拒否のとき signer はそもそも呼べない。それがこの原始命令。 |
+| 2:50–3:20 | Close | 買い手の規則を明示にし、我々自身の配達台帳が裏付けたときだけ払った。 |
 
-If ALLOW has no tx: extend the BLOCK segment; say “payment is implemented and fail-closed; live settle is not claimed.” Do not show a mocked hash.
+支払いが撮れなかった場合: `run.ts catalog` の尺を伸ばし、「payment is implemented and fail-closed;
+live settle is not claimed」と言う。モックのハッシュは出さない。
 
 ---
 
