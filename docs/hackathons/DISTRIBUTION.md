@@ -130,6 +130,13 @@ Warpcast channel: `/base` or `/x402` only when the weekly facts are on-topic; ot
 
 Use `docs/marketing/articles/ethereum-magicians-erc8004-trust-layer.md` after Takeshi updates names/URLs to vet402.com and the current repo. Category: existing ERC-8004 thread if live, else Primordial Soup.
 
+**Posted 2026-08-25** — post #380 in the live *ERC-8004: Trustless Agents* thread (25098), not a new topic, because the thread was live and the canon says join it. It answered the question the thread was actually on (#377–379: slashing needs an outcome that is independently checkable) with the measurement we alone have: 18,832 tracked / 15,275 listed, 1,233 paid attempts and 531 settled, and — carrying the same weight — 0 ALLOW out of 17 known-good addresses, i.e. our own band is uncalibrated and we said so. Verified anonymously afterwards: visible, not hidden, not flagged.
+
+Two constraints that will bite the next post there, both measured that day:
+
+- **The account is `Sen_Vouch` and cannot be renamed** (Discourse's rename window has closed). The bio already says vet402, and the post opens by naming the rename rather than hoping nobody checks. Do not let this become a reason to open a second account — one account with history beats a clean handle with none.
+- **It is trust level 0, so links are rejected outright** (“Sorry, you can't include links in your posts”). Write URLs as inline code instead. TL1 comes from reading, not posting, so the fix is to read the forum, not to post more.
+
 **Never auto.** Never a second “launch” thread. Never a signup link in the body. One repo link at the end. Answer questions; do not “circle back with a blog.”
 
 ### 4.4 Discord (x402, ETHGlobal, Base)
