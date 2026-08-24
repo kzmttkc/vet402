@@ -58,10 +58,15 @@ L1 で1度も settle しない payee は、それだけでは BLOCK にならな
 | `0x76a672eee56d29d475b0715cc03b8c99d70ec8a2` | 77 / **0** | **69 WARN**（thin cap） | api.sirenic.eu 系 |
 | `0xffc458db291b4abce020fe3de4f91f2770e537b1` | 13 / **0** | **52 WARN** | api.aidress.ai 系 |
 
-→ **BLOCK (<40) の実在フィクスチャはまだ手元に無い。** 会期前に、drain/wallet-health で
-実際に40を切る payee を本番面で探す（B1 の残り）。見つからなければ、動画の「拒否」は
-BLOCK ではなく **WARN による拒否**（＝ allow-only policy が効いている絵）で撮る。
-偽の BLOCK は作らない。
+**2026-08-25 追測（30件・本番面）: BLOCK は1件も出なかった。**
+settle する相手・1度もしない相手・delisted・直近10日に初出の若いwallet を横断して30件採点し、
+**30/30 が WARN**（最低 41・最高 69・cap の 69 が最頻）。つまり本番の買い手向け判定は今日、
+**事実上ひとつの値しか返していない**。ALLOW は構造的に出ず、BLOCK も観測されない。
+
+→ BLOCK フィクスチャは作れない。動画の「拒否」は BLOCK ではなく
+**policy による拒否**で撮る（設計は [`DESIGN_payOrRefuse.md`](./DESIGN_payOrRefuse.md)）。
+偽の BLOCK は作らない。40 に最も近いのは `0x04ad1362…`(41) と `0x01b34d04…`(43) で、
+会期までに 40 を割る可能性はあるので 09-04 / 09-09 / 09-12 に再測する。
 
 ## 3. ALLOW 候補（＝ L1 が実際に settle している endpoint。現状はどれも WARN）
 
