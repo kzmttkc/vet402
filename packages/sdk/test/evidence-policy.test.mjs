@@ -307,3 +307,19 @@ test("evidence: requireEvidence は evidence policy 以外では受け付けな�
     /invalid_policy_requireEvidence/,
   );
 });
+
+test("evidence: 構築後に呼び手が下限オブジェクトを書き換えても、関門は緩まない", async () => {
+  // 資金経路なので、設定は構築時に確定させる。共有参照のままだと
+  // `floors.minL1Deliveries = 0` の一行で全 WARN が素通りする。
+  const floors = { minL1Deliveries: 100 };
+  const guard = new SpendGuard(
+    { trustPolicy: "evidence", requireEvidence: floors },
+    fetcher(), // l1DeliveryCount: 48 — 100 には届かない
+  );
+
+  floors.minL1Deliveries = 0;
+
+  const decision = await guard.evaluate({ payee: PAYEE, amountUsd: 1 });
+  assert.equal(decision.allow, false, "構築後の書き換えで関門が消えた");
+  assert.deepEqual(decision.reasons, ["payee_insufficient_evidence"]);
+});

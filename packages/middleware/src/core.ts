@@ -370,6 +370,13 @@ export function createTrustGate(config: VouchGateConfig): TrustGate {
       );
     }
   }
+  // Snapshot the floors: holding the caller's object by reference would let
+  // `floors.minL1Deliveries = 0` AFTER construction open the gate to every
+  // WARN. On a payment path, config is fixed at construction time.
+  const requireEvidence: GateEvidenceFloors | undefined =
+    config.requireEvidence !== undefined
+      ? Object.freeze({ ...config.requireEvidence })
+      : undefined;
   // blockOn/warnOn silently ignored under a non-custom policy would be a
   // config the integrator believes is in force but is not — fail loud instead.
   if (policy !== "custom" && (config.blockOn !== undefined || config.warnOn !== undefined)) {
@@ -464,7 +471,9 @@ export function createTrustGate(config: VouchGateConfig): TrustGate {
     // earn its way into the allowed band. BLOCK never reaches here as an
     // allow — it is in blockOn below, and evidence does not overturn a refusal.
     if (policy === "evidence" && recommendation === "WARN") {
-      if (!meetsEvidenceFloors(body, config.requireEvidence ?? {})) {
+      // Defence in depth: validation guarantees floors exist under this
+      // policy. "No floors" must read as "nothing cleared them", not a pass.
+      if (requireEvidence === undefined || !meetsEvidenceFloors(body, requireEvidence)) {
         return {
           action: "block",
           recommendation,

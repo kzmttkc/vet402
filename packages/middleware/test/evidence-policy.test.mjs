@@ -209,3 +209,20 @@ test("evidence: requireEvidence は evidence policy 以外では受け付けな�
     VouchGateError,
   );
 });
+
+test("evidence: 構築後に呼び手が下限オブジェクトを書き換えても、関門は緩まない", async () => {
+  const floors = { minL1Deliveries: 100 };
+  const gate = createTrustGate({
+    ...CFG,
+    scoreSource: "payee",
+    policy: "evidence",
+    requireEvidence: floors,
+    fetch: scoreFetch(payeeBody()), // l1DeliveryCount: 48
+  });
+
+  floors.minL1Deliveries = 0;
+
+  const d = await gate.evaluate(ADDR);
+  assert.equal(d.action, "block", "構築後の書き換えで関門が消えた");
+  assert.equal(d.reason, "insufficient_evidence");
+});

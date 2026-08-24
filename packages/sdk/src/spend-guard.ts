@@ -408,7 +408,16 @@ export class SpendGuard {
     now: () => Date = () => new Date(),
   ) {
     assertPolicy(policy);
-    this.policy = { ...policy };
+    // Snapshot the evidence floors. `{ ...policy }` is shallow, so keeping the
+    // caller's object by reference would let `floors.minL1Deliveries = 0`
+    // AFTER construction silently open the gate to every WARN — on a money
+    // path, config is fixed at construction time.
+    this.policy = {
+      ...policy,
+      ...(policy.requireEvidence !== undefined
+        ? { requireEvidence: Object.freeze({ ...policy.requireEvidence }) }
+        : {}),
+    };
     this.fetchPayeeScore = fetchPayeeScore;
     this.now = now;
     this.currentDay = this.utcDay();
@@ -499,11 +508,14 @@ export class SpendGuard {
             // BLOCK is never purchasable with evidence. Evidence explains a
             // WARN; it does not overturn a refusal.
             reasons.push("payee_recommendation_block");
-          } else if (
-            payeeScore.recommendation !== "ALLOW" &&
-            !meetsEvidenceFloors(payeeScore, this.policy.requireEvidence ?? {})
-          ) {
-            reasons.push("payee_insufficient_evidence");
+          } else if (payeeScore.recommendation !== "ALLOW") {
+            // Defence in depth: assertPolicy guarantees floors exist under this
+            // policy, so a missing one here means something went wrong — and
+            // "no floors" must read as "nothing cleared them", not as a pass.
+            const floors = this.policy.requireEvidence;
+            if (floors === undefined || !meetsEvidenceFloors(payeeScore, floors)) {
+              reasons.push("payee_insufficient_evidence");
+            }
           }
         } else if (trustPolicy === "block-only") {
           if (payeeScore.degraded === true) {
