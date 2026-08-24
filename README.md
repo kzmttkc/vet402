@@ -275,3 +275,15 @@ examples/
 ## License
 
 [MIT](./LICENSE) © KIZUNA Creation. The published `@vet402/*` packages carry the same license.
+
+The **measurements** are licensed separately: [CC BY 4.0](./LICENSE-DATA) — the observatory
+snapshot (`/api/v1/observatory/state`), the daily series (`/api/v1/observatory/history`) and the
+L1 purchase ledger (`/api/v1/observatory/export.csv`) may be redistributed and built on,
+commercially or not, provided the source is named:
+
+> KIZUNA Creation. vet402 observatory. Dataset, retrieved YYYY-MM-DD.
+> https://vet402.com/api/v1/observatory/state
+
+The retrieval date is part of the citation — every one of these numbers moves. The JSON carries
+`license` / `retrievedAt` / `cite` in the body; the CSV carries them in `x-vet402-*` and `Link`
+response headers.

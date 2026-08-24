@@ -60,6 +60,16 @@ Verification proves control of a wallet or an agent identity by signature. It is
 
 Send `Authorization: Bearer <key>`. Quotas and burst limits: https://vet402.com/docs/api#rate-limits
 
+## Open data — no key, and quotable
+
+Three endpoints need no authentication and are published under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/): reuse, redistribute, chart or republish them, commercially or not, provided the source is named. The code is MIT; the data licence is separate and is in LICENSE-DATA in the repository.
+
+- `GET /api/v1/observatory/state` — the aggregate snapshot. Carries `license`, `licenseUrl`, `retrievedAt` and `cite` in the body. Top-level totals include testnets; `byChain` is mainnet-only (`byChainScope`), so `sum(byChain)` can be below `totalEndpoints`.
+- `GET /api/v1/observatory/history` — the daily series per chain.
+- `GET /api/v1/observatory/export.csv?days=90` — the L1 purchase ledger, one row per paid attempt with its tx hash. Licence, retrieval time, row count and window are in the `x-vet402-*` and `Link` response headers, because a CSV has nowhere to put a comment.
+
+Cite as: KIZUNA Creation. vet402 observatory. Dataset, retrieved YYYY-MM-DD. https://vet402.com/api/v1/observatory/state — the retrieval date is not optional; every one of these numbers moves. Method, denominators and what each status means: https://vet402.com/observatory/methodology
+
 - `GET /api/v1/payees/{address}/score` — the buyer-side question: should this payee be paid?
 - `GET /api/v1/wallets/{address}/score` — trust score by wallet address (the path x402 middleware uses)
 - `GET /api/v1/agents/{agentId}/score` — trust score by ERC-8004 agent ID (optional `?wallet=` verifies the registered wallet; optional `?chain=` selects an enabled chain, default Base)

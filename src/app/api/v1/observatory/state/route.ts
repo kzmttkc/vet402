@@ -56,6 +56,12 @@ export async function GET(request: NextRequest) {
           "Aggregate L0/L1 measurements over the public x402 discovery catalog. Facts with denominators, not an assessment of any operator. 'unverified' means not machine-checkable, not dead. Top-level totals include testnets; byChain is mainnet-only (byChainScope), so sum(byChain) can be below totalEndpoints.",
         humanReadable: "https://vet402.com/observatory/state",
         methodology: "https://vet402.com/observatory/methodology",
+        // 引用されて初めて配布になる。ライセンスと取得日を本文に入れておかないと、
+        // 機械が引いた数字は出所を失う（2026-08-25）。
+        license: "CC-BY-4.0",
+        licenseUrl: "https://creativecommons.org/licenses/by/4.0/",
+        retrievedAt: new Date().toISOString(),
+        cite: "KIZUNA Creation. vet402 observatory. Dataset, retrieved {retrievedAt}. https://vet402.com/api/v1/observatory/state",
       },
       {
         headers: {

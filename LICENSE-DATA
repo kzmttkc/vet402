@@ -1,0 +1,36 @@
+vet402 observatory data — Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+WHAT THIS COVERS
+  The measurements published by vet402: the aggregate snapshot at
+  /api/v1/observatory/state, the daily series at /api/v1/observatory/history,
+  the L1 purchase ledger at /api/v1/observatory/export.csv, and the same facts
+  as rendered on the public observatory pages.
+
+  It does not cover the source code in this repository, which is MIT (see
+  LICENSE), and it does not cover third-party content that the catalog merely
+  points at.
+
+WHAT YOU MAY DO
+  Share and adapt the data for any purpose, including commercially, provided
+  you name the source. Full terms: https://creativecommons.org/licenses/by/4.0/
+
+HOW TO ATTRIBUTE
+  KIZUNA Creation. vet402 observatory. Dataset, retrieved YYYY-MM-DD.
+  https://vet402.com/api/v1/observatory/state
+
+  The retrieval date is part of the citation, not an optional extra. Every
+  number here moves as the catalog is re-probed and as purchases settle, so a
+  figure without its date cannot be checked against anything.
+
+WHY A SEPARATE LICENCE
+  The code is a means; the ledger is the product. An independent verification
+  body that lets people read its numbers but not repeat them is not
+  independent of anything — it is just another gate. The attribution clause is
+  the only condition because the one thing a measurement must not lose is its
+  provenance.
+
+  The licence is not conditional on the numbers being flattering to us, and it
+  is not withdrawn from an operator whose endpoint we measured. Corrections are
+  published under https://vet402.com/corrections and inherit these terms.
+
+Copyright (c) 2026 KIZUNA Creation

@@ -88,6 +88,15 @@ export async function GET(request: NextRequest) {
         "content-type": "text/csv; charset=utf-8",
         "content-disposition": `attachment; filename="vet402-l1-ledger-${days}d.csv"`,
         "x-vet402-truncated": truncated ? "true" : "false",
+        // CSVはコメント行を持てないので、ライセンス・取得日・出典は
+        // ヘッダで運ぶ。ファイルだけ手元に残った人が出所を失わないための最低限。
+        "x-vet402-license": "CC-BY-4.0",
+        "x-vet402-retrieved-at": new Date().toISOString(),
+        "x-vet402-rows": String(emit.length),
+        "x-vet402-window-days": String(days),
+        Link:
+          '<https://creativecommons.org/licenses/by/4.0/>; rel="license", ' +
+          '<https://vet402.com/observatory/methodology>; rel="describedby"',
         "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=7200",
       },
     });

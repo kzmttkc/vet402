@@ -248,6 +248,55 @@ export default async function ObservatoryMethodologyPage() {
           </Link>
           .
         </p>
+
+        <h2 className="sec-head">
+          <span className="sec-no">9.</span>
+          <span>Reuse and citation</span>
+        </h2>
+        <p className="doc-p">
+          The measurements on these pages — the aggregate JSON at{" "}
+          <code>/api/v1/observatory/state</code>, the daily series at{" "}
+          <code>/api/v1/observatory/history</code>, and the purchase ledger at{" "}
+          <code>/api/v1/observatory/export.csv</code> — are published under{" "}
+          <a
+            href="https://creativecommons.org/licenses/by/4.0/"
+            className="underline"
+            rel="license noopener noreferrer"
+            target="_blank"
+          >
+            CC BY 4.0
+          </a>
+          . Redistribute them, chart them, put them in a paper or a grant memo, commercially or
+          not; the one condition is that the source is named. The code is MIT, in the repository.
+          No permission is needed and none is granted selectively: an operator whose numbers these
+          are may reuse them on exactly the same terms as anyone measuring us.
+        </p>
+        <p className="doc-p">
+          Every number here moves, so a measurement without its retrieval date is not a
+          measurement. Cite it as:{" "}
+          <code>
+            KIZUNA Creation. vet402 observatory. Dataset, retrieved YYYY-MM-DD.
+            https://vet402.com/api/v1/observatory/state
+          </code>{" "}
+          The JSON carries <code>license</code>, <code>licenseUrl</code>, <code>retrievedAt</code>{" "}
+          and <code>cite</code> in the response body, and the CSV — which has nowhere to put a
+          comment — carries <code>x-vet402-license</code>, <code>x-vet402-retrieved-at</code>,{" "}
+          <code>x-vet402-rows</code>, <code>x-vet402-window-days</code> and a <code>Link</code>{" "}
+          header pointing at the licence and at this page. A file that ends up on someone
+          else&apos;s disk still knows where it came from.
+        </p>
+        <p className="doc-p">
+          The ledger is append-only and ordered by <code>attempted_at</code>, so a row that was
+          published does not change afterwards; a re-download with a wider{" "}
+          <code>?days=</code> window returns the same earlier rows plus older ones. Rows are
+          capped at 50,000 per request and the cap is declared in{" "}
+          <code>x-vet402-truncated</code> rather than passed off as the whole ledger. If we get a
+          number wrong we correct it in public under the{" "}
+          <Link href="/corrections" className="underline">
+            corrections policy
+          </Link>{" "}
+          — the licence is not conditioned on the number being flattering to us.
+        </p>
       </article>
     </main>
   );
