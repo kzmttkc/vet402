@@ -8,7 +8,7 @@
 
 ## A. Intro drop (dev channel, when introductions are welcome)
 
-x402 verifies *that* a payer paid — it doesn't tell you whether to serve them. I've been building Vouch: after your x402 middleware verifies payment, `GET /v1/wallets/{payer}/score` returns 0–100 + ALLOW/WARN/BLOCK before you run the expensive handler. ERC-8004 identity + reputation (Sybil-dampened) + wallet heuristics + attested x402 settlement history. Open source, on Base. Sample gate: `examples/x402-trust-gate`.
+x402 verifies *that* a payer paid — it doesn't tell you whether to serve them. I've been building vet402: after your x402 middleware verifies payment, `GET /v1/wallets/{payer}/score` returns 0–100 + ALLOW/WARN/BLOCK before you run the expensive handler. ERC-8004 identity + reputation (Sybil-dampened) + wallet heuristics + attested x402 settlement history. Open source, on Base. Sample gate: `examples/x402-trust-gate`.
 
 ## B. Reply — "what about the wallet my agent is paying?"
 
