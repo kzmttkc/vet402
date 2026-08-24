@@ -77,8 +77,8 @@ Max 3 partners. One partner with many tracks still counts as 1.
 | Slot | Who | Qualification we must show |
 |---|---|---|
 | P1 | **Hedera「AI & Agentic Payments」$6,000** — 唯一、新しい動詞と要件が正面一致（Hedera 上の x402 ゲート付きサービス＋Blocky402＋実有償リクエスト1件）。continuity 提出が対象かは確認中（TODO 0.36） | 実際の有償リクエスト1件と `@x402/hedera` の使用 |
-| P2 | 詳細公開待ちの5社のうち、`payOrRefuse` が実際に呼ぶもの。**The Graph が最有力**——配達台帳を subgraph で公開すれば「エージェントが読む信頼データ」になり、我々の証拠ベース判定と一直線 | 実在の subgraph と、それを判定に使っているコード |
-| P3 | 09-09 の再読で決める。実装が呼ばない賞は選ばない | — |
+| P2 | **World「AgentKit Continuity」$3,500** — Continuity 専用枠なので**資格が確実**（2026-08-25 に詳細公開）。`payOrRefuse` の policy に**払う側の条件**を1つ足す: 人間裏付けのあるエージェントにだけ上限を上げる。動詞は増えない | AgentKit の実使用・AgentBook 登録/解決・Sandbox での遠隔デモ・フィードバック文書 |
+| P3 | 09-09 の再読で決める（The Graph $15k が最有力——配達台帳を subgraph にすれば証拠ベース判定と一直線）。実装が呼ばない賞は選ばない | — |
 
 Never: ENS (Tokyo), Sui, Uniswap-without-a-swap, a logo we did not import.
 

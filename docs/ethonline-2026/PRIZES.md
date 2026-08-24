@@ -46,9 +46,18 @@ Extra points に該当するもの: **ERC-8004 によるオンチェーン agent
 
 | 賞 | 額 | vet402 が取れるか |
 |---|---|---|
+| **World 🤖 AgentKit Continuity** | **$3,500** | **狙える（2026-08-25 に詳細公開・機械監視が検出）**。要件は「既存プロジェクトを AgentKit で拡張し、ボットと"実在の人間の代理で動くエージェント"を区別する。access / commerce / rate limits / trust の持続的な人間裏付け認可」。vet402 の `payOrRefuse` に**払う側の条件**を1つ足す形で正面から一致する——人間裏付けのあるエージェントにだけ上限を上げる支払いゲート。既存の agent 面（`/api/v1/agents/*`・agent passports）が AgentBook 登録/解決に対応する |
 | Hedera ♻️ Continuity | $1,000 | **不可**。要件が「以前から Hedera 上に存在するプロジェクト」。vet402 は Base/Solana 系で該当しない |
 | 1inch 💦 Aqua Continuity | $2,000 | 不可（Aqua/SwapVM 必須） |
 | Uniswap 🦄 Continuity | $2,000 | 不可（本物の Uniswap 統合が要る。計画どおり選ばない） |
+
+World のもう1枠 🤳🏼 Selfie Check $3,500 は Continuity 限定ではない。生体クレデンシャルを
+リスク/資格/公平性の信号として使う枠で、我々の動詞とは別物なので選ばない。
+
+AgentKit Continuity の必須物: AgentKit を実質的に使う・動くアプリ・（該当すれば）AgentBook 登録/解決・
+**World ID Sandbox App で遠隔テスト**・**フィードバック文書**（ドキュメント/ポータル/サンドボックスの
+詰まった点）。チェーン変更は不要で、Sandbox は遠隔で試せる。
+資料: https://docs.world.org/agents/agent-kit/integrate ・ https://github.com/worldcoin/agentkit
 
 Continuity トラック自体（Extend Open Source）は全体ルールであり、上の3つは
 「Continuity 参加者だけが応募できるスポンサー賞」。**取れないからといって Continuity 申請が不要になるわけではない**
@@ -77,9 +86,18 @@ ETHGlobal 運営（Pascal）の Discord 回答: **vet402 の既存公開 API に
 
 ## 賞の選び方（2026-08-23 版・確定は 09-09 の再読後 / 上の未解決が先）
 
-1. **Hedera 🤖 AI & Agentic Payments $6,000** — 唯一、動詞と要件が正面一致。Hedera 対応が前提。
-2. 詳細待ち5社のうち、`payOrRefuse` が実際に呼ぶもの（The Graph=観測データの subgraph、0G=AI エージェント、
+1. **World 🤖 AgentKit Continuity $3,500** — **Continuity 専用枠なので資格が確実**（Hedera main 枠は資格照会中）。チェーン変更なし。
+2. **Hedera 🤖 AI & Agentic Payments $6,000** — 額は最大。ただし Hedera + Blocky402 対応が前提で、continuity 提出が main 枠の対象かは未確認。
+3. 詳細待ち4社（The Graph / 0G / ENS / Ledger / Chainlink のうち残り）で、`payOrRefuse` が実際に呼ぶもの（The Graph=観測データの subgraph、0G=AI エージェント、
    Ledger=署名器、Chainlink=価格/検証）。**9/9 の再読で決める。実装が呼ばない賞は選ばない。**
-3. ENS は Tokyo の動詞なのでここでは選ばない（World も上書きを実装しない限り選ばない）。
+4. ENS は Tokyo の動詞なのでここでは選ばない（World も上書きを実装しない限り選ばない）。
 
 最大3枠。1パートナーの複数トラックは1枠。
+
+
+## 監視（2026-08-25 追加）
+
+賞ページの再読を人の記憶に預けない。`scripts/watch_ethonline_prizes.py`（Takeshi_Automation リポ・
+launchd `com.kizuna.ethonline-prizes` が毎日 09:20 JST）が、パートナーの増減・金額変更・
+**"coming soon" の解消**を検出したときだけ `state/ALERTS.md` に叫ぶ。
+World の詳細公開はこの仕組みの初回実行で見つけた。
