@@ -80,7 +80,8 @@ app.use("/api/paid/*", createHonoGate({
 | Option | Default | Meaning |
 |---|---|---|
 | `scoreSource` | `"wallet"` | `"wallet"` (the x402 beacon) or `"payee"` (buyer-side receiving history). |
-| `policy` | `"allow-only"` | `"allow-only"` blocks anything that is not ALLOW (fail-closed). `"block-only"` lets WARN through (pre-0.2.0 behaviour). `"custom"` bands with your own `blockOn`/`warnOn`. |
+| `policy` | `"allow-only"` | `"allow-only"` blocks anything that is not ALLOW (fail-closed). `"block-only"` lets WARN through (pre-0.2.0 behaviour). `"evidence"` lets a WARN through only when it clears `requireEvidence` (keeps every data-quality refusal). `"custom"` bands with your own `blockOn`/`warnOn` **and switches the staleness/degraded gates off**. |
+| `requireEvidence` | — | Evidence floors for `policy: "evidence"`: `minL1Deliveries`, `minL1DistinctBuyers`, `minX402Payments`, `minDistinctPayers`. Required by that policy, rejected under any other, and needs `scoreSource: "payee"`. |
 | `blockOn` | `["BLOCK"]` | Recommendations that block. Requires `policy: "custom"` (rejected otherwise, never silently ignored). |
 | `warnOn` | `["WARN"]` | Recommendations that warn (still allowed). Requires `policy: "custom"`. |
 | `minScore` | — | Stricter numeric floor (0–100): block below it even on ALLOW. |
@@ -121,3 +122,41 @@ signing, or transaction submission — settlement stays with your x402 stack.
 - [`@vet402/mcp-server`](https://www.npmjs.com/package/@vet402/mcp-server) — MCP tool
 
 MIT · [vet402](https://vet402.com)
+
+
+## What the default actually does today (measured 2026-08-25)
+
+**Under `policy: "allow-only"` this gate currently blocks every counterparty
+that exists.** That is not a bug in the gate — it is what the engine's own
+banding says, and you should know it before you wire the default into a
+payment path:
+
+- an unregistered bare wallet is capped at **62** by the wallet engine
+  (identity 30, reputation 30, wallet 100, x402 50 → weighted 62);
+- a payee with no *independent* receiving record is capped at **69**
+  (`PAYEE_THIN_SCORE_CEILING`, the 2026-08-13 score-manipulation ruling);
+- the ALLOW line is **70**.
+
+So on the operator benchmark published at <https://vet402.com/accuracy>, the
+17 known-good addresses (Vitalik, the Ethereum Foundation, Coinbase, Kraken,
+the ENS DAO treasury, Gitcoin) come back **0 ALLOW / 17 WARN / 0 BLOCK**, and
+a live payee with 48 delivery-verified L1 receipts and zero failures still
+scores WARN.
+
+**The default is deliberate and is not changing**: "we could not verify this"
+has to keep meaning "do not pay". But do not reach for `"custom"` to get
+moving — `"custom"` also turns off the staleness (H-2) and degraded/partial
+gates, which is almost never what you meant. Use `"evidence"`:
+
+```ts
+const gate = createTrustGate({
+  apiUrl, apiKey,
+  scoreSource: "payee",
+  policy: "evidence",
+  requireEvidence: { minL1Deliveries: 3, minL1DistinctBuyers: 2 },
+});
+```
+
+A WARN now passes **only** when the payee's measured receiving record clears
+those floors. BLOCK still blocks, a degraded/stale/partial read still blocks,
+and a missing evidence field counts as zero — absence is never a pass.

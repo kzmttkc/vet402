@@ -11,11 +11,54 @@ import type { PayeeScoreResult } from "./index.js";
  *  - "block-only": the lookup still always runs and a failed or degraded read
  *    still denies, but a WARN (or partially measured) verdict passes. Deny
  *    only on BLOCK.
+ *  - "evidence" (0.5.0): the safe middle. Behaves exactly like "allow-only"
+ *    on every data-quality question — a degraded read, a stale score, a
+ *    partial measurement or a failed lookup all deny, and BLOCK always
+ *    denies — but a WARN passes when the payee's own measured receiving
+ *    record clears the floors you name in `requireEvidence`. Requires
+ *    `requireEvidence`; see it for why this is not just "block-only".
  *  - "custom": pre-0.2.0 behaviour — only the rules you set below apply, and
  *    the lookup runs only when `minPayeeScore` or `blockOnRecommendation`
- *    is set.
+ *    is set. NOTE: this also switches OFF the staleness (H-2), degraded and
+ *    partial-measurement gates. Prefer "evidence" when what you actually
+ *    wanted was "accept a WARN I can justify".
  */
-export type SpendGuardTrustPolicy = "allow-only" | "block-only" | "custom";
+export type SpendGuardTrustPolicy = "allow-only" | "block-only" | "evidence" | "custom";
+/**
+ * Minimum measured economic evidence a WARN payee must carry before
+ * `trustPolicy: "evidence"` will let a payment through. Every floor is read
+ * from the payee score's own `signals.receiving` — never from anything the
+ * payee asserts about itself.
+ *
+ * WHY THIS EXISTS (2026-08-25). Both engines cap an un-evidenced counterparty
+ * BELOW the ALLOW line by design: an unregistered bare wallet tops out at 62
+ * in the wallet engine, and a payee with no independent receiving record is
+ * held at PAYEE_THIN_SCORE_CEILING = 69 by the 2026-08-13 score-manipulation
+ * ruling. The ALLOW line is 70. Measured against production the same day,
+ * that means NOTHING clears ALLOW: /accuracy's known-good benchmark returned
+ * 0 of 17 allowed / 17 warned, and 0x36038e1d… — 48 delivery-verified L1
+ * receipts, 0 failures — still scores WARN. Under the shipped default the
+ * guard therefore denies every counterparty that exists.
+ *
+ * The default is deliberate and does not change: "we could not verify this"
+ * must keep meaning "do not pay". What was missing is a way to say "accept a
+ * WARN, but only one with real delivery behind it" WITHOUT falling back to
+ * "custom", which quietly disables the freshness and degraded gates too.
+ *
+ * At least one floor must be >= 1. A `requireEvidence` whose floors are all
+ * zero would accept every WARN — that is "block-only", and it should be
+ * spelled that way rather than hidden behind a safer-sounding name.
+ */
+export type SpendGuardEvidenceFloors = {
+    /** Delivery-verified L1 receipts (the observatory paid and checked delivery). */
+    minL1Deliveries?: number;
+    /** Distinct buyers behind those L1 receipts. */
+    minL1DistinctBuyers?: number;
+    /** Score-eligible x402 settlements received. */
+    minX402Payments?: number;
+    /** Distinct payers behind those settlements (post funder-folding). */
+    minDistinctPayers?: number;
+};
 export type SpendGuardPolicy = {
     /** Deny any single payment above this USD amount. */
     maxPerTxUsd?: number;
@@ -31,6 +74,13 @@ export type SpendGuardPolicy = {
      * SpendGuardTrustPolicy for the explicit opt-outs.
      */
     trustPolicy?: SpendGuardTrustPolicy;
+    /**
+     * Evidence floors a WARN must clear under `trustPolicy: "evidence"`.
+     * Required by that policy, and rejected under every other one (so the
+     * opt-out is always visible at the call site). See
+     * {@link SpendGuardEvidenceFloors}.
+     */
+    requireEvidence?: SpendGuardEvidenceFloors;
     /** Deny when the Vouch payee score is below this value (0-100). */
     minPayeeScore?: number;
     /**
@@ -65,6 +115,12 @@ export type SpendEvaluateInput = {
 export type SpendDenyReason = "max_per_tx_exceeded" | "daily_budget_exceeded" | "payee_score_below_min"
 /** Recommendation was WARN or BLOCK under the default "allow-only" policy. */
  | "payee_recommendation_not_allow" | "payee_recommendation_block"
+/**
+ * `trustPolicy: "evidence"` — the verdict was a WARN and the payee's
+ * measured receiving record did not clear the floors in `requireEvidence`.
+ * A missing evidence field counts as zero: absence is not a pass.
+ */
+ | "payee_insufficient_evidence"
 /** The score itself came from a degraded read (inputs missing entirely). */
  | "payee_score_degraded"
 /** Some inputs could not be measured (signalsUnavailable non-empty). */

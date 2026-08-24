@@ -19,9 +19,41 @@ export type FailMode = "closed" | "open";
  *    A WARN blocks with reason `recommendation_not_allow`.
  *  - "block-only": pre-0.2.0 behaviour — BLOCK blocks, WARN warns but is
  *    allowed downstream.
- *  - "custom": band with your own `blockOn` / `warnOn` arrays.
+ *  - "evidence": accepts a WARN only when the payee's MEASURED receiving
+ *    record clears the floors in `requireEvidence`, while keeping every
+ *    data-quality refusal allow-only makes (degraded / stale / partial). See
+ *    GateEvidenceFloors. Requires `scoreSource: "payee"`.
+ *  - "custom": band with your own `blockOn` / `warnOn` arrays. NOTE: also
+ *    switches OFF the staleness and degraded/partial gates.
  */
-export type GatePolicy = "allow-only" | "block-only" | "custom";
+export type GatePolicy = "allow-only" | "block-only" | "evidence" | "custom";
+/**
+ * Minimum measured evidence a WARN must carry under `policy: "evidence"`.
+ * Mirrors SpendGuardEvidenceFloors in @vet402/sdk field for field — H-4 keeps
+ * the gate and the guard answering the same way about the same body.
+ *
+ * WHY (2026-08-25, measured on production): both engines cap an un-evidenced
+ * counterparty below the ALLOW line by design — 62 for an unregistered bare
+ * wallet, 69 (PAYEE_THIN_SCORE_CEILING) for a payee with no independent
+ * receiving record — and ALLOW is 70. /accuracy's known-good benchmark
+ * returned 0 of 17 allowed / 17 warned, and a payee with 48 delivery-verified
+ * L1 receipts still scores WARN. Under the default policy the gate therefore
+ * blocks every counterparty that exists. The default stays; this is the
+ * disclosed way to accept a WARN you can actually justify.
+ *
+ * At least one floor must be >= 1 — all-zero floors are "block-only" and must
+ * be spelled that way.
+ */
+export type GateEvidenceFloors = {
+    /** Delivery-verified L1 receipts behind the payee. */
+    minL1Deliveries?: number;
+    /** Distinct buyers behind those L1 receipts. */
+    minL1DistinctBuyers?: number;
+    /** Score-eligible x402 settlements received. */
+    minX402Payments?: number;
+    /** Distinct payers behind those settlements. */
+    minDistinctPayers?: number;
+};
 export type VouchGateConfig = {
     /** Base URL including the version segment, e.g. https://host/api/v1 */
     apiUrl: string;
@@ -37,6 +69,12 @@ export type VouchGateConfig = {
     blockOn?: Recommendation[];
     /** Recommendations that WARN (allowed, but flagged). Requires policy "custom". */
     warnOn?: Recommendation[];
+    /**
+     * Evidence floors a WARN must clear. Required by `policy: "evidence"` and
+     * rejected under every other policy, so the opt-out stays visible at the
+     * call site. See {@link GateEvidenceFloors}.
+     */
+    requireEvidence?: GateEvidenceFloors;
     /**
      * Optional stricter floor: BLOCK when the numeric score is below this
      * (0-100), even if the recommendation would have allowed. This is the

@@ -193,3 +193,60 @@ Absolute, because relative repo paths do not resolve on the npm package page.
 - [`@vet402/mcp-server`](https://www.npmjs.com/package/@vet402/mcp-server) — MCP tool
 
 MIT · [vet402](https://vet402.com)
+
+
+## What the default actually does today (measured 2026-08-25)
+
+**Under the default `trustPolicy: "allow-only"`, SpendGuard currently denies
+every payee that exists.** Know this before you wire it into a payment path.
+It is not a lookup failure — it is the engine's banding working as designed:
+
+- an unregistered bare wallet is capped at **62** by the wallet engine;
+- a payee with no *independent* receiving record is capped at **69**
+  (`PAYEE_THIN_SCORE_CEILING`, the 2026-08-13 score-manipulation ruling);
+- the ALLOW line is **70**.
+
+On the operator benchmark at <https://vet402.com/accuracy> the 17 known-good
+addresses (Vitalik, the Ethereum Foundation, Coinbase, Kraken, the ENS DAO
+treasury, Gitcoin) score **0 ALLOW / 17 WARN / 0 BLOCK**, and a live payee
+with 48 delivery-verified L1 receipts and zero failures still scores WARN.
+
+**The default is deliberate and is not changing.** "We could not verify this"
+must keep meaning "do not pay". The mistake to avoid is reaching for
+`trustPolicy: "custom"` to unblock yourself — `"custom"` *also* disables the
+staleness (H-2), degraded and partial-measurement refusals, which is almost
+certainly not what you wanted.
+
+### `trustPolicy: "evidence"` — accept a WARN you can justify
+
+```typescript
+const guard = vouch.createSpendGuard({
+  maxPerTxUsd: 10,
+  trustPolicy: "evidence",
+  requireEvidence: { minL1Deliveries: 3, minL1DistinctBuyers: 2 },
+});
+```
+
+A WARN passes **only** when the payee's measured `signals.receiving` record
+clears the floors you name. Everything else behaves exactly like
+`"allow-only"`:
+
+| Situation | `"evidence"` |
+|---|---|
+| BLOCK | deny (`payee_recommendation_block`) — evidence never overturns a refusal |
+| WARN, floors cleared | **allow** |
+| WARN, floors not cleared | deny (`payee_insufficient_evidence`) |
+| Evidence field absent from the response | counts as **0** — absence is not a pass |
+| Degraded read | deny (`payee_score_degraded`) |
+| Stale score | deny (`payee_score_stale`) |
+| Partial measurement | deny (`payee_partial_measurement`) |
+| Lookup failed | deny (`payee_trust_unavailable` / `..._unauthenticated`) |
+
+Floors available: `minL1Deliveries`, `minL1DistinctBuyers`,
+`minX402Payments`, `minDistinctPayers`. At least one must be `>= 1` —
+all-zero floors would accept every WARN, which is `"block-only"` and has to
+be spelled that way. `requireEvidence` is rejected under any other policy, so
+the opt-out is always visible at the call site.
+
+> The Python SDK (`vet402`) does **not** yet have `evidence`; its
+> `trust_policy` options remain `allow-only` / `block-only` / `custom`.

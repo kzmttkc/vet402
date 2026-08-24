@@ -49,6 +49,24 @@ thin を抜ける条件は2つのどちらか:
 3. これは大会用の細工ではなく**製品の欠陥の是正**でもある。今日の買い手向けAPIは
    誰に対しても WARN しか返せず、呼び手は判断に使えない。金に一番近い段がそこで詰まっている。
 
+### 実装状況（2026-08-25 更新）
+
+上の 2 は **実装済み**（9/4 を待たずに前倒し。会期の細工ではなく製品欠陥の是正だから）。
+
+- `@vet402/sdk`: `trustPolicy: "evidence"` ＋ `requireEvidence`
+  （`minL1Deliveries` / `minL1DistinctBuyers` / `minX402Payments` / `minDistinctPayers`）。
+- `@vet402/middleware`: `policy: "evidence"` を同じ意味論で対称に実装（H-4 の対称性を維持）。
+  `scoreSource: "payee"` 必須（wallet ビーコンに実績信号が無いため）。
+- **既定は allow-only のまま**。evidence は WARN を通すが、degraded / stale /
+  partial-measurement / BLOCK の拒否は allow-only と同一に保つ——`custom` が
+  静かに落としてしまう関門を、ここでは落とさない。
+- 下限が全部ゼロの `requireEvidence` は構築時に拒否（それは block-only であり、そう書くべき）。
+  実績フィールドの欠落は 0 扱い（不在は合格ではない）。
+- **npm へは未公開**。公開は別途 Takeshi 承認。Python SDK は未対応。
+
+デモの2本立て（既定でカタログ全体が拒否される絵 → 開示済み policy で実払い）は、
+`policy` 引数を足す作業なしにこのまま撮れる。
+
 ## 2. BLOCK フィクスチャ（本番実測・要再測）
 
 L1 で1度も settle しない payee は、それだけでは BLOCK にならない（受領実績の薄さは WARN 止まり）。

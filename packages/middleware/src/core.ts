@@ -46,9 +46,42 @@ export type FailMode = "closed" | "open";
  *    A WARN blocks with reason `recommendation_not_allow`.
  *  - "block-only": pre-0.2.0 behaviour — BLOCK blocks, WARN warns but is
  *    allowed downstream.
- *  - "custom": band with your own `blockOn` / `warnOn` arrays.
+ *  - "evidence": accepts a WARN only when the payee's MEASURED receiving
+ *    record clears the floors in `requireEvidence`, while keeping every
+ *    data-quality refusal allow-only makes (degraded / stale / partial). See
+ *    GateEvidenceFloors. Requires `scoreSource: "payee"`.
+ *  - "custom": band with your own `blockOn` / `warnOn` arrays. NOTE: also
+ *    switches OFF the staleness and degraded/partial gates.
  */
-export type GatePolicy = "allow-only" | "block-only" | "custom";
+export type GatePolicy = "allow-only" | "block-only" | "evidence" | "custom";
+
+/**
+ * Minimum measured evidence a WARN must carry under `policy: "evidence"`.
+ * Mirrors SpendGuardEvidenceFloors in @vet402/sdk field for field — H-4 keeps
+ * the gate and the guard answering the same way about the same body.
+ *
+ * WHY (2026-08-25, measured on production): both engines cap an un-evidenced
+ * counterparty below the ALLOW line by design — 62 for an unregistered bare
+ * wallet, 69 (PAYEE_THIN_SCORE_CEILING) for a payee with no independent
+ * receiving record — and ALLOW is 70. /accuracy's known-good benchmark
+ * returned 0 of 17 allowed / 17 warned, and a payee with 48 delivery-verified
+ * L1 receipts still scores WARN. Under the default policy the gate therefore
+ * blocks every counterparty that exists. The default stays; this is the
+ * disclosed way to accept a WARN you can actually justify.
+ *
+ * At least one floor must be >= 1 — all-zero floors are "block-only" and must
+ * be spelled that way.
+ */
+export type GateEvidenceFloors = {
+  /** Delivery-verified L1 receipts behind the payee. */
+  minL1Deliveries?: number;
+  /** Distinct buyers behind those L1 receipts. */
+  minL1DistinctBuyers?: number;
+  /** Score-eligible x402 settlements received. */
+  minX402Payments?: number;
+  /** Distinct payers behind those settlements. */
+  minDistinctPayers?: number;
+};
 
 export type VouchGateConfig = {
   /** Base URL including the version segment, e.g. https://host/api/v1 */
@@ -65,6 +98,12 @@ export type VouchGateConfig = {
   blockOn?: Recommendation[];
   /** Recommendations that WARN (allowed, but flagged). Requires policy "custom". */
   warnOn?: Recommendation[];
+  /**
+   * Evidence floors a WARN must clear. Required by `policy: "evidence"` and
+   * rejected under every other policy, so the opt-out stays visible at the
+   * call site. See {@link GateEvidenceFloors}.
+   */
+  requireEvidence?: GateEvidenceFloors;
   /**
    * Optional stricter floor: BLOCK when the numeric score is below this
    * (0-100), even if the recommendation would have allowed. This is the
@@ -140,7 +179,47 @@ type ScoreResponse = {
   signalsUnavailable?: string[];
   scoredAt?: string;
   cacheExpiresAt?: string;
+  /**
+   * Measured receiving record — /payees only. Read exclusively by
+   * `policy: "evidence"`; every field is optional and an absent one counts as
+   * 0, so a trimmed or older payload lands on "no evidence", never on "floor
+   * satisfied".
+   */
+  signals?: {
+    receiving?: {
+      paymentCount?: number;
+      distinctPayers?: number;
+      l1DeliveryCount?: number;
+      l1DistinctBuyers?: number;
+    };
+  };
 };
+
+const EVIDENCE_FLOOR_KEYS = [
+  "minL1Deliveries",
+  "minL1DistinctBuyers",
+  "minX402Payments",
+  "minDistinctPayers",
+] as const;
+
+/** Does the measured receiving record clear every floor the caller set? */
+function meetsEvidenceFloors(body: ScoreResponse, floors: GateEvidenceFloors): boolean {
+  const receiving = body.signals?.receiving;
+  const measured = (value: unknown): number =>
+    typeof value === "number" && Number.isFinite(value) ? value : 0;
+
+  const actual: Record<(typeof EVIDENCE_FLOOR_KEYS)[number], number> = {
+    minL1Deliveries: measured(receiving?.l1DeliveryCount),
+    minL1DistinctBuyers: measured(receiving?.l1DistinctBuyers),
+    minX402Payments: measured(receiving?.paymentCount),
+    minDistinctPayers: measured(receiving?.distinctPayers),
+  };
+
+  return EVIDENCE_FLOOR_KEYS.every((key) => {
+    const floor = floors[key];
+    return floor === undefined || actual[key] >= floor;
+  });
+}
 
 /**
  * Default staleness bound (5 min), matching the score API's cache TTL. See
@@ -243,8 +322,53 @@ export function createTrustGate(config: VouchGateConfig): TrustGate {
   const apiUrl = config.apiUrl.replace(/\/$/, "");
   const scoreSource: ScoreSource = config.scoreSource ?? "wallet";
   const policy: GatePolicy = config.policy ?? "allow-only";
-  if (!["allow-only", "block-only", "custom"].includes(policy)) {
-    throw new VouchGateError("policy must be allow-only, block-only or custom", "invalid_policy");
+  if (!["allow-only", "block-only", "evidence", "custom"].includes(policy)) {
+    throw new VouchGateError(
+      "policy must be allow-only, block-only, evidence or custom",
+      "invalid_policy",
+    );
+  }
+  if (policy === "evidence" && scoreSource !== "payee") {
+    // The /wallets beacon carries no receiving signals at all, so every WARN
+    // would fail the floors — a gate that blocks everything while claiming to
+    // weigh evidence is worse than one that refuses to start.
+    throw new VouchGateError(
+      'policy "evidence" requires scoreSource: "payee" (the wallet beacon carries no evidence signals)',
+      "invalid_policy_combination",
+    );
+  }
+  if (policy !== "evidence" && config.requireEvidence !== undefined) {
+    throw new VouchGateError(
+      'requireEvidence requires policy: "evidence"',
+      "invalid_policy_combination",
+    );
+  }
+  if (policy === "evidence") {
+    const floors = config.requireEvidence;
+    if (floors === null || typeof floors !== "object") {
+      throw new VouchGateError(
+        'policy "evidence" requires requireEvidence with at least one floor >= 1',
+        "invalid_require_evidence",
+      );
+    }
+    let demandsSomething = false;
+    for (const key of EVIDENCE_FLOOR_KEYS) {
+      const value = floors[key];
+      if (value === undefined) continue;
+      if (!Number.isInteger(value) || value < 0) {
+        throw new VouchGateError(
+          "requireEvidence floors must be non-negative integers",
+          "invalid_require_evidence",
+        );
+      }
+      if (value > 0) demandsSomething = true;
+    }
+    if (!demandsSomething) {
+      throw new VouchGateError(
+        'requireEvidence with all-zero floors accepts every WARN — use policy: "block-only"',
+        "invalid_require_evidence",
+      );
+    }
   }
   // blockOn/warnOn silently ignored under a non-custom policy would be a
   // config the integrator believes is in force but is not — fail loud instead.
@@ -254,14 +378,21 @@ export function createTrustGate(config: VouchGateConfig): TrustGate {
       "invalid_policy_combination",
     );
   }
+  // "evidence" bands like block-only (BLOCK blocks, WARN is allowed-but-
+  // flagged) — the evidence floors are applied BEFORE this, so a WARN only
+  // reaches the banding once it has already cleared them.
   const blockOn: Recommendation[] =
     policy === "allow-only"
       ? ["BLOCK", "WARN"]
-      : policy === "block-only"
+      : policy === "block-only" || policy === "evidence"
         ? ["BLOCK"]
         : (config.blockOn ?? ["BLOCK"]);
   const warnOn: Recommendation[] =
-    policy === "allow-only" ? [] : policy === "block-only" ? ["WARN"] : (config.warnOn ?? ["WARN"]);
+    policy === "allow-only"
+      ? []
+      : policy === "block-only" || policy === "evidence"
+        ? ["WARN"]
+        : (config.warnOn ?? ["WARN"]);
   const failMode: FailMode = config.failMode ?? "closed";
   const timeoutMs = config.timeoutMs ?? 5000;
   const maxScoreAgeMs = config.maxScoreAgeMs ?? DEFAULT_MAX_SCORE_AGE_MS;
@@ -320,8 +451,28 @@ export function createTrustGate(config: VouchGateConfig): TrustGate {
       // A partial measurement (some inputs unmeasured) is a real but incomplete
       // read: allow-only blocks it, block-only tolerates it — mirroring
       // SpendGuard's payee_partial_measurement handling exactly.
-      if (policy === "allow-only" && (body.signalsUnavailable?.length ?? 0) > 0) {
+      if (
+        (policy === "allow-only" || policy === "evidence") &&
+        (body.signalsUnavailable?.length ?? 0) > 0
+      ) {
         return { action: "block", recommendation, score, address, reason: "partial_measurement", degraded: false };
+      }
+    }
+
+    // Evidence gate. Runs after the data-quality refusals (an unmeasured body
+    // has no evidence worth weighing) and BEFORE the banding, so a WARN has to
+    // earn its way into the allowed band. BLOCK never reaches here as an
+    // allow — it is in blockOn below, and evidence does not overturn a refusal.
+    if (policy === "evidence" && recommendation === "WARN") {
+      if (!meetsEvidenceFloors(body, config.requireEvidence ?? {})) {
+        return {
+          action: "block",
+          recommendation,
+          score,
+          address,
+          reason: "insufficient_evidence",
+          degraded: false,
+        };
       }
     }
 

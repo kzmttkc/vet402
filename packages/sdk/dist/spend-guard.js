@@ -107,9 +107,72 @@ function assertPolicy(policy) {
         throw new Error("invalid_policy_maxScoreAgeMs");
     }
     if (policy.trustPolicy !== undefined &&
-        !["allow-only", "block-only", "custom"].includes(policy.trustPolicy)) {
+        !["allow-only", "block-only", "evidence", "custom"].includes(policy.trustPolicy)) {
         throw new Error("invalid_policy_trustPolicy");
     }
+    assertEvidenceFloors(policy);
+}
+const EVIDENCE_FLOOR_KEYS = [
+    "minL1Deliveries",
+    "minL1DistinctBuyers",
+    "minX402Payments",
+    "minDistinctPayers",
+];
+/**
+ * `requireEvidence` is meaningful under exactly one policy, and only when it
+ * actually demands something. Both halves are enforced here rather than
+ * silently ignored: a floor set on the wrong policy, or a floor set to zero,
+ * reads at the call site as "I gated this" while gating nothing.
+ */
+function assertEvidenceFloors(policy) {
+    const isEvidencePolicy = policy.trustPolicy === "evidence";
+    if (!isEvidencePolicy) {
+        if (policy.requireEvidence !== undefined) {
+            // Fail loudly rather than accept a floor we will never read.
+            throw new Error("invalid_policy_requireEvidence");
+        }
+        return;
+    }
+    const floors = policy.requireEvidence;
+    if (floors === null || typeof floors !== "object") {
+        throw new Error("invalid_policy_requireEvidence");
+    }
+    let demandsSomething = false;
+    for (const key of EVIDENCE_FLOOR_KEYS) {
+        const value = floors[key];
+        if (value === undefined)
+            continue;
+        if (!Number.isFinite(value) || value < 0 || !Number.isInteger(value)) {
+            throw new Error("invalid_policy_requireEvidence");
+        }
+        if (value > 0)
+            demandsSomething = true;
+    }
+    // All-zero (or empty) floors would accept every WARN — that is "block-only",
+    // and it has to be spelled that way.
+    if (!demandsSomething)
+        throw new Error("invalid_policy_requireEvidence");
+}
+/**
+ * Does the payee's MEASURED receiving record clear every floor the caller set?
+ *
+ * Reads only `signals.receiving`, and treats an absent field as 0. The L1
+ * counters are optional for back-compat, so an older server — or a trimmed
+ * payload — must land on "no evidence", never on "requirement satisfied".
+ */
+function meetsEvidenceFloors(score, floors) {
+    const receiving = score.signals?.receiving;
+    const measured = (value) => typeof value === "number" && Number.isFinite(value) ? value : 0;
+    const actual = {
+        minL1Deliveries: measured(receiving?.l1DeliveryCount),
+        minL1DistinctBuyers: measured(receiving?.l1DistinctBuyers),
+        minX402Payments: measured(receiving?.paymentCount),
+        minDistinctPayers: measured(receiving?.distinctPayers),
+    };
+    return EVIDENCE_FLOOR_KEYS.every((key) => {
+        const floor = floors[key];
+        return floor === undefined || actual[key] >= floor;
+    });
 }
 /**
  * Non-custodial spend-policy layer: answers "may my agent send this payment?"
@@ -215,6 +278,29 @@ export class SpendGuard {
                     }
                     else if (payeeScore.recommendation !== "ALLOW") {
                         reasons.push("payee_recommendation_not_allow");
+                    }
+                }
+                else if (trustPolicy === "evidence") {
+                    // Identical to allow-only on every data-quality question — the whole
+                    // point is that opting into WARN does not cost you the H-2 freshness
+                    // gate or the degraded/partial refusals the way "custom" does.
+                    if (payeeScore.degraded === true) {
+                        reasons.push("payee_score_degraded");
+                    }
+                    else if (stale) {
+                        reasons.push("payee_score_stale");
+                    }
+                    else if ((payeeScore.signalsUnavailable?.length ?? 0) > 0) {
+                        reasons.push("payee_partial_measurement");
+                    }
+                    else if (payeeScore.recommendation === "BLOCK") {
+                        // BLOCK is never purchasable with evidence. Evidence explains a
+                        // WARN; it does not overturn a refusal.
+                        reasons.push("payee_recommendation_block");
+                    }
+                    else if (payeeScore.recommendation !== "ALLOW" &&
+                        !meetsEvidenceFloors(payeeScore, this.policy.requireEvidence ?? {})) {
+                        reasons.push("payee_insufficient_evidence");
                     }
                 }
                 else if (trustPolicy === "block-only") {

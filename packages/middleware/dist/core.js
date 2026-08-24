@@ -31,6 +31,27 @@ export class VouchGateError extends Error {
         this.name = "VouchGateError";
     }
 }
+const EVIDENCE_FLOOR_KEYS = [
+    "minL1Deliveries",
+    "minL1DistinctBuyers",
+    "minX402Payments",
+    "minDistinctPayers",
+];
+/** Does the measured receiving record clear every floor the caller set? */
+function meetsEvidenceFloors(body, floors) {
+    const receiving = body.signals?.receiving;
+    const measured = (value) => typeof value === "number" && Number.isFinite(value) ? value : 0;
+    const actual = {
+        minL1Deliveries: measured(receiving?.l1DeliveryCount),
+        minL1DistinctBuyers: measured(receiving?.l1DistinctBuyers),
+        minX402Payments: measured(receiving?.paymentCount),
+        minDistinctPayers: measured(receiving?.distinctPayers),
+    };
+    return EVIDENCE_FLOOR_KEYS.every((key) => {
+        const floor = floors[key];
+        return floor === undefined || actual[key] >= floor;
+    });
+}
 /**
  * Default staleness bound (5 min), matching the score API's cache TTL. See
  * VouchGateConfig.maxScoreAgeMs.
@@ -105,20 +126,56 @@ export function createTrustGate(config) {
     const apiUrl = config.apiUrl.replace(/\/$/, "");
     const scoreSource = config.scoreSource ?? "wallet";
     const policy = config.policy ?? "allow-only";
-    if (!["allow-only", "block-only", "custom"].includes(policy)) {
-        throw new VouchGateError("policy must be allow-only, block-only or custom", "invalid_policy");
+    if (!["allow-only", "block-only", "evidence", "custom"].includes(policy)) {
+        throw new VouchGateError("policy must be allow-only, block-only, evidence or custom", "invalid_policy");
+    }
+    if (policy === "evidence" && scoreSource !== "payee") {
+        // The /wallets beacon carries no receiving signals at all, so every WARN
+        // would fail the floors — a gate that blocks everything while claiming to
+        // weigh evidence is worse than one that refuses to start.
+        throw new VouchGateError('policy "evidence" requires scoreSource: "payee" (the wallet beacon carries no evidence signals)', "invalid_policy_combination");
+    }
+    if (policy !== "evidence" && config.requireEvidence !== undefined) {
+        throw new VouchGateError('requireEvidence requires policy: "evidence"', "invalid_policy_combination");
+    }
+    if (policy === "evidence") {
+        const floors = config.requireEvidence;
+        if (floors === null || typeof floors !== "object") {
+            throw new VouchGateError('policy "evidence" requires requireEvidence with at least one floor >= 1', "invalid_require_evidence");
+        }
+        let demandsSomething = false;
+        for (const key of EVIDENCE_FLOOR_KEYS) {
+            const value = floors[key];
+            if (value === undefined)
+                continue;
+            if (!Number.isInteger(value) || value < 0) {
+                throw new VouchGateError("requireEvidence floors must be non-negative integers", "invalid_require_evidence");
+            }
+            if (value > 0)
+                demandsSomething = true;
+        }
+        if (!demandsSomething) {
+            throw new VouchGateError('requireEvidence with all-zero floors accepts every WARN — use policy: "block-only"', "invalid_require_evidence");
+        }
     }
     // blockOn/warnOn silently ignored under a non-custom policy would be a
     // config the integrator believes is in force but is not — fail loud instead.
     if (policy !== "custom" && (config.blockOn !== undefined || config.warnOn !== undefined)) {
         throw new VouchGateError('blockOn/warnOn require policy: "custom" (the explicit opt-out from the ALLOW-only default)', "invalid_policy_combination");
     }
+    // "evidence" bands like block-only (BLOCK blocks, WARN is allowed-but-
+    // flagged) — the evidence floors are applied BEFORE this, so a WARN only
+    // reaches the banding once it has already cleared them.
     const blockOn = policy === "allow-only"
         ? ["BLOCK", "WARN"]
-        : policy === "block-only"
+        : policy === "block-only" || policy === "evidence"
             ? ["BLOCK"]
             : (config.blockOn ?? ["BLOCK"]);
-    const warnOn = policy === "allow-only" ? [] : policy === "block-only" ? ["WARN"] : (config.warnOn ?? ["WARN"]);
+    const warnOn = policy === "allow-only"
+        ? []
+        : policy === "block-only" || policy === "evidence"
+            ? ["WARN"]
+            : (config.warnOn ?? ["WARN"]);
     const failMode = config.failMode ?? "closed";
     const timeoutMs = config.timeoutMs ?? 5000;
     const maxScoreAgeMs = config.maxScoreAgeMs ?? DEFAULT_MAX_SCORE_AGE_MS;
@@ -174,8 +231,25 @@ export function createTrustGate(config) {
             // A partial measurement (some inputs unmeasured) is a real but incomplete
             // read: allow-only blocks it, block-only tolerates it — mirroring
             // SpendGuard's payee_partial_measurement handling exactly.
-            if (policy === "allow-only" && (body.signalsUnavailable?.length ?? 0) > 0) {
+            if ((policy === "allow-only" || policy === "evidence") &&
+                (body.signalsUnavailable?.length ?? 0) > 0) {
                 return { action: "block", recommendation, score, address, reason: "partial_measurement", degraded: false };
+            }
+        }
+        // Evidence gate. Runs after the data-quality refusals (an unmeasured body
+        // has no evidence worth weighing) and BEFORE the banding, so a WARN has to
+        // earn its way into the allowed band. BLOCK never reaches here as an
+        // allow — it is in blockOn below, and evidence does not overturn a refusal.
+        if (policy === "evidence" && recommendation === "WARN") {
+            if (!meetsEvidenceFloors(body, config.requireEvidence ?? {})) {
+                return {
+                    action: "block",
+                    recommendation,
+                    score,
+                    address,
+                    reason: "insufficient_evidence",
+                    degraded: false,
+                };
             }
         }
         if (minScore !== undefined && score !== null && score < minScore) {
