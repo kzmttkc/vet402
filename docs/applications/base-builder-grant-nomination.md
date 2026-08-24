@@ -23,7 +23,7 @@ Base is **not** an ETHOnline 2026 partner (`../ethonline-2026/PRIZES.md`, measur
 | 8 | Builder Farcaster * | **gap — see below** |
 | 9 | Is the project currently live on Base? * | **Yes – live on Base mainnet** |
 | 10 | Why does this project deserve a Base grant? * (150 words) | §"Answer" below |
-| 11 | Link a 1 minute demo * | **gap — see below** |
+| 11 | Link a 1 minute demo * | `https://vet402.com/demo` — 58s, built 2026-08-25, self-hosted so the link cannot rot (**awaiting owner approval to deploy**) |
 | 12 | Multimedia Assets License Agreement * | tick (authorizes Coinbase to use submitted materials — acceptable: every asset we would submit is already public) |
 | 13 | Marketing opt-in | owner's choice |
 
@@ -33,9 +33,9 @@ Base is **not** an ETHOnline 2026 partner (`../ethonline-2026/PRIZES.md`, measur
 
 Figures are 2026-08-23. **Re-run `python3 scripts/grant-figures.py --check` on the submission day and re-paste; a stale number in a verification project's own application is the worst possible first impression.**
 
-## Three gaps before this can be sent
+## Gaps before this can be sent (1 of 3 closed)
 
-1. **1-minute demo (blocking).** Plan: a 60-second captioned screen capture — `run` → real purchase → Basescan tx → the same endpoint's published non-settle — hosted by us at `https://vet402.com/demo` (no third-party account needed, and the link cannot rot). Produced by the agents; the owner approves the cut before it deploys.
+1. ~~**1-minute demo**~~ **built 2026-08-25** — 58s, no narration, captions burned in, every frame a live page: `/observatory` → the record page of an endpoint we actually bought from (2 of 2 settled, receipt rows) → the same payment on Basescan (0.02 USDC on Base) → the `decisions` API where `paid_settled` and `paid_no_settlement` sit in one list → the `state` API. Committed at `public/vet402-demo.mp4` + `/demo`; `npm run build` verified. **Waiting on the owner's go to deploy** (publishing is owner-approved).
 2. **Farcaster (blocking if the field is required).** No Farcaster account exists for the project or the builder. Base's discovery runs on Farcaster, so this is not only a form field — it is the channel the program actually watches. Creating the account is an owner action (account creation, possibly a registration fee).
 3. **Wallet + W8/W9 readiness.** A grant that lands has to land somewhere. Owner-held Base address, and the tax form when asked.
 
