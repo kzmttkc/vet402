@@ -112,7 +112,8 @@ Product code = anything under `packages/`, `src/`, `examples/` that implements t
 |---|---|---|---|
 | A1 | ~~ETHOnline apply~~ **DONE 2026-08-23.** Hacker application submitted with track **Hack on Existing Project (continuity-track)** selected inside the form itself — no email needed, the field exists. Dashboard: "Your application is still being reviewed." | Human + agent | Dashboard reachable, application under review |
 | A2 | Tokyo Continuity apply in the same sitting (deadline 09-23; 15 min). | Human | Submitted |
-| A3 | Dedicated demo wallet on Base. Fund: gas + **$5 USDC** (five $1 ALLOW attempts). Key stays with the human. | Human | Address written in a **local** note, not in git |
+| A3 | Demo wallet on Base. Fund: gas + **$5 USDC** (five $1 ALLOW attempts). Key stays with the human. | Human | Address written in a **local** note, not in git |
+| A3.1 | **2026-08-24 実測**: the wallet registered with ETHGlobal for prize / stake-return payouts (`0x6777…3986`) already holds **30.17 USDC and 0.00756 ETH on Base** — the funding requirement is met on that address. **But do not put that key in a demo env file.** ETHGlobal sends prize money and the stake return there; a demo key lives in a running process. Use a separate throwaway key for `payOrRefuse`, funded just-in-time with ~$5 + gas, and keep the payout address cold. | Human | Demo key ≠ payout key, and the demo key holds only what the demo spends |
 | A4 | API key for the demo (free tier). | Human | Key in local env only |
 
 ### 2026-08-25 – 08-28  Fixtures and prize watch
