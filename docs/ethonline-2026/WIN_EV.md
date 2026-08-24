@@ -67,16 +67,18 @@ Max 3 partners. One partner with many tracks still counts as 1.
 
 ### Lock moment
 
-- **09-04 kickoff:** screenshot the prize page. Write 3 names in `docs/ethonline-2026/PRIZES.md` (create that day).
-- Re-open 09-09 and 09-12. Swap only if the demo does not actually use a pick.
+- **2026-08-23 訂正: 賞リストは既に公開されている。** 実測は [`PRIZES.md`](./PRIZES.md)（09-04 に作るのではなく、既に在る）。
+  パートナー9社・$77,000。**Base / Coinbase CDP / x402 facilitator はこの大会にいない**ので下の P1 は空欄になる。
+  詳細 "coming soon" は5社（The Graph $15k / 0G $15k / World / ENS / Ledger / Chainlink のうち5枠）。
+- Re-open 09-04 / 09-09 / 09-12（`python3 scripts/watch_ethonline_prizes.py` が差分を見る）。Swap only if the demo does not actually use a pick.
 
 ### Heuristic (fill after the list exists)
 
 | Slot | Who | Qualification we must show |
 |---|---|---|
-| P1 | Base / Coinbase CDP / x402 facilitator | ALLOW settle went through their rail. Tx on Base. |
-| P2 | Agent / MCP / wallet the demo calls | `pay_if_trusted` or the signer stack. Screenshot of the tool call. |
-| P3 | Continuity-only bounty that the **new** verb uses | Their Continuity form text, not Classic. |
+| P1 | **Hedera「AI & Agentic Payments」$6,000** — 唯一、新しい動詞と要件が正面一致（Hedera 上の x402 ゲート付きサービス＋Blocky402＋実有償リクエスト1件）。continuity 提出が対象かは確認中（TODO 0.36） | 実際の有償リクエスト1件と `@x402/hedera` の使用 |
+| P2 | 詳細公開待ちの5社のうち、`payOrRefuse` が実際に呼ぶもの。**The Graph が最有力**——配達台帳を subgraph で公開すれば「エージェントが読む信頼データ」になり、我々の証拠ベース判定と一直線 | 実在の subgraph と、それを判定に使っているコード |
+| P3 | 09-09 の再読で決める。実装が呼ばない賞は選ばない | — |
 
 Never: ENS (Tokyo), Sui, Uniswap-without-a-swap, a logo we did not import.
 
@@ -96,11 +98,15 @@ If the prize list is empty on 09-04, build as if P1 is Base + official x402 `exa
 
 Not the observatory. Not 17k endpoints.
 
-1. `git log pre-ethonline-2026..ethonline-2026` (10s).
-2. `run.ts block` → **no signature** (25s).
-3. `run.ts allow` → **Base explorer tx** (25s).
+**2026-08-25 更新（設計変更に追従）。** 詳細は [`DESIGN_payOrRefuse.md`](./DESIGN_payOrRefuse.md)。
+本番実測で payee 30件が 30/30 WARN だったため、「BLOCK だから止める / ALLOW だから払う」という絵は撮れない。
 
-Existing product is one sentence: “We already buy and publish. This weekend we closed the hole where an agent could ignore the score and sign anyway.”
+1. `git log pre-ethonline-2026..ethonline-2026` (10s).
+2. `run.ts catalog` → 既定 policy をカタログに当て、**署名0件**で全件拒否（25s）。スコアではなく証拠が無いから止まる。
+3. `run.ts pay` → 開示した evidence policy（21日で 3件以上・settle率 0.9 以上）で、48/48 settled の相手に **実 Base tx**（25s）。
+   同じ policy が 0/77 の相手を署名前に拒む。
+
+Existing product is one sentence: “We already buy and publish. This weekend we made the buyer's rule explicit, and paid only where our own delivery ledger backed it.”
 
 ---
 
