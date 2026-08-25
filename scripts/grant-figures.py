@@ -13,7 +13,10 @@ STATE_URL = "https://vet402.com/api/v1/observatory/state"
 DOCS = pathlib.Path(__file__).resolve().parent.parent / "docs" / "applications"
 # solana-grant-proposal.md is a coherent dated snapshot (cost basis + catalog fetch);
 # it is re-quoted whole at submission, not line-patched.
-SKIP = {"solana-grant-proposal.md", "video-script.md", "ai-usage-disclosure.md"}
+# 提出済みの申請は「何を送ったか」の記録なので、数字を後から書き換えない。
+# 2026-08-25 に Base へ送った Q10 は --write の対象から外す（外さないと記録が偽装になる）。
+SKIP = {"solana-grant-proposal.md", "video-script.md", "ai-usage-disclosure.md",
+        "base-builder-grant-nomination.md"}
 
 
 def fetch():

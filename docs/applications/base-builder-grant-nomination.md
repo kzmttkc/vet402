@@ -1,4 +1,10 @@
-# Base Builder Grants — nomination pack (ready to submit)
+# Base Builder Grants — nomination pack (**SUBMITTED 2026-08-25**)
+
+> **Submitted 2026-08-25 10:03 JST.** Google Forms acknowledgement received at the owner's address.
+> The figures below are the ones actually sent (L1 1,512 attempts / 601 settled / 911 non-settled;
+> catalog 18,832). **Do not refresh them** — this file is now the record of what we said, not a draft.
+> It is excluded from `scripts/grant-figures.py --write` for that reason.
+> The response can be edited later from the acknowledgement email ("回答を編集") if a correction is ever needed.
 
 > Program: Base Builder Grants, 1–5 ETH, **retroactive** (shipped work only).
 > Primary check 2026-08-23: [docs.base.org/get-started/get-funded](https://docs.base.org/get-started/get-funded) lists it as accepting applications; the [grants.base.eth post](https://paragraph.com/@grants.base.eth/calling-based-builders) states there is **no application form** — "We will mostly be relying on our own discovery process to find these grantees, but if you want to nominate someone you can submit a nomination here." The nomination Google Form is the only external submission path. No response is guaranteed. Recipients complete W8/W9.

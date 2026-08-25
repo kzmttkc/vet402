@@ -28,12 +28,12 @@ A result never moves up a level: a probe is never reported as settlement; an opi
 
 | Metric | Value |
 |---|---|
-| Endpoints tracked in the public x402 catalog | 18,832 (15,275 active, 3,557 delisted) |
-| L0 machine-verified pass | 1,127 published (17,705 not machine-checkable — "unverified", not dead) |
-| **L1 real purchases** | **1,512 attempts across 957 endpoints — 601 settled**; every settlement published with its Base tx hash; the 911 non-settles published with the same weight |
-| Lifecycle events recorded | 3,876 delists · 319 relists · 4 settle-drops |
-| Daily catalog snapshot | Latest 2026-08-24 — 15,274 endpoints fetched |
-| Chain coverage | Base 18,363 · Solana 218 · X Layer 18 · others 6 (mainnet-only breakdown; real purchases are Base-only today) |
+| Endpoints tracked in the public x402 catalog | 19,023 (15,251 active, 3,772 delisted) |
+| L0 machine-verified pass | 1,246 published (17,777 not machine-checkable — "unverified", not dead) |
+| **L1 real purchases** | **1,596 attempts across 1,005 endpoints — 653 settled**; every settlement published with its Base tx hash; the 943 non-settles published with the same weight |
+| Lifecycle events recorded | 4,135 delists · 363 relists · 4 settle-drops |
+| Daily catalog snapshot | Latest 2026-08-25 — 15,239 endpoints fetched |
+| Chain coverage | Base 18,551 · Solana 218 · X Layer 18 · others 6 (mainnet-only breakdown; real purchases are Base-only today) |
 
 ## What is different
 
@@ -48,4 +48,4 @@ Next.js (App Router) + TypeScript · viem (Base mainnet) · ERC-8004 identity & 
 
 ---
 
-*Figures retrieved from /api/v1/observatory/state on 2026-08-25. Regenerate before every submission: `python3 scripts/grant-figures.py --check`.*
+*Figures retrieved from /api/v1/observatory/state on 2026-08-26. Regenerate before every submission: `python3 scripts/grant-figures.py --check`.*
