@@ -126,7 +126,7 @@ Product code = anything under `packages/`, `src/`, `examples/` that implements t
 
 | # | Task | Owner | Done when |
 |---|---|---|---|
-| A1 | **2026-08-25 確定。ETHGlobal のアカウントは `kazumototakeshi@gmail.com` ただ1つを使う。** 参加は 08-20 に確定済み（"You've confirmed your spot"）で、My events に ETHOnline 2026 / ETHGlobal Tokyo 2026 / Pragma Tokyo 2026 が並び、賞金・ステーク返却の受取ウォレットもここに紐付く。**`kzmttkc314@gmail.com` は Takeshi が試しに作った仮アカウントで、使わない**（2026-08-25 指示）。そこに私が 08-23 に出した申請と Continuity 選択は**無効**として扱い、以後この垢では何もしない。よって本当の A1 は、**正本アカウントの ETHOnline ダッシュボードで Continuity (Hack on Existing Project) が選択されているかを確認する**こと。未選択なら選ぶ（欄が無ければ hello@ethglobal.com）。 | Human | 正本アカウントで Continuity が選択済みと確認できる |
+| A1 | **2026-08-25 確定。ETHGlobal のアカウントは `kazumototakeshi@gmail.com` ただ1つを使う。** 参加は 08-20 に確定済み（"You've confirmed your spot"）で、My events に ETHOnline 2026 / ETHGlobal Tokyo 2026 / Pragma Tokyo 2026 が並び、賞金・ステーク返却の受取ウォレットもここに紐付く。**`kzmttkc314@gmail.com` は Takeshi が試しに作った仮アカウントで、使わない**（2026-08-25 指示）。そこに私が 08-23 に出した申請と Continuity 選択は**無効**として扱い、以後この垢では何もしない。**2026-08-25 完了: 正本アカウントのダッシュボードを DOM で実測し、`continuity-track: checked=true` を確認した。** Continuity の選択は在る。 | Human | ✅ 済 |
 | A1.1 | 提出フォームに入れるのは**リポの URL**（https://github.com/kzmttkc/vet402 ）。GitHub 連携そのものは提出の必須条件ではない見込みだが、正本アカウントで繋げるなら繋いでおく。もし「その GitHub は既に使われている」と拒まれたら、それは仮アカウント側に残った連携なので、そちらを外す（Takeshi 判断）。 | Human | 提出画面でリポを指定できる |
 | A2 | ~~Tokyo Continuity apply~~ **Tokyo 2026 は登録済み**（My events に SEP 25–27。Pragma Tokyo 9/26 も）。残るのは Tokyo 側の Continuity 選択の確認（締切 09-23）。 | Human | Tokyo ダッシュボードで Continuity 選択を確認 |
 | A3 | Demo wallet on Base. Fund: gas + **$5 USDC** (five $1 ALLOW attempts). Key stays with the human. | Human | Address written in a **local** note, not in git |
