@@ -43,7 +43,20 @@ You are already flying to Mumbai for the hackathon. The incremental cost is the 
 
 How to attend (non-negotiable):
 
-1. Buy a ticket **this week**. Prefer [Ethereum Public Goods](https://devcon.org/en/tickets/) ($349 ETH) if the OSS claim succeeds; otherwise General Admission in ETH ($499), not fiat ($999).
+1. Buy a ticket **this week**. **2026-08-26 実測でこの行の前提が2点崩れた**（devcon.org/en/tickets/store/ を直読）:
+   - **ETH Early Bird $349 は Sale ended**。今 $349 で残っているのは別枠。
+   - **Ethereum Public Goods $349 の要件は「Active fundraisers — those who are fundraising for
+     Public Goods projects」**であって OSS メンテナではない。vet402 は MIT 公開だが
+     公共財の資金調達をしていないので**該当しない見込み**。
+   現時点の選択肢（いずれも 18% GST 込み）:
+   | 枠 | 価格 | 取得方法 | 確実性 |
+   |---|---|---|---|
+   | General Admission | **$499 ETH** / $999 fiat | 即時購入・匿名可・**譲渡可** | 確実（ただし Final Waves $599/$1199 が Date TBA で控える） |
+   | Sanctuary Tech Builders | **$349 ETH** / $499 fiat | 申請（rolling review）・譲渡不可 | 審査あり。"building the open, privacy-preserving, decentralized technologies" は vet402 に当てはまる |
+   | Ethereum Public Goods | $349 | self-claim | **要件不一致の見込み**（active fundraisers 限定） |
+   **推奨**: Sanctuary Tech Builders へ**今日申請**（無料・rolling）。**9/2 までに可否が出なければ GA を買う**。
+   待って GA が $599 へ上がっても損は $100、通れば $150 得。申請自体にコストは無い。
+   会期まで 69日（2026-08-26 実測のカウントダウン）。1注文2枚まで。
 2. **Nov 3–5:** meetings only. Target 8 named conversations: ERC-8004 authors / EF, Base, Coinbase CDP / x402, ENS, and whoever is a Mumbai sponsor. Walk the floor with the live observatory and the dry-run numbers. Do not sit in talks unless a speaker is a prize judge.
 3. **Nov 5 evening:** leave Devcon. Sleep. Tag `pre-mumbai-2026` is already cut (see calendar).
 4. **Nov 6:** hackathon only. Do not bounce between Devcon closing and coding.
@@ -57,7 +70,7 @@ Do **not** go to Devcon if you skip Mumbai. Do **not** skip Devcon if you do Mum
 
 | When | Action | Owner |
 |---|---|---|
-| 2026-08-22 → 08-29 | ETHOnline Continuity apply + Tokyo Continuity apply (Tokyo deadline 09-23; do it early). Mumbai apply when the form opens. | Human |
+| 2026-08-22 → 08-29 | ETHOnline Continuity apply (**done 2026-08-23**) + Tokyo Continuity apply (Tokyo deadline 09-23; do it early). Mumbai apply when the form opens. | Human |
 | 2026-08-22 → 08-29 | Devcon ticket. Hotel Mumbai 11-02 night → 11-08. | Human |
 | 2026-08-22 → 09-03 | Spec and rehearsal only. No `payOrRefuse` code. | Both |
 | **2026-09-03** | Tag `pre-ethonline-2026` on `main`. Branch `ethonline-2026`. | Human (or agent with approval) |
