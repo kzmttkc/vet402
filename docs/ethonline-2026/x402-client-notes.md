@@ -11,9 +11,9 @@
 
 売る側（自前 seller を立てる場合）: `@x402/core` ＋ `@x402/express` / `@x402/fastify` / `@x402/hono` / `@x402/next`
 
-**`@x402/hedera` が公式に存在する**——Hedera「AI & Agentic Payments」$6,000 を狙う場合、
-チェーン対応は自前実装ではなく公式パッケージ＋Blocky402 facilitator の組み合わせになる
-（賞の要件は [`PRIZES.md`](./PRIZES.md)。対象可否は確認中）。
+**`@x402/hedera` は公式に存在する**が、**ETHOnline では使わない**——Hedera「AI & Agentic Payments」$6,000 は
+continuity ラベルが無く、我々は選べないと確定した（2026-08-25 ETHGlobal 回答・[`PRIZES.md`](./PRIZES.md)）。
+このメモは Mumbai / グラント用に残す。
 
 ## `exact` の流れ（8段）
 

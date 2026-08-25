@@ -1,7 +1,9 @@
 # `payOrRefuse` 設計（会期前の仕様・実装は 2026-09-04 以降）
 
 > 決定 2026-08-25。根拠は [`fixtures.md`](./fixtures.md) の本番実測。
-> この文書は仕様であって実装ではない。`packages/` / `src/` / `examples/` には会期まで手を入れない。
+> この文書は **`payOrRefuse` の仕様**であって実装ではない。支払いパス（signer / x402 settle / デモエージェント）には会期まで手を入れない。
+>
+> 例外（製品欠陥の是正・会期の細工ではない）: SpendGuard `trustPolicy: "evidence"` は 2026-08-25 に main へ入った。npm 未公開。**これは判定であり、`payOrRefuse` ではない。** 会期の新規は「判定のあと、条件を全部通したときだけ払う」一事。
 > 上位の賭けは [`WIN_EV.md`](./WIN_EV.md)、日次は [`ROADMAP.md`](./ROADMAP.md)。
 
 ## 1. 実測が壊した前提

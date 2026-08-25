@@ -76,9 +76,9 @@ Max 3 partners. One partner with many tracks still counts as 1.
 
 | Slot | Who | Qualification we must show |
 |---|---|---|
-| P1 | **Hedera「AI & Agentic Payments」$6,000** — 唯一、新しい動詞と要件が正面一致（Hedera 上の x402 ゲート付きサービス＋Blocky402＋実有償リクエスト1件）。continuity 提出が対象かは確認中（TODO 0.36） | 実際の有償リクエスト1件と `@x402/hedera` の使用 |
-| P2 | **World「AgentKit Continuity」$3,500** — Continuity 専用枠なので**資格が確実**（2026-08-25 に詳細公開）。`payOrRefuse` の policy に**払う側の条件**を1つ足す: 人間裏付けのあるエージェントにだけ上限を上げる。動詞は増えない | AgentKit の実使用・AgentBook 登録/解決・Sandbox での遠隔デモ・フィードバック文書 |
-| P3 | 09-09 の再読で決める（The Graph $15k が最有力——配達台帳を subgraph にすれば証拠ベース判定と一直線）。実装が呼ばない賞は選ばない | — |
+| P1 | **World「AgentKit Continuity」$3,500** — 2026-08-26 時点で**選べる唯一の賞**。`payOrRefuse` の policy に払う側の条件を1つ足す: 人間裏付けのあるエージェントにだけ上限を上げる。動詞は増えない | AgentKit の実使用・AgentBook 登録/解決・Sandbox での遠隔デモ・フィードバック文書 |
+| P2 | **今は空**。continuity 枠が増えたときだけ埋まる（`scripts/watch_ethonline_prizes.py` が毎日見る）。詳細待ちは The Graph $15k / 0G $15k / ENS / Ledger / Chainlink / **Privy $5k（2026-08-26 新規）** | continuity ラベルがあること（無ければ内容が合っても選べない） |
+| P3 | 同上。**continuity ラベルの無い賞は、内容が合っていても選択UIに出ない**（2026-08-25 ETHGlobal 回答）。3枠を埋めることを目的にしない | — |
 
 Never: ENS (Tokyo), Sui, Uniswap-without-a-swap, a logo we did not import.
 

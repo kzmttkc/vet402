@@ -18,6 +18,29 @@
 | Ledger | $5,000 | coming soon |
 | Chainlink | $3,000 | coming soon |
 
+## 資格の確定（2026-08-25 ETHGlobal 公式回答・Pascal）
+
+Discord で直接聞いた答え。**これが賞選択の憲法**になる。
+
+> you are only eligible for tracks that have continuity on them. If a partner does not have continuity
+> or if their continuity price does not match what you're building, you're not eligible. **Even if they
+> have something that is non-continuity that would work in your case, you're not eligible.**
+> You can only select continuity and the other way around.
+> (…) This will not show up on the partner side and this will not show up on your side.
+
+つまり:
+
+1. **continuity ラベルの無い枠は、内容が合っていても選べない**（選択UIにそもそも出ない）。
+2. → **Hedera「AI & Agentic Payments」$6,000 は対象外**。Hedera / Blocky402 対応を会期スコープに入れる理由は消えた。
+3. → 我々が選べるのは **continuity 枠だけ**。2026-08-26 時点の全 continuity 枠は4つで、
+   要件が合うのは **World の1つだけ**（下表）。
+4. パートナーは価格を早く出すよう促されている最中で、**partner channel は今週後半に開く**。
+   個別要件はそこで直接聞く。
+
+**したがって賞のEVは「continuity 枠が今後いくつ増えるか」でほぼ決まる。**
+`scripts/watch_ethonline_prizes.py`（毎日 09:20）は、この回答を受けて
+**continuity 枠の新設を名指しで検出**するようにした。
+
 ## 計画に対する最大の訂正
 
 **Base / Coinbase CDP / x402 facilitator は、この大会のパートナーに存在しない。**
@@ -121,8 +144,9 @@ Finalist を選ぶと Round 1 の非同期審査を通過した場合に **2026-
 
 ## 賞の選び方（2026-08-23 版・確定は 09-09 の再読後 / 上の未解決が先）
 
-1. **World 🤖 AgentKit Continuity $3,500** — **Continuity 専用枠なので資格が確実**（Hedera main 枠は資格照会中）。チェーン変更なし。
-2. **Hedera 🤖 AI & Agentic Payments $6,000** — 額は最大。ただし Hedera + Blocky402 対応が前提で、continuity 提出が main 枠の対象かは未確認。
+1. **World 🤖 AgentKit Continuity $3,500** — **2026-08-26 時点で、我々が選べる唯一の賞**。
+2. ~~Hedera 🤖 AI & Agentic Payments $6,000~~ — **選べない**（continuity ラベル無し・2026-08-25 確定）。
+   `@x402/hedera` の調査は将来の Mumbai / グラント用に残すが、ETHOnline のスコープからは外す。
 3. 詳細待ち4社（The Graph / 0G / ENS / Ledger / Chainlink のうち残り）で、`payOrRefuse` が実際に呼ぶもの（The Graph=観測データの subgraph、0G=AI エージェント、
    Ledger=署名器、Chainlink=価格/検証）。**9/9 の再読で決める。実装が呼ばない賞は選ばない。**
 4. ENS は Tokyo の動詞なのでここでは選ばない（World も上書きを実装しない限り選ばない）。
@@ -136,3 +160,12 @@ Finalist を選ぶと Round 1 の非同期審査を通過した場合に **2026-
 launchd `com.kizuna.ethonline-prizes` が毎日 09:20 JST）が、パートナーの増減・金額変更・
 **"coming soon" の解消**を検出したときだけ `state/ALERTS.md` に叫ぶ。
 World の詳細公開はこの仕組みの初回実行で見つけた。
+
+
+## パートナーの増減（機械監視）
+
+- 2026-08-23: 9社・$77,000
+- **2026-08-26: 10社**。**Privy $5,000 が新規**（詳細 coming soon）。
+- continuity 枠は現在4つ: World $3,500 / 1inch $2,000 / Uniswap $2,000 / Hedera $1,000（計 $8,500）。
+  このうち要件が合うのは World だけ。詳細待ちの5社（The Graph / 0G / ENS / Ledger / Chainlink / Privy）が
+  continuity 枠を足すかどうかが、賞のEVを決める唯一の変数。
