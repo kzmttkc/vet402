@@ -103,6 +103,13 @@ const SURFACES: Surface[] = [
       "score",
       "l1DeliveryCount",
       "l1DistinctBuyers",
+      // 2026-08-26: 「我々が実費で払って届かなかった」記録。最終スコアの天井に
+      // 効かせている以上、根拠を公開面へ出す。
+      "l1Settled",
+      "l1PaidNeverSettled",
+      "l1NonSettlingDays",
+      "l1PendingVerification",
+      "l1NonDeliveryReason",
     ],
   },
   {

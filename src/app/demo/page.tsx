@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "60-second demo | vet402",
@@ -38,9 +39,14 @@ export default function DemoPage() {
       </ul>
       <p className="mt-8 text-sm opacity-80">
         Check it without us:{" "}
+        {/* 2026-08-26: API のパスは Link ではなく a のままにする（ページではなく
+            JSON の実物を開かせたい導線なので、クライアント遷移は誤り）。
+            eslint の no-html-link-for-pages はルート判定で誤検知するため、
+            この行だけ理由付きで無効化する。ページ2本は Link へ。 */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <a className="underline" href="/api/v1/observatory/state">/api/v1/observatory/state</a> ·{" "}
-        <a className="underline" href="/observatory/methodology">methodology</a> ·{" "}
-        <a className="underline" href="/accuracy">accuracy ledger</a>
+        <Link className="underline" href="/observatory/methodology">methodology</Link> ·{" "}
+        <Link className="underline" href="/accuracy">accuracy ledger</Link>
       </p>
     </main>
   );

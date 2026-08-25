@@ -2070,6 +2070,34 @@ components:
             l1DistinctBuyers:
               type: integer
               description: Distinct L1 buyers behind l1DeliveryCount.
+            l1Settled:
+              type: integer
+              description: >-
+                Settlements to this payee that vet402 confirmed on-chain
+                (recipient, amount, token, chain, confirmations).
+            l1PaidNeverSettled:
+              type: integer
+              description: >-
+                Paid attempts by vet402 that resolved WITHOUT an on-chain
+                settlement. Pending verifications are not counted here.
+            l1NonSettlingDays:
+              type: integer
+              description: >-
+                Distinct UTC days on which a non-settling paid attempt
+                occurred. Separates a one-day outage from a sustained
+                pattern.
+            l1PendingVerification:
+              type: integer
+              description: >-
+                Paid attempts whose claimed settlement vet402 has not
+                re-read on-chain yet. Never counted against the payee.
+            l1NonDeliveryReason:
+              type: string
+              nullable: true
+              enum: [paid_never_settled_sustained, paid_never_settled_repeated, paid_never_settled]
+              description: >-
+                Present when a non-delivery ceiling was applied to the final
+                score. null when no such ceiling applies.
         walletHealth:
           type: object
           description: Reused from the same on-chain wallet-age/tx-count/burner heuristics as the seller-side score

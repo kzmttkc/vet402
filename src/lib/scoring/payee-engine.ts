@@ -17,6 +17,13 @@ import {
 } from "./outcome-adjustment";
 import { getPayeeStats, type PayeeStats } from "@/lib/db/x402-payments";
 import {
+  getL1SettlementRecord,
+  nonDeliveryCeiling,
+  nonDeliveryReason,
+  EMPTY_L1_SETTLEMENT_RECORD,
+  type L1SettlementRecord,
+} from "./l1-settlement-record";
+import {
   getObservedDeliveryStats,
   type ObservedDeliveryStats,
 } from "@/lib/db/observed-purchases";
@@ -161,6 +168,21 @@ export type PayeeSignals = {
      *  premium receiving signal). 0 until the observatory writes its first row. */
     l1DeliveryCount?: number;
     l1DistinctBuyers?: number;
+    /**
+     * 2026-08-26: 「我々が実費で払って、届かなかった」の内訳。
+     * 判定（最終スコアの天井）に効かせている以上、根拠を出す。
+     * `l1PendingVerification` は照合待ちで、判定には使っていない——
+     * 我々の検証の遅れを売り手の落ち度にしないため。
+     */
+    l1Settled?: number;
+    l1PaidNeverSettled?: number;
+    l1NonSettlingDays?: number;
+    l1PendingVerification?: number;
+    /**
+     * 天井が掛かった理由の機械可読コード（null = 掛かっていない）。
+     * paid_never_settled_sustained / paid_never_settled_repeated / paid_never_settled。
+     */
+    l1NonDeliveryReason?: string | null;
   };
   walletHealth: {
     ageDays: number;
@@ -605,13 +627,16 @@ export async function scorePayeeWallet(address: string): Promise<PayeeScoreResul
   // into whatever was left. Running them together makes the request cost the
   // SLOWEST read rather than all of them, which is what gives the v1 fallback
   // room to exist at all. Nothing about which failure means what changes here.
-  const [statsResult, metricsResult, drainResult, outcomesResult, l1Result] =
+  const [statsResult, metricsResult, drainResult, outcomesResult, l1Result, l1RecordResult] =
     await Promise.allSettled([
       getPayeeStats(addrLower),
       fetchWalletMetrics(addr),
       detectDrainPattern(addr),
       getOutcomesForWallet(addrLower),
       getObservedDeliveryStats(addrLower),
+      // 2026-08-26: 「払ったのに届かなかった」記録。同じ並列束に入れるのは、
+      // 上のコメントどおり所要時間を合計でなく最遅に保つため。
+      getL1SettlementRecord(addrLower),
     ]);
 
   // The payment-stats read has no fallback and never had one: it is the local
@@ -692,6 +717,11 @@ export async function scorePayeeWallet(address: string): Promise<PayeeScoreResul
   // failure here can only WITHHOLD a promotion (empty → no lift), so it degrades
   // to empty rather than flagging unavailable: the safe direction is the same as
   // on the buyer side.
+  // 2026-08-26: 読めなければ空。空は「所見なし」であって「問題なし」ではない
+  // ——天井を掛けないだけで、他の関門はそのまま効く。
+  const l1Record: L1SettlementRecord =
+    l1RecordResult.status === "fulfilled" ? l1RecordResult.value : EMPTY_L1_SETTLEMENT_RECORD;
+
   const l1Delivery: ObservedDeliveryStats =
     l1Result.status === "fulfilled"
       ? l1Result.value
@@ -786,9 +816,20 @@ export async function scorePayeeWallet(address: string): Promise<PayeeScoreResul
     : partiallyMeasured
       ? PARTIAL_SCORE_CEILING
       : 100;
+  // 2026-08-26: 「我々が実費で払って、届かなかった」記録の天井。
+  //
+  // なぜ受取軸ではなく最終スコアに掛けるか: 受取軸は重み 0.35 なので、そこを
+  // 39 に抑えても最終は 78 前後にしかならず BLOCK 帯（<40）に届かない。
+  // 140回払って一度も届かない相手を未知の相手と同点にしないためには、
+  // degraded / partial / thin と同じ層で効かせる必要がある。
+  //
+  // 掛かるのは「結果が確定した不履行だけがあり、決済が1件も無い」ときに限る。
+  // 照合待ちは数えない（我々の検証の遅れを売り手の落ち度にしない）。
+  const nonDelivery = nonDeliveryCeiling(l1Record);
   const ceiling = Math.min(
     measurementCeiling,
     noReceivingEvidence ? PAYEE_THIN_SCORE_CEILING : 100,
+    nonDelivery,
   );
   const score = Math.min(measuredScore, ceiling);
   // Stated, not inferred from the ceiling: if DEGRADED_SCORE_CEILING were ever
@@ -811,6 +852,13 @@ export async function scorePayeeWallet(address: string): Promise<PayeeScoreResul
         score: receivingScore,
         l1DeliveryCount: l1Delivery.deliveryCount,
         l1DistinctBuyers: l1Delivery.distinctBuyers,
+        // 2026-08-26: 判定に効かせた以上、根拠を出さないわけにいかない。
+        // 呼び手が「なぜ天井が掛かったか」を再現できる粒度で出す。
+        l1Settled: l1Record.settled,
+        l1PaidNeverSettled: l1Record.resolvedNonSettling,
+        l1NonSettlingDays: l1Record.nonSettlingDays,
+        l1PendingVerification: l1Record.pendingVerification,
+        l1NonDeliveryReason: nonDeliveryReason(l1Record),
       },
       walletHealth: {
         ageDays: walletMetrics?.ageDays ?? 0,
