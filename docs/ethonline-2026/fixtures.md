@@ -100,6 +100,23 @@ settle する相手・1度もしない相手・delisted・直近10日に初出�
 全て Base（`eip155:8453`）・USDC・$1 未満。**primary は 0x36038e1d…**（21日で失敗0・48件settle・
 単価 $0.02 なので5回試しても $0.1）。
 
+### B2 — 402 の実在確認（2026-08-26 実測・支払いはしていない）
+
+各 resource を素の GET で叩き、`Payment-Required` ヘッダ（x402 v2）の `accepts[0]` を読んだ。
+
+| resource | HTTP | scheme / network | asset | amount | payTo 一致 | 備考 |
+|---|---|---|---|---|---|---|
+| **`kronossignals.com/api/v1/price/btc`** | **402** | `exact` / `eip155:8453` | Base 正規 USDC `0x8335…2913` | **20000（$0.02）** | ✅ `0x36038e1d…` | **primary。パラメータ不要**・`maxTimeoutSeconds: 300` |
+| `kronossignals.com/api/v1/alerts/btc` | 402 | 同上 | 同上 | 20000 | ✅ | 予備。同一 payee |
+| `x402-factory.com/v1/aviation/delay-risk/{iata}` | 402 | `exact` / `eip155:8453` | 同上 | 20000 | ✅ `0xCc42Ed39…` | `maxTimeoutSeconds: 120`。402本文の resource は別IATAを echo する（実害なしだが注意） |
+| `coingecko.use.x402atlas.com/price` | 402 | `exact` / **Base・Polygon・Arbitrum・Solana の4本立て** | 各チェーンの USDC | 5000（$0.005） | ✅ `0x32793F68…` | クエリ必須（`ids`, `vs_currencies`） |
+| `dns.use.x402atlas.com/a` | 402 | `exact` / 同4本立て | 同上 | 5000（$0.005） | ✅ `0x446e51De…` | クエリ必須（`host`） |
+
+**B2 は満たした**: primary は生きていて、`exact` / Base / 正規USDC / $1未満 / payTo が採点対象と一致。
+
+副産物: x402atlas の2本は **1つの 402 で4チェーンを提示**してくる。マルチチェーン中立を掲げる我々には、
+「同じリソースでチェーンを選ぶ買い手」を扱えるかという論点が実在するという証拠になる（会期スコープには入れない）。
+
 ## 4. 再測の予定
 
 - 09-04 / 09-09 / 09-12 に本番面で再スコア（thin cap の解消状況と、BLOCK 候補の探索）。
