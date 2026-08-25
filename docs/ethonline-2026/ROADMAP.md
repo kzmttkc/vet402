@@ -56,6 +56,22 @@ Out of scope (frozen until later events): ENS resolution, ERC-8004 Validation Re
 
 ## 4. Design constraints (write tests against these)
 
+### 4.0 既存と新規の線引き（2026-08-26 実測で更新）
+
+会期前に何が在ったかを、提出時に正直に書くための台帳。**取り消さない・隠さない。**
+
+| | 状態 | 事実 |
+|---|---|---|
+| SpendGuard の evidence policy（**判定**する側） | **既存として開示する** | 2026-08-25 07:32–07:44 に別セッションが `packages/sdk/src/spend-guard.ts` と `packages/middleware/src/core.ts` へ実装（ee16294 / 44c3420・テスト520行つき）。`package.json` は 0.5.0 へ上がったが **npm は 0.3.0 のまま**（2026-08-26 実測・registry.npmjs.org）。会期前の作業なので Continuity の「既存」に入る |
+| `payOrRefuse` / `pay_if_trusted`（**行動**する側） | **会期中の新規** | 2026-08-26 時点でリポのどこにも存在しない（`grep -r payOrRefuse packages/ src/` が 0 件） |
+| デモエージェント・自前 seller | 会期中の新規 | `examples/` に無い |
+
+**提出の物語はむしろ鋭くなった**: 既存の vet402 は「証拠に基づいて**判定する**」ところまで出来ていて、
+エージェントはその判定を無視して署名できた。会期中に足したのは**判定に従って動く手**——
+`payOrRefuse` は通らなければ署名そのものに到達しない。
+
+フリーズの掲示は [`AGENTS.md`](../../AGENTS.md) の最上部（どのセッションも最初に読む場所）に置いた。
+
 ### 4.1 `payOrRefuse` shape (spec only until 09-04)
 
 ```

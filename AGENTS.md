@@ -7,3 +7,19 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+# ⛔ ETHOnline 2026 Continuity フリーズ（2026-08-26 〜 09-04 00:00 UTC）
+
+このリポは ETHGlobal の **Continuity トラック**で提出される。賞の対象は**会期中(09-04→09-13)の差分だけ**で、
+会期前に入れた実装は「既存」として開示される——つまり**今書くと賞の対象から外れる**。
+
+**09-04 まで新規実装を入れない対象**:
+- `packages/sdk` / `packages/middleware` の支払い判定まわり（SpendGuard の policy / evidence 系）
+- `payOrRefuse` / `pay_if_trusted`（まだ存在しない。会期中の新規はこれ）
+- `examples/` のデモエージェント・自前 seller
+
+**入れてよいもの**: 既存機能の不具合修正・セキュリティ・観測所の運用・ドキュメント・仕様・調査。
+
+2026-08-25 に evidence policy が会期前に `packages/sdk` と `packages/middleware` へ入った
+（ee16294 / 44c3420）。取り消さず「既存」として開示する。詳細と現在の線引きは
+[`docs/ethonline-2026/ROADMAP.md`](docs/ethonline-2026/ROADMAP.md) §4.0。
