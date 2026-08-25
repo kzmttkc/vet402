@@ -18,8 +18,8 @@ Reputation systems that rely on self-reported reviews or stake do not close this
 
 From operating one in production, we argue it needs four properties:
 
-1. **It buys.** Real settlement with real money, not synthetic probes alone. vet402's L1 level has made 1,233 real purchase attempts across 886 endpoints; 531 settled. Each settled purchase is published with its on-chain tx hash.
-2. **It publishes failures with the same weight.** The 702 attempts that did not settle are on the same public pages as the successes. A verification layer that only publishes wins is an advertising layer.
+1. **It buys.** Real settlement with real money, not synthetic probes alone. vet402's L1 level has made 1,512 real purchase attempts across 957 endpoints; 601 settled. Each settled purchase is published with its on-chain tx hash.
+2. **It publishes failures with the same weight.** The 911 attempts that did not settle are on the same public pages as the successes. A verification layer that only publishes wins is an advertising layer.
 3. **It is structurally neutral.** vet402 sells nothing on the catalog it measures; measured operators are not customers; verification is unsolicited and free; sellers cannot pay for a better result. Our own published mistakes are corrected on a public accuracy ledger.
 4. **It separates fact from opinion, permanently.** Four levels — L0 liveness (probe), L1 settle-through (real purchase), L2 conformance (machine diff against the seller's own declaration), L3 quality (published rubric) — and a result never moves up a level. An opinion is never laundered into a fact.
 

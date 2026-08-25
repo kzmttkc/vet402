@@ -17,7 +17,13 @@ SKIP = {"solana-grant-proposal.md", "video-script.md", "ai-usage-disclosure.md"}
 
 
 def fetch():
-    with urllib.request.urlopen(STATE_URL, timeout=30) as r:
+    # 公開APIはエッジでキャッシュされる。素のURLで引くと古い値が返る
+    # （2026-08-25: settled が 531 と返り、本番DBの実測は 601 だった）。
+    # 申請に出す数字なので、必ずキャッシュを外して引く。
+    url = STATE_URL + "?_=" + str(int(datetime.datetime.now().timestamp()))
+    req = urllib.request.Request(url, headers={"Cache-Control": "no-cache",
+                                               "User-Agent": "kizuna-grant-figures/1"})
+    with urllib.request.urlopen(req, timeout=30) as r:
         s = json.load(r)
     by = {c["chain"]: c for c in s["byChain"]}
     base = by.get("Base", {})
@@ -98,6 +104,8 @@ ANCHORS = [
     (r"\(([\d,]{3,}) delists, ([\d,]{3,}) relists recorded\)", ["delistEvents", "relistEvents"]),
     (r"([\d,]{3,}) endpoints have appeared; ([\d,]{3,}) are currently delisted", ["total", "delisted"]),
     (r"([\d,]{3,}) endpoints, ([\d,]{3,}) of them on Base", ["total", "baseTotal"]),
+    (r"We buy: ([\d,]{3,}) real USDC purchases on Base mainnet across ([\d,]{3,}) endpoints, ([\d,]{3,}) settled", ["attempts", "endpointsAttempted", "settled"]),
+    (r"the ([\d,]{3,}) that did not settle", ["nonsettled"]),
     (r"attempts across ([\d,]{3,}) (?:distinct )?endpoints", ["endpointsAttempted"]),
     (r"([\d,]{3,}) endpoints are currently delisted", ["delisted"]),
     (r"relists, and (\d+) settle-drops", ["settleDrops"]),

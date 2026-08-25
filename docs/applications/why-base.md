@@ -22,7 +22,7 @@ Of the 18,832 endpoints vet402 tracks in the public x402 discovery catalog, **18
 
 ### Measured: every real purchase we have made settled on Base
 
-Our L1 verification level makes **real purchases**: 1,233 purchase attempts across 886 distinct endpoints, of which 531 settled (43.1%). Every one of those attempts was a USDC payment on Base mainnet (`eip155:8453`), using the x402 `exact` scheme with EIP-3009 transfer authorization. Every settled purchase produces a Base transaction hash, published on the endpoint's public observatory page. The 702 attempts that did not settle are published too — same page, same weight.
+Our L1 verification level makes **real purchases**: 1,512 purchase attempts across 957 distinct endpoints, of which 601 settled (39.7%). Every one of those attempts was a USDC payment on Base mainnet (`eip155:8453`), using the x402 `exact` scheme with EIP-3009 transfer authorization. Every settled purchase produces a Base transaction hash, published on the endpoint's public observatory page. The 911 attempts that did not settle are published too — same page, same weight.
 
 This is, to our knowledge, the only public dataset of *settle-through* rates for the x402 catalog: not "does the endpoint answer" but "does money actually settle and a response actually arrive."
 

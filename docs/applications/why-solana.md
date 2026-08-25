@@ -5,7 +5,7 @@
 
 ## Honest status first
 
-**vet402 does not make real purchases on Solana today.** Our L1 (settle-through) payer currently supports exactly one settlement path: the x402 `exact` scheme with EIP-3009 USDC on Base mainnet. All 1,233 real purchase attempts to date (531 settled) were on Base. We are not going to claim Solana settlement verification that does not exist.
+**vet402 does not make real purchases on Solana today.** Our L1 (settle-through) payer currently supports exactly one settlement path: the x402 `exact` scheme with EIP-3009 USDC on Base mainnet. All 1,512 real purchase attempts to date (601 settled) were on Base. We are not going to claim Solana settlement verification that does not exist.
 
 What *does* exist today for Solana:
 

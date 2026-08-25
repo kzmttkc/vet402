@@ -30,7 +30,7 @@ A result never moves up a level: a probe is never reported as settlement; an opi
 |---|---|
 | Endpoints tracked in the public x402 catalog | 18,832 (15,275 active, 3,557 delisted) |
 | L0 machine-verified pass | 1,127 published (17,705 not machine-checkable — "unverified", not dead) |
-| **L1 real purchases** | **1,233 attempts across 886 endpoints — 531 settled**; every settlement published with its Base tx hash; the 702 non-settles published with the same weight |
+| **L1 real purchases** | **1,512 attempts across 957 endpoints — 601 settled**; every settlement published with its Base tx hash; the 911 non-settles published with the same weight |
 | Lifecycle events recorded | 3,876 delists · 319 relists · 4 settle-drops |
 | Daily catalog snapshot | Latest 2026-08-24 — 15,274 endpoints fetched |
 | Chain coverage | Base 18,363 · Solana 218 · X Layer 18 · others 6 (mainnet-only breakdown; real purchases are Base-only today) |
