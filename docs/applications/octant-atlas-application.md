@@ -4,7 +4,10 @@
 > *"During beta testing, Atlas is available only to selected partners. You will need an invitation
 > code from the Octant team."* ([docs](https://docs.octant.app/docs/projects/apply-for-funding/)).
 > Asked publicly from @vet_402 on 2026-08-25 22:29 UTC (<https://x.com/vet_402/status/2092378959124242606>).
-> Second channel — the Octant Discord — is an owner task (`TAKESHI_TODO`), because this account cannot sign in there.
+> Second channel — the Octant Discord — was opened as **ticket-0131** (General Support) on 2026-08-26 07:06 JST.
+> Third — the team's own stated route after they wound down the Discord community sections on 2026-08-11 —
+> was a threaded reply to @nicnode / @GravenPrest (<https://x.com/vet_402/status/2092386391821033798>).
+> **If nothing lands by 2026-09-02, follow up in ticket-0131 and on the X thread.**
 >
 > **Why this program**: Octant Epoch 12 (200 ETH pool, 25 projects) funded **L2BEAT** — *"impartial
 > watchdog … open-source research and analytics"* — and **growthepie** — *"open analytics … free to
