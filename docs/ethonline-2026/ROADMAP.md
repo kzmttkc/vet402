@@ -173,12 +173,33 @@ Human: cut branch `ethonline-2026` from `pre-ethonline-2026`. Discord/dashboard 
 
 Agent, in order:
 
-1. Failing tests only (no implementation):
+1. Failing tests only (no implementation).
+   **2026-08-26 追記（C4）**: §4.1 の硬いルールのうち、テスト名が無いものは実質存在しない
+   ルールになる。突き合わせて抜けを足した（下の後半6本）。順序は §4.1 の並びに合わせてある。
+
+   判定と署名の境界:
    - `payOrRefuse` refuses BLOCK and never calls a mock signer.
    - `payOrRefuse` refuses WARN and never calls a mock signer.
    - `payOrRefuse` refuses `payee_mismatch` (402 payTo ≠ payee) and never signs.
    - `payOrRefuse` on ALLOW calls signer exactly once and attests with the returned tx hash.
    - MCP `pay_if_trusted` BLOCK → signer 0 calls.
+
+   金の門（observatory と同じ関門を再利用していること。**新しい payer を発明しない**）:
+   - `payOrRefuse` refuses a non-Base network (`eip155:1`, `solana:…`) before signing.
+   - `payOrRefuse` refuses a non-canonical token (USDC 以外の asset) before signing.
+   - `payOrRefuse` refuses a scheme other than `exact` / a non-EIP-3009 `assetTransferMethod`.
+   - `payOrRefuse` refuses `amountUsd` above the per-tx ceiling ($1 default) **and** above the
+     caller's `maxPerTx`, whichever is lower.
+
+   入力と結果の形:
+   - `payOrRefuse` rejects a non-`0x` payee (ENS name) as a caller error — no lookup, no sign.
+     （ENS は Tokyo。この会期では名前解決をしない）
+   - `payOrRefuse` returns `status: "failed"` with `signed: true` when the signature went out but
+     settlement failed — and that row is published, not swallowed.
+
+   拒否時に**何も起きていない**こと（§4.1 "zero RPC sends, zero signTypedData, zero /settle"）:
+   - On any refusal, the injected RPC transport, `signTypedData` and the facilitator `/settle`
+     stub each record **0 calls**. 署名しなかったことは、署名関数を呼ばなかったことで示す。
 2. Commit: `ethonline: test(sdk): payOrRefuse fail-closed contract (red)`.
 
 **Day-0 done:** tests exist and fail for the right reason. No green implementation yet.
