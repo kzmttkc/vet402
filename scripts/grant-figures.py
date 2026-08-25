@@ -80,7 +80,8 @@ Footer to paste: *Figures retrieved from /api/v1/observatory/state on {today}.*
 
 # (regex, [live keys — one per capture group]) — every match must equal the live value(s).
 ANCHORS = [
-    (r"([\d,]{3,})\s+(?:real\s+)?(?:purchase\s+)?attempts\b(?!\s+that did not settle)", ["attempts"]),
+    # 「250 attempts/day」のような目標値は実測ではないので見ない
+    (r"([\d,]{3,})\s+(?:real\s+)?(?:purchase\s+)?attempts\b(?!/day)(?!\s*/\s*day)(?!\s+that did not settle)", ["attempts"]),
     (r"([\d,]{3,})\s+settled\b", ["settled"]),
     (r"([\d,]{3,})\s+(?:non-settles|attempts that did not settle)\b", ["nonsettled"]),
     (r"([\d,]{3,})\s+endpoints? (?:vet402 tracks|tracked|have appeared)\b", ["total"]),
@@ -162,6 +163,10 @@ def unanchored(f, ):
         if p.name in SKIP:
             continue
         for i, line in enumerate(p.read_text().splitlines(), 1):
+            # 日付を明記した実測値（原価根拠など）は本番stateと一致しなくてよい。
+            # 「その日に測った」と書いてあることが根拠なので、日付が無い数字だけを咎める。
+            if re.search(r"(measured|実測)\s*20\d\d-\d\d-\d\d", line):
+                continue
             for m in re.finditer(r"(?<![$\d.])\b\d{1,3}(?:,\d{3})+\b", line):
                 if m.group(0) not in live:
                     out.append(f"{p.name}:{i}  {m.group(0)} matches no live value — anchor it or remove it")

@@ -19,7 +19,7 @@ The public record of whether x402 endpoints actually deliver after an agent pays
 
 ## Description (4 paragraphs)
 
-Agents can now pay for things over HTTP. The x402 catalog we track holds 19,023 endpoints, 18,363 of them on Base. Nobody was checking whether paying one gets you anything. Directory listings say what a seller claims to sell; uptime probes say a server answered. Neither tells an agent — or the person who funded that agent's wallet — whether money moves and a real response comes back.
+Agents can now pay for things over HTTP. The x402 catalog we track holds 19,023 endpoints, 18,551 of them on Base. Nobody was checking whether paying one gets you anything. Directory listings say what a seller claims to sell; uptime probes say a server answered. Neither tells an agent — or the person who funded that agent's wallet — whether money moves and a real response comes back.
 
 vet402 answers that by buying. We make real USDC purchases on Base mainnet through the x402 `exact` scheme, verify each settlement against the chain rather than the seller's word, and publish every attempt with its evidence: 1,596 purchases to date, 653 settled, each with its transaction hash on its endpoint's public page — and the non-settling attempts on those same pages, with the same weight. A verification layer that only publishes wins is an advertising layer.
 
