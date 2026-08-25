@@ -84,6 +84,41 @@ ETHGlobal 運営（Pascal）の Discord 回答: **vet402 の既存公開 API に
 3. 賞が1件も取れないと確定した場合でも、Continuity 提出自体は続ける
    （既存コードを Classic に持ち込むのは規約違反で失格。Finalist 枠と会期中の証拠は残る）。
 
+## 2026-08-25 実測: 提出フォームの Select prizes 画面が partner 単位の資格を明示していた
+
+プロジェクト枠（`payOrRefuse`）を作成したことで **Select prizes 画面が読める状態になった**（保存は
+`Save changes` が disabled でまだ不可・「We will enable this page once submissions are open」）。
+そこに、上の未解決論点に直接あたる**プラットフォーム自身の記載**があった。原文:
+
+- **`Only partners with a Continuity Track prize will be shown for your project.`**
+- **`You may select up to 3 partners. This will make you eligible for all prizes offered by those partners from the prizes page.`**
+
+その条件で実際に表示された partner は4社。**表示額は各社の総額であって continuity ブラケットの額ではない**:
+
+| 表示 | 額 | 本ファイルが記録していた continuity ブラケット |
+|---|---|---|
+| Hedera | **$15,000** | ♻️ Continuity $1,000（要件不一致と判定していた） |
+| World | $7,000 | 🤖 AgentKit Continuity $3,500 |
+| 1inch | $7,000 | 💦 Aqua Continuity $2,000 |
+| Uniswap Foundation | $5,000 | 🦄 Continuity $2,000 |
+
+**partner の顔ぶれは本ファイルの記録と完全に一致した**（intel は正しかった）。
+食い違うのは**額の粒度**で、フィルタが「continuity ブラケットを持つ partner」単位にかかり、
+選んだ後は "all prizes offered by those partners" と書かれている。
+
+**読み方は2通りあり、まだ確定していない**（[[verify-the-instrument-not-just-the-result]]）:
+
+- (a) partner を選べばその社の**主枠も含む全賞**が対象 → **Hedera 🤖 AI & Agentic Payments $6,000 は狙える**
+- (b) "all prizes" は partner カードの定型文で、実際の審査は continuity ブラケットに限定される → 従来どおり
+
+(a) なら会期の実装優先度が変わる（Hedera + Blocky402 を本気で取りに行く価値が出る）。
+断定はしない。**2026-08-25 09:17 に ETHGlobal Discord `#questions` へこの点を名指しで照会済み**
+（`#ask-a-sponsor` は存在しなかった）。回答が来るまでは (b) を前提に World AgentKit Continuity を第一候補に据えたまま動く。
+
+なお同画面には **Submission type** の選択もある（`Top 10 Finalist & Partner Prizes` / `Partner Prizes only`）。
+Finalist を選ぶと Round 1 の非同期審査を通過した場合に **2026-09-14 12:00 EDT の Live Judging** への
+参加義務が生じる（動画品質・デモ品質・git コミット履歴が Round 1 の評価項目）。ここは提出フォーム解放後に決める。
+
 ## 賞の選び方（2026-08-23 版・確定は 09-09 の再読後 / 上の未解決が先）
 
 1. **World 🤖 AgentKit Continuity $3,500** — **Continuity 専用枠なので資格が確実**（Hedera main 枠は資格照会中）。チェーン変更なし。
