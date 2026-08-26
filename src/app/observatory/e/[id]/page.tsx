@@ -21,16 +21,52 @@ import { getEndpointDetail } from "@/lib/observatory/reader";
  * Every published fail travels with its evidence: timestamp, HTTP status,
  * reason code, latency. Delisting events carry their before/after values.
  * This page is the evidence locker the register links into.
+ *
+ * NO loading.tsx FOR THIS SEGMENT, DELIBERATELY (2026-08-26 L2 UX audit #7 —
+ * ソフト404修正). Do not add one back without re-testing the fix below. A
+ * `loading.tsx` anywhere in this route's ancestor chain — this segment's own,
+ * OR the parent /observatory/loading.tsx (also removed for the same reason;
+ * see its absence) — wraps this page in an automatic <Suspense> boundary.
+ * Reproduced with `next build && next start` (no DB configured; a
+ * non-existent id short-circuits before any DB call, so this needed no
+ * secrets): with that boundary present, Next starts streaming an optimistic
+ * 200 shell before the async component reaches `notFound()`, and the HTTP
+ * status can never be corrected afterward — the rendered body eventually
+ * shows "Not Found" but curl/uptime checks/crawlers see 200. Confirmed by
+ * elimination: /blog/[slug] (no loading.tsx anywhere in its chain) already
+ * returns a true 404 for a missing post; restoring either loading.tsx here
+ * reproduces the bug again — removing both is necessary AND sufficient
+ * (verified with `next build && next start` for every combination). The
+ * `notFound()` call added to generateMetadata below is a separate, smaller
+ * fix on top: on its own it does not correct the HTTP status, but it stops
+ * the <head> (title/description) from showing a generic "Endpoint" label
+ * for an id that does not exist.
  */
 
-export const revalidate = 600;
+// NOT CACHED, ON PURPOSE (2026-08-26 L2 UX audit residual). This used to be
+// `revalidate = 600`. This page calls `headers()` (for the CSP nonce), a
+// Dynamic API that already forces per-request rendering — the build has
+// always classified this route as dynamic ("ƒ"), so the number never took
+// effect (same dead-config shape already fixed once in
+// /payee/[address]/page.tsx). Declaring the route's real cardinality is a
+// cleanup, not the 404 fix below — see the `notFound()` call in
+// generateMetadata for that.
+export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ id: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
   const detail = await getEndpointDetail(id);
-  const name = detail?.endpoint.resourceKey ?? "Endpoint";
+  // 2026-08-26 (L2 UX監査 #7 ソフト404修正): 本体の修理は上のファイル先頭コメント
+  // の通り loading.tsx を2箇所とも置かないこと（実測で必要十分と確認済み——
+  // これ単独で HTTP 404 は直る）。ここで notFound() を早めに呼ぶのはその上の
+  // 上乗せ: generateMetadata 単独では ステータスは直らない（loading.tsx が
+  // 残っている状態で実測して確認済み）が、<head> がストリーミング開始前に
+  // 確定する関数なので、ここで判定しておけば「存在しないIDにも関わらず
+  // 見出しが "Endpoint" のまま」というメタデータのズレを避けられる。
+  if (!detail) notFound();
+  const name = detail.endpoint.resourceKey;
   return pageMetadata({
     title: `${name} — L0 observations`,
     description: `Probe history and catalog listing history for ${name}: 402 challenge measurements with timestamps and reason codes.`,

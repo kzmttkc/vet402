@@ -645,6 +645,22 @@ export default async function Home() {
             }
             action={{ label: "Measured accuracy", href: "/accuracy", event: "docs_click", position: "s4_accuracy" }}
           />
+          {/* 2026-08-26 L2 UX監査 #4: 実購買・オンチェーン領収・改ざん検知の
+              最強の証拠ページ(/impact)へ、サイト内のどこからもリンクが無かった
+              （LP内リンク0件・独立確認済み）。他行のコピーと同じ文体（RFC調・
+              事実文・新規数字を作らない）で1行足す。 */}
+          <ItemRow
+            state="live"
+            title="Impact ledger"
+            body={
+              <>
+                Real purchases made and published with evidence &mdash; settled and failed alike
+                &mdash; plus catalog coverage and a hash-anchored ledger, synthesized from the
+                sections above into one page for grant reviewers and integrators.
+              </>
+            }
+            action={{ label: "View impact", href: "/impact", event: "docs_click", position: "s4_impact" }}
+          />
         </div>
 
         {/* ================= 5. The observatory ================= */}

@@ -37,6 +37,24 @@ test("isCanonicalName rejects empty, over-length, and untrimmed names", () => {
   assert.equal(isCanonicalName("trailing "), false);
 });
 
+// 2026-08-26 (L2 UX audit セキュリティ要確認項目): この名前はエンジンの外に
+// 出ると3箇所で使われる — (1) POST /api/v1/payees/verify の署名対象メッセージ、
+// (2) GET プレビューの JSON message フィールド、(3) /payee/[address] の
+// React JSX 描画（{entry.name} は自動エスケープされる正規のReactバインディング
+// なので現状XSSは成立しないと確認済み）。今この経路に HTML 描画箇所は無いが、
+// 署名メッセージという性質上、将来どこかで未エスケープ描画されても構造的に
+// 無害であるべき。canonicalize は「削って通す」ではなく「弾く」— 署名対象の
+// 文字列を黙って変形すると、クライアントが署名した文字列とサーバが検証する
+// 文字列が食い違い、正当な署名まで signature_mismatch になる。
+test("isCanonicalName rejects angle brackets (defense in depth against future unescaped HTML rendering)", () => {
+  assert.equal(isCanonicalName("<script>alert(1)</script>"), false);
+  assert.equal(isCanonicalName("Acme <b>Payments</b>"), false);
+  assert.equal(isCanonicalName("a < b"), false);
+  assert.equal(isCanonicalName("a > b"), false);
+  // 通常名は引き続き通る
+  assert.equal(isCanonicalName("Acme Payments, Inc."), true);
+});
+
 test("payeeMessage produces exactly 4 lines for a canonical name", () => {
   const msg = payeeMessage("0xABCDEF0000000000000000000000000000000001", "Acme Payments");
   const lines = msg.split("\n");

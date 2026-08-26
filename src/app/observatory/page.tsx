@@ -22,6 +22,18 @@ import TrackView from "@/components/site/TrackView";
  * pass / fail / unverified — and a fail only appears after the publication
  * gate (two consecutive failing probes), because a single blip must never
  * brand an endpoint dead in public.
+ *
+ * NO loading.tsx AT THIS SEGMENT, DELIBERATELY (2026-08-26 L2 UX audit #7 —
+ * ソフト404修正). It used to exist purely for this page's own loading
+ * skeleton, but a segment-level loading.tsx wraps every nested route
+ * (/observatory/state, /observatory/e/[id]) in an inherited <Suspense>
+ * boundary too, and that inherited boundary is what made a missing
+ * /observatory/e/[id] endpoint respond HTTP 200 instead of 404 (full
+ * root-cause note in that page). This page still renders correctly without
+ * it — a cold ISR miss just blocks server-side instead of showing a skeleton
+ * first, same as every other route in this app without its own loading.tsx
+ * (e.g. /blog). Do not re-add a loading.tsx here without re-verifying
+ * /observatory/e/[id]'s 404 status with `next build && next start`.
  */
 
 export const metadata: Metadata = pageMetadata({
