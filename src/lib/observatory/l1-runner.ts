@@ -506,6 +506,15 @@ export async function runL1Batch(
       ORDER BY probed_at DESC LIMIT 1
     ) lp ON lp.verdict = 'pass'
     WHERE e.status = 'active'
+      -- 2026-08-26 緊急修正（外部レビュー F-1）: resource_url に ':siren' のような
+      -- **未置換のパスパラメータ**が残るエンドポイントを対象から外す。パラメータの
+      -- 実値を知らない我々には正しいリクエストを作れず、実測で settle_failed の
+      -- 82%（724/885 が HTTP 400）がこの形だった——「我々が不正な URL で叩いて
+      -- 断られた」を「売り手が決済しない」として記録し、日次予算を燃やし
+      -- （認可$35.28分・オンチェーン移動はゼロ）、冤罪の BLOCK を4件出していた。
+      -- active 15,251 件中 709 件が該当。これらは L0（生存観測）には残る——
+      -- 測れないものを買いに行かない、というだけ。
+      AND e.resource_url !~ '/:[a-zA-Z]'
       ${onlyEndpointId ? sql`AND e.id = ${onlyEndpointId}::uuid` : sql``}
       ${
         // Solana購入が無効（フラグ無し or 鍵が読めない）の間は候補から

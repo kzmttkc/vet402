@@ -34,13 +34,31 @@ import { SCORE_THRESHOLDS } from "@/lib/chain/config";
 /**
  * 署名して実際に払った試行のうち、**結果が確定している不履行**。
  * `settle_claimed`（照合待ち）は入れない——測っていないものを所見にしない。
+ *
+ * 2026-08-26 緊急修正（外部レビュー F-1）: `settle_failed` を無条件に数えていたが、
+ * 本番実測で settle_failed 885件のうち **724件が HTTP 400・103件が 422** だった。
+ * 原因は我々の URL 生成——カタログの resource_url に `:siren` 等の**未置換パス
+ * パラメータ**が残ったまま叩き、売り手に届く前の入力検証で 400 を食らっていた。
+ * それを「売り手が決済しない」として数え、**冤罪の BLOCK を4件、本番で下していた**
+ * （4xx を除くと真の重度・中度不履行は 0件。tx_hash も全件 null＝金は動いていない）。
+ *
+ * 「我々が不正なリクエストを送って断られた」ことは売り手についての所見ではない。
+ * settle_failed を売り手の咎として数えてよいのは、**支払いリトライに 5xx で
+ * 応えた場合だけ**（誠実な受け方をした上でサーバ側が果たせなかった）。
+ * 4xx・2xx・null（我々のタイムアウト等）は帰責が曖昧なので数えない——
+ * 迷ったら売り手を責めない側に倒す。
+ * 決済後の3状態（refuted / unverifiable / delivered_no_receipt）は
+ * オンチェーン照合・形式検査・レシート有無という売り手側の事実なので従来どおり。
  */
 export const RESOLVED_NON_SETTLING_STATUSES = [
-  "settle_failed",
   "settle_claim_refuted",
   "settle_claimed_unverifiable",
   "delivered_no_receipt",
 ] as const;
+
+/** settle_failed を売り手起因と数える条件（上の理由で 5xx のみ）。 */
+export const SELLER_FAULT_SETTLE_FAILED_SQL =
+  "(status = 'settle_failed' AND http_status_paid >= 500)";
 
 export type L1SettlementRecord = {
   /** オンチェーンで確認できた決済の件数。 */
@@ -123,11 +141,11 @@ export async function getL1SettlementRecord(payee: string): Promise<L1Settlement
         count(*) FILTER (WHERE status = 'settled')::int AS settled,
         count(*) FILTER (WHERE status = ANY(${sql.raw(
           `ARRAY[${RESOLVED_NON_SETTLING_STATUSES.map((s) => `'${s}'`).join(",")}]`,
-        )}))::int AS resolved_non_settling,
+        )}) OR ${sql.raw(SELLER_FAULT_SETTLE_FAILED_SQL)})::int AS resolved_non_settling,
         count(DISTINCT (attempted_at AT TIME ZONE 'utc')::date) FILTER (
           WHERE status = ANY(${sql.raw(
             `ARRAY[${RESOLVED_NON_SETTLING_STATUSES.map((s) => `'${s}'`).join(",")}]`,
-          )})
+          )}) OR ${sql.raw(SELLER_FAULT_SETTLE_FAILED_SQL)}
         )::int AS non_settling_days,
         count(*) FILTER (WHERE status = 'settle_claimed')::int AS pending
       FROM x402_l1_purchases

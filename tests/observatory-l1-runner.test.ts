@@ -14,6 +14,7 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 
@@ -210,6 +211,46 @@ if (!TEST_DB) {
       });
       // seller1 already purchased above → only seller2 is a candidate now.
       assert.equal(summary.attempted, 1);
+    });
+
+    await t.test("未置換パスパラメータのURLは買いに行かない（2026-08-26 F-1）", async () => {
+      // settle_failed の82%（724/885 が HTTP 400）が ':siren' 等の未置換
+      // プレースホルダを我々がそのまま叩いた結果だった。正しいリクエストを
+      // 作れない相手に署名して予算を燃やし、その 400 を売り手の不履行として
+      // 記録していた。候補選定の SQL で除外されることを固定する。
+      await db.execute(sql`TRUNCATE x402_l1_purchases`);
+      const placeholderId = randomUUID();
+      await db.insert(schema.x402Endpoints).values({
+        id: placeholderId,
+        resourceKey: "GET https://ph.example/v1/entreprise/:siren",
+        resourceUrl: "https://ph.example/v1/entreprise/:siren",
+        method: "GET",
+        priceAmount: "3000",
+        payTo: "0x00000000000000000000000000000000000000ph",
+        network: "eip155:8453",
+        status: "active",
+      });
+      await db.insert(schema.x402L0Probes).values({
+        endpointId: placeholderId,
+        method: "GET",
+        verdict: "pass",
+        httpStatus: 402,
+      });
+      const seen: string[] = [];
+      const summary = await runL1Batch({
+        fetchImpl: async (url: string) => {
+          seen.push(url);
+          return new Response(challengeFor(url), { status: 402, headers: { "content-type": "application/json" } });
+        },
+        limit: 50,
+      });
+      assert.ok(
+        !seen.some((u) => u.includes(":siren")),
+        "プレースホルダURLに購入リクエストを送っている——予算を燃やして冤罪を作る経路が再開している",
+      );
+      await db.execute(sql`DELETE FROM x402_endpoints WHERE id = ${placeholderId}::uuid`);
+      await db.execute(sql`DELETE FROM x402_l0_probes WHERE endpoint_id = ${placeholderId}::uuid`);
+      void summary;
     });
 
     await t.test("onlyEndpointId narrows the batch to that endpoint (playground demo path)", async () => {

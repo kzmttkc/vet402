@@ -14,6 +14,8 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { SCORE_THRESHOLDS } from "@/lib/chain/config";
 import { PAID_ATTEMPT_STATUSES } from "@/lib/observatory/reader";
 import {
@@ -84,6 +86,25 @@ test("境界: 重度の条件は件数と日数の両方が要る", () => {
   assert.notEqual(nonDeliveryCeiling(rec({ resolvedNonSettling: 19, nonSettlingDays: 9 })), L1_NONDELIVERY_SEVERE_CEILING);
   assert.notEqual(nonDeliveryCeiling(rec({ resolvedNonSettling: 99, nonSettlingDays: 2 })), L1_NONDELIVERY_SEVERE_CEILING);
   assert.equal(nonDeliveryCeiling(rec({ resolvedNonSettling: 20, nonSettlingDays: 3 })), L1_NONDELIVERY_SEVERE_CEILING);
+});
+
+test("冤罪の再発防止: 我々の4xxを売り手の不履行に数えない（2026-08-26 F-1）", () => {
+  // 本番実測: settle_failed 885件中 724件が HTTP 400・103件が 422。原因は
+  // カタログURLの未置換パスパラメータ（:siren 等）を我々がそのまま叩いたこと。
+  // これを「売り手が決済しない」と数え、**存在しない不履行で4件をBLOCKにしていた**
+  // （0x76a672… は 138×400 + 2×404 で、売り手起因はゼロだった）。
+  // RESOLVED_NON_SETTLING_STATUSES から settle_failed を外し、売り手起因の
+  // settle_failed は「支払いリトライに 5xx」だけを SQL 側で数える。
+  assert.ok(
+    !(RESOLVED_NON_SETTLING_STATUSES as readonly string[]).includes("settle_failed"),
+    "settle_failed を無条件に売り手の咎として数えている——4xx は我々の不正リクエストかもしれない",
+  );
+  // 5xx 限定の条件が SQL に残っていること。
+  assert.match(
+    readFileSync(join(process.cwd(), "src", "lib", "scoring", "l1-settlement-record.ts"), "utf8"),
+    /http_status_paid >= 500/,
+    "売り手起因の settle_failed（5xx）を数える条件が消えている",
+  );
 });
 
 test("数える status は observatory の定義と割れていない", () => {
