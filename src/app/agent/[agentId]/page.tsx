@@ -43,6 +43,12 @@ export async function generateMetadata({
   // は形式が整数でありさえすれば 200 を返すため、登録の有無を検証しないと
   // /agent/0..∞ の全整数が indexable なソフト404になる（sibling の /observatory/e・
   // /payee は不在時 noindex 済み）。ページ自体は直接照会のため引き続き閲覧可能。
+  // 2026-08-26: 不正な（数値でない）agentId は本文側の notFound() と揃えてここでも
+  // 404 判定する。<head> がストリーミング開始前に確定する関数なので、ここで先に
+  // 弾いておけば「存在しないIDにも関わらず一般的なタイトル」というメタデータの
+  // 齟齬を避けられる（/observatory/e/[id] と同じ形——このコミット単独では
+  // HTTP ステータスは直らない。直るのは同梱の loading.tsx 削除の方）。
+  if (parseAgentId(agentId) === null) notFound();
   return pageMetadata({
     title: `Agent ${agentId} — trust passport`,
     description: "Verified AI agent: signature-proven identity claim plus a live trust score and x402 payment record.",
