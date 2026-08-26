@@ -128,6 +128,18 @@ export type PayeeScoreResult = {
              *  first row for this wallet. */
             l1DeliveryCount?: number;
             l1DistinctBuyers?: number;
+            /**
+             * 2026-08-26: vet402 が実費で払って**届かなかった**記録。最終スコアの天井に
+             * 効いている（呼び手が根拠を再現できるように出している）。
+             * `l1PendingVerification` は照合待ちで、判定には使われない——
+             * vet402 側の検証の遅れを売り手の落ち度にしないため。
+             */
+            l1Settled?: number;
+            l1PaidNeverSettled?: number;
+            l1NonSettlingDays?: number;
+            l1PendingVerification?: number;
+            /** 天井が掛かった理由（null = 掛かっていない）。 */
+            l1NonDeliveryReason?: string | null;
         };
         walletHealth: {
             ageDays: number;

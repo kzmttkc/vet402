@@ -206,7 +206,25 @@ export class VouchClient {
                 ...init?.headers,
             },
         });
-        const data = await response.json().catch(() => ({}));
+        // 2026-08-26 C1リハーサルで発覚: apiUrl に origin だけ渡す（/api/v1 欠落）と
+        // Next.js が **HTML ページを 200 で返す**。以前は json 化失敗を
+        // `catch(()=>({}))` で握りつぶし、2xx なら {} を成功として返していた——
+        // 全フィールド undefined の PayeeScoreResult が SpendGuard に渡り、
+        // `Date.parse(undefined)=NaN` で fail-closed の payee_score_stale になって
+        // 統合者が「なぜ全部拒否されるのか」で数時間溶かす。200 でも本文が JSON で
+        // なければ、握りつぶさず throw する（設定ミスに早く気づける）。
+        let data;
+        try {
+            data = await response.json();
+        }
+        catch {
+            if (response.ok) {
+                // 2xx かつ非 JSON = 我々の JSON API ではない何か（多くは URL 設定ミスで
+                // HTML ページを引いている）。空成功に化けさせない。
+                throw new VouchApiError("vouch_non_json_response", response.status);
+            }
+            data = {};
+        }
         if (!response.ok) {
             const code = typeof data === "object" && data && "error" in data
                 ? String(data.error)
