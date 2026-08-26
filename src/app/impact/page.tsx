@@ -20,7 +20,7 @@ import { getAnchors } from "@/lib/observatory/anchors";
 export const metadata: Metadata = pageMetadata({
   title: "Impact — a public good, in numbers you can check",
   description:
-    "What vet402 gives the x402 agent economy for free: coverage of listed endpoints, real purchases published with evidence, refusals and losses alike, and an integrity-anchored ledger — every figure links to the API that produces it.",
+    "What vet402 gives the x402 agent economy for free: coverage of listed endpoints, real purchases published with evidence, refusals and losses alike, and a hash-chained ledger — every figure links to the API that produces it.",
   path: "/impact",
 });
 
@@ -72,7 +72,8 @@ export default async function ImpactPage() {
           <p className="min-w-0 max-w-[62ch] text-brand">
             vet402 measures the x402 agent-payment economy by <strong>actually using it</strong>,
             and gives the results away: the data is public, the code is MIT, the ledger is
-            hash-anchored so nobody can quietly rewrite it. This page states the contribution as
+            hash-anchored (a daily prev-hash chain; on-chain anchoring is not yet enabled — see
+            §4) so nobody can quietly rewrite it. This page states the contribution as
             numbers — and every number below links to the endpoint that produces it, so you can
             check it rather than trust it.
           </p>

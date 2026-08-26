@@ -655,7 +655,8 @@ export default async function Home() {
             body={
               <>
                 Real purchases made and published with evidence &mdash; settled and failed alike
-                &mdash; plus catalog coverage and a hash-anchored ledger, synthesized from the
+                &mdash; plus catalog coverage and a hash-anchored ledger (daily prev-hash chain;
+                on-chain anchoring ships behind a flag, OFF by default), synthesized from the
                 sections above into one page for grant reviewers and integrators.
               </>
             }
