@@ -307,7 +307,7 @@ Each prize comment: 4 sentences — what existed, what `payOrRefuse` added, whic
 | 0:00–0:15 | vet402.com + `/observatory` | We already buy. We already publish failures. That is not this submission. |
 | 0:15–0:35 | `git log pre-ethonline-2026..ethonline-2026` | Continuity boundary. Only these commits are new. |
 | 0:35–1:20 | Terminal: `run.ts catalog` | 既定 policy をライブのカタログに当てる。**署名0件**。スコアが甘いからではない——**独立した受領証拠が誰にも無い**から止まる。理由は機械可読の1語で出る。 |
-| 1:20–2:20 | Terminal: `run.ts pay` → Base explorer | 開示した evidence policy（21日で3件以上・settle率0.9以上）。48/48 settled の相手に **1件だけ** `exact` で払う。tx hash → attest → `/decisions` の `source: agent-demo`。同じ policy が 0/140 の相手を署名前に拒む。 |
+| 1:20–2:20 | Terminal: `run.ts pay` → Base explorer | 開示した evidence policy（21日で3件以上・settle率0.9以上）。48/48 settled の相手に **1件だけ** `exact` で払う。tx hash → attest → `/decisions` の `source: agent-demo`。同じ policy が、配送実績を1件も持たない相手を署名前に拒む（拒否理由は「実績なし」——不履行の断罪ではない）。 |
 | 2:20–2:50 | SDK snippet: signer は policy 通過後にしか渡らない | 拒否のとき signer はそもそも呼べない。それがこの原始命令。 |
 | 2:50–3:20 | Close | 買い手の規則を明示にし、我々自身の配達台帳が裏付けたときだけ払った。 |
 
