@@ -16,7 +16,7 @@ DOCS = pathlib.Path(__file__).resolve().parent.parent / "docs" / "applications"
 # 提出済みの申請は「何を送ったか」の記録なので、数字を後から書き換えない。
 # 2026-08-25 に Base へ送った Q10 は --write の対象から外す（外さないと記録が偽装になる）。
 SKIP = {"solana-grant-proposal.md", "video-script.md", "ai-usage-disclosure.md",
-        "base-builder-grant-nomination.md"}
+        "base-builder-grant-nomination.md", "octant-atlas-application.md"}
 
 
 def fetch():

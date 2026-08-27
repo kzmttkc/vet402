@@ -1,20 +1,19 @@
-# Octant (Atlas) — application content, ready to paste
+# Octant — application content (intake **SUBMITTED 2026-08-27**)
 
-> Status 2026-08-26: **blocked on an invitation code.** Atlas is a closed beta —
-> *"During beta testing, Atlas is available only to selected partners. You will need an invitation
-> code from the Octant team."* ([docs](https://docs.octant.app/docs/projects/apply-for-funding/)).
-> Asked publicly from @vet_402 on 2026-08-25 22:29 UTC (<https://x.com/vet_402/status/2092378959124242606>).
-> Second channel — the Octant Discord — was opened as **ticket-0131** (General Support) on 2026-08-26 07:06 JST.
-> Third — the team's own stated route after they wound down the Discord community sections on 2026-08-11 —
-> was a threaded reply to @nicnode / @GravenPrest (<https://x.com/vet_402/status/2092386391821033798>).
-> **If nothing lands by 2026-09-02, follow up in ticket-0131 and on the X thread.**
+> **2026-08-26, @nicnode (Nico Gallardo, Octant) replied on X: "There's no need for an invitation code
+> for Atlas."** The Atlas closed-beta gate we planned around does not apply; the routes are the
+> Epoch 13 form and the general intake form, both at <https://octant.build/projects>.
 >
-> **Why this program**: Octant Epoch 12 (200 ETH pool, 25 projects) funded **L2BEAT** — *"impartial
-> watchdog … open-source research and analytics"* — and **growthepie** — *"open analytics … free to
-> access and transparent"*. That is our species exactly: independent public measurement that sells
-> nothing to what it measures. Elsewhere our neutrality costs us revenue; here it is the qualification.
+> **Epoch 13 — we are not applying.** Its theme is *"advancing privacy on Ethereum and the open
+> internet"* (100 ETH pool, opens 2026-10-14). vet402 is measurement, not privacy. Dressing it up as a
+> privacy project would burn a relationship we just opened, and it is the exact move our own grant
+> canon forbids.
 >
-> Refresh every figure on submission day: `python3 scripts/grant-figures.py`.
+> **General intake form submitted 2026-08-27** (octant.fillout.com/t/qU367QpkKPus — email-verified).
+> Content below is what was sent, with figures measured that day. Do not refresh them.
+>
+> **Next**: watch for a round or program whose theme is measurement / agent-payment infrastructure.
+> Octant publishes new epochs on X (@OctantApp) and Substack first. Ask asked-and-answered: no invite needed.
 
 ## One-sentence pitch
 
@@ -22,9 +21,9 @@ The public record of whether x402 endpoints actually deliver after an agent pays
 
 ## Description (4 paragraphs)
 
-Agents can now pay for things over HTTP. The x402 catalog we track holds 19,023 endpoints, 18,551 of them on Base. Nobody was checking whether paying one gets you anything. Directory listings say what a seller claims to sell; uptime probes say a server answered. Neither tells an agent — or the person who funded that agent's wallet — whether money moves and a real response comes back.
+Agents can now pay for things over HTTP. The x402 catalog we track holds 19,442 endpoints, 18,953 of them on Base. Nobody was checking whether paying one gets you anything. Directory listings say what a seller claims to sell; uptime probes say a server answered. Neither tells an agent — or the person who funded that agent's wallet — whether money moves and a real response comes back.
 
-vet402 answers that by buying. We make real USDC purchases on Base mainnet through the x402 `exact` scheme, verify each settlement against the chain rather than the seller's word, and publish every attempt with its evidence: 1,596 purchases to date, 653 settled, each with its transaction hash on its endpoint's public page — and the non-settling attempts on those same pages, with the same weight. A verification layer that only publishes wins is an advertising layer.
+vet402 answers that by buying. We make real USDC purchases on Base mainnet through the x402 `exact` scheme, verify each settlement against the chain rather than the seller's word, and publish every attempt with its evidence: 1,596 purchases to date, 697 settled, each with its transaction hash on its endpoint's public page — and the non-settling attempts on those same pages, with the same weight. A verification layer that only publishes wins is an advertising layer.
 
 Everything is checkable without trusting us. The aggregate state is public JSON with no key (`/api/v1/observatory/state`), the methodology is published, daily catalog snapshots are dated, our own corrections live on a public accuracy ledger, and the SDK, middleware and MCP server are MIT-licensed on npm. Four measurement levels stay strictly separated, and a result never moves up a level: a probe is never reported as a settlement, an opinion is never folded into a fact.
 
