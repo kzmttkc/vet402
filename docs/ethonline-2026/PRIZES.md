@@ -166,6 +166,8 @@ World の詳細公開はこの仕組みの初回実行で見つけた。
 
 - 2026-08-23: 9社・$77,000
 - **2026-08-26: 10社**。**Privy $5,000 が新規**（詳細 coming soon）。
+- **2026-08-27: 10社のまま入れ替わり**。**Arc $10,000 が新規**、**0G $15,000 が消滅**（機械監視が検出・同日 curl で再確認）。
+  総額は $77,000 で変わらず。詳細待ちは The Graph / ENS / Ledger / Chainlink / Privy / **Arc** の6枠。
 - continuity 枠は現在4つ: World $3,500 / 1inch $2,000 / Uniswap $2,000 / Hedera $1,000（計 $8,500）。
   このうち要件が合うのは World だけ。詳細待ちの5社（The Graph / 0G / ENS / Ledger / Chainlink / Privy）が
   continuity 枠を足すかどうかが、賞のEVを決める唯一の変数。
