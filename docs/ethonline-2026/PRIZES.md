@@ -86,7 +86,39 @@ Continuity トラック自体（Extend Open Source）は全体ルールであり
 「Continuity 参加者だけが応募できるスポンサー賞」。**取れないからといって Continuity 申請が不要になるわけではない**
 ——既存コードを持ち込む以上、申請しなければ Partner / Finalist の資格そのものを失う。
 
-## 未解決（この大会で一番重い論点・2026-08-23 夜）
+## 【決着】2026-08-25 Pascal（ETHGlobal運営）の名指し回答——continuityラベルの賞のみ・例外なし
+
+`#ticket-5926` にて、8/25朝の照会（continuity提出が Hedera 主枠 $6,000 の対象か）に対する回答を受領。
+**原文（2026-08-25 18:02）**:
+
+> you are only eligible for tracks that have continuity on them. If a partner does not have continuity
+> or if their continuity price does not match what you're building, you're not eligible.
+> **Even if they have something that is non-continuity that would work in your case, you're not eligible.**
+> You can only select continuity and the other way around. ... This will not show up on the partner side
+> and this will not show up on your side.
+
+**確定した3点**:
+1. **Hedera 🤖 AI & Agentic Payments $6,000 は対象外**。継続枠を持つ partner でも、
+   **continuity 枠でない賞は「あなたの場合に合致していても」対象外**と明言された。
+   Hedera の continuity 枠($1,000)は「以前からHedera上に存在」が要件で vet402 は非該当のため、
+   **Hedera は partner ごと対象外**。
+2. **8/26 に Select prizes 画面で見た「Hedera $15,000」等の表示は partner の総額であって、
+   我々が取れる額ではない**。当時 (a)partner単位で主枠も対象 / (b)continuityブラケット限定 の
+   2通りに読めると書いて断定を避けたが、**答えは (b)**。UIの表示額を資格と読まなくて正解だった。
+3. **選べるのは World AgentKit Continuity $3,500 が実質唯一**（1inch は Aqua/SwapVM 必須、
+   Uniswap は実統合必須で、いずれも「continuity price が building と合致」しない）。
+
+**会期設計への影響**: **Hedera + Blocky402 の実装に会期を賭ける理由が消えた**。
+`2026-autumn-continuity.md` の ETHOnline 動詞 `payOrRefuse` に、World の
+`payer.requireHumanBacked`（人間裏付けのあるエージェントにだけ上限を上げる支払いゲート）を
+足す一本に集中する。Hedera 対応は次の大会かグラント材料へ回す。
+
+**次の一手**: Pascal が「**Partner channels will open later this week**」と告知。
+World チームへ直接聞ける窓が開くので、AgentKit Continuity の必須物
+（AgentKit の実質使用・AgentBook 登録/解決・World ID Sandbox での遠隔テスト・フィードバック文書）の
+細部を、実装着手前に partner channel で確認する。
+
+## 【解決済み・記録として保持】未解決だった論点（2026-08-23 夜〜2026-08-25）
 
 ETHGlobal 運営（Pascal）の Discord 回答: **vet402 の既存公開 API に依存する提出は continuity 扱いになり、
 `continuity track` ラベルの付いた賞のみ対象。パートナー各社はまだそのラベルを用意していない。**
