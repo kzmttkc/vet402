@@ -223,9 +223,15 @@ certainly not what you wanted.
 const guard = vouch.createSpendGuard({
   maxPerTxUsd: 10,
   trustPolicy: "evidence",
-  requireEvidence: { minL1Deliveries: 3, minL1DistinctBuyers: 2 },
+  requireEvidence: { minL1Deliveries: 3 },
 });
 ```
+
+> **Pick floors that can actually be met.** Measured on production 2026-08-29:
+> every payee's `l1DistinctBuyers` is **1** (the observatory is the only buyer
+> on record), so a floor of `minL1DistinctBuyers: 2` denies every payee —
+> including one with 62 delivery-verified receipts and zero failures. Floors
+> are a statement about the evidence that exists, not a wish list.
 
 A WARN passes **only** when the payee's measured `signals.receiving` record
 clears the floors you name. Everything else behaves exactly like
