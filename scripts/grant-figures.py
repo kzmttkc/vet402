@@ -15,6 +15,9 @@ DOCS = pathlib.Path(__file__).resolve().parent.parent / "docs" / "applications"
 # it is re-quoted whole at submission, not line-patched.
 # 提出済みの申請は「何を送ったか」の記録なので、数字を後から書き換えない。
 # 2026-08-25 に Base へ送った Q10 は --write の対象から外す（外さないと記録が偽装になる）。
+# --write は「その文書の数字が全部いまの状態の主張である」ものにだけ効かせる。
+# 歴史的な比較（「8/14→8/20の7日間は804件だった」）や他チェーンの内訳を含む文書に
+# 効かせると、累計値で上書きして事実を壊す（2026-08-29 に solana-grant-proposal.md で実際に起きた）。
 SKIP = {"solana-grant-proposal.md", "video-script.md", "ai-usage-disclosure.md",
         "base-builder-grant-nomination.md", "octant-atlas-application.md"}
 
@@ -165,7 +168,7 @@ def unanchored(f, ):
         for i, line in enumerate(p.read_text().splitlines(), 1):
             # 日付を明記した実測値（原価根拠など）は本番stateと一致しなくてよい。
             # 「その日に測った」と書いてあることが根拠なので、日付が無い数字だけを咎める。
-            if re.search(r"(measured|実測)\s*20\d\d-\d\d-\d\d", line):
+            if re.search(r"(measured|retrieved|実測|取得)\s*20\d\d-\d\d-\d\d", line):
                 continue
             for m in re.finditer(r"(?<![$\d.])\b\d{1,3}(?:,\d{3})+\b", line):
                 if m.group(0) not in live:
