@@ -256,6 +256,7 @@ WIN_EV がキャンペーン草案より優先。カタログから始めない�
 
 - Mumbai ハッカソン: 11/6–8。
 - Devcon 8: 11/3–6、Jio World Centre。Pragma Mumbai: 11/5。Diwali: 11/8。
+- **担当（2026-08-31 Takeshi 明示）: Devcon 8 と ETHGlobal Mumbai は渡航も含めて完全にハッカソン目的であり、ハッカソン戦略セッションが持つ。グラント案件ではない。** チケットの等級（GA / Public Goods / POAP）もこの渡航費の内訳であって、グラント側へ渡す論点ではない。
 - **Devcon は行く。Mumbai とセット。** 片方だけはしない。
 - チケット（**2026-08-28 実測で経路を書き換え**）: **Sanctuary Tech Builders は不採択**（同日メール。$349 ETH / $499 fiat の枠だった）。残る割引は2つで、どちらも今は名乗れない。(a) **Ethereum Public Goods $349 ETH** は申請ではなく自己申告の verify だが、条件は「**public goods プロジェクトのために現に資金調達している人**」——Gitcoin 等で実際に募っていない限り該当しない。(b) **Past POAP Holders $449** は Devcon/Devconnect の POAP 保有者向けだが、**確認できた2つのウォレットに Devcon 系 POAP は無い**（Gnosis の POAP コントラクトを実測。旧 primary に8件あるが The Graph×4 / FWB / Pooly / Web3 Conference Tokyo / ReFi のみ）。よって既定は **General Admission $499 ETH**（最終波で $599 に上がる）。法定通貨 $999 は使わない。ホテル 11/2 泊〜11/8。**買う時期は Mumbai の賞ページ公開を待つ**——continuity 枠が1つも無ければ現地36時間の価値は面談だけになり、その判断はチケット差額 $100 より大きい（賞ページの公開は日次監視が拾う）。
 - **渡航の Go/No-Go ゲート（2026-08-28 決定・チケットと航空券は同時に判断する）**
