@@ -165,3 +165,31 @@ Between events, product ops (probes, Base L1, bugfixes) may continue and must be
 - Submit stale numbers as if they were today (`python3 scripts/grant-figures.py --check` before every send).
 - Treat Devfolio ETHMumbai / Origins prize pages as grant programs.
 - Soften the AI-operated disclosure to look like a conventional startup team.
+
+---
+
+## 9. Base Batches 004 の動画素材（ハッカソン戦略セッションからの申し送り・2026-08-31）
+
+Base Batches はグラント/アクセラレータ案件なので、**担当はグラント戦略セッション**。
+ハッカソン側で作ってしまった素材を捨てるのは無駄なので、そのまま引き継げる形で置いておく。
+以後の判断・提出はグラント側で持つ。
+
+**成果物**
+- 撮影パッケージ（正典）: [`../applications/base-batches-004-video.md`](../applications/base-batches-004-video.md)
+  ——6ショットの英語台本（§2）＋連続読み上げ版（§7）、画面の下ごしらえ、実装より強い主張の禁止リスト、
+  ライブ計測が失敗したときの言い方、提出前チェック。
+- `scripts/vet402_video_numbers.py`（Takeshi_Automation）——**当日の数字**と、その日に開くレシート画面・
+  Basescan の URL を一次データから出す。**この出力に無い数字を動画で言わない**。
+- `scripts/video_setup.sh`——数字を出し、Chrome を 1920×1080 に固定し、台本順に5タブを開く。
+- `scripts/video_check.sh`——撮った後に尺(60–300s)・高さ(≥720)・音声トラックの有無を機械判定。
+  わざと不合格な動画で自己テスト済み。
+
+**一次確認した事実**
+- フォーム実物: 「requires both a written and video submission and **does not save drafts**.
+  Prepare all materials offline first」——**下書きが保存されない**ので全素材を揃えてから一度で送る。
+- 日程: 8/19 開始 → **9/9 締切** → 9/17 通知 → 9/21–11/15 プログラム → 11/17 NY デモデイ。
+- 収録環境の実測: macOS 26.6.2・OBS/Loom なし・QuickTime/iMovie/ffmpeg あり。
+  QuickTime の「新規画面収録」は今の macOS では ⌘⇧5 と同じツールバーを開く。
+  **「選択部分を収録」**を使う（枠の外に台本を置けるので読みながら撮れる）。
+
+**残っている手番**: Takeshi が撮る → YouTube 限定公開 → URL → 文章側（Page 1–4 確定済み）と合わせて送信。
