@@ -194,6 +194,48 @@ launchd `com.kizuna.ethonline-prizes` が毎日 09:20 JST）が、パートナ�
 World の詳細公開はこの仕組みの初回実行で見つけた。
 
 
+## 2026-08-31 更新: The Graph が continuity 枠を3つ出した（各 $5,000）
+
+日次監視が検出。**すべて Continuity 参加者限定**なので、我々に資格がある。
+
+| 枠 | 額 | 要件の核 | 我々の適合 |
+|---|---|---|---|
+| 🔧 **Best AI Tooling for The Graph** | **$5,000**（1位$2,500/2位$1,500/3位$1,000） | 「AI 環境（Claude/Cursor/ChatGPT）から The Graph を使いやすくする**再利用可能な道具**——**MCP サーバー**・agent SKILL・**x402 payment tooling**・A2A 連携」。**Graph プロバイダの生データを消費すること**（Subgraph Studio / The Graph Market）。モック・ローカルのみ・静的データは不可。OSS＋README | **本命**。我々は既に MCP サーバーを公開しており、会期の新規はまさに x402 payment tooling。賞文に我々の2要素が名指しで並んでいる |
+| 🧩 Composable or Standard Graph Products | $5,000 | Graph 製品を2つ以上合成、または標準スキーマ（Messari 等）の上に作る | 可能だが遠い。合成の実演が要る |
+| 🤖 Best AI Use Case of The Graph | $5,000 | The Graph を**生のデータ源**にした AI エージェント/アプリ | 可能。ただし「単一アプリ」寄りで、我々は道具側 |
+
+**1パートナー＝1枠**なので、狙うのは 🔧 AI Tooling の1つ。
+
+### これが製品として正しい理由（賞のための細工ではない）
+
+今の evidence policy が読む配達実績は **vet402 自身の DB** にある。つまり買い手は
+「vet402 を信じる」ことを要求される。**同じ証拠を Subgraph（The Graph の生データ）からも引ければ、
+第三者が独立に検算できる。** 「測定器そのものを疑え」という我々の原則に、賞の要件がそのまま乗る。
+
+会期スコープへの追加は**動詞ではなく証拠源1つ**: `payOrRefuse` の evidence を
+(a) vet402 の L1 台帳 と (b) **Subgraph の生データ** の両方から取れるようにし、MCP から使えるようにする。
+
+### 会期前に要る準備（Takeshi 手番になりうる）
+
+**Subgraph Studio の API キー**（Graph Gateway への live クエリに必須。無料枠あり・ログインはウォレット）。
+モック不可と明記されているので、これが無いと 🔧 枠は成立しない。09-04 までに要否を確定させる。
+
+## Arc は $10,000 → $2,500 に減り、continuity 枠でもない
+
+同じ監視が検出（2026-08-31）。公開された枠は「🏆 Best DeFi stablecoin-native Pool $2,500・
+参加者で山分け」で、**continuity ラベルが無い**ため我々は選べない。要件も Arc チェーン上の
+DeFi（貸借・スワップ・流動性）で、我々の動詞とは別物。**Arc は追わない。**
+
+## 現在の賞の見取り図（2026-08-31）
+
+| 枠 | 額 | 資格 | 状態 |
+|---|---|---|---|
+| The Graph 🔧 AI Tooling | $5,000 | ✅ continuity 限定 | **P1**。Subgraph Studio キーが前提 |
+| World 🤖 AgentKit Continuity | $3,500 | ✅ continuity 限定 | **P2**。AgentBook のチェーンと検証レベルが未確定 |
+| 3枠目 | — | — | 空。continuity 枠が増えたら埋める |
+
+到達可能な合計は **$8,500**（8/30 時点では $3,500 だった）。
+
 ## パートナーの増減（機械監視）
 
 - 2026-08-23: 9社・$77,000

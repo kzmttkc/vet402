@@ -76,8 +76,8 @@ Max 3 partners. One partner with many tracks still counts as 1.
 
 | Slot | Who | Qualification we must show |
 |---|---|---|
-| P1 | **World「AgentKit Continuity」$3,500** — 2026-08-26 時点で**選べる唯一の賞**。`payOrRefuse` の policy に払う側の条件を1つ足す: 人間裏付けのあるエージェントにだけ上限を上げる。動詞は増えない | AgentKit の実使用・AgentBook 登録/解決・Sandbox での遠隔デモ・フィードバック文書 |
-| P2 | **今は空**。continuity 枠が増えたときだけ埋まる（`scripts/watch_ethonline_prizes.py` が毎日見る）。詳細待ちは The Graph $15k / 0G $15k / ENS / Ledger / Chainlink / **Privy $5k（2026-08-26 新規）** | continuity ラベルがあること（無ければ内容が合っても選べない） |
+| P1 | **The Graph「Best AI Tooling for The Graph」$5,000**（2026-08-31 に continuity 枠として公開）。賞文が「MCP サーバー・**x402 payment tooling**」を名指ししており、我々の既存 MCP と会期の新規がそのまま当たる | Graph プロバイダの**生データ**を消費すること（モック不可）・OSS＋README・2〜4分の動画 |
+| P2 | **World「AgentKit Continuity」$3,500** — `payOrRefuse` の policy に払う側の条件を1つ足す: 人間裏付けのあるエージェントにだけ上限を上げる。動詞は増えない | AgentKit の実使用・AgentBook 登録/解決・Sandbox での遠隔デモ・フィードバック文書 |
 | P3 | 同上。**continuity ラベルの無い賞は、内容が合っていても選択UIに出ない**（2026-08-25 ETHGlobal 回答）。3枠を埋めることを目的にしない | — |
 
 Never: ENS (Tokyo), Sui, Uniswap-without-a-swap, a logo we did not import.
