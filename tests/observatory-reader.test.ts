@@ -93,9 +93,12 @@ if (!TEST_DB) {
 
       const stats = await getObservatoryStats();
       assert.equal(stats.totalEndpoints, 3);
-      assert.equal(stats.publishedFail, 1);
+      // 2026-09-02 製品定義書 §6.1: method 未宣言（nodecl）は GET で測る。この fake は
+      // healthy 以外に 404 を返すので、nodecl も 2 回 fail → 公開 fail が 2 件になる
+      // （以前は無送信で unverified だった）。methodUndeclared はカタログ側の事実なので 1 のまま。
+      assert.equal(stats.publishedFail, 2);
       assert.equal(stats.publishedPass, 1);
-      assert.equal(stats.publishedUnverified, 1);
+      assert.equal(stats.publishedUnverified, 0);
       assert.equal(stats.methodUndeclared, 1);
     });
 

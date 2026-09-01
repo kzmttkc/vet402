@@ -12,6 +12,7 @@
 // No scoring/chain imports. Writers here are trusted-cron-only — nothing in
 // this module is reachable from a request handler that accepts user input.
 // ============================================================
+import { canonicalUrl, endpointHash, payeeId, resourceId } from "@/lib/ids/canonical";
 import { and, eq, inArray, lt, desc, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import {
@@ -110,6 +111,17 @@ export async function syncCatalog(
   // refuses — counted in `skipped`, never silently.
   let upserted = 0;
   let skipped = 0;
+  // §5 canonical ID（2026-09-02）。method 未宣言は GET（§6.1 と同じ既定）。
+  const idsOf = (item: ParsedCatalogItem) => {
+    const c = canonicalUrl(item.resourceUrl);
+    return {
+      canonicalUrl: c?.url ?? null,
+      resourceId: resourceId(item.method ?? "GET", item.resourceUrl),
+      endpointHash: endpointHash(item.resourceUrl),
+      payeeId: item.payTo && item.network ? payeeId(item.network, item.payTo) : null,
+      undeclaredQuery: c?.undeclaredQuery ?? null,
+    };
+  };
   const upsertChunk = async (chunk: ParsedCatalogItem[]) => {
     await db
       .insert(x402Endpoints)
@@ -129,6 +141,7 @@ export async function syncCatalog(
           qualityPayers30d: item.qualityPayers30d,
           qualityLastCalledAt: item.qualityLastCalledAt,
           rawAccepts: item.rawAccepts,
+          ...idsOf(item),
         })),
       )
       .onConflictDoUpdate({
@@ -146,6 +159,11 @@ export async function syncCatalog(
           qualityPayers30d: sql`excluded.quality_payers_30d`,
           qualityLastCalledAt: sql`excluded.quality_last_called_at`,
           rawAccepts: sql`excluded.raw_accepts`,
+          canonicalUrl: sql`excluded.canonical_url`,
+          resourceId: sql`excluded.resource_id`,
+          endpointHash: sql`excluded.endpoint_hash`,
+          payeeId: sql`excluded.payee_id`,
+          undeclaredQuery: sql`excluded.undeclared_query`,
           lastSeenAt: sql`now()`,
           // Presence in today's catalog IS the relist evidence; the event row
           // is written below from the pre-write diff.

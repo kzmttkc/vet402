@@ -572,11 +572,27 @@ export const x402Endpoints = pgTable(
     /** active | delisted — current catalog presence (history lives in x402_delisting_events). */
     status: text("status").notNull().default("active"),
     delistedAt: timestamp("delisted_at", { withTimezone: true }),
+    /**
+     * 製品定義書 §5（2026-09-02）。uuid `id` は主キーのまま、公開 ID と逆引きの鍵として
+     * 並走する。算出は src/lib/ids/canonical.ts の 1 箇所。NULL = 未算出（backfill 前）。
+     */
+    canonicalUrl: text("canonical_url"),
+    /** sha256(method + " " + canonical_url) */
+    resourceId: text("resource_id"),
+    /** sha256(origin + pathname_prefix) — 仕様の endpoint_id */
+    endpointHash: text("endpoint_hash"),
+    /** chain_caip2:address（EVM は小文字）。payTo と network から算出。 */
+    payeeId: text("payee_id"),
+    /** canonical_url から外した可変クエリ名（§5 undeclared）。 */
+    undeclaredQuery: jsonb("undeclared_query"),
   },
   (t) => [
     uniqueIndex("x402_endpoints_key_source_unique").on(t.resourceKey, t.source),
     index("x402_endpoints_payto_idx").on(t.payTo),
     index("x402_endpoints_status_idx").on(t.status),
+    index("x402_endpoints_resource_id_idx").on(t.resourceId),
+    index("x402_endpoints_endpoint_hash_idx").on(t.endpointHash),
+    index("x402_endpoints_payee_id_idx").on(t.payeeId),
   ],
 );
 
