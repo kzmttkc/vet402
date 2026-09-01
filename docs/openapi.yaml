@@ -1010,6 +1010,33 @@ paths:
         "429": { description: Rate limited }
         "503": { description: Store unavailable }
 
+  /api/v1/observatory/endpoints/{id}/facts:
+    get:
+      operationId: getEndpointFacts
+      tags: [Observatory]
+      summary: L0–L2 facts for one endpoint — measurement records only, no score
+      description: |
+        Product spec §8.1 / §9.1. `facts.l0` (published verdict, dialect),
+        `facts.l1` (n_delivered / n_settled / n_attempts, p50/p95, last
+        purchase_id), `facts.l2` (conform | mismatch | undeclared with the
+        declaration hash), availability, offer_stability, payees, and the 30-day
+        settlement counts raw and real side by side. `freshness` carries the
+        observation times; `evidence` links the public receipts. Contains no
+        trustScore and no recommendation by design (§8.3). `id` is the
+        observatory uuid or the §5 endpoint_id. Key-less; 120/min.
+      security: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: "{ subject, facts, freshness, evidence, disclaimer, retrievedAt }" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { description: Unknown endpoint }
+        "429": { description: Rate limited }
+        "503": { description: Store unavailable }
+
   /api/v1/observatory/backtest:
     get:
       operationId: getSpendGuardBacktest
