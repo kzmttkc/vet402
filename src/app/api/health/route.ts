@@ -19,6 +19,9 @@ function authorizeAdmin(request: NextRequest): boolean {
   return secureCompare(token, secret);
 }
 
+// 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const deep = request.nextUrl.searchParams.get("deep") === "1";
 

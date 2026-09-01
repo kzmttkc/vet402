@@ -23,6 +23,9 @@ export const revalidate = 300;
 const BADGE_LIMIT = 60;
 const BADGE_WINDOW_MS = 60_000;
 
+// 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
+export const dynamic = "force-dynamic";
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ agentId: string }> },

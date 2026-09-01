@@ -4,6 +4,9 @@ import { deleteWebhook } from "@/lib/webhooks";
 import { logServerError } from "@/lib/util/log";
 
 /** DELETE /api/v1/webhooks/:id — remove an endpoint this key owns. */
+// 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
+export const dynamic = "force-dynamic";
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },

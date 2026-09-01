@@ -64,6 +64,9 @@ type RouteContext = { params: Promise<{ trustEventId: string }> };
  * matches the published contract in docs/openapi.yaml, which documents 404 and
  * no 403 for this path.
  */
+// 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest, context: RouteContext) {
   const auth = await authorizeApiRequest(request, 1);
   if (!auth.ok) return auth.error;

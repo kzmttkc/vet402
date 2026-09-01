@@ -17,6 +17,9 @@ const RL_WINDOW_MS = 60_000;
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
 const INTERESTS = new Set(["premium_data", "design_partner", "other"]);
 
+// 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request) ?? "unknown";
   const limited = await consumeIpRateLimit(`waitlist:${ip}`, RL_LIMIT, RL_WINDOW_MS);

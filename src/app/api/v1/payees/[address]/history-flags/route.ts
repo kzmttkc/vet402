@@ -16,6 +16,9 @@ type RouteContext = { params: Promise<{ address: string }> };
 
 const ADDR_RE = /^(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})$/;
 
+// 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest, context: RouteContext) {
   const auth = await authorizeApiRequest(request, 1);
   if (!auth.ok) return auth.error;

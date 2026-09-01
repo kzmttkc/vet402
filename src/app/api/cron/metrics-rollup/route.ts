@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
 import { rollupDailyMetrics } from "@/lib/observatory/metrics-rollup";
-import { anchorDay } from "@/lib/observatory/anchors";
+import { anchorThrough } from "@/lib/observatory/anchors";
 import { logServerError } from "@/lib/util/log";
 
 // Phase 1.1 — 日次メトリクスのロールアップ。前日と当日の2日分を毎回叩く:
@@ -25,14 +25,19 @@ export async function GET(request: NextRequest) {
     // 台帳ハッシュチェーン: 完結した前日だけをアンカーする（当日は行が増える）。
     // conflict_frozen（刻印済みrootと現データの食い違い）は整合性イベント——
     // 握りつぶさず監視ログに出す。
-    const anchor = await anchorDay(utcDay(-1));
-    if (anchor.status === "conflict_frozen") {
-      logServerError(
-        "cron.metrics-rollup.anchor",
-        new Error(`ledger anchor conflict on ${anchor.day}: recomputed root differs from anchored root`),
-      );
+    // 2026-09-02 監査: 欠けた日を古い順に埋めてから昨日を固定する。cron が 1 回
+    // 落ちても翌日に鎖が自己修復する（以前は穴を飛ばして連結し、5 日間検出されなかった）。
+    const anchors = await anchorThrough(utcDay(-1));
+    for (const anchor of anchors) {
+      if (anchor.status === "conflict_frozen") {
+        logServerError(
+          "cron.metrics-rollup.anchor",
+          new Error(`ledger anchor conflict on ${anchor.day}: recomputed root differs from anchored root`),
+        );
+      }
     }
-    return NextResponse.json({ ok: true, days, anchor });
+    const anchor = anchors[anchors.length - 1] ?? null;
+    return NextResponse.json({ ok: true, days, anchor, backfilled: anchors.length - 1 });
   } catch (error) {
     logServerError("cron.metrics-rollup", error);
     return NextResponse.json({ ok: false, error: "rollup_failed" }, { status: 500 });

@@ -21,6 +21,9 @@ export const maxDuration = 60;
 const POLL_MS = 5_000;
 const WINDOW_MS = 55_000;
 
+// 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const ip = getClientIp(request) ?? "unknown";
   const limited = await consumeIpRateLimit(`observatory-live:${ip}`, 10, 60_000);

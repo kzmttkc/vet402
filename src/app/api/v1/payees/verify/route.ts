@@ -51,6 +51,9 @@ const RL_WINDOW_MS = 60_000;
 // caller can construct + sign it before ever attempting POST. Read-only, but
 // still rate-limited: it is key-less and does DB-free work an abuser could
 // hammer, and integrators benefit from seeing the same RateLimit-* contract.
+// 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const ip = getClientIp(request) ?? "unknown";
   const limited = await consumeIpRateLimit(`payee-verify-get:${ip}`, GET_LIMIT, RL_WINDOW_MS);

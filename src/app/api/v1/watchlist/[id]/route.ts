@@ -3,6 +3,9 @@ import { authenticateApiRequest } from "@/lib/api/guard";
 import { removeWatch } from "@/lib/watchlist";
 import { logServerError } from "@/lib/util/log";
 
+// 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
+export const dynamic = "force-dynamic";
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },

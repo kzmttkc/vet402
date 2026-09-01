@@ -51,6 +51,9 @@ const ISSUED_WINDOW_MS = 10 * 60_000;
  * the agent's on-chain wallet so the signer sees the real 5 lines before
  * signing. Read-only but rate-limited: it is key-less and does a chain read.
  */
+// 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const ip = getClientIp(request) ?? "unknown";
   const limited = await consumeIpRateLimit(`agent-verify-get:${ip}`, GET_LIMIT, RL_WINDOW_MS);

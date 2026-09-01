@@ -17,6 +17,9 @@ import { logServerError } from "@/lib/util/log";
 const RL_LIMIT = 10;
 const RL_WINDOW_MS = 60_000;
 
+// 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request) ?? "unknown";
   const limited = await consumeIpRateLimit(`contributions:${ip}`, RL_LIMIT, RL_WINDOW_MS);

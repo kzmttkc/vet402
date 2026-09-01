@@ -30,6 +30,9 @@ const createSchema = z.object({
   events: z.array(z.string()).min(1).max(WEBHOOK_EVENTS.length),
 });
 
+// 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const auth = await authenticateApiRequest(request);
   if (!auth.ok) return auth.error;

@@ -34,6 +34,9 @@ const deleteSchema = z.object({ wallet: z.string() });
 
 const MAX_WATCHERS_PER_KEY = 20;
 
+// 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const auth = await authorizeApiRequest(request, 1);
   if (!auth.ok) return auth.error;

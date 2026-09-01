@@ -57,6 +57,9 @@ function utcDayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request) ?? "unknown";
   const limited = await consumeIpRateLimit(`demo-verify:${ip}`, RL_LIMIT, RL_WINDOW_MS);

@@ -11,6 +11,9 @@ type RouteContext = { params: Promise<{ agentId: string }> };
 
 const PRO_PLANS = new Set(["pro", "scale"]);
 
+// 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest, context: RouteContext) {
   const { agentId: agentIdParam } = await context.params;
   const agentId = parseAgentId(agentIdParam);
