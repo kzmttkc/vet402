@@ -61,7 +61,8 @@ export async function knownPurchaseIds(ids: readonly string[]): Promise<Set<stri
   const db = getDb();
   if (!db || ids.length === 0) return new Set();
   const rows = rowsOf<{ purchase_id: string }>(
-    await db.execute(sql`SELECT purchase_id FROM settlements WHERE purchase_id = ANY(${ids as string[]}::text[])`),
+    // drizzle は JS 配列をタプル ($1, $2) に展開するので ARRAY[...] を明示する
+    await db.execute(sql`SELECT purchase_id FROM settlements WHERE purchase_id = ANY(ARRAY[${sql.join(ids.map((i) => sql`${i}`), sql`, `)}]::text[])`),
   );
   return new Set(rows.map((r) => r.purchase_id));
 }
