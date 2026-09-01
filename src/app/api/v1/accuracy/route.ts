@@ -8,6 +8,8 @@ import {
 import { computeAccuracyReport, type AccuracyReport } from "@/lib/scoring/accuracy";
 import { computeBenchmarkReport, type BenchmarkReport } from "@/lib/scoring/benchmark-report";
 import { fetchAccuracyRows, fetchBenchmarkRows } from "@/lib/db/outcome-reader";
+import { computeL0Accuracy, fetchL0AccuracyInput, fetchSloSnapshot } from "@/lib/scoring/l0-accuracy";
+import { getCoverageWeekly } from "@/lib/observatory/coverage-report";
 import { SITE_URL } from "@/lib/site-url";
 import { logServerError } from "@/lib/util/log";
 
@@ -151,9 +153,20 @@ export async function GET(request: NextRequest) {
     // at the SQL layer and fetchBenchmarkRows selects only it, so the two
     // objects partition verdict_outcomes — a consumer cannot double-count.
     const operatorBenchmark = computeBenchmarkReport(await fetchBenchmarkRows(90));
+    // 製品定義書 §12 / §14（2026-09-02）: 測定機関自身の品質。L0 の誤 pass / 誤 fail、
+    // 鮮度・逆引き遅延・証拠完備率の SLO、週次カバレッジ。測れない項目は null と
+    // unmeasured に名指しで残す（隠さない）。
+    const [l0Input, slo, coverageWeekly] = await Promise.all([
+      fetchL0AccuracyInput().catch(() => null),
+      fetchSloSnapshot().catch(() => null),
+      getCoverageWeekly().catch(() => null),
+    ]);
     const body = {
       ...report,
       operatorBenchmark,
+      l0: l0Input ? computeL0Accuracy(l0Input) : null,
+      slo,
+      coverageWeekly,
       windowDays: 90,
       generatedAt: new Date(now).toISOString(),
       interpretation: buildInterpretation(report, operatorBenchmark),
