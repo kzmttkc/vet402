@@ -6,7 +6,7 @@ import { Mark402 } from "@/components/site/Mark402";
 import { PricingSection } from "@/components/site/PricingSection";
 import { TableScroll } from "@/components/site/TableScroll";
 import { X402_DEFINITION } from "@/components/site/faq-data";
-import { BILLING_PLANS } from "@/lib/billing/plans";
+import { BILLING_PLANS, isStripeConfigured } from "@/lib/billing/plans";
 import { buttonClass } from "@/components/ui/Button";
 import { SITE_URL } from "@/lib/site-url";
 import { organizationJsonLd, publisherOrg } from "@/lib/seo";
@@ -124,6 +124,14 @@ export default async function Home() {
     operatingSystem: "Web",
     description:
       "Verification API for the x402 agent-payment economy. Prove control of a payee wallet, check a payee before paying it, and read the public accuracy ledger.",
+    // An Offer is a machine-readable assertion that a plan is purchasable at
+    // this price — read by search engines and by the buying agents this product
+    // exists to serve. The paid entries are therefore tied to whether checkout
+    // can actually complete, the same `isStripeConfigured()` that gates the
+    // billing API and the paid CTA. On 2026-09-01 production advertised Pro and
+    // Scale while its checkout handed customers a TEST-mode Stripe page; the
+    // plan table below stays (it describes the tiers, which exist) but the
+    // purchase claim does not outlive the ability to honour it.
     offers: [
       {
         "@type": "Offer",
@@ -132,20 +140,24 @@ export default async function Home() {
         priceCurrency: "USD",
         description: `${BILLING_PLANS.free.monthlyLimit.toLocaleString()} lookups / month`,
       },
-      {
-        "@type": "Offer",
-        name: BILLING_PLANS.pro.name,
-        price: "49",
-        priceCurrency: "USD",
-        description: `${BILLING_PLANS.pro.monthlyLimit.toLocaleString()} lookups / month`,
-      },
-      {
-        "@type": "Offer",
-        name: BILLING_PLANS.scale.name,
-        price: "199",
-        priceCurrency: "USD",
-        description: `${BILLING_PLANS.scale.monthlyLimit.toLocaleString()} lookups / month`,
-      },
+      ...(isStripeConfigured()
+        ? [
+            {
+              "@type": "Offer",
+              name: BILLING_PLANS.pro.name,
+              price: "49",
+              priceCurrency: "USD",
+              description: `${BILLING_PLANS.pro.monthlyLimit.toLocaleString()} lookups / month`,
+            },
+            {
+              "@type": "Offer",
+              name: BILLING_PLANS.scale.name,
+              price: "199",
+              priceCurrency: "USD",
+              description: `${BILLING_PLANS.scale.monthlyLimit.toLocaleString()} lookups / month`,
+            },
+          ]
+        : []),
     ],
   };
 
