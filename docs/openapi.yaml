@@ -1673,6 +1673,16 @@ paths:
         have the whole disclosure; you are not expected to parse the HTML.
 
         Rates move as the sample grows: cite them with `generatedAt`.
+
+        Product spec §12 (2026-09-02) adds the measuring instrument's own
+        quality: `l0` (false-fail rate = published fails overturned to pass
+        within 7 days, target < 3%; false-pass rate = published passes whose
+        next probe was no_402, target < 2%; null below the minimum sample),
+        `slo` (L1 probe-error rate, C1 L0 freshness within 36h, C2 L1
+        freshness within 48h, reverse-lookup latency within 60s, published
+        failure evidence completeness — unmeasured items are named in
+        `slo.unmeasured`), and `coverageWeekly` (listed / L0 measured / L1
+        measured / real and raw settlements over 7 days).
       security: []
       responses:
         "200":

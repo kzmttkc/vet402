@@ -46,7 +46,7 @@ import {
 } from "./x402-payer";
 import { logServerError } from "@/lib/util/log";
 import { isWellFormedSettlementTx } from "@/lib/validation/settlement-tx";
-import { fireL1RegistryHook } from "@/lib/chain/registry-hook";
+import { fireL1RegistryHook, fireL2RegistryHook } from "@/lib/chain/registry-hook";
 import { Keypair } from "@solana/web3.js";
 import {
   SOLANA_MAINNET_CAIP2,
@@ -56,6 +56,7 @@ import {
   selectSolanaAccept,
 } from "./sol402-payer";
 import { l1TierWhere } from "./coverage";
+import { createHash } from "node:crypto";
 
 export type L1BatchSummary = {
   attempted: number;
@@ -887,8 +888,11 @@ async function purchaseOne(input: {
 
   // L2 — minimal structural check against the catalog-declared schema.
   let l2Schema: string = "not_checked";
+  let l2Detail: { missing: string[]; declarationHash: string | null; responseHash: string } | null = null;
   if (paid && paid.status === 200) {
-    l2Schema = checkL2(candidate.declaredSchema, paidBody, contentType);
+    const d = checkL2Detailed(candidate.declaredSchema, paidBody, contentType);
+    l2Schema = d.status;
+    l2Detail = { missing: d.missing, declarationHash: d.declarationHash, responseHash: d.responseHash };
   }
 
   // 2026-08-23 監査: ここまで `transaction` は「空でない文字列」以外を何も見ていなかった。
@@ -949,6 +953,8 @@ async function purchaseOne(input: {
         // error would otherwise be dropped (rawSettlement keeps the settlement
         // when one exists), so it is kept here rather than silently lost.
         ...(paid && paidError ? { bodyError: paidError } : {}),
+        // §6.3: L2 の判定材料。mismatch の公開に要る宣言ハッシュ・応答ハッシュ・欠落キー。
+        ...(l2Detail ? { l2: l2Detail } : {}),
       },
     })
     .where(eq(x402L1Purchases.id, reservation.rowId));
@@ -1000,7 +1006,27 @@ async function purchaseOne(input: {
   // 何があっても影響しない（registry-hook.ts 冒頭）。バッチ末尾で待てるよう
   // Promise を集める: fire-and-forget のままだと Vercel が応答後に関数を
   // 凍結するので、最後の候補の書き込みだけが静かに消える。
-  pendingHooks.push(fireL1RegistryHook({ endpointId: candidate.id, payTo: accept.payTo, settled }));
+  pendingHooks.push(
+    fireL1RegistryHook({
+      endpointId: candidate.id,
+      payTo: accept.payTo,
+      settled,
+      txHash: settlement?.transaction ?? null,
+      network: accept.network,
+    }),
+  );
+  // §11: L2 が conform / mismatch で確定したときも書く（undeclared・未検査は書かない）。
+  if (settled && (l2Schema === "match" || l2Schema === "mismatch")) {
+    pendingHooks.push(
+      fireL2RegistryHook({
+        endpointId: candidate.id,
+        payTo: accept.payTo,
+        l2: l2Schema === "match" ? "conform" : "mismatch",
+        txHash: settlement?.transaction ?? null,
+        network: accept.network,
+      }),
+    );
+  }
 
   return { kind: "attempted", settled, spent: amount, status };
 }
@@ -1011,6 +1037,42 @@ async function purchaseOne(input: {
  * what is machine-checkable without a full JSON-Schema engine — the body
  * parses as JSON and carries the declared top-level required/properties keys.
  */
+/**
+ * §6.3 / §14 P2（2026-09-02）: mismatch の公開には宣言のハッシュ・実レスポンスのハッシュ・
+ * 差分の機械可読リストを付ける（生の有料コンテンツ全文は公開しない）。
+ */
+export function checkL2Detailed(
+  declaredSchema: unknown,
+  bodyText: string,
+  contentType: string | null,
+): { status: string; missing: string[]; declarationHash: string | null; responseHash: string } {
+  const status = checkL2(declaredSchema, bodyText, contentType);
+  const missing: string[] = [];
+  const schema = typeof declaredSchema === "object" && declaredSchema !== null ? (declaredSchema as Record<string, unknown>) : null;
+  if (status === "mismatch" && schema) {
+    const props = (schema.properties ?? null) as Record<string, unknown> | null;
+    const output = (props?.output ?? null) as Record<string, unknown> | null;
+    const outputProps = (output?.properties ?? null) as Record<string, unknown> | null;
+    const example = (outputProps?.example ?? null) as Record<string, unknown> | null;
+    const requiredKeys = Array.isArray(example?.required) ? (example!.required as string[]) : [];
+    let rec: Record<string, unknown> | null = null;
+    try {
+      const parsed = JSON.parse(bodyText);
+      rec = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
+    } catch {
+      rec = null;
+    }
+    for (const key of requiredKeys) if (!rec || !(key in rec)) missing.push(key);
+  }
+  const sha = (v: string) => createHash("sha256").update(v, "utf8").digest("hex");
+  return {
+    status,
+    missing,
+    declarationHash: schema ? sha(JSON.stringify(schema)) : null,
+    responseHash: sha(bodyText),
+  };
+}
+
 function checkL2(declaredSchema: unknown, bodyText: string, contentType: string | null): string {
   const schema = typeof declaredSchema === "object" && declaredSchema !== null
     ? (declaredSchema as Record<string, unknown>)

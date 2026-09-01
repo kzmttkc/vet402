@@ -37,12 +37,24 @@ export function isRegistryWritesEnabled(): boolean {
 export type ValidationRecord = {
   endpointId: string;
   agentId: bigint;
-  /** l0 | l1 | l2 — 事実レベルのみ。L3(意見)はオンチェーンにも書かない。 */
-  level: "l0" | "l1" | "l2";
+  /**
+   * l1 | l2 — 事実レベルのみ。L3(意見)はオンチェーンにも書かない。
+   * 製品定義書 §11（2026-09-02）: L0 のみでは書かない（型からも外した）。
+   */
+  level: "l1" | "l2";
   verdict: "pass" | "fail";
   /** 公開証拠URI（/observatory/e/{id} 等）。 */
   evidenceUri: string;
+  /** §11: subject は payee / agent / resource_hash。registry は agentId を話すので agent_id も併記。 */
+  subject: { type: "payee" | "agent" | "resource_hash"; id: string };
+  /** §11: result は 0-100 ではなく {level, verdict}。response（0/100）は ERC-8004 の語彙への写像。 */
+  result: { level: "l1" | "l2"; verdict: "pass" | "fail" };
+  /** §11: 証拠 JSON の keccak（第三者が同じ JSON から再計算できる）。 */
+  hash: `0x${string}`;
+  /** §11: requestHash は対応する purchase_id / observation_id から決定的に導く。 */
   requestHash: `0x${string}`;
+  /** 由来（開示）。 */
+  requestKey: string;
   response: number;
 };
 
@@ -53,21 +65,38 @@ export type ValidationRecord = {
 export function buildValidationRecord(input: {
   endpointId: string;
   agentId: bigint;
-  level: "l0" | "l1" | "l2";
+  level: "l1" | "l2";
   verdict: "pass" | "fail";
   evidenceUri: string;
+  /** purchase_id（chain:tx_hash）または observation_id。無ければ endpoint+level+verdict から導く（互換）。 */
+  requestKey?: string;
+  subject?: { type: "payee" | "agent" | "resource_hash"; id: string };
 }): ValidationRecord {
-  const canonical = JSON.stringify({
-    v: 1,
+  if ((input.level as string) === "l0") {
+    throw new Error("validation_record_l0_not_allowed"); // §11: L0 のみでは書かない
+  }
+  const subject = input.subject ?? { type: "agent" as const, id: String(input.agentId) };
+  const evidence = {
+    v: 2,
     endpointId: input.endpointId,
     agentId: String(input.agentId),
+    subject,
+    result: { level: input.level, verdict: input.verdict },
+    evidenceUri: input.evidenceUri,
+  };
+  const hash = keccak256(toBytes(JSON.stringify(evidence)));
+  const requestKey = input.requestKey ?? `${input.endpointId}:${input.level}:${input.verdict}`;
+  return {
+    endpointId: input.endpointId,
+    agentId: input.agentId,
     level: input.level,
     verdict: input.verdict,
     evidenceUri: input.evidenceUri,
-  });
-  return {
-    ...input,
-    requestHash: keccak256(toBytes(canonical)),
+    subject,
+    result: { level: input.level, verdict: input.verdict },
+    hash,
+    requestHash: keccak256(toBytes(requestKey)),
+    requestKey,
     response: input.verdict === "pass" ? 100 : 0,
   };
 }
@@ -134,7 +163,7 @@ export async function publishValidation(input: {
       address: ERC8004_ADDRESSES.validationRegistry,
       abi: validationRegistryAbi,
       functionName: "validationResponse",
-      args: [record.requestHash, record.response, record.evidenceUri, record.requestHash, `vet402:${record.level}`],
+      args: [record.requestHash, record.response, record.evidenceUri, record.hash, `vet402:${record.level}`],
       account: walletClient.account,
       chain: walletClient.chain,
     });
