@@ -107,6 +107,35 @@ export type PayeeScoreResult = {
   disclaimer: string;
 };
 
+// ---- 製品定義書 §9.1（2026-09-02）: /decision ----
+export type DecisionRecommendation = "ALLOW" | "WARN" | "BLOCK";
+
+export type DecisionResult = {
+  subject: {
+    type: "resource";
+    id: string | null;
+    endpoint_id: string;
+    observatory_id: string;
+    canonical_url: string;
+    method: string;
+  };
+  role: "payer" | "payee";
+  payer: string | null;
+  recommendation: DecisionRecommendation;
+  reason_codes: string[];
+  facts: Record<string, unknown>;
+  freshness: { l0: string | null; l1: string | null; l2: string | null };
+  evidence: { level: "L0" | "L1" | "L2"; purchase_id?: string; observation_id?: string; url: string }[];
+  score: { trustScore: number | null; recommendation: DecisionRecommendation | null; deprecated: true } | null;
+  degraded: boolean;
+  policy: "allow_only";
+  rules_version: string;
+  registry: { status: "anchored" | "pending" | "off"; tx_hash: string | null };
+  scoredAt: string;
+  cacheExpiresAt: string;
+  disclaimer: string;
+};
+
 export type VouchClientConfig = {
   apiUrl: string;
   apiKey: string;
@@ -257,4 +286,17 @@ export async function attestX402Payment(
     method: "POST",
     body: JSON.stringify(attestation),
   });
+}
+
+export async function fetchDecision(
+  resourceId: string,
+  query: { role?: "payer" | "payee"; payer?: string; callerDialect?: "v1" | "v2" } = {},
+): Promise<DecisionResult> {
+  if (!/^[0-9a-f]{64}$/.test(resourceId)) throw new Error("invalid_resource_id");
+  const role = query.role ?? "payer";
+  if (role === "payee" && !query.payer) throw new Error("payer_required");
+  const qs = new URLSearchParams({ role });
+  if (query.payer) qs.set("payer", query.payer);
+  if (query.callerDialect) qs.set("caller_dialect", query.callerDialect);
+  return vouchFetch<DecisionResult>(`/resources/${resourceId}/decision?${qs.toString()}`);
 }

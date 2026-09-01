@@ -56,6 +56,37 @@ type Surface = {
 
 const SURFACES: Surface[] = [
   {
+    // 製品定義書 §9.1（2026-09-02）: /decision の応答。facts と recommendation が
+    // 同じ文書に同居することを 4 面（実装・OpenAPI・SDK・MCP）で固定する。
+    label: "DecisionResult",
+    spec: ["DecisionResult", "properties"],
+    impl: [
+      ["src/lib/decision/decide.ts", ["DecisionResult"]],
+      ["packages/sdk/src/index.ts", ["DecisionResult"]],
+      ["packages/mcp-server/src/vouch-client.ts", ["DecisionResult"]],
+    ],
+    fields: [
+      "subject",
+      "role",
+      "payer",
+      "recommendation",
+      "reason_codes",
+      // --- facts を省く経路は無い（§9.1・§15）。消したら仕様違反 ---
+      "facts",
+      // -----------------------------------------------------------
+      "freshness",
+      "evidence",
+      "score",
+      "degraded",
+      "policy",
+      "rules_version",
+      "registry",
+      "scoredAt",
+      "cacheExpiresAt",
+      "disclaimer",
+    ],
+  },
+  {
     label: "PayeeScoreResult",
     spec: ["PayeeScoreResult", "properties"],
     impl: [
@@ -174,7 +205,7 @@ const SURFACES: Surface[] = [
  * PayeeScoreResult は実装 (payee-engine.ts の result リテラル) が全項目を
  * 無条件に組み立てるので、10項目すべてが required。
  */
-const PAYEE_SCORE_RESULT_REQUIRED = SURFACES[0].fields;
+const PAYEE_SCORE_RESULT_REQUIRED = SURFACES.find((s) => s.label === "PayeeScoreResult")!.fields;
 
 /**
  * fail-closed の根拠フィールド。SURFACES を誰かが雑に編集しても、これだけは

@@ -8,6 +8,7 @@ import { decideFromScore, decideFromFailure, type TrustDecision } from "./decisi
 import {
   attestX402Payment,
   fetchAgentScore,
+  fetchDecision,
   fetchPayeeScore,
   fetchWalletScore,
 } from "./vouch-client.js";
@@ -192,7 +193,42 @@ server.tool(
 );
 
 async function main() {
-  const transport = new StdioServerTransport();
+  // 製品定義書 §9.1（2026-09-02）: 新規統合は /decision を正規とする。
+// facts（L0–L2 の測定記録）と recommendation が同じ応答にある。
+const RESOURCE_ID = z.string().regex(/^[0-9a-f]{64}$/).describe("resource_id — sha256(method + \" \" + canonical_url). Get it from /api/v1/resolve?q=<url>");
+server.tool(
+  "check_resource_decision",
+  [
+    "Pre-payment decision for an x402 resource (role=payer) or pre-service decision for a payer (role=payee).",
+    "Decide on decision (ALLOW_PAY | REFUSE) and safe_to_pay (boolean); pay only on ALLOW_PAY.",
+    "WARN and BLOCK are both REFUSE under the default allow-only policy. An error is REFUSE too.",
+    "measurement carries the full decision body: facts (L0 liveness, L1 settle-through, L2 conformance),",
+    "reason_codes, freshness, evidence, and the rules_version that produced the recommendation.",
+  ].join("\n"),
+  {
+    resourceId: RESOURCE_ID,
+    role: z.enum(["payer", "payee"]).optional().describe("payer (default): should my agent pay this resource? payee: should this seller serve this payer?"),
+    payer: z.string().max(120).optional().describe("Required when role=payee: chain:address, or a bare 0x / base58 address"),
+    callerDialect: z.enum(["v1", "v2"]).optional().describe("Your x402 client dialect; a mismatch with the seller's wall is a WARN"),
+  },
+  async ({ resourceId, role, payer, callerDialect }) => {
+    try {
+      const result = await fetchDecision(resourceId, { role, payer, callerDialect });
+      const allow = result.recommendation === "ALLOW" && !result.degraded;
+      const decision = {
+        decision: allow ? "ALLOW_PAY" : "REFUSE",
+        safe_to_pay: allow,
+        refuse_reasons: allow ? [] : result.reason_codes,
+        summary: `${result.recommendation} (${result.rules_version}) — ${result.reason_codes.join(", ")}`,
+      };
+      return { content: [{ type: "text" as const, text: JSON.stringify({ ...decision, measurement: result }, null, 2) }] };
+    } catch (error) {
+      return scoreToolFailure(error);
+    }
+  },
+);
+
+const transport = new StdioServerTransport();
   await server.connect(transport);
 }
 

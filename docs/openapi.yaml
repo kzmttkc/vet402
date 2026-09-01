@@ -1037,6 +1037,60 @@ paths:
         "429": { description: Rate limited }
         "503": { description: Store unavailable }
 
+  /api/v1/resources/{resourceId}/decision:
+    get:
+      operationId: getResourceDecision
+      tags: [Decision]
+      summary: Pre-payment / pre-service decision with the facts that produced it
+      description: |
+        Product spec §8.3 / §9.1. `role=payer` (default) answers "does this
+        URL deliver as declared, right now?" from L0 liveness, L1
+        settle-through and L2 conformance. `role=payee` answers "should this
+        seller serve this payer?" and requires `payer`. The response carries
+        `facts` and `recommendation` together; the transitional `score` is
+        marked deprecated and is not the basis of the recommendation.
+        `caller_dialect` (v1|v2) lets the engine WARN on a wall that speaks a
+        different x402 dialect than your client. `allow_without_l1=true` is
+        the operator's explicit opt-in to ALLOW a resource vet402 has not yet
+        purchased from. Send `Idempotency-Key` to retry without spending a
+        second rate-limit unit. 1 unit per call.
+      parameters:
+        - in: path
+          name: resourceId
+          required: true
+          schema: { type: string, pattern: "^[0-9a-f]{64}$" }
+        - in: query
+          name: role
+          required: false
+          schema: { type: string, enum: [payer, payee], default: payer }
+        - in: query
+          name: payer
+          required: false
+          schema: { type: string }
+        - in: query
+          name: caller_dialect
+          required: false
+          schema: { type: string, enum: [v1, v2] }
+        - in: query
+          name: allow_without_l1
+          required: false
+          schema: { type: boolean, default: false }
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema: { type: string, maxLength: 128 }
+      responses:
+        "200":
+          description: Decision with facts
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DecisionResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Unknown resource_id }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { description: Decision unavailable }
+
   /api/v1/observatory/backtest:
     get:
       operationId: getSpendGuardBacktest
@@ -2352,6 +2406,64 @@ components:
         note: { type: string }
         handlerMicros: { type: number }
 
+    DecisionResult:
+      type: object
+      description: >-
+        Product spec §9.1. A pre-payment (role=payer) or pre-service
+        (role=payee) decision. `facts` and `recommendation` always travel in
+        the same document; there is no facts-less mode. `score` is the
+        transitional 0–100 opinion, marked deprecated, and is never the basis
+        of `recommendation`.
+      required: [subject, role, payer, recommendation, reason_codes, facts, freshness, evidence, score, degraded, policy, rules_version, registry, scoredAt, cacheExpiresAt, disclaimer]
+      properties:
+        subject:
+          type: object
+          description: The Resource decided on (§5 ids plus the observatory uuid).
+        role:
+          type: string
+          enum: [payer, payee]
+        payer:
+          type: string
+          nullable: true
+          description: payer_id (chain:address) when role=payee; null for role=payer.
+        recommendation:
+          type: string
+          enum: [ALLOW, WARN, BLOCK]
+        reason_codes:
+          type: array
+          items: { type: string }
+          description: Machine-readable reasons (l0_pass, l1_delivered, l2_undeclared, offer_drifting, wash_dominated, …).
+        facts:
+          type: object
+          description: >-
+            L0–L2 measurement records (seller_facts for role=payer,
+            buyer_facts for role=payee). Never contains a trustScore.
+        freshness:
+          type: object
+          description: Observation times of l0 / l1 / l2 (ISO 8601 or null).
+        evidence:
+          type: array
+          items: { type: object }
+          description: Public receipts behind the facts (level, purchase_id, url).
+        score:
+          type: object
+          nullable: true
+          description: Transitional 0–100 score with `deprecated: true`. May be null.
+        degraded:
+          type: boolean
+          description: True when an input could not be measured; the recommendation is then fail-closed.
+        policy:
+          type: string
+          enum: [allow_only]
+        rules_version:
+          type: string
+          description: Version of the decision function that produced this result.
+        registry:
+          type: object
+          description: ERC-8004 Validation Registry write state — anchored | pending | off.
+        scoredAt: { type: string, format: date-time }
+        cacheExpiresAt: { type: string, format: date-time }
+        disclaimer: { type: string }
     PayeeScoreResult:
       type: object
       required:
