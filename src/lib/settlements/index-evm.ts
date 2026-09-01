@@ -63,6 +63,8 @@ export type EvmIndexSummary = {
   logs: number;
   inserted: number;
   updated: number;
+  partial?: boolean;
+  checkpoint?: string;
 };
 
 export function isEvmChainIndexable(chain: EvmIndexChain): boolean {
@@ -103,6 +105,12 @@ export async function indexEvmChain(
   summary.toBlock = String(toBlock);
 
   const classifier = options.classifier ?? (await loadWashClassifier());
+  // 締切で途中終了したら、チェックポイントは「処理し終えたブロック」までしか進めない
+  // （2026-09-02 初回実走: 7,030 ログ中 570 件で締切、残りが次回に持ち越されなかった）。
+  // payee スライスごとに「どこまで処理し終えたか」を持ち、チェックポイントはその最小値。
+  // 未着手のスライスがあれば fromBlock-1（同じ窓を次回もう一度読む。upsert は冪等）。
+  const sliceProgress: bigint[] = [];
+  let cutOff = false;
   const blockTimeCache = new Map<bigint, Date>();
   const blockTimeOf = async (n: bigint) => {
     const hit = blockTimeCache.get(n);
@@ -115,7 +123,10 @@ export async function indexEvmChain(
 
   // topics[2]（to）は最大 500 件ずつ OR で問う。
   for (let i = 0; i < payees.length; i += 500) {
-    if (now() - startedAt > budgetMs) break;
+    if (now() - startedAt > budgetMs) {
+      cutOff = true;
+      break;
+    }
     const slice = payees.slice(i, i + 500);
     const logs = await getLogsChunked(
       client,
@@ -125,8 +136,18 @@ export async function indexEvmChain(
       { deadlineMs: Math.max(5_000, budgetMs - (now() - startedAt)) },
     );
     summary.logs += logs.length;
-    for (const log of logs as unknown as { transactionHash: string; blockNumber: bigint; args: { from: Address; to: Address; value: bigint } }[]) {
-      if (now() - startedAt > budgetMs) break;
+    // ブロック昇順に処理し、締切時に「ここまでは全件済み」と言える位置を持つ
+    const sorted = (logs as unknown as { transactionHash: string; blockNumber: bigint; args: { from: Address; to: Address; value: bigint } }[]).sort((a, b) =>
+      a.blockNumber < b.blockNumber ? -1 : a.blockNumber > b.blockNumber ? 1 : 0,
+    );
+    let sliceLast: bigint = fromBlock - 1n;
+    let sliceDone = true;
+    for (const log of sorted) {
+      if (now() - startedAt > budgetMs) {
+        cutOff = true;
+        sliceDone = false;
+        break;
+      }
       const blockTime = await blockTimeOf(log.blockNumber);
       const payee = log.args.to.toLowerCase();
       const payer = log.args.from.toLowerCase();
@@ -161,9 +182,19 @@ export async function indexEvmChain(
       const outcome = await upsertSettlement(row);
       if (outcome === "inserted") summary.inserted++;
       else summary.updated++;
+      if (log.blockNumber > sliceLast) sliceLast = log.blockNumber;
     }
+    // 完走したスライスは toBlock まで済み。途中なら処理済み最終ブロックの 1 つ手前まで
+    // （同ブロック内の未処理ログを落とさない）。
+    sliceProgress.push(sliceDone ? toBlock : sliceLast > fromBlock ? sliceLast - 1n : fromBlock - 1n);
+    if (cutOff) break;
   }
-  await setIndexerCheckpoint(scope, toBlock, latest);
+  const expectedSlices = Math.ceil(payees.length / 500);
+  while (sliceProgress.length < expectedSlices) sliceProgress.push(fromBlock - 1n); // 未着手スライス
+  const nextCheckpoint = sliceProgress.reduce((m, v) => (v < m ? v : m), toBlock);
+  await setIndexerCheckpoint(scope, nextCheckpoint, latest);
+  summary.partial = cutOff;
+  summary.checkpoint = String(nextCheckpoint);
   return summary;
 }
 
