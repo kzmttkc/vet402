@@ -45,5 +45,18 @@ if (!TEST_DB) {
       assert.equal(rs.length, 1);
       assert.equal(rs[0].status, "unchanged");
     });
+
+    await t.test("後から穴を埋めたら、その後の既存日も再連結される（prev_root が飛ばない）", async () => {
+      // 旧実装の状態を再現: 16 が無く、17 は 15 に「飛ばして連結」している
+      const r15 = await db.execute(sql`SELECT root_hash FROM ledger_anchors WHERE day = '2026-08-15'`);
+      const root15 = ((Array.isArray(r15) ? r15 : (r15 as { rows?: unknown[] }).rows) as { root_hash: string }[])[0].root_hash;
+      await db.execute(sql`DELETE FROM ledger_anchors WHERE day = '2026-08-16'`);
+      await db.execute(sql`UPDATE ledger_anchors SET prev_root = ${root15}, root_hash = 'stale17' WHERE day = '2026-08-17'`);
+      await db.execute(sql`UPDATE ledger_anchors SET prev_root = 'stale17', root_hash = 'stale18' WHERE day = '2026-08-18'`);
+      const rs = await anchorThrough("2026-08-18");
+      assert.deepEqual(rs.map((r) => `${r.day}:${r.status}`), ["2026-08-16:created", "2026-08-17:updated", "2026-08-18:updated"]);
+      const c = chainContinuity(await getAnchors(30));
+      assert.equal(c.intact, true);
+    });
   });
 }

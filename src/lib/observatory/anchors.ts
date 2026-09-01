@@ -113,16 +113,37 @@ export async function anchorThrough(to: string, maxBackfillDays = 30): Promise<A
   if (!DAY_RE.test(to)) throw new Error(`anchorThrough: not a YYYY-MM-DD day: ${to}`);
   const db = getDb();
   if (!db) throw new Error("anchorThrough: DATABASE_URL is not configured");
-  const raw = await db.execute(sql`SELECT day FROM ledger_anchors WHERE day <= ${to} ORDER BY day ASC`);
-  const have = ((Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as { day: string }[]).map((r) =>
-    String(r.day),
-  );
+  const raw = await db.execute(sql`
+    SELECT day, root_hash, prev_root, lag(root_hash) OVER (ORDER BY day) AS prior_root
+    FROM ledger_anchors WHERE day <= ${to} ORDER BY day ASC
+  `);
+  const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as {
+    day: string;
+    root_hash: string;
+    prev_root: string | null;
+    prior_root: string | null;
+  }[];
+  const have = rows.map((r) => String(r.day));
   const from = have[0] ?? to;
-  const days = missingDaysBetween(from, to, have).slice(-maxBackfillDays);
-  if (!days.includes(to) && !have.includes(to)) days.push(to);
+  const missing = missingDaysBetween(from, to, have).slice(-maxBackfillDays);
+  // 穴を埋めたら、その日より後の既存の日も古い順に再計算する——前日 root が変わるので
+  // 後続の root は全て変わる（2026-09-02 実測: 08-26 を埋めても 08-27 の prev_root が
+  // 08-25 を指したままで、鎖は「繋がっているが飛んでいる」状態が残った）。
+  // 既に穴が埋まっていても prev_root が直前の日の root と食い違う日（旧実装が飛ばして
+  // 連結した日）があれば、そこから後ろを再計算する。
+  // 刻印済み（anchored_tx あり）の日は anchorDay が conflict_frozen で守る。
+  const earliestGap = missing[0] ?? null;
+  const earliestStale =
+    rows.find((r, i) => i > 0 && r.prev_root !== r.prior_root && shiftDay(r.day, -1) === rows[i - 1].day)?.day ??
+    rows.find((r, i) => i > 0 && shiftDay(r.day, -1) !== rows[i - 1].day)?.day ??
+    null;
+  const recomputeFrom = [earliestGap, earliestStale].filter((d): d is string => d !== null).sort()[0] ?? null;
+  const days = new Set<string>(missing);
+  for (const d of have) if (recomputeFrom !== null && d >= recomputeFrom) days.add(d);
+  days.add(to);
+  const ordered = [...days].sort();
   const out: AnchorResult[] = [];
-  for (const d of days) out.push(await anchorDay(d));
-  if (have.includes(to) && !days.includes(to)) out.push(await anchorDay(to)); // 既存の to は再計算（unchanged/updated/conflict）
+  for (const d of ordered) out.push(await anchorDay(d));
   return out;
 }
 
