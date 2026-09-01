@@ -47,6 +47,8 @@ A result never moves up a level: an L0 probe cannot report settlement, and an L3
 
 The 0–100 trust score this API returns today (banded `ALLOW` / `WARN` / `BLOCK`) predates these levels. It stays available to API and SDK callers during the transition, and is never reported as an L0–L2 result. Methodology: <https://vet402.com/#methodology>.
 
+Since 2026-09-02 (product spec v1.0), the canonical integration is `GET /api/v1/resources/{resource_id}/decision`: the L0–L2 facts and the `ALLOW` / `WARN` / `BLOCK` recommendation arrive in the same document, with `reason_codes`, `freshness`, `evidence` and the `rules_version` that produced it. `GET /api/v1/resolve?q=<url|domain|address|tx>` turns whatever you hold into the §5 object ids. The score endpoints remain as a thin compatibility layer.
+
 ## Docs
 
 Start here, in this order:
@@ -111,6 +113,21 @@ curl -X POST -H "Authorization: Bearer $DEV_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"wallet":"0x...","txHash":"0x..."}' \
   http://localhost:3000/api/v1/payments/x402
+```
+
+### Resolve, then decide (product spec §7.3 / §9.1)
+
+```bash
+# what is this URL? → resource_id, endpoint_id, payee_id (key-less)
+curl -L "http://localhost:3000/api/v1/resolve?q=https://api.example.com/v1/quote"
+
+# should my agent pay it? facts + recommendation in one document
+curl -L -H "Authorization: Bearer $DEV_API_KEY" \
+  "http://localhost:3000/api/v1/resources/<resource_id>/decision?role=payer"
+
+# should this seller serve this payer? (seller mode, post-settlement)
+curl -L -H "Authorization: Bearer $DEV_API_KEY" \
+  "http://localhost:3000/api/v1/resources/<resource_id>/decision?role=payee&payer=0x..."
 ```
 
 ## Database setup (M2)
