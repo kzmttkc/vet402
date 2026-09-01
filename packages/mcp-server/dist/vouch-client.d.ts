@@ -90,6 +90,18 @@ export type PayeeScoreResult = {
             /** Delivery-verified L1 receipts behind the receiving score. */
             l1DeliveryCount?: number;
             l1DistinctBuyers?: number;
+            /**
+             * 2026-08-26: vet402 が実費で払って**届かなかった**記録。最終スコアの天井に
+             * 効いている（呼び手が根拠を再現できるように出している）。
+             * `l1PendingVerification` は照合待ちで、判定には使われない——
+             * vet402 側の検証の遅れを売り手の落ち度にしないため。
+             */
+            l1Settled?: number;
+            l1PaidNeverSettled?: number;
+            l1NonSettlingDays?: number;
+            l1PendingVerification?: number;
+            /** 天井が掛かった理由（null = 掛かっていない）。 */
+            l1NonDeliveryReason?: string | null;
         };
         walletHealth: {
             ageDays: number;
@@ -112,6 +124,48 @@ export type PayeeScoreResult = {
             adjustment: number;
         };
         flags: string[];
+    };
+    scoredAt: string;
+    cacheExpiresAt: string;
+    disclaimer: string;
+};
+export type DecisionRecommendation = "ALLOW" | "WARN" | "BLOCK";
+export type DecisionResult = {
+    subject: {
+        type: "resource";
+        id: string | null;
+        endpoint_id: string;
+        observatory_id: string;
+        canonical_url: string;
+        method: string;
+    };
+    role: "payer" | "payee";
+    payer: string | null;
+    recommendation: DecisionRecommendation;
+    reason_codes: string[];
+    facts: Record<string, unknown>;
+    freshness: {
+        l0: string | null;
+        l1: string | null;
+        l2: string | null;
+    };
+    evidence: {
+        level: "L0" | "L1" | "L2";
+        purchase_id?: string;
+        observation_id?: string;
+        url: string;
+    }[];
+    score: {
+        trustScore: number | null;
+        recommendation: DecisionRecommendation | null;
+        deprecated: true;
+    } | null;
+    degraded: boolean;
+    policy: "allow_only";
+    rules_version: string;
+    registry: {
+        status: "anchored" | "pending" | "off";
+        tx_hash: string | null;
     };
     scoredAt: string;
     cacheExpiresAt: string;
@@ -144,3 +198,8 @@ export declare function attestX402Payment(attestation: X402PaymentAttestation): 
     created: boolean;
     id: string;
 }>;
+export declare function fetchDecision(resourceId: string, query?: {
+    role?: "payer" | "payee";
+    payer?: string;
+    callerDialect?: "v1" | "v2";
+}): Promise<DecisionResult>;

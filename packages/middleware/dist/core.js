@@ -126,6 +126,16 @@ export function createTrustGate(config) {
     const apiUrl = config.apiUrl.replace(/\/$/, "");
     const scoreSource = config.scoreSource ?? "wallet";
     const policy = config.policy ?? "allow-only";
+    const decisionSource = config.decisionSource ?? "score";
+    if (decisionSource !== "score" && decisionSource !== "decision") {
+        throw new VouchGateError('decisionSource must be "score" or "decision"', "invalid_decision_source");
+    }
+    if (decisionSource === "decision" && !/^[0-9a-f]{64}$/.test(config.resourceId ?? "")) {
+        throw new VouchGateError('decisionSource "decision" requires resourceId (sha256 hex)', "missing_resource_id");
+    }
+    if (decisionSource === "decision" && policy === "evidence") {
+        throw new VouchGateError('policy "evidence" reads /score signals; use allow-only or block-only with decisionSource "decision"', "invalid_policy_combination");
+    }
     if (!["allow-only", "block-only", "evidence", "custom"].includes(policy)) {
         throw new VouchGateError("policy must be allow-only, block-only, evidence or custom", "invalid_policy");
     }
@@ -199,6 +209,8 @@ export function createTrustGate(config) {
         if (!WALLET_RE.test(address)) {
             throw new VouchGateError("invalid counterparty address", "invalid_address");
         }
+        if (decisionSource === "decision")
+            return evaluateByDecision(address);
         let body;
         try {
             // AbortSignal.timeout keeps a hung Vouch from hanging the payment path;
@@ -280,6 +292,59 @@ export function createTrustGate(config) {
         }
         return { action: "allow", recommendation, score, address, reason: "ok", degraded: false };
     }
+    /**
+     * §9.3 売り手モード: 決済確認後、payer を /decision?role=payee で判定する。
+     * role は固定で payee——買い手側の「署名前に止める」経路はこの関数に無い。
+     * facts の無い応答は BLOCK（§9.1: facts を省いてスコアだけ返すモードは無い）。
+     * タイムアウト・到達不能は failMode（既定 closed）で BLOCK。サイレント通過は無い。
+     */
+    async function evaluateByDecision(address) {
+        const resourceId = config.resourceId;
+        const headers = { Authorization: `Bearer ${config.apiKey}` };
+        const key = config.idempotencyKey?.(address);
+        if (key)
+            headers["Idempotency-Key"] = key;
+        let body;
+        try {
+            const url = `${apiUrl}/resources/${resourceId}/decision?role=payee&payer=${encodeURIComponent(address)}`;
+            const res = await fetchFn(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
+            if (!res.ok)
+                return degraded(address, `vouch_http_${res.status}`);
+            body = (await res.json());
+        }
+        catch {
+            return degraded(address, "vouch_unreachable");
+        }
+        const recommendation = body.recommendation ?? null;
+        const score = body.score?.trustScore ?? null;
+        if (recommendation === null)
+            return degraded(address, "vouch_no_recommendation");
+        if (body.facts === undefined || body.facts === null || typeof body.facts !== "object") {
+            return { action: "block", recommendation, score, address, reason: "facts_missing", degraded: true };
+        }
+        if (policy !== "custom") {
+            if (body.degraded === true) {
+                return { action: "block", recommendation, score, address, reason: "decision_degraded", degraded: true };
+            }
+            if (isScoreStale(body, Date.now(), maxScoreAgeMs)) {
+                return { action: "block", recommendation, score, address, reason: "decision_stale", degraded: true };
+            }
+        }
+        if (blockOn.includes(recommendation)) {
+            return {
+                action: "block",
+                recommendation,
+                score,
+                address,
+                reason: recommendation === "BLOCK" ? "recommendation_block" : "recommendation_not_allow",
+                degraded: false,
+            };
+        }
+        if (warnOn.includes(recommendation)) {
+            return { action: "warn", recommendation, score, address, reason: "recommendation_warn", degraded: false };
+        }
+        return { action: "allow", recommendation, score, address, reason: "ok", degraded: false };
+    }
     function degraded(address, reason) {
         // fail-closed → block; fail-open → allow. Either way the decision is
         // flagged `degraded` so callers can log/alert on trust-blind settlements.
@@ -315,6 +380,18 @@ export function createTrustGate(config) {
     return {
         evaluate,
         attest,
-        config: { apiUrl, scoreSource, policy, blockOn, warnOn, minScore: minScore ?? null, failMode, timeoutMs, maxScoreAgeMs },
+        config: {
+            apiUrl,
+            scoreSource,
+            decisionSource,
+            resourceId: decisionSource === "decision" ? config.resourceId : null,
+            policy,
+            blockOn,
+            warnOn,
+            minScore: minScore ?? null,
+            failMode,
+            timeoutMs,
+            maxScoreAgeMs,
+        },
     };
 }

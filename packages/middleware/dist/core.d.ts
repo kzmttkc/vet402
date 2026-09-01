@@ -9,6 +9,7 @@ export type GateAction = "allow" | "warn" | "block";
  *    receiving wallet?" (settlement history, drain-pattern, outcome labels).
  */
 export type ScoreSource = "wallet" | "payee";
+export type DecisionSource = "score" | "decision";
 /** Behaviour when the score lookup itself fails (network, 5xx, timeout). */
 export type FailMode = "closed" | "open";
 /**
@@ -60,6 +61,21 @@ export type VouchGateConfig = {
     apiKey: string;
     /** Score endpoint to consult. Default "wallet". */
     scoreSource?: ScoreSource;
+    /**
+     * 製品定義書 §9.3（2026-09-02）売り手モード。"decision" にすると、決済確認後の
+     * payer を GET /resources/{resourceId}/decision?role=payee&payer=… で判定する
+     * （facts と recommendation が同じ応答に来る）。既定 "score" は従来の /score。
+     * 買い手モード（リクエスト前に role=payer を引いて送金を止める）はここに無い——
+     * 9/4 00:00 UTC 以降に入れる。この gate が role=payer を送る経路は存在しない。
+     */
+    decisionSource?: DecisionSource;
+    /** decisionSource "decision" のとき必須: 判定対象 Resource の resource_id（sha256 hex）。 */
+    resourceId?: string;
+    /**
+     * 冪等キー。同一 (resource, payer, key) の再試行はサーバ側で二重に判定課金しない
+     * （§9.3）。省略時は送らない。
+     */
+    idempotencyKey?: (address: string) => string;
     /**
      * Verdict gating policy. Default "allow-only" (fail-closed): only ALLOW
      * passes. See GatePolicy for the explicit opt-outs.
@@ -151,6 +167,8 @@ export type TrustGate = {
 export type ResolvedGateConfig = {
     apiUrl: string;
     scoreSource: ScoreSource;
+    decisionSource: DecisionSource;
+    resourceId: string | null;
     policy: GatePolicy;
     blockOn: Recommendation[];
     warnOn: Recommendation[];

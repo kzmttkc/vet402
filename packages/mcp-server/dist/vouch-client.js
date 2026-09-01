@@ -112,3 +112,16 @@ export async function attestX402Payment(attestation) {
         body: JSON.stringify(attestation),
     });
 }
+export async function fetchDecision(resourceId, query = {}) {
+    if (!/^[0-9a-f]{64}$/.test(resourceId))
+        throw new Error("invalid_resource_id");
+    const role = query.role ?? "payer";
+    if (role === "payee" && !query.payer)
+        throw new Error("payer_required");
+    const qs = new URLSearchParams({ role });
+    if (query.payer)
+        qs.set("payer", query.payer);
+    if (query.callerDialect)
+        qs.set("caller_dialect", query.callerDialect);
+    return vouchFetch(`/resources/${resourceId}/decision?${qs.toString()}`);
+}

@@ -277,6 +277,74 @@ export declare const DEFAULT_REQUEST_TIMEOUT_MS = 10000;
  * facts without string parsing. SpendGuard uses them to tell "your key is
  * missing" apart from "the upstream is down".
  */
+export type DecisionRecommendation = "ALLOW" | "WARN" | "BLOCK";
+export type DecisionResult = {
+    subject: {
+        type: "resource";
+        id: string | null;
+        endpoint_id: string;
+        observatory_id: string;
+        canonical_url: string;
+        method: string;
+    };
+    role: "payer" | "payee";
+    payer: string | null;
+    recommendation: DecisionRecommendation;
+    reason_codes: string[];
+    /** L0–L2 の事実（role=payer は売り手事実、role=payee は買い手事実）。常に存在する。 */
+    facts: Record<string, unknown>;
+    freshness: {
+        l0: string | null;
+        l1: string | null;
+        l2: string | null;
+    };
+    evidence: {
+        level: "L0" | "L1" | "L2";
+        purchase_id?: string;
+        observation_id?: string;
+        url: string;
+    }[];
+    /** 移行期間の併記。null のことがある。判定の根拠ではない。 */
+    score: {
+        trustScore: number | null;
+        recommendation: DecisionRecommendation | null;
+        deprecated: true;
+    } | null;
+    degraded: boolean;
+    policy: "allow_only";
+    rules_version: string;
+    registry: {
+        status: "anchored" | "pending" | "off";
+        tx_hash: string | null;
+    };
+    scoredAt: string;
+    cacheExpiresAt: string;
+    disclaimer: string;
+};
+export type DecisionQuery = {
+    role?: "payer" | "payee";
+    /** role=payee のとき必須。chain:address か 0x / base58。 */
+    payer?: string;
+    callerDialect?: "v1" | "v2";
+    /** オペレータの明示オプトイン: L1 未実施でも ALLOW を許す。 */
+    allowWithoutL1?: boolean;
+    /** 同一 (resource, role, payer, key) の再試行でレート単位を二重に消費しない。 */
+    idempotencyKey?: string;
+};
+export type ResolveResult = {
+    query: {
+        kind: "url" | "domain" | "address" | "tx" | "payee_id" | "unknown";
+        value: string;
+    };
+    resource?: Record<string, unknown>;
+    endpoints?: Record<string, unknown>[];
+    payees?: {
+        payee_id: string;
+        endpoints: number;
+    }[];
+    settlement?: Record<string, unknown>;
+    disclaimer: string;
+};
 export declare class VouchApiError extends Error {
     readonly code: string;
     readonly status: number;
@@ -345,6 +413,10 @@ export declare class VouchClient {
      * in-memory per guard instance and resets on process restart. See
      * SpendGuard for the full contract.
      */
+    /** §9.1 GET /resources/{resource_id}/decision — facts と recommendation を同じ応答で。 */
+    getDecision(resourceId: string, query?: DecisionQuery): Promise<DecisionResult>;
+    /** §7.3 GET /resolve?q= — URL / domain / address / tx / payee_id から canonical オブジェクトへ。キー不要だが同じ経路で送る。 */
+    resolve(q: string): Promise<ResolveResult>;
     createSpendGuard(policy: SpendGuardPolicy): SpendGuard;
     batchScore(agents: BatchScoreItem[]): Promise<{
         results: unknown[];

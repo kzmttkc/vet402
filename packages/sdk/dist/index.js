@@ -60,15 +60,6 @@ export const DEFAULT_API_URL = "https://vet402.com/api/v1";
  * Override with `timeoutMs` when your own deadline is stricter.
  */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
-/**
- * Error thrown when the Vouch API answers with a non-2xx status.
- *
- * `message` is the machine-readable code the API returned (e.g.
- * `missing_api_key`, `invalid_api_key`, `rate_limit_exceeded`) so existing
- * `err.message` checks keep working; `code` and `status` expose the same
- * facts without string parsing. SpendGuard uses them to tell "your key is
- * missing" apart from "the upstream is down".
- */
 export class VouchApiError extends Error {
     code;
     status;
@@ -166,6 +157,28 @@ export class VouchClient {
      * in-memory per guard instance and resets on process restart. See
      * SpendGuard for the full contract.
      */
+    /** §9.1 GET /resources/{resource_id}/decision — facts と recommendation を同じ応答で。 */
+    getDecision(resourceId, query = {}) {
+        if (!/^[0-9a-f]{64}$/.test(resourceId))
+            throw new Error("invalid_resource_id");
+        const role = query.role ?? "payer";
+        if (role === "payee" && !query.payer)
+            throw new Error("payer_required");
+        const qs = new URLSearchParams({ role });
+        if (query.payer)
+            qs.set("payer", query.payer);
+        if (query.callerDialect)
+            qs.set("caller_dialect", query.callerDialect);
+        if (query.allowWithoutL1)
+            qs.set("allow_without_l1", "true");
+        return this.request(`/resources/${resourceId}/decision?${qs.toString()}`, query.idempotencyKey ? { headers: { "Idempotency-Key": query.idempotencyKey } } : undefined);
+    }
+    /** §7.3 GET /resolve?q= — URL / domain / address / tx / payee_id から canonical オブジェクトへ。キー不要だが同じ経路で送る。 */
+    resolve(q) {
+        if (typeof q !== "string" || q.trim().length === 0)
+            throw new Error("invalid_query");
+        return this.request(`/resolve?q=${encodeURIComponent(q.trim())}`);
+    }
     createSpendGuard(policy) {
         return new SpendGuard(policy, (payee) => this.getPayeeScore(payee));
     }
