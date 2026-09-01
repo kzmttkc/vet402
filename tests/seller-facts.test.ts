@@ -66,3 +66,14 @@ test("trustScore は facts に入らない（§8.3 禁止）", () => {
   assert.equal("trustScore" in f, false);
   assert.equal("score" in f, false);
 });
+
+test("§6.2 probe_error: 決済は確定したが 4xx（我々のリクエストが不正）は n_attempts に数えない", () => {
+  const ours: PurchaseInput[] = [0, 1, 2].map((i) => ({
+    attemptedAt: `2026-09-0${i + 1}T12:00:00Z`, status: "settled", latencyMs: 200, httpStatusPaid: 400, payloadNonEmpty: true, l2Schema: "not_checked", txHash: `0x${i}`, network: "eip155:8453",
+  }));
+  const f = assembleSellerFacts({ ...base, purchases: ours });
+  assert.equal(f.l1.n_probe_error, 3);
+  assert.equal(f.l1.n_attempts, 0);
+  assert.equal(f.l1.n_settled, 0);
+  assert.equal(f.l1.n_delivered, 0);
+});

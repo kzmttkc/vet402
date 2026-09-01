@@ -97,7 +97,13 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
   const latestProbe = probes[0] ?? null;
   const l0Status = publishedVerdict(probes.map((p) => p.verdict));
 
-  const signed = purchases.filter((p) => SIGNED_STATUSES.has(p.status));
+  // §6.2 probe_error: 決済は確定したが 4xx——我々のリクエストが不正だった（2026-09-02
+  // 本番実測: settled 980 件のうち 79 件・54 endpoint。exa.ai/search は POST に `{}` を
+  // 送って 400）。F-1（2026-08-26）と同型の冤罪を避けるため、n_attempts から外す。
+  const isProbeError = (p: PurchaseInput) =>
+    p.status === "settled" && p.httpStatusPaid !== null && p.httpStatusPaid >= 400 && p.httpStatusPaid < 500;
+  const probeErrors = purchases.filter(isProbeError);
+  const signed = purchases.filter((p) => SIGNED_STATUSES.has(p.status) && !isProbeError(p));
   const settled = signed.filter((p) => p.status === "settled");
   const delivered = settled.filter(
     (p) => p.httpStatusPaid !== null && p.httpStatusPaid >= 200 && p.httpStatusPaid < 300 && p.payloadNonEmpty === true,
@@ -138,6 +144,7 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
       n_delivered: delivered.length,
       n_settled: settled.length,
       n_attempts: signed.length,
+      n_probe_error: probeErrors.length,
       p50_ms: percentile(latencies, 50),
       p95_ms: percentile(latencies, 95),
       last_purchase_id:

@@ -15,6 +15,12 @@ export type SellerFacts = {
     n_delivered: number;
     n_settled: number;
     n_attempts: number;
+    /**
+     * §6.2 probe_error（こちら側の失敗）。決済は確定したが HTTP 4xx——我々の
+     * リクエスト（例: POST に `{}`）が不正だった試行。結果にしない（n_attempts に
+     * 数えない）。売り手の不履行と混ぜないため件数だけ開示する。
+     */
+    n_probe_error: number;
     p50_ms: number | null;
     p95_ms: number | null;
     last_purchase_id: string | null;
