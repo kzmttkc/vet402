@@ -55,3 +55,13 @@ export async function upsertSettlement(row: SettlementRow): Promise<"inserted" |
   const r = rowsOf<{ inserted: boolean }>(raw)[0];
   return r?.inserted ? "inserted" : "updated";
 }
+
+/** 既に索引済みの purchase_id を 1 文で引く（同じ窓を再読するときに per-row 作業を飛ばす）。 */
+export async function knownPurchaseIds(ids: readonly string[]): Promise<Set<string>> {
+  const db = getDb();
+  if (!db || ids.length === 0) return new Set();
+  const rows = rowsOf<{ purchase_id: string }>(
+    await db.execute(sql`SELECT purchase_id FROM settlements WHERE purchase_id = ANY(${ids as string[]}::text[])`),
+  );
+  return new Set(rows.map((r) => r.purchase_id));
+}

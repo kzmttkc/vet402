@@ -91,6 +91,13 @@ if (!TEST_DB) {
       assert.equal(list[0].wash_flag, "self_deal");
     });
 
+    await t.test("knownPurchaseIds: 索引済みの purchase_id を 1 文でまとめて引ける（配列パラメータ）", async () => {
+      const { knownPurchaseIds } = await import("@/lib/settlements/upsert");
+      const known = await knownPurchaseIds([`eip155:8453:0x${"1".repeat(64)}`, "eip155:8453:0xnope"]);
+      assert.equal(known.size, 1);
+      assert.equal((await knownPurchaseIds([])).size, 0);
+    });
+
     await t.test("センサス: 生値 4・実需 2（test 1・self_deal 1 を除外）が同じ応答に両方出る", async () => {
       const c = await getCensusSummary(null, "30d");
       assert.equal(c.settlements_raw, 4);

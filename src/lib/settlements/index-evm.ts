@@ -16,7 +16,8 @@ import { getIndexerCheckpoint, setIndexerCheckpoint } from "@/lib/db/owner-index
 import { payeeId as toPartyId } from "@/lib/ids/canonical";
 import { resolveEndpointForSettlement } from "./ingest-payments";
 import { loadWashClassifier, type WashClassifier } from "./context";
-import { buildRow, rowsOf, upsertSettlement } from "./upsert";
+import { buildRow, knownPurchaseIds, rowsOf, upsertSettlement } from "./upsert";
+import { purchaseId as toPurchaseId } from "@/lib/ids/canonical";
 
 export const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 
@@ -65,6 +66,7 @@ export type EvmIndexSummary = {
   updated: number;
   partial?: boolean;
   checkpoint?: string;
+  skippedKnown?: number;
 };
 
 export function isEvmChainIndexable(chain: EvmIndexChain): boolean {
@@ -142,7 +144,15 @@ export async function indexEvmChain(
     );
     let sliceLast: bigint = fromBlock - 1n;
     let sliceDone = true;
+    // 同じ窓を再読するとき（前回が途中終了）、索引済みの tx は per-row 作業を飛ばす。
+    // 2026-09-02 実測: これが無いと毎回先頭 570 件を再処理して窓が一生進まなかった。
+    const known = await knownPurchaseIds(sorted.map((l) => toPurchaseId(chain.caip2, l.transactionHash)));
+    summary.skippedKnown = (summary.skippedKnown ?? 0) + known.size;
     for (const log of sorted) {
+      if (known.has(toPurchaseId(chain.caip2, log.transactionHash))) {
+        if (log.blockNumber > sliceLast) sliceLast = log.blockNumber;
+        continue;
+      }
       if (now() - startedAt > budgetMs) {
         cutOff = true;
         sliceDone = false;
