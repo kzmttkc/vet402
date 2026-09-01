@@ -64,6 +64,12 @@ export type ProbeResult = {
 export type ProbeOptions = {
   fetchImpl?: (url: string, init?: RequestInit) => Promise<Response>;
   timeoutMs?: number;
+  /**
+   * §10 再検証（売り手異議・C4）。通常測定と別の経路で測る——UA と accept を変え、
+   * rawResponseMeta.route に "recheck" を残す。egress が同一である事実は隠さない
+   * （meta.route = "recheck_same_egress"）。
+   */
+  recheck?: boolean;
 };
 
 // SSRF (2026-08-15 audit). resourceUrl is third-party input: it is whatever a
@@ -162,7 +168,10 @@ export async function probeEndpoint(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const startedAt = Date.now();
-  const UA = "vet402-observatory-l0/1.0 (+https://vet402.com/observatory/methodology)";
+  const UA = options.recheck
+    ? "vet402-observatory-l0-recheck/1.0 (+https://vet402.com/observatory/methodology)"
+    : "vet402-observatory-l0/1.0 (+https://vet402.com/observatory/methodology)";
+  const ACCEPT = options.recheck ? "*/*" : "application/json";
 
   let response: Response;
   try {
@@ -173,11 +182,11 @@ export async function probeEndpoint(
       // (safe-fetch.ts); it overrides this to "manual" so the platform cannot
       // follow one for us. Left declared for an injected fetchImpl.
       redirect: "follow",
-      headers: { accept: "application/json", "user-agent": UA },
+      headers: { accept: ACCEPT, "user-agent": UA },
       // Empty JSON body on POST: the x402 wall answers 402 before the handler
       // parses anything, so this cannot trigger work on a compliant server.
       ...(method === "POST"
-        ? { body: "{}", headers: { accept: "application/json", "content-type": "application/json", "user-agent": UA } }
+        ? { body: "{}", headers: { accept: ACCEPT, "content-type": "application/json", "user-agent": UA } }
         : {}),
     });
   } catch (error) {
@@ -224,6 +233,7 @@ export async function probeEndpoint(
     bodyHead: bodyText.slice(0, 500),
     client: UA,
     method,
+    ...(options.recheck ? { route: "recheck_same_egress" } : {}),
   };
 
   if (response.status === 429) {

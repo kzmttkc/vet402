@@ -1120,6 +1120,35 @@ paths:
         "429": { description: Rate limited }
         "503": { description: Store unavailable }
 
+  /api/v1/observatory/corrections:
+    get:
+      operationId: listCorrections
+      tags: [Observatory]
+      summary: Correction log — public verdicts that changed after publication
+      description: |
+        Product spec §10. Every row is a published verdict that was later
+        overturned or completed: `dispute_remeasure` (a seller's signed dispute
+        triggered a re-measurement over a separate path that overturned the
+        verdict), `settlement_backfill` (a claimed settlement was later
+        confirmed or refuted on-chain), `reverify` (a C4 re-verification).
+        `before` / `after` are the published values. Corrections unfavourable
+        to vet402 are listed the same way; rows are never deleted. Key-less; 60/min.
+      security: []
+      parameters:
+        - in: query
+          name: endpoint
+          required: false
+          schema: { type: string, format: uuid }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        "200": { description: "{ corrections[], definition, disclaimer }" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { description: Rate limited }
+        "503": { description: Store unavailable }
+
   /api/v1/observatory/backtest:
     get:
       operationId: getSpendGuardBacktest

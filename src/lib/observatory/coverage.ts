@@ -29,7 +29,7 @@ export type TierSignals = {
 export const LOOKUPS_C2_THRESHOLD = 5;
 
 /** 純関数。上位の階層ほど優先（C4 > C3 > C2 > C1 > C0）。 */
-export function tierOf(s: TierSignals, _now: Date = new Date()): CoverageTier {
+export function tierOf(s: TierSignals): CoverageTier {
   if (s.reverifyRequested) return "C4";
   const c2 = s.attributedSettlements > 0 || s.lookups7d >= LOOKUPS_C2_THRESHOLD;
   if (c2 && s.hasDeclaration) return "C3";

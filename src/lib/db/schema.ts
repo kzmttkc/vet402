@@ -871,6 +871,34 @@ export const decisionLookups = pgTable(
   (t) => [primaryKey({ columns: [t.endpointId, t.day] }), index("decision_lookups_day_idx").on(t.day)],
 );
 
+/**
+ * 製品定義書 §10（2026-09-02）: 訂正ログ。公開判定が後から変わったとき before/after を残す。
+ *   dispute_remeasure   売り手異議の再測定で公開判定が覆った
+ *   settlement_backfill 照合バックフィルで L1 の状態が確定した（settled / refuted）
+ *   reverify            C4 再検証で覆った
+ * 自社に不利な変更も同じ表に残す。消さない。
+ */
+export const correctionLog = pgTable(
+  "correction_log",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    /** endpoint | purchase */
+    subjectType: text("subject_type").notNull(),
+    subjectId: text("subject_id").notNull(),
+    /** l0 | l1 | l2 | listing */
+    level: text("level").notNull(),
+    before: jsonb("before").notNull(),
+    after: jsonb("after").notNull(),
+    reason: text("reason").notNull(),
+    disputeId: uuid("dispute_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("correction_log_subject_idx").on(t.subjectType, t.subjectId, t.createdAt),
+    index("correction_log_created_idx").on(t.createdAt),
+  ],
+);
+
 export const x402DailyMetrics = pgTable(
   "x402_daily_metrics",
   {

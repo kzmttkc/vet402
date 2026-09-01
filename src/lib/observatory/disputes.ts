@@ -22,13 +22,15 @@
 // 取り違えないため。
 // ============================================================
 import { createHash } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { verifyMessage } from "viem";
 import { getDb } from "@/lib/db/client";
 import { disputes, x402Endpoints, x402L0Probes } from "@/lib/db/schema";
 import { isValidIssuedAt } from "@/lib/verify-message";
 import { probeEndpoint, type ProbeOptions } from "./l0-probe";
 import { UUID_RE } from "@/lib/validation/uuid";
+import { isDisputeRateLimited, recentDisputeTimes, recordCorrection } from "./corrections";
+import { publishedVerdict } from "./l0-probe";
 
 /**
  * 署名の `issued` がサーバ時刻からどれだけずれてよいか。payees/verify の
@@ -61,6 +63,7 @@ export type DisputeResult =
         | "signature_expired"
         | "replayed"
         | "unsupported_payto"
+        | "rate_limited"
         | "db_unavailable";
     };
 
@@ -126,6 +129,20 @@ export async function submitDispute(
     .limit(1);
   if (replayed) return { ok: false, reason: "replayed" };
 
+  // §10: 覆らなければ原判定を維持し、連続異議のレート制限をかける（7 日 3 件）。
+  if (isDisputeRateLimited(await recentDisputeTimes(ep.id), new Date())) {
+    return { ok: false, reason: "rate_limited" };
+  }
+
+  // 再測定前の公開判定（before）。覆ったときだけ訂正ログに残す。
+  const priorVerdicts = await db
+    .select({ verdict: x402L0Probes.verdict })
+    .from(x402L0Probes)
+    .where(eq(x402L0Probes.endpointId, ep.id))
+    .orderBy(desc(x402L0Probes.probedAt))
+    .limit(5);
+  const before = publishedVerdict(priorVerdicts.map((r) => r.verdict));
+
   const [row] = await db
     .insert(disputes)
     .values({
@@ -151,7 +168,7 @@ export async function submitDispute(
         priceAmount: ep.priceAmount,
         priceAsset: ep.priceAsset,
       },
-      probeOptions,
+      { ...probeOptions, recheck: true },
     );
     await db.insert(x402L0Probes).values({
       endpointId: ep.id,
@@ -171,6 +188,18 @@ export async function submitDispute(
       .update(disputes)
       .set({ status: "remeasured", remeasureVerdict })
       .where(eq(disputes.id, row.id));
+    const after = publishedVerdict([probe.verdict, ...priorVerdicts.map((r) => r.verdict)]);
+    if (after !== before) {
+      await recordCorrection({
+        subjectType: "endpoint",
+        subjectId: ep.id,
+        level: "l0",
+        before: { publishedVerdict: before },
+        after: { publishedVerdict: after, failReason: probe.failReason },
+        reason: "dispute_remeasure",
+        disputeId: row.id,
+      }).catch(() => null);
+    }
   } catch {
     /* dispute stands; remeasure can be retried by ops */
   }

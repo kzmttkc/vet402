@@ -23,6 +23,7 @@ import { createDeadline } from "@/lib/util/deadline";
 import { verifyL1Settlement } from "./settlement-verify";
 import { isDeliveryVerified } from "./l1-runner";
 import { ingestL1 } from "@/lib/settlements/ingest-l1";
+import { recordCorrection } from "./corrections";
 
 /**
  * 一時的な失敗（RPCが答えない・確定数が足りない・まだ見つからない）は
@@ -131,6 +132,15 @@ export async function runSettlementVerification(options?: {
         })
         .where(eq(x402L1Purchases.id, row.id));
       summary.verified++;
+      // §10 / §6.2: バックフィルで確定した状態変化は訂正ログに残す。
+      await recordCorrection({
+        subjectType: "purchase",
+        subjectId: row.id,
+        level: "l1",
+        before: { status: row.status },
+        after: { status: "settled", blockNumber: String(result.blockNumber) },
+        reason: "settlement_backfill",
+      }).catch(() => null);
 
       // §7.3（2026-09-02）: 確定した購入は決済索引へ即時に載せ、受取先→Endpoint の
       // 逆引きが cron を待たずに更新される（実装完了の定義「1 分以内」）。
@@ -187,6 +197,14 @@ export async function runSettlementVerification(options?: {
       })
       .where(eq(x402L1Purchases.id, row.id));
     summary.refuted++;
+    await recordCorrection({
+      subjectType: "purchase",
+      subjectId: row.id,
+      level: "l1",
+      before: { status: row.status },
+      after: { status: "settle_claim_refuted", reason: result.reason },
+      reason: "settlement_backfill",
+    }).catch(() => null);
   }
 
   return summary;
