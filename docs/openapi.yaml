@@ -76,6 +76,12 @@ tags:
     description: Standing watches on an agent or wallet, delivered as webhooks
   - name: Observatory
     description: Claim-proved watches on x402 endpoints paying a wallet
+  - name: Resolve
+    description: Reverse lookups over the canonical object ids (product spec §5 / §7.3)
+  - name: Decision
+    description: Pre-payment / pre-service decisions derived from L0–L2 facts (product spec §8.3 / §9.1)
+  - name: Census
+    description: Settlement index summaries — raw and real (wash/test excluded) side by side (product spec §7.2)
   - name: Webhooks
     description: Webhook endpoint registration
   - name: Badges
@@ -890,6 +896,117 @@ paths:
       responses:
         "200": { description: Anchors newest-day first, with recompute recipe }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { description: Rate limited }
+        "503": { description: Store unavailable }
+
+  /api/v1/resolve:
+    get:
+      operationId: resolveQuery
+      tags: [Resolve]
+      summary: Reverse lookup — URL, domain, address, tx hash or payee_id in, canonical objects out
+      description: |
+        Product spec §7.3. `q` is classified by shape: a URL resolves to its
+        Resource (`resource_id` = sha256(method + " " + canonical_url)) and the
+        endpoints on that host; a domain to its endpoints; an address (0x or
+        base58) or a `payee_id` (`chain:address`) to the endpoints that declare
+        it as payTo; a transaction hash to the indexed settlement and, when
+        attributed, its resource. Returns measurement identifiers only — never a
+        recommendation. Key-less; 60/min.
+      security: []
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema: { type: string, maxLength: 2048 }
+      responses:
+        "200": { description: "{ query, resource?, endpoints?, payees?, settlement?, disclaimer }" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { description: Rate limited }
+        "503": { description: Store unavailable }
+
+  /api/v1/resources/{resourceId}:
+    get:
+      operationId: getResource
+      tags: [Resolve]
+      summary: Resource by resource_id (sha256 hex)
+      description: |
+        Product spec §9.1. The Resource record (canonical URL, method,
+        payee_id, catalog status) with its payees and links to `/decision`,
+        `/facts` and the observatory page. Key-less; 120/min.
+      security: []
+      parameters:
+        - in: path
+          name: resourceId
+          required: true
+          schema: { type: string, pattern: "^[0-9a-f]{64}$" }
+      responses:
+        "200": { description: "{ resource, payees, links, disclaimer }" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { description: Unknown resource_id }
+        "429": { description: Rate limited }
+        "503": { description: Store unavailable }
+
+  /api/v1/endpoints/{endpointId}:
+    get:
+      operationId: getEndpoint
+      tags: [Resolve]
+      summary: Endpoint by endpoint_id (sha256 hex) or legacy observatory uuid
+      description: |
+        Product spec §9.1. `endpoint_id` = sha256(origin + pathname_prefix).
+        The observatory uuid used by /observatory/e/{id} is accepted too, so
+        existing links keep resolving. Key-less; 120/min.
+      security: []
+      parameters:
+        - in: path
+          name: endpointId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: "{ endpoint, payees, links, disclaimer }" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { description: Unknown endpoint }
+        "429": { description: Rate limited }
+        "503": { description: Store unavailable }
+
+  /api/v1/payees/{payeeId}/endpoints:
+    get:
+      operationId: listEndpointsByPayee
+      tags: [Resolve]
+      summary: payee → endpoints[]
+      description: |
+        Product spec §7.3. `payeeId` is `chain:address` (EVM lowercased,
+        Solana base58 as-is); a bare 0x address is read as Base, a bare base58
+        address as Solana mainnet. Key-less; 120/min.
+      security: []
+      parameters:
+        - in: path
+          name: payeeId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: "{ payee_id, endpoints, count, disclaimer }" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { description: Rate limited }
+        "503": { description: Store unavailable }
+
+  /api/v1/endpoints/{endpointId}/payees:
+    get:
+      operationId: listPayeesByEndpoint
+      tags: [Resolve]
+      summary: endpoint → payees[]
+      description: |
+        Product spec §7.3. Every payee_id declared by resources under the same
+        endpoint_id, with the number of resources naming each. Key-less; 120/min.
+      security: []
+      parameters:
+        - in: path
+          name: endpointId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: "{ endpoint_id, payees, count, disclaimer }" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { description: Unknown endpoint }
         "429": { description: Rate limited }
         "503": { description: Store unavailable }
 
