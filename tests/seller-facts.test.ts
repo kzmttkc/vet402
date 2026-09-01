@@ -12,7 +12,7 @@ const purchases: PurchaseInput[] = [
   { attemptedAt: "2026-08-31T12:00:00Z", status: "settle_failed", latencyMs: 900, httpStatusPaid: 500, payloadNonEmpty: false, l2Schema: "not_checked", txHash: null, network: "eip155:8453" },
   { attemptedAt: "2026-08-30T12:00:00Z", status: "over_cap", latencyMs: null, httpStatusPaid: null, payloadNonEmpty: null, l2Schema: null, txHash: null, network: "eip155:8453" },
 ];
-const base = { probes, purchases, settlements30d: { raw: 5, real: 3, uniquePayersReal: 2 }, payees: ["eip155:8453:0xb"], declaredSchema: { type: "object" } as unknown };
+const base = { probes, purchases, settlements30d: { raw: 5, real: 3, test: 0, uniquePayersReal: 2 }, payees: ["eip155:8453:0xb"], declaredSchema: { type: "object" } as unknown };
 
 test("L0: published verdict（2 連続 fail ゲート）と方言・観測時刻", () => {
   const f = assembleSellerFacts(base);
@@ -56,9 +56,9 @@ test("offer_stability: 24h で 3 回以上の実質変更は drifting、probes <
 });
 
 test("wash_dominated: raw ≥ 10 かつ real ≤ raw の 10%", () => {
-  assert.equal(assembleSellerFacts({ ...base, settlements30d: { raw: 20, real: 1, uniquePayersReal: 1 } }).wash_dominated, true);
-  assert.equal(assembleSellerFacts({ ...base, settlements30d: { raw: 20, real: 5, uniquePayersReal: 3 } }).wash_dominated, false);
-  assert.equal(assembleSellerFacts({ ...base, settlements30d: { raw: 5, real: 0, uniquePayersReal: 0 } }).wash_dominated, false);
+  assert.equal(assembleSellerFacts({ ...base, settlements30d: { raw: 20, real: 1, test: 0, uniquePayersReal: 1 } }).wash_dominated, true);
+  assert.equal(assembleSellerFacts({ ...base, settlements30d: { raw: 20, real: 5, test: 0, uniquePayersReal: 3 } }).wash_dominated, false);
+  assert.equal(assembleSellerFacts({ ...base, settlements30d: { raw: 5, real: 0, test: 0, uniquePayersReal: 0 } }).wash_dominated, false);
 });
 
 test("trustScore は facts に入らない（§8.3 禁止）", () => {
@@ -76,4 +76,12 @@ test("§6.2 probe_error: 決済は確定したが 4xx（我々のリクエスト
   assert.equal(f.l1.n_attempts, 0);
   assert.equal(f.l1.n_settled, 0);
   assert.equal(f.l1.n_delivered, 0);
+});
+
+test("wash_dominated の分母は第三者の raw——自社の測定購入（test）だけの店は BLOCK にならない", () => {
+  const f = assembleSellerFacts({ ...base, settlements30d: { raw: 10, real: 0, test: 10, uniquePayersReal: 0 } });
+  assert.equal(f.settlement_30d_test, 10);
+  assert.equal(f.wash_dominated, false);
+  const g = assembleSellerFacts({ ...base, settlements30d: { raw: 25, real: 1, test: 5, uniquePayersReal: 1 } });
+  assert.equal(g.wash_dominated, true); // 第三者 raw 20・real 1
 });

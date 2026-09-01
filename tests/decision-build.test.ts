@@ -23,6 +23,7 @@ const seller: SellerFacts = {
   payees: ["eip155:8453:0xb"],
   settlement_30d_real: 1,
   settlement_30d_raw: 2,
+  settlement_30d_test: 0,
   unique_payers_30d_real: 1,
   wash_dominated: false,
 };

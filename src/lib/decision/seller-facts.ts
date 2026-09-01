@@ -48,7 +48,7 @@ export type SellerFactsInput = {
   probes: ProbeInput[];
   /** newest first */
   purchases: PurchaseInput[];
-  settlements30d: { raw: number; real: number; uniquePayersReal: number };
+  settlements30d: { raw: number; real: number; test: number; uniquePayersReal: number };
   payees: string[];
   declaredSchema: unknown | null;
 };
@@ -132,7 +132,8 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
   };
   const availability = (list: ProbeInput[]) => (list.length === 0 ? null : list.filter((p) => p.verdict === "pass").length / list.length);
 
-  const { raw, real, uniquePayersReal } = input.settlements30d;
+  const { raw, real, test, uniquePayersReal } = input.settlements30d;
+  const thirdPartyRaw = Math.max(0, raw - test);
   return {
     l0: {
       status: l0Status,
@@ -160,8 +161,9 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
     payees: input.payees,
     settlement_30d_real: real,
     settlement_30d_raw: raw,
+    settlement_30d_test: test,
     unique_payers_30d_real: uniquePayersReal,
-    wash_dominated: raw >= WASH_DOMINATED_MIN_RAW && real <= raw * WASH_DOMINATED_REAL_SHARE,
+    wash_dominated: thirdPartyRaw >= WASH_DOMINATED_MIN_RAW && real <= thirdPartyRaw * WASH_DOMINATED_REAL_SHARE,
   };
 }
 

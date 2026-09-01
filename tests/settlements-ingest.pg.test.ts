@@ -101,7 +101,7 @@ if (!TEST_DB) {
       assert.equal(c.by_source.l1_purchase, 1);
       assert.equal(c.by_source.payments_api, 3);
       const per = await getSettlementCounts({ endpointId });
-      assert.deepEqual(per, { raw: 4, real: 2, uniquePayersReal: 1 });
+      assert.deepEqual(per, { raw: 4, real: 2, test: 1, uniquePayersReal: 1 });
     });
   });
 }

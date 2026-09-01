@@ -94,23 +94,24 @@ export async function getCensusSummary(chain: string | null, window: CensusWindo
 export async function getSettlementCounts(
   where: { endpointId?: string; payeeId?: string },
   days = 30,
-): Promise<{ raw: number; real: number; uniquePayersReal: number }> {
+): Promise<{ raw: number; real: number; test: number; uniquePayersReal: number }> {
   const db = getDb();
-  if (!db) return { raw: 0, real: 0, uniquePayersReal: 0 };
+  if (!db) return { raw: 0, real: 0, test: 0, uniquePayersReal: 0 };
   const cond = where.endpointId
     ? sql`endpoint_id = ${where.endpointId}::uuid`
     : where.payeeId
       ? sql`payee_id = ${where.payeeId}`
       : sql`false`;
-  const rows = rowsOf<{ raw: number; real: number; payers: number }>(
+  const rows = rowsOf<{ raw: number; real: number; test: number; payers: number }>(
     await db.execute(sql`
       SELECT count(*)::int AS raw,
              count(*) FILTER (WHERE wash_flag = 'none')::int AS real,
+             count(*) FILTER (WHERE wash_flag = 'test')::int AS test,
              count(DISTINCT payer_id) FILTER (WHERE wash_flag = 'none')::int AS payers
       FROM settlements
       WHERE ${cond} AND coalesce(block_time, observed_at) > now() - make_interval(days => ${days})
     `),
   );
   const r = rows[0];
-  return { raw: Number(r?.raw ?? 0), real: Number(r?.real ?? 0), uniquePayersReal: Number(r?.payers ?? 0) };
+  return { raw: Number(r?.raw ?? 0), real: Number(r?.real ?? 0), test: Number(r?.test ?? 0), uniquePayersReal: Number(r?.payers ?? 0) };
 }

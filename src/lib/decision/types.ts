@@ -33,8 +33,14 @@ export type SellerFacts = {
   payees: string[];
   settlement_30d_real: number;
   settlement_30d_raw: number;
+  /** raw のうち vet402 自身の測定購入（wash_flag test）。分母から外して開示する。 */
+  settlement_30d_test: number;
   unique_payers_30d_real: number;
-  /** 実需決済がほぼ無いのに掲載だけ厚い（§8.3 BLOCK 条件）。 */
+  /**
+   * 実需決済がほぼ無いのに掲載だけ厚い（§8.3 BLOCK 条件）。分母は第三者の raw
+   * （raw − test）。自社の測定購入を分母に入れると、測った店ほど BLOCK に近づく
+   * （2026-09-02 本番実測: exa.ai が L1 10 件で wash_dominated → BLOCK になっていた）。
+   */
   wash_dominated: boolean;
 };
 
