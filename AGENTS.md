@@ -16,6 +16,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 **09-04 まで新規実装を入れない対象**:
 - `packages/sdk` / `packages/middleware` の支払い判定まわり（SpendGuard の policy / evidence 系）
 - `payOrRefuse` / `pay_if_trusted`（まだ存在しない。会期中の新規はこれ）
+- **製品定義書 §9.3 の「買い手モード」**——リクエスト前に `/decision?role=payer` を引き、
+  BLOCK/未検証なら送金しない配線。上と同じものなので同じく 9/4 まで入れない
+  （`/decision` API 本体と売り手モードは 9/2 に入れてよい。詳細 [`docs/ethonline-2026/SPEC_1_2_IMPACT.md`](docs/ethonline-2026/SPEC_1_2_IMPACT.md) §0）
 - `examples/` のデモエージェント・自前 seller
 
 **入れてよいもの**: 既存機能の不具合修正・セキュリティ・観測所の運用・ドキュメント・仕様・調査。
