@@ -51,6 +51,10 @@
     {
       "path": "/api/cron/verify-settlements",
       "schedule": "0 14 * * *"
+    },
+    {
+      "schedule": "0 13 * * *",
+      "path": "/api/cron/index-settlements"
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { base, mainnet } from "viem/chains";
+import { base, mainnet, polygon } from "viem/chains";
 import type { Chain } from "viem";
 
 /**
@@ -55,6 +55,18 @@ export const CHAINS: Record<number, SupportedChain> = {
     blockscoutApi: "https://base.blockscout.com/api",
     blocksPerDay: 43_200, // ~2s blocks
     registryFromBlock: BigInt(41_663_783), // IDENTITY_REGISTRY_FROM_BLOCK (verified on-chain)
+  },
+  // 製品定義書 §7.1 / §14 P1: 決済索引の次点チェーン。POLYGON_RPC_URL が入るまで
+  // isChainEnabled は false（defaultRpc 空）で、索引は skipped として開示する。
+  137: {
+    id: 137,
+    slug: "polygon",
+    viemChain: polygon,
+    rpcEnv: "POLYGON_RPC_URL",
+    defaultRpc: "",
+    blockscoutApi: "https://polygon.blockscout.com/api",
+    blocksPerDay: 40_000, // ~2.1s blocks
+    registryFromBlock: BigInt(60_000_000),
   },
   1: {
     id: 1,

@@ -809,6 +809,53 @@ export const healthSnapshots = pgTable(
  * ページのリクエスト毎に17k件×日数のスキャンを繰り返さないため。行は常に
  * rawから再導出可能（このテーブルは事実のキャッシュであって正本ではない）。
  */
+/**
+ * 製品定義書 §7.2 Settlement index（2026-09-02）。チェーン上の x402 関連決済を
+ * Resource / Endpoint / Payee / Payer に帰属させる。3 経路が同じ形に落ちる:
+ *   l1_purchase  我々の L1 購入（wash_flag は必ず test・§13 測定ウォレットは実需から除く）
+ *   payments_api POST /payments/x402 で所有証明済みの行
+ *   chain_index  既知 payTo への USDC Transfer をチェーンから読んだ行
+ * 「実需」= wash_flag = 'none'。生値と実需は同じ行から両方出す。混ぜない。
+ */
+export const settlements = pgTable(
+  "settlements",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    /** CAIP-2 */
+    chain: text("chain").notNull(),
+    txHash: text("tx_hash").notNull(),
+    /** chain:tx_hash（§5 purchase_id）。 */
+    purchaseId: text("purchase_id").notNull(),
+    asset: text("asset"),
+    /** base units, decimal string */
+    amount: text("amount"),
+    payer: text("payer"),
+    payee: text("payee"),
+    payerId: text("payer_id"),
+    payeeId: text("payee_id"),
+    facilitator: text("facilitator"),
+    observedAt: timestamp("observed_at", { withTimezone: true }).defaultNow().notNull(),
+    blockTime: timestamp("block_time", { withTimezone: true }),
+    /** confirmed | probable | unmatched */
+    attribution: text("attribution").notNull().default("unmatched"),
+    resourceId: text("resource_id"),
+    endpointId: uuid("endpoint_id"),
+    /** none | self_deal | circular | test */
+    washFlag: text("wash_flag").notNull().default("none"),
+    /** l1_purchase | payments_api | chain_index */
+    source: text("source").notNull(),
+    raw: jsonb("raw"),
+  },
+  (t) => [
+    uniqueIndex("settlements_purchase_id_unique").on(t.purchaseId),
+    index("settlements_payee_block_idx").on(t.payeeId, t.blockTime),
+    index("settlements_payer_block_idx").on(t.payerId, t.blockTime),
+    index("settlements_endpoint_idx").on(t.endpointId),
+    index("settlements_wash_idx").on(t.washFlag),
+    index("settlements_tx_hash_idx").on(t.txHash),
+  ],
+);
+
 export const x402DailyMetrics = pgTable(
   "x402_daily_metrics",
   {

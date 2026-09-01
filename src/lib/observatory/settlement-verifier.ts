@@ -22,6 +22,7 @@ import { logServerError } from "@/lib/util/log";
 import { createDeadline } from "@/lib/util/deadline";
 import { verifyL1Settlement } from "./settlement-verify";
 import { isDeliveryVerified } from "./l1-runner";
+import { ingestL1 } from "@/lib/settlements/ingest-l1";
 
 /**
  * 一時的な失敗（RPCが答えない・確定数が足りない・まだ見つからない）は
@@ -130,6 +131,15 @@ export async function runSettlementVerification(options?: {
         })
         .where(eq(x402L1Purchases.id, row.id));
       summary.verified++;
+
+      // §7.3（2026-09-02）: 確定した購入は決済索引へ即時に載せ、受取先→Endpoint の
+      // 逆引きが cron を待たずに更新される（実装完了の定義「1 分以内」）。
+      // 索引の失敗は照合の成否を変えない——次回の日次 ingestL1 が拾う。
+      try {
+        await ingestL1({ onlyPurchaseRowId: row.id });
+      } catch (error) {
+        logServerError("settlement-verifier.ingest-l1", error);
+      }
 
       // スコア証拠はここでだけ書く。delivery_verified の規則はランナーと共有。
       try {
