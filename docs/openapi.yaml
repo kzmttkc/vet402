@@ -1091,6 +1091,35 @@ paths:
         "429": { $ref: "#/components/responses/RateLimited" }
         "503": { description: Decision unavailable }
 
+  /api/v1/census/summary:
+    get:
+      operationId: getCensusSummary
+      tags: [Census]
+      summary: Settlement census — raw and real side by side
+      description: |
+        Product spec §7.2 / §9.1. `settlements_raw` counts every indexed
+        x402-related settlement in the window; `settlements_real` excludes
+        wash_flag self_deal / circular / test (including every wallet vet402
+        pays from). Both numbers are always returned together and never merged.
+        Attribution and source breakdowns are included, with the definition
+        text in `definition`. Key-less; 60/min; cached 5 min.
+      security: []
+      parameters:
+        - in: query
+          name: chain
+          required: false
+          schema: { type: string }
+          description: CAIP-2 (eip155:8453, solana:5eykt…) or a v1 slug (base, solana). Omit for all chains.
+        - in: query
+          name: window
+          required: false
+          schema: { type: string, enum: [7d, 30d], default: 30d }
+      responses:
+        "200": { description: "{ chain, window, settlements_raw, settlements_real, wash, attribution, unique_payers_raw, unique_payers_real, unique_payees_real, endpoints_with_real_settlement, by_source, definition, disclaimer, retrievedAt }" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { description: Rate limited }
+        "503": { description: Store unavailable }
+
   /api/v1/observatory/backtest:
     get:
       operationId: getSpendGuardBacktest

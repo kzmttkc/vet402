@@ -12,6 +12,7 @@ import { getDb } from "@/lib/db/client";
 import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { x402L0Probes } from "@/lib/db/schema";
 import { probeEndpoint, type ProbeResult } from "./l0-probe";
+import { l0TierWhere } from "./coverage";
 
 export type ProbeBatchSummary = {
   probed: number;
@@ -36,9 +37,17 @@ export async function runL0ProbeBatch(
     concurrency?: number;
     fetchImpl?: (url: string, init?: RequestInit) => Promise<Response>;
     timeoutMs?: number;
+    /**
+     * §7.4 カバレッジ階層（2026-09-02）。c1 = 30 日以内に listed/決済のある active、
+     * c2 = 決済帰属あり ∨ 問い合わせ多（6 時間周期・5 時間以内に測った行は飛ばす）。
+     * all = 従来どおり active 全件（テスト・手動用）。
+     */
+    tier?: "c1" | "c2" | "all";
   } = {},
 ): Promise<ProbeBatchSummary> {
-  const { limit = 500, concurrency = 20, fetchImpl, timeoutMs } = options;
+  const { limit = 500, concurrency = 20, fetchImpl, timeoutMs, tier = "all" } = options;
+  const where = tier === "all" ? sql`e.status = 'active'` : l0TierWhere(tier);
+  const freshness = tier === "c2" ? sql`AND (lp.last_probed_at IS NULL OR lp.last_probed_at < now() - interval '5 hours')` : sql``;
   const db = getDb();
   if (!db) throw new Error("DATABASE_URL is not configured");
 
@@ -53,7 +62,8 @@ export async function runL0ProbeBatch(
         SELECT max(probed_at) AS last_probed_at
         FROM x402_l0_probes p WHERE p.endpoint_id = e.id
       ) lp ON true
-      WHERE e.status = 'active'
+      WHERE ${where}
+      ${freshness}
       ORDER BY lp.last_probed_at ASC NULLS FIRST, e.first_seen_at ASC
       LIMIT ${limit}
     `);

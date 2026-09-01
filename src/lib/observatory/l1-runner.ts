@@ -55,6 +55,7 @@ import {
   isSolanaL1Enabled,
   selectSolanaAccept,
 } from "./sol402-payer";
+import { l1TierWhere } from "./coverage";
 
 export type L1BatchSummary = {
   attempted: number;
@@ -559,7 +560,12 @@ export async function runL1Batch(
                  WHERE recent.status IN ('settled', 'settle_claimed')
                ) = 0
       )
-    ORDER BY (e.resource_key ILIKE ANY(${prioritySqlArray()})) DESC,
+    -- §7.4（2026-09-02）: C2（決済帰属あり ∨ 問い合わせ多）を最初に買う。日次予算が
+    -- 尽きれば残りは未実施のまま（facts では l1_not_attempted = 未検証。pass とは書かない）。
+    -- C2 だけに絞らないのは、決済索引が空の初日に L1 が完全に止まるのを避けるため——
+    -- 仕様の「C2 は 24 時間ごと L1」は順序で満たし、他階層は従来の掃引で薄く測る。
+    ORDER BY (${l1TierWhere()}) DESC,
+             (e.resource_key ILIKE ANY(${prioritySqlArray()})) DESC,
              e.quality_payers_30d DESC NULLS LAST, e.quality_calls_30d DESC NULLS LAST
     LIMIT ${limit}
   `);

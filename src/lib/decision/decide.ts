@@ -164,11 +164,25 @@ function subjectOf(loaded: SellerFactsLoaded): DecisionSubject {
   };
 }
 
+/** §7.4: 問い合わせ回数を endpoint × UTC 日で加算（単文 upsert・失敗しても判定は落とさない）。 */
+export function recordDecisionLookup(observatoryId: string): void {
+  const db = getDb();
+  if (!db) return;
+  const day = new Date().toISOString().slice(0, 10);
+  void db
+    .execute(
+      sql`INSERT INTO decision_lookups (endpoint_id, day, n) VALUES (${observatoryId}::uuid, ${day}, 1)
+          ON CONFLICT (endpoint_id, day) DO UPDATE SET n = decision_lookups.n + 1`,
+    )
+    .catch(() => undefined);
+}
+
 export type DecideRequest =
   | { role: "payer"; observatoryId: string; callerDialect?: "v1" | "v2"; allowWithoutL1?: boolean; operatorBlacklist: boolean }
   | { role: "payee"; observatoryId: string; payerId: string; operatorBlacklist: boolean };
 
 export async function decide(req: DecideRequest): Promise<DecisionResult | null> {
+  recordDecisionLookup(req.observatoryId);
   const key =
     req.role === "payer"
       ? `${req.observatoryId}|payer|${req.callerDialect ?? "-"}|${req.allowWithoutL1 ? 1 : 0}|${req.operatorBlacklist ? 1 : 0}`

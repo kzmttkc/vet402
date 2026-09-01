@@ -856,6 +856,21 @@ export const settlements = pgTable(
   ],
 );
 
+/**
+ * 製品定義書 §7.4（2026-09-02）: /decision の問い合わせ回数（endpoint × UTC 日）。
+ * 「問い合わせの多い URL」を C2 に昇格させる材料。単文 upsert で加算。
+ */
+export const decisionLookups = pgTable(
+  "decision_lookups",
+  {
+    endpointId: uuid("endpoint_id").notNull(),
+    /** UTC day, YYYY-MM-DD */
+    day: text("day").notNull(),
+    n: integer("n").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.endpointId, t.day] }), index("decision_lookups_day_idx").on(t.day)],
+);
+
 export const x402DailyMetrics = pgTable(
   "x402_daily_metrics",
   {
