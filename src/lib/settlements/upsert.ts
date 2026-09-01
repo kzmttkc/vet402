@@ -66,3 +66,41 @@ export async function knownPurchaseIds(ids: readonly string[]): Promise<Set<stri
   );
   return new Set(rows.map((r) => r.purchase_id));
 }
+
+/**
+ * 束ね upsert（1 文に最大 200 行）。戻りは inserted 数。同じ窓を再読したときの重複は
+ * ON CONFLICT で吸収する（knownPurchaseIds で先に飛ばすのが前提だが、競合しても壊れない）。
+ */
+export async function upsertSettlementsBatch(rows: readonly SettlementRow[]): Promise<{ inserted: number; updated: number }> {
+  const db = getDb();
+  if (!db) throw new Error("upsertSettlementsBatch: DATABASE_URL is not configured");
+  let inserted = 0;
+  let updated = 0;
+  for (let i = 0; i < rows.length; i += 200) {
+    const chunk = rows.slice(i, i + 200);
+    const values = chunk.map(
+      (row) => sql`(${row.chain}, ${row.txHash}, ${row.purchaseId}, ${row.asset}, ${row.amount}, ${row.payer}, ${row.payee},
+        ${row.payerId}, ${row.payeeId}, ${row.facilitator ?? null}, ${row.blockTime ? row.blockTime.toISOString() : null}::timestamptz,
+        ${row.attribution}, ${row.resourceId}, ${row.endpointId}::uuid, ${row.washFlag}, ${row.source},
+        ${row.raw === undefined ? null : JSON.stringify(row.raw)}::jsonb)`,
+    );
+    const raw = await db.execute(sql`
+      INSERT INTO settlements
+        (chain, tx_hash, purchase_id, asset, amount, payer, payee, payer_id, payee_id, facilitator,
+         block_time, attribution, resource_id, endpoint_id, wash_flag, source, raw)
+      VALUES ${sql.join(values, sql`, `)}
+      ON CONFLICT (purchase_id) DO UPDATE SET
+        attribution = EXCLUDED.attribution,
+        wash_flag = EXCLUDED.wash_flag,
+        block_time = COALESCE(EXCLUDED.block_time, settlements.block_time),
+        resource_id = COALESCE(EXCLUDED.resource_id, settlements.resource_id),
+        endpoint_id = COALESCE(EXCLUDED.endpoint_id, settlements.endpoint_id)
+      RETURNING (xmax = 0) AS inserted
+    `);
+    for (const r of rowsOf<{ inserted: boolean }>(raw)) {
+      if (r.inserted) inserted++;
+      else updated++;
+    }
+  }
+  return { inserted, updated };
+}

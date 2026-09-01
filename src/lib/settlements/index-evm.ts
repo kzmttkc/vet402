@@ -14,9 +14,11 @@ import { getLogScanClient } from "@/lib/chain/client";
 import { getLogsChunked } from "@/lib/chain/chunked-logs";
 import { getIndexerCheckpoint, setIndexerCheckpoint } from "@/lib/db/owner-index";
 import { payeeId as toPartyId } from "@/lib/ids/canonical";
-import { resolveEndpointForSettlement } from "./ingest-payments";
 import { loadWashClassifier, type WashClassifier } from "./context";
-import { buildRow, knownPurchaseIds, rowsOf, upsertSettlement } from "./upsert";
+import { buildRow, knownPurchaseIds, rowsOf, upsertSettlementsBatch } from "./upsert";
+import type { SettlementRow } from "./types";
+import { attribute } from "./attribution";
+import { classifyWash } from "./wash";
 import { purchaseId as toPurchaseId } from "@/lib/ids/canonical";
 
 export const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
@@ -107,20 +109,55 @@ export async function indexEvmChain(
   summary.toBlock = String(toBlock);
 
   const classifier = options.classifier ?? (await loadWashClassifier());
-  // 締切で途中終了したら、チェックポイントは「処理し終えたブロック」までしか進めない
-  // （2026-09-02 初回実走: 7,030 ログ中 570 件で締切、残りが次回に持ち越されなかった）。
-  // payee スライスごとに「どこまで処理し終えたか」を持ち、チェックポイントはその最小値。
-  // 未着手のスライスがあれば fromBlock-1（同じ窓を次回もう一度読む。upsert は冪等）。
-  const sliceProgress: bigint[] = [];
+
+  // --- 事前ロード（1 件ごとの Neon 往復を無くす。2026-09-02 実測: 往復 4〜5 回で 2 秒/件） ---
+  // payee → endpoints（payTo・宣言 amount/asset・resource_id）。1 文。
+  type Ep = { id: string; resource_id: string | null; pay_to: string; price_amount: string | null; price_asset: string | null; network: string | null };
+  const epRows = rowsOf<Ep>(
+    await db.execute(sql`
+      SELECT id::text AS id, resource_id, lower(pay_to) AS pay_to, price_amount, price_asset, network
+      FROM x402_endpoints WHERE pay_to IS NOT NULL AND pay_to LIKE '0x%' AND status = 'active'
+        AND (network = ${chain.caip2} OR (${chain.caip2} = 'eip155:8453' AND network = 'base'))
+    `),
+  );
+  const epsByPayee = new Map<string, Ep[]>();
+  for (const e of epRows) {
+    const list = epsByPayee.get(e.pay_to) ?? [];
+    list.push(e);
+    epsByPayee.set(e.pay_to, list);
+  }
+  const resolveLocal = (payee: string, amount: string, blockTime: Date) => {
+    const eps = epsByPayee.get(payee) ?? [];
+    if (eps.length === 0) return { attribution: "unmatched" as const, resourceId: null, endpointId: null };
+    if (eps.length === 1) {
+      const e = eps[0];
+      const a = attribute(
+        { payee, amount, asset: chain.usdc, chain: chain.caip2, blockTime },
+        { payTo: e.pay_to, amount: e.price_amount, asset: e.price_asset, network: e.network, observedAt: blockTime },
+      );
+      return { attribution: a === "unmatched" ? ("probable" as const) : a, resourceId: e.resource_id, endpointId: e.id };
+    }
+    // 複数 resource が同じ payTo: amount が宣言と一致するものがあれば confirmed でそれに帰属
+    const exact = eps.find((e) => e.price_amount === amount);
+    if (exact) return { attribution: "confirmed" as const, resourceId: exact.resource_id, endpointId: exact.id };
+    return { attribution: "probable" as const, resourceId: null, endpointId: null };
+  };
+
+  // ブロック時刻は窓の両端を実測し、間は 2 秒/ブロックで補間する（帰属窓は 15 分・十分）。
+  const [b0, b1] = await Promise.all([client.getBlock({ blockNumber: fromBlock }), client.getBlock({ blockNumber: toBlock })]);
+  const t0 = Number(b0.timestamp) * 1000;
+  const t1 = Number(b1.timestamp) * 1000;
+  const span = Number(toBlock - fromBlock) || 1;
+  const blockTimeOf = (n: bigint) => new Date(t0 + ((Number(n - fromBlock) / span) * (t1 - t0)));
+
   let cutOff = false;
-  const blockTimeCache = new Map<bigint, Date>();
-  const blockTimeOf = async (n: bigint) => {
-    const hit = blockTimeCache.get(n);
-    if (hit) return hit;
-    const b = await client.getBlock({ blockNumber: n });
-    const d = new Date(Number(b.timestamp) * 1000);
-    blockTimeCache.set(n, d);
-    return d;
+  const sliceProgress: bigint[] = [];
+  const pending: SettlementRow[] = [];
+  const flush = async () => {
+    if (pending.length === 0) return;
+    const r = await upsertSettlementsBatch(pending.splice(0, pending.length));
+    summary.inserted += r.inserted;
+    summary.updated += r.updated;
   };
 
   // topics[2]（to）は最大 500 件ずつ OR で問う。
@@ -138,69 +175,52 @@ export async function indexEvmChain(
       { deadlineMs: Math.max(5_000, budgetMs - (now() - startedAt)) },
     );
     summary.logs += logs.length;
-    // ブロック昇順に処理し、締切時に「ここまでは全件済み」と言える位置を持つ
     const sorted = (logs as unknown as { transactionHash: string; blockNumber: bigint; args: { from: Address; to: Address; value: bigint } }[]).sort((a, b) =>
       a.blockNumber < b.blockNumber ? -1 : a.blockNumber > b.blockNumber ? 1 : 0,
     );
     let sliceLast: bigint = fromBlock - 1n;
     let sliceDone = true;
-    // 同じ窓を再読するとき（前回が途中終了）、索引済みの tx は per-row 作業を飛ばす。
-    // 2026-09-02 実測: これが無いと毎回先頭 570 件を再処理して窓が一生進まなかった。
     const known = await knownPurchaseIds(sorted.map((l) => toPurchaseId(chain.caip2, l.transactionHash)));
     summary.skippedKnown = (summary.skippedKnown ?? 0) + known.size;
+    // 往復（circular）の材料: 同じ窓の (from,to) 対をメモリに持つ
+    const pairs = new Set(sorted.map((l) => `${l.args.from.toLowerCase()}>${l.args.to.toLowerCase()}`));
     for (const log of sorted) {
-      if (known.has(toPurchaseId(chain.caip2, log.transactionHash))) {
-        if (log.blockNumber > sliceLast) sliceLast = log.blockNumber;
-        continue;
-      }
       if (now() - startedAt > budgetMs) {
         cutOff = true;
         sliceDone = false;
         break;
       }
-      const blockTime = await blockTimeOf(log.blockNumber);
+      if (known.has(toPurchaseId(chain.caip2, log.transactionHash))) {
+        if (log.blockNumber > sliceLast) sliceLast = log.blockNumber;
+        continue;
+      }
+      const blockTime = blockTimeOf(log.blockNumber);
       const payee = log.args.to.toLowerCase();
       const payer = log.args.from.toLowerCase();
       const amount = log.args.value.toString();
-      const resolved = await resolveEndpointForSettlement(db, {
-        chain: chain.caip2,
-        payee,
-        amount,
-        asset: chain.usdc,
-        blockTime,
-        resourceUrl: null,
-      });
-      const washFlag = await classifier.classify({
-        payerId: toPartyId(chain.caip2, payer),
-        payeeId: toPartyId(chain.caip2, payee),
-        blockTime,
-      });
-      const row = buildRow(
-        {
-          chain: chain.caip2,
-          txHash: log.transactionHash,
-          asset: chain.usdc,
-          amount,
-          payer,
-          payee,
-          blockTime,
-          source: "chain_index",
-          raw: { blockNumber: String(log.blockNumber) },
-        },
-        { attribution: resolved.attribution, washFlag, resourceId: resolved.resourceId, endpointId: resolved.endpointId },
+      const resolved = resolveLocal(payee, amount, blockTime);
+      const payerId = toPartyId(chain.caip2, payer);
+      const payeeId = toPartyId(chain.caip2, payee);
+      const reverseInWindow = pairs.has(`${payee}>${payer}`);
+      const washFlag = classifyWash(
+        { payerId, payeeId, blockTime },
+        { testWallets: classifier.testWallets, sameCluster: classifier.sameCluster, reverseWithinHours: () => reverseInWindow },
       );
-      const outcome = await upsertSettlement(row);
-      if (outcome === "inserted") summary.inserted++;
-      else summary.updated++;
+      pending.push(
+        buildRow(
+          { chain: chain.caip2, txHash: log.transactionHash, asset: chain.usdc, amount, payer, payee, blockTime, source: "chain_index", raw: { blockNumber: String(log.blockNumber), blockTimeSource: "interpolated" } },
+          { attribution: resolved.attribution, washFlag, resourceId: resolved.resourceId, endpointId: resolved.endpointId },
+        ),
+      );
+      if (pending.length >= 200) await flush();
       if (log.blockNumber > sliceLast) sliceLast = log.blockNumber;
     }
-    // 完走したスライスは toBlock まで済み。途中なら処理済み最終ブロックの 1 つ手前まで
-    // （同ブロック内の未処理ログを落とさない）。
+    await flush();
     sliceProgress.push(sliceDone ? toBlock : sliceLast > fromBlock ? sliceLast - 1n : fromBlock - 1n);
     if (cutOff) break;
   }
   const expectedSlices = Math.ceil(payees.length / 500);
-  while (sliceProgress.length < expectedSlices) sliceProgress.push(fromBlock - 1n); // 未着手スライス
+  while (sliceProgress.length < expectedSlices) sliceProgress.push(fromBlock - 1n);
   const nextCheckpoint = sliceProgress.reduce((m, v) => (v < m ? v : m), toBlock);
   await setIndexerCheckpoint(scope, nextCheckpoint, latest);
   summary.partial = cutOff;

@@ -18,6 +18,8 @@ import { rowsOf } from "./upsert";
 export type WashClassifier = {
   classify: (s: { payerId: string | null; payeeId: string | null; blockTime: Date | null }) => Promise<WashFlag>;
   testWallets: ReadonlySet<string>;
+  /** 同一 funder（メモリ上・同期）。索引のバッチ処理が直接使う。 */
+  sameCluster: (payerId: string, payeeId: string) => boolean;
 };
 
 export async function loadWashClassifier(): Promise<WashClassifier> {
@@ -72,6 +74,7 @@ export async function loadWashClassifier(): Promise<WashClassifier> {
 
   return {
     testWallets,
+    sameCluster,
     classify: async (s) => {
       // 純関数に渡す前に、非同期の逆方向照会だけ先に済ませる（判定順序は classifyWash が持つ）。
       let reverse = false;
