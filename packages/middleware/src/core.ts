@@ -34,6 +34,18 @@ export type GateAction = "allow" | "warn" | "block";
  *    receiving wallet?" (settlement history, drain-pattern, outcome labels).
  */
 export type ScoreSource = "wallet" | "payee";
+export type DecisionSource = "score" | "decision";
+
+/** §9.1 /decision の応答のうち gate が読む分（意図的な部分型）。 */
+type DecisionResponse = {
+  recommendation?: Recommendation;
+  facts?: unknown;
+  degraded?: boolean;
+  scoredAt?: string;
+  cacheExpiresAt?: string;
+  score?: { trustScore?: number | null } | null;
+  reason_codes?: string[];
+};
 
 /** Behaviour when the score lookup itself fails (network, 5xx, timeout). */
 export type FailMode = "closed" | "open";
@@ -89,6 +101,21 @@ export type VouchGateConfig = {
   apiKey: string;
   /** Score endpoint to consult. Default "wallet". */
   scoreSource?: ScoreSource;
+  /**
+   * 製品定義書 §9.3（2026-09-02）売り手モード。"decision" にすると、決済確認後の
+   * payer を GET /resources/{resourceId}/decision?role=payee&payer=… で判定する
+   * （facts と recommendation が同じ応答に来る）。既定 "score" は従来の /score。
+   * 買い手モード（リクエスト前に role=payer を引いて送金を止める）はここに無い——
+   * 9/4 00:00 UTC 以降に入れる。この gate が role=payer を送る経路は存在しない。
+   */
+  decisionSource?: DecisionSource;
+  /** decisionSource "decision" のとき必須: 判定対象 Resource の resource_id（sha256 hex）。 */
+  resourceId?: string;
+  /**
+   * 冪等キー。同一 (resource, payer, key) の再試行はサーバ側で二重に判定課金しない
+   * （§9.3）。省略時は送らない。
+   */
+  idempotencyKey?: (address: string) => string;
   /**
    * Verdict gating policy. Default "allow-only" (fail-closed): only ALLOW
    * passes. See GatePolicy for the explicit opt-outs.
@@ -306,6 +333,8 @@ export type TrustGate = {
 export type ResolvedGateConfig = {
   apiUrl: string;
   scoreSource: ScoreSource;
+  decisionSource: DecisionSource;
+  resourceId: string | null;
   policy: GatePolicy;
   blockOn: Recommendation[];
   warnOn: Recommendation[];
@@ -322,6 +351,19 @@ export function createTrustGate(config: VouchGateConfig): TrustGate {
   const apiUrl = config.apiUrl.replace(/\/$/, "");
   const scoreSource: ScoreSource = config.scoreSource ?? "wallet";
   const policy: GatePolicy = config.policy ?? "allow-only";
+  const decisionSource: DecisionSource = config.decisionSource ?? "score";
+  if (decisionSource !== "score" && decisionSource !== "decision") {
+    throw new VouchGateError('decisionSource must be "score" or "decision"', "invalid_decision_source");
+  }
+  if (decisionSource === "decision" && !/^[0-9a-f]{64}$/.test(config.resourceId ?? "")) {
+    throw new VouchGateError('decisionSource "decision" requires resourceId (sha256 hex)', "missing_resource_id");
+  }
+  if (decisionSource === "decision" && policy === "evidence") {
+    throw new VouchGateError(
+      'policy "evidence" reads /score signals; use allow-only or block-only with decisionSource "decision"',
+      "invalid_policy_combination",
+    );
+  }
   if (!["allow-only", "block-only", "evidence", "custom"].includes(policy)) {
     throw new VouchGateError(
       "policy must be allow-only, block-only, evidence or custom",
@@ -419,6 +461,8 @@ export function createTrustGate(config: VouchGateConfig): TrustGate {
       throw new VouchGateError("invalid counterparty address", "invalid_address");
     }
 
+    if (decisionSource === "decision") return evaluateByDecision(address);
+
     let body: ScoreResponse;
     try {
       // AbortSignal.timeout keeps a hung Vouch from hanging the payment path;
@@ -506,6 +550,56 @@ export function createTrustGate(config: VouchGateConfig): TrustGate {
     return { action: "allow", recommendation, score, address, reason: "ok", degraded: false };
   }
 
+  /**
+   * §9.3 売り手モード: 決済確認後、payer を /decision?role=payee で判定する。
+   * role は固定で payee——買い手側の「署名前に止める」経路はこの関数に無い。
+   * facts の無い応答は BLOCK（§9.1: facts を省いてスコアだけ返すモードは無い）。
+   * タイムアウト・到達不能は failMode（既定 closed）で BLOCK。サイレント通過は無い。
+   */
+  async function evaluateByDecision(address: string): Promise<GateDecision> {
+    const resourceId = config.resourceId as string;
+    const headers: Record<string, string> = { Authorization: `Bearer ${config.apiKey}` };
+    const key = config.idempotencyKey?.(address);
+    if (key) headers["Idempotency-Key"] = key;
+    let body: DecisionResponse;
+    try {
+      const url = `${apiUrl}/resources/${resourceId}/decision?role=payee&payer=${encodeURIComponent(address)}`;
+      const res = await fetchFn(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
+      if (!res.ok) return degraded(address, `vouch_http_${res.status}`);
+      body = (await res.json()) as DecisionResponse;
+    } catch {
+      return degraded(address, "vouch_unreachable");
+    }
+    const recommendation = body.recommendation ?? null;
+    const score = body.score?.trustScore ?? null;
+    if (recommendation === null) return degraded(address, "vouch_no_recommendation");
+    if (body.facts === undefined || body.facts === null || typeof body.facts !== "object") {
+      return { action: "block", recommendation, score, address, reason: "facts_missing", degraded: true };
+    }
+    if (policy !== "custom") {
+      if (body.degraded === true) {
+        return { action: "block", recommendation, score, address, reason: "decision_degraded", degraded: true };
+      }
+      if (isScoreStale(body as ScoreResponse, Date.now(), maxScoreAgeMs)) {
+        return { action: "block", recommendation, score, address, reason: "decision_stale", degraded: true };
+      }
+    }
+    if (blockOn.includes(recommendation)) {
+      return {
+        action: "block",
+        recommendation,
+        score,
+        address,
+        reason: recommendation === "BLOCK" ? "recommendation_block" : "recommendation_not_allow",
+        degraded: false,
+      };
+    }
+    if (warnOn.includes(recommendation)) {
+      return { action: "warn", recommendation, score, address, reason: "recommendation_warn", degraded: false };
+    }
+    return { action: "allow", recommendation, score, address, reason: "ok", degraded: false };
+  }
+
   function degraded(address: string, reason: string): GateDecision {
     // fail-closed → block; fail-open → allow. Either way the decision is
     // flagged `degraded` so callers can log/alert on trust-blind settlements.
@@ -542,6 +636,18 @@ export function createTrustGate(config: VouchGateConfig): TrustGate {
   return {
     evaluate,
     attest,
-    config: { apiUrl, scoreSource, policy, blockOn, warnOn, minScore: minScore ?? null, failMode, timeoutMs, maxScoreAgeMs },
+    config: {
+      apiUrl,
+      scoreSource,
+      decisionSource,
+      resourceId: decisionSource === "decision" ? (config.resourceId as string) : null,
+      policy,
+      blockOn,
+      warnOn,
+      minScore: minScore ?? null,
+      failMode,
+      timeoutMs,
+      maxScoreAgeMs,
+    },
   };
 }

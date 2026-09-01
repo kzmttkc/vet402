@@ -80,6 +80,9 @@ app.use("/api/paid/*", createHonoGate({
 | Option | Default | Meaning |
 |---|---|---|
 | `scoreSource` | `"wallet"` | `"wallet"` (the x402 beacon) or `"payee"` (buyer-side receiving history). |
+| `decisionSource` | `"score"` | Product spec §9.3 seller mode. `"decision"` consults `GET /resources/{resourceId}/decision?role=payee&payer=…` — facts and recommendation arrive in one document; a response without `facts` is blocked. The role is fixed to `payee` (post-settlement payer check). The buyer-side "stop before signing" wiring is not part of this package yet. |
+| `resourceId` | — | Required with `decisionSource: "decision"`: the §5 `resource_id` (sha256 hex) of the resource being served. Get it from `GET /resolve?q=<url>`. |
+| `idempotencyKey` | — | `(address) => string`. Sent as `Idempotency-Key`; the API does not charge a second rate-limit unit for the same (resource, payer, key) within 10 minutes. |
 | `policy` | `"allow-only"` | `"allow-only"` blocks anything that is not ALLOW (fail-closed). `"block-only"` lets WARN through (pre-0.2.0 behaviour). `"evidence"` lets a WARN through only when it clears `requireEvidence` (keeps every data-quality refusal). `"custom"` bands with your own `blockOn`/`warnOn` **and switches the staleness/degraded gates off**. |
 | `requireEvidence` | — | Evidence floors for `policy: "evidence"`: `minL1Deliveries`, `minL1DistinctBuyers`, `minX402Payments`, `minDistinctPayers`. Required by that policy, rejected under any other, and needs `scoreSource: "payee"`. |
 | `blockOn` | `["BLOCK"]` | Recommendations that block. Requires `policy: "custom"` (rejected otherwise, never silently ignored). |

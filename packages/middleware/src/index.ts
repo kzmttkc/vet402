@@ -18,6 +18,7 @@ export {
   type GatePolicy,
   type Recommendation,
   type ScoreSource,
+  type DecisionSource,
   type FailMode,
   type X402PaymentAttestation,
 } from "./core.js";
