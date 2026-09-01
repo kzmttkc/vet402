@@ -28,11 +28,43 @@ import { logServerError } from "@/lib/util/log";
 // with machine-readable blockers, which is the honest current answer.
 // ============================================================
 
+/**
+ * 2026-09-01 監査: このルートは GET しか輸出しておらず、他メソッドは Next.js の
+ * 既定 405 を返していた。405 は「このパスにルートは在るが、そのメソッドは不可」
+ * の意味なので、**フラグが OFF でも実在が判る**——上のコメントが宣言している
+ * 「存在しないかのように 404」が、GET でしか成立していなかった。
+ *
+ * 実測（2026-09-01 本番）:
+ *   GET  /api/v1/guarantee/quote → 404
+ *   POST /api/v1/guarantee/quote → 405   ← 実在が漏れる
+ *   実在しないパス（/api/[...unmatched]）→ 全メソッド 404
+ *
+ * OFF のときは**どのメソッドでも 404**にして、実在しないパスと区別がつかない
+ * 状態に揃える。ON のときは従来どおり GET だけが通り、他は 405（機能が公開
+ * された後なら、メソッド違いを 405 で正直に言うのが正しい）。
+ */
+function disabled404(): NextResponse {
+  return NextResponse.json({ error: "not_found" }, { status: 404 });
+}
+
+/** OFF なら 404、ON なら 405。ON 時のメソッド不一致は隠す理由がない。 */
+function methodNotAllowedOrHidden(): NextResponse {
+  if (!isGuaranteeUnderwritingEnabled()) return disabled404();
+  return NextResponse.json({ error: "method_not_allowed" }, { status: 405 });
+}
+
+export const POST = methodNotAllowedOrHidden;
+export const PUT = methodNotAllowedOrHidden;
+export const PATCH = methodNotAllowedOrHidden;
+export const DELETE = methodNotAllowedOrHidden;
+export const HEAD = methodNotAllowedOrHidden;
+export const OPTIONS = methodNotAllowedOrHidden;
+
 export async function GET(request: NextRequest) {
   // Gate FIRST, before auth even runs: a disabled feature reveals nothing,
   // not even whether a valid key would have worked.
   if (!isGuaranteeUnderwritingEnabled()) {
-    return NextResponse.json({ error: "not_found" }, { status: 404 });
+    return disabled404();
   }
 
   const auth = await authenticateApiRequest(request);

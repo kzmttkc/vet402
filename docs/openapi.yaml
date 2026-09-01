@@ -89,9 +89,15 @@ tags:
 #
 # Deliberately absent, and not an oversight:
 #   - /api/v1/guarantee/quote — gated behind GUARANTEE_UNDERWRITING_ENABLED and
-#     404s when off. A dormant financial product must not be discoverable or
-#     quotable, so it is not advertised until the business + legal decision
-#     lands. Document it in the same release that turns it on.
+#     404s when off, for EVERY method (2026-09-01: it previously 404'd only on
+#     GET, so a POST got Next's default 405 and that 405 revealed the route
+#     existed). It is not in `paths:` because a dormant financial product must
+#     not be QUOTABLE or implied to be purchasable.
+#     Stated plainly, because this comment is public and names it: listing it
+#     here is not concealment, it is the opposite — the omission from `paths:`
+#     is disclosed rather than silent. What must never happen is the endpoint
+#     answering, or a reader believing coverage can be bought today. It cannot.
+#     Document it properly in the same release that turns it on.
 #   - /api/admin/*, /api/cron/*, /api/billing/*, /api/dashboard/*, /api/signup —
 #     the site's own internals (admin token, cron secret, or dashboard session),
 #     not an interface anyone integrates against.
