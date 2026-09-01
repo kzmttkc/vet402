@@ -128,10 +128,47 @@ vet402 自身の L1 購入は `test` 扱いである（§7.2 の wash_flag に�
 
 ---
 
-## 5. 追記欄（9/2 リリース後に埋める）
+## 5. 追記欄（2026-09-02 09:30 JST・リリース後の実測）
 
-- [ ] C1 再実行の結果（5ケース）
-- [ ] `signals.receiving` のフィールドが維持されたか
-- [ ] ALLOW が出るようになったか（出るなら動画の対比をどう作り直すか）
-- [ ] 公開数字の定義（実需 / 生値）
-- [ ] 買い手モードが 9/2 に入っていないことの確認
+リリース: `spec-1-2` ブランチ 19 コミットを main へ ff（`b7ed023..d3213e8`）。計画は
+`docs/superpowers/plans/2026-09-02-spec-1-2.md`。本番 DB は加算的 DDL を明示 SQL で当てた
+（drizzle-kit push は既存 `job_leases` の改名確認で非対話環境では止まる）。
+
+- [x] **`signals.receiving` のフィールド**: 触っていない（`payee-engine.ts` は無変更・
+  `tests/openapi-schema-parity.test.ts` の PayeeSignals.receiving 一覧が同一のまま通過）。
+- [x] **ALLOW が出るようになったか**: 規則上は出る（`decidePayer`: l0 pass ∧ n_delivered ≥ 1 ∧
+  l2 ≠ mismatch）。ただし本番の実測では、リリース直後に **2 件の冤罪 BLOCK を実測して同日に直した**:
+  (1) 決済後 HTTP 4xx（我々が POST に `{}` を送った側の失敗・settled 980 件中 79 件・54 endpoint）が
+  「3 回試して届かない → BLOCK」に当たっていた → §6.2 probe_error として n_attempts から外す。
+  (2) `wash_dominated` の分母に自社の測定購入（test）が入り、測った店ほど BLOCK に近づいていた →
+  分母を第三者 raw に変更。修正後、`api.exa.ai/search` は **WARN（l0_pass / l1_not_attempted /
+  l2_undeclared）**。動画の対比（「既定 policy では止まり、根拠を名指しした 1 件だけ通る」）は
+  **そのまま成立する**——ALLOW には L1 の実配達（2xx・非空）が要り、現時点でそれを満たす
+  endpoint は次の L1 走査を待つ。
+- [x] **公開数字の定義**: `/api/v1/census/summary` が `settlements_raw` と `settlements_real`
+  （wash self_deal / circular / test 除外）を同じ応答で返す。初回索引の実測（30d）:
+  L1 由来 980 件（全て test）・Base チェーン索引 570 件（40,000 ブロック中 7,030 ログの一部・
+  残りは launchd の 2 時間ごとの索引で持ち越し）・Solana 20 件。**我々の測定実績（2,018 試行 /
+  902 成立）は「vet402 が自腹で測った回数」であって「市場の実需」ではない**——台本ではこの 2 つを混ぜない。
+- [x] **買い手モードが 9/2 に入っていないこと**: `tests/acceptance-spec-1-2.test.ts`
+  「買い手モード（role=payer で送金を止める配線）が 9/2 のパッケージに存在しない」が
+  `packages/middleware/src/core.ts` と `packages/sdk/src/spend-guard.ts` を AST で走査して固定。
+  ミドルウェアは `decisionSource: "decision"` でも role は `payee` 固定。
+- [ ] **C1 再実行の結果（5 ケース）**: 未実施。9/3 のタグ前に `rehearsal-c1.md` の 5 ケースを
+  本番 API で再実行する（今回のリリースで exa が BLOCK→WARN に変わった影響を含めて）。
+
+### リリースで直した本番の欠陥（仕様と別に実測で見つかったもの）
+- L0 が v2 の `PAYMENT-REQUIRED` ヘッダを読まず **6,907 件を誤 fail**（`accepts_invalid`）。
+  修正後の C1 初回走査 2,500 件: pass 1,425 / fail 1,014 / unverified 61。fail のうち 955 は
+  `metadata_mismatch`——m2mcent の多数 endpoint で、カタログ宣言の payTo と壁が要求する payTo が
+  違う（本物の drift。L1 なら payto_mismatch で署名しない）。
+- `publishedFail = 0` の構造原因: 2 連続 fail ゲートに対し、1 endpoint 1 回しか測っていなかった
+  （11,003 件が 1 回・2 回以上は 3 件）。C1 日次 3,000 件で cadence を仕様に合わせた。
+- 台帳ハッシュ鎖の 1 日欠落（08-26）と「飛ばして連結」。`anchorThrough` が穴を埋め、後続日を
+  再計算。修正後 18 日・断絶 0（DB で lag 検証）。
+- 公開ルート 37 本に `force-dynamic` を明示。
+
+### 残る手番（私）
+- 9/3 タグ前: C1 5 ケース再実行、`/decision` の p95 を計測（§12 SLO の unmeasured 項目）。
+- `REGISTRY_OPERATOR_PRIVATE_KEY` と Base のガスが入るまで `registry.status = off`（§11 は
+  レコード形と L2 書き込み経路まで実装済み）。
