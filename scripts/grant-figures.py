@@ -19,7 +19,10 @@ DOCS = pathlib.Path(__file__).resolve().parent.parent / "docs" / "applications"
 # 歴史的な比較（「8/14→8/20の7日間は804件だった」）や他チェーンの内訳を含む文書に
 # 効かせると、累計値で上書きして事実を壊す（2026-08-29 に solana-grant-proposal.md で実際に起きた）。
 SKIP = {"solana-grant-proposal.md", "video-script.md", "ai-usage-disclosure.md",
-        "base-builder-grant-nomination.md", "octant-atlas-application.md"}
+        "base-builder-grant-nomination.md", "octant-atlas-application.md",
+        # 撮影台本。読み上げる数字は収録当日に vet402_video_numbers.py が出す。
+        # ここの数字は例示なので本番値へ書き換えない（書き換えると台本が嘘の数字を固定する）。
+        "base-batches-004-video.md"}
 
 
 def fetch():
