@@ -22,6 +22,29 @@
 **スコアは今日、事実上1値しか返していない。** それを支払いゲートに使う設計は、
 「BLOCKだから止めた」も「ALLOWだから払った」も撮れない。会期前に分かってよかった。
 
+## 1.5 判定源の変更（2026-09-02・製品定義書 v1.0 リリース後）
+
+設計時（8/25）は「スコアが誰にでも WARN しか返さない」ことが前提だった。9/2 のリリースで
+**`GET /resources/{id}/decision?role=payer` が正典**になり、facts と recommendation を同居させて返す。
+実測（[`fixtures.md`](./fixtures.md) §7）:
+
+- 実際に買って届いた相手 → **ALLOW**（`l0_pass, l1_delivered`・facts に tx 付き）
+- 一度も測っていない相手 → **BLOCK**（`l0_unverified, l1_not_attempted`・degraded）
+
+したがって `payOrRefuse` が読むのは**スコアの `signals.receiving` ではなく `/decision`**。
+これは会期中の新規である「§9.3 買い手モード」そのものであり、9/4 まで実装しない。
+
+```ts
+payOrRefuse({ payee, resource, amountUsd, account, policy })
+// 1. GET /resources/{id}/decision?role=payer   ← 事実と判定を1回で取る
+// 2. policy を当てる（既定は allow_only。ALLOW 以外は払わない）
+// 3. 通らなければ **署名に到達しない**。理由はサーバの reason_codes をそのまま返す
+// 4. 通ったときだけ signer を渡し、x402 exact → attest
+```
+
+**拒否は policy 側で作る。** サーバの verdict が BLOCK から WARN へ流れても
+（拒む相手が C1 で測られれば起きる）、`allow_only` なら絵は壊れない。
+
 ## 2. 決定
 
 動詞は増やさない。`payOrRefuse` を**呼び手が明示する policy で判定する**形にする。

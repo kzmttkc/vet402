@@ -156,3 +156,27 @@ evidence policy の `insufficient_delivery_evidence`。誰も断罪せず、方�
 
 撮影前（09-04 / 09-09 / 09-12）に、この2本がまだ 0 件のままかを再確認する
 （L1 が買い始めたら証拠が付いてしまい、拒否の絵にならない）。
+
+
+## 7. 2026-09-02（製品定義書 v1.0 リリース後）の再測——**判定源が変わった**
+
+リリースで `/decision` が正典になった（スコアAPIは deprecated 併記の互換層）。同じ2件を両方で測った。
+
+| 相手 | 旧 `GET /payees/{addr}/score` | 新 `GET /resources/{id}/decision?role=payer` |
+|---|---|---|
+| kronossignals（払う側） | **69 WARN** / thin（`l1DeliveryCount: 64`） | **ALLOW** — `l0_pass, l1_delivered, l2_undeclared`。facts に L1 3/3・p50 2,304ms・tx 付き |
+| agent.api.0x.org（拒む側） | **69 WARN** / thin（`l1DeliveryCount: 0`） | **BLOCK** — `l0_unverified, l1_not_attempted, l2_undeclared`・degraded true |
+
+**C1 リハーサル（スコア経路・[`rehearsal-c1.md`](./rehearsal-c1.md)）は5ケースとも 8/29 と同一。**
+`signals.receiving` のフィールドは維持された（リリース条件1は守られた）。
+
+### ここから出る3つの帰結
+
+1. **デモは `/decision` を使う。** 自社の新旧2つのAPIが同じ相手に WARN と ALLOW を返す状態で、
+   古い方を画に映すと審査で「どちらが本当か」を聞かれる。**正典を映す。**
+2. **拒否の理由がさらに良くなった。** `l1_not_attempted`（＝我々がまだ買っていない）と
+   `l0_unverified`（＝まだ見ていない）。**相手の不履行ではなく我々の無知**という言い方が、
+   API の理由コードそのもので裏づけられる。
+3. **拒否側は BLOCK → WARN に流れる。** C1 が日次 3,000件を回すので、この相手も近く L0 pass になる。
+   そうすると §8.3 では「L1 未実施 → WARN」。**だからデモの拒否は「サーバの verdict が BLOCK だから」ではなく
+   「呼び手の policy が ALLOW 以外を通さないから」で組む。** WARN でも BLOCK でも絵が壊れない。
