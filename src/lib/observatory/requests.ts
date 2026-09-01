@@ -156,6 +156,7 @@ export async function drainVerificationRequests(
         endpointId: String(r.endpoint_id),
         method: probe.method,
         verdict: probe.verdict,
+        dialect: probe.dialect,
         httpStatus: probe.httpStatus,
         acceptsValid: probe.acceptsValid,
         priceConsistent: probe.priceConsistent,

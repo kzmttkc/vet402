@@ -613,6 +613,8 @@ export const x402L0Probes = pgTable(
     method: text("method").notNull(),
     /** pass | fail | unverified. Fail-closed points TOWARD unverified: no proof ≠ dead. */
     verdict: text("verdict").notNull(),
+    /** v1 | v2 | both | unpayable | NULL（402 以外・到達不能）。§5「方言差は観測属性に持つ」。 */
+    dialect: text("dialect"),
     httpStatus: integer("http_status"),
     has402Challenge: boolean("has_402_challenge"),
     acceptsValid: boolean("accepts_valid"),

@@ -61,17 +61,21 @@ function respond(status: number, body: string) {
     new Response(body, { status, headers: { "content-type": "application/json" } });
 }
 
-test("undeclared method → unverified and NO request is sent (never guess)", async () => {
-  let called = 0;
+// 2026-09-02 製品定義書 §6.1: 「GET および、掲載が POST のみなら POST」。宣言の無い
+// Resource は GET で測る（それ以前は「推測しない」として unverified・無送信だった）。
+// GET は x402 の壁に対して副作用の無い最小の問い合わせであり、#3113 が守っていた
+// 「宣言に無い POST を撃たない」はそのまま保たれる。
+test("undeclared method → probed with GET (§6.1), never POST", async () => {
+  let seen: string | undefined;
   const result = await probeEndpoint(target({ method: null }), {
-    fetchImpl: async () => {
-      called++;
-      return new Response("", { status: 402 });
+    fetchImpl: async (_url, init) => {
+      seen = init?.method;
+      return new Response("", { status: 500 });
     },
   });
-  assert.equal(result.verdict, "unverified");
-  assert.equal(result.failReason, "method_undeclared");
-  assert.equal(called, 0);
+  assert.equal(seen, "GET");
+  assert.equal(result.method, "GET");
+  assert.equal(result.failReason, "no_402");
 });
 
 test("a POST-declared endpoint is probed with POST — the #3113 regression test", async () => {
@@ -139,7 +143,9 @@ test("network failures map to factual reason codes", async () => {
       });
     },
   });
-  assert.equal(tls.verdict, "fail");
+  // 2026-09-02 製品定義書 §6.1: 「TLSエラー、地理ブロック、レート制限で判定不能なら
+  // unverified」。到達不能（dns / timeout）は fail のまま——壁に届いていない。
+  assert.equal(tls.verdict, "unverified");
   assert.equal(tls.failReason, "tls");
 
   const timeout = await probeEndpoint(target(), {

@@ -88,12 +88,14 @@ if (!TEST_DB) {
       assert.ok(fresh.length >= 1);
     });
 
-    await t.test("undeclared-method endpoint got an unverified row without any request", async () => {
+    // 2026-09-02 製品定義書 §6.1: 宣言の無い Resource は GET で測る（以前は無送信で
+    // unverified）。行は普通の測定行として残り、method 列に GET が記録される。
+    await t.test("undeclared-method endpoint is probed with GET (§6.1) and gets a measured row", async () => {
       const rows = await db.select().from(schema.x402L0Probes);
-      const unverified = rows.filter((r) => r.verdict === "unverified");
-      assert.equal(unverified.length, 1);
-      assert.equal(unverified[0].failReason, "method_undeclared");
-      assert.ok(!probedUrls.some((u) => u.includes("nodecl.example")));
+      assert.equal(rows.filter((r) => r.failReason === "method_undeclared").length, 0);
+      assert.ok(probedUrls.some((u) => u.includes("nodecl.example")));
+      const nodecl = rows.find((r) => r.method === "GET" && r.verdict === "pass");
+      assert.ok(nodecl, "GET で測った pass 行がある");
     });
 
     await t.test("pass rows carry the evidence fields", async () => {

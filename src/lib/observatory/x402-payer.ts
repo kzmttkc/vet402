@@ -111,7 +111,12 @@ function normalizeNetwork(network: unknown): string {
   return network;
 }
 
-function normalizeAccept(raw: unknown): ChallengeAccept | null {
+/**
+ * @param lenient L0 用。§6.1 の合格条件は「amount / asset / network / payTo が
+ *   機械可読」であり scheme を要求しない。scheme 欠落は "exact" とみなす。
+ *   L1（実際に署名する経路）は厳格のまま——scheme を推測して払わない。
+ */
+function normalizeAccept(raw: unknown, lenient = false): ChallengeAccept | null {
   const rec = asRecord(raw);
   if (!rec) return null;
   const amount =
@@ -120,14 +125,18 @@ function normalizeAccept(raw: unknown): ChallengeAccept | null {
       : typeof rec.maxAmountRequired === "string"
         ? rec.maxAmountRequired // v1 field name
         : null;
-  if (!amount || typeof rec.scheme !== "string" || typeof rec.payTo !== "string") return null;
+  // `recipient` は一部の壁が payTo の別名として使う（L0 の旧パーサが受けていた）。
+  const payTo =
+    typeof rec.payTo === "string" ? rec.payTo : typeof rec.recipient === "string" ? rec.recipient : null;
+  const scheme = typeof rec.scheme === "string" ? rec.scheme : lenient ? "exact" : null;
+  if (!amount || !scheme || !payTo) return null;
   if (typeof rec.asset !== "string") return null;
   return {
-    scheme: rec.scheme,
+    scheme,
     network: normalizeNetwork(rec.network),
     amount,
     asset: rec.asset,
-    payTo: rec.payTo,
+    payTo,
     maxTimeoutSeconds: typeof rec.maxTimeoutSeconds === "number" ? rec.maxTimeoutSeconds : undefined,
     extra: asRecord(rec.extra) ?? undefined,
   };
@@ -138,10 +147,13 @@ function normalizeAccept(raw: unknown): ChallengeAccept | null {
  * (transport spec), then the JSON body (what most live sellers actually send,
  * v1 and v2 alike — verified against live Bazaar endpoints during L0).
  */
-export function parseChallenge(input: {
-  bodyText: string;
-  headers: Headers;
-}): ParsedChallenge | null {
+export function parseChallenge(
+  input: {
+    bodyText: string;
+    headers: Headers;
+  },
+  options: { lenient?: boolean } = {},
+): ParsedChallenge | null {
   const candidates: unknown[] = [];
 
   const headerB64 = input.headers.get("PAYMENT-REQUIRED");
@@ -165,7 +177,7 @@ export function parseChallenge(input: {
     if (!rec || !Array.isArray(rec.accepts)) continue;
     const version = rec.x402Version === 1 ? 1 : 2;
     const accepts = rec.accepts
-      .map(normalizeAccept)
+      .map((a) => normalizeAccept(a, options.lenient === true))
       .filter((a): a is ChallengeAccept => a !== null);
     if (accepts.length > 0) return { x402Version: version, accepts };
   }
@@ -205,7 +217,7 @@ export function selectAccept(
   options: { declaredAmount: string | null; declaredPayTo: string | null },
 ): AcceptSelection {
   const protocolEligible = accepts
-    .map(normalizeAccept)
+    .map((a) => normalizeAccept(a)) // 厳格（lenient=false）——ここは署名する経路
     .filter((a): a is ChallengeAccept => a !== null)
     .filter((a) => a.scheme === "exact")
     .filter((a) => a.network === BASE_CAIP2)

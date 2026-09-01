@@ -157,6 +157,7 @@ export async function submitDispute(
       endpointId: ep.id,
       method: probe.method,
       verdict: probe.verdict,
+      dialect: probe.dialect,
       httpStatus: probe.httpStatus,
       acceptsValid: probe.acceptsValid,
       priceConsistent: probe.priceConsistent,

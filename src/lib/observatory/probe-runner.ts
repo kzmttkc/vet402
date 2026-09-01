@@ -96,6 +96,7 @@ export async function runL0ProbeBatch(
         endpointId: c.id,
         method: result.method,
         verdict: result.verdict,
+        dialect: result.dialect,
         httpStatus: result.httpStatus,
         has402Challenge: result.has402Challenge,
         acceptsValid: result.acceptsValid,

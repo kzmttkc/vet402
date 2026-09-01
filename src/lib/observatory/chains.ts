@@ -36,6 +36,21 @@ export function chainLabel(network: unknown): string {
   return network;
 }
 
+/**
+ * カタログ・封筒双方に残る v1 スラグを CAIP-2 に寄せる（§5「方言差は観測属性に
+ * 持つ」——ネットワークの同一性は表記で変わらない）。未知の値はそのまま返す。
+ */
+export function toCaip2(network: unknown): string | null {
+  if (typeof network !== "string" || network === "") return null;
+  const key = network.toLowerCase();
+  if (key === "base") return "eip155:8453";
+  if (key === "base-sepolia") return "eip155:84532";
+  if (key === "polygon") return "eip155:137";
+  if (key === "solana" || key === "solana-mainnet") return `solana:${SOLANA_MAINNET_GENESIS}`;
+  if (key === "solana-devnet") return "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
+  return network;
+}
+
 export function isTestnet(network: unknown): boolean {
   return TESTNET_LABELS.has(chainLabel(network));
 }
