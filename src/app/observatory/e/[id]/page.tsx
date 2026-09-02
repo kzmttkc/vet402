@@ -282,7 +282,12 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
                           ビルドキャッシュがグローバル CSS の変更だけを落とす事故（2026-08-12・
                           2026-09-02 再発）を避け、ユーティリティで当てる。 */}
                       <tr>
-                        <td className="whitespace-nowrap border-b-0 pb-0.5">{fmt(p.attemptedAt)}</td>
+                        {/* 375px では "2026-09-01 12:07 UTC"（20 文字）が受領証列を画面外に押し出す。
+                            モバイルは月日と時刻だけ（年と UTC は 1 段目の見出しと doc-head が持つ）。 */}
+                        <td className="whitespace-nowrap border-b-0 pb-0.5">
+                          <span className="sm:hidden">{fmt(p.attemptedAt).slice(5, 16)}</span>
+                          <span className="hidden sm:inline">{fmt(p.attemptedAt)}</span>
+                        </td>
                         <td className="border-b-0 pb-0.5">{p.status}</td>
                         <td className="whitespace-nowrap border-b-0 pb-0.5">
                           {p.txHash ? (
