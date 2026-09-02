@@ -21,45 +21,58 @@
 import Link from "next/link";
 import { Wordmark } from "@/components/site/Wordmark";
 
-const INDEX_LINKS = [
-  { label: "Observatory", href: "/observatory" },
-  { label: "State of x402", href: "/observatory/state" },
-  { label: "Status", href: "/status" },
-  { label: "Verify a payee", href: "/payee" },
-  { label: "Measured accuracy", href: "/accuracy" },
-  { label: "API reference", href: "/docs/api" },
-  // 2026-08-06 (JS-disabled persona audit): /accuracy and /leaderboard were
-  // reachable only through the header nav, which is `hidden md:flex` — below
-  // 768px it is display:none and the hamburger that replaces it needs
-  // JavaScript. The footer is server-rendered and always visible, so it is the
-  // right home for them.
-  { label: "Leaderboard", href: "/leaderboard" },
-  // 2026-08-13 UX監査R1 [C8]: LP §3.3 と llms.txt が「Corrections are logged
-  // publicly」と約束していた帳簿。索引に載っていなければ約束の半分しか
-  // 果たしていない。
-  { label: "Corrections", href: "/corrections" },
-  // 2026-08-14: the public operator-override log (credible-neutrality blocker).
-  // A censorship ledger nobody can find is not a check on censorship.
-  { label: "Operator log", href: "/operator-log" },
-  { label: "FAQ", href: "/faq" },
-  { label: "Blog", href: "/blog" },
+// 2026-09-02 Takeshi「フッターのバランスが悪い。本当に必要なものだけ残し、配置と内容を最適化」。
+// それまでは Index 11 / Operator 6 / Cite 2 の 3 列で、左だけが長い索引だった。
+// 3 列を「測定の記録 / 使う / 会社」に組み直して 5 / 4 / 4 に揃え、法務と機械向けは
+// 1 行の小さな列に落とす（読者の次の一手ではないが、無いと約束を破る）。
+// 落としたもの: Leaderboard と Measured accuracy（ヘッダの副ナビと LP §4 から到達できる。
+// /accuracy は 2026-09-02 時点で 3 表とも 0 件で、奥付から誘導する先ではない）。
+// 足したもの: Impact ledger と Decisions（監査で inbound が LP の 1 本だけと判明。
+// 審査員が見る実購買の証拠ページが索引に無いのは、索引の役目を果たしていない）。
+const COLUMNS: { caption: string; label: string; links: { label: string; href: string }[] }[] = [
+  {
+    caption: "Measurements",
+    label: "Measurement records",
+    links: [
+      { label: "Observatory", href: "/observatory" },
+      { label: "State of x402", href: "/observatory/state" },
+      { label: "Impact ledger", href: "/impact" },
+      { label: "Decisions", href: "/decisions" },
+      // 2026-08-13 UX監査R1 [C8]: 「Corrections are logged publicly」の約束の帳簿。
+      { label: "Corrections", href: "/corrections" },
+    ],
+  },
+  {
+    caption: "Use",
+    label: "Use vet402",
+    links: [
+      { label: "API reference", href: "/docs/api" },
+      { label: "Get an API key", href: "/signup" },
+      { label: "Dashboard", href: "/dashboard" },
+      { label: "Verify a payee", href: "/payee" },
+    ],
+  },
+  {
+    caption: "About",
+    label: "About vet402",
+    links: [
+      { label: "FAQ", href: "/faq" },
+      { label: "Blog", href: "/blog" },
+      { label: "Status", href: "/status" },
+      // 2026-08-14: 公開の運営者介入ログ（credible-neutrality の担保）。
+      { label: "Operator log", href: "/operator-log" },
+    ],
+  },
 ];
 
-// Machine-citation files. Humans pick tasks from Index / Operator; crawlers
-// and answer engines still need a crawlable link, but those files are not
-// a next step for a first-time reader.
-const CITE_LINKS = [
-  { label: "Blog RSS", href: "/blog/rss.xml" },
-  { label: "llms.txt", href: "/llms.txt" },
-];
-
-const OPERATOR_LINKS = [
-  { label: "Get an API key", href: "/signup" },
-  { label: "Dashboard", href: "/dashboard" },
-  { label: "Terms of Service", href: "/legal/terms" },
-  { label: "Privacy Policy", href: "/legal/privacy" },
-  { label: "Legal Notice", href: "/legal/notice" },
+// 法務と機械向け。約束として要るが、初見の読者の次の一手ではないので 1 行に落とす。
+const SMALL_PRINT_LINKS = [
+  { label: "Terms", href: "/legal/terms" },
+  { label: "Privacy", href: "/legal/privacy" },
+  { label: "Legal notice", href: "/legal/notice" },
   { label: "Contact", href: "/legal/notice#contact" },
+  { label: "RSS", href: "/blog/rss.xml" },
+  { label: "llms.txt", href: "/llms.txt" },
 ];
 
 export function SiteFooter() {
@@ -79,65 +92,43 @@ export function SiteFooter() {
           <span>[Page 1]</span>
         </div>
 
-        <div className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-          <nav aria-label="Document index">
-            <p className="doc-caption">Index</p>
-            {/* 2026-08-14: 索引/奥付の文字を 13px → 14px。AA は 13px でも
-                達していたが「小さくて疲れる」という所見に応えて 1px 上げる。 */}
-            <ul className="mt-4 space-y-2 text-sm">
-              {INDEX_LINKS.map((item) => (
-                <li key={item.href}>
-                  <Link href={item.href} className="text-brand hover:text-brand-deep">
-                    {item.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </nav>
-
-          <nav aria-label="Legal and operator information">
-            <p className="doc-caption">Operator</p>
-            <ul className="mt-4 space-y-2 text-sm">
-              {OPERATOR_LINKS.map((item) => (
-                <li key={item.href}>
-                  <Link href={item.href} className="text-brand hover:text-brand-deep">
-                    {item.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </nav>
-
-          <nav aria-label="Machine-readable citations">
-            <p className="doc-caption">Cite</p>
-            <ul className="mt-4 space-y-2 text-sm">
-              {CITE_LINKS.map((item) => (
-                <li key={item.href}>
-                  <Link href={item.href} className="text-brand hover:text-brand-deep">
-                    {item.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </nav>
+        {/* 3 列 5/4/4。640px 未満は 1 列に積む（2 列だと 3 列目が孤立して段が崩れる）。 */}
+        <div className="mt-10 grid gap-8 sm:grid-cols-3">
+          {COLUMNS.map((col) => (
+            <nav key={col.caption} aria-label={col.label}>
+              <p className="doc-caption">{col.caption}</p>
+              <ul className="mt-4 space-y-2 text-sm">
+                {col.links.map((item) => (
+                  <li key={item.href}>
+                    <Link href={item.href} className="text-brand hover:text-brand-deep">
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          ))}
         </div>
 
-        {/* 2026-08-14: 免責と奥付を 12px → 13px。長文の免責が一番小さい字だった
-            ので、疲労所見に合わせて 1px 上げる（AA は据え置きで達成）。 */}
-        <p className="mt-10 max-w-[72ch] text-[0.8125rem] leading-relaxed text-brand-lift">
-          vet402 is offered for B2B API use by agent and service operators. Verification results and
-          scores are informational only and do not constitute a guarantee, credit assessment, or
-          legal certification.
+        <nav aria-label="Legal and machine-readable" className="mt-10 border-t border-hair pt-5">
+          <ul className="flex flex-wrap gap-x-2 gap-y-1 text-[0.8125rem] text-brand-lift">
+            {SMALL_PRINT_LINKS.map((item, i) => (
+              <li key={item.href} className="flex items-center gap-x-2">
+                {i > 0 && <span aria-hidden="true">·</span>}
+                <Link href={item.href} className="hover:text-brand-deep">
+                  {item.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        {/* 免責は 1 文。奥付の責任主体（KIZUNA Creation）だけ本文色で読み取りやすく。 */}
+        <p className="mt-5 max-w-[72ch] text-[0.8125rem] leading-relaxed text-brand-lift">
+          © {year} vet402 (<span className="text-brand">KIZUNA Creation</span>). Results are
+          measurements offered for B2B API use — not a guarantee, credit assessment, or legal
+          certification.
         </p>
-
-        {/* 2026-08-14: 運営者名の視認性を少し上げる。行を 13px にし、社名だけは
-            本文色（brand・地に対し高コントラスト）で置く。奥付そのものは薄い
-            まま、責任主体の名前だけを読み取りやすくする。 */}
-        <div className="mt-6 border-t border-hair pt-5 text-[0.8125rem] text-brand-lift">
-          <p>
-            © {year} vet402 (<span className="text-brand">KIZUNA Creation</span>)
-          </p>
-        </div>
       </div>
     </footer>
   );
