@@ -88,7 +88,7 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
   const lastProbedAt = probes[0]?.probedAt ?? null;
   const lastProbed =
     lastProbedAt && detail.lastProbedAgeDays !== null
-      ? `${lastProbedAt.toISOString().slice(0, 10)} · ${detail.lastProbedAgeDays} days ago`
+      ? `${lastProbedAt.toISOString().slice(0, 10)} · ${detail.lastProbedAgeDays === 0 ? "today" : detail.lastProbedAgeDays === 1 ? "1 day ago" : `${detail.lastProbedAgeDays} days ago`}`
       : "never";
   const usd = (units: string | null) => {
     if (!units || !/^\d+$/.test(units)) return null;
