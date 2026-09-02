@@ -35,7 +35,7 @@ export const FAQS: FaqItem[] = [
   {
     question: "Who is vet402 for — agents, or the providers agents pay?",
     answer:
-      "Primarily x402 API providers and platforms that accept payment from agents they've never seen before, and need a signal before completing the request. It's equally useful the other direction: an agent that is about to pay an unfamiliar wallet can check that payee's score first. The API doesn't assume which side of the transaction is calling it.",
+      "Primarily the agent developer who is about to pay an x402 endpoint and wants to know, before the money moves, whether that endpoint actually settles and delivers — the observatory's L0/L1/L2 facts and the decision API exist for that call. The other direction is served too: an x402 API provider that accepts payment from agents it has never seen can check the payer's score first. The API doesn't assume which side of the transaction is calling it.",
   },
   {
     question: "Is there an established competitor doing this already?",
@@ -50,7 +50,7 @@ export const FAQS: FaqItem[] = [
   {
     question: "Which chain does vet402 support?",
     answer:
-      "Scoring (the 0–100 ALLOW / WARN / BLOCK API) reads wallet and ERC-8004 signals from Base mainnet; an unknown or disabled chain on that API is a 400, never a silent fallback. The observatory is a separate system: L0 probes run across every chain in the public x402 discovery catalog, and /observatory/state reports the per-chain breakdown. L1 purchases are Base-only for now.",
+      "Scoring (the 0–100 ALLOW / WARN / BLOCK API) reads wallet and ERC-8004 signals from Base mainnet; an unknown or disabled chain on that API is a 400, never a silent fallback. The observatory is a separate system: L0 probes run across every chain in the public x402 discovery catalog, and /observatory/state reports the per-chain breakdown. L1 purchases run on Base and on Solana; only Base settlements are re-read on-chain today, so a Solana purchase can reach settle_claimed but not settled.",
   },
   {
     question: "What is the difference between the observatory and a score?",
