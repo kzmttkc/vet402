@@ -268,13 +268,16 @@ export default async function ObservatoryStatePage() {
           <p className="doc-p text-brand-lift">No chain data yet.</p>
         ) : (
           <TableScroll label="State of x402 by chain">
-            <table className="fact-table">
+            {/* 2026-09-02 デザイン監査 P1: 390px で数値列が 1 つも見えなかった。先頭列は
+                TableScroll が sticky にする。ここでは列間を 0.75rem に詰め、見出しを
+                短くして、Chain + Endpoints + Listed が 358px の紙面に入るようにする。 */}
+            <table className="fact-table [&_td]:pr-3 [&_th]:pr-3">
               <caption className="sr-only">State of x402 by chain</caption>
               <thead>
                 <tr>
                   <th scope="col">Chain</th>
                   <th scope="col" className="num">
-                    Endpoints
+                    <abbr title="Endpoints on record" className="no-underline">n</abbr>
                   </th>
                   <th scope="col" className="num">
                     Listed
