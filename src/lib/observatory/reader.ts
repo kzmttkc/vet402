@@ -36,6 +36,10 @@ export type ObservatoryListRow = {
   publishedVerdict: "pass" | "fail" | "unverified";
   lastProbedAt: Date | null;
   qualityCalls30d: number | null;
+  /** L1 paid attempts that settled with a receipt (PAID_ATTEMPT_STATUSES denominator). 0 when never purchased. */
+  l1Settled: number;
+  /** L1 paid attempts (same denominator as the endpoint page and State of x402). */
+  l1Attempts: number;
 };
 
 export type ObservatoryOverview = {
@@ -99,6 +103,7 @@ export async function getObservatoryOverview(
   const q = options.q ?? null;
   const network = options.network ?? null;
   const verdict = (options.verdict ?? null) as ObservatoryVerdict | null;
+  const onlyReceipts = options.l1 === true;
   const db = getDb();
   const empty: ObservatoryOverview = {
     rows: [],
@@ -127,6 +132,19 @@ export async function getObservatoryOverview(
           ) = ${verdict}`
         : sql``
     }
+    ${onlyReceipts ? sql`AND COALESCE(l1.l1_settled, 0) >= 1` : sql``}
+  `;
+
+  // 2026-09-02 導線監査 F2: 受領証つきの行がどれか一覧から分からなかった。endpoint ごとの
+  // L1 を同じ分母（PAID_ATTEMPT_STATUSES）で数える——endpoint 頁・State of x402 と食い違わない。
+  const l1Lateral = sql`
+    LEFT JOIN LATERAL (
+      SELECT count(*) FILTER (WHERE p.status = 'settled')::int AS l1_settled,
+             count(*)::int AS l1_attempts
+      FROM x402_l1_purchases p
+      WHERE p.endpoint_id = e.id
+        AND p.status IN (${sql.join(PAID_ATTEMPT_STATUSES.map((st) => sql`${st}`), sql`, `)})
+    ) l1 ON true
   `;
 
   const lateral = sql`
@@ -146,6 +164,7 @@ export async function getObservatoryOverview(
       SELECT count(*)::int AS n
       FROM x402_endpoints e
       ${lateral}
+      ${l1Lateral}
       WHERE true
       ${filters}
     `);
@@ -159,15 +178,19 @@ export async function getObservatoryOverview(
       SELECT e.id, e.resource_key, e.network, e.method, e.status,
              e.quality_calls_30d,
              lp.verdicts AS verdicts,
-             lp.last_probed_at AS last_probed_at
+             lp.last_probed_at AS last_probed_at,
+             COALESCE(l1.l1_settled, 0) AS l1_settled,
+             COALESCE(l1.l1_attempts, 0) AS l1_attempts
       FROM x402_endpoints e
       ${lateral}
+      ${l1Lateral}
       WHERE true
       ${filters}
       -- 2026-09-02 UX 監査: 既定表示（呼出量順）は上位 20 行が全部 unverified で、初見の人が
       -- 「測れていない製品」と読んだ。測定済み（pass / fail）を先に並べ、その中を呼出量順にする。
       -- verdict で絞っているときは元の並び（全行同じ判定なので同じ結果）。
-      ORDER BY (
+      -- 2026-09-02 導線監査 F2: その前に受領証あり（L1 settled ≥ 1）を置く。
+      ORDER BY (CASE WHEN COALESCE(l1.l1_settled, 0) >= 1 THEN 0 ELSE 1 END) ASC, (
         CASE
           WHEN (lp.verdicts)[1] = 'pass' THEN 0
           WHEN (
@@ -196,6 +219,8 @@ export async function getObservatoryOverview(
         r.quality_calls_30d === null || r.quality_calls_30d === undefined
           ? null
           : Number(r.quality_calls_30d),
+      l1Settled: Number(r.l1_settled ?? 0),
+      l1Attempts: Number(r.l1_attempts ?? 0),
     }));
 
     const [snap] = await db

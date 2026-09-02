@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseObservatorySearchParams } from "@/lib/observatory/query";
+import { parseObservatorySearchParams, observatoryHref } from "@/lib/observatory/query";
 
 test("defaults are page 1, pageSize 40, no filters", () => {
   assert.deepEqual(parseObservatorySearchParams({}), {
@@ -9,6 +9,7 @@ test("defaults are page 1, pageSize 40, no filters", () => {
     q: null,
     verdict: null,
     network: null,
+    l1: false,
   });
 });
 
@@ -35,4 +36,23 @@ test("verdict only accepts the closed vocabulary", () => {
 test("network is a short token, not a query fragment", () => {
   assert.equal(parseObservatorySearchParams({ network: "eip155:8453" }).network, "eip155:8453");
   assert.equal(parseObservatorySearchParams({ network: "base'; drop" }).network, null);
+});
+
+// 2026-09-02 導線監査 F2: 受領証あり（L1 settled ≥ 1）に絞る ?l1=1。
+test("l1 defaults to false and only `1` turns it on", () => {
+  assert.equal(parseObservatorySearchParams({}).l1, false);
+  assert.equal(parseObservatorySearchParams({ l1: "1" }).l1, true);
+  assert.equal(parseObservatorySearchParams({ l1: "0" }).l1, false);
+  assert.equal(parseObservatorySearchParams({ l1: "true" }).l1, false);
+});
+
+test("observatoryHref round-trips every filter and omits defaults", () => {
+  const base = parseObservatorySearchParams({});
+  assert.equal(observatoryHref(base, 1), "/observatory");
+  assert.equal(observatoryHref(base, 3), "/observatory?page=3");
+  assert.equal(
+    observatoryHref({ ...base, q: "exa", verdict: "pass", network: "eip155:8453", l1: true }, 2),
+    "/observatory?page=2&q=exa&verdict=pass&network=eip155%3A8453&l1=1",
+  );
+  assert.equal(observatoryHref({ ...base, l1: false }, 1), "/observatory");
 });
