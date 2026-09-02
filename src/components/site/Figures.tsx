@@ -12,7 +12,7 @@
  * すべて SVG の属性で描く（CSS 変更なし。Turbopack のグローバル CSS 事故を避ける）。
  */
 import type { ReactNode } from "react";
-import { shareSegments, gaugeCells, timelinePositions, funnelWidths } from "@/lib/figures/share";
+import { shareSegments, gaugeCells, timelinePositions, funnelWidths, timelineLanes } from "@/lib/figures/share";
 
 export type L0Verdict = "pass" | "fail" | "unverified";
 
@@ -50,7 +50,7 @@ function Figure({ n, caption, children }: { n: number; caption: ReactNode; child
   return (
     <figure className="mt-5 max-w-[var(--measure)]">
       {children}
-      <figcaption className="mt-2 text-[0.75rem] leading-relaxed text-brand-lift">
+      <figcaption className="mt-2 max-w-[72ch] text-[0.75rem] leading-relaxed text-brand-lift">
         <span className="font-[family-name:var(--font-display)] font-semibold text-brand-deep">Figure {n}.</span> {caption}
       </figcaption>
     </figure>
@@ -62,6 +62,11 @@ const VERDICT_FILL: Record<L0Verdict, string> = { pass: INK, fail: BLOCK, unveri
 /**
  * 判定の積み上げバー。/observatory の表の直上。凡例は件数チップを兼ね、
  * クリックで ?verdict= に絞る（hrefs）。
+ *
+ * 2026-09-02 デザイン監査 P2: fail 段は最小幅 1.5% を保証するので、実比 0.24% の
+ * ときは 7.5 倍に見える。塗りを斜線ハッチにして「実面積ではない」ことを形で言い、
+ * 膨らんだ段があるときだけキャプションに注記する。SVG は viewBox を使わず
+ * 幅 % で置く——viewBox を横に伸ばすとハッチが歪む。
  */
 export function VerdictShareBar({
   n,
@@ -69,23 +74,52 @@ export function VerdictShareBar({
   hrefs,
   active,
   caption,
+  legendExtra,
 }: {
   n: number;
   counts: Record<L0Verdict, number>;
   hrefs: Record<L0Verdict, string>;
   active: L0Verdict | null;
   caption: ReactNode;
+  /** 凡例の行の末尾に置く追加のリンク（/observatory の [receipts N]）。 */
+  legendExtra?: ReactNode;
 }) {
   const order: L0Verdict[] = ["pass", "fail", "unverified"];
   const segs = shareSegments(order.map((k) => ({ key: k, n: counts[k] })));
   const offsets = segs.reduce<number[]>((acc, s, i) => [...acc, (acc[i - 1] ?? 0) + (i > 0 ? segs[i - 1].widthPct : 0)], []);
+  const inflated = segs.some((s) => s.n > 0 && s.widthPct > s.pct);
+  const hatchId = `fig${n}-fail-hatch`;
   return (
-    <Figure n={n} caption={caption}>
-      <svg viewBox="0 0 100 8" preserveAspectRatio="none" width="100%" height="10" role="img" aria-label={order.map((k) => `${k} ${counts[k].toLocaleString()}`).join(", ")}>
-        <rect x="0" y="0" width="100" height="8" fill="none" stroke={INK} strokeWidth="0.3" vectorEffect="non-scaling-stroke" />
+    <Figure
+      n={n}
+      caption={
+        <>
+          {caption}
+          {inflated && <> Bars are proportional; segments under 1.5% are drawn at 1.5%.</>}
+        </>
+      }
+    >
+      <svg width="100%" height="10" role="img" aria-label={order.map((k) => `${k} ${counts[k].toLocaleString()}`).join(", ")}>
+        <defs>
+          <pattern id={hatchId} width="4" height="4" patternUnits="userSpaceOnUse">
+            <path d="M-1 1L1 -1M0 4L4 0M3 5L5 3" stroke={BLOCK} strokeWidth="1" />
+          </pattern>
+        </defs>
         {segs.map((s, i) =>
-          s.widthPct > 0 ? <rect key={s.key} x={offsets[i]} y="0" width={s.widthPct} height="8" fill={VERDICT_FILL[s.key]} /> : null,
+          s.widthPct > 0 ? (
+            <rect
+              key={s.key}
+              x={`${offsets[i]}%`}
+              y="0"
+              width={`${s.widthPct}%`}
+              height="10"
+              fill={s.key === "fail" ? `url(#${hatchId})` : VERDICT_FILL[s.key]}
+              stroke={s.key === "fail" ? BLOCK : "none"}
+              strokeWidth="1"
+            />
+          ) : null,
         )}
+        <rect x="0" y="0.5" width="100%" height="9" fill="none" stroke={INK} strokeWidth="1" />
       </svg>
       <p className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[0.8125rem]">
         {segs.map((s) => {
@@ -95,7 +129,7 @@ export function VerdictShareBar({
               key={s.key}
               href={hrefs[s.key]}
               aria-current={isActive ? "true" : undefined}
-              className={`inline-flex items-center gap-1.5 whitespace-nowrap tabular-nums ${isActive ? "text-brand-deep underline decoration-2" : "text-brand underline"}`}
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap tabular-nums underline ${isActive ? "text-brand-deep decoration-2" : "text-brand hover:text-brand-deep hover:decoration-2"}`}
             >
               <VerdictMark verdict={s.key} />
               {s.key} {s.n.toLocaleString()}
@@ -103,6 +137,7 @@ export function VerdictShareBar({
             </a>
           );
         })}
+        {legendExtra}
       </p>
     </Figure>
   );
@@ -140,20 +175,32 @@ export function SettleGauge({ n, settled, attempts, caption }: { n: number; sett
 }
 
 /** プローブの時間軸。最初の点から最後の点まで 1 本の線、各プローブを判定の記号で置く。
- *  記号は SVG を伸縮させず HTML で絶対配置する（390px でも記号の大きさが変わらない）。 */
+ *  記号は SVG を伸縮させず HTML で絶対配置する（390px でも記号の大きさが変わらない）。
+ *  2026-09-02 P2: 直前の点と幅の 3%（390px の紙面で記号幅 10px 相当）未満なら 1 段下へ置く。 */
+const TIMELINE_MIN_GAP = 0.03;
 export function ProbeTimeline({ n, probes, caption }: { n: number; probes: readonly { at: Date; verdict: L0Verdict }[]; caption: ReactNode }) {
   const pts = timelinePositions(probes);
   if (pts.length === 0) return null;
+  const lanes = timelineLanes(pts.map((p) => p.x), TIMELINE_MIN_GAP);
+  const stepped = lanes.some((l) => l === 1);
   const first = pts[0].at.toISOString().slice(0, 10);
   const last = pts[pts.length - 1].at.toISOString().slice(0, 10);
   return (
-    <Figure n={n} caption={caption}>
-      <div className="relative mx-[5px] h-[22px]" role="img" aria-label={`${pts.length} probes from ${first} to ${last}`}>
+    <Figure
+      n={n}
+      caption={
+        <>
+          {caption}
+          {stepped && <> Marks closer than one mark width are stepped down one lane.</>}
+        </>
+      }
+    >
+      <div className={`relative mx-[5px] ${stepped ? "h-[34px]" : "h-[22px]"}`} role="img" aria-label={`${pts.length} probes from ${first} to ${last}`}>
         <div className="absolute inset-x-0 top-[10px] h-px bg-brand-lift" />
         {pts.map((p, i) => (
           <span
             key={i}
-            className="absolute top-[5px] -ml-[5px] inline-flex bg-paper leading-none"
+            className={`absolute ${lanes[i] === 1 ? "top-[19px]" : "top-[5px]"} -ml-[5px] inline-flex bg-paper leading-none`}
             style={{ left: `${(p.x * 100).toFixed(2)}%` }}
             title={`${p.at.toISOString().slice(0, 16).replace("T", " ")} UTC · ${p.verdict}`}
           >
@@ -181,7 +228,8 @@ export function FunnelFigure({ n, stages, caption }: { n: number; stages: readon
               {s.href ? <a href={s.href} className="underline">{s.label}</a> : s.label}
             </span>
             <svg viewBox="0 0 100 10" preserveAspectRatio="none" width="100%" height="10" className="min-w-0 flex-1" aria-hidden="true">
-              {widths[i] > 0 && <rect x="0" y="0" width={widths[i]} height="10" fill={i === 0 ? HAIR : INK} />}
+              {/* 2026-09-02 P2: 1 段目の hair 塗りは /observatory の unverified と同色で二義だった。1 段目は枠のみ。 */}
+              {i > 0 && widths[i] > 0 && <rect x="0" y="0" width={widths[i]} height="10" fill={INK} />}
               {i === 0 && <rect x="0" y="0" width="100" height="10" fill="none" stroke={INK} strokeWidth="0.3" vectorEffect="non-scaling-stroke" />}
             </svg>
             <span className="w-[7ch] shrink-0 text-right font-[family-name:var(--font-display)] font-semibold tabular-nums text-brand-deep">

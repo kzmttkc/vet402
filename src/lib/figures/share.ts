@@ -79,3 +79,17 @@ export function funnelWidths(ns: readonly number[], minWidthPct = 1.5): number[]
   if (head <= 0) return ns.map(() => 0);
   return ns.map((n) => (n <= 0 ? 0 : Math.max(minWidthPct, Math.round((n / head) * 1000) / 10)));
 }
+
+/**
+ * 時間軸の段（0 か 1）。直前の点との間隔が minGap（0–1 の割合）未満なら段を替える。
+ * 2026-09-02 デザイン監査 P2: 同日でない 2 点（09-01 23:40 と 09-02 05:40）も記号幅
+ * 10px 未満で重なっていた。段は 2 つまで——3 点目は元の段へ戻る（積み上げない）。
+ */
+export function timelineLanes(xs: readonly number[], minGap: number): number[] {
+  const lanes: number[] = [];
+  for (let i = 0; i < xs.length; i++) {
+    const close = i > 0 && xs[i] - xs[i - 1] < minGap;
+    lanes.push(close ? (lanes[i - 1] === 0 ? 1 : 0) : 0);
+  }
+  return lanes;
+}
