@@ -278,10 +278,13 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
                       受領証を 3 列目に置き、金額・HTTP・L2 は同じ行の 2 段目に落とす。 */}
                   {purchases.map((p, i) => (
                     <Fragment key={i}>
+                      {/* 2 段目に続くので 1 段目の罫線は消す。globals.css は触らない——Turbopack の
+                          ビルドキャッシュがグローバル CSS の変更だけを落とす事故（2026-08-12・
+                          2026-09-02 再発）を避け、ユーティリティで当てる。 */}
                       <tr>
-                        <td className="whitespace-nowrap">{fmt(p.attemptedAt)}</td>
-                        <td>{p.status}</td>
-                        <td className="whitespace-nowrap">
+                        <td className="whitespace-nowrap border-b-0 pb-0.5">{fmt(p.attemptedAt)}</td>
+                        <td className="border-b-0 pb-0.5">{p.status}</td>
+                        <td className="whitespace-nowrap border-b-0 pb-0.5">
                           {p.txHash ? (
                             <a
                               href={`https://basescan.org/tx/${p.txHash}`}
@@ -294,10 +297,10 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
                             "—"
                           )}
                         </td>
-                        <td className="num">{p.latencyMs === null ? "—" : `${p.latencyMs} ms`}</td>
+                        <td className="num border-b-0 pb-0.5">{p.latencyMs === null ? "—" : `${p.latencyMs} ms`}</td>
                       </tr>
                       <tr className="fact-subrow">
-                        <td colSpan={4}>
+                        <td colSpan={4} className="pt-0 font-[family-name:var(--font-mono)] text-xs font-normal text-brand-lift">
                           {p.amountUnits
                             ? `${p.amountUnits} units${usd(p.amountUnits) ? ` (≈ ${usd(p.amountUnits)} USDC)` : ""}`
                             : "amount —"}
