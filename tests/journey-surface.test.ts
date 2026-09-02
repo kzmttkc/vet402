@@ -99,7 +99,9 @@ test("observatory index is filterable and names L1 without mixing it into L0 cel
   assert.ok(page.includes('name="verdict"'));
   assert.ok(page.includes('name="network"'));
   assert.ok(page.includes('event="observatory_view"'));
-  assert.match(page, /L1 settle-through/);
+  // 2026-09-02: 表に L1 列が入った。Abstract は「L0 と L1 は同じセルに混ぜない」を言い続ける。
+  assert.match(page, /The two are never mixed/);
+  assert.match(page, /the L1 cell counts real purchases/);
 });
 
 test("methodology opens with a 60-second skim", () => {
