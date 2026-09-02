@@ -80,7 +80,7 @@ export function TableScroll({
         data-table-scroll-hint=""
         hidden={hiddenColumns === 0}
         aria-hidden="true"
-        className="doc-caption mt-6 -mb-4 text-right text-brand-lift"
+        className="doc-caption mt-5 -mb-1 text-right text-brand-lift"
       >
         → {hiddenColumns} more {hiddenColumns === 1 ? "column" : "columns"}
       </p>
