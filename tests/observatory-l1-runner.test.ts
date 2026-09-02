@@ -219,23 +219,36 @@ if (!TEST_DB) {
       // 作れない相手に署名して予算を燃やし、その 400 を売り手の不履行として
       // 記録していた。候補選定の SQL で除外されることを固定する。
       await db.execute(sql`TRUNCATE x402_l1_purchases`);
-      const placeholderId = randomUUID();
-      await db.insert(schema.x402Endpoints).values({
-        id: placeholderId,
-        resourceKey: "GET https://ph.example/v1/entreprise/:siren",
-        resourceUrl: "https://ph.example/v1/entreprise/:siren",
-        method: "GET",
-        priceAmount: "3000",
-        payTo: "0x00000000000000000000000000000000000000ph",
-        network: "eip155:8453",
-        status: "active",
-      });
-      await db.insert(schema.x402L0Probes).values({
-        endpointId: placeholderId,
-        method: "GET",
-        verdict: "pass",
-        httpStatus: 402,
-      });
+      // 2026-09-02 監査 A1: `:name` だけでなく `{name}` `<name>` `[name]` `*` も同じ
+      // （src/lib/observatory/path-template.ts が正典・SQL 側は同じ正規表現）。
+      const placeholderUrls = [
+        "https://ph.example/v1/entreprise/:siren",
+        "https://ph.example/items/{itemId}",
+        "https://ph.example/items/%7BitemId%7D",
+        "https://ph.example/items/[slug]",
+        "https://ph.example/files/*",
+      ];
+      const placeholderIds: string[] = [];
+      for (const url of placeholderUrls) {
+        const placeholderId = randomUUID();
+        placeholderIds.push(placeholderId);
+        await db.insert(schema.x402Endpoints).values({
+          id: placeholderId,
+          resourceKey: `GET ${url}`,
+          resourceUrl: url,
+          method: "GET",
+          priceAmount: "3000",
+          payTo: "0x00000000000000000000000000000000000000ph",
+          network: "eip155:8453",
+          status: "active",
+        });
+        await db.insert(schema.x402L0Probes).values({
+          endpointId: placeholderId,
+          method: "GET",
+          verdict: "pass",
+          httpStatus: 402,
+        });
+      }
       const seen: string[] = [];
       const summary = await runL1Batch({
         fetchImpl: async (url: string) => {
@@ -245,11 +258,13 @@ if (!TEST_DB) {
         limit: 50,
       });
       assert.ok(
-        !seen.some((u) => u.includes(":siren")),
-        "プレースホルダURLに購入リクエストを送っている——予算を燃やして冤罪を作る経路が再開している",
+        !seen.some((u) => u.includes("ph.example")),
+        `プレースホルダURLに購入リクエストを送っている——予算を燃やして冤罪を作る経路が再開している: ${seen.join(", ")}`,
       );
-      await db.execute(sql`DELETE FROM x402_endpoints WHERE id = ${placeholderId}::uuid`);
-      await db.execute(sql`DELETE FROM x402_l0_probes WHERE endpoint_id = ${placeholderId}::uuid`);
+      for (const placeholderId of placeholderIds) {
+        await db.execute(sql`DELETE FROM x402_endpoints WHERE id = ${placeholderId}::uuid`);
+        await db.execute(sql`DELETE FROM x402_l0_probes WHERE endpoint_id = ${placeholderId}::uuid`);
+      }
       void summary;
     });
 

@@ -141,6 +141,14 @@ export default async function ObservatoryMethodologyPage() {
           deaths), or the evidence threshold below is not met.{" "}
           <em>unverified is not a failure and is never counted as one.</em>
         </p>
+        <p className="doc-p">
+          <strong>path_template</strong> — the listed URL still contains an unfilled path
+          parameter (<code>/v1/entreprise/:siren</code>, <code>/items/{"{id}"}</code>,{" "}
+          <code>/files/*</code>); we do not know the real value, so no request is sent, the
+          probe is recorded as <code>unverified</code> with this reason, and the endpoint is
+          never purchased from — a 400 from a URL we could not have formed correctly is our
+          limitation, not the seller&apos;s failure.
+        </p>
 
         <h2 className="sec-head">
           <span className="sec-no">3.</span>

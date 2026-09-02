@@ -111,3 +111,55 @@ if (!TEST_DB) {
     });
   });
 }
+
+// 2026-09-02 監査 A1（オーナー決定）: 未置換パスパラメータの URL は外向き要求を出さず、
+// unverified(path_template) の行を残す。C1 の日次枠には入れない。
+if (TEST_DB) {
+  test("path-template endpoint: no outbound request, an unverified/path_template row, excluded from tier c1", async (t) => {
+    const { runL0ProbeBatch } = await import("@/lib/observatory/probe-runner");
+    const { getDb } = await import("@/lib/db/client");
+    const schema = await import("@/lib/db/schema");
+    const { sql } = await import("drizzle-orm");
+    const { randomUUID } = await import("node:crypto");
+
+    const db = getDb()!;
+    await db.execute(
+      sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events`,
+    );
+    const id = randomUUID();
+    await db.insert(schema.x402Endpoints).values({
+      id,
+      resourceKey: "GET https://ph.example/v1/entreprise/:siren",
+      resourceUrl: "https://ph.example/v1/entreprise/:siren",
+      method: "GET",
+      priceAmount: "3000",
+      payTo: "0x00000000000000000000000000000000000000ph",
+      network: "eip155:8453",
+      status: "active",
+      lastSeenAt: new Date(),
+    });
+    const seen: string[] = [];
+    const fetchImpl = async (url: string) => {
+      seen.push(url);
+      return new Response("{}", { status: 402 });
+    };
+
+    await t.test("tier c1 skips it entirely (no daily slot spent)", async () => {
+      const summary = await runL0ProbeBatch({ limit: 10, fetchImpl, tier: "c1" });
+      assert.equal(summary.probed, 0);
+      assert.equal(seen.length, 0);
+    });
+
+    await t.test("tier all writes the row without sending a request", async () => {
+      const summary = await runL0ProbeBatch({ limit: 10, fetchImpl, tier: "all" });
+      assert.equal(summary.probed, 1);
+      assert.equal(summary.unverified, 1);
+      assert.equal(seen.length, 0, "テンプレート URL に外向き HTTP を送っている");
+      const rows = await db.select().from(schema.x402L0Probes);
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].verdict, "unverified");
+      assert.equal(rows[0].failReason, "path_template");
+      assert.equal(rows[0].httpStatus, null);
+    });
+  });
+}

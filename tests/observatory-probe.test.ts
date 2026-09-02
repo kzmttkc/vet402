@@ -208,3 +208,39 @@ test("publishedVerdict never publishes a single fail", () => {
   assert.equal(publishedVerdict(["unverified", "fail", "fail"]), "unverified");
   assert.equal(publishedVerdict([]), "unverified");
 });
+
+// ---- パステンプレート URL（2026-09-02 監査 A1） ----------------------------
+
+test("テンプレート URL は外向き要求を出さずに unverified(path_template)", async () => {
+  let called = 0;
+  const result = await probeEndpoint(
+    target({ resourceUrl: "https://ph.example/v1/entreprise/:siren", method: "GET" }),
+    {
+      fetchImpl: async () => {
+        called++;
+        throw new Error("must not be called");
+      },
+    },
+  );
+  assert.equal(called, 0, "テンプレート URL に外向き HTTP を送っている");
+  assert.equal(result.verdict, "unverified");
+  assert.equal(result.failReason, "path_template");
+  assert.equal(result.httpStatus, null);
+  assert.equal(result.has402Challenge, null, "見ていないものを false と言わない");
+  assert.equal(result.method, "GET");
+  assert.equal((result.rawResponseMeta as { error?: string })?.error, "path_template");
+});
+
+test("recheck 経路（異議・C4）でもテンプレート URL は要求を出さない", async () => {
+  let called = 0;
+  const result = await probeEndpoint(target({ resourceUrl: "https://x.example/items/{id}" }), {
+    recheck: true,
+    fetchImpl: async () => {
+      called++;
+      throw new Error("must not be called");
+    },
+  });
+  assert.equal(called, 0);
+  assert.equal(result.verdict, "unverified");
+  assert.equal(result.failReason, "path_template");
+});

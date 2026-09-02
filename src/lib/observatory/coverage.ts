@@ -14,6 +14,7 @@
 // `?tier=c2` で叩く（scripts/launchd/vet402_c2_probe.sh）。
 // ============================================================
 import { sql, type SQL } from "drizzle-orm";
+import { notPathTemplateSql } from "./path-template";
 
 export type CoverageTier = "C0" | "C1" | "C2" | "C3" | "C4";
 
@@ -24,6 +25,11 @@ export type TierSignals = {
   lookups7d: number;
   hasDeclaration: boolean;
   reverifyRequested: boolean;
+  /**
+   * 2026-09-02 監査 A1: 未置換パスパラメータの URL（isPathTemplate）。正しい要求を
+   * 作れないので C1〜C3 に入れない（日次枠を使わない）。C4 だけは残す。
+   */
+  pathTemplate?: boolean;
 };
 
 export const LOOKUPS_C2_THRESHOLD = 5;
@@ -31,6 +37,7 @@ export const LOOKUPS_C2_THRESHOLD = 5;
 /** 純関数。上位の階層ほど優先（C4 > C3 > C2 > C1 > C0）。 */
 export function tierOf(s: TierSignals): CoverageTier {
   if (s.reverifyRequested) return "C4";
+  if (s.pathTemplate) return "C0";
   const c2 = s.attributedSettlements > 0 || s.lookups7d >= LOOKUPS_C2_THRESHOLD;
   if (c2 && s.hasDeclaration) return "C3";
   if (c2) return "C2";
@@ -51,6 +58,7 @@ export const L0_INTERVAL_HOURS: Record<CoverageTier, number | null> = {
  * L0 候補の WHERE 句（x402_endpoints e）。
  *   c1: active かつ（30 日以内に listed ∨ 30 日以内に決済あり）
  *   c2: 決済帰属（confirmed/probable）あり ∨ 7 日で lookup ≥ 閾値
+ * どちらもパステンプレート URL（path-template.ts）を除く——tierOf の pathTemplate と同じ。
  * 直近の probe が古い順に並べるのは呼び手（probe-runner）。
  */
 export function l0TierWhere(tier: "c1" | "c2"): SQL {
@@ -58,7 +66,7 @@ export function l0TierWhere(tier: "c1" | "c2"): SQL {
     SELECT 1 FROM settlements s WHERE s.endpoint_id = e.id
       AND coalesce(s.block_time, s.observed_at) > now() - interval '30 days')`;
   if (tier === "c1") {
-    return sql`e.status = 'active' AND (e.last_seen_at > now() - interval '30 days' OR ${settled30d})`;
+    return sql`e.status = 'active' AND ${notPathTemplateSql()} AND (e.last_seen_at > now() - interval '30 days' OR ${settled30d})`;
   }
   const attributed = sql`EXISTS (
     SELECT 1 FROM settlements s WHERE s.endpoint_id = e.id
@@ -66,7 +74,7 @@ export function l0TierWhere(tier: "c1" | "c2"): SQL {
       AND coalesce(s.block_time, s.observed_at) > now() - interval '30 days')`;
   const lookups = sql`coalesce((
     SELECT sum(n) FROM decision_lookups d WHERE d.endpoint_id = e.id AND d.day > (current_date - 7)::text), 0) >= ${LOOKUPS_C2_THRESHOLD}`;
-  return sql`e.status = 'active' AND (${attributed} OR ${lookups})`;
+  return sql`e.status = 'active' AND ${notPathTemplateSql()} AND (${attributed} OR ${lookups})`;
 }
 
 /**
