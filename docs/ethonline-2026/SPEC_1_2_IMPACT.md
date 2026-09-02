@@ -147,8 +147,9 @@ vet402 自身の L1 購入は `test` 扱いである（§7.2 の wash_flag に�
   endpoint は次の L1 走査を待つ。
 - [x] **公開数字の定義**: `/api/v1/census/summary` が `settlements_raw` と `settlements_real`
   （wash self_deal / circular / test 除外）を同じ応答で返す。初回索引の実測（30d）:
-  L1 由来 980 件（全て test）・Base チェーン索引 570 件（40,000 ブロック中 7,030 ログの一部・
-  残りは launchd の 2 時間ごとの索引で持ち越し）・Solana 20 件。**我々の測定実績（2,018 試行 /
+  L1 由来 983 件（全て test）・Base チェーン索引 19,486 ログ／11,817 件（40,000 ブロック＝約 22 時間分・
+  09:10 JST 時点で raw 20,460 / real 19,475・confirmed 15,195 / probable 5,165・実需のある endpoint 753）・Solana 55 件。
+  以後は launchd が 2 時間ごとに続きを読む。**我々の測定実績（2,018 試行 /
   902 成立）は「vet402 が自腹で測った回数」であって「市場の実需」ではない**——台本ではこの 2 つを混ぜない。
 - [x] **買い手モードが 9/2 に入っていないこと**: `tests/acceptance-spec-1-2.test.ts`
   「買い手モード（role=payer で送金を止める配線）が 9/2 のパッケージに存在しない」が
