@@ -920,7 +920,26 @@ paths:
           schema: { type: string, maxLength: 2048 }
       responses:
         "200": { description: "{ query, resource?, endpoints?, payees?, settlement?, disclaimer }" }
-        "400": { $ref: "#/components/responses/BadRequest" }
+        "400":
+          description: |
+            `invalid_query`. Sent when `q` is missing, empty or over 2048 chars,
+            and also when `q` has a shape the classifier cannot place (`kind:
+            unknown`) — in that second case the body also carries `query`
+            (`{ kind: "unknown", value }`) so the caller can see what was read.
+            `expected: "q"` names the parameter.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    properties:
+                      expected: { type: string, enum: [q] }
+                      query:
+                        type: object
+                        properties:
+                          kind: { type: string, enum: [unknown] }
+                          value: { type: string }
         "429": { description: Rate limited }
         "503": { description: Store unavailable }
 
@@ -2943,6 +2962,64 @@ components:
             - rate_limited
             - not_found
             - forbidden
+            # 2026-09-02 敵対的監査 P1-1: 実装が返しているのに enum に無かった語を全数
+            # 追加。tests/openapi-error-enum.test.ts が「文書化された route.ts の
+            # error リテラル ⊆ この enum」を機械検査する。
+            # --- §7.3 / §9.1 resolve / resources / endpoints / payees / facts ---
+            - invalid_query
+            - resolve_unavailable
+            - invalid_resource_id
+            - invalid_endpoint_id
+            - invalid_payee_id
+            - unavailable
+            # --- §9.1 /decision ---
+            - invalid_role
+            - invalid_caller_dialect
+            - payer_required
+            - decision_unavailable
+            # --- §9.1 /census/summary ---
+            - invalid_window
+            - invalid_chain
+            # --- scoring / verify / outcome ---
+            - unsupported_chain
+            - signature_expired
+            - stale_signature
+            - invalid_trust_event_id
+            - outcome_ingest_unavailable
+            - trust_event_not_found
+            - related_wallet_mismatch
+            - self_affirmation_not_accepted
+            # --- webhooks ---
+            - webhooks_unavailable
+            - invalid_webhook_url
+            - unknown_event
+            # --- demo / contributions / requests / disputes / waitlist (JSON bodies) ---
+            - invalid_json
+            - invalid_input
+            - endpoint_id_required
+            - invalid_level
+            - demo_l1_disabled
+            - demo_budget_exhausted
+            - demo_unavailable
+            - contributions_unavailable
+            - requests_unavailable
+            - disputes_unavailable
+            - waitlist_unavailable
+            # --- observatory reads ---
+            - invalid_days
+            - observatory_unavailable
+            - endpoint_not_found
+            - frame_unavailable
+            - graph_unavailable
+            - flags_unavailable
+            - verdict_unavailable
+            # --- observatory/watch (signed subscriptions) ---
+            - invalid_signature
+            - service_unavailable
+            - watcher_limit_reached
+            - internal_error
+            # --- badge ---
+            - invalid_address
         details:
           type: object
           description: Present for `invalid_request` — Zod validation error detail (flattened).
