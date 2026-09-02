@@ -7,7 +7,6 @@ import { useEffect, useRef, useState } from "react";
 import { dashboardLogout } from "@/lib/dashboard/client";
 import { dashboardErrorMessage } from "@/lib/dashboard/errors";
 import { buttonClass } from "@/components/ui/Button";
-import { SiteFooter } from "@/components/site/SiteFooter";
 
 const nav = [
   { href: "/dashboard", label: "Overview" },
@@ -83,12 +82,15 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   // 2026-08-14 完全性の穴（本番精査）: /dashboard 系は自前シェルで SiteChrome を
   // 迂回するため、他の全ページに出るフッタ（Legal Notice / Privacy / Terms /
   // Contact）がここだけ欠けていた。特にログイン画面は法務/連絡先への導線が皆無
-  // だった。既存の SiteFooter を流用して全状態の末尾に置く（新規コピー無し）。
+  // だった。
+  // 2026-09-02 デザイン監査 P1: そのとき流用した SiteFooter は RFC の奥付で、zinc の
+  // 画面に紙の世界が混ざっていた（DESIGN.md「混ぜない」）。同じ 4 リンクを zinc の
+  // 1 行フッタで出す。
   if (isLogin) {
     return (
-      <div className="flex min-h-screen flex-col">
+      <div className="flex min-h-screen flex-col bg-zinc-50">
         <div className="flex-1">{children}</div>
-        <SiteFooter />
+        <DashboardFooter />
       </div>
     );
   }
@@ -157,8 +159,40 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
-      <SiteFooter />
+      <DashboardFooter />
     </div>
+  );
+}
+
+const footerLinks = [
+  { label: "Terms", href: "/legal/terms" },
+  { label: "Privacy", href: "/legal/privacy" },
+  { label: "Legal notice", href: "/legal/notice" },
+  { label: "Contact", href: "/legal/notice#contact" },
+];
+
+/** zinc の 1 行フッタ。リンク先は SiteFooter の法務 4 本と同じ（正典は /legal）。 */
+function DashboardFooter() {
+  return (
+    <footer className="border-t border-zinc-200 bg-white">
+      <nav
+        aria-label="Legal"
+        className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-1 px-6 py-4 text-[0.75rem] text-zinc-500"
+      >
+        {footerLinks.map((item, i) => (
+          <span key={item.href} className="inline-flex items-center">
+            {i > 0 && (
+              <span aria-hidden="true" className="px-2">
+                ·
+              </span>
+            )}
+            <Link href={item.href} className="hover:text-zinc-900 hover:underline">
+              {item.label}
+            </Link>
+          </span>
+        ))}
+      </nav>
+    </footer>
   );
 }
 
