@@ -6,7 +6,7 @@ import { safeJsonLd } from "@/lib/util/json-ld";
 import { SITE_URL } from "@/lib/site-url";
 import { TableScroll } from "@/components/site/TableScroll";
 import { buttonClass } from "@/components/ui/Button";
-import { getObservatoryOverview } from "@/lib/observatory/reader";
+import { getObservatoryOverview, getObservatoryStats } from "@/lib/observatory/reader";
 import {
   parseObservatorySearchParams,
   type ObservatoryQuery,
@@ -79,6 +79,9 @@ export default async function ObservatoryPage({
   const params = await searchParams;
   const query = parseObservatorySearchParams(params);
   const overview = await getObservatoryOverview(query);
+  // 2026-09-02 UX 監査: 既定表示の上位 20 行が全部 unverified（登録の 84%）で、初見の人が
+  // 「測れていない製品」と読んだ。判定ごとの件数を表の直上に出し、1 クリックで絞れるようにする。
+  const stats = await getObservatoryStats().catch(() => null);
   const totalPages = Math.max(1, Math.ceil(overview.totalEndpoints / overview.pageSize));
   const page = overview.page;
   const nonce = (await headers()).get("x-nonce") ?? undefined;
@@ -170,9 +173,10 @@ export default async function ObservatoryPage({
                 落としたのは「No account」「キーはスコアAPI専用」「headline numbers」
                 といった、表を読む前には要らない但し書き——消したのではなく、
                 すぐ下の §1 と既存のリンク群が同じことを言っている。 */}
-            Every endpoint in the public x402 discovery catalog, observed daily: is it still
-            listed, and does its payment wall answer a valid <code>402</code> challenge when
-            approached with the method it declares. This table is L0 — no purchase is attached;
+            Every endpoint in the public x402 discovery catalog: is it still listed, and does its
+            payment wall answer a valid <code>402</code> challenge when approached with the method
+            it declares. The catalog is re-fetched daily; endpoints are probed on a rolling
+            schedule, and each row shows when it was last probed. This table is L0 — no purchase is attached;
             L1 settle-through purchases are on each endpoint&apos;s page, never mixed into these
             cells.{" "}
             <strong>pass / fail / unverified</strong> are defined measurements, not opinions —{" "}
@@ -238,28 +242,58 @@ export default async function ObservatoryPage({
           <span>Observed endpoints</span>
         </h2>
         <p className="doc-p">
-          {overview.totalEndpoints.toLocaleString()} endpoints on record, ordered by observed call
-          volume (catalog-reported, last 30 days). Page {page} of {totalPages}.
+          {overview.totalEndpoints.toLocaleString()} endpoints on record. Measured endpoints
+          (pass / fail) first, then by observed call volume (catalog-reported, last 30 days).
+          Page {page} of {totalPages}, {overview.pageSize} per page.
         </p>
+        {stats && (
+          <p className="doc-p flex flex-wrap gap-x-4 gap-y-1 text-[0.8125rem]">
+            {(["pass", "fail", "unverified"] as const).map((v) => {
+              const n = v === "pass" ? stats.publishedPass : v === "fail" ? stats.publishedFail : stats.publishedUnverified;
+              const active = query.verdict === v;
+              return (
+                <Link
+                  key={v}
+                  href={observatoryHref({ ...query, verdict: active ? null : v }, 1)}
+                  className={active ? "text-brand-deep font-semibold" : "text-brand-lift underline"}
+                  aria-current={active ? "true" : undefined}
+                >
+                  [{v} {n.toLocaleString()}]
+                </Link>
+              );
+            })}
+          </p>
+        )}
 
         {overview.rows.length === 0 ? (
           <p className="doc-p text-brand-lift">
-            {query.q || query.verdict || query.network
-              ? "No endpoints match those filters."
-              : "No observations yet. The first catalog ingest populates this table; measurements accumulate daily after that."}
+            {query.q || query.verdict || query.network ? (
+              <>
+                No endpoints match those filters.{" "}
+                <Link href="/observatory" className="underline">
+                  Clear filters
+                </Link>
+                .
+              </>
+            ) : (
+              "No observations yet. The first catalog ingest populates this table; measurements accumulate daily after that."
+            )}
           </p>
         ) : (
           <TableScroll label="L0 observations over catalog endpoints">
             <table className="fact-table">
               <caption className="sr-only">L0 observations over catalog endpoints</caption>
               <thead>
+                {/* 2026-09-02 UX 監査: 375px で L0 判定列が横 1,110px 先（3.6 画面右）だった。
+                    判定を 2 列目に、Endpoint はモバイルで 13rem に切り詰めて（title に全文）、
+                    初期表示に Endpoint + L0 が必ず入るようにする。 */}
                 <tr>
                   <th scope="col">Endpoint</th>
+                  <th scope="col">L0</th>
+                  <th scope="col">Last probed</th>
                   <th scope="col">Network</th>
                   <th scope="col">Declared method</th>
                   <th scope="col">Catalog</th>
-                  <th scope="col">L0</th>
-                  <th scope="col">Last probed</th>
                   <th scope="col" className="num">
                     Calls 30d
                   </th>
@@ -269,19 +303,21 @@ export default async function ObservatoryPage({
                 {overview.rows.map((row) => (
                   <tr key={row.id}>
                     <td className="whitespace-nowrap">
-                      <Link href={`/observatory/e/${row.id}`} className="underline">
-                        {row.resourceKey.length > 60
-                          ? row.resourceKey.slice(0, 57) + "…"
-                          : row.resourceKey}
+                      <Link
+                        href={`/observatory/e/${row.id}`}
+                        className="block max-w-[13rem] truncate underline sm:max-w-[34rem]"
+                        title={row.resourceKey}
+                      >
+                        {row.resourceKey}
                       </Link>
                     </td>
-                    <td className="whitespace-nowrap">{row.network ?? "—"}</td>
-                    <td>{row.method ?? "undeclared"}</td>
-                    <td>{row.status}</td>
                     <td>
                       <VerdictCell verdict={row.publishedVerdict} />
                     </td>
                     <td className="whitespace-nowrap">{fmtDate(row.lastProbedAt)}</td>
+                    <td className="whitespace-nowrap">{row.network ?? "—"}</td>
+                    <td>{row.method ?? "undeclared"}</td>
+                    <td>{row.status}</td>
                     <td className="num">
                       {row.qualityCalls30d === null ? "—" : row.qualityCalls30d.toLocaleString()}
                     </td>

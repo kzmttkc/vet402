@@ -79,7 +79,13 @@ const SEARCH_MAX_LENGTH = 80;
  */
 export function searchLikePattern(q: string | null): string | null {
   if (!q) return null;
-  const trimmed = q.trim().slice(0, SEARCH_MAX_LENGTH);
+  // 2026-09-02 UX 監査: 完全 URL（https://api.exa.ai/search）を貼ると 0 件だった。
+  // resource_key は host+path なので、scheme と末尾スラッシュを剥がして照合する。
+  const trimmed = q
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/+$/, "")
+    .slice(0, SEARCH_MAX_LENGTH);
   if (trimmed.length === 0) return null;
   const literal = trimmed.replace(/[\\%_]/g, (ch) => `\\${ch}`);
   return `%${literal}%`;
@@ -158,7 +164,19 @@ export async function getObservatoryOverview(
       ${lateral}
       WHERE true
       ${filters}
-      ORDER BY e.quality_calls_30d DESC NULLS LAST, e.resource_key ASC
+      -- 2026-09-02 UX 監査: 既定表示（呼出量順）は上位 20 行が全部 unverified で、初見の人が
+      -- 「測れていない製品」と読んだ。測定済み（pass / fail）を先に並べ、その中を呼出量順にする。
+      -- verdict で絞っているときは元の並び（全行同じ判定なので同じ結果）。
+      ORDER BY (
+        CASE
+          WHEN (lp.verdicts)[1] = 'pass' THEN 0
+          WHEN (
+            SELECT count(*) FROM unnest(lp.verdicts) WITH ORDINALITY AS u(x, n)
+            WHERE n <= ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH} AND x = 'fail'
+          ) = ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH} THEN 0
+          ELSE 1
+        END
+      ) ASC, e.quality_calls_30d DESC NULLS LAST, e.resource_key ASC
       LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
     `);
     const list = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as Record<
@@ -221,6 +239,8 @@ export type EndpointDetail = {
     isOperatorEndpoint: boolean;
   };
   publishedVerdict: "pass" | "fail" | "unverified";
+  /** 直近プローブからの経過日数（表示時点・UTC）。未測定なら null。データ層で計算する（描画は純粋に保つ）。 */
+  lastProbedAgeDays: number | null;
   probes: {
     probedAt: Date | null;
     method: string;
@@ -389,6 +409,7 @@ export async function getEndpointDetail(id: string): Promise<EndpointDetail> {
         isOperatorEndpoint: isOperatorPayTo(e.payTo),
       },
       publishedVerdict: publishedVerdict(probes.map((p) => p.verdict)),
+      lastProbedAgeDays: probes[0]?.probedAt ? Math.max(0, Math.floor((Date.now() - probes[0].probedAt.getTime()) / 86_400_000)) : null,
       probes,
       events,
     };

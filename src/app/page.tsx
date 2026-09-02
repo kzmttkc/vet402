@@ -11,6 +11,7 @@ import { buttonClass } from "@/components/ui/Button";
 import { SITE_URL } from "@/lib/site-url";
 import { organizationJsonLd, publisherOrg } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
+import { getCoverageShare } from "@/lib/observatory/reader";
 
 /**
  * The front page is the memo.
@@ -97,6 +98,9 @@ export default async function Home() {
   // FAQPage実装済みという状態だった)。数値はsrc/lib/billing/plans.ts(課金の
   // 単一情報源)から引用し、架空の価格を書かない。
   const nonce = (await headers()).get("x-nonce") ?? undefined;
+  // 2026-09-02 UX 監査: 「probed daily」は事実ではなかった（毎日なのはカタログ取得。
+  // プローブはローリングで、7 日以内に測定済みは 37.6%）。§4 の文は実値で埋める。
+  const coverage = await getCoverageShare().catch(() => null);
   const organization = organizationJsonLd(
     "Independent verification of the x402 agent-payment economy. vet402 buys what x402 endpoints sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence.",
   );
@@ -296,8 +300,11 @@ export default async function Home() {
           >
             Verify a payee now
           </TrackedLink>
+          {/* 2026-09-02 UX 監査（オーナー判断）: 「methodology」が 3 つあり、主 CTA は LP §2 の
+              4 行表へ飛んでいた。href だけを本物の定義書（/observatory/methodology v2）へ向ける。
+              文言・位置・意匠・イベント名は不変。 */}
           <TrackedLink
-            href="#methodology"
+            href="/observatory/methodology"
             event="lp_cta_click"
             props={{ position: "hero_method" }}
             className={buttonClass({
@@ -525,6 +532,10 @@ export default async function Home() {
             <Link href="/docs/api#score-breakdown" className="doc-link">
               How the score is composed
             </Link>
+            . Full definitions of pass / fail / unverified and the L1 purchase rules:{" "}
+            <Link href="/observatory/methodology" className="doc-link">
+              observatory methodology (v2)
+            </Link>
             .
           </p>
         </div>
@@ -597,9 +608,13 @@ export default async function Home() {
             title="The x402 Observatory"
             body={
               <>
-                Every endpoint in the public discovery catalog, probed daily: is it still listed,
-                and does its payment wall answer a valid 402. No purchase is attached to the
-                public table.
+                Every endpoint in the public discovery catalog: is it still listed, and does its
+                payment wall answer a valid 402. The catalog is re-fetched daily; endpoints are
+                probed on a rolling schedule
+                {coverage && coverage.pct !== null
+                  ? ` — ${coverage.pct}% of ${coverage.activeEndpoints.toLocaleString()} active endpoints carry a probe from the last 7 days`
+                  : ""}
+                . No purchase is attached to the public table.
               </>
             }
             action={{

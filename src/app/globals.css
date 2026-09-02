@@ -458,6 +458,19 @@ a {
        1440px の紙面は 665px なので、この下限に触れずに全幅で収まる。 */
     min-width: 39rem;
   }
+  /* 2026-09-02 UX 監査: 受領証を列として見せるため、金額・HTTP・L2 は行の 2 段目に落とす。
+     1 段目の罫線は消し、2 段目が同じ記録の続きだと読めるようにする。 */
+  .fact-table tr:has(+ .fact-subrow) td {
+    border-bottom: 0;
+    padding-bottom: 0.125rem;
+  }
+  .fact-table .fact-subrow td {
+    padding-top: 0;
+    font-size: 0.75rem;
+    color: #55688c;
+    font-family: var(--font-mono);
+    font-weight: 400;
+  }
   .fact-table .num {
     text-align: right;
     font-variant-numeric: tabular-nums;

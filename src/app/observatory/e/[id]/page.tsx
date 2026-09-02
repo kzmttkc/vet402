@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -84,6 +85,16 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
   if (!detail) notFound();
 
   const { endpoint, probes, events, publishedVerdict, l1, purchases } = detail;
+  const lastProbedAt = probes[0]?.probedAt ?? null;
+  const lastProbed =
+    lastProbedAt && detail.lastProbedAgeDays !== null
+      ? `${lastProbedAt.toISOString().slice(0, 10)} · ${detail.lastProbedAgeDays} days ago`
+      : "never";
+  const usd = (units: string | null) => {
+    if (!units || !/^\d+$/.test(units)) return null;
+    const n = Number(units) / 1_000_000;
+    return n >= 0.01 ? `$${n.toFixed(2)}` : `$${n.toFixed(4).replace(/0+$/, "")}`;
+  };
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   const breadcrumb = breadcrumbJsonLd([
     { name: "Home", path: "/" },
@@ -104,10 +115,13 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
         <div className="doc-head">
           <div className="doc-head-col">
             <span>Independent Measurement</span>
-            <span>Endpoint record (L0)</span>
+            <span>Endpoint record (L0 · L1)</span>
             <span>
               Published state: <span className="text-signal">{publishedVerdict}</span>
             </span>
+            {/* 2026-09-02 UX 監査: 「毎日プローブ」と読まれないよう、この記録の鮮度を
+                doc-head で明示する。日付は UTC、日数は表示時点との差。 */}
+            <span>Last probed: {lastProbed}</span>
           </div>
           <div className="doc-head-col">
             <span>vet402</span>
@@ -252,42 +266,46 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
                   <tr>
                     <th scope="col">Attempted at</th>
                     <th scope="col">Result</th>
-                    <th scope="col" className="num">
-                      Amount (units)
-                    </th>
-                    <th scope="col" className="num">
-                      HTTP
-                    </th>
+                    <th scope="col">Receipt (tx)</th>
                     <th scope="col" className="num">
                       Latency
                     </th>
-                    <th scope="col">L2</th>
-                    <th scope="col">Receipt (tx)</th>
                   </tr>
                 </thead>
                 <tbody>
+                  {/* 2026-09-02 UX 監査: 7 列だと 1280px でも受領証列が初期表示の外に出ていた
+                      （表 731px・紙面 665px）。この製品の主張は「受領証がある」なので、
+                      受領証を 3 列目に置き、金額・HTTP・L2 は同じ行の 2 段目に落とす。 */}
                   {purchases.map((p, i) => (
-                    <tr key={i}>
-                      <td className="whitespace-nowrap">{fmt(p.attemptedAt)}</td>
-                      <td>{p.status}</td>
-                      <td className="num">{p.amountUnits ?? "—"}</td>
-                      <td className="num">{p.httpStatusPaid ?? "—"}</td>
-                      <td className="num">{p.latencyMs === null ? "—" : `${p.latencyMs} ms`}</td>
-                      <td>{p.l2Schema ?? "—"}</td>
-                      <td className="break-all">
-                        {p.txHash ? (
-                          <a
-                            href={`https://basescan.org/tx/${p.txHash}`}
-                            className="underline"
-                            rel="noopener noreferrer"
-                          >
-                            {p.txHash.slice(0, 18)}…
-                          </a>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                    </tr>
+                    <Fragment key={i}>
+                      <tr>
+                        <td className="whitespace-nowrap">{fmt(p.attemptedAt)}</td>
+                        <td>{p.status}</td>
+                        <td className="whitespace-nowrap">
+                          {p.txHash ? (
+                            <a
+                              href={`https://basescan.org/tx/${p.txHash}`}
+                              className="underline"
+                              rel="noopener noreferrer"
+                            >
+                              {p.txHash.slice(0, 10)}…{p.txHash.slice(-4)}
+                            </a>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="num">{p.latencyMs === null ? "—" : `${p.latencyMs} ms`}</td>
+                      </tr>
+                      <tr className="fact-subrow">
+                        <td colSpan={4}>
+                          {p.amountUnits
+                            ? `${p.amountUnits} units${usd(p.amountUnits) ? ` (≈ ${usd(p.amountUnits)} USDC)` : ""}`
+                            : "amount —"}
+                          {" · "}HTTP {p.httpStatusPaid ?? "—"}
+                          {" · "}L2 {p.l2Schema ?? "—"}
+                        </td>
+                      </tr>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

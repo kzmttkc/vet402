@@ -123,7 +123,7 @@ export default async function AccuracyPage() {
           </div>
           <div className="doc-head-col">
             <span>vet402</span>
-            <span>Methodology v{report.methodologyVersion}</span>
+            <span>Score methodology v{report.methodologyVersion}</span>
             <span>Aggregate counts only</span>
           </div>
         </div>
@@ -395,7 +395,7 @@ export default async function AccuracyPage() {
         {/* ===== 3. Methodology ===== */}
         <h2 className="sec-head">
           <span className="sec-no">3.</span>
-          <span>Methodology (v{report.methodologyVersion})</span>
+          <span>Score methodology (v{report.methodologyVersion})</span>
         </h2>
 
         <div className="mt-6 space-y-5">
