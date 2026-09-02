@@ -76,8 +76,13 @@ export async function upsertSettlementsBatch(rows: readonly SettlementRow[]): Pr
   if (!db) throw new Error("upsertSettlementsBatch: DATABASE_URL is not configured");
   let inserted = 0;
   let updated = 0;
-  for (let i = 0; i < rows.length; i += 200) {
-    const chunk = rows.slice(i, i + 200);
+  // 同一 tx に複数の Transfer（同じ purchase_id）があると ON CONFLICT が
+  // 「同じ行を二度更新できない」で落ちる（2026-09-02 本番実測）。purchase_id で畳み、
+  // 最初の 1 件を採る（§5 purchase_id = chain:tx_hash は設計上 tx 単位）。
+  const seen = new Set<string>();
+  const unique = rows.filter((r) => (seen.has(r.purchaseId) ? false : (seen.add(r.purchaseId), true)));
+  for (let i = 0; i < unique.length; i += 200) {
+    const chunk = unique.slice(i, i + 200);
     const values = chunk.map(
       (row) => sql`(${row.chain}, ${row.txHash}, ${row.purchaseId}, ${row.asset}, ${row.amount}, ${row.payer}, ${row.payee},
         ${row.payerId}, ${row.payeeId}, ${row.facilitator ?? null}, ${row.blockTime ? row.blockTime.toISOString() : null}::timestamptz,

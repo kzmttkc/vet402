@@ -100,6 +100,19 @@ export default async function ObservatoryMethodologyPage() {
         </div>
 
         <h2 className="sec-head">
+          <span className="sec-no">0.</span>
+          <span>Where the catalog comes from</span>
+        </h2>
+        <p className="doc-p">
+          Every endpoint on this page was discovered through the <strong>CDP x402 Bazaar</strong>{" "}
+          (and equivalent public discovery surfaces). That catalog is the measured population, not
+          the whole x402 economy: x402 traffic that is never listed there — x402 on XRPL, for
+          example — is outside what we probe or purchase, and appears as <code>0</code> in{" "}
+          <code>byChain</code>. A zero there is a coverage limit of this observatory, not a finding
+          about that chain. The catalog is an input; the measurements are the record.
+        </p>
+
+        <h2 className="sec-head">
           <span className="sec-no">1.</span>
           <span>What L0 measures</span>
         </h2>

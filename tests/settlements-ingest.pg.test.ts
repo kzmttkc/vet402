@@ -98,17 +98,30 @@ if (!TEST_DB) {
       assert.equal((await knownPurchaseIds([])).size, 0);
     });
 
+    await t.test("束ね upsert: 同一 purchase_id が 1 バッチに 2 回あっても落ちない（同一 tx 複数 Transfer）", async () => {
+      const { upsertSettlementsBatch, buildRow } = await import("@/lib/settlements/upsert");
+      const mk = (amount: string) =>
+        buildRow(
+          { chain: "eip155:8453", txHash: "0x" + "7".repeat(64), asset: "0xusdc", amount, payer: "0xp", payee: PAY_TO, blockTime: new Date(), source: "chain_index" },
+          { attribution: "probable", washFlag: "none", resourceId: null, endpointId: null },
+        );
+      const r = await upsertSettlementsBatch([mk("1"), mk("2")]);
+      assert.equal(r.inserted, 1);
+      assert.equal(r.updated, 0);
+    });
+
     await t.test("センサス: 生値 4・実需 2（test 1・self_deal 1 を除外）が同じ応答に両方出る", async () => {
       const c = await getCensusSummary(null, "30d");
-      assert.equal(c.settlements_raw, 4);
-      assert.equal(c.settlements_real, 2);
+      assert.equal(c.settlements_raw, 5);
+      assert.equal(c.settlements_real, 3);
       assert.equal(c.wash.test, 1);
       assert.equal(c.wash.self_deal, 1);
-      assert.equal(c.unique_payers_real, 1);
+      assert.equal(c.unique_payers_real, 2); // b1 と 0xp（束ね upsert テストの chain_index 行）
       assert.equal(c.by_source.l1_purchase, 1);
       assert.equal(c.by_source.payments_api, 3);
+      assert.equal(c.by_source.chain_index, 1);
       const per = await getSettlementCounts({ endpointId });
-      assert.deepEqual(per, { raw: 4, real: 2, test: 1, uniquePayersReal: 1 });
+      assert.deepEqual(per, { raw: 4, real: 2, test: 1, uniquePayersReal: 1 }); // endpoint 紐付きの行だけ（chain_index 行は endpoint null）
     });
   });
 }

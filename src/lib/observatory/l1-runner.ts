@@ -565,7 +565,11 @@ export async function runL1Batch(
     -- 尽きれば残りは未実施のまま（facts では l1_not_attempted = 未検証。pass とは書かない）。
     -- C2 だけに絞らないのは、決済索引が空の初日に L1 が完全に止まるのを避けるため——
     -- 仕様の「C2 は 24 時間ごと L1」は順序で満たし、他階層は従来の掃引で薄く測る。
+    -- 2026-09-02 グラント側の指摘: 日次 $25 の枠に対し実支出 $1〜3・購入実績のある endpoint は
+    -- 8.1%。C2 の次は「一度も買っていない in-cap endpoint」を優先し、証拠の裾野を広げる
+    -- （上限は全て据え置き: 1 件 $1・日次 $25・原子的予約・cooldown）。
     ORDER BY (${l1TierWhere()}) DESC,
+             (NOT EXISTS (SELECT 1 FROM x402_l1_purchases np WHERE np.endpoint_id = e.id)) DESC,
              (e.resource_key ILIKE ANY(${prioritySqlArray()})) DESC,
              e.quality_payers_30d DESC NULLS LAST, e.quality_calls_30d DESC NULLS LAST
     LIMIT ${limit}
