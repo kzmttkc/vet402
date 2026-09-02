@@ -19,7 +19,7 @@ const vouch = createVouchClient({ apiKey: process.env.VOUCH_API_KEY! });
 
 // Seller side: "should I accept payment from this wallet?"
 const score = await vouch.getWalletScore("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045");
-console.log(score.trustScore, score.recommendation); // e.g. 72 'ALLOW'
+console.log(score.trustScore, score.recommendation); // 0–100 and ALLOW | WARN | BLOCK — live values, they move
 
 // Buyer side: "should my agent pay this wallet?"
 const payee = await vouch.getPayeeScore("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045");
@@ -34,7 +34,31 @@ await vouch.attestX402Payment({
 ```
 
 Methods: `getAgentScore`, `getWalletScore`, `getPayeeScore`,
-`getPayeeVerdictFast`, `batchScore`, `attestX402Payment`, `createSpendGuard`.
+`getPayeeVerdictFast`, `batchScore`, `attestX402Payment`, `createSpendGuard`,
+and — since 0.5.0 — `getDecision` and `resolve`.
+
+### `getDecision` / `resolve` (0.5.0)
+
+Product spec §7.3 / §9.1: the canonical integration is one call that returns the
+L0–L2 **facts** and the `ALLOW` / `WARN` / `BLOCK` **recommendation** in the same
+document. `resolve` turns whatever you hold (a URL, a domain, an address, a tx hash,
+a `chain:address` payee id) into the resource id that `getDecision` takes.
+
+```typescript
+const found = await vouch.resolve("https://api.example.com/v1/quote");
+const resourceId = found.resource?.resource_id; // sha256 hex, or undefined when unlisted
+if (resourceId) {
+  const d = await vouch.getDecision(resourceId, { role: "payer", callerDialect: "v2" });
+  // d.recommendation, d.reason_codes, d.facts (SellerFacts), d.freshness, d.evidence
+  // Pay only on ALLOW with degraded === false. WARN and BLOCK are both a refusal
+  // under the default allow-only policy.
+}
+```
+
+`getDecision` needs a key (1 rate-limit unit per call; pass `idempotencyKey` to retry
+without spending a second one). `resolve` is key-less on the wire but is sent through
+the same client. Both are read-only; wiring the decision into `SpendGuard` is a later
+release.
 
 ### Two fields that outrank `recommendation`
 

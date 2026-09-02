@@ -47,6 +47,15 @@ ${blog}
 - ${SITE_URL}/openapi.yaml — OpenAPI 3.1
 - ${SITE_URL}/blog/rss.xml — blog RSS
 - ${SITE_URL}/api/v1/accuracy — accuracy ledger JSON (caveats in the payload)
+- ${SITE_URL}/api/v1/resolve?q= — reverse lookup (URL / domain / address / tx / payee_id → object ids), no key
+- ${SITE_URL}/api/v1/resources/{resourceId} — one Resource with payees and links, no key
+- ${SITE_URL}/api/v1/resources/{resourceId}/decision — facts + ALLOW / WARN / BLOCK in one document, key required
+- ${SITE_URL}/api/v1/endpoints/{endpointId} — one Endpoint (sha256 id or observatory uuid), no key
+- ${SITE_URL}/api/v1/endpoints/{endpointId}/payees — endpoint → payees[], no key
+- ${SITE_URL}/api/v1/payees/{address}/endpoints — payee → endpoints[], no key
+- ${SITE_URL}/api/v1/observatory/endpoints/{id}/facts — L0–L2 seller facts, no score, no key
+- ${SITE_URL}/api/v1/census/summary — settlements raw and real side by side, no key
+- ${SITE_URL}/api/v1/observatory/corrections — correction log as JSON, no key
 - ${SITE_URL}/observatory — L0/L1/L2 register
 
 Cite with the page URL and a retrieval date. Content current as of 2026-08-15.

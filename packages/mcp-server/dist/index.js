@@ -8,7 +8,7 @@ import { decideFromScore, decideFromFailure } from "./decision.js";
 import { attestX402Payment, fetchAgentScore, fetchDecision, fetchPayeeScore, fetchWalletScore, } from "./vouch-client.js";
 const server = new McpServer({
     name: "vouch-trust",
-    version: "0.1.0",
+    version: "0.2.0",
 });
 /**
  * 2026-08-23 監査: MCP は判定を**型で**返す。

@@ -19,6 +19,7 @@ npm install -g @vet402/mcp-server   # optional — the configs below use npx
 | `check_payee_trust` | Buyer-side: score a payment *recipient* before paying it (score + dataDepth + recommendation + `degraded` / `signalsUnavailable`) |
 | `explain_trust_score` | Human-readable score breakdown (includes x402 + dataCoverage) |
 | `attest_x402_payment` | Write settlement attestation after payment verification |
+| `check_resource_decision` | 0.2.0 — Product spec §9.1: pre-payment decision for one x402 *resource* (`resourceId` = sha256 hex from `/api/v1/resolve?q=<url>`). Returns `decision` (`ALLOW_PAY` \| `REFUSE`), `safe_to_pay`, `refuse_reasons`, and the full `measurement` body (L0–L2 facts, `reason_codes`, `freshness`, `evidence`, `rules_version`). `role=payee` + `payer` asks the seller-side question instead |
 
 ### Reading a `check_payee_trust` result
 

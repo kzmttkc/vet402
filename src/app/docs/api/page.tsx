@@ -199,6 +199,125 @@ const endpoints: Endpoint[] = [
     note: "The portable, third-party-verifiable passport — no API key. Returns the signed identity claim, the verification material (canonical message + signature, so any counterparty can re-run verifyMessage and cross-check the wallet against getAgentWallet on-chain), and a live score with explicit freshness (scoredAt / cacheExpiresAt).",
     response: `{ "agentId": "42", "verified": true, "identity": { "name": "Acme Agent", "wallet": "0x…", "proof": { "message": "…", "signature": "0x…", "scheme": "eip191-personal-sign" } }, "score": { "trustScore": 78, "recommendation": "ALLOW", "x402": { "paymentCount": 12, "uniqueDays": 6 }, "scoredAt": "…", "cacheExpiresAt": "…" } }`,
   },
+  // ------------------------------------------------------------------
+  // 製品定義書 §7.3 / §9.1（2026-09-02）。監査 P1-13: 本番で動いている 9 ルートが
+  // このページに 0 件だった。tests/docs-surface-parity.test.ts が網羅を検査する。
+  // ------------------------------------------------------------------
+  {
+    method: "GET",
+    path: "/api/v1/resolve?q=…",
+    note: "Reverse lookup — no key, 60/min. q is read by shape: a URL gives its Resource (resource_id = sha256(method + \" \" + canonical_url)) and the endpoints on that host; a domain its endpoints; a 0x / base58 address or a chain:address payee_id the endpoints that declare it as payTo; a tx hash the indexed settlement and, when attributed, its resource. Identifiers only — never a recommendation. A q the classifier cannot place is a 400 { error: \"invalid_query\", expected: \"q\", query: { kind: \"unknown\", value } }.",
+    response: `{
+  "query": { "kind": "url", "value": "https://api.example.com/v1/quote" },
+  "resource": { "endpoint_id": "3f1c…", "resource_id": "9a7e…", "observatory_id": "521e929e-…", "canonical_url": "https://api.example.com/v1/quote", "method": "GET", "payee_id": "eip155:8453:0x…", "catalog_status": "listed", "first_seen": "…", "last_seen": "…" },
+  "endpoints": [ { "endpoint_id": "3f1c…", … } ],
+  "disclaimer": "Scores are opinions; L0–L2 are measurement records. …"
+}`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/resources/:resourceId",
+    note: "One Resource by resource_id (sha256 hex) — no key, 120/min. The record, the payees that resources under it declare, and links to /decision, /facts and the observatory page. 400 invalid_resource_id, 404 not_found.",
+    response: `{
+  "resource": { "endpoint_id": "3f1c…", "resource_id": "9a7e…", "observatory_id": "521e929e-…", "canonical_url": "…", "method": "GET", "payee_id": "eip155:8453:0x…", "catalog_status": "listed", "first_seen": "…", "last_seen": "…" },
+  "payees": [ { "payee_id": "eip155:8453:0x…", "endpoints": 1 } ],
+  "links": { "decision": "/api/v1/resources/9a7e…/decision?role=payer", "facts": "/api/v1/observatory/endpoints/521e929e-…/facts", "observatory": "/observatory/e/521e929e-…" },
+  "disclaimer": "…"
+}`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/resources/:resourceId/decision?role=payer|payee&payer=…&caller_dialect=v1|v2&allow_without_l1=false",
+    note: "The canonical integration since 2026-09-02 (spec §8.3 / §9.1) — key required, 1 unit per call. role=payer (default) answers \"does this URL deliver as declared, right now?\" from L0 liveness, L1 settle-through and L2 conformance; role=payee answers \"should this seller serve this payer?\" and requires payer. facts and recommendation always arrive in the same document; the transitional score is marked deprecated and is not the basis of the recommendation. Send Idempotency-Key to retry without spending a second unit. 400 invalid_resource_id / invalid_role / invalid_caller_dialect / payer_required, 404 not_found, 503 decision_unavailable.",
+    response: `{
+  "subject": { "type": "resource", "id": "9a7e…", "endpoint_id": "3f1c…", "observatory_id": "521e929e-…", "canonical_url": "…", "method": "GET" },
+  "role": "payer",
+  "payer": null,
+  "recommendation": "ALLOW",
+  "reason_codes": ["l0_pass", "l1_delivered", "l2_undeclared"],
+  "facts": {
+    "l0": { "status": "pass", "observed_at": "…", "dialect": "v2", "fail_reason": null },
+    "l1": { "n_delivered": 3, "n_settled": 3, "n_attempts": 3, "n_probe_error": 0, "p50_ms": 812, "p95_ms": 1490, "last_purchase_id": "…", "observed_at": "…" },
+    "l2": { "status": "undeclared", "declaration_hash": null, "diff_hash": null, "observed_at": null },
+    "availability_7d": 1, "availability_30d": 0.97, "offer_stability": "stable",
+    "payees": ["eip155:8453:0x…"],
+    "settlement_30d_real": 41, "settlement_30d_raw": 44, "settlement_30d_test": 3,
+    "unique_payers_30d_real": 9, "wash_dominated": false
+  },
+  "freshness": { "l0": "…", "l1": "…", "l2": null },
+  "evidence": [ { "level": "L0", "url": "https://vet402.com/observatory/e/521e929e-…" }, { "level": "L1", "purchase_id": "…", "url": "https://vet402.com/api/v1/observatory/endpoints/521e929e-…/purchases" } ],
+  "score": { "trustScore": 74, "recommendation": "ALLOW", "deprecated": true },
+  "degraded": false,
+  "policy": "allow_only",
+  "rules_version": "…",
+  "registry": { "status": "off", "tx_hash": null },
+  "scoredAt": "…", "cacheExpiresAt": "…",
+  "disclaimer": "…"
+}`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/endpoints/:endpointId",
+    note: "One Endpoint by endpoint_id (sha256 of origin + path prefix) or its observatory uuid — no key, 120/min. Existing /observatory/e/{id} links keep resolving. 400 invalid_endpoint_id, 404 not_found.",
+    response: `{
+  "endpoint": { "endpoint_id": "3f1c…", "resource_id": "9a7e…", "observatory_id": "521e929e-…", "canonical_url": "…", "method": "GET", "payee_id": "eip155:8453:0x…", "catalog_status": "listed", "first_seen": "…", "last_seen": "…" },
+  "payees": [ { "payee_id": "eip155:8453:0x…", "endpoints": 1 } ],
+  "links": { "facts": "/api/v1/observatory/endpoints/521e929e-…/facts", "payees": "/api/v1/endpoints/3f1c…/payees", "observatory": "/observatory/e/521e929e-…" },
+  "disclaimer": "…"
+}`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/endpoints/:endpointId/payees",
+    note: "endpoint → payees[] — no key, 120/min. Every payee_id (chain:address) declared by resources under the same endpoint_id, with how many resources name each.",
+    response: `{ "endpoint_id": "3f1c…", "payees": [ { "payee_id": "eip155:8453:0x…", "endpoints": 2 } ], "count": 1, "disclaimer": "…" }`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/payees/:address/endpoints",
+    note: "payee → endpoints[] — no key, 120/min. :address is chain:address (EVM lowercased, Solana base58 as-is); a bare 0x address is read as Base, a bare base58 address as Solana mainnet. 400 invalid_payee_id.",
+    response: `{ "payee_id": "eip155:8453:0x…", "endpoints": [ { "endpoint_id": "3f1c…", "canonical_url": "…", "method": "GET", "catalog_status": "listed", … } ], "count": 1, "disclaimer": "…" }`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/observatory/endpoints/:id/facts",
+    note: "L0–L2 seller facts for one endpoint — no key, 120/min. :id is the observatory uuid or the endpoint_id. The same facts object /decision carries, without the recommendation: this route contains no score and no verdict by design (§8.3). n_probe_error counts attempts where our own request was malformed, kept apart from the seller's non-delivery; settlement_30d_test is vet402's own measurement purchases, disclosed and excluded from the wash_dominated denominator.",
+    response: `{
+  "subject": { "type": "resource", "id": "9a7e…", "endpoint_id": "3f1c…", "observatory_id": "521e929e-…", "canonical_url": "…", "method": "GET" },
+  "facts": { "l0": {…}, "l1": {…}, "l2": {…}, "availability_7d": 1, "availability_30d": 0.97, "offer_stability": "stable", "payees": ["…"], "settlement_30d_real": 41, "settlement_30d_raw": 44, "settlement_30d_test": 3, "unique_payers_30d_real": 9, "wash_dominated": false },
+  "freshness": { "l0": "…", "l1": "…", "l2": null },
+  "evidence": [ { "level": "L0", "url": "…" }, { "level": "L1", "purchase_id": "…", "url": "…" } ],
+  "disclaimer": "…",
+  "retrievedAt": "…"
+}`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/census/summary?chain=eip155:8453&window=30d",
+    note: "Settlement census — no key, 60/min, cached 5 minutes. settlements_raw counts every indexed x402-related settlement in the window; settlements_real excludes wash_flag self_deal / circular / test (including every wallet vet402 pays from). Both are always returned together and never merged. chain is CAIP-2 or a v1 slug (base, solana); omit for all chains. window is 7d or 30d. 400 invalid_window / invalid_chain.",
+    response: `{
+  "chain": "eip155:8453", "window": "30d",
+  "settlements_raw": 980, "settlements_real": 520,
+  "wash": { "self_deal": 12, "circular": 0, "test": 448 },
+  "attribution": { "confirmed": 410, "probable": 70, "unmatched": 40 },
+  "unique_payers_raw": 31, "unique_payers_real": 24, "unique_payees_real": 57,
+  "endpoints_with_real_settlement": 61,
+  "by_source": { "l1_purchase": 448, "payments_api": 2, "chain_index": 530 },
+  "definition": "settlements_raw counts every indexed …",
+  "disclaimer": "…",
+  "retrievedAt": "…"
+}`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/observatory/corrections?endpoint=…&limit=100",
+    note: "The correction log as JSON — no key, 60/min. Every published verdict that later changed: dispute_remeasure (a seller's signed dispute triggered a re-measurement that overturned it), settlement_backfill (a claimed settlement was later confirmed or refuted on-chain), reverify. before / after are the published values; corrections unfavourable to vet402 are listed the same way and rows are never deleted. endpoint filters by observatory uuid; limit 1–500.",
+    response: `{
+  "corrections": [ { "id": "…", "subject_type": "endpoint", "subject_id": "521e929e-…", "level": "l0", "before": { "verdict": "fail" }, "after": { "verdict": "pass" }, "reason": "dispute_remeasure", "dispute_id": "…", "created_at": "…" } ],
+  "definition": "Each row is a public verdict that changed after publication: …",
+  "disclaimer": "…"
+}`,
+  },
 ];
 
 // 2026-08-12 FIX-6: 各エンドポイントを目次から直接指せるようにする。
@@ -481,7 +600,7 @@ export default async function ApiDocsPage() {
             <Link href="/payee" className="doc-link">
               /payee
             </Link>{" "}
-            or call the payee-score endpoint above (example 3).
+            or call the payee-score endpoint above (example 4).
           </p>
         </div>
       </section>
@@ -514,10 +633,13 @@ npm i @vet402/middleware   # x402 request gate for an API provider
 npm i @vet402/mcp-server   # MCP tool, so an agent can ask before it pays`}
         />
         <p className="text-sm text-brand-lift">
-          The <code className="text-brand-deep">@vouchscore</code> scope is the only one that is
-          ours. Unscoped <code>vouch-sdk</code> and <code>@getvouch/sdk</code> exist on npm and are
-          unrelated packages by other publishers &mdash; installing those gets you someone else&apos;s
-          code, not ours.
+          <code className="text-brand-deep">@vet402/*</code> is the canonical scope.{" "}
+          <code className="text-brand-deep">@vouchscore/*</code> is the old name (the product
+          was called Vouch until August 2026) and is published by the same account &mdash; the
+          same code, kept only so existing installs keep resolving. Unscoped{" "}
+          <code>vouch-sdk</code> and <code>@getvouch/sdk</code> exist on npm and are unrelated
+          packages by other publishers &mdash; installing those gets you someone else&apos;s code,
+          not ours.
         </p>
 
         {/* 2026-08-13 UX監査R2: 前回のC4修正で `npm i` の行は載ったが、サイト全体を
@@ -538,7 +660,7 @@ const vouch = createVouchClient({ apiKey: process.env.VOUCH_API_KEY });
 
 // Seller side — "should I accept payment from this wallet?"
 const seller = await vouch.getWalletScore("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045");
-console.log(seller.trustScore, seller.recommendation); // 72 'ALLOW'
+console.log(seller.trustScore, seller.recommendation); // 0–100 and ALLOW | WARN | BLOCK — live values
 
 // Buyer side — "should my agent pay this wallet?"
 const payee = await vouch.getPayeeScore("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045");

@@ -8,6 +8,12 @@ TypeScript SDK ([`@vet402/sdk`](https://www.npmjs.com/package/@vet402/sdk)
 0.2.x): fail-closed SpendGuard by default, identical machine-readable reason
 codes, identical error contract.
 
+> **`/decision` and `/resolve` are not supported by this package yet.** The product-spec
+> §9.1 decision endpoint (`GET /api/v1/resources/{resource_id}/decision`, facts +
+> recommendation in one document) and the §7.3 reverse lookup are available in
+> `@vet402/sdk` 0.5.0 (`getDecision` / `resolve`) and in `@vet402/mcp-server` 0.2.0
+> (`check_resource_decision`). From Python, call them over plain HTTP for now.
+>
 > **Not yet published to PyPI.** Until then, install from a local checkout:
 >
 > ```bash
