@@ -102,9 +102,10 @@ Not the observatory. Not 17k endpoints.
 本番実測で payee 30件が 30/30 WARN だったため、「BLOCK だから止める / ALLOW だから払う」という絵は撮れない。
 
 1. `git log pre-ethonline-2026..ethonline-2026` (10s).
-2. `run.ts catalog` → 既定 policy をカタログに当て、**署名0件**で全件拒否（25s）。スコアではなく証拠が無いから止まる。
-3. `run.ts pay` → 開示した evidence policy（21日で 3件以上・settle率 0.9 以上）で、48/48 settled の相手に **実 Base tx**（25s）。
-   同じ policy が、**L1 実績 0 件の相手**（`agent.api.0x.org` の x402 枠）を署名前に拒む。断罪ではなく「まだ測っていない」（[`fixtures.md`](./fixtures.md) §5・§6）。
+2. `run.ts refuse` → `/decision` が BLOCK（`l0_unverified, l1_not_attempted`）→ **署名ゼロ**（25s）。
+   「相手が悪いのではない。我々がまだ測っていない」。
+3. `run.ts pay` → `/decision` が ALLOW（`l0_pass, l1_delivered`）→ **実 Base tx** と attest（25s）。
+   evidence に `source`（自社台帳 / Subgraph）が付く。
 
 Existing product is one sentence: “We already buy and publish. This weekend we made the buyer's rule explicit, and paid only where our own delivery ledger backed it.”
 

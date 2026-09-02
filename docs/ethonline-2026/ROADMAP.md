@@ -304,12 +304,15 @@ Each prize comment: 4 sentences — what existed, what `payOrRefuse` added, whic
 
 | t | Screen | Say |
 |---|---|---|
-| 0:00–0:15 | vet402.com + `/observatory` | We already buy. We already publish failures. That is not this submission. |
-| 0:15–0:35 | `git log pre-ethonline-2026..ethonline-2026` | Continuity boundary. Only these commits are new. |
-| 0:35–1:20 | Terminal: `run.ts catalog` | 既定 policy をライブのカタログに当てる。**署名0件**。スコアが甘いからではない——**独立した受領証拠が誰にも無い**から止まる。理由は機械可読の1語で出る。 |
-| 1:20–2:20 | Terminal: `run.ts pay` → Base explorer | 開示した evidence policy（21日で3件以上・settle率0.9以上）。48/48 settled の相手に **1件だけ** `exact` で払う。tx hash → attest → `/decisions` の `source: agent-demo`。同じ policy が、配送実績を1件も持たない相手を署名前に拒む（拒否理由は「実績なし」——不履行の断罪ではない）。 |
-| 2:20–2:50 | SDK snippet: signer は policy 通過後にしか渡らない | 拒否のとき signer はそもそも呼べない。それがこの原始命令。 |
-| 2:50–3:20 | Close | 買い手の規則を明示にし、我々自身の配達台帳が裏付けたときだけ払った。 |
+| 0:00–0:20 | vet402.com + `/observatory` | 既存の説明。「我々は自腹で買って、起きたことを公開している。今日 [PASS] 件が機械検証を通り、**2回連続で落ちた [FAILED2] 件だけを fail と呼ぶ**。1回落ちた [WAITING] 件は2回目待ち——**1回の悪い読みは判定ではない**。ここまでは今週の話ではない。」 |
+| 0:20–0:35 | `git log pre-ethonline-2026..ethonline-2026` | Continuity の境界。新しいのはこのコミットだけ。 |
+| 0:35–1:15 | Terminal: `run.ts refuse` | まだ一度も買っていない相手（`agent.api.0x.org`）。`/decision` は **BLOCK** で理由は `l0_unverified, l1_not_attempted`。**署名ゼロ**。「この相手が悪いのではない。**我々がまだ測っていない**。」 |
+| 1:15–2:15 | Terminal: `run.ts pay` → Base explorer | `/decision` が **ALLOW**（`l0_pass, l1_delivered`）の相手に **1件だけ** `exact` で払う。tx hash → attest → `/decisions` の `source: agent-demo`。**evidence に `source`（vet402 台帳 / Subgraph の生データ）が付く**——第三者が同じ判定を引ける。 |
+| 2:15–2:45 | SDK snippet ＋ MCP | signer は判定と policy の両方が通ったときにしか渡らない。**既存の `check_resource_decision` は答えるだけ。これは動く。** |
+| 2:45–3:00 | Close | 会期前は「払ってよいか」に答えられた。今週それに**従って動く**ことを覚えた。 |
+
+**数字は撮影当日に `python3 scripts/vet402_video_numbers.py`（Takeshi_Automation）で取り直し、[PASS] / [FAILED2] / [WAITING] を差し替える。**
+公開の fail（2回連続）・最新プローブが fail・2回目待ち は**別の数字**なので混ぜない。
 
 支払いが撮れなかった場合: `run.ts catalog` の尺を伸ばし、「payment is implemented and fail-closed;
 live settle is not claimed」と言う。モックのハッシュは出さない。
