@@ -15,14 +15,14 @@ Of the 21,445 endpoints vet402 tracks in the public x402 discovery catalog, **20
 
 | Chain (mainnet) | Endpoints tracked | Active | L0 published pass |
 |---|---|---|---|
-| **Base** | **20,870** | **14,539** | **3,718** |
-| Solana | 296 | 239 | 60 |
+| **Base** | **20,870** | **14,539** | **7,018** |
+| Solana | 296 | 239 | 121 |
 | X Layer | 18 | 13 | 3 |
 | All others combined | 6 | 5 | 1 |
 
 ### Measured: every real purchase we have made settled on Base
 
-Our L1 verification level makes **real purchases**: 2,374 purchase attempts across 1,340 distinct endpoints, of which 1,102 settled (46.4%). Every one of those attempts was a USDC payment on Base mainnet (`eip155:8453`), using the x402 `exact` scheme with EIP-3009 transfer authorization. Every settled purchase produces a Base transaction hash, published on the endpoint's public observatory page. The 1,272 attempts that did not settle are published too — same page, same weight.
+Our L1 verification level makes **real purchases**: 2,555 purchase attempts across 1,521 distinct endpoints, of which 1,198 settled (46.9%). Every one of those attempts was a USDC payment on Base mainnet (`eip155:8453`), using the x402 `exact` scheme with EIP-3009 transfer authorization. Every settled purchase produces a Base transaction hash, published on the endpoint's public observatory page. The 1,357 attempts that did not settle are published too — same page, same weight.
 
 This is, to our knowledge, the only public dataset of *settle-through* rates for the x402 catalog: not "does the endpoint answer" but "does money actually settle and a response actually arrive."
 
@@ -34,7 +34,7 @@ Daily catalog snapshots (latest: 2026-09-02, 14,968 endpoints fetched) drive a l
 
 1. **Buyer confidence in the Base agent economy.** An agent (or its operator) deciding whether to pay a Base x402 endpoint can check independent, evidence-backed data — settle-through history with tx hashes — instead of paying blind.
 2. **A quality signal for Base sellers.** Endpoints with verified settlement history can display it (public observatory pages and an embeddable badge API, live at `/api/badge/endpoint/{id}`). Verification is free and unsolicited; sellers cannot pay us for a better result.
-3. **Ground truth about the catalog.** "21,445 listed" and "14,967 active with 3,818 machine-verified live" are different numbers. Publishing the denominator makes the Base x402 ecosystem legible to builders, researchers, and reviewers — including the failures.
+3. **Ground truth about the catalog.** "21,445 listed" and "14,967 active with 7,193 machine-verified live" are different numbers. Publishing the denominator makes the Base x402 ecosystem legible to builders, researchers, and reviewers — including the failures.
 
 ## Neutrality commitments
 
@@ -51,4 +51,4 @@ Daily catalog snapshots (latest: 2026-09-02, 14,968 endpoints fetched) drive a l
 
 ---
 
-*Figures retrieved from /api/v1/observatory/state on 2026-09-02. Regenerate before every submission: `python3 scripts/grant-figures.py --check`.*
+*Figures retrieved from /api/v1/observatory/state on 2026-09-03. Regenerate before every submission: `python3 scripts/grant-figures.py --check`.*

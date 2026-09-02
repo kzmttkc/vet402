@@ -10,7 +10,7 @@ x402 revived HTTP 402 as a payment handshake: an agent hits an endpoint, receive
 - **Payment proof is not fulfillment proof.** The rail proves the money moved. It proves nothing about whether the seller delivered what it declared.
 - **The buyer is software.** An autonomous agent cannot "feel" that a service looks scammy, and after paying a non-delivering endpoint there is no chargeback.
 - **The catalog is churning.** In the public x402 discovery catalog we track, 21,445 endpoints have appeared; 6,478 are currently delisted; our lifecycle stream has recorded 7,523 delist events and 1,045 relists. What an agent found yesterday may be gone — or replaced — today.
-- **Most of the catalog is not machine-checkable.** Of the tracked endpoints, only 3,818 currently have a machine-verified L0 pass; 17,587 are "unverified" — which means *not machine-checkable*, not dead. Nobody knew this denominator before someone measured it.
+- **Most of the catalog is not machine-checkable.** Of the tracked endpoints, only 7,193 currently have a machine-verified L0 pass; 13,917 are "unverified" — which means *not machine-checkable*, not dead. Nobody knew this denominator before someone measured it.
 
 Reputation systems that rely on self-reported reviews or stake do not close this gap, because the only ground truth for "does this endpoint deliver?" is **actually buying from it**.
 
@@ -18,8 +18,8 @@ Reputation systems that rely on self-reported reviews or stake do not close this
 
 From operating one in production, we argue it needs four properties:
 
-1. **It buys.** Real settlement with real money, not synthetic probes alone. vet402's L1 level has made 2,374 real purchase attempts across 1,340 endpoints; 1,102 settled. Each settled purchase is published with its on-chain tx hash.
-2. **It publishes failures with the same weight.** The 1,272 attempts that did not settle are on the same public pages as the successes. A verification layer that only publishes wins is an advertising layer.
+1. **It buys.** Real settlement with real money, not synthetic probes alone. vet402's L1 level has made 2,555 real purchase attempts across 1,521 endpoints; 1,198 settled. Each settled purchase is published with its on-chain tx hash.
+2. **It publishes failures with the same weight.** The 1,357 attempts that did not settle are on the same public pages as the successes. A verification layer that only publishes wins is an advertising layer.
 3. **It is structurally neutral.** vet402 sells nothing on the catalog it measures; measured operators are not customers; verification is unsolicited and free; sellers cannot pay for a better result. Our own published mistakes are corrected on a public accuracy ledger.
 4. **It separates fact from opinion, permanently.** Four levels — L0 liveness (probe), L1 settle-through (real purchase), L2 conformance (machine diff against the seller's own declaration), L3 quality (published rubric) — and a result never moves up a level. An opinion is never laundered into a fact.
 
@@ -42,4 +42,4 @@ From operating one in production, we argue it needs four properties:
 
 ---
 
-*Figures retrieved from /api/v1/observatory/state on 2026-09-02. Regenerate before every submission: `python3 scripts/grant-figures.py --check`.*
+*Figures retrieved from /api/v1/observatory/state on 2026-09-03. Regenerate before every submission: `python3 scripts/grant-figures.py --check`.*

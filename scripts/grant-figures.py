@@ -75,10 +75,33 @@ def fetch():
         "uniquePayeesReal": c["unique_payees_real"],
         "endpointsWithRealSettlement": c["endpoints_with_real_settlement"],
         "confirmedAttribution": c["attribution"]["confirmed"],
+        "indexFrom": _index_from(),
         "solTotal": by.get("Solana", {}).get("totalEndpoints"),
         "solActive": by.get("Solana", {}).get("activeEndpoints"),
         "solPass": by.get("Solana", {}).get("publishedPass"),
     }
+
+
+def _index_from():
+    """census の window は名乗りであって、索引が実際にどこまで遡れているかとは別物。
+    2026-09-03: window=30d の実体は 09-01 以降の約2日だった。申請に出す前に必ず実測する。"""
+    import subprocess, os as _os
+    env = pathlib.Path.home() / "vouch" / ".env.production.local"
+    url = ""
+    try:
+        for line in env.read_text().splitlines():
+            if line.startswith("DATABASE_URL="):
+                url = line.split("=", 1)[1].strip().strip('"').strip("'"); break
+    except Exception:
+        return "不明"
+    psql = next((c for c in ("/opt/homebrew/bin/psql", "/usr/local/bin/psql") if _os.path.exists(c)), "psql")
+    try:
+        out = subprocess.run([psql, url, "-At", "-c",
+                              "select to_char(min(observed_at) at time zone 'utc','YYYY-MM-DD') from settlements;"],
+                             capture_output=True, text=True, timeout=40)
+        return out.stdout.strip() or "不明"
+    except Exception:
+        return "不明"
 
 
 def block(f, today):
@@ -94,7 +117,7 @@ def block(f, today):
 | Daily catalog snapshot | Latest {f['snapshotDate']} — {g('snapshotFetched')} endpoints fetched |
 | Base (mainnet-only breakdown) | {g('baseTotal')} tracked · {g('baseActive')} active · {g('basePass')} L0 pass — {f['baseSharePct']}% of {g('mainnetTotal')} mainnet endpoints |
 | 7-day L0 coverage | {f['coverage7dPct']}% of active endpoints measured |
-| **Real third-party demand (30d)** | **{g('settlementsReal')} settlements from {g('uniquePayersReal')} distinct payers to {g('uniquePayeesReal')} payees**, {g('endpointsWithRealSettlement')} endpoints with real settlement; {g('washTest')} measurement-wallet settlements (ours) excluded from {g('settlementsRaw')} raw |
+| ~~Real third-party demand~~ | **申請に使わない（2026-09-03）**: census は `window=30d` と名乗るが、索引は {f['indexFrom']} 以降しか入っていない（実測）。API が実際の索引範囲を開示するまで、この数字を申請文に書かない |
 
 Footer to paste: *Figures retrieved from /api/v1/observatory/state on {today}.*
 """
@@ -132,8 +155,7 @@ ANCHORS = [
     (r"([\d,]{3,}) endpoints, ([\d,]{3,}) of them on Base", ["total", "baseTotal"]),
     (r"We buy: ([\d,]{3,}) real USDC purchases on Base mainnet across ([\d,]{3,}) endpoints, ([\d,]{3,}) settled", ["attempts", "endpointsAttempted", "settled"]),
     (r"the ([\d,]{3,}) that did not settle", ["nonsettled"]),
-    (r"([\d,]{3,}) real settlements from ([\d,]{3,}) distinct payers", ["settlementsReal", "uniquePayersReal"]),
-    (r"([\d,]{3,}) endpoints with real settlement", ["endpointsWithRealSettlement"]),
+
     (r"attempts across ([\d,]{3,}) (?:distinct )?endpoints", ["endpointsAttempted"]),
     (r"([\d,]{3,}) endpoints are currently delisted", ["delisted"]),
     (r"relists, and (\d+) settle-drops", ["settleDrops"]),

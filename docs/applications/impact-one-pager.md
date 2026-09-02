@@ -29,8 +29,8 @@ A result never moves up a level: a probe is never reported as settlement; an opi
 | Metric | Value |
 |---|---|
 | Endpoints tracked in the public x402 catalog | 21,445 (14,967 active, 6,478 delisted) |
-| L0 machine-verified pass | 3,818 published (17,587 not machine-checkable — "unverified", not dead) |
-| **L1 real purchases** | **2,374 attempts across 1,340 endpoints — 1,102 settled**; every settlement published with its Base tx hash; the 1,272 non-settles published with the same weight |
+| L0 machine-verified pass | 7,193 published (13,917 not machine-checkable — "unverified", not dead) |
+| **L1 real purchases** | **2,555 attempts across 1,521 endpoints — 1,198 settled**; every settlement published with its Base tx hash; the 1,357 non-settles published with the same weight |
 | Lifecycle events recorded | 7,523 delists · 1,045 relists · 11 settle-drops |
 | Daily catalog snapshot | Latest 2026-09-02 — 14,968 endpoints fetched |
 | Chain coverage | Base 20,870 · Solana 218 · X Layer 18 · others 6 (mainnet-only breakdown; real purchases are Base-only today) |
@@ -48,4 +48,4 @@ Next.js (App Router) + TypeScript · viem (Base mainnet) · ERC-8004 identity & 
 
 ---
 
-*Figures retrieved from /api/v1/observatory/state on 2026-09-02. Regenerate before every submission: `python3 scripts/grant-figures.py --check`.*
+*Figures retrieved from /api/v1/observatory/state on 2026-09-03. Regenerate before every submission: `python3 scripts/grant-figures.py --check`.*
