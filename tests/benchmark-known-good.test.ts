@@ -48,13 +48,21 @@ import {
   applySybilPenalty,
   computeWeightedScore,
   normalizeWalletScore,
+  X402_NO_HISTORY_SCORE,
 } from "@/lib/scoring/helpers";
 import { assessSybilRisk, resolveRecommendation } from "@/lib/scoring/verdict";
 
 /** Bare-wallet neutral defaults, mirroring scoreWallet() in engine.ts. */
 const WALLET_IDENTITY_SCORE = 30;
 const WALLET_REPUTATION_SCORE = 30;
-const X402_NEUTRAL_SCORE = 50;
+/**
+ * 2026-09-02: この鏡は x402 軸を「中立 50」と写していたが、engine.ts は
+ * 2026-08-13 以降 scoreEconomicActivity → X402_NO_HISTORY_SCORE(30) を入れている
+ * （決済 0 件は中立ではなく「空」）。50 のままだと、この file が語る「未登録
+ * ウォレットの天井」が 62 に見える——本当の天井は 52 で、known-good 17 件の
+ * 本番実測（47/50）はそこから来ている。鏡は実装と同じ定数を引く。
+ */
+const X402_NEUTRAL_SCORE = X402_NO_HISTORY_SCORE;
 
 /**
  * The verdict scoreWallet() produces for an unregistered wallet, expressed in
@@ -185,6 +193,29 @@ test("FAIL-CLOSED: どんなに good なウォレットでも、未取得フラ�
       `${flag} が付いているのに BLOCK になっていない——fail-open の穴`,
     );
   }
+});
+
+test("本番実測(2026-09-02): known-good 17 件は 47/50、known-bad の最高も 47——同じ帯に居る", () => {
+  // scoreWallet が本番 DB に残した最新の benchmark_seed 判定（2026-09-02 10:18 UTC）:
+  //   known-good 17 件: ageDays 876-1145 / txCount 84-100 / x402 0 件 / flags [] → 47 または 50、全部 WARN
+  //   known-bad  25 件: 17 件が WARN（44-47）、8 件が BLOCK（Base 上で取引 0 の burner）
+  //   Lazarus (Ronin) 0x098b716b…: ageDays 882 / txCount 29 → 47 WARN
+  // この再現が壊れたら、テストの鏡（verdictForBareWallet）が engine.ts から
+  // ずれている。ずれたまま「天井」を語ると、/accuracy の意味を読み違える。
+  const coinbaseLike = verdictForBareWallet({ ageDays: 1129, txCount: 100 });
+  const ensDaoLike = verdictForBareWallet({ ageDays: 1130, txCount: 97 });
+  const lazarusRonin = verdictForBareWallet({ ageDays: 882, txCount: 29 });
+  assert.equal(coinbaseLike.score, 50);
+  assert.equal(coinbaseLike.recommendation, "WARN");
+  assert.equal(ensDaoLike.score, 47);
+  assert.equal(lazarusRonin.score, 47);
+  assert.equal(lazarusRonin.recommendation, "WARN");
+  // known-good と known-bad が同点で並ぶ帯。ALLOW 閾値をここまで下げると
+  // 制裁アドレスが ALLOW になる——「閾値で ALLOW を作らない」の数値的根拠。
+  assert.ok(
+    SCORE_THRESHOLDS.allow > Math.max(coinbaseLike.score, lazarusRonin.score),
+    "ALLOW 閾値が known-bad の到達点（47）以下——閾値で ALLOW を作ると Lazarus が通る",
+  );
 });
 
 test("未登録ウォレットのスコア上限は ALLOW 閾値未満である(設計上の天井を明文化)", () => {

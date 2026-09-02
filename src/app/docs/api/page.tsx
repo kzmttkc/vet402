@@ -1074,7 +1074,7 @@ app.use("/api/paid", createExpressGate({
             thin" の出所を書く場所がどこにも無かった。ここが /payee 頁からの
             リンク先（#payee-score）で、閾値と重みは
             src/lib/scoring/payee-engine.ts の determineDataDepth /
-            WEIGHTS_BY_DEPTH を写している。 */}
+            l1DeliveryDepth / WEIGHTS_BY_DEPTH を写している。 */}
         <div id="payee-score" className="scroll-mt-32 space-y-3">
           <h3 className="sub-head">Payee score</h3>
           <p className="text-sm text-brand">
@@ -1114,7 +1114,8 @@ app.use("/api/paid", createExpressGate({
                 <tr>
                   <td className="text-brand-deep">thin</td>
                   <td className="font-[family-name:var(--font-sans)] font-normal whitespace-normal text-brand">
-                    under 3 payments received, or from under 2 distinct payers
+                    under 3 payments received, or from under 2 distinct payers — and under 3
+                    vet402-verified deliveries over 2+ days
                   </td>
                   <td className="num text-brand-deep">15%</td>
                   <td className="num text-brand-deep">45%</td>
@@ -1123,7 +1124,8 @@ app.use("/api/paid", createExpressGate({
                 <tr>
                   <td className="text-brand-deep">moderate</td>
                   <td className="font-[family-name:var(--font-sans)] font-normal whitespace-normal text-brand">
-                    3+ payments received from 2+ distinct payers
+                    3+ payments received from 2+ distinct payers, or 3+ vet402-verified
+                    deliveries over 2+ days
                   </td>
                   <td className="num text-brand-deep">35%</td>
                   <td className="num text-brand-deep">35%</td>
@@ -1132,7 +1134,8 @@ app.use("/api/paid", createExpressGate({
                 <tr>
                   <td className="text-brand-deep">rich</td>
                   <td className="font-[family-name:var(--font-sans)] font-normal whitespace-normal text-brand">
-                    10+ payments received across 7+ days from 3+ distinct payers
+                    10+ payments received across 7+ days from 3+ distinct payers, or 10+
+                    vet402-verified deliveries across 7+ days
                   </td>
                   <td className="num text-brand-deep">50%</td>
                   <td className="num text-brand-deep">25%</td>
@@ -1142,6 +1145,20 @@ app.use("/api/paid", createExpressGate({
             </table>
           </TableScroll>
           <ul className="list-disc space-y-2 pl-5 text-sm text-brand">
+            <li>
+              <strong>What lifts a payee out of &ldquo;thin&rdquo; is an observed fact, never a
+              claim.</strong>{" "}
+              Two facts count, and only these two. Owner-signed x402 settlements from payers whose
+              funding sources are independent (a cluster funded by one address counts as one
+              payer). And vet402&rsquo;s own L1 purchases in which the observatory paid the
+              address, confirmed the settlement on chain and confirmed the purchased resource was
+              delivered — counted by deliveries and by distinct days, because the buyer is always
+              vet402 itself and a seller cannot forge or schedule those purchases. Until one of
+              those facts exists, the score is capped one point under ALLOW no matter how healthy
+              the wallet looks. A payment vet402 made that never settled, or settled without
+              delivery, adds nothing here (it is disclosed as{" "}
+              <code>l1PaidNeverSettled</code> and can only lower the ceiling).
+            </li>
             <li>
               <strong>The raw inputs are in the response.</strong>{" "}
               <code>signals.receiving</code> reports{" "}
