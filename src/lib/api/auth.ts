@@ -28,6 +28,14 @@ async function enforceAuthIpLimit(ip: string): Promise<NextResponse | null> {
   return null;
 }
 
+// 2026-09-02 敵対的監査 P2: 401 の本文に「次に何をすればよいか」が無かった。
+// コードは変えず、案内だけ添える（生成クライアントは error だけを読む）。
+const MISSING_API_KEY_BODY = {
+  error: "missing_api_key",
+  documentation: "/docs/api",
+  signup: "/signup",
+} as const;
+
 export async function authenticateRequest(request: Request): Promise<{
   ok: boolean;
   apiKeyId?: string;
@@ -44,7 +52,7 @@ export async function authenticateRequest(request: Request): Promise<{
     if (limited) return { ok: false, error: limited };
     return {
       ok: false,
-      error: NextResponse.json({ error: "missing_api_key" }, { status: 401 }),
+      error: NextResponse.json(MISSING_API_KEY_BODY, { status: 401 }),
     };
   }
 
@@ -54,7 +62,7 @@ export async function authenticateRequest(request: Request): Promise<{
     if (limited) return { ok: false, error: limited };
     return {
       ok: false,
-      error: NextResponse.json({ error: "missing_api_key" }, { status: 401 }),
+      error: NextResponse.json(MISSING_API_KEY_BODY, { status: 401 }),
     };
   }
 

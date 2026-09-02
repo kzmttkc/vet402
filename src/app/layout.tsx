@@ -49,10 +49,15 @@ const SITE_TITLE = "vet402 — Independent Verification of the x402 Agent-Paymen
 const SITE_DESCRIPTION =
   "vet402 buys what x402 endpoints actually sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence.";
 
-/* 方向性の契約。view-source で読める位置に置いてある。
+/* 方向性の契約。ソースで読める位置に置いてある。
    これを崩す変更（SaaS 標準のカード羅列・グラデ・影・kicker への退行）は、
-   実装の好みの問題ではなく契約違反になる。 */
-const DIRECTION_CONTRACT = `<!--
+   実装の好みの問題ではなく契約違反になる。
+
+   2026-09-02 敵対的監査 P2: 以前は HTML コメントとして本番 HTML と RSC
+   ペイロードに毎リクエスト配信していた（hidden の器に dangerouslySetInnerHTML）。
+   内部の設計文書と output/ のファイルパスを公開面に載せる理由は無いので、
+   TS のブロックコメントに移した。文面は変えていない。
+
   vet402 — DIRECTION CONTRACT (pinned 2026-08-13, approved by the owner)
 
   THESIS   This site is a publication of a measurement body, not a product
@@ -66,7 +71,7 @@ const DIRECTION_CONTRACT = `<!--
            pass / fail / unverified / settled. Never fraud, never scam.
   SOURCE   output/0813/vet402_lp_design_brief.md
            output/0813/brand_vet402/vet402_rfc_plaintext.png
--->`;
+*/
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -171,9 +176,6 @@ export default async function RootLayout({
         ) : null}
       </head>
       <body className="min-h-full flex flex-col bg-ground">
-        {/* React は JSX コメントを出力しないので、契約は hidden の器に入れて
-            そのまま HTML コメントとして配る（描画への影響はゼロ）。 */}
-        <div hidden aria-hidden="true" dangerouslySetInnerHTML={{ __html: DIRECTION_CONTRACT }} />
         {/* Outage strip is a client read of GET /api/health inside SiteChrome —
             it must not import scoring engines into this layout. */}
         <SiteChrome>

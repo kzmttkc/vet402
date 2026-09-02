@@ -30,7 +30,9 @@ export async function publicRateLimit(
     headers,
     cacheHeaders: {
       ...sharedCacheRateLimitHeaders(limited),
-      "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+      // max-age も持つ（2026-09-02 監査）: s-maxage だけだとブラウザ／非共有キャッシュには
+      // 指示が無く、同じ本文を 1 分間に何度も取りに来る。値は CDN と同じ 60 秒。
+      "Cache-Control": "public, max-age=60, s-maxage=60, stale-while-revalidate=300",
     },
   };
 }

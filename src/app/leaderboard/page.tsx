@@ -124,7 +124,7 @@ export default async function LeaderboardPage({
   };
   const breadcrumb = breadcrumbJsonLd([
     { name: "Home", path: "/" },
-    { name: "Leaderboard", path: "/leaderboard" },
+    { name: "Register", path: "/leaderboard" },
   ]);
 
   return (
@@ -146,7 +146,7 @@ export default async function LeaderboardPage({
         <div className="doc-head">
           <div className="doc-head-col">
             <span>Independent Measurement</span>
-            <span>Register: recently verified subjects</span>
+            <span>Register of recently verified subjects</span>
             <span>
               {/* この頁のシアン1点。表に何行載っているかという事実。分母は
                   「表示上限」ではなく「窓の中に実在する被検体の数」。 */}
@@ -170,7 +170,9 @@ export default async function LeaderboardPage({
           </div>
         </div>
 
-        <h1 className="doc-title mt-10">Recently verified subjects, ranked</h1>
+        {/* 2026-09-02 監査: title / 見出し行 / H1 で呼称が 3 つあった。Register に統一。
+            ヘッダーのナビ「Leaderboard」は SiteHeader.tsx 側（別系統）。 */}
+        <h1 className="doc-title mt-10">Register of recently verified subjects, ranked</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 
         <div className="mt-8 flex flex-col gap-1 sm:flex-row sm:gap-0">

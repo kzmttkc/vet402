@@ -14,12 +14,12 @@ export async function GET(request: NextRequest) {
   if (!gate.ok) return gate.response;
   const q = request.nextUrl.searchParams.get("q");
   if (!q || q.trim().length === 0 || q.length > 2048) {
-    return NextResponse.json({ error: "invalid_query" }, { status: 400, headers: gate.headers });
+    return NextResponse.json({ error: "invalid_query", expected: "q" }, { status: 400, headers: gate.headers });
   }
   try {
     const result = await resolve(q);
     if (result.query.kind === "unknown") {
-      return NextResponse.json({ error: "invalid_query", query: result.query }, { status: 400, headers: gate.headers });
+      return NextResponse.json({ error: "invalid_query", expected: "q", query: result.query }, { status: 400, headers: gate.headers });
     }
     return NextResponse.json(result, { headers: gate.cacheHeaders });
   } catch (error) {

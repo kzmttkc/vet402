@@ -44,6 +44,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     // 抜けていた。corrections と同じ「公開していること自体が内容」の帳簿。
     { url: `${SITE_URL}/operator-log`, lastModified: SITE_REVISION, changeFrequency: "weekly", priority: 0.5 },
     { url: `${SITE_URL}/faq`, lastModified: SITE_REVISION, changeFrequency: "monthly", priority: 0.7 },
+    // 2026-09-02 敵対的監査: 公開・robots 許可・内部リンクありの 4 頁が sitemap に無かった。
+    // /demo /live /partners は入れない —— 内部リンクが 0 本の孤立頁で、sitemap に載せると
+    // 「サイトの一部」だと索引に言うことになる。導線を付けた時点で足す。
+    { url: `${SITE_URL}/impact`, lastModified: "2026-09-02", changeFrequency: "weekly", priority: 0.6 },
+    { url: `${SITE_URL}/decisions`, lastModified: "2026-09-02", changeFrequency: "daily", priority: 0.6 },
+    { url: `${SITE_URL}/operations`, lastModified: "2026-09-02", changeFrequency: "weekly", priority: 0.5 },
+    { url: `${SITE_URL}/playground`, lastModified: "2026-09-02", changeFrequency: "monthly", priority: 0.6 },
     { url: `${SITE_URL}/blog`, lastModified: SITE_REVISION, changeFrequency: "weekly", priority: 0.8 },
     {
       url: `${SITE_URL}/blog/rss.xml`,
