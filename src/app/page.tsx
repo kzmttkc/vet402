@@ -38,16 +38,16 @@ const HEAD_LEFT = [
 
 // 2026-08-13 UX監査R1 [D4]: 4ペルソナが独立に「ヘッダは trust scores を
 // obsoletes と言っているのに §2.1 は今日返るのが trust score だと言っている」
-// と矛盾を報告した。ヘッダ文言は承認済みコピーなので変えない。代わりに
-// その行から §2.1 へ飛べるようにして、3秒で去る読者が矛盾を抱えたまま
-// 離脱しないようにする（Obsoletes は RFC の書誌欄で「何を置き換える文書か」
-// を宣言する欄で、置き換えの進行状況は §2.1 が持っている）。
+// と矛盾を報告した。当時はヘッダ文言を据え置き、その行から §2.1 へ飛べるようにした。
+// 2026-09-02 敵対的監査: 今日返るのがまだ trust score である以上、書誌欄は
+// 「Obsoletes（廃止した）」ではなく「Updates（更新する）」が事実。RFC の書誌欄の
+// 語彙のまま、主張を実態に合わせる。§2.1 へのリンクはそのまま。
 const HEAD_RIGHT: { value: string; href?: string; title?: string }[] = [
   { value: "vet402" },
   { value: "x402 Economy" },
   { value: "August 2026" },
   {
-    value: "Obsoletes: trust scores",
+    value: "Updates: trust scores",
     href: "#methodology",
     title: "What replaces the trust score, and what is still returned today — see section 2.1",
   },
@@ -83,7 +83,8 @@ const LEVELS = [
     name: "Conformance",
     question: "Does the response match the seller's own declaration?",
     how: "Purchase + machine diff",
-    output: "conform / mismatch / undeclared",
+    // 2026-09-02 監査: 語彙は方法論（/observatory/methodology）と台帳列 l2_schema の正典に揃える。
+    output: "match / mismatch / no_declaration / not_checked",
   },
   {
     level: "L3",
@@ -289,19 +290,18 @@ export default async function Home() {
             (hero vs final vs pricing), which a plain /signup pageview can never
             attribute. */}
         <div className="mt-4 flex flex-wrap gap-3 sm:mt-5 sm:pl-[10ch]">
-          {/* 2026-08-23 UX: 主従を入れ替えた。以前は "Read the methodology" が
-              primary、"Verify a payee now" が secondary だったが、初見の読者が
-              最初に取れる行動は後者（アカウント不要・その場で結果が出る）。
-              方法論は「なぜ信じられるか」の裏取りで、先に読むものではない。
-              並び順も primary を先頭へ。イベント名と position は変えていない
-              （lp_cta_click の時系列比較を壊さないため）。 */}
+          {/* 2026-08-23 UX: 主従を入れ替え、"Verify a payee now" を primary にした。
+              2026-09-02 敵対的監査 F1（オーナー決定）: 製品の核は endpoint 検証に移った。
+              主 CTA は観測所へ。payee 照会は §4 の「Verified Payee」行が担う。
+              副 CTA・Abstract・第 1 面の並びと寸法は据え置き。position は新設
+              （hero_verify の時系列はここで終わり、hero_observatory が始まる）。 */}
           <TrackedLink
-            href="/payee"
+            href="/observatory"
             event="lp_cta_click"
-            props={{ position: "hero_verify" }}
+            props={{ position: "hero_observatory" }}
             className={buttonClass({ size: "md", className: "w-full sm:w-auto" })}
           >
-            Verify a payee now
+            Open the observatory
           </TrackedLink>
           {/* 2026-09-02 UX 監査（オーナー判断）: 「methodology」が 3 つあり、主 CTA は LP §2 の
               4 行表へ飛んでいた。href だけを本物の定義書（/observatory/methodology v2）へ向ける。
@@ -672,10 +672,12 @@ export default async function Home() {
                   On npm:{" "}
                   <code className="break-all text-brand-deep">npm i @vet402/sdk</code>,{" "}
                   <code className="break-all text-brand-deep">@vet402/middleware</code>,{" "}
-                  <code className="break-all text-brand-deep">@vet402/mcp-server</code>. The{" "}
-                  <code className="text-brand-deep">@vouchscore</code> scope is the only one that
-                  is ours &mdash; unscoped <code>vouch-sdk</code> and{" "}
-                  <code>@getvouch/sdk</code> on npm are unrelated packages by other publishers.
+                  <code className="break-all text-brand-deep">@vet402/mcp-server</code>.{" "}
+                  {/* 2026-09-02 監査: 「@vouchscore が唯一」と `npm i @vet402/sdk` が自己矛盾していた。 */}
+                  <code className="text-brand-deep">@vet402/*</code> is the canonical scope;{" "}
+                  <code className="text-brand-deep">@vouchscore/*</code> is the{" "}
+                  former name, same publisher. Unscoped <code>vouch-sdk</code> and{" "}
+                  <code>@getvouch/sdk</code> are unrelated.
                 </span>
               </>
             }
@@ -836,12 +838,15 @@ function ItemRow({
         </p>
         <p className="mt-2 text-brand">{body}</p>
         {action ? (
+          // 2026-09-02 敵対的監査 F9: 行動リンクが 16px のテキストで、モバイルの当たり判定が
+          // 足りなかった。RFC の紙の文法では押せるものは「囲まれた文字」——secondary の
+          // 罫線ボタン。min-h-11 で 44px を保証する（sm は py-2 で 36px 前後）。
           <p className="mt-3">
             <TrackedLink
               href={action.href}
               event={action.event}
               props={{ position: action.position }}
-              className="doc-link"
+              className={buttonClass({ variant: "secondary", size: "sm", className: "min-h-11" })}
             >
               {action.label}
             </TrackedLink>

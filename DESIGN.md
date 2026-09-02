@@ -8,7 +8,7 @@ Navy / paper. Martian + Fragment Mono. Running head, sheet, `doc-head`, `doc-tit
 
 Applies to: the memo, observatory, methodology, FAQ, docs, legal, blog, `/payee`, `/agent`, 404s.
 
-The approved LP memo body and hero (Abstract + two CTAs: “Read the methodology” / “Verify a payee now”) are not to be redesigned.
+The approved LP memo body and hero (Abstract + two CTAs) are not to be redesigned. 2026-09-02 owner decision: the product's core moved to endpoint verification, so the primary CTA is “Open the observatory” → `/observatory` (event `lp_cta_click`, position `hero_observatory`); the secondary “Read the methodology” and the Abstract copy stay as approved. Payee lookup lives in §4 (“Verified Payee”), not in the hero.
 
 ## Operate (dashboard)
 

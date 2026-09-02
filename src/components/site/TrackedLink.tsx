@@ -11,20 +11,27 @@ import { track } from "@/lib/analytics";
 //
 // Internal hrefs render next/link (keeps prefetch/client navigation);
 // external ones render a plain <a target="_blank">.
+// 2026-09-02: `onClick` passthrough so a client caller (the header drawer) can
+// close itself on navigation. Tracking still fires first and never blocks.
 export default function TrackedLink({
   href,
   event,
   props,
   className,
   children,
+  onClick: after,
 }: {
   href: string;
   event: string;
   props?: Record<string, string | number | boolean>;
   className?: string;
   children: React.ReactNode;
+  onClick?: () => void;
 }) {
-  const onClick = () => track(event, props);
+  const onClick = () => {
+    track(event, props);
+    after?.();
+  };
   const external = /^https?:\/\//.test(href);
 
   if (external) {

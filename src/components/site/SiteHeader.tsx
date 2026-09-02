@@ -21,6 +21,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { buttonClass } from "@/components/ui/Button";
 import { Wordmark } from "@/components/site/Wordmark";
+import TrackedLink from "@/components/site/TrackedLink";
 
 type NavItem = { label: string; href: string };
 
@@ -87,20 +88,39 @@ export function SiteHeader() {
             aria-label="Main navigation"
             className="hidden items-center gap-5 text-[0.8125rem] text-brand-lift md:flex"
           >
+            {/* 2026-09-02 敵対的監査 F8: header の主 CTA と nav に計測がなく、LP 側の
+                lp_cta_click{position} だけでは「どの入口が効いたか」の分母が欠けていた。
+                nav は nav_click{label}、署名は lp_cta_click{header_signup|drawer_signup}。 */}
             {NAV_ITEMS.map((item) => (
-              <Link key={item.href} href={item.href} className="hover:text-brand-deep">
+              <TrackedLink
+                key={item.href}
+                href={item.href}
+                event="nav_click"
+                props={{ label: item.label }}
+                className="hover:text-brand-deep"
+              >
                 {item.label}
-              </Link>
+              </TrackedLink>
             ))}
           </nav>
 
           <div className="hidden shrink-0 items-center gap-4 md:flex">
-            <Link href="/dashboard/login" className="text-[0.8125rem] text-brand-lift hover:text-brand-deep">
+            <TrackedLink
+              href="/dashboard/login"
+              event="nav_click"
+              props={{ label: "Dashboard" }}
+              className="text-[0.8125rem] text-brand-lift hover:text-brand-deep"
+            >
               Dashboard
-            </Link>
-            <Link href="/signup" className={buttonClass()}>
+            </TrackedLink>
+            <TrackedLink
+              href="/signup"
+              event="lp_cta_click"
+              props={{ position: "header_signup" }}
+              className={buttonClass()}
+            >
               Get API key
-            </Link>
+            </TrackedLink>
           </div>
 
           <button
@@ -128,29 +148,35 @@ export function SiteHeader() {
           className="flex max-h-[calc(100dvh-3.5rem)] flex-col overflow-y-auto overscroll-contain border-t border-hair bg-paper px-5 py-3 md:hidden"
         >
           {[...NAV_ITEMS, ...NAV_SECONDARY].map((item) => (
-            <Link
+            <TrackedLink
               key={item.href}
               href={item.href}
+              event="nav_click"
+              props={{ label: item.label }}
               className="border-b border-hair py-3 text-sm text-brand hover:text-brand-deep"
               onClick={() => setMobileOpen(false)}
             >
               {item.label}
-            </Link>
+            </TrackedLink>
           ))}
-          <Link
+          <TrackedLink
             href="/dashboard/login"
+            event="nav_click"
+            props={{ label: "Dashboard" }}
             className="border-b border-hair py-3 text-sm text-brand hover:text-brand-deep"
             onClick={() => setMobileOpen(false)}
           >
             Dashboard
-          </Link>
-          <Link
+          </TrackedLink>
+          <TrackedLink
             href="/signup"
+            event="lp_cta_click"
+            props={{ position: "drawer_signup" }}
             className={buttonClass({ className: "mt-4 w-full" })}
             onClick={() => setMobileOpen(false)}
           >
             Get API key
-          </Link>
+          </TrackedLink>
         </nav>
       ) : null}
     </header>
