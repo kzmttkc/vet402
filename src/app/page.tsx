@@ -242,10 +242,10 @@ export default async function Home() {
           </div>
         </div>
 
-        <h1 className="doc-title mt-3 sm:mt-6">
+        <h1 className="doc-title mt-2 sm:mt-6">
           vet402 — Independent Verification of the x402 Agent-Payment Economy
         </h1>
-        <p className="mx-auto mt-2 max-w-[52ch] text-center text-brand-lift sm:mt-3">
+        <p className="mx-auto mt-1.5 max-w-[52ch] text-center text-brand-lift max-sm:leading-[1.5] sm:mt-3">
           We buy. We settle. We publish the measurements.
         </p>
         {/* 2026-08-23 UX: タグラインは我々の**手順**を3語で言うが、初見の読者が
@@ -253,25 +253,28 @@ export default async function Home() {
             代わりに専門語から入るので、その手前に平易な1文を置く。
             RFC のトーンを壊さないよう、新しい枠も装飾も足さず、タグラインと同じ
             中央寄せ・同じ弱いインクで続けるだけ。文は1つに留める。 */}
-        <p className="mx-auto mt-2 max-w-[62ch] text-center text-brand-lift">
+        <p className="mx-auto mt-1.5 max-w-[62ch] text-center text-brand-lift max-sm:leading-[1.5] sm:mt-2">
           Before an agent pays an x402 endpoint, vet402 checks whether that endpoint actually
           delivers — by buying it.
         </p>
 
-        <div className="rule-double mx-auto mt-3 w-full max-w-[34ch] sm:mt-4" />
+        <div className="rule-double mx-auto mt-2 w-full max-w-[34ch] sm:mt-4" />
 
         {/* マークは 132 → 104px（モバイルと同寸）。[M8] の 123px のうち 28px を
             ここから出している。紙面の中央・ダブルルールの直下という位置は同じ。
             2026-08-13 再監査: 640px 未満では 72px。[M8] で desktop の寸法を
             詰めた時と同じ手で、モバイルにも同じ処置をしているだけ。位置・
             アニメーション・前後の要素は変わらない。 */}
-        <div className="mt-3 flex justify-center sm:mt-5">
-          <Mark402 animate className="h-auto w-[72px] sm:w-[104px]" />
+        {/* 2026-09-02 敵対的監査 P2: 390×844 で 2 本目の入口の下端が 924px（fold の 80px 下）。
+            640px 未満だけ、行間（1.7 → 1.5）・要素間の余白・マーク（72 → 60px）を詰める。
+            要素・順序・コピーは同じ。sm 以上の値は 8/13 承認のまま。 */}
+        <div className="mt-2 flex justify-center sm:mt-5">
+          <Mark402 animate className="h-auto w-[60px] sm:w-[104px]" />
         </div>
 
-        <div className="mt-3 flex flex-col gap-1 sm:mt-5 sm:flex-row sm:gap-0">
+        <div className="mt-2 flex flex-col gap-0.5 sm:mt-5 sm:flex-row sm:gap-0">
           <p className="shrink-0 text-brand-deep sm:w-[10ch]">Abstract</p>
-          <p className="min-w-0 max-w-[62ch] text-brand">
+          <p className="min-w-0 max-w-[62ch] text-brand max-sm:leading-[1.5]">
             {/* 引用符は straight。RFC の原典はプレーンテキストで、curly quote は
                 存在しない。/faq と /legal も straight で統一されている。
 
@@ -289,7 +292,7 @@ export default async function Home() {
         {/* 2026-08-06 growth: lp_cta_click{position} tells us WHICH CTA converts
             (hero vs final vs pricing), which a plain /signup pageview can never
             attribute. */}
-        <div className="mt-4 flex flex-wrap gap-3 sm:mt-5 sm:pl-[10ch]">
+        <div className="mt-3 flex flex-wrap gap-2 sm:mt-5 sm:gap-3 sm:pl-[10ch]">
           {/* 2026-08-23 UX: 主従を入れ替え、"Verify a payee now" を primary にした。
               2026-09-02 敵対的監査 F1（オーナー決定）: 製品の核は endpoint 検証に移った。
               主 CTA は観測所へ。payee 照会は §4 の「Verified Payee」行が担う。
@@ -299,7 +302,7 @@ export default async function Home() {
             href="/observatory"
             event="lp_cta_click"
             props={{ position: "hero_observatory" }}
-            className={buttonClass({ size: "md", className: "w-full sm:w-auto" })}
+            className={buttonClass({ size: "md", className: "w-full max-sm:py-2.5 sm:w-auto" })}
           >
             Open the observatory
           </TrackedLink>
@@ -314,7 +317,7 @@ export default async function Home() {
               variant: "secondary",
               size: "md",
               // 縦に積まれる幅では、内容幅のままだと2本の右端が揃わず雑に見える。
-              className: "w-full sm:w-auto",
+              className: "w-full max-sm:py-2.5 sm:w-auto",
             })}
           >
             Read the methodology
