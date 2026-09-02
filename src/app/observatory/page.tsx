@@ -353,9 +353,10 @@ export default async function ObservatoryPage({
             Every endpoint in the public x402 discovery catalog: is it still listed, and does its
             payment wall answer a valid <code>402</code> challenge when approached with the method
             it declares. The catalog is re-fetched daily; endpoints are probed on a rolling
-            schedule, and each row shows when it was last probed. This table is L0 — no purchase is attached;
-            L1 settle-through purchases are on each endpoint&apos;s page, never mixed into these
-            cells.{" "}
+            schedule, and each row shows when it was last probed. The L0 cell is the payment-wall
+            measurement alone; the L1 cell counts real purchases that returned an on-chain receipt
+            (settled / paid attempts), with every receipt listed on the endpoint&apos;s page. The
+            two are never mixed.{" "}
             <strong>pass / fail / unverified</strong> are defined measurements, not opinions —{" "}
             <Link href="/observatory/methodology" className="underline">
               definitions here

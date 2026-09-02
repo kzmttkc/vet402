@@ -141,7 +141,7 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
           </div>
         </div>
 
-        <h1 className="doc-title mt-10 break-all">{endpoint.resourceKey}</h1>
+        <h1 className="doc-title mt-10 break-words [overflow-wrap:anywhere]">{endpoint.resourceKey}</h1>
         {endpoint.isOperatorEndpoint && (
           <p className="mt-4 border border-brand-line bg-brand-wash px-4 py-3 text-[0.8125rem] text-brand-lift">
             This is vet402&rsquo;s own endpoint. It is shown here for
