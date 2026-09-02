@@ -11,7 +11,8 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { rowsOf } from "@/lib/settlements/upsert";
 
-export type CorrectionReason = "dispute_remeasure" | "settlement_backfill" | "reverify";
+/** path_template: 2026-09-02 監査 A1——テンプレート URL を叩いて出した公開 fail を unverified へ戻す。 */
+export type CorrectionReason = "dispute_remeasure" | "settlement_backfill" | "reverify" | "path_template";
 export type CorrectionLevel = "l0" | "l1" | "l2" | "listing";
 
 export const DISPUTE_WINDOW_DAYS = 7;
