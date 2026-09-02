@@ -238,7 +238,7 @@ const endpoints: Endpoint[] = [
   "facts": {
     "l0": { "status": "pass", "observed_at": "…", "dialect": "v2", "fail_reason": null },
     "l1": { "n_delivered": 3, "n_settled": 3, "n_attempts": 3, "n_probe_error": 0, "p50_ms": 812, "p95_ms": 1490, "last_purchase_id": "…", "observed_at": "…" },
-    "l2": { "status": "undeclared", "declaration_hash": null, "diff_hash": null, "observed_at": null },
+    "l2": { "status": "undeclared", "declaration_hash": null, "response_hash": null, "diff_hash": null, "missing_keys": null, "observed_at": null },
     "availability_7d": 1, "availability_30d": 0.97, "offer_stability": "stable",
     "payees": ["eip155:8453:0x…"],
     "settlement_30d_real": 41, "settlement_30d_raw": 44, "settlement_30d_test": 3,

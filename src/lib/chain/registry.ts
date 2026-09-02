@@ -34,6 +34,42 @@ export function isRegistryWritesEnabled(): boolean {
   return process.env.REGISTRY_WRITES_ENABLED === "true";
 }
 
+/** requestKey（purchase_id 等）→ requestHash。buildValidationRecord と同じ式。 */
+export function requestHashOf(requestKey: string): `0x${string}` {
+  return keccak256(toBytes(requestKey));
+}
+
+/**
+ * 冪等の先行判定（2026-09-02）: 同じ purchase_id（= request_hash）が台帳にあれば、
+ * agent 解決や RPC に触れる前に退く。publishValidation の ON CONFLICT が最終防御。
+ */
+export async function hasRegistryWriteForHash(requestHash: `0x${string}`): Promise<boolean> {
+  const db = getDb();
+  if (!db) return false;
+  const rows = await db
+    .select({ id: registryWrites.id })
+    .from(registryWrites)
+    .where(eq(registryWrites.requestHash, requestHash))
+    .limit(1);
+  return rows.length > 0;
+}
+
+export function hasRegistryWriteForKey(requestKey: string): Promise<boolean> {
+  return hasRegistryWriteForHash(requestHashOf(requestKey));
+}
+
+/** 日次上限の分母: 今日（UTC）に台帳へ入った全行（failed も含む——試みは試み）。 */
+export async function countRegistryWritesToday(): Promise<number> {
+  const db = getDb();
+  if (!db) return 0;
+  const raw = await db.execute(sql`
+    SELECT count(*)::int AS n FROM registry_writes
+    WHERE created_at >= (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
+  `);
+  const rows = (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as { n: number | string }[];
+  return Number(rows[0]?.n ?? 0);
+}
+
 export type ValidationRecord = {
   endpointId: string;
   agentId: bigint;

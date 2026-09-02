@@ -163,3 +163,76 @@ if (TEST_DB) {
     });
   });
 }
+
+// 2026-09-02 是正 B: C1 の選定順。単発 fail（公開判定が出せない）→ 未測定 → 最終プローブが古い順。
+if (TEST_DB) {
+  test("tier c1 order: single-fail first, then never-probed, then oldest last probe", async (t) => {
+    const { runL0ProbeBatch } = await import("@/lib/observatory/probe-runner");
+    const { getDb } = await import("@/lib/db/client");
+    const schema = await import("@/lib/db/schema");
+    const { sql } = await import("drizzle-orm");
+    const { randomUUID } = await import("node:crypto");
+    const db = getDb()!;
+    await db.execute(
+      sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events`,
+    );
+    const day = 86_400_000;
+    const mk = async (name: string) => {
+      const id = randomUUID();
+      await db.insert(schema.x402Endpoints).values({
+        id,
+        resourceKey: `GET https://${name}.example/api`,
+        resourceUrl: `https://${name}.example/api`,
+        method: "GET",
+        priceAmount: "1000",
+        payTo: "0x52e29e0d2aa49bfbfc548c0a9f2196f4aa51f3ea",
+        network: "eip155:8453",
+        status: "active",
+        lastSeenAt: new Date(),
+        firstSeenAt: new Date(Date.now() - 30 * day),
+      });
+      return id;
+    };
+    const probe = (endpointId: string, verdict: "pass" | "fail", agoDays: number) =>
+      db.insert(schema.x402L0Probes).values({ endpointId, method: "GET", verdict, probedAt: new Date(Date.now() - agoDays * day) });
+
+    // A: 1 回だけ・最新 fail（昨日）→ 最優先
+    // B: 未測定 → 2 番目
+    // C: 2 回・最新 pass・3 日前
+    // D: 1 回・pass・10 日前（単発でも fail でなければ普通の古い順）
+    // E: 2 回・最新 fail・12 日前（2 回目の fail は公開済み。単発ではないので古い順）
+    // F: 1 回だけ・最新 fail（5 日前）→ A と同じ組。組の中は古い順なので F が A より先
+    const A = await mk("a");
+    await mk("b"); // 未測定
+    const C = await mk("c");
+    const D = await mk("d");
+    const E = await mk("e");
+    const F = await mk("f");
+    await probe(A, "fail", 1);
+    await probe(C, "pass", 4);
+    await probe(C, "pass", 3);
+    await probe(D, "pass", 10);
+    await probe(E, "pass", 13);
+    await probe(E, "fail", 12);
+    await probe(F, "fail", 5);
+
+    const seen: string[] = [];
+    const fetchImpl = async (url: string) => {
+      seen.push(url);
+      return new Response("{}", { status: 500 });
+    };
+    const nameOf = (u: string) => /https:\/\/(\w)\.example/.exec(u)![1];
+
+    await t.test("limit 2 → 単発 fail の F, A（古い順）だけ", async () => {
+      await runL0ProbeBatch({ limit: 2, concurrency: 1, fetchImpl, tier: "c1" });
+      assert.deepEqual(seen.map(nameOf), ["f", "a"]);
+    });
+
+    await t.test("残りは 未測定 B → 12 日前の E → 10 日前の D → 3 日前の C", async () => {
+      await db.execute(sql`DELETE FROM x402_l0_probes WHERE probed_at > now() - interval '1 hour'`);
+      seen.length = 0;
+      await runL0ProbeBatch({ limit: 6, concurrency: 1, fetchImpl, tier: "c1" });
+      assert.deepEqual(seen.map(nameOf), ["f", "a", "b", "e", "d", "c"]);
+    });
+  });
+}

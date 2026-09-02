@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { publicRateLimit, PUBLIC_DISCLAIMER } from "@/lib/api/public-route";
-import { loadSellerFacts } from "@/lib/decision/seller-facts";
+import { l2EvidenceOf, loadSellerFacts } from "@/lib/decision/seller-facts";
 import { getEndpoint } from "@/lib/resolve/lookup";
 import { SHA256_HEX_RE } from "@/lib/ids/canonical";
 import { UUID_RE } from "@/lib/validation/uuid";
@@ -33,6 +33,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (facts.l1.last_purchase_id) {
       evidence.push({ level: "L1", purchase_id: facts.l1.last_purchase_id, url: `https://vet402.com/api/v1/observatory/endpoints/${endpoint.id}/purchases` });
     }
+    // §6.3 / P1-11: L2 の宣言・応答・差分ハッシュ（mismatch の根拠を第三者が再計算できる）。
+    const l2Evidence = l2EvidenceOf(facts, endpoint.id);
+    if (l2Evidence) evidence.push(l2Evidence);
     return NextResponse.json(
       {
         subject: {

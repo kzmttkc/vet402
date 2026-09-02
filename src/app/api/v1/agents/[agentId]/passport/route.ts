@@ -10,6 +10,7 @@ import { agentPassportMessage } from "@/lib/verify-message";
 import { logServerError } from "@/lib/util/log";
 import { verifyMessage } from "viem";
 import { loadSellerFacts } from "@/lib/decision/seller-facts";
+import { buildFactsSummary, type FactsSummary } from "@/lib/decision/facts-summary";
 import { endpointsByPayee } from "@/lib/resolve/lookup";
 import { payeeId as toPartyId } from "@/lib/ids/canonical";
 
@@ -163,28 +164,11 @@ export async function GET(
   // 製品定義書 §14 P2（2026-09-02）: passport に facts 要約を載せる。bound wallet が
   // payTo の Endpoint について L0–L2 の事実だけを要約する（スコアではない）。
   // 取れなくても passport は落とさない（null で開示）。
-  let factsSummary: {
-    endpoints: { endpoint_id: string; observatory_id: string; canonical_url: string; l0: string; l1: { n_delivered: number; n_attempts: number }; l2: string }[];
-    total_endpoints: number;
-  } | null = null;
+  let factsSummary: FactsSummary | null = null;
   if (identity?.wallet) {
     try {
       const eps = await endpointsByPayee(toPartyId("eip155:8453", identity.wallet), 50);
-      const head = await Promise.all(
-        eps.slice(0, 3).map(async (e) => {
-          const loaded = await loadSellerFacts(e.observatory_id);
-          if (!loaded) return null;
-          return {
-            endpoint_id: e.endpoint_id,
-            observatory_id: e.observatory_id,
-            canonical_url: e.canonical_url,
-            l0: loaded.facts.l0.status,
-            l1: { n_delivered: loaded.facts.l1.n_delivered, n_attempts: loaded.facts.l1.n_attempts },
-            l2: loaded.facts.l2.status,
-          };
-        }),
-      );
-      factsSummary = { endpoints: head.filter((x): x is NonNullable<typeof x> => x !== null), total_endpoints: eps.length };
+      factsSummary = await buildFactsSummary(eps, loadSellerFacts);
     } catch (error) {
       logServerError("agent_passport_facts", error);
       factsSummary = null;

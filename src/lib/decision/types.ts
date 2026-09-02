@@ -26,7 +26,20 @@ export type SellerFacts = {
     last_purchase_id: string | null;
     observed_at: string | null;
   };
-  l2: { status: L2Status; declaration_hash: string | null; diff_hash: string | null; observed_at: string | null };
+  /**
+   * §6.3（2026-09-02 監査 P1-11）: mismatch の公開には宣言ハッシュ・応答ハッシュ・差分ハッシュ
+   * （欠落キーの機械可読差分の sha256）を付ける。生の有料コンテンツは出さない。
+   * response_hash は conform でも出す（第三者が同じ本文から再計算できる）。diff_hash / missing_keys
+   * は mismatch のときだけ。詳細の無い旧行は null（捏造しない）。
+   */
+  l2: {
+    status: L2Status;
+    declaration_hash: string | null;
+    response_hash: string | null;
+    diff_hash: string | null;
+    missing_keys: string[] | null;
+    observed_at: string | null;
+  };
   availability_7d: number | null;
   availability_30d: number | null;
   offer_stability: OfferStability;
@@ -63,4 +76,9 @@ export type Evidence = {
   purchase_id?: string;
   observation_id?: string;
   url: string;
+  /** L2 のみ（§6.3）: 宣言・応答・差分のハッシュと欠落キー。 */
+  declaration_hash?: string | null;
+  response_hash?: string | null;
+  diff_hash?: string | null;
+  missing_keys?: string[] | null;
 };

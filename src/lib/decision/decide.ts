@@ -16,7 +16,7 @@ import { isRegistryWritesEnabled } from "@/lib/chain/registry";
 import type { LruCache } from "@/lib/util/lru-cache";
 import { DECISION_CACHE_TTL_MS, decisionCache } from "./cache";
 import { rowsOf } from "@/lib/settlements/upsert";
-import { loadSellerFacts, type SellerFactsLoaded } from "./seller-facts";
+import { l2EvidenceOf, loadSellerFacts, type SellerFactsLoaded } from "./seller-facts";
 import { loadBuyerFacts } from "./buyer-facts";
 import { decidePayer, decidePayee, DECISION_RULES_VERSION, type Recommendation, type PayerOptions } from "./rules";
 import type { BuyerFacts, Evidence, Freshness, SellerFacts } from "./types";
@@ -99,7 +99,8 @@ export function buildDecision(input: BuildInput): DecisionResult {
         url: `https://vet402.com/api/v1/observatory/endpoints/${input.subject.observatory_id}/purchases`,
       });
     }
-    if (f.l2.status !== "undeclared") evidence.push({ level: "L2", url: `https://vet402.com/observatory/e/${input.subject.observatory_id}` });
+    const l2Evidence = l2EvidenceOf(f, input.subject.observatory_id);
+    if (l2Evidence) evidence.push(l2Evidence);
     return {
       ...base,
       role: "payer",

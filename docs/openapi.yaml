@@ -2962,11 +2962,18 @@ components:
             observed_at: { type: string, format: date-time, nullable: true }
         l2:
           type: object
-          required: [status, declaration_hash, diff_hash, observed_at]
+          required: [status, declaration_hash, response_hash, diff_hash, missing_keys, observed_at]
+          description: >-
+            §6.3 — a mismatch is published with the declaration hash, the response hash and a
+            diff hash (sha256 of {declaration_hash, response_hash, missing}) plus the missing keys;
+            never the paid body itself. response_hash is present for conform too. Rows recorded
+            before 2026-09-02 carry no detail and report null (nothing is fabricated).
           properties:
             status: { $ref: "#/components/schemas/L2Status" }
             declaration_hash: { type: string, nullable: true }
+            response_hash: { type: string, nullable: true }
             diff_hash: { type: string, nullable: true }
+            missing_keys: { type: array, nullable: true, items: { type: string } }
             observed_at: { type: string, format: date-time, nullable: true }
         availability_7d: { type: number, nullable: true, description: L0 pass share over 7 days, 0–1. }
         availability_30d: { type: number, nullable: true }
@@ -3031,6 +3038,10 @@ components:
         purchase_id: { type: string }
         observation_id: { type: string }
         url: { type: string, format: uri }
+        declaration_hash: { type: string, nullable: true, description: L2 only (§6.3). }
+        response_hash: { type: string, nullable: true, description: L2 only (§6.3). }
+        diff_hash: { type: string, nullable: true, description: L2 mismatch only (§6.3). }
+        missing_keys: { type: array, nullable: true, items: { type: string }, description: L2 mismatch only (§6.3). }
     ResourceSubject:
       type: object
       description: The Resource a facts / decision document is about (§5 ids plus the observatory uuid).

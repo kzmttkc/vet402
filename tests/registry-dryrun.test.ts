@@ -1,122 +1,133 @@
 // ============================================================
-// ERC-8004 Validation Registry 書込の dry-run 見積もり（2026-08-21・WO#5）。
+// ERC-8004 Validation Registry 書込の dry-run 見積もり（2026-08-21 WO#5・2026-09-02 是正）。
 // 金（ガス）に直結する数字を出す計算なので、純粋関数として固定する:
-//  - 候補の判定は registry-hook の分岐と同じ（hookが呼ばれる終局3状態・EVM payTo のみ）
-//  - 重複 requestHash は「初出の日」にだけ数える（台帳の一意制約＝冪等ゲートの写し）
+//  - 発火は settlement-verifier の確定（settled → pass / settle_claim_refuted → fail）と 1:1
+//  - 門は registry-hook と同順（not_evm → duplicate → tier → daily_cap）。台帳の request_hash が冪等ゲートの写し
 //  - ガス単位は eth_estimateGas → 観測中央値 → 固定上限 の順で fail-closed に選ぶ
 //  - 費用 = L2実行(gas×fee) + L1データ手数料（Base はOPスタック）。丸めない（wei整数）
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { keccak256, toBytes } from "viem";
 import {
-  aggregateRegistryCandidates,
-  classifyForRegistry,
   estimateWriteCostWei,
   formatWeiAsEth,
+  HOOK_OUTCOME_STATUSES,
   medianBigint,
+  planRegistryWrites,
   recommendCaps,
   selectGasUnits,
   weiToUsd,
   wouldSkipForGasCap,
-  type L1PurchaseRowLike,
+  type VerifiedPurchaseRowLike,
 } from "@/lib/chain/registry-dryrun";
 
 const EVM = "0x52e29e0d2aa49bfbfc548c0a9f2196f4aa51f3ea";
 const SOL = "GqSs5L9aPWGJwyRQe35YKQaWMDPh3R1dMqfSEPhSgkM";
 const E1 = "5f0c9c5e-2c3a-4b1e-9a4d-8f6b2e1c7d0a";
 const E2 = "6a1d0d6f-3d4b-4c2f-8b5e-9a7c3f2d8e1b";
+const TX1 = `0x${"ab".repeat(32)}`;
+const TX2 = `0x${"cd".repeat(32)}`;
+const TX3 = `0x${"ef".repeat(32)}`;
 
-function row(p: Omit<Partial<L1PurchaseRowLike>, "attemptedAt"> & { attemptedAt: string }): L1PurchaseRowLike {
+let seq = 0;
+function row(p: Partial<VerifiedPurchaseRowLike> & { verifiedAt?: string }): VerifiedPurchaseRowLike {
+  seq++;
   return {
+    purchaseRowId: p.purchaseRowId ?? `row-${seq}`,
     endpointId: p.endpointId ?? E1,
     status: p.status ?? "settled",
     payTo: p.payTo === undefined ? EVM : p.payTo,
-    attemptedAt: new Date(p.attemptedAt),
+    network: p.network === undefined ? "eip155:8453" : p.network,
+    txHash: p.txHash === undefined ? TX1 : p.txHash,
+    l2Schema: p.l2Schema === undefined ? "not_checked" : p.l2Schema,
+    settlementVerifiedAt: new Date(p.verifiedAt ?? "2026-09-02T10:00:00Z"),
   };
 }
 
-test("classify: hookが呼ばれる終局3状態のみ候補・settledだけが pass", () => {
-  assert.deepEqual(classifyForRegistry(row({ attemptedAt: "2026-08-20T00:00:00Z", status: "settled" })), {
-    kind: "candidate",
-    verdict: "pass",
-  });
-  for (const status of ["settle_failed", "delivered_no_receipt"]) {
-    assert.deepEqual(classifyForRegistry(row({ attemptedAt: "2026-08-20T00:00:00Z", status })), {
-      kind: "candidate",
-      verdict: "fail",
-    });
-  }
-  for (const status of ["in_flight", "no_402", "budget_denied", "request_error", "over_cap", "price_mismatch", "payto_mismatch", "payto_operator_self", "no_eligible_accept"]) {
-    assert.deepEqual(classifyForRegistry(row({ attemptedAt: "2026-08-20T00:00:00Z", status })), {
-      kind: "not_hook_outcome",
-    });
-  }
+const base = () => ({
+  allowedTiers: new Set<"C0" | "C1" | "C2" | "C3" | "C4">(["C2", "C3"]),
+  tierOf: new Map<string, "C0" | "C1" | "C2" | "C3" | "C4">([[E1, "C2"], [E2, "C3"]]),
+  existingHashes: new Set<string>(),
+  dailyMax: 200,
+  writesToday: 0,
 });
 
-test("classify: Solana/null/不正 payTo は not_evm（hookの not_evm と同じ）", () => {
-  assert.deepEqual(classifyForRegistry(row({ attemptedAt: "2026-08-20T00:00:00Z", payTo: SOL })), { kind: "not_evm" });
-  assert.deepEqual(classifyForRegistry(row({ attemptedAt: "2026-08-20T00:00:00Z", payTo: null })), { kind: "not_evm" });
-  assert.deepEqual(classifyForRegistry(row({ attemptedAt: "2026-08-20T00:00:00Z", payTo: "0x1234" })), { kind: "not_evm" });
+test("発火する終局状態は settled / settle_claim_refuted だけ（settlement-verifier の確定と 1:1）", () => {
+  assert.deepEqual([...HOOK_OUTCOME_STATUSES], ["settled", "settle_claim_refuted"]);
 });
 
-test("aggregate: 日次件数・重複hashは初出日にだけ数える・窓外の初出は窓内で重複扱い", () => {
-  const rows: L1PurchaseRowLike[] = [
-    // 窓の前（8/10）に E1/pass が初出 → 窓内の E1/pass は全部 duplicate
-    row({ endpointId: E1, attemptedAt: "2026-08-10T12:00:00Z", status: "settled" }),
-    // 8/15: E1 pass ×2（重複）, E1 fail（初出）, E2 pass（初出）, Solana（not_evm）, in_flight（対象外）
-    row({ endpointId: E1, attemptedAt: "2026-08-15T01:00:00Z", status: "settled" }),
-    row({ endpointId: E1, attemptedAt: "2026-08-15T02:00:00Z", status: "settled" }),
-    row({ endpointId: E1, attemptedAt: "2026-08-15T03:00:00Z", status: "settle_failed" }),
-    row({ endpointId: E2, attemptedAt: "2026-08-15T04:00:00Z", status: "settled" }),
-    row({ endpointId: E2, attemptedAt: "2026-08-15T05:00:00Z", status: "settled", payTo: SOL }),
-    row({ endpointId: E2, attemptedAt: "2026-08-15T06:00:00Z", status: "in_flight" }),
-    // 8/16: E2 pass（重複）, E2 fail（初出・delivered_no_receipt）
-    row({ endpointId: E2, attemptedAt: "2026-08-16T23:59:59Z", status: "settled" }),
-    row({ endpointId: E2, attemptedAt: "2026-08-16T10:00:00Z", status: "delivered_no_receipt" }),
-  ];
-  const out = aggregateRegistryCandidates(rows, {
-    windowStart: new Date("2026-08-14T00:00:00Z"),
-    windowEnd: new Date("2026-08-21T00:00:00Z"),
-  });
-  assert.equal(out.window.days, 7);
-  assert.equal(out.in_window.rows_total, 8);
-  assert.equal(out.in_window.not_hook_outcome, 1);
-  assert.equal(out.in_window.not_evm, 1);
-  assert.equal(out.in_window.hook_calls, 6);
-  assert.equal(out.in_window.unique_new_writes, 3, "E1/fail, E2/pass, E2/fail");
-  assert.equal(out.in_window.duplicate_skipped, 3);
-  // 日別（7日ぶん・0の日も出す）
-  assert.equal(out.days.length, 7);
-  assert.deepEqual(out.days.map((d) => d.day), [
-    "2026-08-14", "2026-08-15", "2026-08-16", "2026-08-17", "2026-08-18", "2026-08-19", "2026-08-20",
-  ]);
-  const d15 = out.days.find((d) => d.day === "2026-08-15")!;
+test("plan: settled（EVM・C2）＋ L2 match → L1 pass と L2 pass の 2 件。requestKey は purchase_id と purchase_id:l2", () => {
+  const out = planRegistryWrites([row({ l2Schema: "match" })], base());
+  assert.equal(out.writes.length, 2);
   assert.deepEqual(
-    { hook_calls: d15.hook_calls, unique_new_writes: d15.unique_new_writes, pass: d15.unique_new_pass, fail: d15.unique_new_fail },
-    { hook_calls: 4, unique_new_writes: 2, pass: 1, fail: 1 },
+    out.writes.map((w) => [w.level, w.verdict, w.requestKey]),
+    [["l1", "pass", `eip155:8453:${TX1}`], ["l2", "pass", `eip155:8453:${TX1}:l2`]],
   );
-  const d16 = out.days.find((d) => d.day === "2026-08-16")!;
-  assert.deepEqual({ hook_calls: d16.hook_calls, unique_new_writes: d16.unique_new_writes }, { hook_calls: 2, unique_new_writes: 1 });
-  const d14 = out.days.find((d) => d.day === "2026-08-14")!;
-  assert.deepEqual({ hook_calls: d14.hook_calls, unique_new_writes: d14.unique_new_writes }, { hook_calls: 0, unique_new_writes: 0 });
-  assert.equal(out.in_window.max_unique_new_writes_per_day, 2);
-  // 「全期間で初出」の前提: 台帳が空（registry_writes 0行）の時だけ正しいので明示する
-  assert.equal(out.assumptions.dedupe_basis, "first_seen_all_time_over_supplied_rows");
+  assert.equal(out.writes[0].requestHash, keccak256(toBytes(`eip155:8453:${TX1}`)));
+  assert.equal(out.writes[0].tier, "C2");
+  assert.equal(out.writes[0].endpointId, E1);
 });
 
-test("aggregate: 索引済みagentウォレット集合を渡すと、解決見込みの部分集合を別に数える", () => {
-  const rows = [
-    row({ endpointId: E1, attemptedAt: "2026-08-15T01:00:00Z", status: "settled", payTo: EVM }),
-    row({ endpointId: E2, attemptedAt: "2026-08-15T01:00:00Z", status: "settled", payTo: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }),
-  ];
-  const out = aggregateRegistryCandidates(rows, {
-    windowStart: new Date("2026-08-14T00:00:00Z"),
-    windowEnd: new Date("2026-08-21T00:00:00Z"),
-    indexedAgentWallets: new Set([EVM.toUpperCase()]), // 大文字小文字は無視
-  });
-  assert.equal(out.in_window.unique_new_writes, 2);
-  assert.equal(out.in_window.unique_new_writes_with_indexed_agent, 1);
-  assert.equal(out.days.find((d) => d.day === "2026-08-15")!.unique_new_writes_with_indexed_agent, 1);
+test("plan: settled・L2 mismatch → L2 は fail。未検査・宣言なしなら L2 は出ない", () => {
+  const mis = planRegistryWrites([row({ l2Schema: "mismatch" })], base());
+  assert.deepEqual(mis.writes.map((w) => [w.level, w.verdict]), [["l1", "pass"], ["l2", "fail"]]);
+  const none = planRegistryWrites([row({ l2Schema: "no_declaration" })], base());
+  assert.deepEqual(none.writes.map((w) => [w.level, w.verdict]), [["l1", "pass"]]);
+});
+
+test("plan: settle_claim_refuted → L1 fail だけ（L2 match でも L2 は書かない）", () => {
+  const out = planRegistryWrites([row({ status: "settle_claim_refuted", l2Schema: "match" })], base());
+  assert.deepEqual(out.writes.map((w) => [w.level, w.verdict]), [["l1", "fail"]]);
+});
+
+test("plan: 未確定（settle_claimed 等）は not_final・Solana は not_evm・tx 無しは no_tx", () => {
+  const out = planRegistryWrites(
+    [
+      row({ status: "settle_claimed" }),
+      row({ status: "settle_failed" }),
+      row({ payTo: SOL, network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", txHash: "5x" }),
+      row({ txHash: null }),
+    ],
+    base(),
+  );
+  assert.equal(out.writes.length, 0);
+  assert.equal(out.skipped.not_final, 2);
+  assert.equal(out.skipped.not_evm, 1);
+  assert.equal(out.skipped.no_tx, 1);
+});
+
+test("plan: 台帳に同じ request_hash があれば duplicate（L1 だけ既存なら L2 は書く）", () => {
+  const opts = base();
+  opts.existingHashes.add(keccak256(toBytes(`eip155:8453:${TX1}`)));
+  const out = planRegistryWrites([row({ l2Schema: "match" })], opts);
+  assert.deepEqual(out.writes.map((w) => w.level), ["l2"]);
+  assert.equal(out.skipped.duplicate, 1);
+});
+
+test("plan: tier が REGISTRY_WRITE_TIERS に無ければ tier_excluded。未知の endpoint は C0 扱いで除外", () => {
+  const opts = base();
+  opts.tierOf.set(E1, "C1");
+  const out = planRegistryWrites([row({}), row({ endpointId: "unknown-endpoint", txHash: TX2 })], opts);
+  assert.equal(out.writes.length, 0);
+  assert.equal(out.skipped.tier_excluded, 2);
+  assert.deepEqual(out.byEndpoint.map((e) => [e.endpointId, e.tier, e.writes]), [[E1, "C1", 0], ["unknown-endpoint", "C0", 0]]);
+});
+
+test("plan: 日次上限は writesToday を含めて数え、確定が早い順に埋める", () => {
+  const opts = { ...base(), dailyMax: 3, writesToday: 1 };
+  const out = planRegistryWrites(
+    [
+      row({ endpointId: E2, txHash: TX2, l2Schema: "match", verifiedAt: "2026-09-02T12:00:00Z" }),
+      row({ endpointId: E1, txHash: TX1, verifiedAt: "2026-09-02T09:00:00Z" }),
+      row({ endpointId: E1, txHash: TX3, verifiedAt: "2026-09-02T13:00:00Z" }),
+    ],
+    opts,
+  );
+  // 残り枠 2: 09:00 の E1/TX1 L1 → 12:00 の E2/TX2 L1 まで。E2 の L2 と 13:00 の TX3 は daily_cap。
+  assert.deepEqual(out.writes.map((w) => [w.endpointId, w.level]), [[E1, "l1"], [E2, "l1"]]);
+  assert.equal(out.skipped.daily_cap, 2);
+  assert.deepEqual(out.byEndpoint.map((e) => [e.endpointId, e.writes]), [[E1, 1], [E2, 1]]);
 });
 
 test("selectGasUnits: estimate → 観測中央値 → 固定 の順・失敗は黙らず source に残す", () => {

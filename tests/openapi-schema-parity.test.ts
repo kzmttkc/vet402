@@ -134,6 +134,16 @@ const SURFACES: Surface[] = [
     ],
   },
   {
+    label: "SellerFacts.l2",
+    spec: ["SellerFacts", "properties", "l2", "properties"],
+    impl: [
+      ["src/lib/decision/types.ts", ["SellerFacts", "l2"]],
+      ["packages/sdk/src/index.ts", ["SellerFacts", "l2"]],
+    ],
+    // §6.3（2026-09-02 監査 P1-11）: mismatch の根拠——宣言・応答・差分のハッシュと欠落キー。
+    fields: ["status", "declaration_hash", "response_hash", "diff_hash", "missing_keys", "observed_at"],
+  },
+  {
     label: "BuyerFacts",
     spec: ["BuyerFacts", "properties"],
     impl: [

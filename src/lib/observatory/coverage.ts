@@ -14,7 +14,8 @@
 // `?tier=c2` で叩く（scripts/launchd/vet402_c2_probe.sh）。
 // ============================================================
 import { sql, type SQL } from "drizzle-orm";
-import { notPathTemplateSql } from "./path-template";
+import { getDb } from "@/lib/db/client";
+import { isPathTemplate, notPathTemplateSql } from "./path-template";
 
 export type CoverageTier = "C0" | "C1" | "C2" | "C3" | "C4";
 
@@ -78,9 +79,104 @@ export function l0TierWhere(tier: "c1" | "c2"): SQL {
 }
 
 /**
+ * L0 候補の並び（x402_endpoints e + LATERAL lp: last_probed_at / probe_count / last_verdict）。
+ *
+ * c1（2026-09-02 是正 B）: 「プローブ 1 回で最新が fail」→ 未測定 → 最終プローブが古い順。
+ * 本番実測（9/2 19:05 JST）: 最新が fail の 9,769 件のうち 9,713 件はプローブが 1 回だけで、
+ * 公開判定（2 回連続 fail・publishedVerdict）が出せなかった。日次枠（3,000）は変えず、
+ * 2 回目を先に測って判定を確定させる。同じ組の中は古い順。
+ * c2 / all: 従来どおり古い順（未測定が先）。
+ */
+export function l0OrderBy(tier: "c1" | "c2" | "all"): SQL {
+  const oldestFirst = sql`lp.last_probed_at ASC NULLS FIRST, e.first_seen_at ASC`;
+  if (tier !== "c1") return oldestFirst;
+  return sql`CASE WHEN lp.probe_count = 1 AND lp.last_verdict = 'fail' THEN 0 WHEN lp.last_probed_at IS NULL THEN 1 ELSE 2 END, ${oldestFirst}`;
+}
+
+/**
  * L1 候補は C2 のみ（決済帰属あり ∨ 問い合わせ多）。宣言ありは C3 として L1 成功後に
  * L2 を必ず行う（l1-runner が l2Schema を判定する）。
  */
 export function l1TierWhere(): SQL {
   return l0TierWhere("c2");
+}
+
+// ------------------------------------------------------------
+// ERC-8004 Validation Registry に書く階層（2026-09-02 監査 P1-6）。
+// 計画書 2026-09-02-spec-1-2.md: env `REGISTRY_WRITE_TIERS=C2,C3`（既定）。
+// endpoint の階層がこの集合に入るときだけ書く。
+// ------------------------------------------------------------
+export const DEFAULT_REGISTRY_WRITE_TIERS: readonly CoverageTier[] = ["C2", "C3"];
+
+const TIER_NAMES = new Set<string>(["C0", "C1", "C2", "C3", "C4"]);
+
+/** 未設定・空白は既定。知らない語は捨てる（知らない語だけなら空集合＝何も書かない）。 */
+export function parseRegistryWriteTiers(raw: string | undefined): Set<CoverageTier> {
+  if (!raw || raw.trim() === "") return new Set(DEFAULT_REGISTRY_WRITE_TIERS);
+  const out = new Set<CoverageTier>();
+  for (const token of raw.split(",")) {
+    const t = token.trim().toUpperCase();
+    if (TIER_NAMES.has(t)) out.add(t as CoverageTier);
+  }
+  return out;
+}
+
+type TierSignalRow = {
+  id: string;
+  resource_url: string;
+  listed_30d: boolean;
+  settled_30d: boolean;
+  attributed: number | string;
+  lookups7d: number | string;
+  has_declaration: boolean;
+  reverify_requested: boolean;
+};
+
+/**
+ * endpoint 群の階層を SQL で写す（tierOf と同じ表。l0TierWhere の c1/c2 条件と同じ式）。
+ * 未知の id は結果に入らない（呼び手は C0 に倒す）。
+ */
+export async function loadCoverageTiers(endpointIds: readonly string[]): Promise<Map<string, CoverageTier>> {
+  const out = new Map<string, CoverageTier>();
+  if (endpointIds.length === 0) return out;
+  const db = getDb();
+  if (!db) return out;
+  const raw = await db.execute(sql`
+    SELECT e.id::text AS id,
+           e.resource_url,
+           (e.last_seen_at > now() - interval '30 days') AS listed_30d,
+           EXISTS (
+             SELECT 1 FROM settlements s WHERE s.endpoint_id = e.id
+               AND coalesce(s.block_time, s.observed_at) > now() - interval '30 days') AS settled_30d,
+           (SELECT count(*)::int FROM settlements s WHERE s.endpoint_id = e.id
+               AND s.attribution IN ('confirmed', 'probable')
+               AND coalesce(s.block_time, s.observed_at) > now() - interval '30 days') AS attributed,
+           coalesce((SELECT sum(n)::int FROM decision_lookups d
+               WHERE d.endpoint_id = e.id AND d.day > (current_date - 7)::text), 0) AS lookups7d,
+           (e.declared_schema IS NOT NULL) AS has_declaration,
+           EXISTS (SELECT 1 FROM disputes d WHERE d.endpoint_id = e.id AND d.status = 'open') AS reverify_requested
+    FROM x402_endpoints e
+    WHERE e.id = ANY(${sql`ARRAY[${sql.join(endpointIds.map((id) => sql`${id}`), sql`, `)}]::uuid[]`})
+  `);
+  const rows = (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as TierSignalRow[];
+  for (const r of rows) {
+    out.set(
+      r.id,
+      tierOf({
+        listedWithin30d: r.listed_30d === true,
+        settledWithin30d: r.settled_30d === true,
+        attributedSettlements: Number(r.attributed ?? 0),
+        lookups7d: Number(r.lookups7d ?? 0),
+        hasDeclaration: r.has_declaration === true,
+        reverifyRequested: r.reverify_requested === true,
+        pathTemplate: isPathTemplate(String(r.resource_url ?? "")),
+      }),
+    );
+  }
+  return out;
+}
+
+/** 1 件版。未知・DB なしは C0（書かない側に倒す）。 */
+export async function loadCoverageTier(endpointId: string): Promise<CoverageTier> {
+  return (await loadCoverageTiers([endpointId])).get(endpointId) ?? "C0";
 }

@@ -16,7 +16,7 @@ const subject: DecisionSubject = {
 const seller: SellerFacts = {
   l0: { status: "pass", observed_at: "2026-09-02T00:00:00Z", dialect: "v2", fail_reason: null },
   l1: { n_delivered: 1, n_settled: 1, n_attempts: 1, n_probe_error: 0, p50_ms: 1, p95_ms: 1, last_purchase_id: "eip155:8453:0x1", observed_at: "2026-09-01T00:00:00Z" },
-  l2: { status: "conform", declaration_hash: "d", diff_hash: null, observed_at: "2026-09-01T00:00:00Z" },
+  l2: { status: "conform", declaration_hash: "d", response_hash: "r", diff_hash: null, missing_keys: null, observed_at: "2026-09-01T00:00:00Z" },
   availability_7d: 1,
   availability_30d: 1,
   offer_stability: "stable",

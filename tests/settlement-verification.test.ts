@@ -86,3 +86,14 @@ test("Solana は「未照合」と言い、偽物とは言わない", () => {
   const v = read("src", "lib", "observatory", "settlement-verify.ts");
   assert.match(v, /chain_not_yet_verifiable/, "Solana を別扱いする理由が消えている");
 });
+
+// 2026-09-02 監査 P1-7: ERC-8004 Validation Registry へ書く verdict も同じ規律に従う。
+// 購入バッチ（自己申告の時点）からは発火せず、照合器の settled / refuted 確定後にだけ発火する。
+test("Registry hook は購入バッチから発火しない（自己申告をオンチェーンに書かない）", () => {
+  const runner = read("src", "lib", "observatory", "l1-runner.ts");
+  assert.doesNotMatch(runner, /fireL1RegistryHook\(/, "l1-runner が売り手の自己申告で Registry hook を呼んでいる");
+  assert.doesNotMatch(runner, /fireL2RegistryHook\(/, "l1-runner が settled 確定前に L2 の Registry hook を呼んでいる");
+  const verifier = read("src", "lib", "observatory", "settlement-verifier.ts");
+  assert.match(verifier, /fireL1RegistryHook/, "照合器が Registry hook を持っていない");
+  assert.match(verifier, /fireL2RegistryHook/, "照合器が L2 の Registry hook を持っていない");
+});
