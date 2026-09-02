@@ -7,10 +7,8 @@ import { SITE_URL } from "@/lib/site-url";
 import { TableScroll } from "@/components/site/TableScroll";
 import { buttonClass } from "@/components/ui/Button";
 import { getObservatoryOverview, getObservatoryStats } from "@/lib/observatory/reader";
-import {
-  parseObservatorySearchParams,
-  type ObservatoryQuery,
-} from "@/lib/observatory/query";
+import { parseObservatorySearchParams, observatoryHref } from "@/lib/observatory/query";
+import { chainLabel } from "@/lib/observatory/chains";
 import TrackView from "@/components/site/TrackView";
 import { VerdictShareBar, VerdictWord } from "@/components/site/Figures";
 
@@ -50,16 +48,6 @@ function fmtDate(d: Date | null): string {
   return d ? d.toISOString().slice(0, 16).replace("T", " ") + " UTC" : "—";
 }
 
-function observatoryHref(query: ObservatoryQuery, page: number): string {
-  const params = new URLSearchParams();
-  if (page > 1) params.set("page", String(page));
-  if (query.q) params.set("q", query.q);
-  if (query.verdict) params.set("verdict", query.verdict);
-  if (query.network) params.set("network", query.network);
-  const encoded = params.toString();
-  return encoded ? `/observatory?${encoded}` : "/observatory";
-}
-
 export default async function ObservatoryPage({
   searchParams,
 }: {
@@ -69,6 +57,7 @@ export default async function ObservatoryPage({
     verdict?: string;
     network?: string;
     pageSize?: string;
+    l1?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -121,14 +110,15 @@ export default async function ObservatoryPage({
         <div className="doc-head">
           <div className="doc-head-col">
             <span>Independent Measurement</span>
-            <span>Register: x402 endpoint observations (L0)</span>
+            <span>Register: x402 endpoints, L0 · L1</span>
             <span>
               {overview.latestSnapshot ? (
                 <>
-                  Catalog snapshot:{" "}
+                  {/* 1 行に収める（"Catalog snapshot: … (N of N fetched)" は 2 行に折れていた）。数字はそのまま。 */}
+                  Snapshot{" "}
                   <span className="text-signal">{overview.latestSnapshot.snapshotDate}</span>{" "}
-                  ({overview.latestSnapshot.fetchedCount.toLocaleString()} of{" "}
-                  {overview.latestSnapshot.totalCount.toLocaleString()} fetched)
+                  · {overview.latestSnapshot.fetchedCount.toLocaleString()}/
+                  {overview.latestSnapshot.totalCount.toLocaleString()}
                 </>
               ) : (
                 "Catalog snapshot: none yet"
@@ -146,7 +136,7 @@ export default async function ObservatoryPage({
                 Methodology
               </Link>
             </span>
-            <span>Table: L0. L1 is on each endpoint page</span>
+            <span>Table: L0 and L1 receipts</span>
           </div>
         </div>
 
@@ -159,34 +149,16 @@ export default async function ObservatoryPage({
         </p>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 
-        <div className="mt-8 flex flex-col gap-1 sm:flex-row sm:gap-0">
-          <p className="shrink-0 text-brand-deep sm:w-[10ch]">Abstract</p>
-          <p className="min-w-0 max-w-[62ch] text-brand">
-            {/* 2026-08-23 UX: 約120語・リンク7本を1段落に詰めており、初見の読者が
-                表へ到達するまでが遠かった。残したのは (a) 何を測っているか
-                (b) pass/fail/unverified は意見ではない (c) L1 は別ページ、の3点。
-                落としたのは「No account」「キーはスコアAPI専用」「headline numbers」
-                といった、表を読む前には要らない但し書き——消したのではなく、
-                すぐ下の §1 と既存のリンク群が同じことを言っている。 */}
-            Every endpoint in the public x402 discovery catalog: is it still listed, and does its
-            payment wall answer a valid <code>402</code> challenge when approached with the method
-            it declares. The catalog is re-fetched daily; endpoints are probed on a rolling
-            schedule, and each row shows when it was last probed. This table is L0 — no purchase is attached;
-            L1 settle-through purchases are on each endpoint&apos;s page, never mixed into these
-            cells.{" "}
-            <strong>pass / fail / unverified</strong> are defined measurements, not opinions —{" "}
-            <Link href="/observatory/methodology" className="underline">
-              definitions here
-            </Link>
-            . <em>unverified is not a failure</em>: the catalog entry does not declare enough for a
-            machine to check.
-          </p>
-        </div>
-
-        <form method="get" action="/observatory" className="mt-8 border-t border-brand-deep pt-6">
+        {/* 2026-09-02 デザイン監査 P1: 1280×800 で最初の画面に操作対象が無かった（検索 y=831・
+            図 y=1046・表 y=1177、Abstract 11 行が y=766–1140）。rule-double の直下を
+            検索 → Figure 1 → §1 表にし、Abstract は §2「Reading this table」の冒頭へ移す（文は同じ）。 */}
+        <form method="get" action="/observatory" className="mt-5">
           <p className="doc-caption">Find an endpoint</p>
-          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-            <label className="block min-w-0 flex-1 text-[0.8125rem]">
+          {query.l1 && <input type="hidden" name="l1" value="1" />}
+          {/* 390px: 4 段積み（266px）だと Figure 1 が最初の画面に入らない。Contains を 1 行、
+              L0 / Network / Apply を 2 行目に並べる。 */}
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <label className="block min-w-0 basis-full text-[0.8125rem] sm:basis-auto sm:flex-1">
               <span className="doc-caption block">Contains</span>
               <input
                 name="q"
@@ -208,7 +180,7 @@ export default async function ObservatoryPage({
                 <option value="unverified">unverified</option>
               </select>
             </label>
-            <label className="block min-w-[16ch] text-[0.8125rem]">
+            <label className="block min-w-0 flex-1 text-[0.8125rem] sm:min-w-[16ch] sm:flex-none">
               <span className="doc-caption block">Network</span>
               <input
                 name="network"
@@ -232,15 +204,6 @@ export default async function ObservatoryPage({
             「Tailwind のユーティリティに負ける必要があるので @layer components」と
             明記しているとおり、局所の上書きが正規の手段。他ページの版面律動は
             触っていない。 */}
-        <h2 className="sec-head mt-6">
-          <span className="sec-no">1.</span>
-          <span>Observed endpoints</span>
-        </h2>
-        <p className="doc-p">
-          {overview.totalEndpoints.toLocaleString()} endpoints on record. Measured endpoints
-          (pass / fail) first, then by observed call volume (catalog-reported, last 30 days).
-          Page {page} of {totalPages}, {overview.pageSize} per page.
-        </p>
         {/* 2026-09-02 UI/UX 監査（続）: 「文字だらけで直感的でない」。件数チップを
             判定の積み上げバー（Figure 1）にする。数字はそのまま、形が加わるだけ。
             凡例がチップを兼ね、クリックで絞る。 */}
@@ -254,18 +217,33 @@ export default async function ObservatoryPage({
               unverified: observatoryHref({ ...query, verdict: query.verdict === "unverified" ? null : "unverified" }, 1),
             }}
             active={query.verdict ?? null}
+            legendExtra={
+              stats.l1.endpointsSettled > 0 ? (
+                <a
+                  href={observatoryHref({ ...query, l1: !query.l1 }, 1)}
+                  aria-current={query.l1 ? "true" : undefined}
+                  className={`whitespace-nowrap tabular-nums underline ${query.l1 ? "text-brand-deep decoration-2" : "text-brand hover:text-brand-deep hover:decoration-2"}`}
+                >
+                  [receipts {stats.l1.endpointsSettled.toLocaleString()}]
+                </a>
+              ) : null
+            }
             caption={
               <>
-                Published L0 verdict over all {stats.totalEndpoints.toLocaleString()} endpoints on record. Filled = pass,
-                crossed = fail (two consecutive failing probes), dashed = unverified. Select a segment to filter the table.
+                Published L0 verdict, {stats.totalEndpoints.toLocaleString()} endpoints on record. Select a legend entry to
+                filter the table.
               </>
             }
           />
         )}
 
+        <h2 className="sec-head mt-5">
+          <span className="sec-no">1.</span>
+          <span>Observed endpoints</span>
+        </h2>
         {overview.rows.length === 0 ? (
           <p className="doc-p text-brand-lift">
-            {query.q || query.verdict || query.network ? (
+            {query.q || query.verdict || query.network || query.l1 ? (
               <>
                 No endpoints match those filters.{" "}
                 <Link href="/observatory" className="underline">
@@ -278,16 +256,21 @@ export default async function ObservatoryPage({
             )}
           </p>
         ) : (
-          <TableScroll label="L0 observations over catalog endpoints">
+          <TableScroll label="L0 observations over catalog endpoints" className="mt-3">
             <table className="fact-table">
               <caption className="sr-only">L0 observations over catalog endpoints</caption>
               <thead>
                 {/* 2026-09-02 UX 監査: 375px で L0 判定列が横 1,110px 先（3.6 画面右）だった。
                     判定を 2 列目に、Endpoint はモバイルで 13rem に切り詰めて（title に全文）、
                     初期表示に Endpoint + L0 が必ず入るようにする。 */}
+                {/* 2026-09-02 導線監査 F2: L1 列（settled/attempts）を L0 の右に。7→8 列になるので
+                    モバイルの Endpoint は 11rem に詰め、Endpoint + L0 + L1 が初期表示に入るようにする。 */}
                 <tr>
                   <th scope="col">Endpoint</th>
                   <th scope="col">L0</th>
+                  <th scope="col" className="num">
+                    L1
+                  </th>
                   <th scope="col">Last probed</th>
                   <th scope="col">Network</th>
                   <th scope="col">Declared method</th>
@@ -303,7 +286,7 @@ export default async function ObservatoryPage({
                     <td className="whitespace-nowrap">
                       <Link
                         href={`/observatory/e/${row.id}`}
-                        className="block max-w-[13rem] truncate underline sm:max-w-[24rem]"
+                        className="block max-w-[11rem] truncate underline sm:max-w-[24rem]"
                         title={row.resourceKey}
                       >
                         {row.resourceKey}
@@ -312,8 +295,20 @@ export default async function ObservatoryPage({
                     <td>
                       <VerdictWord verdict={row.publishedVerdict} />
                     </td>
+                    <td className="num whitespace-nowrap">
+                      {row.l1Attempts === 0 ? (
+                        "—"
+                      ) : (
+                        <span className={row.l1Settled > 0 ? "text-brand-deep" : "text-[#9f0712]"}>
+                          {row.l1Settled}/{row.l1Attempts}
+                        </span>
+                      )}
+                    </td>
                     <td className="whitespace-nowrap">{fmtDate(row.lastProbedAt)}</td>
-                    <td className="whitespace-nowrap">{row.network ?? "—"}</td>
+                    {/* 2026-09-02 可用性監査 P2: eip155:8453 と base が混在。chainLabel で同じ鎖は同じ語に。 */}
+                    <td className="whitespace-nowrap" title={row.network ?? undefined}>
+                      {row.network ? chainLabel(row.network) : "—"}
+                    </td>
                     <td>{row.method ?? "undeclared"}</td>
                     <td>{row.status}</td>
                     <td className="num">
@@ -346,6 +341,36 @@ export default async function ObservatoryPage({
           <span className="sec-no">2.</span>
           <span>Reading this table</span>
         </h2>
+        <div className="mt-8 flex flex-col gap-1 sm:flex-row sm:gap-0">
+          <p className="shrink-0 text-brand-deep sm:w-[10ch]">Abstract</p>
+          <p className="min-w-0 max-w-[62ch] text-brand">
+            {/* 2026-08-23 UX: 約120語・リンク7本を1段落に詰めており、初見の読者が
+                表へ到達するまでが遠かった。残したのは (a) 何を測っているか
+                (b) pass/fail/unverified は意見ではない (c) L1 は別ページ、の3点。
+                落としたのは「No account」「キーはスコアAPI専用」「headline numbers」
+                といった、表を読む前には要らない但し書き——消したのではなく、
+                すぐ下の §1 と既存のリンク群が同じことを言っている。 */}
+            Every endpoint in the public x402 discovery catalog: is it still listed, and does its
+            payment wall answer a valid <code>402</code> challenge when approached with the method
+            it declares. The catalog is re-fetched daily; endpoints are probed on a rolling
+            schedule, and each row shows when it was last probed. This table is L0 — no purchase is attached;
+            L1 settle-through purchases are on each endpoint&apos;s page, never mixed into these
+            cells.{" "}
+            <strong>pass / fail / unverified</strong> are defined measurements, not opinions —{" "}
+            <Link href="/observatory/methodology" className="underline">
+              definitions here
+            </Link>
+            . <em>unverified is not a failure</em>: the catalog entry does not declare enough for a
+            machine to check.
+          </p>
+        </div>
+
+        <p className="doc-p">
+          <strong>Order.</strong> Endpoints with at least one settled L1 purchase first, then measured
+          endpoints (pass / fail), then by observed call volume (catalog-reported, last 30 days).{" "}
+          <strong>L1</strong> is settled / paid attempts for that endpoint; <code>—</code> means no purchase
+          was attempted. The <em>[receipts]</em> entry under Figure 1 keeps only rows with a receipt.
+        </p>
         <p className="doc-p">
           <strong>Catalog</strong> is presence in the public discovery catalog: <code>active</code>{" "}
           means listed as of the latest snapshot; <code>delisted</code> means the entry was present

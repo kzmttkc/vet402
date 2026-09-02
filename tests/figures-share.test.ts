@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { shareSegments, gaugeCells, timelinePositions, funnelWidths } from "@/lib/figures/share";
+import { shareSegments, gaugeCells, timelinePositions, funnelWidths, timelineLanes } from "@/lib/figures/share";
 
 test("shareSegments: fail 1 / 20,460 でも見える幅を持ち、合計は 100", () => {
   const s = shareSegments([
@@ -57,4 +57,11 @@ test("funnelWidths: 先頭 100・以降は先頭比・最低幅あり", () => {
   assert.deepEqual(funnelWidths([20460, 3342, 902]), [100, 16.3, 4.4]);
   assert.deepEqual(funnelWidths([1000, 1, 0]), [100, 1.5, 0]);
   assert.deepEqual(funnelWidths([0, 0]), [0, 0]);
+});
+
+// 2026-09-02 デザイン監査 P2: 同日でない 2 点も記号幅 10px 未満で重なる。
+test("timelineLanes: 前の点と minGap 未満なら段を替える（最大 2 段）", () => {
+  assert.deepEqual(timelineLanes([0, 0.5, 0.51, 0.52, 1], 0.03), [0, 0, 1, 0, 0]);
+  assert.deepEqual(timelineLanes([1], 0.03), [0]);
+  assert.deepEqual(timelineLanes([], 0.03), []);
 });

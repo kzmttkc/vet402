@@ -269,13 +269,16 @@ export default async function ObservatoryStatePage() {
           <p className="doc-p text-brand-lift">No chain data yet.</p>
         ) : (
           <TableScroll label="State of x402 by chain">
-            <table className="fact-table">
+            {/* 2026-09-02 デザイン監査 P1: 390px で数値列が 1 つも見えなかった。先頭列は
+                TableScroll が sticky にする。ここでは列間を 0.75rem に詰め、見出しを
+                短くして、Chain + Endpoints + Listed が 358px の紙面に入るようにする。 */}
+            <table className="fact-table [&_td]:pr-3 [&_th]:pr-3">
               <caption className="sr-only">State of x402 by chain</caption>
               <thead>
                 <tr>
                   <th scope="col">Chain</th>
                   <th scope="col" className="num">
-                    Endpoints
+                    <abbr title="Endpoints on record" className="no-underline">n</abbr>
                   </th>
                   <th scope="col" className="num">
                     Listed
@@ -294,7 +297,12 @@ export default async function ObservatoryStatePage() {
               <tbody>
                 {chainStats.map((c) => (
                   <tr key={c.chain}>
-                    <td className="text-brand whitespace-nowrap">{c.chain}</td>
+                    {/* 生の CAIP-2 id（solana:EtWT… 44 字）が 600px の列を作っていた。390px では 9rem で切る（title に全文）。 */}
+                    <td className="text-brand">
+                      <span className="block max-w-[9rem] truncate sm:max-w-none" title={c.chain}>
+                        {c.chain}
+                      </span>
+                    </td>
                     <td className="num">{c.totalEndpoints.toLocaleString()}</td>
                     <td className="num">{pct(c.activeEndpoints, c.totalEndpoints)}</td>
                     <td className="num">{pct(c.publishedPass, c.totalEndpoints)}</td>

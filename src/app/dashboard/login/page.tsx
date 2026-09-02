@@ -77,7 +77,7 @@ function LoginForm({ redirectError }: { redirectError: string | null }) {
     // landmark-one-main（<main> 無し）と region（フォームの中身がどのランドマーク
     // にも属さない）の2件を出していた。頁の骨組みはこの要素なので、外枠を
     // <main> にするだけで両方が解ける（レイアウト・見た目は不変）。
-    <main className="flex min-h-screen items-center justify-center bg-zinc-50 px-6 py-12">
+    <main className="flex flex-1 items-center justify-center bg-zinc-50 px-6 py-12">
       {/* 2026-08-06 (UX audit item 7): `action` is the Server Action fallback
           and `onSubmit` (which preventDefaults) is the JS path. With JS on, our
           handler runs and the action is skipped; with JS off, the browser POSTs

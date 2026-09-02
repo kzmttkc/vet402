@@ -137,6 +137,40 @@ if (!TEST_DB) {
       assert.equal(stats.l1.endpointsAttempted, 1);
     });
 
+    // 2026-09-02 導線監査 F2: 受領証つき 520 本がどれか、一覧から分からなかった。
+    // 行に L1 の settled/attempts を載せ、受領証あり → 測定済み → 呼出量の順に並べ、?l1=1 で絞る。
+    await t.test("overview rows carry L1 settled/attempts and receipts sort first", async () => {
+      const before = await getObservatoryOverview();
+      const nodecl = before.rows.find((r) => r.resourceKey === "nodecl.example/api")!;
+      await db.insert(schema.x402L1Purchases).values([
+        { endpointId: nodecl.id, status: "settled", amountUnits: "3000", spentUnits: "3000", txHash: "0xbeef", httpStatusPaid: 200, latencyMs: 300, payloadNonEmpty: true },
+        // budget_denied は払っていないので attempts に入らない
+        { endpointId: nodecl.id, status: "budget_denied", amountUnits: "3000" },
+      ]);
+      const overview = await getObservatoryOverview();
+      assert.deepEqual(
+        overview.rows.map((r) => r.resourceKey),
+        ["healthy.example/api", "nodecl.example/api", "dead.example/api"],
+        "receipts (settled ≥ 1) first, then measured, then by call volume",
+      );
+      const healthy = overview.rows[0];
+      assert.equal(healthy.l1Settled, 1);
+      assert.equal(healthy.l1Attempts, 2);
+      assert.equal(overview.rows[1].l1Settled, 1);
+      assert.equal(overview.rows[1].l1Attempts, 1);
+      assert.equal(overview.rows[2].l1Settled, 0);
+      assert.equal(overview.rows[2].l1Attempts, 0);
+    });
+
+    await t.test("l1: true keeps only endpoints with at least one receipt", async () => {
+      const overview = await getObservatoryOverview({ l1: true });
+      assert.equal(overview.totalEndpoints, 2);
+      assert.deepEqual(
+        overview.rows.map((r) => r.resourceKey),
+        ["healthy.example/api", "nodecl.example/api"],
+      );
+    });
+
     await t.test("detail rejects non-uuid ids without touching the DB", async () => {
       assert.equal(await getEndpointDetail("not-a-uuid"), null);
       assert.equal(await getEndpointDetail("../../etc/passwd"), null);
