@@ -30,17 +30,89 @@ export function isPublicUnicastIp(ip: string): boolean {
   const zone = s.indexOf("%");
   if (zone >= 0) s = s.slice(0, zone); // strip scope id (fe80::1%eth0)
 
-  // IPv4-mapped (::ffff:1.2.3.4), IPv4-compatible (::1.2.3.4), or any form
-  // carrying a dotted-quad tail: the routable target is that IPv4.
-  const dotted = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(s);
-  if (dotted) return isPublicIPv4(dotted[1]);
+  const groups = expandIPv6(s);
+  if (!groups) return false;
 
-  if (s === "::" || s === "::1") return false; // unspecified / loopback
-  // fe80::/10 link-local  → fe8 fe9 fea feb
-  if (/^fe[89ab]/.test(s)) return false;
-  if (s.startsWith("fc") || s.startsWith("fd")) return false; // fc00::/7 ULA
-  if (s.startsWith("ff")) return false; // ff00::/8 multicast
+  // Any form that embeds an IPv4 is judged as the IPv4 it targets. This is
+  // done on the expanded groups, never on the text: WHATWG URL rewrites
+  // `[::ffff:127.0.0.1]` into `[::ffff:7f00:1]` (2026-09-02 audit S1), so a
+  // dotted-tail regex saw a loopback only when the caller happened to spell
+  // it that way.
+  const embedded = embeddedIPv4(groups);
+  if (embedded) return isPublicIPv4(embedded);
+
+  const [g0] = groups;
+  if (groups.every((g) => g === 0)) return false; // :: unspecified
+  if ((g0 & 0xffc0) === 0xfe80) return false; // fe80::/10 link-local
+  if ((g0 & 0xfe00) === 0xfc00) return false; // fc00::/7 ULA
+  if ((g0 & 0xff00) === 0xff00) return false; // ff00::/8 multicast
   return true;
+}
+
+/**
+ * Expand an IPv6 string (already validated by net.isIPv6, scope id removed)
+ * into its 8 16-bit groups. Handles `::` zero compression and a dotted-quad
+ * tail (`::ffff:1.2.3.4`). Returns null on anything malformed.
+ */
+export function expandIPv6(s: string): number[] | null {
+  let text = s;
+  const tail: number[] = [];
+  // Dotted-quad tail → two trailing groups.
+  const dotted = /^(.*:)(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(text);
+  if (dotted) {
+    const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(dotted[2]);
+    if (!m) return null;
+    const o = m.slice(1, 5).map(Number);
+    if (o.some((n) => n > 255)) return null;
+    tail.push((o[0] << 8) | o[1], (o[2] << 8) | o[3]);
+    text = dotted[1];
+    if (text.endsWith(":") && !text.endsWith("::")) text = text.slice(0, -1);
+  }
+  const parseSide = (part: string): number[] | null => {
+    if (part === "") return [];
+    const out: number[] = [];
+    for (const h of part.split(":")) {
+      if (!/^[0-9a-f]{1,4}$/.test(h)) return null;
+      out.push(parseInt(h, 16));
+    }
+    return out;
+  };
+  const halves = text.split("::");
+  if (halves.length > 2) return null;
+  const head = parseSide(halves[0]);
+  if (!head) return null;
+  let groups: number[];
+  if (halves.length === 2) {
+    const rest = parseSide(halves[1]);
+    if (!rest) return null;
+    const fill = 8 - head.length - rest.length - tail.length;
+    if (fill < 0) return null;
+    groups = [...head, ...new Array<number>(fill).fill(0), ...rest, ...tail];
+  } else {
+    groups = [...head, ...tail];
+  }
+  return groups.length === 8 ? groups : null;
+}
+
+/**
+ * The IPv4 an IPv6 address carries, as dotted text, or null if it is a
+ * native IPv6 address. Prefixes (all judged on expanded groups):
+ *   ::ffff:0:0/96   IPv4-mapped        → last 32 bits
+ *   ::/96           IPv4-compatible    → last 32 bits (covers :: and ::1 too)
+ *   64:ff9b::/96    NAT64 well-known   → last 32 bits
+ *   64:ff9b:1::/48  NAT64 local-use    → last 32 bits
+ *   2002::/16       6to4               → bits 16..47
+ */
+export function embeddedIPv4(g: readonly number[]): string | null {
+  const v4 = (hi: number, lo: number) => `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`;
+  const leading5Zero = g[0] === 0 && g[1] === 0 && g[2] === 0 && g[3] === 0 && g[4] === 0;
+  if (leading5Zero && (g[5] === 0xffff || g[5] === 0)) return v4(g[6], g[7]); // mapped / compatible
+  if (g[0] === 0x64 && g[1] === 0xff9b) {
+    if (g[2] === 0 && g[3] === 0 && g[4] === 0 && g[5] === 0) return v4(g[6], g[7]); // 64:ff9b::/96
+    if (g[2] === 1) return v4(g[6], g[7]); // 64:ff9b:1::/48
+  }
+  if (g[0] === 0x2002) return v4(g[1], g[2]); // 6to4
+  return null;
 }
 
 export function isPublicIPv4(ip: string): boolean {

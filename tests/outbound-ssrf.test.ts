@@ -262,3 +262,85 @@ test("L0 probe refuses loopback and bare internal names", async () => {
     assert.equal(result.failReason, "unsafe_target", resourceUrl);
   }
 });
+
+// ---- IPv6 forms that embed an IPv4 (2026-09-02 adversarial audit, S1) -------
+//
+// WHATWG URL rewrites `http://[::ffff:127.0.0.1]/` into `[::ffff:7f00:1]`, so
+// a guard that only looks for a dotted-quad tail never sees the loopback it
+// was meant to reject. Every IPv4-embedding IPv6 form must be judged as the
+// IPv4 it targets — mapped, compatible, NAT64 (both prefixes), 6to4 — whether
+// written hex, dotted, upper-case, or fully expanded.
+
+test("isPublicHostUrl rejects IPv6 literals that embed a private IPv4", () => {
+  for (const url of [
+    "http://[::ffff:127.0.0.1]/", // mapped, dotted (URL normalizes to hex)
+    "http://[::ffff:7f00:1]/", // mapped, hex
+    "http://[::FFFF:7F00:1]/", // mapped, upper-case
+    "http://[0:0:0:0:0:ffff:7f00:1]/", // mapped, no zero compression
+    "http://[0000:0000:0000:0000:0000:ffff:a9fe:a9fe]/", // mapped IMDS, expanded
+    "http://[::7f00:1]/", // IPv4-compatible (::/96)
+    "http://[::a9fe:a9fe]/", // IPv4-compatible IMDS
+    "http://[64:ff9b::7f00:1]/", // NAT64 well-known prefix
+    "http://[64:ff9b::a9fe:a9fe]/", // NAT64 → IMDS
+    "http://[64:FF9B::0A00:0001]/", // NAT64, upper-case, 10.0.0.1
+    "http://[64:ff9b:1::7f00:1]/", // NAT64 local-use prefix (64:ff9b:1::/48)
+    "http://[64:ff9b:1:abcd::7f00:1]/", // NAT64 local-use, non-zero middle
+    "http://[2002:7f00:1::]/", // 6to4 → 127.0.0.1
+    "http://[2002:a9fe:a9fe::1]/", // 6to4 → 169.254.169.254
+    "http://[2002:c0a8:101::]/", // 6to4 → 192.168.1.1
+  ]) {
+    assert.equal(isPublicHostUrl(url), false, `should reject ${url}`);
+  }
+});
+
+test("isPublicHostUrl still accepts IPv6 literals that embed a public IPv4", () => {
+  for (const url of [
+    "http://[::ffff:8.8.8.8]/",
+    "http://[::ffff:808:808]/",
+    "http://[64:ff9b::808:808]/",
+    "http://[2002:808:808::]/",
+    "https://[2606:4700:4700::1111]/",
+  ]) {
+    assert.equal(isPublicHostUrl(url), true, `should accept ${url}`);
+  }
+});
+
+test("safeFetch refuses a name whose AAAA is an IPv4-mapped loopback in hex", async () => {
+  let called = 0;
+  await assert.rejects(
+    () =>
+      safeFetch(
+        "https://mapped.example/paid",
+        {},
+        {
+          fetchImpl: async () => {
+            called++;
+            return response(200);
+          },
+          resolve: resolver({ "mapped.example": ["::ffff:7f00:1"] }),
+        },
+      ),
+    (error: unknown) => error instanceof UnsafeTargetError && error.reason === "unsafe_host",
+  );
+  assert.equal(called, 0, "no socket may be opened to a mapped loopback");
+});
+
+test("safeFetch refuses a redirect to an IPv6 literal that embeds a private IPv4", async () => {
+  const hops: string[] = [];
+  await assert.rejects(
+    () =>
+      safeFetch(
+        "https://api.example.com/paid",
+        {},
+        {
+          fetchImpl: async (url) => {
+            hops.push(url);
+            return response(302, { location: "http://[64:ff9b::a9fe:a9fe]/latest/meta-data/" });
+          },
+          resolve: resolver({ "api.example.com": ["93.184.216.34"] }),
+        },
+      ),
+    (error: unknown) => error instanceof UnsafeTargetError && error.reason === "unsafe_host",
+  );
+  assert.deepEqual(hops, ["https://api.example.com/paid"], "the NAT64 hop must never be fetched");
+});

@@ -113,6 +113,44 @@ test("isPublicUnicastIp rejects non-public IPv6 (incl. mapped v4) and junk", () 
   assert.equal(isPublicUnicastIp("::ffff:1.1.1.1"), true, "mapped public v4 allowed");
 });
 
+// 2026-09-02 adversarial audit (S1): the dotted-quad tail check was the only
+// IPv4-embedding rule, so the same loopback written as `::ffff:7f00:1` (which
+// is exactly what `new URL()` produces) passed as public.
+test("isPublicUnicastIp unwraps every IPv4-embedding IPv6 form before judging", () => {
+  const bad = [
+    "::ffff:7f00:1", // mapped, hex
+    "::FFFF:7F00:1", // mapped, upper-case
+    "0:0:0:0:0:ffff:7f00:1", // mapped, no zero compression
+    "0000:0000:0000:0000:0000:ffff:a9fe:a9fe", // mapped IMDS, fully expanded
+    "::ffff:127.0.0.1", // mapped, dotted
+    "::7f00:1", // IPv4-compatible (::/96)
+    "::127.0.0.1", // IPv4-compatible, dotted
+    "64:ff9b::7f00:1", // NAT64 well-known prefix
+    "64:ff9b::a9fe:a9fe", // NAT64 → IMDS
+    "64:ff9b::169.254.169.254", // NAT64, dotted
+    "64:ff9b:1::7f00:1", // NAT64 local-use (64:ff9b:1::/48)
+    "64:ff9b:1:abcd::c0a8:101", // NAT64 local-use → 192.168.1.1
+    "2002:7f00:1::", // 6to4 → 127.0.0.1
+    "2002:a9fe:a9fe::1", // 6to4 → 169.254.169.254
+    "2002:0a00:0001::", // 6to4 → 10.0.0.1
+    "fe80::1%eth0", // link-local with zone id
+    "FE80::1", // link-local upper-case
+    "FD00::1", // ULA upper-case
+    "FF02::1", // multicast upper-case
+    "0:0:0:0:0:0:0:1", // ::1 expanded
+    "0:0:0:0:0:0:0:0", // :: expanded
+  ];
+  for (const ip of bad) assert.equal(isPublicUnicastIp(ip), false, `must reject ${ip}`);
+  const good = [
+    "::ffff:808:808", // mapped 8.8.8.8, hex
+    "::ffff:8.8.8.8",
+    "64:ff9b::808:808", // NAT64 → 8.8.8.8
+    "2002:808:808::", // 6to4 → 8.8.8.8
+    "2001:4860:4860::8888",
+  ];
+  for (const ip of good) assert.equal(isPublicUnicastIp(ip), true, `must allow ${ip}`);
+});
+
 test("resolveDeliveryTarget aborts when a hostname resolves to a private IP", async () => {
   const cases: Array<[string, string]> = [
     ["metadata.evil.test", "169.254.169.254"],
