@@ -18,6 +18,19 @@ built during it, so judges can verify the boundary from git history alone.
   SpendGuard in `@vet402/sdk`), MCP server `vouch-trust` with `check_*` /
   `explain_trust_score` / `attest_x402_payment` tools, Python SDK, framework adapters
   under `examples/`.
+- **Product spec v1.0, shipped 2026-09-02 (two days before the window)**: the `/decision`
+  API (facts and recommendation in one response), `/resolve` and reverse lookup, the
+  settlement index with wash classification, coverage tiers, seller disputes and the
+  correction log, and the MCP tool **`check_resource_decision`** — which *reads* a
+  decision (default `role=payer`, returning `safe_to_pay`) and **never signs and never
+  pays**. Seller-mode middleware (`role=payee`) also existed before the window.
+
+  **The boundary in one sentence: before the window vet402 could _answer_ "should my
+  agent pay this?"; the window is where it learned to _act_ on that answer.**
+  `check_resource_decision` returns a verdict to a human or an agent that then decides
+  on its own. The in-window primitive holds the signer itself: the payment path is
+  structurally unreachable unless the decision and the caller's policy both pass, and
+  on pass it performs the `exact` payment, attests it, and publishes the decision row.
 - Everything on `main` at tag `pre-ethonline-2026` (created 2026-09-03).
 
 ### Built during the window (the submission)
@@ -25,8 +38,10 @@ built during it, so judges can verify the boundary from git history alone.
    the payee through SpendGuard, and if — and only if — the verdict is ALLOW, performs
    the x402 `exact` payment and attests the settlement back to vet402. Any non-ALLOW
    verdict refuses before signing and returns machine-readable reasons.
-2. **MCP tool `pay_if_trusted`** exposing the same primitive to MCP-native agents; the
-   payment path is structurally unreachable on BLOCK/WARN.
+2. **MCP tool `pay_if_trusted`** — the *acting* counterpart to the pre-existing
+   `check_resource_decision`: it signs and settles, and the payment path is structurally
+   unreachable on anything but a clean pass. This is an additive extension of an MCP
+   server that already existed, which is what The Graph's tooling bracket asks for.
 3. **Agent-originated decision feed**: demo agent decisions (refusals and payments)
    stream into the existing public `/decisions` register with `source: agent-demo`.
 4. **Live demo agent + scenarios** (`examples/ethonline-2026-agent/`): two scenarios —
