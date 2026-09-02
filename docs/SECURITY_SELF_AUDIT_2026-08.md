@@ -101,7 +101,11 @@ reproduced real-world impact:
 - **Observatory SSRF** — L0 probes and L1 purchases fetched third-party
   catalog-supplied URLs unvalidated (link-local/private IPs reachable). Fixed
   with a shared `safeFetch`/`isPublicUnicastIp` extracted from the existing
-  `src/lib/webhooks.ts` IP-classification logic.
+  `src/lib/webhooks.ts` IP-classification logic. (2026-09-02 audit P2-1: the
+  gate resolved once and fetch resolved again to connect, leaving a
+  DNS-rebinding window; closed by pinning the socket to the gate-verified
+  addresses via an undici connector `lookup` — `src/lib/net/pinned-fetch.ts`,
+  tests in `tests/safe-fetch-pinning.test.ts`.)
 - **fail-closed spend accounting** — a crash between signing and ledger write
   could drop real spend from the budget calculation; the reservation row is
   now committed before signing, removing the fallback path that could miss it.
