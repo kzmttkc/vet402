@@ -24,14 +24,16 @@ import { useEffect, useRef, useState } from "react";
  * （/observatory 1264px、state の By chain は 390px で数値列 0）。
  *   - 先頭列を紙面に貼り付ける（sticky）。globals.css は触らず、Tailwind の
  *     arbitrary variant でこの容器から当てる——Turbopack がグローバル CSS の
- *     変更を落とした事故が 2 回ある。border-collapse の表では sticky セルの
- *     罫線が一緒に動かない（Chromium）ので、下罫は inset shadow で持たせる。
+ *     変更を落とした事故が 2 回ある。border-collapse の表で sticky セルの罫線が
+ *     動くかはブラウザで割れる（Chromium 2026-09 は動く・Safari は動かない履歴）ので、
+ *     セルの border は消して inset shadow の 1px に一本化する（重なって 2px にならない）。
  *   - 右に続きがあるときだけ「→ N more columns」を出す。数えるのは見出しセルの
- *     うち左端が可視域の右端より外にあるもの。端まで送れば消える。
+ *     うち左端が可視域の右端より外にあるもの。端まで送れば消える。表の上・右寄せに
+ *     置く——表の下だと 40 行の先で、初期表示では見えない。
  */
 const STICKY_FIRST_COLUMN =
-  "[&_.fact-table_th:first-child]:sticky [&_.fact-table_th:first-child]:left-0 [&_.fact-table_th:first-child]:z-[1] [&_.fact-table_th:first-child]:bg-paper [&_.fact-table_th:first-child]:shadow-[inset_0_-1px_0_#233456] " +
-  "[&_.fact-table_td:first-child]:sticky [&_.fact-table_td:first-child]:left-0 [&_.fact-table_td:first-child]:z-[1] [&_.fact-table_td:first-child]:bg-paper [&_.fact-table_td:first-child]:shadow-[inset_0_-1px_0_#dfe3e9]";
+  "[&_.fact-table_th:first-child]:sticky [&_.fact-table_th:first-child]:left-0 [&_.fact-table_th:first-child]:z-[1] [&_.fact-table_th:first-child]:bg-paper [&_.fact-table_th:first-child]:border-b-0 [&_.fact-table_th:first-child]:shadow-[inset_0_-1px_0_#233456] " +
+  "[&_.fact-table_td:first-child]:sticky [&_.fact-table_td:first-child]:left-0 [&_.fact-table_td:first-child]:z-[1] [&_.fact-table_td:first-child]:bg-paper [&_.fact-table_td:first-child]:border-b-0 [&_.fact-table_td:first-child]:shadow-[inset_0_-1px_0_#dfe3e9]";
 
 export function TableScroll({
   label,
@@ -74,6 +76,14 @@ export function TableScroll({
 
   return (
     <>
+      <p
+        data-table-scroll-hint=""
+        hidden={hiddenColumns === 0}
+        aria-hidden="true"
+        className="doc-caption mt-6 -mb-4 text-right text-brand-lift"
+      >
+        → {hiddenColumns} more {hiddenColumns === 1 ? "column" : "columns"}
+      </p>
       <div
         ref={ref}
         className={`table-scroll ${STICKY_FIRST_COLUMN} ${className}`.trim()}
@@ -83,14 +93,6 @@ export function TableScroll({
       >
         {children}
       </div>
-      <p
-        data-table-scroll-hint=""
-        hidden={hiddenColumns === 0}
-        aria-hidden="true"
-        className="doc-caption mt-2 text-right text-brand-lift"
-      >
-        → {hiddenColumns} more {hiddenColumns === 1 ? "column" : "columns"}
-      </p>
     </>
   );
 }

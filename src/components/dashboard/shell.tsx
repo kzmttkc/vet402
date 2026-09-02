@@ -89,7 +89,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   if (isLogin) {
     return (
       <div className="flex min-h-screen flex-col bg-zinc-50">
-        <div className="flex-1">{children}</div>
+        <div className="flex flex-1 flex-col">{children}</div>
         <DashboardFooter />
       </div>
     );
