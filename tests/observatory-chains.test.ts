@@ -71,9 +71,10 @@ if (!TEST_DB) {
           mk(2, "base"), // Base (legacy slug) — must collapse with #1
           mk(3, "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"), // Solana
           mk(4, "eip155:84532"), // Base Sepolia — testnet, excluded by default
+          mk(5, "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"), // Solana Devnet — testnet (2026-09-02 A3)
         ],
-        totalCount: 4,
-        fetchedCount: 4,
+        totalCount: 5,
+        fetchedCount: 5,
         complete: true,
       },
       today: "2026-08-14",
@@ -83,7 +84,8 @@ if (!TEST_DB) {
     const base = stats.find((c) => c.chain === "Base")!;
     assert.equal(base.totalEndpoints, 2, "eip155:8453 and base must collapse into one row");
     const solana = stats.find((c) => c.chain === "Solana")!;
-    assert.equal(solana.totalEndpoints, 1);
+    assert.equal(solana.totalEndpoints, 1, "devnet must not be folded into Solana mainnet");
+    assert.equal(stats.some((c) => c.chain === "Solana Devnet"), false, "mainnet-only view excludes Solana devnet");
     assert.equal(
       stats.some((c) => c.chain.includes("Sepolia") || c.chain.includes("Testnet")),
       false,
@@ -97,5 +99,25 @@ if (!TEST_DB) {
     const { getObservatoryStatsByChain } = await import("@/lib/observatory/reader");
     const stats = await getObservatoryStatsByChain({ includeTestnets: true });
     assert.ok(stats.some((c) => /Sepolia/.test(c.chain)));
+    assert.ok(stats.some((c) => c.chain === "Solana Devnet"));
   });
 }
+
+// ---- 2026-09-02 監査 A3: Solana devnet はテストネット ----------------------
+
+test("Solana devnet is labeled and treated as a testnet (excluded from mainnet-only views)", () => {
+  assert.equal(chainLabel("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"), "Solana Devnet");
+  assert.equal(isTestnet("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"), true);
+  assert.equal(isTestnet("solana-devnet"), true);
+  assert.equal(chainLabel("solana-devnet"), "Solana Devnet");
+  // Mainnet stays mainnet; the genesis hash is case-sensitive base58.
+  assert.equal(isTestnet("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"), false);
+  assert.equal(chainLabel("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"), "Solana");
+});
+
+test("chainLabel normalizes the raw legacy slug `base` (any case) to Base", () => {
+  assert.equal(chainLabel("base"), "Base");
+  assert.equal(chainLabel("BASE"), "Base");
+  assert.equal(chainLabel("Base"), "Base");
+  assert.equal(chainLabel("eip155:8453"), "Base");
+});

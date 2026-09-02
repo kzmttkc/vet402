@@ -21,16 +21,23 @@ const KNOWN: Record<string, string> = {
   "eip155:4663": "IoTeX",
 };
 
-/** Solana genesis hash (case-sensitive base58) — lower-casing would corrupt it, so match separately. */
+/** Solana genesis hashes (case-sensitive base58) — lower-casing would corrupt them, so match separately. */
 const SOLANA_MAINNET_GENESIS = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
+const SOLANA_DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
 
-const TESTNET_LABELS = new Set(["Base Sepolia"]);
+/**
+ * 2026-09-02 監査 A3: /observatory/state「Mainnets only」に Solana devnet の active 33 件が
+ * 混ざっていた（TESTNET_LABELS が Base Sepolia だけ）。devnet はテストネット。
+ */
+const TESTNET_LABELS = new Set(["Base Sepolia", "Solana Devnet"]);
 
 /** Human label for a raw CAIP-2 / legacy network identifier. Never guesses — unknown ids pass through verbatim so nothing is silently mislabeled. */
 export function chainLabel(network: unknown): string {
   if (typeof network !== "string" || network === "") return "unknown";
   if (network === `solana:${SOLANA_MAINNET_GENESIS}`) return "Solana";
+  if (network === `solana:${SOLANA_DEVNET_GENESIS}`) return "Solana Devnet";
   const key = network.toLowerCase();
+  if (key === "solana-devnet") return "Solana Devnet";
   if (KNOWN[key]) return KNOWN[key];
   if (key.startsWith("algorand:")) return `Algorand (${network})`;
   return network;
@@ -47,7 +54,7 @@ export function toCaip2(network: unknown): string | null {
   if (key === "base-sepolia") return "eip155:84532";
   if (key === "polygon") return "eip155:137";
   if (key === "solana" || key === "solana-mainnet") return `solana:${SOLANA_MAINNET_GENESIS}`;
-  if (key === "solana-devnet") return "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
+  if (key === "solana-devnet") return `solana:${SOLANA_DEVNET_GENESIS}`;
   return network;
 }
 
