@@ -8,6 +8,7 @@ import { getDb } from "@/lib/db/client";
 import { canonicalUrl, payeeId as toPartyId, resourceId as toResourceId, SHA256_HEX_RE } from "@/lib/ids/canonical";
 import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
 import { rowsOf } from "@/lib/settlements/upsert";
+import { escapeLike } from "@/lib/util/like";
 import { classifyQuery, type QueryKind } from "./classify";
 import { UUID_RE } from "@/lib/validation/uuid";
 
@@ -113,12 +114,23 @@ export async function endpointsByPayee(payeeIdStr: string, limit = 200): Promise
   return rows.map(toRef);
 }
 
+/**
+ * resource_key（host+path、小文字）に対する LIKE パターン: 同ホスト配下のパス・
+ * サブドメイン配下のパス・サブドメインそのもの。host 内の `_` `%` `\` はリテラル
+ * （2026-09-02 監査: 未エスケープで `a_b.example` が `axb.example` に一致していた）。
+ */
+export function domainLikePatterns(domain: string): [string, string, string] {
+  const host = escapeLike(domain.toLowerCase());
+  return [`${host}/%`, `%.${host}/%`, `%.${host}`];
+}
+
 export async function endpointsByDomain(domain: string, limit = 200): Promise<EndpointRef[]> {
   const db = getDb();
   if (!db) return [];
   const host = domain.toLowerCase();
+  const [underHost, underSub, subOnly] = domainLikePatterns(domain);
   const rows = rowsOf<EndpointRow>(
-    await db.execute(sql`${ENDPOINT_SELECT} WHERE resource_key = ${host} OR resource_key LIKE ${host + "/%"} OR resource_key LIKE ${"%." + host + "/%"} OR resource_key LIKE ${"%." + host}
+    await db.execute(sql`${ENDPOINT_SELECT} WHERE resource_key = ${host} OR resource_key LIKE ${underHost} OR resource_key LIKE ${underSub} OR resource_key LIKE ${subOnly}
       ORDER BY status = 'active' DESC, last_seen_at DESC NULLS LAST LIMIT ${Math.min(Math.max(limit, 1), 500)}`),
   );
   return rows.map(toRef);

@@ -13,7 +13,14 @@ export const maxDuration = 30;
 type RouteContext = { params: Promise<{ address: string }> };
 
 export function normalizePayeeParam(raw: string): string | null {
-  const v = decodeURIComponent(raw).trim();
+  // Next.js は動的セグメントを一度復号して渡す。ここは二度目なので、`%25` 由来の
+  // 裸の `%` などは URIError になる——不正 id として 400 に倒す（500 にしない）。
+  let v: string;
+  try {
+    v = decodeURIComponent(raw).trim();
+  } catch {
+    return null;
+  }
   if (parsePartyId(v)) return v.startsWith("eip155:") ? v.toLowerCase() : v;
   if (/^0x[0-9a-fA-F]{40}$/.test(v)) return toPartyId("eip155:8453", v);
   if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v)) return toPartyId(SOLANA_MAINNET_CAIP2, v);

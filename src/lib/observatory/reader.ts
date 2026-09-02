@@ -14,6 +14,7 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { isMissingSchemaError } from "@/lib/db/pg-errors";
+import { escapeLike } from "@/lib/util/like";
 import {
   x402CatalogSnapshots,
   x402DelistingEvents,
@@ -87,8 +88,7 @@ export function searchLikePattern(q: string | null): string | null {
     .replace(/\/+$/, "")
     .slice(0, SEARCH_MAX_LENGTH);
   if (trimmed.length === 0) return null;
-  const literal = trimmed.replace(/[\\%_]/g, (ch) => `\\${ch}`);
-  return `%${literal}%`;
+  return `%${escapeLike(trimmed)}%`;
 }
 
 export async function getObservatoryOverview(
