@@ -278,6 +278,64 @@ export declare const DEFAULT_REQUEST_TIMEOUT_MS = 10000;
  * missing" apart from "the upstream is down".
  */
 export type DecisionRecommendation = "ALLOW" | "WARN" | "BLOCK";
+export type L0Status = "pass" | "fail" | "unverified";
+export type Dialect = "v1" | "v2" | "both" | "unpayable";
+export type L2Status = "conform" | "mismatch" | "undeclared";
+export type OfferStability = "stable" | "drifting" | "unknown";
+/** §8.1 売り手事実（role=payer の facts）。スコアも判定も含まない。 */
+export type SellerFacts = {
+    l0: {
+        status: L0Status;
+        observed_at: string | null;
+        dialect: Dialect | null;
+        fail_reason: string | null;
+    };
+    l1: {
+        n_delivered: number;
+        n_settled: number;
+        n_attempts: number;
+        /** §6.2 こちら側の失敗（決済は確定したが我々のリクエストが 4xx）。n_attempts に数えない。 */
+        n_probe_error: number;
+        p50_ms: number | null;
+        p95_ms: number | null;
+        last_purchase_id: string | null;
+        observed_at: string | null;
+    };
+    l2: {
+        status: L2Status;
+        declaration_hash: string | null;
+        diff_hash: string | null;
+        observed_at: string | null;
+    };
+    availability_7d: number | null;
+    availability_30d: number | null;
+    offer_stability: OfferStability;
+    payees: string[];
+    settlement_30d_real: number;
+    settlement_30d_raw: number;
+    /** raw のうち vet402 自身の測定購入（wash_flag test）。 */
+    settlement_30d_test: number;
+    unique_payers_30d_real: number;
+    wash_dominated: boolean;
+};
+/** §8.2 買い手事実（role=payee の facts）。 */
+export type BuyerFacts = {
+    settled_count_30d: number;
+    unique_payees_30d: number;
+    retry_burst_rate: number | null;
+    sybil: {
+        multi_agent_owner: boolean;
+        shared_funder: boolean;
+        cluster_id: string | null;
+        unavailable: string[];
+    };
+    erc8004: {
+        agent_id: string | null;
+        feedback_with_payment_proof_ratio: number | null;
+    };
+    first_seen: string | null;
+    last_seen: string | null;
+};
 export type DecisionResult = {
     subject: {
         type: "resource";
@@ -291,8 +349,8 @@ export type DecisionResult = {
     payer: string | null;
     recommendation: DecisionRecommendation;
     reason_codes: string[];
-    /** L0–L2 の事実（role=payer は売り手事実、role=payee は買い手事実）。常に存在する。 */
-    facts: Record<string, unknown>;
+    /** L0–L2 の事実（role=payer は SellerFacts、role=payee は BuyerFacts）。常に存在する。 */
+    facts: SellerFacts | BuyerFacts;
     freshness: {
         l0: string | null;
         l1: string | null;
@@ -331,19 +389,75 @@ export type DecisionQuery = {
     /** 同一 (resource, role, payer, key) の再試行でレート単位を二重に消費しない。 */
     idempotencyKey?: string;
 };
+/** §5 Endpoint / Resource の記録（resolve 系の共通形）。 */
+export type EndpointRef = {
+    endpoint_id: string;
+    resource_id: string | null;
+    observatory_id: string;
+    canonical_url: string;
+    method: string;
+    payee_id: string | null;
+    catalog_status: "listed" | "delisted" | "unknown";
+    first_seen: string | null;
+    last_seen: string | null;
+};
+/** §7.2 索引済み決済 1 件（帰属と wash フラグつき）。 */
+export type SettlementRef = {
+    purchase_id: string;
+    chain: string;
+    tx_hash: string;
+    payer_id: string | null;
+    payee_id: string | null;
+    amount: string | null;
+    asset: string | null;
+    block_time: string | null;
+    attribution: string;
+    wash_flag: string;
+    resource_id: string | null;
+    endpoint_id: string | null;
+};
 export type ResolveResult = {
     query: {
         kind: "url" | "domain" | "address" | "tx" | "payee_id" | "unknown";
         value: string;
     };
-    resource?: Record<string, unknown>;
-    endpoints?: Record<string, unknown>[];
+    resource?: EndpointRef;
+    endpoints?: EndpointRef[];
     payees?: {
         payee_id: string;
         endpoints: number;
     }[];
-    settlement?: Record<string, unknown>;
+    settlement?: SettlementRef;
     disclaimer: string;
+};
+/** §7.2 / §9.1 GET /census/summary — raw と real を同じ応答で（混ぜない）。 */
+export type CensusSummary = {
+    chain: string;
+    window: "7d" | "30d";
+    settlements_raw: number;
+    settlements_real: number;
+    wash: {
+        self_deal: number;
+        circular: number;
+        test: number;
+    };
+    attribution: {
+        confirmed: number;
+        probable: number;
+        unmatched: number;
+    };
+    unique_payers_raw: number;
+    unique_payers_real: number;
+    unique_payees_real: number;
+    endpoints_with_real_settlement: number;
+    by_source: {
+        l1_purchase: number;
+        payments_api: number;
+        chain_index: number;
+    };
+    definition: string;
+    disclaimer: string;
+    retrievedAt: string;
 };
 export declare class VouchApiError extends Error {
     readonly code: string;

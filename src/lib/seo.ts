@@ -9,9 +9,13 @@
 // X / Slack / 各回答エンジンが個々のページをすべて「トップページ」として
 // 扱ってしまう状態だったので、経路（=このビルダ1本）で個別化する。
 //
-// og:image はここで images を書かない。src/app/opengraph-image.png の
-// ファイル規約が全ルートに og:image を自動配線しており（実測で全ページに
-// 載っている）、ここで images を書くとその自動配線を上書きしてしまう。
+// og:image は **ここで明示する**（2026-09-02 敵対的監査 P2 で方針転換）。
+// 以前は「src/app/opengraph-image.png のファイル規約が全ルートに自動配線するので
+// ここで images を書かない」としていたが、本番実測（curl / と /faq と /demo）で
+// og:image が付いていたのは openGraph を自分で持たない / と /demo だけだった。
+// ページが openGraph を持つとファイル規約の images はページ側の openGraph に
+// 置換されて消える——つまり pageMetadata を通る 24 頁すべてで欠けていた。
+// 同じ画像を同じ寸法で明示すれば、ファイル規約と同じ URL に解決し重複もしない。
 //
 // og:title は接尾辞なしの素のページ名にする。ブランドは og:site_name = "vet402"
 // が担う。既存の blog/[slug] も同じ流儀（<title> の "%s | vet402" と二重に
@@ -21,6 +25,11 @@ import { SITE_URL } from "@/lib/site-url";
 import { SUPPORT_EMAIL } from "@/lib/support";
 
 export const TWITTER_SITE = "@vet_402";
+
+/** src/app/opengraph-image.png（1200×630）。alt は opengraph-image.alt.txt と同文。 */
+export const OG_IMAGE_PATH = "/opengraph-image.png";
+export const OG_IMAGE_ALT =
+  "vet402 — Independent Verification of the x402 Agent-Payment Economy. We buy. We settle. We publish the measurements.";
 
 export const ORG_SAME_AS = [
   "https://x.com/vet_402",
@@ -111,6 +120,7 @@ export function pageMetadata({
       type: ogType,
       siteName: "vet402",
       locale: "en_US",
+      images: [{ url: `${SITE_URL}${OG_IMAGE_PATH}`, width: 1200, height: 630, alt: OG_IMAGE_ALT }],
       ...(ogType === "article" && publishedTime
         ? { publishedTime, modifiedTime: modifiedTime ?? publishedTime }
         : {}),
@@ -120,6 +130,7 @@ export function pageMetadata({
       title,
       description,
       site: TWITTER_SITE,
+      images: [`${SITE_URL}${OG_IMAGE_PATH}`],
     },
   };
 }

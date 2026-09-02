@@ -80,6 +80,10 @@ const nextConfig: NextConfig = {
       // 正典は /observatory/methodology。短い方を打った読者を正典へ送る。
       { source: "/methodology", destination: "/observatory/methodology", permanent: false },
       { source: "/verify", destination: "/payee", permanent: false },
+      // 2026-09-02 敵対的監査: /docs が 404 だった。正典は /docs/api で、これが
+      // 別ページに昇格する予定は無いので 308（permanent）。/agent も 404 だが、
+      // 旧 URL として何を指していたかが不明なので行き先を推測して足さない。
+      { source: "/docs", destination: "/docs/api", permanent: true },
       // 2026-08-19: note.com's link auto-embed (and its explicit "埋め込み"
       // insert command) silently fails to build a card for any URL with a
       // query string — verified by hand in the Sen note.com editor and

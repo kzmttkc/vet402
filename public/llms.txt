@@ -54,11 +54,24 @@ These are open paths, rate-limited per IP. Nothing below needs an account. Every
 - `GET /api/demo/score` — one fixed, publicly registered agent, scored live. Returns `live: false` rather than a stale or invented number when it cannot compute one, and `degraded: true` when the verdict was computed with an input it could not read. Freshness is explicit as `scoredAt` + `cacheExpiresAt`, the same pair the passport publishes — a cached value is up to five minutes old and says so
 - `GET /api/health` — service status
 
+Product spec §7.3 / §9.1 (2026-09-02) — object ids and measurement records, no key, per-IP limits stated on each:
+
+- `GET /api/v1/resolve?q=<url|domain|address|tx|payee_id>` — reverse lookup: whatever you hold in, the canonical Resource / Endpoint / Payee / Settlement ids out. `resource_id` = sha256(method + " " + canonical_url). Returns identifiers only, never a recommendation. 60/min
+- `GET /api/v1/resources/{resourceId}` — one Resource (sha256 hex) with its payees and links to `/decision`, `/facts` and the observatory page. 120/min
+- `GET /api/v1/endpoints/{endpointId}` — one Endpoint by `endpoint_id` (sha256 of origin + path prefix) or its observatory uuid. 120/min
+- `GET /api/v1/endpoints/{endpointId}/payees` — every `payee_id` (chain:address) declared under that endpoint. 120/min
+- `GET /api/v1/payees/{address}/endpoints` — every endpoint that declares that payee as payTo; a bare 0x address is read as Base, a bare base58 address as Solana. 120/min
+- `GET /api/v1/observatory/endpoints/{id}/facts` — the L0–L2 seller facts for one endpoint (liveness, settle-through with `n_probe_error` disclosed separately, conformance, availability, offer stability, 30-day settlements raw / real / test). Contains no score and no recommendation by design. 120/min
+- `GET /api/v1/census/summary?chain=&window=7d|30d` — settlement census: `settlements_raw` and `settlements_real` (wash / test excluded) always together, never merged, with attribution and source breakdowns and the definition text in the body. 60/min, cached 5 min
+- `GET /api/v1/observatory/corrections?endpoint=&limit=` — the correction log as JSON: every published verdict that later changed (`dispute_remeasure`, `settlement_backfill`, `reverify`) with `before` / `after`. Rows are never deleted. 60/min
+
 Verification proves control of a wallet or an agent identity by signature. It is not an endorsement, and the score is computed independently of it.
 
 ## API — API key required
 
 Send `Authorization: Bearer <key>`. Quotas and burst limits: https://vet402.com/docs/api#rate-limits
+
+- `GET /api/v1/resources/{resourceId}/decision?role=payer|payee&payer=&caller_dialect=v1|v2&allow_without_l1=` — product spec §8.3 / §9.1, the canonical integration since 2026-09-02: the pre-payment (`role=payer`) or pre-service (`role=payee`, requires `payer`) decision. `facts` (SellerFacts or BuyerFacts) and `recommendation` (ALLOW / WARN / BLOCK) travel in the same document with `reason_codes`, `freshness`, `evidence` and `rules_version`; the transitional `score` is marked deprecated and is not the basis of the recommendation. Send `Idempotency-Key` to retry without spending a second rate-limit unit
 
 ## Open data — no key, and quotable
 

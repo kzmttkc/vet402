@@ -5,6 +5,20 @@ Connect vet402 trust tools to Claude Desktop, Cursor, or any MCP client.
 The server is published as [`@vet402/mcp-server`](https://www.npmjs.com/package/@vet402/mcp-server).
 There is nothing to clone or build — your MCP client launches it with `npx`.
 
+## Tools
+
+| Tool | What it answers |
+|---|---|
+| `check_agent_trust` | Score by ERC-8004 agent ID (optional wallet verification) |
+| `check_wallet_trust` | Score by wallet (x402 payer path) |
+| `check_payee_trust` | Buyer side: score a payment *recipient* before paying it |
+| `explain_trust_score` | Human-readable score breakdown |
+| `attest_x402_payment` | Write a settlement attestation after payment verification |
+| `check_resource_decision` | Pre-payment decision for one x402 resource — `ALLOW_PAY` / `REFUSE` with the L0–L2 facts that produced it (0.2.0) |
+
+The full description of each tool, including how to read a `check_payee_trust` result, is in the
+[package README](../packages/mcp-server/README.md#tools).
+
 ## Prerequisites
 
 An API key: create one at [vet402.com/dashboard/keys](https://vet402.com/dashboard/keys).

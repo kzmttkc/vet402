@@ -86,6 +86,196 @@ const SURFACES: Surface[] = [
       "disclaimer",
     ],
   },
+  // ------------------------------------------------------------------
+  // 2026-09-02 敵対的監査 P1-2: 新規ルート（§7.3 / §9.1）の 200 応答が仕様書に
+  // 「{ … } の説明文」としてしか無く、SellerFacts 等が SURFACES の外だった。
+  // 実装の型 ⇔ openapi ⇔ SDK 型の 3 面で固定する。
+  // ------------------------------------------------------------------
+  {
+    label: "SellerFacts",
+    spec: ["SellerFacts", "properties"],
+    impl: [
+      ["src/lib/decision/types.ts", ["SellerFacts"]],
+      ["packages/sdk/src/index.ts", ["SellerFacts"]],
+    ],
+    fields: [
+      "l0",
+      "l1",
+      "l2",
+      "availability_7d",
+      "availability_30d",
+      "offer_stability",
+      "payees",
+      "settlement_30d_real",
+      "settlement_30d_raw",
+      // vet402 自身の測定購入。分母から外して開示する（2026-09-02 exa.ai の誤 BLOCK）。
+      "settlement_30d_test",
+      "unique_payers_30d_real",
+      "wash_dominated",
+    ],
+  },
+  {
+    label: "SellerFacts.l1",
+    spec: ["SellerFacts", "properties", "l1", "properties"],
+    impl: [
+      ["src/lib/decision/types.ts", ["SellerFacts", "l1"]],
+      ["packages/sdk/src/index.ts", ["SellerFacts", "l1"]],
+    ],
+    fields: [
+      "n_delivered",
+      "n_settled",
+      "n_attempts",
+      // §6.2 こちら側の失敗。売り手の不履行と混ぜないために件数だけ開示する。
+      "n_probe_error",
+      "p50_ms",
+      "p95_ms",
+      "last_purchase_id",
+      "observed_at",
+    ],
+  },
+  {
+    label: "BuyerFacts",
+    spec: ["BuyerFacts", "properties"],
+    impl: [
+      ["src/lib/decision/types.ts", ["BuyerFacts"]],
+      ["packages/sdk/src/index.ts", ["BuyerFacts"]],
+    ],
+    fields: [
+      "settled_count_30d",
+      "unique_payees_30d",
+      "retry_burst_rate",
+      "sybil",
+      "erc8004",
+      "first_seen",
+      "last_seen",
+    ],
+  },
+  {
+    label: "CensusSummary",
+    spec: ["CensusSummary", "properties"],
+    impl: [
+      ["src/lib/settlements/census.ts", ["CensusSummary"]],
+      ["packages/sdk/src/index.ts", ["CensusSummary"]],
+    ],
+    fields: [
+      "chain",
+      "window",
+      "settlements_raw",
+      "settlements_real",
+      "wash",
+      "attribution",
+      "unique_payers_raw",
+      "unique_payers_real",
+      "unique_payees_real",
+      "endpoints_with_real_settlement",
+      "by_source",
+      "definition",
+      "disclaimer",
+      "retrievedAt",
+    ],
+  },
+  {
+    label: "ResolveResult",
+    spec: ["ResolveResult", "properties"],
+    impl: [
+      ["src/lib/resolve/lookup.ts", ["ResolveResult"]],
+      ["packages/sdk/src/index.ts", ["ResolveResult"]],
+    ],
+    fields: ["query", "resource", "endpoints", "payees", "settlement", "disclaimer"],
+  },
+  {
+    label: "EndpointRef",
+    spec: ["EndpointRef", "properties"],
+    impl: [
+      ["src/lib/resolve/lookup.ts", ["EndpointRef"]],
+      ["packages/sdk/src/index.ts", ["EndpointRef"]],
+    ],
+    fields: [
+      "endpoint_id",
+      "resource_id",
+      "observatory_id",
+      "canonical_url",
+      "method",
+      "payee_id",
+      "catalog_status",
+      "first_seen",
+      "last_seen",
+    ],
+  },
+  {
+    label: "SettlementRef",
+    spec: ["SettlementRef", "properties"],
+    impl: [
+      ["src/lib/resolve/lookup.ts", ["SettlementRef"]],
+      ["packages/sdk/src/index.ts", ["SettlementRef"]],
+    ],
+    fields: [
+      "purchase_id",
+      "chain",
+      "tx_hash",
+      "payer_id",
+      "payee_id",
+      "amount",
+      "asset",
+      "block_time",
+      "attribution",
+      "wash_flag",
+      "resource_id",
+      "endpoint_id",
+    ],
+  },
+  {
+    label: "CorrectionRow",
+    spec: ["CorrectionRow", "properties"],
+    impl: [["src/lib/observatory/corrections.ts", ["CorrectionRow"]]],
+    fields: ["id", "subject_type", "subject_id", "level", "before", "after", "reason", "dispute_id", "created_at"],
+  },
+  {
+    label: "L0Accuracy",
+    spec: ["L0Accuracy", "properties"],
+    impl: [["src/lib/scoring/l0-accuracy.ts", ["L0Accuracy"]]],
+    fields: [
+      "window_days",
+      "published_fail",
+      "false_fail",
+      "false_fail_rate",
+      "published_pass",
+      "false_pass",
+      "false_pass_rate",
+      "min_sample",
+      "slo",
+    ],
+  },
+  {
+    label: "SloSnapshot",
+    spec: ["SloSnapshot", "properties"],
+    impl: [["src/lib/scoring/l0-accuracy.ts", ["SloSnapshot"]]],
+    fields: [
+      "l1_probe_error_rate_pct",
+      "c1_l0_within_36h_pct",
+      "c2_l1_within_48h_pct",
+      "reverse_lookup_confirmed_within_60s_pct",
+      "published_failure_evidence_complete_pct",
+      "unmeasured",
+      "targets",
+    ],
+  },
+  {
+    label: "CoverageWeekly",
+    spec: ["CoverageWeekly", "properties"],
+    impl: [["src/lib/observatory/coverage-report.ts", ["CoverageWeekly"]]],
+    fields: [
+      "window_days",
+      "listed",
+      "l0_measured",
+      "l0_measured_pct",
+      "l1_measured",
+      "l1_measured_pct",
+      "real_settlements",
+      "raw_settlements",
+      "definition",
+    ],
+  },
   {
     label: "PayeeScoreResult",
     spec: ["PayeeScoreResult", "properties"],
@@ -442,5 +632,48 @@ test("fail-closed の根拠フィールドが仕様書・実装・全パッケ�
       `packages/middleware/src/core.ts の ScoreResponse に ${field} が無い — ` +
         "TrustGate がその根拠でブロックできなくなる",
     );
+  }
+});
+
+test("AccuracyReport が l0 / slo / coverageWeekly を持ち、それぞれの schema を参照する", () => {
+  const props = blockAtPath(specSchemas(), ["AccuracyReport", "properties"]);
+  assert.ok(props, "AccuracyReport.properties が読めない");
+  const keys = childKeys(props);
+  for (const [key, ref] of [
+    ["l0", "L0Accuracy"],
+    ["slo", "SloSnapshot"],
+    ["coverageWeekly", "CoverageWeekly"],
+  ] as const) {
+    assert.ok(keys.includes(key), `AccuracyReport に ${key} が無い（実装は返している）`);
+    const block = subBlock(props, key)!.join("\n");
+    assert.ok(block.includes(`#/components/schemas/${ref}`), `AccuracyReport.${key} が ${ref} を参照していない`);
+  }
+});
+
+test("DecisionResult.facts は SellerFacts | BuyerFacts を参照する（Record 扱いにしない）", () => {
+  const props = blockAtPath(specSchemas(), ["DecisionResult", "properties"]);
+  assert.ok(props, "DecisionResult.properties が読めない");
+  const facts = subBlock(props, "facts")!.join("\n");
+  assert.ok(facts.includes("#/components/schemas/SellerFacts"), "DecisionResult.facts が SellerFacts を参照していない");
+  assert.ok(facts.includes("#/components/schemas/BuyerFacts"), "DecisionResult.facts が BuyerFacts を参照していない");
+});
+
+test("新規ルートの 200 が components の schema を参照する（説明文だけで済ませない）", () => {
+  const spec = readFileSync(join(ROOT, "docs/openapi.yaml"), "utf8");
+  for (const [path, ref] of [
+    ["/api/v1/resolve:", "ResolveResult"],
+    ["/api/v1/resources/{resourceId}:", "ResourceResponse"],
+    ["/api/v1/endpoints/{endpointId}:", "EndpointResponse"],
+    ["/api/v1/payees/{address}/endpoints:", "PayeeEndpointsResponse"],
+    ["/api/v1/endpoints/{endpointId}/payees:", "EndpointPayeesResponse"],
+    ["/api/v1/observatory/endpoints/{id}/facts:", "EndpointFactsResponse"],
+    ["/api/v1/census/summary:", "CensusSummary"],
+    ["/api/v1/observatory/corrections:", "CorrectionsResponse"],
+  ] as const) {
+    const start = spec.indexOf(`\n  ${path}`);
+    assert.ok(start !== -1, `${path} が paths に無い`);
+    const next = spec.indexOf("\n  /api/", start + 1);
+    const block = spec.slice(start, next === -1 ? undefined : next);
+    assert.ok(block.includes(`#/components/schemas/${ref}`), `${path} の 200 が ${ref} を参照していない`);
   }
 });

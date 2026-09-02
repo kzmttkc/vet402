@@ -128,6 +128,15 @@ curl -L -H "Authorization: Bearer $DEV_API_KEY" \
 # should this seller serve this payer? (seller mode, post-settlement)
 curl -L -H "Authorization: Bearer $DEV_API_KEY" \
   "http://localhost:3000/api/v1/resources/<resource_id>/decision?role=payee&payer=0x..."
+
+# The rest of the §7.3 / §9.1 family — all key-less:
+#   GET /api/v1/resources/<resource_id>                    the Resource, payees, links
+#   GET /api/v1/endpoints/<endpoint_id>                    the Endpoint (sha256 id or observatory uuid)
+#   GET /api/v1/endpoints/<endpoint_id>/payees             endpoint → payees[]
+#   GET /api/v1/payees/<address>/endpoints                 payee → endpoints[]
+#   GET /api/v1/observatory/endpoints/<id>/facts           L0–L2 seller facts, no score
+#   GET /api/v1/census/summary?chain=&window=7d|30d        settlements raw and real, never merged
+#   GET /api/v1/observatory/corrections                    the correction log as JSON
 ```
 
 ## Database setup (M2)
@@ -227,7 +236,7 @@ cd packages/mcp-server
 npm install && npm run build
 ```
 
-Tools: `check_agent_trust`, `check_wallet_trust`, `explain_trust_score`, `attest_x402_payment`
+Tools: `check_agent_trust`, `check_wallet_trust`, `check_payee_trust`, `explain_trust_score`, `attest_x402_payment`, `check_resource_decision`
 
 See [MCP setup](./docs/mcp-setup.md) for Cursor / Claude Desktop configuration.
 

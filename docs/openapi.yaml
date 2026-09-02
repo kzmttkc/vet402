@@ -919,8 +919,31 @@ paths:
           required: true
           schema: { type: string, maxLength: 2048 }
       responses:
-        "200": { description: "{ query, resource?, endpoints?, payees?, settlement?, disclaimer }" }
-        "400": { $ref: "#/components/responses/BadRequest" }
+        "200":
+          description: Canonical objects for the query. Which keys are present depends on `query.kind`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResolveResult" }
+        "400":
+          description: |
+            `invalid_query`. Sent when `q` is missing, empty or over 2048 chars,
+            and also when `q` has a shape the classifier cannot place (`kind:
+            unknown`) — in that second case the body also carries `query`
+            (`{ kind: "unknown", value }`) so the caller can see what was read.
+            `expected: "q"` names the parameter.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    properties:
+                      expected: { type: string, enum: [q] }
+                      query:
+                        type: object
+                        properties:
+                          kind: { type: string, enum: [unknown] }
+                          value: { type: string }
         "429": { description: Rate limited }
         "503": { description: Store unavailable }
 
@@ -940,7 +963,11 @@ paths:
           required: true
           schema: { type: string, pattern: "^[0-9a-f]{64}$" }
       responses:
-        "200": { description: "{ resource, payees, links, disclaimer }" }
+        "200":
+          description: The Resource, its payees, and links to the decision / facts / observatory page.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResourceResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { description: Unknown resource_id }
         "429": { description: Rate limited }
@@ -962,7 +989,11 @@ paths:
           required: true
           schema: { type: string }
       responses:
-        "200": { description: "{ endpoint, payees, links, disclaimer }" }
+        "200":
+          description: The Endpoint, its payees, and links to facts / payees / observatory page.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EndpointResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { description: Unknown endpoint }
         "429": { description: Rate limited }
@@ -984,7 +1015,11 @@ paths:
           required: true
           schema: { type: string }
       responses:
-        "200": { description: "{ payee_id, endpoints, count, disclaimer }" }
+        "200":
+          description: Every endpoint that declares this payee_id as payTo.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PayeeEndpointsResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "429": { description: Rate limited }
         "503": { description: Store unavailable }
@@ -1004,7 +1039,11 @@ paths:
           required: true
           schema: { type: string }
       responses:
-        "200": { description: "{ endpoint_id, payees, count, disclaimer }" }
+        "200":
+          description: Every payee_id declared under this endpoint_id.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EndpointPayeesResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { description: Unknown endpoint }
         "429": { description: Rate limited }
@@ -1031,7 +1070,11 @@ paths:
           required: true
           schema: { type: string }
       responses:
-        "200": { description: "{ subject, facts, freshness, evidence, disclaimer, retrievedAt }" }
+        "200":
+          description: Seller facts (L0–L2) for one endpoint. No score, no recommendation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EndpointFactsResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { description: Unknown endpoint }
         "429": { description: Rate limited }
@@ -1115,7 +1158,11 @@ paths:
           required: false
           schema: { type: string, enum: [7d, 30d], default: 30d }
       responses:
-        "200": { description: "{ chain, window, settlements_raw, settlements_real, wash, attribution, unique_payers_raw, unique_payers_real, unique_payees_real, endpoints_with_real_settlement, by_source, definition, disclaimer, retrievedAt }" }
+        "200":
+          description: Raw and real settlement counts side by side, never merged.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CensusSummary" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "429": { description: Rate limited }
         "503": { description: Store unavailable }
@@ -1144,7 +1191,11 @@ paths:
           required: false
           schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
       responses:
-        "200": { description: "{ corrections[], definition, disclaimer }" }
+        "200":
+          description: The correction log, newest first.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorrectionsResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "429": { description: Rate limited }
         "503": { description: Store unavailable }
@@ -2502,10 +2553,12 @@ components:
           items: { type: string }
           description: Machine-readable reasons (l0_pass, l1_delivered, l2_undeclared, offer_drifting, wash_dominated, …).
         facts:
-          type: object
           description: >-
-            L0–L2 measurement records (seller_facts for role=payer,
-            buyer_facts for role=payee). Never contains a trustScore.
+            L0–L2 measurement records — SellerFacts for role=payer,
+            BuyerFacts for role=payee. Never contains a trustScore.
+          oneOf:
+            - $ref: "#/components/schemas/SellerFacts"
+            - $ref: "#/components/schemas/BuyerFacts"
         freshness:
           type: object
           description: Observation times of l0 / l1 / l2 (ISO 8601 or null).
@@ -2516,7 +2569,7 @@ components:
         score:
           type: object
           nullable: true
-          description: Transitional 0–100 score with `deprecated: true`. May be null.
+          description: "Transitional 0–100 score with `deprecated: true`. May be null."
         degraded:
           type: boolean
           description: True when an input could not be measured; the recommendation is then fail-closed.
@@ -2785,6 +2838,19 @@ components:
               nullable: true
             minSample: { type: integer }
             methodologyVersion: { type: integer }
+        # 製品定義書 §12 / §14（2026-09-02）: 測定機関自身の品質。測れないときは null。
+        l0:
+          nullable: true
+          description: L0 false-fail / false-pass over the last 7 days (null when the store is unreachable).
+          allOf: [{ $ref: "#/components/schemas/L0Accuracy" }]
+        slo:
+          nullable: true
+          description: Freshness / reverse-lookup / evidence-completeness SLOs with their targets (null when unreachable).
+          allOf: [{ $ref: "#/components/schemas/SloSnapshot" }]
+        coverageWeekly:
+          nullable: true
+          description: How much of the listed catalog was measured in the last 7 days (null when unreachable).
+          allOf: [{ $ref: "#/components/schemas/CoverageWeekly" }]
         windowDays: { type: integer }
         generatedAt:
           type: string
@@ -2793,6 +2859,384 @@ components:
         interpretation:
           $ref: "#/components/schemas/AccuracyInterpretation"
         disclaimer: { type: string }
+
+    # ------------------------------------------------------------------
+    # 製品定義書 §7.3 / §8 / §9.1 / §10 / §12（2026-09-02）。実装の型
+    # （src/lib/decision/types.ts ほか）と SDK 型と 3 面で一致することを
+    # tests/openapi-schema-parity.test.ts の SURFACES が検査する。
+    # ------------------------------------------------------------------
+    L0Status:
+      type: string
+      enum: [pass, fail, unverified]
+    Dialect:
+      type: string
+      enum: [v1, v2, both, unpayable]
+    L2Status:
+      type: string
+      enum: [conform, mismatch, undeclared]
+    OfferStability:
+      type: string
+      enum: [stable, drifting, unknown]
+    SellerFacts:
+      type: object
+      description: >-
+        §8.1 seller facts for a Resource / Endpoint / Payee. Measurement
+        records only — no trustScore, no recommendation (§8.3).
+      required: [l0, l1, l2, availability_7d, availability_30d, offer_stability, payees, settlement_30d_real, settlement_30d_raw, settlement_30d_test, unique_payers_30d_real, wash_dominated]
+      properties:
+        l0:
+          type: object
+          required: [status, observed_at, dialect, fail_reason]
+          properties:
+            status: { $ref: "#/components/schemas/L0Status" }
+            observed_at: { type: string, format: date-time, nullable: true }
+            dialect:
+              nullable: true
+              allOf: [{ $ref: "#/components/schemas/Dialect" }]
+            fail_reason: { type: string, nullable: true }
+        l1:
+          type: object
+          required: [n_delivered, n_settled, n_attempts, n_probe_error, p50_ms, p95_ms, last_purchase_id, observed_at]
+          properties:
+            n_delivered: { type: integer }
+            n_settled: { type: integer }
+            n_attempts: { type: integer }
+            n_probe_error:
+              type: integer
+              description: >-
+                §6.2 probe_error — settlement confirmed but our own request was
+                malformed (HTTP 4xx). Not counted in n_attempts; disclosed so a
+                seller's non-delivery is never mixed with our mistakes.
+            p50_ms: { type: number, nullable: true }
+            p95_ms: { type: number, nullable: true }
+            last_purchase_id: { type: string, nullable: true }
+            observed_at: { type: string, format: date-time, nullable: true }
+        l2:
+          type: object
+          required: [status, declaration_hash, diff_hash, observed_at]
+          properties:
+            status: { $ref: "#/components/schemas/L2Status" }
+            declaration_hash: { type: string, nullable: true }
+            diff_hash: { type: string, nullable: true }
+            observed_at: { type: string, format: date-time, nullable: true }
+        availability_7d: { type: number, nullable: true, description: L0 pass share over 7 days, 0–1. }
+        availability_30d: { type: number, nullable: true }
+        offer_stability: { $ref: "#/components/schemas/OfferStability" }
+        payees:
+          type: array
+          items: { type: string }
+          description: payee_id values (chain:address) declared by resources under this endpoint.
+        settlement_30d_real: { type: integer, description: 30-day settlements after wash / test exclusion. }
+        settlement_30d_raw: { type: integer, description: Every indexed 30-day settlement, including wash and test. }
+        settlement_30d_test:
+          type: integer
+          description: Of raw, vet402's own measurement purchases (wash_flag test). Excluded from the wash_dominated denominator.
+        unique_payers_30d_real: { type: integer }
+        wash_dominated:
+          type: boolean
+          description: >-
+            Real demand is near zero while listings are thick (§8.3 BLOCK
+            condition). Denominator is third-party raw (raw − test).
+    BuyerFacts:
+      type: object
+      description: §8.2 buyer facts for a Payer / Agent (role=payee decisions).
+      required: [settled_count_30d, unique_payees_30d, retry_burst_rate, sybil, erc8004, first_seen, last_seen]
+      properties:
+        settled_count_30d: { type: integer }
+        unique_payees_30d: { type: integer }
+        retry_burst_rate:
+          type: number
+          nullable: true
+          description: Share of re-signatures against the same resource within 60 s. null with no data.
+        sybil:
+          type: object
+          required: [multi_agent_owner, shared_funder, cluster_id, unavailable]
+          properties:
+            multi_agent_owner: { type: boolean }
+            shared_funder: { type: boolean }
+            cluster_id: { type: string, nullable: true }
+            unavailable:
+              type: array
+              items: { type: string }
+              description: Sybil signals that could not be read, by name.
+        erc8004:
+          type: object
+          required: [agent_id, feedback_with_payment_proof_ratio]
+          properties:
+            agent_id: { type: string, nullable: true }
+            feedback_with_payment_proof_ratio: { type: number, nullable: true }
+        first_seen: { type: string, format: date-time, nullable: true }
+        last_seen: { type: string, format: date-time, nullable: true }
+    Freshness:
+      type: object
+      required: [l0, l1, l2]
+      properties:
+        l0: { type: string, format: date-time, nullable: true }
+        l1: { type: string, format: date-time, nullable: true }
+        l2: { type: string, format: date-time, nullable: true }
+    Evidence:
+      type: object
+      required: [level, url]
+      properties:
+        level: { type: string, enum: [L0, L1, L2] }
+        purchase_id: { type: string }
+        observation_id: { type: string }
+        url: { type: string, format: uri }
+    ResourceSubject:
+      type: object
+      description: The Resource a facts / decision document is about (§5 ids plus the observatory uuid).
+      required: [type, id, endpoint_id, observatory_id, canonical_url, method]
+      properties:
+        type: { type: string, enum: [resource] }
+        id: { type: string, nullable: true, description: resource_id (sha256 hex) when the catalog has one. }
+        endpoint_id: { type: string, description: sha256(origin + pathname_prefix), or the observatory uuid for legacy rows. }
+        observatory_id: { type: string, format: uuid }
+        canonical_url: { type: string, format: uri }
+        method: { type: string }
+    EndpointFactsResponse:
+      type: object
+      required: [subject, facts, freshness, evidence, disclaimer, retrievedAt]
+      properties:
+        subject: { $ref: "#/components/schemas/ResourceSubject" }
+        facts: { $ref: "#/components/schemas/SellerFacts" }
+        freshness: { $ref: "#/components/schemas/Freshness" }
+        evidence:
+          type: array
+          items: { $ref: "#/components/schemas/Evidence" }
+        disclaimer: { type: string }
+        retrievedAt: { type: string, format: date-time }
+    EndpointRef:
+      type: object
+      description: §5 Endpoint / Resource record as returned by the resolve family.
+      required: [endpoint_id, resource_id, observatory_id, canonical_url, method, payee_id, catalog_status, first_seen, last_seen]
+      properties:
+        endpoint_id: { type: string }
+        resource_id: { type: string, nullable: true, pattern: "^[0-9a-f]{64}$" }
+        observatory_id: { type: string, format: uuid }
+        canonical_url: { type: string, format: uri }
+        method: { type: string }
+        payee_id: { type: string, nullable: true, description: chain:address }
+        catalog_status: { type: string, enum: [listed, delisted, unknown] }
+        first_seen: { type: string, nullable: true }
+        last_seen: { type: string, nullable: true }
+    SettlementRef:
+      type: object
+      description: One indexed settlement (§7.2), with its attribution and wash flag.
+      required: [purchase_id, chain, tx_hash, payer_id, payee_id, amount, asset, block_time, attribution, wash_flag, resource_id, endpoint_id]
+      properties:
+        purchase_id: { type: string }
+        chain: { type: string, description: CAIP-2 }
+        tx_hash: { type: string }
+        payer_id: { type: string, nullable: true }
+        payee_id: { type: string, nullable: true }
+        amount: { type: string, nullable: true, description: Smallest units, as a decimal string. }
+        asset: { type: string, nullable: true }
+        block_time: { type: string, nullable: true }
+        attribution: { type: string, description: confirmed | probable | unmatched }
+        wash_flag: { type: string, description: none | self_deal | circular | test }
+        resource_id: { type: string, nullable: true }
+        endpoint_id: { type: string, nullable: true }
+    PayeeRef:
+      type: object
+      required: [payee_id, endpoints]
+      properties:
+        payee_id: { type: string, description: chain:address }
+        endpoints: { type: integer, description: Number of endpoints (or resources) naming this payee. }
+    ResolveResult:
+      type: object
+      description: >-
+        §7.3. `query.kind` says how `q` was read; the optional keys follow
+        from it — url → resource + endpoints, domain → endpoints, address /
+        payee_id → endpoints + payees, tx → settlement (+ resource when
+        attributed). Measurement identifiers only, never a recommendation.
+      required: [query, disclaimer]
+      properties:
+        query:
+          type: object
+          required: [kind, value]
+          properties:
+            kind: { type: string, enum: [url, domain, address, tx, payee_id, unknown] }
+            value: { type: string }
+        resource: { $ref: "#/components/schemas/EndpointRef" }
+        endpoints:
+          type: array
+          items: { $ref: "#/components/schemas/EndpointRef" }
+        payees:
+          type: array
+          items: { $ref: "#/components/schemas/PayeeRef" }
+        settlement: { $ref: "#/components/schemas/SettlementRef" }
+        disclaimer: { type: string }
+    ResourceResponse:
+      type: object
+      required: [resource, payees, links, disclaimer]
+      properties:
+        resource: { $ref: "#/components/schemas/EndpointRef" }
+        payees:
+          type: array
+          items: { $ref: "#/components/schemas/PayeeRef" }
+        links:
+          type: object
+          required: [decision, facts, observatory]
+          properties:
+            decision: { type: string, description: "/api/v1/resources/{resourceId}/decision?role=payer" }
+            facts: { type: string, description: "/api/v1/observatory/endpoints/{observatory_id}/facts" }
+            observatory: { type: string, description: "/observatory/e/{observatory_id}" }
+        disclaimer: { type: string }
+    EndpointResponse:
+      type: object
+      required: [endpoint, payees, links, disclaimer]
+      properties:
+        endpoint: { $ref: "#/components/schemas/EndpointRef" }
+        payees:
+          type: array
+          items: { $ref: "#/components/schemas/PayeeRef" }
+        links:
+          type: object
+          required: [facts, payees, observatory]
+          properties:
+            facts: { type: string }
+            payees: { type: string }
+            observatory: { type: string }
+        disclaimer: { type: string }
+    PayeeEndpointsResponse:
+      type: object
+      required: [payee_id, endpoints, count, disclaimer]
+      properties:
+        payee_id: { type: string }
+        endpoints:
+          type: array
+          items: { $ref: "#/components/schemas/EndpointRef" }
+        count: { type: integer }
+        disclaimer: { type: string }
+    EndpointPayeesResponse:
+      type: object
+      required: [endpoint_id, payees, count, disclaimer]
+      properties:
+        endpoint_id: { type: string }
+        payees:
+          type: array
+          items: { $ref: "#/components/schemas/PayeeRef" }
+        count: { type: integer }
+        disclaimer: { type: string }
+    CensusSummary:
+      type: object
+      description: §7.2 / §9.1 settlement census. `settlements_raw` and `settlements_real` are always both present and never merged.
+      required: [chain, window, settlements_raw, settlements_real, wash, attribution, unique_payers_raw, unique_payers_real, unique_payees_real, endpoints_with_real_settlement, by_source, definition, disclaimer, retrievedAt]
+      properties:
+        chain: { type: string, description: CAIP-2, or "all". }
+        window: { type: string, enum: [7d, 30d] }
+        settlements_raw: { type: integer }
+        settlements_real: { type: integer }
+        wash:
+          type: object
+          required: [self_deal, circular, test]
+          properties:
+            self_deal: { type: integer }
+            circular: { type: integer }
+            test: { type: integer, description: Known measurement wallets, including every wallet vet402 pays from. }
+        attribution:
+          type: object
+          required: [confirmed, probable, unmatched]
+          properties:
+            confirmed: { type: integer }
+            probable: { type: integer }
+            unmatched: { type: integer }
+        unique_payers_raw: { type: integer }
+        unique_payers_real: { type: integer }
+        unique_payees_real: { type: integer }
+        endpoints_with_real_settlement: { type: integer }
+        by_source:
+          type: object
+          required: [l1_purchase, payments_api, chain_index]
+          properties:
+            l1_purchase: { type: integer }
+            payments_api: { type: integer }
+            chain_index: { type: integer }
+        definition: { type: string }
+        disclaimer: { type: string }
+        retrievedAt: { type: string, format: date-time }
+    CorrectionRow:
+      type: object
+      description: §10. One published verdict that changed after publication. Rows are never deleted.
+      required: [id, subject_type, subject_id, level, before, after, reason, dispute_id, created_at]
+      properties:
+        id: { type: string }
+        subject_type: { type: string, enum: [endpoint, purchase] }
+        subject_id: { type: string }
+        level: { type: string, enum: [l0, l1, l2, listing] }
+        before: { description: The published value before the correction. }
+        after: { description: The published value after the correction. }
+        reason: { type: string, enum: [dispute_remeasure, settlement_backfill, reverify] }
+        dispute_id: { type: string, nullable: true }
+        created_at: { type: string }
+    CorrectionsResponse:
+      type: object
+      required: [corrections, definition, disclaimer]
+      properties:
+        corrections:
+          type: array
+          items: { $ref: "#/components/schemas/CorrectionRow" }
+        definition: { type: string }
+        disclaimer: { type: string }
+    L0Accuracy:
+      type: object
+      description: §12 L0 false-fail / false-pass over the last 7 days. Rates are null below min_sample.
+      required: [window_days, published_fail, false_fail, false_fail_rate, published_pass, false_pass, false_pass_rate, min_sample, slo]
+      properties:
+        window_days: { type: integer, enum: [7] }
+        published_fail: { type: integer }
+        false_fail: { type: integer, description: Published fail that flipped to pass within 7 days. }
+        false_fail_rate: { type: number, nullable: true, description: Percent. }
+        published_pass: { type: integer }
+        false_pass: { type: integer, description: Published pass followed by a non-402 answer. }
+        false_pass_rate: { type: number, nullable: true, description: Percent. }
+        min_sample: { type: integer }
+        slo:
+          type: object
+          required: [false_fail_target_pct, false_pass_target_pct, false_fail_ok, false_pass_ok]
+          properties:
+            false_fail_target_pct: { type: number }
+            false_pass_target_pct: { type: number }
+            false_fail_ok: { type: boolean, nullable: true }
+            false_pass_ok: { type: boolean, nullable: true }
+    SloSnapshot:
+      type: object
+      description: §14 operator SLOs. A metric that could not be measured is null and is named in `unmeasured`.
+      required: [l1_probe_error_rate_pct, c1_l0_within_36h_pct, c2_l1_within_48h_pct, reverse_lookup_confirmed_within_60s_pct, published_failure_evidence_complete_pct, unmeasured, targets]
+      properties:
+        l1_probe_error_rate_pct: { type: number, nullable: true }
+        c1_l0_within_36h_pct: { type: number, nullable: true }
+        c2_l1_within_48h_pct: { type: number, nullable: true }
+        reverse_lookup_confirmed_within_60s_pct: { type: number, nullable: true }
+        published_failure_evidence_complete_pct: { type: number, nullable: true }
+        unmeasured:
+          type: array
+          items: { type: string }
+        targets:
+          type: object
+          required: [l1_probe_error_rate_pct, c1_l0_within_36h_pct, c2_l1_within_48h_pct, reverse_lookup_confirmed_within_60s_pct, published_failure_evidence_complete_pct, decision_p95_ms_cache_hit, decision_availability_monthly_pct]
+          properties:
+            l1_probe_error_rate_pct: { type: number }
+            c1_l0_within_36h_pct: { type: number }
+            c2_l1_within_48h_pct: { type: number }
+            reverse_lookup_confirmed_within_60s_pct: { type: number }
+            published_failure_evidence_complete_pct: { type: number }
+            decision_p95_ms_cache_hit: { type: number }
+            decision_availability_monthly_pct: { type: number }
+    CoverageWeekly:
+      type: object
+      description: §12 weekly coverage — how much of the listed catalog was actually measured.
+      required: [window_days, listed, l0_measured, l0_measured_pct, l1_measured, l1_measured_pct, real_settlements, raw_settlements, definition]
+      properties:
+        window_days: { type: integer, enum: [7] }
+        listed: { type: integer }
+        l0_measured: { type: integer }
+        l0_measured_pct: { type: number, nullable: true }
+        l1_measured: { type: integer }
+        l1_measured_pct: { type: number, nullable: true }
+        real_settlements: { type: integer }
+        raw_settlements: { type: integer }
+        definition: { type: string }
 
     AgentPassport:
       type: object
@@ -2943,6 +3387,64 @@ components:
             - rate_limited
             - not_found
             - forbidden
+            # 2026-09-02 敵対的監査 P1-1: 実装が返しているのに enum に無かった語を全数
+            # 追加。tests/openapi-error-enum.test.ts が「文書化された route.ts の
+            # error リテラル ⊆ この enum」を機械検査する。
+            # --- §7.3 / §9.1 resolve / resources / endpoints / payees / facts ---
+            - invalid_query
+            - resolve_unavailable
+            - invalid_resource_id
+            - invalid_endpoint_id
+            - invalid_payee_id
+            - unavailable
+            # --- §9.1 /decision ---
+            - invalid_role
+            - invalid_caller_dialect
+            - payer_required
+            - decision_unavailable
+            # --- §9.1 /census/summary ---
+            - invalid_window
+            - invalid_chain
+            # --- scoring / verify / outcome ---
+            - unsupported_chain
+            - signature_expired
+            - stale_signature
+            - invalid_trust_event_id
+            - outcome_ingest_unavailable
+            - trust_event_not_found
+            - related_wallet_mismatch
+            - self_affirmation_not_accepted
+            # --- webhooks ---
+            - webhooks_unavailable
+            - invalid_webhook_url
+            - unknown_event
+            # --- demo / contributions / requests / disputes / waitlist (JSON bodies) ---
+            - invalid_json
+            - invalid_input
+            - endpoint_id_required
+            - invalid_level
+            - demo_l1_disabled
+            - demo_budget_exhausted
+            - demo_unavailable
+            - contributions_unavailable
+            - requests_unavailable
+            - disputes_unavailable
+            - waitlist_unavailable
+            # --- observatory reads ---
+            - invalid_days
+            - observatory_unavailable
+            - endpoint_not_found
+            - frame_unavailable
+            - graph_unavailable
+            - flags_unavailable
+            - verdict_unavailable
+            # --- observatory/watch (signed subscriptions) ---
+            - invalid_signature
+            - service_unavailable
+            - watcher_limit_reached
+            - internal_error
+            # --- badge ---
+            - invalid_address
         details:
           type: object
           description: Present for `invalid_request` — Zod validation error detail (flattened).

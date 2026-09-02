@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "60-second demo | vet402",
+  // layout の template "%s | vet402" が接尾辞を付ける。ここに書くと二重になる（2026-09-02 監査）。
+  title: "60-second demo",
   description:
     "One minute: we buy from an x402 endpoint with real USDC on Base, publish the receipt, and publish the failures with the same weight.",
 };

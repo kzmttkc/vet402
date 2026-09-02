@@ -72,7 +72,7 @@ export default function PlaygroundClient({ candidates }: { candidates: Playgroun
 
   return (
     <div className="mt-8">
-      <p className="doc-caption">1 · Pick a listed endpoint</p>
+      <p className="doc-caption">1. Pick a listed endpoint</p>
       <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
         <label className="block min-w-0 flex-1 text-[0.8125rem]">
           <span className="doc-caption block">Endpoint (from the live catalog)</span>
@@ -102,7 +102,7 @@ export default function PlaygroundClient({ candidates }: { candidates: Playgroun
         </button>
       </div>
 
-      <p className="doc-caption mt-8">2 · Read the measurement</p>
+      <p className="doc-caption mt-8">2. Read the measurement</p>
       {state.phase === "idle" && (
         <p className="mt-3 max-w-[62ch] text-brand">
           The probe runs the moment you press the button — this is a live HTTP request to the
@@ -178,7 +178,7 @@ export default function PlaygroundClient({ candidates }: { candidates: Playgroun
         </div>
       )}
 
-      <p className="doc-caption mt-8">3 · The evidence trail</p>
+      <p className="doc-caption mt-8">3. The evidence trail</p>
       <p className="mt-3 max-w-[62ch] text-brand">
         L0 is the free layer: the 402 challenge itself is the observable. The layer above it,
         L1, is a <strong>real purchase</strong> — vet402 pays the listed price with its own funds

@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   }
   try {
     const summary = await getCensusSummary(chain, windowRaw as CensusWindow);
-    return NextResponse.json(summary, { headers: { ...gate.cacheHeaders, "Cache-Control": "public, s-maxage=300, stale-while-revalidate=900" } });
+    return NextResponse.json(summary, { headers: { ...gate.cacheHeaders, "Cache-Control": "public, max-age=300, s-maxage=300, stale-while-revalidate=900" } });
   } catch (error) {
     logServerError("census.summary", error);
     return NextResponse.json({ error: "unavailable" }, { status: 503, headers: gate.headers });
