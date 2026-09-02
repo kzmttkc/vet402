@@ -1,8 +1,8 @@
 // ============================================================
-// ERC-8004 Validation Registry 書込の dry-run 見積もり（2026-08-21・WO#5）。
+// ERC-8004 Validation Registry 書込の dry-run 見積もり（2026-08-21 WO#5・2026-09-02 是正）。
 // 金（ガス）に直結する数字を出す計算なので、純粋関数として固定する:
-//  - 候補の判定は registry-hook の分岐と同じ（hookが呼ばれる終局3状態・EVM payTo のみ）
-//  - 重複 requestHash は「初出の日」にだけ数える（台帳の一意制約＝冪等ゲートの写し）
+//  - 発火は settlement-verifier の確定（settled → pass / settle_claim_refuted → fail）と 1:1
+//  - 門は registry-hook と同順（not_evm → duplicate → tier → daily_cap）。台帳の request_hash が冪等ゲートの写し
 //  - ガス単位は eth_estimateGas → 観測中央値 → 固定上限 の順で fail-closed に選ぶ
 //  - 費用 = L2実行(gas×fee) + L1データ手数料（Base はOPスタック）。丸めない（wei整数）
 // ============================================================

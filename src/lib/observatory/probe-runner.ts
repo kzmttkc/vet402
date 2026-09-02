@@ -13,7 +13,7 @@ import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { x402L0Probes } from "@/lib/db/schema";
 import { probeEndpoint, type ProbeResult } from "./l0-probe";
 import { invalidateDecisionCache } from "@/lib/decision/cache";
-import { l0TierWhere } from "./coverage";
+import { l0OrderBy, l0TierWhere } from "./coverage";
 
 export type ProbeBatchSummary = {
   probed: number;
@@ -52,7 +52,9 @@ export async function runL0ProbeBatch(
   const db = getDb();
   if (!db) throw new Error("DATABASE_URL is not configured");
 
-  // Oldest-probed-first (never-probed before that) across ACTIVE endpoints.
+  // Order: see l0OrderBy — c1 puts single-probe fails first (so the published
+  // verdict can be settled), then never-probed, then oldest-probed; c2/all are
+  // oldest-probed-first (never-probed before that).
   let candidates: Candidate[];
   try {
     const rows = await db.execute(sql`
@@ -60,12 +62,15 @@ export async function runL0ProbeBatch(
              e.price_amount, e.price_asset
       FROM x402_endpoints e
       LEFT JOIN LATERAL (
-        SELECT max(probed_at) AS last_probed_at
+        SELECT max(p.probed_at) AS last_probed_at,
+               count(*)::int AS probe_count,
+               (SELECT p2.verdict FROM x402_l0_probes p2 WHERE p2.endpoint_id = e.id
+                  ORDER BY p2.probed_at DESC LIMIT 1) AS last_verdict
         FROM x402_l0_probes p WHERE p.endpoint_id = e.id
       ) lp ON true
       WHERE ${where}
       ${freshness}
-      ORDER BY lp.last_probed_at ASC NULLS FIRST, e.first_seen_at ASC
+      ORDER BY ${l0OrderBy(tier)}
       LIMIT ${limit}
     `);
     const list = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];

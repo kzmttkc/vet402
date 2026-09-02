@@ -79,6 +79,21 @@ export function l0TierWhere(tier: "c1" | "c2"): SQL {
 }
 
 /**
+ * L0 候補の並び（x402_endpoints e + LATERAL lp: last_probed_at / probe_count / last_verdict）。
+ *
+ * c1（2026-09-02 是正 B）: 「プローブ 1 回で最新が fail」→ 未測定 → 最終プローブが古い順。
+ * 本番実測（9/2 19:05 JST）: 最新が fail の 9,769 件のうち 9,713 件はプローブが 1 回だけで、
+ * 公開判定（2 回連続 fail・publishedVerdict）が出せなかった。日次枠（3,000）は変えず、
+ * 2 回目を先に測って判定を確定させる。同じ組の中は古い順。
+ * c2 / all: 従来どおり古い順（未測定が先）。
+ */
+export function l0OrderBy(tier: "c1" | "c2" | "all"): SQL {
+  const oldestFirst = sql`lp.last_probed_at ASC NULLS FIRST, e.first_seen_at ASC`;
+  if (tier !== "c1") return oldestFirst;
+  return sql`CASE WHEN lp.probe_count = 1 AND lp.last_verdict = 'fail' THEN 0 WHEN lp.last_probed_at IS NULL THEN 1 ELSE 2 END, ${oldestFirst}`;
+}
+
+/**
  * L1 候補は C2 のみ（決済帰属あり ∨ 問い合わせ多）。宣言ありは C3 として L1 成功後に
  * L2 を必ず行う（l1-runner が l2Schema を判定する）。
  */
