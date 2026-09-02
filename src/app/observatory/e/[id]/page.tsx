@@ -9,6 +9,7 @@ import { TableScroll } from "@/components/site/TableScroll";
 import CodeBlock from "@/components/docs/CodeBlock";
 import { SITE_URL } from "@/lib/site-url";
 import { getEndpointDetail } from "@/lib/observatory/reader";
+import { explorerTxUrl } from "@/lib/observatory/chains";
 import { VerdictWord, ProbeTimeline, SettleGauge, type L0Verdict } from "@/components/site/Figures";
 
 /**
@@ -319,14 +320,21 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
                         </td>
                         <td className="border-b-0 pb-0.5">{p.status}</td>
                         <td className="whitespace-nowrap border-b-0 pb-0.5">
+                          {/* 2026-09-02 監査: basescan 固定で Solana の受領証が壊れたリンクだった。
+                              行き先はチェーンで決め（chains.ts explorerTxUrl）、形が合わなければ
+                              リンクにしない。 */}
                           {p.txHash ? (
-                            <a
-                              href={`https://basescan.org/tx/${p.txHash}`}
-                              className="underline"
-                              rel="noopener noreferrer"
-                            >
-                              {p.txHash.slice(0, 10)}…{p.txHash.slice(-4)}
-                            </a>
+                            (() => {
+                              const url = explorerTxUrl(endpoint.network, p.txHash);
+                              const short = `${p.txHash.slice(0, 10)}…${p.txHash.slice(-4)}`;
+                              return url ? (
+                                <a href={url} className="underline" rel="noopener noreferrer">
+                                  {short}
+                                </a>
+                              ) : (
+                                <span title={p.txHash}>{short}</span>
+                              );
+                            })()
                           ) : (
                             "—"
                           )}

@@ -54,3 +54,31 @@ export function toCaip2(network: unknown): string | null {
 export function isTestnet(network: unknown): boolean {
   return TESTNET_LABELS.has(chainLabel(network));
 }
+
+// ------------------------------------------------------------
+// 受領証（tx）へのリンク。2026-09-02 敵対的監査: /decisions・/impact に受領証リンクが
+// なく、endpoint 頁は basescan 固定で Solana の tx が壊れたリンクになっていた。
+// 行き先はチェーンで決まり、形が合わない tx には URL を作らない（壊れたリンクを
+// 出すより「—」の方が正直）。
+// ------------------------------------------------------------
+const EVM_TX_RE = /^0x[0-9a-fA-F]{64}$/;
+/** Solana signature: base58, 64 bytes → 86–88 chars. */
+const SOLANA_TX_RE = /^[1-9A-HJ-NP-Za-km-z]{86,88}$/;
+
+const EVM_EXPLORERS: Record<string, string> = {
+  Base: "https://basescan.org/tx/",
+  Polygon: "https://polygonscan.com/tx/",
+};
+
+/** Block-explorer URL for a settlement tx on the given network, or null when the chain has no explorer here or the tx is not well-formed for it. */
+export function explorerTxUrl(network: unknown, tx: unknown): string | null {
+  if (typeof tx !== "string" || tx === "") return null;
+  // "polygon" などの v1 スラグは KNOWN に無いので、先に CAIP-2 へ寄せてからラベルを引く。
+  const label = chainLabel(toCaip2(network));
+  if (label === "Solana") {
+    return SOLANA_TX_RE.test(tx) ? `https://solscan.io/tx/${tx}` : null;
+  }
+  const base = EVM_EXPLORERS[label];
+  if (!base) return null;
+  return EVM_TX_RE.test(tx) ? `${base}${tx}` : null;
+}

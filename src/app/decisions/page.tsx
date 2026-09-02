@@ -4,6 +4,7 @@ import { pageMetadata } from "@/lib/seo";
 import { getDecisionFeed } from "@/lib/observatory/decisions";
 import { computeSpendGuardBacktest } from "@/lib/observatory/backtest";
 import { TableScroll } from "@/components/site/TableScroll";
+import { explorerTxUrl } from "@/lib/observatory/chains";
 
 /**
  * /decisions — 実資金の判定台帳（次波①・SPEC20 A4の実装形）。
@@ -118,7 +119,12 @@ export default async function DecisionsPage() {
                 {feed.rows.map((r, i) => (
                   <tr key={`${r.at}-${i}`}>
                     <td className="whitespace-nowrap text-brand-lift">{r.at.slice(0, 16).replace("T", " ")}</td>
-                    <td className="break-all text-brand">{r.resourceKey}</td>
+                    {/* 2026-09-02 監査 F3: endpoint 名は記録頁へ、受領証はチェーンのエクスプローラへ。 */}
+                    <td className="break-all text-brand">
+                      <Link href={`/observatory/e/${r.endpointId}`} className="underline">
+                        {r.resourceKey}
+                      </Link>
+                    </td>
                     <td
                       className={
                         r.decision.startsWith("refused_")
@@ -129,8 +135,22 @@ export default async function DecisionsPage() {
                       {DECISION_LABEL[r.decision] ?? r.decision}
                     </td>
                     <td className="num">{r.amountUnits ? usd(r.amountUnits) : "—"}</td>
-                    <td className="text-brand-lift">
-                      {r.txHash ? <code>{r.txHash.slice(0, 12)}…</code> : "—"}
+                    <td className="whitespace-nowrap text-brand-lift">
+                      {r.txHash ? (
+                        (() => {
+                          const url = explorerTxUrl(r.network, r.txHash);
+                          const short = `${r.txHash.slice(0, 10)}…${r.txHash.slice(-4)}`;
+                          return url ? (
+                            <a href={url} className="underline" rel="noopener noreferrer">
+                              <code>{short}</code>
+                            </a>
+                          ) : (
+                            <code title={r.txHash}>{short}</code>
+                          );
+                        })()
+                      ) : (
+                        "—"
+                      )}
                     </td>
                   </tr>
                 ))}
