@@ -10,6 +10,7 @@ import CodeBlock from "@/components/docs/CodeBlock";
 import { SITE_URL } from "@/lib/site-url";
 import { getEndpointDetail } from "@/lib/observatory/reader";
 import { explorerTxUrl } from "@/lib/observatory/chains";
+import RecordSubscribe from "@/components/site/RecordSubscribe";
 import { VerdictWord, ProbeTimeline, SettleGauge, type L0Verdict } from "@/components/site/Figures";
 
 /**
@@ -381,6 +382,10 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
           </>
         )}
 
+        {/* 段 2「名前を取る」（2026-09-02 敵対的監査 F7）: 価値を受け取った直後＝L1 表
+            （無ければ §3 本文）の直下。対価は「この記録の判定が変わったら 1 通」。 */}
+        <RecordSubscribe endpointId={id} kind="notify" />
+
         <h2 className="sec-head">
           <span className="sec-no">4.</span>
           <span>Catalog listing events</span>
@@ -425,6 +430,24 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
           </Link>
           .
         </p>
+
+        {/* 2026-09-02 敵対的監査 F6: 記録頁に異議の入口がなかった（署名付きの API 経路のみ）。 */}
+        <h2 className="sec-head">
+          <span className="sec-no">5.</span>
+          <span>Dispute this record</span>
+        </h2>
+        <p className="doc-p">
+          Think a measurement above is wrong? Say which probe or purchase and what you observed
+          instead. One person reads it and replies. The record is never deleted on dispute: if it
+          was wrong, the correction is published with the same weight; if it was right, it stands.
+          Operators who control the receiving address can also sign a dispute via{" "}
+          <code>POST /api/v1/observatory/disputes</code> (
+          <Link href="/docs/api" className="underline">
+            API reference
+          </Link>
+          ), which re-measures through the normal publication gate.
+        </p>
+        <RecordSubscribe endpointId={id} kind="dispute" />
       </article>
     </main>
   );

@@ -55,6 +55,10 @@
     {
       "schedule": "0 13 * * *",
       "path": "/api/cron/index-settlements"
+    },
+    {
+      "path": "/api/cron/notify-subscribers",
+      "schedule": "0 15 * * *"
     }
   ]
 }
