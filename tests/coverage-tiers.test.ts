@@ -35,3 +35,16 @@ test("パステンプレート URL は C0（測れない endpoint に日次枠�
   assert.equal(tierOf({ ...base, reverifyRequested: true, pathTemplate: true }), "C4");
   assert.equal(tierOf({ ...base, listedWithin30d: true, pathTemplate: false }), "C1");
 });
+
+// 2026-09-02 監査 P1-6: REGISTRY_WRITE_TIERS（ERC-8004 に書く階層の集合・既定 C2,C3）。
+test("parseRegistryWriteTiers: 未設定・空は既定 C2,C3", async () => {
+  const { parseRegistryWriteTiers } = await import("@/lib/observatory/coverage");
+  assert.deepEqual([...parseRegistryWriteTiers(undefined)].sort(), ["C2", "C3"]);
+  assert.deepEqual([...parseRegistryWriteTiers("")].sort(), ["C2", "C3"]);
+  assert.deepEqual([...parseRegistryWriteTiers("  ")].sort(), ["C2", "C3"]);
+});
+test("parseRegistryWriteTiers: 大小・空白を許し、知らない語は捨てる", async () => {
+  const { parseRegistryWriteTiers } = await import("@/lib/observatory/coverage");
+  assert.deepEqual([...parseRegistryWriteTiers("c1, C2 ,bogus")].sort(), ["C1", "C2"]);
+  assert.deepEqual([...parseRegistryWriteTiers("bogus")], [], "知らない語だけなら空集合（何も書かない）");
+});
