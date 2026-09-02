@@ -10,10 +10,11 @@ export const metadata: Metadata = {
 
 const SHOTS = [
   ["0:05", "The public x402 catalog we track, measured every day"],
-  ["0:14", "One endpoint — paid with real USDC on Base, receipt attached"],
-  ["0:25", "The same payment on-chain: 0.02 USDC transferred on Base"],
-  ["0:35", "Failures carry the same weight — paid, and nothing settled"],
-  ["0:44", "Every aggregate is public JSON — no key needed"],
+  ["0:13", "One endpoint we bought from — the receipt is on the page"],
+  ["0:23", "The same payment on-chain, on Base"],
+  ["0:32", "Failures carry the same weight — paid, and nothing settled"],
+  ["0:40", "We publish our own corrections too"],
+  ["0:47", "Every aggregate is public JSON — no API key needed"],
 ];
 
 export default function DemoPage() {
@@ -21,7 +22,7 @@ export default function DemoPage() {
     <main className="mx-auto max-w-3xl px-6 py-16">
       <h1 className="text-2xl font-semibold tracking-tight">vet402 in 60 seconds</h1>
       <p className="mt-3 text-sm leading-relaxed opacity-80">
-        No narration, no slides — every frame is a live page you can open yourself. Recorded 2026-08-25.
+        No narration, no slides — every frame is a live page you can open yourself. Recorded 2026-09-03.
       </p>
       <video
         className="mt-8 w-full rounded-lg border"
