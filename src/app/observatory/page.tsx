@@ -305,7 +305,7 @@ export default async function ObservatoryPage({
                     <td className="whitespace-nowrap">
                       <Link
                         href={`/observatory/e/${row.id}`}
-                        className="block max-w-[13rem] truncate underline sm:max-w-[34rem]"
+                        className="block max-w-[13rem] truncate underline sm:max-w-[24rem]"
                         title={row.resourceKey}
                       >
                         {row.resourceKey}
