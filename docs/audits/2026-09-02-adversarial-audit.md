@@ -63,3 +63,18 @@
 1. F1: hero 主 CTA の行き先（DESIGN.md の凍結と衝突）
 2. A1: テンプレート URL の扱い（unverified 化＋既公開 fail の訂正＝公開判定の書き換え）
 3. MCP `check_resource_decision` の既定 role=payer が「払う前の判定」の凍結文言とほぼ同文（ハッカソン側の線引き）
+
+## 是正の記録（同日 16:30〜18:00・main `3b765ca..89da171`・34 コミット）
+
+| 対象 | 是正 | 本番確認 |
+|---|---|---|
+| S1 SSRF IPv6 | `public-address.ts` を 8 グループ展開＋埋め込み IPv4 判定へ。テスト 21 形式 | `::ffff:7f00:1` 非公開 |
+| C1 Solana 索引 | checkpoint 古い順・`until/before`・予算切れは前進しない・RPC 未設定は skipped。`last_cursor` 列を本番へ | DDL 適用済み・`SOLANA_RPC_URL` を明示 |
+| A1 テンプレート URL | `isPathTemplate` で L0 は要求を出さず `unverified/path_template`、L1・C1 から除外。訂正スクリプトで公開 fail 12 件を訂正 | `correction_log` 12 行・published_fail 0 |
+| A2 / A3 | 方法論 §6・FAQ Q5/Q8・Legal を Base+Solana の実態に。devnet を Solana Devnet としてテストネット扱い | 反映済み |
+| T1 CSR のみ | `loading.tsx` を外し本文を初期 HTML に | /accuracy の hidden ストリーム 0 |
+| T2 Visa 500 | アーカイブ版を併記 | 反映済み |
+| 導線 F1〜F9 | hero 主 CTA → 観測所、§4 ボタン化、header/nav 計測、/decisions・/impact の受領証リンク、endpoint 頁に通知・異議の email 欄（`record_subscriptions`・cron `notify-subscribers`）、観測所に L1 列と受領証あり既定並び・`?l1=1` | 全て反映。送信は `RESEND_API_KEY` 待ち（TAKESHI_TODO） |
+| デザイン P1 | 観測所の最初の画面（1280×800 で表の先頭行 y=748）、表の sticky 先頭列＋「→ N more columns」、login の zinc フッタ、図の P2 一式 | 実測済み |
+| 契約・文書 | ErrorResponse enum +57 語と機械検査、新規ルートの schema と SURFACES、README/docs/api/llms、og:image、sitemap、/docs → /docs/api、401/400 のヒント | 反映済み |
+| 未着手 | DNS リバインディングのソケット固定（新規依存が要る・別発注）、`l1-runner.ts:118` の Solana 公開 RPC フォールバック | — |
