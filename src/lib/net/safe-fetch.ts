@@ -18,13 +18,19 @@
 // on the first hop OR on any redirect hop, because a first-hop-only check that
 // then follows redirects is theater.
 //
-// WHAT IT DOES NOT: it does not pin the socket to the verified IP, so a DNS
-// record that flips between our lookup and undici's leaves a rebinding window.
-// Closing it requires driving node:https directly and giving up the Response
-// API these callers are built on (webhooks.ts does exactly that, because there
-// the URL is chosen by an authenticated customer and delivery carries a
-// signature). Stated here rather than implied, so nobody re-derives the
-// guarantee from the name.
+// WHAT IT ALSO GUARANTEES (2026-09-02 audit P2-1): the socket is PINNED to the
+// addresses the gate verified. Until this date the check resolved the name
+// once and the platform fetch resolved it again to connect, so a record that
+// flips between the two lookups ("rebinding": public to the check, 127.0.0.1
+// to the connect) walked through — reachable from the key-less public
+// POST /api/v1/demo/verify. Now every hop resolves exactly once; the verified
+// addresses travel with the request as a `pin`, and the default transport
+// (src/lib/net/pinned-fetch.ts) is an undici Agent whose connector `lookup`
+// answers only from that pin and errors for anything else. IP literals are
+// pinned as written. Host header, SNI and certificate validation keep the
+// hostname. This is the same guarantee webhooks.ts gives customer URLs, kept
+// behind the Response API these callers are built on. Tests:
+// tests/safe-fetch-pinning.test.ts.
 //
 // WHAT IT ALSO GUARANTEES (2026-08-22 audit). Credentials do not cross an
 // origin boundary on a redirect. The L1 paid retry puts a signed EIP-3009
@@ -50,6 +56,7 @@ import {
   isPublicUnicastIp,
   type AddressResolver,
 } from "./public-address";
+import { pinnedFetch, type PinnedFetchImpl, type PinnedTarget } from "./pinned-fetch";
 
 export type UnsafeTargetReason =
   | "unsafe_scheme"
@@ -116,8 +123,13 @@ function isIpLiteral(host: string): boolean {
   return host.startsWith("[") || /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
 }
 
-/** Throws UnsafeTargetError unless `url` is safe to open a socket to. */
-async function assertPublicTarget(url: URL, resolve: AddressResolver): Promise<void> {
+/**
+ * Throws UnsafeTargetError unless `url` is safe to open a socket to, and
+ * returns the addresses that passed — the ONLY addresses the transport may
+ * connect to for this hop. Resolution happens here exactly once; the
+ * transport never resolves again (pinned-fetch.ts).
+ */
+async function assertPublicTarget(url: URL, resolve: AddressResolver): Promise<PinnedTarget> {
   const href = url.toString();
   if (!isPublicHostUrl(href)) {
     throw new UnsafeTargetError(
@@ -126,7 +138,12 @@ async function assertPublicTarget(url: URL, resolve: AddressResolver): Promise<v
     );
   }
   const host = url.hostname.toLowerCase();
-  if (isIpLiteral(host)) return; // already judged as a literal, nothing to resolve
+  if (isIpLiteral(host)) {
+    // Already judged as a literal, nothing to resolve: pin it as written
+    // (brackets dropped — net.connect wants the bare address).
+    const literal = host.startsWith("[") ? host.slice(1, -1) : host;
+    return { hostname: literal, addresses: [{ address: literal, family: literal.includes(":") ? 6 : 4 }] };
+  }
 
   let addrs: Array<{ address: string; family: number }>;
   try {
@@ -140,6 +157,10 @@ async function assertPublicTarget(url: URL, resolve: AddressResolver): Promise<v
     // public and the next is 127.0.0.1 must not be decided by ordering.
     if (!isPublicUnicastIp(a.address)) throw new UnsafeTargetError("unsafe_host", href);
   }
+  return {
+    hostname: host,
+    addresses: addrs.map((a) => ({ address: a.address, family: a.family === 6 ? 6 : 4 })),
+  };
 }
 
 const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308]);
@@ -181,7 +202,13 @@ function crossesOrigin(from: URL, to: URL): boolean {
 }
 
 export type SafeFetchOptions = {
-  fetchImpl?: (url: string, init?: RequestInit) => Promise<Response>;
+  /**
+   * Transport. Receives the hop's verified addresses as a third argument
+   * and must connect to those only; the default is the pinned undici
+   * transport. Tests that inject a mock are exercising the gate, not the
+   * socket — the socket has its own tests.
+   */
+  fetchImpl?: PinnedFetchImpl;
   resolve?: AddressResolver;
   /** Hops followed after the initial request. */
   maxRedirects?: number;
@@ -202,7 +229,7 @@ export async function safeFetch(
   init: RequestInit = {},
   options: SafeFetchOptions = {},
 ): Promise<Response> {
-  const { fetchImpl = fetch, resolve = defaultResolver, maxRedirects = 5 } = options;
+  const { fetchImpl = pinnedFetch, resolve = defaultResolver, maxRedirects = 5 } = options;
 
   let current: URL;
   try {
@@ -216,15 +243,19 @@ export async function safeFetch(
   let headers = new Headers(init.headers);
 
   for (let hop = 0; ; hop++) {
-    await assertPublicTarget(current, resolve);
+    const pin = await assertPublicTarget(current, resolve);
 
-    const response = await fetchImpl(current.toString(), {
-      ...init,
-      method,
-      body,
-      headers,
-      redirect: "manual",
-    });
+    const response = await fetchImpl(
+      current.toString(),
+      {
+        ...init,
+        method,
+        body,
+        headers,
+        redirect: "manual",
+      },
+      pin,
+    );
 
     const location = REDIRECT_STATUS.has(response.status)
       ? response.headers.get("location")
