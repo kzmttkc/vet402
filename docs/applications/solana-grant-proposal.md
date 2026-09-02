@@ -64,6 +64,13 @@ Measured USDC price distribution across the 191 priced Solana endpoints:
 
 106 of 191 endpoints price at or below $0.01; 171 of 191 at or below $0.10. Our production payer enforces a **$1.00 per-purchase cap** (default `MAX_PER_PURCHASE_UNITS` = 1,000,000 USDC base units) and a **$25/day budget** reserved atomically in the ledger before signing — both already enforced in code on Base, applied unchanged to Solana. Under the $1 cap, **186 of the 191 endpoints are purchasable**, and one full sweep of all 186 costs:
 
+**What actually limits us is time, not money.** Each scheduled run has a 300-second ceiling and completes
+40–100 purchases; we run it four times a day, so measured throughput is **160–400 purchases/day** across all
+chains (Base measured 2026-09-02). A daily sweep of 186 Solana endpoints sits inside that envelope, so the
+figure below is sized by price × count and bounded by the daily budget cap — it is a **ceiling on spend**,
+not a claim that the cap is what stops us today. On Base we currently spend $1–4 of a $25/day cap for this
+reason, and we say so rather than implying the budget is exhausted.
+
 > **Σ(prices ≤ $1.00) = $7.247 per full catalog sweep** (5 endpoints above cap excluded: $2.00, $2.50, $5.00, $10.00, $20.60)
 
 Proposed cadence — **a ceiling, not a promise of volume.** We size the ask as if every in-cap endpoint were bought from once a day, because that is the maximum this work can cost. What we will actually run is the coverage policy our product spec fixes (v1.0 §7.4): every listed endpoint gets a daily no-purchase liveness check, and real purchases go first to endpoints with attributed settlement or caller demand, sampled when the daily cap binds. **Endpoints we do not buy from are published as `unverified` — never as passing.** One exception is written into M2: a new chain has no settlement history on day one, so the first pass buys once from every in-cap endpoint to create the evidence the steady-state policy then selects on. Sizing the maximum:
