@@ -47,7 +47,7 @@
     "backfill:payee": "tsx scripts/backfill-payee.ts",
     "correct:path-templates": "tsx scripts/correct-path-template-fails.ts",
     "gate2:report": "tsx scripts/gate2-report.ts",
-    "registry:dry-run": "tsx scripts/registry-dry-run.ts",
+    "registry:dryrun": "tsx scripts/registry-dryrun.ts",
     "setup:stripe": "tsx scripts/setup-stripe-products.ts",
     "setup:stripe-webhook": "tsx scripts/setup-stripe-webhook.ts",
     "mcp:build": "npm run build --prefix packages/mcp-server",

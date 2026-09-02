@@ -1,30 +1,31 @@
 // ============================================================
-// ERC-8004 Validation Registry 書込の dry-run 見積もり（純粋関数層）。
+// ERC-8004 Validation Registry 書込の dry-run（純粋関数層）。
 //
-// 目的: REGISTRY_WRITES_ENABLED を OFF のまま、「もし ON だったら」
-//  - 1日に何件の書込候補が出るか（registry-hook の分岐を写す）
+// 目的: REGISTRY_WRITES_ENABLED を OFF のまま、「今 ON にしたら」
+//  - 直近 24h に確定した購入のうち、何件・どの endpoint がチェーンへ向かうか
+//    （registry-hook の門を 1:1 で写す）
 //  - 1件あたり Base で幾らか（L2実行 + L1データ）
-//  - 7日合計と、実費に基づく上限案
 // を wei 整数のまま出す。ここは DB にも RPC にも触れない——実測は
-// scripts/registry-dry-run.ts が行い、数字だけをここへ渡す。
+// scripts/registry-dryrun.ts が行い、数字だけをここへ渡す。
 //
-// 候補の定義は registry-hook.ts の分岐と 1:1:
-//   l1-runner が fireL1RegistryHook を呼ぶのは paid retry まで到達した
-//   終局4状態（settled / settle_failed / delivered_no_receipt /
-//   settle_claimed_unverifiable）だけ。
-//   payTo が EVM アドレスでなければ not_evm（Solana 等）。
-//   同じ (endpoint, verdict) は requestHash が同じ → 台帳の一意制約で
-//   2度目以降は duplicate（チェーン呼び出しゼロ）。
+// 発火の定義は settlement-verifier / registry-hook と 1:1（2026-09-02 監査 P1-6/P1-7）:
+//   settlement-verifier がチェーンで確定した settled → L1 pass
+//     （l2_schema が match / mismatch なら L2 pass / fail も）
+//   settle_claim_refuted → L1 fail
+//   それ以外（settle_claimed・settle_failed・delivered_no_receipt …）は発火しない
+//   payTo が EVM アドレスでなければ not_evm（Solana 等）
+//   同じ purchase_id（request_hash）が registry_writes にあれば duplicate
+//   endpoint の階層が REGISTRY_WRITE_TIERS に無ければ tier_excluded
+//   今日の台帳行数 + 計画数が REGISTRY_DAILY_MAX_WRITES に達したら daily_cap
+// 実際にはさらに no_agent（payTo が ERC-8004 agent に解決できない）と
+// balance_low / gas_over_cap で退くので、実数はここより小さい。
 // ============================================================
-import { isAddress, parseGwei } from "viem";
+import { isAddress, keccak256, parseGwei, toBytes } from "viem";
+import type { CoverageTier } from "@/lib/observatory/coverage";
+import { purchaseId } from "@/lib/ids/canonical";
 
-export const HOOK_OUTCOME_STATUSES = [
-  "settled",
-  "settle_failed",
-  "delivered_no_receipt",
-  "settle_claimed_unverifiable",
-  "settle_claim_refuted",
-] as const;
+/** 発火する終局状態（settlement-verifier の確定と 1:1）。 */
+export const HOOK_OUTCOME_STATUSES = ["settled", "settle_claim_refuted"] as const;
 
 /** registry.ts の DEFAULT_MAX_FEE_GWEI と同値（片方だけ変えない）。 */
 export const DEFAULT_MAX_FEE_GWEI = 0.5;
@@ -40,156 +41,134 @@ export const FIXED_FALLBACK_GAS = {
   validationResponse: 150_000n,
 } as const;
 
-export type L1PurchaseRowLike = {
+export type VerifiedPurchaseRowLike = {
+  purchaseRowId: string;
   endpointId: string;
   status: string;
   payTo: string | null;
-  attemptedAt: Date;
+  network: string | null;
+  txHash: string | null;
+  l2Schema: string | null;
+  settlementVerifiedAt: Date;
 };
 
-export type Classification =
-  | { kind: "candidate"; verdict: "pass" | "fail" }
-  | { kind: "not_evm" }
-  | { kind: "not_hook_outcome" };
+export type PlannedWrite = {
+  purchaseRowId: string;
+  endpointId: string;
+  tier: CoverageTier;
+  level: "l1" | "l2";
+  verdict: "pass" | "fail";
+  requestKey: string;
+  requestHash: `0x${string}`;
+  settlementVerifiedAt: string;
+};
 
-export function classifyForRegistry(row: L1PurchaseRowLike): Classification {
-  if (!(HOOK_OUTCOME_STATUSES as readonly string[]).includes(row.status)) {
-    return { kind: "not_hook_outcome" };
+export type SkipReason = "not_final" | "not_evm" | "no_tx" | "duplicate" | "tier_excluded" | "daily_cap";
+
+export type RegistryWritePlan = {
+  writes: PlannedWrite[];
+  skipped: Record<SkipReason, number>;
+  byEndpoint: { endpointId: string; tier: CoverageTier; writes: number; skipped: number }[];
+};
+
+/**
+ * 行 → 書込候補（level/verdict）。門はここで通さない（呼び手 planRegistryWrites が通す）。
+ */
+function candidatesOf(row: VerifiedPurchaseRowLike): { level: "l1" | "l2"; verdict: "pass" | "fail" }[] {
+  if (row.status === "settled") {
+    const out: { level: "l1" | "l2"; verdict: "pass" | "fail" }[] = [{ level: "l1", verdict: "pass" }];
+    if (row.l2Schema === "match") out.push({ level: "l2", verdict: "pass" });
+    else if (row.l2Schema === "mismatch") out.push({ level: "l2", verdict: "fail" });
+    return out;
   }
-  if (!row.payTo || !row.payTo.startsWith("0x") || !isAddress(row.payTo)) {
-    return { kind: "not_evm" };
-  }
-  return { kind: "candidate", verdict: row.status === "settled" ? "pass" : "fail" };
-}
-
-export type DailyCandidateRow = {
-  day: string;
-  /** hook が呼ばれる回数（EVM・終局3状態）。 */
-  hook_calls: number;
-  /** 初出の (endpoint, verdict) = 実際にチェーンへ向かう件数（台帳が空の前提）。 */
-  unique_new_writes: number;
-  unique_new_pass: number;
-  unique_new_fail: number;
-  /** unique_new_writes のうち payTo が索引済み ERC-8004 agent に載っている件数（null=集合未指定）。 */
-  unique_new_writes_with_indexed_agent: number | null;
-  duplicate_skipped: number;
-};
-
-export type CandidateAggregate = {
-  window: { start: string; end: string; days: number };
-  in_window: {
-    rows_total: number;
-    not_hook_outcome: number;
-    not_evm: number;
-    hook_calls: number;
-    unique_new_writes: number;
-    unique_new_writes_with_indexed_agent: number | null;
-    duplicate_skipped: number;
-    max_unique_new_writes_per_day: number;
-    mean_unique_new_writes_per_day: number;
-  };
-  days: DailyCandidateRow[];
-  assumptions: {
-    dedupe_basis: "first_seen_all_time_over_supplied_rows";
-    hook_outcome_statuses: readonly string[];
-  };
-};
-
-function utcDay(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  if (row.status === "settle_claim_refuted") return [{ level: "l1", verdict: "fail" }];
+  return [];
 }
 
 /**
- * rows は「全期間」を渡す（窓内だけ渡すと、窓の前に初出した hash を
- * 新規と誤認して過大見積もりになる）。窓内の集計だけを返す。
+ * 「今 ON にしたら何が書かれるか」。registry-hook の門を同じ順で写す。
+ * rows は settlement_verified_at の窓（既定 24h）で取った行。確定が早い順に日次枠を埋める。
  */
-export function aggregateRegistryCandidates(
-  rows: L1PurchaseRowLike[],
-  opts: { windowStart: Date; windowEnd: Date; indexedAgentWallets?: Set<string> },
-): CandidateAggregate {
-  const { windowStart, windowEnd } = opts;
-  const indexed = opts.indexedAgentWallets
-    ? new Set([...opts.indexedAgentWallets].map((w) => w.toLowerCase()))
-    : null;
-  const dayCount = Math.max(0, Math.round((windowEnd.getTime() - windowStart.getTime()) / 86_400_000));
-
-  const days = new Map<string, DailyCandidateRow>();
-  for (let i = 0; i < dayCount; i++) {
-    const day = utcDay(new Date(windowStart.getTime() + i * 86_400_000));
-    days.set(day, {
-      day,
-      hook_calls: 0,
-      unique_new_writes: 0,
-      unique_new_pass: 0,
-      unique_new_fail: 0,
-      unique_new_writes_with_indexed_agent: indexed ? 0 : null,
-      duplicate_skipped: 0,
-    });
-  }
-
-  const totals = {
-    rows_total: 0,
-    not_hook_outcome: 0,
-    not_evm: 0,
-    hook_calls: 0,
-    unique_new_writes: 0,
-    unique_new_writes_with_indexed_agent: indexed ? 0 : null,
-    duplicate_skipped: 0,
+export function planRegistryWrites(
+  rows: readonly VerifiedPurchaseRowLike[],
+  opts: {
+    allowedTiers: ReadonlySet<CoverageTier>;
+    tierOf: ReadonlyMap<string, CoverageTier>;
+    existingHashes: ReadonlySet<string>;
+    dailyMax: number;
+    writesToday: number;
+  },
+): RegistryWritePlan {
+  const skipped: Record<SkipReason, number> = { not_final: 0, not_evm: 0, no_tx: 0, duplicate: 0, tier_excluded: 0, daily_cap: 0 };
+  const perEndpoint = new Map<string, { tier: CoverageTier; writes: number; skipped: number }>();
+  const touch = (endpointId: string) => {
+    let e = perEndpoint.get(endpointId);
+    if (!e) {
+      e = { tier: opts.tierOf.get(endpointId) ?? "C0", writes: 0, skipped: 0 };
+      perEndpoint.set(endpointId, e);
+    }
+    return e;
   };
+  const writes: PlannedWrite[] = [];
+  const planned = new Set<string>(opts.existingHashes);
+  let budget = Math.max(0, opts.dailyMax - opts.writesToday);
 
-  const sorted = [...rows].sort((a, b) => a.attemptedAt.getTime() - b.attemptedAt.getTime());
-  const seen = new Set<string>();
+  const sorted = [...rows].sort((a, b) => a.settlementVerifiedAt.getTime() - b.settlementVerifiedAt.getTime());
   for (const row of sorted) {
-    const inWindow = row.attemptedAt >= windowStart && row.attemptedAt < windowEnd;
-    const cls = classifyForRegistry(row);
-    if (inWindow) totals.rows_total++;
-    if (cls.kind === "not_hook_outcome") {
-      if (inWindow) totals.not_hook_outcome++;
+    const cands = candidatesOf(row);
+    if (cands.length === 0) {
+      skipped.not_final++;
       continue;
     }
-    if (cls.kind === "not_evm") {
-      if (inWindow) totals.not_evm++;
+    const ep = touch(row.endpointId);
+    if (!row.payTo || !row.payTo.startsWith("0x") || !isAddress(row.payTo)) {
+      skipped.not_evm++;
+      ep.skipped++;
       continue;
     }
-    const key = `${row.endpointId}|${cls.verdict}`;
-    const firstSeen = !seen.has(key);
-    seen.add(key);
-    if (!inWindow) continue;
-
-    const bucket = days.get(utcDay(row.attemptedAt));
-    totals.hook_calls++;
-    if (bucket) bucket.hook_calls++;
-    if (!firstSeen) {
-      totals.duplicate_skipped++;
-      if (bucket) bucket.duplicate_skipped++;
+    if (!row.txHash) {
+      skipped.no_tx++;
+      ep.skipped++;
       continue;
     }
-    totals.unique_new_writes++;
-    if (bucket) {
-      bucket.unique_new_writes++;
-      if (cls.verdict === "pass") bucket.unique_new_pass++;
-      else bucket.unique_new_fail++;
-    }
-    if (indexed && row.payTo && indexed.has(row.payTo.toLowerCase())) {
-      totals.unique_new_writes_with_indexed_agent!++;
-      if (bucket) bucket.unique_new_writes_with_indexed_agent!++;
+    const network = row.network ?? "eip155:8453";
+    for (const c of cands) {
+      const requestKey = `${purchaseId(network, row.txHash)}${c.level === "l2" ? ":l2" : ""}`;
+      const requestHash = keccak256(toBytes(requestKey));
+      if (planned.has(requestHash)) {
+        skipped.duplicate++;
+        ep.skipped++;
+        continue;
+      }
+      if (!opts.allowedTiers.has(ep.tier)) {
+        skipped.tier_excluded++;
+        ep.skipped++;
+        continue;
+      }
+      if (budget <= 0) {
+        skipped.daily_cap++;
+        ep.skipped++;
+        continue;
+      }
+      budget--;
+      planned.add(requestHash);
+      ep.writes++;
+      writes.push({
+        purchaseRowId: row.purchaseRowId,
+        endpointId: row.endpointId,
+        tier: ep.tier,
+        level: c.level,
+        verdict: c.verdict,
+        requestKey,
+        requestHash,
+        settlementVerifiedAt: row.settlementVerifiedAt.toISOString(),
+      });
     }
   }
-
-  const dayRows = [...days.values()];
-  const max = dayRows.reduce((m, d) => Math.max(m, d.unique_new_writes), 0);
   return {
-    window: { start: windowStart.toISOString(), end: windowEnd.toISOString(), days: dayCount },
-    in_window: {
-      ...totals,
-      max_unique_new_writes_per_day: max,
-      mean_unique_new_writes_per_day: dayCount > 0 ? totals.unique_new_writes / dayCount : 0,
-    },
-    days: dayRows,
-    assumptions: {
-      dedupe_basis: "first_seen_all_time_over_supplied_rows",
-      hook_outcome_statuses: HOOK_OUTCOME_STATUSES,
-    },
+    writes,
+    skipped,
+    byEndpoint: [...perEndpoint.entries()].map(([endpointId, e]) => ({ endpointId, ...e })),
   };
 }
 
