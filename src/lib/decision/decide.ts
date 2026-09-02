@@ -11,8 +11,10 @@
 // ============================================================
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { LruCache } from "@/lib/util/lru-cache";
+import { logAndSwallow } from "@/lib/util/log";
 import { isRegistryWritesEnabled } from "@/lib/chain/registry";
+import type { LruCache } from "@/lib/util/lru-cache";
+import { DECISION_CACHE_TTL_MS, decisionCache } from "./cache";
 import { rowsOf } from "@/lib/settlements/upsert";
 import { loadSellerFacts, type SellerFactsLoaded } from "./seller-facts";
 import { loadBuyerFacts } from "./buyer-facts";
@@ -22,8 +24,7 @@ import type { BuyerFacts, Evidence, Freshness, SellerFacts } from "./types";
 export const DECISION_DISCLAIMER =
   "Scores are opinions; L0–L2 are measurement records. This is not credit assessment, KYC, sanctions screening, or certification.";
 
-export const DECISION_CACHE_TTL_MS = 5 * 60_000;
-const CACHE_MAX_ENTRIES = 5_000;
+export { DECISION_CACHE_TTL_MS, invalidateDecisionCache } from "./cache";
 
 export type DecisionSubject = {
   type: "resource";
@@ -127,16 +128,8 @@ export function buildDecision(input: BuildInput): DecisionResult {
   };
 }
 
-const cache = new LruCache<string, { result: DecisionResult; expiresAt: number }>(CACHE_MAX_ENTRIES);
-
-export function invalidateDecisionCache(observatoryId?: string): void {
-  if (!observatoryId) {
-    cache.clear();
-    return;
-  }
-  // キーは "<uuid>|…" で始まる。全走査は LRU の規模（≤5,000）なら十分安い。
-  for (const key of cache.keys()) if (key.startsWith(`${observatoryId}|`)) cache.delete(key);
-}
+// 本体は ./cache（書き込み側が循環なしに invalidate できるよう分離）。
+const cache = decisionCache as LruCache<string, { result: DecisionResult; expiresAt: number }>;
 
 async function registryStatusFor(observatoryId: string): Promise<RegistryStatus> {
   if (!isRegistryWritesEnabled()) return { status: "off", tx_hash: null };
@@ -164,17 +157,18 @@ function subjectOf(loaded: SellerFactsLoaded): DecisionSubject {
   };
 }
 
-/** §7.4: 問い合わせ回数を endpoint × UTC 日で加算（単文 upsert・失敗しても判定は落とさない）。 */
-export function recordDecisionLookup(observatoryId: string): void {
+/** §7.4: 問い合わせ回数を endpoint × UTC 日で加算（単文 upsert・失敗しても判定は落とさないが、理由はログに出す）。 */
+export function recordDecisionLookup(observatoryId: string): Promise<void> {
   const db = getDb();
-  if (!db) return;
+  if (!db) return Promise.resolve();
   const day = new Date().toISOString().slice(0, 10);
-  void db
+  return db
     .execute(
       sql`INSERT INTO decision_lookups (endpoint_id, day, n) VALUES (${observatoryId}::uuid, ${day}, 1)
           ON CONFLICT (endpoint_id, day) DO UPDATE SET n = decision_lookups.n + 1`,
     )
-    .catch(() => undefined);
+    .then(() => undefined)
+    .catch(logAndSwallow("decision.record_lookup"));
 }
 
 export type DecideRequest =
@@ -182,7 +176,7 @@ export type DecideRequest =
   | { role: "payee"; observatoryId: string; payerId: string; operatorBlacklist: boolean };
 
 export async function decide(req: DecideRequest): Promise<DecisionResult | null> {
-  recordDecisionLookup(req.observatoryId);
+  void recordDecisionLookup(req.observatoryId);
   const key =
     req.role === "payer"
       ? `${req.observatoryId}|payer|${req.callerDialect ?? "-"}|${req.allowWithoutL1 ? 1 : 0}|${req.operatorBlacklist ? 1 : 0}`

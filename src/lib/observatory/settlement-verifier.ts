@@ -18,7 +18,8 @@ import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { x402L1Purchases } from "@/lib/db/schema";
 import { recordObservedPurchase } from "@/lib/db/observed-purchases";
-import { logServerError } from "@/lib/util/log";
+import { logAndSwallow, logServerError } from "@/lib/util/log";
+import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { createDeadline } from "@/lib/util/deadline";
 import { verifyL1Settlement } from "./settlement-verify";
 import { isDeliveryVerified } from "./l1-runner";
@@ -70,7 +71,7 @@ export async function runSettlementVerification(options?: {
   const raw = await db.execute(sql`
     SELECT pu.id::text AS id, pu.tx_hash, pu.network, pu.pay_to, pu.payer,
            pu.amount_units, pu.http_status_paid, pu.payload_non_empty, pu.l2_schema,
-           pu.status, e.resource_url
+           pu.status, pu.endpoint_id::text AS endpoint_id, e.resource_url
     FROM x402_l1_purchases pu
     LEFT JOIN x402_endpoints e ON e.id = pu.endpoint_id
     WHERE pu.settlement_verified IS NULL
@@ -90,6 +91,7 @@ export async function runSettlementVerification(options?: {
     payload_non_empty: boolean | null;
     l2_schema: string | null;
     status: string;
+    endpoint_id: string;
     resource_url: string | null;
   }[];
 
@@ -132,6 +134,7 @@ export async function runSettlementVerification(options?: {
         })
         .where(eq(x402L1Purchases.id, row.id));
       summary.verified++;
+      invalidateDecisionCache(row.endpoint_id); // settled は判定材料（このインスタンスのみ・cache.ts 参照）
       // §10 / §6.2: バックフィルで確定した状態変化は訂正ログに残す。
       await recordCorrection({
         subjectType: "purchase",
@@ -140,7 +143,7 @@ export async function runSettlementVerification(options?: {
         before: { status: row.status },
         after: { status: "settled", blockNumber: String(result.blockNumber) },
         reason: "settlement_backfill",
-      }).catch(() => null);
+      }).catch(logAndSwallow("settlement-verifier.record_correction.settled"));
 
       // §7.3（2026-09-02）: 確定した購入は決済索引へ即時に載せ、受取先→Endpoint の
       // 逆引きが cron を待たずに更新される（実装完了の定義「1 分以内」）。
@@ -197,6 +200,7 @@ export async function runSettlementVerification(options?: {
       })
       .where(eq(x402L1Purchases.id, row.id));
     summary.refuted++;
+    invalidateDecisionCache(row.endpoint_id);
     await recordCorrection({
       subjectType: "purchase",
       subjectId: row.id,
@@ -204,7 +208,7 @@ export async function runSettlementVerification(options?: {
       before: { status: row.status },
       after: { status: "settle_claim_refuted", reason: result.reason },
       reason: "settlement_backfill",
-    }).catch(() => null);
+    }).catch(logAndSwallow("settlement-verifier.record_correction.refuted"));
   }
 
   return summary;

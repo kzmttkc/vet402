@@ -27,6 +27,8 @@ import { verifyMessage } from "viem";
 import { getDb } from "@/lib/db/client";
 import { disputes, x402Endpoints, x402L0Probes } from "@/lib/db/schema";
 import { isValidIssuedAt } from "@/lib/verify-message";
+import { logAndSwallow } from "@/lib/util/log";
+import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { probeEndpoint, type ProbeOptions } from "./l0-probe";
 import { UUID_RE } from "@/lib/validation/uuid";
 import { isDisputeRateLimited, recentDisputeTimes, recordCorrection } from "./corrections";
@@ -183,6 +185,7 @@ export async function submitDispute(
       failReason: probe.failReason,
       rawResponseMeta: { ...probe.rawResponseMeta, trigger: "dispute", disputeId: row.id },
     });
+    invalidateDecisionCache(ep.id); // 再測定は判定材料（このインスタンスのキャッシュのみ・cache.ts 参照）
     remeasureVerdict = probe.verdict;
     await db
       .update(disputes)
@@ -198,7 +201,7 @@ export async function submitDispute(
         after: { publishedVerdict: after, failReason: probe.failReason },
         reason: "dispute_remeasure",
         disputeId: row.id,
-      }).catch(() => null);
+      }).catch(logAndSwallow("disputes.record_correction"));
     }
   } catch {
     /* dispute stands; remeasure can be retried by ops */

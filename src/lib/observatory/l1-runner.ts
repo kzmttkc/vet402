@@ -30,7 +30,7 @@ import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { x402L1Purchases } from "@/lib/db/schema";
-import { recordObservedPurchase } from "@/lib/db/observed-purchases";
+import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { readBodyCapped } from "@/lib/net/read-capped";
 import { UnsafeTargetError, createSafeFetchImpl } from "@/lib/net/safe-fetch";
 import { createDeadline } from "@/lib/util/deadline";
@@ -662,6 +662,7 @@ async function purchaseOne(input: {
       payer: payerLabel,
       ...row,
     });
+    invalidateDecisionCache(candidate.id); // 購入結果は判定材料（このインスタンスのみ・cache.ts 参照）
   };
 
   // runL1Batch が solanaReady で候補を絞るので、ここに solana 候補が来て
@@ -962,6 +963,7 @@ async function purchaseOne(input: {
       },
     })
     .where(eq(x402L1Purchases.id, reservation.rowId));
+  invalidateDecisionCache(candidate.id);
 
   // observed_purchases への記帳（2026-08-22 監査・項目1）。
   //

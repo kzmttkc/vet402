@@ -15,6 +15,7 @@ import { verificationRequests, x402Endpoints, x402L0Probes } from "@/lib/db/sche
 import { mapWithConcurrency } from "@/lib/util/concurrency";
 import { createDeadline } from "@/lib/util/deadline";
 import { probeEndpoint, type ProbeOptions } from "./l0-probe";
+import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { UUID_RE } from "@/lib/validation/uuid";
 
 export type EnqueueResult =
@@ -165,6 +166,7 @@ export async function drainVerificationRequests(
         failReason: probe.failReason,
         rawResponseMeta: { ...probe.rawResponseMeta, trigger: "request", requestId: id },
       });
+      invalidateDecisionCache(String(r.endpoint_id)); // このインスタンスのみ（cache.ts 参照）
       await db
         .update(verificationRequests)
         .set({ status: "probed", probedAt: new Date() })

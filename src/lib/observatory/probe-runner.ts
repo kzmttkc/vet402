@@ -12,6 +12,7 @@ import { getDb } from "@/lib/db/client";
 import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { x402L0Probes } from "@/lib/db/schema";
 import { probeEndpoint, type ProbeResult } from "./l0-probe";
+import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { l0TierWhere } from "./coverage";
 
 export type ProbeBatchSummary = {
@@ -116,6 +117,7 @@ export async function runL0ProbeBatch(
         failReason: result.failReason,
         rawResponseMeta: result.rawResponseMeta,
       });
+      invalidateDecisionCache(c.id); // L0 判定は判定材料（このインスタンスのみ・cache.ts 参照）
       summary.probed++;
       summary[result.verdict]++;
     }
