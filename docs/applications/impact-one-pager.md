@@ -28,12 +28,12 @@ A result never moves up a level: a probe is never reported as settlement; an opi
 
 | Metric | Value |
 |---|---|
-| Endpoints tracked in the public x402 catalog | 21,050 (14,662 active, 6,388 delisted) |
-| L0 machine-verified pass | 3,342 published (17,707 not machine-checkable — "unverified", not dead) |
-| **L1 real purchases** | **2,152 attempts across 1,164 endpoints — 980 settled**; every settlement published with its Base tx hash; the 1,172 non-settles published with the same weight |
-| Lifecycle events recorded | 7,353 delists · 965 relists · 11 settle-drops |
-| Daily catalog snapshot | Latest 2026-09-01 — 14,656 endpoints fetched |
-| Chain coverage | Base 20,489 · Solana 218 · X Layer 18 · others 6 (mainnet-only breakdown; real purchases are Base-only today) |
+| Endpoints tracked in the public x402 catalog | 21,445 (14,967 active, 6,478 delisted) |
+| L0 machine-verified pass | 3,818 published (17,587 not machine-checkable — "unverified", not dead) |
+| **L1 real purchases** | **2,374 attempts across 1,340 endpoints — 1,102 settled**; every settlement published with its Base tx hash; the 1,272 non-settles published with the same weight |
+| Lifecycle events recorded | 7,523 delists · 1,045 relists · 11 settle-drops |
+| Daily catalog snapshot | Latest 2026-09-02 — 14,968 endpoints fetched |
+| Chain coverage | Base 20,870 · Solana 218 · X Layer 18 · others 6 (mainnet-only breakdown; real purchases are Base-only today) |
 
 ## What is different
 

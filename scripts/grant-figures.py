@@ -10,6 +10,7 @@ retrieval date. Numbers written by hand go stale silently. This makes staleness 
 import json, re, sys, urllib.request, pathlib, datetime
 
 STATE_URL = "https://vet402.com/api/v1/observatory/state"
+CENSUS_URL = "https://vet402.com/api/v1/census/summary?window=30d"
 DOCS = pathlib.Path(__file__).resolve().parent.parent / "docs" / "applications"
 # solana-grant-proposal.md is a coherent dated snapshot (cost basis + catalog fetch);
 # it is re-quoted whole at submission, not line-patched.
@@ -34,6 +35,13 @@ def fetch():
                                                "User-Agent": "kizuna-grant-figures/1"})
     with urllib.request.urlopen(req, timeout=30) as r:
         s = json.load(r)
+    # 2026-09-02: 決済索引が全走査を終え、第三者の実需が公開された。
+    # 申請の主張は「自分たちの購入」から「実需の分母＋届いたかの測定」へ厚くなる。
+    curl = CENSUS_URL + "&_=" + str(int(datetime.datetime.now().timestamp()))
+    creq = urllib.request.Request(curl, headers={"Cache-Control": "no-cache",
+                                                 "User-Agent": "kizuna-grant-figures/1"})
+    with urllib.request.urlopen(creq, timeout=30) as r:
+        c = json.load(r)
     by = {c["chain"]: c for c in s["byChain"]}
     base = by.get("Base", {})
     mainnet_total = sum(c["totalEndpoints"] for c in s["byChain"])
@@ -60,6 +68,13 @@ def fetch():
         "baseSharePct": round(100 * base.get("totalEndpoints", 0) / mainnet_total, 1),
         "settleRatePct": round(100 * l1["settled"] / l1["attempts"], 1),
         "coverage7dPct": s["coverage7d"]["pct"],
+        "settlementsRaw": c["settlements_raw"],
+        "settlementsReal": c["settlements_real"],
+        "washTest": c["wash"]["test"],
+        "uniquePayersReal": c["unique_payers_real"],
+        "uniquePayeesReal": c["unique_payees_real"],
+        "endpointsWithRealSettlement": c["endpoints_with_real_settlement"],
+        "confirmedAttribution": c["attribution"]["confirmed"],
         "solTotal": by.get("Solana", {}).get("totalEndpoints"),
         "solActive": by.get("Solana", {}).get("activeEndpoints"),
         "solPass": by.get("Solana", {}).get("publishedPass"),
@@ -79,6 +94,7 @@ def block(f, today):
 | Daily catalog snapshot | Latest {f['snapshotDate']} — {g('snapshotFetched')} endpoints fetched |
 | Base (mainnet-only breakdown) | {g('baseTotal')} tracked · {g('baseActive')} active · {g('basePass')} L0 pass — {f['baseSharePct']}% of {g('mainnetTotal')} mainnet endpoints |
 | 7-day L0 coverage | {f['coverage7dPct']}% of active endpoints measured |
+| **Real third-party demand (30d)** | **{g('settlementsReal')} settlements from {g('uniquePayersReal')} distinct payers to {g('uniquePayeesReal')} payees**, {g('endpointsWithRealSettlement')} endpoints with real settlement; {g('washTest')} measurement-wallet settlements (ours) excluded from {g('settlementsRaw')} raw |
 
 Footer to paste: *Figures retrieved from /api/v1/observatory/state on {today}.*
 """
@@ -116,6 +132,8 @@ ANCHORS = [
     (r"([\d,]{3,}) endpoints, ([\d,]{3,}) of them on Base", ["total", "baseTotal"]),
     (r"We buy: ([\d,]{3,}) real USDC purchases on Base mainnet across ([\d,]{3,}) endpoints, ([\d,]{3,}) settled", ["attempts", "endpointsAttempted", "settled"]),
     (r"the ([\d,]{3,}) that did not settle", ["nonsettled"]),
+    (r"([\d,]{3,}) real settlements from ([\d,]{3,}) distinct payers", ["settlementsReal", "uniquePayersReal"]),
+    (r"([\d,]{3,}) endpoints with real settlement", ["endpointsWithRealSettlement"]),
     (r"attempts across ([\d,]{3,}) (?:distinct )?endpoints", ["endpointsAttempted"]),
     (r"([\d,]{3,}) endpoints are currently delisted", ["delisted"]),
     (r"relists, and (\d+) settle-drops", ["settleDrops"]),
