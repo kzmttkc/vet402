@@ -262,7 +262,8 @@ export default async function ObservatoryStatePage() {
         <p className="doc-p">
           L0 observation has always been chain-agnostic and costs nothing to run, so this table
           covers every chain the public catalog lists an endpoint on — not only the chain L1
-          purchasing currently targets (Base). Mainnets only; testnet listings are excluded below.
+          purchasing currently targets (Base and Solana). Mainnets only; testnet listings (Base
+          Sepolia, Solana devnet) are excluded below.
         </p>
         {chainStats.length === 0 ? (
           <p className="doc-p text-brand-lift">No chain data yet.</p>
@@ -345,6 +346,11 @@ export default async function ObservatoryStatePage() {
                   <td className="text-brand">Distinct endpoints purchased from</td>
                   <td className="num">{stats.l1.endpointsAttempted.toLocaleString()}</td>
                   <td className="num">—</td>
+                </tr>
+                <tr>
+                  <td className="text-brand">Endpoints with at least one settled receipt</td>
+                  <td className="num">{stats.l1.endpointsSettled.toLocaleString()}</td>
+                  <td className="num">{pct(stats.l1.endpointsSettled, stats.l1.endpointsAttempted)}</td>
                 </tr>
               </tbody>
             </table>

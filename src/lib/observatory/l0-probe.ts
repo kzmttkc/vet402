@@ -27,6 +27,7 @@ import { readBodyCapped } from "@/lib/net/read-capped";
 import { UnsafeTargetError, createSafeFetchImpl } from "@/lib/net/safe-fetch";
 import { parseChallenge, type ChallengeAccept as EnvelopeAccept } from "./x402-payer";
 import { toCaip2 } from "./chains";
+import { PATH_TEMPLATE_REASON, isPathTemplate } from "./path-template";
 
 export type ProbeTarget = {
   resourceUrl: string;
@@ -165,12 +166,34 @@ export async function probeEndpoint(
   // 測る。2026-08 までは「推測しない」として unverified にしていたが、仕様 §17
   // （食い違えば実装を直す）に従い GET を既定にした。本番の該当は active 2 件。
   const method = (target.method ?? "GET").toUpperCase();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  const startedAt = Date.now();
   const UA = options.recheck
     ? "vet402-observatory-l0-recheck/1.0 (+https://vet402.com/observatory/methodology)"
     : "vet402-observatory-l0/1.0 (+https://vet402.com/observatory/methodology)";
+
+  // 2026-09-02 監査 A1（オーナー決定）: `/v1/entreprise/:siren` のような未置換の
+  // パスパラメータを持つ URL には**要求を出さない**。実値を知らない我々には正しい
+  // リクエストを作れず、返ってくる 400/404 は売り手の不履行ではない。行は残す
+  // （履歴に「測らなかった理由」が要る）が、判定は unverified、理由は path_template。
+  // 通常測定・異議の再測定・demo のどの経路もここを通る。
+  if (isPathTemplate(target.resourceUrl)) {
+    return {
+      method,
+      verdict: "unverified",
+      dialect: null,
+      httpStatus: null,
+      has402Challenge: null,
+      acceptsValid: null,
+      priceConsistent: null,
+      metadataConsistent: null,
+      latencyMs: null,
+      failReason: PATH_TEMPLATE_REASON,
+      rawResponseMeta: { error: PATH_TEMPLATE_REASON, client: UA, method, ...(options.recheck ? { route: "recheck_same_egress" } : {}) },
+    };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const startedAt = Date.now();
   const ACCEPT = options.recheck ? "*/*" : "application/json";
 
   let response: Response;

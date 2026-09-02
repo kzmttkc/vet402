@@ -141,6 +141,14 @@ export default async function ObservatoryMethodologyPage() {
           deaths), or the evidence threshold below is not met.{" "}
           <em>unverified is not a failure and is never counted as one.</em>
         </p>
+        <p className="doc-p">
+          <strong>path_template</strong> — the listed URL still contains an unfilled path
+          parameter (<code>/v1/entreprise/:siren</code>, <code>/items/{"{id}"}</code>,{" "}
+          <code>/files/*</code>); we do not know the real value, so no request is sent, the
+          probe is recorded as <code>unverified</code> with this reason, and the endpoint is
+          never purchased from — a 400 from a URL we could not have formed correctly is our
+          limitation, not the seller&apos;s failure.
+        </p>
 
         <h2 className="sec-head">
           <span className="sec-no">3.</span>
@@ -194,7 +202,8 @@ export default async function ObservatoryMethodologyPage() {
           <code>pass</code>, prioritised by real observed demand (30-day payer and call counts
           reported by the catalog). We request unpaid first to read the <code>402</code> challenge,
           then select a payment option and refuse to proceed unless every one of these holds:
-          scheme <code>exact</code>, network Base, asset canonical Base USDC, and a price that
+          scheme <code>exact</code>, a network we purchase on (Base, or Solana mainnet when the
+          Solana payer is enabled), the canonical USDC asset for that network, and a price that
           matches what the catalog declared when we chose the target. Any deviation — a
           different asset, a different chain, a higher price — is recorded as a refusal, never
           paid. A hard per-purchase ceiling (${MAX_PER_PURCHASE_USD.toFixed(2)}) and a daily
@@ -207,7 +216,7 @@ export default async function ObservatoryMethodologyPage() {
           <strong>settled</strong> — <em>vet402 re-read the transaction on-chain</em> and found
           the exact USDC transfer it paid for: from our payer, to the catalog-declared payee, for
           the declared amount, in the canonical USDC contract, on Base, with at least 32
-          confirmations. <strong>settle_claimed</strong> — the seller returned a settlement
+          confirmations. That re-read exists for Base only today (see the note below). <strong>settle_claimed</strong> — the seller returned a settlement
           receipt with a well-formed transaction id, and we have not re-read it on-chain yet.{" "}
           <strong>settle_claim_refuted</strong> — we re-read it and that transfer is not there.{" "}
           <strong>settle_claimed_unverifiable</strong> — the id returned is not even well-formed
@@ -223,10 +232,11 @@ export default async function ObservatoryMethodologyPage() {
           <code>PAYMENT-RESPONSE</code> header — we published that assertion without ever
           re-reading the chain. It is now a measurement we make: the definition of{" "}
           <code>settled</code> is &ldquo;vet402 confirmed it on-chain&rdquo;. Still open, stated
-          plainly: <strong>Solana settlements are not yet re-read</strong> — that chain needs a
-          different verifier, so those rows stay <code>settle_claimed</code> rather than being
-          called settled on evidence we do not have. We would rather name the gap than let you
-          assume a check we are not doing.
+          plainly: L1 purchases run on both Base and Solana, but{" "}
+          <strong>Solana settlements are not yet re-read</strong> — that chain needs a different
+          verifier, so a Solana purchase can reach <code>settle_claimed</code> and stays there
+          rather than being promoted to <code>settled</code> on evidence we do not have. We would
+          rather name the gap than let you assume a check we are not doing.
         </p>
 
         <h2 className="sec-head">

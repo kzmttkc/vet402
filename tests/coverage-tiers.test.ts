@@ -25,3 +25,13 @@ test("L0 周期: C0 は測らない、C1 日次、C2/C3 6 時間、C4 即時", (
   assert.equal(L0_INTERVAL_HOURS.C3, 6);
   assert.equal(L0_INTERVAL_HOURS.C4, 0);
 });
+// 2026-09-02 監査 A1: 未置換パスパラメータの URL は正しい要求を作れない。日次枠を使わない
+// （C1〜C3 に入れない）。C4（異議・再検証要求）だけは残す——要求は出さず行だけ残る。
+test("パステンプレート URL は C0（測れない endpoint に日次枠を使わない）", () => {
+  assert.equal(tierOf({ ...base, listedWithin30d: true, pathTemplate: true }), "C0");
+  assert.equal(tierOf({ ...base, settledWithin30d: true, pathTemplate: true }), "C0");
+  assert.equal(tierOf({ ...base, listedWithin30d: true, attributedSettlements: 1, pathTemplate: true }), "C0");
+  assert.equal(tierOf({ ...base, attributedSettlements: 1, hasDeclaration: true, pathTemplate: true }), "C0");
+  assert.equal(tierOf({ ...base, reverifyRequested: true, pathTemplate: true }), "C4");
+  assert.equal(tierOf({ ...base, listedWithin30d: true, pathTemplate: false }), "C1");
+});

@@ -45,6 +45,7 @@
     "cron:purge-logs": "tsx scripts/purge-logs.ts",
     "benchmark:scan": "tsx scripts/run-benchmark.ts",
     "backfill:payee": "tsx scripts/backfill-payee.ts",
+    "correct:path-templates": "tsx scripts/correct-path-template-fails.ts",
     "gate2:report": "tsx scripts/gate2-report.ts",
     "registry:dry-run": "tsx scripts/registry-dry-run.ts",
     "setup:stripe": "tsx scripts/setup-stripe-products.ts",

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { pageMetadata } from "@/lib/seo";
+import { formatUsdcUnits } from "@/lib/util/usd";
 import { getDecisionFeed } from "@/lib/observatory/decisions";
 import { computeSpendGuardBacktest } from "@/lib/observatory/backtest";
 import { TableScroll } from "@/components/site/TableScroll";
@@ -34,10 +35,6 @@ const DECISION_LABEL: Record<string, string> = {
   paid_no_settlement: "PAID — no settlement (loss, published)",
 };
 
-function usd(units: string): string {
-  const n = Number(units) / 1_000_000;
-  return `$${n.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")}`;
-}
 
 export default async function DecisionsPage() {
   const feed = await getDecisionFeed(30);
@@ -85,7 +82,7 @@ export default async function DecisionsPage() {
             {backtest && (
               <>
                 {" "}Across the whole ledger, {backtest.avoided.count} signed attempts carried a
-                prior published failure signal and none of them settled ({usd(backtest.avoided.spentUnits)}{" "}
+                prior published failure signal and none of them settled ({formatUsdcUnits(backtest.avoided.spentUnits)}{" "}
                 lost) — while {backtest.forgone.count} signalled attempts settled anyway. An agent
                 honoring the signals keeps the wins and skips the losses.
               </>
@@ -128,7 +125,7 @@ export default async function DecisionsPage() {
                     >
                       {DECISION_LABEL[r.decision] ?? r.decision}
                     </td>
-                    <td className="num">{r.amountUnits ? usd(r.amountUnits) : "—"}</td>
+                    <td className="num">{formatUsdcUnits(r.amountUnits)}</td>
                     <td className="text-brand-lift">
                       {r.txHash ? <code>{r.txHash.slice(0, 12)}…</code> : "—"}
                     </td>

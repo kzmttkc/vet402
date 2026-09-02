@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { pageMetadata } from "@/lib/seo";
+import { formatUsdcUnits } from "@/lib/util/usd";
 import {
   getCoverageShare,
   getObservatoryStats,
@@ -26,10 +27,6 @@ export const metadata: Metadata = pageMetadata({
 
 export const revalidate = 900;
 
-function usd(units: string | number): string {
-  const n = Number(units) / 1_000_000;
-  return `$${n.toFixed(2)}`;
-}
 
 export default async function ImpactPage() {
   const [stats, coverage, backtest, decisions, anchors] = await Promise.all([
@@ -129,7 +126,7 @@ export default async function ImpactPage() {
                 <>
                   {" "}Across the whole ledger, {backtest.avoided.count} signed attempts carried a
                   prior public failure signal and <strong>none of them settled</strong> (
-                  {usd(backtest.avoided.spentUnits)} that an agent honoring the signals would not
+                  {formatUsdcUnits(backtest.avoided.spentUnits)} that an agent honoring the signals would not
                   have lost), while {backtest.forgone.count} signalled attempts settled anyway.
                 </>
               )}{" "}

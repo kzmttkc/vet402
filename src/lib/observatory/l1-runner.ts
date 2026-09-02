@@ -56,6 +56,7 @@ import {
   selectSolanaAccept,
 } from "./sol402-payer";
 import { l1TierWhere } from "./coverage";
+import { isPathTemplate, notPathTemplateSql } from "./path-template";
 import { createHash } from "node:crypto";
 
 export type L1BatchSummary = {
@@ -516,7 +517,10 @@ export async function runL1Batch(
       -- （認可$35.28分・オンチェーン移動はゼロ）、冤罪の BLOCK を4件出していた。
       -- active 15,251 件中 709 件が該当。これらは L0（生存観測）には残る——
       -- 測れないものを買いに行かない、というだけ。
-      AND e.resource_url !~ '/:[a-zA-Z]'
+      -- 2026-09-02 監査 A1: ':name' 以外の形（'{name}' '<name>' '[name]' '*'・
+      -- URL 符号化済み）も同じ。判定は path-template.ts が正典（JS 側と同じ正規表現・
+      -- 下の候補ループにも isPathTemplate のガードを置く二重防御）。
+      AND ${notPathTemplateSql()}
       ${onlyEndpointId ? sql`AND e.id = ${onlyEndpointId}::uuid` : sql``}
       ${
         // Solana購入が無効（フラグ無し or 鍵が読めない）の間は候補から
@@ -597,6 +601,12 @@ export async function runL1Batch(
       summary.stoppedForDeadline = true;
       summary.notAttempted = candidates.length - index;
       break;
+    }
+    // SQL が外しているはずだが、二重防御（2026-09-02 A1）。テンプレート URL に
+    // 署名して予算を燃やす経路は、どの入口からも開かない。
+    if (isPathTemplate(candidate.resourceUrl)) {
+      summary.skipped++;
+      continue;
     }
     try {
       const outcome = await purchaseOne({ candidate, account, solanaKeypair, getSolanaBlockhash, fetchImpl, timeoutMs, db, spentToday, pendingHooks });

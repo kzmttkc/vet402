@@ -94,7 +94,7 @@ export default async function StatusPage() {
             anything: no claim without a sample behind it. There is no fixed-interval external
             monitor here &mdash; a row is recorded from real page views, at most one every five
             minutes unless the status changed, so a quiet day carries fewer samples and a silent
-            day carries none. <em>No observation is never reported as &quot;ok.&quot;</em>
+            day carries none. <em>A missing observation is never reported as &quot;ok.&quot;</em>
           </p>
         </div>
 
