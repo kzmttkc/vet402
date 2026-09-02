@@ -30,6 +30,7 @@ function normalizePayer(raw: string): string | null {
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
+  const t0 = performance.now();
   const auth = await authorizeApiRequest(request, 1);
   if (!auth.ok) return auth.error;
 
@@ -91,7 +92,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
       void refundRateLimitUnits(auth.ctx, 1);
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
-    return withRateLimitHeaders(NextResponse.json(result), auth.ctx.rateLimit);
+    // 2026-09-02: §12 の SLO（p95 < 200ms・キャッシュヒット）はサーバ内時間で測る。東京からの
+    // 壁時計（0.44–0.77s）では往復が混ざるので、計算時間を Server-Timing で返す。
+    const res = withRateLimitHeaders(NextResponse.json(result), auth.ctx.rateLimit);
+    res.headers.set("Server-Timing", `decision;dur=${(performance.now() - t0).toFixed(1)}`);
+    return res;
   } catch (error) {
     logServerError("decision", error);
     void refundRateLimitUnits(auth.ctx, 1);

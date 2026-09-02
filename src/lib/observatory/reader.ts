@@ -806,3 +806,15 @@ export async function getCoverageShare(): Promise<CoverageShare> {
     throw error;
   }
 }
+
+/** id → resource_key。/corrections の表で subject_id を人が読める名前にする（最大 500 件・1 文）。 */
+export async function getEndpointNames(ids: readonly string[]): Promise<Map<string, string>> {
+  const db = getDb();
+  const unique = [...new Set(ids)].filter((i) => UUID_RE.test(i)).slice(0, 500);
+  if (!db || unique.length === 0) return new Map();
+  const raw = await db.execute(
+    sql`SELECT id::text AS id, resource_key FROM x402_endpoints WHERE id = ANY(ARRAY[${sql.join(unique.map((i) => sql`${i}`), sql`, `)}]::uuid[])`,
+  );
+  const rows = (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as { id: string; resource_key: string }[];
+  return new Map(rows.map((r) => [r.id, r.resource_key]));
+}

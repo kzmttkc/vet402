@@ -116,7 +116,9 @@ const USDC_PER_USD = 1_000_000;
 /** 本物の blockhash 取得（テストは options.getSolanaBlockhash で差し替える）。 */
 async function defaultSolanaBlockhash(): Promise<string> {
   const { Connection } = await import("@solana/web3.js");
-  const rpc = process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com";
+  // 2026-09-02 監査是正: 決済索引と同じく、RPC 未設定は公開 RPC へ無言で落ちず fail-loud。
+  const rpc = process.env.SOLANA_RPC_URL;
+  if (!rpc) throw new Error("solana_rpc_unset: set SOLANA_RPC_URL before enabling Solana L1 purchases");
   const conn = new Connection(rpc, "confirmed");
   const { blockhash } = await conn.getLatestBlockhash("confirmed");
   return blockhash;

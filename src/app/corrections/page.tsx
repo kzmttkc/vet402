@@ -4,6 +4,8 @@ import { headers } from "next/headers";
 import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "@/lib/support";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
+import { listCorrections, type CorrectionRow } from "@/lib/observatory/corrections";
+import { getEndpointNames } from "@/lib/observatory/reader";
 
 /**
  * /corrections — the log the site has been promising.
@@ -51,6 +53,10 @@ type Correction = {
 const CORRECTIONS: Correction[] = [];
 
 export default async function CorrectionsPage() {
+  // 2026-09-02: §10 の訂正ログ（correction_log）はここで公開する。9/2 に path_template の
+  // 訂正 12 件が入ったのに、この頁は手書きの定数だけを見て「0 件」と言っていた。
+  const rows: CorrectionRow[] = await listCorrections({ limit: 500 }).catch(() => []);
+  const names = await getEndpointNames(rows.filter((r) => r.subject_type === "endpoint").map((r) => r.subject_id)).catch(() => new Map<string, string>());
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   const breadcrumb = breadcrumbJsonLd([
     { name: "Home", path: "/" },
@@ -108,7 +114,57 @@ export default async function CorrectionsPage() {
           <span>Issued corrections</span>
         </h2>
 
-        {CORRECTIONS.length === 0 ? (
+        {rows.length > 0 && (
+          <>
+            <p className="doc-p">
+              {rows.length.toLocaleString()} machine-recorded correction{rows.length === 1 ? "" : "s"} to
+              published observatory verdicts (product spec §10). Newest first. The same rows are served
+              at <code>/api/v1/observatory/corrections</code>.
+            </p>
+            <div className="mt-4 overflow-x-auto">
+              <table className="fact-table">
+                <caption className="sr-only">Machine-recorded corrections, newest first</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Recorded (UTC)</th>
+                    <th scope="col">Subject</th>
+                    <th scope="col">Level</th>
+                    <th scope="col">Before → after</th>
+                    <th scope="col">Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => {
+                    const before = (r.before as { publishedVerdict?: string } | null)?.publishedVerdict ?? "—";
+                    const after = (r.after as { publishedVerdict?: string } | null)?.publishedVerdict ?? "—";
+                    const name = names.get(r.subject_id) ?? r.subject_id.slice(0, 8);
+                    return (
+                      <tr key={r.id}>
+                        <td className="whitespace-nowrap">{r.created_at.slice(0, 16).replace("T", " ")}</td>
+                        <td className="max-w-[24rem] truncate">
+                          {r.subject_type === "endpoint" ? (
+                            <Link href={`/observatory/e/${r.subject_id}`} className="underline" title={name}>
+                              {name}
+                            </Link>
+                          ) : (
+                            name
+                          )}
+                        </td>
+                        <td>{r.level}</td>
+                        <td className="whitespace-nowrap">
+                          {before} → {after}
+                        </td>
+                        <td>{r.reason}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {CORRECTIONS.length === 0 && rows.length === 0 ? (
           <div className="dashbox mt-6 max-w-[64ch]">
             <p className="doc-caption">Empty log</p>
             <p className="mt-3 text-brand">No corrections have been issued yet.</p>

@@ -637,7 +637,8 @@ export default async function Home() {
                 {coverage && coverage.pct !== null
                   ? ` — ${coverage.pct}% of ${coverage.activeEndpoints.toLocaleString()} active endpoints carry a probe from the last 7 days`
                   : ""}
-                . No purchase is attached to the public table.
+                . The table shows L0 (payment-wall check) and L1 (real purchases that returned
+                an on-chain receipt) in separate cells; they are never mixed.
               </>
             }
             action={{
