@@ -1200,6 +1200,55 @@ paths:
         "429": { description: Rate limited }
         "503": { description: Store unavailable }
 
+  /api/v1/observatory/endpoints/{id}/subscribe:
+    post:
+      operationId: subscribeEndpointRecord
+      tags: [Observatory]
+      summary: Leave an email against one endpoint record — change notice or dispute
+      description: |
+        Browser form target for the endpoint record page (stage 2 "take the name",
+        2026-09-02). `kind=notify` sends one email when the record's PUBLISHED
+        verdict changes; `kind=dispute` records a reader's objection (20–2,000
+        characters) and forwards it to support. The same email asking the same
+        thing about the same record is one row (upsert). Key-less; 5 per hour per IP.
+        `website` is a honeypot and must be empty.
+      security: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, kind]
+              properties:
+                email: { type: string, format: email }
+                kind: { type: string, enum: [notify, dispute] }
+                reason: { type: string, minLength: 20, maxLength: 2000 }
+                website: { type: string, description: Honeypot — leave empty. }
+      responses:
+        "201":
+          description: Recorded. `receipt` is the first 8 characters of the row id.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, receipt, kind, verdictAtSubmission, note]
+                properties:
+                  ok: { type: boolean }
+                  receipt: { type: string }
+                  kind: { type: string, enum: [notify, dispute] }
+                  verdictAtSubmission: { type: string, enum: [pass, fail, unverified] }
+                  note: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { description: Unknown endpoint id }
+        "429": { description: Rate limited }
+        "503": { description: Store unavailable }
+
   /api/v1/observatory/backtest:
     get:
       operationId: getSpendGuardBacktest
@@ -3360,6 +3409,14 @@ components:
             always use `invalid_request`.
           enum:
             - invalid_request
+            - subscribe_unavailable
+            - db_unavailable
+            - honeypot
+            - invalid_email
+            - invalid_endpoint
+            - invalid_kind
+            - reason_length
+            - reason_required
             - invalid_agent_id
             - invalid_wallet_address
             - invalid_tx_hash

@@ -156,7 +156,7 @@ export default async function ImpactPage() {
                             <code title={r.txHash}>{short}</code>
                           )}
                         </td>
-                        <td className="num">{r.amountUnits ? usd(r.amountUnits) : "—"}</td>
+                        <td className="num">{formatUsdcUnits(r.amountUnits)}</td>
                       </tr>
                     );
                   })}

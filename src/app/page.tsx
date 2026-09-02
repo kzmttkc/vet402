@@ -801,7 +801,17 @@ export default async function Home() {
               >
                 Agentic Payments from the Ground Up
               </a>
-              , July 2026; Artemis Analytics on-chain data as of April 21, 2026. The split between
+              , July 2026 (
+              <a
+                href="https://web.archive.org/web/20260728161825/https://www.visa.com/en-us/thought-leadership/innovation/agentic-payments-from-the-ground-up"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="doc-link"
+              >
+                archived copy
+              </a>
+              ; the live page has returned HTTP 500 since at least 2026-09-02); Artemis Analytics
+              on-chain data as of April 21, 2026. The split between
               self-dealing and wash trading inside that excluded share is not published, so this
               page does not state one.
             </dd>

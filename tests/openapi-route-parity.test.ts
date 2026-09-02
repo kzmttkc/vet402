@@ -58,10 +58,6 @@ const ALLOWLIST = new Set([
   "/api/signup", // dashboard signup, not a public data endpoint
   "/api/{unmatched}", // the 404 catch-all ([...unmatched]), not an endpoint
   "/api/v1/guarantee/quote", // DORMANT — must stay undiscoverable until enabled
-  // 2026-09-02 段 2: /observatory/e/[id] の通知・異議フォームの送信先（ブラウザ専用、
-  // キー不要）。docs/openapi.yaml は同日の契約漂流の是正（別ブランチ）が持つので、
-  // そちらで文書化するまでの暫定。文書化したらこの行を消す。
-  "/api/v1/observatory/endpoints/{id}/subscribe",
 ]);
 
 test("every public API route is documented in openapi.yaml", () => {
