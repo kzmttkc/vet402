@@ -7,8 +7,10 @@ import {
   getObservatoryStats,
 } from "@/lib/observatory/reader";
 import { computeSpendGuardBacktest } from "@/lib/observatory/backtest";
-import { getDecisionFeed } from "@/lib/observatory/decisions";
+import { getDecisionFeed, getLatestSettledReceipts } from "@/lib/observatory/decisions";
 import { getAnchors } from "@/lib/observatory/anchors";
+import { explorerTxUrl } from "@/lib/observatory/chains";
+import { TableScroll } from "@/components/site/TableScroll";
 
 /**
  * /impact — 公共財としての貢献を1ページで（SPEC20 A9・GTM Month1）。
@@ -29,12 +31,13 @@ export const revalidate = 900;
 
 
 export default async function ImpactPage() {
-  const [stats, coverage, backtest, decisions, anchors] = await Promise.all([
+  const [stats, coverage, backtest, decisions, anchors, receipts] = await Promise.all([
     getObservatoryStats(),
     getCoverageShare(),
     computeSpendGuardBacktest().catch(() => null),
     getDecisionFeed(30).catch(() => null),
     getAnchors(1).catch(() => []),
+    getLatestSettledReceipts(5).catch(() => []),
   ]);
   const latestAnchor = anchors[0] ?? null;
 
@@ -111,6 +114,57 @@ export default async function ImpactPage() {
             export.csv
           </Link>
         </p>
+        {/* 2026-09-02 監査 F4: このページに tx ハッシュが 0 本だった。「受領証がある」が
+            主張なら、受領証そのものへ 1 クリックで着けなければならない。既存の数字の
+            出所は変えず、直近 5 件を本文に載せる。 */}
+        {receipts.length > 0 && (
+          <>
+            <p className="doc-caption mt-6">Latest settled receipts</p>
+            <TableScroll label="Latest settled receipts, newest first">
+              <table className="fact-table">
+                <caption className="sr-only">Latest settled receipts, newest first</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Attempted (UTC)</th>
+                    <th scope="col">Endpoint</th>
+                    <th scope="col">Receipt (tx)</th>
+                    <th scope="col" className="num">
+                      Amount
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {receipts.map((r) => {
+                    const url = explorerTxUrl(r.network, r.txHash);
+                    const short = `${r.txHash.slice(0, 10)}…${r.txHash.slice(-4)}`;
+                    return (
+                      <tr key={`${r.endpointId}-${r.txHash}`}>
+                        <td className="whitespace-nowrap text-brand-lift">
+                          {r.at.slice(0, 16).replace("T", " ")}
+                        </td>
+                        <td className="break-all">
+                          <Link href={`/observatory/e/${r.endpointId}`} className="underline">
+                            {r.resourceKey}
+                          </Link>
+                        </td>
+                        <td className="whitespace-nowrap">
+                          {url ? (
+                            <a href={url} className="underline" rel="noopener noreferrer">
+                              <code>{short}</code>
+                            </a>
+                          ) : (
+                            <code title={r.txHash}>{short}</code>
+                          )}
+                        </td>
+                        <td className="num">{r.amountUnits ? usd(r.amountUnits) : "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </TableScroll>
+          </>
+        )}
 
         {decisions && (
           <>

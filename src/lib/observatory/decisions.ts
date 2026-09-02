@@ -44,6 +44,8 @@ const STATUS_TO_DECISION: Record<string, string> = {
 
 export type DecisionRow = {
   at: string;
+  /** x402_endpoints.id — the record page is /observatory/e/{endpointId}. */
+  endpointId: string;
   resourceKey: string;
   network: string | null;
   decision: string;
@@ -71,7 +73,7 @@ export async function getDecisionFeed(days: number, limit = 200): Promise<Decisi
 
   const raw = await db.execute(sql`
     SELECT to_char(pu.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS at,
-           e.resource_key, e.network, pu.status, pu.amount_units,
+           e.id AS endpoint_id, e.resource_key, e.network, pu.status, pu.amount_units,
            coalesce(pu.spent_units, '0') AS spent_units, pu.tx_hash
     FROM x402_l1_purchases pu
     JOIN x402_endpoints e ON e.id = pu.endpoint_id
@@ -86,6 +88,7 @@ export async function getDecisionFeed(days: number, limit = 200): Promise<Decisi
   >[];
   const feed = rows.map((r) => ({
     at: String(r.at),
+    endpointId: String(r.endpoint_id),
     resourceKey: String(r.resource_key),
     network: r.network === null ? null : String(r.network),
     decision: STATUS_TO_DECISION[String(r.status)] ?? "unknown",
@@ -100,4 +103,46 @@ export async function getDecisionFeed(days: number, limit = 200): Promise<Decisi
     paidNoReceipt: feed.filter((r) => r.decision === "paid_delivered_no_receipt").length,
   };
   return { rows: feed, totals, definition: DECISION_DEFINITION };
+}
+
+export type SettledReceipt = {
+  at: string;
+  endpointId: string;
+  resourceKey: string;
+  network: string | null;
+  amountUnits: string | null;
+  txHash: string;
+};
+
+/**
+ * 直近の決済済み受領証（2026-09-02 監査 F4: /impact に tx ハッシュが 0 本だった）。
+ * `settled` = 我々がオンチェーンで確認したもの（2026-08-23 定義）。tx_hash の無い行は
+ * 受領証ではないので除く。
+ */
+export async function getLatestSettledReceipts(limit = 5): Promise<SettledReceipt[]> {
+  const cap = Math.min(Math.max(Math.trunc(limit) || 0, 1), 50);
+  const db = getDb();
+  if (!db) return [];
+  const raw = await db.execute(sql`
+    SELECT to_char(pu.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS at,
+           e.id AS endpoint_id, e.resource_key, coalesce(pu.network, e.network) AS network,
+           pu.amount_units, pu.tx_hash
+    FROM x402_l1_purchases pu
+    JOIN x402_endpoints e ON e.id = pu.endpoint_id
+    WHERE pu.status = 'settled' AND pu.tx_hash IS NOT NULL
+    ORDER BY pu.attempted_at DESC
+    LIMIT ${cap}
+  `);
+  const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as Record<
+    string,
+    unknown
+  >[];
+  return rows.map((r) => ({
+    at: String(r.at),
+    endpointId: String(r.endpoint_id),
+    resourceKey: String(r.resource_key),
+    network: r.network === null ? null : String(r.network),
+    amountUnits: r.amount_units === null ? null : String(r.amount_units),
+    txHash: String(r.tx_hash),
+  }));
 }

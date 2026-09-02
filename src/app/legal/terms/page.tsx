@@ -309,6 +309,20 @@ export default async function TermsPage() {
               tell you what we concluded, and if we got a fact wrong we will fix it and re-score.
             </li>
           </ul>
+          {/* 2026-09-02: endpoint 記録（L0–L2）への異議の経路。上の 2 経路は score 用。 */}
+          <p>
+            <strong>Endpoint records are separate from scores</strong> and have their own route:
+            every record page under{" "}
+            <code className="text-brand-deep">/observatory/e/</code> ends with a{" "}
+            <em>Dispute this record</em> form. Send your email address and what you believe is wrong
+            (20–2,000 characters); you receive a receipt number, and one person reads it and tells
+            you what we concluded. Records are never deleted on dispute. If the measurement was
+            wrong, the correction is published with the same weight as the record; if it was right,
+            the record stands and we say so. If you control the endpoint&apos;s receiving address,
+            you can also sign the dispute (
+            <code className="text-brand-deep">POST /api/v1/observatory/disputes</code>), which
+            triggers a re-measurement through the normal publication gate.
+          </p>
           <p>
             If you intend to bring a claim about a score, please use one of those routes first and
             give us 30 days. This is not a waiver of any right and it does not stop any clock that

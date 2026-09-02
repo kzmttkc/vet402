@@ -1077,3 +1077,32 @@ export const waitlistEntries = pgTable(
   },
   (t) => [uniqueIndex("waitlist_email_interest_unique").on(t.email, t.interest)],
 );
+
+/**
+ * 段 2「名前を取る」（2026-09-02 敵対的監査 F6 / F7）。endpoint 記録頁で、判定変更の
+ * 通知（kind=notify）と記録への異議（kind=dispute）の email を受け取る。
+ * 同一 email × endpoint × kind は 1 行（upsert）。IP は sha256 の先頭 32 桁のみ。
+ * `last_verdict` は登録時点の公開判定で、notify-subscribers cron が現在値と比べる。
+ * SQL: scripts/sql/2026-09-02-record-subscriptions.sql
+ */
+export const recordSubscriptions = pgTable(
+  "record_subscriptions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    endpointId: uuid("endpoint_id").notNull(),
+    email: text("email").notNull(),
+    /** notify | dispute */
+    kind: text("kind").notNull(),
+    /** dispute のみ必須（20〜2,000 字）。notify は null。 */
+    reason: text("reason"),
+    /** pass | fail | unverified — 登録（最終通知）時点の公開判定。 */
+    lastVerdict: text("last_verdict").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+    ipHash: text("ip_hash"),
+  },
+  (t) => [
+    uniqueIndex("record_subscriptions_endpoint_email_kind_unique").on(t.endpointId, t.email, t.kind),
+    index("record_subscriptions_kind_idx").on(t.kind),
+  ],
+);
