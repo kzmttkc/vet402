@@ -46,7 +46,6 @@ import {
 } from "./x402-payer";
 import { logServerError } from "@/lib/util/log";
 import { isWellFormedSettlementTx } from "@/lib/validation/settlement-tx";
-import { fireL1RegistryHook, fireL2RegistryHook } from "@/lib/chain/registry-hook";
 import { Keypair } from "@solana/web3.js";
 import {
   SOLANA_MAINNET_CAIP2,
@@ -594,7 +593,6 @@ export async function runL1Batch(
     isPriority: r.is_priority === true,
   }));
 
-  const pendingHooks: Promise<void>[] = [];
   for (const [index, candidate] of candidates.entries()) {
     // Start nothing we cannot finish inside maxDuration. Purchases already in
     // flight are never interrupted — the whole point is that a signed
@@ -611,7 +609,7 @@ export async function runL1Batch(
       continue;
     }
     try {
-      const outcome = await purchaseOne({ candidate, account, solanaKeypair, getSolanaBlockhash, fetchImpl, timeoutMs, db, spentToday, pendingHooks });
+      const outcome = await purchaseOne({ candidate, account, solanaKeypair, getSolanaBlockhash, fetchImpl, timeoutMs, db, spentToday });
       spentToday += outcome.spent;
       summary.spentUnitsTotal = String(BigInt(summary.spentUnitsTotal) + outcome.spent);
       if (outcome.kind === "attempted") {
@@ -632,10 +630,6 @@ export async function runL1Batch(
     }
   }
 
-  // レジストリ書き込みを回収してから返す。allSettled なので、ここで
-  // 何が失敗しても summary（購入の事実）は変わらない。
-  await Promise.allSettled(pendingHooks);
-
   return summary;
 }
 
@@ -648,8 +642,6 @@ async function purchaseOne(input: {
   timeoutMs: number;
   db: NonNullable<ReturnType<typeof getDb>>;
   spentToday: bigint;
-  /** バッチ末尾で待つレジストリ書き込み（registry-hook）。 */
-  pendingHooks: Promise<void>[];
 }): Promise<{
   kind: "attempted" | "skipped" | "budget_denied";
   settled: boolean;
@@ -657,7 +649,7 @@ async function purchaseOne(input: {
   /** 台帳に書いた status（attempted のときのみ）——summary の集計はこれを見る。 */
   status?: string;
 }> {
-  const { candidate, account, solanaKeypair, getSolanaBlockhash, fetchImpl, timeoutMs, db, spentToday, pendingHooks } = input;
+  const { candidate, account, solanaKeypair, getSolanaBlockhash, fetchImpl, timeoutMs, db, spentToday } = input;
   const method = (candidate.method ?? "GET").toUpperCase();
   const startedAt = Date.now();
   const isSolana = candidate.network === SOLANA_MAINNET_CAIP2;
@@ -1020,31 +1012,10 @@ async function purchaseOne(input: {
   // delivery_verified の判定規則（isDeliveryVerified）は共有していて、
   // 遡及行と実時間行が食い違わないようにしてある。
 
-  // ERC-8004 への公開（C4）。フラグOFF既定・graceful——購入の記帳には
-  // 何があっても影響しない（registry-hook.ts 冒頭）。バッチ末尾で待てるよう
-  // Promise を集める: fire-and-forget のままだと Vercel が応答後に関数を
-  // 凍結するので、最後の候補の書き込みだけが静かに消える。
-  pendingHooks.push(
-    fireL1RegistryHook({
-      endpointId: candidate.id,
-      payTo: accept.payTo,
-      settled,
-      txHash: settlement?.transaction ?? null,
-      network: accept.network,
-    }),
-  );
-  // §11: L2 が conform / mismatch で確定したときも書く（undeclared・未検査は書かない）。
-  if (settled && (l2Schema === "match" || l2Schema === "mismatch")) {
-    pendingHooks.push(
-      fireL2RegistryHook({
-        endpointId: candidate.id,
-        payTo: accept.payTo,
-        l2: l2Schema === "match" ? "conform" : "mismatch",
-        txHash: settlement?.transaction ?? null,
-        network: accept.network,
-      }),
-    );
-  }
+  // ERC-8004 への公開（C4）は**ここでは呼ばない**（2026-09-02 監査 P1-7）。
+  // この時点の `settled` は売り手の自己申告で、オンチェーンに書く verdict には
+  // なれない。発火点は settlement-verifier（チェーンで settled / refuted が
+  // 確定した後）。
 
   return { kind: "attempted", settled, spent: amount, status };
 }

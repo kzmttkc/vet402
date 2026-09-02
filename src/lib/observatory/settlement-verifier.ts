@@ -25,6 +25,7 @@ import { verifyL1Settlement } from "./settlement-verify";
 import { isDeliveryVerified } from "./l1-runner";
 import { ingestL1 } from "@/lib/settlements/ingest-l1";
 import { recordCorrection } from "./corrections";
+import { fireL1RegistryHook, fireL2RegistryHook } from "@/lib/chain/registry-hook";
 
 /**
  * 一時的な失敗（RPCが答えない・確定数が足りない・まだ見つからない）は
@@ -48,12 +49,36 @@ export type VerifySettlementsSummary = {
   deadlineHit: boolean;
 };
 
+/**
+ * 差し替え点（テスト用）。チェーン照合（viem）と Registry hook 本体を注入できる。
+ * 本番は既定のまま。
+ */
+export type SettlementVerifierDeps = {
+  verify?: typeof verifyL1Settlement;
+  registryHooks?: {
+    l1: typeof fireL1RegistryHook;
+    l2: typeof fireL2RegistryHook;
+  };
+};
+
 export async function runSettlementVerification(options?: {
   limit?: number;
   budgetMs?: number;
+  deps?: SettlementVerifierDeps;
 }): Promise<VerifySettlementsSummary> {
   const limit = options?.limit ?? 200;
   const deadline = createDeadline(options?.budgetMs ?? 240_000);
+  const verify = options?.deps?.verify ?? verifyL1Settlement;
+  const hooks = options?.deps?.registryHooks ?? { l1: fireL1RegistryHook, l2: fireL2RegistryHook };
+  // 2026-09-02 監査 P1-7: ERC-8004 Validation Registry の発火点はここ——
+  // オンチェーンで settled / refuted が**確定した後**だけ。以前は l1-runner が
+  // 購入直後に売り手の自己申告（success:true）を verdict にして呼んでいた。
+  // hook は絶対に投げない設計（registry-hook.ts）だが、注入された偽物が投げても
+  // 照合の結果は変えない。Vercel は応答後に関数を凍結するので、末尾でまとめて待つ。
+  const pendingHooks: Promise<void>[] = [];
+  const fireHook = (p: Promise<void>) => {
+    pendingHooks.push(p.catch((error) => logServerError("settlement-verifier.registry_hook", error)));
+  };
   const summary: VerifySettlementsSummary = {
     scanned: 0,
     verified: 0,
@@ -114,7 +139,7 @@ export async function runSettlementVerification(options?: {
       continue;
     }
 
-    const result = await verifyL1Settlement({
+    const result = await verify({
       txHash: row.tx_hash,
       network: row.network,
       expectedPayTo: row.pay_to,
@@ -152,6 +177,24 @@ export async function runSettlementVerification(options?: {
         await ingestL1({ onlyPurchaseRowId: row.id });
       } catch (error) {
         logServerError("settlement-verifier.ingest-l1", error);
+      }
+
+      // ERC-8004 Validation Registry（フラグOFF既定・graceful）。書けるのはここで
+      // 確定した settled だけ。L2 は conform / mismatch が確定しているときだけ
+      // （未検査・宣言なしは書かない）。
+      fireHook(
+        hooks.l1({ endpointId: row.endpoint_id, payTo: row.pay_to, settled: true, txHash: row.tx_hash, network: row.network }),
+      );
+      if (row.l2_schema === "match" || row.l2_schema === "mismatch") {
+        fireHook(
+          hooks.l2({
+            endpointId: row.endpoint_id,
+            payTo: row.pay_to,
+            l2: row.l2_schema === "match" ? "conform" : "mismatch",
+            txHash: row.tx_hash,
+            network: row.network,
+          }),
+        );
       }
 
       // スコア証拠はここでだけ書く。delivery_verified の規則はランナーと共有。
@@ -209,7 +252,14 @@ export async function runSettlementVerification(options?: {
       after: { status: "settle_claim_refuted", reason: result.reason },
       reason: "settlement_backfill",
     }).catch(logAndSwallow("settlement-verifier.record_correction.refuted"));
+    // 否定もオンチェーンの事実（fail）。L2 は決済が確定していないので書かない。
+    fireHook(
+      hooks.l1({ endpointId: row.endpoint_id, payTo: row.pay_to, settled: false, txHash: row.tx_hash, network: row.network }),
+    );
   }
+
+  // Registry 書き込みを回収してから返す。何が失敗しても summary は変わらない。
+  await Promise.allSettled(pendingHooks);
 
   return summary;
 }
