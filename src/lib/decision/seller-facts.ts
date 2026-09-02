@@ -20,7 +20,7 @@ import { purchaseId as toPurchaseId } from "@/lib/ids/canonical";
 import { toCaip2 } from "@/lib/observatory/chains";
 import { getSettlementCounts } from "@/lib/settlements/census";
 import { rowsOf } from "@/lib/settlements/upsert";
-import type { Dialect, L2Status, OfferStability, SellerFacts } from "./types";
+import type { Dialect, Evidence, L2Status, OfferStability, SellerFacts } from "./types";
 
 export type ProbeInput = {
   probedAt: string;
@@ -41,6 +41,8 @@ export type PurchaseInput = {
   l2Schema: string | null;
   txHash: string | null;
   network: string | null;
+  /** §6.3: l1-runner が raw_response_meta.l2 に残す判定材料（2026-09-02 以降の行だけ持つ）。 */
+  l2Detail?: { missing: string[]; declarationHash: string | null; responseHash: string } | null;
 };
 
 export type SellerFactsInput = {
@@ -114,17 +116,26 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
   const declared = input.declaredSchema !== null && input.declaredSchema !== undefined;
   let l2Status: L2Status = "undeclared";
   let l2ObservedAt: string | null = null;
+  let l2Detail: PurchaseInput["l2Detail"] = null;
   if (declared) {
     const lastDelivered = delivered[0] ?? null;
     if (lastDelivered) {
       l2ObservedAt = lastDelivered.attemptedAt;
       if (lastDelivered.l2Schema === "match") l2Status = "conform";
       else if (lastDelivered.l2Schema === "mismatch") l2Status = "mismatch";
+      l2Detail = lastDelivered.l2Detail ?? null;
     }
   }
-  const declarationHash = declared
-    ? createHash("sha256").update(JSON.stringify(input.declaredSchema), "utf8").digest("hex")
-    : null;
+  const sha256 = (v: string) => createHash("sha256").update(v, "utf8").digest("hex");
+  const declarationHash = declared ? sha256(JSON.stringify(input.declaredSchema)) : null;
+  // §6.3: response_hash は conform でも出す。diff_hash / missing_keys は mismatch のときだけ。
+  // 詳細の無い旧行はハッシュを捏造しない（null）。
+  const responseHash = l2Status !== "undeclared" && l2Detail ? l2Detail.responseHash : null;
+  const missingKeys = l2Status === "mismatch" && l2Detail ? [...l2Detail.missing].sort() : null;
+  const diffHash =
+    l2Status === "mismatch" && l2Detail
+      ? sha256(JSON.stringify({ declaration_hash: declarationHash, response_hash: l2Detail.responseHash, missing: missingKeys }))
+      : null;
 
   const within = (days: number) => {
     const cutoff = Date.now() - days * 86_400_000;
@@ -154,7 +165,14 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
           : null,
       observed_at: signed[0]?.attemptedAt ?? null,
     },
-    l2: { status: l2Status, declaration_hash: declarationHash, diff_hash: null, observed_at: l2ObservedAt },
+    l2: {
+      status: l2Status,
+      declaration_hash: declarationHash,
+      response_hash: responseHash,
+      diff_hash: diffHash,
+      missing_keys: missingKeys,
+      observed_at: l2ObservedAt,
+    },
     availability_7d: availability(within(7)),
     availability_30d: availability(within(30)),
     offer_stability: offerStabilityOf(probes),
@@ -164,6 +182,23 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
     settlement_30d_test: test,
     unique_payers_30d_real: uniquePayersReal,
     wash_dominated: thirdPartyRaw >= WASH_DOMINATED_MIN_RAW && real <= thirdPartyRaw * WASH_DOMINATED_REAL_SHARE,
+  };
+}
+
+/**
+ * L2 の evidence（§6.3 / 2026-09-02 監査 P1-11）。conform / mismatch のときだけ。
+ * 宣言・応答・差分のハッシュを載せる——第三者が同じ宣言・同じ本文から再計算できる。
+ */
+export function l2EvidenceOf(facts: SellerFacts, observatoryId: string): Evidence | null {
+  if (facts.l2.status === "undeclared") return null;
+  return {
+    level: "L2",
+    ...(facts.l1.last_purchase_id ? { purchase_id: facts.l1.last_purchase_id } : {}),
+    url: `https://vet402.com/observatory/e/${observatoryId}`,
+    declaration_hash: facts.l2.declaration_hash,
+    response_hash: facts.l2.response_hash,
+    diff_hash: facts.l2.diff_hash,
+    missing_keys: facts.l2.missing_keys,
   };
 }
 
@@ -180,6 +215,18 @@ export type SellerFactsLoaded = {
     payeeId: string | null;
   };
 };
+
+/** raw_response_meta.l2（l1-runner の checkL2Detailed の出力）。形が違えば null。 */
+function parseL2Detail(v: unknown): PurchaseInput["l2Detail"] {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.responseHash !== "string") return null;
+  return {
+    missing: Array.isArray(o.missing) ? o.missing.filter((k): k is string => typeof k === "string") : [],
+    declarationHash: typeof o.declarationHash === "string" ? o.declarationHash : null,
+    responseHash: o.responseHash,
+  };
+}
 
 /** endpoint uuid から 30 日分の事実を組む。無ければ null。 */
 export async function loadSellerFacts(endpointUuid: string): Promise<SellerFactsLoaded | null> {
@@ -226,7 +273,8 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
 
   const purchases = rowsOf<Record<string, unknown>>(
     await db.execute(sql`
-      SELECT attempted_at::text AS attempted_at, status, latency_ms, http_status_paid, payload_non_empty, l2_schema, tx_hash, network
+      SELECT attempted_at::text AS attempted_at, status, latency_ms, http_status_paid, payload_non_empty, l2_schema, tx_hash, network,
+             raw_response_meta->'l2' AS l2_detail
       FROM x402_l1_purchases WHERE endpoint_id = ${endpointUuid}::uuid AND attempted_at > now() - interval '30 days'
       ORDER BY attempted_at DESC LIMIT 200
     `),
@@ -239,6 +287,7 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     l2Schema: r.l2_schema === null ? null : String(r.l2_schema),
     txHash: r.tx_hash === null ? null : String(r.tx_hash),
     network: r.network === null ? null : String(r.network),
+    l2Detail: parseL2Detail(r.l2_detail),
   }));
 
   const settlements30d = await getSettlementCounts({ endpointId: endpointUuid });

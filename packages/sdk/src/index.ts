@@ -294,7 +294,14 @@ export type SellerFacts = {
     last_purchase_id: string | null;
     observed_at: string | null;
   };
-  l2: { status: L2Status; declaration_hash: string | null; diff_hash: string | null; observed_at: string | null };
+  l2: {
+    status: L2Status;
+    declaration_hash: string | null;
+    response_hash: string | null;
+    diff_hash: string | null;
+    missing_keys: string[] | null;
+    observed_at: string | null;
+  };
   availability_7d: number | null;
   availability_30d: number | null;
   offer_stability: OfferStability;

@@ -85,3 +85,49 @@ test("wash_dominated の分母は第三者の raw——自社の測定購入（t
   const g = assembleSellerFacts({ ...base, settlements30d: { raw: 25, real: 1, test: 5, uniquePayersReal: 1 } });
   assert.equal(g.wash_dominated, true); // 第三者 raw 20・real 1
 });
+
+// 2026-09-02 監査 P1-11: L2 mismatch の公開に宣言ハッシュ・応答ハッシュ・差分ハッシュを付ける
+// （diff_hash が null 固定だった）。生の有料コンテンツは出さない——ハッシュと欠落キーだけ。
+test("L2 mismatch: response_hash と diff_hash（欠落キーの機械可読差分の sha256）を出す", async () => {
+  const { createHash } = await import("node:crypto");
+  const detail = { missing: ["result", "id"], declarationHash: "d".repeat(64), responseHash: "r".repeat(64) };
+  const f = assembleSellerFacts({ ...base, purchases: [{ ...purchases[0], l2Schema: "mismatch", l2Detail: detail }] });
+  assert.equal(f.l2.status, "mismatch");
+  assert.equal(f.l2.response_hash, "r".repeat(64));
+  const expected = createHash("sha256")
+    .update(JSON.stringify({ declaration_hash: f.l2.declaration_hash, response_hash: "r".repeat(64), missing: ["id", "result"] }), "utf8")
+    .digest("hex");
+  assert.equal(f.l2.diff_hash, expected, "diff_hash は {declaration_hash, response_hash, missing(ソート済)} の sha256");
+  assert.deepEqual(f.l2.missing_keys, ["id", "result"]);
+});
+
+test("L2 conform: response_hash は出すが diff_hash は null（差分が無い）。detail 無し・宣言無しは全部 null", () => {
+  const detail = { missing: [], declarationHash: "d".repeat(64), responseHash: "r".repeat(64) };
+  const ok = assembleSellerFacts({ ...base, purchases: [{ ...purchases[0], l2Schema: "match", l2Detail: detail }] });
+  assert.equal(ok.l2.status, "conform");
+  assert.equal(ok.l2.response_hash, "r".repeat(64));
+  assert.equal(ok.l2.diff_hash, null);
+  assert.equal(ok.l2.missing_keys, null);
+  const legacy = assembleSellerFacts({ ...base, purchases: [{ ...purchases[0], l2Schema: "mismatch" }] });
+  assert.equal(legacy.l2.status, "mismatch");
+  assert.equal(legacy.l2.response_hash, null, "詳細の無い旧行はハッシュを捏造しない");
+  assert.equal(legacy.l2.diff_hash, null);
+  const none = assembleSellerFacts({ ...base, declaredSchema: null, purchases: [{ ...purchases[0], l2Schema: "match", l2Detail: detail }] });
+  assert.equal(none.l2.response_hash, null);
+});
+
+test("l2EvidenceOf: conform / mismatch のとき L2 evidence にハッシュを載せる。undeclared は null", async () => {
+  const { l2EvidenceOf } = await import("@/lib/decision/seller-facts");
+  const detail = { missing: ["result"], declarationHash: "d".repeat(64), responseHash: "r".repeat(64) };
+  const mis = assembleSellerFacts({ ...base, purchases: [{ ...purchases[0], l2Schema: "mismatch", l2Detail: detail }] });
+  const ev = l2EvidenceOf(mis, "ep-1");
+  assert.ok(ev);
+  assert.equal(ev.level, "L2");
+  assert.equal(ev.url, "https://vet402.com/observatory/e/ep-1");
+  assert.equal(ev.purchase_id, "eip155:8453:0x1");
+  assert.equal(ev.declaration_hash, mis.l2.declaration_hash);
+  assert.equal(ev.response_hash, "r".repeat(64));
+  assert.equal(ev.diff_hash, mis.l2.diff_hash);
+  assert.deepEqual(ev.missing_keys, ["result"]);
+  assert.equal(l2EvidenceOf(assembleSellerFacts({ ...base, declaredSchema: null }), "ep-1"), null);
+});
