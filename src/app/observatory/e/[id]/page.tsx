@@ -9,6 +9,7 @@ import { TableScroll } from "@/components/site/TableScroll";
 import CodeBlock from "@/components/docs/CodeBlock";
 import { SITE_URL } from "@/lib/site-url";
 import { getEndpointDetail } from "@/lib/observatory/reader";
+import { VerdictWord, ProbeTimeline, SettleGauge, type L0Verdict } from "@/components/site/Figures";
 
 /**
  * /observatory/e/[id] — one endpoint's full fact history (design §5).
@@ -116,8 +117,8 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
           <div className="doc-head-col">
             <span>Independent Measurement</span>
             <span>Endpoint record (L0 · L1)</span>
-            <span>
-              Published state: <span className="text-signal">{publishedVerdict}</span>
+            <span className="inline-flex items-center gap-1.5">
+              Published state: <VerdictWord verdict={publishedVerdict as L0Verdict} />
             </span>
             {/* 2026-09-02 UX 監査: 「毎日プローブ」と読まれないよう、この記録の鮮度を
                 doc-head で明示する。日付は UTC、日数は表示時点との差。 */}
@@ -212,6 +213,21 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
         {probes.length === 0 ? (
           <p className="doc-p text-brand-lift">No probes recorded yet.</p>
         ) : (
+          <>
+          {/* 2026-09-02 UI/UX 監査（続）: 表の前に時間軸を 1 本。いつ・何回・どの判定かが
+              読む前に見える。「毎日測っていない」も隠れない。 */}
+          <ProbeTimeline
+            n={1}
+            probes={probes
+              .filter((p): p is typeof p & { probedAt: Date } => p.probedAt !== null)
+              .map((p) => ({ at: p.probedAt, verdict: (p.verdict === "pass" || p.verdict === "fail" ? p.verdict : "unverified") as L0Verdict }))}
+            caption={
+              <>
+                Probe timeline, last {probes.length} probe{probes.length === 1 ? "" : "s"} for this endpoint (UTC). Filled = pass,
+                crossed = fail, dashed = unverified. Same-day probes overlap.
+              </>
+            }
+          />
           <TableScroll label="L0 probe history, newest first">
             <table className="fact-table">
               <caption className="sr-only">L0 probe history, newest first</caption>
@@ -234,7 +250,13 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
                   <tr key={i}>
                     <td className="whitespace-nowrap">{fmt(p.probedAt)}</td>
                     <td>{p.method}</td>
-                    <td>{p.verdict}</td>
+                    <td>
+                      {p.verdict === "pass" || p.verdict === "fail" || p.verdict === "unverified" ? (
+                        <VerdictWord verdict={p.verdict} />
+                      ) : (
+                        p.verdict
+                      )}
+                    </td>
                     <td className="num">{p.httpStatus ?? "—"}</td>
                     <td className="num">{p.latencyMs === null ? "—" : `${p.latencyMs} ms`}</td>
                     <td>{p.failReason ?? "—"}</td>
@@ -243,6 +265,7 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
               </tbody>
             </table>
           </TableScroll>
+          </>
         )}
 
         <h2 className="sec-head">
@@ -259,6 +282,12 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
               {l1.settled} of {l1.attempts} paid attempts settled with a receipt. Each settled row
               carries its on-chain transaction hash — the receipt is the evidence.
             </p>
+            <SettleGauge
+              n={2}
+              settled={l1.settled}
+              attempts={l1.attempts}
+              caption={<>Settle-through: one cell per paid attempt. Filled = settled with an on-chain receipt, crossed = paid but no receipt.</>}
+            />
             <TableScroll label="L1 purchase history, newest first">
               <table className="fact-table">
                 <caption className="sr-only">L1 purchase history, newest first</caption>

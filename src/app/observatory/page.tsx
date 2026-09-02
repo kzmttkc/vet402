@@ -12,6 +12,7 @@ import {
   type ObservatoryQuery,
 } from "@/lib/observatory/query";
 import TrackView from "@/components/site/TrackView";
+import { VerdictShareBar, VerdictWord } from "@/components/site/Figures";
 
 /**
  * /observatory — the L0 fact table over the x402 catalog (design §5).
@@ -44,12 +45,6 @@ export const metadata: Metadata = pageMetadata({
 });
 
 export const revalidate = 600;
-
-function VerdictCell({ verdict }: { verdict: "pass" | "fail" | "unverified" }) {
-  if (verdict === "pass") return <span className="text-brand-deep">pass</span>;
-  if (verdict === "fail") return <span className="text-brand-deep font-semibold">fail</span>;
-  return <span className="text-brand-lift">unverified</span>;
-}
 
 function fmtDate(d: Date | null): string {
   return d ? d.toISOString().slice(0, 16).replace("T", " ") + " UTC" : "—";
@@ -246,23 +241,26 @@ export default async function ObservatoryPage({
           (pass / fail) first, then by observed call volume (catalog-reported, last 30 days).
           Page {page} of {totalPages}, {overview.pageSize} per page.
         </p>
+        {/* 2026-09-02 UI/UX 監査（続）: 「文字だらけで直感的でない」。件数チップを
+            判定の積み上げバー（Figure 1）にする。数字はそのまま、形が加わるだけ。
+            凡例がチップを兼ね、クリックで絞る。 */}
         {stats && (
-          <p className="doc-p flex flex-wrap gap-x-4 gap-y-1 text-[0.8125rem]">
-            {(["pass", "fail", "unverified"] as const).map((v) => {
-              const n = v === "pass" ? stats.publishedPass : v === "fail" ? stats.publishedFail : stats.publishedUnverified;
-              const active = query.verdict === v;
-              return (
-                <Link
-                  key={v}
-                  href={observatoryHref({ ...query, verdict: active ? null : v }, 1)}
-                  className={active ? "text-brand-deep font-semibold" : "text-brand-lift underline"}
-                  aria-current={active ? "true" : undefined}
-                >
-                  [{v} {n.toLocaleString()}]
-                </Link>
-              );
-            })}
-          </p>
+          <VerdictShareBar
+            n={1}
+            counts={{ pass: stats.publishedPass, fail: stats.publishedFail, unverified: stats.publishedUnverified }}
+            hrefs={{
+              pass: observatoryHref({ ...query, verdict: query.verdict === "pass" ? null : "pass" }, 1),
+              fail: observatoryHref({ ...query, verdict: query.verdict === "fail" ? null : "fail" }, 1),
+              unverified: observatoryHref({ ...query, verdict: query.verdict === "unverified" ? null : "unverified" }, 1),
+            }}
+            active={query.verdict ?? null}
+            caption={
+              <>
+                Published L0 verdict over all {stats.totalEndpoints.toLocaleString()} endpoints on record. Filled = pass,
+                crossed = fail (two consecutive failing probes), dashed = unverified. Select a segment to filter the table.
+              </>
+            }
+          />
         )}
 
         {overview.rows.length === 0 ? (
@@ -312,7 +310,7 @@ export default async function ObservatoryPage({
                       </Link>
                     </td>
                     <td>
-                      <VerdictCell verdict={row.publishedVerdict} />
+                      <VerdictWord verdict={row.publishedVerdict} />
                     </td>
                     <td className="whitespace-nowrap">{fmtDate(row.lastProbedAt)}</td>
                     <td className="whitespace-nowrap">{row.network ?? "—"}</td>

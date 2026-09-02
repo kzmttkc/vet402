@@ -11,7 +11,8 @@ import { buttonClass } from "@/components/ui/Button";
 import { SITE_URL } from "@/lib/site-url";
 import { organizationJsonLd, publisherOrg } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
-import { getCoverageShare } from "@/lib/observatory/reader";
+import { getCoverageShare, getObservatoryStats } from "@/lib/observatory/reader";
+import { FunnelFigure } from "@/components/site/Figures";
 
 /**
  * The front page is the memo.
@@ -101,6 +102,8 @@ export default async function Home() {
   // 2026-09-02 UX 監査: 「probed daily」は事実ではなかった（毎日なのはカタログ取得。
   // プローブはローリングで、7 日以内に測定済みは 37.6%）。§4 の文は実値で埋める。
   const coverage = await getCoverageShare().catch(() => null);
+  // 2026-09-02 UI/UX 監査（続）: §4 に図を 1 枚——登録 → L0 pass → L1 受領証あり。実数のみ。
+  const stats = await getObservatoryStats().catch(() => null);
   const organization = organizationJsonLd(
     "Independent verification of the x402 agent-payment economy. vet402 buys what x402 endpoints sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence.",
   );
@@ -601,6 +604,23 @@ export default async function Home() {
         <p className="doc-p">
           Everything in this section is running right now and can be checked without asking us.
         </p>
+        {stats && stats.totalEndpoints > 0 && (
+          <FunnelFigure
+            n={1}
+            stages={[
+              { label: "Catalog endpoints", n: stats.totalEndpoints, href: "/observatory" },
+              { label: "L0 pass (402 wall answers)", n: stats.publishedPass, href: "/observatory?verdict=pass" },
+              { label: "L1 settled with receipt", n: stats.l1.endpointsSettled, href: "/impact" },
+            ]}
+            caption={
+              <>
+                Endpoints at each level of evidence
+                {stats.latestSnapshot ? ` as of the ${stats.latestSnapshot.snapshotDate} catalog snapshot` : ""}. Bars are
+                proportional to the first row. L1 counts endpoints where at least one paid attempt returned an on-chain receipt.
+              </>
+            }
+          />
+        )}
 
         <div className="mt-6 divide-y divide-hair border-t border-brand-deep">
           <ItemRow

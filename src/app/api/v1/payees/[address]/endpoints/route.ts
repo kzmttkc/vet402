@@ -10,7 +10,7 @@ import { logServerError } from "@/lib/util/log";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-type RouteContext = { params: Promise<{ payeeId: string }> };
+type RouteContext = { params: Promise<{ address: string }> };
 
 export function normalizePayeeParam(raw: string): string | null {
   const v = decodeURIComponent(raw).trim();
@@ -23,7 +23,7 @@ export function normalizePayeeParam(raw: string): string | null {
 export async function GET(request: NextRequest, context: RouteContext) {
   const gate = await publicRateLimit(request, "payee-endpoints", 120);
   if (!gate.ok) return gate.response;
-  const { payeeId } = await context.params;
+  const { address: payeeId } = await context.params;
   const id = normalizePayeeParam(payeeId);
   if (!id) return NextResponse.json({ error: "invalid_payee_id" }, { status: 400, headers: gate.headers });
   try {

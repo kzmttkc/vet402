@@ -968,7 +968,7 @@ paths:
         "429": { description: Rate limited }
         "503": { description: Store unavailable }
 
-  /api/v1/payees/{payeeId}/endpoints:
+  /api/v1/payees/{address}/endpoints:
     get:
       operationId: listEndpointsByPayee
       tags: [Resolve]
@@ -980,7 +980,7 @@ paths:
       security: []
       parameters:
         - in: path
-          name: payeeId
+          name: address
           required: true
           schema: { type: string }
       responses:

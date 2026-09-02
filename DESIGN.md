@@ -19,3 +19,13 @@ Applies to: `/dashboard/*` including login.
 ## Visual direction
 
 Lettering and tokens live in `src/app/globals.css` and the self-hosted fonts. If you need a named Impeccable world, run `/impeccable init` against the shipped public artifact — do not invent a second brand from a prompt.
+
+## Figures (public world, 2026-09-02)
+
+The RFC world refuses decoration, not information. Measured numbers may be drawn as
+figures — `Figure N.` caption in the caption voice, paper ground, 1px rules, navy
+fills; the only functional color is fail / no-receipt in block-ink. Every verdict
+mark pairs shape with color (filled = pass, crossed = fail, dashed = unverified) so
+the three values read without color. Components live in
+`src/components/site/Figures.tsx`; the arithmetic is pure in `src/lib/figures/share.ts`.
+Do not add pictures, icons, gradients, or charts of things that were not measured.

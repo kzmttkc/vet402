@@ -516,7 +516,7 @@ export type ObservatoryStats = {
   methodUndeclared: number;
   eventCounts: { delisted: number; relisted: number; settleDrop: number };
   /** L1 covert purchases: attempts include refusals-after-sign only (spent money); settled = receipt received. */
-  l1: { attempts: number; settled: number; endpointsAttempted: number };
+  l1: { attempts: number; settled: number; endpointsAttempted: number; endpointsSettled: number };
   latestSnapshot: { snapshotDate: string; totalCount: number; fetchedCount: number } | null;
 };
 
@@ -530,7 +530,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
     publishedUnverified: 0,
     methodUndeclared: 0,
     eventCounts: { delisted: 0, relisted: 0, settleDrop: 0 },
-    l1: { attempts: 0, settled: 0, endpointsAttempted: 0 },
+    l1: { attempts: 0, settled: 0, endpointsAttempted: 0, endpointsSettled: 0 },
     latestSnapshot: null,
   };
   const db = getDb();
@@ -600,12 +600,13 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
     }[];
     const ev = Object.fromEntries(evList.map((r) => [r.event_type, Number(r.n)]));
 
-    let l1 = { attempts: 0, settled: 0, endpointsAttempted: 0 };
+    let l1 = { attempts: 0, settled: 0, endpointsAttempted: 0, endpointsSettled: 0 };
     try {
       const l1Raw = await db.execute(sql`
         SELECT count(*)::int AS attempts,
                count(*) FILTER (WHERE status = 'settled')::int AS settled,
-               count(DISTINCT endpoint_id)::int AS endpoints
+               count(DISTINCT endpoint_id)::int AS endpoints,
+               count(DISTINCT endpoint_id) FILTER (WHERE status = 'settled')::int AS endpoints_settled
         FROM x402_l1_purchases
         WHERE status IN ('settled', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable', 'settle_claimed', 'settle_claim_refuted')
       `);
@@ -613,12 +614,14 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
         attempts: number;
         settled: number;
         endpoints: number;
+        endpoints_settled: number;
       }[];
       if (l1List[0]) {
         l1 = {
           attempts: Number(l1List[0].attempts),
           settled: Number(l1List[0].settled),
           endpointsAttempted: Number(l1List[0].endpoints),
+          endpointsSettled: Number(l1List[0].endpoints_settled ?? 0),
         };
       }
     } catch (error) {
