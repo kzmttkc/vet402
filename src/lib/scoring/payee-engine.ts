@@ -554,15 +554,28 @@ function determineDataDepth(stats: PayeeStats): DataDepth {
 
 /**
  * vet402 2026-08-14 — depth from L1 deliveries. The premium receiving twin of
- * determineDataDepth: vet402-confirmed deliveries to INDEPENDENT (funder-
- * collapsed) buyers. Thresholds mirror the x402 depth but on the strictly
- * stronger delivery-verified fact, so a payee vet402 has watched actually
- * deliver to real, independent buyers is not stuck at "thin" just because its
- * counterparties never used the x402 facilitator endpoint.
+ * determineDataDepth, on the strictly stronger delivery-verified fact.
+ *
+ * 2026-09-02 是正（本番実測）。この関数は「買い手が 2 者以上（rich は 3 者）」を
+ * 要求していた。だが observed_purchases を書くのは信頼された観測所だけで
+ * （settlement-verifier.ts）、買い手は常に vet402 自身の測定ウォレット——
+ * distinctBuyers は構造的に 1 で、この深さは誰にも与えられなかった。
+ * 実測: vet402 が 65 回払い 65 回とも配達を確認した 0x36038e1d…（11 日にわたる）
+ * を含む上位 6 件が全部 69/WARN/thin。69 は PAYEE_THIN_SCORE_CEILING そのもの。
+ * 「実際に買い、届いた事実を判定に使う」という製品の主張と正面から矛盾していた
+ * （不履行側は 2026-08-26 に同じ矛盾を直している: l1-settlement-record.ts）。
+ *
+ * 買い手の独立性（funder 収束）は、第三者が投函する x402_payments に対する sybil
+ * 防御であって、観測所が自分で払って自分で確かめた事実に掛ける規則ではない。
+ * 売り手は vet402 の購入を偽造できず、いつ買うかも vet402 が決める。
+ * だから深さは**件数と異なる日の数**で決める。日数は売り手が操作できない時間軸。
+ * 件数だけで rich にはしない——1 日に 65 回届けた相手と 11 日にわたり届けた相手は
+ * 別物。配達 0 件（払ったが届かない・未観測）は従来どおり thin。
+ * distinctBuyers は受取軸のボーナス（scoreL1Receiving）に残る。
  */
-function l1DeliveryDepth(l1: ObservedDeliveryStats): DataDepth {
-  if (l1.deliveryCount >= 10 && l1.uniqueDays >= 7 && l1.distinctBuyers >= 3) return "rich";
-  if (l1.deliveryCount >= 3 && l1.distinctBuyers >= 2) return "moderate";
+export function l1DeliveryDepth(l1: ObservedDeliveryStats): DataDepth {
+  if (l1.deliveryCount >= 10 && l1.uniqueDays >= 7) return "rich";
+  if (l1.deliveryCount >= 3 && l1.uniqueDays >= 2) return "moderate";
   return "thin";
 }
 

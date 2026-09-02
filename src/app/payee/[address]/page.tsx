@@ -21,13 +21,15 @@ import { SITE_URL } from "@/lib/site-url";
  * "data: thin" とだけ出していたので、読んだ人には thin が「素性が薄い」のか
  * 「こちらが読めていない」のか区別できなかった（後者は degraded という別の
  * 状態で、上の分岐が受け持っている）。閾値と重みは src/lib/scoring/payee-engine.ts
- * の determineDataDepth / WEIGHTS_BY_DEPTH をそのまま写している。推測しない。
+ * の determineDataDepth / l1DeliveryDepth / WEIGHTS_BY_DEPTH をそのまま写している。推測しない。
+ * 2026-09-02: 観測所自身の配達確認（observed_purchases）は件数と日数で深さに効く
+ * （買い手は常に vet402 なので「distinct payers」の条件は掛からない）。
  */
 const DATA_DEPTH_NOTE: Record<string, string> = {
-  thin: "fewer than 3 payments received, or from fewer than 2 distinct payers. Receiving history carries 15% of this score; wallet health and drain patterns carry the rest.",
+  thin: "fewer than 3 payments received, or from fewer than 2 distinct payers — and fewer than 3 vet402-verified deliveries over 2 or more days. Receiving history carries 15% of this score; wallet health and drain patterns carry the rest.",
   moderate:
-    "at least 3 payments received from at least 2 distinct payers. Receiving history carries 35% of this score.",
-  rich: "at least 10 payments received across 7 or more days from at least 3 distinct payers. Receiving history carries 50% of this score.",
+    "at least 3 payments received from at least 2 distinct payers, or at least 3 vet402-verified deliveries over 2 or more days. Receiving history carries 35% of this score.",
+  rich: "at least 10 payments received across 7 or more days from at least 3 distinct payers, or at least 10 vet402-verified deliveries across 7 or more days. Receiving history carries 50% of this score.",
 };
 
 // N-16 — public payee profile: verified identity claim + live payee score.
