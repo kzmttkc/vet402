@@ -78,3 +78,17 @@
 | デザイン P1 | 観測所の最初の画面（1280×800 で表の先頭行 y=748）、表の sticky 先頭列＋「→ N more columns」、login の zinc フッタ、図の P2 一式 | 実測済み |
 | 契約・文書 | ErrorResponse enum +57 語と機械検査、新規ルートの schema と SURFACES、README/docs/api/llms、og:image、sitemap、/docs → /docs/api、401/400 のヒント | 反映済み |
 | 未着手 | DNS リバインディングのソケット固定（新規依存が要る・別発注）、`l1-runner.ts:118` の Solana 公開 RPC フォールバック | — |
+
+## 是正の記録（続・同日 19:15〜21:00・Takeshi「残っているもの全て承認」）
+
+| 対象 | 是正 | 本番確認 |
+|---|---|---|
+| DNS リバインディング | `undici` を直接依存に。safeFetch は検査済み IP へソケット固定（`pinned-fetch.ts`）。SNI・証明書はホスト名 | demo/verify で L0 pass（pin 経由） |
+| Registry 書き込み | 発火点を settlement-verifier の確定後へ（自己申告では書かない）。`REGISTRY_WRITE_TIERS`・日次上限・残高ガード・冪等。dry-run 計器 `registry:dryrun` | 本番 ON（残高 0.0005 ETH・初日は上限 50） |
+| L2 mismatch の diff | facts の evidence に `response_hash / diff_hash / missing_keys` | 反映 |
+| C1 の順序 | 「プローブ 1 回で fail」を最優先（9,713 件の 2 回目を先に揃える） | 反映 |
+| known-good 全 WARN | 診断: 17 件とも欠測ゼロ・決済事実ゼロで、WARN は設計の帰結（Lazarus と Binance が同点 47 の帯にあり閾値は下げない）。是正したのは別の未接続: vet402 自身が 65 回配達確認した売り手が 69/WARN/thin に固定されていた（買い手 2 者要件）。件数×日数で深さを決めるよう修正 | 6 payee を再取得して確認 |
+| launchd 索引ジョブ | homebrew の PATH（timeout/npx 未検出で 5 回即死）・lock で排他 | 手動全走査 EVM 20,661 件 |
+| 決済照合 | launchd で 1 日 4 回追加 | settle_claimed 26 件 |
+| /corrections | correction_log を表で公開 | 12 行 |
+| Server-Timing | `/decision` にサーバ内時間 | warm 137–145ms（ハッカソン側実測） |
