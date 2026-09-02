@@ -57,8 +57,9 @@ export async function setIndexerCheckpoint(
   scope: string,
   lastBlock: bigint,
   chainTipAtRun?: bigint,
+  lastCursor?: string | null,
 ): Promise<void> {
-  await setIndexerCheckpoints([{ scope, lastBlock, chainTipAtRun }]);
+  await setIndexerCheckpoints([{ scope, lastBlock, chainTipAtRun, lastCursor }]);
 }
 
 /**
@@ -74,7 +75,7 @@ export async function setIndexerCheckpoint(
  * still cannot rewind any scope.
  */
 export async function setIndexerCheckpoints(
-  entries: { scope: string; lastBlock: bigint; chainTipAtRun?: bigint }[],
+  entries: { scope: string; lastBlock: bigint; chainTipAtRun?: bigint; lastCursor?: string | null }[],
 ): Promise<void> {
   const db = getDb();
   if (!db || entries.length === 0) return;
@@ -86,6 +87,7 @@ export async function setIndexerCheckpoints(
         scope: e.scope,
         lastBlock: e.lastBlock,
         chainTipAtRun: e.chainTipAtRun ?? null,
+        lastCursor: e.lastCursor ?? null,
       })),
     )
     .onConflictDoUpdate({
@@ -95,9 +97,26 @@ export async function setIndexerCheckpoints(
         // never move any checkpoint backwards.
         lastBlock: sql`GREATEST(${indexerCheckpoints.lastBlock}, excluded.last_block)`,
         chainTipAtRun: sql`excluded.chain_tip_at_run`,
+        // A writer that does not know about the cursor (EVM, older code)
+        // must not erase one that a cursor-aware writer stored.
+        lastCursor: sql`COALESCE(excluded.last_cursor, ${indexerCheckpoints.lastCursor})`,
         updatedAt: new Date(),
       },
     });
+}
+
+/** Checkpoint with its resume cursor (Solana signature). Null when the scope has never run. */
+export async function getIndexerCheckpointWithCursor(
+  scope: string,
+): Promise<{ lastBlock: bigint; lastCursor: string | null } | null> {
+  const db = getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({ lastBlock: indexerCheckpoints.lastBlock, lastCursor: indexerCheckpoints.lastCursor })
+    .from(indexerCheckpoints)
+    .where(eq(indexerCheckpoints.scope, scope))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 export async function getOwnerIndexerStatus(options?: {

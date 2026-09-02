@@ -298,6 +298,10 @@ export const indexerCheckpoints = pgTable("indexer_checkpoints", {
   scope: text("scope").primaryKey(),
   lastBlock: bigint("last_block", { mode: "bigint" }).notNull(),
   chainTipAtRun: bigint("chain_tip_at_run", { mode: "bigint" }),
+  // 2026-09-02 (audit C1): Solana keeps the newest signature next to the
+  // slot so getSignaturesForAddress can be resumed with `until`. Nullable —
+  // EVM scopes and pre-existing Solana rows carry only the slot.
+  lastCursor: text("last_cursor"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
