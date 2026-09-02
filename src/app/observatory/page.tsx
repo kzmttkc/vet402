@@ -110,14 +110,15 @@ export default async function ObservatoryPage({
         <div className="doc-head">
           <div className="doc-head-col">
             <span>Independent Measurement</span>
-            <span>Register: x402 endpoint observations (L0)</span>
+            <span>Register: x402 endpoints, L0 · L1</span>
             <span>
               {overview.latestSnapshot ? (
                 <>
-                  Catalog snapshot:{" "}
+                  {/* 1 行に収める（"Catalog snapshot: … (N of N fetched)" は 2 行に折れていた）。数字はそのまま。 */}
+                  Snapshot{" "}
                   <span className="text-signal">{overview.latestSnapshot.snapshotDate}</span>{" "}
-                  ({overview.latestSnapshot.fetchedCount.toLocaleString()} of{" "}
-                  {overview.latestSnapshot.totalCount.toLocaleString()} fetched)
+                  · {overview.latestSnapshot.fetchedCount.toLocaleString()}/
+                  {overview.latestSnapshot.totalCount.toLocaleString()}
                 </>
               ) : (
                 "Catalog snapshot: none yet"
@@ -135,7 +136,7 @@ export default async function ObservatoryPage({
                 Methodology
               </Link>
             </span>
-            <span>Table: L0. L1 is on each endpoint page</span>
+            <span>Table: L0 and L1 receipts</span>
           </div>
         </div>
 
@@ -151,11 +152,13 @@ export default async function ObservatoryPage({
         {/* 2026-09-02 デザイン監査 P1: 1280×800 で最初の画面に操作対象が無かった（検索 y=831・
             図 y=1046・表 y=1177、Abstract 11 行が y=766–1140）。rule-double の直下を
             検索 → Figure 1 → §1 表にし、Abstract は §2「Reading this table」の冒頭へ移す（文は同じ）。 */}
-        <form method="get" action="/observatory" className="mt-8">
+        <form method="get" action="/observatory" className="mt-5">
           <p className="doc-caption">Find an endpoint</p>
           {query.l1 && <input type="hidden" name="l1" value="1" />}
-          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-            <label className="block min-w-0 flex-1 text-[0.8125rem]">
+          {/* 390px: 4 段積み（266px）だと Figure 1 が最初の画面に入らない。Contains を 1 行、
+              L0 / Network / Apply を 2 行目に並べる。 */}
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <label className="block min-w-0 basis-full text-[0.8125rem] sm:basis-auto sm:flex-1">
               <span className="doc-caption block">Contains</span>
               <input
                 name="q"
@@ -177,7 +180,7 @@ export default async function ObservatoryPage({
                 <option value="unverified">unverified</option>
               </select>
             </label>
-            <label className="block min-w-[16ch] text-[0.8125rem]">
+            <label className="block min-w-0 flex-1 text-[0.8125rem] sm:min-w-[16ch] sm:flex-none">
               <span className="doc-caption block">Network</span>
               <input
                 name="network"
@@ -227,23 +230,17 @@ export default async function ObservatoryPage({
             }
             caption={
               <>
-                Published L0 verdict over all {stats.totalEndpoints.toLocaleString()} endpoints on record. Filled = pass,
-                crossed = fail (two consecutive failing probes), dashed = unverified. Select a legend entry to filter the
-                table; [receipts] keeps only endpoints with at least one settled L1 purchase.
+                Published L0 verdict, {stats.totalEndpoints.toLocaleString()} endpoints on record. Select a legend entry to
+                filter the table.
               </>
             }
           />
         )}
 
-        <h2 className="sec-head mt-6">
+        <h2 className="sec-head mt-5">
           <span className="sec-no">1.</span>
           <span>Observed endpoints</span>
         </h2>
-        <p className="doc-p">
-          {overview.totalEndpoints.toLocaleString()} endpoints{query.l1 ? " with a settled L1 purchase" : " on record"}.
-          Endpoints with an L1 receipt first, then measured endpoints (pass / fail), then by observed
-          call volume (catalog-reported, last 30 days). Page {page} of {totalPages}, {overview.pageSize} per page.
-        </p>
         {overview.rows.length === 0 ? (
           <p className="doc-p text-brand-lift">
             {query.q || query.verdict || query.network || query.l1 ? (
@@ -259,7 +256,7 @@ export default async function ObservatoryPage({
             )}
           </p>
         ) : (
-          <TableScroll label="L0 observations over catalog endpoints">
+          <TableScroll label="L0 observations over catalog endpoints" className="mt-3">
             <table className="fact-table">
               <caption className="sr-only">L0 observations over catalog endpoints</caption>
               <thead>
@@ -368,6 +365,12 @@ export default async function ObservatoryPage({
           </p>
         </div>
 
+        <p className="doc-p">
+          <strong>Order.</strong> Endpoints with at least one settled L1 purchase first, then measured
+          endpoints (pass / fail), then by observed call volume (catalog-reported, last 30 days).{" "}
+          <strong>L1</strong> is settled / paid attempts for that endpoint; <code>—</code> means no purchase
+          was attempted. The <em>[receipts]</em> entry under Figure 1 keeps only rows with a receipt.
+        </p>
         <p className="doc-p">
           <strong>Catalog</strong> is presence in the public discovery catalog: <code>active</code>{" "}
           means listed as of the latest snapshot; <code>delisted</code> means the entry was present

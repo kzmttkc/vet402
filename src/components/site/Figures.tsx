@@ -95,7 +95,7 @@ export function VerdictShareBar({
       caption={
         <>
           {caption}
-          {inflated && <> Bars are proportional; segments under 1.5% are drawn at 1.5%.</>}
+          {inflated && <> Segments under 1.5% are drawn at 1.5%.</>}
         </>
       }
     >

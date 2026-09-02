@@ -22,7 +22,7 @@ test("VerdictShareBar: 最小幅で膨らんだ段があるときだけ注記を
   const inflated = renderToStaticMarkup(
     createElement(VerdictShareBar, { n: 1, counts: { pass: 3342, fail: 5, unverified: 17117 }, hrefs, active: null, caption: "c" }),
   );
-  assert.match(inflated, /segments under 1\.5% are drawn at 1\.5%/);
+  assert.match(inflated, /segments under 1\.5% are drawn at 1\.5%/i);
   const even = renderToStaticMarkup(
     createElement(VerdictShareBar, { n: 1, counts: { pass: 10, fail: 10, unverified: 10 }, hrefs, active: null, caption: "c" }),
   );
