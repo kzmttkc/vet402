@@ -739,28 +739,31 @@ export default async function Home() {
           />
         </div>
 
-        <div className="dashbox mt-8 max-w-[64ch]">
-          <p className="doc-caption">Follow the build</p>
-          <p className="mt-3 text-brand">
-            <TrackedLink
-              href="https://x.com/vet_402"
-              event="follow_click"
-              props={{ channel: "x" }}
-              className="doc-link"
-            >
-              X @vet_402
-            </TrackedLink>
-            <span aria-hidden="true" className="mx-2 text-brand-lift">·</span>
-            <TrackedLink
-              href="https://github.com/kzmttkc/vet402"
-              event="follow_click"
-              props={{ channel: "github" }}
-              className="doc-link"
-            >
-              GitHub
-            </TrackedLink>
-          </p>
-        </div>
+        {/* 2026-09-02 Takeshi「ここだけ浮いている」: 破線の囲み（dashbox）は §5 の
+            登録簿の直後に唯一の「箱」として置かれ、紙面の文法（罫と段落）から外れていた。
+            RFC の back matter に倣い、§5 を閉じる 1 文として同じ段落文法で置く。
+            イベント名 follow_click と channel は据え置き。フッタの About 列にも同じ 2 本を置く。 */}
+        <p className="doc-p">
+          Progress is posted as it lands, on{" "}
+          <TrackedLink
+            href="https://x.com/vet_402"
+            event="follow_click"
+            props={{ channel: "x" }}
+            className="doc-link"
+          >
+            X @vet_402
+          </TrackedLink>{" "}
+          and{" "}
+          <TrackedLink
+            href="https://github.com/kzmttkc/vet402"
+            event="follow_click"
+            props={{ channel: "github" }}
+            className="doc-link"
+          >
+            GitHub
+          </TrackedLink>
+          .
+        </p>
 
         {/* ================= Appendix A. Access tiers ================= */}
         <PricingSection />

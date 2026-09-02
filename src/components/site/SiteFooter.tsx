@@ -61,6 +61,10 @@ const COLUMNS: { caption: string; label: string; links: { label: string; href: s
       { label: "Status", href: "/status" },
       // 2026-08-14: 公開の運営者介入ログ（credible-neutrality の担保）。
       { label: "Operator log", href: "/operator-log" },
+      // 2026-09-02: LP §5 末尾の「Follow the build」箱を段落へ畳んだぶん、外部の 2 本は
+      // サイト全頁から辿れる奥付にも置く。
+      { label: "X @vet_402", href: "https://x.com/vet_402" },
+      { label: "GitHub", href: "https://github.com/kzmttkc/vet402" },
     ],
   },
 ];
