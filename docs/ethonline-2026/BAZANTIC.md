@@ -15,7 +15,22 @@
 **つまりアカウントは今すぐ作れるが、Gateway 作成にベータ/プロバイダ承認が要る可能性がある。**
 そこは画面を見ないと分からないので、**作成後にスクショをください**。
 
-## 1. Takeshi 手番（5分）
+## 1. 【完了】2026-09-03 に開通済み——手番は残っていない
+
+| | 実測値 |
+|---|---|
+| アカウント | **作成済み**（GitHub OAuth）。提出欄に書く username は **`TakeshiTGAL`** |
+| ベータ/プロバイダ承認 | **不要だった**。Provider Dashboard から直接 Gateway を作れた |
+| Gateway | **LIVE**。`https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com`（名前 `vet402`・カテゴリ PAYMENTS） |
+| 上流 | `https://vet402.com` / API key / Header / `Authorization`（**`x-api-key` は 401。実測で確定**） |
+| 上流キー | 専用キー `bazantic-gateway`（free・id `7bac34c8…`）。`~/vouch/.env.rehearsal.local` の `BAZANTIC_UPSTREAM_KEY`。**単独で失効できる** |
+| ルート | **56本すべて $0.00**（既定の $0.01 は Bazantic の初期値であって我々の価格ではない。0 なら A/B のエージェントが入金なしで呼べる） |
+| MCP サーバー | **稼働を実挙動で確認**。`POST /mcp` の `initialize` が 200 で `serverInfo: {"name":"vet402","version":"v0.16.0"}`、`tools/list` も 200。**ダッシュボードの "UNAVAILABLE" 表示は実態と食い違っている**（表示の遅れ。提出時にも残るなら Bazantic へ一報） |
+| 導入 | `claude mcp add --transport http vet402 https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp` |
+
+**残るのは Recipe 本文と A/B 実証だけで、どちらも会期中（9/4 以降）に私が作る。**
+
+## 1'. （記録）開通前に想定していた手順
 
 1. **https://bazantic.com/login** を開く
 2. **GitHub でサインアップ**を推奨（賞の要件に「bazantic のユーザー名——**email か GitHub handle** を
