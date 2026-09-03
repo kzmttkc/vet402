@@ -735,6 +735,20 @@ export default async function Home() {
               <>
                 Verification records will be written to the ERC-8004 Validation Registry &mdash; the
                 one registry that is still empty.
+                <span className="mt-3 block text-[0.8125rem] text-brand-lift">
+                  {/* 2026-09-03: 8/21 以来 14 件が失敗し続けた理由を、事実として出す。
+                      小さく弱みとして書くのではなく、仕様がそうなっているという測定結果として。 */}
+                  Why it has not happened yet, stated plainly: the registry is written in one
+                  direction only. An agent&rsquo;s owner names a validator and opens the request;
+                  the validator answers it. A validator cannot open a request about someone
+                  else&rsquo;s agent &mdash; <code>validationRequest</code> reverts with{" "}
+                  <em>Not authorized</em>, which is what our fourteen attempts between 2026-08-21
+                  and 2026-09-03 did. So this is not a build problem. In 750,000 blocks of Base
+                  (roughly 17 days) the whole registry received{" "}
+                  <strong>two</strong> events, from one validator, about one agent, and{" "}
+                  <strong>none</strong> named us. We can answer the first request the day someone
+                  sends one; until then the honest number is zero.
+                </span>
               </>
             }
           />

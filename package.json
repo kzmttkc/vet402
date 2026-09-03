@@ -60,7 +60,8 @@
     "release:packages": "node scripts/release-packages.mjs",
     "x402:demo": "npm run demo --prefix examples/x402-trust-gate",
     "agentkit:demo": "npm run demo --prefix examples/agentkit-spend-guard",
-    "indexer:settlements": "tsx scripts/index-settlements.ts"
+    "indexer:settlements": "tsx scripts/index-settlements.ts",
+    "registry:inbox": "tsx scripts/registry-inbox.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

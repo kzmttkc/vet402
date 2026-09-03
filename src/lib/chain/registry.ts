@@ -210,7 +210,9 @@ export async function publishValidation(input: {
     return { status: "submitted", txHash };
   } catch (error) {
     const message = String(error).slice(0, 300);
-    await db.update(registryWrites).set({ status: "failed" }).where(eq(registryWrites.id, ledgerId));
+    // 2026-09-03: 理由を必ず台帳へ残す。ここが空だったせいで 14 件の連続失敗の原因が
+    // 誰にも分からず、オンチェーンの eth_call まで戻って調べ直すことになった。
+    await db.update(registryWrites).set({ status: "failed", error: message }).where(eq(registryWrites.id, ledgerId));
     return { status: "failed", error: message };
   }
 }

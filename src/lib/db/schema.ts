@@ -947,6 +947,12 @@ export const registryWrites = pgTable(
     evidenceUri: text("evidence_uri"),
     status: text("status").notNull().default("pending"),
     txHash: text("tx_hash"),
+    /**
+     * 失敗の理由（全文・300字で切る）。2026-09-03: 8/21 以来 14 件が全部 failed だったのに
+     * 理由がどこにも残らず、調査をやり直すはめになった。status だけでは「何で落ちたか」が
+     * 誰にも分からない。成功時は null。
+     */
+    error: text("error"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
