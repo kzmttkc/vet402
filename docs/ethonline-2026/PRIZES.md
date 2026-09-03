@@ -245,3 +245,36 @@ DeFi（貸借・スワップ・流動性）で、我々の動詞とは別物。*
 - continuity 枠は現在4つ: World $3,500 / 1inch $2,000 / Uniswap $2,000 / Hedera $1,000（計 $8,500）。
   このうち要件が合うのは World だけ。詳細待ちの5社（The Graph / 0G / ENS / Ledger / Chainlink / Privy）が
   continuity 枠を足すかどうかが、賞のEVを決める唯一の変数。
+
+
+## 賞の3枠を確定（2026-09-03・要件を全文読んで判断）
+
+ETHGlobal の上限は3枠（1パートナー＝1枠）。**continuity 枠は10件あるが、要件が合うのは3つだけ。**
+
+| 枠 | 賞 | 額 | 判断 |
+|---|---|---|---|
+| **P1** | The Graph 🤖 Best AI Tooling **or AI Use Case** with The Graph | **$5,000** | 3枠が1つに統合された。MCP＋x402 payment tooling が賞文に名指し。**live データの実証は 9/3 に完了**（[`GRAPH_EVIDENCE.md`](./GRAPH_EVIDENCE.md)） |
+| **P2** | World 🤖 AgentKit Continuity | **$3,500** | 払う側の人間裏付けで上限を上げる。未確定2点は partner channel 待ち |
+| **P3** | Bazantic 🤖 **Help an Agent Use Your Hackathon Project** | **$1,000**（上位2チーム × $500） | **採る**。下記 |
+
+到達可能 **$9,500**。
+
+### P3 に Bazantic を選んだ理由
+
+要件は「**エージェントが、あなたの説明なしにあなたの製品を使えるか**」——bazantic.com で
+x402/MPP Gateway と Recipe を作り、**同じモデルに同じ課題を2回**与えて（生のAPI情報だけ／Recipe つき）、
+**再現性のある改善**を示す。
+
+これは我々の主張そのものである。「エージェントは払う前に測るべきだ」を、**A/B で証明する**形になる。
+しかも**この A/B は他の2枠のデモ材料としてもいちばん強い**——仕組みの説明ではなく、
+「vet402 を使わないエージェントは払ってはいけない相手に払い、使うエージェントは署名前に止まる」
+という**価値の実演**になる。1本作れば3枠すべてで効く。
+
+**Takeshi 手番が1つ増える**: bazantic.com のアカウント作成（私は他社サービスのアカウントを作れない）。
+Gateway と Recipe の中身は私が用意する。
+
+### Arc「Best DeFi or Agentic Application」$1,666 は却下
+
+要件が「**Arc チェーン上**で USDC の DeFi / エージェントを作る（Agent Stack・Nanopayments・Paymaster）」。
+**新チェーンは会期スコープ外**（我々の規律）。額は Bazantic より大きいが、Arc 対応に会期の数日を使うと
+本体（payOrRefuse・The Graph・World）が薄くなる。**取りに行かない。**

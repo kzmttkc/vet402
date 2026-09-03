@@ -169,13 +169,36 @@ evidence: {
 呼び手は何も決められない。金に一番近い段がそこで詰まっている。
 policy と配達証拠でゲートを組み直すことは、その詰まりの是正そのものである。
 
-## 6. 会期 Day 0 に書く失敗テスト（名前だけ・実装は会期中）
+## 6. 会期 Day 0（09-04）に書く失敗テスト——**名前を確定した。実装はしない**
 
-- `payOrRefuse` は `score_below_policy` で signer を0回呼ぶ
-- `payOrRefuse` は `insufficient_delivery_evidence` で signer を0回呼ぶ
-- `payOrRefuse` は 402 の payTo が payee と違えば `payee_mismatch` で署名しない
-- `payOrRefuse` は上限超過の価格で `price_above_ceiling` を返し署名しない
-- 台帳が読めないとき `evidence_unavailable` で拒否する（fail-closed）
-- 全条件通過時のみ signer を1回呼び、返った txHash で attest する
-- MCP `pay_if_trusted` は同じ判定を通り、拒否時に mock signer 呼び出し0回
-- デモの決定行は `x402_l1_purchases` に入らない
+Day 0 は red だけ。この一覧をそのままテスト名にする。全部落ちている状態で1コミット
+（`ethonline: test(sdk,mcp): payOrRefuse fail-closed contract (red)`）。
+
+**A. 署名に到達しないこと（この4本が提出物の核心）**
+1. `/decision` が ALLOW 以外を返したら signer を **0回** 呼ぶ
+2. `/decision` が degraded を返したら signer を 0回 呼ぶ（読めなかった＝払わない）
+3. `/decision` の取得に失敗（HTTP エラー・タイムアウト）したら signer を 0回 呼ぶ（fail-closed）
+4. 402 の `payTo` が `payee` と違えば `payee_mismatch` で signer を 0回 呼ぶ
+
+**B. policy が効くこと**
+5. `maxPerTxUsd` 超過は `price_above_ceiling` で拒否（判定を引く前に落とす）
+6. `evidence.minL1Deliveries` 未達は `insufficient_delivery_evidence` で拒否
+7. `evidence.minSubgraphReceipts` 未達は `insufficient_subgraph_evidence` で拒否
+8. `evidence.source: "both"` で片方しか読めなければ拒否し、理由に**どちらが読めなかったか**が入る
+9. `payer.requireHumanBacked` が満たされないとき、上限は**既定のまま**（引き上げない）
+
+**C. 通ったときの振る舞い**
+10. 全条件通過時のみ signer を **1回** 呼び、返った txHash で attest する
+11. attest は関数の一部——`payOrRefuse` の戻り値に `attested: true` が入る
+12. 署名後に settle が失敗したら `status: "failed"` を返し、**それも公開する**（隠さない）
+
+**D. 汚染しないこと**
+13. デモの決定行は `source: "agent-demo"` で、`x402_l1_purchases` に**入らない**
+14. L1 フィードはデモ行を無視し、デモフィードは L1 行を無視する
+
+**E. MCP**
+15. `pay_if_trusted` は A の4本と同じ拒否を返し、mock signer 呼び出しは 0回
+16. `pay_if_trusted` の応答に `evidence[].source` が入る（審査員が証拠源を目で追える）
+
+**F. 契約4面のパリティ**
+17. `evidence[].source` が 実装・OpenAPI・SDK 型・MCP スキーマの4面で一致する
