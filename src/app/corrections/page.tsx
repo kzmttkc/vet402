@@ -50,7 +50,24 @@ type Correction = {
  * 判断して再スコアした時だけ。「見解の相違で変えなかった」ものはここには
  * 載らない（訂正ではないため）が、それは §2 に書いてある。
  */
-const CORRECTIONS: Correction[] = [];
+const CORRECTIONS: Correction[] = [
+  {
+    date: "2026-09-02",
+    subject: "This site's own description of how often endpoints are probed",
+    wrong:
+      'The landing page and the observatory said every catalog-listed endpoint was "probed daily." ' +
+      "That was not true. What ran daily was the catalog fetch; probes ran on a rolling schedule, and on " +
+      "2026-09-01 only 2,750 of 14,662 active endpoints (18.8%) carried a probe from the previous 7 days. " +
+      "The claim and our own published counter contradicted each other on the same page.",
+    action:
+      "Found in our own adversarial audit and changed the same day (commit a62072c, 2026-09-02 12:51 JST). " +
+      "The wording now states the mechanism and prints the measured share: the catalog is re-fetched daily, " +
+      "endpoints are probed on a rolling schedule, and the page carries the current percentage of active " +
+      "endpoints with a probe in the last 7 days. We also raised the cadence: that share is 68.8% of 15,312 " +
+      "active endpoints as of 2026-09-04. An independent observatory, probe402, published the same finding " +
+      "on 2026-09-03 from a 2026-09-01 reading. Their reading was correct.",
+  },
+];
 
 export default async function CorrectionsPage() {
   // 2026-09-02: §10 の訂正ログ（correction_log）はここで公開する。9/2 に path_template の
