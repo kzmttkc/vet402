@@ -38,6 +38,9 @@ const TRANSIENT_REASONS = new Set([
   "tx_not_found",
   "insufficient_confirmations",
   "chain_not_yet_verifiable",
+  // Solana（2026-09-04）: finalized 前は「まだ見えていない」であって否定ではない。
+  // EVM の insufficient_confirmations と同じ扱い。
+  "not_final",
 ]);
 
 export type VerifySettlementsSummary = {

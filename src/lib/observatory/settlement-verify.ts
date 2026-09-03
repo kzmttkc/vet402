@@ -59,7 +59,14 @@ export type SettlementVerifyResult =
         | "tx_not_found"
         | "tx_reverted"
         | "insufficient_confirmations"
-        | "no_matching_transfer";
+        | "no_matching_transfer"
+        // Solana 経路（settlement-verify-solana.ts）。EVM の
+        // insufficient_confirmations / no_matching_transfer に相当する語彙を、
+        // Solana の読み方（finalized・残高差分）に合わせて分けたもの。
+        | "not_final"
+        | "amount_mismatch"
+        | "payee_mismatch"
+        | "payer_mismatch";
       detail?: string;
     };
 
@@ -82,9 +89,17 @@ export async function verifyL1Settlement(input: {
 }): Promise<SettlementVerifyResult> {
   const { txHash, network, expectedPayTo, expectedPayer, expectedAmountUnits } = input;
 
-  // Solana の決済は署名の形も検証手順も別物で、まだ照合器を書いていない。
-  // 「EVM のやり方で読めなかった」を「偽物」と言うのは、測っていないものを
-  // 所見にすることなので、専用の理由で返して未確認のまま置く。
+  // Solana の決済は署名の形も検証手順も別物なので、専用の照合器へ委譲する
+  // （2026-09-04・それまでは chain_not_yet_verifiable で止まり、Solana の
+  // L1 購入 38 件が settled 0 件のまま滞留していた）。
+  if (network.startsWith("solana:")) {
+    const { verifySolanaSettlement } = await import("./settlement-verify-solana");
+    return verifySolanaSettlement(input);
+  }
+
+  // それ以外のチェーンには照合器が無い。「EVM のやり方で読めなかった」を
+  // 「偽物」と言うのは、測っていないものを所見にすることなので、専用の理由で
+  // 返して未確認のまま置く。
   if (!network.startsWith("eip155:")) {
     return { ok: false, reason: "chain_not_yet_verifiable", detail: network };
   }

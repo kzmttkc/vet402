@@ -215,8 +215,13 @@ export default async function ObservatoryMethodologyPage() {
         <p className="doc-p">
           <strong>settled</strong> — <em>vet402 re-read the transaction on-chain</em> and found
           the exact USDC transfer it paid for: from our payer, to the catalog-declared payee, for
-          the declared amount, in the canonical USDC contract, on Base, with at least 32
-          confirmations. That re-read exists for Base only today (see the note below). <strong>settle_claimed</strong> — the seller returned a settlement
+          the declared amount, in the canonical USDC contract. On Base that means an ERC-20{" "}
+          <code>Transfer</code> log matching all four of those with at least 32 confirmations; on
+          Solana it means the transaction is <code>finalized</code>, succeeded, and the
+          USDC token-balance deltas in it show the payee&apos;s wallet receiving at least the
+          declared amount while our payer&apos;s wallet loses it — read from balances rather than
+          from instructions, and only after the RPC&apos;s own genesis hash confirms we are reading
+          the cluster the purchase declared. <strong>settle_claimed</strong> — the seller returned a settlement
           receipt with a well-formed transaction id, and we have not re-read it on-chain yet.{" "}
           <strong>settle_claim_refuted</strong> — we re-read it and that transfer is not there.{" "}
           <strong>settle_claimed_unverifiable</strong> — the id returned is not even well-formed
@@ -231,12 +236,17 @@ export default async function ObservatoryMethodologyPage() {
           <code>settled</code> meant only that the seller had asserted success in its own{" "}
           <code>PAYMENT-RESPONSE</code> header — we published that assertion without ever
           re-reading the chain. It is now a measurement we make: the definition of{" "}
-          <code>settled</code> is &ldquo;vet402 confirmed it on-chain&rdquo;. Still open, stated
-          plainly: L1 purchases run on both Base and Solana, but{" "}
-          <strong>Solana settlements are not yet re-read</strong> — that chain needs a different
-          verifier, so a Solana purchase can reach <code>settle_claimed</code> and stays there
-          rather than being promoted to <code>settled</code> on evidence we do not have. We would
-          rather name the gap than let you assume a check we are not doing.
+          <code>settled</code> is &ldquo;vet402 confirmed it on-chain&rdquo;. The gap named here
+          until 2026-09-04 — L1 purchases ran on both Base and Solana, but Solana settlements were
+          never re-read, so a Solana purchase reached <code>settle_claimed</code> and stayed there
+          — is closed: <strong>Solana settlements are now re-read on-chain</strong> by a
+          Solana-specific verifier, and a Solana purchase is promoted to <code>settled</code> only
+          on the same evidence Base requires. What remains open is narrower and still worth naming:
+          the re-read exists for Base and Solana only, so a purchase on any other chain would stay
+          at <code>settle_claimed</code> rather than be promoted on evidence we do not have. When
+          our own RPC cannot answer, or reports a different cluster than the purchase declared, the
+          row stays unverified rather than being called refuted — an instrument we could not read
+          is not a finding about the seller.
         </p>
 
         <h2 className="sec-head">
