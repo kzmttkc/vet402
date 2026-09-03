@@ -47,6 +47,7 @@
     "backfill:payee": "tsx scripts/backfill-payee.ts",
     "correct:path-templates": "tsx scripts/correct-path-template-fails.ts",
     "gate2:report": "tsx scripts/gate2-report.ts",
+    "claims:canary": "tsx scripts/claims-canary.ts",
     "registry:dryrun": "tsx scripts/registry-dryrun.ts",
     "setup:stripe": "tsx scripts/setup-stripe-products.ts",
     "setup:stripe-webhook": "tsx scripts/setup-stripe-webhook.ts",

@@ -14,6 +14,8 @@ Load only what the current task needs. PRODUCT.md and DESIGN.md at the repo root
 | npm packages | `packages/*/README.md` |
 | ETHGlobal / Continuity strategy | `hackathons/README.md` → `hackathons/STRATEGY.md` |
 | Grants (vs hackathon freeze) | `hackathons/GRANTS.md` |
+| 監査を始める前（どの監査でも） | `audits/CHECKLIST.md` |
+| 公開面の事実主張と、その裏付け | `claims.yaml` |
 
 ## Do not load unless asked
 

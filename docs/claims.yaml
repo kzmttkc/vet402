@@ -1,0 +1,885 @@
+# ============================================================
+# vet402 — 公開面の事実主張の登録簿
+#
+# なぜ在るか: 2026-08-13 の LP は「every catalog-listed x402 endpoint, probed daily」と
+# 書いていた。2026-08-20 に /observatory/state が同じサイトへ実測（18.8% = 2,750/14,662）を
+# 出したが、主張は 20 日間そのまま公開され続けた。その間に走った 6 回の監査（セキュリティ・
+# SEO・UX・資金）はどれも気づかず、外部の観測所 probe402 が 2026-09-01 に読み取り 09-03 に
+# 公開した。散文の主張と機械が出す実測を突き合わせる常設の検査が無かったのが原因。
+#
+# 使い方:
+#   - tests/claims-registry.test.ts が公開面を走査し、未登録の断定があれば fail する
+#   - npm run claims:canary が check を本番 API に当て、偽になった主張を報告する
+#   - check を書けない主張は check: null と why_unverifiable を必ず書く
+#     （確かめられないことを確かめたふりをしない）
+# ============================================================
+
+# 断定語を含むが、網羅・頻度の主張ではない用法。理由必須。
+allow_phrases:
+  - phrase: "-only"
+    why: "read-only / append-only / allow-only / API-only のような複合語。範囲を狭める語であって、網羅や頻度を主張しない"
+  - phrase: " at all"
+    why: "英語の慣用句（「そもそも」）。網羅の主張ではない"
+  - phrase: " only after "
+    why: "条件を狭める限定用法。主張を強めない"
+  - phrase: " only if "
+    why: "条件を狭める限定用法。主張を強めない"
+  - phrase: " only when "
+    why: "条件を狭める限定用法。主張を強めない"
+  - phrase: " only as long as "
+    why: "保持期間を狭める限定用法（プライバシー方針）"
+  - phrase: " only for "
+    why: "対象を狭める限定用法"
+  - phrase: " only once "
+    why: "回数を狭める限定用法"
+  - phrase: " only a snapshot"
+    why: "測定結果の射程を狭める免責。過大主張の逆"
+  - phrase: " only these two"
+    why: "採用する事実を2つに狭める限定用法"
+  - phrase: " only proves control"
+    why: "署名が証明する範囲を狭める限定用法"
+  - phrase: " only partially measured"
+    why: "測定の不完全さを認める限定用法"
+  - phrase: " only lower the ceiling"
+    why: "上限を下げる方向にしか効かないという限定用法"
+  - phrase: " only shipped in 2025"
+    why: "外部プロトコルの出荷時期の記述。当社の運用主張ではない"
+  - phrase: " only rows with a receipt"
+    why: "図の対象行を狭める限定用法"
+  - phrase: " only what has not shipped"
+    why: "節の範囲を未出荷分に狭める限定用法"
+  - phrase: " only the checks that completed"
+    why: "スコアの根拠を狭める限定用法"
+  - phrase: " only on a critical failure"
+    why: "通知条件を狭める限定用法"
+  - phrase: " only 2,750 of 14,662"
+    why: "2026-09-02 の訂正記事が引用している実測値そのもの（corrections の本文で別途登録）"
+  - phrase: " only thing you have to supply"
+    why: "SDK 設定の説明。当社の測定頻度・網羅の主張ではない"
+  - phrase: " counts only"
+    why: "集計の対象を狭める限定用法"
+  - phrase: "counts only "
+    why: "集計の対象を狭める限定用法"
+  - phrase: "purposes only"
+    why: "法的免責の限定用法（informational purposes only）"
+  - phrase: "use only"
+    why: "利用条件を狭める限定用法（business use only）"
+  - phrase: "Aggregate only"
+    why: "表の粒度バッジ。集計値しか出さないという限定"
+  - phrase: "Facts only"
+    why: "「スコアではなく事実だけ」という限定バッジ"
+  - phrase: "Global acts only"
+    why: "対象をグローバル操作に狭める限定バッジ"
+  - phrase: "changes only "
+    why: "通知対象を狭める限定用法"
+  - phrase: "quota only "
+    why: "課金制御の対象を狭める限定用法"
+  - phrase: "and only after you log in"
+    why: "cookie 設置条件を狭める限定用法"
+  - phrase: "processes only the data"
+    why: "処理範囲を狭める限定用法（DPA 記述）"
+  - phrase: "the only number that matters"
+    why: "編集上の強調（何を重視するかの立場表明）で、測定の網羅・頻度の主張ではない"
+  - phrase: "the only band the SDK"
+    why: "既定ポリシーが通す帯域を1つに狭める限定用法"
+  - phrase: "only an"
+    why: "既定ポリシーが通す条件を狭める限定用法（Only an ALLOW passes）"
+  - phrase: "All posts"
+    why: "ブログ一覧へのリンク文言。UI ラベル"
+  - phrase: "Show all"
+    why: "行を展開するボタンのラベル。UI ラベル"
+  - phrase: "All-time API queries"
+    why: "ダッシュボードの指標名。UI ラベル"
+  - phrase: "Daily history"
+    why: "節の見出し。中身の主張は本文側で登録している"
+  - phrase: "all keys you"
+    why: "アカウント内の全キーに責任が及ぶという契約条項（利用規約）"
+  - phrase: "all keys on an account"
+    why: "クォータの共有範囲の説明（API 仕様）"
+  - phrase: "across every key on"
+    why: "クォータの共有範囲の説明（API 仕様）"
+  - phrase: "all claims relating to"
+    why: "責任総額の上限を定める法的条項"
+  - phrase: "all external figures"
+    why: "自社ベンチマークを外部指標から除外するという限定"
+  - phrase: "all chains"
+    why: "図の軸ラベル（全チェーン合算）。頻度・網羅の主張は state 本文で登録している"
+  - phrase: "all denied unless"
+    why: "既定で拒否するというフェイルクローズの説明"
+  - phrase: "all from"
+    why: "npm パッケージの発行元が同一という説明"
+  - phrase: "were passed"
+    why: "0% の読み方を説明する引用（「all were passed」ではない、と否定している側）"
+  - phrase: "stated at all"
+    why: "節の見出し（なぜこれを明記するか）"
+
+claims:
+  - id: accuracy_the_verdict_every_score_vet402
+    surface: src/app/accuracy/page.tsx
+    quote: "the verdict. Every score vet402 issues becomes a"
+    means: "発行したスコアは監視対象イベントになり、その後の実際の挙動でラベルされる"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: accuracy_benchmark_scans_are_excluded_from
+    surface: src/app/accuracy/page.tsx
+    quote: "benchmark scans are excluded from every number in this section and reported separately in"
+    means: "この節の数字から自社ベンチマークのスキャンを除外し、§2 に分けて出している"
+    check:
+      url: https://vet402.com/api/v1/accuracy
+      assert: "operatorBenchmark.scans >= 1"
+    verified_at: 2026-09-04
+  - id: accuracy_separately_so_it_can_never
+    surface: src/app/accuracy/page.tsx
+    quote: "separately so it can never be mistaken for (or padded into) external usage. Weekly, the"
+    means: "自社スキャンは外部利用と混ぜない（別立てで公開する）"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: accuracy_so_neutral_outcomes_never_move
+    surface: src/app/accuracy/page.tsx
+    quote: "so neutral outcomes never move a rate in either direction."
+    means: "中立の結果はどちらの率も動かさない"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: accuracy_a_rate_is_published_only
+    surface: src/app/accuracy/page.tsx
+    quote: "A rate is published only at"
+    means: "率を出すのは、そのバケツの解決済み判定が minSample 件以上あるときだけ"
+    check:
+      url: https://vet402.com/api/v1/accuracy
+      assert: "minSample == 10"
+    verified_at: 2026-09-04
+  - id: accuracy_every_figure_on_this_page
+    surface: src/app/accuracy/page.tsx
+    quote: "Every figure on this page is a rolling 90-day aggregate that moves as the sample grows."
+    means: "このページの数字は 90 日ローリングの集計で、標本が増えれば動く"
+    check:
+      url: https://vet402.com/api/v1/accuracy
+      assert: "methodologyVersion >= 1"
+    verified_at: 2026-09-04
+  - id: agent_verification_proves_wallet_control_only
+    surface: src/app/agent/[agentId]/page.tsx
+    quote: "Verification proves wallet control only — it is not an endorsement, and the score below is"
+    means: "ウォレット署名が証明するのは支配だけで、推奨ではない"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: corrections_every_correction_vet402_has_issued
+    surface: src/app/corrections/page.tsx
+    quote: "Every correction vet402 has issued to a published score or verification result, with"
+    means: "公開済みのスコア・検証結果に出した訂正を全部ここに出す"
+    check:
+      url: https://vet402.com/api/v1/observatory/corrections
+      assert: "corrections.0.id != null"
+    verified_at: 2026-09-04
+  - id: corrections_the_landing_page_and_the
+    surface: src/app/corrections/page.tsx
+    quote: "The landing page and the observatory said every catalog-listed endpoint was"
+    means: "2026-08-13〜09-02 の誤った文言そのものの引用（訂正記事の本文）"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: corrections_at_was_not_true_what
+    surface: src/app/corrections/page.tsx
+    quote: "at was not true. What ran daily was the catalog fetch; probes ran on a rolling schedule, a"
+    means: "毎日走っていたのはカタログ取得で、プローブはローリングだった、という訂正の中身"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: corrections_the_catalog_is_re_fetched
+    surface: src/app/corrections/page.tsx
+    quote: "the catalog is re-fetched daily,"
+    means: "直した後の文言の説明。実測シェアを同じ面に印字する"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "coverage7d.pct < 100"
+    verified_at: 2026-09-04
+  - id: corrections_published_here_with_what_was
+    surface: src/app/corrections/page.tsx
+    quote: "published here with what was wrong and what changed. We never silently edit or silently"
+    means: "間違えたら黙って直さず、訂正として公開する"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: corrections_without_continuing_to_publish_data
+    surface: src/app/corrections/page.tsx
+    quote: "without continuing to publish data we no longer have grounds to publish. Every entry"
+    means: "一部認容の場合も削除でなく制限・注記で残す"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: decisions_every_decision_the_daily_verifier
+    surface: src/app/decisions/page.tsx
+    quote: "Every decision the daily verifier actually made with its own funds: refusals before"
+    means: "自己資金で行った決定（署名前の拒否と支払後の結果）を全部出す"
+    check:
+      url: https://vet402.com/api/v1/observatory/decisions
+      assert: "rows.0.decision != null"
+    verified_at: 2026-09-04
+  - id: decisions_how_vet402_answers_it_every
+    surface: src/app/decisions/page.tsx
+    quote: "how vet402 answers it every day with its own funds: walls that demanded more than"
+    means: "この登録簿が自己資金で毎日答えている、という主張"
+    check:
+      url: https://vet402.com/api/v1/observatory/decisions
+      assert: "rows.0.amountUnits != null"
+    verified_at: 2026-09-04
+  - id: demo_the_public_x402_catalog_we
+    surface: src/app/demo/page.tsx
+    quote: "The public x402 catalog we track, measured every day"
+    means: "公開カタログを日次で測っている（デモ動画の説明文）"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "coverage7d.measuredLast7d > 0"
+    verified_at: 2026-09-04
+  - id: demo_every_aggregate_is_public_json
+    surface: src/app/demo/page.tsx
+    quote: "Every aggregate is public JSON — no API key needed"
+    means: "集計値はキー不要の公開 JSON"
+    check:
+      url: https://vet402.com/api/v1/census/summary
+      assert: "settlements_real >= 0"
+    verified_at: 2026-09-04
+  - id: demo_o_narration_no_slides_every
+    surface: src/app/demo/page.tsx
+    quote: "o narration, no slides — every frame is a live page you can open yourself. Recorded 2026-0"
+    means: "デモの各コマは実ページであってスライドではない"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: api_my_agent_pay_this_wallet
+    surface: src/app/docs/api/page.tsx
+    quote: "my agent pay this wallet? Never 404s for an unfamiliar wallet — a wallet with no"
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: api_at_registration_and_at_every
+    surface: src/app/docs/api/page.tsx
+    quote: "at registration AND at every delivery). GET /api/v1/webhooks lists your"
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: api_proves_wallet_control_only_scores
+    surface: src/app/docs/api/page.tsx
+    quote: "proves wallet control only; scores stay independent."
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: api_resource_identifiers_only_never_a
+    surface: src/app/docs/api/page.tsx
+    quote: "resource. Identifiers only — never a recommendation. A q the classifier cannot"
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: api_facts_and_recommendation_always_arrive
+    surface: src/app/docs/api/page.tsx
+    quote: "facts and recommendation always arrive in the same document; the transitional"
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: api_payees_no_key_120_min
+    surface: src/app/docs/api/page.tsx
+    quote: "payees[] — no key, 120/min. Every payee_id (chain:address) declared by resources"
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: api_as_json_no_key_60
+    surface: src/app/docs/api/page.tsx
+    quote: "as JSON — no key, 60/min. Every published verdict that later changed:"
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check:
+      url: https://vet402.com/api/v1/observatory/corrections
+      assert: "corrections.0.reason != null"
+    verified_at: 2026-09-04
+  - id: api_never_touches_keys_funds_or
+    surface: src/app/docs/api/page.tsx
+    quote: "never touches keys, funds, or signing &mdash; execution stays with your wallet stack."
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: api_every_scored_response_carries_a
+    surface: src/app/docs/api/page.tsx
+    quote: "Every scored response carries a numeric score and a"
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: api_every_check_completed_and_nothing
+    surface: src/app/docs/api/page.tsx
+    quote: "Every check completed and nothing adverse was found."
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: api_of_n_agents_is_n
+    surface: src/app/docs/api/page.tsx
+    quote: "of N agents is N units. Every scored"
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: api_seconds_always_under_60
+    surface: src/app/docs/api/page.tsx
+    quote: "(seconds, always under 60)"
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: api_every_scored_verdict_agent_and
+    surface: src/app/docs/api/page.tsx
+    quote: "Every scored verdict (agent and wallet endpoints, and each element of a"
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: api_can_never_disagree_with
+    surface: src/app/docs/api/page.tsx
+    quote: "can never disagree with"
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: api_availability_flags_always_0_the
+    surface: src/app/docs/api/page.tsx
+    quote: "availability flags (always ≤ 0). The specific flags are in"
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: api_what_lifts_a_payee_out
+    surface: src/app/docs/api/page.tsx
+    quote: "What lifts a payee out of &ldquo;thin&rdquo; is an observed fact, never a"
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: api_catalog_on_a_complete_fetch
+    surface: src/app/docs/api/page.tsx
+    quote: "catalog on a complete fetch (daily observatory sync). Factual listing-state notice,"
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: api_a_score_is_never_pushed
+    surface: src/app/docs/api/page.tsx
+    quote: "A score is never pushed — scores are computed on demand and pushing a"
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: api_every_delivery_is_a_json
+    surface: src/app/docs/api/page.tsx
+    quote: "Every delivery is a JSON POST with this envelope."
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: api_accuracy_claims_they_never_measured
+    surface: src/app/docs/api/page.tsx
+    quote: "accuracy claims they never measured."
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: api_total_one_a_deeper_env
+    surface: src/app/docs/api/page.tsx
+    quote: "total one. A deeper env/DB/RPC probe runs on a daily cron and returns"
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check:
+      url: https://vet402.com/api/health
+      assert: "status == \"ok\""
+    verified_at: 2026-09-04
+  - id: api_only_on_a_critical_failure
+    surface: src/app/docs/api/page.tsx
+    quote: "only on a critical failure (indexer catch-up lag is"
+    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-04
+  - id: impact_and_a_hash_chained_ledger
+    surface: src/app/impact/page.tsx
+    quote: "and a hash-chained ledger — every figure links to the API that produces it."
+    means: "各数字が、それを出す API へ 1 対 1 でリンクしている（メタ説明）"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: impact_every_figure_links_to_its
+    surface: src/app/impact/page.tsx
+    quote: "Every figure links to its API"
+    means: "各数字が、それを出す API へ 1 対 1 でリンクしている（バッジ）"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: impact_hash_anchored_a_daily_prev
+    surface: src/app/impact/page.tsx
+    quote: "hash-anchored (a daily prev-hash chain; on-chain anchoring is not yet enabled — see"
+    means: "台帳は日次 prev-hash 鎖でハッシュ固定。オンチェーンのアンカーはまだ無効（本文がそう明記している）"
+    check:
+      url: https://vet402.com/api/v1/observatory/anchors
+      assert: "anchors.0.rootHash != null"
+    verified_at: 2026-09-04
+  - id: impact_payments_before_signing_overcharging_or
+    surface: src/app/impact/page.tsx
+    quote: "payments before signing (overcharging or unpayable walls) and published every"
+    means: "署名前の拒否も含めて、決定を全部公開している"
+    check:
+      url: https://vet402.com/api/v1/observatory/decisions
+      assert: "rows.0.decision != null"
+    verified_at: 2026-09-04
+  - id: impact_the_purchase_ledger_is_a
+    surface: src/app/impact/page.tsx
+    quote: "The purchase ledger is a daily hash chain. Latest root ("
+    means: "購入台帳の日次ハッシュ鎖と最新ルート"
+    check:
+      url: https://vet402.com/api/v1/observatory/anchors
+      assert: "anchors.0.entryCount >= 1"
+    verified_at: 2026-09-04
+  - id: impact_entries_rewriting_any_past_row
+    surface: src/app/impact/page.tsx
+    quote: "entries. Rewriting any past row breaks every"
+    means: "過去行の書き換えは以降の全ルートを壊す"
+    check:
+      url: https://vet402.com/api/v1/observatory/anchors
+      assert: "anchors.0.entryCount >= 1"
+    verified_at: 2026-09-04
+  - id: impact_the_purchase_ledger_is_a_2
+    surface: src/app/impact/page.tsx
+    quote: "The purchase ledger is a daily hash chain; anchoring begins with the first anchored day."
+    means: "アンカーは最初にアンカーされた日から始まる"
+    check:
+      url: https://vet402.com/api/v1/observatory/anchors
+      assert: "anchors.0.entryCount >= 1"
+    verified_at: 2026-09-04
+  - id: impact_all_measurement_surfaces_above_are
+    surface: src/app/impact/page.tsx
+    quote: "All measurement surfaces above are key-less and public. The verification stack is MIT and"
+    means: "上に出した測定面はすべてキー不要・公開"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: leaderboard_the_latest_verdict_per_subject
+    surface: src/app/leaderboard/page.tsx
+    quote: "The latest verdict per subject, ranked by score. Every row is computed from public"
+    means: "各行は公開オンチェーン状態から計算している"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: leaderboard_no_verdicts_are_in_the
+    surface: src/app/leaderboard/page.tsx
+    quote: "No verdicts are in the current window yet. It will never be padded with fabricated"
+    means: "架空のエージェントで埋めない。実ルックアップが出るまで空のまま"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: privacy_card_data_directly_which_we
+    surface: src/app/legal/privacy/page.tsx
+    quote: "card data directly, which we never see or store."
+    means: "プライバシー方針が述べるデータの扱い"
+    check: null
+    why_unverifiable: "測定値ではなく方針の約束で、外部から機械的に反証できない。委託先の扱いは各社の DPA が根拠"
+    verified_at: 2026-09-04
+  - id: privacy_people_and_businesses_who_never
+    surface: src/app/legal/privacy/page.tsx
+    quote: "people and businesses who never opened an account with us. If one of those addresses can"
+    means: "プライバシー方針が述べるデータの扱い"
+    check: null
+    why_unverifiable: "測定値ではなく方針の約束で、外部から機械的に反証できない。委託先の扱いは各社の DPA が根拠"
+    verified_at: 2026-09-04
+  - id: privacy_and_every_factual_correction_we
+    surface: src/app/legal/privacy/page.tsx
+    quote: ", and every factual correction we make is published on our"
+    means: "プライバシー方針が述べるデータの扱い"
+    check: null
+    why_unverifiable: "測定値ではなく方針の約束で、外部から機械的に反証できない。委託先の扱いは各社の DPA が根拠"
+    verified_at: 2026-09-04
+  - id: privacy_request_within_30_days_there
+    surface: src/app/legal/privacy/page.tsx
+    quote: "request within 30 days. There is no charge. We will say no only where the law lets us —"
+    means: "プライバシー方針が述べるデータの扱い"
+    check: null
+    why_unverifiable: "測定値ではなく方針の約束で、外部から機械的に反証できない。委託先の扱いは各社の DPA が根拠"
+    verified_at: 2026-09-04
+  - id: terms_the_opinion_is_not_free
+    surface: src/app/legal/terms/page.tsx
+    quote: "The opinion is not free-floating: every verdict rests on"
+    means: "利用規約が述べる運用方針の約束"
+    check: null
+    why_unverifiable: "測定値ではなく方針の約束なので、真偽を返す公開エンドポイントが存在しない。破られたときは訂正ログ（/corrections）に現れる"
+    verified_at: 2026-09-04
+  - id: terms_assessment_and_never_to_assert
+    surface: src/app/legal/terms/page.tsx
+    quote: "assessment, and never to assert an evaluative label — &quot;fraud,&quot;"
+    means: "利用規約が述べる運用方針の約束"
+    check: null
+    why_unverifiable: "測定値ではなく方針の約束なので、真偽を返す公開エンドポイントが存在しない。破られたときは訂正ログ（/corrections）に現れる"
+    verified_at: 2026-09-04
+  - id: terms_not_instructions_and_not_decisions
+    surface: src/app/legal/terms/page.tsx
+    quote: "not instructions and not decisions. vet402 never accepts, refuses, delays, or reverses"
+    means: "利用規約が述べる運用方針の約束"
+    check: null
+    why_unverifiable: "測定値ではなく方針の約束なので、真偽を返す公開エンドポイントが存在しない。破られたときは訂正ログ（/corrections）に現れる"
+    verified_at: 2026-09-04
+  - id: terms_every_record_page_under
+    surface: src/app/legal/terms/page.tsx
+    quote: "every record page under"
+    means: "利用規約が述べる運用方針の約束"
+    check: null
+    why_unverifiable: "測定値ではなく方針の約束なので、真偽を返す公開エンドポイントが存在しない。破られたときは訂正ログ（/corrections）に現れる"
+    verified_at: 2026-09-04
+  - id: terms_between_measurements_the_world_can
+    surface: src/app/legal/terms/page.tsx
+    quote: "between measurements the world can change faster than we do. Always read a result"
+    means: "利用規約が述べる運用方針の約束"
+    check: null
+    why_unverifiable: "測定値ではなく方針の約束なので、真偽を返す公開エンドポイントが存在しない。破られたときは訂正ログ（/corrections）に現れる"
+    verified_at: 2026-09-04
+  - id: live_every_row_below_is_a
+    surface: src/app/live/page.tsx
+    quote: "Every row below is a fact the moment it is written: an L0 probe answering whether a"
+    means: "ライブ行は書かれた時点で事実（L0 プローブか L1 購入）"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: live_settlement_outcome_nothing_here_is
+    surface: src/app/live/page.tsx
+    quote: "settlement outcome. Nothing here is simulated, smoothed, or replayed — when the daily"
+    means: "シミュレートも平滑化もしない。日次ランが止まればフィードも止まる"
+    check:
+      url: https://vet402.com/api/v1/observatory/decisions
+      assert: "rows.0.at != null"
+    verified_at: 2026-09-04
+  - id: record_measurer_is_not_a_neutral
+    surface: src/app/observatory/e/[id]/page.tsx
+    quote: "measurer is not a neutral third party in its own numbers, and the L1 buyer never"
+    means: "測定者は自分の数字の中立な第三者ではないので、L1 の買い手は自社から買わない"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: record_instead_one_person_reads_it
+    surface: src/app/observatory/e/[id]/page.tsx
+    quote: "instead. One person reads it and replies. The record is never deleted on dispute: if it"
+    means: "測定への異議は人が読む"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: method_failure_a_0_100_score
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "failure. A 0–100 score is a different API and is never an L0–L2 result."
+    means: "L0/L1/L2 の問いの切り分けと、スコア（別 API）を L0–L2 の結果として出さないという規約"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: method_every_endpoint_on_this_page
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "Every endpoint on this page was discovered through the"
+    means: "このページのエンドポイントはすべて公開ディスカバリカタログ由来"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "totalEndpoints > 0"
+    verified_at: 2026-09-04
+  - id: method_the_whole_x402_economy_x402
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "the whole x402 economy: x402 traffic that is never listed there — x402 on XRPL, for"
+    means: "カタログは測定母集団であって x402 経済の全体ではない（明示した限界）"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: method_unverified_is_not_a_failure
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "unverified is not a failure and is never counted as one."
+    means: "unverified は失敗ではなく、失敗として数えない"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: obs_daily_measurements_over_the_public
+    surface: src/app/observatory/page.tsx
+    quote: "Daily measurements over the public x402 catalog: does each endpoint's payment wall"
+    means: "観測所のメタ説明。カタログの再取得が動いていること（最新スナップショットの取得件数）が前提"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "latestSnapshot.fetchedCount > 0"
+    verified_at: 2026-09-04
+  - id: obs_measurements_accumulate_daily_after_that
+    surface: src/app/observatory/page.tsx
+    quote: "measurements accumulate daily after that."
+    means: "空表時の説明。「日々たまる」と言えるのは 7 日窓に測定が入っているとき"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "coverage7d.measuredLast7d > 0"
+    verified_at: 2026-09-04
+  - id: obs_every_endpoint_in_the_public
+    surface: src/app/observatory/page.tsx
+    quote: "Every endpoint in the public x402 discovery catalog: is it still listed, and does its"
+    means: "観測所の対象母集団は公開カタログ全件。ただしプローブはローリング（7日カバレッジ < 100%）"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "coverage7d.pct < 100"
+    verified_at: 2026-09-04
+  - id: state_daily_l0_probes_and_passes
+    surface: src/app/observatory/state/page.tsx
+    quote: "Daily L0 probes and passes,"
+    means: "折れ線の代替テキスト。日次の probes/pass 系列が実在すること"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "coverage7d.measuredLast7d > 0"
+    verified_at: 2026-09-04
+  - id: state_l0_observation_has_always_been
+    surface: src/app/observatory/state/page.tsx
+    quote: "L0 observation has always been chain-agnostic and costs nothing to run, so this table"
+    means: "L0 はチェーン非依存なので、カタログが載せる全チェーンを対象にする。ただし mainnet のみ（API の byChainScope がそれを機械可読に出している）"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "byChainScope == \"mainnet_only\""
+    verified_at: 2026-09-04
+  - id: state_daily_hash_chain_over_the
+    surface: src/app/observatory/state/page.tsx
+    quote: "daily hash chain over the full purchase ledger, latest root ("
+    means: "購入台帳の日次ハッシュ鎖。最新ルートに紐づくエントリが実在すること"
+    check:
+      url: https://vet402.com/api/v1/observatory/anchors
+      assert: "anchors.0.entryCount >= 1"
+    verified_at: 2026-09-04
+  - id: state_every_later_root_recompute_it
+    surface: src/app/observatory/state/page.tsx
+    quote: "every later root. Recompute it yourself:"
+    means: "過去行を書き換えると以降の全ルートが壊れる（鎖の性質）"
+    check:
+      url: https://vet402.com/api/v1/observatory/anchors
+      assert: "anchors.0.entryCount >= 1"
+    verified_at: 2026-09-04
+  - id: state_daily_hash_chain_starts_with
+    surface: src/app/observatory/state/page.tsx
+    quote: "daily hash chain starts with the first anchored day —"
+    means: "鎖は最初にアンカーされた日から始まる"
+    check:
+      url: https://vet402.com/api/v1/observatory/anchors
+      assert: "anchors.0.entryCount >= 1"
+    verified_at: 2026-09-04
+  - id: state_no_rolled_up_days_yet
+    surface: src/app/observatory/state/page.tsx
+    quote: "No rolled-up days yet — the daily rollup starts filling this section from its first"
+    means: "日次ロールアップが未生成のときの説明"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "coverage7d.activeEndpoints > 0"
+    verified_at: 2026-09-04
+  - id: operations_own_operations_should_survive_the
+    surface: src/app/operations/page.tsx
+    quote: "own operations should survive the same scrutiny it applies to others — every claim"
+    means: "日々の運用は AI が行い、資金移動などの関門は人間のオーナーが持つ"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: operations_daily_catalog_sync_l0_probes
+    surface: src/app/operations/page.tsx
+    quote: "Daily catalog sync, L0 probes, budget-capped L1 purchases, metrics rollup, and the"
+    means: "カタログ同期・L0・L1・ロールアップ・ハッシュ鎖が人手なしで定時実行される"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "latestSnapshot.fetchedCount > 0"
+    verified_at: 2026-09-04
+  - id: operations_shows_daily_rows
+    surface: src/app/operations/page.tsx
+    quote: "shows daily rows;"
+    means: "日次の行が /observatory/state に出る"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "coverage7d.activeEndpoints > 0"
+    verified_at: 2026-09-04
+  - id: operator_log_every_global_override_vet402_s
+    surface: src/app/operator-log/page.tsx
+    quote: "Every global override vet402's operator has applied to a score — the address, the"
+    means: "オペレータのグローバル上書きを全部出す。顧客スコープのリストはここに出ない"
+    check:
+      url: https://vet402.com/api/transparency/operator-overrides
+      assert: "count >= 0"
+    verified_at: 2026-09-04
+  - id: operator_log_on_every_customer_s_score
+    surface: src/app/operator-log/page.tsx
+    quote: "on every customer&rsquo;s score &mdash; the address and the stated reason are recorded"
+    means: "ネットワーク全体のブラックリストに入れたら、その事実をここに出す"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: operator_log_and_it_is_never_published
+    surface: src/app/operator-log/page.tsx
+    quote: "and it is never published here."
+    means: "顧客が自分の統合のために行う許可・拒否は私的な判断で、ここには出ない"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: operator_log_never_holds_or_moves_funds
+    surface: src/app/operator-log/page.tsx
+    quote: "never holds or moves funds; a customer&rsquo;s SDK decides what to do with the verdict."
+    means: "ブロックは助言であって保管ではない。資金は保持も移動もしない"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: lp_opinion_never_mixed_with_l0
+    surface: src/app/page.tsx
+    quote: "opinion — never mixed with L0–L2"
+    means: "L3 は意見であって L0–L2 の測定記録と混ぜないという編集規約"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: lp_four_levels_in_order_of
+    surface: src/app/page.tsx
+    quote: "Four levels, in order of what they cost us to run and what they prove. A result never"
+    means: "検証段の結果は上の段へ昇格しない（L0 が決済を報告することはない）という設計上の約束"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: lp_then_a_score_is_never
+    surface: src/app/page.tsx
+    quote: "then. A score is never reported as an L0&ndash;L2 result."
+    means: "旧 0–100 スコアは移行期間中も API/SDK から使えるが、スコアを L0–L2 の測定結果として出すことはない"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: lp_bad_a_caller_about_to
+    surface: src/app/page.tsx
+    quote: "&quot;bad&quot;. A caller about to move money gets the safe answer instead: a check"
+    means: "測れなかったものを bad と言わず unverified と言う、という判定語の規約"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: lp_payment_wall_answer_a_valid
+    surface: src/app/page.tsx
+    quote: "payment wall answer a valid 402. The catalog is re-fetched daily; endpoints are"
+    means: "LP のカタログ節。プローブは毎日ではなくローリング。7日カバレッジが 100% 未満であることが「rolling」表記の根拠で、100% に達したらこの文言は逆に過小申告になる（2026-08-13 の事故文言はここにあった）"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "coverage7d.pct < 100"
+    verified_at: 2026-09-04
+  - id: lp_an_on_chain_receipt_in
+    surface: src/app/page.tsx
+    quote: "an on-chain receipt) in separate cells; they are never mixed."
+    means: "L0 と L1 は別セルで出し、混ぜて1つの数字にしない"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: partners_priority_verification_and_every_result
+    surface: src/app/partners/page.tsx
+    quote: "priority verification — and every result publishes through the same gate as"
+    means: "パートナーには統合支援と優先検証を出す（提供内容の説明）"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: payee_detail_every_check_cleared_clear_to
+    surface: src/app/payee/[address]/page.tsx
+    quote: "Every check cleared. Clear to pay."
+    means: "全チェックが通ったときの判定文"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: payee_detail_verification_proves_wallet_control_only
+    surface: src/app/payee/[address]/page.tsx
+    quote: "Verification proves wallet control only — it is not an endorsement, and the score"
+    means: "ウォレット署名が証明するのは支配だけで、推奨ではない"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: payee_lists_every_address_we_have
+    surface: src/app/payee/page.tsx
+    quote: "lists every address we have scored in the last 30 days."
+    means: "直近 30 日にスコアした住所を一覧に出す"
+    check:
+      url: https://vet402.com/api/v1/census/summary
+      assert: "unique_payees_real >= 0"
+    verified_at: 2026-09-04
+  - id: playground_performs_on_the_whole_public
+    surface: src/app/playground/page.tsx
+    quote: "performs on the whole public catalog daily. Demo probes are not written into the public"
+    means: "デモのプローブは公開登録簿に書かない。公開側の頻度は本番の実行だけで決まる"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "coverage7d.pct < 100"
+    verified_at: 2026-09-04
+  - id: playground_l1_receipts_on_each_endpoint
+    surface: src/app/playground/page.tsx
+    quote: "L1 receipts on each endpoint&apos;s page are real purchases made under a hard daily"
+    means: "エンドポイント頁の L1 レシートは日次予算の上限内で行った実購入"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: status_monitor_no_assumed_100_on
+    surface: src/app/status/page.tsx
+    quote: "monitor, no assumed 100% on quiet days."
+    means: "自社の稼働率も他と同じやり方で測る（実サンプル・観測のまま公開）"
+    check:
+      url: https://vet402.com/api/health
+      assert: "status == \"ok\""
+    verified_at: 2026-09-04
+  - id: status_monitor_here_a_row_is
+    surface: src/app/status/page.tsx
+    quote: "monitor here &mdash; a row is recorded from real page views, at most one every five"
+    means: "標本の無い主張は出さない"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: status_a_missing_observation_is_never
+    surface: src/app/status/page.tsx
+    quote: "A missing observation is never reported as &quot;ok.&quot;"
+    means: "観測が欠けている日を ok とは書かない"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: status_daily_status_samples_over_the
+    surface: src/app/status/page.tsx
+    quote: "Daily status samples over the last 30 days"
+    means: "直近 30 日の日次サンプル（表の説明）"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: status_daily_status_samples_over_the_2
+    surface: src/app/status/page.tsx
+    quote: "Daily status samples over the last 30 days"
+    means: "直近 30 日の日次サンプル（表のキャプション）"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: status_its_worst_sample_not_an
+    surface: src/app/status/page.tsx
+    quote: "its worst sample, not an average, so one bad five minutes is never hidden inside a"
+    means: "1日は最悪サンプルで代表させる。平均で悪い5分を隠さない"
+    check: null
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: faq_of_any_counterparty_every_api
+    surface: src/components/site/faq-data.ts
+    quote: "of any counterparty. Every API response that carries a score or a published"
+    means: "FAQ の回答が述べる製品の性質"
+    check: null
+    why_unverifiable: "製品の設計上の性質（保管しない・別 API である等）であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: faq_payment_from_agents_it_has
+    surface: src/components/site/faq-data.ts
+    quote: "payment from agents it has never seen can check the payer's score first. The API"
+    means: "FAQ の回答が述べる製品の性質"
+    check: null
+    why_unverifiable: "製品の設計上の性質（保管しない・別 API である等）であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: faq_system_l0_probes_run_across
+    surface: src/components/site/faq-data.ts
+    quote: "system: L0 probes run across every chain in the public x402 discovery catalog, and"
+    means: "FAQ の回答が述べる製品の性質"
+    check: null
+    why_unverifiable: "製品の設計上の性質（保管しない・別 API である等）であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: faq_by_lookup_quota_a_score
+    surface: src/components/site/faq-data.ts
+    quote: "by lookup quota. A score is never reported as an L0–L2 result."
+    means: "FAQ の回答が述べる製品の性質"
+    check: null
+    why_unverifiable: "製品の設計上の性質（保管しない・別 API である等）であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
