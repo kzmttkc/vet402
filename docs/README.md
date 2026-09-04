@@ -16,6 +16,7 @@ Load only what the current task needs. PRODUCT.md and DESIGN.md at the repo root
 | Grants (vs hackathon freeze) | `hackathons/GRANTS.md` |
 | 監査を始める前（どの監査でも） | `audits/CHECKLIST.md` |
 | 公開面の事実主張と、その裏付け | `claims.yaml` |
+| 事故対応（支出を止める・鍵漏洩・DB 障害） | `INCIDENT_RUNBOOK.md` |
 
 ## Do not load unless asked
 

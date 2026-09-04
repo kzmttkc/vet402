@@ -36,6 +36,7 @@ import { readBodyCapped } from "@/lib/net/read-capped";
 import { UnsafeTargetError, createSafeFetchImpl } from "@/lib/net/safe-fetch";
 import { createDeadline } from "@/lib/util/deadline";
 import { checkL1Budget, isL1Enabled, DAILY_BUDGET_USD } from "./budget";
+import { isSpendingHalted, type HaltVerdict } from "./kill-switch";
 import { addDerivedOperatorAddresses, isOperatorPayTo, operatorPayToDenylist } from "./operator";
 import {
   buildAuthorization,
@@ -80,7 +81,14 @@ export type L1BatchSummary = {
   notAttempted: number;
   /** Stale `in_flight` rows resolved at the top of this batch (see sweepOrphanedInFlight). */
   orphansResolved: number;
-  disabledReason: "l1_disabled" | "wallet_key_missing" | null;
+  /**
+   * 実行時の停止スイッチが効いた（2026-09-05 監査 P0・kill-switch.ts）。
+   * バッチ開始時に立っていれば 1 リクエストも出さず、途中で立てば
+   * そこで打ち切る（飛行中の 1 件は最後まで記帳する）。
+   */
+  halted: boolean;
+  haltReason: string | null;
+  disabledReason: "l1_disabled" | "wallet_key_missing" | "spending_halted" | null;
 };
 
 type Candidate = {
@@ -413,6 +421,20 @@ export async function resolveReservationAsFailed(
   }
 }
 
+/**
+ * 停止スイッチを 1 回読む。**fail-closed の「DB が読めないので止めた」を
+ * 黙って「運用者が止めた」に見せない**ための薄い包み: 前者は障害なので
+ * fail-loud にする（cron の応答からは haltReason の文言で区別できるが、
+ * 障害はログにも出ていなければ誰も気づかない）。
+ */
+async function haltGate(db: NonNullable<ReturnType<typeof getDb>>): Promise<HaltVerdict> {
+  const verdict = await isSpendingHalted(db);
+  if (verdict.halted && verdict.source === "unreachable") {
+    logServerError("observatory.l1.halt_flag_unreadable", new Error(verdict.reason));
+  }
+  return verdict;
+}
+
 export async function runL1Batch(
   options: {
     limit?: number;
@@ -456,6 +478,8 @@ export async function runL1Batch(
     stoppedForDeadline: false,
     notAttempted: 0,
     orphansResolved: 0,
+    halted: false,
+    haltReason: null,
     disabledReason: null,
   };
 
@@ -474,6 +498,18 @@ export async function runL1Batch(
   }
   const db = getDb();
   if (!db) throw new Error("DATABASE_URL is not configured");
+
+  // 1.2 実行時の停止スイッチ（2026-09-05 監査 P0）。env のフラグ（上）は
+  //     再デプロイしないと変わらないので、支出を今すぐ止める手段になれない。
+  //     DB の 1 行を、ネットワークへ 1 本も出す前に読む。
+  const batchHalt = await haltGate(db);
+  if (batchHalt.halted) {
+    summary.halted = true;
+    summary.haltReason = batchHalt.reason;
+    summary.disabledReason = "spending_halted";
+    return summary;
+  }
+
   const account = privateKeyToAccount(pk as `0x${string}`);
   // Solana は独立フラグ + 独立鍵。どちらか欠ければ candidates から除外される
   // （試行すらしない）。予算・台帳は Base と共有（USDC 基本単位が共通）。
@@ -666,6 +702,14 @@ export async function runL1Batch(
         if (outcome.settled) summary.settled++;
         else if (outcome.status === "delivered_no_receipt") summary.deliveredNoReceipt++;
         else summary.settleFailed++;
+      } else if (outcome.kind === "halted") {
+        // 停止は「この候補には高すぎた」ではなく「もう買うな」。予算否認と違い、
+        // 残りの候補を歩き続ける理由がひとつも無いのでバッチごと降りる。
+        summary.halted = true;
+        summary.haltReason = outcome.haltReason ?? null;
+        summary.disabledReason = "spending_halted";
+        summary.notAttempted = candidates.length - index - 1;
+        break;
       } else if (outcome.kind === "budget_denied") {
         summary.budgetDenied++;
         // Budget exhausted for anything at this price — later candidates may
@@ -692,11 +736,13 @@ async function purchaseOne(input: {
   db: NonNullable<ReturnType<typeof getDb>>;
   spentToday: bigint;
 }): Promise<{
-  kind: "attempted" | "skipped" | "budget_denied";
+  kind: "attempted" | "skipped" | "budget_denied" | "halted";
   settled: boolean;
   spent: bigint;
   /** 台帳に書いた status（attempted のときのみ）——summary の集計はこれを見る。 */
   status?: string;
+  /** kind === "halted" のときの判定理由（cron 応答とログに出る）。 */
+  haltReason?: string;
 }> {
   const { candidate, account, solanaKeypair, getSolanaBlockhash, fetchImpl, timeoutMs, db, spentToday } = input;
   const method = (candidate.method ?? "GET").toUpperCase();
@@ -851,6 +897,23 @@ async function purchaseOne(input: {
     return { kind: "skipped", settled: false, spent: 0n };
   }
 
+  // 実行時の停止スイッチ・1 回目（2026-09-05 監査 P0）。予約の**前**に読む。
+  // バッチ開始時の判定はここまでに数十秒〜数分古くなっている——運用者が
+  // 「いま止めろ」と言ったのに、走行中のバッチが残りを買い切ってしまう窓が
+  // その差分。予約を取る前に落とせば、日次予算も食わない。
+  const preReserveHalt = await haltGate(db);
+  if (preReserveHalt.halted) {
+    // 行を書く（黙って飛ばさない）。副作用として、この endpoint はスイープ窓
+    // （既定 6 日）のあいだ再選択されない——budget_denied と同じ挙動で、停止は
+    // 稀なので許容する。バッチは次の候補へ進まず降りるので、行は 1 件だけ。
+    await record({
+      status: "halted",
+      amountUnits: accept.amount,
+      rawResponseMeta: { phase: "pre_reserve", reason: preReserveHalt.reason },
+    });
+    return { kind: "halted", settled: false, spent: 0n, haltReason: preReserveHalt.reason };
+  }
+
   // Reserve BEFORE signing. This is the authoritative gate: it re-reads the
   // day's total and the sweep window inside one statement and writes the row
   // that carries spent_units, so the money is on the ledger before it can
@@ -889,6 +952,25 @@ async function purchaseOne(input: {
   // 署名できない accept は selectAccept / selectSolanaAccept が予約より前に
   // 落とすようになったが、それは既知の形だけを塞ぐ。ここは**未知の形**の
   // 受け皿で、落ちた行は settle_failed（分母に入る status・冷却の対象）へ倒す。
+  // 実行時の停止スイッチ・2 回目（2026-09-05 監査 P0）。**署名の直前**。
+  // 予約は署名の前に spent_units を立てるので、ここで止めるなら予約を
+  // 0 へ戻す必要がある——署名していない予約は「金」ではないのに、放置すると
+  // 停止したぶんだけ日次予算が消えてしまう。行は消さず `halted` で残す
+  // （何が起きたかを台帳が答えられる状態を崩さない）。
+  const preSignHalt = await haltGate(db);
+  if (preSignHalt.halted) {
+    await db
+      .update(x402L1Purchases)
+      .set({
+        status: "halted",
+        spentUnits: "0",
+        rawResponseMeta: { phase: "pre_sign", reason: preSignHalt.reason },
+      })
+      .where(eq(x402L1Purchases.id, reservation.rowId));
+    invalidateDecisionCache(candidate.id);
+    return { kind: "halted", settled: false, spent: 0n, haltReason: preSignHalt.reason };
+  }
+
   try {
     // Sign — from here on the money is live, so the ledger row ALWAYS carries
     // spent_units, whatever the seller does next.
