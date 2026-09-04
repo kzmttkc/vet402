@@ -65,3 +65,14 @@ test("decision_idempotency（Idempotency-Key の応答保存）が schema.ts に
     "expires_at の索引が無い——期限切れの掃除が全走査になる",
   );
 });
+
+test("observed_purchases の 2 索引は本番と同じ部分索引（WHERE delivery_verified）", () => {
+  // db:drift を本番へ初めて走らせて見つかった（2026-09-04）。schema.ts は全行索引、本番は
+  // scripts/sql/2026-08-14-observed-purchases.sql の部分索引。push すると意味が変わる。
+  const cfg = getTableConfig(schema.observedPurchases);
+  for (const name of ["observed_purchases_wallet_idx", "observed_purchases_counterparty_idx"]) {
+    const idx = cfg.indexes.find((i) => i.config.name === name);
+    assert.ok(idx, `${name} が無い`);
+    assert.ok(idx.config.where, `${name}: 部分索引の WHERE が無い`);
+  }
+});

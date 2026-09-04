@@ -182,8 +182,14 @@ export const observedPurchases = pgTable(
   },
   (t) => [
     uniqueIndex("observed_purchases_tx_hash_idx").on(t.txHash),
-    index("observed_purchases_wallet_idx").on(t.wallet, t.blockTimestamp),
-    index("observed_purchases_counterparty_idx").on(t.counterparty, t.blockTimestamp),
+    // 本番は部分索引（scripts/sql/2026-08-14-observed-purchases.sql）。schema.ts が全行索引の
+    // ままだと push で意味が変わる——db:drift を本番へ初めて走らせて見つけた（2026-09-04）。
+    index("observed_purchases_wallet_idx")
+      .on(t.wallet, t.blockTimestamp)
+      .where(sql`${t.deliveryVerified} = true`),
+    index("observed_purchases_counterparty_idx")
+      .on(t.counterparty, t.blockTimestamp)
+      .where(sql`${t.deliveryVerified} = true`),
   ],
 );
 

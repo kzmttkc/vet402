@@ -36,6 +36,7 @@
     "predb:push": "tsx scripts/db-preflight.ts",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
+    "db:drift": "tsx scripts/schema-drift.ts",
     "api-key:create": "tsx scripts/create-api-key.ts",
     "check:env": "tsx scripts/check-production-env.ts",
     "indexer:funders": "tsx scripts/index-funders.ts",
