@@ -405,6 +405,22 @@ claims:
     check: null
     why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
     verified_at: 2026-09-04
+  - id: census_indexed_since_reports_how_far_back
+    surface: src/app/docs/api/page.tsx
+    quote: "indexed_since reports how far back the index actually reaches, overall and per chain"
+    means: "センサスの応答だけで索引の期間（全体・チェーン別）が読める。indexed_since が消えたらこの主張は偽になる"
+    check:
+      url: https://vet402.com/api/v1/census/summary
+      assert: "indexed_since.window_requested_days == 30"
+    verified_at: 2026-09-05
+  - id: census_window_covered_never_exceeds_requested
+    surface: src/app/docs/api/page.tsx
+    quote: "window_covered_days is never more than window_requested_days"
+    means: "索引が実際に持っている日数は、要求した窓の日数を超えて名乗らない。超えていたら分母の期間を偽っている。既定の窓は 30d なので、この面では 30 が上限（式の右辺に別のパスは書けないので数値で固定する）"
+    check:
+      url: https://vet402.com/api/v1/census/summary
+      assert: "indexed_since.window_covered_days <= 30"
+    verified_at: 2026-09-05
   - id: impact_and_a_hash_chained_ledger
     surface: src/app/impact/page.tsx
     quote: "and a hash-chained ledger — every figure links to the API that produces it."

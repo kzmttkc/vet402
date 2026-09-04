@@ -1147,7 +1147,10 @@ paths:
         wash_flag self_deal / circular / test (including every wallet vet402
         pays from). Both numbers are always returned together and never merged.
         Attribution and source breakdowns are included, with the definition
-        text in `definition`. Key-less; 60/min; cached 5 min.
+        text in `definition`. `indexed_since` states how far back the index
+        actually reaches — overall, per chain, and as a day count against the
+        window that was asked for — so the period behind these numbers can be
+        checked from this response alone. Key-less; 60/min; cached 5 min.
       security: []
       parameters:
         - in: query
@@ -3197,7 +3200,7 @@ components:
     CensusSummary:
       type: object
       description: §7.2 / §9.1 settlement census. `settlements_raw` and `settlements_real` are always both present and never merged.
-      required: [chain, window, settlements_raw, settlements_real, wash, attribution, unique_payers_raw, unique_payers_real, unique_payees_real, endpoints_with_real_settlement, by_source, definition, disclaimer, retrievedAt]
+      required: [chain, window, settlements_raw, settlements_real, wash, attribution, unique_payers_raw, unique_payers_real, unique_payees_real, endpoints_with_real_settlement, by_source, indexed_since, definition, disclaimer, retrievedAt]
       properties:
         chain: { type: string, description: CAIP-2, or "all". }
         window: { type: string, enum: [7d, 30d] }
@@ -3228,6 +3231,26 @@ components:
             l1_purchase: { type: integer }
             payments_api: { type: integer }
             chain_index: { type: integer }
+        indexed_since:
+          type: object
+          description: >-
+            How far back the index actually reaches. `window` is the period asked for, not the
+            period held. Measured 2026-09-04 in production, eip155:8453 started 2026-08-23 (13 of
+            the 30 requested days) while solana started 2026-07-21 (46 days), so a single overall
+            date would hide that the chain carrying 99.9% of the rows covers 13 days. When
+            `window_fully_covered` is false the counts in this response are a floor, not a total.
+          required: [all, byChain, all_chains_since, window_requested_days, window_covered_days, window_fully_covered, note]
+          properties:
+            all: { type: string, format: date, nullable: true, description: Oldest UTC day (YYYY-MM-DD) the index holds for any chain; null when nothing is indexed. }
+            byChain:
+              type: object
+              description: Oldest indexed UTC day per CAIP-2 chain. One entry when `chain` is set.
+              additionalProperties: { type: string, format: date }
+            all_chains_since: { type: string, format: date, nullable: true, description: Oldest UTC day from which every listed chain is indexed (the latest of the byChain days). }
+            window_requested_days: { type: integer, description: 7 or 30, matching `window`. }
+            window_covered_days: { type: integer, description: Whole UTC days of the requested window, ending today, that the index actually holds. }
+            window_fully_covered: { type: boolean, description: False when the index does not reach back a full window. }
+            note: { type: string, description: What is counted and what is not, in the response itself. }
         definition: { type: string }
         disclaimer: { type: string }
         retrievedAt: { type: string, format: date-time }
