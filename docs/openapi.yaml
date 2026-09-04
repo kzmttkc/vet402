@@ -1672,10 +1672,63 @@ paths:
                       settleDrop: { type: integer }
                   l1:
                     type: object
+                    description: |
+                      L1 real-purchase totals. `settled` is a transfer vet402 re-read
+                      on-chain; `delivered` is a settled attempt whose paid request also
+                      answered 2xx.
+
+                      `settled` is published at two evidence strengths, and
+                      `settledNonceBound + settledAmountPayeeOnly` always equals
+                      `settled` — the split labels strength, it does not change the
+                      count. Rows that settled before the nonce binding shipped
+                      (2026-09-04T12:00:00Z) are not demoted: vet402 does not refute a
+                      seller on evidence it does not hold.
                     properties:
                       attempts: { type: integer }
                       settled: { type: integer }
+                      delivered: { type: integer }
+                      settledNonceBound:
+                        type: integer
+                        description: >-
+                          Settled rows where the re-read also matched the signature nonce
+                          vet402 itself generated (the EIP-3009 authorization nonce on EVM,
+                          our own memo on Solana), so the transaction provably belongs to
+                          that purchase.
+                      settledAmountPayeeOnly:
+                        type: integer
+                        description: >-
+                          Settled rows matched on amount, payee, asset and chain only —
+                          no nonce was recorded at purchase time, so the evidence does not
+                          rule out a transaction the seller had received earlier.
+                      settledTimeWindowOk:
+                        type: integer
+                        description: >-
+                          Settled rows whose settlement block time falls within -5/+15
+                          minutes of the attempt. An independent check that survives the
+                          missing nonce; a row outside the window is still settled, not
+                          refuted.
+                      settledTimeWindowUnknown:
+                        type: integer
+                        description: >-
+                          Settled rows with no settlement block time on record — neither
+                          inside nor outside the window.
                       endpointsAttempted: { type: integer }
+                      endpointsSettled: { type: integer }
+                      endpointsDelivered: { type: integer }
+                      byChain:
+                        type: array
+                        description: >-
+                          Per-chain L1 breakdown. Unlike the top-level (L0) byChain this
+                          is not mainnet-filtered, so its columns sum to the l1 totals.
+                        items:
+                          type: object
+                          properties:
+                            chain: { type: string }
+                            attempts: { type: integer }
+                            settled: { type: integer }
+                            delivered: { type: integer }
+                            settledNonceBound: { type: integer }
+                            settledAmountPayeeOnly: { type: integer }
                   byChain:
                     type: array
                     items:

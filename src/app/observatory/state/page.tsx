@@ -129,6 +129,8 @@ export default async function ObservatoryStatePage() {
       "L0 unverified",
       "L1 paid purchase attempts",
       "L1 settled with on-chain receipt",
+      "L1 settled (nonce-bound)",
+      "L1 settled (amount + payee)",
       "L1 delivered (settled and a 2xx response)",
     ],
     keywords: ["x402", "agent payments", "HTTP 402", "endpoint liveness", "settlement", "USDC"],
@@ -382,6 +384,44 @@ export default async function ObservatoryStatePage() {
                   <td className="num">{stats.l1.settled.toLocaleString()}</td>
                   <td className="num">{pct(stats.l1.settled, stats.l1.attempts)} of attempts</td>
                 </tr>
+                {/* 2026-09-05 セキュリティ監査 S-4 / S-17: settled を 1 段で出していた。
+                    nonce 束縛は 2026-09-04 12:00 UTC からで、それ以前の行は金額・宛先・
+                    資産の一致までしか言えない。旧行は降格しない——強度を並べるだけ。
+                    2 行の和は必ず上の settled と一致する。 */}
+                <tr>
+                  <td className="text-brand">
+                    settled (nonce-bound): the re-read also matched the signature nonce we generated,
+                    so that transaction belongs to this purchase
+                  </td>
+                  <td className="num">{stats.l1.settledNonceBound.toLocaleString()}</td>
+                  <td className="num">{pct(stats.l1.settledNonceBound, stats.l1.settled)} of settled</td>
+                </tr>
+                <tr>
+                  <td className="text-brand">
+                    settled (amount + payee): matched on amount, payee, asset and chain, with no nonce
+                    recorded — settled before the binding shipped on 2026-09-04
+                  </td>
+                  <td className="num">{stats.l1.settledAmountPayeeOnly.toLocaleString()}</td>
+                  <td className="num">
+                    {pct(stats.l1.settledAmountPayeeOnly, stats.l1.settled)} of settled
+                  </td>
+                </tr>
+                <tr>
+                  <td className="text-brand">
+                    settled whose settlement block time falls within -5/+15 minutes of the attempt
+                  </td>
+                  <td className="num">{stats.l1.settledTimeWindowOk.toLocaleString()}</td>
+                  <td className="num">{pct(stats.l1.settledTimeWindowOk, stats.l1.settled)} of settled</td>
+                </tr>
+                <tr>
+                  <td className="text-brand">
+                    settled with no settlement block time on record (neither inside nor outside that window)
+                  </td>
+                  <td className="num">{stats.l1.settledTimeWindowUnknown.toLocaleString()}</td>
+                  <td className="num">
+                    {pct(stats.l1.settledTimeWindowUnknown, stats.l1.settled)} of settled
+                  </td>
+                </tr>
                 {/* 2026-09-04 外部監査 E・P0-3: settled と delivered は別の事実。
                     本番実測では settled のうち 120 件が非 2xx だった。 */}
                 <tr>
@@ -421,6 +461,65 @@ export default async function ObservatoryStatePage() {
             </table>
           </TableScroll>
         )}
+        {stats.l1.byChain.length > 0 && (
+          <TableScroll label="L1 purchases by chain">
+            <table className="fact-table">
+              <caption className="sr-only">L1 purchases by chain</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Chain</th>
+                  <th scope="col" className="num">
+                    Paid attempts
+                  </th>
+                  <th scope="col" className="num">
+                    Settled
+                  </th>
+                  <th scope="col" className="num">
+                    Delivered
+                  </th>
+                  <th scope="col" className="num">
+                    settled (nonce-bound)
+                  </th>
+                  <th scope="col" className="num">
+                    settled (amount + payee)
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.l1.byChain.map((c) => (
+                  <tr key={c.chain}>
+                    <td className="text-brand">
+                      <span className="block max-w-[9rem] truncate sm:max-w-none" title={c.chain}>
+                        {c.chain}
+                      </span>
+                    </td>
+                    <td className="num">{c.attempts.toLocaleString()}</td>
+                    <td className="num">{c.settled.toLocaleString()}</td>
+                    <td className="num">{c.delivered.toLocaleString()}</td>
+                    <td className="num">{c.settledNonceBound.toLocaleString()}</td>
+                    <td className="num">{c.settledAmountPayeeOnly.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
+        )}
+        <p className="doc-p">
+          The two settled rows above split the same {stats.l1.settled.toLocaleString()} receipts by how
+          strong the evidence behind each is, and they sum back to it — the split labels strength, it
+          does not change the count. Signature-nonce binding shipped at 2026-09-04 12:00 UTC; receipts
+          confirmed before then were matched on amount, payee, asset and chain, which a seller holding
+          several listings at the same price and payee could satisfy with a transfer it had received
+          earlier. Those rows keep the settled label because demoting one would assert something we
+          cannot show. The machine-readable form is <code>l1.settledNonceBound</code> and{" "}
+          <code>l1.settledAmountPayeeOnly</code>, per chain in <code>l1.byChain</code> (this L1
+          breakdown is not mainnet-filtered, so it sums to the L1 totals; the §2 table above is L0 and
+          mainnets-only).{" "}
+          <Link href="/observatory/methodology" className="underline">
+            Methodology
+          </Link>{" "}
+          states what each strength does and does not establish.
+        </p>
         <p className="doc-p">
           Attempt and settled counts above are as reported by <code>/api/v1/observatory/state</code>{" "}
           (<code>l1.attempts</code>, <code>l1.settled</code>): an attempt is a paid request whose payment was

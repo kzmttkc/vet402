@@ -287,7 +287,16 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
             <p className="doc-p">
               {l1.settled} of {l1.attempts} paid attempts settled with a receipt, and{" "}
               {l1.delivered} of those also returned a 2xx response (delivered). Each settled row
-              carries its on-chain transaction hash — the receipt is the evidence.{" "}
+              carries its on-chain transaction hash — the receipt is the evidence.{" "}A settled
+              row reads as <strong>nonce-bound</strong> when the on-chain re-read also matched the
+              one-time signature nonce we generated for that purchase, and{" "}
+              <strong>amount + payee</strong> when it matched amount, payee, asset and chain with no
+              nonce on record — the binding shipped on 2026-09-04, so earlier rows carry the weaker
+              evidence and keep their label rather than being demoted (
+              <Link href="/observatory/methodology" className="underline">
+                methodology
+              </Link>
+              ).{" "}
               <strong>settled</strong> is the transfer we confirmed on-chain; <strong>delivered</strong>{" "}
               is the response arriving. A settled row whose paid request answered 4xx or 5xx counts
               as settled and not as delivered —{" "}
@@ -338,7 +347,16 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
                           <span className="sm:hidden">{fmt(p.attemptedAt).slice(5, 16)}</span>
                           <span className="hidden sm:inline">{fmt(p.attemptedAt)}</span>
                         </td>
-                        <td className="border-b-0 pb-0.5">{p.status}</td>
+                        {/* 2026-09-05 監査 S-4 / S-17: settled の証拠強度は 1 段ではない。
+                            nonce 束縛が入ったのは 2026-09-04 12:00 UTC で、それ以前の行は
+                            金額・宛先・資産の一致まで。行ごとに強度を出す。 */}
+                        <td className="border-b-0 pb-0.5">
+                          {p.settledTier === "nonce_bound"
+                            ? "settled (nonce-bound)"
+                            : p.settledTier === "amount_payee_only"
+                              ? "settled (amount + payee)"
+                              : p.status}
+                        </td>
                         <td
                           className={`num border-b-0 pb-0.5 ${typeof p.httpStatusPaid === "number" && p.httpStatusPaid >= 400 ? "text-[#9f0712]" : ""}`}
                         >
