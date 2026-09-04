@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { isProduction } from "@/lib/config/env";
 import { getDb } from "@/lib/db/client";
 import { ipRateLimits } from "@/lib/db/schema";
+import { logServerError } from "@/lib/util/log";
 
 type Bucket = { count: number; resetAt: number };
 
@@ -128,6 +129,32 @@ function consumeMemoryIpRateLimit(
 
   bucket.count += 1;
   return { allowed: true, limit, remaining: Math.max(0, limit - bucket.count), resetAt: resetSec };
+}
+
+/**
+ * 予約したトークンを 1 つ返す（2026-09-04 監査 B・P2）。
+ *
+ * demo/verify の日次デモ予算は runL1Batch の**前**に consumeIpRateLimit で取る（原子的な
+ * 上限のため正しい）。だが購入が成立しなかったときにも減ったままだった。予約→不成立なら
+ * 返金、で「実購入が成立した時だけ計上」にする。窓が既に切り替わっていれば触らない
+ * （新しい窓の他人の分を減らさない）。best-effort: 失敗しても投げない。
+ */
+export async function refundIpRateLimit(key: string): Promise<void> {
+  const db = getDb();
+  if (db) {
+    try {
+      await db.execute(sql`
+        UPDATE ip_rate_limits
+        SET count = GREATEST(count - 1, 0)
+        WHERE bucket_key = ${key} AND reset_at > ${new Date().toISOString()}
+      `);
+    } catch (error) {
+      logServerError("ip_rate_limit.refund", error);
+    }
+    return;
+  }
+  const bucket = memoryBuckets.get(key);
+  if (bucket && bucket.resetAt > Date.now() && bucket.count > 0) bucket.count -= 1;
 }
 
 // Standard, client-visible rate-limit headers for the key-less paths. Uses the

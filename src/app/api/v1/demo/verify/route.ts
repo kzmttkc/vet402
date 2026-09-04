@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClientIp } from "@/lib/api/client-ip";
-import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
+import { consumeIpRateLimit, ipRateLimitHeaders, refundIpRateLimit } from "@/lib/api/ip-rate-limit";
 import { runDemoL0 } from "@/lib/demo/verify";
 import { runL1Batch } from "@/lib/observatory/l1-runner";
 import { getEndpointPurchases } from "@/lib/observatory/reader";
@@ -102,11 +102,12 @@ export async function POST(request: NextRequest) {
     // （上の「無効な機能で呼び手の1日分トークンを燃やさない」と同じ理由——
     // 予算切れの日は、そもそも誰にも提供できない）。
     const dailyMax = demoL1DailyMax();
-    const demoBudget = await consumeIpRateLimit(
-      `demo-l1-day:${utcDayKey()}`,
-      dailyMax,
-      86_400_000,
-    );
+    // 2026-09-04 監査 B・P2: 予算は**実購入が成立した時だけ**計上する。予約はここ（原子的な
+    // 上限のため購入の前）で取り、成立しなかった経路（per-IP 拒否・L1 OFF・候補なし・例外）
+    // では返す。以前は不成立でも減ったままで、既定 5 回なら不成立 5 回でその日のデモが
+    // 誰にも提供できなくなっていた。鍵は日付の境目をまたいでも同じ行を返すよう 1 回だけ作る。
+    const demoBudgetKey = `demo-l1-day:${utcDayKey()}`;
+    const demoBudget = await consumeIpRateLimit(demoBudgetKey, dailyMax, 86_400_000);
     if (!demoBudget.allowed) {
       return NextResponse.json(
         {
@@ -119,6 +120,7 @@ export async function POST(request: NextRequest) {
 
     const l1Limited = await consumeIpRateLimit(`demo-l1:${ip}`, 1, 86_400_000);
     if (!l1Limited.allowed) {
+      await refundIpRateLimit(demoBudgetKey);
       return NextResponse.json(
         { error: "rate_limited", detail: "one live purchase per caller per day" },
         { status: 429, headers: ipRateLimitHeaders(l1Limited) },
@@ -127,6 +129,8 @@ export async function POST(request: NextRequest) {
     try {
       // 予算・重複・自己除外・L0-pass 要件はランナー内の既存ゲートがそのまま利く。
       const summary = await runL1Batch({ onlyEndpointId: endpointId, limit: 1 });
+      // 成立＝資金が動いた（署名して支払った）。spent_units が立たなければ計上しない。
+      if (BigInt(summary.spentUnitsTotal || "0") === 0n) await refundIpRateLimit(demoBudgetKey);
       const purchases = await getEndpointPurchases(endpointId);
       return NextResponse.json(
         { ok: true, level: "l1", summary, purchases },
@@ -134,6 +138,7 @@ export async function POST(request: NextRequest) {
       );
     } catch (error) {
       logServerError("demo_verify_l1", error);
+      await refundIpRateLimit(demoBudgetKey);
       return NextResponse.json({ error: "demo_unavailable" }, { status: 503, headers: perCaller });
     }
   }
