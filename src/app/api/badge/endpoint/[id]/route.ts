@@ -61,6 +61,9 @@ export async function GET(
     const badge = endpointReceiptBadge({
       attemptCount: record.attemptCount,
       settledCount: record.settledCount,
+      // 2026-09-04 監査 E・P0-3: settled だけを描くと「金は動いたが品は来ていない」
+      // endpoint が満点のバッジを配れる。
+      deliveredCount: record.deliveredCount,
     });
     return svgResponse(
       renderReceiptBadgeSvg(badge),

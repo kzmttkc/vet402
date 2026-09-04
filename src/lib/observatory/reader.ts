@@ -25,6 +25,7 @@ import {
 import { publishedVerdict, MIN_CONSECUTIVE_FAILS_TO_PUBLISH } from "./l0-probe";
 import { isOperatorPayTo, operatorPayToDenylist } from "./operator";
 import { chainLabel, isTestnet } from "./chains";
+import { deliveredPredicate } from "./delivery";
 import type { ObservatoryQuery, ObservatoryVerdict } from "./query";
 import { UUID_RE } from "@/lib/validation/uuid";
 
@@ -39,13 +40,14 @@ export type ObservatoryListRow = {
   qualityCalls30d: number | null;
   /** L1 paid attempts that settled with a receipt (PAID_ATTEMPT_STATUSES denominator). 0 when never purchased. */
   l1Settled: number;
+  /**
+   * settled かつ有料リクエストが 2xx を返した件数（2026-09-04 監査 E・P0-3）。
+   * settled は転送の確認、delivered は応答の到着。片方だけ出すと LP §2 の
+   * L1 の定義（"Does payment settle and a response arrive?"）に対して偽になる。
+   */
+  l1Delivered: number;
   /** L1 paid attempts (same denominator as the endpoint page and State of x402). */
   l1Attempts: number;
-  /**
-   * 2026-09-04 監査 E: settled（受領証あり）と delivered（有料再試行が 2xx で品が来た）は別の数。
-   * 集計は是正 B が足す。undefined の間、表示は従来の settled/attempts のまま。
-   */
-  l1Delivered?: number;
 };
 
 export type ObservatoryOverview = {
@@ -145,6 +147,7 @@ export async function getObservatoryOverview(
   const l1Lateral = sql`
     LEFT JOIN LATERAL (
       SELECT count(*) FILTER (WHERE p.status = 'settled')::int AS l1_settled,
+             count(*) FILTER (WHERE ${sql.raw(deliveredPredicate("p"))})::int AS l1_delivered,
              count(*)::int AS l1_attempts
       FROM x402_l1_purchases p
       WHERE p.endpoint_id = e.id
@@ -185,6 +188,7 @@ export async function getObservatoryOverview(
              lp.verdicts AS verdicts,
              lp.last_probed_at AS last_probed_at,
              COALESCE(l1.l1_settled, 0) AS l1_settled,
+             COALESCE(l1.l1_delivered, 0) AS l1_delivered,
              COALESCE(l1.l1_attempts, 0) AS l1_attempts
       FROM x402_endpoints e
       ${lateral}
@@ -225,6 +229,7 @@ export async function getObservatoryOverview(
           ? null
           : Number(r.quality_calls_30d),
       l1Settled: Number(r.l1_settled ?? 0),
+      l1Delivered: Number(r.l1_delivered ?? 0),
       l1Attempts: Number(r.l1_attempts ?? 0),
     }));
 
@@ -286,8 +291,8 @@ export type EndpointDetail = {
     newValue: unknown;
     createdAt: Date | null;
   }[];
-  /** L1 covert-purchase summary — attempts vs settles (the "n回中m回貫通" figure). */
-  l1: { attempts: number; settled: number };
+  /** L1 covert-purchase summary — attempts vs settles vs deliveries (the "n回中m回貫通" figure). */
+  l1: { attempts: number; settled: number; delivered: number };
   purchases: {
     attemptedAt: Date | null;
     status: string;
@@ -336,11 +341,12 @@ export const PAID_ATTEMPT_STATUSES = [
 async function countPaidAttempts(
   db: NonNullable<ReturnType<typeof getDb>>,
   id: string,
-): Promise<{ attempts: number; settled: number }> {
+): Promise<{ attempts: number; settled: number; delivered: number }> {
   const [row] = await db
     .select({
       attempts: sql<number>`count(*)::int`,
       settled: sql<number>`count(*) filter (where ${x402L1Purchases.status} = 'settled')::int`,
+      delivered: sql<number>`count(*) filter (where ${sql.raw(deliveredPredicate("x402_l1_purchases"))})::int`,
     })
     .from(x402L1Purchases)
     .where(
@@ -349,7 +355,11 @@ async function countPaidAttempts(
         inArray(x402L1Purchases.status, [...PAID_ATTEMPT_STATUSES]),
       ),
     );
-  return { attempts: Number(row?.attempts ?? 0), settled: Number(row?.settled ?? 0) };
+  return {
+    attempts: Number(row?.attempts ?? 0),
+    settled: Number(row?.settled ?? 0),
+    delivered: Number(row?.delivered ?? 0),
+  };
 }
 
 export async function getEndpointDetail(id: string): Promise<EndpointDetail> {
@@ -390,7 +400,7 @@ export async function getEndpointDetail(id: string): Promise<EndpointDetail> {
 
     // L1 history is additive and may predate its migration — tolerate absence.
     let purchases: NonNullable<EndpointDetail>["purchases"] = [];
-    let l1Totals = { attempts: 0, settled: 0 };
+    let l1Totals = { attempts: 0, settled: 0, delivered: 0 };
     try {
       purchases = await db
         .select({
@@ -459,8 +469,16 @@ export type EndpointPurchases = {
   purchases: NonNullable<EndpointDetail>["purchases"];
   attemptCount: number;
   settledCount: number;
+  /**
+   * settled かつ 2xx（2026-09-04 監査 E・P0-3）。settledCount との差が
+   * 「金は動いたが品が来ていない」件数で、この差を出さずに settled だけを
+   * 報告していたのが事故だった。
+   */
+  deliveredCount: number;
   /** settled/attempts to one decimal; null when there are no attempts (0/0 is not a rate). */
   settleRatePct: number | null;
+  /** delivered/attempts to one decimal; null when there are no attempts. */
+  deliveryRatePct: number | null;
 } | null;
 
 /**
@@ -489,7 +507,7 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
     if (!e) return null;
 
     let purchases: NonNullable<EndpointDetail>["purchases"] = [];
-    let totals = { attempts: 0, settled: 0 };
+    let totals = { attempts: 0, settled: 0, delivered: 0 };
     try {
       purchases = await db
         .select({
@@ -515,7 +533,7 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
       if (!isMissingSchemaError(error)) throw error;
     }
 
-    const { attempts: attemptCount, settled: settledCount } = totals;
+    const { attempts: attemptCount, settled: settledCount, delivered: deliveredCount } = totals;
     return {
       endpointId: e.id,
       resourceKey: e.resourceKey,
@@ -525,8 +543,11 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
       purchases,
       attemptCount,
       settledCount,
+      deliveredCount,
       settleRatePct:
         attemptCount === 0 ? null : Math.round((settledCount / attemptCount) * 1000) / 10,
+      deliveryRatePct:
+        attemptCount === 0 ? null : Math.round((deliveredCount / attemptCount) * 1000) / 10,
     };
   } catch (error) {
     if (isMissingSchemaError(error)) return null;
@@ -545,8 +566,19 @@ export type ObservatoryStats = {
   publishedUnverified: number;
   methodUndeclared: number;
   eventCounts: { delisted: number; relisted: number; settleDrop: number };
-  /** L1 covert purchases: attempts include refusals-after-sign only (spent money); settled = receipt received. */
-  l1: { attempts: number; settled: number; endpointsAttempted: number; endpointsSettled: number };
+  /**
+   * L1 covert purchases: attempts include refusals-after-sign only (spent money);
+   * settled = transfer confirmed on-chain; delivered = settled AND the paid
+   * request returned 2xx（2026-09-04 監査 E・P0-3）.
+   */
+  l1: {
+    attempts: number;
+    settled: number;
+    delivered: number;
+    endpointsAttempted: number;
+    endpointsSettled: number;
+    endpointsDelivered: number;
+  };
   latestSnapshot: { snapshotDate: string; totalCount: number; fetchedCount: number } | null;
 };
 
@@ -560,7 +592,14 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
     publishedUnverified: 0,
     methodUndeclared: 0,
     eventCounts: { delisted: 0, relisted: 0, settleDrop: 0 },
-    l1: { attempts: 0, settled: 0, endpointsAttempted: 0, endpointsSettled: 0 },
+    l1: {
+      attempts: 0,
+      settled: 0,
+      delivered: 0,
+      endpointsAttempted: 0,
+      endpointsSettled: 0,
+      endpointsDelivered: 0,
+    },
     latestSnapshot: null,
   };
   const db = getDb();
@@ -630,28 +669,41 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
     }[];
     const ev = Object.fromEntries(evList.map((r) => [r.event_type, Number(r.n)]));
 
-    let l1 = { attempts: 0, settled: 0, endpointsAttempted: 0, endpointsSettled: 0 };
+    let l1 = {
+      attempts: 0,
+      settled: 0,
+      delivered: 0,
+      endpointsAttempted: 0,
+      endpointsSettled: 0,
+      endpointsDelivered: 0,
+    };
     try {
       const l1Raw = await db.execute(sql`
         SELECT count(*)::int AS attempts,
                count(*) FILTER (WHERE status = 'settled')::int AS settled,
+               count(*) FILTER (WHERE ${sql.raw(deliveredPredicate())})::int AS delivered,
                count(DISTINCT endpoint_id)::int AS endpoints,
-               count(DISTINCT endpoint_id) FILTER (WHERE status = 'settled')::int AS endpoints_settled
+               count(DISTINCT endpoint_id) FILTER (WHERE status = 'settled')::int AS endpoints_settled,
+               count(DISTINCT endpoint_id) FILTER (WHERE ${sql.raw(deliveredPredicate())})::int AS endpoints_delivered
         FROM x402_l1_purchases
         WHERE status IN ('settled', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable', 'settle_claimed', 'settle_claim_refuted')
       `);
       const l1List = (Array.isArray(l1Raw) ? l1Raw : (l1Raw as { rows?: unknown[] }).rows ?? []) as {
         attempts: number;
         settled: number;
+        delivered: number;
         endpoints: number;
         endpoints_settled: number;
+        endpoints_delivered: number;
       }[];
       if (l1List[0]) {
         l1 = {
           attempts: Number(l1List[0].attempts),
           settled: Number(l1List[0].settled),
+          delivered: Number(l1List[0].delivered ?? 0),
           endpointsAttempted: Number(l1List[0].endpoints),
           endpointsSettled: Number(l1List[0].endpoints_settled ?? 0),
+          endpointsDelivered: Number(l1List[0].endpoints_delivered ?? 0),
         };
       }
     } catch (error) {
@@ -808,6 +860,114 @@ export async function getCoverageShare(): Promise<CoverageShare> {
     };
   } catch (error) {
     if (isMissingSchemaError(error)) return { activeEndpoints: 0, measuredLast7d: 0, pct: null };
+    throw error;
+  }
+}
+
+export type UnverifiedBreakdown = {
+  /** 公開判定が unverified の endpoint 総数（publishedUnverified と同じ数）。 */
+  total: number;
+  /** まだ 1 度もプローブしていない（ローリングの順番が来ていない）。 */
+  notYetProbed: number;
+  /** 直近が fail だが、公開ゲート（連続 fail 本数）に届いていない。 */
+  singleFailGateNotMet: number;
+  /** 直近が unverified で、理由が path_template（URL に未埋めのパラメータ）。 */
+  pathTemplate: number;
+  /** 直近が unverified で、カタログが HTTP メソッドを申告していない。 */
+  methodUndeclared: number;
+  /** 直近が unverified で、上のどれでもない（レート制限・TLS など、我々側の到達失敗）。 */
+  otherNotReached: number;
+};
+
+const EMPTY_UNVERIFIED: UnverifiedBreakdown = {
+  total: 0,
+  notYetProbed: 0,
+  singleFailGateNotMet: 0,
+  pathTemplate: 0,
+  methodUndeclared: 0,
+  otherNotReached: 0,
+};
+
+/**
+ * unverified が何で出来ているか（2026-09-04 外部監査 E・P1-8）。
+ *
+ * 方法論 §2 と観測所の abstract は「unverified の主因は method の未申告」と
+ * 言い続けていた。本番実測ではそれが 1 件、unverified は 12,305 件で、実際の主因は
+ * 「まだ到達していない」と「単発 fail が公開ゲートに届いていない」だった。散文で
+ * 順位を書くとまた腐るので、順位を書かずに実測を出す。分類は publishedVerdict() と
+ * 同じゲートで、この 5 つの合計が publishedUnverified に一致する。
+ */
+export async function getUnverifiedBreakdown(): Promise<UnverifiedBreakdown> {
+  const db = getDb();
+  if (!db) return EMPTY_UNVERIFIED;
+  const opDenylist = operatorPayToDenylist();
+  const operatorExclusion = opDenylist.length
+    ? sql`WHERE e.pay_to IS NULL OR lower(e.pay_to) <> ALL(ARRAY[${sql.join(
+        opDenylist.map((a) => sql`${a}`),
+        sql`, `,
+      )}]::text[])`
+    : sql``;
+  try {
+    const raw = await db.execute(sql`
+      WITH latest AS (
+        SELECT e.id, e.method, lp.verdicts, lp.reasons
+        FROM x402_endpoints e
+        LEFT JOIN LATERAL (
+          SELECT array_agg(v.verdict) AS verdicts, array_agg(v.fail_reason) AS reasons
+          FROM (
+            SELECT verdict, fail_reason FROM x402_l0_probes p
+            WHERE p.endpoint_id = e.id
+            ORDER BY probed_at DESC
+            LIMIT ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH}
+          ) v
+        ) lp ON true
+        ${operatorExclusion}
+      ),
+      unverified AS (
+        SELECT * FROM latest
+        -- 未プローブは verdicts が NULL。NULL 比較は TRUE にならないので coalesce で
+        -- 明示しないと、unverified の最大の塊（まだ到達していない endpoint）が
+        -- 分母から静かに落ちる。実測で 12,305 が 3,497 になった経路がこれ。
+        WHERE coalesce(verdicts[1], '') <> 'pass'
+          AND NOT (
+            coalesce(verdicts[1], '') = 'fail'
+            AND cardinality(verdicts) >= ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH}
+            AND NOT EXISTS (SELECT 1 FROM unnest(verdicts) AS u(v) WHERE u.v <> 'fail')
+          )
+      )
+      SELECT count(*)::int AS total,
+             count(*) FILTER (WHERE verdicts IS NULL)::int AS not_yet_probed,
+             count(*) FILTER (WHERE verdicts IS NOT NULL AND verdicts[1] = 'fail')::int AS single_fail,
+             count(*) FILTER (WHERE verdicts IS NOT NULL AND verdicts[1] <> 'fail' AND reasons[1] = 'path_template')::int AS path_template,
+             count(*) FILTER (
+               WHERE verdicts IS NOT NULL AND verdicts[1] <> 'fail'
+                 AND coalesce(reasons[1], '') <> 'path_template' AND method IS NULL
+             )::int AS method_undeclared
+      FROM unverified
+    `);
+    const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as Record<
+      string,
+      unknown
+    >[];
+    const r = rows[0] ?? {};
+    const total = Number(r.total ?? 0);
+    const notYetProbed = Number(r.not_yet_probed ?? 0);
+    const singleFailGateNotMet = Number(r.single_fail ?? 0);
+    const pathTemplate = Number(r.path_template ?? 0);
+    const methodUndeclared = Number(r.method_undeclared ?? 0);
+    return {
+      total,
+      notYetProbed,
+      singleFailGateNotMet,
+      pathTemplate,
+      methodUndeclared,
+      otherNotReached: Math.max(
+        0,
+        total - notYetProbed - singleFailGateNotMet - pathTemplate - methodUndeclared,
+      ),
+    };
+  } catch (error) {
+    if (isMissingSchemaError(error)) return EMPTY_UNVERIFIED;
     throw error;
   }
 }

@@ -37,8 +37,11 @@ const DECISION_LABEL: Record<string, string> = {
 };
 
 
+/** 見出し・本文・API リンクが同じ窓を指すように 1 箇所で持つ。 */
+const DECISION_WINDOW_DAYS = 30;
+
 export default async function DecisionsPage() {
-  const feed = await getDecisionFeed(30);
+  const feed = await getDecisionFeed(DECISION_WINDOW_DAYS);
   const backtest = await computeSpendGuardBacktest().catch(() => null);
 
   return (
@@ -47,7 +50,9 @@ export default async function DecisionsPage() {
         <div className="doc-head">
           <div className="doc-head-col">
             <span>Independent Measurement</span>
-            <span>Register: pay-or-refuse decisions (last 30 days)</span>
+            <span>Register: pay-or-refuse decisions (last {DECISION_WINDOW_DAYS} days)</span>
+            {/* 2026-09-04 外部監査 E・P0-4: この 3 つの数は "last 30 days" と名乗りながら
+                LIMIT 200 で切ったあとの行を数えていた。合計は窓全体を SQL で数える。 */}
             <span>
               Refused: <span className="text-signal">{feed.totals.refused}</span> · Paid &amp;
               settled: <span className="text-signal">{feed.totals.paidSettled}</span> · Paid, no
@@ -95,6 +100,23 @@ export default async function DecisionsPage() {
           <span className="sec-no">1.</span>
           <span>The register</span>
         </h2>
+        <p className="doc-p">
+          The three counts in the header are the whole {DECISION_WINDOW_DAYS}-day window
+          ({feed.totalDecisions.toLocaleString()} decisions).
+          {feed.totalDecisions > feed.rows.length ? (
+            <>
+              {" "}
+              The table below shows the newest {feed.rows.length.toLocaleString()} of them; the full
+              window is at{" "}
+              <Link href={`/api/v1/observatory/decisions?days=${DECISION_WINDOW_DAYS}`} className="underline">
+                /api/v1/observatory/decisions
+              </Link>
+              , and the whole ledger at <code>/api/v1/observatory/export.csv</code>.
+            </>
+          ) : (
+            " Every decision in the window is in the table below."
+          )}
+        </p>
         {feed.rows.length === 0 ? (
           <p className="doc-p">No decisions in this window.</p>
         ) : (

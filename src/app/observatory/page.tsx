@@ -279,7 +279,7 @@ export default async function ObservatoryPage({
                   <th scope="col">Endpoint</th>
                   <th scope="col">L0</th>
                   <th scope="col" className="num">
-                    L1
+                    L1 settled / delivered
                   </th>
                   <th scope="col">Last probed</th>
                   <th scope="col">Network</th>
@@ -305,6 +305,9 @@ export default async function ObservatoryPage({
                     <td>
                       <VerdictWord verdict={row.publishedVerdict} />
                     </td>
+                    {/* 2026-09-04 外部監査 E・P0-3: settled だけを出していた。settled は
+                        転送の確認、delivered は応答の到着。同じ数のときも省略しない
+                        （同じときだけ隠すのが、10/10 settled・2xx 0 件を見逃した形）。 */}
                     <td className="num whitespace-nowrap">
                       {/* 2026-09-04 監査 E: delivered（品が来た）と settled（受領証あり）は別の数。
                           reader が l1Delivered を返すようになったら `delivered · settled/attempts`。 */}
@@ -361,14 +364,22 @@ export default async function ObservatoryPage({
             it declares. The catalog is re-fetched daily; endpoints are probed on a rolling
             schedule, and each row shows when it was last probed. The L0 cell is the payment-wall
             measurement alone; the L1 cell counts real purchases that returned an on-chain receipt
-            (settled / paid attempts), with every receipt listed on the endpoint&apos;s page. The
+            (settled / paid attempts) above the count that also returned a 2xx response
+            (delivered), with every receipt listed on the endpoint&apos;s page. The
             two are never mixed.{" "}
             <strong>pass / fail / unverified</strong> are defined measurements, not opinions —{" "}
             <Link href="/observatory/methodology" className="underline">
               definitions here
             </Link>
-            . <em>unverified is not a failure</em>: the catalog entry does not declare enough for a
-            machine to check.
+            . <em>unverified is not a failure</em>: it means we do not have grounds to publish
+            either of the other two yet. Most often that is because the rolling schedule has not
+            reached the endpoint, or a single failing probe has not met the publication gate; the
+            entry declaring too little to check is one cause among several, and the current
+            breakdown is counted out in{" "}
+            <Link href="/observatory/methodology" className="underline">
+              the methodology
+            </Link>
+            .
           </p>
         </div>
 

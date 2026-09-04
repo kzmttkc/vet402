@@ -16,6 +16,13 @@
 export type ReceiptBadgeInput = {
   attemptCount: number;
   settledCount: number;
+  /**
+   * settled かつ有料リクエストが 2xx を返した件数（2026-09-04 監査 E・P0-3）。
+   * settled だけを描いていたので、api.exa.ai/search は「10/10 settled」と出ながら
+   * その 10 件すべてが HTTP 400 だった。金が動いたことと品が届いたことは別の事実。
+   * 省略時は 0 として描く（黙って settled と同じ数にすると事故が再発する）。
+   */
+  deliveredCount?: number;
 };
 
 export type ReceiptBadge = {
@@ -45,10 +52,12 @@ export function endpointReceiptBadge(input: ReceiptBadgeInput): ReceiptBadge {
     };
   }
 
+  const delivered = Math.max(0, Math.min(settled, Math.trunc(input.deliveredCount ?? 0)));
+
   return {
-    label: `${settled}/${attempts} settled`,
+    label: `${settled}/${attempts} settled · ${delivered} delivered`,
     color: NAVY,
-    aria: `vet402: ${settled} of ${attempts} paid attempts settled with an on-chain receipt. A measurement of what happened when vet402 paid this endpoint, not a recommendation.`,
+    aria: `vet402: ${settled} of ${attempts} paid attempts settled with an on-chain receipt, and ${delivered} of those also returned a 2xx response. settled is the confirmed transfer; delivered is the response arriving. A measurement of what happened when vet402 paid this endpoint, not a recommendation.`,
   };
 }
 
@@ -61,20 +70,43 @@ function xmlEscape(value: string): string {
     .replace(/'/g, "&apos;");
 }
 
+/** 左の区画（vet402 のワードマーク）の幅。 */
+const MARK_W = 58;
+/** Verdana 10px の 1 文字あたりの実効幅の上限。これで見積もると切れない。 */
+const CHAR_W = 6.2;
+/** 右の区画の左右の余白。 */
+const PAD = 16;
+/** バッジの高さ（SVG と <img> の intrinsic hint で同じ値を使う）。 */
+export const RECEIPT_BADGE_HEIGHT = 24;
+
+/**
+ * ラベルから決まるバッジ全体の幅。埋め込む側（endpoint 頁の <img>）が
+ * 同じ関数を呼ぶので、幅の見積もりが 2 箇所に散らない。
+ */
+export function receiptBadgeWidth(label: string): number {
+  return MARK_W + Math.max(130, Math.ceil(label.length * CHAR_W) + PAD);
+}
+
 /**
  * Render the embeddable SVG. Wider than the trust badge because the label is a
- * short phrase ("3/5 settled") rather than a single word. The left segment
- * carries the vet402 wordmark; the right carries the fact.
+ * short phrase ("3/5 settled · 2 delivered") rather than a single word. The left
+ * segment carries the vet402 wordmark; the right carries the fact.
+ *
+ * 2026-09-04 監査 E・P0-3: ラベルが settled と delivered の 2 つの数を持つように
+ * なったので、右の区画は固定 130px ではなくラベルの長さから決める。固定のままだと
+ * 数字が 4 桁になった endpoint で語が切れて、切れた語が別の意味に読める。
  */
 export function renderReceiptBadgeSvg(badge: ReceiptBadge): string {
   const aria = xmlEscape(badge.aria);
   const label = xmlEscape(badge.label);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="188" height="24" role="img" aria-label="${aria}">
+  const total = receiptBadgeWidth(badge.label);
+  const rightW = total - MARK_W;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${total}" height="${RECEIPT_BADGE_HEIGHT}" role="img" aria-label="${aria}">
   <title>${aria}</title>
-  <rect width="58" height="24" rx="4" fill="#18181b"/>
-  <rect x="58" width="130" height="24" rx="4" fill="${badge.color}"/>
-  <rect x="58" width="6" height="24" fill="${badge.color}"/>
+  <rect width="${MARK_W}" height="${RECEIPT_BADGE_HEIGHT}" rx="4" fill="#18181b"/>
+  <rect x="${MARK_W}" width="${rightW}" height="${RECEIPT_BADGE_HEIGHT}" rx="4" fill="${badge.color}"/>
+  <rect x="${MARK_W}" width="6" height="${RECEIPT_BADGE_HEIGHT}" fill="${badge.color}"/>
   <text x="29" y="16" text-anchor="middle" font-family="Verdana,sans-serif" font-size="11" fill="#ffffff">vet402</text>
-  <text x="123" y="16" text-anchor="middle" font-family="Verdana,sans-serif" font-size="10" fill="#ffffff">${label}</text>
+  <text x="${MARK_W + rightW / 2}" y="16" text-anchor="middle" font-family="Verdana,sans-serif" font-size="10" fill="#ffffff">${label}</text>
 </svg>`;
 }

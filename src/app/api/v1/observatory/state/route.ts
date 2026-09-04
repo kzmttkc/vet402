@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
         // finding it below `totalEndpoints` sees why, rather than a silent gap.
         byChainScope: "mainnet_only",
         disclaimer:
-          "Aggregate L0/L1 measurements over the public x402 discovery catalog. Catalog source: the CDP x402 Bazaar (and equivalent public discovery surfaces). x402 traffic that is not listed there — for example x402 on XRPL — is outside the measured population and shows as 0 in byChain; absence here is a coverage limit, not a finding. Facts with denominators, not an assessment of any operator. 'unverified' means not machine-checkable, not dead. Top-level totals include testnets; byChain is mainnet-only (byChainScope), so sum(byChain) can be below totalEndpoints.",
+          "Aggregate L0/L1 measurements over the public x402 discovery catalog. Catalog source: the CDP x402 Bazaar (and equivalent public discovery surfaces). x402 traffic that is not listed there — for example x402 on XRPL — is outside the measured population and shows as 0 in byChain; absence here is a coverage limit, not a finding. Facts with denominators, not an assessment of any operator. 'unverified' means not machine-checkable, not dead. l1.settled is the transfer vet402 re-read on-chain; l1.delivered is a settled attempt whose paid request also answered 2xx, so settled minus delivered is money that moved without the response arriving. Top-level totals include testnets; byChain is mainnet-only (byChainScope), so sum(byChain) can be below totalEndpoints.",
         humanReadable: "https://vet402.com/observatory/state",
         methodology: "https://vet402.com/observatory/methodology",
         // 引用されて初めて配布になる。ライセンスと取得日を本文に入れておかないと、

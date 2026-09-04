@@ -27,8 +27,8 @@ The production URL is ${SITE_URL}. Formerly named "Vouch"; renamed to vet402 in 
 ## Verification levels (published methodology)
 
 - L0 Liveness — does the endpoint answer correctly? Probe, no purchase. Output: pass / fail / unverified.
-- L1 Settle-through — does payment settle and a response arrive? Real purchase. Output: n of m settled, latency.
-- L2 Conformance — does the response match the seller's own declaration? Purchase plus machine diff. Output: conform / mismatch / undeclared.
+- L1 Settle-through — does payment settle and a response arrive? Real purchase. Output: n of m settled, n delivered, latency. settled = vet402 re-read the transfer on-chain; delivered = settled AND the paid request answered 2xx. A settled attempt that answered 4xx or 5xx moved money without returning the thing being sold, and is never reported as delivered.
+- L2 Conformance — does the response match the seller's own declaration? Purchase plus machine diff. Output: match / mismatch / no_declaration / not_checked (the canonical set, and what the ledger column l2_schema stores).
 - L3 Quality — is the content any good? Published rubric. Output: opinion, never mixed into an L0–L2 fact. L3 is not built; no opinion is published.
 
 A result is labelled by the level that produced it and never moves up a level. The 0–100 ALLOW / WARN / BLOCK score is a different, older API and is never reported as an L0–L2 result.
@@ -58,7 +58,7 @@ ${blog}
 - ${SITE_URL}/api/v1/observatory/corrections — correction log as JSON, no key
 - ${SITE_URL}/observatory — L0/L1/L2 register
 
-Cite with the page URL and a retrieval date. Content current as of 2026-08-15.
+Cite with the page URL and a retrieval date. Content current as of 2026-09-04.
 `;
 
   return new Response(body, {

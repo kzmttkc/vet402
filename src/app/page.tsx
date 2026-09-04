@@ -76,7 +76,9 @@ const LEVELS = [
     name: "Settle-through",
     question: "Does payment settle and a response arrive?",
     how: "Real purchase",
-    output: "n of m settled, latency",
+    // 2026-09-04 監査 E・P0-3: この §2 の定義（settle AND arrive）に対して、
+    // 公開面は settled しか出していなかった。両方を出力語彙に入れる。
+    output: "n of m settled, n delivered",
   },
   {
     level: "L2",
@@ -586,7 +588,10 @@ export default async function Home() {
                 無かった。異議申立は ToS §8（全文の27%地点）だけ、訂正ログは
                 2箇所で約束しながら該当ページが 404 だった。 */}
             <p className="min-w-0 max-w-[64ch] text-brand">
-              Sellers can dispute any result and trigger a free re-verification.{" "}
+              Sellers can dispute any result for free, which runs one fresh L0 probe of the
+              endpoint straight away and records it like any other probe — the publication gate is
+              unchanged, so one probe can lift a published fail back to unverified but cannot by
+              itself produce a pass. A dispute does not trigger a new L1 purchase.{" "}
               <Link href="/legal/terms#corrections" className="doc-link">
                 How to dispute a result
               </Link>

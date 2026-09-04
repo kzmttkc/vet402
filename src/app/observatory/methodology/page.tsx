@@ -9,7 +9,12 @@ import {
   MIN_CONSECUTIVE_FAILS_TO_PUBLISH,
 } from "@/lib/observatory/l0-probe";
 import { SETTLE_DROP_MIN_PREV_CALLS, SETTLE_DROP_RATIO } from "@/lib/observatory/catalog-diff";
-import { SWEEP_WINDOW_DAYS } from "@/lib/observatory/l1-runner";
+import {
+  PRIORITY_SELLER_HOSTS,
+  PRIORITY_SWEEP_WINDOW_DAYS,
+  SWEEP_WINDOW_DAYS,
+} from "@/lib/observatory/l1-runner";
+import { getUnverifiedBreakdown } from "@/lib/observatory/reader";
 import { MAX_PER_PURCHASE_UNITS } from "@/lib/observatory/x402-payer";
 import { DAILY_BUDGET_USD } from "@/lib/observatory/budget";
 
@@ -34,6 +39,10 @@ export const metadata: Metadata = pageMetadata({
 export const revalidate = 3600;
 
 export default async function ObservatoryMethodologyPage() {
+  // 2026-09-04 外部監査 E・P1-8: §2 は「unverified の主因は method の未申告」と
+  // 言い続けていたが、実測ではそれが 1 件で unverified は 12,305 件だった。
+  // 順位を散文で書くとまた腐るので、実測を出す。
+  const unverified = await getUnverifiedBreakdown().catch(() => null);
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   const breadcrumb = breadcrumbJsonLd([
     { name: "Home", path: "/" },
@@ -47,7 +56,7 @@ export default async function ObservatoryMethodologyPage() {
     description:
       "Definitions behind the x402 Observatory: L0 liveness probes, L1 real-money settle-through purchases, L2 structural conformance checks, and how delisting is detected.",
     url: `${SITE_URL}/observatory/methodology`,
-    dateModified: "2026-08-15",
+    dateModified: "2026-09-04",
     author: { "@type": "Organization", name: "vet402", url: SITE_URL },
     publisher: { "@type": "Organization", name: "vet402", url: SITE_URL },
     inLanguage: "en",
@@ -74,7 +83,7 @@ export default async function ObservatoryMethodologyPage() {
           <div className="doc-head-col">
             <span>Independent Measurement</span>
             <span>Methodology: L0, L1, L2</span>
-            <span>Version 2 · 2026-08-15</span>
+            <span>Version 3 · 2026-09-04</span>
           </div>
           <div className="doc-head-col">
             <span>vet402</span>
@@ -136,11 +145,48 @@ export default async function ObservatoryMethodologyPage() {
           catalog declaration. <strong>fail</strong> — the probe contradicted that: no 402 (any
           other status), DNS/TLS/timeout failure, an unparseable challenge, or a challenge whose
           price or receiving address contradicts the catalog; the specific reason code is always
-          recorded. <strong>unverified</strong> — the entry does not declare enough to measure
-          (most commonly no declared method — probing with a guessed method reports false
-          deaths), or the evidence threshold below is not met.{" "}
+          recorded. <strong>unverified</strong> — we do not have grounds to publish either of
+          the other two yet. That covers an entry that does not declare enough to measure (no
+          declared method: probing with a guessed method reports false deaths), an entry the
+          rolling probe schedule has not reached, an entry whose failing probe has not met the
+          publication gate in section 3, and an entry we could not reach for a reason of our own
+          (rate limiting, a TLS failure on our side).{" "}
           <em>unverified is not a failure and is never counted as one.</em>
         </p>
+        {unverified && unverified.total > 0 && (
+          <>
+            <p className="doc-p">
+              What that bucket is actually made of, over the endpoints on record at the time this
+              page was rendered:
+            </p>
+            <ul className="doc-p list-disc space-y-1 pl-5">
+              <li>
+                {unverified.notYetProbed.toLocaleString()} not yet probed: the rolling schedule has
+                not reached them
+              </li>
+              <li>
+                {unverified.singleFailGateNotMet.toLocaleString()} with a failing probe that has not
+                met the publication gate in section 3
+              </li>
+              <li>
+                {unverified.otherNotReached.toLocaleString()} we could not reach for a reason of our
+                own (rate limiting, TLS)
+              </li>
+              <li>
+                {unverified.pathTemplate.toLocaleString()} whose listed URL still contains an
+                unfilled path parameter (<code>path_template</code>, below)
+              </li>
+              <li>{unverified.methodUndeclared.toLocaleString()} that declare no HTTP method</li>
+            </ul>
+            <p className="doc-p">
+              Those five sum to {unverified.total.toLocaleString()}, which is the same figure{" "}
+              <code>publishedUnverified</code> reports at{" "}
+              <code>/api/v1/observatory/state</code>. Until 2026-09-04 this section said the usual
+              cause was the undeclared method; the counts above contradict that, so the counts are
+              printed instead of a sentence that can go stale between readings.
+            </p>
+          </>
+        )}
         <p className="doc-p">
           <strong>path_template</strong> — the listed URL still contains an unfilled path
           parameter (<code>/v1/entreprise/:siren</code>, <code>/items/{"{id}"}</code>,{" "}
@@ -198,9 +244,10 @@ export default async function ObservatoryMethodologyPage() {
         </h2>
         <p className="doc-p">
           An L1 purchase is a real transaction: one covert purchase per endpoint, at most once per{" "}
-          {SWEEP_WINDOW_DAYS}-day window, targeting endpoints whose most recent L0 verdict is{" "}
-          <code>pass</code>, prioritised by real observed demand (30-day payer and call counts
-          reported by the catalog). We request unpaid first to read the <code>402</code> challenge,
+          {SWEEP_WINDOW_DAYS}-day window for the catalog at large — see the priority list below for
+          the {PRIORITY_SELLER_HOSTS.length} hosts bought from more often — targeting endpoints
+          whose most recent L0 verdict is <code>pass</code>, prioritised by real observed demand
+          (30-day payer and call counts reported by the catalog). We request unpaid first to read the <code>402</code> challenge,
           then select a payment option and refuse to proceed unless every one of these holds:
           scheme <code>exact</code>, a network we purchase on (Base, or Solana mainnet when the
           Solana payer is enabled), the canonical USDC asset for that network, and a price that
@@ -211,6 +258,27 @@ export default async function ObservatoryMethodologyPage() {
           every signature, so a restart or a concurrent run cannot double-spend. Once we sign, the
           spend is recorded whether or not the seller delivers — a signed EIP-3009 authorization
           is live money the moment it exists.
+        </p>
+        <p className="doc-p">
+          <strong>The priority list, and why it exists.</strong> Four hosts are not on the{" "}
+          {SWEEP_WINDOW_DAYS}-day window. They may be re-purchased once every{" "}
+          {PRIORITY_SWEEP_WINDOW_DAYS === 1 ? "day" : `${PRIORITY_SWEEP_WINDOW_DAYS} days`}, and
+          they are pinned to the head of candidate selection:{" "}
+          {PRIORITY_SELLER_HOSTS.map((host, i) => (
+            <span key={host}>
+              {i > 0 ? ", " : ""}
+              <code>{host}</code>
+            </span>
+          ))}
+          . The reason is that a settle-through record is worth more as a series than as a single
+          row, and these four carry the bulk of the organic call volume the public catalog reports,
+          so a daily point on them says more about the x402 economy than a one-shot row on the long
+          tail. Two things this does <em>not</em> change: the measurement is the identical pipeline
+          with the identical gates, and the result publishes exactly as anyone else&apos;s does,
+          pass and fail alike. What differs is how often we buy, and that is stated here rather
+          than left for a reader to infer from the timestamps. Until 2026-09-04 this section said
+          &ldquo;at most once per {SWEEP_WINDOW_DAYS}-day window&rdquo; with no exception named,
+          which was false for these four.
         </p>
         <p className="doc-p">
           <strong>settled</strong> — <em>vet402 re-read the transaction on-chain</em> and found
@@ -230,6 +298,18 @@ export default async function ObservatoryMethodologyPage() {
           <strong>settle_failed</strong> — no successful paid response came back at all. Every
           attempt, including refusals before any money moved, is visible on the endpoint&apos;s
           page with its evidence.
+        </p>
+        <p className="doc-p">
+          <strong>settled is not delivered.</strong> <code>settled</code> is a statement about the
+          money: we confirmed the transfer on-chain. <code>delivered</code> is a statement about
+          the goods: the attempt is <code>settled</code> <em>and</em> the paid request answered{" "}
+          <code>2xx</code>. A seller can take the payment and answer <code>400</code>, and that row
+          is settled and not delivered. Both counts are published side by side on the endpoint
+          page, on the register, in the badge, and at <code>/api/v1/observatory/state</code>
+          (<code>l1.settled</code> and <code>l1.delivered</code>), so the difference between them
+          is money that moved without the response arriving. Until 2026-09-04 only{" "}
+          <code>settled</code> was published, which let an endpoint whose every paid request
+          answered <code>400</code> read as a full settle-through record.
         </p>
         <p className="doc-p">
           <strong>What changed on 2026-08-23, and what is still open.</strong> Until that date,{" "}
@@ -265,16 +345,34 @@ export default async function ObservatoryMethodologyPage() {
           <code>200</code>, so there was nothing to check. L2 does not verify that the values are
           correct or that the content is any good — that judgement is L3, and L3 is not built.
         </p>
+        <p className="doc-p">
+          <strong>One vocabulary, and its older summary form.</strong> The four words above are the
+          canonical set: they are what the ledger column <code>l2_schema</code> stores and what
+          every API returns. Short summaries of the levels have historically used a three-word form
+          (<code>conform / mismatch / undeclared</code>), and a reader comparing the two surfaces
+          could not tell whether they described the same measurement. They do:{" "}
+          <code>conform</code> is <code>match</code>, <code>mismatch</code> is{" "}
+          <code>mismatch</code>, and <code>undeclared</code> is <code>no_declaration</code>. The
+          summary form has no word for <code>not_checked</code>, because a level summary is not
+          reporting rows that were never checked. Where the two disagree, the four-word set wins.
+        </p>
 
         <h2 className="sec-head">
           <span className="sec-no">8.</span>
           <span>Fairness commitments</span>
         </h2>
         <p className="doc-p">
-          vet402&apos;s own endpoints, when listed in the catalog, are measured by exactly the
-          same pipeline with no special casing — a verifier that special-cases itself is flagging
-          its own fraud. These pages publish facts with reason codes and timestamps; they do not
-          publish composite scores, rankings, or evaluative language about any operator.
+          vet402&apos;s own endpoints, when listed in the catalog, run through exactly the same
+          measurement pipeline as everyone else&apos;s, and vet402&apos;s own rows are excluded
+          from the aggregate rates — a verifier that grades itself is not a neutral party in its
+          own numbers. What is <em>not</em> uniform is purchase frequency: the four hosts in the
+          priority list in section 6 are bought from more often than the rest of the catalog. The
+          pipeline, the gates and the publication rules are identical for them; only the cadence
+          differs, and the list is named there rather than left implicit. No operator gets a
+          different measurement, a suppressed result, or a softer word for the same finding, and
+          that is what partners are told they cannot buy. These pages publish facts with reason
+          codes and timestamps; they do not publish composite scores, rankings, or evaluative
+          language about any operator.
           Corrections follow the site-wide{" "}
           <Link href="/corrections" className="underline">
             corrections policy

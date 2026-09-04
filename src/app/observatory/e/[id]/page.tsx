@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { RECEIPT_BADGE_HEIGHT, receiptBadgeWidth } from "@/lib/badge/receipt-badge";
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
@@ -280,9 +281,20 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
           </p>
         ) : (
           <>
+            {/* 2026-09-04 外部監査 E・P0-3: この行は settled だけを出していた。
+                settled は転送の確認、delivered は応答の到着で、別の事実である。
+                api.exa.ai/search は settled 10 件のうち 2xx が 0 件だった。 */}
             <p className="doc-p">
-              {l1.settled} of {l1.attempts} paid attempts settled with a receipt. Each settled row
-              carries its on-chain transaction hash — the receipt is the evidence.
+              {l1.settled} of {l1.attempts} paid attempts settled with a receipt, and{" "}
+              {l1.delivered} of those also returned a 2xx response (delivered). Each settled row
+              carries its on-chain transaction hash — the receipt is the evidence.{" "}
+              <strong>settled</strong> is the transfer we confirmed on-chain; <strong>delivered</strong>{" "}
+              is the response arriving. A settled row whose paid request answered 4xx or 5xx counts
+              as settled and not as delivered —{" "}
+              <Link href="/observatory/methodology" className="underline">
+                definitions
+              </Link>
+              .
             </p>
             <SettleGauge
               n={2}
@@ -372,16 +384,17 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
                 <p className="doc-caption">Embed this record</p>
                 <p className="doc-p mt-2 text-brand-lift">
                   Run this endpoint? Show the settle-through record vet402 measured — the badge
-                  reads <span className="whitespace-nowrap">{`${l1.settled}/${l1.attempts} settled`}</span>{" "}
+                  reads{" "}
+                  <span className="whitespace-nowrap">{`${l1.settled}/${l1.attempts} settled · ${l1.delivered} delivered`}</span>{" "}
                   and updates as the record grows. It states a measurement, not a rating.
                 </p>
                 <p className="mt-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={`/api/badge/endpoint/${id}.svg`}
-                    alt={`vet402: ${l1.settled} of ${l1.attempts} paid attempts settled`}
-                    width={188}
-                    height={24}
+                    alt={`vet402: ${l1.settled} of ${l1.attempts} paid attempts settled, ${l1.delivered} delivered`}
+                    width={receiptBadgeWidth(`${l1.settled}/${l1.attempts} settled · ${l1.delivered} delivered`)}
+                    height={RECEIPT_BADGE_HEIGHT}
                   />
                 </p>
                 <CodeBlock

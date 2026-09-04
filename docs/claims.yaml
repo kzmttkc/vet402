@@ -429,7 +429,7 @@ claims:
     verified_at: 2026-09-04
   - id: impact_payments_before_signing_overcharging_or
     surface: src/app/impact/page.tsx
-    quote: "payments before signing (overcharging or unpayable walls) and published every"
+    quote: "unpayable walls) and published every one of them."
     means: "署名前の拒否も含めて、決定を全部公開している"
     check:
       url: https://vet402.com/api/v1/observatory/decisions
@@ -720,7 +720,7 @@ claims:
     verified_at: 2026-09-04
   - id: operator_log_never_holds_or_moves_funds
     surface: src/app/operator-log/page.tsx
-    quote: "never holds or moves funds; a customer&rsquo;s SDK decides what to do with the verdict."
+    quote: "never holds or moves customer funds; a customer&rsquo;s SDK decides what to do with the"
     means: "ブロックは助言であって保管ではない。資金は保持も移動もしない"
     check: null
     why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
@@ -799,7 +799,7 @@ claims:
     verified_at: 2026-09-04
   - id: playground_performs_on_the_whole_public
     surface: src/app/playground/page.tsx
-    quote: "performs on the whole public catalog daily. Demo probes are not written into the public"
+    quote: "on a rolling schedule rather than sweeping every endpoint every day"
     means: "デモのプローブは公開登録簿に書かない。公開側の頻度は本番の実行だけで決まる"
     check:
       url: https://vet402.com/api/v1/observatory/state
@@ -837,14 +837,7 @@ claims:
   - id: status_daily_status_samples_over_the
     surface: src/app/status/page.tsx
     quote: "Daily status samples over the last 30 days"
-    means: "直近 30 日の日次サンプル（表の説明）"
-    check: null
-    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
-    verified_at: 2026-09-04
-  - id: status_daily_status_samples_over_the_2
-    surface: src/app/status/page.tsx
-    quote: "Daily status samples over the last 30 days"
-    means: "直近 30 日の日次サンプル（表のキャプション）"
+    means: "直近 30 日の日次サンプル。同じ文が表の説明とキャプションの 2 箇所に出るが、主張は 1 つなので登録も 1 つ（2026-09-04 監査 E・P1-18: 同じ quote が 2 id で登録され、片方だけ直る余地があった）"
     check: null
     why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
     verified_at: 2026-09-04
@@ -883,3 +876,249 @@ claims:
     check: null
     why_unverifiable: "製品の設計上の性質（保管しない・別 API である等）であって、公開 GET が数値で返す種類の主張ではない"
     verified_at: 2026-09-04
+
+  # ============================================================
+  # 2026-09-04 外部監査 E が「計器では拾えない矛盾」として挙げた主張。
+  # 直したあとの文をここへ登録して、次に誰かが戻したら関門で止まるようにする。
+  # ============================================================
+  - id: audit_e_l1_settled_is_not_delivered
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "is settled and not delivered. Both counts are published side by side on the endpoint"
+    means: "settled は転送の確認・delivered は settled かつ 2xx。2 語は別の事実であり、公開面は両方を出す"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "l1.delivered >= 1332"
+    verified_at: 2026-09-04
+  - id: audit_e_state_publishes_delivered
+    surface: src/app/observatory/state/page.tsx
+    quote: "Delivered: settled and the paid request answered"
+    means: "/observatory/state は delivered を settled と並べて出す（片方だけの公開に戻していない）"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "l1.delivered >= 0"
+    verified_at: 2026-09-04
+  - id: audit_e_settled_minus_delivered_is_published
+    surface: src/app/observatory/state/page.tsx
+    quote: "Settled but the paid request answered 4xx or 5xx"
+    means: "金は動いたが応答が来なかった件数を、自社に不利でも独立の行として出す"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "l1.settled >= 1452"
+    verified_at: 2026-09-04
+  - id: audit_e_register_l1_cell_shows_delivered
+    surface: src/app/observatory/page.tsx
+    quote: "is a settled attempt whose"
+    means: "登録簿の L1 セルは settled のほかに delivered を出す"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "l1.delivered >= 0"
+    verified_at: 2026-09-04
+  - id: audit_e_priority_sellers_are_disclosed
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "The priority list, and why it exists."
+    means: "6 日窓の例外（毎日買う 4 ホスト）の存在・根拠・頻度・名前を方法論で開示している"
+    check: null
+    why_unverifiable: "公開 GET は購買頻度を返さない。リストは l1-runner の PRIORITY_SELLER_HOSTS から import して描いているので、コードとページが乖離しない（tests/observatory-l1-priority.test.ts がリスト側を固定する）"
+    verified_at: 2026-09-04
+  - id: audit_e_fairness_is_pipeline_not_cadence
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "What is <em>not</em> uniform is purchase frequency"
+    means: "§8 の公平性は「測定パイプラインが同一」であって「頻度が同一」ではない、と明示する"
+    check: null
+    why_unverifiable: "編集方針の宣言であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: audit_e_partners_cannot_buy_cadence
+    surface: src/app/partners/page.tsx
+    quote: "Being measured more often is not favorable treatment and is not for sale either"
+    means: "頻度の差は関係ではなくカタログ申告の呼出量で決まる、と partners 頁でも書く"
+    check: null
+    why_unverifiable: "編集方針の宣言であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: audit_e_solana_settlements_are_reread
+    surface: src/components/site/faq-data.ts
+    quote: "settlements are re-read on-chain on both"
+    means: "Solana の決済もオンチェーンで読み直しており、settle_claimed 止まりではない"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "l1.settled >= 1452"
+    verified_at: 2026-09-04
+  - id: audit_e_decision_totals_span_the_window
+    surface: src/app/decisions/page.tsx
+    quote: "The three counts in the header are the whole"
+    means: "見出しの 3 つの数は窓全体の集計であって、表示行の内訳ではない"
+    check:
+      url: https://vet402.com/api/v1/observatory/decisions?days=30
+      assert: "totalDecisions >= 0"
+    verified_at: 2026-09-04
+  - id: audit_e_decisions_every_row_shown
+    surface: src/app/decisions/page.tsx
+    quote: "Every decision in the window is in the table below."
+    means: "窓の判定件数が表示件数と同じときにだけ「全部載っている」と書く（切られていれば切られたと書く）"
+    check:
+      url: https://vet402.com/api/v1/observatory/decisions?days=30
+      assert: "totalDecisions >= 0"
+    verified_at: 2026-09-04
+  - id: audit_e_impact_refused_over_window
+    surface: src/app/impact/page.tsx
+    quote: "unpayable walls) and published every one of them."
+    means: "/impact §3 の「refused N」は窓全体の判定件数を分母に出す"
+    check:
+      url: https://vet402.com/api/v1/observatory/decisions?days=30
+      assert: "totals.refused >= 0"
+    verified_at: 2026-09-04
+  - id: audit_e_playground_cadence_is_rolling
+    surface: src/app/playground/page.tsx
+    quote: "on a rolling schedule rather than sweeping every endpoint every day"
+    means: "プローブはローリング。カタログの再取得が日次であることと混ぜない"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "coverage7d.pct < 100"
+    verified_at: 2026-09-04
+  - id: audit_e_unverified_breakdown_is_measured
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "which is the same figure"
+    means: "unverified の内訳は実測で、5 つの合計が publishedUnverified に一致する"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "publishedUnverified >= 1"
+    verified_at: 2026-09-04
+  - id: audit_e_method_undeclared_is_not_the_main_cause
+    surface: src/app/observatory/page.tsx
+    quote: "entry declaring too little to check is one cause among several, and the current"
+    means: "unverified の主因は method の未申告ではない（実測でそれは 1 件台）"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "methodUndeclared < 100"
+    verified_at: 2026-09-04
+  - id: audit_e_l2_vocabulary_has_one_canon
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "One vocabulary, and its older summary form."
+    means: "L2 の正典は match / mismatch / no_declaration / not_checked。3 語形はその要約であり、対応表を置く"
+    check: null
+    why_unverifiable: "語彙の対応そのものは公開 GET が数値で返す種類の主張ではない。台帳列 l2_schema の値域は tests/docs-surface-parity.test.ts 側で固定する"
+    verified_at: 2026-09-04
+  - id: audit_e_decision_is_the_canonical_route
+    surface: src/components/site/faq-data.ts
+    quote: "The canonical integration since 2026-09-02 is GET /api/v1/resources/:resourceId/decision"
+    means: "主経路は decision。payee score は「まだ動く旧経路」であって primary ではない"
+    check: null
+    why_unverifiable: "どの経路を推すかは編集判断。ルートの実在は tests/openapi-route-parity.test.ts が固定する"
+    verified_at: 2026-09-04
+  - id: audit_e_corrections_count_is_verdict_changes
+    surface: src/app/corrections/page.tsx
+    quote: "to a <em>published</em> observatory verdict"
+    means: "訂正として数えるのは公開した判定を取り下げた件数だけで、台帳の昇格は含めない"
+    check:
+      url: https://vet402.com/api/v1/observatory/corrections
+      assert: "corrections.0.level != \"\""
+    verified_at: 2026-09-04
+  - id: audit_e_promotions_are_not_corrections
+    surface: src/app/corrections/page.tsx
+    quote: "Ledger promotions — recorded here, but not corrections"
+    means: "settle_claimed → settled の昇格は検証が予定どおり終わった記録であって、誤りの訂正ではない"
+    check: null
+    why_unverifiable: "分類の宣言であって、公開 GET が数値で返す種類の主張ではない。行の中身は /api/v1/observatory/corrections で誰でも数え直せる"
+    verified_at: 2026-09-04
+  - id: audit_e_custody_is_customer_funds
+    surface: src/app/operator-log/page.tsx
+    quote: "never holds or moves customer funds; a customer&rsquo;s SDK decides what to do with the"
+    means: "保管しないのは顧客の資金。自社資金は観測所が実際に支出している（言い切りの範囲を限定する）"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "l1.attempts >= 1"
+    verified_at: 2026-09-04
+  - id: audit_e_service_does_send_email
+    surface: src/app/legal/privacy/page.tsx
+    quote: "email delivery for the record-change notifications you"
+    means: "サービスはメールを送る（通知と異議の返信）。委託先として Resend を開示する"
+    check: null
+    why_unverifiable: "委託先の開示は事実の記載であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: audit_e_notification_data_is_disclosed
+    surface: src/app/legal/privacy/page.tsx
+    quote: "a one-way hash of the IP address the request came from (used"
+    means: "record_subscriptions に何を保存しているか（email・kind・reason・ip_hash）を開示する。IP は平文で保存しない"
+    check: null
+    why_unverifiable: "保存内容の開示であって、公開 GET が数値で返す種類の主張ではない。列は本番スキーマで実測して書いた"
+    verified_at: 2026-09-04
+  - id: audit_e_solana_rpc_is_a_subprocessor
+    surface: src/app/legal/privacy/page.tsx
+    quote: "used to re-read Solana settlements on-chain; receives transaction signatures and"
+    means: "Solana の公開 RPC を委託先として開示する（送るのはそのチェーンで既に公開の識別子だけ）"
+    check: null
+    why_unverifiable: "委託先の開示であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: audit_e_deletion_has_a_named_route
+    surface: src/app/legal/privacy/page.tsx
+    quote: "of the three expires automatically — no scheduler deletes them — so the route is a"
+    means: "通知・待機リスト・異議に自動失効は無い。削除はメール 1 通で人が 7 日以内に行う"
+    check: null
+    why_unverifiable: "運用の約束であって、公開 GET が数値で返す種類の主張ではない。自動失効を「在る」と書かないことがここの要点"
+    verified_at: 2026-09-04
+  - id: audit_e_pass_fail_are_l0_words
+    surface: src/app/legal/terms/page.tsx
+    quote: "The published words belong to a specific layer"
+    means: "pass / fail は L0 の語。L1 は settled / delivered などの語を使い、層をまたいで読ませない"
+    check: null
+    why_unverifiable: "定義の宣言であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: audit_e_no_retest_deadline_is_promised
+    surface: src/app/legal/terms/page.tsx
+    quote: "We do not promise a"
+    means: "再測定の期限を約束しない（それを守らせる仕組みが無いため）。異議が起こすのは L0 プローブ 1 回"
+    check: null
+    why_unverifiable: "約束しないという宣言であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: audit_e_dispute_runs_one_l0_probe
+    surface: src/app/page.tsx
+    quote: "which runs one fresh L0 probe of the"
+    means: "異議が起こすのは L0 プローブ 1 回で、公開ゲートは変わらない（1 回で pass にはならない）"
+    check: null
+    why_unverifiable: "処理内容の記載であって、公開 GET が数値で返す種類の主張ではない。実装は disputes.ts、固定は tests/observatory-disputes.test.ts"
+    verified_at: 2026-09-04
+  - id: audit_e_lp_fig1_denominator_is_on_record
+    surface: src/app/page.tsx
+    quote: "The first row is every endpoint on record, including the"
+    means: "Fig.1 の 1 行目は delisted を含む記録上の総数であって、いまカタログに載っている数ではない"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "totalEndpoints >= 23049"
+    verified_at: 2026-09-04
+  - id: audit_e_snapshot_shows_both_denominators
+    surface: src/app/observatory/page.tsx
+    quote: "entries fetched by vet402 out of the"
+    means: "ヘッダの N/N は「我々が取得できた件数 / カタログの自己申告総数」であることを明示する"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "latestSnapshot.fetchedCount >= 1"
+    verified_at: 2026-09-04
+  - id: audit_e_probe402_exists
+    surface: src/components/site/faq-data.ts
+    quote: "probe402 is a dedicated x402 observatory"
+    means: "独立の x402 観測所は他にも在る（probe402）。「no vendor at all」は事実に反する"
+    check: null
+    why_unverifiable: "他社サイトの状態は当社の公開 GET では返せない。2026-09-04 に https://probe402.com を直接取得して HTTP 200・\"Endpoints 16,118 tracked\" を確認済み"
+    verified_at: 2026-09-04
+  - id: audit_e_corrections_reading_is_timestamped
+    surface: src/app/corrections/page.tsx
+    quote: "(reading at 09:00 UTC)"
+    means: "訂正本文の 68.8% は単発の読み取りで、時刻つきで書く（定常的な性質として読ませない）"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "coverage7d.pct > 0"
+    verified_at: 2026-09-04
+  - id: audit_e_corrections_page_names_its_own_error
+    surface: src/app/corrections/page.tsx
+    quote: "entries above. Until 2026-09-04 this page"
+    means: "この頁自身が 9/4 まで昇格を訂正として数えていたことを、訂正の作法どおり頁の上に残す"
+    check: null
+    why_unverifiable: "過去の自社の誤りの記載であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+  - id: audit_e_promotions_were_drawn_as_dashes
+    surface: src/app/corrections/page.tsx
+    quote: "and drew every row as"
+    means: "昇格行は publishedVerdict を持たないため「— → —」と描かれていた、という事実の記載"
+    check: null
+    why_unverifiable: "過去の自社の描画の誤りの記載であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-04
+

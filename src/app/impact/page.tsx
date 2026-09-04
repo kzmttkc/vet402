@@ -180,9 +180,9 @@ export default async function ImpactPage() {
               <span>Losses an agent avoids by reading the signals</span>
             </h2>
             <p className="doc-p">
-              In the last 30 days vet402 <strong>refused {decisions.totals.refused}</strong>{" "}
-              payments before signing (overcharging or unpayable walls) and published every
-              decision.
+              In the last 30 days vet402 <strong>refused {decisions.totals.refused}</strong> of{" "}
+              {decisions.totalDecisions.toLocaleString()} decisions before signing (overcharging or
+              unpayable walls) and published every one of them.
               {backtest && (
                 <>
                   {" "}Across the whole ledger, {backtest.avoided.count} signed attempts carried a

@@ -42,6 +42,40 @@ const STATUS_TO_DECISION: Record<string, string> = {
   settle_failed: "paid_no_settlement",
 };
 
+/** 判定として公開する status の閉集合（行の抽出と合計の両方がここを見る）。 */
+export const DECISION_STATUSES = Object.keys(STATUS_TO_DECISION);
+
+export type DecisionTotals = {
+  refused: number;
+  paidSettled: number;
+  paidNoSettlement: number;
+  paidNoReceipt: number;
+};
+
+/**
+ * status ごとの件数から見出しの合計を組む（2026-09-04 外部監査 E・P0-4）。
+ *
+ * 事故: /decisions の見出しは "last 30 days" と書きながら、合計は LIMIT 200 で
+ * 切ったあとの行を数えていた。30 日に 200 件を超える判定があれば、見出しの数は
+ * 窓の集計ではなく「直近 200 件の内訳」になる。/impact §3 も同じ feed を読む。
+ * 表示件数と合計を切り離すために、合計は行から作らず件数から作る。
+ */
+export function decisionTotalsFromStatusCounts(
+  counts: readonly { status: string; n: number }[],
+): DecisionTotals {
+  const totals: DecisionTotals = { refused: 0, paidSettled: 0, paidNoSettlement: 0, paidNoReceipt: 0 };
+  for (const { status, n } of counts) {
+    const decision = STATUS_TO_DECISION[status];
+    if (!decision) continue; // 写像に無いものは我々側の状態。分母にも分子にも入れない
+    const add = Number(n) || 0;
+    if (decision.startsWith("refused_")) totals.refused += add;
+    else if (decision === "paid_settled") totals.paidSettled += add;
+    else if (decision === "paid_no_settlement") totals.paidNoSettlement += add;
+    else if (decision === "paid_delivered_no_receipt") totals.paidNoReceipt += add;
+  }
+  return totals;
+}
+
 export type DecisionRow = {
   at: string;
   /** x402_endpoints.id — the record page is /observatory/e/{endpointId}. */
@@ -55,8 +89,12 @@ export type DecisionRow = {
 };
 
 export type DecisionFeed = {
+  /** 新しい順の表示行。`limit` で切られる（合計はこの切り取りに依存しない）。 */
   rows: DecisionRow[];
-  totals: { refused: number; paidSettled: number; paidNoSettlement: number; paidNoReceipt: number };
+  /** 窓（days）全体の合計。行の表示上限とは無関係に SQL で数える。 */
+  totals: DecisionTotals;
+  /** 窓全体の判定件数。rows.length より大きければ表示が切られている。 */
+  totalDecisions: number;
   definition: string;
 };
 
@@ -67,6 +105,7 @@ export async function getDecisionFeed(days: number, limit = 200): Promise<Decisi
   const empty: DecisionFeed = {
     rows: [],
     totals: { refused: 0, paidSettled: 0, paidNoSettlement: 0, paidNoReceipt: 0 },
+    totalDecisions: 0,
     definition: DECISION_DEFINITION,
   };
   if (!db) return empty;
@@ -78,7 +117,7 @@ export async function getDecisionFeed(days: number, limit = 200): Promise<Decisi
     FROM x402_l1_purchases pu
     JOIN x402_endpoints e ON e.id = pu.endpoint_id
     WHERE pu.attempted_at >= now() - make_interval(days => ${span}::int)
-      AND pu.status IN ('price_mismatch','payto_mismatch','payto_operator_self','over_cap','no_402','no_eligible_accept','settled','delivered_no_receipt','settle_claimed_unverifiable','settle_claimed','settle_claim_refuted','settle_failed')
+      AND pu.status IN (${sql.join(DECISION_STATUSES.map((st) => sql`${st}`), sql`, `)})
     ORDER BY pu.attempted_at DESC
     LIMIT ${cap}
   `);
@@ -96,13 +135,23 @@ export async function getDecisionFeed(days: number, limit = 200): Promise<Decisi
     spentUnits: String(r.spent_units),
     txHash: r.tx_hash === null ? null : String(r.tx_hash),
   }));
-  const totals = {
-    refused: feed.filter((r) => r.decision.startsWith("refused_")).length,
-    paidSettled: feed.filter((r) => r.decision === "paid_settled").length,
-    paidNoSettlement: feed.filter((r) => r.decision === "paid_no_settlement").length,
-    paidNoReceipt: feed.filter((r) => r.decision === "paid_delivered_no_receipt").length,
-  };
-  return { rows: feed, totals, definition: DECISION_DEFINITION };
+  // 合計は窓全体を数える。上の SELECT は表示のための LIMIT 付きなので、
+  // その結果を数えると見出しが「直近 N 件の内訳」になってしまう（監査 E・P0-4）。
+  const countRaw = await db.execute(sql`
+    SELECT pu.status, count(*)::int AS n
+    FROM x402_l1_purchases pu
+    WHERE pu.attempted_at >= now() - make_interval(days => ${span}::int)
+      AND pu.status IN (${sql.join(DECISION_STATUSES.map((st) => sql`${st}`), sql`, `)})
+    GROUP BY pu.status
+  `);
+  const countRows = (Array.isArray(countRaw) ? countRaw : (countRaw as { rows?: unknown[] }).rows ?? []) as Record<
+    string,
+    unknown
+  >[];
+  const counts = countRows.map((r) => ({ status: String(r.status), n: Number(r.n ?? 0) }));
+  const totals = decisionTotalsFromStatusCounts(counts);
+  const totalDecisions = counts.reduce((sum, c) => sum + c.n, 0);
+  return { rows: feed, totals, totalDecisions, definition: DECISION_DEFINITION };
 }
 
 export type SettledReceipt = {

@@ -63,3 +63,55 @@ if (!TEST_DB) {
     assert.ok(feed.definition.includes("budget_denied"), "除外規則を定義文に同梱");
   });
 }
+
+// ------------------------------------------------------------
+// 2026-09-04 外部監査 E・P0-4: /decisions の見出しは "last 30 days" と書いて
+// いたが、totals は LIMIT 200 で切った行を数えていた。30 日に 200 件を超える
+// 判定があると、見出しの数は「直近 200 件の内訳」であって窓の集計ではない。
+// /impact §3 の「In the last 30 days vet402 refused N」も同じ feed を読む。
+// 合計は行の表示件数から独立させ、窓全体を SQL で数える。
+// ------------------------------------------------------------
+import { decisionTotalsFromStatusCounts } from "@/lib/observatory/decisions";
+
+test("合計は status ごとの件数から組み、表示行数に依存しない", () => {
+  const totals = decisionTotalsFromStatusCounts([
+    { status: "price_mismatch", n: 120 },
+    { status: "payto_mismatch", n: 3 },
+    { status: "payto_operator_self", n: 1 },
+    { status: "over_cap", n: 40 },
+    { status: "no_402", n: 7 },
+    { status: "no_eligible_accept", n: 9 },
+    { status: "settled", n: 900 },
+    { status: "settle_failed", n: 700 },
+    { status: "delivered_no_receipt", n: 12 },
+  ]);
+  assert.deepEqual(totals, {
+    refused: 120 + 3 + 1 + 40 + 7 + 9,
+    paidSettled: 900,
+    paidNoSettlement: 700,
+    paidNoReceipt: 12,
+  });
+});
+
+test("表示上限（200 行）を超える件数でも合計はそのまま出る", () => {
+  const totals = decisionTotalsFromStatusCounts([{ status: "over_cap", n: 5_000 }]);
+  assert.equal(totals.refused, 5_000);
+});
+
+test("写像に無い status は合計のどれにも入れない（黙って refused に混ぜない）", () => {
+  const totals = decisionTotalsFromStatusCounts([
+    { status: "budget_denied", n: 50 },
+    { status: "in_flight", n: 4 },
+    { status: "settled", n: 2 },
+  ]);
+  assert.deepEqual(totals, { refused: 0, paidSettled: 2, paidNoSettlement: 0, paidNoReceipt: 0 });
+});
+
+test("claim 系（未検証・反証・不正形式）は settled にも no_settlement にも数えない", () => {
+  const totals = decisionTotalsFromStatusCounts([
+    { status: "settle_claimed", n: 43 },
+    { status: "settle_claim_refuted", n: 2 },
+    { status: "settle_claimed_unverifiable", n: 1 },
+  ]);
+  assert.deepEqual(totals, { refused: 0, paidSettled: 0, paidNoSettlement: 0, paidNoReceipt: 0 });
+});
