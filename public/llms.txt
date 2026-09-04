@@ -4,9 +4,11 @@
 
 x402 settles payments finally and irreversibly, and proof of payment exists on-chain — but proof of delivery does not exist anywhere. Registries can be written for cents and directory metrics can be manufactured, so vet402 does not take either at face value: it measures, states which level of verification a result came from, and says "unverified" when it has not measured. Nothing on the site is presented as an estimate.
 
-Formerly named "Vouch"; renamed to vet402 in August 2026. The production URL is `vet402.com`. The GitHub repository is still `kzmttkc/agent-trust`, and issued API keys and webhook headers keep the `vouch_` / `Vouch-` prefixes for backward compatibility — the old name appearing in those two places is deliberate, not stale documentation.
+Formerly named "Vouch"; renamed to vet402 in August 2026. The production URL is `vet402.com`. The GitHub repository is `kzmttkc/vet402` (the older `kzmttkc/agent-trust` URL still redirects there; cite the new one). Issued API keys and webhook headers keep the `vouch_` / `Vouch-` prefixes for backward compatibility — the old name appearing there is deliberate, not stale documentation.
 
 ## Verification levels
+
+Every word used below is defined in one sentence each at https://vet402.com/observatory/methodology#vocabulary, and the same definitions are published as `DefinedTermSet` structured data on that page and in https://vet402.com/llms-full.txt.
 
 This is the published methodology. A result is labelled by the level that produced it and never moves up a level: an L0 probe cannot report settlement, and an L3 opinion is never folded into an L0–L2 fact. L0, L1 and L2 verdicts ship live in the observatory (see "Implemented and live" below): L0 and L1 are full measurements; L2 is a deliberately minimal structural check — parses the response as JSON and confirms the seller's own declared required keys are present, nothing deeper — described exactly as such on https://vet402.com/observatory/methodology. L3 is not built and no opinion is published anywhere on the site.
 
@@ -95,7 +97,7 @@ Cite as: KIZUNA Creation. vet402 observatory. Dataset, retrieved YYYY-MM-DD. htt
 
 Every response that carries a score or a published rate carries a `disclaimer` string in the payload, so the caveat travels with the number rather than living only on the web page.
 
-Full machine-readable schema (OpenAPI 3.1, covering every public endpoint listed above, key-less and keyed, with `https://vet402.com` as the only production server): https://github.com/kzmttkc/agent-trust/blob/main/docs/openapi.yaml
+Full machine-readable schema (OpenAPI 3.1, covering every public endpoint listed above, key-less and keyed, with `https://vet402.com` as the only production server): https://vet402.com/openapi.yaml — the same file is in the repository at https://github.com/kzmttkc/vet402/blob/main/docs/openapi.yaml, but cite the served URL.
 
 ## Packages
 
@@ -106,7 +108,7 @@ On npm, all from the same repository: `@vet402/sdk` (spend guard), `@vet402/midd
 - Verified Payee: prove control of a wallet by signature, get a public page and an SVG badge
 - Drop-in x402 middleware, REST API, and MCP tool
 - Public accuracy ledger, published whether or not the numbers flatter us
-- The x402 Observatory: L0 liveness probes across the full public discovery catalog, multi-chain (see /observatory/state for the breakdown), with delisting alerts for claimed sellers; L1 settle-through — real USDC purchases on Base, budget-capped, one purchase per endpoint per sweep window, recording every settlement and every refusal; L2 — a minimal structural check of the response against the seller's own declared schema
+- The x402 Observatory: L0 liveness probes across the full public discovery catalog, multi-chain (see /observatory/state for the breakdown), with delisting alerts for claimed sellers; L1 settle-through — real USDC purchases on Base and Solana mainnet, budget-capped, one purchase per endpoint per sweep window, recording every settlement and every refusal; L2 — a minimal structural check of the response against the seller's own declared schema
 
 ## Being built (not measurements yet)
 
@@ -123,7 +125,7 @@ On npm, all from the same repository: `@vet402/sdk` (spend guard), `@vet402/midd
 
 Base (ERC-8004 agent identity / reputation) is the default and the chain the scoring API measures on. The agent-score endpoint accepts `?chain=` to select another enabled chain; an unknown or disabled chain is a 400 with the live list, never a silent fallback to a different chain.
 
-The observatory is a separate system and is not Base-only: L0 probing runs across every chain present in the public x402 discovery catalog, and https://vet402.com/observatory/state reports the current per-chain breakdown. L1 purchases are Base-only for now (the wallet only signs Base USDC); a purchase on another chain is recorded as skipped, not silently paid on a substitute chain.
+The observatory is a separate system and is not Base-only: L0 probing runs across every chain present in the public x402 discovery catalog, and https://vet402.com/observatory/state reports the current per-chain breakdown. L1 purchases run on Base and on Solana mainnet, and settlements are re-read on-chain on both: as of 2026-09-04 a Solana purchase is promoted to `settled` only on the same evidence Base requires. A purchase on any other chain stays at `settle_claimed`, because the on-chain re-read exists for these two only; it is never silently paid on a substitute chain.
 
 ## Note on domain
 
@@ -133,14 +135,26 @@ The production URL is `vet402.com`, and it is the only canonical one. `agent-tru
 
 If a published score or verification result about a wallet you control is wrong, there is a free, key-less correction route open to anyone, customer or not — see section 8 of https://vet402.com/legal/terms#corrections
 
-Corrections that are issued are published at https://vet402.com/corrections — as of 2026-08-13 that log is empty, which is a count and not a claim about accuracy.
+Corrections that are issued are published at https://vet402.com/corrections, and as JSON at https://vet402.com/api/v1/observatory/corrections. Read the count from there rather than from this file: it is not zero (the first corrections were published on 2026-09-04), and a number written here goes stale the next time we correct something.
 
 ## Citation
 
 - You may cite the content on this site (front page, API docs, FAQ, accuracy ledger, blog) as long as you credit the source with the corresponding vet402.com URL.
 - The same statement is published for human readers in section 4 of https://vet402.com/accuracy — this file is not the only place it exists.
 - Figures on the accuracy ledger are rolling 90-day aggregates; cite them with the retrieval date, or quote the `generatedAt` timestamp from `GET /api/v1/accuracy`.
-- Content current as of 2026-08-15.
+- Content current as of 2026-09-05. The measurements it points at are not: read them from the endpoints above, with the schedule in Freshness.
+
+## Freshness
+
+Every number on this site moves, so it is published with the schedule that moves it rather than as a timeless fact.
+
+- Catalog sync (what is listed, what was delisted): daily, 01:00 UTC.
+- L0 probes and the daily metrics rollup: daily, 10:30 UTC.
+- L1 purchases: daily, 12:00 UTC. On-chain settlement re-read: daily, 14:00 UTC, so an attempt made today is normally promoted from `settle_claimed` to `settled` within a day.
+- The HTML pages read those aggregates through a 5-minute cache, so a page and the JSON API can differ for at most 5 minutes after a run; the JSON API is never cached and its `retrievedAt` is the time you asked.
+- This file and https://vet402.com/llms-full.txt are served with `Cache-Control: public, max-age=3600`.
+
+A measurement quoted without its retrieval date is not a measurement. Take the date from `retrievedAt` in the JSON, from the `x-vet402-retrieved-at` header on the CSV, or from the day you fetched the page.
 
 ## Legal
 
@@ -152,4 +166,4 @@ Corrections that are issued are published at https://vet402.com/corrections — 
 
 - Site: https://vet402.com
 - X: https://x.com/vet_402
-- GitHub: https://github.com/kzmttkc/agent-trust
+- GitHub: https://github.com/kzmttkc/vet402
