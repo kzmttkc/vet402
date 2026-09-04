@@ -23,9 +23,15 @@ import assert from "node:assert/strict";
 
 // 会期中に実装する。Day 0 では存在しないので、**各テストが個別に赤くなる**ようスタブへ落とす
 // （import で1本落ちるだけだと「22本を書いた」記録が git に残らない）。
+//
+// 2026-09-05 訂正: Day 0 は `../src/pay-or-refuse.js` から import していたが、この
+// パッケージは rootDir: src / outDir: dist で、`npm test` は `tsc` を通してから
+// `test/*.test.mjs` を走らせる（package.json）。`src/*.js` は**存在しない**ので、
+// 実装を書いても import は必ず失敗し、全テストが永久にスタブへ落ちて緑にならない。
+// 既存テスト（decision / spend-guard / evidence-policy …）と同じく dist から読む。
 let payOrRefuse, readDemoDecisions, readL1Decisions;
 try {
-  ({ payOrRefuse, readDemoDecisions, readL1Decisions } = await import("../src/pay-or-refuse.js"));
+  ({ payOrRefuse, readDemoDecisions, readL1Decisions } = await import("../dist/index.js"));
 } catch {
   const notYet = async () => { throw new Error("payOrRefuse is not implemented yet — Day 0 red (ETHOnline window opened 2026-09-04)"); };
   payOrRefuse = notYet; readDemoDecisions = notYet; readL1Decisions = notYet;
@@ -87,6 +93,13 @@ test("A1 /decision が ALLOW 以外 → signer への参照が0", async () => {
   const f = allowlistFetch([DECISION], { [DECISION]: decision({ recommendation: "WARN", reason_codes: ["l1_not_attempted"] }) });
   const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch });
   assert.equal(r.status, "refused");
+  // 2026-09-05 追加（変異テストで判明）: status と signer 参照だけを見ると、ALLOW ゲートを
+  // 丸ごと外した実装でも緑になる——許可リストの外へ出た fetch が throw して、別の理由で
+  // 拒否されるから。「なぜ拒否したか」まで検査しないと、この4本は配線の証明にならない。
+  assert.equal(f.calls.filter((u) => u.includes(DECISION)).length, 1, "判定を1回引いている");
+  assert.match(r.decision.reason_codes.join(","), /not_allow/, "ALLOW でなかったことが理由");
+  // DESIGN §1: 理由はサーバの reason_codes をそのまま返す（我々の語で上書きしない）。
+  assert.equal(r.decision.reason_codes.includes("l1_not_attempted"), true);
   assert.deepEqual(w.signAccesses(), []);
 });
 
@@ -95,6 +108,10 @@ test("A2 /decision が degraded → 読めなかったのだから払わない",
   const f = allowlistFetch([DECISION], { [DECISION]: decision({ degraded: true }) });
   const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch });
   assert.equal(r.status, "refused");
+  assert.equal(f.calls.filter((u) => u.includes(DECISION)).length, 1, "判定を1回引いている");
+  assert.match(r.decision.reason_codes.join(","), /unavailable/, "読めなかったことが理由");
+  // degraded の判定を読み飛ばした実装では、サーバの reason_codes が理由に残らない。
+  assert.equal(r.decision.reason_codes.includes("l0_pass"), true);
   assert.deepEqual(w.signAccesses(), []);
 });
 
@@ -179,7 +196,7 @@ test("C10 evidence.minL1Deliveries 未達で拒否", async () => {
   assert.equal(r.decision.reason_codes.includes("insufficient_delivery_evidence"), true);
 });
 
-test("C11 evidence.minSubgraphReceipts 未達で拒否", async () => {
+test("C11 evidence.minSubgraphReceipts 未達で拒否", { todo: "The Graph 証拠源（WINDOW_PLAN §2 #3）が未実装。09-08 の作業。" }, async () => {
   const w = watchedAccount();
   const f = allowlistFetch([DECISION, "gateway.thegraph.com"], {
     [DECISION]: decision(),
@@ -190,7 +207,7 @@ test("C11 evidence.minSubgraphReceipts 未達で拒否", async () => {
   assert.equal(r.decision.reason_codes.includes("insufficient_subgraph_evidence"), true);
 });
 
-test("C12 source:both で片方しか読めないとき、どちらが読めなかったかが理由に入る", async () => {
+test("C12 source:both で片方しか読めないとき、どちらが読めなかったかが理由に入る", { todo: "The Graph 証拠源（WINDOW_PLAN §2 #3）が未実装。09-08 の作業。" }, async () => {
   const w = watchedAccount();
   const f = allowlistFetch([DECISION, "gateway.thegraph.com"], {
     [DECISION]: decision(),
@@ -204,7 +221,7 @@ test("C12 source:both で片方しか読めないとき、どちらが読めな�
 
 // ---------- D. The Graph 経路の fail-closed ----------
 
-test("D13 Gateway が 403/5xx/タイムアウト → evidence_unavailable・signer 参照0", async () => {
+test("D13 Gateway が 403/5xx/タイムアウト → evidence_unavailable・signer 参照0", { todo: "現状の緑は空振り——subgraph 源が未実装で Gateway を一度も呼んでいないため evidence_unavailable になっているだけ。The Graph 証拠源の実装（09-08）と同時に本物にする。" }, async () => {
   const w = watchedAccount();
   const f = allowlistFetch([DECISION, "gateway.thegraph.com"], { [DECISION]: decision(), "gateway.thegraph.com": { status: 503, body: {} } });
   const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { evidence: { minSubgraphReceipts: 1, source: "subgraph" } } });
@@ -213,7 +230,7 @@ test("D13 Gateway が 403/5xx/タイムアウト → evidence_unavailable・sign
   assert.deepEqual(w.signAccesses(), []);
 });
 
-test("D14 Graph への全リクエストに User-Agent が付く（無いと Cloudflare 1010）", async () => {
+test("D14 Graph への全リクエストに User-Agent が付く（無いと Cloudflare 1010）", { todo: "The Graph 証拠源（WINDOW_PLAN §2 #3）が未実装。09-08 の作業。" }, async () => {
   const seen = [];
   const f = {
     fetch: async (url, init) => {
@@ -228,7 +245,7 @@ test("D14 Graph への全リクエストに User-Agent が付く（無いと Clo
   for (const g of graph) assert.ok(g.ua && g.ua.length > 0, `UA が無い: ${g.url}`);
 });
 
-test("D15 source:subgraph の決定行に subgraphId と _meta.block が載る", async () => {
+test("D15 source:subgraph の決定行に subgraphId と _meta.block が載る", { todo: "The Graph 証拠源（WINDOW_PLAN §2 #3）が未実装。09-08 の作業。" }, async () => {
   const w = watchedAccount();
   const f = allowlistFetch([DECISION, "gateway.thegraph.com"], {
     [DECISION]: decision(),
@@ -241,7 +258,7 @@ test("D15 source:subgraph の決定行に subgraphId と _meta.block が載る",
   assert.equal(typeof ev.block?.number, "number");
 });
 
-test("D16 自社台帳の件数と subgraph の件数を1つの数に合算しない", async () => {
+test("D16 自社台帳の件数と subgraph の件数を1つの数に合算しない", { todo: "The Graph 証拠源（WINDOW_PLAN §2 #3）が未実装。09-08 の作業。" }, async () => {
   const w = watchedAccount();
   const f = allowlistFetch([DECISION, "gateway.thegraph.com"], {
     [DECISION]: decision(),
@@ -282,7 +299,7 @@ test("E18 署名後に settle 失敗 → failed を返し、隠さない", async
 
 // ---------- F. 汚染しない ----------
 
-test("F19 デモの決定行は source: agent-demo で、L1 台帳へは書かない", async () => {
+test("F19 デモの決定行は source: agent-demo で、L1 台帳へは書かない", { todo: "現状の緑は空振り——決定行をどこにも保存していないので「L1 台帳へ書いていない」が自明に通るだけ。決定面の実装（09-09）と同時に本物にする。" }, async () => {
   const writes = [];
   const f = {
     fetch: async (url, init) => {
@@ -297,7 +314,7 @@ test("F19 デモの決定行は source: agent-demo で、L1 台帳へは書か�
   assert.equal(writes.some((u) => u.includes("l1")), false, "L1 台帳へ書きに行っていない");
 });
 
-test("F20 L1 フィードはデモ行を無視し、デモフィードは L1 行を無視する", async () => {
+test("F20 L1 フィードはデモ行を無視し、デモフィードは L1 行を無視する", { todo: "agent-demo の決定面（WINDOW_PLAN §2 #4）が未実装。09-09 の作業。" }, async () => {
   const demo = await readDemoDecisions();
   const l1 = await readL1Decisions();
   assert.equal(demo.every((d) => d.source === "agent-demo"), true);
@@ -321,4 +338,95 @@ test("H22 ネガティブコントロール: 同じハーネスで ALLOW を通�
   assert.equal(r.status, "paid");
   assert.equal(w.signAccesses().length, 1, "計測器は「1回」を検出できる（0回が配線ミスでない証明）");
   assert.equal(calls.filter((u) => u.includes("facilitator") || u.includes("settle")).length, 1);
+});
+
+// ---------- I. カタログ外の売り手（2026-09-04 本番実測・WINDOW_PLAN §3.1） ----------
+//
+// デモの支払い先である The Graph は vet402 のカタログに1件も無い:
+//   GET /api/v1/payees/0x79DC34E41B2b591078d3dE222C43EcaaBD52FcCB/endpoints → {"count":0}
+//   GET /api/v1/resources/9e8469d3…/decision?role=payer                     → 404 {"error":"not_found"}
+// `getResource()` は resource_id の単純照会なので、カタログ未登録は必ず 404 になる。
+//
+// つまり **デモの支払い経路そのものが 404 経路**である。ここで諦める実装は提出物にならず、
+// ここで黙って払う実装は憲法違反。404 のとき payOrRefuse は
+//   402 チャレンジの payTo ＋ 受取人スコア（GET /api/v1/payees/{address}/score）
+// だけで判定を出し、材料が無いときだけ**署名前に**機械可読な理由で拒否する。
+
+const SCORE = "/score";
+/** WINDOW_PLAN §3 の実測。payTo は The Graph 本体の受取ウォレット。 */
+const GRAPH_RESOURCE = "https://gateway.thegraph.com/api/x402/subgraphs/id/DZz4kDTdmzWLWsV373w2ViSHapzk4nUyBASJcNvwrn";
+const GRAPH_PAYEE = "0x79DC34E41B2b591078d3dE222C43EcaaBD52FcCB";
+const graphAccept = { ...okAccept, amount: "10000", payTo: GRAPH_PAYEE };
+const notFound = { status: 404, body: { error: "not_found" } };
+
+/** 2026-09-04 実測の受取人スコア応答（recommendation / score だけ差し替える）。 */
+const payeeScore = (over = {}) => ({
+  status: 200,
+  body: {
+    payee: GRAPH_PAYEE.toLowerCase(),
+    score: 69,
+    recommendation: "WARN",
+    dataDepth: "thin",
+    degraded: false,
+    signalsUnavailable: [],
+    signals: { receiving: { paymentCount: 0, distinctPayers: 0, l1DeliveryCount: 0 } },
+    scoredAt: new Date().toISOString(),
+    cacheExpiresAt: new Date(Date.now() + 300_000).toISOString(),
+    ...over,
+  },
+});
+
+const uncatalogued = { payee: GRAPH_PAYEE, resource: GRAPH_RESOURCE, method: "POST", amountUsd: 0.01 };
+
+test("I23a /decision が 404 not_found でも、402 の payTo と受取人スコアだけで判定する（ALLOW → 支払いへ進む）", async () => {
+  const w = watchedAccount();
+  const f = allowlistFetch([DECISION, SCORE, "gateway.thegraph.com", "facilitator", "payments/x402"], {
+    [DECISION]: notFound,
+    [SCORE]: payeeScore({ recommendation: "ALLOW", score: 74, dataDepth: "moderate" }),
+    "gateway.thegraph.com": wall(graphAccept),
+    facilitator: { status: 200, body: { success: true, transaction: "0xtx" } },
+    "payments/x402": { status: 200, body: { ok: true } },
+  });
+  const r = await payOrRefuse({ ...uncatalogued, account: w.account, fetch: f.fetch });
+  assert.equal(r.status, "paid");
+  // 判定を出した経路が 404 フォールバックであることが機械可読で残る。
+  assert.equal(r.decision.reason_codes.includes("resource_uncatalogued"), true);
+  // 引いた材料は「判定 1 回・スコア 1 回」。引かずに通した実装は緑にしない。
+  assert.equal(f.calls.filter((u) => u.includes(DECISION)).length, 1);
+  assert.equal(f.calls.filter((u) => u.includes(SCORE)).length, 1);
+  // ネガティブコントロール: このハーネスは「1回」を検出できる（0回が配線ミスでない証明）。
+  assert.equal(w.signAccesses().length, 1);
+  assert.equal(f.calls.filter((u) => u.includes("facilitator")).length, 1);
+});
+
+test("I23b /decision が 404 かつ受取人スコアが ALLOW でない → 署名前に拒否・理由コードあり", async () => {
+  const w = watchedAccount();
+  // facilitator を許可リストに入れない。到達した時点で throw する（第2層）。
+  const f = allowlistFetch([DECISION, SCORE, "gateway.thegraph.com"], {
+    [DECISION]: notFound,
+    [SCORE]: payeeScore(),
+    "gateway.thegraph.com": wall(graphAccept),
+  });
+  const r = await payOrRefuse({ ...uncatalogued, account: w.account, fetch: f.fetch });
+  assert.equal(r.status, "refused");
+  assert.equal(r.decision.reason_codes.includes("resource_uncatalogued"), true);
+  assert.equal(r.decision.reason_codes.includes("payee_recommendation_not_allow"), true);
+  // 404 を見た瞬間に一律で拒否する実装では緑にしない——スコアを実際に引いたことを要求する。
+  assert.equal(f.calls.filter((u) => u.includes(SCORE)).length, 1);
+  assert.deepEqual(w.signAccesses(), []);
+});
+
+test("I23c /decision が 404 かつ受取人スコアも取得できない → fail-closed", async () => {
+  const w = watchedAccount();
+  const f = allowlistFetch([DECISION, SCORE, "gateway.thegraph.com"], {
+    [DECISION]: notFound,
+    [SCORE]: { status: 503, body: { error: "upstream_unavailable" } },
+    "gateway.thegraph.com": wall(graphAccept),
+  });
+  const r = await payOrRefuse({ ...uncatalogued, account: w.account, fetch: f.fetch });
+  assert.equal(r.status, "refused");
+  assert.match(r.decision.reason_codes.join(","), /unavailable/);
+  // 「引きに行かずに拒否」ではなく「引いて読めなかったから拒否」であること。
+  assert.equal(f.calls.filter((u) => u.includes(SCORE)).length, 1);
+  assert.deepEqual(w.signAccesses(), []);
 });
