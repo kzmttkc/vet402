@@ -611,15 +611,19 @@ export default async function Home() {
           <FunnelFigure
             n={1}
             stages={[
-              { label: "Catalog endpoints", n: stats.totalEndpoints, href: "/observatory" },
+              // 2026-09-04 監査 E: 「Catalog endpoints」は delisted を含む totalEndpoints を指していた。
+              // 分母の名を State of x402 と同じ「Endpoints on record」に揃え、active を併記する。
+              { label: "Endpoints on record", n: stats.totalEndpoints, href: "/observatory" },
               { label: "L0 pass (402 wall answers)", n: stats.publishedPass, href: "/observatory?verdict=pass" },
               { label: "L1 settled with receipt", n: stats.l1.endpointsSettled, href: "/impact" },
             ]}
             caption={
               <>
                 Endpoints at each level of evidence
-                {stats.latestSnapshot ? ` as of the ${stats.latestSnapshot.snapshotDate} catalog snapshot` : ""}. Bars are
-                proportional to the first row. L1 counts endpoints where at least one paid attempt returned an on-chain receipt.
+                {stats.latestSnapshot ? ` as of the ${stats.latestSnapshot.snapshotDate} catalog snapshot` : ""}. On record
+                includes delisted entries; {stats.activeEndpoints.toLocaleString()} are active. Bars are proportional to the
+                first row. L1 counts endpoints where at least one paid attempt returned an on-chain receipt, as reported by{" "}
+                <code>/api/v1/observatory/state</code>.
               </>
             }
           />
