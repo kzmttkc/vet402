@@ -3125,6 +3125,20 @@ components:
           type: array
           items: { $ref: "#/components/schemas/PayeeRef" }
         settlement: { $ref: "#/components/schemas/SettlementRef" }
+        settlement_not_found:
+          type: object
+          description: >-
+            Present only when `query.kind` is `tx` and no settlement was
+            found. Raw settlement rows are kept for a 7-day window; older
+            days are folded into daily (payee, payer) aggregates, so census
+            counts stay exact while individual receipts are no longer
+            stored. Absence of a settlement therefore does not mean the
+            transaction never happened.
+          required: [reason, raw_window_days, note]
+          properties:
+            reason: { type: string, enum: [not_in_raw_window] }
+            raw_window_days: { type: integer }
+            note: { type: string }
         disclaimer: { type: string }
     ResourceResponse:
       type: object

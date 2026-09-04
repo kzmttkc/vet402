@@ -26,8 +26,22 @@ import { rowsOf } from "./upsert";
 
 /** 生行を残す UTC 日数。これより古い日は畳んで消す。 */
 export const RAW_RETENTION_DAYS = intFromEnv("SETTLEMENTS_RAW_RETENTION_DAYS", 7);
-/** 日次集約を残す UTC 日数。ここで全体の保存量が有界になる。 */
-export const DAILY_RETENTION_DAYS = intFromEnv("SETTLEMENTS_DAILY_RETENTION_DAYS", 400);
+/**
+ * 日次集約を残す UTC 日数。ここで全体の保存量が有界になる。
+ *
+ * 45 日にした根拠（2026-09-04 本番実測）。丸めた数字ではなく、要る量から出す:
+ *   - センサスが読むのは 30 日。集約が要るのはそこだけ。
+ *   - 索引が遅れて古い日を埋めることがあるので 15 日の余裕を足して 45 日。
+ *   - 集約は 1 行 261 バイト・索引込みで約 690 バイト。直近の実績で 1 日
+ *     約 2,000 行できるので、45 日で約 9 万行・約 62 MB。
+ *   - 無料枠 512 MB の内訳は settlements 以外が 164 MB、生行 7 日ぶんが
+ *     約 160 MB。ここを 400 日（約 550 MB）にすると枠を超えて、
+ *     INSERT が落ちるという直そうとしている問題がそのまま戻る。
+ * もっと長い履歴が要るなら SETTLEMENTS_DAILY_RETENTION_DAYS で伸ばす。
+ * 伸ばす前に、1 日あたりの集約行数を実測すること（下の SQL）:
+ *   SELECT day, count(*) FROM settlement_daily GROUP BY day ORDER BY day DESC LIMIT 30;
+ */
+export const DAILY_RETENTION_DAYS = intFromEnv("SETTLEMENTS_DAILY_RETENTION_DAYS", 45);
 
 function intFromEnv(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -140,43 +154,56 @@ export async function planRollup(): Promise<RollupResult> {
 /**
  * 畳む。`apply: false`（既定）は planRollup と同じ dry-run。
  *
- * 書くときは 1 文で「消して・畳んで・入れる」。日ごとに分けないのは、
- * 分けると同じ表を日数ぶん走査するため（初回は 40 日ぶんある）。
+ * **1 日 = 1 文**で「消して・畳んで・入れる」。全部を 1 文にまとめないのは、
+ * 初回に 47 日ぶん（28 万行）を 1 つの CTE へ materialize させると
+ * tuplestore が数百 MB になり、容量が足りなくて直そうとしている問題を
+ * その場で踏むから。1 日ずつなら途中で時間切れになっても、そこまでの日は
+ * 矛盾なく畳み終わっている（各文が単独で原子的）。
+ *
+ * @param opts.maxDays 1 回で畳む最大日数（古い日から）。cron の実行時間を
+ *   区切りたいときに使う。既定は全部。
  */
-export async function runRollup(opts: { apply?: boolean } = {}): Promise<RollupResult> {
+export async function runRollup(opts: { apply?: boolean; maxDays?: number } = {}): Promise<RollupResult> {
   if (!opts.apply) return planRollup();
   const db = getDb();
   if (!db) return emptyResult(true);
 
   const before = await readPlan();
-  const inserted = rowsOf<{ day: string; groups: number; rows: number }>(
-    await db.execute(sql`
-      WITH moved AS (
-        DELETE FROM settlements
-        WHERE ${SETTLEMENT_DAY} <= ${UTC_TODAY} - ${RAW_RETENTION_DAYS}::int
-        RETURNING coalesce(block_time, observed_at) AS at, chain, payee_id, payer_id,
-                  wash_flag, source, attribution, endpoint_id, resource_id, amount
-      ), g AS (
-        SELECT (at AT TIME ZONE 'UTC')::date AS day, chain, payee_id, payer_id, wash_flag, source, attribution,
-               endpoint_id, resource_id, count(*)::int AS n,
-               -- amount は base units の 10 進文字列。索引の経路によっては
-               -- 数字でない値が入りうるので、畳む処理を落とさず 0 として足す。
-               sum(CASE WHEN amount ~ '^[0-9]+$' THEN amount::numeric ELSE 0 END) AS amount_sum
-        FROM moved
-        GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9
-      )
-      INSERT INTO settlement_daily
-        (day, chain, payee_id, payer_id, wash_flag, source, attribution, endpoint_id, resource_id, n, amount_sum)
-      SELECT day, chain, payee_id, payer_id, wash_flag, source, attribution, endpoint_id, resource_id, n, amount_sum
-      FROM g
-      -- 遅れて届いた生行を畳み直すときは足す。消すのと同じ文なので、
-      -- 同じ生行が 2 度足されることはない（＝何度走らせても同じ結果）。
-      ON CONFLICT ON CONSTRAINT settlement_daily_key DO UPDATE
-        SET n = settlement_daily.n + excluded.n,
-            amount_sum = settlement_daily.amount_sum + excluded.amount_sum
-      RETURNING day::text AS day, n AS rows
-    `),
-  );
+  const targets = opts.maxDays ? before.days.slice(0, opts.maxDays) : before.days;
+
+  let groupsWritten = 0;
+  let rowsFolded = 0;
+  for (const target of targets) {
+    const inserted = rowsOf<{ day: string }>(
+      await db.execute(sql`
+        WITH moved AS (
+          DELETE FROM settlements
+          WHERE ${SETTLEMENT_DAY} = ${target.day}::date
+          RETURNING chain, payee_id, payer_id, wash_flag, source, attribution, endpoint_id, resource_id, amount
+        ), g AS (
+          SELECT ${target.day}::date AS day, chain, payee_id, payer_id, wash_flag, source, attribution,
+                 endpoint_id, resource_id, count(*)::int AS n,
+                 -- amount は base units の 10 進文字列。索引の経路によっては
+                 -- 数字でない値が入りうるので、畳む処理を落とさず 0 として足す。
+                 sum(CASE WHEN amount ~ '^[0-9]+$' THEN amount::numeric ELSE 0 END) AS amount_sum
+          FROM moved
+          GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9
+        )
+        INSERT INTO settlement_daily
+          (day, chain, payee_id, payer_id, wash_flag, source, attribution, endpoint_id, resource_id, n, amount_sum)
+        SELECT day, chain, payee_id, payer_id, wash_flag, source, attribution, endpoint_id, resource_id, n, amount_sum
+        FROM g
+        -- 遅れて届いた生行を畳み直すときは足す。消すのと同じ文なので、
+        -- 同じ生行が 2 度足されることはない（＝何度走らせても同じ結果）。
+        ON CONFLICT ON CONSTRAINT settlement_daily_key DO UPDATE
+          SET n = settlement_daily.n + excluded.n,
+              amount_sum = settlement_daily.amount_sum + excluded.amount_sum
+        RETURNING day::text AS day
+      `),
+    );
+    groupsWritten += inserted.length;
+    rowsFolded += target.rows;
+  }
 
   const pruned = rowsOf<{ day: string }>(
     await db.execute(sql`
@@ -184,13 +211,12 @@ export async function runRollup(opts: { apply?: boolean } = {}): Promise<RollupR
     `),
   );
 
-  const rowsFolded = before.days.reduce((a, d) => a + d.rows, 0);
   return {
     ...emptyResult(true),
     cutoff: before.cutoff,
-    days: before.days,
+    days: targets,
     rowsFolded,
-    groupsWritten: inserted.length,
+    groupsWritten,
     estimatedFreedMb: Math.round(((rowsFolded * before.bytesPerRow) / 1_048_576) * 10) / 10,
     dailyPruned: pruned.length,
   };

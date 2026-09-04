@@ -430,6 +430,16 @@ export type ResolveResult = {
         endpoints: number;
     }[];
     settlement?: SettlementRef;
+    /**
+     * tx の逆引きが空だったときだけ載る。生行は直近 7 日しか保持しないので、
+     * 「索引していない取引」と「持っていたが窓の外に出た取引」を区別する。
+     * settlement が無いことは「その取引が無かった」ことを意味しない。
+     */
+    settlement_not_found?: {
+        reason: "not_in_raw_window";
+        raw_window_days: number;
+        note: string;
+    };
     disclaimer: string;
 };
 /** §7.2 / §9.1 GET /census/summary — raw と real を同じ応答で（混ぜない）。 */

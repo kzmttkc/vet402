@@ -74,9 +74,9 @@ if (!TEST_DB) {
         getCensusSummary(null, "7d"),
         getCensusSummary(CHAINS[0], "30d"),
       ]);
-      const strip = (c: Awaited<ReturnType<typeof getCensusSummary>>) => {
-        const rest: Partial<typeof c> = { ...c };
-        delete rest.retrievedAt; // 呼ぶたびに変わるので比較から外す
+      // retrievedAt は呼ぶたびに変わるので比較から外す。
+      const strip = ({ retrievedAt, ...rest }: Awaited<ReturnType<typeof getCensusSummary>>) => {
+        void retrievedAt;
         return rest;
       };
       return {
@@ -166,7 +166,7 @@ if (!TEST_DB) {
       await seed(500, 502);
       await runRollup({ apply: true });
       const keptN = await scalar(sql`SELECT count(*)::int AS n FROM settlement_daily`);
-      assert.equal(keptN, 0, "既定 400 日より古い集約は残さない");
+      assert.equal(keptN, 0, "既定 45 日より古い集約は残さない");
     });
 
     await db.execute(sql`TRUNCATE settlements, settlement_daily`);

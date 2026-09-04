@@ -18,7 +18,7 @@ if (!TEST_DB) {
     const { ingestL1 } = await import("@/lib/settlements/ingest-l1");
     const { resourceId, endpointHash, payeeId } = await import("@/lib/ids/canonical");
     const db = getDb()!;
-    await db.execute(sql`TRUNCATE settlements, x402_l1_purchases, x402_endpoints`);
+    await db.execute(sql`TRUNCATE settlements, settlement_daily, x402_l1_purchases, x402_endpoints`);
 
     const URL = "https://seller.example/api/quote";
     const PAY_TO = "0x52e29e0d2aa49bfbfc548c0a9f2196f4aa51f3ea";

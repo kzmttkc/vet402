@@ -20,7 +20,7 @@ if (!TEST_DB) {
     const { getCensusSummary, getSettlementCounts } = await import("@/lib/settlements/census");
     const { resourceId, endpointHash, payeeId } = await import("@/lib/ids/canonical");
     const db = getDb()!;
-    await db.execute(sql`TRUNCATE settlements, x402_l1_purchases, x402_payments, x402_endpoints, funder_wallets, indexer_checkpoints`);
+    await db.execute(sql`TRUNCATE settlements, settlement_daily, x402_l1_purchases, x402_payments, x402_endpoints, funder_wallets, indexer_checkpoints`);
 
     const URL = "https://seller.example/api/quote";
     const PAY_TO = "0x52e29e0d2aa49bfbfc548c0a9f2196f4aa51f3ea";

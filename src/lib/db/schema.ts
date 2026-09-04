@@ -1160,9 +1160,11 @@ export const settlementDaily = pgTable(
     unique("settlement_daily_key")
       .on(t.day, t.chain, t.payeeId, t.payerId, t.washFlag, t.source, t.attribution, t.endpointId, t.resourceId)
       .nullsNotDistinct(),
-    index("settlement_daily_day_idx").on(t.day),
+    // day 単体の索引は置かない: settlement_daily_key の先頭列が day なので、
+    // センサスの期間走査も保持期間の削除もその索引で足りる。
+    // payer_id の索引も置かない（絞り込む問い合わせが無い）。集約表は
+    // 1 日 2 千行積むので、使わない索引 1 本が数十 MB になる。
     index("settlement_daily_endpoint_day_idx").on(t.endpointId, t.day),
     index("settlement_daily_payee_day_idx").on(t.payeeId, t.day),
-    index("settlement_daily_payer_day_idx").on(t.payerId, t.day),
   ],
 );
