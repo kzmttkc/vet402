@@ -1,5 +1,9 @@
 import { FAQS } from "@/components/site/faq-data";
 import { getAllPosts } from "@/lib/blog";
+import {
+  OBSERVATORY_VOCABULARY,
+  VOCABULARY_GROUP_LABELS,
+} from "@/lib/observatory/vocabulary";
 import { SITE_URL } from "@/lib/site-url";
 
 export const dynamic = "force-static";
@@ -10,6 +14,16 @@ export const dynamic = "force-static";
  */
 export function GET() {
   const posts = getAllPosts();
+  // 2026-09-05 LLMO: 語彙は /observatory/methodology §10 と DefinedTermSet
+  // JSON-LD と同じ配列から出す。ここに転記すると片方だけ直る日が来る。
+  const vocabulary = (Object.keys(VOCABULARY_GROUP_LABELS) as (keyof typeof VOCABULARY_GROUP_LABELS)[])
+    .map((group) => {
+      const terms = OBSERVATORY_VOCABULARY.filter((t) => t.group === group)
+        .map((t) => `- \`${t.term}\` — ${t.definition}`)
+        .join("\n");
+      return `### ${VOCABULARY_GROUP_LABELS[group]}\n\n${terms}`;
+    })
+    .join("\n\n");
   const faq = FAQS.map((item, i) => `### ${i + 1}. ${item.question}\n\n${item.answer}`).join("\n\n");
   const blog = posts
     .map((post) => {
@@ -32,6 +46,12 @@ The production URL is ${SITE_URL}. Formerly named "Vouch"; renamed to vet402 in 
 - L3 Quality — is the content any good? Published rubric. Output: opinion, never mixed into an L0–L2 fact. L3 is not built; no opinion is published.
 
 A result is labelled by the level that produced it and never moves up a level. The 0–100 ALLOW / WARN / BLOCK score is a different, older API and is never reported as an L0–L2 result.
+
+## Vocabulary (published methodology)
+
+Every word vet402 publishes measurements in, one sentence each. Canonical page: ${SITE_URL}/observatory/methodology#vocabulary — the sections above that index expand each term in context.
+
+${vocabulary}
 
 ## FAQ
 

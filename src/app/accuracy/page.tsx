@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
-import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { pageMetadata, breadcrumbJsonLd, datasetJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { SITE_URL } from "@/lib/site-url";
 import { VerdictBadge } from "@/components/site/VerdictBadge";
@@ -113,26 +113,31 @@ export default async function AccuracyPage() {
   const scale = !hasAnyData && !hasBenchmarkData ? await fetchObservatoryScale() : null;
   const nonce = (await headers()).get("x-nonce") ?? undefined;
 
-  const datasetJsonLd = {
-    "@context": "https://schema.org",
-    "@type": "Dataset",
+  const dataset = datasetJsonLd({
     name: "vet402 accuracy ledger",
+    citeName: "accuracy ledger",
     description:
       "What happened after vet402's own verdicts: the share of ALLOW verdicts with later adverse activity, and the share of BLOCK verdicts later confirmed wrong, over a rolling 90-day window.",
-    url: `${SITE_URL}/accuracy`,
-    creator: { "@type": "Organization", name: "vet402", url: SITE_URL },
+    path: "/accuracy",
+    citeUrl: `${SITE_URL}/api/v1/accuracy`,
     temporalCoverage: "R/P90D",
-    distribution: {
-      "@type": "DataDownload",
-      encodingFormat: "application/json",
-      contentUrl: `${SITE_URL}/api/v1/accuracy`,
-    },
+    measurementTechnique:
+      "Every verdict vet402 issues is recorded as a watched event; an on-chain outcome detector and partner-reported outcomes label what the wallet did next, and the labels are aggregated over a rolling 90-day window. Operator benchmark rows are excluded at the SQL layer so they cannot pad the external figures.",
     variableMeasured: [
       "observed verdicts",
       "ALLOW verdicts with adverse outcome",
       "BLOCK verdicts confirmed wrong",
     ],
-  };
+    keywords: ["x402", "agent payments", "trust score", "verdict accuracy", "ERC-8004"],
+    distribution: [
+      {
+        name: "Accuracy ledger aggregates (JSON)",
+        encodingFormat: "application/json",
+        contentUrl: `${SITE_URL}/api/v1/accuracy`,
+      },
+    ],
+  });
+
   const breadcrumb = breadcrumbJsonLd([
     { name: "Home", path: "/" },
     { name: "Accuracy", path: "/accuracy" },
@@ -145,7 +150,7 @@ export default async function AccuracyPage() {
           type="application/ld+json"
           nonce={nonce}
           suppressHydrationWarning
-          dangerouslySetInnerHTML={{ __html: safeJsonLd(datasetJsonLd) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(dataset) }}
         />
         <script
           type="application/ld+json"

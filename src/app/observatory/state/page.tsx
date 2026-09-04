@@ -1,13 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
-import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { pageMetadata, breadcrumbJsonLd, datasetJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { SITE_URL } from "@/lib/site-url";
 import { TableScroll } from "@/components/site/TableScroll";
-import { getObservatoryStats, getObservatoryStatsByChain } from "@/lib/observatory/reader";
+import {
+  getObservatoryStatsByChainCached,
+  getObservatoryStatsCached,
+  getCoverageShareCached,
+} from "@/lib/observatory/cached-reads";
 import { getDailyMetricsHistory, type DailyMetricsRow } from "@/lib/observatory/metrics-rollup";
-import { getCoverageShare } from "@/lib/observatory/reader";
 import { getAnchors } from "@/lib/observatory/anchors";
 
 /**
@@ -95,25 +98,28 @@ function HistoryChart({ rows }: { rows: DailyMetricsRow[] }) {
 }
 
 export default async function ObservatoryStatePage() {
-  const stats = await getObservatoryStats();
-  const chainStats = await getObservatoryStatsByChain();
+  const stats = await getObservatoryStatsCached();
+  const chainStats = await getObservatoryStatsByChainCached();
   const history = await getDailyMetricsHistory(60);
-  const coverage = await getCoverageShare();
+  const coverage = await getCoverageShareCached();
   const [latestAnchor] = await getAnchors(1);
   const denom = stats.totalEndpoints;
   const snap = stats.latestSnapshot;
   const fetchComplete = snap ? snap.fetchedCount >= snap.totalCount : false;
   const nonce = (await headers()).get("x-nonce") ?? undefined;
 
-  const datasetJsonLd = {
-    "@context": "https://schema.org",
-    "@type": "Dataset",
+  const dataset = datasetJsonLd({
     name: "State of x402",
+    // 引用文の名前は llms.txt と方法論 §9 が既に配っている "observatory" に合わせる。
+    citeName: "observatory",
     description:
       "Aggregate L0 liveness and L1 settle-through measurements over the full public x402 discovery catalog, broken out by chain.",
-    url: `${SITE_URL}/observatory/state`,
-    creator: { "@type": "Organization", name: "vet402", url: SITE_URL },
+    path: "/observatory/state",
+    citeUrl: `${SITE_URL}/api/v1/observatory/state`,
     temporalCoverage: snap?.snapshotDate ?? undefined,
+    dateModified: snap?.snapshotDate ?? undefined,
+    measurementTechnique:
+      "L0: one unpaid HTTP probe per catalog-listed endpoint, using the method the catalog entry declares, checking for HTTP 402 and whether the advertised price, asset, network and payee agree with the catalog; fail is published only after consecutive failing probes. L1: a covert real-money USDC purchase, with the settlement transaction re-read on-chain before it is called settled.",
     variableMeasured: [
       "endpoints on record",
       "currently listed in catalog",
@@ -125,7 +131,26 @@ export default async function ObservatoryStatePage() {
       "L1 settled with on-chain receipt",
       "L1 delivered (settled and a 2xx response)",
     ],
-  };
+    keywords: ["x402", "agent payments", "HTTP 402", "endpoint liveness", "settlement", "USDC"],
+    distribution: [
+      {
+        name: "Aggregate snapshot (JSON)",
+        encodingFormat: "application/json",
+        contentUrl: `${SITE_URL}/api/v1/observatory/state`,
+      },
+      {
+        name: "Daily series per chain (JSON)",
+        encodingFormat: "application/json",
+        contentUrl: `${SITE_URL}/api/v1/observatory/history`,
+      },
+      {
+        name: "L1 purchase ledger, one row per paid attempt (CSV)",
+        encodingFormat: "text/csv",
+        contentUrl: `${SITE_URL}/api/v1/observatory/export.csv?days=90`,
+      },
+    ],
+  });
+
   const breadcrumb = breadcrumbJsonLd([
     { name: "Home", path: "/" },
     { name: "Observatory", path: "/observatory" },
@@ -139,7 +164,7 @@ export default async function ObservatoryStatePage() {
           type="application/ld+json"
           nonce={nonce}
           suppressHydrationWarning
-          dangerouslySetInnerHTML={{ __html: safeJsonLd(datasetJsonLd) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(dataset) }}
         />
         <script
           type="application/ld+json"

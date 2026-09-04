@@ -342,6 +342,13 @@ function publicSurfaces(): string[] {
   };
   walk(join(ROOT, "src/app"), (p) => p.endsWith("/page.tsx"));
   walk(join(ROOT, "src/components/site"), (p) => p.endsWith(".tsx") || p.endsWith(".ts"));
+  // 2026-09-05: 観測所の語彙は src/lib/observatory/vocabulary.ts が正典で、
+  // そこから /observatory/methodology §10 の HTML・DefinedTermSet JSON-LD・
+  // /llms-full.txt が生成される。**公開面のコピーが src/lib に置かれた**ので、
+  // 走査範囲を src/app と src/components/site に限ったままだと、この関門を
+  // 素通りする経路ができる。lib 全体を歩くとコードで溢れるため、公開面を
+  // 描画するこの 1 本だけを名指しで足す。同種のモジュールを作ったらここに足す。
+  out.push(relative(ROOT, join(ROOT, "src/lib/observatory/vocabulary.ts")));
   return out.sort();
 }
 

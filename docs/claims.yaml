@@ -1122,3 +1122,78 @@ claims:
     why_unverifiable: "過去の自社の描画の誤りの記載であって、公開 GET が数値で返す種類の主張ではない"
     verified_at: 2026-09-04
 
+  # ---- 2026-09-05 SEO/AEO 改修で公開面に足した断定 ----
+  - id: seo_state_dataset_history_is_a_daily_series
+    surface: src/app/observatory/state/page.tsx
+    quote: "Daily series per chain (JSON)"
+    means: "Dataset の配布として挙げている /api/v1/observatory/history は、UTC 日ごと・チェーンごとの系列を返す"
+    check:
+      url: https://vet402.com/api/v1/observatory/history
+      assert: "days.0.day != null"
+    verified_at: 2026-09-05
+  - id: seo_accuracy_dataset_every_verdict_is_watched
+    surface: src/app/accuracy/page.tsx
+    quote: "Every verdict vet402 issues is recorded as a watched event"
+    means: "Dataset の measurementTechnique。発行した判定は監視対象イベントになり、その後の実挙動でラベルされる（頁の散文 §1 と同じ主張を機械可読側にも出したもの）"
+    check: null
+    why_unverifiable: "測り方の説明であって、公開 GET が数値で返す種類の主張ではない。同じ主張の散文側は accuracy_the_verdict_every_score_vet402 に登録済み"
+    verified_at: 2026-09-05
+  - id: seo_faq_settled_is_never_inferred_from_the_seller
+    surface: src/components/site/faq-data.ts
+    quote: "It is never inferred from the seller's own claim"
+    means: "settled は必ず自分で再読した結果であり、売り手が返した受領証は再読するまで settle_claimed に留める"
+    check: null
+    why_unverifiable: "状態遷移の規則であって、公開 GET が数値で返す種類の主張ではない。実装は settlement 検証器が持ち、tests/settlement-verification.test.ts が固定する"
+    verified_at: 2026-09-05
+  - id: seo_faq_l1_refuses_unless_all_terms_match
+    surface: src/components/site/faq-data.ts
+    quote: "refuse to proceed unless the scheme, the network, the asset and the price all match what the catalog declared"
+    means: "L1 は 402 チャレンジの条件がカタログ宣言と食い違ったら署名せず、拒否として記録する"
+    check: null
+    why_unverifiable: "購入前の拒否条件であって、公開 GET が数値で返す種類の主張ではない。方法論 §6 が同じ条件を散文で公開している"
+    verified_at: 2026-09-05
+  - id: seo_faq_l1_budget_checked_against_a_ledger
+    surface: src/components/site/faq-data.ts
+    quote: "a per-purchase ceiling and a daily budget are checked against a database ledger, not memory, before every signature"
+    means: "1 回あたりの上限と日次予算は DB の台帳に対して確認され、再起動や同時実行で二重に使えない"
+    check: null
+    why_unverifiable: "支出ゲートの実装上の性質であって、公開 GET が数値で返す種類の主張ではない。方法論 §6 が同じことを散文で公開し、tests/l1-budget-burn.test.ts が実装を固定する"
+    verified_at: 2026-09-05
+  # ---- 2026-09-05 観測所の語彙（src/lib/observatory/vocabulary.ts が正典。
+  #      同じ文が方法論 §10 の HTML・DefinedTermSet・llms-full.txt に出る）----
+  - id: seo_vocab_l1_every_refusal_is_recorded
+    surface: src/lib/observatory/vocabulary.ts
+    quote: "every refusal before a signature is recorded alongside every purchase"
+    means: "署名前に断った試行も、購入と同じ台帳に残して公開する（都合の悪い試行を落とさない）"
+    check: null
+    why_unverifiable: "記録方針であって、公開 GET が数値で返す種類の主張ではない。方法論 §6 が同じことを散文で公開し、endpoint 頁が各試行を証拠つきで出している"
+    verified_at: 2026-09-05
+  - id: seo_vocab_unverified_is_never_counted_as_failure
+    surface: src/lib/observatory/vocabulary.ts
+    quote: "It is not a failure and is never counted as one"
+    means: "unverified は fail の分子にも分母にも入れない。独立のバケツとして公開する"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "publishedUnverified >= 0"
+    verified_at: 2026-09-05
+  - id: seo_vocab_settled_is_never_inferred_from_the_seller
+    surface: src/lib/observatory/vocabulary.ts
+    quote: "it is never inferred from the seller's own claim"
+    means: "settled は必ず自分でチェーンを再読した結果。売り手の受領証は再読するまで settle_claimed に留める"
+    check: null
+    why_unverifiable: "状態遷移の規則であって、公開 GET が数値で返す種類の主張ではない。実装は settlement 検証器が持ち、tests/settlement-verification.test.ts が固定する"
+    verified_at: 2026-09-05
+  - id: seo_vocab_l2_match_requires_every_declared_key
+    surface: src/lib/observatory/vocabulary.ts
+    quote: "every key the seller's declared output schema marks as required is present"
+    means: "L2 の match は、売り手自身が必須と宣言したトップレベルのキーが全部あるときだけ"
+    check: null
+    why_unverifiable: "判定規則であって、公開 GET が数値で返す種類の主張ではない。方法論 §7 が同じ定義を散文で公開している"
+    verified_at: 2026-09-05
+  - id: seo_vocab_no_declaration_is_never_a_failure
+    surface: src/lib/observatory/vocabulary.ts
+    quote: "It is never counted as a failure."
+    means: "売り手が出力スキーマを宣言していない場合、L2 は照合できないだけで、失敗として数えない"
+    check: null
+    why_unverifiable: "集計規則であって、公開 GET が数値で返す種類の主張ではない。方法論 §7 が同じ定義を散文で公開している"
+    verified_at: 2026-09-05

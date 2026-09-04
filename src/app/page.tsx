@@ -11,7 +11,10 @@ import { buttonClass } from "@/components/ui/Button";
 import { SITE_URL } from "@/lib/site-url";
 import { organizationJsonLd, publisherOrg } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
-import { getCoverageShare, getObservatoryStats } from "@/lib/observatory/reader";
+import {
+  getCoverageShareCached,
+  getObservatoryStatsCached,
+} from "@/lib/observatory/cached-reads";
 import { FunnelFigure } from "@/components/site/Figures";
 
 /**
@@ -104,9 +107,9 @@ export default async function Home() {
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   // 2026-09-02 UX 監査: 「probed daily」は事実ではなかった（毎日なのはカタログ取得。
   // プローブはローリングで、7 日以内に測定済みは 37.6%）。§4 の文は実値で埋める。
-  const coverage = await getCoverageShare().catch(() => null);
+  const coverage = await getCoverageShareCached().catch(() => null);
   // 2026-09-02 UI/UX 監査（続）: §4 に図を 1 枚——登録 → L0 pass → L1 受領証あり。実数のみ。
-  const stats = await getObservatoryStats().catch(() => null);
+  const stats = await getObservatoryStatsCached().catch(() => null);
   const organization = organizationJsonLd(
     "Independent verification of the x402 agent-payment economy. vet402 buys what x402 endpoints sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence.",
   );

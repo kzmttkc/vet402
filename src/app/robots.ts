@@ -38,7 +38,11 @@ export default function robots(): MetadataRoute.Robots {
       { userAgent: "*", allow: "/", disallow },
       ...AI_CRAWLERS.map((userAgent) => ({ userAgent, allow: "/", disallow })),
     ],
-    sitemap: `${SITE_URL}/sitemap.xml`,
+    // 2026-09-05 SEO: sitemap は 2 本。静的な公開頁（/sitemap.xml）と、
+    // 測定済み endpoint 頁（/sitemap-observatory.xml — カタログに現在も掲載され、
+    // 公開判定が pass で、直近 7 日に実測がある分だけ）。sitemap index を
+    // 名乗らず robots に 2 行書くのは、実装も検証も単純で対応が広いから。
+    sitemap: [`${SITE_URL}/sitemap.xml`, `${SITE_URL}/sitemap-observatory.xml`],
     host: SITE_URL,
   };
 }
