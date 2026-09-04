@@ -11,10 +11,10 @@ import { UUID_RE } from "@/lib/validation/uuid";
  * 2026-08-18). A seller vet402 has actually paid can paste this on their own
  * site: "vet402: 3/5 settled". Facts only — no trust judgment, no green/red
  * (that is the trust badge's job; this one states a measurement). Key-less,
- * IP-rate-limited, CDN-cached like the other badge routes.
+ * IP-rate-limited, CDN-cached like the other badge routes — the 10-minute CDN
+ * window is the hand-written Cache-Control (s-maxage=600) in svgResponse.
+ * 2026-09-04 監査 D・P2: force-dynamic の下で効かない `revalidate = 600` を消した。
  */
-
-export const revalidate = 600;
 
 const BADGE_LIMIT = 60;
 const BADGE_WINDOW_MS = 60_000;
