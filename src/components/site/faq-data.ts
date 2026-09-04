@@ -58,6 +58,21 @@ export const FAQS: FaqItem[] = [
       "The observatory publishes catalog measurements: L0 liveness (pass / fail / unverified) and, on each endpoint page, L1 settle-through when a purchase has been made. Those are not 0–100 scores. A score is the older ALLOW / WARN / BLOCK API for a wallet or agent, sold by lookup quota. A score is never reported as an L0–L2 result.",
   },
   {
+    // 2026-09-05 AEO: 「settled とは何か」「L1 はどう測るのか」は観測所の
+    // 中心語なのに、1 問 1 答で答える面がどこにも無かった（方法論 §6 の
+    // 長い段落を読ませるしかなかった）。答えの 1 文目は
+    // src/lib/observatory/vocabulary.ts の定義と 1 文字も違わない
+    // （tests/faq-answers-directly.test.ts が突合する）。
+    question: "What does settled mean on vet402?",
+    answer:
+      "settled means vet402 re-read the transaction on-chain and found the exact USDC transfer it paid for: from our payer, to the catalog-declared payee, for the declared amount, in the canonical USDC contract. It is never inferred from the seller's own claim: a receipt the seller returns is recorded as settle_claimed until we have re-read it. delivered is the separate count — the attempt is settled and the paid request also answered 2xx — so a seller that takes the payment and answers 400 shows as settled and not delivered, with both figures published side by side.",
+  },
+  {
+    question: "How is L1 measured?",
+    answer:
+      "L1 is a real, budget-capped USDC purchase from the endpoint that asks whether the payment settles on-chain and a response comes back. We request unpaid first to read the 402 challenge, then refuse to proceed unless the scheme, the network, the asset and the price all match what the catalog declared; a per-purchase ceiling and a daily budget are checked against a database ledger, not memory, before every signature. Purchases are covert and rate-limited to one per endpoint per sweep window (a named priority list of high-volume hosts is bought from more often, and that list is published). Every refusal is recorded alongside every purchase, and the result publishes the same way whether it passes or fails.",
+  },
+  {
     question: "Do I need an account?",
     answer:
       "No. The observatory (catalog measurements) and the payee lookup are public. An API key is only for programmatic score lookups — 1,000 a month on Free, then upgrade from Billing after you have a key.",
