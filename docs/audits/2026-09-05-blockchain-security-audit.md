@@ -102,7 +102,7 @@
 
 | # | 名前（クラス） | 証拠 | 最悪影響 | 重大度 | 緊急度 | 今確認する手順（読む・見る） | 緩和の方針 |
 |---|---|---|---|---|---|---|---|
-| S-1 | 実行時キルスイッチの不在（Operational control） | `budget.ts:24` は `process.env` のみ。`grep PAUSE\|kill_switch` 0 件。起動点 4 系統。走行中バッチは自前デッドライン 210s のみ | 異常時に次の署名を止められない。露出は残りの日次枠 | Medium | **P0** | `budget.ts` と `schema.ts`（停止フラグ表が無いこと） | DB の 1 行を署名直前で読み fail-closed で止まる。再デプロイ不要。`acquireLease` は例外時に「通す」ので流用しない |
+| S-1 | 実行時キルスイッチの不在（Operational control）**— 同日是正 `1fddaf2`・本番実証済み** | `budget.ts:24` は `process.env` のみ。`grep PAUSE\|kill_switch` 0 件。起動点 4 系統。走行中バッチは自前デッドライン 210s のみ | 異常時に次の署名を止められない。露出は残りの日次枠 | Medium | **P0** | `budget.ts` と `schema.ts`（停止フラグ表が無いこと） | DB の 1 行を署名直前で読み fail-closed で止まる。再デプロイ不要。`acquireLease` は例外時に「通す」ので流用しない |
 | S-2 | 秘密の集約と監視・実行の未分離（Key management / SoD） | ローカル控え 1 本に署名鍵・DB・admin・cron・Stripe（変数名で確認）。`vet402_l1_canary.py` がそれを読み実購入 cron を叩き直す | 1 台の侵害で資金・台帳・検閲・課金が同時に渡る。カナリアの誤判定が支出になる | High | P1 | `grep -oE '^[A-Z_0-9]+=' <控え>`（値は読まない）。`fdesetup status`（**On を実測**） | 署名鍵と DATABASE_URL をローカルから外す。カナリア用に cron 起動だけの別秘密。資金鍵と管理秘密を別ファイル |
 | S-3 | 単一 RPC への全面信頼（Single source of truth） | `client.ts:96-101` は 1 本だけ選ぶ。`settlement-verify.ts:159-259` は chainId・レシート・ログ・nonce をすべて同一 RPC から。Blockscout は決済突合に未使用 | 偽レシートが settled を通り恒久記録。中心主張が第三者に検算できない 1 本の接続に載る | High | P1 | 本番 `INDEXER_RPC_URL` / `BASE_RPC_URL` の名前の有無（実測: 両方あり）。無作為 30 行を別プロバイダで再読 | 日次で無作為 n 件を独立プロバイダで再読し、食い違いを fail-loud。判定ロジックは共通のまま「読む口」だけ分離 |
 | S-4 | 証拠層の崩れ（Evidence tier collapse） | `settlement_verified=true` 1,629 のうち `auth_nonce IS NULL` 1,558（95.6%）。照合器は NULL 行しか引かず再照合されない。公開 `l1.settled=1629` はこの合計 | 弱い規則で確定した行が強い行と区別されず公開 | Medium | P1 | 上の SQL。決済時刻 − 試行時刻を全行で（実測 1,589 行が −1〜+62 秒・tx 重複 0） | 「決済時刻が認可窓内」を遡及の関門として足し層を分ける。公開面に 2 層を出す。無実の売り手を refuted にしない |
@@ -141,7 +141,7 @@
 
 | 件 | 仮説 | 確認方法 | ICE | 成功条件 | 戻し条件 |
 |---|---|---|---|---|---|
-| DB 1 行の実行時キルスイッチ（S-1） | 再デプロイ無しで次の署名から止まる | pg テストで halted 時に予約が消費されない。本番で GET が現在値を返す | 5/5/4 | 停止 POST から次の購入試行が `halted` で戻る。deep health に表示 | フラグ表が壊れたら fail-closed で止まる（安全側） |
+| DB 1 行の実行時キルスイッチ（S-1） | 再デプロイ無しで次の署名から止まる | pg テストで halted 時に予約が消費されない。本番で GET が現在値を返す | 5/5/4 | 停止 POST から次の購入試行が `halted` で戻る。deep health に表示 | フラグ表が壊れたら fail-closed で止まる（安全側） **→ 完了（同日 main `1fddaf2`）。本番実証: 停止 POST → `/api/cron/l1-purchase` が `attempted:0, halted:true` で戻り購入行 0 → 解除 → deep health `spending_halt: off`。runbook `docs/INCIDENT_RUNBOOK.md`** |
 | ローカル控えから署名鍵と DATABASE_URL を外し、カナリアに cron 専用秘密（S-2） | 監視役が支出権限を持たない | 控えの変数名一覧に鍵が無い。カナリアが専用秘密で 200 | 5/4/3 | launchd 3 本が新秘密で動き、控えに鍵が無い | 復旧手順（Vercel から再設定）を runbook に先に書く |
 | 第二 RPC による日次サンプル再照合（S-3） | 単一接続の偽応答を検出できる | 無作為 30 行の logs 一致率 | 5/4/3 | 食い違い 0 件が日次で記録され、1 件でも出れば ALERTS | 第二プロバイダ障害は「未照合」扱いで否定に倒さない |
 | settled の 2 層公開と方法論・corrections 追記（S-4・S-17） | 強度を隠さず示す | `/api/v1/observatory/state` に `settled_nonce_bound` が出る | 4/5/4 | 71/1,558 の内訳が公開され、切り替え日時が corrections に | — |
