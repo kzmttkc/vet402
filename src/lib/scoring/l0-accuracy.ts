@@ -10,7 +10,11 @@
 // ============================================================
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
+import { SETTLEMENT_DAY, UTC_TODAY, withDailyFallback } from "@/lib/settlements/rollup";
 import { rowsOf } from "@/lib/settlements/upsert";
+
+/** c2_l1_within_48h_pct の分母の窓（UTC の丸ごと日数）。coverage.ts と同じ 30 日。 */
+const C2_WINDOW_DAYS = 30;
 
 export const L0_FALSE_FAIL_TARGET_PCT = 3;
 export const L0_FALSE_PASS_TARGET_PCT = 2;
@@ -157,8 +161,11 @@ export async function fetchSloSnapshot(): Promise<SloSnapshot> {
       targets,
     };
   }
-  const r = rowsOf<Record<string, number | null>>(
-    await db.execute(sql`
+  // 2026-09-04 W16: c2_fresh の分母は「30 日の帰属付き決済がある endpoint」。
+  // 生行 `settlements` は RAW_RETENTION_DAYS 日しか残らない（rollup.ts）ので、
+  // 生行だけで DISTINCT を取ると分母が黙って 7 日ぶんに縮み、率だけが上がる。
+  // 日次集約と足して数える。`daily=false` は集約表がまだ無い環境への退避。
+  const snapshotSql = (daily: boolean) => sql`
       SELECT
         -- L1 の社側失敗率: request_error / budget_denied / in_flight 残骸を試行数で割る（7 日）
         (SELECT CASE WHEN count(*) < 10 THEN NULL ELSE
@@ -174,7 +181,16 @@ export async function fetchSloSnapshot(): Promise<SloSnapshot> {
            round(100.0 * count(*) FILTER (WHERE EXISTS (
              SELECT 1 FROM x402_l1_purchases pu WHERE pu.endpoint_id = c.endpoint_id AND pu.attempted_at > now() - interval '48 hours')) / count(*), 1) END
          FROM (SELECT DISTINCT endpoint_id FROM settlements WHERE endpoint_id IS NOT NULL
-               AND attribution IN ('confirmed','probable') AND coalesce(block_time, observed_at) > now() - interval '30 days') c) AS c2_fresh,
+               AND attribution IN ('confirmed','probable')
+               AND ${SETTLEMENT_DAY} > ${UTC_TODAY} - ${C2_WINDOW_DAYS}::int
+               ${
+                 daily
+                   ? sql`UNION
+               SELECT DISTINCT endpoint_id FROM settlement_daily WHERE endpoint_id IS NOT NULL
+               AND attribution IN ('confirmed','probable')
+               AND day > ${UTC_TODAY} - ${C2_WINDOW_DAYS}::int`
+                   : sql``
+               }) c) AS c2_fresh,
         -- 逆引き遅延: L1 由来の confirmed が照合確定から 60 秒以内に索引へ載った割合
         (SELECT CASE WHEN count(*) < 10 THEN NULL ELSE
            round(100.0 * count(*) FILTER (WHERE s.observed_at <= pu.settlement_verified_at + interval '60 seconds') / count(*), 1) END
@@ -185,8 +201,14 @@ export async function fetchSloSnapshot(): Promise<SloSnapshot> {
            round(100.0 * count(*) FILTER (WHERE e.resource_id IS NOT NULL AND e.canonical_url IS NOT NULL AND p.raw_response_meta ? 'client') / count(*), 1) END
          FROM x402_l0_probes p JOIN x402_endpoints e ON e.id = p.endpoint_id
          WHERE p.verdict = 'fail' AND p.probed_at > now() - interval '7 days') AS evid
-    `),
-  )[0] ?? {};
+    `;
+  const r =
+    (
+      await withDailyFallback(
+        async () => rowsOf<Record<string, number | null>>(await db.execute(snapshotSql(true))),
+        async () => rowsOf<Record<string, number | null>>(await db.execute(snapshotSql(false))),
+      )
+    )[0] ?? {};
   const num = (k: string) => (r[k] === null || r[k] === undefined ? null : Number(r[k]));
   const out: SloSnapshot = {
     l1_probe_error_rate_pct: num("l1_err"),
