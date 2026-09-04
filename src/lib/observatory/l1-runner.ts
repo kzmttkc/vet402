@@ -379,6 +379,38 @@ export async function sweepOrphanedInFlight(
   return rowsOf(raw).length;
 }
 
+/**
+ * 予約したのに結果を書けなかった行を、その場で `settle_failed` へ倒す
+ * （2026-09-04 監査 P1-2）。
+ *
+ * sweepOrphanedInFlight（30 分後の掃除）との違いは「誰が落ちたか分かっているか」。
+ * こちらは**同じ実行の中で例外を掴んでいる**ので、理由まで書ける。
+ * 解決先を settle_failed にするのは、我々が署名して払える状態にした試行だから
+ * ——公開面の分母（PAID_ATTEMPT_STATUSES）に入り、冷却の対象にもなる。
+ * spent_units は触らない（「署名したら計上する」は予算の不変条件）。
+ */
+export async function resolveReservationAsFailed(
+  db: NonNullable<ReturnType<typeof getDb>>,
+  rowId: string,
+  error: unknown,
+): Promise<void> {
+  try {
+    await db.execute(sql`
+      UPDATE x402_l1_purchases
+      SET status = 'settle_failed',
+          raw_response_meta = coalesce(raw_response_meta, '{}'::jsonb) || jsonb_build_object(
+            'phase', 'post_reservation',
+            'reason', 'threw_after_reservation',
+            'error', ${String(error).slice(0, 300)}
+          )
+      WHERE id = ${rowId}::uuid
+    `);
+  } catch (writeError) {
+    // ここまで失敗したら 30 分後の孤児掃除が拾う。黙って消さない。
+    logServerError("observatory.l1.resolve_reservation_failed", writeError);
+  }
+}
+
 export async function runL1Batch(
   options: {
     limit?: number;
@@ -556,7 +588,16 @@ export async function runL1Batch(
           WHERE pu.endpoint_id = e.id
             AND pu.status IN (
               'settled', 'settle_claimed', 'settle_claim_refuted',
-              'settle_claimed_unverifiable', 'delivered_no_receipt', 'settle_failed'
+              'settle_claimed_unverifiable', 'delivered_no_receipt', 'settle_failed',
+              -- 2026-09-04 監査 P1-2: sweepOrphanedInFlight の解決先。
+              -- 予約後・記帳前に落ちた行は request_error になるが、この status は
+              -- 冷却のどの条件にも当たらなかった。つまり「署名させて我々を
+              -- 落とす」を繰り返す売り手は、何度でも予算を焼けた。
+              -- request_error は無償リクエストの失敗（到達不能・SSRF 拒否）も
+              -- 含むが、3 回続けて何も測れていない相手に予算を投じ続ける理由も
+              -- 同じく無い。公開面の分母（PAID_ATTEMPT_STATUSES）には
+              -- 従来どおり入らない。
+              'request_error'
             )
           ORDER BY pu.attempted_at DESC
           LIMIT ${NON_SETTLING_COOLDOWN_STREAK}
@@ -728,6 +769,7 @@ async function purchaseOne(input: {
     ? selectSolanaAccept(challenge.accepts, {
         declaredAmount: candidate.priceAmount,
         declaredPayTo: candidate.payTo,
+        payerAddress: solanaKeypair?.publicKey.toBase58() ?? null,
       })
     : selectAccept(challenge.accepts, {
         declaredAmount: candidate.priceAmount,
@@ -829,122 +871,154 @@ async function purchaseOne(input: {
     return { kind: "budget_denied", settled: false, spent: 0n };
   }
 
-  // Sign — from here on the money is live, so the ledger row ALWAYS carries
-  // spent_units, whatever the seller does next.
-  let header: { headerName: string; headerValue: string };
-  if (isSolana) {
-    const built = await buildSolanaPaymentTransaction({
-      accept,
-      payer: solanaKeypair!,
-      recentBlockhash: solanaBlockhash!,
-    });
-    header = encodeSolanaPaymentHeader({
-      accept,
-      transactionB64: built.transactionB64,
-      resourceUrl: candidate.resourceUrl,
-    });
-  } else {
-    const authorization = buildAuthorization({
-      from: account.address,
-      to: accept.payTo,
-      value: accept.amount,
-      nowSec: Math.floor(Date.now() / 1000),
-      maxTimeoutSeconds: accept.maxTimeoutSeconds,
-    });
-    const { signature } = await signX402Payment({ account, accept, authorization });
-    header = encodePaymentHeader({
-      x402Version: challenge.x402Version,
-      accept,
-      payload: { signature, authorization },
-      resourceUrl: candidate.resourceUrl,
-    });
-  }
-
-  let paid: Response | null = null;
-  let paidBody = "";
-  let paidError: string | null = null;
-  // Same 2026-08-22 fix as the unpaid leg: the timer covers the body read too.
-  // On the PAID leg an aborted body is not a lost measurement — the settlement
-  // receipt lives in the HEADERS, which we already hold — so the outcome is
-  // still recorded, with the body error kept in rawResponseMeta.bodyError.
-  const paidController = new AbortController();
-  const paidTimer = setTimeout(() => paidController.abort(), timeoutMs);
-  try {
-    paid = await fetchImpl(candidate.resourceUrl, {
-      method,
-      signal: paidController.signal,
-      redirect: "follow",
-      headers: {
-        accept: "application/json",
-        "user-agent": "vet402-observatory-l1/1.0 (+https://vet402.com/observatory/methodology)",
-        [header.headerName]: header.headerValue,
-        ...(method === "POST" ? { "content-type": "application/json" } : {}),
-      },
-      ...(method === "POST" ? { body: "{}" } : {}),
-    });
-    paidBody = await readBodyCapped(paid, 16_000);
-  } catch (error) {
-    paidError = String(error).slice(0, 300);
-  } finally {
-    clearTimeout(paidTimer);
-  }
-
-  const latencyMs = Date.now() - startedAt;
-  const settlement = paid ? parseSettlementResponse(paid.headers) : null;
-  const payloadNonEmpty = paidBody.trim().length > 0;
-  const contentType = paid?.headers.get("content-type") ?? null;
-  const contentTypeMatch = contentType === null ? null : contentType.includes("json");
-
-  // L2 — minimal structural check against the catalog-declared schema.
-  let l2Schema: string = "not_checked";
-  let l2Detail: { missing: string[]; declarationHash: string | null; responseHash: string } | null = null;
-  if (paid && paid.status === 200) {
-    const d = checkL2Detailed(candidate.declaredSchema, paidBody, contentType);
-    l2Schema = d.status;
-    l2Detail = { missing: d.missing, declarationHash: d.declarationHash, responseHash: d.responseHash };
-  }
-
-  // 2026-08-23 監査: ここまで `transaction` は「空でない文字列」以外を何も見ていなかった。
-  // 値は売り手の PAYMENT-RESPONSE ヘッダそのままで、決済せずに success:true と
-  // 架空の文字列を返すだけで「決済成功」の行を作れた。その行は公開台帳になり、
-  // 2026-08-22 以降は observed_purchases 経由でスコアの最上位軸にも流れる。
+  // 2026-09-04 監査 P1-2: **予約より後は、何が飛んでも行を in_flight のまま
+  // 置かない。** reserveSpend は署名の前に spent_units を立てる（正しい——
+  // 署名済み EIP-3009 は validBefore まで生きた金）。だから予約の後で例外が
+  // 出ると、一円も動いていないのに日次 $25 の観測予算だけが減り、行は
+  // in_flight のまま残る。in_flight は冷却のどの status にも当たらないので、
+  // 同じ売り手に何度でも同じことをさせられた（可用性への攻撃）。
   //
-  // 形式検査は権威ではない（形だけ正しい偽ハッシュは通る）。本当の関門は
-  // オンチェーン照合で、それが入るまでは「売り手申告＋形式検査済み」と公開面に書く。
-  // ここで分けるのは「決済したと言い、識別子も筋が通っている」ことと
-  // 「決済したと言うが、識別子がトランザクションIDですらない」ことの区別——
-  // 後者は売り手についての所見なので、delivered_no_receipt（レシートを主張して
-  // いない）に潰さず独立した status にする。
-  const claimedSettlement = settlement?.success === true && !!settlement.transaction;
-  const settlementTxWellFormed =
-    claimedSettlement &&
-    isWellFormedSettlementTx(settlement!.transaction, isSolana ? "solana" : "evm");
+  // 署名できない accept は selectAccept / selectSolanaAccept が予約より前に
+  // 落とすようになったが、それは既知の形だけを塞ぐ。ここは**未知の形**の
+  // 受け皿で、落ちた行は settle_failed（分母に入る status・冷却の対象）へ倒す。
+  try {
+    // Sign — from here on the money is live, so the ledger row ALWAYS carries
+    // spent_units, whatever the seller does next.
+    let header: { headerName: string; headerValue: string };
+    // 我々しか作れない一回性の値。行に残して初めて「その決済 tx はこの購入のもの」
+    // と照合できる（2026-09-04 監査 P1-1・settlement-verify.ts の nonce 束縛）。
+    let authNonce: string;
+    if (isSolana) {
+      const built = await buildSolanaPaymentTransaction({
+        accept,
+        payer: solanaKeypair!,
+        recentBlockhash: solanaBlockhash!,
+      });
+      authNonce = built.memo;
+      header = encodeSolanaPaymentHeader({
+        accept,
+        transactionB64: built.transactionB64,
+        resourceUrl: candidate.resourceUrl,
+      });
+    } else {
+      const authorization = buildAuthorization({
+        from: account.address,
+        to: accept.payTo,
+        value: accept.amount,
+        nowSec: Math.floor(Date.now() / 1000),
+        maxTimeoutSeconds: accept.maxTimeoutSeconds,
+      });
+      authNonce = authorization.nonce;
+      const { signature } = await signX402Payment({ account, accept, authorization });
+      header = encodePaymentHeader({
+        x402Version: challenge.x402Version,
+        accept,
+        payload: { signature, authorization },
+        resourceUrl: candidate.resourceUrl,
+      });
+    }
+    // 署名の直後に nonce を確定させる。ここから先で落ちても、行には
+    // 「何に署名したか」が残る（予約行は既にあるので UPDATE）。
+    await db
+      .update(x402L1Purchases)
+      .set({ authNonce })
+      .where(eq(x402L1Purchases.id, reservation.rowId));
 
-  // 2026-08-23 監査 C-4: ここで `settled` と名乗らない。
-  // settled の定義は「我々がチェーンで確認した」であって、売り手が success:true と
-  // 返したことではない。購入直後にチェーンを読みに行くと、確定を待つ間に
-  // バッチのデッドラインを食い潰す（しかも確定前の tx を確認済みと刻む事故になる）。
-  // だから購入は `settle_claimed` で置き、日次の照合 cron が
-  // `settled` / `settle_claim_refuted` へ確定させる。
-  const claimedAndWellFormed = claimedSettlement && settlementTxWellFormed;
-  const status = !paid
-    ? "settle_failed"
-    : claimedAndWellFormed
-      ? "settle_claimed"
-      : claimedSettlement
-        ? "settle_claimed_unverifiable" // 決済したと主張したが識別子が形式不正
-        : paid.status === 200
-          ? "delivered_no_receipt" // goods returned but no settlement receipt header
-          : "settle_failed";
-  // summary の互換のため「売り手が決済を主張したか」は残すが、これは
-  // settled ではない。名前で取り違えないよう別名にしてある。
-  const settled = claimedAndWellFormed;
+    let paid: Response | null = null;
+    let paidBody = "";
+    let paidError: string | null = null;
+    // Same 2026-08-22 fix as the unpaid leg: the timer covers the body read too.
+    // On the PAID leg an aborted body is not a lost measurement — the settlement
+    // receipt lives in the HEADERS, which we already hold — so the outcome is
+    // still recorded, with the body error kept in rawResponseMeta.bodyError.
+    const paidController = new AbortController();
+    const paidTimer = setTimeout(() => paidController.abort(), timeoutMs);
+    try {
+      paid = await fetchImpl(candidate.resourceUrl, {
+        method,
+        signal: paidController.signal,
+        redirect: "follow",
+        headers: {
+          accept: "application/json",
+          "user-agent": "vet402-observatory-l1/1.0 (+https://vet402.com/observatory/methodology)",
+          [header.headerName]: header.headerValue,
+          ...(method === "POST" ? { "content-type": "application/json" } : {}),
+        },
+        ...(method === "POST" ? { body: "{}" } : {}),
+      });
+      paidBody = await readBodyCapped(paid, 16_000);
+    } catch (error) {
+      paidError = String(error).slice(0, 300);
+    } finally {
+      clearTimeout(paidTimer);
+    }
 
-  // Resolve the reservation in place — spent_units stays exactly what was
-  // reserved (signed = counted, success or not); only the outcome is filled in.
-  await db
-    .update(x402L1Purchases)
-    .set({
+    const latencyMs = Date.now() - startedAt;
+    const settlement = paid ? parseSettlementResponse(paid.headers) : null;
+    const payloadNonEmpty = paidBody.trim().length > 0;
+    const contentType = paid?.headers.get("content-type") ?? null;
+    const contentTypeMatch = contentType === null ? null : contentType.includes("json");
+
+    // L2 — minimal structural check against the catalog-declared schema.
+    let l2Schema: string = "not_checked";
+    let l2Detail: { missing: string[]; declarationHash: string | null; responseHash: string } | null = null;
+    if (paid && paid.status === 200) {
+      const d = checkL2Detailed(candidate.declaredSchema, paidBody, contentType);
+      l2Schema = d.status;
+      l2Detail = { missing: d.missing, declarationHash: d.declarationHash, responseHash: d.responseHash };
+    }
+
+    // 2026-08-23 監査: ここまで `transaction` は「空でない文字列」以外を何も見ていなかった。
+    // 値は売り手の PAYMENT-RESPONSE ヘッダそのままで、決済せずに success:true と
+    // 架空の文字列を返すだけで「決済成功」の行を作れた。その行は公開台帳になり、
+    // 2026-08-22 以降は observed_purchases 経由でスコアの最上位軸にも流れる。
+    //
+    // 形式検査は権威ではない（形だけ正しい偽ハッシュは通る）。本当の関門は
+    // オンチェーン照合で、それが入るまでは「売り手申告＋形式検査済み」と公開面に書く。
+    // ここで分けるのは「決済したと言い、識別子も筋が通っている」ことと
+    // 「決済したと言うが、識別子がトランザクションIDですらない」ことの区別——
+    // 後者は売り手についての所見なので、delivered_no_receipt（レシートを主張して
+    // いない）に潰さず独立した status にする。
+    const claimedSettlement = settlement?.success === true && !!settlement.transaction;
+    const settlementTxWellFormed =
+      claimedSettlement &&
+      isWellFormedSettlementTx(settlement!.transaction, isSolana ? "solana" : "evm");
+
+    // 2026-08-23 監査 C-4: ここで `settled` と名乗らない。
+    // settled の定義は「我々がチェーンで確認した」であって、売り手が success:true と
+    // 返したことではない。購入直後にチェーンを読みに行くと、確定を待つ間に
+    // バッチのデッドラインを食い潰す（しかも確定前の tx を確認済みと刻む事故になる）。
+    // だから購入は `settle_claimed` で置き、日次の照合 cron が
+    // `settled` / `settle_claim_refuted` へ確定させる。
+    const claimedAndWellFormed = claimedSettlement && settlementTxWellFormed;
+    const status = !paid
+      ? "settle_failed"
+      : claimedAndWellFormed
+        ? "settle_claimed"
+        : claimedSettlement
+          ? "settle_claimed_unverifiable" // 決済したと主張したが識別子が形式不正
+          : paid.status === 200
+            ? "delivered_no_receipt" // goods returned but no settlement receipt header
+            : "settle_failed";
+    // summary の互換のため「売り手が決済を主張したか」は残すが、これは
+    // settled ではない。名前で取り違えないよう別名にしてある。
+    const settled = claimedAndWellFormed;
+
+    // Resolve the reservation in place — spent_units stays exactly what was
+    // reserved (signed = counted, success or not); only the outcome is filled in.
+    const rawResponseMeta = {
+      phase: "paid",
+      status: paid?.status ?? null,
+      contentType,
+      bodyHead: paidBody.slice(0, 500),
+      // A response whose HEADERS arrived but whose body aborted/failed: the
+      // error would otherwise be dropped (rawSettlement keeps the settlement
+      // when one exists), so it is kept here rather than silently lost.
+      ...(paid && paidError ? { bodyError: paidError } : {}),
+      // §6.3: L2 の判定材料。mismatch の公開に要る宣言ハッシュ・応答ハッシュ・欠落キー。
+      ...(l2Detail ? { l2: l2Detail } : {}),
+    };
+    const outcomeRow = {
       status,
       txHash: settlement?.transaction ?? null,
       httpStatusPaid: paid?.status ?? null,
@@ -953,71 +1027,108 @@ async function purchaseOne(input: {
       contentTypeMatch,
       l2Schema,
       rawSettlement: settlement ?? (paidError ? { error: paidError } : null),
-      rawResponseMeta: {
-        phase: "paid",
-        status: paid?.status ?? null,
-        contentType,
-        bodyHead: paidBody.slice(0, 500),
-        // A response whose HEADERS arrived but whose body aborted/failed: the
-        // error would otherwise be dropped (rawSettlement keeps the settlement
-        // when one exists), so it is kept here rather than silently lost.
-        ...(paid && paidError ? { bodyError: paidError } : {}),
-        // §6.3: L2 の判定材料。mismatch の公開に要る宣言ハッシュ・応答ハッシュ・欠落キー。
-        ...(l2Detail ? { l2: l2Detail } : {}),
-      },
-    })
-    .where(eq(x402L1Purchases.id, reservation.rowId));
-  invalidateDecisionCache(candidate.id);
+      rawResponseMeta,
+    };
+    let recordedStatus = status;
+    try {
+      await db.update(x402L1Purchases).set(outcomeRow).where(eq(x402L1Purchases.id, reservation.rowId));
+    } catch (error) {
+      if (!isDuplicateTxHashError(error)) throw error;
+      // 2026-09-04 監査 P1-1: 売り手が**別の購入で既に使われた tx**をレシートとして
+      // 返した。部分一意 index（x402_l1_purchases_tx_unique）が書き込みを弾いた
+      // ——それ自体が売り手についての所見なので、行を in_flight のまま残さず
+      // その場で確定させる。tx_hash は null で入れる（一意 index を再び踏まないため。
+      // 主張された値は raw_response_meta に残るので消えていない）。
+      recordedStatus = "settle_claim_refuted";
+      await db
+        .update(x402L1Purchases)
+        .set({
+          ...outcomeRow,
+          status: recordedStatus,
+          txHash: null,
+          settlementVerified: false,
+          settlementVerifiedAt: new Date(),
+          settlementVerifyReason: `tx_hash_reused: ${settlement?.transaction ?? ""}`.slice(0, 500),
+          rawResponseMeta: { ...rawResponseMeta, reusedTxHash: settlement?.transaction ?? null },
+        })
+        .where(eq(x402L1Purchases.id, reservation.rowId));
+    }
+    invalidateDecisionCache(candidate.id);
 
-  // observed_purchases への記帳（2026-08-22 監査・項目1）。
-  //
-  // この表は scoreEconomicActivity（重み0.40の最上位軸）の L1 枝・
-  // scoreL1Receiving・payee-engine の l1DeliveryDepth の唯一の材料で、
-  // 「trusted-writer ingest」と設計されながら**全リポで呼び手が存在せず**
-  // 0行だった（本番実測 2026-08-22: observed_purchases 0行 /
-  // x402_l1_purchases 1,167行・決済成功496）。その間ずっと
-  // signals.x402.l1PurchaseCount 等は常に 0 を公開していた。
-  //
-  // 何を1行とするか（schema と observed-purchases.ts の意味論に従う）:
-  //  - tx_hash は NOT NULL かつ一意＝この表の自然キー。決済レシート
-  //    （PAYMENT-RESPONSE の transaction）が無い試行は行にできないので、
-  //    書けるのは settled のときだけ。delivered_no_receipt は「品は来たが
-  //    レシートが無い」＝オンチェーンの購入として名指せないので書かない;
-  //  - delivery_verified は**書き手側の保証**（reader は読み取り時に導出
-  //    できず、このフラグを信じるだけ）。だから「品が実際に届いた」と
-  //    我々が観測した時だけ true にする: HTTP 200 かつ本文が空でなく、
-  //    宣言スキーマに対して mismatch でないこと。1つでも欠ければ false で
-  //    記録する——行を捨てるのではなく、x402 相当の事実として残す;
-  //  - block_timestamp は取らない（L1 はレシートのハッシュしか持たず、
-  //    ブロック時刻を引く経路がまだ無い）。null なら reader は created_at を
-  //    日次軸に使う（settledAt の coalesce）ので、数秒差で正しい日に入る。
-  //    推測で埋めない。
-  //
-  // 大文字小文字: recordObservedPurchase は wallet/counterparty を小文字化
-  // する。base58（Solana）には情報が失われるが、読み手
-  // （getObservedPurchaseStats / getObservedDeliveryStats）も引数を小文字化
-  // して比較するので、書き・読みで一貫している。台帳（x402_l1_purchases）
-  // 側は base58 の原文を保つ、という既存の分担はそのまま。
-  //
-  // graceful: ここで何が起きても購入の記帳（正典は x402_l1_purchases）は
-  // 既に完了している。ただし黙って消さない——失敗は logServerError に残す。
-  // 2026-08-23 監査 C-4: **ここでは書かない。** 上の長いコメントが説明している
-  // 配線は 2026-08-22 に入れたもので方向は正しかったが、当時の `settled` は
-  // 「売り手が success:true と言った」でしかなかった。つまり売り手の自己申告が
-  // そのままスコアの最上位軸へ流れていた。
-  //
-  // observed_purchases への書き込みは
-  // src/lib/observatory/settlement-verifier.ts へ移した。オンチェーンで
-  // 宛先・金額・トークン・チェーン・確定数を確認できた行だけが証拠になる。
-  // delivery_verified の判定規則（isDeliveryVerified）は共有していて、
-  // 遡及行と実時間行が食い違わないようにしてある。
+    // observed_purchases への記帳（2026-08-22 監査・項目1）。
+    //
+    // この表は scoreEconomicActivity（重み0.40の最上位軸）の L1 枝・
+    // scoreL1Receiving・payee-engine の l1DeliveryDepth の唯一の材料で、
+    // 「trusted-writer ingest」と設計されながら**全リポで呼び手が存在せず**
+    // 0行だった（本番実測 2026-08-22: observed_purchases 0行 /
+    // x402_l1_purchases 1,167行・決済成功496）。その間ずっと
+    // signals.x402.l1PurchaseCount 等は常に 0 を公開していた。
+    //
+    // 何を1行とするか（schema と observed-purchases.ts の意味論に従う）:
+    //  - tx_hash は NOT NULL かつ一意＝この表の自然キー。決済レシート
+    //    （PAYMENT-RESPONSE の transaction）が無い試行は行にできないので、
+    //    書けるのは settled のときだけ。delivered_no_receipt は「品は来たが
+    //    レシートが無い」＝オンチェーンの購入として名指せないので書かない;
+    //  - delivery_verified は**書き手側の保証**（reader は読み取り時に導出
+    //    できず、このフラグを信じるだけ）。だから「品が実際に届いた」と
+    //    我々が観測した時だけ true にする: HTTP 200 かつ本文が空でなく、
+    //    宣言スキーマに対して mismatch でないこと。1つでも欠ければ false で
+    //    記録する——行を捨てるのではなく、x402 相当の事実として残す;
+    //  - block_timestamp は取らない（L1 はレシートのハッシュしか持たず、
+    //    ブロック時刻を引く経路がまだ無い）。null なら reader は created_at を
+    //    日次軸に使う（settledAt の coalesce）ので、数秒差で正しい日に入る。
+    //    推測で埋めない。
+    //
+    // 大文字小文字: recordObservedPurchase は wallet/counterparty を小文字化
+    // する。base58（Solana）には情報が失われるが、読み手
+    // （getObservedPurchaseStats / getObservedDeliveryStats）も引数を小文字化
+    // して比較するので、書き・読みで一貫している。台帳（x402_l1_purchases）
+    // 側は base58 の原文を保つ、という既存の分担はそのまま。
+    //
+    // graceful: ここで何が起きても購入の記帳（正典は x402_l1_purchases）は
+    // 既に完了している。ただし黙って消さない——失敗は logServerError に残す。
+    // 2026-08-23 監査 C-4: **ここでは書かない。** 上の長いコメントが説明している
+    // 配線は 2026-08-22 に入れたもので方向は正しかったが、当時の `settled` は
+    // 「売り手が success:true と言った」でしかなかった。つまり売り手の自己申告が
+    // そのままスコアの最上位軸へ流れていた。
+    //
+    // observed_purchases への書き込みは
+    // src/lib/observatory/settlement-verifier.ts へ移した。オンチェーンで
+    // 宛先・金額・トークン・チェーン・確定数を確認できた行だけが証拠になる。
+    // delivery_verified の判定規則（isDeliveryVerified）は共有していて、
+    // 遡及行と実時間行が食い違わないようにしてある。
 
-  // ERC-8004 への公開（C4）は**ここでは呼ばない**（2026-09-02 監査 P1-7）。
-  // この時点の `settled` は売り手の自己申告で、オンチェーンに書く verdict には
-  // なれない。発火点は settlement-verifier（チェーンで settled / refuted が
-  // 確定した後）。
+    // ERC-8004 への公開（C4）は**ここでは呼ばない**（2026-09-02 監査 P1-7）。
+    // この時点の `settled` は売り手の自己申告で、オンチェーンに書く verdict には
+    // なれない。発火点は settlement-verifier（チェーンで settled / refuted が
+    // 確定した後）。
 
-  return { kind: "attempted", settled, spent: amount, status };
+    return {
+      kind: "attempted",
+      // 再利用 tx を弾いた行は settled の候補ではない。
+      settled: settled && recordedStatus === status,
+      spent: amount,
+      status: recordedStatus,
+    };
+  } catch (error) {
+    logServerError("observatory.l1.purchase_after_reservation", error);
+    await resolveReservationAsFailed(db, reservation.rowId, error);
+    invalidateDecisionCache(candidate.id);
+    return { kind: "attempted", settled: false, spent: amount, status: "settle_failed" };
+  }
+}
+
+/**
+ * 「別の購入が既に使っている決済 tx」の一意違反か（2026-09-04 監査 P1-1）。
+ *
+ * postgres-js / neon-http でエラーの形が違うので、SQLSTATE と制約名の
+ * どちらかで判定する。ここを取り違えると、無関係な DB 障害を売り手の
+ * 所見（settle_claim_refuted）として記録してしまうので、制約名まで見る。
+ */
+function isDuplicateTxHashError(error: unknown): boolean {
+  const code = (error as { code?: unknown })?.code;
+  const text = `${(error as { constraint_name?: string })?.constraint_name ?? ""} ${String(error)}`;
+  return (code === "23505" || /23505|duplicate key/i.test(text)) && /x402_l1_purchases_tx_unique/.test(text);
 }
 
 /**

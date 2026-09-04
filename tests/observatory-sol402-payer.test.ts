@@ -142,7 +142,16 @@ test("buildSolanaPaymentTransaction: spec MUST constraints hold on the deseriali
   }
 });
 
-test("extra.memo from the challenge is used verbatim instead of a random nonce", async () => {
+// 2026-09-04 監査 P1-1 で反転した不変条件。
+//
+// 以前は「extra.memo があればその値をそのまま使う」（x402 SVM spec の
+// クライアント任意項目）だった。だが memo は Solana 側で**その tx がこの購入の
+// ものだと言える唯一の材料**で、売り手に選ばせると、同じ payTo・同じ価格の
+// 購入すべてに同じ memo を指定して 1 本の決済 tx を全部のレシートに使い回せる。
+// EVM の EIP-3009 nonce を売り手に選ばせないのと同じ理由で、常に我々が作る。
+// 既知の代償: extra.memo を請求書の突合に使うファシリテータとは噛み合わない
+// （Solana の L1 購入は 2026-09-04 時点で settled 0 件なので、壊れる実績は無い）。
+test("売り手の extra.memo は使わず、常に我々の乱数 memo を載せる", async () => {
   const sel = selectSolanaAccept([accept({ extra: { feePayer: FEE_PAYER, memo: "pi_3abc" } })], {
     declaredAmount: "10000",
     declaredPayTo: PAY_TO,
@@ -154,7 +163,10 @@ test("extra.memo from the challenge is used verbatim instead of a random nonce",
   });
   const tx = VersionedTransaction.deserialize(Buffer.from(built.transactionB64, "base64"));
   const memoIx = tx.message.compiledInstructions[3];
-  assert.equal(Buffer.from(memoIx.data).toString("utf8"), "pi_3abc");
+  const onChain = Buffer.from(memoIx.data).toString("utf8");
+  assert.notEqual(onChain, "pi_3abc", "売り手の memo をそのまま載せている");
+  assert.equal(onChain, built.memo, "行へ保存する memo と tx の memo が食い違っている");
+  assert.match(onChain, /^[0-9a-f]{32}$/);
 });
 
 test("encodeSolanaPaymentHeader: v2 envelope with payload.transaction", () => {

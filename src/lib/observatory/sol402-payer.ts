@@ -56,6 +56,30 @@ function feePayerOf(accept: ChallengeAccept): string | null {
 }
 
 /**
+ * この accept で**実際に tx を組めるか**（2026-09-04 監査 P1-2）。
+ *
+ * 予算は署名の前に予約されるので、buildSolanaPaymentTransaction が throw する
+ * 形を通すと、一円も動かないまま日次予算が減り、行は in_flight のまま残る。
+ * 実測した throw は 2 つ:
+ *   - `new PublicKey(payTo)` — base58 として読めない文字列;
+ *   - `getAssociatedTokenAddressSync(mint, payTo)` — payTo が off-curve（PDA）。
+ *     ATA は必ず off-curve なので、壁が ATA を payTo に書くだけで起こる。
+ * feePayer も PublicKey として読めなければ compileToV0Message が throw する。
+ */
+function isBuildableSolanaAccept(accept: ChallengeAccept): boolean {
+  try {
+    const payTo = new PublicKey(accept.payTo);
+    if (!PublicKey.isOnCurve(payTo.toBytes())) return false;
+    const feePayer = feePayerOf(accept);
+    if (feePayer !== null) new PublicKey(feePayer);
+    new PublicKey(accept.asset);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * EVM 側 selectAccept と同じ拒否語彙 + Solana 固有の no_fee_payer。
  * payTo の catalog 照合は case-insensitive: 2026-08-20 以前の取込が base58 を
  * 小文字化して保存していたため（修復スクリプトで直すが、照合を大文字小文字に
@@ -63,13 +87,23 @@ function feePayerOf(accept: ChallengeAccept): string | null {
  */
 export function selectSolanaAccept(
   accepts: readonly unknown[],
-  options: { declaredAmount: string | null; declaredPayTo: string | null },
+  options: {
+    declaredAmount: string | null;
+    declaredPayTo: string | null;
+    /**
+     * 我々の Solana アドレス（base58）。渡されたときだけ、feePayer が我々自身で
+     * ある accept を退ける（2026-09-04 監査 P1-1）。
+     */
+    payerAddress?: string | null;
+  },
 ): SolanaAcceptSelection {
   const protocolEligible = (accepts as ChallengeAccept[])
     .filter((a) => a && typeof a === "object")
     .filter((a) => a.scheme === "exact")
     .filter((a) => a.network === SOLANA_MAINNET_CAIP2)
-    .filter((a) => a.asset === SOLANA_USDC_MINT);
+    .filter((a) => a.asset === SOLANA_USDC_MINT)
+    // 2026-09-04 監査 P1-2: 組めない tx はここで落とす（予約より前）。
+    .filter((a) => isBuildableSolanaAccept(a));
 
   if (protocolEligible.length === 0) return { accept: null, reason: "no_eligible_accept" };
 
@@ -84,7 +118,20 @@ export function selectSolanaAccept(
       : protocolEligible.filter((a) => a.payTo.toLowerCase() === declaredPayTo);
   if (eligible.length === 0) return { accept: null, reason: "payto_mismatch" };
 
-  const sponsored = eligible.filter((a) => feePayerOf(a) !== null);
+  // feePayer は**第三者**（ファシリテータ）でなければならない。
+  // 2026-09-04 監査 P1-1: それが payTo なら受取人が自分の受け取りの手数料を
+  // 払う形、我々の payer なら我々が SOL を持っている前提になる。どちらも v0 の
+  // 前提（我々は USDC だけ持ち SOL を持たない・spec の「feePayer はどの命令の
+  // accounts にも現れない」）を満たさず、署名しても通らないか、通れば我々の
+  // 想定外の資金が動く。予約より前に、ここで退ける。
+  const payerAddress = options.payerAddress ?? null;
+  const sponsored = eligible.filter((a) => {
+    const fp = feePayerOf(a);
+    if (fp === null) return false;
+    if (fp === a.payTo) return false;
+    if (payerAddress !== null && fp === payerAddress) return false;
+    return true;
+  });
   if (sponsored.length === 0) return { accept: null, reason: "no_fee_payer" };
 
   for (const accept of sponsored) {
@@ -127,7 +174,7 @@ export async function buildSolanaPaymentTransaction(input: {
   accept: ChallengeAccept;
   payer: Keypair;
   recentBlockhash: string;
-}): Promise<{ transactionB64: string; payerAddress: string }> {
+}): Promise<{ transactionB64: string; payerAddress: string; memo: string }> {
   const { accept, payer, recentBlockhash } = input;
   const feePayer = feePayerOf(accept);
   if (!feePayer) throw new Error("sol402: accept has no extra.feePayer");
@@ -138,10 +185,13 @@ export async function buildSolanaPaymentTransaction(input: {
   const sourceAta = getAssociatedTokenAddressSync(mint, payer.publicKey);
   const destAta = getAssociatedTokenAddressSync(mint, payTo);
 
-  const memoValue =
-    typeof accept.extra?.memo === "string" && accept.extra.memo !== ""
-      ? accept.extra.memo
-      : randomBytes(16).toString("hex");
+  // 2026-09-04 監査 P1-1: **memo は常に我々が作る。** 以前は extra.memo があれば
+  // その値を使っていたが、それは売り手が選べる値で、同じ payTo・同じ価格の
+  // 購入すべてに同じ memo を指定すれば、1 本の決済 tx を全部の購入のレシートに
+  // 使い回せた。EVM 側の EIP-3009 nonce と同じ役割——「その tx はこの購入のもの」
+  // と言える材料は、売り手に選ばせてはいけない。
+  // 32 hex = 16 バイト（spec の「ランダム nonce ≥16 bytes」を満たす）。
+  const memoValue = randomBytes(16).toString("hex");
 
   const instructions: TransactionInstruction[] = [
     ComputeBudgetProgram.setComputeUnitLimit({ units: 60_000 }),
@@ -166,6 +216,9 @@ export async function buildSolanaPaymentTransaction(input: {
   return {
     transactionB64: Buffer.from(tx.serialize()).toString("base64"),
     payerAddress: payer.publicKey.toBase58(),
+    // 呼び手（l1-runner）が行へ保存する。照合はこの memo が tx の memo 命令に
+    // 含まれることを要求する（settlement-verify-solana.ts）。
+    memo: memoValue,
   };
 }
 

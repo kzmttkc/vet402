@@ -19,7 +19,7 @@
 //    decides which we answer with.
 // ============================================================
 import { randomBytes } from "node:crypto";
-import type { Account } from "viem";
+import { isAddress, type Account } from "viem";
 
 /**
  * Canonical Base USDC. Same value as chain/config.BASE_USDC_ADDRESS —
@@ -231,7 +231,12 @@ export function selectAccept(
     // is the point: a signature under a bogus domain can never settle, so
     // accepting one would let a seller burn budget for free. The full
     // accepts[] is recorded by the caller, so the contradiction stays visible.
-    .filter((a) => hasCanonicalUsdcDomain(a.extra));
+    .filter((a) => hasCanonicalUsdcDomain(a.extra))
+    // 2026-09-04 監査 P1-2: **署名できない accept はここで落とす。** 予算は
+    // 署名の前に予約されるので、署名器が throw する形を通すと、一円も動かない
+    // まま日次 $25 が減り、行は in_flight のまま冷却にも掛からない。
+    // 判定は署名器（viem の validateTypedData）と同じ述語で行う。
+    .filter((a) => isSignableEvmAccept(a));
 
   if (protocolEligible.length === 0) return { accept: null, reason: "no_eligible_accept" };
 
@@ -288,7 +293,30 @@ export type Eip3009Authorization = {
   nonce: string;
 };
 
-/** Short-lived, randomly-nonced authorization. validBefore ≤ now+600s regardless of seller's maxTimeoutSeconds. */
+/**
+ * 認可の有効期間の上限（秒）。2026-09-04 監査 P2 で 600 → 120 に短縮。
+ *
+ * 署名した EIP-3009 は validBefore まで**生きた金**で、その間ずっと売り手は
+ * いつでも決済できる。我々は決済されなかった試行を settle_failed として
+ * 記帳し、その時点で分母に入れるので、10 分後に遅れて決済されると
+ * 「tx_hash の無い settle_failed 行」と「オンチェーンの支出」が食い違う。
+ * 窓を短くすればその窓自体が小さくなる。x402 の実運用（ファシリテータが
+ * 数秒で決済する）に対して 120 秒は十分に長い。
+ */
+export const MAX_AUTHORIZATION_WINDOW_SECONDS = 120;
+
+/**
+ * Short-lived, randomly-nonced authorization.
+ * validBefore ≤ now + MAX_AUTHORIZATION_WINDOW_SECONDS regardless of the seller's
+ * maxTimeoutSeconds.
+ *
+ * 2026-09-04 監査 P1-2: すべて整数に丸める。`maxTimeoutSeconds: 120.5` のような
+ * 小数を売り手が返すと validBefore が "1757000120.5" になり、signX402Payment の
+ * `BigInt(authorization.validBefore)` が throw していた。throw の場所は
+ * **予約（reserveSpend）の後**なので、一円も動かないまま日次予算だけが減る。
+ * selectAccept も同じ形を予約より前に落とすが、ここでも丸める（この関数は
+ * 単体でも money-signing の材料を作るので、呼び手のゲートに依存しない）。
+ */
 export function buildAuthorization(input: {
   from: string;
   to: string;
@@ -296,15 +324,39 @@ export function buildAuthorization(input: {
   nowSec: number;
   maxTimeoutSeconds?: number;
 }): Eip3009Authorization {
-  const window = Math.min(Math.max(input.maxTimeoutSeconds ?? 300, 60), 600);
+  const requested = Number.isInteger(input.maxTimeoutSeconds)
+    ? (input.maxTimeoutSeconds as number)
+    : MAX_AUTHORIZATION_WINDOW_SECONDS;
+  const window = Math.floor(Math.min(Math.max(requested, 60), MAX_AUTHORIZATION_WINDOW_SECONDS));
+  const nowSec = Math.floor(input.nowSec);
   return {
     from: input.from,
     to: input.to,
     value: input.value,
-    validAfter: String(input.nowSec - 60), // clock-skew slack
-    validBefore: String(input.nowSec + window),
+    validAfter: String(nowSec - 60), // clock-skew slack
+    validBefore: String(nowSec + window),
     nonce: `0x${randomBytes(32).toString("hex")}`,
   };
+}
+
+/**
+ * この accept で**実際に署名できるか**（2026-09-04 監査 P1-2）。
+ *
+ * 予算は署名の前に予約される。だから「署名しようとしたら例外が出た」は
+ * そのまま予算の焼失になる。ここで見るのは、viem の signTypedData が
+ * 通す形かどうかだけ——判定は**署名器と同じ述語**でなければ関門にならない。
+ *
+ * viem 2.55 実測（node_modules/viem/_esm/utils/typedData.js）:
+ *   validateTypedData → `isAddress(value)`（strict 既定 true）
+ *   → 全小文字は通る / 大小混在は EIP-55 チェックサム一致を要求。
+ * つまり `{ strict: false }` で見ると、チェックサムの合わない大小混在アドレスを
+ * 通してしまい、予約の後で InvalidAddressError になる（＝焼ける）。
+ */
+function isSignableEvmAccept(accept: ChallengeAccept): boolean {
+  if (!isAddress(accept.payTo)) return false;
+  // 小数の maxTimeoutSeconds は validBefore を小数にする（BigInt が throw）。
+  if (accept.maxTimeoutSeconds !== undefined && !Number.isInteger(accept.maxTimeoutSeconds)) return false;
+  return true;
 }
 
 /**
