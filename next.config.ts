@@ -45,6 +45,14 @@ const nextConfig: NextConfig = {
         source: "/:path*",
         headers: securityHeaders,
       },
+      // 2026-09-04 監査 D・P2: /llms.txt は public/ の静的ファイルで Vercel 既定の
+      // `max-age=0, must-revalidate`、/llms-full.txt は route handler で `max-age=3600`
+      // （本番実測）。同じ読者向けの同じ種類の文書なので鮮度の約束を揃える。
+      // 値は src/app/llms-full.txt/route.ts と同じ（tests/llms-cache-headers.test.ts が固定）。
+      {
+        source: "/llms.txt",
+        headers: [{ key: "Cache-Control", value: "public, max-age=3600" }],
+      },
     ];
   },
   async rewrites() {
