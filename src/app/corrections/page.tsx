@@ -52,6 +52,27 @@ type Correction = {
  */
 const CORRECTIONS: Correction[] = [
   {
+    date: "2026-09-05",
+    subject: "How strong the evidence behind our own settled count is",
+    wrong:
+      "The observatory published one settled number, as if the 1,629 rows behind it rested on the same " +
+      "evidence. They do not. Signature-nonce binding shipped at 2026-09-04 12:00 UTC; the 1,558 rows that " +
+      "settled before it were confirmed on amount, payee, asset and chain, with nothing tying the transaction " +
+      "to the purchase it was offered for. A seller holding several catalog entries at the same price and the " +
+      "same payee could have answered with a transfer it had already received. We stated the binding as a " +
+      "property of settled without saying when it started.",
+    action:
+      "Found in our own security audit (S-4 / S-17) and disclosed the same day. The count is unchanged: no row " +
+      "was demoted or removed, because demoting one asserts that its transfer was not the purchased one and we " +
+      "hold no evidence for that. What changed is that the strength is now printed beside the count — " +
+      "settledNonceBound and settledAmountPayeeOnly on /api/v1/observatory/state, summing to l1.settled, with " +
+      "the same split per chain and on the state page. The retroactive check we can run is the clock: of the " +
+      "1,629 settled rows, 1,589 carry a settlement block time, and those ran from 1 second before the attempt " +
+      "to 62 seconds after it, none outside a -5/+15 minute window. Duplicate settlement transactions across " +
+      "rows: 0 (1,634 distinct hashes over 1,634 rows). Figures are the 2026-09-05 reading; the live ones are " +
+      "on /observatory/state.",
+  },
+  {
     date: "2026-09-02",
     subject: "This site's own description of how often endpoints are probed",
     wrong:

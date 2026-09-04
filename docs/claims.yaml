@@ -1197,3 +1197,27 @@ claims:
     check: null
     why_unverifiable: "集計規則であって、公開 GET が数値で返す種類の主張ではない。方法論 §7 が同じ定義を散文で公開している"
     verified_at: 2026-09-05
+  # ---- 2026-09-05 セキュリティ監査 S-4 / S-17: settled の証拠強度を 2 層で公開する ----
+  - id: s4_settled_tiers_sum_to_settled
+    surface: src/app/observatory/state/page.tsx
+    quote: "settled (nonce-bound): the re-read also matched the signature nonce we generated,"
+    means: "settled は nonce 束縛の有無で 2 層に分けて公開し、2 層の合計は l1.settled と一致する（層は強度のラベルであって、件数を動かさない）"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "l1.settledNonceBound >= 71"
+    verified_at: 2026-09-05
+  - id: s4_settled_amount_payee_only_is_disclosed
+    surface: src/app/observatory/state/page.tsx
+    quote: "settled (amount + payee): matched on amount, payee, asset and chain, with no nonce"
+    means: "nonce 束縛の無い settled（2026-09-04 12:00 UTC より前に確定した行）を、件数のまま自社に不利な形で公開する。2026-09-05 の実測は 1,629 のうち 1,558 件"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "l1.settledAmountPayeeOnly >= 1558"
+    verified_at: 2026-09-05
+  - id: s4_settled_tier_partition_is_pinned_by_tests
+    surface: src/app/observatory/state/page.tsx
+    quote: "does not change the count"
+    means: "2 層は settled を分割するだけで総数を変えない。旧行は降格も削除もしない"
+    check: null
+    why_unverifiable: "カナリアの式は `path op literal` の 1 行だけで、和の一致（settledNonceBound + settledAmountPayeeOnly == settled）を書けない。不変条件は tests/observatory-state-api.test.ts と tests/settled-tiers.pg.test.ts が実 DB で固定する"
+    verified_at: 2026-09-05

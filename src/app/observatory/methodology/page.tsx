@@ -14,7 +14,10 @@ import {
   PRIORITY_SWEEP_WINDOW_DAYS,
   SWEEP_WINDOW_DAYS,
 } from "@/lib/observatory/l1-runner";
-import { getUnverifiedBreakdownCached } from "@/lib/observatory/cached-reads";
+import {
+  getObservatoryStatsCached,
+  getUnverifiedBreakdownCached,
+} from "@/lib/observatory/cached-reads";
 import {
   OBSERVATORY_VOCABULARY,
   VOCABULARY_GROUP_LABELS,
@@ -48,6 +51,16 @@ export default async function ObservatoryMethodologyPage() {
   // 言い続けていたが、実測ではそれが 1 件で unverified は 12,305 件だった。
   // 順位を散文で書くとまた腐るので、実測を出す。
   const unverified = await getUnverifiedBreakdownCached().catch(() => null);
+  // 2026-09-05 セキュリティ監査 S-4 / S-17: settled を 1 段で出していたので、nonce 束縛の
+  // 前後で証拠の強さが違うことが読者に見えなかった。旧行は降格しない（持っていない証拠で
+  // 無実の売り手を refuted にしない・2026-09-04 の決定）。強度のラベルと件数を足すだけで、
+  // 件数そのものは 1 行も動かさない。散文に件数を焼くと腐るので、公開 API と同じ reader から
+  // 生きた内訳を出す（頁は cached 読み）。
+  // §6 の本文に "/files/*" があり、claims 抽出器はそこを行コメントの開始と読む。ここに
+  // JSX ブロックコメントを置くとその偽コメントの終端になって走査範囲が動くので、置かない。
+  const l1Tiers = await getObservatoryStatsCached()
+    .then((st) => st.l1)
+    .catch(() => null);
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   const breadcrumb = breadcrumbJsonLd([
     { name: "Home", path: "/" },
@@ -316,6 +329,43 @@ export default async function ObservatoryMethodologyPage() {
           <strong>settle_failed</strong> — no successful paid response came back at all. Every
           attempt, including refusals before any money moved, is visible on the endpoint&apos;s
           page with its evidence.
+        </p>
+        <p className="doc-p">
+          <strong>settled comes at two evidence strengths, and both counts are published.</strong>{" "}
+          Since 2026-09-04 12:00 UTC each purchase carries a one-time value we generate
+          ourselves — the EIP-3009 authorization nonce on Base, our own memo on Solana — and
+          the re-read binds the transaction to that value. We publish those rows as{" "}
+          <strong>nonce-bound</strong>: the transaction is the one that paid for this purchase.
+          Rows that settled before that timestamp were matched on amount, payee, asset and
+          chain, with nothing tying the transaction to the purchase it was offered for. We
+          publish those as <strong>amount + payee</strong>. The gap is not hypothetical: a
+          seller holding several catalog entries at the same price and the same payee could
+          have answered with a transfer it had received earlier and passed that check.{" "}
+          {l1Tiers && l1Tiers.settled > 0 ? (
+            <>
+              At the current reading, {l1Tiers.settledAmountPayeeOnly.toLocaleString()} of{" "}
+              {l1Tiers.settled.toLocaleString()} settled rows are amount + payee and{" "}
+              {l1Tiers.settledNonceBound.toLocaleString()} are nonce-bound.{" "}
+            </>
+          ) : null}
+          The split is live at <code>/api/v1/observatory/state</code> as{" "}
+          <code>l1.settledNonceBound</code> and <code>l1.settledAmountPayeeOnly</code>, which sum
+          to <code>l1.settled</code>, and per chain in <code>l1.byChain</code>.
+        </p>
+        <p className="doc-p">
+          <strong>Why the older rows keep the label.</strong> Demoting them would assert
+          something we cannot show — that those transfers were not the ones bought — and we
+          hold no evidence for that assertion. Refuting a seller on evidence we do not have is
+          a worse error than the one we are disclosing here, so the count of{" "}
+          <code>settled</code> is unchanged and the strength is stated beside it. One check
+          does work retroactively: the settlement block time against the moment we attempted
+          the purchase. A transaction the seller had received earlier would sit far outside
+          that band. On 2026-09-05 the 1,589 settled rows with a block time
+          on record ran from 1 second before the attempt to 62 seconds after it, and none sat
+          outside a -5/+15 minute window. That window is reported as{" "}
+          <code>l1.settledTimeWindowOk</code>, with{" "}
+          <code>l1.settledTimeWindowUnknown</code> for the rows whose block time we do not
+          hold — those are neither inside nor outside it, and we do not count them as either.
         </p>
         <p className="doc-p">
           <strong>settled is not delivered.</strong> <code>settled</code> is a statement about the

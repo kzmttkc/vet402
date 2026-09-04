@@ -15,6 +15,8 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   SETTLED_TIERS,
   NONCE_BINDING_SINCE,
@@ -25,6 +27,9 @@ import {
   settlementTimeWindow,
   settlementTimeWindowPredicate,
 } from "@/lib/observatory/settled-tier";
+
+const ROOT = process.cwd();
+const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 
 // ---------- 層の分類 ----------
 
@@ -136,4 +141,24 @@ test("時刻窓の述語は秒数の定数を本文に持つ（コードと文�
 
 test("nonce 束縛の開始時刻は 2026-09-04 12:00 UTC（公開面が引用する定数）", () => {
   assert.equal(NONCE_BINDING_SINCE, "2026-09-04T12:00:00Z");
+});
+
+// ---------- 公開面に 2 層が書かれていること（docs-surface-parity の作法） ----------
+
+test("方法論ページが nonce 束縛と 2 層公開を述べている", () => {
+  const src = read("src/app/observatory/methodology/page.tsx");
+  assert.ok(src.includes("nonce-bound"), "方法論に nonce-bound の語が無い");
+  assert.ok(src.includes("amount + payee"), "方法論に amount + payee の語が無い");
+  assert.ok(src.includes("2026-09-04"), "nonce 束縛の導入日が無い");
+  assert.ok(
+    src.includes("settledNonceBound") && src.includes("settledAmountPayeeOnly"),
+    "方法論が state API の該当フィールド名を示していない",
+  );
+});
+
+test("corrections に 2026-09-05 の記録があり、件数を変えないと書いてある", () => {
+  const src = read("src/app/corrections/page.tsx");
+  assert.ok(src.includes('date: "2026-09-05"'), "2026-09-05 の訂正行が無い");
+  assert.ok(src.includes("1,558"), "旧判定の件数が書かれていない");
+  assert.ok(src.includes("1,629"), "settled 合計が書かれていない");
 });
