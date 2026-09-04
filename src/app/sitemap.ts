@@ -8,26 +8,31 @@ import { SITE_URL } from "@/lib/site-url";
 // 個々のブログ記事は post.updatedAt という本物の信号を各自持っている。
 const SITE_REVISION = "2026-08-15";
 
+// 2026-09-05 SEO/AEO 改修で実際に本文が変わった頁だけ、その日付を持つ。
+// SITE_REVISION を丸ごと上げると /legal/* まで「今日更新」に化ける
+// （それがまさに `new Date()` を使わない理由なので、同じ嘘を定数でやらない）。
+const REV_2026_09_05 = "2026-09-05";
+
 export default function sitemap(): MetadataRoute.Sitemap {
   const staticRoutes: MetadataRoute.Sitemap = [
-    { url: `${SITE_URL}/`, lastModified: SITE_REVISION, changeFrequency: "weekly", priority: 1 },
+    { url: `${SITE_URL}/`, lastModified: REV_2026_09_05, changeFrequency: "weekly", priority: 1 },
     { url: `${SITE_URL}/docs/api`, lastModified: SITE_REVISION, changeFrequency: "monthly", priority: 0.9 },
-    { url: `${SITE_URL}/accuracy`, lastModified: SITE_REVISION, changeFrequency: "weekly", priority: 0.8 },
+    { url: `${SITE_URL}/accuracy`, lastModified: REV_2026_09_05, changeFrequency: "weekly", priority: 0.8 },
     { url: `${SITE_URL}/leaderboard`, lastModified: SITE_REVISION, changeFrequency: "daily", priority: 0.7 },
     { url: `${SITE_URL}/status`, lastModified: SITE_REVISION, changeFrequency: "daily", priority: 0.6 },
     // 2026-08-15: 観測所（L0/L1/L2）は本番稼働中だが sitemap から漏れていた。
     // 動的な /observatory/e/:id は /payee/:address と同じ理由（無限に生成できる）
     // で列挙しない — 各頁は自己参照 canonical を持ち、robots も許可済み。
-    { url: `${SITE_URL}/observatory`, lastModified: SITE_REVISION, changeFrequency: "daily", priority: 0.8 },
+    { url: `${SITE_URL}/observatory`, lastModified: REV_2026_09_05, changeFrequency: "daily", priority: 0.8 },
     {
       url: `${SITE_URL}/observatory/state`,
-      lastModified: SITE_REVISION,
+      lastModified: REV_2026_09_05,
       changeFrequency: "daily",
       priority: 0.7,
     },
     {
       url: `${SITE_URL}/observatory/methodology`,
-      lastModified: SITE_REVISION,
+      lastModified: REV_2026_09_05,
       changeFrequency: "monthly",
       priority: 0.6,
     },
@@ -43,7 +48,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     // 2026-08-14: operator-log は公開頁（200）で robots も許可済みだが sitemap に
     // 抜けていた。corrections と同じ「公開していること自体が内容」の帳簿。
     { url: `${SITE_URL}/operator-log`, lastModified: SITE_REVISION, changeFrequency: "weekly", priority: 0.5 },
-    { url: `${SITE_URL}/faq`, lastModified: SITE_REVISION, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE_URL}/faq`, lastModified: REV_2026_09_05, changeFrequency: "monthly", priority: 0.7 },
     // 2026-09-02 敵対的監査: 公開・robots 許可・内部リンクありの 4 頁が sitemap に無かった。
     // /demo /live /partners は入れない —— 内部リンクが 0 本の孤立頁で、sitemap に載せると
     // 「サイトの一部」だと索引に言うことになる。導線を付けた時点で足す。

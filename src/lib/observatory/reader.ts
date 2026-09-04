@@ -984,3 +984,61 @@ export async function getEndpointNames(ids: readonly string[]): Promise<Map<stri
   const rows = (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as { id: string; resource_key: string }[];
   return new Map(rows.map((r) => [r.id, r.resource_key]));
 }
+
+// ============================================================
+// sitemap 用: 索引に出す価値のある endpoint 頁だけを返す（2026-09-05 SEO）。
+//
+// /observatory/e/{id} は数千件あり、src/app/sitemap.ts はこれを列挙しない
+// —— 「無限に生成できる」から、というのがその判断の理由だった。ここで返すのは
+// その懸念が当たらない部分集合に限る:
+//   - カタログに現在も掲載されている（status = 'active'）
+//   - 公開判定が pass（測っていない頁を索引に出さない）
+//   - 直近 7 日に実測がある（古い測定の頁を鮮度信号つきで出さない）
+// 3 条件とも「我々が測った結果」で決まるので、生成できる URL の数は
+// 測定した数を超えない。空でも例外を投げない（欠損スキーマ耐性は
+// このモジュールの規約）。
+//
+// 上限は sitemap 規格（50,000 URL / 50MB）の半分に置く。超えた分は落とすが、
+// 落ちたことが分かるように件数を返す（黙って切らない）。
+// ============================================================
+
+/** sitemap 1 本に載せる上限。規格上限 50,000 の半分。 */
+export const SITEMAP_ENDPOINT_LIMIT = 25_000;
+
+/** 索引対象とみなす測定の鮮度（日）。 */
+export const SITEMAP_MEASURED_WITHIN_DAYS = 7;
+
+export type SitemapEndpoint = { id: string; lastMeasuredAt: Date };
+
+export async function getSitemapEndpoints(): Promise<SitemapEndpoint[]> {
+  const db = getDb();
+  if (!db) return [];
+  try {
+    const raw = await db.execute(sql`
+      SELECT e.id::text AS id, lp.last_probed_at AS last_probed_at
+      FROM x402_endpoints e
+      LEFT JOIN LATERAL (
+        SELECT array_agg(v.verdict) AS verdicts, max(v.probed_at) AS last_probed_at
+        FROM (
+          SELECT verdict, probed_at FROM x402_l0_probes p
+          WHERE p.endpoint_id = e.id
+          ORDER BY probed_at DESC
+          LIMIT ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH}
+        ) v
+      ) lp ON true
+      WHERE e.status = 'active'
+        AND (lp.verdicts)[1] = 'pass'
+        AND lp.last_probed_at >= now() - (${SITEMAP_MEASURED_WITHIN_DAYS} * interval '1 day')
+      ORDER BY lp.last_probed_at DESC
+      LIMIT ${SITEMAP_ENDPOINT_LIMIT}
+    `);
+    const rows = (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as {
+      id: string;
+      last_probed_at: string | Date;
+    }[];
+    return rows.map((r) => ({ id: r.id, lastMeasuredAt: new Date(r.last_probed_at) }));
+  } catch (error) {
+    if (isMissingSchemaError(error)) return [];
+    throw error;
+  }
+}
