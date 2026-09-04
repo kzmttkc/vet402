@@ -39,6 +39,48 @@ export const metadata: Metadata = pageMetadata({
 
 export const revalidate = 600;
 
+/**
+ * 2026-09-04 監査 F5: 3 表が全部 0 件のとき、この頁は「何も測っていない会社」に見えた。
+ * 観測所は毎日測っていて、その実数は state API が正典。ここは API の JSON を fetch で
+ * 引く（reader を直接呼ばない——引用先と同じ数を出すため）。取れなければ何も出さない。
+ */
+type ObservatoryScale = {
+  snapshotDate: string | null;
+  totalEndpoints: number;
+  activeEndpoints: number;
+  publishedPass: number;
+  l1: { attempts: number; settled: number };
+};
+
+async function fetchObservatoryScale(): Promise<ObservatoryScale | null> {
+  try {
+    const res = await fetch(`${SITE_URL}/api/v1/observatory/state`, {
+      next: { revalidate: 600 },
+      headers: { accept: "application/json" },
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as {
+      totalEndpoints?: unknown;
+      activeEndpoints?: unknown;
+      publishedPass?: unknown;
+      l1?: { attempts?: unknown; settled?: unknown };
+      latestSnapshot?: { snapshotDate?: unknown } | null;
+    };
+    const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+    const totalEndpoints = n(j.totalEndpoints);
+    if (totalEndpoints === 0) return null;
+    return {
+      snapshotDate: typeof j.latestSnapshot?.snapshotDate === "string" ? j.latestSnapshot.snapshotDate : null,
+      totalEndpoints,
+      activeEndpoints: n(j.activeEndpoints),
+      publishedPass: n(j.publishedPass),
+      l1: { attempts: n(j.l1?.attempts), settled: n(j.l1?.settled) },
+    };
+  } catch {
+    return null;
+  }
+}
+
 function Rate({ value }: { value: number | null }) {
   if (value === null) {
     // 2026-08-12: zinc-400 は白地 2.62:1 で AA 不合格 → 現在は brand-lift (5.61:1)。
@@ -68,6 +110,7 @@ export default async function AccuracyPage() {
 
   const hasAnyData = report.observedVerdicts > 0;
   const hasBenchmarkData = benchmark.knownBad.total + benchmark.knownGood.total > 0;
+  const scale = !hasAnyData && !hasBenchmarkData ? await fetchObservatoryScale() : null;
   const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   const datasetJsonLd = {
@@ -146,6 +189,20 @@ export default async function AccuracyPage() {
             .
           </p>
         </div>
+
+        {scale && (
+          <p className="doc-note mt-6 max-w-[70ch]">
+            The three tables below are empty in the current window. The observatory, which this ledger does not
+            cover, is not: {scale.totalEndpoints.toLocaleString("en-US")} endpoints on record (
+            {scale.activeEndpoints.toLocaleString("en-US")} active), {scale.publishedPass.toLocaleString("en-US")}{" "}
+            with a published L0 pass, {scale.l1.attempts.toLocaleString("en-US")} paid purchase attempts of which{" "}
+            {scale.l1.settled.toLocaleString("en-US")} settled with an on-chain receipt
+            {scale.snapshotDate ? `, as of the ${scale.snapshotDate} catalog snapshot` : ""}. Counts as reported by{" "}
+            <code className="text-brand-deep">GET /api/v1/observatory/state</code> (<code>l1.attempts</code>,{" "}
+            <code>l1.settled</code>); they are catalog measurements, not score verdicts, and do not enter the
+            rates on this page.
+          </p>
+        )}
 
         {/* ===== 1. External usage =====
             the operator benchmark below is deliberately NOT part of these
