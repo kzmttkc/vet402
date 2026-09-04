@@ -27,6 +27,7 @@
 //     ものだけを採る。同額の無関係な transfer や、別トークンの同名イベントを
 //     決済と読まない。
 // ============================================================
+import { keccak256, toBytes } from "viem";
 import { getPublicClient } from "@/lib/chain/client";
 import { BASE_USDC_ADDRESS } from "@/lib/chain/config";
 import { isWellFormedSettlementTx } from "@/lib/validation/settlement-tx";
@@ -34,7 +35,37 @@ import { isWellFormedSettlementTx } from "@/lib/validation/settlement-tx";
 /** ERC-20 Transfer(address,address,uint256) */
 const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 
+/**
+ * EIP-3009 `AuthorizationUsed(address indexed authorizer, bytes32 indexed nonce)`
+ * ——**我々の署名とこの tx を結びつける唯一の材料**（2026-09-04 監査 P1-1）。
+ *
+ * それまでの照合は「payer→payTo の USDC Transfer が金額ちょうど」しか見ておらず、
+ * 我々の署名とも購入行とも結びついていなかった。同じ payTo × 同じ価格の
+ * endpoint は本番実測で 253 グループ・1,477 試行あり、最大 27 endpoint に
+ * 1 本の tx を使い回して全部 settled にできた。
+ *
+ * nonce は我々が randomBytes(32) で作って署名した値で、売り手には選べない。
+ * USDC は消費時にこのイベントを出すので、「その tx の中で、我々の nonce が、
+ * 我々の authorizer で使われたか」はチェーンだけで判定できる。
+ *
+ * 値は keccak で導く（ハードコードした 32 バイトは誰にも検算できない）。
+ * 本番の実レシート 2 件で実在を確認済み（2026-09-04・Base mainnet・canonical USDC）:
+ *   0x3bcba4fb5894d8aecd7be5fd287935ed19ea6dbe28e948f6402b59201a3f462c
+ *   0xcebaa481ece766ab38251fe37806ccb8a66a7f4b619fb37ca186a9fd3cdf6b28
+ * どちらも topics[1] が payer、topics[2] が nonce だった。
+ */
+export const AUTHORIZATION_USED_TOPIC = keccak256(toBytes("AuthorizationUsed(address,bytes32)"));
+
 const BASE_CHAIN_ID = 8453;
+
+/**
+ * 照合が使う EVM RPC の面（テストでは偽物を注入する）。
+ * Solana 側（settlement-verify-solana.ts の SolanaVerifyRpc）と同じ役割。
+ */
+export type EvmVerifyClient = Pick<
+  ReturnType<typeof getPublicClient>,
+  "getChainId" | "getBlockNumber" | "getTransactionReceipt" | "getBlock"
+>;
 
 /**
  * 要求する確定数。
@@ -60,6 +91,13 @@ export type SettlementVerifyResult =
         | "tx_reverted"
         | "insufficient_confirmations"
         | "no_matching_transfer"
+        // 2026-09-04 監査 P1-1。どちらも「その tx はこの購入のものではない」で、
+        // 売り手についての恒久の所見（TRANSIENT_REASONS に入れない）。
+        //   nonce_not_used  我々が署名した EIP-3009 nonce が、その tx で
+        //                   我々の authorizer によって消費されていない。
+        //   tx_hash_reused  同じ tx を別の購入行が既に決済レシートに使っている。
+        | "nonce_not_used"
+        | "tx_hash_reused"
         // Solana 経路（settlement-verify-solana.ts）。EVM の
         // insufficient_confirmations / no_matching_transfer に相当する語彙を、
         // Solana の読み方（finalized・残高差分）に合わせて分けたもの。
@@ -80,13 +118,23 @@ function topicToAddress(topic: string): string {
  * 期待値（payTo / amount / payer）は**我々が署名したときの値**を渡すこと。
  * 売り手が返した値を渡してはいけない——それでは自己申告の照合にしかならない。
  */
-export async function verifyL1Settlement(input: {
-  txHash: string;
-  network: string;
-  expectedPayTo: string;
-  expectedPayer: string;
-  expectedAmountUnits: string;
-}): Promise<SettlementVerifyResult> {
+export async function verifyL1Settlement(
+  input: {
+    txHash: string;
+    network: string;
+    expectedPayTo: string;
+    expectedPayer: string;
+    expectedAmountUnits: string;
+    /**
+     * 我々が署名した EIP-3009 の nonce（x402_l1_purchases.auth_nonce）。
+     * **これがあるときだけ**、その nonce の AuthorizationUsed を要求する。
+     * 旧行（2026-09-04 の記帳より前）は null で来るので従来の判定に落ちる——
+     * 持っていない証拠を理由に、無実の売り手を refuted にしない。
+     */
+    expectedAuthNonce?: string | null;
+  },
+  deps?: { client?: EvmVerifyClient },
+): Promise<SettlementVerifyResult> {
   const { txHash, network, expectedPayTo, expectedPayer, expectedAmountUnits } = input;
 
   // Solana の決済は署名の形も検証手順も別物なので、専用の照合器へ委譲する
@@ -108,7 +156,7 @@ export async function verifyL1Settlement(input: {
     return { ok: false, reason: "malformed_tx" };
   }
 
-  const client = getPublicClient();
+  const client: EvmVerifyClient = deps?.client ?? getPublicClient();
 
   // 1. まず「いま読んでいるのは本当に Base か」。
   let chainId: number;
@@ -182,7 +230,35 @@ export async function verifyL1Settlement(input: {
     };
   }
 
-  // 5. ブロック時刻。読めなくても照合の成否は変わらない（日次軸のためだけ）。
+  // 5. **この tx が我々のこの購入のものか**（2026-09-04 監査 P1-1）。
+  //
+  // 4 まででわかるのは「payer から payTo へ期待額の USDC が動いた tx がある」
+  // までで、それは同じ payTo・同じ価格の別の購入でも成り立つ。売り手は自分が
+  // 受け取った過去の tx ハッシュを返すだけで、払っていない購入を settled に
+  // できた。結びつけの材料は EIP-3009 の nonce——我々が randomBytes(32) で
+  // 作って署名した値で、売り手には選べず、USDC が消費時に
+  // AuthorizationUsed(authorizer, nonce) として必ず出す。
+  const expectedNonce = input.expectedAuthNonce?.trim().toLowerCase();
+  if (expectedNonce) {
+    const nonceUsed = receipt.logs.some((log) => {
+      if (log.address?.toLowerCase() !== usdcLower) return false;
+      if (log.topics[0]?.toLowerCase() !== AUTHORIZATION_USED_TOPIC) return false;
+      const authorizer = log.topics[1];
+      const nonce = log.topics[2];
+      if (!authorizer || !nonce) return false;
+      if (topicToAddress(authorizer) !== payerLower) return false;
+      return nonce.toLowerCase() === expectedNonce;
+    });
+    if (!nonceUsed) {
+      return {
+        ok: false,
+        reason: "nonce_not_used",
+        detail: `authorization ${expectedNonce} was not consumed by ${payerLower} in ${txHash}`.slice(0, 200),
+      };
+    }
+  }
+
+  // 6. ブロック時刻。読めなくても照合の成否は変わらない（日次軸のためだけ）。
   let blockTimestamp: Date | null = null;
   try {
     const block = await client.getBlock({ blockNumber: receipt.blockNumber });

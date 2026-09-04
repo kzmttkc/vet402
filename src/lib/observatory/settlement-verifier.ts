@@ -77,11 +77,16 @@ export async function runSettlementVerification(options?: {
   // オンチェーンで settled / refuted が**確定した後**だけ。以前は l1-runner が
   // 購入直後に売り手の自己申告（success:true）を verdict にして呼んでいた。
   // hook は絶対に投げない設計（registry-hook.ts）だが、注入された偽物が投げても
-  // 照合の結果は変えない。Vercel は応答後に関数を凍結するので、末尾でまとめて待つ。
-  const pendingHooks: Promise<void>[] = [];
-  const fireHook = (p: Promise<void>) => {
-    pendingHooks.push(p.catch((error) => logServerError("settlement-verifier.registry_hook", error)));
-  };
+  // 照合の結果は変えない。
+  //
+  // 2026-09-04 監査 P1-4: **逐次に待つ（並列上限 1）。** 以前は Promise を配列へ
+  // 積んで末尾で allSettled していた。hook 1 件は request → response の 2 本の
+  // オンチェーン tx を出すので、並列に走らせると同じ operator 鍵から複数の tx が
+  // 同時に飛び、nonce が衝突して片方が落ちる（本番 registry_writes は 14 行すべて
+  // failed）。日次上限の判定も、飛んでいる最中の書き込みを数えられない。
+  // 待ち時間は増えるが、この経路は既定 OFF で、ON でも日次 200 件が上限。
+  const fireHook = (p: Promise<void>): Promise<void> =>
+    p.catch((error) => logServerError("settlement-verifier.registry_hook", error));
   const summary: VerifySettlementsSummary = {
     scanned: 0,
     verified: 0,
@@ -99,7 +104,15 @@ export async function runSettlementVerification(options?: {
   const raw = await db.execute(sql`
     SELECT pu.id::text AS id, pu.tx_hash, pu.network, pu.pay_to, pu.payer,
            pu.amount_units, pu.http_status_paid, pu.payload_non_empty, pu.l2_schema,
-           pu.status, pu.endpoint_id::text AS endpoint_id, e.resource_url
+           pu.status, pu.endpoint_id::text AS endpoint_id, pu.auth_nonce, e.resource_url,
+           -- 2026-09-04 監査 P1-1: 同じ (network, lower(tx_hash)) を主張している
+           -- 他の購入行が居るか。決済 tx は 1 購入にしか属せないので、2 行以上が
+           -- 同じ tx を指していたら**どちらも** settled にできない（どちらが
+           -- 本物か我々には言えない）。チェーンを読む前に落とす。
+           (SELECT count(*) FROM x402_l1_purchases dup
+              WHERE dup.tx_hash IS NOT NULL
+                AND dup.network IS NOT DISTINCT FROM pu.network
+                AND lower(dup.tx_hash) = lower(pu.tx_hash)) AS tx_claim_count
     FROM x402_l1_purchases pu
     LEFT JOIN x402_endpoints e ON e.id = pu.endpoint_id
     WHERE pu.settlement_verified IS NULL
@@ -120,8 +133,43 @@ export async function runSettlementVerification(options?: {
     l2_schema: string | null;
     status: string;
     endpoint_id: string;
+    auth_nonce: string | null;
     resource_url: string | null;
+    tx_claim_count: number | string | null;
   }[];
+
+  type PurchaseRow = (typeof rows)[number];
+
+  /**
+   * 否定の確定（1 箇所に集約）。status を倒し、訂正ログに残し、Registry へ
+   * fail を書く。呼ぶのは「見に行って一致しなかった」ときと、
+   * 「同じ tx を別の購入が主張している」ときの 2 経路。
+   */
+  async function refute(row: PurchaseRow, reason: string, detail?: string): Promise<void> {
+    await db!
+      .update(x402L1Purchases)
+      .set({
+        status: "settle_claim_refuted",
+        settlementVerified: false,
+        settlementVerifiedAt: new Date(),
+        settlementVerifyReason: `${reason}${detail ? `: ${detail}` : ""}`.slice(0, 500),
+      })
+      .where(eq(x402L1Purchases.id, row.id));
+    summary.refuted++;
+    invalidateDecisionCache(row.endpoint_id);
+    await recordCorrection({
+      subjectType: "purchase",
+      subjectId: row.id,
+      level: "l1",
+      before: { status: row.status },
+      after: { status: "settle_claim_refuted", reason },
+      reason: "settlement_backfill",
+    }).catch(logAndSwallow("settlement-verifier.record_correction.refuted"));
+    // 否定もオンチェーンの事実（fail）。L2 は決済が確定していないので書かない。
+    await fireHook(
+      hooks.l1({ endpointId: row.endpoint_id, payTo: row.pay_to, settled: false, txHash: row.tx_hash, network: row.network }),
+    );
+  }
 
   for (const row of rows) {
     // 1件あたり最大 ~6s（RPC 3往復 + 予備）。残りが足りなければ次回へ回す。
@@ -142,12 +190,22 @@ export async function runSettlementVerification(options?: {
       continue;
     }
 
+    // 2026-09-04 監査 P1-1: 1 本の決済 tx は 1 つの購入にしか属せない。
+    // 2 行以上が同じ tx を主張していたら、どちらが本物か我々には言えないので
+    // **どちらも** settled にしない。チェーンを読む前に落とす（読んでも
+    // 「その tx は実在する」としか分からず、区別できない）。
+    if (Number(row.tx_claim_count ?? 1) > 1) {
+      await refute(row, "tx_hash_reused", `${row.tx_claim_count} purchases claim ${row.tx_hash}`);
+      continue;
+    }
+
     const result = await verify({
       txHash: row.tx_hash,
       network: row.network,
       expectedPayTo: row.pay_to,
       expectedPayer: row.payer,
       expectedAmountUnits: row.amount_units,
+      expectedAuthNonce: row.auth_nonce,
     });
 
     if (result.ok) {
@@ -185,11 +243,11 @@ export async function runSettlementVerification(options?: {
       // ERC-8004 Validation Registry（フラグOFF既定・graceful）。書けるのはここで
       // 確定した settled だけ。L2 は conform / mismatch が確定しているときだけ
       // （未検査・宣言なしは書かない）。
-      fireHook(
+      await fireHook(
         hooks.l1({ endpointId: row.endpoint_id, payTo: row.pay_to, settled: true, txHash: row.tx_hash, network: row.network }),
       );
       if (row.l2_schema === "match" || row.l2_schema === "mismatch") {
-        fireHook(
+        await fireHook(
           hooks.l2({
             endpointId: row.endpoint_id,
             payTo: row.pay_to,
@@ -236,33 +294,8 @@ export async function runSettlementVerification(options?: {
     }
 
     // 見に行って一致しなかった。売り手についての所見として確定させる。
-    await db
-      .update(x402L1Purchases)
-      .set({
-        status: "settle_claim_refuted",
-        settlementVerified: false,
-        settlementVerifiedAt: new Date(),
-        settlementVerifyReason: `${result.reason}${result.detail ? `: ${result.detail}` : ""}`.slice(0, 500),
-      })
-      .where(eq(x402L1Purchases.id, row.id));
-    summary.refuted++;
-    invalidateDecisionCache(row.endpoint_id);
-    await recordCorrection({
-      subjectType: "purchase",
-      subjectId: row.id,
-      level: "l1",
-      before: { status: row.status },
-      after: { status: "settle_claim_refuted", reason: result.reason },
-      reason: "settlement_backfill",
-    }).catch(logAndSwallow("settlement-verifier.record_correction.refuted"));
-    // 否定もオンチェーンの事実（fail）。L2 は決済が確定していないので書かない。
-    fireHook(
-      hooks.l1({ endpointId: row.endpoint_id, payTo: row.pay_to, settled: false, txHash: row.tx_hash, network: row.network }),
-    );
+    await refute(row, result.reason, result.detail);
   }
-
-  // Registry 書き込みを回収してから返す。何が失敗しても summary は変わらない。
-  await Promise.allSettled(pendingHooks);
 
   return summary;
 }

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
@@ -751,6 +752,20 @@ export const x402L1Purchases = pgTable(
     payer: text("payer"),
     /** Settlement tx hash from PAYMENT-RESPONSE — the receipt evidence. */
     txHash: text("tx_hash"),
+    /**
+     * 我々が署名したときの一回性の値（2026-09-04 監査 P1-1）。
+     *   EVM    EIP-3009 authorization の nonce（randomBytes(32) の 0x hex）
+     *   Solana 我々が生成した memo 文字列（売り手の extra.memo は使わない）
+     *
+     * なぜ列にするか: これが無いと、照合は「payer→payTo へ期待額が動いた tx が
+     * 存在する」までしか言えない。同じ payTo・同じ価格の endpoint は本番実測で
+     * 253 グループ・1,477 試行あり、売り手は自分が受け取った過去の tx を返す
+     * だけで、払っていない購入を settled にできた。nonce は我々しか作れないので、
+     * これを行に残して初めて「その tx はこの購入のもの」と言える。
+     * null は 2026-09-04 より前の行——照合は従来の判定に落ちる（持っていない
+     * 証拠を理由に、無実の売り手を refuted にしない）。
+     */
+    authNonce: text("auth_nonce"),
     /** HTTP status of the PAID retry (the delivery half of the measurement). */
     httpStatusPaid: integer("http_status_paid"),
     latencyMs: integer("latency_ms"),
@@ -774,6 +789,16 @@ export const x402L1Purchases = pgTable(
   (t) => [
     index("x402_l1_purchases_endpoint_idx").on(t.endpointId, t.attemptedAt),
     index("x402_l1_purchases_attempted_idx").on(t.attemptedAt),
+    /**
+     * 1 本の決済 tx は 1 つの購入にしか属せない（2026-09-04 監査 P1-1）。
+     * 一意制約が無かったので、同じ tx を何行にでも貼れた——最大 27 endpoint を
+     * 1 本で settled にできる状態だった（本番の重複は 0 件）。
+     * lower() なのは EVM の hex が大小どちらでも同じ tx を指すから。
+     * tx_hash IS NULL（レシート無しの試行）は多数あるので部分 index。
+     */
+    uniqueIndex("x402_l1_purchases_tx_unique")
+      .on(t.network, sql`lower(${t.txHash})`)
+      .where(sql`${t.txHash} IS NOT NULL`),
   ],
 );
 
