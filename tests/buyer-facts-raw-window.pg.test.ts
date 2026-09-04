@@ -5,11 +5,13 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 if (!TEST_DB) {
   test("buyer facts raw window (skipped: TEST_DATABASE_URL not set)", { skip: true }, () => {});
 } else {
+  assertTestDatabaseIsNotProduction(TEST_DB);
   process.env.DATABASE_URL = TEST_DB;
 
   test("buyer_facts: 畳んでも 30 日の件数・取引先数・初回観測は変わらない", async (t) => {

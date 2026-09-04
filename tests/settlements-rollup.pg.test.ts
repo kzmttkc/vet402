@@ -10,11 +10,13 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 if (!TEST_DB) {
   test("settlements rollup (skipped: TEST_DATABASE_URL not set)", { skip: true }, () => {});
 } else {
+  assertTestDatabaseIsNotProduction(TEST_DB);
   process.env.DATABASE_URL = TEST_DB;
 
   test("settlements rollup", async (t) => {

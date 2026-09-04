@@ -15,6 +15,7 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 import { randomUUID } from "node:crypto";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
@@ -22,6 +23,7 @@ const TEST_DB = process.env.TEST_DATABASE_URL;
 if (!TEST_DB) {
   test("registry failed retry (skipped: TEST_DATABASE_URL not set)", { skip: true }, () => {});
 } else {
+  assertTestDatabaseIsNotProduction(TEST_DB);
   process.env.DATABASE_URL = TEST_DB;
 
   test("failed の測定は書き直せる／submitted と pending は書かない", async (t) => {

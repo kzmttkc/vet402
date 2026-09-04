@@ -17,6 +17,7 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 import { randomUUID } from "node:crypto";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
@@ -24,6 +25,7 @@ const TEST_DB = process.env.TEST_DATABASE_URL;
 if (!TEST_DB) {
   test("settlement tx reuse (skipped: TEST_DATABASE_URL not set)", { skip: true }, () => {});
 } else {
+  assertTestDatabaseIsNotProduction(TEST_DB);
   process.env.DATABASE_URL = TEST_DB;
 
   const PAY_TO = "0x52e29e0d2aa49bfbfc548c0a9f2196f4aa51f3ea";
