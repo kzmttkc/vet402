@@ -15,6 +15,11 @@ import {
   SWEEP_WINDOW_DAYS,
 } from "@/lib/observatory/l1-runner";
 import { getUnverifiedBreakdownCached } from "@/lib/observatory/cached-reads";
+import {
+  OBSERVATORY_VOCABULARY,
+  VOCABULARY_GROUP_LABELS,
+  vocabularyJsonLd,
+} from "@/lib/observatory/vocabulary";
 import { MAX_PER_PURCHASE_UNITS } from "@/lib/observatory/x402-payer";
 import { DAILY_BUDGET_USD } from "@/lib/observatory/budget";
 
@@ -62,6 +67,8 @@ export default async function ObservatoryMethodologyPage() {
     inLanguage: "en",
   };
 
+  const vocabulary = vocabularyJsonLd(SITE_URL);
+
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
       <TrackView event="methodology_view" />
@@ -77,6 +84,12 @@ export default async function ObservatoryMethodologyPage() {
           nonce={nonce}
           suppressHydrationWarning
           dangerouslySetInnerHTML={{ __html: safeJsonLd(article) }}
+        />
+        <script
+          type="application/ld+json"
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(vocabulary) }}
         />
 
         <div className="doc-head">
@@ -104,7 +117,12 @@ export default async function ObservatoryMethodologyPage() {
           <p className="min-w-0 max-w-[62ch] text-brand">
             L0 asks whether the payment wall answers. L1 asks whether a real purchase settles. L2
             asks whether the response matches the seller&apos;s declaration. Unverified is not a
-            failure. A 0–100 score is a different API and is never an L0–L2 result.
+            failure. A 0–100 score is a different API and is never an L0–L2 result. Every word this
+            page publishes measurements in is defined once, in one line each, in{" "}
+            <a href="#vocabulary" className="underline">
+              section 10
+            </a>
+            .
           </p>
         </div>
 
@@ -428,6 +446,37 @@ export default async function ObservatoryMethodologyPage() {
           </Link>{" "}
           — the licence is not conditioned on the number being flattering to us.
         </p>
+
+        {/* 2026-09-05 AEO: 語彙の正典は src/lib/observatory/vocabulary.ts。
+            この節と DefinedTermSet JSON-LD は同じ配列から出る。上の §1–§7 は
+            同じ語を散文で展開したもので、矛盾したらどちらかではなく両方直す。 */}
+        <h2 className="sec-head" id="vocabulary">
+          <span className="sec-no">10.</span>
+          <span>Definitions, one line each</span>
+        </h2>
+        <p className="doc-p">
+          The sections above define these words in context. This index states each of them once, in
+          a single sentence, so a reader — or a machine reading this page — can take one definition
+          without reconstructing it from a paragraph. The same list is published as structured data
+          on this page and in <code>/llms-full.txt</code>.
+        </p>
+        {(Object.keys(VOCABULARY_GROUP_LABELS) as (keyof typeof VOCABULARY_GROUP_LABELS)[]).map(
+          (group) => (
+            <div key={group} className="mt-6">
+              <p className="text-brand-deep">{VOCABULARY_GROUP_LABELS[group]}</p>
+              <dl className="mt-2 max-w-[70ch]">
+                {OBSERVATORY_VOCABULARY.filter((t) => t.group === group).map((t) => (
+                  <div key={t.term} className="mt-3">
+                    <dt id={`term-${t.term}`} className="text-brand-deep">
+                      <code>{t.term}</code>
+                    </dt>
+                    <dd className="doc-p mt-1">{t.definition}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ),
+        )}
       </article>
     </main>
   );
