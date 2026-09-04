@@ -8,6 +8,10 @@
 
 # `payOrRefuse` 設計（会期前の仕様・実装は 2026-09-04 以降）
 
+> **正典は `WINDOW_PLAN.md`。この文書と食い違ったら WINDOW_PLAN が勝つ。**
+> 2026-09-05 に §2 と §3.5 が別の `PayPolicy.evidence` 型を書いていたのを是正した。
+> World「AgentKit Continuity」への言及が残っているが、**World 枠は 2026-09-03 に切っている**（WINDOW_PLAN §1）。
+
 > 決定 2026-08-25。根拠は [`fixtures.md`](./fixtures.md) の本番実測。
 > この文書は **`payOrRefuse` の仕様**であって実装ではない。支払いパス（signer / x402 settle / デモエージェント）には会期まで手を入れない。
 >
@@ -97,11 +101,16 @@ evidence: [{ level: "L1", purchase_id, url, source: "vet402" | "subgraph", query
 type PayPolicy = {
   /** 既定 70（= ALLOW ゲート）。今日のカタログでは全件を拒否する。fail-closed の既定を弱めない */
   minScore?: number;
-  /** vet402 の L1 配達台帳に対する条件。呼び手が明示したときだけ有効 */
+  /**
+   * 証拠の条件。呼び手が明示したときだけ有効。
+   * **2026-09-05 訂正**: 下は §3.5 とテストと実装が使う形。
+   * 旧 `{ minDeliveries, minSettleRate, windowDays }` はこの文書の中だけに残っていた古い形で、
+   * 実装されたことは一度も無い。同じ文書の §2 と §3.5 が別の型を書いていた。
+   */
   evidence?: {
-    minDeliveries: number;      // 例 3
-    minSettleRate: number;      // 例 0.9（settled / attempts）
-    windowDays: number;         // 例 21
+    minL1Deliveries?: number;        // vet402 自身の L1 配達台帳
+    minSubgraphReceipts?: number;    // The Graph の x402 Base subgraph
+    source?: "vet402" | "subgraph" | "both";   // 既定 "vet402"
   };
   maxAmountUnits?: bigint;      // 既定 1_000_000（= $1 USDC）
   requireChain?: string;        // 既定 "eip155:8453"
@@ -130,7 +139,7 @@ type PayPolicy = {
 
 1. **既定 policy をカタログ全体に当てる**。ALLOW が誰にも出ない現実をそのまま見せる——
    拒否 N件・署名0件。「スコアが甘いから止まらない」のではなく「証拠が無いから止まる」。
-2. **開示した policy に切り替える**: `{ evidence: { minDeliveries: 3, minSettleRate: 0.9, windowDays: 21 } }`。
+2. **開示した policy に切り替える**: `{ evidence: { minL1Deliveries: 3, source: "both" } }`。
    - 払う: `0x36038e1d…`（21日で 48/48 settled・単価 $0.02）→ 実 Base tx → attest → `/decisions` に `source: agent-demo`
    - 拒む: `agent.api.0x.org/v1/x402/…`（`0xb15a55e8…`・**L1 実績 0 件**）→ **署名しない**。
      理由コードは `insufficient_delivery_evidence`。**相手の不履行ではなく、我々の無知**である
