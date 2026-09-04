@@ -6,7 +6,7 @@ import { getDb } from "@/lib/db/client";
 import { agentPassports } from "@/lib/db/schema";
 import { parseAgentId } from "@/lib/chain/client";
 import { scoreAgentById } from "@/lib/scoring/engine";
-import { agentPassportMessage } from "@/lib/verify-message";
+import { agentPassportMessage, legacyAgentPassportMessage } from "@/lib/verify-message";
 import { logServerError } from "@/lib/util/log";
 import { verifyMessage } from "viem";
 import { loadSellerFacts } from "@/lib/decision/seller-facts";
@@ -35,12 +35,20 @@ const PASSPORT_WINDOW_MS = 60_000;
 /**
  * Reconstruct the exact message this row's signature was signed over, so a
  * third party can re-run verifyMessage without trusting us. Rows accreted
- * across three message shapes (pre-url, url-bound, and — 2026-08-18 — with an
- * `issued` line), and the DB does not record which shape was signed. Prefer
- * the most complete shape supported by the stored fields, then fall back
- * through the older shapes, returning whichever the signature actually
- * verifies against. A row's own `issued_at`/`url` gate which candidates are
- * even attempted, so an empty field never invents a line.
+ * across four message shapes (pre-url, url-bound, — 2026-08-18 — with an
+ * `issued` line, and — 2026-09-05 — with the `vet402.com` naming and domain
+ * line), and the DB does not record which shape was signed. Prefer the most
+ * complete shape supported by the stored fields, then fall back through the
+ * older shapes, returning whichever the signature actually verifies against.
+ * A row's own `issued_at`/`url` gate which candidates are even attempted, so
+ * an empty field never invents a line.
+ *
+ * 2026-09-05 note on LEGACY_MESSAGE_ACCEPT_UNTIL: that deadline governs what
+ * we will ACCEPT as a new registration. It does not govern this ladder. A row
+ * signed in 2026-08 must stay third-party-verifiable forever — dropping its
+ * shape here would not "expire" anything, it would silently publish a proof
+ * that no longer checks out. So the pre-2026-09-05 candidates stay after the
+ * write path stops taking them.
  */
 async function matchingPassportMessage(params: {
   agentId: bigint;
@@ -57,6 +65,10 @@ async function matchingPassportMessage(params: {
   if (issued) candidates.push(agentPassportMessage(agentId, wallet, name, undefined, issued));
   if (url) candidates.push(agentPassportMessage(agentId, wallet, name, url));
   candidates.push(agentPassportMessage(agentId, wallet, name));
+  if (issued && url) candidates.push(legacyAgentPassportMessage(agentId, wallet, name, url, issued));
+  if (issued) candidates.push(legacyAgentPassportMessage(agentId, wallet, name, undefined, issued));
+  if (url) candidates.push(legacyAgentPassportMessage(agentId, wallet, name, url));
+  candidates.push(legacyAgentPassportMessage(agentId, wallet, name));
 
   for (const candidate of candidates) {
     try {

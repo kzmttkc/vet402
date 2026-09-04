@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { verifyMessage } from "viem";
 import { getClientIp } from "@/lib/api/client-ip";
 import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
 import { getDb } from "@/lib/db/client";
@@ -12,7 +11,13 @@ import { logServerError } from "@/lib/util/log";
 // payeeMessage to @/lib/verify-message so this route file no longer exports a
 // shared helper (Next 16 route-type contract — a route may only export handlers).
 import { isCanonicalName } from "@/lib/validation/canonical-name";
-import { isSafeBoundUrl, isValidIssuedAt, payeeMessage } from "@/lib/verify-message";
+import {
+  isSafeBoundUrl,
+  isValidIssuedAt,
+  legacyPayeeMessage,
+  matchSignatureForm,
+  payeeMessage,
+} from "@/lib/verify-message";
 
 // N-16 — payee self-verification. Sign the canonical message (payeeMessage,
 // @/lib/verify-message) with the payee wallet; a valid signature IS the proof of
@@ -142,19 +147,31 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // 2026-09-05 (S-6): the canonical text now names vet402.com and binds the
+  // requesting domain. A signature over the pre-2026-09-05 text is still
+  // accepted until LEGACY_MESSAGE_ACCEPT_UNTIL — an integrator that built the
+  // message itself must not be broken by our copy change without warning —
+  // and after that date it is refused by NAME, not as a silent mismatch.
   const expectedMessage = payeeMessage(wallet, name, url, issued);
-  let valid = false;
-  try {
-    valid = await verifyMessage({
-      address: wallet as `0x${string}`,
-      message: expectedMessage,
-      signature: signature as `0x${string}`,
-    });
-  } catch {
-    valid = false;
+  const { matched } = await matchSignatureForm({
+    address: wallet,
+    signature,
+    current: expectedMessage,
+    legacy: legacyPayeeMessage(wallet, name, url, issued),
+  });
+  if (matched === "legacy_expired") {
+    return NextResponse.json(
+      { error: "signature_message_legacy_expired", expectedMessage },
+      { status: 400, headers: rlHeaders },
+    );
   }
-  if (!valid) {
+  if (matched === "none") {
     return NextResponse.json({ error: "signature_mismatch", expectedMessage }, { status: 400 });
+  }
+  const legacyMessage = matched === "legacy";
+  if (legacyMessage) {
+    // 移行の実測用。誰かがまだ旧本文で署名しているかは、推測ではなくログで見る。
+    console.warn(`[vouch] payee_verify_legacy_message: wallet=${wallet.toLowerCase()}`);
   }
 
   const db = getDb();
@@ -175,6 +192,13 @@ export async function POST(request: NextRequest) {
       ok: true,
       profile: `/payee/${wallet.toLowerCase()}`,
       badge: `/api/badge/${wallet.toLowerCase()}`,
+      // Present only while the pre-2026-09-05 message form is still accepted.
+      ...(legacyMessage
+        ? {
+            legacy_message: true,
+            note: "Accepted a signature over the pre-2026-09-05 message form. That form stops verifying on 2026-09-21 — re-fetch the message from GET /api/v1/payees/verify.",
+          }
+        : {}),
     });
   } catch (error) {
     if (isMissingSchemaError(error)) {

@@ -223,7 +223,11 @@ test("窓の内側でも同一メッセージの再送は replayed・二重保�
   assert.equal(rows.length, 0);
 });
 
-test("メッセージ形式は v1 で、issued が畳み込まれている", async () => {
+// 2026-09-05 (S-6/E-c): コロン区切りの単一行から改行区切りの人間可読へ。
+// `issued` が畳み込まれているという v1 からの不変条件は変わらない——
+// 変わったのは「署名画面で読めるか」だけ。実文の凍結は
+// tests/signature-domain-binding.test.ts が持つ。
+test("メッセージは人間可読な改行区切りで、issued が畳み込まれている", async () => {
   const issued = "2026-08-22T12:00:00.000Z";
   const message = contributionMessage({
     endpointId: ENDPOINT_ID,
@@ -232,5 +236,12 @@ test("メッセージ形式は v1 で、issued が畳み込まれている", asy
     latencyMs: 120,
     issued,
   });
-  assert.equal(message, `vet402:contribution:v1:${ENDPOINT_ID}:pass:402:120:${issued}`);
+  const lines = message.split("\n");
+  assert.equal(lines[0], "vet402.com — external observation");
+  assert.equal(lines[1], "domain: vet402.com");
+  assert.ok(lines.includes(`endpoint: ${ENDPOINT_ID}`));
+  assert.ok(lines.includes("verdict: pass"));
+  assert.ok(lines.includes("http status: 402"));
+  assert.ok(lines.includes("latency: 120 ms"));
+  assert.ok(lines.includes(`issued: ${issued} (valid 10 minutes)`));
 });

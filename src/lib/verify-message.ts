@@ -15,9 +15,96 @@
 // by every caller AND here as a defense-in-depth backstop — the throw guarantees
 // a non-canonical name can never be folded into a canonical message even via a
 // future caller.
+import { verifyMessage } from "viem";
 import { isCanonicalName } from "@/lib/validation/canonical-name";
 
 const URL_MAX_LENGTH = 200;
+
+/**
+ * 2026-09-05 (S-6 / KC-B). Every signed message now names the site that is
+ * asking. Before this, the payee/passport text began `Vouch …` — a product
+ * name that appears nowhere on vet402.com — and no message carried the
+ * requesting origin at all, so a phishing site serving the identical text was
+ * indistinguishable in the wallet's signing view. Two fixed lines fix that:
+ *
+ *   line 1: `vet402.com — <purpose>`   ← who is asking, in the name on the URL bar
+ *   line 2: `domain: vet402.com`       ← machine-checkable origin binding
+ *
+ * and every message ends with a sentence saying what the signature does and
+ * that it moves no funds. `issued` additionally states its own 10-minute
+ * validity, because a signer who does not know the window reads
+ * `signature_expired` as a bug.
+ *
+ * This is a human-readable EIP-191 surface, not EIP-712: the domain line is
+ * read by a person, and by our own verifier only in the sense that a message
+ * without it is simply not the message we build.
+ */
+export const SIGNING_DOMAIN = "vet402.com";
+
+/** 1 行目の名乗り。5 面すべてがこれで始まる。 */
+function titleLine(purpose: string): string {
+  return `${SIGNING_DOMAIN} — ${purpose}`;
+}
+
+/** 2 行目のオリジン束縛。全面必須。 */
+const DOMAIN_LINE = `domain: ${SIGNING_DOMAIN}`;
+
+/**
+ * 旧形式（〜2026-09-05）の署名を受理する期限。これを過ぎたら現行形式だけ。
+ *
+ * WHY 互換期間があるか: 署名本文は SDK や外部の実装が自前で組み立てられる
+ * 公開の契約である。切り替えた瞬間に旧本文で署名した正当な相手が
+ * `signature_mismatch` を食う——「壊れて見えない」失敗になる。だから
+ * 期限つきで受理し、期限後は専用のコード
+ * (`signature_message_legacy_expired`) で「あなたは旧形式で署名した」と
+ * 名指しで返す。無言の mismatch にしない。
+ *
+ * 期限が来たら legacy* ビルダーと matchSignatureForm の legacy 分岐を消す。
+ */
+export const LEGACY_MESSAGE_ACCEPT_UNTIL = Date.parse("2026-09-21T00:00:00.000Z");
+
+export type SignatureFormMatch = {
+  /**
+   *  - "current":        現行形式で署名されている
+   *  - "legacy":         旧形式だが互換期限の内側——受理し、legacy_message として記録する
+   *  - "legacy_expired": 旧形式で、期限切れ——拒否するが理由は名指しする
+   *  - "none":           どちらでもない（署名なし・別人・別本文を含む）
+   */
+  matched: "current" | "legacy" | "legacy_expired" | "none";
+};
+
+/**
+ * `signature` が current / legacy どちらの本文に対するものかを判定する。
+ * fail-closed: 復元に失敗した場合・例外はすべて "none"。
+ *
+ * `now` を引数に取るのは、互換期限のテストを実時計に依存させないため
+ * （「今日は通るが 9/21 に赤くなるテスト」を書かない）。
+ */
+export async function matchSignatureForm(params: {
+  address: string;
+  signature: string | null | undefined;
+  current: string;
+  legacy: string;
+  now?: number;
+}): Promise<SignatureFormMatch> {
+  const { address, signature, current, legacy } = params;
+  if (!signature) return { matched: "none" };
+  const verify = async (message: string): Promise<boolean> => {
+    try {
+      return await verifyMessage({
+        address: address as `0x${string}`,
+        message,
+        signature: signature as `0x${string}`,
+      });
+    } catch {
+      return false;
+    }
+  };
+  if (await verify(current)) return { matched: "current" };
+  if (current === legacy || !(await verify(legacy))) return { matched: "none" };
+  const now = params.now ?? Date.now();
+  return { matched: now < LEGACY_MESSAGE_ACCEPT_UNTIL ? "legacy" : "legacy_expired" };
+}
 
 /**
  * Profile URLs that may be folded into a signed message. Same control-char
@@ -81,7 +168,8 @@ export function payeeMessage(wallet: string, name: string, url?: string, issuedA
     throw new Error("payeeMessage: non-canonical name would break the canonical message");
   }
   const lines = [
-    "Vouch verified payee registration",
+    titleLine("verified payee registration"),
+    DOMAIN_LINE,
     `wallet: ${wallet.toLowerCase()}`,
     `name: ${name}`,
   ];
@@ -91,6 +179,41 @@ export function payeeMessage(wallet: string, name: string, url?: string, issuedA
   }
   if (issuedAt) {
     assertIssuedLine(issuedAt, "payeeMessage");
+    lines.push(`issued: ${issuedAt} (valid 10 minutes)`);
+  }
+  lines.push(
+    "This signature proves control of the wallet above. It moves no funds and grants no spending approval.",
+  );
+  return lines.join("\n");
+}
+
+/**
+ * LEGACY (〜2026-09-05, delete after LEGACY_MESSAGE_ACCEPT_UNTIL) — the exact
+ * text this endpoint asked for before the domain binding landed. Frozen: it
+ * exists only so a signature produced against the old contract still verifies
+ * during the migration window, and so the passport read path can reconstruct
+ * rows signed under it. Nothing new is ever issued in this shape.
+ */
+export function legacyPayeeMessage(
+  wallet: string,
+  name: string,
+  url?: string,
+  issuedAt?: string,
+): string {
+  if (!isCanonicalName(name)) {
+    throw new Error("legacyPayeeMessage: non-canonical name would break the canonical message");
+  }
+  const lines = [
+    "Vouch verified payee registration",
+    `wallet: ${wallet.toLowerCase()}`,
+    `name: ${name}`,
+  ];
+  if (url) {
+    assertSafeUrlLine(url, "legacyPayeeMessage");
+    lines.push(`url: ${url}`);
+  }
+  if (issuedAt) {
+    assertIssuedLine(issuedAt, "legacyPayeeMessage");
     lines.push(`issued: ${issuedAt}`);
   }
   lines.push("This signature only proves control of the wallet above.");
@@ -107,6 +230,17 @@ export function payeeMessage(wallet: string, name: string, url?: string, issuedA
  * injection surface exists here.
  */
 export function observatoryWatchMessage(wallet: string, apiKeyId: string): string {
+  return [
+    titleLine("observatory watch registration"),
+    DOMAIN_LINE,
+    `wallet: ${wallet.toLowerCase()}`,
+    `apiKey: ${apiKeyId}`,
+    "This signature authorizes delisting notifications for endpoints paying the wallet above. It moves no funds.",
+  ].join("\n");
+}
+
+/** LEGACY (〜2026-09-05) — see legacyPayeeMessage. Frozen. */
+export function legacyObservatoryWatchMessage(wallet: string, apiKeyId: string): string {
   return [
     "vet402 observatory watch registration",
     `wallet: ${wallet.toLowerCase()}`,
@@ -126,7 +260,8 @@ export function agentPassportMessage(
     throw new Error("agentPassportMessage: non-canonical name would break the canonical message");
   }
   const lines = [
-    "Vouch agent passport registration",
+    titleLine("agent passport registration"),
+    DOMAIN_LINE,
     `agentId: ${agentId.toString()}`,
     `wallet: ${wallet.toLowerCase()}`,
     `name: ${name}`,
@@ -137,6 +272,37 @@ export function agentPassportMessage(
   }
   if (issuedAt) {
     assertIssuedLine(issuedAt, "agentPassportMessage");
+    lines.push(`issued: ${issuedAt} (valid 10 minutes)`);
+  }
+  lines.push(
+    "This signature proves control of the wallet above. It moves no funds and grants no spending approval.",
+  );
+  return lines.join("\n");
+}
+
+/** LEGACY (〜2026-09-05) — see legacyPayeeMessage. Frozen. */
+export function legacyAgentPassportMessage(
+  agentId: bigint,
+  wallet: string,
+  name: string,
+  url?: string,
+  issuedAt?: string,
+): string {
+  if (!isCanonicalName(name)) {
+    throw new Error("legacyAgentPassportMessage: non-canonical name would break the canonical message");
+  }
+  const lines = [
+    "Vouch agent passport registration",
+    `agentId: ${agentId.toString()}`,
+    `wallet: ${wallet.toLowerCase()}`,
+    `name: ${name}`,
+  ];
+  if (url) {
+    assertSafeUrlLine(url, "legacyAgentPassportMessage");
+    lines.push(`url: ${url}`);
+  }
+  if (issuedAt) {
+    assertIssuedLine(issuedAt, "legacyAgentPassportMessage");
     lines.push(`issued: ${issuedAt}`);
   }
   lines.push("This signature only proves control of the wallet above.");

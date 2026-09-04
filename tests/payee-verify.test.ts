@@ -55,20 +55,25 @@ test("isCanonicalName rejects angle brackets (defense in depth against future un
   assert.equal(isCanonicalName("Acme Payments, Inc."), true);
 });
 
-test("payeeMessage produces exactly 4 lines for a canonical name", () => {
+// 2026-09-05 (S-6): 4 行 → 5 行。増えたのは 1 行目の名乗り
+// (`vet402.com — verified payee registration`) と 2 行目の `domain:` で、
+// どちらも固定行。可変値（wallet / name）が 1 行ずつという構造は不変。
+test("payeeMessage produces exactly 5 lines for a canonical name", () => {
   const msg = payeeMessage("0xABCDEF0000000000000000000000000000000001", "Acme Payments");
   const lines = msg.split("\n");
-  assert.equal(lines.length, 4);
+  assert.equal(lines.length, 5);
+  assert.equal(lines[0], "vet402.com — verified payee registration");
+  assert.equal(lines[1], "domain: vet402.com");
   // The wallet must be lowercased and appear on exactly one line.
   assert.equal(lines.filter((l) => l.startsWith("wallet: ")).length, 1);
-  assert.ok(lines[1]!.endsWith("0xabcdef0000000000000000000000000000000001"));
+  assert.ok(lines[2]!.endsWith("0xabcdef0000000000000000000000000000000001"));
 });
 
 test("payeeMessage binds https url into the signed text so a stolen signature cannot overwrite it", () => {
   const wallet = "0xABCDEF0000000000000000000000000000000001";
   const withUrl = payeeMessage(wallet, "Acme Payments", "https://acme.example/x402");
   assert.ok(withUrl.includes("\nurl: https://acme.example/x402\n"));
-  assert.equal(withUrl.split("\n").length, 5);
+  assert.equal(withUrl.split("\n").length, 6);
   const withoutUrl = payeeMessage(wallet, "Acme Payments");
   assert.equal(withoutUrl.includes("\nurl:"), false);
   assert.notEqual(withUrl, withoutUrl);

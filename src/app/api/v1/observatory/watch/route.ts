@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { verifyMessage } from "viem";
 import { and, eq } from "drizzle-orm";
 import { authorizeApiRequest, withRateLimitHeaders } from "@/lib/api/guard";
 import { getDb } from "@/lib/db/client";
 import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { x402Endpoints, x402PayeeWatchers } from "@/lib/db/schema";
 import { isValidAddress } from "@/lib/chain/client";
-import { observatoryWatchMessage } from "@/lib/verify-message";
+import {
+  legacyObservatoryWatchMessage,
+  matchSignatureForm,
+  observatoryWatchMessage,
+} from "@/lib/verify-message";
 import { logServerError } from "@/lib/util/log";
 
 /**
@@ -105,21 +108,30 @@ export async function POST(request: NextRequest) {
   // Proof of wallet control: EIP-191 signature over the canonical message
   // binding wallet AND this api key. A signature for another key is invalid
   // here by construction — replaying it cannot route someone else's alerts.
-  let valid = false;
-  try {
-    valid = await verifyMessage({
-      address: normalized as `0x${string}`,
-      message: observatoryWatchMessage(normalized, auth.ctx.apiKeyId),
-      signature: signature as `0x${string}`,
-    });
-  } catch {
-    valid = false;
+  // 2026-09-05 (S-6): the message now leads with `vet402.com — …` and carries a
+  // domain line. The pre-2026-09-05 text is accepted until
+  // LEGACY_MESSAGE_ACCEPT_UNTIL, then refused by name.
+  const { matched } = await matchSignatureForm({
+    address: normalized,
+    signature,
+    current: observatoryWatchMessage(normalized, auth.ctx.apiKeyId),
+    legacy: legacyObservatoryWatchMessage(normalized, auth.ctx.apiKeyId),
+  });
+  if (matched === "legacy_expired") {
+    return withRateLimitHeaders(
+      NextResponse.json({ error: "signature_message_legacy_expired" }, { status: 401 }),
+      auth.ctx.rateLimit,
+    );
   }
-  if (!valid) {
+  if (matched === "none") {
     return withRateLimitHeaders(
       NextResponse.json({ error: "invalid_signature" }, { status: 401 }),
       auth.ctx.rateLimit,
     );
+  }
+  const legacyMessage = matched === "legacy";
+  if (legacyMessage) {
+    console.warn(`[vouch] observatory_watch_legacy_message: apiKeyId=${auth.ctx.apiKeyId}`);
   }
 
   const db = getDb();
@@ -152,6 +164,8 @@ export async function POST(request: NextRequest) {
         ok: true,
         wallet: normalized,
         note: "endpoint.delisted events for endpoints paying this wallet will be delivered to this key's webhooks subscribed to that event.",
+        // Present only while the pre-2026-09-05 message form is still accepted.
+        ...(legacyMessage ? { legacy_message: true } : {}),
       }),
       auth.ctx.rateLimit,
     );
