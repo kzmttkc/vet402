@@ -57,10 +57,6 @@
       "path": "/api/cron/index-settlements"
     },
     {
-      "path": "/api/cron/settlements-rollup",
-      "schedule": "30 16 * * *"
-    },
-    {
       "path": "/api/cron/notify-subscribers",
       "schedule": "0 15 * * *"
     }
