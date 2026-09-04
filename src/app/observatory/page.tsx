@@ -386,12 +386,13 @@ export default async function ObservatoryPage({
         <p className="doc-p">
           <strong>Order.</strong> Endpoints with at least one settled L1 purchase first, then measured
           endpoints (pass / fail), then by observed call volume (catalog-reported, last 30 days).{" "}
-          <strong>L1</strong> is settled / paid attempts for that endpoint; <code>—</code> means no purchase
-          was attempted. When a third number precedes it (<code>delivered · settled/attempts</code>), delivered
-          counts paid retries that answered 2xx, which is not the same as settled: a receipt can arrive
-          with an HTTP 400 body, and goods can arrive with no receipt. Per-endpoint counts use the same
-          paid-attempt denominator as the totals reported by <code>/api/v1/observatory/state</code>. The{" "}
-          <em>[receipts]</em> entry under Figure 1 keeps only rows with a receipt.
+          <strong>L1</strong> is shown as <code>delivered · settled / attempts</code> for that endpoint;{" "}
+          <code>—</code> means no purchase was attempted. <strong>settled</strong> is the transfer vet402
+          re-read on-chain; <strong>delivered</strong> is a settled attempt whose paid request also
+          answered <code>2xx</code>. A settled attempt that answered 4xx or 5xx moved money without
+          returning the thing being sold, so it counts once and not twice. Per-endpoint counts use the
+          same paid-attempt denominator as the totals reported by <code>/api/v1/observatory/state</code>.
+          The <em>[receipts]</em> entry under Figure 1 keeps only rows with a receipt.
         </p>
         <p className="doc-p">
           <strong>Snapshot line.</strong> <em>fetched</em> is the number of raw catalog items received across

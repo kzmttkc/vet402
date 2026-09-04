@@ -625,10 +625,11 @@ export default async function Home() {
             caption={
               <>
                 Endpoints at each level of evidence
-                {stats.latestSnapshot ? ` as of the ${stats.latestSnapshot.snapshotDate} catalog snapshot` : ""}. On record
-                includes delisted entries; {stats.activeEndpoints.toLocaleString()} are active. Bars are proportional to the
-                first row. L1 counts endpoints where at least one paid attempt returned an on-chain receipt, as reported by{" "}
-                <code>/api/v1/observatory/state</code>.
+                {stats.latestSnapshot ? ` as of the ${stats.latestSnapshot.snapshotDate} catalog snapshot` : ""}. Bars are
+                proportional to the first row. The first row is every endpoint on record, including the{" "}
+                {stats.delistedEndpoints.toLocaleString()} no longer listed in the catalog;{" "}
+                {stats.activeEndpoints.toLocaleString()} are active. L1 counts endpoints where at least one paid
+                attempt returned an on-chain receipt, as reported by <code>/api/v1/observatory/state</code>.
               </>
             }
           />

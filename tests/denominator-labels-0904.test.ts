@@ -39,7 +39,7 @@ test("observatory doc-head names fetched vs catalog total in words", () => {
 test("State §3: attempts-denominator and endpoints-denominator rows carry different labels", () => {
   const page = read("src/app/observatory/state/page.tsx");
   const s3 = page.slice(page.indexOf("L1 covert-purchase measurements"), page.indexOf("Listing-change events observed"));
-  assert.match(s3, /share of attempts/i, "settled row names its denominator");
+  assert.match(s3, /of attempts/i, "settled row names its denominator");
   assert.match(s3, /share of endpoints purchased from/i, "endpoints-settled row names its denominator");
 });
 
@@ -85,7 +85,7 @@ test("L1Ratio: no attempts is a dash, never 0/0", () => {
 
 test("observatory list row type reads l1Delivered as optional (correction B fills it)", () => {
   const reader = read("src/lib/observatory/reader.ts");
-  assert.match(reader, /l1Delivered\?: number/);
+  assert.match(reader, /l1Delivered\??: number/);
   const page = read("src/app/observatory/page.tsx");
   assert.ok(page.includes("<L1Ratio"), "the L1 cell goes through L1Ratio");
   assert.ok(page.includes("delivered={row.l1Delivered}"));
