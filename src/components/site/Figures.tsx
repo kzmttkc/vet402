@@ -174,6 +174,32 @@ export function SettleGauge({ n, settled, attempts, caption }: { n: number; sett
   );
 }
 
+/**
+ * 観測所の L1 セル。settled / attempts に、分かるときだけ delivered を前置する
+ * （2026-09-04 監査 E: settled と delivered は別の数。受領証はあるが HTTP 400 の行がある）。
+ * 形は `delivered · settled/attempts`。attempts 0 は「—」——0/0 は率ではない。
+ */
+export function L1Ratio({ settled, attempts, delivered }: { settled: number; attempts: number; delivered?: number }) {
+  if (attempts === 0) return <>—</>;
+  // Tailwind は文字列リテラルしか拾わない——BLOCK を補間しない。
+  const color = settled > 0 ? "text-brand-deep" : "text-[#9f0712]";
+  const title =
+    delivered === undefined
+      ? `${settled} settled with a receipt of ${attempts} paid attempts`
+      : `${delivered} delivered (paid retry answered 2xx) · ${settled} settled with a receipt of ${attempts} paid attempts`;
+  return (
+    <span className={`tabular-nums ${color}`} title={title}>
+      {delivered !== undefined && (
+        <>
+          <span className="text-brand">{delivered}</span>
+          <span className="text-brand-lift"> · </span>
+        </>
+      )}
+      {settled}/{attempts}
+    </span>
+  );
+}
+
 /** プローブの時間軸。最初の点から最後の点まで 1 本の線、各プローブを判定の記号で置く。
  *  記号は SVG を伸縮させず HTML で絶対配置する（390px でも記号の大きさが変わらない）。
  *  2026-09-02 P2: 直前の点と幅の 3%（390px の紙面で記号幅 10px 相当）未満なら 1 段下へ置く。 */

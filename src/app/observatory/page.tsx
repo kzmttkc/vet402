@@ -10,7 +10,7 @@ import { getObservatoryOverview, getObservatoryStats } from "@/lib/observatory/r
 import { parseObservatorySearchParams, observatoryHref } from "@/lib/observatory/query";
 import { chainLabel } from "@/lib/observatory/chains";
 import TrackView from "@/components/site/TrackView";
-import { VerdictShareBar, VerdictWord } from "@/components/site/Figures";
+import { L1Ratio, VerdictShareBar, VerdictWord } from "@/components/site/Figures";
 
 /**
  * /observatory — the L0 fact table over the x402 catalog (design §5).
@@ -115,10 +115,18 @@ export default async function ObservatoryPage({
               {overview.latestSnapshot ? (
                 <>
                   {/* 1 行に収める（"Catalog snapshot: … (N of N fetched)" は 2 行に折れていた）。数字はそのまま。 */}
+                  {/* 2026-09-04 監査 E: 「16,260 / 16,182」は何割る何か分からず、しかも左が大きい。
+                      左は catalog-source.ts の fetchedCount＝ページ横断で受け取った生件数（resource_key
+                      で重複を畳む前）、右は totalCount＝カタログが pagination.total で自己申告した総数。
+                      重複 URL が正規化で 1 本に畳まれるので、生件数が総数を超えうる。語で言う。 */}
                   Snapshot{" "}
                   <span className="text-signal">{overview.latestSnapshot.snapshotDate}</span>{" "}
-                  · {overview.latestSnapshot.fetchedCount.toLocaleString()}/
-                  {overview.latestSnapshot.totalCount.toLocaleString()}
+                  <span
+                    title={`${overview.latestSnapshot.fetchedCount.toLocaleString()} raw catalog items received across pages, before duplicate URLs collapse into one key; the catalog itself reports ${overview.latestSnapshot.totalCount.toLocaleString()}. See section 2.`}
+                  >
+                    · fetched {overview.latestSnapshot.fetchedCount.toLocaleString()} of catalog{" "}
+                    {overview.latestSnapshot.totalCount.toLocaleString()}
+                  </span>
                 </>
               ) : (
                 "Catalog snapshot: none yet"
@@ -230,8 +238,10 @@ export default async function ObservatoryPage({
             }
             caption={
               <>
-                Published L0 verdict, {stats.totalEndpoints.toLocaleString()} endpoints on record. Select a legend entry to
-                filter the table.
+                Published L0 verdict, {stats.totalEndpoints.toLocaleString()} endpoints on record (includes
+                delisted; {stats.activeEndpoints.toLocaleString()} active). Receipts count endpoints with at
+                least one settled purchase, as reported by <code>/api/v1/observatory/state</code>. Select a
+                legend entry to filter the table.
               </>
             }
           />
@@ -296,13 +306,9 @@ export default async function ObservatoryPage({
                       <VerdictWord verdict={row.publishedVerdict} />
                     </td>
                     <td className="num whitespace-nowrap">
-                      {row.l1Attempts === 0 ? (
-                        "—"
-                      ) : (
-                        <span className={row.l1Settled > 0 ? "text-brand-deep" : "text-[#9f0712]"}>
-                          {row.l1Settled}/{row.l1Attempts}
-                        </span>
-                      )}
+                      {/* 2026-09-04 監査 E: delivered（品が来た）と settled（受領証あり）は別の数。
+                          reader が l1Delivered を返すようになったら `delivered · settled/attempts`。 */}
+                      <L1Ratio settled={row.l1Settled} attempts={row.l1Attempts} delivered={row.l1Delivered} />
                     </td>
                     <td className="whitespace-nowrap">{fmtDate(row.lastProbedAt)}</td>
                     {/* 2026-09-02 可用性監査 P2: eip155:8453 と base が混在。chainLabel で同じ鎖は同じ語に。 */}
@@ -370,7 +376,18 @@ export default async function ObservatoryPage({
           <strong>Order.</strong> Endpoints with at least one settled L1 purchase first, then measured
           endpoints (pass / fail), then by observed call volume (catalog-reported, last 30 days).{" "}
           <strong>L1</strong> is settled / paid attempts for that endpoint; <code>—</code> means no purchase
-          was attempted. The <em>[receipts]</em> entry under Figure 1 keeps only rows with a receipt.
+          was attempted. When a third number precedes it (<code>delivered · settled/attempts</code>), delivered
+          counts paid retries that answered 2xx, which is not the same as settled: a receipt can arrive
+          with an HTTP 400 body, and goods can arrive with no receipt. Per-endpoint counts use the same
+          paid-attempt denominator as the totals reported by <code>/api/v1/observatory/state</code>. The{" "}
+          <em>[receipts]</em> entry under Figure 1 keeps only rows with a receipt.
+        </p>
+        <p className="doc-p">
+          <strong>Snapshot line.</strong> <em>fetched</em> is the number of raw catalog items received across
+          pages, counted before duplicate URLs collapse into one endpoint key; <em>catalog</em> is the total
+          the catalog reports about itself. Fetched can exceed the catalog total for that reason, and a fetch
+          below the total is incomplete: no delisting judgement is made on such a day. Endpoints on record
+          (Figure 1) include delisted entries; the Catalog column says which are still listed.
         </p>
         <p className="doc-p">
           <strong>Catalog</strong> is presence in the public discovery catalog: <code>active</code>{" "}

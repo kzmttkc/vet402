@@ -41,6 +41,11 @@ export type ObservatoryListRow = {
   l1Settled: number;
   /** L1 paid attempts (same denominator as the endpoint page and State of x402). */
   l1Attempts: number;
+  /**
+   * 2026-09-04 監査 E: settled（受領証あり）と delivered（有料再試行が 2xx で品が来た）は別の数。
+   * 集計は是正 B が足す。undefined の間、表示は従来の settled/attempts のまま。
+   */
+  l1Delivered?: number;
 };
 
 export type ObservatoryOverview = {
