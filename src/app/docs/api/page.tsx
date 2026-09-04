@@ -170,27 +170,27 @@ const endpoints: Endpoint[] = [
   {
     method: "GET",
     path: "/api/v1/payees/verify?wallet=0x…&name=Acme+API",
-    note: "Preview the exact canonical message for a (wallet, name) pair before signing — no API key. Pass url= as well when the profile will include a link; that URL is bound into the signature. The same message is echoed back in a failed POST's expectedMessage field.",
-    response: `{ "message": "Vouch verified payee registration\\nwallet: 0x…\\nname: Acme API\\nThis signature only proves control of the wallet above." }`,
+    note: "Preview the exact canonical message for a (wallet, name) pair before signing — no API key. Pass url= as well when the profile will include a link; that URL is bound into the signature. The same message is echoed back in a failed POST's expectedMessage field. Fetch it rather than building it locally: since 2026-09-05 the message names the requesting domain, and signatures over the older form stop verifying on 2026-09-21 (signature_message_legacy_expired).",
+    response: `{ "message": "vet402.com — verified payee registration\\ndomain: vet402.com\\nwallet: 0x…\\nname: Acme API\\nissued: 2026-09-05T12:00:00.000Z (valid 10 minutes)\\nThis signature proves control of the wallet above. It moves no funds and grants no spending approval.", "issued": "2026-09-05T12:00:00.000Z" }`,
   },
   {
     method: "POST",
     path: "/api/v1/payees/verify",
     note: "Verified payee registration — free, no API key. Sign the canonical message above (fetch it via GET on this same path, including url= when you will send one) with the payee wallet; a valid signature proves control and publishes /payee/:address plus an embeddable badge at /api/badge/:address. Verification proves wallet control only; scores stay independent.",
-    request: `{ "wallet": "0x…", "name": "Acme API", "url": "https://…", "signature": "0x…" }`,
+    request: `{ "wallet": "0x…", "name": "Acme API", "url": "https://…", "issued": "2026-09-05T12:00:00.000Z", "signature": "0x…" }`,
     response: `{ "ok": true, "profile": "/payee/0x…", "badge": "/api/badge/0x…" }`,
   },
   {
     method: "GET",
     path: "/api/v1/agents/verify?agentId=42&name=Acme+Agent",
     note: "Agent-side twin of payee verify. Preview the exact canonical message to sign for (agentId, name) — no API key. The agent's on-chain wallet is resolved and returned so you sign with the right key.",
-    response: `{ "agentId": "42", "wallet": "0x…", "message": "Vouch agent passport registration\\nagentId: 42\\nwallet: 0x…\\nname: Acme Agent\\nThis signature only proves control of the wallet above." }`,
+    response: `{ "agentId": "42", "wallet": "0x…", "message": "vet402.com — agent passport registration\\ndomain: vet402.com\\nagentId: 42\\nwallet: 0x…\\nname: Acme Agent\\nissued: 2026-09-05T12:00:00.000Z (valid 10 minutes)\\nThis signature proves control of the wallet above. It moves no funds and grants no spending approval.", "issued": "2026-09-05T12:00:00.000Z" }`,
   },
   {
     method: "POST",
     path: "/api/v1/agents/verify",
     note: "Trust-passport registration — free, no API key. Sign the canonical message above with the agent's on-chain wallet (getAgentWallet(agentId)); a valid signature plus the on-chain wallet binding proves control of the agent identity and publishes /agent/:agentId, a machine-readable passport at /api/v1/agents/:agentId/passport, and a badge at /api/badge/agent/:agentId.",
-    request: `{ "agentId": "42", "name": "Acme Agent", "url": "https://…", "signature": "0x…" }`,
+    request: `{ "agentId": "42", "name": "Acme Agent", "url": "https://…", "issued": "2026-09-05T12:00:00.000Z", "signature": "0x…" }`,
     response: `{ "ok": true, "agentId": "42", "wallet": "0x…", "profile": "/agent/42", "badge": "/api/badge/agent/42" }`,
   },
   {
