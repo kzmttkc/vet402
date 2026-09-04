@@ -60,11 +60,21 @@ export async function upsertSettlement(row: SettlementRow): Promise<"inserted" |
 export async function knownPurchaseIds(ids: readonly string[]): Promise<Set<string>> {
   const db = getDb();
   if (!db || ids.length === 0) return new Set();
-  const rows = rowsOf<{ purchase_id: string }>(
-    // drizzle は JS 配列をタプル ($1, $2) に展開するので ARRAY[...] を明示する
-    await db.execute(sql`SELECT purchase_id FROM settlements WHERE purchase_id = ANY(ARRAY[${sql.join(ids.map((i) => sql`${i}`), sql`, `)}]::text[])`),
-  );
-  return new Set(rows.map((r) => r.purchase_id));
+  // 2026-09-04 監査 D（P0）: ARRAY[$1,…,$n] は id 1 件につきパラメータ 1 個。neon-http は
+  // **パラメータ 32,767 個で落ちる**（32,768 で "Database request failed" を実測）。1 スライスの
+  // ログがそれを超えた 9/2 20:43 UTC 以降、同じ窓で 17 回連続失敗し、ok:true で報告されていた。
+  // JSON 文字列 1 パラメータで渡し、DB 側で展開する。件数に上限を持たない。
+  const out = new Set<string>();
+  for (let i = 0; i < ids.length; i += 20_000) {
+    const chunk = JSON.stringify(ids.slice(i, i + 20_000));
+    const rows = rowsOf<{ purchase_id: string }>(
+      await db.execute(
+        sql`SELECT purchase_id FROM settlements WHERE purchase_id = ANY(SELECT jsonb_array_elements_text(${chunk}::jsonb))`,
+      ),
+    );
+    for (const r of rows) out.add(r.purchase_id);
+  }
+  return out;
 }
 
 /**

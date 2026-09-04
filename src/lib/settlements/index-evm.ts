@@ -235,7 +235,9 @@ export async function indexEvm(options: { budgetMs?: number; classifier?: WashCl
     try {
       out.push(await indexEvmChain(chain, { ...options, budgetMs: perChain }));
     } catch (error) {
-      out.push({ chain: chain.caip2, skipped: `error:${error instanceof Error ? error.message.slice(0, 120) : String(error)}`, payees: 0, logs: 0, inserted: 0, updated: 0 });
+      // 2026-09-04: 原因文字列を切らない（120 字で切って原因が読めなかった）。呼び手は
+      // `skipped` が error: で始まる chain を「失敗」と数えて ok:false にする。
+      out.push({ chain: chain.caip2, skipped: `error:${error instanceof Error ? error.message : String(error)}`, payees: 0, logs: 0, inserted: 0, updated: 0 });
     }
   }
   return out;

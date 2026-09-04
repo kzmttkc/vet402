@@ -161,6 +161,23 @@ export async function runDeepHealthChecks(): Promise<DeepHealthResult> {
     checks.agent_wallet_index = "error";
   }
 
+  // 決済索引（§7.2）の停滞。2026-09-04 監査 D: 9/2 20:43 UTC から 17 回連続で失敗していたのに
+  // ルートも launchd も ok:true を返し、deep health も見ていなかったので 39 時間素通りした。
+  // 1 日分（43,200 ブロック）を超えて遅れていたら degraded。
+  try {
+    const settlementsCheckpoint = await getIndexerCheckpoint("settlements:eip155:8453");
+    if (settlementsCheckpoint === null) {
+      checks.settlements_index = "unconfigured";
+    } else {
+      const behind = liveTip !== undefined ? liveTip - settlementsCheckpoint : null;
+      checks.settlements_index_blocks_behind = behind?.toString() ?? "unknown";
+      checks.settlements_index = behind !== null && behind > 43_200n ? "lagging" : "ok";
+      if (behind !== null && behind > 43_200n) criticalFailure = true;
+    }
+  } catch {
+    checks.settlements_index = "error";
+  }
+
   return {
     // A cautious-but-working score is not "ok" — it means an upstream is down
     // and every verdict it produces is being forced conservative.
