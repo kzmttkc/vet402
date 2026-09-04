@@ -40,17 +40,17 @@ export const FAQS: FaqItem[] = [
   {
     question: "Is there an established competitor doing this already?",
     answer:
-      "Not as a dedicated category yet. x402 and ERC-8004 only shipped in 2025, so \"score a payee before an agent pays them, specifically for x402 machine payments\" isn't a shelf with incumbents on it the way wallet AML screening or credit scoring is. General crypto wallet-risk tools score addresses for sanctions and fraud exposure, not for x402 payment trust; general agent-identity and reputation projects don't yet gate a payment decision in the request path. We checked this directly rather than assuming it: running vet402's own query through independent AI answer engines returned no vendor at all for \"payee trust API for x402\" — not vet402, not a competitor. That cuts both ways. There's no incumbent to unseat, but it also means the need is still being proven out as x402 transaction volume grows, not a solved problem we're improving on.",
+      "Not as a dedicated category yet. x402 and ERC-8004 only shipped in 2025, so \"score a payee before an agent pays them, specifically for x402 machine payments\" isn't a shelf with incumbents on it the way wallet AML screening or credit scoring is. General crypto wallet-risk tools score addresses for sanctions and fraud exposure, not for x402 payment trust; general agent-identity and reputation projects don't yet gate a payment decision in the request path. Independent measurement of x402 is not empty, and it would be wrong to imply it is: probe402 is a dedicated x402 observatory that probes a catalog of its own (16,118 endpoints as of 2026-09-04), and on 2026-09-03 it published a finding about vet402's own probe cadence that was correct. What vet402 does that we have not found elsewhere is buy from the endpoint with its own funds and publish the receipt, so the record is settle-through evidence rather than liveness alone. There's no incumbent to unseat on the paid-decision side, but that also means the need is still being proven out as x402 transaction volume grows, not a solved problem we're improving on.",
   },
   {
     question: "Does vet402 take custody of funds?",
     answer:
-      "No. vet402 is a read-only scoring and attestation API — it never holds, moves, or has signing authority over funds. The SDK's SpendGuard module (non-custodial) helps an agent apply spend policy locally before it pays; vet402 itself only returns scores and records settlement attestations after a payment has already happened on-chain.",
+      "No. vet402 never holds, moves, or has signing authority over customer funds: there is no wallet you deposit into, no balance we hold for you, and no key of yours we can sign with. vet402 does spend its own funds — the observatory's L1 layer buys from x402 endpoints with an operator wallet, which is the whole point of a settle-through record — so \"we touch no money at all\" would be false. The SDK's SpendGuard module (non-custodial) helps an agent apply spend policy locally before it pays; the scoring API itself only returns scores and records settlement attestations after a payment has already happened on-chain.",
   },
   {
     question: "Which chain does vet402 support?",
     answer:
-      "Scoring (the 0–100 ALLOW / WARN / BLOCK API) reads wallet and ERC-8004 signals from Base mainnet; an unknown or disabled chain on that API is a 400, never a silent fallback. The observatory is a separate system: L0 probes run across every chain in the public x402 discovery catalog, and /observatory/state reports the per-chain breakdown. L1 purchases run on Base and on Solana; only Base settlements are re-read on-chain today, so a Solana purchase can reach settle_claimed but not settled.",
+      "Scoring (the 0–100 ALLOW / WARN / BLOCK API) reads wallet and ERC-8004 signals from Base mainnet; an unknown or disabled chain on that API is a 400, never a silent fallback. The observatory is a separate system: L0 probes run across every chain in the public x402 discovery catalog, and /observatory/state reports the per-chain breakdown. L1 purchases run on Base and on Solana, and settlements are re-read on-chain on both: as of 2026-09-04 a Solana purchase is promoted to settled only on the same evidence Base requires (the transaction finalized and succeeded, and the USDC token-balance deltas show the declared payee receiving the declared amount). A purchase on any other chain would stay at settle_claimed, because the re-read exists for these two only.",
   },
   {
     question: "What is the difference between the observatory and a score?",
@@ -75,7 +75,7 @@ export const FAQS: FaqItem[] = [
   {
     question: "How do I integrate it?",
     answer:
-      "Score a payee (GET /api/v1/payees/:address/score — the primary path for buyers), a payer wallet (GET /api/v1/wallets/:address/score), or an agent ID (GET /api/v1/agents/:agentId/score), batch up to 25 at once, or attest an x402 settlement after verification. Full request/response shapes, error codes, and an OpenAPI schema are on the API reference page.",
+      "The canonical integration since 2026-09-02 is GET /api/v1/resources/:resourceId/decision, which returns the L0/L1/L2 facts and an ALLOW / WARN / BLOCK recommendation in one document. The older per-subject score routes still work and are still documented: a payee (GET /api/v1/payees/:address/score), a payer wallet (GET /api/v1/wallets/:address/score), or an agent ID (GET /api/v1/agents/:agentId/score), batched up to 25 at once, plus attesting an x402 settlement after verification. Full request/response shapes, error codes, and an OpenAPI schema are on the API reference page.",
   },
 ];
 

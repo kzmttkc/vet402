@@ -76,7 +76,9 @@ const LEVELS = [
     name: "Settle-through",
     question: "Does payment settle and a response arrive?",
     how: "Real purchase",
-    output: "n of m settled, latency",
+    // 2026-09-04 監査 E・P0-3: この §2 の定義（settle AND arrive）に対して、
+    // 公開面は settled しか出していなかった。両方を出力語彙に入れる。
+    output: "n of m settled, n delivered",
   },
   {
     level: "L2",

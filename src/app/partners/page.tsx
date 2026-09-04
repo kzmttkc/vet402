@@ -65,6 +65,14 @@ export default function PartnersPage() {
           receipts included. There is no partner-only treatment of the record, because a
           verifier that sells favorable treatment is not a verifier. What partners shape is the
           <em> product</em> (APIs, integrations, definitions), never the <em>measurements</em>.
+          Being measured more often is not favorable treatment and is not for sale either: four
+          hosts are bought from on a shorter cadence because of the call volume the public catalog
+          reports for them, that list is named in{" "}
+          <Link href="/observatory/methodology" className="underline">
+            the methodology
+          </Link>
+          , and the criterion is the catalog&apos;s own reported
+          call volume rather than any relationship with us.
         </p>
 
         <PartnersClient />

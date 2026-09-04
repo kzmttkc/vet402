@@ -370,8 +370,15 @@ export default async function ObservatoryPage({
             <Link href="/observatory/methodology" className="underline">
               definitions here
             </Link>
-            . <em>unverified is not a failure</em>: the catalog entry does not declare enough for a
-            machine to check.
+            . <em>unverified is not a failure</em>: it means we do not have grounds to publish
+            either of the other two yet. Most often that is because the rolling schedule has not
+            reached the endpoint, or a single failing probe has not met the publication gate; the
+            entry declaring too little to check is one cause among several, and the current
+            breakdown is counted out in{" "}
+            <Link href="/observatory/methodology" className="underline">
+              the methodology
+            </Link>
+            .
           </p>
         </div>
 
