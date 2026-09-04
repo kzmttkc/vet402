@@ -295,8 +295,14 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
                 <caption className="sr-only">L1 purchase history, newest first</caption>
                 <thead>
                   <tr>
+                    {/* 2026-09-04 監査 P2-18: 390px で HTTP が 2 段目の右端（→ 2 more columns の先）に
+                        隠れ、settled でも配達失敗（HTTP 400）が見えなかった。先頭 3 列を
+                        Attempted / Result / HTTP に、受領証は 4 列目へ。 */}
                     <th scope="col">Attempted at</th>
                     <th scope="col">Result</th>
+                    <th scope="col" className="num">
+                      HTTP
+                    </th>
                     <th scope="col">Receipt (tx)</th>
                     <th scope="col" className="num">
                       Latency
@@ -306,7 +312,8 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
                 <tbody>
                   {/* 2026-09-02 UX 監査: 7 列だと 1280px でも受領証列が初期表示の外に出ていた
                       （表 731px・紙面 665px）。この製品の主張は「受領証がある」なので、
-                      受領証を 3 列目に置き、金額・HTTP・L2 は同じ行の 2 段目に落とす。 */}
+                      受領証を 3 列目に置き、金額・HTTP・L2 は同じ行の 2 段目に落とす。
+                      2026-09-04 P2-18: HTTP を 3 列目へ戻し（配達失敗が見えるように）、受領証は 4 列目。 */}
                   {purchases.map((p, i) => (
                     <Fragment key={i}>
                       {/* 2 段目に続くので 1 段目の罫線は消す。globals.css は触らない——Turbopack の
@@ -320,6 +327,11 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
                           <span className="hidden sm:inline">{fmt(p.attemptedAt)}</span>
                         </td>
                         <td className="border-b-0 pb-0.5">{p.status}</td>
+                        <td
+                          className={`num border-b-0 pb-0.5 ${typeof p.httpStatusPaid === "number" && p.httpStatusPaid >= 400 ? "text-[#9f0712]" : ""}`}
+                        >
+                          {p.httpStatusPaid ?? "—"}
+                        </td>
                         <td className="whitespace-nowrap border-b-0 pb-0.5">
                           {/* 2026-09-02 監査: basescan 固定で Solana の受領証が壊れたリンクだった。
                               行き先はチェーンで決め（chains.ts explorerTxUrl）、形が合わなければ
@@ -343,11 +355,10 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
                         <td className="num border-b-0 pb-0.5">{p.latencyMs === null ? "—" : `${p.latencyMs} ms`}</td>
                       </tr>
                       <tr className="fact-subrow">
-                        <td colSpan={4} className="pt-0 font-[family-name:var(--font-mono)] text-xs font-normal text-brand-lift">
+                        <td colSpan={5} className="pt-0 font-[family-name:var(--font-mono)] text-xs font-normal text-brand-lift">
                           {p.amountUnits
                             ? `${p.amountUnits} units${usd(p.amountUnits) ? ` (≈ ${usd(p.amountUnits)} USDC)` : ""}`
                             : "amount —"}
-                          {" · "}HTTP {p.httpStatusPaid ?? "—"}
                           {" · "}L2 {p.l2Schema ?? "—"}
                         </td>
                       </tr>
