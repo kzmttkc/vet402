@@ -1,8 +1,8 @@
 # Ethereum Magicians — draft post
 
-**Status:** DRAFT for Takeshi to post. Do not publish automatically.
-**Suggested category:** Primordial Soup, or the ERC-8004 discussion thread if one is active.
-**Tone rule:** technical forum, not a launch. No CTAs, no signup links in the body, no "we built the best" framing. Describe the gap, the approach, and open questions. One link, to the open-source repo, at the end.
+**Status:** POSTED 2026-08-25. ERC-8004: Trustless Agents thread 25098, reply **#380**. Do not post again. Draft kept as archive.
+**Account:** `Sen_Vouch` (rename window closed; bio already says vet402). Trust level 0 — markdown links are rejected; URLs must be inline code if anyone ever quotes this.
+**Tone rule:** technical forum, not a launch. No CTAs, no signup links in the body.
 
 ---
 
@@ -38,3 +38,5 @@ The chicken-and-egg problem with (2) is real: with no traffic there are no resol
 - For x402 flows: does gating *after* payment verification but *before* serving the resource match how others expect trust checks to compose, or is there a cleaner hook point?
 
 Implementation and the measurement methodology are open source (Next.js/viem/Base). Happy to share the repo link if that's useful and within the thread's norms; I'd rather get the design questions above right first.
+
+`https://github.com/kzmttkc/vet402` · `https://vet402.com`

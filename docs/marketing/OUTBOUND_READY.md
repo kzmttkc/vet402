@@ -1,38 +1,48 @@
 # OUTBOUND READY — 対外発信の実行台帳（Takeshi手番）
 
-対外発信の**実行は Takeshi 手番**（このリポの自動化は投稿しない）。以下は「仕上げ済みの原稿がどれで、
-どこに、どう出すか」を一覧にしたもの。投稿前に各原稿末尾の主張マップで実装と突合済み。
+対外発信の**実行は Takeshi 手番**（このリポの自動化は投稿しない）。週次 facts の自動は owner 側 `Takeshi_Automation`（[`../hackathons/DISTRIBUTION.md`](../hackathons/DISTRIBUTION.md)）。投稿前に各原稿末尾の主張マップで実装と突合する。
+
+正典: **vet402** · https://vet402.com · https://github.com/kzmttkc/vet402 · npm `@vet402/*` · X `@vet_402`
 
 ## 出すもの一覧
 
 | # | 原稿 | 出し先 | 種別 | 状態 |
 |---|---|---|---|---|
-| 1 | `articles/ethereum-magicians-erc8004-trust-layer.md` | Ethereum Magicians フォーラム | 長文・設計議論（宣伝色ゼロ） | 仕上げ済み |
-| 2 | `articles/devto-x402-trust-before-payment.md` | Dev.to | 長文・build-in-public | 仕上げ済み（`published: false` のまま） |
-| 3 | `articles/zenn-x402-trust-score.md` | Zenn | 長文（日本語想定） | 既存ドラフト（未精査・別途確認推奨） |
-| 4 | `x402-community-short.md` A〜D | x402 Discord/Telegram の dev チャンネル・統合スレッドへの返信 | 短文 | 仕上げ済み |
+| 1 | `articles/ethereum-magicians-erc8004-trust-layer.md` | Ethereum Magicians | 長文・設計議論 | **2026-08-25 投稿済み**（ERC-8004 thread 25098, #380）。再投稿しない |
+| 2 | `articles/devto-x402-trust-before-payment.md` | Dev.to | 長文・build-in-public | 仕上げ済み（`published: false`）。出す日に URL を再確認 |
+| 3 | `articles/zenn-x402-trust-score.md` | Zenn | 長文（日本語） | 2026-08-25 に vet402 へ改稿。`published: false` |
+| 4 | `x402-community-short.md` A〜D | x402 Discord/Telegram の返信 | 短文 | 仕上げ済み。A は紹介が歓迎される空気のとき1回 |
+| 5 | `FACTS_2026-08-25.md` | X（Farcaster は未開設） | 週次実測 | 下書き。出す前に再 `curl` |
 
 ## 出す順番の推奨
 
-1. **まず Ethereum Magicians（#1）**。設計の問いを投げる体裁なので、反応が Dev.to 記事の改稿材料になる。
-   宣伝でなく議論として入るのが技術フォーラムの流儀。本文にサインアップリンクを置かない（末尾にリポリンク1本のみ）。
-2. **次に Dev.to（#2）**。投稿時に front-matter の `published: false` を外す。カバー画像は
-   `assets/vouch-banner.png`。タグは記事内の web3/ai/typescript/api/blockchain のまま。
-3. **x402 コミュニティ短文（#4）** は「紹介が歓迎される空気のとき」に A を1回。B〜D は該当する
-   質問が出たスレッドへの**返信**として使う（投下スパムにしない）。
-4. **Zenn（#3）** は日本語想定。中身を Takeshi が一読してから。#2 と主張が重複するので二重投稿感が出ないよう調整。
+1. **Magicians は済**。次の投稿は返信だけ。新規トピックを立てない。
+2. **週次 facts** を人が4週きれいに出せたら、X 自動だけ検討。今日 Magicians を出したなら X は翌日以降でよい。
+3. **Dev.to** は facts が1回以上出たあと。`published: false` を外す。カバーは RFC 紙面。旧 `assets/vouch-banner.png` は使わない。
+4. **x402 短文** は紹介が歓迎される空気のとき A を1回。B〜D は該当スレッドへの返信。
+5. **Zenn** は日本語室。#2 と重なるので、出すなら Dev.to のあと。
 
-## 全原稿共通の禁則（実装と乖離させないため）
+## 全原稿共通の禁則
 
-- **招待コードをどこにも書かない**（signup は開放済み。README のブランド規約と一致）
-- **未実装機能に言及しない**。各原稿末尾の「主張→実装マップ」に無い主張を足さない
-  （Verilot の「未出荷誤記3回再発」の教訓）。特に保証引受（guarantee underwriting）は**休眠・env OFF**なので
-  発信で一切触れない
-- SDK 名は **`@vet402/sdk`** / MCP は **`@vet402/mcp-server`**（`@vouch/sdk` は誤り）
-- 本番 URL は `https://agent-trust-tawny.vercel.app`、リポは `github.com/kzmttkc/agent-trust`
-- スコア閾値・重み・レート値を本文に書くときは実装値と一致させる（ALLOW≥70 / WARN40–69 / BLOCK<40、x402重み10%）
+- **招待コードをどこにも書かない**（signup は開放済み）
+- **未実装機能に言及しない**。`payOrRefuse` / ENS 支払い / Registry 本書き込み / 保証引受は出さない
+- SDK 名は **`@vet402/sdk`** / MCP は **`@vet402/mcp-server`**（`@vouchscore/*` は deprecated ポインタ）
+- 本番 URL は `https://vet402.com`、リポは `github.com/kzmttkc/vet402`
+- 公開の事実面（`/observatory/state`、`/payee/{addr}` HTML）は key-less。スコア API（`/api/v1/wallets` / `/api/v1/payees`）はキー必須
+- スコア閾値を書くなら実装値: ALLOW≥70 / WARN 40–69 / BLOCK<40、x402重み10%
+- ALLOW が今日カタログに出ない事実を、売り文句にしない（聞かれたら fixtures の数字で答える）
+- **「Base のみで実購入している」と書かない**。2026-09-05 実測（公開 `/api/v1/observatory/history` の全期間合計）:
+  Base `eip155:8453` 2,999 attempts / 1,382 settled、**Solana 50 attempts / 5 settled**。Solana でも買っている
+- **チェーン別の L1 件数を数字で書かない**（当面）。`/api/v1/observatory/state` に `l1ByChain` が無く、
+  読者が確かめられる公開面が `history` しか無い。しかもその 2 つが合わない（下記）。
+  **`l1ByChain` が state に出たら、この禁則を外す**
+- **`/observatory/state` の L1 合計と `history` の合計が一致しない**（2026-09-05 実測: state 3,241/1,629 に対し
+  history 合計 3,065/1,387。history は 2026-08-14 開始でそれ以前を含まないが、**応答にその開始日が書かれていない**）。
+  外部の人が history を足して検算すると「盛っている」に見える。**是正まで、この 2 つを同じ文書に並べない**
+- **「監査済み」「externally audited」と書かない**。2026-09-05 の 3 本は自前監査（執行部＋監査エージェント）であって
+  第三者監査ではない。書けるのは「自前の監査記録を全文公開している」まで
 
-## 出した後にやること（Takeshi → 執行部へ一言）
+## 出した後
 
-- 投稿 URL を控える（反応計測の起点）。Dev.to/Zenn は記事URL、フォーラムはスレッドURL、Discord は該当メッセージ
-- 反応（コメント・質問・DM）が来たら、それが Dev.to 記事や FAQ の改稿ネタになる。執行部に渡せば反映する
+- 投稿 URL を控える
+- 反応は FAQ / Dev.to の改稿ネタ。執行部に渡せば反映する

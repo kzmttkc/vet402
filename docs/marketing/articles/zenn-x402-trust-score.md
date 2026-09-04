@@ -1,47 +1,72 @@
 ---
-title: "x402の『払った』は信用じゃない — ERC-8004信頼スコア Vouch を作った"
+title: "x402の『払った』は配達の証明ではない — vet402 を作っている"
 emoji: "🔏"
 type: "tech"
 topics: ["AI", "Web3", "TypeScript", "API"]
 published: false
 ---
 
-# x402の「払った」は信用じゃない — ERC-8004信頼スコア Vouch を作った
+# x402の「払った」は配達の証明ではない — vet402 を作っている
 
-**支払いが証明するのは「誰が払ったか」だけです。**  
-**「その相手に有料APIを出してよいか」は別問題です。**
+**支払いが証明するのは「金が動いたか」だけです。**  
+**「売ったものが届いたか」は別の事実です。**
 
-x402 API を提供していると、このギャップがそのまま事業リスクになります。ERC-8004 はオンチェーンの Identity / Reputation を与えますが、生のフィードバックを信用スコアだと思うとシビルに弱い。そこで **Vouch** を作りました。Base 上でエージェントを **0〜100** にスコアし、ゲートウェイが使う **`ALLOW` / `WARN` / `BLOCK`** を返します。
+x402 は前者に強い。後者は、次の支払いに署名するエージェントと、「この endpoint は履行したことがあるか」と聞く第三者に必要です。
 
-そしてこのリスクは片側だけの話ではありません。**支払う側のエージェント**にも鏡写しの問題があります。402 の向こうにいるウォレットは本物のサービスなのか、USDC を受け取って消えるバーナーなのか。そこで Vouch は**売り手・買い手の両面**をスコアするようにしました。
+**vet402** はその経済の独立した観測所です。掲載 endpoint が売るものを、Base 上の実 USDC で買い、成功と失敗を同じ重みで公開し、ゲート用に 0〜100 と `ALLOW` / `WARN` / `BLOCK` を返します。観測所自身のスコアではありません。公開面とキー付き API は同じ測定です。
 
-本稿は **クローズドβ** の Build in Public メモです。
+本番: [vet402.com](https://vet402.com)  
+リポ: [github.com/kzmttkc/vet402](https://github.com/kzmttkc/vet402)
+
+## 二つの面を混ぜない
+
+**事実（キー不要）**
+
+```
+GET https://vet402.com/api/v1/observatory/state
+```
+
+分母つきの件数。合成スコアは無し。`unverified` は「機械検証できない」であり、「死んでいる」ではない。`/payee/{address}` の HTML は、人間が読むのと同じエンジンです。
+
+**判定（キー必須）**
+
+```
+GET /api/v1/wallets/{payer}/score
+GET /api/v1/payees/{payee}/score
+```
+
+キーは [vet402.com/signup](https://vet402.com/signup)（無料枠、招待コードなし）。SDK: `npm install @vet402/sdk`（`getPayeeScore` あり）。環境変数名は当面 `VOUCH_API_KEY`。
+
+SpendGuard は**判定するだけ**で、支払いはしません。判定を無視して署名できる穴は、記事で埋まっていることにしません。
 
 ## 想定フロー
 
 ```
 売り手側 — この payer にサービスを出してよいか？
-Client → x402 支払い検証 → Vouch payer チェック → 本来の有料ルート
+Client → x402 支払い検証 → vet402 payer チェック → 本来の有料ルート
                          ↘ 任意で決済証跡を書き戻し
 
 買い手側 — このウォレットに支払ってよいか？
-自分のエージェント → Vouch payee チェック → x402 支払い → 相手の API
+自分のエージェント → vet402 payee チェック →（署名するかどうかは呼び手）→ 相手の API
 ```
 
 売り手側:
 
-1. x402 ミドルウェアが支払いを検証し **payer ウォレット** を得る  
-2. `GET /v1/wallets/{payer}/score` で Vouch を照会  
-3. `BLOCK` なら高コストなハンドラの前に 403  
-4. 通したあと任意で `POST /v1/payments/x402` — 決済履歴が将来のスコアに効く（現状 **10%** 加重）
+1. x402 ミドルウェアが支払いを検証し **payer ウォレット** を得る
+2. `GET /api/v1/wallets/{payer}/score` で照会
+3. `BLOCK` なら高コストなハンドラの前に 403
+4. 通したあと任意で `POST /api/v1/payments/x402`
 
 買い手側:
 
-1. エージェントが 402 を受け、支払い要求から **payee ウォレット** を得る  
-2. 署名する前に `GET /v1/payees/{payee}/score` を照会  
-3. `BLOCK` なら支払わない。`WARN` なら金額上限や人間の確認など自前のポリシーで判断
+1. エージェントが 402 を受け、支払い要求から **payee** を得る
+2. 署名する前に `GET /api/v1/payees/{payee}/score`（または `getPayeeScore`）
+3. `BLOCK` なら支払わない。`WARN` なら自前のポリシー
 
-サンプル（売り手側ミドルウェア）: リポジトリの `examples/x402-trust-gate`
+payee の失敗モードはシビルなフィードバックではなく「受け取って届かない」ことです。受け取り履歴、ウォレット健全性、ドレイン形状（native ETH と Base USDC、ガス残渣で誤検知しないダスト下限）、確定ラベルを見ます。
+
+- **スコア API は 404 を返しません。** 未アテステーションでも `200` と `dataDepth: "thin"`。
+- **証跡はオンチェーン検証してから数えます。** wallet と txHash の形式だけでは捏造できません。
 
 ## payer スコアの中身（現時点）
 
@@ -51,66 +76,64 @@ Client → x402 支払い検証 → Vouch payer チェック → 本来の有料
 | ERC-8004 Reputation | フィードバック量・平均（シビル時は減衰） |
 | ウォレットヒューリスティック | 年齢・活動・バーナー・資金元クラスタ |
 | 手動 WL/BL | 顧客単位のポリシー（チェーンスコアの後） |
-| x402 決済証跡 | ゲート通過後の支払いアテステーション |
+| x402 決済証跡 | ゲート通過後の支払いアテステーション（加重 **10%**） |
 
-目安: **≥70 ALLOW**、**40–69 WARN**、**&lt;40 BLOCK**（ブラックリストやシビル high は BLOCK）。スコアは**参考情報**であり保証・与信ではありません。
-
-インデクサの遅れは `dataCoverage` で返すので、「全部知っているフリ」をしない設計にしています。
-
-## 今週追加: Payee Trust API（買い手側）
-
-`GET /v1/payees/{address}/score` は買い手側の問いに答えます。payee の失敗モードはシビルなフィードバックではなく「受け取って消える」ことなので、シグナル構成を変えています。
-
-| シグナル | 役割 |
-|----------|------|
-| 受け取り履歴 | このウォレットが payee だった x402 決済証跡 — 件数・活動日数・支払い元の数 |
-| ウォレット健全性 | payer スコアと同じ年齢・tx 数・バーナー判定 |
-| ドレインパターン | 出口詐欺の形（受け取った資金をほぼ全部引き抜く）を native ETH と Base USDC の両方で判定。ガス残渣で誤検知しないようダスト下限つき |
-| アウトカム履歴 | このウォレットに紐づく確定詐欺 / 確定正当のラベル |
-
-設計上のポイントは2つ:
-
-- **404 を返しません。** 誰もアテステーションしていないウォレットでも `200` と `dataDepth: "thin"` を返し、加重が自動で変わります。データが薄い（thin）ウォレットはウォレット健全性とドレイン形状で、履歴が厚い（rich）ウォレットは受け取り実績で主に判定。薄いスコアをどこまで信じるかはインテグレータが決められます。
-- **データループは共有。** `POST /v1/payments/x402` のアテステーションはオンチェーン検証（フェイルクローズ）を通った上で、payer の決済履歴と payee の受け取り履歴の**両方**に効きます。売り手が証跡を書き戻すほど、買い手を守るデータが貯まる構造です。
+目安: **≥70 ALLOW**、**40–69 WARN**、**&lt;40 BLOCK**。スコアは**推定**であり、保証・与信ではありません。インデクサの遅れは `dataCoverage` で返します。
 
 ## インテグレータ向け API
 
 ```bash
-# payer ウォレットでスコア（売り手側・x402 主経路）
-curl -H "Authorization: Bearer $VOUCH_API_KEY" \
-  https://agent-trust-tawny.vercel.app/api/v1/wallets/0xYOUR_PAYER/score
+# 公開の事実（キー不要）
+curl https://vet402.com/api/v1/observatory/state
 
-# payee ウォレットでスコア（買い手側・支払う前に）
+# payer ウォレットでスコア（売り手側）
 curl -H "Authorization: Bearer $VOUCH_API_KEY" \
-  https://agent-trust-tawny.vercel.app/api/v1/payees/0xTHEIR_WALLET/score
+  https://vet402.com/api/v1/wallets/0xYOUR_PAYER/score
+
+# payee ウォレットでスコア（買い手側）
+curl -H "Authorization: Bearer $VOUCH_API_KEY" \
+  https://vet402.com/api/v1/payees/0xTHEIR_WALLET/score
 
 # 検証済み決済の証跡（txHash で冪等）
 curl -X POST -H "Authorization: Bearer $VOUCH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"wallet":"0xYOUR_PAYER","txHash":"0x...","resource":"/api/premium"}' \
-  https://agent-trust-tawny.vercel.app/api/v1/payments/x402
+  https://vet402.com/api/v1/payments/x402
 ```
 
-agent ID 照会、バッチ、判定後の結果報告（`POST /v1/events/{id}/outcome`）、MCP（`check_wallet_trust` / `attest_x402_payment`）、TypeScript SDK（`packages/sdk`）もあります。SDK と MCP はまだ payee エンドポイント未対応で、エージェントランタイム向けの支出ポリシーヘルパーと合わせて次に載せる予定です。
+agent ID、バッチ、判定後の結果報告、MCP（`@vet402/mcp-server`）もあります。
 
 ## あえて選んだ設計
 
-- ウォレット照合や致命的な RPC 失敗は **フェイルクローズ**（誤 ALLOW より拒否）
-- **決済証跡はオンチェーン検証してから記録**（wallet と txHash の形式が正しいだけでは決済履歴を捏造できない）
+- ウォレット照合や致命的な RPC 失敗は **フェイルクローズ**
+- **決済証跡はオンチェーン検証してから記録**
 - WL でも **シビル high は昇格させない**
-- **匿名・無料 API の大解放は凍結**（クローズドβで価値検証）
-- x402 加重はまず **10%**（データが溜まってから厚くする）
+- **事実の公開面はキー不要。スコア照会はキー必須**
+- x402 加重はまず **10%**
+- 測っている事業者は顧客ではない。判定は売らない
 
-## クローズドβ
+## 試す
 
-最初の対象は **x402 API 提供者**（payer ゲート＋決済証跡）と**エージェントランタイム実装者**（支払い前の payee スクリーニング）です。
+- 観測: [vet402.com/observatory/state](https://vet402.com/observatory/state)
+- キー: [vet402.com/signup](https://vet402.com/signup)
+- SDK: `npm install @vet402/sdk`
+- コード: [github.com/kzmttkc/vet402](https://github.com/kzmttkc/vet402)
 
-- プロダクト: [agent-trust-tawny.vercel.app](https://agent-trust-tawny.vercel.app)
-- コード / ドキュメント: [github.com/kzmttkc/agent-trust](https://github.com/kzmttkc/agent-trust)
-- ガイド: `docs/x402-integration.md`、`docs/mcp-setup.md`、`docs/openapi.yaml`
-
-参加希望は **この記事へのコメント or DM** で「何を作っているか」をください。合う方にキーを送ります（**招待コードは記事に書きません**）。
+招待コードは書きません。より良い非公開の判定も売りません。
 
 ---
 
-*Next.js / viem / Neon / Base 上の ERC-8004 レジストリ。タグライン: Trust layer for agent commerce.*
+*Next.js / viem / Neon / Base 上の ERC-8004。We buy. We settle. We publish the measurements.*
+
+---
+
+## 主張マップ（この節は投稿しない）
+
+| 主張 | 根拠 |
+|---|---|
+| 観測の事実はキー不要 | `GET /api/v1/observatory/state` |
+| スコア API はキー必須 | `/api/v1/wallets` / `/api/v1/payees` |
+| `getPayeeScore` | `@vet402/sdk` |
+| SpendGuard は払わない | SDK。`payOrRefuse` は未実装 — 足さない |
+| しきい値 70 / 40 | `SCORE_THRESHOLDS` |
+| signup 開放 | `/signup` |

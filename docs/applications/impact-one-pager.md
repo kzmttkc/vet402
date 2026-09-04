@@ -42,6 +42,19 @@ A result never moves up a level: a probe is never reported as settlement; an opi
 3. **Structural neutrality.** We sell nothing on the catalog we measure. Verification is unsolicited and free; measured operators are not customers; sellers cannot pay for a better result. Our own corrections are public (<https://vet402.com/accuracy>).
 4. **Everything is independently checkable.** Tx hashes on-chain, snapshots dated, aggregate state as public JSON, methodology published, SDK/middleware/MCP server open-source (MIT, `@vet402/*` on npm).
 
+## We audit ourselves, and publish the findings
+
+A measurement service that will not measure itself is asking for trust it has not earned. In four days we ran three
+adversarial audits of our own system and published all of them in the public repository, including the parts that
+look bad: a defensive nine-axis security audit, a red-team attack tree, and a confidentiality/integrity/availability
+review that put our own uptime at **97% over 18 days (three outages, 13 hours)** and recorded that the longest one
+has no root cause written down. What came out of it shipped the same day — a runtime kill switch that stops spending
+from a single database row (proven in production), certificate-transparency monitoring, and an off-box daily snapshot
+of the public ledger with a restore rehearsal.
+
+- `docs/audits/2026-09-05-blockchain-security-audit.md` · `docs/audits/2026-09-05-red-team-attack-tree.md`
+- `docs/audits/2026-09-05-cia-availability-audit.md` · `docs/INCIDENT_RUNBOOK.md`
+
 ## Stack
 
 Next.js (App Router) + TypeScript · viem (Base mainnet) · ERC-8004 identity & reputation reads · Drizzle + PostgreSQL · x402 `exact` scheme, EIP-3009 USDC payer.

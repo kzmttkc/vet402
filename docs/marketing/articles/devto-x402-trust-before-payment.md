@@ -1,46 +1,72 @@
 ---
-title: "x402 proves payment. It doesn’t prove trust — so we built Vouch"
+title: "x402 proves payment. It doesn’t prove delivery — so we built vet402"
 published: false
-description: "How we score both sides of an x402 payment on Base — payer trust for API providers, payee trust for paying agents. ALLOW / WARN / BLOCK with settlement attestation."
+description: "Independent verification of the x402 agent-payment economy on Base. We buy, we settle, we publish. ALLOW / WARN / BLOCK for agents that still have to decide."
 tags: web3, ai, typescript, api, blockchain
 ---
 
-# x402 proves payment. It doesn’t prove trust — so we built Vouch
+# x402 proves payment. It doesn’t prove delivery — so we built vet402
 
-**Payment answers “who paid?”**  
-**Trust answers “should I serve them?”**
+**Payment answers “did the money move?”**  
+**Delivery answers “did the seller actually serve what was sold?”**
 
-If you run an x402 API, that gap is the whole product risk. ERC-8004 gives agents an identity and reputation surface on-chain — useful, but still Sybil-prone if you treat raw feedback as credit. We built **Vouch**: a trust layer that returns a **0–100 score** and an **`ALLOW` / `WARN` / `BLOCK`** recommendation for gateways that need a decision *before* they hand over paid content.
+Those are different facts. x402 is good at the first. The second is what an agent needs before it signs the next payment, and what a stranger needs when they ask whether an endpoint has ever fulfilled.
 
-And the risk runs both ways. The agent *sending* the payment has the mirror problem: is the wallet on the other side of this 402 a real service, or a burner that will take the USDC and vanish? So Vouch now scores **both sides**: payer trust for API providers, payee trust for paying agents.
+**vet402** is an independent observatory for that economy. We buy what listed endpoints sell (real USDC on Base), publish successes and failures with the same weight, and expose a 0–100 score plus `ALLOW` / `WARN` / `BLOCK` for integrators who still have to make a gate decision. The observatory is not a score of itself. The public record and the keyed API are the same measurements.
 
-This post is a build-in-public snapshot of Vouch on Base.
+This post is a build-in-public snapshot. Site: [vet402.com](https://vet402.com). Repo: [github.com/kzmttkc/vet402](https://github.com/kzmttkc/vet402).
 
-## The flows we care about
+## Two surfaces (do not mix them)
+
+**Facts, key-less.** Aggregates anyone can `curl`:
 
 ```
-Seller side — should I serve this payer?
-Client → x402 payment verification → Vouch payer check → your route
+GET https://vet402.com/api/v1/observatory/state
+```
+
+Counts with denominators. No composite score. `unverified` means not machine-checkable, not dead. Per-payee HTML at `/payee/{address}` is the same engine a human already reads.
+
+**Decisions, keyed.** Seller-side and buyer-side scores:
+
+```
+GET /api/v1/wallets/{payer}/score
+GET /api/v1/payees/{payee}/score
+```
+
+API keys from [vet402.com/signup](https://vet402.com/signup) — free tier, no invite code. TypeScript client: `npm install @vet402/sdk`. Methods include `getAgentScore`, `getWalletScore`, `getPayeeScore`. Env name is still `VOUCH_API_KEY`.
+
+SpendGuard in the SDK **decides** and does not pay. An agent can still ignore the verdict and sign. That hole is product work, not a blog claim.
+
+## Seller side — should I serve this payer?
+
+```
+Client → x402 payment verification → vet402 payer check → your route
                               ↘ optional settlement attest
-
-Buyer side — should my agent pay this wallet?
-Your agent → Vouch payee check → x402 payment → their API
 ```
-
-Seller side:
 
 1. x402 middleware verifies payment and yields a **payer wallet**
-2. Your gate calls Vouch `GET /v1/wallets/{payer}/score`
+2. Your gate calls `GET /api/v1/wallets/{payer}/score`
 3. On `BLOCK`, return 403 before the expensive handler
-4. After allow, optionally `POST /v1/payments/x402` so settlement history strengthens future scores
+4. After allow, optionally `POST /api/v1/payments/x402` so a verified settlement can strengthen later scores
 
-Buyer side:
+Sample gate: `examples/x402-trust-gate`. Middleware package: `@vet402/middleware`.
 
-1. Your agent hits a 402 and extracts the **payee wallet** from the payment requirements
-2. It calls `GET /v1/payees/{payee}/score` before signing anything
-3. On `BLOCK`, skip the payment; on `WARN`, apply your own policy (cap the amount, require a human, whatever fits)
+## Buyer side — should my agent pay this wallet?
 
-Sample seller-side middleware lives in the repo: `examples/x402-trust-gate`.
+```
+Your agent → vet402 payee check → (you still decide whether to sign) → their API
+```
+
+1. The agent hits a 402 and extracts the **payee** from the payment requirements
+2. It calls `GET /api/v1/payees/{payee}/score` (or `getPayeeScore`) before signing
+3. On `BLOCK`, skip the payment; on `WARN`, apply your own policy
+
+A payee’s failure mode is not Sybil feedback. It is taking money and not delivering. The payee mix is receiving history, wallet health, drain shape (native ETH and Base USDC, dust floors so gas residue does not false-positive), and prior outcome labels.
+
+Two details that stay true:
+
+- **The score route never 404s.** An un-attested wallet still returns `200` with `dataDepth: "thin"`. You decide how much a thin score is worth.
+- **Attestations are verified on-chain before they count.** A well-formed wallet + txHash is not enough to fabricate settlement history.
 
 ## What goes into a payer score (today)
 
@@ -52,66 +78,67 @@ Sample seller-side middleware lives in the repo: `examples/x402-trust-gate`.
 | Manual WL/BL | Per-customer policy (after the chain score) |
 | x402 settlements | Attested payment history (**10% weight** — still accumulating data) |
 
-Recommendations: roughly **≥70 ALLOW**, **40–69 WARN**, **&lt;40 BLOCK** (blacklist / high Sybil risk forces BLOCK). Scores are **informational** — not a guarantee or credit rating.
+Recommendations: **≥70 ALLOW**, **40–69 WARN**, **&lt;40 BLOCK** (blacklist / high Sybil risk forces BLOCK). Scores are **estimates** — not a guarantee or a credit rating.
 
-Owner-index lag is surfaced as `dataCoverage` so integrators can see freshness instead of assuming omniscience.
+Owner-index lag is surfaced as `dataCoverage` so integrators see freshness instead of assuming omniscience.
 
-## New this week: the Payee Trust API
-
-`GET /v1/payees/{address}/score` answers the buyer-side question with a different signal mix, because a payee's failure mode isn't Sybil feedback — it's taking money and disappearing:
-
-| Signal | Role |
-|--------|------|
-| Receiving history | Attested x402 settlements where this wallet was the payee — count, active days, distinct payers |
-| Wallet health | Same age / tx-count / burner heuristics as the payer score |
-| Drain pattern | Exit-scam shape: received funds, then pulled out (near-)everything — checked over native ETH *and* Base USDC, with dust floors so gas residue doesn't false-positive |
-| Outcome history | Prior confirmed-fraud / confirmed-legitimate labels naming this wallet |
-
-Two design details worth calling out:
-
-- **It never 404s.** A wallet nobody has attested yet still gets a `200` with `dataDepth: "thin"`, and the weights shift accordingly — a thin-data wallet is judged mostly on wallet health and drain shape, a `rich` one mostly on its receiving track record. You decide how much confidence a thin score deserves; we don't pretend to know more than we do.
-- **The data loop is shared.** Every `POST /v1/payments/x402` attestation is now verified on-chain (fail-closed) and credits *both* sides: the payer's settlement history and the payee's receiving history. Sellers attesting payments are, as a side effect, building the dataset that protects buyers.
-
-## API surface (integrator path)
+## API surface
 
 ```bash
-# Score a payer wallet (seller side, primary x402 path)
+# Public facts (no key)
+curl https://vet402.com/api/v1/observatory/state
+
+# Score a payer wallet (seller side)
 curl -H "Authorization: Bearer $VOUCH_API_KEY" \
-  https://agent-trust-tawny.vercel.app/api/v1/wallets/0xYOUR_PAYER/score
+  https://vet402.com/api/v1/wallets/0xYOUR_PAYER/score
 
 # Score a payee wallet (buyer side, before your agent pays)
 curl -H "Authorization: Bearer $VOUCH_API_KEY" \
-  https://agent-trust-tawny.vercel.app/api/v1/payees/0xTHEIR_WALLET/score
+  https://vet402.com/api/v1/payees/0xTHEIR_WALLET/score
 
 # Attest a verified payment (idempotent on txHash)
 curl -X POST -H "Authorization: Bearer $VOUCH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"wallet":"0xYOUR_PAYER","txHash":"0x...","resource":"/api/premium"}' \
-  https://agent-trust-tawny.vercel.app/api/v1/payments/x402
+  https://vet402.com/api/v1/payments/x402
 ```
 
-Also available: agent-ID scoring, batch scores, outcome reporting (`POST /v1/events/{id}/outcome` — tell us what actually happened after a verdict), MCP tools (`check_wallet_trust`, `attest_x402_payment`), and a TypeScript client on npm: `npm install @vouchscore/sdk` (MCP server: `@vouchscore/mcp-server`). The SDK and MCP server don't cover the payee endpoint yet — next on the list, along with a spend-policy helper for agent runtimes.
+Also available: agent-ID scoring, batch scores, outcome reporting (`POST /v1/events/{id}/outcome`), MCP tools on `@vet402/mcp-server`.
 
-## Design choices we won’t apologize for
+## Design choices we will not apologize for
 
 - **Fail closed** on wallet binding / critical RPC failure when verifying binders — better a 502/BLOCK than a silent ALLOW.
-- **Attestations are verified on-chain before they count** — a well-formed wallet + txHash isn't enough to fabricate settlement history; the tx must be real, successful, and attributable to the claimed wallet.
+- **Attestations are verified on-chain before they count.**
 - **Whitelist is not a Sybil free pass** — high Sybil risk refuses to promote WARN→ALLOW.
-- **Free anonymous public scoring stays frozen** — API key required for every score; we want real integrators, not scrape farms.
-- **x402 settlement weight starts small (10%)** — data must accumulate before it deserves more.
-- **Every score explains itself** — the response ships a `breakdown` of the four weighted components (identity / reputation / wallet / x402), each with its score, weight, and contribution, so a gateway can log *why* a verdict was what it was, not just the number.
+- **Public facts stay key-less. Score lookups are keyed.** The observatory is not a scrape farm; it is a published measurement.
+- **x402 settlement weight starts small (10%)** until the attested set deserves more.
+- **Every score explains itself** — `breakdown` of identity / reputation / wallet / x402.
+- **Measured operators are not customers.** Verdicts are not for sale.
 
 ## Try it
 
-Built for **x402 API providers** (payer gating + settlement attestation) and **agent-runtime builders** (payee screening before your agents spend).
+- Observatory: [vet402.com/observatory/state](https://vet402.com/observatory/state)
+- Sign up for a key: [vet402.com/signup](https://vet402.com/signup)
+- SDK: `npm install @vet402/sdk`
+- Code: [github.com/kzmttkc/vet402](https://github.com/kzmttkc/vet402)
 
-- Sign up: [agent-trust-tawny.vercel.app/signup](https://agent-trust-tawny.vercel.app/signup) — free account, no invite code
-- SDK: `npm install @vouchscore/sdk`
-- Code & docs: [github.com/kzmttkc/agent-trust](https://github.com/kzmttkc/agent-trust)
-- Guides: `docs/x402-integration.md`, `docs/mcp-setup.md`, `docs/openapi.yaml`
-
-Building something in this space? **Reply here or DM** — happy to compare notes.
+Building a gateway or an agent runtime? Reply here. We compare notes; we do not sell a better private verdict.
 
 ---
 
-*Built with Next.js, viem, Neon, and the ERC-8004 registries on Base. Tagline: trust layer for agent commerce.*
+*Built with Next.js, viem, Neon, and the ERC-8004 registries on Base. We buy. We settle. We publish the measurements.*
+
+---
+
+## Claim → implementation map (do not publish this section)
+
+| Claim | Backing |
+|---|---|
+| Observatory facts, key-less | `GET /api/v1/observatory/state` |
+| Payee HTML | `/payee/{address}` |
+| Score APIs keyed | `authorizeApiRequest` on `/api/v1/wallets` and `/api/v1/payees` |
+| `getPayeeScore` | `@vet402/sdk` |
+| SpendGuard decides, does not pay | SDK SpendGuard; `payOrRefuse` **not shipped** — do not add |
+| Thresholds 70 / 40 | `SCORE_THRESHOLDS` |
+| x402 weight 10% | `SCORE_WEIGHTS.x402 = 0.1` |
+| Signup open, no invite | `/signup` |

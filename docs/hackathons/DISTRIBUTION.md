@@ -11,7 +11,7 @@ If a paying customer and a stranger ask “did X deliver?”, they get the same 
 
 **Optimal automation is narrow:** machines may *draft* dated facts from `GET https://vet402.com/api/v1/observatory/state`. Humans approve or, for a locked template only, allow auto-publish to X and Farcaster. Everything else is human, usually a *reply*, not a drop.
 
-`docs/marketing/README.md` and some article bios are **stale** (name Vouch, old URL, invite-only). Do not copy them. Canonical: **vet402** · https://vet402.com · https://github.com/kzmttkc/vet402 · X `@vet_402`.
+Canonical: **vet402** · https://vet402.com · https://github.com/kzmttkc/vet402 · X `@vet_402`. Marketing drafts were pointed at these URLs on 2026-08-25 (`docs/marketing/README.md`). Magicians #380 is already posted — do not copy that draft as a new thread.
 
 ---
 
@@ -128,7 +128,7 @@ Warpcast channel: `/base` or `/x402` only when the weekly facts are on-topic; ot
 
 **Role.** Design legitimacy for Mumbai / EF. **One** thread, then replies.
 
-Use `docs/marketing/articles/ethereum-magicians-erc8004-trust-layer.md` after Takeshi updates names/URLs to vet402.com and the current repo. Category: existing ERC-8004 thread if live, else Primordial Soup.
+Draft archive: `docs/marketing/articles/ethereum-magicians-erc8004-trust-layer.md`. **Already posted** — do not open a second thread.
 
 **Posted 2026-08-25** — post #380 in the live *ERC-8004: Trustless Agents* thread (25098), not a new topic, because the thread was live and the canon says join it. It answered the question the thread was actually on (#377–379: slashing needs an outcome that is independently checkable) with the measurement we alone have: 18,832 tracked / 15,275 listed, 1,233 paid attempts and 531 settled, and — carrying the same weight — 0 ALLOW out of 17 known-good addresses, i.e. our own band is uncalibrated and we said so. Verified anonymously afterwards: visible, not hidden, not flagged.
 
@@ -144,7 +144,7 @@ Two constraints that will bite the next post there, both measured that day:
 **Role.** Integration support. Default is **reply**, not announce.
 
 - ETHGlobal event Discords: after kickoff, one factual “Continuity / here’s the boundary tag” if asked; sponsor channels get the WIN_EV 45s clip, human-typed.
-- x402 Discord: `x402-community-short.md` A **once** when intros are invited. B–D only as replies. Update “Vouch” → vet402 before use.
+- x402 Discord: `x402-community-short.md` A **once** when intros are invited. B–D only as replies. Drafts already say vet402.
 - Do not join 20 servers to drop the same blurb.
 
 ### 4.5 Slack
@@ -217,7 +217,7 @@ npm publish is an external publication: owner approval, then a human release wit
 
 | When | Action | Auto? |
 |---|---|---|
-| This week | Continuity apply first. Fix Magicians + short drafts to vet402 URLs. X/Farcaster bio. **No** blast. | No |
+| This week | ETHOnline Continuity is in. Tokyo apply. X bio. Facts draft in `docs/marketing/FACTS_2026-08-25.md`. **No** blast. | No |
 | Weekly (Thu UTC) | Facts template from `/state`. Approve 4 weeks, then X+FC only | Template only |
 | ETHOnline 09-04–09-13 | Silence except: facts weekly + one human “window opened / tag exists.” No feature claims | No feature auto |
 | **09-13 12:00 EDT = 09-14 01:00 JST** | Submit deadline (primary-verified 2026-08-23, see `2026-autumn-continuity.md`). Human: submit post with git log + BLOCK gif + ALLOW explorer. Sponsor Discords | No |
@@ -298,8 +298,8 @@ Inbound (press, grant scout, angry seller): human answers. Seller disputes go th
 
 ## 9. This week (distribution only)
 
-1. Continuity apply still first.  
-2. Update Magicians + x402 shorts to **vet402.com** / `kzmttkc/vet402`.  
-3. Set X + Farcaster bios. Do not start the facts auto-job until 4 manual weeks are clean.  
+1. Tokyo Continuity apply (ETHOnline is already in).  
+2. X bio from `docs/marketing/README.md`. Farcaster account does not exist yet — do not claim it.  
+3. Do not start the facts auto-job until 4 manual weeks are clean. Magicians went out 2026-08-25; do not same-day blast X.  
 4. No Product Hunt, no Show HN, no Reddit launch.  
 5. Do not implement `payOrRefuse` for a clip.

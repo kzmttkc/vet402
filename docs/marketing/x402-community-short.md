@@ -8,7 +8,7 @@
 
 ## A. Intro drop (dev channel, when introductions are welcome)
 
-x402 verifies *that* a payer paid — it doesn't tell you whether to serve them. I've been building vet402: after your x402 middleware verifies payment, `GET /v1/wallets/{payer}/score` returns 0–100 + ALLOW/WARN/BLOCK before you run the expensive handler. ERC-8004 identity + reputation (Sybil-dampened) + wallet heuristics + attested x402 settlement history. Open source, on Base. Sample gate: `examples/x402-trust-gate`.
+x402 verifies *that* a payer paid — it doesn't tell you whether they delivered, or whether to serve the next one. vet402 buys what listed endpoints sell and publishes the measurements. After your x402 middleware verifies payment, `GET /api/v1/wallets/{payer}/score` returns 0–100 + ALLOW/WARN/BLOCK before you run the expensive handler. Open source, on Base. https://vet402.com
 
 ## B. Reply — "what about the wallet my agent is paying?"
 
@@ -38,3 +38,6 @@ Attestations are verified on-chain before they count: `POST /v1/payments/x402` r
 | score `breakdown` of 4 components | shipped in every score response (N-21) |
 | `examples/x402-trust-gate` | present in repo |
 | signup open, no invite code | `/signup` (invite gate removed) |
+| site / repo | `https://vet402.com` · `https://github.com/kzmttkc/vet402` |
+| observatory facts, key-less | `GET /api/v1/observatory/state` |
+| `getPayeeScore` in SDK | `@vet402/sdk` (shipped) |

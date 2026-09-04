@@ -132,6 +132,15 @@ The SVM exact scheme places the fee payer with the **facilitator** (`extra.feePa
 | Hosting / DB / development / marketing | measured $0 · absorbed / not billed / excluded by policy | $0.00 |
 | **Total (12 months)** | | **$1,734.63** |
 
+### 4.6 Why you can check us rather than trust us
+
+Everything above is either a live API call or a published document. That extends to our own weaknesses: in four days
+we published three adversarial audits of vet402 in the public repository — a defensive nine-axis security audit
+(no contracts of our own, no user funds touched, spending caps enforced by a single atomic SQL statement), a red-team
+attack tree, and a CIA/availability review that records our own uptime at 97% over 18 days and names the outage whose
+cause we never wrote down. A runtime kill switch, certificate-transparency monitoring and an off-box ledger snapshot
+with a restore rehearsal shipped out of those findings. Files: `docs/audits/2026-09-05-*.md`, `docs/INCIDENT_RUNBOOK.md`.
+
 ## 5. Milestones — every acceptance check runnable by the reviewer
 
 | # | Milestone | Deliverable | Acceptance check (no trust required) | Duration | Amount |
