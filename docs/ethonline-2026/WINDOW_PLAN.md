@@ -84,10 +84,48 @@ asset 0x8335…2913（正規USDC）/ payTo 0x79DC34E41B2b591078d3dE222C43EcaaBD5
 **注意**: 402 の `resource.url` は内部ホスト名（`http://mainnet-thegraph-arbitrum-03-…`）を返す。
 **照合は `payTo` で行う**。resource URL で照合する実装を入れると The Graph に払えない（テスト B-4）。
 
-## 4. Day 0（09-04）に書く失敗テスト —— **22項目・24本**（G21 は MCP 側で a/b/c の3本）
+### 3.1 訂正（09-04 夕・実測）——The Graph は我々のカタログに無い
 
-> 実体: `packages/sdk/test/pay-or-refuse.test.mjs`（A1〜H22 の21本）＋ `packages/mcp-server/test/pay-if-trusted.test.mjs`（G21a/b/c）。
+この節は「payOrRefuse が `/decision` を読んで ALLOW を出し、The Graph に払う」と書いていた。**そのままでは動かない。**
+
+| 測ったもの | 結果 |
+|---|---|
+| `GET /api/v1/payees/0x79DC…/endpoints` | `count: 0`——The Graph の x402 口はカタログに1件も無い |
+| The Graph の実 `resource_id`（`sha256("POST " + 正規化URL)`） | `9e8469d365d65bc9b4a3f588f951bfc70ae64cc1afa2ebdf7e8f11a940d40763` |
+| `GET /api/v1/resources/9e8469d3…/decision?role=payer` | **HTTP 404 `not_found`** |
+| 実装 | `getResource()` は `WHERE resource_id = …` の1行照会。**未登録は必ず 404**（route.ts の分岐で確定） |
+
+**決定: カタログに登録しない。** 登録すれば 404 は消えるが、会期中に自作自演の色がつくうえ、
+**「一度も見たことのない売り手に向けて判定できる」という製品の核**を捨てることになる。
+現実の買い手が 402 に出会う相手は、ほぼ全部カタログの外にいる。カタログ内でしか動かない
+SDK は世の中で使えない。
+
+**したがって payOrRefuse は「402 チャレンジそのもの＋受取人スコア」で判定できなければならない。**
+`/decision` が 404 を返したら、そこで諦めるのではなく `payTo` を軸に判定へ落とす。
+これは会期中に足す新規実装であり、会期差分としても正当（テスト I23）。
+
+**そして §3 の対比はむしろ強くなる。同じウォレットについて知識の状態が3つある:**
+
+| 情報源 | 09-04 実測 |
+|---|---|
+| 我々のカタログ | **何も知らない**（endpoints 0・decision 404） |
+| 我々の受取人エンジン | **69 / WARN / thin**（受領0件・独立payer 0・L1配達0／ウォレット齢118日・tx 100・drain 0.4736・`scoredAt` 2026-09-04T07:57:43Z） |
+| The Graph 自身の subgraph | **252件・2.52 USDC 受領** |
+
+**審査員の会社のウォレットで、3つの情報源が3つ違うことを言う。** 埋めるのが `evidence.source`。
+
+**ドリフトの心配は無い**（09-04 に規則を読んで確認）: `l1DeliveryDepth` が thin を抜けるには
+**配達3件かつ異なる2日**が要る。L1 は1エンドポイントにつき6日で1回しか買わない。10日の会期では
+最大2件——`thin` のまま。69 は動かない。
+
+## 4. 会期の失敗テスト —— **23項目・25本**（G21 は MCP 側で a/b/c の3本。I23 は 09-04 夕に追加）
+
+> 実体: `packages/sdk/test/pay-or-refuse.test.mjs`（A1〜H22 の21本・I23 を追加して22本）＋ `packages/mcp-server/test/pay-if-trusted.test.mjs`（G21a/b/c）。
 > テスト名の先頭がこの番号。**番号と本数を混ぜて数えない**（09-04 に「22本」と書いて実体24本と食い違った）。
+>
+> **I23（09-04 夕追加・Day 1 の最初に書く）**: `/decision` が **404 `not_found`** を返す売り手（＝カタログ外）に対して、
+> payOrRefuse は落ちも黙認もせず、**402 チャレンジの `payTo` と受取人スコアだけで判定を出す**。
+> 判定材料が無い場合だけ、機械可読な理由で署名前に拒否する。**デモの支払い先そのものがこの経路**（§3.1）。
 
 **A. 署名に到達しない（提出物の核心）**
 1. `/decision` が ALLOW 以外 → signer 0回
@@ -231,3 +269,18 @@ main は本番リポでもあり会期中も動くので、放置すると `git 
 - Bazantic: `baz curl` で $0 ルートが**残高ゼロで成立**（tx `0x62debbc1…`・Basescan に実在）
 - 構造: `now.py` に会期ブロックを常設（Day N・やり残し・タグ/ブランチ実測・拒否側 verdict）。状態は `state/ethonline_day.json`
 - **事故1件**: この更新の直前に、編集スクリプトが途中で止まったまま git 手順が走り、**内容の無いコミットが main に載った**（メッセージだけがある空コミット）。共有 main なので履歴は書き換えない。原因は python の失敗と git 手順の間に `&&` の関門が無かったこと——同じ失敗を 09-02 にも記録している
+
+
+## 12. Day 0 夕（09-04 16:50–17:10 JST）の追加実測
+
+- **デモ鍵に着金**: `0xDB62BD20…3Aa673` に **1.000000 USDC**（block 50859520・tx `0x3684a4ab70247bf444fe857cb6b29a08697e5f5db0a87aae5970fa317d84b15b`）。
+  送り元は**賞金受取ウォレット `0x6777e11f…3986`**——両者がオンチェーンで紐づくので、デモ鍵が我々のものであることは第三者が検算できる。
+  **ETH 残高 0 のままでよい**（EIP-3009 の署名は買い手のガスを使わない）
+- **The Graph の 402 チャレンジは 9/3 と完全一致**: `x402Version 2` / `exact` / `eip155:8453` / `amount 10000` /
+  `payTo 0x79DC34E4…FcCB` / `asset 0x833589fC…2913` / `extra.assetTransferMethod eip3009` / `maxTimeoutSeconds 300`。
+  ヘッダ名は `payment-required`、要求されるのは `Payment-Signature`
+- **ヘッダ名の心配は空振り**: `src/lib/observatory/x402-payer.ts` は v2 の `PAYMENT-SIGNATURE` と v1 の `X-PAYMENT` の
+  両方を既に実装済み（403行目）。直すところは無い
+- **The Graph はカタログに無い → §3.1 の訂正**（この発見が Day 1 を丸一日潰すところだった）
+- `/api/v1/graph/payto/{addr}` は名前に反して**subgraph の代理ではなく自カタログの隣接照会**。The Graph に対しては `operates: []`。
+  つまり「第2の情報源」は本番のどのエンドポイントにも出ていない。それを出すのが会期の実装
