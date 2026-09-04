@@ -5,9 +5,12 @@ import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { SITE_URL } from "@/lib/site-url";
 import { TableScroll } from "@/components/site/TableScroll";
-import { getObservatoryStats, getObservatoryStatsByChain } from "@/lib/observatory/reader";
+import {
+  getObservatoryStatsByChainCached,
+  getObservatoryStatsCached,
+  getCoverageShareCached,
+} from "@/lib/observatory/cached-reads";
 import { getDailyMetricsHistory, type DailyMetricsRow } from "@/lib/observatory/metrics-rollup";
-import { getCoverageShare } from "@/lib/observatory/reader";
 import { getAnchors } from "@/lib/observatory/anchors";
 
 /**
@@ -95,10 +98,10 @@ function HistoryChart({ rows }: { rows: DailyMetricsRow[] }) {
 }
 
 export default async function ObservatoryStatePage() {
-  const stats = await getObservatoryStats();
-  const chainStats = await getObservatoryStatsByChain();
+  const stats = await getObservatoryStatsCached();
+  const chainStats = await getObservatoryStatsByChainCached();
   const history = await getDailyMetricsHistory(60);
-  const coverage = await getCoverageShare();
+  const coverage = await getCoverageShareCached();
   const [latestAnchor] = await getAnchors(1);
   const denom = stats.totalEndpoints;
   const snap = stats.latestSnapshot;

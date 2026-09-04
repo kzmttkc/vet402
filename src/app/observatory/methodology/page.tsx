@@ -14,7 +14,7 @@ import {
   PRIORITY_SWEEP_WINDOW_DAYS,
   SWEEP_WINDOW_DAYS,
 } from "@/lib/observatory/l1-runner";
-import { getUnverifiedBreakdown } from "@/lib/observatory/reader";
+import { getUnverifiedBreakdownCached } from "@/lib/observatory/cached-reads";
 import { MAX_PER_PURCHASE_UNITS } from "@/lib/observatory/x402-payer";
 import { DAILY_BUDGET_USD } from "@/lib/observatory/budget";
 
@@ -42,7 +42,7 @@ export default async function ObservatoryMethodologyPage() {
   // 2026-09-04 外部監査 E・P1-8: §2 は「unverified の主因は method の未申告」と
   // 言い続けていたが、実測ではそれが 1 件で unverified は 12,305 件だった。
   // 順位を散文で書くとまた腐るので、実測を出す。
-  const unverified = await getUnverifiedBreakdown().catch(() => null);
+  const unverified = await getUnverifiedBreakdownCached().catch(() => null);
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   const breadcrumb = breadcrumbJsonLd([
     { name: "Home", path: "/" },

@@ -6,7 +6,8 @@ import { safeJsonLd } from "@/lib/util/json-ld";
 import { SITE_URL } from "@/lib/site-url";
 import { TableScroll } from "@/components/site/TableScroll";
 import { buttonClass } from "@/components/ui/Button";
-import { getObservatoryOverview, getObservatoryStats } from "@/lib/observatory/reader";
+import { getObservatoryOverview } from "@/lib/observatory/reader";
+import { getObservatoryStatsCached } from "@/lib/observatory/cached-reads";
 import { parseObservatorySearchParams, observatoryHref } from "@/lib/observatory/query";
 import { chainLabel } from "@/lib/observatory/chains";
 import TrackView from "@/components/site/TrackView";
@@ -65,7 +66,7 @@ export default async function ObservatoryPage({
   const overview = await getObservatoryOverview(query);
   // 2026-09-02 UX 監査: 既定表示の上位 20 行が全部 unverified（登録の 84%）で、初見の人が
   // 「測れていない製品」と読んだ。判定ごとの件数を表の直上に出し、1 クリックで絞れるようにする。
-  const stats = await getObservatoryStats().catch(() => null);
+  const stats = await getObservatoryStatsCached().catch(() => null);
   const totalPages = Math.max(1, Math.ceil(overview.totalEndpoints / overview.pageSize));
   const page = overview.page;
   const nonce = (await headers()).get("x-nonce") ?? undefined;
