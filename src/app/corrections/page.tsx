@@ -63,16 +63,66 @@ const CORRECTIONS: Correction[] = [
       "Found in our own adversarial audit and changed the same day (commit a62072c, 2026-09-02 12:51 JST). " +
       "The wording now states the mechanism and prints the measured share: the catalog is re-fetched daily, " +
       "endpoints are probed on a rolling schedule, and the page carries the current percentage of active " +
-      "endpoints with a probe in the last 7 days. We also raised the cadence: that share is 68.8% of 15,312 " +
-      "active endpoints as of 2026-09-04. An independent observatory, probe402, published the same finding " +
+      "endpoints with a probe in the last 7 days. We also raised the cadence: that share was 68.8% of 15,312 " +
+      "active endpoints on 2026-09-04 (reading at 09:00 UTC). That figure is a single reading and moves; the " +
+      "live one is on /observatory/state, and it is printed here with its timestamp rather than left to read " +
+      "as a standing property. An independent observatory, probe402, published the same finding " +
       "on 2026-09-03 from a 2026-09-01 reading. Their reading was correct.",
   },
 ];
+
+/**
+ * 1 行の描画。before / after は訂正の種類で形が違う——公開判定の訂正は
+ * `publishedVerdict` を、台帳の昇格は `status` を持つ。片方しか読んでいなかった
+ * ので、昇格 472 行が `— → —` と描かれていた（2026-09-04 外部監査 E・P1-11）。
+ */
+function stateOf(side: unknown): string {
+  const v = side as { publishedVerdict?: string; status?: string } | null;
+  return v?.publishedVerdict ?? v?.status ?? "—";
+}
+
+function CorrectionTableRow({
+  row,
+  names,
+}: {
+  row: CorrectionRow;
+  names: Map<string, string>;
+}) {
+  const before = stateOf(row.before);
+  const after = stateOf(row.after);
+  const name = names.get(row.subject_id) ?? row.subject_id.slice(0, 8);
+  return (
+    <tr>
+      <td className="whitespace-nowrap">{row.created_at.slice(0, 16).replace("T", " ")}</td>
+      <td className="max-w-[24rem] truncate">
+        {row.subject_type === "endpoint" ? (
+          <Link href={`/observatory/e/${row.subject_id}`} className="underline" title={name}>
+            {name}
+          </Link>
+        ) : (
+          name
+        )}
+      </td>
+      <td>{row.level}</td>
+      <td className="whitespace-nowrap">
+        <code>{before}</code> → <code>{after}</code>
+      </td>
+      <td>{row.reason}</td>
+    </tr>
+  );
+}
 
 export default async function CorrectionsPage() {
   // 2026-09-02: §10 の訂正ログ（correction_log）はここで公開する。9/2 に path_template の
   // 訂正 12 件が入ったのに、この頁は手書きの定数だけを見て「0 件」と言っていた。
   const rows: CorrectionRow[] = await listCorrections({ limit: 500 }).catch(() => []);
+  // 2026-09-04 外部監査 E・P1-11: この表は 484 行を丸ごと "machine-recorded
+  // corrections" と呼んでいたが、うち 472 行は settlement_backfill——
+  // settle_claimed → settled という**想定内の昇格**で、誤りの訂正ではない。
+  // しかも昇格行は before/after に publishedVerdict を持たないので、表には
+  // 「— → —」と描かれていた。2 つは別のものなので、別の表にする。
+  const verdictCorrections = rows.filter((r) => r.reason !== "settlement_backfill");
+  const ledgerPromotions = rows.filter((r) => r.reason === "settlement_backfill");
   const names = await getEndpointNames(rows.filter((r) => r.subject_type === "endpoint").map((r) => r.subject_id)).catch(() => new Map<string, string>());
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   const breadcrumb = breadcrumbJsonLd([
@@ -94,8 +144,13 @@ export default async function CorrectionsPage() {
             <span>Independent Measurement</span>
             <span>Register: corrections issued</span>
             <span>
-              {/* この頁のシアン1点。発行済みの件数という事実。 */}
-              Entries: <span className="text-signal">{CORRECTIONS.length}</span>
+              {/* この頁のシアン1点。発行済みの件数という事実。
+                  2026-09-04 監査 E・P1-11: 見出しは 1、本文は 484 と、同じ頁で
+                  別の数を名乗っていた。訂正の件数（散文 + 機械）に統一し、
+                  昇格は訂正ではないので別に数える。 */}
+              Corrections:{" "}
+              <span className="text-signal">{CORRECTIONS.length + verdictCorrections.length}</span>{" "}
+              · Ledger promotions: {ledgerPromotions.length.toLocaleString()}
             </span>
           </div>
           <div className="doc-head-col">
@@ -131,16 +186,20 @@ export default async function CorrectionsPage() {
           <span>Issued corrections</span>
         </h2>
 
-        {rows.length > 0 && (
+        {verdictCorrections.length > 0 && (
           <>
             <p className="doc-p">
-              {rows.length.toLocaleString()} machine-recorded correction{rows.length === 1 ? "" : "s"} to
-              published observatory verdicts (product spec §10). Newest first. The same rows are served
-              at <code>/api/v1/observatory/corrections</code>.
+              {verdictCorrections.length.toLocaleString()} machine-recorded correction
+              {verdictCorrections.length === 1 ? "" : "s"} to a <em>published</em> observatory verdict
+              (product spec §10) — a verdict we had put on a public page and then had to take back.
+              Newest first. The same rows are served at{" "}
+              <code>/api/v1/observatory/corrections</code>.
             </p>
             <div className="mt-4 overflow-x-auto">
               <table className="fact-table">
-                <caption className="sr-only">Machine-recorded corrections, newest first</caption>
+                <caption className="sr-only">
+                  Machine-recorded corrections to published verdicts, newest first
+                </caption>
                 <thead>
                   <tr>
                     <th scope="col">Recorded (UTC)</th>
@@ -151,37 +210,16 @@ export default async function CorrectionsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => {
-                    const before = (r.before as { publishedVerdict?: string } | null)?.publishedVerdict ?? "—";
-                    const after = (r.after as { publishedVerdict?: string } | null)?.publishedVerdict ?? "—";
-                    const name = names.get(r.subject_id) ?? r.subject_id.slice(0, 8);
-                    return (
-                      <tr key={r.id}>
-                        <td className="whitespace-nowrap">{r.created_at.slice(0, 16).replace("T", " ")}</td>
-                        <td className="max-w-[24rem] truncate">
-                          {r.subject_type === "endpoint" ? (
-                            <Link href={`/observatory/e/${r.subject_id}`} className="underline" title={name}>
-                              {name}
-                            </Link>
-                          ) : (
-                            name
-                          )}
-                        </td>
-                        <td>{r.level}</td>
-                        <td className="whitespace-nowrap">
-                          {before} → {after}
-                        </td>
-                        <td>{r.reason}</td>
-                      </tr>
-                    );
-                  })}
+                  {verdictCorrections.map((r) => (
+                    <CorrectionTableRow key={r.id} row={r} names={names} />
+                  ))}
                 </tbody>
               </table>
             </div>
           </>
         )}
 
-        {CORRECTIONS.length === 0 && rows.length === 0 ? (
+        {CORRECTIONS.length === 0 && verdictCorrections.length === 0 ? (
           <div className="dashbox mt-6 max-w-[64ch]">
             <p className="doc-caption">Empty log</p>
             <p className="mt-3 text-brand">No corrections have been issued yet.</p>
@@ -213,6 +251,57 @@ export default async function CorrectionsPage() {
               </div>
             ))}
           </div>
+        )}
+
+        {/* ===== 1b. 昇格（訂正ではない） ===== */}
+        {ledgerPromotions.length > 0 && (
+          <>
+            <h2 className="sec-head">
+              <span className="sec-no">1b.</span>
+              <span>Ledger promotions — recorded here, but not corrections</span>
+            </h2>
+            <p className="doc-p">
+              {ledgerPromotions.length.toLocaleString()} row
+              {ledgerPromotions.length === 1 ? "" : "s"} where a purchase moved from{" "}
+              <code>settle_claimed</code> (the seller asserted a settlement we had not re-read) to{" "}
+              <code>settled</code> (we re-read it on-chain and found the transfer). That is the
+              verification pipeline finishing its job on schedule, not vet402 publishing something
+              untrue and taking it back. They are written to the same append-only log so the path
+              from claim to confirmation is auditable, and they are listed separately here because
+              counting them as corrections would inflate our own error count and bury the{" "}
+              {verdictCorrections.length.toLocaleString()} entries above. Until 2026-09-04 this page
+              called all {rows.length.toLocaleString()} of them &ldquo;machine-recorded
+              corrections&rdquo; and drew every row as <code>— → —</code>, because a promotion
+              carries a <code>status</code>, not a <code>publishedVerdict</code>.
+            </p>
+            <div className="mt-4 overflow-x-auto">
+              <table className="fact-table">
+                <caption className="sr-only">
+                  Ledger status promotions, newest first
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Recorded (UTC)</th>
+                    <th scope="col">Subject</th>
+                    <th scope="col">Level</th>
+                    <th scope="col">Before → after</th>
+                    <th scope="col">Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ledgerPromotions.slice(0, 100).map((r) => (
+                    <CorrectionTableRow key={r.id} row={r} names={names} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {ledgerPromotions.length > 100 && (
+              <p className="doc-note mt-3">
+                Newest 100 of {ledgerPromotions.length.toLocaleString()} shown. The full set is at{" "}
+                <code>/api/v1/observatory/corrections</code>.
+              </p>
+            )}
+          </>
         )}
 
         {/* ===== 2. What gets logged ===== */}
