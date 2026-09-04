@@ -287,7 +287,9 @@ def unanchored(f, ):
         for i, line in enumerate(p.read_text().splitlines(), 1):
             # 日付を明記した実測値（原価根拠など）は本番stateと一致しなくてよい。
             # 「その日に測った」と書いてあることが根拠なので、日付が無い数字だけを咎める。
-            if re.search(r"(?i)(measured|retrieved|fetched|quote[d]?|実測|取得)[^\n]{0,40}20\d\d-\d\d-\d\d|on 20\d\d-\d\d-\d\d|base units|requested amount", line):
+            # ISO 日付が同じ行にある＝「その日に測った/引用した」と書いてある。
+            # 生きた指標のズレはアンカーが別に見るので、日付つきの行はこの網から外す。
+            if re.search(r"20\d\d-\d\d-\d\d|base units|requested amount", line, re.I):
                 continue
             for m in re.finditer(r"(?<![$\d.])\b\d{1,3}(?:,\d{3})+\b", line):
                 if m.group(0) not in live:
