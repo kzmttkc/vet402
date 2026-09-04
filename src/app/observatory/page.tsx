@@ -269,7 +269,7 @@ export default async function ObservatoryPage({
                   <th scope="col">Endpoint</th>
                   <th scope="col">L0</th>
                   <th scope="col" className="num">
-                    L1
+                    L1 settled / delivered
                   </th>
                   <th scope="col">Last probed</th>
                   <th scope="col">Network</th>
@@ -295,13 +295,21 @@ export default async function ObservatoryPage({
                     <td>
                       <VerdictWord verdict={row.publishedVerdict} />
                     </td>
+                    {/* 2026-09-04 外部監査 E・P0-3: settled だけを出していた。settled は
+                        転送の確認、delivered は応答の到着。同じ数のときも省略しない
+                        （同じときだけ隠すのが、10/10 settled・2xx 0 件を見逃した形）。 */}
                     <td className="num whitespace-nowrap">
                       {row.l1Attempts === 0 ? (
                         "—"
                       ) : (
-                        <span className={row.l1Settled > 0 ? "text-brand-deep" : "text-[#9f0712]"}>
-                          {row.l1Settled}/{row.l1Attempts}
-                        </span>
+                        <>
+                          <span className={row.l1Settled > 0 ? "text-brand-deep" : "text-[#9f0712]"}>
+                            {row.l1Settled}/{row.l1Attempts}
+                          </span>
+                          <span className="block text-[0.75rem] text-brand-lift">
+                            {row.l1Delivered} delivered
+                          </span>
+                        </>
                       )}
                     </td>
                     <td className="whitespace-nowrap">{fmtDate(row.lastProbedAt)}</td>
@@ -355,7 +363,8 @@ export default async function ObservatoryPage({
             it declares. The catalog is re-fetched daily; endpoints are probed on a rolling
             schedule, and each row shows when it was last probed. The L0 cell is the payment-wall
             measurement alone; the L1 cell counts real purchases that returned an on-chain receipt
-            (settled / paid attempts), with every receipt listed on the endpoint&apos;s page. The
+            (settled / paid attempts) above the count that also returned a 2xx response
+            (delivered), with every receipt listed on the endpoint&apos;s page. The
             two are never mixed.{" "}
             <strong>pass / fail / unverified</strong> are defined measurements, not opinions —{" "}
             <Link href="/observatory/methodology" className="underline">
@@ -369,8 +378,12 @@ export default async function ObservatoryPage({
         <p className="doc-p">
           <strong>Order.</strong> Endpoints with at least one settled L1 purchase first, then measured
           endpoints (pass / fail), then by observed call volume (catalog-reported, last 30 days).{" "}
-          <strong>L1</strong> is settled / paid attempts for that endpoint; <code>—</code> means no purchase
-          was attempted. The <em>[receipts]</em> entry under Figure 1 keeps only rows with a receipt.
+          <strong>L1</strong> is settled / paid attempts for that endpoint, with the delivered count
+          beneath it; <code>—</code> means no purchase was attempted. <strong>settled</strong> is the
+          transfer vet402 re-read on-chain; <strong>delivered</strong> is a settled attempt whose
+          paid request also answered <code>2xx</code>. A settled attempt that answered 4xx or 5xx
+          moved money without returning the thing being sold, so it counts once and not twice.
+          The <em>[receipts]</em> entry under Figure 1 keeps only rows with a receipt.
         </p>
         <p className="doc-p">
           <strong>Catalog</strong> is presence in the public discovery catalog: <code>active</code>{" "}

@@ -199,7 +199,7 @@ export default async function ImpactPage() {
           {latestAnchor ? (
             <>
               The purchase ledger is a daily hash chain. Latest root ({latestAnchor.day}):{" "}
-              <code>{latestAnchor.rootHash.slice(0, 16)}…</code> over{" "}
+              <code>{latestAnchor.rootHash.slice(0, 16)}…</code> over that day&apos;s{" "}
               {latestAnchor.entryCount.toLocaleString()} entries. Rewriting any past row breaks every
               later root, and the projection is open source, so a third party can verify the chain
               from the public API alone.

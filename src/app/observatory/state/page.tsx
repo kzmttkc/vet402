@@ -123,6 +123,7 @@ export default async function ObservatoryStatePage() {
       "L0 unverified",
       "L1 paid purchase attempts",
       "L1 settled with on-chain receipt",
+      "L1 delivered (settled and a 2xx response)",
     ],
   };
   const breadcrumb = breadcrumbJsonLd([
@@ -322,20 +323,24 @@ export default async function ObservatoryStatePage() {
         {stats.l1.attempts === 0 ? (
           <p className="doc-p text-brand-lift">
             No purchases attempted yet. When active, this section reports settlement penetration
-            over real paid requests, each backed by an on-chain receipt.
+            over real paid requests, each backed by an on-chain receipt, alongside how many of
+            those settled attempts also returned the thing being sold.
           </p>
         ) : (
           <TableScroll label="L1 covert-purchase measurements">
             <table className="fact-table">
               <caption className="sr-only">L1 covert-purchase measurements</caption>
               <thead>
+                {/* 2026-09-04 外部監査 E・P1-13: "Share" 1 列に、attempts を分母にする行と
+                    endpoints を分母にする行が混ざっていた。同じ見出しの下に別の分母を置くと
+                    読者は 2 つの率を比べてしまう。分母を列見出しに書く。 */}
                 <tr>
                   <th scope="col">Measurement</th>
                   <th scope="col" className="num">
                     Count
                   </th>
                   <th scope="col" className="num">
-                    Share
+                    Share of its own denominator
                   </th>
                 </tr>
               </thead>
@@ -343,22 +348,47 @@ export default async function ObservatoryStatePage() {
                 <tr>
                   <td className="text-brand">Paid purchase attempts (money signed and sent)</td>
                   <td className="num">{stats.l1.attempts.toLocaleString()}</td>
-                  <td className="num">—</td>
+                  <td className="num">— (denominator)</td>
                 </tr>
                 <tr>
-                  <td className="text-brand">Settled with an on-chain receipt</td>
+                  <td className="text-brand">Settled: transfer confirmed on-chain</td>
                   <td className="num">{stats.l1.settled.toLocaleString()}</td>
-                  <td className="num">{pct(stats.l1.settled, stats.l1.attempts)}</td>
+                  <td className="num">{pct(stats.l1.settled, stats.l1.attempts)} of attempts</td>
+                </tr>
+                {/* 2026-09-04 外部監査 E・P0-3: settled と delivered は別の事実。
+                    本番実測では settled のうち 120 件が非 2xx だった。 */}
+                <tr>
+                  <td className="text-brand">
+                    Delivered: settled and the paid request answered <code>2xx</code>
+                  </td>
+                  <td className="num">{stats.l1.delivered.toLocaleString()}</td>
+                  <td className="num">{pct(stats.l1.delivered, stats.l1.attempts)} of attempts</td>
+                </tr>
+                <tr>
+                  <td className="text-brand">Settled but the paid request answered 4xx or 5xx</td>
+                  <td className="num">{Math.max(0, stats.l1.settled - stats.l1.delivered).toLocaleString()}</td>
+                  <td className="num">
+                    {pct(Math.max(0, stats.l1.settled - stats.l1.delivered), stats.l1.attempts)} of attempts
+                  </td>
                 </tr>
                 <tr>
                   <td className="text-brand">Distinct endpoints purchased from</td>
                   <td className="num">{stats.l1.endpointsAttempted.toLocaleString()}</td>
-                  <td className="num">—</td>
+                  <td className="num">— (denominator)</td>
                 </tr>
                 <tr>
                   <td className="text-brand">Endpoints with at least one settled receipt</td>
                   <td className="num">{stats.l1.endpointsSettled.toLocaleString()}</td>
-                  <td className="num">{pct(stats.l1.endpointsSettled, stats.l1.endpointsAttempted)}</td>
+                  <td className="num">
+                    {pct(stats.l1.endpointsSettled, stats.l1.endpointsAttempted)} of endpoints purchased from
+                  </td>
+                </tr>
+                <tr>
+                  <td className="text-brand">Endpoints with at least one delivered response</td>
+                  <td className="num">{stats.l1.endpointsDelivered.toLocaleString()}</td>
+                  <td className="num">
+                    {pct(stats.l1.endpointsDelivered, stats.l1.endpointsAttempted)} of endpoints purchased from
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -407,7 +437,7 @@ export default async function ObservatoryStatePage() {
           <strong>Coverage (7-day window):</strong>{" "}
           {coverage.pct === null
             ? "no active endpoints on record"
-            : `${coverage.measuredLast7d.toLocaleString()} of ${coverage.activeEndpoints.toLocaleString()} active listed endpoints (${coverage.pct}%) carry an L0 measurement from the last 7 days`}
+            : `${coverage.measuredLast7d.toLocaleString()} of ${coverage.activeEndpoints.toLocaleString()} active listed endpoints (${coverage.pct}% of active listed endpoints) carry an L0 measurement from the last 7 days`}
           . This is the machine definition behind &quot;endpoints under regular
           verification&quot; — numerator and denominator as stated, nothing else.
         </p>
@@ -417,8 +447,8 @@ export default async function ObservatoryStatePage() {
             <>
               daily hash chain over the full purchase ledger, latest root ({latestAnchor.day}):{" "}
               <code>{latestAnchor.rootHash.slice(0, 16)}…</code> covering{" "}
-              {latestAnchor.entryCount.toLocaleString()} entries. Rewriting any past row breaks
-              every later root. Recompute it yourself:{" "}
+              that day&apos;s {latestAnchor.entryCount.toLocaleString()} entries. Rewriting any past
+              row breaks every later root. Recompute it yourself:{" "}
               <code>/api/v1/observatory/anchors</code> + <code>/api/v1/observatory/export.csv</code>{" "}
               (projection is open source).
             </>

@@ -63,7 +63,7 @@ export async function GET(
       {
         ...result,
         disclaimer:
-          "Facts only: attempts, settlements and their on-chain receipts. This is a record of what happened when vet402 paid this endpoint, not an endorsement or a prediction.",
+          "Facts only: attempts, settlements and their on-chain receipts. settledCount is the transfer vet402 re-read on-chain; deliveredCount is the subset whose paid request also answered 2xx, so settledCount minus deliveredCount is money that moved without the response arriving. This is a record of what happened when vet402 paid this endpoint, not an endorsement or a prediction.",
         methodology: "https://vet402.com/observatory/methodology",
       },
       {
