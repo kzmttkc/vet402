@@ -27,9 +27,11 @@ import { getPublicClient, isValidAddress } from "./client";
 import {
   buildValidationRecord,
   countRegistryWritesToday,
+  DEFAULT_REGISTRY_DAILY_MAX_WRITES,
   hasRegistryWriteForHash,
   isRegistryWritesEnabled,
   publishValidation,
+  registryDailyMaxWrites,
   requestHashOf,
   type PublishOutcome,
 } from "./registry";
@@ -37,7 +39,8 @@ import { loadCoverageTier, parseRegistryWriteTiers, type CoverageTier } from "@/
 import { logServerError } from "@/lib/util/log";
 import { payeeId, purchaseId } from "@/lib/ids/canonical";
 
-export const DEFAULT_REGISTRY_DAILY_MAX_WRITES = 200;
+/** 正典は registry.ts（publishValidation の同一文ゲートが同じ値を読む）。 */
+export { DEFAULT_REGISTRY_DAILY_MAX_WRITES };
 /** 0.0005 ETH。Base の 1 件（request+response）が cap 0.5 gwei で ~0.0003 ETH 未満なので 1 件分は必ず残る。 */
 export const DEFAULT_REGISTRY_MIN_BALANCE_WEI = 500_000_000_000_000n;
 
@@ -80,6 +83,8 @@ export type RegistryHookDeps = {
   chain?: {
     estimateFees: () => Promise<bigint>;
     getBalance: (address: Address) => Promise<bigint>;
+    /** 1 本目の tx の確定待ち（2026-09-04 監査 P1-4）。 */
+    waitForReceipt: (txHash: `0x${string}`) => Promise<unknown>;
   };
   createWallet?: (privateKey: `0x${string}`) => MinimalWalletClient;
   publish?: typeof publishValidation;
@@ -93,6 +98,7 @@ const realDeps: Required<RegistryHookDeps> = {
   chain: {
     estimateFees: async () => (await getPublicClient().estimateFeesPerGas()).maxFeePerGas ?? 0n,
     getBalance: (address) => getPublicClient().getBalance({ address }),
+    waitForReceipt: (txHash) => getPublicClient().waitForTransactionReceipt({ hash: txHash }),
   },
   createWallet: (privateKey) =>
     createWalletClient({
@@ -157,8 +163,10 @@ async function publishOutcome(
     return { status: "tier_excluded", tier };
   }
 
-  // 日次上限: 超えたら書かず、理由を残す。
-  const max = envInt("REGISTRY_DAILY_MAX_WRITES", DEFAULT_REGISTRY_DAILY_MAX_WRITES);
+  // 日次上限の**早期退出**。権威はここではなく publishValidation の同一文ゲート
+  // （2026-09-04 監査 P1-4）——ここで読んだ数は、agent 解決と残高照会の RPC を
+  // 待つ間に古くなる。RPC を無駄に叩かないための先読みとして残す。
+  const max = registryDailyMaxWrites();
   const count = await deps.countWritesToday();
   if (count >= max) {
     logServerError("registry.hook.daily_cap", `writes_today=${count} max=${max} endpoint=${input.endpointId}`);
@@ -190,9 +198,17 @@ async function publishOutcome(
     subject: { type: "payee", id: payeeId(network, input.payTo) },
     requestKey,
   });
-  const out = await deps.publish({ record, walletClient, currentMaxFeeWei });
+  const out = await deps.publish({
+    record,
+    walletClient,
+    currentMaxFeeWei,
+    waitForReceipt: deps.chain.waitForReceipt,
+  });
   if (out.status === "gas_over_cap") {
     logServerError("registry.hook.gas_over_cap", `max_fee_gwei=${out.maxFeeGwei} endpoint=${input.endpointId}`);
+  }
+  if (out.status === "daily_cap") {
+    logServerError("registry.hook.daily_cap", `writes_today=${out.count} max=${out.max} endpoint=${input.endpointId}`);
   }
   return out;
 }

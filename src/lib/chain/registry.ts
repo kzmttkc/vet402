@@ -20,7 +20,7 @@
 //    （既定 0.5 gwei・Base 水準）を超えたら書かずに退く
 // ============================================================
 import { keccak256, parseAbi, toBytes, type WalletClient } from "viem";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { registryWrites } from "@/lib/db/schema";
 import { ERC8004_ADDRESSES } from "./config";
@@ -49,7 +49,13 @@ export async function hasRegistryWriteForHash(requestHash: `0x${string}`): Promi
   const rows = await db
     .select({ id: registryWrites.id })
     .from(registryWrites)
-    .where(eq(registryWrites.requestHash, requestHash))
+    // 2026-09-04 監査 P1-4: **submitted だけが「もう書いた」。**
+    // 以前は status を問わず行の存在だけを見ていたので、一度 failed になった
+    // 測定は二度と書けなかった——失敗の原因（本番の 14 行は「validator は
+    // request を自己開始できない」という設計欠陥）が直っても、である。
+    // pending は publishValidation の ON CONFLICT が握る（そちらは failed の
+    // ときだけ再試行を許すので、飛行中の行を二重送信しない）。
+    .where(and(eq(registryWrites.requestHash, requestHash), eq(registryWrites.status, "submitted")))
     .limit(1);
   return rows.length > 0;
 }
@@ -143,8 +149,20 @@ export type PublishOutcome =
   | { status: "disabled" }
   | { status: "duplicate" }
   | { status: "gas_over_cap"; maxFeeGwei: number }
+  /** 2026-09-04 監査 P1-4: 日次上限は INSERT と同一文で判定する（読んでから書かない）。 */
+  | { status: "daily_cap"; count: number; max: number }
   | { status: "submitted"; txHash: string }
   | { status: "failed"; error: string };
+
+export const DEFAULT_REGISTRY_DAILY_MAX_WRITES = 200;
+
+/** REGISTRY_DAILY_MAX_WRITES（既定 200）。負値・非整数は既定へ倒す。 */
+export function registryDailyMaxWrites(): number {
+  const raw = process.env.REGISTRY_DAILY_MAX_WRITES?.trim();
+  if (!raw) return DEFAULT_REGISTRY_DAILY_MAX_WRITES;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 ? n : DEFAULT_REGISTRY_DAILY_MAX_WRITES;
+}
 
 type MinimalWalletClient = Pick<WalletClient, "writeContract"> & {
   account: NonNullable<WalletClient["account"]>;
@@ -161,6 +179,16 @@ export async function publishValidation(input: {
   walletClient: MinimalWalletClient;
   /** 現在の maxFeePerGas (wei)。呼び手が取得して渡す（テスト可能性）。 */
   currentMaxFeeWei: bigint;
+  /**
+   * 1 本目の tx が確定するまで待つ（2026-09-04 監査 P1-4）。
+   *
+   * **必須にしてある。** request と response を続けて出すのに 1 本目のレシートを
+   * 待っていなかったので、同じ operator 鍵から 2 本が同時に飛んで nonce が衝突し、
+   * しかも response が request より先に採掘され得た（レジストリの仕様順序が壊れる）。
+   * 省略可能にすると本番で忘れられるので、型で強制する。
+   * throw（revert・タイムアウト）したら 2 本目は出さない。
+   */
+  waitForReceipt: (txHash: `0x${string}`) => Promise<unknown>;
 }): Promise<PublishOutcome> {
   if (!isRegistryWritesEnabled()) return { status: "disabled" };
   const db = getDb();
@@ -171,23 +199,50 @@ export async function publishValidation(input: {
   if (maxFeeGwei > capGwei) return { status: "gas_over_cap", maxFeeGwei };
 
   const { record } = input;
-  // 行の確保が冪等ゲート。既存 hash なら何も送らない。
+  const max = registryDailyMaxWrites();
+  // 行の確保が冪等ゲート**かつ**日次上限のゲート（2026-09-04 監査 P1-4）。
+  //
+  // 以前は countRegistryWritesToday() を読んでから INSERT していた。読んでから
+  // 書くまでの間に別の書き込みが入れば上限を越える——l1-runner.reserveSpend が
+  // 2026-08-15 に実測した（$25 の枠に $49 を通した）のと同じ形。上限判定を
+  // INSERT と同一文に入れれば、先にコミットした方が数えられる側になる。
+  //
+  // ON CONFLICT の DO UPDATE は **failed の行だけ**を再試行可能にする。
+  // submitted / pending は触らない（二重送信を作らない）。
   const inserted = await db.execute(sql`
-    INSERT INTO registry_writes (request_hash, endpoint_id, agent_id, level, response, evidence_uri, status)
-    VALUES (${record.requestHash}, ${record.endpointId}::uuid, ${String(record.agentId)},
-            ${record.level}, ${record.response}, ${record.evidenceUri}, 'pending')
-    ON CONFLICT (request_hash) DO NOTHING
-    RETURNING id
+    WITH day AS (
+      SELECT count(*)::int AS n FROM registry_writes
+      WHERE created_at >= (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
+    ), ins AS (
+      INSERT INTO registry_writes (request_hash, endpoint_id, agent_id, level, response, evidence_uri, status)
+      SELECT ${record.requestHash}, ${record.endpointId}::uuid, ${String(record.agentId)},
+             ${record.level}, ${record.response}, ${record.evidenceUri}, 'pending'
+      FROM day WHERE day.n < ${max}
+      ON CONFLICT (request_hash) DO UPDATE
+        SET status = 'pending', error = NULL, tx_hash = NULL, created_at = now(),
+            response = EXCLUDED.response, evidence_uri = EXCLUDED.evidence_uri
+        WHERE registry_writes.status = 'failed'
+      RETURNING id
+    )
+    SELECT (SELECT id FROM ins)::text AS id, (SELECT n FROM day) AS n
   `);
   const rows = (Array.isArray(inserted) ? inserted : (inserted as { rows?: unknown[] }).rows ?? []) as {
-    id: string;
+    id: string | null;
+    n: number | string | null;
   }[];
-  if (rows.length === 0) return { status: "duplicate" };
-  const ledgerId = rows[0].id;
+  const verdict = rows[0];
+  // 行が返らない = 文が書いたとおりに走っていない。ガスを使うゲートの判定が
+  // 読めないまま送信しない（reserveSpend と同じ規律）。
+  if (!verdict) return { status: "failed", error: "registry write verdict row missing" };
+  const ledgerId = typeof verdict.id === "string" && verdict.id !== "" ? verdict.id : null;
+  if (!ledgerId) {
+    const count = Number(verdict.n ?? 0);
+    return count >= max ? { status: "daily_cap", count, max } : { status: "duplicate" };
+  }
 
   try {
     const { walletClient } = input;
-    await walletClient.writeContract({
+    const requestTxHash = await walletClient.writeContract({
       address: ERC8004_ADDRESSES.validationRegistry,
       abi: validationRegistryAbi,
       functionName: "validationRequest",
@@ -195,6 +250,8 @@ export async function publishValidation(input: {
       account: walletClient.account,
       chain: walletClient.chain,
     });
+    // 1 本目が確定してから 2 本目。ここで throw したら 2 本目は出さない。
+    await input.waitForReceipt(requestTxHash);
     const txHash = await walletClient.writeContract({
       address: ERC8004_ADDRESSES.validationRegistry,
       abi: validationRegistryAbi,
@@ -203,6 +260,7 @@ export async function publishValidation(input: {
       account: walletClient.account,
       chain: walletClient.chain,
     });
+    await input.waitForReceipt(txHash);
     await db
       .update(registryWrites)
       .set({ status: "submitted", txHash })

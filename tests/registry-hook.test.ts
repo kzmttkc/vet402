@@ -60,6 +60,7 @@ function fakeDeps(overrides: Partial<RegistryHookDeps> = {}) {
         calls.estimateFees++;
         return 1n;
       },
+      waitForReceipt: async () => undefined,
       getBalance: async () => {
         calls.getBalance++;
         return 10n ** 18n;
@@ -187,7 +188,7 @@ test("残高不足: 既定 0.0005 ETH 未満なら balance_low・fail-loud（con
     errors.push(args.map(String).join(" "));
   };
   try {
-    const f = fakeDeps({ chain: { estimateFees: async () => 1n, getBalance: async () => 499_999_999_999_999n } });
+    const f = fakeDeps({ chain: { estimateFees: async () => 1n, getBalance: async () => 499_999_999_999_999n, waitForReceipt: async () => undefined } });
     const out = await publishL1OutcomeToRegistry(BASE_INPUT, f.deps);
     assert.deepEqual(out, { status: "balance_low", balanceWei: "499999999999999", minWei: "500000000000000" });
     assert.equal(f.published.length, 0);
@@ -200,7 +201,7 @@ test("残高不足: 既定 0.0005 ETH 未満なら balance_low・fail-loud（con
 test("残高: ちょうど閾値なら書く（REGISTRY_MIN_BALANCE_WEI で閾値を変えられる）", async () => {
   armed();
   process.env.REGISTRY_MIN_BALANCE_WEI = "1000";
-  const f = fakeDeps({ chain: { estimateFees: async () => 1n, getBalance: async () => 1000n } });
+  const f = fakeDeps({ chain: { estimateFees: async () => 1n, getBalance: async () => 1000n, waitForReceipt: async () => undefined } });
   assert.equal((await publishL1OutcomeToRegistry(BASE_INPUT, f.deps)).status, "submitted");
 });
 

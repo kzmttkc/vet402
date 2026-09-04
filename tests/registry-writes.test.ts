@@ -35,7 +35,7 @@ function fakeWallet(calls: { functionName: string; args: unknown[] }[]) {
   } as never;
 }
 
-function fakeDb(opts: { insertReturns: { id: string }[] }) {
+function fakeDb(opts: { insertReturns: { id: string | null; n?: number }[] }) {
   const updates: unknown[] = [];
   return {
     updates,
@@ -66,6 +66,7 @@ test("既定はOFF——flagが無ければ disabled・DBもチェーンも触�
     record: buildValidationRecord(RECORD_INPUT),
     walletClient: fakeWallet(calls),
     currentMaxFeeWei: 1n,
+    waitForReceipt: async () => undefined,
   });
   assert.deepEqual(out, { status: "disabled" });
   assert.equal(calls.length, 0);
@@ -84,12 +85,13 @@ test("requestHash は決定的・verdict→response は pass=100 / fail=0", () =
 
 test("ガス上限超過では書かない（サーキットブレーカ）", async () => {
   process.env.REGISTRY_WRITES_ENABLED = "true";
-  __setDbForTests(fakeDb({ insertReturns: [{ id: "x" }] }));
+  __setDbForTests(fakeDb({ insertReturns: [{ id: "x", n: 0 }] }));
   const calls: never[] = [];
   const out = await publishValidation({
     record: buildValidationRecord(RECORD_INPUT),
     walletClient: fakeWallet(calls),
     currentMaxFeeWei: 2_000_000_000n, // 2 gwei > 既定0.5
+    waitForReceipt: async () => undefined,
   });
   assert.equal(out.status, "gas_over_cap");
   assert.equal(calls.length, 0);
@@ -97,12 +99,13 @@ test("ガス上限超過では書かない（サーキットブレーカ）", as
 
 test("重複 requestHash → duplicate・チェーン呼び出しゼロ", async () => {
   process.env.REGISTRY_WRITES_ENABLED = "true";
-  __setDbForTests(fakeDb({ insertReturns: [] })); // ON CONFLICT DO NOTHING → 0行
+  __setDbForTests(fakeDb({ insertReturns: [{ id: null, n: 0 }] })); // 同一文ゲートが id を返さない = 既存行
   const calls: { functionName: string; args: unknown[] }[] = [];
   const out = await publishValidation({
     record: buildValidationRecord(RECORD_INPUT),
     walletClient: fakeWallet(calls),
     currentMaxFeeWei: 1n,
+    waitForReceipt: async () => undefined,
   });
   assert.deepEqual(out, { status: "duplicate" });
   assert.equal(calls.length, 0);
@@ -110,7 +113,7 @@ test("重複 requestHash → duplicate・チェーン呼び出しゼロ", async 
 
 test("送信は request → response の順の2トランザクション・台帳は submitted", async () => {
   process.env.REGISTRY_WRITES_ENABLED = "true";
-  const db = fakeDb({ insertReturns: [{ id: "row1" }] });
+  const db = fakeDb({ insertReturns: [{ id: "row1", n: 0 }] });
   __setDbForTests(db);
   const calls: { functionName: string; args: unknown[] }[] = [];
   const record = buildValidationRecord(RECORD_INPUT);
@@ -118,6 +121,7 @@ test("送信は request → response の順の2トランザクション・台帳
     record,
     walletClient: fakeWallet(calls),
     currentMaxFeeWei: 1n,
+    waitForReceipt: async () => undefined,
   });
   assert.equal(out.status, "submitted");
   assert.deepEqual(
