@@ -313,7 +313,8 @@ export type EndpointDetail = {
  * (`settle_claimed_unverifiable`, 2026-08-23). Every other status —
  * `budget_denied` (our own daily-cap throttle), `request_error`, `no_402`,
  * `no_eligible_accept`, `price_mismatch`, `payto_mismatch`,
- * `payto_operator_self`, `over_cap`, `in_flight` — is NOT a
+ * `payto_operator_self`, `over_cap`, `halted` (the runtime spending kill
+ * switch stopped the batch before signing), `in_flight` — is NOT a
  * paid attempt: no payment happened, so it must never enter a seller's
  * settle-rate denominator. This is the SAME set the /observatory/state
  * aggregate uses (getObservatoryStats), so the per-endpoint receipt page, the

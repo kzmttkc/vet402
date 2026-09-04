@@ -3,6 +3,7 @@ import { getClientIp } from "@/lib/api/client-ip";
 import { acquireLease } from "@/lib/cron/lease";
 import { consumeIpRateLimit, ipRateLimitHeaders, refundIpRateLimit } from "@/lib/api/ip-rate-limit";
 import { runDemoL0 } from "@/lib/demo/verify";
+import { isSpendingHalted } from "@/lib/observatory/kill-switch";
 import { runL1Batch } from "@/lib/observatory/l1-runner";
 import { getEndpointPurchases } from "@/lib/observatory/reader";
 import { logServerError } from "@/lib/util/log";
@@ -98,6 +99,19 @@ export async function POST(request: NextRequest) {
   if (level === "l1") {
     if (process.env.DEMO_L1_ENABLED !== "true") {
       return NextResponse.json({ error: "demo_l1_disabled" }, { status: 403, headers: perCaller });
+    }
+    // 実行時の停止スイッチ（2026-09-05 監査 P0）。資金を守っているのは
+    // runL1Batch 内の同じ関門（そちらは DB が読めない場合も止める側へ倒れる）。
+    // ここで先に落とすのは**見せ方**のため: 呼び手の 1 日ぶんトークンとデモ
+    // 日次予算を燃やさず、止まっていることを 503 で言う（ok:true で空の
+    // summary を返すと、止めた側からは動いて見える）。
+    // 条件を `source === "row"`（運用者が実際に止めた）に限るのは、DB 障害を
+    // 「支出停止中」と名乗らないため——その場合の 503 は既存の demo_unavailable
+    // が担当する。資金の安全はどちらでも変わらない（署名までは進めない）。
+    // 理由の文言は返さない——ここは鍵不要の公開口で、文言は運用者のメモ。
+    const halt = await isSpendingHalted();
+    if (halt.halted && halt.source === "row") {
+      return NextResponse.json({ error: "spending_halted" }, { status: 503, headers: perCaller });
     }
     // デモ専用の日次サブ予算を、呼び手の1日ぶんトークンより**先**に見る
     // （上の「無効な機能で呼び手の1日分トークンを燃やさない」と同じ理由——

@@ -11,7 +11,7 @@ import { logServerError } from "@/lib/util/log";
  *
  * 中身は各エンドポイントページ・purchases API と同じ事実の別シリアライズ
  * ——新しい主張はこのルートからは生まれない。行は attempted_at 昇順の
- * 全paid-attempt系列（budget_denied / request_error は我々側の都合なので
+ * 全paid-attempt系列（budget_denied / halted / request_error は我々側の都合なので
  * 含めない: 台帳の対外的な意味は「売り手に何が起きたか」）。
  * days は 1..366 に飽和・行数は 50,000 で打ち切り（打ち切り時はヘッダで明示）。
  */
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
       FROM x402_l1_purchases pu
       JOIN x402_endpoints e ON e.id = pu.endpoint_id
       WHERE pu.attempted_at >= now() - make_interval(days => ${days}::int)
-        AND pu.status NOT IN ('budget_denied', 'request_error', 'in_flight')
+        AND pu.status NOT IN ('budget_denied', 'halted', 'request_error', 'in_flight')
       ORDER BY pu.attempted_at ASC
       LIMIT ${MAX_ROWS + 1}
     `);

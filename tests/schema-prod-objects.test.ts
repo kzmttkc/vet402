@@ -76,3 +76,24 @@ test("observed_purchases の 2 索引は本番と同じ部分索引（WHERE deli
     assert.ok(idx.config.where, `${name}: 部分索引の WHERE が無い`);
   }
 });
+
+test("runtime_flags（実行時の支出停止スイッチ）が DDL と同じ形で schema.ts にある", () => {
+  // scripts/sql/2026-09-05-runtime-flags.sql が本番の正。ここがずれると push が
+  // 停止スイッチの表を作り替える——止めたい日に止まらない形で。
+  const cfg = getTableConfig(schema.runtimeFlags);
+  assert.equal(cfg.name, "runtime_flags");
+  const name = col(cfg, "name");
+  assert.equal(name.getSQLType(), "text");
+  assert.equal(name.primary, true);
+  const enabled = col(cfg, "enabled");
+  assert.equal(enabled.getSQLType(), "boolean");
+  assert.equal(enabled.notNull, true);
+  assert.equal(enabled.hasDefault, false, "既定値を置かない——入っていない列は入っていないと読む");
+  assert.equal(col(cfg, "reason").getSQLType(), "text");
+  const updatedAt = col(cfg, "updated_at");
+  assert.equal(updatedAt.getSQLType(), "timestamp with time zone");
+  assert.equal(updatedAt.notNull, true);
+  assert.equal(updatedAt.hasDefault, true);
+  assert.equal(col(cfg, "updated_by").getSQLType(), "text");
+  assert.equal(cfg.columns.length, 5);
+});

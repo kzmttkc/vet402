@@ -686,7 +686,9 @@ paths:
         triggers one real purchase through the exact same budget-reserved
         runner the daily batch uses, and is double-gated (DEMO_L1_ENABLED and
         the Observatory L1 flag, both off by default) plus limited to one call
-        per caller per day.
+        per caller per day. While the runtime spending halt is engaged
+        (`runtime_flags.l1_spending_halt`), `level: l1` returns 503
+        `spending_halted` and nothing is signed.
       security: []
       requestBody:
         required: true
@@ -840,7 +842,7 @@ paths:
         a portable audit trail (Phase 4.2 v0). No new claims are minted here:
         rows are the ledger facts (attempted_at, resource_key, network,
         status, amounts, tx_hash, delivery figures). Excludes vet402-side
-        non-events (budget_denied / request_error / in_flight). `days`
+        non-events (budget_denied / halted / request_error / in_flight). `days`
         saturates to 1..366; output truncates at 50,000 rows and says so in
         the `x-vet402-truncated` header. IP-throttled to 6/min.
       security: []
@@ -1433,7 +1435,7 @@ paths:
         The daily L1 runner's real-money decisions, mapped 1:1 from the ledger:
         refusals before signing (overcharging or unpayable walls) and outcomes
         after paying (settled / no-settlement), same weight. Excludes vet402-side
-        non-decisions (budget_denied / request_error / in_flight). Includes the
+        non-decisions (budget_denied / halted / request_error / in_flight). Includes the
         SpendGuard backtest as cumulative. Key-less; 30/min; cached 15 min.
       security: []
       parameters:
@@ -3509,6 +3511,8 @@ components:
             - demo_budget_exhausted
             # 2026-09-04: デモ経由の L1 実購入が cron と同じ l1-purchase リースを取るようになった（409）。
             - l1_busy
+            # 2026-09-05: 実行時の支出停止スイッチが立っている（503）。障害ではなく運用者の停止。
+            - spending_halted
             - demo_unavailable
             - contributions_unavailable
             - requests_unavailable

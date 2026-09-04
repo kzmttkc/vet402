@@ -12,7 +12,7 @@
 // 両面出せば測定になる——このプロダクトの語法は後者しかない。
 // 対象は署名済み試行（settled / settle_failed / delivered_no_receipt /
 // settle_claimed_unverifiable）。
-// budget_denied / request_error / in_flight は我々側の都合なので母数外。
+// budget_denied / halted / request_error / in_flight は我々側の都合なので母数外。
 // ============================================================
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";

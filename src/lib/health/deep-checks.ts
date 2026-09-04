@@ -11,6 +11,7 @@ import {
   getOwnerIndexerLagThreshold,
   getOwnerIndexerStatus,
 } from "@/lib/db/owner-index";
+import { isSpendingHalted } from "@/lib/observatory/kill-switch";
 import { runScoringProbe } from "./scoring-probe";
 
 export type DeepHealthStatus = "ok" | "degraded";
@@ -176,6 +177,18 @@ export async function runDeepHealthChecks(): Promise<DeepHealthResult> {
     }
   } catch {
     checks.settlements_index = "error";
+  }
+
+  // 実行時の支出停止スイッチの現在値（2026-09-05 監査 P0・kill-switch.ts）。
+  // **degraded にはしない**——停止は障害ではなく運用者の意思決定で、正常な
+  // 状態のひとつ。だが「なぜ L1 が 1 件も買っていないのか」を調べる人が
+  // 最初に見る場所なので、ここに出す。理由の文言は載せない（このボディは
+  // admin 越しでも本文が広く回覧されうる）。
+  try {
+    const halt = await isSpendingHalted();
+    checks.spending_halt = halt.halted ? "halted" : "off";
+  } catch {
+    checks.spending_halt = "unknown";
   }
 
   return {

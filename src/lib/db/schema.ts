@@ -728,7 +728,7 @@ export const x402L1Purchases = pgTable(
      * delivered_no_receipt | settle_claimed_unverifiable | no_402 |
      * no_eligible_accept | price_mismatch | payto_mismatch |
      * payto_operator_self | over_cap | budget_denied |
-     * request_error | in_flight.
+     * halted | request_error | in_flight.
      * 2026-08-23 監査 C-4 — `settled` の定義を置き換えた。
      * 旧: 売り手が PAYMENT-RESPONSE で success:true と何かの文字列を返した。
      * 新: **我々がチェーンで確認した**（宛先・金額・トークン・チェーン・確定数）。
@@ -743,6 +743,11 @@ export const x402L1Purchases = pgTable(
      * the wall named a recipient other than the catalog-declared one, or named
      * vet402's own receiving address. Both are refusals BEFORE signing, so
      * spent_units stays 0.
+     * `halted` is the 2026-09-05 runtime kill switch (kill-switch.ts): the
+     * operator stopped spending while a batch was walking. Nothing was signed,
+     * so spent_units is 0 — including when the halt landed AFTER the
+     * reservation row existed (the reservation is written back to 0 rather
+     * than left counting against the day's budget).
      * `in_flight` is the spend reservation written before the EIP-3009
      * signature exists (see l1-runner.reserveSpend); it is replaced by the
      * outcome status seconds later, and only survives if the runner was killed
@@ -1216,6 +1221,29 @@ export const jobLeases = pgTable("job_leases", {
   holder: uuid("holder").notNull(),
   acquiredAt: timestamp("acquired_at", { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+/**
+ * runtime_flags — **再デプロイを待たずに効く運用フラグ**（2026-09-05 監査 P0）。
+ *
+ * いま入っているのは `l1_spending_halt` の 1 行だけ。L1 実購入を止める手段が
+ * Vercel env の変更＋再デプロイしかなく、起動点が 4 つある状態は「停止できる」
+ * とは言えなかった。env は設定であって操作卓ではないので、停止だけを DB の
+ * 1 行へ出した。UPDATE 1 文で即時に効き、次の署名から止まる。
+ *
+ * 判定は src/lib/observatory/kill-switch.ts が持つ（fail-closed の分け方も
+ * そこに書いてある）。切り替えは /api/admin/spending-halt。
+ * SQL: scripts/sql/2026-09-05-runtime-flags.sql
+ *
+ * updated_at / updated_by / reason は履歴そのもの——誰がいつ何のために止めた・
+ * 戻したかを、行が答えられる状態に保つ。
+ */
+export const runtimeFlags = pgTable("runtime_flags", {
+  name: text("name").primaryKey(),
+  enabled: boolean("enabled").notNull(),
+  reason: text("reason"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: text("updated_by"),
 });
 
 /**
