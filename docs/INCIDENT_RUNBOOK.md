@@ -92,3 +92,17 @@ fail-closed: 表・行が無ければ通す＝未導入は現状維持、DB へ�
 **最初の 1 手**: `curl -sS "https://vet402.com/api/health?deep=1" -H "Authorization: Bearer $ADMIN_SECRET"`
 で `checks.database` を見る。L1 は台帳が読めない時点で自動的に停止側へ倒れる
 （予約 SQL が verdict を返せなければ購入しない）ので、支出を追加で止める操作は要らない。
+
+## 4. 障害 issue を閉じるとき（可用性の記録・2026-09-05 CIA 監査）
+
+`.github/workflows/uptime.yml` は `/api/health` の失敗で issue を開き、復旧で自動クローズする。
+**復旧しても、原因を書かずに閉じない。** 2026-08-18 / 08-21 / 08-27 の 3 件（合計 13 時間・最長 10 時間 36 分）は
+「503 degraded」の一行しか残らず、事後に原因を辿れなくなった（Vercel Hobby のログは保持が短い）。
+
+閉じる前に、issue へコメントで **3 行**を書く（5 分以内・分からなければ「未特定」と書く）:
+
+1. **何が落ちたか**: `curl -s -H "Authorization: Bearer $ADMIN_SECRET" "https://vet402.com/api/health?deep=1"` の `checks` で `ok` でないキー（例: `database` / `rpc` / `settlements_index`）。復旧後なら「復旧時点で全 ok・障害中の値は未取得」と書く。
+2. **なぜ落ちたか（一次データの所在）**: Neon の容量／RPC の 429／Vercel のビルド失敗／cron の無音死 など。証拠の URL かログのパス。分からなければ「未特定」。
+3. **再発を止めるもの**: 入れた計器・変更した閾値・手番に回した項目の名前。無ければ「無し」。
+
+このコメントが無い issue は閉じない。次回の監査（`docs/audits/`）はこの 3 行を可用性の一次データとして読む。
