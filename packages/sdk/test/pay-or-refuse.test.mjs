@@ -146,6 +146,12 @@ test("B5 Base 以外のネットワークは署名前に拒否", async () => {
   const f = allowlistFetch([DECISION, "kronos"], { [DECISION]: decision(), kronos: wall({ ...okAccept, network: "eip155:1" }) });
   const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch });
   assert.equal(r.status, "refused");
+  // 2026-09-05 追加: A1/A2 と同じ穴が B5-B7 に残っていた。status と signer 参照だけでは、
+  // 金銭ゲートを丸ごと外した実装でも緑になる——許可リストの外（売り手への再送）へ出た
+  // fetch が throw して、別の理由で拒否されるから。**なぜ拒否したか**まで見る。
+  assert.equal(r.decision.reason_codes.includes("chain_or_asset_mismatch"), true, "チェーン不一致が理由");
+  assert.equal(f.calls.filter((u) => u.includes(DECISION)).length, 1, "判定を1回引いている");
+  assert.equal(r.challenge?.network, "eip155:1", "402 を実際に読んだ上で落としている");
   assert.deepEqual(w.signAccesses(), []);
 });
 
@@ -154,6 +160,9 @@ test("B6 正規 USDC 以外の asset は署名前に拒否", async () => {
   const f = allowlistFetch([DECISION, "kronos"], { [DECISION]: decision(), kronos: wall({ ...okAccept, asset: "0x0000000000000000000000000000000000000001" }) });
   const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch });
   assert.equal(r.status, "refused");
+  assert.equal(r.decision.reason_codes.includes("chain_or_asset_mismatch"), true, "asset 不一致が理由");
+  assert.equal(f.calls.filter((u) => u.includes(DECISION)).length, 1, "判定を1回引いている");
+  assert.equal(r.challenge?.asset, "0x0000000000000000000000000000000000000001", "402 を実際に読んだ上で落としている");
   assert.deepEqual(w.signAccesses(), []);
 });
 
@@ -162,6 +171,9 @@ test("B7 exact 以外の scheme / eip3009 以外の転送方式は拒否", async
   const f = allowlistFetch([DECISION, "kronos"], { [DECISION]: decision(), kronos: wall({ ...okAccept, scheme: "upto" }) });
   const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch });
   assert.equal(r.status, "refused");
+  assert.equal(r.decision.reason_codes.includes("chain_or_asset_mismatch"), true, "scheme 不一致が理由");
+  assert.equal(f.calls.filter((u) => u.includes(DECISION)).length, 1, "判定を1回引いている");
+  assert.equal(r.challenge?.scheme, "upto", "402 を実際に読んだ上で落としている");
   assert.deepEqual(w.signAccesses(), []);
 });
 
