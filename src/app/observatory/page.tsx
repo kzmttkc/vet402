@@ -115,10 +115,18 @@ export default async function ObservatoryPage({
               {overview.latestSnapshot ? (
                 <>
                   {/* 1 行に収める（"Catalog snapshot: … (N of N fetched)" は 2 行に折れていた）。数字はそのまま。 */}
+                  {/* 2026-09-04 外部監査 E・P1-13: 裸の N/N は何の分母か読めなかった。
+                      左は我々が取得できた件数、右はカタログが自己申告する総数。 */}
                   Snapshot{" "}
                   <span className="text-signal">{overview.latestSnapshot.snapshotDate}</span>{" "}
-                  · {overview.latestSnapshot.fetchedCount.toLocaleString()}/
-                  {overview.latestSnapshot.totalCount.toLocaleString()}
+                  ·{" "}
+                  <span
+                    title={`${overview.latestSnapshot.fetchedCount.toLocaleString()} entries fetched by vet402 out of the ${overview.latestSnapshot.totalCount.toLocaleString()} the catalog reported for that day`}
+                  >
+                    {overview.latestSnapshot.fetchedCount.toLocaleString()} fetched /
+                    {" "}
+                    {overview.latestSnapshot.totalCount.toLocaleString()} reported
+                  </span>
                 </>
               ) : (
                 "Catalog snapshot: none yet"

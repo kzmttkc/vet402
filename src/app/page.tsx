@@ -588,7 +588,10 @@ export default async function Home() {
                 無かった。異議申立は ToS §8（全文の27%地点）だけ、訂正ログは
                 2箇所で約束しながら該当ページが 404 だった。 */}
             <p className="min-w-0 max-w-[64ch] text-brand">
-              Sellers can dispute any result and trigger a free re-verification.{" "}
+              Sellers can dispute any result for free, which runs one fresh L0 probe of the
+              endpoint straight away and records it like any other probe — the publication gate is
+              unchanged, so one probe can lift a published fail back to unverified but cannot by
+              itself produce a pass. A dispute does not trigger a new L1 purchase.{" "}
               <Link href="/legal/terms#corrections" className="doc-link">
                 How to dispute a result
               </Link>
@@ -613,7 +616,9 @@ export default async function Home() {
           <FunnelFigure
             n={1}
             stages={[
-              { label: "Catalog endpoints", n: stats.totalEndpoints, href: "/observatory" },
+              // 2026-09-04 監査 E・P1-13: totalEndpoints は delisted を含む「記録上の総数」で、
+              // 「カタログに今載っている数」ではない。ラベルを分母の名前に合わせる。
+              { label: "Endpoints on record", n: stats.totalEndpoints, href: "/observatory" },
               { label: "L0 pass (402 wall answers)", n: stats.publishedPass, href: "/observatory?verdict=pass" },
               { label: "L1 settled with receipt", n: stats.l1.endpointsSettled, href: "/impact" },
             ]}
@@ -621,7 +626,9 @@ export default async function Home() {
               <>
                 Endpoints at each level of evidence
                 {stats.latestSnapshot ? ` as of the ${stats.latestSnapshot.snapshotDate} catalog snapshot` : ""}. Bars are
-                proportional to the first row. L1 counts endpoints where at least one paid attempt returned an on-chain receipt.
+                proportional to the first row. The first row is every endpoint on record, including the{" "}
+                {stats.delistedEndpoints.toLocaleString()} no longer listed in the catalog. L1 counts endpoints where at
+                least one paid attempt returned an on-chain receipt.
               </>
             }
           />

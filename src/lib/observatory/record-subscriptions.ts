@@ -261,7 +261,7 @@ export async function notifySubscribers(limit = 500): Promise<NotifyRun | { skip
       ``,
       `pass / fail / unverified are measurements, not ratings; a fail is published only after two consecutive failing probes. Definitions: ${SITE_URL}/observatory/methodology`,
       ``,
-      `You asked for this email on the record page. To stop, reply to this message with "stop".`,
+      `You asked for this email on the record page. To stop, reply to this message and say so. Nothing automated reads that reply: one person does, and removes you by hand within 7 days. If you would rather not wait, mail ${SUPPORT_EMAIL} and it is the same inbox.`,
     ].join("\n");
     const result = await sendMail({
       to: s.email,

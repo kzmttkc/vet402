@@ -149,8 +149,10 @@ export default async function OperatorLogPage() {
             <span className="w-[4ch] shrink-0 text-brand-lift">2.3</span>
             <p className="min-w-0 max-w-[64ch] text-brand">
               <strong>Not: the score itself.</strong> A block here is advice, not custody. vet402
-              never holds or moves funds; a customer&rsquo;s SDK decides what to do with the verdict.
-              This log records what vet402 said and why, not an action taken on anyone&rsquo;s money.
+              never holds or moves customer funds; a customer&rsquo;s SDK decides what to do with the
+              verdict. (The observatory does spend vet402&rsquo;s own funds to buy from endpoints —
+              that is our money, and it never touches yours.) This log records what vet402 said and
+              why, not an action taken on anyone else&rsquo;s money.
             </p>
           </div>
         </div>

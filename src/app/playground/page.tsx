@@ -3,7 +3,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
-import { getObservatoryOverview } from "@/lib/observatory/reader";
+import { getCoverageShare, getObservatoryOverview } from "@/lib/observatory/reader";
 import PlaygroundClient, { type PlaygroundCandidate } from "./playground-client";
 
 /**
@@ -29,6 +29,10 @@ export const revalidate = 600;
 
 export default async function PlaygroundPage() {
   const overview = await getObservatoryOverview({ verdict: "pass", pageSize: 20 });
+  // 2026-09-04 外部監査 E・P0-5: §4 は「on the whole public catalog daily」と
+  // 書いていた。それは 9/2 に訂正した文と同じ主張で、訂正が伝播していなかった。
+  // 実測（カタログは日次再取得・プローブはローリング）を出す。
+  const coverage = await getCoverageShare().catch(() => null);
   const candidates: PlaygroundCandidate[] = overview.rows.map((r) => ({
     id: r.id,
     resourceKey: r.resourceKey,
@@ -119,8 +123,16 @@ export default async function PlaygroundPage() {
           <Link href="/observatory" className="underline">
             Observatory
           </Link>{" "}
-          performs on the whole public catalog daily. Demo probes are not written into the public
-          register — the daily cadence stays clean.
+          performs over the public catalog. The catalog itself is re-fetched daily; the probes run
+          on a rolling schedule rather than sweeping every endpoint every day
+          {coverage && coverage.pct !== null ? (
+            <>
+              , and {coverage.measuredLast7d.toLocaleString()} of{" "}
+              {coverage.activeEndpoints.toLocaleString()} active listed endpoints ({coverage.pct}% of
+              active listed endpoints) carry an L0 measurement from the last 7 days
+            </>
+          ) : null}
+          . Demo probes are not written into the public register.
         </p>
         <p className="doc-p">
           L1 receipts on each endpoint&apos;s page are real purchases made under a hard daily

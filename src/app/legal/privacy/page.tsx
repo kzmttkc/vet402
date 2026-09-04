@@ -87,6 +87,25 @@ export default async function PrivacyPage() {
               If you ask us to correct a score, whatever you send us to make that case — which may
               include an email address and a wallet signature you provide voluntarily
             </li>
+            {/* 2026-09-04 外部監査 E・P1-12: 3 つの保存先が未開示だった。列は実測。 */}
+            <li>
+              <strong>Record notifications you asked for</strong> (<code>record_subscriptions</code>):
+              the email address you entered, which endpoint record it follows, what kind of
+              notification it is, the free-text reason you gave if you gave one, the last verdict we
+              notified you about, and a one-way hash of the IP address the request came from (used
+              to rate-limit sign-ups, never stored in the clear)
+            </li>
+            <li>
+              <strong>Waitlist entries</strong> (<code>waitlist_entries</code>): the email address
+              you entered, which offering you registered interest in, and the free-text note you
+              added if you added one
+            </li>
+            <li>
+              <strong>Disputes</strong> (<code>disputes</code>): the endpoint the dispute is about,
+              the subject and reason you wrote, and the wallet address plus the signed message and
+              signature that prove control of it. This table holds no email address; if you write to
+              support instead, that correspondence lives in the support inbox
+            </li>
           </ul>
         </section>
 
@@ -144,15 +163,38 @@ export default async function PrivacyPage() {
             Query logs are retained per your plan (90 days Free, 1 year Pro+). You may request
             deletion of your account by contacting support.
           </p>
+          {/* 2026-09-04 外部監査 E・P1-12: 上の 3 つに保持期間も削除経路も書かれていなかった。
+              自動失効の仕組みは無いので、無い仕組みを在ると書かずに、人が消すと書く。 */}
+          <p>
+            Record notifications, waitlist entries and disputes are kept until you ask us to remove
+            them, because each of them exists to be acted on later: a notification has to outlive
+            the change it is watching for, and a dispute is part of the record of a correction. None
+            of the three expires automatically — no scheduler deletes them — so the route is a
+            person. Mail{" "}
+            <a className="doc-link" href={SUPPORT_MAILTO}>
+              {SUPPORT_EMAIL}
+            </a>{" "}
+            and say which one you mean; we remove it by hand within 7 days and confirm to the same
+            address. Replying to a notification email reaches the same inbox and counts as the same
+            request. Where a dispute has already produced a published correction, we remove your
+            contact details and keep the fact that a correction was issued, which is the entry other
+            people rely on — the grounds for that are in{" "}
+            <a className="doc-link" href="#scored-third-parties">
+              people we score who are not our customers
+            </a>{" "}
+            below.
+          </p>
         </section>
 
         {/* 2026-08-14 (legal compliance audit): the previous version named the
             categories ("hosting, database, RPC, Stripe") but not the actual
             subprocessors, which is the first thing a GDPR/procurement reviewer
             asks for. The list below is measured from the codebase (package.json
-            dependencies and the env vars each integration reads), not assumed —
-            in particular there is no email-delivery subprocessor because the
-            service sends no email; support runs from a human inbox. */}
+            dependencies and the env vars each integration reads), not assumed.
+            2026-09-04 外部監査 E・P1-12: この注釈は「メール配信の委託先は無い
+            （サービスはメールを送らない）」と書いていたが偽だった——
+            record-subscriptions の通知と異議への返信は Resend で送っている。
+            Solana の決済読み直しも公開 RPC を叩いている。両方を下に足した。 */}
         <section className="space-y-2">
           <h2 className="sec-head">Subprocessors and third parties</h2>
           <p>
@@ -180,6 +222,16 @@ export default async function PrivacyPage() {
             <li>
               <strong>Blockscout</strong> — block-explorer API used to read public on-chain data;
               receives the public wallet addresses we query.
+            </li>
+            <li>
+              <strong>Solana Labs public mainnet RPC</strong> (<code>api.mainnet-beta.solana.com</code>)
+              — used to re-read Solana settlements on-chain; receives transaction signatures and
+              wallet addresses, all of which are already public on that chain.
+            </li>
+            <li>
+              <strong>Resend</strong> (US) — email delivery for the record-change notifications you
+              asked for and for replies about a dispute; receives the recipient email address and
+              the body of that message. It is not used for marketing, and there is no newsletter.
             </li>
             <li>
               <strong>Plausible Analytics</strong> (EU) — aggregate traffic statistics. Plausible is

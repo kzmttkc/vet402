@@ -223,8 +223,10 @@ export default async function TermsPage() {
           <p>
             ALLOW, WARN, and BLOCK are <strong>recommendations to the customer who asked</strong>,
             not instructions and not decisions. vet402 never accepts, refuses, delays, or reverses
-            anyone&apos;s payment — we have no custody, no signing authority, and no place in the
-            transaction. If a payment of yours was refused, or accepted and then went wrong, the
+            anyone&apos;s payment — we take no custody of customer funds, hold no signing authority
+            over any key of yours, and have no place in your transaction. (vet402 does spend its
+            own funds: the observatory buys from x402 endpoints with an operator wallet to produce
+            the settle-through record. That is our money and our transaction, never yours.) If a payment of yours was refused, or accepted and then went wrong, the
             decision was made by the business you were transacting with, applying its own policy.
             Section 2 puts that responsibility on our customers in so many words, and we are
             repeating it here so that it is legible to someone who is not our customer and never
@@ -477,17 +479,36 @@ export default async function TermsPage() {
             the endpoint is doing now, will do tomorrow, or did for anyone else. It is not a
             representation or warranty of the operator&apos;s reliability, solvency, honesty, or
             future performance, and it is not an endorsement of, or a recommendation to transact
-            with, anyone. A &quot;pass&quot; means the endpoint delivered what it charged for when
-            we tested it — nothing more. A &quot;fail&quot; means it did not deliver when we
-            tested it — and a temporary outage can produce the same record as a permanent one,
-            which is why we re-test before confirming any fail and show an &quot;as of&quot;
-            timestamp on everything.
+            with, anyone.
+          </p>
+          {/* 2026-09-04 外部監査 E・P1-6: この節の pass/fail の定義は L1（品が届いたか）
+              だったが、観測所が pass/fail という語を使うのは L0（壁が答えるか）である。
+              語が同じで意味が違う状態を放置していた。層ごとに語を分ける。 */}
+          <p>
+            The published words belong to a specific layer, and they do not mean the same thing.{" "}
+            <strong>pass</strong> and <strong>fail</strong> are L0 words: pass means the payment
+            wall answered a valid <code>402</code> challenge consistent with what the catalog
+            declares, and fail means it contradicted that on two or more consecutive probes. L0
+            says nothing about whether the endpoint delivers anything, because nothing was
+            purchased. What happened when we did pay is L1, and L1 has its own words —{" "}
+            <strong>settled</strong> (we re-read the transfer on-chain), <strong>delivered</strong>{" "}
+            (settled and the paid request answered <code>2xx</code>),{" "}
+            <strong>settle_failed</strong>, and the settlement-claim states. An L1 result is never
+            reported as a pass or a fail, and an L0 pass is never a statement that the endpoint
+            delivered. A temporary outage can produce the same record as a permanent one, which is
+            why a fail is published only after consecutive failing probes and everything carries an
+            &quot;as of&quot; timestamp. The full definitions are at{" "}
+            <a className="doc-link" href="/observatory/methodology">
+              /observatory/methodology
+            </a>
+            .
           </p>
           <p>
             &quot;Unverified&quot; is not a negative assessment. Most endpoints start unverified,
-            and an endpoint can be unverified simply because we have not tested it yet, because it
-            opted out of test purchases, or because a result could not be determined. We do not
-            treat &quot;unknown&quot; as &quot;bad,&quot; and neither should you.
+            and an endpoint can be unverified simply because we have not probed it yet, because a
+            single failing probe has not met the publication gate, or because the entry does not
+            declare enough for a machine to check. We do not treat &quot;unknown&quot; as
+            &quot;bad,&quot; and neither should you.
           </p>
           <p>
             Results age. We re-test on a published cadence and update results automatically, but
@@ -498,8 +519,11 @@ export default async function TermsPage() {
           <p>
             If you operate an endpoint and believe a result about it is wrong, the challenge route
             in section 8 applies to verification results exactly as it applies to scores: it is
-            free, needs no account, and one person reads that inbox. We will re-test within a
-            stated period, publish corrections openly, and record them in a corrections log.
+            free, needs no account, and one person reads that inbox. A dispute filed through the
+            signed route runs one fresh L0 probe of the endpoint immediately, recorded like any
+            other probe under the same publication gate; it does not trigger a new purchase. We
+            publish corrections openly and record them in a corrections log. We do not promise a
+            re-test deadline here, because no scheduler enforces one.
           </p>
         </section>
 
@@ -617,7 +641,14 @@ export default async function TermsPage() {
             <strong>Failed payment.</strong> If a renewal charge fails, Stripe retries. Until that
             finishes, Billing will say so and the current plan stays. If retries fail, the
             subscription ends and the account returns to Free. Card, invoices, and tax details are
-            managed in the portal, not by email from us — the service sends no email.
+            managed in the portal by Stripe, not by us. Billing itself sends you nothing from
+            vet402. The service does send email in other places — record-change notifications you
+            asked for, and replies about a dispute — which is why Resend is named as a
+            subprocessor in{" "}
+            <a className="doc-link" href="/legal/privacy">
+              the privacy policy
+            </a>
+            .
           </p>
         </section>
       </article>
