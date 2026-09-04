@@ -15,6 +15,7 @@ import { ingestL1 } from "@/lib/settlements/ingest-l1";
 import { ingestPayments } from "@/lib/settlements/ingest-payments";
 import { indexEvm } from "@/lib/settlements/index-evm";
 import { indexSolana } from "@/lib/settlements/index-solana";
+import { recoverLateSettlements } from "@/lib/settlements/recover-late";
 import { acquireLease } from "@/lib/cron/lease";
 
 async function main() {
@@ -32,11 +33,14 @@ async function main() {
     const payments = await ingestPayments({ classifier });
     const evm = await indexEvm({ budgetMs: Math.floor(budgetMs * 0.75), classifier });
     const solana = await indexSolana({ budgetMs: Math.floor(budgetMs * 0.25), classifier });
+    // 2026-09-04 監査 P2: 索引を更新した**あと**に、遅れて決済された settle_failed を
+    // 拾って tx へ結びつける（settled とは名乗らせない——照合器が決める）。
+    const lateSettlements = await recoverLateSettlements();
     // 2026-09-04 監査 D（P0）: chain 単位の失敗は `skipped: "error:…"` に畳まれ ok:true で報告されていた。
     // 失敗は失敗として返す（launchd は ok:false を ALERTS に書く）。
     const failed = evm.filter((c) => typeof c.skipped === "string" && c.skipped.startsWith("error:")).map((c) => `${c.chain}: ${c.skipped}`);
     if (solana.errors > 0) failed.push(`solana: errors=${solana.errors}`);
-    console.log(JSON.stringify({ ok: failed.length === 0, failed, at: new Date().toISOString(), testWallets: classifier.testWallets.size, l1, payments, evm, solana }));
+    console.log(JSON.stringify({ ok: failed.length === 0, failed, at: new Date().toISOString(), testWallets: classifier.testWallets.size, l1, payments, evm, solana, lateSettlements }));
     if (failed.length > 0) process.exitCode = 1;
   } finally {
     await lease.release();
