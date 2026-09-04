@@ -84,7 +84,10 @@ asset 0x8335…2913（正規USDC）/ payTo 0x79DC34E41B2b591078d3dE222C43EcaaBD5
 **注意**: 402 の `resource.url` は内部ホスト名（`http://mainnet-thegraph-arbitrum-03-…`）を返す。
 **照合は `payTo` で行う**。resource URL で照合する実装を入れると The Graph に払えない（テスト B-4）。
 
-## 4. Day 0（09-04）に書く失敗テスト —— **22本**（17本から改訂）
+## 4. Day 0（09-04）に書く失敗テスト —— **22項目・24本**（G21 は MCP 側で a/b/c の3本）
+
+> 実体: `packages/sdk/test/pay-or-refuse.test.mjs`（A1〜H22 の21本）＋ `packages/mcp-server/test/pay-if-trusted.test.mjs`（G21a/b/c）。
+> テスト名の先頭がこの番号。**番号と本数を混ぜて数えない**（09-04 に「22本」と書いて実体24本と食い違った）。
 
 **A. 署名に到達しない（提出物の核心）**
 1. `/decision` が ALLOW 以外 → signer 0回
@@ -160,7 +163,7 @@ asset 0x8335…2913（正規USDC）/ payTo 0x79DC34E41B2b591078d3dE222C43EcaaBD5
 | 0:00–0:12 | 左右分割。同じモデル・同じプロンプト。**左は 402 に当たって即署名 → tx が出る**。右は署名せず1行 | 同じエージェント。左は一度も検証していない相手に払った。右は署名が存在する前に止まった |
 | 0:12–0:25 | 左の tx を Basescan で開く | この支払いは本物で、たぶん問題ない。**問題は、エージェントにそれを知る手段が無かったこと** |
 | 0:25–0:45 | vet402.com / observatory（タグを小さく重ねる） | 自腹で [N] 回買って、レシートも失敗も公開してきた。**それは今週の話ではない**。できなかったのは署名を止めることだった |
-| 0:45–1:15 | `run.ts refuse`。**2カラムで左に我々の `/decision`、右に The Graph のレスポンス（`_meta.block` を映す）** | 我々の台帳はこの相手を一度も買っていない——ゼロ。The Graph の subgraph は block [B] 時点で [M] 件の受領を知っている。**2つの独立した情報源が、違うことを知っている** |
+| 0:45–1:15 | `run.ts refuse`。**2カラムで左に我々の `/decision`、右に The Graph のレスポンス（`_meta.block` を映す）** | 我々はこの相手を**見た**（L0 pass）が、**一度も買っていない**——L1 ゼロ。The Graph の subgraph は block [B] 時点で [M] 件の受領を知っている。**2つの独立した情報源が、違うことを知っている**。（09-04 実測: 拒否側は C1 に測られ `l0_unverified` → `l0_pass, l1_not_attempted` へ動いた。「見てもいない」ではなく「見たが買っていない」で言う） |
 | 1:15–1:30 | 拒否行のズーム（`l0_unverified, l1_not_attempted`・`evidence[].source`） | だから拒む。理由コードは**売り手を責めていない。我々の欠損を名指ししている** |
 | 1:30–2:05 | `run.ts pay` → **The Graph の gateway に $0.01** → Basescan → attest → `/decisions` | 証拠がある相手には払う。**払う先は The Graph 自身**。既定 policy を通る相手は今日 373 件 |
 | 2:05–2:25 | テスト実行。**署名0回・RPC0回・settle0回が緑で並ぶ**＋ネガティブコントロールが1回を検出する | signer は拒否経路から**到達できない**。0回で緑になるのが配線ミスでないことも、同じハーネスで示す |
@@ -204,12 +207,27 @@ main は本番リポでもあり会期中も動くので、放置すると `git 
 | 「Bazantic の MCP は稼働している」 | `initialize`/`tools/list` は 200 だが、**`tools/call` は 402 で1本も使えない**。接続と利用は別 |
 | 「World の賞文に without requiring an Orb とある」 | それは **Selfie Check の説明文**。AgentKit 枠のものではない |
 | デモコマンド名 `block`/`allow`/`catalog` | **`refuse` / `pay` に統一** |
+| 「旧スコアAPIは誰にでも WARN しか返さない」 | **09-04 実測で変化**。kronossignals は **82 / ALLOW / rich**（我々の L1 配達が証拠として効くようになった）。一方 **The Graph の受取ウォレット `0x79DC…` と拒否側 `0xb15a…` は 69 / WARN / thin のまま**。§3 の対比（審査員の会社のウォレットが我々のエンジンで WARN）は**そのまま成立** |
+| C1 リハーサル（8/29・9/2）の結果 | **09-04 再実行で A と D が allow=true に変わった**（旧スコアが ALLOW を出すようになったため）。C（実績0）は `payee_insufficient_evidence` で拒否のまま、E（上限超過）も拒否のまま。`signals.receiving` の項目名は維持されている（リリース条件1は守られた） |
 
 ## 10. 09-04 朝までに揃っていないと詰むもの
 
-- [ ] **タグ打ち直し**（§7・私がやる）
-- [ ] **デモ用の使い捨て鍵**と Base の少額 USDC＋ガス（賞金受取 `0x6777…3986` とは**別鍵**。§3 の実支払いに要る）
-- [ ] **Bazantic の 402 解消**（Takeshi 15分・ログイン後の画面でしか分からない）
+- [x] **タグ打ち直し**（09-04 11:5x・`c42daca`・ブランチ `ethonline-2026` 作成。**予定の 09:00 から約3時間遅れ**——通知を作って動かす仕組みを作っていなかった。再発防止は now.py の会期ブロック）
+- [x] **デモ用の使い捨て鍵** `0xDB62BD202914609830fA656F87996b91be3Aa673`（`baz wallet new`・賞金受取とは別鍵）。**$0 ルートは残高ゼロで通ることを実測済み**（tx `0x62debbc1…`）
+- [ ] 上記鍵へ **Base USDC を $1 程度**（§3 の The Graph への $0.01 実支払いに要る。ガスは facilitator 持ちなので ETH は不要。**Takeshi 手番・09-08 まで**）
+- [x] **Bazantic の 402 解消**——`baz curl` ＋ 自前ウォレットで通った（呼び手の認証の問題だった。残高は不要）
 - [x] 参加確定・Continuity 選択済み・プロジェクト作成済み
 - [x] `GRAPH_API_KEY` / `VOUCH_API_KEY` / `BAZANTIC_UPSTREAM_KEY`（600・git無視）
 - [x] 会期スコープが main に未実装（grep 0件で再確認済み）
+
+
+## 11. Day 0（09-04）の実測記録
+
+- 会期コミット: `b366921`（SDK 21本・MCP 3本、全て赤）＋ `PROMPTS/2026-09-04-day0-red-tests.md`
+- 書いた直後に **2本が実装なしで緑**になった（`assert.rejects` がスタブの throw で通る／書き込み検査が無動作でも通る）。理由の中身と「判定を1回引いたこと」を要求する形に直して 21/21 赤へ戻した。**自分のテストが自分の原則を破っていた**
+- フィクスチャ: 拒否側 `0xb15a55e8…` は `/decision` が **BLOCK → WARN**（`l0_pass, l1_not_attempted`・L1 0/0）。予告どおり C1 が測った。拒否は policy で作るので絵は壊れない
+- 旧スコアAPI: kronossignals **82 ALLOW rich** ／ The Graph `0x79DC…` **69 WARN thin** ／ 拒否側 **69 WARN thin**
+- C1 再実行: A allow / B allow / C 拒否(`payee_insufficient_evidence`) / D allow / E 拒否(`max_per_tx_exceeded`)
+- Bazantic: `baz curl` で $0 ルートが**残高ゼロで成立**（tx `0x62debbc1…`・Basescan に実在）
+- 構造: `now.py` に会期ブロックを常設（Day N・やり残し・タグ/ブランチ実測・拒否側 verdict）。状態は `state/ethonline_day.json`
+- **事故1件**: この更新の直前に、編集スクリプトが途中で止まったまま git 手順が走り、**内容の無いコミットが main に載った**（メッセージだけがある空コミット）。共有 main なので履歴は書き換えない。原因は python の失敗と git 手順の間に `&&` の関門が無かったこと——同じ失敗を 09-02 にも記録している
