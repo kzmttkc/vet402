@@ -109,13 +109,6 @@ const realDeps: Required<RegistryHookDeps> = {
   publish: publishValidation,
 };
 
-function envInt(name: string, fallback: number): number {
-  const raw = process.env[name]?.trim();
-  if (!raw) return fallback;
-  const n = Number(raw);
-  return Number.isInteger(n) && n >= 0 ? n : fallback;
-}
-
 function envBigint(name: string, fallback: bigint): bigint {
   const raw = process.env[name]?.trim();
   if (!raw || !/^\d+$/.test(raw)) return fallback;
