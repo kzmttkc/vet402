@@ -134,3 +134,102 @@ export function pageMetadata({
     },
   };
 }
+
+// ============================================================
+// Dataset JSON-LD（2026-09-05 AEO/LLMO）。
+//
+// WHY: 配布 KPI は訪問者数ではなく「外部からの引用 — このデータを出典として
+// 挙げた文書・記事・ダッシュボード」で、現在 0 件。回答エンジンと Google
+// Dataset Search が「引用できるデータセット」として拾うために要る情報は、
+// 頁の散文には全部あるのに構造化データには無かった（本番実測 2026-09-05:
+// /observatory/state の Dataset は distribution も license も持たず、
+// /accuracy は distribution 1本のみで license 無し）。
+//
+// distribution（実際に落とせる URL）と license が無い Dataset は、
+// Dataset Search では「データがどこにあるか分からない項目」として扱われ、
+// LLM から見ても「引用先の実体が無い記述」になる。散文と同じ源泉から
+// 機械可読側にも出す。
+//
+// 値は捏造しない: ここに書く URL は 2026-09-05 に本番で 200 を確認した
+// 4 本だけで、license は LICENSE-DATA と方法論 §9 が既に宣言している
+// CC BY 4.0。
+// ============================================================
+
+/** データの利用条件。LICENSE-DATA / 方法論 §9 / llms.txt と同じ。 */
+export const DATA_LICENSE_URL = "https://creativecommons.org/licenses/by/4.0/";
+
+/**
+ * 推奨引用文。public/llms.txt の "Cite as:" と 1 文字も違ってはいけない
+ * （tests/dataset-json-ld.test.ts が突合する）。取得日を必須にしているのは、
+ * ここの数字が全部動くから — 日付の無い引用は測定ではない。
+ */
+export function citeAs(datasetName: string, contentUrl: string): string {
+  return `KIZUNA Creation. vet402 ${datasetName}. Dataset, retrieved YYYY-MM-DD. ${contentUrl}`;
+}
+
+export type DatasetDistribution = {
+  /** "application/json" | "text/csv" など。 */
+  encodingFormat: string;
+  /** 鍵無しで実際に落とせる絶対 URL。 */
+  contentUrl: string;
+  /** 何が入っているかの 1 行。 */
+  name: string;
+};
+
+type DatasetInput = {
+  name: string;
+  description: string;
+  /** 頁の絶対パス（"/observatory/state"）。 */
+  path: string;
+  /** 引用文に使うデータ本体の URL（頁ではなく機械可読側）。 */
+  citeUrl: string;
+  /**
+   * 引用文の中で名乗る名前。頁の表題（name）と違ってよい —— 観測所の正典の
+   * 引用文は public/llms.txt と方法論 §9 が既に "vet402 observatory" で
+   * 配っており、頁の表題 "State of x402" に差し替えると、同じデータに
+   * 2 通りの引用文が出回る。既に配った方を勝たせる。
+   */
+  citeName?: string;
+  distribution: DatasetDistribution[];
+  /** どう測ったか。散文の方法論と矛盾しない 1〜2 文。 */
+  measurementTechnique: string;
+  variableMeasured: string[];
+  keywords: string[];
+  /** ISO 8601 の期間または日付。不明なら渡さない（推測で埋めない）。 */
+  temporalCoverage?: string;
+  dateModified?: string;
+};
+
+export function datasetJsonLd(input: DatasetInput) {
+  const url = `${SITE_URL}${input.path}`;
+  return {
+    "@context": "https://schema.org",
+    "@type": "Dataset",
+    name: input.name,
+    description: input.description,
+    url,
+    identifier: url,
+    creator: publisherOrg(),
+    publisher: publisherOrg(),
+    license: DATA_LICENSE_URL,
+    isAccessibleForFree: true,
+    creditText: citeAs(input.citeName ?? input.name, input.citeUrl),
+    measurementTechnique: input.measurementTechnique,
+    variableMeasured: input.variableMeasured,
+    keywords: input.keywords,
+    ...(input.temporalCoverage ? { temporalCoverage: input.temporalCoverage } : {}),
+    ...(input.dateModified ? { dateModified: input.dateModified } : {}),
+    includedInDataCatalog: {
+      "@type": "DataCatalog",
+      name: "vet402 x402 Observatory",
+      url: `${SITE_URL}/observatory`,
+    },
+    isBasedOn: `${SITE_URL}/observatory/methodology`,
+    distribution: input.distribution.map((d) => ({
+      "@type": "DataDownload",
+      name: d.name,
+      encodingFormat: d.encodingFormat,
+      contentUrl: d.contentUrl,
+    })),
+  };
+}
