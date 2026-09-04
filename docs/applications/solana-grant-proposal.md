@@ -5,7 +5,7 @@
 > Site / live data: <https://vet402.com> · JSON: <https://vet402.com/api/v1/observatory/state>
 > Entity: [LEGAL ENTITY / INDIVIDUAL — fill at submission]
 > Contact: [EMAIL — fill at submission]
-> **Requested amount: USD 5,907.75** (cost-basis itemized below; no rounding, no padding)
+> **Requested amount: USD 1,734.63** (cost-basis itemized below; no rounding, no padding)
 >
 > *All figures in this document were measured on 2026-08-20. Reproduction commands are included so reviewers can re-measure everything without trusting us.*
 
@@ -22,21 +22,21 @@ Two things make this request unusual:
 
 ## 2. What exists today (measured, pre-grant, no grant funds involved)
 
-Retrieved 2026-08-20 from `https://vet402.com/api/v1/observatory/state` (key-less; reviewers can run the same `curl`):
+Retrieved **2026-09-05** from `https://vet402.com/api/v1/observatory/state` (key-less; reviewers can run the same `curl`). Per-chain L1 counts are from our own ledger, because the aggregate API does not yet expose L1 fields per chain — see §3:
 
 | Metric | Value |
 |---|---|
-| Endpoints tracked in the public x402 catalog | 17,722 (15,021 active, 2,701 delisted) |
-| L0 machine-verified pass (probe, no purchase) | 988 published |
-| L1 real purchases | 845 attempts across 843 endpoints — 341 settled, all on Base mainnet, each with its tx hash; the non-settles published with the same weight |
-| Lifecycle events recorded | 2,887 delists · 186 relists · 3 settle-drops |
-| Daily catalog snapshot | latest 2026-08-20, 15,011 endpoints fetched |
-| **Solana in the catalog** | **218 endpoints tracked (194 active) — second-largest chain after Base (17,313)** |
+| Endpoints tracked in the public x402 catalog | 23,049 (16,178 active, 6,871 delisted) |
+| L0 machine-verified pass (probe, no purchase) | 11,932 published; 7-day coverage 78.7% of active endpoints |
+| L1 real purchases | 3,241 attempts across 2,207 endpoints — 1,629 settled, each with its tx hash; the non-settles published with the same weight. **3,203 attempts on Base, 38 on Solana (26 settled, all chain-verified)** |
+| Lifecycle events recorded | 8,013 delists · 1,142 relists · 12 settle-drops |
+| Daily catalog snapshot | latest 2026-09-04, 16,260 endpoints fetched |
+| **Solana in the catalog** | **308 endpoints tracked (231 active) — second-largest chain after Base (22,437)** |
 | **Solana L0 (probe-level) verification** | **40 published pass — already running, chain-agnostic, $0** |
 
 Also live: per-chain aggregates (`byChain` in the state API), daily per-chain history (`/api/v1/observatory/history`), per-endpoint purchase evidence pages, a public accuracy/corrections ledger (<https://vet402.com/accuracy>), and MIT-licensed tooling (`@vet402/sdk`, `@vet402/middleware`, `@vet402/mcp-server` on npm).
 
-**Honest status: vet402 does not settle real purchases on Solana today.** All 845 L1 attempts to date used the x402 `exact` scheme with EIP-3009 USDC on Base. A Solana payer implementing the official SVM exact scheme (`scheme_exact_svm.md`: partially-signed versioned transaction, facilitator fee-payer, TransferChecked + Memo) has been written and unit-verified against the spec's MUSTs, but it is **not deployed and holds no funds** — it ships behind a default-off flag, pending exactly the funding this proposal requests.
+**Honest status (corrected 2026-09-05): the Solana payer is live, and we are not asking you to fund what already ships.** We enabled it in production on 2026-09-04, and it has been buying since 2026-08-21: **38 real purchase attempts on Solana mainnet, 26 settled, all 26 chain-verified** (finalized, memo-bound, genesis hash checked). This proposal previously described the payer as written-but-undeployed; that was true when it was drafted on 2026-08-20 and is no longer true. What is *not* done is the part money actually buys: **coverage** (31 of 323 in-cap Solana endpoints have ever been bought from) and **legibility** (the aggregate API's chain breakdown still carries no L1 fields, so the settlements are visible per endpoint but cannot be totalled by a reviewer).
 
 ### 2.1 A measurement nuance we want reviewers to see before we fix it
 
@@ -55,16 +55,15 @@ Neutrality standard (unchanged on Solana): verification is unsolicited and free;
 ### 4.0 How big is Solana x402 today — measured, not assumed
 
 We index x402 settlements ourselves, so we can size this rather than assert it. In the same two-day window
-our settlement index covers (2026-09-01 → 09-02, the depth reached so far), we see **184,621 settlements from
-3,346 distinct payers on Base** and **91 settlements from 37 distinct payers on Solana**. Solana is about
-**0.05%** of Base's settlement count today.
+our settlement index covers, we measured on **2026-09-05**: **379,748 real settlements from 3,890 distinct payers**
+across the chains we index, of which **56 settlements from 20 payers are on Solana** — about **0.015%**. (Our index
+does not yet publish how far back it reaches; we say that here rather than let the window be assumed.)
 
 We are not going to dress that up. The case for measuring Solana is not that the money is there now; it is
-that **the catalog is already there and nobody can tell whether any of it delivers**. We track **329 Solana
-endpoints with a declared price** (measured 2026-09-03, up from 191 on 2026-08-20 — **+72% in two weeks**),
-**323 of them purchasable under our $1 cap**, and an agent choosing among them today has no evidence at all.
-Being in place before the demand arrives is the only way this measurement is ever cheap: the same work costs
-$10.85 for a full pass now, and it is what lets us publish a real denominator the day Solana x402 grows.
+that **the catalog is already there and nobody can tell whether any of it delivers**. We track **308 Solana
+endpoints (231 active)**, **323 of them purchasable under our $1 cap** (measured 2026-09-03), and an agent
+choosing among them today has almost no evidence. Being in place before the demand arrives is the only way this
+measurement is ever cheap: a full pass costs $10.85 now.
 
 That is also why the ask below is small and mostly conditional: a one-off bootstrap pass, weekly upkeep,
 and a growth tranche that is only spent if the catalog actually grows.
@@ -113,7 +112,7 @@ At baseline volume (≈186 purchases/day plus confirmation polling) the free tie
 
 The SVM exact scheme places the fee payer with the **facilitator** (`extra.feePayer`), so in the standard flow vet402 pays no SOL. Our v0 payer fails closed: challenges without a sponsoring fee payer are skipped and recorded, not paid. For the follow-on path where we self-pay fees to reach non-sponsored endpoints:
 
-> 186 tx/day × 365 = 67,890 transactions × 5,000 lamports base fee = **0.33945 SOL ≈ $29.43** (SOL at $86.70, CoinGecko 2026-08-20). Priority fee at our payer's ceiling (5 microlamports/CU, ≈30k CU) adds < 0.0001 SOL/year — negligible.
+> 323 tx/week × 52 = 16,796 transactions × 5,000 lamports base fee = **0.08398 SOL ≈ $7.28** (SOL at $86.70, CoinGecko quoted 2026-08-20; re-quote on submission day). Priority fee at our payer's ceiling (5 microlamports/CU, ≈30k CU) adds < 0.0001 SOL/year — negligible.
 
 ### 4.4 What we are NOT asking for
 
@@ -137,9 +136,9 @@ The SVM exact scheme places the fee payer with the **facilitator** (`extra.feePa
 
 | # | Milestone | Deliverable | Acceptance check (no trust required) | Duration | Amount |
 |---|---|---|---|---|---|
-| M1 | Solana settlement live | SVM exact-scheme payer enabled in production; first real Solana settlements published; history/state attribution fixed to settlement-chain (§2.1) | `curl -sL https://vet402.com/api/v1/observatory/state` shows a Solana `byChain` entry with L1 fields and `settled > 0`; a published purchase page shows a **base58 transaction signature** (not a 0x hash) resolvable on Solscan/Solana Explorer | 2 weeks | $60.00 |
-| M2 | Full-catalog Solana coverage (**bootstrap pass**) | Every active in-cap Solana endpoint attempted **once** in a one-time bootstrap sweep — a new chain has no settlement history, so our steady-state selection (which prioritises endpoints with attributed settlements) would otherwise never reach it; per-endpoint evidence pages live; non-settles published with equal weight; endpoints not reached are published as **unverified**, never as pass | Solana `byChain` attempted-endpoints count ≥ active in-cap count on the day of review; `/api/v1/observatory/endpoints/{id}/purchases` returns rows incl. `settle_failed` for Solana endpoints | 4 weeks | $108.85 |
-| M3 | 12-month sustained operation | **Steady-state cadence within the budget cap** — daily L0 (no purchase) for every listed Solana endpoint, and a **weekly** purchase sweep of those that stay listed, plus same-week re-purchase for any endpoint that gains attributed settlement or caller demand (the budget is a **ceiling, not a promised volume**); Solana settle-drop lifecycle detection; monthly public actual-vs-budget report with tx-level CSV | `/api/v1/observatory/history` shows sustained Solana `l1Attempts` day over day; `/api/v1/observatory/export.csv` contains the full Solana purchase ledger; monthly reports link every figure to the live API | months 2–12 | $1,565.78 |
+| M1 | ~~Solana settlement live~~ **delivered before this proposal (2026-08-21 / production-enabled 2026-09-04)** — restated here as evidence, not as work to fund. Remaining M1 scope: publish L1 fields in the aggregate chain breakdown so the settlements can be totalled from the public API | SVM exact-scheme payer enabled in production; first real Solana settlements published; history/state attribution fixed to settlement-chain (§2.1) | `curl -sL https://vet402.com/api/v1/observatory/state` shows a Solana `byChain` entry with L1 fields and `settled > 0`; a published purchase page shows a **base58 transaction signature** (not a 0x hash) resolvable on Solscan/Solana Explorer | 2 weeks | $0.00 (no purchase capital needed; the code exists) |
+| M2 | Full-catalog Solana coverage (**bootstrap pass**) | Every active in-cap Solana endpoint attempted **once** in a one-time bootstrap sweep — a new chain has no settlement history, so our steady-state selection (which prioritises endpoints with attributed settlements) would otherwise never reach it; per-endpoint evidence pages live; non-settles published with equal weight; endpoints not reached are published as **unverified**, never as pass | Solana `byChain` attempted-endpoints count ≥ active in-cap count on the day of review; `/api/v1/observatory/endpoints/{id}/purchases` returns rows incl. `settle_failed` for Solana endpoints | 4 weeks | $138.85 |
+| M3 | 12-month sustained operation | **Steady-state cadence within the budget cap** — daily L0 (no purchase) for every listed Solana endpoint, and a **weekly** purchase sweep of those that stay listed, plus same-week re-purchase for any endpoint that gains attributed settlement or caller demand (the budget is a **ceiling, not a promised volume**); Solana settle-drop lifecycle detection; monthly public actual-vs-budget report with tx-level CSV | `/api/v1/observatory/history` shows sustained Solana `l1Attempts` day over day; `/api/v1/observatory/export.csv` contains the full Solana purchase ledger; monthly reports link every figure to the live API | months 2–12 | $1,595.78 |
 
 Amounts allocate the budget table to milestone periods (M1: first RPC month + 2 sweeps; M2: second RPC month + 28 sweeps; M3: remainder incl. growth allowance and fee float). Reporting cadence: monthly, public-first — figures come from the live API, settlements from on-chain signatures, corrections (if any) on <https://vet402.com/accuracy>.
 

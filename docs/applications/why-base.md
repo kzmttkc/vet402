@@ -11,30 +11,30 @@ vet402 is an independent verification layer for the x402 agent-payment economy. 
 
 ### Measured: the x402 catalog lives on Base
 
-Of the 21,445 endpoints vet402 tracks in the public x402 discovery catalog, **20,870 are on Base mainnet** (mainnet-only chain breakdown) — 14,539 of them currently active, and 98.5% of every mainnet endpoint we track. The next-largest chain, Solana, has 296. Base is not one option among many for x402 today; it is the market.
+Of the 23,049 endpoints vet402 tracks in the public x402 discovery catalog, **22,437 are on Base mainnet** (mainnet-only chain breakdown) — 15,733 of them currently active, and 98.5% of every mainnet endpoint we track. The next-largest chain, Solana, has 308. Base is not one option among many for x402 today; it is the market.
 
 | Chain (mainnet) | Endpoints tracked | Active | L0 published pass |
 |---|---|---|---|
-| **Base** | **20,870** | **14,539** | **7,018** |
-| Solana | 296 | 239 | 121 |
+| **Base** | **22,437** | **15,733** | **11,619** |
+| Solana | 308 | 231 | 185 |
 | X Layer | 18 | 13 | 3 |
 | All others combined | 6 | 5 | 1 |
 
 ### Measured: every real purchase we have made settled on Base
 
-Our L1 verification level makes **real purchases**: 2,555 purchase attempts across 1,521 distinct endpoints, of which 1,198 settled (46.9%). Every one of those attempts was a USDC payment on Base mainnet (`eip155:8453`), using the x402 `exact` scheme with EIP-3009 transfer authorization. Every settled purchase produces a Base transaction hash, published on the endpoint's public observatory page. The 1,357 attempts that did not settle are published too — same page, same weight.
+Our L1 verification level makes **real purchases**: 3,241 purchase attempts across 2,207 distinct endpoints, of which 1,629 settled (50.3%). Every one of those attempts was a USDC payment on Base mainnet (`eip155:8453`), using the x402 `exact` scheme with EIP-3009 transfer authorization. Every settled purchase produces a Base transaction hash, published on the endpoint's public observatory page. The 1,612 attempts that did not settle are published too — same page, same weight.
 
 This is, to our knowledge, the only public dataset of *settle-through* rates for the x402 catalog: not "does the endpoint answer" but "does money actually settle and a response actually arrive."
 
 ### Measured: we watch the Base x402 catalog change daily
 
-Daily catalog snapshots (latest: 2026-09-02, 14,968 endpoints fetched) drive a lifecycle event stream: 7,523 delist events, 1,045 relists, and 11 settle-drops recorded to date. 6,478 endpoints are currently delisted. Agents and builders on Base can see not just what exists, but what disappeared.
+Daily catalog snapshots (latest: 2026-09-04, 16,260 endpoints fetched) drive a lifecycle event stream: 8,013 delist events, 1,142 relists, and 12 settle-drops recorded to date. 6,871 endpoints are currently delisted. Agents and builders on Base can see not just what exists, but what disappeared.
 
 ## What this does for Base
 
 1. **Buyer confidence in the Base agent economy.** An agent (or its operator) deciding whether to pay a Base x402 endpoint can check independent, evidence-backed data — settle-through history with tx hashes — instead of paying blind.
 2. **A quality signal for Base sellers.** Endpoints with verified settlement history can display it (public observatory pages and an embeddable badge API, live at `/api/badge/endpoint/{id}`). Verification is free and unsolicited; sellers cannot pay us for a better result.
-3. **Ground truth about the catalog.** "21,445 listed" and "14,967 active with 7,193 machine-verified live" are different numbers. Publishing the denominator makes the Base x402 ecosystem legible to builders, researchers, and reviewers — including the failures.
+3. **Ground truth about the catalog.** "23,049 listed" and "16,178 active with 11,932 machine-verified live" are different numbers. Publishing the denominator makes the Base x402 ecosystem legible to builders, researchers, and reviewers — including the failures.
 
 ## Neutrality commitments
 
@@ -51,4 +51,4 @@ Daily catalog snapshots (latest: 2026-09-02, 14,968 endpoints fetched) drive a l
 
 ---
 
-*Figures retrieved from /api/v1/observatory/state on 2026-09-03. Regenerate before every submission: `python3 scripts/grant-figures.py --check`.*
+*Figures retrieved from /api/v1/observatory/state on 2026-09-05. Regenerate before every submission: `python3 scripts/grant-figures.py --check`.*

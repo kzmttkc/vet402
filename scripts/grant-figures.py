@@ -7,7 +7,7 @@ retrieval date. Numbers written by hand go stale silently. This makes staleness 
   python3 scripts/grant-figures.py            # print today's canonical figures block
   python3 scripts/grant-figures.py --check    # exit 1 if any application doc disagrees with live
 """
-import json, re, sys, urllib.request, pathlib, datetime
+import json, os, re, subprocess, sys, urllib.request, pathlib, datetime
 
 STATE_URL = "https://vet402.com/api/v1/observatory/state"
 CENSUS_URL = "https://vet402.com/api/v1/census/summary?window=30d"
@@ -19,6 +19,12 @@ DOCS = pathlib.Path(__file__).resolve().parent.parent / "docs" / "applications"
 # --write は「その文書の数字が全部いまの状態の主張である」ものにだけ効かせる。
 # 歴史的な比較（「8/14→8/20の7日間は804件だった」）や他チェーンの内訳を含む文書に
 # 効かせると、累計値で上書きして事実を壊す（2026-08-29 に solana-grant-proposal.md で実際に起きた）。
+# --write の対象外。うち「提出済みの記録」は --check の対象外でもある（記録は直さない）。
+# solana-grant-proposal.md は**未提出**なので、書き換えないが**数字は検査する**
+# （2026-09-05: SKIP に入れていたせいで「38 of 323 endpoints」という誤り＝実際は31を素通りさせた）。
+SKIP_CHECK = {"video-script.md", "ai-usage-disclosure.md",
+              "base-builder-grant-nomination.md", "octant-atlas-application.md",
+              "base-batches-004-video.md"}
 SKIP = {"solana-grant-proposal.md", "video-script.md", "ai-usage-disclosure.md",
         "base-builder-grant-nomination.md", "octant-atlas-application.md",
         # 撮影台本。読み上げる数字は収録当日に vet402_video_numbers.py が出す。
@@ -76,6 +82,7 @@ def fetch():
         "endpointsWithRealSettlement": c["endpoints_with_real_settlement"],
         "confirmedAttribution": c["attribution"]["confirmed"],
         "indexFrom": _index_from(),
+        **{k: v for k, v in _chain_counts().items() if k.endswith(("Attempts", "Settled", "Endpoints"))},
         "solTotal": by.get("Solana", {}).get("totalEndpoints"),
         "solActive": by.get("Solana", {}).get("activeEndpoints"),
         "solPass": by.get("Solana", {}).get("publishedPass"),
@@ -85,7 +92,6 @@ def fetch():
 def _index_from():
     """census の window は名乗りであって、索引が実際にどこまで遡れているかとは別物。
     2026-09-03: window=30d の実体は 09-01 以降の約2日だった。申請に出す前に必ず実測する。"""
-    import subprocess, os as _os
     env = pathlib.Path.home() / "vouch" / ".env.production.local"
     url = ""
     try:
@@ -94,7 +100,7 @@ def _index_from():
                 url = line.split("=", 1)[1].strip().strip('"').strip("'"); break
     except Exception:
         return "不明"
-    psql = next((c for c in ("/opt/homebrew/bin/psql", "/usr/local/bin/psql") if _os.path.exists(c)), "psql")
+    psql = next((c for c in ("/opt/homebrew/bin/psql", "/usr/local/bin/psql") if os.path.exists(c)), "psql")
     try:
         out = subprocess.run([psql, url, "-At", "-c",
                               "select to_char(min(observed_at) at time zone 'utc','YYYY-MM-DD') from settlements;"],
@@ -102,6 +108,71 @@ def _index_from():
         return out.stdout.strip() or "不明"
     except Exception:
         return "不明"
+
+
+def _chain_counts():
+    """チェーン別の settled 件数を本番DBから引く。主張の検査に使う。"""
+    env = pathlib.Path.home() / "vouch" / ".env.production.local"
+    url = ""
+    try:
+        for line in env.read_text().splitlines():
+            if line.startswith("DATABASE_URL="):
+                url = line.split("=", 1)[1].strip().strip('"').strip("'"); break
+    except Exception:
+        return {}
+    psql = next((c for c in ("/opt/homebrew/bin/psql", "/usr/local/bin/psql") if os.path.exists(c)), "psql")
+    sql = ("select case when network like 'solana%' then 'solana' when network like 'eip155:8453' then 'base' "
+           "else 'other' end, count(*), count(*) filter (where status='settled'), count(distinct endpoint_id) "
+           "from x402_l1_purchases group by 1;")
+    try:
+        out = subprocess.run([psql, url, "-At", "-F", "|", "-c", sql], capture_output=True, text=True, timeout=60)
+        d = {}
+        for r in out.stdout.strip().splitlines():
+            if "|" not in r:
+                continue
+            ch, att, st, eps = r.split("|")
+            d[ch] = int(st)                      # 主張の検査は settled で足りる
+            d[ch + "Attempts"] = int(att)
+            d[ch + "Settled"] = int(st)
+            d[ch + "Endpoints"] = int(eps)
+        return d
+    except Exception:
+        return {}
+
+
+# 主張の検査（2026-09-05 追加）。
+# --write は「文の中の数字」を本番値へ更新するが、**その文の主張が古くなったことは見ない**。
+# 実際に why-solana.md は「Solana では実購入していない。3,241 件は全て Base」と書いたまま、
+# 数字だけ 845→3,241 へ自動更新され、**嘘が最新の実測に見える状態**になっていた（別セッションの指摘で発覚）。
+# 数字が合っていることと、主張が正しいことは別物である。
+CLAIM_GUARDS = [
+    (r"does not (?:make|settle) real purchases on Solana",
+     lambda f, c: c.get("solana", 0) > 0,
+     "Solana の settled が {solana} 件ある（本番DB実測）"),
+    (r"real purchases are Base-only",
+     lambda f, c: c.get("solana", 0) > 0,
+     "Solana の settled が {solana} 件ある（本番DB実測）"),
+    (r"attempts to date \([\d,]+ settled\) were on Base",
+     lambda f, c: c.get("solana", 0) > 0,
+     "全件が Base ではない。Solana settled {solana} 件"),
+    (r"L1 (?:is |runs )?(?:on )?Base only",
+     lambda f, c: c.get("solana", 0) > 0,
+     "Solana の settled が {solana} 件ある"),
+]
+
+
+def check_claims(f):
+    """凍結済み（SKIP）の文書も含めて全部見る。提出済みなら直せないが、知らないままにはしない。"""
+    chains = _chain_counts()
+    bad = []
+    for p in sorted(DOCS.glob("*.md")):
+        text = p.read_text()
+        for i, line in enumerate(text.splitlines(), 1):
+            for rx, cond, msg in CLAIM_GUARDS:
+                if re.search(rx, line) and cond(f, chains):
+                    frozen = " ※提出済みの記録" if p.name in SKIP_CHECK else ""
+                    bad.append(f"{p.name}:{i}  主張が実測と矛盾: " + msg.format(**chains) + frozen)
+    return bad
 
 
 def block(f, today):
@@ -155,6 +226,11 @@ ANCHORS = [
     (r"([\d,]{3,}) endpoints, ([\d,]{3,}) of them on Base", ["total", "baseTotal"]),
     (r"We buy: ([\d,]{3,}) real USDC purchases on Base mainnet across ([\d,]{3,}) endpoints, ([\d,]{3,}) settled", ["attempts", "endpointsAttempted", "settled"]),
     (r"the ([\d,]{3,}) that did not settle", ["nonsettled"]),
+    (r"([\d,]{2,}) real purchase attempts on Solana mainnet", ["solanaAttempts"]),
+    (r"([\d,]{2,}) settled and all ([\d,]{2,}) are chain-verified", ["solanaSettled", "solanaSettled"]),
+    (r"([\d,]{3,}) of our ([\d,]{3,}) attempts to date are on Base", ["baseAttempts", "attempts"]),
+    (r"([\d,]{2,}) attempts / ([\d,]{2,}) chain-verified settlements", ["solanaAttempts", "solanaSettled"]),
+    (r"([\d,]{2,}) of 323 in-cap Solana endpoints have ever been bought from", ["solanaEndpoints"]),
 
     (r"attempts across ([\d,]{3,}) (?:distinct )?endpoints", ["endpointsAttempted"]),
     (r"([\d,]{3,}) endpoints are currently delisted", ["delisted"]),
@@ -206,12 +282,12 @@ def unanchored(f, ):
     live = {fmt(v) for v in f.values() if isinstance(v, int)}
     out = []
     for p in sorted(DOCS.glob("*.md")):
-        if p.name in SKIP:
+        if p.name in SKIP_CHECK:
             continue
         for i, line in enumerate(p.read_text().splitlines(), 1):
             # 日付を明記した実測値（原価根拠など）は本番stateと一致しなくてよい。
             # 「その日に測った」と書いてあることが根拠なので、日付が無い数字だけを咎める。
-            if re.search(r"(measured|retrieved|実測|取得)\s*20\d\d-\d\d-\d\d", line):
+            if re.search(r"(?i)(measured|retrieved|fetched|quote[d]?|実測|取得)[^\n]{0,40}20\d\d-\d\d-\d\d|on 20\d\d-\d\d-\d\d|base units|requested amount", line):
                 continue
             for m in re.finditer(r"(?<![$\d.])\b\d{1,3}(?:,\d{3})+\b", line):
                 if m.group(0) not in live:
@@ -234,6 +310,7 @@ def check(f, today):
         if foot and foot.group(1) != today:
             bad.append(f"{p.name}  retrieval date {foot.group(1)} is not today ({today})")
     bad += unanchored(f)
+    bad += check_claims(f)
     if bad:
         print("STALE — do not submit until fixed:")
         for b in bad:

@@ -5,12 +5,12 @@
 
 ## Honest status first
 
-**vet402 does not make real purchases on Solana today.** Our L1 (settle-through) payer currently supports exactly one settlement path: the x402 `exact` scheme with EIP-3009 USDC on Base mainnet. All 2,555 real purchase attempts to date (1,198 settled) were on Base. We are not going to claim Solana settlement verification that does not exist.
+**vet402 now makes real purchases on Solana — and we say so with the same evidence rule we apply to Base.** Since 2026-08-21 our L1 payer has made **38 real purchase attempts on Solana mainnet**, of which **26 settled and all 26 are chain-verified** (finalized, memo-bound, genesis-hash checked); 3,203 of our 3,241 attempts to date are on Base. One caveat we publish rather than hide: the public chain breakdown in `/api/v1/observatory/state` carries no L1 fields yet, so a reviewer can see these purchases on the per-endpoint record pages but cannot yet total them from the aggregate API. Making that visible is part of what this proposal delivers.
 
 What *does* exist today for Solana:
 
 - **L0 liveness verification already covers Solana endpoints.** The public x402 discovery catalog we track contains **218 Solana endpoints (194 active)**, and **39 of them have a published L0 pass** — machine-verified as answering the x402 protocol correctly, no purchase involved.
-- Solana is the **second-largest chain in the x402 catalog** (after Base at 20,870), and the largest that our real-purchase methodology cannot yet reach.
+- Solana is the **second-largest chain in the x402 catalog** (after Base at 22,437), and the largest that our real-purchase methodology cannot yet reach.
 
 ## The gap this creates for Solana
 
@@ -27,7 +27,7 @@ Scope (plan, not an accomplishment):
 3. **Same neutrality standard** — verification is unsolicited and free; measured operators are not customers; corrections logged on the public accuracy ledger.
 4. **Chain-split reporting** — the aggregate state API already reports per-chain figures (`byChain`, mainnet-only); Solana L1 figures would appear there from day one, publicly and machine-readably.
 
-What we ask reviewers to evaluate is not a promise of future traction but a **method that is already running in production on another chain**, applied to Solana: the catalog tracking, daily snapshots (latest: 2026-09-02, 14,968 endpoints fetched), lifecycle events (7,523 delists, 1,045 relists recorded), the L0→L1 pipeline, and the publish-everything evidence standard are all live and inspectable now.
+What we ask reviewers to evaluate is not a promise of future traction but a **method that is already running in production on another chain**, applied to Solana: the catalog tracking, daily snapshots (latest: 2026-09-04, 16,260 endpoints fetched), lifecycle events (8,013 delists, 1,142 relists recorded), the L0→L1 pipeline, and the publish-everything evidence standard are all live and inspectable now.
 
 ## Why this team
 
@@ -38,4 +38,4 @@ What we ask reviewers to evaluate is not a promise of future traction but a **me
 
 ---
 
-*Figures retrieved from /api/v1/observatory/state on 2026-09-03. Regenerate before every submission: `python3 scripts/grant-figures.py --check`.*
+*Figures retrieved from /api/v1/observatory/state on 2026-09-05. Regenerate before every submission: `python3 scripts/grant-figures.py --check`.*

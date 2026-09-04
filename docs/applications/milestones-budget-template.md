@@ -16,10 +16,10 @@
 
 *Update these numbers from the live API on the day of submission and restate the retrieval date.*
 
-- Public x402 catalog tracking: 21,445 endpoints (14,967 active); daily snapshots (latest 2026-09-02, 14,968 fetched)
-- L0 machine verification: 7,193 published pass
-- L1 real purchases: 2,555 attempts / 1,198 settled, every settlement published with its Base tx hash; non-settles published with the same weight
-- Lifecycle event stream: 7,523 delists, 1,045 relists, 3 settle-drops
+- Public x402 catalog tracking: 23,049 endpoints (16,178 active); daily snapshots (latest 2026-09-04, 16,260 fetched)
+- L0 machine verification: 11,932 published pass
+- L1 real purchases: 3,241 attempts / 1,629 settled, every settlement published with its Base tx hash; non-settles published with the same weight
+- Lifecycle event stream: 8,013 delists, 1,142 relists, 3 settle-drops
 - Open-source (MIT): `@vet402/sdk`, `@vet402/middleware`, `@vet402/mcp-server` on npm
 
 ## Proposed milestones
@@ -54,4 +54,4 @@ Notes:
 
 ---
 
-*Pre-grant figures retrieved from /api/v1/observatory/state on 2026-09-03. Refresh before each submission: `python3 scripts/grant-figures.py --check`.*
+*Pre-grant figures retrieved from /api/v1/observatory/state on 2026-09-05. Refresh before each submission: `python3 scripts/grant-figures.py --check`.*
