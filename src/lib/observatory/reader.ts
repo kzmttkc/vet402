@@ -26,6 +26,12 @@ import { publishedVerdict, MIN_CONSECUTIVE_FAILS_TO_PUBLISH } from "./l0-probe";
 import { isOperatorPayTo, operatorPayToDenylist } from "./operator";
 import { chainLabel, isTestnet } from "./chains";
 import { deliveredPredicate } from "./delivery";
+import {
+  settledTier,
+  settledTierPredicate,
+  settlementTimeWindowPredicate,
+  type SettledTier,
+} from "./settled-tier";
 import type { ObservatoryQuery, ObservatoryVerdict } from "./query";
 import { UUID_RE } from "@/lib/validation/uuid";
 
@@ -301,8 +307,26 @@ export type EndpointDetail = {
     httpStatusPaid: number | null;
     latencyMs: number | null;
     l2Schema: string | null;
+    /**
+     * settled 行の証拠強度（2026-09-05 監査 S-4 / S-17）。settled 以外は null。
+     * 分類は settled-tier.ts が単独で持ち、描画は純粋に保つ。
+     */
+    settledTier: SettledTier | null;
   }[];
 } | null;
+
+/**
+ * 受領証の行に強度ラベルを載せる。列（auth_nonce / settlement_verified）は
+ * 公開面へは出さない——出すのは「その tx がこの購入のものと言えるか」という結論だけ。
+ */
+function withSettledTier<
+  T extends { status: string; authNonce: string | null; settlementVerified: boolean | null },
+>(rows: T[]): (Omit<T, "authNonce" | "settlementVerified"> & { settledTier: SettledTier | null })[] {
+  return rows.map(({ authNonce, settlementVerified, ...rest }) => ({
+    ...rest,
+    settledTier: settledTier({ status: rest.status, authNonce, settlementVerified }),
+  }));
+}
 
 /**
  * A "paid attempt" is one where money actually moved (or was committed): the
@@ -403,7 +427,8 @@ export async function getEndpointDetail(id: string): Promise<EndpointDetail> {
     let purchases: NonNullable<EndpointDetail>["purchases"] = [];
     let l1Totals = { attempts: 0, settled: 0, delivered: 0 };
     try {
-      purchases = await db
+      purchases = withSettledTier(
+        await db
         .select({
           attemptedAt: x402L1Purchases.attemptedAt,
           status: x402L1Purchases.status,
@@ -412,6 +437,8 @@ export async function getEndpointDetail(id: string): Promise<EndpointDetail> {
           httpStatusPaid: x402L1Purchases.httpStatusPaid,
           latencyMs: x402L1Purchases.latencyMs,
           l2Schema: x402L1Purchases.l2Schema,
+          authNonce: x402L1Purchases.authNonce,
+          settlementVerified: x402L1Purchases.settlementVerified,
         })
         .from(x402L1Purchases)
         .where(
@@ -421,7 +448,8 @@ export async function getEndpointDetail(id: string): Promise<EndpointDetail> {
           ),
         )
         .orderBy(desc(x402L1Purchases.attemptedAt))
-        .limit(20);
+        .limit(20),
+      );
       l1Totals = await countPaidAttempts(db, id);
     } catch (error) {
       if (!isMissingSchemaError(error)) throw error;
@@ -510,7 +538,8 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
     let purchases: NonNullable<EndpointDetail>["purchases"] = [];
     let totals = { attempts: 0, settled: 0, delivered: 0 };
     try {
-      purchases = await db
+      purchases = withSettledTier(
+        await db
         .select({
           attemptedAt: x402L1Purchases.attemptedAt,
           status: x402L1Purchases.status,
@@ -519,6 +548,8 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
           httpStatusPaid: x402L1Purchases.httpStatusPaid,
           latencyMs: x402L1Purchases.latencyMs,
           l2Schema: x402L1Purchases.l2Schema,
+          authNonce: x402L1Purchases.authNonce,
+          settlementVerified: x402L1Purchases.settlementVerified,
         })
         .from(x402L1Purchases)
         .where(
@@ -528,7 +559,8 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
           ),
         )
         .orderBy(desc(x402L1Purchases.attemptedAt))
-        .limit(100);
+        .limit(100),
+      );
       totals = await countPaidAttempts(db, id);
     } catch (error) {
       if (!isMissingSchemaError(error)) throw error;
@@ -576,11 +608,39 @@ export type ObservatoryStats = {
     attempts: number;
     settled: number;
     delivered: number;
+    /**
+     * settled のうち署名 nonce（EVM: EIP-3009 の authorization nonce / Solana: 我々が
+     * 生成した memo）まで束縛できた件数。2026-09-05 監査 S-4 / S-17: settled を
+     * 1 段で出していたので、2026-09-04 12:00 UTC より前の「金額・宛先の一致のみ」の
+     * 行と区別がつかなかった。件数は動かさず強度だけ分ける（settled-tier.ts）。
+     */
+    settledNonceBound: number;
+    /** settled のうち nonce 束縛の無い件数。nonceBound との和は必ず settled。 */
+    settledAmountPayeeOnly: number;
+    /** 決済ブロック時刻が試行の -5 分〜+15 分に入った settled 件数。 */
+    settledTimeWindowOk: number;
+    /** 決済ブロック時刻を我々が持っていない settled 件数（ok とも outside とも言えない）。 */
+    settledTimeWindowUnknown: number;
     endpointsAttempted: number;
     endpointsSettled: number;
     endpointsDelivered: number;
+    /**
+     * L1 のチェーン別内訳。L0 の byChain と違いテストネットを落とさない——
+     * 落とすと和が l1.settled と合わなくなり、分母として使えなくなる。
+     */
+    byChain: L1ChainStats[];
   };
   latestSnapshot: { snapshotDate: string; totalCount: number; fetchedCount: number } | null;
+};
+
+/** 1 チェーン分の L1 実測。settledNonceBound + settledAmountPayeeOnly = settled。 */
+export type L1ChainStats = {
+  chain: string;
+  attempts: number;
+  settled: number;
+  delivered: number;
+  settledNonceBound: number;
+  settledAmountPayeeOnly: number;
 };
 
 export async function getObservatoryStats(): Promise<ObservatoryStats> {
@@ -597,9 +657,14 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       attempts: 0,
       settled: 0,
       delivered: 0,
+      settledNonceBound: 0,
+      settledAmountPayeeOnly: 0,
+      settledTimeWindowOk: 0,
+      settledTimeWindowUnknown: 0,
       endpointsAttempted: 0,
       endpointsSettled: 0,
       endpointsDelivered: 0,
+      byChain: [],
     },
     latestSnapshot: null,
   };
@@ -674,15 +739,24 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       attempts: 0,
       settled: 0,
       delivered: 0,
+      settledNonceBound: 0,
+      settledAmountPayeeOnly: 0,
+      settledTimeWindowOk: 0,
+      settledTimeWindowUnknown: 0,
       endpointsAttempted: 0,
       endpointsSettled: 0,
       endpointsDelivered: 0,
+      byChain: [] as L1ChainStats[],
     };
     try {
       const l1Raw = await db.execute(sql`
         SELECT count(*)::int AS attempts,
                count(*) FILTER (WHERE status = 'settled')::int AS settled,
                count(*) FILTER (WHERE ${sql.raw(deliveredPredicate())})::int AS delivered,
+               -- 2026-09-05 監査 S-4 / S-17: settled の証拠強度は 1 段ではない。
+               -- 定義は settled-tier.ts が単独で持つ（JS の分類と同じ規則）。
+               count(*) FILTER (WHERE ${sql.raw(settledTierPredicate("nonce_bound"))})::int AS settled_nonce_bound,
+               count(*) FILTER (WHERE ${sql.raw(settledTierPredicate("amount_payee_only"))})::int AS settled_amount_payee_only,
                count(DISTINCT endpoint_id)::int AS endpoints,
                count(DISTINCT endpoint_id) FILTER (WHERE status = 'settled')::int AS endpoints_settled,
                count(DISTINCT endpoint_id) FILTER (WHERE ${sql.raw(deliveredPredicate())})::int AS endpoints_delivered
@@ -693,19 +767,92 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
         attempts: number;
         settled: number;
         delivered: number;
+        settled_nonce_bound: number;
+        settled_amount_payee_only: number;
         endpoints: number;
         endpoints_settled: number;
         endpoints_delivered: number;
       }[];
       if (l1List[0]) {
         l1 = {
+          ...l1,
           attempts: Number(l1List[0].attempts),
           settled: Number(l1List[0].settled),
           delivered: Number(l1List[0].delivered ?? 0),
+          settledNonceBound: Number(l1List[0].settled_nonce_bound ?? 0),
+          settledAmountPayeeOnly: Number(l1List[0].settled_amount_payee_only ?? 0),
           endpointsAttempted: Number(l1List[0].endpoints),
           endpointsSettled: Number(l1List[0].endpoints_settled ?? 0),
           endpointsDelivered: Number(l1List[0].endpoints_delivered ?? 0),
         };
+      }
+
+      // チェーン別。network の別名（"base" と "eip155:8453" は同じチェーン）は
+      // SQL の GROUP BY では畳めないので、L0 側と同じく chainLabel() で JS 側で束ねる。
+      // テストネットは落とさない——落とすと和が l1.settled と合わず、分母に使えない。
+      const chainRaw = await db.execute(sql`
+        SELECT network,
+               count(*)::int AS attempts,
+               count(*) FILTER (WHERE status = 'settled')::int AS settled,
+               count(*) FILTER (WHERE ${sql.raw(deliveredPredicate())})::int AS delivered,
+               count(*) FILTER (WHERE ${sql.raw(settledTierPredicate("nonce_bound"))})::int AS settled_nonce_bound,
+               count(*) FILTER (WHERE ${sql.raw(settledTierPredicate("amount_payee_only"))})::int AS settled_amount_payee_only
+        FROM x402_l1_purchases
+        WHERE status IN ('settled', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable', 'settle_claimed', 'settle_claim_refuted')
+        GROUP BY network
+      `);
+      const chainRows = (
+        Array.isArray(chainRaw) ? chainRaw : (chainRaw as { rows?: unknown[] }).rows ?? []
+      ) as {
+        network: string | null;
+        attempts: number;
+        settled: number;
+        delivered: number;
+        settled_nonce_bound: number;
+        settled_amount_payee_only: number;
+      }[];
+      const folded = new Map<string, L1ChainStats>();
+      for (const row of chainRows) {
+        const chain = chainLabel(row.network);
+        const entry = folded.get(chain) ?? {
+          chain,
+          attempts: 0,
+          settled: 0,
+          delivered: 0,
+          settledNonceBound: 0,
+          settledAmountPayeeOnly: 0,
+        };
+        entry.attempts += Number(row.attempts ?? 0);
+        entry.settled += Number(row.settled ?? 0);
+        entry.delivered += Number(row.delivered ?? 0);
+        entry.settledNonceBound += Number(row.settled_nonce_bound ?? 0);
+        entry.settledAmountPayeeOnly += Number(row.settled_amount_payee_only ?? 0);
+        folded.set(chain, entry);
+      }
+      l1.byChain = [...folded.values()].sort((a, b) => b.attempts - a.attempts);
+    } catch (error) {
+      if (!isMissingSchemaError(error)) throw error;
+    }
+
+    // 時刻窓は observed_purchases に依存するので別の try で囲む——その表が無い環境で
+    // L1 の集計まで 0 に落ちるのは、測れないことと測って 0 だったことの混同になる。
+    // lower() 突合は EVM の hex が大小どちらでも同じ tx を指すため（Solana の base58 も
+    // 同じ変換を両辺へ当てるので、実在の 2 本が大小差だけで衝突しない限り一致は変わらない）。
+    try {
+      const winRaw = await db.execute(sql`
+        SELECT count(*) FILTER (WHERE ${sql.raw(settlementTimeWindowPredicate("p", "o"))})::int AS in_window,
+               count(*) FILTER (WHERE o.block_timestamp IS NULL)::int AS unknown_ts
+        FROM x402_l1_purchases p
+        LEFT JOIN observed_purchases o ON lower(o.tx_hash) = lower(p.tx_hash)
+        WHERE p.status = 'settled'
+      `);
+      const winRows = (Array.isArray(winRaw) ? winRaw : (winRaw as { rows?: unknown[] }).rows ?? []) as {
+        in_window: number;
+        unknown_ts: number;
+      }[];
+      if (winRows[0]) {
+        l1.settledTimeWindowOk = Number(winRows[0].in_window ?? 0);
+        l1.settledTimeWindowUnknown = Number(winRows[0].unknown_ts ?? 0);
       }
     } catch (error) {
       if (!isMissingSchemaError(error)) throw error;
