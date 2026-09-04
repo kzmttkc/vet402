@@ -114,6 +114,13 @@ export default async function ImpactPage() {
             export.csv
           </Link>
         </p>
+        {/* 2026-09-04 監査 E: 「attempts」は API ごとに定義が違い 4 値あった。この頁の数字は
+            state API の l1.attempts / l1.settled だけを引く。出所と定義を数字の隣に書く。 */}
+        <p className="doc-note mt-3 max-w-[62ch]">
+          Attempts and settled as reported by <code>/api/v1/observatory/state</code> (<code>l1.attempts</code>: paid
+          requests whose payment was signed and sent; <code>l1.settled</code>: receipt received). The CSV export
+          applies its own row definition and can count differently.
+        </p>
         {/* 2026-09-02 監査 F4: このページに tx ハッシュが 0 本だった。「受領証がある」が
             主張なら、受領証そのものへ 1 クリックで着けなければならない。既存の数字の
             出所は変えず、直近 5 件を本文に載せる。 */}
@@ -181,7 +188,9 @@ export default async function ImpactPage() {
                   {" "}Across the whole ledger, {backtest.avoided.count} signed attempts carried a
                   prior public failure signal and <strong>none of them settled</strong> (
                   {formatUsdcUnits(backtest.avoided.spentUnits)} that an agent honoring the signals would not
-                  have lost), while {backtest.forgone.count} signalled attempts settled anyway.
+                  have lost), while {backtest.forgone.count} signalled attempts settled anyway (definition:
+                  signed attempts preceded by a public failure signal, a subset of the attempts in §2, from{" "}
+                  <code>/api/v1/observatory/backtest</code>).
                 </>
               )}{" "}
               <Link href="/api/v1/observatory/decisions" className="underline">
@@ -199,10 +208,11 @@ export default async function ImpactPage() {
           {latestAnchor ? (
             <>
               The purchase ledger is a daily hash chain. Latest root ({latestAnchor.day}):{" "}
-              <code>{latestAnchor.rootHash.slice(0, 16)}…</code> over{" "}
+              <code>{latestAnchor.rootHash.slice(0, 16)}…</code> over that day&apos;s{" "}
               {latestAnchor.entryCount.toLocaleString()} entries. Rewriting any past row breaks every
               later root, and the projection is open source, so a third party can verify the chain
-              from the public API alone.
+              from the public API alone. The entry count is the rows that anchor hashed, which is not
+              the attempt count in §2.
             </>
           ) : (
             "The purchase ledger is a daily hash chain; anchoring begins with the first anchored day."

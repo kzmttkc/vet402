@@ -340,23 +340,25 @@ export default async function ObservatoryStatePage() {
                 </tr>
               </thead>
               <tbody>
+                {/* 2026-09-04 監査 E: Share 列は上 2 行が attempts 分母、下 2 行が endpoints 分母で、
+                    同じ列見出しの下に 2 つの分母が黙って混ざっていた。行ラベルに分母を書く。 */}
                 <tr>
-                  <td className="text-brand">Paid purchase attempts (money signed and sent)</td>
+                  <td className="text-brand">Paid purchase attempts (money signed and sent): the denominator of the next row</td>
                   <td className="num">{stats.l1.attempts.toLocaleString()}</td>
                   <td className="num">—</td>
                 </tr>
                 <tr>
-                  <td className="text-brand">Settled with an on-chain receipt</td>
+                  <td className="text-brand">Settled with an on-chain receipt (share of attempts)</td>
                   <td className="num">{stats.l1.settled.toLocaleString()}</td>
                   <td className="num">{pct(stats.l1.settled, stats.l1.attempts)}</td>
                 </tr>
                 <tr>
-                  <td className="text-brand">Distinct endpoints purchased from</td>
+                  <td className="text-brand">Distinct endpoints purchased from: the denominator of the next row</td>
                   <td className="num">{stats.l1.endpointsAttempted.toLocaleString()}</td>
                   <td className="num">—</td>
                 </tr>
                 <tr>
-                  <td className="text-brand">Endpoints with at least one settled receipt</td>
+                  <td className="text-brand">Endpoints with at least one settled receipt (share of endpoints purchased from)</td>
                   <td className="num">{stats.l1.endpointsSettled.toLocaleString()}</td>
                   <td className="num">{pct(stats.l1.endpointsSettled, stats.l1.endpointsAttempted)}</td>
                 </tr>
@@ -364,6 +366,17 @@ export default async function ObservatoryStatePage() {
             </table>
           </TableScroll>
         )}
+        <p className="doc-p">
+          Attempt and settled counts above are as reported by <code>/api/v1/observatory/state</code>{" "}
+          (<code>l1.attempts</code>, <code>l1.settled</code>): an attempt is a paid request whose payment was
+          signed and sent, whatever the seller answered. The per-endpoint cells on the{" "}
+          <Link href="/observatory" className="underline">
+            register
+          </Link>{" "}
+          use the same denominator. Other machine-readable surfaces (<code>decisions</code>,{" "}
+          <code>history</code>, <code>export.csv</code>) apply their own definition of an attempt and can
+          differ; when a number is quoted from this site, the state API is the one to cite.
+        </p>
 
         <h2 className="sec-head">
           <span className="sec-no">4.</span>
@@ -416,8 +429,9 @@ export default async function ObservatoryStatePage() {
           {latestAnchor ? (
             <>
               daily hash chain over the full purchase ledger, latest root ({latestAnchor.day}):{" "}
-              <code>{latestAnchor.rootHash.slice(0, 16)}…</code> covering{" "}
-              {latestAnchor.entryCount.toLocaleString()} entries. Rewriting any past row breaks
+              <code>{latestAnchor.rootHash.slice(0, 16)}…</code> over that day&apos;s{" "}
+              {latestAnchor.entryCount.toLocaleString()} ledger entries (an anchor counts the rows it hashed, not
+              the L1 attempts above). Rewriting any past row breaks
               every later root. Recompute it yourself:{" "}
               <code>/api/v1/observatory/anchors</code> + <code>/api/v1/observatory/export.csv</code>{" "}
               (projection is open source).
