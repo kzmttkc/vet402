@@ -3493,6 +3493,8 @@ components:
             - invalid_level
             - demo_l1_disabled
             - demo_budget_exhausted
+            # 2026-09-04: デモ経由の L1 実購入が cron と同じ l1-purchase リースを取るようになった（409）。
+            - l1_busy
             - demo_unavailable
             - contributions_unavailable
             - requests_unavailable
