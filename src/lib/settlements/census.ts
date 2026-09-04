@@ -4,7 +4,7 @@
 // ============================================================
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { RAW_RETENTION_DAYS, SETTLEMENT_DAY, UTC_TODAY } from "./rollup";
+import { RAW_RETENTION_DAYS, SETTLEMENT_DAY, UTC_TODAY, withDailyFallback } from "./rollup";
 import { rowsOf } from "./upsert";
 
 export type CensusWindow = "7d" | "30d";
@@ -60,16 +60,19 @@ export async function getCensusSummary(chain: string | null, window: CensusWindo
   // 生行 ∪ 日次集約。1 件の決済がこの 2 つに同時に載ることはない
   // （rollup.ts が「消して畳む」を単一文でやる）ので、足すだけで正確。
   // 集約がまだ 1 行も無ければ、これは生行だけの計算とまったく同じ式になる。
-  const rows = rowsOf<Record<string, number | string | null>>(
-    await db.execute(sql`
+  const union = (daily: boolean) => sql`
       WITH u AS (
         SELECT payer_id, payee_id, endpoint_id, wash_flag, source, attribution, 1::bigint AS n
         FROM settlements
         WHERE ${SETTLEMENT_DAY} > ${UTC_TODAY} - ${days}::int ${chainRaw}
-        UNION ALL
+        ${
+          daily
+            ? sql`UNION ALL
         SELECT payer_id, payee_id, endpoint_id, wash_flag, source, attribution, n::bigint
         FROM settlement_daily
-        WHERE day > ${UTC_TODAY} - ${days}::int ${chainRaw}
+        WHERE day > ${UTC_TODAY} - ${days}::int ${chainRaw}`
+            : sql``
+        }
       )
       SELECT
         coalesce(sum(n), 0)::int AS raw,
@@ -88,7 +91,10 @@ export async function getCensusSummary(chain: string | null, window: CensusWindo
         coalesce(sum(n) FILTER (WHERE source = 'payments_api'), 0)::int AS src_api,
         coalesce(sum(n) FILTER (WHERE source = 'chain_index'), 0)::int AS src_chain
       FROM u
-    `),
+    `;
+  const rows = await withDailyFallback(
+    async () => rowsOf<Record<string, number | string | null>>(await db.execute(union(true))),
+    async () => rowsOf<Record<string, number | string | null>>(await db.execute(union(false))),
   );
   const r = rows[0] ?? {};
   const n = (k: string) => Number(r[k] ?? 0);
@@ -119,21 +125,27 @@ export async function getSettlementCounts(
     : where.payeeId
       ? sql`payee_id = ${where.payeeId}`
       : sql`false`;
-  const rows = rowsOf<{ raw: number; real: number; test: number; payers: number }>(
-    await db.execute(sql`
+  const q = (daily: boolean) => sql`
       WITH u AS (
         SELECT payer_id, wash_flag, 1::bigint AS n FROM settlements
         WHERE ${cond} AND ${SETTLEMENT_DAY} > ${UTC_TODAY} - ${days}::int
-        UNION ALL
+        ${
+          daily
+            ? sql`UNION ALL
         SELECT payer_id, wash_flag, n::bigint FROM settlement_daily
-        WHERE ${cond} AND day > ${UTC_TODAY} - ${days}::int
+        WHERE ${cond} AND day > ${UTC_TODAY} - ${days}::int`
+            : sql``
+        }
       )
       SELECT coalesce(sum(n), 0)::int AS raw,
              coalesce(sum(n) FILTER (WHERE wash_flag = 'none'), 0)::int AS real,
              coalesce(sum(n) FILTER (WHERE wash_flag = 'test'), 0)::int AS test,
              count(DISTINCT payer_id) FILTER (WHERE wash_flag = 'none')::int AS payers
       FROM u
-    `),
+    `;
+  const rows = await withDailyFallback(
+    async () => rowsOf<{ raw: number; real: number; test: number; payers: number }>(await db.execute(q(true))),
+    async () => rowsOf<{ raw: number; real: number; test: number; payers: number }>(await db.execute(q(false))),
   );
   const r = rows[0];
   return { raw: Number(r?.raw ?? 0), real: Number(r?.real ?? 0), test: Number(r?.test ?? 0), uniquePayersReal: Number(r?.payers ?? 0) };

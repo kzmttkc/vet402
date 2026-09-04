@@ -12,7 +12,7 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { parsePartyId, agentId8004 } from "@/lib/ids/canonical";
-import { RAW_RETENTION_DAYS, SETTLEMENT_DAY, UTC_TODAY } from "@/lib/settlements/rollup";
+import { RAW_RETENTION_DAYS, SETTLEMENT_DAY, UTC_TODAY, withDailyFallback } from "@/lib/settlements/rollup";
 import { rowsOf } from "@/lib/settlements/upsert";
 import type { BuyerFacts } from "./types";
 
@@ -60,33 +60,50 @@ export async function loadBuyerFacts(payerId: string): Promise<BuyerFacts> {
   // 30 日の実績を生行だけで数えると、保存の都合で「30 日」が静かに「7 日」に
   // すり替わる。日次集約と足して数える——集約は payee_id を鍵に持つので
   // 件数も取引先数も正確に出る。畳んだ日の時刻は日単位まで（個票は残らない）。
-  const agg = rowsOf<{ n: number; payees: number; first_seen: string | null; last_seen: string | null }>(
-    await db.execute(sql`
+  type Agg = { n: number; payees: number; first_seen: string | null; last_seen: string | null };
+  const aggSql = (daily: boolean) => sql`
       WITH u AS (
         SELECT payee_id, coalesce(block_time, observed_at) AS at, 1::bigint AS n
         FROM settlements
         WHERE payer_id = ${payerId} AND wash_flag = 'none' AND ${SETTLEMENT_DAY} > ${UTC_TODAY} - 30
-        UNION ALL
+        ${
+          daily
+            ? sql`UNION ALL
         SELECT payee_id, (day::timestamp AT TIME ZONE 'UTC') AS at, n::bigint
         FROM settlement_daily
-        WHERE payer_id = ${payerId} AND wash_flag = 'none' AND day > ${UTC_TODAY} - 30
+        WHERE payer_id = ${payerId} AND wash_flag = 'none' AND day > ${UTC_TODAY} - 30`
+            : sql``
+        }
       )
       SELECT coalesce(sum(n), 0)::int AS n, count(DISTINCT payee_id)::int AS payees,
              min(at)::text AS first_seen, max(at)::text AS last_seen
       FROM u
-    `),
+    `;
+  const agg = (
+    await withDailyFallback(
+      async () => rowsOf<Agg>(await db.execute(aggSql(true))),
+      async () => rowsOf<Agg>(await db.execute(aggSql(false))),
+    )
   )[0];
   // 生涯の初回観測。集約の保持期間（DAILY_RETENTION_DAYS）より古い活動は
   // 残っていないので、実際には「保持している範囲での初回」に縮む。null には
   // せず最も古い保持データを返す——/decision の「新規（7 日未満）」判定は
   // 保守側（WARN が出やすい方）へ振れるだけで、fail-open にはならない。
-  const lifetime = rowsOf<{ first_seen: string | null }>(
-    await db.execute(sql`
-      SELECT least(
-        (SELECT min(coalesce(block_time, observed_at)) FROM settlements WHERE payer_id = ${payerId}),
-        (SELECT (min(day)::timestamp AT TIME ZONE 'UTC') FROM settlement_daily WHERE payer_id = ${payerId})
-      )::text AS first_seen
-    `),
+  const rawFirstSeen = sql`(SELECT min(coalesce(block_time, observed_at)) FROM settlements WHERE payer_id = ${payerId})`;
+  const lifetime = (
+    await withDailyFallback(
+      async () =>
+        rowsOf<{ first_seen: string | null }>(
+          await db.execute(sql`
+            SELECT least(
+              ${rawFirstSeen},
+              (SELECT (min(day)::timestamp AT TIME ZONE 'UTC') FROM settlement_daily WHERE payer_id = ${payerId})
+            )::text AS first_seen
+          `),
+        ),
+      async () =>
+        rowsOf<{ first_seen: string | null }>(await db.execute(sql`SELECT ${rawFirstSeen}::text AS first_seen`)),
+    )
   )[0];
 
   // retry_burst_rate は「60 秒以内の再署名」なので個票の時刻が要る。畳んだ日の

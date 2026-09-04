@@ -172,3 +172,49 @@ if (!TEST_DB) {
     await db.execute(sql`TRUNCATE settlements, settlement_daily`);
   });
 }
+
+// ------------------------------------------------------------
+// デプロイ順序: コードが先に本番へ出て、DDL がまだ流れていない状態。
+// センサスと買い手事実は「集約が空」と同じ答え（＝畳む前と同じ値）に
+// 落ちて、500 を返さない。畳む処理だけは落として見えるようにする。
+// ------------------------------------------------------------
+if (TEST_DB) {
+  process.env.DATABASE_URL = TEST_DB;
+  test("settlement_daily がまだ無いとき、読み取りは生行だけで答える", async (t) => {
+    const { getDb } = await import("@/lib/db/client");
+    const { sql } = await import("drizzle-orm");
+    const { getCensusSummary, getSettlementCounts } = await import("@/lib/settlements/census");
+    const { loadBuyerFacts } = await import("@/lib/decision/buyer-facts");
+    const { runRollup } = await import("@/lib/settlements/rollup");
+    const db = getDb()!;
+
+    await db.execute(sql`TRUNCATE settlements, settlement_daily`);
+    const tx = `0x${"c".repeat(64)}`;
+    await db.execute(sql`
+      INSERT INTO settlements (chain, tx_hash, purchase_id, asset, amount, payer, payee, payer_id, payee_id,
+                               observed_at, block_time, attribution, wash_flag, source)
+      VALUES ('eip155:8453', ${tx}, ${`eip155:8453:${tx}`}, '0xasset', '1000', '0xp', '0xq', 'payerZ', 'payeeZ',
+              now(), now(), 'confirmed', 'none', 'chain_index')
+    `);
+    // 表を一時的に落として「DDL 前」を再現する。
+    await db.execute(sql`ALTER TABLE settlement_daily RENAME TO settlement_daily_hidden`);
+    try {
+      await t.test("センサスは 500 にせず生行の値を返す", async () => {
+        const c = await getCensusSummary(null, "30d");
+        assert.equal(c.settlements_raw, 1);
+        assert.equal(c.settlements_real, 1);
+        assert.equal((await getSettlementCounts({ payeeId: "payeeZ" }, 30)).real, 1);
+      });
+      await t.test("買い手事実も落ちない", async () => {
+        const f = await loadBuyerFacts("eip155:8453:0x00000000000000000000000000000000000000zz");
+        assert.equal(f.settled_count_30d, 0);
+      });
+      await t.test("畳む処理は fail-loud（黙って何もしない方が危ない）", async () => {
+        await assert.rejects(() => runRollup({ apply: true }));
+      });
+    } finally {
+      await db.execute(sql`ALTER TABLE settlement_daily_hidden RENAME TO settlement_daily`);
+      await db.execute(sql`TRUNCATE settlements, settlement_daily`);
+    }
+  });
+}

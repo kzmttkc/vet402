@@ -22,6 +22,7 @@
 // ============================================================
 import { sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
+import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { rowsOf } from "./upsert";
 
 /** 生行を残す UTC 日数。これより古い日は畳んで消す。 */
@@ -54,6 +55,23 @@ function intFromEnv(name: string, fallback: number): number {
 export const SETTLEMENT_DAY: SQL = sql`(coalesce(block_time, observed_at) AT TIME ZONE 'UTC')::date`;
 /** UTC の今日。サーバのタイムゾーン設定に依存させない。 */
 export const UTC_TODAY: SQL = sql`(now() AT TIME ZONE 'UTC')::date`;
+
+/**
+ * 集約表がまだ無い環境（コードだけ先に出て DDL が未実行）で、読み取りを
+ * 生行だけに落とす。センサスや買い手事実は「集約が空」と同じ答えになる
+ * ——畳む前と同じ値なので、正しい。
+ *
+ * 逆に**畳む処理は落とさない**（fail-loud）。表が無ければ仕事ができないので、
+ * cron が 500 を返して見えるようにする。黙って何もしない方が危ない。
+ */
+export async function withDailyFallback<T>(withDaily: () => Promise<T>, rawOnly: () => Promise<T>): Promise<T> {
+  try {
+    return await withDaily();
+  } catch (error) {
+    if (!isMissingSchemaError(error)) throw error;
+    return await rawOnly();
+  }
+}
 
 export type RollupDayPlan = { day: string; rows: number; groups: number };
 
