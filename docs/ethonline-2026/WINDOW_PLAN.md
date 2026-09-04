@@ -118,14 +118,29 @@ SDK は世の中で使えない。
 **配達3件かつ異なる2日**が要る。L1 は1エンドポイントにつき6日で1回しか買わない。10日の会期では
 最大2件——`thin` のまま。69 は動かない。
 
-## 4. 会期の失敗テスト —— **23項目・25本**（G21 は MCP 側で a/b/c の3本。I23 は 09-04 夕に追加）
+## 4. 会期の失敗テスト —— **本数をこの文書に書かない**
 
-> 実体: `packages/sdk/test/pay-or-refuse.test.mjs`（A1〜H22 の21本・I23 を追加して22本）＋ `packages/mcp-server/test/pay-if-trusted.test.mjs`（G21a/b/c）。
-> テスト名の先頭がこの番号。**番号と本数を混ぜて数えない**（09-04 に「22本」と書いて実体24本と食い違った）。
+> **本数を書くのをやめた（09-05）。3回続けて実体と食い違ったため。**
+> 09-04「22本」→実体24本。09-05「23項目・25本」→ I23 を3本に分割して実体27本。
+> **手で数えた値は必ず古くなる。数えたければ実行する:**
 >
-> **I23（09-04 夕追加・Day 1 の最初に書く）**: `/decision` が **404 `not_found`** を返す売り手（＝カタログ外）に対して、
+> ```bash
+> grep -c '^test("' packages/sdk/test/pay-or-refuse.test.mjs
+> grep -c '^test("' packages/mcp-server/test/pay-if-trusted.test.mjs
+> ```
+>
+> 項目の**識別子**（A1…H22・I23）は安定させる。**本数は導出する。**
+> これは記録の癖の問題ではなく、`docs/claims.yaml` が扱う「主張と実測の突合」と同じ型の欠陥。
+>
+> **I23（09-04 夕追加・09-05 に green）**: `/decision` が **404 `not_found`** を返す売り手（＝カタログ外）に対して、
 > payOrRefuse は落ちも黙認もせず、**402 チャレンジの `payTo` と受取人スコアだけで判定を出す**。
 > 判定材料が無い場合だけ、機械可読な理由で署名前に拒否する。**デモの支払い先そのものがこの経路**（§3.1）。
+> 実装は a/b/c の3本（ALLOW で進む／スコアが ALLOW でなく拒否／スコアも取れず fail-closed）。
+>
+> **09-05 の実装で判明した、テスト自身の欠陥**（変異テストで検出・提出物なので記録する）:
+> **A1 は `status` と signer 参照しか見ておらず、ALLOW ゲートを丸ごと外した実装でも緑になった**
+> （許可リスト外へ出た fetch が throw して、別の理由で拒否になるため）。A1/A2 は理由コードの検査を足して是正。
+> **同じ穴が B5/B6/B7 にもある。**「回数が0」だけを見るテストは、配線を間違えた実装も通す。
 
 **A. 署名に到達しない（提出物の核心）**
 1. `/decision` が ALLOW 以外 → signer 0回
@@ -328,3 +343,25 @@ main は本番リポでもあり会期中も動くので、放置すると `git 
 後から settled になった行が永久に入らず、**Base で 221 件の過小**（09-05 にディストリビューション戦略が発見）。
 09-05 中に「直近14日を毎回再計算＋全期間の再集計＋`coverageFrom` を応答に明記」が入る。
 **`evidence.source` は history を読まない。提出物も、修正が main に入るまで history 由来の数値を引用しない。**
+
+
+## 14. 買い手は facilitator を呼ばない（2026-09-05・本番実装で確認）
+
+**会期の実装が架空の facilitator（`https://x402.org/facilitator`）へ settle を投げていた。**
+そのままでは 09-08 の The Graph への実支払いが通らなかった。本番の `l1-runner.ts` L977-1045 で確認した
+正しい流れは次のとおりで、**買い手が facilitator を呼ぶ場面は無い**。
+
+1. `buildAuthorization({ from, to: accept.payTo, value: accept.amount, nowSec, maxTimeoutSeconds })`
+   ——EIP-3009 の認可。**nonce は我々が作る一回性の値**
+2. `signX402Payment({ account, accept, authorization })`（EIP-712）
+3. **署名した直後に nonce を確定・保存**（本番のコメント: "from here on the money is live"）。
+   ここから先で落ちても「何に署名したか」が残る。監査の nonce 束縛はこれが根拠
+4. `encodePaymentHeader(...)` ——ヘッダ名は **v2 `PAYMENT-SIGNATURE` / v1 `X-PAYMENT`**
+5. **元のリクエストを、そのヘッダを付けて売り手へ再送するだけ**
+6. **決済レシートは応答ヘッダから読む**——`PAYMENT-RESPONSE` / `X-PAYMENT-RESPONSE`。本文ではない
+
+参照実装: `src/lib/observatory/x402-payer.ts` と `src/lib/observatory/l1-runner.ts` L977-1045。
+SDK は `src/` から import できないので**同じ意味論を写す**。
+
+**教訓**: 会期の新規実装が、本番に既にある同じ処理を読まずに書かれていた。
+**同じことを既にやっているコードが本番にあるなら、書く前に読む。**
