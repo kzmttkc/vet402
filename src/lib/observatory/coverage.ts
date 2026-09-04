@@ -15,6 +15,7 @@
 // ============================================================
 import { sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
+import { SETTLEMENT_DAY, UTC_TODAY, withDailyFallback } from "@/lib/settlements/rollup";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
 
 export type CoverageTier = "C0" | "C1" | "C2" | "C3" | "C4";
@@ -56,26 +57,62 @@ export const L0_INTERVAL_HOURS: Record<CoverageTier, number | null> = {
 };
 
 /**
+ * 階層判定が見る決済の窓（UTC の丸ごと日数）。センサス（census.ts）と同じ 30 日。
+ *
+ * 2026-09-04 W16: 生行 `settlements` は RAW_RETENTION_DAYS 日しか残らない
+ * （rollup.ts）。生行だけを見る 30 日述語は、畳んだ瞬間に窓が 7 日へ縮む——
+ * **例外も警告も出ない**。C2 だった endpoint が C1 に落ち、L1 の対象から静かに
+ * 消える。だから読む側は必ず「生行 ∪ 日次集約」で数える（census.ts と同じ方式）。
+ * 1 件の決済がこの 2 つに同時に載る瞬間は無い（rollup が単一文で「消して畳む」）
+ * ので、OR で足しても二重には数えない。
+ *
+ * 窓の単位を UTC の丸ごと日にしたのは、集約が日単位でしか時刻を持たないから。
+ * センサスの定義文（CENSUS_DEFINITION）と同じ規則に揃えた。
+ */
+export const SETTLEMENT_WINDOW_DAYS = 30;
+
+/** 窓の内側の生行（畳まれた日はここに残っていない）。 */
+const settledRaw = (extra: SQL) => sql`EXISTS (
+    SELECT 1 FROM settlements s WHERE s.endpoint_id = e.id ${extra}
+      AND ${SETTLEMENT_DAY} > ${UTC_TODAY} - ${SETTLEMENT_WINDOW_DAYS}::int)`;
+/** 窓の内側の日次集約（畳まれた日はここに居る）。 */
+const settledDaily = (extra: SQL) => sql`EXISTS (
+    SELECT 1 FROM settlement_daily sd WHERE sd.endpoint_id = e.id ${extra}
+      AND sd.day > ${UTC_TODAY} - ${SETTLEMENT_WINDOW_DAYS}::int)`;
+
+const ATTRIBUTED_RAW: SQL = sql`AND s.attribution IN ('confirmed', 'probable')`;
+const ATTRIBUTED_DAILY: SQL = sql`AND sd.attribution IN ('confirmed', 'probable')`;
+
+/**
+ * 30 日以内に決済があったか（生行 ∪ 集約）。
+ * `daily=false` は `settlement_daily` がまだ無い環境（コードだけ先に本番へ出て
+ * DDL が未実行）への退避。呼び手が withDailyFallback で切り替える。
+ */
+export function settledWithinWindowSql(daily = true): SQL {
+  const raw = settledRaw(sql``);
+  return daily ? sql`(${raw} OR ${settledDaily(sql``)})` : raw;
+}
+
+/** 30 日以内に帰属（confirmed/probable）付きの決済があったか（生行 ∪ 集約）。 */
+export function attributedWithinWindowSql(daily = true): SQL {
+  const raw = settledRaw(ATTRIBUTED_RAW);
+  return daily ? sql`(${raw} OR ${settledDaily(ATTRIBUTED_DAILY)})` : raw;
+}
+
+/**
  * L0 候補の WHERE 句（x402_endpoints e）。
  *   c1: active かつ（30 日以内に listed ∨ 30 日以内に決済あり）
  *   c2: 決済帰属（confirmed/probable）あり ∨ 7 日で lookup ≥ 閾値
  * どちらもパステンプレート URL（path-template.ts）を除く——tierOf の pathTemplate と同じ。
  * 直近の probe が古い順に並べるのは呼び手（probe-runner）。
  */
-export function l0TierWhere(tier: "c1" | "c2"): SQL {
-  const settled30d = sql`EXISTS (
-    SELECT 1 FROM settlements s WHERE s.endpoint_id = e.id
-      AND coalesce(s.block_time, s.observed_at) > now() - interval '30 days')`;
+export function l0TierWhere(tier: "c1" | "c2", daily = true): SQL {
   if (tier === "c1") {
-    return sql`e.status = 'active' AND ${notPathTemplateSql()} AND (e.last_seen_at > now() - interval '30 days' OR ${settled30d})`;
+    return sql`e.status = 'active' AND ${notPathTemplateSql()} AND (e.last_seen_at > now() - interval '30 days' OR ${settledWithinWindowSql(daily)})`;
   }
-  const attributed = sql`EXISTS (
-    SELECT 1 FROM settlements s WHERE s.endpoint_id = e.id
-      AND s.attribution IN ('confirmed', 'probable')
-      AND coalesce(s.block_time, s.observed_at) > now() - interval '30 days')`;
   const lookups = sql`coalesce((
     SELECT sum(n) FROM decision_lookups d WHERE d.endpoint_id = e.id AND d.day > (current_date - 7)::text), 0) >= ${LOOKUPS_C2_THRESHOLD}`;
-  return sql`e.status = 'active' AND ${notPathTemplateSql()} AND (${attributed} OR ${lookups})`;
+  return sql`e.status = 'active' AND ${notPathTemplateSql()} AND (${attributedWithinWindowSql(daily)} OR ${lookups})`;
 }
 
 /**
@@ -97,8 +134,8 @@ export function l0OrderBy(tier: "c1" | "c2" | "all"): SQL {
  * L1 候補は C2 のみ（決済帰属あり ∨ 問い合わせ多）。宣言ありは C3 として L1 成功後に
  * L2 を必ず行う（l1-runner が l2Schema を判定する）。
  */
-export function l1TierWhere(): SQL {
-  return l0TierWhere("c2");
+export function l1TierWhere(daily = true): SQL {
+  return l0TierWhere("c2", daily);
 }
 
 // ------------------------------------------------------------
@@ -141,23 +178,32 @@ export async function loadCoverageTiers(endpointIds: readonly string[]): Promise
   if (endpointIds.length === 0) return out;
   const db = getDb();
   if (!db) return out;
-  const raw = await db.execute(sql`
+  // attributed は件数のまま返す（tierOf は > 0 しか見ないが、意味を変えない）。
+  // 集約は 1 行が n 件を表すので、生行の count(*) に sum(n) を足す。
+  const attributedCount = (daily: boolean) => {
+    const raw = sql`(SELECT count(*)::int FROM settlements s WHERE s.endpoint_id = e.id
+               ${ATTRIBUTED_RAW} AND ${SETTLEMENT_DAY} > ${UTC_TODAY} - ${SETTLEMENT_WINDOW_DAYS}::int)`;
+    if (!daily) return raw;
+    return sql`(${raw} + coalesce((SELECT sum(sd.n)::int FROM settlement_daily sd WHERE sd.endpoint_id = e.id
+               ${ATTRIBUTED_DAILY} AND sd.day > ${UTC_TODAY} - ${SETTLEMENT_WINDOW_DAYS}::int), 0))`;
+  };
+  const q = (daily: boolean) => sql`
     SELECT e.id::text AS id,
            e.resource_url,
            (e.last_seen_at > now() - interval '30 days') AS listed_30d,
-           EXISTS (
-             SELECT 1 FROM settlements s WHERE s.endpoint_id = e.id
-               AND coalesce(s.block_time, s.observed_at) > now() - interval '30 days') AS settled_30d,
-           (SELECT count(*)::int FROM settlements s WHERE s.endpoint_id = e.id
-               AND s.attribution IN ('confirmed', 'probable')
-               AND coalesce(s.block_time, s.observed_at) > now() - interval '30 days') AS attributed,
+           ${settledWithinWindowSql(daily)} AS settled_30d,
+           ${attributedCount(daily)} AS attributed,
            coalesce((SELECT sum(n)::int FROM decision_lookups d
                WHERE d.endpoint_id = e.id AND d.day > (current_date - 7)::text), 0) AS lookups7d,
            (e.declared_schema IS NOT NULL) AS has_declaration,
            EXISTS (SELECT 1 FROM disputes d WHERE d.endpoint_id = e.id AND d.status = 'open') AS reverify_requested
     FROM x402_endpoints e
     WHERE e.id = ANY(${sql`ARRAY[${sql.join(endpointIds.map((id) => sql`${id}`), sql`, `)}]::uuid[]`})
-  `);
+  `;
+  const raw = await withDailyFallback(
+    async () => await db.execute(q(true)),
+    async () => await db.execute(q(false)),
+  );
   const rows = (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as TierSignalRow[];
   for (const r of rows) {
     out.set(

@@ -55,6 +55,7 @@ import {
   isSolanaL1Enabled,
   selectSolanaAccept,
 } from "./sol402-payer";
+import { withDailyFallback } from "@/lib/settlements/rollup";
 import { l1TierWhere } from "./coverage";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
 import { createHash } from "node:crypto";
@@ -533,7 +534,9 @@ export async function runL1Batch(
         sql`, `,
       )}]::text[]))`
     : sql``;
-  const rawTargets = await db.execute(sql`
+  // 候補 SQL は settlement_daily を読む（C2 の 30 日窓が生行の保持期間へ縮まないため）。
+  // 表がまだ無い環境では生行だけの式へ落とす（withDailyFallback）。
+  const targetsSql = (daily: boolean) => sql`
     SELECT e.id, e.resource_url, e.method, e.price_amount, e.pay_to, e.network, e.declared_schema,
            (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS is_priority
     FROM x402_endpoints e
@@ -615,12 +618,16 @@ export async function runL1Batch(
     -- 2026-09-02 グラント側の指摘: 日次 $25 の枠に対し実支出 $1〜3・購入実績のある endpoint は
     -- 8.1%。C2 の次は「一度も買っていない in-cap endpoint」を優先し、証拠の裾野を広げる
     -- （上限は全て据え置き: 1 件 $1・日次 $25・原子的予約・cooldown）。
-    ORDER BY (${l1TierWhere()}) DESC,
+    ORDER BY (${l1TierWhere(daily)}) DESC,
              (NOT EXISTS (SELECT 1 FROM x402_l1_purchases np WHERE np.endpoint_id = e.id)) DESC,
              (e.resource_key ILIKE ANY(${prioritySqlArray()})) DESC,
              e.quality_payers_30d DESC NULLS LAST, e.quality_calls_30d DESC NULLS LAST
     LIMIT ${limit}
-  `);
+  `;
+  const rawTargets = await withDailyFallback(
+    async () => await db.execute(targetsSql(true)),
+    async () => await db.execute(targetsSql(false)),
+  );
   const targetList = (Array.isArray(rawTargets)
     ? rawTargets
     : (rawTargets as { rows?: unknown[] }).rows ?? []) as Record<string, unknown>[];

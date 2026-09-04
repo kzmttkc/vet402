@@ -13,6 +13,7 @@ import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { x402L0Probes } from "@/lib/db/schema";
 import { probeEndpoint, type ProbeResult } from "./l0-probe";
 import { invalidateDecisionCache } from "@/lib/decision/cache";
+import { withDailyFallback } from "@/lib/settlements/rollup";
 import { l0OrderBy, l0TierWhere } from "./coverage";
 
 export type ProbeBatchSummary = {
@@ -47,7 +48,7 @@ export async function runL0ProbeBatch(
   } = {},
 ): Promise<ProbeBatchSummary> {
   const { limit = 500, concurrency = 20, fetchImpl, timeoutMs, tier = "all" } = options;
-  const where = tier === "all" ? sql`e.status = 'active'` : l0TierWhere(tier);
+  const where = (daily: boolean) => (tier === "all" ? sql`e.status = 'active'` : l0TierWhere(tier, daily));
   const freshness = tier === "c2" ? sql`AND (lp.last_probed_at IS NULL OR lp.last_probed_at < now() - interval '5 hours')` : sql``;
   const db = getDb();
   if (!db) throw new Error("DATABASE_URL is not configured");
@@ -57,7 +58,9 @@ export async function runL0ProbeBatch(
   // oldest-probed-first (never-probed before that).
   let candidates: Candidate[];
   try {
-    const rows = await db.execute(sql`
+    // 候補 SQL は settlement_daily を読む（30 日窓が生行の保持期間へ縮まないため）。
+    // 表がまだ無い環境では生行だけの式へ落とす（withDailyFallback）。
+    const candidatesSql = (daily: boolean) => sql`
       SELECT e.id, e.resource_url, e.method, e.pay_to, e.network,
              e.price_amount, e.price_asset
       FROM x402_endpoints e
@@ -68,11 +71,15 @@ export async function runL0ProbeBatch(
                   ORDER BY p2.probed_at DESC LIMIT 1) AS last_verdict
         FROM x402_l0_probes p WHERE p.endpoint_id = e.id
       ) lp ON true
-      WHERE ${where}
+      WHERE ${where(daily)}
       ${freshness}
       ORDER BY ${l0OrderBy(tier)}
       LIMIT ${limit}
-    `);
+    `;
+    const rows = await withDailyFallback(
+      async () => await db.execute(candidatesSql(true)),
+      async () => await db.execute(candidatesSql(false)),
+    );
     const list = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
     candidates = (list as Record<string, unknown>[]).map((r) => ({
       id: String(r.id),
