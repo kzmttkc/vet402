@@ -23,16 +23,16 @@ Takeshi 決定: 有料監査（Zellic）は買わない。「今回指摘され�
 |---|---|---|
 | A（Opus） | 署名 nonce を行へ保存し `AuthorizationUsed(payer, nonce)` を照合で要求／`UNIQUE (network, lower(tx_hash))`／署名可能性を予約前に検査・整数化・冷却に request_error／wrong_chain・malformed_tx は一時扱いでバッチ中断／Registry の日次上限を単一文・逐次発火・failed 再試行可／UTC 日境界／Solana memo 自前・feePayer 検査・受領額判定／認可窓 120s・遅延決済の回収／demo に lease | DDL 適用（重複 0 件確認後に一意索引）・デプロイ済み |
 | B（Opus） | FAQ Q8/llms の Solana／方法論 §6 に優先 4 社を開示・§8 書き換え／settled・delivered・attempts の 3 値を API・バッジ・登録簿・state に／decisions の窓集計／playground の daily 撤去／規約 §13・§16／custody を customer funds に／unverified の主因を実測に／L2 語彙対応表／FAQ Q6 に probe402／corrections を昇格と誤り訂正の別表に／プライバシーに 3 テーブルと Resend／claims.yaml +30 | canary 50/50 true・decisions totals 51/1,452/1,531/74（旧 3/96/98） |
-| C | watchdog を Resend へ／now.py に ALERTS 未読／cron 8 本に try/catch／schema に job_leases と部分索引／db:drift／badge の死んだ宣言／engines.node／Neon 拒否ガード／Idempotency-Key は保存応答を再送／demo 予算は成立時のみ | 統合待ち |
+| C | watchdog を Resend へ／now.py に ALERTS 未読／cron 8 本に try/catch／schema に job_leases と部分索引／db:drift／badge の死んだ宣言／engines.node／Neon 拒否ガード／Idempotency-Key は保存応答を再送／demo 予算は成立時のみ | 統合・デプロイ済み（19:00〜21:10）。`db:drift` は unique() 制約を読んでいなかった → 是正 `a62784b` |
 | D | 分母ラベル（on record / fetched of catalog / share of attempts vs endpoints）／L1Ratio／accuracy の空表示／390px の購入表に HTTP 列 | デプロイ済み |
-| E（Opus） | `settlement_daily`（生行 7 日＋日次集約・DELETE…RETURNING の単一文で二重計上なし）／census は生行 ∪ 集約／resolve の窓外応答／buyer-facts の縮み是正 | 表と索引を本番へ作成・**日次 cron は coverage.ts の是正（F）まで保留** |
+| E（Opus） | `settlement_daily`（生行 7 日＋日次集約・DELETE…RETURNING の単一文で二重計上なし）／census は生行 ∪ 集約／resolve の窓外応答／buyer-facts の縮み是正 | 表と索引を本番へ作成。生行の保持は **7 日→30 日**（30 日窓の指標が畳みで劣化しない・月 $0.3 程度）。cron は F の統合後に復帰、本番で 1 回手動実行 → 本番に `settlement_daily_key` が無く失敗 → 制約を足して 48 行を畳み成功 |
+| F | coverage.ts / l0-accuracy / probe-runner / l1-runner の 30 日述語を生行 ∪ 集約に／rollup cron 復帰 | 統合・デプロイ済み。coverage-rollup-window.pg.test は保持 7 日を env で強制して畳みを起こす |
 | 執行部 | 決済索引の 32,767 パラメータ回避・失敗を ok:false に・lease・deep health に遅れ検出／Preview の本番鍵共有を解消（新鍵を production のみ・Takeshi 入金・tx `0xee65aa5c…` で復旧確認）／不可逆操作の PreToolUse 関門／main のブランチ保護／chmod 600／死んだ CDP キー削除／Neon を従量制へ（Takeshi） | 実測済み |
 
 ## 外部指摘の漏れ率
 2 件中 1 件は外部（Zellic）が先。`state/external_findings.json`。目標 0。
 
 ## 残り
-- F: coverage.ts / l0-accuracy の 30 日述語を集約併用へ → rollup cron を戻す
 - 会話ログに残った本番 DB パスワードの失効（Neon のパスワード回転）
 - Registry と Solana の鍵を控え付きの新鍵へ（Takeshi の送金 2 回・9/13 後）
 - Solana RPC を専用キーへ（Takeshi・無料枠）
