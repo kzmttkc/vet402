@@ -291,3 +291,40 @@ main は本番リポでもあり会期中も動くので、放置すると `git 
 - **The Graph はカタログに無い → §3.1 の訂正**（この発見が Day 1 を丸一日潰すところだった）
 - `/api/v1/graph/payto/{addr}` は名前に反して**subgraph の代理ではなく自カタログの隣接照会**。The Graph に対しては `operates: []`。
   つまり「第2の情報源」は本番のどのエンドポイントにも出ていない。それを出すのが会期の実装
+
+## 13. 4面パリティ検査の地雷（2026-09-05 vet402.com セッションから受領・`evidence.source` を書く前に読む）
+
+`evidence[].source` は**実装・OpenAPI・SDK型・MCPスキーマの4面同時**が要件（§2 #3）。
+この4面には自動検査が掛かっていて、片面だけ足すと落ちる。**踏む前に読む。**
+
+| # | 検査 | 落ちる条件 | 対処 |
+|---|---|---|---|
+| 1 | `tests/openapi-route-parity.test.ts` | `src/app/api/**/route.ts` の全ルートが `docs/openapi.yaml` に載っていない（逆も） | 新フィールドは**スキーマに型を書く**。書かないと `openapi-schema-parity` が落ちる |
+| 2 | `tests/openapi-error-enum.test.ts` | ルートが返す `error` 文字列が openapi の enum に無い | 新しい reason / error を足したら **enum へ追記** |
+| 3 | `tests/docs-surface-parity.test.ts` | `/docs/api` の記述と openapi が食い違う | 公開フィールドを足したら **docs にも1行** |
+| 4 | `docs/claims.yaml` ＋ claims canary（毎朝 08:05） | 公開面で断定する数字・主張が未登録 | 走査対象は `src/app`・`src/components/site`・`src/lib/observatory/vocabulary.ts`。**断定を書いたら登録** |
+| 5 | `outward_name_scan`（毎朝 07:55・09-05 に vet402.com を追加） | 公開面や署名文に `Vouch` が出る | 識別子 `vouch_*` / `Vouch-*` / `createVouchClient` は**凍結済みで鳴らない**。鳴るのは対外文言 |
+| 6 | MCP のテスト | root の `npm ci` では `packages/mcp-server` が入らない | `npm test` の4スイート目（`mcp:test`）は **`packages/mcp-server` 側で `npm ci`** が要る。SDK/MCP のテストは **`dist` から import**（`src` からではない） |
+| 7 | `tests/helpers/pg-test-guard.ts` | TRUNCATE の前に `assertTestDatabaseIsNotProduction` を呼んでいない（`pg-test-guard.test.ts` が全ファイルを検査） | DB 系は **`npm run test:db`**。`npm test` に `TEST_DATABASE_URL` を付けると pg 系が終わらない |
+| 8 | 語彙 | `evidence.source` の値名が方法論の語彙表に無い | `src/lib/observatory/vocabulary.ts` に**1文の定義**を足す（AEO/LLMO 側と整合する） |
+
+**`halted`** は 09-05 に status 語彙と openapi enum へ追加済み（paid-attempt / decision の分母に入らない）。
+
+### 鮮度の口（09-05 合意・vet402.com が実装）
+
+| 面 | フィールド |
+|---|---|
+| `/decision` | `facts.l1.last_attempt_at`（ISO8601 UTC・subject 単位の最終試行）、トップレベル `spending_halted`（bool）。**snake_case** |
+| `state` | `l1.lastAttemptAt`・`spendingHalted`。**camelCase**（面ごとに統一） |
+
+**停止中の未試行を売り手の落ち度に見せない。** `l1_not_attempted` の下位に
+`not_attempted_reason: "spending_halted" | "no_eligible_accept" | …` を足す方向（既存 enum は壊さず追加のみ）。
+`payOrRefuse` はこの2つを読んで**「新鮮さを装わない」**——停止中や観測が古い相手は拒否ではなく
+**「未検証」**として返し、理由に時刻を載せる。
+
+### 会期中に読まない公開面
+
+`/api/v1/observatory/history` は**日次 10:37 UTC に凍結される集計で、決済確認 cron（14:00 UTC）より前に走る**。
+後から settled になった行が永久に入らず、**Base で 221 件の過小**（09-05 にディストリビューション戦略が発見）。
+09-05 中に「直近14日を毎回再計算＋全期間の再集計＋`coverageFrom` を応答に明記」が入る。
+**`evidence.source` は history を読まない。提出物も、修正が main に入るまで history 由来の数値を引用しない。**
