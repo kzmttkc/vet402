@@ -7,6 +7,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { canonicalUrl, payeeId as toPartyId, resourceId as toResourceId, SHA256_HEX_RE } from "@/lib/ids/canonical";
 import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
+import { RAW_RETENTION_DAYS } from "@/lib/settlements/rollup";
 import { rowsOf } from "@/lib/settlements/upsert";
 import { escapeLike } from "@/lib/util/like";
 import { classifyQuery, type QueryKind } from "./classify";
@@ -45,6 +46,13 @@ export type ResolveResult = {
   endpoints?: EndpointRef[];
   payees?: { payee_id: string; endpoints: number }[];
   settlement?: SettlementRef;
+  /**
+   * 2026-09-04 W15: tx 逆引きが空だったときだけ載る。生行は直近
+   * RAW_RETENTION_DAYS 日しか持たないので、「索引していない取引」と
+   * 「持っていたが窓の外に出た取引」を空の応答で同じに見せない
+   *（呼び手が「無い＝存在しない」と読むと誤る）。
+   */
+  settlement_not_found?: { reason: "not_in_raw_window"; raw_window_days: number; note: string };
   disclaimer: string;
 };
 
@@ -205,6 +213,12 @@ export async function resolve(q: string): Promise<ResolveResult> {
       if (s) {
         out.settlement = s;
         if (s.endpoint_id) out.resource = (await getEndpoint(s.endpoint_id)) ?? undefined;
+      } else {
+        out.settlement_not_found = {
+          reason: "not_in_raw_window",
+          raw_window_days: RAW_RETENTION_DAYS,
+          note: `No indexed settlement for this transaction. Per-transaction receipts are served only for the ${RAW_RETENTION_DAYS}-day raw window; a settlement older than the ${RAW_RETENTION_DAYS}-day raw window is counted in /api/v1/census/summary but its individual receipt is no longer stored.`,
+        };
       }
       return out;
     }

@@ -2,13 +2,16 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  date,
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -1135,5 +1138,58 @@ export const recordSubscriptions = pgTable(
   (t) => [
     uniqueIndex("record_subscriptions_endpoint_email_kind_unique").on(t.endpointId, t.email, t.kind),
     index("record_subscriptions_kind_idx").on(t.kind),
+  ],
+);
+
+
+/**
+ * 2026-09-04 W15: `settlements` の日次集約。生行は直近 RAW_RETENTION_DAYS 日だけ残し、
+ * それより古い UTC 日は「畳んで消す」——DELETE ... RETURNING を CTE に置いた
+ * 単一文で移すので、1 件の決済が生行と集約の両方に載ることはない。
+ * だからセンサスは「生行 ∪ 集約」を素直に足すだけでよく、cron がいつ走ったかに
+ * 依存しない（未実行の日はまだ生行にある＝そのまま数えられる）。
+ *
+ * payer_id / payee_id / endpoint_id を鍵に持つのは、センサスの
+ * count(DISTINCT payer_id) / unique payees / endpoints_with_real_settlement が
+ * 集約からも**正確に**出るようにするため。集約は「行数を減らす」ためのもので、
+ * 「答えを丸める」ためのものではない。
+ *
+ * 個々の tx_hash / raw jsonb は畳む時点で失われる（受領証は生行の窓の中だけ）。
+ * SQL: scripts/sql/2026-09-04-w15.sql
+ */
+export const settlementDaily = pgTable(
+  "settlement_daily",
+  {
+    /** UTC 日（coalesce(block_time, observed_at) の UTC 日付）。 */
+    day: date("day", { mode: "string" }).notNull(),
+    /** CAIP-2 */
+    chain: text("chain").notNull(),
+    payeeId: text("payee_id"),
+    payerId: text("payer_id"),
+    /** none | self_deal | circular | test */
+    washFlag: text("wash_flag").notNull(),
+    /** l1_purchase | payments_api | chain_index */
+    source: text("source").notNull(),
+    /** confirmed | probable | unmatched */
+    attribution: text("attribution").notNull(),
+    endpointId: uuid("endpoint_id"),
+    resourceId: text("resource_id"),
+    /** この鍵に畳まれた決済の件数。 */
+    n: integer("n").notNull().default(0),
+    /** base units の合計。数字でない amount は 0 として足す（畳む処理を落とさない）。 */
+    amountSum: numeric("amount_sum").notNull().default("0"),
+  },
+  (t) => [
+    // NULLS NOT DISTINCT: payee_id / endpoint_id / resource_id は NULL を取りうる。
+    // 既定の NULL 相異では同じ鍵が重複行になり、畳み直しが冪等でなくなる。
+    unique("settlement_daily_key")
+      .on(t.day, t.chain, t.payeeId, t.payerId, t.washFlag, t.source, t.attribution, t.endpointId, t.resourceId)
+      .nullsNotDistinct(),
+    // day 単体の索引は置かない: settlement_daily_key の先頭列が day なので、
+    // センサスの期間走査も保持期間の削除もその索引で足りる。
+    // payer_id の索引も置かない（絞り込む問い合わせが無い）。集約表は
+    // 1 日 2 千行積むので、使わない索引 1 本が数十 MB になる。
+    index("settlement_daily_endpoint_day_idx").on(t.endpointId, t.day),
+    index("settlement_daily_payee_day_idx").on(t.payeeId, t.day),
   ],
 );

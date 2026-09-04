@@ -191,7 +191,7 @@ const SURFACES: Surface[] = [
       ["src/lib/resolve/lookup.ts", ["ResolveResult"]],
       ["packages/sdk/src/index.ts", ["ResolveResult"]],
     ],
-    fields: ["query", "resource", "endpoints", "payees", "settlement", "disclaimer"],
+    fields: ["query", "resource", "endpoints", "payees", "settlement", "settlement_not_found", "disclaimer"],
   },
   {
     label: "EndpointRef",
