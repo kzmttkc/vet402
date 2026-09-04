@@ -27,7 +27,7 @@ Takeshi 決定: 有料監査（Zellic）は買わない。「今回指摘され�
 | D | 分母ラベル（on record / fetched of catalog / share of attempts vs endpoints）／L1Ratio／accuracy の空表示／390px の購入表に HTTP 列 | デプロイ済み |
 | E（Opus） | `settlement_daily`（生行 7 日＋日次集約・DELETE…RETURNING の単一文で二重計上なし）／census は生行 ∪ 集約／resolve の窓外応答／buyer-facts の縮み是正 | 表と索引を本番へ作成。生行の保持は **7 日→30 日**（30 日窓の指標が畳みで劣化しない・月 $0.3 程度）。cron は F の統合後に復帰、本番で 1 回手動実行 → 本番に `settlement_daily_key` が無く失敗 → 制約を足して 48 行を畳み成功 |
 | F | coverage.ts / l0-accuracy / probe-runner / l1-runner の 30 日述語を生行 ∪ 集約に／rollup cron 復帰 | 統合・デプロイ済み。coverage-rollup-window.pg.test は保持 7 日を env で強制して畳みを起こす |
-| 執行部 | 決済索引の 32,767 パラメータ回避・失敗を ok:false に・lease・deep health に遅れ検出／Preview の本番鍵共有を解消（新鍵を production のみ・Takeshi 入金・tx `0xee65aa5c…` で復旧確認）／不可逆操作の PreToolUse 関門／main のブランチ保護／chmod 600／死んだ CDP キー削除／Neon を従量制へ（Takeshi） | 実測済み |
+| 執行部 | 決済索引の 32,767 パラメータ回避・失敗を ok:false に・lease・deep health に遅れ検出／Preview の本番鍵共有を解消（新鍵を production のみ・Takeshi 入金・tx `0xee65aa5c…` で復旧確認）／不可逆操作の PreToolUse 関門／main の ruleset（**force-push と削除の禁止のみ**。レビュー必須・CI 必須は無い——2026-09-05 監査で訂正）／chmod 600／死んだ CDP キー削除／Neon を従量制へ（Takeshi） | 実測済み |
 
 ## 外部指摘の漏れ率
 2 件中 1 件は外部（Zellic）が先。`state/external_findings.json`。目標 0。

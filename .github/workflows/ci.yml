@@ -24,8 +24,8 @@ jobs:
     name: typecheck + unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
           cache: npm
@@ -53,8 +53,8 @@ jobs:
     name: production build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
           cache: npm
@@ -76,8 +76,8 @@ jobs:
     name: python sdk tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       - name: Install (editable, with test extras)
@@ -113,8 +113,8 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
           cache: npm
@@ -127,3 +127,26 @@ jobs:
         run: npm run test:db
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/vet402test
+
+  # 2026-09-05 セキュリティ監査 S-5: main は無審査 push で本番へ出る。せめて「赤い main」は
+  # 10 分以内に人へ届くようにする（uptime.yml と同じ手: issue は無料でメールが飛ぶ）。
+  notify-red-main:
+    name: red main -> issue
+    if: failure() && github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [test, build, python-sdk, db-tests]
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: open or update the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="CI red on main"
+          body="main の CI が失敗しました。commit ${SHA} / ${RUN_URL}"
+          n=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$n" ]; then gh issue comment "$n" --body "$body"; else gh issue create --title "$title" --body "$body"; fi
+
