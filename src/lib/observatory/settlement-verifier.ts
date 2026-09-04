@@ -33,7 +33,7 @@ import { fireL1RegistryHook, fireL2RegistryHook } from "@/lib/chain/registry-hoo
  * 恒久的な否定（レシートが revert・期待した Transfer が無い・別チェーン）は
  * 売り手についての所見なので settle_claim_refuted へ確定させる。
  */
-const TRANSIENT_REASONS = new Set([
+export const TRANSIENT_REASONS = new Set([
   "rpc_unavailable",
   "tx_not_found",
   "insufficient_confirmations",
@@ -41,7 +41,29 @@ const TRANSIENT_REASONS = new Set([
   // Solana（2026-09-04）: finalized 前は「まだ見えていない」であって否定ではない。
   // EVM の insufficient_confirmations と同じ扱い。
   "not_final",
+  // 2026-09-04 監査 P1-3: **計器の故障**。下の INSTRUMENT_FAILURE_REASONS も参照。
+  "wrong_chain",
+  "malformed_tx",
 ]);
+
+/**
+ * 一時的な失敗のうち、**我々の側が壊れている**もの（2026-09-04 監査 P1-3）。
+ *
+ * `wrong_chain` は「BASE_RPC_URL が Base を指していない」「SOLANA_RPC_URL が別
+ * クラスタ」——設定の事故であって売り手についての測定ではない。それが恒久の
+ * `settle_claim_refuted` になっていたので、RPC を 1 つ差し替え間違えるだけで
+ * その日の 200 件が全部「決済していない売り手」として公開台帳・公開バッジ・
+ * スコアへ流れ、settlement_verified=false が立つので二度と見直されなかった。
+ *
+ * `malformed_tx` も同じ性質: ランナーは isWellFormedSettlementTx を通った行しか
+ * settle_claimed にしないので、照合でこれが出るのは我々の側の不整合
+ * （旧 `settled` 行・チェーン判定の取り違え）を意味する。
+ *
+ * 見つけたら黙って deferred を積まない——logServerError で鳴らし、
+ * `wrong_chain` ならそのバッチを中断する（同じ壊れた RPC で残りを読みに行っても
+ * 全部同じ結果になるだけで、デッドラインを食うだけ）。
+ */
+export const INSTRUMENT_FAILURE_REASONS = new Set(["wrong_chain", "malformed_tx"]);
 
 export type VerifySettlementsSummary = {
   scanned: number;
@@ -50,6 +72,11 @@ export type VerifySettlementsSummary = {
   deferred: number;
   evidenceWritten: number;
   deadlineHit: boolean;
+  /**
+   * 我々の計器が壊れていてバッチを中断した理由（2026-09-04 監査 P1-3）。
+   * null が正常。cron の応答に出るので、外から見て気づける。
+   */
+  instrumentFailure: string | null;
 };
 
 /**
@@ -94,6 +121,7 @@ export async function runSettlementVerification(options?: {
     deferred: 0,
     evidenceWritten: 0,
     deadlineHit: false,
+    instrumentFailure: null,
   };
   const db = getDb();
   if (!db) throw new Error("DATABASE_URL is not configured");
@@ -290,6 +318,19 @@ export async function runSettlementVerification(options?: {
         .set({ settlementVerifyReason: result.reason })
         .where(eq(x402L1Purchases.id, row.id));
       summary.deferred++;
+      // 2026-09-04 監査 P1-3: 我々の側が壊れているときは鳴らす。
+      if (INSTRUMENT_FAILURE_REASONS.has(result.reason)) {
+        logServerError(
+          "settlement-verifier.instrument_failure",
+          `${result.reason} on purchase ${row.id} (${row.network})${result.detail ? `: ${result.detail}` : ""}`,
+        );
+        // wrong_chain は RPC そのものが別のチェーンを指している。残りの行を
+        // 読みに行っても全部同じ結果になるだけなので、このバッチは中断する。
+        if (result.reason === "wrong_chain") {
+          summary.instrumentFailure = result.reason;
+          break;
+        }
+      }
       continue;
     }
 
