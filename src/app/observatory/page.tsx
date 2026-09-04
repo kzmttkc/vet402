@@ -122,7 +122,7 @@ export default async function ObservatoryPage({
                   Snapshot{" "}
                   <span className="text-signal">{overview.latestSnapshot.snapshotDate}</span>{" "}
                   <span
-                    title={`${overview.latestSnapshot.fetchedCount.toLocaleString()} raw catalog items received across pages, before duplicate URLs collapse into one key; the catalog itself reports ${overview.latestSnapshot.totalCount.toLocaleString()}. See section 2.`}
+                    title={`${overview.latestSnapshot.fetchedCount.toLocaleString()} entries fetched by vet402 out of the ${overview.latestSnapshot.totalCount.toLocaleString()} the catalog reports about itself. Fetched counts raw items across pages before duplicate URLs collapse into one key, so it can exceed the reported total. See section 2.`}
                   >
                     · fetched {overview.latestSnapshot.fetchedCount.toLocaleString()} of catalog{" "}
                     {overview.latestSnapshot.totalCount.toLocaleString()}
