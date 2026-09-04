@@ -19,6 +19,7 @@ import {
   listOperatorOverrides,
 } from "@/lib/db/operator-overrides";
 import { removeGlobalBlacklistEntry } from "@/lib/db/customer-lists";
+import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 
 const URL =
   process.env.TEST_DATABASE_URL ??
@@ -29,6 +30,8 @@ let reachable = false;
 
 before(async () => {
   try {
+    // TRUNCATE より前に、接続先が本番（Neon）でないことを機械で確かめる（2026-09-04 監査 D・P2）。
+    assertTestDatabaseIsNotProduction(URL);
     sql = postgres(URL, { max: 1, connect_timeout: 3, onnotice: () => {} });
     await sql`select 1`;
     reachable = true;

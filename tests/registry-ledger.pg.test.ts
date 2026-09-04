@@ -7,12 +7,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 
 if (!TEST_DB) {
   test("registry ledger (skipped: TEST_DATABASE_URL not set)", { skip: true }, () => {});
 } else {
+  // TRUNCATE より前に、接続先が本番（Neon）でないことを機械で確かめる（2026-09-04 監査 D・P2）。
+  assertTestDatabaseIsNotProduction(TEST_DB);
   process.env.DATABASE_URL = TEST_DB;
 
   test("registry ledger + coverage tier SQL", async (t) => {

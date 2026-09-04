@@ -20,6 +20,7 @@ import {
   getObservedDeliveryStats,
   recordObservedPurchase,
 } from "@/lib/db/observed-purchases";
+import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 
 const URL =
   process.env.TEST_DATABASE_URL ??
@@ -36,6 +37,8 @@ function wal(seed: number): string {
 
 before(async () => {
   try {
+    // TRUNCATE より前に、接続先が本番（Neon）でないことを機械で確かめる（2026-09-04 監査 D・P2）。
+    assertTestDatabaseIsNotProduction(URL);
     sql = postgres(URL, { max: 1, connect_timeout: 3, onnotice: () => {} });
     await sql`select 1`;
     reachable = true;
