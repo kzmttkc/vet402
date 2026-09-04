@@ -134,3 +134,23 @@ test("parseIndexDef: 部分索引の WHERE を列に混ぜない・複合列・u
     partial: false,
   });
 });
+
+test("unique() 制約は一意索引として期待形に入り、本番に無ければ drift になる", () => {
+  const expected = expectedFromDrizzle(schema);
+  const key = expected.settlement_daily?.indexes.settlement_daily_key;
+  assert.ok(key, "settlement_daily_key が期待形に無い");
+  assert.equal(key.unique, true);
+  assert.deepEqual(key.columns, [
+    "day", "chain", "payee_id", "payer_id", "wash_flag", "source", "attribution", "endpoint_id", "resource_id",
+  ]);
+  // 本番が制約を欠いた形（2026-09-04 に実際にあった状態）。
+  const actual: SchemaShape = JSON.parse(JSON.stringify(expected));
+  delete actual.settlement_daily.indexes.settlement_daily_key;
+  const drift = diffSchema(expected, actual);
+  assert.ok(drift.some((l) => l.includes("settlement_daily_key")), `drift に出ない: ${drift.join(" / ")}`);
+  // pg_indexes の indexdef 末尾に NULLS NOT DISTINCT が付いても partial と誤読しない。
+  const parsed = parseIndexDef(
+    "CREATE UNIQUE INDEX settlement_daily_key ON public.settlement_daily USING btree (day, chain) NULLS NOT DISTINCT",
+  );
+  assert.deepEqual(parsed, { columns: ["day", "chain"], unique: true, partial: false });
+});

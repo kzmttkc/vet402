@@ -69,6 +69,19 @@ export function expectedFromDrizzle(schemaModule: Record<string, unknown>): Sche
         partial: Boolean(idx.config.where),
       };
     }
+    // unique(...) 制約は pg 側では同名の一意索引として pg_indexes に現れる。
+    // ここを読まないと「制約が本番に無い」が drift 0 件で通る
+    //（2026-09-04 実測: settlement_daily_key が本番に無く、rollup の
+    // ON CONFLICT ON CONSTRAINT が 42704 で落ちたのに db:drift は沈黙した）。
+    for (const uc of cfg.uniqueConstraints) {
+      const name = uc.name;
+      if (!name || indexes[name]) continue;
+      indexes[name] = {
+        columns: uc.columns.map((c) => c.name),
+        unique: true,
+        partial: false,
+      };
+    }
     out[cfg.name] = { columns, indexes, primaryKey };
   }
   return out;
