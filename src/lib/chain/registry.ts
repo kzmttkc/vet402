@@ -23,6 +23,7 @@ import { keccak256, parseAbi, toBytes, type WalletClient } from "viem";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { registryWrites } from "@/lib/db/schema";
+import { utcDayStart } from "@/lib/db/utc-day";
 import { ERC8004_ADDRESSES } from "./config";
 
 export const validationRegistryAbi = parseAbi([
@@ -70,7 +71,7 @@ export async function countRegistryWritesToday(): Promise<number> {
   if (!db) return 0;
   const raw = await db.execute(sql`
     SELECT count(*)::int AS n FROM registry_writes
-    WHERE created_at >= (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
+    WHERE created_at >= ${utcDayStart()}
   `);
   const rows = (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as { n: number | string }[];
   return Number(rows[0]?.n ?? 0);
@@ -212,7 +213,7 @@ export async function publishValidation(input: {
   const inserted = await db.execute(sql`
     WITH day AS (
       SELECT count(*)::int AS n FROM registry_writes
-      WHERE created_at >= (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
+      WHERE created_at >= ${utcDayStart()}
     ), ins AS (
       INSERT INTO registry_writes (request_hash, endpoint_id, agent_id, level, response, evidence_uri, status)
       SELECT ${record.requestHash}, ${record.endpointId}::uuid, ${String(record.agentId)},

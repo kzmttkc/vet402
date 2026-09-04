@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClientIp } from "@/lib/api/client-ip";
+import { acquireLease } from "@/lib/cron/lease";
 import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
 import { runDemoL0 } from "@/lib/demo/verify";
 import { runL1Batch } from "@/lib/observatory/l1-runner";
@@ -124,6 +125,21 @@ export async function POST(request: NextRequest) {
         { status: 429, headers: ipRateLimitHeaders(l1Limited) },
       );
     }
+    // 2026-09-04 監査 P2: **cron と同じバッチ排他を取る。**
+    // /api/cron/l1-purchase は acquireLease("l1-purchase") を取ってから
+    // runL1Batch を呼ぶのに、この経路は同じ関数をリース無しで呼んでいた。
+    // 定時 cron の最中にデモを叩けば、排他を入れた理由（孤児 in_flight の増減・
+    // summary の混乱・同じエンドポイントへの重複購入）がそのまま戻る。しかも
+    // ここは API キー不要の公開口。
+    // TTL は cron（330s）より短い 60s——デモ 1 件は最悪でも数十秒で終わるので、
+    // ここで長く握ると定時バッチを待たせるだけになる。
+    const lease = await acquireLease("l1-purchase", 60);
+    if (!lease.acquired) {
+      return NextResponse.json(
+        { error: "l1_busy", detail: "a purchase batch is already running; try again shortly" },
+        { status: 409, headers: perCaller },
+      );
+    }
     try {
       // 予算・重複・自己除外・L0-pass 要件はランナー内の既存ゲートがそのまま利く。
       const summary = await runL1Batch({ onlyEndpointId: endpointId, limit: 1 });
@@ -135,6 +151,8 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       logServerError("demo_verify_l1", error);
       return NextResponse.json({ error: "demo_unavailable" }, { status: 503, headers: perCaller });
+    } finally {
+      await lease.release();
     }
   }
 

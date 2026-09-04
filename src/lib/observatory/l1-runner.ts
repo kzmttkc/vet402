@@ -29,6 +29,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { isMissingSchemaError } from "@/lib/db/pg-errors";
+import { utcDayStart } from "@/lib/db/utc-day";
 import { x402L1Purchases } from "@/lib/db/schema";
 import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { readBodyCapped } from "@/lib/net/read-capped";
@@ -265,7 +266,7 @@ async function reserveSpend(input: {
     WITH day AS (
       SELECT coalesce(sum(spent_units::numeric), 0) AS spent
       FROM x402_l1_purchases
-      WHERE attempted_at >= date_trunc('day', now() AT TIME ZONE 'utc')
+      WHERE attempted_at >= ${utcDayStart()}
     ), dup AS (
       SELECT EXISTS (
         SELECT 1 FROM x402_l1_purchases pu
@@ -504,7 +505,7 @@ export async function runL1Batch(
     const raw = await db.execute(sql`
       SELECT coalesce(sum(spent_units::numeric), 0)::text AS spent
       FROM x402_l1_purchases
-      WHERE attempted_at >= date_trunc('day', now() AT TIME ZONE 'utc')
+      WHERE attempted_at >= ${utcDayStart()}
     `);
     const list = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as {
       spent: string;
