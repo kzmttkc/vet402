@@ -120,7 +120,7 @@ if (!TEST_DB) {
       const res = await runRollup({ apply: true });
       assert.equal(res.applied, true);
       assert.equal(res.rowsFolded, (35 - RAW_RETENTION_DAYS) * 24);
-      assert.equal(await rawRows(), RAW_RETENTION_DAYS * 24, "残るのは直近 7 日ぶんだけ");
+      assert.equal(await rawRows(), RAW_RETENTION_DAYS * 24, "残るのは直近 RAW_RETENTION_DAYS 日ぶんだけ");
 
       const staleN = await scalar(sql`
         SELECT count(*)::int AS n FROM settlements

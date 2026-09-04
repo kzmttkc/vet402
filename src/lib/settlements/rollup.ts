@@ -3,7 +3,14 @@
 //
 // なぜ要るか: 決済索引は 1 日 3 万行・約 33 MB 積む。Neon 無料枠 512 MB に対し
 // 2026-09-02 20:43 UTC から INSERT が `53100 project size limit` で全部落ちていた。
-// 30 日ぶんの生行（約 1 GB）は無料枠でも有料でも持てない——際限が無いから。
+// 生行を際限なく持つと、どの料金枠でもいつか同じ落ち方をする。だから畳む。
+//
+// 生行の保持は 30 日（2026-09-04 に 7 → 30）。センサス・カバレッジ・
+// buyer-facts の支払い証明比率はどれも 30 日窓を読むので、生行が 30 日あれば
+// 「畳んだ日の tx_hash が消えて比率が落ちる」劣化が起きない。
+// 費用: 本番実測で 1 行約 1.1 KB・平常時 1 日 2〜3 万行 → 30 日で約 0.9 GB。
+// Launch プラン（従量・$0.35/GB-月）で月 $0.3 程度。7 日に戻すのは
+// SETTLEMENTS_RAW_RETENTION_DAYS=7 で足りるが、戻すと上の劣化も戻る。
 //
 // 何をするか: 生行 `settlements` は直近 RAW_RETENTION_DAYS 日だけ残し、
 // それより古い UTC 日を (day, chain, payee_id, payer_id, wash_flag, source,
@@ -26,7 +33,7 @@ import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { rowsOf } from "./upsert";
 
 /** 生行を残す UTC 日数。これより古い日は畳んで消す。 */
-export const RAW_RETENTION_DAYS = intFromEnv("SETTLEMENTS_RAW_RETENTION_DAYS", 7);
+export const RAW_RETENTION_DAYS = intFromEnv("SETTLEMENTS_RAW_RETENTION_DAYS", 30);
 /**
  * 日次集約を残す UTC 日数。ここで全体の保存量が有界になる。
  *

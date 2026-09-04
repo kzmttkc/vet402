@@ -15,14 +15,20 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 if (!TEST_DB) {
   test("coverage rollup window (skipped: TEST_DATABASE_URL not set)", { skip: true }, () => {});
 } else {
+  assertTestDatabaseIsNotProduction(TEST_DB);
   process.env.DATABASE_URL = TEST_DB;
+  // 本番の既定は生行 30 日（rollup.ts）。このテストが守るのは「30 日窓の内側で
+  // 畳まれた日も数え続ける」ことなので、保持を 7 日に縮めて畳みを起こす。
+  // rollup は下で動的 import するので、この env はモジュール読込前に効く。
+  process.env.SETTLEMENTS_RAW_RETENTION_DAYS = "7";
 
-  // 30 日以内・生行の保持期間より古い日（畳む対象になる日）。
+  // 30 日以内・生行の保持期間（このテストでは 7 日）より古い日（畳む対象になる日）。
   const OLD_DAY = 20;
   // 生行の保持期間の内側（畳んでも残る日）。
   const NEW_DAY = 1;

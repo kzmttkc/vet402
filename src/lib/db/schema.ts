@@ -892,7 +892,6 @@ export const settlements = pgTable(
   },
   (t) => [
     uniqueIndex("settlements_purchase_id_unique").on(t.purchaseId),
-    index("settlements_payee_block_idx").on(t.payeeId, t.blockTime),
     index("settlements_payer_block_idx").on(t.payerId, t.blockTime),
     index("settlements_endpoint_idx").on(t.endpointId),
     index("settlements_wash_idx").on(t.washFlag),
