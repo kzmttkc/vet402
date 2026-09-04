@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeApiRequest, refundRateLimitUnits, withRateLimitHeaders } from "@/lib/api/guard";
+import { getIdempotentResponse, idempotencyKeyHash, saveIdempotentResponse } from "@/lib/api/idempotency";
 import { lookupManualList } from "@/lib/db/customer-lists";
 import { decide } from "@/lib/decision/decide";
 import { SHA256_HEX_RE, parsePartyId, payeeId as toPartyId } from "@/lib/ids/canonical";
@@ -12,14 +13,16 @@ import { logServerError } from "@/lib/util/log";
 //   role=payee  「この支払元を通してよいか」→ payer 必須。買い手事実 + 判定
 // facts と recommendation は同じ応答に同居する。facts を省く経路は無い。
 // Idempotency-Key（§9.3）: 同一 (キー, resource, role, payer, key) の再試行は
-// 10 分間、レート単位を二重に消費しない。
+// 10 分間、レート単位を二重に消費せず、**保存した応答をそのまま返す**（再計算しない）。
+// 2026-09-04 監査 B・P2: 以前はプロセス内 Map で「見た」ことだけを覚え、再送は毎回
+// 再計算していた。Vercel の別インスタンスに落ちた再送は初回扱いになり同じキーで
+// 違う応答が返り得た。保存先は decision_idempotency（src/lib/api/idempotency.ts）。
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 type RouteContext = { params: Promise<{ resourceId: string }> };
 
 const IDEMPOTENCY_TTL_MS = 10 * 60_000;
-const idempotency = new Map<string, number>();
 
 function normalizePayer(raw: string): string | null {
   const v = raw.trim();
@@ -62,14 +65,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const allowWithoutL1 = params.get("allow_without_l1") === "true";
 
   const idemKey = request.headers.get("idempotency-key");
-  if (idemKey) {
-    const k = `${auth.ctx.apiKeyId}|${resourceId}|${roleRaw}|${payerId ?? "-"}|${idemKey.slice(0, 128)}`;
-    const seen = idempotency.get(k);
-    if (seen && seen > Date.now()) void refundRateLimitUnits(auth.ctx, 1);
-    else idempotency.set(k, Date.now() + IDEMPOTENCY_TTL_MS);
-    if (idempotency.size > 10_000) {
-      const now = Date.now();
-      for (const [key, exp] of idempotency) if (exp <= now) idempotency.delete(key);
+  const idemHash = idemKey
+    ? idempotencyKeyHash([auth.ctx.apiKeyId, resourceId, roleRaw, payerId ?? "-", idemKey.slice(0, 128)])
+    : null;
+  if (idemHash) {
+    const saved = await getIdempotentResponse(idemHash);
+    if (saved !== null) {
+      void refundRateLimitUnits(auth.ctx, 1);
+      const res = withRateLimitHeaders(NextResponse.json(saved), auth.ctx.rateLimit);
+      res.headers.set("Idempotent-Replay", "true");
+      return res;
     }
   }
 
@@ -94,6 +99,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
     // 2026-09-02: §12 の SLO（p95 < 200ms・キャッシュヒット）はサーバ内時間で測る。東京からの
     // 壁時計（0.44–0.77s）では往復が混ざるので、計算時間を Server-Timing で返す。
+    // 成功応答だけ保存する（404/503 は再送で再計算してよい——直った可能性がある）。
+    if (idemHash) await saveIdempotentResponse(idemHash, result, IDEMPOTENCY_TTL_MS);
     const res = withRateLimitHeaders(NextResponse.json(result), auth.ctx.rateLimit);
     res.headers.set("Server-Timing", `decision;dur=${(performance.now() - t0).toFixed(1)}`);
     return res;

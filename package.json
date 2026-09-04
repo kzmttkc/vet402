@@ -23,6 +23,9 @@
     "base",
     "onchain"
   ],
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -36,6 +39,7 @@
     "predb:push": "tsx scripts/db-preflight.ts",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
+    "db:drift": "tsx scripts/schema-drift.ts",
     "api-key:create": "tsx scripts/create-api-key.ts",
     "check:env": "tsx scripts/check-production-env.ts",
     "indexer:funders": "tsx scripts/index-funders.ts",
@@ -82,7 +86,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/jsdom": "^30.0.0",
-    "@types/node": "^20",
+    "@types/node": "^24.13.3",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "axe-core": "^4.13.0",

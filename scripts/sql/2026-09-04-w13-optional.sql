@@ -1,0 +1,38 @@
+-- 2026-09-04 監査 D・P2 — 任意の本番 DDL 案（執行部の手番。ここでは実行しない）。
+-- 適用は 1 文ずつ psql で。両方とも読み取り経路の性能・容量だけに効き、データは動かさない。
+--
+-- ============================================================
+-- (1) settlements_payee_block_idx の DROP
+-- ------------------------------------------------------------
+-- 根拠（本番 pg_stat_user_indexes・2026-09-04 09:4x UTC 実測）:
+--   settlements_payee_block_idx  idx_scan = 0     26 MB
+--   settlements_payer_block_idx  idx_scan = 1850  25 MB   ← 買い手側は使われている
+-- payee 側の読み手は settlements_endpoint_idx（endpoint_id）で引いており、payee_id×block_time
+-- の複合索引を使う経路が無い。書き込みのたびに 26 MB を保守しているだけ。
+--
+-- **2026-09-04 09:5x UTC に本番から既に消えていた**（db:drift の 2 回目の実走で
+-- 「schema.ts にだけある」へ転じた。同日 09:4x の実測では存在した）。誰かが先に落としたので
+-- この DROP は不要。代わりに **schema.ts 850 行付近の
+--   index("settlements_payee_block_idx").on(t.payeeId, t.blockTime),
+-- を消す**必要がある——残したままだと次の `drizzle-kit push` が 26 MB を作り直す。
+-- schema.ts は「追加のみ」の縛りで W13 では触っていない。
+--
+-- DROP INDEX CONCURRENTLY IF EXISTS settlements_payee_block_idx;
+--
+-- ============================================================
+-- (2) owner_agents の lower(owner) 関数索引
+-- ------------------------------------------------------------
+-- 根拠: src/lib/decision/buyer-facts.ts:109 が
+--   SELECT count(*) FROM owner_agents p WHERE lower(p.owner) = lower(o.owner)
+-- で引く。既存の owner_agents_owner_idx は btree(owner) なので lower() には使えず、
+-- 38,533 行（2026-09-04 実測）を毎回 seq scan する。/decision の payee 判定経路。
+-- CONCURRENTLY は Neon の pooler 接続（-pooler）ではトランザクション外で走らせる必要が
+-- あるので、psql で単独実行する（BEGIN で包まない）。
+--
+-- CREATE INDEX CONCURRENTLY IF NOT EXISTS owner_agents_owner_lower_idx
+--   ON owner_agents (lower(owner));
+--
+-- 適用後は schema.ts の ownerAgents にも同名の式索引を足す（W13 は schema.ts 追加のみの縛り
+-- で、既存テーブル定義への index 追加は本番適用と同時に行う。drizzle では
+--   index("owner_agents_owner_lower_idx").on(sql`lower(${t.owner})`)
+-- ）。足さないと db:drift が「DB にだけある」= push で drop、と鳴る。

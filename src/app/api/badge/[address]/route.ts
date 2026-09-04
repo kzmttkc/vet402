@@ -17,8 +17,10 @@ import { logServerError } from "@/lib/util/log";
 //
 // Freshness: because the badge now reflects a live verdict that can flip
 // (revocation), the CDN window is cut to the score's own 5-minute cache TTL so
-// a BLOCK transition cannot keep serving a green badge for an hour.
-export const revalidate = 300;
+// a BLOCK transition cannot keep serving a green badge for an hour. That window
+// is set ONLY by the hand-written Cache-Control (s-maxage=300) on the response
+// below. 2026-09-04 監査 D・P2: ISR の revalidate 宣言（300）が併記されていたが、
+// force-dynamic の下で ISR は効かず、読む人に鮮度を誤らせるだけの宣言だったので消した。
 
 // 2026-08-06 security (self-audit item 1): key-less path. Each distinct
 // address is a cache-miss that costs a DB lookup, and the address is

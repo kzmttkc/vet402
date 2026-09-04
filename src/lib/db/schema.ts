@@ -185,8 +185,14 @@ export const observedPurchases = pgTable(
   },
   (t) => [
     uniqueIndex("observed_purchases_tx_hash_idx").on(t.txHash),
-    index("observed_purchases_wallet_idx").on(t.wallet, t.blockTimestamp),
-    index("observed_purchases_counterparty_idx").on(t.counterparty, t.blockTimestamp),
+    // 本番は部分索引（scripts/sql/2026-08-14-observed-purchases.sql）。schema.ts が全行索引の
+    // ままだと push で意味が変わる——db:drift を本番へ初めて走らせて見つけた（2026-09-04）。
+    index("observed_purchases_wallet_idx")
+      .on(t.wallet, t.blockTimestamp)
+      .where(sql`${t.deliveryVerified} = true`),
+    index("observed_purchases_counterparty_idx")
+      .on(t.counterparty, t.blockTimestamp)
+      .where(sql`${t.deliveryVerified} = true`),
   ],
 );
 
@@ -802,6 +808,12 @@ export const x402L1Purchases = pgTable(
     uniqueIndex("x402_l1_purchases_tx_unique")
       .on(t.network, sql`lower(${t.txHash})`)
       .where(sql`${t.txHash} IS NOT NULL`),
+    // 2026-08-23 C-4 の照合 cron が「まだ見ていない行」を引く部分索引。本番には
+    // scripts/sql/2026-08-23-settlement-verification.sql で作られていたが schema.ts に
+    // 無く、`drizzle-kit push` が drop する状態だった（2026-09-04 監査 D・P1）。
+    index("x402_l1_purchases_pending_verify_idx")
+      .on(t.attemptedAt)
+      .where(sql`${t.settlementVerified} IS NULL AND ${t.txHash} IS NOT NULL`),
   ],
 );
 
@@ -1192,4 +1204,34 @@ export const settlementDaily = pgTable(
     index("settlement_daily_endpoint_day_idx").on(t.endpointId, t.day),
     index("settlement_daily_payee_day_idx").on(t.payeeId, t.day),
   ],
+);
+
+/**
+ * job_leases — cron バッチの排他リース（2026-08-24 監査）。src/lib/cron/lease.ts が
+ * 単一文の upsert で取る。本番には scripts/sql/2026-08-24-job-leases.sql で作られて
+ * いたが schema.ts に無く、`drizzle-kit push` が drop する状態だった（2026-09-04 監査 D・P1）。
+ * 列の形は本番 `\d job_leases` と一致させてある。
+ */
+export const jobLeases = pgTable("job_leases", {
+  name: text("name").primaryKey(),
+  holder: uuid("holder").notNull(),
+  acquiredAt: timestamp("acquired_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+/**
+ * decision_idempotency — /decision の Idempotency-Key（§9.3）で保存した応答（2026-09-04 監査 B・P2）。
+ * 再送には**保存した応答をそのまま返す**（再計算しない）。key_hash は
+ * sha256(apiKeyId|resource|role|payer|Idempotency-Key)。10 分 TTL、期限切れは purge-logs が消す。
+ * 従来はプロセス内 Map だったので、Vercel の別インスタンスへ落ちた再送は毎回再計算していた。
+ * SQL: scripts/sql/2026-09-04-w13-decision-idempotency.sql
+ */
+export const decisionIdempotency = pgTable(
+  "decision_idempotency",
+  {
+    keyHash: text("key_hash").primaryKey(),
+    body: jsonb("body").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("decision_idempotency_expires_idx").on(t.expiresAt)],
 );

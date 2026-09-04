@@ -15,7 +15,8 @@ import { logServerError } from "@/lib/util/log";
 // green "Verified agent". Green is earned only when the passport is signed AND
 // the live vet402 agent score is a clean ALLOW; BLOCK shows "Flagged"
 // (revocation), and WARN / a failed lookup fail-closed to "Caution".
-export const revalidate = 300;
+// Freshness is the hand-written Cache-Control (s-maxage=300) on the response;
+// 2026-09-04 監査 D・P2: force-dynamic の下で効かない `revalidate = 300` を消した。
 
 // Key-less path: each distinct agentId is a cache-miss DB lookup and the id is
 // attacker-chosen, so cap per IP. Generous — legit embeds serve from the CDN
