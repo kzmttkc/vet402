@@ -84,6 +84,58 @@ state API ──► facts composer (locked template) ──► queue
 
 ---
 
+## 3.5 決定 2026-09-05 — 12媒体の playbook をやめ、2レーンにする（執行部）
+
+**Takeshi:「それらを使うべきか戦略が間違っていてもう使わないのかはっきりして」**
+
+**間違っていた。** §4 は12媒体それぞれに「役割」を書いたが、そのうち9つは
+**一度も検証していない仮説**だった。2026-09-05 実測（Plausible・30日・`event:hostname==vet402.com`）:
+
+| 流入元 | 30日の訪問者 |
+|---|---|
+| 全体 | **82** |
+| x.com / t.co | **0 / 0** |
+| warpcast.com（Farcaster） | **0** |
+| news.ycombinator.com | **0** |
+| reddit.com | **0** |
+| ethereum-magicians.org | **0** |
+| github.com | **0** |
+| discord.com | **0** |
+
+**放送型の媒体は、4ヶ月で1人も連れてきていない。**
+
+ただし「効果ゼロ」ではない。効いているものが2つあり、**どちらも放送ではない**:
+1. **議論の場での返信** — Magicians スレッド 25098 で、当社の投稿2本に対し
+   babyblueviper1 から返信2本。#387「Real numbers appreciated — the split (697/1,681 settled,
+   984 unresolved) is exactly the kind of thing that…」。
+   **4ヶ月で受け取った、専門家からの唯一の反応**。クリックより上流の一次データ（[[human-signal-is-primary-data]]）
+2. **機械可読の配布** — `@vet402/*` の npm 週次 613 DL。人は来ていないが機械は引いている
+
+### 使う（この2つだけ）
+
+| レーン | 具体 | 指標 |
+|---|---|---|
+| **議論の場で reply として入る** | Ethereum Magicians（TL0のためリンクは inline code）／x402 Discord（会期中・announce しない） | 返信が付いた回数。フォロワー・流入は見ない |
+| **引かれる面を置く** | `/observatory/state`・`export.csv`・`history`・`llms.txt`・OpenAPI・npm・Dataset JSON-LD | 外部からの引用件数（現在 0）・npm 週次 DL |
+
+X `@vet_402` は**この2つのどちらでもない**。週次実測を1本置くだけの掲示板として残す。
+**獲得手段とは呼ばない**——30日で 0 人しか送っていないものを獲得手段と呼ぶのは、この文書が防ぐための嘘。
+
+### もう使わない（決定・日付つき）
+
+| 媒体 | 決定 | 解除条件 |
+|---|---|---|
+| Hacker News | **畳んだ** 2026-09-05。2垢とも shadowban 実測（全投稿 dead・submit 拒否） | 履歴のある新しい垢が要るが作れない。**当面なし** |
+| Slack | **畳んだ** 2026-09-05。招待されていない（§4.5 は招待制のみ） | 実際に招待されたら |
+| Reddit | **使わない**。自己宣伝は spam 扱い・30日 0 人 | 特定の質問に受領証つきで答える機会が来たときだけ、1コメント |
+| Product Hunt | **使わない**。消費者向け製品ではない | なし |
+| Indie Hackers | **使わない**。MRR の話が無い | 収益が立ってから |
+| **Farcaster `vet402`** | **使わない**（アカウントは取得済み・追加費用なし で置く）。cast には storage 1ユニット **$7/年** が要り、**実測根拠はゼロ**（warpcast 経由 30日 0 人）。[[traction-before-infra-spend]] | **Base Batches 004 の審査が進み、Base 側が Farcaster を見ると分かったとき**（〆切 2026-09-09・TAKESHI_TODO） |
+
+**この表が §4 に優先する。** §4 は各媒体の作法として残すが、「使う/使わない」はここが正典。
+
+---
+
 ## 4. Per-platform playbook
 
 ### 4.1 X (`@vet_402`)
