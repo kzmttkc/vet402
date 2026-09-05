@@ -33,17 +33,22 @@
 - ALLOW が今日カタログに出ない事実を、売り文句にしない（聞かれたら fixtures の数字で答える）
 - **「Base のみで実購入している」と書かない**。2026-09-05 実測（公開 `/api/v1/observatory/history` の全期間合計）:
   Base `eip155:8453` 2,999 attempts / 1,382 settled、**Solana 50 attempts / 5 settled**。Solana でも買っている
-- **チェーン別の L1 件数を数字で書かない**（当面）。`/api/v1/observatory/state` に `l1ByChain` が無く、
+- **チェーン別の L1 件数を数字で書かない**（当面）。`/api/v1/observatory/state` に `l1.byChain` が無く、
   読者が確かめられる公開面が `history` しか無い。しかもその 2 つが合わない（下記）。
-  **`l1ByChain` が state に出たら、この禁則を外す**
+  **`l1.byChain`（camelCase・chain ごとに attempts / settled / delivered / nonceBound）が
+  state に出たら、この禁則を外す**
 - **`/observatory/state` の L1 合計と `history` の合計が一致しない**（2026-09-05 実測: state 3,241/1,629 に対し
   history 合計 3,065/1,387）。**理由は「開始日が違う」ではない**（2026-09-05 08:35、vet402.com が本番 SELECT で突合）:
   history の源 `x402_daily_metrics` は cron が毎日 10:30 UTC に**その日 1 日ぶんだけ**書き、以後**二度と再計算しない**。
   L1 の決済確認 cron は 14:00 UTC で集計より後なので、**当日後半に settled へ昇格した行は永久に集計へ入らない**
-  （Base だけで live 1,603 に対し rolled 1,382・221 件の過小）。つまり history は「同じ生の測定」ではなく**凍結スナップショット**で、
+  （Base 単体で見ても live 1,603 に対し rolled 1,382・221 件の過小）。つまり history は「同じ生の測定」ではなく**凍結スナップショット**で、
   構造的に settled を**少なく**出す。外部の人が history を足して検算すると、こちらが盛っているように見える。
   **是正（直近 14 日の再集計＋全期間の再計算＋応答に `coverageFrom`/`rolledUpThrough`/`semantics`）が本番に入るまで、
   この 2 つを同じ文書に並べない。** 解除は「再集計後の history 合計が state と説明可能な差に収まったこと」を実測してから
+- **Solana の決済照合を「memo 束縛」と書かない**。2026-09-05、vet402.com が本番 SELECT で訂正:
+  Solana の settled 26 件は**全行が nonce 導入前**で、memo 束縛ではない。書けるのは
+  **「finalized・残高差分で照合」**まで。**この誤りは執行部が `.company/decisions/2026-09.md` で流したもの**なので、
+  引用したグラント申請文（`docs/applications/solana-grant-proposal.md` / `why-solana.md`）も直す
 - **「監査済み」「externally audited」と書かない**。2026-09-05 の 3 本は自前監査（執行部＋監査エージェント）であって
   第三者監査ではない。書けるのは「自前の監査記録を全文公開している」まで
 
