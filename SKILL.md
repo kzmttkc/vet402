@@ -3,9 +3,13 @@
 > **Status: implemented and green as of 2026-09-05 (ETHOnline 2026 window).**
 > `payOrRefuse` (`@vet402/sdk`) and the MCP tool `pay_if_trusted` (`@vet402/mcp-server`) both exist
 > and are exercised by tests you can run yourself — see **How a judge can run it** below.
-> **One thing described here is NOT built yet: the The Graph subgraph evidence source.** It is
-> scheduled for 09-08 and is marked explicitly in **What is not built yet**. Everything else on this
-> page was run before it was written.
+> **The Graph subgraph evidence source is built, wired and paid for.** `payOrRefuse` reads the
+> x402 Base subgraph directly (`packages/sdk/src/subgraph-evidence.ts` →
+> `packages/sdk/src/pay-or-refuse.ts`), and on 2026-09-05 it signed and settled a real $0.01 USDC
+> payment to The Graph's own x402 endpoint on that evidence alone — tx
+> [`0xf12093fb…e469ad`](https://basescan.org/tx/0xf12093fba9314b1d3a514e7b667969201be8d021a6f4d6bdeb8d6c7f2de469ad).
+> See **Paying on The Graph's own data** below. What remains unbuilt is listed in
+> **What is not built yet**, and everything on this page was run before it was written.
 > Required by The Graph's prize: "Open-source the code with a clear README **or SKILL.md** so judges can run it."
 
 ## What this gives an agent
@@ -64,9 +68,9 @@ cd packages/mcp-server && npm test 2>&1 | grep -E '^ℹ '
 ```
 
 ```
-ℹ tests 31
+ℹ tests 32
 ℹ suites 0
-ℹ pass 31
+ℹ pass 32
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
@@ -175,7 +179,9 @@ The tool result text:
 
 That `resourceId` is real: `sha256("POST https://gateway.thegraph.com/api/x402/subgraphs/id/…")`,
 The Graph's own x402 endpoint. With a valid key it returns **HTTP 404 `not_found`** — The Graph is
-not in our catalogue, and we did not add it (see **What is not built yet**).
+not in our catalogue, and we did not add it (see *The uncatalogued-seller path in MCP* under
+**What is not built yet**). The subgraph evidence source does not need the catalogue — see
+**Paying on The Graph's own data**.
 
 ## Reading the answer
 
@@ -227,14 +233,59 @@ is checkable after the fact. `pay_if_trusted` passes `evidence[]` through untouc
 reason, and two mutation tests fail if a future change strips `source` or rewrites every row to
 `"vet402"`.
 
+## Paying on The Graph's own data
+
+`policy.evidence.source: "subgraph" | "both"` makes `payOrRefuse` read the x402 Base subgraph
+(`Cb56epg3EvQ6JRpPfknbkM54QxpzTvLa7mwKNQQfUyoj`) through the Graph Gateway and put the result on
+the decision as its own evidence row — `source: "subgraph"`, with `subgraphId`, `_meta.block` and
+`queriedAt`, so a reader can tell a live read from a cached number. `minSubgraphReceipts` is the
+floor you can then require. If the subgraph cannot be read, the call **refuses** with
+`evidence_unavailable` + `subgraph_evidence_unavailable`; it never falls back to our own ledger.
+
+Wiring: `packages/sdk/src/subgraph-evidence.ts` (the reader) → `packages/sdk/src/pay-or-refuse.ts`
+(§3.5, read before the judgement so a refusal still carries what the other source knew) →
+exported from `packages/sdk/src/index.ts`. Tests `C11`, `C11b`, `C11c` and
+`packages/sdk/test/subgraph-evidence.test.mjs` cover the floor, the caller-error cases and the
+reader contract:
+
+```bash
+cd packages/sdk && npm install && npm test 2>&1 | grep -E '^ℹ '
+```
+
+```
+ℹ tests 148
+ℹ pass 148
+ℹ fail 0
+```
+
+**It has moved real money.** On 2026-09-05 a throwaway payer bought The Graph's own x402 endpoint
+with `requireVet402Allow: false` and `minSubgraphReceipts: 1`. Our own engine rates that payee
+**WARN 69**; the caller's policy said "The Graph's own ledger is enough". It read **259** receipts
+and paid.
+
+```
+payOrRefuse   status=paid   signed=true
+reasons       resource_uncatalogued, allowed_by_caller_policy
+verdict from  caller_policy
+floor met     minSubgraphReceipts (subgraph) 1 <= 259
+txHash        0xf12093fba9314b1d3a514e7b667969201be8d021a6f4d6bdeb8d6c7f2de469ad
+```
+
+Re-read on-chain, not taken from the API's own word: block **50898704**, success, an ERC-20
+`Transfer` of **0.01 USDC** from `0xdb62bd20…3aa673` to The Graph's receiving wallet
+`0x79dc34e4…d52fccb`, payer balance 1.00 → 0.99, payer ETH still 0 (EIP-3009 — the buyer pays no
+gas). Check it yourself:
+<https://basescan.org/tx/0xf12093fba9314b1d3a514e7b667969201be8d021a6f4d6bdeb8d6c7f2de469ad>.
+The decision record kept `verdict from: caller_policy` and the waived `WARN`: **we did not rewrite
+our own judgement to match the payment.** (Details: `docs/ethonline-2026/WINDOW_PLAN.md` §10.5.)
+
 ## What is not built yet
 
 Stated plainly, because a SKILL.md that oversells is worse than none.
 
 | | state |
 |---|---|
-| **The Graph subgraph as an evidence source** | **NOT BUILT.** Scheduled 09-08 (WINDOW_PLAN §2 #3). The SDK accepts `policy.evidence.source: "subgraph" \| "both"` and **fail-closes** on it (`evidence_unavailable`) rather than quietly falling back to our own ledger. `subgraphId` / `_meta.block` will ride on the `source: "subgraph"` evidence rows when it lands. The queries themselves are verified working (WINDOW_PLAN §15) — the wiring into `payOrRefuse` is not. |
-| **Evidence policy on the MCP tool** | Not exposed. `pay_if_trusted` takes no `policy.evidence`, because the only interesting value for it is the one above. Use `payOrRefuse` from the SDK for the vet402-ledger floor (`minL1Deliveries`) today. |
+| **Evidence policy on the MCP tool** | Not exposed. `pay_if_trusted` takes no `policy.evidence`. The subgraph source and the evidence floors exist in the SDK (see **Paying on The Graph's own data**); they are simply not surfaced on the MCP tool yet. Use `payOrRefuse` from the SDK for `source: "subgraph" \| "both"`, `minSubgraphReceipts` and `minL1Deliveries` today. |
 | **The uncatalogued-seller path in MCP** | Not exposed. `payOrRefuse` handles a `/decision` 404 by judging from the 402 `payTo` plus the payee score; `pay_if_trusted` refuses with `evidence_unavailable` instead, because it is not given a payment target at that point. |
 | **npm publish** | Out of scope until after submission. Build from the repo. |
 | **The hosted MCP gateway** | The Bazantic gateway at `bazgateway.com` fronts vet402's REST API, **not this package**; it does not expose `pay_if_trusted`. Run the stdio server above. |

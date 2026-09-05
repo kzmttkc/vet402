@@ -6,7 +6,7 @@
 
 vet402 buys what x402 endpoints actually sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence.
 
-> **Formerly Vouch.** The repository name (`agent-trust`), npm scope (`@vet402/*`) and API key prefix (`vouch_`) retain the old name for backward compatibility.
+> **Formerly Vouch.** The repository is <https://github.com/kzmttkc/vet402> (renamed 2026-08-18). The npm scope is `@vet402/*`; the API key prefix (`vouch_`) and some internal identifiers retain the old name for backward compatibility — renaming them would break every key already issued.
 
 **Site:** <https://vet402.com> · **Live demo:** <https://vet402.com/playground> · **API reference:** <https://vet402.com/docs/api> · **Accuracy ledger:** <https://vet402.com/accuracy>
 
