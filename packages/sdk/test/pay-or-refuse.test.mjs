@@ -250,7 +250,7 @@ test("C10 evidence.minL1Deliveries 未達で拒否", async () => {
   assert.equal(r.decision.reason_codes.includes("insufficient_delivery_evidence"), true);
 });
 
-test("C11 evidence.minSubgraphReceipts 未達で拒否", { todo: "The Graph 証拠源（WINDOW_PLAN §2 #3）が未実装。09-08 の作業。" }, async () => {
+test("C11 evidence.minSubgraphReceipts 未達で拒否", async () => {
   const w = watchedAccount();
   const f = allowlistFetch([DECISION, "gateway.thegraph.com"], {
     [DECISION]: decision(),
@@ -261,7 +261,50 @@ test("C11 evidence.minSubgraphReceipts 未達で拒否", { todo: "The Graph 証�
   assert.equal(r.decision.reason_codes.includes("insufficient_subgraph_evidence"), true);
 });
 
-test("C12 source:both で片方しか読めないとき、どちらが読めなかったかが理由に入る", { todo: "The Graph 証拠源（WINDOW_PLAN §2 #3）が未実装。09-08 の作業。" }, async () => {
+test("C11b 床を評価できない source で minSubgraphReceipts を渡したら呼び出し側エラー——黙って無視しない", async () => {
+  // WINDOW_PLAN §13「会期後に必ず直すもの #2」。既定 source は "vet402" なので、
+  // `minSubgraphReceipts` だけ渡すとどの分岐にも当たらず、**床を指定したのに拒否も警告も
+  // 出ない**状態だった。「壊れて見えない」型なので、黙って無視せず呼び出し側エラーにする。
+  const w = watchedAccount();
+  let fetched = 0;
+  const f = { fetch: async () => { fetched++; throw new Error("must not be called"); } };
+  const isPolicyError = (e) => /invalid_evidence_policy/.test(String(e && e.message));
+  // (a) source を書かなかった（既定 "vet402" は subgraph の床を評価できない）
+  await assert.rejects(
+    () => payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { evidence: { minSubgraphReceipts: 100 } } }),
+    isPolicyError,
+  );
+  // (b) 明示的に矛盾させた（"vet402" と名乗りながら subgraph の床を置く）
+  await assert.rejects(
+    () => payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { evidence: { minSubgraphReceipts: 100, source: "vet402" } } }),
+    isPolicyError,
+  );
+  // (c) 対称: "subgraph" と名乗りながら自社台帳の床を置く
+  await assert.rejects(
+    () => payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { evidence: { minL1Deliveries: 3, source: "subgraph" } } }),
+    isPolicyError,
+  );
+  assert.equal(fetched, 0, "判定も subgraph も引いていない（呼び出し側の誤りは通信の前に落とす）");
+  assert.deepEqual(w.signAccesses(), []);
+});
+
+test("C11c カタログ外（/decision が 404）でも minSubgraphReceipts は効く——ここでも黙って無視しない", async () => {
+  // デモの支払い先（The Graph）はカタログ外（§3.1）。証拠の床が 404 経路で無視されるなら、
+  // **この機能がいちばん要る場所で効いていない**ことになる。
+  const w = watchedAccount();
+  const f = allowlistFetch([DECISION, "gateway.thegraph.com"], {
+    [DECISION]: { status: 404, body: { error: "not_found" } },
+    "gateway.thegraph.com": { status: 200, body: { data: { x402AddressSummaries: [{ totalPayments: "3" }], _meta: { block: { number: 50889853 } } } } },
+  });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { evidence: { minSubgraphReceipts: 100, source: "subgraph" } } });
+  assert.equal(r.status, "refused");
+  assert.equal(r.decision.reason_codes.includes("resource_uncatalogued"), true, "404 経路であることが残る");
+  assert.equal(r.decision.reason_codes.includes("insufficient_subgraph_evidence"), true);
+  assert.equal(f.calls.filter((u) => u.includes("gateway.thegraph.com")).length, 1, "subgraph を実際に引いた上で落としている");
+  assert.deepEqual(w.signAccesses(), []);
+});
+
+test("C12 source:both で片方しか読めないとき、どちらが読めなかったかが理由に入る", async () => {
   const w = watchedAccount();
   const f = allowlistFetch([DECISION, "gateway.thegraph.com"], {
     [DECISION]: decision(),
@@ -275,16 +318,22 @@ test("C12 source:both で片方しか読めないとき、どちらが読めな�
 
 // ---------- D. The Graph 経路の fail-closed ----------
 
-test("D13 Gateway が 403/5xx/タイムアウト → evidence_unavailable・signer 参照0", { todo: "現状の緑は空振り——subgraph 源が未実装で Gateway を一度も呼んでいないため evidence_unavailable になっているだけ。The Graph 証拠源の実装（09-08）と同時に本物にする。" }, async () => {
+test("D13 Gateway が 403/5xx/タイムアウト → evidence_unavailable・signer 参照0", async () => {
   const w = watchedAccount();
   const f = allowlistFetch([DECISION, "gateway.thegraph.com"], { [DECISION]: decision(), "gateway.thegraph.com": { status: 503, body: {} } });
   const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { evidence: { minSubgraphReceipts: 1, source: "subgraph" } } });
   assert.equal(r.status, "refused");
   assert.equal(r.decision.reason_codes.includes("evidence_unavailable"), true);
+  // 2026-09-05: この検査が無いと**空振りの緑**になる——subgraph 源が未実装で Gateway を
+  // 一度も呼んでいなくても evidence_unavailable は出る。「実際に呼んだ上で失敗したから
+  // 拒否した」ことまで見て、はじめて fail-closed の証明になる。
+  assert.equal(f.calls.filter((u) => u.includes("gateway.thegraph.com")).length, 1, "Gateway を実際に1回呼んでいる");
+  // どちらの源が読めなかったかが機械可読で残る（黙って自社台帳へ落ちていない）。
+  assert.match(r.decision.reason_codes.join(","), /subgraph/);
   assert.deepEqual(w.signAccesses(), []);
 });
 
-test("D14 Graph への全リクエストに User-Agent が付く（無いと Cloudflare 1010）", { todo: "The Graph 証拠源（WINDOW_PLAN §2 #3）が未実装。09-08 の作業。" }, async () => {
+test("D14 Graph への全リクエストに User-Agent が付く（無いと Cloudflare 1010）", async () => {
   const seen = [];
   const f = {
     fetch: async (url, init) => {
@@ -299,7 +348,7 @@ test("D14 Graph への全リクエストに User-Agent が付く（無いと Clo
   for (const g of graph) assert.ok(g.ua && g.ua.length > 0, `UA が無い: ${g.url}`);
 });
 
-test("D15 source:subgraph の決定行に subgraphId と _meta.block が載る", { todo: "The Graph 証拠源（WINDOW_PLAN §2 #3）が未実装。09-08 の作業。" }, async () => {
+test("D15 source:subgraph の決定行に subgraphId と _meta.block が載る", async () => {
   const w = watchedAccount();
   const f = allowlistFetch([DECISION, "gateway.thegraph.com"], {
     [DECISION]: decision(),
@@ -310,9 +359,11 @@ test("D15 source:subgraph の決定行に subgraphId と _meta.block が載る",
   assert.ok(ev, "source:subgraph の evidence 行がある");
   assert.ok(ev.subgraphId, "subgraphId がある");
   assert.equal(typeof ev.block?.number, "number");
+  // §2 #3: live であることの証跡。いつ引いたかが無いと、静的データと区別できない。
+  assert.match(String(ev.queriedAt), /^\d{4}-\d{2}-\d{2}T/);
 });
 
-test("D16 自社台帳の件数と subgraph の件数を1つの数に合算しない", { todo: "The Graph 証拠源（WINDOW_PLAN §2 #3）が未実装。09-08 の作業。" }, async () => {
+test("D16 自社台帳の件数と subgraph の件数を1つの数に合算しない", async () => {
   const w = watchedAccount();
   const f = allowlistFetch([DECISION, "gateway.thegraph.com"], {
     [DECISION]: decision(),
