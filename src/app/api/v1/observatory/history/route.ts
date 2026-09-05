@@ -5,7 +5,11 @@ import {
   ipRateLimitHeaders,
   sharedCacheRateLimitHeaders,
 } from "@/lib/api/ip-rate-limit";
-import { getDailyMetricsHistory } from "@/lib/observatory/metrics-rollup";
+import {
+  getDailyMetricsCoverage,
+  getDailyMetricsHistory,
+  metricsRollupLookbackDays,
+} from "@/lib/observatory/metrics-rollup";
 import { logServerError } from "@/lib/util/log";
 
 /**
@@ -38,12 +42,22 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const rows = await getDailyMetricsHistory(days);
+    const [rows, coverage] = await Promise.all([
+      getDailyMetricsHistory(days),
+      getDailyMetricsCoverage(),
+    ]);
+    const window = metricsRollupLookbackDays();
     return NextResponse.json(
       {
         days: rows,
+        // 2026-09-05: 開始日と再計算の性質を書かずに合計だけ出していたので、
+        // 第三者が state の live 合計と突き合わせたときに差を説明できなかった。
+        // 表そのものの被覆（いつから・どこまで・いつ集計したか）を応答に載せる。
+        ...coverage,
+        recomputeWindowDays: window,
+        semantics: `Daily rollup, recomputed for the trailing ${window} days on each run; late settlements are folded in on the next run, so a day older than that window is frozen until a backfill. Attempts use the same paid-attempt denominator as /api/v1/observatory/state. For live totals use /api/v1/observatory/state.`,
         disclaimer:
-          "Daily L0/L1 aggregates per chain, rolled up from the same raw measurements the Observatory publishes. Counts with denominators, not an assessment. Chain 'unknown' means the catalog row declares no network.",
+          "Daily L0/L1 aggregates per chain, rolled up from the same raw measurements the Observatory publishes. Counts with denominators, not an assessment. Chain 'unknown' means neither the payment rail nor the catalog row declares a network.",
         humanReadable: "https://vet402.com/observatory/state",
         methodology: "https://vet402.com/observatory/methodology",
       },

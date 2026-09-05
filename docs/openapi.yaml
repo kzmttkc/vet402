@@ -1562,8 +1562,19 @@ paths:
         Daily rollup of the same raw measurements the Observatory publishes,
         keyed by UTC day and CAIP-2 chain. Read by the /observatory/state
         history chart from the same reader, so page and API cannot disagree.
-        Chain "unknown" means the catalog row declares no network. Key-less;
-        IP-throttled to 30/min; CDN-cached for 1 hour (rolled up daily).
+        Chain "unknown" means neither the payment rail nor the catalog row
+        declares a network.
+
+        `l1Attempts` uses the same paid-attempt denominator as
+        `/api/v1/observatory/state` (an attempt is a request whose payment was
+        signed and sent). The rollup is recomputed for the trailing
+        `recomputeWindowDays` days on every run, so a settlement confirmed
+        after a day's first rollup is folded in on a later run; a day older
+        than that window is frozen until a backfill. Summing `days` therefore
+        tracks, but can trail, the live totals in
+        `/api/v1/observatory/state` — `coverageFrom`, `rolledUpThrough` and
+        `lastRollupAt` say exactly which span and vintage the sum covers.
+        Key-less; IP-throttled to 30/min; CDN-cached for 1 hour.
       security: []
       parameters:
         - in: query
@@ -1587,9 +1598,35 @@ paths:
                         chain: { type: string, example: "eip155:8453" }
                         l0Probes: { type: integer }
                         l0Pass: { type: integer }
-                        l1Attempts: { type: integer }
+                        l1Attempts:
+                          type: integer
+                          description: >-
+                            Paid attempts (payment signed and sent) — same
+                            denominator as /api/v1/observatory/state.
                         l1Settled: { type: integer }
                         spentUnits: { type: string, description: USDC base units }
+                  coverageFrom:
+                    type: string
+                    nullable: true
+                    example: "2026-08-14"
+                    description: Oldest UTC day present in the rollup table. Nothing before this day was aggregated.
+                  rolledUpThrough:
+                    type: string
+                    nullable: true
+                    example: "2026-09-05"
+                    description: Newest UTC day present in the rollup table.
+                  lastRollupAt:
+                    type: string
+                    nullable: true
+                    example: "2026-09-05T10:30:12Z"
+                    description: When the rollup last ran (UTC).
+                  recomputeWindowDays:
+                    type: integer
+                    example: 14
+                    description: >-
+                      How many trailing days are recomputed from raw on every
+                      run. Days older than this are frozen until a backfill.
+                  semantics: { type: string }
                   disclaimer: { type: string }
         "400":
           $ref: "#/components/responses/BadRequest"

@@ -428,9 +428,12 @@ export default async function ObservatoryStatePage() {
           <Link href="/observatory" className="underline">
             register
           </Link>{" "}
-          use the same denominator. Other machine-readable surfaces (<code>decisions</code>,{" "}
-          <code>history</code>, <code>export.csv</code>) apply their own definition of an attempt and can
-          differ; when a number is quoted from this site, the state API is the one to cite.
+          use the same denominator, and so does <code>history</code> — its rows are the same attempts, cut
+          by UTC day and chain, recomputed for the trailing 14 days on each rollup, so its totals trail
+          this table by whatever settled after the last rollup (the response says through which day it is
+          rolled up, and when). Other machine-readable surfaces (<code>decisions</code>,{" "}
+          <code>export.csv</code>) apply their own definition of an attempt and can differ; when a number is
+          quoted from this site, the state API is the one to cite.
         </p>
 
         <h2 className="sec-head">
