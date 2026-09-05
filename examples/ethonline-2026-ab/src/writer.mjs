@@ -63,7 +63,12 @@ export function renderSummaryMarkdown(run, agg) {
   L.push(`- model: \`${run.meta.model ?? "(mixed)"}\` · temperature: \`${run.meta.temperature ?? "(mixed)"}\``);
   L.push(`- trials: ${run.meta.totalTrials} (${run.meta.trialsPerCondition} per condition)`);
   L.push("");
-  L.push("## Success = verdict matches AND reason codes are a subset (WINDOW_PLAN §16)");
+  L.push("## Success = verdict matches AND reason codes are a subset, non-empty when the answer is refuse");
+  L.push("");
+  L.push("WINDOW_PLAN §16, as amended 2026-09-05 10:55 — **before any real trial was run**. The original");
+  L.push("rule said only \"subset\"; the empty set is literally a subset, so \"refused but gave no reason\"");
+  L.push("counted as a success. That is the failure this experiment exists to catch. The count under the");
+  L.push("original rule is reported below and is recomputable from the raw log.");
   L.push("");
   L.push("| condition | trials | success | successRate | verdictMatch | reasonSubset | fabricated | errors | unparseable |");
   L.push("|---|---|---|---|---|---|---|---|---|");
@@ -92,8 +97,10 @@ export function renderSummaryMarkdown(run, agg) {
   }
   L.push("");
   L.push("Counts are recomputed from `trials.jsonl` on every read (`verifyRunDir`). ");
-  L.push("Non-scoring note: successes whose reason_codes were empty — " +
-    run.meta.conditions.map((c) => `${c}: ${agg.perCondition[c].successWithEmptyReasonCodes}`).join(", ") + ".");
+  L.push("Non-scoring: count under the ORIGINAL (pre-amendment) rule — " +
+    run.meta.conditions.map((c) => `${c}: ${agg.perCondition[c].successUnderOriginalRule}`).join(", ") + ".");
+  L.push("Non-scoring: refused with no reason codes (dropped from success by the amendment) — " +
+    run.meta.conditions.map((c) => `${c}: ${agg.perCondition[c].refusedWithNoReasonCodes}`).join(", ") + ".");
   L.push("");
   return L.join("\n");
 }

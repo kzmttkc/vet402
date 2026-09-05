@@ -17,10 +17,24 @@ import { spawn } from "node:child_process";
 const MUTATIONS = [
   {
     id: "M1",
-    why: "成功条件の (2)（理由コードの部分集合検査）を外す — §16 の論理積を片方だけにする",
+    why: "成功条件の (2)（理由コードの部分集合検査）を外す — §16 の論理積を判定だけにする",
     file: "src/grade.mjs",
-    find: "    success: verdictMatch && reasonSubset,",
+    find: "    success: verdictMatch && reasonSubset && reasonNonEmptyWhenRequired,",
     replace: "    success: verdictMatch,",
+  },
+  {
+    id: "M1b",
+    why: "2026-09-05 の事前登録修正を外す — 拒否なのに理由が空の答えを再び success にする",
+    file: "src/grade.mjs",
+    find: "  const reasonNonEmptyWhenRequired = want === \"refuse\" ? !reasonCodesEmpty : true;",
+    replace: "  const reasonNonEmptyWhenRequired = true;",
+  },
+  {
+    id: "M1c",
+    why: "修正前の数え方を残さない — どちらの規則で何件だったか再計算できなくする",
+    file: "src/aggregate.mjs",
+    find: "    successUnderOriginalRule: count((t) => t.grade.successUnderOriginalRule === true),",
+    replace: "    successUnderOriginalRule: 0,",
   },
   {
     id: "M2",

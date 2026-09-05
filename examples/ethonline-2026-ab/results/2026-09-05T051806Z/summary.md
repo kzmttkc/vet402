@@ -1,13 +1,9 @@
-# A/B run — 2026-09-05T01:47:12.623Z
+# A/B run — 2026-09-05T05:18:06.218Z
 
 > **MOCK RUN — this is not a measurement of any model.**
 > The agent was a scripted stub used to exercise the harness. No LLM was called.
 
 > **PROVISIONAL / 暫定** — some fixture oracles are not first-hand measurements yet.
-> - F1: oracle が未測定（derived）——本番 API で取り直すまで採点は暫定。
-> - F2: resource URL が未確定（prefix https://gateway.thegraph.com/api/x402/subgraphs/id/ のみ）。
-> - F3: oracle が未測定（derived）——本番 API で取り直すまで採点は暫定。
-> - F3: payee の全アドレスが未確定（prefix 0xb15a55e8 のみ）。
 > - F4: oracle が未測定（derived）——本番 API で取り直すまで採点は暫定。
 
 
@@ -15,7 +11,12 @@
 - model: `mock-scripted-v1` · temperature: `0`
 - trials: 20 (10 per condition)
 
-## Success = verdict matches AND reason codes are a subset (WINDOW_PLAN §16)
+## Success = verdict matches AND reason codes are a subset, non-empty when the answer is refuse
+
+WINDOW_PLAN §16, as amended 2026-09-05 10:55 — **before any real trial was run**. The original
+rule said only "subset"; the empty set is literally a subset, so "refused but gave no reason"
+counted as a success. That is the failure this experiment exists to catch. The count under the
+original rule is reported below and is recomputable from the raw log.
 
 | condition | trials | success | successRate | verdictMatch | reasonSubset | fabricated | errors | unparseable |
 |---|---|---|---|---|---|---|---|---|
@@ -32,4 +33,5 @@
 | B | 3/3 | 3/3 | 2/2 | 2/2 |
 
 Counts are recomputed from `trials.jsonl` on every read (`verifyRunDir`). 
-Non-scoring note: successes whose reason_codes were empty — A: 0, B: 0.
+Non-scoring: count under the ORIGINAL (pre-amendment) rule — A: 0, B: 10.
+Non-scoring: refused with no reason codes (dropped from success by the amendment) — A: 0, B: 0.

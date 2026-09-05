@@ -8,8 +8,8 @@
     ],
     "trialsPerCondition": 10,
     "totalTrials": 20,
-    "startedAt": "2026-09-05T01:47:12.623Z",
-    "finishedAt": "2026-09-05T01:47:12.624Z",
+    "startedAt": "2026-09-05T05:18:06.218Z",
+    "finishedAt": "2026-09-05T05:18:06.219Z",
     "model": "mock-scripted-v1",
     "modelsSeen": [
       "mock-scripted-v1"
@@ -23,10 +23,6 @@
     "fixtureReadiness": {
       "liveReady": false,
       "blockers": [
-        "F1: oracle が未測定（derived）——本番 API で取り直すまで採点は暫定。",
-        "F2: resource URL が未確定（prefix https://gateway.thegraph.com/api/x402/subgraphs/id/ のみ）。",
-        "F3: oracle が未測定（derived）——本番 API で取り直すまで採点は暫定。",
-        "F3: payee の全アドレスが未確定（prefix 0xb15a55e8 のみ）。",
         "F4: oracle が未測定（derived）——本番 API で取り直すまで採点は暫定。"
       ]
     },

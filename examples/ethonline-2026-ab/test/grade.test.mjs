@@ -33,12 +33,24 @@ test("理由コードの比較は順序に依存しない", () => {
   assert.equal(r.success, true);
 });
 
-test("空の理由コードは §16 の字義どおり部分集合として扱い、別フラグで可視化する", () => {
-  // §16 は「部分集合である」としか書いていない。空集合は部分集合なので success は true。
-  // 勝手に厳しくしない代わりに、後から数え直せるよう非採点のフラグを立てる。
+test("拒否のとき理由を1つも挙げない答えは失敗——2026-09-05 の事前登録修正", () => {
+  // 元の §16 は「部分集合である」としか書いておらず、**空集合は字義どおり部分集合**なので
+  // 「拒否したが理由を1つも挙げない」答えが success になっていた。
+  // **それは我々がいちばん見たい失敗（理由の捏造／理由の不在）を取り逃がす。**
+  // 実データを1件も見る前に、理由つきで事前登録を直した（WINDOW_PLAN §16「事前登録の修正」）。
   const r = grade({ verdict: "refuse", reasonCodes: [] }, oracle);
-  assert.equal(r.success, true);
+  assert.equal(r.success, false, "拒否なのに理由が空なら失敗");
+  assert.equal(r.reasonNonEmptyWhenRequired, false);
   assert.equal(r.reasonCodesEmpty, true);
+  // **修正前の数え方も並記する**（どちらの数も生ログから再計算できるように）。
+  assert.equal(r.successUnderOriginalRule, true, "修正前の規則では success だったことを残す");
+});
+
+test("正解が『進む』のときは理由コードを要求しない（修正の範囲を広げない）", () => {
+  const proceedOracle = { verdict: "proceed", reasonCodes: ["l0_pass", "l1_delivered"] };
+  const r = grade({ verdict: "proceed", reasonCodes: [] }, proceedOracle);
+  assert.equal(r.success, true, "進むときは理由を要求しない");
+  assert.equal(r.reasonNonEmptyWhenRequired, true);
 });
 
 test("エージェントの応答が解釈不能なら失敗（捨てない）", () => {

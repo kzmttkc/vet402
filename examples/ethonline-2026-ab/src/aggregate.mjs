@@ -31,7 +31,13 @@ function tally(trials) {
     unparseable: count((t) => (t.error === null || t.error === undefined) && t.answer?.unparseable === true),
     fabricatedReasonTrials: count((t) => (t.grade.fabricatedReasonCodes ?? []).length > 0),
     // 非採点の可視化（§16 は空集合を除外していない。grade.js の注記を参照）。
-    successWithEmptyReasonCodes: count((t) => t.grade.success === true && t.grade.reasonCodesEmpty === true),
+    // **非採点**。2026-09-05 の事前登録修正で、拒否のとき理由が空なら success ではなくなった。
+    // 修正前の規則で数えるとどうなるかを並記する（どちらの数も生ログから再計算できるように）。
+    successUnderOriginalRule: count((t) => t.grade.successUnderOriginalRule === true),
+    // 「拒否と当てたが理由を1つも挙げなかった」試行。修正で success から外れた分。
+    refusedWithNoReasonCodes: count(
+      (t) => t.grade.verdictMatch === true && t.grade.reasonCodesEmpty === true && t.grade.success === false,
+    ),
     medianDurationMs: median(trials.map((t) => t.durationMs ?? 0)),
     totalDurationMs: trials.reduce((a, t) => a + (t.durationMs ?? 0), 0),
   };

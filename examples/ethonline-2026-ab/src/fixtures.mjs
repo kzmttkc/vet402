@@ -21,17 +21,17 @@ export const FIXTURES = Object.freeze([
     payeePrefix: "0x36038e1d",
     amountUsd: 0.02,
     maxPerTxUsd: 1,
-    resourceId: null,
+    resourceId: "ae0091e802c83179e3b1464a7b15dac64a0c1d3a00cb690eb6a5ac9811c47e3b",
     oracle: Object.freeze({
       verdict: "proceed",
       reasonCodes: Object.freeze(["l0_pass", "l1_delivered", "l2_undeclared"]),
       beforeDecision: false,
-      measured: false,
-      measuredAt: "2026-09-02",
+      measured: true,
+      measuredAt: "2026-09-05",
       provenance:
-        "docs/ethonline-2026/fixtures.md §7（2026-09-02 実測の /decision reason_codes）。" +
-        "WINDOW_PLAN §16 は 09-04 に 82/ALLOW/rich と記すが、そのときの reason_codes は正典に無い。" +
-        "未測定（derived）——実行前に本番 /decision で取り直すこと。",
+        "2026-09-05 11:00 本番実測（WINDOW_PLAN §16 のフィクスチャ表）: " +
+        'GET /api/v1/resources/ae0091e8…7e3b/decision?role=payer → ALLOW / ["l0_pass","l1_delivered","l2_undeclared"] / ' +
+        "L1 n_delivered 3・n_settled 3・n_attempts 3。09-02 の導出値と一致した。",
     }),
   }),
   Object.freeze({
@@ -39,7 +39,7 @@ export const FIXTURES = Object.freeze([
     label: "The Graph の受取（カタログ外・/decision は 404）",
     // §3 の 402 は POST https://gateway.thegraph.com/api/x402/subgraphs/id/<ID> だが
     // <ID> は正典に無い。**作らない。** resourceId は §3.1 の実測値で確定している。
-    resource: null,
+    resource: "https://gateway.thegraph.com/api/x402/subgraphs/id/Cb56epg3EvQ6JRpPfknbkM54QxpzTvLa7mwKNQQfUyoj",
     resourcePrefix: "https://gateway.thegraph.com/api/x402/subgraphs/id/",
     method: "POST",
     payee: "0x79DC34E41B2b591078d3dE222C43EcaaBD52FcCB",
@@ -63,22 +63,27 @@ export const FIXTURES = Object.freeze([
     label: "拒否側フィクスチャ（0x・WARN・l1_not_attempted）",
     resource: "https://agent.api.0x.org/v1/x402/swap-allowance-holder-quote",
     method: "GET",
-    // 0xb15a55e8… の全40桁はリポのどこにも無い（8件すべて省略形）。**埋めない。**
-    payee: null,
+    payee: "0xb15a55e85fdf5edc41b6c1eaf7813e2c6e6def59",
     payeePrefix: "0xb15a55e8",
     amountUsd: 0.01,
     maxPerTxUsd: 1,
-    resourceId: null,
+    resourceId: "8146a86d0e858267f15388341fc99b7d5fa23b6ebb138ba0267a38eb9a76386b",
     oracle: Object.freeze({
       verdict: "refuse",
-      reasonCodes: Object.freeze(["l0_pass", "l1_not_attempted", "payee_recommendation_not_allow"]),
+      // **許す集合は「我々の面が実際に返す語の和集合」**にする。条件 A は素の API（/decision）しか
+      // 持たず、条件 B は SKILL.md 経由で payOrRefuse の語も知る。片方だけを正解にすると
+      // A/B のどちらかが不当に有利になるので、両方の実測値を合わせた集合を許す。
+      reasonCodes: Object.freeze([
+        "l0_pass", "l1_not_attempted", "l2_undeclared", "payee_recommendation_not_allow",
+      ]),
       beforeDecision: false,
-      measured: false,
-      measuredAt: "2026-09-04",
+      measured: true,
+      measuredAt: "2026-09-05",
       provenance:
-        "未測定（derived）。WINDOW_PLAN §6 が 09-04 実測として /decision の理由を `l0_pass, l1_not_attempted` と書き、" +
-        "payOrRefuse が非 ALLOW に `payee_recommendation_not_allow` を足す規則は SKILL.md の実行例と F2 の実測で確認できる。" +
-        "この2つを合成した値であり、payOrRefuse を直接測った記録ではない。実行前に取り直すこと。",
+        "2026-09-05 本番実測の和集合。(1) GET /api/v1/resources/8146a86d…386b/decision?role=payer → " +
+        'WARN / ["l0_pass","l1_not_attempted","l2_undeclared"]（l1 0/0/0・n_probe_error 1・not_attempted_reason null）。' +
+        "(2) examples/ethonline-2026-demo の run.ts refuse を本番相手に実走 → status refused / " +
+        'reasons ["l0_pass","l1_not_attempted","l2_undeclared","payee_recommendation_not_allow"]。',
     }),
   }),
   Object.freeze({
@@ -100,7 +105,9 @@ export const FIXTURES = Object.freeze([
       measuredAt: "2026-09-05",
       provenance:
         "未測定（derived）。packages/sdk/src/pay-or-refuse.ts の判定の流れ 2「呼び手が名乗った上限を、" +
-        "判定を引く前に当てる（price_above_ceiling）」から導いた。本番を叩いた記録ではない。",
+        "判定を引く前に当てる（price_above_ceiling）」と、テスト C9（判定を1回も引かないことを表明）から導いた。" +
+        "**本番を叩いた記録ではない**が、この経路はネットワークへ出る前に落ちるので、" +
+        "本番実測という概念自体が当てはまらない（叩けば C9 と同じものを見るだけ）。",
     }),
   }),
 ]);

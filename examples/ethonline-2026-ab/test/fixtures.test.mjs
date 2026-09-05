@@ -34,10 +34,30 @@ test("全フィクスチャに oracle の出所（provenance）と測定日が�
   }
 });
 
-test("本文に無い値を捏造しない——不明な payee は null で、prefix だけ持つ", () => {
+test("値は実測で埋めるか null のまま。**推測で埋めない**", () => {
+  // 2026-09-05: F1/F2/F3 は本番 API で実測して埋めた（WINDOW_PLAN §16 のフィクスチャ表）。
+  // 元の検査は「F3 の payee は null であること」を要求していたが、それは
+  // **「まだ測っていない」状態の記述**であって、守るべき規則ではなかった。
+  // 守るべきは「**測っていない値を書かない**」。そちらを検査する。
+  for (const f of FIXTURES) {
+    if (f.payee !== null) {
+      assert.match(f.payee, /^0x[0-9a-fA-F]{40}$/, `${f.id}: payee は全40桁か null`);
+      assert.ok(f.payee.toLowerCase().startsWith(f.payeePrefix.toLowerCase()),
+        `${f.id}: payee が payeePrefix と食い違う`);
+    }
+    if (f.resourceId !== null) {
+      assert.match(f.resourceId, /^[0-9a-f]{64}$/, `${f.id}: resourceId は sha256 の64桁`);
+    }
+    // **出所の無い値を作らない。** measured: true なら provenance に測った日と面が書いてある。
+    if (f.oracle.measured) {
+      assert.match(f.oracle.provenance, /実測|実走/, `${f.id}: measured なのに provenance が実測と言っていない`);
+      assert.match(f.oracle.measuredAt, /^\d{4}-\d{2}-\d{2}$/);
+    }
+  }
+  // F3 の実測値（この2つは会期の提出物が名指しするので、値そのものを固定する）
   const f3 = FIXTURES.find((f) => f.id === "F3");
-  assert.equal(f3.payee, null, "0xb15a55e8… の全40桁はリポのどこにも無い。作らない");
-  assert.equal(f3.payeePrefix, "0xb15a55e8");
+  assert.equal(f3.payee, "0xb15a55e85fdf5edc41b6c1eaf7813e2c6e6def59");
+  assert.equal(f3.resourceId, "8146a86d0e858267f15388341fc99b7d5fa23b6ebb138ba0267a38eb9a76386b");
 });
 
 test("fixtureReadiness は『実 LLM 実行に足りているか』を機械可読で返す", () => {
