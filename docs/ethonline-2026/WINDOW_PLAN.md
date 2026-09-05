@@ -232,6 +232,14 @@ SDK は世の中で使えない。
 
 **数字は撮影当日に取り直す**（`[N]` `[B]` `[M]` `373`）。**出典に無い数字を口に出さない。**
 
+### 撮影で画面に出してはいけないもの（09-05 追加・**出したら公開後に取り消せない**）
+
+- **The Graph の API キー。** 問い合わせ先が `https://gateway.thegraph.com/api/<KEY>/subgraphs/id/…` という
+  **URL にキーが載る形**なので、ターミナルのコマンド行・履歴・エラーメッセージに素で出る。
+  **撮影前に環境変数へ逃がし、画面には `$GRAPH_API_KEY` としか出さない。**
+- `VOUCH_API_KEY`・`OBSERVATORY_WALLET_PRIVATE_KEY`・`.env*` の中身・`~/.bazantic/gateway/wallet.json`
+- **録画は公開される。スクショもリポも同じ。** 一度出たキーは失効させるしかない
+
 ### 録音（Takeshi 手番・**AI 音声は自動却下**）
 
 **必要なのは肉声のナレーションだけ。** 画面収録と編集は私がやる。
@@ -493,7 +501,10 @@ curl -sL -X POST "https://gateway.thegraph.com/api/$GRAPH_API_KEY/subgraphs/id/C
   -d '{"query":"{ _meta { block { number timestamp } deployment } x402AddressSummaries(where: {address: \"0x79dc…fccb\"}) { id address role totalPayments totalVolumeDecimal firstPaymentTimestamp lastPaymentTimestamp } }"}'
 ```
 
-- **`user-agent` は必須**（無いと Cloudflare が 1010 で 403。鍵の不正と誤診しやすい）
+- **`user-agent` は必須**（無いと Cloudflare が **1010 で 403**）。
+  **1010 を「鍵が不正」と分類しない。** 原因が違うので直し方も違う——1010 は UA 不足、401/403 の他形は鍵。
+  SDK は **1010 を `evidence_unavailable`** として扱い、鍵エラーと**区別する**
+- **無料枠は月 10 万クエリ**（`graph-gateway-needs-user-agent`）
 - **アドレスは小文字**で渡す
 - **`x402AddressSummary(id:)` の単数形を使わない。** `id` は `0x01000000` を前置した合成値
   （実測: `0x0100000079dc34e41b2b591078d3de222c43ecaabd52fccb`）。**複数形＋`where` で引く**
