@@ -10,6 +10,34 @@ export {
   type SpendDecision,
 } from "./spend-guard.js";
 
+// ETHOnline 2026（会期中の新規・WINDOW_PLAN §2）。判定のあと、条件を全部通したときだけ払う。
+// テストは dist から読む（rootDir: src / outDir: dist）ので、ここから re-export する。
+export {
+  payOrRefuse,
+  readDemoDecisions,
+  readL1Decisions,
+  appendDecision,
+  DEFAULT_DECISION_STORE,
+  BASE_CHAIN,
+  BASE_CHAIN_ID,
+  BASE_USDC,
+  DEFAULT_MAX_PER_TX_USD,
+  type PayOrRefuseInput,
+  type PayOrRefuseResult,
+  type PayDecisionRecord,
+  type PayPolicy,
+  type PayEvidencePolicy,
+  type PayEvidenceRow,
+  type PayEvidenceSource,
+  type PayRefuseReason,
+  type PayerAccount,
+  type X402Accept,
+  type X402Settlement,
+  type StoredDecision,
+  type DecisionStoreOptions,
+  type Eip3009Authorization,
+} from "./pay-or-refuse.js";
+
 export type Recommendation = "ALLOW" | "WARN" | "BLOCK";
 
 export type TrustScoreResult = {

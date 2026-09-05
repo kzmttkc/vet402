@@ -1,5 +1,8 @@
 import { SpendGuard } from "./spend-guard.js";
 export { SpendGuard, DEFAULT_MAX_SCORE_AGE_MS, } from "./spend-guard.js";
+// ETHOnline 2026（会期中の新規・WINDOW_PLAN §2）。判定のあと、条件を全部通したときだけ払う。
+// テストは dist から読む（rootDir: src / outDir: dist）ので、ここから re-export する。
+export { payOrRefuse, readDemoDecisions, readL1Decisions, appendDecision, DEFAULT_DECISION_STORE, BASE_CHAIN, BASE_CHAIN_ID, BASE_USDC, DEFAULT_MAX_PER_TX_USD, } from "./pay-or-refuse.js";
 /**
  * Does this fast verdict clear a payment? The one correct reading of the fast
  * surface, written once so nobody has to re-derive it at a call site.

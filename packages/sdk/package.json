@@ -16,6 +16,7 @@
     "test": "npm run build && node --test 'test/*.test.mjs'"
   },
   "devDependencies": {
+    "@types/node": "^22.20.1",
     "typescript": "^5"
   },
   "description": "Trust scores for AI agents and x402 payees on Base. Read a score, or gate a payment with SpendGuard before it settles.",
