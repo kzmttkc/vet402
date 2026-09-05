@@ -151,6 +151,39 @@ const SURFACES: Surface[] = [
     fields: ["status", "declaration_hash", "response_hash", "diff_hash", "missing_keys", "observed_at"],
   },
   {
+    // ETHOnline 2026 / WINDOW_PLAN §2 #3: evidence の 1 行は **どの台帳が答えたか** を
+    // 自分で名乗る。payOrRefuse は同じ配列に vet402 の行と The Graph subgraph の行を
+    // 混ぜて返すので、行の形が 4 面（実装・OpenAPI・SDK 型・MCP スキーマ）で 1 つで
+    // なければ、読み手は源を区別できないまま 2 つの台帳の観測を 1 つの束として読む。
+    label: "Evidence",
+    spec: ["Evidence", "properties"],
+    impl: [
+      ["src/lib/decision/types.ts", ["Evidence"]],
+      ["packages/sdk/src/index.ts", ["Evidence"]],
+      ["packages/mcp-server/src/vouch-client.ts", ["Evidence"]],
+    ],
+    fields: [
+      "level",
+      // 源の名前。これが無い行は「2 つの台帳のどちらの観測か」を言えない。
+      "source",
+      "purchase_id",
+      "observation_id",
+      "url",
+      // §6.3 L2 の根拠ハッシュ。
+      "declaration_hash",
+      "response_hash",
+      "diff_hash",
+      "missing_keys",
+      // --- source: "subgraph" の行だけが持つ、live を読んだことの証跡（§15）---
+      "subgraphId",
+      "block",
+      "deployment",
+      "queriedAt",
+      // その源が知っている件数。**源をまたいで足さない**（D16）。
+      "receipts",
+    ],
+  },
+  {
     label: "BuyerFacts",
     spec: ["BuyerFacts", "properties"],
     impl: [
@@ -713,4 +746,17 @@ test("新規ルートの 200 が components の schema を参照する（説明�
     const block = spec.slice(start, next === -1 ? undefined : next);
     assert.ok(block.includes(`#/components/schemas/${ref}`), `${path} の 200 が ${ref} を参照していない`);
   }
+});
+
+test("payOrRefuse の行（PayEvidenceRow）は Evidence の部分集合——同じ配列に混ざる行の形が割れない", () => {
+  // payOrRefuse は /decision の行（source: vet402）と The Graph から読んだ行
+  // （source: subgraph）を **1 つの配列**に入れて返す。片方だけにフィールドが
+  // 増えると、同じ配列の中で行の形が 2 通りになり、読み手は「その行に何が
+  // 載りうるか」を源ごとに覚えなければならなくなる。ここで包含を固定しておく。
+  const row = membersAtPath("packages/sdk/src/pay-or-refuse.ts", ["PayEvidenceRow"]);
+  const canon = membersAtPath("packages/sdk/src/index.ts", ["Evidence"]);
+  assert.ok(row && row.includes("source"), "PayEvidenceRow を AST から読めていない");
+  assert.ok(canon && canon.includes("source"), "Evidence を AST から読めていない");
+  const extra = row.filter((f) => !canon.includes(f));
+  assert.deepEqual(extra, [], "PayEvidenceRow にしか無いフィールド（Evidence 側にも足す）");
 });

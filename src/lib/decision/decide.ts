@@ -20,6 +20,7 @@ import { l2EvidenceOf, loadSellerFacts, type SellerFactsLoaded } from "./seller-
 import { loadBuyerFacts } from "./buyer-facts";
 import { decidePayer, decidePayee, DECISION_RULES_VERSION, type Recommendation, type PayerOptions } from "./rules";
 import { isSpendingHalted } from "@/lib/observatory/kill-switch";
+import { assertEvidenceContract, vet402Evidence } from "./evidence";
 import type { BuyerFacts, Evidence, Freshness, NotAttemptedReason, SellerFacts } from "./types";
 
 export const DECISION_DISCLAIMER =
@@ -114,16 +115,26 @@ export function buildDecision(input: BuildInput): DecisionResult {
   if (input.role === "payer") {
     const d = decidePayer(input.facts, input.options);
     const f = input.facts;
-    const evidence: Evidence[] = [{ level: "L0", url: `https://vet402.com/observatory/e/${input.subject.observatory_id}` }];
+    // 行はすべて **我々自身の台帳の観測**なので source: "vet402" を刻む。
+    // このサーバは The Graph を引かない（呼び手が自分の鍵で引き、payOrRefuse が
+    // 同じ配列へ source: "subgraph" の行を足す）。我々の鍵で代理して引くと
+    // 「あなたは vet402 を信じなくてよい」という主張が成立しなくなる。
+    const evidence: Evidence[] = [
+      vet402Evidence({ level: "L0", url: `https://vet402.com/observatory/e/${input.subject.observatory_id}` }),
+    ];
     if (f.l1.last_purchase_id) {
-      evidence.push({
-        level: "L1",
-        purchase_id: f.l1.last_purchase_id,
-        url: `https://vet402.com/api/v1/observatory/endpoints/${input.subject.observatory_id}/purchases`,
-      });
+      evidence.push(
+        vet402Evidence({
+          level: "L1",
+          purchase_id: f.l1.last_purchase_id,
+          url: `https://vet402.com/api/v1/observatory/endpoints/${input.subject.observatory_id}/purchases`,
+        }),
+      );
     }
     const l2Evidence = l2EvidenceOf(f, input.subject.observatory_id);
     if (l2Evidence) evidence.push(l2Evidence);
+    // 配る直前に 1 回だけ検査する（源を名乗らない行・合算した行を外へ出さない）。
+    assertEvidenceContract(evidence);
     return {
       ...base,
       role: "payer",

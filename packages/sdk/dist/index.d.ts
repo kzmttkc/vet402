@@ -350,6 +350,49 @@ export type BuyerFacts = {
     first_seen: string | null;
     last_seen: string | null;
 };
+/**
+ * 証拠 1 行の**出どころ**（WINDOW_PLAN §2 #3）。
+ *
+ *   vet402    vet402 自身の L0–L2 台帳（実際に払って測った記録）
+ *   subgraph  The Graph の x402 subgraph。**呼び手が自分の鍵で引いた**外部の索引
+ *
+ * `policy.evidence.source` は 3 つ目に `"both"` を取るが、それは「どの源を**読むか**」の
+ * 指定であって観測の出どころではない。行が名乗れるのはこの 2 つだけ。
+ */
+export type EvidenceSource = "vet402" | "subgraph";
+/**
+ * 証拠 1 行。**1 行は 1 つの源の観測**で、源をまたいだ件数の合算は作れない。
+ *
+ * `getDecision()` が返す行は必ず `source: "vet402"`（サーバは The Graph を引かない）。
+ * `payOrRefuse()` は、呼び手が `policy.evidence.graphApiKey` を渡したときに
+ * **同じ配列へ** `source: "subgraph"` の行を足す。その行は
+ * `subgraphId` / `block.number` / `deployment` / `queriedAt` を必ず持つ——
+ * それが「live のデータを読んだ」ことの唯一の自明な証明だから（§15）。
+ *
+ * docs/openapi.yaml の Evidence と 4 面で一致する（tests/openapi-schema-parity.test.ts）。
+ */
+export type Evidence = {
+    level: "L0" | "L1" | "L2";
+    /** どの台帳の観測か。**省略されない。** */
+    source: EvidenceSource;
+    purchase_id?: string;
+    observation_id?: string;
+    url: string;
+    /** L2 のみ（§6.3）。 */
+    declaration_hash?: string | null;
+    response_hash?: string | null;
+    diff_hash?: string | null;
+    missing_keys?: string[] | null;
+    subgraphId?: string;
+    block?: {
+        number: number;
+        timestamp?: number;
+    };
+    deployment?: string;
+    queriedAt?: string;
+    /** **その源が知っている件数**。源をまたいで足さない（D16）。 */
+    receipts?: number;
+};
 export type DecisionResult = {
     subject: {
         type: "resource";
@@ -381,12 +424,8 @@ export type DecisionResult = {
         l1: string | null;
         l2: string | null;
     };
-    evidence: {
-        level: "L0" | "L1" | "L2";
-        purchase_id?: string;
-        observation_id?: string;
-        url: string;
-    }[];
+    /** L0–L2 の公開レシート。**各行が自分の源を名乗る**（/decision は vet402 のみ）。 */
+    evidence: Evidence[];
     /** 移行期間の併記。null のことがある。判定の根拠ではない。 */
     score: {
         trustScore: number | null;

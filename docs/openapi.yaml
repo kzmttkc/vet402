@@ -2858,8 +2858,10 @@ components:
           description: Observation times of l0 / l1 / l2 (ISO 8601 or null).
         evidence:
           type: array
-          items: { type: object }
-          description: Public receipts behind the facts (level, purchase_id, url).
+          items: { $ref: "#/components/schemas/Evidence" }
+          description: >-
+            Public receipts behind the facts. Every row names its own `source`;
+            `/decision` emits only `vet402` rows.
         score:
           type: object
           nullable: true
@@ -3288,16 +3290,53 @@ components:
         l2: { type: string, format: date-time, nullable: true }
     Evidence:
       type: object
-      required: [level, url]
+      description: >-
+        One row of evidence. A row is ONE source's observation: counts from
+        different ledgers are never added into a single number, and a row never
+        carries material from two sources. `/decision` and `/observatory/endpoints/{id}/facts`
+        only ever emit `source: vet402`; rows with `source: subgraph` are added to the
+        same array by the payOrRefuse SDK when the caller reads The Graph with their own
+        Graph Gateway API key. vet402 does not proxy that read.
+      required: [level, source, url]
       properties:
         level: { type: string, enum: [L0, L1, L2] }
-        purchase_id: { type: string }
-        observation_id: { type: string }
+        source:
+          type: string
+          enum: [vet402, subgraph]
+          description: >-
+            Which ledger this row was observed in. `vet402` is our own L0-L2
+            measurement record; `subgraph` is The Graph's x402 subgraph, read by the
+            caller. The SDK's `policy.evidence.source` accepts a third value, `both`,
+            but that says which sources to READ - it is never the source of a row,
+            because a row from "both" would be two ledgers merged into one.
+        purchase_id: { type: string, description: "source: vet402 only." }
+        observation_id: { type: string, description: "source: vet402 only." }
         url: { type: string, format: uri }
         declaration_hash: { type: string, nullable: true, description: L2 only (§6.3). }
         response_hash: { type: string, nullable: true, description: L2 only (§6.3). }
         diff_hash: { type: string, nullable: true, description: L2 mismatch only (§6.3). }
         missing_keys: { type: array, nullable: true, items: { type: string }, description: L2 mismatch only (§6.3). }
+        subgraphId:
+          type: string
+          description: "source: subgraph only - the subgraph that was queried on The Graph's decentralised network."
+        block:
+          type: object
+          description: >-
+            source: subgraph only - the block the index was read at. `block.number`
+            together with `deployment` is the only self-evident proof that live data was
+            read rather than a static snapshot.
+          required: [number]
+          properties:
+            number: { type: integer }
+            timestamp: { type: integer }
+        deployment: { type: string, description: "source: subgraph only - the deployment hash that answered." }
+        queriedAt: { type: string, format: date-time, description: "source: subgraph only - when the query ran." }
+        receipts:
+          type: integer
+          description: >-
+            source: subgraph only - how many receipts THAT source knows about
+            (role RECIPIENT). Never added to vet402's own delivery count: the two
+            number different things.
     ResourceSubject:
       type: object
       description: The Resource a facts / decision document is about (§5 ids plus the observatory uuid).

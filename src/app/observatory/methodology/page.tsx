@@ -512,6 +512,25 @@ export default async function ObservatoryMethodologyPage() {
           — the licence is not conditioned on the number being flattering to us.
         </p>
 
+        {/* 2026-09-05 ETHOnline / WINDOW_PLAN §2 #3: evidence 行の source を
+            散文でも展開する（語彙の定義だけが独り歩きしないように）。 */}
+        <p className="doc-p">
+          <strong>Where a piece of evidence came from.</strong> Each row in an{" "}
+          <code>evidence[]</code> array names its own source, because a decision document can
+          carry observations from two different ledgers.{" "}
+          <code>evidence.source=vet402</code> is our own record: a probe we ran, a purchase we
+          paid for, a schema check on what came back. <code>evidence.source=subgraph</code> is
+          The Graph&rsquo;s x402 subgraph, read by the caller with their own Graph Gateway API
+          key rather than proxied through us; that row carries the <code>subgraphId</code>, the{" "}
+          <code>block.number</code> and <code>deployment</code> it was read at, and the{" "}
+          <code>queriedAt</code> timestamp, so a reader can tell live index data apart from a
+          static snapshot. A caller can ask for <code>evidence.source=both</code> and be refused
+          if either source cannot be read &mdash; but no single row wears that label, because the
+          two sources count different things and adding them would produce a number that means
+          nothing. Our engine and the subgraph can disagree about the same wallet; the rows stay
+          apart so a reader sees the disagreement instead of an average of it.
+        </p>
+
         {/* 2026-09-05 AEO: 語彙の正典は src/lib/observatory/vocabulary.ts。
             この節と DefinedTermSet JSON-LD は同じ配列から出る。上の §1–§7 は
             同じ語を散文で展開したもので、矛盾したらどちらかではなく両方直す。 */}

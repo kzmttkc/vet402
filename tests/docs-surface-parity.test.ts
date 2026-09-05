@@ -120,6 +120,19 @@ for (const doc of ["src/app/docs/api/page.tsx", "public/llms.txt", "src/app/llms
   });
 }
 
+test("公開面が evidence[].source を説明している（源の名前を機械可読で出したことを人間の面にも書く）", () => {
+  // WINDOW_PLAN §13 の 4 面パリティ #3: 公開フィールドを足したら docs にも 1 行。
+  // 「どの台帳が答えたか」は判定そのものではないが、§3 の核（同じウォレットについて
+  // 我々のエンジンと The Graph の subgraph が違うことを言う）を読者が確かめる入口なので、
+  // 仕様書だけでなく人間が読む面にも出す。
+  const page = read("src/app/docs/api/page.tsx");
+  assert.ok(/evidence\[\]\.source|evidence\[\].*source/.test(page), "docs/api に evidence[].source の説明が無い");
+  for (const word of ["vet402", "subgraph"]) {
+    assert.ok(page.includes(word), `docs/api に源の名前 ${word} が無い`);
+  }
+  assert.ok(/subgraphId/.test(page), "docs/api が live の証跡（subgraphId）に触れていない");
+});
+
 test("docs/api の Quickstart は例の番号を正しく指し、npm スコープの正典を @vet402 と書く", () => {
   const page = read("src/app/docs/api/page.tsx");
   assert.ok(!page.includes("(example 3)"), "payee-score の例は 4 番目（example 3 は署名メッセージ）");

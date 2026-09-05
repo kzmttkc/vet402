@@ -51,6 +51,12 @@ test("公開面が使う語が語彙から漏れていない", () => {
     "not_checked",
     "delisted",
     "path_template",
+    // 2026-09-05 ETHOnline / WINDOW_PLAN §13 #8: evidence[].source の値名は
+    // 語彙表に 1 文の定義を持つ。値が 3 つあるのは「行が名乗る源」が 2 つ、
+    // 「読む源の指定」が 3 つ目という非対称があるからで、そこを黙らせない。
+    "evidence.source=vet402",
+    "evidence.source=subgraph",
+    "evidence.source=both",
   ]) {
     assert.ok(terms.has(required), `語彙に ${required} が無い`);
   }

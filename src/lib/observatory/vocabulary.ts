@@ -24,7 +24,7 @@ export type VocabularyTerm = {
   /** 公開面・API・台帳で使っている語そのもの。 */
   term: string;
   /** 語が属する層（見出しのグルーピングにも使う）。 */
-  group: "levels" | "l0" | "l1" | "l2" | "catalog";
+  group: "levels" | "l0" | "l1" | "l2" | "catalog" | "evidence";
   /** 1 文の直接回答から始まる定義。 */
   definition: string;
 };
@@ -163,6 +163,29 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     group: "catalog",
     definition: "relisted means a previously delisted endpoint reappeared in a complete catalog fetch.",
   },
+  // ------------------------------------------------------------------
+  // evidence[].source（2026-09-05 / ETHOnline・WINDOW_PLAN §2 #3）
+  // 証拠 1 行が「どの台帳の観測か」を名乗るようになった。値の意味を語彙に
+  // 置かないと、読み手は vet402 の測定と外部の索引を同じ重みで足して読む。
+  // ------------------------------------------------------------------
+  {
+    term: "evidence.source=vet402",
+    group: "evidence",
+    definition:
+      "evidence.source=vet402 means the evidence row was observed in vet402's own L0\u2013L2 record: an unpaid probe, a real USDC purchase we made, or the schema check on what that purchase returned. It carries our purchase id and the public receipt URL, and it asks the reader to trust our measurement.",
+  },
+  {
+    term: "evidence.source=subgraph",
+    group: "evidence",
+    definition:
+      "evidence.source=subgraph means the evidence row was read from The Graph's x402 subgraph with the caller's own Graph Gateway API key, not proxied through vet402. Such a row carries subgraphId, block.number, deployment and queriedAt, which is what lets a reader tell live index data apart from a static snapshot.",
+  },
+  {
+    term: "evidence.source=both",
+    group: "evidence",
+    definition:
+      "evidence.source=both means the caller asked payOrRefuse to read the vet402 ledger and The Graph subgraph before deciding, and to refuse if either could not be read. It is a request about which sources to consult, not a label a row can wear: a row from \"both\" would be two ledgers merged into one number.",
+  },
   {
     term: "settle_drop",
     group: "catalog",
@@ -177,6 +200,7 @@ export const VOCABULARY_GROUP_LABELS: Record<VocabularyTerm["group"], string> = 
   l1: "L1 settlement statuses",
   l2: "L2 schema results",
   catalog: "Catalog events",
+  evidence: "Evidence sources",
 };
 
 /**

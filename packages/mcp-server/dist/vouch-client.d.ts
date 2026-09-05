@@ -130,6 +130,38 @@ export type PayeeScoreResult = {
     disclaimer: string;
 };
 export type DecisionRecommendation = "ALLOW" | "WARN" | "BLOCK";
+/**
+ * 証拠 1 行の出どころ（WINDOW_PLAN §2 #3）。`vet402` は vet402 自身の L0–L2 台帳、
+ * `subgraph` は The Graph の x402 subgraph を**呼び手の鍵で**引いた行。
+ * `both` は「どの源を読むか」の指定であって行の値ではない。
+ */
+export type EvidenceSource = "vet402" | "subgraph";
+/**
+ * 証拠 1 行。**1 行は 1 つの源の観測**であり、源をまたいだ件数の合算は無い。
+ * `pay_if_trusted` / `check_resource_decision` はこの配列をそのままモデルへ渡すので、
+ * 型が狭いと「どちらの台帳が答えたか」がモデルに届かない。
+ * docs/openapi.yaml の Evidence と 4 面で一致する。
+ */
+export type Evidence = {
+    level: "L0" | "L1" | "L2";
+    source: EvidenceSource;
+    purchase_id?: string;
+    observation_id?: string;
+    url: string;
+    declaration_hash?: string | null;
+    response_hash?: string | null;
+    diff_hash?: string | null;
+    missing_keys?: string[] | null;
+    subgraphId?: string;
+    block?: {
+        number: number;
+        timestamp?: number;
+    };
+    deployment?: string;
+    queriedAt?: string;
+    /** その源が知っている件数。源をまたいで足さない（D16）。 */
+    receipts?: number;
+};
 export type DecisionResult = {
     subject: {
         type: "resource";
@@ -153,12 +185,8 @@ export type DecisionResult = {
         l1: string | null;
         l2: string | null;
     };
-    evidence: {
-        level: "L0" | "L1" | "L2";
-        purchase_id?: string;
-        observation_id?: string;
-        url: string;
-    }[];
+    /** L0–L2 の公開レシート。**各行が自分の源を名乗る**（Evidence を参照）。 */
+    evidence: Evidence[];
     score: {
         trustScore: number | null;
         recommendation: DecisionRecommendation | null;

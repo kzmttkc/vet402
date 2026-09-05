@@ -104,8 +104,31 @@ export type BuyerFacts = {
 
 export type Freshness = { l0: string | null; l1: string | null; l2: string | null };
 
+/**
+ * 証拠 1 行の**出どころ**（2026-09-05・WINDOW_PLAN §2 #3）。
+ *
+ *   vet402    我々自身の L0–L2 台帳。実際に払って測った記録
+ *   subgraph  The Graph の x402 subgraph。**呼び手が自分の鍵で引いた**外部の索引
+ *
+ * SDK の `policy.evidence.source` は 3 つ目に `"both"` を取るが、それは
+ * 「どの源を**読むか**」の指定であって、観測の出どころではない。行が名乗れるのは
+ * この 2 つだけ——`"both"` の行は 2 つの台帳を 1 行に合算したものになる（D16 が禁じる形）。
+ */
+export type EvidenceSource = "vet402" | "subgraph";
+
+/**
+ * 証拠 1 行。**1 行は 1 つの源の観測**であり、源をまたいだ合算はここでは作れない。
+ * 検査は src/lib/decision/evidence.ts の assertEvidenceContract が持つ。
+ *
+ * `/decision` と `/observatory/endpoints/{id}/facts` が出す行は必ず `source: "vet402"`。
+ * `source: "subgraph"` の行は、呼び手が自分の Graph API キーで引いたときに
+ * `payOrRefuse`（packages/sdk）が**同じ配列へ足す**——だから行の形は 1 つでなければ
+ * ならず、この型が 4 面（実装 / OpenAPI / SDK 型 / MCP スキーマ）の正典になる。
+ */
 export type Evidence = {
   level: "L0" | "L1" | "L2";
+  /** どの台帳の観測か。**省略できない**——名乗らない行は源を区別できない。 */
+  source: EvidenceSource;
   purchase_id?: string;
   observation_id?: string;
   url: string;
@@ -114,4 +137,21 @@ export type Evidence = {
   response_hash?: string | null;
   diff_hash?: string | null;
   missing_keys?: string[] | null;
+  // --- ここから下は source: "subgraph" の行だけが持つ（§15）---
+  /** 引いた subgraph（分散ネットワークの ID）。 */
+  subgraphId?: string;
+  /**
+   * 読んだ時点のブロック。**`block.number` と `deployment` が
+   * 「live のデータを読んだ」ことの唯一の自明な証明**（WINDOW_PLAN §15）。
+   */
+  block?: { number: number; timestamp?: number };
+  /** 読んだ deployment のハッシュ（同じ subgraph の別バージョンと区別できる）。 */
+  deployment?: string;
+  /** 引いた時刻（ISO8601 UTC）。動く数字なので、いつの数かを行が持つ。 */
+  queriedAt?: string;
+  /**
+   * **その源が知っている件数**。行ごとに別々に持ち、源をまたいで足さない（D16）。
+   * 自社台帳の「配達件数」と subgraph の「受領件数」は別のことを数えた別の数である。
+   */
+  receipts?: number;
 };

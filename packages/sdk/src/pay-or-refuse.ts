@@ -601,9 +601,19 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
     evidence.push(
       ...(Array.isArray(decision.evidence) ? decision.evidence : []).map((row) => ({
         level: row.level,
-        source: "vet402" as const,
+        // **サーバが名乗った源をそのまま通す。** 決め打ちで "vet402" を入れると、
+        // サーバが別の源の行を出した瞬間に「どの台帳が答えたか」を我々が塗り替える
+        // ことになる。値が入っているので壊れて見えない——いちばん悪い形。
+        // 源を名乗らない古いサーバの行だけ "vet402" と読む（そのサーバは自社台帳しか持たない）。
+        source: row.source === "subgraph" ? ("subgraph" as const) : ("vet402" as const),
         url: row.url,
         ...(row.purchase_id ? { purchase_id: row.purchase_id } : {}),
+        // live の証跡は落とさない（§15: これが無い行は静的データと区別できない）。
+        ...(row.subgraphId ? { subgraphId: row.subgraphId } : {}),
+        ...(row.block ? { block: row.block } : {}),
+        ...(row.deployment ? { deployment: row.deployment } : {}),
+        ...(row.queriedAt ? { queriedAt: row.queriedAt } : {}),
+        ...(typeof row.receipts === "number" ? { receipts: row.receipts } : {}),
       })),
     );
   }

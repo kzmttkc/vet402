@@ -200,6 +200,7 @@ export function l2EvidenceOf(facts: SellerFacts, observatoryId: string): Evidenc
   if (facts.l2.status === "undeclared") return null;
   return {
     level: "L2",
+    source: "vet402",
     ...(facts.l1.last_purchase_id ? { purchase_id: facts.l1.last_purchase_id } : {}),
     url: `https://vet402.com/observatory/e/${observatoryId}`,
     declaration_hash: facts.l2.declaration_hash,

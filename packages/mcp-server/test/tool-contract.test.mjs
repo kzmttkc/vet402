@@ -177,3 +177,38 @@ test("スコア系ツールは判定を型で返す（散文の約束に依存�
     );
   }
 });
+
+// ---------------- evidence[].source (ETHOnline 2026 / WINDOW_PLAN §2 #3) ----------------
+//
+// 4 面パリティの MCP 面。`/decision` の evidence 行が「どの台帳の観測か」を名乗る
+// ようになった以上、その行をそのままモデルへ渡す 2 本のツールは、値の意味を
+// 説明文で名指ししなければならない。名前だけ渡して意味を伏せると、モデルは
+// vet402 の台帳と The Graph の subgraph を同じ重みで足して読む——§3 の核
+// （同じウォレットについて 2 つの源が違うことを言う）がいちばん要る場所で潰れる。
+test("evidence[].source を返す 2 本のツールが、源の名前を説明文で名指ししている", () => {
+  const src = readFileSync(join(PKG, "src/index.ts"), "utf8");
+  const sf = ts.createSourceFile("index.ts", src, ts.ScriptTarget.Latest, true);
+  /** server.tool("name", <description>, …) の説明文を取り出す。 */
+  const descriptions = new Map();
+  const visit = (node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text === "tool" &&
+      node.arguments.length >= 2 &&
+      ts.isStringLiteral(node.arguments[0])
+    ) {
+      descriptions.set(node.arguments[0].text, node.arguments[1].getText(sf));
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  assert.ok(descriptions.has("pay_if_trusted"), `AST がツールを拾えていない: ${[...descriptions.keys()].join(",")}`);
+  for (const tool of ["check_resource_decision", "pay_if_trusted"]) {
+    const text = descriptions.get(tool) ?? "";
+    assert.match(text, /evidence\[\]/, `${tool} の説明が evidence[] に触れていない`);
+    assert.match(text, /source/, `${tool} の説明が source に触れていない`);
+    assert.match(text, /vet402/, `${tool} の説明が源の名前 vet402 を出していない`);
+    assert.match(text, /subgraph/, `${tool} の説明が源の名前 subgraph を出していない`);
+  }
+});

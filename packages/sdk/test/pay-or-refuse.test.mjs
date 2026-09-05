@@ -1303,3 +1303,38 @@ test("K4 実測の3件を**どの順に並べ替えても**、選ぶ accept と�
     assert.equal(w.signAccesses().length, 1, `順序 ${order.join("")}`);
   }
 });
+
+test("D17 /decision が名乗った source を SDK が塗り替えない（行の出どころを消さない）", async () => {
+  // 2026-09-05: SDK は /decision の行を `source: "vet402"` で**作り直して**いた。
+  // 本番の /decision は自社台帳の行しか出さないので今日は同じ値になるが、
+  // 「サーバが名乗った源」と「SDK が決め打ちした源」は別のことである。
+  // 名乗りを無視する実装は、サーバが別の源の行を出した瞬間に**嘘をつく**——
+  // しかも値が入っているので壊れて見えない（llm-output-contract と同じ型）。
+  const w = watchedAccount();
+  const live = {
+    level: "L1",
+    source: "subgraph",
+    url: "https://gateway.thegraph.com/api/subgraphs/id/Cb56epg3EvQ6JRpPfknbkM54QxpzTvLa7mwKNQQfUyoj",
+    subgraphId: "Cb56epg3EvQ6JRpPfknbkM54QxpzTvLa7mwKNQQfUyoj",
+    block: { number: 50888579 },
+    deployment: "QmcE24HARdXXnziPii9bWFRV6njfWW82H1RKPe5x9hBkUN",
+    queriedAt: "2026-09-05T09:00:00.000Z",
+    receipts: 253,
+  };
+  const f = allowlistFetch([DECISION], {
+    [DECISION]: decision({ evidence: [live] }),
+  });
+  // ALLOW で通し、402 は許可リスト外にして署名前で止める。見るのは判定ではなく
+  // 「サーバが名乗った源が決定行にどう残るか」だけ。
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch });
+  assert.equal(r.status, "refused", "402 を読めないので署名前に止まる");
+  const row = r.decision.evidence.find((e) => e.url === live.url);
+  assert.ok(row, "サーバの行が決定行に残る");
+  assert.equal(row.source, "subgraph", "サーバが名乗った源を vet402 に塗り替えていない");
+  assert.equal(row.subgraphId, live.subgraphId, "live の証跡（subgraphId）を落としていない");
+  assert.equal(row.block?.number, live.block.number, "live の証跡（block.number）を落としていない");
+  assert.equal(row.deployment, live.deployment);
+  assert.equal(row.queriedAt, live.queriedAt);
+  assert.equal(row.receipts, live.receipts, "その源が知っている件数は行ごとに残る");
+  assert.deepEqual(w.signAccesses(), []);
+});
