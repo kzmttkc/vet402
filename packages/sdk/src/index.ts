@@ -20,7 +20,6 @@ export {
   BASE_CHAIN_ID,
   BASE_USDC,
   DEFAULT_MAX_PER_TX_USD,
-  DEFAULT_FACILITATOR_URL,
   type PayOrRefuseInput,
   type PayOrRefuseResult,
   type PayDecisionRecord,
@@ -31,6 +30,8 @@ export {
   type PayRefuseReason,
   type PayerAccount,
   type X402Accept,
+  type X402Settlement,
+  type Eip3009Authorization,
 } from "./pay-or-refuse.js";
 
 export type Recommendation = "ALLOW" | "WARN" | "BLOCK";

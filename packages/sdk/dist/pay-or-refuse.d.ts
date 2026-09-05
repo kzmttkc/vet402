@@ -1,6 +1,6 @@
 import type { DecisionResult, PayeeScoreResult } from "./index.js";
 import type { PayerAccount, X402Accept } from "./x402-pay.js";
-export type { PayerAccount, X402Accept } from "./x402-pay.js";
+export type { PayerAccount, X402Accept, X402Settlement, Eip3009Authorization } from "./x402-pay.js";
 /** Base メインネット。会期スコープは1チェーンだけ（WINDOW_PLAN §2「範囲外: 新チェーン」）。 */
 export declare const BASE_CHAIN = "eip155:8453";
 export declare const BASE_CHAIN_ID = 8453;
@@ -11,11 +11,6 @@ export declare const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
  * 上限が存在する状態にしておく（DESIGN_payOrRefuse.md §2 の `maxAmountUnits` 既定と同値）。
  */
 export declare const DEFAULT_MAX_PER_TX_USD = 1;
-/**
- * x402 の既定 facilitator。**会期中の実支払い（09-08）までに実測で確定させること。**
- * 一次確認がまだなので、呼び手が `facilitatorUrl` で上書きできる形にしてある。
- */
-export declare const DEFAULT_FACILITATOR_URL = "https://x402.org/facilitator";
 /**
  * 拒否理由。**新しい語を増やさない**のが規律で、ここに並ぶ語は既に正典にある:
  *  - `price_above_ceiling` / `payee_mismatch` / `chain_or_asset_mismatch` /
@@ -75,7 +70,6 @@ export type PayOrRefuseInput = {
     policy?: PayPolicy;
     apiUrl?: string;
     apiKey?: string;
-    facilitatorUrl?: string;
     /** 決定行の出所。デモは "agent-demo"（L1 台帳と混ぜない・F19/F20）。 */
     source?: string;
     /** 資源 ID を自分で計算済みなら渡す（正規化規則はサーバ側が持つ）。 */
@@ -102,6 +96,12 @@ export type PayOrRefuseResult = {
     signed: boolean;
     attested: boolean;
     txHash: string | null;
+    /**
+     * 署名した EIP-3009 認可の nonce。**我々しか作れない一回性の値**で、
+     * 「その決済 tx はこの購入のものか」を後から確かめる唯一の手段（監査の nonce 束縛）。
+     * 署名していない拒否経路では null——そこが「署名が存在しない」ことの機械可読な印になる。
+     */
+    nonce: string | null;
     challenge: X402Accept | null;
 };
 export declare function payOrRefuse(input: PayOrRefuseInput): Promise<PayOrRefuseResult>;

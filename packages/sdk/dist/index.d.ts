@@ -1,6 +1,6 @@
 import { SpendGuard, type SpendGuardPolicy } from "./spend-guard.js";
 export { SpendGuard, DEFAULT_MAX_SCORE_AGE_MS, type SpendGuardPolicy, type SpendGuardTrustPolicy, type SpendEvaluateInput, type SpendDenyReason, type SpendDecision, } from "./spend-guard.js";
-export { payOrRefuse, readDemoDecisions, readL1Decisions, BASE_CHAIN, BASE_CHAIN_ID, BASE_USDC, DEFAULT_MAX_PER_TX_USD, DEFAULT_FACILITATOR_URL, type PayOrRefuseInput, type PayOrRefuseResult, type PayDecisionRecord, type PayPolicy, type PayEvidencePolicy, type PayEvidenceRow, type PayEvidenceSource, type PayRefuseReason, type PayerAccount, type X402Accept, } from "./pay-or-refuse.js";
+export { payOrRefuse, readDemoDecisions, readL1Decisions, BASE_CHAIN, BASE_CHAIN_ID, BASE_USDC, DEFAULT_MAX_PER_TX_USD, type PayOrRefuseInput, type PayOrRefuseResult, type PayDecisionRecord, type PayPolicy, type PayEvidencePolicy, type PayEvidenceRow, type PayEvidenceSource, type PayRefuseReason, type PayerAccount, type X402Accept, type X402Settlement, type Eip3009Authorization, } from "./pay-or-refuse.js";
 export type Recommendation = "ALLOW" | "WARN" | "BLOCK";
 export type TrustScoreResult = {
     agentId: string;

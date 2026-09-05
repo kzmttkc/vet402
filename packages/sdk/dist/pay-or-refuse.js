@@ -14,7 +14,11 @@
  *   3. `GET /resources/{id}/decision?role=payer` を引く。読めない・degraded・ALLOW でない → 拒否
  *      3'. **404 not_found（カタログ外）→ 402 の payTo と受取人スコアだけで判定する**（§3.1・I23）
  *   4. 402 チャレンジを取り、payTo / network / asset / scheme / 金額を照合
- *   5. 全部通ったときだけ `./x402-pay.js` を動的 import して署名 → settle → attest
+ *   5. 全部通ったときだけ `./x402-pay.js` を動的 import して署名 → **売り手へ再送** → attest
+ *
+ * 5 について: **買い手は facilitator を呼ばない。決済するのは売り手**（x402-pay.ts の
+ * 冒頭に一次根拠）。2026-09-05 まで、ここは買い手から `x402.org/facilitator/settle` を
+ * 叩いていた。その形のまま 09-08 に実支払いをすれば、金は動かず理由も残らなかった。
  */
 import { DEFAULT_API_URL } from "./index.js";
 /** Base メインネット。会期スコープは1チェーンだけ（WINDOW_PLAN §2「範囲外: 新チェーン」）。 */
@@ -27,11 +31,6 @@ export const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
  * 上限が存在する状態にしておく（DESIGN_payOrRefuse.md §2 の `maxAmountUnits` 既定と同値）。
  */
 export const DEFAULT_MAX_PER_TX_USD = 1;
-/**
- * x402 の既定 facilitator。**会期中の実支払い（09-08）までに実測で確定させること。**
- * 一次確認がまだなので、呼び手が `facilitatorUrl` で上書きできる形にしてある。
- */
-export const DEFAULT_FACILITATOR_URL = "https://x402.org/facilitator";
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
 const USDC_DECIMALS = 6;
 function sameAddress(a, b) {
@@ -57,13 +56,49 @@ function readHeader(headers, name) {
     }
     return null;
 }
+/**
+ * v1 の綴りを v2 の形へ揃える。実在する v1 の壁は `network: "base"` と
+ * `maxAmountRequired` を使う（本番 `x402-payer.ts` の normalizeAccept と同じ規則）。
+ * ここで揃えておかないと、金銭ゲートが v1 を丸ごと chain_or_asset_mismatch で落とし、
+ * v1 の transport（X-PAYMENT）が届かない死んだ枝になる。
+ */
+function normalizeAccept(raw) {
+    if (typeof raw !== "object" || raw === null)
+        return null;
+    const rec = raw;
+    const amount = typeof rec.amount === "string" ? rec.amount
+        : typeof rec.maxAmountRequired === "string" ? rec.maxAmountRequired
+            : null;
+    const payTo = typeof rec.payTo === "string" ? rec.payTo : null;
+    if (amount === null || payTo === null)
+        return null;
+    if (typeof rec.scheme !== "string" || typeof rec.asset !== "string")
+        return null;
+    const network = rec.network === "base" ? BASE_CHAIN
+        : rec.network === "base-sepolia" ? "eip155:84532"
+            : typeof rec.network === "string" ? rec.network
+                : "";
+    return {
+        scheme: rec.scheme,
+        network,
+        amount,
+        asset: rec.asset,
+        payTo,
+        ...(typeof rec.maxTimeoutSeconds === "number" ? { maxTimeoutSeconds: rec.maxTimeoutSeconds } : {}),
+        ...(typeof rec.extra === "object" && rec.extra !== null ? { extra: rec.extra } : {}),
+    };
+}
+/** チャレンジは **transport のバージョンごと**読む——答える側のヘッダ名がそれで決まる。 */
 function decodeChallenge(raw) {
     try {
         const json = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(raw), (c) => c.charCodeAt(0))));
         const accepts = json.accepts;
         if (!Array.isArray(accepts) || accepts.length === 0)
             return null;
-        return accepts[0];
+        const accept = normalizeAccept(accepts[0]);
+        if (!accept)
+            return null;
+        return { x402Version: json.x402Version === 1 ? 1 : 2, accept };
     }
     catch {
         return null;
@@ -102,6 +137,7 @@ export async function payOrRefuse(input) {
         signed: false,
         attested: false,
         txHash: null,
+        nonce: null,
         challenge,
     });
     // --- 2. 呼び手が名乗った上限は、判定を引く前に当てる（C9）---
@@ -160,11 +196,15 @@ export async function payOrRefuse(input) {
     }
     // --- 4. 402 チャレンジ ---
     let accept = null;
+    let x402Version = 2;
     try {
         const response = await fetchFn(input.resource, { method });
         const raw = readHeader(response.headers, "payment-required");
-        if (raw)
-            accept = decodeChallenge(raw);
+        const challenge = raw ? decodeChallenge(raw) : null;
+        if (challenge) {
+            accept = challenge.accept;
+            x402Version = challenge.x402Version;
+        }
     }
     catch {
         accept = null;
@@ -203,24 +243,33 @@ export async function payOrRefuse(input) {
         evidence.push({ level: "L0", source: "vet402", url: scoreUrl });
     }
     // --- 5. ここから先だけが支払い。実装は ALLOW ブランチ内の動的 import（第3層）---
+    // 署名 → **売り手へ再送** → 応答ヘッダのレシート。facilitator は買い手の経路に無い。
     const { executeX402Payment } = await import("./x402-pay.js");
+    // 署名の直後に nonce を確定させる。ここから先で落ちても「何に署名したか」は残る。
+    let signedNonce = null;
     const paid = await executeX402Payment({
         account: input.account,
         accept,
         resource: input.resource,
+        method,
         chainId: BASE_CHAIN_ID,
-        facilitatorUrl: input.facilitatorUrl ?? DEFAULT_FACILITATOR_URL,
+        x402Version,
         fetch: fetchFn,
+        onSigned: ({ nonce }) => {
+            signedNonce = nonce;
+        },
     });
     const verdictSource = uncatalogued ? "payee_score" : "decision";
     if (!paid.settled) {
-        // E18: 署名は実在する。隠さない。
+        // E18: 署名は実在する。隠さない。nonce も返す——署名した認可は validBefore まで
+        // 生きた金で、後から遅れて決済され得る。何に署名したかが残らないと照合できない。
         return {
             status: "failed",
             decision: record("ALLOW", [...pathReasons, "settle_failed"], verdictSource, decision, payeeScore),
             signed: paid.signed,
             attested: false,
             txHash: paid.txHash,
+            nonce: paid.nonce ?? signedNonce,
             challenge: accept,
         };
     }
@@ -236,6 +285,9 @@ export async function payOrRefuse(input) {
                     amount: accept.amount,
                     network: accept.network,
                     resource: input.resource,
+                    // 監査の nonce 束縛（本番 settlement-verify.ts）。attest がこれを載せて初めて、
+                    // 「その決済 tx はこの購入のものか」を第三者が確かめられる。
+                    authNonce: paid.nonce,
                     source,
                 }),
             });
@@ -251,6 +303,7 @@ export async function payOrRefuse(input) {
         signed: paid.signed,
         attested,
         txHash: paid.txHash,
+        nonce: paid.nonce ?? signedNonce,
         challenge: accept,
     };
 }
@@ -271,6 +324,15 @@ function evaluateMoneyGate(accept, maxPerTxUsd) {
     const transfer = accept.extra?.assetTransferMethod;
     if (transfer !== undefined && transfer !== "eip3009")
         return ["chain_or_asset_mismatch"];
+    // EIP-712 ドメインはトークンのものであって売り手のものではない（本番 2026-08-22 監査）。
+    // 矛盾する accept を**署名の前に**落とす: 誤ったドメインの署名は決済され得ないので、
+    // 通せば「一円も動かないまま署名だけが生きている」状態を売り手が無料で作れてしまう。
+    // 判定は署名器と同じ述語（hasCanonicalUsdcDomain）で行う——別の述語では関門にならない。
+    const name = accept.extra?.name;
+    const version = accept.extra?.version;
+    if ((name !== undefined && name !== "USD Coin") || (version !== undefined && version !== "2")) {
+        return ["chain_or_asset_mismatch"];
+    }
     const units = Number(accept.amount);
     if (!Number.isFinite(units) || units <= 0)
         return ["chain_or_asset_mismatch"];

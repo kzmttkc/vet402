@@ -49,7 +49,13 @@ function watchedAccount() {
   return { account, accessed, signAccesses: () => accessed.filter((k) => k.startsWith("sign")) };
 }
 
-/** 第2層: 許可リスト外の fetch は throw。拒否経路で許すのは /decision と 402 を取る GET だけ。 */
+/**
+ * 第2層: 許可リスト外の fetch は throw。拒否経路で許すのは /decision と 402 を取る GET だけ。
+ *
+ * 2026-09-05: 応答は素のオブジェクトでも `(url, init) => 応答` でもよい。売り手は
+ * 同じ URL に対して「支払いヘッダ無し → 402」「有り → 200 + レシート」と**2回**答えるので、
+ * URL だけで引く固定応答では x402 の実際の往復を写せない。
+ */
 function allowlistFetch(allowed, responses = {}) {
   const calls = [];
   return {
@@ -60,7 +66,8 @@ function allowlistFetch(allowed, responses = {}) {
       if (!allowed.some((a) => u.includes(a))) {
         throw new Error(`forbidden call in refuse path: ${u}`);
       }
-      const r = responses[Object.keys(responses).find((k) => u.includes(k))];
+      let r = responses[Object.keys(responses).find((k) => u.includes(k))];
+      if (typeof r === "function") r = r(u, init);
       if (!r) throw new Error(`no stub for ${u}`);
       return { ok: r.status < 400, status: r.status, json: async () => r.body, headers: new Map(Object.entries(r.headers ?? {})) };
     },
@@ -138,8 +145,40 @@ test("A4 402 の payTo が payee と違う → payee_mismatch・署名前に停�
 
 // ---------- B. 金銭ゲート（本番に4チェーン提示の402が実在する） ----------
 
-const wall = (accept) => ({ status: 402, body: {}, headers: { "payment-required": btoa(JSON.stringify({ x402Version: 2, accepts: [accept] })) } });
+const b64 = (o) => btoa(JSON.stringify(o));
+const wall = (accept, version = 2) => ({ status: 402, body: {}, headers: { "payment-required": b64({ x402Version: version, accepts: [accept] }) } });
 const okAccept = { scheme: "exact", network: "eip155:8453", amount: "20000", asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", payTo: base.payee, extra: { assetTransferMethod: "eip3009" } };
+
+/**
+ * 売り手。**買い手は facilitator を呼ばない**——決済するのは売り手側であり、買い手は
+ * 署名を載せて元のリクエストを再送するだけで、レシートは**応答ヘッダ**から読む。
+ * 根拠: coinbase/x402 specs/transports-v2/http.md（PAYMENT-SIGNATURE / PAYMENT-RESPONSE）と
+ * 本番実装 `src/lib/observatory/l1-runner.ts` L977-1045 / `x402-payer.ts`。
+ *
+ * このスタブは支払いヘッダの有無で答えを変える。付いていない要求に 402 の壁を、
+ * 付いた要求に 200 とレシートヘッダを返す——「ヘッダを実際に付けたか」がこれで測れる。
+ */
+function seller(accept, opts = {}) {
+  const version = opts.x402Version ?? 2;
+  const payHeader = version === 1 ? "X-PAYMENT" : "PAYMENT-SIGNATURE";
+  const respHeader = version === 1 ? "X-PAYMENT-RESPONSE" : "PAYMENT-RESPONSE";
+  const paid = [];
+  const stub = (url, init) => {
+    const h = init?.headers ?? {};
+    const raw = h[payHeader] ?? h[payHeader.toLowerCase()];
+    if (!raw) return wall(accept, version);
+    paid.push({ url, method: init?.method, header: payHeader, decoded: JSON.parse(atob(raw)) });
+    // `noReceipt`: レシートヘッダを出さず、**本文にだけ** success を書く売り手。
+    // 本文を読む実装はここで緑になってしまう（＝レシートは本文ではない、の検算）。
+    if (opts.noReceipt) return { status: 200, body: { success: true, transaction: "0xfrom_body" }, headers: {} };
+    return {
+      status: opts.paidStatus ?? 200,
+      body: opts.paidBody ?? { data: "ok" },
+      headers: { [respHeader]: b64({ success: true, transaction: "0xtx", network: accept.network, payer: "0xDB62BD202914609830fA656F87996b91be3Aa673", ...opts.settlement }) },
+    };
+  };
+  return { stub, paid };
+}
 
 test("B5 Base 以外のネットワークは署名前に拒否", async () => {
   const w = watchedAccount();
@@ -283,30 +322,155 @@ test("D16 自社台帳の件数と subgraph の件数を1つの数に合算し�
 
 // ---------- E. 通過時 ----------
 
+const paidPolicy = { evidence: { minL1Deliveries: 3, source: "vet402" } };
+
 test("E17 全条件通過時のみ signer を1回呼び、返った txHash で attest する", async () => {
   const w = watchedAccount();
-  const f = allowlistFetch([DECISION, "kronos", "facilitator", "payments/x402"], {
+  const s = seller(okAccept);
+  const f = allowlistFetch([DECISION, "kronos", "payments/x402"], {
     [DECISION]: decision(),
-    kronos: wall(okAccept),
-    facilitator: { status: 200, body: { success: true, transaction: "0xtx" } },
+    kronos: s.stub,
     "payments/x402": { status: 200, body: { ok: true } },
   });
-  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { evidence: { minL1Deliveries: 3, source: "vet402" } } });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: paidPolicy });
   assert.equal(r.status, "paid");
   assert.equal(r.attested, true);
+  assert.equal(r.txHash, "0xtx");
   assert.equal(w.signAccesses().length, 1);
 });
 
-test("E18 署名後に settle 失敗 → failed を返し、隠さない", async () => {
+test("E18 署名後に決済されなかった → failed を返し、隠さない", async () => {
   const w = watchedAccount();
-  const f = allowlistFetch([DECISION, "kronos", "facilitator"], {
-    [DECISION]: decision(),
-    kronos: wall(okAccept),
-    facilitator: { status: 500, body: { error: "settle_failed" } },
-  });
-  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { evidence: { minL1Deliveries: 3, source: "vet402" } } });
+  // 売り手が 402 を返し続ける（署名を受け取ったが決済しなかった）。
+  const s = seller(okAccept, { paidStatus: 402, settlement: { success: false, transaction: "", errorReason: "insufficient_funds" } });
+  const f = allowlistFetch([DECISION, "kronos"], { [DECISION]: decision(), kronos: s.stub });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: paidPolicy });
   assert.equal(r.status, "failed");
   assert.equal(r.signed, true);
+  // 署名は実在する。**何に署名したか**（nonce）も残る——これが無いと、後から
+  // オンチェーンの tx をこの購入に結び付けられない（監査 P1-1 の nonce 束縛）。
+  assert.match(String(r.nonce), /^0x[0-9a-f]{64}$/);
+  assert.equal(s.paid.length, 1, "署名を付けて1回だけ再送している");
+});
+
+// ---------- G. 支払いの経路そのもの（2026-09-05 の是正） ----------
+//
+// 直前の実装は `https://x402.org/facilitator/settle` を **買い手から** 叩いていた。
+// x402 では買い手は facilitator を呼ばない——署名を載せて元のリクエストを売り手へ
+// 再送し、決済は売り手（が使う facilitator）が行い、レシートは応答ヘッダで返る。
+// 誤りのまま 09-08 に The Graph へ実支払いをすれば、金は動かず理由も残らなかった。
+
+test("G-a 支払いは売り手への再送で行う——facilitator へは一度も出ない", async () => {
+  const w = watchedAccount();
+  const s = seller(okAccept);
+  // 許可リストに facilitator を**入れない**。出た瞬間に throw する（第2層）。
+  const f = allowlistFetch([DECISION, "kronos", "payments/x402"], {
+    [DECISION]: decision(),
+    kronos: s.stub,
+    "payments/x402": { status: 200, body: { ok: true } },
+  });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: paidPolicy });
+  assert.equal(r.status, "paid");
+  assert.equal(f.calls.filter((u) => /facilitator|x402\.org|\/settle/.test(u)).length, 0, "facilitator へ出ていない");
+  assert.equal(f.calls.filter((u) => u.includes("kronos")).length, 2, "売り手へ 402 取得＋支払い再送の2回");
+});
+
+test("G-b 再送は PAYMENT-SIGNATURE を付けた、同じ URL・同じ method（v2）", async () => {
+  const w = watchedAccount();
+  const s = seller(okAccept);
+  const f = allowlistFetch([DECISION, "kronos", "payments/x402"], {
+    [DECISION]: decision(),
+    kronos: s.stub,
+    "payments/x402": { status: 200, body: { ok: true } },
+  });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, method: "POST", policy: paidPolicy });
+  assert.equal(r.status, "paid");
+  assert.equal(s.paid.length, 1);
+  const sent = s.paid[0];
+  assert.equal(sent.url, base.resource, "元の資源 URL へ再送している");
+  assert.equal(sent.method, "POST", "元の method を保っている");
+  assert.equal(sent.decoded.x402Version, 2);
+  assert.equal(sent.decoded.resource.url, base.resource);
+  assert.equal(sent.decoded.accepted.payTo, base.payee);
+  assert.equal(sent.decoded.payload.signature, "0xsig");
+  // EIP-3009 の認可。nonce は**我々しか作れない一回性の値**で、結果にも載る。
+  const auth = sent.decoded.payload.authorization;
+  assert.equal(auth.from.toLowerCase(), "0xdb62bd202914609830fa656f87996b91be3aa673");
+  assert.equal(auth.to, base.payee);
+  assert.equal(auth.value, "20000");
+  assert.match(auth.nonce, /^0x[0-9a-f]{64}$/);
+  assert.equal(auth.nonce, r.nonce, "署名した nonce が関数の外へ返っている");
+});
+
+test("G-c v1 のチャレンジには X-PAYMENT で答える（network slug も戻す）", async () => {
+  const w = watchedAccount();
+  // 本番に実在する v1 の形: network は "base" スラッグ、金額は maxAmountRequired。
+  const v1Accept = { scheme: "exact", network: "base", maxAmountRequired: "20000", asset: okAccept.asset, payTo: base.payee };
+  const s = seller(v1Accept, { x402Version: 1 });
+  const f = allowlistFetch([DECISION, "kronos", "payments/x402"], {
+    [DECISION]: decision(),
+    kronos: s.stub,
+    "payments/x402": { status: 200, body: { ok: true } },
+  });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: paidPolicy });
+  assert.equal(r.status, "paid", "v1 の壁にも払える");
+  assert.equal(s.paid[0].header, "X-PAYMENT");
+  assert.equal(s.paid[0].decoded.x402Version, 1);
+  assert.equal(s.paid[0].decoded.network, "base", "v1 へはスラッグで返す");
+});
+
+test("G-d レシートは応答ヘッダから読む——本文の success は信じない", async () => {
+  const w = watchedAccount();
+  // ヘッダ無し・本文だけ success:true。ここで "paid" になる実装は本文を読んでいる。
+  const s = seller(okAccept, { noReceipt: true });
+  const f = allowlistFetch([DECISION, "kronos"], { [DECISION]: decision(), kronos: s.stub });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: paidPolicy });
+  assert.equal(r.status, "failed", "レシートヘッダが無いのだから決済は確認できていない");
+  assert.equal(r.txHash, null, "本文の transaction を拾っていない");
+  assert.equal(r.signed, true);
+});
+
+test("G-e attest は署名した nonce を載せる（その決済 tx がこの購入のものかの唯一の手がかり）", async () => {
+  const w = watchedAccount();
+  const s = seller(okAccept);
+  const attests = [];
+  const f = allowlistFetch([DECISION, "kronos", "payments/x402"], {
+    [DECISION]: decision(),
+    kronos: s.stub,
+    "payments/x402": (url, init) => {
+      attests.push(JSON.parse(init.body));
+      return { status: 200, body: { ok: true } };
+    },
+  });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: paidPolicy });
+  assert.equal(r.status, "paid");
+  assert.equal(attests.length, 1);
+  // 「どちらも null」で緑になる書き方をしない——実在する 32 バイトであることまで見る。
+  assert.match(String(attests[0].authNonce), /^0x[0-9a-f]{64}$/);
+  assert.equal(attests[0].authNonce, r.nonce);
+  assert.equal(attests[0].txHash, "0xtx");
+});
+
+test("G-f 拒否経路では nonce が存在しない（署名していないのだから）", async () => {
+  const w = watchedAccount();
+  const f = allowlistFetch([DECISION], { [DECISION]: decision({ recommendation: "BLOCK" }) });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch });
+  assert.equal(r.status, "refused");
+  assert.equal(r.nonce, null);
+  assert.deepEqual(w.signAccesses(), []);
+});
+
+test("G-g EIP-712 ドメインは売り手からではなくトークンから取る（署名前に矛盾を拒否）", async () => {
+  const w = watchedAccount();
+  // 売り手が name/version を偽って提示する。署名しても決済できない形なので、
+  // 通せば「一円も動かないまま署名だけ生きている」状態を作れる（本番 2026-08-22 監査）。
+  const s = seller({ ...okAccept, extra: { assetTransferMethod: "eip3009", name: "Evil Coin", version: "9" } });
+  const f = allowlistFetch([DECISION, "kronos"], { [DECISION]: decision(), kronos: s.stub });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: paidPolicy });
+  assert.equal(r.status, "refused");
+  assert.equal(r.decision.reason_codes.includes("chain_or_asset_mismatch"), true);
+  assert.equal(s.paid.length, 0, "再送していない");
+  assert.deepEqual(w.signAccesses(), []);
 });
 
 // ---------- F. 汚染しない ----------
@@ -335,21 +499,24 @@ test("F20 L1 フィードはデモ行を無視し、デモフィードは L1 行
 
 // ---------- H. ネガティブコントロール（これが無いと「0回」は無意味） ----------
 
-test("H22 ネガティブコントロール: 同じハーネスで ALLOW を通すと signTypedData がちょうど1回・settle がちょうど1回出る", async () => {
+test("H22 ネガティブコントロール: 同じハーネスで ALLOW を通すと signTypedData がちょうど1回・支払い再送がちょうど1回出る", async () => {
   const w = watchedAccount();
+  const s = seller(okAccept);
   const calls = [];
   const f = {
-    fetch: async (url) => {
+    fetch: async (url, init) => {
       const u = String(url); calls.push(u);
       if (u.includes(DECISION)) return { ok: true, status: 200, json: async () => decision().body, headers: new Map() };
-      if (u.includes("kronos")) return { ok: false, status: 402, json: async () => ({}), headers: new Map(Object.entries(wall(okAccept).headers)) };
-      return { ok: true, status: 200, json: async () => ({ success: true, transaction: "0xtx" }), headers: new Map() };
+      const r = u.includes("kronos") ? s.stub(u, init) : { status: 200, body: { ok: true }, headers: {} };
+      return { ok: r.status < 400, status: r.status, json: async () => r.body, headers: new Map(Object.entries(r.headers ?? {})) };
     },
   };
-  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { evidence: { minL1Deliveries: 3, source: "vet402" } } });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: paidPolicy });
   assert.equal(r.status, "paid");
   assert.equal(w.signAccesses().length, 1, "計測器は「1回」を検出できる（0回が配線ミスでない証明）");
-  assert.equal(calls.filter((u) => u.includes("facilitator") || u.includes("settle")).length, 1);
+  // 支払いは売り手への再送1回だけ。facilitator は買い手の経路に存在しない。
+  assert.equal(s.paid.length, 1);
+  assert.equal(calls.filter((u) => /facilitator|\/settle/.test(u)).length, 0);
 });
 
 // ---------- I. カタログ外の売り手（2026-09-04 本番実測・WINDOW_PLAN §3.1） ----------
@@ -392,11 +559,12 @@ const uncatalogued = { payee: GRAPH_PAYEE, resource: GRAPH_RESOURCE, method: "PO
 
 test("I23a /decision が 404 not_found でも、402 の payTo と受取人スコアだけで判定する（ALLOW → 支払いへ進む）", async () => {
   const w = watchedAccount();
-  const f = allowlistFetch([DECISION, SCORE, "gateway.thegraph.com", "facilitator", "payments/x402"], {
+  const s = seller(graphAccept);
+  // facilitator は許可リストに**入れない**——買い手の経路に存在しないから（G-a）。
+  const f = allowlistFetch([DECISION, SCORE, "gateway.thegraph.com", "payments/x402"], {
     [DECISION]: notFound,
     [SCORE]: payeeScore({ recommendation: "ALLOW", score: 74, dataDepth: "moderate" }),
-    "gateway.thegraph.com": wall(graphAccept),
-    facilitator: { status: 200, body: { success: true, transaction: "0xtx" } },
+    "gateway.thegraph.com": s.stub,
     "payments/x402": { status: 200, body: { ok: true } },
   });
   const r = await payOrRefuse({ ...uncatalogued, account: w.account, fetch: f.fetch });
@@ -408,7 +576,9 @@ test("I23a /decision が 404 not_found でも、402 の payTo と受取人スコ
   assert.equal(f.calls.filter((u) => u.includes(SCORE)).length, 1);
   // ネガティブコントロール: このハーネスは「1回」を検出できる（0回が配線ミスでない証明）。
   assert.equal(w.signAccesses().length, 1);
-  assert.equal(f.calls.filter((u) => u.includes("facilitator")).length, 1);
+  // デモの支払い先は POST の x402 口。署名を付けた再送が1回だけ出る。
+  assert.equal(s.paid.length, 1);
+  assert.equal(s.paid[0].method, "POST");
 });
 
 test("I23b /decision が 404 かつ受取人スコアが ALLOW でない → 署名前に拒否・理由コードあり", async () => {
