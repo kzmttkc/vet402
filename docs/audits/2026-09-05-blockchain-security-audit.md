@@ -183,6 +183,16 @@
 
 ---
 
+### 7.1 同日追記 — 会期の実装で 3 度出た「壊れて見えない」型（再現すべき強みの裏側）
+
+エラーが出ず、それらしい別の理由で正しく見える答えが返る。監査の道具でも設計でも同じ形で出た。
+- `minSubgraphReceipts` が既定 `source` で黙って無視される（床を指定したのに拒否も警告も出ない）
+- カタログ外（`/decision` 404）経路で `policy.evidence` が丸ごと無視される（いちばん要る場所で効いていない）
+- The Graph Gateway は鍵無しで HTTP 200＋GraphQL `errors`（`response.ok` だけ見ると「認証失敗」が「受領 0」にすり替わる）
+- 本監査の道具側: `db:drift` が unique 制約を読まず欠落を 0 件で通した／claims 抽出器が `<code>/files/*</code>` の `/*` をコメント開始と誤読し断定 10 件を走査から外した
+**対処の型**: 「触ったファイル」でなく「壊した不変条件」で検査する（main 投入前はリポ直下の全体テストを 1 回・`verify-the-invariant-not-the-files-touched`）／新しいテストは実装なしで緑にならないかを変異で確かめる／「不在」と「0」をエラーに見せる。
+同日追加の公開フィールド（ハッカソンの `payOrRefuse` が「新鮮さを装わない」ために読む）: `state.spendingHalted`・`state.l1.lastAttemptAt`・`/decision` の `spending_halted`・`facts.l1.last_attempt_at`・`not_attempted_reason`（`spending_halted` | `no_eligible_accept` | null）。停止中の未試行を売り手の落ち度に見せない。
+
 ## 8. Kill list（今やってはいけないこと）
 
 - 署名鍵をローカルの控えや別のリポ・チャットへコピーする（Vercel と物理媒体以外に置かない）
