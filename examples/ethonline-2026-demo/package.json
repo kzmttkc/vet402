@@ -1,0 +1,25 @@
+{
+  "name": "@vet402/ethonline-2026-demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The CLI filmed in the ETHOnline 2026 demo video: `refuse` puts two independent sources side by side, `pay` shows what would be signed and signs only with --live.",
+  "license": "MIT",
+  "scripts": {
+    "refuse": "node src/run.ts refuse",
+    "pay": "node src/run.ts pay",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "viem": "^2.55.1"
+  },
+  "peerDependenciesMeta": {
+    "viem": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}
