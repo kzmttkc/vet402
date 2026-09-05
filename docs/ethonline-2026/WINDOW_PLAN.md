@@ -665,6 +665,27 @@ curl -sL -X POST "https://gateway.thegraph.com/api/$GRAPH_API_KEY/subgraphs/id/C
 **1 を入れるのは「常に拒否する」戦略が満点を取れないようにするため。** 4 を入れるのは
 「API を呼ぶ前に落ちる」経路も測るため。
 
+#### フィクスチャの実測値（2026-09-05 11:00・**正典に無かった値をここで確定させる**）
+
+ハーネスが正解表として使う値。**省略形をやめ、全桁を書く**（`0xb15a55e8…` は8箇所すべて省略形で、
+40桁がリポのどこにも無かった。作らずに埋めるため実測した）。
+
+| # | 識別子 | 実測 |
+|---|---|---|
+| **F1** | resource `https://kronossignals.com/api/v1/price/btc`<br>`resource_id` `ae0091e802c83179e3b1464a7b15dac64a0c1d3a00cb690eb6a5ac9811c47e3b` | **ALLOW** / `["l0_pass","l1_delivered","l2_undeclared"]`<br>L1 `n_delivered 3 / n_settled 3 / n_attempts 3`・`last_attempt_at 2026-08-27T12:30:45.074Z` |
+| **F2** | resource `https://gateway.thegraph.com/api/x402/subgraphs/id/Cb56epg3EvQ6JRpPfknbkM54QxpzTvLa7mwKNQQfUyoj`<br>`resource_id` `9e8469d365d65bc9b4a3f588f951bfc70ae64cc1afa2ebdf7e8f11a940d40763`<br>payee `0x79DC34E41B2b591078d3dE222C43EcaaBD52FcCB` | `/decision` は **HTTP 404 `not_found`**（カタログ外）<br>受取人スコア **69 / WARN / thin**<br>subgraph は **RECIPIENT / 253件**（§15・動く） |
+| **F3** | payee **`0xb15a55e85fdf5edc41b6c1eaf7813e2c6e6def59`**（全40桁）<br>resource `https://agent.api.0x.org/v1/x402/swap-allowance-holder-quote`<br>`resource_id` `8146a86d0e858267f15388341fc99b7d5fa23b6ebb138ba0267a38eb9a76386b` | **WARN** / `["l0_pass","l1_not_attempted","l2_undeclared"]`<br>L1 `0/0/0`・`n_probe_error 1`・`not_attempted_reason null` |
+| **F4** | F1 と同じ相手に `amountUsd 5` / `policy.maxPerTxUsd 1` | **判定を引く前に**拒否・`price_above_ceiling`（`/decision` へのリクエスト0件） |
+
+**数字は動く。** F1 の L1 と F2 の 253 は撮影・実走の当日に取り直す（§15 と同じ規律）。
+**識別子（`resource_id` とアドレス）は動かない。**
+
+**`not_attempted_reason` の enum は会期中に広げない**（2026-09-05 決定）。F3 は
+`l1_not_attempted` が立つのに `null` だが、実際の原因は `n_probe_error 1`（計器の失敗）で、
+**`null` は嘘をついていない**（「我々の停止でも、払える accept が無かったのでもない」）。
+一件ごとの理由は `/api/v1/observatory/decisions` が持つ。**`n_probe_error` を根拠に
+「売り手が悪い」と読める文字列を作らない。**
+
 ### 成功の定義（**この2条件の論理積。走らせる前に確定**）
 
 1. **判定が一致する**——エージェントの結論が、同じ相手に対して我々の API が返す判定と一致する
