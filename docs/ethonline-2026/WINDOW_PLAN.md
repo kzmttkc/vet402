@@ -390,3 +390,48 @@ SDK は `src/` から import できないので**同じ意味論を写す**。
 **呼び手の鍵で署名するので、本番のキルスイッチと日次予算は SDK には効かない。**
 呼び手の資金を守るのは上の #2 と #3 だけである。
 
+## 15. The Graph subgraph の**動く**問い合わせ（2026-09-05 09:00 実測・Day 4 の前に潰した）
+
+**正典に書いてあったフィールド名 `paymentsReceived` / `totalReceived` / `uniquePayers` は3つとも実在しない。**
+そのまま Day 4 に入っていたら丸一日潰れていた。実在するスキーマを introspection で引いて確定した。
+
+### そのまま動く問い合わせ
+
+```bash
+curl -sL -X POST "https://gateway.thegraph.com/api/$GRAPH_API_KEY/subgraphs/id/Cb56epg3EvQ6JRpPfknbkM54QxpzTvLa7mwKNQQfUyoj" \
+  -H 'content-type: application/json' \
+  -H 'user-agent: vet402/1.0 (+https://vet402.com)' \
+  -d '{"query":"{ _meta { block { number timestamp } deployment } x402AddressSummaries(where: {address: \"0x79dc…fccb\"}) { id address role totalPayments totalVolumeDecimal firstPaymentTimestamp lastPaymentTimestamp } }"}'
+```
+
+- **`user-agent` は必須**（無いと Cloudflare が 1010 で 403。鍵の不正と誤診しやすい）
+- **アドレスは小文字**で渡す
+- **`x402AddressSummary(id:)` の単数形を使わない。** `id` は `0x01000000` を前置した合成値
+  （実測: `0x0100000079dc34e41b2b591078d3de222c43ecaabd52fccb`）。**複数形＋`where` で引く**
+
+### `X402AddressSummary` の実在フィールド（introspection で確定）
+
+`id` / `address` / `role` / `totalPayments` / `totalVolume` / `totalVolumeDecimal` /
+`firstPaymentTimestamp` / `lastPaymentTimestamp` / `isKnownEscrow` / `escrowDeposits` / `escrowVolume`
+
+### 2026-09-05 09:00 の実測値（The Graph の受取ウォレット `0x79DC34E4…FcCB`）
+
+| | |
+|---|---|
+| `role` | `RECIPIENT` |
+| `totalPayments` | **253**（09-03 は 252。**動く数字なので撮影当日に取り直す**） |
+| `totalVolumeDecimal` | **2.53** USDC |
+| `_meta.block.number` | 50888579 |
+| `_meta.deployment` | `QmcE24HARdXXnziPii9bWFRV6njfWW82H1RKPe5x9hBkUN` |
+
+**`_meta.block.number` と `deployment` が「live のデータを読んだ」ことの唯一の自明な証明**なので、
+`evidence[].source` の subgraph 行に必ず同梱する（§2 #3）。
+
+### 語彙: `settle_claimed`（vet402.com が `vocabulary.ts` に入れる文案・SDK も同じ語を使う）
+
+> settle_claimed — the seller's payment-response header says the transfer settled;
+> vet402 has not yet re-read it on-chain. Not counted as settled.
+
+**`settled` と名乗らない。** チェーンで再読した照合器だけが `settled` を書ける、という本番の規律に揃える。
+
+
