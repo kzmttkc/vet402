@@ -226,7 +226,7 @@ SDK は世の中で使えない。
 | 1:15–1:30 | 拒否行のズーム（**`l0_pass, l1_not_attempted`**・`evidence[].source`） | だから拒む。理由コードは**売り手を責めていない。我々の欠損を名指ししている** |
 | 1:30–2:05 | `run.ts pay` → **The Graph の gateway に $0.01** → Basescan → attest → `/decisions` | 証拠がある相手には払う。**払う先は The Graph 自身**。既定 policy を通る相手は今日 373 件 |
 | 2:05–2:25 | テスト実行。**署名0回・RPC0回・settle0回が緑で並ぶ**＋ネガティブコントロールが1回を検出する | signer は拒否経路から**到達できない**。0回で緑になるのが配線ミスでないことも、同じハーネスで示す |
-| 2:25–2:45 | SDK 3行 → MCP 1ツール → `source: "subgraph"` に切り替える差分 | `source: subgraph` にすれば**我々の台帳を1行も読まない。あなたは我々を信じなくてよい** |
+| 2:25–2:45 | SDK 3行 → MCP 1ツール → `source: "subgraph"` に切り替える差分 | `source: subgraph` にすれば、**証拠の床は第三者のデータだけで当たる**——我々の台帳の件数は1件も使わない。（**言い過ぎない**: ALLOW 判定そのものは `/decision` を引く。「我々を1行も読まない」は偽） |
 | 2:45–3:10 | **`git log pre-ethonline-2026..main`** ＋ CHANGED_FILES ＋ `AI_USAGE.md` | 会期の差分はこのタグ以降の全部。触った既存ファイルは列挙。**コードはほぼ全部 AI が書いた。開示は弱めていない**（`AI_USAGE.md` を映す） |
 | 3:10–3:25 | 冒頭の分割画面（静止） | 今週まで vet402 は「払ってよいか」に**答えられた**。今週、**署名が存在する前に拒む**ことを覚えた |
 
@@ -501,10 +501,20 @@ curl -sL -X POST "https://gateway.thegraph.com/api/$GRAPH_API_KEY/subgraphs/id/C
   -d '{"query":"{ _meta { block { number timestamp } deployment } x402AddressSummaries(where: {address: \"0x79dc…fccb\"}) { id address role totalPayments totalVolumeDecimal firstPaymentTimestamp lastPaymentTimestamp } }"}'
 ```
 
-- **`user-agent` は必須**（無いと Cloudflare が **1010 で 403**）。
-  **1010 を「鍵が不正」と分類しない。** 原因が違うので直し方も違う——1010 は UA 不足、401/403 の他形は鍵。
-  SDK は **1010 を `evidence_unavailable`** として扱い、鍵エラーと**区別する**
-- **無料枠は月 10 万クエリ**（`graph-gateway-needs-user-agent`）
+- **`user-agent`**: **2026-09-05 の実測では、UA を完全に外しても HTTP 200 が返った**（`-H 'User-Agent:'`）。
+  正典と記憶にあった「無いと Cloudflare が 1010 で 403」は**今日の実測では再現しない**（Cloudflare 側の規則は変わる）。
+  **付ける実装のままにする**（外す理由が無い・D14 が要求）が、**「必須」と断定しない**。
+  1010 が出たときは `evidence_unavailable` として扱い、**鍵エラーと区別する**（原因が違えば直し方も違う）
+- **【fail-closed の穴・実測】鍵が無いとき Gateway は 403 ではなく `HTTP 200` ＋ GraphQL `errors` を返す**:
+  `{"errors":[{"message":"auth error: missing authorization header"}]}`。
+  **`response.ok` だけを見る実装は、これを「成功・受領0件」と読む。** すると
+  「認証に失敗した」が「一度も受け取っていない」という**別の理由**にすり替わって拒否される。
+  **`errors` と `data` の形まで見る。**
+- **【役割の混同・実測】1つのアドレスが `PAYER` 行と `RECIPIENT` 行を両方持つ。**
+  実測 `0xf7b1356c…` は RECIPIENT 12,376,084 件 / PAYER 11,540,523 件の**2行**。
+  **`where` に `role: RECIPIENT` を入れる。** 入れずに行を足すと**「払った回数」を「受け取った回数」として売る**ことになる。
+  （The Graph の `0x79DC…` は RECIPIENT の1行だけなので §3 の数字は影響を受けない——実測で確認済み）
+- **無料枠は月 10 万クエリ**
 - **アドレスは小文字**で渡す
 - **`x402AddressSummary(id:)` の単数形を使わない。** `id` は `0x01000000` を前置した合成値
   （実測: `0x0100000079dc34e41b2b591078d3de222c43ecaabd52fccb`）。**複数形＋`where` で引く**
