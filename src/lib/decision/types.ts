@@ -8,6 +8,27 @@ export type Dialect = "v1" | "v2" | "both" | "unpayable";
 export type L2Status = "conform" | "mismatch" | "undeclared";
 export type OfferStability = "stable" | "drifting" | "unknown";
 
+/**
+ * `l1_not_attempted` の下位コード（2026-09-05・追加のみ。既存の reason_codes は変えない）。
+ *
+ * **実際に判別できる値しか置かない。** 「まだ順番が回っていない」は我々が確かめて
+ * いないので語彙に入れない——確かめていない理由を書くのは、停止や欠測を
+ * 売り手の落ち度に見せるのと同じ種類の嘘になる。
+ *
+ *   spending_halted    vet402 自身が支出を止めている（runtime_flags.l1_spending_halt が
+ *                      立っている、またはこの相手の最終試行が `halted` で終わっている）。
+ *                      **我々の状態であって売り手の状態ではない。**
+ *   no_eligible_accept 壁が機械的に払える accept を出さなかったので署名に至らなかった
+ *                      （台帳の status = 'no_eligible_accept'）。
+ *
+ * ここに無い署名前の終わり方（over_cap / price_mismatch / payto_mismatch …）は
+ * null になる。「理由が無い」ではなく「この 2 語では言わない」——それらは既に
+ * 公開の決定台帳（/api/v1/observatory/decisions・refused_* の語彙）が持っている。
+ * 2026-09-05 本番: 一度も署名していない endpoint 30 件の最終 status は
+ * no_eligible_accept 13 / over_cap 13 / price_mismatch 2 / no_402 1 / payto_mismatch 1。
+ */
+export type NotAttemptedReason = "spending_halted" | "no_eligible_accept";
+
 /** §8.1 売り手事実（Resource / Endpoint / Payee）。 */
 export type SellerFacts = {
   l0: { status: L0Status; observed_at: string | null; dialect: Dialect | null; fail_reason: string | null };
@@ -25,6 +46,18 @@ export type SellerFacts = {
     p95_ms: number | null;
     last_purchase_id: string | null;
     observed_at: string | null;
+    /**
+     * 2026-09-05: この Resource に対して L1 を **最後に試した** 時刻（ISO8601 UTC・
+     * 一度も試していなければ null）。observed_at（最後に**払った**時刻）と別物で、
+     * 署名前に終わった試行（no_eligible_accept / over_cap / halted …）でも立つ。
+     *
+     * WHY: 09-05 の実行時キルスイッチ以降、停止中は L1 の事実が更新されない。
+     * この 1 つが無いと、読み手は「まだ測っていない」「我々が止めていて測れない」
+     * 「昔測ったきり古い」を区別できず、全部 n_attempts = 0 として同じ顔で読む。
+     * 鮮度を出さないことは、新鮮さを装うことと同じになる。
+     * 窓は 30 日に切らない——切ると 31 日前の試行が「一度も無い」と読める。
+     */
+    last_attempt_at: string | null;
   };
   /**
    * §6.3（2026-09-02 監査 P1-11）: mismatch の公開には宣言ハッシュ・応答ハッシュ・差分ハッシュ

@@ -120,6 +120,15 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     definition: "settle_failed means no successful paid response came back at all.",
   },
   {
+    // 2026-09-05: 実行時の支出停止（runtime_flags.l1_spending_halt）が入り、停止中は
+    // L1 の事実が更新されなくなった。「まだ買っていない」と「我々が止めていて買えない」を
+    // 読み手が区別できる語彙が要る——区別できないと、我々の都合が売り手の記録として読まれる。
+    term: "l1_not_attempted",
+    group: "l1",
+    definition:
+      "l1_not_attempted means vet402 has not signed a paid attempt against this resource, so what it sells is unverified rather than refuted. When the same decision document reports spending_halted true, the missing attempt reflects vet402's own spending halt rather than anything about the seller, and facts.l1.last_attempt_at says when we last looked.",
+  },
+  {
     term: "match",
     group: "l2",
     definition:

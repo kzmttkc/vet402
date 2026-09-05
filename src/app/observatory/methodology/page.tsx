@@ -331,6 +331,21 @@ export default async function ObservatoryMethodologyPage() {
           page with its evidence.
         </p>
         <p className="doc-p">
+          <strong>l1_not_attempted</strong> — we have not signed a paid attempt against that
+          resource, so what it sells is unverified rather than refuted. Since 2026-09-05 the
+          runner can be stopped mid-batch by a runtime spending halt, and while that halt is
+          on, nothing new is signed. So a decision document carries{" "}
+          <code>spending_halted</code> beside its facts, and{" "}
+          <code>facts.l1.last_attempt_at</code> says when we last looked — a halted week and a
+          quiet week are otherwise the same picture. When the gap is ours to explain,{" "}
+          <code>not_attempted_reason</code> names it: <code>spending_halted</code>, or{" "}
+          <code>no_eligible_accept</code> when the wall offered nothing machine-payable. We do
+          not write our own halt into the seller&apos;s record. The other ways an attempt
+          ends before the signature — over cap, price mismatch, payee mismatch — leave the
+          field null here and stay where they already are, one row per attempt in the
+          public decision ledger.
+        </p>
+        <p className="doc-p">
           <strong>settled comes at two evidence strengths, and both counts are published.</strong>{" "}
           Since 2026-09-04 12:00 UTC each purchase carries a one-time value we generate
           ourselves — the EIP-3009 authorization nonce on Base, our own memo on Solana — and

@@ -22,7 +22,7 @@ function loaded(n: number, over: Partial<SellerFactsLoaded["facts"]> = {}): Sell
   return {
     facts: {
       l0: { status: "pass", observed_at: null, dialect: "v2", fail_reason: null },
-      l1: { n_delivered: n, n_settled: n, n_attempts: n + 1, n_probe_error: 0, p50_ms: null, p95_ms: null, last_purchase_id: null, observed_at: null },
+      l1: { n_delivered: n, n_settled: n, n_attempts: n + 1, n_probe_error: 0, p50_ms: null, p95_ms: null, last_purchase_id: null, observed_at: null, last_attempt_at: null },
       l2: { status: "undeclared", declaration_hash: null, response_hash: null, diff_hash: null, missing_keys: null, observed_at: null },
       availability_7d: null,
       availability_30d: null,
@@ -35,6 +35,7 @@ function loaded(n: number, over: Partial<SellerFactsLoaded["facts"]> = {}): Sell
       wash_dominated: false,
       ...over,
     },
+    lastAttempt: { at: null, status: null },
     endpoint: { id: `obs-${n}`, resourceId: null, endpointHash: `hash-${n}`, canonicalUrl: `https://seller${n}.example/api`, method: "GET", payTo: "0xb", network: "eip155:8453", payeeId: null },
   };
 }

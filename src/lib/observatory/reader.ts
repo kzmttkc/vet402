@@ -15,6 +15,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { escapeLike } from "@/lib/util/like";
+import { toIsoUtc } from "@/lib/util/iso-utc";
 import {
   x402CatalogSnapshots,
   x402DelistingEvents,
@@ -625,6 +626,14 @@ export type ObservatoryStats = {
     endpointsSettled: number;
     endpointsDelivered: number;
     /**
+     * L1 を最後に試した時刻（ISO8601 UTC・全チェーン横断・一度も無ければ null）。
+     * 2026-09-05: 実行時キルスイッチが入り、停止中は下の件数がまったく動かない。
+     * この 1 つが無いと、読み手は「静かな日」と「止めている日」を区別できず、
+     * 古い件数を今日の観測として引く。分母を出す面は鮮度も出す。
+     * status は問わない——署名前に終わった試行も「見に行った」事実ではある。
+     */
+    lastAttemptAt: string | null;
+    /**
      * L1 のチェーン別内訳。L0 の byChain と違いテストネットを落とさない——
      * 落とすと和が l1.settled と合わなくなり、分母として使えなくなる。
      */
@@ -664,6 +673,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       endpointsAttempted: 0,
       endpointsSettled: 0,
       endpointsDelivered: 0,
+      lastAttemptAt: null,
       byChain: [],
     },
     latestSnapshot: null,
@@ -746,6 +756,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       endpointsAttempted: 0,
       endpointsSettled: 0,
       endpointsDelivered: 0,
+      lastAttemptAt: null as string | null,
       byChain: [] as L1ChainStats[],
     };
     try {
@@ -830,6 +841,17 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
         folded.set(chain, entry);
       }
       l1.byChain = [...folded.values()].sort((a, b) => b.attempts - a.attempts);
+
+      // 鮮度。上の集計と違って status で絞らない——署名前に終わった試行
+      // （no_eligible_accept / over_cap / halted …）も「最後に見に行った時刻」ではある。
+      // 件数の分母と鮮度の分母を混ぜないため、別の 1 文で取る。
+      const lastRaw = await db.execute(sql`
+        SELECT max(attempted_at)::text AS last_attempt_at FROM x402_l1_purchases
+      `);
+      const lastRows = (
+        Array.isArray(lastRaw) ? lastRaw : (lastRaw as { rows?: unknown[] }).rows ?? []
+      ) as { last_attempt_at: string | null }[];
+      l1.lastAttemptAt = toIsoUtc(lastRows[0]?.last_attempt_at ?? null);
     } catch (error) {
       if (!isMissingSchemaError(error)) throw error;
     }

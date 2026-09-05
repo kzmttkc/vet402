@@ -19,7 +19,8 @@ import { rowsOf } from "@/lib/settlements/upsert";
 import { l2EvidenceOf, loadSellerFacts, type SellerFactsLoaded } from "./seller-facts";
 import { loadBuyerFacts } from "./buyer-facts";
 import { decidePayer, decidePayee, DECISION_RULES_VERSION, type Recommendation, type PayerOptions } from "./rules";
-import type { BuyerFacts, Evidence, Freshness, SellerFacts } from "./types";
+import { isSpendingHalted } from "@/lib/observatory/kill-switch";
+import type { BuyerFacts, Evidence, Freshness, NotAttemptedReason, SellerFacts } from "./types";
 
 export const DECISION_DISCLAIMER =
   "Scores are opinions; L0–L2 are measurement records. This is not credit assessment, KYC, sanctions screening, or certification.";
@@ -44,6 +45,18 @@ export type DecisionResult = {
   recommendation: Recommendation;
   reason_codes: string[];
   facts: SellerFacts | BuyerFacts;
+  /**
+   * 2026-09-05: vet402 自身が L1 の支出を止めているか（runtime_flags.l1_spending_halt）。
+   * **全体の状態であって subject の状態ではない**ので facts の外に置く。true の間は
+   * L1 の事実が更新されないので、読み手はこの文書の L1 を「今日の観測」として
+   * 扱ってはいけない。DB を読めなかったときも true（fail-closed・金の関門と同じ倒れ方）。
+   */
+  spending_halted: boolean;
+  /**
+   * `reason_codes` に `l1_not_attempted` が載っているときだけ立つ下位コード。
+   * 判別できないときは null——確かめていない理由を埋めない。
+   */
+  not_attempted_reason: NotAttemptedReason | null;
   freshness: Freshness;
   evidence: Evidence[];
   score: { trustScore: number | null; recommendation: Recommendation | null; deprecated: true } | null;
@@ -64,6 +77,14 @@ export type BuildInput =
       options: PayerOptions;
       score: { trustScore: number; recommendation: Recommendation } | null;
       registry: RegistryStatus;
+      /**
+       * 省略可能にしてあるのは既存のフィクスチャを壊さないためだけで、**本番の
+       * 呼び手は必ず渡す**（tests/l1-freshness.test.ts が decide() のソースで固定する）。
+       * 省略＝false は「止まっていない」という主張になる。
+       */
+      spendingHalted?: boolean;
+      /** 判別できたときだけ渡す。渡さなければ null のまま（理由を作らない）。 */
+      notAttemptedReason?: NotAttemptedReason | null;
       now?: Date;
     }
   | {
@@ -73,6 +94,7 @@ export type BuildInput =
       facts: BuyerFacts;
       operatorBlacklist: boolean;
       registry: RegistryStatus;
+      spendingHalted?: boolean;
       now?: Date;
     };
 
@@ -84,6 +106,7 @@ export function buildDecision(input: BuildInput): DecisionResult {
     policy: "allow_only" as const,
     rules_version: DECISION_RULES_VERSION,
     registry: input.registry,
+    spending_halted: input.spendingHalted === true,
     scoredAt: now.toISOString(),
     cacheExpiresAt: new Date(now.getTime() + DECISION_CACHE_TTL_MS).toISOString(),
     disclaimer: DECISION_DISCLAIMER,
@@ -108,6 +131,11 @@ export function buildDecision(input: BuildInput): DecisionResult {
       recommendation: d.recommendation,
       reason_codes: d.reason_codes,
       facts: f,
+      // 下位コードは `l1_not_attempted` が実際に載っているときだけ。既に試行がある
+      // 相手に「停止していたから」を付けると、我々の都合で過去の記録を塗り替えることになる。
+      not_attempted_reason: d.reason_codes.includes("l1_not_attempted")
+        ? input.notAttemptedReason ?? null
+        : null,
       freshness: { l0: f.l0.observed_at, l1: f.l1.observed_at, l2: f.l2.observed_at },
       evidence,
       score: input.score ? { ...input.score, deprecated: true } : null,
@@ -122,6 +150,8 @@ export function buildDecision(input: BuildInput): DecisionResult {
     recommendation: d.recommendation,
     reason_codes: d.reason_codes,
     facts: input.facts,
+    // role=payee の facts は買い手の記録なので、L1 未実施の概念が無い。
+    not_attempted_reason: null,
     freshness: { l0: null, l1: input.facts.last_seen, l2: null },
     evidence: [],
     score: null,
@@ -172,16 +202,34 @@ export function recordDecisionLookup(observatoryId: string): Promise<void> {
     .catch(logAndSwallow("decision.record_lookup"));
 }
 
+/**
+ * 「なぜ一度も買っていないか」を **判別できるときだけ** 答える（2026-09-05）。
+ *
+ * 材料は 2 つしかない: いま支出を止めているか（全体）と、その相手への最終試行が
+ * どの status で終わったか（台帳の事実）。どちらでも説明が付かないときは null——
+ * 「まだ順番が回っていない」は我々が確かめていないので書かない。
+ */
+function notAttemptedReasonOf(halted: boolean, lastAttemptStatus: string | null): NotAttemptedReason | null {
+  if (halted || lastAttemptStatus === "halted") return "spending_halted";
+  if (lastAttemptStatus === "no_eligible_accept") return "no_eligible_accept";
+  return null;
+}
+
 export type DecideRequest =
   | { role: "payer"; observatoryId: string; callerDialect?: "v1" | "v2"; allowWithoutL1?: boolean; operatorBlacklist: boolean }
   | { role: "payee"; observatoryId: string; payerId: string; operatorBlacklist: boolean };
 
 export async function decide(req: DecideRequest): Promise<DecisionResult | null> {
   void recordDecisionLookup(req.observatoryId);
-  const key =
+  const baseKey =
     req.role === "payer"
       ? `${req.observatoryId}|payer|${req.callerDialect ?? "-"}|${req.allowWithoutL1 ? 1 : 0}|${req.operatorBlacklist ? 1 : 0}`
       : `${req.observatoryId}|payee|${req.payerId}|${req.operatorBlacklist ? 1 : 0}`;
+  // 停止フラグは応答に焼き込んだうえで 5 分キャッシュされるので、**キーに入れる**。
+  // 入れないと「止めた直後の 5 分間、止めていないと答える」文書が配られる。
+  // 読むのは 1 行の SELECT（kill-switch.ts の設計どおり無視できる往復）。
+  const halt = await isSpendingHalted();
+  const key = `${baseKey}|${halt.halted ? 1 : 0}`;
   const hit = cache.get(key);
   if (hit && hit.expiresAt > Date.now()) return hit.result;
 
@@ -210,10 +258,12 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
       options: { callerDialect: req.callerDialect, allowWithoutL1: req.allowWithoutL1, operatorBlacklist: req.operatorBlacklist },
       score,
       registry,
+      spendingHalted: halt.halted,
+      notAttemptedReason: notAttemptedReasonOf(halt.halted, loaded.lastAttempt.status),
     });
   } else {
     const facts = await loadBuyerFacts(req.payerId);
-    result = buildDecision({ role: "payee", subject, payer: req.payerId, facts, operatorBlacklist: req.operatorBlacklist, registry });
+    result = buildDecision({ role: "payee", subject, payer: req.payerId, facts, operatorBlacklist: req.operatorBlacklist, registry, spendingHalted: halt.halted });
   }
   cache.set(key, { result, expiresAt: Date.now() + DECISION_CACHE_TTL_MS });
   return result;

@@ -337,6 +337,12 @@ export type SellerFacts = {
     p95_ms: number | null;
     last_purchase_id: string | null;
     observed_at: string | null;
+    /**
+     * この Resource へ L1 を最後に試した時刻（ISO8601 UTC・未試行なら null）。
+     * observed_at（最後に**払った**時刻）と別物で、署名前に終わった試行でも立つ。
+     * 停止中や観測が古い相手を「新鮮」に見せないための鮮度。
+     */
+    last_attempt_at: string | null;
   };
   l2: {
     status: L2Status;
@@ -384,6 +390,17 @@ export type DecisionResult = {
   reason_codes: string[];
   /** L0–L2 の事実（role=payer は SellerFacts、role=payee は BuyerFacts）。常に存在する。 */
   facts: SellerFacts | BuyerFacts;
+  /**
+   * vet402 自身が L1 の支出を止めているか。**売り手の状態ではない。** true の間は
+   * L1 の事実が更新されないので、この文書の L1 を今日の観測として扱わない。
+   */
+  spending_halted: boolean;
+  /**
+   * `l1_not_attempted` の下位コード。我々の停止と「払える accept が無い」の 2 つだけを名指す。
+   * 署名前に終わった他の終わり方（over_cap / price_mismatch …）は null——理由が無いのではなく、
+   * 一件ごとの公開台帳 /api/v1/observatory/decisions が持っている。
+   */
+  not_attempted_reason: "spending_halted" | "no_eligible_accept" | null;
   freshness: { l0: string | null; l1: string | null; l2: string | null };
   evidence: { level: "L0" | "L1" | "L2"; purchase_id?: string; observation_id?: string; url: string }[];
   /** 移行期間の併記。null のことがある。判定の根拠ではない。 */

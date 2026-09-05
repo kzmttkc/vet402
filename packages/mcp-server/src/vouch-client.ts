@@ -124,6 +124,10 @@ export type DecisionResult = {
   recommendation: DecisionRecommendation;
   reason_codes: string[];
   facts: Record<string, unknown>;
+  /** vet402 自身の L1 支出停止。売り手の状態ではない（true の間 L1 の事実は更新されない）。 */
+  spending_halted: boolean;
+  /** `l1_not_attempted` の下位コード。我々の停止と「払える accept が無い」だけを名指し、他は null。 */
+  not_attempted_reason: "spending_halted" | "no_eligible_accept" | null;
   freshness: { l0: string | null; l1: string | null; l2: string | null };
   evidence: { level: "L0" | "L1" | "L2"; purchase_id?: string; observation_id?: string; url: string }[];
   score: { trustScore: number | null; recommendation: DecisionRecommendation | null; deprecated: true } | null;

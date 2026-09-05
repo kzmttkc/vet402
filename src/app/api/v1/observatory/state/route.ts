@@ -6,6 +6,7 @@ import {
   sharedCacheRateLimitHeaders,
 } from "@/lib/api/ip-rate-limit";
 import { getCoverageShare, getObservatoryStats, getObservatoryStatsByChain } from "@/lib/observatory/reader";
+import { isSpendingHalted } from "@/lib/observatory/kill-switch";
 import { logServerError } from "@/lib/util/log";
 
 /**
@@ -38,16 +39,27 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const [stats, byChain, coverage] = await Promise.all([
+    const [stats, byChain, coverage, halt] = await Promise.all([
       getObservatoryStats(),
       getObservatoryStatsByChain(),
       getCoverageShare(),
+      // 集計とは別に、毎回読み直す。ObservatoryStats に入れると公開頁側の
+      // 300 秒の読み取りキャッシュに載り、止めた直後の 5 分間「止めていない」と
+      // 表示し得る。止めた事実は即時に見えなければ意味がない。
+      isSpendingHalted(),
     ]);
 
     return NextResponse.json(
       {
         ...stats,
         byChain,
+        /**
+         * vet402 自身が L1 の支出を止めているか。true の間は l1 の件数が動かないので、
+         * 静かな日と止めている日を取り違えないための鮮度情報（l1.lastAttemptAt と併読する）。
+         * **測られる側の状態ではない。** 何を読んでそう決めたか（source）は出さない——
+         * 運用の内部事情であって、引用される事実ではない。
+         */
+        spendingHalted: halt.halted,
         /** Share of active listed endpoints with an L0 measurement in the last 7 days. */
         coverage7d: coverage,
         // The top-level totals count every listing including testnets (Base

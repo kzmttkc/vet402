@@ -1718,6 +1718,17 @@ paths:
                       endpointsAttempted: { type: integer }
                       endpointsSettled: { type: integer }
                       endpointsDelivered: { type: integer }
+                      lastAttemptAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                        description: >-
+                          When vet402 last attempted an L1 purchase against any endpoint
+                          (ISO 8601 UTC; null before the first attempt). Not filtered by
+                          status — an attempt that ended before the signature still says
+                          when we last looked. Read it with `spendingHalted`: while the
+                          spend is halted these counts do not move, and a quiet day and a
+                          halted day are otherwise indistinguishable.
                       byChain:
                         type: array
                         description: >-
@@ -1750,6 +1761,15 @@ paths:
                       snapshotDate: { type: string }
                       totalCount: { type: integer }
                       fetchedCount: { type: integer }
+                  spendingHalted:
+                    type: boolean
+                    description: >-
+                      Whether vet402 has halted its own L1 spending. This is a fact about
+                      the measurer, not about any seller or about x402. While it is true
+                      the l1 counts do not move, so read `l1.lastAttemptAt` alongside it
+                      before quoting the figures as current. It is read on every request
+                      rather than from the aggregate cache, and it reads true when the
+                      flag itself could not be read (a money gate fails closed).
                   disclaimer: { type: string }
         "429":
           $ref: "#/components/responses/RateLimited"
@@ -2786,7 +2806,7 @@ components:
         the same document; there is no facts-less mode. `score` is the
         transitional 0–100 opinion, marked deprecated, and is never the basis
         of `recommendation`.
-      required: [subject, role, payer, recommendation, reason_codes, facts, freshness, evidence, score, degraded, policy, rules_version, registry, scoredAt, cacheExpiresAt, disclaimer]
+      required: [subject, role, payer, recommendation, reason_codes, facts, spending_halted, not_attempted_reason, freshness, evidence, score, degraded, policy, rules_version, registry, scoredAt, cacheExpiresAt, disclaimer]
       properties:
         subject:
           type: object
@@ -2812,6 +2832,27 @@ components:
           oneOf:
             - $ref: "#/components/schemas/SellerFacts"
             - $ref: "#/components/schemas/BuyerFacts"
+        spending_halted:
+          type: boolean
+          description: >-
+            vet402's own L1 spending halt. This is a fact about the measurer, not
+            about the seller: while it is true no new L1 attempt is signed, so the
+            L1 facts in this document are not today's observation. Sits outside
+            `facts` because it is global, not a property of the subject. It reads
+            true when the flag itself could not be read (a money gate fails closed).
+        not_attempted_reason:
+          type: string
+          nullable: true
+          enum: [spending_halted, no_eligible_accept]
+          description: >-
+            Sub-code for `l1_not_attempted`, present when that reason code is in
+            `reason_codes` and the record names one of these two causes.
+            `spending_halted`: vet402 stopped its own spending — a fact about the
+            measurer. `no_eligible_accept`: the wall offered nothing machine-payable,
+            so nothing was signed. Null otherwise, including the other ways an attempt
+            can end before the signature (over cap, price mismatch, payee mismatch):
+            those are published per attempt in the decision ledger at
+            `/api/v1/observatory/decisions`, not summarised here.
         freshness:
           type: object
           description: Observation times of l0 / l1 / l2 (ISO 8601 or null).
@@ -3149,7 +3190,7 @@ components:
             fail_reason: { type: string, nullable: true }
         l1:
           type: object
-          required: [n_delivered, n_settled, n_attempts, n_probe_error, p50_ms, p95_ms, last_purchase_id, observed_at]
+          required: [n_delivered, n_settled, n_attempts, n_probe_error, p50_ms, p95_ms, last_purchase_id, observed_at, last_attempt_at]
           properties:
             n_delivered: { type: integer }
             n_settled: { type: integer }
@@ -3164,6 +3205,17 @@ components:
             p95_ms: { type: number, nullable: true }
             last_purchase_id: { type: string, nullable: true }
             observed_at: { type: string, format: date-time, nullable: true }
+            last_attempt_at:
+              type: string
+              format: date-time
+              nullable: true
+              description: >-
+                When vet402 last attempted an L1 purchase against this resource
+                (ISO 8601 UTC; null before the first attempt). Distinct from
+                observed_at, which is when we last *paid*: an attempt that ended
+                before the signature (no eligible accept, over cap, spending
+                halted) still sets this. Over the full history, not the 30-day
+                window, so an older attempt does not read as "never attempted".
         l2:
           type: object
           required: [status, declaration_hash, response_hash, diff_hash, missing_keys, observed_at]

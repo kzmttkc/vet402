@@ -74,6 +74,10 @@ const SURFACES: Surface[] = [
       // --- facts を省く経路は無い（§9.1・§15）。消したら仕様違反 ---
       "facts",
       // -----------------------------------------------------------
+      // 2026-09-05: 我々自身の支出停止と、その下位コード。停止中は L1 の事実が
+      // 更新されないので、これを出さない応答は「新鮮さを装う」ことになる。
+      "spending_halted",
+      "not_attempted_reason",
       "freshness",
       "evidence",
       "score",
@@ -131,6 +135,9 @@ const SURFACES: Surface[] = [
       "p95_ms",
       "last_purchase_id",
       "observed_at",
+      // 2026-09-05: 最後に「試した」時刻。observed_at（最後に払った時刻）と別物で、
+      // 署名前に終わった試行でも立つ。未試行・停止・陳腐化の区別がこれで付く。
+      "last_attempt_at",
     ],
   },
   {

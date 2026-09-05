@@ -228,7 +228,7 @@ const endpoints: Endpoint[] = [
   {
     method: "GET",
     path: "/api/v1/resources/:resourceId/decision?role=payer|payee&payer=…&caller_dialect=v1|v2&allow_without_l1=false",
-    note: "The canonical integration since 2026-09-02 (spec §8.3 / §9.1) — key required, 1 unit per call. role=payer (default) answers \"does this URL deliver as declared, right now?\" from L0 liveness, L1 settle-through and L2 conformance; role=payee answers \"should this seller serve this payer?\" and requires payer. facts and recommendation always arrive in the same document; the transitional score is marked deprecated and is not the basis of the recommendation. Send Idempotency-Key to retry without spending a second unit. 400 invalid_resource_id / invalid_role / invalid_caller_dialect / payer_required, 404 not_found, 503 decision_unavailable.",
+    note: "The canonical integration since 2026-09-02 (spec §8.3 / §9.1) — key required, 1 unit per call. role=payer (default) answers \"does this URL deliver as declared, right now?\" from L0 liveness, L1 settle-through and L2 conformance; role=payee answers \"should this seller serve this payer?\" and requires payer. facts and recommendation always arrive in the same document; the transitional score is marked deprecated and is not the basis of the recommendation. facts.l1.last_attempt_at is when we last attempted an L1 purchase against this resource (ISO 8601 UTC, null before the first attempt) — distinct from observed_at, which is when we last paid. spending_halted is vet402's own spending halt: a fact about the measurer, not the seller, and while it is true the L1 facts here are not today's observation. not_attempted_reason (spending_halted | no_eligible_accept) qualifies the reason code l1_not_attempted; it is null for the other ways an attempt ends before the signature, which are published per attempt in the decision ledger rather than summarised here. Send Idempotency-Key to retry without spending a second unit. 400 invalid_resource_id / invalid_role / invalid_caller_dialect / payer_required, 404 not_found, 503 decision_unavailable.",
     response: `{
   "subject": { "type": "resource", "id": "9a7e…", "endpoint_id": "3f1c…", "observatory_id": "521e929e-…", "canonical_url": "…", "method": "GET" },
   "role": "payer",
@@ -237,13 +237,15 @@ const endpoints: Endpoint[] = [
   "reason_codes": ["l0_pass", "l1_delivered", "l2_undeclared"],
   "facts": {
     "l0": { "status": "pass", "observed_at": "…", "dialect": "v2", "fail_reason": null },
-    "l1": { "n_delivered": 3, "n_settled": 3, "n_attempts": 3, "n_probe_error": 0, "p50_ms": 812, "p95_ms": 1490, "last_purchase_id": "…", "observed_at": "…" },
+    "l1": { "n_delivered": 3, "n_settled": 3, "n_attempts": 3, "n_probe_error": 0, "p50_ms": 812, "p95_ms": 1490, "last_purchase_id": "…", "observed_at": "…", "last_attempt_at": "2026-09-04T19:02:29.789Z" },
     "l2": { "status": "undeclared", "declaration_hash": null, "response_hash": null, "diff_hash": null, "missing_keys": null, "observed_at": null },
     "availability_7d": 1, "availability_30d": 0.97, "offer_stability": "stable",
     "payees": ["eip155:8453:0x…"],
     "settlement_30d_real": 41, "settlement_30d_raw": 44, "settlement_30d_test": 3,
     "unique_payers_30d_real": 9, "wash_dominated": false
   },
+  "spending_halted": false,
+  "not_attempted_reason": null,
   "freshness": { "l0": "…", "l1": "…", "l2": null },
   "evidence": [ { "level": "L0", "url": "https://vet402.com/observatory/e/521e929e-…" }, { "level": "L1", "purchase_id": "…", "url": "https://vet402.com/api/v1/observatory/endpoints/521e929e-…/purchases" } ],
   "score": { "trustScore": 74, "recommendation": "ALLOW", "deprecated": true },

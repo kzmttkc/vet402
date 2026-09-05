@@ -20,6 +20,7 @@ import { purchaseId as toPurchaseId } from "@/lib/ids/canonical";
 import { toCaip2 } from "@/lib/observatory/chains";
 import { getSettlementCounts } from "@/lib/settlements/census";
 import { rowsOf } from "@/lib/settlements/upsert";
+import { toIsoUtc } from "@/lib/util/iso-utc";
 import type { Dialect, Evidence, L2Status, OfferStability, SellerFacts } from "./types";
 
 export type ProbeInput = {
@@ -53,6 +54,11 @@ export type SellerFactsInput = {
   settlements30d: { raw: number; real: number; test: number; uniquePayersReal: number };
   payees: string[];
   declaredSchema: unknown | null;
+  /**
+   * 全履歴での最終試行時刻（ISO8601 UTC）。`purchases` から導かない——あちらは
+   * 直近 30 日 / 200 行の窓なので、窓の外の試行が「一度も無い」に化ける。
+   */
+  lastAttemptAt: string | null;
 };
 
 /** 署名した（＝支払い済み・spent が立つ）status。§6.2 の n_attempts。 */
@@ -164,6 +170,7 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
           ? toPurchaseId(toCaip2(lastSettled.network) ?? lastSettled.network, lastSettled.txHash)
           : null,
       observed_at: signed[0]?.attemptedAt ?? null,
+      last_attempt_at: input.lastAttemptAt,
     },
     l2: {
       status: l2Status,
@@ -204,6 +211,12 @@ export function l2EvidenceOf(facts: SellerFacts, observatoryId: string): Evidenc
 
 export type SellerFactsLoaded = {
   facts: SellerFacts;
+  /**
+   * 最終試行の行（全履歴・status を問わない）。`at` は facts.l1.last_attempt_at と
+   * 同じ値で、`status` は公開面には出さず `not_attempted_reason` の判別だけに使う
+   * （生の status をそのまま出すと、我々の内部語彙が売り手の記録として読まれる）。
+   */
+  lastAttempt: { at: string | null; status: string | null };
   endpoint: {
     id: string;
     resourceId: string | null;
@@ -290,6 +303,23 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     l2Detail: parseL2Detail(r.l2_detail),
   }));
 
+  // 最終試行は 30 日窓の外も見る（窓で切ると 31 日前の試行が「一度も無い」に化ける）。
+  // status を問わないので、署名前に終わった行（no_eligible_accept / over_cap /
+  // halted …）でも時刻が立つ。endpoint_id の索引で 1 行取るだけ。
+  const lastAttemptRows = rowsOf<{ attempted_at: string | null; status: string | null }>(
+    await db.execute(sql`
+      SELECT attempted_at::text AS attempted_at, status
+      FROM x402_l1_purchases WHERE endpoint_id = ${endpointUuid}::uuid
+      ORDER BY attempted_at DESC LIMIT 1
+    `),
+  );
+  const lastAttempt = {
+    // ::text は "2026-09-04 19:02:29.789686+00" を返す。公開面は ISO8601 UTC で出す
+    // （payOrRefuse がこの時刻を拒否理由の文面へそのまま載せる）。
+    at: toIsoUtc(lastAttemptRows[0]?.attempted_at ?? null),
+    status: lastAttemptRows[0]?.status ?? null,
+  };
+
   const settlements30d = await getSettlementCounts({ endpointId: endpointUuid });
   const facts = assembleSellerFacts({
     probes,
@@ -297,9 +327,11 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     settlements30d,
     payees: ep.payee_id ? [ep.payee_id] : [],
     declaredSchema: ep.declared_schema ?? null,
+    lastAttemptAt: lastAttempt.at,
   });
   return {
     facts,
+    lastAttempt,
     endpoint: {
       id: ep.id,
       resourceId: ep.resource_id,

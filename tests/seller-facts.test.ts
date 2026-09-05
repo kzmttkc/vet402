@@ -12,7 +12,7 @@ const purchases: PurchaseInput[] = [
   { attemptedAt: "2026-08-31T12:00:00Z", status: "settle_failed", latencyMs: 900, httpStatusPaid: 500, payloadNonEmpty: false, l2Schema: "not_checked", txHash: null, network: "eip155:8453" },
   { attemptedAt: "2026-08-30T12:00:00Z", status: "over_cap", latencyMs: null, httpStatusPaid: null, payloadNonEmpty: null, l2Schema: null, txHash: null, network: "eip155:8453" },
 ];
-const base = { probes, purchases, settlements30d: { raw: 5, real: 3, test: 0, uniquePayersReal: 2 }, payees: ["eip155:8453:0xb"], declaredSchema: { type: "object" } as unknown };
+const base = { probes, purchases, settlements30d: { raw: 5, real: 3, test: 0, uniquePayersReal: 2 }, payees: ["eip155:8453:0xb"], declaredSchema: { type: "object" } as unknown, lastAttemptAt: "2026-09-01T12:00:00.000Z" };
 
 test("L0: published verdict（2 連続 fail ゲート）と方言・観測時刻", () => {
   const f = assembleSellerFacts(base);
