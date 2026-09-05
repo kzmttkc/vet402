@@ -47,7 +47,19 @@ A result never moves up a level: an L0 probe cannot report settlement, and an L3
 
 The 0–100 trust score this API returns today (banded `ALLOW` / `WARN` / `BLOCK`) predates these levels. It stays available to API and SDK callers during the transition, and is never reported as an L0–L2 result. Methodology: <https://vet402.com/#methodology>.
 
-Since 2026-09-02 (product spec v1.0), the canonical integration is `GET /api/v1/resources/{resource_id}/decision`: the L0–L2 facts and the `ALLOW` / `WARN` / `BLOCK` recommendation arrive in the same document, with `reason_codes`, `freshness`, `evidence` and the `rules_version` that produced it. `GET /api/v1/resolve?q=<url|domain|address|tx>` turns whatever you hold into the §5 object ids. The score endpoints remain as a thin compatibility layer.
+Since 2026-09-02 (product spec v1.0 — **207 commits, 412 files, +28,414 / −1,913 lines between our ETHOnline Continuity application on 2026-08-23 and the window opening; 99 of those commits landed on 2026-09-02 alone, all before the window**), the canonical integration is `GET /api/v1/resources/{resource_id}/decision`: the L0–L2 facts and the `ALLOW` / `WARN` / `BLOCK` recommendation arrive in the same document, with `reason_codes`, `freshness`, `evidence` and the `rules_version` that produced it. `GET /api/v1/resolve?q=<url|domain|address|tx>` turns whatever you hold into the §5 object ids. The score endpoints remain as a thin compatibility layer.
+
+
+### ETHOnline 2026 (Continuity) — what is ours from *this* window
+
+Everything we submit as hackathon work is exactly `git log pre-ethonline-2026..main`.
+The boundary tag `pre-ethonline-2026` is commit `c42daca`, cut **2026-09-04 00:05:36 UTC** — five minutes
+after the window opened — and it is pushed, so anyone can verify the split themselves.
+The volume that predates it is stated above and was **disclosed to ETHGlobal in writing on 2026-09-05**.
+
+Who wrote the code, file by file: [`AI_USAGE.md`](./AI_USAGE.md). The instructions we worked from, by day:
+[`docs/ethonline-2026/PROMPTS/`](./docs/ethonline-2026/PROMPTS/). The payment gate itself:
+[`SKILL.md`](./SKILL.md).
 
 ## Docs
 
