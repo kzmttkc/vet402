@@ -427,11 +427,28 @@ curl -sL -X POST "https://gateway.thegraph.com/api/$GRAPH_API_KEY/subgraphs/id/C
 **`_meta.block.number` と `deployment` が「live のデータを読んだ」ことの唯一の自明な証明**なので、
 `evidence[].source` の subgraph 行に必ず同梱する（§2 #3）。
 
-### 語彙: `settle_claimed`（vet402.com が `vocabulary.ts` に入れる文案・SDK も同じ語を使う）
+### 語彙: 決済の主張は**3状態**（2026-09-05 09:03 に本番 `llms-full.txt` と方法論の DefinedTermSet から取得）
 
-> settle_claimed — the seller's payment-response header says the transfer settled;
-> vet402 has not yet re-read it on-chain. Not counted as settled.
+**私は「vet402.com がこれから足す文案」として別の文を書いていたが、誤りだった。**
+語彙は**既に本番に出ている**（今朝の SEO 実装で入った22語の1つ）。原文はこれ:
 
-**`settled` と名乗らない。** チェーンで再読した照合器だけが `settled` を書ける、という本番の規律に揃える。
+> **`settle_claimed`** — the seller returned a settlement receipt with a well-formed transaction id
+> and vet402 has not re-read it on-chain yet. **It is the seller's assertion, held as an assertion.**
+>
+> **`settle_claimed_unverifiable`** — the transaction id the seller returned is **not even well-formed
+> for that chain**, so there is nothing to re-read.
+>
+> **`settle_claim_refuted`** — vet402 re-read the transaction the seller pointed at and **that transfer is not there**.
+>
+> **`settled`** — vet402 re-read the transaction on-chain and found the exact USDC transfer it paid for:
+> from our payer, to the catalog-declared payee, for the declared amount, in the canonical USDC contract.
+> **It is never inferred from the seller's own claim.**
+
+**SDK が返す状態は `settle_claimed` と `settle_claimed_unverifiable` の2つ。**
+`settled` と `settle_claim_refuted` は**チェーンを再読した側だけ**が書ける。SDK は再読しないので名乗らない。
+
+**`settle_claimed_unverifiable` の存在は、受領した文案には無かった。** 応答ヘッダの tx id が
+そのチェーンの形式として壊れているときは、`settle_claimed` ではなくこちらを返す。
+**「主張を主張として持つ」と「主張の形すら成していない」を混ぜない。**
 
 
