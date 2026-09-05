@@ -61,10 +61,16 @@ test("§15: wash_flag 付き決済を除外した数字と生値が両方見え�
     chain: "all", window: "30d", settlements_raw: 4, settlements_real: 2,
     wash: { self_deal: 1, circular: 0, test: 1 }, attribution: { confirmed: 2, probable: 1, unmatched: 1 },
     unique_payers_raw: 3, unique_payers_real: 1, unique_payees_real: 1, endpoints_with_real_settlement: 1,
-    by_source: { l1_purchase: 1, payments_api: 3, chain_index: 0 }, definition: "", disclaimer: "", retrievedAt: "",
+    by_source: { l1_purchase: 1, payments_api: 3, chain_index: 0 },
+    coverage: { indexed_since: "2026-09-01", window_days: 30, covered_days: 5, complete: false },
+    definition: "", disclaimer: "", retrievedAt: "",
   };
   for (const k of keys) assert.ok(k in sample);
   assert.notEqual(sample.settlements_raw, sample.settlements_real);
+  // 2026-09-05: window は「求めた期間」であって「持っている期間」ではない。
+  // 応答だけを見て何日分か分かること（引用側が期間を誤解できないこと）を型と値の両方で縛る。
+  assert.ok("coverage" in sample);
+  assert.equal(sample.coverage.complete, sample.coverage.covered_days >= sample.coverage.window_days);
 });
 
 test("§15: 公開してよい失敗は証拠が揃ったものだけ", () => {

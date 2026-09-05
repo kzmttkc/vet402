@@ -21,6 +21,17 @@ export type CensusSummary = {
   unique_payees_real: number;
   endpoints_with_real_settlement: number;
   by_source: { l1_purchase: number; payments_api: number; chain_index: number };
+  /**
+   * 索引が実際にどこまで遡れているか。`window` は「求めた期間」であって「持っている期間」ではない。
+   * 2026-09-03 に window=30d の実体が 2 日分だったことがあり、それを応答だけでは見抜けなかった。
+   * 数字を引用する側が期間を誤解できないよう、要求と実体の差をここに出す。
+   */
+  coverage: {
+    indexed_since: string | null;
+    window_days: number;
+    covered_days: number;
+    complete: boolean;
+  };
   definition: string;
   disclaimer: string;
   retrievedAt: string;
@@ -31,7 +42,7 @@ export const CENSUS_DEFINITION =
   RAW_RETENTION_DAYS +
   " days; older days are held as daily (payee, payer) aggregates; counts are exact, per-transaction receipts older than " +
   RAW_RETENTION_DAYS +
-  " days are not served.";
+  " days are not served. coverage tells you what the index actually holds: indexed_since is the oldest day present for this chain, covered_days is how much of the requested window that fills, and complete is false when the index does not yet reach back a full window — the counts are then a floor, not a total.";
 
 export const CENSUS_DISCLAIMER =
   "Scores are opinions; L0–L2 are measurement records. This is not credit assessment, KYC, sanctions screening, or certification.";
@@ -50,6 +61,7 @@ export async function getCensusSummary(chain: string | null, window: CensusWindo
     unique_payees_real: 0,
     endpoints_with_real_settlement: 0,
     by_source: { l1_purchase: 0, payments_api: 0, chain_index: 0 },
+    coverage: { indexed_since: null, window_days: window === "7d" ? 7 : 30, covered_days: 0, complete: false },
     definition: CENSUS_DEFINITION,
     disclaimer: CENSUS_DISCLAIMER,
     retrievedAt: new Date().toISOString(),
@@ -92,10 +104,30 @@ export async function getCensusSummary(chain: string | null, window: CensusWindo
         coalesce(sum(n) FILTER (WHERE source = 'chain_index'), 0)::int AS src_chain
       FROM u
     `;
-  const rows = await withDailyFallback(
-    async () => rowsOf<Record<string, number | string | null>>(await db.execute(union(true))),
-    async () => rowsOf<Record<string, number | string | null>>(await db.execute(union(false))),
-  );
+  // 索引の実体（窓に関係なく、いちばん古い日）。生行と日次集約の両方を見る。
+  const oldest = (daily: boolean) => sql`
+      SELECT to_char(min(d), 'YYYY-MM-DD') AS since FROM (
+        SELECT min(${SETTLEMENT_DAY}) AS d FROM settlements WHERE true ${chainRaw}
+        ${daily ? sql`UNION ALL SELECT min(day) AS d FROM settlement_daily WHERE true ${chainRaw}` : sql``}
+      ) x
+    `;
+  const [rows, oldestRows] = await Promise.all([
+    withDailyFallback(
+      async () => rowsOf<Record<string, number | string | null>>(await db.execute(union(true))),
+      async () => rowsOf<Record<string, number | string | null>>(await db.execute(union(false))),
+    ),
+    withDailyFallback(
+      async () => rowsOf<Record<string, string | null>>(await db.execute(oldest(true))),
+      async () => rowsOf<Record<string, string | null>>(await db.execute(oldest(false))),
+    ),
+  ]);
+  const indexedSince = (oldestRows[0]?.since as string | null) ?? null;
+  const coveredDays = indexedSince
+    ? Math.min(
+        days,
+        Math.floor((Date.parse(new Date().toISOString().slice(0, 10)) - Date.parse(indexedSince)) / 86_400_000) + 1,
+      )
+    : 0;
   const r = rows[0] ?? {};
   const n = (k: string) => Number(r[k] ?? 0);
   return {
@@ -109,6 +141,12 @@ export async function getCensusSummary(chain: string | null, window: CensusWindo
     unique_payees_real: n("payees_real"),
     endpoints_with_real_settlement: n("endpoints_real"),
     by_source: { l1_purchase: n("src_l1"), payments_api: n("src_api"), chain_index: n("src_chain") },
+    coverage: {
+      indexed_since: indexedSince,
+      window_days: days,
+      covered_days: coveredDays,
+      complete: coveredDays >= days,
+    },
   };
 }
 

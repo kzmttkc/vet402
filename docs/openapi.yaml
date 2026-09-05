@@ -3197,7 +3197,7 @@ components:
     CensusSummary:
       type: object
       description: §7.2 / §9.1 settlement census. `settlements_raw` and `settlements_real` are always both present and never merged.
-      required: [chain, window, settlements_raw, settlements_real, wash, attribution, unique_payers_raw, unique_payers_real, unique_payees_real, endpoints_with_real_settlement, by_source, definition, disclaimer, retrievedAt]
+      required: [chain, window, settlements_raw, settlements_real, wash, attribution, unique_payers_raw, unique_payers_real, unique_payees_real, endpoints_with_real_settlement, by_source, coverage, definition, disclaimer, retrievedAt]
       properties:
         chain: { type: string, description: CAIP-2, or "all". }
         window: { type: string, enum: [7d, 30d] }
@@ -3221,6 +3221,19 @@ components:
         unique_payers_real: { type: integer }
         unique_payees_real: { type: integer }
         endpoints_with_real_settlement: { type: integer }
+        coverage:
+          type: object
+          description: >
+            What the index actually holds, as opposed to what was asked for. `window` is the requested
+            period; `indexed_since` is the oldest day present for this chain; `covered_days` is how much
+            of the window that fills; `complete` is false when the index does not yet reach back a full
+            window — the counts are then a floor, not a total.
+          required: [indexed_since, window_days, covered_days, complete]
+          properties:
+            indexed_since: { type: [string, "null"], description: "Oldest indexed day (YYYY-MM-DD), or null when nothing is indexed." }
+            window_days: { type: integer }
+            covered_days: { type: integer }
+            complete: { type: boolean }
         by_source:
           type: object
           required: [l1_purchase, payments_api, chain_index]

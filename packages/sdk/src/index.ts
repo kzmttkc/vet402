@@ -421,6 +421,8 @@ export type CensusSummary = {
   unique_payees_real: number;
   endpoints_with_real_settlement: number;
   by_source: { l1_purchase: number; payments_api: number; chain_index: number };
+  /** 索引が実際に持っている期間。window は「求めた期間」であって「持っている期間」ではない。 */
+  coverage: { indexed_since: string | null; window_days: number; covered_days: number; complete: boolean };
   definition: string;
   disclaimer: string;
   retrievedAt: string;

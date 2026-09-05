@@ -750,6 +750,13 @@ export type ChainStats = {
   publishedPass: number;
   publishedFail: number;
   publishedUnverified: number;
+  /**
+   * このチェーンでの実購入（L1）。2026-09-05 追加。
+   * これが無い間、読む側は l1 の合計を 1 チェーンに帰属させるしかなく、実際に誤りが起きた
+   * （Solana で 8/21 から買っているのに「全ての試行が Base」と書かれた文書が 2 件）。
+   * 合計との差は network 未設定の行（掲載にチェーンが無い古い行）で、意図的に集計外。
+   */
+  l1: { attempts: number; settled: number; endpointsAttempted: number };
 };
 
 /**
@@ -802,6 +809,7 @@ export async function getObservatoryStatsByChain(
         publishedPass: 0,
         publishedFail: 0,
         publishedUnverified: 0,
+        l1: { attempts: 0, settled: 0, endpointsAttempted: 0 },
       };
       entry.totalEndpoints++;
       if (row.status === "active") entry.activeEndpoints++;
@@ -809,6 +817,41 @@ export async function getObservatoryStatsByChain(
       if (verdict === "pass") entry.publishedPass++;
       else if (verdict === "fail") entry.publishedFail++;
       else entry.publishedUnverified++;
+      byChain.set(chain, entry);
+    }
+
+    // L1（実購入）をチェーン別に重ねる。掲載の網（上）と購入の網（下）は別テーブルなので、
+    // 購入があるのに掲載が消えたチェーンでも行が落ちないよう、無ければ作る。
+    const l1Raw = await db.execute(sql`
+      SELECT network,
+             count(*)::int AS attempts,
+             count(*) FILTER (WHERE status = 'settled')::int AS settled,
+             count(DISTINCT endpoint_id)::int AS endpoints
+      FROM x402_l1_purchases
+      WHERE network IS NOT NULL AND network <> ''
+      GROUP BY network
+    `);
+    const l1Rows = (Array.isArray(l1Raw) ? l1Raw : (l1Raw as { rows?: unknown[] }).rows ?? []) as {
+      network: string | null;
+      attempts: number;
+      settled: number;
+      endpoints: number;
+    }[];
+    for (const row of l1Rows) {
+      if (!options.includeTestnets && isTestnet(row.network)) continue;
+      const chain = chainLabel(row.network);
+      const entry = byChain.get(chain) ?? {
+        chain,
+        totalEndpoints: 0,
+        activeEndpoints: 0,
+        publishedPass: 0,
+        publishedFail: 0,
+        publishedUnverified: 0,
+        l1: { attempts: 0, settled: 0, endpointsAttempted: 0 },
+      };
+      entry.l1.attempts += Number(row.attempts ?? 0);
+      entry.l1.settled += Number(row.settled ?? 0);
+      entry.l1.endpointsAttempted += Number(row.endpoints ?? 0);
       byChain.set(chain, entry);
     }
 

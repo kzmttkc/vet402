@@ -179,6 +179,7 @@ const SURFACES: Surface[] = [
       "unique_payees_real",
       "endpoints_with_real_settlement",
       "by_source",
+      "coverage",
       "definition",
       "disclaimer",
       "retrievedAt",
