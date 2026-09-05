@@ -24,8 +24,18 @@ export declare const DEFAULT_MAX_PER_TX_USD = 1;
  * これは拒否理由ではなく**経路の印**であり、ALLOW で払ったときの決定行にも載る
  * （§3.1「一度も見たことのない売り手に向けて判定できる」が製品の核だから、
  * 通ったのか拒んだのかと独立に、どちらの経路で出た判定かが機械可読で残る必要がある）。
+ *
+ * 2026-09-05 に2語だけ足した。どちらも既存の語では**言えないこと**を言うために足している。
+ *  - `no_eligible_accept` … 本番 `x402-payer.ts` の `AcceptSelection` にある語をそのまま借りる。
+ *    「掴んだ1件がチェーン違いだった」（`chain_or_asset_mismatch`）と
+ *    「提示された全部を見たが1件も払えなかった」は別のこと。前者だけを返すと、
+ *    **売り手が accepts の順序を変えるだけで拒否理由がすり替わる**。
+ *    具体の不一致は消さず、この語を**先頭に**置いて一次の所見にする
+ *  - `allowed_by_caller_policy` … 拒否理由ではなく**通した規則の印**（§3.2）。
+ *    `policy.requireVet402Allow: false` で vet402 の非 ALLOW を免除して払ったときにだけ載る。
+ *    黙って弱くならないことを、機械可読な形で示すためにある
  */
-export type PayRefuseReason = "price_above_ceiling" | "payee_mismatch" | "chain_or_asset_mismatch" | "evidence_unavailable" | "payee_recommendation_not_allow" | "insufficient_delivery_evidence" | "insufficient_subgraph_evidence" | "resource_uncatalogued" | "subgraph_evidence_unavailable";
+export type PayRefuseReason = "price_above_ceiling" | "payee_mismatch" | "chain_or_asset_mismatch" | "evidence_unavailable" | "payee_recommendation_not_allow" | "insufficient_delivery_evidence" | "insufficient_subgraph_evidence" | "resource_uncatalogued" | "subgraph_evidence_unavailable" | "no_eligible_accept" | "allowed_by_caller_policy";
 /** 証拠源。`payOrRefuse` の判定が「誰の台帳を読んだか」を機械可読で残す。 */
 export type PayEvidenceSource = "vet402" | "subgraph";
 export type PayEvidenceRow = {
@@ -80,6 +90,54 @@ export type PayPolicy = {
     maxPerTxUsd?: number;
     /** 呼び手が名指しした証拠の床。書かなければ `/decision` の判定だけで通す。 */
     evidence?: PayEvidencePolicy;
+    /**
+     * **vet402 の推奨が ALLOW であることを要求するか。既定 `true`（fail-closed）。**
+     *
+     * `false` にすると、vet402 が WARN / BLOCK を出していても、**呼び手が宣言した
+     * 証拠の床がすべて満たされていれば**払う。これは「あなたは vet402 を信じなくてよい」
+     * という主張そのものであり（WINDOW_PLAN §3.2）、実測に裏打ちがある——
+     * デモの支払い先 The Graph `0x79DC34E4…FcCB` は我々のエンジンで **69 / WARN / thin**
+     * だが、The Graph 自身の subgraph は同じアドレスの受領を 253 件知っている。
+     * 我々の判定が薄いことと、その相手が危険であることは、別のことである。
+     *
+     * **床を1つも宣言せずに `false` にするのは呼び出し側エラー**（`invalid_policy`）。
+     * vet402 の判定を外し、代わりを置かなければ、**誰もこの支払いを判定していない**。
+     * 0 の床は床ではない（何も判定しない）ので、少なくとも1つは 1 以上でなければならない。
+     *
+     * **免除するのは「判定の中身」であって「判定が存在すること」ではない。**
+     * `degraded`（測れなかった）と `signalsUnavailable`（一部が測れなかった）は
+     * `false` でも fail-closed のまま。ALLOW でないことと、読めなかったことは別である。
+     *
+     * 通したときは決定行に残る: `verdict_source: "caller_policy"`、
+     * 理由コード `allowed_by_caller_policy`、そして {@link PayDecisionRecord.policy_override}
+     * に「何を免除し、どの床をいくつで満たしたか」の内訳。**黙って弱くならない。**
+     */
+    requireVet402Allow?: boolean;
+};
+/** 満たした床1つ。**要求値と実測値を両方持つ**——「床を見たふり」を機械可読に潰す。 */
+export type EvidenceFloorCheck = {
+    floor: "minL1Deliveries" | "minSubgraphReceipts";
+    /** どの源の数で当てたか。源をまたいで足さない（D16）。 */
+    source: PayEvidenceSource;
+    required: number;
+    observed: number;
+};
+/**
+ * **どの規則で通したか。** vet402 の非 ALLOW を呼び手の policy が免除して払ったときにだけ載る。
+ * 審査員が読むのはここなので、「何を免除したか」と「代わりに何を満たしたか」を両方置く。
+ */
+export type PayPolicyOverride = {
+    rule: "requireVet402Allow:false";
+    /** 免除した判定。**消さずに残す**——弱くしたことを隠さない。 */
+    waived: {
+        source: "decision" | "payee_score";
+        recommendation: string;
+        /** 受取人スコアの点数（`/decision` 経路には無いので null）。 */
+        score: number | null;
+        reason_codes: string[];
+    };
+    /** 代わりに満たした床の内訳。空になることはない（空なら呼び出し側エラーで到達しない）。 */
+    floors_met: EvidenceFloorCheck[];
 };
 export type PayOrRefuseInput = {
     /** 0x アドレス。ENS 名は**解決しない**（名前解決を支払いゲートの中で起こさない）。 */
@@ -114,13 +172,20 @@ export type PayOrRefuseInput = {
 export type PayDecisionRecord = {
     recommendation: "ALLOW" | "REFUSE";
     reason_codes: string[];
-    /** 判定を何から出したか。404 経路は "payee_score"。 */
-    verdict_source: "decision" | "payee_score" | "local_policy";
+    /**
+     * 判定を何から出したか。404 経路は "payee_score"。
+     * **"caller_policy" は「vet402 ではなく呼び手の規則が通した」**（§3.2）。
+     * vet402 が ALLOW を出したなら、`requireVet402Allow: false` でも "decision" のまま——
+     * 上書きしていないのに上書きしたと記帳すると、決定行が読めなくなる。
+     */
+    verdict_source: "decision" | "payee_score" | "local_policy" | "caller_policy";
     evidence: PayEvidenceRow[];
     /** サーバの `/decision` 応答（404 経路では null）。 */
     decision: DecisionResult | null;
     /** 404 経路で読んだ受取人スコア（それ以外では null）。 */
     payeeScore: PayeeScoreResult | null;
+    /** 呼び手の規則が vet402 の非 ALLOW を免除して**通した**ときだけ非 null。 */
+    policy_override: PayPolicyOverride | null;
     source: string;
 };
 export type PayOrRefuseResult = {
