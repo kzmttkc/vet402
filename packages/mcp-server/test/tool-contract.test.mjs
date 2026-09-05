@@ -205,10 +205,13 @@ test("evidence[].source を返す 2 本のツールが、源の名前を説明�
   visit(sf);
   assert.ok(descriptions.has("pay_if_trusted"), `AST がツールを拾えていない: ${[...descriptions.keys()].join(",")}`);
   for (const tool of ["check_resource_decision", "pay_if_trusted"]) {
-    const text = descriptions.get(tool) ?? "";
+    // 説明は配列リテラルなので、引用符・カンマ・改行を潰して 1 本の散文に戻してから見る。
+    const text = (descriptions.get(tool) ?? "").replace(/["',\n]+/g, " ").replace(/\s+/g, " ");
     assert.match(text, /evidence\[\]/, `${tool} の説明が evidence[] に触れていない`);
-    assert.match(text, /source/, `${tool} の説明が source に触れていない`);
-    assert.match(text, /vet402/, `${tool} の説明が源の名前 vet402 を出していない`);
-    assert.match(text, /subgraph/, `${tool} の説明が源の名前 subgraph を出していない`);
+    // 「どこかに source と vet402 と subgraph がある」だけでは弱い（2026-09-05 の変異で実測:
+    // 説明から源の名指しを消しても、無関係な "resource" や "sources" が残って緑のままだった）。
+    // **source という語のすぐ後ろで 2 つの源を名指ししていること**を見る。
+    assert.match(text, /\bsource\b[\s\S]{0,120}vet402/, `${tool}: source の説明のそばに vet402 が無い`);
+    assert.match(text, /\bsource\b[\s\S]{0,160}subgraph/, `${tool}: source の説明のそばに subgraph が無い`);
   }
 });
