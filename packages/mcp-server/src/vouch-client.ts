@@ -166,7 +166,7 @@ const AGENT_ID_RE = /^\d+$/;
  * connection error that names nothing. A published binary defaults to the
  * published API; local development sets the env var.
  */
-const DEFAULT_API_URL = "https://vet402.com/api/v1";
+export const DEFAULT_API_URL = "https://vet402.com/api/v1";
 
 /**
  * Default per-request timeout (10 s), overridable with `VOUCH_TIMEOUT_MS` in

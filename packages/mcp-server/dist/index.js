@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { explainTrustScore } from "./explain.js";
 import { sanitizeToolError } from "./tool-errors.js";
+import { payIfTrusted } from "./pay-if-trusted.js";
 import { decideFromScore, decideFromFailure } from "./decision.js";
 import { attestX402Payment, fetchAgentScore, fetchDecision, fetchPayeeScore, fetchWalletScore, } from "./vouch-client.js";
 const server = new McpServer({
@@ -153,6 +154,46 @@ server.tool("attest_x402_payment", "Record an x402 payment attestation after set
         };
     }
 });
+// ============================================================
+// pay_if_trusted（ETHOnline 2026 / WINDOW_PLAN §2 #2）
+//
+// 上の4本は判定を**返す**。払うかどうかは呼び手が決める。これは signer を**握る**——
+// 判定が ALLOW でなければ支払いモジュールは評価すらされない（§4「呼べないことの4層証明」）。
+//
+// **既定では払えない。** 署名鍵が設定されていなければ、このツールは関門を最後まで走らせて
+// 判定を返し、支払いだけを構造的に起こさない。金を動かす能力を、設定していない利用者に
+// 黙って持たせない。
+// ============================================================
+/** 触れられたら throw する署名者。payer 未設定のとき payIfTrusted へ渡す値で、到達しない。 */
+const UNCONFIGURED_SIGNER = {
+    address: "0x0000000000000000000000000000000000000000",
+    signTypedData: async () => {
+        throw new Error("payer_not_configured");
+    },
+};
+/**
+ * 署名者を作る。**viem はこのパッケージの依存ではない**——MCP サーバに秘密鍵を持たせるのは
+ * 利用者が明示的に選ぶことなので、既定のインストールにその能力を含めない。
+ * 鍵が設定されていて viem が解決できたときだけ署名者を返し、それ以外は null（fail-closed）。
+ */
+async function resolvePayer() {
+    const key = process.env.VOUCH_PAYER_PRIVATE_KEY;
+    if (!key || !/^0x[0-9a-fA-F]{64}$/.test(key))
+        return null;
+    try {
+        // 変数指定子。viem を静的依存にしない（未インストールでもビルドと起動が通る）。
+        const specifier = "viem/accounts";
+        const mod = await import(specifier);
+        const account = mod.privateKeyToAccount(key);
+        return {
+            address: account.address,
+            signTypedData: (typedData) => account.signTypedData(typedData),
+        };
+    }
+    catch {
+        return null;
+    }
+}
 async function main() {
     // 製品定義書 §9.1（2026-09-02）: 新規統合は /decision を正規とする。
     // facts（L0–L2 の測定記録）と recommendation が同じ応答にある。
@@ -179,6 +220,71 @@ async function main() {
                 summary: `${result.recommendation} (${result.rules_version}) — ${result.reason_codes.join(", ")}`,
             };
             return { content: [{ type: "text", text: JSON.stringify({ ...decision, measurement: result }, null, 2) }] };
+        }
+        catch (error) {
+            return scoreToolFailure(error);
+        }
+    });
+    server.tool("pay_if_trusted", [
+        "Pay an x402 resource ONLY if vet402's decision allows it. Unlike check_resource_decision,",
+        "which returns a verdict for you to act on, this tool holds the signer: on anything other",
+        "than ALLOW the payment module is never even loaded, so no signature can exist.",
+        "",
+        "Read these two fields and nothing else to know what happened:",
+        "- decision: PAID | REFUSE | FAILED",
+        "- safe_to_pay: boolean (always equals decision === PAID)",
+        "",
+        "REFUSE means it stopped BEFORE a signature existed; refuse_reasons carries the server's own",
+        "reason_codes unchanged, plus one of evidence_unavailable, payee_recommendation_not_allow,",
+        "payment_target_unknown, payer_not_configured, payee_mismatch, chain_or_asset_mismatch,",
+        "price_above_ceiling. FAILED means it signed and the seller did not settle — signed and nonce",
+        "are returned, not hidden, because the authorization stays live until validBefore.",
+        "",
+        "settlement is at most settle_claimed: the seller's PAYMENT-RESPONSE header is a claim, not an",
+        "on-chain confirmation. measurement carries the /decision body verbatim, including evidence[]",
+        "with each row's own source (vet402 or subgraph) so you can check which ledger answered.",
+        "",
+        "Omit resource/payee/amountUsd to run the gate without paying. Paying also requires",
+        "VOUCH_PAYER_PRIVATE_KEY in this server's env and viem installed; without them the tool still",
+        "returns the decision and refuses with payer_not_configured.",
+    ].join("\n"), {
+        resourceId: RESOURCE_ID,
+        resource: z.string().max(2048).optional().describe("URL that answers 402. Required to actually pay."),
+        payee: WALLET.optional().describe("Address you already expect to be paid; the 402's payTo must match it"),
+        amountUsd: z.number().nonnegative().optional().describe("What you believe this costs, in USD"),
+        method: z.string().max(10).optional().describe("HTTP method of the resource (default GET; The Graph's x402 endpoint is POST)"),
+        maxPerTxUsd: z.number().positive().optional().describe("Per-payment ceiling in USD (default 1)"),
+    }, async ({ resourceId, resource, payee, amountUsd, method, maxPerTxUsd }) => {
+        try {
+            const apiKey = process.env.VOUCH_API_KEY;
+            if (!apiKey)
+                throw new Error("missing_api_key");
+            const rawTimeout = Number(process.env.VOUCH_TIMEOUT_MS);
+            const timeoutMs = Number.isFinite(rawTimeout) && rawTimeout > 0 ? rawTimeout : 10_000;
+            // 注入する fetch は必ず期限付き。ハングした上流はツール呼び出しを永久に返さず、
+            // 返らない呼び出しはモデルが fail-closed に扱えない（vouch-client.ts と同じ規律）。
+            const boundedFetch = (url, init) => fetch(url, { ...init, signal: init?.signal ?? AbortSignal.timeout(timeoutMs) });
+            const signer = await resolvePayer();
+            const wantsPayment = resource !== undefined || payee !== undefined || amountUsd !== undefined;
+            const result = await payIfTrusted({
+                resourceId,
+                signer: signer ?? UNCONFIGURED_SIGNER,
+                fetch: boundedFetch,
+                apiUrl: process.env.VOUCH_API_URL,
+                apiKey,
+                // payer が無いなら支払い先を**渡さない**。渡さなければ ALLOW でも第5段へ進めない。
+                ...(signer ? { resource, payee, amountUsd, method, maxPerTxUsd } : {}),
+            });
+            if (!signer && wantsPayment) {
+                result.refuse_reasons = [
+                    ...result.refuse_reasons.filter((r) => r !== "payment_target_unknown"),
+                    "payer_not_configured",
+                ];
+                result.summary =
+                    "This server has no payer: set VOUCH_PAYER_PRIVATE_KEY in its env block and install viem " +
+                        "in the server package to enable payment. The decision above was still measured.";
+            }
+            return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         }
         catch (error) {
             return scoreToolFailure(error);

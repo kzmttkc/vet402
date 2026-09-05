@@ -184,6 +184,18 @@ export type X402PaymentAttestation = {
     network?: string;
     resource?: string;
 };
+/**
+ * Hosted production API — the default when VOUCH_API_URL is unset.
+ *
+ * 2026-08-13 (hackathon persona R2): this defaulted to
+ * `http://localhost:3000/api/v1`. That is the right default for whoever is
+ * developing this server and the wrong one for everybody who installs it: an
+ * MCP client launched via `npx @vet402/mcp-server` with only a key set
+ * would silently point at a port on the user's own machine and fail with a
+ * connection error that names nothing. A published binary defaults to the
+ * published API; local development sets the env var.
+ */
+export declare const DEFAULT_API_URL = "https://vet402.com/api/v1";
 export declare class VouchApiError extends Error {
     /** Present for some error codes (e.g. attestation_unverifiable) with a human-readable detail. */
     reason?: string;

@@ -110,6 +110,8 @@ test("the AST actually found the tools (no vacuous pass)", () => {
     "check_resource_decision",
     "check_wallet_trust",
     "explain_trust_score",
+    // ETHOnline 2026 / WINDOW_PLAN §2 #2: 判定を返すだけでなく signer を握る唯一のツール
+    "pay_if_trusted",
   ]);
 });
 
