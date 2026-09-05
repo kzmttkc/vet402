@@ -31,24 +31,24 @@
 - 公開の事実面（`/observatory/state`、`/payee/{addr}` HTML）は key-less。スコア API（`/api/v1/wallets` / `/api/v1/payees`）はキー必須
 - スコア閾値を書くなら実装値: ALLOW≥70 / WARN 40–69 / BLOCK<40、x402重み10%
 - ALLOW が今日カタログに出ない事実を、売り文句にしない（聞かれたら fixtures の数字で答える）
-- **「Base のみで実購入している」と書かない**。2026-09-05 実測（公開 `/api/v1/observatory/history` の全期間合計）:
-  Base `eip155:8453` 2,999 attempts / 1,382 settled、**Solana 50 attempts / 5 settled**。Solana でも買っている
-- **チェーン別の L1 件数を数字で書かない**（当面）。`/api/v1/observatory/state` に `l1.byChain` が無く、
-  読者が確かめられる公開面が `history` しか無い。しかもその 2 つが合わない（下記）。
-  **`l1.byChain`（camelCase・chain ごとに attempts / settled / delivered / nonceBound）が
-  state に出たら、この禁則を外す**
-- **`/observatory/state` の L1 合計と `history` の合計が一致しない**（2026-09-05 実測: state 3,241/1,629 に対し
-  history 合計 3,065/1,387）。**理由は「開始日が違う」ではない**（2026-09-05 08:35、vet402.com が本番 SELECT で突合）:
-  history の源 `x402_daily_metrics` は cron が毎日 10:30 UTC に**その日 1 日ぶんだけ**書き、以後**二度と再計算しない**。
-  L1 の決済確認 cron は 14:00 UTC で集計より後なので、**当日後半に settled へ昇格した行は永久に集計へ入らない**
-  （Base 単体で見ても live 1,603 に対し rolled 1,382・221 件の過小）。つまり history は「同じ生の測定」ではなく**凍結スナップショット**で、
-  構造的に settled を**少なく**出す。外部の人が history を足して検算すると、こちらが盛っているように見える。
-  **是正（直近 14 日の再集計＋全期間の再計算＋応答に `coverageFrom`/`rolledUpThrough`/`semantics`）が本番に入るまで、
-  この 2 つを同じ文書に並べない。** 解除は「再集計後の history 合計が state と説明可能な差に収まったこと」を実測してから
-- **Solana の決済照合を「memo 束縛」と書かない**。2026-09-05、vet402.com が本番 SELECT で訂正:
-  Solana の settled 26 件は**全行が nonce 導入前**で、memo 束縛ではない。書けるのは
-  **「finalized・残高差分で照合」**まで。**この誤りは執行部が `.company/decisions/2026-09.md` で流したもの**なので、
-  引用したグラント申請文（`docs/applications/solana-grant-proposal.md` / `why-solana.md`）も直す
+- **「Base のみで実購入している」と書かない**。2026-09-05 **09:21** 実測（再集計後の
+  `/api/v1/observatory/history?days=366`・state と差 0）: Base 3,203 attempts / 1,603 settled、
+  **Solana 38 attempts / 26 settled**。Solana でも買っている。
+  （朝に書いた 2,999/1,382・50/5 は再集計前の凍結値。同日中に置き換えた）
+- **チェーン別の L1 件数は、`/api/v1/observatory/history` を出典に明記するときだけ書いてよい**
+  （2026-09-05 09:22 に条件つきへ緩和・執行部）。**`/observatory/state` から chain 別の L1 を引かない**——
+  そこには `l1.byChain` がまだ無い（09:21 実測で `null`。実装 `89edeee` は未 push）。
+  history 側は再集計後に state と完全一致し、チェーン別も出る:
+  **Base 3,203 / 1,603・Solana 38 / 26**（2026-09-05 09:21 実測・`coverageFrom 2026-08-14`〜`rolledUpThrough 2026-09-04`）。
+  緩和の理由: この禁則は「読者が確かめられないから」置いたもので、**確かめられる面ができた**。
+  当初の解除条件（`l1.byChain` が state に出ること）は満たしていないが、**守ろうとしていた中身は満たされた**。
+  `l1.byChain` が本番に出たら、この但し書きごと外す
+- ~~**`/observatory/state` の L1 合計と `history` の合計が一致しない**~~ → **2026-09-05 09:22 解除（執行部が実測）**。
+  再集計が本番へ入り（main `743abac`＋全期間の再集計）、`history?days=366` の 98 日合計 **3,241 / 1,629** が
+  `state.l1` の **3,241 / 1,629** と **差 0** で一致することを確認した。応答に `coverageFrom: 2026-08-14` /
+  `rolledUpThrough: 2026-09-04` / `lastRollupAt` / `recomputeWindowDays: 14` / `semantics` が出ている。
+  **両方を同じ文書に並べてよい。** ただし引用するときは**取得日**と `coverageFrom`〜`rolledUpThrough` を併記すること
+  （直近 14 日は毎回再計算・それより古い日は凍結、と `semantics` が宣言している）
 - **「監査済み」「externally audited」と書かない**。2026-09-05 の 3 本は自前監査（執行部＋監査エージェント）であって
   第三者監査ではない。書けるのは「自前の監査記録を全文公開している」まで
 
