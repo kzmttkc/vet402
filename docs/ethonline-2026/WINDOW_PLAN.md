@@ -801,14 +801,56 @@ curl -sL -X POST "https://gateway.thegraph.com/api/$GRAPH_API_KEY/subgraphs/id/C
 それを A/B で証明する。**測り方を後から決めると結果を選べてしまう。だから走らせる前にここへ固定する。**
 **結果が「差が無い」でも、そのまま出す。** 差が出なかったことを隠したら、この会社の看板（検算できる会社）が嘘になる。
 
-### 条件
+### 条件 —— **2026-09-06 訂正。B は `SKILL.md` ではなく「bazantic.com で作った Recipe」**
+
+**賞ページの資格要件を実読して、私の設計が外れていたと分かった**（実データは1件も見ていない時点での訂正）:
+
+> **Create a Recipe that explains when, why, and how to use your service.**
+> Use the same prompt, model, settings, and API access in both tests.
+> **Make the Recipe the only material difference between the tests.**
+
+**`SKILL.md` を B に置くと「Recipe が唯一の違い」を満たさない。** B は **Bazantic の Recipe** にする。
 
 | | 与えるもの |
 |---|---|
 | **A（Recipe なし）** | Bazantic Gateway の URL と、素の API 一覧（OpenAPI）だけ |
-| **B（Recipe あり）** | 同じものに加えて `SKILL.md` と MCP ツール `pay_if_trusted` |
+| **B（Recipe あり）** | 同じもの ＋ **bazantic.com で作った Recipe**（MCP 経由で渡る） |
 
-**同一モデル・同一プロンプト・同一 temperature。** 違うのは Recipe の有無だけ。
+**同一モデル・同一プロンプト・同一設定・同一 API アクセス。違いは Recipe だけ。**
+（`temperature` は現行モデルが受け付けないので**両方とも送らない**。§「事前登録の修正」を参照）
+
+### Bazantic の資格要件（2026-09-06 実読・8項目）
+
+| # | 要件 | 状態 |
+|---|---|---|
+| 1 | bazantic.com にアカウントを作る | ✅ 09-03（`TakeshiTGAL`・GitHub OAuth） |
+| 2 | プロジェクト用の x402/MPP Gateway を作る | ✅ 09-03（LIVE・56ルート $0.00） |
+| 3 | **サービスを「いつ・なぜ・どう使うか」を説明する Recipe を作る** | ❌ **未作成。これが最大の残件** |
+| 4 | 両テストで同じプロンプト・モデル・設定・API アクセス | ✅ ハーネスが構造で強制（変異 M7 が固定） |
+| 5 | **Recipe を唯一の実質的な違いにする** | ⚠️ **設計を訂正した**（上） |
+| 6 | 両方の結果を、入力ごと提出物で示す | ✅ 生ログを `results/` に出す |
+| 7 | **結果の違いを歩いて見せる動画を録る** | ⏳ 動画の台本に組み込む（§6） |
+| 8 | bazantic のユーザー名を提出物に書く | ✅ `TakeshiTGAL` |
+
+### Bazantic は**枠は1つ、ブラケットは2つ**（両方に応募できる）
+
+| ブラケット | 額 | 我々 |
+|---|---|---|
+| **Help an Agent Use Your Hackathon Project** | $1,000（最大2チーム × $500）・**Continuity 限定** | 狙う |
+| **Best Recipe that uses EthGlobal Hackathon Sponsor APIs** | $1,000（1位 $500 / 2位 $300 / 3位 $200） | **複数の API を跨ぐ Recipe が要る**。我々の Recipe は自社 API 1本なので**現状は合わない**。3枠目の判断と合わせて §1.6 で決める |
+
+> If a partner has multiple tracks, you can be eligible for all of them **while only counting as 1 Partner Prize**.
+
+**→ Bazantic は1枠で2ブラケット。The Graph も1枠。残り1枠が空く。**
+
+### 3枠目（2026-09-06 判断）
+
+残る9パートナー（Hedera / Arc / World / 1inch / ENS / Uniswap Foundation / Ledger / Privy / Chainlink）は
+**どれも我々が今使っていない**。埋めるには会期スコープ外の実装が要る（§2 の「これ以外を作らない」に反する）。
+
+**決定: 3枠目は空けたまま出す。** 使っていない製品の枠に応募するのは、
+**パートナーの審査時間を使わせて我々の主張を薄める**だけで、この会社の看板と逆になる。
+**ただし 09-11 の機能凍結までに「既に満たしている」枠が見つかれば入れる**（探すのは無料）。
 
 ### 課題（エージェントに出す問い・A/B 共通）
 
