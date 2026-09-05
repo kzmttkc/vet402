@@ -44,10 +44,14 @@ Implementation, tests, and audits, under the direction above. Claude (Opus / Fab
 writes most of the code in this repository. We say that plainly rather than annotate a handful of files.
 
 ```bash
-git rev-list --count HEAD                                  # 679 commits
-git log --grep='Co-Authored-By: Claude' --oneline | wc -l  # 560 carry the AI trailer
-                                                           # 119 do not
+git rev-list --count HEAD                                  # 684 commits (2026-09-06)
+git log --grep='Co-Authored-By: Claude' --oneline | wc -l  # 565 carry the AI trailer
+git rev-list --count --merges HEAD                         # 34 are merge commits
 ```
+
+**The 119 without the trailer are not "written by a human".** 34 are merges; most of the rest are AI
+commits from before we adopted the trailer, or ones where it was simply forgotten. **Read the absence of
+a trailer as "unknown", not as "human".** The numbers move every day — re-run the commands.
 
 ## Window boundary
 
@@ -55,7 +59,7 @@ git log --grep='Co-Authored-By: Claude' --oneline | wc -l  # 560 carry the AI tr
 |---|---|
 | Boundary tag | `pre-ethonline-2026` = `c42daca`, **2026-09-04 00:05:36 UTC** (5 minutes after the window opened) |
 | Everything submitted as hackathon work | `git log pre-ethonline-2026..main` |
-| Pre-window work since our 2026-08-23 application | 207 commits, 412 files, +28,414 / −1,913 lines — disclosed to ETHGlobal in writing on 2026-09-05 |
+| Pre-window work since our 2026-08-23 application | **214** commits, 412 files, +28,414 / −1,913 lines — disclosed to ETHGlobal in writing on 2026-09-05 |
 
 ## Window work, by area
 
@@ -69,7 +73,16 @@ git log --grep='Co-Authored-By: Claude' --oneline | wc -l  # 560 carry the AI tr
 | **Security audits** | `docs/audits/2026-09-05-*` | Conducted and written by AI agents, cross-checked against production data |
 | **Planning artifacts** | `docs/ethonline-2026/**`, including `PROMPTS/` | Written by AI. `PROMPTS/` carries the human's verbatim instructions, by day |
 
-64 files added and 108 modified during the window (measured 2026-09-05).
+**Window totals move daily; derive them rather than trusting this line:**
+
+```bash
+git diff --diff-filter=A --name-only pre-ethonline-2026..main | wc -l   # 139 added   (2026-09-06)
+git diff --diff-filter=M --name-only pre-ethonline-2026..main | wc -l   # 160 modified
+```
+
+**Not all of that is this submission.** `main` is also the production branch and carries work unrelated
+to the hackathon in the same days — see the caveat in [`README.md`](./README.md). The table above lists
+what we are claiming.
 
 ## How to check any of this yourself
 
