@@ -61,7 +61,12 @@ test("§15: wash_flag 付き決済を除外した数字と生値が両方見え�
     chain: "all", window: "30d", settlements_raw: 4, settlements_real: 2,
     wash: { self_deal: 1, circular: 0, test: 1 }, attribution: { confirmed: 2, probable: 1, unmatched: 1 },
     unique_payers_raw: 3, unique_payers_real: 1, unique_payees_real: 1, endpoints_with_real_settlement: 1,
-    by_source: { l1_purchase: 1, payments_api: 3, chain_index: 0 }, definition: "", disclaimer: "", retrievedAt: "",
+    by_source: { l1_purchase: 1, payments_api: 3, chain_index: 0 },
+    indexed_since: {
+      all: "2026-08-06", byChain: { "eip155:8453": "2026-08-06" }, all_chains_since: "2026-08-06",
+      window_requested_days: 30, window_covered_days: 30, window_fully_covered: true, note: "",
+    },
+    definition: "", disclaimer: "", retrievedAt: "",
   };
   for (const k of keys) assert.ok(k in sample);
   assert.notEqual(sample.settlements_raw, sample.settlements_real);

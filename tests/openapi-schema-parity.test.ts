@@ -179,9 +179,29 @@ const SURFACES: Surface[] = [
       "unique_payees_real",
       "endpoints_with_real_settlement",
       "by_source",
+      // 2026-09-05: 索引がいつから存在するか。window は求めた期間であって
+      // 持っている期間ではない（本番は Base 13 日 / Solana 46 日）。
+      "indexed_since",
       "definition",
       "disclaimer",
       "retrievedAt",
+    ],
+  },
+  {
+    label: "CensusSummary.indexed_since",
+    spec: ["CensusSummary", "properties", "indexed_since", "properties"],
+    impl: [
+      ["src/lib/settlements/census.ts", ["CensusSummary", "indexed_since"]],
+      ["packages/sdk/src/index.ts", ["CensusSummary", "indexed_since"]],
+    ],
+    fields: [
+      "all",
+      "byChain",
+      "all_chains_since",
+      "window_requested_days",
+      "window_covered_days",
+      "window_fully_covered",
+      "note",
     ],
   },
   {

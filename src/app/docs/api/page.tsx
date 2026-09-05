@@ -294,7 +294,7 @@ const endpoints: Endpoint[] = [
   {
     method: "GET",
     path: "/api/v1/census/summary?chain=eip155:8453&window=30d",
-    note: "Settlement census — no key, 60/min, cached 5 minutes. settlements_raw counts every indexed x402-related settlement in the window; settlements_real excludes wash_flag self_deal / circular / test (including every wallet vet402 pays from). Both are always returned together and never merged. chain is CAIP-2 or a v1 slug (base, solana); omit for all chains. window is 7d or 30d. 400 invalid_window / invalid_chain.",
+    note: "Settlement census — no key, 60/min, cached 5 minutes. settlements_raw counts every indexed x402-related settlement in the window; settlements_real excludes wash_flag self_deal / circular / test (including every wallet vet402 pays from). Both are always returned together and never merged. chain is CAIP-2 or a v1 slug (base, solana); omit for all chains. window is 7d or 30d. indexed_since reports how far back the index actually reaches, overall and per chain, so window_covered_days is never more than window_requested_days and the counts are a floor rather than a total whenever window_fully_covered is false. 400 invalid_window / invalid_chain.",
     response: `{
   "chain": "eip155:8453", "window": "30d",
   "settlements_raw": 980, "settlements_real": 520,
@@ -303,6 +303,12 @@ const endpoints: Endpoint[] = [
   "unique_payers_raw": 31, "unique_payers_real": 24, "unique_payees_real": 57,
   "endpoints_with_real_settlement": 61,
   "by_source": { "l1_purchase": 448, "payments_api": 2, "chain_index": 530 },
+  "indexed_since": {
+    "all": "2026-08-23", "byChain": { "eip155:8453": "2026-08-23" },
+    "all_chains_since": "2026-08-23",
+    "window_requested_days": 30, "window_covered_days": 13, "window_fully_covered": false,
+    "note": "indexed_since.all is the oldest UTC day this index holds …"
+  },
   "definition": "settlements_raw counts every indexed …",
   "disclaimer": "…",
   "retrievedAt": "…"

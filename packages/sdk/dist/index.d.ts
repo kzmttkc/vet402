@@ -468,6 +468,19 @@ export type CensusSummary = {
         payments_api: number;
         chain_index: number;
     };
+    /**
+     * 索引がいつから存在するか。`window` は求めた期間であって持っている期間ではない。
+     * window_fully_covered が false なら、件数は下限であって総数ではない。
+     */
+    indexed_since: {
+        all: string | null;
+        byChain: Record<string, string>;
+        all_chains_since: string | null;
+        window_requested_days: number;
+        window_covered_days: number;
+        window_fully_covered: boolean;
+        note: string;
+    };
     definition: string;
     disclaimer: string;
     retrievedAt: string;
