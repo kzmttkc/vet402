@@ -76,6 +76,59 @@ Takeshi の手番になる可能性があるので、**09-14〜09-16 を空け�
 `#announcements` の最新は **2026-09-05 の ETHOnline 2026 キックオフ**告知のみ。
 **規約・締切の変更は出ていない。**
 
+## 1.45 提出の要件（2026-09-06 08:20・運営の `info/details` と `prizes` を実読）—— **正典より厳しい点が5つあった**
+
+### 動画（**canon が緩かった**）
+
+| | 運営の規定 | 我々の記述 |
+|---|---|---|
+| 長さ | **2〜4分。範囲外はアップロード時に自動拒否** | 「2:00–3:50」＝範囲内。問題なし |
+| 解像度 | **720p 未満はアップロードが失敗する** | **記述が無かった** |
+| 撮影機材 | **スマホで動画を撮らない**（明示の禁止事項） | **記述が無かった**（TODO に「iPhone のボイスメモで可」と書いた。**音声はそれでよい。映像は不可**） |
+| 音声 | **合成音声・AI ナレーションは不可** | 記述あり |
+| その他の禁止 | 4分に収めるための**早回し**／説明文を**音楽＋テキストだけ**で流す | 記述が無かった |
+
+**画面収録は PC で行い、肉声だけを別録りして重ねる。** これなら「スマホで動画を撮らない」に触れない。
+
+### パートナー賞は **3枠**選べる（我々は2つしか使っていなかった）
+
+> On the last step of the submission form, you can select **up to 3 Partner Prizes**.
+> If a partner has multiple tracks, you can be eligible for all of them while only counting as 1 Partner Prize.
+
+**1枠余っている。** 3枠目は §1.6 で決める。
+
+### 提出は2択。**Finalist を選んでもパートナー賞の資格は下がらない**
+
+> 1. Finalist and Partner Prizes — 選ぶと**ファイナリスト審査で発表**が要る。パートナーは非同期審査で**行動不要**
+> 2. Partner Prizes Only
+>
+> The first round of judging **has no impact on your project's eligibility for partner prizes**.
+> At most async events, **the majority of prizes are paid out to projects that do not advance to the live judging**.
+
+**→ 1 を選ぶ。** Continuity のファイナリスト枠は3つ（§1.4）。**選ばない理由が無い。**
+ライブ審査は **1チーム7分（デモ4分＋Q&A 3分）**。進むのは概ね**上位20%**。
+
+### 審査基準は5つ。**Usability を我々は一度も考えていなかった**
+
+**Technicality / Originality / Practicality / Usability (UI/UX/DX) / WOW Factor**
+
+我々の提出物は SDK・MCP・CLI で、**画面が無い**。Usability は **DX（開発者体験）**として読める:
+`SKILL.md` の手順どおりに審査員が**実際に動かせるか**、拒否の理由が**読んで分かるか**、
+`npm test` が**何も設定せずに緑になるか**。**§1.7 で埋める。**
+
+### The Graph（Continuity）の資格要件 —— **全部満たしている**（1行ずつ照合した）
+
+| 要件 | 我々 |
+|---|---|
+| The Graph を**中核**に使う（agent/app が Subgraph を blockchain データ源にする） | ✓ `evidence.source: "subgraph"` |
+| **live データを Graph provider から**。**モック・ローカル・静的データは失格** | ✓ Gateway を API キーで実クエリ。`_meta.block.number` と `deployment` を決定行に載せる |
+| データで**意味のある仕事**をする。生のクエリ結果を印字するだけは不可。**ツールは再利用できる基盤であること**（単発アプリ不可） | ✓ 判定に使い、SDK と MCP として配る |
+| **README か SKILL.md で審査員が動かせる**・公開リポ・2〜4分の動画 | ✓ `SKILL.md`（実行例は全部実走した出力） |
+| **プールを正しく選ぶ**（Continuity）・会期前の作業を文書化 | ✓ `README` / `CHANGED_FILES.md` / 運営へ書面開示済み |
+
+**注意**: 「Best Use of Composable or Standardized Graph Products」枠は
+**「Subgraph を1つ引くだけでは資格が無い。AI Use Case トラックを見よ」**と明記している。**我々は AI トラック。正しい。**
+
 ## 1.5 The Graph との過去の関係について（2026-09-04 Takeshi 指示・行動の縛り）
 
 Takeshi は 2020-06〜2025-04 の約5年間、The Graph の日本コミュニティマネージャー（契約）だった。
