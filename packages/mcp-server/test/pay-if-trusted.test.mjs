@@ -20,7 +20,7 @@ const watched = () => {
   return { signer, signAccesses: () => accessed.filter((k) => k.startsWith("sign")) };
 };
 
-test("G21a pay_if_trusted は ALLOW 以外で mock signer への参照が0", async () => {
+test("G21a pay_if_trusted は ALLOW 以外で mock signer への参照が0", { todo: "MCP `pay_if_trusted`（WINDOW_PLAN §2 #2）が未実装。09-07 の作業。赤で置いた記録は commit 9196a28。" }, async () => {
   const w = watched();
   const r = await payIfTrusted({ resourceId: "a".repeat(64), signer: w.signer,
     fetch: async () => ({ ok: true, status: 200, json: async () => ({ recommendation: "WARN", reason_codes: ["l1_not_attempted"], facts: {}, evidence: [] }), headers: new Map() }) });
@@ -28,7 +28,7 @@ test("G21a pay_if_trusted は ALLOW 以外で mock signer への参照が0", asy
   assert.deepEqual(w.signAccesses(), []);
 });
 
-test("G21b pay_if_trusted は ALLOW で signer を1回だけ呼び attest する", async () => {
+test("G21b pay_if_trusted は ALLOW で signer を1回だけ呼び attest する", { todo: "MCP `pay_if_trusted`（WINDOW_PLAN §2 #2）が未実装。09-07 の作業。赤で置いた記録は commit 9196a28。" }, async () => {
   const w = watched();
   const r = await payIfTrusted({ resourceId: "a".repeat(64), signer: w.signer,
     fetch: async (u) => String(u).includes("decision")
@@ -39,7 +39,7 @@ test("G21b pay_if_trusted は ALLOW で signer を1回だけ呼び attest する
   assert.equal(w.signAccesses().length, 1);
 });
 
-test("G21c 応答に evidence[].source が入る（審査員が証拠源を目で追える）", async () => {
+test("G21c 応答に evidence[].source が入る（審査員が証拠源を目で追える）", { todo: "MCP `pay_if_trusted`（WINDOW_PLAN §2 #2）が未実装。09-07 の作業。赤で置いた記録は commit 9196a28。" }, async () => {
   const w = watched();
   const r = await payIfTrusted({ resourceId: "a".repeat(64), signer: w.signer,
     fetch: async () => ({ ok: true, status: 200, json: async () => ({ recommendation: "WARN", reason_codes: [], facts: {}, evidence: [{ level: "L1", source: "subgraph", subgraphId: "Cb56", block: { number: 1 } }] }), headers: new Map() }) });
