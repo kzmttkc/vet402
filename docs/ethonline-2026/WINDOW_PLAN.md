@@ -390,6 +390,50 @@ main は本番リポでもあり会期中も動くので、放置すると `git 
 - [x] 会期スコープが main に未実装（grep 0件で再確認済み）
 
 
+## 10.5 【2026-09-05 14:45】The Graph へ $0.01 を実際に払った —— **デモの中核が通った**
+
+**会期でいちばん確かめたかったこと。空撃ちではなく、取り消せないオンチェーン取引。**
+
+```
+payOrRefuse   status=paid   signed=true
+reasons       resource_uncatalogued, allowed_by_caller_policy
+verdict from  caller_policy
+allowed by    requireVet402Allow:false — waived payee_score WARN (69)
+floor met     minL1Deliveries (vet402) 0 <= 0
+floor met     minSubgraphReceipts (subgraph) 1 <= 259
+nonce         0xb09bab2e33cfe9e3a88eab41823ba03faba9478c28eddfef377c16165de56524
+txHash        0xf12093fba9314b1d3a514e7b667969201be8d021a6f4d6bdeb8d6c7f2de469ad
+```
+
+**チェーンで再読して独立に確認した**（我々の規律: API が成功したかではなく、相手側に何が残っているか）:
+
+| | |
+|---|---|
+| status | **成功**・block **50898704** |
+| Transfer | `0xdb62bd20…3aa673` → **`0x79dc34e4…d52fccb`**・**0.01 USDC** |
+| デモ鍵の残高 | 1.00 → **0.99** |
+| デモ鍵の ETH | **0 のまま**（EIP-3009 なので買い手のガスは要らない。設計どおり） |
+
+**§3 の対比が、実物で成立した。**
+
+> 我々自身のエンジンはこの相手を **WARN 69** と判定している。呼び手の policy は
+> 「The Graph 自身の台帳に受領が1件以上あれば足りる。**vet402 の承認は要らない**」と宣言している。
+> 実測 **259 件**。**支払いは通った——The Graph 自身のデータに基づいて、我々のではなく。**
+> 決定行には `verdict from: caller_policy` と「WARN を免除した」事実が残っている。
+> **我々の判定を書き換えてはいない。**
+
+**撮影当日に取り直す数字**: subgraph の受領件数（09-05 朝 253 → 昼 259）と block。**識別子と tx は動かない。**
+
+## 10.6 【2026-09-05 14:40・要報告】デモ用ウォレットは「暗号化されているように見えて、されていない」
+
+`baz wallet new` が作った `~/.bazantic/gateway/wallet.json` は、scrypt(N=32768) ＋ AES-256-GCM の
+**暗号化キーストアの形をしている**が、`"encrypted": false` で、**空文字のパスワードで開く**（実測）。
+**ファイルを読める者は秘密鍵を持っているのと同じ。**
+
+- **我々への影響は小さい**——このウォレットの用途はデモ専用で、残高は $0.99。**資金鍵はここに置かない**
+- **Bazantic 側の性質**なので、**責任ある開示として先方へ伝える価値がある**（我々が作った穴ではない）
+- **提出物には書かない**（第三者の未修正の弱点を公開の場に出さない）。連絡は個別に
+
 ## 11. Day 0（09-04）の実測記録 —— **経緯は git 履歴に預ける**（09-05 圧縮）
 
 残すのは今も判断に使う事実だけ。経緯は `b366921` / `c8f92f2` と 09-04〜05 のコミット本文にある。
