@@ -5,7 +5,7 @@
 
 ## Honest status first
 
-**vet402 now makes real purchases on Solana — and we say so with the same evidence rule we apply to Base.** Since 2026-08-21 our L1 payer has made **38 real purchase attempts on Solana mainnet**, of which **26 settled and all 26 are chain-verified** (finalized, memo-bound, genesis-hash checked); 3,203 of our 3,241 attempts to date are on Base. One caveat we publish rather than hide: the public chain breakdown in `/api/v1/observatory/state` carries no L1 fields yet, so a reviewer can see these purchases on the per-endpoint record pages but cannot yet total them from the aggregate API. Making that visible is part of what this proposal delivers.
+**vet402 now makes real purchases on Solana — and we say so with the same evidence rule we apply to Base.** Since 2026-08-21 our L1 payer has made **38 real purchase attempts on Solana mainnet**, of which **26 settled and all 26 re-read on-chain as finalized** (genesis hash checked, and the transfer's amount, asset and recipient matched the payment challenge). We are precise about which evidence tier that is: none of the 26 carries the signature-nonce binding we added on 2026-09-04, so they sit in the amount-and-recipient tier, not the strongest one. We publish the tier rather than let the word "verified" do work it has not earned; 3,203 of our 3,241 attempts to date are on Base. One caveat we publish rather than hide: the public chain breakdown in `/api/v1/observatory/state` carries no L1 fields yet, so a reviewer can see these purchases on the per-endpoint record pages but cannot yet total them from the aggregate API. Making that visible is part of what this proposal delivers.
 
 What *does* exist today for Solana:
 

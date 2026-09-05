@@ -339,10 +339,21 @@ main は本番リポでもあり会期中も動くので、放置すると `git 
 
 ### 会期中に読まない公開面
 
-`/api/v1/observatory/history` は**日次 10:37 UTC に凍結される集計で、決済確認 cron（14:00 UTC）より前に走る**。
+`/api/v1/observatory/history` は**日次 10:37 UTC に凍結される集計で、決済確認 cron（14:00 UTC）より前に走っていた**。
 後から settled になった行が永久に入らず、**Base で 221 件の過小**（09-05 にディストリビューション戦略が発見）。
-09-05 中に「直近14日を毎回再計算＋全期間の再集計＋`coverageFrom` を応答に明記」が入る。
-**`evidence.source` は history を読まない。提出物も、修正が main に入るまで history 由来の数値を引用しない。**
+
+**→ 09-05 に是正され、依頼元が独立に検算した（`743abac`・main）。引用禁止は解除する。**
+
+```
+history の l1Settled 合計（全チェーン）  1629
+DB の実数 count(settlement_verified)     1629   ← 完全一致
+応答に追加された被覆情報: coverageFrom 2026-08-14 / rolledUpThrough 2026-09-04 /
+                          lastRollupAt 2026-09-05T00:18:47Z / recomputeWindowDays 14
+```
+
+**提出物で history を引用してよい。ただし `coverageFrom` と `recomputeWindowDays` を必ず添える**
+（「直近14日は毎回再計算し、それより古い日は backfill するまで凍結」が応答の `semantics` に書いてある。
+**分母と被覆を伏せて件数だけ出さない**）。`evidence.source` が history を読むかは設計次第で、必須ではない。
 
 ### S-4（settled の2層公開）の確定した項目名（2026-09-05・`state` 面は camelCase）
 
