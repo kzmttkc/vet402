@@ -28,12 +28,14 @@ A result never moves up a level: a probe is never reported as settlement; an opi
 
 | Metric | Value |
 |---|---|
-| Endpoints tracked in the public x402 catalog | 23,049 (16,178 active, 6,871 delisted) |
-| L0 machine-verified pass | 11,932 published (9,519 not machine-checkable — "unverified", not dead) |
-| **L1 real purchases** | **3,241 attempts across 2,207 endpoints — 1,629 settled**; every settlement published with its Base tx hash; the 1,612 non-settles published with the same weight |
-| Lifecycle events recorded | 8,013 delists · 1,142 relists · 12 settle-drops |
-| Daily catalog snapshot | Latest 2026-09-04 — 16,260 endpoints fetched |
-| Chain coverage | Base 22,437 · Solana 218 · X Layer 18 · others 6 (mainnet-only breakdown; real purchases run on Base and, since 2026-08-21, on Solana — 38 attempts / 26 chain-verified settlements) |
+| Endpoints tracked in the public x402 catalog | 23,251 (16,168 active, 7,083 delisted) |
+| L0 machine-verified pass | 11,932 published (9,701 not machine-checkable — "unverified", not dead) |
+| **L1 real purchases** | **3,336 attempts across 2,302 endpoints — 1,669 settled**; every settlement published with its Base tx hash; the 1,667 non-settles published with the same weight |
+| **Evidence strength, published separately** | Of the settlements above, **107 carry the signature-nonce binding** (`settledNonceBound`) and **1,562 are confirmed by amount, asset and recipient only** (`settledAmountPayeeOnly`). We publish the split rather than let one word cover both |
+| **Third-party demand we have indexed** | **384,516 settlements from 3,918 distinct payers** (30-day census, our own measurement wallets excluded as `test`). Read it as what we have indexed, not as all of x402: our Base index reaches back to **2026-08-23**, and the API says so itself (`indexed_since`) |
+| Lifecycle events recorded | 8,259 delists · 1,176 relists · 13 settle-drops |
+| Daily catalog snapshot | Latest 2026-09-05 — 16,158 endpoints fetched |
+| Chain coverage | Base 22,628 · Solana 218 · X Layer 18 · others 6 (mainnet-only breakdown; real purchases run on Base and, since 2026-08-21, on Solana — 38 attempts / 26 chain-verified settlements) |
 
 ## What is different
 

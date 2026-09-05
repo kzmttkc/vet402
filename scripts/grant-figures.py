@@ -74,6 +74,16 @@ def fetch():
         "baseSharePct": round(100 * base.get("totalEndpoints", 0) / mainnet_total, 1),
         "settleRatePct": round(100 * l1["settled"] / l1["attempts"], 1),
         "coverage7dPct": s["coverage7d"]["pct"],
+        # 2026-09-05: 公開APIがチェーン別 L1 と証拠層を出したので、DB ではなくここから引く。
+        # 審査員が叩くのと同じ口から取る＝我々の主張が向こうの手元で再現する。
+        "settledNonceBound": l1.get("settledNonceBound"),
+        "settledAmountPayeeOnly": l1.get("settledAmountPayeeOnly"),
+        **_per_chain(l1.get("byChain") or []),
+        # census の索引範囲（実需を引用してよいかの判断材料）
+        "realSettlements": c["settlements_real"],
+        "realPayers": c["unique_payers_real"],
+        "indexedSinceAll": (c.get("indexed_since") or {}).get("all"),
+        "allChainsSince": (c.get("indexed_since") or {}).get("all_chains_since"),
         "settlementsRaw": c["settlements_raw"],
         "settlementsReal": c["settlements_real"],
         "washTest": c["wash"]["test"],
@@ -87,6 +97,18 @@ def fetch():
         "solActive": by.get("Solana", {}).get("activeEndpoints"),
         "solPass": by.get("Solana", {}).get("publishedPass"),
     }
+
+
+def _per_chain(by_chain):
+    """l1.byChain（表示名の配列）を、文書アンカーで使う平たいキーへ。"""
+    out = {}
+    for row in by_chain:
+        key = str(row.get("chain", "")).lower()
+        if key in ("base", "solana"):
+            out[key + "Attempts"] = row.get("attempts")
+            out[key + "Settled"] = row.get("settled")
+            out[key + "NonceBound"] = row.get("settledNonceBound")
+    return out
 
 
 def _index_from():
@@ -191,7 +213,9 @@ def block(f, today):
 | Daily catalog snapshot | Latest {f['snapshotDate']} — {g('snapshotFetched')} endpoints fetched |
 | Base (mainnet-only breakdown) | {g('baseTotal')} tracked · {g('baseActive')} active · {g('basePass')} L0 pass — {f['baseSharePct']}% of {g('mainnetTotal')} mainnet endpoints |
 | 7-day L0 coverage | {f['coverage7dPct']}% of active endpoints measured |
-| ~~Real third-party demand~~ | **申請に使わない（2026-09-03）**: census は `window=30d` と名乗るが、索引は {f['indexFrom']} 以降しか入っていない（実測）。API が実際の索引範囲を開示するまで、この数字を申請文に書かない |
+| **L1 by chain** | Base **{g('baseAttempts')} attempts / {g('baseSettled')} settled** · Solana **{g('solanaAttempts')} / {g('solanaSettled')}** (`l1.byChain`) |
+| **Evidence tiers** | `settledNonceBound` **{g('settledNonceBound')}** (signature-nonce bound) + `settledAmountPayeeOnly` **{g('settledAmountPayeeOnly')}** = `settled` {g('settled')} |
+| **Real third-party demand (30d)** | **{g('realSettlements')} settlements from {g('realPayers')} payers** — **必ず併記**: Base の索引は **{f['allChainsSince']}** 以降（実需の99.98%がBaseなので、これを書かずに「30日で」と書かない） |
 
 Footer to paste: *Figures retrieved from /api/v1/observatory/state on {today}.*
 """
@@ -230,6 +254,9 @@ ANCHORS = [
     (r"We buy: ([\d,]{3,}) real USDC purchases on Base mainnet across ([\d,]{3,}) endpoints, ([\d,]{3,}) settled", ["attempts", "endpointsAttempted", "settled"]),
     (r"the ([\d,]{3,}) that did not settle", ["nonsettled"]),
     (r"([\d,]{2,}) real purchase attempts on Solana mainnet", ["solanaAttempts"]),
+    (r"\*\*([\d,]{3,}) carry the signature-nonce binding\*\*", ["settledNonceBound"]),
+    (r"\*\*([\d,]{3,}) are confirmed by amount, asset and recipient only\*\*", ["settledAmountPayeeOnly"]),
+    (r"\*\*([\d,]{3,}) settlements from ([\d,]{3,}) distinct payers\*\*", ["realSettlements", "realPayers"]),
     (r"([\d,]{3,}) paid attempts on Base mainnet, of which ([\d,]{3,}) reached settlement", ["baseAttempts", "baseSettled"]),
     (r"out of ([\d,]{3,}) attempts and ([\d,]{3,}) settlements in total", ["attempts", "settled"]),
     (r"([\d,]{2,}) settled and all ([\d,]{2,}) are chain-verified", ["solanaSettled", "solanaSettled"]),

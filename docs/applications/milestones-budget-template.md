@@ -16,10 +16,10 @@
 
 *Update these numbers from the live API on the day of submission and restate the retrieval date.*
 
-- Public x402 catalog tracking: 23,049 endpoints (16,178 active); daily snapshots (latest 2026-09-04, 16,260 fetched)
+- Public x402 catalog tracking: 23,251 endpoints (16,168 active); daily snapshots (latest 2026-09-05, 16,158 fetched)
 - L0 machine verification: 11,932 published pass
-- L1 real purchases: 3,241 attempts / 1,629 settled, every settlement published with its Base tx hash; non-settles published with the same weight
-- Lifecycle event stream: 8,013 delists, 1,142 relists, 3 settle-drops
+- L1 real purchases: 3,336 attempts / 1,669 settled, every settlement published with its Base tx hash; non-settles published with the same weight
+- Lifecycle event stream: 8,259 delists, 1,176 relists, 3 settle-drops
 - Open-source (MIT): `@vet402/sdk`, `@vet402/middleware`, `@vet402/mcp-server` on npm
 
 ## Proposed milestones
