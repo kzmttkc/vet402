@@ -274,38 +274,21 @@ main は本番リポでもあり会期中も動くので、放置すると `git 
 - [x] 会期スコープが main に未実装（grep 0件で再確認済み）
 
 
-## 11. Day 0（09-04）の実測記録
+## 11. Day 0（09-04）の実測記録 —— **経緯は git 履歴に預ける**（09-05 圧縮）
 
-- 会期コミット: `b366921`（SDK 21本・MCP 3本、全て赤）＋ `PROMPTS/2026-09-04-day0-red-tests.md`
-- 書いた直後に **2本が実装なしで緑**になった（`assert.rejects` がスタブの throw で通る／書き込み検査が無動作でも通る）。理由の中身と「判定を1回引いたこと」を要求する形に直して 21/21 赤へ戻した。**自分のテストが自分の原則を破っていた**
-- フィクスチャ: 拒否側 `0xb15a55e8…` は `/decision` が **BLOCK → WARN**（`l0_pass, l1_not_attempted`・L1 0/0）。予告どおり C1 が測った。拒否は policy で作るので絵は壊れない
-- 旧スコアAPI: kronossignals **82 ALLOW rich** ／ The Graph `0x79DC…` **69 WARN thin** ／ 拒否側 **69 WARN thin**
-- C1 再実行: A allow / B allow / C 拒否(`payee_insufficient_evidence`) / D allow / E 拒否(`max_per_tx_exceeded`)
-- Bazantic: `baz curl` で $0 ルートが**残高ゼロで成立**（tx `0x62debbc1…`・Basescan に実在）
-- 構造: `now.py` に会期ブロックを常設（Day N・やり残し・タグ/ブランチ実測・拒否側 verdict）。状態は `state/ethonline_day.json`
-- **事故1件**: この更新の直前に、編集スクリプトが途中で止まったまま git 手順が走り、**内容の無いコミットが main に載った**（メッセージだけがある空コミット）。共有 main なので履歴は書き換えない。原因は python の失敗と git 手順の間に `&&` の関門が無かったこと——同じ失敗を 09-02 にも記録している
+残すのは今も判断に使う事実だけ。経緯は `b366921` / `c8f92f2` と 09-04〜05 のコミット本文にある。
 
+| 事実 | 値 |
+|---|---|
+| デモ鍵 | `0xDB62BD202914609830fA656F87996b91be3Aa673`・**USDC 1.000000**（block 50859520・tx `0x3684a4ab…b15b`）。**ETH は 0 のままでよい**（EIP-3009 は買い手のガスを使わない） |
+| 入金元 | `0x6777E11f…3986` = **Takeshi 本人の個人アドレス**（賞金/グラント受取・09-04 までは L1 支払元）。**個人情報の追加露出は無い**（我々の公開台帳に payer として 3,029 行）。**今後の入金元は会社側の鍵**から |
+| 拒否側フィクスチャ | `0xb15a55e8…`（`agent.api.0x.org`）。09-04 に C1 が測って **BLOCK → WARN**（`l0_pass, l1_not_attempted`）へ動いた。**現在値は `now.py` が毎セッション出す** |
+| The Graph の 402 | 09-03 と 09-05 で完全一致（`exact` / `eip155:8453` / `amount 10000` / `payTo 0x79DC…` / `eip3009` / `maxTimeoutSeconds 300`）。ヘッダは `payment-required` を読み `Payment-Signature` を返す |
+| デモの支払いは The Graph のスコアを動かさない | `x402_payments` の算入条件は `ownership_verified = true`＝**払った側の署名つき書き戻し**（`src/lib/db/x402-payments.ts:68-72`）。書き戻さないので `0x79DC…` は 69/WARN/thin のまま。**§3 の対比は撮影後も再現できる** |
+| `/api/v1/graph/payto/{addr}` | 名前に反して **subgraph の代理ではなく自カタログの隣接照会**。The Graph には `operates: []` |
 
-## 12. Day 0 夕（09-04 16:50–17:10 JST）の追加実測
-
-- **デモ鍵に着金**: `0xDB62BD20…3Aa673` に **1.000000 USDC**（block 50859520・tx `0x3684a4ab70247bf444fe857cb6b29a08697e5f5db0a87aae5970fa317d84b15b`）。
-  **ETH 残高 0 のままでよい**（EIP-3009 の署名は買い手のガスを使わない）
-- **送り元の名前を訂正**（09-05・`ASSET_REGISTRY.md:137` を引いた）。私は「賞金受取ウォレット」と書いたが、
-  正しくは **`0x6777E11f…3986` は Takeshi 本人の個人アドレス**（賞金・グラント受取を兼ね、**2026-09-04 までは L1 購入の支払元でもあった**。
-  同日に vet402 専用ホット鍵 `0xc9c7b38C…1670` へ分離済み）。
-  **個人情報の追加露出は無い**——このアドレスは我々自身の公開台帳に **L1 購入の payer として 3,029 行**出ており、既に完全に公開されている
-  （新鍵 `0xc9c7…` は 224 行）。ただし**今後の入金元は会社側の鍵から出す**（vet402 セッションの指摘は一般則として正しい）
-- **デモの支払いは The Graph のスコアを動かさない**（09-05 に実装で確認）。`x402_payments` が
-  スコアに算入される条件は `ownership_verified = true`＝**払った側の署名つき書き戻し**（`src/lib/db/x402-payments.ts:68-72`）。
-  我々は書き戻さないので、$0.01 を払っても `0x79DC…` は **69 / WARN / thin のまま**。§3 の対比は撮影後も再現できる
-- **The Graph の 402 チャレンジは 9/3 と完全一致**: `x402Version 2` / `exact` / `eip155:8453` / `amount 10000` /
-  `payTo 0x79DC34E4…FcCB` / `asset 0x833589fC…2913` / `extra.assetTransferMethod eip3009` / `maxTimeoutSeconds 300`。
-  ヘッダ名は `payment-required`、要求されるのは `Payment-Signature`
-- **ヘッダ名の心配は空振り**: `src/lib/observatory/x402-payer.ts` は v2 の `PAYMENT-SIGNATURE` と v1 の `X-PAYMENT` の
-  両方を既に実装済み（403行目）。直すところは無い
-- **The Graph はカタログに無い → §3.1 の訂正**（この発見が Day 1 を丸一日潰すところだった）
-- `/api/v1/graph/payto/{addr}` は名前に反して**subgraph の代理ではなく自カタログの隣接照会**。The Graph に対しては `operates: []`。
-  つまり「第2の情報源」は本番のどのエンドポイントにも出ていない。それを出すのが会期の実装
+**Day 0 に踏んだ失敗（型として残す・詳細は git）**: 自分で書いた失敗テストが2本、実装なしで緑になった／
+python の失敗と git 手順の間に `&&` の関門が無く、内容の無いコミットが main に載った（09-02 にも同型）。
 
 ## 13. 4面パリティ検査の地雷（2026-09-05 vet402.com セッションから受領・`evidence.source` を書く前に読む）
 
@@ -362,6 +345,19 @@ DB の実数 count(settlement_verified)     1629   ← 完全一致
 | `l1.settledNonceBound` = **71** | 我々しか作れない一回性の値で購入と決済 tx が束縛されている層（強い） |
 | `l1.settledAmountPayeeOnly` = **1,558** | 金額と宛先の一致だけで確定した層（旧判定・弱い） |
 | `l1.byChain[chain]{attempts, settled, delivered, nonceBound}` | チェーン別内訳 |
+
+**09-05 09:26 に本番へ入り（`ae5ff67`）、依頼元が DB と突き合わせて検算した**:
+
+```
+API  settled 1629 / settledNonceBound 71 / settledAmountPayeeOnly 1558 / settledTimeWindowOk 1589
+DB   count(settlement_verified)=1629 / auth_nonce IS NOT NULL=71 / IS NULL=1558   ← 完全一致
+byChain  Base   attempts 3203 settled 1603 delivered 1429 nonceBound 71
+         Solana attempts   38 settled   26 delivered   15 nonceBound  0
+```
+
+**提出物として強い事実**: 公開 API が**自分の証拠の弱さをチェーン別に自分から出している**。
+**Solana は強い束縛が 0 件だと、我々自身の面が言っている。** 隠していないことが機械可読な形で出ている——
+これは §2 #3（2つの情報源の食い違いを隠さない）と同じ思想で、審査員に対しては**言葉より効く**。
 
 ### 提出物に書いてはいけない主張（2026-09-05・vet402.com の自己訂正）
 
