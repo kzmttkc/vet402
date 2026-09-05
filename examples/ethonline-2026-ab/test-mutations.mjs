@@ -1,0 +1,131 @@
+#!/usr/bin/env node
+/**
+ * **偽の緑を作らない。変異で確かめる。**
+ *
+ * 「テストが緑」は「テストが意味を持っている」を意味しない。ここでは
+ * **わざと壊してから、赤くなるかを見る**。赤くならない変異があれば、
+ * そこは検査されていないので、テストを足す。
+ *
+ *   node test-mutations.mjs
+ *
+ * 変異はソースを**その場で**書き換え、必ず元へ戻す（finally）。
+ * 走らせる前に「今が緑であること」を確かめ、緑でなければ何も変異させない。
+ */
+import { readFile, writeFile, readdir } from "node:fs/promises";
+import { spawn } from "node:child_process";
+
+const MUTATIONS = [
+  {
+    id: "M1",
+    why: "成功条件の (2)（理由コードの部分集合検査）を外す — §16 の論理積を片方だけにする",
+    file: "src/grade.mjs",
+    find: "    success: verdictMatch && reasonSubset,",
+    replace: "    success: verdictMatch,",
+  },
+  {
+    id: "M2",
+    why: "失敗した試行を集計から除く — エラーを分母から落とす",
+    file: "src/aggregate.mjs",
+    find: "function tally(trials) {\n  const n = trials.length;",
+    replace:
+      "function tally(allTrials) {\n  const trials = allTrials.filter((t) => t.error === null || t.error === undefined);\n  const n = trials.length;",
+  },
+  {
+    id: "M3",
+    why: "集計値を生ログと食い違わせる — summary.json だけを良く見せる",
+    file: "src/writer.mjs",
+    find: '  await writeFile(join(dir, "summary.json"), JSON.stringify(agg, null, 2) + "\\n");',
+    replace:
+      "  const doctored = JSON.parse(JSON.stringify(agg));\n" +
+      "  doctored.perCondition.A.success += 1;\n" +
+      '  await writeFile(join(dir, "summary.json"), JSON.stringify(doctored, null, 2) + "\\n");',
+  },
+  {
+    id: "M4",
+    why: "秘密を出力に混ぜる — 検出器を黙らせる",
+    file: "src/secrets.mjs",
+    find: "  if (typeof text !== \"string\" || text.length === 0) return [];",
+    replace: "  if (typeof text !== \"string\" || text.length === 0) return [];\n  return [];",
+  },
+  {
+    id: "M5",
+    why: "事前登録の試行数を実装の都合で変えられるようにする",
+    file: "src/harness.mjs",
+    find: "  if (trialsPerCondition !== TRIALS_PER_CONDITION) {",
+    replace: "  if (false) {",
+  },
+  {
+    id: "M6",
+    why: "エラーになった試行を記録せず捨てる",
+    file: "src/harness.mjs",
+    find: "      trials.push({",
+    replace: "      if (error !== null) continue;\n      trials.push({",
+  },
+  {
+    id: "M7",
+    why: "A と B のプロンプトを Recipe 以外でも変える（同一プロンプトの前提を崩す）",
+    file: "src/prompt.mjs",
+    find: '    "You are an autonomous agent that is about to pay an x402 endpoint on behalf of its owner.",',
+    replace:
+      '    condition === "B"\n' +
+      '      ? "You are a careful autonomous agent about to pay an x402 endpoint."\n' +
+      '      : "You are an autonomous agent that is about to pay an x402 endpoint on behalf of its owner.",',
+  },
+];
+
+const TEST_FILES = (await readdir("test")).filter((f) => f.endsWith(".test.mjs")).map((f) => `test/${f}`);
+
+function runTests() {
+  return new Promise((resolve) => {
+    const child = spawn("node", ["--test", ...TEST_FILES], { stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    child.stdout.on("data", (d) => (out += d));
+    child.stderr.on("data", (d) => (out += d));
+    child.on("close", (code) => {
+      const fail = /^# fail (\d+)$/m.exec(out)?.[1] ?? /ℹ fail (\d+)/.exec(out)?.[1] ?? "?";
+      const failed = [...out.matchAll(/^ {0,4}✖ (.+?) \(/gm)].map((m) => m[1]);
+      resolve({ code, fail, failed: [...new Set(failed)] });
+    });
+  });
+}
+
+const baseline = await runTests();
+if (baseline.code !== 0) {
+  console.error(`baseline is not green (exit ${baseline.code}, fail ${baseline.fail}) — refusing to mutate.`);
+  process.exit(2);
+}
+console.log(`baseline: green (fail ${baseline.fail})\n`);
+
+let unkilled = 0;
+for (const m of MUTATIONS) {
+  const original = await readFile(m.file, "utf8");
+  if (!original.includes(m.find)) {
+    console.error(`${m.id}  SKIPPED — anchor not found in ${m.file}. The mutation is stale; fix it.`);
+    unkilled += 1;
+    continue;
+  }
+  try {
+    await writeFile(m.file, original.replace(m.find, m.replace));
+    const r = await runTests();
+    const killed = r.code !== 0;
+    if (!killed) unkilled += 1;
+    console.log(`${m.id}  ${killed ? "KILLED (red)" : "SURVIVED (still green) ← 検査されていない"}  fail=${r.fail}`);
+    console.log(`     ${m.why}`);
+    console.log(`     ${m.file}`);
+    for (const name of r.failed.slice(0, 4)) console.log(`     ✖ ${name}`);
+    if (r.failed.length > 4) console.log(`     … +${r.failed.length - 4} more`);
+    console.log("");
+  } finally {
+    // **必ず戻す。** 戻せなければ、それ自体を大声で言う。
+    await writeFile(m.file, original);
+  }
+}
+
+const after = await runTests();
+if (after.code !== 0) {
+  console.error("RESTORE FAILED — the tree is not green after restoring. Check `git diff`.");
+  process.exit(3);
+}
+console.log(`restored: green (fail ${after.fail})`);
+console.log(unkilled === 0 ? `all ${MUTATIONS.length} mutations killed` : `${unkilled} mutation(s) survived`);
+process.exitCode = unkilled === 0 ? 0 : 1;

@@ -1,0 +1,16 @@
+{
+  "name": "@vet402/ethonline-2026-ab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ETHOnline 2026 P2 (Bazantic) A/B harness. Pre-registered in docs/ethonline-2026/WINDOW_PLAN.md §16.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test 'test/*.test.mjs'",
+    "run:mock": "node src/cli.mjs --agent mock",
+    "mutations": "node test-mutations.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
