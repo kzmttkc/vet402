@@ -90,8 +90,15 @@ test("モデルや temperature が試行ごとに変わったら、メタに残�
 
 test("フィクスチャの未確定（liveReady false）がメタに載る", async () => {
   const run = await runAbHarness({ runAgent: agentThatAlwaysSays("{}"), resources });
-  assert.equal(run.meta.fixtureReadiness.liveReady, false);
-  assert.ok(run.meta.fixtureReadiness.blockers.length > 0);
+  // 状態ではなく規則を見る: メタに載っている readiness が blockers と一致していること。
+  assert.equal(
+    run.meta.fixtureReadiness.liveReady,
+    run.meta.fixtureReadiness.blockers.length === 0,
+    "メタの liveReady が blockers と食い違っている",
+  );
+  // blockers が0でも「readiness をメタに載せていること」自体は要求する（黙って省かない）。
+  assert.ok(Array.isArray(run.meta.fixtureReadiness.blockers));
+  assert.equal(typeof run.meta.fixtureReadiness.liveReady, "boolean");
 });
 
 test("A と B のプロンプトは Recipe 以外が同一（同じフィクスチャの試行で照合）", async () => {

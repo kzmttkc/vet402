@@ -93,12 +93,24 @@ test("summary.md にモックの断り書きが出る（モックの緑を本物
   assert.match(md, /not a measurement of any model/i);
 });
 
-test("summary.md にフィクスチャ未確定の警告が出る", async () => {
+test("summary.md の暫定警告は blockers があるときだけ出る——**両方向に**", async () => {
   const base = await tmp();
-  const dir = await writeRun(await makeRun(), { baseDir: base, now: () => AT, env: {} });
-  const md = await readFile(join(dir, "summary.md"), "utf8");
-  assert.match(md, /PROVISIONAL|暫定/);
-  assert.match(md, /F3/);
+  // (a) blockers あり → 警告が出る
+  const run = await makeRun();
+  const provisional = {
+    ...run,
+    meta: { ...run.meta, fixtureReadiness: { liveReady: false, blockers: ["F3: oracle が未測定（derived）"] } },
+  };
+  const d1 = await writeRun(provisional, { baseDir: base, now: () => AT, env: {} });
+  const md1 = await readFile(join(d1, "summary.md"), "utf8");
+  assert.match(md1, /PROVISIONAL|暫定/);
+  assert.match(md1, /F3/);
+
+  // (b) blockers なし → **警告を出さない**（無い問題を警告し続けると、本物の警告が読まれなくなる）
+  const ready = { ...run, meta: { ...run.meta, fixtureReadiness: { liveReady: true, blockers: [] } } };
+  const d2 = await writeRun(ready, { baseDir: base, now: () => new Date(AT.getTime() + 1000), env: {} });
+  const md2 = await readFile(join(d2, "summary.md"), "utf8");
+  assert.doesNotMatch(md2, /PROVISIONAL|暫定/);
 });
 
 test("summary.md に §16 の集計表（A/B・成功・判定一致・理由部分集合）が出る", async () => {

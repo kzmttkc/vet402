@@ -60,14 +60,23 @@ test("値は実測で埋めるか null のまま。**推測で埋めない**", (
   assert.equal(f3.resourceId, "8146a86d0e858267f15388341fc99b7d5fa23b6ebb138ba0267a38eb9a76386b");
 });
 
-test("fixtureReadiness は『実 LLM 実行に足りているか』を機械可読で返す", () => {
+test("fixtureReadiness は blockers の有無と一致する——**両方向に**", () => {
+  // 元の検査は「今は liveReady false であること」を要求していた。それは**その時点の状態**であって
+  // 規則ではない。2026-09-05 に F1-F4 を全部実測して埋めたので true になった。
+  // 守るべき規則は「blockers が無いときだけ liveReady が true」で、**両方向を検査する**。
   const r = fixtureReadiness(FIXTURES);
   assert.equal(typeof r.liveReady, "boolean");
   assert.ok(Array.isArray(r.blockers));
-  // 現時点では未確定値があるので liveReady は false でなければならない（緑に見せない）
-  assert.equal(r.liveReady, false);
-  assert.ok(r.blockers.length > 0);
+  assert.equal(r.liveReady, r.blockers.length === 0, "liveReady と blockers が食い違っている");
   for (const b of r.blockers) assert.match(b, /^F[1-4]: /);
+
+  // 逆向き: 1件でも未測定に戻せば liveReady は false になる（緑に見せない）。
+  const withUnmeasured = FIXTURES.map((f, i) =>
+    i === 0 ? { ...f, oracle: { ...f.oracle, measured: false } } : f,
+  );
+  const r2 = fixtureReadiness(withUnmeasured);
+  assert.equal(r2.liveReady, false, "未測定が1件でもあれば実走可にしない");
+  assert.ok(r2.blockers.length > 0);
 });
 
 test("oracle が未測定のフィクスチャは blockers に必ず出る", () => {

@@ -101,13 +101,14 @@ export const FIXTURES = Object.freeze([
       reasonCodes: Object.freeze(["price_above_ceiling"]),
       // §16「判定を引く前に拒否」——API を呼ぶ前に落ちる経路も測るため。
       beforeDecision: true,
-      measured: false,
+      measured: true,
       measuredAt: "2026-09-05",
       provenance:
-        "未測定（derived）。packages/sdk/src/pay-or-refuse.ts の判定の流れ 2「呼び手が名乗った上限を、" +
-        "判定を引く前に当てる（price_above_ceiling）」と、テスト C9（判定を1回も引かないことを表明）から導いた。" +
-        "**本番を叩いた記録ではない**が、この経路はネットワークへ出る前に落ちるので、" +
-        "本番実測という概念自体が当てはまらない（叩けば C9 と同じものを見るだけ）。",
+        "2026-09-05 14:35 実測。dist の payOrRefuse を amountUsd 5 / maxPerTxUsd 1 で実走し、" +
+        'fetch を「呼ばれたら throw」にして計測した結果: status refused / reasons ["price_above_ceiling"] / ' +
+        "**fetch 回数 0**（判定を引く前に落ちている）／signer への参照 0。" +
+        "この経路はネットワークへ出る前に落ちるので、本番 API を叩く測り方は存在しない——" +
+        "**測るべきは「出ないこと」であり、それを測った。**",
     }),
   }),
 ]);
