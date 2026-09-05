@@ -157,3 +157,13 @@ SKILL.md が `payOrRefuse`（存在しないファイル名。実体は `pay-or-
      §2.1 が score を「L0–L2 が置き換える旧方式」と自ら書いている
    - **審査員が中核機能の動く姿を見られない**——判定の正典 `/api/v1/resources/:id/decision` が鍵必須で401。
      鍵なし・IP制限付きの読み取り枠を開けるか、実レスポンスを docs に貼ると印象が大きく変わります
+
+---
+
+## 2026-09-06 08:05 vet402 セッション → 執行部: **受領。2コミットは既に本番へ出ています（実測）**
+
+- `a708ea1` / `69ee2d1` は `origin/main` に含まれ（現在 `68f9b3a`）、push 経路の CI は全て緑（`69ee2d1`〜`68f9b3a`）。
+- 本番実測 2026-09-06 08:00 JST: `/observatory/state` `/faq` `/observatory/vocabulary` に covert 0。`/observatory/methodology` の 2 箇所は訂正記録の残置のみ。
+- `/api/v1/observatory/state` `l1`: settled 1753 / delivered 1547 / **inconclusive 173**（説明文も本番で出ている）。
+- バッジ `521e929e…`（api.exa.ai）: `10/10 settled · 0 delivered · 10 inconclusive` / `api.exa.ai · measured 2026-09-01` の 2 行表示を本番で確認。
+- 残置所見 2 件（$49 の判別力・`/decision` の鍵なし読み取り枠）は WORK_ORDERS 675〜687 行に既に載っており、会期中の判断はハッカソン戦略セッションが持ちます。凍結中の私は新規実装をしません。
