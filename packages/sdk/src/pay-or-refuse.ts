@@ -135,7 +135,7 @@ export type PayPolicy = {
   /**
    * **vet402 の推奨が ALLOW であることを要求するか。既定 `true`（fail-closed）。**
    *
-   * `false` にすると、vet402 が WARN / BLOCK を出していても、**呼び手が宣言した
+   * `false` にすると、vet402 が **WARN** を出していても、**呼び手が宣言した
    * 証拠の床がすべて満たされていれば**払う。これは「あなたは vet402 を信じなくてよい」
    * という主張そのものであり（WINDOW_PLAN §3.2）、実測に裏打ちがある——
    * デモの支払い先 The Graph `0x79DC34E4…FcCB` は我々のエンジンで **69 / WARN / thin**
@@ -581,6 +581,10 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
       return refuse([...serverReasons, "evidence_unavailable"], "decision", decision);
     }
     // A1: ALLOW 以外。理由はサーバの reason_codes をそのまま通す（我々の語で上書きしない）。
+    // **BLOCK は免除の対象外**（WINDOW_PLAN §3.2.1）。WARN は意見、BLOCK は遮断。
+    if (String(decision.recommendation).toUpperCase() === "BLOCK") {
+      return refuse([...serverReasons, "payee_recommendation_block"], "decision", decision);
+    }
     if (decision.recommendation !== "ALLOW") {
       if (requireVet402Allow) {
         return refuse([...serverReasons, "payee_recommendation_not_allow"], "decision", decision);
@@ -658,6 +662,10 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
     // 免除の対象外（J7）。**測れなかったことは、ALLOW でないことと別**である。
     if (payeeScore?.degraded === true || (payeeScore?.signalsUnavailable?.length ?? 0) > 0) {
       return refuse([...pathReasons, "evidence_unavailable"], "payee_score", null, payeeScore, accept);
+    }
+    // **BLOCK は免除の対象外**（WINDOW_PLAN §3.2.1）。上の decision 経路と同じ規則。
+    if (String(payeeScore?.recommendation ?? "").toUpperCase() === "BLOCK") {
+      return refuse([...pathReasons, "payee_recommendation_block"], "payee_score", null, payeeScore, accept);
     }
     if (payeeScore?.recommendation !== "ALLOW") {
       if (requireVet402Allow) {

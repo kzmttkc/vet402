@@ -327,6 +327,10 @@ async function decideAndPay(input) {
             return refuse([...serverReasons, "evidence_unavailable"], "decision", decision);
         }
         // A1: ALLOW 以外。理由はサーバの reason_codes をそのまま通す（我々の語で上書きしない）。
+        // **BLOCK は免除の対象外**（WINDOW_PLAN §3.2.1）。WARN は意見、BLOCK は遮断。
+        if (String(decision.recommendation).toUpperCase() === "BLOCK") {
+            return refuse([...serverReasons, "payee_recommendation_block"], "decision", decision);
+        }
         if (decision.recommendation !== "ALLOW") {
             if (requireVet402Allow) {
                 return refuse([...serverReasons, "payee_recommendation_not_allow"], "decision", decision);
@@ -401,6 +405,10 @@ async function decideAndPay(input) {
         // 免除の対象外（J7）。**測れなかったことは、ALLOW でないことと別**である。
         if (payeeScore?.degraded === true || (payeeScore?.signalsUnavailable?.length ?? 0) > 0) {
             return refuse([...pathReasons, "evidence_unavailable"], "payee_score", null, payeeScore, accept);
+        }
+        // **BLOCK は免除の対象外**（WINDOW_PLAN §3.2.1）。上の decision 経路と同じ規則。
+        if (String(payeeScore?.recommendation ?? "").toUpperCase() === "BLOCK") {
+            return refuse([...pathReasons, "payee_recommendation_block"], "payee_score", null, payeeScore, accept);
         }
         if (payeeScore?.recommendation !== "ALLOW") {
             if (requireVet402Allow) {

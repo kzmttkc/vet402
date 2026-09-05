@@ -1035,6 +1035,57 @@ test("J6 カタログ外でも、床を満たさなければ払わない", async
   assert.deepEqual(w.signAccesses(), []);
 });
 
+test("J10 requireVet402Allow: false でも BLOCK は通さない——WARN は意見、BLOCK は遮断", async () => {
+  // WINDOW_PLAN §3.2.1。BLOCK は「我々の意見」ではなく運営者のグローバル遮断
+  // （既知の詐欺・自己取引）で、呼び手が床を宣言していても払ってはいけない相手。
+  // **この検査を消すと、SDK が遮断先へ払う道具になる。** 緩和の変更で黙って外れないよう固定する。
+
+  // (a) カタログ内（/decision が BLOCK を返す）。床はすべて満たしている状態で呼ぶ。
+  {
+    const w = watchedAccount();
+    const s = seller(okAccept);
+    const f = allowlistFetch([DECISION, "kronos", "payments/x402"], {
+      [DECISION]: decision({ recommendation: "BLOCK", reason_codes: ["operator_blacklist"] }),
+      kronos: s.stub, "payments/x402": { status: 200, body: { ok: true } },
+    });
+    const r = await payOrRefuse({
+      ...base, account: w.account, fetch: f.fetch,
+      policy: { requireVet402Allow: false, evidence: { minL1Deliveries: 3, source: "vet402" } },
+    });
+    assert.equal(r.status, "refused", "BLOCK は呼び手の床では外れない");
+    assert.equal(r.decision.reason_codes.includes("payee_recommendation_block"), true,
+      `BLOCK を名指しした理由が無い: ${r.decision.reason_codes.join(",")}`);
+    assert.equal(r.decision.reason_codes.includes("allowed_by_caller_policy"), false,
+      "BLOCK を呼び手の policy で通したと記録してはいけない");
+    assert.equal(s.paid.length, 0, "売り手へ支払い付きの再送をしていない");
+    assert.deepEqual(w.signAccesses(), [], "署名器に到達していない");
+  }
+
+  // (b) カタログ外（/decision 404 → 受取人スコアが BLOCK）。同じ規則が対称に効く。
+  // 402 の壁も subgraph も gateway.thegraph.com なので、**subgraph の id で鍵を分ける**。
+  {
+    const w = watchedAccount();
+    const s = seller(graphAccept);
+    const f = allowlistFetch([DECISION, SCORE, "gateway.thegraph.com", "payments/x402"], {
+      [DECISION]: notFound,
+      [SCORE]: payeeScore({ recommendation: "BLOCK", score: 12, dataDepth: "thin" }),
+      "id/Cb56": { status: 200, body: { data: { x402AddressSummaries: [{ role: "RECIPIENT", totalPayments: "253" }], _meta: { block: { number: 50891626 }, deployment: "Qm" } } } },
+      "gateway.thegraph.com": s.stub,
+      "payments/x402": { status: 200, body: { ok: true } },
+    });
+    const r = await payOrRefuse({
+      ...uncatalogued, account: w.account, fetch: f.fetch,
+      policy: { requireVet402Allow: false,
+                evidence: { minSubgraphReceipts: 1, source: "subgraph", graphApiKey: "k" } },
+    });
+    assert.equal(r.status, "refused", "404 経路でも BLOCK は外れない");
+    assert.equal(r.decision.reason_codes.includes("payee_recommendation_block"), true,
+      `BLOCK を名指しした理由が無い: ${r.decision.reason_codes.join(",")}`);
+    assert.equal(s.paid.length, 0);
+    assert.deepEqual(w.signAccesses(), []);
+  }
+});
+
 test("J7 requireVet402Allow: false は degraded を通さない——「測れなかった」と「ALLOW でない」は別のこと", async () => {
   // 免除したのは**判定の中身**であって、判定が存在しないことではない。
   // ここを一緒にすると、fail-closed が丸ごと外れる。

@@ -93,7 +93,7 @@ export type PayPolicy = {
     /**
      * **vet402 の推奨が ALLOW であることを要求するか。既定 `true`（fail-closed）。**
      *
-     * `false` にすると、vet402 が WARN / BLOCK を出していても、**呼び手が宣言した
+     * `false` にすると、vet402 が **WARN** を出していても、**呼び手が宣言した
      * 証拠の床がすべて満たされていれば**払う。これは「あなたは vet402 を信じなくてよい」
      * という主張そのものであり（WINDOW_PLAN §3.2）、実測に裏打ちがある——
      * デモの支払い先 The Graph `0x79DC34E4…FcCB` は我々のエンジンで **69 / WARN / thin**
