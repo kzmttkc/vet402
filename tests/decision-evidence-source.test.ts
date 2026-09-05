@@ -19,6 +19,8 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { buildDecision, type DecisionSubject } from "@/lib/decision/decide";
 import { l2EvidenceOf } from "@/lib/decision/seller-facts";
 import { assertEvidenceContract, EVIDENCE_SOURCES } from "@/lib/decision/evidence";
@@ -152,4 +154,30 @@ test("2 つの源は 2 行のまま残り、件数は行ごとに別々に読め
   // 受領件数は subgraph の行だけが持つ。自社行の側に同じ数が現れたら、それは合算である。
   assert.equal(rows.find((r) => r.source === "vet402")?.receipts, undefined);
   assert.equal(rows.find((r) => r.source === "subgraph")?.receipts, 253);
+});
+
+// ------------------------------------------------------------------
+// 4. 関門が公開経路に実際に置かれている
+// ------------------------------------------------------------------
+//
+// 2026-09-05 の変異で判明: decide.ts から assertEvidenceContract の呼び出しを
+// 外しても、上の検査はすべて緑のままだった。行を作る側が正しい限り振る舞いは
+// 変わらないので、**振る舞いのテストでは関門の不在を捉えられない**。
+// 関門は「将来だれかが行を別の場所から足したとき」のためにあるので、
+// それが公開経路に置かれていること自体を固定する。
+test("evidence[] を返す公開経路は、配る前に行契約を検査している", () => {
+  const paths = [
+    "src/lib/decision/decide.ts",
+    "src/app/api/v1/observatory/endpoints/[id]/facts/route.ts",
+  ];
+  for (const rel of paths) {
+    const body = readFileSync(join(process.cwd(), rel), "utf8");
+    assert.match(body, /evidence/, `${rel} が evidence を扱っていない（テスト側のパスが古い）`);
+    assert.match(
+      body,
+      /assertEvidenceContract\(\s*evidence\s*\)/,
+      `${rel} が assertEvidenceContract(evidence) を呼んでいない — ` +
+        "源を名乗らない行や合算した行が、検査を通らずに外へ出る経路になる",
+    );
+  }
 });
