@@ -207,6 +207,17 @@ paths:
         cannot overwrite the profile link), and an `issued` line (so an old
         signature cannot be replayed to roll back a newer edit). `issued` must
         be within 10 minutes of the server clock at POST time.
+
+        **Message form changed 2026-09-05 (S-6).** Every signed message now
+        opens with `vet402.com — <purpose>` and carries a `domain: vet402.com`
+        line, so the wallet's signing view shows which site is asking; the
+        `issued` line states its own `(valid 10 minutes)`; and the last line
+        says what the signature does and that it moves no funds. Signatures
+        over the pre-2026-09-05 form are still accepted until
+        **2026-09-21T00:00:00Z** (the response carries `legacy_message: true`);
+        after that they are refused with `signature_message_legacy_expired`
+        rather than a bare `signature_mismatch`. Always fetch the current
+        message from the GET preview instead of building it locally.
       security: []
       parameters:
         - name: wallet
@@ -338,6 +349,26 @@ paths:
       description: |
         Call after x402 payment verification. Idempotent on `txHash`.
         Settlement history is weighted into trust scores (SCORE_WEIGHTS.x402).
+
+        `signature` is optional but load-bearing: without a valid EIP-191
+        signature by `wallet` over the canonical attestation message, the row
+        is still recorded but `ownershipVerified` is false and it never counts
+        toward any score. Since 2026-09-05 that message names the site and
+        states what the signature causes:
+
+        ```
+        vet402.com — x402 settlement attestation
+        domain: vet402.com
+        wallet: {wallet, lowercase}
+        tx: {txHash, lowercase}
+        Effect: this settlement will be counted toward the public score of the wallet above on vet402.com.
+        This signature moves no funds.
+        ```
+
+        A signature over the pre-2026-09-05 form still proves ownership until
+        **2026-09-21T00:00:00Z** and the response then carries
+        `legacyMessage: true`; after that date it proves nothing (the row is
+        recorded unscored) and the response carries `legacyMessageExpired`.
       requestBody:
         required: true
         content:
@@ -361,6 +392,13 @@ paths:
                 resource:
                   type: string
                   description: Paid route or resource identifier
+                signature:
+                  type: string
+                  maxLength: 4000
+                  description: |
+                    EIP-191 signature by `wallet` over the canonical
+                    attestation message (see above). Omitting it records the
+                    settlement with `ownershipVerified: false`.
       responses:
         "201":
           description: Payment attested
@@ -778,9 +816,22 @@ paths:
       description: |
         Permissionless L0 contribution intake (Phase 3.3 v0), OFF by default
         behind an operator flag. Submissions are EIP-191 signed over the
-        canonical message
-        `vet402:contribution:v1:{endpointId}:{verdict}:{httpStatus}:{latencyMs}:{issued}`
-        and stored with the signed message verbatim for auditability.
+        canonical message — since 2026-09-05 a human-readable, newline-joined
+        block rather than one colon-packed line, so the signer can read which
+        endpoint and which verdict they are attesting to:
+
+        ```
+        vet402.com — external observation
+        domain: vet402.com
+        endpoint: {endpointId}
+        verdict: {verdict}
+        http status: {httpStatus, or "not reported"}
+        latency: {latencyMs} ms
+        issued: {issued} (valid 10 minutes)
+        Recorded in the public ledger. Not counted in the published verdict (v0).
+        ```
+
+        The message that verified is stored verbatim for auditability.
 
         **Breaking change 2026-08-22 (v0 → v1).** `issued` (RFC 3339 UTC, e.g.
         `2026-08-22T13:04:05Z`) is now part of the signed message and is
@@ -790,6 +841,17 @@ paths:
         message (409 `replayed`). Without both checks a captured signature
         could be replayed indefinitely. Signatures produced against the v0
         message form no longer verify.
+
+        **Message form changed 2026-09-05 (S-6).** Every signed message now
+        opens with `vet402.com — <purpose>` and carries a `domain: vet402.com`
+        line, so the wallet's signing view shows which site is asking; the
+        `issued` line states its own `(valid 10 minutes)`; and the last line
+        says what the signature does and that it moves no funds. Signatures
+        over the pre-2026-09-05 form are still accepted until
+        **2026-09-21T00:00:00Z** (the response carries `legacy_message: true`);
+        after that they are refused with `signature_message_legacy_expired`
+        rather than a bare `signature_mismatch`. Always fetch the current
+        message from the GET preview instead of building it locally.
         v0 contributions are NEVER folded into published verdicts — the public
         register remains computed from vet402's own probes until the weighted
         v1 design ships. IP-throttled to 10/min.
@@ -1273,9 +1335,23 @@ paths:
       tags: [Observatory]
       summary: Seller dispute, EIP-191-signed by the endpoint's payTo
       description: |
-        Only the holder of the endpoint's payTo key can dispute its record
-        (message form
-        `vet402:dispute:v1:{endpointId}:{subject}:{sha256(reason)}:{issued}`).
+        Only the holder of the endpoint's payTo key can dispute its record.
+        Since 2026-09-05 the signed message carries the first 200 characters of
+        `reason` in plain text alongside its sha256, so the dispute is no
+        longer a blind signature, and states that the re-measurement publishes
+        either way:
+
+        ```
+        vet402.com — measurement dispute
+        domain: vet402.com
+        endpoint: {endpointId}
+        subject: {subject}
+        reason (first 200 chars): {reason, control characters flattened to spaces}
+        reason sha256: {sha256(reason)}
+        issued: {issued} (valid 10 minutes)
+        Filing this will trigger a re-measurement whose result is published, including if it confirms the original verdict.
+        ```
+
         Acceptance triggers one real L0 re-measurement recorded through the
         normal publication gate. Records are never deleted on dispute. 5/min.
 
@@ -1286,6 +1362,17 @@ paths:
         canonical message is rejected (409 `replayed`) — otherwise a captured
         signature could be replayed to trigger unlimited live re-probes.
         Signatures produced against the v0 message form no longer verify.
+
+        **Message form changed 2026-09-05 (S-6).** Every signed message now
+        opens with `vet402.com — <purpose>` and carries a `domain: vet402.com`
+        line, so the wallet's signing view shows which site is asking; the
+        `issued` line states its own `(valid 10 minutes)`; and the last line
+        says what the signature does and that it moves no funds. Signatures
+        over the pre-2026-09-05 form are still accepted until
+        **2026-09-21T00:00:00Z** (the response carries `legacy_message: true`);
+        after that they are refused with `signature_message_legacy_expired`
+        rather than a bare `signature_mismatch`. Always fetch the current
+        message from the GET preview instead of building it locally.
       security: []
       requestBody:
         required: true
@@ -1586,6 +1673,17 @@ paths:
         by the receiving wallet, plus the catalog endpoints currently paying
         that wallet. The signature binds wallet AND this key, so a signature
         for another key cannot route someone else's `endpoint.delisted` events.
+
+        **Message form changed 2026-09-05 (S-6).** Every signed message now
+        opens with `vet402.com — <purpose>` and carries a `domain: vet402.com`
+        line, so the wallet's signing view shows which site is asking; the
+        `issued` line states its own `(valid 10 minutes)`; and the last line
+        says what the signature does and that it moves no funds. Signatures
+        over the pre-2026-09-05 form are still accepted until
+        **2026-09-21T00:00:00Z** (the response carries `legacy_message: true`);
+        after that they are refused with `signature_message_legacy_expired`
+        rather than a bare `signature_mismatch`. Always fetch the current
+        message from the GET preview instead of building it locally.
       parameters:
         - name: wallet
           in: query
@@ -1811,6 +1909,17 @@ paths:
         `url` line, and an `issued` line (replay guard). `issued` must be
         within 10 minutes of the server clock at POST time. Key-less; 30
         requests per minute per IP.
+
+        **Message form changed 2026-09-05 (S-6).** Every signed message now
+        opens with `vet402.com — <purpose>` and carries a `domain: vet402.com`
+        line, so the wallet's signing view shows which site is asking; the
+        `issued` line states its own `(valid 10 minutes)`; and the last line
+        says what the signature does and that it moves no funds. Signatures
+        over the pre-2026-09-05 form are still accepted until
+        **2026-09-21T00:00:00Z** (the response carries `legacy_message: true`);
+        after that they are refused with `signature_message_legacy_expired`
+        rather than a bare `signature_mismatch`. Always fetch the current
+        message from the GET preview instead of building it locally.
       security: []
       parameters:
         - name: agentId
@@ -3531,6 +3640,11 @@ components:
             - service_unavailable
             - watcher_limit_reached
             - internal_error
+            # 2026-09-05 (S-6): 署名本文が vet402.com を名乗り domain 行を持つ形へ
+            # 変わった。2026-09-05 以前の本文への署名は 2026-09-21T00:00:00Z まで
+            # 受理し、それ以降はこのコードで拒否する——無言の signature_mismatch に
+            # すると、正しく署名できている相手が理由を知る手段を失う。
+            - signature_message_legacy_expired
             # --- badge ---
             - invalid_address
         details:

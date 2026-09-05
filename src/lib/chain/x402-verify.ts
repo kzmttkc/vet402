@@ -1,5 +1,5 @@
-import { verifyMessage } from "viem";
 import { isSkipChainReadsEnabled } from "@/lib/config/env";
+import { matchSignatureForm, SIGNING_DOMAIN } from "@/lib/verify-message";
 import { getPublicClient } from "./client";
 import { BASE_USDC_ADDRESS } from "./config";
 
@@ -22,6 +22,22 @@ import { BASE_USDC_ADDRESS } from "./config";
  */
 export function x402AttestationMessage(wallet: string, txHash: string): string {
   return [
+    `${SIGNING_DOMAIN} — x402 settlement attestation`,
+    `domain: ${SIGNING_DOMAIN}`,
+    `wallet: ${wallet.toLowerCase()}`,
+    `tx: ${txHash.toLowerCase()}`,
+    // 2026-09-05 (S-6/E-b): the old text said only "proves control". It did not
+    // say what the signature CAUSES — that this settlement joins the public
+    // score of that wallet. A signer who reads "proof of ownership" and later
+    // finds a public ledger entry was told the truth but not the consequence.
+    `Effect: this settlement will be counted toward the public score of the wallet above on ${SIGNING_DOMAIN}.`,
+    "This signature moves no funds.",
+  ].join("\n");
+}
+
+/** LEGACY (〜2026-09-05, delete after LEGACY_MESSAGE_ACCEPT_UNTIL). Frozen. */
+export function legacyX402AttestationMessage(wallet: string, txHash: string): string {
+  return [
     "Vouch x402 settlement attestation",
     `wallet: ${wallet.toLowerCase()}`,
     `tx: ${txHash.toLowerCase()}`,
@@ -40,17 +56,34 @@ export async function verifyX402Ownership(
   wallet: string,
   txHash: string,
   signature: string | null | undefined,
-): Promise<boolean> {
-  if (!signature) return false;
-  try {
-    return await verifyMessage({
-      address: wallet as `0x${string}`,
-      message: x402AttestationMessage(wallet, txHash),
-      signature: signature as `0x${string}`,
-    });
-  } catch {
-    return false;
-  }
+  now?: number,
+): Promise<X402OwnershipResult> {
+  const { matched } = await matchSignatureForm({
+    address: wallet,
+    signature,
+    current: x402AttestationMessage(wallet, txHash),
+    legacy: legacyX402AttestationMessage(wallet, txHash),
+    now,
+  });
+  return {
+    verified: matched === "current" || matched === "legacy",
+    legacy: matched === "legacy",
+    legacyExpired: matched === "legacy_expired",
+  };
+}
+
+/**
+ * `verified` decides ownership_verified. `legacy` / `legacyExpired` exist only
+ * to MEASURE the migration off the pre-domain-binding message: a write-back
+ * that had to fall back to the old text is still recorded as owned (until
+ * LEGACY_MESSAGE_ACCEPT_UNTIL), but the route says so in its response and its
+ * log, so "is anyone still signing the old form?" is answered by data rather
+ * than by assumption.
+ */
+export interface X402OwnershipResult {
+  verified: boolean;
+  legacy: boolean;
+  legacyExpired: boolean;
 }
 
 /** keccak256("Transfer(address,address,uint256)") — standard ERC20 Transfer event. */

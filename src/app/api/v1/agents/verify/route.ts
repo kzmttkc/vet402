@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { verifyMessage } from "viem";
 import { getClientIp } from "@/lib/api/client-ip";
 import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
 import { getDb } from "@/lib/db/client";
@@ -15,7 +14,13 @@ import { readCanonicalAgentWallet } from "@/lib/chain/agent-wallet";
 // live in lib now (@/lib/validation, @/lib/verify-message) so no route exports a
 // shared helper (Next 16 route-type contract).
 import { isCanonicalName } from "@/lib/validation/canonical-name";
-import { agentPassportMessage, isSafeBoundUrl, isValidIssuedAt } from "@/lib/verify-message";
+import {
+  agentPassportMessage,
+  isSafeBoundUrl,
+  isValidIssuedAt,
+  legacyAgentPassportMessage,
+  matchSignatureForm,
+} from "@/lib/verify-message";
 import { logServerError } from "@/lib/util/log";
 
 // A-10 — agent passport self-verification, the symmetric twin of N-16
@@ -166,22 +171,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "agent_wallet_unbound" }, { status: 400, headers: rlHeaders });
   }
 
+  // 2026-09-05 (S-6): same two-form window as payees/verify — current text
+  // first, the pre-2026-09-05 text until LEGACY_MESSAGE_ACCEPT_UNTIL, then a
+  // named refusal instead of a silent mismatch.
   const expectedMessage = agentPassportMessage(agentId, wallet, name, url, issued);
-  let valid = false;
-  try {
-    valid = await verifyMessage({
-      address: wallet as `0x${string}`,
-      message: expectedMessage,
-      signature: signature as `0x${string}`,
-    });
-  } catch {
-    valid = false;
+  const { matched } = await matchSignatureForm({
+    address: wallet,
+    signature,
+    current: expectedMessage,
+    legacy: legacyAgentPassportMessage(agentId, wallet, name, url, issued),
+  });
+  if (matched === "legacy_expired") {
+    return NextResponse.json(
+      { error: "signature_message_legacy_expired", expectedMessage },
+      { status: 400, headers: rlHeaders },
+    );
   }
-  if (!valid) {
+  if (matched === "none") {
     return NextResponse.json(
       { error: "signature_mismatch", expectedMessage },
       { status: 400, headers: rlHeaders },
     );
+  }
+  const legacyMessage = matched === "legacy";
+  if (legacyMessage) {
+    console.warn(`[vouch] agent_verify_legacy_message: agentId=${agentId.toString()}`);
   }
 
   const db = getDb();
@@ -213,6 +227,13 @@ export async function POST(request: NextRequest) {
         passport: `/api/v1/agents/${agentId.toString()}/passport`,
         profile: `/agent/${agentId.toString()}`,
         badge: `/api/badge/agent/${agentId.toString()}`,
+        // Present only while the pre-2026-09-05 message form is still accepted.
+        ...(legacyMessage
+          ? {
+              legacy_message: true,
+              note: "Accepted a signature over the pre-2026-09-05 message form. That form stops verifying on 2026-09-21 — re-fetch the message from GET /api/v1/agents/verify.",
+            }
+          : {}),
       },
       { headers: rlHeaders },
     );

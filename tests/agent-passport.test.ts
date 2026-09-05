@@ -16,20 +16,24 @@ import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
 import { verifyMessage } from "viem";
 import { agentPassportMessage } from "@/lib/verify-message";
 
-test("agentPassportMessage produces the documented 5-line canonical message", () => {
+// 2026-09-05 (S-6): 1 行目の名乗りが `vet402.com — …` になり、2 行目に
+// `domain:` が入ったので、最小形は 5 行から 6 行へ。増えたのは固定行だけで、
+// 「行数は固定・可変値は 1 行に収まる」という不変条件は同じ。
+test("agentPassportMessage produces the documented 6-line canonical message", () => {
   const msg = agentPassportMessage(42n, "0xAbC0000000000000000000000000000000000001", "Acme Agent");
   assert.equal(
     msg,
     [
-      "Vouch agent passport registration",
+      "vet402.com — agent passport registration",
+      "domain: vet402.com",
       "agentId: 42",
       "wallet: 0xabc0000000000000000000000000000000000001",
       "name: Acme Agent",
-      "This signature only proves control of the wallet above.",
+      "This signature proves control of the wallet above. It moves no funds and grants no spending approval.",
     ].join("\n"),
   );
-  // Exactly 5 lines — the structural invariant the anti-injection rule protects.
-  assert.equal(msg.split("\n").length, 5);
+  // Exactly 6 lines — the structural invariant the anti-injection rule protects.
+  assert.equal(msg.split("\n").length, 6);
 });
 
 test("agentPassportMessage binds https url into the signed text", () => {
@@ -40,9 +44,9 @@ test("agentPassportMessage binds https url into the signed text", () => {
     "https://acme.example/agent",
   );
   assert.ok(bound.includes("\nurl: https://acme.example/agent\n"));
-  assert.equal(bound.split("\n").length, 6);
+  assert.equal(bound.split("\n").length, 7);
   const legacy = agentPassportMessage(42n, "0xAbC0000000000000000000000000000000000001", "Acme Agent");
-  assert.equal(legacy.split("\n").length, 5);
+  assert.equal(legacy.split("\n").length, 6);
   assert.notEqual(bound, legacy);
 });
 

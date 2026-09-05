@@ -100,7 +100,20 @@ export async function POST(request: NextRequest) {
   // stays false and it never counts toward a score. Verified separately from
   // the on-chain checks so an invalid signature does not lose a real
   // settlement — it just leaves it unscored (recorded, not rewarded).
-  const ownershipVerified = await verifyX402Ownership(wallet, txHash, signature);
+  //
+  // 2026-09-05 (S-6): the message now names vet402.com. A signature over the
+  // pre-2026-09-05 text still counts as ownership until
+  // LEGACY_MESSAGE_ACCEPT_UNTIL, and says so in the response and the log, so
+  // the migration is measured rather than assumed. After that date the old
+  // text stops proving anything — the row is still recorded, just unscored.
+  const ownership = await verifyX402Ownership(wallet, txHash, signature);
+  const ownershipVerified = ownership.verified;
+  if (ownership.legacy) {
+    console.warn(`[vouch] x402_attestation_legacy_message: wallet=${wallet.toLowerCase()}`);
+  }
+  if (ownership.legacyExpired) {
+    console.warn(`[vouch] x402_attestation_legacy_expired: wallet=${wallet.toLowerCase()}`);
+  }
 
   try {
     const result = await recordX402Payment({
@@ -145,6 +158,11 @@ export async function POST(request: NextRequest) {
           // but will not count toward this wallet's score. The caller finds
           // that out now, from us, not from a score that never moves.
           ownershipVerified,
+          // Present only while the old message form is still being signed —
+          // an integrator's cue to move to the message GET /payees/verify and
+          // the docs now hand out, before LEGACY_MESSAGE_ACCEPT_UNTIL.
+          ...(ownership.legacy ? { legacyMessage: true } : {}),
+          ...(ownership.legacyExpired ? { legacyMessageExpired: true } : {}),
           // Surfaced rather than hidden: a caller whose declared amount did
           // not match the chain should find that out from us, immediately,
           // and not from a reconciliation weeks later.

@@ -7,9 +7,12 @@
 // これは正規の測定（売り手起点というだけ）で、公開判定の2連続fail
 // ゲートも普段どおり適用される。申し立てで記録が消えることはない。
 //
-// メッセージ正規形（署名対象）:
-//   vet402:dispute:v1:{endpointId}:{subject}:{sha256(reason)}:{issued}
-// reason 本文は台帳に原文保存（監査可能性）。
+// メッセージ正規形（署名対象）は disputeMessage を参照。2026-09-05 に
+// コロン区切りの1行から改行区切りの人間可読へ移し、1行目で vet402.com を
+// 名乗り、2行目に domain 行を置き、reason の先頭200字を平文で畳み込んだ
+// （それまでは sha256 しか入らず、署名画面で自分の主張が読めなかった）。
+// reason 本文は台帳に原文保存（監査可能性）。旧形式は
+// LEGACY_MESSAGE_ACCEPT_UNTIL まで受理する。
 //
 // 2026-08-22（監査残件）: v0 のメッセージには nonce も timestamp も無く、
 // 公開された署名を拾った第三者が同じ申し立てを無限に再送できた（受理1件
@@ -23,10 +26,9 @@
 // ============================================================
 import { createHash } from "node:crypto";
 import { desc, eq } from "drizzle-orm";
-import { verifyMessage } from "viem";
 import { getDb } from "@/lib/db/client";
 import { disputes, x402Endpoints, x402L0Probes } from "@/lib/db/schema";
-import { isValidIssuedAt } from "@/lib/verify-message";
+import { isValidIssuedAt, matchSignatureForm, SIGNING_DOMAIN } from "@/lib/verify-message";
 import { logAndSwallow } from "@/lib/util/log";
 import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { probeEndpoint, type ProbeOptions } from "./l0-probe";
@@ -43,7 +45,53 @@ const ISSUED_WINDOW_MS = 10 * 60_000;
 
 const SUBJECTS = new Set(["l0", "l1", "listing"]);
 
+/** 署名本文に畳み込む reason の平文の長さ（先頭から数えた文字数）。 */
+const REASON_EXCERPT_CHARS = 200;
+
+/**
+ * reason の先頭 200 字を「1 行に潰した」平文。
+ *
+ * WHY (2026-09-05 S-6/E-d): v1 の本文は reason を sha256 でしか含まず、
+ * 署名画面には自分の主張が 1 文字も出なかった——構造的なブラインド署名で、
+ * UI の表示と別の本文を署名させる差し替えを、署名者は検出できなかった。
+ * 平文を入れるが、reason は自由入力（最大 4000 字・改行あり）なので、
+ * そのまま畳み込むと固定行の構造が壊れる。だから制御文字・行区切りを
+ * 1 個の空白へ潰す——`name` を「弾く」のと違い、reason は正当に改行を
+ * 含みうるので、ここは拒否ではなく決定的な正規化にする。原文は
+ * `reason sha256` と台帳の原文保存が引き続き保証する。
+ */
+function reasonExcerpt(reason: string): string {
+  let out = "";
+  for (const ch of [...reason].slice(0, REASON_EXCERPT_CHARS)) {
+    const c = ch.codePointAt(0)!;
+    const isControl = c <= 0x1f || (c >= 0x7f && c <= 0x9f);
+    out += isControl || ch === "\u2028" || ch === "\u2029" ? " " : ch;
+  }
+  return out.trim();
+}
+
 export function disputeMessage(input: {
+  endpointId: string;
+  subject: string;
+  reason: string;
+  issued: string;
+}): string {
+  const reasonHash = createHash("sha256").update(input.reason, "utf8").digest("hex");
+  return [
+    `${SIGNING_DOMAIN} — measurement dispute`,
+    `domain: ${SIGNING_DOMAIN}`,
+    `endpoint: ${input.endpointId}`,
+    `subject: ${input.subject}`,
+    `reason (first ${REASON_EXCERPT_CHARS} chars): ${reasonExcerpt(input.reason)}`,
+    `reason sha256: ${reasonHash}`,
+    `issued: ${input.issued} (valid 10 minutes)`,
+    // 再測定の結果は不利でも公開される。提出前に読める場所はここしかない。
+    "Filing this will trigger a re-measurement whose result is published, including if it confirms the original verdict.",
+  ].join("\n");
+}
+
+/** LEGACY (〜2026-09-05, delete after LEGACY_MESSAGE_ACCEPT_UNTIL). Frozen. */
+export function legacyDisputeMessage(input: {
   endpointId: string;
   subject: string;
   reason: string;
@@ -54,7 +102,7 @@ export function disputeMessage(input: {
 }
 
 export type DisputeResult =
-  | { ok: true; id: string; remeasureVerdict: string | null }
+  | { ok: true; id: string; remeasureVerdict: string | null; legacyMessage: boolean }
   | {
       ok: false;
       reason:
@@ -63,6 +111,7 @@ export type DisputeResult =
         | "not_payto_signer"
         | "invalid_signature"
         | "signature_expired"
+        | "signature_message_legacy_expired"
         | "replayed"
         | "unsupported_payto"
         | "rate_limited"
@@ -108,18 +157,23 @@ export async function submitDispute(
     return { ok: false, reason: "not_payto_signer" };
   }
 
-  const message = disputeMessage(input);
-  let valid = false;
-  try {
-    valid = await verifyMessage({
-      address: input.address as `0x${string}`,
-      message,
-      signature: input.signature as `0x${string}`,
-    });
-  } catch {
-    valid = false;
+  // 2026-09-05 (S-6): 現行形式が第一候補、旧形式は互換期限まで第二候補。
+  // 受理した本文をそのまま台帳へ残す——「何に署名したか」を後から検証できる
+  // という v1 からの約束は、形式が 2 つある期間でも変えない。
+  const current = disputeMessage(input);
+  const legacy = legacyDisputeMessage(input);
+  const { matched } = await matchSignatureForm({
+    address: input.address,
+    signature: input.signature,
+    current,
+    legacy,
+  });
+  if (matched === "legacy_expired") {
+    return { ok: false, reason: "signature_message_legacy_expired" };
   }
-  if (!valid) return { ok: false, reason: "invalid_signature" };
+  if (matched === "none") return { ok: false, reason: "invalid_signature" };
+  const legacyMessage = matched === "legacy";
+  const message = legacyMessage ? legacy : current;
 
   // 鮮度窓の内側での再送も1回きりにする。message は issued を含むので
   // 「同一メッセージ = 同一署名の再提出」であり、正当な申し立ての重複には
@@ -207,5 +261,5 @@ export async function submitDispute(
     /* dispute stands; remeasure can be retried by ops */
   }
 
-  return { ok: true, id: row.id, remeasureVerdict };
+  return { ok: true, id: row.id, remeasureVerdict, legacyMessage };
 }

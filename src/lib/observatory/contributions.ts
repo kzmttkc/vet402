@@ -5,8 +5,10 @@
 // 公開 verdict の正典は自前プローブ（publishedVerdict）のまま動かさない。
 // 外部観測が判定に効くのは、重み付け・sybil耐性・監査を設計した v1 から。
 //
-// 署名は EIP-191 personal_sign。メッセージは決定的な正規形（下記のメッセージ v1 形式）
+// 署名は EIP-191 personal_sign。メッセージは決定的な正規形（contributionMessage）
 // で、保存時に原文ごと台帳へ残す——後から「何に署名したか」を検証できる。
+// 2026-09-05 に改行区切りの人間可読へ移した（1行目で vet402.com を名乗り、
+// 2行目に domain 行）。旧形式は LEGACY_MESSAGE_ACCEPT_UNTIL まで受理する。
 //
 // 2026-08-22（監査残件）: v0 のメッセージには nonce も timestamp も無く、
 // 一度公開された署名は永久に再送可能な書き込み資格だった。既定OFFで公開
@@ -18,10 +20,9 @@
 // 「外部観測が判定に効く v1」という機能フェーズとは別物。
 // ============================================================
 import { eq } from "drizzle-orm";
-import { verifyMessage } from "viem";
 import { getDb } from "@/lib/db/client";
 import { probeContributions } from "@/lib/db/schema";
-import { isValidIssuedAt } from "@/lib/verify-message";
+import { isValidIssuedAt, matchSignatureForm, SIGNING_DOMAIN } from "@/lib/verify-message";
 import { UUID_RE } from "@/lib/validation/uuid";
 
 /** payees/verify の ISSUED_WINDOW_MS と同じ 10 分。 */
@@ -34,7 +35,38 @@ export function isContributionsEnabled(): boolean {
 const VERDICTS = new Set(["pass", "fail", "unverified"]);
 const ADDR_RE = /^0x[0-9a-fA-F]{40}$/;
 
+/** 未報告の欄も決定的な 1 語で埋める（空欄は「何を署名したか」を曖昧にする）。 */
+const NOT_REPORTED = "not reported";
+
+/**
+ * 2026-09-05 (S-6/E-c): v1 は `vet402:contribution:v1:<uuid>:<verdict>:…` の
+ * 単一行で、署名画面ではコロン区切りの塊にしか見えなかった——どの endpoint に
+ * どの判定を出したのかが読めない以上、UI の表示と別の verdict を署名させる
+ * 差し替えを署名者は検出できない。改行区切りの人間可読へ移し、1 行目に
+ * 名乗り、2 行目に domain を置く。値はすべて整数・uuid・enum で検証済みなので
+ * 行の偽造面は無い。
+ */
 export function contributionMessage(input: {
+  endpointId: string;
+  verdict: string;
+  httpStatus: number | null;
+  latencyMs: number | null;
+  issued: string;
+}): string {
+  return [
+    `${SIGNING_DOMAIN} — external observation`,
+    `domain: ${SIGNING_DOMAIN}`,
+    `endpoint: ${input.endpointId}`,
+    `verdict: ${input.verdict}`,
+    `http status: ${input.httpStatus ?? NOT_REPORTED}`,
+    `latency: ${input.latencyMs === null ? NOT_REPORTED : `${input.latencyMs} ms`}`,
+    `issued: ${input.issued} (valid 10 minutes)`,
+    "Recorded in the public ledger. Not counted in the published verdict (v0).",
+  ].join("\n");
+}
+
+/** LEGACY (〜2026-09-05, delete after LEGACY_MESSAGE_ACCEPT_UNTIL). Frozen. */
+export function legacyContributionMessage(input: {
   endpointId: string;
   verdict: string;
   httpStatus: number | null;
@@ -45,7 +77,7 @@ export function contributionMessage(input: {
 }
 
 export type ContributionResult =
-  | { ok: true; id: string }
+  | { ok: true; id: string; legacyMessage: boolean }
   | {
       ok: false;
       reason:
@@ -53,6 +85,7 @@ export type ContributionResult =
         | "invalid_input"
         | "invalid_signature"
         | "signature_expired"
+        | "signature_message_legacy_expired"
         | "replayed"
         | "db_unavailable";
     };
@@ -82,18 +115,23 @@ export async function submitContribution(input: {
     return { ok: false, reason: "signature_expired" };
   }
 
-  const message = contributionMessage(input);
-  let valid = false;
-  try {
-    valid = await verifyMessage({
-      address: input.address as `0x${string}`,
-      message,
-      signature: input.signature as `0x${string}`,
-    });
-  } catch {
-    valid = false;
+  // 2026-09-05 (S-6): 現行形式が第一候補、旧形式は LEGACY_MESSAGE_ACCEPT_UNTIL
+  // まで第二候補。受理した本文をそのまま台帳へ残す（監査可能性は形式が 2 つ
+  // ある期間も同じ約束）。
+  const current = contributionMessage(input);
+  const legacy = legacyContributionMessage(input);
+  const { matched } = await matchSignatureForm({
+    address: input.address,
+    signature: input.signature,
+    current,
+    legacy,
+  });
+  if (matched === "legacy_expired") {
+    return { ok: false, reason: "signature_message_legacy_expired" };
   }
-  if (!valid) return { ok: false, reason: "invalid_signature" };
+  if (matched === "none") return { ok: false, reason: "invalid_signature" };
+  const legacyMessage = matched === "legacy";
+  const message = legacyMessage ? legacy : current;
 
   const db = getDb();
   if (!db) return { ok: false, reason: "db_unavailable" };
@@ -119,5 +157,5 @@ export async function submitContribution(input: {
       signature: input.signature,
     })
     .returning();
-  return { ok: true, id: row.id };
+  return { ok: true, id: row.id, legacyMessage };
 }

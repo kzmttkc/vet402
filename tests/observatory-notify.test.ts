@@ -22,10 +22,12 @@ test("observatoryWatchMessage binds wallet and api key in fixed lines", async ()
   assert.equal(
     msg,
     [
-      "vet402 observatory watch registration",
+      // 2026-09-05 (S-6): 名乗りを `vet402.com — …` へ統一し domain 行を必須化。
+      "vet402.com — observatory watch registration",
+      "domain: vet402.com",
       "wallet: 0xabcdef0000000000000000000000000000000001",
       "apiKey: key_123",
-      "This signature authorizes delisting notifications for endpoints paying the wallet above.",
+      "This signature authorizes delisting notifications for endpoints paying the wallet above. It moves no funds.",
     ].join("\n"),
   );
 });
