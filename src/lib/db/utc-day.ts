@@ -26,3 +26,17 @@ import { sql } from "drizzle-orm";
 export function utcDayStart() {
   return sql`(date_trunc('day', now() AT TIME ZONE 'utc') AT TIME ZONE 'utc')`;
 }
+
+/**
+ * 名指しした UTC 日（YYYY-MM-DD）の 00:00（timestamptz）。
+ *
+ * `${day}::date` ではなく `${day}::timestamp AT TIME ZONE 'utc'` なのは
+ * utcDayStart() と同じ理由——`date` は timestamptz へ暗黙変換され、接続の
+ * TimeZone で解釈される。日次ロールアップの日境界がそれで動くと、公開して
+ * いる「UTC 日ごと」の表が接続設定次第で別の日を指す
+ * （2026-09-05 実測: TimeZone=Asia/Tokyo のローカル DB で 08-20 18:00 UTC の
+ * 決済が 08-21 の行に入った。本番 Neon は GMT なので公開値は無事だった）。
+ */
+export function utcDayStartOf(day: string) {
+  return sql`(${day}::timestamp AT TIME ZONE 'utc')`;
+}

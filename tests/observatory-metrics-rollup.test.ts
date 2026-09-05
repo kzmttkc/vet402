@@ -13,12 +13,14 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 
 if (!TEST_DB) {
   test("metrics rollup (skipped: TEST_DATABASE_URL not set)", { skip: true }, () => {});
 } else {
+  assertTestDatabaseIsNotProduction(TEST_DB);
   process.env.DATABASE_URL = TEST_DB;
 
   test("daily metrics rollup", async (t) => {
@@ -98,6 +100,65 @@ if (!TEST_DB) {
 
     await t.test("malformed day is refused, nothing written", async () => {
       await assert.rejects(() => rollupDailyMetrics("not-a-day"));
+    });
+
+    // 2026-09-05: history と state で "attempt" の意味が違った。旧実装は L1 の行を
+    // status で絞らずに数えたので、金が動いていない試行（over_cap / no_402 /
+    // no_eligible_accept …）まで attempts に入っていた。本番実測で Solana は
+    // rolled 50 / live 38、差の 13 件が全てこれ。
+    await t.test("払っていない試行は attempts に入れない（state と同じ分母）", async () => {
+      await purchase(base1, "over_cap", "0", `${DAY}T06:00:00Z`);
+      await purchase(base1, "no_402", "0", `${DAY}T06:30:00Z`);
+      await purchase(sol1, "no_eligible_accept", "0", `${DAY}T07:00:00Z`);
+      await rollupDailyMetrics(DAY);
+
+      const rows = await db.select().from(schema.x402DailyMetrics);
+      const byChain = Object.fromEntries(rows.map((r) => [r.chain, r]));
+      assert.equal(byChain["eip155:8453"].l1Attempts, 2, "over_cap / no_402 を attempts に数えている");
+      assert.equal(byChain["eip155:8453"].l1Settled, 1);
+      assert.equal(byChain["eip155:8453"].spentUnits, "5000");
+      assert.equal(
+        byChain["solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"].l1Attempts,
+        0,
+        "no_eligible_accept を attempts に数えている",
+      );
+    });
+
+    // network の空文字はネットワークの申告ではない。'' という名前のチェーン行を
+    // 表に作ると、state の byChain（chainLabel が空文字をチェーンとして扱わない）と
+    // 突合できない行が公開面に増える。
+    await t.test("network が空文字の申告は unknown へ落とす", async () => {
+      const blank = await insEndpoint("blank.example/api", "");
+      await probe(blank, "pass", `${DAY}T08:00:00Z`);
+      await rollupDailyMetrics(DAY);
+
+      const rows = await db.select().from(schema.x402DailyMetrics);
+      assert.equal(
+        rows.find((r) => r.chain === ""),
+        undefined,
+        "空文字が chain 名として表に入っている",
+      );
+      assert.equal(rows.find((r) => r.chain === "unknown")!.l0Probes, 2);
+    });
+
+    // 定義を変えて 0 件になった日×チェーンの行が残ると、古い定義の数字が公開面に
+    // 残り続ける。再計算で導出されなくなった行は同じ1文の中で消す。
+    await t.test("再計算で導出されなくなった行は消える", async () => {
+      await db.execute(sql`
+        INSERT INTO x402_daily_metrics (day, chain, l0_probes, l0_pass, l1_attempts, l1_settled, spent_units)
+        VALUES (${DAY}, 'ghost:1', 9, 9, 9, 9, '9')
+      `);
+      await rollupDailyMetrics(DAY);
+      const rows = await db.select().from(schema.x402DailyMetrics);
+      assert.equal(rows.find((r) => r.chain === "ghost:1"), undefined, "幽霊行が残っている");
+      // 他の日の行は巻き添えにしない。
+      await db.execute(sql`
+        INSERT INTO x402_daily_metrics (day, chain, l0_probes, l0_pass, l1_attempts, l1_settled, spent_units)
+        VALUES ('2026-08-16', 'ghost:2', 1, 1, 1, 1, '1')
+      `);
+      await rollupDailyMetrics(DAY);
+      const after = await db.select().from(schema.x402DailyMetrics);
+      assert.ok(after.some((r) => r.chain === "ghost:2" && r.day === "2026-08-16"));
     });
   });
 }
