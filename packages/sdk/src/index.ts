@@ -16,6 +16,8 @@ export {
   payOrRefuse,
   readDemoDecisions,
   readL1Decisions,
+  appendDecision,
+  DEFAULT_DECISION_STORE,
   BASE_CHAIN,
   BASE_CHAIN_ID,
   BASE_USDC,
@@ -31,6 +33,8 @@ export {
   type PayerAccount,
   type X402Accept,
   type X402Settlement,
+  type StoredDecision,
+  type DecisionStoreOptions,
   type Eip3009Authorization,
 } from "./pay-or-refuse.js";
 

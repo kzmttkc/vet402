@@ -60,3 +60,7 @@ __pycache__/
 __pycache__/
 *.py[cod]
 *.egg-info/
+
+# payOrRefuse の決定行（ローカル追記専用 JSONL・DEFAULT_DECISION_STORE）。
+# 台帳は各実行環境のものであってリポの成果物ではない。
+.vet402/

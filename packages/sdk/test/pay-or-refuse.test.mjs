@@ -20,6 +20,9 @@
 // ============================================================
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 
 // 会期中に実装する。Day 0 では存在しないので、**各テストが個別に赤くなる**ようスタブへ落とす
 // （import で1本落ちるだけだと「22本を書いた」記録が git に残らない）。
@@ -475,26 +478,118 @@ test("G-g EIP-712 ドメインは売り手からではなくトークンから�
 
 // ---------- F. 汚染しない ----------
 
-test("F19 デモの決定行は source: agent-demo で、L1 台帳へは書かない", { todo: "現状の緑は空振り——決定行をどこにも保存していないので「L1 台帳へ書いていない」が自明に通るだけ。決定面の実装（09-09）と同時に本物にする。" }, async () => {
+// 決定行は **1本のローカル追記専用 JSONL** に、行ごと `source` で区別して入れる
+// （WINDOW_PLAN §2 #4・2026-09-05 の設計判断）。別ファイルに分けると F20 が構造的に
+// 自明になり、テストが何も証明しなくなる。同じ store に混ぜて、**読み手が正しく分ける**
+// ことを要求してはじめて混線が検出できる。本番 DB へは一切書かない（会期中は実装凍結）。
+function tempStore() {
+  return join(mkdtempSync(join(tmpdir(), "vet402-decisions-")), "decisions.jsonl");
+}
+
+test("F19 デモの決定行は source: agent-demo で、L1 台帳へは書かない", async () => {
+  const store = tempStore();
+  const w = watchedAccount();
+  const s = seller(okAccept);
   const writes = [];
   const f = {
     fetch: async (url, init) => {
-      writes.push(String(url));
-      if (String(url).includes(DECISION)) return { ok: true, status: 200, json: async () => decision().body, headers: new Map() };
-      return { ok: true, status: 200, json: async () => ({}), headers: new Map() };
+      const u = String(url);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method !== "GET") writes.push({ u, method });
+      if (u.includes(DECISION)) return { ok: true, status: 200, json: async () => decision().body, headers: new Map() };
+      const r = u.includes("kronos") ? s.stub(u, init) : { status: 200, body: { ok: true }, headers: {} };
+      return { ok: r.status < 400, status: r.status, json: async () => r.body, headers: new Map(Object.entries(r.headers ?? {})) };
     },
   };
-  const w = watchedAccount();
-  await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, source: "agent-demo" });
-  assert.ok(writes.some((u) => u.includes(DECISION)), "判定を1回は引いている（実装が動いた証拠）");
-  assert.equal(writes.some((u) => u.includes("l1")), false, "L1 台帳へ書きに行っていない");
+  // デモの支払い先（The Graph の x402 口）と同じ POST。再送も書き込み系として数えられる。
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, method: "POST", source: "agent-demo", decisionStore: store, policy: paidPolicy });
+  assert.equal(r.status, "paid", "実装が最後まで動いた証拠");
+  assert.equal(s.paid.length, 1, "支払いの再送は1回だけ");
+
+  // 支払い経路（売り手の資源）と attest 以外に、書き込み系の fetch が1本も出ない。
+  const onPaymentPath = (u) => u === base.resource || u.includes("payments/x402");
+  assert.deepEqual(writes.filter((x) => !onPaymentPath(x.u)), [], "支払い経路以外の書き込み系 fetch が出ている");
+  assert.equal(writes.length, 3, "402 取得・支払い再送・attest の3本だけ（POST 資源なので全部書き込み系）");
+  assert.equal(writes.some((x) => /\/l1|purchases|observatory/.test(x.u)), false, "L1 台帳へ書きに行っていない");
+
+  // 決定行は store に1行だけ入り、source は agent-demo。
+  assert.equal(r.stored, true, "台帳に書けたことが機械可読で残る");
+  assert.equal(r.storeError, null);
+  const demo = await readDemoDecisions({ store });
+  assert.equal(demo.length, 1);
+  assert.equal(demo[0].source, "agent-demo");
+  assert.equal(demo[0].recommendation, "ALLOW");
+  assert.equal(readFileSync(store, "utf8").trim().split("\n").length, 1, "追記専用の JSONL に1行");
+  // 同じ store を L1 として読んでも、デモ行は出てこない。
+  assert.deepEqual(await readL1Decisions({ store }), []);
 });
 
-test("F20 L1 フィードはデモ行を無視し、デモフィードは L1 行を無視する", { todo: "agent-demo の決定面（WINDOW_PLAN §2 #4）が未実装。09-09 の作業。" }, async () => {
-  const demo = await readDemoDecisions();
-  const l1 = await readL1Decisions();
+test("F20 L1 フィードはデモ行を無視し、デモフィードは L1 行を無視する", async () => {
+  const store = tempStore();
+  const w = watchedAccount();
+  const mk = async (source) => {
+    const s = seller(okAccept);
+    const f = allowlistFetch([DECISION, "kronos", "payments/x402"], {
+      [DECISION]: decision(),
+      kronos: s.stub,
+      "payments/x402": { status: 200, body: { ok: true } },
+    });
+    return payOrRefuse({ ...base, account: w.account, fetch: f.fetch, source, decisionStore: store, policy: paidPolicy });
+  };
+  // **同じ store** に両方入れる。分けて置いたら、この検査は何も証明しない。
+  await mk("agent-demo");
+  await mk("vet402");
+  await mk("agent-demo");
+  assert.equal(readFileSync(store, "utf8").trim().split("\n").length, 3, "3行とも同じファイルにある");
+
+  const demo = await readDemoDecisions({ store });
+  const l1 = await readL1Decisions({ store });
+  assert.equal(demo.length, 2);
+  assert.equal(l1.length, 1);
   assert.equal(demo.every((d) => d.source === "agent-demo"), true);
   assert.equal(l1.some((d) => d.source === "agent-demo"), false);
+  assert.equal(l1.every((d) => d.source === "vet402"), true);
+  assert.equal(demo.some((d) => d.source === "vet402"), false);
+});
+
+test("F21 壊れた行があっても読める（追記専用ファイルは途中で千切れ得る）", async () => {
+  const store = tempStore();
+  mkdirSync(dirname(store), { recursive: true });
+  writeFileSync(
+    store,
+    JSON.stringify({ source: "agent-demo", recommendation: "REFUSE", reason_codes: ["payee_mismatch"] }) +
+      "\n{ちぎれた\n" +
+      JSON.stringify({ source: "vet402", recommendation: "ALLOW", reason_codes: [] }) +
+      "\n",
+  );
+  assert.equal((await readDemoDecisions({ store })).length, 1);
+  assert.equal((await readL1Decisions({ store })).length, 1);
+});
+
+test("F23 store への追記が失敗しても、支払いの結果（nonce / txHash）は失われない", async () => {
+  const w = watchedAccount();
+  const s = seller(okAccept);
+  const f = allowlistFetch([DECISION, "kronos", "payments/x402"], {
+    [DECISION]: decision(), kronos: s.stub, "payments/x402": { status: 200, body: { ok: true } },
+  });
+  // 実在するファイルの**下**を store に指定する → ENOTDIR。書けない store の典型。
+  const file = tempStore();
+  writeFileSync(file, "");
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, source: "agent-demo", decisionStore: join(file, "nope.jsonl"), policy: paidPolicy });
+  // 金は動いている。台帳に書けなかったことを理由に結果を握り潰さない——
+  // 握り潰すと「払ったのに nonce も txHash も残らない」が最悪の形で起きる。
+  assert.equal(r.status, "paid");
+  assert.equal(r.txHash, "0xtx");
+  assert.match(String(r.nonce), /^0x[0-9a-f]{64}$/);
+  // ただし黙って成功にはしない。書けなかったことは機械可読で残す（fail-loud）。
+  assert.equal(r.stored, false);
+  assert.ok(r.storeError && r.storeError.length > 0, "書けなかった理由が残る");
+});
+
+test("F22 store が無ければ空を返す（存在しないことと空であることを区別して落とさない）", async () => {
+  const store = join(tempStore(), "..", "never-written.jsonl");
+  assert.deepEqual(await readDemoDecisions({ store }), []);
+  assert.deepEqual(await readL1Decisions({ store }), []);
 });
 
 // ---------- H. ネガティブコントロール（これが無いと「0回」は無意味） ----------

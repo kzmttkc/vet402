@@ -104,7 +104,32 @@ function decodeChallenge(raw) {
         return null;
     }
 }
+/**
+ * 判定を引き、全部の条件を通ったときにだけ払う。結果は `decisionStore` を渡したときだけ
+ * 1本の JSONL へ追記される（下の {@link appendDecision}）。
+ */
 export async function payOrRefuse(input) {
+    const result = await decideAndPay(input);
+    if (input.decisionStore === undefined)
+        return result;
+    try {
+        await appendDecision({
+            ...result.decision,
+            at: new Date().toISOString(),
+            status: result.status,
+            resource: input.resource,
+            txHash: result.txHash,
+            nonce: result.nonce,
+        }, { store: input.decisionStore });
+        return { ...result, stored: true, storeError: null };
+    }
+    catch (error) {
+        // 台帳に書けなかったことを理由に結果を握り潰さない。握り潰すと「払ったのに
+        // nonce も txHash も残らない」が起きる。黙って成功にもしない（fail-loud）。
+        return { ...result, stored: false, storeError: String(error instanceof Error ? error.message : error) };
+    }
+}
+async function decideAndPay(input) {
     const fetchFn = input.fetch;
     if (typeof fetchFn !== "function") {
         throw new Error("invalid_fetch: pass the fetch implementation payOrRefuse should use");
@@ -139,6 +164,8 @@ export async function payOrRefuse(input) {
         txHash: null,
         nonce: null,
         challenge,
+        stored: false,
+        storeError: null,
     });
     // --- 2. 呼び手が名乗った上限は、判定を引く前に当てる（C9）---
     if (input.amountUsd > maxPerTxUsd) {
@@ -271,6 +298,8 @@ export async function payOrRefuse(input) {
             txHash: paid.txHash,
             nonce: paid.nonce ?? signedNonce,
             challenge: accept,
+            stored: false,
+            storeError: null,
         };
     }
     let attested = false;
@@ -305,6 +334,8 @@ export async function payOrRefuse(input) {
         txHash: paid.txHash,
         nonce: paid.nonce ?? signedNonce,
         challenge: accept,
+        stored: false,
+        storeError: null,
     };
 }
 /**
@@ -364,15 +395,71 @@ function evaluateEvidencePolicy(policy, decision) {
     }
     return null;
 }
+// ============================================================
+// 決定行の保存先（WINDOW_PLAN §2 #4 / F19・F20）
+//
+// **1本のローカル追記専用 JSONL に、行ごと `source` で区別して入れる。**
+//
+// なぜ1本か: デモ行と L1 行を別ファイルに分けると、「混ざっていない」が
+// ファイルが違うという理由で構造的に自明になり、F20 が何も証明しなくなる。
+// 同じ store に混ぜて、**読み手が正しく分ける**ことを要求してはじめて混線が検出できる。
+//
+// なぜローカルか: 会期中は本番のスキーマを触らない（実装凍結）。決定行は
+// **本番 DB へは一切書かない**——`payOrRefuse` が出す書き込み系の HTTP は
+// 支払いの再送と attest だけであることを F19 が固定している。
+// ============================================================
+/** 既定の保存先。呼び出し側の cwd からの相対。 */
+export const DEFAULT_DECISION_STORE = ".vet402/decisions.jsonl";
 /**
- * デモ（`source: "agent-demo"`）の決定行フィードと L1 台帳フィード。**未実装**。
- *
- * 会期スコープ #4（WINDOW_PLAN §2）。別ストアであること自体がテストの対象（F19/F20）で、
- * 名前だけ生やして空配列を返すと「汚染していない」が空振りで緑になる。だから throw する。
+ * 決定行を1行追記する。**追記専用**——既存の行を書き換えない
+ * （書き換えられる台帳は台帳ではない。過去の判定は後から都合よく直せてはいけない）。
  */
-export async function readDemoDecisions() {
-    throw new Error("not_implemented: agent-demo decision feed — WINDOW_PLAN §2 item 4 (F19/F20)");
+export async function appendDecision(row, options = {}) {
+    // node:fs は動的 import。ブラウザ／エッジで `payOrRefuse` を判定だけに使う呼び手が、
+    // ファイルシステムを持たないという理由で import 時に落ちないようにする。
+    const { appendFile, mkdir } = await import("node:fs/promises");
+    const { dirname } = await import("node:path");
+    const path = options.store ?? DEFAULT_DECISION_STORE;
+    const dir = dirname(path);
+    if (dir && dir !== "." && dir !== path)
+        await mkdir(dir, { recursive: true });
+    await appendFile(path, JSON.stringify(row) + "\n", "utf8");
 }
-export async function readL1Decisions() {
-    throw new Error("not_implemented: L1 decision feed — WINDOW_PLAN §2 item 4 (F19/F20)");
+/** store を読み、`source` が一致する行だけ返す。 */
+async function readDecisions(source, options) {
+    const { readFile } = await import("node:fs/promises");
+    const path = options.store ?? DEFAULT_DECISION_STORE;
+    let text;
+    try {
+        text = await readFile(path, "utf8");
+    }
+    catch {
+        // まだ1行も書かれていない = 決定が0件。存在しないことを異常にしない。
+        return [];
+    }
+    const rows = [];
+    for (const line of text.split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed === "")
+            continue;
+        try {
+            const row = JSON.parse(trimmed);
+            // 追記専用ファイルは書き込みの途中で千切れ得る。読めない行は**捨てるが、
+            // 読めた行は返す**——1行の破損で台帳全体が読めなくなる方が危険。
+            if (row && row.source === source)
+                rows.push(row);
+        }
+        catch {
+            continue;
+        }
+    }
+    return rows;
+}
+/** デモ（`source: "agent-demo"`）の決定行だけを返す。 */
+export async function readDemoDecisions(options = {}) {
+    return readDecisions("agent-demo", options);
+}
+/** L1（`source: "vet402"`）の決定行だけを返す。 */
+export async function readL1Decisions(options = {}) {
+    return readDecisions("vet402", options);
 }

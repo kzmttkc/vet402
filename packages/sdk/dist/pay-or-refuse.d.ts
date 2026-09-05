@@ -74,6 +74,13 @@ export type PayOrRefuseInput = {
     source?: string;
     /** 資源 ID を自分で計算済みなら渡す（正規化規則はサーバ側が持つ）。 */
     resourceId?: string;
+    /**
+     * 決定行を追記する JSONL のパス。渡したときだけ書く。
+     * 既定は {@link DEFAULT_DECISION_STORE} だが、**渡されない限り書かない**——
+     * npm に載る SDK が、呼び手の cwd に黙ってファイルを作ってはいけない。
+     * デモも L1 も同じ既定パスを渡すので、行は1本の store に混ざる（F19/F20 の主題）。
+     */
+    decisionStore?: string;
 };
 /** `payOrRefuse` が出した1件の決定。拒否でも通過でも同じ形で残る。 */
 export type PayDecisionRecord = {
@@ -103,13 +110,36 @@ export type PayOrRefuseResult = {
      */
     nonce: string | null;
     challenge: X402Accept | null;
+    /** 決定行を store に書けたか。`decisionStore` を渡さなかったときは false。 */
+    stored: boolean;
+    /** 書けなかった理由。書けた／書こうとしなかったときは null。 */
+    storeError: string | null;
 };
-export declare function payOrRefuse(input: PayOrRefuseInput): Promise<PayOrRefuseResult>;
 /**
- * デモ（`source: "agent-demo"`）の決定行フィードと L1 台帳フィード。**未実装**。
- *
- * 会期スコープ #4（WINDOW_PLAN §2）。別ストアであること自体がテストの対象（F19/F20）で、
- * 名前だけ生やして空配列を返すと「汚染していない」が空振りで緑になる。だから throw する。
+ * 判定を引き、全部の条件を通ったときにだけ払う。結果は `decisionStore` を渡したときだけ
+ * 1本の JSONL へ追記される（下の {@link appendDecision}）。
  */
-export declare function readDemoDecisions(): Promise<PayDecisionRecord[]>;
-export declare function readL1Decisions(): Promise<PayDecisionRecord[]>;
+export declare function payOrRefuse(input: PayOrRefuseInput): Promise<PayOrRefuseResult>;
+/** 既定の保存先。呼び出し側の cwd からの相対。 */
+export declare const DEFAULT_DECISION_STORE = ".vet402/decisions.jsonl";
+export type DecisionStoreOptions = {
+    /** JSONL のパス。既定 {@link DEFAULT_DECISION_STORE}。 */
+    store?: string;
+};
+/** 保存する1行。決定そのものに、いつ・どの経路で出たかを添える。 */
+export type StoredDecision = PayDecisionRecord & {
+    at: string;
+    status: PayOrRefuseResult["status"];
+    resource: string;
+    txHash: string | null;
+    nonce: string | null;
+};
+/**
+ * 決定行を1行追記する。**追記専用**——既存の行を書き換えない
+ * （書き換えられる台帳は台帳ではない。過去の判定は後から都合よく直せてはいけない）。
+ */
+export declare function appendDecision(row: StoredDecision, options?: DecisionStoreOptions): Promise<void>;
+/** デモ（`source: "agent-demo"`）の決定行だけを返す。 */
+export declare function readDemoDecisions(options?: DecisionStoreOptions): Promise<StoredDecision[]>;
+/** L1（`source: "vet402"`）の決定行だけを返す。 */
+export declare function readL1Decisions(options?: DecisionStoreOptions): Promise<StoredDecision[]>;
