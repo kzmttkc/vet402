@@ -78,7 +78,7 @@ state API ──► facts composer (locked template) ──► queue
 
 **X cadence is enforced, not intended.** The pre-existing daily queue job for the account was posting 7×/week against §4.1's 2–4. It now runs Monday and Friday only; the facts template goes out Thursday. Three per week, machine-limited.
 
-**Farcaster is not wired yet.** Measured 2026-08-24: `fnames.farcaster.xyz` has no `vet402` — the account does not exist. Creating it needs an onchain FID registration plus one storage unit ($7/year, 5,000 casts — docs.farcaster.xyz). Once it exists, casting is automated with a signer key posting straight to a hub; no paid API tier is involved. Until then this section's "X + Farcaster" reads "X only," and saying otherwise would be the kind of claim this file exists to prevent.
+**Farcaster: the account now exists; the wiring does not.** Re-measured 2026-09-05: `fnames.farcaster.xyz` returns `vet402` — **fid 3348672, registered 2026-08-27 12:18 UTC**, owner `0xf248a1…`. The earlier line here ("the account does not exist", measured 2026-08-24) was true when written and went stale three days later; it stayed in this file for nine days. What is still missing is the **signer key and the cast path** — grep of the ops repo finds no Farcaster credential anywhere, so nothing can post. Until a signer exists, this section's "X + Farcaster" still reads "X only" — but for a different reason than before, and the difference matters: the blocker is now a key, not an account.
 
 **Anti-patterns that look like “optimal automation” and are not:** Buffer blasting 7 networks; LLM-generated thought leadership; commenting bots; upvote rings; Discord announcement spam; “value tweets” with stock rockets.
 
@@ -299,7 +299,7 @@ Inbound (press, grant scout, angry seller): human answers. Seller disputes go th
 ## 9. This week (distribution only)
 
 1. Tokyo Continuity apply (ETHOnline is already in).  
-2. X bio from `docs/marketing/README.md`. Farcaster account does not exist yet — do not claim it.  
+2. X bio from `docs/marketing/README.md`. Farcaster `vet402` exists (fid 3348672, 2026-08-27) but has **no signer key** — do not claim it posts.  
 3. Do not start the facts auto-job until 4 manual weeks are clean. Magicians went out 2026-08-25; do not same-day blast X.  
 4. No Product Hunt, no Show HN, no Reddit launch.  
 5. Do not implement `payOrRefuse` for a clip.
