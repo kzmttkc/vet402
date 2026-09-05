@@ -119,7 +119,7 @@ export default async function ObservatoryStatePage() {
     temporalCoverage: snap?.snapshotDate ?? undefined,
     dateModified: snap?.snapshotDate ?? undefined,
     measurementTechnique:
-      "L0: one unpaid HTTP probe per catalog-listed endpoint, using the method the catalog entry declares, checking for HTTP 402 and whether the advertised price, asset, network and payee agree with the catalog; fail is published only after consecutive failing probes. L1: a covert real-money USDC purchase, with the settlement transaction re-read on-chain before it is called settled.",
+      "L0: one unpaid HTTP probe per catalog-listed endpoint, using the method the catalog entry declares, checking for HTTP 402 and whether the advertised price, asset, network and payee agree with the catalog; fail is published only after consecutive failing probes. L1: a real-money USDC purchase made under vet402's own User-Agent, with the settlement transaction re-read on-chain before it is called settled.",
     variableMeasured: [
       "endpoints on record",
       "currently listed in catalog",
@@ -345,7 +345,7 @@ export default async function ObservatoryStatePage() {
 
         <h2 className="sec-head">
           <span className="sec-no">3.</span>
-          <span>L1 — real purchases (covert)</span>
+          <span>L1 — real purchases</span>
         </h2>
         {stats.l1.attempts === 0 ? (
           <p className="doc-p text-brand-lift">
@@ -354,9 +354,9 @@ export default async function ObservatoryStatePage() {
             those settled attempts also returned the thing being sold.
           </p>
         ) : (
-          <TableScroll label="L1 covert-purchase measurements">
+          <TableScroll label="L1 real-purchase measurements">
             <table className="fact-table">
-              <caption className="sr-only">L1 covert-purchase measurements</caption>
+              <caption className="sr-only">L1 real-purchase measurements</caption>
               <thead>
                 {/* 2026-09-04 外部監査 E・P1-13: "Share" 1 列に、attempts を分母にする行と
                     endpoints を分母にする行が混ざっていた。同じ見出しの下に別の分母を置くと
@@ -431,11 +431,35 @@ export default async function ObservatoryStatePage() {
                   <td className="num">{stats.l1.delivered.toLocaleString()}</td>
                   <td className="num">{pct(stats.l1.delivered, stats.l1.attempts)} of attempts</td>
                 </tr>
+                {/* 2026-09-05: 支払い後 4xx を「売り手が納品しなかった」として出していた。
+                    4xx は「送られた要求が不正」であり、我々は空のボディ・API キー無しで買う。
+                    行は消さず、判定を保留にして別枠へ出す（delivery.ts が規則の正典）。 */}
                 <tr>
-                  <td className="text-brand">Settled but the paid request answered 4xx or 5xx</td>
-                  <td className="num">{Math.max(0, stats.l1.settled - stats.l1.delivered).toLocaleString()}</td>
+                  <td className="text-brand">
+                    Inconclusive: settled and the paid request answered <code>4xx</code> — held, not
+                    counted against the seller
+                  </td>
+                  <td className="num">{stats.l1.inconclusive.toLocaleString()}</td>
+                  <td className="num">{pct(stats.l1.inconclusive, stats.l1.settled)} of settled</td>
+                </tr>
+                <tr>
+                  <td className="text-brand">
+                    Settled but the paid response was neither <code>2xx</code> nor{" "}
+                    <code>4xx</code> (a <code>5xx</code>, or no status on record) — not a request we
+                    could have malformed
+                  </td>
                   <td className="num">
-                    {pct(Math.max(0, stats.l1.settled - stats.l1.delivered), stats.l1.attempts)} of attempts
+                    {Math.max(
+                      0,
+                      stats.l1.settled - stats.l1.delivered - stats.l1.inconclusive,
+                    ).toLocaleString()}
+                  </td>
+                  <td className="num">
+                    {pct(
+                      Math.max(0, stats.l1.settled - stats.l1.delivered - stats.l1.inconclusive),
+                      stats.l1.attempts,
+                    )}{" "}
+                    of attempts
                   </td>
                 </tr>
                 <tr>
@@ -478,6 +502,9 @@ export default async function ObservatoryStatePage() {
                     Delivered
                   </th>
                   <th scope="col" className="num">
+                    Inconclusive (4xx)
+                  </th>
+                  <th scope="col" className="num">
                     settled (nonce-bound)
                   </th>
                   <th scope="col" className="num">
@@ -496,6 +523,7 @@ export default async function ObservatoryStatePage() {
                     <td className="num">{c.attempts.toLocaleString()}</td>
                     <td className="num">{c.settled.toLocaleString()}</td>
                     <td className="num">{c.delivered.toLocaleString()}</td>
+                    <td className="num">{c.inconclusive.toLocaleString()}</td>
                     <td className="num">{c.settledNonceBound.toLocaleString()}</td>
                     <td className="num">{c.settledAmountPayeeOnly.toLocaleString()}</td>
                   </tr>

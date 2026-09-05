@@ -53,6 +53,52 @@ type Correction = {
 const CORRECTIONS: Correction[] = [
   {
     date: "2026-09-05",
+    subject:
+      "Naming named companies as having taken payment without delivering, when the failing request may have been ours",
+    wrong:
+      "Every settled purchase whose paid response was not 2xx was published as settled-and-not-delivered, and the " +
+      "endpoint badge distributed that as a sentence a reader takes as a verdict on the seller. Reading the public " +
+      "export on 2026-09-05: of 1,669 settled rows, 180 answered 4xx or 5xx, and 157 of those 180 (87%) were 4xx " +
+      "— 400 x109, 422 x33, 401 x11, 404 x8, 403 x4. A 4xx means the request that arrived was not one the server " +
+      "would accept, and we buy with an empty JSON body and no API key of the seller's, because a catalog listing " +
+      "declares a URL, a price and a payee and nothing about the body or the credential. The 401s are almost " +
+      "certainly us sending no key. So api.exa.ai/search was carrying a vet402 badge reading '10/10 settled · 0 " +
+      "delivered' — a named company, in our own words, taking money and returning nothing. We could not show that. " +
+      "Our own methodology already held the right rule and we had applied it too narrowly: it said a 400 from a URL " +
+      "we could not have formed correctly is our limitation and not the seller's failure, but only for URLs still " +
+      "carrying an unfilled path parameter.",
+    action:
+      "Found in our own review and changed the same day. The methodology rule now reads on the request rather than " +
+      "on the URL — body and authentication header included — and settled attempts answering 4xx are published as " +
+      "inconclusive: held, out of the denominator for delivered, and not counted against the seller. Nothing is " +
+      "deleted and nothing is hidden: every row keeps its status and HTTP code on the endpoint's page, the count " +
+      "ships as l1.inconclusive on /api/v1/observatory/state and as inconclusiveCount on the per-endpoint purchases " +
+      "API, and the receipt badge now shows it beside settled and delivered. 5xx is deliberately not covered — a " +
+      "server fault is not something the shape of our request explains. deliveryRatePct is now delivered over " +
+      "settled minus inconclusive, so the attempts we cannot judge no longer weigh as if we had judged them.",
+  },
+  {
+    date: "2026-09-05",
+    subject: "Describing our purchases as covert when they were never covert",
+    wrong:
+      "The methodology page, the observatory state page, the FAQ and the machine-readable vocabulary all said L1 " +
+      "purchases were made covertly. The implementation never did that. Every request in the pipeline — the unpaid " +
+      "L0 probe, the unpaid read of the 402 challenge, and the paid request itself — has always sent a User-Agent " +
+      "naming vet402 and linking to the methodology page (vet402-observatory-l0/1.0, " +
+      "vet402-observatory-l0-recheck/1.0, vet402-observatory-l1/1.0, each with " +
+      "+https://vet402.com/observatory/methodology). There is no rotation and no override. Three further things " +
+      "would have given us away independently in any case: the payer addresses are one hop from the tx_hash column " +
+      "of our own public export.csv, 44% of purchases land in the same UTC hour, and the priority host list and the " +
+      "sweep window are published on the methodology page by name.",
+    action:
+      "Found in our own review and changed the same day: the word is gone from every public surface, replaced by " +
+      "what the code does. Naming ourselves is the harder test, not the easier one — a seller that knows exactly " +
+      "who is watching and still takes the payment without delivering has been measured under the best conditions " +
+      "it will ever get. Anyone who wants to check the claim can: the User-Agent is in the request, and the strings " +
+      "are in src/lib/observatory/l1-runner.ts and src/lib/observatory/l0-probe.ts.",
+  },
+  {
+    date: "2026-09-05",
     subject: "How strong the evidence behind our own settled count is",
     wrong:
       "The observatory published one settled number, as if the 1,629 rows behind it rested on the same " +

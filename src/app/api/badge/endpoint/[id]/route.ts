@@ -19,6 +19,29 @@ import { UUID_RE } from "@/lib/validation/uuid";
 const BADGE_LIMIT = 60;
 const BADGE_WINDOW_MS = 60_000;
 
+/**
+ * バッジに焼き込む主体。ホスト名が読めればホスト名、読めなければ endpoint ID の先頭。
+ * **空にしない**——第二行が空だと、落とした SVG が誰の数字か名乗らないまま通用する。
+ */
+function badgeSubject(resourceUrl: string | null, endpointId: string): string {
+  if (resourceUrl) {
+    try {
+      return new URL(resourceUrl).host;
+    } catch {
+      // 落ちない。ID へ退く。
+    }
+  }
+  return endpointId.slice(0, 8);
+}
+
+/** 最後に測った日（UTC の YYYY-MM-DD）。1 件も無ければ null。 */
+function lastMeasuredOn(purchases: { attemptedAt: Date | null }[]): string | null {
+  for (const p of purchases) {
+    if (p.attemptedAt) return p.attemptedAt.toISOString().slice(0, 10);
+  }
+  return null;
+}
+
 function svgResponse(svg: string, cache: string): NextResponse {
   return new NextResponse(svg, {
     headers: {
@@ -64,6 +87,12 @@ export async function GET(
       // 2026-09-04 監査 E・P0-3: settled だけを描くと「金は動いたが品は来ていない」
       // endpoint が満点のバッジを配れる。
       deliveredCount: record.deliveredCount,
+      // 2026-09-05: 支払い後 4xx は判定保留。実名の売り手に対して
+      // 「10/10 settled · 0 delivered」を配っていたのを止める。
+      inconclusiveCount: record.inconclusiveCount,
+      // 2026-09-05: 誰の・いつの数字かをバッジ自身に焼き込む（落として固定できないように）。
+      subject: badgeSubject(record.resourceUrl, record.endpointId),
+      measuredOn: lastMeasuredOn(record.purchases),
     });
     return svgResponse(
       renderReceiptBadgeSvg(badge),

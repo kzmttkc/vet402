@@ -26,7 +26,7 @@ import {
 import { publishedVerdict, MIN_CONSECUTIVE_FAILS_TO_PUBLISH } from "./l0-probe";
 import { isOperatorPayTo, operatorPayToDenylist } from "./operator";
 import { chainLabel, isTestnet } from "./chains";
-import { deliveredPredicate } from "./delivery";
+import { deliveredPredicate, inconclusivePredicate } from "./delivery";
 import {
   settledTier,
   settledTierPredicate,
@@ -298,8 +298,8 @@ export type EndpointDetail = {
     newValue: unknown;
     createdAt: Date | null;
   }[];
-  /** L1 covert-purchase summary — attempts vs settles vs deliveries (the "n回中m回貫通" figure). */
-  l1: { attempts: number; settled: number; delivered: number };
+  /** L1 paid-purchase summary — attempts vs settles vs deliveries (the "n回中m回貫通" figure). */
+  l1: { attempts: number; settled: number; delivered: number; inconclusive: number };
   purchases: {
     attemptedAt: Date | null;
     status: string;
@@ -367,12 +367,15 @@ export const PAID_ATTEMPT_STATUSES = [
 async function countPaidAttempts(
   db: NonNullable<ReturnType<typeof getDb>>,
   id: string,
-): Promise<{ attempts: number; settled: number; delivered: number }> {
+): Promise<{ attempts: number; settled: number; delivered: number; inconclusive: number }> {
   const [row] = await db
     .select({
       attempts: sql<number>`count(*)::int`,
       settled: sql<number>`count(*) filter (where ${x402L1Purchases.status} = 'settled')::int`,
       delivered: sql<number>`count(*) filter (where ${sql.raw(deliveredPredicate("x402_l1_purchases"))})::int`,
+      // 2026-09-05: 支払い後 4xx は「我々が要求を正しく組めなかった」可能性が消せない。
+      // delivered の判定から外して保留にする（delivery.ts が規則の正典）。
+      inconclusive: sql<number>`count(*) filter (where ${sql.raw(inconclusivePredicate("x402_l1_purchases"))})::int`,
     })
     .from(x402L1Purchases)
     .where(
@@ -385,6 +388,7 @@ async function countPaidAttempts(
     attempts: Number(row?.attempts ?? 0),
     settled: Number(row?.settled ?? 0),
     delivered: Number(row?.delivered ?? 0),
+    inconclusive: Number(row?.inconclusive ?? 0),
   };
 }
 
@@ -426,7 +430,7 @@ export async function getEndpointDetail(id: string): Promise<EndpointDetail> {
 
     // L1 history is additive and may predate its migration — tolerate absence.
     let purchases: NonNullable<EndpointDetail>["purchases"] = [];
-    let l1Totals = { attempts: 0, settled: 0, delivered: 0 };
+    let l1Totals = { attempts: 0, settled: 0, delivered: 0, inconclusive: 0 };
     try {
       purchases = withSettledTier(
         await db
@@ -505,9 +509,19 @@ export type EndpointPurchases = {
    * 報告していたのが事故だった。
    */
   deliveredCount: number;
+  /**
+   * settled かつ有料応答が 4xx（2026-09-05）。**delivered の判定を保留にした件数**で、
+   * 「売り手が納品しなかった」ではない——我々は POST に `{}` を送り API キーを持たずに
+   * 買うので、4xx は我々の要求の形で説明がつく。規則は delivery.ts が持つ。
+   */
+  inconclusiveCount: number;
   /** settled/attempts to one decimal; null when there are no attempts (0/0 is not a rate). */
   settleRatePct: number | null;
-  /** delivered/attempts to one decimal; null when there are no attempts. */
+  /**
+   * delivered / (settled - inconclusive) を一桁で。**分母は判定できた settled だけ**
+   * （保留にした行を分母に残すと、保留のはずのものが不履行として率に効く）。
+   * 判定できた行が 0 件なら null——0/0 は率ではない。
+   */
   deliveryRatePct: number | null;
 } | null;
 
@@ -537,7 +551,7 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
     if (!e) return null;
 
     let purchases: NonNullable<EndpointDetail>["purchases"] = [];
-    let totals = { attempts: 0, settled: 0, delivered: 0 };
+    let totals = { attempts: 0, settled: 0, delivered: 0, inconclusive: 0 };
     try {
       purchases = withSettledTier(
         await db
@@ -567,7 +581,15 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
       if (!isMissingSchemaError(error)) throw error;
     }
 
-    const { attempts: attemptCount, settled: settledCount, delivered: deliveredCount } = totals;
+    const {
+      attempts: attemptCount,
+      settled: settledCount,
+      delivered: deliveredCount,
+      inconclusive: inconclusiveCount,
+    } = totals;
+    // 2026-09-05: 判定できた settled だけを分母にする。保留にした行を分母に残すと、
+    // 「売り手の不履行として数えない」と言いながら率では不履行として効いてしまう。
+    const judged = Math.max(0, settledCount - inconclusiveCount);
     return {
       endpointId: e.id,
       resourceKey: e.resourceKey,
@@ -578,10 +600,10 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
       attemptCount,
       settledCount,
       deliveredCount,
+      inconclusiveCount,
       settleRatePct:
         attemptCount === 0 ? null : Math.round((settledCount / attemptCount) * 1000) / 10,
-      deliveryRatePct:
-        attemptCount === 0 ? null : Math.round((deliveredCount / attemptCount) * 1000) / 10,
+      deliveryRatePct: judged === 0 ? null : Math.round((deliveredCount / judged) * 1000) / 10,
     };
   } catch (error) {
     if (isMissingSchemaError(error)) return null;
@@ -601,7 +623,7 @@ export type ObservatoryStats = {
   methodUndeclared: number;
   eventCounts: { delisted: number; relisted: number; settleDrop: number };
   /**
-   * L1 covert purchases: attempts include refusals-after-sign only (spent money);
+   * L1 paid purchases: attempts include refusals-after-sign only (spent money);
    * settled = transfer confirmed on-chain; delivered = settled AND the paid
    * request returned 2xx（2026-09-04 監査 E・P0-3）.
    */
@@ -609,6 +631,14 @@ export type ObservatoryStats = {
     attempts: number;
     settled: number;
     delivered: number;
+    /**
+     * settled のうち有料応答が 4xx だった件数（2026-09-05）。**delivered の判定を
+     * 保留にした行**であって、売り手の不履行ではない。我々は POST に `{}` を送り、
+     * API キーを持たずに買う——4xx は我々の要求の形で説明がつく。方法論 §2 が
+     * `path_template` に対して既に持っていた原則を、URL からボディと認証まで広げた。
+     * 行は消さない。規則の正典は delivery.ts。
+     */
+    inconclusive: number;
     /**
      * settled のうち署名 nonce（EVM: EIP-3009 の authorization nonce / Solana: 我々が
      * 生成した memo）まで束縛できた件数。2026-09-05 監査 S-4 / S-17: settled を
@@ -648,6 +678,8 @@ export type L1ChainStats = {
   attempts: number;
   settled: number;
   delivered: number;
+  /** settled のうち有料応答が 4xx（判定保留）。delivered とは足し合わせない。 */
+  inconclusive: number;
   settledNonceBound: number;
   settledAmountPayeeOnly: number;
 };
@@ -666,6 +698,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       attempts: 0,
       settled: 0,
       delivered: 0,
+      inconclusive: 0,
       settledNonceBound: 0,
       settledAmountPayeeOnly: 0,
       settledTimeWindowOk: 0,
@@ -749,6 +782,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       attempts: 0,
       settled: 0,
       delivered: 0,
+      inconclusive: 0,
       settledNonceBound: 0,
       settledAmountPayeeOnly: 0,
       settledTimeWindowOk: 0,
@@ -764,6 +798,8 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
         SELECT count(*)::int AS attempts,
                count(*) FILTER (WHERE status = 'settled')::int AS settled,
                count(*) FILTER (WHERE ${sql.raw(deliveredPredicate())})::int AS delivered,
+               -- 2026-09-05: 支払い後 4xx は判定保留。delivered の分母から外す（delivery.ts）。
+               count(*) FILTER (WHERE ${sql.raw(inconclusivePredicate())})::int AS inconclusive,
                -- 2026-09-05 監査 S-4 / S-17: settled の証拠強度は 1 段ではない。
                -- 定義は settled-tier.ts が単独で持つ（JS の分類と同じ規則）。
                count(*) FILTER (WHERE ${sql.raw(settledTierPredicate("nonce_bound"))})::int AS settled_nonce_bound,
@@ -778,6 +814,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
         attempts: number;
         settled: number;
         delivered: number;
+        inconclusive: number;
         settled_nonce_bound: number;
         settled_amount_payee_only: number;
         endpoints: number;
@@ -790,6 +827,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
           attempts: Number(l1List[0].attempts),
           settled: Number(l1List[0].settled),
           delivered: Number(l1List[0].delivered ?? 0),
+          inconclusive: Number(l1List[0].inconclusive ?? 0),
           settledNonceBound: Number(l1List[0].settled_nonce_bound ?? 0),
           settledAmountPayeeOnly: Number(l1List[0].settled_amount_payee_only ?? 0),
           endpointsAttempted: Number(l1List[0].endpoints),
@@ -806,6 +844,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
                count(*)::int AS attempts,
                count(*) FILTER (WHERE status = 'settled')::int AS settled,
                count(*) FILTER (WHERE ${sql.raw(deliveredPredicate())})::int AS delivered,
+               count(*) FILTER (WHERE ${sql.raw(inconclusivePredicate())})::int AS inconclusive,
                count(*) FILTER (WHERE ${sql.raw(settledTierPredicate("nonce_bound"))})::int AS settled_nonce_bound,
                count(*) FILTER (WHERE ${sql.raw(settledTierPredicate("amount_payee_only"))})::int AS settled_amount_payee_only
         FROM x402_l1_purchases
@@ -819,6 +858,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
         attempts: number;
         settled: number;
         delivered: number;
+        inconclusive: number;
         settled_nonce_bound: number;
         settled_amount_payee_only: number;
       }[];
@@ -830,12 +870,14 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
           attempts: 0,
           settled: 0,
           delivered: 0,
+          inconclusive: 0,
           settledNonceBound: 0,
           settledAmountPayeeOnly: 0,
         };
         entry.attempts += Number(row.attempts ?? 0);
         entry.settled += Number(row.settled ?? 0);
         entry.delivered += Number(row.delivered ?? 0);
+        entry.inconclusive += Number(row.inconclusive ?? 0);
         entry.settledNonceBound += Number(row.settled_nonce_bound ?? 0);
         entry.settledAmountPayeeOnly += Number(row.settled_amount_payee_only ?? 0);
         folded.set(chain, entry);

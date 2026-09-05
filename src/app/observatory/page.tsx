@@ -390,8 +390,14 @@ export default async function ObservatoryPage({
           <strong>L1</strong> is shown as <code>delivered · settled / attempts</code> for that endpoint;{" "}
           <code>—</code> means no purchase was attempted. <strong>settled</strong> is the transfer vet402
           re-read on-chain; <strong>delivered</strong> is a settled attempt whose paid request also
-          answered <code>2xx</code>. A settled attempt that answered 4xx or 5xx moved money without
-          returning the thing being sold, so it counts once and not twice. Per-endpoint counts use the
+          answered <code>2xx</code>. A settled attempt that answered <code>4xx</code> is published as{" "}
+          <code>inconclusive</code> and is not counted against the seller — vet402 buys with an empty
+          request body and no API key of the seller&apos;s, so a <code>4xx</code> can be vet402&apos;s
+          own request being malformed; the endpoint&apos;s page shows those rows and the count (
+          <Link href="/observatory/methodology" className="underline">
+            methodology §2
+          </Link>
+          ). Per-endpoint counts use the
           same paid-attempt denominator as the totals reported by <code>/api/v1/observatory/state</code>.
           The <em>[receipts]</em> entry under Figure 1 keeps only rows with a receipt.
         </p>

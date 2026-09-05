@@ -92,3 +92,102 @@ test("SVG は長くなったラベルを右の区画に収める（切れない�
   assert.ok(width >= 58 + b.label.length * 6, `badge too narrow for ${b.label}: ${width}`);
   assert.ok(svg.includes(b.label));
 });
+
+// ------------------------------------------------------------
+// 2026-09-05: 支払い後 4xx は判定保留（inconclusive）。
+//
+// `10/10 settled · 0 delivered` を実名の会社（api.exa.ai）に対して配っていた。
+// 読み手はこれを「金を取って納品しなかった」と読む。だが 4xx は「送られた要求が
+// 不正」で、我々は空のボディを送り API キーを持たずに買っている——要求のほうが
+// 悪かった可能性が消せない。**行は消さない。判定を保留にして数える。**
+// ------------------------------------------------------------
+
+test("支払い後 4xx は inconclusive として別枠に出る（delivered の分母から外れる）", () => {
+  const b = endpointReceiptBadge({
+    attemptCount: 10,
+    settledCount: 10,
+    deliveredCount: 0,
+    inconclusiveCount: 10,
+  });
+  assert.equal(b.label, "10/10 settled · 0 delivered · 10 inconclusive");
+  // 「売り手が納品しなかった」と読める語を作らない。
+  assert.doesNotMatch(b.aria.toLowerCase(), /failed to deliver|did not deliver/);
+  // 保留の理由を必ず添える（数だけ出すと、読み手が理由を作る）。
+  assert.match(b.aria, /4xx/);
+  assert.match(b.aria, /no API key|empty request body/);
+});
+
+test("inconclusive が 0 件ならラベルに出さない（無い枠を出さない）", () => {
+  const b = endpointReceiptBadge({
+    attemptCount: 3,
+    settledCount: 3,
+    deliveredCount: 3,
+    inconclusiveCount: 0,
+  });
+  assert.equal(b.label, "3/3 settled · 3 delivered");
+});
+
+test("delivered は「判定できた settled」を超えない", () => {
+  // settled 10 のうち 8 が保留なら、delivered は最大 2。
+  const b = endpointReceiptBadge({
+    attemptCount: 10,
+    settledCount: 10,
+    deliveredCount: 9,
+    inconclusiveCount: 8,
+  });
+  assert.equal(b.label, "10/10 settled · 2 delivered · 8 inconclusive");
+});
+
+// ------------------------------------------------------------
+// 2026-09-05: バッジ自身に「誰の・いつの」を焼き込む。
+//
+// 実測: 他社バッジを Referer 偽装で取得して HTTP 200、保存した SVG には
+// endpoint ID・ホスト名・日付が 1 文字も無かった。1 回落として自分のサーバに
+// 置けば、その数字を永久に固定できる。SVG の中に主体と日付があれば、
+// 固定されたコピーは「いつの測定か」を自分で名乗ることになる。
+// ------------------------------------------------------------
+
+test("SVG にホスト名と測定日が焼き込まれる", () => {
+  const b = endpointReceiptBadge({
+    attemptCount: 5,
+    settledCount: 5,
+    deliveredCount: 5,
+    subject: "api.exa.ai",
+    measuredOn: "2026-09-05",
+  });
+  const svg = renderReceiptBadgeSvg(b);
+  assert.ok(svg.includes("api.exa.ai"), "ホスト名が SVG に無い");
+  assert.ok(svg.includes("2026-09-05"), "測定日が SVG に無い");
+  assert.match(b.aria, /api\.exa\.ai/);
+  assert.match(b.aria, /2026-09-05/);
+});
+
+test("主体も日付も無ければ第二行を作らない（存在しない出所を書かない）", () => {
+  const b = endpointReceiptBadge({ attemptCount: 2, settledCount: 1, deliveredCount: 1 });
+  assert.equal(b.sublabel, "");
+});
+
+test("第二行も XML エスケープされる（焼き込みが注入口にならない）", () => {
+  const b = endpointReceiptBadge({
+    attemptCount: 1,
+    settledCount: 1,
+    deliveredCount: 1,
+    subject: 'evil"><script>',
+    measuredOn: "2026-09-05",
+  });
+  const svg = renderReceiptBadgeSvg(b);
+  assert.ok(!svg.includes("<script>"), "第二行から生タグが出た");
+});
+
+test("第二行が長くてもバッジの幅に収まる", () => {
+  const b = endpointReceiptBadge({
+    attemptCount: 3,
+    settledCount: 3,
+    deliveredCount: 3,
+    subject: "a-very-long-seller-hostname.example.com",
+    measuredOn: "2026-09-05",
+  });
+  const svg = renderReceiptBadgeSvg(b);
+  const width = Number(/(?:^|\s)width="(\d+)"/.exec(svg)?.[1]);
+  assert.ok(width >= 58 + b.sublabel.length * 5, `badge too narrow for ${b.sublabel}: ${width}`);
+});

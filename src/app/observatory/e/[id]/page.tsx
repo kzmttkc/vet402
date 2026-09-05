@@ -1,7 +1,11 @@
 import { Fragment } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { RECEIPT_BADGE_HEIGHT, receiptBadgeWidth } from "@/lib/badge/receipt-badge";
+import {
+  RECEIPT_BADGE_HEIGHT,
+  endpointReceiptBadge,
+  receiptBadgeWidth,
+} from "@/lib/badge/receipt-badge";
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
@@ -89,6 +93,22 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
   if (!detail) notFound();
 
   const { endpoint, probes, events, publishedVerdict, l1, purchases } = detail;
+  // バッジの文言は 1 箇所（receipt-badge.ts）から出す。ここで組み直すと、
+  // 埋め込まれる SVG と、その隣で「バッジはこう読める」と説明する散文がずれる。
+  const badge = endpointReceiptBadge({
+    attemptCount: l1.attempts,
+    settledCount: l1.settled,
+    deliveredCount: l1.delivered,
+    inconclusiveCount: l1.inconclusive,
+    subject: (() => {
+      try {
+        return new URL(endpoint.resourceUrl).host;
+      } catch {
+        return endpoint.id.slice(0, 8);
+      }
+    })(),
+    measuredOn: purchases.find((p) => p.attemptedAt)?.attemptedAt?.toISOString().slice(0, 10) ?? null,
+  });
   const lastProbedAt = probes[0]?.probedAt ?? null;
   const lastProbed =
     lastProbedAt && detail.lastProbedAgeDays !== null
@@ -277,7 +297,7 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
         </h2>
         {purchases.length === 0 ? (
           <p className="doc-p text-brand-lift">
-            No covert purchases recorded for this endpoint yet.
+            No paid purchases recorded for this endpoint yet.
           </p>
         ) : (
           <>
@@ -298,13 +318,30 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
               </Link>
               ).{" "}
               <strong>settled</strong> is the transfer we confirmed on-chain; <strong>delivered</strong>{" "}
-              is the response arriving. A settled row whose paid request answered 4xx or 5xx counts
-              as settled and not as delivered —{" "}
+              is the response arriving. A settled row whose paid request answered 5xx counts as
+              settled and not as delivered —{" "}
               <Link href="/observatory/methodology" className="underline">
                 definitions
               </Link>
               .
             </p>
+            {l1.inconclusive > 0 && (
+              <p className="doc-p">
+                <strong>{l1.inconclusive} of those settled attempts answered 4xx, and we hold them
+                as <code>inconclusive</code> rather than counting them against this seller.</strong>{" "}
+                A 4xx says the request was not one the server would accept, and we cannot rule out
+                that the request was ours to get wrong: vet402 buys with an empty JSON body and no
+                API key of the seller&apos;s. This is the same principle the methodology already
+                applied to <code>path_template</code> URLs, applied to the body and the
+                authentication header as well. The rows are not deleted and not hidden — they are
+                below, with their status and HTTP code, and they are out of the denominator for{" "}
+                <strong>delivered</strong> (
+                <Link href="/corrections" className="underline">
+                  corrections
+                </Link>
+                ).
+              </p>
+            )}
             <SettleGauge
               n={2}
               settled={l1.settled}
@@ -403,15 +440,17 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
                 <p className="doc-p mt-2 text-brand-lift">
                   Run this endpoint? Show the settle-through record vet402 measured — the badge
                   reads{" "}
-                  <span className="whitespace-nowrap">{`${l1.settled}/${l1.attempts} settled · ${l1.delivered} delivered`}</span>{" "}
-                  and updates as the record grows. It states a measurement, not a rating.
+                  <span className="whitespace-nowrap">{badge.label}</span>{" "}
+                  and updates as the record grows. It carries the host it is about and the date it
+                  was last measured, so a saved copy cannot pass itself off as current. It states a
+                  measurement, not a rating.
                 </p>
                 <p className="mt-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={`/api/badge/endpoint/${id}.svg`}
-                    alt={`vet402: ${l1.settled} of ${l1.attempts} paid attempts settled, ${l1.delivered} delivered`}
-                    width={receiptBadgeWidth(`${l1.settled}/${l1.attempts} settled · ${l1.delivered} delivered`)}
+                    alt={badge.aria}
+                    width={receiptBadgeWidth(badge.label, badge.sublabel)}
                     height={RECEIPT_BADGE_HEIGHT}
                   />
                 </p>

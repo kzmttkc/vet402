@@ -2,7 +2,7 @@
 // vet402 Observatory L1 — purchase runner (design §1 L1/L2, §5 W3).
 //
 // One batch = walk the real-demand target list and, per endpoint, do ONE
-// covert purchase: request → 402 → sign (x402-payer's funnel of refusals) →
+// paid purchase (made under our own User-Agent): request → 402 → sign (x402-payer's funnel of refusals) →
 // paid retry → record what actually happened, with the settlement tx hash
 // as the receipt. Everything is recorded, including the refusals — a seller
 // over-charging vs its own catalog listing is a published fact, not a

@@ -38,7 +38,7 @@ test("observatory doc-head names fetched vs catalog total in words", () => {
 
 test("State §3: attempts-denominator and endpoints-denominator rows carry different labels", () => {
   const page = read("src/app/observatory/state/page.tsx");
-  const s3 = page.slice(page.indexOf("L1 covert-purchase measurements"), page.indexOf("Listing-change events observed"));
+  const s3 = page.slice(page.indexOf("L1 real-purchase measurements"), page.indexOf("Listing-change events observed"));
   assert.match(s3, /of attempts/i, "settled row names its denominator");
   assert.match(s3, /share of endpoints purchased from/i, "endpoints-settled row names its denominator");
 });

@@ -166,6 +166,56 @@ claims:
     check: null
     why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
     verified_at: 2026-09-04
+  - id: corrections_every_settled_purchase_not_2xx
+    surface: src/app/corrections/page.tsx
+    quote: "Every settled purchase whose paid response was not 2xx was published as settled-and-not-delivered"
+    means: "2026-09-05 以前は、支払い後の非 2xx をすべて settled-and-not-delivered として公開していた（訂正記事が引用する当時の挙動）"
+    check: null
+    why_unverifiable: "直した後の挙動なので、現在の公開 GET には当時の値が残らない。当時の分布は公開 export.csv の全行集計（settled 1,669 行中 4xx/5xx 180 行）で、記事本文にその内訳を書いている"
+    verified_at: 2026-09-05
+  - id: corrections_inconclusive_rows_are_not_deleted
+    surface: src/app/corrections/page.tsx
+    quote: "every row keeps its status and HTTP code on the endpoint's page"
+    means: "判定を保留にした行は削除も非表示もせず、status と HTTP コードを付けたまま公開し続ける"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "l1.inconclusive >= 0"
+    verified_at: 2026-09-05
+  - id: corrections_purchases_were_never_covert
+    surface: src/app/corrections/page.tsx
+    quote: "Describing our purchases as covert when they were never covert"
+    means: "L1 購入を covert と書いていたが、実装は一度も covert ではなかった（訂正の見出し）"
+    check: null
+    why_unverifiable: "実装が名乗っていることの根拠はリクエストの User-Agent であって、公開 GET が返す数値ではない。文字列は src/lib/observatory/l1-runner.ts / l0-probe.ts にあり、tests/covert-wording.test.ts が公開面に covert が残っていないことを固定する"
+    verified_at: 2026-09-05
+  - id: corrections_all_surfaces_said_covert
+    surface: src/app/corrections/page.tsx
+    quote: "the machine-readable vocabulary all said L1"
+    means: "誤った covert の記述が方法論・state・FAQ・語彙の全公開面にあった（訂正記事が数える範囲）"
+    check: null
+    why_unverifiable: "過去の文言についての記述。現在の公開面に covert が無いことは tests/covert-wording.test.ts が固定する"
+    verified_at: 2026-09-05
+  - id: corrections_every_request_names_us
+    surface: src/app/corrections/page.tsx
+    quote: "Every request in the pipeline"
+    means: "L0 プローブ・402 の先読み・有料リクエストのすべてが vet402 を名乗る User-Agent を送る"
+    check: null
+    why_unverifiable: "送信ヘッダは公開 GET が返す値ではない。tests/covert-wording.test.ts が 3 本の UA 文字列の実在を固定する"
+    verified_at: 2026-09-05
+  - id: corrections_ua_has_always_been_sent
+    surface: src/app/corrections/page.tsx
+    quote: "has always sent a User-Agent"
+    means: "名乗る User-Agent は後から足したものではなく、この経路が動き出したときから送っている"
+    check: null
+    why_unverifiable: "過去の全リクエストのヘッダは公開 GET から読めない。根拠は git 履歴と、上書き・回転の実装が存在しないこと（tests/covert-wording.test.ts）"
+    verified_at: 2026-09-05
+  - id: corrections_covert_removed_from_every_surface
+    surface: src/app/corrections/page.tsx
+    quote: "the word is gone from every public surface"
+    means: "covert という語を公開面から全部消した"
+    check: null
+    why_unverifiable: "文言の不在はリポ側の検査で固定するのが正しい。tests/covert-wording.test.ts が src/ 全体を走査する"
+    verified_at: 2026-09-05
   - id: corrections_every_correction_vet402_has_issued
     surface: src/app/corrections/page.tsx
     quote: "Every correction vet402 has issued to a published score or verification result, with"
@@ -915,12 +965,20 @@ claims:
     verified_at: 2026-09-04
   - id: audit_e_settled_minus_delivered_is_published
     surface: src/app/observatory/state/page.tsx
-    quote: "Settled but the paid request answered 4xx or 5xx"
-    means: "金は動いたが応答が来なかった件数を、自社に不利でも独立の行として出す"
+    quote: "Settled but the paid response was neither"
+    means: "金は動いたが 2xx も 4xx も返らなかった件数を、自社に不利でも独立の行として出す（2026-09-05: 4xx は inconclusive として別行になった）"
     check:
       url: https://vet402.com/api/v1/observatory/state
       assert: "l1.settled >= 1452"
-    verified_at: 2026-09-04
+    verified_at: 2026-09-05
+  - id: inconclusive_state_publishes_inconclusive
+    surface: src/app/observatory/state/page.tsx
+    quote: "Inconclusive: settled and the paid request answered"
+    means: "支払い後 4xx の件数を、判定保留として独立の行で出す（消さない・隠さない）"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "l1.inconclusive >= 0"
+    verified_at: 2026-09-05
   - id: audit_e_register_l1_cell_shows_delivered
     surface: src/app/observatory/page.tsx
     quote: "is a settled attempt whose"

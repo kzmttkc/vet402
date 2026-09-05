@@ -40,7 +40,7 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "L1",
     group: "levels",
     definition:
-      "L1 is a real, budget-capped USDC purchase from the endpoint that asks whether the payment settles on-chain and a response comes back. It is bought covertly, at most once per endpoint per sweep window, and every refusal before a signature is recorded alongside every purchase.",
+      "L1 is a real, budget-capped USDC purchase from the endpoint that asks whether the payment settles on-chain and a response comes back. It is bought under vet402's own User-Agent, at most once per endpoint per sweep window, and every refusal before a signature is recorded alongside every purchase.",
   },
   {
     term: "L2",
@@ -76,7 +76,7 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "path_template",
     group: "l0",
     definition:
-      "path_template means the listed URL still contains an unfilled path parameter, so no request was sent at all. A 400 from a URL we could not have formed correctly would be our limitation, not the seller's failure, so the endpoint is recorded unverified and never purchased from.",
+      "path_template means the listed URL still contains an unfilled path parameter, so no request was sent at all. A 4xx from a request we could not have formed correctly is our limitation, not the seller's failure, so the endpoint is recorded unverified and never purchased from; the same principle applies to the request body and the authentication header, where it is recorded as inconclusive.",
   },
   {
     term: "settled",
@@ -89,6 +89,12 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     group: "l1",
     definition:
       "delivered means the attempt is settled and the paid request also answered 2xx. settled is a statement about the money and delivered is a statement about the goods: a seller can take the payment and answer 400, and that row is settled and not delivered.",
+  },
+  {
+    term: "inconclusive",
+    group: "l1",
+    definition:
+      "inconclusive means the payment settled but the paid request answered 4xx, so vet402 holds the delivery judgement rather than counting it against the seller. A 4xx says the request was not one the server would accept, and vet402 buys with an empty JSON body and no API key of the seller's, so it cannot rule out that the request was its own to get wrong; the rows stay published with their status and HTTP code, and they are out of the denominator for delivered.",
   },
   {
     term: "settle_claimed",

@@ -223,8 +223,32 @@ export default async function ObservatoryMethodologyPage() {
           parameter (<code>/v1/entreprise/:siren</code>, <code>/items/{"{id}"}</code>,{" "}
           <code>/files/*</code>); we do not know the real value, so no request is sent, the
           probe is recorded as <code>unverified</code> with this reason, and the endpoint is
-          never purchased from — a 400 from a URL we could not have formed correctly is our
+          never purchased from — a 4xx from a request we could not have formed correctly is our
           limitation, not the seller&apos;s failure.
+        </p>
+        <p className="doc-p">
+          <strong>
+            That principle is about the request, not about the URL, so it applies to the body and
+            the authentication header too.
+          </strong>{" "}
+          A listing declares a URL, a price and a payee. It does not tell us what JSON body the
+          endpoint expects, and it does not hand us an API key. We send <code>{"{}"}</code> on a{" "}
+          <code>POST</code> and we carry no credential of the seller&apos;s. So when a paid request
+          comes back <code>400</code> (the request is malformed), <code>401</code> or{" "}
+          <code>403</code> (not authenticated), <code>404</code> or <code>422</code>, the most
+          likely explanation is the same one we already accept for a template URL:{" "}
+          <strong>we could not form the request correctly.</strong> Since 2026-09-05 those rows are
+          labelled <code>inconclusive</code> and are out of the denominator for{" "}
+          <code>delivered</code>. They are not deleted, not hidden and not corrected away — the
+          status and the HTTP code stay on the endpoint&apos;s page, and the count is published as{" "}
+          <code>l1.inconclusive</code>. A <code>5xx</code> is not treated this way: a server fault
+          is not something our request shape explains. Before that date every 4xx was published as
+          settled-and-not-delivered, which reads as &ldquo;this named company took the money and
+          did not deliver&rdquo; — see{" "}
+          <Link href="/corrections" className="underline">
+            /corrections
+          </Link>
+          .
         </p>
 
         <h2 className="sec-head">
@@ -274,7 +298,7 @@ export default async function ObservatoryMethodologyPage() {
           <span>What L1 measures</span>
         </h2>
         <p className="doc-p">
-          An L1 purchase is a real transaction: one covert purchase per endpoint, at most once per{" "}
+          An L1 purchase is a real transaction: one purchase per endpoint, at most once per{" "}
           {SWEEP_WINDOW_DAYS}-day window for the catalog at large — see the priority list below for
           the {PRIORITY_SELLER_HOSTS.length} hosts bought from more often — targeting endpoints
           whose most recent L0 verdict is <code>pass</code>, prioritised by real observed demand
@@ -289,6 +313,25 @@ export default async function ObservatoryMethodologyPage() {
           every signature, so a restart or a concurrent run cannot double-spend. Once we sign, the
           spend is recorded whether or not the seller delivers — a signed EIP-3009 authorization
           is live money the moment it exists.
+        </p>
+        <p className="doc-p">
+          <strong>We buy under our own name.</strong> Every request in this pipeline &mdash; the
+          unpaid L0 probe, the unpaid read of the <code>402</code> challenge, and the paid request
+          itself &mdash; carries a <code>User-Agent</code> that says who we are and links back to
+          this page: <code>vet402-observatory-l0/1.0</code>, <code>vet402-observatory-l0-recheck/1.0</code>{" "}
+          and <code>vet402-observatory-l1/1.0</code>, each with{" "}
+          <code>(+https://vet402.com/observatory/methodology)</code>. There is no rotation, no
+          disguise and no attempt to look like an ordinary buyer. A seller who wants to treat vet402
+          differently can, and can do so from the first byte of the request.{" "}
+          <strong>That is the harder test, not the easier one.</strong> A seller who knows exactly
+          who is watching and still takes the payment without delivering has been measured under
+          the best conditions it will ever get; the record below is what happened anyway. Until
+          2026-09-05 this page said purchases were made &ldquo;covertly&rdquo; &mdash; that was
+          never true of the implementation, and it is corrected on{" "}
+          <Link href="/corrections" className="underline">
+            /corrections
+          </Link>
+          .
         </p>
         <p className="doc-p">
           <strong>The priority list, and why it exists.</strong> Four hosts are not on the{" "}
@@ -326,9 +369,13 @@ export default async function ObservatoryMethodologyPage() {
           <strong>settle_claimed_unverifiable</strong> — the id returned is not even well-formed
           for that chain. <strong>delivered_no_receipt</strong> — the seller returned{" "}
           <code>200</code> but the response carried no settlement receipt.{" "}
-          <strong>settle_failed</strong> — no successful paid response came back at all. Every
-          attempt, including refusals before any money moved, is visible on the endpoint&apos;s
-          page with its evidence.
+          <strong>settle_failed</strong> — no successful paid response came back at all.{" "}
+          <strong>inconclusive</strong> — the payment settled and the paid request answered{" "}
+          <code>4xx</code>, so the delivery judgement is held rather than counted against the
+          seller (§2, the same principle as <code>path_template</code>); the row still publishes,
+          it is simply out of the denominator for <code>delivered</code>. Every attempt, including
+          refusals before any money moved, is visible on the endpoint&apos;s page with its
+          evidence.
         </p>
         <p className="doc-p">
           <strong>l1_not_attempted</strong> — we have not signed a paid attempt against that

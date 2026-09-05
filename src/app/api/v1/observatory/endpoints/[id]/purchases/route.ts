@@ -63,7 +63,7 @@ export async function GET(
       {
         ...result,
         disclaimer:
-          "Facts only: attempts, settlements and their on-chain receipts. settledCount is the transfer vet402 re-read on-chain; deliveredCount is the subset whose paid request also answered 2xx, so settledCount minus deliveredCount is money that moved without the response arriving. This is a record of what happened when vet402 paid this endpoint, not an endorsement or a prediction.",
+          "Facts only: attempts, settlements and their on-chain receipts. settledCount is the transfer vet402 re-read on-chain; deliveredCount is the subset whose paid request also answered 2xx; inconclusiveCount is the subset whose paid request answered 4xx, held rather than counted against the seller because vet402 buys with an empty JSON body and no API key of the seller's and cannot rule out that the request was its own to get wrong. deliveryRatePct is deliveredCount over settledCount minus inconclusiveCount — the attempts vet402 can actually judge. This is a record of what happened when vet402 paid this endpoint, not an endorsement or a prediction.",
         methodology: "https://vet402.com/observatory/methodology",
       },
       {

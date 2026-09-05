@@ -4,7 +4,7 @@ import { acquireLease } from "@/lib/cron/lease";
 import { runL1Batch } from "@/lib/observatory/l1-runner";
 import { logServerError } from "@/lib/util/log";
 
-// vet402 Observatory L1 — daily covert-purchase batch (design §5 W3).
+// vet402 Observatory L1 — daily paid-purchase batch (design §5 W3).
 // The weekly full sweep of the real-demand set emerges from the daily $25
 // budget, not from a scheduler: each firing walks the highest-demand
 // endpoints not purchased in the last 6 days and stops at the budget line.
