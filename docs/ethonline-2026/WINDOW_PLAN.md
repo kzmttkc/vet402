@@ -76,7 +76,7 @@ asset 0x8335…2913（正規USDC）/ payTo 0x79DC34E41B2b591078d3dE222C43EcaaBD5
 | | |
 |---|---|
 | 我々のエンジン | **WARN 69・thin**（L1配達 0・x402受領 0・独立payer 0） |
-| The Graph の subgraph | **RECIPIENT・252件・2.52 USDC** |
+| The Graph の subgraph | **RECIPIENT**・件数と金額は動く → **§15 の実測値を見る**（09-03: 252／09-05: 253）。**撮影当日に取り直す** |
 
 **審査員が自分の会社のウォレットを我々のサイトに入れると WARN 69 が出る。** その1点差を埋めるのが
 会期中に足す `evidence.source`。細工ではなく実在の欠損で、被写体が審査員自身。
@@ -110,7 +110,7 @@ SDK は世の中で使えない。
 |---|---|
 | 我々のカタログ | **何も知らない**（endpoints 0・decision 404） |
 | 我々の受取人エンジン | **69 / WARN / thin**（受領0件・独立payer 0・L1配達0／ウォレット齢118日・tx 100・drain 0.4736・`scoredAt` 2026-09-04T07:57:43Z） |
-| The Graph 自身の subgraph | **252件・2.52 USDC 受領** |
+| The Graph 自身の subgraph | **RECIPIENT**・件数は動く（09-05 実測 253件・2.53 USDC）→ §15 |
 
 **審査員の会社のウォレットで、3つの情報源が3つ違うことを言う。** 埋めるのが `evidence.source`。
 
