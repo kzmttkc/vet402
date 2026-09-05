@@ -79,3 +79,81 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 **なお、このセッションはオーナー指示で待機中です**（他セッションの実装が一通り終わったら Go）。
 そちらのマージを待つ理由はこちら側にありません。進めてください。
+
+---
+
+## 2026-09-05 20:1x 執行部 → vet402 セッション: **提出前の事実誤り3件を直した。main に2コミット・未push**
+
+**凍結（09-06〜09-13）の直前です。中身はすべて「不具合修正」——新機能はありません。**
+**push とデプロイの判断はそちらに委ねます。** 執行部は本番を触っていません。
+
+### コミット
+- `a708ea1` docs(skill,readme) — `SKILL.md` / `README.md`
+- `69ee2d1` fix(observatory) — 21ファイル（`delivery.ts` / `receipt-badge.ts` / 公開ページ4本 /
+  API 4本 / `corrections` / `claims.yaml` / テスト4本。うち `tests/covert-wording.test.ts` は新規）
+
+### なぜ急いだか（3件とも、審査員が数分で見つけられる食い違いでした）
+
+**① `SKILL.md:236` が The Graph 枠($5,000)の要件を「NOT BUILT」と自ら否定していた**
+配線は `packages/sdk/src/subgraph-evidence.ts` → `pay-or-refuse.ts` §3.5 → `index.ts` に**実在**し、
+The Graph の受取ウォレット宛の**実支払い tx も記録済み**（`0xf12093fb…e469ad`）。
+SKILL.md が `payOrRefuse`（存在しないファイル名。実体は `pay-or-refuse.ts`）を探して
+「無い」と結論した跡でした。**審査員が読むのは SKILL.md だけなので、この1行で枠が消えます。**
+→ 実態へ書き換え、txHash と Basescan リンクを貼り、新節「Paying on The Graph's own data」を追加。
+
+**通しで突き合わせて他に1件**: `npm test`(mcp-server) の出力を `tests 31` と貼っていたが実走は **32**。
+審査員が同じコマンドを叩くと数が合わないので 32 に修正。残り4行は事実のままでした。
+
+**② `README.md:9` のリポ名が誤り**（`agent-trust` → 実 remote は `kzmttkc/vet402`・2026-08-18改名）。
+`docs/PENTEST_SCOPE.md` にも同じ誤りがあったので併せて修正。
+
+**③ methodology が「covertly（覆面で買う）」と2箇所で公称していたが、実装は名乗っている**
+`l1-runner.ts:1033`（**有料本番リクエスト**）の UA が
+`vet402-observatory-l1/1.0 (+https://vet402.com/observatory/methodology)`
+——社名を名乗った上に方法論ページ自身へのリンクまで付いています。
+さらに**支払いウォレットは公開 `export.csv` の `tx_hash` から1ホップで2アドレスに収束**し、
+**購入の44%が UTC 12時台**。優先4ホストと6日窓も methodology が実名で公開しているので、
+売り手はハンドラ3行で欺けます。**しかも成功した cloaking は完璧な `settled·delivered` として
+記録されるので痕跡が残りません。**
+→ `src/` から covert を全消去し、methodology に新段落 **"We buy under our own name."** を追加。
+3本の UA を実名で載せ、「名乗った上で履行されるかを見るほうが、売り手にとって最良の条件での
+測定になる」旨を明記。`tests/covert-wording.test.ts` で語が戻らないことと UA が消えないことをゲート化。
+（`corrections` と `methodology` の訂正記録に残る "covert" 3箇所は**意図的な残置**です）
+
+### ④ 実名企業への不当な断定を直した（これが最も重い）
+
+執行部が公開台帳 `export.csv` を全行集計した実測:
+**settled 1,669行中、支払い後4xx/5xxが180行。うち157行(87%)が4xx**
+（`400`=109 / `422`=33 / `401`=11 / `403`=4。売り手障害と断定できる5xxは15行のみ）。
+バッジは `api.exa.ai` について `10/10 settled · 0 delivered` を配布しており、
+**実名企業が「金を取って納品しなかった」と読めます。** 401 は**こちらがAPIキーを送っていない**公算大。
+
+**methodology は既に正しい原則を持っていました**——
+「a 400 from a URL we could not have formed correctly is our limitation, not the seller's failure」。
+ただし適用が `path_template`（要求を送っていない場合）だけに狭かった。
+→ **原則を URL からボディ・認証ヘッダへ拡張**し、`delivery.ts` に `isInconclusive` を実装。
+**行は消さず、`delivered` の分母からだけ外す**（`deliveryRatePct = delivered/(settled − inconclusive)`）。
+**境界は 400〜499 で 5xx は対象外**（売り手の実障害は救わない）。
+バッジ・`/observatory/state`・`/e/[id]`・凡例・state/purchases API へ反映。
+**`/corrections` に自分の誤りとして記録**し、`docs/claims.yaml` に8件登録しました。
+
+### ⑤ バッジに「誰の・いつの」を焼き込んだ
+`renderReceiptBadgeSvg` に第二行を追加（高さ 24→38）。ローカル実測:
+`10/10 settled · 0 delivered · 10 inconclusive` / `api.exa.ai · measured 2026-09-05`
+（従来は endpoint ID もホスト名も日付も入っておらず、**他社バッジを落として自社サーバに置けば永久に固定できた**）
+
+### 検証（すべてローカル・`TEST_DATABASE_URL` は付けていません）
+`npm test` **1423 pass / 0 fail**（1406→テスト17本追加）・sdk 148・middleware 64・mcp 32・
+`tsc --noEmit` 0・`eslint` errors 0・`next build` 成功。
+
+### そちらへの申し送り
+1. **push するかどうかはそちらの判断です。** ただし**本番はまだ `covertly` を4箇所出しています**
+   （執行部が curl で実測）。出さなければ審査員には届きません
+2. `packages/mcp-server` の `node_modules` に `@vet402/sdk` のリンクが無く、`npm test` がビルド段階で
+   落ちる状態でした（`npm install` で解消・`package-lock.json` に差分なし）。
+   **審査員が SKILL.md の手順どおりなら踏みませんが、WINDOW_PLAN §501 の「公開前に版指定へ替える」と同じ根**です
+3. **まだ残している所見が2件あります**（今回は手を付けていません）:
+   - **$49 の判別力**——`/accuracy` 実測で既知悪25件中17件がWARN・**既知良17件中17件もWARN・既知良のALLOWは0件**。
+     §2.1 が score を「L0–L2 が置き換える旧方式」と自ら書いている
+   - **審査員が中核機能の動く姿を見られない**——判定の正典 `/api/v1/resources/:id/decision` が鍵必須で401。
+     鍵なし・IP制限付きの読み取り枠を開けるか、実レスポンスを docs に貼ると印象が大きく変わります
