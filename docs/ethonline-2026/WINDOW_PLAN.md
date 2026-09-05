@@ -60,6 +60,27 @@ Takeshi は 2020-06〜2025-04 の約5年間、The Graph の日本コミュニテ
 **範囲外**: 自前 seller の新設（ALLOW 対象が本番に373件あるため不要）、World 本実装、ENS、
 Registry 本書き込み、新チェーン、Uniswap/Sui、スコアエンジン変更、UI 刷新、提出前 npm publish。
 
+### 実装の状態（2026-09-05 11:50・main 実測）
+
+| # | 状態 |
+|---|---|
+| 1 `payOrRefuse` | **完了**（SDK 148本 fail 0・第3層の証明は変異で確認） |
+| 2 MCP `pay_if_trusted` ＋ `SKILL.md` | **完了**（MCP 32本 fail 0） |
+| 3 The Graph 証拠源（`evidence[].source` 4面） | **完了**（SDK・本番 API・OpenAPI・SDK型・MCPスキーマ・`/docs/api`・語彙） |
+| 4 `source: agent-demo` の決定面 | **完了**（追記専用 JSONL・源で分ける・本番 DB へ書かない） |
+| 5 A/B ハーネス | **実装完了**（ブランチ `ethonline/ab-harness`・89本 fail 0・変異7種）。**実 LLM の実走は未実施** |
+
+**行が名乗る `source` は2値**（`vet402` / `subgraph`）。**`both` は `policy.evidence.source` の
+「どの源を読むか」の指定であって、行の値ではない**——行に許すと「両方から来た1行」＝合算した行が
+型として作れてしまい、D16（源をまたいで足さない）と正面から矛盾する。
+
+**サーバは subgraph を引かない。** 理由の3つ目が決定的: **デモの相手（The Graph）はカタログ外で
+`/decision` が 404** を返すので、サーバ側実装は**提出物が名指ししているまさにその相手について
+subgraph 行を出せない**。他に、我々の鍵で代理すると「vet402 を信じなくてよい」が崩れること、
+`/decision` の p95 200ms と5分キャッシュに10秒の外部往復を入れると**キャッシュされた応答が
+最大5分古い `queriedAt` で live を名乗る**こと。**行の形は1つにし、`payOrRefuse` が呼び手の鍵で
+読んだ subgraph 行を同じ配列へ足す。**
+
 ## 3. 支払い先を The Graph 本体にする（2026-09-03 決定・実測済み）
 
 ```
@@ -434,7 +455,7 @@ DB の実数 count(settlement_verified)     1629   ← 完全一致
 | # | 中身 | なぜ提出前に直さないか |
 |---|---|---|
 | 1 | **`@vet402/mcp-server` の `dependencies` に `@vet402/sdk: "file:../sdk"` が入った**（09-05）。**このまま npm へ公開すると、利用者の `npm install` が解決できず壊れる**。公開前に版指定へ替え、SDK を先に公開する必要がある | 公開は提出後（§2 範囲外）。**審査員は npm ではなく Bazantic のホスト経由で触る**ので判定に影響しない。ただし**忘れると次の公開で全利用者が壊れる** |
-| 2 | **`evaluateEvidencePolicy` で `minSubgraphReceipts` が黙って無視される**（`source` 既定 `"vet402"` のときどの分岐にも当たらない）。**床を指定したのに拒否も警告も出ない** | 09-08 の subgraph 実装で塞ぐ。**「壊れて見えない」のが最悪**という型（正しい値が別名で返り下流で黙って捨てられるのと同じ） |
+| 2 | ~~`minSubgraphReceipts` が黙って無視される~~ → **2026-09-05 に解決済み**。宣言した床は宣言した `source` が評価できなければならず、矛盾する組み合わせは通信の前に `invalid_evidence_policy` で throw する | — |
 
 **提出物で history を引用してよい。ただし `coverageFrom` と `recomputeWindowDays` を必ず添える**
 （「直近14日は毎回再計算し、それより古い日は backfill するまで凍結」が応答の `semantics` に書いてある。
