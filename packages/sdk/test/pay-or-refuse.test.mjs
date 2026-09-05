@@ -333,6 +333,25 @@ test("D13 Gateway が 403/5xx/タイムアウト → evidence_unavailable・sign
   assert.deepEqual(w.signAccesses(), []);
 });
 
+test("D13c source:subgraph は床を書かなくても、Gateway が読めなければ払わない", async () => {
+  // D13 は `minSubgraphReceipts: 1` を渡していたので、床の側だけで fail-closed していても
+  // 緑になった。床を書かない呼び手——「subgraph を証拠にしたい」とだけ言った呼び手——に対して
+  // **黙って払ってしまう**実装を、この1本が止める。売り手は正常に払える状態で置く。
+  const w = watchedAccount();
+  const s = seller(okAccept);
+  const f = allowlistFetch([DECISION, "gateway.thegraph.com", "kronos", "payments/x402"], {
+    [DECISION]: decision(),
+    "gateway.thegraph.com": { status: 503, body: {} },
+    kronos: s.stub,
+    "payments/x402": { status: 200, body: { ok: true } },
+  });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { evidence: { source: "subgraph" } } });
+  assert.equal(r.status, "refused");
+  assert.equal(r.decision.reason_codes.includes("subgraph_evidence_unavailable"), true);
+  assert.equal(s.paid.length, 0, "署名を付けた再送が出ていない");
+  assert.deepEqual(w.signAccesses(), []);
+});
+
 test("D14 Graph への全リクエストに User-Agent が付く（無いと Cloudflare 1010）", async () => {
   const seen = [];
   const f = {
@@ -348,19 +367,65 @@ test("D14 Graph への全リクエストに User-Agent が付く（無いと Clo
   for (const g of graph) assert.ok(g.ua && g.ua.length > 0, `UA が無い: ${g.url}`);
 });
 
+test("D13b Gateway が HTTP 200 と GraphQL errors を返す（鍵無しの実挙動）→ evidence_unavailable", async () => {
+  // 2026-09-05 実測。keyless パスへ出ると Gateway は **403 ではなく 200** を返し、
+  // 本文に `{"errors":[{"message":"auth error: missing authorization header"}]}` を入れる。
+  // `response.ok` だけを見る実装はこれを成功と読み、**受領 0 件**として
+  // 「証拠が薄い」という**誤った理由**で拒否する。認証されていないことと、
+  // 受け取りが 0 件であることは、まったく別のことである。
+  const w = watchedAccount();
+  const f = allowlistFetch([DECISION, "gateway.thegraph.com"], {
+    [DECISION]: decision(),
+    "gateway.thegraph.com": { status: 200, body: { errors: [{ message: "auth error: missing authorization header" }] } },
+  });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { evidence: { minSubgraphReceipts: 1, source: "subgraph" } } });
+  assert.equal(r.status, "refused");
+  assert.equal(r.decision.reason_codes.includes("evidence_unavailable"), true);
+  assert.equal(r.decision.reason_codes.includes("subgraph_evidence_unavailable"), true);
+  assert.equal(r.decision.reason_codes.includes("insufficient_subgraph_evidence"), false, "「薄い」ではなく「読めなかった」");
+  assert.equal(r.decision.evidence.some((e) => e.source === "subgraph"), false, "読めていないものを証拠行にしない");
+  assert.deepEqual(w.signAccesses(), []);
+});
+
+test("D14b 問い合わせは小文字アドレスかつ role: RECIPIENT で絞る（支払回数と受領回数を混ぜない）", async () => {
+  // 2026-09-05 実測: 1つのアドレスが PAYER 行と RECIPIENT 行の両方を持つ
+  // （`0xf7b1356c…` は RECIPIENT 12,376,084 / PAYER 11,540,523）。絞らずに足すと
+  // 「払った回数」を「受け取った回数」として売ることになる。
+  const bodies = [];
+  const f = {
+    fetch: async (url, init) => {
+      if (String(url).includes("gateway.thegraph.com")) bodies.push(String(init?.body ?? ""));
+      return { ok: true, status: 200, json: async () => ({ data: { x402AddressSummaries: [{ totalPayments: "252" }], _meta: { block: { number: 1 } } } }), headers: new Map() };
+    },
+  };
+  const w = watchedAccount();
+  // payee は**大文字混じり**で渡す。小文字化しないと subgraph は1件も返さない（§15）。
+  await payOrRefuse({ ...base, payee: "0x36038E1D712C5E39F35952164EC58EC2B96CAEE7", account: w.account, fetch: f.fetch, policy: { evidence: { minSubgraphReceipts: 1, source: "subgraph" } } }).catch(() => {});
+  assert.equal(bodies.length > 0, true, "Graph へ出ている");
+  for (const b of bodies) {
+    assert.match(b, /0x36038e1d712c5e39f35952164ec58ec2b96caee7/, "小文字のアドレスで引いている");
+    assert.equal(b.includes("0x36038E1D"), false, "大文字のまま引いていない");
+    assert.match(b, /role:\s*RECIPIENT/, "受領側だけに絞っている");
+  }
+});
+
 test("D15 source:subgraph の決定行に subgraphId と _meta.block が載る", async () => {
   const w = watchedAccount();
   const f = allowlistFetch([DECISION, "gateway.thegraph.com"], {
     [DECISION]: decision(),
     "gateway.thegraph.com": { status: 200, body: { data: { x402AddressSummaries: [{ totalPayments: "252" }], _meta: { block: { number: 50824146 } } } } },
   });
-  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { evidence: { minSubgraphReceipts: 1, source: "subgraph" } } });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { evidence: { minSubgraphReceipts: 1, source: "subgraph", graphApiKey: "SECRET_KEY_DO_NOT_LOG" } } });
   const ev = r.decision.evidence.find((e) => e.source === "subgraph");
   assert.ok(ev, "source:subgraph の evidence 行がある");
   assert.ok(ev.subgraphId, "subgraphId がある");
   assert.equal(typeof ev.block?.number, "number");
   // §2 #3: live であることの証跡。いつ引いたかが無いと、静的データと区別できない。
   assert.match(String(ev.queriedAt), /^\d{4}-\d{2}-\d{2}T/);
+  // 決定行は追記専用 JSONL に残り、提出物にも載る。**呼び手の鍵をそこへ書き出さない。**
+  // 引くときは鍵をパスに載せるので、決定行に入れる URL は鍵を伏せた方でなければならない。
+  assert.equal(JSON.stringify(r.decision).includes("SECRET_KEY_DO_NOT_LOG"), false, "呼び手の鍵が決定行に漏れている");
+  assert.equal(f.calls.some((u) => u.includes("SECRET_KEY_DO_NOT_LOG")), true, "実際の問い合わせには鍵が載っている（伏せる対象が実在する）");
 });
 
 test("D16 自社台帳の件数と subgraph の件数を1つの数に合算しない", async () => {
@@ -372,6 +437,27 @@ test("D16 自社台帳の件数と subgraph の件数を1つの数に合算し�
   const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { evidence: { minL1Deliveries: 3, minSubgraphReceipts: 100, source: "both" } } });
   const sources = r.decision.evidence.map((e) => e.source);
   assert.ok(sources.includes("vet402") && sources.includes("subgraph"), "両方が別の行として出る");
+});
+
+test("D16b 床は源ごとに当てる——合算した1つの数で当てると通ってしまう組み合わせで検算する", async () => {
+  // D16 は「行が2本ある」ことしか見ていなかった（2026-09-05 の変異で判明）。件数を
+  // **合算した1つの数**で床を当てる実装は、それでも緑のままだった。ここで塞ぐ。
+  // 自社台帳 3 件・subgraph 252 件。合算 255 なら 254 の床を超えるが、
+  // **subgraph 単独では 252 < 254 で足りない**。足した実装はここで緑になり、この検査で落ちる。
+  const graph = (n) => ({ status: 200, body: { data: { x402AddressSummaries: [{ totalPayments: String(n) }], _meta: { block: { number: 1 } } } } });
+  const run = (policy) => {
+    const w = watchedAccount();
+    const f = allowlistFetch([DECISION, "gateway.thegraph.com"], { [DECISION]: decision(), "gateway.thegraph.com": graph(252) });
+    return payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { evidence: policy } });
+  };
+  const a = await run({ minL1Deliveries: 3, minSubgraphReceipts: 254, source: "both" });
+  assert.equal(a.status, "refused");
+  assert.equal(a.decision.reason_codes.includes("insufficient_subgraph_evidence"), true, "subgraph の床に自社台帳の件数を足していない");
+
+  // 逆向き。自社台帳 3 件は 100 の床に足りない。subgraph の 252 を足して通してはいけない。
+  const b = await run({ minL1Deliveries: 100, minSubgraphReceipts: 1, source: "both" });
+  assert.equal(b.status, "refused");
+  assert.equal(b.decision.reason_codes.includes("insufficient_delivery_evidence"), true, "自社台帳の床に subgraph の件数を足していない");
 });
 
 // ---------- E. 通過時 ----------

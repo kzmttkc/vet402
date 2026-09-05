@@ -25,7 +25,7 @@ export declare const DEFAULT_MAX_PER_TX_USD = 1;
  * （§3.1「一度も見たことのない売り手に向けて判定できる」が製品の核だから、
  * 通ったのか拒んだのかと独立に、どちらの経路で出た判定かが機械可読で残る必要がある）。
  */
-export type PayRefuseReason = "price_above_ceiling" | "payee_mismatch" | "chain_or_asset_mismatch" | "evidence_unavailable" | "payee_recommendation_not_allow" | "insufficient_delivery_evidence" | "insufficient_subgraph_evidence" | "resource_uncatalogued";
+export type PayRefuseReason = "price_above_ceiling" | "payee_mismatch" | "chain_or_asset_mismatch" | "evidence_unavailable" | "payee_recommendation_not_allow" | "insufficient_delivery_evidence" | "insufficient_subgraph_evidence" | "resource_uncatalogued" | "subgraph_evidence_unavailable";
 /** 証拠源。`payOrRefuse` の判定が「誰の台帳を読んだか」を機械可読で残す。 */
 export type PayEvidenceSource = "vet402" | "subgraph";
 export type PayEvidenceRow = {
@@ -33,19 +33,47 @@ export type PayEvidenceRow = {
     source: PayEvidenceSource;
     url: string;
     purchase_id?: string;
-    /** `source: "subgraph"` のとき live であることの証跡（会期中に追加予定・D15）。 */
+    /**
+     * `source: "subgraph"` のとき live であることの証跡（D15・WINDOW_PLAN §2 #3）。
+     * これが無い行は「静的データを読んだのではない」ことを示せないので、証拠として扱わない。
+     */
     subgraphId?: string;
     block?: {
         number: number;
+        timestamp?: number;
     };
+    deployment?: string;
+    queriedAt?: string;
+    /**
+     * **その源が知っている件数**。行ごとに別々に持つ——源をまたいで足さない（D16）。
+     * 自社台帳の「配達件数」と subgraph の「受領件数」は**別のことを数えた別の数**であり、
+     * 合算した1つの数は何も意味しない。
+     */
+    receipts?: number;
 };
 export type PayEvidencePolicy = {
     /** vet402 の L1 配達台帳（実際に払って届いた件数）の下限。 */
     minL1Deliveries?: number;
-    /** The Graph の subgraph が知っている受領件数の下限（会期中に実装・C11/D13-D16）。 */
+    /**
+     * The Graph の x402 Base subgraph が知っている**受領**件数の下限（C11/D13-D16）。
+     * `source` が `"subgraph"` か `"both"` でなければ**呼び出し側エラー**（下記）。
+     */
     minSubgraphReceipts?: number;
-    /** 既定 "vet402"。"subgraph" / "both" は未実装で、指定すると fail-closed に落ちる。 */
+    /**
+     * 既定 `"vet402"`。`"subgraph"` は**我々の台帳を証拠の床に使わない**——
+     * 呼び手が自分の鍵で The Graph を引いて自分で確かめる。`"both"` は両方読め、
+     * **片方でも読めなければ fail-closed**（黙って弱い方に落ちない・C12）。
+     */
     source?: "vet402" | "subgraph" | "both";
+    /**
+     * 呼び手の Graph Gateway API キー。**我々の鍵を SDK に埋め込まない。**
+     * この機能の主張は「`source: "subgraph"` にすれば我々の台帳を一行も読まない」であり、
+     * 我々の鍵を通せばその主張は成立しない（結局 vet402 を信じていることになる）。
+     * 無いときは keyless パスへ出て Gateway が拒否し、`evidence_unavailable` になる。
+     */
+    graphApiKey?: string;
+    /** 引く subgraph。既定は x402 Base（{@link X402_BASE_SUBGRAPH_ID}）。 */
+    subgraphId?: string;
 };
 export type PayPolicy = {
     /** 1件あたりの上限（USD）。既定 {@link DEFAULT_MAX_PER_TX_USD}。 */

@@ -4,6 +4,11 @@ export { SpendGuard, DEFAULT_MAX_SCORE_AGE_MS, } from "./spend-guard.js";
 // テストは dist から読む（rootDir: src / outDir: dist）ので、ここから re-export する。
 export { payOrRefuse, readDemoDecisions, readL1Decisions, appendDecision, DEFAULT_DECISION_STORE, BASE_CHAIN, BASE_CHAIN_ID, BASE_USDC, DEFAULT_MAX_PER_TX_USD, } from "./pay-or-refuse.js";
 /**
+ * 第2の証拠源（The Graph の x402 Base subgraph）。呼び手が自分の鍵で自分で引ける形で
+ * 公開する——「あなたは vet402 を信じなくてよい」を、道具として渡せなければ主張にならない。
+ */
+export { readSubgraphReceipts, X402_BASE_SUBGRAPH_ID, GRAPH_GATEWAY_ORIGIN, GRAPH_USER_AGENT, DEFAULT_GRAPH_TIMEOUT_MS, } from "./subgraph-evidence.js";
+/**
  * Does this fast verdict clear a payment? The one correct reading of the fast
  * surface, written once so nobody has to re-derive it at a call site.
  *

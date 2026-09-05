@@ -23,6 +23,9 @@
 import { DEFAULT_API_URL } from "./index.js";
 import type { DecisionResult, SellerFacts, PayeeScoreResult } from "./index.js";
 import type { PayerAccount, X402Accept } from "./x402-pay.js";
+// 証拠源2つ目。**支払いモジュールではない**ので静的 import でよい（第3層の証明は
+// `x402-pay.js` にだけ掛かる。`test/no-static-payment-import.test.mjs`）。
+import { readSubgraphReceipts, X402_BASE_SUBGRAPH_ID, type SubgraphReceipts } from "./subgraph-evidence.js";
 
 export type { PayerAccount, X402Accept, X402Settlement, Eip3009Authorization } from "./x402-pay.js";
 
@@ -60,7 +63,8 @@ export type PayRefuseReason =
   | "payee_recommendation_not_allow"
   | "insufficient_delivery_evidence"
   | "insufficient_subgraph_evidence"
-  | "resource_uncatalogued";
+  | "resource_uncatalogued"
+  | "subgraph_evidence_unavailable";
 
 /** 証拠源。`payOrRefuse` の判定が「誰の台帳を読んだか」を機械可読で残す。 */
 export type PayEvidenceSource = "vet402" | "subgraph";
@@ -70,18 +74,45 @@ export type PayEvidenceRow = {
   source: PayEvidenceSource;
   url: string;
   purchase_id?: string;
-  /** `source: "subgraph"` のとき live であることの証跡（会期中に追加予定・D15）。 */
+  /**
+   * `source: "subgraph"` のとき live であることの証跡（D15・WINDOW_PLAN §2 #3）。
+   * これが無い行は「静的データを読んだのではない」ことを示せないので、証拠として扱わない。
+   */
   subgraphId?: string;
-  block?: { number: number };
+  block?: { number: number; timestamp?: number };
+  deployment?: string;
+  queriedAt?: string;
+  /**
+   * **その源が知っている件数**。行ごとに別々に持つ——源をまたいで足さない（D16）。
+   * 自社台帳の「配達件数」と subgraph の「受領件数」は**別のことを数えた別の数**であり、
+   * 合算した1つの数は何も意味しない。
+   */
+  receipts?: number;
 };
 
 export type PayEvidencePolicy = {
   /** vet402 の L1 配達台帳（実際に払って届いた件数）の下限。 */
   minL1Deliveries?: number;
-  /** The Graph の subgraph が知っている受領件数の下限（会期中に実装・C11/D13-D16）。 */
+  /**
+   * The Graph の x402 Base subgraph が知っている**受領**件数の下限（C11/D13-D16）。
+   * `source` が `"subgraph"` か `"both"` でなければ**呼び出し側エラー**（下記）。
+   */
   minSubgraphReceipts?: number;
-  /** 既定 "vet402"。"subgraph" / "both" は未実装で、指定すると fail-closed に落ちる。 */
+  /**
+   * 既定 `"vet402"`。`"subgraph"` は**我々の台帳を証拠の床に使わない**——
+   * 呼び手が自分の鍵で The Graph を引いて自分で確かめる。`"both"` は両方読め、
+   * **片方でも読めなければ fail-closed**（黙って弱い方に落ちない・C12）。
+   */
   source?: "vet402" | "subgraph" | "both";
+  /**
+   * 呼び手の Graph Gateway API キー。**我々の鍵を SDK に埋め込まない。**
+   * この機能の主張は「`source: "subgraph"` にすれば我々の台帳を一行も読まない」であり、
+   * 我々の鍵を通せばその主張は成立しない（結局 vet402 を信じていることになる）。
+   * 無いときは keyless パスへ出て Gateway が拒否し、`evidence_unavailable` になる。
+   */
+  graphApiKey?: string;
+  /** 引く subgraph。既定は x402 Base（{@link X402_BASE_SUBGRAPH_ID}）。 */
+  subgraphId?: string;
 };
 
 export type PayPolicy = {
@@ -279,6 +310,10 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
   if (typeof input.amountUsd !== "number" || !Number.isFinite(input.amountUsd) || input.amountUsd < 0) {
     throw new Error("invalid_amount_usd: pass a finite, non-negative USD amount");
   }
+  // **評価できない床を黙って無視しない**（WINDOW_PLAN §13「会期後に必ず直すもの #2」）。
+  // 2026-09-05 まで、`minSubgraphReceipts` は既定 source が "vet402" のときどの分岐にも
+  // 当たらず、床を指定したのに拒否も警告も出なかった。「壊れて見えない」型の欠陥。
+  assertEvidencePolicy(input.policy?.evidence);
   // account は**検査しない**。`typeof account.signTypedData === "function"` と書いた瞬間に
   // 拒否経路から signer へのプロパティ参照が発生し、「到達できない」が嘘になる。
 
@@ -348,8 +383,47 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
 
   const pathReasons: string[] = uncatalogued ? ["resource_uncatalogued"] : [];
 
+  const serverReasons =
+    decision && Array.isArray(decision.reason_codes) ? decision.reason_codes : [];
+  const evidenceVerdictSource: PayDecisionRecord["verdict_source"] = uncatalogued ? "payee_score" : "decision";
+
+  // --- 3.5 宣言された証拠源を**すべて**読む。judgement の前に読むのは意図的で、
+  // 「拒否したときにも、もう一方の源が何を知っているかは残る」ようにするため——
+  // §3.1 の核（同じウォレットについて3つの情報源が3つ違うことを言う）は、まさに
+  // 我々が拒否する相手について成り立つ。D14 はこの順序を固定している。
+  const wantedSource = input.policy?.evidence?.source ?? "vet402";
+  let subgraph: SubgraphReceipts | null = null;
+  if (wantedSource === "subgraph" || wantedSource === "both") {
+    const read = await readSubgraphReceipts({
+      address: input.payee,
+      fetch: fetchFn,
+      apiKey: input.policy?.evidence?.graphApiKey,
+      subgraphId: input.policy?.evidence?.subgraphId ?? X402_BASE_SUBGRAPH_ID,
+    });
+    if (!read.ok) {
+      // C12/D13: **どちらの源が読めなかったか**を機械可読で残す。黙って自社台帳へ落ちない。
+      return refuse(
+        [...pathReasons, ...serverReasons, "evidence_unavailable", "subgraph_evidence_unavailable"],
+        evidenceVerdictSource,
+        decision,
+      );
+    }
+    subgraph = read;
+    // D15: live であることの証跡（subgraphId / block / deployment / queriedAt）を同梱する。
+    // D16: **自社台帳の行とは別の行**として持つ。件数も行ごとに別（合算しない）。
+    evidence.push({
+      level: "L1",
+      source: "subgraph",
+      url: read.publicUrl,
+      subgraphId: read.subgraphId,
+      block: read.block,
+      ...(read.deployment ? { deployment: read.deployment } : {}),
+      queriedAt: read.queriedAt,
+      receipts: read.receipts,
+    });
+  }
+
   if (decision) {
-    const serverReasons = Array.isArray(decision.reason_codes) ? decision.reason_codes : [];
     // A2: degraded は「測れなかった」。fail-closed のゲートにとっては読めなかったのと同じ。
     if (decision.degraded === true) {
       return refuse([...serverReasons, "evidence_unavailable"], "decision", decision);
@@ -366,9 +440,13 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
         ...(row.purchase_id ? { purchase_id: row.purchase_id } : {}),
       })),
     );
-    const shortfall = evaluateEvidencePolicy(input.policy?.evidence, decision);
-    if (shortfall) return refuse([...serverReasons, ...shortfall], "decision", decision);
   }
+
+  // --- 3.6 呼び手が名指しした床を当てる。**カタログ外（decision が null）でも当てる**——
+  // ここで無視すると、この機能がいちばん要る場所（一度も見たことのない売り手）で
+  // 効かないことになる（C11c）。
+  const shortfall = evaluateEvidencePolicy(input.policy?.evidence, decision, subgraph);
+  if (shortfall) return refuse([...pathReasons, ...serverReasons, ...shortfall], evidenceVerdictSource, decision);
 
   // --- 4. 402 チャレンジ ---
   let accept: X402Accept | null = null;
@@ -519,28 +597,73 @@ function evaluateMoneyGate(accept: X402Accept, maxPerTxUsd: number): string[] | 
 }
 
 /**
- * 呼び手が名指しした証拠の床を当てる。**判定（`/decision`）と policy 評価を分けてある**のは、
- * 会期中に証拠源（The Graph）を足すときにここだけを差し替えられるようにするため。
+ * **呼び出し側の誤りを、通信の前に落とす。**
  *
- * 未実装の証拠源を黙って弱い方（自社台帳）に落とさない: `subgraph` を名指しされたのに
+ * `evidence` の床は、名乗った `source` が評価できるものでなければならない。
+ * 評価できない床を黙って無視すると「床を指定したのに拒否も警告も出ない」——
+ * 正しい値が別名で渡って下流で黙って捨てられるのと同じ、**壊れて見えない**型の欠陥になる
+ * （WINDOW_PLAN §13「会期後に必ず直すもの #2」に実物が記録されている）。
+ *
+ * **黙って `source` を格上げする案は採らなかった。** 理由は2つ。
+ *  (1) `{ source: "vet402", minSubgraphReceipts: 100 }` のように**明示的に矛盾**した指定は
+ *      格上げでは扱えない（明示された "vet402" を勝手に "subgraph" へ変えるのは、
+ *      呼び手が書いた文字を無視することであり、無視の一形態でしかない）。
+ *  (2) 格上げしたとき呼び手が受け取るのは `evidence_unavailable`（鍵が無ければ必ずそうなる）で、
+ *      **「source を書き忘れた」という本当の原因がどこにも出ない**。ここで throw すれば、
+ *      通信の前に、call site で、原因そのものが名指しで返る。
+ * 対称に、`{ source: "subgraph", minL1Deliveries: 3 }` も同じ理由で呼び出し側エラー。
+ */
+function assertEvidencePolicy(policy: PayEvidencePolicy | undefined): void {
+  if (!policy) return;
+  const wanted = policy.source ?? "vet402";
+  if (wanted !== "vet402" && wanted !== "subgraph" && wanted !== "both") {
+    throw new Error(`invalid_evidence_policy: unknown evidence source ${JSON.stringify(wanted)}`);
+  }
+  if (policy.minSubgraphReceipts !== undefined && wanted !== "subgraph" && wanted !== "both") {
+    throw new Error(
+      `invalid_evidence_policy: minSubgraphReceipts needs evidence.source "subgraph" or "both", got ${JSON.stringify(wanted)}. ` +
+        "It would otherwise be ignored in silence — the floor you set would never be applied.",
+    );
+  }
+  if (policy.minL1Deliveries !== undefined && wanted !== "vet402" && wanted !== "both") {
+    throw new Error(
+      `invalid_evidence_policy: minL1Deliveries needs evidence.source "vet402" or "both", got ${JSON.stringify(wanted)}. ` +
+        "It would otherwise be ignored in silence — the floor you set would never be applied.",
+    );
+  }
+}
+
+/**
+ * 呼び手が名指しした証拠の床を当てる。**判定（`/decision`）と policy 評価を分けてある**のは、
+ * 証拠源を足すときにここだけを差し替えられるようにするため。
+ *
+ * `subgraph` は**別の引数で受け取る**——`decision` の中に混ぜ込むと、そこから先で
+ * 2つの源の数を1つにまとめる書き方が自然になってしまう（D16 が禁じている形）。
+ * 源が違えば数えたものも違う。**足せる数ではない。**
+ *
+ * 未実装／未取得の証拠源を黙って弱い方（自社台帳）に落とさない: `subgraph` を名指しされたのに
  * 読めていないなら、それは `evidence_unavailable` である（DESIGN §3.5）。
  */
 function evaluateEvidencePolicy(
   policy: PayEvidencePolicy | undefined,
-  decision: DecisionResult,
+  decision: DecisionResult | null,
+  subgraph: SubgraphReceipts | null,
 ): string[] | null {
   if (!policy) return null;
   const wanted = policy.source ?? "vet402";
-  if (wanted === "vet402" || wanted === "both") {
-    const facts = decision.facts as SellerFacts | undefined;
+  if ((wanted === "vet402" || wanted === "both") && policy.minL1Deliveries !== undefined) {
+    const facts = decision?.facts as SellerFacts | undefined;
     const delivered = typeof facts?.l1?.n_delivered === "number" ? facts.l1.n_delivered : 0;
-    if (policy.minL1Deliveries !== undefined && delivered < policy.minL1Deliveries) {
+    if (delivered < policy.minL1Deliveries) {
       return ["insufficient_delivery_evidence"];
     }
   }
-  if (wanted === "subgraph" || wanted === "both") {
-    // 会期中に実装（C11 / C12 / D13-D16）。読めていない以上、通してはいけない。
-    return ["evidence_unavailable"];
+  if ((wanted === "subgraph" || wanted === "both") && policy.minSubgraphReceipts !== undefined) {
+    // 読めていれば上（3.5）で必ず埋まっている。null は「読めなかった」であって 0 件ではない。
+    if (!subgraph) return ["evidence_unavailable", "subgraph_evidence_unavailable"];
+    if (subgraph.receipts < policy.minSubgraphReceipts) {
+      return ["insufficient_subgraph_evidence"];
+    }
   }
   return null;
 }

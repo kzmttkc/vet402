@@ -38,6 +38,22 @@ export {
   type Eip3009Authorization,
 } from "./pay-or-refuse.js";
 
+/**
+ * 第2の証拠源（The Graph の x402 Base subgraph）。呼び手が自分の鍵で自分で引ける形で
+ * 公開する——「あなたは vet402 を信じなくてよい」を、道具として渡せなければ主張にならない。
+ */
+export {
+  readSubgraphReceipts,
+  X402_BASE_SUBGRAPH_ID,
+  GRAPH_GATEWAY_ORIGIN,
+  GRAPH_USER_AGENT,
+  DEFAULT_GRAPH_TIMEOUT_MS,
+  type SubgraphReceipts,
+  type SubgraphUnavailable,
+  type SubgraphReadResult,
+  type ReadSubgraphReceiptsInput,
+} from "./subgraph-evidence.js";
+
 export type Recommendation = "ALLOW" | "WARN" | "BLOCK";
 
 export type TrustScoreResult = {
