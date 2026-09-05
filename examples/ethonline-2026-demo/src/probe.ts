@@ -100,15 +100,39 @@ export async function readChallenge(
   }
 }
 
-/** Base メインネットの正規 USDC 建ての accept を選ぶ。無ければ先頭を返す（判定はしない）。 */
-export function pickBaseUsdcAccept(accepts: Record<string, unknown>[]): Record<string, unknown> {
-  const found = accepts.find(
+/**
+ * **SDK が選ぶのと同じ accept を選ぶ。** 意味論は `packages/sdk/src/pay-or-refuse.ts` の
+ * `selectAccept`（さらにその元は本番 `src/lib/observatory/x402-payer.ts`）。
+ *
+ * 2026-09-05 まで、ここは条件に合うものが無ければ**先頭を返して**いた。実測の 402 は
+ * accept を3件返す（Base USDC / Solana / `GatewayWalletBatched` ドメイン）ので、
+ * 先頭を返す実装は**払えない accept を「これに署名します」として画に映す**。
+ * 映っているものと本当に署名されるものが違えば、それは動画としての嘘である。
+ * **1件も無ければ null**——無いことは、無いと書く。
+ */
+export function selectPayableAccept(
+  accepts: Record<string, unknown>[],
+): Record<string, unknown> | null {
+  const eligible = accepts.filter(
     (a) =>
+      a.scheme === "exact" &&
       a.network === "eip155:8453" &&
       String(a.asset ?? "").toLowerCase() === "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" &&
-      a.scheme === "exact",
+      (() => {
+        const transfer = (a.extra as { assetTransferMethod?: unknown } | undefined)?.assetTransferMethod;
+        return transfer === undefined || transfer === "eip3009";
+      })(),
   );
-  return found ?? accepts[0];
+  if (eligible.length === 0) return null;
+  // EIP-712 ドメインが正規のものを優先する（矛盾する accept は署名しても決済され得ない）。
+  const canonical = eligible.find((a) => {
+    const extra = a.extra as { name?: unknown; version?: unknown } | undefined;
+    return (
+      (extra?.name === undefined || extra.name === "USD Coin") &&
+      (extra?.version === undefined || extra.version === "2")
+    );
+  });
+  return canonical ?? eligible[0];
 }
 
 export async function readJson(

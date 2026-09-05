@@ -844,3 +844,411 @@ test("I23c /decision が 404 かつ受取人スコアも取得できない → f
   assert.equal(f.calls.filter((u) => u.includes(SCORE)).length, 1);
   assert.deepEqual(w.signAccesses(), []);
 });
+
+// ---------- J. policy.requireVet402Allow（WINDOW_PLAN §3.2・2026-09-05 の決定） ----------
+//
+// **本番実測**: デモの支払い先 The Graph `0x79DC34E4…FcCB` は 69 / WARN / thin。
+// 既定のままでは `payee_recommendation_not_allow` で止まり、台本の実 tx カットが撮れない。
+//
+// 決めたのは「vet402 を信じなくてよい」を**製品の規則として明示的に書けるようにする**こと。
+//   - 既定は `true`（今日と同じ fail-closed）。**黙って弱くならない**
+//   - `false` のとき、vet402 の推奨が ALLOW でなくても、**呼び手が宣言した証拠の床が
+//     すべて満たされていれば**払う
+//   - **床を1つも宣言せずに `false` にしたら呼び出し側エラー**（`invalid_policy`）。
+//     「誰も判定しない」状態を作らせない。0 の床は床ではない（何も判定しない）
+//   - 通したときは決定行に**どの規則で通したか**が残る（`verdict_source: "caller_policy"` と
+//     満たした床の内訳）。審査員が読むのはここ
+//   - **カタログ内（200）でもカタログ外（404）でも同じ規則**。404 経路だけの特例にしない
+
+/** WARN を返す `/decision`（本番の The Graph と同じ状態を、カタログ内の形で置く）。 */
+const warnDecision = (over = {}) =>
+  decision({ recommendation: "WARN", reason_codes: ["l0_pass", "l1_not_attempted"], ...over });
+
+const graphBody = (n) => ({
+  status: 200,
+  body: { data: { x402AddressSummaries: [{ role: "RECIPIENT", totalPayments: String(n) }], _meta: { block: { number: 50890586 } } } },
+});
+
+test("J1 既定は fail-closed——requireVet402Allow を書かなければ WARN は署名前に止まる", async () => {
+  const w = watchedAccount();
+  const s = seller(okAccept);
+  // 売り手は**正常に払える状態**で置く。止めているのが ALLOW ゲートだけであることを見る。
+  const f = allowlistFetch([DECISION, "kronos", "payments/x402"], {
+    [DECISION]: warnDecision(), kronos: s.stub, "payments/x402": { status: 200, body: { ok: true } },
+  });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { evidence: { minL1Deliveries: 3, source: "vet402" } } });
+  assert.equal(r.status, "refused");
+  assert.equal(r.decision.reason_codes.includes("payee_recommendation_not_allow"), true);
+  assert.equal(s.paid.length, 0, "署名を付けた再送が出ていない");
+  assert.deepEqual(w.signAccesses(), []);
+});
+
+test("J1b requireVet402Allow: true を明示しても同じ（既定と明示が一致している）", async () => {
+  const w = watchedAccount();
+  const s = seller(okAccept);
+  const f = allowlistFetch([DECISION, "kronos", "payments/x402"], {
+    [DECISION]: warnDecision(), kronos: s.stub, "payments/x402": { status: 200, body: { ok: true } },
+  });
+  const r = await payOrRefuse({
+    ...base, account: w.account, fetch: f.fetch,
+    policy: { requireVet402Allow: true, evidence: { minL1Deliveries: 3, source: "vet402" } },
+  });
+  assert.equal(r.status, "refused");
+  assert.equal(r.decision.reason_codes.includes("payee_recommendation_not_allow"), true);
+  assert.deepEqual(w.signAccesses(), []);
+});
+
+test("J2 床を1つも宣言せずに requireVet402Allow: false → 呼び出し側エラー（通信の前に落ちる）", async () => {
+  const w = watchedAccount();
+  let fetched = 0;
+  const f = { fetch: async () => { fetched++; throw new Error("must not be called"); } };
+  const isPolicyError = (e) => /invalid_policy/.test(String(e && e.message));
+  // (a) evidence を丸ごと書かなかった
+  await assert.rejects(
+    () => payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { requireVet402Allow: false } }),
+    isPolicyError,
+  );
+  // (b) evidence はあるが床が1つも無い（source を選んだだけ）
+  await assert.rejects(
+    () => payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { requireVet402Allow: false, evidence: { source: "vet402" } } }),
+    isPolicyError,
+  );
+  // (c) **0 の床は床ではない。** 何も判定しないので「誰も判定しない」状態と同じ。
+  //     ここを許すと、規則を1語足しただけで全部素通しにできてしまう。
+  await assert.rejects(
+    () => payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { requireVet402Allow: false, evidence: { minL1Deliveries: 0, source: "vet402" } } }),
+    isPolicyError,
+  );
+  assert.equal(fetched, 0, "判定も 402 も引いていない（呼び出し側の誤りは通信の前に落とす）");
+  assert.deepEqual(w.signAccesses(), []);
+  // エラー文は**原因そのもの**を名指しする（`invalid_evidence_policy` と同じ思想）。
+  const err = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { requireVet402Allow: false } }).catch((e) => e);
+  assert.match(String(err.message), /requireVet402Allow/);
+  assert.match(String(err.message), /minL1Deliveries|minSubgraphReceipts/);
+});
+
+test("J3 requireVet402Allow: false ＋ 床を満たす → カタログ内 WARN でも払う（規則が決定行に残る）", async () => {
+  const w = watchedAccount();
+  const s = seller(okAccept);
+  const f = allowlistFetch([DECISION, "kronos", "payments/x402"], {
+    [DECISION]: warnDecision(), kronos: s.stub, "payments/x402": { status: 200, body: { ok: true } },
+  });
+  const r = await payOrRefuse({
+    ...base, account: w.account, fetch: f.fetch,
+    policy: { requireVet402Allow: false, evidence: { minL1Deliveries: 3, source: "vet402" } },
+  });
+  assert.equal(r.status, "paid");
+  assert.equal(w.signAccesses().length, 1);
+  // **どの規則で通したか**。ここを読むのが審査員。
+  assert.equal(r.decision.verdict_source, "caller_policy", "vet402 の判定ではなく呼び手の規則で通ったことが残る");
+  assert.equal(r.decision.reason_codes.includes("allowed_by_caller_policy"), true);
+  // vet402 が何と言っていたかは**消えない**。黙って弱くなっていないことの証拠。
+  assert.equal(r.decision.reason_codes.includes("l1_not_attempted"), true, "WARN の理由がそのまま残る");
+  const o = r.decision.policy_override;
+  assert.ok(o, "policy_override が無い");
+  assert.equal(o.rule, "requireVet402Allow:false");
+  assert.equal(o.waived.source, "decision");
+  assert.equal(o.waived.recommendation, "WARN");
+  assert.deepEqual(o.waived.reason_codes, ["l0_pass", "l1_not_attempted"]);
+  // 満たした床の**内訳**。「床を見たふり」を潰すため、要求値と実測値の両方を要求する。
+  assert.deepEqual(o.floors_met, [{ floor: "minL1Deliveries", source: "vet402", required: 3, observed: 3 }]);
+});
+
+test("J4 requireVet402Allow: false でも、床を満たさなければ払わない", async () => {
+  const w = watchedAccount();
+  const s = seller(okAccept);
+  const f = allowlistFetch([DECISION, "kronos", "payments/x402"], {
+    [DECISION]: warnDecision({ facts: { l0: { status: "pass" }, l1: { n_delivered: 1, n_attempts: 1 }, l2: { status: "undeclared" } } }),
+    kronos: s.stub, "payments/x402": { status: 200, body: { ok: true } },
+  });
+  const r = await payOrRefuse({
+    ...base, account: w.account, fetch: f.fetch,
+    policy: { requireVet402Allow: false, evidence: { minL1Deliveries: 3, source: "vet402" } },
+  });
+  assert.equal(r.status, "refused");
+  assert.equal(r.decision.reason_codes.includes("insufficient_delivery_evidence"), true);
+  assert.equal(r.decision.policy_override, null, "通していないのに「通した規則」を記帳しない");
+  assert.equal(s.paid.length, 0, "署名を付けた再送が出ていない");
+  assert.deepEqual(w.signAccesses(), []);
+});
+
+test("J5 カタログ外（404）でも同じ規則が効く——WARN 69 の The Graph に、subgraph の床で払う", async () => {
+  // **これがデモの実物**（WINDOW_PLAN §3.1・§3.2）。カタログ 404・受取人スコア 69/WARN/thin・
+  // The Graph 自身の subgraph は 253 件の受領を知っている。呼び手はその第三者データを床にする。
+  const w = watchedAccount();
+  const s = seller(graphAccept);
+  const f = allowlistFetch([DECISION, SCORE, "gateway.thegraph.com", "payments/x402"], {
+    [DECISION]: notFound,
+    "/api/x402/": s.stub,
+    "/api/graphkey/": graphBody(253),
+    [SCORE]: payeeScore(),
+    "payments/x402": { status: 200, body: { ok: true } },
+  });
+  const r = await payOrRefuse({
+    ...uncatalogued, account: w.account, fetch: f.fetch,
+    policy: {
+      requireVet402Allow: false,
+      evidence: { source: "both", minL1Deliveries: 0, minSubgraphReceipts: 1, graphApiKey: "graphkey" },
+    },
+  });
+  assert.equal(r.status, "paid");
+  assert.equal(w.signAccesses().length, 1);
+  assert.equal(s.paid.length, 1, "署名を付けた再送が1回だけ出ている");
+  assert.equal(r.decision.verdict_source, "caller_policy");
+  // 404 経路であることは**独立に**残る（経路の印と、通した規則は別のこと）。
+  assert.equal(r.decision.reason_codes.includes("resource_uncatalogued"), true);
+  assert.equal(r.decision.reason_codes.includes("allowed_by_caller_policy"), true);
+  const o = r.decision.policy_override;
+  assert.ok(o, "policy_override が無い");
+  assert.equal(o.waived.source, "payee_score", "404 経路では受取人スコアを waive したと残る");
+  assert.equal(o.waived.recommendation, "WARN");
+  assert.equal(o.waived.score, 69, "何点だったかが残る（69 のまま通した、が読める）");
+  // 床の内訳は**源ごと**。subgraph の 253 が自社台帳の数と混ざっていない。
+  assert.deepEqual(o.floors_met, [
+    { floor: "minL1Deliveries", source: "vet402", required: 0, observed: 0 },
+    { floor: "minSubgraphReceipts", source: "subgraph", required: 1, observed: 253 },
+  ]);
+  // 受取人スコアそのものも決定行に残る（69 を隠して通していない）。
+  assert.equal(r.decision.payeeScore.score, 69);
+});
+
+test("J6 カタログ外でも、床を満たさなければ払わない", async () => {
+  const w = watchedAccount();
+  const s = seller(graphAccept);
+  const f = allowlistFetch([DECISION, SCORE, "gateway.thegraph.com", "payments/x402"], {
+    [DECISION]: notFound,
+    "/api/x402/": s.stub,
+    "/api/graphkey/": graphBody(3),
+    [SCORE]: payeeScore(),
+  });
+  const r = await payOrRefuse({
+    ...uncatalogued, account: w.account, fetch: f.fetch,
+    policy: {
+      requireVet402Allow: false,
+      evidence: { source: "subgraph", minSubgraphReceipts: 100, graphApiKey: "graphkey" },
+    },
+  });
+  assert.equal(r.status, "refused");
+  assert.equal(r.decision.reason_codes.includes("insufficient_subgraph_evidence"), true);
+  assert.equal(r.decision.policy_override, null);
+  assert.equal(s.paid.length, 0);
+  assert.deepEqual(w.signAccesses(), []);
+});
+
+test("J7 requireVet402Allow: false は degraded を通さない——「測れなかった」と「ALLOW でない」は別のこと", async () => {
+  // 免除したのは**判定の中身**であって、判定が存在しないことではない。
+  // ここを一緒にすると、fail-closed が丸ごと外れる。
+  const runCatalogued = async (over) => {
+    const w = watchedAccount();
+    const s = seller(okAccept);
+    const f = allowlistFetch([DECISION, "kronos", "payments/x402"], {
+      [DECISION]: decision(over), kronos: s.stub, "payments/x402": { status: 200, body: { ok: true } },
+    });
+    const r = await payOrRefuse({
+      ...base, account: w.account, fetch: f.fetch,
+      policy: { requireVet402Allow: false, evidence: { minL1Deliveries: 3, source: "vet402" } },
+    });
+    return { r, w, s };
+  };
+  const a = await runCatalogued({ degraded: true });
+  assert.equal(a.r.status, "refused");
+  assert.equal(a.r.decision.reason_codes.includes("evidence_unavailable"), true);
+  assert.equal(a.s.paid.length, 0);
+  assert.deepEqual(a.w.signAccesses(), []);
+
+  // 404 経路も対称。スコアが degraded / 一部未測定なら通さない。
+  const runUncatalogued = async (scoreOver) => {
+    const w = watchedAccount();
+    const s = seller(graphAccept);
+    const f = allowlistFetch([DECISION, SCORE, "gateway.thegraph.com", "payments/x402"], {
+      [DECISION]: notFound,
+      "/api/x402/": s.stub,
+      "/api/graphkey/": graphBody(253),
+      [SCORE]: payeeScore(scoreOver),
+    });
+    const r = await payOrRefuse({
+      ...uncatalogued, account: w.account, fetch: f.fetch,
+      policy: { requireVet402Allow: false, evidence: { source: "subgraph", minSubgraphReceipts: 1, graphApiKey: "graphkey" } },
+    });
+    return { r, w, s };
+  };
+  const b = await runUncatalogued({ degraded: true });
+  assert.equal(b.r.status, "refused");
+  assert.equal(b.r.decision.reason_codes.includes("evidence_unavailable"), true);
+  assert.deepEqual(b.w.signAccesses(), []);
+  const c = await runUncatalogued({ signalsUnavailable: ["receiving"] });
+  assert.equal(c.r.status, "refused");
+  assert.equal(c.r.decision.reason_codes.includes("evidence_unavailable"), true);
+  assert.deepEqual(c.w.signAccesses(), []);
+});
+
+test("J8 vet402 が ALLOW なら、requireVet402Allow: false でも「呼び手の規則で通した」とは書かない", async () => {
+  // 上書きしていないのに上書きしたと記帳するのは、決定行を読めなくする。
+  const w = watchedAccount();
+  const s = seller(okAccept);
+  const f = allowlistFetch([DECISION, "kronos", "payments/x402"], {
+    [DECISION]: decision(), kronos: s.stub, "payments/x402": { status: 200, body: { ok: true } },
+  });
+  const r = await payOrRefuse({
+    ...base, account: w.account, fetch: f.fetch,
+    policy: { requireVet402Allow: false, evidence: { minL1Deliveries: 3, source: "vet402" } },
+  });
+  assert.equal(r.status, "paid");
+  assert.equal(r.decision.verdict_source, "decision", "vet402 が通したのだから vet402 が判定源");
+  assert.equal(r.decision.policy_override, null);
+  assert.equal(r.decision.reason_codes.includes("allowed_by_caller_policy"), false);
+});
+
+test("J9 通した規則は追記専用 JSONL の行にもそのまま残る（後から誰でも読める）", async () => {
+  const store = tempStore();
+  const w = watchedAccount();
+  const s = seller(okAccept);
+  const f = allowlistFetch([DECISION, "kronos", "payments/x402"], {
+    [DECISION]: warnDecision(), kronos: s.stub, "payments/x402": { status: 200, body: { ok: true } },
+  });
+  const r = await payOrRefuse({
+    ...base, account: w.account, fetch: f.fetch, source: "agent-demo", decisionStore: store,
+    policy: { requireVet402Allow: false, evidence: { minL1Deliveries: 3, source: "vet402" } },
+  });
+  assert.equal(r.status, "paid");
+  assert.equal(r.stored, true);
+  const [row] = await readDemoDecisions({ store });
+  assert.equal(row.verdict_source, "caller_policy");
+  assert.equal(row.reason_codes.includes("allowed_by_caller_policy"), true);
+  assert.equal(row.policy_override.waived.recommendation, "WARN");
+  assert.deepEqual(row.policy_override.floors_met, [{ floor: "minL1Deliveries", source: "vet402", required: 3, observed: 3 }]);
+});
+
+// ---------- K. 402 の accepts から**条件を満たすもの**を選ぶ ----------
+//
+// **実測**（拒否側フィクスチャ `agent.api.0x.org`）: 402 は accept を**3件**返す——
+// Base USDC / Solana / Base の `GatewayWalletBatched` ドメイン。今は先頭がたまたま
+// 正しい Base USDC だが、**売り手が順序を変えれば SDK は Solana を掴み
+// `chain_or_asset_mismatch` で拒む**。拒否は変わらないが**理由がすり替わる**。
+// デモの画が壊れ、「拒否の理由は正確である」という主張も壊れる。
+//
+// 選び方は本番 `src/lib/observatory/x402-payer.ts` の `selectAccept` と同じ意味論:
+// scheme exact ∧ network eip155:8453 ∧ Base 正規 USDC ∧ eip3009（未提示は可）。
+
+const solanaAccept = {
+  scheme: "exact",
+  network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+  amount: "10000",
+  asset: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  payTo: base.payee,
+};
+/** 実測の1件目。Base USDC で、EIP-712 ドメインをトークンの実測値どおり名乗る。 */
+const usdcDomainAccept = {
+  ...okAccept,
+  extra: { assetTransferMethod: "eip3009", name: "USD Coin", version: "2" },
+};
+/** 実測の3件目。同じ Base USDC だが EIP-712 ドメインが `GatewayWalletBatched` を名乗る。 */
+const batchedDomainAccept = {
+  ...okAccept,
+  extra: { assetTransferMethod: "eip3009", name: "GatewayWalletBatched", version: "1" },
+};
+const walls = (accepts, version = 2) => ({
+  status: 402, body: {}, headers: { "payment-required": b64({ x402Version: version, accepts }) },
+});
+
+test("K1 条件を満たす accept が先頭でなくても、それを選んで払う", async () => {
+  const w = watchedAccount();
+  const paid = [];
+  const f = allowlistFetch([DECISION, "kronos", "payments/x402"], {
+    [DECISION]: decision(),
+    kronos: (url, init) => {
+      const h = init?.headers ?? {};
+      const raw = h["PAYMENT-SIGNATURE"] ?? h["payment-signature"];
+      if (!raw) return walls([solanaAccept, okAccept]);
+      paid.push(JSON.parse(atob(raw)));
+      return { status: 200, body: { ok: true }, headers: { "PAYMENT-RESPONSE": b64({ success: true, transaction: "0xtx", network: "eip155:8453", payer: "0xDB62BD202914609830fA656F87996b91be3Aa673" }) } };
+    },
+    "payments/x402": { status: 200, body: { ok: true } },
+  });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: paidPolicy });
+  assert.equal(r.status, "paid", "先頭の Solana を掴んで拒否していない");
+  assert.equal(r.challenge.network, "eip155:8453");
+  assert.equal(r.challenge.asset, okAccept.asset);
+  assert.equal(paid.length, 1);
+  assert.equal(paid[0].accepted.network, "eip155:8453", "署名したのは Base USDC の accept");
+  assert.equal(w.signAccesses().length, 1);
+});
+
+test("K2 条件を満たす accept が1つも無ければ、そのことを名指しして拒否する", async () => {
+  const w = watchedAccount();
+  const f = allowlistFetch([DECISION, "kronos"], {
+    [DECISION]: decision(),
+    kronos: walls([solanaAccept, { ...solanaAccept, network: "eip155:1" }]),
+  });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: paidPolicy });
+  assert.equal(r.status, "refused");
+  assert.equal(r.decision.reason_codes.includes("no_eligible_accept"), true, "「払える accept が1つも無い」と名指ししている");
+  // **一次の所見はそれ**。「たまたま掴んだ1件がチェーン違いだった」ではなく
+  // 「全部見たが1件も払えなかった」が先に立つ。並び順まで固定する。
+  assert.equal(
+    r.decision.reason_codes.indexOf("no_eligible_accept") <
+      r.decision.reason_codes.indexOf("chain_or_asset_mismatch"),
+    true,
+    "一次の所見が先に来ていない",
+  );
+  // 壁は読めている。「402 が読めなかった」ではない。
+  assert.equal(r.decision.reason_codes.includes("evidence_unavailable"), false);
+  // 見た accept は**実際に提示されたもの**（存在しないものを画に出さない）。
+  assert.equal(r.challenge.network, solanaAccept.network);
+  assert.deepEqual(w.signAccesses(), []);
+});
+
+test("K2b 402 そのものが読めないのは今まで通り evidence_unavailable（別の状態と混ぜない）", async () => {
+  const w = watchedAccount();
+  const f = allowlistFetch([DECISION, "kronos"], { [DECISION]: decision(), kronos: { status: 402, body: {}, headers: {} } });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: paidPolicy });
+  assert.equal(r.status, "refused");
+  assert.equal(r.decision.reason_codes.includes("evidence_unavailable"), true);
+  assert.equal(r.decision.reason_codes.includes("no_eligible_accept"), false);
+  assert.deepEqual(w.signAccesses(), []);
+});
+
+test("K3 EIP-712 ドメインが正規でない Base USDC より、正規のものを選ぶ（実測の3件目の形）", async () => {
+  const w = watchedAccount();
+  const s = seller(okAccept);
+  const f = allowlistFetch([DECISION, "kronos", "payments/x402"], {
+    [DECISION]: decision(),
+    kronos: (url, init) => {
+      const h = init?.headers ?? {};
+      if (!(h["PAYMENT-SIGNATURE"] ?? h["payment-signature"])) return walls([batchedDomainAccept, usdcDomainAccept]);
+      return s.stub(url, init);
+    },
+    "payments/x402": { status: 200, body: { ok: true } },
+  });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: paidPolicy });
+  assert.equal(r.status, "paid", "偽ドメインの1件目を掴んで chain_or_asset_mismatch にしていない");
+  assert.equal(r.challenge.extra.name, "USD Coin");
+  assert.equal(w.signAccesses().length, 1);
+});
+
+test("K4 実測の3件を**どの順に並べ替えても**、選ぶ accept と結論は変わらない", async () => {
+  // 売り手は順序を自由に決められる。順序で結論が変わるなら、それは売り手が我々の
+  // 判定を動かせるということ。6通りの順列すべてで同じ accept を選ぶことを要求する。
+  const three = [usdcDomainAccept, solanaAccept, batchedDomainAccept];
+  const permutations = [
+    [0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0],
+  ];
+  for (const order of permutations) {
+    const w = watchedAccount();
+    const s = seller(okAccept);
+    const f = allowlistFetch([DECISION, "kronos", "payments/x402"], {
+      [DECISION]: decision(),
+      kronos: (url, init) => {
+        const h = init?.headers ?? {};
+        if (!(h["PAYMENT-SIGNATURE"] ?? h["payment-signature"])) return walls(order.map((i) => three[i]));
+        return s.stub(url, init);
+      },
+      "payments/x402": { status: 200, body: { ok: true } },
+    });
+    const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: paidPolicy });
+    assert.equal(r.status, "paid", `順序 ${order.join("")} で払えていない`);
+    assert.equal(r.challenge.network, "eip155:8453", `順序 ${order.join("")}`);
+    assert.equal(r.challenge.extra.name, "USD Coin", `順序 ${order.join("")} で偽ドメインを掴んでいる`);
+    assert.equal(w.signAccesses().length, 1, `順序 ${order.join("")}`);
+  }
+});

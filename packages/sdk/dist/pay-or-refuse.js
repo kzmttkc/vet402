@@ -91,6 +91,62 @@ function normalizeAccept(raw) {
         ...(typeof rec.extra === "object" && rec.extra !== null ? { extra: rec.extra } : {}),
     };
 }
+/**
+ * この accept は**プロトコル上そもそも払える形か**。本番 `x402-payer.ts` の
+ * `selectAccept` の `protocolEligible` と同じ4条件（scheme / network / asset / 転送方式）。
+ * 金額と payTo は**含めない**——それは「払えるか」ではなく「払ってよいか」で、
+ * 呼び手の上限と期待値に依存する（{@link evaluateMoneyGate} と payee 照合が持つ）。
+ */
+function isProtocolEligible(accept) {
+    if (accept.scheme !== "exact")
+        return false;
+    if (accept.network !== BASE_CHAIN)
+        return false;
+    if (!sameAddress(accept.asset, BASE_USDC))
+        return false;
+    // 明示された転送方式が eip3009 でなければ払えない。未提示は許す——Base 正規 USDC の
+    // `exact` は構造上 EIP-3009 であり、未提示を拒むと実在する 402 に払えなくなる。
+    const transfer = accept.extra?.assetTransferMethod;
+    return transfer === undefined || transfer === "eip3009";
+}
+/**
+ * EIP-712 ドメインがトークンのもの（本番 2026-08-22 の `eth_call` 実測）と矛盾しないか。
+ * **売り手の名乗りを採用するためではなく、矛盾を検出するために読む。**
+ */
+function hasCanonicalUsdcDomain(accept) {
+    const name = accept.extra?.name;
+    const version = accept.extra?.version;
+    return (name === undefined || name === "USD Coin") && (version === undefined || version === "2");
+}
+/**
+ * **提示された accepts から、条件を満たす最初のものを選ぶ。**
+ *
+ * 2026-09-05 まで、ここは `accepts[0]` を無条件に取っていた。実測（拒否側フィクスチャ
+ * `agent.api.0x.org`）の 402 は accept を**3件**返す——Base USDC / Solana /
+ * Base の `GatewayWalletBatched` ドメイン。先頭がたまたま正しかっただけで、
+ * **売り手が順序を並べ替えれば SDK は Solana を掴み、拒否の理由がすり替わる**。
+ * 拒否そのものは変わらないが、「拒否の理由は正確である」という主張が壊れる。
+ *
+ * 意味論は本番 `src/lib/observatory/x402-payer.ts` の `selectAccept` に揃える。
+ * ただし**本番と1点だけ違う**: 本番は EIP-712 ドメインを `protocolEligible` の
+ * ハードなフィルタに入れ、全滅すれば `no_eligible_accept` を返す。ここでは
+ * ドメインは**優先順位**として使い、正規のものが1件も無ければ eligible の先頭を返す——
+ * そのまま {@link evaluateMoneyGate} が `chain_or_asset_mismatch` で落とすので
+ * 結論（署名しない）は同じで、**なぜ落ちたかがより具体的に残る**。
+ *
+ * @returns `eligible: false` は「提示は読めたが、払える形が1件も無い」。
+ *   そのときも `accept` には**実際に提示された1件**を入れて返す——
+ *   拒否理由を具体的に出すため、そして画に存在しない accept を映さないため。
+ */
+function selectAccept(raw) {
+    const normalized = raw.map(normalizeAccept).filter((a) => a !== null);
+    if (normalized.length === 0)
+        return null;
+    const eligible = normalized.filter(isProtocolEligible);
+    if (eligible.length === 0)
+        return { accept: normalized[0], eligible: false };
+    return { accept: eligible.find(hasCanonicalUsdcDomain) ?? eligible[0], eligible: true };
+}
 /** チャレンジは **transport のバージョンごと**読む——答える側のヘッダ名がそれで決まる。 */
 function decodeChallenge(raw) {
     try {
@@ -98,10 +154,14 @@ function decodeChallenge(raw) {
         const accepts = json.accepts;
         if (!Array.isArray(accepts) || accepts.length === 0)
             return null;
-        const accept = normalizeAccept(accepts[0]);
-        if (!accept)
+        const selected = selectAccept(accepts);
+        if (!selected)
             return null;
-        return { x402Version: json.x402Version === 1 ? 1 : 2, accept };
+        return {
+            x402Version: json.x402Version === 1 ? 1 : 2,
+            accept: selected.accept,
+            eligible: selected.eligible,
+        };
     }
     catch {
         return null;
@@ -154,6 +214,10 @@ async function decideAndPay(input) {
     // 2026-09-05 まで、`minSubgraphReceipts` は既定 source が "vet402" のときどの分岐にも
     // 当たらず、床を指定したのに拒否も警告も出なかった。「壊れて見えない」型の欠陥。
     assertEvidencePolicy(input.policy?.evidence);
+    // §3.2: vet402 の判定を外すなら代わりの床が要る。**順序は evidence の整合が先**——
+    // `{ minL1Deliveries: 3, source: "subgraph" }` のような誤りは、床の有無より前に、
+    // 「その床は評価されない」と言われるべきだから。
+    assertOverridePolicy(input.policy);
     // account は**検査しない**。`typeof account.signTypedData === "function"` と書いた瞬間に
     // 拒否経路から signer へのプロパティ参照が発生し、「到達できない」が嘘になる。
     const method = (input.method ?? "GET").toUpperCase();
@@ -161,8 +225,18 @@ async function decideAndPay(input) {
     const maxPerTxUsd = input.policy?.maxPerTxUsd ?? DEFAULT_MAX_PER_TX_USD;
     const source = input.source ?? "sdk";
     const headers = input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {};
+    const requireVet402Allow = input.policy?.requireVet402Allow !== false;
     const evidence = [];
-    const record = (recommendation, reason_codes, verdict_source, decision, payeeScore) => ({ recommendation, reason_codes, verdict_source, evidence, decision, payeeScore, source });
+    const record = (recommendation, reason_codes, verdict_source, decision, payeeScore, policy_override = null) => ({
+        recommendation,
+        reason_codes,
+        verdict_source,
+        evidence,
+        decision,
+        payeeScore,
+        policy_override,
+        source,
+    });
     const refuse = (reason_codes, verdict_source, decision = null, payeeScore = null, challenge = null) => ({
         status: "refused",
         decision: record("REFUSE", reason_codes, verdict_source, decision, payeeScore),
@@ -241,15 +315,31 @@ async function decideAndPay(input) {
             receipts: read.receipts,
         });
     }
+    // 免除した判定。**通したときにだけ**決定行へ載せる（§3.2）。ここで控えておいて、
+    // 床を当てたあとに `policy_override` を組む——免除だけしても床で落ちれば「通した規則」は
+    // 存在しないので、そのときは何も書かない。
+    let waived = null;
     if (decision) {
         // A2: degraded は「測れなかった」。fail-closed のゲートにとっては読めなかったのと同じ。
+        // **`requireVet402Allow: false` でもここは通さない**——免除したのは判定の中身であって、
+        // 判定が存在しないことではない（J7）。
         if (decision.degraded === true) {
             return refuse([...serverReasons, "evidence_unavailable"], "decision", decision);
         }
         // A1: ALLOW 以外。理由はサーバの reason_codes をそのまま通す（我々の語で上書きしない）。
         if (decision.recommendation !== "ALLOW") {
-            return refuse([...serverReasons, "payee_recommendation_not_allow"], "decision", decision);
+            if (requireVet402Allow) {
+                return refuse([...serverReasons, "payee_recommendation_not_allow"], "decision", decision);
+            }
+            waived = {
+                source: "decision",
+                recommendation: String(decision.recommendation),
+                score: null,
+                reason_codes: serverReasons,
+            };
         }
+        // 読んだ証拠行は**判定の中身に関わらず**残す（§3.5 と同じ理由——拒否したときにも、
+        // その源が何を知っているかは残る）。
         evidence.push(...(Array.isArray(decision.evidence) ? decision.evidence : []).map((row) => ({
             level: row.level,
             source: "vet402",
@@ -260,12 +350,16 @@ async function decideAndPay(input) {
     // --- 3.6 呼び手が名指しした床を当てる。**カタログ外（decision が null）でも当てる**——
     // ここで無視すると、この機能がいちばん要る場所（一度も見たことのない売り手）で
     // 効かないことになる（C11c）。
-    const shortfall = evaluateEvidencePolicy(input.policy?.evidence, decision, subgraph);
-    if (shortfall)
-        return refuse([...pathReasons, ...serverReasons, ...shortfall], evidenceVerdictSource, decision);
+    const floors = evaluateEvidencePolicy(input.policy?.evidence, decision, subgraph);
+    if (floors.shortfall) {
+        return refuse([...pathReasons, ...serverReasons, ...floors.shortfall], evidenceVerdictSource, decision);
+    }
     // --- 4. 402 チャレンジ ---
     let accept = null;
     let x402Version = 2;
+    // 「提示は読めたが、払える形が1件も無い」——**掴んだ1件が違った**とは別の所見なので、
+    // 一次の所見としてこの語を先頭に置く（売り手が順序を変えても理由がすり替わらない）。
+    let selectionReasons = [];
     try {
         const response = await fetchFn(input.resource, { method });
         const raw = readHeader(response.headers, "payment-required");
@@ -273,6 +367,7 @@ async function decideAndPay(input) {
         if (challenge) {
             accept = challenge.accept;
             x402Version = challenge.x402Version;
+            selectionReasons = challenge.eligible ? [] : ["no_eligible_accept"];
         }
     }
     catch {
@@ -284,11 +379,11 @@ async function decideAndPay(input) {
     }
     // A4: 照合は payTo で行う。402 の resource.url は内部ホスト名を返すことがある（§3）。
     if (!sameAddress(accept.payTo, input.payee)) {
-        return refuse([...pathReasons, "payee_mismatch"], uncatalogued ? "payee_score" : "decision", decision, null, accept);
+        return refuse([...pathReasons, ...selectionReasons, "payee_mismatch"], uncatalogued ? "payee_score" : "decision", decision, null, accept);
     }
     const moneyGate = evaluateMoneyGate(accept, maxPerTxUsd);
     if (moneyGate) {
-        return refuse([...pathReasons, ...moneyGate], uncatalogued ? "payee_score" : "decision", decision, null, accept);
+        return refuse([...pathReasons, ...selectionReasons, ...moneyGate], uncatalogued ? "payee_score" : "decision", decision, null, accept);
     }
     // --- 3'. カタログ外なら、ここまでで分かった payTo で受取人スコアを引く（I23）---
     let payeeScore = null;
@@ -303,14 +398,36 @@ async function decideAndPay(input) {
         catch {
             return refuse([...pathReasons, "evidence_unavailable"], "payee_score", null, null, accept);
         }
+        // 免除の対象外（J7）。**測れなかったことは、ALLOW でないことと別**である。
         if (payeeScore?.degraded === true || (payeeScore?.signalsUnavailable?.length ?? 0) > 0) {
             return refuse([...pathReasons, "evidence_unavailable"], "payee_score", null, payeeScore, accept);
         }
         if (payeeScore?.recommendation !== "ALLOW") {
-            return refuse([...pathReasons, "payee_recommendation_not_allow"], "payee_score", null, payeeScore, accept);
+            if (requireVet402Allow) {
+                return refuse([...pathReasons, "payee_recommendation_not_allow"], "payee_score", null, payeeScore, accept);
+            }
+            // §3.2 のカタログ外経路。**床は既に 3.6 で当たっている**——`requireVet402Allow: false`
+            // は床が1つ以上あることを呼び出し側エラーで強制しているので、ここに来た時点で
+            // 「vet402 の判定を外し、代わりの床は満たされている」が成立している。
+            waived = {
+                source: "payee_score",
+                recommendation: String(payeeScore?.recommendation ?? "unknown"),
+                score: typeof payeeScore?.score === "number" ? payeeScore.score : null,
+                reason_codes: [],
+            };
         }
         evidence.push({ level: "L0", source: "vet402", url: scoreUrl });
     }
+    // どの規則で通したか。**免除を使ったときにだけ**組む（J8: vet402 が ALLOW を出したなら
+    // 上書きは起きていないので null のまま）。
+    const policyOverride = waived
+        ? { rule: "requireVet402Allow:false", waived, floors_met: floors.met }
+        : null;
+    // vet402 が何と言っていたかは**消さない**。WARN の理由をそのまま残したうえで、
+    // 誰が通したかを1語足す。弱くしたことを隠さないための形。
+    const allowReasons = policyOverride
+        ? [...pathReasons, ...policyOverride.waived.reason_codes, "allowed_by_caller_policy"]
+        : pathReasons;
     // --- 5. ここから先だけが支払い。実装は ALLOW ブランチ内の動的 import（第3層）---
     // 署名 → **売り手へ再送** → 応答ヘッダのレシート。facilitator は買い手の経路に無い。
     const { executeX402Payment } = await import("./x402-pay.js");
@@ -328,13 +445,14 @@ async function decideAndPay(input) {
             signedNonce = nonce;
         },
     });
-    const verdictSource = uncatalogued ? "payee_score" : "decision";
+    // 通したのが vet402 の判定なのか、呼び手の規則なのか。**審査員が読むのはここ**（§3.2）。
+    const verdictSource = policyOverride ? "caller_policy" : uncatalogued ? "payee_score" : "decision";
     if (!paid.settled) {
         // E18: 署名は実在する。隠さない。nonce も返す——署名した認可は validBefore まで
         // 生きた金で、後から遅れて決済され得る。何に署名したかが残らないと照合できない。
         return {
             status: "failed",
-            decision: record("ALLOW", [...pathReasons, "settle_failed"], verdictSource, decision, payeeScore),
+            decision: record("ALLOW", [...allowReasons, "settle_failed"], verdictSource, decision, payeeScore, policyOverride),
             signed: paid.signed,
             attested: false,
             txHash: paid.txHash,
@@ -370,7 +488,7 @@ async function decideAndPay(input) {
     }
     return {
         status: "paid",
-        decision: record("ALLOW", pathReasons, verdictSource, decision, payeeScore),
+        decision: record("ALLOW", allowReasons, verdictSource, decision, payeeScore, policyOverride),
         signed: paid.signed,
         attested,
         txHash: paid.txHash,
@@ -385,27 +503,15 @@ async function decideAndPay(input) {
  * 本番には4チェーン提示の 402 が実在する（WINDOW_PLAN §4 B）。
  */
 function evaluateMoneyGate(accept, maxPerTxUsd) {
-    if (accept.network !== BASE_CHAIN)
-        return ["chain_or_asset_mismatch"];
-    if (!sameAddress(accept.asset, BASE_USDC))
-        return ["chain_or_asset_mismatch"];
-    if (accept.scheme !== "exact")
-        return ["chain_or_asset_mismatch"];
-    // 明示された転送方式が eip3009 でなければ拒否する。未提示は許す——Base 正規 USDC の
-    // `exact` は構造上 EIP-3009 の transferWithAuthorization であり、未提示を拒むと
-    // 実在する 402（フィールドを出さない実装）に払えなくなる。値が違うときだけ止める。
-    const transfer = accept.extra?.assetTransferMethod;
-    if (transfer !== undefined && transfer !== "eip3009")
+    // scheme / network / asset / 転送方式。**選別と同じ述語**で見る——別の述語を書くと、
+    // 選ばれたのに関門で落ちる（またはその逆の）食い違いが静かに入り込む。
+    if (!isProtocolEligible(accept))
         return ["chain_or_asset_mismatch"];
     // EIP-712 ドメインはトークンのものであって売り手のものではない（本番 2026-08-22 監査）。
     // 矛盾する accept を**署名の前に**落とす: 誤ったドメインの署名は決済され得ないので、
     // 通せば「一円も動かないまま署名だけが生きている」状態を売り手が無料で作れてしまう。
-    // 判定は署名器と同じ述語（hasCanonicalUsdcDomain）で行う——別の述語では関門にならない。
-    const name = accept.extra?.name;
-    const version = accept.extra?.version;
-    if ((name !== undefined && name !== "USD Coin") || (version !== undefined && version !== "2")) {
+    if (!hasCanonicalUsdcDomain(accept))
         return ["chain_or_asset_mismatch"];
-    }
     const units = Number(accept.amount);
     if (!Number.isFinite(units) || units <= 0)
         return ["chain_or_asset_mismatch"];
@@ -458,25 +564,65 @@ function assertEvidencePolicy(policy) {
  * 読めていないなら、それは `evidence_unavailable` である（DESIGN §3.5）。
  */
 function evaluateEvidencePolicy(policy, decision, subgraph) {
+    const met = [];
     if (!policy)
-        return null;
+        return { shortfall: null, met };
     const wanted = policy.source ?? "vet402";
     if ((wanted === "vet402" || wanted === "both") && policy.minL1Deliveries !== undefined) {
         const facts = decision?.facts;
         const delivered = typeof facts?.l1?.n_delivered === "number" ? facts.l1.n_delivered : 0;
         if (delivered < policy.minL1Deliveries) {
-            return ["insufficient_delivery_evidence"];
+            return { shortfall: ["insufficient_delivery_evidence"], met };
         }
+        met.push({
+            floor: "minL1Deliveries",
+            source: "vet402",
+            required: policy.minL1Deliveries,
+            observed: delivered,
+        });
     }
     if ((wanted === "subgraph" || wanted === "both") && policy.minSubgraphReceipts !== undefined) {
         // 読めていれば上（3.5）で必ず埋まっている。null は「読めなかった」であって 0 件ではない。
         if (!subgraph)
-            return ["evidence_unavailable", "subgraph_evidence_unavailable"];
+            return { shortfall: ["evidence_unavailable", "subgraph_evidence_unavailable"], met };
         if (subgraph.receipts < policy.minSubgraphReceipts) {
-            return ["insufficient_subgraph_evidence"];
+            return { shortfall: ["insufficient_subgraph_evidence"], met };
         }
+        met.push({
+            floor: "minSubgraphReceipts",
+            source: "subgraph",
+            required: policy.minSubgraphReceipts,
+            observed: subgraph.receipts,
+        });
     }
-    return null;
+    return { shortfall: null, met };
+}
+/**
+ * **vet402 の判定を外すなら、代わりを置け。**（WINDOW_PLAN §3.2）
+ *
+ * `requireVet402Allow: false` は「あなたは vet402 を信じなくてよい」という
+ * 製品の主張そのものだが、**信じないことと、誰も判定しないことは違う**。
+ * 床を1つも宣言せずに外せば、`payOrRefuse` は上限と 402 の整合だけを見る関数になり、
+ * 「署名の前に判定する」という存在理由が消える。だから通信の前に、call site で落とす。
+ *
+ * **0 の床を床として数えない。** `{ minL1Deliveries: 0 }` は何も判定しないので、
+ * これを許せば規則を1語足すだけで全部素通しにできる（＝抜け道が既定の使い方になる）。
+ * 少なくとも1つは 1 以上でなければならない。
+ *
+ * `invalid_evidence_policy` と同じ思想（黙って無視せず、原因そのものを名指しで返す）だが、
+ * **語を分けてある**——あちらは「その床は評価されない」、こちらは「床が存在しない」で、
+ * 呼び手が直す場所が違う。
+ */
+function assertOverridePolicy(policy) {
+    if (!policy || policy.requireVet402Allow !== false)
+        return;
+    const evidence = policy.evidence;
+    const floors = [evidence?.minL1Deliveries, evidence?.minSubgraphReceipts];
+    if (floors.some((floor) => typeof floor === "number" && floor > 0))
+        return;
+    throw new Error("invalid_policy: requireVet402Allow: false waives vet402's verdict, so it needs at least one " +
+        "evidence floor above zero (policy.evidence.minL1Deliveries or policy.evidence.minSubgraphReceipts). " +
+        "Without one, nothing would judge this payment — a floor of 0 judges nothing either.");
 }
 // ============================================================
 // 決定行の保存先（WINDOW_PLAN §2 #4 / F19・F20）

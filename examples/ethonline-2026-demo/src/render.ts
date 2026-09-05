@@ -181,6 +181,18 @@ export function renderRefuse(view: RefuseView, options?: RenderOptions): string[
 
 export type PayView = {
   live: boolean;
+  /**
+   * **今日 `--live` を打つと、どの規則で通るのか。**（WINDOW_PLAN §3.2）
+   * `requireVet402Allow: false` は vet402 の判定を外すという宣言なので、
+   * **外したことと、代わりに置いた床を、画に出さなければならない**。
+   * 出さなければ「黙って弱くなった」のと区別が付かない。
+   */
+  policy?: {
+    requireVet402Allow: boolean;
+    floors: { floor: string; source: string; required: number }[];
+  };
+  /** 402 が提示した accept の数。**選んだ1件が全部でないこと**を画に残す。 */
+  acceptsOffered?: number;
   target: { method: string; url: string };
   expectedPayTo: string;
   amountUsd: number;
@@ -204,13 +216,23 @@ export type PayView = {
     deployment?: string;
     row: { role: string; totalPayments: string; totalVolumeDecimal: string } | null;
   } | null;
-  gates: { name: string; verdict: "pass" | "fail" | "unknown"; detail: string }[];
+  /**
+   * `waived` は「見たうえで、policy が要求していないので通す」。**`pass` と混ぜない**——
+   * 満たしたのではなく免除したのだから、同じ印にすると弱くしたことが画から消える。
+   */
+  gates: { name: string; verdict: "pass" | "fail" | "unknown" | "waived"; detail: string }[];
   envReady: Record<string, boolean>;
 };
 
 function acceptColumn(view: PayView): string[] {
   const a = view.accept;
-  if (!a) return ["—  402 challenge not read"];
+  // **払えない accept を「署名するもの」として映さない。** 402 が読めたかどうかと、
+  // 払える形が提示されたかどうかは、別のこと。
+  if (!a) {
+    return view.acceptsOffered
+      ? [`—  no acceptable accept  (${view.acceptsOffered} offered)`]
+      : ["—  402 challenge not read"];
+  }
   const extra = a.extra ?? {};
   return [
     ...field("scheme", a.scheme, L_LABEL, LEFT_WIDTH),
@@ -268,7 +290,12 @@ export function renderPayDryRun(view: PayView, options?: RenderOptions): string[
   out.push(...head("target    ", `${view.target.method} ${view.target.url}`));
   out.push(...head("expect    ", `payTo ${view.expectedPayTo}   ceiling $${view.amountUsd.toFixed(2)}`));
   out.push(rule());
-  out.push(...twoColumns(["what would be signed (402 accepts[0])"], ["what the two sources say"]));
+  out.push(
+    ...twoColumns(
+      [`what would be signed (chosen from ${view.acceptsOffered ?? 1} accept${(view.acceptsOffered ?? 1) === 1 ? "" : "s"})`],
+      ["what the two sources say"],
+    ),
+  );
   out.push(...twoColumns(["-".repeat(LEFT_WIDTH)], ["-".repeat(RIGHT_WIDTH)]));
   out.push(...twoColumns(acceptColumn(view), evidenceColumn(view)));
   out.push(rule("-"));
@@ -281,7 +308,11 @@ export function renderPayDryRun(view: PayView, options?: RenderOptions): string[
   out.push(full(`transport         x402 v${view.x402Version} — header PAYMENT-SIGNATURE, resent to the seller`));
   out.push(rule("-"));
   for (const gate of view.gates) {
-    const mark = gate.verdict === "pass" ? "[ok  ]" : gate.verdict === "fail" ? "[FAIL]" : "[  ? ]";
+    const mark =
+      gate.verdict === "pass" ? "[ok  ]"
+      : gate.verdict === "fail" ? "[FAIL]"
+      : gate.verdict === "waived" ? "[waiv]"
+      : "[  ? ]";
     out.push(...head(`${mark} ${gate.name.padEnd(32)} `, gate.detail));
   }
   const env = Object.entries(view.envReady)
@@ -291,15 +322,24 @@ export function renderPayDryRun(view: PayView, options?: RenderOptions): string[
   out.push(rule("-"));
   // 予告。**拘束力を持つ関門は payOrRefuse の中**にあるが、読めた事実だけで
   // 「今日 `--live` を打つと何が起きるか」は言える。言わないと撮影当日に初めて分かる。
-  const failing = view.gates.filter((g) => g.verdict !== "pass");
+  // `waived` は落ちていない。**免除は、満たしたことでも失敗したことでもない**。
+  const failing = view.gates.filter((g) => g.verdict === "fail" || g.verdict === "unknown");
+  const ruleLine =
+    view.policy === undefined ? ""
+    : view.policy.requireVet402Allow
+      ? " Rule: vet402 must say ALLOW (requireVet402Allow=true)."
+      : ` Rule: requireVet402Allow=false — vet402's verdict is waived and recorded, not required;` +
+        ` what judges instead is ${view.policy.floors
+          .map((f) => `${f.floor} >= ${f.required} (${f.source})`)
+          .join(" and ")}.`;
   out.push(
     ...head(
       "predicted ",
       failing.length === 0
-        ? "--live would sign and send $0.01. Every gate readable from here is green."
+        ? `--live would sign and send $0.01. Every gate readable from here is green.${ruleLine}`
         : `--live would REFUSE before signing. Failing gate: ${failing
             .map((g) => `"${g.name}" → ${g.detail}`)
-            .join("; ")}`,
+            .join("; ")}.${ruleLine}`,
     ),
   );
   out.push(rule("-"));
