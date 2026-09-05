@@ -35,14 +35,14 @@
   `/api/v1/observatory/history?days=366`・state と差 0）: Base 3,203 attempts / 1,603 settled、
   **Solana 38 attempts / 26 settled**。Solana でも買っている。
   （朝に書いた 2,999/1,382・50/5 は再集計前の凍結値。同日中に置き換えた）
-- **チェーン別の L1 件数は、`/api/v1/observatory/history` を出典に明記するときだけ書いてよい**
-  （2026-09-05 09:22 に条件つきへ緩和・執行部）。**`/observatory/state` から chain 別の L1 を引かない**——
-  そこには `l1.byChain` がまだ無い（09:21 実測で `null`。実装 `89edeee` は未 push）。
-  history 側は再集計後に state と完全一致し、チェーン別も出る:
-  **Base 3,203 / 1,603・Solana 38 / 26**（2026-09-05 09:21 実測・`coverageFrom 2026-08-14`〜`rolledUpThrough 2026-09-04`）。
-  緩和の理由: この禁則は「読者が確かめられないから」置いたもので、**確かめられる面ができた**。
-  当初の解除条件（`l1.byChain` が state に出ること）は満たしていないが、**守ろうとしていた中身は満たされた**。
-  `l1.byChain` が本番に出たら、この但し書きごと外す
+- ~~チェーン別の L1 件数を数字で書かない~~ → **2026-09-05 09:27 全面解除（執行部が本番で実測・2回）**。
+  `/api/v1/observatory/state` の `l1.byChain` が出た。**state からも history からも書いてよい**（出典と取得日は明記する）。
+  実測値: **Base attempts 3,203 / settled 1,603（うち nonce-bound 71）・Solana 38 / 26（nonce-bound 0）**。
+  byChain の合計が全体（3,241 / 1,629 / 71）と一致することを確認済み。
+- **`settled` を1つの数で書かない**（2026-09-05 追加・監査 S-4）。1,629 の内訳は
+  **nonce-bound 71 ／ amount+payee のみ 1,558**（和が settled と一致）。強さの違う証拠を1つに混ぜて出すのは、
+  「第三者が検算できる測定」という商品の定義に反する。**必ず2層で書く。**
+  週次 facts（`scripts/vet402_weekly_facts.py`）は 2 層を必須行にし、フィールドが消えたら中止する
 - ~~**`/observatory/state` の L1 合計と `history` の合計が一致しない**~~ → **2026-09-05 09:22 解除（執行部が実測）**。
   再集計が本番へ入り（main `743abac`＋全期間の再集計）、`history?days=366` の 98 日合計 **3,241 / 1,629** が
   `state.l1` の **3,241 / 1,629** と **差 0** で一致することを確認した。応答に `coverageFrom: 2026-08-14` /
