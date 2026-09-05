@@ -32,6 +32,50 @@
 - Arc $1,666 は Arc チェーン上の DeFi 要件のため対象外（既決）
 - **AgentBook の live 解決だけ**（Orb 不要・鍵不要）は 09-11 午前の任意アダプタ枠に置く。本体が全部緑のときだけ
 
+## 1.4 運営 Discord から取った一次情報（2026-09-06 08:10・#information / #announcements 実読）
+
+**Discord は `Sen_web3` でログイン済み**（ETHGlobal サーバー `554623348622098432`・Discordパートナー）。
+読めるチャンネル: `#👂information`（`906117584838070293`）/ `#📣announcements`（`676529880292261888`）/
+`#🌐ethonline2026-chat`（`1490278514057023589`）/ `#⏰event-schedule`（`951835994074783814`）/
+`#🚨click-for-info🚨`（Tokyo・`956188917961478184`）。**書き込み権限は無い**（読み取り専用）。
+
+### 【新事実・戦略に効く】Continuity のファイナリスト枠は **3つだけ**
+
+> Continuity Projects are also eligible to become ETHGlobal Finalists.
+> **We will have a maximum of 7 Projects from the traditional (Start From Scratch Track) and
+> a maximum of 3 Projects from the Continuity Track**
+> —— Pascal | ETHGlobal, #information, 2026-08-17
+
+**我々の計画はパートナー賞（The Graph $5,000 / Bazantic $1,000）だけを見ていたが、
+ファイナリストは別枠で、Continuity から3つ選ばれる。** 2025 は 634 プロジェクトで
+ファイナリスト10だったので、**Continuity 枠は母数が小さいぶん相対的に厚い**可能性がある。
+**提出時に「ファイナリストを狙わない」選択をしない。**
+
+### 審査の流れ（2025 の実績・#information の当時の投稿から）
+
+| | |
+|---|---|
+| 提出締切 | 締切後すぐ受付終了 |
+| **Round 1** | **非同期**のファイナリスト審査。通過者に**メール**で連絡 |
+| **Round 2** | **ライブ**のファイナリスト審査。**2025 は締切の約1日後**（10/26 締切 → 10/28 12:00 ET） |
+| パートナー賞 | **非同期。ライブ審査に出る必要は無い**。ただし**提出フォームで該当パートナーに応募しておくこと**が条件 |
+| ステーク返却 | **提出を成功させた者のみ**。返却はバッチで約1ヶ月後 |
+
+**→ 我々への含意**: 提出は 09-13 だが、**ショートリストに入ればその翌日前後にライブ審査がある**。
+Takeshi の手番になる可能性があるので、**09-14〜09-16 を空けておく必要がある**（TAKESHI_TODO に記載）。
+**メールを見る**のも手番（Round 1 の通過連絡はメール）。
+
+### ETHGlobal Tokyo 2026（#announcements 2026-08-18）
+
+- **2026-09-25〜27・Toranomon Hills Forum（東京）**。Hacker / Mentor / Volunteer の募集が開いている
+- 応募 URL: `https://ethglobal.com/events/tokyo2026/apply?role=hacker`
+- **ETHGlobal Spotlight は締切済み**（08-18 の投稿時点で「あと2日」＝約 08-20 に終了）。**今回は取れない**
+
+### 直近の投稿（2026-09-06 08:10 時点で最新）
+
+`#announcements` の最新は **2026-09-05 の ETHOnline 2026 キックオフ**告知のみ。
+**規約・締切の変更は出ていない。**
+
 ## 1.5 The Graph との過去の関係について（2026-09-04 Takeshi 指示・行動の縛り）
 
 Takeshi は 2020-06〜2025-04 の約5年間、The Graph の日本コミュニティマネージャー（契約）だった。
