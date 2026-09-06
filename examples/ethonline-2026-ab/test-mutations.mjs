@@ -188,6 +188,31 @@ const MUTATIONS = [
     find: '    for (const key of ["publicUrl", "publishedAt"]) {',
     replace: '    for (const key of ["publicUrl"]) {',
   },
+  // ---- 2026-09-07 追加。提出物の数字を印字する計器（metrics.mjs）が手数えに退化しないように ----
+  {
+    id: "M22",
+    why: "語彙集合をハードコードに置き換える — リポの vocabulary.ts / pay-or-refuse.ts が変わっても語彙率が追随しない（09-07 の 6%/31% と同じ手数えの穴）",
+    file: "src/metrics.mjs",
+    find: "  const terms = new Set([...fromVocabulary, ...fromSdk].map(norm));",
+    replace:
+      "  void fromVocabulary; void fromSdk;\n" +
+      "  const terms = new Set([\n" +
+      '    "l0", "l1", "l2", "l3", "pass", "fail", "unverified", "settled", "delivered", "inconclusive", "l1_not_attempted",\n' +
+      '    "price_above_ceiling", "evidence_unavailable", "payee_recommendation_not_allow", "resource_uncatalogued",\n' +
+      '    "insufficient_delivery_evidence", "payee_recommendation_block", "settle_drop", "delisted", "relisted",\n' +
+      "  ]);",
+  },
+  {
+    id: "M23",
+    why: "採点値を summary.json から読む — 生ログを数え直さず、保存済みの集計をそのまま印字する",
+    file: "src/metrics.mjs",
+    find: "    scoring: scoring(meta, trials),",
+    replace:
+      "    scoring: (() => {\n" +
+      '      const s = JSON.parse(process.getBuiltinModule("node:fs").readFileSync(join(run.dir, "summary.json"), "utf8"));\n' +
+      '      return { rule: "summary.json", storedGradeDrift: 0, overall: s.overall, perCondition: s.perCondition, perConditionFixture: s.perConditionFixture, delta: s.delta };\n' +
+      "    })(),",
+  },
 ];
 
 const TEST_FILES = (await readdir("test")).filter((f) => f.endsWith(".test.mjs")).map((f) => `test/${f}`);

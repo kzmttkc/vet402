@@ -175,3 +175,22 @@ MCP の `tools/call` では払えない（PAYMENT-SIGNATURE を載せても無�
 `meta.mcpUrl`（モックは `null`＝MCP を呼んでいない）。`summary.md` の先頭行にも同じ断り書きが出る。
 実走は `meta.agentAdapter: "anthropic"`・`meta.model`・各試行の `raw.toolCalls`（橋が打った tx は `x402Bridge.txHash`）で確かめる。
 どちらも集計は毎回 `trials.jsonl` から数え直す（`verifyRunDir`）。
+
+## 提出物の数字はこの 1 本が印字する（2026-09-07）
+
+```bash
+npm run metrics -- ../../docs/ethonline-2026/ab/2026-09-06T213134Z          # Markdown の表
+npm run metrics -- ../../docs/ethonline-2026/ab/2026-09-06T213134Z --json   # 同じ数字を JSON で
+```
+
+`WINDOW_PLAN.md §16.3` と `BAZANTIC_FEEDBACK.md` に載る数字は**すべてこの出力の引用**で、手で数えない
+（09-07 に語彙率を手で数えて 6%/31% と過小評価した。oracle が返す階層コードを集合から落としていた）。
+
+出すもの: 採点値（条件ごと・フィクスチャごと。`summary.json` は読まず、`trials.jsonl` の答えと正解を
+事前登録の規則 `src/grade.mjs` で **grade し直して**数える。保存済み `grade.*` と食い違えば件数を出す）／
+事後の探索指標（語彙率 2 種。集合 (i) は `src/lib/observatory/vocabulary.ts`＋`packages/sdk/src/pay-or-refuse.ts` を
+実行時に読む。(ii) はそれに oracle が返した語を足す。集合の大きさも印字。採点には使わない）／
+橋（ツール呼び出し総数・`x402Bridge.settled`・ユニーク tx・未決済の HTTP ステータス内訳）／
+メタ（model・effort・temperature の `null` は `not sent`・mcpUrl・isMock。mock の run は 1 行目に MOCK と出る）。
+存在しない dir は 1 行で exit 1。`test/metrics.test.mjs` が固定し、`test-mutations.mjs` の M22（語彙のハードコード）・
+M23（summary.json を読む）で退化を検出する。
