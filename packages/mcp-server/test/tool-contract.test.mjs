@@ -31,6 +31,14 @@ const PKG = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // ---------------- sanitizeToolError ----------------
 
+// 2026-09-07: the key-less per-IP window on /decision answers 429 `rate_limited`
+// (src/lib/api/public-route.ts). It must reach the model as that word, not as
+// `request_failed` — the two call for different next moves (wait vs. stop).
+test("rate_limited (the server's key-less window word) passes the allow-list", () => {
+  assert.ok(KNOWN_ERROR_CODES.has("rate_limited"));
+  assert.equal(sanitizeToolError(new VouchApiError("rate_limited")), "rate_limited");
+});
+
 test("a known API code passes through unchanged", () => {
   for (const code of KNOWN_ERROR_CODES) {
     assert.equal(sanitizeToolError(new Error(code)), code);

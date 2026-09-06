@@ -91,7 +91,7 @@ A `serverInfo` line comes back on stdout. The package also installs a
 
 | Variable | Default | Description |
 |---|---|---|
-| `VOUCH_API_KEY` | — | Required. [Create one here](https://vet402.com/dashboard/keys). |
+| `VOUCH_API_KEY` | — | Optional since 2026-09-07: `check_resource_decision` and `pay_if_trusted` read `/decision` key-less (10/min per IP, then 429 `rate_limited`). The score and attest tools still need one (the API answers `missing_api_key`). [Create one here](https://vet402.com/dashboard/keys). |
 | `VOUCH_API_URL` | `https://vet402.com/api/v1` | API base URL. Override only to point at another deployment. |
 | `GRAPH_API_KEY` | — | Graph Gateway key for `pay_if_trusted` when `policy.evidence.source` is `"subgraph"` or `"both"`. Read from env only — never from tool input, so it never enters the model's context. Without it such a call refuses with `graph_key_not_configured` before reading anything (2026-09-06). |
 | `VOUCH_TIMEOUT_MS` | `10000` | Per-request timeout. Cannot be disabled — a lookup that never returns cannot be failed closed on. A malformed value falls back to the default rather than breaking every tool call. |

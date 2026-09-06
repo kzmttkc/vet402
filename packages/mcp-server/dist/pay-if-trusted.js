@@ -80,7 +80,12 @@ export async function payIfTrusted(input) {
             uncatalogued = true;
         }
         else if (!response.ok) {
-            return refuse(measure(body), ["evidence_unavailable"], "The decision could not be read — no answer is not an ALLOW.");
+            // Carry the server's own error word (e.g. `rate_limited` for the key-less
+            // per-IP window, `missing_api_key` / `invalid_api_key`) as a reason: same
+            // failure shape, and the model can tell "wait" from "fix the key".
+            const serverError = body?.error;
+            const serverWord = typeof serverError === "string" && /^[a-z0-9_]+$/.test(serverError) ? [serverError] : [];
+            return refuse(measure(body), ["evidence_unavailable", ...serverWord], `The decision could not be read (HTTP ${response.status}${serverWord.length ? ` ${serverWord[0]}` : ""}) — no answer is not an ALLOW.`);
         }
     }
     catch {

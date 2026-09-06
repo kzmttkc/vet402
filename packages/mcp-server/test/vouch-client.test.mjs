@@ -11,6 +11,7 @@ import { test } from "node:test";
 import {
   attestX402Payment,
   fetchAgentScore,
+  fetchDecision,
   fetchPayeeScore,
   fetchWalletScore,
   VouchApiError,
@@ -95,12 +96,42 @@ test("an invalid tx hash is rejected before any attestation is sent", async () =
 
 // ---------------- configuration ----------------
 
-test("a missing VOUCH_API_KEY fails with a message that names the env var", async () => {
-  const { fetchFn } = jsonFetch({});
-  await withFetch(fetchFn, { VOUCH_API_KEY: undefined }, async () => {
+// 2026-09-07 (ETHOnline): the API answers `/decision` key-less (10/min per IP,
+// commit 3738890), so a judge with only a Graph key must be able to walk
+// SKILL.md. VOUCH_API_KEY is optional. Both directions are pinned here:
+// unset → no Authorization header at all (not `Bearer undefined`);
+// set   → the bearer token, unchanged (the next test).
+test("no VOUCH_API_KEY: the request goes out with no Authorization header at all", async () => {
+  const { calls, fetchFn } = jsonFetch({ recommendation: "ALLOW", reason_codes: [], facts: {}, evidence: [], rules_version: "t", degraded: false });
+  await withFetch(fetchFn, { VOUCH_API_URL: KEY.VOUCH_API_URL }, async () => {
+    delete process.env.VOUCH_API_KEY;
+    const r = await fetchDecision("a".repeat(64));
+    assert.equal(r.recommendation, "ALLOW");
+  });
+  const headers = calls[0].init.headers;
+  assert.equal("Authorization" in headers, false, `Authorization leaked: ${JSON.stringify(headers)}`);
+  assert.equal(JSON.stringify(headers).includes("undefined"), false, JSON.stringify(headers));
+});
+
+test("no VOUCH_API_KEY on a key-requiring route: the server's own 401 word comes back, nothing invented", async () => {
+  const { fetchFn } = jsonFetch({ error: "missing_api_key" }, 401);
+  await withFetch(fetchFn, { VOUCH_API_URL: KEY.VOUCH_API_URL }, async () => {
     delete process.env.VOUCH_API_KEY;
     await assert.rejects(() => fetchPayeeScore(WALLET), (err) => {
-      assert.match(err.message, /VOUCH_API_KEY/);
+      assert.ok(err instanceof VouchApiError);
+      assert.equal(err.message, "missing_api_key");
+      return true;
+    });
+  });
+});
+
+test("a key-less /decision over the per-IP window throws the server's `rate_limited`", async () => {
+  const { fetchFn } = jsonFetch({ error: "rate_limited" }, 429);
+  await withFetch(fetchFn, { VOUCH_API_URL: KEY.VOUCH_API_URL }, async () => {
+    delete process.env.VOUCH_API_KEY;
+    await assert.rejects(() => fetchDecision("a".repeat(64)), (err) => {
+      assert.ok(err instanceof VouchApiError);
+      assert.equal(err.message, "rate_limited");
       return true;
     });
   });

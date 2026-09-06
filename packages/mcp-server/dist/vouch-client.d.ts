@@ -205,7 +205,8 @@ export type DecisionResult = {
 };
 export type VouchClientConfig = {
     apiUrl: string;
-    apiKey: string;
+    /** Unset → no Authorization header (key-less /decision, 2026-09-07). See getConfig. */
+    apiKey: string | undefined;
     /** Per-request timeout in ms. See DEFAULT_TIMEOUT_MS / VOUCH_TIMEOUT_MS. */
     timeoutMs: number;
 };

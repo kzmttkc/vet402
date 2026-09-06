@@ -348,8 +348,11 @@ server.tool(
   },
   async ({ resourceId, resource, payee, amountUsd, method, maxPerTxUsd, policy }) => {
     try {
-      const apiKey = process.env.VOUCH_API_KEY;
-      if (!apiKey) throw new Error("missing_api_key");
+      // 2026-09-07: VOUCH_API_KEY is optional — /decision answers key-less
+      // (10/min per IP). Unset or blank → no Authorization header; the server's
+      // own 401/429 words come back through the usual failure shape.
+      const rawKey = process.env.VOUCH_API_KEY;
+      const apiKey = typeof rawKey === "string" && rawKey.trim() !== "" ? rawKey : undefined;
       const rawTimeout = Number(process.env.VOUCH_TIMEOUT_MS);
       const timeoutMs = Number.isFinite(rawTimeout) && rawTimeout > 0 ? rawTimeout : 10_000;
       // 注入する fetch は必ず期限付き。ハングした上流はツール呼び出しを永久に返さず、

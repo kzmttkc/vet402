@@ -437,3 +437,123 @@ test("H12 /decision 404 ＋ 402 の payTo が payee と不一致 → 拒否（A4
   assert.equal(h.s.paid.length, 0);
   assert.equal(r.nonce, null);
 });
+
+// ---- K1–K4. 鍵なしで /decision を読む（2026-09-07・commit 3738890 の鍵なし枠に追随）----
+//
+// 本番 `/decision` は Authorization 無しでも答える（IP ごと 10/分・超過は 429 `rate_limited`）。
+// 審査員が `GRAPH_API_KEY` 1 本で SKILL.md を歩けるように、`check_resource_decision` と
+// `pay_if_trusted` は `VOUCH_API_KEY` 未設定でも `missing_api_key` で止まらず、鍵なしで読む。
+// 429 は既存の失敗形式（REFUSE・safe_to_pay false）のまま、理由コードにサーバの語 `rate_limited`。
+import { createServer } from "node:http";
+import { readFileSync } from "node:fs";
+
+test("K1 pay_if_trusted: apiKey 無しでも /decision を読み、Authorization ヘッダを付けない（`Bearer undefined` にしない）", async () => {
+  const w = watched();
+  const calls = [];
+  const r = await payIfTrusted({
+    resourceId: "a".repeat(64),
+    signer: w.signer,
+    fetch: async (url, init) => {
+      calls.push({ url: String(url), headers: init?.headers ?? {} });
+      return { ok: true, status: 200, json: async () => ({ recommendation: "WARN", reason_codes: ["l1_not_attempted"], facts: {}, evidence: [], rules_version: "t", degraded: false }), headers: new Map() };
+    },
+  });
+  assert.equal(calls.length, 1, "鍵なしでも /decision は 1 回読まれる");
+  assert.equal("Authorization" in calls[0].headers, false, JSON.stringify(calls[0].headers));
+  assert.equal(JSON.stringify(calls[0].headers).includes("undefined"), false);
+  assert.equal(r.decision, "REFUSE");
+  assert.equal(r.refuse_reasons.includes("payee_recommendation_not_allow"), true, r.refuse_reasons.join(","));
+  assert.deepEqual(w.signAccesses(), []);
+});
+
+test("K2 pay_if_trusted: 429 rate_limited は REFUSE のまま、理由にサーバの語 `rate_limited` を含む", async () => {
+  const w = watched();
+  const r = await payIfTrusted({
+    resourceId: "a".repeat(64),
+    signer: w.signer,
+    fetch: async () => ({ ok: false, status: 429, json: async () => ({ error: "rate_limited" }), headers: new Map() }),
+  });
+  assert.equal(r.decision, "REFUSE");
+  assert.equal(r.safe_to_pay, false);
+  assert.equal(r.refuse_reasons.includes("evidence_unavailable"), true, r.refuse_reasons.join(","));
+  assert.equal(r.refuse_reasons.includes("rate_limited"), true, r.refuse_reasons.join(","));
+  assert.match(r.summary, /rate_limited|rate limit/i);
+  assert.equal(r.nonce, null);
+  assert.deepEqual(w.signAccesses(), []);
+});
+
+test("K3 index.ts は VOUCH_API_KEY 未設定を missing_api_key で先回りして止めない", () => {
+  const src = readFileSync(join(PKG, "src/index.ts"), "utf8");
+  assert.equal(src.includes('throw new Error("missing_api_key")'), false, "鍵なしを MCP 側で先回りして止めている");
+});
+
+/** MCP サーバを子プロセスで起動し、ローカル HTTP を本番 API の代わりに向けて 1 ツールを呼ぶ。 */
+async function callToolKeyless(handler, toolName, args) {
+  const seen = [];
+  const server = createServer((req, res) => {
+    seen.push({ url: req.url, authorization: req.headers.authorization ?? null });
+    const { status, body } = handler(req);
+    res.writeHead(status, { "content-type": "application/json" });
+    res.end(JSON.stringify(body));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+  const env = { ...process.env, VOUCH_API_URL: `http://127.0.0.1:${port}/api/v1` };
+  delete env.VOUCH_API_KEY;
+  const lines = [
+    { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "t", version: "0" } } },
+    { jsonrpc: "2.0", method: "notifications/initialized" },
+    { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: toolName, arguments: args } },
+  ];
+  const child = spawn(process.execPath, [join(PKG, "dist/index.js")], { env, stdio: ["pipe", "pipe", "pipe"] });
+  let out = "";
+  let err = "";
+  child.stdout.on("data", (d) => { out += d; });
+  child.stderr.on("data", (d) => { err += d; });
+  child.stdin.write(lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+  try {
+    const result = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`tools/call timed out\n${err}`)), 15_000);
+      child.stdout.on("data", () => {
+        for (const line of out.split("\n")) {
+          try {
+            const msg = JSON.parse(line);
+            if (msg.id === 2) { clearTimeout(timer); resolve(msg.result); }
+          } catch { /* partial line */ }
+        }
+      });
+    });
+    return { result, seen, text: JSON.parse(result.content[0].text) };
+  } finally {
+    child.kill();
+    server.close();
+  }
+}
+
+test("K4 実プロセス: VOUCH_API_KEY 無しの check_resource_decision が /decision 200 を読み、ヘッダ無しで届く", async () => {
+  const body = { recommendation: "ALLOW", reason_codes: [], facts: {}, evidence: [], rules_version: "t", degraded: false };
+  const { result, seen, text } = await callToolKeyless(() => ({ status: 200, body }), "check_resource_decision", { resourceId: "a".repeat(64) });
+  assert.equal(result.isError, undefined, JSON.stringify(result));
+  assert.equal(text.decision, "ALLOW_PAY");
+  assert.equal(seen.length, 1);
+  assert.match(seen[0].url, /\/resources\/a{64}\/decision\?role=payer/);
+  assert.equal(seen[0].authorization, null, "鍵なしなのに Authorization が付いた");
+});
+
+test("K5 実プロセス: 鍵なし枠の 429 は REFUSE・isError・理由コード rate_limited", async () => {
+  const { result, text } = await callToolKeyless(() => ({ status: 429, body: { error: "rate_limited" } }), "check_resource_decision", { resourceId: "a".repeat(64) });
+  assert.equal(result.isError, true);
+  assert.equal(text.decision, "REFUSE");
+  assert.equal(text.safe_to_pay, false);
+  assert.equal(text.refuse_reasons.includes("rate_limited"), true, text.refuse_reasons.join(","));
+});
+
+test("K6 実プロセス: 鍵なしの pay_if_trusted も missing_api_key で止まらず /decision を読む", async () => {
+  const body = { recommendation: "WARN", reason_codes: ["l1_not_attempted"], facts: {}, evidence: [], rules_version: "t", degraded: false };
+  const { result, seen, text } = await callToolKeyless(() => ({ status: 200, body }), "pay_if_trusted", { resourceId: "a".repeat(64) });
+  assert.equal(result.isError, undefined, JSON.stringify(result));
+  assert.equal(text.decision, "REFUSE");
+  assert.equal(text.refuse_reasons.includes("payee_recommendation_not_allow"), true, text.refuse_reasons.join(","));
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].authorization, null);
+});

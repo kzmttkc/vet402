@@ -57,7 +57,12 @@ export function decideFromScore(score, now = Date.now()) {
 }
 /** 答えが返らなかったとき。**沈黙は ALLOW ではない。** */
 export function decideFromFailure(detail) {
-    return refuse(["lookup_failed"], `The trust check did not return an answer (${detail}). No answer is not an ALLOW — re-check before paying.`);
+    const reasons = ["lookup_failed"];
+    // The sanitizer passes the server's `rate_limited` through verbatim; keep it
+    // as a reason too. Everything else stays lookup_failed alone.
+    if (detail === "rate_limited")
+        reasons.push("rate_limited");
+    return refuse(reasons, `The trust check did not return an answer (${detail}). No answer is not an ALLOW — re-check before paying.`);
 }
 function refuse(reasons, summary) {
     return { decision: "REFUSE", safe_to_pay: false, refuse_reasons: reasons, summary };

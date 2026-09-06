@@ -34,11 +34,16 @@ export const DEFAULT_API_URL = "https://vet402.com/api/v1";
 const DEFAULT_TIMEOUT_MS = 10_000;
 function getConfig() {
     const apiUrl = process.env.VOUCH_API_URL ?? DEFAULT_API_URL;
-    const apiKey = process.env.VOUCH_API_KEY;
-    if (!apiKey) {
-        throw new Error("VOUCH_API_KEY is required — create one at https://vet402.com/dashboard/keys " +
-            "and set it in your MCP client's env block");
-    }
+    // 2026-09-07 (ETHOnline): VOUCH_API_KEY is optional. The API answers
+    // `GET /resources/{id}/decision` without a key (10/min per IP, 429
+    // `rate_limited` beyond), so `check_resource_decision` and `pay_if_trusted`
+    // work for a judge holding only a Graph key. The score / attest tools still
+    // need a key — the SERVER says so (401 `missing_api_key`, on the allow-list
+    // in tool-errors.ts), this client does not pre-empt it. Blank counts as
+    // unset: `Bearer ` is not a credential and `Bearer undefined` would be
+    // rejected as invalid_api_key, which would look like a fault in the key.
+    const rawKey = process.env.VOUCH_API_KEY;
+    const apiKey = typeof rawKey === "string" && rawKey.trim() !== "" ? rawKey : undefined;
     // A malformed VOUCH_TIMEOUT_MS falls back to the default rather than
     // throwing: a typo in an MCP client's env block must not take the whole
     // server down at first tool call. Zero/negative/NaN/Infinity are all
@@ -75,7 +80,7 @@ async function vouchFetch(path, init) {
         // cannot be failed closed by the model.
         signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
         headers: {
-            Authorization: `Bearer ${apiKey}`,
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
             ...(init?.body ? { "Content-Type": "application/json" } : {}),
             ...init?.headers,
         },

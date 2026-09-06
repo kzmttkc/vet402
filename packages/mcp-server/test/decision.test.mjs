@@ -106,3 +106,19 @@ test("複数の理由は全部列挙する（1つに丸めない）", () => {
     "score_stale",
   ]);
 });
+
+// 2026-09-07: key-less /decision reads are limited per IP (10/min, server word
+// `rate_limited`, src/lib/api/public-route.ts). The failure shape is unchanged
+// (REFUSE, lookup_failed, isError at the tool boundary); the server's word is
+// carried as a reason so the model can tell "wait and retry" from "bad request".
+test("rate_limited: still lookup_failed / REFUSE, and the server's word is a reason too", () => {
+  const d = decideFromFailure("rate_limited");
+  assert.equal(d.decision, "REFUSE");
+  assert.equal(d.safe_to_pay, false);
+  assert.deepEqual(d.refuse_reasons, ["lookup_failed", "rate_limited"]);
+  assert.match(d.summary, /rate_limited/);
+});
+
+test("other failures do not grow a rate_limited reason (the word is the server's, not ours)", () => {
+  assert.deepEqual(decideFromFailure("request_failed").refuse_reasons, ["lookup_failed"]);
+});

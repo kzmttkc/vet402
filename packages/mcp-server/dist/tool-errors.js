@@ -18,6 +18,9 @@ export const KNOWN_ERROR_CODES = new Set([
     "invalid_api_key",
     "auth_unavailable",
     "rate_limit_exceeded",
+    // Key-less per-IP window on /decision (src/lib/api/public-route.ts, 2026-09-07).
+    // The model's right move differs from request_failed: wait, then retry.
+    "rate_limited",
     "scoring_unavailable",
     "payment_ingest_unavailable",
 ]);

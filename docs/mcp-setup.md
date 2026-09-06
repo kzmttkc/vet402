@@ -70,7 +70,7 @@ A `serverInfo` line on stdout means the server starts and speaks MCP.
 
 | Variable | Required | Default |
 |---|---|---|
-| `VOUCH_API_KEY` | Yes | — |
+| `VOUCH_API_KEY` | No for `check_resource_decision` / `pay_if_trusted` (key-less `/decision`, 10/min per IP); yes for the score and attest tools | — |
 | `VOUCH_API_URL` | No | `https://vet402.com/api/v1` |
 | `GRAPH_API_KEY` | Only for `pay_if_trusted` with `policy.evidence.source` `"subgraph"` / `"both"` | — (such a call refuses with `graph_key_not_configured`; the key is never a tool input) |
 
@@ -106,7 +106,7 @@ cd packages/mcp-server && npm install && npm run build
 
 | Issue | Fix |
 |---|---|
-| `VOUCH_API_KEY is required` | The `env` block is missing the key, or the client did not pass it through |
+| `missing_api_key` | A score or attest tool was called without `VOUCH_API_KEY` — the `env` block is missing the key, or the client did not pass it through (`/decision` tools work key-less) |
 | `invalid_api_key` | Use a database-backed key, not `DEV_API_KEY` in production |
 | Connection refused | `VOUCH_API_URL` points at localhost — set it to `https://vet402.com/api/v1`, or start the local API |
 | MCP server not listed | Restart the client; verify the JSON parses and `npx -y @vet402/mcp-server` runs standalone |

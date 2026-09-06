@@ -28,7 +28,14 @@ export type RefuseReason =
   | "partial_measurement"
   | "recommendation_not_allow"
   | "score_stale"
-  | "malformed_response";
+  | "malformed_response"
+  /**
+   * The server's own word for the key-less per-IP window on /decision
+   * (429, src/lib/api/public-route.ts, 2026-09-07). Not a new vocabulary:
+   * it is carried through so the model can tell "wait and retry" from
+   * "bad request". Always accompanied by lookup_failed.
+   */
+  | "rate_limited";
 
 export type TrustDecision = {
   /** 固定語彙。これがツールの本体。 */
@@ -89,8 +96,12 @@ export function decideFromScore(score: unknown, now: number = Date.now()): Trust
 
 /** 答えが返らなかったとき。**沈黙は ALLOW ではない。** */
 export function decideFromFailure(detail: string): TrustDecision {
+  const reasons: RefuseReason[] = ["lookup_failed"];
+  // The sanitizer passes the server's `rate_limited` through verbatim; keep it
+  // as a reason too. Everything else stays lookup_failed alone.
+  if (detail === "rate_limited") reasons.push("rate_limited");
   return refuse(
-    ["lookup_failed"],
+    reasons,
     `The trust check did not return an answer (${detail}). No answer is not an ALLOW — re-check before paying.`,
   );
 }
