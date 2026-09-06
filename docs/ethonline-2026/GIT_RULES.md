@@ -22,3 +22,14 @@ Operating plan: [`ROADMAP.md`](./ROADMAP.md). Follow that file; these rules are 
 2. 提出直前（実装が固まった時点）で、完成した内容だけを過去形にして README.md へ移す。
 3. 「Existed before the window」と「Boundary definition」は 9/3 のタグ時点で確定しているので、
    移すときも書き換えない。
+
+## main へ入れる手順は `scripts/push-main.sh` だけ（2026-09-07 確定）
+
+main へは **`bash scripts/push-main.sh` だけ**で入れる。`git fetch && git rebase && bash scripts/judge-check.sh && git push ...`
+の手打ち連結は禁止（9/7 に 10 回以上打ち直し、1 回は綴り誤り、1 回は並行ブランチの衝突で main が赤になった）。
+
+- 中身: 前提検査（clean・main 以外・origin・gh）→ `git fetch` → `git rebase origin/main` → `judge-check.sh`
+  → `git push origin HEAD:main` → `~/vouch` を ff → `ci` ワークフローの結果待ち。各段の exit と秒を最後に表で出す。
+- `--full` で root の `npm test` も回し、4 スイートの `ℹ fail 0` を数える（`&&` で繋がない）。
+- `--dry-run` は `git push --dry-run`（何も出ない）。`--no-wait` は CI を待たない。
+- rebase が衝突したら止まる。`--abort` は自動でしない——人が解決して再実行。
