@@ -22,6 +22,7 @@ export {
   BASE_CHAIN_ID,
   BASE_USDC,
   DEFAULT_MAX_PER_TX_USD,
+  PAY_REFUSE_REASONS,
   type PayOrRefuseInput,
   type PayOrRefuseResult,
   type PayDecisionRecord,

@@ -65,18 +65,25 @@ export const DEFAULT_MAX_PER_TX_USD = 1;
  *    `policy.requireVet402Allow: false` で vet402 の非 ALLOW を免除して払ったときにだけ載る。
  *    黙って弱くならないことを、機械可読な形で示すためにある
  */
-export type PayRefuseReason =
-  | "price_above_ceiling"
-  | "payee_mismatch"
-  | "chain_or_asset_mismatch"
-  | "evidence_unavailable"
-  | "payee_recommendation_not_allow"
-  | "insufficient_delivery_evidence"
-  | "insufficient_subgraph_evidence"
-  | "resource_uncatalogued"
-  | "subgraph_evidence_unavailable"
-  | "no_eligible_accept"
-  | "allowed_by_caller_policy";
+export const PAY_REFUSE_REASONS = [
+  "price_above_ceiling",
+  "payee_mismatch",
+  "chain_or_asset_mismatch",
+  "evidence_unavailable",
+  // 2026-09-07: 実装は §3.2.1 以来この語を `refuse([...])` に渡していたが、型には無かった
+  // （`refuse` の引数が `string[]` なので型検査を素通りしていた）。サーバの CallerPolicyReason
+  // には載っており、tests/caller-policy-sdk-parity.test.ts の語彙突合で見つかった。
+  "payee_recommendation_block",
+  "payee_recommendation_not_allow",
+  "insufficient_delivery_evidence",
+  "insufficient_subgraph_evidence",
+  "resource_uncatalogued",
+  "subgraph_evidence_unavailable",
+  "no_eligible_accept",
+  "allowed_by_caller_policy",
+] as const;
+
+export type PayRefuseReason = (typeof PAY_REFUSE_REASONS)[number];
 
 /** 証拠源。`payOrRefuse` の判定が「誰の台帳を読んだか」を機械可読で残す。 */
 export type PayEvidenceSource = "vet402" | "subgraph";

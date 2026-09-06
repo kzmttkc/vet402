@@ -35,7 +35,8 @@ export declare const DEFAULT_MAX_PER_TX_USD = 1;
  *    `policy.requireVet402Allow: false` で vet402 の非 ALLOW を免除して払ったときにだけ載る。
  *    黙って弱くならないことを、機械可読な形で示すためにある
  */
-export type PayRefuseReason = "price_above_ceiling" | "payee_mismatch" | "chain_or_asset_mismatch" | "evidence_unavailable" | "payee_recommendation_not_allow" | "insufficient_delivery_evidence" | "insufficient_subgraph_evidence" | "resource_uncatalogued" | "subgraph_evidence_unavailable" | "no_eligible_accept" | "allowed_by_caller_policy";
+export declare const PAY_REFUSE_REASONS: readonly ["price_above_ceiling", "payee_mismatch", "chain_or_asset_mismatch", "evidence_unavailable", "payee_recommendation_block", "payee_recommendation_not_allow", "insufficient_delivery_evidence", "insufficient_subgraph_evidence", "resource_uncatalogued", "subgraph_evidence_unavailable", "no_eligible_accept", "allowed_by_caller_policy"];
+export type PayRefuseReason = (typeof PAY_REFUSE_REASONS)[number];
 /** 証拠源。`payOrRefuse` の判定が「誰の台帳を読んだか」を機械可読で残す。 */
 export type PayEvidenceSource = "vet402" | "subgraph";
 export type PayEvidenceRow = {

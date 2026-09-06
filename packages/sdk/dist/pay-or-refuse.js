@@ -34,6 +34,47 @@ export const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
  * 上限が存在する状態にしておく（DESIGN_payOrRefuse.md §2 の `maxAmountUnits` 既定と同値）。
  */
 export const DEFAULT_MAX_PER_TX_USD = 1;
+/**
+ * 拒否理由。**新しい語を増やさない**のが規律で、ここに並ぶ語は既に正典にある:
+ *  - `price_above_ceiling` / `payee_mismatch` / `chain_or_asset_mismatch` /
+ *    `evidence_unavailable` / `insufficient_delivery_evidence` /
+ *    `insufficient_subgraph_evidence` … DESIGN_payOrRefuse.md §2
+ *  - `payee_recommendation_not_allow` … `SpendDenyReason`（spend-guard.ts）
+ *
+ * `resource_uncatalogued` **だけが新語**（2026-09-04 の本番実測で必要になった）。
+ * 理由: カタログ外の売り手に対する判定は「証拠が足りない」のでも「読めなかった」のでもなく、
+ * **その資源を我々が一度も見たことがない**という別の状態で、既存のどの語もそれを言えない。
+ * これは拒否理由ではなく**経路の印**であり、ALLOW で払ったときの決定行にも載る
+ * （§3.1「一度も見たことのない売り手に向けて判定できる」が製品の核だから、
+ * 通ったのか拒んだのかと独立に、どちらの経路で出た判定かが機械可読で残る必要がある）。
+ *
+ * 2026-09-05 に2語だけ足した。どちらも既存の語では**言えないこと**を言うために足している。
+ *  - `no_eligible_accept` … 本番 `x402-payer.ts` の `AcceptSelection` にある語をそのまま借りる。
+ *    「掴んだ1件がチェーン違いだった」（`chain_or_asset_mismatch`）と
+ *    「提示された全部を見たが1件も払えなかった」は別のこと。前者だけを返すと、
+ *    **売り手が accepts の順序を変えるだけで拒否理由がすり替わる**。
+ *    具体の不一致は消さず、この語を**先頭に**置いて一次の所見にする
+ *  - `allowed_by_caller_policy` … 拒否理由ではなく**通した規則の印**（§3.2）。
+ *    `policy.requireVet402Allow: false` で vet402 の非 ALLOW を免除して払ったときにだけ載る。
+ *    黙って弱くならないことを、機械可読な形で示すためにある
+ */
+export const PAY_REFUSE_REASONS = [
+    "price_above_ceiling",
+    "payee_mismatch",
+    "chain_or_asset_mismatch",
+    "evidence_unavailable",
+    // 2026-09-07: 実装は §3.2.1 以来この語を `refuse([...])` に渡していたが、型には無かった
+    // （`refuse` の引数が `string[]` なので型検査を素通りしていた）。サーバの CallerPolicyReason
+    // には載っており、tests/caller-policy-sdk-parity.test.ts の語彙突合で見つかった。
+    "payee_recommendation_block",
+    "payee_recommendation_not_allow",
+    "insufficient_delivery_evidence",
+    "insufficient_subgraph_evidence",
+    "resource_uncatalogued",
+    "subgraph_evidence_unavailable",
+    "no_eligible_accept",
+    "allowed_by_caller_policy",
+];
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
 const USDC_DECIMALS = 6;
 function sameAddress(a, b) {

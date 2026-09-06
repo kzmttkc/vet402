@@ -33,13 +33,21 @@ import type { DecisionResult } from "./decide";
  */
 export const DEFAULT_MAX_PER_TX_USD = 1;
 
-/** SDK の PayRefuseReason の部分集合。ここに無い語をサーバは policy として出さない。 */
-export type CallerPolicyReason =
-  | "price_above_ceiling"
-  | "evidence_unavailable"
-  | "payee_recommendation_block"
-  | "payee_recommendation_not_allow"
-  | "insufficient_delivery_evidence";
+/**
+ * サーバが policy として出し得る語の**全部**。SDK の `PAY_REFUSE_REASONS` の部分集合で、
+ * 実行時に読める形で置く（型は実行時に無いので、tests/caller-policy-sdk-parity.test.ts が
+ * SDK の定数・openapi の enum・語彙表と突合するのに使う）。ここに無い語をサーバは出さない。
+ */
+export const CALLER_POLICY_REASONS = [
+  "price_above_ceiling",
+  "evidence_unavailable",
+  "payee_recommendation_block",
+  "payee_recommendation_not_allow",
+  "insufficient_delivery_evidence",
+] as const;
+
+/** SDK の PayRefuseReason の部分集合。{@link CALLER_POLICY_REASONS} から導く。 */
+export type CallerPolicyReason = (typeof CALLER_POLICY_REASONS)[number];
 
 export type CallerPolicy = {
   /** 何を当てたか。`amount_usd` は呼び手が名乗らなければ null（上限は当てられない）。 */
