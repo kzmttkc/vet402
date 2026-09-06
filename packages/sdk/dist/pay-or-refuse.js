@@ -75,6 +75,10 @@ export const PAY_REFUSE_REASONS = [
     "no_eligible_accept",
     "allowed_by_caller_policy",
 ];
+/** サーバの語に「透過してよい」印を付ける唯一の場所。語は 1 つも変えない・落とさない。 */
+function serverReasonCodes(words) {
+    return words;
+}
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
 const USDC_DECIMALS = 6;
 function sameAddress(a, b) {
@@ -352,7 +356,7 @@ async function decideAndPay(input) {
         return refuse(["evidence_unavailable"], "decision");
     }
     const pathReasons = uncatalogued ? ["resource_uncatalogued"] : [];
-    const serverReasons = decision && Array.isArray(decision.reason_codes) ? decision.reason_codes : [];
+    const serverReasons = serverReasonCodes(decision && Array.isArray(decision.reason_codes) ? decision.reason_codes : []);
     serverPolicyReasons = Array.isArray(decision?.caller_policy?.reason_codes)
         ? decision.caller_policy.reason_codes.filter((r) => typeof r === "string")
         : [];

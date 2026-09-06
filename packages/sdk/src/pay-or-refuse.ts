@@ -85,6 +85,21 @@ export const PAY_REFUSE_REASONS = [
 
 export type PayRefuseReason = (typeof PAY_REFUSE_REASONS)[number];
 
+/**
+ * サーバから**そのまま透過する**語（`/decision` の `reason_codes` 等）。サーバの語彙は
+ * {@link PAY_REFUSE_REASONS} とは別物なので `PayRefuseReason` に狭めない——狭めれば語が落ちて
+ * 決定行が変わる。`refuse([...])` が受けるのは `PayRefuseReason` かこの型だけで、裸の `string` は
+ * 受けない。だから型に無い語をリテラルで書けばコンパイルで止まる（2026-09-07 まで引数が
+ * `string[]` だったので `payee_recommendation_block` が型に無いまま実装だけが出していた）。
+ * この型の値を作れるのは {@link serverReasonCodes} だけ。
+ */
+type ServerReasonCode = string & { readonly __origin: "server" };
+
+/** サーバの語に「透過してよい」印を付ける唯一の場所。語は 1 つも変えない・落とさない。 */
+function serverReasonCodes(words: string[]): ServerReasonCode[] {
+  return words as ServerReasonCode[];
+}
+
 /** 証拠源。`payOrRefuse` の判定が「誰の台帳を読んだか」を機械可読で残す。 */
 export type PayEvidenceSource = "vet402" | "subgraph";
 
@@ -494,7 +509,7 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
   });
 
   const refuse = (
-    reason_codes: string[],
+    reason_codes: (PayRefuseReason | ServerReasonCode)[],
     verdict_source: PayDecisionRecord["verdict_source"],
     decision: DecisionResult | null = null,
     payeeScore: PayeeScoreResult | null = null,
@@ -562,10 +577,11 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
     return refuse(["evidence_unavailable"], "decision");
   }
 
-  const pathReasons: string[] = uncatalogued ? ["resource_uncatalogued"] : [];
+  const pathReasons: PayRefuseReason[] = uncatalogued ? ["resource_uncatalogued"] : [];
 
-  const serverReasons =
-    decision && Array.isArray(decision.reason_codes) ? decision.reason_codes : [];
+  const serverReasons = serverReasonCodes(
+    decision && Array.isArray(decision.reason_codes) ? decision.reason_codes : [],
+  );
   serverPolicyReasons = Array.isArray(decision?.caller_policy?.reason_codes)
     ? decision.caller_policy.reason_codes.filter((r): r is string => typeof r === "string")
     : [];
@@ -670,7 +686,7 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
   let x402Version: 1 | 2 = 2;
   // 「提示は読めたが、払える形が1件も無い」——**掴んだ1件が違った**とは別の所見なので、
   // 一次の所見としてこの語を先頭に置く（売り手が順序を変えても理由がすり替わらない）。
-  let selectionReasons: string[] = [];
+  let selectionReasons: PayRefuseReason[] = [];
   try {
     const response = await fetchFn(input.resource, { method });
     const raw = readHeader(response.headers, "payment-required");
@@ -843,7 +859,7 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
  * 金銭ゲート。**署名の前**にしか意味が無いので、呼ぶ位置を動かさないこと。
  * 本番には4チェーン提示の 402 が実在する（WINDOW_PLAN §4 B）。
  */
-function evaluateMoneyGate(accept: X402Accept, maxPerTxUsd: number): string[] | null {
+function evaluateMoneyGate(accept: X402Accept, maxPerTxUsd: number): PayRefuseReason[] | null {
   // scheme / network / asset / 転送方式。**選別と同じ述語**で見る——別の述語を書くと、
   // 選ばれたのに関門で落ちる（またはその逆の）食い違いが静かに入り込む。
   if (!isProtocolEligible(accept)) return ["chain_or_asset_mismatch"];
@@ -909,7 +925,7 @@ function evaluateEvidencePolicy(
   policy: PayEvidencePolicy | undefined,
   decision: DecisionResult | null,
   subgraph: SubgraphReceipts | null,
-): { shortfall: string[] | null; met: EvidenceFloorCheck[] } {
+): { shortfall: PayRefuseReason[] | null; met: EvidenceFloorCheck[] } {
   const met: EvidenceFloorCheck[] = [];
   if (!policy) return { shortfall: null, met };
   const wanted = policy.source ?? "vet402";
