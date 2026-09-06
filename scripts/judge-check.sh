@@ -9,8 +9,8 @@
 #   sdk:        npm ci -> npm run build -> npm test
 #   mcp-server: npm ci -> npm run build -> npm test   (depends on packages/sdk via file:../sdk)
 #   demo:       npm test                              (imports packages/sdk/dist, nothing to install)
-#   root:       npm ci                                (viem for the A/B harness's x402 bridge signer,
-#                                                      same step as .github/workflows/ci.yml "examples")
+#   root:       npm ci                                (kept for parity with CI's "examples" job; the A/B
+#                                                      harness has viem as a direct dependency since 2026-09-07)
 #   ab:         npm ci -> npm test -> node test-mutations.mjs
 #
 # Steps are NOT chained with &&: every step runs, its exit code is recorded on its own,
@@ -71,7 +71,7 @@ run "mcp-server: npm ci"          packages/mcp-server            npm ci
 run "mcp-server: npm run build"   packages/mcp-server            npm run build
 run "mcp-server: npm test"        packages/mcp-server            npm test
 run "demo: npm test"              examples/ethonline-2026-demo   npm test
-run "root: npm ci (viem for ab)"  .                              npm ci
+run "root: npm ci (parity with CI)"  .                              npm ci
 run "ab: npm ci"                  examples/ethonline-2026-ab     npm ci
 run "ab: npm test"                examples/ethonline-2026-ab     npm test
 run "ab: node test-mutations.mjs" examples/ethonline-2026-ab     node test-mutations.mjs

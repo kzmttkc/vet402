@@ -4,7 +4,7 @@
 
 **What it measures.** Can an agent use vet402 through the Bazantic Gateway without our explanation? Condition A gets the Gateway URL, the raw API list and the Gateway's MCP tools; condition B gets the same plus the Recipe (`recipe/x402-payee-verification.json`, a copy of the original on bazantic.com). The Recipe is the only difference — `stripRecipe()` turns B's prompt into A's byte for byte, and a test pins it.
 
-**How to run.** Mock (no keys, no network): `npm ci` at the repo root (the bridge's signer imports `viem` from there), then `cd examples/ethonline-2026-ab && npm ci && npm test && node src/cli.mjs --agent mock` (20 trials) and `node test-mutations.mjs` (breaks the harness on purpose; every mutant must turn a test red). Live: `export ANTHROPIC_API_KEY=…` and `node src/cli.mjs --agent anthropic --model <model>`; add `DEMO_PAYER_PRIVATE_KEY` for the bridge below. `run.json` records `meta.fixtureReadiness.blockers` — the unmeasured oracles that must be filled before a live run counts.
+**How to run.** Mock (no keys, no network): `npm ci` in this directory (`viem` is a direct dependency since 2026-09-07), then `cd examples/ethonline-2026-ab && npm ci && npm test && node src/cli.mjs --agent mock` (20 trials) and `node test-mutations.mjs` (breaks the harness on purpose; every mutant must turn a test red). Live: `export ANTHROPIC_API_KEY=…` and `node src/cli.mjs --agent anthropic --model <model>`; add `DEMO_PAYER_PRIVATE_KEY` for the bridge below. `run.json` records `meta.fixtureReadiness.blockers` — the unmeasured oracles that must be filled before a live run counts.
 
 **Where results go.** `results/<timestamp>/` — `trials.jsonl` (one raw trial per line), `run.json` (meta), `summary.json` and `summary.md` (recounted from the raw log every time). The committed run is the mock; it says so in its first line. Live runs are to be moved to `docs/ethonline-2026/ab/` as pre-registered in `docs/ethonline-2026/WINDOW_PLAN.md` §16.
 
@@ -126,7 +126,7 @@ node src/cli.mjs --agent anthropic --model claude-opus-5 --effort high
 モックで走らせた実行は `meta.mcpUrl: null` になり、`summary.md` の先頭に
 「no MCP server was called in this run」と出る——**呼んだふりをしない。**
 
-**リポ直下で `npm ci` を済ませておく**（署名者は `viem` を動的 import する。viem はリポ直下の依存で、この例には入れていない。無ければ鍵があっても `ERR_MODULE_NOT_FOUND` で止まる——2026-09-06 に CI で実際に起きた）。
+**この例の中で `npm ci` を済ませておく**（署名者は `viem` を動的 import する。2026-09-07 から viem はこの例の直接依存。以前はリポ直下の依存で、この例には入れていない。無ければ鍵があっても `ERR_MODULE_NOT_FOUND` で止まる——2026-09-06 に CI で実際に起きた）。
 
 **`DEMO_PAYER_PRIVATE_KEY` も要る**（`export DEMO_PAYER_PRIVATE_KEY=0x…`。値は出力に出ない——`src/secrets.mjs` が止める）。
 Bazantic Gateway は全ルート 0 mcents でも、未払いの呼び出しには 402 を返す（既定仕様・設定で外せない）。

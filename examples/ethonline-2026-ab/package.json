@@ -14,14 +14,7 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.124.0"
-  },
-  "peerDependencies": {
+    "@anthropic-ai/sdk": "^0.124.0",
     "viem": "^2.55.1"
-  },
-  "peerDependenciesMeta": {
-    "viem": {
-      "optional": true
-    }
   }
 }

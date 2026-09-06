@@ -43,7 +43,7 @@ a warm npm cache, **21 s** with an empty one (`npm_config_cache` pointed at an e
 | 1. `packages/sdk` — `npm ci && npm run build` | everything else imports its `dist/` |
 | 2. `packages/mcp-server` — `npm ci && npm run build` | depends on the SDK through `file:../sdk`; `npm ci` here creates the link, so the SDK's `dist/` must already exist |
 | 3. `examples/ethonline-2026-demo` — nothing to install | imports `packages/sdk/dist` by relative path; `npm test` and all three commands run without an install |
-| 4. `examples/ethonline-2026-ab` — root `npm ci`, then `npm ci` here | the harness's x402 bridge imports `viem` **from the repo root's `node_modules`** (an optional peer here, a dependency at the root). Without the root install two tests fail with `ERR_MODULE_NOT_FOUND` — the same step CI runs |
+| 4. `examples/ethonline-2026-ab` — `npm ci` here | the harness's x402 bridge signer imports `viem`, which is now a direct dependency of this example (it was a root-borrowed peer until 2026-09-07) |
 
 **Keys — which blocks need one, and where a free one comes from.**
 
@@ -118,9 +118,9 @@ cd packages/mcp-server && npm test 2>&1 | grep -E '^ℹ '
 ```
 
 ```
-ℹ tests 32
+ℹ tests 44
 ℹ suites 0
-ℹ pass 32
+ℹ pass 44
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
