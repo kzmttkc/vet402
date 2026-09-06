@@ -213,3 +213,27 @@ test("空撃ちは、取れなかった値を数字で埋めない", () => {
   assert.match(text, /not read/i, "取れなかったことを言っていない");
   assert.equal(/totalPayments\s+\d/.test(text), false, "取れていない件数を数字で出している");
 });
+
+// 2026-09-07: 鍵なしは「欠けている」ではなく「鍵なし枠で読んだ」。VOUCH_API_KEY だけは
+// MISSING と言わず、本番の枠（IP ごと 10/分）を名指しする。他の鍵の MISSING は従来どおり。
+test("env 行: VOUCH_API_KEY 未設定は `unset (keyless: 10/min per IP)`、他の鍵は MISSING のまま", () => {
+  const text = renderPayDryRun({ ...payView, envReady: { GRAPH_API_KEY: true, VOUCH_API_KEY: false, DEMO_PAYER_PRIVATE_KEY: false } }).join("\n");
+  assert.match(text, /GRAPH_API_KEY=set/);
+  assert.match(text, /VOUCH_API_KEY=unset \(keyless: 10\/min per IP\)/, text);
+  assert.match(text, /DEMO_PAYER_PRIVATE_KEY=MISSING/);
+  assert.doesNotMatch(text, /VOUCH_API_KEY=MISSING/);
+  const withKey = renderPayDryRun(payView).join("\n");
+  assert.match(withKey, /VOUCH_API_KEY=set/);
+  for (const line of renderPayDryRun({ ...payView, envReady: { GRAPH_API_KEY: true, VOUCH_API_KEY: false, DEMO_PAYER_PRIVATE_KEY: false } })) {
+    assert.ok(line.length <= MAX_WIDTH, `${line.length} 桁ある: ${line}`);
+  }
+});
+
+test("refuse の画にも env 行が出て、鍵なしは keyless と名乗る", () => {
+  const keyless = renderRefuse({ ...refuseView, envReady: { GRAPH_API_KEY: true, VOUCH_API_KEY: false } });
+  const text = keyless.join("\n");
+  assert.match(text, /env\s+GRAPH_API_KEY=set\s+VOUCH_API_KEY=unset \(keyless: 10\/min per IP\)/, text);
+  for (const line of keyless) assert.ok(line.length <= MAX_WIDTH, `${line.length} 桁ある: ${line}`);
+  const withKey = renderRefuse({ ...refuseView, envReady: { GRAPH_API_KEY: true, VOUCH_API_KEY: true } }).join("\n");
+  assert.match(withKey, /VOUCH_API_KEY=set/);
+});

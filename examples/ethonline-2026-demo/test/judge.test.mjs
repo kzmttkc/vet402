@@ -317,14 +317,26 @@ test("(e) v1 綴り（maxAmountRequired / network:\"base\"）の 402 を v2 の�
 
 // ---------- 環境変数 ----------
 
-test("VOUCH_API_KEY は常に必須。GRAPH_API_KEY は --policy subgraph|both のときだけ", async () => {
-  await assert.rejects(() => judge(["--policy", "vet402"], {}, { GRAPH_API_KEY: ENV.GRAPH_API_KEY }), /VOUCH_API_KEY/);
+test("VOUCH_API_KEY は任意（2026-09-07・鍵なし枠）。GRAPH_API_KEY は --policy subgraph|both のときだけ必須", async () => {
   await assert.rejects(() => judge(["--policy", "subgraph", "--min-subgraph-receipts", "1"], {}, { VOUCH_API_KEY: ENV.VOUCH_API_KEY }), /GRAPH_API_KEY/);
+  await assert.rejects(() => judge([], {}, {}), /GRAPH_API_KEY/);
   // vet402 だけなら GRAPH_API_KEY 無しで走る。
   const r = await judge(["--policy", "vet402"], {}, { VOUCH_API_KEY: ENV.VOUCH_API_KEY });
   assert.equal(r.verdict.verdict, "REFUSE");
   assert.equal(r.view.subgraph, null);
   assert.equal("DEMO_PAYER_PRIVATE_KEY" in r.view.envReady, false);
+  // 鍵なし: Graph の鍵 1 本で既定（both）が走る。/decision には Authorization を付けない。
+  const k = await judge([], {}, { GRAPH_API_KEY: ENV.GRAPH_API_KEY });
+  assert.equal(k.verdict.verdict, "REFUSE");
+  const decisionCall = k.f.calls.find((c) => c.url.includes("/decision"));
+  assert.ok(decisionCall, "/decision が読まれていない");
+  assert.equal("Authorization" in decisionCall.headers, false, JSON.stringify(decisionCall.headers));
+  assert.equal(JSON.stringify(decisionCall.headers).includes("undefined"), false);
+  assert.equal(k.view.envReady.VOUCH_API_KEY, false);
+  assert.match(k.text, /VOUCH_API_KEY=unset \(keyless: 10\/min per IP\)/, k.text);
+  // vet402 だけ・鍵なし: 何も要らない。
+  const none = await judge(["--policy", "vet402"], {}, {});
+  assert.equal(none.verdict.verdict, "REFUSE");
 });
 
 // ---------- 引数の解釈 ----------

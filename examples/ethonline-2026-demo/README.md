@@ -7,7 +7,7 @@ The two commands filmed in the demo video. Both read **live** production data �
 cd examples/ethonline-2026-demo
 
 export GRAPH_API_KEY=…        # https://thegraph.com/studio  (both commands)
-export VOUCH_API_KEY=…        # https://vet402.com/dashboard/keys  (both commands)
+export VOUCH_API_KEY=…        # optional: /decision answers key-less at 10/min per IP (2026-09-07); set it to send it as the bearer token
 
 node src/run.ts refuse        # refuse before a signature can exist
 node src/run.ts pay           # dry run: what would have been signed. Nothing is signed.

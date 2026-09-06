@@ -98,7 +98,7 @@ The MCP server takes no constructor arguments — **its env block is its options
       "command": "node",
       "args": ["/absolute/path/to/vet402/packages/mcp-server/dist/index.js"],
       "env": {
-        "VOUCH_API_KEY": "…",          // required. https://vet402.com/dashboard/keys
+        "VOUCH_API_KEY": "…",          // optional since 2026-09-07: check_resource_decision / pay_if_trusted read /decision key-less (10/min per IP); the score and attest tools still need one. https://vet402.com/dashboard/keys
         "VOUCH_TIMEOUT_MS": "10000"    // optional, default 10000
         // "VOUCH_PAYER_PRIVATE_KEY": "0x…"  // optional — see "Actually paying"
       }
@@ -344,7 +344,7 @@ Build order and runtime first:
 cd packages/sdk && npm install && npm run build      # 1. the SDK first — the demo imports its dist/
 cd ../../examples/ethonline-2026-demo                 # 2. then the demo (nothing to install without --live)
 export GRAPH_API_KEY=…    # free key from Subgraph Studio: https://thegraph.com/studio → API Keys
-export VOUCH_API_KEY=…    # https://vet402.com/dashboard/keys — the API itself answers `/decision` key-less at 10/min per IP (2026-09-07); the demo and SDK still read this variable
+export VOUCH_API_KEY=…    # optional (2026-09-07): `/decision` answers key-less at 10/min per IP, so `refuse` / `pay` / `judge` run with GRAPH_API_KEY alone; with it set the demo sends it as the bearer token
 node src/run.ts refuse    # two sources side by side; refuses before a signature can exist
 node src/run.ts pay       # dry run: fetches the real 402 challenge, signs nothing (no --live)
 ```

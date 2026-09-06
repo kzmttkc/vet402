@@ -7,7 +7,8 @@
  *   node src/run.ts pay --live      実際に署名して $0.01 を送る（**人間が明示したときだけ**）
  *   node src/run.ts judge <url>     審査員の 402 URL を同じ画で見て、**署名なし**の判定を出す
  *
- * 鍵は環境変数からしか読まない（`GRAPH_API_KEY` / `VOUCH_API_KEY` / `DEMO_PAYER_PRIVATE_KEY`）。
+ * 鍵は環境変数からしか読まない（`GRAPH_API_KEY` / `VOUCH_API_KEY`（任意）/ `DEMO_PAYER_PRIVATE_KEY`）。
+ * 2026-09-07: 本番 `/decision` は鍵なしでも答える（IP ごと 10/分）ので、`VOUCH_API_KEY` は無くても走る。
  * 出力は必ず `./emit.ts` を通り、そこで伏せられる——**この画面は撮影で映る**。
  */
 import { realpathSync } from "node:fs";
@@ -32,7 +33,8 @@ export const USAGE = [
   "",
   "   --color                        add ANSI emphasis (meaning never depends on it)",
   "",
-  " env  GRAPH_API_KEY, VOUCH_API_KEY   (refuse, pay; judge needs GRAPH_API_KEY only with --policy subgraph|both)",
+  " env  GRAPH_API_KEY                  (refuse, pay; judge only with --policy subgraph|both)",
+  "      VOUCH_API_KEY                  optional: without it /decision is read key-less (10/min per IP)",
   "      DEMO_PAYER_PRIVATE_KEY         (pay --live only)",
   " Values are never printed.",
   "",

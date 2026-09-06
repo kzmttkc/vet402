@@ -64,7 +64,8 @@ export type RunPayOptions = {
 const PAY_ENV_NAMES = ["GRAPH_API_KEY", "VOUCH_API_KEY", "DEMO_PAYER_PRIVATE_KEY"] as const;
 
 export async function runPay(options: RunPayOptions): Promise<{ view: PayView; result: unknown | null }> {
-  const needed = ["GRAPH_API_KEY", "VOUCH_API_KEY"];
+  // 2026-09-07: `VOUCH_API_KEY` は任意（本番 `/decision` は鍵なしで IP ごと 10/分）。画の env 行には出す。
+  const needed = ["GRAPH_API_KEY"];
   if (options.live && options.account === undefined) needed.push("DEMO_PAYER_PRIVATE_KEY");
   requireEnv(options.env, needed);
 

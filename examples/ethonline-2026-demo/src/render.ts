@@ -54,6 +54,8 @@ export type RefuseView = {
   resource: { method: string; url: string };
   payee: string;
   ranAt: string;
+  /** 画の env 行（鍵の有無。値は持たない）。`VOUCH_API_KEY` は任意——false は鍵なし枠で読んだ印。 */
+  envReady?: Record<string, boolean>;
   vet402: {
     endpoint: string;
     recommendation: string;
@@ -130,6 +132,20 @@ function subgraphColumn(view: RefuseView): string[] {
   ];
 }
 
+/**
+ * 画の `env` 行。**鍵なしは「欠けている」ではなく「鍵なし枠で読んだ」**（2026-09-07・本番 `/decision`
+ * は Authorization 無しでも IP ごと 10/分で答える）。だから `VOUCH_API_KEY` だけは MISSING と言わず、
+ * 枠の名前を出す——審査員が「鍵が無いから落ちたのか」と読まないように。他の鍵の MISSING は従来どおり。
+ */
+export const KEYLESS_LABEL = "unset (keyless: 10/min per IP)";
+
+export function envLines(envReady: Record<string, boolean>): string[] {
+  const env = Object.entries(envReady)
+    .map(([name, ready]) => `${name}=${ready ? "set" : name === "VOUCH_API_KEY" ? KEYLESS_LABEL : "MISSING"}`)
+    .join("  ");
+  return wrap(`env       ${env}`, MAX_WIDTH - 2);
+}
+
 export function renderRefuse(view: RefuseView, options?: RenderOptions): string[] {
   const out: string[] = [];
   out.push(rule());
@@ -175,6 +191,7 @@ export function renderRefuse(view: RefuseView, options?: RenderOptions): string[
   });
   out.push(full(`requests  ${view.requests.length}  —  0 signatures, 0 RPC, 0 settle`));
   for (const request of view.requests) out.push(...head("          ", request));
+  if (view.envReady) for (const line of envLines(view.envReady)) out.push(full(line));
   out.push(rule());
   return out;
 }
@@ -344,10 +361,7 @@ export function renderPayDryRun(view: PayView, options?: RenderOptions): string[
       : "[  ? ]";
     out.push(...head(`${mark} ${gate.name.padEnd(32)} `, gate.detail));
   }
-  const env = Object.entries(view.envReady)
-    .map(([name, ready]) => `${name}=${ready ? "set" : "MISSING"}`)
-    .join("  ");
-  for (const line of wrap(`env       ${env}`, MAX_WIDTH - 2)) out.push(full(line));
+  for (const line of envLines(view.envReady)) out.push(full(line));
   out.push(rule("-"));
   const ruleLine =
     view.policy === undefined ? ""

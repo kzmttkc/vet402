@@ -164,6 +164,36 @@ test("鍵が無ければ、足りない名前だけを言って落ちる（値�
   );
 });
 
+// 2026-09-07（commit 3738890）: 本番 /decision は鍵なしで答える。空撃ちは GRAPH_API_KEY 1 本で走り、
+// /decision と受取人スコアに Authorization を付けない（`Bearer undefined` にしない）。
+test("VOUCH_API_KEY 無しでも空撃ちは走り、Authorization を付けず、env 行に鍵なしと出す", async () => {
+  const headersSeen = [];
+  const inner = allowingFetch();
+  const fetch = async (url, init) => {
+    if (String(url).includes("vet402.com")) headersSeen.push(init?.headers ?? {});
+    return inner.fetch(url, init);
+  };
+  const w = watchedAccount();
+  const out = [];
+  const { view, result } = await runPay({
+    live: false,
+    env: { GRAPH_API_KEY: "graphkey-0123456789" },
+    fetch,
+    account: w.account,
+    emit: createEmitter({ sink: (l) => out.push(l), secrets: [] }),
+  });
+  assert.equal(result, null, "空撃ちは payOrRefuse を呼ばない");
+  assert.ok(headersSeen.length >= 1, "vet402 が読まれていない");
+  for (const h of headersSeen) {
+    assert.equal("Authorization" in h, false, JSON.stringify(h));
+    assert.equal(JSON.stringify(h).includes("undefined"), false);
+  }
+  assert.equal(view.envReady.VOUCH_API_KEY, false);
+  assert.equal(view.envReady.GRAPH_API_KEY, true);
+  assert.match(out.join("\n"), /VOUCH_API_KEY=unset \(keyless: 10\/min per IP\)/, out.join("\n"));
+  assert.deepEqual(w.signAccesses(), []);
+});
+
 // 画に出す「認可の窓」は SDK の実装値でなければ意味が無い。手で書いた数字が古くなるのを止める。
 test("画に出す認可の窓は、SDK が実際に使う値と一致している", () => {
   const source = readFileSync(new URL("../../../packages/sdk/dist/x402-pay.js", import.meta.url), "utf8");

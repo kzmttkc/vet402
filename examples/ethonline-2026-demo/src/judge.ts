@@ -318,14 +318,19 @@ export type RunJudgeOptions = JudgeArgs & {
   emit: Emitter;
 };
 
-/** `judge` が知っている鍵。署名鍵は**無い**（画の env 行にも出ない）。 */
+/** `judge` が知っている鍵（画の env 行に出す名前）。署名鍵は**無い**（画の env 行にも出ない）。 */
 export function judgeEnvNames(policy: EvidenceSource): string[] {
   return policy === "vet402" ? ["VOUCH_API_KEY"] : ["VOUCH_API_KEY", "GRAPH_API_KEY"];
 }
 
+/** 無いと止まる鍵。`VOUCH_API_KEY` は任意（2026-09-07・本番 `/decision` は鍵なしで IP ごと 10/分）。 */
+export function judgeRequiredEnvNames(policy: EvidenceSource): string[] {
+  return policy === "vet402" ? [] : ["GRAPH_API_KEY"];
+}
+
 export async function runJudge(options: RunJudgeOptions): Promise<{ view: PayView; verdict: JudgeVerdict }> {
   const envNames = judgeEnvNames(options.policy);
-  requireEnv(options.env, envNames);
+  requireEnv(options.env, judgeRequiredEnvNames(options.policy));
   const policy = policyFromArgs(options);
   const net = instrument(options.fetch);
 

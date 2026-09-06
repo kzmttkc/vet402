@@ -129,18 +129,47 @@ test("拒否経路の証拠行には、live を読んだ証跡（block と deplo
   assert.equal(row.url.includes(GRAPH_KEY), false);
 });
 
-test("鍵が無ければ、足りない名前だけを言って落ちる", async () => {
+test("Graph の鍵が無ければ、足りない名前だけを言って落ちる", async () => {
   await assert.rejects(
     () => runRefuse({
-      env: { GRAPH_API_KEY: GRAPH_KEY },
+      env: { VOUCH_API_KEY: VOUCH_KEY },
       fetch: stubFetch().fetch,
       account: tripwireAccount(),
       emit: createEmitter({ sink: () => {}, secrets: collectSecrets(env) }),
     }),
     (error) => {
-      assert.match(error.message, /VOUCH_API_KEY/);
-      assert.equal(error.message.includes(GRAPH_KEY), false);
+      assert.match(error.message, /GRAPH_API_KEY/);
+      assert.equal(error.message.includes(VOUCH_KEY), false);
       return true;
     },
   );
+});
+
+// 2026-09-07（commit 3738890）: 本番 `/decision` は鍵なしでも答える（IP ごと 10/分）。
+// 審査員は `GRAPH_API_KEY` 1 本で `refuse` を走らせられる。鍵なしでは Authorization を
+// **付けない**（`Bearer undefined` を付けると本番が 401 を返し、審査員の鍵の問題に見える）。
+test("VOUCH_API_KEY 無しでも refuse は走り、/decision に Authorization を付けず、env 行に鍵なしと出す", async () => {
+  const stub = stubFetch();
+  const headersSeen = [];
+  const fetch = async (url, init) => {
+    if (String(url).includes("/decision")) headersSeen.push(init?.headers ?? {});
+    return stub.fetch(url, init);
+  };
+  const lines = [];
+  const { view, result } = await runRefuse({
+    env: { GRAPH_API_KEY: GRAPH_KEY },
+    fetch,
+    account: tripwireAccount(),
+    emit: createEmitter({ sink: (line) => lines.push(line), secrets: collectSecrets({ GRAPH_API_KEY: GRAPH_KEY }) }),
+  });
+  assert.equal(headersSeen.length, 1, "/decision が読まれていない");
+  assert.equal("Authorization" in headersSeen[0], false, JSON.stringify(headersSeen[0]));
+  assert.equal(JSON.stringify(headersSeen[0]).includes("undefined"), false);
+  assert.equal(result.status, "refused");
+  assert.equal(result.signed, false);
+  assert.equal(view.vet402.recommendation, "WARN");
+  assert.deepEqual(view.envReady, { GRAPH_API_KEY: true, VOUCH_API_KEY: false });
+  const text = lines.join("\n");
+  assert.match(text, /VOUCH_API_KEY=unset \(keyless: 10\/min per IP\)/, text);
+  assert.match(text, /GRAPH_API_KEY=set/);
 });

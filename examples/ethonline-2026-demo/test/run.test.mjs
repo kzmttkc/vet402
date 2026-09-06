@@ -42,14 +42,16 @@ import { MissingEnvError } from "../src/probe.ts";
 
 const DEMO_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
 
-test("鍵欠落: 整形済み `error:` 1行と exit 1 だけ。`at ` 行は無い", () => {
+test("鍵欠落: 整形済み `error:` 1行と exit 1 だけ。`at ` 行は無い。VOUCH_API_KEY は足りない名前に数えない", () => {
   const env = { ...process.env };
   delete env.GRAPH_API_KEY;
   delete env.VOUCH_API_KEY;
   const r = spawnSync(process.execPath, [join(DEMO_DIR, "src/run.ts"), "refuse"], { env, encoding: "utf8" });
   const out = `${r.stdout}${r.stderr}`;
   assert.equal(r.status, 1, out);
-  assert.match(out, /^error: missing environment variable\(s\): GRAPH_API_KEY, VOUCH_API_KEY\./m);
+  // 2026-09-07: 本番 /decision は鍵なしで答える。要るのは Graph の鍵だけ。
+  assert.match(out, /^error: missing environment variable\(s\): GRAPH_API_KEY\./m);
+  assert.doesNotMatch(out, /VOUCH_API_KEY/, "VOUCH_API_KEY を必須として名指ししている");
   assert.doesNotMatch(out, /^\s+at /m, `stack trace leaked:\n${out}`);
   assert.equal(out.trim().split("\n").length, 1, `expected exactly one line:\n${out}`);
 });
@@ -63,4 +65,10 @@ test("failureLines: MissingEnvError は1行、それ以外の Error はスタッ
   assert.match(unexpected.join("\n"), /^\s+at /m, "unexpected errors must keep their stack");
 
   assert.deepEqual(failureLines("plain string"), ["error: plain string"]);
+});
+
+test("USAGE の env 行: GRAPH_API_KEY が要り、VOUCH_API_KEY は任意（鍵なしは IP ごと 10/分）と書く", () => {
+  const usage = USAGE.join("\n");
+  assert.match(usage, /VOUCH_API_KEY[^\n]*optional/i, usage);
+  assert.match(usage, /10\/min/, usage);
 });

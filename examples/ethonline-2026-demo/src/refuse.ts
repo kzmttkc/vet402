@@ -27,6 +27,9 @@ export const REFUSE_TARGET = {
   amountUsd: 0.01,
 } as const;
 
+/** 画の env 行に出す名前。署名鍵は**無い**（拒否経路に署名の手段は最初から無い）。 */
+export const REFUSE_ENV_NAMES = ["GRAPH_API_KEY", "VOUCH_API_KEY"] as const;
+
 /** 呼び手が名指しする証拠の床（rehearsal-c1.md「会期で使う policy」）。 */
 export const MIN_L1_DELIVERIES = 3;
 export const MIN_SUBGRAPH_RECEIPTS = 1;
@@ -54,7 +57,12 @@ function tripwireAccount(): unknown {
 export async function runRefuse(
   options: RunRefuseOptions,
 ): Promise<{ view: RefuseView; result: Awaited<ReturnType<typeof payOrRefuse>> }> {
-  requireEnv(options.env, ["GRAPH_API_KEY", "VOUCH_API_KEY"]);
+  // 2026-09-07（commit 3738890）: 本番 `/decision` は鍵なしでも答える（IP ごと 10/分）。
+  // 要るのは The Graph の鍵だけ。`VOUCH_API_KEY` は有れば付け、無ければ Authorization を付けない。
+  requireEnv(options.env, ["GRAPH_API_KEY"]);
+  const envReady = Object.fromEntries(
+    REFUSE_ENV_NAMES.map((name) => [name, typeof options.env[name] === "string" && options.env[name] !== ""]),
+  );
 
   const net = instrument(options.fetch);
   const resourceId = await computeResourceId(REFUSE_TARGET.method, REFUSE_TARGET.url);
@@ -104,6 +112,7 @@ export async function runRefuse(
     resource: { method: REFUSE_TARGET.method, url: REFUSE_TARGET.url },
     payee: REFUSE_TARGET.payee,
     ranAt: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
+    envReady,
     vet402: decision
       ? {
           endpoint: `${VET402_API}/resources/${resourceId}/decision?role=payer`,
