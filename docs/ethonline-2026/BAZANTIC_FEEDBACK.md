@@ -1,7 +1,8 @@
 # Bazantic — developer feedback from the vet402 A/B (ETHOnline 2026, Continuity)
 
 Written for the judges and for Bazantic. Every number below is recomputed from the raw trial log
-(`docs/ethonline-2026/ab/2026-09-06T213134Z/trials.jsonl`); the commands are at the end.
+(`docs/ethonline-2026/ab/2026-09-06T213134Z/trials.jsonl`) by one command —
+`npm run metrics -- docs/ethonline-2026/ab/2026-09-06T213134Z` (run inside `examples/ethonline-2026-ab/`); it is quoted at the end.
 Bazantic account: **`TakeshiTGAL`**.
 
 ## 1. What we built on Bazantic
@@ -59,34 +60,18 @@ An earlier run the same day (`ab/2026-09-06T093254Z`) scored 0/10 in both condit
 - Put the Recipe text into MCP `initialize.instructions` for the Gateway it belongs to — then "Add to Claude" delivers the Recipe without anyone pasting it.
 - Show the Recipe prompt on the public page; a reviewer should not need an account to read what the agent is told.
 
-## Recount commands
+## Recount command
+
+Every number in this document comes from one script; nothing is counted by hand.
 
 ```bash
-cd docs/ethonline-2026/ab/2026-09-06T213134Z
-python3 - <<'EOF'
-import json,collections
-T=[json.loads(l) for l in open('trials.jsonl') if l.strip()]
-for c in 'AB':
-    ts=[t for t in T if t['condition']==c]; g=lambda k:sum(1 for t in ts if t['grade'][k])
-    print(c,'success',g('success'),'verdictMatch',g('verdictMatch'),'subset',g('reasonSubset'),
-          'fabricated',sum(1 for t in ts if t['grade']['fabricatedReasonCodes']),
-          'errors',sum(1 for t in ts if t['error']),'unparseable',sum(1 for t in ts if t['answer']['unparseable']))
-    pf=collections.Counter(); n=collections.Counter()
-    for t in ts: n[t['fixtureId']]+=1; pf[t['fixtureId']]+=t['grade']['success']
-    print(' per fixture',{f:f'{pf[f]}/{n[f]}' for f in sorted(n)})
-tc=[c for t in T for c in t['raw']['toolCalls']]; b=[c['x402Bridge'] for c in tc]
-print('toolCalls',len(tc),'settled',sum(1 for x in b if x['settled']),'distinct tx',len({x['txHash'] for x in b if x['txHash']}),
-      'status',collections.Counter(x['responseStatus'] for x in b),'tools',len(T[0]['raw']['toolNames']))
-EOF
-# exploratory vocabulary metric
-python3 - <<'EOF'
-import json,re
-V=set(re.findall(r'term: "([^"]+)"',open('../../../../src/lib/observatory/vocabulary.ts').read()))
-J=set(re.findall(r'^\s*"([a-z_]+)",?$',open('../../../../examples/ethonline-2026-demo/src/judge.ts').read(),re.M))
-T=[json.loads(l) for l in open('trials.jsonl') if l.strip()]
-O=set(r for t in T for r in t['oracle']['reasonCodes']); S=V|J|O
-for c in 'AB':
-    codes=[r for t in T if t['condition']==c for r in t['answer']['reasonCodes']]
-    print(c,f'{sum(r in S for r in codes)}/{len(codes)}')
-EOF
+cd examples/ethonline-2026-ab
+npm run metrics -- ../../docs/ethonline-2026/ab/2026-09-06T213134Z          # Markdown tables
+npm run metrics -- ../../docs/ethonline-2026/ab/2026-09-06T213134Z --json   # same numbers as JSON
 ```
+
+It regrades every trial from `answer` + `oracle` with the pre-registered rule (`src/grade.mjs`) and does not read
+`summary.json`; the vocabulary sets are read from `src/lib/observatory/vocabulary.ts` and
+`packages/sdk/src/pay-or-refuse.ts` at run time, not hard-coded. Codes are compared after trim + lowercase, the same
+normalization the grader uses — so the script counts A's vocabulary share as 20/32 (set ii) and 3/32 (set i): one A trial
+wrote `Unverified`, which is the vocabulary term `unverified`. The 19/32 and 2/32 in §2 were a case-sensitive hand count.
