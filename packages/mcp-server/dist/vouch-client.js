@@ -117,16 +117,26 @@ export async function attestX402Payment(attestation) {
         body: JSON.stringify(attestation),
     });
 }
+export function decisionQueryString(query) {
+    const role = query.role ?? "payer";
+    const qs = new URLSearchParams({ role });
+    if (query.payer)
+        qs.set("payer", query.payer);
+    if (query.callerDialect)
+        qs.set("caller_dialect", query.callerDialect);
+    if (query.amountUsd !== undefined)
+        qs.set("amount_usd", String(query.amountUsd));
+    if (query.maxPerTxUsd !== undefined)
+        qs.set("max_per_tx_usd", String(query.maxPerTxUsd));
+    if (query.minL1Deliveries !== undefined)
+        qs.set("min_l1_deliveries", String(query.minL1Deliveries));
+    return qs.toString();
+}
 export async function fetchDecision(resourceId, query = {}) {
     if (!/^[0-9a-f]{64}$/.test(resourceId))
         throw new Error("invalid_resource_id");
     const role = query.role ?? "payer";
     if (role === "payee" && !query.payer)
         throw new Error("payer_required");
-    const qs = new URLSearchParams({ role });
-    if (query.payer)
-        qs.set("payer", query.payer);
-    if (query.callerDialect)
-        qs.set("caller_dialect", query.callerDialect);
-    return vouchFetch(`/resources/${resourceId}/decision?${qs.toString()}`);
+    return vouchFetch(`/resources/${resourceId}/decision?${decisionQueryString(query)}`);
 }

@@ -557,3 +557,39 @@ test("K6 実プロセス: 鍵なしの pay_if_trusted も missing_api_key で止
   assert.equal(seen.length, 1);
   assert.equal(seen[0].authorization, null);
 });
+
+// ---- 呼び手の policy を /decision に渡し、サーバの policy 語を透過する（WINDOW_PLAN §16.3・2026-09-07）----
+//
+// §16.3 の実 A/B で、上限超え（F4）の正解 `price_above_ceiling` は**どのツールも返さなかった**。
+// ここで固定するのは「橋が /decision に amount_usd 等を渡す」「返ってきた caller_policy を
+// measurement にそのまま載せる」「その verdict が REFUSE なら、その語で止める」の 3 つ。
+test("P1 pay_if_trusted は amountUsd / maxPerTxUsd / minL1Deliveries を /decision のクエリに載せる", async () => {
+  const w = watched();
+  const urls = [];
+  await payIfTrusted({ resourceId: "a".repeat(64), signer: w.signer, amountUsd: 0.02, maxPerTxUsd: 0.5, policy: { evidence: { source: "vet402", minL1Deliveries: 2 } },
+    fetch: async (u) => { urls.push(String(u)); return { ok: true, status: 200, json: async () => ({ recommendation: "WARN", reason_codes: [], facts: {}, evidence: [] }), headers: new Map() }; } });
+  const q = new URL(urls[0]).searchParams;
+  assert.equal(q.get("amount_usd"), "0.02");
+  assert.equal(q.get("max_per_tx_usd"), "0.5");
+  assert.equal(q.get("min_l1_deliveries"), "2");
+  assert.deepEqual(w.signAccesses(), []);
+});
+
+test("P2 サーバの caller_policy は measurement にそのまま載り、REFUSE ならその語で止める（signer 参照 0）", async () => {
+  const w = watched();
+  const callerPolicy = { applied: { amount_usd: 5, max_per_tx_usd: 1, min_l1_deliveries: 0 }, verdict: "REFUSE", reason_codes: ["price_above_ceiling"], not_evaluated: ["min_subgraph_receipts"] };
+  const r = await payIfTrusted({ resourceId: "a".repeat(64), signer: w.signer, amountUsd: 5,
+    fetch: async () => ({ ok: true, status: 200, json: async () => ({ recommendation: "ALLOW", reason_codes: ["l0_pass", "l1_delivered"], facts: {}, evidence: [], caller_policy: callerPolicy }), headers: new Map() }) });
+  assert.equal(r.decision, "REFUSE");
+  assert.deepEqual(r.measurement.caller_policy, callerPolicy, "組み替えずに透過する");
+  assert.ok(r.refuse_reasons.includes("price_above_ceiling"), "サーバの policy 語がそのまま理由になる");
+  assert.ok(r.refuse_reasons.includes("l1_delivered"), "サーバの reason_codes も従来どおり残る");
+  assert.deepEqual(w.signAccesses(), []);
+});
+
+test("P3 caller_policy が無い応答では measurement.caller_policy は null（無いものを作らない）", async () => {
+  const w = watched();
+  const r = await payIfTrusted({ resourceId: "a".repeat(64), signer: w.signer,
+    fetch: async () => ({ ok: true, status: 200, json: async () => ({ recommendation: "WARN", reason_codes: ["l1_not_attempted"], facts: {}, evidence: [] }), headers: new Map() }) });
+  assert.equal(r.measurement.caller_policy, null);
+});

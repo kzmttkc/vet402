@@ -194,6 +194,12 @@ export type DecisionResult = {
     } | null;
     degraded: boolean;
     policy: "allow_only";
+    /**
+     * The caller's own policy, applied server-side (2026-09-07, WINDOW_PLAN §16.3). Present only
+     * when amount_usd / max_per_tx_usd / min_l1_deliveries were sent. Words are the SDK's
+     * PayRefuseReason, unchanged. Sits beside `recommendation`; never rewrites it.
+     */
+    caller_policy?: CallerPolicy;
     rules_version: string;
     registry: {
         status: "anchored" | "pending" | "off";
@@ -202,6 +208,17 @@ export type DecisionResult = {
     scoredAt: string;
     cacheExpiresAt: string;
     disclaimer: string;
+};
+/** Mirrors docs/openapi.yaml CallerPolicy (tests/openapi-schema-parity.test.ts). */
+export type CallerPolicy = {
+    applied: {
+        amount_usd: number | null;
+        max_per_tx_usd: number;
+        min_l1_deliveries: number;
+    };
+    verdict: "ALLOW" | "REFUSE";
+    reason_codes: string[];
+    not_evaluated: string[];
 };
 export type VouchClientConfig = {
     apiUrl: string;
@@ -243,8 +260,13 @@ export declare function attestX402Payment(attestation: X402PaymentAttestation): 
     created: boolean;
     id: string;
 }>;
-export declare function fetchDecision(resourceId: string, query?: {
+export type DecisionQuery = {
     role?: "payer" | "payee";
     payer?: string;
     callerDialect?: "v1" | "v2";
-}): Promise<DecisionResult>;
+    amountUsd?: number;
+    maxPerTxUsd?: number;
+    minL1Deliveries?: number;
+};
+export declare function decisionQueryString(query: DecisionQuery): string;
+export declare function fetchDecision(resourceId: string, query?: DecisionQuery): Promise<DecisionResult>;

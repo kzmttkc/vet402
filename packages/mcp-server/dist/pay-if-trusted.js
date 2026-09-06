@@ -31,7 +31,7 @@
  * 実際に守っている関門は `payOrRefuse` の中にある。どちらを削っても片方が弱くなるので、
  * 2回引く。GET は副作用を持たない。
  */
-import { DEFAULT_API_URL } from "./vouch-client.js";
+import { DEFAULT_API_URL, decisionQueryString } from "./vouch-client.js";
 const RESOURCE_ID_RE = /^[0-9a-f]{64}$/;
 /** 判定を引き、全部の関門を通ったときにだけ signer へ到達する。 */
 export async function payIfTrusted(input) {
@@ -59,8 +59,17 @@ export async function payIfTrusted(input) {
     let body = null;
     /** `/decision` が 404 not_found（カタログ外）。判定は SDK が 402 の payTo と受取人スコアで出す（I23）。 */
     let uncatalogued = false;
+    // 呼び手の policy をサーバにも当てさせる（§16.3）。amountUsd / maxPerTxUsd / L1 の床を名乗ると、
+    // サーバは判定と同じ文書に `caller_policy` を SDK と同じ語で足す。subgraph の床は送らない。
+    const l1Floor = input.policy?.evidence?.minL1Deliveries;
+    const decisionQuery = decisionQueryString({
+        role: "payer",
+        ...(typeof input.amountUsd === "number" ? { amountUsd: input.amountUsd } : {}),
+        ...(typeof input.maxPerTxUsd === "number" ? { maxPerTxUsd: input.maxPerTxUsd } : {}),
+        ...(l1Floor !== undefined && (wantedSource === "vet402" || wantedSource === "both") ? { minL1Deliveries: l1Floor } : {}),
+    });
     try {
-        const response = await fetchFn(`${apiUrl}/resources/${input.resourceId}/decision?role=payer`, { headers });
+        const response = await fetchFn(`${apiUrl}/resources/${input.resourceId}/decision?${decisionQuery}`, { headers });
         try {
             body = await response.json();
         }
@@ -97,6 +106,14 @@ export async function payIfTrusted(input) {
     // 受取人スコアの degraded / BLOCK / 非 ALLOW は SDK の 3' 段がそのまま持つ（H10）。
     if (!uncatalogued && m.degraded === true) {
         return refuse(m, [...m.reason_codes, "evidence_unavailable"], "Do not pay: an input could not be measured, so this body is a refusal, not a measurement.");
+    }
+    // --- 3.1 サーバが呼び手の policy を当てて REFUSE と言った → **その語で**止める（§16.3）---
+    // 語はサーバの `caller_policy.reason_codes` そのまま（SDK の PayRefuseReason と同じ）。ローカルの
+    // 関門（SDK の payOrRefuse）は第 5 段に残るので二重防御。BLOCK / degraded / 上限 / 床のどれで
+    // 落ちたかが、支払い先を知らない空撃ちでも機械可読で返る。
+    if (!uncatalogued && m.caller_policy?.verdict === "REFUSE") {
+        const words = m.caller_policy.reason_codes;
+        return refuse(m, [...m.reason_codes, ...words], `Do not pay: your own policy refused it (${words.join(", ") || "caller_policy"}) — recommendation ${m.recommendation ?? "absent"}.`);
     }
     // `requireVet402Allow: false` のときは ALLOW でない判定を**ここでは**止めない。BLOCK・床・
     // degraded の境界は `payOrRefuse` が持ち（§3.2.1）、そこへ通すために非 ALLOW を先へ渡す。
@@ -184,7 +201,15 @@ function measure(body) {
         evidence: Array.isArray(b.evidence) ? b.evidence : [],
         rules_version: typeof b.rules_version === "string" ? b.rules_version : null,
         degraded: typeof b.degraded === "boolean" ? b.degraded : null,
+        caller_policy: isCallerPolicy(b.caller_policy) ? b.caller_policy : null,
     };
+}
+/** 形だけ見る（verdict と reason_codes が読めること）。中身の語はサーバのものをそのまま通す。 */
+function isCallerPolicy(v) {
+    if (v === null || typeof v !== "object")
+        return false;
+    const p = v;
+    return (p.verdict === "ALLOW" || p.verdict === "REFUSE") && Array.isArray(p.reason_codes);
 }
 function refuse(measurement, refuse_reasons, summary) {
     return {

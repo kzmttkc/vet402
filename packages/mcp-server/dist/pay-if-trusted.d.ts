@@ -1,3 +1,37 @@
+/**
+ * `pay_if_trusted` — `payOrRefuse` と同じ関門を MCP ツールとして出す（会期中の新規）。
+ *
+ * 正典: `docs/ethonline-2026/WINDOW_PLAN.md` §2 #2・§4 の 21・§14/§14.1/§14.3。
+ * 契約テスト: `packages/mcp-server/test/pay-if-trusted.test.mjs`（G21a/b/c）。
+ *
+ * **既存の `check_resource_decision`（2026-09-02 出荷・読むだけ）との違い**は1つだけ。
+ * あちらは判定を返し、払うかどうかは呼び手が決める。こちらは **signer を握る**——
+ * 判定が ALLOW でなければ、支払いモジュールは**評価すらされない**。
+ *
+ * 判定の流れ（5行）:
+ *   1. 呼び出し側の誤り（64桁hex でない resourceId、fetch 未注入）は throw。判定も引かない
+ *   2. `GET /resources/{id}/decision?role=payer` を引く。読めない → 拒否（沈黙は ALLOW ではない）
+ *      **404 not_found（カタログ外・§3.1）は例外**: `resource`（402 を返す URL）が与えられていれば
+ *      止めずに 5 へ通し、SDK が 402 の payTo ＋ 受取人スコア ＋ 宣言された床で判定する（I23・2026-09-06）。
+ *      `resource` が無い 404 は判定材料が存在しないので従来どおり `evidence_unavailable`
+ *   3. `degraded` → 拒否。`recommendation !== "ALLOW"` → 拒否。**理由はサーバの reason_codes をそのまま通す**
+ *      （カタログ外は判定本文が無いのでこの段を飛ばす。受取人スコアの BLOCK / degraded は SDK の 3' 段が持つ）
+ *   4. ALLOW でも支払い先（payee / resource / amountUsd）が無ければ拒否（`payment_target_unknown`）
+ *   5. ここまで全部通ったときだけ `@vet402/sdk` を**動的 import** し、`payOrRefuse` に渡す
+ *
+ * **なぜ支払いを自分で書かずに `payOrRefuse` に渡すか。** 402 チャレンジの取得・payTo 照合・
+ * マネーゲート・EIP-3009 の署名・売り手への再送・応答ヘッダのレシート・attest は、
+ * 2026-09-05 に本番実装と突き合わせて是正された一式である（WINDOW_PLAN §14/§14.2）。
+ * MCP 側に写せば、次に本番が穴を塞いだとき**こちらだけ古いまま**になる——
+ * §14.2 が「今日いちばん学んだこと」として記録した失敗そのもの。だから写さずに呼ぶ。
+ *
+ * **なぜ判定を2回引くのか**（ここと `payOrRefuse` の中で1回ずつ）。MCP ツールは、
+ * 支払い先を1つも知らない段階でも「サーバがどの reason_code で ALLOW を出さなかったか」を
+ * 機械可読で返せなければならない（G21a/G21c はまさにその形で呼ぶ）。一方 signer を
+ * 実際に守っている関門は `payOrRefuse` の中にある。どちらを削っても片方が弱くなるので、
+ * 2回引く。GET は副作用を持たない。
+ */
+import { type CallerPolicy } from "./vouch-client.js";
 import type { PayDecisionRecord, PayEvidencePolicy, PayPolicy } from "@vet402/sdk";
 /**
  * 署名者。**ALLOW ブランチに入るまで、この値のプロパティには一度も触らない。**
@@ -66,6 +100,11 @@ export type PayIfTrustedMeasurement = {
     evidence: Record<string, unknown>[];
     rules_version: string | null;
     degraded: boolean | null;
+    /**
+     * サーバが呼び手の policy を当てた結果（`/decision` の `caller_policy`・§16.3・2026-09-07）。
+     * **組み替えずに透過する。** 送っていない／古いサーバの応答では null（無いものを作らない）。
+     */
+    caller_policy: CallerPolicy | null;
 };
 export type PayIfTrustedResult = {
     /** PAID = 署名して売り手が受理した / REFUSE = 署名前に止めた / FAILED = 署名後に決済されなかった。 */

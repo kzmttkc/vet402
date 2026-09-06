@@ -166,11 +166,25 @@ export type DecisionResult = {
   score: { trustScore: number | null; recommendation: DecisionRecommendation | null; deprecated: true } | null;
   degraded: boolean;
   policy: "allow_only";
+  /**
+   * The caller's own policy, applied server-side (2026-09-07, WINDOW_PLAN §16.3). Present only
+   * when amount_usd / max_per_tx_usd / min_l1_deliveries were sent. Words are the SDK's
+   * PayRefuseReason, unchanged. Sits beside `recommendation`; never rewrites it.
+   */
+  caller_policy?: CallerPolicy;
   rules_version: string;
   registry: { status: "anchored" | "pending" | "off"; tx_hash: string | null };
   scoredAt: string;
   cacheExpiresAt: string;
   disclaimer: string;
+};
+
+/** Mirrors docs/openapi.yaml CallerPolicy (tests/openapi-schema-parity.test.ts). */
+export type CallerPolicy = {
+  applied: { amount_usd: number | null; max_per_tx_usd: number; min_l1_deliveries: number };
+  verdict: "ALLOW" | "REFUSE";
+  reason_codes: string[];
+  not_evaluated: string[];
 };
 
 export type VouchClientConfig = {
@@ -328,15 +342,30 @@ export async function attestX402Payment(
   });
 }
 
-export async function fetchDecision(
-  resourceId: string,
-  query: { role?: "payer" | "payee"; payer?: string; callerDialect?: "v1" | "v2" } = {},
-): Promise<DecisionResult> {
-  if (!/^[0-9a-f]{64}$/.test(resourceId)) throw new Error("invalid_resource_id");
+export type DecisionQuery = {
+  role?: "payer" | "payee";
+  payer?: string;
+  callerDialect?: "v1" | "v2";
+  // --- caller policy (2026-09-07, §16.3): sent only when given, so the no-policy body stays identical ---
+  amountUsd?: number;
+  maxPerTxUsd?: number;
+  minL1Deliveries?: number;
+};
+
+export function decisionQueryString(query: DecisionQuery): string {
   const role = query.role ?? "payer";
-  if (role === "payee" && !query.payer) throw new Error("payer_required");
   const qs = new URLSearchParams({ role });
   if (query.payer) qs.set("payer", query.payer);
   if (query.callerDialect) qs.set("caller_dialect", query.callerDialect);
-  return vouchFetch<DecisionResult>(`/resources/${resourceId}/decision?${qs.toString()}`);
+  if (query.amountUsd !== undefined) qs.set("amount_usd", String(query.amountUsd));
+  if (query.maxPerTxUsd !== undefined) qs.set("max_per_tx_usd", String(query.maxPerTxUsd));
+  if (query.minL1Deliveries !== undefined) qs.set("min_l1_deliveries", String(query.minL1Deliveries));
+  return qs.toString();
+}
+
+export async function fetchDecision(resourceId: string, query: DecisionQuery = {}): Promise<DecisionResult> {
+  if (!/^[0-9a-f]{64}$/.test(resourceId)) throw new Error("invalid_resource_id");
+  const role = query.role ?? "payer";
+  if (role === "payee" && !query.payer) throw new Error("payer_required");
+  return vouchFetch<DecisionResult>(`/resources/${resourceId}/decision?${decisionQueryString(query)}`);
 }

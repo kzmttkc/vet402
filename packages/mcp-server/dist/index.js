@@ -210,20 +210,36 @@ async function main() {
         "carries subgraphId, block.number, deployment and queriedAt, which is what shows live index data",
         "rather than a static snapshot). This route returns vet402 rows. Do not add counts across sources:",
         "they count different things, and the two can disagree about the same wallet.",
+        "",
+        "Your own policy (role=payer only): pass amountUsd (what the 402 asks), maxPerTxUsd (your ceiling,",
+        "default 1) and/or minL1Deliveries (floor on vet402's delivered L1 purchases). The server then adds",
+        "measurement.caller_policy with verdict ALLOW | REFUSE and reason_codes in the SDK's own words:",
+        "price_above_ceiling, insufficient_delivery_evidence, payee_recommendation_block, evidence_unavailable.",
+        "A caller_policy REFUSE makes this tool REFUSE and those words are in refuse_reasons. caller_policy",
+        "never rewrites recommendation; not_evaluated lists what the server did not check (min_subgraph_receipts",
+        "is always there - The Graph is read only with your own key, through pay_if_trusted).",
     ].join("\n"), {
         resourceId: RESOURCE_ID,
         role: z.enum(["payer", "payee"]).optional().describe("payer (default): should my agent pay this resource? payee: should this seller serve this payer?"),
         payer: z.string().max(120).optional().describe("Required when role=payee: chain:address, or a bare 0x / base58 address"),
         callerDialect: z.enum(["v1", "v2"]).optional().describe("Your x402 client dialect; a mismatch with the seller's wall is a WARN"),
-    }, async ({ resourceId, role, payer, callerDialect }) => {
+        amountUsd: z.number().nonnegative().optional().describe("What the 402 asks, in USD; compared with maxPerTxUsd server-side (role=payer only)"),
+        maxPerTxUsd: z.number().positive().optional().describe("Your per-payment ceiling in USD (default 1)"),
+        minL1Deliveries: z.number().int().nonnegative().optional().describe("Floor on vet402's delivered L1 purchases for this resource"),
+    }, async ({ resourceId, role, payer, callerDialect, amountUsd, maxPerTxUsd, minL1Deliveries }) => {
         try {
-            const result = await fetchDecision(resourceId, { role, payer, callerDialect });
-            const allow = result.recommendation === "ALLOW" && !result.degraded;
+            const result = await fetchDecision(resourceId, { role, payer, callerDialect, amountUsd, maxPerTxUsd, minL1Deliveries });
+            // 2026-09-07 (§16.3): the caller's own policy, applied by the server, can refuse too — and
+            // its words (price_above_ceiling, …) are the ones the A/B showed no tool ever returned.
+            const policy = result.caller_policy;
+            const policyRefused = policy?.verdict === "REFUSE";
+            const allow = result.recommendation === "ALLOW" && !result.degraded && !policyRefused;
+            const policyWords = policyRefused ? policy.reason_codes : [];
             const decision = {
                 decision: allow ? "ALLOW_PAY" : "REFUSE",
                 safe_to_pay: allow,
-                refuse_reasons: allow ? [] : result.reason_codes,
-                summary: `${result.recommendation} (${result.rules_version}) — ${result.reason_codes.join(", ")}`,
+                refuse_reasons: allow ? [] : [...new Set([...result.reason_codes, ...policyWords])],
+                summary: `${result.recommendation} (${result.rules_version}) — ${result.reason_codes.join(", ")}${policy ? ` · caller_policy ${policy.verdict}${policyWords.length ? ` (${policyWords.join(", ")})` : ""}` : ""}`,
             };
             return { content: [{ type: "text", text: JSON.stringify({ ...decision, measurement: result }, null, 2) }] };
         }

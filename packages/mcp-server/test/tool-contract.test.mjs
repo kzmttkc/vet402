@@ -223,3 +223,36 @@ test("evidence[].source を返す 2 本のツールが、源の名前を説明�
     assert.match(text, /\bsource\b[\s\S]{0,160}subgraph/, `${tool}: source の説明のそばに subgraph が無い`);
   }
 });
+
+// ---------------- caller policy (ETHOnline 2026 / WINDOW_PLAN §16.3) ----------------
+//
+// `price_above_ceiling` は SDK の呼び手側 policy の語で、A/B ではどのツールも返さなかった。
+// 製品側で閉じた以上、読むだけのツールも policy を受け取り、サーバの `caller_policy` を
+// 透過しなければならない。入力の有無を AST で見る（説明文ではなくスキーマ）。
+test("check_resource_decision takes amountUsd / maxPerTxUsd / minL1Deliveries and names caller_policy", () => {
+  const src = readFileSync(join(PKG, "src/index.ts"), "utf8");
+  const sf = ts.createSourceFile("index.ts", src, ts.ScriptTarget.Latest, true);
+  let schemaText = null;
+  let descriptionText = null;
+  const visit = (node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text === "tool" &&
+      node.arguments.length >= 3 &&
+      ts.isStringLiteral(node.arguments[0]) &&
+      node.arguments[0].text === "check_resource_decision"
+    ) {
+      descriptionText = node.arguments[1].getText(sf);
+      schemaText = node.arguments[2].getText(sf);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  assert.ok(schemaText, "check_resource_decision の入力スキーマが AST で取れない");
+  for (const key of ["amountUsd", "maxPerTxUsd", "minL1Deliveries"]) {
+    assert.match(schemaText, new RegExp(`\\b${key}\\s*:`), `check_resource_decision の入力に ${key} が無い`);
+  }
+  assert.match(descriptionText, /caller_policy/, "説明が caller_policy に触れていない");
+  assert.match(descriptionText, /price_above_ceiling/, "説明が price_above_ceiling を名指ししていない");
+});

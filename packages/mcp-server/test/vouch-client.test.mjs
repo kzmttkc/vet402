@@ -221,3 +221,17 @@ test("attestation POSTs are bounded too, not just score reads", async () => {
   assert.ok(calls[0].init.signal.aborted);
   assert.equal(calls[0].init.method, "POST");
 });
+
+// ---------------- caller policy on /decision (ETHOnline 2026, WINDOW_PLAN §16.3) ----------------
+test("fetchDecision carries amount_usd / max_per_tx_usd / min_l1_deliveries so the server answers in the SDK's policy words", async () => {
+  const { calls, fetchFn } = jsonFetch({ recommendation: "ALLOW", reason_codes: [], facts: {}, evidence: [], rules_version: "t", degraded: false, caller_policy: { applied: { amount_usd: 2, max_per_tx_usd: 1, min_l1_deliveries: 0 }, verdict: "REFUSE", reason_codes: ["price_above_ceiling"], not_evaluated: ["min_subgraph_receipts"] } });
+  const r = await withFetch(fetchFn, KEY, () => fetchDecision("a".repeat(64), { amountUsd: 2, maxPerTxUsd: 1, minL1Deliveries: 0 }));
+  const q = new URL(calls[0].url).searchParams;
+  assert.equal(q.get("amount_usd"), "2");
+  assert.equal(q.get("max_per_tx_usd"), "1");
+  assert.equal(q.get("min_l1_deliveries"), "0");
+  assert.deepEqual(r.caller_policy.reason_codes, ["price_above_ceiling"], "the server's policy block is passed through untouched");
+  // without a policy nothing is added to the query (the no-policy body must stay byte-identical)
+  await withFetch(fetchFn, KEY, () => fetchDecision("a".repeat(64)));
+  assert.equal(new URL(calls[1].url).searchParams.has("amount_usd"), false);
+});
