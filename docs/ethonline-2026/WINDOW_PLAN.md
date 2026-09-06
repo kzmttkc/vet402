@@ -1040,6 +1040,14 @@ F1（kronos・ALLOW）と F3（0x.org・拒否）は両条件 100%。**F2（The 
 
 **提出物での扱い**: 数字はこのまま出す。「Recipe だけが差」の設計は Tom Hay の要件どおり。差が 0 だった事実と、語彙の事後指標、F4 の設計の穴（次に直すこと: Recipe の prompt に呼び手 policy の語を入れる／ツールが `price_above_ceiling` 相当を返す）を書く。
 
+### 16.4 【2026-09-07 07:2x 実読】Bazantic ゲートウェイの MCP スキーマは OpenAPI から生成——再取得の導線
+
+`/decision` に呼び手 policy（`amount_usd` / `max_per_tx_usd` / `min_l1_deliveries` / `require_vet402_allow`）を足しても、
+ゲートウェイの `getResourceDecision` は**登録時の spec**（09-03）のまま（09-07 07:2x 実測: params は `resourceId, role, payer, allow_without_l1, caller_dialect, …` のみ）。
+**再取得の導線（ダッシュボード実読）**: gateway ページ → `ACTIONS` → `EDIT` → 「API Specification」に URL（`https://vet402.com/openapi.yaml`・200・application/yaml）を**入れ直して** `SAVE CHANGES` → 「Supplying a new one regenerates the MCP server — the gateway picks it up within about 30 seconds」。
+**順序**: 本番へ deploy → `curl -sL https://vet402.com/openapi.yaml | grep -c amount_usd` で新パラメータが出ていることを見る → 再取得 → `tools/list` で `getResourceDecision` の params に `amount_usd` が出るまで待つ（30 秒）。
+**A/B の F4 が直る条件**はこの再取得。Recipe の prompt にも「402 の amount と自分の上限を渡せ」を足す（Recipe は公開済みなので **Unpublish → 編集 → Publish**。公開 URL は変わらない）。
+
 ### 記録: `PRIZES.md` の P3 記述は古い
 
 `PRIZES.md:14` は「会期中に新規で立てる自前 x402 seller を Gateway として登録し」と書いているが、
