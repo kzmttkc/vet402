@@ -205,6 +205,30 @@ How it works:
   runaway-agent brake, not an accounting system — persist your own ledger if
   you need durable budgets.
 
+## Mutation check — does the test suite actually guard the rules?
+
+A green suite only proves the tests pass, not that they *hold* the rules.
+`test-mutations.mjs` breaks one gate at a time in `src/pay-or-refuse.ts` and
+`src/subgraph-evidence.ts` (BLOCK waived, degraded waived, an evidence floor
+inverted, `payTo` check removed, the payment module hoisted out of the ALLOW
+branch, `_meta.block` faked, key redaction removed, …), rebuilds, runs the
+suite, restores the source, and prints one row per mutation:
+
+```
+npm run mutations
+# | 変異 | 壊した規則 | fail 数 | KILLED/SURVIVED
+```
+
+- **KILLED** — the suite went red: that rule is guarded.
+- **SURVIVED** — the suite stayed green: that rule is *not* guarded. The run
+  exits 1 and the row stays in the table until a test covers it. Do not
+  delete a survivor to make the run green.
+- The source is always restored (`finally`); every mutation carries a
+  `MUTANT` marker, so `grep -rn MUTANT src` must print nothing afterwards,
+  and the run ends by re-checking that the tree is green (`restored: green`).
+
+~20 s for 27 mutations on a laptop (tsc + `node --test` per mutation).
+
 ## Links
 
 Absolute, because relative repo paths do not resolve on the npm package page.
