@@ -157,6 +157,8 @@ Qualification（原文・2026-09-04 実読）:
 > - "Show both results and identify the improvement"
 > - "Provide the bazantic account username"
 
+**状態（2026-09-07）**: Recipe 公開済み（09-07 06:15 JST・`https://bazantic.com/recipes/x402-payee-verification-via-vet402-gateway`）・A/B 実走済み（`docs/ethonline-2026/ab/2026-09-06T213134Z/`・A 5/10・B 5/10・WINDOW_PLAN §16.3）・フィードバック doc あり（`docs/ethonline-2026/BAZANTIC_FEEDBACK.md`）・画面収録は 09-11。
+
 **デモの経路**: WIN_EV §2 で会期中の新規として立てると決めている自前 seller
 （`examples/ethonline-2026-agent/seller`・`exact` / Base USDC / ≤ $1）が、そのまま
 「x402 Gateway を立てる対象のプロジェクト」になる。**賞のための追加実装がゼロ**で、

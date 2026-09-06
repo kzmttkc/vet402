@@ -163,3 +163,15 @@ MCP の `tools/call` では払えない（PAYMENT-SIGNATURE を載せても無�
 | `src/secrets.mjs` | 秘密の検出（値を探す。名前は秘密ではない）。32バイト hex は**公開済みと確かめた値だけ**許可リストで通す |
 | `src/agents/mock.mjs` | 台本のスタブ。**プロンプトしか見ない**（正解表を import しない） |
 | `src/agents/anthropic.mjs` | 実 LLM アダプタ。**このリポでは一度も実行していない**（純粋部分だけテスト済み） |
+
+## 結果はどこにあるか（2026-09-07）
+
+| 場所 | 中身 |
+|---|---|
+| `docs/ethonline-2026/ab/<timestamp>/` | **提出物としての実走**。`2026-09-06T093254Z`（橋なし・全ツール呼び出しが 402 で 0/0——計器の故障として残す）と `2026-09-06T213134Z`（橋あり・本走・A 5/10・B 5/10）。読みは `WINDOW_PLAN.md` §16.1〜16.3、審査員向けの所見は `docs/ethonline-2026/BAZANTIC_FEEDBACK.md` |
+| `examples/ethonline-2026-ab/results/<timestamp>/` | ハーネスが書く先。コミットされているのはモックの実行だけで、実走はここから `docs/ethonline-2026/ab/` へ移す |
+
+**mock と live の見分け方**: `run.json` の `meta.isMock`（`true` なら台本のスタブ・モデルの能力を表さない）と
+`meta.mcpUrl`（モックは `null`＝MCP を呼んでいない）。`summary.md` の先頭行にも同じ断り書きが出る。
+実走は `meta.agentAdapter: "anthropic"`・`meta.model`・各試行の `raw.toolCalls`（橋が打った tx は `x402Bridge.txHash`）で確かめる。
+どちらも集計は毎回 `trials.jsonl` から数え直す（`verifyRunDir`）。
