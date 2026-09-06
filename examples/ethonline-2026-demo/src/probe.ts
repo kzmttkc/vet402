@@ -156,13 +156,17 @@ export async function readJson(
  * 足りない環境変数を**名前だけ**言って落ちる。**値は絶対に載せない**
  * （このメッセージも emit を通るが、通る前提で書かない）。
  */
+export class MissingEnvError extends Error {
+  override readonly name = "MissingEnvError";
+}
+
 export function requireEnv(env: Record<string, string | undefined>, names: string[]): void {
   const missing = names.filter((name) => {
     const value = env[name];
     return typeof value !== "string" || value.trim() === "";
   });
   if (missing.length === 0) return;
-  throw new Error(
+  throw new MissingEnvError(
     `missing environment variable(s): ${missing.join(", ")}. ` +
       "Export them before running this demo; the values are never printed.",
   );
