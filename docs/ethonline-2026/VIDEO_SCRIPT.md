@@ -28,7 +28,7 @@
 | 1:12–1:36 | `clear` → `node src/run.ts pay`（空撃ち）。左「what would be signed」（amount・payTo・EIP-3009 window）→ `[waiv] payee verdict is ALLOW WARN (69) — not required by policy` → `[ok] evidence floor: subgraph >= 1` → 最終行 `DRY RUN — no signature was created. The signing module was never loaded.` | 既定は空撃ち。本物の 402 を取って、何に署名するはずだったかを見せる。呼び手の policy は「vet402 の ALLOW は要らない。The Graph 自身の台帳に受領 1 件以上」。WARN は免除して記録する——書き換えない。署名は作られていない | Technicality（fail-closed の設計）／Practicality（呼び手の基準で動く） |
 | 1:36–1:54 | ブラウザ: `https://basescan.org/tx/0xf12093fba9314b1d3a514e7b667969201be8d021a6f4d6bdeb8d6c7f2de469ad`。Status Success・Block 50898704・Transfer 0.01 USDC → `0x79DC…FcCB` をズーム → ターミナルに戻り `SKILL.md` の決定行 `verdict from caller_policy` を映す | `--live` は人間の決断。1 セント、block 50898704、The Graph の受取ウォレットへ。Basescan にある。決定行は `caller_policy` と WARN を残す。**The Graph のデータで払った。我々のではなく** | **The Graph**: 実 tx／Practicality／WOW |
 | 1:54–2:12 | `cd examples/ethonline-2026-demo && npm test` の末尾 `ℹ fail 0` → テスト名 2 本（`既定では…署名器に触れない`／`--live を明示すると…ちょうど1回`）→ `packages/sdk` の `node test-mutations.mjs` 末尾 `all 27 mutations killed` | 拒否が署名しないと、なぜ言えるか。テストは signer への参照を数える: 空撃ちで 0。ネガティブコントロールが `--live` で 1 を見る——0 が配線ミスでない証拠。SDK の変異は全部赤になる | Technicality／Usability（`npm test` が鍵なしで緑） |
-| 2:12–2:41 | `docs/ethonline-2026/BAZANTIC_FEEDBACK.md` §2 の表（A 5/10・B 5/10）→ §3 の語彙の行（59% → 91%）→ §4-4（110 calls / 88 tx）。Recipe 公開ページ `bazantic.com/recipes/x402-payee-verification-via-vet402-gateway` を 3 秒 | 問い: 説明なしにエージェントが使えるか。同じモデル・同じプロンプト・同じ 57 ツール。Recipe だけが差。事前登録・1 回・回し直さない。結果 5/10 と 5/10、差なし。直ったのは語彙: 実在の理由コード 59% → 91%。Bazantic への所見: 無料の読み取り 88 回に 88 本のオンチェーン tx | **Bazantic（P2）**: 「Recipe が唯一の差」「両方の結果を示す」「改善を特定」／Originality（正直な報告） |
+| 2:12–2:41 | `docs/ethonline-2026/BAZANTIC_FEEDBACK.md` §2 の表（A 5/10・B 5/10）→ §3 の語彙の行（63% → 91%）→ §4-4（110 calls / 88 tx）。Recipe 公開ページ `bazantic.com/recipes/x402-payee-verification-via-vet402-gateway` を 3 秒 | 問い: 説明なしにエージェントが使えるか。同じモデル・同じプロンプト・同じ 57 ツール。Recipe だけが差。事前登録・1 回・回し直さない。結果 5/10 と 5/10、差なし。直ったのは語彙: 実在の理由コード 59% → 91%。Bazantic への所見: 無料の読み取り 88 回に 88 本のオンチェーン tx | **Bazantic（P2）**: 「Recipe が唯一の差」「両方の結果を示す」「改善を特定」／Originality（正直な報告） |
 | 2:41–2:53 | `packages/mcp-server` で `tools/list` → 7 ツールの中の `pay_if_trusted` → `SKILL.md` 冒頭（`npm run judge-check`）→ `AI_USAGE.md` の "The short answer" | 同じ関門が MCP の 1 ツール。同じ policy を渡すだけで再判定しない。`SKILL.md` は審査員が動かすもの。`AI_USAGE.md` は誰が何を書いたか | Usability（DX）／規約（AI 開示） |
 | 2:53–3:03 | 0:12 の 3 行（404 / WARN 69 / receipts）を静止で再掲 → 最後に `signed false nonce null` の 1 行 | モデルに払うかを決めさせない。関門を呼ぶ——関門は署名が存在する前に「否」と言える | WOW／Originality |
 
@@ -86,7 +86,7 @@ For Bazantic we asked: can an agent use this without our Recipe?
 Same model, same prompt, same fifty-seven tools; the Recipe was the only difference.
 Pre-registered, run once, not re-run.
 Result: five out of ten, and five out of ten. No difference in success.
-What the Recipe fixed was vocabulary: real reason codes went from fifty-nine percent to ninety-one.
+What the Recipe fixed was vocabulary: real reason codes went from sixty-three percent to ninety-one.
 And a finding for Bazantic: eighty-eight free reads cost eighty-eight on-chain transactions.
 
 [S8 2:41]
@@ -152,7 +152,7 @@ Bazantic の問い。エージェントは我々の Recipe なしに使えるか
 同じモデル、同じプロンプト、同じ57ツール。差は Recipe だけ。
 事前登録、1回だけ、回し直しなし。
 結果は10回中5回と、10回中5回。差はありません。
-直ったのは語彙です。実在する理由コードが59%から91%に。
+直ったのは語彙です。実在する理由コードが63%から91%に。
 所見も1つ。無料の読み取り88回に、88本のオンチェーン取引。
 
 [S8 2:41]
@@ -240,7 +240,7 @@ SKILL.md は審査員が動かすもの。AI_USAGE.md は誰が書いたか。
 | `{{mutations}}` | `cd packages/sdk && node test-mutations.mjs 2>&1 \| tail -1` | **all 27 mutations killed in 25.0s** | 動く・**口で言う** | "twenty-seven"（撮影日に増えていたら**その数**。killed でない変異が 1 つでもあれば**この文を丸ごと落とす**） |
 | `{{mcp_tools}}` | `cd packages/mcp-server && printf '%s\n%s\n%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"judge","version":"0"}}}' '{"jsonrpc":"2.0","method":"notifications/initialized"}' '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \| node dist/index.js 2>/dev/null \| tail -1` | **7 ツール**（`pay_if_trusted` を含む） | 動く（画面のみ） | 言わない |
 | `{{ab_a}}` / `{{ab_b}}` | `BAZANTIC_FEEDBACK.md` 末尾の Recount 1 本目 | **A 5/10・B 5/10**（verdictMatch 10/9・fabricated 5/4・unparseable 0/1） | **固定**（生ログ `ab/2026-09-06T213134Z/`・回し直さない） | "five out of ten, and five out of ten" |
-| `{{ab_vocab_a}}` / `{{ab_vocab_b}}` | 同 Recount 2 本目 | **A 19/32 (59%)・B 29/32 (91%)** | 固定 | "fifty-nine percent to ninety-one" |
+| `{{ab_vocab_a}}` / `{{ab_vocab_b}}` | `npm run metrics -- docs/ethonline-2026/ab/2026-09-06T213134Z`（集合 ii・採点と同じ正規化） | **A 20/32 (63%)・B 29/32 (91%)** | 固定 | "sixty-three percent to ninety-one" |
 | `{{ab_toolcalls}}` / `{{ab_tx}}` | 同 Recount 1 本目の最終行 | **110 calls・88 settled・88 distinct tx・57 tools** | 固定 | "eighty-eight … eighty-eight"・"fifty-seven tools" |
 | `{{kronos}}`（judge の絵を足す場合のみ） | `node src/run.ts judge https://kronossignals.com/api/v1/price/btc`（鍵要） | **ALLOW (85)・1358 receipts・block 50973042** | 動く（画面のみ） | — |
 
