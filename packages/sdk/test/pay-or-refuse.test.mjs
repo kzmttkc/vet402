@@ -261,6 +261,35 @@ test("C11 evidence.minSubgraphReceipts 未達で拒否", async () => {
   assert.equal(r.decision.reason_codes.includes("insufficient_subgraph_evidence"), true);
 });
 
+test("C11d 床は「以上」で通す——受領件数が床ちょうどなら通り、床−1 なら拒否（境界値）", async () => {
+  // 2026-09-06 の変異 M06（`<` → `<=`）が生き残った。C11 は 3 件 vs 床 100、D16b は 252 vs 254 で、
+  // **床ちょうど**の組が1つも無かった。境界を1つずらす実装（床の値そのものを拒否する）は
+  // それでも緑だった。ここで両側から固定する。
+  const graph = (n) => ({ status: 200, body: { data: { x402AddressSummaries: [{ totalPayments: String(n) }], _meta: { block: { number: 1 } } } } });
+  const run = async (receipts) => {
+    const w = watchedAccount();
+    const s = seller(okAccept);
+    const f = allowlistFetch([DECISION, "gateway.thegraph.com", "kronos", "payments/x402"], {
+      [DECISION]: decision(),
+      "gateway.thegraph.com": graph(receipts),
+      kronos: s.stub,
+      "payments/x402": { status: 200, body: { ok: true } },
+    });
+    const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { evidence: { minSubgraphReceipts: 100, source: "subgraph" } } });
+    return { r, signs: w.signAccesses().length };
+  };
+  // 床ちょうど（100 == 100）→ 床を満たす。支払いへ進む。
+  const exact = await run(100);
+  assert.equal(exact.r.decision.reason_codes.includes("insufficient_subgraph_evidence"), false, "床ちょうどを「未達」と読んでいる");
+  assert.equal(exact.r.status, "paid");
+  assert.equal(exact.signs, 1);
+  // 床−1（99 < 100）→ 未達。署名しない。
+  const below = await run(99);
+  assert.equal(below.r.status, "refused");
+  assert.equal(below.r.decision.reason_codes.includes("insufficient_subgraph_evidence"), true);
+  assert.equal(below.signs, 0);
+});
+
 test("C11b 床を評価できない source で minSubgraphReceipts を渡したら呼び出し側エラー——黙って無視しない", async () => {
   // WINDOW_PLAN §13「会期後に必ず直すもの #2」。既定 source は "vet402" なので、
   // `minSubgraphReceipts` だけ渡すとどの分岐にも当たらず、**床を指定したのに拒否も警告も
