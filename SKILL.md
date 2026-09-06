@@ -255,8 +255,8 @@ cd packages/sdk && npm install && npm test 2>&1 | grep -E '^ℹ '
 ```
 
 ```
-ℹ tests 159
-ℹ pass 159
+ℹ tests 164
+ℹ pass 164
 ℹ fail 0
 ```
 
@@ -329,6 +329,31 @@ that matter:
 
 If the subgraph answer carries no `_meta.block`, the reader refuses with `graph_no_block_meta`
 (`packages/sdk/src/subgraph-evidence.ts`) — static or cached data does not pass.
+
+### judge — bring your own 402 (dry-run, no signing path)
+
+```bash
+cd examples/ethonline-2026-demo
+node src/run.ts judge <url> [--method POST] [--body '<json>'] [--policy vet402|subgraph|both] \
+                            [--min-subgraph-receipts N] [--min-l1-deliveries N] [--ceiling-usd X]
+```
+
+Same picture as `pay`, for any x402 URL you choose: 402 → `/decision` (404 = uncatalogued, the normal
+case) → payee score for the 402's `payTo` → The Graph x402 Base subgraph → a dry-run verdict.
+A floor >= 1 waives vet402's verdict (`requireVet402Allow=false`) exactly as `pay` does; BLOCK and
+degraded are never waived. There is no `--live` and no account: the signing module is never loaded
+(`test/judge.test.mjs` counts signer property reads — zero).
+
+Verified 2026-09-06 (live, keys redacted by the demo itself):
+
+- The Graph `POST .../subgraphs/id/Cb56epg3…` with `--policy both --min-subgraph-receipts 1 --ceiling-usd 0.01`
+  → `verdict ALLOW` · `resource_uncatalogued, allowed_by_caller_policy` · WARN (69) waived · subgraph 260 receipts, block 50956186
+- `GET https://kronossignals.com/api/v1/price/btc` (catalogued) → `verdict ALLOW` from `/decision` · ALLOW (85) · 1351 receipts, block 50956189
+- A non-402 URL stops in one line: `error: not an x402 endpoint: HTTP 200 … has no PAYMENT-REQUIRED header`
+
+Mutation check on the demo: flipping the floor comparison, removing the BLOCK boundary, or touching the
+signer each turns tests red (7 / 2 / 3 failures). `packages/sdk/test-mutations.mjs` does the same for the
+SDK itself: 27 mutations, all killed, ~20 s.
 
 ## `pay_if_trusted` with The Graph evidence
 
