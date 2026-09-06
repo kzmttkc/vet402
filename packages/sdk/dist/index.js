@@ -180,6 +180,12 @@ export class VouchClient {
             qs.set("caller_dialect", query.callerDialect);
         if (query.allowWithoutL1)
             qs.set("allow_without_l1", "true");
+        if (query.amountUsd !== undefined)
+            qs.set("amount_usd", String(query.amountUsd));
+        if (query.maxPerTxUsd !== undefined)
+            qs.set("max_per_tx_usd", String(query.maxPerTxUsd));
+        if (query.minL1Deliveries !== undefined)
+            qs.set("min_l1_deliveries", String(query.minL1Deliveries));
         return this.request(`/resources/${resourceId}/decision?${qs.toString()}`, query.idempotencyKey ? { headers: { "Idempotency-Key": query.idempotencyKey } } : undefined);
     }
     /** §7.3 GET /resolve?q= — URL / domain / address / tx / payee_id から canonical オブジェクトへ。キー不要だが同じ経路で送る。 */

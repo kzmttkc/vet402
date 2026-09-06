@@ -463,11 +463,31 @@ export type DecisionResult = {
   score: { trustScore: number | null; recommendation: DecisionRecommendation | null; deprecated: true } | null;
   degraded: boolean;
   policy: "allow_only";
+  /**
+   * 呼び手の policy をサーバが当てた結果（2026-09-07・WINDOW_PLAN §16.3）。`amount_usd` /
+   * `max_per_tx_usd` / `min_l1_deliveries` を送ったときだけ付く。語は {@link PayRefuseReason} と同じ。
+   * `recommendation` とは別欄で、判定を書き換えない。
+   */
+  caller_policy?: CallerPolicy;
   rules_version: string;
   registry: { status: "anchored" | "pending" | "off"; tx_hash: string | null };
   scoredAt: string;
   cacheExpiresAt: string;
   disclaimer: string;
+};
+
+/**
+ * `/decision` がサーバ側で当てた呼び手の policy。`applied` は何を当てたか、`verdict` と
+ * `reason_codes` は SDK の `payOrRefuse` と同じ語（`price_above_ceiling` / `evidence_unavailable` /
+ * `payee_recommendation_block` / `insufficient_delivery_evidence`）、`not_evaluated` はサーバが
+ * **見ていない**もの——`min_subgraph_receipts` は常に載る（The Graph は呼び手の鍵でしか読まない）。
+ * docs/openapi.yaml の CallerPolicy と 4 面で一致する（tests/openapi-schema-parity.test.ts）。
+ */
+export type CallerPolicy = {
+  applied: { amount_usd: number | null; max_per_tx_usd: number; min_l1_deliveries: number };
+  verdict: "ALLOW" | "REFUSE";
+  reason_codes: string[];
+  not_evaluated: string[];
 };
 
 export type DecisionQuery = {
@@ -479,6 +499,13 @@ export type DecisionQuery = {
   allowWithoutL1?: boolean;
   /** 同一 (resource, role, payer, key) の再試行でレート単位を二重に消費しない。 */
   idempotencyKey?: string;
+  // --- 呼び手の policy（2026-09-07・§16.3）。送ると応答に `caller_policy` が付く ---
+  /** 402 が要求する額（USD）。上限と比べる相手。 */
+  amountUsd?: number;
+  /** 1 件あたりの上限（USD）。既定はサーバ側も `DEFAULT_MAX_PER_TX_USD`（$1）。 */
+  maxPerTxUsd?: number;
+  /** vet402 の L1 配達台帳の下限。0 以上の整数。 */
+  minL1Deliveries?: number;
 };
 
 /** §5 Endpoint / Resource の記録（resolve 系の共通形）。 */
@@ -689,6 +716,9 @@ export class VouchClient {
     if (query.payer) qs.set("payer", query.payer);
     if (query.callerDialect) qs.set("caller_dialect", query.callerDialect);
     if (query.allowWithoutL1) qs.set("allow_without_l1", "true");
+    if (query.amountUsd !== undefined) qs.set("amount_usd", String(query.amountUsd));
+    if (query.maxPerTxUsd !== undefined) qs.set("max_per_tx_usd", String(query.maxPerTxUsd));
+    if (query.minL1Deliveries !== undefined) qs.set("min_l1_deliveries", String(query.minL1Deliveries));
     return this.request(
       `/resources/${resourceId}/decision?${qs.toString()}`,
       query.idempotencyKey ? { headers: { "Idempotency-Key": query.idempotencyKey } } : undefined,

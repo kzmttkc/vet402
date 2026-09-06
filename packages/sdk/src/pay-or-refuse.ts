@@ -459,6 +459,14 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
   const requireVet402Allow = input.policy?.requireVet402Allow !== false;
 
   const evidence: PayEvidenceRow[] = [];
+  /**
+   * サーバが**同じ policy を当てて返した語**（`/decision` の `caller_policy.reason_codes`・
+   * WINDOW_PLAN §16.3・2026-09-07）。決定行の `reason_codes` に**そのまま**載せる——
+   * ローカルの関門は残す（二重防御）ので status を決めるのはローカルだが、
+   * サーバの語を落とすと「サーバとローカルで答えが違った」ことが呼び手に見えない。
+   * 食い違いは新語（`policy_disagreement` 等）で言わず、**両方の語を並べる**。
+   */
+  let serverPolicyReasons: string[] = [];
   const record = (
     recommendation: "ALLOW" | "REFUSE",
     reason_codes: string[],
@@ -468,7 +476,8 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
     policy_override: PayPolicyOverride | null = null,
   ): PayDecisionRecord => ({
     recommendation,
-    reason_codes,
+    // ローカルの語が先、サーバの policy 語が後。同じ語は 1 回だけ（順序は保つ）。
+    reason_codes: [...new Set([...reason_codes, ...serverPolicyReasons])],
     verdict_source,
     evidence,
     decision,
@@ -502,7 +511,18 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
 
   // --- 3. /decision ---
   const resourceId = input.resourceId ?? (await computeResourceId(method, input.resource));
-  const decisionUrl = `${apiUrl}/resources/${resourceId}/decision?role=payer`;
+  // 呼び手の policy をサーバにも当てさせる（§16.3）。402 の金額・上限・L1 の床を名乗ると、
+  // サーバは判定と同じ文書に `caller_policy` を SDK と同じ語で足す。subgraph の床は送らない
+  // （サーバは呼び手の Graph 鍵を持たないので、送っても `not_evaluated` に載るだけ）。
+  const decisionQuery = new URLSearchParams({ role: "payer" });
+  decisionQuery.set("amount_usd", String(input.amountUsd));
+  decisionQuery.set("max_per_tx_usd", String(maxPerTxUsd));
+  const l1Floor = input.policy?.evidence?.minL1Deliveries;
+  const l1Source = input.policy?.evidence?.source ?? "vet402";
+  if (l1Floor !== undefined && (l1Source === "vet402" || l1Source === "both")) {
+    decisionQuery.set("min_l1_deliveries", String(l1Floor));
+  }
+  const decisionUrl = `${apiUrl}/resources/${resourceId}/decision?${decisionQuery.toString()}`;
   let decision: DecisionResult | null = null;
   let uncatalogued = false;
   try {
@@ -530,6 +550,9 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
 
   const serverReasons =
     decision && Array.isArray(decision.reason_codes) ? decision.reason_codes : [];
+  serverPolicyReasons = Array.isArray(decision?.caller_policy?.reason_codes)
+    ? decision.caller_policy.reason_codes.filter((r): r is string => typeof r === "string")
+    : [];
   const evidenceVerdictSource: PayDecisionRecord["verdict_source"] = uncatalogued ? "payee_score" : "decision";
 
   // --- 3.5 宣言された証拠源を**すべて**読む。judgement の前に読むのは意図的で、
