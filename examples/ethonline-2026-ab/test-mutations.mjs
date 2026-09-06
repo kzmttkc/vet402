@@ -173,6 +173,21 @@ const MUTATIONS = [
     find: '      if (exemptShape && hit.name === "private-key-like") continue;',
     replace: "      if (exemptShape) continue;",
   },
+  // ---- 2026-09-07 追加。Recipe の公開状態の規則（状態を固定しない。状態と証拠の対応を固定する）----
+  {
+    id: "M20",
+    why: "published なのに公開 URL を検めない — 『誰でも開ける』を持たない写しが published を名乗れる",
+    file: "src/recipe.mjs",
+    find: "    if (publicUrl !== publicRecipeUrl(recipe)) {",
+    replace: "    if (false) {",
+  },
+  {
+    id: "M21",
+    why: "draft でも publishedAt を許す — まだ無い公開日時を書ける（無いものを書かない、の片側が消える）",
+    file: "src/recipe.mjs",
+    find: '    for (const key of ["publicUrl", "publishedAt"]) {',
+    replace: '    for (const key of ["publicUrl"]) {',
+  },
 ];
 
 const TEST_FILES = (await readdir("test")).filter((f) => f.endsWith(".test.mjs")).map((f) => `test/${f}`);
