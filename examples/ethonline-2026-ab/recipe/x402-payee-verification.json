@@ -2,9 +2,18 @@
   "$comment": "bazantic.com 上の Recipe の写し。原本は bazantic.com にあり、これはリポの中で条件 B が読むための複製である。写せていない項目は null のまま notRetrieved に列挙する——埋めると原本と食い違い、その食い違いが誰にも見えなくなる。",
   "slug": "x402-payee-verification-via-vet402-gateway",
   "name": "X402 Payee Verification via vet402 Gateway",
-  "description": null,
-  "prompt": null,
-  "inputs": null,
+  "description": "Verify an x402 payee before authorizing payment by querying the vet402 gateway tools. Calls getResourceDecision first; if not found, calls getPayeeScore. Returns a structured decision (proceed or refuse) with reason codes extracted verbatim from API responses, evidence, and a one-sentence explanation. Refuses unless vet402 returns ALLOW; treats 404, errors, and degraded readings as refusal.",
+  "prompt": "You are a payment authorization agent using the vet402 gateway. Verify the payee before authorizing payment.\n\nInputs: {{inputs}}\n\nProcess:\n1. Call getResourceDecision with the resource_url.\n2. If the response is HTTP 404 with reason code resource_uncatalogued or not_found, the endpoint is not catalogued. Do NOT treat 404 as permission to pay. Instead, call getPayeeScore with the payee_address.\n3. If getResourceDecision returns a decision, extract the decision (ALLOW or DENY), reason_codes (verbatim from response), and evidence.\n4. If getPayeeScore is called, extract its decision, reason_codes, and evidence.\n5. Return JSON with:\n   - decision: \"proceed\" if vet402 returned ALLOW, otherwise \"refuse\"\n   - reason_codes: array of codes that appear verbatim in the API response (e.g., l0_pass, l0_fail, l1_delivered, l1_not_attempted, l2_undeclared, payee_recommendation_not_allow, evidence_unavailable, resource_uncatalogued)\n   - evidence: summary of findings from the API response\n   - explanation: one sentence. If l1_not_attempted appears, state that vet402 has never bought from this payee and this is vet402's gap, not a seller failure. Never imply seller failure unless a reason code explicitly indicates delivery failure.\n\nRefuse unless vet402 returned ALLOW. Treat 404, errors, and degraded readings as refusal.",
+  "inputs": [
+    {
+      "field": "payee_address",
+      "required": true
+    },
+    {
+      "field": "resource_url",
+      "required": true
+    }
+  ],
   "tools": [
     {
       "name": "getResourceDecision",
@@ -20,7 +29,7 @@
       "server": "vet402"
     }
   ],
-  "notRetrieved": ["description", "prompt", "inputs"],
+  "notRetrieved": [],
   "source": {
     "platform": "bazantic.com",
     "account": "TakeshiTGAL",
@@ -28,8 +37,8 @@
     "gatewayName": "vet402",
     "gatewayUrl": "https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com",
     "mcpUrl": "https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp",
-    "copiedAt": "2026-09-06",
-    "copiedFrom": "bazantic.com の Provider Dashboard 上の Recipe（draft）。slug / name / 呼ぶツール3本 / Gateway と MCP の口だけが確定値として渡された。description・prompt 本文・inputs はこの写しを作った時点で未取得。",
+    "copiedAt": "2026-09-06T00:22Z",
+    "copiedFrom": "bazantic.com の Provider Dashboard の Recipe 編集画面（draft）から、description / prompt / inputs を DOM の実値で写した。slug / name / ツール3本 / Gateway と MCP の口は作成時の確定値。",
     "canon": "docs/ethonline-2026/WINDOW_PLAN.md §16（2026-09-06 訂正: 条件 B は SKILL.md ではなく bazantic.com で作った Recipe）"
   }
 }

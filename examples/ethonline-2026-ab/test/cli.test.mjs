@@ -49,7 +49,7 @@ test("実行のメタに Recipe の写しの出所が残る（審査員が原本
   const r = await main(["--agent", "mock", "--out", out]);
   assert.equal(r.run.meta.recipeSource.platform, "bazantic.com");
   assert.equal(r.run.meta.recipeSource.mcpUrl, "https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp");
-  assert.match(r.run.meta.recipeSource.copiedAt, /^\d{4}-\d{2}-\d{2}$/);
+  assert.match(r.run.meta.recipeSource.copiedAt, /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z)?$/);
   const meta = JSON.parse(await readFile(join(r.dir, "run.json"), "utf8")).meta;
   assert.deepEqual(meta.recipeSource, r.run.meta.recipeSource);
 });
