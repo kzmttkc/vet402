@@ -70,9 +70,12 @@ export const FIXTURES = Object.freeze([
     resourceId: "8146a86d0e858267f15388341fc99b7d5fa23b6ebb138ba0267a38eb9a76386b",
     oracle: Object.freeze({
       verdict: "refuse",
-      // **許す集合は「我々の面が実際に返す語の和集合」**にする。条件 A は素の API（/decision）しか
-      // 持たず、条件 B は SKILL.md 経由で payOrRefuse の語も知る。片方だけを正解にすると
-      // A/B のどちらかが不当に有利になるので、両方の実測値を合わせた集合を許す。
+      // **許す集合は「我々の面が実際に返す語の和集合」**にする。同じ相手について
+      // `/decision` と payOrRefuse は違う語を返すので、片方だけを正解にすると
+      // どちらの経路を通ったかで当たり外れが決まってしまう。だから両方の実測値を合わせた集合を許す。
+      // （2026-09-06: ここには「条件 B は SKILL.md 経由で payOrRefuse の語も知る」と書いてあった。
+      //  条件 B が渡すのは SKILL.md ではなく Bazantic の Recipe になり、**MCP のツールは A にも B にも
+      //  同じだけ渡る**ので、条件による語彙の差という前提そのものが無くなった。和集合を許す判断は変えない。）
       reasonCodes: Object.freeze([
         "l0_pass", "l1_not_attempted", "l2_undeclared", "payee_recommendation_not_allow",
       ]),

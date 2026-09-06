@@ -14,7 +14,7 @@ export const MOCK_MODEL = "mock-scripted-v1";
 
 /**
  * プロンプトの **Target ブロックだけ**から相手を見分ける（ctx を受け取らない）。
- * プロンプト全体を検索すると、条件 B では SKILL.md 本文の URL に釣られて
+ * プロンプト全体を検索すると、条件 B では **Recipe 本文**に載った URL に釣られて
  * 相手を取り違える（実際に起きた。`test/agents.test.mjs` で固定）。
  */
 function readTarget(fullPrompt) {
