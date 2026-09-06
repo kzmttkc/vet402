@@ -260,3 +260,27 @@ test("(e2) CLI は Markdown を印字し、--json で同じ数字を JSON で出
   assert.equal(parsed.scoring.perCondition.A.success, 10);
   assert.equal(parsed.bridge.toolCalls, 0);
 });
+
+test("(b3) 語彙集合は SDK の定数配列 PAY_REFUSE_REASONS（新形・コメント混じり）からも読める", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "metrics-vocab-"));
+  const vocabularyPath = join(dir, "vocabulary.ts");
+  const sdkPath = join(dir, "pay-or-refuse.ts");
+  await writeFile(vocabularyPath, 'export const X = [{ term: "alpha" }];\n');
+  await writeFile(
+    sdkPath,
+    [
+      "export const PAY_REFUSE_REASONS = [",
+      '  "beta_gamma",',
+      '  // 2026-09-07: "this_is_a_comment_not_a_term"',
+      '  "delta",',
+      "] as const;",
+      "",
+      "export type PayRefuseReason = (typeof PAY_REFUSE_REASONS)[number];",
+      "",
+    ].join("\n"),
+  );
+  const v = await loadVocabulary({ vocabularyPath, sdkPath });
+  assert.ok(v.terms.has("beta_gamma") && v.terms.has("delta") && v.terms.has("alpha"));
+  assert.ok(!v.terms.has("this_is_a_comment_not_a_term"), "コメント内の文字列を語に数えない");
+  assert.equal(v.sources[1].terms, 2);
+});

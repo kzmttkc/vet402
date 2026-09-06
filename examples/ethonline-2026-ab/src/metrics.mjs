@@ -34,7 +34,7 @@ function norm(code) {
 /**
  * 語彙集合 (i) をリポのファイルから読む。
  *   - `vocabulary.ts`: `term: "..."` の全部
- *   - `pay-or-refuse.ts`: `export type PayRefuseReason = | "..." | "...";` の文字列リテラルだけ
+ *   - `pay-or-refuse.ts`: `export const PAY_REFUSE_REASONS = [...] as const` の文字列リテラル（旧形の型 union も可）
  *     （同じファイルの他の型 — `PayEvidenceSource` など — は理由コードではないので拾わない）
  */
 export async function loadVocabulary({ vocabularyPath = DEFAULT_VOCABULARY_PATH, sdkPath = DEFAULT_SDK_PATH } = {}) {
@@ -43,14 +43,24 @@ export async function loadVocabulary({ vocabularyPath = DEFAULT_VOCABULARY_PATH,
 
   const fromVocabulary = [...vocabularySrc.matchAll(/term:\s*"([^"]+)"/g)].map((m) => m[1]);
 
-  const start = sdkSrc.indexOf("export type PayRefuseReason =");
-  if (start === -1) throw new Error(`loadVocabulary: "export type PayRefuseReason =" not found in ${sdkPath}`);
-  const end = sdkSrc.indexOf(";", start);
-  const union = sdkSrc.slice(start, end === -1 ? undefined : end);
-  const fromSdk = [...union.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  // 2026-09-07 以降、SDK は語を定数配列 `PAY_REFUSE_REASONS` に持ち、型はそこから導く。
+  // 古い形（`export type PayRefuseReason = | "..." | "..."`）も読めるようにしておく——
+  // どちらの形でも「SDK のソースから読む」ことに変わりはない。
+  let block = null;
+  const constStart = sdkSrc.indexOf("export const PAY_REFUSE_REASONS =");
+  if (constStart !== -1) {
+    const end = sdkSrc.indexOf("] as const", constStart);
+    block = sdkSrc.slice(constStart, end === -1 ? undefined : end);
+  } else {
+    const typeStart = sdkSrc.indexOf("export type PayRefuseReason =");
+    if (typeStart === -1) throw new Error(`loadVocabulary: neither PAY_REFUSE_REASONS nor "export type PayRefuseReason =" found in ${sdkPath}`);
+    const end = sdkSrc.indexOf(";", typeStart);
+    block = sdkSrc.slice(typeStart, end === -1 ? undefined : end);
+  }
+  const fromSdk = [...block.replace(/\/\/[^\n]*/g, "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
 
   if (fromVocabulary.length === 0) throw new Error(`loadVocabulary: no term: "..." entries in ${vocabularyPath}`);
-  if (fromSdk.length === 0) throw new Error(`loadVocabulary: PayRefuseReason has no string literals in ${sdkPath}`);
+  if (fromSdk.length === 0) throw new Error(`loadVocabulary: PAY_REFUSE_REASONS / PayRefuseReason has no string literals in ${sdkPath}`);
 
   const terms = new Set([...fromVocabulary, ...fromSdk].map(norm));
   return {
