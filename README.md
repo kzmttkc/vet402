@@ -77,6 +77,12 @@ Who wrote the code, by area and representative file — and what the human did: 
 [`docs/ethonline-2026/PROMPTS/`](./docs/ethonline-2026/PROMPTS/). The payment gate itself:
 [`SKILL.md`](./SKILL.md).
 
+**Try it** (clean clone; the first line needs no API key):
+
+- `npm run judge-check` — one command from the repo root: sdk → mcp-server → demo → A/B harness, every test, exit codes recorded per step (`scripts/judge-check.sh`).
+- [`examples/ethonline-2026-demo`](./examples/ethonline-2026-demo/) — `refuse` (two sources side by side, no signature), `pay` (dry run: fetches the real 402, signs nothing), `judge <url>` (bring your own x402 URL).
+- [`examples/ethonline-2026-ab`](./examples/ethonline-2026-ab/) — the Bazantic A/B harness: Recipe vs no Recipe, mock run without keys, live run with a model.
+
 ## Docs
 
 Start here, in this order:

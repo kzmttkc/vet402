@@ -1,5 +1,15 @@
 # ETHOnline 2026 — A/B 実証ハーネス（P2 / Bazantic）
 
+## In English (summary)
+
+**What it measures.** Can an agent use vet402 through the Bazantic Gateway without our explanation? Condition A gets the Gateway URL, the raw API list and the Gateway's MCP tools; condition B gets the same plus the Recipe (`recipe/x402-payee-verification.json`, a copy of the original on bazantic.com). The Recipe is the only difference — `stripRecipe()` turns B's prompt into A's byte for byte, and a test pins it.
+
+**How to run.** Mock (no keys, no network): `npm ci` at the repo root (the bridge's signer imports `viem` from there), then `cd examples/ethonline-2026-ab && npm ci && npm test && node src/cli.mjs --agent mock` (20 trials) and `node test-mutations.mjs` (breaks the harness on purpose; every mutant must turn a test red). Live: `export ANTHROPIC_API_KEY=…` and `node src/cli.mjs --agent anthropic --model <model>`; add `DEMO_PAYER_PRIVATE_KEY` for the bridge below. `run.json` records `meta.fixtureReadiness.blockers` — the unmeasured oracles that must be filled before a live run counts.
+
+**Where results go.** `results/<timestamp>/` — `trials.jsonl` (one raw trial per line), `run.json` (meta), `summary.json` and `summary.md` (recounted from the raw log every time). The committed run is the mock; it says so in its first line. Live runs are to be moved to `docs/ethonline-2026/ab/` as pre-registered in `docs/ethonline-2026/WINDOW_PLAN.md` §16.
+
+**Bazantic's 402 and the bridge.** The Gateway answers 402 to any unpaid call even at 0 mcents and ignores `PAYMENT-SIGNATURE` on MCP `tools/call`, so `src/mcp.mjs` re-sends the same resource as a signed REST `GET` and hands the model the real response (one 0-USDC tx per call, kept in `raw.toolCalls[].x402Bridge.txHash`); without a payer key the 402 text reaches the model unchanged.
+
 賞の問いは一文だけ——**「エージェントが、あなたの説明なしにあなたの製品を使えるか」**。
 それを A/B で測る。**測り方は走らせる前に固定されている**（`docs/ethonline-2026/WINDOW_PLAN.md` §16 の事前登録）。
 このディレクトリは、その事前登録を**そのまま実行するだけ**の道具である。
