@@ -12,6 +12,56 @@
 > **What is not built yet**, and everything on this page was run before it was written.
 > Required by The Graph's prize: "Open-source the code with a clear README **or SKILL.md** so judges can run it."
 
+## Prerequisites — read this once, then every block below runs in the order written
+
+Everything on this page was walked from a fresh `git clone` on 2026-09-07 (Node v26.3.0, npm 11.16.0).
+The numbers here are from that walk, not from memory.
+
+**Node ≥ 22.18.** The strictest `engines` among the packages this page uses is
+`examples/ethonline-2026-demo` (`>=22.18` — it runs `.ts` files directly with Node's own type
+stripping). `packages/sdk` and `packages/mcp-server` accept `>=20`, `examples/ethonline-2026-ab`
+`>=22`. The root `package.json` says `24.x`, but that is the Next.js service; nothing on this page
+needs it beyond one `npm ci` for a library (below).
+
+**One command first.** From the repo root:
+
+```bash
+npm run judge-check     # scripts/judge-check.sh — no API key, nothing live
+```
+
+It runs `sdk: npm ci → build → test` · `mcp-server: npm ci → build → test` · `demo: npm test` ·
+`root: npm ci` · `ab: npm ci → test → test-mutations`, records each step's exit code on its own (no
+`&&`), prints one table, and exits 1 if any step was non-zero. It `unset`s every key before it
+starts, so a green run is proof that none of this needs one. Measured on a clean clone: **17 s** with
+a warm npm cache, **21 s** with an empty one (`npm_config_cache` pointed at an empty directory);
+`git clone` itself took 1.4 s. The only network it touches is the npm registry.
+
+**Build order — the dependency chain, not a preference.**
+
+| step | why it must come first |
+|---|---|
+| 1. `packages/sdk` — `npm ci && npm run build` | everything else imports its `dist/` |
+| 2. `packages/mcp-server` — `npm ci && npm run build` | depends on the SDK through `file:../sdk`; `npm ci` here creates the link, so the SDK's `dist/` must already exist |
+| 3. `examples/ethonline-2026-demo` — nothing to install | imports `packages/sdk/dist` by relative path; `npm test` and all three commands run without an install |
+| 4. `examples/ethonline-2026-ab` — root `npm ci`, then `npm ci` here | the harness's x402 bridge imports `viem` **from the repo root's `node_modules`** (an optional peer here, a dependency at the root). Without the root install two tests fail with `ERR_MODULE_NOT_FOUND` — the same step CI runs |
+
+**Keys — which blocks need one, and where a free one comes from.**
+
+| key | needed by | not needed by | where to get it |
+|---|---|---|---|
+| *(none)* | — | `npm run judge-check`, sections **1–3** below (tests, offline refusal, `tools/list`), section **4** (it deliberately uses a wrong key) | — |
+| `VOUCH_API_KEY` | the demo's `refuse` / `pay` / `judge`, and any `pay_if_trusted` call that must reach `/decision` | key-less REST reads: `GET /api/v1/resolve?q=…` and the object reads listed in `README.md` → *Resolve, then decide*; the Bazantic MCP gateway (see **What is not built yet**) | free: <https://vet402.com/signup> (1,000 lookups/month, no card) → <https://vet402.com/dashboard/keys> |
+| `GRAPH_API_KEY` | the demo (all three commands read The Graph live) and any `policy.evidence.source: "subgraph" \| "both"` call | everything that reads vet402 only | free key from Subgraph Studio: <https://thegraph.com/studio> → *API Keys* |
+| `VOUCH_PAYER_PRIVATE_KEY` / `DEMO_PAYER_PRIVATE_KEY` | moving real money only (`--live`, or `pay_if_trusted` with `resource` + `payee` + `amountUsd`) | every block on this page — the dry runs load no signing module | your own throwaway wallet with a few cents of USDC on Base. Never required to evaluate this submission |
+
+Export keys in the shell, never in a file that gets committed. The demo rewrites the key inside
+the gateway URL to `<KEY>` on every line it prints (`examples/ethonline-2026-demo/src/emit.ts`), and
+the SDK puts the key-less `publicUrl` on the evidence row (`packages/sdk/src/subgraph-evidence.ts`),
+so a `decision_record` never carries it; the MCP outputs below were redacted by hand where noted.
+
+**cwd.** Every block states its own `cd`; paths are relative to the repo root. If a block says
+`cd packages/mcp-server` and you are already there, `../mcp-server` is the same place.
+
 ## What this gives an agent
 
 A payment gate that holds the signer.
