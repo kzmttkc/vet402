@@ -65,11 +65,11 @@ const GRAPH_RESOURCE = "https://gateway.thegraph.com/api/x402/subgraphs/id/Cb56e
 const ACCEPT = { scheme: "exact", network: "eip155:8453", amount: "10000", asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", payTo: GRAPH_PAYEE, extra: { assetTransferMethod: "eip3009", name: "USD Coin", version: "2" } };
 
 /** 支払いヘッダの有無で答えを変える売り手。「ヘッダを実際に付けたか」がこれで測れる。 */
-function seller() {
+function seller(accept = ACCEPT) {
   const paid = [];
   const stub = (url, init) => {
     const raw = (init?.headers ?? {})["PAYMENT-SIGNATURE"];
-    if (!raw) return { status: 402, body: {}, headers: { "payment-required": b64({ x402Version: 2, accepts: [ACCEPT] }) } };
+    if (!raw) return { status: 402, body: {}, headers: { "payment-required": b64({ x402Version: 2, accepts: [accept] }) } };
     paid.push({ url, decoded: JSON.parse(atob(raw)) });
     return { status: 200, body: { data: "ok" }, headers: { "PAYMENT-RESPONSE": b64({ success: true, transaction: "0xtx", network: ACCEPT.network, payer: "0xDB62BD202914609830fA656F87996b91be3Aa673" }) } };
   };
@@ -313,4 +313,127 @@ test("H7 tools/list の inputSchema に policy が載る。Graph の鍵はツー
   assert.equal(ev.graphApiKey, undefined, "鍵をツール入力に載せない（LLM の文脈に鍵を通さない）");
   assert.equal(JSON.stringify(tool.inputSchema).includes("graphApiKey"), false);
   assert.match(tool.description, /GRAPH_API_KEY/, "鍵の置き場所を説明文で言う");
+});
+
+// ---- H8–H12. カタログ外の売り手（/decision 404 not_found）を MCP から SDK の I23 経路へ落とす（WINDOW_PLAN §3.1・§4 I23・2026-09-06）----
+//
+// デモの支払い先 The Graph 本体はカタログに無く、`/decision` は 404 を返す（§3.1 実測）。
+// SDK の `payOrRefuse` は 09-05 からこの 404 を「402 の payTo ＋ 受取人スコア ＋ 宣言された床」で
+// 判定できる（I23）が、MCP の前段は 404 を一律 `evidence_unavailable` で止めていた
+// （SKILL.md「The uncatalogued-seller path in MCP: Not exposed」）。つまり **MCP から The Graph に
+// 払う道は無かった**。ここでは「`resource`（402 を返す URL）が与えられているときだけ」
+// 404 を SDK へ通し、境界（payTo 照合・BLOCK・床）は SDK が持つものを橋越しに固定する。
+const NOT_FOUND = { error: "not_found" };
+/** 2026-09-04 実測の受取人スコア応答（SDK の I23 と同じ形。recommendation / score だけ差し替える）。 */
+const payeeScore = (over = {}) => ({
+  payee: GRAPH_PAYEE.toLowerCase(),
+  score: 69,
+  recommendation: "WARN",
+  dataDepth: "thin",
+  degraded: false,
+  signalsUnavailable: [],
+  signals: { receiving: { paymentCount: 0, distinctPayers: 0, l1DeliveryCount: 0 } },
+  scoredAt: new Date().toISOString(),
+  cacheExpiresAt: new Date(Date.now() + 300_000).toISOString(),
+  ...over,
+});
+
+/** カタログ外のハーネス。/decision は 404、/payees/{addr}/score は `score`、subgraph と売り手は harness と同じ。 */
+function uncataloguedHarness({ score, receipts, accept = ACCEPT }) {
+  const w = watched();
+  const s = seller(accept);
+  const calls = [];
+  const fetch = async (u, init) => {
+    const url = String(u);
+    calls.push({ url, body: String(init?.body ?? "") });
+    if (url.includes("/decision")) {
+      return { ok: false, status: 404, json: async () => NOT_FOUND, headers: new Map() };
+    }
+    if (url.includes("/score")) {
+      return { ok: true, status: 200, json: async () => score, headers: new Map() };
+    }
+    if (String(init?.body ?? "").includes("x402AddressSummaries")) {
+      return { ok: true, status: 200, json: async () => graph(receipts), headers: new Map() };
+    }
+    const res = url.includes("gateway.thegraph.com") ? s.stub(url, init) : { status: 200, body: { ok: true }, headers: {} };
+    return { ok: res.status < 400, status: res.status, json: async () => res.body, headers: new Map(Object.entries(res.headers ?? {})) };
+  };
+  return {
+    w, s, calls, fetch,
+    scoreCalls: () => calls.filter((c) => c.url.includes("/score")),
+    graphCalls: () => calls.filter((c) => c.body.includes("x402AddressSummaries")),
+  };
+}
+
+test("H8 /decision 404 ＋ resource あり ＋ 受取人スコア WARN ＋ requireVet402Allow:false ＋ subgraph 259 件 → 払う。署名器ちょうど1回・verdict_source caller_policy・evidence[] に subgraph", async () => {
+  const h = uncataloguedHarness({ score: payeeScore(), receipts: 259 });
+  const r = await payIfTrusted({ ...target, signer: h.w.signer, fetch: h.fetch, graphApiKey: "k".repeat(32), policy: subgraphPolicy });
+  assert.equal(r.decision, "PAID", JSON.stringify(r.refuse_reasons));
+  assert.equal(r.safe_to_pay, true);
+  assert.equal(h.w.signAccesses().length, 1, "署名器にちょうど1回");
+  assert.equal(h.s.paid.length, 1, "署名ヘッダを付けて売り手へ1回再送");
+  assert.equal(h.scoreCalls().length, 1, "受取人スコアを実際に1回引いている（404 を ALLOW 扱いした実装は緑にしない）");
+  assert.equal(h.graphCalls().length, 1, "The Graph を実際に1回読んでいる");
+  const rec = r.decision_record;
+  assert.ok(rec, "decision_record が無い");
+  assert.equal(rec.verdict_source, "caller_policy", "vet402 ではなく呼び手の規則が通した");
+  assert.equal(rec.reason_codes.includes("resource_uncatalogued"), true, "404 経路であることが機械可読で残る");
+  assert.equal(rec.reason_codes.includes("allowed_by_caller_policy"), true);
+  const row = rec.evidence.find((e) => e.source === "subgraph");
+  assert.ok(row, `evidence[] に subgraph の行が無い: ${JSON.stringify(rec.evidence)}`);
+  assert.equal(row.receipts, 259);
+  assert.equal(row.block?.number, 50898704, "live の証跡（block.number）が落ちている");
+  assert.equal(rec.policy_override?.waived?.source, "payee_score", "免除したのは受取人スコアの WARN");
+  assert.equal(rec.policy_override?.waived?.recommendation, "WARN");
+  assert.deepEqual(rec.policy_override?.floors_met, [{ floor: "minSubgraphReceipts", source: "subgraph", required: 1, observed: 259 }]);
+  // measurement は /decision の本文そのまま。404 の本文に判定は無いので空。
+  assert.equal(r.measurement.recommendation, null);
+});
+
+test("H9 同条件で subgraph 0 件 → 拒否。insufficient_subgraph_evidence・署名器 0 回", async () => {
+  const h = uncataloguedHarness({ score: payeeScore(), receipts: 0 });
+  const r = await payIfTrusted({ ...target, signer: h.w.signer, fetch: h.fetch, graphApiKey: "k".repeat(32), policy: subgraphPolicy });
+  assert.equal(r.decision, "REFUSE");
+  assert.equal(r.refuse_reasons.includes("insufficient_subgraph_evidence"), true, r.refuse_reasons.join(","));
+  assert.equal(r.refuse_reasons.includes("resource_uncatalogued"), true);
+  assert.equal(r.refuse_reasons.includes("allowed_by_caller_policy"), false);
+  assert.deepEqual(h.w.signAccesses(), []);
+  assert.equal(h.s.paid.length, 0);
+  assert.equal(r.nonce, null);
+  assert.equal(r.decision_record?.evidence.find((e) => e.source === "subgraph")?.receipts, 0, "拒否しても The Graph が何を知っていたかは残る");
+});
+
+test("H10 /decision 404 ＋ 受取人スコア BLOCK → requireVet402Allow:false でも拒否・署名器 0 回（§3.2.1 はカタログ外でも同じ）", async () => {
+  const h = uncataloguedHarness({ score: payeeScore({ recommendation: "BLOCK", score: 5 }), receipts: 259 });
+  const r = await payIfTrusted({ ...target, signer: h.w.signer, fetch: h.fetch, graphApiKey: "k".repeat(32), policy: subgraphPolicy });
+  assert.equal(r.decision, "REFUSE");
+  assert.equal(r.refuse_reasons.includes("payee_recommendation_block"), true, r.refuse_reasons.join(","));
+  assert.equal(r.refuse_reasons.includes("allowed_by_caller_policy"), false, "BLOCK を呼び手の policy で通したと記録しない");
+  assert.equal(h.scoreCalls().length, 1, "スコアを実際に引いて BLOCK を見た");
+  assert.deepEqual(h.w.signAccesses(), []);
+  assert.equal(h.s.paid.length, 0);
+  assert.equal(r.decision_record?.verdict_source, "payee_score");
+});
+
+test("H11 /decision 404 ＋ resource 無し → evidence_unavailable。通信は /decision の1回だけ", async () => {
+  const h = uncataloguedHarness({ score: payeeScore(), receipts: 259 });
+  const r = await payIfTrusted({ resourceId: target.resourceId, signer: h.w.signer, fetch: h.fetch, graphApiKey: "k".repeat(32), policy: subgraphPolicy });
+  assert.equal(r.decision, "REFUSE");
+  assert.equal(r.refuse_reasons.includes("evidence_unavailable"), true, r.refuse_reasons.join(","));
+  assert.equal(h.calls.length, 1, `通信が /decision の1回で止まっていない: ${h.calls.map((c) => c.url).join(" | ")}`);
+  assert.match(h.calls[0].url, /\/decision/);
+  assert.deepEqual(h.w.signAccesses(), []);
+  assert.equal(r.decision_record, null, "SDK に到達していない");
+});
+
+test("H12 /decision 404 ＋ 402 の payTo が payee と不一致 → 拒否（A4）・署名器 0 回", async () => {
+  const OTHER = "0x36038e1D712c5e39f35952164EC58EC2B96cAeE7";
+  const h = uncataloguedHarness({ score: payeeScore({ recommendation: "ALLOW", score: 80 }), receipts: 259, accept: { ...ACCEPT, payTo: OTHER } });
+  const r = await payIfTrusted({ ...target, signer: h.w.signer, fetch: h.fetch, graphApiKey: "k".repeat(32), policy: subgraphPolicy });
+  assert.equal(r.decision, "REFUSE");
+  assert.equal(r.refuse_reasons.includes("payee_mismatch"), true, r.refuse_reasons.join(","));
+  assert.equal(r.refuse_reasons.includes("resource_uncatalogued"), true);
+  assert.deepEqual(h.w.signAccesses(), []);
+  assert.equal(h.s.paid.length, 0);
+  assert.equal(r.nonce, null);
 });

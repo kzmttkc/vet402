@@ -11,7 +11,11 @@
  * 判定の流れ（5行）:
  *   1. 呼び出し側の誤り（64桁hex でない resourceId、fetch 未注入）は throw。判定も引かない
  *   2. `GET /resources/{id}/decision?role=payer` を引く。読めない → 拒否（沈黙は ALLOW ではない）
+ *      **404 not_found（カタログ外・§3.1）は例外**: `resource`（402 を返す URL）が与えられていれば
+ *      止めずに 5 へ通し、SDK が 402 の payTo ＋ 受取人スコア ＋ 宣言された床で判定する（I23・2026-09-06）。
+ *      `resource` が無い 404 は判定材料が存在しないので従来どおり `evidence_unavailable`
  *   3. `degraded` → 拒否。`recommendation !== "ALLOW"` → 拒否。**理由はサーバの reason_codes をそのまま通す**
+ *      （カタログ外は判定本文が無いのでこの段を飛ばす。受取人スコアの BLOCK / degraded は SDK の 3' 段が持つ）
  *   4. ALLOW でも支払い先（payee / resource / amountUsd）が無ければ拒否（`payment_target_unknown`）
  *   5. ここまで全部通ったときだけ `@vet402/sdk` を**動的 import** し、`payOrRefuse` に渡す
  *
@@ -53,6 +57,8 @@ export async function payIfTrusted(input) {
     const headers = input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {};
     // --- 2. 判定 ---
     let body = null;
+    /** `/decision` が 404 not_found（カタログ外）。判定は SDK が 402 の payTo と受取人スコアで出す（I23）。 */
+    let uncatalogued = false;
     try {
         const response = await fetchFn(`${apiUrl}/resources/${input.resourceId}/decision?role=payer`, { headers });
         try {
@@ -61,10 +67,19 @@ export async function payIfTrusted(input) {
         catch {
             body = null;
         }
-        if (!response.ok) {
-            // 404（カタログ外）もここに落ちる。SDK の `payOrRefuse` は 402 の payTo と
-            // 受取人スコアで判定へ落とせるが（§3.1・I23）、MCP は支払い先を渡されていない
-            // 段階でそこへ進めない。**読めなかったのだから払わない**を先に守る。
+        if (response.status === 404 && body?.error === "not_found") {
+            // カタログ外（§3.1）。`getResource()` は resource_id の単純照会なので未登録は必ずここ。
+            // SDK の `payOrRefuse` は 402 の payTo ＋ 受取人スコア ＋ 宣言された床で判定できる（I23）が、
+            // それには **402 を返す URL** が要る。`resource` が無ければ判定材料が存在しないので、
+            // 従来どおり「読めなかったのだから払わない」で止める（H11）。
+            if (typeof input.resource !== "string") {
+                return refuse(measure(body), ["evidence_unavailable"], "This resource is not in vet402's catalogue (decision 404) and no resource URL was given, so there is " +
+                    "no 402 challenge to judge from. Pass resource (the URL that answers 402), payee and amountUsd to let " +
+                    "payOrRefuse judge from the 402's payTo, the payee score and your evidence floors.");
+            }
+            uncatalogued = true;
+        }
+        else if (!response.ok) {
             return refuse(measure(body), ["evidence_unavailable"], "The decision could not be read — no answer is not an ALLOW.");
         }
     }
@@ -73,13 +88,15 @@ export async function payIfTrusted(input) {
     }
     const m = measure(body);
     // --- 3. degraded / ALLOW でない ---
-    if (m.degraded === true) {
+    // カタログ外には判定本文が無い。この段の検査は判定本文に対するものなので飛ばし、
+    // 受取人スコアの degraded / BLOCK / 非 ALLOW は SDK の 3' 段がそのまま持つ（H10）。
+    if (!uncatalogued && m.degraded === true) {
         return refuse(m, [...m.reason_codes, "evidence_unavailable"], "Do not pay: an input could not be measured, so this body is a refusal, not a measurement.");
     }
     // `requireVet402Allow: false` のときは ALLOW でない判定を**ここでは**止めない。BLOCK・床・
     // degraded の境界は `payOrRefuse` が持ち（§3.2.1）、そこへ通すために非 ALLOW を先へ渡す。
     // MCP に同じ境界を写すと、次に SDK が境界を直したときこちらだけ古いまま残る（§14.2）。
-    if (m.recommendation !== "ALLOW" && requireVet402Allow) {
+    if (!uncatalogued && m.recommendation !== "ALLOW" && requireVet402Allow) {
         return refuse(m, [...m.reason_codes, "payee_recommendation_not_allow"], `Do not pay: the recommendation is ${m.recommendation ?? "absent"}, not ALLOW.`);
     }
     // --- 4. ALLOW でも、払う相手を知らなければ払わない ---

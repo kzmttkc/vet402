@@ -148,7 +148,9 @@ check_agent_trust, check_wallet_trust, check_payee_trust, explain_trust_score,
 attest_x402_payment, check_resource_decision, pay_if_trusted
 ```
 
-`pay_if_trusted` input schema: `resourceId, resource, payee, amountUsd, method, maxPerTxUsd`.
+`pay_if_trusted` input schema: `resourceId, resource, payee, amountUsd, method, maxPerTxUsd, policy`
+(`policy.requireVet402Allow`, `policy.evidence.{source, minL1Deliveries, minSubgraphReceipts}` — the Graph
+key is **not** an input, it comes from `GRAPH_API_KEY`).
 
 ### 4. Fail-closed against the live API, with a deliberately wrong key
 
@@ -476,6 +478,100 @@ signer touched exactly once and `source: "subgraph"` on the record; subgraph 0 r
 error; and `tools/list` shows `policy` but no key field. Each gate was removed one at a time to
 confirm the test that guards it goes red.
 
+### Paying a seller outside the catalogue — live
+
+The demo's payee, The Graph's own x402 endpoint, is **not in vet402's catalogue**: `/decision` for its
+`resource_id` answers **404 `not_found`** (WINDOW_PLAN §3.1, measured 2026-09-04). Until 2026-09-06
+the MCP tool stopped there with `evidence_unavailable`, so there was no way to pay The Graph *from*
+an MCP client even though `payOrRefuse` could already judge that case (I23). Now, when `resource`
+(the URL that answers 402) is given, the 404 is handed to the SDK, which judges from the 402's
+`payTo`, the payee score for that address and the caller's floors. The boundary is the SDK's and is
+pinned through the bridge (`test/pay-if-trusted.test.mjs` H8–H12): `payTo` must equal `payee`, a
+**BLOCK** payee score refuses even with `requireVet402Allow: false`, and a 404 **without** `resource`
+still refuses with `evidence_unavailable` after exactly one request.
+
+Run against the real Gateway on 2026-09-06 13:30 UTC — The Graph's own 402 URL as `resource`,
+`requireVet402Allow: false`, `source: "subgraph"`, and a floor of 10⁹ receipts that cannot be met, so
+it reads The Graph live and stops before a signature (key values redacted; nothing else edited):
+
+```bash
+cd packages/mcp-server && printf '%s\n%s\n%s\n' \
+ '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"judge","version":"0"}}}' \
+ '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+ '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"pay_if_trusted","arguments":{
+    "resourceId":"9e8469d365d65bc9b4a3f588f951bfc70ae64cc1afa2ebdf7e8f11a940d40763",
+    "resource":"https://gateway.thegraph.com/api/x402/subgraphs/id/Cb56epg3EvQ6JRpPfknbkM54QxpzTvLa7mwKNQQfUyoj",
+    "payee":"0x79DC34E41B2b591078d3dE222C43EcaaBD52FcCB",
+    "amountUsd":0.01,
+    "method":"POST",
+    "policy":{"requireVet402Allow":false,"evidence":{"source":"subgraph","minSubgraphReceipts":1000000000}}}}}' \
+ | VOUCH_API_KEY=$VOUCH_API_KEY GRAPH_API_KEY=$GRAPH_API_KEY VOUCH_PAYER_PRIVATE_KEY=$THROWAWAY_KEY \
+   node dist/index.js 2>/dev/null | tail -1
+```
+
+```json
+{
+  "decision": "REFUSE",
+  "safe_to_pay": false,
+  "refuse_reasons": [
+    "resource_uncatalogued",
+    "insufficient_subgraph_evidence"
+  ],
+  "summary": "Do not pay: resource_uncatalogued, insufficient_subgraph_evidence.",
+  "signed": false,
+  "attested": false,
+  "txHash": null,
+  "nonce": null,
+  "settlement": null,
+  "measurement": {
+    "recommendation": null,
+    "reason_codes": [],
+    "facts": {},
+    "evidence": [],
+    "rules_version": null,
+    "degraded": null
+  },
+  "decision_record": {
+    "recommendation": "REFUSE",
+    "reason_codes": [
+      "resource_uncatalogued",
+      "insufficient_subgraph_evidence"
+    ],
+    "verdict_source": "payee_score",
+    "evidence": [
+      {
+        "level": "L1",
+        "source": "subgraph",
+        "url": "https://gateway.thegraph.com/api/subgraphs/id/Cb56epg3EvQ6JRpPfknbkM54QxpzTvLa7mwKNQQfUyoj",
+        "subgraphId": "Cb56epg3EvQ6JRpPfknbkM54QxpzTvLa7mwKNQQfUyoj",
+        "block": {
+          "number": 50956053,
+          "timestamp": 1788701453
+        },
+        "deployment": "QmcE24HARdXXnziPii9bWFRV6njfWW82H1RKPe5x9hBkUN",
+        "queriedAt": "2026-09-06T13:30:57.083Z",
+        "receipts": 260
+      }
+    ],
+    "decision": null,
+    "payeeScore": null,
+    "policy_override": null,
+    "source": "mcp"
+  }
+}
+```
+
+Read it bottom-up: `measurement` is empty because there is no `/decision` body to pass through — the
+catalogue said 404. `decision_record.reason_codes` starts with `resource_uncatalogued`, the
+machine-readable mark of the 404 path. The Graph's subgraph knew **260** receipts for that wallet at
+block **50956053** (`deployment` and `queriedAt` say it was a live read), the floor was 10⁹, so
+`insufficient_subgraph_evidence`, `signed: false`, `nonce: null`. `payeeScore` is `null` here only
+because the floor stopped the run before the 402 and the score were read — the SDK applies declared
+floors first (§3.6) so that a refusal still shows what the other source knew. With a floor of 1 the
+same call reads the 402, checks `payTo`, reads the payee score (WARN 69), and pays under
+`verdict_source: "caller_policy"` — that is the path H8 pins with a mock seller, and the path that moved
+0.01 USDC on 2026-09-05 from the SDK directly (§ "It has moved real money").
+
 ## What is not built yet
 
 Stated plainly, because a SKILL.md that oversells is worse than none.
@@ -483,6 +579,6 @@ Stated plainly, because a SKILL.md that oversells is worse than none.
 | | state |
 |---|---|
 | **Evidence policy on the MCP tool** | Exposed as of 2026-09-06 (`ethonline: feat(mcp)` on `ethonline/payorrefuse`): `policy.requireVet402Allow` and `policy.evidence` (`source`, `minSubgraphReceipts`, `minL1Deliveries`) are tool inputs; the Graph key comes from `GRAPH_API_KEY`. See **`pay_if_trusted` with The Graph evidence**. |
-| **The uncatalogued-seller path in MCP** | Not exposed. `payOrRefuse` handles a `/decision` 404 by judging from the 402 `payTo` plus the payee score; `pay_if_trusted` refuses with `evidence_unavailable` instead, because it is not given a payment target at that point. |
+| **The uncatalogued-seller path in MCP** | Exposed as of 2026-09-06 (second `ethonline: feat(mcp)` on `ethonline/payorrefuse`). When `resource` is given, a `/decision` 404 is handed to `payOrRefuse`, which judges from the 402 `payTo`, the payee score for that address and the caller's evidence floors (I23). Without `resource` a 404 still refuses with `evidence_unavailable`. See **Paying a seller outside the catalogue — live**. |
 | **npm publish** | Out of scope until after submission. Build from the repo. |
 | **The hosted MCP gateway** | Two MCP surfaces, two roles. The Bazantic gateway (`https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp`, Recipe `x402-payee-verification-via-vet402-gateway`) fronts vet402's REST API as **57 tools** (`tools/list`, measured 2026-09-06) — use it for discovery and every key-free read (`/decision`, `/resolve`, scores). `pay_if_trusted` is the one tool that holds a signer, and it is **only** in this package over stdio, not on the gateway. |
