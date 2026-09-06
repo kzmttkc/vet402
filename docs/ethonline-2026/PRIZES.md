@@ -10,13 +10,24 @@
 | 枠 | パートナー / 賞 | 額 | デモのどの経路が要件を満たすか |
 |---|---|---|---|
 | **P1** | The Graph — *Best AI Tooling or AI Use Case with The Graph (Continuity)* | **$5,000**（1位$2,500/2位$1,500/3位$1,000） | `payOrRefuse` の evidence を自社L1台帳だけでなく **Graph Gateway の live subgraph** からも引く経路を新設し、既存 MCP サーバー（`packages/mcp-server`）から呼べる道具として公開する |
-| **P2** | World — *AgentKit Continuity* | **$3,500** | `payOrRefuse` の policy に**払う側**の条件 `requireHumanBacked` を1つ足す。AgentKit で人間裏付けが取れたエージェントにだけ上限を上げる。動詞は増えない |
-| **P3** | Bazantic — *Help an Agent Use Your Hackathon Project* | **$1,000**（最大2チーム × $500） | 会期中に新規で立てる自前 x402 seller（`examples/ethonline-2026-agent/seller`）を Bazantic の **x402/MPP Gateway** として登録し、Recipe あり/なしの A/B を見せる |
+| ~~**P2**~~ | ~~World — *AgentKit Continuity*~~ | ~~$3,500~~ | **2026-09-03 に取り下げ**（Orb 認証の証明が会期中に取り出せず、5要件中2つが未達確定）。`WINDOW_PLAN.md` §1 |
+| **P2** | Bazantic — *Help an Agent Use Your Hackathon Project* | **$1,000**（最大2チーム × $500）・**Continuity 限定** | bazantic.com で **Recipe** を作り、**Recipe の有無だけを違いにした A/B** を見せる。Gateway は 09-03 から LIVE（自前 seller の新設は範囲外） |
+| **P3** | **空けたまま出す** | — | 残る9パートナーはどれも使っていない。埋めるには会期スコープ外の実装が要る。**使っていない製品の枠に応募しない** |
 
-到達可能合計 **$9,500**（2026-08-31 時点の見取り図は $8,500・3枠目が空だった）。
+到達可能合計 **$6,000**。
 
-**動詞は `payOrRefuse` ただ1つ。** P1 は証拠源を1つ足すだけ、P2 は policy 条件を1つ足すだけ、
-P3 は既にスコープにある自前 seller を外から呼べるように登録するだけ。**新しい動詞・新しいチェーンは足さない。**
+**2026-09-06 の訂正2件**（この表が古かった）:
+- **World は 09-03 に切っている**のに P2 として残っていた
+- **P3 の「自前 seller を新規に立てて登録」は `WINDOW_PLAN.md` §2 で範囲外**。Gateway は既に `vet402.com` を上流として LIVE
+
+**Bazantic の他ブラケットには応募できない。** 賞ページで **Continuity バッジが付いているのは
+"Help an Agent Use Your Hackathon Project" だけ**で、"Best Recipe that uses EthGlobal Hackathon Sponsor APIs"
+には付いていない。上の §1（Pascal の `#ticket-5926`）が
+「**Even if they have something that is non-continuity that would work in your case, you're not eligible**」
+と明言している。**2026-09-06 に `WINDOW_PLAN.md` §16 へ「枠1つ・ブラケット2つ・両方に応募できる」と
+書いたのは誤りで、この節を読まずに再導出した結果だった。**（§1 の見出しは「再導出しない」である。）
+
+**動詞は `payOrRefuse` ただ1つ。** P1 は証拠源を1つ足すだけ。**新しい動詞・新しいチェーンは足さない。**
 
 ---
 

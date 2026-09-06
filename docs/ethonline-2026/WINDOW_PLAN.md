@@ -857,16 +857,27 @@ curl -sL -X POST "https://gateway.thegraph.com/api/$GRAPH_API_KEY/subgraphs/id/C
 | 7 | **結果の違いを歩いて見せる動画を録る** | ⏳ 動画の台本に組み込む（§6） |
 | 8 | bazantic のユーザー名を提出物に書く | ✅ `TakeshiTGAL` |
 
-### Bazantic は**枠は1つ、ブラケットは2つ**（両方に応募できる）
+### Bazantic で応募できるのは **1ブラケットだけ**（2026-09-06 訂正）
+
+**私はここに「枠1つ・ブラケット2つ・両方に応募できる」と書いた。誤りだった。**
+賞ページの一般則（"If a partner has multiple tracks, you can be eligible for all of them"）だけを見て、
+**`PRIZES.md` §1 の運営回答を読まずに再導出した**——その節の見出しは「**資格の憲法（再導出しない）**」である。
+
+運営（Pascal・`#ticket-5926`・2026-08-25）:
+
+> you are only eligible for tracks that have continuity on them. …
+> **Even if they have something that is non-continuity that would work in your case, you're not eligible.**
+
+賞ページで **Continuity バッジ（🆕 This prize is only available to Continuity Track participants）が
+付いているのは "Help an Agent Use Your Hackathon Project" だけ**。
+"Best Recipe that uses EthGlobal Hackathon Sponsor APIs" には付いていない。**応募できない。**
 
 | ブラケット | 額 | 我々 |
 |---|---|---|
-| **Help an Agent Use Your Hackathon Project** | $1,000（最大2チーム × $500）・**Continuity 限定** | 狙う |
-| **Best Recipe that uses EthGlobal Hackathon Sponsor APIs** | $1,000（1位 $500 / 2位 $300 / 3位 $200） | **複数の API を跨ぐ Recipe が要る**。我々の Recipe は自社 API 1本なので**現状は合わない**。3枠目の判断と合わせて §1.6 で決める |
+| **Help an Agent Use Your Hackathon Project** | $1,000（最大2チーム × $500）・**Continuity 限定** | **これだけ** |
+| ~~Best Recipe that uses EthGlobal Hackathon Sponsor APIs~~ | ~~$1,000~~ | **Continuity バッジ無し＝資格が無い** |
 
-> If a partner has multiple tracks, you can be eligible for all of them **while only counting as 1 Partner Prize**.
-
-**→ Bazantic は1枠で2ブラケット。The Graph も1枠。残り1枠が空く。**
+**→ The Graph 1枠・Bazantic 1枠・3枠目は空けたまま。到達可能合計 $6,000。**
 
 ### 3枠目（2026-09-06 判断）
 
