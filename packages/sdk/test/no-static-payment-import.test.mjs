@@ -18,9 +18,10 @@
 // ============================================================
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFileSync, existsSync, mkdtempSync, readdirSync, copyFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DIST = resolve(here, "../dist");
@@ -113,4 +114,76 @@ test("第3層: src 側も値としては静的 import していない（型だ�
     return !/^(import|export)\s+type\b/.test(t);
   });
   assert.deepEqual(offenders, [], "src で x402-pay を値として静的 import している");
+});
+
+// ------------------------------------------------------------
+// 第3層の**位置**の検算（2026-09-06）。
+//
+// 上の3本は「静的グラフに無い」「`await import("./x402-pay.js")` が存在する」しか見ない。
+// 変異 M14——動的 import を ALLOW ブランチの外（関数冒頭・拒否経路より前）へ動かす——は
+// この3本を全部通り抜けた。**動的 import であること**と、**拒否経路で評価されないこと**は
+// 別の主張で、後者には計器が無かった。
+//
+// ここでは dist を丸ごと隔離コピーし、支払いモジュールだけを「ロードされたら throw する」
+// 1行に差し替えて、その隔離コピーの `payOrRefuse` に拒否経路を走らせる。
+// 拒否で返れば、支払いモジュールは評価されていない。ALLOW 経路で同じコピーが throw
+// することを併せて示す（差し替えが効いている証明——0回が配線ミスでないことの検算）。
+//
+// テキストの位置（AST）ではなく実行で見る理由: 主張は「評価されない」であって
+// 「その行がこの分岐の内側にある」ではない。位置を見る計器は、リファクタで分岐の形が
+// 変わるたびに書き直しになり、しかも実行順の逆転（先に評価してから分岐へ入る）を見逃す。
+// ------------------------------------------------------------
+
+/** dist を tmp へ写し、x402-pay.js をロード即 throw に差し替えた入口の URL を返す。 */
+function isolatedDistWithPoisonedPaymentModule() {
+  const dir = mkdtempSync(join(tmpdir(), "vet402-sdk-poison-"));
+  for (const f of readdirSync(DIST).filter((f) => f.endsWith(".js"))) copyFileSync(join(DIST, f), join(dir, f));
+  writeFileSync(join(dir, "x402-pay.js"), 'throw new Error("PAYMENT MODULE EVALUATED");\n');
+  return pathToFileURL(join(dir, "index.js")).href;
+}
+
+const PAYEE = "0x36038e1d712c5e39f35952164ec58ec2b96caee7";
+const RESOURCE = "https://kronossignals.com/api/v1/price/btc";
+const ACCOUNT = { address: "0xDB62BD202914609830fA656F87996b91be3Aa673", signTypedData: async () => "0xsig" };
+const decisionBody = (recommendation) => ({
+  subject: { type: "resource", id: "a".repeat(64) },
+  role: "payer",
+  recommendation,
+  reason_codes: [],
+  facts: { l0: { status: "pass" }, l1: { n_delivered: 3, n_attempts: 3 }, l2: { status: "undeclared" } },
+  evidence: [],
+  degraded: false,
+  policy: "allow_only",
+  rules_version: "2026-09-02.1",
+});
+const wall402 = () => ({
+  ok: false,
+  status: 402,
+  json: async () => ({}),
+  headers: new Map([[
+    "payment-required",
+    btoa(JSON.stringify({ x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:8453", amount: "20000", asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", payTo: PAYEE, extra: { assetTransferMethod: "eip3009" } }] })),
+  ]]),
+});
+/** /decision に recommendation を、資源 URL に 402 の壁を返す fetch。 */
+const fetchWith = (recommendation) => async (url) => {
+  const u = String(url);
+  if (u.includes("/decision")) return { ok: true, status: 200, json: async () => decisionBody(recommendation), headers: new Map() };
+  if (u.startsWith(RESOURCE)) return wall402();
+  throw new Error(`unexpected call: ${u}`);
+};
+
+test("第3層: 拒否経路では支払いモジュールが評価されない（ロード即 throw に差し替えても拒否で返る）", async () => {
+  const { payOrRefuse } = await import(isolatedDistWithPoisonedPaymentModule());
+  const r = await payOrRefuse({ payee: PAYEE, resource: RESOURCE, amountUsd: 0.02, account: ACCOUNT, fetch: fetchWith("WARN") });
+  assert.equal(r.status, "refused");
+  assert.equal(r.decision.reason_codes.includes("payee_recommendation_not_allow"), true);
+});
+
+test("第3層: ネガティブコントロール——同じ差し替えで ALLOW 経路は支払いモジュールの評価で落ちる", async () => {
+  const { payOrRefuse } = await import(isolatedDistWithPoisonedPaymentModule());
+  await assert.rejects(
+    () => payOrRefuse({ payee: PAYEE, resource: RESOURCE, amountUsd: 0.02, account: ACCOUNT, fetch: fetchWith("ALLOW") }),
+    /PAYMENT MODULE EVALUATED/,
+  );
 });
