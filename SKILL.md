@@ -50,7 +50,7 @@ a warm npm cache, **21 s** with an empty one (`npm_config_cache` pointed at an e
 | key | needed by | not needed by | where to get it |
 |---|---|---|---|
 | *(none)* | — | `npm run judge-check`, sections **1–3** below (tests, offline refusal, `tools/list`), section **4** (it deliberately uses a wrong key) | — |
-| `VOUCH_API_KEY` | the demo's `refuse` / `pay` / `judge`, and any `pay_if_trusted` call that must reach `/decision` | key-less REST reads: `GET /api/v1/resolve?q=…` and the object reads listed in `README.md` → *Resolve, then decide*; the Bazantic MCP gateway (see **What is not built yet**) | free: <https://vet402.com/signup> (1,000 lookups/month, no card) → <https://vet402.com/dashboard/keys> |
+| `VOUCH_API_KEY` | **optional since 2026-09-07** — `/decision` answers key-less at 10/min per IP, so the demo's `refuse` / `pay` / `judge` and `pay_if_trusted` run with `GRAPH_API_KEY` alone; still required for the payee-score and attest tools | key-less REST reads: `GET /api/v1/resolve?q=…` and the object reads listed in `README.md` → *Resolve, then decide*; the Bazantic MCP gateway (see **What is not built yet**) | free: <https://vet402.com/signup> (1,000 lookups/month, no card) → <https://vet402.com/dashboard/keys> |
 | `GRAPH_API_KEY` | the demo (all three commands read The Graph live) and any `policy.evidence.source: "subgraph" \| "both"` call | everything that reads vet402 only | free key from Subgraph Studio: <https://thegraph.com/studio> → *API Keys* |
 | `VOUCH_PAYER_PRIVATE_KEY` / `DEMO_PAYER_PRIVATE_KEY` | moving real money only (`--live`, or `pay_if_trusted` with `resource` + `payee` + `amountUsd`) | every block on this page — the dry runs load no signing module | your own throwaway wallet with a few cents of USDC on Base. Never required to evaluate this submission |
 
@@ -118,9 +118,9 @@ cd packages/mcp-server && npm test 2>&1 | grep -E '^ℹ '
 ```
 
 ```
-ℹ tests 44
+ℹ tests 55
 ℹ suites 0
-ℹ pass 44
+ℹ pass 55
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
