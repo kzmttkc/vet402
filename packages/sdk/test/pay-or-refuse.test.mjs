@@ -242,6 +242,23 @@ test("C9 maxPerTxUsd 超過は判定を引く前に落ちる", async () => {
   assert.equal(r.decision.reason_codes.includes("price_above_ceiling"), true);
 });
 
+test("C9b 402 の amount が上限を超えていれば、呼び手の名乗りが上限内でも署名前に拒否（金銭ゲートは 402 の金額で当てる）", async () => {
+  // 2026-09-06 の変異 M12（402 の amount 上限を 1000 倍に緩める）が生き残った。全テストの 402 は
+  // $0.01〜0.02 で、**上限（既定 $1）を超える 402 を売り手が出す固定具が無かった**。
+  // C9 は呼び手が名乗った amountUsd の関門であって、売り手が 402 で言う金額の関門ではない。
+  // ここでは呼び手の名乗り（$0.02）は上限内のまま、売り手が $1.50 を要求する。
+  const w = watchedAccount();
+  const s = seller({ ...okAccept, amount: "1500000" }); // 1.50 USDC（6 桁）> 既定上限 $1
+  const f = allowlistFetch([DECISION, "kronos"], { [DECISION]: decision(), kronos: s.stub });
+  const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { evidence: { minL1Deliveries: 3, source: "vet402" } } });
+  assert.equal(r.status, "refused");
+  assert.equal(r.decision.reason_codes.includes("price_above_ceiling"), true);
+  assert.equal(f.calls.some((u) => u.includes(DECISION)), true, "判定は引いている（C9 の呼び手側の関門ではない）");
+  assert.equal(f.calls.some((u) => u.includes("kronos")), true, "402 を実際に読んだ上で落としている");
+  assert.equal(s.paid.length, 0, "署名付きの再送は出ていない");
+  assert.deepEqual(w.signAccesses(), []);
+});
+
 test("C10 evidence.minL1Deliveries 未達で拒否", async () => {
   const w = watchedAccount();
   const f = allowlistFetch([DECISION], { [DECISION]: decision({ facts: { l0: { status: "pass" }, l1: { n_delivered: 1, n_attempts: 1 }, l2: { status: "undeclared" } } }) });
