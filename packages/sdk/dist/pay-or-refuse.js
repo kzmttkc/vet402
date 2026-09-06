@@ -449,6 +449,8 @@ async function decideAndPay(input) {
     // --- 5. ここから先だけが支払い。実装は ALLOW ブランチ内の動的 import（第3層）---
     // 署名 → **売り手へ再送** → 応答ヘッダのレシート。facilitator は買い手の経路に無い。
     const { executeX402Payment } = await import("./x402-pay.js");
+    // 通したのが vet402 の判定なのか、呼び手の規則なのか。**審査員が読むのはここ**（§3.2）。
+    const verdictSource = policyOverride ? "caller_policy" : uncatalogued ? "payee_score" : "decision";
     // 署名の直後に nonce を確定させる。ここから先で落ちても「何に署名したか」は残る。
     let signedNonce = null;
     const paid = await executeX402Payment({
@@ -462,9 +464,29 @@ async function decideAndPay(input) {
         onSigned: ({ nonce }) => {
             signedNonce = nonce;
         },
+    }).catch((error) => {
+        // 署名の**前**に落ちたなら金は動いていない。呼び出し側の誤りとしてそのまま投げる。
+        if (signedNonce === null)
+            throw error;
+        // 署名の**後**で落ちた（再送の応答を読めなかった等）。null にして下で failed に畳む。
+        return null;
     });
-    // 通したのが vet402 の判定なのか、呼び手の規則なのか。**審査員が読むのはここ**（§3.2）。
-    const verdictSource = policyOverride ? "caller_policy" : uncatalogued ? "payee_score" : "decision";
+    if (paid === null) {
+        // 2026-09-06 まで、ここは `decideAndPay` ごと throw して signedNonce を呼び手に返さなかった
+        // ——上のコメントが嘘だった。署名した認可は validBefore まで生きた金で、遅れて決済され得る。
+        // 例外を理由に nonce を失えば「払ったかもしれないのに照合できない」が起きる。
+        return {
+            status: "failed",
+            decision: record("ALLOW", [...allowReasons, "settle_failed"], verdictSource, decision, payeeScore, policyOverride),
+            signed: true,
+            attested: false,
+            txHash: null,
+            nonce: signedNonce,
+            challenge: accept,
+            stored: false,
+            storeError: null,
+        };
+    }
     if (!paid.settled) {
         // E18: 署名は実在する。隠さない。nonce も返す——署名した認可は validBefore まで
         // 生きた金で、後から遅れて決済され得る。何に署名したかが残らないと照合できない。

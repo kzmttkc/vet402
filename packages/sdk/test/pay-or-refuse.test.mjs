@@ -539,6 +539,46 @@ test("E18 署名後に決済されなかった → failed を返し、隠さな�
   assert.equal(s.paid.length, 1, "署名を付けて1回だけ再送している");
 });
 
+test("E18b 署名の後で再送の応答を読めず例外になっても throw しない——failed・signed:true・署名した nonce を返す", async () => {
+  // 2026-09-06 の変異 M27（onSigned で nonce を控えない）が生き残った。ソースの
+  // 「ここから先で落ちても『何に署名したか』は残る」は成り立っていなかった:
+  // `executeX402Payment` が署名後に throw すると `decideAndPay` ごと throw し、
+  // `signedNonce` は呼び手に返らない。署名した認可は validBefore まで生きた金なので、
+  // 例外で nonce を失うのは「払ったかもしれないのに照合できない」を作る。
+  //
+  // fetch の reject は x402-pay.ts の中で吸収される（failed + nonce）。呼び手まで例外が届くのは
+  // **再送の応答を読む段**——応答の headers を読んだ瞬間に throw する応答で再現する
+  // （壊れた fetch シム／中間層が返す応答の形が違う、という実在の失敗の形）。
+  const signed = [];
+  const account = {
+    address: "0xDB62BD202914609830fA656F87996b91be3Aa673",
+    signTypedData: async (typedData) => { signed.push(String(typedData.message.nonce)); return "0xsig"; },
+  };
+  // allowlistFetch は応答の headers を包み直す（＝fetch の中で読む）ので、ここは素の fetch で書く。
+  // 応答オブジェクトそのものは返し、**x402-pay が headers を読む瞬間**に throw させる。
+  const calls = [];
+  const fetchFn = async (url, init) => {
+    const u = String(url); calls.push(u);
+    if (u.includes(DECISION)) return { ok: true, status: 200, json: async () => decision().body, headers: new Map() };
+    if (!u.includes("kronos")) throw new Error(`forbidden call: ${u}`);
+    const h = init?.headers ?? {};
+    if (!(h["PAYMENT-SIGNATURE"] ?? h["payment-signature"])) {
+      const w = wall(okAccept);
+      return { ok: false, status: w.status, json: async () => w.body, headers: new Map(Object.entries(w.headers)) };
+    }
+    return { ok: true, status: 200, json: async () => ({}), get headers() { throw new Error("response headers unreadable"); } };
+  };
+  const r = await payOrRefuse({ ...base, account, fetch: fetchFn, policy: paidPolicy });
+  assert.equal(calls.filter((u) => u.includes("kronos")).length, 2, "402 の壁 → 署名付き再送の2回");
+  assert.equal(signed.length, 1, "署名器はちょうど1回");
+  assert.equal(r.status, "failed");
+  assert.equal(r.signed, true);
+  assert.equal(r.attested, false);
+  assert.equal(r.txHash, null);
+  assert.equal(r.nonce, signed[0], "返る nonce は署名器が実際に署名した nonce と一致する");
+  assert.equal(r.decision.reason_codes.includes("settle_failed"), true);
+});
+
 // ---------- G. 支払いの経路そのもの（2026-09-05 の是正） ----------
 //
 // 直前の実装は `https://x402.org/facilitator/settle` を **買い手から** 叩いていた。
