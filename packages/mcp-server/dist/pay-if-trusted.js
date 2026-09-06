@@ -32,6 +32,27 @@
  * 2回引く。GET は副作用を持たない。
  */
 import { DEFAULT_API_URL, decisionQueryString } from "./vouch-client.js";
+/**
+ * この橋が**自分で足す**拒否語。型 {@link RefuseReason} はここから導く——`refuse(...)` の引数は
+ * 裸の `string[]` ではないので、この配列に無い語をリテラルで書けばコンパイルで止まる
+ * （SDK の `PAY_REFUSE_REASONS` / `PayRefuseReason` と同じ方針・2026-09-07）。
+ * SDK と共有する 3 語は綴りも同じ（下の型検査が保証する）。残り 2 語はこの橋にしか無い:
+ *  - `graph_key_not_configured` … The Graph を読むと宣言したのに GRAPH_API_KEY が無い（§1.5）
+ *  - `payment_target_unknown` … ALLOW だが resource / payee / amountUsd が無いので払えない（§4）
+ * サーバ由来の語（decision の `reason_codes`・`rate_limited` 等のエラー語・`caller_policy` の語）は
+ * この配列に**載せない**。狭めれば語が落ちるので {@link ServerReasonCode} として透過する。
+ */
+export const REFUSE_REASONS = [
+    "evidence_unavailable",
+    "subgraph_evidence_unavailable",
+    "graph_key_not_configured",
+    "payee_recommendation_not_allow",
+    "payment_target_unknown",
+];
+/** サーバの語に「透過してよい」印を付ける唯一の場所。語は 1 つも変えない・落とさない。 */
+function serverReasonCodes(words) {
+    return words;
+}
 const RESOURCE_ID_RE = /^[0-9a-f]{64}$/;
 /** 判定を引き、全部の関門を通ったときにだけ signer へ到達する。 */
 export async function payIfTrusted(input) {
@@ -101,7 +122,7 @@ export async function payIfTrusted(input) {
             // per-IP window, `missing_api_key` / `invalid_api_key`) as a reason: same
             // failure shape, and the model can tell "wait" from "fix the key".
             const serverError = body?.error;
-            const serverWord = typeof serverError === "string" && /^[a-z0-9_]+$/.test(serverError) ? [serverError] : [];
+            const serverWord = typeof serverError === "string" && /^[a-z0-9_]+$/.test(serverError) ? serverReasonCodes([serverError]) : [];
             return refuse(measure(body), ["evidence_unavailable", ...serverWord], `The decision could not be read (HTTP ${response.status}${serverWord.length ? ` ${serverWord[0]}` : ""}) — no answer is not an ALLOW.`);
         }
     }
@@ -109,11 +130,13 @@ export async function payIfTrusted(input) {
         return refuse(measure(null), ["evidence_unavailable"], "The decision lookup did not answer — no answer is not an ALLOW.");
     }
     const m = measure(body);
+    // サーバの判定本文の語。この先の refuse には**この配列**を通す（`m.reason_codes` の裸の string[] は受けない）。
+    const serverWords = serverReasonCodes(m.reason_codes);
     // --- 3. degraded / ALLOW でない ---
     // カタログ外には判定本文が無い。この段の検査は判定本文に対するものなので飛ばし、
     // 受取人スコアの degraded / BLOCK / 非 ALLOW は SDK の 3' 段がそのまま持つ（H10）。
     if (!uncatalogued && m.degraded === true) {
-        return refuse(m, [...m.reason_codes, "evidence_unavailable"], "Do not pay: an input could not be measured, so this body is a refusal, not a measurement.");
+        return refuse(m, [...serverWords, "evidence_unavailable"], "Do not pay: an input could not be measured, so this body is a refusal, not a measurement.");
     }
     // --- 3.1 サーバが呼び手の policy を当てて REFUSE と言った → **その語で**止める（§16.3）---
     // 語はサーバの `caller_policy.reason_codes` そのまま（SDK の PayRefuseReason と同じ）。ローカルの
@@ -124,18 +147,18 @@ export async function payIfTrusted(input) {
     // その語は measurement.caller_policy にそのまま残り、床は SDK の段（3.6）が当てる。
     const onlyUndeclaredWaiverWord = !requireVet402Allow && !waiverDeclared && m.caller_policy?.reason_codes.every((w) => w === "payee_recommendation_not_allow") === true;
     if (!uncatalogued && m.caller_policy?.verdict === "REFUSE" && !onlyUndeclaredWaiverWord) {
-        const words = m.caller_policy.reason_codes;
-        return refuse(m, [...m.reason_codes, ...words], `Do not pay: your own policy refused it (${words.join(", ") || "caller_policy"}) — recommendation ${m.recommendation ?? "absent"}.`);
+        const words = serverReasonCodes(m.caller_policy.reason_codes);
+        return refuse(m, [...serverWords, ...words], `Do not pay: your own policy refused it (${words.join(", ") || "caller_policy"}) — recommendation ${m.recommendation ?? "absent"}.`);
     }
     // `requireVet402Allow: false` のときは ALLOW でない判定を**ここでは**止めない。BLOCK・床・
     // degraded の境界は `payOrRefuse` が持ち（§3.2.1）、そこへ通すために非 ALLOW を先へ渡す。
     // MCP に同じ境界を写すと、次に SDK が境界を直したときこちらだけ古いまま残る（§14.2）。
     if (!uncatalogued && m.recommendation !== "ALLOW" && requireVet402Allow) {
-        return refuse(m, [...m.reason_codes, "payee_recommendation_not_allow"], `Do not pay: the recommendation is ${m.recommendation ?? "absent"}, not ALLOW.`);
+        return refuse(m, [...serverWords, "payee_recommendation_not_allow"], `Do not pay: the recommendation is ${m.recommendation ?? "absent"}, not ALLOW.`);
     }
     // --- 4. ALLOW でも、払う相手を知らなければ払わない ---
     if (typeof input.payee !== "string" || typeof input.resource !== "string" || typeof input.amountUsd !== "number") {
-        return refuse(m, [...m.reason_codes, "payment_target_unknown"], `${m.recommendation ?? "absent"}, but pay_if_trusted was not told what to pay: pass resource, payee and amountUsd to execute the payment.`);
+        return refuse(m, [...serverWords, "payment_target_unknown"], `${m.recommendation ?? "absent"}, but pay_if_trusted was not told what to pay: pass resource, payee and amountUsd to execute the payment.`);
     }
     // --- 5. ここから先だけが支払い。実装は ALLOW ブランチ内の動的 import（第3層）---
     const { payOrRefuse } = await import("@vet402/sdk");
@@ -162,7 +185,7 @@ export async function payIfTrusted(input) {
     // SDK の決定行はサーバの reason_codes を既に含む。橋の測定と連結すると同じ語が2回並ぶので、
     // 順序を保ったまま重複だけ落とす（語を消したり並べ替えたりはしない）。
     const reasons = Array.isArray(paid.decision?.reason_codes) ? paid.decision.reason_codes : [];
-    const merged = [...new Set([...m.reason_codes, ...reasons])];
+    const merged = serverReasonCodes([...new Set([...m.reason_codes, ...reasons])]);
     if (paid.status === "refused") {
         return {
             ...refuse(m, merged, `Do not pay: ${reasons.join(", ") || "the payment gate refused"}.`),

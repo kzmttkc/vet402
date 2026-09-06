@@ -34,6 +34,18 @@
 import { type CallerPolicy } from "./vouch-client.js";
 import type { PayDecisionRecord, PayEvidencePolicy, PayPolicy } from "@vet402/sdk";
 /**
+ * この橋が**自分で足す**拒否語。型 {@link RefuseReason} はここから導く——`refuse(...)` の引数は
+ * 裸の `string[]` ではないので、この配列に無い語をリテラルで書けばコンパイルで止まる
+ * （SDK の `PAY_REFUSE_REASONS` / `PayRefuseReason` と同じ方針・2026-09-07）。
+ * SDK と共有する 3 語は綴りも同じ（下の型検査が保証する）。残り 2 語はこの橋にしか無い:
+ *  - `graph_key_not_configured` … The Graph を読むと宣言したのに GRAPH_API_KEY が無い（§1.5）
+ *  - `payment_target_unknown` … ALLOW だが resource / payee / amountUsd が無いので払えない（§4）
+ * サーバ由来の語（decision の `reason_codes`・`rate_limited` 等のエラー語・`caller_policy` の語）は
+ * この配列に**載せない**。狭めれば語が落ちるので {@link ServerReasonCode} として透過する。
+ */
+export declare const REFUSE_REASONS: readonly ["evidence_unavailable", "subgraph_evidence_unavailable", "graph_key_not_configured", "payee_recommendation_not_allow", "payment_target_unknown"];
+export type RefuseReason = (typeof REFUSE_REASONS)[number];
+/**
  * 署名者。**ALLOW ブランチに入るまで、この値のプロパティには一度も触らない。**
  * `typeof signer.signTypedData === "function"` と書いた瞬間に拒否経路から
  * signer へのプロパティ参照が発生し、「到達できない」が嘘になる（第1層）。
