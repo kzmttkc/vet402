@@ -294,7 +294,7 @@ Build order and runtime first:
 cd packages/sdk && npm install && npm run build      # 1. the SDK first — the demo imports its dist/
 cd ../../examples/ethonline-2026-demo                 # 2. then the demo (nothing to install without --live)
 export GRAPH_API_KEY=…    # free key from Subgraph Studio: https://thegraph.com/studio → API Keys
-export VOUCH_API_KEY=…    # https://vet402.com/dashboard/keys
+export VOUCH_API_KEY=…    # https://vet402.com/dashboard/keys — the API itself answers `/decision` key-less at 10/min per IP (2026-09-07); the demo and SDK still read this variable
 node src/run.ts refuse    # two sources side by side; refuses before a signature can exist
 node src/run.ts pay       # dry run: fetches the real 402 challenge, signs nothing (no --live)
 ```

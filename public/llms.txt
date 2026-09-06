@@ -73,7 +73,7 @@ Verification proves control of a wallet or an agent identity by signature. It is
 
 Send `Authorization: Bearer <key>`. Quotas and burst limits: https://vet402.com/docs/api#rate-limits
 
-- `GET /api/v1/resources/{resourceId}/decision?role=payer|payee&payer=&caller_dialect=v1|v2&allow_without_l1=` — product spec §8.3 / §9.1, the canonical integration since 2026-09-02: the pre-payment (`role=payer`) or pre-service (`role=payee`, requires `payer`) decision. `facts` (SellerFacts or BuyerFacts) and `recommendation` (ALLOW / WARN / BLOCK) travel in the same document with `reason_codes`, `freshness`, `evidence` and `rules_version`; the transitional `score` is marked deprecated and is not the basis of the recommendation. Send `Idempotency-Key` to retry without spending a second rate-limit unit
+- `GET /api/v1/resources/{resourceId}/decision?role=payer|payee&payer=&caller_dialect=v1|v2&allow_without_l1=` — product spec §8.3 / §9.1, the canonical integration since 2026-09-02: the pre-payment (`role=payer`) or pre-service (`role=payee`, requires `payer`) decision. `facts` (SellerFacts or BuyerFacts) and `recommendation` (ALLOW / WARN / BLOCK) travel in the same document with `reason_codes`, `freshness`, `evidence` and `rules_version`; the transitional `score` is marked deprecated and is not the basis of the recommendation. Send `Idempotency-Key` to retry without spending a second rate-limit unit. Key-less at 10/min per IP since 2026-09-07 (same body; 429 `rate_limited` when spent)
 
 ## Open data — no key, and quotable
 

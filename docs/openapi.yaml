@@ -1161,6 +1161,15 @@ paths:
         the operator's explicit opt-in to ALLOW a resource vet402 has not yet
         purchased from. Send `Idempotency-Key` to retry without spending a
         second rate-limit unit. 1 unit per call.
+        Key-less reads (AQ-053, 2026-09-07): with no `Authorization` header
+        the same body is returned under a per-IP window of 10/min
+        (`rate_limited` on 429, `RateLimit-*` headers on the wire);
+        `Idempotency-Key` and customer allow/block lists apply only to keyed
+        calls. A present-but-invalid key is still 401, never anonymous.
+        `DECISION_KEYLESS_READ=0` restores key-only access.
+      security:
+        - {}
+        - bearerAuth: []
       parameters:
         - in: path
           name: resourceId

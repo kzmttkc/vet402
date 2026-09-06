@@ -69,7 +69,7 @@ ${blog}
 - ${SITE_URL}/api/v1/accuracy — accuracy ledger JSON (caveats in the payload)
 - ${SITE_URL}/api/v1/resolve?q= — reverse lookup (URL / domain / address / tx / payee_id → object ids), no key
 - ${SITE_URL}/api/v1/resources/{resourceId} — one Resource with payees and links, no key
-- ${SITE_URL}/api/v1/resources/{resourceId}/decision — facts + ALLOW / WARN / BLOCK in one document, key required
+- ${SITE_URL}/api/v1/resources/{resourceId}/decision — facts + ALLOW / WARN / BLOCK in one document, key-less at 10/min per IP (same body with a key)
 - ${SITE_URL}/api/v1/endpoints/{endpointId} — one Endpoint (sha256 id or observatory uuid), no key
 - ${SITE_URL}/api/v1/endpoints/{endpointId}/payees — endpoint → payees[], no key
 - ${SITE_URL}/api/v1/payees/{address}/endpoints — payee → endpoints[], no key

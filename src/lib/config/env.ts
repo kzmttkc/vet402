@@ -27,6 +27,14 @@ export function isSkipChainReadsEnabled(): boolean {
 }
 
 /**
+ * /decision の鍵なし読み取り枠（AQ-053・2026-09-07）。既定は有効。`"0"` で従来の
+ * 401 に戻す。鍵ありの経路には一切影響しない（枠も本文も従来どおり）。
+ */
+export function isDecisionKeylessReadEnabled(): boolean {
+  return process.env.DECISION_KEYLESS_READ !== "0";
+}
+
+/**
  * N-20 guarantee underwriting (AQ-016): OFF by default, everywhere. The pure
  * underwriting math and its API/UI receptacle are built so the go-live is a
  * config flip, but offering a financial guarantee is a business + legal
