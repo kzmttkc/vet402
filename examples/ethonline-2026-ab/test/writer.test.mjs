@@ -121,3 +121,23 @@ test("summary.md に §16 の集計表（A/B・成功・判定一致・理由部
     assert.ok(md.includes(s), `summary.md に ${s} が無い`);
   }
 });
+
+// temperature を**送っていない**（全試行 null・`singleTemperature: true`）のと、
+// 試行間で**変わった**（`singleTemperature: false`）のは別物。null を「(mixed)」と出すと
+// 「統制が崩れた」と読まれる。両方向で固定する。
+test("summary.md: temperature null は `not sent`、試行間で変わったときだけ `(mixed)`", async () => {
+  const base = await tmp();
+  const run = await makeRun();
+
+  const notSent = { ...run, meta: { ...run.meta, temperature: null, temperaturesSeen: [null], singleTemperature: true } };
+  const d1 = await writeRun(notSent, { baseDir: base, now: () => AT, env: {} });
+  const md1 = await readFile(join(d1, "summary.md"), "utf8");
+  assert.match(md1, /temperature: `not sent`/);
+  assert.doesNotMatch(md1, /\(mixed\)/);
+
+  const mixed = { ...run, meta: { ...run.meta, temperature: null, temperaturesSeen: [0, 1], singleTemperature: false } };
+  const d2 = await writeRun(mixed, { baseDir: base, now: () => new Date(AT.getTime() + 1000), env: {} });
+  const md2 = await readFile(join(d2, "summary.md"), "utf8");
+  assert.match(md2, /temperature: `\(mixed\)`/);
+  assert.doesNotMatch(md2, /not sent/);
+});
