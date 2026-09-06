@@ -121,3 +121,42 @@ test("Q6 getDecision も同じ 3 つをクエリに載せる", async () => {
   await vouch.getDecision(RID);
   assert.equal(new URL(calls[1]).searchParams.has("amount_usd"), false);
 });
+
+// ---- require_vet402_allow（2026-09-07・後段）: SDK の既定（requireVet402Allow: true＝WARN は拒否）を
+// HTTP でも鏡写しにする。生 HTTP の呼び手が caller_policy だけを読んでも SDK より緩い答えを受け取らない。
+test("Q7 payOrRefuse の既定は require_vet402_allow=true を明示して送る（SDK の既定 requireVet402Allow: true と同じ）", async () => {
+  const h = harness(decision());
+  await payOrRefuse({ payee: PAYEE, resource: RESOURCE, amountUsd: 0.02, account: account().account, fetch: h.fetchFn, resourceId: RID });
+  assert.equal(h.decisionUrl().searchParams.get("require_vet402_allow"), "true");
+  const explicit = harness(decision());
+  await payOrRefuse({ payee: PAYEE, resource: RESOURCE, amountUsd: 0.02, account: account().account, fetch: explicit.fetchFn, resourceId: RID, policy: { requireVet402Allow: true } });
+  assert.equal(explicit.decisionUrl().searchParams.get("require_vet402_allow"), "true");
+});
+
+test("Q8 requireVet402Allow: false ＋ L1 の床（source vet402）→ require_vet402_allow=false と min_l1_deliveries を一緒に送る（サーバの床と一致）", async () => {
+  const h = harness(decision());
+  await payOrRefuse({ payee: PAYEE, resource: RESOURCE, amountUsd: 0.02, account: account().account, fetch: h.fetchFn, resourceId: RID, policy: { requireVet402Allow: false, evidence: { minL1Deliveries: 3, source: "vet402" } } });
+  const q = h.decisionUrl().searchParams;
+  assert.equal(q.get("require_vet402_allow"), "false");
+  assert.equal(q.get("min_l1_deliveries"), "3");
+});
+
+test("Q9 requireVet402Allow: false の根拠が subgraph の床だけ → サーバへ false を送らない（サーバは subgraph を読めず、床なしの false は 400 invalid_policy になる）", async () => {
+  const h = harness(decision());
+  await payOrRefuse({ payee: PAYEE, resource: RESOURCE, amountUsd: 0.02, account: account().account, fetch: h.fetchFn, resourceId: RID, policy: { requireVet402Allow: false, evidence: { source: "both", minL1Deliveries: 0, minSubgraphReceipts: 1, graphApiKey: "k" } } });
+  const q = h.decisionUrl().searchParams;
+  assert.equal(q.get("require_vet402_allow"), null, "サーバが当てられない免除は宣言しない（既定の true が当たる）");
+  assert.equal(q.get("min_l1_deliveries"), "0", "0 の床はこれまでどおり送る（サーバは 0 を床と数えない）");
+});
+
+test("Q10 getDecision は requireVet402Allow をそのまま require_vet402_allow に載せ、書かなければ送らない", async () => {
+  const calls = [];
+  const fetchFn = async (url) => { calls.push(url); return new Response(JSON.stringify(decision()), { status: 200, headers: { "content-type": "application/json" } }); };
+  const vouch = createVouchClient({ fetch: fetchFn });
+  await vouch.getDecision(RID, { amountUsd: 0.5, minL1Deliveries: 3, requireVet402Allow: false });
+  assert.equal(new URL(calls[0]).searchParams.get("require_vet402_allow"), "false");
+  await vouch.getDecision(RID, { amountUsd: 0.5, requireVet402Allow: true });
+  assert.equal(new URL(calls[1]).searchParams.get("require_vet402_allow"), "true");
+  await vouch.getDecision(RID, { amountUsd: 0.5 });
+  assert.equal(new URL(calls[2]).searchParams.has("require_vet402_allow"), false);
+});

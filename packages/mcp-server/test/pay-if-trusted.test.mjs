@@ -593,3 +593,58 @@ test("P3 caller_policy が無い応答では measurement.caller_policy は null�
     fetch: async () => ({ ok: true, status: 200, json: async () => ({ recommendation: "WARN", reason_codes: ["l1_not_attempted"], facts: {}, evidence: [] }), headers: new Map() }) });
   assert.equal(r.measurement.caller_policy, null);
 });
+
+// ---- require_vet402_allow を透過する（2026-09-07・後段）。SDK の既定（WARN は拒否）を HTTP でも鏡写しにした
+// サーバに対し、橋は自分の policy.requireVet402Allow をそのまま渡す。免除（false）はサーバが当てられる
+// 床（L1 ≥1）を一緒に送るときだけ宣言する——subgraph だけの床は サーバでは代わりにならず 400 になる。
+test("P4 pay_if_trusted の既定は require_vet402_allow=true を送る（SDK の既定と同じ）", async () => {
+  const w = watched();
+  const urls = [];
+  await payIfTrusted({ resourceId: "a".repeat(64), signer: w.signer, amountUsd: 0.02,
+    fetch: async (u) => { urls.push(String(u)); return { ok: true, status: 200, json: async () => ({ recommendation: "ALLOW", reason_codes: [], facts: {}, evidence: [] }), headers: new Map() }; } });
+  assert.equal(new URL(urls[0]).searchParams.get("require_vet402_allow"), "true");
+});
+
+test("P5 requireVet402Allow:false ＋ L1 の床 → require_vet402_allow=false と min_l1_deliveries を一緒に送る", async () => {
+  const w = watched();
+  const urls = [];
+  await payIfTrusted({ resourceId: "a".repeat(64), signer: w.signer, amountUsd: 0.02, policy: { requireVet402Allow: false, evidence: { source: "vet402", minL1Deliveries: 3 } },
+    fetch: async (u) => { urls.push(String(u)); return { ok: true, status: 200, json: async () => ({ recommendation: "ALLOW", reason_codes: [], facts: {}, evidence: [] }), headers: new Map() }; } });
+  const q = new URL(urls[0]).searchParams;
+  assert.equal(q.get("require_vet402_allow"), "false");
+  assert.equal(q.get("min_l1_deliveries"), "3");
+});
+
+test("P6 requireVet402Allow:false の根拠が subgraph の床だけ → サーバへ false を送らず、サーバの payee_recommendation_not_allow だけでは第 3.1 段で止めない（床は SDK の段が当てる）", async () => {
+  const w = watched();
+  const urls = [];
+  const callerPolicy = { applied: { amount_usd: 0.02, max_per_tx_usd: 1, min_l1_deliveries: 0, require_vet402_allow: true }, verdict: "REFUSE", reason_codes: ["payee_recommendation_not_allow"], not_evaluated: ["min_subgraph_receipts"] };
+  const r = await payIfTrusted({ resourceId: "a".repeat(64), signer: w.signer, amountUsd: 0.02, graphApiKey: "k".repeat(32),
+    policy: { requireVet402Allow: false, evidence: { source: "subgraph", minSubgraphReceipts: 1 } },
+    fetch: async (u) => { urls.push(String(u)); return { ok: true, status: 200, json: async () => ({ recommendation: "WARN", reason_codes: ["l1_not_attempted"], facts: {}, evidence: [], caller_policy: callerPolicy }), headers: new Map() }; } });
+  assert.equal(new URL(urls[0]).searchParams.get("require_vet402_allow"), null, "サーバが当てられない免除は宣言しない");
+  assert.equal(r.decision, "REFUSE");
+  assert.ok(r.refuse_reasons.includes("payment_target_unknown"), `3.1 で止まらず支払い先の段まで進む: ${r.refuse_reasons.join(",")}`);
+  assert.deepEqual(r.measurement.caller_policy, callerPolicy, "サーバの応答はそのまま透過する");
+  assert.deepEqual(w.signAccesses(), []);
+});
+
+test("P7 requireVet402Allow:false ＋ L1 の床なのにサーバが別の語（price_above_ceiling）で REFUSE → 第 3.1 段でその語で止まる（免除は WARN だけ）", async () => {
+  const w = watched();
+  const callerPolicy = { applied: { amount_usd: 5, max_per_tx_usd: 1, min_l1_deliveries: 3, require_vet402_allow: false }, verdict: "REFUSE", reason_codes: ["price_above_ceiling"], not_evaluated: ["min_subgraph_receipts"] };
+  const r = await payIfTrusted({ resourceId: "a".repeat(64), signer: w.signer, amountUsd: 5, policy: { requireVet402Allow: false, evidence: { source: "vet402", minL1Deliveries: 3 } },
+    fetch: async () => ({ ok: true, status: 200, json: async () => ({ recommendation: "WARN", reason_codes: ["l1_not_attempted"], facts: {}, evidence: [], caller_policy: callerPolicy }), headers: new Map() }) });
+  assert.equal(r.decision, "REFUSE");
+  assert.ok(r.refuse_reasons.includes("price_above_ceiling"));
+  assert.equal(r.refuse_reasons.includes("payment_target_unknown"), false, "3.1 で止まっている");
+});
+
+test("K7 実プロセス: check_resource_decision は requireVet402Allow を require_vet402_allow に透過する", async () => {
+  const body = { recommendation: "WARN", reason_codes: ["l1_not_attempted"], facts: {}, evidence: [], rules_version: "t", degraded: false,
+    caller_policy: { applied: { amount_usd: 0.02, max_per_tx_usd: 1, min_l1_deliveries: 1, require_vet402_allow: false }, verdict: "ALLOW", reason_codes: [], not_evaluated: ["min_subgraph_receipts"] } };
+  const { seen, text } = await callToolKeyless(() => ({ status: 200, body }), "check_resource_decision", { resourceId: "a".repeat(64), amountUsd: 0.02, minL1Deliveries: 1, requireVet402Allow: false });
+  const q = new URL(seen[0].url, "http://x").searchParams;
+  assert.equal(q.get("require_vet402_allow"), "false");
+  assert.equal(q.get("min_l1_deliveries"), "1");
+  assert.deepEqual(text.measurement.caller_policy, body.caller_policy, "透過");
+});

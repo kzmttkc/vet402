@@ -421,12 +421,13 @@ caller's policy as query parameters and returns the verdict **in the same docume
 | `amount_usd` | what the 402 asks (compared with the ceiling) |
 | `max_per_tx_usd` | your per-payment ceiling, default `1` (= the SDK's `DEFAULT_MAX_PER_TX_USD`) |
 | `min_l1_deliveries` | floor on `facts.l1.n_delivered` — our own delivered L1 purchases |
+| `require_vet402_allow` | default `true` (= the SDK's `requireVet402Allow`): a WARN refuses with `payee_recommendation_not_allow`; `false` waives the WARN and needs `min_l1_deliveries` ≥ 1, else `400 invalid_policy` |
 
 The response gains one block and changes nothing else (without these queries the body is byte-identical):
 
 ```json
 "caller_policy": {
-  "applied": { "amount_usd": 1.5, "max_per_tx_usd": 1, "min_l1_deliveries": 0 },
+  "applied": { "amount_usd": 1.5, "max_per_tx_usd": 1, "min_l1_deliveries": 0, "require_vet402_allow": true },
   "verdict": "REFUSE",
   "reason_codes": ["price_above_ceiling"],
   "not_evaluated": ["min_subgraph_receipts"]
@@ -434,9 +435,13 @@ The response gains one block and changes nothing else (without these queries the
 ```
 
 - Order and words are the SDK's: `price_above_ceiling` → `evidence_unavailable` (degraded) →
-  `payee_recommendation_block` → `insufficient_delivery_evidence`. No new vocabulary.
-- `recommendation` is **never rewritten**. A WARN stays a WARN beside a `caller_policy` ALLOW; you read
-  both. A floor never lifts BLOCK or degraded (§3.2.1).
+  `payee_recommendation_block` → `payee_recommendation_not_allow` (unless `require_vet402_allow=false`) →
+  `insufficient_delivery_evidence`. No new vocabulary.
+- The default is the SDK's default: a raw-HTTP caller reading only `caller_policy` gets the same
+  answer `payOrRefuse` would give (WARN → REFUSE). `require_vet402_allow=false` is the same waiver as
+  `requireVet402Allow: false` and carries the same obligation — a floor in its place (§3.2).
+- `recommendation` is **never rewritten**. A waived WARN stays a WARN beside a `caller_policy` ALLOW; you
+  read both. A floor or a waiver never lifts BLOCK or degraded (§3.2.1).
 - `not_evaluated` says what the server did **not** check. `min_subgraph_receipts` is always there: The
   Graph is read only with *your* Gateway key, by `payOrRefuse` / `pay_if_trusted`, never by us.
 - A bad value is `400` with the SDK's own caller-error word (`invalid_amount_usd`, `invalid_policy`,
@@ -456,8 +461,8 @@ curl -sL "https://vet402.com/api/v1/resources/$RID/decision?role=payer&amount_us
 curl -sL "https://vet402.com/api/v1/resources/$RID/decision?role=payer" | jq 'has("caller_policy")'
 ```
 
-The same block comes through `check_resource_decision` (`amountUsd` / `maxPerTxUsd` / `minL1Deliveries`
-are tool inputs now). Run on 2026-09-07 over stdio against the real route handler with the catalogue
+The same block comes through `check_resource_decision` (`amountUsd` / `maxPerTxUsd` / `minL1Deliveries` /
+`requireVet402Allow` are tool inputs now). Run on 2026-09-07 over stdio against the real route handler with the catalogue
 stubbed (`tests/decision-caller-policy.test.ts` uses the same stub; production output to be pasted after
 deploy):
 
@@ -467,7 +472,7 @@ deploy):
   "safe_to_pay": false,
   "refuse_reasons": ["l0_pass", "l1_delivered", "l2_undeclared", "price_above_ceiling"],
   "summary": "ALLOW (2026-09-02.1) — l0_pass, l1_delivered, l2_undeclared · caller_policy REFUSE (price_above_ceiling)",
-  "measurement": { "recommendation": "ALLOW", "caller_policy": { "applied": { "amount_usd": 1.5, "max_per_tx_usd": 1, "min_l1_deliveries": 0 }, "verdict": "REFUSE", "reason_codes": ["price_above_ceiling"], "not_evaluated": ["min_subgraph_receipts"] } }
+  "measurement": { "recommendation": "ALLOW", "caller_policy": { "applied": { "amount_usd": 1.5, "max_per_tx_usd": 1, "min_l1_deliveries": 0, "require_vet402_allow": true }, "verdict": "REFUSE", "reason_codes": ["price_above_ceiling"], "not_evaluated": ["min_subgraph_receipts"] } }
 }
 ```
 

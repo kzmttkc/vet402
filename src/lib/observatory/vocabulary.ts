@@ -217,6 +217,12 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
       "payee_recommendation_block means vet402's recommendation for the resource or payee is BLOCK, and a caller's policy never lifts that: BLOCK is an operator-level refusal (a failing probe, a schema mismatch, wash-dominated volume, a global block list), not an opinion a floor can outweigh. WARN is an opinion and can be waived by a declared floor; BLOCK cannot.",
   },
   {
+    term: "payee_recommendation_not_allow",
+    group: "policy",
+    definition:
+      "payee_recommendation_not_allow means vet402's recommendation for the resource or payee is something other than ALLOW (a WARN) and the caller's policy requires ALLOW, which is the default in the payOrRefuse SDK (requireVet402Allow true) and in the caller_policy block of /decision (require_vet402_allow=true). A caller may waive it with require_vet402_allow=false only by naming a floor in its place (min_l1_deliveries of at least 1); without one the request is refused as invalid_policy, because waiving the verdict must not leave nothing to judge.",
+  },
+  {
     term: "evidence_unavailable",
     group: "policy",
     definition:

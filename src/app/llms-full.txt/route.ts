@@ -69,7 +69,7 @@ ${blog}
 - ${SITE_URL}/api/v1/accuracy — accuracy ledger JSON (caveats in the payload)
 - ${SITE_URL}/api/v1/resolve?q= — reverse lookup (URL / domain / address / tx / payee_id → object ids), no key
 - ${SITE_URL}/api/v1/resources/{resourceId} — one Resource with payees and links, no key
-- ${SITE_URL}/api/v1/resources/{resourceId}/decision — facts + ALLOW / WARN / BLOCK in one document, key-less at 10/min per IP (same body with a key); add amount_usd / max_per_tx_usd / min_l1_deliveries to get caller_policy (your rule applied server-side, SDK words: price_above_ceiling, insufficient_delivery_evidence, payee_recommendation_block, evidence_unavailable)
+- ${SITE_URL}/api/v1/resources/{resourceId}/decision — facts + ALLOW / WARN / BLOCK in one document, key-less at 10/min per IP (same body with a key); add amount_usd / max_per_tx_usd / min_l1_deliveries / require_vet402_allow (default true: a WARN refuses with payee_recommendation_not_allow; false waives it and needs min_l1_deliveries >= 1) to get caller_policy (your rule applied server-side, SDK words: price_above_ceiling, evidence_unavailable, payee_recommendation_block, payee_recommendation_not_allow, insufficient_delivery_evidence)
 - ${SITE_URL}/api/v1/endpoints/{endpointId} — one Endpoint (sha256 id or observatory uuid), no key
 - ${SITE_URL}/api/v1/endpoints/{endpointId}/payees — endpoint → payees[], no key
 - ${SITE_URL}/api/v1/payees/{address}/endpoints — payee → endpoints[], no key

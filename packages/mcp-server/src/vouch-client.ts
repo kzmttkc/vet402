@@ -181,7 +181,7 @@ export type DecisionResult = {
 
 /** Mirrors docs/openapi.yaml CallerPolicy (tests/openapi-schema-parity.test.ts). */
 export type CallerPolicy = {
-  applied: { amount_usd: number | null; max_per_tx_usd: number; min_l1_deliveries: number };
+  applied: { amount_usd: number | null; max_per_tx_usd: number; min_l1_deliveries: number; require_vet402_allow: boolean };
   verdict: "ALLOW" | "REFUSE";
   reason_codes: string[];
   not_evaluated: string[];
@@ -350,6 +350,8 @@ export type DecisionQuery = {
   amountUsd?: number;
   maxPerTxUsd?: number;
   minL1Deliveries?: number;
+  /** Mirror of the SDK's policy.requireVet402Allow (server default true). false needs minL1Deliveries >= 1 or the server answers 400 invalid_policy. */
+  requireVet402Allow?: boolean;
 };
 
 export function decisionQueryString(query: DecisionQuery): string {
@@ -360,6 +362,7 @@ export function decisionQueryString(query: DecisionQuery): string {
   if (query.amountUsd !== undefined) qs.set("amount_usd", String(query.amountUsd));
   if (query.maxPerTxUsd !== undefined) qs.set("max_per_tx_usd", String(query.maxPerTxUsd));
   if (query.minL1Deliveries !== undefined) qs.set("min_l1_deliveries", String(query.minL1Deliveries));
+  if (query.requireVet402Allow !== undefined) qs.set("require_vet402_allow", String(query.requireVet402Allow));
   return qs.toString();
 }
 

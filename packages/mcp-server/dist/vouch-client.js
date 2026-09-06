@@ -130,6 +130,8 @@ export function decisionQueryString(query) {
         qs.set("max_per_tx_usd", String(query.maxPerTxUsd));
     if (query.minL1Deliveries !== undefined)
         qs.set("min_l1_deliveries", String(query.minL1Deliveries));
+    if (query.requireVet402Allow !== undefined)
+        qs.set("require_vet402_allow", String(query.requireVet402Allow));
     return qs.toString();
 }
 export async function fetchDecision(resourceId, query = {}) {

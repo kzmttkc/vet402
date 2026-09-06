@@ -178,10 +178,12 @@ test(".env.example がコードの読む環境変数を（値なしでも）全�
 // **どのツールも返さなかった**。「ツールに無い語は Recipe があっても出ない」。製品側で閉じた以上、
 // 4 面（openapi・docs/api・llms.txt・MCP）と SKILL.md が同じクエリ名と同じ語を持っていなければ、
 // 生成クライアント（Bazantic のゲートウェイは openapi から作られる）はこの語に到達できない。
-const POLICY_QUERIES = ["amount_usd", "max_per_tx_usd", "min_l1_deliveries"];
-const POLICY_WORDS = ["price_above_ceiling", "insufficient_delivery_evidence", "payee_recommendation_block", "evidence_unavailable"];
+// 2026-09-07 後段: `require_vet402_allow`（既定 true）で SDK の既定（WARN は拒否）を HTTP でも鏡写しにした。
+// 語 `payee_recommendation_not_allow` も SDK の PayRefuseReason から借りる（新語ではない）。
+const POLICY_QUERIES = ["amount_usd", "max_per_tx_usd", "min_l1_deliveries", "require_vet402_allow"];
+const POLICY_WORDS = ["price_above_ceiling", "insufficient_delivery_evidence", "payee_recommendation_block", "payee_recommendation_not_allow", "evidence_unavailable"];
 
-test("openapi の /decision は policy のクエリ 3 つと CallerPolicy スキーマを持ち、語は SDK と同じ", () => {
+test("openapi の /decision は policy のクエリ 4 つと CallerPolicy スキーマを持ち、語は SDK と同じ", () => {
   const spec = read("docs/openapi.yaml");
   const route = spec.slice(spec.indexOf("  /api/v1/resources/{resourceId}/decision:"), spec.indexOf("  /api/v1/census/summary:"));
   for (const q of POLICY_QUERIES) assert.ok(new RegExp(`name: ${q}\\b`).test(route), `openapi の /decision に query ${q} が無い`);

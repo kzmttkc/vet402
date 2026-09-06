@@ -14,9 +14,12 @@
 //   - 順序も SDK と同じ: 上限超え → degraded → BLOCK → L1 の床。SDK は判定を引く前に上限を
 //     当てるので、BLOCK でも上限超えが先に立つ
 //   - **BLOCK と degraded は床では外れない**（§3.2.1: WARN は意見、BLOCK は遮断）
-//   - WARN は止めない。WARN は vet402 の意見で `recommendation` にそのまま残り、policy は
-//     「呼び手が名乗った関門を通ったか」だけを答える。読み手は両方を見る（SDK の既定
-//     `requireVet402Allow: true` は SDK 側の関門として残る＝二重防御）
+//   - WARN の扱いは `require_vet402_allow`（既定 true）が決める。SDK の `requireVet402Allow` の鏡:
+//     true なら ALLOW でない判定は `payee_recommendation_not_allow` で REFUSE、false なら WARN は
+//     意見として床で通す（`recommendation` にはそのまま残る）。**false は床（`min_l1_deliveries` ≥1）
+//     が無ければ `invalid_policy`**——判定を外すなら代わりを置け（§3.2・SDK の assertOverridePolicy
+//     と同じ。0 の床は床として数えない）。2026-09-07 までは既定が「WARN を床で通す」で、生 HTTP の
+//     呼び手が `caller_policy` だけを読むと SDK の既定より緩い答えを受け取れた。その穴を閉じる
 //   - `recommendation` は書き換えない。policy は別欄
 //   - subgraph の床はサーバでは扱わない（呼び手の Graph 鍵でしか読めない・§1.5）。
 //     見ていないことを `not_evaluated` に**明示**する。黙って ALLOW に倒さない
@@ -35,11 +38,12 @@ export type CallerPolicyReason =
   | "price_above_ceiling"
   | "evidence_unavailable"
   | "payee_recommendation_block"
+  | "payee_recommendation_not_allow"
   | "insufficient_delivery_evidence";
 
 export type CallerPolicy = {
   /** 何を当てたか。`amount_usd` は呼び手が名乗らなければ null（上限は当てられない）。 */
-  applied: { amount_usd: number | null; max_per_tx_usd: number; min_l1_deliveries: number };
+  applied: { amount_usd: number | null; max_per_tx_usd: number; min_l1_deliveries: number; require_vet402_allow: boolean };
   verdict: "ALLOW" | "REFUSE";
   /** SDK と同じ語。ALLOW のときは空。REFUSE のときは SDK の短絡と同じく最初に落ちた 1 語。 */
   reason_codes: CallerPolicyReason[];
@@ -54,18 +58,21 @@ export type CallerPolicyInput = {
   amountUsd: number | null;
   maxPerTxUsd: number;
   minL1Deliveries: number;
+  /** SDK の `requireVet402Allow`。既定 true。false は minL1Deliveries ≥1 を要する（parse が保証）。 */
+  requireVet402Allow: boolean;
 };
 
 /** 呼び出し側の誤り。語は SDK が throw する語と同じ（invalid_amount_usd / invalid_policy / invalid_evidence_policy）。 */
 export type CallerPolicyParseError = "invalid_amount_usd" | "invalid_policy" | "invalid_evidence_policy";
 
-export const CALLER_POLICY_QUERY_KEYS = ["amount_usd", "max_per_tx_usd", "min_l1_deliveries"] as const;
+export const CALLER_POLICY_QUERY_KEYS = ["amount_usd", "max_per_tx_usd", "min_l1_deliveries", "require_vet402_allow"] as const;
 
 /**
  * クエリを読む。1 つも無ければ `null`（policy を評価しない＝応答は従来どおり）。
  * 数の読み方は SDK と同じ厳しさ: 有限・`amount_usd` は 0 以上・`max_per_tx_usd` は正・
- * `min_l1_deliveries` は 0 以上の整数。空文字は「書いていない」ではなく不正値として扱う
- * （`?amount_usd=` のような取りこぼしを黙って 0 にしない）。
+ * `min_l1_deliveries` は 0 以上の整数・`require_vet402_allow` は `true` | `false` の 2 語だけ。
+ * 空文字は「書いていない」ではなく不正値として扱う（`?amount_usd=` のような取りこぼしを黙って 0 にしない）。
+ * `require_vet402_allow=false` で床が 1 つも無ければ `invalid_policy`（SDK と同じ語・同じ理由）。
  */
 export function parseCallerPolicy(
   params: URLSearchParams,
@@ -91,7 +98,16 @@ export function parseCallerPolicy(
     if (n === null || n < 0 || !Number.isInteger(n)) return { ok: false, error: "invalid_evidence_policy" };
     minL1Deliveries = n;
   }
-  return { ok: true, input: { amountUsd, maxPerTxUsd, minL1Deliveries } };
+  let requireVet402Allow = true;
+  if (params.has("require_vet402_allow")) {
+    const raw = (params.get("require_vet402_allow") ?? "").trim();
+    if (raw !== "true" && raw !== "false") return { ok: false, error: "invalid_policy" };
+    requireVet402Allow = raw === "true";
+  }
+  // §3.2: 判定を外すなら代わりを置け。サーバが当てられる床は L1 の配達件数だけなので、それが
+  // 1 以上でなければ呼び出し側エラー。subgraph の床はここでは代わりにならない（サーバは読めない）。
+  if (!requireVet402Allow && minL1Deliveries < 1) return { ok: false, error: "invalid_policy" };
+  return { ok: true, input: { amountUsd, maxPerTxUsd, minL1Deliveries, requireVet402Allow } };
 }
 
 function numberOf(raw: string | null): number | null {
@@ -111,6 +127,7 @@ export function evaluateCallerPolicy(result: DecisionResult, input: CallerPolicy
     amount_usd: input.amountUsd,
     max_per_tx_usd: input.maxPerTxUsd,
     min_l1_deliveries: input.minL1Deliveries,
+    require_vet402_allow: input.requireVet402Allow,
   };
   const not_evaluated: CallerPolicy["not_evaluated"] = [];
   if (input.amountUsd === null) not_evaluated.push("max_per_tx_usd");
@@ -124,6 +141,9 @@ export function evaluateCallerPolicy(result: DecisionResult, input: CallerPolicy
   if (result.degraded === true) return refuse("evidence_unavailable");
   // §3.2.1: BLOCK は遮断。呼び手の床では外れない。
   if (String(result.recommendation).toUpperCase() === "BLOCK") return refuse("payee_recommendation_block");
+  // SDK A1: ALLOW 以外（WARN）は、呼び手が `require_vet402_allow=false` で免除しない限り止める。
+  // 免除できるのは parse で床を確かめた呼び手だけ（判定を外すなら代わりを置け・§3.2）。
+  if (input.requireVet402Allow && result.recommendation !== "ALLOW") return refuse("payee_recommendation_not_allow");
   // SDK evaluateEvidencePolicy（source vet402）: 配達件数は我々の台帳の数だけで当てる。
   if (input.minL1Deliveries > 0) {
     const l1 = (result.facts as { l1?: { n_delivered?: unknown } } | undefined)?.l1;

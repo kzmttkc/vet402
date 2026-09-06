@@ -588,10 +588,12 @@ export default async function ObservatoryMethodologyPage() {
           the same order and the same words as the <code>payOrRefuse</code> SDK:{" "}
           <code>price_above_ceiling</code> when the price is above the ceiling,{" "}
           <code>evidence_unavailable</code> when the decision is degraded,{" "}
-          <code>payee_recommendation_block</code> when our recommendation is BLOCK, and{" "}
-          <code>insufficient_delivery_evidence</code> when our ledger has fewer deliveries than
-          the floor. The block sits beside <code>recommendation</code> and never rewrites it: a WARN
-          stays a WARN, and a floor never lifts a BLOCK. What the server did not check is listed in{" "}
+          <code>payee_recommendation_block</code> when our recommendation is BLOCK,{" "}
+          <code>payee_recommendation_not_allow</code> when it is a WARN and the caller did not waive
+          it (<code>require_vet402_allow</code> defaults to true, as in the SDK; waiving needs a floor
+          in its place), and <code>insufficient_delivery_evidence</code> when our ledger has fewer
+          deliveries than the floor. The block sits beside <code>recommendation</code> and never
+          rewrites it: a WARN stays a WARN, and a floor never lifts a BLOCK. What the server did not check is listed in{" "}
           <code>not_evaluated</code> &mdash; always the subgraph floor, because The Graph is read
           only with the caller&rsquo;s own key.
         </p>

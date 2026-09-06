@@ -1317,6 +1317,13 @@ claims:
     check: null
     why_unverifiable: "上の caller_policy_never_rewrites_recommendation_never_lifts_block と同じ不変条件の語彙側。SDK 側は packages/sdk/test-mutations.mjs M01/M02（BLOCK を requireVet402Allow:false で通す変異）が赤になることで固定する"
     verified_at: 2026-09-07
+  - id: vocabulary_payee_recommendation_not_allow_waiver_needs_floor
+    surface: src/lib/observatory/vocabulary.ts
+    quote: "only by naming a floor in its place"
+    means: "payee_recommendation_not_allow の定義: /decision の require_vet402_allow は既定 true（SDK の requireVet402Allow と同じ）で、false にするには min_l1_deliveries ≥1 が要る（無ければ 400 invalid_policy）"
+    check: null
+    why_unverifiable: "400 の応答本文はカナリアの式（`path op literal`）で書けない（カナリアは 200 の JSON を読む）。tests/decision-caller-policy.test.ts P8/P8b/P8c が固定し、既定を false にする変異・床なし false を通す変異でそれぞれ赤になる（2026-09-07 実測）。SDK 側は packages/sdk/test/pay-or-refuse.test.mjs J1/J2 と test-mutations.mjs M08 が同じ規則を固定する"
+    verified_at: 2026-09-07
   - id: vocabulary_evidence_unavailable_floor_never_fills_measurement
     surface: src/lib/observatory/vocabulary.ts
     quote: "a caller's floor does not fill in a measurement that was never made"

@@ -1169,14 +1169,20 @@ paths:
         `DECISION_KEYLESS_READ=0` restores key-only access.
         Caller policy (2026-09-07, role=payer only): send `amount_usd` (what the
         402 asks), `max_per_tx_usd` (your ceiling, default 1) and/or
-        `min_l1_deliveries` (floor on vet402's delivered L1 purchases) and the
-        same document gains `caller_policy` — the caller's own rule applied
-        server-side, in the SDK's words (`price_above_ceiling`,
-        `insufficient_delivery_evidence`, `payee_recommendation_block`,
-        `evidence_unavailable`). It sits beside `recommendation` and never
-        rewrites it; BLOCK and degraded are never lifted by a floor; without
-        these queries the body is byte-identical to before. A bad value is 400
-        with the SDK's own word (`invalid_amount_usd`, `invalid_policy`,
+        `min_l1_deliveries` (floor on vet402's delivered L1 purchases) and/or
+        `require_vet402_allow` (default `true`, the SDK's `requireVet402Allow`)
+        and the same document gains `caller_policy` — the caller's own rule
+        applied server-side, in the SDK's words (`price_above_ceiling`,
+        `evidence_unavailable`, `payee_recommendation_block`,
+        `payee_recommendation_not_allow`, `insufficient_delivery_evidence`).
+        With `require_vet402_allow=true` a WARN refuses with
+        `payee_recommendation_not_allow`, exactly as the SDK's default does;
+        `false` waives the WARN and needs `min_l1_deliveries` ≥ 1 or the call
+        is 400 `invalid_policy` (waive the verdict, put a floor in its place).
+        It sits beside `recommendation` and never rewrites it; BLOCK and
+        degraded are never lifted by a floor or a waiver; without these queries
+        the body is byte-identical to before. A bad value is 400 with the SDK's
+        own word (`invalid_amount_usd`, `invalid_policy`,
         `invalid_evidence_policy`); a policy query with role=payee is 400
         `invalid_policy`. An unknown resource stays 404 (the SDK judges those
         from the 402's payTo and the payee score).
@@ -1219,6 +1225,11 @@ paths:
           required: false
           schema: { type: integer, minimum: 0, default: 0 }
           description: Floor on `facts.l1.n_delivered` (vet402's own delivered L1 purchases). The subgraph floor is not evaluated here — see `caller_policy.not_evaluated`.
+        - in: query
+          name: require_vet402_allow
+          required: false
+          schema: { type: boolean, default: true }
+          description: Mirror of the SDK's `policy.requireVet402Allow`. `true` (default) refuses any recommendation other than ALLOW with `payee_recommendation_not_allow`; `false` waives a WARN and requires `min_l1_deliveries` ≥ 1 (400 `invalid_policy` otherwise). Only the literal strings `true` / `false` are accepted.
         - in: header
           name: Idempotency-Key
           required: false
@@ -2912,8 +2923,8 @@ components:
         caller_policy:
           $ref: "#/components/schemas/CallerPolicy"
           description: >-
-            Present only when `amount_usd`, `max_per_tx_usd` or `min_l1_deliveries`
-            was sent (2026-09-07). The caller's own rule applied server-side, in
+            Present only when `amount_usd`, `max_per_tx_usd`, `min_l1_deliveries`
+            or `require_vet402_allow` was sent (2026-09-07). The caller's own rule applied server-side, in
             the SDK's words. Absent otherwise — the no-policy body is unchanged.
         rules_version:
           type: string
@@ -2929,21 +2940,23 @@ components:
       description: >-
         The caller's policy, applied by the server to the decision it sits beside
         (WINDOW_PLAN §16.3, 2026-09-07). Same order as the SDK's payOrRefuse:
-        ceiling first, then degraded, then BLOCK, then the L1 floor. `verdict`
-        REFUSE carries the first gate that failed, in the SDK's own word; ALLOW
-        carries none. It never rewrites `recommendation` — a WARN stays a WARN
+        ceiling first, then degraded, then BLOCK, then not-ALLOW (unless waived
+        with `require_vet402_allow=false`), then the L1 floor. `verdict` REFUSE
+        carries the first gate that failed, in the SDK's own word; ALLOW carries
+        none. It never rewrites `recommendation` — a waived WARN stays a WARN
         next to a caller_policy ALLOW, and the reader combines the two. BLOCK and
-        degraded are never lifted by a floor.
+        degraded are never lifted by a floor or a waiver.
       required: [applied, verdict, reason_codes, not_evaluated]
       properties:
         applied:
           type: object
           description: What was applied. `amount_usd` is null when the caller did not name it (then the ceiling is not evaluated).
-          required: [amount_usd, max_per_tx_usd, min_l1_deliveries]
+          required: [amount_usd, max_per_tx_usd, min_l1_deliveries, require_vet402_allow]
           properties:
             amount_usd: { type: number, nullable: true }
             max_per_tx_usd: { type: number }
             min_l1_deliveries: { type: integer }
+            require_vet402_allow: { type: boolean }
         verdict:
           type: string
           enum: [ALLOW, REFUSE]
@@ -2952,7 +2965,7 @@ components:
           description: SDK vocabulary (packages/sdk PayRefuseReason), unchanged. Empty on ALLOW.
           items:
             type: string
-            enum: [price_above_ceiling, evidence_unavailable, payee_recommendation_block, insufficient_delivery_evidence]
+            enum: [price_above_ceiling, evidence_unavailable, payee_recommendation_block, payee_recommendation_not_allow, insufficient_delivery_evidence]
         not_evaluated:
           type: array
           description: >-

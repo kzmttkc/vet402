@@ -215,6 +215,7 @@ export type CallerPolicy = {
         amount_usd: number | null;
         max_per_tx_usd: number;
         min_l1_deliveries: number;
+        require_vet402_allow: boolean;
     };
     verdict: "ALLOW" | "REFUSE";
     reason_codes: string[];
@@ -267,6 +268,8 @@ export type DecisionQuery = {
     amountUsd?: number;
     maxPerTxUsd?: number;
     minL1Deliveries?: number;
+    /** Mirror of the SDK's policy.requireVet402Allow (server default true). false needs minL1Deliveries >= 1 or the server answers 400 invalid_policy. */
+    requireVet402Allow?: boolean;
 };
 export declare function decisionQueryString(query: DecisionQuery): string;
 export declare function fetchDecision(resourceId: string, query?: DecisionQuery): Promise<DecisionResult>;

@@ -271,8 +271,17 @@ async function decideAndPay(input) {
     decisionQuery.set("max_per_tx_usd", String(maxPerTxUsd));
     const l1Floor = input.policy?.evidence?.minL1Deliveries;
     const l1Source = input.policy?.evidence?.source ?? "vet402";
-    if (l1Floor !== undefined && (l1Source === "vet402" || l1Source === "both")) {
+    const l1FloorSent = l1Floor !== undefined && (l1Source === "vet402" || l1Source === "both");
+    if (l1FloorSent) {
         decisionQuery.set("min_l1_deliveries", String(l1Floor));
+    }
+    // `requireVet402Allow` も鏡写しにする（サーバ既定 true・2026-09-07 後段）。免除（false）は、
+    // サーバが当てられる床（L1 ≥1）を一緒に送るときだけ宣言する。subgraph の床だけを根拠にした
+    // 免除はサーバでは代わりにならず（読めない）、床なしの false は 400 `invalid_policy` になるので、
+    // そのときは宣言しない＝サーバは既定の true を当て、WARN なら `payee_recommendation_not_allow`
+    // を返す。ローカルは免除を保ったまま払い、その語は決定行に**併記**される（両方の語を並べる規則）。
+    if (requireVet402Allow || (l1FloorSent && l1Floor >= 1)) {
+        decisionQuery.set("require_vet402_allow", String(requireVet402Allow));
     }
     const decisionUrl = `${apiUrl}/resources/${resourceId}/decision?${decisionQuery.toString()}`;
     let decision = null;

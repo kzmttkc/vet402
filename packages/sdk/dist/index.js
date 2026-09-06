@@ -186,6 +186,8 @@ export class VouchClient {
             qs.set("max_per_tx_usd", String(query.maxPerTxUsd));
         if (query.minL1Deliveries !== undefined)
             qs.set("min_l1_deliveries", String(query.minL1Deliveries));
+        if (query.requireVet402Allow !== undefined)
+            qs.set("require_vet402_allow", String(query.requireVet402Allow));
         return this.request(`/resources/${resourceId}/decision?${qs.toString()}`, query.idempotencyKey ? { headers: { "Idempotency-Key": query.idempotencyKey } } : undefined);
     }
     /** §7.3 GET /resolve?q= — URL / domain / address / tx / payee_id から canonical オブジェクトへ。キー不要だが同じ経路で送る。 */

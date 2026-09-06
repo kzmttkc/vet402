@@ -212,9 +212,12 @@ async function main() {
         "they count different things, and the two can disagree about the same wallet.",
         "",
         "Your own policy (role=payer only): pass amountUsd (what the 402 asks), maxPerTxUsd (your ceiling,",
-        "default 1) and/or minL1Deliveries (floor on vet402's delivered L1 purchases). The server then adds",
+        "default 1), minL1Deliveries (floor on vet402's delivered L1 purchases) and/or requireVet402Allow",
+        "(default true: a WARN refuses with payee_recommendation_not_allow, as in the SDK; false waives the WARN",
+        "and needs minL1Deliveries >= 1 or the server answers 400 invalid_policy). The server then adds",
         "measurement.caller_policy with verdict ALLOW | REFUSE and reason_codes in the SDK's own words:",
-        "price_above_ceiling, insufficient_delivery_evidence, payee_recommendation_block, evidence_unavailable.",
+        "price_above_ceiling, insufficient_delivery_evidence, payee_recommendation_block,",
+        "payee_recommendation_not_allow, evidence_unavailable.",
         "A caller_policy REFUSE makes this tool REFUSE and those words are in refuse_reasons. caller_policy",
         "never rewrites recommendation; not_evaluated lists what the server did not check (min_subgraph_receipts",
         "is always there - The Graph is read only with your own key, through pay_if_trusted).",
@@ -226,9 +229,10 @@ async function main() {
         amountUsd: z.number().nonnegative().optional().describe("What the 402 asks, in USD; compared with maxPerTxUsd server-side (role=payer only)"),
         maxPerTxUsd: z.number().positive().optional().describe("Your per-payment ceiling in USD (default 1)"),
         minL1Deliveries: z.number().int().nonnegative().optional().describe("Floor on vet402's delivered L1 purchases for this resource"),
-    }, async ({ resourceId, role, payer, callerDialect, amountUsd, maxPerTxUsd, minL1Deliveries }) => {
+        requireVet402Allow: z.boolean().optional().describe("Default true (a WARN refuses with payee_recommendation_not_allow). false waives a WARN and needs minL1Deliveries >= 1"),
+    }, async ({ resourceId, role, payer, callerDialect, amountUsd, maxPerTxUsd, minL1Deliveries, requireVet402Allow }) => {
         try {
-            const result = await fetchDecision(resourceId, { role, payer, callerDialect, amountUsd, maxPerTxUsd, minL1Deliveries });
+            const result = await fetchDecision(resourceId, { role, payer, callerDialect, amountUsd, maxPerTxUsd, minL1Deliveries, requireVet402Allow });
             // 2026-09-07 (§16.3): the caller's own policy, applied by the server, can refuse too — and
             // its words (price_above_ceiling, …) are the ones the A/B showed no tool ever returned.
             const policy = result.caller_policy;

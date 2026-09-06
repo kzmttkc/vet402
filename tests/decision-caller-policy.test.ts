@@ -11,6 +11,10 @@
 //      policy ALLOW にならない（§3.2.1: BLOCK は遮断であって意見ではない）
 //   3. `recommendation`（vet402 の判定）は書き換えない。policy は別欄
 //   4. クエリが無ければ応答は**従来と完全一致**（`caller_policy` キーすら無い）
+//   5. `require_vet402_allow`（既定 true）は SDK の `requireVet402Allow` の鏡: true なら WARN も
+//      `payee_recommendation_not_allow` で REFUSE、false は床（`min_l1_deliveries` ≥1）が無ければ 400
+//      `invalid_policy`（判定を外すなら代わりを置け・§3.2）。生 HTTP の呼び手が `caller_policy` だけを
+//      読んでも、SDK の既定より緩い答えを受け取らない
 //
 // DB は持ち込まない: decision-keyless-read.test.ts と同じフェイク（endpoint 1 行）を差し、
 // 判定本体は decisionCache に種を撒いて decide() のキャッシュヒットで返す。
@@ -151,7 +155,7 @@ test("P1 上限超え → caller_policy.verdict REFUSE・reason_codes は SDK �
   const body = JSON.parse(text);
   assert.equal(body.recommendation, "ALLOW", "vet402 の判定は書き換えない（policy は別欄）");
   assert.deepEqual(body.caller_policy, {
-    applied: { amount_usd: 1.5, max_per_tx_usd: 1, min_l1_deliveries: 0 },
+    applied: { amount_usd: 1.5, max_per_tx_usd: 1, min_l1_deliveries: 0, require_vet402_allow: true },
     verdict: "REFUSE",
     reason_codes: ["price_above_ceiling"],
     not_evaluated: ["min_subgraph_receipts"],
@@ -213,14 +217,50 @@ test("P7 順序は SDK と同じ: 上限超えが BLOCK より先（SDK は判�
   assert.deepEqual(body.caller_policy.reason_codes, ["price_above_ceiling"]);
 });
 
-test("P8 WARN は意見であって遮断ではない: 呼び手の関門を通れば policy ALLOW、recommendation は WARN のまま", async () => {
+test("P8 WARN は既定（require_vet402_allow=true）では REFUSE——SDK の requireVet402Allow: true と同じ語 payee_recommendation_not_allow。recommendation は WARN のまま", async () => {
   seed(seeded({ recommendation: "WARN", reason_codes: ["l0_pass", "l1_not_attempted", "l2_undeclared"], facts: { l0: { status: "pass" }, l1: { n_delivered: 0, n_attempts: 0 }, l2: { status: "undeclared" } } }));
   const body = await (await call("amount_usd=0.01")).json();
-  assert.equal(body.recommendation, "WARN");
-  assert.equal(body.caller_policy.verdict, "ALLOW");
-  // 床を宣言すれば、WARN でも床で落ちる
-  const floored = await (await call("amount_usd=0.01&min_l1_deliveries=1")).json();
+  assert.equal(body.recommendation, "WARN", "vet402 の判定は不変");
+  assert.equal(body.caller_policy.verdict, "REFUSE");
+  assert.deepEqual(body.caller_policy.reason_codes, ["payee_recommendation_not_allow"]);
+  assert.equal(body.caller_policy.applied.require_vet402_allow, true, "既定は SDK と同じ true");
+  // 明示の true も同じ（既定と明示が一致している）
+  const explicit = await (await call("amount_usd=0.01&require_vet402_allow=true")).json();
+  assert.deepEqual(explicit.caller_policy, body.caller_policy);
+});
+
+test("P8b require_vet402_allow=false ＋ 床あり: WARN は意見なので床で通す（§3.2）。床未達なら insufficient_delivery_evidence", async () => {
+  seed(seeded({ recommendation: "WARN", reason_codes: ["l0_pass", "l1_not_attempted", "l2_undeclared"], facts: { l0: { status: "pass" }, l1: { n_delivered: 2, n_attempts: 2 }, l2: { status: "undeclared" } } }));
+  const waived = await (await call("amount_usd=0.01&require_vet402_allow=false&min_l1_deliveries=1")).json();
+  assert.equal(waived.recommendation, "WARN", "免除しても recommendation は書き換えない");
+  assert.equal(waived.caller_policy.verdict, "ALLOW");
+  assert.deepEqual(waived.caller_policy.reason_codes, []);
+  assert.equal(waived.caller_policy.applied.require_vet402_allow, false);
+  const floored = await (await call("amount_usd=0.01&require_vet402_allow=false&min_l1_deliveries=3")).json();
   assert.deepEqual(floored.caller_policy.reason_codes, ["insufficient_delivery_evidence"]);
+});
+
+test("P8c require_vet402_allow=false で床が 1 つも無い（無指定・0）→ 400 invalid_policy（判定を外すなら代わりを置け・SDK の assertOverridePolicy と同じ）", async () => {
+  for (const q of ["require_vet402_allow=false", "amount_usd=0.01&require_vet402_allow=false", "require_vet402_allow=false&min_l1_deliveries=0"]) {
+    const res = await call(q, { key: DEV_KEY });
+    assert.equal(res.status, 400, `${q}: ${res.status}`);
+    assert.deepEqual(await res.json(), { error: "invalid_policy" }, q);
+  }
+});
+
+test("P8d require_vet402_allow=true でも BLOCK は payee_recommendation_block が先（SDK と同じ順序: BLOCK → not_allow）", async () => {
+  seed(seeded({ recommendation: "BLOCK", reason_codes: ["l0_fail", "l1_delivered", "l2_undeclared"] }));
+  const body = await (await call("amount_usd=0.01&require_vet402_allow=true")).json();
+  assert.deepEqual(body.caller_policy.reason_codes, ["payee_recommendation_block"]);
+  // false でも BLOCK は外れない（§3.2.1）
+  const waived = await (await call("amount_usd=0.01&require_vet402_allow=false&min_l1_deliveries=1")).json();
+  assert.deepEqual(waived.caller_policy.reason_codes, ["payee_recommendation_block"]);
+});
+
+test("P8e require_vet402_allow だけを送っても policy は評価される（クエリ 4 つのどれか 1 つで caller_policy が付く）", async () => {
+  const body = await (await call("require_vet402_allow=true")).json();
+  assert.equal(body.caller_policy.verdict, "ALLOW", "seeded は ALLOW なので通る");
+  assert.deepEqual(body.caller_policy.applied, { amount_usd: null, max_per_tx_usd: 1, min_l1_deliveries: 0, require_vet402_allow: true });
 });
 
 test("P9 不正値は 400・語は SDK の呼び出し側エラーと同じ", async () => {
@@ -232,6 +272,9 @@ test("P9 不正値は 400・語は SDK の呼び出し側エラーと同じ", as
     ["max_per_tx_usd=x", "invalid_policy"],
     ["min_l1_deliveries=1.5", "invalid_evidence_policy"],
     ["min_l1_deliveries=-1", "invalid_evidence_policy"],
+    ["require_vet402_allow=yes", "invalid_policy"],
+    ["require_vet402_allow=", "invalid_policy"],
+    ["require_vet402_allow=1", "invalid_policy"],
     // role=payee に売り手の床や価格の policy は当たらない（SDK は role=payer しか引かない）
     ["role=payee&payer=0x36038e1d712c5e39f35952164ec58ec2b96caee7&amount_usd=1", "invalid_policy"],
   ];

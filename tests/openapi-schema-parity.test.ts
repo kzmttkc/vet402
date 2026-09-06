@@ -114,7 +114,8 @@ const SURFACES: Surface[] = [
       ["packages/sdk/src/index.ts", ["CallerPolicy", "applied"]],
       ["packages/mcp-server/src/vouch-client.ts", ["CallerPolicy", "applied"]],
     ],
-    fields: ["amount_usd", "max_per_tx_usd", "min_l1_deliveries"],
+    // 2026-09-07 後段: `require_vet402_allow`（既定 true）で SDK の既定（WARN は拒否）を HTTP でも鏡写しにした。
+    fields: ["amount_usd", "max_per_tx_usd", "min_l1_deliveries", "require_vet402_allow"],
   },
   // ------------------------------------------------------------------
   // 2026-09-02 敵対的監査 P1-2: 新規ルート（§7.3 / §9.1）の 200 応答が仕様書に

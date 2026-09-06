@@ -179,11 +179,19 @@ export async function payIfTrusted(input: PayIfTrustedInput): Promise<PayIfTrust
   // 呼び手の policy をサーバにも当てさせる（§16.3）。amountUsd / maxPerTxUsd / L1 の床を名乗ると、
   // サーバは判定と同じ文書に `caller_policy` を SDK と同じ語で足す。subgraph の床は送らない。
   const l1Floor = input.policy?.evidence?.minL1Deliveries;
+  const l1FloorSent = l1Floor !== undefined && (wantedSource === "vet402" || wantedSource === "both");
+  // `requireVet402Allow` も鏡写しにする（サーバ既定 true・2026-09-07 後段）。免除（false）はサーバが
+  // 当てられる床（L1 ≥1）を一緒に送るときだけ宣言する。subgraph だけの床を根拠にした免除はサーバでは
+  // 代わりにならず（読めない）、床なしの false は 400 `invalid_policy` になる。そのときは宣言せず、
+  // サーバは既定の true を当てる——WARN なら `payee_recommendation_not_allow` が返るが、それは
+  // 「こちらが要求しないと決めた語」なので第 3.1 段では止めない（下の waiverDeclared）。
+  const waiverDeclared = !requireVet402Allow && l1FloorSent && (l1Floor as number) >= 1;
   const decisionQuery = decisionQueryString({
     role: "payer",
     ...(typeof input.amountUsd === "number" ? { amountUsd: input.amountUsd } : {}),
     ...(typeof input.maxPerTxUsd === "number" ? { maxPerTxUsd: input.maxPerTxUsd } : {}),
-    ...(l1Floor !== undefined && (wantedSource === "vet402" || wantedSource === "both") ? { minL1Deliveries: l1Floor } : {}),
+    ...(l1FloorSent ? { minL1Deliveries: l1Floor } : {}),
+    ...(requireVet402Allow || waiverDeclared ? { requireVet402Allow } : {}),
   });
   try {
     const response = await fetchFn(`${apiUrl}/resources/${input.resourceId}/decision?${decisionQuery}`, { headers });
@@ -235,7 +243,12 @@ export async function payIfTrusted(input: PayIfTrustedInput): Promise<PayIfTrust
   // 語はサーバの `caller_policy.reason_codes` そのまま（SDK の PayRefuseReason と同じ）。ローカルの
   // 関門（SDK の payOrRefuse）は第 5 段に残るので二重防御。BLOCK / degraded / 上限 / 床のどれで
   // 落ちたかが、支払い先を知らない空撃ちでも機械可読で返る。
-  if (!uncatalogued && m.caller_policy?.verdict === "REFUSE") {
+  // 免除をサーバへ宣言できなかったとき（subgraph だけの床）、サーバが返す唯一の語が
+  // `payee_recommendation_not_allow` なら、それは呼び手が要求しない関門であって拒否ではない。
+  // その語は measurement.caller_policy にそのまま残り、床は SDK の段（3.6）が当てる。
+  const onlyUndeclaredWaiverWord =
+    !requireVet402Allow && !waiverDeclared && m.caller_policy?.reason_codes.every((w) => w === "payee_recommendation_not_allow") === true;
+  if (!uncatalogued && m.caller_policy?.verdict === "REFUSE" && !onlyUndeclaredWaiverWord) {
     const words = m.caller_policy.reason_codes;
     return refuse(
       m,

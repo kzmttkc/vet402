@@ -250,7 +250,7 @@ test("check_resource_decision takes amountUsd / maxPerTxUsd / minL1Deliveries an
   };
   visit(sf);
   assert.ok(schemaText, "check_resource_decision の入力スキーマが AST で取れない");
-  for (const key of ["amountUsd", "maxPerTxUsd", "minL1Deliveries"]) {
+  for (const key of ["amountUsd", "maxPerTxUsd", "minL1Deliveries", "requireVet402Allow"]) {
     assert.match(schemaText, new RegExp(`\\b${key}\\s*:`), `check_resource_decision の入力に ${key} が無い`);
   }
   assert.match(descriptionText, /caller_policy/, "説明が caller_policy に触れていない");

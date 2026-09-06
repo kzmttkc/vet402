@@ -471,6 +471,7 @@ export type CallerPolicy = {
         amount_usd: number | null;
         max_per_tx_usd: number;
         min_l1_deliveries: number;
+        require_vet402_allow: boolean;
     };
     verdict: "ALLOW" | "REFUSE";
     reason_codes: string[];
@@ -491,6 +492,11 @@ export type DecisionQuery = {
     maxPerTxUsd?: number;
     /** vet402 の L1 配達台帳の下限。0 以上の整数。 */
     minL1Deliveries?: number;
+    /**
+     * `payOrRefuse` の `policy.requireVet402Allow` の鏡（サーバ既定 true）。false は WARN を床で通す
+     * 免除で、`minL1Deliveries` ≥1 が無ければサーバは 400 `invalid_policy`（判定を外すなら代わりを置け）。
+     */
+    requireVet402Allow?: boolean;
 };
 /** §5 Endpoint / Resource の記録（resolve 系の共通形）。 */
 export type EndpointRef = {

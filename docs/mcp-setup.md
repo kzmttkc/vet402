@@ -15,7 +15,7 @@ There is nothing to clone or build — your MCP client launches it with `npx`.
 | `explain_trust_score` | Human-readable score breakdown |
 | `attest_x402_payment` | Write a settlement attestation after payment verification |
 | `pay_if_trusted` | Pay an x402 resource **only if** the decision is `ALLOW` — the signer is unreachable on any other outcome (2026-09-05) |
-| `check_resource_decision` | Pre-payment decision for one x402 resource — `ALLOW_PAY` / `REFUSE` with the L0–L2 facts that produced it (0.2.0). Takes `amountUsd` / `maxPerTxUsd` / `minL1Deliveries` and returns the server-applied `caller_policy` (2026-09-07) |
+| `check_resource_decision` | Pre-payment decision for one x402 resource — `ALLOW_PAY` / `REFUSE` with the L0–L2 facts that produced it (0.2.0). Takes `amountUsd` / `maxPerTxUsd` / `minL1Deliveries` / `requireVet402Allow` and returns the server-applied `caller_policy` (2026-09-07) |
 
 The full description of each tool, including how to read a `check_payee_trust` result, is in the
 [package README](../packages/mcp-server/README.md#tools).
