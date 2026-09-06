@@ -177,6 +177,37 @@ test("空撃ちは「今日 --live を打つと何が起きるか」を、読め
   assert.match(green, /would sign and send \$0\.01/);
 });
 
+// `judge` の画は `pay` と同じ骨格に verdict の足を足す。足した分で 96 桁を超えたら動画で崩れる
+// （2026-09-06 の実走で末尾行が 102 桁になっていた——描画していないモードは検査されない）。
+test("judge モードの画も幅で崩れず、verdict / reason_codes / signed を末尾に出す", () => {
+  const judgeView = {
+    ...payView,
+    mode: "judge",
+    expectedPayTo: null,
+    amountUsd: 1,
+    verdict: {
+      verdict: "ALLOW",
+      reasonCodes: ["resource_uncatalogued", "allowed_by_caller_policy"],
+      verdictSource: "caller_policy",
+      override: {
+        rule: "requireVet402Allow:false",
+        waived: { source: "payee_score", recommendation: "WARN", score: 69 },
+        floors_met: [{ floor: "minSubgraphReceipts", source: "subgraph", required: 1, observed: 260 }],
+      },
+    },
+    policy: { requireVet402Allow: false, floors: [{ floor: "minSubgraphReceipts", source: "subgraph", required: 1 }] },
+  };
+  const lines = renderPayDryRun(judgeView);
+  for (const line of lines) assert.ok(line.length <= MAX_WIDTH, `${line.length} 桁ある: ${line}`);
+  const text = lines.join("\n");
+  assert.match(text, /^\s*verdict\s+ALLOW/m);
+  assert.match(text, /^\s*reason_codes\s+resource_uncatalogued, allowed_by_caller_policy/m);
+  assert.match(text, /^\s*signed\s+false \(dry-run\)/m);
+  assert.match(text, /floor met\s+minSubgraphReceipts \(subgraph\) 1 <= 260/);
+  assert.doesNotMatch(text, /--live/, "judge に無い --live を案内している");
+  assert.match(text, /JUDGE/);
+});
+
 test("空撃ちは、取れなかった値を数字で埋めない", () => {
   const text = renderPayDryRun({ ...payView, subgraph: null, payeeScore: null }).join("\n");
   assert.match(text, /not read/i, "取れなかったことを言っていない");

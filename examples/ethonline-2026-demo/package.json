@@ -8,6 +8,7 @@
   "scripts": {
     "refuse": "node src/run.ts refuse",
     "pay": "node src/run.ts pay",
+    "judge": "node src/run.ts judge",
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {},

@@ -180,6 +180,8 @@ export function renderRefuse(view: RefuseView, options?: RenderOptions): string[
 }
 
 export type PayView = {
+  /** `pay` は The Graph 固定・`--live` を持つ。`judge` は審査員の URL・署名の経路が無い。 */
+  mode?: "pay" | "judge";
   live: boolean;
   /**
    * **今日 `--live` を打つと、どの規則で通るのか。**（WINDOW_PLAN §3.2）
@@ -194,7 +196,9 @@ export type PayView = {
   /** 402 が提示した accept の数。**選んだ1件が全部でないこと**を画に残す。 */
   acceptsOffered?: number;
   target: { method: string; url: string };
-  expectedPayTo: string;
+  /** `judge` は期待する受取人を持たない（402 の `payTo` をそのまま読む）ので null。 */
+  expectedPayTo: string | null;
+  /** 上限（USD）。`pay` は固定の $0.01、`judge` は SDK 既定か `--ceiling-usd`。 */
   amountUsd: number;
   ranAt: string;
   accept: {
@@ -222,6 +226,20 @@ export type PayView = {
    */
   gates: { name: string; verdict: "pass" | "fail" | "unknown" | "waived"; detail: string }[];
   envReady: Record<string, boolean>;
+  /**
+   * `judge` の**署名なしの判定**。SDK と同じ規則で読んだものだけから出す。
+   * `pay` は持たない（`pay` の拘束力ある判定は `--live` の `payOrRefuse` が出す）。
+   */
+  verdict?: {
+    verdict: "ALLOW" | "REFUSE";
+    reasonCodes: string[];
+    verdictSource: string;
+    override: {
+      rule: string;
+      waived: { source: string; recommendation: string; score: number | null };
+      floors_met: { floor: string; source: string; required: number; observed: number }[];
+    } | null;
+  };
 };
 
 function acceptColumn(view: PayView): string[] {
@@ -282,13 +300,24 @@ export function renderPayDryRun(view: PayView, options?: RenderOptions): string[
   out.push(rule());
   out.push(
     ...paint(
-      [full(`vet402 · payOrRefuse — PAY  ${view.live ? "LIVE" : "DRY RUN (default)"}   ${view.ranAt}`)],
+      [
+        full(
+          view.mode === "judge"
+            ? `vet402 · payOrRefuse — JUDGE  DRY RUN (no signing path)   ${view.ranAt}`
+            : `vet402 · payOrRefuse — PAY  ${view.live ? "LIVE" : "DRY RUN (default)"}   ${view.ranAt}`,
+        ),
+      ],
       options,
       "bold",
     ),
   );
   out.push(...head("target    ", `${view.target.method} ${view.target.url}`));
-  out.push(...head("expect    ", `payTo ${view.expectedPayTo}   ceiling $${view.amountUsd.toFixed(2)}`));
+  out.push(
+    ...head(
+      "expect    ",
+      `payTo ${view.expectedPayTo ?? "(taken from the 402 — no expectation given)"}   ceiling $${view.amountUsd.toFixed(2)}`,
+    ),
+  );
   out.push(rule());
   out.push(
     ...twoColumns(
@@ -320,10 +349,6 @@ export function renderPayDryRun(view: PayView, options?: RenderOptions): string[
     .join("  ");
   for (const line of wrap(`env       ${env}`, MAX_WIDTH - 2)) out.push(full(line));
   out.push(rule("-"));
-  // 予告。**拘束力を持つ関門は payOrRefuse の中**にあるが、読めた事実だけで
-  // 「今日 `--live` を打つと何が起きるか」は言える。言わないと撮影当日に初めて分かる。
-  // `waived` は落ちていない。**免除は、満たしたことでも失敗したことでもない**。
-  const failing = view.gates.filter((g) => g.verdict === "fail" || g.verdict === "unknown");
   const ruleLine =
     view.policy === undefined ? ""
     : view.policy.requireVet402Allow
@@ -332,6 +357,41 @@ export function renderPayDryRun(view: PayView, options?: RenderOptions): string[
         ` what judges instead is ${view.policy.floors
           .map((f) => `${f.floor} >= ${f.required} (${f.source})`)
           .join(" and ")}.`;
+  if (view.mode === "judge" && view.verdict) {
+    // **署名なしの判定。** 予告ではなく、SDK と同じ規則で読んだものだけから出した結論。
+    const v = view.verdict;
+    out.push(...paint([full(`verdict       ${v.verdict}`)], options, "bold"));
+    out.push(...head("reason_codes  ", v.reasonCodes.join(", ") || "(none)"));
+    out.push(full(`verdict from  ${v.verdictSource}`));
+    if (v.override) {
+      out.push(
+        ...head(
+          "allowed by    ",
+          `${v.override.rule} — waived ${v.override.waived.source} ${v.override.waived.recommendation}` +
+            `${v.override.waived.score === null ? "" : ` (${v.override.waived.score})`}`,
+        ),
+      );
+      for (const f of v.override.floors_met) {
+        out.push(full(`floor met     ${f.floor} (${f.source}) ${f.required} <= ${f.observed}`));
+      }
+    }
+    out.push(...paint([full("signed        false (dry-run)")], options, "bold"));
+    for (const line of wrap(`rule     ${ruleLine.trim()}`, MAX_WIDTH - 2)) out.push(full(line));
+    out.push(rule("-"));
+    out.push(
+      ...paint(
+        [full("DRY RUN — judge has no signing path. No signature was created; no signing module loaded.")],
+        options,
+        "bold",
+      ),
+    );
+    out.push(rule());
+    return out;
+  }
+  // 予告。**拘束力を持つ関門は payOrRefuse の中**にあるが、読めた事実だけで
+  // 「今日 `--live` を打つと何が起きるか」は言える。言わないと撮影当日に初めて分かる。
+  // `waived` は落ちていない。**免除は、満たしたことでも失敗したことでもない**。
+  const failing = view.gates.filter((g) => g.verdict === "fail" || g.verdict === "unknown");
   out.push(
     ...head(
       "predicted ",

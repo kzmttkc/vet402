@@ -7,25 +7,17 @@
  *   - **署名器に到達しない**（`payOrRefuse` を呼ばないので、支払いモジュールは読み込まれない）
  * `test/pay.test.mjs` が、ALLOW まで到達できる世界でも空撃ちが署名しないことと、
  * `--live` なら同じハーネスで `signTypedData` がちょうど1回参照されることを両方固定する。
+ *
+ * 読み取りと関門表は `./assess.ts`（`judge` と共有）。ここにあるのは The Graph 固定の相手と、
+ * `--live` の枝だけ。
  */
-import { readSubgraphReceipts, X402_BASE_SUBGRAPH_ID } from "../../../packages/sdk/dist/index.js";
+import { X402_BASE_SUBGRAPH_ID } from "../../../packages/sdk/dist/index.js";
+import { assess, SDK_AUTHORIZATION_WINDOW_SECONDS } from "./assess.ts";
 import type { Emitter } from "./emit.ts";
 import { renderPayDryRun, type PayView } from "./render.ts";
-import {
-  VET402_API,
-  computeResourceId,
-  instrument,
-  selectPayableAccept,
-  readChallenge,
-  readJson,
-  requireEnv,
-} from "./probe.ts";
+import { instrument, probeChallenge, requireEnv } from "./probe.ts";
 
-/**
- * SDK が認可に切る窓（秒）。**手で書いた数字は必ず古くなる**ので、
- * `test/pay.test.mjs` が `packages/sdk/dist/x402-pay.js` の実装値と突き合わせる。
- */
-export const SDK_AUTHORIZATION_WINDOW_SECONDS = 120;
+export { SDK_AUTHORIZATION_WINDOW_SECONDS };
 
 /** 払う先。The Graph 本体の x402 口（WINDOW_PLAN §3 / §15）。 */
 export const PAY_TARGET = {
@@ -35,8 +27,6 @@ export const PAY_TARGET = {
   amountUsd: 0.01,
   body: '{"query":"{ _meta { block { number } } }"}',
 } as const;
-
-const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
 /**
  * **払うときの規則。空撃ちの画も `--live` も、同じこの1つを使う。**
@@ -71,9 +61,7 @@ export type RunPayOptions = {
   color?: boolean;
 };
 
-function gate(name: string, verdict: "pass" | "fail" | "unknown", detail: string) {
-  return { name, verdict, detail };
-}
+const PAY_ENV_NAMES = ["GRAPH_API_KEY", "VOUCH_API_KEY", "DEMO_PAYER_PRIVATE_KEY"] as const;
 
 export async function runPay(options: RunPayOptions): Promise<{ view: PayView; result: unknown | null }> {
   const needed = ["GRAPH_API_KEY", "VOUCH_API_KEY"];
@@ -85,139 +73,25 @@ export async function runPay(options: RunPayOptions): Promise<{ view: PayView; r
   const graphApiKey = options.env.GRAPH_API_KEY;
 
   // --- 読むだけ。ここで判定はしない ---
-  const challenge = await readChallenge(net.fetch, PAY_TARGET.method, PAY_TARGET.url, PAY_TARGET.body);
-  const accept = challenge ? (selectPayableAccept(challenge.accepts) as PayView["accept"]) : null;
-
-  const resourceId = await computeResourceId(PAY_TARGET.method, PAY_TARGET.url);
-  const decision = await readJson(net.fetch, `${VET402_API}/resources/${resourceId}/decision?role=payer`, apiKey);
-
-  const payTo = (accept?.payTo ?? PAY_TARGET.payee) as string;
-  const score = await readJson(net.fetch, `${VET402_API}/payees/${payTo}/score`, apiKey);
-  const scoreBody = score.status === 200 ? (score.body as { recommendation?: string; score?: number; degraded?: boolean }) : null;
-
-  const read = await readSubgraphReceipts({
-    address: PAY_TARGET.payee,
-    fetch: net.fetch,
-    apiKey: graphApiKey,
-    subgraphId: X402_BASE_SUBGRAPH_ID,
-  });
-  const rawSummary = (net.subgraphRaw as { data?: { x402AddressSummaries?: unknown[] } } | undefined)?.data
-    ?.x402AddressSummaries?.[0] as PayView["subgraph"] extends null ? never : { role: string; totalPayments: string; totalVolumeDecimal: string } | undefined;
-
-  const view: PayView = {
+  const probe = await probeChallenge(net.fetch, PAY_TARGET.method, PAY_TARGET.url, PAY_TARGET.body);
+  // 相手は固定なので、繋がらないのは想定外——原因を隠さずスタックごと出す。
+  if (probe.error !== null) throw new Error(probe.error);
+  const { view } = await assess({
+    target: {
+      method: PAY_TARGET.method,
+      url: PAY_TARGET.url,
+      body: PAY_TARGET.body,
+      expectedPayee: PAY_TARGET.payee,
+      ceilingUsd: PAY_TARGET.amountUsd,
+    },
+    policy: PAY_POLICY,
+    env: options.env,
+    net,
+    probe,
+    envNames: PAY_ENV_NAMES,
+    mode: "pay",
     live: options.live,
-    policy: {
-      requireVet402Allow: PAY_POLICY.requireVet402Allow,
-      floors: [
-        { floor: "minL1Deliveries", source: "vet402", required: PAY_POLICY.evidence.minL1Deliveries },
-        { floor: "minSubgraphReceipts", source: "subgraph", required: PAY_POLICY.evidence.minSubgraphReceipts },
-      ],
-    },
-    acceptsOffered: challenge?.accepts.length ?? 0,
-    target: { method: PAY_TARGET.method, url: PAY_TARGET.url },
-    expectedPayTo: PAY_TARGET.payee,
-    amountUsd: PAY_TARGET.amountUsd,
-    ranAt: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
-    accept,
-    x402Version: challenge?.x402Version ?? 2,
-    authorizationWindowSeconds: SDK_AUTHORIZATION_WINDOW_SECONDS,
-    payeeScore: scoreBody
-      ? {
-          recommendation: String(scoreBody.recommendation ?? "—"),
-          score: typeof scoreBody.score === "number" ? scoreBody.score : null,
-          degraded: scoreBody.degraded === true,
-        }
-      : null,
-    decisionStatus: decision.status,
-    subgraph: read.ok
-      ? {
-          endpoint: read.publicUrl,
-          block: read.block,
-          deployment: read.deployment,
-          row: rawSummary ?? null,
-        }
-      : null,
-    gates: [],
-    envReady: {
-      GRAPH_API_KEY: typeof options.env.GRAPH_API_KEY === "string" && options.env.GRAPH_API_KEY !== "",
-      VOUCH_API_KEY: typeof options.env.VOUCH_API_KEY === "string" && options.env.VOUCH_API_KEY !== "",
-      DEMO_PAYER_PRIVATE_KEY:
-        typeof options.env.DEMO_PAYER_PRIVATE_KEY === "string" && options.env.DEMO_PAYER_PRIVATE_KEY !== "",
-    },
-  };
-
-  // 読み取り値どうしの突き合わせ。**拘束力を持つ関門は payOrRefuse の中**にあり、
-  // ここはその予告（撮影前に「今日払えるか」を目で確かめるためのもの）。
-  const units = Number(accept?.amount);
-  view.gates = [
-    gate(
-      "payTo == expected",
-      accept ? (String(accept.payTo).toLowerCase() === PAY_TARGET.payee.toLowerCase() ? "pass" : "fail") : "unknown",
-      accept ? String(accept.payTo) : "402 not read",
-    ),
-    gate(
-      "chain + asset are Base USDC",
-      accept
-        ? accept.network === "eip155:8453" && String(accept.asset).toLowerCase() === BASE_USDC.toLowerCase() && accept.scheme === "exact"
-          ? "pass"
-          : "fail"
-        : "unknown",
-      accept ? `${accept.network} ${accept.scheme}` : "402 not read",
-    ),
-    gate(
-      "amount <= ceiling",
-      Number.isFinite(units) ? (units / 1e6 <= PAY_TARGET.amountUsd ? "pass" : "fail") : "unknown",
-      Number.isFinite(units) ? `${units} units = $${(units / 1e6).toFixed(2)}` : "402 not read",
-    ),
-    gate(
-      "EIP-712 domain is pinned USDC",
-      accept
-        ? (accept.extra?.name === undefined || accept.extra?.name === "USD Coin") &&
-          (accept.extra?.version === undefined || accept.extra?.version === "2")
-          ? "pass"
-          : "fail"
-        : "unknown",
-      accept ? JSON.stringify({ name: accept.extra?.name, version: accept.extra?.version }) : "402 not read",
-    ),
-    gate(
-      "subgraph evidence is live",
-      read.ok ? "pass" : "fail",
-      read.ok ? `block ${read.block.number}, ${read.receipts} receipts` : `not read (${read.error})`,
-    ),
-    // **免除した判定も関門として残す。** 消すと「見なかったこと」になり、
-    // 何を免除したのかが画から読めなくなる。`waived` は「見たうえで通す」の印。
-    gate(
-      "payee verdict is ALLOW",
-      scoreBody
-        ? scoreBody.recommendation === "ALLOW"
-          ? "pass"
-          : PAY_POLICY.requireVet402Allow
-            ? "fail"
-            : "waived"
-        : "unknown",
-      scoreBody
-        ? `${scoreBody.recommendation} (${scoreBody.score ?? "—"})` +
-          (scoreBody.recommendation === "ALLOW" || PAY_POLICY.requireVet402Allow
-            ? ""
-            : " — not required by policy")
-        : "score not read",
-    ),
-    // 免除の代わりに置いた床。**これが実際に判定している。**
-    gate(
-      // 関門の名前は 32 桁に収める（`render.ts` が padEnd で桁を揃えるので、超えると画が崩れる）。
-      `evidence floor: subgraph >= ${PAY_POLICY.evidence.minSubgraphReceipts}`,
-      read.ok ? (read.receipts >= PAY_POLICY.evidence.minSubgraphReceipts ? "pass" : "fail") : "unknown",
-      read.ok
-        ? `${read.receipts} receipts (need ${PAY_POLICY.evidence.minSubgraphReceipts})`
-        : `subgraph not read (${read.error})`,
-    ),
-  ];
-  // 402 は読めたが、払える accept が1件も無い——「読めなかった」とは別の所見なので分けて出す。
-  if (challenge && accept === null) {
-    view.gates.unshift(
-      gate("no acceptable accept in 402", "fail", `${challenge.accepts.length} offered, none is Base USDC exact/eip3009`),
-    );
-  }
+  });
 
   options.emit.lines(renderPayDryRun(view, { color: options.color === true }));
 
