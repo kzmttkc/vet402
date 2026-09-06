@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMockAgent, MOCK_MODEL } from "../src/agents/mock.mjs";
-import { buildRequestParams, extractText, DEFAULT_MODEL, createAnthropicAgent } from "../src/agents/anthropic.mjs";
+import { buildRequestParams, extractText, DEFAULT_MODEL, createAnthropicAgent, payerFromEnv } from "../src/agents/anthropic.mjs";
 import { buildPrompt } from "../src/prompt.mjs";
 import { FIXTURES } from "../src/fixtures.mjs";
 
@@ -201,4 +201,98 @@ test("ツール呼び出しが終わらないときは打ち切る（無限ル�
     /tool rounds/,
   );
   assert.equal(client.calls.length, 4);
+});
+
+// ---- 2026-09-06: $0 の x402 402 を REST で払う橋を、エージェント経路に通す ----
+// 鍵は `DEMO_PAYER_PRIVATE_KEY` だけを読む。**このテストの鍵はその場で乱数から作る**（固定値を置かない）。
+
+const GW_URL = "https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp";
+const RESOURCE = "/api/v1/census/summary?window=30d";
+const TX = "0x061702d45ec18884be7ada292852679861307d01c2621a504ad392328dafa932";
+
+function randomPrivateKey() {
+  const bytes = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(bytes);
+  return `0x${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function payment402Text(method = "GET") {
+  const challenge = {
+    x402Version: 2,
+    resource: { url: RESOURCE },
+    accepts: [{ scheme: "exact", network: "eip155:8453", asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", amount: "0", payTo: "0x6eB43A9dbDEB6d9A4D9E9B774c8E42De6C19F138", maxTimeoutSeconds: 60, extra: { name: "USD Coin", version: "2" } }],
+  };
+  return [
+    `HTTP ${method} /2vjhqfgvw5dt5lja2zpjsjwrem${RESOURCE}`,
+    "Error: Payment Required (HTTP 402)",
+    `Details: ${JSON.stringify({ mpp: "Payment id=abc", payment_required: true, x402: btoa(JSON.stringify(challenge)) })}`,
+    "Suggestion: Sign the x402 challenge and retry.",
+  ].join("\n");
+}
+
+/** MCP（JSON-RPC）と REST の両方を受ける偽 Gateway。 */
+function fakeGatewayFetch() {
+  const rest = [];
+  const fetchImpl = async (url, init) => {
+    if (url === GW_URL) {
+      const body = JSON.parse(init.body);
+      if (body.id === undefined) return new Response(null, { status: 202 });
+      const result =
+        body.method === "initialize"
+          ? { protocolVersion: "2025-06-18", serverInfo: { name: "gw" }, capabilities: { tools: {} } }
+          : body.method === "tools/list"
+            ? { tools: [{ name: "getCensusSummary", description: "d", inputSchema: { type: "object", properties: {} } }] }
+            : { isError: true, content: [{ type: "text", text: payment402Text() }] };
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    rest.push({ url, init });
+    return new Response('{"total_routes":57}', {
+      status: 200,
+      headers: { "content-type": "application/json", "payment-response": btoa(JSON.stringify({ success: true, transaction: TX, network: "eip155:8453" })) },
+    });
+  };
+  return { fetchImpl, rest };
+}
+
+const CENSUS_TOOL_TURN = {
+  id: "msg_tool",
+  model: "claude-opus-5",
+  stop_reason: "tool_use",
+  content: [{ type: "tool_use", id: "tu_9", name: "getCensusSummary", input: {} }],
+};
+
+test("payerFromEnv: 鍵が無ければ null、あれば viem と同じアドレスの署名者を返す", async () => {
+  assert.equal(await payerFromEnv({}), null);
+  assert.equal(await payerFromEnv({ DEMO_PAYER_PRIVATE_KEY: "" }), null);
+  const key = randomPrivateKey();
+  const payer = await payerFromEnv({ DEMO_PAYER_PRIVATE_KEY: key });
+  const { privateKeyToAccount } = await import("viem/accounts");
+  assert.equal(payer.address, privateKeyToAccount(key).address);
+  assert.equal(typeof payer.signTypedData, "function");
+});
+
+test("鍵があれば 402 を REST で払い、モデルには本物の応答が届き、生ログの toolCalls に x402Bridge（tx）が残る", async () => {
+  const { fetchImpl, rest } = fakeGatewayFetch();
+  const client = fakeClient([CENSUS_TOOL_TURN, TEXT_TURN]);
+  const agent = await createAnthropicAgent({ client, mcpUrl: GW_URL, fetchImpl, env: { DEMO_PAYER_PRIVATE_KEY: randomPrivateKey() } });
+  const out = await agent(buildPrompt({ condition: "A", fixture: FIXTURES[0], resources }));
+
+  assert.equal(rest.length, 1);
+  assert.equal(typeof rest[0].init.headers["PAYMENT-SIGNATURE"], "string");
+  const toolResult = client.calls[1].messages[2].content[0];
+  assert.equal(toolResult.content, '{"total_routes":57}');
+  assert.equal(out.raw.toolCalls[0].ok, true);
+  assert.equal(out.raw.toolCalls[0].x402Bridge.settled, true);
+  assert.equal(out.raw.toolCalls[0].x402Bridge.txHash, TX);
+});
+
+test("鍵が無ければ橋は動かず、モデルには 402 の文がそのまま届き、x402Bridge は null", async () => {
+  const { fetchImpl, rest } = fakeGatewayFetch();
+  const client = fakeClient([CENSUS_TOOL_TURN, TEXT_TURN]);
+  const agent = await createAnthropicAgent({ client, mcpUrl: GW_URL, fetchImpl, env: {} });
+  const out = await agent(buildPrompt({ condition: "A", fixture: FIXTURES[0], resources }));
+  assert.equal(rest.length, 0);
+  const toolResult = client.calls[1].messages[2].content[0];
+  assert.match(toolResult.content, /Payment Required \(HTTP 402\)/);
+  assert.equal(out.raw.toolCalls[0].x402Bridge, null);
 });

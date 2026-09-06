@@ -116,6 +116,12 @@ node src/cli.mjs --agent anthropic --model claude-opus-5 --effort high
 モックで走らせた実行は `meta.mcpUrl: null` になり、`summary.md` の先頭に
 「no MCP server was called in this run」と出る——**呼んだふりをしない。**
 
+**`DEMO_PAYER_PRIVATE_KEY` も要る**（`export DEMO_PAYER_PRIVATE_KEY=0x…`。値は出力に出ない——`src/secrets.mjs` が止める）。
+Bazantic Gateway は全ルート 0 mcents でも、未払いの呼び出しには 402 を返す（既定仕様・設定で外せない）。
+MCP の `tools/call` では払えない（PAYMENT-SIGNATURE を載せても無視される・2026-09-06 実測）ので、
+`src/mcp.mjs` の橋が同じ資源を REST `GET` に回して署名付きで再送し、本物の応答をモデルへ返す。
+**1 呼び出しにつき 0 USDC のオンチェーン tx が 1 本立つ**（`raw.toolCalls[].x402Bridge.txHash` に残る）。鍵が無ければ橋は動かず、402 の文がそのままモデルへ届く。
+
 **走らせる前に潰すもの**（`run.json` の `meta.fixtureReadiness.blockers` に機械可読で出る）:
 
 - **F1 / F3 / F4 の oracle が未測定**（正典の記述と SDK の実装から導いた値）。本番 `/decision` と
@@ -141,7 +147,7 @@ node src/cli.mjs --agent anthropic --model claude-opus-5 --effort high
 | `src/writer.mjs` | 出力と `verifyRunDir` |
 | `src/recipe.mjs` | Bazantic の Recipe の写しを読む・検める・条件 B の本文に描く |
 | `recipe/x402-payee-verification.json` | **写し**（原本は bazantic.com）。出所と未取得項目つき |
-| `src/mcp.mjs` | Bazantic Gateway の MCP への薄い橋（`fetch` は差し替え可能） |
+| `src/mcp.mjs` | Bazantic Gateway の MCP への薄い橋（`fetch` は差し替え可能）。**$0 の x402 402 だけ** REST で払って本物の応答に置き換える |
 | `src/secrets.mjs` | 秘密の検出（値を探す。名前は秘密ではない）。32バイト hex は**公開済みと確かめた値だけ**許可リストで通す |
 | `src/agents/mock.mjs` | 台本のスタブ。**プロンプトしか見ない**（正解表を import しない） |
 | `src/agents/anthropic.mjs` | 実 LLM アダプタ。**このリポでは一度も実行していない**（純粋部分だけテスト済み） |

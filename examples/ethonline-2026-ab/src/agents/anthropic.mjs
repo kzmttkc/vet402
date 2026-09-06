@@ -55,6 +55,19 @@ export function extractToolUses(message) {
   return blocks.filter((b) => b?.type === "tool_use");
 }
 
+/**
+ * `DEMO_PAYER_PRIVATE_KEY` があれば署名者を作る。**この環境変数だけを読む**（鍵ファイルの復号は
+ * ハーネスに入れない）。viem は動的 import——鍵の無い実行では読み込みすら起きない。
+ * 鍵が無ければ null（橋は無く、402 はそのままモデルへ返る）。
+ */
+export async function payerFromEnv(env = process.env) {
+  const key = env?.DEMO_PAYER_PRIVATE_KEY;
+  if (typeof key !== "string" || key.length === 0) return null;
+  const { privateKeyToAccount } = await import("viem/accounts");
+  const account = privateKeyToAccount(key.startsWith("0x") ? key : `0x${key}`);
+  return { address: account.address, signTypedData: (td) => account.signTypedData(td) };
+}
+
 /** MCP の `tools/call` の戻りを、そのまま tool_result の中身にできる形へ。 */
 function toToolResultContent(mcpResult) {
   const content = mcpResult?.content;
@@ -70,7 +83,10 @@ function toToolResultContent(mcpResult) {
  *
  * - `client` を渡さなければ `@anthropic-ai/sdk` を動的 import して作る
  * - `toolProvider` を渡さなければ **Bazantic Gateway の MCP** につなぐ
- *   （`recipe/*.json` の `source.mcpUrl`。`mcpUrl` 引数で上書きできる）
+ *   （`recipe/*.json` の `source.mcpUrl`。`mcpUrl` 引数で上書きできる）。
+ *   `env.DEMO_PAYER_PRIVATE_KEY` があれば `payer` を作って渡し、**$0 の x402 402 を REST で払う橋**
+ *   が有効になる（`src/mcp.mjs`）。Bazantic は $0 でも 402 を返し、MCP では払えないため。
+ *   A/B の両条件に同一に効く（provider は1つ・条件を見ない）。
  *
  * どちらも1つの引数に隔離してあるので、**鍵もネットワークも無い環境で経路そのものを検査できる**
  * （`test/agents.test.mjs` / `test/mcp.test.mjs`）。
@@ -83,6 +99,9 @@ export async function createAnthropicAgent({
   client,
   toolProvider,
   mcpUrl,
+  fetchImpl,
+  payer,
+  env = process.env,
 } = {}) {
   let sdk = client;
   if (sdk === undefined) {
@@ -103,7 +122,12 @@ export async function createAnthropicAgent({
   if (provider === undefined) {
     const { readFile } = await import("node:fs/promises");
     const url = mcpUrl ?? JSON.parse(await readFile(RECIPE_FILE, "utf8")).source.mcpUrl;
-    provider = createMcpToolProvider({ url });
+    const resolvedPayer = payer !== undefined ? payer : await payerFromEnv(env);
+    provider = createMcpToolProvider({
+      url,
+      ...(fetchImpl !== undefined ? { fetchImpl } : {}),
+      ...(resolvedPayer ? { payer: resolvedPayer } : {}),
+    });
   }
 
   // **ツール一覧は全試行を通して1回だけ解決する。**
@@ -141,7 +165,8 @@ export async function createAnthropicAgent({
       for (const use of uses) {
         try {
           const out = await provider.callTool(use.name, use.input);
-          toolCalls.push({ name: use.name, input: use.input, ok: true });
+          // **橋が払ったなら、その tx を生ログに残す**（null = 橋は動いていない）。tx は生ログから数え直せる。
+          toolCalls.push({ name: use.name, input: use.input, ok: true, x402Bridge: out?.x402Bridge ?? null });
           results.push({ type: "tool_result", tool_use_id: use.id, content: toToolResultContent(out) });
         } catch (e) {
           // **握り潰さない。** 失敗した事実をモデルへ返し、生ログにも残す。

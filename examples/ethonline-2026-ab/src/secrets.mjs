@@ -90,13 +90,29 @@ function walk(value, path, visit) {
 }
 
 /**
+ * 生ログの中で、**形の推定（private-key-like）だけ**を免除する構造パス。
+ *
+ * `src/mcp.mjs` の橋が `payment-response` ヘッダから作る決済 txHash は 64桁hex で、
+ * 秘密鍵と形が同じ。上の allowlist は「人が公開済みと確かめた値」だけを通す設計だが、
+ * 実行のたびに新しい tx が立つので事前には載せられない。**文脈（`txHash:` という語）で許すのは
+ * 引き続きやらない**——文脈は書き手が付けられる。ここで見るのは JSON の**構造パス**で、
+ * `x402Bridge.txHash` は橋の実装だけが作り、LLM の出力にも自由文にも現れない。
+ * env の実値との突合（`DEMO_PAYER_PRIVATE_KEY` 等）は**このパスでも外さない**。
+ */
+const SHAPE_EXEMPT_PATH_RE = /(^|\.)x402Bridge\.txHash$/;
+
+/**
  * 秘密が1つでもあれば投げる。**メッセージに値そのものを載せない**
  * （例外メッセージがログに残って、そこから漏れては意味が無い）。
  */
 export function assertNoSecrets(payload, env = process.env) {
   const found = [];
   walk(payload, "", (text, path) => {
-    for (const hit of findSecrets(text, env)) found.push(`${hit.name} (${hit.kind}) at ${path || "<root>"}`);
+    const exemptShape = SHAPE_EXEMPT_PATH_RE.test(path);
+    for (const hit of findSecrets(text, env)) {
+      if (exemptShape && hit.name === "private-key-like") continue;
+      found.push(`${hit.name} (${hit.kind}) at ${path || "<root>"}`);
+    }
   });
   if (found.length > 0) {
     throw new Error(`refusing to write: secret material detected — ${[...new Set(found)].join("; ")}`);

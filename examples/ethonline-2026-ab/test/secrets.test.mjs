@@ -106,3 +106,28 @@ test("許可リストの値でも、実際の秘密環境変数と一致する�
 test("見張る環境変数名にデモ支払い鍵が入っている（examples/ethonline-2026-demo が実際に使う名前）", () => {
   assert.ok(SECRET_ENV_NAMES.includes("DEMO_PAYER_PRIVATE_KEY"));
 });
+
+// ---- 2026-09-06: 橋が返す決済 txHash は、生ログの**構造パス** `x402Bridge.txHash` にだけ置ける ----
+//
+// txHash も秘密鍵も 32 バイト hex で、**形では区別できない**（上の allowlist の説明のとおり）。
+// 文脈（`txHash:` という語）で許さないのは変わらない。ここで許すのは**文脈ではなく構造**——
+// `x402Bridge.txHash` は `src/mcp.mjs` の橋が `payment-response` ヘッダから作る値で、
+// LLM の出力にも自由文にも現れない。しかも env の実値との突合（`DEMO_PAYER_PRIVATE_KEY` 等）は
+// このパスでも**外さない**。免除するのは形の推定だけ。
+
+const FRESH_TX = "0x" + "5e".repeat(32);
+
+test("x402Bridge.txHash の位置にある 64桁hex は書ける（決済 tx を生ログから数え直せる）", () => {
+  assert.doesNotThrow(() => assertNoSecrets({ trials: [{ raw: { toolCalls: [{ x402Bridge: { txHash: FRESH_TX } }] } }] }, {}));
+});
+
+test("同じ値でも x402Bridge.txHash 以外の位置なら止める（構造パスは書き手が偽装できない）", () => {
+  assert.throws(() => assertNoSecrets({ trials: [{ raw: { toolCalls: [{ x402Bridge: { note: FRESH_TX } }] } }] }, {}), /private-key-like/);
+  assert.throws(() => assertNoSecrets({ trials: [{ rawResponse: `txHash: ${FRESH_TX}` }] }, {}), /private-key-like/);
+  assert.throws(() => assertNoSecrets({ x402Bridge: { txHash: { nested: FRESH_TX } } }, {}), /private-key-like/);
+});
+
+test("x402Bridge.txHash の位置でも、実際の秘密環境変数と一致するなら止める（免除は形の推定だけ）", () => {
+  const env = { DEMO_PAYER_PRIVATE_KEY: FRESH_TX };
+  assert.throws(() => assertNoSecrets({ raw: { toolCalls: [{ x402Bridge: { txHash: FRESH_TX } }] } }, env), /DEMO_PAYER_PRIVATE_KEY/);
+});

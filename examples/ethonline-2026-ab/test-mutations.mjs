@@ -137,6 +137,42 @@ const MUTATIONS = [
     find: '        await rpc("notifications/initialized", {}, { notification: true });',
     replace: "        void 0;",
   },
+  // ---- 2026-09-06 追加。$0 の x402 402 を REST で払う橋の金の規則 ----
+  {
+    id: "M15",
+    why: "amount のゲートを外す — 有料の 402 にもツール呼び出しが署名して払うようになる",
+    file: "src/mcp.mjs",
+    find: "    if (accept.amount !== BRIDGE_ONLY_AMOUNT) {",
+    replace: "    if (false) {",
+  },
+  {
+    id: "M16",
+    why: "accept を先頭固定にする — 別チェーンや有料の accept が先頭に来ると、それに署名する",
+    file: "src/mcp.mjs",
+    find: '  return accepts.find((a) => a?.network === BRIDGE_NETWORK && a?.scheme === "exact") ?? null;',
+    replace: "  return accepts[0] ?? null;",
+  },
+  {
+    id: "M17",
+    why: "POST でも払う — 本文を持たない再送で署名だけが焼ける",
+    file: "src/mcp.mjs",
+    find: '    if (parsed.method !== "GET") return result;',
+    replace: "    void 0;",
+  },
+  {
+    id: "M18",
+    why: "橋の tx を生ログから落とす — 払ったのに数え直せなくなる（呼んだふりと区別がつかない）",
+    file: "src/agents/anthropic.mjs",
+    find: "          toolCalls.push({ name: use.name, input: use.input, ok: true, x402Bridge: out?.x402Bridge ?? null });",
+    replace: "          toolCalls.push({ name: use.name, input: use.input, ok: true });",
+  },
+  {
+    id: "M19",
+    why: "x402Bridge.txHash の免除を『全部の検出』に広げる — その位置に置いた本物の鍵が素通りする",
+    file: "src/secrets.mjs",
+    find: '      if (exemptShape && hit.name === "private-key-like") continue;',
+    replace: "      if (exemptShape) continue;",
+  },
 ];
 
 const TEST_FILES = (await readdir("test")).filter((f) => f.endsWith(".test.mjs")).map((f) => `test/${f}`);
