@@ -168,12 +168,56 @@ jobs:
       - name: Demo CLI tests
         run: npm test --prefix examples/ethonline-2026-demo
 
+  # 2026-09-07. 今日、緑のまま戻ってくる穴が2つ見つかった。
+  #   (1) SDK の 27 変異（packages/sdk/test-mutations.mjs）は `npm run mutations` を人が打ったときしか
+  #       走らず、規則を守るテストが消えても main は緑のままだった（examples ジョブが走らせるのは
+  #       A/B ハーネスの変異だけ）。
+  #   (2) clean clone で依存が欠けても、手元の node_modules が肩代わりして緑に見えた
+  #       （08-22 の mcp-server、09-06 の viem と同じ欠陥クラスが 3 回目）。
+  # どちらも「走らせていないものは緑ではなく未知」。走らせて、赤くする。
+  #
+  # sdk-mutations: 各変異ごとに tsc + node --test（手元 ≈ 1 変異 1 s、27 本で 30〜40 s）。
+  # SURVIVED（テストに守られていない規則）が 1 つでもあれば exit 1。
+  sdk-mutations:
+    name: sdk mutations (27, all must be killed)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: Install SDK deps
+        run: npm ci --prefix packages/sdk
+      - name: Build SDK
+        run: npm run build --prefix packages/sdk
+      - name: SDK mutation check (exit 1 on any SURVIVED)
+        working-directory: packages/sdk
+        run: node test-mutations.mjs
+
+  # judge-check: scripts/judge-check.sh を **checkout 直後の状態**で走らせる。審査員が clean clone で
+  # 打つのと同じ手順（sdk→mcp-server→demo→root→ab、各段 npm ci から）。ここでは意図的に何も
+  # 事前 install しない——node_modules が既にある状態で通しても「clean clone で通る」証明にならない。
+  # 各段の終了コードはスクリプトが個別に記録し、1 段でも非 0 なら exit 1。
+  # 手元の clean clone で 17〜21 s（Apple Silicon・npm cache 温）。CI は root の npm ci が重いので余裕を置く。
+  judge-check:
+    name: judge-check (clean checkout, no pre-install)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: bash scripts/judge-check.sh (from the repo root, nothing installed beforehand)
+        run: bash scripts/judge-check.sh
+
   # 2026-09-05 セキュリティ監査 S-5: main は無審査 push で本番へ出る。せめて「赤い main」は
   # 10 分以内に人へ届くようにする（uptime.yml と同じ手: issue は無料でメールが飛ぶ）。
   notify-red-main:
     name: red main -> issue
     if: failure() && github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: [test, build, python-sdk, db-tests, examples]
+    needs: [test, build, python-sdk, db-tests, examples, sdk-mutations, judge-check]
     runs-on: ubuntu-latest
     permissions:
       issues: write
