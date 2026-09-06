@@ -152,21 +152,6 @@ export async function probeChallenge(
 }
 
 /**
- * 402 チャレンジを取る。返ってこなければ null——**取れなかったものを数字で埋めない**。
- * 接続不能は呼び手へ投げる（`pay` は固定の相手なので、繋がらないのは想定外）。
- */
-export async function readChallenge(
-  fetchFn: typeof fetch,
-  method: string,
-  url: string,
-  body?: string,
-): Promise<Challenge | null> {
-  const probe = await probeChallenge(fetchFn, method, url, body);
-  if (probe.error !== null) throw new Error(probe.error);
-  return probe.challenge;
-}
-
-/**
  * この accept は**プロトコル上そもそも払える形か**。SDK `isProtocolEligible` と同じ4条件
  * （scheme / network / asset / 転送方式）。チェーンと資産は SDK の定数を引く——ここに
  * 16 進を書いた瞬間、SDK が変わっても画が追随しない。
