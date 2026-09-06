@@ -328,13 +328,161 @@ that matter:
 If the subgraph answer carries no `_meta.block`, the reader refuses with `graph_no_block_meta`
 (`packages/sdk/src/subgraph-evidence.ts`) — static or cached data does not pass.
 
+## `pay_if_trusted` with The Graph evidence
+
+Since 2026-09-06 the MCP tool takes the same `policy` the SDK does, and forwards it to `payOrRefuse`
+**unchanged** — the tool is a thin bridge, it does not re-implement the judgement:
+
+| input | meaning |
+|---|---|
+| `policy.requireVet402Allow` | default `true`. `false` waives a vet402 **WARN** when every declared floor is met. **BLOCK and `degraded` still refuse** (WINDOW_PLAN §3.2.1) — the boundary lives in the SDK and the MCP tests pin it through the bridge. Needs at least one floor above 0, otherwise the call is a caller error (`invalid_policy`) before any network. |
+| `policy.evidence.source` | `"vet402"` (default) \| `"subgraph"` \| `"both"`. `"subgraph"` reads **only** The Graph's x402 Base subgraph; `"both"` refuses if either source cannot be read. |
+| `policy.evidence.minSubgraphReceipts` | floor on receipts The Graph's subgraph knows for the payee (`source` must be `subgraph` or `both`). |
+| `policy.evidence.minL1Deliveries` | floor on vet402's delivered L1 purchases (`source` must be `vet402` or `both`). |
+
+**The Graph key is not a tool input.** It is read from `GRAPH_API_KEY` in the server's env block, so it
+never enters the model's context. If `source` asks for the subgraph and the key is missing, the tool
+refuses with `graph_key_not_configured` (plus `evidence_unavailable`, `subgraph_evidence_unavailable`)
+**before reading anything** — it does not quietly fall back to judging on vet402 alone.
+
+The answer gains one field, `decision_record`: the SDK's `PayDecisionRecord` verbatim. Its
+`evidence[]` carries the subgraph read as its own row (`source: "subgraph"`, `receipts`,
+`block.number`, `deployment`, `queriedAt`), `verdict_source` says whose rule decided
+(`decision` / `payee_score` / `caller_policy`), and `policy_override` — when
+`requireVet402Allow: false` actually waived something — lists what was waived and which floors were
+met with which numbers. `measurement` stays what it was: the `/decision` body untouched.
+
+Launch with the key in env (Claude Desktop / Cursor: the same `env` block as `VOUCH_API_KEY`):
+
+```bash
+cd packages/mcp-server && printf '%s\n%s\n%s\n' \
+ '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"judge","version":"0"}}}' \
+ '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+ '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"pay_if_trusted","arguments":{
+    "resourceId":"ae0091e802c83179e3b1464a7b15dac64a0c1d3a00cb690eb6a5ac9811c47e3b",
+    "resource":"https://kronossignals.com/api/v1/price/btc",
+    "payee":"0x36038e1d712c5e39f35952164ec58ec2b96caee7",
+    "amountUsd":0.02,
+    "policy":{"evidence":{"source":"subgraph","minSubgraphReceipts":1000000000}}}}}' \
+ | VOUCH_API_KEY=$VOUCH_API_KEY GRAPH_API_KEY=$GRAPH_API_KEY VOUCH_PAYER_PRIVATE_KEY=$THROWAWAY_KEY \
+   node dist/index.js 2>/dev/null | tail -1
+```
+
+That `resourceId` is a catalogued seller our engine rates **ALLOW**. The floor of 10⁹ receipts is
+deliberately unmeetable, so the run reads the **live Gateway** and stops before a signature — a way
+to show the evidence row without moving money. Run on 2026-09-06 13:18 UTC (the long verbatim
+`/decision` bodies are folded with `…`; every other value is as returned):
+
+```json
+{
+  "decision": "REFUSE",
+  "safe_to_pay": false,
+  "refuse_reasons": [
+    "l0_pass",
+    "l1_delivered",
+    "l2_undeclared",
+    "insufficient_subgraph_evidence"
+  ],
+  "summary": "Do not pay: l0_pass, l1_delivered, l2_undeclared, insufficient_subgraph_evidence.",
+  "signed": false,
+  "attested": false,
+  "txHash": null,
+  "nonce": null,
+  "settlement": null,
+  "measurement": {
+    "recommendation": "ALLOW",
+    "reason_codes": [
+      "l0_pass",
+      "l1_delivered",
+      "l2_undeclared"
+    ],
+    "facts": {
+      "…": "verbatim /decision facts, unchanged"
+    },
+    "evidence": [
+      "… the two vet402 rows, unchanged"
+    ],
+    "rules_version": "2026-09-02.1",
+    "degraded": false
+  },
+  "decision_record": {
+    "recommendation": "REFUSE",
+    "reason_codes": [
+      "l0_pass",
+      "l1_delivered",
+      "l2_undeclared",
+      "insufficient_subgraph_evidence"
+    ],
+    "verdict_source": "decision",
+    "evidence": [
+      {
+        "level": "L1",
+        "source": "subgraph",
+        "url": "https://gateway.thegraph.com/api/subgraphs/id/Cb56epg3EvQ6JRpPfknbkM54QxpzTvLa7mwKNQQfUyoj",
+        "subgraphId": "Cb56epg3EvQ6JRpPfknbkM54QxpzTvLa7mwKNQQfUyoj",
+        "block": {
+          "number": 50955674,
+          "timestamp": 1788700695
+        },
+        "deployment": "QmcE24HARdXXnziPii9bWFRV6njfWW82H1RKPe5x9hBkUN",
+        "queriedAt": "2026-09-06T13:18:16.672Z",
+        "receipts": 1351
+      },
+      {
+        "level": "L0",
+        "source": "vet402",
+        "url": "https://vet402.com/observatory/e/dd0869a6-10a1-40a5-b6eb-f75ab7b5a00c"
+      },
+      {
+        "level": "L1",
+        "source": "vet402",
+        "url": "https://vet402.com/api/v1/observatory/endpoints/dd0869a6-10a1-40a5-b6eb-f75ab7b5a00c/purchases",
+        "purchase_id": "eip155:8453:0x4a1251f2ea6183d9bc9a0de89416a63122ce45fdd611c945f846080959277558"
+      }
+    ],
+    "decision": {
+      "…": "the /decision body verbatim (recommendation ALLOW, rules_version 2026-09-02.1)"
+    },
+    "payeeScore": null,
+    "policy_override": null,
+    "source": "mcp"
+  }
+}
+```
+
+Read it bottom-up: The Graph's subgraph knew **1,351** receipts for that payee at block **50955674**
+(`deployment` and `queriedAt` say it was a live read, not a cached number); the floor was 10⁹; so
+`insufficient_subgraph_evidence`, `signed: false`, `nonce: null`. vet402 said ALLOW and that is
+still there, unrewritten, in `measurement` — the two sources are reported side by side, never added.
+
+Same call with `GRAPH_API_KEY` unset:
+
+```json
+{
+  "decision": "REFUSE",
+  "safe_to_pay": false,
+  "refuse_reasons": ["evidence_unavailable", "subgraph_evidence_unavailable", "graph_key_not_configured"],
+  "summary": "policy.evidence.source asks for The Graph, but this server has no Graph Gateway key: set GRAPH_API_KEY in the MCP server's env block (it is never taken from tool input). Nothing was read and nothing was signed.",
+  "signed": false, "attested": false, "txHash": null, "nonce": null, "settlement": null,
+  "measurement": { "recommendation": null, "reason_codes": [], "facts": {}, "evidence": [], "rules_version": null, "degraded": null },
+  "decision_record": null
+}
+```
+
+Tests: `packages/mcp-server/test/pay-if-trusted.test.mjs` H1–H7 — WARN + subgraph 259 pays with the
+signer touched exactly once and `source: "subgraph"` on the record; subgraph 0 refuses with
+`insufficient_subgraph_evidence` and the signer untouched; BLOCK and `degraded` refuse even with
+`requireVet402Allow: false`; a missing key refuses with zero network calls; no floor is a caller
+error; and `tools/list` shows `policy` but no key field. Each gate was removed one at a time to
+confirm the test that guards it goes red.
+
 ## What is not built yet
 
 Stated plainly, because a SKILL.md that oversells is worse than none.
 
 | | state |
 |---|---|
-| **Evidence policy on the MCP tool** | Not exposed. `pay_if_trusted` takes no `policy.evidence`. The subgraph source and the evidence floors exist in the SDK (see **Paying on The Graph's own data**); they are simply not surfaced on the MCP tool yet. Use `payOrRefuse` from the SDK for `source: "subgraph" \| "both"`, `minSubgraphReceipts` and `minL1Deliveries` today. |
+| **Evidence policy on the MCP tool** | Exposed as of 2026-09-06 (`ethonline: feat(mcp)` on `ethonline/payorrefuse`): `policy.requireVet402Allow` and `policy.evidence` (`source`, `minSubgraphReceipts`, `minL1Deliveries`) are tool inputs; the Graph key comes from `GRAPH_API_KEY`. See **`pay_if_trusted` with The Graph evidence**. |
 | **The uncatalogued-seller path in MCP** | Not exposed. `payOrRefuse` handles a `/decision` 404 by judging from the 402 `payTo` plus the payee score; `pay_if_trusted` refuses with `evidence_unavailable` instead, because it is not given a payment target at that point. |
 | **npm publish** | Out of scope until after submission. Build from the repo. |
 | **The hosted MCP gateway** | Two MCP surfaces, two roles. The Bazantic gateway (`https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp`, Recipe `x402-payee-verification-via-vet402-gateway`) fronts vet402's REST API as **57 tools** (`tools/list`, measured 2026-09-06) — use it for discovery and every key-free read (`/decision`, `/resolve`, scores). `pay_if_trusted` is the one tool that holds a signer, and it is **only** in this package over stdio, not on the gateway. |

@@ -1,3 +1,4 @@
+import type { PayDecisionRecord, PayEvidencePolicy, PayPolicy } from "@vet402/sdk";
 /**
  * 署名者。**ALLOW ブランチに入るまで、この値のプロパティには一度も触らない。**
  * `typeof signer.signTypedData === "function"` と書いた瞬間に拒否経路から
@@ -31,10 +32,27 @@ export type PayIfTrustedInput = {
     payee?: string;
     amountUsd?: number;
     maxPerTxUsd?: number;
+    /**
+     * 呼び手の規則（WINDOW_PLAN §3.2）。**値はそのまま SDK の `payOrRefuse` へ渡す**——
+     * 判定ロジックを MCP に写さない。`requireVet402Allow: false` は「vet402 の ALLOW を要求しない」
+     * で、代わりの床（`evidence.minSubgraphReceipts` 等）が必須。BLOCK と degraded は
+     * `false` でも常に拒否（§3.2.1・SDK が持つ境界をそのまま通す）。
+     */
+    policy?: PayIfTrustedPolicy;
+    /**
+     * The Graph Gateway の API キー。**ツール入力には載せない**（LLM の文脈に鍵を通さない）——
+     * `index.ts` が環境変数 `GRAPH_API_KEY` から渡す。`evidence.source` が `"subgraph"` / `"both"`
+     * なのに無ければ、通信の前に `graph_key_not_configured` で拒否する。黙って vet402 だけで判定しない。
+     */
+    graphApiKey?: string;
     apiUrl?: string;
     apiKey?: string;
     /** 決定行の出所。既定 "mcp"（L1 台帳と混ぜない・F19/F20）。 */
     source?: string;
+};
+/** ツール入力に載せる policy。SDK の `PayPolicy` から **鍵だけを除いた**形。 */
+export type PayIfTrustedPolicy = Omit<PayPolicy, "evidence"> & {
+    evidence?: Omit<PayEvidencePolicy, "graphApiKey">;
 };
 /**
  * 判定の測定そのもの。**`/decision` の応答をそのまま通す**——とくに
@@ -68,6 +86,14 @@ export type PayIfTrustedResult = {
      */
     settlement: "settle_claimed" | null;
     measurement: PayIfTrustedMeasurement;
+    /**
+     * SDK の `payOrRefuse` が出した決定行（`PayDecisionRecord`）を**そのまま**通す。
+     * `evidence[]` には `/decision` の行に加えて The Graph subgraph の行（`source: "subgraph"`・
+     * `receipts`・`block.number`）が載り、`verdict_source` と `policy_override` が
+     * 「誰の規則で通したか・何を免除しどの床をいくつで満たしたか」を持つ。
+     * `payOrRefuse` に到達する前に止まったときは null。
+     */
+    decision_record: PayDecisionRecord | null;
 };
 /** 判定を引き、全部の関門を通ったときにだけ signer へ到達する。 */
 export declare function payIfTrusted(input: PayIfTrustedInput): Promise<PayIfTrustedResult>;

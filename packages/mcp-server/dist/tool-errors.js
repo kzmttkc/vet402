@@ -21,6 +21,13 @@ export const KNOWN_ERROR_CODES = new Set([
     "scoring_unavailable",
     "payment_ingest_unavailable",
 ]);
+/**
+ * 呼び出し側の誤りで、**メッセージを我々自身のコードが組み立てる**もの（SDK の
+ * `assertEvidencePolicy` / `assertOverridePolicy` と MCP の `assertPolicy`）。上流の文字列を
+ * 含まないので、そのまま通してよい。`request_failed` に潰すと、呼び手（モデル）は
+ * 「床を書き忘れた」のか「上流が落ちた」のか区別できず、直す場所が分からない。
+ */
+export const CALLER_ERROR_PREFIXES = ["invalid_policy:", "invalid_evidence_policy:"];
 /** Stable code returned when the trust lookup never answered. */
 export const LOOKUP_TIMEOUT_MESSAGE = "lookup_timeout: the trust lookup did not answer in time — the payee was NOT checked";
 /**
@@ -42,6 +49,8 @@ export function sanitizeToolError(error) {
     if (error.name === "TimeoutError" || error.name === "AbortError") {
         return LOOKUP_TIMEOUT_MESSAGE;
     }
+    if (CALLER_ERROR_PREFIXES.some((prefix) => error.message.startsWith(prefix)))
+        return error.message;
     if (!KNOWN_ERROR_CODES.has(error.message))
         return "request_failed";
     const reason = error instanceof VouchApiError ? error.reason : undefined;

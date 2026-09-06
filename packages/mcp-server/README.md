@@ -19,7 +19,7 @@ npm install -g @vet402/mcp-server   # optional — the configs below use npx
 | `check_payee_trust` | Buyer-side: score a payment *recipient* before paying it (score + dataDepth + recommendation + `degraded` / `signalsUnavailable`) |
 | `explain_trust_score` | Human-readable score breakdown (includes x402 + dataCoverage) |
 | `attest_x402_payment` | Write settlement attestation after payment verification |
-| `pay_if_trusted` | **ETHOnline 2026 window (2026-09-05)** — the same gate as `check_resource_decision`, but it **holds the signer**. On anything other than `ALLOW` the payment module is never loaded, so **no signature can exist**. Refusals are machine-readable and happen *before* a signature. Delegates the payment itself to `payOrRefuse` in `@vet402/sdk`. Signing requires `VOUCH_PAYER_PRIVATE_KEY` and `viem`; without them the gate still runs and refuses with `payer_not_configured`. Settlement is reported as `settle_claimed` — never `settled`, which only an on-chain re-read may write |
+| `pay_if_trusted` | **ETHOnline 2026 window (2026-09-05)** — the same gate as `check_resource_decision`, but it **holds the signer**. On anything other than `ALLOW` the payment module is never loaded, so **no signature can exist**. Refusals are machine-readable and happen *before* a signature. Delegates the payment itself to `payOrRefuse` in `@vet402/sdk`. Signing requires `VOUCH_PAYER_PRIVATE_KEY` and `viem`; without them the gate still runs and refuses with `payer_not_configured`. Settlement is reported as `settle_claimed` — never `settled`, which only an on-chain re-read may write. Since 2026-09-06 it also takes `policy` (`requireVet402Allow`, `evidence.source` / `minSubgraphReceipts` / `minL1Deliveries`), forwarded to `payOrRefuse` unchanged: `source: "subgraph"` reads The Graph's x402 Base subgraph (key from `GRAPH_API_KEY`) and returns that read on `decision_record.evidence[]` |
 | `check_resource_decision` | 0.2.0 — Product spec §9.1: pre-payment decision for one x402 *resource* (`resourceId` = sha256 hex from `/api/v1/resolve?q=<url>`). Returns `decision` (`ALLOW_PAY` \| `REFUSE`), `safe_to_pay`, `refuse_reasons`, and the full `measurement` body (L0–L2 facts, `reason_codes`, `freshness`, `evidence`, `rules_version`). `role=payee` + `payer` asks the seller-side question instead |
 
 ### Reading a `check_payee_trust` result
@@ -93,6 +93,7 @@ A `serverInfo` line comes back on stdout. The package also installs a
 |---|---|---|
 | `VOUCH_API_KEY` | — | Required. [Create one here](https://vet402.com/dashboard/keys). |
 | `VOUCH_API_URL` | `https://vet402.com/api/v1` | API base URL. Override only to point at another deployment. |
+| `GRAPH_API_KEY` | — | Graph Gateway key for `pay_if_trusted` when `policy.evidence.source` is `"subgraph"` or `"both"`. Read from env only — never from tool input, so it never enters the model's context. Without it such a call refuses with `graph_key_not_configured` before reading anything (2026-09-06). |
 | `VOUCH_TIMEOUT_MS` | `10000` | Per-request timeout. Cannot be disabled — a lookup that never returns cannot be failed closed on. A malformed value falls back to the default rather than breaking every tool call. |
 
 > **0.1.0 defaults `VOUCH_API_URL` to `http://localhost:3000/api/v1`** — a

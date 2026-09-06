@@ -28,6 +28,9 @@
  * 2回引く。GET は副作用を持たない。
  */
 import { DEFAULT_API_URL } from "./vouch-client.js";
+// 型だけ。値の import は ALLOW ブランチ内の動的 import に限る（第3層）。`import type` は
+// tsc が消すので、dist の拒否経路に `@vet402/sdk` への静的な参照は残らない。
+import type { PayDecisionRecord, PayEvidencePolicy, PayPolicy } from "@vet402/sdk";
 
 /**
  * 署名者。**ALLOW ブランチに入るまで、この値のプロパティには一度も触らない。**
@@ -60,10 +63,28 @@ export type PayIfTrustedInput = {
   payee?: string;
   amountUsd?: number;
   maxPerTxUsd?: number;
+  /**
+   * 呼び手の規則（WINDOW_PLAN §3.2）。**値はそのまま SDK の `payOrRefuse` へ渡す**——
+   * 判定ロジックを MCP に写さない。`requireVet402Allow: false` は「vet402 の ALLOW を要求しない」
+   * で、代わりの床（`evidence.minSubgraphReceipts` 等）が必須。BLOCK と degraded は
+   * `false` でも常に拒否（§3.2.1・SDK が持つ境界をそのまま通す）。
+   */
+  policy?: PayIfTrustedPolicy;
+  /**
+   * The Graph Gateway の API キー。**ツール入力には載せない**（LLM の文脈に鍵を通さない）——
+   * `index.ts` が環境変数 `GRAPH_API_KEY` から渡す。`evidence.source` が `"subgraph"` / `"both"`
+   * なのに無ければ、通信の前に `graph_key_not_configured` で拒否する。黙って vet402 だけで判定しない。
+   */
+  graphApiKey?: string;
   apiUrl?: string;
   apiKey?: string;
   /** 決定行の出所。既定 "mcp"（L1 台帳と混ぜない・F19/F20）。 */
   source?: string;
+};
+
+/** ツール入力に載せる policy。SDK の `PayPolicy` から **鍵だけを除いた**形。 */
+export type PayIfTrustedPolicy = Omit<PayPolicy, "evidence"> & {
+  evidence?: Omit<PayEvidencePolicy, "graphApiKey">;
 };
 
 /**
@@ -99,6 +120,14 @@ export type PayIfTrustedResult = {
    */
   settlement: "settle_claimed" | null;
   measurement: PayIfTrustedMeasurement;
+  /**
+   * SDK の `payOrRefuse` が出した決定行（`PayDecisionRecord`）を**そのまま**通す。
+   * `evidence[]` には `/decision` の行に加えて The Graph subgraph の行（`source: "subgraph"`・
+   * `receipts`・`block.number`）が載り、`verdict_source` と `policy_override` が
+   * 「誰の規則で通したか・何を免除しどの床をいくつで満たしたか」を持つ。
+   * `payOrRefuse` に到達する前に止まったときは null。
+   */
+  decision_record: PayDecisionRecord | null;
 };
 
 const RESOURCE_ID_RE = /^[0-9a-f]{64}$/;
@@ -116,8 +145,22 @@ export async function payIfTrusted(input: PayIfTrustedInput): Promise<PayIfTrust
     );
   }
   // signer は**検査しない**。検査は参照であり、参照した時点で第1層の主張が崩れる。
+  assertPolicy(input.policy);
 
   const apiUrl = (input.apiUrl ?? DEFAULT_API_URL).replace(/\/$/, "");
+  const requireVet402Allow = input.policy?.requireVet402Allow !== false;
+  const wantedSource = input.policy?.evidence?.source ?? "vet402";
+
+  // --- 1.5 The Graph を読むと宣言したのに鍵が無い → 通信の前に拒否 ---
+  // ここで黙って vet402 だけで判定すると、「床を指定したのに効いていない」が壊れて見えない。
+  if ((wantedSource === "subgraph" || wantedSource === "both") && !input.graphApiKey) {
+    return refuse(
+      measure(null),
+      ["evidence_unavailable", "subgraph_evidence_unavailable", "graph_key_not_configured"],
+      "policy.evidence.source asks for The Graph, but this server has no Graph Gateway key: set GRAPH_API_KEY " +
+        "in the MCP server's env block (it is never taken from tool input). Nothing was read and nothing was signed.",
+    );
+  }
   const headers: Record<string, string> = input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {};
 
   // --- 2. 判定 ---
@@ -145,7 +188,10 @@ export async function payIfTrusted(input: PayIfTrustedInput): Promise<PayIfTrust
   if (m.degraded === true) {
     return refuse(m, [...m.reason_codes, "evidence_unavailable"], "Do not pay: an input could not be measured, so this body is a refusal, not a measurement.");
   }
-  if (m.recommendation !== "ALLOW") {
+  // `requireVet402Allow: false` のときは ALLOW でない判定を**ここでは**止めない。BLOCK・床・
+  // degraded の境界は `payOrRefuse` が持ち（§3.2.1）、そこへ通すために非 ALLOW を先へ渡す。
+  // MCP に同じ境界を写すと、次に SDK が境界を直したときこちらだけ古いまま残る（§14.2）。
+  if (m.recommendation !== "ALLOW" && requireVet402Allow) {
     return refuse(m, [...m.reason_codes, "payee_recommendation_not_allow"], `Do not pay: the recommendation is ${m.recommendation ?? "absent"}, not ALLOW.`);
   }
 
@@ -154,7 +200,7 @@ export async function payIfTrusted(input: PayIfTrustedInput): Promise<PayIfTrust
     return refuse(
       m,
       [...m.reason_codes, "payment_target_unknown"],
-      "ALLOW, but pay_if_trusted was not told what to pay: pass resource, payee and amountUsd to execute the payment.",
+      `${m.recommendation ?? "absent"}, but pay_if_trusted was not told what to pay: pass resource, payee and amountUsd to execute the payment.`,
     );
   }
 
@@ -171,15 +217,26 @@ export async function payIfTrusted(input: PayIfTrustedInput): Promise<PayIfTrust
     apiUrl,
     apiKey: input.apiKey,
     source: input.source ?? "mcp",
-    policy: input.maxPerTxUsd === undefined ? undefined : { maxPerTxUsd: input.maxPerTxUsd },
+    // 値をそのまま渡す。鍵だけは env から来たものをここで合流させる。
+    policy: {
+      ...input.policy,
+      ...(input.maxPerTxUsd === undefined ? {} : { maxPerTxUsd: input.maxPerTxUsd }),
+      ...(input.policy?.evidence
+        ? { evidence: { ...input.policy.evidence, ...(input.graphApiKey ? { graphApiKey: input.graphApiKey } : {}) } }
+        : {}),
+    },
   });
 
+  // SDK の決定行はサーバの reason_codes を既に含む。橋の測定と連結すると同じ語が2回並ぶので、
+  // 順序を保ったまま重複だけ落とす（語を消したり並べ替えたりはしない）。
   const reasons = Array.isArray(paid.decision?.reason_codes) ? paid.decision.reason_codes : [];
+  const merged = [...new Set([...m.reason_codes, ...reasons])];
   if (paid.status === "refused") {
     return {
-      ...refuse(m, [...m.reason_codes, ...reasons], `Do not pay: ${reasons.join(", ") || "the payment gate refused"}.`),
+      ...refuse(m, merged, `Do not pay: ${reasons.join(", ") || "the payment gate refused"}.`),
       signed: paid.signed,
       nonce: paid.nonce,
+      decision_record: paid.decision,
     };
   }
   if (paid.status === "failed") {
@@ -188,7 +245,7 @@ export async function payIfTrusted(input: PayIfTrustedInput): Promise<PayIfTrust
     return {
       decision: "FAILED",
       safe_to_pay: false,
-      refuse_reasons: [...m.reason_codes, ...reasons],
+      refuse_reasons: merged,
       summary: "Signed, but the seller did not settle. The authorization is live until validBefore — reconcile with the nonce below.",
       signed: paid.signed,
       attested: false,
@@ -196,6 +253,7 @@ export async function payIfTrusted(input: PayIfTrustedInput): Promise<PayIfTrust
       nonce: paid.nonce,
       settlement: null,
       measurement: m,
+      decision_record: paid.decision,
     };
   }
   return {
@@ -209,6 +267,7 @@ export async function payIfTrusted(input: PayIfTrustedInput): Promise<PayIfTrust
     nonce: paid.nonce,
     settlement: "settle_claimed",
     measurement: m,
+    decision_record: paid.decision,
   };
 }
 
@@ -242,5 +301,45 @@ function refuse(
     nonce: null,
     settlement: null,
     measurement,
+    decision_record: null,
   };
+}
+
+/**
+ * 呼び出し側の誤りを、通信の前に落とす。**正典は SDK の `assertEvidencePolicy` /
+ * `assertOverridePolicy`**（`packages/sdk/src/pay-or-refuse.ts`）で、語も同じにしてある。
+ * ここに写しがあるのは、SDK が ALLOW ブランチ内の動的 import でしか読み込まれないため——
+ * 写しが無いと、`requireVet402Allow: false` に床が無い誤りが `payment_target_unknown` 等の
+ * 別の理由に化けて、呼び手に原因が届かない。SDK 側の検査も生きているので、写しが古くなっても
+ * 判定が緩くなることはない（`payOrRefuse` が同じ誤りを再び throw する）。
+ */
+function assertPolicy(policy: PayIfTrustedPolicy | undefined): void {
+  if (!policy) return;
+  const evidence = policy.evidence;
+  if (evidence) {
+    const wanted = evidence.source ?? "vet402";
+    if (wanted !== "vet402" && wanted !== "subgraph" && wanted !== "both") {
+      throw new Error(`invalid_evidence_policy: unknown evidence source ${JSON.stringify(wanted)}`);
+    }
+    if (evidence.minSubgraphReceipts !== undefined && wanted !== "subgraph" && wanted !== "both") {
+      throw new Error(
+        `invalid_evidence_policy: minSubgraphReceipts needs evidence.source "subgraph" or "both", got ${JSON.stringify(wanted)}. ` +
+          "It would otherwise be ignored in silence — the floor you set would never be applied.",
+      );
+    }
+    if (evidence.minL1Deliveries !== undefined && wanted !== "vet402" && wanted !== "both") {
+      throw new Error(
+        `invalid_evidence_policy: minL1Deliveries needs evidence.source "vet402" or "both", got ${JSON.stringify(wanted)}. ` +
+          "It would otherwise be ignored in silence — the floor you set would never be applied.",
+      );
+    }
+  }
+  if (policy.requireVet402Allow !== false) return;
+  const floors = [evidence?.minL1Deliveries, evidence?.minSubgraphReceipts];
+  if (floors.some((floor) => typeof floor === "number" && floor > 0)) return;
+  throw new Error(
+    "invalid_policy: requireVet402Allow: false waives vet402's verdict, so it needs at least one " +
+      "evidence floor above zero (policy.evidence.minL1Deliveries or policy.evidence.minSubgraphReceipts). " +
+      "Without one, nothing would judge this payment — a floor of 0 judges nothing either.",
+  );
 }

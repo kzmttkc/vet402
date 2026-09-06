@@ -40,7 +40,16 @@ export async function payIfTrusted(input) {
             "get it from GET /api/v1/resolve?q=<url>");
     }
     // signer は**検査しない**。検査は参照であり、参照した時点で第1層の主張が崩れる。
+    assertPolicy(input.policy);
     const apiUrl = (input.apiUrl ?? DEFAULT_API_URL).replace(/\/$/, "");
+    const requireVet402Allow = input.policy?.requireVet402Allow !== false;
+    const wantedSource = input.policy?.evidence?.source ?? "vet402";
+    // --- 1.5 The Graph を読むと宣言したのに鍵が無い → 通信の前に拒否 ---
+    // ここで黙って vet402 だけで判定すると、「床を指定したのに効いていない」が壊れて見えない。
+    if ((wantedSource === "subgraph" || wantedSource === "both") && !input.graphApiKey) {
+        return refuse(measure(null), ["evidence_unavailable", "subgraph_evidence_unavailable", "graph_key_not_configured"], "policy.evidence.source asks for The Graph, but this server has no Graph Gateway key: set GRAPH_API_KEY " +
+            "in the MCP server's env block (it is never taken from tool input). Nothing was read and nothing was signed.");
+    }
     const headers = input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {};
     // --- 2. 判定 ---
     let body = null;
@@ -67,12 +76,15 @@ export async function payIfTrusted(input) {
     if (m.degraded === true) {
         return refuse(m, [...m.reason_codes, "evidence_unavailable"], "Do not pay: an input could not be measured, so this body is a refusal, not a measurement.");
     }
-    if (m.recommendation !== "ALLOW") {
+    // `requireVet402Allow: false` のときは ALLOW でない判定を**ここでは**止めない。BLOCK・床・
+    // degraded の境界は `payOrRefuse` が持ち（§3.2.1）、そこへ通すために非 ALLOW を先へ渡す。
+    // MCP に同じ境界を写すと、次に SDK が境界を直したときこちらだけ古いまま残る（§14.2）。
+    if (m.recommendation !== "ALLOW" && requireVet402Allow) {
         return refuse(m, [...m.reason_codes, "payee_recommendation_not_allow"], `Do not pay: the recommendation is ${m.recommendation ?? "absent"}, not ALLOW.`);
     }
     // --- 4. ALLOW でも、払う相手を知らなければ払わない ---
     if (typeof input.payee !== "string" || typeof input.resource !== "string" || typeof input.amountUsd !== "number") {
-        return refuse(m, [...m.reason_codes, "payment_target_unknown"], "ALLOW, but pay_if_trusted was not told what to pay: pass resource, payee and amountUsd to execute the payment.");
+        return refuse(m, [...m.reason_codes, "payment_target_unknown"], `${m.recommendation ?? "absent"}, but pay_if_trusted was not told what to pay: pass resource, payee and amountUsd to execute the payment.`);
     }
     // --- 5. ここから先だけが支払い。実装は ALLOW ブランチ内の動的 import（第3層）---
     const { payOrRefuse } = await import("@vet402/sdk");
@@ -87,14 +99,25 @@ export async function payIfTrusted(input) {
         apiUrl,
         apiKey: input.apiKey,
         source: input.source ?? "mcp",
-        policy: input.maxPerTxUsd === undefined ? undefined : { maxPerTxUsd: input.maxPerTxUsd },
+        // 値をそのまま渡す。鍵だけは env から来たものをここで合流させる。
+        policy: {
+            ...input.policy,
+            ...(input.maxPerTxUsd === undefined ? {} : { maxPerTxUsd: input.maxPerTxUsd }),
+            ...(input.policy?.evidence
+                ? { evidence: { ...input.policy.evidence, ...(input.graphApiKey ? { graphApiKey: input.graphApiKey } : {}) } }
+                : {}),
+        },
     });
+    // SDK の決定行はサーバの reason_codes を既に含む。橋の測定と連結すると同じ語が2回並ぶので、
+    // 順序を保ったまま重複だけ落とす（語を消したり並べ替えたりはしない）。
     const reasons = Array.isArray(paid.decision?.reason_codes) ? paid.decision.reason_codes : [];
+    const merged = [...new Set([...m.reason_codes, ...reasons])];
     if (paid.status === "refused") {
         return {
-            ...refuse(m, [...m.reason_codes, ...reasons], `Do not pay: ${reasons.join(", ") || "the payment gate refused"}.`),
+            ...refuse(m, merged, `Do not pay: ${reasons.join(", ") || "the payment gate refused"}.`),
             signed: paid.signed,
             nonce: paid.nonce,
+            decision_record: paid.decision,
         };
     }
     if (paid.status === "failed") {
@@ -103,7 +126,7 @@ export async function payIfTrusted(input) {
         return {
             decision: "FAILED",
             safe_to_pay: false,
-            refuse_reasons: [...m.reason_codes, ...reasons],
+            refuse_reasons: merged,
             summary: "Signed, but the seller did not settle. The authorization is live until validBefore — reconcile with the nonce below.",
             signed: paid.signed,
             attested: false,
@@ -111,6 +134,7 @@ export async function payIfTrusted(input) {
             nonce: paid.nonce,
             settlement: null,
             measurement: m,
+            decision_record: paid.decision,
         };
     }
     return {
@@ -124,6 +148,7 @@ export async function payIfTrusted(input) {
         nonce: paid.nonce,
         settlement: "settle_claimed",
         measurement: m,
+        decision_record: paid.decision,
     };
 }
 /** `/decision` の応答を**組み替えずに**測定として持つ。読めない体は空で埋める。 */
@@ -151,5 +176,41 @@ function refuse(measurement, refuse_reasons, summary) {
         nonce: null,
         settlement: null,
         measurement,
+        decision_record: null,
     };
+}
+/**
+ * 呼び出し側の誤りを、通信の前に落とす。**正典は SDK の `assertEvidencePolicy` /
+ * `assertOverridePolicy`**（`packages/sdk/src/pay-or-refuse.ts`）で、語も同じにしてある。
+ * ここに写しがあるのは、SDK が ALLOW ブランチ内の動的 import でしか読み込まれないため——
+ * 写しが無いと、`requireVet402Allow: false` に床が無い誤りが `payment_target_unknown` 等の
+ * 別の理由に化けて、呼び手に原因が届かない。SDK 側の検査も生きているので、写しが古くなっても
+ * 判定が緩くなることはない（`payOrRefuse` が同じ誤りを再び throw する）。
+ */
+function assertPolicy(policy) {
+    if (!policy)
+        return;
+    const evidence = policy.evidence;
+    if (evidence) {
+        const wanted = evidence.source ?? "vet402";
+        if (wanted !== "vet402" && wanted !== "subgraph" && wanted !== "both") {
+            throw new Error(`invalid_evidence_policy: unknown evidence source ${JSON.stringify(wanted)}`);
+        }
+        if (evidence.minSubgraphReceipts !== undefined && wanted !== "subgraph" && wanted !== "both") {
+            throw new Error(`invalid_evidence_policy: minSubgraphReceipts needs evidence.source "subgraph" or "both", got ${JSON.stringify(wanted)}. ` +
+                "It would otherwise be ignored in silence — the floor you set would never be applied.");
+        }
+        if (evidence.minL1Deliveries !== undefined && wanted !== "vet402" && wanted !== "both") {
+            throw new Error(`invalid_evidence_policy: minL1Deliveries needs evidence.source "vet402" or "both", got ${JSON.stringify(wanted)}. ` +
+                "It would otherwise be ignored in silence — the floor you set would never be applied.");
+        }
+    }
+    if (policy.requireVet402Allow !== false)
+        return;
+    const floors = [evidence?.minL1Deliveries, evidence?.minSubgraphReceipts];
+    if (floors.some((floor) => typeof floor === "number" && floor > 0))
+        return;
+    throw new Error("invalid_policy: requireVet402Allow: false waives vet402's verdict, so it needs at least one " +
+        "evidence floor above zero (policy.evidence.minL1Deliveries or policy.evidence.minSubgraphReceipts). " +
+        "Without one, nothing would judge this payment — a floor of 0 judges nothing either.");
 }

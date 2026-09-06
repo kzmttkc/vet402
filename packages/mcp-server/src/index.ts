@@ -302,6 +302,15 @@ server.tool(
     "Omit resource/payee/amountUsd to run the gate without paying. Paying also requires",
     "VOUCH_PAYER_PRIVATE_KEY in this server's env and viem installed; without them the tool still",
     "returns the decision and refuses with payer_not_configured.",
+    "",
+    "policy is passed to the SDK's payOrRefuse unchanged. policy.evidence.source \"subgraph\" or \"both\"",
+    "reads The Graph's x402 Base subgraph through the Graph Gateway and puts that read on",
+    "decision_record.evidence[] as its own row (source subgraph, receipts, block.number). The Gateway",
+    "key is read from GRAPH_API_KEY in this server's env, never from tool input; without it the tool",
+    "refuses with graph_key_not_configured before reading anything. policy.requireVet402Allow:false",
+    "waives only a WARN, and only if every declared floor (minSubgraphReceipts / minL1Deliveries) is",
+    "met - BLOCK and degraded still refuse. decision_record then carries verdict_source caller_policy",
+    "and policy_override (what was waived, which floors were met with which numbers).",
   ].join("\n"),
   {
     resourceId: RESOURCE_ID,
@@ -310,8 +319,27 @@ server.tool(
     amountUsd: z.number().nonnegative().optional().describe("What you believe this costs, in USD"),
     method: z.string().max(10).optional().describe("HTTP method of the resource (default GET; The Graph's x402 endpoint is POST)"),
     maxPerTxUsd: z.number().positive().optional().describe("Per-payment ceiling in USD (default 1)"),
+    policy: z
+      .object({
+        requireVet402Allow: z
+          .boolean()
+          .optional()
+          .describe("Default true. false waives a vet402 WARN when every declared evidence floor is met; needs at least one floor above 0. BLOCK and degraded always refuse."),
+        evidence: z
+          .object({
+            source: z
+              .enum(["vet402", "subgraph", "both"])
+              .optional()
+              .describe("Default vet402 (our ledger). subgraph reads only The Graph's x402 Base subgraph; both reads both and refuses if either cannot be read."),
+            minL1Deliveries: z.number().int().nonnegative().optional().describe("Floor on vet402's delivered L1 purchases (source vet402 or both)"),
+            minSubgraphReceipts: z.number().int().nonnegative().optional().describe("Floor on receipts The Graph's subgraph knows for the payee (source subgraph or both)"),
+          })
+          .optional(),
+      })
+      .optional()
+      .describe("Caller's own rule; forwarded to payOrRefuse unchanged. The Graph key is NOT an input - set GRAPH_API_KEY in the server env."),
   },
-  async ({ resourceId, resource, payee, amountUsd, method, maxPerTxUsd }) => {
+  async ({ resourceId, resource, payee, amountUsd, method, maxPerTxUsd, policy }) => {
     try {
       const apiKey = process.env.VOUCH_API_KEY;
       if (!apiKey) throw new Error("missing_api_key");
@@ -330,6 +358,9 @@ server.tool(
         fetch: boundedFetch,
         apiUrl: process.env.VOUCH_API_URL,
         apiKey,
+        // 呼び手の規則はそのまま通す。鍵は env からで、ツール入力には存在しない。
+        policy,
+        graphApiKey: process.env.GRAPH_API_KEY,
         // payer が無いなら支払い先を**渡さない**。渡さなければ ALLOW でも第5段へ進めない。
         ...(signer ? { resource, payee, amountUsd, method, maxPerTxUsd } : {}),
       });
