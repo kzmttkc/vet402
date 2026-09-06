@@ -13,6 +13,8 @@ import {
   renderRecipe,
   NOT_RETRIEVED,
   RECIPE_FIELDS,
+  PUBLICATION_STATES,
+  publicRecipeUrl,
 } from "../src/recipe.mjs";
 
 const recipe = await loadRecipe();
@@ -32,7 +34,60 @@ test("写しは『いつ・どこから写したか』を持つ（出所の無�
   // 日付だけでも、時刻つきでも可。**より精密な方を禁じない**（出所は細かいほどよい）。
   assert.match(recipe.source.copiedAt, /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z)?$/);
   assert.ok(recipe.source.copiedFrom.length > 0);
-  assert.equal(recipe.source.state, "draft");
+});
+
+// 2026-09-07: ここは `state === "draft"` を固定していた。写した日の状態であって規則ではなく、
+// Recipe を公開したら赤くなった（**改善で赤くなるテストは状態固定**）。規則は
+// 「公開なら誰でも開ける URL と公開日時を持つ／下書きならどちらも持たない」の両方向。
+test("公開状態と証拠の対応が両方向で正しい（公開なら URL と日時、下書きならどちらも無い）", () => {
+  assert.ok(PUBLICATION_STATES.includes(recipe.source.state), recipe.source.state);
+  if (recipe.source.state === "published") {
+    assert.equal(recipe.source.publicUrl, publicRecipeUrl(recipe));
+    assert.match(recipe.source.publicUrl, /^https:\/\/bazantic\.com\/recipes\/[a-z0-9-]+$/);
+    assert.match(recipe.source.publishedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
+    assert.equal(Number.isNaN(Date.parse(recipe.source.publishedAt)), false, "publishedAt は日時として読める");
+    // 公開は read-only 化で、写した日より前には起こらない。
+    assert.ok(Date.parse(recipe.source.publishedAt) >= Date.parse(recipe.source.copiedAt), "公開日時が写した日時より前");
+  } else {
+    assert.equal(recipe.source.publicUrl, undefined);
+    assert.equal(recipe.source.publishedAt, undefined);
+  }
+});
+
+test("published なのに公開 URL か公開日時が無ければ投げる（公開したと言うなら開ける場所を示す）", () => {
+  const published = { ...recipe, source: { ...recipe.source, state: "published", publishedAt: "2026-09-07T06:15+09:00", publicUrl: publicRecipeUrl(recipe) } };
+  assert.doesNotThrow(() => assertRecipeShape(published));
+  const { publicUrl: _u, ...noUrl } = published.source;
+  assert.throws(() => assertRecipeShape({ ...recipe, source: noUrl }), /publicUrl/);
+  const { publishedAt: _t, ...noDate } = published.source;
+  assert.throws(() => assertRecipeShape({ ...recipe, source: noDate }), /publishedAt/);
+  // slug と食い違う URL は「この Recipe の」公開ページではない。
+  assert.throws(
+    () => assertRecipeShape({ ...recipe, source: { ...published.source, publicUrl: "https://bazantic.com/recipes/some-other-recipe" } }),
+    /publicUrl/,
+  );
+  assert.throws(
+    () => assertRecipeShape({ ...recipe, source: { ...published.source, publishedAt: "2026-09-07" } }),
+    /publishedAt/,
+  );
+});
+
+test("draft なのに公開 URL か公開日時があれば投げる（まだ無いものを書かない）", () => {
+  const { publicUrl: _u, publishedAt: _t, ...bare } = recipe.source;
+  const draft = { ...recipe, source: { ...bare, state: "draft" } };
+  assert.doesNotThrow(() => assertRecipeShape(draft));
+  assert.throws(() => assertRecipeShape({ ...recipe, source: { ...bare, state: "draft", publicUrl: publicRecipeUrl(recipe) } }), /publicUrl/);
+  assert.throws(() => assertRecipeShape({ ...recipe, source: { ...bare, state: "draft", publishedAt: "2026-09-07T06:15+09:00" } }), /publishedAt/);
+  assert.throws(() => assertRecipeShape({ ...recipe, source: { ...bare, state: "archived" } }), /state/);
+});
+
+test("renderRecipe は公開なら公開 URL を本文に出し、下書きなら出さない（審査員が開いて突き合わせられる）", () => {
+  const { publicUrl: _u, publishedAt: _t, ...bare } = recipe.source;
+  const draft = renderRecipe({ ...recipe, source: { ...bare, state: "draft" } });
+  assert.equal(draft.includes("/recipes/"), false);
+  const published = renderRecipe({ ...recipe, source: { ...bare, state: "published", publishedAt: "2026-09-07T06:15+09:00", publicUrl: publicRecipeUrl(recipe) } });
+  assert.ok(published.includes(publicRecipeUrl(recipe)));
+  assert.ok(published.includes("2026-09-07T06:15+09:00"));
 });
 
 test("Recipe が呼ぶツールは vet402 gateway の3本", () => {

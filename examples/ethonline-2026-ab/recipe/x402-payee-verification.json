@@ -33,7 +33,9 @@
   "source": {
     "platform": "bazantic.com",
     "account": "TakeshiTGAL",
-    "state": "draft",
+    "state": "published",
+    "publishedAt": "2026-09-07T06:15+09:00",
+    "publicUrl": "https://bazantic.com/recipes/x402-payee-verification-via-vet402-gateway",
     "gatewayName": "vet402",
     "gatewayUrl": "https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com",
     "mcpUrl": "https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp",

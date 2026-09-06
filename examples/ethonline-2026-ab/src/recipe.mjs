@@ -56,7 +56,49 @@ export function assertRecipeShape(recipe) {
       throw new Error(`recipe.source.${key} is required — a copy without provenance is not a copy`);
     }
   }
+  assertPublicationState(recipe);
   if (!Array.isArray(recipe.tools) || recipe.tools.length === 0) throw new Error("recipe.tools is empty");
+  return recipe;
+}
+
+/**
+ * 公開状態の規則（**状態を固定しない。状態と証拠の対応を固定する**）。
+ *
+ * 2026-09-07 まで、テストは `source.state === "draft"` を固定していた。それは**写した日の状態**であって
+ * 規則ではなく、Recipe を公開したら赤くなった（改善で赤くなるテストは状態固定）。守るべき規則は
+ *   - `published` なら、**誰でも開ける URL**（`publicUrl`＝bazantic.com の `/recipes/<slug>`）と
+ *     **いつ公開されたか**（`publishedAt`・ISO 8601）を持つ。公開は read-only 化であり本文は変わらない
+ *   - `draft` なら、公開 URL も公開日時も**持たない**（無いものを書かない）
+ * の両方向。それ以外の state は知らないので投げる。
+ */
+export const PUBLICATION_STATES = Object.freeze(["draft", "published"]);
+const ISO_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
+
+export function publicRecipeUrl(recipe) {
+  return `https://${recipe.source.platform}/recipes/${recipe.slug}`;
+}
+
+export function assertPublicationState(recipe) {
+  const { state, publicUrl, publishedAt } = recipe.source;
+  if (!PUBLICATION_STATES.includes(state)) {
+    throw new Error(`recipe.source.state must be one of ${PUBLICATION_STATES.join("/")}, got: ${state}`);
+  }
+  if (state === "published") {
+    if (publicUrl !== publicRecipeUrl(recipe)) {
+      throw new Error(
+        `recipe.source.publicUrl must be ${publicRecipeUrl(recipe)} when state is published — a published Recipe is one anyone can open at its slug`,
+      );
+    }
+    if (typeof publishedAt !== "string" || !ISO_DATETIME.test(publishedAt)) {
+      throw new Error("recipe.source.publishedAt must be an ISO 8601 date-time when state is published");
+    }
+  } else {
+    for (const key of ["publicUrl", "publishedAt"]) {
+      if (recipe.source[key] !== undefined) {
+        throw new Error(`recipe.source.${key} must be absent when state is draft — do not write what does not exist yet`);
+      }
+    }
+  }
   return recipe;
 }
 
@@ -75,6 +117,9 @@ export function renderRecipe(recipe) {
   const field = (label, value) => L.push(`${label}: ${value === null ? NOT_RETRIEVED : value}`);
 
   L.push(`This is a Recipe published on ${recipe.source.platform} (state: ${recipe.source.state}).`);
+  if (recipe.source.state === "published") {
+    L.push(`Public page (read-only since ${recipe.source.publishedAt}): ${recipe.source.publicUrl}`);
+  }
   L.push(`Copied into this repository on ${recipe.source.copiedAt}. Source of the copy: ${recipe.source.copiedFrom}`);
   L.push("");
   field("slug", recipe.slug);
