@@ -146,6 +146,16 @@ Optional second surface if the first path is green before Saturday night: World 
 
 Out of scope: Sui, Uniswap swap-to-pay, new scoring, registry writes.
 
+### 2026-09-06 実測（ハッカソン戦略セッション・一次データ）
+
+| 項目 | 値 |
+|---|---|
+| 参加資格 | **hacker として受理・参加確定済み**（Gmail: 06-30 accepted／08-19 "You've confirmed your spot"・`kazumototakeshi@gmail.com`）。応募締切 09-11 23:59 JST は我々に掛からない |
+| 未確認 | ステークの要否・Continuity トラックの選択（ダッシュボードは正本アカウントのみ・Takeshi 手番 09-14〜20） |
+| 賞（09-06） | $75,000・5社: World $15k（詳細未公開）／ENS $10k（詳細未公開）／Uniswap $10k（Stack Contribution）／1inch $7k（SwapVM 必須）／Sui $5k（DeFi & Payments）。continuity 枠の有無は `scripts/watch_ethonline_prizes.py` が日次で見る |
+| 規定 | `info/details` は ETHOnline と同文（Continuity の事前作業開示・AI 利用のファイル単位明示・spec/prompt 同梱・動画 2〜4 分・720p・AI 音声不可・スマホ動画不可） |
+| カレンダー | 09-25〜27 終日（現地）と ETHOnline 提出 09-13 10:00 を Takeshi の Google カレンダーに登録済み（09-06） |
+
 ### Prizes (published so far: ENS, Uniswap, World, Sui, 1inch)
 
 1. **ENS Continuity** — mandatory first pick.
