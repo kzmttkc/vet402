@@ -253,10 +253,13 @@ cd packages/sdk && npm install && npm test 2>&1 | grep -E '^ℹ '
 ```
 
 ```
-ℹ tests 148
-ℹ pass 148
+ℹ tests 159
+ℹ pass 159
 ℹ fail 0
 ```
+
+(Re-run 2026-09-06 with `npm ci && npm test`. The count grows as tests are added — run it, do not
+trust this line.)
 
 **It has moved real money.** On 2026-09-05 a throwaway payer bought The Graph's own x402 endpoint
 with `requireVet402Allow: false` and `minSubgraphReceipts: 1`. Our own engine rates that payee
@@ -279,6 +282,52 @@ gas). Check it yourself:
 The decision record kept `verdict from: caller_policy` and the waived `WARN`: **we did not rewrite
 our own judgement to match the payment.** (Details: `docs/ethonline-2026/WINDOW_PLAN.md` §10.5.)
 
+### Paying on The Graph's own data — live
+
+The two commands filmed in the demo video read The Graph **live** through your own gateway key.
+Build order and runtime first:
+
+```bash
+# Node >= 22.18 (examples/ethonline-2026-demo/package.json "engines" — the demo runs .ts files directly)
+cd packages/sdk && npm install && npm run build      # 1. the SDK first — the demo imports its dist/
+cd ../../examples/ethonline-2026-demo                 # 2. then the demo (nothing to install without --live)
+export GRAPH_API_KEY=…    # free key from Subgraph Studio: https://thegraph.com/studio → API Keys
+export VOUCH_API_KEY=…    # https://vet402.com/dashboard/keys
+node src/run.ts refuse    # two sources side by side; refuses before a signature can exist
+node src/run.ts pay       # dry run: fetches the real 402 challenge, signs nothing (no --live)
+```
+
+Both were run on 2026-09-06 13:01 UTC. Key values are never printed — the demo's own redactor
+(`src/emit.ts`) rewrites the key inside the gateway URL to `<KEY>`. `refuse`, abridged to the lines
+that matter:
+
+```
+ [A] vet402  GET /decision?role=payer           [B] The Graph  x402 Base subgraph (live)
+ recommendation  WARN                           _meta.block.number   50955183
+ reason_codes    l0_pass                        _meta.block.time     2026-09-06T13:01:53Z
+                 l1_not_attempted               _meta.deployment
+                 l2_undeclared                    QmcE24HARdXXnziPii9bWFRV6njfWW82H1RKPe5x9hBkUN
+ L1 delivered    0  (settled 0, tried 0)        totalPayments        30
+ result    refused    signed  false    nonce  null    tx  null
+ reasons   l0_pass, l1_not_attempted, l2_undeclared, payee_recommendation_not_allow
+ evidence[0]  L1  source=subgraph  receipts=30  block=50955183
+ requests  2  —  0 signatures, 0 RPC, 0 settle
+           POST https://gateway.thegraph.com/api/<KEY>/subgraphs/id/Cb56epg3EvQ6JRpPfknbkM54QxpzTvLa7mwKNQQfUyoj
+```
+
+`pay` (dry run, same minute):
+
+```
+ [ok  ] subgraph evidence is live        block 50955185, 260 receipts
+ [waiv] payee verdict is ALLOW           WARN (69) — not required by policy
+ [ok  ] evidence floor: subgraph >= 1    260 receipts (need 1)
+ env       GRAPH_API_KEY=set  VOUCH_API_KEY=set  DEMO_PAYER_PRIVATE_KEY=MISSING
+ DRY RUN — no signature was created. The signing module was never loaded.
+```
+
+If the subgraph answer carries no `_meta.block`, the reader refuses with `graph_no_block_meta`
+(`packages/sdk/src/subgraph-evidence.ts`) — static or cached data does not pass.
+
 ## What is not built yet
 
 Stated plainly, because a SKILL.md that oversells is worse than none.
@@ -288,4 +337,4 @@ Stated plainly, because a SKILL.md that oversells is worse than none.
 | **Evidence policy on the MCP tool** | Not exposed. `pay_if_trusted` takes no `policy.evidence`. The subgraph source and the evidence floors exist in the SDK (see **Paying on The Graph's own data**); they are simply not surfaced on the MCP tool yet. Use `payOrRefuse` from the SDK for `source: "subgraph" \| "both"`, `minSubgraphReceipts` and `minL1Deliveries` today. |
 | **The uncatalogued-seller path in MCP** | Not exposed. `payOrRefuse` handles a `/decision` 404 by judging from the 402 `payTo` plus the payee score; `pay_if_trusted` refuses with `evidence_unavailable` instead, because it is not given a payment target at that point. |
 | **npm publish** | Out of scope until after submission. Build from the repo. |
-| **The hosted MCP gateway** | The Bazantic gateway at `bazgateway.com` fronts vet402's REST API, **not this package**; it does not expose `pay_if_trusted`. Run the stdio server above. |
+| **The hosted MCP gateway** | Two MCP surfaces, two roles. The Bazantic gateway (`https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp`, Recipe `x402-payee-verification-via-vet402-gateway`) fronts vet402's REST API as **57 tools** (`tools/list`, measured 2026-09-06) — use it for discovery and every key-free read (`/decision`, `/resolve`, scores). `pay_if_trusted` is the one tool that holds a signer, and it is **only** in this package over stdio, not on the gateway. |

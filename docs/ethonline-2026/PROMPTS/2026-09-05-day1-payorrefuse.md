@@ -27,7 +27,7 @@ ETHGlobal の規約は "all spec files, **prompts**, and planning artifacts" を
 実装は sub-agent へ委任した。プロンプトの中核（全文は git 履歴の本ファイル初版）:
 
 - 作業ツリーは `git worktree`（`/tmp/vouch-ethonline`・ブランチ `ethonline/payorrefuse`）。
-  **`~/vouch` 本体は触らない**（他セッションが並行使用）。**push しない**
+  **`~/vouch` 本体は触らない**（`~/vouch` = このリポの保守者ローカルの checkout。他セッションが並行使用）。**push しない**
 - **`superpowers:test-driven-development` と `verification-before-completion` を起動してから着手する**
 - **仕様はテストファイル**（`packages/sdk/test/pay-or-refuse.test.mjs`）。冒頭の「4層の証明」に従う
 - **先に red を書き、赤いことを目で確認してから実装する**

@@ -24,6 +24,7 @@ WINDOW_PLAN.md §4 の22項目をテスト名にする。**実装はしない。
 
 ## 結果
 
-- コミット `b366921`（`ethonline: test(sdk,mcp): …`）SDK 21本・MCP 3本、24本すべて赤
+- コミット `b366921`（`ethonline: test(sdk,mcp): …`）SDK 21本・MCP 3本、24本すべて赤。
+  `b366921` は廃止ブランチ `ethonline-2026` 上のハッシュで、**main では `e68cc57`**（`ethonline: test(sdk,mcp): payOrRefuse の fail-closed 契約を red で置く（Day 0）`、2026-09-05 08:47 JST）。ブランチを消しても main で引ける
 - 書いた直後に2本が実装なしで緑になった（`assert.rejects` がスタブの throw で通る／書き込み検査が無動作でも通る）。
   理由の中身と「判定を1回引いたこと」を要求する形に直して 21/21 赤へ戻した

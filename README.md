@@ -55,7 +55,8 @@ Since 2026-09-02 (product spec v1.0 — **214 commits, 412 files, +28,414 / −1
 The boundary tag `pre-ethonline-2026` is commit `c42daca`, cut **2026-09-04 00:05:36 UTC** — five minutes
 after the window opened — and it is pushed, so anyone can verify the split themselves. Everything after
 that tag was written during the window. The volume that predates it was **disclosed to ETHGlobal in
-writing on 2026-09-05**.
+writing on 2026-09-05** — the message as sent, and why its commit count reads 207 where this file says 214:
+[`docs/ethonline-2026/DISCLOSURE_2026-09-05.md`](./docs/ethonline-2026/DISCLOSURE_2026-09-05.md).
 
 **One honest caveat.** `main` is also this product's production branch, so the range
 `pre-ethonline-2026..main` contains work that has nothing to do with this submission — grant
@@ -72,7 +73,7 @@ git log pre-ethonline-2026..main                # everything on main in the same
 Both commands are worth running. The first is our claim; the second is the full picture, including the
 parts we are not claiming.
 
-Who wrote the code, file by file: [`AI_USAGE.md`](./AI_USAGE.md). The instructions we worked from, by day:
+Who wrote the code, by area and representative file — and what the human did: [`AI_USAGE.md`](./AI_USAGE.md). The instructions we worked from, by day:
 [`docs/ethonline-2026/PROMPTS/`](./docs/ethonline-2026/PROMPTS/). The payment gate itself:
 [`SKILL.md`](./SKILL.md).
 
