@@ -57,6 +57,13 @@ test("公開面が使う語が語彙から漏れていない", () => {
     "evidence.source=vet402",
     "evidence.source=subgraph",
     "evidence.source=both",
+    // 2026-09-07 ETHOnline / WINDOW_PLAN §16.3: /decision が呼び手の policy を当てて返す語。
+    // SDK の PayRefuseReason と同じ語で、A/B では「ツールに無い語は Recipe があっても出ない」ことが
+    // 実測された。公開面（openapi・docs/api）が使う以上、1 文の定義を持つ。
+    "price_above_ceiling",
+    "insufficient_delivery_evidence",
+    "payee_recommendation_block",
+    "evidence_unavailable",
   ]) {
     assert.ok(terms.has(required), `語彙に ${required} が無い`);
   }

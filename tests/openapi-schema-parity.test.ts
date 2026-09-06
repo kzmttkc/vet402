@@ -88,7 +88,33 @@ const SURFACES: Surface[] = [
       "scoredAt",
       "cacheExpiresAt",
       "disclaimer",
+      // 2026-09-07 ETHOnline / WINDOW_PLAN §16.3: 呼び手の policy（amount_usd / max_per_tx_usd /
+      // min_l1_deliveries）を受けたときだけ付く。語は SDK の PayRefuseReason と同じ。
+      // クエリが無い応答には**存在しない**（従来と完全一致）ので openapi でも required にしない。
+      "caller_policy",
     ],
+  },
+  {
+    // 呼び手の policy をサーバが当てた結果。`applied` は何を当てたか、`verdict` と `reason_codes` は
+    // SDK と同じ語、`not_evaluated` はサーバが**見ていない**床（subgraph は呼び手の鍵でしか読めない）。
+    label: "CallerPolicy",
+    spec: ["CallerPolicy", "properties"],
+    impl: [
+      ["src/lib/decision/caller-policy.ts", ["CallerPolicy"]],
+      ["packages/sdk/src/index.ts", ["CallerPolicy"]],
+      ["packages/mcp-server/src/vouch-client.ts", ["CallerPolicy"]],
+    ],
+    fields: ["applied", "verdict", "reason_codes", "not_evaluated"],
+  },
+  {
+    label: "CallerPolicy.applied",
+    spec: ["CallerPolicy", "properties", "applied", "properties"],
+    impl: [
+      ["src/lib/decision/caller-policy.ts", ["CallerPolicy", "applied"]],
+      ["packages/sdk/src/index.ts", ["CallerPolicy", "applied"]],
+      ["packages/mcp-server/src/vouch-client.ts", ["CallerPolicy", "applied"]],
+    ],
+    fields: ["amount_usd", "max_per_tx_usd", "min_l1_deliveries"],
   },
   // ------------------------------------------------------------------
   // 2026-09-02 敵対的監査 P1-2: 新規ルート（§7.3 / §9.1）の 200 応答が仕様書に

@@ -22,6 +22,7 @@ import { decidePayer, decidePayee, DECISION_RULES_VERSION, type Recommendation, 
 import { isSpendingHalted } from "@/lib/observatory/kill-switch";
 import { assertEvidenceContract, vet402Evidence } from "./evidence";
 import type { BuyerFacts, Evidence, Freshness, NotAttemptedReason, SellerFacts } from "./types";
+import type { CallerPolicy } from "./caller-policy";
 
 export const DECISION_DISCLAIMER =
   "Scores are opinions; L0–L2 are measurement records. This is not credit assessment, KYC, sanctions screening, or certification.";
@@ -63,6 +64,13 @@ export type DecisionResult = {
   score: { trustScore: number | null; recommendation: Recommendation | null; deprecated: true } | null;
   degraded: boolean;
   policy: "allow_only";
+  /**
+   * 2026-09-07（ETHOnline / WINDOW_PLAN §16.3）: 呼び手が `amount_usd` / `max_per_tx_usd` /
+   * `min_l1_deliveries` を名乗ったときだけ付く、**呼び手の policy をサーバが当てた結果**。
+   * 語は SDK の PayRefuseReason と同じ（./caller-policy.ts）。クエリが無ければ**キーごと無い**
+   * （応答は従来と完全一致）。`recommendation` とは別欄で、判定を書き換えない。
+   */
+  caller_policy?: CallerPolicy;
   rules_version: string;
   registry: RegistryStatus;
   scoredAt: string;

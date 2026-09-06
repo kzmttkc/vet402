@@ -578,6 +578,24 @@ export default async function ObservatoryMethodologyPage() {
           apart so a reader sees the disagreement instead of an average of it.
         </p>
 
+        {/* 2026-09-07 ETHOnline / WINDOW_PLAN §16.3: /decision が呼び手の policy を当てて返す語を
+            散文でも展開する（語彙の定義だけが独り歩きしないように）。 */}
+        <p className="doc-p">
+          <strong>Your rule, applied next to ours.</strong> A decision can also carry a{" "}
+          <code>caller_policy</code> block when the caller names what the 402 asks (
+          <code>amount_usd</code>), a ceiling (<code>max_per_tx_usd</code>) or a floor on our
+          delivered L1 purchases (<code>min_l1_deliveries</code>). The server applies that rule in
+          the same order and the same words as the <code>payOrRefuse</code> SDK:{" "}
+          <code>price_above_ceiling</code> when the price is above the ceiling,{" "}
+          <code>evidence_unavailable</code> when the decision is degraded,{" "}
+          <code>payee_recommendation_block</code> when our recommendation is BLOCK, and{" "}
+          <code>insufficient_delivery_evidence</code> when our ledger has fewer deliveries than
+          the floor. The block sits beside <code>recommendation</code> and never rewrites it: a WARN
+          stays a WARN, and a floor never lifts a BLOCK. What the server did not check is listed in{" "}
+          <code>not_evaluated</code> &mdash; always the subgraph floor, because The Graph is read
+          only with the caller&rsquo;s own key.
+        </p>
+
         {/* 2026-09-05 AEO: 語彙の正典は src/lib/observatory/vocabulary.ts。
             この節と DefinedTermSet JSON-LD は同じ配列から出る。上の §1–§7 は
             同じ語を散文で展開したもので、矛盾したらどちらかではなく両方直す。 */}

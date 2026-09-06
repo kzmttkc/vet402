@@ -1295,3 +1295,32 @@ claims:
     check: null
     why_unverifiable: "カナリアの式は `path op literal` の 1 行だけで、和の一致（settledNonceBound + settledAmountPayeeOnly == settled）を書けない。不変条件は tests/observatory-state-api.test.ts と tests/settled-tiers.pg.test.ts が実 DB で固定する"
     verified_at: 2026-09-05
+  # --- 2026-09-07 呼び手の policy（/decision の caller_policy・WINDOW_PLAN §16.3）---
+  - id: caller_policy_never_rewrites_recommendation_never_lifts_block
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "a floor never lifts a BLOCK"
+    means: "caller_policy は recommendation を書き換えず、宣言した床は BLOCK を外さない（§3.2.1 の境界をサーバ側でも守る）"
+    check: null
+    why_unverifiable: "設計上の不変条件。カナリアの式は `path op literal` の 1 行で、『BLOCK の資源に床を付けても verdict が REFUSE のまま』を安定した公開 id で書けない（BLOCK の資源 id は日々入れ替わる）。tests/decision-caller-policy.test.ts P5/P7/P8 が固定し、BLOCK の境界を外す変異で赤になる（2026-09-07 実測）"
+    verified_at: 2026-09-07
+  - id: caller_policy_not_evaluated_always_names_subgraph_floor
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "always the subgraph floor, because The Graph is read"
+    means: "caller_policy.not_evaluated には常に min_subgraph_receipts が載る（サーバは呼び手の Graph 鍵を持たず、subgraph の床を当てない）"
+    check: null
+    why_unverifiable: "配列の要素の存在はカナリアの式（`path op literal`）で書けない。tests/decision-caller-policy.test.ts P1/P4 が固定する。The Graph を我々の鍵で読まない規律は SDK の subgraph-evidence.ts（graphApiKey は呼び手の値のみ）が持つ"
+    verified_at: 2026-09-07
+  - id: vocabulary_payee_recommendation_block_never_lifted
+    surface: src/lib/observatory/vocabulary.ts
+    quote: "a caller's policy never lifts that: BLOCK is an operator-level refusal"
+    means: "payee_recommendation_block の定義: BLOCK は呼び手の床では外れない（WARN は意見・BLOCK は遮断）"
+    check: null
+    why_unverifiable: "上の caller_policy_never_rewrites_recommendation_never_lifts_block と同じ不変条件の語彙側。SDK 側は packages/sdk/test-mutations.mjs M01/M02（BLOCK を requireVet402Allow:false で通す変異）が赤になることで固定する"
+    verified_at: 2026-09-07
+  - id: vocabulary_evidence_unavailable_floor_never_fills_measurement
+    surface: src/lib/observatory/vocabulary.ts
+    quote: "a caller's floor does not fill in a measurement that was never made"
+    means: "evidence_unavailable の定義: degraded（測れなかった）は床では埋まらず fail-closed"
+    check: null
+    why_unverifiable: "設計上の不変条件。tests/decision-caller-policy.test.ts P6（degraded＋床充足でも REFUSE）と SDK の変異 M03/M04 が固定する。公開 GET で degraded の資源を安定して名指しできない"
+    verified_at: 2026-09-07

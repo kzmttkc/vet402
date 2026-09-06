@@ -255,6 +255,9 @@ Read two fields and nothing else:
   *claim*; only a verifier that re-reads the chain may say `settled`. We do not blur that line.
 - **`measurement`** is the `/decision` body **verbatim**, including `evidence[]` with each row's own
   `source`. A test fails if we rewrite those rows — see *Why `source` matters*.
+- **`measurement.caller_policy`** (since 2026-09-07) — *your* rule, applied by the server next to
+  ours, in the same words the SDK uses. See *Your own policy on `/decision`* below. When its
+  `verdict` is `REFUSE`, its `reason_codes` are in `refuse_reasons` too.
 
 ## Actually paying
 
@@ -404,6 +407,73 @@ Verified 2026-09-06 (live, keys redacted by the demo itself):
 Mutation check on the demo: flipping the floor comparison, removing the BLOCK boundary, or touching the
 signer each turns tests red (7 / 2 / 3 failures). `packages/sdk/test-mutations.mjs` does the same for the
 SDK itself: 27 mutations, all killed, ~20 s.
+
+### Your own policy on `/decision` — the server answers in the SDK's words
+
+The first real A/B (`docs/ethonline-2026/WINDOW_PLAN.md` §16.3, 2026-09-07) found a hole that was ours,
+not the model's: for the over-ceiling fixture the right reason, `price_above_ceiling`, **was a word no
+tool ever returned** — it lived only in the SDK's caller-side policy. A Recipe cannot make a model say a
+word the tool does not give it. So since 2026-09-07 `GET /api/v1/resources/{id}/decision` takes the
+caller's policy as query parameters and returns the verdict **in the same document, in the SDK's words**:
+
+| query | meaning |
+|---|---|
+| `amount_usd` | what the 402 asks (compared with the ceiling) |
+| `max_per_tx_usd` | your per-payment ceiling, default `1` (= the SDK's `DEFAULT_MAX_PER_TX_USD`) |
+| `min_l1_deliveries` | floor on `facts.l1.n_delivered` — our own delivered L1 purchases |
+
+The response gains one block and changes nothing else (without these queries the body is byte-identical):
+
+```json
+"caller_policy": {
+  "applied": { "amount_usd": 1.5, "max_per_tx_usd": 1, "min_l1_deliveries": 0 },
+  "verdict": "REFUSE",
+  "reason_codes": ["price_above_ceiling"],
+  "not_evaluated": ["min_subgraph_receipts"]
+}
+```
+
+- Order and words are the SDK's: `price_above_ceiling` → `evidence_unavailable` (degraded) →
+  `payee_recommendation_block` → `insufficient_delivery_evidence`. No new vocabulary.
+- `recommendation` is **never rewritten**. A WARN stays a WARN beside a `caller_policy` ALLOW; you read
+  both. A floor never lifts BLOCK or degraded (§3.2.1).
+- `not_evaluated` says what the server did **not** check. `min_subgraph_receipts` is always there: The
+  Graph is read only with *your* Gateway key, by `payOrRefuse` / `pay_if_trusted`, never by us.
+- A bad value is `400` with the SDK's own caller-error word (`invalid_amount_usd`, `invalid_policy`,
+  `invalid_evidence_policy`). An uncatalogued resource stays `404` — the SDK judges those from the 402's
+  `payTo` and the payee score (I23).
+- The SDK and `pay_if_trusted` send these queries themselves and keep their local gates (two layers).
+  When the two disagree, the local gate decides `status` and **both** words are kept on
+  `decision_record.reason_codes` — no `policy_disagreement` word is invented.
+
+Two `curl`s tell the whole story (run them against production once this is deployed):
+
+```bash
+RID=$(curl -sL "https://vet402.com/api/v1/resolve?q=https://kronossignals.com/api/v1/price/btc" | jq -r '.resources[0].resource_id')
+# over your ceiling → caller_policy.verdict REFUSE, reason_codes ["price_above_ceiling"]
+curl -sL "https://vet402.com/api/v1/resources/$RID/decision?role=payer&amount_usd=1.5&max_per_tx_usd=1" | jq '.recommendation, .caller_policy'
+# no policy query → the body of 2026-09-02, unchanged (no caller_policy key)
+curl -sL "https://vet402.com/api/v1/resources/$RID/decision?role=payer" | jq 'has("caller_policy")'
+```
+
+The same block comes through `check_resource_decision` (`amountUsd` / `maxPerTxUsd` / `minL1Deliveries`
+are tool inputs now). Run on 2026-09-07 over stdio against the real route handler with the catalogue
+stubbed (`tests/decision-caller-policy.test.ts` uses the same stub; production output to be pasted after
+deploy):
+
+```json
+{
+  "decision": "REFUSE",
+  "safe_to_pay": false,
+  "refuse_reasons": ["l0_pass", "l1_delivered", "l2_undeclared", "price_above_ceiling"],
+  "summary": "ALLOW (2026-09-02.1) — l0_pass, l1_delivered, l2_undeclared · caller_policy REFUSE (price_above_ceiling)",
+  "measurement": { "recommendation": "ALLOW", "caller_policy": { "applied": { "amount_usd": 1.5, "max_per_tx_usd": 1, "min_l1_deliveries": 0 }, "verdict": "REFUSE", "reason_codes": ["price_above_ceiling"], "not_evaluated": ["min_subgraph_receipts"] } }
+}
+```
+
+`judge` and `pay` apply the same gates locally *before* asking the server (the SDK's ceiling check runs
+before `/decision` is fetched), so in their output the server's word shows up only where the two layers
+disagree; the `decision_record.decision.caller_policy` they store carries it verbatim either way.
 
 ## `pay_if_trusted` with The Graph evidence
 

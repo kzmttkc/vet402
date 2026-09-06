@@ -24,7 +24,7 @@ export type VocabularyTerm = {
   /** 公開面・API・台帳で使っている語そのもの。 */
   term: string;
   /** 語が属する層（見出しのグルーピングにも使う）。 */
-  group: "levels" | "l0" | "l1" | "l2" | "catalog" | "evidence";
+  group: "levels" | "l0" | "l1" | "l2" | "catalog" | "evidence" | "policy";
   /** 1 文の直接回答から始まる定義。 */
   definition: string;
 };
@@ -192,6 +192,36 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     definition:
       "evidence.source=both means the caller asked payOrRefuse to read the vet402 ledger and The Graph subgraph before deciding, and to refuse if either could not be read. It is a request about which sources to consult, not a label a row can wear: a row from \"both\" would be two ledgers merged into one number.",
   },
+  // ------------------------------------------------------------------
+  // caller_policy（2026-09-07 / ETHOnline・WINDOW_PLAN §16.3）
+  // /decision が呼び手の policy を当てて返す語。SDK の PayRefuseReason と同じ語で、
+  // A/B では「ツールに無い語は Recipe があっても出ない」ことが実測された。語彙に
+  // 1 文の定義を置かないと、公開面が使う語が回答エンジンから引けない。
+  // ------------------------------------------------------------------
+  {
+    term: "price_above_ceiling",
+    group: "policy",
+    definition:
+      "price_above_ceiling means the amount the 402 asks (amount_usd) is above the ceiling the caller named (max_per_tx_usd, default 1 USD), so the caller's own policy refuses before anything else is looked at. It is the first gate in the payOrRefuse SDK and in the caller_policy block of /decision, and it says nothing about the seller.",
+  },
+  {
+    term: "insufficient_delivery_evidence",
+    group: "policy",
+    definition:
+      "insufficient_delivery_evidence means vet402's own ledger of delivered L1 purchases for this resource (facts.l1.n_delivered) is below the floor the caller named (min_l1_deliveries). It is a shortfall against the caller's floor, not a verdict on the seller; the same word is used by the payOrRefuse SDK and by the caller_policy block of /decision.",
+  },
+  {
+    term: "payee_recommendation_block",
+    group: "policy",
+    definition:
+      "payee_recommendation_block means vet402's recommendation for the resource or payee is BLOCK, and a caller's policy never lifts that: BLOCK is an operator-level refusal (a failing probe, a schema mismatch, wash-dominated volume, a global block list), not an opinion a floor can outweigh. WARN is an opinion and can be waived by a declared floor; BLOCK cannot.",
+  },
+  {
+    term: "evidence_unavailable",
+    group: "policy",
+    definition:
+      "evidence_unavailable means the decision could not be read or was marked degraded, so there is no measurement to apply a policy to, and the gate fails closed. Not measuring is not the same as not finding a problem; a caller's floor does not fill in a measurement that was never made.",
+  },
   {
     term: "settle_drop",
     group: "catalog",
@@ -207,6 +237,7 @@ export const VOCABULARY_GROUP_LABELS: Record<VocabularyTerm["group"], string> = 
   l2: "L2 schema results",
   catalog: "Catalog events",
   evidence: "Evidence sources",
+  policy: "Caller policy words",
 };
 
 /**
@@ -221,7 +252,7 @@ export function vocabularyJsonLd(siteUrl: string) {
     "@id": `${setUrl}#vocabulary`,
     name: "vet402 observatory vocabulary",
     description:
-      "The words vet402 publishes measurements in: the verification levels L0–L3, the L0 verdicts, the L1 settlement statuses, the L2 schema results, and the catalog events.",
+      "The words vet402 publishes measurements in: the verification levels L0–L3, the L0 verdicts, the L1 settlement statuses, the L2 schema results, the catalog events, the evidence sources, and the caller-policy words a decision answers in.",
     url: setUrl,
     inLanguage: "en",
     hasDefinedTerm: OBSERVATORY_VOCABULARY.map((t) => ({

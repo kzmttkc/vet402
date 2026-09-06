@@ -1167,6 +1167,19 @@ paths:
         `Idempotency-Key` and customer allow/block lists apply only to keyed
         calls. A present-but-invalid key is still 401, never anonymous.
         `DECISION_KEYLESS_READ=0` restores key-only access.
+        Caller policy (2026-09-07, role=payer only): send `amount_usd` (what the
+        402 asks), `max_per_tx_usd` (your ceiling, default 1) and/or
+        `min_l1_deliveries` (floor on vet402's delivered L1 purchases) and the
+        same document gains `caller_policy` — the caller's own rule applied
+        server-side, in the SDK's words (`price_above_ceiling`,
+        `insufficient_delivery_evidence`, `payee_recommendation_block`,
+        `evidence_unavailable`). It sits beside `recommendation` and never
+        rewrites it; BLOCK and degraded are never lifted by a floor; without
+        these queries the body is byte-identical to before. A bad value is 400
+        with the SDK's own word (`invalid_amount_usd`, `invalid_policy`,
+        `invalid_evidence_policy`); a policy query with role=payee is 400
+        `invalid_policy`. An unknown resource stays 404 (the SDK judges those
+        from the 402's payTo and the payee score).
       security:
         - {}
         - bearerAuth: []
@@ -1191,6 +1204,21 @@ paths:
           name: allow_without_l1
           required: false
           schema: { type: boolean, default: false }
+        - in: query
+          name: amount_usd
+          required: false
+          schema: { type: number, minimum: 0 }
+          description: What the 402 asks, in USD. Compared with `max_per_tx_usd` (role=payer only). Any of the three policy queries adds `caller_policy` to the response.
+        - in: query
+          name: max_per_tx_usd
+          required: false
+          schema: { type: number, exclusiveMinimum: 0, default: 1 }
+          description: The caller's per-payment ceiling in USD. Default equals the SDK's DEFAULT_MAX_PER_TX_USD.
+        - in: query
+          name: min_l1_deliveries
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+          description: Floor on `facts.l1.n_delivered` (vet402's own delivered L1 purchases). The subgraph floor is not evaluated here — see `caller_policy.not_evaluated`.
         - in: header
           name: Idempotency-Key
           required: false
@@ -2881,6 +2909,12 @@ components:
         policy:
           type: string
           enum: [allow_only]
+        caller_policy:
+          $ref: "#/components/schemas/CallerPolicy"
+          description: >-
+            Present only when `amount_usd`, `max_per_tx_usd` or `min_l1_deliveries`
+            was sent (2026-09-07). The caller's own rule applied server-side, in
+            the SDK's words. Absent otherwise — the no-policy body is unchanged.
         rules_version:
           type: string
           description: Version of the decision function that produced this result.
@@ -2890,6 +2924,45 @@ components:
         scoredAt: { type: string, format: date-time }
         cacheExpiresAt: { type: string, format: date-time }
         disclaimer: { type: string }
+    CallerPolicy:
+      type: object
+      description: >-
+        The caller's policy, applied by the server to the decision it sits beside
+        (WINDOW_PLAN §16.3, 2026-09-07). Same order as the SDK's payOrRefuse:
+        ceiling first, then degraded, then BLOCK, then the L1 floor. `verdict`
+        REFUSE carries the first gate that failed, in the SDK's own word; ALLOW
+        carries none. It never rewrites `recommendation` — a WARN stays a WARN
+        next to a caller_policy ALLOW, and the reader combines the two. BLOCK and
+        degraded are never lifted by a floor.
+      required: [applied, verdict, reason_codes, not_evaluated]
+      properties:
+        applied:
+          type: object
+          description: What was applied. `amount_usd` is null when the caller did not name it (then the ceiling is not evaluated).
+          required: [amount_usd, max_per_tx_usd, min_l1_deliveries]
+          properties:
+            amount_usd: { type: number, nullable: true }
+            max_per_tx_usd: { type: number }
+            min_l1_deliveries: { type: integer }
+        verdict:
+          type: string
+          enum: [ALLOW, REFUSE]
+        reason_codes:
+          type: array
+          description: SDK vocabulary (packages/sdk PayRefuseReason), unchanged. Empty on ALLOW.
+          items:
+            type: string
+            enum: [price_above_ceiling, evidence_unavailable, payee_recommendation_block, insufficient_delivery_evidence]
+        not_evaluated:
+          type: array
+          description: >-
+            What the server did not check. `min_subgraph_receipts` is always
+            listed — The Graph's subgraph is read only with the caller's own
+            Gateway key, by the SDK / pay_if_trusted. `max_per_tx_usd` is listed
+            when `amount_usd` was not sent.
+          items:
+            type: string
+            enum: [max_per_tx_usd, min_subgraph_receipts]
     PayeeScoreResult:
       type: object
       required:
@@ -3808,6 +3881,10 @@ components:
             - invalid_caller_dialect
             - payer_required
             - decision_unavailable
+            # caller policy queries (2026-09-07): the SDK's own caller-error words
+            - invalid_amount_usd
+            - invalid_policy
+            - invalid_evidence_policy
             # --- §9.1 /census/summary ---
             - invalid_window
             - invalid_chain

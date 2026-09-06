@@ -4,7 +4,8 @@ import { publicRateLimit } from "@/lib/api/public-route";
 import { isDecisionKeylessReadEnabled } from "@/lib/config/env";
 import { getIdempotentResponse, idempotencyKeyHash, saveIdempotentResponse } from "@/lib/api/idempotency";
 import { lookupManualList } from "@/lib/db/customer-lists";
-import { decide } from "@/lib/decision/decide";
+import { decide, type DecisionResult } from "@/lib/decision/decide";
+import { evaluateCallerPolicy, parseCallerPolicy, type CallerPolicyInput } from "@/lib/decision/caller-policy";
 import { SHA256_HEX_RE, parsePartyId, payeeId as toPartyId } from "@/lib/ids/canonical";
 import { getResource } from "@/lib/resolve/lookup";
 import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
@@ -26,6 +27,14 @@ import { logServerError } from "@/lib/util/log";
 // 鍵を打ち間違えた顧客の WL/BL（§13 私的ポリシー）が黙って外れた答えを受け取る。
 // 鍵なしでは Idempotency-Key を扱わない（月次単位の二重消費という守る対象が無い）。
 // DECISION_KEYLESS_READ=0 で従来の 401 に戻す。
+// 呼び手の policy（2026-09-07・WINDOW_PLAN §16.3）: `amount_usd` / `max_per_tx_usd` / `min_l1_deliveries`
+// を受けると、判定と同じ文書に `caller_policy` を足し、SDK と同じ語（`price_above_ceiling` 等）で
+// 答える。§16.3 の A/B で「ツールが返さない語は Recipe があっても出ない」ことが実測されたので、
+// 語を製品側で返す。判定（`recommendation`）は書き換えない。クエリが無ければ何も足さない。
+// role=payee には当てない（価格と売り手の床は role=payer の問い。SDK も payer しか引かない）。
+// Idempotency-Key の材料にも policy を含める——同じキーで違う policy を送った再送に、
+// 別の policy で保存した応答を返さない。保存するのは判定本体だけで、policy は取り出すたびに当てる
+// （純関数なので同じ材料には同じ答えが出る）。
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
@@ -107,15 +116,37 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
   }
   const allowWithoutL1 = params.get("allow_without_l1") === "true";
+  const parsedPolicy = parseCallerPolicy(params);
+  if (!parsedPolicy.ok) {
+    refund(caller);
+    return NextResponse.json({ error: parsedPolicy.error }, { status: 400 });
+  }
+  const callerPolicy: CallerPolicyInput | null = parsedPolicy.input;
+  if (callerPolicy && roleRaw !== "payer") {
+    refund(caller);
+    return NextResponse.json({ error: "invalid_policy" }, { status: 400 });
+  }
+  /** policy を頼まれたときだけ足す。頼まれていなければ判定本体をそのまま返す（キーも足さない）。 */
+  const withCallerPolicy = (result: DecisionResult): DecisionResult =>
+    callerPolicy ? { ...result, caller_policy: evaluateCallerPolicy(result, callerPolicy) } : result;
 
   const idemKey = request.headers.get("idempotency-key");
   const idemHash =
-    idemKey && apiKeyId ? idempotencyKeyHash([apiKeyId, resourceId, roleRaw, payerId ?? "-", idemKey.slice(0, 128)]) : null;
+    idemKey && apiKeyId
+      ? idempotencyKeyHash([
+          apiKeyId,
+          resourceId,
+          roleRaw,
+          payerId ?? "-",
+          callerPolicy ? JSON.stringify(callerPolicy) : "-",
+          idemKey.slice(0, 128),
+        ])
+      : null;
   if (idemHash) {
     const saved = await getIdempotentResponse(idemHash);
     if (saved !== null) {
       refund(caller);
-      const res = finish(caller, NextResponse.json(saved));
+      const res = finish(caller, NextResponse.json(withCallerPolicy(saved as DecisionResult)));
       res.headers.set("Idempotent-Replay", "true");
       return res;
     }
@@ -144,7 +175,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     // 壁時計（0.44–0.77s）では往復が混ざるので、計算時間を Server-Timing で返す。
     // 成功応答だけ保存する（404/503 は再送で再計算してよい——直った可能性がある）。
     if (idemHash) await saveIdempotentResponse(idemHash, result, IDEMPOTENCY_TTL_MS);
-    const res = finish(caller, NextResponse.json(result));
+    const res = finish(caller, NextResponse.json(withCallerPolicy(result)));
     res.headers.set("Server-Timing", `decision;dur=${(performance.now() - t0).toFixed(1)}`);
     return res;
   } catch (error) {

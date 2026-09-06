@@ -169,3 +169,46 @@ test(".env.example がコードの読む環境変数を（値なしでも）全�
   const missing = [...vars].filter((v) => !PLATFORM_VARS.has(v) && !documented.has(v)).sort();
   assert.deepEqual(missing, [], ".env.example に無い変数（`# NAME=` の形で 1 行説明つきで足す）");
 });
+
+
+// ------------------------------------------------------------------
+// 呼び手の policy（ETHOnline 2026 / WINDOW_PLAN §16.3・2026-09-07）
+// ------------------------------------------------------------------
+// §16.3 の実 A/B: 上限超え（F4）の正解 `price_above_ceiling` は SDK の呼び手側 policy の語で、
+// **どのツールも返さなかった**。「ツールに無い語は Recipe があっても出ない」。製品側で閉じた以上、
+// 4 面（openapi・docs/api・llms.txt・MCP）と SKILL.md が同じクエリ名と同じ語を持っていなければ、
+// 生成クライアント（Bazantic のゲートウェイは openapi から作られる）はこの語に到達できない。
+const POLICY_QUERIES = ["amount_usd", "max_per_tx_usd", "min_l1_deliveries"];
+const POLICY_WORDS = ["price_above_ceiling", "insufficient_delivery_evidence", "payee_recommendation_block", "evidence_unavailable"];
+
+test("openapi の /decision は policy のクエリ 3 つと CallerPolicy スキーマを持ち、語は SDK と同じ", () => {
+  const spec = read("docs/openapi.yaml");
+  const route = spec.slice(spec.indexOf("  /api/v1/resources/{resourceId}/decision:"), spec.indexOf("  /api/v1/census/summary:"));
+  for (const q of POLICY_QUERIES) assert.ok(new RegExp(`name: ${q}\\b`).test(route), `openapi の /decision に query ${q} が無い`);
+  assert.ok(/CallerPolicy:\n\s+type: object/.test(spec), "components.schemas.CallerPolicy が無い");
+  const schema = spec.slice(spec.indexOf("    CallerPolicy:"));
+  for (const w of POLICY_WORDS) assert.ok(schema.includes(w), `CallerPolicy の語に ${w} が無い`);
+  // SDK の PayRefuseReason に無い語を openapi が発明していない
+  const sdk = read("packages/sdk/src/pay-or-refuse.ts");
+  const enumBlock = /reason_codes:[\s\S]*?enum: \[([^\]]+)\]/.exec(schema);
+  assert.ok(enumBlock, "CallerPolicy.reason_codes.items.enum が無い");
+  for (const w of enumBlock[1].split(",").map((x) => x.trim())) {
+    assert.ok(sdk.includes(`"${w}"`), `openapi の policy 語 ${w} は SDK の PayRefuseReason に無い（新語を作らない）`);
+  }
+});
+
+for (const doc of ["src/app/docs/api/page.tsx", "public/llms.txt", "src/app/llms-full.txt/route.ts", "SKILL.md"]) {
+  test(`${doc} が /decision の policy クエリと caller_policy と price_above_ceiling を説明している`, () => {
+    const body = read(doc);
+    assert.ok(body.includes("caller_policy"), `${doc} に caller_policy が無い`);
+    assert.ok(body.includes("price_above_ceiling"), `${doc} に price_above_ceiling が無い`);
+    for (const q of POLICY_QUERIES) assert.ok(body.includes(q), `${doc} に ${q} が無い`);
+  });
+}
+
+test("MCP README の check_resource_decision 行が policy の入力に触れている", () => {
+  const readme = read("packages/mcp-server/README.md");
+  const row = readme.split("\n").find((l) => l.startsWith("| `check_resource_decision`"));
+  assert.ok(row, "check_resource_decision の行が無い");
+  assert.ok(row.includes("amountUsd") && row.includes("caller_policy"), "policy の入力と caller_policy に触れていない");
+});
