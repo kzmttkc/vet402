@@ -10,10 +10,15 @@
  *
  * 一度出た鍵は失効させるしかない。だから「出さない」ではなく「出せない」側に寄せて、
  * 出力は必ず {@link ./emit.ts} の1本を通す。
+ *
+ * 2の「経路の形で伏せる」は SDK の `redactGraphKey` を使う（2026-09-06）。SDK 側が
+ * `readSubgraphReceipts` のエラー経路で同じ伏せ方を必要とし、同じロジックを2箇所に
+ * 置かないためにそちらへ寄せた。プレースホルダも SDK の定数を再公開する。
  */
+import { redactGraphKey, GRAPH_KEY_PLACEHOLDER } from "../../../packages/sdk/dist/index.js";
 
-/** URL のパスに載った鍵の置き換え先。 */
-export const GRAPH_KEY_PLACEHOLDER = "<KEY>";
+/** URL のパスに載った鍵の置き換え先（SDK と同じ文字列）。 */
+export { GRAPH_KEY_PLACEHOLDER };
 /** 秘密として扱う最短の長さ。`2` のような短い値を消すと出力の方が壊れる。 */
 export const MIN_SECRET_LENGTH = 12;
 
@@ -46,9 +51,6 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Gateway の鍵付き経路。`x402` は公開の実在経路なので除外する。 */
-const GATEWAY_KEY_PATH = /(gateway\.thegraph\.com\/api\/)(?!x402\/)([^/\s]+)(\/subgraphs\/)/gi;
-
 /**
  * 伏せ関数を作る。**入力を1回だけ走査して返す**——呼び手が忘れても効くように、
  * 出力側（emit）でこの関数を必ず通す。
@@ -58,7 +60,8 @@ export function makeRedactor(secrets: string[]): (text: string) => string {
   return (text: string): string => {
     let out = String(text);
     for (const pattern of patterns) out = out.replace(pattern, "<REDACTED>");
-    out = out.replace(GATEWAY_KEY_PATH, `$1${GRAPH_KEY_PLACEHOLDER}$3`);
+    // Gateway の鍵付き経路（`x402` は除外）と `/api/<32桁hex>/` の形。SDK と同じ1本。
+    out = redactGraphKey(out);
     return out;
   };
 }

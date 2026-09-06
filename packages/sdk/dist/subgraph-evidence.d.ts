@@ -76,8 +76,28 @@ export type ReadSubgraphReceiptsInput = {
     subgraphId?: string;
     timeoutMs?: number;
 };
+/** 鍵の置き換え先。demo の `redact.ts` と同じ文字列（そちらはこの定数を re-export する）。 */
+export declare const GRAPH_KEY_PLACEHOLDER = "<KEY>";
+/**
+ * The Graph の API キーを文字列から伏せる。
+ *
+ *   1. `apiKey` が渡されていれば、その値の全出現を（大小文字を問わず）伏せる
+ *   2. 渡されていなくても、Gateway の鍵付き経路と `/api/<32桁hex>/` の形は伏せる
+ *      ——呼び手の fetch が自前で鍵をパスに足しているかもしれない
+ *
+ * 2026-09-06: `readSubgraphReceipts` は成功経路の `publicUrl` から鍵を外していたが、
+ * **エラー経路が空いていた**。呼び手の fetch が投げる例外メッセージ（undici は
+ * `request to https://…/api/<KEY>/… failed` と言う）と The Graph 側の GraphQL エラー本文は
+ * 我々の管理外の文字列で、どちらもそのまま `error` に連結していた。
+ * 分岐ごとに伏せるのではなく、返す口を1つにしてそこで通す（下の `readSubgraphReceipts`）。
+ */
+export declare function redactGraphKey(text: string, apiKey?: string): string;
 /**
  * 受領件数を1回だけ引く。**再試行しない**（会期スコープ外・やり残しとして記録）。
  * 返り値は「読めた」か「読めなかった」の2択で、**その中間を作らない**。
+ *
+ * `{ ok: false }` を返す口は**ここ1つ**。本体（`readSubgraphReceiptsUnredacted`）が
+ * どの分岐で落ちても、`error` は必ず {@link redactGraphKey} を通ってから外へ出る。
+ * 分岐を足しても抜けない構造にするための分割であって、本体を直接 export しない。
  */
 export declare function readSubgraphReceipts(input: ReadSubgraphReceiptsInput): Promise<SubgraphReadResult>;

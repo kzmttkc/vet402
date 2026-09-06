@@ -55,11 +55,56 @@ function timeoutSignal(ms) {
     const timeout = AbortSignal.timeout;
     return typeof timeout === "function" ? timeout(ms) : undefined;
 }
+/** 鍵の置き換え先。demo の `redact.ts` と同じ文字列（そちらはこの定数を re-export する）。 */
+export const GRAPH_KEY_PLACEHOLDER = "<KEY>";
+/** これより短い値を鍵として消すと、出力の方が壊れる（`2` を消す等）。 */
+const MIN_GRAPH_KEY_LENGTH = 12;
+/** Gateway の鍵付き経路。`x402` は公開の実在経路なので除外する。 */
+const GATEWAY_KEY_PATH = /(gateway\.thegraph\.com\/api\/)(?!x402\/)([^/\s]+)(\/subgraphs\/)/gi;
+/** ホストが何であれ、`/api/<32桁hex>/` は Graph Gateway の鍵の形。 */
+const ANY_HOST_KEY_PATH = /(\/api\/)[0-9a-f]{32}(\/)/gi;
+function escapeRegExp(text) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+/**
+ * The Graph の API キーを文字列から伏せる。
+ *
+ *   1. `apiKey` が渡されていれば、その値の全出現を（大小文字を問わず）伏せる
+ *   2. 渡されていなくても、Gateway の鍵付き経路と `/api/<32桁hex>/` の形は伏せる
+ *      ——呼び手の fetch が自前で鍵をパスに足しているかもしれない
+ *
+ * 2026-09-06: `readSubgraphReceipts` は成功経路の `publicUrl` から鍵を外していたが、
+ * **エラー経路が空いていた**。呼び手の fetch が投げる例外メッセージ（undici は
+ * `request to https://…/api/<KEY>/… failed` と言う）と The Graph 側の GraphQL エラー本文は
+ * 我々の管理外の文字列で、どちらもそのまま `error` に連結していた。
+ * 分岐ごとに伏せるのではなく、返す口を1つにしてそこで通す（下の `readSubgraphReceipts`）。
+ */
+export function redactGraphKey(text, apiKey) {
+    let out = String(text);
+    if (typeof apiKey === "string") {
+        const key = apiKey.trim();
+        if (key.length >= MIN_GRAPH_KEY_LENGTH)
+            out = out.replace(new RegExp(escapeRegExp(key), "gi"), GRAPH_KEY_PLACEHOLDER);
+    }
+    out = out.replace(GATEWAY_KEY_PATH, `$1${GRAPH_KEY_PLACEHOLDER}$3`);
+    out = out.replace(ANY_HOST_KEY_PATH, `$1${GRAPH_KEY_PLACEHOLDER}$2`);
+    return out;
+}
 /**
  * 受領件数を1回だけ引く。**再試行しない**（会期スコープ外・やり残しとして記録）。
  * 返り値は「読めた」か「読めなかった」の2択で、**その中間を作らない**。
+ *
+ * `{ ok: false }` を返す口は**ここ1つ**。本体（`readSubgraphReceiptsUnredacted`）が
+ * どの分岐で落ちても、`error` は必ず {@link redactGraphKey} を通ってから外へ出る。
+ * 分岐を足しても抜けない構造にするための分割であって、本体を直接 export しない。
  */
 export async function readSubgraphReceipts(input) {
+    const result = await readSubgraphReceiptsUnredacted(input);
+    if (result.ok)
+        return result;
+    return { ok: false, error: redactGraphKey(result.error, input.apiKey) };
+}
+async function readSubgraphReceiptsUnredacted(input) {
     const subgraphId = input.subgraphId ?? X402_BASE_SUBGRAPH_ID;
     // 呼び出し側の誤りは呼び出し側で落とす。2026-09-06 まで `String(undefined)` が
     // そのまま Gateway へ出て `Failed to decode Bytes value: Odd number of digits` という

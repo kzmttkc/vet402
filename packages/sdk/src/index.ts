@@ -44,6 +44,8 @@ export {
  */
 export {
   readSubgraphReceipts,
+  redactGraphKey,
+  GRAPH_KEY_PLACEHOLDER,
   X402_BASE_SUBGRAPH_ID,
   GRAPH_GATEWAY_ORIGIN,
   GRAPH_USER_AGENT,
