@@ -8,7 +8,11 @@ npm install @vet402/sdk
 ```
 
 Get a key at [vet402.com/dashboard/keys](https://vet402.com/dashboard/keys),
-export it as `VOUCH_API_KEY`, and this runs as-is:
+export it as `VOUCH_API_KEY`, and this runs as-is. `apiKey` is optional
+(2026-09-07): without it the client sends no `Authorization` header and
+`getDecision` still answers, key-less at 10 requests/min per IP (429
+`rate_limited` beyond that). Scores, webhooks, watchlist and attest still
+need a key — the server answers 401 `missing_api_key`, passed through as-is.
 
 ```typescript
 import { createVouchClient } from "@vet402/sdk";

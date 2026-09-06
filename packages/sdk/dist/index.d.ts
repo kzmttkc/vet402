@@ -226,7 +226,17 @@ export type VouchClientOptions = {
      * Optional — defaults to the hosted production API, {@link DEFAULT_API_URL}.
      */
     apiUrl?: string;
-    apiKey: string;
+    /**
+     * API key from https://vet402.com/dashboard/keys. Optional since 2026-09-07:
+     * `GET /resources/{id}/decision` answers without one (10 requests/min per IP,
+     * 429 `rate_limited` beyond that), so a judge holding only a Graph key can
+     * read decisions. Everything else (scores, webhooks, watchlist, attest…) still
+     * needs a key — the SERVER says so with its own 401 `missing_api_key`; the SDK
+     * never pre-empts it. Unset or blank: no Authorization header is sent at all
+     * (never `Bearer undefined`, which the server would reject as invalid_api_key
+     * and which reads as a fault in the caller's key).
+     */
+    apiKey?: string;
     fetch?: typeof fetch;
     /**
      * Per-request timeout in milliseconds. Default

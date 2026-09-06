@@ -59,12 +59,63 @@ test("a blank apiUrl fails with a message that names the option", () => {
   });
 });
 
-test("a missing apiKey fails with a message that names the option", () => {
-  assert.throws(() => createVouchClient({}), (err) => {
+// 2026-09-07 (ETHOnline): the API answers `/decision` key-less (10/min per IP,
+// commit 3738890), so a judge with only a Graph key must be able to walk
+// SKILL.md. `apiKey` is optional. Both directions are pinned: without a key
+// NO Authorization header goes on the wire (not `Bearer undefined`, which the
+// server would reject as invalid_api_key and which would look like a bug in
+// the judge's key); with a key it is the bearer token, unchanged.
+test("no apiKey: the request carries no Authorization header at all", async () => {
+  const { calls, fetchFn } = captureFetch();
+  const vouch = createVouchClient({ fetch: fetchFn });
+  await vouch.getWalletScore(WALLET);
+  const headers = calls[0].init.headers;
+  assert.equal("Authorization" in headers, false, `Authorization leaked: ${JSON.stringify(headers)}`);
+  assert.equal(JSON.stringify(headers).includes("undefined"), false, JSON.stringify(headers));
+});
+
+test("an empty apiKey is treated as absent, not sent as `Bearer `", async () => {
+  const { calls, fetchFn } = captureFetch();
+  const vouch = createVouchClient({ apiKey: "   ", fetch: fetchFn });
+  await vouch.getWalletScore(WALLET);
+  assert.equal("Authorization" in calls[0].init.headers, false);
+});
+
+test("with apiKey: the bearer token is what goes on the wire", async () => {
+  const { calls, fetchFn } = captureFetch();
+  const vouch = createVouchClient({ apiKey: "vouch_live_test", fetch: fetchFn });
+  await vouch.getWalletScore(WALLET);
+  assert.equal(calls[0].init.headers.Authorization, "Bearer vouch_live_test");
+});
+
+test("a non-string apiKey still fails with a message that names the option", () => {
+  assert.throws(() => createVouchClient({ apiKey: 123 }), (err) => {
     assert.match(err.message, /invalid_api_key/);
     assert.match(err.message, /apiKey/);
     return true;
   });
+});
+
+test("key-less and key-requiring: the server's 401 is passed through as the server's own word", async () => {
+  // The SDK does not pre-empt the server. Operations that need a key
+  // (webhooks, watchlist, attest…) fail with the server's `missing_api_key`,
+  // which the caller can read; the SDK never invents a refusal of its own.
+  const { fetchFn } = captureFetch(
+    new Response(JSON.stringify({ error: "missing_api_key" }), {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  const vouch = createVouchClient({ fetch: fetchFn });
+  await assert.rejects(
+    () => vouch.getWalletScore(WALLET),
+    (err) => {
+      assert.ok(err instanceof VouchApiError);
+      assert.equal(err.code, "missing_api_key");
+      assert.equal(err.status, 401);
+      return true;
+    },
+  );
 });
 
 test("a non-2xx answer throws VouchApiError carrying code and status", async () => {

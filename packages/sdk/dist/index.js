@@ -92,8 +92,8 @@ export class VouchClient {
             throw new Error("invalid_api_url: apiUrl must be a non-empty URL string " +
                 `(e.g. "${DEFAULT_API_URL}") — omit it to use the hosted API`);
         }
-        if (typeof options.apiKey !== "string" || options.apiKey.trim() === "") {
-            throw new Error("invalid_api_key: apiKey is required — create one at https://vet402.com/dashboard");
+        if (options.apiKey !== undefined && typeof options.apiKey !== "string") {
+            throw new Error("invalid_api_key: apiKey must be a string when given — create one at https://vet402.com/dashboard/keys, or omit it to read /decision key-less (10/min per IP)");
         }
         const timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
         if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
@@ -103,7 +103,8 @@ export class VouchClient {
                 `milliseconds (default ${DEFAULT_REQUEST_TIMEOUT_MS})`);
         }
         this.apiUrl = apiUrl.replace(/\/$/, "");
-        this.apiKey = options.apiKey;
+        // Blank counts as absent: `Bearer ` (empty) is not a credential either.
+        this.apiKey = options.apiKey !== undefined && options.apiKey.trim() !== "" ? options.apiKey : undefined;
         this.fetchFn = options.fetch ?? fetch;
         this.timeoutMs = timeoutMs;
     }
@@ -222,7 +223,10 @@ export class VouchClient {
             ...init,
             signal: init?.signal ?? AbortSignal.timeout(this.timeoutMs),
             headers: {
-                Authorization: `Bearer ${this.apiKey}`,
+                // No key → no header. Key-less /decision reads are a server feature
+                // (2026-09-07); a key-requiring route answers 401 missing_api_key,
+                // which is passed through below as the server's own word.
+                ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
                 ...(init?.body ? { "Content-Type": "application/json" } : {}),
                 ...init?.headers,
             },

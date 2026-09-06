@@ -253,7 +253,17 @@ export type VouchClientOptions = {
    * Optional — defaults to the hosted production API, {@link DEFAULT_API_URL}.
    */
   apiUrl?: string;
-  apiKey: string;
+  /**
+   * API key from https://vet402.com/dashboard/keys. Optional since 2026-09-07:
+   * `GET /resources/{id}/decision` answers without one (10 requests/min per IP,
+   * 429 `rate_limited` beyond that), so a judge holding only a Graph key can
+   * read decisions. Everything else (scores, webhooks, watchlist, attest…) still
+   * needs a key — the SERVER says so with its own 401 `missing_api_key`; the SDK
+   * never pre-empts it. Unset or blank: no Authorization header is sent at all
+   * (never `Bearer undefined`, which the server would reject as invalid_api_key
+   * and which reads as a fault in the caller's key).
+   */
+  apiKey?: string;
   fetch?: typeof fetch;
   /**
    * Per-request timeout in milliseconds. Default
@@ -576,7 +586,7 @@ const AGENT_ID_RE = /^\d+$/;
 
 export class VouchClient {
   private readonly apiUrl: string;
-  private readonly apiKey: string;
+  private readonly apiKey: string | undefined;
   private readonly fetchFn: typeof fetch;
   private readonly timeoutMs: number;
 
@@ -588,9 +598,9 @@ export class VouchClient {
           `(e.g. "${DEFAULT_API_URL}") — omit it to use the hosted API`,
       );
     }
-    if (typeof options.apiKey !== "string" || options.apiKey.trim() === "") {
+    if (options.apiKey !== undefined && typeof options.apiKey !== "string") {
       throw new Error(
-        "invalid_api_key: apiKey is required — create one at https://vet402.com/dashboard",
+        "invalid_api_key: apiKey must be a string when given — create one at https://vet402.com/dashboard/keys, or omit it to read /decision key-less (10/min per IP)",
       );
     }
     const timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
@@ -603,7 +613,8 @@ export class VouchClient {
       );
     }
     this.apiUrl = apiUrl.replace(/\/$/, "");
-    this.apiKey = options.apiKey;
+    // Blank counts as absent: `Bearer ` (empty) is not a credential either.
+    this.apiKey = options.apiKey !== undefined && options.apiKey.trim() !== "" ? options.apiKey : undefined;
     this.fetchFn = options.fetch ?? fetch;
     this.timeoutMs = timeoutMs;
   }
@@ -730,7 +741,10 @@ export class VouchClient {
       ...init,
       signal: init?.signal ?? AbortSignal.timeout(this.timeoutMs),
       headers: {
-        Authorization: `Bearer ${this.apiKey}`,
+        // No key → no header. Key-less /decision reads are a server feature
+        // (2026-09-07); a key-requiring route answers 401 missing_api_key,
+        // which is passed through below as the server's own word.
+        ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
         ...init?.headers,
       },
