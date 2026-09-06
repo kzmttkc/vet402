@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { aggregate } from "../src/aggregate.mjs";
 import { runAbHarness } from "../src/harness.mjs";
 
-const resources = { gatewayUrl: "https://example.invalid", apiList: "GET /a — a", skillMd: "# SKILL\nbody" };
+const resources = { gatewayUrl: "https://example.invalid", apiList: "GET /a — a", recipe: "Recipe: x402-payee-verification\nbody" };
 
 async function runWith(runAgent) {
   return runAbHarness({ runAgent, resources });

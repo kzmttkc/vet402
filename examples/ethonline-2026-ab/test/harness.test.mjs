@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { runAbHarness } from "../src/harness.mjs";
 import { FIXTURES } from "../src/fixtures.mjs";
 
-const resources = { gatewayUrl: "https://example.invalid", apiList: "GET /a — a", skillMd: "# SKILL\nbody" };
+const resources = { gatewayUrl: "https://example.invalid", apiList: "GET /a — a", recipe: "Recipe: x402-payee-verification\nbody" };
 
 function agentThatAlwaysSays(text, { model = "test-model", temperature = 0 } = {}) {
   return async () => ({ text, model, temperature });

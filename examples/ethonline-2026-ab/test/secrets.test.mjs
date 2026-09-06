@@ -1,7 +1,7 @@
 // 厳守3「秘密を出力に出さない。混入しないことを固定するテストを書く」
 import test from "node:test";
 import assert from "node:assert/strict";
-import { findSecrets, assertNoSecrets, SECRET_ENV_NAMES } from "../src/secrets.mjs";
+import { findSecrets, assertNoSecrets, SECRET_ENV_NAMES, PUBLIC_HEX_ALLOWLIST } from "../src/secrets.mjs";
 
 test("見張る環境変数名に、鍵として実在する3種が入っている", () => {
   for (const n of ["GRAPH_API_KEY", "VOUCH_API_KEY", "ANTHROPIC_API_KEY"]) {
@@ -55,4 +55,54 @@ test("投げるメッセージに秘密の値そのものを載せない", () =>
     assert.equal(e.message.includes("vk_live_0123456789abcdef"), false);
     assert.ok(e.message.includes("VOUCH_API_KEY"));
   }
+});
+
+// ---- 2026-09-06: 「64桁hex は全部秘密」をやめる。ただし弱めない。 ----
+// 形だけでは txHash と秘密鍵を区別できない。区別できるのは**その値そのもの**なので、
+// **公開済みだと人が確かめて明示的に載せた値だけ**を許し、それ以外の 64桁hex は今まで通り止める。
+
+test("公開済みの決済 txHash は秘密ではない（許可リストに載っている値だけ）", () => {
+  for (const entry of PUBLIC_HEX_ALLOWLIST) {
+    assert.deepEqual(findSecrets(`txHash ${entry.value}`, {}), [], entry.value);
+  }
+});
+
+test("許可リストの各項目は『どこで公開されているか』を持つ（黙って値を増やせない）", () => {
+  assert.ok(PUBLIC_HEX_ALLOWLIST.length > 0);
+  for (const entry of PUBLIC_HEX_ALLOWLIST) {
+    assert.match(entry.value, /^0x[0-9a-fA-F]{64}$/);
+    assert.match(entry.provenance, /^https?:\/\//);
+    assert.ok(entry.why.length > 0);
+  }
+});
+
+test("許可リストに無い 64桁hex は今まで通り秘密として止める", () => {
+  const notListed = "0x" + "9f".repeat(32);
+  const hits = findSecrets(`key=${notListed}`, {});
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].name, "private-key-like");
+});
+
+test("txHash という語を添えても許可されない（文脈の偽装で素通りさせない）", () => {
+  const notListed = "0x" + "7c".repeat(32);
+  for (const framing of [
+    `txHash: ${notListed}`,
+    `transaction hash ${notListed}`,
+    `https://basescan.org/tx/${notListed}`,
+    `[\`0x7c7c…7c7c\`](https://basescan.org/tx/${notListed})`,
+  ]) {
+    assert.equal(findSecrets(framing, {}).length, 1, framing);
+  }
+});
+
+test("許可リストの値でも、実際の秘密環境変数と一致するなら止める（許可リストが穴にならない）", () => {
+  const entry = PUBLIC_HEX_ALLOWLIST[0];
+  const env = { DEMO_PAYER_PRIVATE_KEY: entry.value };
+  const hits = findSecrets(`x ${entry.value} y`, env);
+  assert.ok(hits.length >= 1, "環境変数の実値と一致したのに素通りした");
+  assert.ok(hits.some((h) => h.name === "DEMO_PAYER_PRIVATE_KEY"));
+});
+
+test("見張る環境変数名にデモ支払い鍵が入っている（examples/ethonline-2026-demo が実際に使う名前）", () => {
+  assert.ok(SECRET_ENV_NAMES.includes("DEMO_PAYER_PRIVATE_KEY"));
 });

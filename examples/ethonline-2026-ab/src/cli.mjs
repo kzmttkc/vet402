@@ -23,7 +23,7 @@ export const DEFAULT_OUT = join(HERE, "..", "results");
 const AGENTS = ["mock", "mock-flaky", "anthropic"];
 
 export function parseArgs(argv) {
-  const out = { agent: "mock", gateway: DEFAULT_GATEWAY_URL, out: DEFAULT_OUT, model: null, effort: "high" };
+  const out = { agent: "mock", gateway: DEFAULT_GATEWAY_URL, out: DEFAULT_OUT, model: null, effort: "high", mcp: null };
   for (let i = 0; i < argv.length; i += 1) {
     const [k, v] = [argv[i], argv[i + 1]];
     if (k === "--agent") { out.agent = v; i += 1; }
@@ -31,6 +31,8 @@ export function parseArgs(argv) {
     else if (k === "--out") { out.out = v; i += 1; }
     else if (k === "--model") { out.model = v; i += 1; }
     else if (k === "--effort") { out.effort = v; i += 1; }
+    // Bazantic Gateway の MCP の口。既定は Recipe の写し（recipe/*.json）の値。
+    else if (k === "--mcp") { out.mcp = v; i += 1; }
     else throw new Error(`unknown flag: ${k}`);
   }
   if (!AGENTS.includes(out.agent)) throw new Error(`unknown agent: ${out.agent} (expected ${AGENTS.join(" | ")})`);
@@ -38,21 +40,32 @@ export function parseArgs(argv) {
 }
 
 async function makeAgent(args) {
-  if (args.agent === "mock") return { runAgent: createMockAgent(), isMock: true };
-  if (args.agent === "mock-flaky") return { runAgent: createMockAgent({ flaky: true }), isMock: true };
+  // **モックは MCP を呼ばない。** 呼んだふりをしないよう `mcpUrl` は null のままにする。
+  if (args.agent === "mock") return { runAgent: createMockAgent(), isMock: true, mcpUrl: null };
+  if (args.agent === "mock-flaky") return { runAgent: createMockAgent({ flaky: true }), isMock: true, mcpUrl: null };
   const { createAnthropicAgent, DEFAULT_MODEL } = await import("./agents/anthropic.mjs");
-  return { runAgent: await createAnthropicAgent({ model: args.model ?? DEFAULT_MODEL, effort: args.effort }), isMock: false };
+  const { loadRecipe } = await import("./recipe.mjs");
+  const mcpUrl = args.mcp ?? (await loadRecipe()).source.mcpUrl;
+  return {
+    runAgent: await createAnthropicAgent({ model: args.model ?? DEFAULT_MODEL, effort: args.effort, mcpUrl }),
+    isMock: false,
+    mcpUrl,
+  };
 }
 
 export async function main(argv) {
   const args = parseArgs(argv);
   const resources = await loadResources({ repoRoot: REPO_ROOT, gatewayUrl: args.gateway });
-  const { runAgent, isMock } = await makeAgent(args);
+  const { runAgent, isMock, mcpUrl } = await makeAgent(args);
 
   const run = await runAbHarness({ runAgent, resources });
   run.meta.agentAdapter = args.agent;
   run.meta.isMock = isMock;
   run.meta.gatewayUrl = args.gateway;
+  // **Recipe の写しの出所をメタに焼き込む。** 審査員が bazantic.com の原本と突き合わせられるように。
+  run.meta.recipeSource = resources.recipeSource ?? null;
+  // **MCP を実際に経路へ入れたか。** null は「呼んでいない」であって「不明」ではない。
+  run.meta.mcpUrl = mcpUrl ?? null;
   if (isMock) run.meta.mockModel = MOCK_MODEL;
 
   const dir = await writeRun(run, { baseDir: args.out });

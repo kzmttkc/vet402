@@ -7,8 +7,13 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { loadRecipe, renderRecipe } from "./recipe.mjs";
 
-export const RECIPE_MARKER = "<<<RECIPE — SKILL.md (condition B only)>>>";
+/**
+ * 2026-09-06 訂正。**目印が `SKILL.md` を名乗っていた**のは、実装が実際に `SKILL.md` 全文を
+ * B へ入れていたからで、賞の要件（"Make the Recipe the only material difference"）を満たしていなかった。
+ */
+export const RECIPE_MARKER = "<<<RECIPE — Bazantic recipe (condition B only)>>>";
 export const RECIPE_END = "<<<END RECIPE>>>";
 
 /**
@@ -55,7 +60,7 @@ function targetBlock(fixture) {
 }
 
 /**
- * @param {{condition: "A"|"B", fixture: object, resources: {gatewayUrl: string, apiList: string, skillMd: string}}} args
+ * @param {{condition: "A"|"B", fixture: object, resources: {gatewayUrl: string, apiList: string, recipe: string}}} args
  */
 export function buildPrompt({ condition, fixture, resources }) {
   if (condition !== "A" && condition !== "B") {
@@ -63,7 +68,7 @@ export function buildPrompt({ condition, fixture, resources }) {
   }
   const recipe =
     condition === "B"
-      ? ["", RECIPE_MARKER, "", resources.skillMd.trim(), "", RECIPE_END, ""].join("\n")
+      ? ["", RECIPE_MARKER, "", resources.recipe.trim(), "", RECIPE_END, ""].join("\n")
       : "";
 
   return [
@@ -139,15 +144,21 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = join(HERE, "..", "..", "..");
 
 /**
- * A/B 共通の素材を読む。**リポの実ファイルから読む**（写しを置くと本物と食い違う）。
- * `docs/` と `SKILL.md` は読むだけで、書かない。
+ * A/B 共通の素材を読む。
+ *
+ * - **A / B 共通**: Gateway の URL と、素の API 一覧（`docs/openapi.yaml` から機械的に作る）
+ * - **B のみ**: **bazantic.com で作った Recipe の写し**（`recipe/*.json` → {@link renderRecipe}）
+ *
+ * **`SKILL.md` は読まない。** 我々が書いたドキュメントであって Bazantic の Recipe ではないので、
+ * B に入れると「Recipe が唯一の実質的な違い」を満たさない（§16・2026-09-06 訂正）。
+ * `docs/` と `recipe/` は読むだけで、書かない。
  */
 export async function loadResources({ repoRoot = REPO_ROOT, gatewayUrl = DEFAULT_GATEWAY_URL } = {}) {
-  const [openapi, skillMd] = await Promise.all([
+  const [openapi, recipe] = await Promise.all([
     readFile(join(repoRoot, "docs", "openapi.yaml"), "utf8"),
-    readFile(join(repoRoot, "SKILL.md"), "utf8"),
+    loadRecipe(),
   ]);
-  return { gatewayUrl, apiList: extractApiList(openapi), skillMd };
+  return { gatewayUrl, apiList: extractApiList(openapi), recipe: renderRecipe(recipe), recipeSource: recipe.source };
 }
 
 /**

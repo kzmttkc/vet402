@@ -128,12 +128,46 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/vet402test
 
+  # 2026-09-06. `examples/` は CI に一度も入っていなかった。root の `npm test` が走らせるのは
+  # tests/ + sdk + middleware + mcp-server だけで、examples の suite はどのジョブからも呼ばれない。
+  # そのせいで 09-05 20:04 の docs コミット（SKILL.md に決済の txHash を足した）が
+  # ETHOnline の A/B ハーネスを壊したのに、誰も気づかなかった——壊れていたのは提出物そのもので、
+  # 気づいたのは第三者監査だった。**走らせていないものは、緑ではなく未知である。**
+  #
+  # root の `npm ci` では examples の依存は入らない（このリポは workspaces ではなく、
+  # 各パッケージが独立した lock を持つ）ので、明示的に入れる。
+  # ethonline-2026-demo は依存ゼロ・lock 無しなので install しない（`npm ci` は lock を要求する）。
+  examples:
+    name: examples (ethonline-2026 ab + demo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: Install A/B harness deps
+        run: npm ci --prefix examples/ethonline-2026-ab
+      - name: A/B harness unit tests
+        run: npm test --prefix examples/ethonline-2026-ab
+      # 実 LLM も実 MCP も呼ばない。モックで20試行を通し、生ログを書き、
+      # 書いた生ログから集計を数え直して突き合わせるところまでを毎回走らせる
+      # （壊れ方が「テストは緑だが実走が落ちる」だったので、実走も関門に入れる）。
+      - name: A/B harness end-to-end (mock agent, no network, no LLM)
+        working-directory: examples/ethonline-2026-ab
+        run: node src/cli.mjs --agent mock --out "$RUNNER_TEMP/ab-results"
+      # 「テストが緑」は「テストが意味を持っている」を意味しない。わざと壊して赤くなるかを見る。
+      - name: A/B harness mutation check
+        run: node test-mutations.mjs
+        working-directory: examples/ethonline-2026-ab
+      - name: Demo CLI tests
+        run: npm test --prefix examples/ethonline-2026-demo
+
   # 2026-09-05 セキュリティ監査 S-5: main は無審査 push で本番へ出る。せめて「赤い main」は
   # 10 分以内に人へ届くようにする（uptime.yml と同じ手: issue は無料でメールが飛ぶ）。
   notify-red-main:
     name: red main -> issue
     if: failure() && github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: [test, build, python-sdk, db-tests]
+    needs: [test, build, python-sdk, db-tests, examples]
     runs-on: ubuntu-latest
     permissions:
       issues: write

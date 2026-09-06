@@ -15,12 +15,45 @@ node test-mutations.mjs        # わざと壊して、テストが赤くなる�
 
 | | 与えるもの |
 |---|---|
-| **A（Recipe なし）** | Bazantic Gateway の URL と、素の API 一覧（`docs/openapi.yaml` の 56 操作） |
-| **B（Recipe あり）** | 同じもの ＋ `SKILL.md` 全文 |
+| **A（Recipe なし）** | Bazantic Gateway の URL、素の API 一覧（`docs/openapi.yaml` の 56 操作）、**Gateway の MCP ツール** |
+| **B（Recipe あり）** | 同じもの ＋ **bazantic.com で作った Recipe**（`recipe/x402-payee-verification.json` の写し） |
 
-**同一モデル・同一プロンプト。違うのは Recipe の有無だけ。**
+**同一モデル・同一プロンプト・同一ツール。違うのは Recipe の有無だけ**（賞ページ原文:
+"Make the Recipe the only material difference between the tests."）。
 主張ではなく計器にしてある: B のプロンプトから Recipe ブロックを機械的に取り除くと、A と1文字も違わない
-（`stripRecipe()`・`test/prompt.test.mjs`）。
+（`stripRecipe()`・`test/prompt.test.mjs`）。ツール一覧は条件を見ずに1回だけ解決するので、
+条件で変わりようがない（`test/agents.test.mjs`「A と B に渡すツールは同一」）。
+
+### 条件 B は `SKILL.md` ではない（2026-09-06 訂正）
+
+**2026-09-06 まで、この実装は B に `SKILL.md` 全文を入れていた。** `SKILL.md` は我々が書いた
+ドキュメントであって Bazantic の Recipe ではないので、**賞の要件を満たしていなかった**
+（正典 `WINDOW_PLAN.md` §16 は同日に訂正済みで、コードだけが古かった）。
+
+**リポに置いてあるのは写しで、原本は bazantic.com にある。** だから写しは出所（`source`）を持ち、
+**写せていない項目は `null` のまま `notRetrieved` に並べる**——埋めると原本と食い違い、
+その食い違いが誰にも見えなくなる。写しとプロンプト本文の突合は `assertRecipeShape()` が両方向に検める
+（未取得なのに値がある／値があるのに未取得と言っている、のどちらでも投げる）。
+
+| Recipe | |
+|---|---|
+| slug | `x402-payee-verification-via-vet402-gateway` |
+| name | `X402 Payee Verification via vet402 Gateway` |
+| tools | `getResourceDecision` / `getPayeeScore` / `getObservatoryEndpointPurchases` |
+| MCP | `https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp` |
+| **未取得** | `description` / `prompt` 本文 / `inputs`（**要取得**。原本の画面から写す） |
+
+### MCP は経路に入っている
+
+**2026-09-06 まで、実 LLM アダプタは `messages.create` を1発叩くだけで、ツールもネットワークも
+与えていなかった。** Gateway の URL はプロンプトに文字列として載っていただけで、**MCP は経路の外**だった。
+賞の問いは "Show us it can be done **using Bazantic built MCP server and recipe**" なので、
+それでは中核を実演していない。
+
+いまは `src/mcp.mjs` が Streamable HTTP で `initialize` → `notifications/initialized` →
+`tools/list` / `tools/call` を話し、その定義を Anthropic の `tools` として **A にも B にも同じだけ**渡す。
+どのツールを何回呼んだかは生ログの `raw.toolCalls` に残る。
+**このリポは実 MCP を一度も呼んでいない**——`fetch` を差し替えて、送っている JSON-RPC そのものを固定してある。
 
 課題（A/B 共通・§16 の原文）:
 
@@ -45,7 +78,7 @@ node test-mutations.mjs        # わざと壊して、テストが赤くなる�
 | 秘密が出力に混ざる | 書く前に `assertNoSecrets`。1つでもあればファイルを作らない | M4 |
 | A/B のプロンプトが Recipe 以外でも違う | `stripRecipe(B) === A` を固定 | M7 |
 
-`node test-mutations.mjs` は7種の変異を順に当て、**赤くならない変異があれば失敗で終わる**。
+`node test-mutations.mjs` は16種の変異を順に当て、**赤くならない変異があれば失敗で終わる**。
 
 ## 出力
 
@@ -60,8 +93,10 @@ results/<YYYY-MM-DDTHHMMSSZ>/
 **§16 は生ログを `docs/ethonline-2026/ab/` に置くと書いている。** この作業ブランチは `docs/` を触らない
 取り決めなので `results/` に出している。**実 LLM で走らせたあと、依頼元が `docs/ethonline-2026/ab/` へ移すこと。**
 
-`results/` に今入っている2件は**モック**（`mock-scripted-v1`）の実行で、
+`results/` に入っているのは**モック**（`mock-scripted-v1`）の実行で、
 どのモデルの能力も表していない。`summary.md` の先頭にその断り書きが出る。
+**2026-09-05 の実行は消した**——条件 B に `SKILL.md` を入れていた頃の生ログで、いまの設計と食い違う。
+消した記録は git 履歴が持つ。
 
 ## 実 LLM で走らせるとき
 
@@ -73,7 +108,13 @@ LLM を呼ぶのは **`runAgent(prompt) => {text, model, temperature, raw}` 1関
 npm i @anthropic-ai/sdk          # このディレクトリで
 export ANTHROPIC_API_KEY=…       # または `ant auth login`
 node src/cli.mjs --agent anthropic --model claude-opus-5 --effort high
+# MCP の口は既定で recipe/*.json の source.mcpUrl。上書きするなら --mcp <url>
 ```
+
+**実行すると Bazantic Gateway の MCP を実際に叩く**（`tools/list` と、モデルが選んだ `tools/call`）。
+`run.json` の `meta.mcpUrl` と、各試行の `raw.toolCalls` / `raw.toolNames` に何が起きたかが残る。
+モックで走らせた実行は `meta.mcpUrl: null` になり、`summary.md` の先頭に
+「no MCP server was called in this run」と出る——**呼んだふりをしない。**
 
 **走らせる前に潰すもの**（`run.json` の `meta.fixtureReadiness.blockers` に機械可読で出る）:
 
@@ -98,6 +139,9 @@ node src/cli.mjs --agent anthropic --model claude-opus-5 --effort high
 | `src/grade.mjs` | §16 の採点（論理積） |
 | `src/aggregate.mjs` | 生ログからの集計。除く経路が無い |
 | `src/writer.mjs` | 出力と `verifyRunDir` |
-| `src/secrets.mjs` | 秘密の検出（値を探す。名前は秘密ではない） |
+| `src/recipe.mjs` | Bazantic の Recipe の写しを読む・検める・条件 B の本文に描く |
+| `recipe/x402-payee-verification.json` | **写し**（原本は bazantic.com）。出所と未取得項目つき |
+| `src/mcp.mjs` | Bazantic Gateway の MCP への薄い橋（`fetch` は差し替え可能） |
+| `src/secrets.mjs` | 秘密の検出（値を探す。名前は秘密ではない）。32バイト hex は**公開済みと確かめた値だけ**許可リストで通す |
 | `src/agents/mock.mjs` | 台本のスタブ。**プロンプトしか見ない**（正解表を import しない） |
 | `src/agents/anthropic.mjs` | 実 LLM アダプタ。**このリポでは一度も実行していない**（純粋部分だけテスト済み） |

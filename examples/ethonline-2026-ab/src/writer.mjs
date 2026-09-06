@@ -50,6 +50,13 @@ export function renderSummaryMarkdown(run, agg) {
     L.push("> The agent was a scripted stub used to exercise the harness. No LLM was called.");
     L.push("");
   }
+  if (run.meta.mcpUrl === null || run.meta.mcpUrl === undefined) {
+    L.push("> **no MCP server was called in this run** — the agent was given no tools.");
+    L.push("");
+  } else {
+    L.push(`> Bazantic MCP server in the path: \`${run.meta.mcpUrl}\` (same tools in both conditions).`);
+    L.push("");
+  }
   const readiness = run.meta.fixtureReadiness;
   if (readiness && readiness.liveReady === false) {
     L.push("> **PROVISIONAL / 暫定** — some fixture oracles are not first-hand measurements yet.");

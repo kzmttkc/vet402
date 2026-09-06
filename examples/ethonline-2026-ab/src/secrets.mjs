@@ -13,6 +13,7 @@ export const SECRET_ENV_NAMES = Object.freeze([
   "BAZANTIC_UPSTREAM_KEY",
   "OBSERVATORY_WALLET_PRIVATE_KEY",
   "VOUCH_PAYER_PRIVATE_KEY",
+  "DEMO_PAYER_PRIVATE_KEY",
   "ANTHROPIC_API_KEY",
   "OPENAI_API_KEY",
   "DATABASE_URL",
@@ -20,11 +21,34 @@ export const SECRET_ENV_NAMES = Object.freeze([
 
 /** 環境変数に入っていなくても、形で分かるもの。 */
 const SHAPE_PATTERNS = Object.freeze([
-  // EIP-3009 / EOA の秘密鍵（32バイト）。40桁のアドレスとは長さで区別する。
-  { name: "private-key-like", re: /\b0x[0-9a-fA-F]{64}\b/g },
   { name: "sk-key-like", re: /\bsk-[A-Za-z0-9_-]{20,}/g },
   { name: "bearer-token-like", re: /\b(?:Bearer|bearer)\s+[A-Za-z0-9._-]{24,}/g },
 ]);
+
+/**
+ * **32バイトの 16 進値**。EOA の秘密鍵も、決済の txHash も、まったく同じ形をしている。
+ * **形だけでは区別できない**——これは推論の限界であって、正規表現の書き方の問題ではない。
+ *
+ * 2026-09-06 まで、ここは `/\b0x[0-9a-fA-F]{64}\b/` で**無条件に秘密**としていた。
+ * その結果、`SKILL.md` に載っている**公開済みの決済 txHash**（basescan で誰でも読める）が
+ * `private-key-like` と判定され、生ログを1バイトも書けなくなった。
+ *
+ * では文脈（`txHash:` の直後・`basescan.org/tx/` の中）で許すか——**それはやらない。**
+ * 文脈は書き手が自由に付けられるので、`txHash: 0x<本物の秘密鍵>` が素通りする。
+ * **「秘密でないこと」を証明できるのは形でも文脈でもなく、その値そのもの**なので、
+ * **人が公開済みだと確かめて、出所つきでここに載せた値だけ**を許す。
+ * ここに無い 64桁hex は、今までどおり全部止める（既定は「秘密」のまま。緩んでいない）。
+ */
+export const PUBLIC_HEX_ALLOWLIST = Object.freeze([
+  Object.freeze({
+    value: "0xf12093fba9314b1d3a514e7b667969201be8d021a6f4d6bdeb8d6c7f2de469ad",
+    why: "The Graph の x402 エンドポイントへ実際に $0.01 を払った決済の txHash（WINDOW_PLAN §10.5・SKILL.md）。Base の公開台帳に載っており、秘密ではない。",
+    provenance: "https://basescan.org/tx/0xf12093fba9314b1d3a514e7b667969201be8d021a6f4d6bdeb8d6c7f2de469ad",
+  }),
+]);
+
+const ALLOWED_HEX = new Set(PUBLIC_HEX_ALLOWLIST.map((e) => e.value.toLowerCase()));
+const HEX32_RE = /\b0x[0-9a-fA-F]{64}\b/g;
 
 /** これ未満の長さの値は照合しない（"1" や "true" で全文が秘密になる誤検知を防ぐ）。 */
 const MIN_SECRET_LENGTH = 12;
@@ -45,6 +69,14 @@ export function findSecrets(text, env = process.env) {
   for (const { name, re } of SHAPE_PATTERNS) {
     re.lastIndex = 0;
     if (re.test(text)) hits.push({ name, kind: "shape" });
+  }
+  // 32バイト hex は**許可リストに載っていなければ秘密**。既定は「止める」側のまま。
+  HEX32_RE.lastIndex = 0;
+  for (const m of text.matchAll(HEX32_RE)) {
+    if (!ALLOWED_HEX.has(m[0].toLowerCase())) {
+      hits.push({ name: "private-key-like", kind: "shape" });
+      break;
+    }
   }
   return hits;
 }

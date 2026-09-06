@@ -1,10 +1,9 @@
-# A/B run — 2026-09-05T05:18:06.218Z
+# A/B run — 2026-09-06T00:17:33.913Z
 
 > **MOCK RUN — this is not a measurement of any model.**
 > The agent was a scripted stub used to exercise the harness. No LLM was called.
 
-> **PROVISIONAL / 暫定** — some fixture oracles are not first-hand measurements yet.
-> - F4: oracle が未測定（derived）——本番 API で取り直すまで採点は暫定。
+> **no MCP server was called in this run** — the agent was given no tools.
 
 
 - pre-registration: `docs/ethonline-2026/WINDOW_PLAN.md §16 (2026-09-05 09:05)`

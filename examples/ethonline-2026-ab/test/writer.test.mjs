@@ -9,7 +9,7 @@ import { writeRun, verifyRunDir } from "../src/writer.mjs";
 import { runAbHarness } from "../src/harness.mjs";
 import { aggregate } from "../src/aggregate.mjs";
 
-const resources = { gatewayUrl: "https://example.invalid", apiList: "GET /a — a", skillMd: "# SKILL\nbody" };
+const resources = { gatewayUrl: "https://example.invalid", apiList: "GET /a — a", recipe: "Recipe: x402-payee-verification\nbody" };
 const AT = new Date("2026-09-05T10:15:30Z");
 
 async function makeRun(text = '{"verdict":"refuse","reason_codes":[]}') {

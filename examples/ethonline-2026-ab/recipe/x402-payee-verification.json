@@ -1,0 +1,35 @@
+{
+  "$comment": "bazantic.com 上の Recipe の写し。原本は bazantic.com にあり、これはリポの中で条件 B が読むための複製である。写せていない項目は null のまま notRetrieved に列挙する——埋めると原本と食い違い、その食い違いが誰にも見えなくなる。",
+  "slug": "x402-payee-verification-via-vet402-gateway",
+  "name": "X402 Payee Verification via vet402 Gateway",
+  "description": null,
+  "prompt": null,
+  "inputs": null,
+  "tools": [
+    {
+      "name": "getResourceDecision",
+      "server": "vet402",
+      "$comment": "説明文と入力スキーマは Gateway の MCP `tools/list` が返す。ここに写していないのは、原本の Recipe 画面から読み取れた確定値がツール名だけだからである。実行時のエージェントは src/mcp.mjs 経由で本物の定義を受け取る。"
+    },
+    {
+      "name": "getPayeeScore",
+      "server": "vet402"
+    },
+    {
+      "name": "getObservatoryEndpointPurchases",
+      "server": "vet402"
+    }
+  ],
+  "notRetrieved": ["description", "prompt", "inputs"],
+  "source": {
+    "platform": "bazantic.com",
+    "account": "TakeshiTGAL",
+    "state": "draft",
+    "gatewayName": "vet402",
+    "gatewayUrl": "https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com",
+    "mcpUrl": "https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp",
+    "copiedAt": "2026-09-06",
+    "copiedFrom": "bazantic.com の Provider Dashboard 上の Recipe（draft）。slug / name / 呼ぶツール3本 / Gateway と MCP の口だけが確定値として渡された。description・prompt 本文・inputs はこの写しを作った時点で未取得。",
+    "canon": "docs/ethonline-2026/WINDOW_PLAN.md §16（2026-09-06 訂正: 条件 B は SKILL.md ではなく bazantic.com で作った Recipe）"
+  }
+}

@@ -1,13 +1,14 @@
 // §16「同一モデル・同一プロンプト・同一 temperature。違うのは Recipe の有無だけ」
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildPrompt, TASK, RECIPE_MARKER, stripRecipe, extractApiList } from "../src/prompt.mjs";
+import { buildPrompt, TASK, RECIPE_MARKER, stripRecipe, extractApiList, loadResources } from "../src/prompt.mjs";
 import { FIXTURES } from "../src/fixtures.mjs";
+import { loadRecipe, renderRecipe } from "../src/recipe.mjs";
 
 const resources = {
   gatewayUrl: "https://bazgateway.com/example",
   apiList: "GET /api/v1/x — summary\nGET /api/v1/y — summary",
-  skillMd: "# SKILL\nrecipe body\n",
+  recipe: "Recipe: x402-payee-verification-via-vet402-gateway\nrecipe body\n",
 };
 const f = FIXTURES[0];
 
@@ -21,15 +22,28 @@ test("A と B の差は Recipe ブロックだけ（それ以外は1文字も違
   assert.equal(stripRecipe(a), a);
 });
 
-test("A に Recipe（SKILL.md）は1文字も入らない", () => {
+test("A に Recipe は1文字も入らない", () => {
   const a = buildPrompt({ condition: "A", fixture: f, resources });
   assert.equal(a.includes(RECIPE_MARKER), false);
   assert.equal(a.includes("recipe body"), false);
 });
 
-test("B には SKILL.md 全文が入る", () => {
+test("B に入るのは Bazantic の Recipe（SKILL.md ではない）", () => {
   const b = buildPrompt({ condition: "B", fixture: f, resources });
   assert.ok(b.includes("recipe body"));
+  // 賞ページ: "Make the Recipe the only material difference between the tests."
+  assert.match(RECIPE_MARKER, /bazantic/i);
+  assert.equal(/SKILL\.md/.test(RECIPE_MARKER), false, "目印がまだ SKILL.md を名乗っている");
+});
+
+test("条件 B の材料は Recipe の写しであって、リポの SKILL.md ではない", async () => {
+  const res = await loadResources();
+  assert.equal(res.skillMd, undefined, "loadResources がまだ SKILL.md を配っている");
+  assert.equal(res.recipe, renderRecipe(await loadRecipe()));
+  // SKILL.md は我々のドキュメントであって Bazantic の Recipe ではない。
+  const b = buildPrompt({ condition: "B", fixture: f, resources: res });
+  assert.equal(b.includes("The hosted MCP gateway"), false, "SKILL.md 本文が B に入っている");
+  assert.ok(b.includes("x402-payee-verification-via-vet402-gateway"));
 });
 
 test("課題文は §16 の原文（A/B 共通）", () => {

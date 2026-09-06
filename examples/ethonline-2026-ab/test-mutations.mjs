@@ -85,6 +85,58 @@ const MUTATIONS = [
       '      ? "You are a careful autonomous agent about to pay an x402 endpoint."\n' +
       '      : "You are an autonomous agent that is about to pay an x402 endpoint on behalf of its owner.",',
   },
+  // ---- 2026-09-06 追加。第三者監査が見つけた4件の穴を、二度と静かに空かないようにする ----
+  {
+    id: "M8",
+    why: "条件 B を Recipe から SKILL.md へ戻す — 賞の要件『Recipe を唯一の実質的な違いにする』を外す",
+    file: "src/prompt.mjs",
+    find: "    loadRecipe(),\n  ]);\n  return { gatewayUrl, apiList: extractApiList(openapi), recipe: renderRecipe(recipe), recipeSource: recipe.source };",
+    replace:
+      '    readFile(join(repoRoot, "SKILL.md"), "utf8"),\n  ]);\n' +
+      "  return { gatewayUrl, apiList: extractApiList(openapi), recipe, recipeSource: null };",
+  },
+  {
+    id: "M9",
+    why: "Recipe の写しに、写していない中身を書けるようにする（原本との食い違いが見えなくなる）",
+    file: "src/recipe.mjs",
+    find: "    if (recipe[field] !== null) {",
+    replace: "    if (false) {",
+  },
+  {
+    id: "M10",
+    why: "エージェントからツールを取り上げる — MCP が経路から消え、URL を書いただけの状態に戻る",
+    file: "src/agents/anthropic.mjs",
+    find: "  if (Array.isArray(tools) && tools.length > 0) params.tools = tools;",
+    replace: "  void tools;",
+  },
+  {
+    id: "M11",
+    why: "MCP の戻りを会話へ返さない — ツールを呼んだのに結果を捨てる（呼んだふりになる）",
+    file: "src/agents/anthropic.mjs",
+    find: '      messages.push({ role: "user", content: results });',
+    replace: "      void results;",
+  },
+  {
+    id: "M12",
+    why: "秘密の許可リストを『64桁hex は全部公開』に広げる — 本物の秘密鍵が素通りする",
+    file: "src/secrets.mjs",
+    find: "const ALLOWED_HEX = new Set(PUBLIC_HEX_ALLOWLIST.map((e) => e.value.toLowerCase()));",
+    replace: "const ALLOWED_HEX = { has: () => true };",
+  },
+  {
+    id: "M13",
+    why: "MCP の JSON-RPC エラーを握り潰す — 落ちている Gateway を『ツール0本』として静かに通す",
+    file: "src/mcp.mjs",
+    find: "    if (body?.error) throw new Error(",
+    replace: "    if (false) throw new Error(",
+  },
+  {
+    id: "M14",
+    why: "MCP の handshake を飛ばす — initialize せずに tools/list を叩く",
+    file: "src/mcp.mjs",
+    find: '        await rpc("notifications/initialized", {}, { notification: true });',
+    replace: "        void 0;",
+  },
 ];
 
 const TEST_FILES = (await readdir("test")).filter((f) => f.endsWith(".test.mjs")).map((f) => `test/${f}`);

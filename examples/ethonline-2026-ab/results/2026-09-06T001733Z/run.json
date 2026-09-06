@@ -8,8 +8,8 @@
     ],
     "trialsPerCondition": 10,
     "totalTrials": 20,
-    "startedAt": "2026-09-05T05:18:06.218Z",
-    "finishedAt": "2026-09-05T05:18:06.219Z",
+    "startedAt": "2026-09-06T00:17:33.913Z",
+    "finishedAt": "2026-09-06T00:17:33.914Z",
     "model": "mock-scripted-v1",
     "modelsSeen": [
       "mock-scripted-v1"
@@ -21,14 +21,24 @@
     ],
     "singleTemperature": true,
     "fixtureReadiness": {
-      "liveReady": false,
-      "blockers": [
-        "F4: oracle が未測定（derived）——本番 API で取り直すまで採点は暫定。"
-      ]
+      "liveReady": true,
+      "blockers": []
     },
     "agentAdapter": "mock",
     "isMock": true,
     "gatewayUrl": "https://bazgateway.com",
+    "recipeSource": {
+      "platform": "bazantic.com",
+      "account": "TakeshiTGAL",
+      "state": "draft",
+      "gatewayName": "vet402",
+      "gatewayUrl": "https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com",
+      "mcpUrl": "https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp",
+      "copiedAt": "2026-09-06",
+      "copiedFrom": "bazantic.com の Provider Dashboard 上の Recipe（draft）。slug / name / 呼ぶツール3本 / Gateway と MCP の口だけが確定値として渡された。description・prompt 本文・inputs はこの写しを作った時点で未取得。",
+      "canon": "docs/ethonline-2026/WINDOW_PLAN.md §16（2026-09-06 訂正: 条件 B は SKILL.md ではなく bazantic.com で作った Recipe）"
+    },
+    "mcpUrl": null,
     "mockModel": "mock-scripted-v1"
   }
 }
