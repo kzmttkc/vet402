@@ -31,7 +31,7 @@ Bazantic account: **`TakeshiTGAL`**.
 
 Per fixture, both conditions: F1 3/3 · F2 0/3 · F3 2/2 · F4 0/2. **Delta = 0.** Our pre-registered prediction ("A gets the verdict right but fabricates reasons") was half right: A fabricated in 5/10, but B failed the same two fixtures.
 
-**Exploratory metric (not pre-registered, not used for scoring).** Share of reason codes that are real vet402 identifiers — the closed vocabulary in `src/lib/observatory/vocabulary.ts`, the SDK's refuse reasons in `examples/ethonline-2026-demo/src/judge.ts`, or a code the API actually returned in this run: **A 19/32 (59%) vs B 29/32 (91%)**. Trials in which every code was real: A 7/10, B 7/10. (WINDOW_PLAN §16.3 reports 2/32 vs 10/32 for the same idea; that count is reproduced exactly by the two source files alone, which store the tier codes `l0_pass`/`l1_delivered`/`l2_undeclared` decomposed, so it undercounts both sides. Direction is the same either way.)
+**Exploratory metric (not pre-registered, not used for scoring).** Share of reason codes that are real vet402 identifiers — the closed vocabulary in `src/lib/observatory/vocabulary.ts`, the SDK's refuse reasons in `examples/ethonline-2026-demo/src/judge.ts`, or a code the API actually returned in this run: **A 20/32 (63%) vs B 29/32 (91%)** (`npm run metrics`, set ii; codes compared after trim + lowercase, the same normalization the grader uses). Trials in which every code was real: A 7/10, B 7/10. Counting only the two source files (set i, which stores the tier codes `l0_pass`/`l1_delivered`/`l2_undeclared` decomposed and therefore undercounts both sides) gives A 3/32 vs B 10/32. Direction is the same either way. An earlier hand count in this document said 19/32 and 2/32 for A; the difference is one trial that wrote `Unverified` (see §7).
 
 An earlier run the same day (`ab/2026-09-06T093254Z`) scored 0/10 in both conditions because every tool call returned the Gateway's 402 text instead of data (§4). We kept that log, fixed the instrument, and re-ran under a new timestamp.
 
@@ -74,4 +74,4 @@ It regrades every trial from `answer` + `oracle` with the pre-registered rule (`
 `summary.json`; the vocabulary sets are read from `src/lib/observatory/vocabulary.ts` and
 `packages/sdk/src/pay-or-refuse.ts` at run time, not hard-coded. Codes are compared after trim + lowercase, the same
 normalization the grader uses — so the script counts A's vocabulary share as 20/32 (set ii) and 3/32 (set i): one A trial
-wrote `Unverified`, which is the vocabulary term `unverified`. The 19/32 and 2/32 in §2 were a case-sensitive hand count.
+wrote `Unverified`, which is the vocabulary term `unverified`. §2 now carries the script's numbers (20/32 and 3/32); the earlier 19/32 and 2/32 were a case-sensitive hand count and are kept here only as the record of the correction.
