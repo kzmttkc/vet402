@@ -33,3 +33,18 @@ ETHGlobal の規約は "all spec files, **prompts**, and planning artifacts" を
 
 ## 3. 人間の判断（この日）
 承認3件・鍵の手渡し・数字の扱いの方針（提出直前に一括で拾う）・新提案4件の採用。
+
+---
+
+## 4. 2回目の「新提案すべて採用」（同日 07:53）— 原文
+
+> 今回の実装から見えた気づきや反省、そこから生まれる新提案はありますか？
+
+> 新提案すべて採用。現在の実装ルールを踏まえて一つ一つ確実に進めてください。
+
+採用4件と AI→AI 指示の要点:
+- **ゲートウェイ差分カナリア**（管理リポ `scripts/bazantic_gateway_drift.py`）: 「openapi の `parameters[].name` と MCP `tools/list` の `inputSchema.properties` を突合。Bazantic が足す共通キーは除外リストとして state に持つ。差 0 なら黙る。ネットワーク失敗は『測れなかった』と別語で記帳し 0 件と混同しない」。実装中に除外キー `Idempotency-Key` が偽陽性と判明し除外から外した
+- **既定値のパリティ検査**（`tests/caller-policy-sdk-parity.test.ts`）: 「両方の実装から値を読む。片方をハードコードしない。順序は同じ入力で同じ最初の理由コードが出ることを両方を実際に呼んで比べる」→ SDK の型 `PayRefuseReason` に `payee_recommendation_block` が無い抜けを発見
+- **数字は1本のスクリプトから**（`npm run metrics`）: 「summary.json を信じず trials.jsonl から再採点。語彙集合はリポのファイルから読む。文書の数字と1つずつ突合し、不一致は直さず報告」→ A の語彙率 19/32 → 20/32 の不一致を発見（大小の正規化）。文書をスクリプトの値に統一
+- **動画台本の前倒し**（`VIDEO_SCRIPT.md`）: 「数字はプレースホルダにして撮影日に埋めるコマンドを添える。口で言う数字は2つに絞り下限で読む。The Graph のウォレットが WARN と出る絵は、先に『我々の欠損であって売り手の落ち度ではない』と言う」
+
