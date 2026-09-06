@@ -1018,3 +1018,33 @@ Tom Hay（Bazantic）が 09-05〜06 に同チャンネルで他チームへ答�
 `PRIZES.md:14` は「会期中に新規で立てる自前 x402 seller を Gateway として登録し」と書いているが、
 **WINDOW_PLAN §2 は自前 seller の新設を範囲外**にしており、Gateway は **09-03 に `vet402.com` を上流として
 既に LIVE**（56ルート・全て $0.00）。**正典は WINDOW_PLAN。**
+
+## 17. 【2026-09-06 夜】第三者監査4本＋検証1本の結果と、残り7日の実装順
+
+**問い**: 要件の実装は「完璧に完了」か。**答え**: 実装スコープ5件は動く。規定への不適合は 0。だが**提出物として実在しないものが4つ、食い違いが10件**あった（監査A/B/C/D＋検証E・すべて clean clone と一次ページ）。
+
+| 対象 | 判定 | 決め手 |
+|---|---|---|
+| ETHGlobal 規定・Continuity | 適合 | タグ c42daca・差分167コミット・MIT・PROMPTS 3日分・AI 開示。clean clone で SDK/MCP/demo fail 0 |
+| The Graph 枠 | 条件付き適合 | live（block 差 23）・件数で判定が変わる。**弱点は MCP から Graph に届かない**（09-06 夜 `3fa685c` で解消）・SKILL.md から live 手順に到達不能（`1e8112d` で解消） |
+| Bazantic 枠 | 設計は適合・提出物が未 | A/B は Recipe だけが差。無いもの: 橋つき実 A/B・画面収録・フィードバック doc・Recipe 公開 |
+
+**食い違い10件は `1e8112d`〜`c43c042` で是正**（テスト数・README/AI_USAGE の整合・数字の再導出・開示の写し `DISCLOSURE_2026-09-05.md`・PROMPTS の廃止ブランチ参照・非公開パス・demo の stack・A/B 要約の温度表示・SKILL.md のゲートウェイ説明・**TODO から消えていた手番3件の復元**）。
+
+**207 と 214 の訂正**: 09-05 の `f844ae6` で「207 になる数え方は存在しない」と書いたが誤り。`git rev-list --count --until=2026-09-03T23:59:59+09:00 26a7c66..pre-ethonline-2026` = 207（09-04 JST 00:00〜09:05 の 7 コミット差）。`DISCLOSURE_2026-09-05.md` 末尾に記載。
+
+### 残り7日の実装順（決定・09-06 22:4x）
+
+| 日 | やること | 効く先 |
+|---|---|---|
+| 09-06 夜 | #1 MCP 証拠源 policy＋404 経路（**済 `3fa685c`**）／#6 SDK 変異テスト（27 変異・SURVIVED 4 を是正中）／#3 `judge <URL>`（実装中） | Graph 枠・Technicality・Practicality |
+| 09-07 | #3 を main へ・SKILL.md に judge 節／#5 DX（Node 要件・ビルド順・`judge-check`）／PROMPTS | Usability |
+| 09-08 | AQ-053 が通れば `/decision` 鍵なし枠（IP 10/分）／フィードバック doc の下書き | Usability・Bazantic |
+| 09-09 | Anthropic 鍵で A/B 再実行（1回）・生ログ収載・AQ-052 が通れば Recipe 公開・A/B 画面収録 | Bazantic 枠の資格 |
+| 09-10 | まっさらな clone で SKILL.md を上から通す（§1.7）・数字の再導出 | Usability |
+| 09-11 | 台本・フィクスチャ再測・18:00 凍結・ナレーション録音（Takeshi） | 動画 |
+| 09-12 | 画面収録・編集・提出文・prize comments | 提出 |
+| 09-13 | 提出（Takeshi）→ 外から実物を検算 | — |
+
+**最も自信のない仮定**: Graph の審査員が MCP 経路を SDK 経路より重く見ること（AQ-054 の公開質問で確かめる）。
+**事前検死**: ①MCP 面で Graph が飾りと読まれる（#1 で手当て）②鍵2本とビルド順で詰まる（#4・#5）③A/B が mock のまま（#2）。
