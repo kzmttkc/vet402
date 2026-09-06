@@ -48,6 +48,13 @@ jobs:
         run: npm run lint
       - name: Unit tests (scoring core + SDK)
         run: npm test
+      # 2026-09-07. 提出物の文書（README / AI_USAGE / SKILL.md / CHANGED_FILES.md）に載る動く数字は
+      # <!-- n:ID -->N<!-- /n --> で囲み、scripts/refresh-numbers.json の記録値と突き合わせる。
+      # ここではコマンドを実走しない（テスト本数は npm test 数十秒、The Graph 系は鍵が要る）——
+      # 印の値 == 記録値だけを見る。記録値を動かせるのは `npm run refresh-numbers` だけなので、
+      # 印だけ直した／JSON だけ直した／定義の無い印を足した、のどれもここで赤になる。
+      - name: Submission numbers are consistent with scripts/refresh-numbers.json
+        run: node scripts/refresh-numbers.mjs --check
 
   build:
     name: production build
