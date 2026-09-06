@@ -1048,6 +1048,22 @@ F1（kronos・ALLOW）と F3（0x.org・拒否）は両条件 100%。**F2（The 
 **順序**: 本番へ deploy → `curl -sL https://vet402.com/openapi.yaml | grep -c amount_usd` で新パラメータが出ていることを見る → 再取得 → `tools/list` で `getResourceDecision` の params に `amount_usd` が出るまで待つ（30 秒）。
 **A/B の F4 が直る条件**はこの再取得。Recipe の prompt にも「402 の amount と自分の上限を渡せ」を足す（Recipe は公開済みなので **Unpublish → 編集 → Publish**。公開 URL は変わらない）。
 
+### 16.5 【事前登録・2026-09-07 07:4x・実データを見る前に固定】A/B v2——製品側の穴を閉じた後の「別実験」
+
+v1（§16.3）は**製品の穴**（上限超えの理由コードをどのツールも返さない）で F4 が両条件 0 だった。穴を製品で閉じた（`/decision` の `caller_policy`・`b40e3cd`・ゲートウェイの spec 再取得）。
+**v1 は回し直さない。v2 は別の実験として1回だけ走らせ、v1 と並べて出す。**
+
+| 項目 | v2 で変えるもの | 変えないもの |
+|---|---|---|
+| 製品 | `getResourceDecision` が `amount_usd` / `max_per_tx_usd` / `require_vet402_allow` を受け、`caller_policy.reason_codes` を返す | 57 ツールは両条件に同一 |
+| Recipe（条件 B） | prompt に「402 の `amount` と自分の上限を `getResourceDecision` に渡し、`caller_policy.reason_codes` をそのまま理由に使え」を1文足す（Unpublish → 編集 → Publish・公開 URL 不変） | 条件 A は生の API 情報のみ（openapi の一覧に新クエリが載る＝A も知り得る） |
+| 採点 | §16 の修正後の規則（判定一致 ∧ 理由コード ⊆ ∧ 拒否なら非空） | 事後指標（語彙率）は引き続き非採点 |
+| モデル・試行数 | claude-opus-5・effort high・20 試行（10/条件）・temperature 未送信 | — |
+
+**予測（外れたらそう書く）**: F4 は B で直り、A では直らない（A は新クエリの存在を openapi から読めるが、上限は「自分の policy」なので prompt の Target ブロックの ceiling を読んで渡す発想に至らない）。F2（カタログ外）は両条件とも直らない（`/decision` が 404 のまま。SDK/MCP の I23 経路はゲートウェイ経由の A/B には無い）。**差が出るとすれば F4 の 2 試行分＝最大 +20pt。**
+**成功条件の追加なし。** 出た数字はそのまま出す。v1 と v2 の両方を提出物に載せる。
+**走らせる日**: 09-09（ゲートウェイの spec 再取得を確認してから。Anthropic の鍵は再度クリップボード経由）。
+
 ### 記録: `PRIZES.md` の P3 記述は古い
 
 `PRIZES.md:14` は「会期中に新規で立てる自前 x402 seller を Gateway として登録し」と書いているが、
