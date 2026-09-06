@@ -145,6 +145,12 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
+      # 2026-09-06: 橋（bb7a721）の payerFromEnv は viem を動的 import する。viem はリポ直下の
+      # 依存で、手元では root の node_modules から解決されるので緑に見えていた。このジョブは
+      # root の npm ci をしていなかったため、clean checkout で初めて ERR_MODULE_NOT_FOUND
+      # （2026-08-22 の mcp-server と同じ欠陥クラス）。README の手順（root で npm ci）と揃える。
+      - name: Install root deps (viem for the x402 bridge's payer)
+        run: npm ci
       - name: Install A/B harness deps
         run: npm ci --prefix examples/ethonline-2026-ab
       - name: A/B harness unit tests

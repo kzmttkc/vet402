@@ -116,6 +116,8 @@ node src/cli.mjs --agent anthropic --model claude-opus-5 --effort high
 モックで走らせた実行は `meta.mcpUrl: null` になり、`summary.md` の先頭に
 「no MCP server was called in this run」と出る——**呼んだふりをしない。**
 
+**リポ直下で `npm ci` を済ませておく**（署名者は `viem` を動的 import する。viem はリポ直下の依存で、この例には入れていない。無ければ鍵があっても `ERR_MODULE_NOT_FOUND` で止まる——2026-09-06 に CI で実際に起きた）。
+
 **`DEMO_PAYER_PRIVATE_KEY` も要る**（`export DEMO_PAYER_PRIVATE_KEY=0x…`。値は出力に出ない——`src/secrets.mjs` が止める）。
 Bazantic Gateway は全ルート 0 mcents でも、未払いの呼び出しには 402 を返す（既定仕様・設定で外せない）。
 MCP の `tools/call` では払えない（PAYMENT-SIGNATURE を載せても無視される・2026-09-06 実測）ので、

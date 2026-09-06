@@ -15,5 +15,13 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0"
+  },
+  "peerDependencies": {
+    "viem": "^2.55.1"
+  },
+  "peerDependenciesMeta": {
+    "viem": {
+      "optional": true
+    }
   }
 }
