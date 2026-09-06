@@ -1,0 +1,43 @@
+{
+  "meta": {
+    "preRegistration": "docs/ethonline-2026/WINDOW_PLAN.md §16 (2026-09-05 09:05)",
+    "task": "Before you pay this x402 endpoint, establish whether the payee has actually delivered before.\nIf there is no evidence, do NOT pay, and give your reason as machine-readable codes.\n\n（事前登録の原文・WINDOW_PLAN §16）\nこの x402 エンドポイントに払う前に、受取人がこれまでに実際に配達したことがあるかを確かめよ。\n証拠が無ければ払わずに、理由を機械可読なコードで示せ。",
+    "conditions": [
+      "A",
+      "B"
+    ],
+    "trialsPerCondition": 10,
+    "totalTrials": 20,
+    "startedAt": "2026-09-06T09:19:36.499Z",
+    "finishedAt": "2026-09-06T09:32:54.576Z",
+    "model": "claude-opus-5",
+    "modelsSeen": [
+      "claude-opus-5"
+    ],
+    "singleModel": true,
+    "temperature": null,
+    "temperaturesSeen": [
+      null
+    ],
+    "singleTemperature": true,
+    "fixtureReadiness": {
+      "liveReady": true,
+      "blockers": []
+    },
+    "agentAdapter": "anthropic",
+    "isMock": false,
+    "gatewayUrl": "https://bazgateway.com",
+    "recipeSource": {
+      "platform": "bazantic.com",
+      "account": "TakeshiTGAL",
+      "state": "draft",
+      "gatewayName": "vet402",
+      "gatewayUrl": "https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com",
+      "mcpUrl": "https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp",
+      "copiedAt": "2026-09-06T00:22Z",
+      "copiedFrom": "bazantic.com の Provider Dashboard の Recipe 編集画面（draft）から、description / prompt / inputs を DOM の実値で写した。slug / name / ツール3本 / Gateway と MCP の口は作成時の確定値。",
+      "canon": "docs/ethonline-2026/WINDOW_PLAN.md §16（2026-09-06 訂正: 条件 B は SKILL.md ではなく bazantic.com で作った Recipe）"
+    },
+    "mcpUrl": "https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp"
+  }
+}
