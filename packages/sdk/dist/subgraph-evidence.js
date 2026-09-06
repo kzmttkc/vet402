@@ -61,7 +61,13 @@ function timeoutSignal(ms) {
  */
 export async function readSubgraphReceipts(input) {
     const subgraphId = input.subgraphId ?? X402_BASE_SUBGRAPH_ID;
-    const address = String(input.address).toLowerCase();
+    // 呼び出し側の誤りは呼び出し側で落とす。2026-09-06 まで `String(undefined)` が
+    // そのまま Gateway へ出て `Failed to decode Bytes value: Odd number of digits` という
+    // **原因の分からないエラー**になっていた。何が悪いかを言って落ちる。
+    if (typeof input.address !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(input.address.trim())) {
+        throw new Error(`readSubgraphReceipts: address must be a 0x-prefixed 40-hex address; got ${typeof input.address === "string" ? JSON.stringify(input.address) : typeof input.address}`);
+    }
+    const address = input.address.trim().toLowerCase();
     const url = gatewayUrl(subgraphId, input.apiKey);
     const publicUrl = gatewayUrl(subgraphId);
     const queriedAt = new Date().toISOString();
@@ -114,7 +120,6 @@ export async function readSubgraphReceipts(input) {
         ok: true,
         receipts,
         subgraphId,
-        url,
         publicUrl,
         block: {
             number: blockNumber,

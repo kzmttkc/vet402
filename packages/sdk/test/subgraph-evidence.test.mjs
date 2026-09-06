@@ -93,3 +93,46 @@ test("S6 `x402AddressSummaries` が返らない応答を「0 件」に化かさ�
   assert.equal(r.ok, false);
   assert.equal(r.error, "graph_malformed_response");
 });
+
+test("S7 呼び手の API キーは、返り値のどこにも現れない", async () => {
+  // 2026-09-06: ここは `url` に鍵入りの URL を入れ、別に publicUrl を用意して
+  // 「決定行にはこちらを使う」と**注意書き**していた。注意書きでは防げない——
+  // 呼び手が結果をそのまま console.log すれば、呼び手自身の鍵が流出する。
+  // 実際に依頼元が自分の鍵を出力へ出した。**返さないことで防ぐ。**
+  const KEY = "k0000000000000000000000000000000e";
+  const f = async () => ({
+    ok: true, status: 200,
+    json: async () => ({
+      data: {
+        _meta: { block: { number: 1, timestamp: 2 }, deployment: "Qm" },
+        x402AddressSummaries: [{ role: "RECIPIENT", totalPayments: "7" }],
+      },
+    }),
+    headers: new Map(),
+  });
+  const r = await readSubgraphReceipts({
+    address: "0x79dc34e41b2b591078d3de222c43ecaabd52fccb",
+    apiKey: KEY,
+    fetch: f,
+  });
+  assert.equal(r.ok, true);
+  const dumped = JSON.stringify(r);
+  assert.equal(dumped.includes(KEY), false, `返り値に鍵が含まれている: ${dumped.slice(0, 200)}`);
+  // 空振りで緑にならないこと——鍵が実際に使われた経路であることを確かめる。
+  assert.match(r.publicUrl, /gateway\.thegraph\.com\/api\/subgraphs\/id\//);
+});
+
+test("S8 address が 0x40桁でなければ、通信の前に呼び出し側エラー", async () => {
+  // 2026-09-06 まで String(undefined) が Gateway へ出て
+  // `Failed to decode Bytes value: Odd number of digits` という原因の分からない
+  // エラーになっていた。**何が悪いかを言って落ちる。**
+  for (const bad of [undefined, null, "", "0x123", "vitalik.eth", 42]) {
+    let fetched = 0;
+    await assert.rejects(
+      () => readSubgraphReceipts({ address: bad, apiKey: "k", fetch: async () => { fetched++; throw new Error("must not be called"); } }),
+      (e) => /address must be a 0x-prefixed 40-hex address/.test(String(e && e.message)),
+      `${JSON.stringify(bad)} で呼び出し側エラーになっていない`,
+    );
+    assert.equal(fetched, 0, "通信の前に落ちていない");
+  }
+});

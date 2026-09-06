@@ -42,9 +42,16 @@ export type SubgraphReceipts = {
     /** `role: RECIPIENT` の `totalPayments`。**受領件数**であって支払回数ではない。 */
     receipts: number;
     subgraphId: string;
-    /** 引いた先。鍵はここに載るので、**決定行へそのまま入れない**（下の `publicUrl`）。 */
-    url: string;
-    /** 鍵を伏せた URL。決定行に残すのはこちら。 */
+    /**
+     * 引いた先。**鍵は載せない。**
+     *
+     * 2026-09-06 まで、ここには鍵入りの URL（`/api/<KEY>/subgraphs/...`）を入れ、
+     * 別に `publicUrl` を用意して「決定行にはこちらを使う」と注意書きしていた。
+     * **公開 SDK が秘密を含む値を返すこと自体が事故のもとだった**——
+     * 呼び手が結果をそのまま `console.log` すれば、呼び手自身の鍵が流出する。
+     * 実際に依頼元が 09-06 に自分の鍵を出力へ出した。**注意書きでは防げない。**
+     * 返さないことで防ぐ。
+     */
     publicUrl: string;
     block: {
         number: number;

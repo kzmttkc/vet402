@@ -131,7 +131,7 @@ export async function runPay(options: RunPayOptions): Promise<{ view: PayView; r
     decisionStatus: decision.status,
     subgraph: read.ok
       ? {
-          endpoint: read.url,
+          endpoint: read.publicUrl,
           block: read.block,
           deployment: read.deployment,
           row: rawSummary ?? null,
