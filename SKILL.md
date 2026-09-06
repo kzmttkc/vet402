@@ -118,9 +118,9 @@ cd packages/mcp-server && npm test 2>&1 | grep -E '^ℹ '
 ```
 
 ```
-ℹ tests 55
+ℹ tests 65
 ℹ suites 0
-ℹ pass 55
+ℹ pass 65
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
@@ -308,12 +308,12 @@ cd packages/sdk && npm install && npm test 2>&1 | grep -E '^ℹ '
 ```
 
 ```
-ℹ tests 164
-ℹ pass 164
+ℹ tests 178
+ℹ pass 178
 ℹ fail 0
 ```
 
-(Re-run 2026-09-06 with `npm ci && npm test`. The count grows as tests are added — run it, do not
+(Re-run <!-- n:as_of -->2026-09-07<!-- /n --> with `npm ci && npm test`. The count grows as tests are added — run it, do not
 trust this line.)
 
 **It has moved real money.** On 2026-09-05 a throwaway payer bought The Graph's own x402 endpoint
@@ -406,7 +406,7 @@ Verified 2026-09-06 (live, keys redacted by the demo itself):
 
 Mutation check on the demo: flipping the floor comparison, removing the BLOCK boundary, or touching the
 signer each turns tests red (7 / 2 / 3 failures). `packages/sdk/test-mutations.mjs` does the same for the
-SDK itself: 27 mutations, all killed, ~20 s.
+SDK itself: <!-- n:sdk_mutations -->27<!-- /n --> mutations, all killed, ~20 s.
 
 ### Your own policy on `/decision` — the server answers in the SDK's words
 

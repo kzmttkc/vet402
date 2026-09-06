@@ -18,7 +18,7 @@ minutes after the window opened, and it is pushed. Anyone can run the three comm
 
 ## Snapshot — 2026-09-05 10:45 JST
 
-**148 pre-existing files modified, by area:**
+**<!-- n:window_modified_files -->173<!-- /n --> pre-existing files modified, by area:**
 
 | Area | Files | Why we were in there |
 |---|---|---|

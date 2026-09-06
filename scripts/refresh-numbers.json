@@ -1,0 +1,140 @@
+{
+  "docs": [
+    "README.md",
+    "AI_USAGE.md",
+    "SKILL.md",
+    "docs/ethonline-2026/CHANGED_FILES.md"
+  ],
+  "numbers": [
+    {
+      "id": "as_of",
+      "description": "この記録値を取った日（JST）。数字の横の日付。",
+      "command": "TZ=Asia/Tokyo date +%F",
+      "literal": [
+        {
+          "doc": "AI_USAGE.md",
+          "pattern": "# \\d+ commits \\((?<v>\\d{4}-\\d{2}-\\d{2})\\)"
+        },
+        {
+          "doc": "AI_USAGE.md",
+          "pattern": "# \\d+ added +\\((?<v>\\d{4}-\\d{2}-\\d{2})\\)"
+        }
+      ],
+      "value": "2026-09-07",
+      "updatedAt": "2026-09-06T23:47:16.263Z"
+    },
+    {
+      "id": "total_commits",
+      "description": "リポ全体のコミット数（AI_USAGE.md）。",
+      "command": "git rev-list --count HEAD",
+      "literal": [
+        {
+          "doc": "AI_USAGE.md",
+          "pattern": "^git rev-list --count HEAD +# (?<v>\\d+) commits \\("
+        }
+      ],
+      "value": "743",
+      "updatedAt": "2026-09-06T23:47:16.263Z"
+    },
+    {
+      "id": "ai_trailer_commits",
+      "description": "Co-Authored-By: Claude の trailer を持つコミット数（AI_USAGE.md）。",
+      "command": "git log --grep='Co-Authored-By: Claude' --oneline | wc -l | tr -d ' '",
+      "literal": [
+        {
+          "doc": "AI_USAGE.md",
+          "pattern": "^git log --grep='Co-Authored-By: Claude' --oneline \\| wc -l +# (?<v>\\d+) carry the AI trailer"
+        }
+      ],
+      "value": "624",
+      "updatedAt": "2026-09-06T23:47:16.263Z"
+    },
+    {
+      "id": "merge_commits",
+      "description": "マージコミット数（AI_USAGE.md）。",
+      "command": "git rev-list --count --merges HEAD",
+      "literal": [
+        {
+          "doc": "AI_USAGE.md",
+          "pattern": "^git rev-list --count --merges HEAD +# (?<v>\\d+) are merge commits"
+        }
+      ],
+      "value": "34",
+      "updatedAt": "2026-09-06T23:47:16.263Z"
+    },
+    {
+      "id": "no_trailer_commits",
+      "description": "trailer の無いコミット数 = total_commits - ai_trailer_commits（AI_USAGE.md）。",
+      "command": "echo $(( $(git rev-list --count HEAD) - $(git log --grep='Co-Authored-By: Claude' --oneline | wc -l) ))",
+      "value": "119",
+      "updatedAt": "2026-09-06T23:47:16.263Z"
+    },
+    {
+      "id": "window_added_files",
+      "description": "会期（pre-ethonline-2026..HEAD）に追加されたファイル数（AI_USAGE.md）。",
+      "command": "git diff --diff-filter=A --name-only pre-ethonline-2026..HEAD | wc -l | tr -d ' '",
+      "literal": [
+        {
+          "doc": "AI_USAGE.md",
+          "pattern": "^git diff --diff-filter=A --name-only pre-ethonline-2026\\.\\.main \\| wc -l +# (?<v>\\d+) added"
+        }
+      ],
+      "value": "170",
+      "updatedAt": "2026-09-06T23:47:16.263Z"
+    },
+    {
+      "id": "window_modified_files",
+      "description": "会期（pre-ethonline-2026..HEAD）に変更された既存ファイル数（AI_USAGE.md・CHANGED_FILES.md）。",
+      "command": "git diff --diff-filter=M --name-only pre-ethonline-2026..HEAD | wc -l | tr -d ' '",
+      "literal": [
+        {
+          "doc": "AI_USAGE.md",
+          "pattern": "^git diff --diff-filter=M --name-only pre-ethonline-2026\\.\\.main \\| wc -l +# (?<v>\\d+) modified"
+        }
+      ],
+      "value": "173",
+      "updatedAt": "2026-09-06T23:47:16.263Z"
+    },
+    {
+      "id": "sdk_tests",
+      "description": "packages/sdk の npm test が報告する ℹ tests N（SKILL.md）。build 込みで数十秒。",
+      "command": "npm test --prefix packages/sdk 2>&1 | sed -n 's/^ℹ tests //p'",
+      "literal": [
+        {
+          "doc": "SKILL.md",
+          "pattern": "cd packages/sdk && npm install && npm test[^\\n]*\\n```\\n\\n```\\nℹ tests (?<v>\\d+)\\n"
+        },
+        {
+          "doc": "SKILL.md",
+          "pattern": "cd packages/sdk && npm install && npm test[^\\n]*\\n```\\n\\n```\\nℹ tests \\d+\\nℹ pass (?<v>\\d+)\\n"
+        }
+      ],
+      "value": "178",
+      "updatedAt": "2026-09-06T23:47:16.263Z"
+    },
+    {
+      "id": "mcp_tests",
+      "description": "packages/mcp-server の npm test が報告する ℹ tests N（SKILL.md）。build 込みで数十秒。",
+      "command": "npm test --prefix packages/mcp-server 2>&1 | sed -n 's/^ℹ tests //p'",
+      "literal": [
+        {
+          "doc": "SKILL.md",
+          "pattern": "cd packages/mcp-server && npm test[^\\n]*\\n```\\n\\n```\\nℹ tests (?<v>\\d+)\\n"
+        },
+        {
+          "doc": "SKILL.md",
+          "pattern": "cd packages/mcp-server && npm test[^\\n]*\\n```\\n\\n```\\nℹ tests \\d+\\nℹ suites 0\\nℹ pass (?<v>\\d+)\\n"
+        }
+      ],
+      "value": "65",
+      "updatedAt": "2026-09-06T23:47:16.263Z"
+    },
+    {
+      "id": "sdk_mutations",
+      "description": "packages/sdk/test-mutations.mjs の MUTATIONS 配列の本数（SKILL.md）。",
+      "command": "grep -cE '^ +id: \"M[0-9]+\"' packages/sdk/test-mutations.mjs",
+      "value": "27",
+      "updatedAt": "2026-09-06T23:47:16.263Z"
+    }
+  ]
+}

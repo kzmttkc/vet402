@@ -33,6 +33,8 @@
     "test": "node scripts/report-test-gates.mjs && tsx --test tests/*.test.ts && npm run sdk:test && npm run middleware:test && npm run mcp:test",
     "test:db": "tsx --test --test-concurrency=1 --test-force-exit $(grep -l TEST_DATABASE_URL tests/*.test.ts)",
     "judge-check": "bash scripts/judge-check.sh",
+    "refresh-numbers": "node scripts/refresh-numbers.mjs --refresh",
+    "check-numbers": "node scripts/refresh-numbers.mjs --check",
     "typecheck": "tsc --noEmit",
     "lint": "eslint",
     "predb:generate": "tsx scripts/db-preflight.ts",
