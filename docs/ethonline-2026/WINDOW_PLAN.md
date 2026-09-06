@@ -971,6 +971,36 @@ curl -sL -X POST "https://gateway.thegraph.com/api/$GRAPH_API_KEY/subgraphs/id/C
 **A は「判定は当たるが理由を捏造する」で落ちる**と予測する。B は MCP ツールが理由コードを
 そのまま返すので 2 を自然に満たす。**この予測が外れたら、外れたとそのまま書く。**
 
+### 16.1 【2026-09-06 19:30 実測】Bazantic の 402 は同社の既定仕様——A/B の 0%/0% は計器の故障
+
+執行部の実走（`results/2026-09-06T093254Z`・claude-opus-5・20試行）が **A 0% / B 0%** だった原因を、
+モデルの自己申告ではなく一次情報で確定した。
+
+| 問い | 実測 |
+|---|---|
+| 402 は誰の設定か | **Bazantic の既定**。ダッシュボードは 57 ルート全部 **0 mcents**。docs（`/docs/cli`）は「無料なのは `tools/list` と 402 の値段調べだけ。**払って初めて本文が返る**」と明記。無料ルートを作る設定は docs にもダッシュボードにも無い |
+| REST は $0 で払えるか | **払える。** `baz curl … --max-amount 0` で 200 + 本文（tx `0x9b5e3ad4…1495e`・block 50949834・**0 USDC** の Transfer がチェーンに残る）。我々の SDK の署名部品（`x402-pay.js`）でも同じく 200（tx `0x061702d4…fa932`）。**$0 でも facilitator が Multicall3 経由で 1 本 tx を打つ** |
+| MCP は払えるか | **払えない。** `/mcp` の POST に `PAYMENT-SIGNATURE`（実署名・resource を相対/絶対の両方）を載せても無視され、`tools/call` は `isError:true` の本文に 402 を返すだけ。`initialize` の `instructions` は null、ツールスキーマにも支払い欄は無い |
+| Bazantic が想定する経路 | `baz recipe install` が立てる `bazantic-recipes` ローカル MCP（公開 Recipe を「支払い元つき」で呼ぶ）。**ただし npm 最新 `@bazantic/cli@0.8.0` に `baz recipe` コマンドは無い**（docs が CLI より先行） |
+
+**含意**: 「Add to Claude / Cursor / ChatGPT」で繋いだ標準 MCP クライアントは、
+**このゲートウェイのどのツールも 1 件も使えない**（鍵不要と説明に書いた 37 ツールも）。
+審査員が同じ手順で触れば同じ 402 を見る。**これは我々の中身の問題ではなく 0 円の料金所の問題**だが、
+Bazantic 枠の問い（エージェントが説明なしに使えるか）に対しては**そのまま提出物の所見になる**（WO 項目4）。
+
+**決定（09-06）**: ハーネスに **$0 に限って自分で署名し REST へ回す橋** を足す（`src/mcp.mjs`）。
+- A / B に**同一**に効く（§16 の「MCP ツールは両条件に同じものを渡す」を保つ）
+- `amount !== "0"` なら**署名せず fail-loud**（ツール呼び出しで金を動かさない）
+- 署名回数・tx を生ログに残す（審査員が数え直せる）
+- 事前登録は変えない。**再実行は新しいタイムスタンプ**に書き、`091827Z`（401）と `093254Z`（402）は残す
+
+**実装と実機検証（09-06 19:21）**: 橋は `1a28245`（`src/mcp.mjs`・テスト 142/142・変異 21/21 赤）。
+本物の MCP に payer 付きで繋ぎ、`getCensusSummary` と `getPayeeScore` が **`isError:false` の 200 本文**で返った。
+橋が打った tx は `0x4fa32f09…3a4a74`（census）と `0xfb697564…aab27f`（payee score）。どちらも 0 USDC の Transfer。
+署名は 1 ツール呼び出しにつきちょうど 1 回（`bridgeLog()`）。
+
+**手番**: 再実行には Anthropic の鍵をもう一度受け取る必要がある（前回はクリップボードから 1 回だけ・ディスクに残していない）。
+
 ### 記録: `PRIZES.md` の P3 記述は古い
 
 `PRIZES.md:14` は「会期中に新規で立てる自前 x402 seller を Gateway として登録し」と書いているが、
