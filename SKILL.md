@@ -109,7 +109,7 @@ The MCP server takes no constructor arguments — **its env block is its options
 
 ## How a judge can run it
 
-Every block below was executed on 2026-09-05 and the output is pasted verbatim.
+Every block below is pasted verbatim from a real run. Most were executed on 2026-09-05; the test counts were re-run on 2026-09-07 and are kept current by `npm run refresh-numbers` (the printed date inside each block is the run it came from).
 
 ### 1. The tests (no key, no network)
 

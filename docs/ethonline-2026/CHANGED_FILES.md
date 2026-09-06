@@ -16,24 +16,30 @@ git log --oneline pre-ethonline-2026..main                        # every commit
 The boundary tag `pre-ethonline-2026` is commit `c42daca`, cut **2026-09-04 00:05:36 UTC**, five
 minutes after the window opened, and it is pushed. Anyone can run the three commands above.
 
-## Snapshot — 2026-09-05 10:45 JST
+## Snapshot — 2026-09-07 08:5x JST (derived; regenerate with the command below)
 
-**<!-- n:window_modified_files -->173<!-- /n --> pre-existing files modified, by area:**
+```bash
+git diff --diff-filter=M --name-only pre-ethonline-2026..main \
+ | awk -F/ '{ if ($1=="src" && $2!="") a=$1"/"$2; else if ($1=="packages" && $2!="") a=$1"/"$2; else if (NF==1) a="repo root"; else a=$1; c[a]++ } END { for (k in c) printf "%d\t%s\n", c[k], k }' | sort -rn
+```
+
+**<!-- n:window_modified_files -->173<!-- /n --> pre-existing files modified, by area** (the counts are the command's output; the "why" column is prose):
 
 | Area | Files | Why we were in there |
 |---|---|---|
-| `src/app/` | 42 | New admin route for the runtime spending halt; the observatory/state surfaces gaining the two-tier `settled` split; SEO/AEO work on the public pages |
-| `src/lib/` | 30 | The kill switch; settlement rollup and late-settlement recovery; nonce binding; census coverage; cached reads |
-| `tests/` | 27 | Tests for all of the above, plus the Postgres test guard |
-| `docs/` | 20 | The window's own planning artifacts, three security audits, the incident runbook, OpenAPI |
-| repo root | 9 | `README.md`, `AI_USAGE.md`, `SKILL.md`, `.env.example`, `.gitignore`, config |
-| `packages/mcp-server` | 9 | `pay_if_trusted` and its docs |
-| `packages/sdk` | 5 | `payOrRefuse`, the x402 payment path, the subgraph evidence source |
-| `scripts/` | 3 | Schema drift, settlements rollup |
-| `src/` (other) | 2 | Proxy/CSP |
-| `.github/` | 1 | Pinning actions to SHAs |
+| `src/app/` | 44 | Admin route for the runtime spending halt; observatory/state surfaces with the two-tier `settled` split; `/decision` key-less read and `caller_policy`; SEO/AEO |
+| `src/lib/` | 34 | Kill switch; settlement rollup and late-settlement recovery; nonce binding; census coverage; cached reads; `caller-policy.ts` |
+| `tests/` | 32 | Tests for all of the above, the Postgres test guard, key-less read, caller-policy parity, refresh-numbers |
+| `docs/` | 24 | The window's own planning artifacts, three security audits, the incident runbook, OpenAPI |
+| `packages/mcp-server` | 17 | `pay_if_trusted`, evidence policy, the uncatalogued path, key-less `/decision`, typed refuse reasons |
+| repo root | 8 | `README.md`, `AI_USAGE.md`, `SKILL.md`, `.env.example`, `.gitignore`, `package.json`, config |
+| `packages/sdk` | 7 | `payOrRefuse`, the x402 payment path, the subgraph evidence source, optional `apiKey`, typed refuse reasons |
+| `scripts/` | 3 | Schema drift, settlements rollup, judge-check |
+| `src/components` | 2 | Proxy/CSP |
+| `public/` | 1 | `llms.txt` (key-less `/decision`) |
+| `.github/` | 1 | Pinning actions to SHAs; the gate jobs |
 
-**Regenerate this snapshot before submission.** The numbers move every day; the command does not.
+The per-area sum must equal the total above; if it does not, the table is stale — rerun the command.
 
 ## What counts as new work
 
