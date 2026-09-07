@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeApiRequest, refundRateLimitUnits, withRateLimitHeaders, type AuthorizedContext } from "@/lib/api/guard";
 import { publicRateLimit } from "@/lib/api/public-route";
+import { refundIpRateLimit } from "@/lib/api/ip-rate-limit";
 import { isDecisionKeylessReadEnabled } from "@/lib/config/env";
 import { getIdempotentResponse, idempotencyKeyHash, saveIdempotentResponse } from "@/lib/api/idempotency";
 import { lookupManualList } from "@/lib/db/customer-lists";
@@ -27,6 +28,9 @@ import { logServerError } from "@/lib/util/log";
 // 鍵を打ち間違えた顧客の WL/BL（§13 私的ポリシー）が黙って外れた答えを受け取る。
 // 鍵なしでは Idempotency-Key を扱わない（月次単位の二重消費という守る対象が無い）。
 // DECISION_KEYLESS_READ=0 で従来の 401 に戻す。
+// 早期 return（400 / 404 / 503・2026-09-07 監査 A7＋追加3）: admit 以降のどの return も `fail()` → `finish()` を
+// 通す。以前は 404 と 400 が枠のヘッダ無しで返り、鍵なしは refund の経路も無く枠だけ消費していた。
+// 規則は鍵ありに揃える——鍵ありが月次単位を refund するのと同じく、鍵なしも IP 枠の 1 回分を戻す。
 // 呼び手の policy（2026-09-07・WINDOW_PLAN §16.3）: `amount_usd` / `max_per_tx_usd` / `min_l1_deliveries`
 // を受けると、判定と同じ文書に `caller_policy` を足し、SDK と同じ語（`price_above_ceiling` 等）で
 // 答える。§16.3 の A/B で「ツールが返さない語は Recipe があっても出ない」ことが実測されたので、
@@ -47,7 +51,7 @@ const DECISION_KEYLESS_WINDOW_MS = 60_000;
 /** 鍵あり（月次枠）か鍵なし（IP 枠）かで、返金と応答ヘッダの付け方が変わる。 */
 type Caller =
   | { kind: "keyed"; ctx: AuthorizedContext }
-  | { kind: "keyless"; headers: Record<string, string> };
+  | { kind: "keyless"; headers: Record<string, string>; bucketKey: string };
 
 function hasAuthorizationHeader(request: NextRequest): boolean {
   return (request.headers.get("authorization") ?? "").trim() !== "";
@@ -57,7 +61,7 @@ async function admit(request: NextRequest): Promise<{ ok: true; caller: Caller }
   if (isDecisionKeylessReadEnabled() && !hasAuthorizationHeader(request)) {
     const gate = await publicRateLimit(request, "decision", DECISION_KEYLESS_LIMIT, DECISION_KEYLESS_WINDOW_MS);
     if (!gate.ok) return { ok: false, error: gate.response };
-    return { ok: true, caller: { kind: "keyless", headers: gate.headers } };
+    return { ok: true, caller: { kind: "keyless", headers: gate.headers, bucketKey: gate.bucketKey } };
   }
   const auth = await authorizeApiRequest(request, 1);
   if (!auth.ok) return { ok: false, error: auth.error };
@@ -66,6 +70,7 @@ async function admit(request: NextRequest): Promise<{ ok: true; caller: Caller }
 
 function refund(caller: Caller): void {
   if (caller.kind === "keyed") void refundRateLimitUnits(caller.ctx, 1);
+  else void refundIpRateLimit(caller.bucketKey);
 }
 
 /** 判定応答の Cache-Control は従来どおり付けない（鍵ありと同じ）。枠のヘッダだけ経路ごとに変える。 */
@@ -73,6 +78,12 @@ function finish(caller: Caller, res: NextResponse): NextResponse {
   if (caller.kind === "keyed") return withRateLimitHeaders(res, caller.ctx.rateLimit);
   for (const [k, v] of Object.entries(caller.headers)) res.headers.set(k, v);
   return res;
+}
+
+/** 早期 return の唯一の形: 枠を戻し、枠のヘッダを付けて、エラー語を返す（A7）。`finish` を通らない return を書かない。 */
+function fail(caller: Caller, status: number, error: string): NextResponse {
+  refund(caller);
+  return finish(caller, NextResponse.json({ error }, { status }));
 }
 
 function normalizePayer(raw: string): string | null {
@@ -91,41 +102,23 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const apiKeyId = caller.kind === "keyed" ? caller.ctx.apiKeyId : undefined;
 
   const { resourceId } = await context.params;
-  if (!SHA256_HEX_RE.test(resourceId)) {
-    refund(caller);
-    return NextResponse.json({ error: "invalid_resource_id" }, { status: 400 });
-  }
+  if (!SHA256_HEX_RE.test(resourceId)) return fail(caller, 400, "invalid_resource_id");
   const params = request.nextUrl.searchParams;
   const roleRaw = params.get("role") ?? "payer";
-  if (roleRaw !== "payer" && roleRaw !== "payee") {
-    refund(caller);
-    return NextResponse.json({ error: "invalid_role" }, { status: 400 });
-  }
+  if (roleRaw !== "payer" && roleRaw !== "payee") return fail(caller, 400, "invalid_role");
   const dialectRaw = params.get("caller_dialect");
-  if (dialectRaw !== null && dialectRaw !== "v1" && dialectRaw !== "v2") {
-    refund(caller);
-    return NextResponse.json({ error: "invalid_caller_dialect" }, { status: 400 });
-  }
+  if (dialectRaw !== null && dialectRaw !== "v1" && dialectRaw !== "v2") return fail(caller, 400, "invalid_caller_dialect");
   let payerId: string | null = null;
   if (roleRaw === "payee") {
     const p = params.get("payer");
     payerId = p ? normalizePayer(p) : null;
-    if (!payerId) {
-      refund(caller);
-      return NextResponse.json({ error: "payer_required" }, { status: 400 });
-    }
+    if (!payerId) return fail(caller, 400, "payer_required");
   }
   const allowWithoutL1 = params.get("allow_without_l1") === "true";
   const parsedPolicy = parseCallerPolicy(params);
-  if (!parsedPolicy.ok) {
-    refund(caller);
-    return NextResponse.json({ error: parsedPolicy.error }, { status: 400 });
-  }
+  if (!parsedPolicy.ok) return fail(caller, 400, parsedPolicy.error);
   const callerPolicy: CallerPolicyInput | null = parsedPolicy.input;
-  if (callerPolicy && roleRaw !== "payer") {
-    refund(caller);
-    return NextResponse.json({ error: "invalid_policy" }, { status: 400 });
-  }
+  if (callerPolicy && roleRaw !== "payer") return fail(caller, 400, "invalid_policy");
   /** policy を頼まれたときだけ足す。頼まれていなければ判定本体をそのまま返す（キーも足さない）。 */
   const withCallerPolicy = (result: DecisionResult): DecisionResult =>
     callerPolicy ? { ...result, caller_policy: evaluateCallerPolicy(result, callerPolicy) } : result;
@@ -154,10 +147,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   try {
     const ref = await getResource(resourceId);
-    if (!ref) {
-      refund(caller);
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
-    }
+    if (!ref) return fail(caller, 404, "not_found");
     // 顧客の WL/BL は私的ポリシー（§13）。判定に効かせるが facts には混ぜない。
     const listSubject = roleRaw === "payer" ? ref.payee_id ? parsePartyId(ref.payee_id)?.address ?? null : null : parsePartyId(payerId!)?.address ?? null;
     const list = await lookupManualList(apiKeyId, listSubject && listSubject.startsWith("0x") ? listSubject : null);
@@ -167,10 +157,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       roleRaw === "payer"
         ? await decide({ role: "payer", observatoryId: ref.observatory_id, callerDialect: dialectRaw ?? undefined, allowWithoutL1, operatorBlacklist })
         : await decide({ role: "payee", observatoryId: ref.observatory_id, payerId: payerId!, operatorBlacklist });
-    if (!result) {
-      refund(caller);
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
-    }
+    if (!result) return fail(caller, 404, "not_found");
     // 2026-09-02: §12 の SLO（p95 < 200ms・キャッシュヒット）はサーバ内時間で測る。東京からの
     // 壁時計（0.44–0.77s）では往復が混ざるので、計算時間を Server-Timing で返す。
     // 成功応答だけ保存する（404/503 は再送で再計算してよい——直った可能性がある）。
@@ -180,7 +167,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return res;
   } catch (error) {
     logServerError("decision", error);
-    refund(caller);
-    return NextResponse.json({ error: "decision_unavailable" }, { status: 503 });
+    return fail(caller, 503, "decision_unavailable");
   }
 }

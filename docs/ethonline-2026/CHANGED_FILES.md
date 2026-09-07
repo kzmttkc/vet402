@@ -48,11 +48,12 @@ Who wrote which parts — human or AI — is in [`../../AI_USAGE.md`](../../AI_U
 
 ## 2026-09-07 — money-gate fixes (branch `ethonline/fix-money-gates`, third-party audit A1–A7)
 
-Pre-existing files touched by these commits (all three were already in the window's modified set above,
-so the derived counts do not move; this note only says *why* we were in them):
+Pre-existing files touched by these commits (the first three were already in the window's modified set
+above; `public-route.ts` is new to the set — rerun the command for the counts; this note only says *why*):
 
 | File | Why |
 |---|---|
 | `packages/mcp-server/src/index.ts` | `pay_if_trusted` description: the new SDK word `price_above_declared` (A3); "runs the whole gate" replaced by what actually runs without a payer (D4) |
 | `SKILL.md` | `pay_if_trusted` refuse-reason list gains `price_above_declared` (A3); the *Actually paying* paragraph now describes the real no-payer / no-resource behaviour (D4) |
-| `src/app/api/v1/resources/[resourceId]/decision/route.ts` | Every early return (400 / 404 / 503) goes through `finish()` so the key-less `RateLimit-*` headers and the keyed `X-RateLimit-*` headers are on those responses too; key-less early returns refund the IP window like keyed ones refund the monthly unit (A7) |
+| `src/app/api/v1/resources/[resourceId]/decision/route.ts` | Every early return (400 / 404 / 503) goes through `fail()` → `finish()` so the key-less `RateLimit-*` headers and the keyed `X-RateLimit-*` headers are on those responses too; key-less early returns refund the IP window like keyed ones refund the monthly unit (A7) |
+| `src/lib/api/public-route.ts` | `publicRateLimit` also returns the `bucketKey` it consumed, so a route can refund it on an early return (A7) |

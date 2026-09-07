@@ -10,7 +10,13 @@ export const PUBLIC_DISCLAIMER =
   "Scores are opinions; L0–L2 are measurement records. This is not credit assessment, KYC, sanctions screening, or certification.";
 
 export type PublicGate =
-  | { ok: true; headers: Record<string, string>; cacheHeaders: Record<string, string> }
+  | {
+      ok: true;
+      headers: Record<string, string>;
+      cacheHeaders: Record<string, string>;
+      /** 消費した IP 枠のキー。早期 return で 1 回分を戻す（`refundIpRateLimit`）ときに使う（2026-09-07 A7）。 */
+      bucketKey: string;
+    }
   | { ok: false; response: NextResponse };
 
 export async function publicRateLimit(
@@ -20,7 +26,8 @@ export async function publicRateLimit(
   windowMs = 60_000,
 ): Promise<PublicGate> {
   const ip = getClientIp(request) ?? "unknown";
-  const limited = await consumeIpRateLimit(`${bucket}:${ip}`, limit, windowMs);
+  const bucketKey = `${bucket}:${ip}`;
+  const limited = await consumeIpRateLimit(bucketKey, limit, windowMs);
   const headers = ipRateLimitHeaders(limited);
   if (!limited.allowed) {
     return { ok: false, response: NextResponse.json({ error: "rate_limited" }, { status: 429, headers }) };
@@ -28,6 +35,7 @@ export async function publicRateLimit(
   return {
     ok: true,
     headers,
+    bucketKey,
     cacheHeaders: {
       ...sharedCacheRateLimitHeaders(limited),
       // max-age も持つ（2026-09-02 監査）: s-maxage だけだとブラウザ／非共有キャッシュには

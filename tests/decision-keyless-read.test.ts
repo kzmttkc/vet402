@@ -53,6 +53,13 @@ function fakeDb() {
   return {
     execute: async (q: { queryChunks?: unknown[] }) => {
       const text = JSON.stringify(q.queryChunks ?? q);
+      // refundIpRateLimit（ip-rate-limit.ts）の UPDATE … SET count = GREATEST(count - 1, 0) WHERE bucket_key = $1
+      if (text.includes("ip_rate_limits") && text.includes("GREATEST")) {
+        const key = /"(decision:[^"]+)"/.exec(text)?.[1];
+        const cur = key ? buckets.get(key) : undefined;
+        if (cur && cur.resetAt.getTime() > Date.now() && cur.count > 0) cur.count -= 1;
+        return { rows: [] };
+      }
       if (text.includes("x402_endpoints")) {
         if (!text.includes(RID)) return { rows: [] };
         return {
@@ -189,4 +196,44 @@ test("間違った鍵は匿名扱いに落ちず 401 のまま（顧客の WL/BL
   const res = await call(RID, { key: "not_the_dev_key" });
   assert.equal(res.status, 401);
   assert.equal((await res.json()).error, "invalid_api_key");
+});
+
+// ---- 2026-09-07 第三者監査 A7 ＋ 追加3: admit 以降の早期 return（400 / 404 / 503）も finish() を通す ----
+//
+// HEAD 0ebec74 では 404 not_found（:157-159, :170-172）と 400 invalid_resource_id（:83-84）等が
+// finish() を通らず返っていた。鍵なしでは RateLimit-* ヘッダが無く、枠だけ消費される（鍵ありは
+// refund で月次単位を戻すが、鍵なしには戻す経路が無かった）。規則は鍵ありに揃える:
+// 早期 return でも枠のヘッダを付け、消費した 1 回分を戻す。
+
+test("(g) 鍵なしの 404 not_found にも RateLimit-* ヘッダが付き、IP 枠は消費されない（鍵ありの refund と同じ規則）", async () => {
+  for (let i = 1; i <= 10; i++) {
+    const res = await call(UNKNOWN_RID);
+    assert.equal(res.status, 404, `${i} 回目が ${res.status}`);
+    assert.equal(res.headers.get("RateLimit-Limit"), "10", `${i} 回目の 404 に枠の天井が無い`);
+    assert.ok(res.headers.get("RateLimit-Remaining") !== null, `${i} 回目の 404 に残数が無い`);
+  }
+  // 404 を 10 回踏んでも枠は戻っているので、11 回目の本物の照会は 200。
+  const real = await call(RID);
+  assert.equal(real.status, 200, `404 が枠を消費している: ${await real.text()}`);
+});
+
+test("(h) 鍵なしの 400 invalid_resource_id にも RateLimit-* ヘッダが付き、IP 枠は消費されない", async () => {
+  for (let i = 1; i <= 10; i++) {
+    const res = await call("not-a-resource-id");
+    assert.equal(res.status, 400, `${i} 回目が ${res.status}`);
+    assert.deepEqual(await res.json(), { error: "invalid_resource_id" });
+    assert.equal(res.headers.get("RateLimit-Limit"), "10", `${i} 回目の 400 に枠の天井が無い`);
+  }
+  const real = await call(RID);
+  assert.equal(real.status, 200, `400 が枠を消費している: ${await real.text()}`);
+});
+
+test("(i) 鍵ありの 404 / 400 にも従来の X-RateLimit-* ヘッダが付く（早期 return が finish を通る）", async () => {
+  const notFound = await call(UNKNOWN_RID, { key: DEV_KEY });
+  assert.equal(notFound.status, 404);
+  assert.ok(notFound.headers.get("X-RateLimit-Limit"), "鍵ありの 404 に月次枠のヘッダが無い");
+  assert.equal(notFound.headers.get("RateLimit-Limit"), null, "鍵ありの応答に IP 枠のヘッダを混ぜない");
+  const bad = await call("not-a-resource-id", { key: DEV_KEY });
+  assert.equal(bad.status, 400);
+  assert.ok(bad.headers.get("X-RateLimit-Limit"), "鍵ありの 400 に月次枠のヘッダが無い");
 });
