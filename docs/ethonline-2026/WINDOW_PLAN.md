@@ -82,6 +82,77 @@ Takeshi の手番になる可能性があるので、**09-14〜09-16 を空け�
 `#announcements` の最新は **2026-09-05 の ETHOnline 2026 キックオフ**告知のみ。
 **規約・締切の変更は出ていない。**
 
+### 【2026-09-07 20:15 追記】会期の日程が運営の原文で確定した（`#👂information`・Pascal | ETHGlobal・2026-09-07 17:21）
+
+> WEEK 1 - Events!
+> Monday - Sept 7 — 10:00am ET Ledger Ledger Tracks Explained ／ **11:59pm ET - Project Check-in #1 Due**
+> Tuesday - Sept 8 — 9:00am ET Arc ／ 10:00am ET Chainlink ／ **2:00pm ET - Project Feedback Session #1** ／ 3:30pm ET Bazantic workshop
+> Thursday - Sept 10 — 9:00am ET Project Feedback Session #12 ／ **11:59pm ET - Project Check-in #2 Due**
+> Sunday - Sept 13 — **12:00pm ET - Project Submissions Due!** ／ **3:00pm ET - Judging Round 1: Asynchronous Project Judging (No interaction needed)**
+>
+> You CAN share your check in in ⁠🚀project-check-ins but this is entirely OPTIONAL.
+
+**ET は EDT（UTC-4）。JST = ET + 13 時間。**
+
+| 原文 | JST | 我々 |
+|---|---|---|
+| Check-in #1 Due — 09-07 11:59pm ET | **09-08 12:59** | ✅ 09-07 19:2x に Dashboard で送信済み（`showcase/payorrefuse-opboo`） |
+| Project Feedback Session #1 — 09-08 2:00pm ET | **09-09 03:00** | 任意。深夜帯 |
+| Project Feedback Session #12 — 09-10 9:00am ET | **09-10 22:00** | 任意 |
+| **Check-in #2 Due — 09-10 11:59pm ET** | **09-11 12:59** | ⏳ **未着手。Takeshi 手番**（`TAKESHI_TODO.md` に追加） |
+| Project Submissions Due — 09-13 12:00pm ET | **09-14 01:00** | 正典と一致。**変更なし** |
+| **Judging Round 1（非同期）— 09-13 3:00pm ET** | **09-14 04:00** | 「No interaction needed」＝**この時点での手番は無い**。Round 2 の呼び出しはメール |
+
+**訂正: 「check-in は規定上任意」は言い過ぎだった。** 09-07 18:5x に `info/details` の記載 0 件を根拠に
+TODO の優先度を 🟠 へ下げたが、**運営の週次スケジュールは check-in を "Due" として列挙している**。
+任意なのは **`#project-check-ins` へ貼ること**だけで、**Dashboard のフォーム自体は締切付きの提出物**。
+→ **#2 は 🔴 で扱う。**
+
+### The Graph：資格質問は 2026-09-07 20:15 時点で**未回答**（`#partner-the-graph` 実読）
+
+`Sen_web3` の 09-07 06:17 の質問（MCP 面と SDK 面のどちらを AI Tooling として審査するか）に**返答は無い**。
+同種の資格質問が最低4件溜まっている（LNiu 09-03 ／ Mo 09-06 22:11 ／ reymom 09-07 01:29 ／
+Luc 09-07 14:26 ／ shivansh 09-07 19:03）。**運営は答えない立場を明言した**:
+
+> I can not help you with bounty eligability questions. I do not work for the Graph and can not provide any
+> information on how they are judging their tracks. … I will check in with the team to have someone answer those questions
+> —— Pascal | ETHGlobal, `#partner-the-graph`, 2026-09-07 19:06
+
+**含意**: 回答は The Graph 側の人が来ないと出ない。**回答を待って設計を決める計画にしない。**
+MCP 面と SDK 面の両方が歩ける状態を保ったまま出す（今の実装はそうなっている）。
+09-10 22:00 の Project Feedback Session #12 は、この質問をもう一度出せる場になりうる。
+
+### Bazantic：Tom Hay 本人の発言3件（`#partner-bazantic`）
+
+1. **A/B の狙いは「モデル間のばらつき」**（2026-09-05 23:54）:
+   > Yes, we want the recipe to be the only difference. The recipe will give a deterministic answer, and the point of
+   > this hackathon project is to get a good spread of data on **how different models without the recipe could deviate
+   > from the deterministic answer**, and by how much (how how little)
+
+   **§16 の事前登録は「同一モデル」で固定してある。** 「Recipe が唯一の違い」は守れているが、
+   **賞の出し手が見たいのは "different models" の散らばり**である。
+   1モデル（`claude-opus-5`）20試行だけだと、彼らが欲しい図が出ない。
+   → **§16 を壊さずに A 側だけモデルを増やす**（ペアごとの同一性は維持）のが素直。09-11 の凍結までに判断。
+
+2. **提出物は「所見」＋「短い画面収録」の2点。テンプレは無い**（同上）:
+   > You just need to submit your notes AND a short screen capture video recording walking us through how you did that
+   > test. We didn't want to be overly prescriptive
+
+   §1.45 の「動画はスマホ撮影禁止・2〜4分」は**本編動画**の規定。こちらは**別立ての短い画面収録**。
+
+3. **x402 の決済チェーンは Base / Base Sepolia 固定**（2026-09-07 00:16）:
+   > right now we are not chain agnostic so x402 settles on Base (and Base Sepolia) and MPP on Tempo -
+   > if you have request for other chains we are very interested in hearing that
+
+   我々の実測（Base Sepolia の $0.01）と整合。**他チェーンの要望は歓迎と明言**——
+   vet402 の多チェーン観測はフィードバック文書の材料になる。
+
+### 読めなかったチャンネル
+
+`#🚨click-for-info🚨`（Tokyo・`956188917961478184`）は **`Sen_web3` に履歴の閲覧権限が無い**
+（「メッセージ履歴を表示する権限がありません」）。**Tokyo 2026 の締切・枠はここからは取れない。**
+Tokyo の一次情報は `ethglobal.com/events/tokyo2026` を直接見るしかない。
+
 ## 1.45 提出の要件（2026-09-06 08:20・運営の `info/details` と `prizes` を実読）—— **正典より厳しい点が5つあった**
 
 ### 動画（**canon が緩かった**）
