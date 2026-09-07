@@ -153,6 +153,36 @@ MCP 面と SDK 面の両方が歩ける状態を保ったまま出す（今の�
 （「メッセージ履歴を表示する権限がありません」）。**Tokyo 2026 の締切・枠はここからは取れない。**
 Tokyo の一次情報は `ethglobal.com/events/tokyo2026` を直接見るしかない。
 
+### 【2026-09-08 08:2x 追記】提出フォームが開いた（`#👂information`・Pascal | ETHGlobal・**2026-09-08 00:06 JST**）
+
+> Project submissions are now open!
+> This is your reminder to submit your ETHOnline 2026 project by **Sunday, September 13th at 12:00pm ET**!
+> After submitting, you can still edit your submission up until the 12:00pm ET! project submission deadline.
+> **There is no limit on how many times you can submit!**
+> Video is Mandatory! Do not wait until the last minute to work on it and submit early to avoid issues in the final Minutes of the Hackathon
+> Requirements (**These are non debatable. Your Video Upload will FAIL if you do not follow the instructions below**):
+> ・Ensure the video is between 2 and 4 minutes
+> ・Ensure that minimum video resolution is 720p
+> ・**Ensure the video has audio without music**
+> Only staked and confirmed hackers can be on your team.
+> If you see the message: Your repositories have failed the following checks. Read the message carefully.
+> **You will still be able to submit. The team will recheck the code for all qualifying submissions.**
+
+**変わったのは1つだけ——提出フォームが開いた。締切・審査日程・トラック規則の変更は無い。**
+
+| 項目 | 原文 | 我々への影響 |
+|---|---|---|
+| 提出フォーム | 09-08 00:06 に開放 | **§0 の「提出フォームは未開放」は解消。** 早期に1回出し、締切まで上書きする運用へ（**回数無制限・締切まで編集可**） |
+| 締切 | 09-13 12:00pm ET | **09-14 01:00 JST。変更なし** |
+| 動画 | 2〜4分／720p 以上／**音楽の無い音声** | §1.45 と一致。ただし canon は「音楽＋テキストだけで流す」の禁止としか書いていなかった。原文は**音楽そのものを入れない**と読める。**ナレーションのみで録る** |
+| リポ検査 | 落ちても提出はできる。運営が再検査する | 失格ではない。ただし**公開リポは必須**（Pascal 09-05・`#partner-the-graph`: "Every submission for ETHOnline regardless of the track has to be public. You can not build and ship a private repo."） |
+| チーム | staked and confirmed のハッカーのみ | 単独なので影響なし |
+
+**運用の変更（この追記で決めたこと）**: §5 の日程は「09-12 に動画・09-13 に提出」のままだが、
+**提出フォームは開いた時点で1回埋めて保存する**（空欄でも保存できる。上書きは無制限）。
+運営自身が "submit early to avoid issues in the final Minutes" と書いている。
+最終日に初めてフォームを開くと、動画アップロードの失敗が締切直前に出る。
+
 ## 1.45 提出の要件（2026-09-06 08:20・運営の `info/details` と `prizes` を実読）—— **正典より厳しい点が5つあった**
 
 ### 動画（**canon が緩かった**）
