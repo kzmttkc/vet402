@@ -4,6 +4,19 @@
 
 *We buy. We settle. We publish the measurements.*
 
+## Judges: 60 seconds
+
+```bash
+git clone https://github.com/kzmttkc/vet402 && cd vet402
+npm run judge-check   # sdk → mcp-server → demo → ab: builds, tests, mutation runs. No key, nothing live. 27 s measured on a clean clone (warm npm cache)
+GRAPH_API_KEY=… node examples/ethonline-2026-demo/src/run.ts judge https://kronossignals.com/api/v1/price/btc
+```
+
+- Line 2 prints one table, one exit code per step, and `unset`s every key before it starts — a green run is proof that none is needed.
+- Line 3 reads the seller's real 402 challenge, vet402's `/decision` and The Graph's x402 Base subgraph (`_meta.block.number`, live) side by side, then prints `verdict: ALLOW|REFUSE`, `reason_codes[]`, `signed: false`. Dry run — the signing module is never loaded. About 4 s.
+- Keys: one free Graph key from <https://thegraph.com/studio> → *API Keys*. `/decision` answers key-less (10/min per IP); nothing else is required.
+- Everything else a judge can run, in dependency order, with the recorded output: [`SKILL.md`](./SKILL.md).
+
 vet402 buys what x402 endpoints actually sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence.
 
 > **Formerly Vouch.** The repository is <https://github.com/kzmttkc/vet402> (renamed 2026-08-18). The npm scope is `@vet402/*`; the API key prefix (`vouch_`) and some internal identifiers retain the old name for backward compatibility — renaming them would break every key already issued.
