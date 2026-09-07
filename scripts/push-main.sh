@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The only way into main. One command for: fetch -> rebase -> judge-check
+# The only way into main. One command for: fetch -> rebase -> judge-check -> numbers
 # (-> root npm test) -> push -> wait for CI. Replaces the hand-typed chain
 # that was retyped 10+ times on 2026-09-07 (one typo, one parallel-branch
 # collision that turned main red).
@@ -129,6 +129,21 @@ JC=${PIPESTATUS[0]}
 echo
 [ "$JC" -eq 0 ] || fail judge-check "$S" "exit $JC — not pushing"
 record judge-check 0 "$S"
+
+# ---------------------------------------------------------------- 3b. submission numbers
+# 2026-09-08: the same check CI runs last ("Submission numbers are consistent with
+# scripts/refresh-numbers.json"). Run it here, before the push, because on 09-08 a
+# branch refreshed the numbers, then amended the commit; the amend moved HEAD out of
+# the as_of window, CI went red on main and an automatic "CI red on main" issue opened.
+# Same fix every time: `npm run refresh-numbers` after fetch+rebase, then commit.
+S=$(date +%s)
+if node "$ROOT/scripts/refresh-numbers.mjs" --check >"$LOGDIR/numbers.log" 2>&1; then
+  echo "ok    numbers: $(tail -1 "$LOGDIR/numbers.log")"
+  record numbers 0 "$S"
+else
+  sed 's/^/  | /' "$LOGDIR/numbers.log" | tail -15
+  fail numbers "$S" "refresh-numbers --check is red — run 'npm run refresh-numbers' after the rebase, commit, re-run"
+fi
 
 if [ "$FULL" -eq 1 ]; then
   S=$(date +%s)

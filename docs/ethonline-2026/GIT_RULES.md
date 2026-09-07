@@ -29,6 +29,7 @@ main へは **`bash scripts/push-main.sh` だけ**で入れる。`git fetch && g
 の手打ち連結は禁止（9/7 に 10 回以上打ち直し、1 回は綴り誤り、1 回は並行ブランチの衝突で main が赤になった）。
 
 - 中身: 前提検査（clean・main 以外・origin・gh）→ `git fetch` → `git rebase origin/main` → `judge-check.sh`
+  → `refresh-numbers.mjs --check`（09-08 追加。refresh 後に amend すると as_of の窓から外れて CI が赤になる。push 前に止める）
   → `git push origin HEAD:main` → `~/vouch` を ff → `ci` ワークフローの結果待ち。各段の exit と秒を最後に表で出す。
 - `--full` で root の `npm test` も回し、4 スイートの `ℹ fail 0` を数える（`&&` で繋がない）。
 - `--dry-run` は `git push --dry-run`（何も出ない）。`--no-wait` は CI を待たない。
