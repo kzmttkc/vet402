@@ -25,7 +25,9 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
-import { createTransferCheckedInstruction, getAssociatedTokenAddressSync } from "@solana/spl-token";
+// 2026-09-07: `@solana/spl-token` は本番依存から外した（bigint-buffer の未修正 high）。
+// 同じ 2 関数を web3.js だけで実装し、tests/spl-token-lite.test.ts がライブラリとのバイト一致を検査する。
+import { createTransferCheckedInstruction, getAssociatedTokenAddressSync } from "./spl-token-lite";
 import { MAX_PER_PURCHASE_UNITS, type ChallengeAccept } from "./x402-payer";
 
 export const SOLANA_MAINNET_CAIP2 = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
