@@ -173,6 +173,14 @@ const MUTATIONS = [
     find: '      if (exemptShape && hit.name === "private-key-like") continue;',
     replace: "      if (exemptShape) continue;",
   },
+  // ---- 2026-09-07 追加。第三者監査 A5: 橋の再送先は Gateway の origin に限る ----
+  {
+    id: "M24",
+    why: "再送先の origin 検査を外して文字列連結に戻す — resource.url \"@evil.com/x\" で署名付きの要求が evil.com へ飛ぶ",
+    file: "src/mcp.mjs",
+    find: "    const target = new URL(resource, gatewayOrigin);\n    if (target.origin !== gatewayOrigin) {",
+    replace: "    const target = { href: gatewayOrigin + resource, origin: gatewayOrigin };\n    if (false) {",
+  },
   // ---- 2026-09-07 追加。Recipe の公開状態の規則（状態を固定しない。状態と証拠の対応を固定する）----
   {
     id: "M20",

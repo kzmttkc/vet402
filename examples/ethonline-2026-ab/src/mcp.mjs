@@ -106,6 +106,17 @@ export function createMcpToolProvider({ url, fetchImpl = fetch, headers = {}, cl
       );
     }
     const resource = parsed.challenge.resource.url;
+    // 再送先は **Gateway と同じ origin** に限る（2026-09-07 監査 A5）。文字列連結
+    // `gatewayOrigin + resource` だと `resource.url: "@evil.com/x"` で `https://<gw>@evil.com/x`
+    // ——ホストは evil.com、Gateway 名はユーザ情報に化ける——に署名付きの要求が飛ぶ。
+    // URL として解決し、origin が違えば**署名の前に** throw（fail-closed）。
+    const target = new URL(resource, gatewayOrigin);
+    if (target.origin !== gatewayOrigin) {
+      throw new Error(
+        `mcp x402 bridge: refusing to pay — resource.url=${JSON.stringify(resource)} resolves to origin ${target.origin}, ` +
+          `not the gateway origin ${gatewayOrigin} (a signed payment must not leave the gateway)`,
+      );
+    }
     const x402 = await import("../../../packages/sdk/dist/x402-pay.js");
     const authorization = x402.buildAuthorization({
       from: payer.address,
@@ -117,7 +128,7 @@ export function createMcpToolProvider({ url, fetchImpl = fetch, headers = {}, cl
     const { signature } = await x402.signX402Payment({ account: payer, accept, authorization, chainId: BRIDGE_CHAIN_ID });
     bridgeLog.push({ nonce: authorization.nonce, to: authorization.to, value: authorization.value, resource, signedAt: new Date().toISOString() });
     const header = x402.encodePaymentHeader({ x402Version: 2, accept, payload: { signature, authorization }, resourceUrl: resource });
-    const res = await fetchImpl(gatewayOrigin + resource, {
+    const res = await fetchImpl(target.href, {
       method: "GET",
       headers: { accept: "application/json", [header.headerName]: header.headerValue },
     });
