@@ -70,8 +70,10 @@ Most trust tools *answer a question* and leave the payment to you. `pay_if_trust
 on anything other than `ALLOW`, **the payment module is never even loaded**, so no signature can
 exist. The refusal is machine-readable and it happens *before* a signature, not after.
 
-The refusal names **our** gap, not the seller's fault: `l1_not_attempted` means "we have never
-bought from them", not "they are bad".
+The refusal names **our** gap, not the seller's fault: `l1_not_attempted` means "we have not
+signed a paid attempt against them", and `l1_inconclusive` means "we paid, and our own request
+was answered 4xx — no conclusion" (a gap in our measurement, not evidence against the seller).
+Neither means "they are bad".
 
 ## Install
 

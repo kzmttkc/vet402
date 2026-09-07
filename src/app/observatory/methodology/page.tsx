@@ -393,6 +393,18 @@ export default async function ObservatoryMethodologyPage() {
           public decision ledger.
         </p>
         <p className="doc-p">
+          <strong>l1_inconclusive</strong> — since 2026-09-08, the neighbouring case: we did
+          sign and the payment settled, but each paid response was a <code>4xx</code> we
+          attribute to our own request shape (an empty POST body, no API key), so there is no
+          paid response to judge. Those rows are counted in <code>facts.l1.n_attempts</code>{" "}
+          and <code>n_settled</code> — the same set the per-endpoint purchases route reports —
+          and disclosed as <code>n_inconclusive</code>; the decision rules read conclusive
+          attempts as <code>n_attempts − n_inconclusive</code>, so they do not count toward a
+          BLOCK. Before that date the same rows were left out of <code>n_attempts</code>, and a
+          seller with ten settled purchases was published as <code>l1_not_attempted</code> —
+          a gap in our measurement, not evidence against the seller, and now named as such.
+        </p>
+        <p className="doc-p">
           <strong>settled comes at two evidence strengths, and both counts are published.</strong>{" "}
           Since 2026-09-04 12:00 UTC each purchase carries a one-time value we generate
           ourselves — the EIP-3009 authorization nonce on Base, our own memo on Solana — and

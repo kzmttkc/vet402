@@ -135,6 +135,17 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
       "l1_not_attempted means vet402 has not signed a paid attempt against this resource, so what it sells is unverified rather than refuted. When the same decision document reports spending_halted true, the missing attempt reflects vet402's own spending halt rather than anything about the seller, and facts.l1.last_attempt_at says when we last looked.",
   },
   {
+    // 2026-09-08: settled だが有料応答が 4xx の行を n_attempts に数えるようにした
+    // （それまで同じ行を /purchases は attempt と数え、/facts は数えず、api.exa.ai は
+    // 10 回決済していながら l1_not_attempted と公開されていた）。数えると rules の
+    // 「3 回以上未配達 → BLOCK」に我々の 4xx が乗るので、結論の出た試行だけを判定に
+    // 使い、結論が 0 件の相手にはこの中立の語を出す。売り手の落ち度と読める語は書かない。
+    term: "l1_inconclusive",
+    group: "l1",
+    definition:
+      "l1_inconclusive means vet402 has settled purchases against this resource, but each one ended in a non-2xx we attribute to our own request shape (an empty POST body, no API key), so there is no paid response to judge; this is a gap in our measurement, not evidence against the seller. It sits between l1_not_attempted (no paid attempt was signed) and l1_never_delivered (a conclusive paid response existed and nothing was delivered): facts.l1.n_inconclusive carries the count, the decision rules read conclusive attempts as n_attempts minus n_inconclusive, and these rows do not count toward a BLOCK.",
+  },
+  {
     term: "match",
     group: "l2",
     definition:
