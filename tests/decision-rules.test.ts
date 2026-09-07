@@ -6,7 +6,7 @@ import type { SellerFacts, BuyerFacts } from "@/lib/decision/types";
 
 const ok: SellerFacts = {
   l0: { status: "pass", observed_at: "2026-09-02T00:00:00Z", dialect: "v2", fail_reason: null },
-  l1: { n_delivered: 1, n_settled: 1, n_attempts: 1, n_probe_error: 0, p50_ms: 300, p95_ms: 300, last_purchase_id: "eip155:8453:0x1", observed_at: "2026-09-01T00:00:00Z", last_attempt_at: null },
+  l1: { n_delivered: 1, n_settled: 1, n_attempts: 1, n_inconclusive: 0, n_probe_error: 0, p50_ms: 300, p95_ms: 300, last_purchase_id: "eip155:8453:0x1", observed_at: "2026-09-01T00:00:00Z", last_attempt_at: null },
   l2: { status: "undeclared", declaration_hash: null, response_hash: null, diff_hash: null, missing_keys: null, observed_at: null },
   availability_7d: 1,
   availability_30d: 1,
@@ -19,7 +19,7 @@ const ok: SellerFacts = {
   wash_dominated: false,
 };
 
-test("版が固定されている", () => assert.equal(DECISION_RULES_VERSION, "2026-09-02.1"));
+test("版が固定されている", () => assert.equal(DECISION_RULES_VERSION, "2026-09-08.1"));
 
 test("ALLOW: l0 pass ∧ n_delivered ≥ 1 ∧ l2 ≠ mismatch。l2_undeclared は reason に載るが ALLOW を妨げない", () => {
   const d = decidePayer(ok);

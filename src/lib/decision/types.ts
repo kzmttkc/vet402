@@ -37,9 +37,17 @@ export type SellerFacts = {
     n_settled: number;
     n_attempts: number;
     /**
-     * §6.2 probe_error（こちら側の失敗）。決済は確定したが HTTP 4xx——我々の
-     * リクエスト（例: POST に `{}`）が不正だった試行。結果にしない（n_attempts に
-     * 数えない）。売り手の不履行と混ぜないため件数だけ開示する。
+     * 2026-09-08: 決済は確定したが有料応答が HTTP 4xx——我々のリクエスト（例: POST に
+     * `{}`・API キー無し）の形で説明がつくので、配達の判定を**保留**にした行の数。
+     * n_attempts / n_settled には**数える**（金は動いた。/purchases の inconclusiveCount と
+     * 同じ集合）。売り手の不履行には数えない（rules.ts は conclusive = n_attempts −
+     * n_inconclusive で BLOCK / never_delivered を読む）。
+     */
+    n_inconclusive: number;
+    /**
+     * @deprecated 2026-09-08 から n_inconclusive と同値。以前は「n_attempts に数えない
+     * こちら側の失敗」だったが、同じ行を /purchases が attempt として数えており、
+     * 「金が 10 回動いた」相手が「未試行」と公開されていた。互換のため残す。
      */
     n_probe_error: number;
     p50_ms: number | null;

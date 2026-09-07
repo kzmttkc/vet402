@@ -156,7 +156,9 @@ const SURFACES: Surface[] = [
       "n_delivered",
       "n_settled",
       "n_attempts",
-      // §6.2 こちら側の失敗。売り手の不履行と混ぜないために件数だけ開示する。
+      // 2026-09-08: settled だが 4xx（我々の要求の形）。n_attempts に含めるが判定は保留。
+      "n_inconclusive",
+      // 旧名（n_inconclusive と同値・deprecated）。互換のため残す。
       "n_probe_error",
       "p50_ms",
       "p95_ms",

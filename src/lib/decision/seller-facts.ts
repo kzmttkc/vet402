@@ -4,6 +4,9 @@
 //   l0.status        = publishedVerdict（2 連続 fail ゲート。1 回の fail を公開しない）
 //   l1.n_attempts    = 署名した試行（spent が立つ status）。署名前の拒否は数えない
 //   l1.n_settled     = チェーンで確定（status = settled）
+//   l1.n_inconclusive= settled かつ有料応答が 4xx（我々の要求の形で説明がつく）。
+//                      n_attempts / n_settled に含める（/purchases と同じ集合・2026-09-08）。
+//                      判定は rules.ts が conclusive = n_attempts − n_inconclusive で読む
 //   l1.n_delivered   = settled かつ 2xx かつ非空
 //   l2.status        = 宣言が無ければ undeclared。あれば直近の配達の l2_schema:
 //                      match → conform、mismatch → mismatch、それ以外 → undeclared
@@ -15,6 +18,7 @@
 import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
+import { isInconclusive } from "@/lib/observatory/delivery";
 import { publishedVerdict } from "@/lib/observatory/l0-probe";
 import { purchaseId as toPurchaseId } from "@/lib/ids/canonical";
 import { toCaip2 } from "@/lib/observatory/chains";
@@ -105,18 +109,30 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
   const latestProbe = probes[0] ?? null;
   const l0Status = publishedVerdict(probes.map((p) => p.verdict));
 
-  // §6.2 probe_error: 決済は確定したが 4xx——我々のリクエストが不正だった（2026-09-02
-  // 本番実測: settled 980 件のうち 79 件・54 endpoint。exa.ai/search は POST に `{}` を
-  // 送って 400）。F-1（2026-08-26）と同型の冤罪を避けるため、n_attempts から外す。
-  const isProbeError = (p: PurchaseInput) =>
-    p.status === "settled" && p.httpStatusPaid !== null && p.httpStatusPaid >= 400 && p.httpStatusPaid < 500;
-  const probeErrors = purchases.filter(isProbeError);
-  const signed = purchases.filter((p) => SIGNED_STATUSES.has(p.status) && !isProbeError(p));
+  // inconclusive: 決済は確定したが有料応答が 4xx——我々のリクエストの形（POST に `{}`・
+  // API キー無し）で説明がつく行。判定は `@/lib/observatory/delivery` の 1 定義に従う
+  // （/purchases の inconclusiveCount・/observatory/state と同じ述語）。
+  //
+  // 2026-09-02 までは「n_attempts に数えない（probe_error）」だったが、同じ行を
+  // /purchases は attempt / settled として数えていた。api.exa.ai は purchases 10/10/
+  // inconclusive 10 なのに facts 0/0 で `/decision` が `l1_not_attempted`——
+  // 「金が 10 回動いた」相手を「未試行」と公開していた（2026-09-08 本番実測）。
+  // 以後 n_attempts / n_settled は purchases と同じ集合（inconclusive を含む）で数え、
+  // 売り手の不履行として読まない役目は rules.ts の conclusive（n_attempts −
+  // n_inconclusive）が持つ。F-1（2026-08-26）型の冤罪はそちらで防ぐ。
+  const signed = purchases.filter((p) => SIGNED_STATUSES.has(p.status));
   const settled = signed.filter((p) => p.status === "settled");
-  const delivered = settled.filter(
+  const inconclusive = settled.filter((p) => isInconclusive(p));
+  const conclusiveSettled = settled.filter((p) => !isInconclusive(p));
+  const delivered = conclusiveSettled.filter(
     (p) => p.httpStatusPaid !== null && p.httpStatusPaid >= 200 && p.httpStatusPaid < 300 && p.payloadNonEmpty === true,
   );
-  const latencies = settled.map((p) => p.latencyMs).filter((v): v is number => typeof v === "number").sort((a, b) => a - b);
+  // 遅延は結論のある settled だけで測る（4xx の往復は配達の遅延ではない）。
+  const latencies = conclusiveSettled
+    .map((p) => p.latencyMs)
+    .filter((v): v is number => typeof v === "number")
+    .sort((a, b) => a - b);
+  // 最新の決済レシート。inconclusive でも金は動いており、レシートは在る。
   const lastSettled = settled[0] ?? null;
 
   const declared = input.declaredSchema !== null && input.declaredSchema !== undefined;
@@ -162,7 +178,8 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
       n_delivered: delivered.length,
       n_settled: settled.length,
       n_attempts: signed.length,
-      n_probe_error: probeErrors.length,
+      n_inconclusive: inconclusive.length,
+      n_probe_error: inconclusive.length,
       p50_ms: percentile(latencies, 50),
       p95_ms: percentile(latencies, 95),
       last_purchase_id:

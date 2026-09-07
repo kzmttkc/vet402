@@ -310,7 +310,13 @@ export type SellerFacts = {
         n_delivered: number;
         n_settled: number;
         n_attempts: number;
-        /** §6.2 こちら側の失敗（決済は確定したが我々のリクエストが 4xx）。n_attempts に数えない。 */
+        /**
+         * 決済は確定したが有料応答が 4xx（我々のリクエストの形で説明がつく）行。n_attempts / n_settled に
+         * 含まれる。売り手の不履行には数えない——判定は conclusive = n_attempts − n_inconclusive で読む
+         * （2026-09-08・reason code `l1_inconclusive`）。
+         */
+        n_inconclusive: number;
+        /** @deprecated 2026-09-08 から n_inconclusive と同値。互換のため残す。 */
         n_probe_error: number;
         p50_ms: number | null;
         p95_ms: number | null;

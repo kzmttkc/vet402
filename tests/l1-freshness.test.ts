@@ -50,6 +50,7 @@ const sellerNoL1: SellerFacts = {
     n_delivered: 0,
     n_settled: 0,
     n_attempts: 0,
+    n_inconclusive: 0,
     n_probe_error: 0,
     p50_ms: null,
     p95_ms: null,

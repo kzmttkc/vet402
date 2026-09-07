@@ -67,15 +67,17 @@ test("trustScore は facts に入らない（§8.3 禁止）", () => {
   assert.equal("score" in f, false);
 });
 
-test("§6.2 probe_error: 決済は確定したが 4xx（我々のリクエストが不正）は n_attempts に数えない", () => {
+test("inconclusive（2026-09-08）: 決済は確定したが 4xx（我々のリクエストの形）は n_attempts / n_settled に数え、n_inconclusive で開示する", () => {
   const ours: PurchaseInput[] = [0, 1, 2].map((i) => ({
     attemptedAt: `2026-09-0${i + 1}T12:00:00Z`, status: "settled", latencyMs: 200, httpStatusPaid: 400, payloadNonEmpty: true, l2Schema: "not_checked", txHash: `0x${i}`, network: "eip155:8453",
   }));
   const f = assembleSellerFacts({ ...base, purchases: ours });
-  assert.equal(f.l1.n_probe_error, 3);
-  assert.equal(f.l1.n_attempts, 0);
-  assert.equal(f.l1.n_settled, 0);
+  assert.equal(f.l1.n_inconclusive, 3);
+  assert.equal(f.l1.n_probe_error, 3, "旧名は同値で残す（deprecated）");
+  assert.equal(f.l1.n_attempts, 3, "金は 3 回動いた。/purchases の attemptCount と同じ");
+  assert.equal(f.l1.n_settled, 3);
   assert.equal(f.l1.n_delivered, 0);
+  assert.equal(f.l1.p50_ms, null, "4xx の往復は配達の遅延に入れない");
 });
 
 test("wash_dominated の分母は第三者の raw——自社の測定購入（test）だけの店は BLOCK にならない", () => {

@@ -2,10 +2,21 @@
 // §8.3 判定。recommendation は事実から関数で出す。関数は版管理する。
 //
 // 支払前（買い手 → 売り手・role=payer）:
-//   BLOCK if l0 ∈ {fail, unverified} ∨ (n_attempts ≥ 3 ∧ n_delivered = 0) ∨ l2 = mismatch
+//   conclusive = n_attempts − n_inconclusive（2026-09-08。inconclusive は settled だが
+//                有料応答が 4xx で、我々の要求の形で説明がつく行。売り手の不履行に数えない）
+//   BLOCK if l0 ∈ {fail, unverified} ∨ (conclusive ≥ 3 ∧ n_delivered = 0) ∨ l2 = mismatch
 //            ∨ wash_dominated ∨ operator_blacklist
-//   WARN  if L1 未実施（オプトイン無し）∨ drifting ∨ thin ∨ 呼び手方言と不一致
+//   WARN  if L1 未実施（オプトイン無し）∨ 結論なし（l1_inconclusive）∨ 未配達（conclusive ≥ 1）
+//            ∨ drifting ∨ thin ∨ 呼び手方言と不一致
 //   ALLOW if l0 = pass ∧ (n_delivered ≥ 1 ∨ L1 なし ALLOW をオプトイン) ∧ l2 ≠ mismatch ∧ ¬BLOCK
+//
+//   L1 の語は 4 つで排他:
+//     l1_not_attempted   n_attempts = 0（署名した試行が無い）
+//     l1_inconclusive    n_attempts > 0 ∧ conclusive = 0 ∧ n_delivered = 0
+//                        （金は動いたが、結論の出た応答が 1 件も無い。我々の測定の穴であって
+//                          売り手への反証ではない——中立・WARN）
+//     l1_never_delivered conclusive ≥ 1 ∧ n_delivered = 0
+//     l1_delivered       n_delivered ≥ 1
 //
 // 仕様解釈（開示）: §8.3 は「WARN if l2 == undeclared」と「ALLOW if … l2 != mismatch」を
 // 同時に書く。宣言の無い店が本番の大多数であり、§9.1 の例は reason_codes に
@@ -25,7 +36,7 @@ export type Recommendation = "ALLOW" | "WARN" | "BLOCK";
 export type Decision = { recommendation: Recommendation; reason_codes: string[] };
 
 /** 規則の版。判定の意味が変わる変更は必ず上げる（YYYY-MM-DD.n）。 */
-export const DECISION_RULES_VERSION = "2026-09-02.1";
+export const DECISION_RULES_VERSION = "2026-09-08.1";
 
 export const L1_NEVER_DELIVERED_MIN_ATTEMPTS = 3;
 export const RETRY_BURST_BLOCK = 0.3;
@@ -40,11 +51,20 @@ export type PayerOptions = {
   dataDepth?: "thin" | "moderate" | "rich";
 };
 
+/** 結論の出た試行数。inconclusive（settled だが 4xx・我々の要求の形）を除く。 */
+export function conclusiveAttempts(f: SellerFacts): number {
+  return Math.max(0, f.l1.n_attempts - f.l1.n_inconclusive);
+}
+
 export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
   const r: string[] = [];
+  const conclusive = conclusiveAttempts(f);
+  // L1 の証拠が無い（未試行、または結論の出た試行が無い）。オプトインの対象はこの 2 つ。
+  const noL1Evidence = f.l1.n_delivered === 0 && conclusive === 0;
   r.push(`l0_${f.l0.status}`);
   if (f.l1.n_attempts === 0) r.push("l1_not_attempted");
   else if (f.l1.n_delivered >= 1) r.push("l1_delivered");
+  else if (conclusive === 0) r.push("l1_inconclusive");
   else r.push("l1_never_delivered");
   r.push(`l2_${f.l2.status}`);
   if (f.offer_stability === "drifting") r.push("offer_drifting");
@@ -58,19 +78,19 @@ export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
     f.l0.dialect !== "unpayable" &&
     f.l0.dialect !== o.callerDialect;
   if (dialectMismatch) r.push("dialect_mismatch");
-  if (f.l1.n_attempts === 0 && o.allowWithoutL1) r.push("l1_waived_by_operator");
+  if (noL1Evidence && o.allowWithoutL1) r.push("l1_waived_by_operator");
 
   const block =
     f.l0.status !== "pass" ||
-    (f.l1.n_attempts >= L1_NEVER_DELIVERED_MIN_ATTEMPTS && f.l1.n_delivered === 0) ||
+    (conclusive >= L1_NEVER_DELIVERED_MIN_ATTEMPTS && f.l1.n_delivered === 0) ||
     f.l2.status === "mismatch" ||
     f.wash_dominated ||
     !!o.operatorBlacklist;
   if (block) return { recommendation: "BLOCK", reason_codes: r };
 
   const warn =
-    (f.l1.n_attempts === 0 && !o.allowWithoutL1) ||
-    (f.l1.n_attempts > 0 && f.l1.n_delivered === 0) ||
+    (noL1Evidence && !o.allowWithoutL1) ||
+    (conclusive > 0 && f.l1.n_delivered === 0) ||
     f.offer_stability === "drifting" ||
     o.dataDepth === "thin" ||
     dialectMismatch;

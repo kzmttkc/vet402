@@ -2872,7 +2872,15 @@ components:
         reason_codes:
           type: array
           items: { type: string }
-          description: Machine-readable reasons (l0_pass, l1_delivered, l2_undeclared, offer_drifting, wash_dominated, …).
+          description: >-
+            Machine-readable reasons (l0_pass, l1_delivered, l1_not_attempted,
+            l1_inconclusive, l1_never_delivered, l2_undeclared, offer_drifting,
+            wash_dominated, …). The L1 words name whose gap it is:
+            l1_not_attempted — no paid attempt was signed; l1_inconclusive —
+            settled purchases exist, but each one ended in a non-2xx we
+            attribute to our own request shape, a gap in our measurement rather
+            than evidence against the seller; l1_never_delivered — at least one
+            conclusive paid response and none delivered.
         facts:
           description: >-
             L0–L2 measurement records — SellerFacts for role=payer,
@@ -3287,17 +3295,30 @@ components:
             fail_reason: { type: string, nullable: true }
         l1:
           type: object
-          required: [n_delivered, n_settled, n_attempts, n_probe_error, p50_ms, p95_ms, last_purchase_id, observed_at, last_attempt_at]
+          required: [n_delivered, n_settled, n_attempts, n_inconclusive, n_probe_error, p50_ms, p95_ms, last_purchase_id, observed_at, last_attempt_at]
           properties:
             n_delivered: { type: integer }
             n_settled: { type: integer }
             n_attempts: { type: integer }
-            n_probe_error:
+            n_inconclusive:
               type: integer
               description: >-
-                §6.2 probe_error — settlement confirmed but our own request was
-                malformed (HTTP 4xx). Not counted in n_attempts; disclosed so a
-                seller's non-delivery is never mixed with our mistakes.
+                Settled purchases whose paid response was a 4xx we attribute to
+                our own request shape (empty POST body, no API key). Counted in
+                n_attempts and n_settled — the same set the per-endpoint
+                purchases route reports as inconclusiveCount — and held out of
+                the delivery judgement: the decision rules read
+                conclusive = n_attempts − n_inconclusive, and when conclusive is
+                0 the reason code is l1_inconclusive (a gap in our measurement,
+                not evidence against the seller). Since 2026-09-08.
+            n_probe_error:
+              type: integer
+              deprecated: true
+              description: >-
+                Deprecated 2026-09-08 — same value as n_inconclusive, kept for
+                clients that read the old name. Before that date these rows were
+                excluded from n_attempts, which published a seller with ten
+                settled purchases as l1_not_attempted.
             p50_ms: { type: number, nullable: true }
             p95_ms: { type: number, nullable: true }
             last_purchase_id: { type: string, nullable: true }
