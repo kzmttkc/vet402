@@ -109,6 +109,7 @@ The MCP server takes no constructor arguments — **its env block is its options
 ## How a judge can run it
 
 Every block below is pasted verbatim from a real run on a clean clone on 2026-09-07; the test counts are kept current by `npm run refresh-numbers` (the printed date inside a block is the run it came from).
+A block whose first line is `# live: expect <jq>` is re-run **every day against production** by `scripts/skill-live-check.mjs` (`.github/workflows/skill-live.yml`): its stdout is slurped with `jq -s` and the expression must be `true`, or the run goes red and opens an issue — so those blocks cannot quietly drift from what production answers (the comment is inert if you paste the block).
 
 ### 1. The tests (no key, no network)
 
@@ -134,6 +135,7 @@ proves the instrument can see "exactly one", so "zero" is not just broken wiring
 ### 2. The gate refusing, offline (no key, no network)
 
 ```bash
+# live: expect .[0].decision == "REFUSE" and .[0].signed == false and .[0].nonce == null
 cd packages/mcp-server && node --input-type=module -e '
 import { payIfTrusted } from "./dist/pay-if-trusted.js";
 const signer = { address: "0x0000000000000000000000000000000000000000",
@@ -183,6 +185,7 @@ no signature exists.
 ### 3. The MCP server over stdio, listing the tool
 
 ```bash
+# live: expect .[0].result.tools | map(.name) == ["check_agent_trust","check_wallet_trust","check_payee_trust","explain_trust_score","attest_x402_payment","check_resource_decision","pay_if_trusted"]
 cd packages/mcp-server && printf '%s\n%s\n%s\n' \
  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"judge","version":"0"}}}' \
  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
@@ -207,6 +210,7 @@ This one needs the network but **no valid key** — that is the point. A lookup 
 must not become an ALLOW.
 
 ```bash
+# live: expect .[0].result.content[0].text | fromjson | .decision == "REFUSE" and .refuse_reasons == ["evidence_unavailable","invalid_api_key"] and .signed == false and .nonce == null
 cd packages/mcp-server && printf '%s\n%s\n%s\n' \
  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"judge","version":"0"}}}' \
  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
@@ -214,17 +218,18 @@ cd packages/mcp-server && printf '%s\n%s\n%s\n' \
  | VOUCH_API_KEY=not_a_real_key node dist/index.js 2>/dev/null | tail -1
 ```
 
-The tool result text:
+The tool result text (production, 2026-09-08 — the server's own word for the 401, `invalid_api_key`, rides along after `evidence_unavailable` since 2026-09-07 so a model can tell "fix the key" from "wait"):
 
 ```json
 {
   "decision": "REFUSE",
   "safe_to_pay": false,
-  "refuse_reasons": ["evidence_unavailable"],
-  "summary": "The decision could not be read — no answer is not an ALLOW.",
+  "refuse_reasons": ["evidence_unavailable", "invalid_api_key"],
+  "summary": "The decision could not be read (HTTP 401 invalid_api_key) — no answer is not an ALLOW.",
   "signed": false, "attested": false, "txHash": null, "nonce": null, "settlement": null,
   "measurement": { "recommendation": null, "reason_codes": [], "facts": {},
-                   "evidence": [], "rules_version": null, "degraded": null }
+                   "evidence": [], "rules_version": null, "degraded": null, "caller_policy": null },
+  "decision_record": null
 }
 ```
 
@@ -458,6 +463,7 @@ The response gains one block and changes nothing else (without these queries the
 Two `curl`s tell the whole story (run them against production; the first was measured there on 2026-09-07):
 
 ```bash
+# live: expect .[0] == "ALLOW" and .[1].verdict == "REFUSE" and .[1].reason_codes == ["price_above_ceiling"] and .[2] == false
 RID=$(curl -sL "https://vet402.com/api/v1/resolve?q=https://kronossignals.com/api/v1/price/btc" | jq -r '.resource.resource_id')
 # over your ceiling → caller_policy.verdict REFUSE, reason_codes ["price_above_ceiling"]
 curl -sL "https://vet402.com/api/v1/resources/$RID/decision?role=payer&amount_usd=1.5&max_per_tx_usd=1" | jq '.recommendation, .caller_policy'

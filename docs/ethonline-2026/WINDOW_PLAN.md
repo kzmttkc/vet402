@@ -230,6 +230,7 @@ Tokyo の一次情報は `ethglobal.com/events/tokyo2026` を直接見るしか�
 
 **→ 09-10 に「まっさらな clone で `SKILL.md` を上から実行する」を1回やる**（[[verify-on-clean-checkout]] と同じ作法）。
 **書いた本人の環境で通ることは、証拠にならない。**
+→ 09-08 に機械へ置換: 本番向けブロックは `skill-live`（§17.1）が clean checkout で毎日実走する。人は緑を見るだけ。
 
 ## 1.5 The Graph との過去の関係について（2026-09-04 Takeshi 指示・行動の縛り）
 
@@ -1171,10 +1172,27 @@ v1（§16.3）は**製品の穴**（上限超えの理由コードをどのツ�
 | 09-07 | #3 を main へ・SKILL.md に judge 節／#5 DX（Node 要件・ビルド順・`judge-check`）／PROMPTS | Usability |
 | 09-08 | AQ-053 が通れば `/decision` 鍵なし枠（IP 10/分）／フィードバック doc の下書き | Usability・Bazantic |
 | 09-09 | Anthropic 鍵で A/B 再実行（1回）・生ログ収載・AQ-052 が通れば Recipe 公開・A/B 画面収録 | Bazantic 枠の資格 |
-| 09-10 | まっさらな clone で SKILL.md を上から通す（§1.7）・数字の再導出 | Usability |
+| 09-10 | **SKILL.md の walkthrough は機械に置換（09-08・`skill-live`）**——手順は §17.1。人がやるのは「その日の run が緑か」を見ることだけ／数字の再導出 | Usability |
 | 09-11 | 台本・フィクスチャ再測・18:00 凍結・ナレーション録音（Takeshi） | 動画 |
 | 09-12 | 画面収録・編集・提出文・prize comments | 提出 |
 | 09-13 | 提出（Takeshi）→ 外から実物を検算 | — |
+
+### 17.1 SKILL.md の日次実走（09-08 設置・09-10 の手動 walkthrough を置換）
+
+09-07 の監査で SKILL.md の curl が本番と食い違っていた（`jq '.resources[0].resource_id'` が null）。文書が未来を書き、
+誰も再実行しなかった。一度きりの人の予定では毎日古くなる文書を守れないので、関門にした。
+
+- **何が走るか**: SKILL.md の ```bash ブロックのうち 1 行目に `# live: expect <jq>` の印があるもの（09-08 時点 4 本:
+  オフライン拒否／`tools/list`／誤った鍵の fail-closed／`caller_policy` の curl 2 本）。stdout を `jq -s` で束ね、式が
+  `true` でなければ FAIL。払うブロックには印を付けない。本番 `/decision` は 1 回 3 本（鍵なし枠 10/分の内側）。
+- **いつ**: `.github/workflows/skill-live.yml` が毎日 08:00 JST（cron `0 23 * * *`）。手動は Actions → skill-live → Run workflow。
+- **赤の見え方**: issue「SKILL.md drifted from production (skill-live)」（ラベル `skill-live`）が開いてオーナーへメール。
+  同じ issue にコメントで積み、緑に戻れば自動で閉じる（uptime.yml と同じ経路）。
+- **人がやること（09-10 以降毎日 1 分）**: `gh run list --workflow skill-live --limit 1` で当日の run が success か見る。
+  赤なら run のログの表（heading @ 行番号・失敗した jq 式）を読み、**本番の答えに合わせて SKILL.md を直す**か本番を直す。
+  手元で再現: `npm run skill-live`（sdk → mcp-server を build してから。`--list` で対象一覧、`--dry-run` で実行せず表示）。
+- **印の増やし方**: 本番向けブロックを足したら、そのフェンスの 1 行目に `# live: expect …` を書く。印の無いブロックは
+  走らない＝守られない。`tests/skill-live-check.test.ts` が抽出と赤の条件を固定している。
 
 **最も自信のない仮定**: Graph の審査員が MCP 経路を SDK 経路より重く見ること（AQ-054 の公開質問で確かめる）。
 **事前検死**: ①MCP 面で Graph が飾りと読まれる（#1 で手当て）②鍵2本とビルド順で詰まる（#4・#5）③A/B が mock のまま（#2）。

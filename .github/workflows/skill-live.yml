@@ -1,0 +1,100 @@
+name: skill-live
+
+# 2026-09-08. SKILL.md の「本番向けコードブロック」を毎日本番で実走し、期待と違えば赤にする。
+#
+# WHY. 09-07 の第三者監査で、SKILL.md の curl（`jq '.resources[0].resource_id'`）が本番では null を返すのに
+# 文書は緑の顔をしていた（＋deploy 待ちの残り文）。文書が未来を書き、誰も再実行しなかった。
+# 「09-10 にまっさらな clone で SKILL.md を上から通す」は人の予定で、一度きり。文書は毎日古くなるので機械にする。
+#
+# WHY not uptime.yml. あちらは 10 分おきの /api/health ポーラーで、checkout も build もしない。
+# こちらは SKILL.md 通りに sdk → mcp-server を build してからブロックを走らせる（1 日 1 回で足りる）。
+# 通知経路は uptime.yml と同じ: 失敗で issue を開く（＝オーナーへメール）、復旧で閉じる。ラベルで分ける。
+#
+# WHAT runs. `# live: expect <jq>` の印が 1 行目にある ```bash ブロックだけ（scripts/skill-live-check.mjs --list で一覧）。
+# 09-08 時点で 4 ブロック: オフラインの拒否／tools/list／誤った鍵での fail-closed（本番 /decision 1 本）／
+# caller_policy の curl 2 本（/resolve 1 本＋/decision 2 本）。本番 /decision は合計 3 本 = 鍵なし枠 10/分の内側。
+# 払うブロック（payOrRefuse・--live・pay_if_trusted の署名経路）には印を付けない——ここは金を動かさない。
+#
+# Secrets. 鍵が要るブロックは `# live: needs VAR expect …` と書く。VAR が無ければ skip と数える（赤にしない）。
+# 09-08 時点で needs 付きのブロックは無い。GRAPH_API_KEY は将来のために env へ通すだけ（未登録なら空 = 未設定）。
+
+on:
+  schedule:
+    - cron: "0 23 * * *" # 08:00 JST daily
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      # SKILL.md の Build order そのまま: SDK の dist/ が先、mcp-server はそれを file:../sdk で link する。
+      - name: Build sdk -> mcp-server (the order SKILL.md prescribes)
+        run: |
+          npm ci --prefix packages/sdk
+          npm run build --prefix packages/sdk
+          npm ci --prefix packages/mcp-server
+          npm run build --prefix packages/mcp-server
+      - name: Run every `# live:` block in SKILL.md against production
+        id: live
+        env:
+          GRAPH_API_KEY: ${{ secrets.GRAPH_API_KEY }}
+        run: |
+          set +e
+          node scripts/skill-live-check.mjs | tee "$RUNNER_TEMP/skill-live.log"
+          RC=${PIPESTATUS[0]}
+          SUMMARY=$(grep -E '^skill-live-check: [0-9]+ ok' "$RUNNER_TEMP/skill-live.log" | tail -1)
+          echo "summary=${SUMMARY:-skill-live-check exited $RC without a summary line}" >> "$GITHUB_OUTPUT"
+          echo "rc=$RC" >> "$GITHUB_OUTPUT"
+          exit "$RC"
+
+      - name: Open or update an alert issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SUMMARY: ${{ steps.live.outputs.summary }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -e
+          TITLE="SKILL.md drifted from production (skill-live)"
+          EXISTING=$(gh issue list --state open --label skill-live --search "\"$TITLE\" in:title" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "Still red at ${NOW} UTC — ${SUMMARY}. ${RUN_URL}"
+          else
+            gh label create skill-live --color b60205 --description "SKILL.md live-check (daily, against production)" 2>/dev/null || true
+            gh issue create \
+              --title "$TITLE" \
+              --label skill-live \
+              --body "The daily run of every \`# live:\` block in SKILL.md (.github/workflows/skill-live.yml) went red at ${NOW} UTC.
+
+          ${SUMMARY}
+
+          Run: ${RUN_URL} — the table in the log names the block (heading @ line) and the jq expectation that failed.
+          Fix SKILL.md to what production answers (or fix production), then re-run the workflow by hand; this issue closes itself on the next green run."
+          fi
+
+      - name: Auto-close the alert issue on recovery
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SUMMARY: ${{ steps.live.outputs.summary }}
+        run: |
+          set -e
+          TITLE="SKILL.md drifted from production (skill-live)"
+          EXISTING=$(gh issue list --state open --label skill-live --search "\"$TITLE\" in:title" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -n "$EXISTING" ]; then
+            NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+            gh issue comment "$EXISTING" --body "Green again at ${NOW} UTC — ${SUMMARY}. Closing."
+            gh issue close "$EXISTING"
+          fi

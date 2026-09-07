@@ -35,6 +35,7 @@
     "judge-check": "bash scripts/judge-check.sh",
     "refresh-numbers": "node scripts/refresh-numbers.mjs --refresh",
     "check-numbers": "node scripts/refresh-numbers.mjs --check",
+    "skill-live": "node scripts/skill-live-check.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint",
     "predb:generate": "tsx scripts/db-preflight.ts",

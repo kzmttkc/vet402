@@ -57,3 +57,15 @@ above; `public-route.ts` is new to the set — rerun the command for the counts;
 | `SKILL.md` | `pay_if_trusted` refuse-reason list gains `price_above_declared` (A3); the *Actually paying* paragraph now describes the real no-payer / no-resource behaviour (D4) |
 | `src/app/api/v1/resources/[resourceId]/decision/route.ts` | Every early return (400 / 404 / 503) goes through `fail()` → `finish()` so the key-less `RateLimit-*` headers and the keyed `X-RateLimit-*` headers are on those responses too; key-less early returns refund the IP window like keyed ones refund the monthly unit (A7) |
 | `src/lib/api/public-route.ts` | `publicRateLimit` also returns the `bucketKey` it consumed, so a route can refund it on an early return (A7) |
+
+## 2026-09-08 — SKILL.md live-check (branch `ethonline/skill-live-check`)
+
+The 09-07 audit found SKILL.md curls that production no longer answered as written (`jq '.resources[0].resource_id'` → null);
+the document had been written ahead of production and nobody re-ran it. New: `scripts/skill-live-check.mjs`,
+`tests/skill-live-check.test.ts`, `.github/workflows/skill-live.yml` (daily 08:00 JST, opens an issue when red).
+
+| File | Why |
+|---|---|
+| `SKILL.md` | Four production-facing blocks get a first-line `# live: expect <jq>` marker (one sentence at the top of *How a judge can run it* explains it); §4's expected output corrected to what production answers since 2026-09-07 (`invalid_api_key` rides along after `evidence_unavailable`, `caller_policy: null`, `decision_record: null`) — the very drift the gate exists to catch |
+| `package.json` | `npm run skill-live` |
+| `docs/ethonline-2026/WINDOW_PLAN.md` | §17's 09-10 "walk SKILL.md on a clean clone" replaced by reading the gate's daily run (§17.1); §1.7 arrow note |
