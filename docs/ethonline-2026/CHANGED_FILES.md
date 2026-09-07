@@ -34,7 +34,7 @@ git diff --diff-filter=M --name-only pre-ethonline-2026..main \
 | `packages/mcp-server` | 17 | `pay_if_trusted`, evidence policy, the uncatalogued path, key-less `/decision`, typed refuse reasons |
 | repo root | 8 | `README.md`, `AI_USAGE.md`, `SKILL.md`, `.env.example`, `.gitignore`, `package.json`, config. 2026-09-07: `README.md` and `SKILL.md` corrected after the judge-doc audit (production `/decision` body, timings, dates, wording) |
 | `packages/sdk` | 7 | `payOrRefuse`, the x402 payment path, the subgraph evidence source, optional `apiKey`, typed refuse reasons |
-| `scripts/` | 3 | Schema drift, settlements rollup, judge-check |
+| `scripts/` | 3 | Schema drift, settlements rollup, judge-check; repo hygiene 09-07: dev-setup / provision-neon print DATABASE_URL with credentials masked |
 | `src/components` | 2 | Proxy/CSP |
 | `public/` | 1 | `llms.txt` (key-less `/decision`) |
 | `.github/` | 1 | Pinning actions to SHAs; the gate jobs |

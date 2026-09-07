@@ -36,7 +36,9 @@ echo "==> Pushing schema..."
 npm run db:push
 
 echo "==> Done."
-echo "DATABASE_URL=$DATABASE_URL"
+# Credentials are never echoed (terminal scrollback and CI logs outlive the session):
+# print the URL with the userinfo masked, host and database only.
+echo "DATABASE_URL=$(printf '%s' "$DATABASE_URL" | sed -E 's#^([A-Za-z][A-Za-z0-9+.-]*://)[^@/]*@#\1…@#')"
 echo ""
 echo "Next:"
 echo "  npm run dev"

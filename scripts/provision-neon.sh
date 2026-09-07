@@ -22,5 +22,10 @@ npx neonctl databases create --project-id "$PROJECT_ID" --name "$DB_NAME" >/dev/
 echo "==> Fetching pooled connection string"
 DATABASE_URL=$(npx neonctl connection-string main --project-id "$PROJECT_ID" --database-name "$DB_NAME" --pooled)
 
-echo "DATABASE_URL=$DATABASE_URL"
+# The connection string carries the role password. Print it masked (host and database
+# only) so it never lands in terminal scrollback or CI logs; the full pooled URL is one
+# command away and should go straight into an env file, not into a chat or a log.
+echo "DATABASE_URL=$(printf '%s' "$DATABASE_URL" | sed -E 's#^([A-Za-z][A-Za-z0-9+.-]*://)[^@/]*@#\1…@#')"
 echo "NEON_PROJECT_ID=$PROJECT_ID"
+echo "Full connection string (credentials included — keep it out of logs):"
+echo "  npx neonctl connection-string main --project-id $PROJECT_ID --database-name $DB_NAME --pooled"
