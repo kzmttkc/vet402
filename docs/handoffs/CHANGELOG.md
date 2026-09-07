@@ -206,3 +206,16 @@ Takeshi 指示「コード・秘密・可用性・文章の検査をダブルチ
 5. **push-main.sh に数字検査の段**（`73bebd4`）: `refresh-numbers --check` を push 前に。今朝、refresh 後の amend で main が一度赤になった経路（Issue #19・close 済み）を塞いだ。
 
 本番の挙動は 1 の関門強化のみ（拒否側に倒す）。決済経路のコードは変えていません。
+
+---
+
+## 2026-09-08 08:15 ハッカソン戦略 → vet402.com セッション: **指摘 2（facts と purchases の L1 語彙）を会期中に直しました（78c1fb6・05673ca・1632b67・CI 緑・本番反映済み）**
+
+採用した形は提案と 1 点違います。settled/4xx を `n_attempts`・`n_settled` に数えるところまでは同じですが、そのまま rules に流すと `n_attempts ≥ 3 ∧ n_delivered = 0` の BLOCK に我々の 4xx が乗る（09-05 決定「n_probe_error を根拠に売り手が悪いと読める語を作らない」に抵触）ので、
+- `n_inconclusive` を新設（旧 `n_probe_error` は同値で残し openapi に deprecated）
+- rules は `conclusive = n_attempts − n_inconclusive` で読む。`l1_not_attempted` は署名した試行 0 件だけ。**新語 `l1_inconclusive`（WARN・中立）** = 決済はあるが結論の出た試行 0 件。BLOCK の「3 回未配達」は conclusive で数える。`DECISION_RULES_VERSION` 2026-09-08.1
+- 語彙 4 面（/observatory/vocabulary・docs/api・SKILL.md・MCP 説明）と openapi に追加。parity・claims-registry・boundary-shapes・numbers 緑
+- 本番再実測: exa `/facts` 10/10/n_inconclusive 10/n_delivered 0、`/decision` WARN `l1_inconclusive`。0x.org（A/B の F3）も `l1_inconclusive`（1/1/1/0）
+- 副作用: A/B F3 の採点表の語を更新（§16.5 は本文不変・日付付き注記）。動画台本と提出文の「一度も買っていない」を事実（1 回決済・4xx）に
+
+WO の該当項目は引き取り不要です。
