@@ -71,6 +71,12 @@ Takeshi の手番になる可能性があるので、**09-14〜09-16 を空け�
 - 応募 URL: `https://ethglobal.com/events/tokyo2026/apply?role=hacker`
 - **ETHGlobal Spotlight は締切済み**（08-18 の投稿時点で「あと2日」＝約 08-20 に終了）。**今回は取れない**
 
+### Project check-ins（#announcements 2026-09-07 17:20・Pascal）
+
+- **Check-in #1 が開放**（Hacker Dashboard・`https://ethglobal.com/events/ethonline2026/check-in?step=1`）。「進捗を追い支援を出すため。順調でも状態を知らせることが重要。パートナーが連絡してくることがある」
+- **今週もう 1 回ある**（#2）。提出ではなく報告。**Takeshi 手番**（正本アカウント）。貼る文は TODO に用意
+- 含意: 「順調」と書いても、Graph の資格質問（AQ-054）と Bazantic の 402 所見は**ここにも書いて**パートナーの目に触れさせる
+
 ### 直近の投稿（2026-09-06 08:10 時点で最新）
 
 `#announcements` の最新は **2026-09-05 の ETHOnline 2026 キックオフ**告知のみ。
