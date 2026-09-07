@@ -46,7 +46,7 @@ const SCRIPT = {
   B: {
     kronos: { verdict: "proceed", reason_codes: ["l0_pass", "l1_delivered"] },
     thegraph: { verdict: "refuse", reason_codes: ["payee_recommendation_not_allow"] },
-    zeroex: { verdict: "refuse", reason_codes: ["l1_not_attempted", "payee_recommendation_not_allow"] },
+    zeroex: { verdict: "refuse", reason_codes: ["l1_inconclusive", "payee_recommendation_not_allow"] },
     over: { verdict: "refuse", reason_codes: ["price_above_ceiling"] },
     unknown: { verdict: "refuse", reason_codes: ["evidence_unavailable"] },
   },

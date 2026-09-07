@@ -994,7 +994,7 @@ curl -sL -X POST "https://gateway.thegraph.com/api/$GRAPH_API_KEY/subgraphs/id/C
 |---|---|---|
 | **F1** | resource `https://kronossignals.com/api/v1/price/btc`<br>`resource_id` `ae0091e802c83179e3b1464a7b15dac64a0c1d3a00cb690eb6a5ac9811c47e3b` | **ALLOW** / `["l0_pass","l1_delivered","l2_undeclared"]`<br>L1 `n_delivered 3 / n_settled 3 / n_attempts 3`・`last_attempt_at 2026-08-27T12:30:45.074Z` |
 | **F2** | resource `https://gateway.thegraph.com/api/x402/subgraphs/id/Cb56epg3EvQ6JRpPfknbkM54QxpzTvLa7mwKNQQfUyoj`<br>`resource_id` `9e8469d365d65bc9b4a3f588f951bfc70ae64cc1afa2ebdf7e8f11a940d40763`<br>payee `0x79DC34E41B2b591078d3dE222C43EcaaBD52FcCB` | `/decision` は **HTTP 404 `not_found`**（カタログ外）<br>受取人スコア **69 / WARN / thin**<br>subgraph は **RECIPIENT / 253件**（§15・動く） |
-| **F3** | payee **`0xb15a55e85fdf5edc41b6c1eaf7813e2c6e6def59`**（全40桁）<br>resource `https://agent.api.0x.org/v1/x402/swap-allowance-holder-quote`<br>`resource_id` `8146a86d0e858267f15388341fc99b7d5fa23b6ebb138ba0267a38eb9a76386b` | **WARN** / `["l0_pass","l1_not_attempted","l2_undeclared"]`<br>L1 `0/0/0`・`n_probe_error 1`・`not_attempted_reason null` |
+| **F3** | payee **`0xb15a55e85fdf5edc41b6c1eaf7813e2c6e6def59`**（全40桁）<br>resource `https://agent.api.0x.org/v1/x402/swap-allowance-holder-quote`<br>`resource_id` `8146a86d0e858267f15388341fc99b7d5fa23b6ebb138ba0267a38eb9a76386b` | **WARN** / `["l0_pass","l1_inconclusive","l2_undeclared"]`（09-08・rules `2026-09-08.1`）<br>L1 `n_attempts 1 / n_settled 1 / n_delivered 0`・`n_inconclusive 1`（旧 `n_probe_error 1`）・`not_attempted_reason null`<br>09-05 時点の実測は `["l0_pass","l1_not_attempted","l2_undeclared"]`・L1 `0/0/0`・`n_probe_error 1`——同じ 1 行（settled・4xx）を数え方だけ変えた |
 | **F4** | F1 と同じ相手に `amountUsd 5` / `policy.maxPerTxUsd 1` | **判定を引く前に**拒否・`price_above_ceiling`（`/decision` へのリクエスト0件） |
 
 **数字は動く。** F1 の L1 と F2 の 253 は撮影・実走の当日に取り直す（§15 と同じ規律）。
@@ -1005,6 +1005,11 @@ curl -sL -X POST "https://gateway.thegraph.com/api/$GRAPH_API_KEY/subgraphs/id/C
 **`null` は嘘をついていない**（「我々の停止でも、払える accept が無かったのでもない」）。
 一件ごとの理由は `/api/v1/observatory/decisions` が持つ。**`n_probe_error` を根拠に
 「売り手が悪い」と読める文字列を作らない。**
+**09-08 追記**: この段の前提（F3 に `l1_not_attempted` が立つ）は 09-08 に変わった。settled・4xx の行を
+`n_attempts` に数え直し（api.exa.ai が 10 回決済していながら「未試行」と公開されていた）、結論 0 件の相手は
+新語 **`l1_inconclusive`**（WARN・中立）で出す。`l1_not_attempted` は署名した試行 0 件のときだけ。
+`not_attempted_reason` の enum は広げていない。上の決定（売り手が悪いと読める語を作らない）は守られている——
+判定は conclusive（`n_attempts − n_inconclusive`）で読み、我々の 4xx は BLOCK に数えない。
 
 ### 成功の定義（**この2条件の論理積。走らせる前に確定**）
 
@@ -1143,6 +1148,12 @@ v1（§16.3）は**製品の穴**（上限超えの理由コードをどのツ�
 **予測（外れたらそう書く）**: F4 は B で直り、A では直らない（A は新クエリの存在を openapi から読めるが、上限は「自分の policy」なので prompt の Target ブロックの ceiling を読んで渡す発想に至らない）。F2（カタログ外）は両条件とも直らない（`/decision` が 404 のまま。SDK/MCP の I23 経路はゲートウェイ経由の A/B には無い）。**差が出るとすれば F4 の 2 試行分＝最大 +20pt。**
 **成功条件の追加なし。** 出た数字はそのまま出す。v1 と v2 の両方を提出物に載せる。
 **走らせる日**: 09-09（ゲートウェイの spec 再取得を確認してから。Anthropic の鍵は再度クリップボード経由）。
+
+**【2026-09-08 修正注記・本文は書き換えない】** 09-08 にサーバ語彙へ `l1_inconclusive` を追加した
+（rules `2026-09-08.1`。settled・4xx の行を `n_attempts` に数え、結論 0 件の相手は「未試行」でなく
+「結論なし」と出す）。F3（0x.org・09-03 に 1 回決済して 4xx）の `/decision` は
+`l1_not_attempted` → `l1_inconclusive` に変わるので、採点表（`fixtures.mjs` の F3 oracle）の語を更新した。
+**両腕（A/B）とも同じ採点表で採点する。仮説・予測・成功の定義は不変。** F2（カタログ外 404）は無影響。
 
 ### 記録: `PRIZES.md` の P3 記述は古い
 

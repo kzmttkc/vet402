@@ -10,7 +10,7 @@
 
 - **金が動くのは、事前に決めた 1 回だけ**（§2 の 1:30、The Graph の 402 に $0.01）。**当日その場で「打つか」を決めない**。前日チェック（§1 #9）で条件が揃わなければ**打たない**と決めて臨む。審査員の URL には**絶対に** `--live` を打たない（`judge` にはそもそも `--live` が無い——`src/run.ts` が拒む）。
 - **受取人スコアの値を口で固定しない。** 09-07 12:xx の実測で The Graph の受取ウォレットは **WARN (68)**——動画台本の 69 から**既に動いた**。言うときは画面の値を読む。
-- **WARN を見せる前に「我々の欠損」と先に言う**（動画 §0 と同じ）。`l1_not_attempted` ＝ 我々が一度も買っていない。
+- **WARN を見せる前に「我々の欠損」と先に言う**（動画 §0 と同じ）。`l1_not_attempted` ＝ 署名した試行が無い／`l1_inconclusive` ＝ 1 回決済したが我々の要求が 4xx で返り、結論なし（拒否側 0x.org は 09-08 からこちら）。どちらも我々の欠損。
 - **§1.5 に触れない。** 聞かれたら事実を 1 文で答えて終わる（§5）。
 - 数字は印（`n:` id）か「当日取り直す」（§6）。**手で書いた数字を口にしない。**
 
@@ -113,7 +113,7 @@ A: *Nothing changes: BLOCK still refuses. `requireVet402Allow: false` waives exa
 証拠: `WINDOW_PLAN.md` §3.2.1 の表／`packages/sdk/test-mutations.mjs` M01〜M04／`SKILL.md` "`pay_if_trusted` with The Graph evidence"（H1–H7）。
 
 **Q9. Why is The Graph's own wallet WARN in your engine?**
-A: *Because the WARN measures us, not them. `l1_not_attempted` means our observatory has never bought from that endpoint, and our own payment ledger has zero independent payers for it. The Graph's subgraph knows hundreds of receipts for the same wallet. That is exactly the point of the submission: our catalogue knows nothing, our engine says WARN, The Graph says hundreds — three sources, three answers, one address. The caller decides which evidence counts. We deliberately did not catalogue The Graph to make the number look better.*
+A: *Because the WARN measures us, not them. The Graph's gateway is outside our catalogue, so our observatory holds no L1 record for it — no paid attempt was signed there — and our own payment ledger has zero independent payers for it. (Where we did pay and our own request came back 4xx, as with the 0x fixture in the demo, the code is `l1_inconclusive`: one settled purchase, no conclusion, our gap again.) The Graph's subgraph knows hundreds of receipts for the same wallet. That is exactly the point of the submission: our catalogue knows nothing, our engine says WARN, The Graph says hundreds — three sources, three answers, one address. The caller decides which evidence counts. We deliberately did not catalogue The Graph to make the number look better.*
 要旨: 我々が買っていないという我々の欠損。3 つの情報源が違うのが製品の核。
 証拠: `WINDOW_PLAN.md` §3 の表・§3.2 末尾「3 つの情報源」／`VIDEO_SCRIPT.md` §0（先に言う）／当日の `judge` 出力（`[FAIL] payee verdict is ALLOW  WARN (nn) [payee score]`）。
 

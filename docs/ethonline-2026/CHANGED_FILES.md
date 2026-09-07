@@ -80,3 +80,26 @@ the only pre-existing file touched is:
 | File | Why |
 |---|---|
 | `SKILL.md` | One sentence under `npm run judge-check` saying the boundary-shape suites exist and what they assert (no number written by hand) |
+
+## 2026-09-08 — `l1_inconclusive` (branch `ethonline/l1-inconclusive`)
+
+Production measured on 2026-09-08: api.exa.ai (`521e929e…`) showed `attemptCount 10 / settledCount 10 /
+inconclusiveCount 10` on `/purchases` but `n_attempts 0 / n_settled 0 / n_probe_error 10` on `/facts`, and
+`/decision` said `l1_not_attempted` — the same ten rows counted under two vocabularies, a seller we paid ten
+times published as "never attempted". Fix: settled/4xx rows count in `n_attempts` / `n_settled` (same set as
+`/purchases`), a new `n_inconclusive` field, and the rules read `conclusive = n_attempts − n_inconclusive`
+so our own 4xx never adds up to a BLOCK; a seller with attempts but no conclusion gets the neutral
+`l1_inconclusive` (WARN). Rules version `2026-09-08.1`. New: `tests/l1-inconclusive.test.ts`.
+
+| File | Why |
+|---|---|
+| `src/lib/decision/seller-facts.ts` | `n_attempts` / `n_settled` include inconclusive rows; `n_inconclusive` from the one `isInconclusive` definition in `delivery.ts`; `n_probe_error` kept as the same value (deprecated) |
+| `src/lib/decision/rules.ts` | `conclusiveAttempts()`; BLOCK / `l1_never_delivered` / opt-in read `conclusive`; `l1_inconclusive` when attempts > 0 and conclusive = 0; `DECISION_RULES_VERSION` → `2026-09-08.1` |
+| `src/lib/decision/types.ts`, `packages/sdk/src/index.ts` (+ `dist/index.d.ts`) | `SellerFacts.l1.n_inconclusive`; `n_probe_error` marked deprecated |
+| `docs/openapi.yaml` | `n_inconclusive` property and required; `n_probe_error` deprecated; `reason_codes` description lists the four L1 words |
+| `tests/openapi-schema-parity.test.ts`, `tests/seller-facts.test.ts`, `tests/decision-rules.test.ts`, `tests/decision-build.test.ts`, `tests/acceptance-spec-1-2.test.ts`, `tests/passport-facts-summary.test.ts` | field list and fixtures carry `n_inconclusive`; the old "probe_error is not an attempt" test now asserts the new counting; rules version pinned to `2026-09-08.1` |
+| `src/app/observatory/methodology/page.tsx`, `src/app/docs/api/page.tsx` | one paragraph / one sentence defining `l1_inconclusive` as our gap (the vocabulary gate requires the term in prose) |
+| `packages/mcp-server/src/index.ts` (+ `dist/index.js`) | `check_resource_decision` description names the four L1 reason codes and whose gap each is |
+| `SKILL.md` | the "our gap" sentence now covers both `l1_not_attempted` and `l1_inconclusive` |
+| `docs/ethonline-2026/WINDOW_PLAN.md` | §16 F3 measured row updated to the 09-08 words (09-05 values kept beside them); dated notes after the `not_attempted_reason` paragraph and at the end of §16.5 (pre-registration body untouched) |
+| `docs/ethonline-2026/fixtures.md` | dated note: 0x.org reads `l1_inconclusive` from 09-08 |

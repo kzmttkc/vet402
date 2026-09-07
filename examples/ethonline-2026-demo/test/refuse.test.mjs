@@ -18,10 +18,11 @@ const DECISION_BODY = {
   subject: { type: "resource", id: "8146a86d", canonical_url: REFUSE_TARGET.url, method: "GET" },
   role: "payer",
   recommendation: "WARN",
-  reason_codes: ["l0_pass", "l1_not_attempted", "l2_undeclared"],
+  // 2026-09-08: rules 2026-09-08.1。1 回決済して 4xx の相手は「未試行」でなく「結論なし」（l1_inconclusive）。
+  reason_codes: ["l0_pass", "l1_inconclusive", "l2_undeclared"],
   facts: {
     l0: { status: "pass", observed_at: "2026-09-04 17:40:13.970619+00", dialect: "both", fail_reason: null },
-    l1: { n_delivered: 0, n_settled: 0, n_attempts: 0, n_probe_error: 1, p50_ms: null, p95_ms: null, last_purchase_id: null, observed_at: null },
+    l1: { n_delivered: 0, n_settled: 1, n_attempts: 1, n_inconclusive: 1, n_probe_error: 1, p50_ms: null, p95_ms: null, last_purchase_id: null, observed_at: null },
     l2: { status: "undeclared" },
   },
   freshness: { l0: "2026-09-04 17:40:13.970619+00", l1: null, l2: null },
@@ -99,7 +100,8 @@ test("2つの独立した源が、同じアドレスについて別々のこと�
   // [A] 我々: 見た（l0_pass）が買っていない（L1 0）
   assert.match(text, /WARN/);
   assert.match(text, /l0_pass/);
-  assert.match(text, /l1_not_attempted/);
+  assert.match(text, /l1_inconclusive/);
+  assert.doesNotMatch(text, /l1_not_attempted/, "1 回決済した相手を未試行と描かない（2026-09-08）");
   // [B] The Graph: 同じアドレスの受領 29 件を、block 50890518 時点で知っている
   assert.match(text, /totalPayments/);
   assert.match(text, /\b29\b/);

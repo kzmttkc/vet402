@@ -247,7 +247,7 @@ Model-side judgement never decides a payment; the gate does. Our demo's own deci
 
 | 数字 | 出典 | 性質 |
 |---|---|---|
-| WARN (69) / l1_not_attempted | `WINDOW_PLAN.md` §3・§16 F2 | 安定（提出日に `{{graph_score}}` で再確認） |
+| WARN (69) / l1_inconclusive（拒否側 0x.org・09-08 から。1 回決済・4xx・結論なし） | `WINDOW_PLAN.md` §3・§16 F2/F3 | 安定（提出日に `{{graph_score}}` と `grep reasons` で再確認） |
 | 259 / 0.01 USDC / 50898704 / tx | `WINDOW_PLAN.md` §10.5 | 固定 |
 | 404 | `WINDOW_PLAN.md` §3.1（登録しない決定） | 固定 |
 | `{{graph_receipts}}` | `VIDEO_SCRIPT.md` §5 のコマンド（09-07 07:5x 実測 417） | **動く・提出日に埋める** |

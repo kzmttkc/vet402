@@ -60,7 +60,7 @@ export const FIXTURES = Object.freeze([
   }),
   Object.freeze({
     id: "F3",
-    label: "拒否側フィクスチャ（0x・WARN・l1_not_attempted）",
+    label: "拒否側フィクスチャ（0x・WARN・l1_inconclusive）",
     resource: "https://agent.api.0x.org/v1/x402/swap-allowance-holder-quote",
     method: "GET",
     payee: "0xb15a55e85fdf5edc41b6c1eaf7813e2c6e6def59",
@@ -76,8 +76,11 @@ export const FIXTURES = Object.freeze([
       // （2026-09-06: ここには「条件 B は SKILL.md 経由で payOrRefuse の語も知る」と書いてあった。
       //  条件 B が渡すのは SKILL.md ではなく Bazantic の Recipe になり、**MCP のツールは A にも B にも
       //  同じだけ渡る**ので、条件による語彙の差という前提そのものが無くなった。和集合を許す判断は変えない。）
+      // 2026-09-08: サーバ語彙に `l1_inconclusive` が入った（rules 2026-09-08.1）。この相手は 09-03 に
+      // 1 回決済して有料応答が 4xx（旧 n_probe_error 1）——「未試行」ではなく「結論なし」。
+      // 09-05 実測の事実（1 行 settled/4xx）は不変で、語だけが実装の変更で変わる。
       reasonCodes: Object.freeze([
-        "l0_pass", "l1_not_attempted", "l2_undeclared", "payee_recommendation_not_allow",
+        "l0_pass", "l1_inconclusive", "l2_undeclared", "payee_recommendation_not_allow",
       ]),
       beforeDecision: false,
       measured: true,
@@ -86,7 +89,11 @@ export const FIXTURES = Object.freeze([
         "2026-09-05 本番実測の和集合。(1) GET /api/v1/resources/8146a86d…386b/decision?role=payer → " +
         'WARN / ["l0_pass","l1_not_attempted","l2_undeclared"]（l1 0/0/0・n_probe_error 1・not_attempted_reason null）。' +
         "(2) examples/ethonline-2026-demo の run.ts refuse を本番相手に実走 → status refused / " +
-        'reasons ["l0_pass","l1_not_attempted","l2_undeclared","payee_recommendation_not_allow"]。',
+        'reasons ["l0_pass","l1_not_attempted","l2_undeclared","payee_recommendation_not_allow"]。' +
+        "2026-09-08 語の更新: 同じ 1 行（settled・4xx）を n_attempts に数え、結論 0 件の相手は " +
+        '`l1_inconclusive` と出すよう rules を 2026-09-08.1 に上げた（tests/l1-inconclusive.test.ts が 1 行 settled/4xx → ' +
+        'l1_inconclusive を固定）。/decision の期待値は ["l0_pass","l1_inconclusive","l2_undeclared"]・l1 1/1/n_inconclusive 1/n_delivered 0。' +
+        "本番の再実測はデプロイ後に取り、WINDOW_PLAN §16 のフィクスチャ表へ写す。",
     }),
   }),
   Object.freeze({
