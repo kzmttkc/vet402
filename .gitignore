@@ -64,3 +64,8 @@ __pycache__/
 # payOrRefuse の決定行（ローカル追記専用 JSONL・DEFAULT_DECISION_STORE）。
 # 台帳は各実行環境のものであってリポの成果物ではない。
 .vet402/
+
+# 2026-09-07 (repo hygiene): wallet key files and keystores never belong in the repo,
+# whatever directory they are generated in.
+*wallet*.json
+*.keystore
