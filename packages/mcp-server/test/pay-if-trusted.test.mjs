@@ -86,7 +86,9 @@ test("G21b pay_if_trusted は ALLOW で signer を1回だけ呼び attest する
     fetch: async (u, init) => {
       calls.push(String(u));
       if (String(u).includes("decision")) {
-        return { ok: true, status: 200, json: async () => ({ recommendation: "ALLOW", reason_codes: ["l0_pass", "l1_delivered"], facts: {}, evidence: [{ level: "L1", source: "vet402" }] }), headers: new Map() };
+        // `degraded: false` はサーバが必ず出す欄（decide.ts）。2026-09-07 から SDK は boolean でない
+        // degraded を「測れたと言えない」として止めるので、実形どおりに持たせる（追加1）。
+        return { ok: true, status: 200, json: async () => ({ recommendation: "ALLOW", reason_codes: ["l0_pass", "l1_delivered"], facts: {}, evidence: [{ level: "L1", source: "vet402" }], degraded: false }), headers: new Map() };
       }
       const res = String(u).includes("gateway.thegraph.com") ? s.stub(String(u), init) : { status: 200, body: { ok: true }, headers: {} };
       return { ok: res.status < 400, status: res.status, json: async () => res.body, headers: new Map(Object.entries(res.headers ?? {})) };

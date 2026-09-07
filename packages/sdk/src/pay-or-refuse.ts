@@ -281,6 +281,11 @@ export type PayOrRefuseResult = {
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
 const USDC_DECIMALS = 6;
 
+/** 非 null の plain object か。配列・プリミティブ・null は判定本文として読まない（A1）。 */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function sameAddress(a: unknown, b: unknown): boolean {
   return typeof a === "string" && typeof b === "string" && a.toLowerCase() === b.toLowerCase();
 }
@@ -558,19 +563,25 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
   let uncatalogued = false;
   try {
     const response = await fetchFn(decisionUrl, { headers });
-    let body: unknown = {};
+    // 本文は**読めた object** だけを判定として扱う（2026-09-07 監査 A1 / A4）。
+    // 2026-09-07 まで、読めなかった本文は `{}`、200 の JSON `null` はそのまま `decision` に入り、
+    // `if (decision)` が偽になって ALLOW 検査ごと飛び、既定 policy のまま署名まで到達していた
+    // （実測: null / false / 0 / "" の 4 値とも signTypedData 1 回）。読めなかったのだから払わない。
+    let body: unknown = null;
     try {
       body = await response.json();
     } catch {
-      body = {};
+      body = null;
     }
-    if (response.status === 404 && (body as { error?: unknown })?.error === "not_found") {
+    if (response.status === 404 && isPlainObject(body) && body.error === "not_found") {
       // §3.1: カタログ外。`getResource()` は resource_id の単純照会なので未登録は必ずここ。
       uncatalogued = true;
     } else if (!response.ok) {
       return refuse(["evidence_unavailable"], "decision");
+    } else if (!isPlainObject(body)) {
+      return refuse(["evidence_unavailable"], "decision");
     } else {
-      decision = body as DecisionResult;
+      decision = body as unknown as DecisionResult;
     }
   } catch {
     // A3: 読めなかったのだから払わない。
@@ -632,7 +643,9 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
     // A2: degraded は「測れなかった」。fail-closed のゲートにとっては読めなかったのと同じ。
     // **`requireVet402Allow: false` でもここは通さない**——免除したのは判定の中身であって、
     // 判定が存在しないことではない（J7）。
-    if (decision.degraded === true) {
+    // `degraded` は boolean でなければ「測れた」と言えない（2026-09-07 監査 追加1: 文字列 "true" が
+    // `=== true` を素通りして払っていた）。型が違えば止める側に倒す。
+    if (typeof decision.degraded !== "boolean" || decision.degraded === true) {
       return refuse([...serverReasons, "evidence_unavailable"], "decision", decision);
     }
     // A1: ALLOW 以外。理由はサーバの reason_codes をそのまま通す（我々の語で上書きしない）。

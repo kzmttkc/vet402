@@ -59,8 +59,8 @@ const MUTATIONS = [
     what: "degraded を requireVet402Allow:false で通す（/decision 経路）",
     rule: "J7 測れなかったことと ALLOW でないことは別",
     file: PAY,
-    find: "    if (decision.degraded === true) {",
-    replace: "    if (/* MUTANT */ requireVet402Allow && decision.degraded === true) {",
+    find: '    if (typeof decision.degraded !== "boolean" || decision.degraded === true) {',
+    replace: '    if (/* MUTANT */ requireVet402Allow && (typeof decision.degraded !== "boolean" || decision.degraded === true)) {',
   },
   {
     id: "M04",
@@ -128,6 +128,31 @@ const MUTATIONS = [
     file: PAY,
     find: '  if (wantedSource === "subgraph" || wantedSource === "both") {',
     replace: '  if (/* MUTANT */ wantedSource === "both") {',
+  },
+  // ---- /decision の本文の形（2026-09-07 第三者監査 A1 / A4 / 追加1）----
+  {
+    id: "M28",
+    what: "200 の JSON が object でなくても判定として受ける（null/false/0/\"\" で ALLOW 検査が飛ぶ）",
+    rule: "A1 判定本文は非 null の plain object だけ",
+    file: PAY,
+    find: "    } else if (!isPlainObject(body)) {\n      return refuse([\"evidence_unavailable\"], \"decision\");\n    } else {",
+    replace: "    } else { /* MUTANT */",
+  },
+  {
+    id: "M29",
+    what: "読めなかった本文を {} として判定に通す（非 JSON の 200 が判定になる）",
+    rule: "A4 読めなかった本文は evidence_unavailable",
+    file: PAY,
+    find: "    } catch {\n      body = null;\n    }",
+    replace: "    } catch {\n      body = {}; /* MUTANT */\n    }",
+  },
+  {
+    id: "M30",
+    what: "degraded の型検査を外す（文字列 \"true\" が === true を素通りして払う）",
+    rule: "追加1 degraded は boolean でなければ止める",
+    file: PAY,
+    find: '    if (typeof decision.degraded !== "boolean" || decision.degraded === true) {',
+    replace: "    if (/* MUTANT */ decision.degraded === true) {",
   },
   // ---- カタログ外（I23）----
   {
