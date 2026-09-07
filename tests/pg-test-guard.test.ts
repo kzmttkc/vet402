@@ -14,8 +14,8 @@ import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 
 test("Neon ホストは拒否する（本番 vouch も別 database の neondb も）", () => {
   for (const url of [
-    "postgresql://u:p@ep-odd-glade-ajpk06c8-pooler.c-3.us-east-2.aws.neon.tech/vouch?sslmode=require",
-    "postgresql://u:p@ep-odd-glade-ajpk06c8.c-3.us-east-2.aws.neon.tech/neondb",
+    "postgresql://u:p@ep-example-000000-pooler.us-east-2.aws.neon.tech/vouch?sslmode=require",
+    "postgresql://u:p@ep-example-000000.us-east-2.aws.neon.tech/neondb",
   ]) {
     assert.throws(() => assertTestDatabaseIsNotProduction(url), /neon\.tech/, url);
   }
