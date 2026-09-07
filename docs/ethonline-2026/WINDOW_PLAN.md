@@ -12,7 +12,7 @@
 - **"You are fully confirmed to attend this event!"** — 参加確定。ステーク懸念は解消
 - **トラック = Continuity（`continuity-track: checked=true`／`building-from-scratch: false`）**
 - プロジェクト `payOrRefuse` 作成済み・Discord 連携済み（sen_web3）
-- 提出フォームは未開放（"Project submissions are not enabled yet"）
+- 提出フォームは **2026-09-08 00:06 JST に開放**（§1.4 の追記。締切 09-14 01:00 JST・**回数無制限で上書き可**・選択肢は 1️⃣ Top Finalist & Partner Prizes）
 
 ## 1. 賞（上限3枠・1パートナー1枠）
 
@@ -182,6 +182,30 @@ Tokyo の一次情報は `ethglobal.com/events/tokyo2026` を直接見るしか�
 **提出フォームは開いた時点で1回埋めて保存する**（空欄でも保存できる。上書きは無制限）。
 運営自身が "submit early to avoid issues in the final Minutes" と書いている。
 最終日に初めてフォームを開くと、動画アップロードの失敗が締切直前に出る。
+
+#### 【同日・メール本文にしか無い一次情報】提出時に **2 つの選択肢**がある（宛先 `kazumototakeshi@gmail.com`・Pascal）
+
+> You have 2 options when submitting your project on the dashboard:
+> **1️⃣ Top Finalist & Partner Prizes** — If you choose this option, you will be added to the list of projects wanting to
+> present their project live to the Judges at the **Finalist Judging session on Monday, September 14th**.
+> This is a 2 round process. All projects looking to attend Live Finalist Judging will first be reviewed by the Judges
+> **asynchronously in Round 1** after submissions. Only projects that pass Round 1 will proceed to Round 2.
+> If your project makes it through the Round 1 screening, **we will email you** with the details…
+> **You are still eligible for Partner prizes if you select this option.** Partner Judging will take place async — the only
+> thing you are required to do here is to **select the partner prizes you are applying for** in your submission form.
+> **2️⃣ Partner Prizes Only** — If you choose this option **you will not be attending the Finalist Judging**.
+
+**決定（2026-09-08・ハッカソン戦略）: 1️⃣ を選ぶ。**
+①でもパートナー賞（The Graph / Bazantic）の資格は落ちないと原文が明記しており、②を選ぶ理由が 1 つも無い。
+§1.4 冒頭の「**Continuity のファイナリスト枠は 3 つ**」と合わせると、②は**自分から枠を捨てる**選択になる。
+ライブ審査の台本・問答 15 件・逃げ道は `LIVE_JUDGING.md` に用意済みで、Takeshi の 09-14〜16 も空けてある。
+
+**ライブ審査の日付**: メールは **Monday, September 14th**（ET）。JST では 09-14 夜〜09-15 になり得る。
+**時刻は Round 1 通過メールで確定する**——それまで日付を断定しない（`TAKESHI_TODO` は 09-14〜16 を空ける形で押さえてある）。
+
+**リポの自動チェックは警告が出る前提で構える。** 我々は Continuity で、リポの大半が会期前のコード。
+出たら提出文の該当欄で `docs/ethonline-2026/CHANGED_FILES.md`（領域別の導出表）・`DISCLOSURE_2026-09-05.md`・
+タグ `pre-ethonline-2026` の Release を指す。**隠さず、境界を自分から出す。**
 
 ## 1.45 提出の要件（2026-09-06 08:20・運営の `info/details` と `prizes` を実読）—— **正典より厳しい点が5つあった**
 
