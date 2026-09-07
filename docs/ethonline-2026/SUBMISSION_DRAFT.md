@@ -336,8 +336,8 @@ One keystore-related item was sent privately to support@bazantic.com on 2026-09-
 | `{{claimed_commits}}` | `git log pre-ethonline-2026..main --oneline -- packages/sdk packages/mcp-server examples/ethonline-2026-demo examples/ethonline-2026-ab SKILL.md AI_USAGE.md docs/ethonline-2026 \| wc -l` | 123【実測 同上】 | C |
 | `{{graph_receipts}}` | `cd examples/ethonline-2026-demo && node src/run.ts pay 2>&1 \| grep totalPayments`（`GRAPH_API_KEY` 要） | 417【一次・`VIDEO_SCRIPT.md` §5 09-07 07:5x】 | I |
 | `{{graph_score}}` | 同上 `\| grep 'payee verdict'` | WARN (69)【一次・同上】。**69 でなければ本文の "WARN (69)" をその値に置換** | C・I |
-| `{{sdk_tests}}` | `cd packages/sdk && npm ci && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 181 / fail 0【`refresh-numbers.json` 09-07】 | I |
-| `{{mcp_tests}}` | `cd packages/mcp-server && npm ci && npm run build && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 68 / fail 0【`refresh-numbers.json` 09-07】 | I |
+| `{{sdk_tests}}` | `cd packages/sdk && npm ci && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 235 / fail 0【`refresh-numbers.json` 09-07】 | I |
+| `{{mcp_tests}}` | `cd packages/mcp-server && npm ci && npm run build && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 70 / fail 0【`refresh-numbers.json` 09-07】 | I |
 | `{{demo_tests}}` | `cd examples/ethonline-2026-demo && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 65 / fail 0【`refresh-numbers.json` 09-07】 | I |
 | `{{mutations}}` | `npm run refresh-numbers` → `<!-- n:sdk_mutations -->` | 27【`refresh-numbers.json` 09-07】 | D |
 | `{{bazantic_tools}}` | `curl -s -X POST https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \| python3 -c 'import sys,json;print(len(json.load(sys.stdin)["result"]["tools"]))'` | 57【一次・`SKILL.md` 09-06】 | D・J |

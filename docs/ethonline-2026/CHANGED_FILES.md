@@ -23,18 +23,18 @@ git diff --diff-filter=M --name-only pre-ethonline-2026..main \
  | awk -F/ '{ if ($1=="src" && $2!="") a=$1"/"$2; else if ($1=="packages" && $2!="") a=$1"/"$2; else if (NF==1) a="repo root"; else a=$1; c[a]++ } END { for (k in c) printf "%d\t%s\n", c[k], k }' | sort -rn
 ```
 
-**<!-- n:window_modified_files -->174<!-- /n --> pre-existing files modified, by area** (the counts are the command's output; the "why" column is prose):
+**<!-- n:window_modified_files -->183<!-- /n --> pre-existing files modified, by area** (the counts are the command's output; the "why" column is prose):
 
 | Area | Files | Why we were in there |
 |---|---|---|
-| `src/app/` | 44 | Admin route for the runtime spending halt; observatory/state surfaces with the two-tier `settled` split; `/decision` key-less read and `caller_policy`; SEO/AEO; site consistency (header month derived at build time instead of a hand-written "August 2026", the `/observatory` note on what `active` counts, the SKILL.md link in `/docs/api`, the 404 title for a malformed `/agent/<id>`) |
-| `src/lib/` | 34 | Kill switch; settlement rollup and late-settlement recovery; nonce binding; census coverage; cached reads; `caller-policy.ts`; repo hygiene 09-07: gate2 report no longer defaults to a hard-coded operator e-mail; `sol402-payer.ts` builds its two SPL Token calls from `spl-token-lite.ts` so production carries no `bigint-buffer` |
+| `src/app/` | 48 | Admin route for the runtime spending halt; observatory/state surfaces with the two-tier `settled` split; `/decision` key-less read and `caller_policy`; SEO/AEO; site consistency (header month derived at build time instead of a hand-written "August 2026", the `/observatory` note on what `active` counts, the SKILL.md link in `/docs/api`, the 404 title for a malformed `/agent/<id>`) |
+| `src/lib/` | 36 | Kill switch; settlement rollup and late-settlement recovery; nonce binding; census coverage; cached reads; `caller-policy.ts`; repo hygiene 09-07: gate2 report no longer defaults to a hard-coded operator e-mail; `sol402-payer.ts` builds its two SPL Token calls from `spl-token-lite.ts` so production carries no `bigint-buffer`; 09-07 money-gate fixes: `public-route.ts` returns the consumed `bucketKey` (A7) |
 | `tests/` | 32 | Tests for all of the above, the Postgres test guard, key-less read, caller-policy parity, refresh-numbers |
-| `docs/` | 24 | The window's own planning artifacts, three security audits, the incident runbook, OpenAPI; `docs/hackathons/2026-autumn-continuity.md` (A/B vocabulary figure corrected 2026-09-07); repo hygiene 09-07: personal e-mail addresses in ROADMAP/continuity replaced by a reference to the disclosure |
+| `docs/` | 26 | The window's own planning artifacts, three security audits, the incident runbook, OpenAPI; `docs/hackathons/2026-autumn-continuity.md` (A/B vocabulary figure corrected 2026-09-07); repo hygiene 09-07: personal e-mail addresses in ROADMAP/continuity replaced by a reference to the disclosure |
 | `packages/mcp-server` | 17 | `pay_if_trusted`, evidence policy, the uncatalogued path, key-less `/decision`, typed refuse reasons; repo hygiene 09-07: lockfile bumps for the fast-uri / hono / ip-address / qs advisories (supersedes Dependabot #8–#11) |
 | repo root | 8 | `README.md`, `AI_USAGE.md`, `SKILL.md`, `.env.example`, `.gitignore`, `package.json`, config. 2026-09-07: `README.md` and `SKILL.md` corrected after the judge-doc audit (production `/decision` body, timings, dates, wording); repo hygiene 09-07: `.gitignore` wallet/keystore patterns, package name `vet402`, `@solana/spl-token` moved out of production deps |
 | `packages/sdk` | 7 | `payOrRefuse`, the x402 payment path, the subgraph evidence source, optional `apiKey`, typed refuse reasons |
-| `scripts/` | 3 | Schema drift, settlements rollup, judge-check; repo hygiene 09-07: dev-setup / provision-neon print DATABASE_URL with credentials masked |
+| `scripts/` | 5 | Schema drift, settlements rollup, judge-check; repo hygiene 09-07: dev-setup / provision-neon print DATABASE_URL with credentials masked |
 | `src/components` | 2 | Proxy/CSP |
 | `public/` | 1 | `llms.txt` (key-less `/decision`) |
 | `.github/` | 1 | Pinning actions to SHAs; the gate jobs |

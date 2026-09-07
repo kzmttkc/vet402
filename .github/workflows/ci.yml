@@ -195,10 +195,10 @@ jobs:
   #       （08-22 の mcp-server、09-06 の viem と同じ欠陥クラスが 3 回目）。
   # どちらも「走らせていないものは緑ではなく未知」。走らせて、赤くする。
   #
-  # sdk-mutations: 各変異ごとに tsc + node --test（手元 ≈ 1 変異 1 s、27 本で 30〜40 s）。
+  # sdk-mutations: 各変異ごとに tsc + node --test（手元 ≈ 1 変異 1 s。本数は test-mutations.mjs の MUTATIONS が正、印は n:sdk_mutations）。
   # SURVIVED（テストに守られていない規則）が 1 つでもあれば exit 1。
   sdk-mutations:
-    name: sdk mutations (27, all must be killed)
+    name: sdk mutations (all must be killed)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
