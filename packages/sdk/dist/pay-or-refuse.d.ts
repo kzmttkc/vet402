@@ -34,8 +34,14 @@ export declare const DEFAULT_MAX_PER_TX_USD = 1;
  *  - `allowed_by_caller_policy` … 拒否理由ではなく**通した規則の印**（§3.2）。
  *    `policy.requireVet402Allow: false` で vet402 の非 ALLOW を免除して払ったときにだけ載る。
  *    黙って弱くならないことを、機械可読な形で示すためにある
+ *
+ * 2026-09-07 に 1 語足した（第三者監査 A3）。
+ *  - `price_above_declared` … 402 の額が呼び手の名乗り（`amountUsd`）を超えた。`price_above_ceiling`
+ *    は「上限」（`maxPerTxUsd`）の語で、名乗りは別の関門——`amountUsd: 0.01` と言った呼び手に
+ *    $1 の 402 を上限内だからと払うのは、上限は守っても名乗りを破っている。サーバの
+ *    `caller_policy` は 402 を見ないのでこの語を出せない（SDK だけの語・parity テストが固定）
  */
-export declare const PAY_REFUSE_REASONS: readonly ["price_above_ceiling", "payee_mismatch", "chain_or_asset_mismatch", "evidence_unavailable", "payee_recommendation_block", "payee_recommendation_not_allow", "insufficient_delivery_evidence", "insufficient_subgraph_evidence", "resource_uncatalogued", "subgraph_evidence_unavailable", "no_eligible_accept", "allowed_by_caller_policy"];
+export declare const PAY_REFUSE_REASONS: readonly ["price_above_ceiling", "price_above_declared", "payee_mismatch", "chain_or_asset_mismatch", "evidence_unavailable", "payee_recommendation_block", "payee_recommendation_not_allow", "insufficient_delivery_evidence", "insufficient_subgraph_evidence", "resource_uncatalogued", "subgraph_evidence_unavailable", "no_eligible_accept", "allowed_by_caller_policy"];
 export type PayRefuseReason = (typeof PAY_REFUSE_REASONS)[number];
 /** 証拠源。`payOrRefuse` の判定が「誰の台帳を読んだか」を機械可読で残す。 */
 export type PayEvidenceSource = "vet402" | "subgraph";

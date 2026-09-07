@@ -180,6 +180,33 @@ test("V1 サーバが出し得る policy 語 ⊆ SDK の PayRefuseReason", () =>
   assert.deepEqual(missing, [], "サーバだけが持つ語。SDK の呼び手はこの語を読めない");
 });
 
+test("V1b price_above_declared は SDK だけの語——サーバは 402 を見ないので出せない（意図した非対称・2026-09-07 A3）", async () => {
+  // 402 の額（USDC 6 桁）が呼び手の名乗り amountUsd を超えたとき、SDK は署名の前にこの語で止まる。
+  // サーバの caller_policy は amount_usd（呼び手の名乗り）しか知らず 402 を読まないので、この語は
+  // CALLER_POLICY_REASONS に**入れない**。入れれば「サーバも 402 を照合している」と読まれる。
+  assert.ok(PAY_REFUSE_REASONS.includes("price_above_declared"));
+  assert.equal((CALLER_POLICY_REASONS as readonly string[]).includes("price_above_declared"), false);
+  const acceptAmount = "20001"; // 名乗り $0.02 より 1 単位高い
+  const fetchFn = (async (url: unknown) => {
+    const u = String(url);
+    if (u.includes("/decision")) return { ok: true, status: 200, json: async () => decision(), headers: new Map() };
+    if (u.startsWith(RESOURCE)) {
+      const accept = { scheme: "exact", network: "eip155:8453", amount: acceptAmount, asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", payTo: PAYEE };
+      return { ok: false, status: 402, json: async () => ({}), headers: new Map([["payment-required", b64({ x402Version: 2, accepts: [accept] })]]) };
+    }
+    throw new Error(`unexpected fetch: ${u}`);
+  }) as unknown as typeof fetch;
+  const account = new Proxy(
+    { address: PAYEE },
+    { get(t, p) { if (String(p).startsWith("sign")) throw new Error("must not reach the signer"); return Reflect.get(t, p); } },
+  );
+  const r = await payOrRefuse({ payee: PAYEE, resource: RESOURCE, resourceId: RID, amountUsd: 0.02, fetch: fetchFn, account: account as never });
+  assert.equal(r.status, "refused");
+  assert.ok(r.decision.reason_codes.includes("price_above_declared"), r.decision.reason_codes.join(","));
+  // 同じ名乗りをサーバに当てても、サーバは上限（既定 $1）内なので何も言わない。
+  assert.equal(serverFirstPolicyReason("amount_usd=0.02", decision()), null);
+});
+
 test("V2 サーバの refuse(...) に渡る文字列は全部 CALLER_POLICY_REASONS にある（定数が実装より狭くない）", () => {
   const used = literalsIn(serverSrc, /refuse\(("[^"]+")\)/g);
   assert.ok(used.size >= 4, `refuse の呼び出しが見つからない: ${[...used]}`);

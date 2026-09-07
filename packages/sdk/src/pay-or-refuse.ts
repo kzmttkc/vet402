@@ -13,7 +13,7 @@
  *   2. 呼び手が名乗った上限を、**判定を引く前に**当てる（price_above_ceiling）
  *   3. `GET /resources/{id}/decision?role=payer` を引く。読めない・degraded・ALLOW でない → 拒否
  *      3'. **404 not_found（カタログ外）→ 402 の payTo と受取人スコアだけで判定する**（§3.1・I23）
- *   4. 402 チャレンジを取り、payTo / network / asset / scheme / 金額を照合
+ *   4. 402 チャレンジを取り、payTo / network / asset / scheme / 金額（上限と呼び手の名乗りの両方）を照合
  *   5. 全部通ったときだけ `./x402-pay.js` を動的 import して署名 → **売り手へ再送** → attest
  *
  * 5 について: **買い手は facilitator を呼ばない。決済するのは売り手**（x402-pay.ts の
@@ -64,9 +64,16 @@ export const DEFAULT_MAX_PER_TX_USD = 1;
  *  - `allowed_by_caller_policy` … 拒否理由ではなく**通した規則の印**（§3.2）。
  *    `policy.requireVet402Allow: false` で vet402 の非 ALLOW を免除して払ったときにだけ載る。
  *    黙って弱くならないことを、機械可読な形で示すためにある
+ *
+ * 2026-09-07 に 1 語足した（第三者監査 A3）。
+ *  - `price_above_declared` … 402 の額が呼び手の名乗り（`amountUsd`）を超えた。`price_above_ceiling`
+ *    は「上限」（`maxPerTxUsd`）の語で、名乗りは別の関門——`amountUsd: 0.01` と言った呼び手に
+ *    $1 の 402 を上限内だからと払うのは、上限は守っても名乗りを破っている。サーバの
+ *    `caller_policy` は 402 を見ないのでこの語を出せない（SDK だけの語・parity テストが固定）
  */
 export const PAY_REFUSE_REASONS = [
   "price_above_ceiling",
+  "price_above_declared",
   "payee_mismatch",
   "chain_or_asset_mismatch",
   "evidence_unavailable",
@@ -724,6 +731,13 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
   const moneyGate = evaluateMoneyGate(accept, maxPerTxUsd);
   if (moneyGate) {
     return refuse([...pathReasons, ...selectionReasons, ...moneyGate], uncatalogued ? "payee_score" : "decision", decision, null, accept);
+  }
+  // A3（2026-09-07 監査）: 402 の額を**呼び手の名乗り**（amountUsd）とも照合する。上限は「これ以上は
+  // 絶対に払わない」、名乗りは「この買い物はこの額のはず」で、別の関門。2026-09-07 まで後者が無く、
+  // amountUsd 0.01 の呼び手に $1 の 402 を（上限 $1 以内だからと）払っていた。単位は USDC 6 桁の整数で
+  // 比べる（浮動小数で 1 単位の差を丸めない）。amount は上で 10 進整数と確かめてある。
+  if (BigInt(accept.amount) > BigInt(Math.round(input.amountUsd * 10 ** USDC_DECIMALS))) {
+    return refuse([...pathReasons, ...selectionReasons, "price_above_declared"], uncatalogued ? "payee_score" : "decision", decision, null, accept);
   }
 
   // --- 3'. カタログ外なら、ここまでで分かった payTo で受取人スコアを引く（I23）---

@@ -246,7 +246,8 @@ Read two fields and nothing else:
 - **`REFUSE`** — stopped *before* a signature existed. `refuse_reasons` carries the server's own
   `reason_codes` **unchanged** (we do not overwrite them with our vocabulary), plus one of
   `evidence_unavailable`, `payee_recommendation_not_allow`, `payment_target_unknown`,
-  `payer_not_configured`, `payee_mismatch`, `chain_or_asset_mismatch`, `price_above_ceiling`.
+  `payer_not_configured`, `payee_mismatch`, `chain_or_asset_mismatch`, `price_above_ceiling`
+  (the 402 asks more than `maxPerTxUsd`), `price_above_declared` (the 402 asks more than the `amountUsd` you named).
 - **`FAILED`** — it signed and the seller did not settle. `signed` and `nonce` are returned, not
   hidden: an EIP-3009 authorization stays live until `validBefore`, so it can still be settled
   later, and the nonce is the only way to tie an on-chain tx back to this purchase.

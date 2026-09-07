@@ -190,6 +190,14 @@ const MUTATIONS = [
     replace: "  /* MUTANT: amount format check removed */",
   },
   {
+    id: "M32",
+    what: "402 の額と呼び手の名乗り（amountUsd）の照合を外す（amountUsd 0.01 に $1 の 402 を上限内として払う）",
+    rule: "A3 名乗りは上限とは別の関門（price_above_declared）",
+    file: PAY,
+    find: "  if (BigInt(accept.amount) > BigInt(Math.round(input.amountUsd * 10 ** USDC_DECIMALS))) {",
+    replace: "  if (/* MUTANT */ false) {",
+  },
+  {
     id: "M13",
     what: "呼び手が名乗った amountUsd の上限を 1000 倍に緩める",
     rule: "C9 上限は判定を引く前に当てる",
