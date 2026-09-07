@@ -8,7 +8,7 @@
   "numbers": [
     {
       "id": "as_of",
-      "description": "この記録値を取った日（JST）。数字の横の日付。",
+      "description": "この記録値を取った日（JST・文書に出る）。end は --refresh を打った瞬間（+09:00）で、derive の {{AS_OF_END}} / {{AS_OF_SHA}} の基準。",
       "check": "recorded",
       "command": "TZ=Asia/Tokyo date +%F",
       "literal": [
@@ -22,41 +22,42 @@
         }
       ],
       "value": "2026-09-07",
-      "updatedAt": "2026-09-07T03:32:00.845Z"
+      "updatedAt": "2026-09-07T03:50:44.657Z",
+      "end": "2026-09-07T12:50:44+09:00"
     },
     {
       "id": "total_commits",
-      "description": "リポ全体のコミット数（AI_USAGE.md）。",
+      "description": "as_of 時点のリポ全体のコミット数（AI_USAGE.md）。",
       "check": "derive",
-      "command": "git rev-list --count HEAD",
+      "command": "git rev-list --count --until='{{AS_OF_END}}' HEAD",
       "literal": [
         {
           "doc": "AI_USAGE.md",
           "pattern": "^git rev-list --count HEAD +# (?<v>\\d+) commits \\("
         }
       ],
-      "value": "754",
-      "updatedAt": "2026-09-07T03:32:00.845Z"
+      "value": "755",
+      "updatedAt": "2026-09-07T03:50:44.657Z"
     },
     {
       "id": "ai_trailer_commits",
-      "description": "Co-Authored-By: Claude の trailer を持つコミット数（AI_USAGE.md）。",
+      "description": "as_of 時点で Co-Authored-By: Claude の trailer を持つコミット数（AI_USAGE.md）。",
       "check": "derive",
-      "command": "git log --grep='Co-Authored-By: Claude' --oneline | wc -l | tr -d ' '",
+      "command": "git log --grep='Co-Authored-By: Claude' --until='{{AS_OF_END}}' --oneline | wc -l | tr -d ' '",
       "literal": [
         {
           "doc": "AI_USAGE.md",
           "pattern": "^git log --grep='Co-Authored-By: Claude' --oneline \\| wc -l +# (?<v>\\d+) carry the AI trailer"
         }
       ],
-      "value": "635",
-      "updatedAt": "2026-09-07T03:32:00.845Z"
+      "value": "636",
+      "updatedAt": "2026-09-07T03:50:44.657Z"
     },
     {
       "id": "merge_commits",
-      "description": "マージコミット数（AI_USAGE.md）。",
+      "description": "as_of 時点のマージコミット数（AI_USAGE.md）。",
       "check": "derive",
-      "command": "git rev-list --count --merges HEAD",
+      "command": "git rev-list --count --merges --until='{{AS_OF_END}}' HEAD",
       "literal": [
         {
           "doc": "AI_USAGE.md",
@@ -64,21 +65,21 @@
         }
       ],
       "value": "34",
-      "updatedAt": "2026-09-07T03:32:00.845Z"
+      "updatedAt": "2026-09-07T03:50:44.657Z"
     },
     {
       "id": "no_trailer_commits",
-      "description": "trailer の無いコミット数 = total_commits - ai_trailer_commits（AI_USAGE.md）。",
+      "description": "as_of 時点で trailer の無いコミット数 = total_commits - ai_trailer_commits（AI_USAGE.md）。",
       "check": "derive",
-      "command": "echo $(( $(git rev-list --count HEAD) - $(git log --grep='Co-Authored-By: Claude' --oneline | wc -l) ))",
+      "command": "echo $(( $(git rev-list --count --until='{{AS_OF_END}}' HEAD) - $(git log --grep='Co-Authored-By: Claude' --until='{{AS_OF_END}}' --oneline | wc -l) ))",
       "value": "119",
-      "updatedAt": "2026-09-07T03:32:00.845Z"
+      "updatedAt": "2026-09-07T03:50:44.657Z"
     },
     {
       "id": "window_added_files",
-      "description": "会期（pre-ethonline-2026..HEAD）に追加されたファイル数（AI_USAGE.md）。",
+      "description": "会期（pre-ethonline-2026..as_of 時点の HEAD）に追加されたファイル数（AI_USAGE.md）。",
       "check": "derive",
-      "command": "git diff --diff-filter=A --name-only pre-ethonline-2026..HEAD | wc -l | tr -d ' '",
+      "command": "git diff --diff-filter=A --name-only pre-ethonline-2026..{{AS_OF_SHA}} | wc -l | tr -d ' '",
       "literal": [
         {
           "doc": "AI_USAGE.md",
@@ -86,13 +87,13 @@
         }
       ],
       "value": "178",
-      "updatedAt": "2026-09-07T03:32:00.845Z"
+      "updatedAt": "2026-09-07T03:50:44.657Z"
     },
     {
       "id": "window_modified_files",
-      "description": "会期（pre-ethonline-2026..HEAD）に変更された既存ファイル数（AI_USAGE.md・CHANGED_FILES.md）。",
+      "description": "会期（pre-ethonline-2026..as_of 時点の HEAD）に変更された既存ファイル数（AI_USAGE.md・CHANGED_FILES.md）。",
       "check": "derive",
-      "command": "git diff --diff-filter=M --name-only pre-ethonline-2026..HEAD | wc -l | tr -d ' '",
+      "command": "git diff --diff-filter=M --name-only pre-ethonline-2026..{{AS_OF_SHA}} | wc -l | tr -d ' '",
       "literal": [
         {
           "doc": "AI_USAGE.md",
@@ -100,7 +101,7 @@
         }
       ],
       "value": "174",
-      "updatedAt": "2026-09-07T03:32:00.845Z"
+      "updatedAt": "2026-09-07T03:50:44.657Z"
     },
     {
       "id": "sdk_tests",
@@ -118,7 +119,7 @@
         }
       ],
       "value": "181",
-      "updatedAt": "2026-09-07T03:32:00.845Z"
+      "updatedAt": "2026-09-07T03:50:44.657Z"
     },
     {
       "id": "mcp_tests",
@@ -136,7 +137,7 @@
         }
       ],
       "value": "68",
-      "updatedAt": "2026-09-07T03:32:00.845Z"
+      "updatedAt": "2026-09-07T03:50:44.657Z"
     },
     {
       "id": "sdk_mutations",
@@ -144,7 +145,7 @@
       "check": "recorded",
       "command": "grep -cE '^ +id: \"M[0-9]+\"' packages/sdk/test-mutations.mjs",
       "value": "27",
-      "updatedAt": "2026-09-07T03:32:00.845Z"
+      "updatedAt": "2026-09-07T03:50:44.657Z"
     }
   ]
 }

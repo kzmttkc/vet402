@@ -17,11 +17,23 @@
 //              関門に正解の写しを持たせると、HEAD が進んで写しも文書も古くなったとき緑のまま通る。
 //              だから安く導出できるものは導出で比べる。CI 側は shallow clone だと数えられない
 //              （depth 1 では rev-list が 1、タグ pre-ethonline-2026 も無い）ので checkout は fetch-depth: 0。
-//              注意: total_commits は「その文書を含むコミット」自身も数える。refresh → commit の後は
-//              1 増えて赤になるので、refresh → commit → refresh → commit --amend で合わせる。
+//              導出は id=as_of の基準時刻に固定する（下）。「今の HEAD」で導出すると文書を含むコミット自身が
+//              数に入り、コミットを積むたびに赤になった（f31bc07 直後に 754≠755）。
 //   "recorded" 実行に時間か鍵が要る数字（npm test は build 込みで数十秒、The Graph 系は鍵）。
 //              --check は「文書の印の値 == JSON の記録値」だけを見る。
 //   check の無い id・上のどちらでもない値は --check / --refresh とも exit 1（黙って recorded 扱いにしない）。
+//
+// 基準時刻 id=as_of（recorded・2026-09-07）:
+//   value = 文書に出る日付（JST・command は TZ=Asia/Tokyo date +%F）、end = --refresh を打った瞬間（+09:00・秒精度）。
+//   derive の command は {{AS_OF_END}}（= end）と {{AS_OF_SHA}}（= git rev-list -1 --until='<end>' HEAD）を使える。
+//     git rev-list --count --until='{{AS_OF_END}}' HEAD
+//     git diff --diff-filter=A --name-only pre-ethonline-2026..{{AS_OF_SHA}} | wc -l
+//   --check は同じ end で導出するので、同じ as_of の間は HEAD が進んでも値が変わらない。
+//   --refresh は as_of（value・end）を今に更新してから derive を取り直す。
+//   end を「as_of の 23:59:59」にしない: 同じ日に積んだコミットが全部 --until に入り、赤が再発する。
+//   as_of が未来／value と end の日付が食い違う／end 以前にコミットが無い（AS_OF_SHA が空）／
+//   {{…}} を使うのに as_of や end が無い、はどれも exit 1（黙って全部数えない）。
+//   --until は committer date を見る。rebase はそれを書き換えるので、refresh は fetch + rebase の後に打つ。
 //
 // コードフェンス（```）の中には印を置けない——GitHub はフェンス内の HTML コメントをそのまま表示する
 // （2026-09-07 に POST /markdown で実測）。```bash の `# 697 commits` や出力の `ℹ tests 164` は
@@ -33,7 +45,6 @@
 //   CI の test ジョブは鍵を持たないし、鍵付きの id だけ検査から抜けると「緑だが未検査」が生まれる。
 //   記録値を更新できるのは --refresh だけなので、印だけ手で直した／JSON だけ直した／
 //   新しい印を足したが定義が無い、のどれも赤になる。古さは refresh を打った人が背負う（updatedAt が残る）。
-//   古さは refresh を打った人が背負う（updatedAt が残る）。
 // ============================================================
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -42,6 +53,67 @@ import { fileURLToPath } from "node:url";
 
 const MARK = /<!-- n:([A-Za-z0-9_]+) -->([^<]*)<!-- \/n -->/g;
 const CHECK_MODES = new Set(["derive", "recorded"]);
+const AS_OF_ID = "as_of";
+const PLACEHOLDER = /\{\{(AS_OF_END|AS_OF_SHA)\}\}/g;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const JST = "Asia/Tokyo";
+function jstParts(d) {
+  const f = new Intl.DateTimeFormat("en-CA", { timeZone: JST, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return Object.fromEntries(f.formatToParts(d).filter((p) => p.type !== "literal").map((p) => [p.type, p.value]));
+}
+/** YYYY-MM-DD（JST） */
+function jstDate(d) {
+  const g = jstParts(d);
+  return `${g.year}-${g.month}-${g.day}`;
+}
+/** YYYY-MM-DDTHH:MM:SS+09:00（秒精度・git の --until がそのまま読める） */
+function jstInstant(d) {
+  const g = jstParts(d);
+  return `${g.year}-${g.month}-${g.day}T${g.hour}:${g.minute}:${g.second}+09:00`;
+}
+
+function usesPlaceholder(numbers, name) {
+  return numbers.some((n) => typeof n.command === "string" && n.command.includes(`{{${name}}}`));
+}
+
+/**
+ * 基準時刻を確定する: { end, sha }。sha は {{AS_OF_SHA}} を使う command があるときだけ引く。
+ * 検証に落ちたら throw（--check / --refresh とも exit 1）。
+ */
+function resolveAsOf(root, numbers, now) {
+  const needEnd = usesPlaceholder(numbers, "AS_OF_END") || usesPlaceholder(numbers, "AS_OF_SHA");
+  const needSha = usesPlaceholder(numbers, "AS_OF_SHA");
+  const a = numbers.find((n) => n.id === AS_OF_ID);
+  if (!a) {
+    if (needEnd) throw new Error(`a command uses {{AS_OF_END}} / {{AS_OF_SHA}} but there is no id=${AS_OF_ID} in the JSON`);
+    return null;
+  }
+  if (!DATE_RE.test(String(a.value))) throw new Error(`id=${AS_OF_ID}: value must be YYYY-MM-DD (got ${JSON.stringify(a.value)})`);
+  if (!a.end) {
+    if (needEnd) throw new Error(`id=${AS_OF_ID}: needs "end" (the instant --refresh ran, e.g. ${a.value}T12:00:00+09:00) — run --refresh`);
+    return null;
+  }
+  const endDate = new Date(a.end);
+  if (Number.isNaN(endDate.getTime())) throw new Error(`id=${AS_OF_ID}: end is not a date: ${JSON.stringify(a.end)}`);
+  if (endDate.getTime() > now.getTime()) throw new Error(`id=${AS_OF_ID}: ${a.value} (end ${a.end}) is in the future — --until would silently count everything`);
+  if (jstDate(endDate) !== a.value) throw new Error(`id=${AS_OF_ID}: value ${a.value} and end ${a.end} (JST ${jstDate(endDate)}) disagree — run --refresh`);
+  let sha = null;
+  if (needSha) {
+    const r = spawnSync("git", ["rev-list", "-1", `--until=${a.end}`, "HEAD"], { cwd: root, encoding: "utf8" });
+    if (r.status !== 0) throw new Error(`id=${AS_OF_ID}: git rev-list -1 --until='${a.end}' HEAD failed: ${(r.stderr || "").trim().slice(0, 300)}`);
+    sha = (r.stdout ?? "").trim();
+    if (!sha) throw new Error(`id=${AS_OF_ID}: {{AS_OF_SHA}} is empty — no commit at or before ${a.end}`);
+  }
+  return { end: a.end, sha };
+}
+
+function expand(command, asOf) {
+  return command.replace(PLACEHOLDER, (_, name) => {
+    if (!asOf) throw new Error(`{{${name}}} used but no as_of resolved`);
+    return name === "AS_OF_END" ? asOf.end : asOf.sha;
+  });
+}
 
 function parseArgs(argv) {
   const a = { check: false, refresh: false, dryRun: false, root: null, config: null };
@@ -153,11 +225,20 @@ function check(root, cfg) {
   const byId = new Map(cfg.numbers.map((n) => [n.id, n]));
   const problems = [];
 
-  // derive: 記録値は見ない。今ここで導出した値が「正」で、文書がそれと違えば赤（記録値は書かない）。
+  // 基準時刻（as_of）が壊れていれば導出せずに赤
+  let asOf;
+  try {
+    asOf = resolveAsOf(root, cfg.numbers, new Date());
+  } catch (e) {
+    console.log(`✖ ${e.message}`);
+    return 1;
+  }
+
+  // derive: 記録値は見ない。as_of に固定して今ここで導出した値が「正」で、文書がそれと違えば赤（記録値は書かない）。
   const derived = new Map();
   for (const n of cfg.numbers) {
     if (n.check !== "derive") continue;
-    const r = runCommand(root, n.command);
+    const r = runCommand(root, expand(n.command, asOf));
     if (r.error) problems.push(`id=${n.id}: derive command failed — ${n.command}\n    ${r.error}`);
     else derived.set(n.id, r.value);
   }
@@ -205,18 +286,56 @@ function runCommand(root, command) {
 
 function refresh(root, cfg, configPath, dryRun) {
   const marksBefore = [...collectMarks(root, cfg.docs), ...collectLiterals(root, cfg.numbers)];
-  const now = new Date().toISOString();
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
   const rows = [];
   let failed = false;
 
+  // 基準時刻を先に今へ動かす（value = 今日 JST、end = この瞬間）。dry-run では cfg に書かず、導出にだけ使う。
+  const a = cfg.numbers.find((n) => n.id === AS_OF_ID);
+  let asOf = null;
+  if (a) {
+    const r = runCommand(root, a.command);
+    if (r.error) {
+      console.log(`✖ ${a.id}: ${a.command}\n    ${r.error}\n\n✖ a command failed — nothing written`);
+      return 1;
+    }
+    const end = jstInstant(nowDate);
+    if (r.value !== jstDate(nowDate)) {
+      console.log(`✖ ${a.id}: command printed ${JSON.stringify(r.value)} but today (JST) is ${jstDate(nowDate)} — nothing written`);
+      return 1;
+    }
+    const changed = String(a.value) !== r.value || a.end !== end;
+    rows.push({ id: a.id, before: a.end ? `${a.value} (end ${a.end})` : a.value, after: `${r.value} (end ${end})`, status: changed ? "changed" : "same" });
+    if (!dryRun) {
+      a.value = r.value;
+      a.end = end;
+      a.updatedAt = now;
+    }
+    try {
+      asOf = resolveAsOf(root, cfg.numbers.map((n) => (n === a ? { ...a, value: r.value, end } : n)), nowDate);
+    } catch (e) {
+      console.log(`✖ ${e.message}\n\n✖ nothing written`);
+      return 1;
+    }
+  } else {
+    try {
+      asOf = resolveAsOf(root, cfg.numbers, nowDate);
+    } catch (e) {
+      console.log(`✖ ${e.message}\n\n✖ nothing written`);
+      return 1;
+    }
+  }
+
   for (const n of cfg.numbers) {
+    if (n === a) continue;
     const missing = (n.env ?? []).filter((k) => !process.env[k]);
     if (missing.length) {
       console.log(`⚠ ${n.id}: skipped — env ${missing.join(", ")} not set (keeping "${n.value}")`);
       rows.push({ id: n.id, before: n.value, after: n.value, status: "skipped" });
       continue;
     }
-    const r = runCommand(root, n.command);
+    const r = runCommand(root, expand(n.command, asOf));
     if (r.error) {
       console.log(`✖ ${n.id}: ${n.command}\n    ${r.error}`);
       failed = true;

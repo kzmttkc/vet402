@@ -60,8 +60,11 @@ jobs:
       #   check: "recorded" … npm test 数十秒・The Graph の鍵が要る数字。印の値 == 記録値だけを見る
       # 記録値を動かせるのは `npm run refresh-numbers` だけなので、印だけ直した／JSON だけ直した／
       # 定義の無い印を足した／check の無い id、のどれもここで赤になる。
-      # derive の数字はコミットごとに動く（total_commits はその文書を含むコミット自身も数える）。
-      # main へ入れる側が refresh → commit → refresh → commit --amend で合わせる。
+      # derive の導出は JSON の id=as_of（value=日付・end=--refresh を打った瞬間）に固定する
+      # （--until='{{AS_OF_END}}' / pre-ethonline-2026..{{AS_OF_SHA}}）。同じ as_of の間は HEAD が進んでも
+      # 値が変わらないので、文書を含むコミットや後続のコミットで赤にならない（旧設計は「今の HEAD」で
+      # 導出し、コミットごとに 754≠755 の赤が出て refresh → commit → refresh → amend を強いていた）。
+      # 数字を新しくしたいときだけ `npm run refresh-numbers`（fetch + rebase の後に）→ commit。
       - name: Submission numbers are consistent with scripts/refresh-numbers.json
         run: node scripts/refresh-numbers.mjs --check
 
