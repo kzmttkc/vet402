@@ -198,6 +198,22 @@ const MUTATIONS = [
     replace: "  if (/* MUTANT */ false) {",
   },
   {
+    id: "M33",
+    what: "maxPerTxUsd の有限・正の検査を外す（NaN の上限で上限比較が全部通る）",
+    rule: "A2 上限は Number.isFinite(x) && x > 0 でなければ throw",
+    file: PAY,
+    find: "  assertMaxPerTxUsd(input.policy?.maxPerTxUsd);",
+    replace: "  /* MUTANT: maxPerTxUsd check removed */",
+  },
+  {
+    id: "M34",
+    what: "床の有限・非負の検査を外す（NaN の床は delivered < NaN が常に false で床にならない）",
+    rule: "A2 床は Number.isFinite(x) && x >= 0 でなければ throw",
+    file: PAY,
+    find: '  assertFiniteFloor("minL1Deliveries", policy.minL1Deliveries);\n  assertFiniteFloor("minSubgraphReceipts", policy.minSubgraphReceipts);',
+    replace: "  /* MUTANT: floor checks removed */",
+  },
+  {
     id: "M13",
     what: "呼び手が名乗った amountUsd の上限を 1000 倍に緩める",
     rule: "C9 上限は判定を引く前に当てる",

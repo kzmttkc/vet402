@@ -266,6 +266,10 @@ async function decideAndPay(input) {
     if (typeof input.amountUsd !== "number" || !Number.isFinite(input.amountUsd) || input.amountUsd < 0) {
         throw new Error("invalid_amount_usd: pass a finite, non-negative USD amount");
     }
+    // 上限は有限・正でなければ呼び出し側エラー（2026-09-07 監査 A2）。`NaN ?? 1` は NaN のまま上限になり、
+    // `amountUsd > NaN` も `units / 1e6 > NaN` も false で**上限比較が全部通っていた**。本番サーバは
+    // max_per_tx_usd=NaN を 400 で止めるが、SDK 単体（偽サーバ・古いサーバ）に関門が無かった。
+    assertMaxPerTxUsd(input.policy?.maxPerTxUsd);
     // **評価できない床を黙って無視しない**（WINDOW_PLAN §13「会期後に必ず直すもの #2」）。
     // 2026-09-05 まで、`minSubgraphReceipts` は既定 source が "vet402" のときどの分岐にも
     // 当たらず、床を指定したのに拒否も警告も出なかった。「壊れて見えない」型の欠陥。
@@ -689,9 +693,28 @@ function isDecimalUnits(amount) {
  *      通信の前に、call site で、原因そのものが名指しで返る。
  * 対称に、`{ source: "subgraph", minL1Deliveries: 3 }` も同じ理由で呼び出し側エラー。
  */
+function assertMaxPerTxUsd(maxPerTxUsd) {
+    if (maxPerTxUsd === undefined)
+        return;
+    if (typeof maxPerTxUsd === "number" && Number.isFinite(maxPerTxUsd) && maxPerTxUsd > 0)
+        return;
+    throw new Error(`invalid_policy: policy.maxPerTxUsd must be a finite USD amount above 0, got ${String(maxPerTxUsd)}. ` +
+        "NaN / Infinity / 0 / negatives would make every ceiling comparison pass or fail in silence.");
+}
+/** 床は有限・非負の数でなければ呼び出し側エラー（A2）。NaN の床は `delivered < NaN` が常に false で床にならない。 */
+function assertFiniteFloor(name, floor) {
+    if (floor === undefined)
+        return;
+    if (typeof floor === "number" && Number.isFinite(floor) && floor >= 0)
+        return;
+    throw new Error(`invalid_evidence_policy: evidence.${name} must be a finite number ≥ 0, got ${String(floor)}. ` +
+        "A NaN / Infinity / negative floor compares as never-short and would judge nothing.");
+}
 function assertEvidencePolicy(policy) {
     if (!policy)
         return;
+    assertFiniteFloor("minL1Deliveries", policy.minL1Deliveries);
+    assertFiniteFloor("minSubgraphReceipts", policy.minSubgraphReceipts);
     const wanted = policy.source ?? "vet402";
     if (wanted !== "vet402" && wanted !== "subgraph" && wanted !== "both") {
         throw new Error(`invalid_evidence_policy: unknown evidence source ${JSON.stringify(wanted)}`);
