@@ -5,7 +5,9 @@
 // `<!-- n:ID -->164<!-- /n -->` で囲み、`--refresh` がコマンドで再計算して書き換え、
 // `--check` が「印の値 == scripts/refresh-numbers.json の記録値」を CI で見張る。
 //
-// --check はコマンドを実走しない（SDK/MCP の npm test は数十秒かかり、CI の test ジョブに鍵も無い）。
+// 各 id は check: "derive" | "recorded" を持つ（2026-09-07 Takeshi 採用）。
+//   derive   … git だけで安く出る数字。--check でもコマンドを実走し、文書の値と直接比べる（記録値は書かない）
+//   recorded … 実行に時間か鍵が要る数字（npm test・The Graph）。--check は「印の値 == 記録値」だけを見る
 // 記録値は --refresh だけが更新する。だから「印だけ直した」「JSON だけ直した」のどちらも赤になる。
 // ============================================================
 import { spawnSync } from "node:child_process";
@@ -22,6 +24,7 @@ type Num = {
   id: string;
   description: string;
   command: string;
+  check?: "derive" | "recorded" | string;
   env?: string[];
   literal?: Literal[];
   value: string | null;
@@ -51,6 +54,7 @@ const n = (id: string, value: string | null, extra: Partial<Num> = {}): Num => (
   id,
   description: id,
   command: `echo ${value ?? 0}`,
+  check: "recorded",
   value,
   updatedAt: value === null ? null : "2026-09-07T00:00:00.000Z",
   ...extra,
@@ -240,4 +244,95 @@ test("(g4) literal: 同じ id の複数 pattern のうち1つでも当たらな�
   const r = run(root, config, ["--check"]);
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /ℹ pass/);
+});
+
+// ---- check: "derive" | "recorded" ----
+// git で安く出る数字（コミット数・ファイル数）は記録値に頼らず、--check の場で導出して文書と比べる。
+// 記録値を写しておく方式だと「HEAD が進んだのに記録値も文書も古い」が緑のまま通る
+// （関門に正解の写しを持たせない・導出を持たせる）。
+
+test("(i) derive: 記録値が古くても、導出値が文書と一致すれば exit 0", () => {
+  const { root, config } = fixture({
+    docs: { "AI_USAGE.md": "commits <!-- n:total_commits -->164<!-- /n -->\n" },
+    numbers: [n("total_commits", "100", { check: "derive", command: "echo 164" })],
+  });
+  const r = run(root, config, ["--check"]);
+  assert.equal(r.code, 0, r.out);
+});
+
+test("(j) derive: 導出値と文書が違えば exit 1・文書の値と導出値の両方を印字", () => {
+  const { root, config } = fixture({
+    docs: { "AI_USAGE.md": "commits <!-- n:total_commits -->164<!-- /n -->\n" },
+    numbers: [n("total_commits", "164", { check: "derive", command: "echo 170" })],
+  });
+  const r = run(root, config, ["--check"]);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /total_commits/);
+  assert.match(r.out, /AI_USAGE\.md/);
+  assert.match(r.out, /164/, "文書の値");
+  assert.match(r.out, /170/, "導出値");
+});
+
+test("(k) derive: --check は記録値を書き換えない（read-only）", () => {
+  const { root, config } = fixture({
+    docs: { "AI_USAGE.md": "commits <!-- n:total_commits -->164<!-- /n -->\n" },
+    numbers: [n("total_commits", "100", { check: "derive", command: "echo 164" })],
+  });
+  const before = readFileSync(config, "utf8");
+  const r = run(root, config, ["--check"]);
+  assert.equal(r.code, 0, r.out);
+  assert.equal(readFileSync(config, "utf8"), before);
+});
+
+test("(l) derive: literal（フェンス内）も導出値と直接比べる", () => {
+  const doc = "```bash\ngit rev-list --count HEAD   # 164 commits (2026-09-06)\n```\n";
+  const lit = { doc: "AI_USAGE.md", pattern: "# (?<v>\\d+) commits \\(" };
+  const good = fixture({ docs: { "AI_USAGE.md": doc }, numbers: [n("total_commits", "100", { check: "derive", command: "echo 164", literal: [lit] })] });
+  assert.equal(run(good.root, good.config, ["--check"]).code, 0);
+  const bad = fixture({ docs: { "AI_USAGE.md": doc }, numbers: [n("total_commits", "164", { check: "derive", command: "echo 170", literal: [lit] })] });
+  const r = run(bad.root, bad.config, ["--check"]);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /170/);
+});
+
+test("(m) derive: --check でコマンドが失敗したら exit 1（黙って記録値に落ちない）", () => {
+  const { root, config } = fixture({
+    docs: { "AI_USAGE.md": "commits <!-- n:total_commits -->164<!-- /n -->\n" },
+    numbers: [n("total_commits", "164", { check: "derive", command: "false" })],
+  });
+  const r = run(root, config, ["--check"]);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /total_commits/);
+});
+
+test("(n) recorded: --check はコマンドを実走せず、印の値 == 記録値だけを見る", () => {
+  const { root, config } = fixture({
+    docs: { "SKILL.md": "tests <!-- n:sdk_tests -->164<!-- /n -->\n" },
+    numbers: [n("sdk_tests", "164", { check: "recorded", command: "echo 999" })],
+  });
+  const r = run(root, config, ["--check"]);
+  assert.equal(r.code, 0, r.out);
+  assert.doesNotMatch(r.out, /999/);
+});
+
+test("(o) check の無い id は exit 1（黙って recorded 扱いにしない）", () => {
+  const { root, config } = fixture({
+    docs: { "SKILL.md": "tests <!-- n:sdk_tests -->164<!-- /n -->\n" },
+    numbers: [{ id: "sdk_tests", description: "x", command: "echo 164", value: "164", updatedAt: "2026-09-07T00:00:00.000Z" }],
+  });
+  const r = run(root, config, ["--check"]);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /sdk_tests/);
+  assert.match(r.out, /check/);
+});
+
+test("(o2) check が derive / recorded 以外なら exit 1", () => {
+  const { root, config } = fixture({
+    docs: { "SKILL.md": "tests <!-- n:sdk_tests -->164<!-- /n -->\n" },
+    numbers: [n("sdk_tests", "164", { check: "cached" })],
+  });
+  const r = run(root, config, ["--check"]);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /sdk_tests/);
+  assert.match(r.out, /cached/);
 });

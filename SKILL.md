@@ -118,9 +118,9 @@ cd packages/mcp-server && npm test 2>&1 | grep -E '^ℹ '
 ```
 
 ```
-ℹ tests 65
+ℹ tests 68
 ℹ suites 0
-ℹ pass 65
+ℹ pass 68
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
@@ -308,8 +308,8 @@ cd packages/sdk && npm install && npm test 2>&1 | grep -E '^ℹ '
 ```
 
 ```
-ℹ tests 178
-ℹ pass 178
+ℹ tests 181
+ℹ pass 181
 ℹ fail 0
 ```
 

@@ -44,8 +44,8 @@ Implementation, tests, and audits, under the direction above. Claude (Opus / Fab
 writes most of the code in this repository. We say that plainly rather than annotate a handful of files.
 
 ```bash
-git rev-list --count HEAD                                  # 743 commits (2026-09-07)
-git log --grep='Co-Authored-By: Claude' --oneline | wc -l  # 624 carry the AI trailer
+git rev-list --count HEAD                                  # 754 commits (2026-09-07)
+git log --grep='Co-Authored-By: Claude' --oneline | wc -l  # 635 carry the AI trailer
 git rev-list --count --merges HEAD                         # 34 are merge commits
 ```
 
@@ -76,8 +76,8 @@ a trailer as "unknown", not as "human".** The numbers move every day — re-run 
 **Window totals move daily; derive them rather than trusting this line:**
 
 ```bash
-git diff --diff-filter=A --name-only pre-ethonline-2026..main | wc -l   # 170 added   (2026-09-07)
-git diff --diff-filter=M --name-only pre-ethonline-2026..main | wc -l   # 173 modified
+git diff --diff-filter=A --name-only pre-ethonline-2026..main | wc -l   # 178 added   (2026-09-07)
+git diff --diff-filter=M --name-only pre-ethonline-2026..main | wc -l   # 174 modified
 ```
 
 **Not all of that is this submission.** `main` is also the production branch and carries work unrelated

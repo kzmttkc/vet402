@@ -3,24 +3,36 @@
 // 提出物の文書に載る「動く数字」を1コマンドで再計算し、古ければ CI で赤にする。
 // 2026-09-07 Takeshi 採用（「提出直前に数字だけ拾って変える」を1コマンドに）。
 //
-//   node scripts/refresh-numbers.mjs --check               # CI: 印の値 == 記録値か（コマンドは走らせない）
+//   node scripts/refresh-numbers.mjs --check               # CI: derive は導出して文書と比べ、recorded は印の値 == 記録値か
 //   node scripts/refresh-numbers.mjs --refresh             # 全コマンドを実走 → 記録値と文書の印を書き換える
 //   node scripts/refresh-numbers.mjs --refresh --dry-run   # 差分だけ表示、何も書かない
 //
 // 印の形（Markdown を壊さず、レンダリングにも出ない）:   <!-- n:sdk_tests -->164<!-- /n -->
 // 定義と記録値は scripts/refresh-numbers.json の1ファイル:
-//   { "docs": [...], "numbers": [{ id, description, command, env?, literal?, value, updatedAt }] }
+//   { "docs": [...], "numbers": [{ id, description, check, command, env?, literal?, value, updatedAt }] }
+//
+// check（必須・2026-09-07 Takeshi 採用）:
+//   "derive"   git だけで安く出る数字（コミット数・会期のファイル数）。--check でも command を実走し、
+//              文書の値と**導出値**を比べる。記録値（value）は参考にしかならず、--check では書き換えない。
+//              関門に正解の写しを持たせると、HEAD が進んで写しも文書も古くなったとき緑のまま通る。
+//              だから安く導出できるものは導出で比べる。CI 側は shallow clone だと数えられない
+//              （depth 1 では rev-list が 1、タグ pre-ethonline-2026 も無い）ので checkout は fetch-depth: 0。
+//              注意: total_commits は「その文書を含むコミット」自身も数える。refresh → commit の後は
+//              1 増えて赤になるので、refresh → commit → refresh → commit --amend で合わせる。
+//   "recorded" 実行に時間か鍵が要る数字（npm test は build 込みで数十秒、The Graph 系は鍵）。
+//              --check は「文書の印の値 == JSON の記録値」だけを見る。
+//   check の無い id・上のどちらでもない値は --check / --refresh とも exit 1（黙って recorded 扱いにしない）。
 //
 // コードフェンス（```）の中には印を置けない——GitHub はフェンス内の HTML コメントをそのまま表示する
 // （2026-09-07 に POST /markdown で実測）。```bash の `# 697 commits` や出力の `ℹ tests 164` は
 // JSON 側の literal: [{ doc, pattern }] で結ぶ。pattern は (?<v>...) の名前付きグループが値。
 // --check はフェンス内に <!-- n: --> があれば赤にする。
 //
-// なぜ --check はコマンドを実走しないか:
+// なぜ recorded の --check はコマンドを実走しないか:
 //   SDK / MCP のテスト本数は `npm test`（build 込みで数十秒）を回さないと出ず、The Graph 系は鍵が要る。
 //   CI の test ジョブは鍵を持たないし、鍵付きの id だけ検査から抜けると「緑だが未検査」が生まれる。
-//   だから --check は「文書の印の値 == JSON の記録値」だけを見る。記録値を更新できるのは --refresh
-//   だけなので、印だけ手で直した／JSON だけ直した／新しい印を足したが定義が無い、のどれも赤になる。
+//   記録値を更新できるのは --refresh だけなので、印だけ手で直した／JSON だけ直した／
+//   新しい印を足したが定義が無い、のどれも赤になる。古さは refresh を打った人が背負う（updatedAt が残る）。
 //   古さは refresh を打った人が背負う（updatedAt が残る）。
 // ============================================================
 import { spawnSync } from "node:child_process";
@@ -29,6 +41,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MARK = /<!-- n:([A-Za-z0-9_]+) -->([^<]*)<!-- \/n -->/g;
+const CHECK_MODES = new Set(["derive", "recorded"]);
 
 function parseArgs(argv) {
   const a = { check: false, refresh: false, dryRun: false, root: null, config: null };
@@ -59,6 +72,9 @@ function loadConfig(path) {
   const seen = new Set();
   for (const n of cfg.numbers) {
     if (!n.id || !n.command) throw new Error(`${path}: every number needs id and command (${JSON.stringify(n)})`);
+    if (!CHECK_MODES.has(n.check)) {
+      throw new Error(`${path}: id=${n.id} needs check: "derive" | "recorded" (got ${JSON.stringify(n.check ?? null)}) — a missing check is not silently treated as recorded`);
+    }
     if (seen.has(n.id)) throw new Error(`${path}: duplicate id ${n.id}`);
     seen.add(n.id);
   }
@@ -137,12 +153,24 @@ function check(root, cfg) {
   const byId = new Map(cfg.numbers.map((n) => [n.id, n]));
   const problems = [];
 
+  // derive: 記録値は見ない。今ここで導出した値が「正」で、文書がそれと違えば赤（記録値は書かない）。
+  const derived = new Map();
+  for (const n of cfg.numbers) {
+    if (n.check !== "derive") continue;
+    const r = runCommand(root, n.command);
+    if (r.error) problems.push(`id=${n.id}: derive command failed — ${n.command}\n    ${r.error}`);
+    else derived.set(n.id, r.value);
+  }
+
   for (const m of marks) {
     const n = byId.get(m.id);
     if (m.inFence) {
       problems.push(`${m.doc}: mark n:${m.id} sits inside a code fence — GitHub renders it literally; use "literal" in the JSON instead`);
     } else if (!n) {
       problems.push(`${m.doc}: mark n:${m.id} is not defined in the JSON (value "${m.value}")`);
+    } else if (n.check === "derive") {
+      if (!derived.has(m.id)) continue; // command failed: already reported once above
+      if (derived.get(m.id) !== m.value) problems.push(`${m.doc}: id=${m.id} doc="${m.value}" derived="${derived.get(m.id)}" (${n.command})`);
     } else if (n.value === null || n.value === undefined) {
       problems.push(`${m.doc}: id=${m.id} has no recorded value yet — run --refresh`);
     } else if (String(n.value) !== m.value) {
@@ -162,7 +190,8 @@ function check(root, cfg) {
     console.log(`\n${problems.length} problem(s). Run: node scripts/refresh-numbers.mjs --refresh`);
     return 1;
   }
-  console.log(`✔ ${cfg.numbers.length} number(s) consistent across ${cfg.docs.length} doc(s), ${marks.length} mark(s)`);
+  const nDerive = cfg.numbers.filter((n) => n.check === "derive").length;
+  console.log(`✔ ${cfg.numbers.length} number(s) consistent across ${cfg.docs.length} doc(s), ${marks.length} mark(s) — ${nDerive} derived now, ${cfg.numbers.length - nDerive} against recorded values`);
   return 0;
 }
 
@@ -243,5 +272,11 @@ function refresh(root, cfg, configPath, dryRun) {
 const args = parseArgs(process.argv.slice(2));
 const root = resolve(args.root ?? join(dirname(fileURLToPath(import.meta.url)), ".."));
 const configPath = resolve(args.config ?? join(root, "scripts", "refresh-numbers.json"));
-const cfg = loadConfig(configPath);
+let cfg;
+try {
+  cfg = loadConfig(configPath);
+} catch (e) {
+  console.log(`✖ ${e.message}`);
+  process.exit(1);
+}
 process.exit(args.check ? check(root, cfg) : refresh(root, cfg, configPath, args.dryRun));

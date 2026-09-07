@@ -25,6 +25,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # 2026-09-07: 末尾の refresh-numbers --check が check: "derive" の id（コミット数・会期のファイル数）を
+          # git から**その場で導出**する。既定の depth 1 では `git rev-list --count HEAD` が 1、
+          # タグ pre-ethonline-2026 も無く `pre-ethonline-2026..HEAD` は fatal（--depth 1 の clone で実測）。
+          # 全履歴とタグが要るのでこのジョブだけ fetch-depth: 0。
+          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
@@ -49,10 +55,13 @@ jobs:
       - name: Unit tests (scoring core + SDK)
         run: npm test
       # 2026-09-07. 提出物の文書（README / AI_USAGE / SKILL.md / CHANGED_FILES.md）に載る動く数字は
-      # <!-- n:ID -->N<!-- /n --> で囲み、scripts/refresh-numbers.json の記録値と突き合わせる。
-      # ここではコマンドを実走しない（テスト本数は npm test 数十秒、The Graph 系は鍵が要る）——
-      # 印の値 == 記録値だけを見る。記録値を動かせるのは `npm run refresh-numbers` だけなので、
-      # 印だけ直した／JSON だけ直した／定義の無い印を足した、のどれもここで赤になる。
+      # <!-- n:ID -->N<!-- /n --> で囲み、scripts/refresh-numbers.json の定義と突き合わせる。
+      #   check: "derive"   … git だけで出る数字。ここで導出して文書と比べる（上の fetch-depth: 0 が前提）
+      #   check: "recorded" … npm test 数十秒・The Graph の鍵が要る数字。印の値 == 記録値だけを見る
+      # 記録値を動かせるのは `npm run refresh-numbers` だけなので、印だけ直した／JSON だけ直した／
+      # 定義の無い印を足した／check の無い id、のどれもここで赤になる。
+      # derive の数字はコミットごとに動く（total_commits はその文書を含むコミット自身も数える）。
+      # main へ入れる側が refresh → commit → refresh → commit --amend で合わせる。
       - name: Submission numbers are consistent with scripts/refresh-numbers.json
         run: node scripts/refresh-numbers.mjs --check
 
