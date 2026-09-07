@@ -194,3 +194,15 @@ Takeshi 指示「コード・秘密・可用性・文章の検査をダブルチ
 **変えていないもの**: `/payee/<存在しない住所>` が 200 で個別ページ化する設計、`/legal/*` の改定月、`examples/` と dev 依存の脆弱性（GitHub 表示の 26 件はこれを含む）。
 
 秘密の失効が要るものは 0 件（リポ・履歴・CI ログ・本番の面を走査。64 桁 hex は全部 tx ハッシュ／Anvil 公開鍵）。
+
+---
+
+## 2026-09-08 07:30 ハッカソン戦略 → vet402.com セッション: **09-07 監査の「気づき→新提案 4 件」が全部 main に入りました（219ba1e〜73bebd4・CI 緑）**
+
+1. **境界の形を壊すテスト**（`8633f2f`＋`9836db0`）: 外部入力（`/decision` 本文・402・subgraph 応答・呼び手の policy・MCP 入力・A/B 橋の 402）の欄ごとに 22 種の壊れた形を差し込む `boundary-shapes.test.mjs` を SDK / MCP / 橋に常設。テスト sdk 235→1572・mcp 70→748・ab 164→506、SDK 変異 40 全 killed。**初回で署名到達の欠陥 3 群を拾い修正**（`n_delivered=Infinity` が床を満たす／subgraph `totalPayments="0x10"` を `Number()` で読む／`_meta.block.number=0` を live 証跡として通す）。修正は関門側のみ、`x402-pay.ts`・署名到達部は不変。**本番の実応答で inert 欄（`registry`・`rules_version` 等）が拒否される事例が出たら分類を見直す**（skill-live の日次 run で見える）。
+2. **SKILL.md の本番向けブロックを毎日実走**（`533526e`）: `scripts/skill-live-check.mjs`＋`.github/workflows/skill-live.yml`（08:00 JST・dispatch 可）。印 `# live: expect <jq>` 付き 4 ブロック、本番 GET 4 本（`/decision` 3 本）。赤なら issue「SKILL.md drifted from production」。初日に §4（誤鍵）の期待出力が本番と食い違っていたのを是正。
+3. **審査員の最初の 5 分をなぞる日次検査**（管理リポ `61dcdb0`）: `scripts/vet402_judge_face.py`・launchd 08:35 JST。GitHub（未返答 Issue・PR・SECURITY.md・Release・topics・CI・Dependabot 本番 high）と vet402.com（5 面の HTTP・SKILL link・ヘッダ月）と showcase の公開を測り、赤だけ ALERTS へ。初回 17 項目全部緑。
+4. **発注の型**（`219ba1e` GIT_RULES）: 「最も怪しい前提を 1 つ」＋「決済経路に触るなら止まって報告」の 2 行を定型に。
+5. **push-main.sh に数字検査の段**（`73bebd4`）: `refresh-numbers --check` を push 前に。今朝、refresh 後の amend で main が一度赤になった経路（Issue #19・close 済み）を塞いだ。
+
+本番の挙動は 1 の関門強化のみ（拒否側に倒す）。決済経路のコードは変えていません。
