@@ -22,6 +22,8 @@ export const BRIDGE_NETWORK = "eip155:8453";
 export const BRIDGE_CHAIN_ID = 8453;
 /** 橋が払ってよい唯一の額。**それ以外は例外**（ツール呼び出しで金を動かさない）。 */
 export const BRIDGE_ONLY_AMOUNT = "0";
+/** 橋が署名してよい唯一のトークン（Base 正規 USDC）。宛先は 0x の 40 hex に限る。 */
+export const BRIDGE_ASSET = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
 /**
  * **$0 の x402 402 を、MCP の外で払って本物の応答に置き換える橋**（2026-09-06）。
@@ -104,6 +106,11 @@ export function createMcpToolProvider({ url, fetchImpl = fetch, headers = {}, cl
         `mcp x402 bridge: refusing to pay — amount=${accept.amount} payTo=${accept.payTo} ` +
           `(this bridge settles only amount="${BRIDGE_ONLY_AMOUNT}" challenges; a tool call must never move money)`,
       );
+    }
+    // 宛先とトークンも見る（2026-09-08 境界表）。amount "0" でも、宛先 null・別トークンの認可に署名すれば
+    // 署名だけが焼ける。橋の契約は「Gateway 宛・$0・Base USDC・0x 宛先」以外に署名を存在させないこと。
+    if (!/^0x[0-9a-fA-F]{40}$/.test(String(accept.payTo)) || String(accept.asset).toLowerCase() !== BRIDGE_ASSET.toLowerCase()) {
+      throw new Error(`mcp x402 bridge: refusing to pay — payTo=${accept.payTo} asset=${accept.asset} is not a 0x address on Base USDC ${BRIDGE_ASSET}`);
     }
     const resource = parsed.challenge.resource.url;
     // 再送先は **Gateway と同じ origin** に限る（2026-09-07 監査 A5）。文字列連結

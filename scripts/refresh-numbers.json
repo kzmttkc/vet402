@@ -23,9 +23,9 @@
           "pattern": "# \\d+ added +\\((?<v>\\d{4}-\\d{2}-\\d{2})\\)"
         }
       ],
-      "value": "2026-09-07",
-      "updatedAt": "2026-09-07T12:41:10.755Z",
-      "end": "2026-09-07T21:41:10+09:00"
+      "value": "2026-09-08",
+      "updatedAt": "2026-09-07T21:50:33.687Z",
+      "end": "2026-09-08T06:50:33+09:00"
     },
     {
       "id": "total_commits",
@@ -38,8 +38,8 @@
           "pattern": "^git rev-list --count HEAD +# (?<v>\\d+) commits \\("
         }
       ],
-      "value": "775",
-      "updatedAt": "2026-09-07T12:41:10.755Z"
+      "value": "780",
+      "updatedAt": "2026-09-07T21:50:33.687Z"
     },
     {
       "id": "ai_trailer_commits",
@@ -52,8 +52,8 @@
           "pattern": "^git log --grep='Co-Authored-By: Claude' --oneline \\| wc -l +# (?<v>\\d+) carry the AI trailer"
         }
       ],
-      "value": "648",
-      "updatedAt": "2026-09-07T12:41:10.755Z"
+      "value": "653",
+      "updatedAt": "2026-09-07T21:50:33.687Z"
     },
     {
       "id": "merge_commits",
@@ -67,7 +67,7 @@
         }
       ],
       "value": "34",
-      "updatedAt": "2026-09-07T12:41:10.755Z"
+      "updatedAt": "2026-09-07T21:50:33.687Z"
     },
     {
       "id": "no_trailer_commits",
@@ -75,7 +75,7 @@
       "check": "derive",
       "command": "echo $(( $(git rev-list --count --until='{{AS_OF_END}}' HEAD) - $(git log --grep='Co-Authored-By: Claude' --until='{{AS_OF_END}}' --oneline | wc -l) ))",
       "value": "127",
-      "updatedAt": "2026-09-07T12:41:10.755Z"
+      "updatedAt": "2026-09-07T21:50:33.687Z"
     },
     {
       "id": "window_added_files",
@@ -88,8 +88,8 @@
           "pattern": "^git diff --diff-filter=A --name-only pre-ethonline-2026\\.\\.main \\| wc -l +# (?<v>\\d+) added"
         }
       ],
-      "value": "187",
-      "updatedAt": "2026-09-07T12:41:10.755Z"
+      "value": "194",
+      "updatedAt": "2026-09-07T21:50:33.687Z"
     },
     {
       "id": "window_modified_files",
@@ -103,7 +103,7 @@
         }
       ],
       "value": "183",
-      "updatedAt": "2026-09-07T12:41:10.755Z"
+      "updatedAt": "2026-09-07T21:50:33.687Z"
     },
     {
       "id": "sdk_tests",
@@ -128,8 +128,8 @@
           "pattern": "`\\{\\{sdk_tests\\}\\}` \\| [^\\n]*?\\| (?<v>\\d+) / fail 0"
         }
       ],
-      "value": "235",
-      "updatedAt": "2026-09-07T12:41:10.755Z"
+      "value": "1572",
+      "updatedAt": "2026-09-07T21:50:33.687Z"
     },
     {
       "id": "mcp_tests",
@@ -154,8 +154,8 @@
           "pattern": "`\\{\\{mcp_tests\\}\\}` \\| [^\\n]*?\\| (?<v>\\d+) / fail 0"
         }
       ],
-      "value": "70",
-      "updatedAt": "2026-09-07T12:41:10.755Z"
+      "value": "748",
+      "updatedAt": "2026-09-07T21:50:33.687Z"
     },
     {
       "id": "demo_tests",
@@ -173,15 +173,15 @@
         }
       ],
       "value": "65",
-      "updatedAt": "2026-09-07T12:41:10.755Z"
+      "updatedAt": "2026-09-07T21:50:33.687Z"
     },
     {
       "id": "sdk_mutations",
       "description": "packages/sdk/test-mutations.mjs の MUTATIONS 配列の本数（SKILL.md）。",
       "check": "recorded",
       "command": "grep -cE '^ +id: \"M[0-9]+\"' packages/sdk/test-mutations.mjs",
-      "value": "34",
-      "updatedAt": "2026-09-07T12:41:10.755Z"
+      "value": "40",
+      "updatedAt": "2026-09-07T21:50:33.687Z"
     }
   ]
 }

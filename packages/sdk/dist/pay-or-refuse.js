@@ -266,6 +266,14 @@ async function decideAndPay(input) {
     if (typeof input.amountUsd !== "number" || !Number.isFinite(input.amountUsd) || input.amountUsd < 0) {
         throw new Error("invalid_amount_usd: pass a finite, non-negative USD amount");
     }
+    // method / apiUrl は文字列でなければ呼び出し側エラー（2026-09-08 境界表）。`5.toUpperCase()` の TypeError で
+    // 落ちるのは fail-closed だが、何が悪いかを言わない。null は「未指定」として既定へ落とす（`??` と同じ規則）。
+    if (input.method != null && typeof input.method !== "string") {
+        throw new Error("invalid_method: pass the resource's HTTP method as a string (default GET)");
+    }
+    if (input.apiUrl != null && typeof input.apiUrl !== "string") {
+        throw new Error("invalid_api_url: pass the vet402 API origin as a string");
+    }
     // 上限は有限・正でなければ呼び出し側エラー（2026-09-07 監査 A2）。`NaN ?? 1` は NaN のまま上限になり、
     // `amountUsd > NaN` も `units / 1e6 > NaN` も false で**上限比較が全部通っていた**。本番サーバは
     // max_per_tx_usd=NaN を 400 で止めるが、SDK 単体（偽サーバ・古いサーバ）に関門が無かった。
@@ -445,7 +453,10 @@ async function decideAndPay(input) {
         }
         // 読んだ証拠行は**判定の中身に関わらず**残す（§3.5 と同じ理由——拒否したときにも、
         // その源が何を知っているかは残る）。
-        evidence.push(...(Array.isArray(decision.evidence) ? decision.evidence : []).map((row) => ({
+        evidence.push(
+        // 行は plain object だけ読む。`[null]` を map すると `row.level` の TypeError で落ちる（fail-closed だが
+        // 理由が残らない・2026-09-08 境界表）。読めない行は捨て、読めた行は残す（台帳の読み方と同じ規則）。
+        ...(Array.isArray(decision.evidence) ? decision.evidence.filter((row) => isPlainObject(row)) : []).map((row) => ({
             level: row.level,
             // **サーバが名乗った源をそのまま通す。** 決め打ちで "vet402" を入れると、
             // サーバが別の源の行を出した瞬間に「どの台帳が答えたか」を我々が塗り替える
@@ -746,7 +757,10 @@ function evaluateEvidencePolicy(policy, decision, subgraph) {
     const wanted = policy.source ?? "vet402";
     if ((wanted === "vet402" || wanted === "both") && policy.minL1Deliveries !== undefined) {
         const facts = decision?.facts;
-        const delivered = typeof facts?.l1?.n_delivered === "number" ? facts.l1.n_delivered : 0;
+        const nDelivered = facts?.l1?.n_delivered;
+        // 数えた件数は 0 以上の整数だけ。JSON.parse は `1e400` を Infinity に読み、Infinity はどの床も満たす
+        // （2026-09-08 境界表・n_delivered=Infinity で床 1 を通って署名まで到達した）。整数でなければ 0 件と読む。
+        const delivered = typeof nDelivered === "number" && Number.isInteger(nDelivered) && nDelivered >= 0 ? nDelivered : 0;
         if (delivered < policy.minL1Deliveries) {
             return { shortfall: ["insufficient_delivery_evidence"], met };
         }

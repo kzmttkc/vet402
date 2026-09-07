@@ -181,6 +181,14 @@ const MUTATIONS = [
     find: "    const target = new URL(resource, gatewayOrigin);\n    if (target.origin !== gatewayOrigin) {",
     replace: "    const target = { href: gatewayOrigin + resource, origin: gatewayOrigin };\n    if (false) {",
   },
+  // ---- 2026-09-08 追加。境界表（test/boundary-shapes.test.mjs）: 宛先・トークンの検査 ----
+  {
+    id: "M25",
+    why: "橋の payTo / asset の検査を外す — amount \"0\" なら宛先 null・別トークンの認可にも署名する（署名だけが焼ける）",
+    file: "src/mcp.mjs",
+    find: "    if (!/^0x[0-9a-fA-F]{40}$/.test(String(accept.payTo)) || String(accept.asset).toLowerCase() !== BRIDGE_ASSET.toLowerCase()) {",
+    replace: "    if (false) {",
+  },
   // ---- 2026-09-07 追加。Recipe の公開状態の規則（状態を固定しない。状態と証拠の対応を固定する）----
   {
     id: "M20",

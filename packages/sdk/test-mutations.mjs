@@ -30,6 +30,9 @@ import { fileURLToPath } from "node:url";
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const PAY = "src/pay-or-refuse.ts";
 const SUB = "src/subgraph-evidence.ts";
+const X402 = "src/x402-pay.ts";
+/** 壊れた形の表（テスト側の資産）。表を痩せさせる変異も殺せることを見る。 */
+const SHAPES = "test/_shapes.mjs";
 
 /**
  * `find` は**ちょうど1回**出現する行でなければならない（0 回は stale、2 回以上は
@@ -117,9 +120,9 @@ const MUTATIONS = [
     what: "L1 の床に subgraph の件数を合算して当てる",
     rule: "D16 源をまたいで足さない（D16b）",
     file: PAY,
-    find: '    const delivered = typeof facts?.l1?.n_delivered === "number" ? facts.l1.n_delivered : 0;',
+    find: '    const delivered = typeof nDelivered === "number" && Number.isInteger(nDelivered) && nDelivered >= 0 ? nDelivered : 0;',
     replace:
-      '    const delivered = (typeof facts?.l1?.n_delivered === "number" ? facts.l1.n_delivered : 0) + (subgraph?.receipts ?? 0); /* MUTANT */',
+      '    const delivered = (typeof nDelivered === "number" && Number.isInteger(nDelivered) && nDelivered >= 0 ? nDelivered : 0) + (subgraph?.receipts ?? 0); /* MUTANT */',
   },
   {
     id: "M21",
@@ -153,6 +156,55 @@ const MUTATIONS = [
     file: PAY,
     find: '    if (typeof decision.degraded !== "boolean" || decision.degraded === true) {',
     replace: "    if (/* MUTANT */ decision.degraded === true) {",
+  },
+  // ---- 境界表（test/_shapes.mjs × test/boundary-shapes.test.mjs・2026-09-08）----
+  {
+    id: "M35",
+    what: "n_delivered の整数検査を typeof number に戻す（JSON の 1e400 = Infinity が床 1 を満たして払う）",
+    rule: "境界表 facts.l1.n_delivered は 0 以上の整数だけを件数と読む",
+    file: PAY,
+    find: '    const delivered = typeof nDelivered === "number" && Number.isInteger(nDelivered) && nDelivered >= 0 ? nDelivered : 0;',
+    replace: '    const delivered = typeof nDelivered === "number" ? nDelivered : 0; /* MUTANT */',
+  },
+  {
+    id: "M36",
+    what: "recommendation の照合を String() で緩める（[\"ALLOW\"] や { toString } が ALLOW に読める）",
+    rule: "境界表 recommendation は文字列 \"ALLOW\" との厳密一致だけ",
+    file: PAY,
+    find: '    if (decision.recommendation !== "ALLOW") {',
+    replace: '    if (/* MUTANT */ String(decision.recommendation) !== "ALLOW") {',
+  },
+  {
+    id: "M37",
+    what: "subgraph の totalPayments を Number() で読む（\"0x10\" / \"1e4\" / \" 5 \" / true が床の上の数になる）",
+    rule: "境界表 件数は 10 進整数の文字列か 0 以上の整数だけ",
+    file: SUB,
+    find: "  const receipts = isReceiptCount(rawTotal) ? Number(rawTotal) : NaN;",
+    replace: "  const receipts = Number(rawTotal); /* MUTANT */",
+  },
+  {
+    id: "M38",
+    what: "ブロック高の整数・正の検査を外す（0 / -1 / 0.5 / Infinity が live の証跡になる）",
+    rule: "境界表 _meta.block.number は正の整数だけ",
+    file: SUB,
+    find: '  if (typeof blockNumber !== "number" || !Number.isInteger(blockNumber) || blockNumber <= 0) return { ok: false, error: "graph_no_block_meta" };',
+    replace: '  if (/* MUTANT */ typeof blockNumber !== "number") return { ok: false, error: "graph_no_block_meta" };',
+  },
+  {
+    id: "M39",
+    what: "売り手が名乗る maxTimeoutSeconds の上限（120 秒）を外す（20000 秒の認可に署名する）",
+    rule: "境界表 認可の窓は 60〜120 秒（inert 欄でも署名に漏れない）",
+    file: X402,
+    find: "  const window = Math.floor(Math.min(Math.max(requested, 60), MAX_AUTHORIZATION_WINDOW_SECONDS));",
+    replace: "  const window = Math.floor(Math.max(requested, 60)); /* MUTANT */",
+  },
+  {
+    id: "M40",
+    what: "壊れた形の表を 1 行に減らす（面 × 形の掛け算が 1 列になる）",
+    rule: "境界表 REQUIRED_SHAPE_IDS が全部居ること（表そのもののテスト）",
+    file: SHAPES,
+    find: "export const BROKEN_SHAPES = Object.freeze(ROWS.map((r) => Object.freeze(r)));",
+    replace: "export const BROKEN_SHAPES = Object.freeze(ROWS.slice(0, 1).map((r) => Object.freeze(r))); /* MUTANT */",
   },
   // ---- カタログ外（I23）----
   {
@@ -303,7 +355,7 @@ const MUTATIONS = [
     file: SUB,
     edits: [
       {
-        find: '  if (typeof blockNumber !== "number") return { ok: false, error: "graph_no_block_meta" };',
+        find: '  if (typeof blockNumber !== "number" || !Number.isInteger(blockNumber) || blockNumber <= 0) return { ok: false, error: "graph_no_block_meta" };',
         replace: '  const blockNumberOrZero = typeof blockNumber === "number" ? blockNumber : 0; /* MUTANT */',
       },
       { find: "      number: blockNumber,", replace: "      number: blockNumberOrZero, /* MUTANT */" },
@@ -364,7 +416,7 @@ async function buildAndTest() {
 
 async function countMutantMarkers() {
   let n = 0;
-  for (const f of [PAY, SUB]) n += (await readFile(join(ROOT, f), "utf8")).split("MUTANT").length - 1;
+  for (const f of [PAY, SUB, X402, SHAPES]) n += (await readFile(join(ROOT, f), "utf8")).split("MUTANT").length - 1;
   return n;
 }
 

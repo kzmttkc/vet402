@@ -69,3 +69,14 @@ the document had been written ahead of production and nobody re-ran it. New: `sc
 | `SKILL.md` | Four production-facing blocks get a first-line `# live: expect <jq>` marker (one sentence at the top of *How a judge can run it* explains it); §4's expected output corrected to what production answers since 2026-09-07 (`invalid_api_key` rides along after `evidence_unavailable`, `caller_policy: null`, `decision_record: null`) — the very drift the gate exists to catch |
 | `package.json` | `npm run skill-live` |
 | `docs/ethonline-2026/WINDOW_PLAN.md` | §17's 09-10 "walk SKILL.md on a clean clone" replaced by reading the gate's daily run (§17.1); §1.7 arrow note |
+
+## 2026-09-08 — boundary-shape tests (branch `ethonline/boundary-shapes`)
+
+One table of malformed values (`packages/sdk/test/_shapes.mjs`) applied to every external input of
+`payOrRefuse`, `pay_if_trusted` and the A/B bridge. Everything else in this branch is new work (test files,
+one-line gates in `pay-or-refuse.ts` / `subgraph-evidence.ts` / `pay-if-trusted.ts` / `mcp.mjs`, mutations);
+the only pre-existing file touched is:
+
+| File | Why |
+|---|---|
+| `SKILL.md` | One sentence under `npm run judge-check` saying the boundary-shape suites exist and what they assert (no number written by hand) |

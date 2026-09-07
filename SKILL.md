@@ -34,6 +34,7 @@ It runs `sdk: npm ci → build → test` · `mcp-server: npm ci → build → te
 `&&`), prints one table, and exits 1 if any step was non-zero. It `unset`s every key before it
 starts, so a green run is proof that none of this needs one. It takes **about 25–30 s on a clean
 clone** (24–27 s across three measurements on 2026-09-07, warm npm cache); `git clone` itself took 1.4 s. The only network it touches is the npm registry.
+The suites it runs include the boundary-shape tests (`packages/sdk/test/_shapes.mjs`, one table of malformed values — `null`, `[]`, `"true"`, `NaN`, `"0x10"`, `"1e4"`, `1e400`, … — applied by `boundary-shapes.test.mjs` in `packages/sdk`, `packages/mcp-server` and `examples/ethonline-2026-ab` to every field the SDK, the MCP tool and the A/B bridge read from a `/decision` body, a 402 challenge, a subgraph response or the caller's policy; every money-bearing field must stop before the signer, every other field must not leak into the signature).
 
 **Build order — the dependency chain, not a preference.**
 
@@ -118,9 +119,9 @@ cd packages/mcp-server && npm test 2>&1 | grep -E '^ℹ '
 ```
 
 ```
-ℹ tests 70
+ℹ tests 748
 ℹ suites 0
-ℹ pass 70
+ℹ pass 748
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
@@ -317,12 +318,12 @@ cd packages/sdk && npm install && npm test 2>&1 | grep -E '^ℹ '
 ```
 
 ```
-ℹ tests 235
-ℹ pass 235
+ℹ tests 1572
+ℹ pass 1572
 ℹ fail 0
 ```
 
-(Re-run <!-- n:as_of -->2026-09-07<!-- /n --> with `npm ci && npm test`. The count grows as tests are added — run it, do not
+(Re-run <!-- n:as_of -->2026-09-08<!-- /n --> with `npm ci && npm test`. The count grows as tests are added — run it, do not
 trust this line.)
 
 **It has moved real money.** On 2026-09-05 a throwaway payer bought The Graph's own x402 endpoint
@@ -415,7 +416,7 @@ Verified 2026-09-06 (live, keys redacted by the demo itself):
 
 Mutation check on the demo: flipping the floor comparison, removing the BLOCK boundary, or touching the
 signer each turns tests red (7 / 2 / 3 failures). `packages/sdk/test-mutations.mjs` does the same for the
-SDK itself: <!-- n:sdk_mutations -->34<!-- /n --> mutations, all killed, ~20 s.
+SDK itself: <!-- n:sdk_mutations -->40<!-- /n --> mutations, all killed, ~20 s.
 
 ### Your own policy on `/decision` — the server answers in the SDK's words
 

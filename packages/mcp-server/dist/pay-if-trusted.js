@@ -66,6 +66,10 @@ export async function payIfTrusted(input) {
     }
     // signer は**検査しない**。検査は参照であり、参照した時点で第1層の主張が崩れる。
     assertPolicy(input.policy);
+    // apiUrl は文字列でなければ呼び出し側エラー（2026-09-08 境界表・`5.replace` の TypeError は理由を言わない）。
+    if (input.apiUrl != null && typeof input.apiUrl !== "string") {
+        throw new Error("invalid_api_url: pass the vet402 API origin as a string");
+    }
     const apiUrl = (input.apiUrl ?? DEFAULT_API_URL).replace(/\/$/, "");
     const requireVet402Allow = input.policy?.requireVet402Allow !== false;
     const wantedSource = input.policy?.evidence?.source ?? "vet402";

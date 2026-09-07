@@ -94,6 +94,11 @@ function gatewayUrl(subgraphId: string, apiKey?: string): string {
     : `${GRAPH_GATEWAY_ORIGIN}/api/subgraphs/id/${subgraphId}`;
 }
 
+/** 受領件数として読む唯一の形: ASCII 数字だけの文字列、または 0 以上の整数。 */
+function isReceiptCount(value: unknown): value is string | number {
+  return (typeof value === "string" && /^[0-9]+$/.test(value)) || (typeof value === "number" && Number.isInteger(value) && value >= 0);
+}
+
 function timeoutSignal(ms: number): AbortSignal | undefined {
   const timeout = (AbortSignal as { timeout?: (ms: number) => AbortSignal }).timeout;
   return typeof timeout === "function" ? timeout(ms) : undefined;
@@ -204,13 +209,21 @@ async function readSubgraphReceiptsUnredacted(input: ReadSubgraphReceiptsInput):
   const blockNumber = data?._meta?.block?.number;
   // ブロック高が無ければ「live を読んだ」と言えない。言えないものを証拠にしない
   // （賞の要件が「モック・ローカルのみ・静的データは不可」であることの技術的な帰結）。
-  if (typeof blockNumber !== "number") return { ok: false, error: "graph_no_block_meta" };
+  // 0 以下・小数・Infinity（JSON の 1e400）はブロック高ではない。live の証跡にならない値を証拠にしない（2026-09-08 境界表）。
+  if (typeof blockNumber !== "number" || !Number.isInteger(blockNumber) || blockNumber <= 0) return { ok: false, error: "graph_no_block_meta" };
 
   // rows は (address, role) で1行。RECIPIENT で絞ってあるので先頭だけを読む。
   // 行が無い = そのアドレスは一度も受け取っていない（これは「読めた 0 件」）。
-  const summary = rows[0] as { totalPayments?: unknown } | undefined;
-  const receipts = summary === undefined ? 0 : Number((summary as { totalPayments?: unknown }).totalPayments);
-  if (!Number.isFinite(receipts) || receipts < 0) return { ok: false, error: "graph_malformed_summary" };
+  const summary = rows[0] as unknown;
+  // 件数として受理する形は **10 進整数の文字列**（subgraph の BigInt）か 0 以上の整数だけ。`Number()` は
+  // "0x10" / "1e4" / " 5 " / true を床の上の数に読む——2026-09-08 の境界表で 5 形が床 1 を満たして
+  // 署名まで到達していた。`[null]` の行は `null.totalPayments` の TypeError だった。件数は safe integer に限る。
+  const rawTotal =
+    summary === undefined ? "0"
+    : typeof summary === "object" && summary !== null ? (summary as { totalPayments?: unknown }).totalPayments
+    : undefined;
+  const receipts = isReceiptCount(rawTotal) ? Number(rawTotal) : NaN;
+  if (!Number.isSafeInteger(receipts) || receipts < 0) return { ok: false, error: "graph_malformed_summary" };
 
   return {
     ok: true,
