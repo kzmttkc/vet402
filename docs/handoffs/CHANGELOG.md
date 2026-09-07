@@ -167,3 +167,30 @@ SKILL.md が `payOrRefuse`（存在しないファイル名。実体は `pay-or-
 - `/api/v1/observatory/state` `l1`: settled 1753 / delivered 1547 / **inconclusive 173**（説明文も本番で出ている）。
 - バッジ `521e929e…`（api.exa.ai）: `10/10 settled · 0 delivered · 10 inconclusive` / `api.exa.ai · measured 2026-09-01` の 2 行表示を本番で確認。
 - 残置所見 2 件（$49 の判別力・`/decision` の鍵なし読み取り枠）は WORK_ORDERS 675〜687 行に既に載っており、会期中の判断はハッカソン戦略セッションが持ちます。凍結中の私は新規実装をしません。
+
+---
+
+## 2026-09-07 21:55 ハッカソン戦略 → vet402.com セッション: **第三者検査（6本＋検証役）の修正 20 コミットが main に入りました（3648d3c〜26b7d80・CI 全緑）**
+
+Takeshi 指示「コード・秘密・可用性・文章の検査をダブルチェック付きで」を、監査 6 本（read-only）→ 検証役（主張 44 件を一次データで再判定、監査の誤り 6 件を除外、追加 5 件）→ 修正 4 系統（各 worktree・`push-main.sh`）で通しました。
+
+**本番の挙動が変わったもの（vet402.com 側で把握が要る）**
+- `src/app/api/v1/resources/[resourceId]/decision/route.ts`（`2116cd9`）: 鍵なし経路の早期 return（400/404/503）も `finish()` を通す。RateLimit ヘッダが付き、鍵なしは IP 枠を戻す（`src/lib/api/public-route.ts` が `bucketKey` を返すよう変更）。
+- **`src/lib/observatory/sol402-payer.ts` → `spl-token-lite.ts`（`f5bbec9`）: 決済経路の変更。** `@solana/spl-token` を本番依存から外し（`bigint-buffer` GHSA-3gc7-fjrx-p6mg に修正版が無いため）、ATA 導出と TransferChecked 命令の 2 関数を `@solana/web3.js` だけで実装。`tests/spl-token-lite.test.ts` がライブラリとのバイト一致を検査。**Solana の実購買を次に流す前に一度目視してください。**
+- `src/lib/gate2/report.ts`（`24f9197`）: 自己アカウントの既定メールを空に。本番 Vercel に `SELF_ACCOUNT_EMAILS` は未設定（`vercel env ls production` で実測）。設定しないと admin 用 gate2 レポートが運営者を外部として数える。**Vercel env の追加は本番設定変更なので、こちらでは触っていません。判断をお願いします。**
+- サイト（`abebeed`）: ヘッダの「August 2026」ハードコード 5 面を `src/lib/build-month.ts` の動的月に。`/observatory` の active と catalog の差に注記。`/docs/api` の payOrRefuse 初出に SKILL.md link。`/agent/<不正id>` の 404 title。`docs/claims.yaml` に 2 件登録。
+
+**SDK / MCP（会期の実装。金が動く欠陥の修正）**
+- `fb413bc` `/decision` 本文が object 以外・非 JSON・`degraded` が boolean 以外 → `evidence_unavailable`（以前は `null` 本文で既定 policy のまま署名していた）
+- `8054047` 402 の `amount` は 10 進整数文字列だけ受理
+- `a975d77` 402 の額が `amountUsd` を超えたら `price_above_declared`（`PAY_REFUSE_REASONS` に 1 語追加）
+- `cbb9169` `maxPerTxUsd` は有限・正、床は有限・非負でなければ通信前に throw
+- `54b07a0` A/B 橋の再送先を URL として解決し origin 不一致は署名前 throw
+- `b118425` SKILL.md と `pay_if_trusted` の説明を実装どおりに（`payment_target_unknown` の条件）
+- SDK 変異 27 → 34 全 killed。テスト sdk 235 / mcp 70 / demo 65 / ab 164。
+
+**リポ衛生・GitHub**: 本番 Neon ホスト名をテストから除去（`bb56b1a`）、`DATABASE_URL` の echo をマスク（`8f554ee`）、`.gitignore` に `*wallet*.json`（`1dece66`）、`output/`・`run-verify.ts` 削除、root `package.json` name を `vet402` に（`0433b46`）、`SECURITY.md` 新設（`087e62f`）、mcp-server の high 2 → 0（`2440de5`）、Dependabot PR #8〜#11 close、topics 4 件追加、Release `pre-ethonline-2026` 作成、Issue #4 close。Issue #5 の返信は Takeshi 承認待ち（AQ-056）。
+
+**変えていないもの**: `/payee/<存在しない住所>` が 200 で個別ページ化する設計、`/legal/*` の改定月、`examples/` と dev 依存の脆弱性（GitHub 表示の 26 件はこれを含む）。
+
+秘密の失効が要るものは 0 件（リポ・履歴・CI ログ・本番の面を走査。64 桁 hex は全部 tx ハッシュ／Anvil 公開鍵）。
