@@ -27,11 +27,10 @@ Every item below is a decision or an action that the AI cannot take, and each on
 | | |
 |---|---|
 | **Foundation** | Wrote and handed over the initial MVP (130 files, 19,245 lines) and specified how it was to be built |
-| **Direction** | Sets what gets built and what does not. The window scope is five items because he cut a sixth |
+| **Direction** | Sets what gets built and what does not. He cut one planned item from the window scope |
 | **Judgement** | Overrules the AI. During this window alone he corrected the AI on the ownership of the work, on the framing of this very file, and on when to stop deferring work |
 | **Approval** | Every action that spends money or leaves the company. Nothing external is sent without it |
 | **Money** | Funds the wallets. He sent the 1.000000 USDC that paid The Graph $0.01 on chain during this window |
-| **Constraints** | Set the standing rule that a past relationship with a sponsor is not to be used for advantage (`docs/ethonline-2026/WINDOW_PLAN.md` §1.5) |
 | **Voice** | Records the demo narration. AI voiceover is disqualifying, and we do not use one |
 | **Submission** | Clicks submit. Attends live judging if we are shortlisted |
 
@@ -44,8 +43,8 @@ Implementation, tests, and audits, under the direction above. Claude (Opus / Fab
 writes most of the code in this repository. We say that plainly rather than annotate a handful of files.
 
 ```bash
-git rev-list --count HEAD                                  # 755 commits (2026-09-07)
-git log --grep='Co-Authored-By: Claude' --oneline | wc -l  # 636 carry the AI trailer
+git rev-list --count HEAD                                  # 758 commits (2026-09-07)
+git log --grep='Co-Authored-By: Claude' --oneline | wc -l  # 639 carry the AI trailer
 git rev-list --count --merges HEAD                         # 34 are merge commits
 ```
 

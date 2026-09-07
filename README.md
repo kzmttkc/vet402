@@ -1,5 +1,7 @@
 # vet402
 
+[![ci](https://github.com/kzmttkc/vet402/actions/workflows/ci.yml/badge.svg)](https://github.com/kzmttkc/vet402/actions/workflows/ci.yml)
+
 **Independent Verification of the x402 Agent-Payment Economy**
 
 *We buy. We settle. We publish the measurements.*
@@ -7,8 +9,9 @@
 ## Judges: 60 seconds
 
 ```bash
+# Node >= 22.18 (examples/ethonline-2026-demo engines)
 git clone https://github.com/kzmttkc/vet402 && cd vet402
-npm run judge-check   # sdk → mcp-server → demo → ab: builds, tests, mutation runs. No key, nothing live. 27 s measured on a clean clone (warm npm cache)
+npm run judge-check   # sdk → mcp-server → demo → root → ab: builds, tests, mutation runs. No key, nothing live. About 25–30 s on a clean clone (24–27 s across three measurements on 2026-09-07, warm npm cache)
 GRAPH_API_KEY=… node examples/ethonline-2026-demo/src/run.ts judge https://kronossignals.com/api/v1/price/btc
 ```
 
@@ -26,6 +29,39 @@ vet402 buys what x402 endpoints actually sell, verifies fulfillment against the 
 > 日本語の概観は [docs/ja/README.md](./docs/ja/README.md)。
 
 This repository is the source of the vet402 service and of the three npm packages published from `packages/`.
+
+## ETHOnline 2026 (Continuity) — what is ours from *this* window
+
+The boundary tag `pre-ethonline-2026` is commit `c42daca`, cut **2026-09-04 00:05:36 UTC** — five minutes
+after the window opened — and it is pushed, so anyone can verify the split themselves. Everything after
+that tag was written during the window. The volume that predates it was **disclosed to ETHGlobal in
+writing on 2026-09-05** — the message as sent, and why its commit count reads 207 where this file says 214:
+[`docs/ethonline-2026/DISCLOSURE_2026-09-05.md`](./docs/ethonline-2026/DISCLOSURE_2026-09-05.md).
+
+**One caveat.** `main` is also this product's production branch, so the range
+`pre-ethonline-2026..main` contains work that has nothing to do with this submission — grant
+applications for other programmes, SEO and marketing, a secret rotation, operational fixes. **We are not
+claiming all of it.** What we submit is the payment gate and what it needed:
+
+```bash
+git log pre-ethonline-2026..main -- packages/sdk packages/mcp-server \
+    examples/ethonline-2026-demo examples/ethonline-2026-ab \
+    SKILL.md AI_USAGE.md docs/ethonline-2026    # the submission
+git log pre-ethonline-2026..main                # everything on main in the same days
+```
+
+Both commands are worth running. The first is our claim; the second is the full picture, including the
+parts we are not claiming.
+
+Who wrote the code, by area and representative file — and what the human did: [`AI_USAGE.md`](./AI_USAGE.md). The instructions we worked from, by day:
+[`docs/ethonline-2026/PROMPTS/`](./docs/ethonline-2026/PROMPTS/). The payment gate itself:
+[`SKILL.md`](./SKILL.md).
+
+**Try it** (clean clone; the first line needs no API key):
+
+- `npm run judge-check` — one command from the repo root: sdk → mcp-server → demo → root `npm ci` → A/B harness, every test, exit codes recorded per step (`scripts/judge-check.sh`).
+- [`examples/ethonline-2026-demo`](./examples/ethonline-2026-demo/) — `refuse` (two sources side by side, no signature), `pay` (dry run: fetches the real 402, signs nothing), `judge <url>` (bring your own x402 URL).
+- [`examples/ethonline-2026-ab`](./examples/ethonline-2026-ab/) — the Bazantic A/B harness: Recipe vs no Recipe, mock run without keys, live run with a model.
 
 ## Install
 
@@ -60,41 +96,7 @@ A result never moves up a level: an L0 probe cannot report settlement, and an L3
 
 The 0–100 trust score this API returns today (banded `ALLOW` / `WARN` / `BLOCK`) predates these levels. It stays available to API and SDK callers during the transition, and is never reported as an L0–L2 result. Methodology: <https://vet402.com/#methodology>.
 
-Since 2026-09-02 (product spec v1.0 — **214 commits, 412 files, +28,414 / −1,913 lines between our ETHOnline Continuity application on 2026-08-23 and the window opening, all before the window**; `git rev-list --count 26a7c66..pre-ethonline-2026`), the canonical integration is `GET /api/v1/resources/{resource_id}/decision`: the L0–L2 facts and the `ALLOW` / `WARN` / `BLOCK` recommendation arrive in the same document, with `reason_codes`, `freshness`, `evidence` and the `rules_version` that produced it. `GET /api/v1/resolve?q=<url|domain|address|tx>` turns whatever you hold into the §5 object ids. The score endpoints remain as a thin compatibility layer.
-
-
-### ETHOnline 2026 (Continuity) — what is ours from *this* window
-
-The boundary tag `pre-ethonline-2026` is commit `c42daca`, cut **2026-09-04 00:05:36 UTC** — five minutes
-after the window opened — and it is pushed, so anyone can verify the split themselves. Everything after
-that tag was written during the window. The volume that predates it was **disclosed to ETHGlobal in
-writing on 2026-09-05** — the message as sent, and why its commit count reads 207 where this file says 214:
-[`docs/ethonline-2026/DISCLOSURE_2026-09-05.md`](./docs/ethonline-2026/DISCLOSURE_2026-09-05.md).
-
-**One honest caveat.** `main` is also this product's production branch, so the range
-`pre-ethonline-2026..main` contains work that has nothing to do with this submission — grant
-applications for other programmes, SEO and marketing, a secret rotation, operational fixes. **We are not
-claiming all of it.** What we submit is the payment gate and what it needed:
-
-```bash
-git log pre-ethonline-2026..main -- packages/sdk packages/mcp-server \
-    examples/ethonline-2026-demo examples/ethonline-2026-ab \
-    SKILL.md AI_USAGE.md docs/ethonline-2026    # the submission
-git log pre-ethonline-2026..main                # everything on main in the same days
-```
-
-Both commands are worth running. The first is our claim; the second is the full picture, including the
-parts we are not claiming.
-
-Who wrote the code, by area and representative file — and what the human did: [`AI_USAGE.md`](./AI_USAGE.md). The instructions we worked from, by day:
-[`docs/ethonline-2026/PROMPTS/`](./docs/ethonline-2026/PROMPTS/). The payment gate itself:
-[`SKILL.md`](./SKILL.md).
-
-**Try it** (clean clone; the first line needs no API key):
-
-- `npm run judge-check` — one command from the repo root: sdk → mcp-server → demo → A/B harness, every test, exit codes recorded per step (`scripts/judge-check.sh`).
-- [`examples/ethonline-2026-demo`](./examples/ethonline-2026-demo/) — `refuse` (two sources side by side, no signature), `pay` (dry run: fetches the real 402, signs nothing), `judge <url>` (bring your own x402 URL).
-- [`examples/ethonline-2026-ab`](./examples/ethonline-2026-ab/) — the Bazantic A/B harness: Recipe vs no Recipe, mock run without keys, live run with a model.
+Since 2026-09-02 (product spec v1.0), the canonical integration is `GET /api/v1/resources/{resource_id}/decision`: the L0–L2 facts and the `ALLOW` / `WARN` / `BLOCK` recommendation arrive in the same document, with `reason_codes`, `freshness`, `evidence` and the `rules_version` that produced it. `GET /api/v1/resolve?q=<url|domain|address|tx>` turns whatever you hold into the §5 object ids. The score endpoints remain as a thin compatibility layer.
 
 ## Docs
 

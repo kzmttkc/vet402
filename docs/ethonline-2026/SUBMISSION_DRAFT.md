@@ -51,7 +51,7 @@ payOrRefuse
 showcase では名前の直下に1行出る（例: "MCP server connecting Claude to Hedera DeFi with 36 tools…"）。文字数制限は不明なので **100 字未満**に収めた。
 
 ```
-An x402 payment gate that refuses before a signature exists — judged on live The Graph data, not on our word.
+An x402 payment gate that refuses before a signature exists — judged on live data from The Graph, not on our word.
 ```
 
 （108 字。制限が 100 字なら下の短い版）
@@ -199,7 +199,7 @@ Pre-existing (not submitted): the x402 Observatory (L0 probes, L1 real purchases
 
 Between our Continuity application (2026-08-23) and the window: 214 commits, 412 files, +28,414 / −1,913 lines, all before the tag — disclosed by email to hello@ethglobal.com on 2026-09-05 (copy: docs/ethonline-2026/DISCLOSURE_2026-09-05.md; it says 207 because its per-day sentence stops at 2026-09-03; the same file shows both counts and the commands).
 
-Built during the window: payOrRefuse (SDK), the The Graph subgraph evidence source, caller-policy floors with the BLOCK boundary, the uncatalogued-seller path, MCP pay_if_trusted, the agent-demo decision store, the demo (refuse / pay / judge), caller_policy on /decision, the key-less /decision read, and the Bazantic A/B harness. Verify: git log pre-ethonline-2026..main (every commit is dated inside the window). Pre-existing files we edited: docs/ethonline-2026/CHANGED_FILES.md. Human vs AI authorship: AI_USAGE.md.
+Built during the window: payOrRefuse (SDK), The Graph subgraph evidence source, caller-policy floors with the BLOCK boundary, the uncatalogued-seller path, MCP pay_if_trusted, the agent-demo decision store, the demo (refuse / pay / judge), caller_policy on /decision, the key-less /decision read, and the Bazantic A/B harness. Verify: git log pre-ethonline-2026..main (every commit is dated inside the window). Pre-existing files we edited: docs/ethonline-2026/CHANGED_FILES.md. Human vs AI authorship: AI_USAGE.md.
 ```
 
 **数字**: §C と同じ出典。207 vs 214 は `DISCLOSURE_2026-09-05.md` 末尾。
@@ -240,7 +240,7 @@ CONTINUITY. The SDK and MCP server existed before the window; the window added t
 
 FEEDBACK. The Graph Gateway's x402 402 returns an internal resource URL (mainnet-thegraph-arbitrum-...), so a client that matches on resource URL cannot pay; we match on payTo instead. Documented in WINDOW_PLAN.md §3. The subgraph's X402AddressSummary was exactly what a payment gate needs — payment count and amount by recipient — and _meta made "live" provable.
 
-We run our own agent through this gate. Model-side judgement is not used to decide payment; the gate is.
+Model-side judgement never decides a payment; the gate does. Our demo's own decisions are stored with source: "agent-demo", apart from the production ledger.
 ```
 
 **文中の数字と出典**
@@ -327,7 +327,7 @@ One keystore-related item was sent privately to support@bazantic.com on 2026-09-
 
 ## Z. 提出日に埋める数字（`{{…}}` → 値）
 
-**規律**: `VIDEO_SCRIPT.md` §5 と同じ。提出日の朝にこの表を上から叩き、値を本文へ書き込む。**手で数えない。** 鍵が要る行は `set -a; source /Users/takeshi/vouch/.env.rehearsal.local; set +a` の後。
+**規律**: `VIDEO_SCRIPT.md` §5 と同じ。提出日の朝にこの表を上から叩き、値を本文へ書き込む。**手で数えない。** 鍵が要る行は `set -a; source ~/vouch/.env.rehearsal.local; set +a` の後。
 
 | プレースホルダ | コマンド（リポ root から） | 09-07 の値 | 使う節 |
 |---|---|---|---|
@@ -336,9 +336,9 @@ One keystore-related item was sent privately to support@bazantic.com on 2026-09-
 | `{{claimed_commits}}` | `git log pre-ethonline-2026..main --oneline -- packages/sdk packages/mcp-server examples/ethonline-2026-demo examples/ethonline-2026-ab SKILL.md AI_USAGE.md docs/ethonline-2026 \| wc -l` | 123【実測 同上】 | C |
 | `{{graph_receipts}}` | `cd examples/ethonline-2026-demo && node src/run.ts pay 2>&1 \| grep totalPayments`（`GRAPH_API_KEY` 要） | 417【一次・`VIDEO_SCRIPT.md` §5 09-07 07:5x】 | I |
 | `{{graph_score}}` | 同上 `\| grep 'payee verdict'` | WARN (69)【一次・同上】。**69 でなければ本文の "WARN (69)" をその値に置換** | C・I |
-| `{{sdk_tests}}` | `cd packages/sdk && npm ci && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 178 / fail 0【一次・同上】 | I |
-| `{{mcp_tests}}` | `cd packages/mcp-server && npm ci && npm run build && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 65 / fail 0【一次・同上】 | I |
-| `{{demo_tests}}` | `cd examples/ethonline-2026-demo && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 65 / fail 0【一次・同上】 | I |
+| `{{sdk_tests}}` | `cd packages/sdk && npm ci && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 181 / fail 0【`refresh-numbers.json` 09-07】 | I |
+| `{{mcp_tests}}` | `cd packages/mcp-server && npm ci && npm run build && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 68 / fail 0【`refresh-numbers.json` 09-07】 | I |
+| `{{demo_tests}}` | `cd examples/ethonline-2026-demo && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 65 / fail 0【`refresh-numbers.json` 09-07】 | I |
 | `{{mutations}}` | `npm run refresh-numbers` → `<!-- n:sdk_mutations -->` | 27【`refresh-numbers.json` 09-07】 | D |
 | `{{bazantic_tools}}` | `curl -s -X POST https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \| python3 -c 'import sys,json;print(len(json.load(sys.stdin)["result"]["tools"]))'` | 57【一次・`SKILL.md` 09-06】 | D・J |
 | `{{ab_v2_line}}` | v2 を走らせた場合のみ `npm run metrics -- <v2 dir>` | 未実走（09-09 予定・§16.5） | J |
@@ -350,7 +350,7 @@ One keystore-related item was sent privately to support@bazantic.com on 2026-09-
 
 ## 明日（09-08）の手順
 
-1. **フォームを開く**: `https://ethglobal.com/events/ethonline2026` → Hacker Dashboard → プロジェクト `payOrRefuse`。**まだ "Project submissions are not enabled yet" なら、この文書の見直しだけして閉じる**（開放は締切近く。`scripts/watch_ethonline_prizes.py` が毎朝 09:20 に賞ページの差分を見ているが、フォーム開放は見ていない——ダッシュボードはログインが要る）。
+1. **フォームを開く**: `https://ethglobal.com/events/ethonline2026/info/details`（200。`/events/ethonline2026` 素の URL は未ログインで 500 を 2 回返した）→ ログイン後 Hacker Dashboard → プロジェクト `payOrRefuse`。**まだ "Project submissions are not enabled yet" なら、この文書の見直しだけして閉じる**（開放は締切近く。`scripts/watch_ethonline_prizes.py` が毎朝 09:20 に賞ページの差分を見ているが、フォーム開放は見ていない——ダッシュボードはログインが要る）。
 2. **各項目を貼る**（§A〜§G）。貼りながら**フォームの実際のラベル名・文字数制限**をこの文書の §0 の表に書き戻す（【推定】を消す）。
 3. **賞の選択画面**: 出ているパートナーと `PRIZES.md` §0 の表を突合。The Graph と Bazantic の 2 つだけ。**Bazantic が出なければ 2 枠→1 枠で出す**（§J）。各賞のコメント欄に §I・§J を貼る。
 4. **Submission type**: Finalist and Partner Prizes（§H）。

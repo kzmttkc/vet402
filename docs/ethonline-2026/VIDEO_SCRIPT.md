@@ -28,7 +28,7 @@
 | 1:12–1:36 | `clear` → `node src/run.ts pay`（空撃ち）。左「what would be signed」（amount・payTo・EIP-3009 window）→ `[waiv] payee verdict is ALLOW WARN (69) — not required by policy` → `[ok] evidence floor: subgraph >= 1` → 最終行 `DRY RUN — no signature was created. The signing module was never loaded.` | 既定は空撃ち。本物の 402 を取って、何に署名するはずだったかを見せる。呼び手の policy は「vet402 の ALLOW は要らない。The Graph 自身の台帳に受領 1 件以上」。WARN は免除して記録する——書き換えない。署名は作られていない | Technicality（fail-closed の設計）／Practicality（呼び手の基準で動く） |
 | 1:36–1:54 | ブラウザ: `https://basescan.org/tx/0xf12093fba9314b1d3a514e7b667969201be8d021a6f4d6bdeb8d6c7f2de469ad`。Status Success・Block 50898704・Transfer 0.01 USDC → `0x79DC…FcCB` をズーム → ターミナルに戻り `SKILL.md` の決定行 `verdict from caller_policy` を映す | `--live` は人間の決断。1 セント、block 50898704、The Graph の受取ウォレットへ。Basescan にある。決定行は `caller_policy` と WARN を残す。**The Graph のデータで払った。我々のではなく** | **The Graph**: 実 tx／Practicality／WOW |
 | 1:54–2:12 | `cd examples/ethonline-2026-demo && npm test` の末尾 `ℹ fail 0` → テスト名 2 本（`既定では…署名器に触れない`／`--live を明示すると…ちょうど1回`）→ `packages/sdk` の `node test-mutations.mjs` 末尾 `all 27 mutations killed` | 拒否が署名しないと、なぜ言えるか。テストは signer への参照を数える: 空撃ちで 0。ネガティブコントロールが `--live` で 1 を見る——0 が配線ミスでない証拠。SDK の変異は全部赤になる | Technicality／Usability（`npm test` が鍵なしで緑） |
-| 2:12–2:41 | `docs/ethonline-2026/BAZANTIC_FEEDBACK.md` §2 の表（A 5/10・B 5/10）→ §3 の語彙の行（63% → 91%）→ §4-4（110 calls / 88 tx）。Recipe 公開ページ `bazantic.com/recipes/x402-payee-verification-via-vet402-gateway` を 3 秒 | 問い: 説明なしにエージェントが使えるか。同じモデル・同じプロンプト・同じ 57 ツール。Recipe だけが差。事前登録・1 回・回し直さない。結果 5/10 と 5/10、差なし。直ったのは語彙: 実在の理由コード 59% → 91%。Bazantic への所見: 無料の読み取り 88 回に 88 本のオンチェーン tx | **Bazantic（P2）**: 「Recipe が唯一の差」「両方の結果を示す」「改善を特定」／Originality（正直な報告） |
+| 2:12–2:41 | `docs/ethonline-2026/BAZANTIC_FEEDBACK.md` §2 の表（A 5/10・B 5/10）→ §3 の語彙の行（63% → 91%）→ §4-4（110 calls / 88 tx）。Recipe 公開ページ `bazantic.com/recipes/x402-payee-verification-via-vet402-gateway` を 3 秒 | 問い: 説明なしにエージェントが使えるか。同じモデル・同じプロンプト・同じ 57 ツール。Recipe だけが差。事前登録・1 回・回し直さない。結果 5/10 と 5/10、差なし。直ったのは語彙: 実在の理由コード 63% → 91%。Bazantic への所見: 無料の読み取り 88 回に 88 本のオンチェーン tx | **Bazantic（P2）**: 「Recipe が唯一の差」「両方の結果を示す」「改善を特定」／Originality（正直な報告） |
 | 2:41–2:53 | `packages/mcp-server` で `tools/list` → 7 ツールの中の `pay_if_trusted` → `SKILL.md` 冒頭（`npm run judge-check`）→ `AI_USAGE.md` の "The short answer" | 同じ関門が MCP の 1 ツール。同じ policy を渡すだけで再判定しない。`SKILL.md` は審査員が動かすもの。`AI_USAGE.md` は誰が何を書いたか | Usability（DX）／規約（AI 開示） |
 | 2:53–3:03 | 0:12 の 3 行（404 / WARN 69 / receipts）を静止で再掲 → 最後に `signed false nonce null` の 1 行 | モデルに払うかを決めさせない。関門を呼ぶ——関門は署名が存在する前に「否」と言える | WOW／Originality |
 
@@ -175,7 +175,7 @@ SKILL.md は審査員が動かすもの。AI_USAGE.md は誰が書いたか。
 | 収録 | macOS 標準 `Cmd+Shift+5` →「画面全体を収録」。Retina の実解像度で録り、書き出しで 1920×1080 に落とす（720p 規定を満たす） |
 | ターミナル | Terminal.app か iTerm2。**幅 100 桁 × 42 行**（demo の出力は 96 桁を超えない: `src/columns.ts` `MAX_WIDTH = 96`。refuse 35 行・pay 41 行は 1 画面に収まる）。フォント Menlo **18pt**、暗い背景、`PS1='$ '` で短いプロンプト |
 | ブラウザ | 1920×1080 のウィンドウ、ズーム 125%。Basescan は tx ページを事前に開いてタブに置く |
-| 鍵 | **収録を始める前に**同じシェルで `set -a; source /Users/takeshi/vouch/.env.rehearsal.local; set +a`。画面には `env GRAPH_API_KEY=set` の行しか出ない（`src/emit.ts` が URL 内の鍵を `<KEY>` に書き換える。今日の実走で漏れ 0 件を grep で確認済み）。**鍵を画面上で export しない・`.env*` を `cat` しない・`history` を出さない** |
+| 鍵 | **収録を始める前に**同じシェルで `set -a; source ~/vouch/.env.rehearsal.local; set +a`。画面には `env GRAPH_API_KEY=set` の行しか出ない（`src/emit.ts` が URL 内の鍵を `<KEY>` に書き換える。今日の実走で漏れ 0 件を grep で確認済み）。**鍵を画面上で export しない・`.env*` を `cat` しない・`history` を出さない** |
 | 前準備 | `cd packages/sdk && npm ci && npm run build`、`cd ../mcp-server && npm ci && npm run build` は収録前に済ませる（画面に出さない）。`clear && printf '\e[3J'` でスクロールバックを消してから録画開始 |
 
 **カットの順**（動画の順に録る。各カットの前に `clear`）:
@@ -220,7 +220,7 @@ SKILL.md は審査員が動かすもの。AI_USAGE.md は誰が書いたか。
 ## 5. 撮影日に埋める数字の表（プレースホルダ ｜ コマンド ｜ 今日の値【実測】｜ 口で言う形）
 
 **固定**＝提出まで動かない。**動く**＝撮影日に取り直す。口に出すのは `{{graph_receipts}}` と `{{mutations}}` だけ。
-それ以外は画面にだけ出す（ナレーションは数字を言わない）。鍵が要る行は `set -a; source /Users/takeshi/vouch/.env.rehearsal.local; set +a` の後に叩く。
+それ以外は画面にだけ出す（ナレーションは数字を言わない）。鍵が要る行は `set -a; source ~/vouch/.env.rehearsal.local; set +a` の後に叩く。
 
 | プレースホルダ | コマンド（リポ root から） | 今日の値【実測 2026-09-07】 | 性質 | 口で言う形 |
 |---|---|---|---|---|
@@ -234,8 +234,8 @@ SKILL.md は審査員が動かすもの。AI_USAGE.md は誰が書いたか。
 | `{{fixture_receipts}}` / `{{fixture_block}}` | `node src/run.ts refuse 2>&1 \| grep -E 'totalPayments\|_meta.block.number'`（鍵要） | **31** / **50973027**（payee `0xb15a55e8…def59`・0x.org） | 動く（画面のみ） | 言わない |
 | `{{fixture_reasons}}` | 同上 `\| grep reasons` | `l0_pass, l1_not_attempted, l2_undeclared, payee_recommendation_not_allow` | 固定 | "l1_not_attempted" のみ口にする |
 | `{{tx_hash}}` / `{{tx_block}}` / `{{tx_amount}}` | `curl -sL -X POST https://mainnet.base.org -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_getTransactionReceipt","params":["0xf12093fba9314b1d3a514e7b667969201be8d021a6f4d6bdeb8d6c7f2de469ad"]}'` | status **0x1**・block **50898704**・Transfer **10000** units（$0.01）→ `0x79dc34e4…d52fccb` | **固定**（チェーン再読で確認） | "block five-zero-eight-nine-eight-seven-zero-four"・"one cent" |
-| `{{sdk_tests}}` | `cd packages/sdk && npm ci && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | **178 / fail 0** | 動く（画面のみ） | 言わない |
-| `{{mcp_tests}}` | `cd packages/mcp-server && npm ci && npm run build && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | **65 / fail 0** | 動く（画面のみ） | 言わない |
+| `{{sdk_tests}}` | `cd packages/sdk && npm ci && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | **181 / fail 0** | 動く（画面のみ） | 言わない |
+| `{{mcp_tests}}` | `cd packages/mcp-server && npm ci && npm run build && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | **68 / fail 0** | 動く（画面のみ） | 言わない |
 | `{{demo_tests}}` | `cd examples/ethonline-2026-demo && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | **65 / fail 0** | 動く（画面のみ） | 言わない |
 | `{{mutations}}` | `cd packages/sdk && node test-mutations.mjs 2>&1 \| tail -1` | **all 27 mutations killed in 25.0s** | 動く・**口で言う** | "twenty-seven"（撮影日に増えていたら**その数**。killed でない変異が 1 つでもあれば**この文を丸ごと落とす**） |
 | `{{mcp_tools}}` | `cd packages/mcp-server && printf '%s\n%s\n%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"judge","version":"0"}}}' '{"jsonrpc":"2.0","method":"notifications/initialized"}' '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \| node dist/index.js 2>/dev/null \| tail -1` | **7 ツール**（`pay_if_trusted` を含む） | 動く（画面のみ） | 言わない |

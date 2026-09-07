@@ -18,7 +18,7 @@ Bazantic account: **`TakeshiTGAL`**.
 
 **Task (both conditions):** *Before you pay this x402 endpoint, establish whether the payee has actually delivered before. If there is no evidence, do NOT pay, and give your reason as machine-readable codes.*
 
-**Design.** Same model (`claude-opus-5`, effort `high`), same prompt, same 57 MCP tools, same raw API list. Condition B additionally receives the Recipe text. The Recipe is the only difference: a test pins `stripRecipe(B) === A` byte for byte. `temperature` was not sent — the model rejects it — so it is `null` in both conditions (a recorded pre-registration deviation).
+**Design.** Same model (`claude-opus-5`, effort `high`), same prompt, same 57 MCP tools, same raw API list. Condition B additionally receives the Recipe text. The Recipe is the only difference: a test pins `stripRecipe(B) === A` byte for byte. `temperature` was not sent — the API rejects the parameter for this model — so it is `null` in both conditions (a recorded pre-registration deviation).
 
 **Fixtures (oracle = what vet402's own API returns):** F1 a payee with delivered purchases (proceed); F2 The Graph's payee, not catalogued (`/decision` 404 → refuse); F3 a payee never bought from (`l1_not_attempted` → refuse); F4 a price above the caller's ceiling (`price_above_ceiling` → refuse). 10 trials per condition, 20 total, run once, not re-run.
 
@@ -31,7 +31,7 @@ Bazantic account: **`TakeshiTGAL`**.
 
 Per fixture, both conditions: F1 3/3 · F2 0/3 · F3 2/2 · F4 0/2. **Delta = 0.** Our pre-registered prediction ("A gets the verdict right but fabricates reasons") was half right: A fabricated in 5/10, but B failed the same two fixtures.
 
-**Exploratory metric (not pre-registered, not used for scoring).** Share of reason codes that are real vet402 identifiers — the closed vocabulary in `src/lib/observatory/vocabulary.ts`, the SDK's refuse reasons in `examples/ethonline-2026-demo/src/judge.ts`, or a code the API actually returned in this run: **A 20/32 (63%) vs B 29/32 (91%)** (`npm run metrics`, set ii; codes compared after trim + lowercase, the same normalization the grader uses). Trials in which every code was real: A 7/10, B 7/10. Counting only the two source files (set i, which stores the tier codes `l0_pass`/`l1_delivered`/`l2_undeclared` decomposed and therefore undercounts both sides) gives A 3/32 vs B 10/32. Direction is the same either way. An earlier hand count in this document said 19/32 and 2/32 for A; the difference is one trial that wrote `Unverified` (see §7).
+**Exploratory metric (not pre-registered, not used for scoring).** Share of reason codes that are real vet402 identifiers — the closed vocabulary in `src/lib/observatory/vocabulary.ts`, the SDK's refuse reasons in `examples/ethonline-2026-demo/src/judge.ts`, or a code the API actually returned in this run: **A 20/32 (63%) vs B 29/32 (91%)** (`npm run metrics`, set ii; codes compared after trim + lowercase, the same normalization the grader uses). Trials in which every code was real: A 7/10, B 7/10. Counting only the two source files (set i, which stores the tier codes `l0_pass`/`l1_delivered`/`l2_undeclared` decomposed and therefore undercounts both sides) gives A 3/32 vs B 10/32. Direction is the same either way.
 
 An earlier run the same day (`ab/2026-09-06T093254Z`) scored 0/10 in both conditions because every tool call returned the Gateway's 402 text instead of data (§4). We kept that log, fixed the instrument, and re-ran under a new timestamp.
 
@@ -45,7 +45,7 @@ An earlier run the same day (`ab/2026-09-06T093254Z`) scored 0/10 in both condit
 
 1. **$0 routes still answer 402.** All 57 routes are at 0 mcents, yet every unpaid call gets a 402. The docs say only `tools/list` and price discovery are free; the body comes after payment. With `baz curl … --max-amount 0` (and with our own signer) the REST route returns 200 — after the facilitator posts a **0-USDC transfer on chain**.
 2. **MCP `tools/call` cannot pay.** A `PAYMENT-SIGNATURE` header on the `/mcp` POST is ignored; the tool result is `isError: true` with the 402 body. `initialize.instructions` is null and no tool schema has a payment field.
-3. **So a standard MCP client uses none of the tools.** "Add to Claude / Cursor / ChatGPT" connects, lists 57 tools, and every call returns 402 — including the 37 tools described as needing no key. Run `093254Z` measured exactly that: 0/10 and 0/10.
+3. **So a standard MCP client cannot use any of the tools today.** "Add to Claude / Cursor / ChatGPT" connects, lists 57 tools, and every call returns 402 — including the 37 tools described as needing no key. Run `093254Z` measured exactly that: 0/10 and 0/10.
 4. **Our bridge, and its cost.** `src/mcp.mjs` catches a 402 from `tools/call`, and only when the quoted amount is exactly `"0"`, re-sends the same resource as a signed REST `GET` and hands the model the real body (non-zero amounts fail loudly; nothing is signed). In the 20 trials: **110 tool calls, 88 settled with a 200 and 88 distinct on-chain transactions of 0 USDC**; the other 22 (12 × 404, 10 × 400 from the upstream) produced no transaction. **88 free reads cost 88 facilitator transactions.** Every tx hash is in `raw.toolCalls[].x402Bridge.txHash`.
 5. **The "JWT that bypasses x402/MPP for testing"** mentioned in `#partner-bazantic` — we could not find it in the docs or the dashboard. If it exists, it is the cleanest path for judges; please point us to it.
 6. **`baz recipe`** (`baz recipe install`, the documented way to run a public Recipe with a payer) is not in `@bazantic/cli@0.8.0` on npm; the docs run ahead of the CLI.
@@ -74,4 +74,4 @@ It regrades every trial from `answer` + `oracle` with the pre-registered rule (`
 `summary.json`; the vocabulary sets are read from `src/lib/observatory/vocabulary.ts` and
 `packages/sdk/src/pay-or-refuse.ts` at run time, not hard-coded. Codes are compared after trim + lowercase, the same
 normalization the grader uses — so the script counts A's vocabulary share as 20/32 (set ii) and 3/32 (set i): one A trial
-wrote `Unverified`, which is the vocabulary term `unverified`. §2 now carries the script's numbers (20/32 and 3/32); the earlier 19/32 and 2/32 were a case-sensitive hand count and are kept here only as the record of the correction.
+wrote `Unverified`, which is the vocabulary term `unverified`.

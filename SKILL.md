@@ -1,6 +1,6 @@
 # SKILL: pay an x402 endpoint only when the evidence is there
 
-> **Status: implemented and green as of 2026-09-05 (ETHOnline 2026 window).**
+> **Status: implemented and green as of 2026-09-07 (ETHOnline 2026 window; re-run on a clean clone).**
 > `payOrRefuse` (`@vet402/sdk`) and the MCP tool `pay_if_trusted` (`@vet402/mcp-server`) both exist
 > and are exercised by tests you can run yourself — see **How a judge can run it** below.
 > **The Graph subgraph evidence source is built, wired and paid for.** `payOrRefuse` reads the
@@ -8,8 +8,8 @@
 > `packages/sdk/src/pay-or-refuse.ts`), and on 2026-09-05 it signed and settled a real $0.01 USDC
 > payment to The Graph's own x402 endpoint on that evidence alone — tx
 > [`0xf12093fb…e469ad`](https://basescan.org/tx/0xf12093fba9314b1d3a514e7b667969201be8d021a6f4d6bdeb8d6c7f2de469ad).
-> See **Paying on The Graph's own data** below. What remains unbuilt is listed in
-> **What is not built yet**, and everything on this page was run before it was written.
+> See **Paying on The Graph's own data** below. What is and is not in this package is listed in
+> **Scope notes**, and everything on this page was run before it was written.
 > Required by The Graph's prize: "Open-source the code with a clear README **or SKILL.md** so judges can run it."
 
 ## Prerequisites — read this once, then every block below runs in the order written
@@ -32,9 +32,8 @@ npm run judge-check     # scripts/judge-check.sh — no API key, nothing live
 It runs `sdk: npm ci → build → test` · `mcp-server: npm ci → build → test` · `demo: npm test` ·
 `root: npm ci` · `ab: npm ci → test → test-mutations`, records each step's exit code on its own (no
 `&&`), prints one table, and exits 1 if any step was non-zero. It `unset`s every key before it
-starts, so a green run is proof that none of this needs one. Measured on a clean clone: **17 s** with
-a warm npm cache, **21 s** with an empty one (`npm_config_cache` pointed at an empty directory);
-`git clone` itself took 1.4 s. The only network it touches is the npm registry.
+starts, so a green run is proof that none of this needs one. It takes **about 25–30 s on a clean
+clone** (24–27 s across three measurements on 2026-09-07, warm npm cache); `git clone` itself took 1.4 s. The only network it touches is the npm registry.
 
 **Build order — the dependency chain, not a preference.**
 
@@ -76,7 +75,7 @@ bought from them", not "they are bad".
 ## Install
 
 `@vet402/sdk@0.5.0` and `@vet402/mcp-server@0.2.0` on npm predate this work — publishing is out of
-scope until after submission (WINDOW_PLAN §2). **Build from the repo:**
+scope until after submission (WINDOW_PLAN §2 — Japanese, internal plan). **Build from the repo:**
 
 ```bash
 git clone https://github.com/kzmttkc/vet402.git
@@ -84,8 +83,8 @@ cd vet402/packages/sdk        && npm install && npm run build
 cd ../mcp-server              && npm install && npm run build
 ```
 
-`packages/mcp-server` depends on `packages/sdk` through `file:../sdk`, so the SDK must be built
-first. `npm install` in `mcp-server` creates the link.
+The order is the dependency chain in **Build order** above (the SDK's `dist/` must exist before
+`mcp-server` links it).
 
 ## Configure
 
@@ -109,7 +108,7 @@ The MCP server takes no constructor arguments — **its env block is its options
 
 ## How a judge can run it
 
-Every block below is pasted verbatim from a real run. Most were executed on 2026-09-05; the test counts were re-run on 2026-09-07 and are kept current by `npm run refresh-numbers` (the printed date inside each block is the run it came from).
+Every block below is pasted verbatim from a real run on a clean clone on 2026-09-07; the test counts are kept current by `npm run refresh-numbers` (the printed date inside a block is the run it came from).
 
 ### 1. The tests (no key, no network)
 
@@ -335,7 +334,7 @@ Re-read on-chain, not taken from the API's own word: block **50898704**, success
 gas). Check it yourself:
 <https://basescan.org/tx/0xf12093fba9314b1d3a514e7b667969201be8d021a6f4d6bdeb8d6c7f2de469ad>.
 The decision record kept `verdict from: caller_policy` and the waived `WARN`: **we did not rewrite
-our own judgement to match the payment.** (Details: `docs/ethonline-2026/WINDOW_PLAN.md` §10.5.)
+our own judgement to match the payment.** (Details: `docs/ethonline-2026/WINDOW_PLAN.md` §10.5 — Japanese, internal plan.)
 
 ### Paying on The Graph's own data — live
 
@@ -410,7 +409,7 @@ SDK itself: <!-- n:sdk_mutations -->27<!-- /n --> mutations, all killed, ~20 s.
 
 ### Your own policy on `/decision` — the server answers in the SDK's words
 
-The first real A/B (`docs/ethonline-2026/WINDOW_PLAN.md` §16.3, 2026-09-07) found a hole that was ours,
+The first real A/B (`docs/ethonline-2026/WINDOW_PLAN.md` §16.3 — Japanese, internal plan; 2026-09-07) found a hole that was ours,
 not the model's: for the over-ceiling fixture the right reason, `price_above_ceiling`, **was a word no
 tool ever returned** — it lived only in the SDK's caller-side policy. A Recipe cannot make a model say a
 word the tool does not give it. So since 2026-09-07 `GET /api/v1/resources/{id}/decision` takes the
@@ -451,20 +450,43 @@ The response gains one block and changes nothing else (without these queries the
   When the two disagree, the local gate decides `status` and **both** words are kept on
   `decision_record.reason_codes` — no `policy_disagreement` word is invented.
 
-Two `curl`s tell the whole story (run them against production once this is deployed):
+Two `curl`s tell the whole story (run them against production; the first was measured there on 2026-09-07):
 
 ```bash
-RID=$(curl -sL "https://vet402.com/api/v1/resolve?q=https://kronossignals.com/api/v1/price/btc" | jq -r '.resources[0].resource_id')
+RID=$(curl -sL "https://vet402.com/api/v1/resolve?q=https://kronossignals.com/api/v1/price/btc" | jq -r '.resource.resource_id')
 # over your ceiling → caller_policy.verdict REFUSE, reason_codes ["price_above_ceiling"]
 curl -sL "https://vet402.com/api/v1/resources/$RID/decision?role=payer&amount_usd=1.5&max_per_tx_usd=1" | jq '.recommendation, .caller_policy'
 # no policy query → the body of 2026-09-02, unchanged (no caller_policy key)
 curl -sL "https://vet402.com/api/v1/resources/$RID/decision?role=payer" | jq 'has("caller_policy")'
 ```
 
+Production answered the first `curl` on 2026-09-07 (HTTP 200, `jq '{recommendation, caller_policy}'`):
+
+```json
+{
+  "recommendation": "ALLOW",
+  "caller_policy": {
+    "applied": {
+      "amount_usd": 1.5,
+      "max_per_tx_usd": 1,
+      "min_l1_deliveries": 0,
+      "require_vet402_allow": true
+    },
+    "verdict": "REFUSE",
+    "reason_codes": [
+      "price_above_ceiling"
+    ],
+    "not_evaluated": [
+      "min_subgraph_receipts"
+    ]
+  }
+}
+```
+
 The same block comes through `check_resource_decision` (`amountUsd` / `maxPerTxUsd` / `minL1Deliveries` /
 `requireVet402Allow` are tool inputs now). Run on 2026-09-07 over stdio against the real route handler with the catalogue
-stubbed (`tests/decision-caller-policy.test.ts` uses the same stub; production output to be pasted after
-deploy):
+stubbed (`tests/decision-caller-policy.test.ts` uses the same stub; the production body above is what the tool
+reads on the live path):
 
 ```json
 {
@@ -487,7 +509,7 @@ Since 2026-09-06 the MCP tool takes the same `policy` the SDK does, and forwards
 
 | input | meaning |
 |---|---|
-| `policy.requireVet402Allow` | default `true`. `false` waives a vet402 **WARN** when every declared floor is met. **BLOCK and `degraded` still refuse** (WINDOW_PLAN §3.2.1) — the boundary lives in the SDK and the MCP tests pin it through the bridge. Needs at least one floor above 0, otherwise the call is a caller error (`invalid_policy`) before any network. |
+| `policy.requireVet402Allow` | default `true`. `false` waives a vet402 **WARN** when every declared floor is met. **BLOCK and `degraded` still refuse** (WINDOW_PLAN §3.2.1 — Japanese, internal plan) — the boundary lives in the SDK and the MCP tests pin it through the bridge. Needs at least one floor above 0, otherwise the call is a caller error (`invalid_policy`) before any network. |
 | `policy.evidence.source` | `"vet402"` (default) \| `"subgraph"` \| `"both"`. `"subgraph"` reads **only** The Graph's x402 Base subgraph; `"both"` refuses if either source cannot be read. |
 | `policy.evidence.minSubgraphReceipts` | floor on receipts The Graph's subgraph knows for the payee (`source` must be `subgraph` or `both`). |
 | `policy.evidence.minL1Deliveries` | floor on vet402's delivered L1 purchases (`source` must be `vet402` or `both`). |
@@ -631,7 +653,7 @@ confirm the test that guards it goes red.
 ### Paying a seller outside the catalogue — live
 
 The demo's payee, The Graph's own x402 endpoint, is **not in vet402's catalogue**: `/decision` for its
-`resource_id` answers **404 `not_found`** (WINDOW_PLAN §3.1, measured 2026-09-04). Until 2026-09-06
+`resource_id` answers **404 `not_found`** (WINDOW_PLAN §3.1 — Japanese, internal plan; measured 2026-09-04). Until 2026-09-06
 the MCP tool stopped there with `evidence_unavailable`, so there was no way to pay The Graph *from*
 an MCP client even though `payOrRefuse` could already judge that case (I23). Now, when `resource`
 (the URL that answers 402) is given, the 404 is handed to the SDK, which judges from the 402's
@@ -722,13 +744,13 @@ same call reads the 402, checks `payTo`, reads the payee score (WARN 69), and pa
 `verdict_source: "caller_policy"` — that is the path H8 pins with a mock seller, and the path that moved
 0.01 USDC on 2026-09-05 from the SDK directly (§ "It has moved real money").
 
-## What is not built yet
+## Scope notes — what is in this package, and what is not
 
 Stated plainly, because a SKILL.md that oversells is worse than none.
 
 | | state |
 |---|---|
-| **Evidence policy on the MCP tool** | Exposed as of 2026-09-06 (`ethonline: feat(mcp)` on `ethonline/payorrefuse`): `policy.requireVet402Allow` and `policy.evidence` (`source`, `minSubgraphReceipts`, `minL1Deliveries`) are tool inputs; the Graph key comes from `GRAPH_API_KEY`. See **`pay_if_trusted` with The Graph evidence**. |
-| **The uncatalogued-seller path in MCP** | Exposed as of 2026-09-06 (second `ethonline: feat(mcp)` on `ethonline/payorrefuse`). When `resource` is given, a `/decision` 404 is handed to `payOrRefuse`, which judges from the 402 `payTo`, the payee score for that address and the caller's evidence floors (I23). Without `resource` a 404 still refuses with `evidence_unavailable`. See **Paying a seller outside the catalogue — live**. |
+| **Evidence policy on the MCP tool** | Since 2026-09-06: `policy.requireVet402Allow` and `policy.evidence` (`source`, `minSubgraphReceipts`, `minL1Deliveries`) are tool inputs; the Graph key comes from `GRAPH_API_KEY`. See **`pay_if_trusted` with The Graph evidence**. |
+| **The uncatalogued-seller path in MCP** | Since 2026-09-06: when `resource` is given, a `/decision` 404 is handed to `payOrRefuse`, which judges from the 402 `payTo`, the payee score for that address and the caller's evidence floors (I23). Without `resource` a 404 still refuses with `evidence_unavailable`. See **Paying a seller outside the catalogue — live**. |
 | **npm publish** | Out of scope until after submission. Build from the repo. |
 | **The hosted MCP gateway** | Two MCP surfaces, two roles. The Bazantic gateway (`https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp`, Recipe `x402-payee-verification-via-vet402-gateway`) fronts vet402's REST API as **57 tools** (`tools/list`, measured 2026-09-06) — use it for discovery and every key-free read (`/decision`, `/resolve`, scores). `pay_if_trusted` is the one tool that holds a signer, and it is **only** in this package over stdio, not on the gateway. |

@@ -3,7 +3,9 @@
     "README.md",
     "AI_USAGE.md",
     "SKILL.md",
-    "docs/ethonline-2026/CHANGED_FILES.md"
+    "docs/ethonline-2026/CHANGED_FILES.md",
+    "docs/ethonline-2026/VIDEO_SCRIPT.md",
+    "docs/ethonline-2026/SUBMISSION_DRAFT.md"
   ],
   "numbers": [
     {
@@ -22,8 +24,8 @@
         }
       ],
       "value": "2026-09-07",
-      "updatedAt": "2026-09-07T03:50:44.657Z",
-      "end": "2026-09-07T12:50:44+09:00"
+      "updatedAt": "2026-09-07T12:19:10.817Z",
+      "end": "2026-09-07T21:19:10+09:00"
     },
     {
       "id": "total_commits",
@@ -36,8 +38,8 @@
           "pattern": "^git rev-list --count HEAD +# (?<v>\\d+) commits \\("
         }
       ],
-      "value": "755",
-      "updatedAt": "2026-09-07T03:50:44.657Z"
+      "value": "758",
+      "updatedAt": "2026-09-07T12:19:10.817Z"
     },
     {
       "id": "ai_trailer_commits",
@@ -50,8 +52,8 @@
           "pattern": "^git log --grep='Co-Authored-By: Claude' --oneline \\| wc -l +# (?<v>\\d+) carry the AI trailer"
         }
       ],
-      "value": "636",
-      "updatedAt": "2026-09-07T03:50:44.657Z"
+      "value": "639",
+      "updatedAt": "2026-09-07T12:19:10.817Z"
     },
     {
       "id": "merge_commits",
@@ -65,7 +67,7 @@
         }
       ],
       "value": "34",
-      "updatedAt": "2026-09-07T03:50:44.657Z"
+      "updatedAt": "2026-09-07T12:19:10.817Z"
     },
     {
       "id": "no_trailer_commits",
@@ -73,7 +75,7 @@
       "check": "derive",
       "command": "echo $(( $(git rev-list --count --until='{{AS_OF_END}}' HEAD) - $(git log --grep='Co-Authored-By: Claude' --until='{{AS_OF_END}}' --oneline | wc -l) ))",
       "value": "119",
-      "updatedAt": "2026-09-07T03:50:44.657Z"
+      "updatedAt": "2026-09-07T12:19:10.817Z"
     },
     {
       "id": "window_added_files",
@@ -87,7 +89,7 @@
         }
       ],
       "value": "178",
-      "updatedAt": "2026-09-07T03:50:44.657Z"
+      "updatedAt": "2026-09-07T12:19:10.817Z"
     },
     {
       "id": "window_modified_files",
@@ -101,7 +103,7 @@
         }
       ],
       "value": "174",
-      "updatedAt": "2026-09-07T03:50:44.657Z"
+      "updatedAt": "2026-09-07T12:19:10.817Z"
     },
     {
       "id": "sdk_tests",
@@ -116,10 +118,18 @@
         {
           "doc": "SKILL.md",
           "pattern": "cd packages/sdk && npm install && npm test[^\\n]*\\n```\\n\\n```\\nℹ tests \\d+\\nℹ pass (?<v>\\d+)\\n"
+        },
+        {
+          "doc": "docs/ethonline-2026/VIDEO_SCRIPT.md",
+          "pattern": "`\\{\\{sdk_tests\\}\\}` \\| [^\\n]*?\\| \\*\\*(?<v>\\d+) / fail 0\\*\\*"
+        },
+        {
+          "doc": "docs/ethonline-2026/SUBMISSION_DRAFT.md",
+          "pattern": "`\\{\\{sdk_tests\\}\\}` \\| [^\\n]*?\\| (?<v>\\d+) / fail 0"
         }
       ],
       "value": "181",
-      "updatedAt": "2026-09-07T03:50:44.657Z"
+      "updatedAt": "2026-09-07T12:19:10.817Z"
     },
     {
       "id": "mcp_tests",
@@ -134,10 +144,36 @@
         {
           "doc": "SKILL.md",
           "pattern": "cd packages/mcp-server && npm test[^\\n]*\\n```\\n\\n```\\nℹ tests \\d+\\nℹ suites 0\\nℹ pass (?<v>\\d+)\\n"
+        },
+        {
+          "doc": "docs/ethonline-2026/VIDEO_SCRIPT.md",
+          "pattern": "`\\{\\{mcp_tests\\}\\}` \\| [^\\n]*?\\| \\*\\*(?<v>\\d+) / fail 0\\*\\*"
+        },
+        {
+          "doc": "docs/ethonline-2026/SUBMISSION_DRAFT.md",
+          "pattern": "`\\{\\{mcp_tests\\}\\}` \\| [^\\n]*?\\| (?<v>\\d+) / fail 0"
         }
       ],
       "value": "68",
-      "updatedAt": "2026-09-07T03:50:44.657Z"
+      "updatedAt": "2026-09-07T12:19:10.817Z"
+    },
+    {
+      "id": "demo_tests",
+      "description": "examples/ethonline-2026-demo の npm test が報告する ℹ tests N（VIDEO_SCRIPT.md・SUBMISSION_DRAFT.md）。install 不要・数秒。",
+      "check": "recorded",
+      "command": "npm test --prefix examples/ethonline-2026-demo 2>&1 | sed -n 's/^ℹ tests //p'",
+      "literal": [
+        {
+          "doc": "docs/ethonline-2026/VIDEO_SCRIPT.md",
+          "pattern": "`\\{\\{demo_tests\\}\\}` \\| [^\\n]*?\\| \\*\\*(?<v>\\d+) / fail 0\\*\\*"
+        },
+        {
+          "doc": "docs/ethonline-2026/SUBMISSION_DRAFT.md",
+          "pattern": "`\\{\\{demo_tests\\}\\}` \\| [^\\n]*?\\| (?<v>\\d+) / fail 0"
+        }
+      ],
+      "value": "65",
+      "updatedAt": "2026-09-07T12:19:10.817Z"
     },
     {
       "id": "sdk_mutations",
@@ -145,7 +181,7 @@
       "check": "recorded",
       "command": "grep -cE '^ +id: \"M[0-9]+\"' packages/sdk/test-mutations.mjs",
       "value": "27",
-      "updatedAt": "2026-09-07T03:50:44.657Z"
+      "updatedAt": "2026-09-07T12:19:10.817Z"
     }
   ]
 }

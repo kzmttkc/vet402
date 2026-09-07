@@ -213,7 +213,7 @@ A stranger can take a published validation tx and confirm it without trusting ve
 
 ## Between ETHOnline and Tokyo — the agent-obedience benchmark (adopted 2026-09-07)
 
-**Origin**: the ETHOnline A/B (`docs/ethonline-2026/ab/2026-09-06T213134Z/`) measured whether an agent obeys a payment gate with and without a Recipe. Result: the Recipe fixed the vocabulary (real reason codes 59% → 91%) and not the verdict (50% → 50%). Both conditions failed the same two cases: an uncatalogued seller and an over-ceiling price whose reason code no tool returns.
+**Origin**: the ETHOnline A/B (`docs/ethonline-2026/ab/2026-09-06T213134Z/`) measured whether an agent obeys a payment gate with and without a Recipe. Result: the Recipe fixed the vocabulary (real reason codes 63% → 91%) and not the verdict (50% → 50%). Both conditions failed the same two cases: an uncatalogued seller and an over-ceiling price whose reason code no tool returns.
 
 **Decision (Takeshi, 2026-09-07 06:44)**: grow the harness into a public benchmark — models × fixtures × "does the agent obey the gate" — published weekly. It is distribution (a page people come back to), evidence for the Tokyo and Mumbai verbs (resolve-then-pay, write-the-registry each add a fixture), and the honest answer to "should the model decide?" (no; call the gate).
 
