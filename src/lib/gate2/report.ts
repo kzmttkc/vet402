@@ -22,14 +22,16 @@
  *             (ii) has at least one x402_payments row (settlement write-back)
  *
  * Self-accounts (own test signups) are excluded from every count via
- * SELF_ACCOUNT_EMAILS (comma-separated, defaults to kazumototakeshi@gmail.com).
+ * SELF_ACCOUNT_EMAILS (comma-separated). Unset means nothing is excluded: the
+ * operator's addresses belong in the deployment's env, never in this file
+ * (2026-09-07 repo hygiene — the default used to be a hard-coded address).
  */
 import { and, eq, gt, inArray, isNull, notInArray, or } from "drizzle-orm";
 import { getDb, isDatabaseConfigured } from "../db/client";
 import { isMissingSchemaError } from "../db/pg-errors";
 import { accounts, apiKeys, apiUsage, trustEvents, x402Payments } from "../db/schema";
 
-const DEFAULT_SELF_EMAILS = ["kazumototakeshi@gmail.com"];
+const DEFAULT_SELF_EMAILS: string[] = [];
 const ACTIVE_DAYS_THRESHOLD = 5;
 const QUERY_COUNT_THRESHOLD = 50;
 const WINDOW_DAYS = 14;
