@@ -182,6 +182,14 @@ const MUTATIONS = [
     replace: "  if (/* MUTANT */ units / 10 ** USDC_DECIMALS > maxPerTxUsd * 1000) return [\"price_above_ceiling\"];",
   },
   {
+    id: "M31",
+    what: "402 の amount の形の検査を外す（\"0x10\" / \"1e4\" / \" 20000 \" が Number で上限内に読めて署名へ進む）",
+    rule: "A6 amount は 10 進の整数文字列だけ受理する",
+    file: PAY,
+    find: '  if (!isDecimalUnits(accept.amount)) return ["evidence_unavailable"];',
+    replace: "  /* MUTANT: amount format check removed */",
+  },
+  {
     id: "M13",
     what: "呼び手が名乗った amountUsd の上限を 1000 倍に緩める",
     rule: "C9 上限は判定を引く前に当てる",

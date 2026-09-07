@@ -642,12 +642,21 @@ function evaluateMoneyGate(accept, maxPerTxUsd) {
     // 通せば「一円も動かないまま署名だけが生きている」状態を売り手が無料で作れてしまう。
     if (!hasCanonicalUsdcDomain(accept))
         return ["chain_or_asset_mismatch"];
+    // `amount` は uint256 の 10 進表記（数字だけ）に限る（2026-09-07 監査 A6）。`Number()` は
+    // "0x10" / "1e4" / "20000.5" / " 20000 " を上限内の数に読むが、署名に載るのは**生文字列**なので、
+    // 関門が見た額と署名した額が食い違う。読めない額は「いくら払うのか分からない」＝402 が読めないのと同じ語。
+    if (!isDecimalUnits(accept.amount))
+        return ["evidence_unavailable"];
     const units = Number(accept.amount);
     if (!Number.isFinite(units) || units <= 0)
         return ["chain_or_asset_mismatch"];
     if (units / 10 ** USDC_DECIMALS > maxPerTxUsd)
         return ["price_above_ceiling"];
     return null;
+}
+/** 402 の `amount` として受理する唯一の形: ASCII の数字だけ（空・符号・小数点・空白・0x・指数は不可）。 */
+function isDecimalUnits(amount) {
+    return typeof amount === "string" && /^[0-9]+$/.test(amount);
 }
 /**
  * **呼び出し側の誤りを、通信の前に落とす。**
