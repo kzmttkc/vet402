@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { getAllPosts, getPostBySlug } from "@/lib/blog";
 import { SITE_URL } from "@/lib/site-url";
 import { safeJsonLd } from "@/lib/util/json-ld";
+import { buildMonth } from "@/lib/build-month";
 import { pageMetadata, breadcrumbJsonLd, publisherOrg } from "@/lib/seo";
 
 export function generateStaticParams() {
@@ -93,7 +94,7 @@ export default async function BlogPostPage({
             <span>vet402</span>
             <span>x402 Economy</span>
             <span>
-              {post.updatedAt !== post.publishedAt ? `Updated ${post.updatedAt}` : "August 2026"}
+              {post.updatedAt !== post.publishedAt ? `Updated ${post.updatedAt}` : buildMonth()}
             </span>
           </div>
         </div>

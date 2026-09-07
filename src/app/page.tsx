@@ -11,6 +11,7 @@ import { buttonClass } from "@/components/ui/Button";
 import { SITE_URL } from "@/lib/site-url";
 import { organizationJsonLd, publisherOrg } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
+import { buildMonth } from "@/lib/build-month";
 import {
   getCoverageShareCached,
   getObservatoryStatsCached,
@@ -48,7 +49,7 @@ const HEAD_LEFT = [
 const HEAD_RIGHT: { value: string; href?: string; title?: string }[] = [
   { value: "vet402" },
   { value: "x402 Economy" },
-  { value: "August 2026" },
+  { value: buildMonth() },
   {
     value: "Updates: trust scores",
     href: "#methodology",

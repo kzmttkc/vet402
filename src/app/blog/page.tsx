@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { getAllPosts } from "@/lib/blog";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
+import { buildMonth } from "@/lib/build-month";
 import { SITE_URL } from "@/lib/site-url";
 
 export const metadata: Metadata = pageMetadata({
@@ -59,7 +60,7 @@ export default async function BlogIndexPage() {
           <div className="doc-head-col">
             <span>vet402</span>
             <span>x402 Economy</span>
-            <span>August 2026</span>
+            <span>{buildMonth()}</span>
           </div>
         </div>
 

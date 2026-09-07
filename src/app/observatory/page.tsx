@@ -406,7 +406,12 @@ export default async function ObservatoryPage({
           pages, counted before duplicate URLs collapse into one endpoint key; <em>catalog</em> is the total
           the catalog reports about itself. Fetched can exceed the catalog total for that reason, and a fetch
           below the total is incomplete: no delisting judgement is made on such a day. Endpoints on record
-          (Figure 1) include delisted entries; the Catalog column says which are still listed.
+          (Figure 1) include delisted entries; the Catalog column says which are still listed. The{" "}
+          <em>active</em> count under Figure 1 is a different figure from the catalog total on the snapshot
+          line: it counts endpoint rows on record whose catalog status is still <code>active</code>. That
+          status is set when a fetch lists the endpoint and flipped to <code>delisted</code> only by the
+          daily diff against the previous day&apos;s snapshot on a complete fetch, so it is carried over from
+          earlier days rather than re-read from the snapshot line, and the two need not agree.
         </p>
         <p className="doc-p">
           <strong>Catalog</strong> is presence in the public discovery catalog: <code>active</code>{" "}

@@ -1,4 +1,12 @@
 import Link from "next/link";
+import type { Metadata } from "next";
+
+// 2026-09-07 ETHOnline (audit E): generateMetadata calls notFound() before returning, so
+// this boundary owned no title and <head> fell back to the layout default (the home
+// title). Same title as the root not-found; the template appends " | vet402".
+export const metadata: Metadata = {
+  title: "404 Not Found",
+};
 
 // A-10 — AgentPage calls notFound() only when parseAgentId fails (a
 // non-numeric agent id). A valid-but-unregistered agent still renders the

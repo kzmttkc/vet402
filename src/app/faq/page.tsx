@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { buildMonth } from "@/lib/build-month";
 // 2026-08-13 UX監査R1 [C1]: 設問は src/components/site/faq-data.ts へ移した。
 // LP が Q1（x402 の定義）を引用するので、同じ文が2箇所に転記された状態を
 // 作らないため。中身は1文字も変えていない。
@@ -67,7 +68,7 @@ export default async function FaqPage() {
           <div className="doc-head-col">
             <span>vet402</span>
             <span>x402 Economy</span>
-            <span>August 2026</span>
+            <span>{buildMonth()}</span>
           </div>
         </div>
 

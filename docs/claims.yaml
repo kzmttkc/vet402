@@ -1331,3 +1331,25 @@ claims:
     check: null
     why_unverifiable: "設計上の不変条件。tests/decision-caller-policy.test.ts P6（degraded＋床充足でも REFUSE）と SDK の変異 M03/M04 が固定する。公開 GET で degraded の資源を安定して名指しできない"
     verified_at: 2026-09-07
+  # 2026-09-07 ETHOnline site consistency (F13): /decision の note に SKILL.md への link を 1 本入れるため
+  # 1 本の文字列を link の前後 2 ノードに割った。前半は api_facts_and_recommendation_always_arrive が
+  # 覆うが、後半（never rewrites / never lifts / read only with your own key / always）は別ノードになり
+  # 孤児になったので、後半に quote を持つ登録を足す。文面は変えていない。
+  - id: api_decision_caller_policy_never_rewrites
+    surface: src/app/docs/api/page.tsx
+    quote: "It sits beside recommendation and never rewrites it; a floor or a waiver never lifts BLOCK or degraded"
+    means: "API リファレンスが述べる契約仕様（caller_policy は recommendation を書き換えず、BLOCK / degraded を持ち上げない）"
+    check: null
+    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
+    verified_at: 2026-09-07
+  # 2026-09-07 ETHOnline site consistency (F10): /observatory の「fetched N of catalog N」と「M active」が
+  # 同じ頁で食い違う理由を Snapshot-line の注記に足した。active は x402_endpoints.status の件数で、
+  # catalog-sync が取得時に active を書き、catalog-diff が完全取得の日だけ前日スナップショットとの差で
+  # delisted に倒す——つまり前日から持ち越す値であり、スナップショット行から読み直す値ではない。
+  - id: obs_active_count_is_carried_over_status
+    surface: src/app/observatory/page.tsx
+    quote: "earlier days rather than re-read from the snapshot line"
+    means: "Figure 1 の active 件数はカタログ総数と別の集合（status 列の持ち越し値）で、両者は一致しなくてよい"
+    check: null
+    why_unverifiable: "コードの性質（src/lib/observatory/catalog-sync.ts の upsert が status='active'、catalog-diff.ts が currentComplete の日だけ delisted を出す）であって、公開 GET が返す数値では真偽を判定できない。性質は tests/observatory-diff.test.ts が守る"
+    verified_at: 2026-09-07
