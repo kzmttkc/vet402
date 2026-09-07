@@ -650,3 +650,23 @@ test("K7 実プロセス: check_resource_decision は requireVet402Allow を req
   assert.equal(q.get("min_l1_deliveries"), "1");
   assert.deepEqual(text.measurement.caller_policy, body.caller_policy, "透過");
 });
+
+// ---- D4（2026-09-07 第三者監査 D4 ＋ 追加2）: resource 無しは第 4 段で止まり、床も The Graph も評価されない ----
+//
+// SKILL.md（:271-272）と index.ts のツール説明は「payer が無くても関門を最後まで走らせる」と言っていたが、
+// 実装は resource / payee / amountUsd が無いと第 4 段（payment_target_unknown）で返り、subgraph の読みと
+// 床の評価（どちらも SDK の payOrRefuse の中）には進まない。**実装を正**とし、文書を実装に合わせる。
+// このテストはその境界を固定する: 変えるなら文書とこのテストを一緒に動かすこと。
+test("D4 resource 無し ＋ source:subgraph ＋ 鍵あり ＋ ALLOW → payment_target_unknown で止まり、The Graph は読まない・decision_record は null", async () => {
+  const h = harness({ decision: warnDecision({ recommendation: "ALLOW", reason_codes: ["l0_pass", "l1_delivered"] }), receipts: 259 });
+  const r = await payIfTrusted({
+    resourceId: "a".repeat(64), signer: h.w.signer, fetch: h.fetch, graphApiKey: "k".repeat(32),
+    policy: { evidence: { source: "subgraph", minSubgraphReceipts: 1 } },
+  });
+  assert.equal(r.decision, "REFUSE");
+  assert.ok(r.refuse_reasons.includes("payment_target_unknown"), r.refuse_reasons.join(","));
+  assert.equal(h.graphCalls().length, 0, "床の評価（The Graph の読み）は SDK の段にあり、ここには来ない");
+  assert.equal(r.decision_record, null, "payOrRefuse に到達していない");
+  assert.equal(r.measurement.recommendation, "ALLOW", "判定そのものは返す");
+  assert.deepEqual(h.w.signAccesses(), []);
+});

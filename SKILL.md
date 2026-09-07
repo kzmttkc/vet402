@@ -268,9 +268,13 @@ must opt into:
 2. `npm i viem` inside `packages/mcp-server` (viem is *not* a dependency — an MCP server that holds
    a private key should be a choice, not something you get by installing).
 
-Without both, the tool still runs the whole gate and returns the decision, then refuses with
-`payer_not_configured`. To execute, also pass `resource`, `payee` and `amountUsd`; omit them and you
-get the gate alone (refusing with `payment_target_unknown`).
+Without both, the tool reads `/decision` and applies the pre-payment checks (Graph-key presence,
+degraded, the server's `caller_policy`, ALLOW), returns that decision, and refuses with
+`payer_not_configured` if you passed any of `resource` / `payee` / `amountUsd` — those three are
+dropped before the SDK is reached, so the evidence floors and The Graph read (both live inside the
+SDK's `payOrRefuse`) are **not evaluated** on this path. To execute, configure the payer and pass
+`resource`, `payee` and `amountUsd`; omit all three and you get the same pre-payment checks alone,
+refusing with `payment_target_unknown` (floors not evaluated there either).
 
 `payee` is the address **you already expect**; the 402 challenge's `payTo` must match it. Money
 gate, unchanged from the SDK: Base mainnet only, canonical USDC `0x8335…2913`, scheme `exact`,

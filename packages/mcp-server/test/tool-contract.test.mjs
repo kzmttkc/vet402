@@ -256,3 +256,37 @@ test("check_resource_decision takes amountUsd / maxPerTxUsd / minL1Deliveries an
   assert.match(descriptionText, /caller_policy/, "説明が caller_policy に触れていない");
   assert.match(descriptionText, /price_above_ceiling/, "説明が price_above_ceiling を名指ししていない");
 });
+
+// ---------------- D4（2026-09-07 第三者監査）: 文書は「payer / resource が無いとき何が走るか」を実装どおりに言う ----------------
+//
+// 実装（pay-if-trusted.ts 第 4 段）: resource / payee / amountUsd が無ければ `payment_target_unknown` で返り、
+// 証拠の床と The Graph の読み（SDK の payOrRefuse の中）には進まない。index.ts は payer 未設定のとき
+// resource 等を渡さないので同じ段で止まり、呼び手が支払い先を渡していたときだけ語を `payer_not_configured` に
+// 置き換える。SKILL.md:271-272 と index.ts の説明が「still runs the whole gate」と言っていたのは実装と違う。
+// ここは禁止形（誤った主張）を持つ——正解の写しは持たない。
+test("pay_if_trusted の説明と SKILL.md は『関門を最後まで走らせる』と言わず、resource 無しで止まる段と語を実装どおりに言う", () => {
+  const src = readFileSync(join(PKG, "src/index.ts"), "utf8");
+  const sf = ts.createSourceFile("index.ts", src, ts.ScriptTarget.Latest, true);
+  let descriptionText = null;
+  const visit = (node) => {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "tool" &&
+        node.arguments.length >= 3 && ts.isStringLiteral(node.arguments[0]) && node.arguments[0].text === "pay_if_trusted") {
+      descriptionText = node.arguments[1].getText(sf);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  assert.ok(descriptionText, "pay_if_trusted の説明が AST で取れない");
+  assert.doesNotMatch(descriptionText, /still runs the whole gate/, "実装は resource 無しで第 4 段で止まる");
+  assert.match(descriptionText, /payment_target_unknown/);
+  assert.match(descriptionText, /payer_not_configured/);
+  assert.match(descriptionText, /floors?[^.]*not (evaluated|applied|checked)|not (evaluated|applied|checked)[^.]*floors?/i, "床が評価されないことを言う");
+
+  const skill = readFileSync(join(PKG, "../../SKILL.md"), "utf8");
+  const section = skill.slice(skill.indexOf("## Actually paying"), skill.indexOf("## Why `source` matters"));
+  assert.ok(section.length > 0, "SKILL.md の Actually paying 節が無い");
+  assert.doesNotMatch(section, /still runs the whole gate/, "SKILL.md が実装と違う主張をしている");
+  assert.match(section, /payment_target_unknown/);
+  assert.match(section, /payer_not_configured/);
+  assert.match(section, /floors?[^.]*not (evaluated|applied|checked)|not (evaluated|applied|checked)[^.]*floors?/i, "床が評価されないことを言う");
+});
