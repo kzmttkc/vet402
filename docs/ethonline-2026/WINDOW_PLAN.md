@@ -1182,7 +1182,7 @@ v1（§16.3）は**製品の穴**（上限超えの理由コードをどのツ�
 | 09-06 夜 | #1 MCP 証拠源 policy＋404 経路（**済 `3fa685c`**）／#6 SDK 変異テスト（27 変異・SURVIVED 4 を是正中）／#3 `judge <URL>`（実装中） | Graph 枠・Technicality・Practicality |
 | 09-07 | #3 を main へ・SKILL.md に judge 節／#5 DX（Node 要件・ビルド順・`judge-check`）／PROMPTS | Usability |
 | 09-08 | AQ-053 が通れば `/decision` 鍵なし枠（IP 10/分）／フィードバック doc の下書き | Usability・Bazantic |
-| 09-09 | Anthropic 鍵で A/B 再実行（1回）・生ログ収載・AQ-052 が通れば Recipe 公開・A/B 画面収録 | Bazantic 枠の資格 |
+| 09-09 | **先に Recipe を v2.1 に再公開**（`recipe/x402-payee-verification.json` の語彙説明に `l1_inconclusive` を 1 行足す。09-08 のサーバ語彙追加への追随で、戦略は変えない。§16.5 の注記に日付を足す）→ Anthropic 鍵で A/B v2 を 1 回実行・生ログ収載・A/B 画面収録 | Bazantic 枠の資格 |
 | 09-10 | **SKILL.md の walkthrough は機械に置換（09-08・`skill-live`）**——手順は §17.1。人がやるのは「その日の run が緑か」を見ることだけ／数字の再導出 | Usability |
 | 09-11 | 台本・フィクスチャ再測・18:00 凍結・ナレーション録音（Takeshi） | 動画 |
 | 09-12 | 画面収録・編集・提出文・prize comments | 提出 |
