@@ -42,7 +42,8 @@
 ```
 [S1 0:00]
 vet402, Continuity track.
-Every line we claim sits after this tag, cut five minutes into the window.
+Every line we claim sits after this tag, cut before the window opened.
+Three commits in that range predate the start; the disclosure in the repo names them.
 That number is every commit since — including production work we are not claiming.
 
 [S2 0:12]
@@ -113,7 +114,8 @@ We call a gate — and the gate can say no before a signature exists.
 ```
 [S1 0:00]
 vet402、Continuity トラックです。
-主張するコードは全部このタグより後。会期が開いて5分後に打ちました。
+主張するコードは全部このタグより後。タグは会期が開く前に打ちました。
+その範囲のうち3コミットは開始前のもので、リポの開示文書に列挙してあります。
 画面の数はそれ以降の全コミット。主張しない本番作業も含みます。
 
 [S2 0:12]
@@ -232,7 +234,7 @@ SKILL.md は審査員が動かすもの。AI_USAGE.md は誰が書いたか。
 | `{{window_commits}}` | `git log pre-ethonline-2026..main --oneline \| wc -l` | **218** | 動く（画面のみ） | 言わない（"that number" と指す） |
 | `{{window_commits_nomerge}}` | `git rev-list --count --no-merges pre-ethonline-2026..main` | **205** | 動く（画面のみ） | — |
 | `{{claimed_commits}}` | `git log pre-ethonline-2026..main --oneline -- packages/sdk packages/mcp-server examples/ethonline-2026-demo examples/ethonline-2026-ab SKILL.md AI_USAGE.md docs/ethonline-2026 \| wc -l` | **109** | 動く（画面のみ・README の caveat と対） | — |
-| `{{tag_commit}}` / `{{tag_time}}` | `git log -1 --format='%h %ci' pre-ethonline-2026` | **`c42daca 2026-09-04 09:05:36 +0900`** | 固定 | "cut five minutes into the window"（時刻は言わない） |
+| `{{tag_commit}}` / `{{tag_time}}` | `git log -1 --format='%h %ci' pre-ethonline-2026` | **`c42daca 2026-09-04 09:05:36 +0900`** | 固定 | "cut before the window opened"（時刻は言わない。会期開始は 09-04 16:00 UTC＝翌 01:00 JST なので「開いて5分後」は誤り。詳細は `DISCLOSURE_2026-09-05.md`） |
 | `{{graph_receipts}}` | `node src/run.ts pay 2>&1 \| grep totalPayments`（demo dir・鍵要） | **417**（block **50973028**） | 動く・**口で言う** | **下限で**: "more than four hundred"（09-06 は 260 → 1 日で 157 増。撮影日の値が 500 を超えていたら "more than five hundred" に上げる。**画面の値より大きい下限を言わない**） |
 | `{{graph_score}}` | 同上 `\| grep 'payee verdict'` | **WARN (69)** | 動く（§3 の規則で会期中は 69 のまま） | "WARN, sixty-nine"（撮影日に 69 でなければ**その値**に置き換える） |
 | `{{graph_decision}}` | `curl -sL -o /dev/null -w '%{http_code}' 'https://vet402.com/api/v1/resources/9e8469d365d65bc9b4a3f588f951bfc70ae64cc1afa2ebdf7e8f11a940d40763/decision?role=payer'` | **404** | 固定（カタログに登録しない決定・§3.1） | "four-oh-four" |

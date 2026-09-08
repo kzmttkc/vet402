@@ -34,11 +34,14 @@ This repository is the source of the vet402 service and of the three npm package
 
 ## ETHOnline 2026 (Continuity) — what is ours from *this* window
 
-The boundary tag `pre-ethonline-2026` is commit `c42daca`, cut **2026-09-04 00:05:36 UTC** — five minutes
-after the window opened — and it is pushed, so anyone can verify the split themselves. Everything after
-that tag was written during the window. The volume that predates it was **disclosed to ETHGlobal in
-writing on 2026-09-05** — the message as sent, and why its commit count reads 207 where this file says 214:
-[`docs/ethonline-2026/DISCLOSURE_2026-09-05.md`](./docs/ethonline-2026/DISCLOSURE_2026-09-05.md).
+The boundary tag `pre-ethonline-2026` is commit `c42daca`, cut **2026-09-04 00:05:36 UTC**, and it is
+pushed, so anyone can verify the split themselves. The window opened at **2026-09-04 16:00 UTC**
+(ETHGlobal's published schedule, `hacking-begins`), so the tag sits 15 h 54 min *before* the start, not
+five minutes after it as this file said until 2026-09-08. **Three commits in the range we claim were made
+before the window opened** — their SHAs, times and contents, and the command that lists them, are in
+[`docs/ethonline-2026/DISCLOSURE_2026-09-05.md`](./docs/ethonline-2026/DISCLOSURE_2026-09-05.md), which
+also carries the message we sent ETHGlobal on **2026-09-05** disclosing the volume of work that predates
+the tag, and why its commit count reads 207 where this file says 214.
 
 **One caveat.** `main` is also this product's production branch, so the range
 `pre-ethonline-2026..main` contains work that has nothing to do with this submission — grant

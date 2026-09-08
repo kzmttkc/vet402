@@ -7,8 +7,11 @@
 
 ## The line
 
-Tag `pre-ethonline-2026` — commit `c42daca`, **2026-09-04 00:05:36 UTC**, cut five minutes after the
-window opened. Everything reachable from it is pre-existing, and we claim none of it.
+Tag `pre-ethonline-2026` — commit `c42daca`, **2026-09-04 00:05:36 UTC**. The window opened at
+**2026-09-04 16:00 UTC** (`hacking-begins`), so the tag sits 15 h 54 min before the start; this file said
+"five minutes after the window opened" until 2026-09-08. Everything reachable from the tag is
+pre-existing, and we claim none of it. **Three commits on the claimed side were made before 16:00 UTC** —
+SHAs, times and contents in [`DISCLOSURE_2026-09-05.md`](./DISCLOSURE_2026-09-05.md).
 
 ```bash
 git log -1 --format='%H %cI' pre-ethonline-2026       # the line itself

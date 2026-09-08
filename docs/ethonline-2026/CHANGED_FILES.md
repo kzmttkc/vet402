@@ -13,8 +13,11 @@ git diff --diff-filter=A --name-only pre-ethonline-2026..main    # files we crea
 git log --oneline pre-ethonline-2026..main                        # every commit in the window
 ```
 
-The boundary tag `pre-ethonline-2026` is commit `c42daca`, cut **2026-09-04 00:05:36 UTC**, five
-minutes after the window opened, and it is pushed. Anyone can run the three commands above.
+The boundary tag `pre-ethonline-2026` is commit `c42daca`, cut **2026-09-04 00:05:36 UTC**, and it is
+pushed. The window opened at **2026-09-04 16:00 UTC** (`hacking-begins`), so the tag is 15 h 54 min before
+the start — not five minutes after it, as this file said until 2026-09-08. Three commits in the claimed
+range predate 16:00 UTC; they are listed in [`DISCLOSURE_2026-09-05.md`](./DISCLOSURE_2026-09-05.md).
+Anyone can run the three commands above.
 
 ## Snapshot — 2026-09-07 08:5x JST (derived; regenerate with the command below)
 

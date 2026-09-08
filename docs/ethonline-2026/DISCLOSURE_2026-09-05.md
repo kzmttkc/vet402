@@ -42,3 +42,44 @@ re-derive: `git log --format=%ad --date=short 26a7c66..pre-ethonline-2026 | sort
 (2026-09-02: 99, 2026-09-03: 11, 2026-09-04: 7). The same commit also corrected the message's last
 claim — `main` is this product's production branch, so `git log pre-ethonline-2026..main` contains
 work we are **not** submitting; the range we do claim is in `README.md`.
+
+## Why the window start in the message is wrong — corrected 2026-09-08
+
+The message says the tag was cut **five minutes after the window opened**. That is wrong. We had taken
+2026-09-04 00:00 UTC as the start. ETHGlobal's own published schedule for ETHOnline 2026 puts
+`hacking-begins` — and `ethonline-2026-kickoff` — at **2026-09-04 16:00:00 UTC**:
+
+```bash
+curl -sL https://ethglobal.com/events/ethonline2026 | grep -o 'hacking-begins[^]]\{0,120\}'
+# ..."name":"Hacking Begins!" ... "startTime":"2026-09-04T16:00:00.000Z" ... "status":"confirmed"
+```
+
+Measured against 16:00 UTC:
+
+| | |
+|---|---|
+| Boundary commit `c42daca` (what the tag points at) | 2026-09-04 00:05:36 UTC — **15 h 54 min before** hacking began |
+| The annotated tag object itself | 2026-09-04 02:45:06 UTC — 13 h 15 min before hacking began |
+| Commits in the range we claim that were made **before** 16:00 UTC | **3** |
+
+We are not moving the tag. It was pushed on 2026-09-04, and this disclosure and the submission link to
+it; re-cutting it would invalidate those links. The consequence is stated rather than hidden: the range
+we claim — `pre-ethonline-2026..main` under the path filter in `README.md` — contains three commits made
+before the window opened. Anyone can list them:
+
+```bash
+TZ=UTC git log --until='2026-09-04T16:00:00+00:00' --format='%h %cd %s' --date=iso-local \
+  pre-ethonline-2026..main -- packages/sdk packages/mcp-server \
+  examples/ethonline-2026-demo examples/ethonline-2026-ab SKILL.md AI_USAGE.md docs/ethonline-2026
+```
+
+- `37c56db` — 2026-09-04 07:47:22 UTC — `docs/ethonline-2026/WINDOW_PLAN.md` only (+23 / −5)
+- `e668957` — 2026-09-04 08:00:42 UTC — `docs/ethonline-2026/WINDOW_PLAN.md` only (+55 / −2)
+- `ac6ec2e` — 2026-09-04 10:29:07 UTC — `feat(settlements)`: **+6 lines** in `packages/sdk/src/index.ts`,
+  plus `docs/openapi.yaml`, `scripts/settlements-rollup.ts`, `scripts/sql/2026-09-04-w15.sql` and the
+  production code and tests behind them
+
+The wording "five minutes after the window opened" also stood in `README.md`, `AI_USAGE.md`,
+`SUBMISSION_DRAFT.md`, `README_CONTINUITY_SECTION.md`, `CHANGED_FILES.md`, `VIDEO_SCRIPT.md` and
+`LIVE_JUDGING.md`. It was corrected in all of them on 2026-09-08. The message above is left verbatim,
+as sent.

@@ -56,7 +56,7 @@ a trailer as "unknown", not as "human".** The numbers move every day — re-run 
 
 | | |
 |---|---|
-| Boundary tag | `pre-ethonline-2026` = `c42daca`, **2026-09-04 00:05:36 UTC** (5 minutes after the window opened) |
+| Boundary tag | `pre-ethonline-2026` = `c42daca`, **2026-09-04 00:05:36 UTC** — 15 h 54 min *before* the window opened at 2026-09-04 16:00 UTC (`hacking-begins`). **3 commits in the claimed range predate 16:00 UTC**; they are listed in [`docs/ethonline-2026/DISCLOSURE_2026-09-05.md`](./docs/ethonline-2026/DISCLOSURE_2026-09-05.md) |
 | Everything submitted as hackathon work | `git log pre-ethonline-2026..main` |
 | Pre-window work since our 2026-08-23 application | **214** commits, 412 files, +28,414 / −1,913 lines — disclosed to ETHGlobal in writing on 2026-09-05 |
 

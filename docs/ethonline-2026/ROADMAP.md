@@ -10,7 +10,8 @@
 
 > Locked 2026-08-22. Follow this file; do not expand scope.
 > Win-probability overrides: [`WIN_EV.md`](./WIN_EV.md) wins if the two conflict.
-> Window: **2026-09-04 00:00 UTC → 2026-09-16**（09-13 の提出後は審査期間）。
+> Window: **2026-09-04 16:00 UTC → 2026-09-16**（`hacking-begins`。2026-09-08 訂正。旧記載 00:00 UTC は誤り。
+> 影響は [`DISCLOSURE_2026-09-05.md`](./DISCLOSURE_2026-09-05.md)）。09-13 の提出後は審査期間。
 > **Submission deadline: 2026-09-13 12:00 EDT = 09-14 01:00 JST**（一次確認 2026-08-23 https://ethglobal.com/events/ethonline2026/info/details ・原文「Sunday, September 13th 2026 at 12:00 pm EDT」）。提出目標は **09-13 12:00 JST**（13時間の余裕）。旧記載「09-15 18:00 UTC」は誤りで、全日程を2日前倒しした。
 > Track: Continuity · Extend Open Source · https://github.com/kzmttkc/vet402
 > Verb: **payOrRefuse** — スコアを見てから払うな。拒めるなら、払うな。
