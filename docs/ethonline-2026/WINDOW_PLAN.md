@@ -1308,3 +1308,32 @@ v1（§16.3）は**製品の穴**（上限超えの理由コードをどのツ�
 
 **最も自信のない仮定**: Graph の審査員が MCP 経路を SDK 経路より重く見ること（AQ-054 の公開質問で確かめる）。
 **事前検死**: ①MCP 面で Graph が飾りと読まれる（#1 で手当て）②鍵2本とビルド順で詰まる（#4・#5）③A/B が mock のまま（#2）。
+
+---
+
+### 【2026-09-09 08:2x 追記】Discord 定期走査——新着は Bazantic の第3トラック賞1件だけ
+
+`#👂information` / `#📣announcements` / `#⏰event-schedule` / `#partner-the-graph` / `#partner-bazantic` を実測。
+**締切・審査日程・Continuity 規則・ステーク/賞金の扱いに変更は無い。** 09-08 の追記がそのまま生きている。
+
+**新しい一次情報は1件**（`#partner-bazantic`・Tom Hay・2026-09-09 06:32 JST・`@Mo` への返信）:
+
+> thank you for the email - to further clarify the response - if you use Goldsky and create a gateway for it,
+> this would count as an external provider, and would be eligible for our third track prize **"Agentify a New API"**
+
+**含意**: Bazantic の枠は「Help an Agent Use Your Hackathon Project」だけではなく、
+**"Agentify a New API" という第3トラックが存在する**。判定条件として原文が挙げているのは
+「外部プロバイダの API に対してゲートウェイを作ること」。
+**§1 の「1パートナー1枠」の制約と衝突するかは原文に無い——推測で埋めない。**
+提出フォームでは既に Bazantic の枠を選択済みなので、**変更するなら 09-11 の凍結前に、
+どちらの枠が vet402 の実物に近いかを1回だけ検算する**（vet402 は自前 API を持ち、
+それをエージェントが踏める形にしている——後者に寄る可能性がある）。
+
+**The Graph の資格質問（AQ-054・`Sen_web3` 09-07 06:17）は 09-09 08:2x 時点でも未回答。**
+❤️ が1つ付いただけで、The Graph 側の人からの返信は無い。
+同じ問いを別チームも投げている（`Luc`・09-07 14:26・"Same question @LNiu asked on Sep 3, still open."）——
+**我々の質問の書き方の問題ではなく、パートナー側が答えていない。**
+§1.4 の既存の判断（「回答を待って設計を決める計画にしない」）を変える理由は無い。
+09-10 22:00 の Project Feedback Session #12 が次の機会。
+
+**`#🚨click-for-info🚨`（Tokyo）は引き続き閲覧権限なし。** Tokyo 2026 の締切・枠はここからは取れない。
