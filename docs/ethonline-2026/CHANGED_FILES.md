@@ -23,7 +23,7 @@ git diff --diff-filter=M --name-only pre-ethonline-2026..main \
  | awk -F/ '{ if ($1=="src" && $2!="") a=$1"/"$2; else if ($1=="packages" && $2!="") a=$1"/"$2; else if (NF==1) a="repo root"; else a=$1; c[a]++ } END { for (k in c) printf "%d\t%s\n", c[k], k }' | sort -rn
 ```
 
-**<!-- n:window_modified_files -->183<!-- /n --> pre-existing files modified, by area** (the counts are the command's output; the "why" column is prose):
+**<!-- n:window_modified_files -->187<!-- /n --> pre-existing files modified, by area** (the counts are the command's output; the "why" column is prose):
 
 | Area | Files | Why we were in there |
 |---|---|---|

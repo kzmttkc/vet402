@@ -24,8 +24,8 @@
         }
       ],
       "value": "2026-09-08",
-      "updatedAt": "2026-09-07T22:03:03.386Z",
-      "end": "2026-09-08T07:03:03+09:00"
+      "updatedAt": "2026-09-08T08:21:19.515Z",
+      "end": "2026-09-08T17:21:19+09:00"
     },
     {
       "id": "total_commits",
@@ -38,8 +38,8 @@
           "pattern": "^git rev-list --count HEAD +# (?<v>\\d+) commits \\("
         }
       ],
-      "value": "780",
-      "updatedAt": "2026-09-07T22:03:03.386Z"
+      "value": "799",
+      "updatedAt": "2026-09-08T08:21:19.515Z"
     },
     {
       "id": "ai_trailer_commits",
@@ -52,8 +52,8 @@
           "pattern": "^git log --grep='Co-Authored-By: Claude' --oneline \\| wc -l +# (?<v>\\d+) carry the AI trailer"
         }
       ],
-      "value": "653",
-      "updatedAt": "2026-09-07T22:03:03.386Z"
+      "value": "669",
+      "updatedAt": "2026-09-08T08:21:19.515Z"
     },
     {
       "id": "merge_commits",
@@ -67,15 +67,15 @@
         }
       ],
       "value": "34",
-      "updatedAt": "2026-09-07T22:03:03.386Z"
+      "updatedAt": "2026-09-08T08:21:19.515Z"
     },
     {
       "id": "no_trailer_commits",
       "description": "as_of 時点で trailer の無いコミット数 = total_commits - ai_trailer_commits（AI_USAGE.md）。",
       "check": "derive",
       "command": "echo $(( $(git rev-list --count --until='{{AS_OF_END}}' HEAD) - $(git log --grep='Co-Authored-By: Claude' --until='{{AS_OF_END}}' --oneline | wc -l) ))",
-      "value": "127",
-      "updatedAt": "2026-09-07T22:03:03.386Z"
+      "value": "130",
+      "updatedAt": "2026-09-08T08:21:19.515Z"
     },
     {
       "id": "window_added_files",
@@ -88,8 +88,8 @@
           "pattern": "^git diff --diff-filter=A --name-only pre-ethonline-2026\\.\\.main \\| wc -l +# (?<v>\\d+) added"
         }
       ],
-      "value": "194",
-      "updatedAt": "2026-09-07T22:03:03.386Z"
+      "value": "199",
+      "updatedAt": "2026-09-08T08:21:19.515Z"
     },
     {
       "id": "window_modified_files",
@@ -102,8 +102,8 @@
           "pattern": "^git diff --diff-filter=M --name-only pre-ethonline-2026\\.\\.main \\| wc -l +# (?<v>\\d+) modified"
         }
       ],
-      "value": "183",
-      "updatedAt": "2026-09-07T22:03:03.386Z"
+      "value": "187",
+      "updatedAt": "2026-09-08T08:21:19.515Z"
     },
     {
       "id": "sdk_tests",
@@ -126,10 +126,14 @@
         {
           "doc": "docs/ethonline-2026/SUBMISSION_DRAFT.md",
           "pattern": "`\\{\\{sdk_tests\\}\\}` \\| [^\\n]*?\\| (?<v>\\d+) / fail 0"
+        },
+        {
+          "doc": "docs/ethonline-2026/SUBMISSION_DRAFT.md",
+          "pattern": "§5 のコマンド（\\d{2}-\\d{2}: (?<v>\\d+) / \\d+ / \\d+）"
         }
       ],
       "value": "1609",
-      "updatedAt": "2026-09-08T00:00:00.000Z"
+      "updatedAt": "2026-09-08T08:21:19.515Z"
     },
     {
       "id": "mcp_tests",
@@ -152,15 +156,19 @@
         {
           "doc": "docs/ethonline-2026/SUBMISSION_DRAFT.md",
           "pattern": "`\\{\\{mcp_tests\\}\\}` \\| [^\\n]*?\\| (?<v>\\d+) / fail 0"
+        },
+        {
+          "doc": "docs/ethonline-2026/SUBMISSION_DRAFT.md",
+          "pattern": "§5 のコマンド（\\d{2}-\\d{2}: \\d+ / (?<v>\\d+) / \\d+）"
         }
       ],
       "value": "748",
-      "updatedAt": "2026-09-07T22:03:03.386Z"
+      "updatedAt": "2026-09-08T08:21:19.515Z"
     },
     {
       "id": "demo_tests",
-      "description": "examples/ethonline-2026-demo の npm test が報告する ℹ tests N（VIDEO_SCRIPT.md・SUBMISSION_DRAFT.md）。install 不要・数秒。",
-      "check": "recorded",
+      "description": "examples/ethonline-2026-demo の npm test が報告する ℹ tests N（VIDEO_SCRIPT.md・SUBMISSION_DRAFT.md）。dependencies ゼロ・node_modules 不要で、クリーンな worktree の実測 0.5 秒。だから recorded ではなく derive にして --check のたびに実走する（recorded だった 09-07〜09-08 に 8365dfd で 71→76 と実数が動き、記録値 65 が置き去りのまま緑が出続けた）。",
+      "check": "derive",
       "command": "npm test --prefix examples/ethonline-2026-demo 2>&1 | sed -n 's/^ℹ tests //p'",
       "literal": [
         {
@@ -170,18 +178,22 @@
         {
           "doc": "docs/ethonline-2026/SUBMISSION_DRAFT.md",
           "pattern": "`\\{\\{demo_tests\\}\\}` \\| [^\\n]*?\\| (?<v>\\d+) / fail 0"
+        },
+        {
+          "doc": "docs/ethonline-2026/SUBMISSION_DRAFT.md",
+          "pattern": "§5 のコマンド（\\d{2}-\\d{2}: \\d+ / \\d+ / (?<v>\\d+)）"
         }
       ],
-      "value": "65",
-      "updatedAt": "2026-09-07T22:03:03.386Z"
+      "value": "76",
+      "updatedAt": "2026-09-08T08:21:19.515Z"
     },
     {
       "id": "ab_mutations",
-      "description": "examples/ethonline-2026-ab/test-mutations.mjs の MUTATIONS 配列の本数（SKILL.md）。judge-check が走らせるのはこちらで、SDK の 40 は含まれない。",
+      "description": "examples/ethonline-2026-ab/test-mutations.mjs の MUTATIONS 配列の本数（SKILL.md）。judge-check が走らせるのはこちらで、SDK の set（id=sdk_mutations）は含まれない。",
       "check": "recorded",
       "command": "grep -cE '^ +id: \"M[0-9]+\"' examples/ethonline-2026-ab/test-mutations.mjs",
-      "value": "27",
-      "updatedAt": "2026-09-08T00:00:00.000Z"
+      "value": "25",
+      "updatedAt": "2026-09-08T08:21:19.515Z"
     },
     {
       "id": "sdk_mutations",
@@ -189,7 +201,17 @@
       "check": "recorded",
       "command": "grep -cE '^ +id: \"M[0-9]+\"' packages/sdk/test-mutations.mjs",
       "value": "42",
-      "updatedAt": "2026-09-08T00:00:00.000Z"
+      "updatedAt": "2026-09-08T08:21:19.515Z",
+      "literal": [
+        {
+          "doc": "docs/ethonline-2026/SUBMISSION_DRAFT.md",
+          "pattern": "`\\{\\{mutations\\}\\}` \\| `<!-- n:sdk_mutations -->`（`npm run refresh-numbers`） \\| 動く（\\d{2}-\\d{2} 記録値 (?<v>\\d+)）"
+        },
+        {
+          "doc": "docs/ethonline-2026/SUBMISSION_DRAFT.md",
+          "pattern": "`\\{\\{mutations\\}\\}` \\| `npm run refresh-numbers` → `<!-- n:sdk_mutations -->` \\| (?<v>\\d+)【`refresh-numbers\\.json` \\d{2}-\\d{2}】"
+        }
+      ]
     }
   ]
 }

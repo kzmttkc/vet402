@@ -421,7 +421,7 @@ signer each turns tests red (7 / 2 / 3 failures). `packages/sdk/test-mutations.m
 SDK itself: <!-- n:sdk_mutations -->42<!-- /n --> mutations, all killed, ~20 s.
 
 **`npm run judge-check` does not run the SDK's set.** Its `test-mutations` step is the A/B harness's own
-set — <!-- n:ab_mutations -->27<!-- /n --> mutations in `examples/ethonline-2026-ab/test-mutations.mjs`
+set — <!-- n:ab_mutations -->25<!-- /n --> mutations in `examples/ethonline-2026-ab/test-mutations.mjs`
 (`scripts/judge-check.sh` runs `node test-mutations.mjs` in that directory). Run the SDK's set
 separately: `cd packages/sdk && node test-mutations.mjs`.
 
