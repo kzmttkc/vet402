@@ -509,3 +509,35 @@ WO の該当項目は引き取り不要です。
 - 公開本文が 1 語のまま: `curl -sL -o /dev/null -w 'http=%{http_code} ct=%{content_type} bytes=%{size_download}\n' https://vet402.com/api/health`（【実測】2026-09-09 06:5x: `http=200 ct=application/json bytes=15`・本文 `{"status":"ok"}`）
 - 経路名の閉集合: `grep -oE '"(deadline:[A-Za-z_]+|index_absent|window_not_covered|index_behind_tip|upstream_error:[A-Za-z_]+|unrecorded)"' tests/health-degradation-reason.test.ts | sort -u`
 - 新しい detail が本番に入ったか（次の非 ok 行を待つ）: `psql "$DATABASE_URL" -c "select checked_at, status, detail, latency_ms from health_snapshots where status <> 'ok' order by checked_at desc limit 5;"`（`$DATABASE_URL` は database 名 `vouch`。前項 §3 と同じ）
+
+---
+
+## 2026-09-09 08:15 ハッカソン戦略 → vet402.com セッション: **今朝 2 巡目——審査員向けの 4 面（`0e1c5d7..e3f3170` の 5 コミット）＋ README からの導線と COMMITS_EN の鮮度関門（この後の 2 コミット）**
+
+範囲は前項（`781b9d1`）の次から。**そちらの手番が要るものはありません**——本番 DB への ALTER も env の追加もありません。
+**製品本体に効くのは `src/app/ethonline/page.tsx` の追加 1 本だけ**（静的ページ。`fetch` / `process.env` / DB を読まない）。残りは docs・skills・devcontainer・scripts・tests です。
+確かめ方: `git diff --stat 0e1c5d7..e3f3170 -- src/`（【実測】2026-09-09 08:1x: `src/app/ethonline/page.tsx | 257 +` の 1 行だけ）。
+
+**決済経路について（名指し）**: `packages/sdk/src/x402-pay.ts`・`pay-or-refuse.ts`・`src/lib/observatory/*payer*`・`src/lib/db/schema.ts` は無変更。
+確かめ方: `git diff --stat 0e1c5d7..e3f3170 -- packages/sdk/src src/lib/observatory src/lib/db/schema.ts`（【実測】出力なし）。
+※ `'*pay-or-refuse*'` の glob で引くと `skills/pay-or-refuse/SKILL.md`（文書・新規）が 1 本だけ出ます。コードではありません。
+
+### 1. 本番の面に出るもの（1 件）
+
+- **`eb195c3` + `5ab4ba5` — `/ethonline` を追加。** 審査員向けの着地ページ（§1 一文の説明・§2 鍵なし 1 コマンド・§3 読む順番・§4 Continuity の開示・§5 The Graph）。`5ab4ba5` は claims ゲート（`tests/claims-registry.test.ts`・`src/app/**/page.tsx` を走査）に引っかかった未登録の絶対数を落としたもの。
+  【実測】2026-09-09 08:0x: `curl -sI https://vet402.com/ethonline | head -1` → `HTTP/2 200`
+
+### 2. 本番の面に出ないもの（4 件・全部新規ファイル）
+
+- **`3ef51db` — `docs/ethonline-2026/COMMITS_EN.md`＋`commit-titles-en.json`＋`scripts/ethonline-commits-en.mjs`**: 会期の全コミットの英語索引（`git log pre-ethonline-2026..HEAD` から導出。日本語件名 283 本の対訳を SHA キーで持つ。履歴は書き換えない）。同時に `RELEASE_NOTES_SUBMISSION.md`（提出 Release 本文の下書き。**Release はまだ切っていません**——最終コミットが確定する 09-13 に切る）
+- **`49d8b69` — `.devcontainer/devcontainer.json`**: Codespaces 1 クリック（Node 24・SKILL.md の build order を `postCreateCommand` で実行）。`https://codespaces.new/kzmttkc/vet402?quickstart=1`
+- **`e3f3170` — `skills/pay-or-refuse/SKILL.md`（Agent Skill）＋`.claude-plugin/plugin.json`＋`.mcp.json`（Claude Code plugin）**: The Graph の "AI Tooling" 賞の参照先（graphprotocol/subgraphs-skills）と同じ形。`.mcp.json` は `npx -y @vet402/mcp-server` を `VOUCH_API_URL=https://vet402.com/api/v1` で起動する宣言。理由コード表は `tests/agent-skill-plugin.test.ts` が SDK / MCP の定数から導出して突き合わせる（写しを正典にしない）
+- **この後の 2 コミット（件名で示す・SHA は push 後に `git log --format='%h %s' e3f3170..origin/main` で）**:
+  1. `docs(readme): link the four judge-facing doors …` — README §ETHOnline 2026 に「Start here」4 行（`/ethonline`・`COMMITS_EN.md`・Codespaces バッジ・Skill/plugin）＋本項
+  2. `feat(commits-en): freshness gate …` — **`--check` が本体の鮮度を見ていなかった**（HEAD 321 件・ファイル 318 件で緑）のを直した。`Generated` 行の SHA から描き直して突き合わせ、その SHA 以後にファイルを再生成していないコミットがあれば赤。`tests/ethonline-commits-en.test.ts` が root `npm test` で走るので **push-main の root npm test と CI の test ジョブ（fetch-depth: 0）で毎回検査**。`judge-check.sh` には入れていません（CI の judge-check ジョブは depth 1 でタグが無い）。**運用上の帰結: fetch+rebase の後に `node scripts/ethonline-commits-en.mjs` を打って commit しないと root npm test が赤**（refresh-numbers と同じ作法）。冒頭に「Claimed, by day」（日別 ✔ 件数＋差分行数の大きい claimed 3 件）を置き、全件表は `<details>` に畳んだ
+
+### 確かめ方（読み取りだけ）
+
+- 件数: `git log --format='%h' 0e1c5d7..e3f3170 | wc -l` → 5
+- 鮮度関門: `node scripts/ethonline-commits-en.mjs --check; echo $?` → 末尾 `file fresh, 0 problem(s)`・exit 0
+- README の導線: `grep -n "Start here" README.md`

@@ -62,6 +62,13 @@ Who wrote the code, by area and representative file — and what the human did: 
 [`docs/ethonline-2026/PROMPTS/`](./docs/ethonline-2026/PROMPTS/). The payment gate itself:
 [`SKILL.md`](./SKILL.md).
 
+**Start here** — four doors, all reachable from this page:
+
+- <https://vet402.com/ethonline> — the judge's landing page: one command to run, what to read in which order, the continuity disclosure, The Graph.
+- [`docs/ethonline-2026/COMMITS_EN.md`](./docs/ethonline-2026/COMMITS_EN.md) — every commit in the window in English, derived from `git log pre-ethonline-2026..main` by [`scripts/ethonline-commits-en.mjs`](./scripts/ethonline-commits-en.mjs) (✔ marks what we claim; `--check` fails if the file is not what the script produces).
+- [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/kzmttkc/vet402?quickstart=1) — one click: Node 24 with SKILL.md's build order already run ([`.devcontainer/devcontainer.json`](./.devcontainer/devcontainer.json)), so `npm run judge-check` works as written.
+- [`skills/pay-or-refuse/SKILL.md`](./skills/pay-or-refuse/SKILL.md) (Agent Skill) and [`.claude-plugin/plugin.json`](./.claude-plugin/plugin.json) (Claude Code plugin) — the same gate, packaged the way The Graph's own skills repositories are.
+
 **Try it** (clean clone; the first line needs no API key):
 
 - `npm run judge-check` — one command from the repo root: sdk → mcp-server → demo → root `npm ci` → A/B harness, every test, exit codes recorded per step (`scripts/judge-check.sh`).
