@@ -253,7 +253,7 @@ WO の該当項目は引き取り不要です。
 
 ---
 
-## 2026-09-08 17:50 ハッカソン戦略 → vet402.com セッション: **09-08 夕方の 4 コミットが main に入りました（`ae82baf`〜`f53a887`・CI 緑）**
+## 2026-09-08 17:48 ハッカソン戦略 → vet402.com セッション: **09-08 夕方の 4 コミットが main に入りました（`ae82baf`〜`f53a887`・CI 緑）**
 
 4 件は独立です。**効くのは 2 番目（`bfc16bb`・SDK の判定の読み方）と 1 番目（`ae82baf`・`dist/` に英語が入った）**。
 13:2x の 3 コミット（`d72c3b8` / `ed411bf` / `8365dfd`）は本ファイル 09-08 14:10 の項で申し送り済みです。
@@ -319,14 +319,21 @@ WO の該当項目は引き取り不要です。
 - **なぜ**: 2026-09-08 の `8365dfd` で demo が 71 → 76 になったのに記録値 65 が置き去りで、
   `--check` は「✔ 12 number(s) consistent」と**緑を出し続けていた**。記録値と文書が両方古ければ一致してしまう構造。
   demo は dependencies ゼロ・0.5 秒で走るので `derive` にして毎回突き合わせる
-- **そちらへの影響**: 同じ腐りを他の `recorded` でも洗い、**`ab_mutations` 27 → 25** に訂正
-  （`f7adfd0` で手書きされたまま一度も導出されていなかった）。`sdk_tests 1609` / `mcp_tests 748` /
-  `sdk_mutations 42` は実走と一致（【実測】2026-09-08 17:4x: `npm test --prefix packages/mcp-server` → `tests 748 / pass 748 / fail 0`）。**どの関門も見ていなかった `SUBMISSION_DRAFT.md` の素の数字**
+- **そちらへの影響**: `sdk_tests 1609` / `mcp_tests 748` / `sdk_mutations 42` は実走と一致
+  （【実測】2026-09-08 17:4x: `npm test --prefix packages/mcp-server` → `tests 748 / pass 748 / fail 0`）。**どの関門も見ていなかった `SUBMISSION_DRAFT.md` の素の数字**
   （§Y「178 / 65 / 65」と `{{mutations}}` の「記録値 27」）に literal を足したので、
   **今後この文書の数字を手で書き換えると `--check` が赤くなります**
 - **確かめ方**: `npm test --prefix examples/ethonline-2026-demo | grep '^ℹ'`
-  （【実測】2026-09-08 17:4x: `tests 76 / pass 76 / fail 0`）／
-  `grep -cE '^ +id: "M[0-9]+"' examples/ethonline-2026-ab/test-mutations.mjs` → **25**
+  （【実測】2026-09-08 17:4x: `tests 76 / pass 76 / fail 0`）
+- **ただし `ab_mutations` は同じコミットで 27 → 25 に「訂正」して壊しました。既に戻っています**:
+  f53a887 が使った `grep -cE '^ +id: "M[0-9]+"'` は **`M1b` / `M1c` を数えないので 27 を 25 と誤報**し、
+  その 25 が SKILL.md に載っていました。一方 `judge-check` は harness の実走で
+  `all 27 mutations killed` と印字するので、**審査員が同じコマンドを叩くと数が合わない**状態でした。
+  **2026-09-08 17:42 の `0e794d9` で 27 に戻り、数え方も `^ {4}id: "[^"]+",` に直っています**
+  （別セッションが先に拾って修正済み。id は数字で終わらない）。
+  確かめ方: `grep -cE '^ {4}id: "[^"]+",' examples/ethonline-2026-ab/test-mutations.mjs` → **27**
+  （【実測】2026-09-08 18:0x）／`bash scripts/judge-check.sh` の最終行 `all 27 mutations killed`
+  （【実測】同日 push-main 段 4）
 
 **決済経路は 4 件とも触っていません**——`src/lib/observatory/*payer*`・`packages/sdk/src/x402-pay.ts`・署名器は無変更。
 `pay-or-refuse.ts` は判定語の読み方 2 行が `verdict-shape.js` の呼び出しに替わっただけで、
