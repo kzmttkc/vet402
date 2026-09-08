@@ -774,10 +774,34 @@ DB の実数 count(settlement_verified)     1629   ← 完全一致
 
 ### 会期後に必ず直すもの（提出前には直さない・提出物には影響しない）
 
+**会期中（〜2026-09-15）に何を直すかは「受賞確率が上がるか」の一点で決める。**
+**上がらない製品完成度の改善は、直さずにこの行へ落とす**（Takeshi 2026-09-08）。
+
 | # | 中身 | なぜ提出前に直さないか |
 |---|---|---|
 | 1 | **`@vet402/mcp-server` の `dependencies` に `@vet402/sdk: "file:../sdk"` が入った**（09-05）。**このまま npm へ公開すると、利用者の `npm install` が解決できず壊れる**。公開前に版指定へ替え、SDK を先に公開する必要がある | 公開は提出後（§2 範囲外）。**審査員は npm ではなく Bazantic のホスト経由で触る**ので判定に影響しない。ただし**忘れると次の公開で全利用者が壊れる** |
 | 2 | ~~`minSubgraphReceipts` が黙って無視される~~ → **2026-09-05 に解決済み**。宣言した床は宣言した `source` が評価できなければならず、矛盾する組み合わせは通信の前に `invalid_evidence_policy` で throw する | — |
+| 3 | **応答を返した後に走る DB 書き込みが 7 箇所残っている**（09-08）。Vercel は応答を返した後にインスタンスを凍結するので、`next/server` の `after()` を通さない処理は完了しない。健全性経路の 2 本は `c7ec6f6` で直したが、同じ `void ...` の形が `v1/payees/[address]/score:40`・`v1/scores/batch:77`・`v1/agents/[agentId]/score:61`・`v1/wallets/[address]/score:32`・`dashboard/lookup:53,60`（この 6 本が `trust_events` を書く）と `v1/payments/x402:140`（スコアキャッシュの無効化・**決済経路**）に残る。共有ヘルパは `src/lib/util/after-response.ts` に在る | **`/api/v1/payees/[address]/score` はハッカソンのデモが叩く本番エンドポイント**。ライブ審査（09-15 01:00 JST）の 6 日前に顧客向け API を 7 本触るリスクが、得られるものを上回る。審査員はこの欠落を見ない（顧客ダッシュボードと成果報告の入口が読む面） |
+| 4 | **`TransferWindow.source` が計算されて捨てられている。** `src/lib/chain/transfer-window.ts` の型定義は source を「フォールバックが traffic を運んでいるのを、運用者が latency から推測せずに見えるように報告する」と書いている。しかし `src/lib/scoring/payee-engine.ts` の 2 つの呼び出し（native `:411` / erc20 `:423`）は `window.transfers` だけを使う。**どの上流（alchemy / v2 / v1）が答えたかが、どこにも残らない** | 2026-09-08 の `/api/health` 断続 503 の原因究明が長引いた直接の理由だが、審査員が見る面ではない。**計器が 1 つ増えるだけで、判定は変わらない** |
+| 5 | **壁時計の期限（`withDeadline`）は凍結に対して無力。** `src/lib/util/deadline.ts:68` は `setTimeout` で期限を作るので、インスタンスが凍結している間タイマーは進まない（本番実測: 宣言 24,000ms の経路が 59,957ms を返した。実測の記載はこのファイル冒頭が唯一の箇所で、SIGSTOP による同型の再現も併記されている）。`c7ec6f6` で健全性経路は `after()` に載せたが、**同じ壁時計の期限は他の経路でも使われている**。全経路の棚卸しが要る | 時間予算の設計を会期中に広く触るのは、ライブ審査前に取るリスクとして大きすぎる |
+
+`#3` の 7 箇所（このコマンドの出力そのまま。`refundRateLimitUnits` は応答後ではないので除く）:
+
+```
+$ git grep -n "void persist\|void invalidateScoreCache" -- src/app/api | sort
+src/app/api/dashboard/lookup/route.ts:53:      void persistScoreResult(auth.ctx.apiKeyId, result).catch((error) =>
+src/app/api/dashboard/lookup/route.ts:60:    void persistPayeeScoreResult(auth.ctx.apiKeyId, result).catch((error) =>
+src/app/api/v1/agents/[agentId]/score/route.ts:61:    void persistScoreResult(auth.ctx.apiKeyId, result).catch((error) =>
+src/app/api/v1/payees/[address]/score/route.ts:40:    void persistPayeeScoreResult(auth.ctx.apiKeyId, result).catch((error) =>
+src/app/api/v1/payments/x402/route.ts:140:      void invalidateScoreCacheForListChange(wallet).catch((error) =>
+src/app/api/v1/scores/batch/route.ts:77:        void persistScoreResult(auth.ctx.apiKeyId, score).catch((error) =>
+src/app/api/v1/wallets/[address]/score/route.ts:32:    void persistScoreResult(auth.ctx.apiKeyId, result).catch((error) =>
+```
+
+**`#3` の欠落の信号は、証拠ではない。** 09-08 の調査は「同一 api_key・同一 period で
+`api_usage` と `trust_events` の行数が 2026-08 は一致し 2026-09 は乖離する」と報告した。
+**この行では再測していない。** 会期後に着手するときは、まず本番 DB でその 2 つの件数を
+自分で引き直すこと（凍結以外の原因でも同じ乖離は出る）。
 
 **提出物で history を引用してよい。ただし `coverageFrom` と `recomputeWindowDays` を必ず添える**
 （「直近14日は毎回再計算し、それより古い日は backfill するまで凍結」が応答の `semantics` に書いてある。
