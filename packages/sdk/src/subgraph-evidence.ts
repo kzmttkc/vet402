@@ -1,4 +1,35 @@
 /**
+ * Reads The Graph's x402 Base subgraph as a **second, independent source of evidence**.
+ * (English header for judges. The Japanese block below is the same content in our working
+ * language. Canon: `docs/ethonline-2026/WINDOW_PLAN.md` §15, `GRAPH_EVIDENCE.md`,
+ * `DESIGN_payOrRefuse.md` §3.5.)
+ *
+ * Why it exists: until this, the evidence behind `payOrRefuse` was **vet402's own L1 ledger**
+ * and nothing else, which asks the buyer to trust vet402 — against our own rule that the
+ * instrument must be doubted. Select the subgraph as the evidence source and the evidence floor
+ * is met **without reading one row of our ledger**: only raw Graph data the caller pulled with
+ * the caller's own key.
+ *
+ * **The API key comes from the caller** (`policy.evidence.graphApiKey`). Embedding ours in the
+ * SDK would destroy the claim that you need not trust vet402 — the data would still be coming
+ * through our mouth. With no key we take the keyless path, the Gateway refuses, and we fail
+ * closed.
+ *
+ * Measured against the production Gateway on 2026-09-05:
+ *   1. Send a `user-agent`. §15 records Cloudflare answering 1010/403 without one; that day it
+ *      answered 200 without one as well (reported). No reason to drop it, so we send it.
+ *   2. Lower-case the address.
+ *   3. Do not use the singular address-summary field: its id is a synthetic value with a
+ *      `0x01000000` prefix. Query the plural form with a `where` filter.
+ *   4. Filter on the RECIPIENT role. One address holds both payer and recipient rows (measured
+ *      on one address: 12,376,084 recipient against 11,540,523 payer). Summing without the
+ *      filter mixes "times paid" and "times received" into a single number.
+ *   5. **With no key the Gateway answers HTTP 200 carrying GraphQL errors, not 403**
+ *      (`auth error: missing authorization header`). Code that only checks that the response
+ *      was ok reads this as success, counts zero rows, and refuses for the wrong reason. Look
+ *      at the shape of both `errors` and `data`: if we could not read it, say we could not.
+ */
+/**
  * The Graph の x402 Base subgraph を、**第2の証拠源**として読む。
  *
  * 正典: `docs/ethonline-2026/WINDOW_PLAN.md` §15（動く問い合わせと落とし穴）、

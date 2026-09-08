@@ -1,5 +1,16 @@
 #!/usr/bin/env node
 /**
+ * The CLI **actually shown on camera** in the ETHOnline 2026 demo (WINDOW_PLAN §6, at
+ * 0:45-1:15 / 1:15-1:30 / 1:30-2:05). (English header for judges. The Japanese block below is
+ * the same content in our working language; the usage text further down is already English.)
+ *
+ * Keys are read from the environment and nowhere else (`GRAPH_API_KEY`, `VOUCH_API_KEY` which
+ * is optional, and `DEMO_PAYER_PRIVATE_KEY`). As of 2026-09-07 production `/decision` answers
+ * without a key (10 per minute per IP), so this runs with no `VOUCH_API_KEY` at all. Every line
+ * of output passes through `./emit.ts`, which is where secrets are redacted — **this screen is
+ * on camera.**
+ */
+/**
  * ETHOnline 2026 のデモで**実際に映す CLI**（WINDOW_PLAN §6 の 0:45–1:15 / 1:15–1:30 / 1:30–2:05）。
  *
  *   node src/run.ts refuse          2つの独立した源を並べて、署名の前に拒む

@@ -1,4 +1,22 @@
 /**
+ * **A thin bridge that hands the agent Bazantic Gateway's MCP as tools it can actually call.**
+ * (English header for judges. The Japanese block below is the same content in our working
+ * language.)
+ *
+ * Until 2026-09-06 this harness fired a single `messages.create` and gave the model **neither
+ * tools nor network**. The Gateway URL sat in the prompt as a string and **MCP was not on the
+ * path at all** — which is to say the harness was not demonstrating the core of the prize's own
+ * question ("Show us it can be done using Bazantic built MCP server and recipe").
+ *
+ * We do not use the official SDK, to keep `examples/` free of added dependencies. We implement
+ * only the three moves of MCP Streamable HTTP this use needs — initialize, the initialized
+ * notification, then tools/list and tools/call — and nothing beyond them.
+ *
+ * **`fetch` is injectable.** That is how the tests pin the exact JSON-RPC being sent in an
+ * environment with no key and no network (`test/mcp.test.mjs`). **That test session never calls
+ * the real MCP.**
+ */
+/**
  * **Bazantic Gateway の MCP を、エージェントが実際に呼べる道具として渡すための薄い橋。**
  *
  * 2026-09-06 まで、このハーネスは `messages.create` を1発叩くだけで、**ツールもネットワークも

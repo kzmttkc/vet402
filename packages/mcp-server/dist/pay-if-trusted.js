@@ -1,4 +1,42 @@
 /**
+ * `pay_if_trusted` — the same gate as `payOrRefuse`, exposed as an MCP tool (new in this
+ * window). (English header for judges. The Japanese block below is the same content in our
+ * working language. Canon: `docs/ethonline-2026/WINDOW_PLAN.md` §2 #2, §4 item 21, §14 /
+ * §14.1 / §14.3. Contract tests: `packages/mcp-server/test/pay-if-trusted.test.mjs`, G21a-c.)
+ *
+ * **One thing separates it from the existing read-only `check_resource_decision`** (shipped
+ * 2026-09-02): that one returns a verdict and leaves the paying to the caller. This one
+ * **holds the signer** — if the verdict is not ALLOW, the payment module is **not even
+ * evaluated**.
+ *
+ * The order of judgement. It stops at the first failure:
+ *   1. Caller errors (a resourceId that is not 64 hex characters, no injected fetch) throw. No
+ *      decision is fetched.
+ *   2. `GET /resources/{id}/decision?role=payer`. Unreadable refuses — silence is not ALLOW.
+ *      A 404 not-found (not in the catalogue, §3.1) is the exception: if a resource URL that
+ *      returns a 402 was supplied, pass it through to step 5 and let the SDK judge on the 402's
+ *      payTo, the payee score and the declared floors (I23, 2026-09-06). A 404 with no resource
+ *      URL has nothing to judge on, so it refuses as before.
+ *   3. Degraded refuses. A recommendation other than ALLOW refuses. **The server's own reason
+ *      codes are passed straight through.** (An uncatalogued resource has no decision body, so
+ *      this step is skipped; a BLOCK or degraded payee score is held by step 3' of the SDK.)
+ *   4. Even on ALLOW, refuse when there is no payment target — payee, resource or amount.
+ *   5. Only when all of the above pass: **dynamically import** the SDK and call `payOrRefuse`.
+ *
+ * **Why hand the paying to `payOrRefuse` instead of writing it here.** Fetching the 402
+ * challenge, matching payTo, the money gate, the EIP-3009 signature, the re-send to the seller,
+ * the receipt in the response headers and the attestation are one set, corrected against the
+ * production implementation on 2026-09-05 (WINDOW_PLAN §14 / §14.2). Copied into the MCP layer,
+ * the next hole production closes would leave **this copy alone stale** — the exact failure
+ * §14.2 recorded as the thing most learned that day. So we call it rather than copy it.
+ *
+ * **Why the decision is fetched twice** (once here, once inside `payOrRefuse`). An MCP tool must
+ * be able to return, machine-readably, which reason code kept the server from saying ALLOW —
+ * even before it knows any payment target at all (G21a and G21c call it in exactly that shape).
+ * The gate that actually guards the signer, meanwhile, is inside `payOrRefuse`. Drop either one
+ * and the other gets weaker, so we fetch twice. A GET has no side effect.
+ */
+/**
  * `pay_if_trusted` — `payOrRefuse` と同じ関門を MCP ツールとして出す（会期中の新規）。
  *
  * 正典: `docs/ethonline-2026/WINDOW_PLAN.md` §2 #2・§4 の 21・§14/§14.1/§14.3。

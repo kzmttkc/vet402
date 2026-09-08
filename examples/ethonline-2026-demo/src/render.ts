@@ -1,4 +1,15 @@
 /**
+ * The picture. **This is what the judges read in the video** (WINDOW_PLAN §6, at 0:45-1:15 /
+ * 1:15-1:30 / 1:30-2:05). (English header for judges. The Japanese block below is the same
+ * content in our working language.)
+ *
+ * Three rules:
+ *  - **Never fill a value we failed to read with a number.** Write that we failed to read it.
+ *  - **Never truncate evidence.** The deployment CID is 46 characters; abbreviate it and the
+ *    only self-evident proof that we read live data is gone (WINDOW_PLAN §15).
+ *  - **Never carry meaning in colour.** Video compression kills colour.
+ */
+/**
  * 画。**審査員は動画でこれを読む**（WINDOW_PLAN §6 の 0:45–1:15 / 1:15–1:30 / 1:30–2:05）。
  *
  * 規律は3つ。

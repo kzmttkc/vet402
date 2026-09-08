@@ -1,4 +1,32 @@
 /**
+ * `payOrRefuse` — fetch the verdict; reach the signer only when every check has passed.
+ * (English header for judges. The Japanese block below is the same content in our working
+ * language. Canon: `docs/ethonline-2026/WINDOW_PLAN.md` §2 / §3.1 / §4. Contract tests:
+ * `packages/sdk/test/pay-or-refuse.test.mjs`.)
+ *
+ * One thing separates this from SpendGuard: SpendGuard *returns* allow/deny and the caller's
+ * wallet stack executes it. Here, on deny, **the signer is never reached** — the payment
+ * implementation lives in `./x402-pay.js` and is dynamically imported inside the ALLOW branch
+ * only.
+ *
+ * The order of judgement. It stops at the first failure:
+ *   1. Caller errors (a payee that is not a 0x address, and the like) throw: no name
+ *      resolution, no decision fetch.
+ *   2. The ceiling the caller declared is applied *before* the decision is fetched
+ *      (`price_above_ceiling`, zero requests made).
+ *   3. `GET /resources/{id}/decision?role=payer`. Unreadable, degraded, or anything other than
+ *      ALLOW refuses. 3'. A 404 not-found (the resource is not in the catalogue) hands the
+ *      judgement to the 402's payTo and the payee score for that address alone (§3.1, I23).
+ *   4. Fetch the real 402 challenge; match payTo, network, asset, scheme and amount against
+ *      both the ceiling and what the caller declared.
+ *   5. Only then: dynamically import `./x402-pay.js`, sign, **re-send to the seller**, attest.
+ *
+ * On step 5: the buyer does not call the facilitator — **the seller settles** (primary sources
+ * are in the header of `x402-pay.ts`). Until 2026-09-05 this file called the facilitator from
+ * the buyer; left that way, the live payment on 09-08 would have moved no money and recorded
+ * no reason.
+ */
+/**
  * `payOrRefuse` — 判定を引き、全部の条件を通ったときにだけ署名へ進む。
  *
  * 正典: `docs/ethonline-2026/WINDOW_PLAN.md` §2・§3.1・§4。

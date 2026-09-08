@@ -1,4 +1,27 @@
 /**
+ * x402 `exact` settlement — attach the EIP-3009 signature and **re-send the original request to
+ * the seller**. (English header for judges. The Japanese block below is the same content in our
+ * working language.)
+ *
+ * **The buyer does not call the facilitator. The seller settles** (through whichever facilitator
+ * the seller uses). All the buyer does is re-send with a signature header and read the receipt
+ * off the response headers. Two primary sources, both first-hand:
+ *   - coinbase/x402 `specs/transports-v2/http.md` (retrieved 2026-08-14) — v2 uses
+ *     PAYMENT-REQUIRED / PAYMENT-SIGNATURE / PAYMENT-RESPONSE, v1 uses X-PAYMENT and
+ *     X-PAYMENT-RESPONSE. Every one of them rides a single HTTP round trip with the seller.
+ *   - our own production code, `src/lib/observatory/l1-runner.ts` L977-1045 and
+ *     `src/lib/observatory/x402-payer.ts` — L1 has been paying for real in exactly this shape
+ *     since before 2026-09-04.
+ * Before 2026-09-05 this file called `https://x402.org/facilitator/settle` from the buyer. Left
+ * that way, the 09-08 payment to The Graph would have moved no money and recorded no reason.
+ *
+ * **This file is dynamically imported only from the ALLOW branch of `payOrRefuse`** (layer 3 of
+ * the four-layer proof in WINDOW_PLAN §4). On a refuse the module is never even evaluated, so
+ * the guarantee is structural: not "the signer was not called" but "the signer **cannot be
+ * reached**". Going back to a static import erases it, and
+ * `test/no-static-payment-import.test.mjs` walks dist's static module graph and turns red.
+ */
+/**
  * x402 `exact` の支払い実行——EIP-3009 の署名を載せて、**元のリクエストを売り手へ再送する**。
  *
  * **買い手は facilitator を呼ばない。決済するのは売り手**（が使う facilitator）であり、
