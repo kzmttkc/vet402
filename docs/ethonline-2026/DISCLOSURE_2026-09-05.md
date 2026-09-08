@@ -75,8 +75,8 @@ TZ=UTC git log --until='2026-09-04T16:00:00+00:00' --format='%h %cd %s' --date=i
 
 - `37c56db` — 2026-09-04 07:47:22 UTC — `docs/ethonline-2026/WINDOW_PLAN.md` only (+23 / −5)
 - `e668957` — 2026-09-04 08:00:42 UTC — `docs/ethonline-2026/WINDOW_PLAN.md` only (+55 / −2)
-- `ac6ec2e` — 2026-09-04 10:29:07 UTC — `feat(settlements)`: **+6 lines** in `packages/sdk/src/index.ts`,
-  plus `docs/openapi.yaml`, `scripts/settlements-rollup.ts`, `scripts/sql/2026-09-04-w15.sql` and the
+- `ac6ec2e` — 2026-09-04 10:29:07 UTC — `feat(settlements)`: **+16 lines** under `packages/sdk` (+6 in `packages/sdk/src/index.ts`,
+  +10 in the generated `packages/sdk/dist/index.d.ts`), plus `docs/openapi.yaml`, `scripts/settlements-rollup.ts`, `scripts/sql/2026-09-04-w15.sql` and the
   production code and tests behind them
 
 The wording "five minutes after the window opened" also stood in `README.md`, `AI_USAGE.md`,
