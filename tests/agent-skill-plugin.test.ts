@@ -27,13 +27,26 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PAY_REFUSE_REASONS } from "../packages/sdk/src/pay-or-refuse";
-import { REFUSE_REASONS as MCP_REFUSE_REASONS } from "../packages/mcp-server/src/pay-if-trusted";
-import { DEFAULT_API_URL as MCP_DEFAULT_API_URL } from "../packages/mcp-server/src/vouch-client";
-// @ts-expect-error — .mjs without a declaration file; main() only runs when argv[1] is the script itself.
+// main() only runs when argv[1] is the script itself, so importing is side-effect free.
 import { extractBlocks } from "../scripts/skill-live-check.mjs";
 
 const ROOT = process.cwd();
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
+
+// packages/mcp-server/src は `@vet402/sdk` を型 import しており、root の `tsc --noEmit`（CI の typecheck）
+// では解決できない（2026-09-09 に CI run 34289157020 で赤）。他の parity テストと同じく本文から引く。
+/** `export const NAME = [ "a", "b", ... ] as const;` の語を配列で返す。 */
+function constStringArray(source: string, name: string): string[] {
+  const m = new RegExp(`export const ${name} = \\[([\\s\\S]*?)\\] as const;`).exec(source);
+  assert.ok(m, `${name} が見つからない`);
+  return [...m[1].matchAll(/"([a-z0-9_]+)"/g)].map((x) => x[1]);
+}
+const MCP_REFUSE_REASONS = constStringArray(read("packages/mcp-server/src/pay-if-trusted.ts"), "REFUSE_REASONS");
+const MCP_DEFAULT_API_URL = (() => {
+  const m = /export const DEFAULT_API_URL = "([^"]+)"/.exec(read("packages/mcp-server/src/vouch-client.ts"));
+  assert.ok(m, "DEFAULT_API_URL が見つからない");
+  return m[1];
+})();
 
 const SKILL_DIR = "skills/pay-or-refuse";
 const SKILL_PATH = `${SKILL_DIR}/SKILL.md`;
