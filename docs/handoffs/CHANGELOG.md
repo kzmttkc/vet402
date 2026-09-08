@@ -458,3 +458,47 @@ WO の該当項目は引き取り不要です。
   （【実測】同時刻: 最新 2 行が `ok | scoring=ok cached; payee=ok cached | 0`、その前の 3 行は `detail` が空。
   **`detail` が入り始めたのは `2026-09-08 09:51:07 UTC`（＝ 18:51 JST）の行**で、当日 122 行のうち非 NULL は 2 行）
   ※ `$DATABASE_URL` は `.env.production.local` の値の database 名を `neondb` → `vouch` へ替えたものです（本番は `vouch`）
+
+---
+
+## 2026-09-09 06:52 ハッカソン戦略 → vet402.com セッション: **09-08 夜〜09-09 朝の 21 コミットが main に入りました（`20ba0b9`〜`781b9d1`・CI 緑）**
+
+範囲は本ファイル 09-08 19:45 の項（`3afdff6`）の**次**から `781b9d1` まで。**そちらの手番が要るものはありません**——本番 DB への ALTER も env の追加もありません（`src/lib/db/schema.ts` に差分なし・`.env.example` の追加 1 本はテスト用）。
+確かめ方: `git log --format='%h %s' 3afdff6..781b9d1 | wc -l`（【実測】2026-09-09 06:5x: **22**。うち `003e2be` は前項の記帳コミットで変更は本ファイルのみなので、そちらが読むべき変更は 21 本）。
+
+**決済経路について（名指し）**: `packages/sdk/src/pay-or-refuse.ts` に 2 コミット分の差分があります（`cd246d9`・`beac4f9`・合計 +14/-10）。中身は **関数 2 つ（`isPlainObject` / `isDecimalUnits`）の `verdict-shape.ts` への移設**と、**型 1 項目（`PayEvidencePolicy.deploymentId`）＋呼び出し 1 行の追加**だけで、判定の条件式・順序・戻り値・throw は変わっていません。`x402-pay.ts`・`src/lib/observatory/*payer*`・署名器は無変更。
+確かめ方: `git diff --stat 3afdff6..781b9d1 -- 'src/lib/observatory/*payer*' packages/sdk/src/x402-pay.ts '*pay-or-refuse*'`（【実測】src 側は `pay-or-refuse.ts` 1 本・`dist/` と test を含め 4 ファイル。`x402-pay.ts`・`*payer*` は出ません）
+
+### 1. 本番の挙動が変わったもの（vet402.com 側で把握が要る・3 件）
+
+- **`c7ec6f6` — `/api/health` の応答後処理を `after()` に載せた。** snapshot の INSERT 2 箇所（shallow / deep）を `src/lib/util/after-response.ts`（新規）の `runAfterResponse` 経由に、payee probe の stale-while-revalidate リフレッシュを `keepAliveUntilSettled` で登録。理由は本番実測——宣言上限 24,000ms の `withDeadline` が**成功側**から `payee.latencyMs=59,957ms` を返した＝ Fluid compute が応答後にインスタンスを suspend し、`void ...` の promise とタイマーが**止まっていた**（手元の SIGSTOP/SIGCONT でも 56,012ms を再現）。
+  **公開面は不変**（本文 `{status}` 1 語・HTTP コード対応・`/status` の表示。テストで固定）。**同じ `void ...` の形は他 7 箇所に残っており、会期中は触りません**（§3 の WINDOW_PLAN #3。うち `v1/payments/x402:140` は決済経路）。新 env `HEALTH_PAYEE_PROBE_TTL_MS` はテスト用の knob で、**本番には設定しないでください**
+- **`64a6eb2` — `feedback_stats_unavailable` を**立てた経路**を `health_snapshots.detail` に残す。** 09-09 01:30 JST に届いた最初の degraded 行が「どの入力が落ちたか」までしか言えなかったため。detail の形は `feedback_stats_unavailable(<reason>)` で、`<reason>` は**閉集合・可変値なし・秘密なし**:
+  `deadline:feedback_stats`（エンジン外側 3,500ms）／`deadline:getLogsChunked`（tail 走査内側 2,500ms）／`index_absent`／`window_not_covered`／`index_behind_tip`／`upstream_error:<Error のクラス名>`（message は運ばない）／`unrecorded`（flag だけ来て理由が無い＝エンジンの 5 分キャッシュに当たった回）。
+  そのために `ScoreRequestContext.onSignalDegraded?(signal, error)` を追加（health probe だけが使う・**公開レスポンスの形は不変**）。`erc8004.ts` の情報源選択は `src/lib/chain/feedback-window.ts` の `planFeedbackSources` へ移設（**判定は不変**。index が窓を覆っていても tip から遠ければ full-scan 呼び手でも degrade する 08-12 の判定そのまま）。`FLAG_TO_SIGNAL`（`x402` → `x402_stats`）で flag 名と signal 名のずれを繋いでいます。
+  **読むときの注意**: `<reason>` は detail の一部なので `shouldRecordSnapshot` の比較対象になります。ミリ秒を足すと 1 行 1 リクエストに膨らむので、数字は `latency_ms` 列の側に任せています
+- **`4c99fb2` — `/status` の文言訂正。** 「real traffic, not a fixed-interval monitor」は半分誤りだった——行を**書く**スケジュールは無いが、**呼ぶ**スケジュールはある（`scripts/smoke-production.sh` を launchd `com.kizuna.vouch-uptime-monitor` が毎時 00/30 分に実行、`/api/health` を 2 回叩く）。しかもこの呼び手は probe の memo 3 層（scoring 60s／payee 60s+SWR 10 分／engine 5 分）を確実に追い越す唯一の呼び手なので、**非 ok 行に過大に現れる**（＝ページの赤い日は「誰が叩いているか」の産物を含む）。ヘッダ・metadata・Abstract の 3 箇所を「Sampled from requests, our own half-hourly check included」の趣旨に置換し、`docs/claims.yaml` の 4 主張を根拠つきで再登録。
+  【実測】2026-09-09 06:5x: `curl -s https://vet402.com/status | grep -o 'Sampled from [^<]*'` → `Sampled from requests, our own half-hourly check included`（本番反映済み）
+
+### 2. SDK（`packages/sdk`・`dist/` も同じコミットで更新済み）
+
+- **`cd246d9` — `verdict-shape.ts` に `decisionResponseDefect` を新設、`isPlainObject` / `isDecimalUnits` を `pay-or-refuse.ts` から移設。** 第三者の反証検査が、demo の予告（`assess.ts`）と拘束力を持つ `payOrRefuse` が **78 マス中 28 マスで食い違う**ことを実測したため（`/decision` の 400/429/500/503/timeout/壊れた JSON を 404 と同じ「受取人スコアで代替」へ畳んでいた／402 の `amount` を `Number()` で読み `"1e4"` を `$0.01` と印字していた）。規則を写さず SDK の 1 本を読む形に変え、`examples/ethonline-2026-demo/test/gate-parity.test.mjs` が 78 の世界を毎回 `payOrRefuse` に流して期待値にする（正典を 2 つにしない）。修正後 A≠C 0。**`pay-or-refuse.ts` の判定は 1 つも変わっていません**（`x402-pay.ts` 不変）
+- **`beac4f9` — subgraph の deployment pin（opt-in）。** `policy.evidence.deploymentId` を渡した**ときだけ** `readSubgraphReceipts` が応答の `_meta.deployment` と照合し、違えば `graph_deployment_mismatch`、応答が deployment を名乗らなければ `graph_deployment_unverifiable` として「読めなかった」扱い（既存の `subgraph_evidence_unavailable` / `evidence_unavailable` で拒む。**`PAY_REFUSE_REASONS` に語は足していません**）。`deploymentId: ""` や非文字列は通信前に throw（「pin したのに素通り」を作らない）。**渡さなければ挙動は 1 バイトも変わりません。** demo は `--pin-deployment <id>`（`--policy subgraph|both` が要る）。
+  【一次】コミット本文の live check: x402 Base subgraph `Cb56epg3…` → deployment `QmcE24HARdXXnziPii9bWFRV6njfWW82H1RKPe5x9hBkUN`・pin 一致で 1,374 receipts ALLOW、別 id で REFUSE `subgraph_evidence_unavailable`。sdk 1615 / fail 0・変異 44 all killed
+- **`20ba0b9` — demo の `assess.ts` / `judge.ts` が `dist/verdict-shape.js` を直接 import。** `dist/index.js` の公開 API は広げていません（会期中に SDK の公開面を増やさない）。**`dist/verdict-shape.{js,d.ts}` が新たに同梱対象に入った**ので、09-08 17:48 の項（`ae82baf`）と同じ注意——次に版を上げて publish するとき初めて公開物に載ります
+
+### 3. 文書・提出面（本番の面には出ない・そちらの実測と食い違いうるものだけ）
+
+- **会期開始時刻の訂正（`109ce12` 11 ファイル＋`52fe043` 2 ファイル）**: ETHGlobal の公開スケジュールは `hacking-begins` = **2026-09-04 16:00 UTC**。審査員向け文書は全部 00:00 UTC を前提に「tag は開始 5 分後」と書いていた。**tag `pre-ethonline-2026`（`c42daca`）は動かしていません**——開始の 15h54m **前**に切られたと訂正し、主張範囲に会期前のコミットが 3 本（`37c56db`・`e668957` は WINDOW_PLAN のみ、`ac6ec2e` は `packages/sdk` 配下 +16 行＝`src/index.ts` +6・生成物 `dist/index.d.ts` +10。私の範囲の直後 `4d867cf` が「+6」を「+16」へ訂正済み）あることを `DISCLOSURE_2026-09-05.md` に再現コマンドつきで追記。**GitHub Release `pre-ethonline-2026` の本文も同旨に書き換え済み**（コミットではありません。`gh release view pre-ethonline-2026` で読めます）
+- **README（`c540c70`・`9cd334e`）**: 英語コミット規則を「09-08 20:00 JST 以降に掛かる規則」として書き直し（達成事実として書いていた。実測 09-08 の 43 本中英語 5 本）。継続性の節（`README_CONTINUITY_SECTION.md`）を実測で置換——**作業は `ethonline-2026` ブランチではなく main 直**（`pre-ethonline-2026..origin/main` 305 本）、demo の決定行は公開 `/decisions` へ流さない（09-05 決定）、`examples/ethonline-2026-agent/` は存在しない
+- **`SKILL.md`（`9f5ae5e`・`781b9d1`）**: ```bash ブロック 12 本を**全数会計**（1 行目に `expect` / `needs … expect` / `skip <理由>` が無ければ赤）。`tools/call` の JSON-RPC が複数行に折られ stdio の MCP に届いていなかった 2 本を直し、静的検査（1 行 1 JSON）を `npm test` にも足した。**`skill-live-check.yml` は `THROWAWAY_KEY` を CI に登録しない**ので `needs` 付き 2 本は CI では常に skip。`--pin-deployment` を usage に追記
+- **`LIVE_JUDGING.md`（`537e06b`・`5b10755`・`547307e`・`3eaa499`）**: §4.5「拒否が出たときの言い方」、当日リハーサルでの修正（MCP 段は `DEMO_PAYER_PRIVATE_KEY` の代わりに使い捨て鍵を子プロセス env だけに渡す・ライブ審査は **09-15 01:00 JST** 確定）、**Q17（`/status` の 09-07/08 の error 行）は「503 の帰属は未決着」に書き直し**——DB 直読みで最後の error 行は 09-08 18:25 JST、`8e165cc`（18:51 に detail 開始）と `c7ec6f6`（20:01）の**どちらのデプロイより前**に止まっており、理由つきの error 行は 0 件。09-08 の error 行は遡って説明できません
+- **`WINDOW_PLAN.md`（`9fb5901`）**: 「会期後に必ず直すもの」表に #3〜#5 を追加——#3 応答後の fire-and-forget DB 書き込み 7 箇所（6 本が `trust_events`・1 本が `v1/payments/x402` のキャッシュ無効化）、#4 `TransferWindow.source` が計算されて捨てられている、#5 壁時計の `withDeadline` は凍結に無力。**09-15 のライブ審査が終わるまで着手しません。** 会期中の規則は「受賞確率が上がるか」の一点（Takeshi 09-08）
+- **その他**: `PROMPTS/` に 09-08・09-09 の指示記録（`8589d12`）／数字の取り直し 3 本（`0b7e68c`・`5cfd356`・`d8094bc`。`refresh-numbers` の出力そのまま・手書き 0）
+
+### 確かめ方（読み取りだけ）
+
+- 件数: `git log --format='%h' 3afdff6..781b9d1 | wc -l` → 22（うち 1 本 `003e2be` は前項の記帳コミット）
+- 公開本文が 1 語のまま: `curl -sL -o /dev/null -w 'http=%{http_code} ct=%{content_type} bytes=%{size_download}\n' https://vet402.com/api/health`（【実測】2026-09-09 06:5x: `http=200 ct=application/json bytes=15`・本文 `{"status":"ok"}`）
+- 経路名の閉集合: `grep -oE '"(deadline:[A-Za-z_]+|index_absent|window_not_covered|index_behind_tip|upstream_error:[A-Za-z_]+|unrecorded)"' tests/health-degradation-reason.test.ts | sort -u`
+- 新しい detail が本番に入ったか（次の非 ok 行を待つ）: `psql "$DATABASE_URL" -c "select checked_at, status, detail, latency_ms from health_snapshots where status <> 'ok' order by checked_at desc limit 5;"`（`$DATABASE_URL` は database 名 `vouch`。前項 §3 と同じ）
