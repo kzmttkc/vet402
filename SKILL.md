@@ -437,7 +437,8 @@ If the subgraph answer carries no `_meta.block`, the reader refuses with `graph_
 # live: skip a usage synopsis — `<url>` is yours to choose, so there is nothing fixed to run
 cd examples/ethonline-2026-demo
 node src/run.ts judge <url> [--method POST] [--body '<json>'] [--policy vet402|subgraph|both] \
-                            [--min-subgraph-receipts N] [--min-l1-deliveries N] [--ceiling-usd X]
+                            [--min-subgraph-receipts N] [--min-l1-deliveries N] [--ceiling-usd X] \
+                            [--pin-deployment <id>]
 ```
 
 Same picture as `pay`, for any x402 URL you choose: 402 → `/decision` (404 = uncatalogued, the normal
@@ -445,6 +446,7 @@ case) → payee score for the 402's `payTo` → The Graph x402 Base subgraph →
 A floor >= 1 waives vet402's verdict (`requireVet402Allow=false`) exactly as `pay` does; BLOCK and
 degraded are never waived. There is no `--live` and no account: the signing module is never loaded
 (`test/judge.test.mjs` counts signer property reads — zero).
+`--pin-deployment <id>` rejects the subgraph read unless `_meta.deployment` matches that id (needs `--policy subgraph` or `both`); the two-run example and the REFUSE it produces are under "`judge <url>`" in `examples/ethonline-2026-demo/README.md`.
 
 Verified 2026-09-06 (live, keys redacted by the demo itself):
 
