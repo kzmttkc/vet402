@@ -167,6 +167,54 @@ A: *Because then the demo would only prove that our catalogue works, and real bu
 | **`/decision` の 429**（鍵なし枠 10/分） | `evidence_unavailable` | `VOUCH_API_KEY` が入っているか `env \| grep -c '^VOUCH_API_KEY='`。入っていれば起きない | — |
 | **MCP の viem／鍵で詰まる** | `payer_not_configured`（Graph を読む前に止まる・09-07 実測） | 鍵なし `tools/list`（§7）→ 7 ツール → `judge` の出力（2:30 より前に見せた）を指す | *"Without a payer this server cannot move money — by design. The evidence row you saw in `judge` is the same SDK path."* |
 
+## 4.5 拒否が出たとき（`judge` / `pay` が REFUSE を返した）
+
+**拒否は失敗ではない。** ただし「売り手が悪い」拒否と「入力が1つ読めなくて止まった」拒否は
+別のもので、**言い方を間違えると審査員に前者として伝わる**。見分けは画面の語でつく。
+
+**見分け方（実際の出力の形）**——関門行の `—` の後ろを読む。
+
+| 画面に出る語 | 意味 | 理由コード |
+|---|---|---|
+| `[FAIL] payee verdict is ALLOW   WARN (68) — unread inputs: native_drain, usdc_drain; not measured, never waived [payee score]` | **入力が読めなかった。**「判定が悪い」ではない | `evidence_unavailable` |
+| `… — degraded: not measured, never waived [payee score]` | 同上（源が丸ごと測れていない） | `evidence_unavailable` |
+| `… — signalsUnavailable is not a list; not measured, never waived` | 同上（サーバの応答の形が読めない） | `evidence_unavailable` |
+| `… — BLOCK is never waived` | **判定そのもの**が遮断 | `payee_recommendation_block` |
+| `[FAIL] subgraph evidence is live   not read (graph_…)` | The Graph が読めなかった（§4 の「The Graph 断」） | `subgraph_evidence_unavailable` |
+| `[FAIL] evidence floor: subgraph >= 1   0 receipts (need 1)` | 読めたうえで**床に届かない** | `insufficient_subgraph_evidence` |
+
+上の 3 行（`unread inputs` / `degraded` / `signalsUnavailable is not a list`）はどれも
+**「測れなかった」**で、`verdict from payee_score`・`reason_codes … evidence_unavailable` が続く。
+空撃ち（`pay`）の `predicted` 行も同じ語で `--live would REFUSE before signing.` と言う
+——**予告と拘束力ある関門は同じ規則を読んでいる**（`examples/ethonline-2026-demo/test/pay.test.mjs`
+「空撃ちの予告は --live の結論と一致する」が 7 つの形で固定）。
+
+**その場で言う英語**（そのまま読む）:
+
+> "This is not a failure. The gate could not read one of its inputs, so it stopped before a
+> signature could exist. It is the same path you saw in the video — the dry run, the two sources,
+> the same rule — and only the conclusion came out the other way. A missing measurement is
+> never an ALLOW."
+
+**鍵なしで審査員に見せられる 2 本**（09-08 実測・ブラウザで開くだけ。Authorization も鍵も要らない）:
+
+| URL | 09-08 実測 | 何が見えるか |
+|---|---|---|
+| `https://vet402.com/payee/<address>` | 200 · text/html · 40,049 B | その受取人の判定の頁。**部分的にしか測れていないときだけ** `Partial measurement — ETH outflow leg unmeasured · USDC outflow leg unmeasured (upstream outage)` の 1 行が出る（`src/app/payee/[address]/page.tsx`）。09-08 の The Graph の受取ウォレットは WARN で、この行は出ていない——**出ていない頁を「出る」と言わない** |
+| `https://vet402.com/status` | 200 · text/html · 46,694 B | 系全体の状態 |
+
+`https://vet402.com/api/v1/payees/<address>/score` は**使わない**——鍵なしでは **401**
+`{"error":"missing_api_key"}`（09-08 実測）。審査員の前で 401 を出すと、拒否の説明が
+「鍵が無いから落ちた」に化ける。
+
+**やらないこと**
+
+- **その場で policy を緩めて無理に通さない。** 床を下げる・`--min-subgraph-receipts` を 0 にする・
+  別の URL に差し替えて「通った画」を作る、はどれも §5 の「WARN を ALLOW にした」と同じ穴に落ちる。
+  拒否したまま、なぜ拒否したかを読む
+- **数字を言い換えない。** 画面の値をそのまま読む（§5・§6）。「たぶん一時的」「本当は通るはず」を足さない
+- 拒否を謝らない。`payee verdict` の WARN は**我々の欠損**であって売り手の落ち度ではない（§0）
+
 ## 5. 禁止事項（1 つでも触れると失うもの）
 
 | 禁止 | 理由・出典 |
