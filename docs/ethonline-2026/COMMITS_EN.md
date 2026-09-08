@@ -4,16 +4,17 @@
 
 ## How this file is made
 
-This is `git log pre-ethonline-2026..0e1c5d7` (318 commits; `0e1c5d7` was `HEAD` when generated), grouped by day in UTC and rendered by
-[`scripts/ethonline-commits-en.mjs`](../../scripts/ethonline-commits-en.mjs) — `node scripts/ethonline-commits-en.mjs` regenerates it,
-`--check` fails if any Japanese subject lacks a translation. `main` is also this product's production branch, so the window contains
-work we do **not** submit; the **Claimed** column is derived from the path filter in `README.md`:
+This is `git log pre-ethonline-2026..147d624` (329 commits), grouped by day in UTC and rendered by
+[`scripts/ethonline-commits-en.mjs`](../../scripts/ethonline-commits-en.mjs) — `node scripts/ethonline-commits-en.mjs` regenerates it;
+`--check` (run by `npm test`) fails if any Japanese subject lacks a translation, if this file is not what the script produces from the
+commit named in the **Generated** row, or if a later commit did not regenerate it. `main` is also this product's production branch, so
+the window contains work we do **not** submit; the **Claimed** column is derived from the path filter in `README.md`:
 
 ```bash
-git log pre-ethonline-2026..0e1c5d7 -- packages/sdk packages/mcp-server \
+git log pre-ethonline-2026..147d624 -- packages/sdk packages/mcp-server \
     examples/ethonline-2026-demo examples/ethonline-2026-ab \
     SKILL.md AI_USAGE.md docs/ethonline-2026    # ✔ claimed
-git log pre-ethonline-2026..0e1c5d7             # everything, ✔ and —
+git log pre-ethonline-2026..147d624             # everything, ✔ and —
 ```
 
 A commit is ✔ when it touches at least one of those paths, — otherwise. Subjects written before the English-subject rule took effect
@@ -24,14 +25,52 @@ that instant are marked **⚠ pre-window** below and listed in [`DISCLOSURE_2026
 
 | | |
 |---|---|
-| Generated | 2026-09-08 22:38:56 UTC from `0e1c5d7e6dcafcbbfcd51d6b5217080b0967d26f` |
-| Range | `pre-ethonline-2026..0e1c5d7` — **318 commits** on 5 days (UTC), 13 of them merges |
-| Claimed (✔) | **185** — touch at least one path in the filter |
-| Not claimed (—) | **133** — production work in the same days |
+| Generated | 2026-09-08 23:34:55 UTC from `147d624a8faf86fdf3b81e11905879cdbb733a8e` |
+| Range | `pre-ethonline-2026..147d624` — **329 commits** on 5 days (UTC), 13 of them merges |
+| Claimed (✔) | **187** — touch at least one path in the filter |
+| Not claimed (—) | **142** — production work in the same days |
 | Claimed but before 2026-09-04 16:00:00 UTC | **3** (⚠) |
-| Subjects translated from Japanese | **283** (English already: 35) |
+| Subjects translated from Japanese | **285** (English already: 44) |
 
-## By day (UTC), oldest first
+## Claimed, by day (UTC)
+
+Per day: how many of the day's commits are ✔, then the 3 claimed commits with the most lines changed (insertions + deletions;
+merges count 0). The full table, ✔ and — alike, is folded below.
+
+### 2026-09-04 — 11 of 87 claimed
+
+- [`ac6ec2e`](https://github.com/kzmttkc/vet402/commit/ac6ec2e330f09f3c93a9f48492a94926eee9452c) 10:29 — feat(settlements): the rollup entry points (cron, script, DDL) and fixes for downstream that broke on the 7-day window (547 lines ⚠ pre-window)
+- [`1c8667c`](https://github.com/kzmttkc/vet402/commit/1c8667ca69f2962e5722f0b719dd07bed2b85e1b) 23:52 — feat(census): expose since when the index has existed — third parties can check the real period behind a "30d" denominator (422 lines)
+- [`316ee71`](https://github.com/kzmttkc/vet402/commit/316ee7190e594a0b9a4c626f64b5b4460737266e) 23:56 — ethonline: docs(prompts): Day 1 instructions verbatim — the planning artifact the rules require (74 lines)
+
+### 2026-09-05 — 53 of 81 claimed
+
+- [`aab64de`](https://github.com/kzmttkc/vet402/commit/aab64de77e09c82ed1163825aed994ea0eb18638) 05:13 — ethonline: A/B evidence harness (runs the §16 pre-registration as written) (2595 lines)
+- [`96535a9`](https://github.com/kzmttkc/vet402/commit/96535a963c6d676774219eff1f6687d42b9224b6) 01:53 — ethonline: feat(demo): run.ts refuse / pay for the video — the default is a dry run that never reaches signing (1776 lines)
+- [`f6212eb`](https://github.com/kzmttkc/vet402/commit/f6212ebebea867f80e2c96fa3cc95a8eec6feb92) 01:53 — ethonline: feat(sdk): let the caller opt out of the vet402 verdict, and pick which 402 accept to take (1276 lines)
+
+### 2026-09-06 — 56 of 61 claimed
+
+- [`d1e4dde`](https://github.com/kzmttkc/vet402/commit/d1e4dde40d10fa4128eb400d141dda077115ddc2) 13:38 — ethonline: feat(demo): `judge <url>` — see a judge's own 402 URL in the same picture as pay and get a verdict without signing (1570 lines)
+- [`34c6b56`](https://github.com/kzmttkc/vet402/commit/34c6b56c0bbdb84b929fdbcf11a9a3c60a61a989) 00:18 — ethonline: fix(ab): condition B becomes the Bazantic Recipe, with MCP actually on the path (1217 lines)
+- [`9035a3b`](https://github.com/kzmttkc/vet402/commit/9035a3bfea32c8eed944af8c80201f8bab96bcb5) 22:21 — ethonline: feat(api): /decision accepts the caller's policy and returns caller_policy in the same words as the SDK (closes the §16.3 gap on the product side) (751 lines)
+
+### 2026-09-07 — 35 of 44 claimed
+
+- [`8633f2f`](https://github.com/kzmttkc/vet402/commit/8633f2ffc9059a56e13387919fa422c588c69480) 21:50 — ethonline: test(boundary): table of external-input surfaces × broken shapes — every combination stops before signing (the 6 audit findings' family is now a standing check) (1048 lines)
+- [`3d622f6`](https://github.com/kzmttkc/vet402/commit/3d622f66890a49e1bcfd16ca638db614dc8c433b) 00:05 — ethonline: feat(docs): make the submission's moving numbers machine-readable with markers; npm run refresh-numbers recomputes them, --check goes red on staleness (656 lines)
+- [`533526e`](https://github.com/kzmttkc/vet402/commit/533526e2aee698af05c90a21438d724d2e43c3de) 21:40 — ethonline: feat(skill-live): gate that runs SKILL.md's production blocks against production daily and goes red on any mismatch (444 lines)
+
+### 2026-09-08 — 32 of 56 claimed
+
+- [`3ef51db`](https://github.com/kzmttkc/vet402/commit/3ef51db8a502ad733bb8667719a2918e38ed2f53) 22:40 — ethonline: docs(commits): English index of every window commit, derived from git log, plus the submission Release body draft (1803 lines)
+- [`cd246d9`](https://github.com/kzmttkc/vet402/commit/cd246d92cad4078fd710d442ea70718d2f684520) 11:22 — ethonline: fix(demo): make the announced gate match the gate that fires (A≠C 28 → 0) (766 lines)
+- [`bfc16bb`](https://github.com/kzmttkc/vet402/commit/bfc16bbc80585607196cdcde498bc2a563416cb6) 07:57 — ethonline: read verdict words and quality flags through one shared rule (676 lines)
+
+## Every commit, by day (UTC), oldest first
+
+<details>
+<summary>All 329 commits — ✔ claimed and — not claimed (click to expand)</summary>
 
 ### 2026-09-04 — 87 commits, 11 claimed
 
@@ -326,7 +365,7 @@ that instant are marked **⚠ pre-window** below and listed in [`DISCLOSURE_2026
 | [`19f2488`](https://github.com/kzmttkc/vet402/commit/19f24889a581a7a573803ea6d99fd1789d8e2561) | 23:14 | ✔ | docs(ethonline): submission form opened 2026-09-08 00:06 JST (#information verbatim) — no change to deadline / judging dates / rules; video is voice without music, 720p+, 2–4 min; submitting is allowed even if the repo check fails; a public repo is required |
 | [`a309d46`](https://github.com/kzmttkc/vet402/commit/a309d46b7d765e495e93d2d5c4264c10b225b746) | 23:19 | ✔ | ethonline: docs(plan): submission option is 1 (Top Finalist & Partner Prizes) — primary facts that exist only in the email, and the decision not to drop the 3 Continuity slots |
 
-### 2026-09-08 — 45 commits, 30 claimed
+### 2026-09-08 — 56 commits, 32 claimed
 
 | SHA | UTC | Claimed | Subject (English) |
 |---|---|:---:|---|
@@ -375,3 +414,16 @@ that instant are marked **⚠ pre-window** below and listed in [`DISCLOSURE_2026
 | [`b83170b`](https://github.com/kzmttkc/vet402/commit/b83170ba57557f2b4335db385c8e05b328da322c) | 21:51 | ✔ | ethonline: docs(prompts): replace §1 of the 09-08/09-09 records with verbatim owner messages |
 | [`4d867cf`](https://github.com/kzmttkc/vet402/commit/4d867cf2e4903601c663d954d7b2c3441ba66ac1) | 21:59 | ✔ | docs(ethonline): ac6ec2e is +16 lines under packages/sdk, not +6 |
 | [`0e1c5d7`](https://github.com/kzmttkc/vet402/commit/0e1c5d7e6dcafcbbfcd51d6b5217080b0967d26f) | 22:11 | — | docs(handoffs): record 2026-09-08/09 hackathon-session changes for the product session |
+| [`3ef51db`](https://github.com/kzmttkc/vet402/commit/3ef51db8a502ad733bb8667719a2918e38ed2f53) | 22:40 | ✔ | ethonline: docs(commits): English index of every window commit, derived from git log, plus the submission Release body draft |
+| [`5ab4ba5`](https://github.com/kzmttkc/vet402/commit/5ab4ba5f3a5950ea2e3f8b7e6d0ef34c7c816691) | 22:48 | — | fix(site): /ethonline — drop unregistered absolutes so the claims gate passes |
+| [`eb195c3`](https://github.com/kzmttkc/vet402/commit/eb195c391423954a888c65247fa87b853649de8e) | 22:48 | — | feat(site): add /ethonline — the judge's landing page for ETHOnline 2026 |
+| [`49d8b69`](https://github.com/kzmttkc/vet402/commit/49d8b69917608648214656b585386f406ebd4c86) | 22:54 | — | feat(devcontainer): one-click Codespaces setup for judges (Node 24, SKILL.md build order) |
+| [`e3f3170`](https://github.com/kzmttkc/vet402/commit/e3f3170caf8ad7d8e068e731a18ecf2cdb5b8eed) | 23:01 | — | feat(skills): ship payOrRefuse as an Agent Skill and a Claude Code plugin |
+| [`74fa047`](https://github.com/kzmttkc/vet402/commit/74fa047bc20617b0835959e3c7ed673d6fe8e47d) | 23:10 | — | fix(tests): keep agent-skill gate out of root tsc's reach |
+| [`93df57e`](https://github.com/kzmttkc/vet402/commit/93df57ef8fbc0a305dac8539660a8a6915d95f4b) | 23:17 | ✔ | docs(hackathon): Discord sweep 09-09 — Bazantic turns out to have a third track prize, "Agentify a New API" (deadline and judging unchanged) |
+| [`fd33a6b`](https://github.com/kzmttkc/vet402/commit/fd33a6b23cc4b210ad22cc2d5020e0bbf406992f) | 23:18 | — | docs(handoffs): hand off the 09-09 Discord sweep — Bazantic's third track prize; deadline and judging unchanged |
+| [`030ab2e`](https://github.com/kzmttkc/vet402/commit/030ab2e6b1f2bbd36e9a2ea289f67d6136f2472a) | 23:19 | — | fix(site): /ethonline — the command above the fold, 207 vs 214 stated, link from / |
+| [`b063e9e`](https://github.com/kzmttkc/vet402/commit/b063e9e58793485a4980ec10dbf91e1621b78d8c) | 23:26 | — | fix(plugin): launch the in-repo MCP server, not npm's 0.2.0 without pay_if_trusted |
+| [`147d624`](https://github.com/kzmttkc/vet402/commit/147d624a8faf86fdf3b81e11905879cdbb733a8e) | 23:34 | — | docs(readme): link the four judge-facing doors from §ETHOnline 2026, and hand off this morning's second round |
+
+</details>

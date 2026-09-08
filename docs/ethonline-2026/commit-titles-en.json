@@ -1,6 +1,14 @@
 {
   "about": "English translations of Japanese commit subjects in pre-ethonline-2026..main, keyed by full SHA. Read by scripts/ethonline-commits-en.mjs to render docs/ethonline-2026/COMMITS_EN.md. ja must equal the commit subject verbatim (git show -s --format=%s <sha>); the script fails on a mismatch. Subjects without CJK characters need no entry. History is never rewritten; these are annotations beside it.",
   "titles": {
+    "93df57ef8fbc0a305dac8539660a8a6915d95f4b": {
+      "ja": "docs(hackathon): Discord 定期走査 09-09——Bazantic に第3トラック賞 \"Agentify a New API\" が在ることが判明（締切・審査は変更なし）",
+      "en": "docs(hackathon): Discord sweep 09-09 — Bazantic turns out to have a third track prize, \"Agentify a New API\" (deadline and judging unchanged)"
+    },
+    "fd33a6b23cc4b210ad22cc2d5020e0bbf406992f": {
+      "ja": "docs(handoffs): 09-09 Discord 走査の申し送り——Bazantic 第3トラック賞・締切と審査は変更なし",
+      "en": "docs(handoffs): hand off the 09-09 Discord sweep — Bazantic's third track prize; deadline and judging unchanged"
+    },
     "d8094bc5c52a3de1f7697f10ad8feec0c776e8cd": {
       "ja": "ethonline: chore(numbers): rebase 後の as_of を取り直す",
       "en": "ethonline: chore(numbers): re-take as_of after the rebase"
