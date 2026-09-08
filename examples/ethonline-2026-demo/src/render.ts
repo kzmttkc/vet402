@@ -18,6 +18,7 @@
  *    「live を読んだ」ことの唯一の自明な証明が消える（WINDOW_PLAN §15）
  *  - **色に意味を載せない。** 動画の圧縮で色は死ぬ
  */
+import { isDecimalUnits } from "../../../packages/sdk/dist/verdict-shape.js";
 import { MAX_WIDTH, LEFT_WIDTH, RIGHT_WIDTH, field, full, rule, twoColumns, wrap } from "./columns.ts";
 
 export { MAX_WIDTH };
@@ -390,7 +391,17 @@ function acceptColumn(view: PayView): string[] {
   return [
     ...field("scheme", a.scheme, L_LABEL, LEFT_WIDTH),
     ...field("network", a.network, L_LABEL, LEFT_WIDTH),
-    ...field("amount", `${a.amount} units = $${(Number(a.amount) / 1e6).toFixed(2)}`, L_LABEL, LEFT_WIDTH),
+    // **正規化した数を、生の値であるかのように並べない。** `Number("1e4")` は 10000 だが、
+    // 402 が言ったのは `"1e4"` であり、署名に載るのもその文字列。読めない綴りに $ を付けると、
+    // 売り手が一度も言っていない額を我々が名乗ることになる（2026-09-08 の反証検査）。
+    ...field(
+      "amount",
+      isDecimalUnits(a.amount)
+        ? `${a.amount} units = $${(Number(a.amount) / 1e6).toFixed(2)}`
+        : `${JSON.stringify(a.amount) ?? String(a.amount)} — not a decimal unit string`,
+      L_LABEL,
+      LEFT_WIDTH,
+    ),
     ...field("asset", a.asset, L_LABEL, LEFT_WIDTH),
     ...field("payTo", a.payTo, L_LABEL, LEFT_WIDTH),
     ...field("maxTimeout", `${a.maxTimeoutSeconds ?? "—"} s (seller asked)`, L_LABEL, LEFT_WIDTH),

@@ -15,7 +15,7 @@ import { readSubgraphReceipts, X402_BASE_SUBGRAPH_ID } from "../../../packages/s
 // 「署名する」と予告して金の経路が拒否した欠陥は、それが原因だった。
 // `dist/index.js`（公開面）には無いので、金の経路が読むのと同じ実装ファイルを直接引く。
 // SDK の公開 API を会期中に広げないための選択でもある（`judge.ts` 冒頭「`packages/**` を触らない」）。
-import { isBlockVerdict, scoreQualityDefect } from "../../../packages/sdk/dist/verdict-shape.js";
+import { decisionResponseDefect, isBlockVerdict, isDecimalUnits, scoreQualityDefect } from "../../../packages/sdk/dist/verdict-shape.js";
 import type { PayView } from "./render.ts";
 import {
   VET402_API,
@@ -142,11 +142,14 @@ export async function assess(options: AssessOptions): Promise<{ view: PayView; r
   } catch {
     decision = { status: null, body: null };
   }
-  const uncatalogued =
-    decision.status === 404 && (decision.body as { error?: unknown } | null)?.error === "not_found";
-  const decisionBody = decision.status !== null && decision.status >= 200 && decision.status < 300
-    ? (decision.body as DecisionBody)
-    : null;
+  // 「カタログ外」と「読めなかった」の見分けも、写さず SDK の 1 本に訊く。ここに status の
+  // 範囲を書いていたので、HTTP 429 / 500 / 壊れた JSON が 404 と同じ「受取人スコアで代替」へ
+  // 畳まれ、関門7行が全部緑のまま `would sign and send` と予告していた（2026-09-08 の反証検査で
+  // 10 マス実測。同じ入力で金の経路は `evidence_unavailable` で拒む）。
+  const decisionDefect = decisionResponseDefect(decision);
+  const uncatalogued = decisionDefect === "uncatalogued";
+  const decisionUnreadable = decisionDefect === "unreadable";
+  const decisionBody = decisionDefect === null ? (decision.body as DecisionBody) : null;
 
   // 受取人スコアは 402 の payTo で引く（SDK の I23 と同じ軸）。
   const scoreFor = typeof offeredPayTo === "string" ? offeredPayTo : target.expectedPayee;
@@ -163,12 +166,20 @@ export async function assess(options: AssessOptions): Promise<{ view: PayView; r
   const wantsSubgraph = policy.evidence.source !== "vet402";
   let subgraph: SubgraphRead | null = null;
   if (wantsSubgraph && payee !== null) {
-    subgraph = await readSubgraphReceipts({
-      address: payee,
-      fetch: net.fetch,
-      apiKey: graphApiKey,
-      subgraphId: X402_BASE_SUBGRAPH_ID,
-    });
+    // **読めなかったことは所見であって、事故ではない。** `readSubgraphReceipts` は 0x でない
+    // アドレスを呼び出し側の誤りとして throw するが、`judge` に渡る `payTo` は審査員が選んだ
+    // 売り手の申告であって我々の入力ではない。2026-09-08 まで、`payTo` が ENS 名の 402 を
+    // `judge` に渡すと審査員の画面に生スタックが出ていた。読めなかったなら、そう画に書く。
+    try {
+      subgraph = await readSubgraphReceipts({
+        address: payee,
+        fetch: net.fetch,
+        apiKey: graphApiKey,
+        subgraphId: X402_BASE_SUBGRAPH_ID,
+      });
+    } catch (error) {
+      subgraph = { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
   }
   const rawSummary = (net.subgraphRaw as { data?: { x402AddressSummaries?: unknown[] } } | undefined)?.data
     ?.x402AddressSummaries?.[0] as { role: string; totalPayments: string; totalVolumeDecimal: string } | undefined;
@@ -217,7 +228,13 @@ export async function assess(options: AssessOptions): Promise<{ view: PayView; r
   };
 
   // --- 読み取り値どうしの突き合わせ。**拘束力を持つ関門は SDK の中**にあり、ここはその予告 ---
-  const units = Number(accept?.amount);
+  // **署名に載るのは 402 の生文字列。** `Number()` は "0x10" / "1e4" / "9999.5" / " 10000 " を
+  // 上限内の数に読むので、そのまま印字すると 402 が一度も言っていない額が画に出る
+  // （2026-09-08 の反証検査: `amount: "1e4"` の 402 に対し関門行が `10000 units = $0.01`）。
+  // 受理する形は SDK の `isDecimalUnits` 1 本で決める（金の経路と同じ述語）。
+  const rawAmount = accept?.amount;
+  const readableAmount = accept !== null && isDecimalUnits(rawAmount);
+  const units = readableAmount ? Number(rawAmount) : Number.NaN;
   const gates: Gate[] = [
     gate(
       "payTo == expected",
@@ -239,8 +256,16 @@ export async function assess(options: AssessOptions): Promise<{ view: PayView; r
     ),
     gate(
       "amount <= ceiling",
-      Number.isFinite(units) ? (units / 1e6 <= target.ceilingUsd ? "pass" : "fail") : "unknown",
-      Number.isFinite(units) ? `${units} units = $${(units / 1e6).toFixed(2)}` : "402 not read",
+      accept === null ? "unknown"
+      : !readableAmount ? "fail"
+      : units > 0 && units / 1e6 <= target.ceilingUsd ? "pass"
+      : "fail",
+      accept === null ? "402 not read"
+      : !readableAmount
+        ? `${JSON.stringify(rawAmount) ?? String(rawAmount)} — not a decimal unit string; that raw value is what would be signed`
+      : units <= 0
+        ? `${units} units — a 402 that asks for nothing is not a purchase`
+        : `${units} units = $${(units / 1e6).toFixed(2)}`,
     ),
     gate(
       "EIP-712 domain is pinned USDC",
@@ -278,7 +303,11 @@ export async function assess(options: AssessOptions): Promise<{ view: PayView; r
     /** 欠陥が `partial` のとき、**どの入力が読めなかったか**を画に出すため。 */
     signals: unknown;
     label: string;
-  } | null = decisionBody
+  } | null = decisionUnreadable
+    ? // `/decision` が読めなかったのは「カタログ外だった」ではない。代わりの判定源は無い
+      // （SDK も同じくここで拒む）。受取人スコアへ畳むと、読めなかった判定が緑の行になる。
+      null
+    : decisionBody
     ? {
         recommendation: decisionBody.recommendation ?? "—",
         score: null,
@@ -351,6 +380,18 @@ export async function assess(options: AssessOptions): Promise<{ view: PayView; r
   if (challenge && accept === null) {
     gates.unshift(
       gate("no acceptable accept in 402", "fail", `${challenge.accepts.length} offered, none is Base USDC exact/eip3009`),
+    );
+  }
+  // **`/decision` が読めなかったことを、行として立てる。** 2026-09-08 の反証検査が実測した画では、
+  // HTTP 429 / 500 / 壊れた JSON のどれもこの行を持たず、落ちた理由が画のどこにも出ていなかった。
+  // 通ったときは行を出さない——**正常系の画は1文字も変えない**（提出済みの動画に映っている）。
+  if (decisionUnreadable) {
+    gates.unshift(
+      gate(
+        "/decision was readable",
+        "fail",
+        `${decision.status === null ? "not reachable" : `HTTP ${decision.status}`} — a verdict we could not read is not a verdict`,
+      ),
     );
   }
   view.gates = gates;

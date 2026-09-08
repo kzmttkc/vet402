@@ -13,7 +13,7 @@
  */
 import { DEFAULT_MAX_PER_TX_USD } from "../../../packages/sdk/dist/index.js";
 // 判定語と「測れたか」の欄の読み方。`assess.ts` の関門表・`pay-or-refuse.ts`・`spend-guard.ts` と同じ 1 本。
-import { isBlockVerdict, scoreQualityDefect } from "../../../packages/sdk/dist/verdict-shape.js";
+import { decisionResponseDefect, isBlockVerdict, isDecimalUnits, scoreQualityDefect } from "../../../packages/sdk/dist/verdict-shape.js";
 import type { PayRefuseReason } from "../../../packages/sdk/src/pay-or-refuse.ts";
 import { assess, l1Delivered, type AssessPolicy, type DecisionBody, type EvidenceSource, type Reads } from "./assess.ts";
 import type { Emitter } from "./emit.ts";
@@ -190,6 +190,9 @@ function sameAddress(a: unknown, b: unknown): boolean {
 function moneyGate(accept: Record<string, unknown>, ceilingUsd: number): ReasonCode[] | null {
   if (!isProtocolEligible(accept)) return ["chain_or_asset_mismatch"];
   if (!hasCanonicalUsdcDomain(accept)) return ["chain_or_asset_mismatch"];
+  // 署名に載るのは生文字列。`Number()` が上限内に読む "0x10" / "1e4" / "9999.5" / " 10000 " は
+  // 「いくら払うのか分からない」であって額の不一致ではない——SDK と同じ述語・同じ語で拒む。
+  if (!isDecimalUnits(accept.amount)) return ["evidence_unavailable"];
   const units = Number(accept.amount);
   if (!Number.isFinite(units) || units <= 0) return ["chain_or_asset_mismatch"];
   if (units / 1e6 > ceilingUsd) return ["price_above_ceiling"];
@@ -235,14 +238,13 @@ export function dryRunVerdict(
   });
 
   // --- 3. /decision ---
-  if (reads.decision.status === null) return refuse(["evidence_unavailable"], "decision");
-  const uncatalogued = reads.uncatalogued;
-  let decision: DecisionBody | null = null;
-  if (!uncatalogued) {
-    const s = reads.decision.status;
-    if (s < 200 || s >= 300) return refuse(["evidence_unavailable"], "decision");
-    decision = reads.decision.body as DecisionBody;
-  }
+  // 「読めた本文か」も SDK の 1 本（`decisionResponseDefect`）。ここに status の範囲を写して
+  // いたので、200 で本文が `null` / `"ok"` / `[]` / 壊れた JSON のとき、判定を読めていないまま
+  // ALLOW を出していた（2026-09-08 の反証検査で 4 マス実測）。
+  const decisionDefect = decisionResponseDefect(reads.decision);
+  if (decisionDefect === "unreadable") return refuse(["evidence_unavailable"], "decision");
+  const uncatalogued = decisionDefect === "uncatalogued";
+  const decision: DecisionBody | null = uncatalogued ? null : (reads.decision.body as DecisionBody);
   const pathReasons: string[] = uncatalogued ? ["resource_uncatalogued"] : [];
   const serverReasons = decision && Array.isArray(decision.reason_codes) ? decision.reason_codes.map(String) : [];
   const evidenceVerdictSource: VerdictSource = uncatalogued ? "payee_score" : "decision";

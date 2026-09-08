@@ -67,3 +67,58 @@ export function scoreQualityDefect(
   if (!Array.isArray(signals)) return "unreadable";
   return signals.length > 0 ? "partial" : null;
 }
+
+/**
+ * A non-null plain object? Arrays, primitives and `null` are not read as a
+ * decision body (A1). Moved here from `pay-or-refuse.ts` on 2026-09-08 so
+ * {@link decisionResponseDefect} — and through it the demo's two mirrors — asks
+ * the same question the money path asks.
+ */
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The only shape accepted as an x402 `amount`: ASCII digits only (no empty
+ * string, sign, decimal point, whitespace, `0x` or exponent).
+ *
+ * `Number()` reads `"0x10"`, `"1e4"`, `"9999.5"` and `" 10000 "` as numbers
+ * inside the ceiling, but **what gets signed is the raw string** — so a gate
+ * that measures the parsed number is measuring something the seller never
+ * offered. Moved here from `pay-or-refuse.ts` on 2026-09-08, when a refutation
+ * pass measured the demo's gate table doing exactly that `Number()` read and
+ * printing `10000 units = $0.01` for a 402 that only ever said `"1e4"`.
+ */
+export function isDecimalUnits(amount: unknown): amount is string {
+  return typeof amount === "string" && /^[0-9]+$/.test(amount);
+}
+
+/**
+ * What is wrong with a `GET /resources/{id}/decision` response, if anything?
+ *
+ *  - `"uncatalogued"` — a 404 whose body is a readable `{ error: "not_found" }`.
+ *    Not a defect: §3.1 hands the judgement to the 402's payTo and the payee
+ *    score for that address. **Every other 404 is unreadable**, and so is every
+ *    other status.
+ *  - `"unreadable"`   — not reached at all (`status: null`), not a 2xx, or a 2xx
+ *    whose body is not a plain object (broken JSON, `null`, `"ok"`, `[]`).
+ *    No verdict was read, so there is no verdict to honour.
+ *  - `null`           — a usable decision body.
+ *
+ * Written here because a 2026-09-08 refutation pass measured the demo's gate
+ * table folding 400 / 429 / 500 / 503 / timeout / broken-JSON into the *same*
+ * branch as a 404 not-found — "fall back to the payee score" — and predicting
+ * `would sign and send` on all ten, where `payOrRefuse` refuses on all ten. The
+ * branch order below mirrors that function's `/decision` read exactly, and
+ * `examples/ethonline-2026-demo/test/gate-parity.test.mjs` runs both against
+ * the same 78 worlds so they cannot drift apart again.
+ */
+export function decisionResponseDefect(
+  read: { status: number | null; body: unknown },
+): "uncatalogued" | "unreadable" | null {
+  if (read.status === null) return "unreadable";
+  if (read.status === 404 && isPlainObject(read.body) && read.body.error === "not_found") return "uncatalogued";
+  if (read.status < 200 || read.status >= 300) return "unreadable";
+  if (!isPlainObject(read.body)) return "unreadable";
+  return null;
+}

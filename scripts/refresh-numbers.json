@@ -25,8 +25,8 @@
         }
       ],
       "value": "2026-09-08",
-      "updatedAt": "2026-09-08T10:46:56.871Z",
-      "end": "2026-09-08T19:46:56+09:00"
+      "updatedAt": "2026-09-08T11:17:41.369Z",
+      "end": "2026-09-08T20:17:41+09:00"
     },
     {
       "id": "total_commits",
@@ -39,8 +39,8 @@
           "pattern": "^git rev-list --count HEAD +# (?<v>\\d+) commits \\("
         }
       ],
-      "value": "812",
-      "updatedAt": "2026-09-08T10:46:56.871Z"
+      "value": "816",
+      "updatedAt": "2026-09-08T11:17:41.369Z"
     },
     {
       "id": "ai_trailer_commits",
@@ -53,8 +53,8 @@
           "pattern": "^git log --grep='Co-Authored-By: Claude' --oneline \\| wc -l +# (?<v>\\d+) carry the AI trailer"
         }
       ],
-      "value": "682",
-      "updatedAt": "2026-09-08T10:46:56.871Z"
+      "value": "686",
+      "updatedAt": "2026-09-08T11:17:41.369Z"
     },
     {
       "id": "merge_commits",
@@ -68,7 +68,7 @@
         }
       ],
       "value": "34",
-      "updatedAt": "2026-09-08T10:46:56.871Z"
+      "updatedAt": "2026-09-08T11:17:41.369Z"
     },
     {
       "id": "no_trailer_commits",
@@ -76,7 +76,7 @@
       "check": "derive",
       "command": "echo $(( $(git rev-list --count --until='{{AS_OF_END}}' HEAD) - $(git log --grep='Co-Authored-By: Claude' --until='{{AS_OF_END}}' --oneline | wc -l) ))",
       "value": "130",
-      "updatedAt": "2026-09-08T10:46:56.871Z"
+      "updatedAt": "2026-09-08T11:17:41.369Z"
     },
     {
       "id": "window_added_files",
@@ -89,8 +89,8 @@
           "pattern": "^git diff --diff-filter=A --name-only pre-ethonline-2026\\.\\.main \\| wc -l +# (?<v>\\d+) added"
         }
       ],
-      "value": "203",
-      "updatedAt": "2026-09-08T10:46:56.871Z"
+      "value": "206",
+      "updatedAt": "2026-09-08T11:17:41.369Z"
     },
     {
       "id": "window_modified_files",
@@ -103,8 +103,8 @@
           "pattern": "^git diff --diff-filter=M --name-only pre-ethonline-2026\\.\\.main \\| wc -l +# (?<v>\\d+) modified"
         }
       ],
-      "value": "193",
-      "updatedAt": "2026-09-08T10:46:56.871Z"
+      "value": "194",
+      "updatedAt": "2026-09-08T11:17:41.369Z"
     },
     {
       "id": "sdk_tests",
@@ -134,7 +134,7 @@
         }
       ],
       "value": "1609",
-      "updatedAt": "2026-09-08T10:46:56.871Z"
+      "updatedAt": "2026-09-08T11:17:41.369Z"
     },
     {
       "id": "mcp_tests",
@@ -164,7 +164,7 @@
         }
       ],
       "value": "748",
-      "updatedAt": "2026-09-08T10:46:56.871Z"
+      "updatedAt": "2026-09-08T11:17:41.369Z"
     },
     {
       "id": "demo_tests",
@@ -185,8 +185,8 @@
           "pattern": "§5 のコマンド（\\d{2}-\\d{2}: \\d+ / \\d+ / (?<v>\\d+)）"
         }
       ],
-      "value": "86",
-      "updatedAt": "2026-09-08T10:46:56.871Z"
+      "value": "166",
+      "updatedAt": "2026-09-08T11:17:41.369Z"
     },
     {
       "id": "ab_mutations",
@@ -194,7 +194,7 @@
       "check": "recorded",
       "command": "cd examples/ethonline-2026-ab && node test-mutations.mjs 2>&1 | awk '$1==\"all\" && $3==\"mutations\" && $4==\"killed\" {print $2}'",
       "value": "27",
-      "updatedAt": "2026-09-08T10:46:56.871Z"
+      "updatedAt": "2026-09-08T11:17:41.369Z"
     },
     {
       "id": "sdk_mutations",
@@ -202,7 +202,7 @@
       "check": "recorded",
       "command": "cd packages/sdk && node test-mutations.mjs 2>&1 | awk '$1==\"all\" && $3==\"mutations\" && $4==\"killed\" {print $2}'",
       "value": "42",
-      "updatedAt": "2026-09-08T10:46:56.871Z",
+      "updatedAt": "2026-09-08T11:17:41.369Z",
       "literal": [
         {
           "doc": "docs/ethonline-2026/SUBMISSION_DRAFT.md",

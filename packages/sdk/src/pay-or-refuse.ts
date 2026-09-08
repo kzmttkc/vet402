@@ -55,7 +55,7 @@ import type { PayerAccount, X402Accept } from "./x402-pay.js";
 // `x402-pay.js` にだけ掛かる。`test/no-static-payment-import.test.mjs`）。
 import { readSubgraphReceipts, X402_BASE_SUBGRAPH_ID, type SubgraphReceipts } from "./subgraph-evidence.js";
 // 判定語と「測れたか」の欄の読み方。2つの金の経路で1つの規則を共有する（`./verdict-shape.js`）。
-import { isBlockVerdict, scoreQualityDefect } from "./verdict-shape.js";
+import { isBlockVerdict, isDecimalUnits, isPlainObject, scoreQualityDefect } from "./verdict-shape.js";
 
 export type { PayerAccount, X402Accept, X402Settlement, Eip3009Authorization } from "./x402-pay.js";
 
@@ -317,11 +317,6 @@ export type PayOrRefuseResult = {
 
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
 const USDC_DECIMALS = 6;
-
-/** 非 null の plain object か。配列・プリミティブ・null は判定本文として読まない（A1）。 */
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function sameAddress(a: unknown, b: unknown): boolean {
   return typeof a === "string" && typeof b === "string" && a.toLowerCase() === b.toLowerCase();
@@ -949,11 +944,6 @@ function evaluateMoneyGate(accept: X402Accept, maxPerTxUsd: number): PayRefuseRe
   if (!Number.isFinite(units) || units <= 0) return ["chain_or_asset_mismatch"];
   if (units / 10 ** USDC_DECIMALS > maxPerTxUsd) return ["price_above_ceiling"];
   return null;
-}
-
-/** 402 の `amount` として受理する唯一の形: ASCII の数字だけ（空・符号・小数点・空白・0x・指数は不可）。 */
-function isDecimalUnits(amount: unknown): amount is string {
-  return typeof amount === "string" && /^[0-9]+$/.test(amount);
 }
 
 /**

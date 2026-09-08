@@ -53,7 +53,7 @@ import { DEFAULT_API_URL } from "./index.js";
 // `x402-pay.js` にだけ掛かる。`test/no-static-payment-import.test.mjs`）。
 import { readSubgraphReceipts, X402_BASE_SUBGRAPH_ID } from "./subgraph-evidence.js";
 // 判定語と「測れたか」の欄の読み方。2つの金の経路で1つの規則を共有する（`./verdict-shape.js`）。
-import { isBlockVerdict, scoreQualityDefect } from "./verdict-shape.js";
+import { isBlockVerdict, isDecimalUnits, isPlainObject, scoreQualityDefect } from "./verdict-shape.js";
 /** Base メインネット。会期スコープは1チェーンだけ（WINDOW_PLAN §2「範囲外: 新チェーン」）。 */
 export const BASE_CHAIN = "eip155:8453";
 export const BASE_CHAIN_ID = 8453;
@@ -118,10 +118,6 @@ function serverReasonCodes(words) {
 }
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
 const USDC_DECIMALS = 6;
-/** 非 null の plain object か。配列・プリミティブ・null は判定本文として読まない（A1）。 */
-function isPlainObject(value) {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 function sameAddress(a, b) {
     return typeof a === "string" && typeof b === "string" && a.toLowerCase() === b.toLowerCase();
 }
@@ -715,10 +711,6 @@ function evaluateMoneyGate(accept, maxPerTxUsd) {
     if (units / 10 ** USDC_DECIMALS > maxPerTxUsd)
         return ["price_above_ceiling"];
     return null;
-}
-/** 402 の `amount` として受理する唯一の形: ASCII の数字だけ（空・符号・小数点・空白・0x・指数は不可）。 */
-function isDecimalUnits(amount) {
-    return typeof amount === "string" && /^[0-9]+$/.test(amount);
 }
 /**
  * **呼び出し側の誤りを、通信の前に落とす。**
