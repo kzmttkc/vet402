@@ -312,3 +312,77 @@ test("どの L1 分岐でも画は幅で崩れない", () => {
     }
   }
 });
+
+// 2026-09-08: `[A]` の **L0 側**も実測から導出する。直前の修正で L1 側だけを実数化したため、
+// 4 分岐のうち 3 つが `(l0_pass)` の固定文のまま残っていた。`/decision` が pass 以外を返すと、
+// すぐ上の `L0 status  fail` / `reason_codes  l0_fail` と同じ画で矛盾する——L1 で直したのと
+// **同じ欠陥が、隣の半分に残っていた**。動詞 "has SEEN" も L0 の観測を名乗るので pass 専用。
+// 語は語彙表（`src/lib/observatory/vocabulary.ts` の L0 verdicts）から取り、
+// 売り手の落ち度と読める書き方をしない（2026-09-05 決定・WINDOW_PLAN §1.5）。
+const L1_SHAPES = [
+  { n_delivered: 0, n_settled: 0, n_attempts: 0, n_inconclusive: 0 },
+  { n_delivered: 0, n_settled: 1, n_attempts: 1, n_inconclusive: 1 },
+  { n_delivered: 0, n_settled: 4, n_attempts: 4, n_inconclusive: 1 },
+  { n_delivered: 2, n_settled: 3, n_attempts: 3, n_inconclusive: 1 },
+  { n_delivered: 0, n_settled: 1, n_attempts: 1 },
+];
+
+const withL0 = (status, l1) => ({
+  ...refuseView,
+  vet402: {
+    ...refuseView.vet402,
+    reasonCodes: [`l0_${status}`, "l1_not_attempted", "l2_undeclared"],
+    l0: { ...refuseView.vet402.l0, status },
+    l1: { observed_at: null, ...l1 },
+  },
+});
+
+test("[A] の1文は L0 の実測から導出される（pass 以外の分岐で l0_pass と言わない）", () => {
+  for (const status of ["fail", "unverified"]) {
+    for (const l1 of L1_SHAPES) {
+      const line = vet402Sentence(withL0(status, l1));
+      assert.doesNotMatch(line, /l0_pass/, line);
+      // "has SEEN this seller" は L0 の観測（pass）を名乗る動詞。pass 以外では使わない。
+      assert.doesNotMatch(line, /has SEEN this seller/, line);
+      // 実測した status がそのまま機械可読な形で出る（`rules.ts` と同じ `l0_${status}`）。
+      assert.match(line, new RegExp(`\\(l0_${status}\\)`), line);
+    }
+  }
+});
+
+test("[A] の1文は L0 が pass のときだけ `has SEEN this seller (l0_pass)` と言う", () => {
+  for (const l1 of L1_SHAPES) {
+    const line = vet402Sentence(withL0("pass", l1));
+    assert.match(line, /has SEEN this seller \(l0_pass\)/, line);
+  }
+});
+
+test("[A] の1文は、L0 が pass 以外でも売り手の落ち度と読める語を使わない（09-05 決定）", () => {
+  for (const status of ["fail", "unverified"]) {
+    for (const l1 of L1_SHAPES) {
+      // `(l0_fail)` は機械可読な reason code なので残す。禁じるのは断罪の**散文**。
+      const prose = vet402Sentence(withL0(status, l1)).replace(/\(l0_[a-z]+\)/g, "");
+      assert.doesNotMatch(prose, /fail|refus|broke|scam|fraud|bad seller|unreliable|dishonest/i, prose);
+    }
+  }
+});
+
+test("L0 が pass 以外でも画は幅で崩れず、1画面に収まる", () => {
+  for (const status of ["fail", "unverified"]) {
+    for (const l1 of L1_SHAPES) {
+      const lines = renderRefuse(withL0(status, l1));
+      for (const line of lines) {
+        assert.ok(line.length <= MAX_WIDTH, `${line.length} 桁ある (l0=${status}, l1=${JSON.stringify(l1)}): ${line}`);
+      }
+      assert.ok(lines.length <= 32, `${lines.length} 行あり1画面に収まらない (l0=${status})`);
+    }
+  }
+});
+
+// `refuse.ts` は `/decision` が l0.status を返さないとき `"—"` を入れる（取れなかった印）。
+// **取れなかった値から機械可読な符号を作らない**——`(l0_—)` は語彙表にも `rules.ts` にも無い。
+test("L0 status が取れていないとき、存在しない reason code を作らない", () => {
+  const line = vet402Sentence(withL0("—", { n_delivered: 0, n_settled: 0, n_attempts: 0, n_inconclusive: 0 }));
+  assert.doesNotMatch(line, /l0_—/, line);
+  assert.match(line, /not read/i, line);
+});

@@ -102,9 +102,61 @@ export type RefuseView = {
  * 導出した長い文（167 桁）が 96 桁の枠を割った。既存の幅テストは `n_attempts: 0` の
  * 短い分岐しか通しておらず、見ていない側で壊れていた。続きは字下げして同じ文だと分かるようにする。
  */
+const SENTENCE_CONT = "    ";
+
 function sentence(text: string): string[] {
-  const [first, ...rest] = wrap(text, MAX_WIDTH - 2);
-  return [full(first), ...rest.map((line) => full("    " + line))];
+  const out: string[] = [];
+  let rest = text;
+  let indent = "";
+  while (true) {
+    // **字下げの分だけ狭く折る。** 全幅で折ってから字下げを足すと、続きの行が枠を割る
+    // （2026-09-08: `l0_unverified` の長い節で 97 桁になった。折り返しは入れたが、
+    // 折る幅に字下げを数えていなかった——見ていない分岐で同じ欠陥が残っていた）。
+    const width = MAX_WIDTH - 2 - indent.length;
+    if (rest.length <= width) {
+      out.push(full(indent + rest));
+      return out;
+    }
+    const [line] = wrap(rest, width);
+    out.push(full(indent + line));
+    // `wrap` は行末の空白を落とすので、落ちた分は残りの先頭で trim される（1文字も失わない）。
+    rest = rest.slice(line.length).trimStart();
+    indent = SENTENCE_CONT;
+  }
+}
+
+/**
+ * `[A] …` の L0 側の節。**`view.vet402.l0.status` から導出する**（2026-09-08）。
+ *
+ * 以前は 4 分岐のうち 3 つが `(l0_pass)` の固定文で、動詞 "has SEEN" も pass 専用の観測を
+ * 名乗っていた。`/decision` が pass 以外を返すと、すぐ上の `L0 status  fail` /
+ * `reason_codes  l0_fail` と同じ画で矛盾する——L1 側を実数化したのと**同じ欠陥が隣に残っていた**。
+ *
+ * 語は語彙表（`src/lib/observatory/vocabulary.ts` の L0 verdicts）から取る:
+ *  - `pass` … 402 が返り、challenge がカタログの宣言と一致した。**支払いの壁があること以上は主張しない**
+ *  - `fail` … 探査がカタログの宣言と矛盾した。**連続して落ちたときだけ公開する**（1 回では
+ *    死んだ端点と一時的な網の状態——**我々の側のものを含む**——を区別できない）
+ *  - `unverified` … pass も fail も公開する根拠がまだ無い。**失敗ではなく、失敗として数えない**
+ *
+ * どれも**売り手の落ち度と読める書き方をしない**（2026-09-05 決定・WINDOW_PLAN §1.5）。
+ * 機械可読な符号は `src/lib/decision/rules.ts` と同じく `l0_${status}` で導く（写さない）。
+ */
+const L0_PHRASE: Record<string, string> = {
+  pass: "has SEEN this seller",
+  fail: "has an unpaid probe that contradicts the catalog listing for this seller",
+  unverified: "has no published L0 verdict for this seller yet",
+};
+
+export function l0Clause(status: string): string {
+  const phrase = L0_PHRASE[status];
+  if (phrase !== undefined) return `${phrase} (l0_${status})`;
+  // 語彙表に無い値。**取れなかった値から符号を作らない**——`refuse.ts` は `/decision` が
+  // `l0.status` を返さないとき `"—"` を入れるので、素直に埋めると `(l0_—)` という
+  // `rules.ts` にも語彙表にも無い符号を画に出してしまう（`—  not read` と同じ規律）。
+  const looksLikeCode = /^[a-z][a-z_]*$/.test(status);
+  return looksLikeCode
+    ? `reports L0 status ${status} for this seller (l0_${status})`
+    : "has no L0 status to show for this seller (L0 status —  not read)";
 }
 
 /**
@@ -118,6 +170,8 @@ function sentence(text: string): string[] {
  * 決済は起きたが結論の出た応答が 0 のとき（`l1_inconclusive`）は「買っていない」でも
  * 「試していない」でもない——**我々の側の要求の形**で 2xx が返らなかった、とだけ言う。
  * 売り手の落ち度と読める書き方をしない（2026-09-05 決定・WINDOW_PLAN §1.5）。
+ *
+ * L0 側の節は `l0Clause()` が同じ規律で作る（固定文にしない）。
  */
 export function vet402Sentence(view: RefuseView): string {
   const v = view.vet402;
@@ -126,25 +180,26 @@ export function vet402Sentence(view: RefuseView): string {
   // `n_inconclusive` が無い JSON（古い `/decision`）では conclusive を作らない。
   // `settled − delivered` で導出すると、数えていない量を数えたことにしてしまう。
   const conclusive = Number.isFinite(n_inconclusive) ? n_attempts - n_inconclusive : null;
+  const l0 = l0Clause(v.l0.status);
   if (n_delivered >= 1) {
-    return `[A] has SEEN this seller and has been delivered to ${n_delivered} time(s).`;
+    return `[A] ${l0} and has been delivered to ${n_delivered} time(s).`;
   }
   if (n_attempts === 0) {
-    return "[A] has SEEN this seller (l0_pass) and has never signed a paid attempt (L1 attempts 0).";
+    return `[A] ${l0} and has never signed a paid attempt (L1 attempts 0).`;
   }
   if (conclusive === null) {
     return (
-      `[A] has SEEN this seller (l0_pass); it paid ${n_settled} time(s) with no delivery ` +
+      `[A] ${l0}; it paid ${n_settled} time(s) with no delivery ` +
       `on record (L1 delivered 0 of ${n_attempts} attempt(s)).`
     );
   }
   if (conclusive <= 0) {
     return (
-      `[A] has SEEN this seller (l0_pass); it paid ${n_settled} time(s) and every paid response ` +
+      `[A] ${l0}; it paid ${n_settled} time(s) and every paid response ` +
       "came back non-2xx from our own request shape — no delivery on record (L1 delivered 0)."
     );
   }
-  return `[A] has SEEN this seller (l0_pass) and has never been delivered to (L1 delivered 0 of ${conclusive}).`;
+  return `[A] ${l0} and has never been delivered to (L1 delivered 0 of ${conclusive}).`;
 }
 
 function vet402Column(view: RefuseView): string[] {

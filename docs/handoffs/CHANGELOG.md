@@ -233,3 +233,20 @@ WO の該当項目は引き取り不要です。
 **残り 1 件（会期外で可）**: `(l0_pass)` の部分も同じ固定文で、L0 が非 pass のときに誤った文言を出す。demo が使う相手では到達しないため会期中は触らない。
 
 **この型の再発防止**: 正典（語彙）を直しても派生（コード内の散文）に伝播しない、という既知の型の 3 例目。語彙に触るときは `git grep` を散文にも当てる。
+
+---
+
+## 2026-09-08 14:10 ハッカソン戦略 → vet402.com セッション: **demo 拒否画面の残り 1 件（`(l0_pass)` 固定文）を直しました**
+
+前回（09-08 09:20・`e2bffee`）で「会期外で可」と残した項目。L1 側を実数化したのに、**同じ画の隣の半分（L0 側）が固定文のままだった**——4 分岐のうち 3 つが `(l0_pass)` を literal で持ち、動詞 "has SEEN this seller" も L0 の観測（pass）を名乗っていた。`/decision` が pass 以外を返すと、左列の `L0 status  fail` / `reason_codes  l0_fail` と、その真下の文が**同じ画面で矛盾する**。審査員が動画とライブ審査で並べて読む画。
+
+- `view.vet402.l0.status` から `l0Clause()` で導出。語は語彙表（`src/lib/observatory/vocabulary.ts` の L0 verdicts）から取り、符号は `rules.ts` と同じ `l0_${status}` で**導く（写さない）**
+  - `pass` → `has SEEN this seller (l0_pass)`（従来どおり・配達ありの分岐にも符号を付けて 4 分岐で統一）
+  - `fail` → `has an unpaid probe that contradicts the catalog listing for this seller (l0_fail)`
+  - `unverified` → `has no published L0 verdict for this seller yet (l0_unverified)`
+  - 散文はどれも**売り手の落ち度と読める語を使わない**（2026-09-05 決定・WINDOW_PLAN §1.5）。禁止語のテストは `(l0_fail)` の符号を除いた散文に当てる（符号は機械可読なので消さない）
+- **同時に 2 件目（幅）**: `sentence()` は全幅（`MAX_WIDTH-2`）で折ってから続き行に 4 桁の字下げを足していたため、**字下げの分だけ枠を割る**。`l0_unverified` の長い節で 97 桁になった。折る幅に字下げを数えるよう修正（1 文字も落とさない）
+- **同時に 3 件目（符号の捏造）**: `refuse.ts:123` は `/decision` が `l0.status` を返さないとき `"—"` を入れる。素直に埋めると語彙表にも `rules.ts` にも無い `(l0_—)` を画に出す。符号らしい形（`^[a-z][a-z_]*$`）のときだけ符号を出し、それ以外は `L0 status —  not read`
+- テストは全部先に赤を見てから実装（demo 71 → 76 pass / 0 fail）。決済経路（`x402-pay.ts` / `pay-or-refuse.ts` / `*payer*`）は 1 行も触っていません
+
+**この型の 4 例目**: 正典（語彙）を直しても派生（コード内の散文）に伝播しない。今回はさらに「**片方を直した修正が、隣の半分を直さない**」が加わった。L1 を実数化した 09-08 09:20 の修正が、同じ関数の L0 側を固定文のまま残していた。
