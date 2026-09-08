@@ -37,7 +37,7 @@ const READING_ORDER: { n: number; label: string; href: string; why: string }[] =
     n: 2,
     label: "SKILL.md",
     href: `${REPO}/blob/main/SKILL.md#how-a-judge-can-run-it`,
-    why: "the gate itself, as commands you can paste. Every block is re-run daily against production.",
+    why: "the gate itself, as commands you can paste. Each block is re-run against production on a schedule, in CI.",
   },
   {
     n: 3,
@@ -99,7 +99,7 @@ export default function EthOnlinePage() {
           <p className="shrink-0 text-brand-deep sm:w-[10ch]">What</p>
           <p className="min-w-0 max-w-[62ch] text-brand">
             A gate an AI agent passes through <strong>before</strong> it pays an x402 endpoint it
-            has never seen. The question is not &quot;can I pay&quot; but &quot;is there evidence
+            has not seen before. The question is not &quot;can I pay&quot; but &quot;is there evidence
             this wallet delivers&quot; — and if there is none, no signature is ever created.
           </p>
         </div>
@@ -109,7 +109,7 @@ export default function EthOnlinePage() {
             It reads two sources live: vet402&apos;s own ledger of real purchases, and The
             Graph&apos;s x402 subgraph on Base. If either source cannot be read, or the evidence
             is below the caller&apos;s floor, it <strong>refuses</strong> — the signing module is
-            never even loaded. It never falls back to a cached number.
+            not even loaded. It does not fall back to a cached number.
           </p>
         </div>
         <div className="mt-4 flex flex-col gap-1 sm:flex-row sm:gap-0">
@@ -131,7 +131,7 @@ export default function EthOnlinePage() {
         </h2>
         <p className="doc-p">
           A clean clone. <code>judge-check</code> installs the SDK, the MCP server, the demo and
-          the A/B harness, runs every test, and prints one exit code per step. Any API key in
+          the A/B harness, runs the test suites, and prints one exit code per step. Any API key in
           your environment is dropped first, so a green run cannot be borrowing our credentials.
         </p>
         <CodeBlock
@@ -215,7 +215,7 @@ export default function EthOnlinePage() {
         </h2>
         <p className="doc-p">
           <strong>Recipe vs no Recipe, 10 trials each, same model, same prompt, same 57 tools.</strong>{" "}
-          Success (right verdict, and every reason code real) was <strong>5/10 and 5/10</strong> — no difference, and we say so first. What
+          Success (right verdict, and each reason code real) was <strong>5/10 and 5/10</strong> — no difference, and we say so first. What
           the Recipe did fix is vocabulary: the share of reason codes that are real vet402
           identifiers went from <strong>63% to 91%</strong> (20/32 → 29/32). That metric is
           exploratory and labelled so.
@@ -223,7 +223,7 @@ export default function EthOnlinePage() {
         <p className="doc-p">
           <strong>One finding for Bazantic itself.</strong> $0 routes still answer 402, and paying
           $0 posts a real 0-USDC transfer on chain: in 20 trials, 110 tool calls, 88 settled,{" "}
-          <strong>88 free reads cost 88 facilitator transactions</strong>. Every hash is in the raw
+          <strong>88 free reads cost 88 facilitator transactions</strong>. Each hash is in the raw
           log. Harness and results:{" "}
           <Ext href={`${REPO}/tree/main/examples/ethonline-2026-ab`}>
             examples/ethonline-2026-ab
