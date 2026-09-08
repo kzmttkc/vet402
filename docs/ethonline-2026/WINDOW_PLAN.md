@@ -203,6 +203,28 @@ Tokyo の一次情報は `ethglobal.com/events/tokyo2026` を直接見るしか�
 **ライブ審査の日付**: メールは **Monday, September 14th**（ET）。JST では 09-14 夜〜09-15 になり得る。
 **時刻は Round 1 通過メールで確定する**——それまで日付を断定しない（`TAKESHI_TODO` は 09-14〜16 を空ける形で押さえてある）。
 
+#### 【2026-09-08 09:0x 実測】提出フォームを 6 タブ埋めて保存した——実物のタブ構成と、記録と違っていた 3 点
+
+フォームは 7 タブ（Project details / Images / Tech stack / Select prizes / Video / Future / Final）。**Video を除く全部を保存済み。**
+
+| 記録していたこと | 実物（09-08 実測） |
+|---|---|
+| The Graph の枠 $5,000 | **$15,000**（Continuity Track の表示額）。Bazantic は $1,000 → **$3,000** |
+| ライブ審査は 09-14 のどこか | **09-14 12:00 pm EDT = 09-15 01:00 JST** とフォームに明記。Round 1 の判定基準も明記: *Video presentation and quality / Project live demo quality / Proper use of git commit history* |
+| リポの自動チェックで警告が出るかもしれない | **「Your repository has passed all automated checks」= 合格**。Continuity でも引っかからなかった |
+
+**フォームにあって下書きに無かった欄**: カテゴリ（Artificial Intelligence を選択）／絵文字（🚦）／Images（**Logo 512×512・Cover 16:9・スクリーンショット 3 枚以上が必須**）／Tech stack の 6 分類（The Graph・Base・TypeScript・Next.js・PostgreSQL・design tools は None）／AI 利用の自由記述／各賞の「使いやすさ 1〜10」と「開発者へのフィードバック」欄／Future（グラント紹介の希望）。
+**画像に使ったもの**: 承認済みブランドアセット `public/brand/icon-512.png`（Logo）と `public/brand/og-image.png`（Cover）、スクリーンショットは実画面の撮影（/observatory・/docs/api・GitHub リポジトリ）。**意匠は新規に作っていない。**
+**使いやすさの評価**: The Graph **8**／Bazantic **6**。どちらも根拠を同じ画面のフィードバック欄に書いた（The Graph: 402 の内部 resource URL・鍵なしが 200+errors・PAYER/RECIPIENT の混同注意。Bazantic: $0 でも 402 で 88 tx・MCP で払えない・Recipe の prompt が公開ページに出ない）。
+
+**最後の関門は Final タブのチェックボックス 1 つ**:
+> I confirm that the work I am submitting was built entirely during this hackathon and no work was completed before the event **as outlined in the Event Rules & Code of Conduct.**
+
+Continuity Track を選んでいてもこの文言が出る。**規約本文（`ethglobal.com/rules`・09-08 実読）が読み替えを明記している**:
+> If you've selected a Continuity track …, **you may build on an existing codebase according to the rules of that track.** Continuity-track submissions must clearly document what work existed before the hackathon and must include substantive new features … **In all cases, you must disclose any pre-existing work in writing to the ETHGlobal team and include full details in your submission (repo history, video, and description).**
+
+我々は 09-05 に書面で開示済み（`DISCLOSURE_2026-09-05.md`）、境界タグと導出コマンドを Description に書き、会期の新規実装は payOrRefuse ほか。**したがって末尾の「as outlined in the Event Rules」に従えばチェックは虚偽にならない**——が、**押すのは提出者本人（Takeshi）**。
+
 **リポの自動チェックは警告が出る前提で構える。** 我々は Continuity で、リポの大半が会期前のコード。
 出たら提出文の該当欄で `docs/ethonline-2026/CHANGED_FILES.md`（領域別の導出表）・`DISCLOSURE_2026-09-05.md`・
 タグ `pre-ethonline-2026` の Release を指す。**隠さず、境界を自分から出す。**
