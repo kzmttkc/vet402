@@ -62,7 +62,7 @@ export type RefuseView = {
     reasonCodes: string[];
     degraded: boolean;
     l0: { status: string; observed_at: string | null; dialect: string | null };
-    l1: { n_delivered: number; n_settled: number; n_attempts: number; observed_at: string | null };
+    l1: { n_delivered: number; n_settled: number; n_attempts: number; n_inconclusive: number; observed_at: string | null };
     scoredAt: string;
   } | null;
   subgraph: {
@@ -94,6 +94,58 @@ export type RefuseView = {
   };
   requests: string[];
 };
+
+/**
+ * 画の下段の1文（`[A] …` / `[B] …`）。**折り返す。切り詰めない。**
+ *
+ * 2026-09-08: ここは `full()` を直に呼んでいたため折り返しが効かず、L1 の実数から
+ * 導出した長い文（167 桁）が 96 桁の枠を割った。既存の幅テストは `n_attempts: 0` の
+ * 短い分岐しか通しておらず、見ていない側で壊れていた。続きは字下げして同じ文だと分かるようにする。
+ */
+function sentence(text: string): string[] {
+  const [first, ...rest] = wrap(text, MAX_WIDTH - 2);
+  return [full(first), ...rest.map((line) => full("    " + line))];
+}
+
+/**
+ * 画の下段 `[A] …` の1文。**L1 の実数から導出する**（2026-09-08）。
+ *
+ * 以前は固定文で「NEVER bought (L1 delivered 0)」と出していたため、すぐ上の
+ * `L1 delivered 0  (settled 1, tried 1)` と同じ画で矛盾していた。審査員は動画と
+ * ライブ審査でこの2行を並べて読む。
+ *
+ * `conclusive = n_attempts − n_inconclusive`（`src/lib/decision/types.ts` の定義）。
+ * 決済は起きたが結論の出た応答が 0 のとき（`l1_inconclusive`）は「買っていない」でも
+ * 「試していない」でもない——**我々の側の要求の形**で 2xx が返らなかった、とだけ言う。
+ * 売り手の落ち度と読める書き方をしない（2026-09-05 決定・WINDOW_PLAN §1.5）。
+ */
+export function vet402Sentence(view: RefuseView): string {
+  const v = view.vet402;
+  if (!v) return "[A] vet402 /decision was not read — no L1 claim is made here.";
+  const { n_delivered, n_settled, n_attempts, n_inconclusive } = v.l1;
+  // `n_inconclusive` が無い JSON（古い `/decision`）では conclusive を作らない。
+  // `settled − delivered` で導出すると、数えていない量を数えたことにしてしまう。
+  const conclusive = Number.isFinite(n_inconclusive) ? n_attempts - n_inconclusive : null;
+  if (n_delivered >= 1) {
+    return `[A] has SEEN this seller and has been delivered to ${n_delivered} time(s).`;
+  }
+  if (n_attempts === 0) {
+    return "[A] has SEEN this seller (l0_pass) and has never signed a paid attempt (L1 attempts 0).";
+  }
+  if (conclusive === null) {
+    return (
+      `[A] has SEEN this seller (l0_pass); it paid ${n_settled} time(s) with no delivery ` +
+      `on record (L1 delivered 0 of ${n_attempts} attempt(s)).`
+    );
+  }
+  if (conclusive <= 0) {
+    return (
+      `[A] has SEEN this seller (l0_pass); it paid ${n_settled} time(s) and every paid response ` +
+      "came back non-2xx from our own request shape — no delivery on record (L1 delivered 0)."
+    );
+  }
+  return `[A] has SEEN this seller (l0_pass) and has never been delivered to (L1 delivered 0 of ${conclusive}).`;
+}
 
 function vet402Column(view: RefuseView): string[] {
   const v = view.vet402;
@@ -166,8 +218,8 @@ export function renderRefuse(view: RefuseView, options?: RenderOptions): string[
   out.push(rule("-"));
   const receipts = view.subgraph?.row?.totalPayments ?? "—";
   const block = view.subgraph ? String(view.subgraph.block.number) : "—";
-  out.push(full(`[A] has SEEN this seller (l0_pass) and has NEVER bought from it (L1 delivered 0).`));
-  out.push(full(`[B] knows the same address received ${receipts} payments, as of block ${block}.`));
+  out.push(...sentence(vet402Sentence(view)));
+  out.push(...sentence(`[B] knows the same address received ${receipts} payments, as of block ${block}.`));
   out.push(full(`Two independent sources. Neither is guessing. They know different things.`));
   out.push(rule("-"));
   const o = view.outcome;

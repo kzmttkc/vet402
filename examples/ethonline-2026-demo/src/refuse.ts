@@ -128,6 +128,7 @@ export async function runRefuse(
             n_delivered: Number(decision.facts?.l1?.n_delivered ?? 0),
             n_settled: Number(decision.facts?.l1?.n_settled ?? 0),
             n_attempts: Number(decision.facts?.l1?.n_attempts ?? 0),
+            n_inconclusive: Number(decision.facts?.l1?.n_inconclusive ?? 0),
             observed_at: (decision.facts?.l1?.observed_at as string | null) ?? null,
           },
           scoredAt: String(decision.scoredAt ?? ""),

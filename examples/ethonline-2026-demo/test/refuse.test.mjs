@@ -175,3 +175,20 @@ test("VOUCH_API_KEY 無しでも refuse は走り、/decision に Authorization 
   assert.match(text, /VOUCH_API_KEY=unset \(keyless: 10\/min per IP\)/, text);
   assert.match(text, /GRAPH_API_KEY=set/);
 });
+
+// 2026-09-08: 画の下段 `[A] …` は**固定文だった**ため、`settled 1 / tried 1` の相手に
+// 「NEVER bought」と出し、すぐ上の `L1 delivered 0 (settled 1, tried 1)` と同じ画で矛盾していた。
+// 審査員は動画とライブ審査でこの2行を並べて読む。1行を L1 の実数から導出させ、それを固定する。
+test("[A] の1行は L1 の実数から導出される——settled 1 の相手に「NEVER bought」と書かない", async () => {
+  const { out } = await run();
+  const text = out.join("\n");
+  // 上の行（実数）と下の行（文）が同じ画で矛盾しない。
+  assert.match(text, /L1 delivered\s+0\s+\(settled 1, tried 1\)/, text);
+  assert.doesNotMatch(text, /never bought/i, "決済 1 件の相手を「一度も買っていない」と描いている");
+  assert.doesNotMatch(text, /never signed a paid attempt/i, "試行 1 件の相手を「未署名」と描いている");
+  // inconclusive のみ（conclusive = n_attempts − n_inconclusive = 0）のときの文。
+  assert.match(text, /\[A\] has SEEN this seller \(l0_pass\); it paid 1 time\(s\)/, text);
+  assert.match(text, /no delivery on record \(L1 delivered 0\)/, text);
+  // 売り手の落ち度と読める書き方をしない（09-05 決定・WINDOW_PLAN §1.5）。
+  assert.doesNotMatch(text, /seller (failed|refused|broke|is broken)/i, text);
+});

@@ -237,3 +237,78 @@ test("refuse の画にも env 行が出て、鍵なしは keyless と名乗る",
   const withKey = renderRefuse({ ...refuseView, envReady: { GRAPH_API_KEY: true, VOUCH_API_KEY: true } }).join("\n");
   assert.match(withKey, /VOUCH_API_KEY=set/);
 });
+
+// 2026-09-08: `[A] …` の1文は L1 の実数から導出する。4通りを表で固定して、
+// もう一度「固定文が数字と矛盾する」状態に戻れないようにする。
+import { vet402Sentence } from "../src/render.ts";
+
+const withL1 = (l1) => ({ ...refuseView, vet402: { ...refuseView.vet402, l1: { observed_at: null, ...l1 } } });
+
+test("[A] の1文は L1 の実数から導出される（4通り）", () => {
+  // 未試行
+  assert.match(
+    vet402Sentence(withL1({ n_delivered: 0, n_settled: 0, n_attempts: 0, n_inconclusive: 0 })),
+    /never signed a paid attempt \(L1 attempts 0\)/,
+  );
+  // 決済はあるが結論の出た応答が 0（conclusive = 1 − 1 = 0）——本番で観測された形
+  const inconclusive = vet402Sentence(withL1({ n_delivered: 0, n_settled: 1, n_attempts: 1, n_inconclusive: 1 }));
+  assert.match(inconclusive, /it paid 1 time\(s\)/, inconclusive);
+  assert.match(inconclusive, /no delivery on record \(L1 delivered 0\)/, inconclusive);
+  assert.doesNotMatch(inconclusive, /never bought|never signed/i, inconclusive);
+  // 結論の出た試行があり、1件も届いていない（conclusive = 4 − 1 = 3）
+  assert.match(
+    vet402Sentence(withL1({ n_delivered: 0, n_settled: 4, n_attempts: 4, n_inconclusive: 1 })),
+    /never been delivered to \(L1 delivered 0 of 3\)/,
+  );
+  // 届いている
+  assert.match(
+    vet402Sentence(withL1({ n_delivered: 2, n_settled: 3, n_attempts: 3, n_inconclusive: 1 })),
+    /has been delivered to 2 time\(s\)/,
+  );
+});
+
+test("[A] の1文は、どの分岐でも売り手の落ち度と読める語を使わない（09-05 決定）", () => {
+  for (const l1 of [
+    { n_delivered: 0, n_settled: 0, n_attempts: 0, n_inconclusive: 0 },
+    { n_delivered: 0, n_settled: 1, n_attempts: 1, n_inconclusive: 1 },
+    { n_delivered: 0, n_settled: 4, n_attempts: 4, n_inconclusive: 1 },
+    { n_delivered: 2, n_settled: 3, n_attempts: 3, n_inconclusive: 1 },
+  ]) {
+    const line = vet402Sentence(withL1(l1));
+    assert.doesNotMatch(line, /fail|refus|broke|scam|fraud|bad seller|unreliable/i, line);
+  }
+});
+
+test("n_inconclusive が欠けた JSON でも NaN を画に出さない", () => {
+  const line = vet402Sentence(withL1({ n_delivered: 0, n_settled: 1, n_attempts: 1 }));
+  assert.doesNotMatch(line, /NaN|undefined/, line);
+});
+
+// 2026-09-08（本番実走で発見）: 既存の幅テストの refuseView は `n_attempts: 0` なので
+// **短い分岐しか通っていなかった**。本番と同じ `settled 1 / tried 1 / inconclusive 1` を
+// 流すと `[A]` の行が 167 桁になり、96 桁の枠を割っていた。計器が見ていない側で壊れていた。
+test("本番と同じ L1（settled 1, tried 1, inconclusive 1）でも画は幅で崩れない", () => {
+  const live = withL1({ n_delivered: 0, n_settled: 1, n_attempts: 1, n_inconclusive: 1 });
+  const lines = renderRefuse(live);
+  for (const line of lines) {
+    assert.ok(line.length <= MAX_WIDTH, `${line.length} 桁ある: ${line}`);
+  }
+  assert.ok(lines.length <= 32, `${lines.length} 行あり1画面に収まらない`);
+  // 折り返しても1文として読める（切り詰めない）。
+  const text = lines.join("\n").replace(/\n\s+/g, " ");
+  assert.match(text, /\[A\] has SEEN this seller \(l0_pass\); it paid 1 time\(s\) and every paid response came back non-2xx from our own request shape — no delivery on record \(L1 delivered 0\)\./, text);
+});
+
+test("どの L1 分岐でも画は幅で崩れない", () => {
+  for (const l1 of [
+    { n_delivered: 0, n_settled: 0, n_attempts: 0, n_inconclusive: 0 },
+    { n_delivered: 0, n_settled: 1, n_attempts: 1, n_inconclusive: 1 },
+    { n_delivered: 0, n_settled: 4, n_attempts: 4, n_inconclusive: 1 },
+    { n_delivered: 2, n_settled: 3, n_attempts: 3, n_inconclusive: 1 },
+    { n_delivered: 0, n_settled: 1, n_attempts: 1 },
+  ]) {
+    for (const line of renderRefuse(withL1(l1))) {
+      assert.ok(line.length <= MAX_WIDTH, `${line.length} 桁ある (l1=${JSON.stringify(l1)}): ${line}`);
+    }
+  }
+});
