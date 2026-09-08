@@ -300,7 +300,10 @@ WO の該当項目は引き取り不要です。
 - **確かめ方**: `node --test packages/sdk/test/verdict-normalization.test.mjs`
   （【実測】2026-09-08 17:4x・隔離 worktree で `tests 37 / pass 37 / fail 0`。修正前は 25 本が赤で、各々 1 回署名していた）
 - SDK 全体【実測】: `npm test --prefix packages/sdk` → `tests 1609 / pass 1609 / fail 0`。
-  変異【実測】: `grep -cE '^ +id: "M[0-9]+"' packages/sdk/test-mutations.mjs` → **42**
+  変異【実測】: `grep -cE '^ {4}id: "[^"]+",' packages/sdk/test-mutations.mjs` → **42**
+  （初出でここに書いた `^ +id: "M[0-9]+"` は id が数字で終わる前提の欠陥のある数え方です。
+  SDK は id が全部数字で終わるので偶然 42 で合っていただけで、A/B では 27 を 25 と誤報しました。
+  この項の §4 と、下の 18:0x の項が同じ件を扱っています）
 
 ### 3. `f7adfd0` — 審査員がリポからは知りようがない 2 点を README / SKILL.md に書いた
 
