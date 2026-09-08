@@ -10,19 +10,38 @@ import { getStatusHistory } from "@/lib/health/snapshot";
  * /status — B5, 2026-08-15. The record of vet402's own uptime, published the
  * same way everything else on this site is: measured, not asserted.
  *
- * No fixed-interval monitor sits behind this. Vercel Hobby silently breaks
- * deploys past one cron run a day (measured 2026-07-29), so instead of a
- * schedule, GET /api/health opportunistically writes a row (at most one row
- * per 5 minutes unless the status changed). A quiet day
- * therefore has few or zero rows — this page says so rather than filling the
- * gap with an assumed 100%, the same discipline /observatory and /accuracy
- * already hold to.
+ * Nothing on a schedule WRITES these rows. Vercel Hobby silently breaks deploys
+ * past one cron run a day (measured 2026-07-29), so instead of a schedule, GET
+ * /api/health opportunistically writes a row (at most one per 5 minutes unless
+ * the status changed). A quiet day therefore has few or zero rows — this page
+ * says so rather than filling the gap with an assumed 100%, the same discipline
+ * /observatory and /accuracy already hold to.
+ *
+ * ------------------------------------------------------------------
+ * 2026-09-09 — this page used to say "sampled from real traffic, not a
+ * fixed-interval monitor". That was wrong, and the correction matters more than
+ * the error did.
+ *
+ * Nothing on a schedule writes the rows, but something on a schedule CALLS the
+ * endpoint: scripts/smoke-production.sh requests /api/health twice per run, and
+ * com.kizuna.vouch-uptime-monitor runs it on the hour and the half hour. Those
+ * requests produce rows like any other.
+ *
+ * The consequence is not cosmetic, and it runs against us. The probes memoise
+ * per running copy of the function (60s on the scoring probe, 60s + 10min
+ * stale-while-revalidate on the payee probe, and the engine's own 5 minutes
+ * underneath), so a caller arriving
+ * every few seconds mostly reads a cached verdict. The half-hourly caller is
+ * the one guaranteed to outlive all three layers and force a real measurement —
+ * so it is over-represented among the rows that are NOT ok. Calling it "real
+ * traffic" both misdescribed who was polling and quietly flattered the page.
+ * ------------------------------------------------------------------
  */
 
 export const metadata: Metadata = pageMetadata({
   title: "Status",
   description:
-    "vet402's own uptime, measured the same way everything else on this site is: real page-view samples, published as observed — no fixed-interval monitor, no assumed 100% on quiet days.",
+    "vet402's own uptime, measured the same way everything else on this site is: rows written by requests to /api/health — our own half-hourly check included — published as observed, with no assumed 100% on quiet days.",
   path: "/status",
 });
 
@@ -80,7 +99,7 @@ export default async function StatusPage() {
                 Methodology
               </Link>
             </span>
-            <span>Sampled from real traffic, not a fixed-interval monitor</span>
+            <span>Sampled from requests, our own half-hourly check included</span>
           </div>
         </div>
 
@@ -91,10 +110,13 @@ export default async function StatusPage() {
           <p className="shrink-0 text-brand-deep sm:w-[10ch]">Abstract</p>
           <p className="min-w-0 max-w-[62ch] text-brand">
             vet402&apos;s own uptime, measured the same way the rest of this site measures
-            anything: no claim without a sample behind it. There is no fixed-interval external
-            monitor here &mdash; a row is recorded from real page views, at most one every five
-            minutes unless the status changed, so a quiet day carries fewer samples and a silent
-            day carries none. <em>A missing observation is never reported as &quot;ok.&quot;</em>
+            anything: no claim without a sample behind it. Nothing on a schedule writes these
+            rows &mdash; a request to <code>/api/health</code> writes one, at most every five
+            minutes unless the status changed &mdash; so a quiet day carries fewer samples and a
+            silent day carries none. Some of those requests are ours: a production check calls
+            the endpoint on the hour and the half hour. It is the sample most likely to be red,
+            because it is the only one certain to outlive the probe&apos;s one-minute memo rather
+            than replay it. <em>A missing observation is never reported as &quot;ok.&quot;</em>
           </p>
         </div>
 

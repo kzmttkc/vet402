@@ -880,19 +880,38 @@ claims:
     verified_at: 2026-09-04
   - id: status_monitor_no_assumed_100_on
     surface: src/app/status/page.tsx
-    quote: "monitor, no assumed 100% on quiet days."
-    means: "自社の稼働率も他と同じやり方で測る（実サンプル・観測のまま公開）"
+    quote: "with no assumed 100% on quiet days."
+    means: "自社の稼働率も他と同じやり方で測る（観測のまま公開し、観測の無い日を 100% で埋めない）"
     check:
       url: https://vet402.com/api/health
       assert: "status == \"ok\""
-    verified_at: 2026-09-04
+    verified_at: 2026-09-09
   - id: status_monitor_here_a_row_is
     surface: src/app/status/page.tsx
-    quote: "monitor here &mdash; a row is recorded from real page views, at most one every five"
-    means: "標本の無い主張は出さない"
+    quote: "writes one, at most every five"
+    means: "行を書くのはリクエストであって定期実行ではない。同じ状態が続く間は 5 分に 1 行まで"
     check: null
-    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
-    verified_at: 2026-09-04
+    why_unverifiable: "書き込みの絞り込みは設計上の性質で、公開 GET は返さない。shouldRecordSnapshot（src/lib/health/snapshot.ts）と tests/health-snapshot-detail.test.ts が守る"
+    verified_at: 2026-09-09
+  # 2026-09-09 訂正。この頁は「sampled from real traffic, not a fixed-interval monitor」
+  # と書いていたが、**自前の監視が定間隔で /api/health を叩いている**。
+  # scripts/smoke-production.sh が 1 実行につき 2 回（39・42 行目）叩き、
+  # launchd の com.kizuna.vouch-uptime-monitor が毎時 00 分と 30 分に走らせている。
+  # 定期実行が「行を書く」わけではないが「呼ぶ」ので、標本には入る。
+  - id: status_our_own_half_hourly_check_is_a_sample
+    surface: src/app/status/page.tsx
+    quote: "Some of those requests are ours: a production check calls"
+    means: "この表の標本には自前の定間隔チェックが含まれる（外部の第三者監視ではなく、我々自身の呼び出し）"
+    check: null
+    why_unverifiable: "呼び出し側は当社の運用機（launchd com.kizuna.vouch-uptime-monitor が scripts/smoke-production.sh を毎時 00/30 分に実行）にあり、公開 GET からは観測できない"
+    verified_at: 2026-09-09
+  - id: status_scheduled_caller_is_over_represented_in_red
+    surface: src/app/status/page.tsx
+    quote: "the only one certain to outlive the probe&apos;s one-minute memo rather"
+    means: "30 分間隔の呼び出しだけが probe の memo を必ず超えるので、非 ok の行に偏って現れる（この頁の悪い日は我々自身の測り方の産物でもある）"
+    check: null
+    why_unverifiable: "memo の齢に依存する性質で、公開 GET は 1 語しか返さない。TTL は src/lib/health/scoring-probe.ts（PROBE_TTL_MS=60_000）と src/lib/scoring/payee-probe.ts にあり、2026-09-08 の実測（逐次 60/60 緑・同時刻の 30 分 cron が 36 回中 9 回 503）が根拠"
+    verified_at: 2026-09-09
   - id: status_a_missing_observation_is_never
     surface: src/app/status/page.tsx
     quote: "A missing observation is never reported as &quot;ok.&quot;"
