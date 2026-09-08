@@ -56,6 +56,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE_URL}/decisions`, lastModified: "2026-09-02", changeFrequency: "daily", priority: 0.6 },
     { url: `${SITE_URL}/operations`, lastModified: "2026-09-02", changeFrequency: "weekly", priority: 0.5 },
     { url: `${SITE_URL}/playground`, lastModified: "2026-09-02", changeFrequency: "monthly", priority: 0.6 },
+    // 2026-09-09: /ethonline（ETHOnline 2026 の判定者向け頁）。同日朝の公開時は内部リンク 0 で
+    // 上の規則どおり載せなかった。/ の doc-head から導線を付けたので、同じ規則で足す。
+    { url: `${SITE_URL}/ethonline`, lastModified: "2026-09-09", changeFrequency: "weekly", priority: 0.6 },
     { url: `${SITE_URL}/blog`, lastModified: SITE_REVISION, changeFrequency: "weekly", priority: 0.8 },
     {
       url: `${SITE_URL}/blog/rss.xml`,

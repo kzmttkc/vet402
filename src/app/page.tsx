@@ -232,6 +232,18 @@ export default async function Home() {
                 ) : null}
               </span>
             ))}
+            {/* 2026-09-09: ETHOnline の提出フォームは Demo URL に vet402.com を指す。判定者が
+                この頁に着いたとき /ethonline へ 1 クリックで行ける導線を Status 行の直下に置く
+                （これが /ethonline への唯一の内部リンク。sitemap.ts の規則の根拠でもある）。 */}
+            <span>
+              <Link
+                href="/ethonline"
+                className="doc-link"
+                title="The page for ETHOnline 2026 judges: one command, the documents in reading order, the disclosure"
+              >
+                ETHOnline 2026 judges →
+              </Link>
+            </span>
           </div>
           <div className="doc-head-col">
             {HEAD_RIGHT.map((row) =>

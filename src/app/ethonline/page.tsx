@@ -18,8 +18,9 @@ import { pageMetadata } from "@/lib/seo";
  * transaction below was re-read on chain (eth_getTransactionReceipt: status 0x1, block
  * 50898704) before it was written here.
  *
- * Not in sitemap.ts on purpose: the site's rule (sitemap.ts, 2026-09-02) is that a page with
- * zero internal links is not listed. Same treatment as /demo, /live and /partners.
+ * In sitemap.ts since 2026-09-09: the site's rule (sitemap.ts, 2026-09-02) is that a page with
+ * zero internal links is not listed, and this page had none on 2026-09-09 morning. The home
+ * page's doc-head now links here ("ETHOnline 2026 judges →"), so the rule says list it.
  */
 
 const REPO = "https://github.com/kzmttkc/vet402";
@@ -76,7 +77,7 @@ export default function EthOnlinePage() {
         <div className="doc-head">
           <div className="doc-head-col">
             <span>ETHOnline 2026 — Continuity track</span>
-            <span>For judges. Nothing here needs an API key.</span>
+            <span>For judges. The first command needs no key.</span>
           </div>
           <div className="doc-head-col">
             <span>vet402</span>
@@ -95,12 +96,21 @@ export default function EthOnlinePage() {
         </h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 
+        {/* 2026-09-09 検証役の指摘: 判定者が最初に欲しいのは「貼れる1行」。§1 まで
+            スクロールさせず、見出し直下に置く（1470×757 と 375×812 の初画面に入ることを
+            Playwright で実測）。§1 は同じコマンドの説明だけを持つ。 */}
+        <CodeBlock
+          className="mt-6"
+          label="run the gate without a key"
+          code={`git clone ${REPO}.git && cd vet402 && npm run judge-check`}
+        />
+
         <div className="mt-8 flex flex-col gap-1 sm:flex-row sm:gap-0">
           <p className="shrink-0 text-brand-deep sm:w-[10ch]">What</p>
           <p className="min-w-0 max-w-[62ch] text-brand">
             A gate an AI agent passes through <strong>before</strong> it pays an x402 endpoint it
             has not seen before. The question is not &quot;can I pay&quot; but &quot;is there evidence
-            this wallet delivers&quot; — and if there is none, no signature is ever created.
+            this wallet delivers&quot; — and if there is none, no signature is created.
           </p>
         </div>
         <div className="mt-4 flex flex-col gap-1 sm:flex-row sm:gap-0">
@@ -130,15 +140,11 @@ export default function EthOnlinePage() {
           <span>Run it yourself — no key, one command</span>
         </h2>
         <p className="doc-p">
-          A clean clone. <code>judge-check</code> installs the SDK, the MCP server, the demo and
-          the A/B harness, runs the test suites, and prints one exit code per step. Any API key in
-          your environment is dropped first, so a green run cannot be borrowing our credentials.
+          The command under the title, explained. A clean clone. <code>judge-check</code> installs
+          the SDK, the MCP server, the demo and the A/B harness, runs the test suites, and prints
+          one exit code per step. Any API key in your environment is dropped first, so a green run
+          cannot be borrowing our credentials.
         </p>
-        <CodeBlock
-          className="mt-4"
-          label="clone the repository and run the judge check"
-          code={`git clone ${REPO}.git && cd vet402 && npm run judge-check`}
-        />
         <p className="doc-p">
           Then the walkthrough in{" "}
           <Ext href={`${REPO}/blob/main/SKILL.md#how-a-judge-can-run-it`}>
@@ -176,8 +182,9 @@ export default function EthOnlinePage() {
           is commit <code>c42daca</code>, cut <strong>2026-09-04 00:05:36 UTC</strong>. Hacking
           began at <strong>2026-09-04 16:00 UTC</strong> (ETHGlobal&apos;s published schedule), so
           the tag sits <strong>15 h 54 min before</strong> the start. Between our application
-          (2026-08-23) and the tag we made <strong>214 commits</strong> of ordinary product work;
-          that volume was disclosed to ETHGlobal in writing on 2026-09-05. <strong>Three commits</strong>{" "}
+          (2026-08-23) and the tag we made <strong>214 commits</strong> of ordinary product work. The
+          message we sent ETHGlobal on 2026-09-05 said 207; the disclosure explains why the count
+          here is 214. <strong>Three commits</strong>{" "}
           in the range we claim were made before 16:00 UTC — their SHAs, times and contents are
           listed in the disclosure, with the command that lists them. We are not moving the tag:
           the submission and the disclosure link to it.
@@ -245,7 +252,7 @@ export default function EthOnlinePage() {
           <Link href="/observatory" className="underline">
             observatory
           </Link>{" "}
-          (every purchase we made, settled or not), and the{" "}
+          (each purchase we made, settled or not), and the{" "}
           <Ext href={`${REPO}/tree/main/examples/ethonline-2026-demo`}>
             demo CLI
           </Ext>{" "}
