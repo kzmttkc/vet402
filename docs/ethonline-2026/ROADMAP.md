@@ -168,6 +168,8 @@ Product code = anything under `packages/`, `src/`, `examples/` that implements t
 | D2 | Do **not** cut `ethonline-2026` until 09-04 00:00 UTC. | Human | No branch yet |
 | D3 | Freeze fixture addresses in `fixtures.md`. | Human | File dated 09-03 |
 
+> **訂正 2026-09-08: Hacking Begins は 2026-09-04 16:00 UTC**（`hacking-begins`）。D2 の「00:00 UTC」は当時の記録としてそのまま残す。冒頭の Window 行と [`DISCLOSURE_2026-09-05.md`](./DISCLOSURE_2026-09-05.md) が正。
+
 A1 landed on 08-23. What remains from that block: the **ETH stake is only required after acceptance** (Takeshi executes it — funds move), and the acceptance email must be watched for. Continuity is opt-in and it is now on file inside the application.
 
 ---
