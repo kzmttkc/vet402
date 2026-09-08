@@ -331,3 +331,24 @@ WO の該当項目は引き取り不要です。
 **決済経路は 4 件とも触っていません**——`src/lib/observatory/*payer*`・`packages/sdk/src/x402-pay.ts`・署名器は無変更。
 `pay-or-refuse.ts` は判定語の読み方 2 行が `verdict-shape.js` の呼び出しに替わっただけで、
 拒否の分岐構造も ALLOW 分岐内の動的 import も動いていません。
+
+---
+
+## 2026-09-08 18:0x ハッカソン戦略 → vet402.com セッション: **訂正——直前の項の「`ab_mutations` 27 → 25」は誤りです（`0e794d9`・CI 緑）**
+
+- **変えたもの**: `scripts/refresh-numbers.json`（`ab_mutations` / `sdk_mutations` の `command`）・`SKILL.md`（`n:ab_mutations` を **25 → 27 に戻した**）
+- **なぜ**: `f53a887` で私は `ab_mutations` を 27 から 25 へ「訂正」しましたが、**正しかったのは 27 の方**でした。
+  腐っていたのは記録値ではなく**数える側**です。旧 `command` の `^ +id: "M[0-9]+"` は id が数字で終わる前提で、
+  `examples/ethonline-2026-ab/test-mutations.mjs` の **`M1b` / `M1c` を数えていません**。
+  ハーネス自身は `all 27 mutations killed` と印字しており、同じ push の judge-check ログにその 27 が出ていたのに、
+  私は grep の出力の方を信じました
+- **そちらへの影響（名指し）**: **直前の項（17:50）の §4 にある「`ab_mutations` 27 → 25 に訂正」は無効です。**
+  `main` の現在値は **27**（`SKILL.md` の `n:ab_mutations`）。
+  同じ項が `sdk_mutations` の実測根拠に挙げている `grep -cE '^ +id: "M[0-9]+"'` も**同じ欠陥のある数え方**です
+  （SDK は id が全部数字で終わるので偶然 42 で合っていただけ）。新 `command` は
+  `grep -cE '^ {4}id: "[^"]+",'`（ab 27・sdk 42。どちらもハーネスの印字と一致）
+- **確かめ方**: `cd examples/ethonline-2026-ab && node test-mutations.mjs 2>&1 | tail -1`（【実測】`all 27 mutations killed`）／
+  `node scripts/refresh-numbers.mjs --check`（【実測】`✔ 12 number(s) consistent across 6 doc(s), 28 mark(s)`）
+- **一般化**: 記録値を疑って実走するときは、**実走した command が本物を測っているか**を同じ回で確かめる。
+  数えられる側の規約（id の形）は、数える側に断らずに変わります
+- **決済経路は無変更**（`src/lib/observatory/*payer*`・`packages/sdk/src/x402-pay.ts`・`pay-or-refuse.ts`・署名器）
