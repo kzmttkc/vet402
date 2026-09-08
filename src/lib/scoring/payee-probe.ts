@@ -1,5 +1,6 @@
 import { scorePayeeWallet } from "./payee-engine";
 import { withDeadline } from "@/lib/util/deadline";
+import { describeProbeFailure, describeUnavailable } from "@/lib/health/probe-detail";
 import type { Address } from "viem";
 
 /**
@@ -69,6 +70,15 @@ export type PayeeProbe = {
   /** Which inputs were missing — server-side detail, never in the public body. */
   unavailable: string[];
   latencyMs: number;
+  /** なぜ ok でないか。ok のときは null。サーバー側だけ（公開本文は {status} のまま）。 */
+  detail: string | null;
+  /**
+   * 今このリクエストで測ったのか、memo（TTL 内 or stale-while-revalidate）から
+   * 出しただけなのか。**この probe は SWR を持つので、温かいインスタンスでは
+   * 直近 10 分の測定が生きている限り error を表に出さない。** その事実を行に
+   * 残さないと、表は健全性ではなくポーリング間隔を記録することになる。
+   */
+  fromCache: boolean;
 };
 
 let cached: { probe: PayeeProbe; expiresAt: number; measuredAt: number } | null = null;
@@ -107,7 +117,7 @@ function probeAddress(): Address {
 
 export async function runPayeeProbe(): Promise<PayeeProbe> {
   const now = Date.now();
-  if (cached && cached.expiresAt > now) return cached.probe;
+  if (cached && cached.expiresAt > now) return { ...cached.probe, fromCache: true };
 
   // Expired but not ancient: answer with the last real measurement now and
   // refresh behind the caller, so an uptime monitor is never held for the
@@ -121,7 +131,7 @@ export async function runPayeeProbe(): Promise<PayeeProbe> {
       // already converts failure into an `error` status, so this is belt-and-braces.
       refreshing.catch(() => undefined);
     }
-    return cached.probe;
+    return { ...cached.probe, fromCache: true };
   }
 
   // Nothing measured yet, or the last reading is too old to stand behind.
@@ -151,16 +161,25 @@ async function measurePayeeProbe(): Promise<PayeeProbe> {
       status: unavailable.length > 0 ? "degraded" : "ok",
       unavailable,
       latencyMs: Date.now() - startedAt,
+      detail: describeUnavailable(unavailable),
+      fromCache: false,
     };
     if (unavailable.length > 0) {
       console.warn(`[vouch] payee_probe degraded: ${unavailable.join(",")}`);
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const cause = error instanceof Error ? error.cause : undefined;
-    const causeText = cause instanceof Error ? ` | cause: ${cause.message}` : "";
-    console.error(`[vouch] payee_probe failed: ${message.slice(0, 200)}${causeText.slice(0, 300)}`);
-    probe = { status: "error", unavailable: [], latencyMs: Date.now() - startedAt };
+    // 2026-09-08: 同じ文字列をログと health_snapshots.detail の両方へ。
+    // `deadline_exceeded:payee_probe:24000ms` なら probe が自分の期限で死んだ
+    // （= 上流が遅い）、そうでなければ上流が拒否した。足す資源が違う。
+    const detail = describeProbeFailure(error);
+    console.error(`[vouch] payee_probe failed: ${detail}`);
+    probe = {
+      status: "error",
+      unavailable: [],
+      latencyMs: Date.now() - startedAt,
+      detail,
+      fromCache: false,
+    };
   }
 
   cached = {

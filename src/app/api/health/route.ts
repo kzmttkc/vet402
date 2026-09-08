@@ -7,6 +7,7 @@ import { runScoringProbe } from "@/lib/health/scoring-probe";
 import { runPayeeProbe, worstStatus } from "@/lib/scoring/payee-probe";
 import { evaluateLiveness, HEALTH_RATE_LIMIT, HEALTH_RATE_WINDOW_MS } from "@/lib/health/liveness";
 import { recordHealthSnapshotIfDue } from "@/lib/health/snapshot";
+import { composeDetail, probeSegment } from "@/lib/health/probe-detail";
 
 function authorizeAdmin(request: NextRequest): boolean {
   const secret = process.env.ADMIN_SECRET;
@@ -79,12 +80,19 @@ export async function GET(request: NextRequest) {
   // uptime pollers "200/503". A monitor reads the code, not the body, so a
   // half-down product still looked green. The status→code mapping and the
   // two-probe composition now live in ./liveness, pinned by tests.
+  //
+  // 2026-09-08: 本番が断続的に 503 {"status":"error"} を返していたが、理由が
+  // どこにも残っていなかった。判定の**理由**（どちらの probe が・実測か
+  // キャッシュか・なぜ）と実測レイテンシと書いたインスタンスを
+  // health_snapshots へ運ぶ。**公開本文は今までどおり {status} の 1 ビットのまま**
+  // ——上の 2026-08-06 監査の決定は「どの上流が不調かは admin 限定」であり、
+  // 観測を足すためにそれを緩めない。読むのは admin 経路か DB 直参照だけ。
   if (!deep) {
-    const { status, httpStatus } = await evaluateLiveness({
+    const { status, httpStatus, detail, latencyMs } = await evaluateLiveness({
       scoring: runScoringProbe,
       payee: runPayeeProbe,
     });
-    void recordHealthSnapshotIfDue(status).catch(() => {});
+    void recordHealthSnapshotIfDue(status, { detail, latencyMs }).catch(() => {});
     return NextResponse.json({ status }, { status: httpStatus });
   }
 
@@ -103,6 +111,7 @@ export async function GET(request: NextRequest) {
     erc8004: true,
   };
 
+  const deepStartedAt = Date.now();
   const [deepResult, payee] = await Promise.all([runDeepHealthChecks(), runPayeeProbe()]);
   payload.status = deepResult.status;
   payload.checks = deepResult.checks;
@@ -120,6 +129,19 @@ export async function GET(request: NextRequest) {
     payload.status === "ok" || payload.status === "degraded" || payload.status === "error"
       ? payload.status
       : "error";
-  void recordHealthSnapshotIfDue(snapshotStatus).catch(() => {});
+  // deep も同じ表へ書く。どの経路が書いた行かを後から分けられるよう `deep=1` を前置する
+  // ——deep は shallow と probe の組み合わせが違う（runDeepHealthChecks + payee）ので、
+  // 混ぜて数えると shallow の失敗率が薄まる。
+  void recordHealthSnapshotIfDue(snapshotStatus, {
+    detail: composeDetail([
+      "deep=1",
+      probeSegment("payee", payee.status, payee.fromCache, payee.detail),
+      `checks: ${Object.entries(deepResult.checks)
+        .filter(([key]) => !key.endsWith("_latency_ms"))
+        .map(([key, value]) => `${key}=${value}`)
+        .join(",")}`,
+    ]),
+    latencyMs: Date.now() - deepStartedAt,
+  }).catch(() => {});
   return NextResponse.json(payload, { status: statusCode });
 }

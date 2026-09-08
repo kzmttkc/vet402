@@ -845,6 +845,19 @@ export const healthSnapshots = pgTable(
     checkedAt: timestamp("checked_at", { withTimezone: true }).defaultNow().notNull(),
     /** ok | degraded | error — the same three values runScoringProbe() returns. */
     status: text("status").notNull(),
+    /**
+     * 2026-09-08 追加。status だけでは「503 だった」しか残らず、どちらの probe が
+     * なぜ落ちたかを 30 分後に名指しできなかった（`vercel logs` は直近 12 件のみ）。
+     * 形: `scoring=ok cached; payee=error fresh: deadline_exceeded:payee_probe:24000ms`
+     *
+     * 3 列とも **NULL 可**。ALTER を流す前の本番でも INSERT が落ちないこと、
+     * 既存行が偽の値で埋まらないことの両方が要る（欠測は欠測として残す）。
+     */
+    detail: text("detail"),
+    /** その判定にかかった実測ミリ秒。期限切れ（7000/24000 付近）と上流エラーを分ける。 */
+    latencyMs: integer("latency_ms"),
+    /** 同一 function インスタンスかどうかが判る値。src/lib/health/instance-id.ts。 */
+    instance: text("instance"),
   },
   (t) => [index("health_snapshots_checked_at_idx").on(t.checkedAt)],
 );

@@ -1,5 +1,6 @@
 import { scoreAgentById } from "@/lib/scoring/engine";
 import { withDeadline } from "@/lib/util/deadline";
+import { describeProbeFailure, describeUnavailable } from "./probe-detail";
 
 /**
  * Does the product's core capability — computing a trust score — actually work
@@ -46,6 +47,16 @@ export type ScoringProbe = {
   /** Flags that made it degraded — server-side detail, never in the public body. */
   unavailable: string[];
   latencyMs: number;
+  /**
+   * なぜ ok でないか。ok のときは null。**サーバー側だけ**——公開本文は
+   * 今までどおり {status} の 1 ビット（route.ts の 2026-08-06 監査コメント）。
+   */
+  detail: string | null;
+  /**
+   * この結果を今このリクエストで測ったのか、下の memo から出しただけなのか。
+   * 2026-09-08: これが赤と緑を分けている変数だった。詳細は ../health/liveness.ts。
+   */
+  fromCache: boolean;
 };
 
 let cached: { probe: ScoringProbe; expiresAt: number } | null = null;
@@ -64,7 +75,7 @@ export function resetScoringProbeCache(): void {
 
 export async function runScoringProbe(): Promise<ScoringProbe> {
   const now = Date.now();
-  if (cached && cached.expiresAt > now) return cached.probe;
+  if (cached && cached.expiresAt > now) return { ...cached.probe, fromCache: true };
 
   const startedAt = Date.now();
   let probe: ScoringProbe;
@@ -82,25 +93,28 @@ export async function runScoringProbe(): Promise<ScoringProbe> {
       status: unavailable.length > 0 ? "degraded" : "ok",
       unavailable,
       latencyMs: Date.now() - startedAt,
+      detail: describeUnavailable(unavailable),
+      fromCache: false,
     };
     if (unavailable.length > 0) {
       console.warn(`[vouch] scoring_probe degraded: ${unavailable.join(",")}`);
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
     // The engine wraps upstream failures as `new Error(tag, { cause })`. The
     // tag alone ("agent_identity_unavailable") says WHICH read died but not
     // WHY, which is the half an operator actually needs.
-    const cause = error instanceof Error ? error.cause : undefined;
-    const causeText =
-      cause instanceof Error
-        ? ` | cause: ${(cause as { details?: string })?.details ?? cause.message}`
-        : "";
-    console.error(`[vouch] scoring_probe failed: ${message.slice(0, 200)}${causeText.slice(0, 300)}`);
+    //
+    // 2026-09-08: この行はログにしか残らず、`vercel logs` は直近 12 件しか
+    // 返さない。**同じ文字列**を probe.detail に載せて health_snapshots へ運ぶ。
+    // ログと列が別々の材料から作られると、どちらが本当かを確かめる作業が増える。
+    const detail = describeProbeFailure(error);
+    console.error(`[vouch] scoring_probe failed: ${detail}`);
     probe = {
       status: "error",
       unavailable: [],
       latencyMs: Date.now() - startedAt,
+      detail,
+      fromCache: false,
     };
   }
 

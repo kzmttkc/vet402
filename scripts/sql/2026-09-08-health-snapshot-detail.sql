@@ -1,0 +1,71 @@
+-- vet402 2026-09-08 — health_snapshots に「なぜ」を残す 3 列を足す。
+--
+-- 事故の形（実測 2026-09-08）:
+--   公開 /status の当日集計   108 サンプル中 ok 66 / degraded 6 / error 36
+--   同 09-07                  278 中 ok 248 / degraded 15 / error 15
+--   同 09-06 以前             error 0
+--   手元から逐次 60 回        60/60 が 200、各 0.33〜0.43 秒
+--   30 分毎のローカル cron    36 回中 9 回 `health http 503 {"status":"error"}`
+--   その数十秒後の deep 検査  criticalFailure:false・checks.scoring:"ok"
+--
+-- 表は status 1 列しか持たないので、残るのは「503 だった」という 1 ビットだけ。
+-- どちらの probe（scoring / payee）が、期限切れで死んだのか上流に拒否されたのか、
+-- そもそも実測だったのかキャッシュだったのかが、行から全部落ちている。
+-- console.error には出るが `vercel logs` は直近 12 件しか返さず MESSAGE 列を
+-- 落とすので、30 分後には手元に何も無い。**これがこの件が未解決で残っている理由。**
+--
+-- 足すのは観測だけ。公開の振る舞い（/api/health の本文・HTTP コード・/status の
+-- 表示）は 1 バイトも変えない。detail が読めるのは admin 経路と DB 直参照だけ
+-- （src/app/api/health/route.ts の 2026-08-06 監査: どの上流が不調かは admin 限定）。
+--
+-- 3 列とも NULL 可・追加のみ。既存列は消さない・型を変えない。
+-- コードは ALTER の適用前でも動く（undefined_column を拾って旧い形で書き直す。
+-- src/lib/health/snapshot.ts の recordHealthSnapshotIfDue）ので、
+-- デプロイと適用の順序はどちらが先でもよい。
+--
+-- Safe to re-run. 本番 DB は同一 Neon ホストの **vouch** database（neondb ではない）。
+-- Apply with:
+--   psql "$DATABASE_URL" -f scripts/sql/2026-09-08-health-snapshot-detail.sql
+
+-- どちらの probe が・どの状態で・実測かキャッシュか・なぜ落ちたか。
+-- 形（src/lib/health/probe-detail.ts が組む・1 行・最大 600 字）:
+--   scoring=ok cached; payee=error fresh: deadline_exceeded:payee_probe:24000ms
+--   scoring=error fresh: agent_identity_unavailable | cause: HTTP 429; payee=ok cached
+-- 可変値（レイテンシ・インスタンス）はここに混ぜない。混ぜると
+-- 「detail が変わったら書く」判定が 1 リクエスト 1 行を生む。
+ALTER TABLE health_snapshots ADD COLUMN IF NOT EXISTS detail text;
+
+-- その判定を出すのにかかった実測ミリ秒。
+-- **タイムアウトと上流エラーを区別するのがこの列の目的。** 期限値は
+-- PROBE_DEADLINE_MS（scoring 7000 / payee 24000）なので、その付近の値は
+-- probe が自分の期限で死んだ（上流が遅い）、桁違いに小さければ上流が拒否した。
+-- 足す資源が違うので、この 2 つを同じ「error」として記帳してはいけない。
+ALTER TABLE health_snapshots ADD COLUMN IF NOT EXISTS latency_ms integer;
+
+-- どの function インスタンスがこの行を書いたか（src/lib/health/instance-id.ts）。
+-- 形: `hnd1:3f9a1c02` — VERCEL_REGION + モジュール評価時に 1 度だけ作る ID。
+--
+-- Vercel が与える識別子はどれもインスタンスを指さない（2026-09-08 実測）:
+--   x-vercel-id           リクエスト毎（3 回叩いて 3 回とも別値）
+--   VERCEL_DEPLOYMENT_ID  デプロイ毎（1 デプロイの全インスタンスが同じ）
+-- probe の memo はモジュールスコープ = インスタンス毎なので、memo と同じ寿命を
+-- 持つ値でなければ「同じキャッシュを見ている 2 行か」を判定できない。
+ALTER TABLE health_snapshots ADD COLUMN IF NOT EXISTS instance text;
+
+-- 読み方（適用後、障害が再現したら）:
+--   -- どちらの probe が落ちているか
+--   SELECT status, split_part(detail, ';', 1) AS scoring, split_part(detail, ';', 2) AS payee,
+--          count(*), min(latency_ms), max(latency_ms)
+--     FROM health_snapshots WHERE checked_at > now() - interval '24 hours'
+--    GROUP BY 1,2,3 ORDER BY 4 DESC;
+--
+--   -- 失敗はインスタンスに偏っているか、時間に偏っているか
+--   SELECT instance, count(*) FILTER (WHERE status = 'error') AS err, count(*) AS total
+--     FROM health_snapshots WHERE checked_at > now() - interval '24 hours'
+--    GROUP BY 1 ORDER BY 2 DESC;
+--
+--   -- 実測（fresh）とキャッシュ（cached）で失敗率が違うか
+--   -- ← 2026-09-08 時点の主仮説はここで決着する
+--   SELECT detail LIKE '%fresh%' AS had_fresh_probe, status, count(*)
+--     FROM health_snapshots WHERE checked_at > now() - interval '24 hours'
+--    GROUP BY 1,2 ORDER BY 1,2;
