@@ -1,5 +1,6 @@
 import { scorePayeeWallet } from "./payee-engine";
 import { withDeadline } from "@/lib/util/deadline";
+import { keepAliveUntilSettled } from "@/lib/util/after-response";
 import { describeProbeFailure, describeUnavailable } from "@/lib/health/probe-detail";
 import type { Address } from "viem";
 
@@ -38,7 +39,16 @@ import type { Address } from "viem";
 /** vitalik.eth — the address a visitor tries first, and the one the outage hit. */
 const DEFAULT_PROBE_ADDRESS = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
 
-const PROBE_TTL_MS = 60_000;
+const DEFAULT_PROBE_TTL_MS = 60_000;
+/**
+ * 通常は 60 秒。env で下げられるのは、stale-while-revalidate 分岐を
+ * 60 秒待たずにテストから踏むため（`PAYEE_LEG_BUDGET_MS` と同じ性格の
+ * 運用ノブで、本番では設定しない）。負の値と数値以外は既定へ落とす。
+ */
+function probeTtlMs(): number {
+  const raw = Number(process.env.HEALTH_PAYEE_PROBE_TTL_MS);
+  return Number.isFinite(raw) && raw >= 0 ? raw : DEFAULT_PROBE_TTL_MS;
+}
 /** Failures re-checked sooner, so one blip cannot pin a false outage for a
  *  full minute. Same reasoning as the seller-side probe. */
 const PROBE_FAILURE_TTL_MS = 15_000;
@@ -124,12 +134,23 @@ export async function runPayeeProbe(): Promise<PayeeProbe> {
   // engine's full budget. One refresh at a time, never one per request.
   if (cached && now - cached.measuredAt < STALE_LIMIT_MS) {
     if (!refreshing) {
-      refreshing = measurePayeeProbe().finally(() => {
+      const inFlight = measurePayeeProbe().finally(() => {
         refreshing = null;
       });
+      refreshing = inFlight;
       // The refresh must not surface as an unhandled rejection; measurePayeeProbe
       // already converts failure into an `error` status, so this is belt-and-braces.
-      refreshing.catch(() => undefined);
+      inFlight.catch(() => undefined);
+      // 2026-09-08: この行が無いと、リフレッシュは「応答を返し終えた invocation の中で
+      // 誰にも待たれていない promise」になる。Vercel はそこでインスタンスを suspend
+      // するので、リフレッシュは**消えるのではなく止まる**——そして次に誰かが同じ
+      // インスタンスを起こすまで `cached` は古い測定を配り続ける。
+      // 実測（本番 2026-09-08）: 宣言上限 24,000ms の probe が payee.latencyMs 59,957ms
+      // を、しかも withDeadline の**成功側**で返した。期限の setTimeout は凍結中に
+      // 進まないので発火していない（deadline.ts の「凍結」節）。
+      // 開始のタイミングは変えない（遅らせるほどキャッシュが古くなる）。延ばすのは
+      // invocation の生存期間だけ。
+      keepAliveUntilSettled(inFlight);
     }
     return { ...cached.probe, fromCache: true };
   }
@@ -185,7 +206,7 @@ async function measurePayeeProbe(): Promise<PayeeProbe> {
   cached = {
     probe,
     measuredAt: Date.now(),
-    expiresAt: Date.now() + (probe.status === "error" ? PROBE_FAILURE_TTL_MS : PROBE_TTL_MS),
+    expiresAt: Date.now() + (probe.status === "error" ? PROBE_FAILURE_TTL_MS : probeTtlMs()),
   };
   return probe;
 }

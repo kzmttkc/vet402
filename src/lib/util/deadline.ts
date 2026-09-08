@@ -14,6 +14,33 @@
  * A deadline converts "too slow" into "rejected", which is the only shape the
  * existing fail-closed logic can act on. It never makes a verdict more
  * permissive — a missing signal is penalized, not assumed good.
+ *
+ * ------------------------------------------------------------------
+ * 壁時計の期限は「凍結」に対して無力である（2026-09-08 実測・ここが唯一の記載箇所）
+ * ------------------------------------------------------------------
+ * `withDeadline` の期限は `setTimeout` で作る。タイマーはイベントループが
+ * 動いているときにしか進まない。サーバーレス（Vercel Fluid compute）は
+ * 応答を返した後のインスタンスを suspend するので、**凍結中は Date.now() だけが
+ * 進み、期限は 1 度も発火しない**。
+ *
+ * 本番の実測（2026-09-08 19:10 JST・admin deep 検査）:
+ *   payee=degraded ... payee.latencyMs = 59,957ms
+ *   その経路の宣言された上限は PROBE_DEADLINE_MS = 24,000ms
+ * しかもこの 59,957ms は withDeadline の **成功側**（degraded + unavailable 一覧）
+ * から出ている。期限が発火していれば catch 側の `deadline_exceeded` になっていた。
+ *
+ * 手元での再現（SIGSTOP/SIGCONT で凍結を模す。同じ形が出る）:
+ *   期限 24,000ms・仕事 5,000ms のプロセスを t=1s で 55 秒凍結 →
+ *   {"branch":"success","value":"degraded+unavailable","latencyMs":56012}
+ *
+ * したがって:
+ *   - **`withDeadline` の budgetMs は「実行時間の上限」であって「壁時計の上限」ではない。**
+ *     凍結を挟むと latencyMs は budgetMs を何倍でも超えうる。数字を読む側が
+ *     「上限を超えた = 期限が壊れている」と読まないこと。超えているのは凍結の分。
+ *   - 対策はここではない。**応答後に走らせる処理を `next/server` の `after()` に
+ *     載せて、そもそも凍結させない**こと（src/lib/util/after-response.ts）。
+ *   - 実行時間そのものを縛りたいなら `createDeadline` も同じ制約を持つ
+ *     （`Date.now()` 基準なので、凍結中に「残り時間」が消える方向へ壊れる）。
  */
 
 export class DeadlineExceededError extends Error {

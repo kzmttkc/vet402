@@ -8,6 +8,7 @@ import { runPayeeProbe, worstStatus } from "@/lib/scoring/payee-probe";
 import { evaluateLiveness, HEALTH_RATE_LIMIT, HEALTH_RATE_WINDOW_MS } from "@/lib/health/liveness";
 import { recordHealthSnapshotIfDue } from "@/lib/health/snapshot";
 import { composeDetail, probeSegment } from "@/lib/health/probe-detail";
+import { runAfterResponse } from "@/lib/util/after-response";
 
 function authorizeAdmin(request: NextRequest): boolean {
   const secret = process.env.ADMIN_SECRET;
@@ -92,7 +93,14 @@ export async function GET(request: NextRequest) {
       scoring: runScoringProbe,
       payee: runPayeeProbe,
     });
-    void recordHealthSnapshotIfDue(status, { detail, latencyMs }).catch(() => {});
+    // 2026-09-08（同日・後）: ここは `void recordHealthSnapshotIfDue(...)` だった。
+    // 応答を返した後に走る書き込みで、**誰も待っていない**。Vercel の Fluid compute は
+    // 応答後のインスタンスを suspend するので（docs: attachDatabasePool は idle client を
+    // "released before functions suspend" と説明する）、この INSERT は次に誰かが
+    // そのインスタンスを起こすまで止まる——止まったまま次のデプロイで消えることもある。
+    // `after()` に載せると、この処理が決着するまで invocation が終わらない。
+    // 公開本文と HTTP コードは変えていない（下の行はそのまま）。
+    runAfterResponse(() => recordHealthSnapshotIfDue(status, { detail, latencyMs }));
     return NextResponse.json({ status }, { status: httpStatus });
   }
 
@@ -132,16 +140,21 @@ export async function GET(request: NextRequest) {
   // deep も同じ表へ書く。どの経路が書いた行かを後から分けられるよう `deep=1` を前置する
   // ——deep は shallow と probe の組み合わせが違う（runDeepHealthChecks + payee）ので、
   // 混ぜて数えると shallow の失敗率が薄まる。
-  void recordHealthSnapshotIfDue(snapshotStatus, {
-    detail: composeDetail([
-      "deep=1",
-      probeSegment("payee", payee.status, payee.fromCache, payee.detail),
-      `checks: ${Object.entries(deepResult.checks)
-        .filter(([key]) => !key.endsWith("_latency_ms"))
-        .map(([key, value]) => `${key}=${value}`)
-        .join(",")}`,
-    ]),
-    latencyMs: Date.now() - deepStartedAt,
-  }).catch(() => {});
+  // 応答後に走らせるので、レイテンシは**ここで**確定させる。closure の中で
+  // Date.now() を読むと、応答の組み立て時間まで測定値に混ざる。
+  const deepLatencyMs = Date.now() - deepStartedAt;
+  runAfterResponse(() =>
+    recordHealthSnapshotIfDue(snapshotStatus, {
+      detail: composeDetail([
+        "deep=1",
+        probeSegment("payee", payee.status, payee.fromCache, payee.detail),
+        `checks: ${Object.entries(deepResult.checks)
+          .filter(([key]) => !key.endsWith("_latency_ms"))
+          .map(([key, value]) => `${key}=${value}`)
+          .join(",")}`,
+      ]),
+      latencyMs: deepLatencyMs,
+    }),
+  );
   return NextResponse.json(payload, { status: statusCode });
 }
