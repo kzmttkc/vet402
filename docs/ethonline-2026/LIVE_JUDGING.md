@@ -4,7 +4,8 @@
 > **1 チーム 7 分＝デモ 4 分＋Q&A 3 分**。2025 は締切の約 1 日後（12:00 ET）だったので **09-14〜16 を空ける**。Continuity の枠は **3 つ**。
 > 動画（`VIDEO_SCRIPT.md`）は**録画を見せる**もの。ライブは**その場でターミナルを叩く**もの。同じ絵を二度見せない——
 > 動画に無いのは「**審査員が指定した 402 URL を `judge` に入れる**」（Practicality／WOW）。
-> この文書の数字は **2026-09-07 12:xx JST の実測**（§6）。**動く数字は当日の朝に §7 のスクリプトで取り直す。**
+> この文書の数字は **<!-- n:as_of -->2026-09-08<!-- /n --> の実測**（§6・印は `npm run check-numbers` が見る）。**動く数字は当日の朝に §7 のスクリプトで取り直す。**
+> 受取人スコア・受領件数など鍵と回線が要るものだけは印に載らない——§6 の「当日取り直す」で扱う。
 
 ## 0. 先に決めたこと
 
@@ -128,9 +129,11 @@ A: *You get a refusal, not an allow. The demo records `/decision` as status null
 証拠: `examples/ethonline-2026-demo/src/assess.ts:64`（`status: null`）／`packages/sdk/src/pay-or-refuse.ts:571,577`（`evidence_unavailable`）／`SKILL.md` §2・§4／`docs/audits/2026-09-05-cia-availability-audit.md` §0。
 
 **Q12. Mutation testing — what did it find?**
-A: *It found that green tests were lying. Tests that only looked at `status` and signer calls stayed green when the whole ALLOW gate was removed — the run refused for a different reason. Switching the payment module to a static import turned no test red until we added the `dist` module-graph test. The mutation script breaks one gate at a time — BLOCK waiver, floor comparison, `payTo` check, ceiling, nonce retention, `_meta.block` — rebuilds, and requires red. Today 27 mutations, all killed; four survived on September 6 and became tests.*
-要旨: 「緑のテストが嘘」を検出。27 変異全部赤。9/6 に 4 つ生き残り→テスト追加。
-証拠: `WINDOW_PLAN.md` §4（A1/B5–B7 の偽の緑）・§14.3・§17（SURVIVED 4）／`packages/sdk/test-mutations.mjs`（M01〜M27）／印 `n:sdk_mutations`。
+A: *It found that green tests were lying. Tests that only looked at `status` and signer calls stayed green when the whole ALLOW gate was removed — the run refused for a different reason. Switching the payment module to a static import turned no test red until we added the `dist` module-graph test. The mutation script breaks one gate at a time — BLOCK waiver, floor comparison, `payTo` check, ceiling, nonce retention, `_meta.block` — rebuilds, and requires red. Today <!-- n:sdk_mutations -->42<!-- /n --> mutations, all killed; four survived on September 6 and became tests.*
+要旨: 「緑のテストが嘘」を検出。<!-- n:sdk_mutations -->42<!-- /n --> 変異全部赤。9/6 に 4 つ生き残り→テスト追加。
+証拠: `WINDOW_PLAN.md` §4（A1/B5–B7 の偽の緑）・§14.3・§17（SURVIVED 4）／`packages/sdk/test-mutations.mjs`（id は **M01〜M42**・0 埋め 2 桁で連番）／印 `n:sdk_mutations`。
+**言うのは「all killed」まで。** 本数は印が出す——`cd packages/sdk && node test-mutations.mjs 2>&1 | tail -1` が `all 42 mutations killed in 39.2s`（09-08 実走）。1 つでも生き残ると harness はこの行を印字しないので、`--refresh` が空出力で落ちる。
+（`judge-check` が回すのは **A/B 側**の別の集合で **27 本**・id は `M1`・`M1b`・`M1c`・`M2`〜`M25`。`n:ab_mutations`。混ぜない）
 
 **Q13. Security audits — what changed?**
 A: *Three audits in the window, all written down with commit hashes. From September 4: a per-purchase nonce bound to the on-chain `AuthorizationUsed` event and a unique index on tx hash, so a reused hash cannot fake a settlement; the authorization window cut to 120 seconds. From September 5: a runtime kill switch read from the database before every signature, a two-tier public `settled` figure that separates nonce-bound rows from older ones, and origin-bound signature messages. For the SDK, five places where new code had reopened holes production had already closed — facilitator call, EIP-712 domain from the seller — were fixed the same day.*
@@ -180,14 +183,21 @@ A: *Because then the demo would only prove that our catalogue works, and real bu
 
 ## 6. 数字（印 か 当日取り直し）
 
-**印がある数字**（`scripts/refresh-numbers.json` の id・記録値は `as_of` 2026-09-07。前日に `npm run check-numbers` が緑であることを確かめる。赤なら**言わずに**画面の値を読む）:
+**印がある数字**（`scripts/refresh-numbers.json` の id・基準日は `n:as_of` = <!-- n:as_of -->2026-09-08<!-- /n -->。**この文書は 09-08 から `docs` に登録されているので、下の値は印そのもの**——前日に `npm run check-numbers` が緑であることを確かめる。赤なら**言わずに**画面の値を読む）:
 
-| 印 | 記録値 | どこで使う |
-|---|---|---|
-| `n:sdk_mutations` | 27 | Q12（"all killed"） |
-| `n:sdk_tests` / `n:mcp_tests` | 178 / 65 | 画面のみ（言わない） |
-| `n:total_commits` / `n:ai_trailer_commits` / `n:merge_commits` / `n:no_trailer_commits` | 743 / 624 / 34 / 119 | Q7（言うのは「大半」。値は `AI_USAGE.md` を指す） |
-| `n:window_added_files` / `n:window_modified_files` | 170 / 173 | Q6（画面のみ） |
+| 印 | 値【実測 09-08】 | それを出すコマンド（リポ root から） | どこで使う |
+|---|---|---|---|
+| `n:sdk_mutations` | <!-- n:sdk_mutations -->42<!-- /n --> | `cd packages/sdk && node test-mutations.mjs 2>&1 \| tail -1` の `all N mutations killed`（39.2s） | Q12（"all killed"） |
+| `n:ab_mutations` | <!-- n:ab_mutations -->27<!-- /n --> | `cd examples/ethonline-2026-ab && node test-mutations.mjs 2>&1 \| tail -1`（13.2s・`judge-check` が回す方） | 混同したときの訂正用（口では言わない） |
+| `n:sdk_tests` | <!-- n:sdk_tests -->1609<!-- /n --> | `npm test --prefix packages/sdk 2>&1 \| sed -n 's/^ℹ tests //p'` | 画面のみ（言わない） |
+| `n:mcp_tests` | <!-- n:mcp_tests -->748<!-- /n --> | `npm run build --prefix packages/mcp-server && npm test --prefix packages/mcp-server 2>&1 \| sed -n 's/^ℹ tests //p'` | 画面のみ（言わない） |
+| `n:demo_tests` | <!-- n:demo_tests -->76<!-- /n --> | `npm test --prefix examples/ethonline-2026-demo 2>&1 \| sed -n 's/^ℹ tests //p'`（鍵不要・0.5s） | 画面のみ（言わない） |
+| `n:total_commits` | <!-- n:total_commits -->800<!-- /n --> | `git rev-list --count --until='{{AS_OF_END}}' HEAD` | Q7（言うのは「大半」。値は `AI_USAGE.md` を指す） |
+| `n:ai_trailer_commits` | <!-- n:ai_trailer_commits -->670<!-- /n --> | `git log --grep='Co-Authored-By: Claude' --until='{{AS_OF_END}}' --oneline \| wc -l` | 同上 |
+| `n:merge_commits` / `n:no_trailer_commits` | <!-- n:merge_commits -->34<!-- /n --> / <!-- n:no_trailer_commits -->130<!-- /n --> | `git rev-list --count --merges --until='{{AS_OF_END}}' HEAD`／`n:total_commits` − `n:ai_trailer_commits` | 同上（trailer 無し＝「不明」であって「人間」ではない） |
+| `n:window_added_files` / `n:window_modified_files` | <!-- n:window_added_files -->199<!-- /n --> / <!-- n:window_modified_files -->187<!-- /n --> | `git diff --diff-filter=A --name-only pre-ethonline-2026..{{AS_OF_SHA}} \| wc -l`（`M` で変更分） | Q6（画面のみ） |
+
+`{{AS_OF_END}}` / `{{AS_OF_SHA}}` は `n:as_of` に固定した基準時刻と sha（`scripts/refresh-numbers.json` が展開する）。**手で日付を入れない。**
 
 **固定**（提出まで動かない・出典つき）: tx `0xf12093fb…e469ad`・block **50898704**・**0.01 USDC**（チェーン再読 09-07 `status 0x1`）／A/B v1 **5/10・5/10**、語彙 **63%→91%**、**110 calls・88 settled・88 tx・57 tools**（`npm run metrics -- docs/ethonline-2026/ab/2026-09-06T213134Z`）／境界タグ `c42daca 2026-09-04 09:05:36 +0900`。
 
@@ -234,6 +244,6 @@ ls -la "$D"
 | MCP の段を「鍵なし」で行く案 | **採らない。** 08 行だけ throwaway の payer 鍵を env に渡す。鍵なしは逃げ道に置いた | 09-07 実測: 鍵なしだと `payer_not_configured` が **Graph を読む前**に出て `evidence []`。The Graph の証拠行を MCP 面で見せるには鍵が要る。床 10⁹ で署名には到達しない |
 | WARN の値を「69」と書く | **書かない。** 「WARN (nn)」と画面の値 | 09-07 12:xx の実測で **68**。§3 の「会期中 69 のまま」は外れた（drift の理由は未調査【未確認】）。固定値を口にすると画面と食い違う |
 | `--live` を台本の定常段にする | **条件つきの 1 回**（§1 #9 で前日に決める）。既定は空撃ち＋09-05 の Basescan | 金が動く。当日その場で決めない。失敗時の絵（`status=failed`・nonce 公開）も逃げ道に置いた |
-| 数字を `<!-- n:… -->` の印としてこの文書に埋める | **埋めない。** id を引用するだけ | 印を足すには `scripts/refresh-numbers.json` の `docs` に登録が要り、触ってよいのはこのファイルだけ。id 引用なら `check-numbers` の対象と一致する |
+| 数字を `<!-- n:… -->` の印としてこの文書に埋める | **09-08 に反転して埋めた。** `refresh-numbers.json` の `docs` にこの文書を足した | id を引用するだけでは値が検査されず、実際に腐った——09-07 に書いた 27 / 178 / 65 / 743 / 170 が 09-08 の実測 42 / 1609 / 748 / 800 / 199 とずれたまま緑だった。審査員の前で読む数字を人の目に預けない |
 | A/B v2 の数字 | 入れない。走っていれば画面に並べ、口は v1 のまま | 09-07 時点で存在しない数字を置かない |
 | 問答に日本語訳を全文つける | 要旨 1 行だけ | 読む時間。言うのは英語の A |

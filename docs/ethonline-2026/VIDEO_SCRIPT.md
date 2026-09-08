@@ -27,7 +27,7 @@
 | 0:36–1:12 | 先に静止テキスト 1 枚（3 秒）: `l1_inconclusive = we paid once, our own request was rejected. Our gap, not the seller's.` → `clear` → `node src/run.ts refuse`。左 `[A] vet402` と右 `[B] The Graph`・`_meta.block.number`・`_meta.deployment` を順にズーム → 末尾 `result refused signed false nonce null` → `requests 2 — 0 signatures, 0 RPC, 0 settle` | WARN は The Graph への評決ではなく「我々に配達の記録が無い」の意味。拒否側の相手（0x）は 1 回決済して我々の要求が 4xx——結論なし（`l1_inconclusive`・09-08 から）。2 カラムは live。右の block と deployment が live の証拠。関門は拒む。署名は存在しない。署名モジュールはこの経路で読み込まれない | **The Graph**: `_meta.block`（モック不可の要件）／Technicality／Usability（拒否理由が読める） |
 | 1:12–1:36 | `clear` → `node src/run.ts pay`（空撃ち）。左「what would be signed」（amount・payTo・EIP-3009 window）→ `[waiv] payee verdict is ALLOW WARN (69) — not required by policy` → `[ok] evidence floor: subgraph >= 1` → 最終行 `DRY RUN — no signature was created. The signing module was never loaded.` | 既定は空撃ち。本物の 402 を取って、何に署名するはずだったかを見せる。呼び手の policy は「vet402 の ALLOW は要らない。The Graph 自身の台帳に受領 1 件以上」。WARN は免除して記録する——書き換えない。署名は作られていない | Technicality（fail-closed の設計）／Practicality（呼び手の基準で動く） |
 | 1:36–1:54 | ブラウザ: `https://basescan.org/tx/0xf12093fba9314b1d3a514e7b667969201be8d021a6f4d6bdeb8d6c7f2de469ad`。Status Success・Block 50898704・Transfer 0.01 USDC → `0x79DC…FcCB` をズーム → ターミナルに戻り `SKILL.md` の決定行 `verdict from caller_policy` を映す | `--live` は人間の決断。1 セント、block 50898704、The Graph の受取ウォレットへ。Basescan にある。決定行は `caller_policy` と WARN を残す。**The Graph のデータで払った。我々のではなく** | **The Graph**: 実 tx／Practicality／WOW |
-| 1:54–2:12 | `cd examples/ethonline-2026-demo && npm test` の末尾 `ℹ fail 0` → テスト名 2 本（`既定では…署名器に触れない`／`--live を明示すると…ちょうど1回`）→ `packages/sdk` の `node test-mutations.mjs` 末尾 `all 27 mutations killed` | 拒否が署名しないと、なぜ言えるか。テストは signer への参照を数える: 空撃ちで 0。ネガティブコントロールが `--live` で 1 を見る——0 が配線ミスでない証拠。SDK の変異は全部赤になる | Technicality／Usability（`npm test` が鍵なしで緑） |
+| 1:54–2:12 | `cd examples/ethonline-2026-demo && npm test` の末尾 `ℹ fail 0` → テスト名 2 本（`既定では…署名器に触れない`／`--live を明示すると…ちょうど1回`）→ `packages/sdk` の `node test-mutations.mjs` 末尾 `all 40 mutations killed in 35.7s`（**撮影済み 09-08 15:03**・完成動画 2:40 のフレーム） | 拒否が署名しないと、なぜ言えるか。テストは signer への参照を数える: 空撃ちで 0。ネガティブコントロールが `--live` で 1 を見る——0 が配線ミスでない証拠。SDK の変異は全部赤になる | Technicality／Usability（`npm test` が鍵なしで緑） |
 | 2:12–2:41 | `docs/ethonline-2026/BAZANTIC_FEEDBACK.md` §2 の表（A 5/10・B 5/10）→ §3 の語彙の行（63% → 91%）→ §4-4（110 calls / 88 tx）。Recipe 公開ページ `bazantic.com/recipes/x402-payee-verification-via-vet402-gateway` を 3 秒 | 問い: 説明なしにエージェントが使えるか。同じモデル・同じプロンプト・同じ 57 ツール。Recipe だけが差。事前登録・1 回・回し直さない。結果 5/10 と 5/10、差なし。直ったのは語彙: 実在の理由コード 63% → 91%。Bazantic への所見: 無料の読み取り 88 回に 88 本のオンチェーン tx | **Bazantic（P2）**: 「Recipe が唯一の差」「両方の結果を示す」「改善を特定」／Originality（正直な報告） |
 | 2:41–2:53 | `packages/mcp-server` で `tools/list` → 7 ツールの中の `pay_if_trusted` → `SKILL.md` 冒頭（`npm run judge-check`）→ `AI_USAGE.md` の "The short answer" | 同じ関門が MCP の 1 ツール。同じ policy を渡すだけで再判定しない。`SKILL.md` は審査員が動かすもの。`AI_USAGE.md` は誰が何を書いたか | Usability（DX）／規約（AI 開示） |
 | 2:53–3:03 | 0:12 の 3 行（404 / WARN 69 / receipts）を静止で再掲 → 最後に `signed false nonce null` の 1 行 | モデルに払うかを決めさせない。関門を呼ぶ——関門は署名が存在する前に「否」と言える | WOW／Originality |
@@ -108,7 +108,7 @@ We call a gate — and the gate can say no before a signature exists.
 
 ## 3. ナレーション本文（日本語・Takeshi が日本語で読む場合。英字幕は私が付ける）
 
-構成は英語版と同じ 9 節。**S5 の block と S7 の数字は固定値なので正確に。S2 の受領件数と S6 の変異数は §5 の「口で言う形」。**
+構成は英語版と同じ 9 節。**S5 の block と S7 の数字は固定値なので正確に。S2 の受領件数は §5 の「口で言う形」（下限）。S6 の変異数は英語版と同じく言わない。**
 
 ```
 [S1 0:00]
@@ -150,7 +150,7 @@ The Graph のデータで払った。我々のデータではなく。
 拒否が署名しないと、なぜ言えるか。
 テストは signer への参照を数えます。空撃ちで0回。
 ネガティブコントロールは --live で1回を見る。0は配線ミスではない。
-SDK の{{mutations}}個の変異は、全部テストを赤にします。
+SDK の変異は、全部テストを赤にします。
 
 [S7 2:12]
 Bazantic の問い。エージェントは我々の Recipe なしに使えるか。
@@ -224,7 +224,7 @@ SKILL.md は審査員が動かすもの。AI_USAGE.md は誰が書いたか。
 
 ## 5. 撮影日に埋める数字の表（プレースホルダ ｜ コマンド ｜ 今日の値【実測】｜ 口で言う形）
 
-**固定**＝提出まで動かない。**動く**＝撮影日に取り直す。口に出すのは `{{graph_receipts}}` と `{{mutations}}` だけ。
+**固定**＝提出まで動かない。**動く**＝撮影日に取り直す。口に出すのは `{{graph_receipts}}` だけ（`{{mutations}}` は 09-08 に音声から外した——§2 の S6 は数を持たない）。
 それ以外は画面にだけ出す（ナレーションは数字を言わない）。鍵が要る行は `set -a; source ~/vouch/.env.rehearsal.local; set +a` の後に叩く。
 
 | プレースホルダ | コマンド（リポ root から） | 今日の値【実測 2026-09-07】 | 性質 | 口で言う形 |
@@ -242,7 +242,7 @@ SKILL.md は審査員が動かすもの。AI_USAGE.md は誰が書いたか。
 | `{{sdk_tests}}` | `cd packages/sdk && npm ci && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | **1609 / fail 0** | 動く（画面のみ） | 言わない |
 | `{{mcp_tests}}` | `cd packages/mcp-server && npm ci && npm run build && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | **748 / fail 0** | 動く（画面のみ） | 言わない |
 | `{{demo_tests}}` | `cd examples/ethonline-2026-demo && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | **76 / fail 0** | 動く（画面のみ） | 言わない |
-| `{{mutations}}` | `cd packages/sdk && node test-mutations.mjs 2>&1 \| tail -1` | **all 27 mutations killed in 25.0s** | 動く・**口で言う** | "twenty-seven"（撮影日に増えていたら**その数**。killed でない変異が 1 つでもあれば**この文を丸ごと落とす**） |
+| `{{mutations}}` | `cd packages/sdk && node test-mutations.mjs 2>&1 \| tail -1` | **all 40 mutations killed in 35.7s**（**撮影済み**・素材 `shots/s6_mut.txt` と完成動画 2:40 のフレームが一致） | 動く（画面のみ） | **言わない**——§2 の S6 は `And every mutation of the SDK turns the suite red.` で数を持たない（09-08 に音声から外した）。killed でない変異が 1 つでもあれば**画面を落とす** |
 | `{{mcp_tools}}` | `cd packages/mcp-server && printf '%s\n%s\n%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"judge","version":"0"}}}' '{"jsonrpc":"2.0","method":"notifications/initialized"}' '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \| node dist/index.js 2>/dev/null \| tail -1` | **7 ツール**（`pay_if_trusted` を含む） | 動く（画面のみ） | 言わない |
 | `{{ab_a}}` / `{{ab_b}}` | `BAZANTIC_FEEDBACK.md` 末尾の Recount 1 本目 | **A 5/10・B 5/10**（verdictMatch 10/9・fabricated 5/4・unparseable 0/1） | **固定**（生ログ `ab/2026-09-06T213134Z/`・回し直さない） | "five out of ten, and five out of ten" |
 | `{{ab_vocab_a}}` / `{{ab_vocab_b}}` | `npm run metrics -- docs/ethonline-2026/ab/2026-09-06T213134Z`（集合 ii・採点と同じ正規化） | **A 20/32 (63%)・B 29/32 (91%)** | 固定 | "sixty-three percent to ninety-one" |
@@ -253,31 +253,32 @@ SKILL.md は審査員が動かすもの。AI_USAGE.md は誰が書いたか。
 
 ## 6. 読み上げ時間の検算（英語 150 語/分）
 
-下の Python で数えた英語ナレーションの語数（空白区切り）。`{{graph_receipts}}` は "more than four hundred"（4 語）、`{{mutations}}` は "twenty-seven"（1 語）として数えた。
+下の Python で数えた英語ナレーションの語数（空白区切り）。`{{graph_receipts}}` は "more than four hundred"（4 語）として数えた。
+`{{mutations}}` はもうナレーション本文（§2・§3）に無い——09-08 に S6 の音声から数を外したので、置換も数え上げもしない。
 
 | 節 | 語数 | 秒（÷2.5） | 累計 | 構成表の枠 |
 |---|---|---|---|---|
 | S1 | 31 | 12.4 | 0:12.4 | 0:00–0:12 |
-| S2 | 64 | 25.6 | 0:38.0 | 0:12–0:36 |
-| S3 | 96 | 38.4 | 1:16.4 | 0:36–1:12 |
-| S4 | 61 | 24.4 | 1:40.8 | 1:12–1:36 |
-| S5 | 44 | 17.6 | 1:58.4 | 1:36–1:54 |
-| S6 | 46 | 18.4 | 2:16.8 | 1:54–2:12 |
-| S7 | 71 | 28.4 | 2:45.2 | 2:12–2:41 |
-| S8 | 29 | 11.6 | 2:56.8 | 2:41–2:53 |
-| S9 | 25 | 10.0 | 3:06.8 | 2:53–3:03 |
-| **合計** | **467** | **186.8 秒 = 3:06.8** | | |
+| S2 | 63 | 25.2 | 0:37.6 | 0:12–0:36 |
+| S3 | 96 | 38.4 | 1:16.0 | 0:36–1:12 |
+| S4 | 61 | 24.4 | 1:40.4 | 1:12–1:36 |
+| S5 | 44 | 17.6 | 1:58.0 | 1:36–1:54 |
+| S6 | 45 | 18.0 | 2:16.0 | 1:54–2:12 |
+| S7 | 71 | 28.4 | 2:44.4 | 2:12–2:41 |
+| S8 | 29 | 11.6 | 2:56.0 | 2:41–2:53 |
+| S9 | 25 | 10.0 | 3:06.0 | 2:53–3:03 |
+| **合計** | **465** | **186.0 秒 = 3:06.0** | | |
 
-- **3:06.8 は 2:30〜3:30 の内側**。150 語/分より遅く読んでも（130 語/分で 3:35.5）規定の 4 分には遠い。
-  速く読んでも（170 語/分で 2:44.8）2 分は割らない。**画面の待ち（網の 3 秒 × 2）と節間の 1 秒 × 8 を足しても 3:20 以内。**
-- 日本語版は **1,197 字**。ニュース読みの 300 字/分で **3:59.4**、解説ナレーションの 350 字/分で **3:25.2**。どちらでも規定の 4 分は割らない。日本語で読むなら 350 字/分が目標。300 字/分だと目標の 3:30 は超えるが規定内（英字幕は英語版の文をそのまま使う）。
+- **3:06.0 は 2:30〜3:30 の内側**。150 語/分より遅く読んでも（130 語/分で 3:34.6）規定の 4 分には遠い。
+  速く読んでも（170 語/分で 2:44.1）2 分は割らない。**画面の待ち（網の 3 秒 × 2）と節間の 1 秒 × 8 を足しても 3:20 以内。**
+- 日本語版は **1,193 字**。ニュース読みの 300 字/分で **3:58.6**、解説ナレーションの 350 字/分で **3:24.5**。どちらでも規定の 4 分は割らない。日本語で読むなら 350 字/分が目標。300 字/分だと目標の 3:30 は超えるが規定内（英字幕は英語版の文をそのまま使う）。
 検算のコマンド（この文書を変えたら再実行）:
 ```bash
 python3 - <<'EOF'
 import re; t=open('docs/ethonline-2026/VIDEO_SCRIPT.md',encoding='utf-8').read()
 def body(a,b): s=t.index(a); return re.search(r'```\n(.*?)```',t[s:t.index(b,s)],re.S).group(1)
-en=body('## 2.','## 3.').replace('{{graph_receipts}}','more than four hundred').replace('{{mutations}}','twenty-seven')
-ja=body('## 3.','## 4.').replace('{{graph_receipts}}','400件以上').replace('{{mutations}}','27')
+en=body('## 2.','## 3.').replace('{{graph_receipts}}','more than four hundred')
+ja=body('## 3.','## 4.').replace('{{graph_receipts}}','400件以上')
 def per(x,f):
     o={};s=None
     for l in x.splitlines():
