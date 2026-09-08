@@ -320,8 +320,8 @@ cd packages/sdk && npm install && npm test 2>&1 | grep -E '^ℹ '
 ```
 
 ```
-ℹ tests 1572
-ℹ pass 1572
+ℹ tests 1609
+ℹ pass 1609
 ℹ fail 0
 ```
 
@@ -418,9 +418,9 @@ Verified 2026-09-06 (live, keys redacted by the demo itself):
 
 Mutation check on the demo: flipping the floor comparison, removing the BLOCK boundary, or touching the
 signer each turns tests red (7 / 2 / 3 failures). `packages/sdk/test-mutations.mjs` does the same for the
-SDK itself: <!-- n:sdk_mutations -->40<!-- /n --> mutations, all killed, ~20 s.
+SDK itself: <!-- n:sdk_mutations -->42<!-- /n --> mutations, all killed, ~20 s.
 
-**`npm run judge-check` does not run those 40.** Its `test-mutations` step is the A/B harness's own
+**`npm run judge-check` does not run the SDK's set.** Its `test-mutations` step is the A/B harness's own
 set — <!-- n:ab_mutations -->27<!-- /n --> mutations in `examples/ethonline-2026-ab/test-mutations.mjs`
 (`scripts/judge-check.sh` runs `node test-mutations.mjs` in that directory). Run the SDK's set
 separately: `cd packages/sdk && node test-mutations.mjs`.
@@ -528,7 +528,7 @@ Since 2026-09-06 the MCP tool takes the same `policy` the SDK does, and forwards
 
 | input | meaning |
 |---|---|
-| `policy.requireVet402Allow` | default `true`. `false` waives a vet402 **WARN** when every declared floor is met. **BLOCK and `degraded` still refuse** (WINDOW_PLAN §3.2.1 — Japanese, internal plan) — the boundary lives in the SDK and the MCP tests pin it through the bridge. Needs at least one floor above 0, otherwise the call is a caller error (`invalid_policy`) before any network. |
+| `policy.requireVet402Allow` | default `true`. `false` waives a vet402 **WARN** when every declared floor is met. **BLOCK and `degraded` still refuse** (WINDOW_PLAN §3.2.1 — Japanese, internal plan) — the boundary lives in the SDK and the MCP tests pin it through the bridge. Both paths (`/decision` and the uncatalogued payee score) read the verdict word and the quality flags through one shared rule in `src/verdict-shape.ts`, so the boundary does not depend on how the server serialised them: `" BLOCK "` is a BLOCK, and a `degraded` that is not a boolean is not a measurement. Needs at least one floor above 0, otherwise the call is a caller error (`invalid_policy`) before any network. |
 | `policy.evidence.source` | `"vet402"` (default) \| `"subgraph"` \| `"both"`. `"subgraph"` reads **only** The Graph's x402 Base subgraph; `"both"` refuses if either source cannot be read. |
 | `policy.evidence.minSubgraphReceipts` | floor on receipts The Graph's subgraph knows for the payee (`source` must be `subgraph` or `both`). |
 | `policy.evidence.minL1Deliveries` | floor on vet402's delivered L1 purchases (`source` must be `vet402` or `both`). |

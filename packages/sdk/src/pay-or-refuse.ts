@@ -54,6 +54,8 @@ import type { PayerAccount, X402Accept } from "./x402-pay.js";
 // 証拠源2つ目。**支払いモジュールではない**ので静的 import でよい（第3層の証明は
 // `x402-pay.js` にだけ掛かる。`test/no-static-payment-import.test.mjs`）。
 import { readSubgraphReceipts, X402_BASE_SUBGRAPH_ID, type SubgraphReceipts } from "./subgraph-evidence.js";
+// 判定語と「測れたか」の欄の読み方。2つの金の経路で1つの規則を共有する（`./verdict-shape.js`）。
+import { isBlockVerdict, scoreQualityDefect } from "./verdict-shape.js";
 
 export type { PayerAccount, X402Accept, X402Settlement, Eip3009Authorization } from "./x402-pay.js";
 
@@ -697,7 +699,8 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
     }
     // A1: ALLOW 以外。理由はサーバの reason_codes をそのまま通す（我々の語で上書きしない）。
     // **BLOCK は免除の対象外**（WINDOW_PLAN §3.2.1）。WARN は意見、BLOCK は遮断。
-    if (String(decision.recommendation).toUpperCase() === "BLOCK") {
+    // 判定語は前後の空白を落とし大文字化してから読む（`" BLOCK "` は BLOCK・2026-09-08）。
+    if (isBlockVerdict(decision.recommendation)) {
       return refuse([...serverReasons, "payee_recommendation_block"], "decision", decision);
     }
     if (decision.recommendation !== "ALLOW") {
@@ -794,11 +797,13 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
       return refuse([...pathReasons, "evidence_unavailable"], "payee_score", null, null, accept);
     }
     // 免除の対象外（J7）。**測れなかったことは、ALLOW でないことと別**である。
-    if (payeeScore?.degraded === true || (payeeScore?.signalsUnavailable?.length ?? 0) > 0) {
+    // `degraded` は boolean、`signalsUnavailable` は（在るなら）配列でなければ「測れた」と言えない
+    // ——`/decision` 経路が 2026-09-07 に入れた規律を、ここへも同じ形で通す（2026-09-08）。
+    if (scoreQualityDefect(payeeScore) !== null) {
       return refuse([...pathReasons, "evidence_unavailable"], "payee_score", null, payeeScore, accept);
     }
     // **BLOCK は免除の対象外**（WINDOW_PLAN §3.2.1）。上の decision 経路と同じ規則。
-    if (String(payeeScore?.recommendation ?? "").toUpperCase() === "BLOCK") {
+    if (isBlockVerdict(payeeScore?.recommendation)) {
       return refuse([...pathReasons, "payee_recommendation_block"], "payee_score", null, payeeScore, accept);
     }
     if (payeeScore?.recommendation !== "ALLOW") {

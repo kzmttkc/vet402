@@ -31,6 +31,8 @@ const ROOT = dirname(fileURLToPath(import.meta.url));
 const PAY = "src/pay-or-refuse.ts";
 const SUB = "src/subgraph-evidence.ts";
 const X402 = "src/x402-pay.ts";
+/** 判定語と品質欄の読み方（2 経路の共有規則）。 */
+const VERDICT = "src/verdict-shape.ts";
 /** 壊れた形の表（テスト側の資産）。表を痩せさせる変異も殺せることを見る。 */
 const SHAPES = "test/_shapes.mjs";
 
@@ -46,16 +48,16 @@ const MUTATIONS = [
     what: "BLOCK を requireVet402Allow:false で通す（/decision 経路）",
     rule: "§3.2.1 BLOCK は免除の対象外（J10a）",
     file: PAY,
-    find: '    if (String(decision.recommendation).toUpperCase() === "BLOCK") {',
-    replace: '    if (/* MUTANT */ requireVet402Allow && String(decision.recommendation).toUpperCase() === "BLOCK") {',
+    find: "    if (isBlockVerdict(decision.recommendation)) {",
+    replace: "    if (/* MUTANT */ requireVet402Allow && isBlockVerdict(decision.recommendation)) {",
   },
   {
     id: "M02",
     what: "BLOCK を requireVet402Allow:false で通す（404・受取人スコア経路）",
     rule: "§3.2.1 BLOCK は免除の対象外（J10b）",
     file: PAY,
-    find: '    if (String(payeeScore?.recommendation ?? "").toUpperCase() === "BLOCK") {',
-    replace: '    if (/* MUTANT */ requireVet402Allow && String(payeeScore?.recommendation ?? "").toUpperCase() === "BLOCK") {',
+    find: "    if (isBlockVerdict(payeeScore?.recommendation)) {",
+    replace: "    if (/* MUTANT */ requireVet402Allow && isBlockVerdict(payeeScore?.recommendation)) {",
   },
   {
     id: "M03",
@@ -70,9 +72,8 @@ const MUTATIONS = [
     what: "degraded / signalsUnavailable を requireVet402Allow:false で通す（404 経路）",
     rule: "J7 の 404 側（免除は判定の中身だけ）",
     file: PAY,
-    find: "    if (payeeScore?.degraded === true || (payeeScore?.signalsUnavailable?.length ?? 0) > 0) {",
-    replace:
-      "    if (/* MUTANT */ requireVet402Allow && (payeeScore?.degraded === true || (payeeScore?.signalsUnavailable?.length ?? 0) > 0)) {",
+    find: "    if (scoreQualityDefect(payeeScore) !== null) {",
+    replace: "    if (/* MUTANT */ requireVet402Allow && scoreQualityDefect(payeeScore) !== null) {",
   },
   // ---- 証拠の床 ----
   {
@@ -384,6 +385,24 @@ const MUTATIONS = [
     file: SUB,
     find: '  if (typeof input.address !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(input.address.trim())) {',
     replace: '  if (/* MUTANT */ typeof input.address !== "string") {',
+  },
+
+  // ---- 判定語と品質欄の読み方（2026-09-08 の反証検査。共有規則を外すと 2 経路が同時に緩む）----
+  {
+    id: "M41",
+    what: "判定語の trim を外す（`\" BLOCK \"` が BLOCK でなくなり免除経路へ落ちる）",
+    rule: "N1/N2 判定語は前後の空白を落として読む",
+    file: VERDICT,
+    find: '  return String(value ?? "").trim().toUpperCase() === "BLOCK";',
+    replace: '  return String(value ?? "").toUpperCase() === "BLOCK"; /* MUTANT */',
+  },
+  {
+    id: "M42",
+    what: 'degraded の型検査を外す（文字列 "true" / 数値 1 が === true を素通りする）',
+    rule: "N5/N9 degraded は boolean でなければ「測れた」と言えない",
+    file: VERDICT,
+    find: '  if (typeof score.degraded !== "boolean" || score.degraded === true) return "degraded";',
+    replace: '  if (score.degraded === true) return "degraded"; /* MUTANT */',
   },
 ];
 

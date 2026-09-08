@@ -103,3 +103,25 @@ so our own 4xx never adds up to a BLOCK; a seller with attempts but no conclusio
 | `SKILL.md` | the "our gap" sentence now covers both `l1_not_attempted` and `l1_inconclusive` |
 | `docs/ethonline-2026/WINDOW_PLAN.md` | §16 F3 measured row updated to the 09-08 words (09-05 values kept beside them); dated notes after the `not_attempted_reason` paragraph and at the end of §16.5 (pre-registration body untouched) |
 | `docs/ethonline-2026/fixtures.md` | dated note: 0x.org reads `l1_inconclusive` from 09-08 |
+
+## 2026-09-08 — verdict-word and quality-flag normalisation (branch `ethonline/block-normalization`)
+
+A third-party refutation pass measured the core claim "**BLOCK and `degraded` still refuse**" breaking on
+two inputs. `recommendation: " BLOCK "` (padded) was not a BLOCK, so `requireVet402Allow: false` waived it
+and signed; on the uncatalogued payee-score path `degraded: "true"` / `1` and a non-array
+`signalsUnavailable` slid through `=== true` / `?.length ?? 0` and signed. The `typeof !== "boolean"` fix
+added to the `/decision` branch on 09-07 had never reached the payee-score branch or `SpendGuard`.
+Production is not exploitable through this — it answers `degraded: false` (bool) and unpadded verdict
+words, measured 09-08 — but the claim rested on the server's serialisation instead of on our own gate.
+New: `packages/sdk/src/verdict-shape.ts` (one shared rule for both money paths),
+`packages/sdk/test/verdict-normalization.test.mjs` (37 tests). Normalisation is deliberately one-way:
+`" BLOCK "` reads as a BLOCK, `" ALLOW "` does NOT read as an ALLOW. Verified unchanged on production's
+own bodies: 36/36 identical conclusions before and after.
+
+| File | Why |
+|---|---|
+| `packages/sdk/src/pay-or-refuse.ts` | both verdict comparisons and the payee-score quality gate go through `verdict-shape.ts`; no change to `x402-pay.ts`, the dynamic import, or anything the signer touches |
+| `packages/sdk/src/spend-guard.ts` | the three fail-closed branches read one `scoreQualityDefect()` result; an unreadable `signalsUnavailable` denies even under `block-only`, which still allows a *readable* partial measurement; `blockOnRecommendation` uses the same BLOCK reading |
+| `packages/sdk/test-mutations.mjs` | M01 / M02 / M04 follow the moved lines; M41 (drop the `trim`) and M42 (drop the boolean check) added — 42 mutations, all killed |
+| `SKILL.md` | one sentence: the boundary is held by a shared rule, not by how the server serialised the fields; `n:sdk_mutations` 40 → 42, `n:sdk_tests` 1572 → 1609 |
+| `docs/ethonline-2026/VIDEO_SCRIPT.md`, `docs/ethonline-2026/SUBMISSION_DRAFT.md`, `scripts/refresh-numbers.json` | the same two counts (`refresh-numbers --check` green) |

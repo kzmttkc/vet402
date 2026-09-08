@@ -239,7 +239,7 @@ SKILL.md は審査員が動かすもの。AI_USAGE.md は誰が書いたか。
 | `{{fixture_receipts}}` / `{{fixture_block}}` | `node src/run.ts refuse 2>&1 \| grep -E 'totalPayments\|_meta.block.number'`（鍵要） | **31** / **50973027**（payee `0xb15a55e8…def59`・0x.org） | 動く（画面のみ） | 言わない |
 | `{{fixture_reasons}}` | 同上 `\| grep reasons` | `l0_pass, l1_inconclusive, l2_undeclared, payee_recommendation_not_allow`（09-08 から。撮影日に `grep reasons` で取り直す） | 固定 | "l1_inconclusive" のみ口にする |
 | `{{tx_hash}}` / `{{tx_block}}` / `{{tx_amount}}` | `curl -sL -X POST https://mainnet.base.org -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_getTransactionReceipt","params":["0xf12093fba9314b1d3a514e7b667969201be8d021a6f4d6bdeb8d6c7f2de469ad"]}'` | status **0x1**・block **50898704**・Transfer **10000** units（$0.01）→ `0x79dc34e4…d52fccb` | **固定**（チェーン再読で確認） | "block five-zero-eight-nine-eight-seven-zero-four"・"one cent" |
-| `{{sdk_tests}}` | `cd packages/sdk && npm ci && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | **1572 / fail 0** | 動く（画面のみ） | 言わない |
+| `{{sdk_tests}}` | `cd packages/sdk && npm ci && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | **1609 / fail 0** | 動く（画面のみ） | 言わない |
 | `{{mcp_tests}}` | `cd packages/mcp-server && npm ci && npm run build && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | **748 / fail 0** | 動く（画面のみ） | 言わない |
 | `{{demo_tests}}` | `cd examples/ethonline-2026-demo && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | **65 / fail 0** | 動く（画面のみ） | 言わない |
 | `{{mutations}}` | `cd packages/sdk && node test-mutations.mjs 2>&1 \| tail -1` | **all 27 mutations killed in 25.0s** | 動く・**口で言う** | "twenty-seven"（撮影日に増えていたら**その数**。killed でない変異が 1 つでもあれば**この文を丸ごと落とす**） |

@@ -1,4 +1,6 @@
 import type { PayeeScoreResult } from "./index.js";
+// 判定語と「測れたか」の欄の読み方。`payOrRefuse` と同じ規則を共有する（`./verdict-shape.js`）。
+import { isBlockVerdict, scoreQualityDefect } from "./verdict-shape.js";
 
 /**
  * Trust posture toward the payee score. BREAKING (0.2.0): the default is
@@ -480,16 +482,23 @@ export class SpendGuard {
           trustPolicy !== "custom" &&
           isScoreStale(payeeScore, this.now().getTime(), maxScoreAgeMs);
 
+        // Read the data-quality fields ONCE, through the shared shape rules:
+        // `degraded` must be an actual boolean and `signalsUnavailable`, when
+        // present, an actual array. A string "true" or a number 1 is not a
+        // measurement we can grade, so it ranks with a degraded read rather
+        // than sliding through `=== true` into an allow (2026-09-08).
+        const defect = scoreQualityDefect(payeeScore);
+
         // Policy verdicts, most fundamental defect first: a degraded read is
         // not a measurement at all, a stale one is no longer current, a
         // partial measurement is not a clean one, and only then does the
         // recommendation itself get a say.
         if (trustPolicy === "allow-only") {
-          if (payeeScore.degraded === true) {
+          if (defect === "degraded" || defect === "unreadable") {
             reasons.push("payee_score_degraded");
           } else if (stale) {
             reasons.push("payee_score_stale");
-          } else if ((payeeScore.signalsUnavailable?.length ?? 0) > 0) {
+          } else if (defect === "partial") {
             reasons.push("payee_partial_measurement");
           } else if (payeeScore.recommendation !== "ALLOW") {
             reasons.push("payee_recommendation_not_allow");
@@ -498,13 +507,13 @@ export class SpendGuard {
           // Identical to allow-only on every data-quality question — the whole
           // point is that opting into WARN does not cost you the H-2 freshness
           // gate or the degraded/partial refusals the way "custom" does.
-          if (payeeScore.degraded === true) {
+          if (defect === "degraded" || defect === "unreadable") {
             reasons.push("payee_score_degraded");
           } else if (stale) {
             reasons.push("payee_score_stale");
-          } else if ((payeeScore.signalsUnavailable?.length ?? 0) > 0) {
+          } else if (defect === "partial") {
             reasons.push("payee_partial_measurement");
-          } else if (payeeScore.recommendation === "BLOCK") {
+          } else if (isBlockVerdict(payeeScore.recommendation)) {
             // BLOCK is never purchasable with evidence. Evidence explains a
             // WARN; it does not overturn a refusal.
             reasons.push("payee_recommendation_block");
@@ -518,11 +527,11 @@ export class SpendGuard {
             }
           }
         } else if (trustPolicy === "block-only") {
-          if (payeeScore.degraded === true) {
+          if (defect === "degraded" || defect === "unreadable") {
             reasons.push("payee_score_degraded");
           } else if (stale) {
             reasons.push("payee_score_stale");
-          } else if (payeeScore.recommendation === "BLOCK") {
+          } else if (isBlockVerdict(payeeScore.recommendation)) {
             reasons.push("payee_recommendation_block");
           }
         }
@@ -532,7 +541,7 @@ export class SpendGuard {
         }
         if (
           blockOnRecommendation === true &&
-          payeeScore.recommendation === "BLOCK" &&
+          isBlockVerdict(payeeScore.recommendation) &&
           !reasons.includes("payee_recommendation_block")
         ) {
           reasons.push("payee_recommendation_block");
