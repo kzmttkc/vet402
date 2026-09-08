@@ -1,0 +1,16 @@
+{
+  "name": "vet402",
+  "displayName": "vet402 — pay or refuse",
+  "version": "0.5.0",
+  "description": "Pay an x402 resource only when the evidence says the seller delivers. Bundles the pay-or-refuse agent skill and the @vet402/mcp-server MCP server (pay_if_trusted holds the signer: on anything other than ALLOW no signature can exist). Evidence can come from vet402's delivery ledger or, with your own key, from The Graph's x402 Base subgraph alone.",
+  "author": {
+    "name": "vet402 (KIZUNA Creation)",
+    "url": "https://github.com/kzmttkc"
+  },
+  "homepage": "https://vet402.com",
+  "repository": "https://github.com/kzmttkc/vet402",
+  "license": "MIT",
+  "keywords": ["x402", "payments", "usdc", "base", "thegraph", "subgraph", "mcp", "agent-skills", "erc-8004"],
+  "skills": ["./skills/pay-or-refuse"],
+  "mcpServers": "./.mcp.json"
+}

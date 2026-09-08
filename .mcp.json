@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "vet402": {
+      "command": "npx",
+      "args": ["-y", "@vet402/mcp-server"],
+      "env": {
+        "VOUCH_API_URL": "https://vet402.com/api/v1"
+      }
+    }
+  }
+}
