@@ -1,7 +1,7 @@
 # ETHOnline 2026 — ライブ審査（Finalist Round 2）の台本・問答・逃げ道
 
 > 作成 2026-09-07（Takeshi 採用 12:18）。**事実**（`WINDOW_PLAN.md` §1.4・§1.45）: Round 1 は非同期・通過はメール → Round 2 は**ライブ**、
-> **1 チーム 7 分＝デモ 4 分＋Q&A 3 分**。2025 は締切の約 1 日後（12:00 ET）だったので **09-14〜16 を空ける**。Continuity の枠は **3 つ**。
+> **1 チーム 7 分＝デモ 4 分＋Q&A 3 分**。日時は**確定**——提出フォームに **09-14 12:00 pm EDT ＝ 09-15 01:00 JST** と明記（`WINDOW_PLAN.md` の 09-08 実測の表）。Continuity の枠は **3 つ**。
 > 動画（`VIDEO_SCRIPT.md`）は**録画を見せる**もの。ライブは**その場でターミナルを叩く**もの。同じ絵を二度見せない——
 > 動画に無いのは「**審査員が指定した 402 URL を `judge` に入れる**」（Practicality／WOW）。
 > この文書の数字は **<!-- n:as_of -->2026-09-08<!-- /n --> の実測**（§6・印は `npm run check-numbers` が見る）。**動く数字は当日の朝に §7 のスクリプトで取り直す。**
@@ -24,18 +24,18 @@ Node は **≥ 22.18**（demo が `.ts` を直接走らせる）。09-07 実測 
 |---|---|---|
 | 1 | リポが提出時点の main | `cd ~/vouch && git pull --ff-only && git status --short \| wc -l` → **0**。`git log -1 --format='%h %ci' pre-ethonline-2026` → `c42daca 2026-09-04 09:05:36 +0900` |
 | 2 | ターミナル | **幅 100 桁 × 42 行以上**（demo の出力は 96 桁を超えない: `examples/ethonline-2026-demo/src/columns.ts` `MAX_WIDTH = 96`）。`tput cols` → ≥ 100。フォント Menlo **18pt**（画面共有で縮む前提）・暗い背景・`PS1='$ '`。`clear && printf '\e[3J'` でスクロールバックを消してから始める |
-| 3 | 鍵 2 本（名前だけ確認・値を出さない） | `set -a; source ~/vouch/.env.rehearsal.local; set +a; env \| grep -cE '^(GRAPH_API_KEY\|VOUCH_API_KEY)='` → **2**。**`cat` しない・`env` を素で打たない・`history` を出さない**。ライブ用のシェルは `unset HISTFILE` |
-| 4 | 鍵なしで全部緑 | リポ root で `npm run judge-check` → 表の **exit が全部 0**（09-07: clean clone で 17 秒）。これが sdk/mcp-server の `dist/` も作る |
+| 3 | 鍵 2 本（名前だけ確認・値を出さない） | `set -a; source ~/vouch/.env.rehearsal.local; set +a; env \| grep -cE '^(GRAPH_API_KEY\|VOUCH_API_KEY)='` → **2**。**`VOUCH_API_KEY` が入っていることが `/decision` の 429 を避ける唯一の手**（鍵なし枠は 1 分 10 本・**11 本目から 429**。§2 は 4 分で 5〜7 本叩く）。**`cat` しない・`env` を素で打たない・`history` を出さない**。ライブ用のシェルは `unset HISTFILE` |
+| 4 | 鍵なしで全部緑 | **前日にやる。当日はやらない。** リポ root で `npm run judge-check` → 表の **exit が全部 0**（09-07: clean clone で 17 秒）。これが sdk/mcp-server の `dist/` も作る。ただし **`npm ci` を 4 箇所（sdk・mcp-server・root・ab）で走らせて `node_modules` を作り直す**（`scripts/judge-check.sh:67,70,74,75`）ので、当日の朝に打つと動いていた環境を壊しうる |
 | 5 | The Graph の鍵が生きている | demo dir で `node src/run.ts pay 2>&1 \| grep 'subgraph evidence is live'` → `[ok  ] … block N, M receipts`。`[FAIL] … graph_query_error: auth error` なら Subgraph Studio で鍵を作り直す |
 | 6 | `/decision` の 404 が保たれている（§3.1「登録しない」） | `curl -sL -o /dev/null -w '%{http_code}\n' 'https://vet402.com/api/v1/resources/9e8469d365d65bc9b4a3f588f951bfc70ae64cc1afa2ebdf7e8f11a940d40763/decision?role=payer'` → **404**（09-07 実測 404） |
-| 7 | 逃げ道用の実出力を採る | **§7 のスクリプトを 1 回走らせ、`~/ethonline-live/<日付>/` に全コマンドの出力を置く**。当日の朝にもう 1 回（block と件数が動く） |
-| 8 | MCP の live 段の準備（§2 の 2:30） | `cd ~/vouch/packages/mcp-server && npm i --no-save viem`（**`--no-save`**: `package.json` を汚さない。viem は意図的に依存に無い——`SKILL.md` "Actually paying"）。§7 の MCP 行が `decision_record.evidence[0].source = "subgraph"` を返すこと |
-| 9 | `--live` 1 回の可否（**ここで決める。当日は決めない**） | (a) 残高: 下のチェーン読みで **USDC ≥ 0.02**（09-07 実測 **0.99**）。(b) `DEMO_PAYER_PRIVATE_KEY` が `.env.rehearsal.local` にある（名前だけ）。(c) 前日に `node src/run.ts pay` の空撃ちが `predicted --live would sign and send $0.01` を出している。**3 つ揃わなければ §2 の 1:30 は空撃ち＋09-05 の Basescan で行く** |
+| 7 | 逃げ道用の実出力を採る | **§7 のスクリプトを 1 回走らせ、`~/ethonline-live/<日付>/` に全コマンドの出力を置く**。当日の朝にもう 1 回（block と件数が動く）。合格条件: `ls ~/ethonline-live/$(date +%F)` が **00〜10 の 11 ファイル**で、末尾の漏洩検査が**何も印字しない**。**09-08 に初回採取済み**（`~/ethonline-live/2026-09-08/`・11 ファイル・漏洩検査 空） |
+| 8 | MCP の live 段の準備（§2 の 2:30） | **`npm i --no-save viem` は打たない。** 09-08 実測: `packages/mcp-server` から `viem/accounts` は**リポ root の `node_modules` で解決する**（`require.resolve` → `~/vouch/node_modules/viem/_cjs/accounts/index.js`。`packages/mcp-server/node_modules/viem` は存在しない）。#4 の `npm ci` が済んでいれば足り、打つと repo が汚れるだけ。**要るのは payer 鍵が「形として在る」ことだけ**——`resolvePayer()` は `/^0x[0-9a-fA-F]{64}$/` しか見ず（`packages/mcp-server/src/index.ts:221`）、床 10⁹ の拒否は `pay-or-refuse.ts:749` で返るので**支払いモジュールの動的 import（同 :843）へ到達しない**。だから**その場限りの鍵を env にだけ渡す**: `VOUCH_PAYER_PRIVATE_KEY=0x$(openssl rand -hex 32)`。**ファイルに書かない・印字しない・残高 0 のまま**。§7 の 08 行がこの形。合格条件: 出力の `decision_record.evidence[0].source` が `"subgraph"` |
+| 9 | `--live` 1 回の可否（**ここで決める。当日は決めない**） | (a) 残高: 下のチェーン読みで **USDC ≥ 0.02**（09-07 実測 **0.99**）。(b) `DEMO_PAYER_PRIVATE_KEY` が `.env.rehearsal.local` にある（名前だけ）。**09-08 実測ではどの `.env*` にも無い**——入れるのは Takeshi。入らないまま当日を迎えたら (b) は不成立なので、**既定どおり空撃ち＋09-05 の Basescan で行く**。(c) 前日に `node src/run.ts pay` の空撃ちが `predicted --live would sign and send $0.01` を出している。**3 つ揃わなければ §2 の 1:30 は空撃ち＋09-05 の Basescan で行く** |
 | 10 | ブラウザのタブを先に開く | Basescan `https://basescan.org/tx/0xf12093fba9314b1d3a514e7b667969201be8d021a6f4d6bdeb8d6c7f2de469ad`／`https://github.com/kzmttkc/vet402/blob/main/SKILL.md`／`https://bazantic.com/recipes/x402-payee-verification-via-vet402-gateway`／`https://vet402.com/observatory`。**ダッシュボード類（Vercel・Neon・Bazantic の鍵ページ・1Password）は閉じる** |
 | 11 | 画面共有の練習 | 招待メールの会議ツールで **1 回接続テスト**（ツール名は【未確認】——メールに書いてある）。共有するのは「ターミナルのウィンドウ」と「ブラウザのウィンドウ」の 2 つだけ（画面全体を共有しない）。macOS の**集中モード ON**（通知を出さない） |
 | 12 | 通し練習 | ストップウォッチで §2 を **2 回**。4:00 を超えたら 3:15 の段（A/B）を口頭だけにする |
 | 13 | ネット | 有線かテザリングの**予備**を用意し、テザリングで #5 の 1 行が通ることを確かめる |
-| 14 | 時刻とメール | Round 1 の通過連絡は**メール**。時刻は ET 表記の可能性——JST に直してカレンダーへ。当日 30 分前に入室 |
+| 14 | 時刻とメール | Round 1 の通過連絡は**メール**。ライブは **09-15 01:00 JST（= 09-14 12:00 pm EDT）で確定**——カレンダーに入れ、**00:30 JST に入室**。深夜枠なので前日の睡眠を先に確保する |
 | 15 | A/B v2 が走っていたら | `cd examples/ethonline-2026-ab && npm run metrics -- ../../docs/ethonline-2026/ab/<v2 のディレクトリ>` を採り、§2 の 3:15 で v1 の下に並べる。**口で言う数字は v1 のまま** |
 
 **#9 の残高の読み方**（tx の Transfer ログから買い手アドレスを取り、USDC の `balanceOf` を引く。手でアドレスを書かない）:
@@ -62,14 +62,14 @@ curl -sL -X POST https://mainnet.base.org -H 'content-type: application/json' \
 | **0:00–0:30** | `cd ~/vouch && git log -1 --format='%h %ci' pre-ethonline-2026` → `git log pre-ethonline-2026..main --oneline -- packages/sdk packages/mcp-server examples/ethonline-2026-demo examples/ethonline-2026-ab SKILL.md AI_USAGE.md docs/ethonline-2026 \| wc -l` | `c42daca 2026-09-04 09:05:36 +0900` と、主張するコミット数（動く・画面のみ） | **"vet402 existed before this tag: a catalogue, a decision API, a payee score, an observatory that buys x402 endpoints for real. Everything after the tag is new: a payment gate that holds the signer, The Graph as an evidence source, and one MCP tool. That number is what we claim."** | Continuity 開示・Originality | git が遅ければ `cat ~/ethonline-live/<日付>/00-tag.txt` |
 | **0:30–1:30** | `cd examples/ethonline-2026-demo` → **審査員の URL**: `node src/run.ts judge <URL>` → 続けて `node src/run.ts judge <URL> --min-subgraph-receipts 1`。**無ければ The Graph 自身の 402**: `node src/run.ts judge https://gateway.thegraph.com/api/x402/subgraphs/id/Cb56epg3EvQ6JRpPfknbkM54QxpzTvLa7mwKNQQfUyoj --method POST --ceiling-usd 0.01`（→ 同じく `--min-subgraph-receipts 1` を足して 2 回目） | 1 回目: `[ok  ] subgraph evidence is live  block N, M receipts`／`[FAIL] payee verdict is ALLOW  WARN (nn)`／`verdict REFUSE`／`reason_codes resource_uncatalogued, payee_recommendation_not_allow`。2 回目: `verdict ALLOW`／`verdict from caller_policy`／`allowed by requireVet402Allow:false — waived payee_score WARN (nn)`／`floor met minSubgraphReceipts (subgraph) 1 <= M`／末尾 `DRY RUN — judge has no signing path` | **"Your URL. 402, then our catalogue — 404, we have never seen it; that is the normal case. Our payee engine says WARN: that is our gap, we never bought from them, not a verdict on the seller. The Graph's x402 subgraph, live — block number, deployment hash — says M receipts. Default policy: refuse. Now the caller's own rule: 'I need one receipt in The Graph's ledger, not vet402's blessing.' Allow, verdict from caller policy, WARN kept on the record. No signing path exists in this command."** | Practicality・WOW・**The Graph**（live 読み）・Usability（理由が読める） | URL が 402 でない → 1 行 `error: not an x402 endpoint: HTTP 200 …` を見せて **"that is the answer — it is not a paywall"** と言い、The Graph の URL へ。The Graph の 2 回目が要らなければ 1 回で切る |
 | **1:30–2:30** | `node src/run.ts pay`（空撃ち・約 3 秒）→ **#9 が揃っていれば 1 回だけ** `node src/run.ts pay --live` → 出た `basescan https://basescan.org/tx/0x…` をブラウザで開く。**揃っていなければ** 09-05 の Basescan タブ（block 50898704・0.01 USDC → `0x79DC…FcCB`） | 空撃ち: 左「what would be signed」（amount 10000 units・payTo・EIP-3009 の窓）／`[waiv] payee verdict is ALLOW  WARN (nn) — not required by policy`／`[ok  ] evidence floor: subgraph >= 1`／`predicted --live would sign and send $0.01`／`DRY RUN — no signature was created. The signing module was never loaded.` `--live`: `payOrRefuse status=paid signed=true`／`verdict from caller_policy`／`nonce 0x…`／`txHash 0x…` | **"Same gate, pointed at The Graph. Dry run is the default: it fetches the real 402 and shows what would be signed. Nothing was signed; the signing module was not even loaded. With dash-dash-live — a human decision, and I decided it this morning, once — it pays one cent to The Graph's receiving wallet. Basescan, not our logs. The record keeps the WARN; we do not rewrite our own judgement to match the payment."** | Technicality（fail-closed）・**The Graph**（実 tx）・WOW | `--live` が `status=failed` → **隠さない**: `signed true / nonce 0x…` を指して **"it signed and the seller did not settle; we return the nonce, we do not hide it"**（E18）→ 09-05 のタブへ。Basescan が遅い → `txHash` 行を指して先へ |
-| **2:30–3:15** | `cd ~/vouch/packages/mcp-server` → §7 の **MCP 行**（`pay_if_trusted`・The Graph の 402 URL・`requireVet402Allow:false`・`source:"subgraph"`・床 **10⁹**・env に `VOUCH_PAYER_PRIVATE_KEY`）を貼って Enter → 出力 1 行を `python3 -m json.tool` で開く | `"decision": "REFUSE"`／`refuse_reasons ["resource_uncatalogued","insufficient_subgraph_evidence"]`／`signed false, nonce null`／`decision_record.evidence[0]`: `source "subgraph"`・`receipts M`・`block.number N`・`deployment Qm…`・`queriedAt` | **"The same gate as one MCP tool, over stdio. Same policy object — the tool does not re-judge. I set an impossible floor, ten to the ninth receipts, so it reads The Graph live and stops: refuse, signed false, nonce null, and the evidence row says which source, which block, which deployment. The Graph key is env, never a tool input, so it never enters the model's context."** | Usability（DX）・**The Graph**（MCP 面）・Technicality | 鍵や viem で詰まる → 鍵なしの `tools/list`（§7 の行）で 7 ツールを見せ、**"without a payer key this server cannot move money — `payer_not_configured` — by design"**（09-07 実測: 鍵なしは Graph を読む前に止まる）。出力の整形で詰まる → `tail -1` のままで `"decision"` と `"source":"subgraph"` を指す |
+| **2:30–3:15** | `cd ~/vouch/packages/mcp-server` → §7 の **MCP 行**（`pay_if_trusted`・The Graph の 402 URL・`requireVet402Allow:false`・`source:"subgraph"`・床 **10⁹**・env に**その場限りの** `VOUCH_PAYER_PRIVATE_KEY`＝`0x$(openssl rand -hex 32)`・§1 #8）を貼って Enter → 出力 1 行を `python3 -m json.tool` で開く | `"decision": "REFUSE"`／`refuse_reasons ["resource_uncatalogued","insufficient_subgraph_evidence"]`／`signed false, nonce null`／`decision_record.evidence[0]`: `source "subgraph"`・`receipts M`・`block.number N`・`deployment Qm…`・`queriedAt` | **"The same gate as one MCP tool, over stdio. Same policy object — the tool does not re-judge. I set an impossible floor, ten to the ninth receipts, so it reads The Graph live and stops: refuse, signed false, nonce null, and the evidence row says which source, which block, which deployment. The Graph key is env, never a tool input, so it never enters the model's context."** | Usability（DX）・**The Graph**（MCP 面）・Technicality | 鍵で詰まる → 鍵なしの `tools/list`（§7 の行）で 7 ツールを見せ、**"without a payer key this server cannot move money — `payer_not_configured` — by design"**（09-07 実測: 鍵なしは Graph を読む前に止まる）。出力の整形で詰まる → `tail -1` のままで `"decision"` と `"source":"subgraph"` を指す |
 | **3:15–4:00** | `cd ~/vouch/examples/ethonline-2026-ab && npm run metrics -- ../../docs/ethonline-2026/ab/2026-09-06T213134Z \| head -30` → 表 A/B。次に `sed -n '/^## 4/,/^## 5/p' ../../docs/ethonline-2026/BAZANTIC_FEEDBACK.md \| head -12` | `A 10 5 50% … B 10 5 50%`／`delta (B − A): success +0`／per-fixture `F2 0/3 · F4 0/2` 両条件。§4-4: `110 tool calls, 88 settled … 88 distinct on-chain transactions of 0 USDC` | **"For Bazantic we asked: can an agent use this without our Recipe? Same model, same prompt, same fifty-seven tools; the Recipe was the only difference. Pre-registered, run once, not re-run. Five of ten and five of ten — no difference. What the Recipe fixed was vocabulary — real reason codes, sixty-three to ninety-one percent — not the verdict. And one finding for Bazantic: eighty-eight free reads cost eighty-eight on-chain transactions. Every number here is recomputed from the raw log by one script."** | **Bazantic**（Recipe だけが差・両方の結果・改善の特定）・Originality（正直） | 時間が無い → コマンドを打たず口頭だけ（数字は固定・§6）。`npm run metrics` が落ちる → `sed -n '/^## 2/,/^## 3/p' …/BAZANTIC_FEEDBACK.md` |
 | **締め（4:00 の 5 秒前）** | 何も打たない | — | **"We do not let the model decide whether to pay. We call a gate, and the gate can say no before a signature exists."** | WOW | — |
 
 **時間配分の検算**: 30＋60＋60＋45＋45＝240 秒。`judge`・`pay`・MCP は各 3〜5 秒の網の待ちがある（切れない——live の証拠）。
 言う文は各段 40〜60 語（150 語/分で 16〜24 秒）で、待ちと合わせて枠に収まる。**4:00 で止められる前提**で 3:15 の段は削れる作りにしてある。
 
-## 3. 想定質問 15 件（英語の質問 → 30 秒で言える答え → 証拠の場所）
+## 3. 想定質問 18 件（英語の質問 → 30 秒で言える答え → 証拠の場所）
 
 各項: **A** ＝ そのまま言う英語、**要旨** ＝ 日本語 1 行、**証拠** ＝ ファイル:行 か URL か コマンド。
 
@@ -79,9 +79,20 @@ A: *The score is our opinion, and it is honest about its limits: The Graph's own
 証拠: `WINDOW_PLAN.md` §3.2（決定）・§3.2.1（BLOCK は外れない）／`packages/sdk/src/pay-or-refuse.ts` `verdict_source`／`SKILL.md` "Why `source` matters"。
 
 **Q2. How do you know the subgraph data is live?**
-A: *Every subgraph read is put on the decision as its own evidence row with `_meta.block.number`, `deployment` and `queriedAt`. If the answer has no `_meta.block`, the reader refuses with `graph_no_block_meta` — static or cached data cannot pass. Run the command twice and the block number advances; you saw it move between my two `judge` runs.*
-要旨: 決定行に block・deployment・時刻。`_meta.block` が無ければ拒否。2 回叩けば block が進む。
-証拠: `packages/sdk/src/subgraph-evidence.ts:207`（`graph_no_block_meta`）／変異 M22（`packages/sdk/test-mutations.mjs`）／`SKILL.md` "Paying on The Graph's own data"（`evidence[].block`）。
+A: *Every subgraph read is put on the decision as its own evidence row with `_meta.block.number`, `deployment` and `queriedAt`. If the answer has no `_meta.block`, the reader refuses with `graph_no_block_meta` — static or cached data cannot pass. And you do not have to take our word for which subgraph answered: add `--pin-deployment <id>` and the reader refuses with `graph_deployment_mismatch` unless `_meta.deployment` is exactly that deployment. A read that came from somewhere else is not a read. I can show you both screens in two seconds.*
+要旨: 決定行に block・deployment・時刻。`_meta.block` が無ければ拒否。deployment を pin すれば違う先を読んだ瞬間に拒否。
+証拠: `packages/sdk/src/subgraph-evidence.ts:207`（`graph_no_block_meta`）／変異 M22・**M43・M44**（`packages/sdk/test-mutations.mjs`。pin を壊すと赤になる）／`SKILL.md` "Paying on The Graph's own data"（`evidence[].block`）／その場で出す 2 枚（demo dir・各 1〜2 秒。`$G` は §7 の The Graph の URL、`<id>` は 1 枚目の `_meta.deployment` を読む）:
+
+```
+node src/run.ts judge "$G" --method POST --ceiling-usd 0.01 --policy subgraph --min-subgraph-receipts 1 --pin-deployment <id>
+node src/run.ts judge "$G" --method POST --ceiling-usd 0.01 --policy subgraph --min-subgraph-receipts 1 --pin-deployment QmWrongDeployment000000000000000000000000000000
+```
+
+09-08 実測: 一致は `[ok  ] subgraph evidence is live   block N, M receipts`、不一致は
+`[FAIL] subgraph evidence is live   not read (graph_deployment_mismatch: pinned …)` →
+`[  ? ] evidence floor` → `verdict REFUSE`。**「2 回叩けば block が進む」は言わない**——09-08 に
+連続 3 回とも同じ block（51041641）だった。進むかどうかは subgraph の索引の進み方次第で、
+**台本が保証できない絵**である。
 
 **Q3. What stops the agent from signing anyway?**
 A: *Three layers, each tested. One: the signer is a Proxy in tests and a refusal must show zero `sign*` property accesses — not zero calls, zero accesses — with a negative control that sees exactly one on `--live`. Two: the payment module is a dynamic import inside the ALLOW branch, and a test walks the built `dist/` module graph to prove it is never statically reachable. Three: the MCP server ships without viem and without a payer key; without both it refuses with `payer_not_configured`. And yes — nothing stops an agent that never calls the gate. What we guarantee is that if it calls, the refusal happens before a signature exists.*
@@ -131,8 +142,8 @@ A: *You get a refusal, not an allow. The demo records `/decision` as status null
 **Q12. Mutation testing — what did it find?**
 A: *It found that green tests were lying. Tests that only looked at `status` and signer calls stayed green when the whole ALLOW gate was removed — the run refused for a different reason. Switching the payment module to a static import turned no test red until we added the `dist` module-graph test. The mutation script breaks one gate at a time — BLOCK waiver, floor comparison, `payTo` check, ceiling, nonce retention, `_meta.block` — rebuilds, and requires red. Today <!-- n:sdk_mutations -->44<!-- /n --> mutations, all killed; four survived on September 6 and became tests.*
 要旨: 「緑のテストが嘘」を検出。<!-- n:sdk_mutations -->44<!-- /n --> 変異全部赤。9/6 に 4 つ生き残り→テスト追加。
-証拠: `WINDOW_PLAN.md` §4（A1/B5–B7 の偽の緑）・§14.3・§17（SURVIVED 4）／`packages/sdk/test-mutations.mjs`（id は **M01〜M42**・0 埋め 2 桁で連番）／印 `n:sdk_mutations`。
-**言うのは「all killed」まで。** 本数は印が出す——`cd packages/sdk && node test-mutations.mjs 2>&1 | tail -1` が `all 42 mutations killed in 39.2s`（09-08 実走）。1 つでも生き残ると harness はこの行を印字しないので、`--refresh` が空出力で落ちる。
+証拠: `WINDOW_PLAN.md` §4（A1/B5–B7 の偽の緑）・§14.3・§17（SURVIVED 4）／`packages/sdk/test-mutations.mjs`（id は **M01 から 0 埋め 2 桁の連番**——本数は印が出す。手で終端を書かない）／印 `n:sdk_mutations`。
+**言うのは「all killed」まで。** 本数は印が出す——`cd packages/sdk && node test-mutations.mjs 2>&1 | tail -1` が `all N mutations killed in …`（**09-08 実走 53.8 秒・clean checkout**。09-07 の 42 本は `beac4f9` が pin の変異 2 本を足して増えた）。1 つでも生き残ると harness はこの行を印字しないので、`--refresh` が空出力で落ちる。
 （`judge-check` が回すのは **A/B 側**の別の集合で **27 本**・id は `M1`・`M1b`・`M1c`・`M2`〜`M25`。`n:ab_mutations`。混ぜない）
 
 **Q13. Security audits — what changed?**
@@ -150,6 +161,23 @@ A: *Because then the demo would only prove that our catalogue works, and real bu
 要旨: カタログ外で判定できることが製品の核。会期中に登録すれば自作自演に見える。
 証拠: `WINDOW_PLAN.md` §3.1「決定: カタログに登録しない」／`packages/sdk/test-mutations.mjs` M10（I23）／09-07 実測 `/decision` → 404。
 
+**Q16. Why are almost all your commit messages in Japanese?**
+A: *Japanese is our working language — the source comments and most commit subjects are Japanese, and we did not rewrite the log to make it look otherwise. The rule changed at 20:00 JST on September 8: new subjects are English, written down in `docs/ethonline-2026/GIT_RULES.md`, and work already in flight kept landing in Japanese for a few commits after that. The README says exactly this and gives you the command to count it yourself rather than take our word. What the criterion asks for is a history you can read, and that part is in English structure, not English prose: one commit one purpose, a fixed `ethonline:` prefix inside the window, a boundary tag `c42daca` so you can see what is pre-existing, and every edit to a pre-existing file appended to `CHANGED_FILES.md` in the same commit. The English route through the work is `SKILL.md`, `AI_USAGE.md` and `CHANGED_FILES.md`, and seven source files carry an English header above the Japanese one.*
+要旨: 日本語は作業言語。09-08 20:00 JST から英語へ。**書き換えない**。基準が問うている「読める履歴」は 1 コミット 1 目的・接頭辞・境界タグ・`CHANGED_FILES.md` で答える。英語の道は SKILL / AI_USAGE / CHANGED_FILES。
+証拠: `README.md:22`（規則であって既成事実ではない、と書いてある）／`docs/ethonline-2026/GIT_RULES.md` 1〜5／審査基準 *"Proper use of git commit history"*（`WINDOW_PLAN.md` 09-08 実測の提出フォーム表）。
+**数は口で言わない。聞かれたら画面で数える**: `git log --no-merges pre-ethonline-2026..main --format='%s'`（09-08 実測: 会期分 292 件・全史 788 件。印が無いので**この値を暗記して言わない**）。
+
+**Q17. Your own `/status` page shows errors on September 7 and 8. What are they?**
+A: *That page is our own uptime, and it is deliberately unflattering: it is sampled from real traffic, not a fixed-interval monitor, and a day is marked by its worst sample — so one bad five minutes colours the whole row, and a quiet day carries fewer samples. September 7 and 8 are real: `/api/health` returned 503 intermittently, and only on the thirty-minute cron. We could not name the cause at first, because the table stored a status and nothing else — so on September 8 we first made the reason recordable: which probe, in what state, fresh or cached, and why. Then we found it. The two pieces of work that run after the response — writing the health snapshot and refreshing the payee probe — were being suspended by the platform instead of finished, so the deadline timer never advanced and a probe reported sixty seconds of latency against a twenty-four second deadline. Both commits are in the log from that day. We did not delete the rows. A status page that erases its bad days is not a measurement, and this is the production observatory — not the SDK you are judging, but the same rule applied to ourselves.*
+要旨: 自分の稼働率の頁。実トラフィック標本・**日は最悪サンプルで色がつく**。09-07/08 は本物の 503（30 分 cron のみ）。理由を残せるようにしてから原因を特定（応答後の処理が platform に suspend され、期限の timer が進まない）。同日に 2 コミット。**行は消さない**。
+証拠: `https://vet402.com/status` §3 の定義（ok / degraded / error・worst sample・"A missing observation is never reported as ok."）／`8e165cc`「503 の理由を health_snapshots に残す」・`c7ec6f6`「応答後に走る 2 つの処理を `after()` に載せる」。
+**画面の値を読む**（当日の集計は動く。09-08 22:0x 実測は samples 166 / ok 121 / degraded 8 / error 37、09-07 は 278 / 248 / 15 / 15）。**言い切らない**: `c7ec6f6` は原因への修正であって、直ったことの実測はまだ無い（**【未確認】**）。聞かれたら *"the fix landed that evening; the days below it stay on the page either way."*
+
+**Q18. Are the numbers in the video still the same today?**
+A: *No, and they should not be. The video is a recording — its numbers are the record of the day it was shot. The Graph's subgraph counted four hundred and twenty-seven receipts for that wallet then; it counts more now, and the payee score moves too. That is exactly why every evidence row carries `_meta.block.number`, `deployment` and `queriedAt`: you can tell when a number was read, and whether it was read at all. Anything I say live, I read off the screen in front of you.*
+要旨: 動画は撮影日の記録。件数もスコアも動く。**だから**決定行に block・deployment・時刻がある。生で言う数字は画面から読む。
+証拠: §0「受取人スコアの値を口で固定しない」／§6「当日取り直す」（09-07 12:xx **427**）／09-08 22:0x 実測では**同じ問いに違う値**が返った（画面で読む）。§7 の 01/02/08 に当日の値が採ってある。
+
 **予備（時間があれば聞かれる）**
 - *"Is the settlement verified?"* → *"The SDK says at most `settle_claimed` — the seller's header is a claim. Only a verifier that re-reads the chain says `settled`; that is the production observatory's word, not the SDK's."*（`WINDOW_PLAN.md` §15 語彙・`SKILL.md` "Reading the answer"）
 - *"Why 120 seconds?"* → *"An EIP-3009 authorization stays live until `validBefore`; a short window bounds what a failed settle can do later. Production cut it on September 4 after an audit; the SDK matches."*（§14.1 #3）
@@ -158,13 +186,13 @@ A: *Because then the demo would only prove that our catalogue works, and real bu
 
 | 断 | 何が起きるか | やること | 言うこと |
 |---|---|---|---|
-| **ネット断**（全部） | `judge`/`pay` が `graph_unreachable` や `/decision` null で止まる | `cat ~/ethonline-live/<今朝>/<段の番号>-*.txt` を §2 の順に読む（§7 が採っている）。ファイル先頭の `date -u` 行を先に見せる | *"The network dropped. This is this morning's output at HH:MM UTC; the block number on it is the timestamp you can check on The Graph."* |
+| **ネット断**（全部） | `judge`/`pay` が `graph_unreachable` や `/decision` null で止まる | `cat ~/ethonline-live/<今朝>/<段の番号>-*.txt` を §2 の順に読む（§7 が採っている。**09-08 に初回採取済み**: `00-tag` `01/02-judge` `03-judge-kronos` `04-refuse` `05-pay-dryrun` `06-refuse-graph-down` `07-mcp-tools-list` `08-mcp-pay-if-trusted` `09-ab-metrics` `10-check-numbers`）。ファイル先頭の `date -u` 行を先に見せる | *"The network dropped. This is this morning's output at HH:MM UTC; the block number on it is the timestamp you can check on The Graph."* |
 | **vet402.com 断** | `/decision` が読めない → `evidence_unavailable`。`pay` の空撃ちは**ローカル関門**（ceiling・chain/asset・payTo 一致・EIP-712 固定）までは緑で出る | そのまま見せる（**それ自体が fail-closed のデモ**）。次に `SKILL.md` §2 のオフラインブロック（fetch を差し替えた `payIfTrusted` → REFUSE・`nonce null`）を貼る | *"Our own API is down, and the gate refuses — no answer is not an ALLOW. The local money gates still ran. Here is the same refusal fully offline."* |
-| **The Graph 断**（Gateway 5xx／鍵失効） | `[FAIL] subgraph evidence is live  not read (graph_http_5xx / graph_query_error: …)` → `evidence_unavailable, subgraph_evidence_unavailable` → REFUSE | そのまま見せる。**復旧を待たない**。同じ絵は `GRAPH_API_KEY=not_a_real_key node src/run.ts refuse` でいつでも再現できる（09-07 実測: `graph_query_error: auth error: malformed API key` で拒否） | *"The Graph could not be read, and the gate refuses with the reason on the record — it never falls back to our own ledger. This failure mode is a test, not an accident."* |
+| **The Graph 断**（Gateway 5xx／鍵失効） | `[FAIL] subgraph evidence is live  not read (graph_http_5xx / graph_query_error: …)` → `evidence_unavailable, subgraph_evidence_unavailable` → REFUSE | そのまま見せる。**復旧を待たない**。同じ絵は `GRAPH_API_KEY=not_a_real_key node src/run.ts judge "$G" --method POST --ceiling-usd 0.01` でいつでも再現できる（09-08 実測: 関門行 `[FAIL] subgraph evidence is live   not read (graph_query_error: auth error: malformed API key)` → `reason_codes  resource_uncatalogued, evidence_unavailable, subgraph_evidence_unavailable`）。**`refuse` では再現しない**——2 列の画に出るのは `—  subgraph not read` と `reasons … evidence_unavailable, subgraph_evidence_unavailable` だけで、`graph_query_error` の語は**どこにも出ない**（09-08 実測） | *"The Graph could not be read, and the gate refuses with the reason on the record — it never falls back to our own ledger. This failure mode is a test, not an accident."* |
 | **画面共有断** | 審査員に画面が見えない | 動画の秒を口で指す: 0:12 三つの情報源／0:36 `refuse`（block・deployment・`signed false`）／1:12 空撃ち／1:36 Basescan／1:54 テストと変異／2:12 A/B／2:41 MCP。可能なら §7 の出力ファイルをチャットに貼る | *"I lost screen share. In the video you have: at 0:36 the two-column refusal with the block number; at 1:36 the transaction; at 2:12 the A/B table. I will paste the terminal output in chat."* |
 | **審査員の URL が 402 でない** | 1 行 `error: not an x402 endpoint: HTTP 200 …` | The Graph の URL へ（§2 の 0:30） | *"That is the honest answer: it is not a paywall. Let me use The Graph's own."* |
 | **`--live` が失敗**（`status=failed`） | 署名はしたが売り手が settle しなかった | `signed true / nonce 0x…` を指して隠さない → 09-05 の Basescan タブ | *"It signed and the seller did not settle; we return the nonce instead of hiding it. Here is the one from September 5."* |
-| **`/decision` の 429**（鍵なし枠 10/分） | `evidence_unavailable` | `VOUCH_API_KEY` が入っているか `env \| grep -c '^VOUCH_API_KEY='`。入っていれば起きない | — |
+| **`/decision` の 429**（鍵なし枠 10/分・**11 本目から**） | `judge` / `pay` の画には**出る**（09-08 実測・`cd246d9` 以降）: ヘッダ右に `/decision   HTTP 429`、関門に `[FAIL] /decision was readable   HTTP 429 — a verdict we could not read is not a verdict`、空撃ちの `predicted --live would REFUSE before signing. Failing gate: "/decision was readable" → HTTP 429 …`。**`refuse` の 2 列の画だけは `recommendation —` のままで 429 と分からない**（`src/refuse.ts:119`）——§2 は `refuse` を使わないので当日は関係ない | 前日に §1 #3 で `VOUCH_API_KEY` を入れてある＝**枠に当たらない**。当たったら画の `HTTP 429` を指す。**policy を緩めない・打ち直さない**（§4.5） | *"That is a rate limit on our own API, not a verdict. The gate names it on the record — a verdict we could not read is not a verdict — and refuses. It is the same fail-closed path as the outage case, and it is our availability, not the seller's."* |
 | **MCP の viem／鍵で詰まる** | `payer_not_configured`（Graph を読む前に止まる・09-07 実測） | 鍵なし `tools/list`（§7）→ 7 ツール → `judge` の出力（2:30 より前に見せた）を指す | *"Without a payer this server cannot move money — by design. The evidence row you saw in `judge` is the same SDK path."* |
 
 ## 4.5 拒否が出たとき（`judge` / `pay` が REFUSE を返した）
@@ -201,7 +229,7 @@ A: *Because then the demo would only prove that our catalogue works, and real bu
 | URL | 09-08 実測 | 何が見えるか |
 |---|---|---|
 | `https://vet402.com/payee/<address>` | 200 · text/html · 40,049 B | その受取人の判定の頁。**部分的にしか測れていないときだけ** `Partial measurement — ETH outflow leg unmeasured · USDC outflow leg unmeasured (upstream outage)` の 1 行が出る（`src/app/payee/[address]/page.tsx`）。09-08 の The Graph の受取ウォレットは WARN で、この行は出ていない——**出ていない頁を「出る」と言わない** |
-| `https://vet402.com/status` | 200 · text/html · 46,694 B | 系全体の状態 |
+| `https://vet402.com/status` | 200 · text/html · 46,696 B | 系全体の状態。**開く前に Q17 を読む**——09-07 と 09-08 の行に error が並んでいる（09-08 22:0x 実測 samples 166 / ok 121 / degraded 8 / error 37）。**日は最悪サンプルで色がつく**ので、聞かれる前に *"a day is marked by its worst sample"* と先に言う |
 
 `https://vet402.com/api/v1/payees/<address>/score` は**使わない**——鍵なしでは **401**
 `{"error":"missing_api_key"}`（09-08 実測）。審査員の前で 401 を出すと、拒否の説明が
@@ -235,7 +263,7 @@ A: *Because then the demo would only prove that our catalogue works, and real bu
 
 | 印 | 値【実測 09-08】 | それを出すコマンド（リポ root から） | どこで使う |
 |---|---|---|---|
-| `n:sdk_mutations` | <!-- n:sdk_mutations -->44<!-- /n --> | `cd packages/sdk && node test-mutations.mjs 2>&1 \| tail -1` の `all N mutations killed`（39.2s） | Q12（"all killed"） |
+| `n:sdk_mutations` | <!-- n:sdk_mutations -->44<!-- /n --> | `cd packages/sdk && node test-mutations.mjs 2>&1 \| tail -1` の `all N mutations killed`（09-08 実走 53.8s） | Q12（"all killed"） |
 | `n:ab_mutations` | <!-- n:ab_mutations -->27<!-- /n --> | `cd examples/ethonline-2026-ab && node test-mutations.mjs 2>&1 \| tail -1`（13.2s・`judge-check` が回す方） | 混同したときの訂正用（口では言わない） |
 | `n:sdk_tests` | <!-- n:sdk_tests -->1615<!-- /n --> | `npm test --prefix packages/sdk 2>&1 \| sed -n 's/^ℹ tests //p'` | 画面のみ（言わない） |
 | `n:mcp_tests` | <!-- n:mcp_tests -->748<!-- /n --> | `npm run build --prefix packages/mcp-server && npm test --prefix packages/mcp-server 2>&1 \| sed -n 's/^ℹ tests //p'` | 画面のみ（言わない） |
@@ -272,16 +300,33 @@ I='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"20
 N='{"jsonrpc":"2.0","method":"notifications/initialized"}'
 { date -u; printf '%s\n%s\n%s\n' "$I" "$N" '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | VOUCH_API_KEY=dummy node dist/index.js 2>/dev/null | tail -1; } > "$D/07-mcp-tools-list.txt"
 { date -u; printf '%s\n%s\n%s\n' "$I" "$N" "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"pay_if_trusted\",\"arguments\":{\"resourceId\":\"9e8469d365d65bc9b4a3f588f951bfc70ae64cc1afa2ebdf7e8f11a940d40763\",\"resource\":\"$G\",\"payee\":\"0x79DC34E41B2b591078d3dE222C43EcaaBD52FcCB\",\"amountUsd\":0.01,\"method\":\"POST\",\"policy\":{\"requireVet402Allow\":false,\"evidence\":{\"source\":\"subgraph\",\"minSubgraphReceipts\":1000000000}}}}}" \
-  | VOUCH_API_KEY=$VOUCH_API_KEY GRAPH_API_KEY=$GRAPH_API_KEY VOUCH_PAYER_PRIVATE_KEY=$DEMO_PAYER_PRIVATE_KEY node dist/index.js 2>/dev/null | tail -1 | sed -e "s#$GRAPH_API_KEY#<KEY>#g"; } > "$D/08-mcp-pay-if-trusted.txt"
+  | VOUCH_API_KEY=$VOUCH_API_KEY GRAPH_API_KEY=$GRAPH_API_KEY VOUCH_PAYER_PRIVATE_KEY=0x$(openssl rand -hex 32) node dist/index.js 2>/dev/null | tail -1 | sed -e "s#$GRAPH_API_KEY#<KEY>#g"; } > "$D/08-mcp-pay-if-trusted.txt"
 cd ../../examples/ethonline-2026-ab
 { date -u; npm run metrics --silent -- ../../docs/ethonline-2026/ab/2026-09-06T213134Z; } > "$D/09-ab-metrics.txt" 2>&1
 cd ~/vouch && { date -u; npm run check-numbers; } > "$D/10-check-numbers.txt" 2>&1
-for K in "$GRAPH_API_KEY" "$VOUCH_API_KEY" "$DEMO_PAYER_PRIVATE_KEY" "${DEMO_PAYER_PRIVATE_KEY#0x}"; do [ -n "$K" ] && grep -l -- "$K" "$D"/*; done; echo "leak check above must print nothing"   # 鍵 3 本のどれも 1 ファイルにも無いこと
+for K in "$GRAPH_API_KEY" "$VOUCH_API_KEY" "$BAZANTIC_UPSTREAM_KEY"; do [ -n "$K" ] && grep -l -- "$K" "$D"/* 2>/dev/null; done
+grep -ohE '0x[0-9a-fA-F]{64}' "$D"/* 2>/dev/null | sort -u   # 64桁hex（鍵の形）が1本も無いこと
+echo "leak check above must print nothing"   # 09-08 実測: 両方とも空
 ls -la "$D"
 ```
 
 **08 の行は床 10⁹ なので署名に到達しない**（`SKILL.md` "Paying a seller outside the catalogue — live" と同じ引数。H8–H12 が固定）。
-**それでも `VOUCH_PAYER_PRIVATE_KEY` を渡す行はこれ 1 本だけ**——鍵なしだと Graph を読む前に `payer_not_configured` で止まる（09-07 実測）。
+実装で言うと、床の不足は `packages/sdk/src/pay-or-refuse.ts:749` で `refuse` を返し、支払いモジュールの
+動的 import は同 :843——**手前で返るので署名器に触れない**。
+
+**鍵は「形として在る」ことだけが要る。** `resolvePayer()` が見るのは `/^0x[0-9a-fA-F]{64}$/` と
+viem が解決できるかだけ（`packages/mcp-server/src/index.ts:221`）。だから**その場限りの
+`0x$(openssl rand -hex 32)` を env にだけ渡す**——ファイルに書かない・印字しない・残高 0・
+当日限り。`.env` に長生きする鍵を置くより安全で、`DEMO_PAYER_PRIVATE_KEY` を待たなくても回る。
+**キーストア（`~/.bazantic/gateway/wallet.json`）は使わない**——資金のある鍵で、§5 の禁止表にも載っている。
+
+**鍵を渡さないとこの段は絵にならない**（09-08 実測。渡す行はこの 08 の 1 本だけ）:
+
+| 08 行の env | 出力 |
+|---|---|
+| `VOUCH_PAYER_PRIVATE_KEY=0x$(openssl rand -hex 32)` | `refuse_reasons ["resource_uncatalogued","insufficient_subgraph_evidence"]`・`signed false`・`nonce null`・`decision_record.evidence[0]` に `source "subgraph"` / `block.number` / `deployment Qm…` / `receipts` |
+| 渡さない | `refuse_reasons ["evidence_unavailable","payer_not_configured"]`・`decision_record: null`・`evidence: []`——**The Graph を読む前に止まる**。§4 の逃げ道はこれ |
+
 当日ライブで 2:30 に貼るのはこの 08 の `printf … | node dist/index.js | tail -1 | python3 -m json.tool` の形。
 
 ## 8. 使わなかったもの・変えたもの（理由つき）
@@ -295,3 +340,10 @@ ls -la "$D"
 | 数字を `<!-- n:… -->` の印としてこの文書に埋める | **09-08 に反転して埋めた。** `refresh-numbers.json` の `docs` にこの文書を足した | id を引用するだけでは値が検査されず、実際に腐った——09-07 に書いた 27 / 178 / 65 / 743 / 170 が 09-08 の実測 42 / 1609 / 748 / 800 / 199 とずれたまま緑だった。審査員の前で読む数字を人の目に預けない |
 | A/B v2 の数字 | 入れない。走っていれば画面に並べ、口は v1 のまま | 09-07 時点で存在しない数字を置かない |
 | 問答に日本語訳を全文つける | 要旨 1 行だけ | 読む時間。言うのは英語の A |
+| MCP の段に `DEMO_PAYER_PRIVATE_KEY` を使う（09-07 の案） | **その場限りの `0x$(openssl rand -hex 32)` に替えた**（§1 #8・§7） | 09-08 実測: その名前はどの `.env*` にも無く、この段は `payer_not_configured` / `decision_record null` / `evidence []` で**絵にならなかった**。床 10⁹ は署名の手前で返る（`pay-or-refuse.ts:749` < `:843`）ので、鍵は形が合っていれば足りる。**秘密をファイルへ書かず、当日限りで消える形**にした。キーストアは資金があるので使わない |
+| §1 #8 の `npm i --no-save viem` | **削除** | 09-08 実測: `viem/accounts` はリポ root の `node_modules` で解決する（`packages/mcp-server/node_modules/viem` は無い）。書いてあるとおりにやると repo を汚すだけだった |
+| Q2「2 回叩けば block が進む」 | **落とし、`--pin-deployment` の 2 枚に替えた** | 09-08 実測: 連続 3 回とも同じ block。**台本が保証できない絵**だった。pin は 1〜2 秒で一致／不一致の 2 枚が確実に出て、しかも「読んだ先が本当にその subgraph か」というより強い問いに答える（`beac4f9`・変異 M43/M44） |
+| §4「The Graph 断」の再現を `refuse` で行う | **`judge` に替えた** | 09-08 実測: `graph_query_error: auth error: malformed API key` は `judge` の `[FAIL] … not read (…)` 行にだけ出る。`refuse` の 2 列の画には**出ない**（`— subgraph not read` だけ）。手控えどおりに `refuse` を打つと、言うつもりの語が画に無い |
+| §4 の 429 行を「入っていれば起きない」で終える | **見え方と言う一文を書いた** | 09-08 実測: `cd246d9`（09-08 20:22 JST）以降、`judge`/`pay` の画は `HTTP 429` を 3 箇所に出す（`test/gate-parity.test.mjs` が固定）。**リハーサルで「429 の語が出ない」と観測されたのはこの修正より前の版**。`refuse` だけは今も出ない |
+| Q12 の「42 変異・M01〜M42・39.2s」 | **本数と終端 id を手で書くのをやめた**（`all N mutations killed`・09-08 実走 53.8s） | 09-08 clean checkout 実走: `all 44 mutations killed in 53.8s`・id は M01〜M44。`beac4f9` が pin の 2 本を足していた。印 `n:sdk_mutations` は 44 で正しく、腐っていたのは**印の隣に手で書いた本文**だった（§8 の 1 つ上と同じ穴） |
+| 想定質問 15 件 | **18 件**（Q16 コミットの言語 / Q17 `/status` の error / Q18 動画の数字） | 審査基準に *"Proper use of git commit history"* が明記されており、§4.5 が `/status` を「見せてよい 2 本」に挙げているのに、どちらも答えが無かった。動画の receipts は 09-07 の 427 から動いている |
