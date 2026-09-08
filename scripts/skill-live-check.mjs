@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================
-// SKILL.md の「本番向けコードブロック」を実走し、期待と違えば赤にする関門（2026-09-08）。
+// SKILL.md の ```bash ブロックを全数会計し、本番向けのものは実走して期待と違えば赤にする関門（2026-09-08）。
 //
 //   node scripts/skill-live-check.mjs              # 印付きブロックを上から実行し、表を出す。1 つでも不一致なら exit 1
 //   node scripts/skill-live-check.mjs --list       # 対象一覧だけ（実行しない）
@@ -11,13 +11,25 @@
 // 文書は緑の顔をしていた。文書が未来を書き、誰も再実行しなかった。「まっさらな clone で上から通す」を
 // 09-10 に人がやる予定だったが、人の予定は一度きりで、文書は毎日古くなる。だから機械にする。
 //
+// なぜ全数会計にしたか（2026-09-08 の第三者監査）: 印は 12 本中 4 本にしか付いておらず、印の**外**に置かれた
+// ブロックは誰も走らせていなかった。そこに 09-07 の walk をすり抜けた腐りが 2 本あった——`tools/call` の
+// JSON が複数行に折られており、stdio の MCP は 1 行 1 メッセージなので黙って捨てられ、`2>/dev/null` が
+// エラーも消していた。審査員が貼ると `initialize` の応答しか返らない。**緑を出している計器ほど、
+// 何を見ていないかを確かめる。** だから: (1) ```bash ブロックは全部、印を持たなければ赤（黙って外せない）。
+// (2) 走らせられないものは `skip <理由>` と**その場に理由を書く**。(3) 実走できない本にも効く静的検査を足す
+// ——JSON-RPC のメッセージが 1 行に収まっているか（鍵も本番アクセスも要らずに、あの腐りだけを捕まえる）。
+//
 // 印の形（```bash フェンスの直後 1 行目・bash のコメントなので審査員がそのまま貼っても無害）:
 //   # live: expect <jq 式>
 //   # live: needs VAR[,VAR] expect <jq 式>     ← VAR が env に無ければ実行せず skip と数える（CI は secrets から渡す）
+//   # live: skip <理由>                        ← 実走しない本。理由は必須（「なぜ印の外か」をその場に残す）
 // ブロック本文を bash -o pipefail で cwd=リポ直下から実行し、stdout 全体を `jq -s`（複数の JSON 値を配列に束ねる）に
 // かけて <jq 式> が true になれば ok。それ以外（式が false／stdout が JSON でない／終了コード非 0）は FAIL。
-// 印の無いブロック・bash 以外のフェンス・2 行目以降の印は対象外（実行しない）。
-// 壊れた印は exit 1、印が 1 つも無い文書も exit 1（何も見ていない緑を出さない）。
+// bash 以外のフェンス・2 行目以降の印は対象外。壊れた印・**印の無い ```bash ブロック**・印がゼロの文書は exit 1。
+//
+// 静的検査（印の種類によらず全 ```bash ブロックに適用・実行しない）:
+//   JSON-RPC lint — `{"jsonrpc"` を含む行は、その行だけで 1 つの JSON 値として閉じていなければ赤。
+//   stdio の MCP は改行区切りなので、折られた要求は相手に届かず、しかも黙って消える。
 //
 // 依存: node と jq だけ（jq は SKILL.md のブロック自身が使う）。秘密は印字しない——env の**名前**だけを表に出す。
 // 本番の鍵なし /decision は IP あたり 10/分。印を付けるブロックは、1 回の実走で /decision 3 本以内・本番 GET 20 本以内に
@@ -28,7 +40,8 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const MARKER = /^# live:(.*)$/;
-const MARKER_BODY = /^\s*(?:needs\s+([A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*)\s+)?expect\s+(\S.*)$/;
+const MARKER_RUN = /^\s*(?:needs\s+([A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*)\s+)?expect\s+(\S.*)$/;
+const MARKER_SKIP = /^\s*skip\s+(\S.*)$/;
 const TIMEOUT_MS = 90_000;
 
 function parseArgs(argv) {
@@ -50,12 +63,15 @@ function printUsage() {
 }
 
 /**
- * Markdown から「```bash フェンスの 1 行目が `# live:`」のブロックだけを取り出す。
- * @returns {{ blocks: Array<{heading:string, line:number, needs:string[], expect:string, body:string}>, errors: string[] }}
+ * Markdown から ```bash ブロックを**全部**取り出す。1 行目の `# live:` 印で run / skip を分ける。
+ * 印の無い ```bash ブロックは errors に積む（黙って対象外にしない）。
+ * 静的検査は印の有無によらず全 ```bash ブロックに掛けたいので、allBash も返す。
+ * @returns {{ blocks: Array<{heading:string, line:number, kind:"run"|"skip", needs:string[], expect?:string, reason?:string, body:string}>, allBash: Array<{heading:string, line:number, body:string}>, errors: string[] }}
  */
 export function extractBlocks(markdown) {
   const lines = markdown.split("\n");
   const blocks = [];
+  const allBash = [];
   const errors = [];
   let heading = "(no heading)";
   let i = 0;
@@ -71,15 +87,61 @@ export function extractBlocks(markdown) {
     i++;
     while (i < lines.length && !/^```\s*$/.test(lines[i])) { body.push(lines[i]); i++; }
     i++; // closing fence
-    if (lang !== "bash" || body.length === 0) continue;
+    if (lang !== "bash") continue;
+    allBash.push({ heading, line: start + 1, body: body.join("\n") });
+    const at = `line ${start + 1}`;
+    if (body.length === 0) { errors.push(`${at}: empty \`\`\`bash block`); continue; }
     const m = MARKER.exec(body[0]);
-    if (!m) continue;
-    const mb = MARKER_BODY.exec(m[1]);
-    if (!mb) { errors.push(`line ${start + 2}: malformed marker: ${body[0]}`); continue; }
-    const needs = mb[1] ? mb[1].split(",").map((s) => s.trim()) : [];
-    blocks.push({ heading, line: start + 1, needs, expect: mb[2].trim(), body: body.join("\n") });
+    if (!m) {
+      errors.push(`${at} (${heading}): \`\`\`bash block with no \`# live:\` marker — every bash block must say what it is: \`expect <jq>\`, \`needs VAR expect <jq>\`, or \`skip <reason>\``);
+      continue;
+    }
+    const run = MARKER_RUN.exec(m[1]);
+    if (run) {
+      const needs = run[1] ? run[1].split(",").map((s) => s.trim()) : [];
+      blocks.push({ heading, line: start + 1, kind: "run", needs, expect: run[2].trim(), body: body.join("\n") });
+      continue;
+    }
+    const skip = MARKER_SKIP.exec(m[1]);
+    if (skip) {
+      blocks.push({ heading, line: start + 1, kind: "skip", needs: [], reason: skip[1].trim(), body: body.join("\n") });
+      continue;
+    }
+    errors.push(`${at}: malformed marker: ${body[0]}`);
   }
-  return { blocks, errors };
+  return { blocks, allBash, errors };
+}
+
+/**
+ * 静的検査: stdio の MCP は 1 行 1 メッセージ。`{"jsonrpc"` を含む行がその行だけで閉じていなければ赤。
+ * 折られた要求は相手に届かず、しかも黙って消える（2026-09-08 の監査で SKILL.md に 2 本あった）。
+ * @returns {string[]} 見つかった問題（空なら緑）
+ */
+export function lintJsonRpcLines(blocks) {
+  const problems = [];
+  for (const b of blocks) {
+    b.body.split("\n").forEach((line, k) => {
+      const at = line.indexOf('{"jsonrpc"');
+      if (at < 0) return;
+      // その行だけで `{` が閉じるかを見る。行の後ろにシェルの続き（`' \` など）が付いていてよい。
+      let depth = 0, inString = false, escaped = false, closed = false;
+      for (let i = at; i < line.length; i++) {
+        const c = line[i];
+        if (escaped) { escaped = false; continue; }
+        if (c === "\\") { escaped = true; continue; }
+        if (c === '"') { inString = !inString; continue; }
+        if (inString) continue;
+        if (c === "{") depth++;
+        else if (c === "}" && --depth === 0) { closed = true; break; }
+      }
+      if (!closed) {
+        problems.push(
+          `line ${b.line + 1 + k} (${b.heading}): a JSON-RPC message is folded across lines — stdio MCP reads one message per line, so this request is dropped without a word. Put the JSON on one line.`,
+        );
+      }
+    });
+  }
+  return problems;
 }
 
 function runBlock(block, root) {
@@ -116,13 +178,28 @@ function table(rows) {
 function main() {
   const opt = parseArgs(process.argv.slice(2));
   const docPath = join(opt.root, opt.doc);
-  const { blocks, errors } = extractBlocks(readFileSync(docPath, "utf8"));
-  console.log(`skill-live-check: ${opt.doc} — ${blocks.length} block${blocks.length === 1 ? "" : "s"} marked \`# live:\`${opt.list ? " (list)" : opt.dryRun ? " (dry-run, nothing executed)" : ""}`);
+  const { blocks, allBash, errors } = extractBlocks(readFileSync(docPath, "utf8"));
+  const runnable = blocks.filter((b) => b.kind === "run");
+  const excused = blocks.filter((b) => b.kind === "skip");
+  const mode = opt.list ? " (list)" : opt.dryRun ? " (dry-run, nothing executed)" : "";
+  console.log(
+    `skill-live-check: ${opt.doc} — ${allBash.length} \`\`\`bash block${allBash.length === 1 ? "" : "s"}, ` +
+      `${blocks.length} accounted for (${runnable.length} marked \`# live:\`, ${excused.length} excused \`skip\`)${mode}`,
+  );
   for (const e of errors) console.log(`  ERROR ${e}`);
-  if (errors.length) { console.log(`skill-live-check: ${errors.length} malformed marker(s) — fix the marker(s) above`); process.exit(1); }
+
+  // 静的検査は印の種類によらず全ブロックに掛ける。鍵も本番アクセスも要らない。
+  const lint = lintJsonRpcLines(allBash);
+  for (const p of lint) console.log(`  ERROR ${p}`);
+
+  if (errors.length || lint.length) {
+    console.log(`skill-live-check: ${errors.length + lint.length} static error(s) — fix the block(s) above`);
+    process.exit(1);
+  }
 
   if (opt.list || opt.dryRun) {
     blocks.forEach((b, k) => {
+      if (b.kind === "skip") { console.log(`${k + 1}. ${b.heading} @${b.line}  skip — ${b.reason}`); return; }
       console.log(`${k + 1}. ${b.heading} @${b.line}${b.needs.length ? `  needs ${b.needs.join(",")}` : ""}`);
       console.log(`   expect ${b.expect}`);
       if (opt.dryRun) console.log(b.body.split("\n").slice(1).map((l) => `   | ${l}`).join("\n"));
@@ -130,10 +207,11 @@ function main() {
     process.exit(0);
   }
 
-  if (blocks.length === 0) { console.log("skill-live-check: no marked blocks — nothing was checked, so this is not green"); process.exit(1); }
+  if (runnable.length === 0) { console.log("skill-live-check: no marked blocks — nothing was checked, so this is not green"); process.exit(1); }
 
   const rows = [];
   for (const b of blocks) {
+    if (b.kind === "skip") { rows.push({ ...b, status: "skip", note: b.reason, secs: "-" }); continue; }
     const missing = b.needs.filter((v) => !process.env[v]);
     if (missing.length) { rows.push({ ...b, status: "skip", note: `needs ${missing.join(",")} (unset)`, secs: "-" }); continue; }
     const r = runBlock(b, opt.root);

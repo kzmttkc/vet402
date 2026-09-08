@@ -10,13 +10,22 @@ name: skill-live
 # こちらは SKILL.md 通りに sdk → mcp-server を build してからブロックを走らせる（1 日 1 回で足りる）。
 # 通知経路は uptime.yml と同じ: 失敗で issue を開く（＝オーナーへメール）、復旧で閉じる。ラベルで分ける。
 #
-# WHAT runs. `# live: expect <jq>` の印が 1 行目にある ```bash ブロックだけ（scripts/skill-live-check.mjs --list で一覧）。
-# 09-08 時点で 4 ブロック: オフラインの拒否／tools/list／誤った鍵での fail-closed（本番 /decision 1 本）／
+# WHAT runs. SKILL.md の ```bash ブロックは**全部**が対象で、1 行目に印が要る（無ければ赤）:
+#   `# live: expect <jq>` … 毎日実走する／`# live: needs VAR expect <jq>` … VAR が無ければ skip／`# live: skip <理由>` … 走らせない本
+# 09-08 に 4 本 → 12 本へ広げた。第三者監査で、印の**外**のブロックを誰も走らせておらず、そこに腐りが 2 本
+# あったため（`tools/call` の JSON が複数行に折られ、stdio の MCP に届かず、`2>/dev/null` がエラーも消していた）。
+# 走らせられない本（git clone・`<url>` の書式例・`ℹ tests N` を出すテスト・`export KEY=…` の穴埋め）は
+# `skip <理由>` を**その場に**書く。黙って外さない。
+# 実走は 4 本: オフラインの拒否／tools/list／誤った鍵での fail-closed（本番 /decision 1 本）／
 # caller_policy の curl 2 本（/resolve 1 本＋/decision 2 本）。本番 /decision は合計 3 本 = 鍵なし枠 10/分の内側。
-# 払うブロック（payOrRefuse・--live・pay_if_trusted の署名経路）には印を付けない——ここは金を動かさない。
 #
-# Secrets. 鍵が要るブロックは `# live: needs VAR expect …` と書く。VAR が無ければ skip と数える（赤にしない）。
-# 09-08 時点で needs 付きのブロックは無い。GRAPH_API_KEY は将来のために env へ通すだけ（未登録なら空 = 未設定）。
+# 静的検査（印の種類によらず全ブロック・実行しない）: JSON-RPC のメッセージが 1 行に収まっているか。
+# 鍵も本番アクセスも要らずに、上記の腐りだけを捕まえる。CI で毎日、かつ `npm test` からも走る。
+#
+# Secrets. 09-08 時点で `needs` 付きは 2 本（`pay_if_trusted` の evidence 行を出す本）。
+# VOUCH_API_KEY,GRAPH_API_KEY,THROWAWAY_KEY を要求する。**THROWAWAY_KEY は CI に登録しない**——
+# 払う経路に近い本を無人で回さない、という 09-08 以前からの線をそのまま引く。よってこの 2 本は CI では
+# 常に skip で、鍵を持つ人が手元で walk したときに検査される。GRAPH_API_KEY は env へ通す（未登録なら空 = 未設定）。
 
 on:
   schedule:

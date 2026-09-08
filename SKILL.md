@@ -26,6 +26,7 @@ needs it beyond one `npm ci` for a library (below).
 **One command first.** From the repo root:
 
 ```bash
+# live: skip the repo's own CI runs this on every push (npm ci + build + 5 suites, 25–30 s); its stdout is a table, not JSON
 npm run judge-check     # scripts/judge-check.sh — no API key, nothing live
 ```
 
@@ -50,9 +51,9 @@ The suites it runs include the boundary-shape tests (`packages/sdk/test/_shapes.
 | key | needed by | not needed by | where to get it |
 |---|---|---|---|
 | *(none)* | — | `npm run judge-check`, sections **1–3** below (tests, offline refusal, `tools/list`), section **4** (it deliberately uses a wrong key) | — |
-| `VOUCH_API_KEY` | **optional since 2026-09-07** — `/decision` answers key-less at 10/min per IP, so the demo's `refuse` / `pay` / `judge` and `pay_if_trusted` run with `GRAPH_API_KEY` alone; still required for the payee-score and attest tools | key-less REST reads: `GET /api/v1/resolve?q=…` and the object reads listed in `README.md` → *Resolve, then decide*; the Bazantic MCP gateway (see **What is not built yet**) | free: <https://vet402.com/signup> (1,000 lookups/month, no card) → <https://vet402.com/dashboard/keys> |
+| `VOUCH_API_KEY` | **any judgement of an *uncatalogued* seller** — there the verdict comes from the **payee score**, which is a keyed read. The demo's `pay` (its payee is The Graph, uncatalogued) and `judge <url>` on an uncatalogued URL read `[ ? ] verdict not read` without it and flip to REFUSE (measured both ways, 2026-09-08). Also the payee-score and attest tools | catalogued sellers — their verdict comes from `/decision`, which answers key-less at 10/min per IP since 2026-09-07 (`judge https://kronossignals.com/api/v1/price/btc` measured key-less 2026-09-08: `verdict ALLOW`, `verdict from decision`). The demo's `refuse` likewise (same WARN, same refusal). Key-less REST reads: `GET /api/v1/resolve?q=…` and the object reads listed in `README.md` → *Resolve, then decide*; the Bazantic MCP gateway (see **What is not built yet**) | free: <https://vet402.com/signup> (1,000 lookups/month, no card) → <https://vet402.com/dashboard/keys> |
 | `GRAPH_API_KEY` | the demo (all three commands read The Graph live) and any `policy.evidence.source: "subgraph" \| "both"` call | everything that reads vet402 only | free key from Subgraph Studio: <https://thegraph.com/studio> → *API Keys* |
-| `VOUCH_PAYER_PRIVATE_KEY` / `DEMO_PAYER_PRIVATE_KEY` | moving real money only (`--live`, or `pay_if_trusted` with `resource` + `payee` + `amountUsd`) | every block on this page — the dry runs load no signing module | your own throwaway wallet with a few cents of USDC on Base. Never required to evaluate this submission |
+| `VOUCH_PAYER_PRIVATE_KEY` / `DEMO_PAYER_PRIVATE_KEY` | moving real money (`--live`) — **and the two `pay_if_trusted` blocks that show a subgraph evidence row** (*`pay_if_trusted` with The Graph evidence*, *Paying a seller outside the catalogue — live*). Those two do not sign: their floor of 10⁹ receipts cannot be met. They need a payer only because the server withholds `resource` / `payee` / `amountUsd` from the SDK when none is configured (`packages/mcp-server/src/index.ts`), so without it the call refuses at `payer_not_configured` before The Graph is read — the measured payer-less output is printed in that section | sections **1–4**, the demo's three commands, and every dry run — those load no signing module | your own throwaway wallet on Base. **Nothing on this page signs or spends**, with or without it |
 
 Export keys in the shell, never in a file that gets committed. The demo rewrites the key inside
 the gateway URL to `<KEY>` on every line it prints (`examples/ethonline-2026-demo/src/emit.ts`), and
@@ -81,6 +82,7 @@ Neither means "they are bad".
 scope until after submission (WINDOW_PLAN §2 — Japanese, internal plan). **Build from the repo:**
 
 ```bash
+# live: skip clones the repo — it cannot run inside a checkout of the repo it clones
 git clone https://github.com/kzmttkc/vet402.git
 cd vet402/packages/sdk        && npm install && npm run build
 cd ../mcp-server              && npm install && npm run build
@@ -112,11 +114,26 @@ The MCP server takes no constructor arguments — **its env block is its options
 ## How a judge can run it
 
 Every block below is pasted verbatim from a real run on a clean clone on 2026-09-07; the test counts are kept current by `npm run refresh-numbers` (the printed date inside a block is the run it came from).
-A block whose first line is `# live: expect <jq>` is re-run **every day against production** by `scripts/skill-live-check.mjs` (`.github/workflows/skill-live.yml`): its stdout is slurped with `jq -s` and the expression must be `true`, or the run goes red and opens an issue — so those blocks cannot quietly drift from what production answers (the comment is inert if you paste the block).
+**Every `` ```bash `` block on this page is accounted for by `scripts/skill-live-check.mjs`**
+(`.github/workflows/skill-live.yml`, daily; also part of the repo's `npm test`). Each one carries a
+first line that says what it is — the line is a bash comment, so it is inert if you paste the block:
+
+| marker | what happens |
+|---|---|
+| `# live: expect <jq>` | re-run **every day against production**; stdout is slurped with `jq -s` and the expression must be `true`, or the run goes red and opens an issue |
+| `# live: needs VAR[,VAR] expect <jq>` | the same, when those variables are set; otherwise counted as a skip |
+| `# live: skip <reason>` | not run — and the reason is written here, in the open |
+
+A block with **no** marker fails the check, so none can be dropped from the walk quietly. On top of
+that, a static lint reads every block and fails if a JSON-RPC message is folded across lines: stdio
+MCP reads one message per line, so a folded request is dropped without a word and you would get back
+only the `initialize` reply. Two blocks on this page were broken that way until 2026-09-08, outside
+the four that were then marked — which is why the walk now covers all twelve.
 
 ### 1. The tests (no key, no network)
 
 ```bash
+# live: skip prints `ℹ tests N` counters, not JSON; the counts are kept current by `npm run refresh-numbers` and the suite itself runs in CI
 cd packages/mcp-server && npm test 2>&1 | grep -E '^ℹ '
 ```
 
@@ -193,7 +210,7 @@ cd packages/mcp-server && printf '%s\n%s\n%s\n' \
  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"judge","version":"0"}}}' \
  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
- | VOUCH_API_KEY=dummy node dist/index.js 2>/dev/null | tail -1
+ | VOUCH_API_KEY=dummy node dist/index.js | tail -1
 ```
 
 Returns seven tools; the new one is last:
@@ -218,7 +235,7 @@ cd packages/mcp-server && printf '%s\n%s\n%s\n' \
  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"judge","version":"0"}}}' \
  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"pay_if_trusted","arguments":{"resourceId":"9e8469d365d65bc9b4a3f588f951bfc70ae64cc1afa2ebdf7e8f11a940d40763"}}}' \
- | VOUCH_API_KEY=not_a_real_key node dist/index.js 2>/dev/null | tail -1
+ | VOUCH_API_KEY=not_a_real_key node dist/index.js | tail -1
 ```
 
 The tool result text (production, 2026-09-08 — the server's own word for the 401, `invalid_api_key`, rides along after `evidence_unavailable` since 2026-09-07 so a model can tell "fix the key" from "wait"):
@@ -316,6 +333,7 @@ exported from `packages/sdk/src/index.ts`. Tests `C11`, `C11b`, `C11c` and
 reader contract:
 
 ```bash
+# live: skip prints `ℹ tests N` counters, not JSON; same reason as section 1
 cd packages/sdk && npm install && npm test 2>&1 | grep -E '^ℹ '
 ```
 
@@ -355,17 +373,35 @@ The two commands filmed in the demo video read The Graph **live** through your o
 Build order and runtime first:
 
 ```bash
+# live: skip two `export` lines whose value is a literal `…` — this block is for a human to fill in, and its output is a table, not JSON
 # Node >= 22.18 (examples/ethonline-2026-demo/package.json "engines" — the demo runs .ts files directly)
 cd packages/sdk && npm install && npm run build      # 1. the SDK first — the demo imports its dist/
 cd ../../examples/ethonline-2026-demo                 # 2. then the demo (nothing to install without --live)
 export GRAPH_API_KEY=…    # free key from Subgraph Studio: https://thegraph.com/studio → API Keys
-export VOUCH_API_KEY=…    # optional (2026-09-07): `/decision` answers key-less at 10/min per IP, so `refuse` / `pay` / `judge` run with GRAPH_API_KEY alone; with it set the demo sends it as the bearer token
+export VOUCH_API_KEY=…    # `refuse` runs without it; `pay` needs it (its payee is uncatalogued) — see below
 node src/run.ts refuse    # two sources side by side; refuses before a signature can exist
 node src/run.ts pay       # dry run: fetches the real 402 challenge, signs nothing (no --live)
 ```
 
+**`VOUCH_API_KEY` is not optional for `pay`.** `/decision` answers key-less (10/min per IP), so
+`refuse` is unaffected — measured key-less on 2026-09-08, same `WARN`, same refusal, and so is
+`judge` on a **catalogued** URL (`verdict ALLOW`, `verdict from decision`). But `pay`'s payee is The
+Graph, which is **not** in our catalogue, so its verdict comes from the **payee score** — a keyed
+read. Without the key that gate cannot be read and the run's conclusion inverts. `judge` inherits
+the same rule for any uncatalogued URL. Both conditions, run on 2026-09-08:
+
+```
+GRAPH_API_KEY only   [  ? ] payee verdict is ALLOW   verdict not read
+                     predicted --live would REFUSE before signing
+both keys            [waiv] payee verdict is ALLOW   WARN (68) — not required by policy
+                     predicted --live would sign and send $0.01
+```
+
+That is fail-closed working as designed — an unread verdict is not an ALLOW — but a judge running
+with one key would see a REFUSE and conclude the gate is broken. It is not; the key is missing.
+
 Both were run on 2026-09-06 13:01 UTC. Key values are never printed — the demo's own redactor
-(`src/emit.ts`) rewrites the key inside the gateway URL to `<KEY>`. `refuse`, abridged to the lines
+(`examples/ethonline-2026-demo/src/emit.ts`) rewrites the key inside the gateway URL to `<KEY>`. `refuse`, abridged to the lines
 that matter:
 
 ```
@@ -398,6 +434,7 @@ If the subgraph answer carries no `_meta.block`, the reader refuses with `graph_
 ### judge — bring your own 402 (dry-run, no signing path)
 
 ```bash
+# live: skip a usage synopsis — `<url>` is yours to choose, so there is nothing fixed to run
 cd examples/ethonline-2026-demo
 node src/run.ts judge <url> [--method POST] [--body '<json>'] [--policy vet402|subgraph|both] \
                             [--min-subgraph-receipts N] [--min-l1-deliveries N] [--ceiling-usd X]
@@ -528,7 +565,7 @@ Since 2026-09-06 the MCP tool takes the same `policy` the SDK does, and forwards
 
 | input | meaning |
 |---|---|
-| `policy.requireVet402Allow` | default `true`. `false` waives a vet402 **WARN** when every declared floor is met. **BLOCK and `degraded` still refuse** (WINDOW_PLAN §3.2.1 — Japanese, internal plan) — the boundary lives in the SDK and the MCP tests pin it through the bridge. Both paths (`/decision` and the uncatalogued payee score) read the verdict word and the quality flags through one shared rule in `src/verdict-shape.ts`, so the boundary does not depend on how the server serialised them: `" BLOCK "` is a BLOCK, and a `degraded` that is not a boolean is not a measurement. Needs at least one floor above 0, otherwise the call is a caller error (`invalid_policy`) before any network. |
+| `policy.requireVet402Allow` | default `true`. `false` waives a vet402 **WARN** when every declared floor is met. **BLOCK and `degraded` still refuse** (WINDOW_PLAN §3.2.1 — Japanese, internal plan) — the boundary lives in the SDK and the MCP tests pin it through the bridge. Both paths (`/decision` and the uncatalogued payee score) read the verdict word and the quality flags through one shared rule in `packages/sdk/src/verdict-shape.ts`, so the boundary does not depend on how the server serialised them: `" BLOCK "` is a BLOCK, and a `degraded` that is not a boolean is not a measurement. Needs at least one floor above 0, otherwise the call is a caller error (`invalid_policy`) before any network. |
 | `policy.evidence.source` | `"vet402"` (default) \| `"subgraph"` \| `"both"`. `"subgraph"` reads **only** The Graph's x402 Base subgraph; `"both"` refuses if either source cannot be read. |
 | `policy.evidence.minSubgraphReceipts` | floor on receipts The Graph's subgraph knows for the payee (`source` must be `subgraph` or `both`). |
 | `policy.evidence.minL1Deliveries` | floor on vet402's delivered L1 purchases (`source` must be `vet402` or `both`). |
@@ -548,23 +585,46 @@ met with which numbers. `measurement` stays what it was: the `/decision` body un
 Launch with the key in env (Claude Desktop / Cursor: the same `env` block as `VOUCH_API_KEY`):
 
 ```bash
+# live: needs VOUCH_API_KEY,GRAPH_API_KEY,THROWAWAY_KEY expect .[0].result.content[0].text | fromjson | .decision == "REFUSE" and .signed == false and .nonce == null and ((.refuse_reasons | index("insufficient_subgraph_evidence")) != null) and ((.decision_record.evidence | map(.source) | index("subgraph")) != null)
 cd packages/mcp-server && printf '%s\n%s\n%s\n' \
  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"judge","version":"0"}}}' \
  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
- '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"pay_if_trusted","arguments":{
-    "resourceId":"ae0091e802c83179e3b1464a7b15dac64a0c1d3a00cb690eb6a5ac9811c47e3b",
-    "resource":"https://kronossignals.com/api/v1/price/btc",
-    "payee":"0x36038e1d712c5e39f35952164ec58ec2b96caee7",
-    "amountUsd":0.02,
-    "policy":{"evidence":{"source":"subgraph","minSubgraphReceipts":1000000000}}}}}' \
+ '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"pay_if_trusted","arguments":{"resourceId":"ae0091e802c83179e3b1464a7b15dac64a0c1d3a00cb690eb6a5ac9811c47e3b","resource":"https://kronossignals.com/api/v1/price/btc","payee":"0x36038e1d712c5e39f35952164ec58ec2b96caee7","amountUsd":0.02,"policy":{"evidence":{"source":"subgraph","minSubgraphReceipts":1000000000}}}}}' \
  | VOUCH_API_KEY=$VOUCH_API_KEY GRAPH_API_KEY=$GRAPH_API_KEY VOUCH_PAYER_PRIVATE_KEY=$THROWAWAY_KEY \
-   node dist/index.js 2>/dev/null | tail -1
+   node dist/index.js | tail -1
 ```
+
+**Each JSON-RPC message is one line, and there is no `2>/dev/null`.** stdio MCP reads one message
+per line: a request folded over several lines is dropped without a word, and you would get only the
+`initialize` reply back. Nothing is written to stderr on a healthy run, so anything you see there is
+real — a stack trace here means the build step above did not finish.
 
 That `resourceId` is a catalogued seller our engine rates **ALLOW**. The floor of 10⁹ receipts is
 deliberately unmeetable, so the run reads the **live Gateway** and stops before a signature — a way
-to show the evidence row without moving money. Run on 2026-09-06 13:18 UTC (the long verbatim
-`/decision` bodies are folded with `…`; every other value is as returned):
+to show the evidence row without moving money.
+
+**This block needs a payer key** (`THROWAWAY_KEY`), even though it never signs. The server does not
+forward `resource` / `payee` / `amountUsd` to the SDK unless a payer is configured
+(`packages/mcp-server/src/index.ts`), so with no payer the call stops one step earlier, at
+`payer_not_configured`, and never reads The Graph. Measured on 2026-09-08 with
+`VOUCH_API_KEY` + `GRAPH_API_KEY` set and **no** payer key — the same block, verbatim:
+
+```json
+{
+  "decision": "REFUSE",
+  "safe_to_pay": false,
+  "refuse_reasons": ["l0_pass", "l1_delivered", "l2_undeclared", "payer_not_configured"],
+  "summary": "This server has no payer: set VOUCH_PAYER_PRIVATE_KEY in its env block and install viem in the server package to enable payment. The decision above was still measured.",
+  "signed": false, "attested": false, "txHash": null, "nonce": null, "settlement": null,
+  "measurement": { "recommendation": "ALLOW", "reason_codes": ["l0_pass","l1_delivered","l2_undeclared"],
+                   "facts": { "…": "verbatim /decision facts" }, "rules_version": "2026-09-08.1", "degraded": false },
+  "decision_record": null
+}
+```
+
+The measurement is still made and still returned; only the payment path is closed. With a payer
+configured, run on 2026-09-06 13:18 UTC (the long verbatim `/decision` bodies are folded with `…`;
+every other value is as returned):
 
 ```json
 {
@@ -686,19 +746,22 @@ Run against the real Gateway on 2026-09-06 13:30 UTC — The Graph's own 402 URL
 it reads The Graph live and stops before a signature (key values redacted; nothing else edited):
 
 ```bash
+# live: needs VOUCH_API_KEY,GRAPH_API_KEY,THROWAWAY_KEY expect .[0].result.content[0].text | fromjson | .decision == "REFUSE" and .refuse_reasons == ["resource_uncatalogued","insufficient_subgraph_evidence"] and .signed == false and .nonce == null
 cd packages/mcp-server && printf '%s\n%s\n%s\n' \
  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"judge","version":"0"}}}' \
  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
- '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"pay_if_trusted","arguments":{
-    "resourceId":"9e8469d365d65bc9b4a3f588f951bfc70ae64cc1afa2ebdf7e8f11a940d40763",
-    "resource":"https://gateway.thegraph.com/api/x402/subgraphs/id/Cb56epg3EvQ6JRpPfknbkM54QxpzTvLa7mwKNQQfUyoj",
-    "payee":"0x79DC34E41B2b591078d3dE222C43EcaaBD52FcCB",
-    "amountUsd":0.01,
-    "method":"POST",
-    "policy":{"requireVet402Allow":false,"evidence":{"source":"subgraph","minSubgraphReceipts":1000000000}}}}}' \
+ '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"pay_if_trusted","arguments":{"resourceId":"9e8469d365d65bc9b4a3f588f951bfc70ae64cc1afa2ebdf7e8f11a940d40763","resource":"https://gateway.thegraph.com/api/x402/subgraphs/id/Cb56epg3EvQ6JRpPfknbkM54QxpzTvLa7mwKNQQfUyoj","payee":"0x79DC34E41B2b591078d3dE222C43EcaaBD52FcCB","amountUsd":0.01,"method":"POST","policy":{"requireVet402Allow":false,"evidence":{"source":"subgraph","minSubgraphReceipts":1000000000}}}}}' \
  | VOUCH_API_KEY=$VOUCH_API_KEY GRAPH_API_KEY=$GRAPH_API_KEY VOUCH_PAYER_PRIVATE_KEY=$THROWAWAY_KEY \
-   node dist/index.js 2>/dev/null | tail -1
+   node dist/index.js | tail -1
 ```
+
+One line per JSON-RPC message, and no `2>/dev/null` — same reason as the block above. This block
+needs the same payer key for the same reason: the server withholds `resource` / `payee` /
+`amountUsd` from the SDK when none is configured, so The Graph is never read. Measured on
+2026-09-08 with `VOUCH_API_KEY` + `GRAPH_API_KEY` and **no** payer key — the same block, verbatim:
+`"refuse_reasons": ["evidence_unavailable", "payer_not_configured"]`, `"signed": false`,
+`"nonce": null`, `"decision_record": null`. (`evidence_unavailable` here is the 404 from the
+catalogue, which the SDK can only judge past when it is given the `resource` to read the 402 from.)
 
 ```json
 {

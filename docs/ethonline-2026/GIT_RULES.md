@@ -35,6 +35,21 @@ main へは **`bash scripts/push-main.sh` だけ**で入れる。`git fetch && g
 - `--dry-run` は `git push --dry-run`（何も出ない）。`--no-wait` は CI を待たない。
 - rebase が衝突したら止まる。`--abort` は自動でしない——人が解決して再実行。
 
+## 会期中のコミット件名は英語（2026-09-08 確定・CEO 決定）
+
+審査基準の 1 つが「git 履歴の使い方」で、審査員が最初に見るのは GitHub のトップに並ぶ直近の件名である。
+実測（2026-09-08）: `pre-ethonline-2026..origin/main` の **297 本中 279 本（94%）が日本語件名**。
+直近 10 件のうち 3 件が `docs(handoffs)` の内部申し送り訂正だった。
+審査員に最初に見えるのが実装の物語でなく帳簿の訂正なのは損。
+
+1. **2026-09-08 以降、会期中のコミット件名は英語で書く。** 本文（body）は日本語のままでよい。
+   接頭辞（`ethonline:` / `feat` / `fix` / `docs`）は変えない。
+   例: `ethonline: fix(skill): fold the MCP tools/call JSON onto one line — stdio drops folded requests`
+2. **過去の件名は書き換えない。** 履歴の改変は禁止（`rebase -i` も `filter-branch` もしない）。
+   9/8 より前が日本語なのは事実として残す。README の *Language* 行がその境界を書いている。
+3. **申し送り台帳（`docs/handoffs/`）の訂正コミットを分けて積まない。** 訂正は次の実質コミットに同梱する。
+   台帳だけの `docs(handoffs)` が連続して main のトップを占めると、直近の履歴が中身を語らなくなる。
+
 ## 発注に必ず入れる 2 行（2026-09-08 確定・Takeshi 採用）
 
 会期中の実装は別エージェントへ発注する。発注の冒頭に次の 2 行を**定型で**入れる。
