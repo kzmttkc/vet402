@@ -43,8 +43,8 @@ Implementation, tests, and audits, under the direction above. Claude (Opus / Fab
 writes most of the code in this repository. We say that plainly rather than annotate a handful of files.
 
 ```bash
-git rev-list --count HEAD                                  # 799 commits (2026-09-08)
-git log --grep='Co-Authored-By: Claude' --oneline | wc -l  # 669 carry the AI trailer
+git rev-list --count HEAD                                  # 800 commits (2026-09-08)
+git log --grep='Co-Authored-By: Claude' --oneline | wc -l  # 670 carry the AI trailer
 git rev-list --count --merges HEAD                         # 34 are merge commits
 ```
 
