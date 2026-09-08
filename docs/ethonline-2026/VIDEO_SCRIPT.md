@@ -103,7 +103,7 @@ We call a gate — and the gate can say no before a signature exists.
 音声に数字を入れると、数字が動くたびに録り直しになる。**画面には出す。音声では言わないか、下限で言う。**
 残した数字は動かないものだけ——tx・block 50898704・0.01 USDC・57 tools・5/10・63%→91%・88 tx。
 
-**読み方の注意**: `402` は "four-oh-two"。`l1_inconclusive` は "L-one inconclusive"（`l1_not_attempted` は "L-one not attempted"）。`payTo` は "pay-to"。
+**読み方の注意**: **`vet402` は "vet four-oh-two"（ヴェット・フォー・オー・トゥー）。「ゼロ」とは読まない**（2026-09-08 制定・`.company/steering/outward_names.yaml`）。`402` は "four-oh-two"。`l1_inconclusive` は "L-one inconclusive"（`l1_not_attempted` は "L-one not attempted"）。`payTo` は "pay-to"。
 `EIP-3009` は "E-I-P three-thousand-nine"。`--live` は "dash dash live"。`50898704` は "five-zero-eight-nine-eight-seven-zero-four"（桁読み）。
 
 ## 3. ナレーション本文（日本語・Takeshi が日本語で読む場合。英字幕は私が付ける）
