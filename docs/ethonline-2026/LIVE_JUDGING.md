@@ -168,10 +168,31 @@ A: *Japanese is our working language — the source comments and most commit sub
 **数は口で言わない。聞かれたら画面で数える**: `git log --no-merges pre-ethonline-2026..main --format='%s'`（09-08 実測: 会期分 292 件・全史 788 件。印が無いので**この値を暗記して言わない**）。
 
 **Q17. Your own `/status` page shows errors on September 7 and 8. What are they?**
-A: *That page is our own uptime, and it is deliberately unflattering: it is sampled from real traffic, not a fixed-interval monitor, and a day is marked by its worst sample — so one bad five minutes colours the whole row, and a quiet day carries fewer samples. September 7 and 8 are real: `/api/health` returned 503 intermittently, and only on the thirty-minute cron. We could not name the cause at first, because the table stored a status and nothing else — so on September 8 we first made the reason recordable: which probe, in what state, fresh or cached, and why. Then we found it. The two pieces of work that run after the response — writing the health snapshot and refreshing the payee probe — were being suspended by the platform instead of finished, so the deadline timer never advanced and a probe reported sixty seconds of latency against a twenty-four second deadline. Both commits are in the log from that day. We did not delete the rows. A status page that erases its bad days is not a measurement, and this is the production observatory — not the SDK you are judging, but the same rule applied to ourselves.*
-要旨: 自分の稼働率の頁。実トラフィック標本・**日は最悪サンプルで色がつく**。09-07/08 は本物の 503（30 分 cron のみ）。理由を残せるようにしてから原因を特定（応答後の処理が platform に suspend され、期限の timer が進まない）。同日に 2 コミット。**行は消さない**。
-証拠: `https://vet402.com/status` §3 の定義（ok / degraded / error・worst sample・"A missing observation is never reported as ok."）／`8e165cc`「503 の理由を health_snapshots に残す」・`c7ec6f6`「応答後に走る 2 つの処理を `after()` に載せる」。
-**画面の値を読む**（当日の集計は動く。09-08 22:0x 実測は samples 166 / ok 121 / degraded 8 / error 37、09-07 は 278 / 248 / 15 / 15）。**言い切らない**: `c7ec6f6` は原因への修正であって、直ったことの実測はまだ無い（**【未確認】**）。聞かれたら *"the fix landed that evening; the days below it stay on the page either way."*
+A: *That page is our own uptime, and it is deliberately unflattering: it is sampled from real traffic, not a fixed-interval monitor, and a day is marked by its worst sample — so one bad five minutes colours the whole row, and a quiet day carries fewer samples. September 7 and 8 are real: `/api/health` returned 503 in bursts, with quiet hours between them. We could not name the cause, because the table stored a status and nothing else. So the first thing we shipped was not a fix — it was the instrument: which probe, in what state, fresh or cached, how many milliseconds, and which instance. Then we found a real defect. Work that runs after the response — writing the health snapshot, refreshing the payee probe — was not being finished, and a probe came back through the success path of a twenty-four second deadline carrying sixty seconds of latency, which is only possible if the deadline timer never advanced. We reproduced that shape by freezing a process locally, and we fixed it. What I will not tell you is that it explains every 503 on that page. The errors stopped before either commit was deployed, our own load was heavy in the same hours, and not one 503 was ever written with a reason — the reason columns went live after the last one. So: instrument improved, one defect proven and fixed, attribution still open. The next 503 arrives carrying its probe, its latency and its instance, and that row settles it. We did not delete the rows. A status page that erases its bad days is not a measurement, and this is the production observatory — not the SDK you are judging, but the same rule applied to ourselves.*
+要旨: 自分の稼働率の頁。実トラフィック標本・**日は最悪サンプルで色がつく**。09-07/08 は本物の 503（束で出て、静かな時間帯を挟む）。**修正より先に計器を直した**。凍結という欠陥は再現して直したが、**503 全部の原因だとはまだ言えない**——切り分けは継続中。**行は消さない**。
+証拠: `https://vet402.com/status` §3 の定義（ok / degraded / error・worst sample・"A missing observation is never reported as ok."）／`8e165cc`「503 の理由を health_snapshots に残す」・`c7ec6f6`「応答後に走る 2 つの処理を `after()` に載せる」／`tests/health-after-response.test.ts` 冒頭（本番 `withDeadline` の**成功側**から 59,957ms・期限 24,000ms・SIGSTOP での再現 56,012ms）。
+**画面の値を読む**（当日の集計は動く。09-08 22:0x 実測は samples 166 / ok 121 / degraded 8 / error 37、09-07 は 278 / 248 / 15 / 15）。
+
+**何が証明済みで、何が未証明か**（ここを超えて言わない）:
+
+| 言ってよい | 根拠 |
+|---|---|
+| 凍結という**機構**は実在する | 期限 24,000ms の `withDeadline` の**成功側**から 59,957ms が返った。発火していれば例外側へ落ちるので、**timer が進んでいない** |
+| 手元で同型を再現した | SIGSTOP で凍結 → `{"branch":"success","latencyMs":56012}` |
+| 直した | `c7ec6f6`。応答後の 2 つを `after()` の生存期間に載せた（リポ全体で `waitUntil` / `after()` は未使用だった） |
+| **言ってはいけない** | それが当日の 503 全件の原因だったこと。下の 4 つが反証側にある |
+
+**切り分けの実測**（09-08 22:5x・本番 DB 直読みとローカルログ）:
+
+1. 最後の error 行は **18:25:52 JST**。`8e165cc` のコミットは 18:37、`detail` が入った最初の行は 18:51:07、`c7ec6f6` は 20:01。**止まったのはどちらのデプロイよりも前**
+2. したがって `detail` / `latency_ms` / `instance` を持つ **error 行は 0 件**（入っているのは ok と degraded 1 件だけ）——**理由を残せるようにした計器は、まだ 1 件も 503 を捕らえていない**
+3. 30 分間隔の自前監視（`~/Projects/agent-trust/logs/uptime-cron.log`・全件 `FAIL: health http 503`）の最後の FAIL は **16:30 JST**、以後 17:00 から連続 OK。**18:25 の 503 はどの cron の時刻でもない**し、11:30 の cron が OK の直後（11:32）にも error 行がある——旧版にあった「**30 分 cron のみ**」は外れているので削った
+4. episodic だった（JST 02 時台・15 時台は error 0）。単調な改善ではない。加えて同じ時間帯にこちらの測定トラフィックが増えていた——ただし **`health_snapshots` は 5 分の間引きがあるので流量を測れない**（本数は残っていない。**【未確認】**の交絡）
+
+**次に何を見れば決着するか**（審査員にはこれを言う）: 次の 503 は `detail` / `latency_ms` / `instance` を持って入る。
+`latency_ms` が期限（24,000ms）を大きく超えた**成功側**なら凍結が原因と確定し、そうでなければ別の原因。前日に引くのは 1 本:
+`SELECT checked_at, status, latency_ms, detail, instance FROM health_snapshots WHERE status <> 'ok' ORDER BY checked_at DESC LIMIT 5;`
+聞かれたら *"the defect is fixed; whether it was the only cause is not settled, and the next bad row is the one that tells us. The days below it stay on the page either way."*
 
 **Q18. Are the numbers in the video still the same today?**
 A: *No, and they should not be. The video is a recording — its numbers are the record of the day it was shot. The Graph's subgraph counted four hundred and twenty-seven receipts for that wallet then; it counts more now, and the payee score moves too. That is exactly why every evidence row carries `_meta.block.number`, `deployment` and `queriedAt`: you can tell when a number was read, and whether it was read at all. Anything I say live, I read off the screen in front of you.*
@@ -346,4 +367,5 @@ viem が解決できるかだけ（`packages/mcp-server/src/index.ts:221`）。�
 | §4「The Graph 断」の再現を `refuse` で行う | **`judge` に替えた** | 09-08 実測: `graph_query_error: auth error: malformed API key` は `judge` の `[FAIL] … not read (…)` 行にだけ出る。`refuse` の 2 列の画には**出ない**（`— subgraph not read` だけ）。手控えどおりに `refuse` を打つと、言うつもりの語が画に無い |
 | §4 の 429 行を「入っていれば起きない」で終える | **見え方と言う一文を書いた** | 09-08 実測: `cd246d9`（09-08 20:22 JST）以降、`judge`/`pay` の画は `HTTP 429` を 3 箇所に出す（`test/gate-parity.test.mjs` が固定）。**リハーサルで「429 の語が出ない」と観測されたのはこの修正より前の版**。`refuse` だけは今も出ない |
 | Q12 の「42 変異・M01〜M42・39.2s」 | **本数と終端 id を手で書くのをやめた**（`all N mutations killed`・09-08 実走 53.8s） | 09-08 clean checkout 実走: `all 44 mutations killed in 53.8s`・id は M01〜M44。`beac4f9` が pin の 2 本を足していた。印 `n:sdk_mutations` は 44 で正しく、腐っていたのは**印の隣に手で書いた本文**だった（§8 の 1 つ上と同じ穴） |
+| Q17 の答え「**Then we found it**／503 は **30 分 cron のみ**」 | **狭めた。** 「機構は再現して確かめ、直した。ただし当日の 503 全件の原因だとはまだ言えない——切り分けは継続中」。`30 分 cron のみ` は削除 | 09-08 22:5x 実測: (a) 最後の error 行 18:25:52 JST は `8e165cc`（18:37）・`c7ec6f6`（20:01）の**どちらのデプロイよりも前**——止まったのは修正の前。(b) `detail` を持つ error 行は **0 件**（理由を残す計器はまだ 503 を 1 件も捕らえていない）。(c) 30 分監視ログの最後の FAIL は 16:30 JST で、18:25 の 503 はどの cron の時刻でもない。11:30 の cron が OK の 2 分後にも error 行がある。(d) episodic（JST 02 時台・15 時台は error 0）。加えてこちらの測定トラフィックという交絡があるが、`health_snapshots` は 5 分間引きで流量を測れないので本数は**【未確認】**。**審査員の前で言い切ると、反証が 4 つある主張になる** |
 | 想定質問 15 件 | **18 件**（Q16 コミットの言語 / Q17 `/status` の error / Q18 動画の数字） | 審査基準に *"Proper use of git commit history"* が明記されており、§4.5 が `/status` を「見せてよい 2 本」に挙げているのに、どちらも答えが無かった。動画の receipts は 09-07 の 427 から動いている |
