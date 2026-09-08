@@ -250,3 +250,84 @@ WO の該当項目は引き取り不要です。
 - テストは全部先に赤を見てから実装（demo 71 → 76 pass / 0 fail）。決済経路（`x402-pay.ts` / `pay-or-refuse.ts` / `*payer*`）は 1 行も触っていません
 
 **この型の 4 例目**: 正典（語彙）を直しても派生（コード内の散文）に伝播しない。今回はさらに「**片方を直した修正が、隣の半分を直さない**」が加わった。L1 を実数化した 09-08 09:20 の修正が、同じ関数の L0 側を固定文のまま残していた。
+
+---
+
+## 2026-09-08 17:50 ハッカソン戦略 → vet402.com セッション: **09-08 夕方の 4 コミットが main に入りました（`ae82baf`〜`f53a887`・CI 緑）**
+
+4 件は独立です。**効くのは 2 番目（`bfc16bb`・SDK の判定の読み方）と 1 番目（`ae82baf`・`dist/` に英語が入った）**。
+13:2x の 3 コミット（`d72c3b8` / `ed411bf` / `8365dfd`）は本ファイル 09-08 14:10 の項で申し送り済みです。
+
+### 1. `ae82baf` — 審査員を送り込んでいる 7 ファイルに、日本語の上へ英語ヘッダを足した
+
+- **変えたもの**: `packages/sdk/src/{pay-or-refuse,subgraph-evidence,x402-pay}.ts`、
+  `packages/mcp-server/src/pay-if-trusted.ts`、`examples/ethonline-2026-ab/src/mcp.mjs`、
+  `examples/ethonline-2026-demo/src/{render,run}.ts`（+372 行・**全部コメント**）
+- **なぜ**: 提出文が `pay-or-refuse.ts` を「読んでくれ」と名指ししているのに、冒頭 22 行が日本語だけだった。
+  Round 1 は commit history の使い方も見られる。日本語は消さず、上に同内容の英語を置いただけで新しい主張は足していない
+- **そちらへの影響（名指し）**: **`dist/` にも同じ英語コメントが入っています。次に `npm publish` するとこの英語が公開物に載ります。**
+  `packages/sdk/package.json` は `files: ["dist","README.md"]`・`.npmignore` 無しなので `dist/` は丸ごと同梱されます
+  （`npm pack --dry-run` に `dist/pay-or-refuse.js` 54.6kB が出る）。
+  ただし**現在 npm に出ている `@vet402/sdk@0.5.0`（2026-08-25 公開）には `pay-or-refuse` 自体が入っていません**
+  （中身は `index` と `spend-guard` の 2 本だけ・実測）。`package.json` の version も 0.5.0 のままなので、
+  **版を上げて publish した時に初めて載ります**。会期中に publish する予定があるなら、それが初出になります
+- **確かめ方**: `cd packages/sdk && npm pack --dry-run`（同梱物一覧）／`npm view @vet402/sdk version` と `npm pack @vet402/sdk@0.5.0` で公開済みの中身
+- ロジックは 1 行も変わっていません（`git show --stat ae82baf` の全ファイルがコメント差分）
+
+### 2. `bfc16bb` — 判定語と品質フラグの読み方を 1 つの規則に寄せた（**拒否側だけを正規化する片道**）
+
+- **変えたもの**: `packages/sdk/src/verdict-shape.ts` を**新設**し、`pay-or-refuse.ts` と `spend-guard.ts` の
+  読み取りをそこへ寄せた（`SKILL.md`・`SUBMISSION_DRAFT.md`・`VIDEO_SCRIPT.md`・`test-mutations.mjs`・
+  新規 `test/verdict-normalization.test.mjs` 331 行）
+- **なぜ**: 第三者の反証パスが、`requireVet402Allow: false` のとき **`" BLOCK "`（前後に空白）が BLOCK として読まれず署名まで通る**、
+  payee-score 経路で **`degraded: "true"`（文字列）/ `1` と非配列の `signalsUnavailable` が `=== true` と `?.length ?? 0` をすり抜ける**、
+  を実測。09-07 に `/decision` 分岐へ入れた `typeof !== "boolean"` が payee-score 分岐と `spend-guard.ts` に届いていなかった
+- **そちらへの影響（名指し）**:
+  - **正規化は片道です。** `isBlockVerdict()` は trim して大文字化してから比較するので `" BLOCK "` は**拒否に倒れます**が、
+    `" ALLOW "` は ALLOW として読まれません。`scoreQualityDefect()` は `degraded` が真の boolean、
+    `signalsUnavailable` が（在るなら）真の配列であることを要求します。**金の関門は拒否の方向にだけ広げる**という規則です
+  - **`block-only` に拒否が 1 つ増えています（唯一の懸念点）。** これまで `block-only` は `degraded === true` しか見ておらず、
+    `signalsUnavailable` を一切見ていませんでした。今後は **`signalsUnavailable` が配列でない形（＝読めない）**と
+    **`degraded` が boolean でない形**が `payee_score_degraded` で落ちます。
+    **読める部分測定（配列に要素あり）は `block-only` では従来どおり通ります**（`"partial"` として区別）
+  - **正常系は差分なしです**: 本番の実応答 36 ケースを前後で通して同一結論（【一次】`bfc16bb` のコミット本文。
+    この 36 ケースはリポに成果物として残っていないので、そちらが再実行できるのは下のテスト側です）。
+    本番は 2026-09-08 実測で `degraded: false`（boolean）・空白なしの判定語を返しており、この経路で本番が破れることはありません
+  - **署名到達部は不変**: `x402-pay.ts`・動的 import・署名器の呼び出しは 1 行も変わっていません
+- **確かめ方**: `node --test packages/sdk/test/verdict-normalization.test.mjs`
+  （【実測】2026-09-08 17:4x・隔離 worktree で `tests 37 / pass 37 / fail 0`。修正前は 25 本が赤で、各々 1 回署名していた）
+- SDK 全体【実測】: `npm test --prefix packages/sdk` → `tests 1609 / pass 1609 / fail 0`。
+  変異【実測】: `grep -cE '^ +id: "M[0-9]+"' packages/sdk/test-mutations.mjs` → **42**
+
+### 3. `f7adfd0` — 審査員がリポからは知りようがない 2 点を README / SKILL.md に書いた
+
+- **変えたもの**: `README.md`（+3）・`SKILL.md`（+5）・`CHANGED_FILES.md`・`scripts/refresh-numbers.json`
+- **なぜ**: ① コミットとコメントが日本語であること・英語の経路（SKILL.md / AI_USAGE.md / CHANGED_FILES.md）が
+  どこにも書いていなかった。② npm から入れた審査員は提出文の中核（`payOrRefuse`）に辿り着けない
+  （公開済み 0.5.0 に入っていない・実測）。③ `npm run judge-check` が走らせるのは
+  **A/B ハーネスの変異セットであって SDK の 42 ではない**（`scripts/judge-check.sh` は
+  `examples/ethonline-2026-ab` の中で `node test-mutations.mjs` を呼ぶ）。件数の隣に SDK 側を回すコマンドを併記
+- **そちらへの影響**: `judge-check.sh` 自体は無変更。A/B の変異本数は手書きをやめて
+  `scripts/refresh-numbers.json` の `n:ab_mutations` から導出する形にしました（識別子は残し、数だけ導く）
+- **確かめ方**: `node scripts/refresh-numbers.mjs --check`
+  （【実測】2026-09-08 17:4x: `✔ 12 number(s) consistent across 6 doc(s), 28 mark(s) — 7 derived now, 5 against recorded values`）
+
+### 4. `f53a887` — demo のテスト本数を「記録値」でなく「毎回の実走」で検査する
+
+- **変えたもの**: `scripts/refresh-numbers.json`（`demo_tests` を `check: "recorded"` → `"derive"`）、
+  `AI_USAGE.md`・`SKILL.md`・`SUBMISSION_DRAFT.md`・`VIDEO_SCRIPT.md`・`CHANGED_FILES.md` の数字
+- **なぜ**: 2026-09-08 の `8365dfd` で demo が 71 → 76 になったのに記録値 65 が置き去りで、
+  `--check` は「✔ 12 number(s) consistent」と**緑を出し続けていた**。記録値と文書が両方古ければ一致してしまう構造。
+  demo は dependencies ゼロ・0.5 秒で走るので `derive` にして毎回突き合わせる
+- **そちらへの影響**: 同じ腐りを他の `recorded` でも洗い、**`ab_mutations` 27 → 25** に訂正
+  （`f7adfd0` で手書きされたまま一度も導出されていなかった）。`sdk_tests 1609` / `mcp_tests 748` /
+  `sdk_mutations 42` は実走と一致（【実測】2026-09-08 17:4x: `npm test --prefix packages/mcp-server` → `tests 748 / pass 748 / fail 0`）。**どの関門も見ていなかった `SUBMISSION_DRAFT.md` の素の数字**
+  （§Y「178 / 65 / 65」と `{{mutations}}` の「記録値 27」）に literal を足したので、
+  **今後この文書の数字を手で書き換えると `--check` が赤くなります**
+- **確かめ方**: `npm test --prefix examples/ethonline-2026-demo | grep '^ℹ'`
+  （【実測】2026-09-08 17:4x: `tests 76 / pass 76 / fail 0`）／
+  `grep -cE '^ +id: "M[0-9]+"' examples/ethonline-2026-ab/test-mutations.mjs` → **25**
+
+**決済経路は 4 件とも触っていません**——`src/lib/observatory/*payer*`・`packages/sdk/src/x402-pay.ts`・署名器は無変更。
+`pay-or-refuse.ts` は判定語の読み方 2 行が `verdict-shape.js` の呼び出しに替わっただけで、
+拒否の分岐構造も ALLOW 分岐内の動的 import も動いていません。
