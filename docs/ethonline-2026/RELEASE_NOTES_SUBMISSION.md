@@ -7,7 +7,8 @@
 > the other end of the range.
 >
 > **On 2026-09-13**: replace every `{{…}}` with the value printed by the command next to it, regenerate
-> `COMMITS_EN.md` (`node scripts/ethonline-commits-en.mjs`, exit 0 required), commit, then
+> `COMMITS_EN.md` and prove it is not behind — `node scripts/ethonline-commits-en.mjs && node scripts/ethonline-commits-en.mjs --check --strict`
+> (both exit 0; `npm test` runs `--check` without `--strict`, where a file that is merely behind is only a `note:`), commit, then
 > `gh release create ethonline-2026-submission --target <that commit> --title "ETHOnline 2026 submission — payOrRefuse" --notes-file <this body>`.
 > A pre-release flag is not needed; the tag is not moved afterwards.
 
@@ -86,7 +87,7 @@ runs on every push. As of this release: `{{node scripts/refresh-numbers.mjs --ch
 |---|---|
 | Commits `pre-ethonline-2026..ethonline-2026-submission` | `{{git rev-list --count pre-ethonline-2026..HEAD}}` |
 | …of which claimed (path filter above) | `{{git rev-list --count pre-ethonline-2026..HEAD -- packages/sdk packages/mcp-server examples/ethonline-2026-demo examples/ethonline-2026-ab SKILL.md AI_USAGE.md docs/ethonline-2026}}` |
-| `COMMITS_EN.md` untranslated subjects | `{{node scripts/ethonline-commits-en.mjs --check; echo exit $?}}` (must be 0 problems, exit 0) |
+| `COMMITS_EN.md` untranslated subjects, and not behind | `{{node scripts/ethonline-commits-en.mjs --check --strict; echo exit $?}}` (must be 0 problems, `file fresh`, exit 0) |
 | `npm run judge-check` on a clean clone | `{{last line of the table}}` |
 
 Team: Takeshi Kazumoto (Discord `Sen_web3`). Prizes applied for: The Graph (Continuity), Bazantic.

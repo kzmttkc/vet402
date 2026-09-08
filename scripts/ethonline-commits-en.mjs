@@ -6,9 +6,12 @@
 //   node scripts/ethonline-commits-en.mjs            # regenerate the file (exit 1 if a subject is untranslated)
 //   node scripts/ethonline-commits-en.mjs --check    # write nothing; exit 1 if any Japanese subject has no
 //                                                    # translation, a translation's recorded original no longer
-//                                                    # matches the commit (stale entry), the file is not what this
-//                                                    # script produces from the commit it names, or a commit after
-//                                                    # that one did not regenerate it (stale file)
+//                                                    # matches the commit (stale entry), or the file is not what
+//                                                    # this script produces from the commit it names (hand edit).
+//                                                    # A commit after that one that did not regenerate the file
+//                                                    # (stale file) is a `note:` on stderr, exit 0
+//   node scripts/ethonline-commits-en.mjs --check --strict   # …and a stale file is exit 1 too (the final pass
+//                                                    # before the submission Release; run the generator first)
 //   node scripts/ethonline-commits-en.mjs --ref origin/main   # derive from another ref (default HEAD)
 //   node scripts/ethonline-commits-en.mjs --out <path>        # write/check another path (tests)
 //
@@ -30,6 +33,17 @@
 // each must itself touch this file (i.e. be the commit that regenerated it), or the
 // file is stale. Same idea as refresh-numbers --check: derive on the spot, pin the
 // derivation to what the document says, never trust a recorded copy.
+//
+// Two grades (same day, later). The first cut made "stale" exit 1 in root `npm test`,
+// so every commit on main had to carry a regenerated COMMITS_EN.md or the branch
+// went red — two unrelated branches were blocked within hours. Now:
+//   always red   — no Generated row / the SHA is not a commit / not an ancestor of
+//                  the ref / the file is not what this script renders from that SHA
+//                  (a hand edit or generator drift: the file lies about itself)
+//   --strict red — commits after the pinned SHA that did not regenerate the file
+//                  (the file is merely behind; a `note:` on stderr by default)
+// `npm test` runs the default. The final pass before the submission Release runs
+// the generator and then `--check --strict` (RELEASE_NOTES_SUBMISSION.md).
 // ============================================================
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -57,16 +71,18 @@ const TOP_PER_DAY = 3;
 const GENERATED_ROW = /^\| Generated \| .* from `([0-9a-f]{40})` \|$/m;
 
 function parseArgs(argv) {
-  const a = { check: false, ref: "HEAD", out: DEFAULT_OUT };
+  const a = { check: false, strict: false, ref: "HEAD", out: DEFAULT_OUT };
   for (let i = 0; i < argv.length; i++) {
     const x = argv[i];
     if (x === "--check") a.check = true;
+    else if (x === "--strict") a.strict = true;
     else if (x === "--ref") a.ref = argv[++i] ?? "";
     else if (x === "--out") a.out = resolve(argv[++i] ?? "");
-    else if (x === "-h" || x === "--help") { console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1, 14).map((l) => l.replace(/^\/\/ ?/, "")).join("\n")); process.exit(0); }
+    else if (x === "-h" || x === "--help") { console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1, 17).map((l) => l.replace(/^\/\/ ?/, "")).join("\n")); process.exit(0); }
     else { console.error(`unknown option: ${x}`); process.exit(2); }
   }
   if (!a.ref) { console.error("--ref needs a value"); process.exit(2); }
+  if (a.strict && !a.check) { console.error("--strict only means something with --check"); process.exit(2); }
   return a;
 }
 
@@ -167,8 +183,9 @@ function render(head, generatedAt) {
   lines.push("");
   lines.push(`This is \`git log ${TAG}..${shown}\` (${commits.length} commits), grouped by day in UTC and rendered by`);
   lines.push("[`scripts/ethonline-commits-en.mjs`](../../scripts/ethonline-commits-en.mjs) — `node scripts/ethonline-commits-en.mjs` regenerates it;");
-  lines.push("`--check` (run by `npm test`) fails if any Japanese subject lacks a translation, if this file is not what the script produces from the");
-  lines.push("commit named in the **Generated** row, or if a later commit did not regenerate it. `main` is also this product's production branch, so");
+  lines.push("`--check` (run by `npm test`) fails if any Japanese subject lacks a translation or if this file is not what the script produces from the");
+  lines.push("commit named in the **Generated** row; commits after that one which did not regenerate it are a warning, and `--check --strict` (the final pass");
+  lines.push("before the submission Release) makes that a failure too. `main` is also this product's production branch, so");
   lines.push("the window contains work we do **not** submit; the **Claimed** column is derived from the path filter in `README.md`:");
   lines.push("");
   lines.push("```bash");
@@ -236,15 +253,20 @@ function render(head, generatedAt) {
 
 const stripGenerated = (md) => md.replace(GENERATED_ROW, "| Generated | (ignored) |");
 
-/** Freshness: the file must equal what this script renders from the commit its Generated row names, and every commit after that one must have regenerated it. */
+/**
+ * Freshness, in two grades. `problems` (always exit 1): the file must equal what this script renders from the
+ * commit its Generated row names. `stale` (a note by default, exit 1 under --strict): every commit after that
+ * one should have regenerated it. Returns { problems: string[], stale: string | null }.
+ */
 function checkFreshness(out, ref, head) {
   const problems = [];
+  const fail = (p) => ({ problems: [p], stale: null });
   let file;
-  try { file = readFileSync(out, "utf8"); } catch { return [`${relative(ROOT, out)}: missing — run \`node scripts/ethonline-commits-en.mjs\``]; }
+  try { file = readFileSync(out, "utf8"); } catch { return fail(`${relative(ROOT, out)}: missing — run \`node scripts/ethonline-commits-en.mjs\``); }
   const m = GENERATED_ROW.exec(file);
-  if (!m) return [`${relative(ROOT, out)}: no "| Generated | … from \`<sha>\` |" row — regenerate`];
+  if (!m) return fail(`${relative(ROOT, out)}: no "| Generated | … from \`<sha>\` |" row — regenerate`);
   const pinned = m[1];
-  if (git(["cat-file", "-e", `${pinned}^{commit}`], null).status !== 0) return [`${relative(ROOT, out)}: Generated row names ${pinned.slice(0, 7)}, which is not a commit here`];
+  if (git(["cat-file", "-e", `${pinned}^{commit}`], null).status !== 0) return fail(`${relative(ROOT, out)}: Generated row names ${pinned.slice(0, 7)}, which is not a commit here`);
   if (git(["merge-base", "--is-ancestor", pinned, head], null).status !== 0) problems.push(`${relative(ROOT, out)}: generated from ${pinned.slice(0, 7)}, which is not an ancestor of ${ref} (${head.slice(0, 7)})`);
   const again = render(pinned, new Date()).md;
   if (stripGenerated(again) !== stripGenerated(file)) {
@@ -260,26 +282,34 @@ function checkFreshness(out, ref, head) {
   const after = git(["log", "--format=%H%x1f%s", `${pinned}..${head}`]).out.split("\n").filter(Boolean).map((l) => l.split("\x1f"));
   const touched = new Set(git(["log", "--format=%H", `${pinned}..${head}`, "--", relOut]).out.split("\n").filter(Boolean));
   const missing = after.filter(([sha]) => !touched.has(sha));
-  if (missing.length) {
-    problems.push(`${label}: stale — generated from ${pinned.slice(0, 7)}, but ${missing.length} commit(s) in ${pinned.slice(0, 7)}..${head.slice(0, 7)} did not regenerate it: ${missing.map(([s, subj]) => `${s.slice(0, 7)} ${subj.slice(0, 60)}`).join("; ")} — run \`node scripts/ethonline-commits-en.mjs\` and commit`);
-  }
-  return problems;
+  const stale = missing.length
+    ? `${label}: stale — ${missing.length} commit(s) since ${pinned.slice(0, 7)} did not regenerate it (${missing.map(([s, subj]) => `${s.slice(0, 7)} ${subj.slice(0, 60)}`).join("; ")}); run \`node scripts/ethonline-commits-en.mjs\` before the submission Release`
+    : null;
+  return { problems, stale };
 }
 
 function main() {
-  const { check, ref, out } = parseArgs(process.argv.slice(2));
+  const { check, strict, ref, out } = parseArgs(process.argv.slice(2));
   const head = git(["rev-parse", `${ref}^{commit}`]).out.trim();
   const { md, problems, unused, stats } = render(head, new Date());
-  if (check) problems.push(...checkFreshness(out, ref, head));
+  let stale = null;
+  if (check) {
+    const f = checkFreshness(out, ref, head);
+    problems.push(...f.problems);
+    if (f.stale) { if (strict) problems.push(f.stale); else stale = f.stale; }
+  }
 
   for (const p of problems) console.error(`ethonline-commits-en: ${p}`);
+  if (stale) console.error(`ethonline-commits-en: note: ${stale}`);
   for (const s of unused) console.error(`ethonline-commits-en: note: translation for ${s.slice(0, 7)} is not in ${TAG}..${ref} (unused)`);
 
   if (!check) {
     writeFileSync(out, md);
     console.log(`wrote ${out}`);
   }
-  console.log(`ethonline-commits-en: ${stats.commits} commits (${stats.claimedCount} claimed, ${stats.preWindow} claimed pre-window), ${stats.translated} translated, ${stats.english} English${check ? `, file ${problems.some((p) => p.includes("stale") || p.includes("regenerate")) ? "STALE" : "fresh"}` : ""}, ${problems.length} problem(s)`);
+  // file: fresh (matches its pinned commit, nothing after it) / stale (behind, a note only) / STALE (exit 1: hand edit, or stale under --strict)
+  const fileState = !check ? "" : problems.some((p) => p.includes("stale") || p.includes("regenerate")) ? "STALE" : stale ? "stale (note)" : "fresh";
+  console.log(`ethonline-commits-en: ${stats.commits} commits (${stats.claimedCount} claimed, ${stats.preWindow} claimed pre-window), ${stats.translated} translated, ${stats.english} English${check ? `, file ${fileState}` : ""}, ${problems.length} problem(s)`);
   process.exit(problems.length ? 1 : 0);
 }
 

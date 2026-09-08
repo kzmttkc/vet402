@@ -3,14 +3,24 @@
 //
 // WHY. `scripts/ethonline-commits-en.mjs --check` は対訳の欠落と stale な ja しか見ていなかったので、
 // ファイル本体が HEAD から 3 コミット遅れても緑だった（検証役の実測: HEAD 321 件・ファイル 318 件）。
-// 今の --check は Generated 行の SHA から同じ内容を描き直して突き合わせ、その SHA より後のコミットが
-// このファイルを再生成していなければ赤にする（refresh-numbers --check と同じ考え方——正解の写しを持たず、
-// 文書が名乗る基準にピン留めして、その場で導出する）。
+// 今の --check は Generated 行の SHA から同じ内容を描き直して突き合わせる（refresh-numbers --check と同じ
+// 考え方——正解の写しを持たず、文書が名乗る基準にピン留めして、その場で導出する）。
+//
+// 2段（同日、後刻）。最初の版は「その SHA より後のコミットがこのファイルを再生成していない」も exit 1 にした。
+// すると main の全コミットが COMMITS_EN.md の再生成を同梱しないと root npm test が赤になり、無関係な
+// 2 ブランチが数時間で詰まった。今は:
+//   常に赤     — Generated 行が無い／名乗る SHA がコミットでない／ref の祖先でない／その SHA から描き直した
+//                内容とファイルが一致しない（手編集・生成器の drift = ファイルが自分について嘘をついている）
+//   --strict で赤 — ピン以後にこのファイルを再生成していないコミットがある（単に遅れている。既定は stderr に note:）
+// npm test は既定を走らせる。締切前の最終通しは生成器 → `--check --strict`（RELEASE_NOTES_SUBMISSION.md）。
 //
 // ここでやること:
-//   1. 本物のファイルに対して --check が exit 0（＝ push-main の root npm test と CI の test ジョブで毎回走る）
-//   2. わざと古い写しに対しては exit 1 で、理由に "regenerate" が出る（関門が見ているものの負の試験）
+//   1. 本物のファイルに対して --check が exit 0（＝ push-main の root npm test と CI の test ジョブで毎回走る）。
+//      fresh でも stale (note) でもよい——後者は警告であって赤ではない
+//   2. わざと古い写し（行を1つ落とす）は exit 1 で、理由に "regenerate" が出る（関門が見ているものの負の試験）
 //   3. 実在しない SHA を名乗る写しも exit 1（Generated 行を手で直しても通らない）
+//   4. ピンを「再生成しなかったコミットの1つ前」へ戻した写し（= 本当に遅れているファイル）は、既定では
+//      exit 0 + "note: … stale"、--strict では exit 1（2段が実際に分かれていることの負の試験）
 //
 // 前提: リポに tag pre-ethonline-2026 と全履歴がある（CI の test ジョブは fetch-depth: 0。depth 1 では走らない）。
 // ============================================================
@@ -25,16 +35,17 @@ const ROOT = process.cwd();
 const SCRIPT = join(ROOT, "scripts", "ethonline-commits-en.mjs");
 const FILE = join(ROOT, "docs", "ethonline-2026", "COMMITS_EN.md");
 
-function check(out?: string) {
-  const args = [SCRIPT, "--check", ...(out ? ["--out", out] : [])];
-  const r = spawnSync(process.execPath, args, { cwd: ROOT, encoding: "utf8" });
+function run(args: string[]) {
+  const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd: ROOT, encoding: "utf8" });
   return { code: r.status, text: (r.stdout ?? "") + (r.stderr ?? "") };
 }
+const check = (out?: string, ...more: string[]) => run(["--check", ...(out ? ["--out", out] : []), ...more]);
+const git = (...args: string[]) => spawnSync("git", args, { cwd: ROOT, encoding: "utf8" }).stdout.trim();
 
-test("COMMITS_EN.md is what the script renders from the commit it names, and nothing after that commit forgot to regenerate it", () => {
+test("COMMITS_EN.md is what the script renders from the commit it names (a stale-but-honest file is a note, not red)", () => {
   const r = check();
   assert.equal(r.code, 0, `--check is red:\n${r.text.split("\n").filter((l) => !l.includes("note: translation")).join("\n")}`);
-  assert.match(r.text, /file fresh/);
+  assert.match(r.text, /file fresh|note: .*stale/);
 });
 
 test("a stale copy (one row dropped) is red with 'regenerate'", () => {
@@ -63,4 +74,30 @@ test("a copy whose Generated row names a SHA that is not a commit is red", () =>
   const r = check(p);
   assert.equal(r.code, 1, `expected exit 1, got ${r.code}:\n${r.text}`);
   assert.match(r.text, /is not a commit here/);
+});
+
+test("a copy that is honestly behind (pinned before a commit that did not regenerate it) is a note by default and red under --strict", () => {
+  // The newest commit in the window that did not touch COMMITS_EN.md; pin the copy to its parent so that
+  // commit is "after the pin and did not regenerate". Render the copy from that parent with the real
+  // generator, so the content check passes and only the stale check is exercised.
+  const all = git("log", "--format=%H", "pre-ethonline-2026..HEAD").split("\n").filter(Boolean);
+  const touched = new Set(git("log", "--format=%H", "pre-ethonline-2026..HEAD", "--", "docs/ethonline-2026/COMMITS_EN.md").split("\n").filter(Boolean));
+  const lazy = all.find((sha) => !touched.has(sha));
+  assert.ok(lazy, "every commit in the window regenerated COMMITS_EN.md — nothing to pin behind");
+  const pin = git("rev-parse", `${lazy}^`);
+  const dir = mkdtempSync(join(tmpdir(), "commits-en-"));
+  const p = join(dir, "COMMITS_EN.md");
+  const gen = run(["--ref", pin, "--out", p]);
+  assert.equal(gen.code, 0, `generating from ${pin.slice(0, 7)} failed:\n${gen.text}`);
+  assert.match(readFileSync(p, "utf8"), new RegExp(`\\| Generated \\| .* from \`${pin}\` \\|`));
+
+  const soft = check(p);
+  assert.equal(soft.code, 0, `expected exit 0 without --strict, got ${soft.code}:\n${soft.text}`);
+  assert.match(soft.text, /note: .*stale — \d+ commit\(s\) since [0-9a-f]{7} did not regenerate it/);
+  assert.match(soft.text, /file stale \(note\)/);
+
+  const strict = check(p, "--strict");
+  assert.equal(strict.code, 1, `expected exit 1 with --strict, got ${strict.code}:\n${strict.text}`);
+  assert.match(strict.text, /stale — \d+ commit\(s\) since [0-9a-f]{7} did not regenerate it/);
+  assert.match(strict.text, /file STALE/);
 });
