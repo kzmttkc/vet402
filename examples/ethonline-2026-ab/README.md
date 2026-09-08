@@ -8,7 +8,7 @@
 
 **Where results go.** `results/<timestamp>/` — `trials.jsonl` (one raw trial per line), `run.json` (meta), `summary.json` and `summary.md` (recounted from the raw log every time). The committed run is the mock; it says so in its first line. Live runs are to be moved to `docs/ethonline-2026/ab/` as pre-registered in `docs/ethonline-2026/WINDOW_PLAN.md` §16.
 
-**Bazantic's 402 and the bridge.** The Gateway answers 402 to any unpaid call even at 0 mcents and ignores `PAYMENT-SIGNATURE` on MCP `tools/call`, so `src/mcp.mjs` re-sends the same resource as a signed REST `GET` and hands the model the real response (one 0-USDC tx per call, kept in `raw.toolCalls[].x402Bridge.txHash`); without a payer key the 402 text reaches the model unchanged.
+**Bazantic's 402 and the bridge.** The Gateway answers 402 to any unpaid call even at 0 mcents and ignores `PAYMENT-SIGNATURE` on MCP `tools/call`, so `src/mcp.mjs` re-sends the same resource as a signed REST `GET` and hands the model the real response (one 0-USDC tx per call, kept in `raw.toolCalls[].x402Bridge.txHash`); without a payer key the 402 text reaches the model unchanged. Re-measured 2026-09-09: the Gateway's 0-mcent tools now answer an unpaid `tools/call` with the body, so the bridge is not entered; the 88 transactions in run `2026-09-06T213134Z` are that day's behaviour.
 
 賞の問いは一文だけ——**「エージェントが、あなたの説明なしにあなたの製品を使えるか」**。
 それを A/B で測る。**測り方は走らせる前に固定されている**（`docs/ethonline-2026/WINDOW_PLAN.md` §16 の事前登録）。
@@ -132,7 +132,7 @@ node src/cli.mjs --agent anthropic --model claude-opus-5 --effort high
 Bazantic Gateway は全ルート 0 mcents でも、未払いの呼び出しには 402 を返す（既定仕様・設定で外せない）。
 MCP の `tools/call` では払えない（PAYMENT-SIGNATURE を載せても無視される・2026-09-06 実測）ので、
 `src/mcp.mjs` の橋が同じ資源を REST `GET` に回して署名付きで再送し、本物の応答をモデルへ返す。
-**1 呼び出しにつき 0 USDC のオンチェーン tx が 1 本立つ**（`raw.toolCalls[].x402Bridge.txHash` に残る）。鍵が無ければ橋は動かず、402 の文がそのままモデルへ届く。
+**1 呼び出しにつき 0 USDC のオンチェーン tx が 1 本立つ**（`raw.toolCalls[].x402Bridge.txHash` に残る）。鍵が無ければ橋は動かず、402 の文がそのままモデルへ届く。2026-09-09 の再計測では 0 mcents のツールが未払いの `tools/call` に本文を返し、橋は動かない（`2026-09-06T213134Z` の 88 本はその日の挙動）。
 
 **走らせる前に潰すもの**（`run.json` の `meta.fixtureReadiness.blockers` に機械可読で出る）:
 

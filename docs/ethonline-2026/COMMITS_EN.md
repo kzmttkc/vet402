@@ -4,7 +4,7 @@
 
 ## How this file is made
 
-This is `git log pre-ethonline-2026..17d4719` (330 commits), grouped by day in UTC and rendered by
+This is `git log pre-ethonline-2026..9dc22e6` (331 commits), grouped by day in UTC and rendered by
 [`scripts/ethonline-commits-en.mjs`](../../scripts/ethonline-commits-en.mjs) — `node scripts/ethonline-commits-en.mjs` regenerates it;
 `--check` (run by `npm test`) fails if any Japanese subject lacks a translation or if this file is not what the script produces from the
 commit named in the **Generated** row; commits after that one which did not regenerate it are a warning, and `--check --strict` (the final pass
@@ -12,10 +12,10 @@ before the submission Release) makes that a failure too. `main` is also this pro
 the window contains work we do **not** submit; the **Claimed** column is derived from the path filter in `README.md`:
 
 ```bash
-git log pre-ethonline-2026..17d4719 -- packages/sdk packages/mcp-server \
+git log pre-ethonline-2026..9dc22e6 -- packages/sdk packages/mcp-server \
     examples/ethonline-2026-demo examples/ethonline-2026-ab \
     SKILL.md AI_USAGE.md docs/ethonline-2026    # ✔ claimed
-git log pre-ethonline-2026..17d4719             # everything, ✔ and —
+git log pre-ethonline-2026..9dc22e6             # everything, ✔ and —
 ```
 
 A commit is ✔ when it touches at least one of those paths, — otherwise. Subjects written before the English-subject rule took effect
@@ -26,12 +26,12 @@ that instant are marked **⚠ pre-window** below and listed in [`DISCLOSURE_2026
 
 | | |
 |---|---|
-| Generated | 2026-09-08 23:50:56 UTC from `17d471913317fad602b0fa48109cd3953fe4ea48` |
-| Range | `pre-ethonline-2026..17d4719` — **330 commits** on 5 days (UTC), 13 of them merges |
-| Claimed (✔) | **188** — touch at least one path in the filter |
+| Generated | 2026-09-09 00:00:09 UTC from `9dc22e6e7cb753216a0100bd0bf25998b5a95549` |
+| Range | `pre-ethonline-2026..9dc22e6` — **331 commits** on 5 days (UTC), 13 of them merges |
+| Claimed (✔) | **189** — touch at least one path in the filter |
 | Not claimed (—) | **142** — production work in the same days |
 | Claimed but before 2026-09-04 16:00:00 UTC | **3** (⚠) |
-| Subjects translated from Japanese | **285** (English already: 45) |
+| Subjects translated from Japanese | **285** (English already: 46) |
 
 ## Claimed, by day (UTC)
 
@@ -62,7 +62,7 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 - [`3d622f6`](https://github.com/kzmttkc/vet402/commit/3d622f66890a49e1bcfd16ca638db614dc8c433b) 00:05 — ethonline: feat(docs): make the submission's moving numbers machine-readable with markers; npm run refresh-numbers recomputes them, --check goes red on staleness (656 lines)
 - [`533526e`](https://github.com/kzmttkc/vet402/commit/533526e2aee698af05c90a21438d724d2e43c3de) 21:40 — ethonline: feat(skill-live): gate that runs SKILL.md's production blocks against production daily and goes red on any mismatch (444 lines)
 
-### 2026-09-08 — 33 of 57 claimed
+### 2026-09-08 — 34 of 58 claimed
 
 - [`3ef51db`](https://github.com/kzmttkc/vet402/commit/3ef51db8a502ad733bb8667719a2918e38ed2f53) 22:40 — ethonline: docs(commits): English index of every window commit, derived from git log, plus the submission Release body draft (1803 lines)
 - [`cd246d9`](https://github.com/kzmttkc/vet402/commit/cd246d92cad4078fd710d442ea70718d2f684520) 11:22 — ethonline: fix(demo): make the announced gate match the gate that fires (A≠C 28 → 0) (766 lines)
@@ -71,7 +71,7 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 ## Every commit, by day (UTC), oldest first
 
 <details>
-<summary>All 330 commits — ✔ claimed and — not claimed (click to expand)</summary>
+<summary>All 331 commits — ✔ claimed and — not claimed (click to expand)</summary>
 
 ### 2026-09-04 — 87 commits, 11 claimed
 
@@ -366,7 +366,7 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`19f2488`](https://github.com/kzmttkc/vet402/commit/19f24889a581a7a573803ea6d99fd1789d8e2561) | 23:14 | ✔ | docs(ethonline): submission form opened 2026-09-08 00:06 JST (#information verbatim) — no change to deadline / judging dates / rules; video is voice without music, 720p+, 2–4 min; submitting is allowed even if the repo check fails; a public repo is required |
 | [`a309d46`](https://github.com/kzmttkc/vet402/commit/a309d46b7d765e495e93d2d5c4264c10b225b746) | 23:19 | ✔ | ethonline: docs(plan): submission option is 1 (Top Finalist & Partner Prizes) — primary facts that exist only in the email, and the decision not to drop the 3 Continuity slots |
 
-### 2026-09-08 — 57 commits, 33 claimed
+### 2026-09-08 — 58 commits, 34 claimed
 
 | SHA | UTC | Claimed | Subject (English) |
 |---|---|:---:|---|
@@ -427,5 +427,6 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`b063e9e`](https://github.com/kzmttkc/vet402/commit/b063e9e58793485a4980ec10dbf91e1621b78d8c) | 23:26 | — | fix(plugin): launch the in-repo MCP server, not npm's 0.2.0 without pay_if_trusted |
 | [`147d624`](https://github.com/kzmttkc/vet402/commit/147d624a8faf86fdf3b81e11905879cdbb733a8e) | 23:34 | — | docs(readme): link the four judge-facing doors from §ETHOnline 2026, and hand off this morning's second round |
 | [`17d4719`](https://github.com/kzmttkc/vet402/commit/17d471913317fad602b0fa48109cd3953fe4ea48) | 23:34 | ✔ | feat(commits-en): freshness gate for COMMITS_EN.md, and a "Claimed, by day" opening |
+| [`9dc22e6`](https://github.com/kzmttkc/vet402/commit/9dc22e6e7cb753216a0100bd0bf25998b5a95549) | 23:52 | ✔ | fix(commits-en): a COMMITS_EN.md that is merely behind is a note, not a red root test; --check --strict for the Release |
 
 </details>
