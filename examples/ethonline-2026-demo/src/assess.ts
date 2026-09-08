@@ -9,6 +9,13 @@
  * 閾値（チェーン・資産・上限）は SDK の定数を引く。ここに 16 進や金額を書かない。
  */
 import { readSubgraphReceipts, X402_BASE_SUBGRAPH_ID } from "../../../packages/sdk/dist/index.js";
+// 判定語と「測れたか」の欄の読み方。**2つの金の経路（`pay-or-refuse.ts` / `spend-guard.ts`）が
+// 共有している 1 本**をそのまま引く（2026-09-08 `bfc16bb`）。ここに写しを置くと、同じ問いに
+// 規則が2つある状態に戻る——2026-09-08 に `degraded: false` かつ `signalsUnavailable` 非空で
+// 「署名する」と予告して金の経路が拒否した欠陥は、それが原因だった。
+// `dist/index.js`（公開面）には無いので、金の経路が読むのと同じ実装ファイルを直接引く。
+// SDK の公開 API を会期中に広げないための選択でもある（`judge.ts` 冒頭「`packages/**` を触らない」）。
+import { isBlockVerdict, scoreQualityDefect } from "../../../packages/sdk/dist/verdict-shape.js";
 import type { PayView } from "./render.ts";
 import {
   VET402_API,
@@ -91,6 +98,22 @@ function gate(name: string, verdict: Gate["verdict"], detail: string): Gate {
 
 function sameAddress(a: unknown, b: unknown): boolean {
   return typeof a === "string" && typeof b === "string" && a.toLowerCase() === b.toLowerCase();
+}
+
+/**
+ * 「測れなかった」を画の語にする。**どれが欠陥かは決めない**——決めるのは SDK の
+ * `scoreQualityDefect` で、ここは決まった欠陥に語を与えるだけ（規則の写しを増やさない）。
+ *
+ * `degraded` の語は 2026-09-05 の変異 D5 が固定したもので、**1文字も変えない**。
+ * `partial` は**どの入力が読めなかったか**を名前で出す——審査員がライブ審査でこの行を読み、
+ * 「判定が悪い」ではなく「入力が1つ読めなくて止まった」と見分けられるようにするため
+ * （`docs/ethonline-2026/LIVE_JUDGING.md`「拒否が出たとき」）。
+ */
+function defectNote(defect: "degraded" | "unreadable" | "partial", signals: unknown): string {
+  if (defect === "degraded") return " — degraded: not measured, never waived";
+  if (defect === "unreadable") return " — signalsUnavailable is not a list; not measured, never waived";
+  const names = Array.isArray(signals) ? signals.map((s) => String(s)).join(", ") : "";
+  return ` — unread inputs: ${names}; not measured, never waived`;
 }
 
 export function l1Delivered(decision: DecisionBody | null): number {
@@ -245,42 +268,54 @@ export async function assess(options: AssessOptions): Promise<{ view: PayView; r
   }
   // vet402 の判定。カタログ内なら `/decision`、外なら受取人スコア（SDK と同じ軸）。
   // **免除した判定も関門として残す。** 消すと「見なかったこと」になる。`waived` は「見たうえで通す」の印。
-  // BLOCK と degraded は policy に関係なく落ちる（WINDOW_PLAN §3.2.1）。
-  const verdictSource: { recommendation: string; score: number | null; degraded: boolean; label: string } | null =
-    decisionBody
+  // BLOCK と「測れなかった」は policy に関係なく落ちる（WINDOW_PLAN §3.2.1）。
+  // **落ちるかどうかは書き写さず、SDK の `verdict-shape` に訊く**（上の import のコメント）。
+  const verdictSource: {
+    recommendation: unknown;
+    score: number | null;
+    /** SDK が返した欠陥。null は「この問いでは何も見つからなかった」であって ALLOW ではない。 */
+    defect: ReturnType<typeof scoreQualityDefect>;
+    /** 欠陥が `partial` のとき、**どの入力が読めなかったか**を画に出すため。 */
+    signals: unknown;
+    label: string;
+  } | null = decisionBody
+    ? {
+        recommendation: decisionBody.recommendation ?? "—",
+        score: null,
+        defect: scoreQualityDefect(decisionBody),
+        signals: undefined,
+        label: "/decision",
+      }
+    : scoreBody
       ? {
-          recommendation: String(decisionBody.recommendation ?? "—"),
-          score: null,
-          degraded: decisionBody.degraded === true,
-          label: "/decision",
+          recommendation: scoreBody.recommendation ?? "—",
+          score: typeof scoreBody.score === "number" ? scoreBody.score : null,
+          defect: scoreQualityDefect(scoreBody),
+          signals: scoreBody.signalsUnavailable,
+          label: "payee score",
         }
-      : scoreBody
-        ? {
-            recommendation: String(scoreBody.recommendation ?? "—"),
-            score: typeof scoreBody.score === "number" ? scoreBody.score : null,
-            degraded: scoreBody.degraded === true,
-            label: "payee score",
-          }
-        : null;
+      : null;
   gates.push(
     gate(
       "payee verdict is ALLOW",
       verdictSource
-        ? verdictSource.degraded
+        ? verdictSource.defect !== null || isBlockVerdict(verdictSource.recommendation)
           ? "fail"
-          : verdictSource.recommendation.toUpperCase() === "ALLOW"
+          : // ALLOW は**正規化しないで**比べる（`verdict-shape.ts`: 正規化は片道。読めない綴りを
+            // 許可と読むのは緩める方向）。SDK の `recommendation !== "ALLOW"` と同じ厳密比較。
+            verdictSource.recommendation === "ALLOW"
             ? "pass"
-            : verdictSource.recommendation.toUpperCase() === "BLOCK" || policy.requireVet402Allow
+            : policy.requireVet402Allow
               ? "fail"
               : "waived"
         : "unknown",
       verdictSource
-        ? `${verdictSource.recommendation}${verdictSource.score === null ? "" : ` (${verdictSource.score})`}` +
-          (verdictSource.degraded
-            ? " — degraded: not measured, never waived"
-            : verdictSource.recommendation.toUpperCase() === "BLOCK"
+        ? `${String(verdictSource.recommendation)}${verdictSource.score === null ? "" : ` (${verdictSource.score})`}` +
+          (verdictSource.defect !== null
+            ? defectNote(verdictSource.defect, verdictSource.signals)
+            : isBlockVerdict(verdictSource.recommendation)
               ? " — BLOCK is never waived"
-              : verdictSource.recommendation.toUpperCase() === "ALLOW" || policy.requireVet402Allow
+              : verdictSource.recommendation === "ALLOW" || policy.requireVet402Allow
                 ? ""
                 : " — not required by policy") +
           ` [${verdictSource.label}]`

@@ -12,6 +12,8 @@
  * 語を1つでも発明すれば `judge.test.mjs`「理由コードは SDK に実在する語」が落ちる。
  */
 import { DEFAULT_MAX_PER_TX_USD } from "../../../packages/sdk/dist/index.js";
+// 判定語と「測れたか」の欄の読み方。`assess.ts` の関門表・`pay-or-refuse.ts`・`spend-guard.ts` と同じ 1 本。
+import { isBlockVerdict, scoreQualityDefect } from "../../../packages/sdk/dist/verdict-shape.js";
 import type { PayRefuseReason } from "../../../packages/sdk/src/pay-or-refuse.ts";
 import { assess, l1Delivered, type AssessPolicy, type DecisionBody, type EvidenceSource, type Reads } from "./assess.ts";
 import type { Emitter } from "./emit.ts";
@@ -252,11 +254,12 @@ export function dryRunVerdict(
 
   let waived: NonNullable<JudgeVerdict["override"]>["waived"] | null = null;
   if (decision) {
-    if (decision.degraded === true) return refuse([...serverReasons, "evidence_unavailable"], "decision");
-    const recommendation = String(decision.recommendation ?? "").toUpperCase();
+    // 「測れたか」と「BLOCK か」は SDK の `verdict-shape` に訊く（写さない・`assess.ts` と同じ 1 本）。
+    if (scoreQualityDefect(decision) !== null) return refuse([...serverReasons, "evidence_unavailable"], "decision");
     // BLOCK は免除の対象外（WINDOW_PLAN §3.2.1）。WARN は意見、BLOCK は遮断。
-    if (recommendation === "BLOCK") return refuse([...serverReasons, "payee_recommendation_block"], "decision");
-    if (recommendation !== "ALLOW") {
+    if (isBlockVerdict(decision.recommendation)) return refuse([...serverReasons, "payee_recommendation_block"], "decision");
+    // ALLOW は正規化しないで比べる（正規化は片道。SDK `pay-or-refuse.ts` と同じ厳密比較）。
+    if (decision.recommendation !== "ALLOW") {
       if (policy.requireVet402Allow) return refuse([...serverReasons, "payee_recommendation_not_allow"], "decision");
       waived = { source: "decision", recommendation: String(decision.recommendation), score: null, reason_codes: serverReasons };
     }
@@ -285,12 +288,11 @@ export function dryRunVerdict(
       return refuse([...pathReasons, "evidence_unavailable"], "payee_score");
     }
     const body = score.body;
-    const unavailable = Array.isArray(body.signalsUnavailable) ? body.signalsUnavailable.length : 0;
     // 測れなかったことは、ALLOW でないことと別（J7）。免除しない。
-    if (body.degraded === true || unavailable > 0) return refuse([...pathReasons, "evidence_unavailable"], "payee_score");
-    const recommendation = String(body.recommendation ?? "").toUpperCase();
-    if (recommendation === "BLOCK") return refuse([...pathReasons, "payee_recommendation_block"], "payee_score");
-    if (recommendation !== "ALLOW") {
+    // `degraded` と `signalsUnavailable` の読み方は SDK の `verdict-shape` が 1 本で持つ。
+    if (scoreQualityDefect(body) !== null) return refuse([...pathReasons, "evidence_unavailable"], "payee_score");
+    if (isBlockVerdict(body.recommendation)) return refuse([...pathReasons, "payee_recommendation_block"], "payee_score");
+    if (body.recommendation !== "ALLOW") {
       if (policy.requireVet402Allow) return refuse([...pathReasons, "payee_recommendation_not_allow"], "payee_score");
       waived = {
         source: "payee_score",

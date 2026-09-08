@@ -312,3 +312,113 @@ test("払える accept が1件も無ければ、そう書く——払えない�
   assert.equal(text.includes(SOLANA_ACCEPT.asset), false, "払えない accept の asset を画に出している");
   assert.match(text, /would REFUSE before signing/);
 });
+
+// ---------- 空撃ちの予告と、拘束力ある関門の結論が、同じ入力で一致すること ----------
+//
+// 2026-09-08 実測（このファイルのハーネスで再現）: `degraded: false` かつ
+// `signalsUnavailable: ["native_drain"]` のとき、空撃ちは
+// `--live would sign and send $0.01. Every gate readable from here is green.` と予告し、
+// `payOrRefuse` は `evidence_unavailable` で REFUSE していた。**審査員の前で
+// 「署名する」と予告して拒否する**形で、本番 admin の deep 検査でも同じ欠け方
+// （`unavailable=['payee_verdict_degraded','native_drain','usdc_drain']`）が出ている。
+//
+// 原因は「同じ問いに規則が2つあった」こと。関門表は `degraded` しか見ず、
+// SDK は `verdict-shape.ts` の `scoreQualityDefect` で `signalsUnavailable` も見ていた。
+// **だからこのテストは正解を書き写さない。** 同じ入力を両方へ流し、予告と結論が一致する
+// ことだけを見る（SDK が規則を変えれば、写しではなく実挙動の方が動く）。
+import { payOrRefuse } from "../../../packages/sdk/dist/index.js";
+import { PAY_POLICY } from "../src/pay.ts";
+
+/** 受取人スコアの「測れたか」の欄。上 5 つは測れていない形、下 2 つは測れている形。 */
+const QUALITY_SHAPES = [
+  { name: "degraded: true", score: { ...WARN_69, degraded: true } },
+  { name: "signalsUnavailable: ['native_drain']", score: { ...WARN_69, signalsUnavailable: ["native_drain"] } },
+  { name: "signalsUnavailable: ['native_drain','usdc_drain']", score: { ...WARN_69, signalsUnavailable: ["native_drain", "usdc_drain"] } },
+  { name: 'degraded: "true"（boolean でない）', score: { ...WARN_69, degraded: "true" } },
+  { name: 'signalsUnavailable: "native_drain"（配列でない）', score: { ...WARN_69, signalsUnavailable: "native_drain" } },
+  { name: "測れている WARN 69", score: WARN_69 },
+  { name: "測れている ALLOW 90", score: {} },
+];
+
+/** `--live` を打ったときに本当に起きること。署名器は Proxy で数える（触れば分かる）。 */
+async function binding(score) {
+  const w = watchedAccount();
+  const f = allowingFetch({ score });
+  const result = await payOrRefuse({
+    payee: PAY_TARGET.payee,
+    resource: PAY_TARGET.url,
+    method: PAY_TARGET.method,
+    amountUsd: PAY_TARGET.amountUsd,
+    account: w.account,
+    fetch: f.fetch,
+    apiKey: env.VOUCH_API_KEY,
+    source: "test",
+    policy: {
+      maxPerTxUsd: PAY_TARGET.amountUsd,
+      requireVet402Allow: PAY_POLICY.requireVet402Allow,
+      evidence: { ...PAY_POLICY.evidence, graphApiKey: env.GRAPH_API_KEY },
+    },
+  });
+  return { refused: result.status === "refused", signAccesses: w.signAccesses(), result };
+}
+
+/** 関門表の1行（画は折り返すので、語は view から読み、印だけ画から読む）。 */
+function verdictGate(view) {
+  return view.gates.find((g) => g.name === "payee verdict is ALLOW");
+}
+
+for (const shape of QUALITY_SHAPES) {
+  test(`空撃ちの予告は --live の結論と一致する: ${shape.name}`, async () => {
+    const { text } = await dryRun({ score: shape.score });
+    const predicts = { refuse: /would REFUSE before signing/.test(text), sign: /would sign and send \$0\.01/.test(text) };
+    assert.notEqual(predicts.refuse, predicts.sign, `予告が両方／どちらでもない:\n${text}`);
+    const actual = await binding(shape.score);
+    assert.equal(
+      predicts.refuse,
+      actual.refused,
+      `予告=${predicts.refuse ? "REFUSE" : "sign"} だが payOrRefuse は ` +
+        `${actual.refused ? "REFUSE" : "sign"}（reasons=${actual.result.decision.reason_codes.join(",")}）:\n${text}`,
+    );
+    if (actual.refused) assert.deepEqual(actual.signAccesses, [], "拒否したのに signer に触れている");
+  });
+}
+
+test("測れなかった入力は、関門表でも名指しで落ちる（免除の印にしない）", async () => {
+  const { view, text } = await dryRun({ score: { ...WARN_69, signalsUnavailable: ["native_drain", "usdc_drain"] } });
+  const gate = verdictGate(view);
+  assert.ok(gate, "関門が画から消えている");
+  assert.equal(gate.verdict, "fail", `測れていないのに落としていない: ${JSON.stringify(gate)}`);
+  // 審査員が「入力が読めなくて止まった」と分かる語が画にある（LIVE_JUDGING.md の見分け方）。
+  assert.match(gate.detail, /native_drain/, `どの入力が読めなかったのかが出ていない: ${gate.detail}`);
+  assert.match(gate.detail, /usdc_drain/, gate.detail);
+  assert.match(text, /\[FAIL\] payee verdict is ALLOW/, "画の印が FAIL になっていない");
+  assert.equal(/\[waiv\] payee verdict is ALLOW/.test(text), false, "測れていないものを免除の印で映している");
+});
+
+// degraded:true の既存の画は動かさない（2026-09-05 の変異 D5 が固定した語）。
+test("degraded: true の関門行は、これまでと同じ語のまま", async () => {
+  const { view, text } = await dryRun({ score: { ...WARN_69, degraded: true } });
+  assert.deepEqual(verdictGate(view), {
+    name: "payee verdict is ALLOW",
+    verdict: "fail",
+    detail: "WARN (69) — degraded: not measured, never waived [payee score]",
+  });
+  assert.match(text, /\[FAIL\] payee verdict is ALLOW/);
+});
+
+// **正常系の画は1文字も変えない。** 提出済みの動画に映っている画なので、
+// ここが動くと提出物と食い違う（この 2 行が 1:30–2:05 に映る）。
+test("正常系（測れている）の関門行は、1文字も変わらない", async () => {
+  const allow = await dryRun({});
+  assert.equal(
+    allow.text.split("\n").find((l) => l.includes("payee verdict is ALLOW")),
+    " [ok  ] payee verdict is ALLOW           ALLOW (90) [payee score]",
+  );
+  assert.match(allow.text, /would sign and send \$0\.01\. Every gate readable from here is green\./);
+  const warn = await dryRun({ score: WARN_69 });
+  assert.equal(
+    warn.text.split("\n").find((l) => l.includes("payee verdict is ALLOW")),
+    " [waiv] payee verdict is ALLOW           WARN (69) — not required by policy [payee score]",
+  );
+  assert.match(warn.text, /would sign and send \$0\.01\. Every gate readable from here is green\./);
+});
