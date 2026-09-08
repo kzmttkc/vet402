@@ -365,3 +365,77 @@ WO の該当項目は引き取り不要です。
 - **一般化**: 記録値を疑って実走するときは、**実走した command が本物を測っているか**を同じ回で確かめる。
   数えられる側の規約（id の形）は、数える側に断らずに変わります
 - **決済経路は無変更**（`src/lib/observatory/*payer*`・`packages/sdk/src/x402-pay.ts`・`pay-or-refuse.ts`・署名器）
+
+---
+
+## 2026-09-08 19:0x ハッカソン戦略 → vet402.com セッション: **09-08 夜の 2 コミット（`c8ca561`・`8e165cc`）＋本番 DB への ALTER 適用**
+
+3 項目を立てますが、§2 と §3 は同じ 1 件の**コード側と DB 側**です。**そちらの手番が要るものはありません**——ALTER は適用済みで、同じ SQL を流し直す必要はありません（§3）。
+**決済経路は 2 コミットとも無変更**: `src/lib/observatory/*payer*`・`packages/sdk/src/x402-pay.ts`・`pay-or-refuse.ts`・署名器のどれにも差分がありません。
+確かめ方: `git show --stat c8ca561 8e165cc`（【実測】2026-09-08 19:0x: `c8ca561` は 3 ファイル +50/-38、`8e165cc` は 11 ファイル +698/-36。上記のどれも一覧に出ません）
+
+### 1. `c8ca561` — ライブ審査の手控えの数字を実走出力へ置き換え、`LIVE_JUDGING.md` を関門の下に入れた
+
+- **変えたもの**: `docs/ethonline-2026/LIVE_JUDGING.md`・`docs/ethonline-2026/VIDEO_SCRIPT.md`・`scripts/refresh-numbers.json`
+- **なぜ**: 09-15 01:00 JST のライブ審査で口に出す数字が 09-07 のまま腐っていた（`sdk_mutations 27`・`sdk_tests 178`・`mcp_tests 65` など 5 つ）。
+  09-07 に「印は埋めない・id を引用するだけ」と判断していたので、**`--check` は緑を出し続けたまま数字だけが腐った**。この判断をここで反転した
+- **そちらへの影響（名指し）**:
+  - **`LIVE_JUDGING.md` が `refresh-numbers.json` の `docs` に入りました。以後この文書の数字を手で書き換えると `--check` が赤くなります。**
+    走る場所は 2 つ——CI の最終ステップ（`.github/workflows/ci.yml` の "Submission numbers are consistent with scripts/refresh-numbers.json"）と
+    `scripts/push-main.sh` の段 3b。直し方は今までどおり `npm run refresh-numbers`（fetch + rebase の後に）→ commit
+  - **`npm run refresh-numbers`（`--refresh`）の所要と要求が変わりました。** `ab_mutations` / `sdk_mutations` の `command` が
+    source の grep から**変異ハーネスの実走**（`node test-mutations.mjs 2>&1 | awk '$1=="all" && $3=="mutations" && $4=="killed" {print $2}'`）へ替わったので、
+    SDK 側 39.2s ＋ A/B 側 13.2s と `typescript` / `@anthropic-ai/sdk` / `viem` の install を要求します。
+    **変異が 1 本でも生き残るとハーネスはこの行を印字せず、`--refresh` は `empty output` で落ちます**（数字が黙って腐るより落ちる方を選んでいます）
+  - **`--check` の所要は変わりません**（両 id とも `check: "recorded"` のまま。`--check` はハーネスを走らせません）
+  - `VIDEO_SCRIPT.md` は**現物に合わせただけで、動画は作り直していません**（撮影表と `{{mutations}}` 行を `all 40 mutations killed in 35.7s` へ。素材 `shots/s6_mut.txt` と完成動画 t=160s のフレームが一致）
+- **確かめ方**:
+  `node scripts/refresh-numbers.mjs --check`
+  （【実測】2026-09-08 19:0x・隔離 worktree: `✔ 12 number(s) consistent across 7 doc(s), 43 mark(s) — 7 derived now, 5 against recorded values`。
+  同じコマンドを `c8ca561^`（`3e70ff2`）のチェックアウトで: `✔ 12 number(s) consistent across 6 doc(s), 28 mark(s)` — **6 doc / 28 mark → 7 doc / 43 mark**）
+  **負の対照**（【実測】同時刻・隔離 worktree で戻し済み）: `LIVE_JUDGING.md` の `<!-- n:sdk_mutations -->42<!-- /n -->` を手で 27 に書き換えると
+  `✖ docs/ethonline-2026/LIVE_JUDGING.md: id=sdk_mutations doc="27" recorded="42"` を出して **exit 1**、書き戻すと exit 0
+
+### 2. `8e165cc` — 503 の**理由**を `health_snapshots` に残す（`detail` / `latency_ms` / `instance`）
+
+- **変えたもの**: `src/lib/health/{snapshot,liveness,scoring-probe,instance-id,probe-detail}.ts`（後ろ 2 本は新規）・
+  `src/lib/scoring/payee-probe.ts`・`src/app/api/health/route.ts`・`src/lib/db/schema.ts`・`.env.example`・
+  `scripts/sql/2026-09-08-health-snapshot-detail.sql`（新規）・`tests/health-snapshot-detail.test.ts`（新規 253 行）
+- **なぜ**: 2026-09-08 に本番 `/api/health` が断続的に 503 を返していたのに、理由がどこにも残っていなかった。
+  公開 `/status` の当日集計は **108 サンプル中 error 36**（09-06 以前は error 0）。admin の deep 検査で
+  買い手側プローブの資金流出読み取り（`native_drain` / `usdc_drain`）が詰まり **`payee: degraded latencyMs=15900`**（脚の上限は 20 秒）を実測。
+  ところが表は `status` 1 列しか持たず、`vercel logs` は直近 12 件しか返さないので 30 分後には「503 だった」の 1 ビットしか手元に残らない。
+  **原因を直す変更ではなく、原因を後から名指しできるようにする変更**です
+- **そちらへの影響（名指し）**:
+  - **公開面は変えていません。** `/api/health` の本文は `{status}` の 1 語のまま、status → HTTP コードの対応も、`/status` の表示も不変。
+    2026-08-06 監査の「どの上流が不調かは admin 限定」を、観測を足すために緩めていません。
+    **`detail` を読めるのは admin 経路と DB 直参照だけ**です
+  - **`health_snapshots` の行が増える条件**（`shouldRecordSnapshot`）: ① status が変わったら即時（障害を 5 分待たせない）
+    ② **status が非 ok のときに限り、`detail` が変わったら** ③ それ以外は 5 分に 1 行（`THROTTLE_MS`）。
+    **表が膨らまない理由は 1 行で**——可変値（レイテンシ・インスタンス）を別列に出して `detail` を低カーディナリティ
+    （probe 名 × 状態 × fresh/cached × 原因タグ・600 字上限）に保ち、②を非 ok に限ったので、行数は平常時 5 分に 1 行で頭打ちになります
+    （ok が続く平常時に②を効かせると `fresh↔cached` の揺れで 1 リクエスト 1 行に膨らみます）
+  - **ALTER 未適用の DB でも `/status` は空になりません**: 新列の INSERT が `undefined_column`(42703) で落ちたら、旧い形で 1 度だけ書き直します
+  - 読むときの注意: **deep 経路が書いた行は `detail` が `deep=1` で始まります**。deep は shallow と probe の組み合わせが違う
+    （`runDeepHealthChecks` + payee）ので、混ぜて数えると shallow の失敗率が薄まります
+  - `instance` は `VERCEL_REGION` + モジュール評価時の ID です（`x-vercel-id` はリクエスト毎、`VERCEL_DEPLOYMENT_ID` はデプロイ毎で、どちらもインスタンスを指しません）
+- **確かめ方**:
+  `npx tsx --test tests/health-snapshot-detail.test.ts`（【実測】2026-09-08 19:0x: `ℹ tests 18` / `ℹ pass 18` / `ℹ fail 0`）
+  `curl -sL -o /dev/null -w 'http=%{http_code} ct=%{content_type} bytes=%{size_download}\n' https://vet402.com/api/health`
+  （【実測】同時刻: `http=200 ct=application/json bytes=15`・本文 `{"status":"ok"}` ＝ 公開本文が 1 語のままである実測）
+  `grep -rn detail src/app/status/ src/app/api/status/`（【実測】ヒット 0 ＝ `/status` は `detail` を読んでいない）
+
+### 3. **本番 DB へ `scripts/sql/2026-09-08-health-snapshot-detail.sql` を適用済み（コミットではありません）**
+
+- **やったこと**: Neon の **`vouch` database**（`ep-odd-glade-ajpk06c8-pooler.c-3.us-east-2.aws.neon.tech`。`/neondb` ではありません）の
+  `health_snapshots` へ `detail` / `latency_ms` / `instance` を追加しました。**3 列とも追加のみ・NULL 可**で、既存の行・既存の列・`/status` の集計に触っていません
+- **そちらへの影響（名指し）**: **同じ ALTER をもう一度流す必要はありません。**（`IF NOT EXISTS` なので再実行しても安全ですが、不要です。）
+  **`8e165cc` のコミット本文には「ALTER の本番適用はしていない」と書いてありますが、それはコミット時点（2026-09-08 18:22 JST）の話で、その後に適用しました。**
+  コミット本文だけを読むと未適用に見えるので、ここを見てください
+- **確かめ方**（どちらも読み取りだけ。本番 DB へは書きません）:
+  `psql "$DATABASE_URL" -c "select column_name, data_type, is_nullable from information_schema.columns where table_name='health_snapshots' order by ordinal_position;"`
+  （【実測】2026-09-08 19:0x: `id` / `checked_at` / `status` に加えて **`detail|text|YES`・`latency_ms|integer|YES`・`instance|text|YES` の計 6 列**）
+  `psql "$DATABASE_URL" -c "select checked_at, status, detail, latency_ms from health_snapshots order by checked_at desc limit 5;"`
+  （【実測】同時刻: 最新 2 行が `ok | scoring=ok cached; payee=ok cached | 0`、その前の 3 行は `detail` が空。
+  **`detail` が入り始めたのは `2026-09-08 09:51:07 UTC`（＝ 18:51 JST）の行**で、当日 122 行のうち非 NULL は 2 行）
+  ※ `$DATABASE_URL` は `.env.production.local` の値の database 名を `neondb` → `vouch` へ替えたものです（本番は `vouch`）
