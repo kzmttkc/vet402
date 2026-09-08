@@ -49,8 +49,8 @@ That number is every commit since — including production work we are not claim
 An agent hits a 402 and has to decide whether to pay a wallet it has never seen.
 Here is one wallet — The Graph's own x402 gateway — and three sources.
 Our catalogue knows nothing: 404.
-Our payee engine says WARN, sixty-nine.
-The Graph's own subgraph says this wallet has received {{graph_receipts}} payments.
+Our payee engine says WARN.
+The Graph's own subgraph says this wallet has received more than four hundred payments.
 Three sources, three different answers, same address.
 
 [S3 0:36]
@@ -79,7 +79,7 @@ Paid on The Graph's data, not ours.
 How do we know refuse never signs?
 The demo's tests count signer accesses: zero on the dry run.
 A negative control flips --live and sees exactly one — so zero is not a wiring mistake.
-And {{mutations}} mutations of the SDK all turn the suite red.
+And every mutation of the SDK turns the suite red.
 
 [S7 2:12]
 For Bazantic we asked: can an agent use this without our Recipe?
@@ -97,6 +97,11 @@ SKILL.md is what the judges run; AI_USAGE.md says who wrote what.
 We do not let the model decide whether to pay.
 We call a gate — and the gate can say no before a signature exists.
 ```
+
+**2026-09-08 の規律変更（実測で 2 か所ずれていた）**: 撮影日に動く数字は**口で言わない**。
+09-08 09:0x の実測で payee score は **68**（台本は「sixty-nine」）、subgraph の受領数は **483**（台本は 417）だった。
+音声に数字を入れると、数字が動くたびに録り直しになる。**画面には出す。音声では言わないか、下限で言う。**
+残した数字は動かないものだけ——tx・block 50898704・0.01 USDC・57 tools・5/10・63%→91%・88 tx。
 
 **読み方の注意**: `402` は "four-oh-two"。`l1_inconclusive` は "L-one inconclusive"（`l1_not_attempted` は "L-one not attempted"）。`payTo` は "pay-to"。
 `EIP-3009` は "E-I-P three-thousand-nine"。`--live` は "dash dash live"。`50898704` は "five-zero-eight-nine-eight-seven-zero-four"（桁読み）。
