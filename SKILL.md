@@ -420,6 +420,11 @@ Mutation check on the demo: flipping the floor comparison, removing the BLOCK bo
 signer each turns tests red (7 / 2 / 3 failures). `packages/sdk/test-mutations.mjs` does the same for the
 SDK itself: <!-- n:sdk_mutations -->40<!-- /n --> mutations, all killed, ~20 s.
 
+**`npm run judge-check` does not run those 40.** Its `test-mutations` step is the A/B harness's own
+set — <!-- n:ab_mutations -->27<!-- /n --> mutations in `examples/ethonline-2026-ab/test-mutations.mjs`
+(`scripts/judge-check.sh` runs `node test-mutations.mjs` in that directory). Run the SDK's set
+separately: `cd packages/sdk && node test-mutations.mjs`.
+
 ### Your own policy on `/decision` — the server answers in the SDK's words
 
 The first real A/B (`docs/ethonline-2026/WINDOW_PLAN.md` §16.3 — Japanese, internal plan; 2026-09-07) found a hole that was ours,

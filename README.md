@@ -19,6 +19,7 @@ GRAPH_API_KEY=… node examples/ethonline-2026-demo/src/run.ts judge https://kro
 - Line 3 reads the seller's real 402 challenge, vet402's `/decision` and The Graph's x402 Base subgraph (`_meta.block.number`, live) side by side, then prints `verdict: ALLOW|REFUSE`, `reason_codes[]`, `signed: false`. Dry run — the signing module is never loaded. About 4 s.
 - Keys: one free Graph key from <https://thegraph.com/studio> → *API Keys*. `/decision` answers key-less (10/min per IP); nothing else is required.
 - Everything else a judge can run, in dependency order, with the recorded output: [`SKILL.md`](./SKILL.md).
+- **Language.** Commit messages and source comments are written in Japanese, our working language. The English route through the work is [`SKILL.md`](./SKILL.md), [`AI_USAGE.md`](./AI_USAGE.md) and [`docs/ethonline-2026/CHANGED_FILES.md`](./docs/ethonline-2026/CHANGED_FILES.md); the source files this README and the submission send you to carry an English header above the Japanese one.
 
 vet402 buys what x402 endpoints actually sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence.
 
@@ -72,6 +73,8 @@ npm i @vet402/mcp-server   # MCP tools for Cursor / Claude Desktop
 ```
 
 > **Use the scoped names exactly as written above.** The unscoped npm package `vouch-sdk` is an unrelated project published by a different vendor and has nothing to do with vet402. Only `@vet402/*` packages are ours.
+
+> **The published packages predate this window.** `@vet402/sdk` on npm is 0.5.0 (published 2026-08-25) and ships `index` and `spend-guard` only — it does **not** contain `payOrRefuse`. Publishing is out of scope until after submission ([`SKILL.md`](./SKILL.md) → *Install*). To read or run this window's code, clone this repository and build from `packages/`.
 
 - [@vet402/sdk](https://www.npmjs.com/package/@vet402/sdk)
 - [@vet402/middleware](https://www.npmjs.com/package/@vet402/middleware)
