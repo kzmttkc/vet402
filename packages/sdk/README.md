@@ -39,7 +39,8 @@ await vouch.attestX402Payment({
 
 Methods: `getAgentScore`, `getWalletScore`, `getPayeeScore`,
 `getPayeeVerdictFast`, `batchScore`, `attestX402Payment`, `createSpendGuard`,
-and — since 0.5.0 — `getDecision` and `resolve`.
+and — since 0.5.0 — `getDecision` and `resolve`. Since 0.6.0 the package
+also exports the standalone `payOrRefuse` gate (below).
 
 ### `getDecision` / `resolve` (0.5.0)
 
@@ -136,6 +137,106 @@ try {
   }
 }
 ```
+
+## `payOrRefuse` — the gate that owns the signer (0.6.0)
+
+`SpendGuard` returns a verdict and hands the payment back to you. `payOrRefuse`
+keeps the signer on the other side of the gate: it fetches the 402 challenge,
+reads the verdict, checks the evidence floors you declared, and **reaches your
+`signTypedData` only after every check has passed**. A refusal happens *before*
+a signature exists — `signed: false`, `nonce: null`, and a machine-readable
+reason. When it does pay, the x402 `exact` settlement and the attestation back
+to vet402 are part of the same call.
+
+```typescript
+import { payOrRefuse } from "@vet402/sdk";
+
+const result = await payOrRefuse({
+  payee: "0x79DC34E4...FcCB",
+  resource: "https://gateway.thegraph.com/api/subgraphs/id/...",
+  method: "POST",
+  amountUsd: 0.01,
+  fetch,                        // required — no implicit global, so you can prove
+                                // the refusal path never left your process
+  account: {                    // your wallet stack (AgentKit, Privy, viem, ...)
+    address: "0x...",
+    signTypedData: async (typedData) => myWallet.signTypedData(typedData),
+  },
+  apiKey: process.env.VOUCH_API_KEY,
+  policy: {
+    maxPerTxUsd: 1,             // default DEFAULT_MAX_PER_TX_USD ($1)
+    evidence: { minL1Deliveries: 3 },
+  },
+});
+
+if (result.status === "paid") {
+  console.log(result.txHash, result.nonce);   // nonce binds that tx to this purchase
+} else {
+  console.error(result.decision.reason_codes); // e.g. ["payee_recommendation_not_allow"]
+}
+```
+
+`status` is `"paid"`, `"refused"` (stopped before signing) or `"failed"`
+(signed, then settlement did not go through — reported, never hidden).
+`result.decision` is the same record shape either way: `recommendation`
+(`ALLOW` / `REFUSE`), `reason_codes`, `verdict_source`, and `evidence[]` rows
+naming which ledger was read.
+
+The 13 reason codes are exported as `PAY_REFUSE_REASONS`:
+`price_above_ceiling`, `price_above_declared`, `payee_mismatch`,
+`chain_or_asset_mismatch`, `evidence_unavailable`,
+`payee_recommendation_block`, `payee_recommendation_not_allow`,
+`insufficient_delivery_evidence`, `insufficient_subgraph_evidence`,
+`resource_uncatalogued`, `subgraph_evidence_unavailable`, `no_eligible_accept`,
+`allowed_by_caller_policy`.
+
+### You do not have to trust vet402
+
+Set `requireVet402Allow: false` and a payment goes through on a vet402 **WARN**
+provided the evidence floors you named are all met — floors you can source from
+The Graph's x402 Base subgraph, read with **your own** Gateway key, so not one
+row of our ledger is consulted:
+
+```typescript
+import { payOrRefuse, X402_BASE_SUBGRAPH_ID } from "@vet402/sdk";
+
+await payOrRefuse({
+  /* ... */
+  policy: {
+    requireVet402Allow: false,
+    evidence: {
+      source: "subgraph",              // "vet402" (default) | "subgraph" | "both"
+      minSubgraphReceipts: 50,
+      graphApiKey: process.env.GRAPH_API_KEY,   // your key, never ours
+      subgraphId: X402_BASE_SUBGRAPH_ID,
+      deploymentId: "Qm...",           // optional: pin the deployment you audited
+    },
+  },
+});
+```
+
+Declaring `requireVet402Allow: false` with no floor `>= 1` is a caller error
+(`invalid_policy`): dropping our verdict without putting one in its place means
+nobody judged the payment. Two things stay fail-closed even then — `degraded`
+(an input could not be read at all) and `signalsUnavailable` (partially
+measured). *Not ALLOW* and *not readable* are different facts. When a caller
+policy is what let a payment through, the decision record says so:
+`verdict_source: "caller_policy"`, reason code `allowed_by_caller_policy`, and
+a `policy_override` block listing what was waived and which floors were met,
+with the required and observed number for each. It never gets quietly weaker.
+
+`source: "both"` reads both ledgers and refuses if **either** is unreadable —
+it does not silently fall back to the one that answered.
+
+### What it never does
+
+- **Custody.** Keys, funds and submission stay in your wallet stack. The SDK
+  has zero runtime dependencies and never constructs a signer.
+- **Name resolution.** `payee` is a `0x` address. ENS is not resolved inside a
+  payment gate.
+- **Writing to your disk.** Decision records are appended to a JSONL file
+  **only** when you pass `decisionStore` (`DEFAULT_DECISION_STORE` is
+  `.vet402/decisions.jsonl`, and is still not written unless you ask).
 
 ## SpendGuard — pre-payment policy for agents
 
