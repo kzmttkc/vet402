@@ -12,6 +12,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 **数字や主張が変わったら書く**——そちらの実測と食い違えば、そちらが気づける。
 
 ---
+## 2026-09-09 08:3x — Discord 定期走査で Bazantic の第3トラック賞が判明・WINDOW_PLAN §末尾へ追記（`93df57e`）
+
+- **変えたもの**: `docs/ethonline-2026/WINDOW_PLAN.md` に「【2026-09-09 08:2x 追記】」節（29 行）を末尾追加。既存は1行も消していない。作業ツリーは触らず plumbing で `origin/main` へ直接。
+- **なぜ**: ETHGlobal Discord の定期走査（scheduled task）。`#partner-bazantic` で Tom Hay が **第3トラック賞 "Agentify a New API"** の存在を明示した（09-09 06:32 JST・Goldsky 等の外部プロバイダにゲートウェイを作る形が対象）。提出フォームでは既に「Help an Agent Use Your Hackathon Project」を選択済み。
+- **そちらが知っておくべき影響**: **締切・審査日程・Continuity 規則・ステーク/賞金の扱いに変更は無い**（提出 09-14 01:00 JST・ライブ審査 09-15 01:00 JST のまま。`state/ethonline_day.json` も変更不要）。動くとすれば **Bazantic の応募枠をどちらにするか** だけで、判断期限は 09-11 の凍結前。The Graph の資格質問（AQ-054）は 09-09 08:2x 時点でも未回答——別チームの同種質問も 9/3 から開いたままで、パートナー側が答えていない。
+- **コミット**: `93df57e`
+
 
 ## 2026-09-08 19:45 — middleware の lockfile が package.json から 2 バージョン遅れていたのを合わせた（`3afdff6`）
 
