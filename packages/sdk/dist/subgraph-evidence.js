@@ -147,6 +147,13 @@ async function readSubgraphReceiptsUnredacted(input) {
     if (typeof input.address !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(input.address.trim())) {
         throw new Error(`readSubgraphReceipts: address must be a 0x-prefixed 40-hex address; got ${typeof input.address === "string" ? JSON.stringify(input.address) : typeof input.address}`);
     }
+    // pin も同じ規律で扱う。`deploymentId: ""` / 数値のような「照合できない pin」は、黙って
+    // 照合を飛ばすのではなく呼び出し側エラーで落とす——飛ばせば「pin したのに素通り」という
+    // 壊れて見えない欠陥になる（`minSubgraphReceipts` を黙って無視していた 09-05 と同じ族）。
+    const pinnedDeployment = input.deploymentId === undefined ? undefined : String(input.deploymentId ?? "").trim();
+    if (input.deploymentId !== undefined && (typeof input.deploymentId !== "string" || pinnedDeployment === "")) {
+        throw new Error(`readSubgraphReceipts: deploymentId must be a non-empty string when pinning; got ${typeof input.deploymentId === "string" ? JSON.stringify(input.deploymentId) : typeof input.deploymentId}. Omit it to read without pinning.`);
+    }
     const address = input.address.trim().toLowerCase();
     const url = gatewayUrl(subgraphId, input.apiKey);
     const publicUrl = gatewayUrl(subgraphId);
@@ -185,6 +192,19 @@ async function readSubgraphReceiptsUnredacted(input) {
     // 配列でない = クエリが我々の思った形で通っていない。**0 件と混ぜない。**
     if (!Array.isArray(rows))
         return { ok: false, error: "graph_malformed_response" };
+    // **「その subgraph を読んだか」は「live を読んだか」より前の問い。** pin されたときだけ当たる。
+    // 一致しなければ、件数がいくつであっても証拠にしない——再デプロイで中身が別物になった
+    // subgraph の 999,999 件は、約束された subgraph の 0 件より弱い。
+    const returnedDeployment = data?._meta?.deployment;
+    if (pinnedDeployment !== undefined) {
+        const seenDeployment = typeof returnedDeployment === "string" ? returnedDeployment.trim() : "";
+        if (seenDeployment === "") {
+            return { ok: false, error: `graph_deployment_unverifiable: pinned ${pinnedDeployment} but _meta.deployment is absent` };
+        }
+        if (seenDeployment !== pinnedDeployment) {
+            return { ok: false, error: `graph_deployment_mismatch: pinned ${pinnedDeployment} but read ${seenDeployment}` };
+        }
+    }
     const blockNumber = data?._meta?.block?.number;
     // ブロック高が無ければ「live を読んだ」と言えない。言えないものを証拠にしない
     // （賞の要件が「モック・ローカルのみ・静的データは不可」であることの技術的な帰結）。

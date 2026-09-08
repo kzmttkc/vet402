@@ -73,11 +73,13 @@ export type JudgeArgs = {
   policy: EvidenceSource;
   minSubgraphReceipts?: number;
   minL1Deliveries?: number;
+  /** `--pin-deployment <id>`: 読んだ先が本当にその subgraph かを照合する。既定は照合しない。 */
+  pinDeployment?: string;
   ceilingUsd: number;
   color: boolean;
 };
 
-const VALUE_FLAGS = new Set(["--method", "--body", "--policy", "--min-subgraph-receipts", "--min-l1-deliveries", "--ceiling-usd"]);
+const VALUE_FLAGS = new Set(["--method", "--body", "--policy", "--min-subgraph-receipts", "--min-l1-deliveries", "--ceiling-usd", "--pin-deployment"]);
 
 function nonNegativeInteger(flag: string, raw: string): number {
   const n = Number(raw);
@@ -87,7 +89,8 @@ function nonNegativeInteger(flag: string, raw: string): number {
 
 /**
  * `judge <url> [--method POST] [--body '<json>'] [--policy vet402|subgraph|both]
- *              [--min-subgraph-receipts N] [--min-l1-deliveries N] [--ceiling-usd X]`
+ *              [--min-subgraph-receipts N] [--min-l1-deliveries N] [--ceiling-usd X]
+ *              [--pin-deployment <id>]`
  *
  * 既定は `--policy both`（`pay` と同じ・2つの源を両方読む）、上限は SDK の既定 $1。
  * **`--live` は受け付けない**——この命令に署名の経路は無い。
@@ -145,6 +148,17 @@ export function parseJudgeArgs(argv: string[]): JudgeArgs {
       `invalid_evidence_policy: --min-l1-deliveries needs --policy vet402 or both, got "subgraph". It would otherwise be ignored in silence.`,
     );
   }
+  // pin も「評価されない指定を黙って無視しない」規則の下に置く。`--policy vet402` は
+  // subgraph を一度も引かないので、そこに pin を渡しても照合は起きない——言って落とす。
+  const pinDeployment = values["--pin-deployment"];
+  if (pinDeployment !== undefined) {
+    if (pinDeployment.trim() === "") throw new PolicyError("invalid_argument: --pin-deployment needs a deployment id");
+    if (policy === "vet402") {
+      throw new PolicyError(
+        `invalid_evidence_policy: --pin-deployment needs --policy subgraph or both, got "vet402". The subgraph is never read, so the pin would be ignored in silence.`,
+      );
+    }
+  }
   let ceilingUsd = DEFAULT_MAX_PER_TX_USD;
   if (values["--ceiling-usd"] !== undefined) {
     ceilingUsd = Number(values["--ceiling-usd"]);
@@ -159,6 +173,7 @@ export function parseJudgeArgs(argv: string[]): JudgeArgs {
     policy,
     ...(minSubgraphReceipts === undefined ? {} : { minSubgraphReceipts }),
     ...(minL1Deliveries === undefined ? {} : { minL1Deliveries }),
+    ...(pinDeployment === undefined ? {} : { pinDeployment: pinDeployment.trim() }),
     ceilingUsd,
     color,
   };
@@ -178,6 +193,7 @@ export function policyFromArgs(args: JudgeArgs): AssessPolicy {
       source: args.policy,
       ...(args.minL1Deliveries === undefined ? {} : { minL1Deliveries: args.minL1Deliveries }),
       ...(args.minSubgraphReceipts === undefined ? {} : { minSubgraphReceipts: args.minSubgraphReceipts }),
+      ...(args.pinDeployment === undefined ? {} : { deploymentId: args.pinDeployment }),
     },
   };
 }

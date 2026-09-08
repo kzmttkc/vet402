@@ -11,7 +11,7 @@ import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { runJudge, parseJudgeArgs, JUDGE_REASON_CODES } from "../src/judge.ts";
+import { runJudge, parseJudgeArgs, policyFromArgs, JUDGE_REASON_CODES } from "../src/judge.ts";
 import { ExpectedFailure, NotX402Error, PolicyError } from "../src/probe.ts";
 import { failureLines } from "../src/run.ts";
 import { createEmitter } from "../src/emit.ts";
@@ -72,6 +72,7 @@ function watchedAccount() {
  *   `score`         受取人スコアの上書き（`null` で 500）
  *   `summaries`     subgraph の RECIPIENT 行（`[]` = 受領 0 件）
  *   `subgraphError` subgraph を GraphQL errors で落とす
+ *   `deployment`    subgraph の `_meta.deployment`（再デプロイで別物になった世界を作る）
  */
 function world(opts = {}) {
   const calls = [];
@@ -94,7 +95,7 @@ function world(opts = {}) {
       if (opts.subgraphError) return reply(200, { errors: [{ message: "auth error: missing authorization header" }] });
       return reply(200, {
         data: {
-          _meta: { block: { number: 50890586, timestamp: 1788570519 }, deployment: "QmDemoDeployment" },
+          _meta: { block: { number: 50890586, timestamp: 1788570519 }, deployment: opts.deployment ?? "QmDemoDeployment" },
           x402AddressSummaries: opts.summaries ?? [
             { role: "RECIPIENT", totalPayments: "259", totalVolumeDecimal: "2.59", firstPaymentTimestamp: "1", lastPaymentTimestamp: "2" },
           ],
@@ -384,4 +385,48 @@ test("judge / assess の src は署名の経路を持たない（静的にも動
     }
     assert.doesNotMatch(body, /await import\(/, `${name} が動的 import を持つ`);
   }
+});
+
+// ---------- (h) pin した deployment（2026-09-08）----------
+//
+// `_meta.deployment` は画に出ていたが、**照合はしていなかった**。block 高は「live を読んだ」
+// ことしか証明しない。subgraph ID は同じまま再デプロイで中身が別物になりうる。
+// 審査員に見せるのはこの2枚——pin して一致する画と、pin して食い違う画。
+
+const PIN = "QmDemoDeployment";
+
+test("(h1) pin が一致すれば、pin を渡さない実行と結論・理由・画がまったく同じ", async () => {
+  const withPin = await judge(["--policy", "subgraph", "--min-subgraph-receipts", "1", "--pin-deployment", PIN]);
+  const withoutPin = await judge(["--policy", "subgraph", "--min-subgraph-receipts", "1"]);
+  assert.equal(withPin.verdict.verdict, "ALLOW");
+  assert.deepEqual(withPin.verdict.reasonCodes, withoutPin.verdict.reasonCodes);
+  assert.equal(withPin.verdict.verdictSource, withoutPin.verdict.verdictSource);
+  // 画は1行の時刻だけが違う。それ以外は 1 バイトも変わらない（動画に映る画である）。
+  const strip = (t) => t.replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/g, "<ts>");
+  assert.equal(strip(withPin.text), strip(withoutPin.text));
+});
+
+test("(h2) pin と違う deployment を読んだら REFUSE——受領 259 件は床を満たしていても証拠にしない", async () => {
+  const r = await judge(["--policy", "subgraph", "--min-subgraph-receipts", "1", "--pin-deployment", PIN], { deployment: "QmRedeployedDifferent" });
+  assert.equal(r.verdict.verdict, "REFUSE");
+  assert.equal(r.verdict.reasonCodes.includes("subgraph_evidence_unavailable"), true);
+  assert.equal(r.verdict.reasonCodes.includes("evidence_unavailable"), true);
+  // **なぜ拒んだかが画に出る。** 審査員はここを読む。
+  assert.match(r.text, /graph_deployment_mismatch/);
+  assert.match(r.text, /QmDemoDeployment/);
+  assert.match(r.text, /QmRedeployedDifferent/);
+  assert.deepEqual(r.w.signAccesses(), []);
+  // 空振りの緑を作らない: Gateway を実際に1回引いた上で落としている。
+  assert.equal(r.f.calls.filter((c) => c.url.includes("gateway.thegraph.com")).length, 1);
+});
+
+test("(h3) 評価されない pin は黙って無視せず、呼び出し側エラーにする", () => {
+  // `--policy vet402` は subgraph を一度も引かない。pin を受け取って照合しないのは
+  // 「壊れて見えない」欠陥（`minSubgraphReceipts` を黙って無視していた 09-05 と同じ族）。
+  assert.throws(() => parseJudgeArgs([URL_, "--policy", "vet402", "--pin-deployment", PIN]), /--pin-deployment needs --policy subgraph or both/);
+  assert.throws(() => parseJudgeArgs([URL_, "--pin-deployment", ""]), /--pin-deployment needs a deployment id/);
+  assert.throws(() => parseJudgeArgs([URL_, "--pin-deployment"]), /--pin-deployment needs a value/);
+  // 既定（pin 無し）は policy に deploymentId を載せない。
+  assert.equal("deploymentId" in policyFromArgs(parseJudgeArgs([URL_])).evidence, false);
+  assert.equal(policyFromArgs(parseJudgeArgs([URL_, "--pin-deployment", ` ${PIN} `])).evidence.deploymentId, PIN);
 });

@@ -91,6 +91,14 @@ export type PayEvidencePolicy = {
     graphApiKey?: string;
     /** 引く subgraph。既定は x402 Base（{@link X402_BASE_SUBGRAPH_ID}）。 */
     subgraphId?: string;
+    /**
+     * 読んだ先の **deployment を名指しする（pin）**。渡したときだけ、応答の `_meta.deployment`
+     * と突き合わせ、違えば「読めなかった」として扱う（`subgraph_evidence_unavailable`）。
+     * subgraph ID は同じまま再デプロイで中身が別物になりうる——block 高は live であることしか
+     * 証明しない。照合は {@link readSubgraphReceipts} が行う（判定の条件式は変わらない）。
+     * **渡さなければ挙動は変わらない。** 既定は照合しない。
+     */
+    deploymentId?: string;
 };
 export type PayPolicy = {
     /** 1件あたりの上限（USD）。既定 {@link DEFAULT_MAX_PER_TX_USD}。 */

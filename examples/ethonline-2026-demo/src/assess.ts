@@ -33,7 +33,8 @@ export type EvidenceSource = "vet402" | "subgraph" | "both";
 /** SDK の `PayPolicy` のうち、空撃ちの画に関わる部分。 */
 export type AssessPolicy = {
   requireVet402Allow: boolean;
-  evidence: { source: EvidenceSource; minL1Deliveries?: number; minSubgraphReceipts?: number };
+  /** `deploymentId` は SDK と同じ「pin」——渡したときだけ `_meta.deployment` を照合する（既定は照合しない）。 */
+  evidence: { source: EvidenceSource; minL1Deliveries?: number; minSubgraphReceipts?: number; deploymentId?: string };
 };
 
 export type AssessTarget = {
@@ -176,6 +177,8 @@ export async function assess(options: AssessOptions): Promise<{ view: PayView; r
         fetch: net.fetch,
         apiKey: graphApiKey,
         subgraphId: X402_BASE_SUBGRAPH_ID,
+        // pin。渡されたときだけ SDK 側が照合し、違えば `ok: false` で返る（判定の規則は変えていない）。
+        ...(policy.evidence.deploymentId === undefined ? {} : { deploymentId: policy.evidence.deploymentId }),
       });
     } catch (error) {
       subgraph = { ok: false, error: error instanceof Error ? error.message : String(error) };

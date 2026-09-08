@@ -245,3 +245,61 @@ test("S8 address が 0x40桁でなければ、通信の前に呼び出し側エ�
     assert.equal(fetched, 0, "通信の前に落ちていない");
   }
 });
+
+// ============================================================
+// S9-S12 pinned deployment（2026-09-08 追加）
+//
+// なぜ要るか: 我々は `_meta.deployment` を**記録していたが、照合していなかった**。
+// 「live を読んだ」ことは block 高で証明できるが、「**約束された subgraph を読んだ**」ことは
+// 誰も確かめていない。subgraph が再デプロイされて中身が別物になっても、我々の関門は
+// 気づかずに払う。呼び手が deployment を名指し（pin）したときだけ突き合わせ、違えば拒む。
+//
+// 既定（pin 無し）の挙動は 1 バイトも変えない——会期中に既定を変えるのは、
+// ライブ審査の前に取るリスクとして大きすぎる（S11 がそれを固定する）。
+// ============================================================
+
+const PINNED = "QmcE24HARdXXnziPii9bWFRV6njfWW82H1RKPe5x9hBkUN";
+
+test("S9 pin した deployment と応答が一致すれば、これまでどおり読めたと言う", async () => {
+  const f = stub(live([{ totalPayments: "253" }]));
+  const r = await readSubgraphReceipts({ address: ADDR, fetch: f.fetch, deploymentId: PINNED });
+  assert.equal(r.ok, true);
+  assert.equal(r.receipts, 253);
+  assert.equal(r.deployment, PINNED, "どの deployment を読んだかは決定行に残る");
+});
+
+test("S10 pin と違う deployment が返ったら拒む——0 件でも「読めた」でもない", async () => {
+  // 再デプロイで中身が別物になった subgraph を、我々は今まで黙って証拠にしていた。
+  const f = stub(live([{ totalPayments: "999999" }]));
+  const r = await readSubgraphReceipts({ address: ADDR, fetch: f.fetch, deploymentId: "QmSomethingElse00000000000000000000000000000" });
+  assert.equal(r.ok, false, "件数が床を満たしていても、読んだ先が違えば証拠にしない");
+  assert.match(r.error, /^graph_deployment_mismatch: /);
+  assert.match(r.error, /QmSomethingElse00000000000000000000000000000/, "何を期待したかが残る");
+  assert.match(r.error, new RegExp(PINNED), "何が返ってきたかが残る");
+});
+
+test("S11 pin していなければ、deployment が何であれ挙動は変わらない（既定は現状のまま）", async () => {
+  const f = stub(live([{ totalPayments: "253" }]));
+  const withoutPin = await readSubgraphReceipts({ address: ADDR, fetch: f.fetch });
+  assert.equal(withoutPin.ok, true);
+  assert.equal(withoutPin.receipts, 253);
+  assert.equal(withoutPin.deployment, PINNED);
+  // pin を渡さない呼び出しは、pin の分岐に一度も入らない。返る値の**全体**が
+  // 「pin という概念を足す前」と同じ形であることまで見る（キーが増えていない）。
+  assert.deepEqual(
+    Object.keys(withoutPin).sort(),
+    ["block", "deployment", "ok", "publicUrl", "queriedAt", "receipts", "subgraphId"],
+  );
+});
+
+test("S12 pin してあるのに応答が deployment を名乗らなければ拒む（照合できないものを通さない）", async () => {
+  const f = stub({ status: 200, body: { data: { x402AddressSummaries: [{ totalPayments: "253" }], _meta: { block: { number: 50889853 } } } } });
+  const r = await readSubgraphReceipts({ address: ADDR, fetch: f.fetch, deploymentId: PINNED });
+  assert.equal(r.ok, false, "照合できなかったことを、照合できたことにしない");
+  assert.match(r.error, /^graph_deployment_unverifiable: /);
+  // 対照: 同じ応答を pin 無しで読むと、これまでどおり通る（S11 と同じ規則の裏取り）。
+  const f2 = stub({ status: 200, body: { data: { x402AddressSummaries: [{ totalPayments: "253" }], _meta: { block: { number: 50889853 } } } } });
+  const noPin = await readSubgraphReceipts({ address: ADDR, fetch: f2.fetch });
+  assert.equal(noPin.ok, true);
+  assert.equal(noPin.deployment, undefined);
+});

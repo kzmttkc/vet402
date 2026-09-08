@@ -184,6 +184,14 @@ export type PayEvidencePolicy = {
   graphApiKey?: string;
   /** 引く subgraph。既定は x402 Base（{@link X402_BASE_SUBGRAPH_ID}）。 */
   subgraphId?: string;
+  /**
+   * 読んだ先の **deployment を名指しする（pin）**。渡したときだけ、応答の `_meta.deployment`
+   * と突き合わせ、違えば「読めなかった」として扱う（`subgraph_evidence_unavailable`）。
+   * subgraph ID は同じまま再デプロイで中身が別物になりうる——block 高は live であることしか
+   * 証明しない。照合は {@link readSubgraphReceipts} が行う（判定の条件式は変わらない）。
+   * **渡さなければ挙動は変わらない。** 既定は照合しない。
+   */
+  deploymentId?: string;
 };
 
 export type PayPolicy = {
@@ -654,6 +662,7 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
       fetch: fetchFn,
       apiKey: input.policy?.evidence?.graphApiKey,
       subgraphId: input.policy?.evidence?.subgraphId ?? X402_BASE_SUBGRAPH_ID,
+      ...(input.policy?.evidence?.deploymentId === undefined ? {} : { deploymentId: input.policy.evidence.deploymentId }),
     });
     if (!read.ok) {
       // C12/D13: **どちらの源が読めなかったか**を機械可読で残す。黙って自社台帳へ落ちない。

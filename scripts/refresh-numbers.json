@@ -25,8 +25,8 @@
         }
       ],
       "value": "2026-09-08",
-      "updatedAt": "2026-09-08T11:23:44.701Z",
-      "end": "2026-09-08T20:23:44+09:00"
+      "updatedAt": "2026-09-08T11:59:08.285Z",
+      "end": "2026-09-08T20:59:08+09:00"
     },
     {
       "id": "total_commits",
@@ -39,8 +39,8 @@
           "pattern": "^git rev-list --count HEAD +# (?<v>\\d+) commits \\("
         }
       ],
-      "value": "818",
-      "updatedAt": "2026-09-08T11:23:44.701Z"
+      "value": "820",
+      "updatedAt": "2026-09-08T11:59:08.285Z"
     },
     {
       "id": "ai_trailer_commits",
@@ -53,8 +53,8 @@
           "pattern": "^git log --grep='Co-Authored-By: Claude' --oneline \\| wc -l +# (?<v>\\d+) carry the AI trailer"
         }
       ],
-      "value": "688",
-      "updatedAt": "2026-09-08T11:23:44.701Z"
+      "value": "690",
+      "updatedAt": "2026-09-08T11:59:08.285Z"
     },
     {
       "id": "merge_commits",
@@ -68,7 +68,7 @@
         }
       ],
       "value": "34",
-      "updatedAt": "2026-09-08T11:23:44.701Z"
+      "updatedAt": "2026-09-08T11:59:08.285Z"
     },
     {
       "id": "no_trailer_commits",
@@ -76,7 +76,7 @@
       "check": "derive",
       "command": "echo $(( $(git rev-list --count --until='{{AS_OF_END}}' HEAD) - $(git log --grep='Co-Authored-By: Claude' --until='{{AS_OF_END}}' --oneline | wc -l) ))",
       "value": "130",
-      "updatedAt": "2026-09-08T11:23:44.701Z"
+      "updatedAt": "2026-09-08T11:59:08.285Z"
     },
     {
       "id": "window_added_files",
@@ -90,7 +90,7 @@
         }
       ],
       "value": "206",
-      "updatedAt": "2026-09-08T11:23:44.701Z"
+      "updatedAt": "2026-09-08T11:59:08.285Z"
     },
     {
       "id": "window_modified_files",
@@ -104,7 +104,7 @@
         }
       ],
       "value": "194",
-      "updatedAt": "2026-09-08T11:23:44.701Z"
+      "updatedAt": "2026-09-08T11:59:08.285Z"
     },
     {
       "id": "sdk_tests",
@@ -133,8 +133,8 @@
           "pattern": "§5 のコマンド（\\d{2}-\\d{2}: (?<v>\\d+) / \\d+ / \\d+）"
         }
       ],
-      "value": "1609",
-      "updatedAt": "2026-09-08T11:23:44.701Z"
+      "value": "1615",
+      "updatedAt": "2026-09-08T11:59:08.285Z"
     },
     {
       "id": "mcp_tests",
@@ -164,7 +164,7 @@
         }
       ],
       "value": "748",
-      "updatedAt": "2026-09-08T11:23:44.701Z"
+      "updatedAt": "2026-09-08T11:59:08.285Z"
     },
     {
       "id": "demo_tests",
@@ -185,8 +185,8 @@
           "pattern": "§5 のコマンド（\\d{2}-\\d{2}: \\d+ / \\d+ / (?<v>\\d+)）"
         }
       ],
-      "value": "166",
-      "updatedAt": "2026-09-08T11:23:44.701Z"
+      "value": "169",
+      "updatedAt": "2026-09-08T11:59:08.285Z"
     },
     {
       "id": "ab_mutations",
@@ -194,15 +194,15 @@
       "check": "recorded",
       "command": "cd examples/ethonline-2026-ab && node test-mutations.mjs 2>&1 | awk '$1==\"all\" && $3==\"mutations\" && $4==\"killed\" {print $2}'",
       "value": "27",
-      "updatedAt": "2026-09-08T11:23:44.701Z"
+      "updatedAt": "2026-09-08T11:59:08.285Z"
     },
     {
       "id": "sdk_mutations",
       "description": "packages/sdk/test-mutations.mjs の変異の本数（SKILL.md・LIVE_JUDGING.md Q12）。**source を grep して数えない。harness 自身が最後に印字する `all N mutations killed in Xs` の N を読む**（ab_mutations と同じ理由）。2026-09-08 実走: `all 42 mutations killed in 39.2s`。1 つでも生き残ると harness はこの行を印字せず、--refresh は empty output で落ちる。check は recorded のまま: 変異ごとに tsc を通すので 39.2s かかり、typescript の install も要る。--check は CI の毎 push で走るので derive にしない（demo_tests が derive なのは 0.5s・依存ゼロだから）。",
       "check": "recorded",
       "command": "cd packages/sdk && node test-mutations.mjs 2>&1 | awk '$1==\"all\" && $3==\"mutations\" && $4==\"killed\" {print $2}'",
-      "value": "42",
-      "updatedAt": "2026-09-08T11:23:44.701Z",
+      "value": "44",
+      "updatedAt": "2026-09-08T11:59:08.285Z",
       "literal": [
         {
           "doc": "docs/ethonline-2026/SUBMISSION_DRAFT.md",

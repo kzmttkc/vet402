@@ -40,6 +40,7 @@ export const USAGE = [
   "   node src/run.ts judge <url>    your own x402 URL: same picture, dry-run verdict. No signing path.",
   "        [--method POST] [--body '<json>'] [--policy vet402|subgraph|both]",
   "        [--min-subgraph-receipts N] [--min-l1-deliveries N] [--ceiling-usd X]",
+  "        [--pin-deployment <id>]     reject the read unless _meta.deployment matches this id",
   "        a floor >= 1 waives vet402's verdict (as `pay` does); BLOCK and degraded never waive.",
   "",
   "   --color                        add ANSI emphasis (meaning never depends on it)",

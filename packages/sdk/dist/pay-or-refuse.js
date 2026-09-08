@@ -429,6 +429,7 @@ async function decideAndPay(input) {
             fetch: fetchFn,
             apiKey: input.policy?.evidence?.graphApiKey,
             subgraphId: input.policy?.evidence?.subgraphId ?? X402_BASE_SUBGRAPH_ID,
+            ...(input.policy?.evidence?.deploymentId === undefined ? {} : { deploymentId: input.policy.evidence.deploymentId }),
         });
         if (!read.ok) {
             // C12/D13: **どちらの源が読めなかったか**を機械可読で残す。黙って自社台帳へ落ちない。

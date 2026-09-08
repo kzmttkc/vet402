@@ -404,6 +404,24 @@ const MUTATIONS = [
     find: '  if (typeof score.degraded !== "boolean" || score.degraded === true) return "degraded";',
     replace: '  if (score.degraded === true) return "degraded"; /* MUTANT */',
   },
+
+  // ---- pin した deployment（2026-09-08）。「live を読んだ」と「その subgraph を読んだ」は別 ----
+  {
+    id: "M43",
+    what: "pin と応答の deployment の突き合わせを外す（再デプロイで中身が別物でも払う）",
+    rule: "S10/D18 pin が一致しない応答は証拠にしない",
+    file: SUB,
+    find: "    if (seenDeployment !== pinnedDeployment) {",
+    replace: "    if (/* MUTANT */ false) {",
+  },
+  {
+    id: "M44",
+    what: "応答が deployment を名乗らないとき、pin を当てはめて「一致した」ことにする",
+    rule: "S12 照合できなかったことを、照合できたことにしない",
+    file: SUB,
+    find: '    const seenDeployment = typeof returnedDeployment === "string" ? returnedDeployment.trim() : "";',
+    replace: '    const seenDeployment = typeof returnedDeployment === "string" ? returnedDeployment.trim() : pinnedDeployment; /* MUTANT */',
+  },
 ];
 
 // ---------- 実行器 ----------

@@ -62,6 +62,26 @@ node src/run.ts judge https://gateway.thegraph.com/api/x402/subgraphs/id/<id> \
   waives vet402's verdict** (`requireVet402Allow=false`), exactly as `pay` does; without a floor,
   vet402 must say ALLOW. `BLOCK` and `degraded` are never waived.
 - `--ceiling-usd X` defaults to the SDK's `DEFAULT_MAX_PER_TX_USD`.
+- `--pin-deployment <id>` **rejects the read unless `_meta.deployment` matches that id.** A block
+  number proves the answer is live; it does not prove it came from the subgraph you were promised.
+  The same subgraph id can be redeployed with different mappings, and until this flag existed the
+  gate would have paid against the new one without noticing. Pinned and matching, nothing changes;
+  pinned and different, the read is `graph_deployment_mismatch` and the verdict is `REFUSE` with
+  `subgraph_evidence_unavailable` — the receipt count is never consulted. **Without the flag,
+  behaviour is unchanged** (`test/judge.test.mjs` (h1) asserts the two screens are identical).
+  Try both, against The Graph's own x402 subgraph:
+
+  ```bash
+  node src/run.ts judge https://kronossignals.com/api/v1/price/btc \
+    --policy subgraph --min-subgraph-receipts 1 \
+    --pin-deployment QmcE24HARdXXnziPii9bWFRV6njfWW82H1RKPe5x9hBkUN   # matches → verdict as before
+  node src/run.ts judge https://kronossignals.com/api/v1/price/btc \
+    --policy subgraph --min-subgraph-receipts 1 \
+    --pin-deployment QmNotTheDeploymentYouWerePromised00000000000   # differs → REFUSE
+  ```
+
+  The pin is only read when the subgraph is: `--policy vet402` with a pin is a caller error rather
+  than a pin that silently does nothing.
 - A URL that does not answer with a `PAYMENT-REQUIRED` header stops in one line
   (`error: not an x402 endpoint: …`, exit 1).
 

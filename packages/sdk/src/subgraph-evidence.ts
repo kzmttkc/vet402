@@ -104,6 +104,20 @@ export type ReadSubgraphReceiptsInput = {
   /** 呼び手の Graph Gateway API キー。**我々の鍵を既定にしない。** */
   apiKey?: string;
   subgraphId?: string;
+  /**
+   * **読んだ先が本当にその subgraph かを照合する（pin）。**
+   *
+   * `_meta.deployment` は D15 以来**記録**していたが、**照合**していなかった。
+   * block 高は「live を読んだ」ことしか証明しない。subgraph は再デプロイでき、
+   * 同じ subgraph ID の裏で中身が別物になりうる——そのとき我々の関門は気づかずに払う。
+   * 呼び手がここに deployment ID を渡した**ときだけ**、応答の `_meta.deployment` と
+   * 突き合わせ、違えば読めなかったものとして扱う（`graph_deployment_mismatch`）。
+   * 応答が deployment を名乗らなければ照合できないので、これも拒む
+   * （`graph_deployment_unverifiable`）——照合できなかったことを、照合できたことにしない。
+   *
+   * **渡さなければ挙動は 1 バイトも変わらない。** 既定は現状のまま（照合しない）。
+   */
+  deploymentId?: string;
   timeoutMs?: number;
 };
 
@@ -198,6 +212,17 @@ async function readSubgraphReceiptsUnredacted(input: ReadSubgraphReceiptsInput):
       }`,
     );
   }
+  // pin も同じ規律で扱う。`deploymentId: ""` / 数値のような「照合できない pin」は、黙って
+  // 照合を飛ばすのではなく呼び出し側エラーで落とす——飛ばせば「pin したのに素通り」という
+  // 壊れて見えない欠陥になる（`minSubgraphReceipts` を黙って無視していた 09-05 と同じ族）。
+  const pinnedDeployment = input.deploymentId === undefined ? undefined : String(input.deploymentId ?? "").trim();
+  if (input.deploymentId !== undefined && (typeof input.deploymentId !== "string" || pinnedDeployment === "")) {
+    throw new Error(
+      `readSubgraphReceipts: deploymentId must be a non-empty string when pinning; got ${
+        typeof input.deploymentId === "string" ? JSON.stringify(input.deploymentId) : typeof input.deploymentId
+      }. Omit it to read without pinning.`,
+    );
+  }
   const address = input.address.trim().toLowerCase();
   const url = gatewayUrl(subgraphId, input.apiKey);
   const publicUrl = gatewayUrl(subgraphId);
@@ -236,6 +261,20 @@ async function readSubgraphReceiptsUnredacted(input: ReadSubgraphReceiptsInput):
   const rows = data?.x402AddressSummaries;
   // 配列でない = クエリが我々の思った形で通っていない。**0 件と混ぜない。**
   if (!Array.isArray(rows)) return { ok: false, error: "graph_malformed_response" };
+
+  // **「その subgraph を読んだか」は「live を読んだか」より前の問い。** pin されたときだけ当たる。
+  // 一致しなければ、件数がいくつであっても証拠にしない——再デプロイで中身が別物になった
+  // subgraph の 999,999 件は、約束された subgraph の 0 件より弱い。
+  const returnedDeployment = data?._meta?.deployment;
+  if (pinnedDeployment !== undefined) {
+    const seenDeployment = typeof returnedDeployment === "string" ? returnedDeployment.trim() : "";
+    if (seenDeployment === "") {
+      return { ok: false, error: `graph_deployment_unverifiable: pinned ${pinnedDeployment} but _meta.deployment is absent` };
+    }
+    if (seenDeployment !== pinnedDeployment) {
+      return { ok: false, error: `graph_deployment_mismatch: pinned ${pinnedDeployment} but read ${seenDeployment}` };
+    }
+  }
 
   const blockNumber = data?._meta?.block?.number;
   // ブロック高が無ければ「live を読んだ」と言えない。言えないものを証拠にしない

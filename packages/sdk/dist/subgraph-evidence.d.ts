@@ -105,6 +105,20 @@ export type ReadSubgraphReceiptsInput = {
     /** 呼び手の Graph Gateway API キー。**我々の鍵を既定にしない。** */
     apiKey?: string;
     subgraphId?: string;
+    /**
+     * **読んだ先が本当にその subgraph かを照合する（pin）。**
+     *
+     * `_meta.deployment` は D15 以来**記録**していたが、**照合**していなかった。
+     * block 高は「live を読んだ」ことしか証明しない。subgraph は再デプロイでき、
+     * 同じ subgraph ID の裏で中身が別物になりうる——そのとき我々の関門は気づかずに払う。
+     * 呼び手がここに deployment ID を渡した**ときだけ**、応答の `_meta.deployment` と
+     * 突き合わせ、違えば読めなかったものとして扱う（`graph_deployment_mismatch`）。
+     * 応答が deployment を名乗らなければ照合できないので、これも拒む
+     * （`graph_deployment_unverifiable`）——照合できなかったことを、照合できたことにしない。
+     *
+     * **渡さなければ挙動は 1 バイトも変わらない。** 既定は現状のまま（照合しない）。
+     */
+    deploymentId?: string;
     timeoutMs?: number;
 };
 /** 鍵の置き換え先。demo の `redact.ts` と同じ文字列（そちらはこの定数を re-export する）。 */

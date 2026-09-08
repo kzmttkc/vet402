@@ -157,7 +157,7 @@ AI. Claude (Opus / Fable, via Claude Code) wrote most of the code under human di
 | Node >= 20 / >= 22.18 | `SKILL.md` Prerequisites | 固定 |
 | eip155:8453 / USDC `0x8335…2913` / EIP-3009 / 120 s / nonce 32 bytes / "USD Coin" v2 | `WINDOW_PLAN.md` §3・§14・§14.1 | 固定 |
 | 10 requests/min per IP | `SKILL.md` Configure（AQ-053・09-07 実装） | 固定 |
-| `{{mutations}}` | `<!-- n:sdk_mutations -->`（`npm run refresh-numbers`） | 動く（09-08 記録値 42） |
+| `{{mutations}}` | `<!-- n:sdk_mutations -->`（`npm run refresh-numbers`） | 動く（09-08 記録値 44） |
 | `{{bazantic_tools}}` | `SKILL.md` "What is not built yet"（09-06 `tools/list` 実測 57） | 動く。提出日に `tools/list` で再確認 |
 | `x402AddressSummaries` / `totalPayments` / `role: RECIPIENT` / `_meta { block deployment }` / 鍵無しは 200＋GraphQL errors | `WINDOW_PLAN.md` §15（introspection で確定・実測） | 固定 |
 | 判定の 5 段の順序 | `packages/sdk/src/pay-or-refuse.ts` 冒頭コメント「判定の流れ（5行）」 | 固定 |
@@ -251,7 +251,7 @@ Model-side judgement never decides a payment; the gate does. Our demo's own deci
 | 259 / 0.01 USDC / 50898704 / tx | `WINDOW_PLAN.md` §10.5 | 固定 |
 | 404 | `WINDOW_PLAN.md` §3.1（登録しない決定） | 固定 |
 | `{{graph_receipts}}` | `VIDEO_SCRIPT.md` §5 のコマンド（09-07 07:5x 実測 417） | **動く・提出日に埋める** |
-| `{{sdk_tests}}` / `{{mcp_tests}}` / `{{demo_tests}}` | `VIDEO_SCRIPT.md` §5 のコマンド（09-08: 1609 / 748 / 166） | **動く** |
+| `{{sdk_tests}}` / `{{mcp_tests}}` / `{{demo_tests}}` | `VIDEO_SCRIPT.md` §5 のコマンド（09-08: 1615 / 748 / 169） | **動く** |
 | internal resource URL | `WINDOW_PLAN.md` §3 注意書き | 固定 |
 
 **明日確かめること**: 冒頭の WARN 段を読んで「The Graph を疑っている」と読めないか。読めたら書き直す。
@@ -336,10 +336,10 @@ One keystore-related item was sent privately to support@bazantic.com on 2026-09-
 | `{{claimed_commits}}` | `git log pre-ethonline-2026..main --oneline -- packages/sdk packages/mcp-server examples/ethonline-2026-demo examples/ethonline-2026-ab SKILL.md AI_USAGE.md docs/ethonline-2026 \| wc -l` | 123【実測 同上】 | C |
 | `{{graph_receipts}}` | `cd examples/ethonline-2026-demo && node src/run.ts pay 2>&1 \| grep totalPayments`（`GRAPH_API_KEY` 要） | 417【一次・`VIDEO_SCRIPT.md` §5 09-07 07:5x】 | I |
 | `{{graph_score}}` | 同上 `\| grep 'payee verdict'` | WARN (69)【一次・同上】。**69 でなければ本文の "WARN (69)" をその値に置換** | C・I |
-| `{{sdk_tests}}` | `cd packages/sdk && npm ci && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 1609 / fail 0【`refresh-numbers.json` 09-08】 | I |
+| `{{sdk_tests}}` | `cd packages/sdk && npm ci && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 1615 / fail 0【`refresh-numbers.json` 09-08】 | I |
 | `{{mcp_tests}}` | `cd packages/mcp-server && npm ci && npm run build && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 748 / fail 0【`refresh-numbers.json` 09-08】 | I |
-| `{{demo_tests}}` | `cd examples/ethonline-2026-demo && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 166 / fail 0【`refresh-numbers.json` 09-08】 | I |
-| `{{mutations}}` | `npm run refresh-numbers` → `<!-- n:sdk_mutations -->` | 42【`refresh-numbers.json` 09-08】 | D |
+| `{{demo_tests}}` | `cd examples/ethonline-2026-demo && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 169 / fail 0【`refresh-numbers.json` 09-08】 | I |
+| `{{mutations}}` | `npm run refresh-numbers` → `<!-- n:sdk_mutations -->` | 44【`refresh-numbers.json` 09-08】 | D |
 | `{{bazantic_tools}}` | `curl -s -X POST https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \| python3 -c 'import sys,json;print(len(json.load(sys.stdin)["result"]["tools"]))'` | 57【一次・`SKILL.md` 09-06】 | D・J |
 | `{{ab_v2_line}}` | v2 を走らせた場合のみ `npm run metrics -- <v2 dir>` | 未実走（09-09 予定・§16.5） | J |
 | `{{video_url}}` / `{{video_ab_timestamp}}` | 09-12 の編集後 | — | F・J |

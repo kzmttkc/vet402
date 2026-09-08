@@ -1424,3 +1424,47 @@ test("D17 /decision が名乗った source を SDK が塗り替えない（行�
   assert.equal(row.receipts, live.receipts, "その源が知っている件数は行ごとに残る");
   assert.deepEqual(w.signAccesses(), []);
 });
+
+// ---------- D18. pin した deployment（2026-09-08 追加） ----------
+//
+// `_meta.deployment` は D15 以来**記録**されていたが、**照合**はされていなかった。
+// subgraph が再デプロイされて中身が別物になっても、床は満たされ、我々は払う。
+// 呼び手が `evidence.deploymentId` を名指ししたときだけ突き合わせる。
+
+const graphAt = (deployment, total = "253") => ({
+  status: 200,
+  body: { data: { x402AddressSummaries: [{ totalPayments: total }], _meta: { block: { number: 50889853 }, ...(deployment === null ? {} : { deployment }) } } },
+});
+const PIN = "QmcE24HARdXXnziPii9bWFRV6njfWW82H1RKPe5x9hBkUN";
+
+test("D18 pin と違う deployment を読んだら、床を満たしていても払わない（signer 参照0）", async () => {
+  const w = watchedAccount();
+  const f = allowlistFetch([DECISION, "gateway.thegraph.com"], {
+    [DECISION]: decision(),
+    "gateway.thegraph.com": graphAt("QmRedeployedSomethingElse000000000000000000", "999999"),
+  });
+  const r = await payOrRefuse({
+    ...base, account: w.account, fetch: f.fetch,
+    policy: { evidence: { source: "subgraph", minSubgraphReceipts: 1, deploymentId: PIN } },
+  });
+  assert.equal(r.status, "refused");
+  assert.equal(r.decision.reason_codes.includes("subgraph_evidence_unavailable"), true, "どちらの源が読めなかったかが残る");
+  assert.equal(r.decision.reason_codes.includes("evidence_unavailable"), true);
+  // 「実際に引いた上で落としている」ことまで見る（空振りの緑を作らない・D13 と同じ理由）。
+  assert.equal(f.calls.filter((u) => u.includes("gateway.thegraph.com")).length, 1);
+  assert.deepEqual(w.signAccesses(), []);
+});
+
+test("D18b pin が一致する呼び出しは、pin を渡さない呼び出しと同じ結論・同じ語になる", async () => {
+  const world = () =>
+    allowlistFetch([DECISION, "gateway.thegraph.com"], { [DECISION]: decision(), "gateway.thegraph.com": graphAt(PIN) });
+  const run = async (evidence) => {
+    const w = watchedAccount();
+    const f = world();
+    const r = await payOrRefuse({ ...base, account: w.account, fetch: f.fetch, policy: { evidence } });
+    return { status: r.status, reasons: r.decision.reason_codes, signs: w.signAccesses() };
+  };
+  const withPin = await run({ source: "subgraph", minSubgraphReceipts: 100, deploymentId: PIN });
+  const withoutPin = await run({ source: "subgraph", minSubgraphReceipts: 100 });
+  assert.deepEqual(withPin, withoutPin, "pin が一致するとき、pin は判定に一切影響しない");
+});
