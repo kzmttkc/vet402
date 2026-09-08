@@ -13,6 +13,25 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-08 19:45 — middleware の lockfile が package.json から 2 バージョン遅れていたのを合わせた（`3afdff6`）
+
+- **変えたもの**: `packages/middleware/package-lock.json`（version 2 行のみ・`0.3.0` → `0.5.0`）
+- **なぜ**: `packages/middleware/package.json` は `0.5.0` なのに lockfile が `0.3.0` で止まっていた。
+  クリーンなチェックアウトで `npm install --prefix packages/middleware` を走らせるたび、この 2 行が
+  未コミット差分として出る。09-08 に隔離 worktree で root の `npm test` を通すため各サブパッケージへ
+  install したときに実測で発見。origin/main に既にあった drift で、発見時の変更とは無関係だったので
+  そのときは revert し、今回あらためて単独で直した
+- **そちらへの影響**:
+  - **依存の解決結果は変わっていない**（`git diff` は version の 2 行のみ・追加/削除されたパッケージ 0）。
+    ビルド成果物・実行時の挙動に影響しない
+  - `packages/sdk`（0.5.0）と `packages/mcp-server`（0.2.0）は同じコマンドで差分が出ないことを実測済み。
+    root と `examples/*` も含め、他に同種の drift は無い
+  - **未 rebase の worktree を持っている場合、この 2 行が衝突しうる**。`packages/middleware/package-lock.json`
+    に触っていなければ rebase で素通りする
+- 検証: `push-main.sh --full` 9 段すべて exit 0（judge-check 11/11・root `npm test` 4 スイート `ℹ fail 0`・
+  CI run `34216770532` success）。さらに origin/main のまっさらなチェックアウトで
+  `npm install --prefix packages/middleware` → `git status` 空 を実測
+
 ## 2026-09-05 08:30 — 申請文書の事実訂正3件＋計器に「主張の検査」を追加
 
 - **変えたもの**: `docs/applications/why-solana.md` / `impact-one-pager.md` / `why-base.md` /
