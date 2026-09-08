@@ -70,10 +70,23 @@ const SYBIL_BUDGET_MS = 2_000;
  * A degraded signal is an operational fact worth seeing in logs — the
  * 2026-08-12 outage was invisible for days precisely because the engine
  * swallowed the reason and the health endpoint still said "ok".
+ *
+ * 2026-09-09: ログだけでは足りなかった。`vercel logs` は直近 12 件しか返さず
+ * MESSAGE 列を落とすので、30 分後には残らない。健全性の表に残っていたのは
+ * flag 名だけで、その flag はここより下流で **boolean から作り直されている**
+ * ——error はこの行で捨てられていた。だから ctx が sink を持っていれば
+ * error そのものを渡す。呼び出し側（health probe）が低カーディナリティな
+ * 語へ落として detail 列へ運ぶ。sink はサーバー内部の引数で、
+ * TrustScoreResult には触らない（公開レスポンスの形を変えない）。
  */
-function logSignalDegraded(signal: string, error: unknown): void {
+export function reportSignalDegraded(
+  signal: string,
+  error: unknown,
+  ctx: ScoreRequestContext = {},
+): void {
   const message = error instanceof Error ? error.message : String(error);
   console.warn(`[vouch] score_signal_degraded: ${signal}: ${message.slice(0, 200)}`);
+  ctx.onSignalDegraded?.(signal, error);
 }
 
 /** Chain-derived score payload — policy layer is always applied fresh on read. */
@@ -226,20 +239,20 @@ export async function scoreAgentById(
   const reputation = reputationResult.ok
     ? reputationResult.value
     : { count: 0, summaryValue: 0, summaryValueDecimals: 0 };
-  if (!reputationResult.ok) logSignalDegraded("reputation_summary", reputationResult.error);
+  if (!reputationResult.ok) reportSignalDegraded("reputation_summary", reputationResult.error, ctx);
 
   const feedbackStatsUnavailable = !feedbackResult.ok;
   const feedbackStats = feedbackResult.ok
     ? feedbackResult.value
     : { recentCount: 0, uniqueClients: 0, windowDays: 7 };
-  if (!feedbackResult.ok) logSignalDegraded("feedback_stats", feedbackResult.error);
+  if (!feedbackResult.ok) reportSignalDegraded("feedback_stats", feedbackResult.error, ctx);
 
   const walletMetricsUnavailable = !walletResult.ok;
   let walletMetrics: Awaited<ReturnType<typeof fetchWalletMetrics>> | null = walletResult.ok
     ? walletResult.value
     : null;
   if (!walletResult.ok) {
-    logSignalDegraded("wallet_metrics", walletResult.error);
+    reportSignalDegraded("wallet_metrics", walletResult.error, ctx);
     walletMetrics = {
       address: walletAddress as Address,
       ageDays: 0,
@@ -258,12 +271,12 @@ export async function scoreAgentById(
   const x402Stats: Awaited<ReturnType<typeof getX402PaymentStats>> = x402Result.ok
     ? x402Result.value
     : { paymentCount: 0, uniqueDays: 0, lastPaymentAt: null, paymentsWithUnprovableIndependence: 0 };
-  if (!x402Result.ok) logSignalDegraded("x402_stats", x402Result.error);
+  if (!x402Result.ok) reportSignalDegraded("x402_stats", x402Result.error, ctx);
 
   const l1Stats: Awaited<ReturnType<typeof getObservedPurchaseStats>> = l1Result.ok
     ? l1Result.value
     : { purchaseCount: 0, uniqueDays: 0, distinctCounterparties: 0 };
-  if (!l1Result.ok) logSignalDegraded("l1_stats", l1Result.error);
+  if (!l1Result.ok) reportSignalDegraded("l1_stats", l1Result.error, ctx);
 
   // The highest-weighted axis: verifiable economic activity (L1 observed
   // purchases first, x402 settlements as the interim proxy). scoreEconomicActivity
@@ -306,7 +319,7 @@ export async function scoreAgentById(
       "sybil_checks",
     );
   } catch (error) {
-    logSignalDegraded("sybil_checks", error);
+    reportSignalDegraded("sybil_checks", error, ctx);
     sybilFlags = ["sybil_checks_unavailable"];
   }
 
@@ -456,7 +469,7 @@ export async function scoreWallet(
       "wallet_metrics",
     );
   } catch (error) {
-    logSignalDegraded("wallet_metrics", error);
+    reportSignalDegraded("wallet_metrics", error, ctx);
     walletMetricsUnavailable = true;
     walletMetrics = {
       address: wallet,
@@ -486,7 +499,7 @@ export async function scoreWallet(
       "x402_stats",
     );
   } catch (error) {
-    logSignalDegraded("x402_stats", error);
+    reportSignalDegraded("x402_stats", error, ctx);
     x402StatsUnavailable = true;
   }
 
@@ -504,7 +517,7 @@ export async function scoreWallet(
       "l1_stats",
     );
   } catch (error) {
-    logSignalDegraded("l1_stats", error);
+    reportSignalDegraded("l1_stats", error, ctx);
   }
   const x402Score = scoreEconomicActivity({ l1: l1Stats, x402: x402Stats });
 
@@ -531,7 +544,7 @@ export async function scoreWallet(
       "sybil_checks",
     );
   } catch (error) {
-    logSignalDegraded("sybil_checks", error);
+    reportSignalDegraded("sybil_checks", error, ctx);
     sybilFlags = ["sybil_checks_unavailable"];
   }
   if (walletMetricsUnavailable) {

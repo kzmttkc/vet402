@@ -21,6 +21,8 @@
  *    改行や本文まるごとが入りうる。列に入れるものは自分で長さと形を決める。
  */
 
+import { DeadlineExceededError } from "@/lib/util/deadline";
+
 /** detail 全体の上限。Postgres の text に上限は無いが、表を読む人間の側にある。 */
 const MAX_DETAIL = 600;
 const MAX_MESSAGE = 200;
@@ -54,10 +56,68 @@ export function describeProbeFailure(error: unknown): string {
   );
 }
 
-/** degraded のときの理由——読めなかった入力の一覧。 */
-export function describeUnavailable(unavailable: readonly string[]): string | null {
+/**
+ * 落ちた 1 つの signal を、**行の識別子として使える 1 語**にする（2026-09-09）。
+ *
+ * WHY THIS EXISTS. degraded の detail は `feedback_stats_unavailable` までしか
+ * 言わなかった。その flag は engine.ts の `!feedbackResult.ok` 1 箇所から立ち、
+ * そこへ届く rejection の出所は少なくとも 5 つある——エンジン自身の 3,500ms
+ * 期限、tail 走査の内側 2,500ms 期限、そして erc8004 の 3 分岐。
+ * 2026-09-09 01:30 JST の本番の行はどれとも読めた。
+ *
+ * 形は 2 つの制約で決まる。
+ *
+ * 1. **可変値を入れない。** この語は detail に載り、detail は
+ *    shouldRecordSnapshot の比較対象になる。期限のミリ秒を書くと
+ *    `budgetFor` が残り時間で返す値ごとに別の行になる（3,500 とは限らない）。
+ *    だからラベルだけを取り、数字は latency_ms 列の側に任せる。
+ * 2. **知らない error の本文を運ばない。** 上流の message には URL や鍵が
+ *    入りうる。名指しできるのは**クラス名**まで——形は伝わり、秘密は乗らない。
+ */
+export function classifyDegradation(error: unknown): string {
+  if (error instanceof DeadlineExceededError) return `deadline:${error.label}`;
+  if (error instanceof Error) {
+    // `<signal>_unavailable:<reason>` は自分たちが名乗った形（feedback-window.ts）。
+    const named = /^[a-z0-9_]+_unavailable:([a-z0-9_]{1,40})$/.exec(error.message);
+    if (named) return named[1]!;
+    // `name` を先に見るのは、viem や pg のエラーがそこへ明示的に書くから
+    // （バンドラの minify でクラス名が潰れても残る）。書いていない素朴な
+    // サブクラスは既定の "Error" のままなので、そのときだけ実クラス名を見る。
+    const name =
+      error.name && error.name !== "Error" ? error.name : (error.constructor?.name ?? error.name);
+    return `upstream_error:${name || "unknown"}`;
+  }
+  return "upstream_error:unknown";
+}
+
+/**
+ * engine の signal 名 → flag 名がずれている組。
+ * 素朴な `_unavailable` の剥がしだと繋がらず、理由が黙って落ちる。
+ */
+const FLAG_TO_SIGNAL: Readonly<Record<string, string>> = {
+  x402: "x402_stats",
+};
+
+/**
+ * degraded のときの理由——読めなかった入力の一覧と、**それを立てた経路**。
+ *
+ * `reasons` は engine が ctx.onSignalDegraded で渡してきた signal→理由。
+ * 渡ってこなかった flag は `(unrecorded)` と書く。エンジンの 5 分キャッシュに
+ * 当たった回は flag だけが残って経路は走っていないので、そこを空欄にすると
+ * 「理由の無い degraded」と「理由を見ていない degraded」が同じ顔になる。
+ */
+export function describeUnavailable(
+  unavailable: readonly string[],
+  reasons?: ReadonlyMap<string, string>,
+): string | null {
   if (unavailable.length === 0) return null;
-  return oneLine(unavailable.join(","), MAX_DETAIL);
+  if (!reasons) return oneLine(unavailable.join(","), MAX_DETAIL);
+  const parts = unavailable.map((flag) => {
+    const base = flag.replace(/_unavailable$/, "");
+    const reason = reasons.get(base) ?? reasons.get(FLAG_TO_SIGNAL[base] ?? base);
+    return `${flag}(${reason ?? "unrecorded"})`;
+  });
+  return oneLine(parts.join(","), MAX_DETAIL);
 }
 
 /**

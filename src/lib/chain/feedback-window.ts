@@ -153,3 +153,76 @@ export function summarizeFeedback(
 
   return { recentCount, uniqueClients: clients.size, windowDays };
 }
+
+/**
+ * なぜ degrade したのかを名指しする語（2026-09-09）。
+ *
+ * WHY THIS EXISTS. 下の 3 つの分岐は、以前は 3 つとも
+ * `new Error("feedback_stats_unavailable")` を投げていた。エンジンはその
+ * error を見ずに boolean へ落とし、flag 名を作り直していたので、
+ * health_snapshots に残る行は「feedback_stats_unavailable」でしかなかった。
+ * 2026-09-09 01:30 JST の本番の degraded 行がまさにそれで、**落ちた入力の
+ * 名前は分かったが、それを立てた経路は分からなかった**。
+ *
+ * 語は行の識別子になる（detail は shouldRecordSnapshot の比較対象）。
+ * だから可変値を混ぜない: ブロック番号もミリ秒も入れず、閉じた集合にする。
+ */
+export type FeedbackUnavailableReason =
+  /** index そのものが無い（DB 無し・checkpoint 未作成・migration 未適用）。 */
+  | "index_absent"
+  /** index はあるが、窓の開始より後からしか始まっていない（未走査の穴）。 */
+  | "window_not_covered"
+  /** index は窓を覆うが tip から離れすぎ、tail がリクエスト経路の走査幅を超える。 */
+  | "index_behind_tip";
+
+/**
+ * `index` を plan が持ち帰るのは型のため。`index_and_tail` は index が
+ * 非 null のときにしか作られないが、呼び出し側の変数を見ている限り TS には
+ * それが分からず `!` が要る——その `!` は「規則を読んだ人間が正しいと言った」
+ * 以上の意味を持たない。plan に載せれば絞り込みが型で通る。
+ */
+export type FeedbackSourcePlan<I> =
+  /** index の行 ＋ `gap` ブロックぶんの live tail で窓が埋まる。 */
+  | { kind: "index_and_tail"; gap: bigint; index: I }
+  /** 予算を持たない呼び出し側（cron）だけが取れる道。 */
+  | { kind: "full_scan" }
+  | { kind: "unavailable"; reason: FeedbackUnavailableReason };
+
+/**
+ * どの情報源で窓を埋めるか——そして埋められないなら、**なぜ**か。
+ *
+ * fetchRecentFeedbackStats の分岐をそのままここへ移したもので、判定は
+ * 変えていない。移したのは、この規則が RPC も DB も要らないのに、
+ * これまで RPC と DB の奥でしか実行されず、直接テストできなかったからである
+ * （このファイルが存在する理由と同じ）。
+ */
+export function planFeedbackSources<I extends { coverageStart: bigint; checkpoint: bigint }>(params: {
+  index: I | null;
+  fromBlock: bigint;
+  latestBlock: bigint;
+  tailMax: bigint;
+  allowFullScan: boolean;
+}): FeedbackSourcePlan<I> {
+  const { index, fromBlock, latestBlock, tailMax, allowFullScan } = params;
+
+  if (index && indexCoversWindow(index.coverageStart, fromBlock)) {
+    const gap = latestBlock > index.checkpoint ? latestBlock - index.checkpoint : 0n;
+    if (tailScanFits(gap, tailMax)) return { kind: "index_and_tail", gap, index };
+    // tail が広すぎる = このリクエストで読み切れない幅。allowFullScan でも
+    // degrade するのは 2026-08-12 の判定そのままで、ここでは変えない
+    // ——index が窓を覆っているのに tip から遠いのは indexer の遅れであって、
+    // 走査幅を広げて隠す種類の問題ではない。
+    return { kind: "unavailable", reason: "index_behind_tip" };
+  }
+
+  if (allowFullScan) return { kind: "full_scan" };
+  return {
+    kind: "unavailable",
+    reason: index === null ? "index_absent" : "window_not_covered",
+  };
+}
+
+/** 投げる Error の message。`<flag>:<reason>` の形を崩さない（分類器が読む）。 */
+export function feedbackUnavailableMessage(reason: FeedbackUnavailableReason): string {
+  return `feedback_stats_unavailable:${reason}`;
+}

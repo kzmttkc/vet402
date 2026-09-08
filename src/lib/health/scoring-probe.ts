@@ -1,6 +1,6 @@
 import { scoreAgentById } from "@/lib/scoring/engine";
 import { withDeadline } from "@/lib/util/deadline";
-import { describeProbeFailure, describeUnavailable } from "./probe-detail";
+import { classifyDegradation, describeProbeFailure, describeUnavailable } from "./probe-detail";
 
 /**
  * Does the product's core capability — computing a trust score — actually work
@@ -80,9 +80,22 @@ export async function runScoringProbe(): Promise<ScoringProbe> {
   const startedAt = Date.now();
   let probe: ScoringProbe;
 
+  // 2026-09-09: どの経路で degrade したかを、この 1 回のスコアの中で拾う。
+  // flag 名（`feedback_stats_unavailable`）はエンジンが boolean から作り直す
+  // ので、経路は flag の外側にしか無い。**最初に理由の付いた行を出した
+  // 2026-09-09 01:30 JST の degraded は、それでもどの経路とも読めた。**
+  // signal 名で持ち、flag との突き合わせは describeUnavailable がやる。
+  const reasons = new Map<string, string>();
+
   try {
     const result = await withDeadline(
-      scoreAgentById(probeAgentId()),
+      scoreAgentById(probeAgentId(), {
+        onSignalDegraded: (signal, error) => {
+          // 同じ signal が 2 度落ちることはないが、落ちたら最初の理由を残す
+          // ——後から来た再試行の理由で最初の原因を上書きしない。
+          if (!reasons.has(signal)) reasons.set(signal, classifyDegradation(error));
+        },
+      }),
       PROBE_DEADLINE_MS,
       "scoring_probe",
     );
@@ -93,11 +106,14 @@ export async function runScoringProbe(): Promise<ScoringProbe> {
       status: unavailable.length > 0 ? "degraded" : "ok",
       unavailable,
       latencyMs: Date.now() - startedAt,
-      detail: describeUnavailable(unavailable),
+      // reasons が空でも渡す。エンジンの 5 分キャッシュに当たった回は flag
+      // だけが残って経路は走っていない——それを `(unrecorded)` と書かせる。
+      // 空欄にすると「理由が無い」と「理由を見ていない」が同じ顔になる。
+      detail: describeUnavailable(unavailable, reasons),
       fromCache: false,
     };
     if (unavailable.length > 0) {
-      console.warn(`[vouch] scoring_probe degraded: ${unavailable.join(",")}`);
+      console.warn(`[vouch] scoring_probe degraded: ${probe.detail}`);
     }
   } catch (error) {
     // The engine wraps upstream failures as `new Error(tag, { cause })`. The

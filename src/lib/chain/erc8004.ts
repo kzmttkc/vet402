@@ -6,11 +6,11 @@ import { getLogScanClient, getPublicClient } from "./client";
 import { ERC8004_ADDRESSES, IDENTITY_REGISTRY_FROM_BLOCK } from "./config";
 import { DEFAULT_CHAIN_ID, chainById } from "./chains";
 import {
+  feedbackUnavailableMessage,
   feedbackWindowFromBlock,
-  indexCoversWindow,
+  planFeedbackSources,
   summarizeFeedback,
   tailMaxBlocks,
-  tailScanFits,
   type FeedbackEntry,
   type RecentFeedbackStats,
 } from "./feedback-window";
@@ -324,36 +324,46 @@ export async function fetchRecentFeedbackStats(
 
     const index = await getIndexedFeedbackWindow(resolvedChainId, agentId, fromBlock);
 
-    if (index && indexCoversWindow(index.coverageStart, fromBlock)) {
-      const gap = latestBlock > index.checkpoint ? latestBlock - index.checkpoint : 0n;
+    // 2026-09-09: この選択規則は feedback-window.ts が持つ（RPC も DB も
+    // 要らない純粋な判定なので、そこなら直接テストできる）。ここが返す
+    // `reason` は「なぜ degrade したか」の語で、health_snapshots の detail
+    // まで運ばれる——同じ名前で 3 つの原因を呼んでいたのが、2026-09-09 の
+    // degraded 行を決着させられなかった理由そのものだった。
+    const plan = planFeedbackSources({
+      index,
+      fromBlock,
+      latestBlock,
+      tailMax: tailMaxBlocks(blocksPerDay),
+      allowFullScan: options?.allowFullScan === true,
+    });
 
-      if (!tailScanFits(gap, tailMaxBlocks(blocksPerDay))) {
-        // The indexer has fallen far enough behind that the unindexed tail is
-        // its own wide scan. Degrade rather than run it on a request path.
-        throw new Error("feedback_stats_unavailable");
-      }
-
-      const tail =
-        gap > 0n
-          ? await scanFeedbackLogs(resolvedChainId, agentId, index.checkpoint + 1n, latestBlock, {
-              deadlineMs: TAIL_SCAN_DEADLINE_MS,
-            })
-          : [];
-
-      return summarizeFeedback([...index.entries, ...tail], fromBlock, windowDays);
+    if (plan.kind === "unavailable") {
+      throw new Error(feedbackUnavailableMessage(plan.reason));
     }
 
-    if (!options?.allowFullScan) {
-      // No index, or an index too young for this window, and no budget to scan
-      // the whole thing live. This is the honest "unavailable".
-      throw new Error("feedback_stats_unavailable");
+    if (plan.kind === "index_and_tail") {
+      const tail =
+        plan.gap > 0n
+          ? await scanFeedbackLogs(
+              resolvedChainId,
+              agentId,
+              plan.index.checkpoint + 1n,
+              latestBlock,
+              { deadlineMs: TAIL_SCAN_DEADLINE_MS },
+            )
+          : [];
+
+      return summarizeFeedback([...plan.index.entries, ...tail], fromBlock, windowDays);
     }
 
     const full = await scanFeedbackLogs(resolvedChainId, agentId, fromBlock, "latest");
     return summarizeFeedback(full, fromBlock, windowDays);
   } catch (error) {
+    // Error でない throw だけがここで名前を得る。Error はそのまま通す——
+    // 上流の message（`deadline_exceeded:getLogsChunked:2500ms` など）を
+    // 潰すと、内側の期限切れと外側の期限切れが同じ顔になる。
     throw error instanceof Error
       ? error
-      : new Error("feedback_stats_unavailable");
+      : new Error("feedback_stats_unavailable:non_error_throw");
   }
 }

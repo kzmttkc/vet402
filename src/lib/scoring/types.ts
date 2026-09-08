@@ -127,4 +127,14 @@ export type ScoreRequestContext = {
   /** EVM chain id for the ERC-8004 reads. Default (and today the only chain
    *  with settlement + full wallet metrics) is Base — see chain/chains.ts. */
   chainId?: number;
+  /**
+   * 2026-09-09 — degrade した signal の error を、そのまま呼び出し側へ渡す口。
+   *
+   * これが無かったとき、`*_unavailable` の flag は engine の boolean から
+   * 作り直されていたので、**どの経路で落ちたかは flag の外側にしか無かった**。
+   * health probe だけが使う（サーバー内部の入力であって、
+   * TrustScoreResult には出さない——公開レスポンスの形は変えない）。
+   * 例外は握りつぶさない: sink が投げればスコアも落ちる。
+   */
+  onSignalDegraded?: (signal: string, error: unknown) => void;
 };
