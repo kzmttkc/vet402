@@ -1,0 +1,33 @@
+{
+  // One click for a judge: https://codespaces.new/kzmttkc/vet402?quickstart=1
+  // Opens the repo on Node 24 with SKILL.md's build order already done, so
+  // `npm run judge-check` and every block in SKILL.md run as written. No API key,
+  // no secret, nothing live — the only network is the npm registry.
+  //
+  // Node 24: root package.json `engines.node = "24.x"` and every job in
+  // .github/workflows/ci.yml (`node-version: 24`, incl. the judge-check job).
+  "name": "vet402",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:24-bookworm",
+
+  // SKILL.md → "Build order" (the dependency chain, not a preference):
+  //   1. packages/sdk        npm ci + build   (everything else imports its dist/)
+  //   2. packages/mcp-server npm ci + build   (file:../sdk — needs the SDK's dist/)
+  //   3. examples/ethonline-2026-demo         (nothing to install)
+  //   4. root npm ci, examples/ethonline-2026-ab npm ci (viem for the A/B bridge signer)
+  // Chained with && on purpose: a failed step must stop the setup, not hide behind the next one.
+  "postCreateCommand": "npm ci --prefix packages/sdk && npm run build --prefix packages/sdk && npm ci --prefix packages/mcp-server && npm run build --prefix packages/mcp-server && npm ci && npm ci --prefix examples/ethonline-2026-ab",
+
+  "postAttachCommand": "echo 'vet402: run  npm run judge-check  (no API key needed), then follow SKILL.md'",
+
+  // `npm run dev` (Next.js) — not needed by judge-check or SKILL.md, forwarded for convenience.
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": { "label": "vet402 next dev", "onAutoForward": "notify" }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint"]
+    }
+  }
+}
