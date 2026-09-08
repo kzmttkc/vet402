@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The only way into main. One command for: fetch -> rebase -> judge-check -> numbers
-# (-> root npm test) -> push -> wait for CI. Replaces the hand-typed chain
+# -> typecheck (-> root npm test) -> push -> wait for CI. Replaces the hand-typed chain
 # that was retyped 10+ times on 2026-09-07 (one typo, one parallel-branch
 # collision that turned main red).
 #
@@ -143,6 +143,25 @@ if node "$ROOT/scripts/refresh-numbers.mjs" --check >"$LOGDIR/numbers.log" 2>&1;
 else
   sed 's/^/  | /' "$LOGDIR/numbers.log" | tail -15
   fail numbers "$S" "refresh-numbers --check is red — run 'npm run refresh-numbers' after the rebase, commit, re-run"
+fi
+
+# ---------------------------------------------------------------- 3c. typecheck
+# 2026-09-09: the same command CI's "typecheck + unit tests" job runs first
+# (`npm run typecheck` = `tsc --noEmit`, tsconfig includes tests/). Root `npm test`
+# runs the suites through tsx, which strips types without checking them, so a type
+# error in a new test file is green here and red in CI — e3f3170 turned main red
+# exactly that way this morning (Typecheck step + production build). ~5 s locally,
+# so it runs in every mode, not only --full.
+S=$(date +%s)
+echo "typecheck: npm run typecheck (tsc --noEmit) ..."
+if npm run typecheck >"$LOGDIR/typecheck.log" 2>&1; then
+  echo "ok    typecheck: tsc --noEmit clean"
+  record typecheck 0 "$S"
+else
+  TC=$?
+  grep -E 'error TS[0-9]+' "$LOGDIR/typecheck.log" | head -20 | sed 's/^/  | /'
+  NERR=$(grep -cE 'error TS[0-9]+' "$LOGDIR/typecheck.log")
+  fail typecheck "$S" "tsc --noEmit exit $TC, $NERR error(s) — not pushing (same step CI runs first)"
 fi
 
 if [ "$FULL" -eq 1 ]; then
