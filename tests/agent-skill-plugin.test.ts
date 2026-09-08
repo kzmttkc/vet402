@@ -14,7 +14,9 @@
 //   1. frontmatter が Agent Skills 仕様どおり（name ≤64・[a-z0-9-]・"anthropic"/"claude" を含まない、
 //      description 非空 ≤1024、XML タグ無し、鍵は仕様の 6 つだけ、`---` が 1 行目）
 //   2. plugin.json が JSON として読め、name が kebab-case、skills の各パスに SKILL.md が実在し、
-//      mcpServers が packages/mcp-server の公開名を起動し、VOUCH_API_URL が MCP の既定と一致する
+//      mcpServers がリポ内の packages/mcp-server/dist を `node` で起動し（npm の 0.2.0 には pay_if_trusted が無い。
+//      2026-09-09 検証役の実測: `npx -y @vet402/mcp-server` の tools/list は 5 本、ローカル dist は 7 本）、
+//      VOUCH_API_URL が MCP の既定と一致する
 //   3. スキルの理由コード表 ＝ SDK PAY_REFUSE_REASONS ∪ MCP REFUSE_REASONS ∪ {MCP 層が足す語, settle 経路の語}
 //      （過不足ゼロ。表に無い語も、正典に無い語も赤）
 //   4. スキル内の ```bash ブロックは全部 `# live:` 印を持つ（skill-live-check の会計規律をこちらにも）
@@ -129,9 +131,16 @@ test(".claude-plugin/plugin.json は manifest schema に沿い、指す先が実
   const entries = Object.values(servers);
   assert.equal(entries.length, 1, "MCP サーバーは 1 本（@vet402/mcp-server）");
   const [server] = entries;
-  const mcpPkg = JSON.parse(read("packages/mcp-server/package.json")) as { name: string };
-  assert.equal(server.command, "npx", "公開済み npm パッケージを npx で起動する（clone の node_modules に依存しない）");
-  assert.ok(server.args.includes(mcpPkg.name), `args が packages/mcp-server の公開名 ${mcpPkg.name} を指していない`);
+  // npm の @vet402/mcp-server は 0.2.0（2026-08-24 公開）で pay_if_trusted を持たない。公開は提出後の方針なので、
+  // プラグインは npx で npm 版を引かず、clone の dist を node で起動する（${CLAUDE_PLUGIN_ROOT} はプラグインの
+  // インストール先＝clone の root。一次: https://code.claude.com/docs/en/plugins-reference）。
+  assert.notEqual(server.command, "npx", "npx は npm 版（pay_if_trusted 無し）を起動してしまう——clone の dist を node で起動する");
+  assert.equal(server.command, "node", "MCP サーバーはリポ内の dist を node で起動する");
+  const ENTRY = "${CLAUDE_PLUGIN_ROOT}/packages/mcp-server/dist/index.js";
+  assert.deepEqual(server.args, [ENTRY], `args は [${ENTRY}] の 1 本（npm パッケージ名や相対パスを混ぜない）`);
+  const entryOnDisk = join(ROOT, ENTRY.replace("${CLAUDE_PLUGIN_ROOT}/", ""));
+  assert.ok(existsSync(entryOnDisk), `起動対象 ${entryOnDisk} がリポに無い（dist はコミットする方針）`);
+  assert.match(readFileSync(entryOnDisk, "utf8"), /"pay_if_trusted"/, "起動対象の dist に pay_if_trusted が無い——dist が src より古い");
   assert.equal(server.env?.VOUCH_API_URL, MCP_DEFAULT_API_URL, "VOUCH_API_URL が MCP サーバーの既定と食い違う");
   for (const [k, v] of Object.entries(server.env ?? {})) {
     assert.doesNotMatch(k, /KEY|SECRET|PRIVATE/i, `manifest に鍵を置かない: ${k}`);

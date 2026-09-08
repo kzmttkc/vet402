@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "vet402": {
-      "command": "npx",
-      "args": ["-y", "@vet402/mcp-server"],
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/packages/mcp-server/dist/index.js"],
       "env": {
         "VOUCH_API_URL": "https://vet402.com/api/v1"
       }
