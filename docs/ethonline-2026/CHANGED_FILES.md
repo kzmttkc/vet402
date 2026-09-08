@@ -125,3 +125,21 @@ own bodies: 36/36 identical conclusions before and after.
 | `packages/sdk/test-mutations.mjs` | M01 / M02 / M04 follow the moved lines; M41 (drop the `trim`) and M42 (drop the boolean check) added — 42 mutations, all killed |
 | `SKILL.md` | one sentence: the boundary is held by a shared rule, not by how the server serialised the fields; `n:sdk_mutations` 40 → 42, `n:sdk_tests` 1572 → 1609 |
 | `docs/ethonline-2026/VIDEO_SCRIPT.md`, `docs/ethonline-2026/SUBMISSION_DRAFT.md`, `scripts/refresh-numbers.json` | the same two counts (`refresh-numbers --check` green) |
+
+## 2026-09-08 — the Continuity boundary doc replaced by measurement
+
+`README_CONTINUITY_SECTION.md` was last written 2026-09-02 and never touched again in the window, so it
+still described work by a plan rather than by what happened: it pointed at `examples/ethonline-2026-agent/`
+(never created), said demo decisions stream into the public `/decisions` register (the 09-05 decision was
+the opposite — an append-only store that never reaches the production DB), and said all work lives on
+branch `ethonline-2026` (it landed on `main`). Everything from 09-05 on — the subgraph evidence source and
+its deployment pin, caller floors, the uncatalogued path, `verdict-shape.ts`, the boundary-shape tables,
+the A/B harness — was missing. It is now a measured boundary record and no longer a README draft.
+
+| File | Why |
+|---|---|
+| `docs/ethonline-2026/README_CONTINUITY_SECTION.md` | replaced with the pre/in-window split, one command per claim, and the file counts as `refresh-numbers` marks |
+| `README.md` | one bullet added under *Judges: 60 seconds* linking it; no existing line changed |
+| `docs/ethonline-2026/GIT_RULES.md` | the 2026-08-22 "paste it into README at submission" plan is dropped; the README links it instead |
+| `docs/ethonline-2026/ROADMAP.md`, `docs/hackathons/README.md` | the same two derived statements struck through / retitled |
+| `scripts/refresh-numbers.json` | the doc joins the `--check` set, so its numbers go stale loudly (no new id) |

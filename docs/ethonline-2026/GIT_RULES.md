@@ -23,6 +23,10 @@ Operating plan: [`ROADMAP.md`](./ROADMAP.md). Follow that file; these rules are 
 3. 「Existed before the window」と「Boundary definition」は 9/3 のタグ時点で確定しているので、
    移すときも書き換えない。
 
+**2026-09-08 に 1〜2 を破棄。** この草案は README へ移さない。提出文は `SUBMISSION_DRAFT.md`、
+審査員の入口は `README.md` と `SKILL.md` が持つ。`README_CONTINUITY_SECTION.md` は**境界の記録**
+だけを持つ実測文書になり、README からは 1 行のリンクで指す（貼らないので 17 行目の理由は維持される）。
+
 ## main へ入れる手順は `scripts/push-main.sh` だけ（2026-09-07 確定）
 
 main へは **`bash scripts/push-main.sh` だけ**で入れる。`git fetch && git rebase && bash scripts/judge-check.sh && git push ...`

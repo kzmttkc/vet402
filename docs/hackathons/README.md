@@ -36,7 +36,7 @@ Do not implement the next event’s verb before that event’s kickoff.
 | [`../ethonline-2026/WIN_EV.md`](../ethonline-2026/WIN_EV.md) | ETHOnline 受賞確度の最大化 |
 | [`../ethonline-2026/PRIZES.md`](../ethonline-2026/PRIZES.md) | ETHOnline 公式賞リストの実測（2026-08-23。Base/CDP/x402 は不在・Hedera $6k が本命） |
 | [`../ethonline-2026/GIT_RULES.md`](../ethonline-2026/GIT_RULES.md) | Continuity の git 境界 |
-| [`../ethonline-2026/README_CONTINUITY_SECTION.md`](../ethonline-2026/README_CONTINUITY_SECTION.md) | 提出直前まで README に貼らない草案 |
+| [`../ethonline-2026/README_CONTINUITY_SECTION.md`](../ethonline-2026/README_CONTINUITY_SECTION.md) | Continuity 境界の実測（README へは貼らずリンクする・2026-09-08） |
 | [`../ethonline-2026/CHANGED_FILES.md`](../ethonline-2026/CHANGED_FILES.md) | 既存ファイルを触った記録 |
 | [`../applications/ai-usage-disclosure.md`](../applications/ai-usage-disclosure.md) | AI 開示（弱めない） |
 | [`../applications/impact-one-pager.md`](../applications/impact-one-pager.md) | Devcon / 申請用ワンペー |

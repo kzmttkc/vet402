@@ -264,8 +264,8 @@ Record per §8. Human voice, ≥720p, 2:00–3:50, no AI voiceover, no music-ove
 
 No new functions. Docs only:
 
-- Update `README_CONTINUITY_SECTION.md` to **past tense, only what exists**.
-- Paste that section into `README.md`.
+- ~~Update `README_CONTINUITY_SECTION.md` to **past tense, only what exists**.~~ done 2026-09-08.
+- ~~Paste that section into `README.md`.~~ dropped 2026-09-08 — `README.md` links it instead (`GIT_RULES.md`).
 - `docs/ethonline-2026/AI_USAGE.md` from `docs/applications/ai-usage-disclosure.md` (do not soften).
 - Prize-form drafts: how `payOrRefuse` uses each of the 3 partners (empty until prize list is known).
 
