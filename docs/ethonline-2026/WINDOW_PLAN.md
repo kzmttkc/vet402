@@ -225,6 +225,43 @@ Continuity Track を選んでいてもこの文言が出る。**規約本文（`
 出たら提出文の該当欄で `docs/ethonline-2026/CHANGED_FILES.md`（領域別の導出表）・`DISCLOSURE_2026-09-05.md`・
 タグ `pre-ethonline-2026` の Release を指す。**隠さず、境界を自分から出す。**
 
+#### 【2026-09-10 08:3x 追記】Bazantic：Tom Hay が「x402/MPP を迂回する JWT」の代わりを答えた（`#partner-bazantic` 実読）
+
+§16.2 と Day 6 の「ダッシュボードで JWT を作れるか」に対する**パートナー側の答えが出た。JWT ではなく「価格 0 の x402/MPP を認証の代わりに使う」**（zkenk の質問への返信）:
+
+> Good question - per-caller upstream credentials we do somewhat support - though admittedly it is hacky - it would be
+> to create a gateway per user - which is not great. Let me think on this - I may be able to think of an intermediate
+> work around for you.
+> Unauthenticated sign-up we can support this (I believe) - you can launch a gateway with no auth required. You can use
+> **x402/MPP with the price zero'd out to be a form of auth** - it will require a user to sign a transaction everytime,
+> but not pay anything.
+> —— Tom Hay, `#partner-bazantic`, 2026-09-09 23:22 JST
+
+**含意**: (1) JWT の迂回口は Tom 自身の説明にも出てこない。**Day 6 の探索は「無い」で閉じてよい**（ダッシュボードを探す時間を使わない）。
+(2) 「price zero'd out … but not pay anything」は §16.1 の実測（$0.00 でも 402・A/B の橋で 88 tx を署名）と一見食い違うが、
+Tom 自身が "will require a user to sign a transaction everytime" と書いている。**「払わない」は金額が 0 の意味で、402＋署名は仕様通り。**
+→ フィードバック doc はこの読みで書く（「壊れている」ではなく「**0 円でも 402 が返るので署名が要る、と docs に明記してほしい**」）。
+
+賞の要件に触れる発言がもう1件（"Agentify a New API" について。**自作 API をゲートウェイに載せるのも「新しいサービス」に数える**）:
+
+> Great idea! And yes, Payr's own API definitely counts as adding a new service. —— Tom Hay, 2026-09-09 23:14 JST
+
+**Bazantic 側の変更予告（2026-09-10 04:27 JST）**: 別チーム（`Edy Cu`・09-10 01:43）が
+「TEST CONNECTION が必須パラメータを付けずに叩いて HTTP 400 を誤報する」「ダッシュボードから gateway を ACTIVATE する導線が無い
+（`baz gateway add --status active` で回避した）」を投稿し、Tom が回答:
+
+> Thank you for this feedback - **some fixes incoming over the next 48 hours** to make the Test Connection experience
+> better and the Activate gateway experience clearer.
+
+**含意**: 我々の `BAZANTIC_FEEDBACK.md` の所見のうち Test Connection / Activate 系は**他チームに先に出され、48 時間以内に直る予定**。
+提出までに Bazantic の画面が変わり得るので、**フィードバック doc と画面収録には「いつ観測したか」を必ず書く**。
+前に出すのは我々固有の所見（$0 でも 402 で 88 tx／MCP から払えない／Recipe の prompt が公開ページに出ない）。
+
+**The Graph の資格質問は 09-10 08:09 JST 時点でも未回答**（同チャンネルの最新投稿まで実読）。
+新たに Ludo (LX Foundry) が 09-10 01:41 に「**自前ホストの公開 graph-node は "a Graph provider" に数えるか**」を質問——これも未回答。
+未回答の資格質問は最低6件。**答えを待って設計を決めない**方針（上記）は変えない。
+09-10 22:00 JST の Project Feedback Session #12 が、この質問を人に直接当てられる最後の場になる。
+
 ## 1.45 提出の要件（2026-09-06 08:20・運営の `info/details` と `prizes` を実読）—— **正典より厳しい点が5つあった**
 
 ### 動画（**canon が緩かった**）
