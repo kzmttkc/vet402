@@ -4,7 +4,7 @@
 
 ## How this file is made
 
-This is `git log pre-ethonline-2026..9dc22e6` (331 commits), grouped by day in UTC and rendered by
+This is `git log pre-ethonline-2026..421cd05` (341 commits), grouped by day in UTC and rendered by
 [`scripts/ethonline-commits-en.mjs`](../../scripts/ethonline-commits-en.mjs) — `node scripts/ethonline-commits-en.mjs` regenerates it;
 `--check` (run by `npm test`) fails if any Japanese subject lacks a translation or if this file is not what the script produces from the
 commit named in the **Generated** row; commits after that one which did not regenerate it are a warning, and `--check --strict` (the final pass
@@ -12,10 +12,10 @@ before the submission Release) makes that a failure too. `main` is also this pro
 the window contains work we do **not** submit; the **Claimed** column is derived from the path filter in `README.md`:
 
 ```bash
-git log pre-ethonline-2026..9dc22e6 -- packages/sdk packages/mcp-server \
+git log pre-ethonline-2026..421cd05 -- packages/sdk packages/mcp-server \
     examples/ethonline-2026-demo examples/ethonline-2026-ab \
     SKILL.md AI_USAGE.md docs/ethonline-2026    # ✔ claimed
-git log pre-ethonline-2026..9dc22e6             # everything, ✔ and —
+git log pre-ethonline-2026..421cd05             # everything, ✔ and —
 ```
 
 A commit is ✔ when it touches at least one of those paths, — otherwise. Subjects written before the English-subject rule took effect
@@ -26,12 +26,12 @@ that instant are marked **⚠ pre-window** below and listed in [`DISCLOSURE_2026
 
 | | |
 |---|---|
-| Generated | 2026-09-09 00:00:09 UTC from `9dc22e6e7cb753216a0100bd0bf25998b5a95549` |
-| Range | `pre-ethonline-2026..9dc22e6` — **331 commits** on 5 days (UTC), 13 of them merges |
-| Claimed (✔) | **189** — touch at least one path in the filter |
-| Not claimed (—) | **142** — production work in the same days |
+| Generated | 2026-09-09 06:13:03 UTC from `421cd0539ea64309fafcd5b1f399d7fb96f483b3` |
+| Range | `pre-ethonline-2026..421cd05` — **341 commits** on 6 days (UTC), 13 of them merges |
+| Claimed (✔) | **194** — touch at least one path in the filter |
+| Not claimed (—) | **147** — production work in the same days |
 | Claimed but before 2026-09-04 16:00:00 UTC | **3** (⚠) |
-| Subjects translated from Japanese | **285** (English already: 46) |
+| Subjects translated from Japanese | **285** (English already: 56) |
 
 ## Claimed, by day (UTC)
 
@@ -68,10 +68,16 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 - [`cd246d9`](https://github.com/kzmttkc/vet402/commit/cd246d92cad4078fd710d442ea70718d2f684520) 11:22 — ethonline: fix(demo): make the announced gate match the gate that fires (A≠C 28 → 0) (766 lines)
 - [`bfc16bb`](https://github.com/kzmttkc/vet402/commit/bfc16bbc80585607196cdcde498bc2a563416cb6) 07:57 — ethonline: read verdict words and quality flags through one shared rule (676 lines)
 
+### 2026-09-09 — 5 of 10 claimed
+
+- [`a783dab`](https://github.com/kzmttkc/vet402/commit/a783dab6b0a391fe4cd186d11714b3d93a280d07) 05:33 — fix(security): widen the A/B secret filter, gate prod DB host names out of public docs (153 lines)
+- [`421cd05`](https://github.com/kzmttkc/vet402/commit/421cd0539ea64309fafcd5b1f399d7fb96f483b3) 05:58 — docs(handoffs): hand off today's fourth round (aeb338c..690b4fc, 7 commits) with health attribution and two ops notes (82 lines)
+- [`7b5c58d`](https://github.com/kzmttkc/vet402/commit/7b5c58d76e56b8e12a8c3b322715e167b0c0be2a) 00:00 — docs(bazantic): re-measured 2026-09-09 — free tools answer unpaid; JWT item answered by Tom Hay (35 lines)
+
 ## Every commit, by day (UTC), oldest first
 
 <details>
-<summary>All 331 commits — ✔ claimed and — not claimed (click to expand)</summary>
+<summary>All 341 commits — ✔ claimed and — not claimed (click to expand)</summary>
 
 ### 2026-09-04 — 87 commits, 11 claimed
 
@@ -428,5 +434,20 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`147d624`](https://github.com/kzmttkc/vet402/commit/147d624a8faf86fdf3b81e11905879cdbb733a8e) | 23:34 | — | docs(readme): link the four judge-facing doors from §ETHOnline 2026, and hand off this morning's second round |
 | [`17d4719`](https://github.com/kzmttkc/vet402/commit/17d471913317fad602b0fa48109cd3953fe4ea48) | 23:34 | ✔ | feat(commits-en): freshness gate for COMMITS_EN.md, and a "Claimed, by day" opening |
 | [`9dc22e6`](https://github.com/kzmttkc/vet402/commit/9dc22e6e7cb753216a0100bd0bf25998b5a95549) | 23:52 | ✔ | fix(commits-en): a COMMITS_EN.md that is merely behind is a note, not a red root test; --check --strict for the Release |
+
+### 2026-09-09 — 10 commits, 5 claimed
+
+| SHA | UTC | Claimed | Subject (English) |
+|---|---|:---:|---|
+| [`7b5c58d`](https://github.com/kzmttkc/vet402/commit/7b5c58d76e56b8e12a8c3b322715e167b0c0be2a) | 00:00 | ✔ | docs(bazantic): re-measured 2026-09-09 — free tools answer unpaid; JWT item answered by Tom Hay |
+| [`aeb338c`](https://github.com/kzmttkc/vet402/commit/aeb338c8f2777f57e7921c82b49a753bcc65b031) | 00:16 | — | feat(push-main): add a typecheck stage (npm run typecheck) before root npm test |
+| [`1d71000`](https://github.com/kzmttkc/vet402/commit/1d71000ed388aac0b53deb686dc5fa239012556e) | 00:31 | — | docs(handoffs): hand off this morning's third round (e3f3170..aeb338c, 10 commits) to the vet402.com session |
+| [`4b281ab`](https://github.com/kzmttkc/vet402/commit/4b281abaafc0bc49ecb1046dded4006902b36f98) | 05:21 | ✔ | test(sdk): put the string "0" in the boundary table and add mutation M45 |
+| [`9328e69`](https://github.com/kzmttkc/vet402/commit/9328e69afcf29e51142e7b81a16821bff5a6e615) | 05:21 | — | docs(ethonline): say that the demo's pay and refuse need a free Graph key |
+| [`9ea5991`](https://github.com/kzmttkc/vet402/commit/9ea599167f43395651781ede806dedd6307b56f7) | 05:21 | — | fix(plugin): move the MCP config to .claude-plugin/mcp.json |
+| [`690b4fc`](https://github.com/kzmttkc/vet402/commit/690b4fc6f2ad5c559c714a31403dde90b96598ee) | 05:33 | ✔ | docs(ethonline): drop a private email transcript and a local path; pin the demo's viem version |
+| [`80fc6d5`](https://github.com/kzmttkc/vet402/commit/80fc6d501ecf65ddfecd14a8f5f64311e63af5ab) | 05:33 | — | fix(deps): next 16.3.0 -> 16.3.4 (GHSA-2xp9-vwfh-vxw4, GHSA-p293-qw3h-jr36) |
+| [`a783dab`](https://github.com/kzmttkc/vet402/commit/a783dab6b0a391fe4cd186d11714b3d93a280d07) | 05:33 | ✔ | fix(security): widen the A/B secret filter, gate prod DB host names out of public docs |
+| [`421cd05`](https://github.com/kzmttkc/vet402/commit/421cd0539ea64309fafcd5b1f399d7fb96f483b3) | 05:58 | ✔ | docs(handoffs): hand off today's fourth round (aeb338c..690b4fc, 7 commits) with health attribution and two ops notes |
 
 </details>

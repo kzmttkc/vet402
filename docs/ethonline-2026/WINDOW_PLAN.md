@@ -1042,10 +1042,9 @@ curl -sL -X POST "https://gateway.thegraph.com/api/$GRAPH_API_KEY/subgraphs/id/C
 賞ページの一般則（"If a partner has multiple tracks, you can be eligible for all of them"）だけを見て、
 **`PRIZES.md` §1 の運営回答を読まずに再導出した**——その節の見出しは「**資格の憲法（再導出しない）**」である。
 
-運営（Pascal・`#ticket-5926`・2026-08-25）:
-
-> you are only eligible for tracks that have continuity on them. …
-> **Even if they have something that is non-continuity that would work in your case, you're not eligible.**
+運営回答（`#ticket-5926`・2026-08-25・非公開スレッドのため原文は転載しない）。趣旨: **応募できるのは
+Continuity 枠のある賞だけ。** パートナーに Continuity 枠が無い、または枠の内容が自分の製品と合わない場合は
+対象外で、**そのパートナーに別の非 Continuity 賞があって内容が合っていても応募できない。**
 
 賞ページで **Continuity バッジ（🆕 This prize is only available to Continuity Track participants）が
 付いているのは "Help an Agent Use Your Hackathon Project" だけ**。

@@ -22,9 +22,8 @@
 
 **Bazantic の他ブラケットには応募できない。** 賞ページで **Continuity バッジが付いているのは
 "Help an Agent Use Your Hackathon Project" だけ**で、"Best Recipe that uses EthGlobal Hackathon Sponsor APIs"
-には付いていない。上の §1（Pascal の `#ticket-5926`）が
-「**Even if they have something that is non-continuity that would work in your case, you're not eligible**」
-と明言している。**2026-09-06 に `WINDOW_PLAN.md` §16 へ「枠1つ・ブラケット2つ・両方に応募できる」と
+には付いていない。上の §1（`#ticket-5926` の運営回答）が
+**「別の非 Continuity 賞が内容的に合っていても応募できない」**と明言している。**2026-09-06 に `WINDOW_PLAN.md` §16 へ「枠1つ・ブラケット2つ・両方に応募できる」と
 書いたのは誤りで、この節を読まずに再導出した結果だった。**（§1 の見出しは「再導出しない」である。）
 
 **動詞は `payOrRefuse` ただ1つ。** P1 は証拠源を1つ足すだけ。**新しい動詞・新しいチェーンは足さない。**
@@ -33,12 +32,12 @@
 
 ## 1. 資格の憲法（再導出しない）
 
-2026-08-25 ETHGlobal 運営（Pascal）の `#ticket-5926` 回答。原文:
+2026-08-25 ETHGlobal 運営の `#ticket-5926` 回答（非公開スレッドのため原文は転載しない）。趣旨:
 
-> you are only eligible for tracks that have continuity on them. If a partner does not have continuity
-> or if their continuity price does not match what you're building, you're not eligible. **Even if they
-> have something that is non-continuity that would work in your case, you're not eligible.**
-> You can only select continuity and the other way around.
+- **応募できるのは Continuity 枠のある賞だけ。** パートナーに Continuity 枠が無い、または枠の内容が
+  自分の製品と合わない場合は対象外
+- **そのパートナーに別の非 Continuity 賞があって内容が合っていても、応募できない**
+- 選べるのは Continuity 側だけで、逆（非 Continuity 側から Continuity 賞を選ぶ）も同様に不可
 
 提出フォーム（Select prizes 画面）の記載も同じ:
 
