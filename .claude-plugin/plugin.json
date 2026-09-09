@@ -12,5 +12,5 @@
   "license": "MIT",
   "keywords": ["x402", "payments", "usdc", "base", "thegraph", "subgraph", "mcp", "agent-skills", "erc-8004"],
   "skills": ["./skills/pay-or-refuse"],
-  "mcpServers": "./.mcp.json"
+  "mcpServers": "./.claude-plugin/mcp.json"
 }

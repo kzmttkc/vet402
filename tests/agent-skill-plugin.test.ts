@@ -120,14 +120,20 @@ test(".claude-plugin/plugin.json は manifest schema に沿い、指す先が実
   }
   assert.ok((skills as string[]).includes(`./${SKILL_DIR}`), `skills に ./${SKILL_DIR} が無い`);
 
-  // mcpServers はファイル参照（plugin root の .mcp.json、標準の MCP 設定）。インラインだと
+  // mcpServers はファイル参照（標準の MCP 設定）。インラインだと
   // `claude plugin details` の inventory が MCP servers (0) と数えた（2026-09-09 実測）。
+  // 置き場は plugin root の `.mcp.json` **ではなく** `.claude-plugin/mcp.json`: root の `.mcp.json` は
+  // リポを `claude` でプロジェクトとして開いたときにも読まれ、`${CLAUDE_PLUGIN_ROOT}` が解決できず
+  // 「Missing environment variables」＋承認待ちを出した（2026-09-09 監査の実測）。manifest の path は
+  // plugin root 相対で `./` から始まればよい（一次: plugins-reference の `"./my-extra-mcp-config.json"`）。
+  assert.ok(!existsSync(join(ROOT, ".mcp.json")), "root に .mcp.json を置かない（プロジェクト MCP 設定として読まれ、${CLAUDE_PLUGIN_ROOT} が未解決の警告になる）");
   const mcpRef = manifest.mcpServers;
-  assert.equal(typeof mcpRef, "string", "mcpServers は .mcp.json へのパス参照にする");
+  assert.equal(typeof mcpRef, "string", "mcpServers は MCP 設定ファイルへのパス参照にする");
+  assert.match(mcpRef as string, /^\.\//, "mcpServers の path は plugin root 相対で `./` から始める");
   assert.ok(existsSync(join(ROOT, mcpRef as string)), `mcpServers の参照先 ${mcpRef} が無い`);
   const mcpConfig = JSON.parse(read(mcpRef as string)) as { mcpServers?: Record<string, { command: string; args: string[]; env?: Record<string, string> }> };
   const servers = mcpConfig.mcpServers;
-  assert.ok(servers && typeof servers === "object", ".mcp.json に mcpServers が無い");
+  assert.ok(servers && typeof servers === "object", `${mcpRef} に mcpServers が無い`);
   const entries = Object.values(servers);
   assert.equal(entries.length, 1, "MCP サーバーは 1 本（@vet402/mcp-server）");
   const [server] = entries;
