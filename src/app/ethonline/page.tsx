@@ -154,6 +154,12 @@ export default function EthOnlinePage() {
           failing closed against the live API with a deliberately wrong key. The last block that
           actually pays is marked <code>--live</code> and is a human decision, not a default.
         </p>
+        <p className="doc-p">
+          The demo CLI&apos;s <code>pay</code> and <code>refuse</code> need a free Graph key:{" "}
+          <code>export GRAPH_API_KEY=…</code> from{" "}
+          <Ext href="https://thegraph.com/studio">https://thegraph.com/studio</Ext> (both commands).
+          <code>judge-check</code> above does not.
+        </p>
 
         <h2 className="sec-head">
           <span className="sec-no">2.</span>
