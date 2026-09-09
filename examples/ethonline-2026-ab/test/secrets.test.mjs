@@ -131,3 +131,45 @@ test("x402Bridge.txHash の位置でも、実際の秘密環境変数と一致�
   const env = { DEMO_PAYER_PRIVATE_KEY: FRESH_TX };
   assert.throws(() => assertNoSecrets({ raw: { toolCalls: [{ x402Bridge: { txHash: FRESH_TX } }] } }, env), /DEMO_PAYER_PRIVATE_KEY/);
 });
+
+// ---- 2026-09-09 敵対的監査・所見 3: 形で分かる秘密の網を広げる。 ----
+// 監査役の実測: JWT・GitHub トークン・npm トークン・資格情報つき Postgres URL・Neon ホスト名が
+// SHAPE_PATTERNS を素通りしていた。1 形式 1 テスト。値はどれも作り物で、実在の鍵ではない。
+
+const FAKE_SHAPES = [
+  ["jwt-like", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"],
+  ["github-token-like", "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab"],
+  ["github-token-like", "github_pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdef"],
+  ["npm-token-like", "npm_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"],
+  ["postgres-url-with-credentials", "postgresql://neondb_owner:npg_FAKEFAKEFAKE@ep-example-000000-pooler.us-east-2.aws.neon.tech/vouch?sslmode=require"],
+  ["postgres-url-with-credentials", "postgres://vouch:vouch_dev@postgres:5432/vouch"],
+  ["neon-host", "ep-example-000000.c-3.us-east-2.aws.neon.tech"],
+];
+
+for (const [expected, value] of FAKE_SHAPES) {
+  test(`形で検出する: ${expected}`, () => {
+    const hits = findSecrets(`before ${value} after`, {});
+    assert.ok(hits.some((h) => h.name === expected && h.kind === "shape"), `${expected} を検出していない: ${hits.map((h) => h.name).join(",") || "(none)"}`);
+  });
+}
+
+test("正当な値を誤検出しない（公開 txHash・resourceId・ヘッダ名・URL・環境変数名）", () => {
+  const legit = [
+    `txHash ${PUBLIC_HEX_ALLOWLIST[0].value}`,
+    // vet402 の resourceId は 0x 無しの 64 桁 hex（packages/sdk/src/index.ts `^[0-9a-f]{64}$`）。
+    // 生ログ 2 本に 107 件ある（2026-09-09 実測）ので、0x 無し 64 桁 hex は形の秘密にしない。
+    "resource id: ae0091e8ae0091e8ae0091e8ae0091e8ae0091e8ae0091e8ae0091e8ae0091e8",
+    "Authorization: Bearer <VOUCH_API_KEY>",
+    "https://gateway.thegraph.com/api/$GRAPH_API_KEY/subgraphs/id/QmcE24HARdXXnziPii9bWFRV6njfWW82H1RKPe5x9hBkUN",
+    "https://docs.world.org/agents/agent-kit/integrate#step-2-register-the-agent-in-agentbook",
+    "DATABASE_URL=postgres://… (set in Vercel, never printed)",
+    "npm_config_registry=https://registry.npmjs.org/",
+    "0x36038e1d712c5e39f35952164ec58ec2b96caee7",
+  ];
+  for (const s of legit) assert.deepEqual(findSecrets(s, {}), [], s);
+});
+
+test("x402Bridge.txHash の免除は形の推定だけで、新しい形（JWT 等）はその位置でも止める", () => {
+  const jwt = FAKE_SHAPES[0][1];
+  assert.throws(() => assertNoSecrets({ raw: { toolCalls: [{ x402Bridge: { txHash: jwt } }] } }, {}), /jwt-like/);
+});

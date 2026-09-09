@@ -453,7 +453,7 @@ WO の該当項目は引き取り不要です。
 
 ### 3. **本番 DB へ `scripts/sql/2026-09-08-health-snapshot-detail.sql` を適用済み（コミットではありません）**
 
-- **やったこと**: Neon の **`vouch` database**（`ep-odd-glade-ajpk06c8-pooler.c-3.us-east-2.aws.neon.tech`。`/neondb` ではありません）の
+- **やったこと**: Neon の **`vouch` database**（`<prod-host>`。`/neondb` ではありません）の
   `health_snapshots` へ `detail` / `latency_ms` / `instance` を追加しました。**3 列とも追加のみ・NULL 可**で、既存の行・既存の列・`/status` の集計に触っていません
 - **そちらへの影響（名指し）**: **同じ ALTER をもう一度流す必要はありません。**（`IF NOT EXISTS` なので再実行しても安全ですが、不要です。）
   **`8e165cc` のコミット本文には「ALTER の本番適用はしていない」と書いてありますが、それはコミット時点（2026-09-08 18:22 JST）の話で、その後に適用しました。**

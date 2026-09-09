@@ -23,6 +23,20 @@ export const SECRET_ENV_NAMES = Object.freeze([
 const SHAPE_PATTERNS = Object.freeze([
   { name: "sk-key-like", re: /\bsk-[A-Za-z0-9_-]{20,}/g },
   { name: "bearer-token-like", re: /\b(?:Bearer|bearer)\s+[A-Za-z0-9._-]{24,}/g },
+  // 2026-09-09 敵対的監査・所見 3: 下の 5 形式が素通りしていた。
+  // JWT: base64url の header.payload.signature（`eyJ` = `{"` の base64）。
+  { name: "jwt-like", re: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g },
+  // GitHub: 旧形式 gh[pousr]_ + 36 英数、新形式 github_pat_ + 82 文字。
+  { name: "github-token-like", re: /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g },
+  // npm: npm_ + 36 英数（`npm_config_*` は `_` を含むので当たらない）。
+  { name: "npm-token-like", re: /\bnpm_[A-Za-z0-9]{20,}\b/g },
+  // 資格情報つき接続文字列。`postgres://…` と伏せて書いたものには当たらない（`@` が無い）。
+  { name: "postgres-url-with-credentials", re: /\bpostgres(?:ql)?:\/\/[^\s@/]+@/g },
+  // Neon のホスト名。接続はできないが、どのプロジェクト・ブランチかを一意に指す。
+  { name: "neon-host", re: /\b[a-z0-9][a-z0-9.-]*\.neon\.tech\b/g },
+  // 0x 無しの 64 桁 hex は**入れない**: vet402 の resourceId がその形
+  // （packages/sdk/src/index.ts `^[0-9a-f]{64}$`）で、生ログ 2 本に 107 件ある（2026-09-09 実測）。
+  // 入れると 09-06 の txHash と同じく生ログを 1 バイトも書けなくなる。
 ]);
 
 /**
