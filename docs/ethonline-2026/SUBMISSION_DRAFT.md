@@ -116,7 +116,7 @@ npm run judge-check from the repo root runs every test of sdk, mcp-server, demo 
 | 数字 | 出典 | 性質 |
 |---|---|---|
 | `Cb56epg3…` subgraph id | `SKILL.md` "Paying on The Graph's own data" | 固定 |
-| WARN (69) | `WINDOW_PLAN.md` §3.2.1（会期中 69 のまま。理由は §3 末尾） | 動くが安定。提出日に `{{graph_score}}` で再確認 |
+| WARN (69) | `WINDOW_PLAN.md` §3.2.1（理由は §3 末尾） | **動く**。09-07 12:xx の実測は **68**（`LIVE_JUDGING.md` §「WARN の値」）。§3.2.1 の「会期中 69 のまま」は外れた。提出日に `{{graph_score}}` を取り直し、本文の "WARN (69)" を画面の値へ置換 |
 | 259 receipts | `WINDOW_PLAN.md` §10.5・`SKILL.md`（支払い時点の値） | 固定（過去の事実） |
 | 0.01 USDC / block 50898704 / tx `0xf12093fb…` | `WINDOW_PLAN.md` §10.5（チェーン再読）・`SKILL.md` | 固定 |
 | `c42daca` 2026-09-04 00:05:36 UTC | `README.md`・`CHANGED_FILES.md` | 固定 |
@@ -228,7 +228,7 @@ FIRST, ABOUT THE WARN YOU WILL SEE. The demo pays The Graph's own x402 endpoint 
 
 LOAD-BEARING. payOrRefuse (SDK) and pay_if_trusted (MCP) decide whether a signature is created. With policy.evidence.source "subgraph" or "both", that decision depends on a live query of the x402 Base subgraph (Cb56epg3EvQ6JRpPfknbkM54QxpzTvLa7mwKNQQfUyoj) for the payee's receipt count. If the read fails, the gate refuses (evidence_unavailable); there is no fallback to vet402's own ledger. Remove The Graph and the "subgraph" policy cannot pay anything.
 
-LIVE. Every query goes through gateway.thegraph.com with the caller's own Subgraph Studio key, never through a cache on our side. The evidence row on every decision carries _meta.block.number, the deployment hash and queriedAt, so a judge can see the block advance between two runs. The offline tests inject a stub reader and are labelled as offline; the live commands in SKILL.md print the real block, and that is what the video shows.
+LIVE. Every query goes through gateway.thegraph.com with the caller's own Subgraph Studio key, never through a cache on our side. The evidence row on every decision carries _meta.block.number, the deployment hash and queriedAt, so a judge can see exactly which block each run read. The offline tests inject a stub reader and are labelled as offline; the live commands in SKILL.md print the real block, and that is what the video shows.
 
 MEANINGFUL WORK, NOT A PRINTOUT. The data is not displayed, it is enforced. The caller declares a floor (minSubgraphReceipts) and may declare that vet402's own ALLOW is not required. On 2026-09-05 that exact policy — "at least one receipt in The Graph's ledger, vet402's approval not needed" — read 259 receipts and signed a real payment: 0.01 USDC, block 50898704, tx 0xf12093fba9314b1d3a514e7b667969201be8d021a6f4d6bdeb8d6c7f2de469ad. The record keeps vet402's WARN alongside "verdict from: caller_policy". The same wallet, three sources, three answers (our catalogue: 404; our engine: WARN 69; The Graph's subgraph: {{graph_receipts}} receipts as of {{as_of}}) — and the caller chooses whose evidence counts. BLOCK is never waived.
 
@@ -247,7 +247,7 @@ Model-side judgement never decides a payment; the gate does. Our demo's own deci
 
 | 数字 | 出典 | 性質 |
 |---|---|---|
-| WARN (69) / l1_inconclusive（拒否側 0x.org・09-08 から。1 回決済・4xx・結論なし） | `WINDOW_PLAN.md` §3・§16 F2/F3 | 安定（提出日に `{{graph_score}}` と `grep reasons` で再確認） |
+| WARN (69) / l1_inconclusive（拒否側 0x.org・09-08 から。1 回決済・4xx・結論なし） | `WINDOW_PLAN.md` §3・§16 F2/F3 | **スコアは動く**（09-07 12:xx は 68）。提出日に `{{graph_score}}` と `grep reasons` で取り直す |
 | 259 / 0.01 USDC / 50898704 / tx | `WINDOW_PLAN.md` §10.5 | 固定 |
 | 404 | `WINDOW_PLAN.md` §3.1（登録しない決定） | 固定 |
 | `{{graph_receipts}}` | `VIDEO_SCRIPT.md` §5 のコマンド（09-07 07:5x 実測 417） | **動く・提出日に埋める** |
@@ -335,7 +335,7 @@ One keystore-related item was sent privately to support@bazantic.com on 2026-09-
 | `{{window_commits}}` | `git log pre-ethonline-2026..main --oneline \| wc -l` | 233【実測 09-07 12:2x・この作業ツリー】 | C |
 | `{{claimed_commits}}` | `git log pre-ethonline-2026..main --oneline -- packages/sdk packages/mcp-server examples/ethonline-2026-demo examples/ethonline-2026-ab SKILL.md AI_USAGE.md docs/ethonline-2026 \| wc -l` | 123【実測 同上】 | C |
 | `{{graph_receipts}}` | `cd examples/ethonline-2026-demo && node src/run.ts pay 2>&1 \| grep totalPayments`（`GRAPH_API_KEY` 要） | 417【一次・`VIDEO_SCRIPT.md` §5 09-07 07:5x】 | I |
-| `{{graph_score}}` | 同上 `\| grep 'payee verdict'` | WARN (69)【一次・同上】。**69 でなければ本文の "WARN (69)" をその値に置換** | C・I |
+| `{{graph_score}}` | 同上 `\| grep 'payee verdict'` | 09-07 07:5x は WARN (69)、同日 12:xx は **WARN (68)**【一次・`VIDEO_SCRIPT.md` §5 ／ `LIVE_JUDGING.md`】＝**同じ日に動いた**。**69 でなければ本文の "WARN (69)" をその値に置換** | C・I |
 | `{{sdk_tests}}` | `cd packages/sdk && npm ci && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 1615 / fail 0【`refresh-numbers.json` 09-08】 | I |
 | `{{mcp_tests}}` | `cd packages/mcp-server && npm ci && npm run build && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 748 / fail 0【`refresh-numbers.json` 09-08】 | I |
 | `{{demo_tests}}` | `cd examples/ethonline-2026-demo && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 169 / fail 0【`refresh-numbers.json` 09-08】 | I |
