@@ -588,7 +588,60 @@ WO の該当項目は引き取り不要です。
 
 - 件数: `git log --format='%h' e3f3170..aeb338c | wc -l` → **10**（本項の記帳 = `030ab2e`・`b063e9e`・`74fa047`・`aeb338c`・`17d4719`・`9dc22e6`・`7b5c58d`・`93df57e`・`fd33a6b`・`147d624` の 10。漏れ 0）
 - 順序（first-parent）: `git log --first-parent --reverse --format='%h %s' e3f3170..aeb338c`
-- plugin の起動先: `cat .mcp.json`（`command` が `node`・args が `${CLAUDE_PLUGIN_ROOT}/packages/mcp-server/dist/index.js`）
+- plugin の起動先: `cat .claude-plugin/mcp.json`（`command` が `node`・args が `${CLAUDE_PLUGIN_ROOT}/packages/mcp-server/dist/index.js`。**09-09 14:2x `9ea5991` で root `.mcp.json` から移設**——次項参照）
 - typecheck 段: `grep -n '3c. typecheck' scripts/push-main.sh`
 - 鮮度関門の 2 段階: `node scripts/ethonline-commits-en.mjs --check; echo $?`（note で 0）／`node scripts/ethonline-commits-en.mjs --check --strict; echo $?`（stale なら 1）
 - CI: `gh run list --branch main --limit 3 --json headSha,conclusion`（【実測】`aeb338c`・`7b5c58d`・`9dc22e6` いずれも success）
+
+---
+
+## 2026-09-09 15:00 ハッカソン戦略 → vet402.com セッション: **今日 4 巡目——`aeb338c..690b4fc` の 7 コミット（本番ビルドが動く `next` 更新を含む）＋運用の申し送り 2 件**
+
+範囲は前項の `aeb338c` の次から `origin/main`（`690b4fc`・CI `ci` success）まで。**そちらの手番が要るのは §4 (a) の cron 1 本だけ**（このリポではなく Takeshi_Automation 側）。本番 DB への ALTER も env の追加もありません。
+**製品本体に効くのは 2 コミット**: `80fc6d5`（`next` 16.3.4＝本番ビルドが変わる）と `9328e69`（`src/app/ethonline/page.tsx` に 1 段落 6 行）。残りは tests・plugin 宣言・docs です。
+確かめ方: `git diff --stat aeb338c..690b4fc -- src/`（【実測】2026-09-09 14:5x: `src/app/ethonline/page.tsx | 6 ++++++` の 1 行だけ）。
+
+**決済経路について（名指し）**: `packages/sdk/src/x402-pay.ts`・`pay-or-refuse.ts`・`src/lib/observatory/*payer*`・`src/lib/db/schema.ts` は無変更。
+確かめ方: `git diff --stat aeb338c..690b4fc -- packages/sdk/src src/lib/observatory src/lib/db/schema.ts`（【実測】出力なし）。`4b281ab` は `packages/sdk/test/` と `test-mutations.mjs` だけで、実装は 1 行も触っていません。
+
+### 1. 本番の面に出るもの（2 コミット）
+
+- **`80fc6d5` — `next` 16.3.0 → 16.3.4（GHSA-2xp9-vwfh-vxw4・GHSA-p293-qw3h-jr36）。** `npm audit --omit=dev` が 16.3.0 で critical 1（Image Optimization API の AVIF 入力による未認証 RCE）・high 1（`sharp` < 0.35.4）。`next/image` は使っておらず `images` 設定も無いが、最適化ルートは全 Next.js デプロイに在る。更新後 critical 0・high 0（moderate 5 は `@solana/web3.js` 経由の transitive・直すには semver-major）。lockfile の差分は `next`・`@next/swc-*`・`@swc/helpers`・`sharp` 0.35.3 → 0.35.4 と `@img/*`。【一次】コミット本文: `npm run build` exit 0・`tsc --noEmit` clean・root `npm test` 4 suites `fail 0`・judge-check 11/11。**本番は Vercel が `690b4fc` をビルドしているはず**——そちらで `curl -sI https://vet402.com/ | grep -i x-vercel` 等の実測をお願いします（こちらは 14:50 の `/api/health` → `200 {"status":"ok"}` 0.43 s までしか見ていません）
+- **`9328e69` — `/ethonline` §1 に 1 段落。** 「The first command needs no key」の直後に、デモ CLI の `pay` と `refuse` は無料の Graph 鍵（`GRAPH_API_KEY`・`https://thegraph.com/studio`）が要り、`judge-check` は要らない、と 1 行で書いた（demo README と同じ内容）。断定語は無いので claims ゲートの登録は増えていない
+
+### 2. 本番の面に出ないもの（コード・関門）
+
+- **`9ea5991` — root `.mcp.json` を削除し `.claude-plugin/mcp.json` へ移設。** 内容は無変更（diffstat は `.mcp.json => .claude-plugin/mcp.json | 0` の rename）。`.claude-plugin/plugin.json` の `mcpServers` は `"./.claude-plugin/mcp.json"`。理由: リポそのものを `claude` で開くと root の `.mcp.json` を**プロジェクトの MCP 設定**として読み、`Missing environment variables: CLAUDE_PLUGIN_ROOT` と承認プロンプトを出していた（clean checkout の `claude mcp list` で再現）。移設後は `claude --plugin-dir <clone> mcp list` → `plugin:vet402:vet402 Connected`、clone 内の `claude mcp list` → `No MCP servers configured`（警告なし）。`plugin details` の MCP 件数は 0 と出るが、それは root ファイルしか数えない棚卸しの都合で、実行時には効かない。`tests/agent-skill-plugin.test.ts` は **root `.mcp.json` の存在を禁止**し、manifest の path が `./` 始まりであることを要求する。`skills/pay-or-refuse/SKILL.md` の Setup も新パス。**前項（09:30）の確かめ方 `cat .mcp.json` は無効になったので、本ファイルの当該行を `cat .claude-plugin/mcp.json` に直しました**
+- **`a783dab` — `tests/prod-host-guard.test.ts` を新設＋A/B ハーネスの秘密フィルタを広げた。** 動機: 本ファイルの `:456` に本番 Neon の endpoint 名が**再掲**されていた（`bb56b1a` で消し、`10b9dc4` で再び貼っていた）。`<prod-host>` に置換し、規律では 2 回目を止められなかったので関門にした: `docs/**`・`README.md`・`SKILL.md`・`skills/**`・`src/app/**` を Neon の endpoint ドメイン（`aws` 配下の `neon.tech` 全体）と `\bep-[a-z0-9-]{20,}` の 2 形で走査（`\b` は docs.world.org の `#step-2-register-…` アンカーを誤検知しないため）。負の試行: 旧行を戻すとそのファイルだけで赤。**運用上の帰結: この台帳に本番 DB のホスト名を書くと root `npm test` が赤**（本項も書いていません）。同時に `examples/ethonline-2026-ab/src/secrets.mjs` の `SHAPE_PATTERNS` に JWT・`gh[pousr]_`/`github_pat_`・`npm_`・`postgres(ql)://user:pass@`・Neon のドメインの 5 形を追加（各 1 検出テスト＋誤検知なしテスト）。`0x` 無しの 64-hex は**意図的に足していない**（vet402 の `resourceId` がその形で、既存の raw log に 107 個ある）
+- **`4b281ab` — SDK の境界表に文字列 `"0"` を追加し、変異 M45 を足した。** 敵対監査 A9（09-09）が `evaluateMoneyGate` の `units <= 0` を `units < 0` に変えても SDK suite が緑のままだった——表に数値 0 はあったが文字列 `"0"` が無く、402 の amount は文字列で届く。`units < 0` なら amount `"0"` の accept が signer に到達する。`test/_shapes.mjs` に `string-zero` 行（required）、`test-mutations.mjs` に M45。`node test-mutations.mjs` → `all 45 mutations killed`（A9 NEW2 が SURVIVED → KILLED）。**実装は無変更**
+
+### 3. 文書のみ
+
+- **`690b4fc`** — `WINDOW_PLAN.md` にあった ETHGlobal スタッフの私信（約 10 行・氏名つき）を 2 行の要約に置換（その後の決定は不変）。`PROMPTS/2026-09-08-day4-judged-surfaces.md` の `/Users/<name>/Downloads/…` 9 箇所を `<local>/Downloads/…`（`PROMPTS/README.md` に唯一の例外として記録）。`examples/ethonline-2026-demo/README.md` の `--live` install 行に実測版 `viem@2.56.3`（demo に lockfile は**意図的に置かない**——judge-check・CI・SKILL.md が install 無しで走らせる前提）
+- **`1d71000`** — 前項（09:30）そのもの。SHA 確定
+
+### 4. 運用の申し送り（コードに触れない・ハッカソン提出物には無関係・製品セッションの担当）
+
+- **(a) 今朝 09:30 JST の cron 監視メール（Takeshi_Automation `state/ALERTS.md`）で vet402 関連 2 本。**
+  - `com.kizuna.vet402-ledger-snapshot`（04:20）— **エラー死。** `logs/vet402_ledger_snapshot.log` 末尾: `PermissionError: [Errno 1] Operation not permitted: '~/Library/Mobile Documents/com~apple~CloudDocs/vet402-ledger-snapshots'`（`prune()` の `os.listdir`）。**DB 接続と COPY 段は通っている**（例外は COPY の後の iCloud 整理で出ている）ので台帳の写しは取れているが、iCloud 側の保持整理が毎朝止まる。launchd からの iCloud Drive アクセス権（Full Disk Access）か、保存先の変更が要る——**Takeshi の手番**
+  - `com.kizuna.bazantic-gateway-drift`（08:30）— 監視は「痕跡が 09/08 09:30 から更新なし」と**無音死**判定したが、`logs/bazantic_gateway_drift.log` には `=== bazantic_gateway_drift === 2026-09-09 09:30 JST`・`食い違い: 0 件` の行が**在る**。launchd が 60 分遅れて走る型（Takeshi_Automation `c01aa09`「再登録で直らない・再起動のみ」）で、08:30 予定が 09:30 に走り、同じ 09:30 の watchdog が古い mtime を見た**誤検知**。Gateway の 56 tools と openapi.yaml の 56 operations は一致したまま。対処は不要
+- **(b) `/api/health` の劣化の帰属——経路名つきの最初の行が入った。** 本番 `health_snapshots` を読み取りだけで引いた（【実測】2026-09-09 14:5x・`psql -Atc`）:
+  ```
+  SELECT checked_at AT TIME ZONE 'Asia/Tokyo', status, latency_ms, detail, instance
+    FROM health_snapshots WHERE checked_at >= '2026-09-08 15:00+00' AND status <> 'ok' ORDER BY checked_at;
+  2026-09-09 08:20:40 | degraded | 4460 | scoring=degraded fresh: wallet_metrics_unavailable(deadline:wallet_metrics); payee=ok fresh  | iad1:cfdd51db
+  2026-09-09 08:34:42 | degraded | 6446 | scoring=degraded fresh: wallet_metrics_unavailable(deadline:wallet_metrics); payee=ok fresh  | iad1:6b7b5d56
+  2026-09-09 08:36:38 | degraded | 3742 | scoring=degraded fresh: wallet_metrics_unavailable(deadline:wallet_metrics); payee=ok cached | iad1:6b7b5d56
+  ```
+  `deadline:wallet_metrics` は `src/lib/scoring/engine.ts` の `withDeadline(fetchWalletMetrics(...), SIGNAL_BUDGET_MS, "wallet_metrics")`（`SIGNAL_BUDGET_MS = 3_500`）が期限で落ちた、という経路名。落ちた入力は**買い手側のウォレット指標**（`src/lib/chain/wallet-metrics.ts` が上流 RPC から読む）で、前日の `feedback_stats` とは別の入力。3 行とも `payee` は ok。**言えるのはこの 3 行の帰属まで**——同じ日の 01:30 / 01:42 は `feedback_stats_unavailable`（経路未特定のまま）、04:01–04:02 は `payee=degraded cached: usdc_drain`（買い手側プローブの USDC 流出脚・別の脚）で、少なくとも 3 種の入力が別々に落ちている。会期後の改善対象として `WINDOW_PLAN.md`「会期後に必ず直すもの」に #6（wallet_metrics の締切超過）・#7（usdc_drain の cached 劣化）を足した。`LIVE_JUDGING.md` Q17 にも同じ実測を追記
+
+### 確かめ方（読み取りだけ）
+
+- 件数: `git log --format='%h' aeb338c..690b4fc | wc -l` → **7**（本項の記帳 = `1d71000`・`4b281ab`・`9328e69`・`9ea5991`・`80fc6d5`・`a783dab`・`690b4fc` の 7。漏れ 0）
+- 順序（first-parent）: `git log --first-parent --reverse --format='%h %s' aeb338c..690b4fc`
+- `next` の版: `grep '"next"' package.json` → `16.3.4`
+- plugin の起動先: `cat .claude-plugin/mcp.json`（`command` が `node`・args が `${CLAUDE_PLUGIN_ROOT}/packages/mcp-server/dist/index.js`）／`test ! -e .mcp.json && echo gone`
+- ホスト名の関門: `npx tsx --test tests/prod-host-guard.test.ts`
+- 変異: `cd packages/sdk && node test-mutations.mjs | tail -1` → `all 45 mutations killed`
+- CI: `gh run list --branch main --limit 3 --json headSha,conclusion,workflowName`（【実測】`ci` は `690b4fc`・`9ea5991` ともに success。同時刻の `Dependabot Updates` に failure が 1 本あるが `ci` ではない）
+- 健全性の行: 上の SQL（本番 DB は読み取りだけ）

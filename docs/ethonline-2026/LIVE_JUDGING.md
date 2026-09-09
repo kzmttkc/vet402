@@ -69,7 +69,7 @@ curl -sL -X POST https://mainnet.base.org -H 'content-type: application/json' \
 **時間配分の検算**: 30＋60＋60＋45＋45＝240 秒。`judge`・`pay`・MCP は各 3〜5 秒の網の待ちがある（切れない——live の証拠）。
 言う文は各段 40〜60 語（150 語/分で 16〜24 秒）で、待ちと合わせて枠に収まる。**4:00 で止められる前提**で 3:15 の段は削れる作りにしてある。
 
-## 3. 想定質問 18 件（英語の質問 → 30 秒で言える答え → 証拠の場所）
+## 3. 想定質問 20 件（英語の質問 → 30 秒で言える答え → 証拠の場所）
 
 各項: **A** ＝ そのまま言う英語、**要旨** ＝ 日本語 1 行、**証拠** ＝ ファイル:行 か URL か コマンド。
 
@@ -180,7 +180,9 @@ A: *Two answers, because the page was wrong about itself as well.*
 
 *Two things I will not say. The reasoned row from the day before was a different input, on the buyer side — so this is more than one cause, not one. And not a single one of September 8's error rows carries a reason at all: the reason column went live after the last of them, so nothing we learn now can be applied backwards to those. We did not delete the rows. A status page that erases its bad days is not a measurement, and this is the production observatory — not the SDK you are judging, but the same rule applied to ourselves.*
 
-要旨: 頁そのものの誤りを先に認める（**「実トラフィック標本・定間隔監視ではない」は嘘**——自前の 30 分監視が叩いており、しかも**それが赤に偏る**側の事実。09-09 に頁を訂正）。503 本体は、**「次の行が決着させる」と書いた行が来て、決着しなかった**。落ちた入力に名前は付いた（売り手側のフィードバック窓・fail-closed）が、その信号を立てる経路が **5 つ**あり行はどれとも読める。3,853ms は外側 3,500ms のすぐ上だが**示唆であって証明ではない**（内側 2,500ms でも同じ数字になりうる）。だから**計器をもう一段細かくした**。前日の理由つき行は**買い手側の別の入力**——原因は 1 つではない。**09-08 の error 行には理由が 1 件も無い。遡って当てはめない**。**行は消さない**。
+*Later on September 9 the finer instrument spoke once. Three degraded rows between 08:20 and 08:36 JST carried `wallet_metrics_unavailable(deadline:wallet_metrics)`: a buyer-side wallet read that overran its 3,500 ms budget, with the health row taking between 3.7 and 6.4 seconds. That is a different input from the day before, and it points at a slow upstream RPC, not at the engine. It explains those three rows. It does not explain the rows that came before it, and I will not stretch it to.*
+
+要旨: 頁そのものの誤りを先に認める（**「実トラフィック標本・定間隔監視ではない」は嘘**——自前の 30 分監視が叩いており、しかも**それが赤に偏る**側の事実。09-09 に頁を訂正）。503 本体は、**「次の行が決着させる」と書いた行が来て、決着しなかった**。落ちた入力に名前は付いた（売り手側のフィードバック窓・fail-closed）が、その信号を立てる経路が **5 つ**あり行はどれとも読める。3,853ms は外側 3,500ms のすぐ上だが**示唆であって証明ではない**（内側 2,500ms でも同じ数字になりうる）。だから**計器をもう一段細かくした**。前日の理由つき行は**買い手側の別の入力**——原因は 1 つではない。**09-08 の error 行には理由が 1 件も無い。遡って当てはめない**。**行は消さない**。**09-09 08:20–08:36 JST に経路名つきの degraded 3 行が入った（`wallet_metrics_unavailable(deadline:wallet_metrics)`・買い手側ウォレット指標・上流 RPC の遅延）——言えるのはその 3 行の帰属まで**。
 証拠: `https://vet402.com/status` §3 の定義（ok / degraded / error・worst sample・"A missing observation is never reported as ok."）／`8e165cc`「503 の理由を health_snapshots に残す」・`c7ec6f6`「応答後に走る 2 つの処理を `after()` に載せる」・09-09 の 2 コミット（経路の書き分け／`/status` の文言訂正）／`tests/health-degradation-reason.test.ts` 冒頭（09-09 01:30 JST の本番 4 行と、経路 5 つの内訳）／`tests/health-after-response.test.ts` 冒頭（本番 `withDeadline` の**成功側**から 59,957ms・期限 24,000ms・SIGSTOP での再現 56,012ms）。
 **画面の値を読む**（当日の集計は動く。**`/status` は UTC 日で束ねるので、JST の日で数えた件数とは一致しない**——数を言うなら画面のまま読む）。
 
@@ -192,7 +194,9 @@ A: *Two answers, because the page was wrong about itself as well.*
 | 手元で同型を再現した | SIGSTOP で凍結 → `{"branch":"success","latencyMs":56012}` |
 | 直した | `c7ec6f6`。応答後の 2 つを `after()` の生存期間に載せた（リポ全体で `waitUntil` / `after()` は未使用だった） |
 | 落ちた入力に名前が付いた | 09-09 01:30:38 JST の degraded 行が `scoring=degraded fresh: feedback_stats_unavailable` を持って入った（`payee=ok cached`。1 分後に cached で再掲、約 2 分後に ok へ復帰＝`PROBE_TTL_MS=60_000` と一致） |
+| **経路名つきの行が来た**（09-09 08:20–08:36 JST） | 本番 `health_snapshots` の degraded 3 行（08:20:40 / 08:34:42 / 08:36:38 JST・`latency_ms` 4,460 / 6,446 / 3,742）が `scoring=degraded fresh: wallet_metrics_unavailable(deadline:wallet_metrics); payee=ok` を持って入った。落ちた入力は**買い手側のウォレット指標**、経路は `src/lib/scoring/engine.ts` の `withDeadline(fetchWalletMetrics, SIGNAL_BUDGET_MS = 3,500ms, "wallet_metrics")`＝上流 RPC 読みの遅延。前日の `feedback_stats` とは**別の入力** |
 | **言ってはいけない** | それが当日の 503 全件の原因だったこと。下の 5 つが反証側にある |
+| **言ってはいけない** | 09-09 の `wallet_metrics` 3 行が**すべての劣化**の原因であること。同日 01:30 / 01:42 は `feedback_stats_unavailable`（経路未特定のまま）、04:01–04:02 は `payee=degraded cached: usdc_drain`（別の脚）——少なくとも 3 種の入力が別々に落ちている |
 | **言ってはいけない** | 09-09 の行が「原因を突き止めた」ものであること。**信号を立てる経路が 5 つあり、行はどれかを区別できなかった** |
 
 **切り分けの実測**（09-08 22:5x・本番 DB 直読みとローカルログ）:
@@ -206,8 +210,12 @@ A: *Two answers, because the page was wrong about itself as well.*
    外側 `withDeadline(..., "feedback_stats", 3,500ms)` ／ tail 走査の内側 2,500ms ／ `erc8004.ts` の 3 分岐
    （index 不在・窓を覆えない・tip から遠すぎ）。**3 分岐は同じ文字列を投げていた**ので、error の message を運んでも分けられなかった。
    実測 3,853 / 3,721ms は外側予算のすぐ上だが、内側 2,500ms ＋ 遅い identity 読みでも同じ数字になる。**【推定】のまま置く**
+6. **09-09 14:5x 追記（本番 DB 直読み・読み取りだけ）。** 経路名つきの最初の行は 08:20:40 JST。同日の非 ok 行は次の 10 行で、`wallet_metrics` の 3 行だけが経路を名乗っている:
+   `01:30:38 / 01:42:38 degraded fresh: feedback_stats_unavailable`（＋各 1 分後の cached 再掲）／`04:01:34–04:02:34 payee=degraded cached: usdc_drain`（3 行・`latency_ms` 0 / 156 / 192）／
+   `08:20:40 (4,460ms) / 08:34:42 (6,446ms) / 08:36:38 (3,742ms) degraded fresh: wallet_metrics_unavailable(deadline:wallet_metrics); payee=ok`。
+   `deadline:wallet_metrics` は `engine.ts` の `withDeadline(fetchWalletMetrics, SIGNAL_BUDGET_MS = 3_500, "wallet_metrics")` の期限。**この 3 行の帰属は【実測】**。それ以外の行には当てはめない。error 行（503）は 09-09 も 0 件
 
-**次に何を見れば決着するか**（審査員にはこれを言う）: 09-09 に計器をもう一段細かくしたので、**次の非 ok 行は経路まで名乗って入る**。
+**次に何を見れば決着するか**（審査員にはこれを言う）: 09-09 に計器をもう一段細かくしたので、**次の非 ok 行は経路まで名乗って入る**（**08:20 JST に最初の 1 行が入った——上の表と #6。ただしそれは `wallet_metrics` で、`feedback_stats` の経路はまだ名乗っていない**）。
 `detail` は `feedback_stats_unavailable(deadline:feedback_stats)` のように flag のとなりに経路を持つ:
 `deadline:feedback_stats`（外側 3,500ms）／`deadline:getLogsChunked`（内側 2,500ms）／`index_absent`・`window_not_covered`・`index_behind_tip`（カバレッジ）／
 `upstream_error:<クラス名>`（それ以外）／`unrecorded`（flag だけ残りその回は経路が走っていない＝エンジンのキャッシュ当たり）。
@@ -219,6 +227,16 @@ error 行なら従来どおり `latency_ms` が期限（24,000ms）を大きく�
 A: *No, and they should not be. The video is a recording — its numbers are the record of the day it was shot. The Graph's subgraph counted four hundred and twenty-seven receipts for that wallet then; it counts more now, and the payee score moves too. That is exactly why every evidence row carries `_meta.block.number`, `deployment` and `queriedAt`: you can tell when a number was read, and whether it was read at all. Anything I say live, I read off the screen in front of you.*
 要旨: 動画は撮影日の記録。件数もスコアも動く。**だから**決定行に block・deployment・時刻がある。生で言う数字は画面から読む。
 証拠: §0「受取人スコアの値を口で固定しない」／§6「当日取り直す」（09-07 12:xx **427**）／09-08 22:0x 実測では**同じ問いに違う値**が返った（画面で読む）。§7 の 01/02/08 に当日の値が採ってある。
+
+**Q19. Your Bazantic numbers from September 6 and September 9 disagree. Which is right?**
+A: *Both, on their dates — the Gateway changed, our harness did not. On September 6 every unpaid call to a zero-price tool got a 402, and reading a free tool cost a settlement: eighty-eight free reads, eighty-eight zero-USDC transactions on chain. On September 9 we measured the same Gateway again, and the zero-price tools now return their body on an unpaid MCP call — no 402, no settlement, and our bridge is never entered. We kept both sets of numbers with their dates. We do not claim to know why it changed.*
+要旨: 変わったのは Gateway 側。09-06 の数字（110 calls・88 settled・88 本の 0-USDC tx）は日付つきで残し、09-09 08:30–08:40 JST の再計測を併記。**因果は主張しない**。
+証拠: `BAZANTIC_FEEDBACK.md` §4 #1 / #3 / #4（"Re-measured 2026-09-09 08:30–08:40 JST" の文）・§5 1 行目／`examples/ethonline-2026-ab/README.md`（EN+JA の 1 行）／`7b5c58d`。
+
+**Q20. Bazantic mentioned a JWT that bypasses x402. What is it, and did you use it?**
+A: *We did not use it, and we read it as an owner-side setting. `@bazantic/cli` has `--auth-type api-key | jwt | x402-mpp | basic`, default `x402-mpp`: that is how the gateway owner authenticates to their own upstream, not a header a buyer sends. Tom Hay answered on September 9 that a JWT made on the Bazantic API-keys page can stand in as an API key to skip the 402 for testing. Sent as a buyer-side header it made no difference in our re-measurement, which fits that reading. Our gateway stays on the default, so what the judges call is the paid path.*
+要旨: ゲートウェイ所有者側の上流認証設定と読む。買い手ヘッダ（`Authorization: Bearer` / `x-api-key`）として送っても 09-09 の再計測で差なし。当社の gateway は既定 `x402-mpp` のまま。
+証拠: `BAZANTIC_FEEDBACK.md` §4 #5（Tom Hay の 09-09 Discord 回答と CLI の読み）／`WINDOW_PLAN.md` §1.4「Bazantic：Tom Hay 本人の発言 3 件」／Discord `#partner-bazantic`。
 
 **予備（時間があれば聞かれる）**
 - *"Is the settlement verified?"* → *"The SDK says at most `settle_claimed` — the seller's header is a claim. Only a verifier that re-reads the chain says `settled`; that is the production observatory's word, not the SDK's."*（`WINDOW_PLAN.md` §15 語彙・`SKILL.md` "Reading the answer"）
