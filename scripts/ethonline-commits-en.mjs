@@ -3,17 +3,18 @@
 // docs/ethonline-2026/COMMITS_EN.md — an English index of every commit in the
 // ETHOnline 2026 window, derived from `git log pre-ethonline-2026..<ref>`.
 //
-//   node scripts/ethonline-commits-en.mjs            # regenerate the file (exit 1 if a subject is untranslated)
-//   node scripts/ethonline-commits-en.mjs --check    # write nothing; exit 1 if any Japanese subject has no
-//                                                    # translation, a translation's recorded original no longer
-//                                                    # matches the commit (stale entry), or the file is not what
-//                                                    # this script produces from the commit it names (hand edit).
-//                                                    # A commit after that one that did not regenerate the file
-//                                                    # (stale file) is a `note:` on stderr, exit 0
-//   node scripts/ethonline-commits-en.mjs --check --strict   # …and a stale file is exit 1 too (the final pass
+//   node scripts/ethonline-commits-en.mjs            # regenerate the file (a missing translation is a `note:`)
+//   node scripts/ethonline-commits-en.mjs --check    # write nothing; exit 1 if a translation's recorded original no
+//                                                    # longer matches the commit (stale entry), a translation still
+//                                                    # contains CJK, or the file is not what this script produces
+//                                                    # from the commit it names (hand edit). A Japanese subject with
+//                                                    # no translation, and a commit after the pinned one that did not
+//                                                    # regenerate the file, are `note:` on stderr, exit 0
+//   node scripts/ethonline-commits-en.mjs --check --strict   # …and those two notes are exit 1 too (the final pass
 //                                                    # before the submission Release; run the generator first)
 //   node scripts/ethonline-commits-en.mjs --ref origin/main   # derive from another ref (default HEAD)
 //   node scripts/ethonline-commits-en.mjs --out <path>        # write/check another path (tests)
+//   node scripts/ethonline-commits-en.mjs --titles <path>     # read another titles file (tests)
 //
 // Why a script and not a hand-written list: every hand-maintained number in this
 // window went stale within a day (CHANGED_FILES.md, 2026-09-05). Commit subjects
@@ -36,14 +37,22 @@
 //
 // Two grades (same day, later). The first cut made "stale" exit 1 in root `npm test`,
 // so every commit on main had to carry a regenerated COMMITS_EN.md or the branch
-// went red — two unrelated branches were blocked within hours. Now:
+// went red — two unrelated branches were blocked within hours. A missing translation
+// was the same shape and did exactly that on 2026-09-10: d0346b3 landed a Japanese
+// subject with no entry here, root `npm test` went red on main, and every session in
+// the repo lost `push`. A hackathon deliverable must not be able to stop the repo, so
+// both "the index is behind" grades are notes and only self-contradiction is red:
 //   always red   — no Generated row / the SHA is not a commit / not an ancestor of
 //                  the ref / the file is not what this script renders from that SHA
-//                  (a hand edit or generator drift: the file lies about itself)
-//   --strict red — commits after the pinned SHA that did not regenerate the file
-//                  (the file is merely behind; a `note:` on stderr by default)
+//                  (a hand edit or generator drift: the file lies about itself) /
+//                  a titles entry whose recorded `ja` no longer matches the commit,
+//                  or whose `en` still contains CJK (the entry lies about itself)
+//   --strict red — a Japanese subject with no translation, and commits after the
+//                  pinned SHA that did not regenerate the file (the index is merely
+//                  behind the log; a `note:` on stderr by default)
 // `npm test` runs the default. The final pass before the submission Release runs
-// the generator and then `--check --strict` (RELEASE_NOTES_SUBMISSION.md).
+// the generator and then `--check --strict` (RELEASE_NOTES_SUBMISSION.md), which is
+// where a missing translation must still be red — judges read that file.
 // ============================================================
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -64,6 +73,9 @@ const CLAIM_PATHS = [
   "docs/ethonline-2026",
 ];
 const TITLES_PATH = join(ROOT, "docs/ethonline-2026/commit-titles-en.json");
+// Which titles file this run reads. Only --titles moves it, and only the tests pass that: the negative test
+// for the untranslated grade needs a titles file with a hole in it, and must not touch the real one.
+let titlesPath = TITLES_PATH;
 const DEFAULT_OUT = join(ROOT, "docs/ethonline-2026/COMMITS_EN.md");
 const CJK = /[぀-ヿ一-鿿！-｠]/;
 const UNTRANSLATED = "[untranslated]";
@@ -71,14 +83,15 @@ const TOP_PER_DAY = 3;
 const GENERATED_ROW = /^\| Generated \| .* from `([0-9a-f]{40})` \|$/m;
 
 function parseArgs(argv) {
-  const a = { check: false, strict: false, ref: "HEAD", out: DEFAULT_OUT };
+  const a = { check: false, strict: false, ref: "HEAD", out: DEFAULT_OUT, titles: TITLES_PATH };
   for (let i = 0; i < argv.length; i++) {
     const x = argv[i];
     if (x === "--check") a.check = true;
     else if (x === "--strict") a.strict = true;
     else if (x === "--ref") a.ref = argv[++i] ?? "";
     else if (x === "--out") a.out = resolve(argv[++i] ?? "");
-    else if (x === "-h" || x === "--help") { console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1, 17).map((l) => l.replace(/^\/\/ ?/, "")).join("\n")); process.exit(0); }
+    else if (x === "--titles") a.titles = resolve(argv[++i] ?? "");
+    else if (x === "-h" || x === "--help") { console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1, 18).map((l) => l.replace(/^\/\/ ?/, "")).join("\n")); process.exit(0); }
     else { console.error(`unknown option: ${x}`); process.exit(2); }
   }
   if (!a.ref) { console.error("--ref needs a value"); process.exit(2); }
@@ -121,8 +134,8 @@ function readClaimed(ref) {
 }
 
 function readTitles() {
-  const j = JSON.parse(readFileSync(TITLES_PATH, "utf8"));
-  if (!j || typeof j.titles !== "object") throw new Error(`${TITLES_PATH}: expected { titles: { <sha>: { ja, en } } }`);
+  const j = JSON.parse(readFileSync(titlesPath, "utf8"));
+  if (!j || typeof j.titles !== "object") throw new Error(`${titlesPath}: expected { titles: { <sha>: { ja, en } } }`);
   return j.titles;
 }
 
@@ -134,7 +147,9 @@ const cell = (s) => s.replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
 const link = (sha) => `[\`${sha.slice(0, 7)}\`](https://github.com/kzmttkc/vet402/commit/${sha})`;
 
 /**
- * Render the index for `head` (a 40-hex sha). Returns { md, problems, unused, stats }.
+ * Render the index for `head` (a 40-hex sha). Returns { md, problems, untranslated, unused, stats }.
+ * `problems` are always red (the titles file contradicts the log); `untranslated` is a note by default
+ * and red under --strict — a gap in a hackathon index must not be able to block every push to main.
  * The output depends only on the repository at `head`, commit-titles-en.json, and `generatedAt`
  * (the `Generated` row) — so a check can re-render at the sha the file names and compare.
  */
@@ -149,12 +164,13 @@ function render(head, generatedAt) {
   const begins = new Date(HACKING_BEGINS);
 
   const problems = [];
+  const untranslated = [];
   let translated = 0;
   let english = 0;
   for (const c of commits) {
     if (!CJK.test(c.subject)) { c.en = c.subject; english++; continue; }
     const t = titles[c.sha];
-    if (!t || typeof t.en !== "string" || !t.en.trim()) { c.en = UNTRANSLATED; problems.push(`${c.sha.slice(0, 7)} ${UNTRANSLATED}: ${c.subject}`); continue; }
+    if (!t || typeof t.en !== "string" || !t.en.trim()) { c.en = UNTRANSLATED; untranslated.push(`${c.sha.slice(0, 7)} ${UNTRANSLATED}: ${c.subject}`); continue; }
     if (t.ja !== c.subject) problems.push(`${c.sha.slice(0, 7)} stale entry: recorded ja ${JSON.stringify(t.ja)} != commit subject ${JSON.stringify(c.subject)}`);
     if (CJK.test(t.en)) problems.push(`${c.sha.slice(0, 7)} translation still contains CJK: ${t.en}`);
     c.en = t.en;
@@ -183,9 +199,9 @@ function render(head, generatedAt) {
   lines.push("");
   lines.push(`This is \`git log ${TAG}..${shown}\` (${commits.length} commits), grouped by day in UTC and rendered by`);
   lines.push("[`scripts/ethonline-commits-en.mjs`](../../scripts/ethonline-commits-en.mjs) — `node scripts/ethonline-commits-en.mjs` regenerates it;");
-  lines.push("`--check` (run by `npm test`) fails if any Japanese subject lacks a translation or if this file is not what the script produces from the");
-  lines.push("commit named in the **Generated** row; commits after that one which did not regenerate it are a warning, and `--check --strict` (the final pass");
-  lines.push("before the submission Release) makes that a failure too. `main` is also this product's production branch, so");
+  lines.push("`--check` (run by `npm test`) fails if this file is not what the script produces from the commit named in the **Generated** row — that is,");
+  lines.push("if it was edited by hand. A Japanese subject with no translation, and commits after that one which did not regenerate this file, are warnings;");
+  lines.push("`--check --strict` (the final pass before the submission Release) makes both of them failures too. `main` is also this product's production branch, so");
   lines.push("the window contains work we do **not** submit; the **Claimed** column is derived from the path filter in `README.md`:");
   lines.push("");
   lines.push("```bash");
@@ -208,7 +224,7 @@ function render(head, generatedAt) {
   lines.push(`| Claimed (✔) | **${claimedCount}** — touch at least one path in the filter |`);
   lines.push(`| Not claimed (—) | **${commits.length - claimedCount}** — production work in the same days |`);
   lines.push(`| Claimed but before ${HACKING_BEGINS.replace("T", " ").replace("Z", " UTC")} | **${preWindow.length}** (⚠) |`);
-  lines.push(`| Subjects translated from Japanese | **${translated}** (English already: ${english}${problems.length ? `; untranslated: ${problems.filter((p) => p.includes(UNTRANSLATED)).length}` : ""}) |`);
+  lines.push(`| Subjects translated from Japanese | **${translated}** (English already: ${english}${untranslated.length ? `; untranslated: ${untranslated.length}` : ""}) |`);
   lines.push("");
   // The short read: what we claim, day by day, with the largest claimed commits of each day.
   // "Largest" = insertions + deletions from `git log --shortstat` (merges count 0, so they never lead).
@@ -248,7 +264,7 @@ function render(head, generatedAt) {
   }
   lines.push("</details>");
   lines.push("");
-  return { md: lines.join("\n"), problems, unused, stats: { commits: commits.length, claimedCount, preWindow: preWindow.length, translated, english } };
+  return { md: lines.join("\n"), problems, untranslated, unused, stats: { commits: commits.length, claimedCount, preWindow: preWindow.length, translated, english } };
 }
 
 const stripGenerated = (md) => md.replace(GENERATED_ROW, "| Generated | (ignored) |");
@@ -289,9 +305,15 @@ function checkFreshness(out, ref, head) {
 }
 
 function main() {
-  const { check, strict, ref, out } = parseArgs(process.argv.slice(2));
+  const { check, strict, ref, out, titles } = parseArgs(process.argv.slice(2));
+  titlesPath = titles;
   const head = git(["rev-parse", `${ref}^{commit}`]).out.trim();
-  const { md, problems, unused, stats } = render(head, new Date());
+  const { md, problems, untranslated, unused, stats } = render(head, new Date());
+  // Two grades. `notes` is what is merely behind (a missing translation, a file the newer commits did not
+  // regenerate); --strict promotes every note to a problem. `problems` is self-contradiction and is always red.
+  const notes = [];
+  if (strict) problems.push(...untranslated);
+  else notes.push(...untranslated);
   let stale = null;
   if (check) {
     const f = checkFreshness(out, ref, head);
@@ -300,6 +322,7 @@ function main() {
   }
 
   for (const p of problems) console.error(`ethonline-commits-en: ${p}`);
+  for (const n of notes) console.error(`ethonline-commits-en: note: ${n}`);
   if (stale) console.error(`ethonline-commits-en: note: ${stale}`);
   for (const s of unused) console.error(`ethonline-commits-en: note: translation for ${s.slice(0, 7)} is not in ${TAG}..${ref} (unused)`);
 
@@ -309,7 +332,7 @@ function main() {
   }
   // file: fresh (matches its pinned commit, nothing after it) / stale (behind, a note only) / STALE (exit 1: hand edit, or stale under --strict)
   const fileState = !check ? "" : problems.some((p) => p.includes("stale") || p.includes("regenerate")) ? "STALE" : stale ? "stale (note)" : "fresh";
-  console.log(`ethonline-commits-en: ${stats.commits} commits (${stats.claimedCount} claimed, ${stats.preWindow} claimed pre-window), ${stats.translated} translated, ${stats.english} English${check ? `, file ${fileState}` : ""}, ${problems.length} problem(s)`);
+  console.log(`ethonline-commits-en: ${stats.commits} commits (${stats.claimedCount} claimed, ${stats.preWindow} claimed pre-window), ${stats.translated} translated, ${stats.english} English${untranslated.length && !strict ? `, ${untranslated.length} untranslated (note)` : ""}${check ? `, file ${fileState}` : ""}, ${problems.length} problem(s)`);
   process.exit(problems.length ? 1 : 0);
 }
 

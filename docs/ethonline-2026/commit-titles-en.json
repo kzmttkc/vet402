@@ -1140,6 +1140,10 @@
     "818a13efe80c0b1151e2beeb8e9c1328fe9703f6": {
       "ja": "docs(pentest): 署名の記述が金の経路を落としていた・staging は存在しないという実測を書く",
       "en": "docs(pentest): the signing description had dropped the money path; record that staging does not exist"
+    },
+    "d0346b3460cd22d4e4bd89eb4c473b3af0d679da": {
+      "ja": "docs(ethonline): Bazantic の JWT 迂回は「価格0の x402/MPP」が答え——Day 6 の探索を閉じ、Test Connection/Activate は48時間内に直る予定を記録",
+      "en": "docs(ethonline): the answer to Bazantic's JWT bypass is x402/MPP with the price zeroed — close the Day 6 exploration and record that Test Connection/Activate are due to be fixed within 48 hours"
     }
   }
 }
