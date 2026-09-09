@@ -48,7 +48,7 @@ ETHGlobal の規約は "all spec files, **prompts**, and planning artifacts" を
 
 **14:57**
 
-> @"/Users/takeshi/Downloads/S9.m4a" @"/Users/takeshi/Downloads/S8.m4a" @"/Users/takeshi/Downloads/S7.m4a" @"/Users/takeshi/Downloads/S6.m4a" @"/Users/takeshi/Downloads/S5.m4a" @"/Users/takeshi/Downloads/S4.m4a" @"/Users/takeshi/Downloads/S3.m4a" @"/Users/takeshi/Downloads/S2.m4a" @"/Users/takeshi/Downloads/S1.m4a"
+> @"<local>/Downloads/S9.m4a" @"<local>/Downloads/S8.m4a" @"<local>/Downloads/S7.m4a" @"<local>/Downloads/S6.m4a" @"<local>/Downloads/S5.m4a" @"<local>/Downloads/S4.m4a" @"<local>/Downloads/S3.m4a" @"<local>/Downloads/S2.m4a" @"<local>/Downloads/S1.m4a"
 
 **15:00**
 

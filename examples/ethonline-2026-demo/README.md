@@ -17,7 +17,10 @@ node src/run.ts judge <url>   # your own x402 URL: same picture, dry-run verdict
 
 `packages/sdk` must be built first (`cd ../../packages/sdk && npm install && npm run build`);
 this demo imports its `dist/`. No install is needed in this directory unless you use `--live`,
-which additionally needs `DEMO_PAYER_PRIVATE_KEY` and `npm install viem`.
+which additionally needs `DEMO_PAYER_PRIVATE_KEY` and `npm install viem@2.56.3` (no lockfile here on
+purpose — `scripts/judge-check.sh` and CI run this directory without an install; 2.56.3 is the version
+`examples/ethonline-2026-ab/package-lock.json` resolves for the same signer path, and the root lockfile
+resolves 2.55.1 — both satisfy the `^2.55.1` peer range in `package.json`).
 
 ## `refuse`
 

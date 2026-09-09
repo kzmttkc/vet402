@@ -184,20 +184,15 @@ Tokyo の一次情報は `ethglobal.com/events/tokyo2026` を直接見るしか�
 運営自身が "submit early to avoid issues in the final Minutes" と書いている。
 最終日に初めてフォームを開くと、動画アップロードの失敗が締切直前に出る。
 
-#### 【同日・メール本文にしか無い一次情報】提出時に **2 つの選択肢**がある（宛先 `kazumototakeshi@gmail.com`・Pascal）
+#### 【同日・メールにしか無い一次情報】提出時に **2 つの選択肢**がある
 
-> You have 2 options when submitting your project on the dashboard:
-> **1️⃣ Top Finalist & Partner Prizes** — If you choose this option, you will be added to the list of projects wanting to
-> present their project live to the Judges at the **Finalist Judging session on Monday, September 14th**.
-> This is a 2 round process. All projects looking to attend Live Finalist Judging will first be reviewed by the Judges
-> **asynchronously in Round 1** after submissions. Only projects that pass Round 1 will proceed to Round 2.
-> If your project makes it through the Round 1 screening, **we will email you** with the details…
-> **You are still eligible for Partner prizes if you select this option.** Partner Judging will take place async — the only
-> thing you are required to do here is to **select the partner prizes you are applying for** in your submission form.
-> **2️⃣ Partner Prizes Only** — If you choose this option **you will not be attending the Finalist Judging**.
+ETHGlobal 運営から 2026-09-08 に返信あり（私信のため本文は転載しない）。趣旨: 提出フォームで
+**1️⃣ Top Finalist & Partner Prizes**（Round 1 は提出後に審査員が非同期で選抜し、通過分だけが 09-14 月曜の
+Finalist Judging に進む。パートナー賞の資格は落ちず、応募する賞をフォームで選ぶだけ）か
+**2️⃣ Partner Prizes Only**（Finalist Judging には出ない）を選ぶ。
 
 **決定（2026-09-08・ハッカソン戦略）: 1️⃣ を選ぶ。**
-①でもパートナー賞（The Graph / Bazantic）の資格は落ちないと原文が明記しており、②を選ぶ理由が 1 つも無い。
+①でもパートナー賞（The Graph / Bazantic）の資格は落ちないと運営が明記しており、②を選ぶ理由が 1 つも無い。
 §1.4 冒頭の「**Continuity のファイナリスト枠は 3 つ**」と合わせると、②は**自分から枠を捨てる**選択になる。
 ライブ審査の台本・問答 15 件・逃げ道は `LIVE_JUDGING.md` に用意済みで、Takeshi の 09-14〜16 も空けてある。
 
