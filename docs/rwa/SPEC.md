@@ -495,6 +495,23 @@ Do not merge two addresses into one PnL.
 - README: 本体 `/score` を変えていないこと、会場スコープ、除外会場
 - 9/14以降の commit 差分
 
+### §13b Open House Singapore（提出会場）
+
+期間: 2026-09-14 〜 2026-10-04 23:59（会場時計に従う）
+形式: オンライン。既存コード可。会期中の差分を説明できればよい。
+資格: Arbitrum 系にデプロイ。この楔は Robinhood Chain 4663 または testnet 46630。
+トラック: Open Category と Promising Products。両方出す。新SKUやVaultでトラックを増やさない。
+審査が見るもの: コントラクトの質、プロダクトとしての明快さ、独自性、実在の問題。
+予約枠: 上位に RH Chain 枠がある。デプロイ先は RH を外さない。
+提出物:
+- 公開 URL `/rwa/:address`
+- facts JSON
+- アンカー tx（4663 または 46630）
+- README: 既存 vet402（/score）は変えていないこと、RWA は会期差分であること
+- 9/16 以降の commit 一覧
+
+やらない: 賞取りのための会場追加、Arbitrum One への移植、トークン、実行エンジン。
+
 ---
 
 ## 14. 計画として先に予約し、3週間は触らないもの
