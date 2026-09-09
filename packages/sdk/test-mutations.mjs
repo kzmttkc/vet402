@@ -243,6 +243,14 @@ const MUTATIONS = [
     replace: "  /* MUTANT: amount format check removed */",
   },
   {
+    id: "M45",
+    what: '金銭ゲートの units <= 0 を units < 0 に（402 の額 "0" が $0 認可の署名へ進む）',
+    rule: "額 0 の accept は署名の前に落とす（2026-09-09 監査 A9 NEW2: 表に文字列 \"0\" が無く生き残った）",
+    file: PAY,
+    find: '  if (!Number.isFinite(units) || units <= 0) return ["chain_or_asset_mismatch"];',
+    replace: '  if (/* MUTANT */ !Number.isFinite(units) || units < 0) return ["chain_or_asset_mismatch"];',
+  },
+  {
     id: "M32",
     what: "402 の額と呼び手の名乗り（amountUsd）の照合を外す（amountUsd 0.01 に $1 の 402 を上限内として払う）",
     rule: "A3 名乗りは上限とは別の関門（price_above_declared）",

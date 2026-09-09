@@ -29,6 +29,7 @@ const ROWS = [
   { id: "empty-object", from: "json", value: {} },
   { id: "number", from: "json", value: 20000 },
   { id: "zero", from: "json", value: 0 },
+  { id: "string-zero", from: "json", value: "0" /* 402 の額 "0": 形は正しく、値が 0（2026-09-09 監査 A9 NEW2） */ },
   { id: "negative", from: "json", value: -1 },
   { id: "fraction", from: "json", value: 0.5 },
   { id: "huge-number", from: "json", value: 1e400 /* JSON.parse("1e400") === Infinity */ },
@@ -50,7 +51,7 @@ export const BROKEN_SHAPES = Object.freeze(ROWS.map((r) => Object.freeze(r)));
 
 /** 表に必ず居なければならない行。監査が実物で見つけた 4 形＋ JSON が作れる境界値。 */
 export const REQUIRED_SHAPE_IDS = Object.freeze([
-  "null", "absent", "empty-array", "array-of-null", "empty-object", "number", "zero", "negative",
+  "null", "absent", "empty-array", "array-of-null", "empty-object", "number", "zero", "string-zero", "negative",
   "huge-number", "nan", "string-true", "hex-string", "exp-string", "empty-string", "padded-string", "huge-string",
 ]);
 
