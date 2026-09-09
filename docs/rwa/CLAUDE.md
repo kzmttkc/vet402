@@ -1,6 +1,8 @@
 # CLAUDE.md — vet402 RWA
 
 RWA code lives only under app/rwa, app/api/v1/rwa, app/api/v1/wallets/[address]/rwa, packages/rwa, fixtures/rwa, docs/rwa.
+In this repo app/ means src/app/. Do not create a top-level app/ directory.
+DB is Neon + drizzle. New tables live in src/lib/db/rwa-schema.ts only. Do not edit src/lib/db/schema.ts. Do not create supabase/.
 
 Do not import RWA into /score or x402 observatory.
 Do not multiply uiMultiplier into the Chainlink price.
