@@ -541,3 +541,54 @@ WO の該当項目は引き取り不要です。
 - 件数: `git log --format='%h' 0e1c5d7..e3f3170 | wc -l` → 5
 - 鮮度関門: `node scripts/ethonline-commits-en.mjs --check; echo $?` → 末尾 `file fresh, 0 problem(s)`・exit 0
 - README の導線: `grep -n "Start here" README.md`
+
+---
+
+## 2026-09-09 09:30 ハッカソン戦略 → vet402.com セッション: **今朝 3 巡目——`e3f3170..aeb338c` の 10 コミット（前項が件名だけで予告した 2 本の SHA 確定を含む）・CI 緑**
+
+範囲は前項の `e3f3170` の次から `origin/main`（`aeb338c`・CI success）まで。**そちらの手番が要るものはありません**——本番 DB への ALTER も env の追加もありません。
+**製品本体に効くのは `030ab2e` の 3 ファイルだけ**（`src/app/ethonline/page.tsx`・`src/app/page.tsx`・`src/app/sitemap.ts`）。残りは plugin 宣言・scripts・tests・docs です。
+確かめ方: `git diff --stat e3f3170..aeb338c -- src/`（【実測】2026-09-09 09:3x: `page.tsx 37 / page.tsx 12 / sitemap.ts 3` の 3 行）。
+
+**決済経路について（名指し）**: `packages/sdk/src/x402-pay.ts`・`pay-or-refuse.ts`・`src/lib/observatory/*payer*`・`src/lib/db/schema.ts` は無変更。
+確かめ方: `git diff --stat e3f3170..aeb338c -- packages/sdk/src src/lib/observatory src/lib/db/schema.ts`（【実測】出力なし）。
+
+### 1. 本番の面に出るもの（1 コミット・3 ファイル）
+
+- **`030ab2e` — `/ethonline` の直し 6 点＋ `/` からの導線＋ sitemap。** 検証役（下書きを見ていない別エージェント）の指摘を全部入れた:
+  1. doc-head「Nothing here needs an API key」→「The first command needs no key」（頁が指す `--live` ブロックは鍵が要るので、前の文は広すぎた）
+  2. 「no signature is ever created」→「no signature is created」
+  3. §3 Continuity: 09-05 に ETHGlobal へ送った文は **207** と書いており、この頁の **214** との差は DISCLOSURE が説明する——と本文に明記（前は「disclosed in writing」だけで数の食い違いが読めなかった）
+  4. 「(every purchase we made…)」→「(each purchase we made…)」
+  5. **`npm run judge-check` の 1 行を見出し直下へ移動**（1470×757 と 375×812 の初画面に入ることを headless Chromium で実測）。§1 は説明だけ残し、重複していたコードブロックを落とした
+  6. `src/app/page.tsx`: `/` の doc-head・Status 行の直下に **「ETHOnline 2026 judges →」**（`/ethonline` への唯一の内部リンク。提出フォームの Demo URL は vet402.com なので、判定者が `/` に着いても 1 クリックで行ける）
+  - `src/app/sitemap.ts`: `/ethonline` を追加（`lastModified: "2026-09-09"`・weekly・0.6）。sitemap.ts の規則「内部リンク 0 の頁は載せない」に従い、朝の公開時は載せず、6 で導線が付いたので同じ規則で足した
+  【実測】2026-09-09 09:30: `curl -sI https://vet402.com/ethonline | head -1` → `HTTP/2 200`／`curl -s https://vet402.com/sitemap.xml | grep -o '<loc>[^<]*ethonline[^<]*</loc>'` → `<loc>https://vet402.com/ethonline</loc>`／`curl -s https://vet402.com/ | grep -o 'ETHOnline 2026 judges →'` → 1 件
+
+### 2. 本番の面に出ないもの（コード・関門）
+
+- **`b063e9e` — `.mcp.json` が npm の `@vet402/mcp-server` ではなく同梱の dist を起動する。** 前項の `e3f3170` は `npx -y @vet402/mcp-server` で起動していたが、npm の最新は **0.2.0（08-24）＝5 ツール・`pay_if_trusted` 無し**。plugin を入れた判定者が、skill の説明するツールを持たないサーバを掴む状態だった。publish は提出後まで範囲外なので、`command: node`・`args: ["${CLAUDE_PLUGIN_ROOT}/packages/mcp-server/dist/index.js"]` に変更（`${CLAUDE_PLUGIN_ROOT}` は Claude Code plugin の install dir。`dist/` はコミット済み・`node_modules` は無いので `skills/pay-or-refuse/SKILL.md` の Setup に install 手順を足した）。`tests/agent-skill-plugin.test.ts` は command が `node`・args が dist の入口そのもの・その file が在って本文に `pay_if_trusted` を含むことを見る。
+  【一次】コミット本文の実測: worktree の dist に stdio `tools/list` → **7 ツール（`pay_if_trusted` 含む）**、`claude --plugin-dir <clone> mcp list` → `plugin:vet402:vet402 Connected`
+- **`74fa047` — `tests/agent-skill-plugin.test.ts` を root `tsc --noEmit` の射程から外す。** `e3f3170` が CI（typecheck + production build・run 34289157020）を赤にした原因: 未使用の `@ts-expect-error` と、`packages/mcp-server/src/pay-if-trusted` の import（その `@vet402/sdk` 型 import が root tsconfig から解決できない）。他の parity テストと同じく **`REFUSE_REASONS` と `DEFAULT_API_URL` を source の本文から正規表現で引く**形に変更。root `npx tsc --noEmit` exit 0
+- **`aeb338c` — `scripts/push-main.sh` に typecheck 段（3c）。** root `npm test` は tsx 経由で型を剥がすだけなので、新しいテストの型エラーがローカル緑・CI 赤になる（上の `e3f3170` がその形）。CI の "typecheck + unit tests" ジョブが最初に打つ `npm run typecheck`（`tsc --noEmit`・tests/ 含む）を numbers 段の直後・root npm test の前に入れた。**`--full` でなくても毎回走る**（約 5 秒）。赤なら `error TS…` を 20 行まで印字して push しない。ログは `$LOGDIR/typecheck.log`
+- **`17d4719` — COMMITS_EN の鮮度関門（前項が件名で予告した 2 本目。SHA 確定）。** `--check` が翻訳しか見ておらず、本体が HEAD より 3 本遅れても緑だった（318 vs 321）。`Generated` 行の SHA から索引を描き直して突き合わせ（手編集・生成器のずれは赤）、その SHA 以後のコミットに COMMITS_EN.md を再生成していないものがあれば stale。`tests/ethonline-commits-en.test.ts` が root `npm test` で走る。冒頭に「Claimed, by day」（日別 ✔ 件数＋差分行数の大きい claimed 3 件）、全件表は `<details>`。`93df57e`・`fd33a6b` の日本語件名 2 本の対訳を `commit-titles-en.json` に追加
+- **`9dc22e6` — 上の関門を 2 段階に緩めた（`--strict` の意味）。** `17d4719` のままだと **main への全コミットが索引の再生成を同梱しないと root npm test が赤**になり、数時間で無関係な 2 ブランチが止まった。今の判定:
+  - **常に赤**: `Generated` 行が無い／SHA がコミットでない／ref の祖先でない／その SHA から描いた内容とファイルが違う（＝ファイルが自分について嘘をついている）
+  - **`--strict` のときだけ赤**: pin した SHA 以後に再生成していないコミットがある。既定の `--check` は stderr に `note: … stale — N commit(s) since <sha> did not regenerate it` を出して **exit 0**、要約行は `file stale (note)`
+  - **運用上の帰結**: fetch+rebase 後の再生成は**もう必須ではない**（前項の「打って commit しないと赤」は取り消し）。**提出 Release を切る 09-13 の手順が `node scripts/ethonline-commits-en.mjs` → `--check --strict`** に変わった（`RELEASE_NOTES_SUBMISSION.md` のチェック行・`LIVE_JUDGING.md` #4 前日パス）
+  【実測】2026-09-09 09:30（`aeb338c` の clean worktree）: `node scripts/ethonline-commits-en.mjs --check; echo $?` → `333 commits (190 claimed, 3 claimed pre-window), 285 translated, 48 English, file stale (note), 0 problem(s)`・exit **0**（`aeb338c` 1 本が未再生成の note）／`--check --strict` → exit **1**。本項のコミットでも note が 2 本になるだけで赤にはなりません
+
+### 3. 文書のみ
+
+- **`7b5c58d` — `BAZANTIC_FEEDBACK.md` §4 #1/#3/#4/#5・§5 の 09-09 再計測。** 08:30–08:40 JST に同じ Gateway を測り直し、**0 mcent のツール（`info`・`getHealth`・`resolveQuery`・`getPayeeScore`）が未払いの MCP `tools/call` に本文を返す**ようになっていた（402 なし・settlement なし・橋は動かない）。09-06 の数字（110 calls・88 settled・88 本の 0-USDC tx）は**日付つきでそのまま残す**。#5 の「見つからなかった JWT」は Tom Hay の 09-09 Discord 回答（`bazantic.com/api-keys` で作る JWT を API key として使えば 402 を迂回）に置換。CLI の `--auth-type` は gateway 所有者側の upstream 認証設定と読み、当社の gateway は既定 `x402-mpp` のまま。`examples/ethonline-2026-ab/README.md` に EN+JA の 1 行。**Gateway が変わった理由については因果を主張していません**
+- **`93df57e`＋`fd33a6b`** — Discord 定期走査で Bazantic の第 3 トラック賞 "Agentify a New API" が判明（`WINDOW_PLAN.md` 末尾 29 行＋本ファイル冒頭の 08:3x 項）。締切・審査日程に変更なし。**本ファイルの冒頭に既に記帳済み**（ここは件数の突合のために再掲）
+- **`147d624`** — README §ETHOnline 2026 の「Start here」4 行＋前項（08:15）そのもの。SHA 確定
+
+### 確かめ方（読み取りだけ）
+
+- 件数: `git log --format='%h' e3f3170..aeb338c | wc -l` → **10**（本項の記帳 = `030ab2e`・`b063e9e`・`74fa047`・`aeb338c`・`17d4719`・`9dc22e6`・`7b5c58d`・`93df57e`・`fd33a6b`・`147d624` の 10。漏れ 0）
+- 順序（first-parent）: `git log --first-parent --reverse --format='%h %s' e3f3170..aeb338c`
+- plugin の起動先: `cat .mcp.json`（`command` が `node`・args が `${CLAUDE_PLUGIN_ROOT}/packages/mcp-server/dist/index.js`）
+- typecheck 段: `grep -n '3c. typecheck' scripts/push-main.sh`
+- 鮮度関門の 2 段階: `node scripts/ethonline-commits-en.mjs --check; echo $?`（note で 0）／`node scripts/ethonline-commits-en.mjs --check --strict; echo $?`（stale なら 1）
+- CI: `gh run list --branch main --limit 3 --json headSha,conclusion`（【実測】`aeb338c`・`7b5c58d`・`9dc22e6` いずれも success）
