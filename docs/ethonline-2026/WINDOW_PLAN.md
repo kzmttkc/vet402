@@ -225,9 +225,23 @@ Continuity Track を選んでいてもこの文言が出る。**規約本文（`
 出たら提出文の該当欄で `docs/ethonline-2026/CHANGED_FILES.md`（領域別の導出表）・`DISCLOSURE_2026-09-05.md`・
 タグ `pre-ethonline-2026` の Release を指す。**隠さず、境界を自分から出す。**
 
-#### 【2026-09-10 08:3x 追記】Bazantic：Tom Hay が「x402/MPP を迂回する JWT」の代わりを答えた（`#partner-bazantic` 実読）
+#### 【2026-09-10 08:3x 追記・09-10 訂正】Bazantic：Tom Hay の発言は**2件あり、別々の質問への別々の答え**（`#partner-bazantic` 実読）
 
-§16.2 と Day 6 の「ダッシュボードで JWT を作れるか」に対する**パートナー側の答えが出た。JWT ではなく「価格 0 の x402/MPP を認証の代わりに使う」**（zkenk の質問への返信）:
+> **訂正（2026-09-10）**: この節の初版（`d0346b3`）は「JWT の迂回口は Tom 自身の説明にも出てこない。
+> **Day 6 の探索は「無い」で閉じてよい**」と書いた。**誤り。** 下の (B)（別のハッカー宛）だけを読んで、
+> その前に我々自身が受け取っていた (A) の存在を否定した。(A) は `BAZANTIC_FEEDBACK.md` §4 #5 と
+> LIVE_JUDGING Q20 に 09-09 の時点で既に入っており、この節だけがそれと食い違っていた。
+> 2件を混ぜない形に書き直す。
+
+**(A) 我々（Sen_web3）の投稿への返信・2026-09-09 —— JWT の迂回口は「在る」。場所も使い方も名指しされている。**
+
+> I'm from the Bazantic team - we do have a JWT header option to bypass the 402 challenge - you can create the JWT
+> and use that to avoid having to sign transactions - go to https://bazantic.com/api-keys and you can create a JWT
+> and use it as an API key for your gateway
+> —— Tom Hay, `#partner-bazantic`、我々の投稿への返信、2026-09-09
+
+**(B) 別のハッカー（zkenk）の「per-caller upstream credentials / 未認証サインアップ」への返信・2026-09-09 23:22 JST
+—— こちらは JWT の話ではなく、価格 0 の x402/MPP を認証の代わりに使う案。我々への回答ではない。**
 
 > Good question - per-caller upstream credentials we do somewhat support - though admittedly it is hacky - it would be
 > to create a gateway per user - which is not great. Let me think on this - I may be able to think of an intermediate
@@ -235,10 +249,14 @@ Continuity Track を選んでいてもこの文言が出る。**規約本文（`
 > Unauthenticated sign-up we can support this (I believe) - you can launch a gateway with no auth required. You can use
 > **x402/MPP with the price zero'd out to be a form of auth** - it will require a user to sign a transaction everytime,
 > but not pay anything.
-> —— Tom Hay, `#partner-bazantic`, 2026-09-09 23:22 JST
+> —— Tom Hay, `#partner-bazantic`、zkenk への返信、2026-09-09 23:22 JST
 
-**含意**: (1) JWT の迂回口は Tom 自身の説明にも出てこない。**Day 6 の探索は「無い」で閉じてよい**（ダッシュボードを探す時間を使わない）。
-(2) 「price zero'd out … but not pay anything」は §16.1 の実測（$0.00 でも 402・A/B の橋で 88 tx を署名）と一見食い違うが、
+**含意**: (1) **JWT の迂回口は在る**（(A)）。作る場所は `bazantic.com/api-keys`、送り方は gateway の API key として。
+§16.2 と Day 6 の「ダッシュボードで JWT を作れるか」は「**無い**」ではなく「**在る。ただし docs にも
+ダッシュボードの導線にも出ておらず、Discord で聞いて初めて分かった**」で閉じる（それがフィードバックの中身になる）。
+我々の gateway は既定 `x402-mpp` のままにする——**審査員が踏むのは有料経路**。
+(2) (B) は別人の別の質問への回答なので、(A) を否定しない。**「Tom が JWT に触れなかった」は (B) だけを見た読み。**
+(3) 「price zero'd out … but not pay anything」は §16.1 の実測（$0.00 でも 402・A/B の橋で 88 tx を署名）と一見食い違うが、
 Tom 自身が "will require a user to sign a transaction everytime" と書いている。**「払わない」は金額が 0 の意味で、402＋署名は仕様通り。**
 → フィードバック doc はこの読みで書く（「壊れている」ではなく「**0 円でも 402 が返るので署名が要る、と docs に明記してほしい**」）。
 

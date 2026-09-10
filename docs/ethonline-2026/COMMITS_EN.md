@@ -4,7 +4,7 @@
 
 ## How this file is made
 
-This is `git log pre-ethonline-2026..d0346b3` (344 commits), grouped by day in UTC and rendered by
+This is `git log pre-ethonline-2026..f076122` (347 commits), grouped by day in UTC and rendered by
 [`scripts/ethonline-commits-en.mjs`](../../scripts/ethonline-commits-en.mjs) — `node scripts/ethonline-commits-en.mjs` regenerates it;
 `--check` (run by `npm test`) fails if this file is not what the script produces from the commit named in the **Generated** row — that is,
 if it was edited by hand. A Japanese subject with no translation, and commits after that one which did not regenerate this file, are warnings;
@@ -12,10 +12,10 @@ if it was edited by hand. A Japanese subject with no translation, and commits af
 the window contains work we do **not** submit; the **Claimed** column is derived from the path filter in `README.md`:
 
 ```bash
-git log pre-ethonline-2026..d0346b3 -- packages/sdk packages/mcp-server \
+git log pre-ethonline-2026..f076122 -- packages/sdk packages/mcp-server \
     examples/ethonline-2026-demo examples/ethonline-2026-ab \
     SKILL.md AI_USAGE.md docs/ethonline-2026    # ✔ claimed
-git log pre-ethonline-2026..d0346b3             # everything, ✔ and —
+git log pre-ethonline-2026..f076122             # everything, ✔ and —
 ```
 
 A commit is ✔ when it touches at least one of those paths, — otherwise. Subjects written before the English-subject rule took effect
@@ -26,12 +26,12 @@ that instant are marked **⚠ pre-window** below and listed in [`DISCLOSURE_2026
 
 | | |
 |---|---|
-| Generated | 2026-09-09 23:39:06 UTC from `d0346b3460cd22d4e4bd89eb4c473b3af0d679da` |
-| Range | `pre-ethonline-2026..d0346b3` — **344 commits** on 6 days (UTC), 13 of them merges |
-| Claimed (✔) | **197** — touch at least one path in the filter |
+| Generated | 2026-09-10 00:40:01 UTC from `f076122b02971d72c40efd2b32c86af3e95e13b8` |
+| Range | `pre-ethonline-2026..f076122` — **347 commits** on 7 days (UTC), 13 of them merges |
+| Claimed (✔) | **200** — touch at least one path in the filter |
 | Not claimed (—) | **147** — production work in the same days |
 | Claimed but before 2026-09-04 16:00:00 UTC | **3** (⚠) |
-| Subjects translated from Japanese | **286** (English already: 58) |
+| Subjects translated from Japanese | **286** (English already: 61) |
 
 ## Claimed, by day (UTC)
 
@@ -68,16 +68,21 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 - [`cd246d9`](https://github.com/kzmttkc/vet402/commit/cd246d92cad4078fd710d442ea70718d2f684520) 11:22 — ethonline: fix(demo): make the announced gate match the gate that fires (A≠C 28 → 0) (766 lines)
 - [`bfc16bb`](https://github.com/kzmttkc/vet402/commit/bfc16bbc80585607196cdcde498bc2a563416cb6) 07:57 — ethonline: read verdict words and quality flags through one shared rule (676 lines)
 
-### 2026-09-09 — 8 of 13 claimed
+### 2026-09-09 — 9 of 14 claimed
 
+- [`1244663`](https://github.com/kzmttkc/vet402/commit/124466367df71e93aa8cde0cbbe80303ca20189e) 23:55 — fix(commits-en): a missing translation is a note, not a red main — nothing hackathon-only may block every push (158 lines)
 - [`a783dab`](https://github.com/kzmttkc/vet402/commit/a783dab6b0a391fe4cd186d11714b3d93a280d07) 05:33 — fix(security): widen the A/B secret filter, gate prod DB host names out of public docs (153 lines)
 - [`421cd05`](https://github.com/kzmttkc/vet402/commit/421cd0539ea64309fafcd5b1f399d7fb96f483b3) 05:58 — docs(handoffs): hand off today's fourth round (aeb338c..690b4fc, 7 commits) with health attribution and two ops notes (82 lines)
-- [`08a7dd1`](https://github.com/kzmttkc/vet402/commit/08a7dd1a233f72ef78ede69aadbde8bfcad92806) 06:19 — docs(ethonline): summarise the private #ticket-5926 reply instead of quoting it; regenerate COMMITS_EN (61 lines)
+
+### 2026-09-10 — 2 of 2 claimed
+
+- [`f076122`](https://github.com/kzmttkc/vet402/commit/f076122b02971d72c40efd2b32c86af3e95e13b8) 00:38 — fix(numbers): guard recorded values against their source — sdk_mutations said 44 while the harness kills 45 (123 lines)
+- [`593c9e2`](https://github.com/kzmttkc/vet402/commit/593c9e2bd178d05ebb6e4b6fa365f40b816f507c) 00:10 — docs(ethonline): stop promising the block advances between two runs; mark the payee score as moving (8 lines)
 
 ## Every commit, by day (UTC), oldest first
 
 <details>
-<summary>All 344 commits — ✔ claimed and — not claimed (click to expand)</summary>
+<summary>All 347 commits — ✔ claimed and — not claimed (click to expand)</summary>
 
 ### 2026-09-04 — 87 commits, 11 claimed
 
@@ -435,7 +440,7 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`17d4719`](https://github.com/kzmttkc/vet402/commit/17d471913317fad602b0fa48109cd3953fe4ea48) | 23:34 | ✔ | feat(commits-en): freshness gate for COMMITS_EN.md, and a "Claimed, by day" opening |
 | [`9dc22e6`](https://github.com/kzmttkc/vet402/commit/9dc22e6e7cb753216a0100bd0bf25998b5a95549) | 23:52 | ✔ | fix(commits-en): a COMMITS_EN.md that is merely behind is a note, not a red root test; --check --strict for the Release |
 
-### 2026-09-09 — 13 commits, 8 claimed
+### 2026-09-09 — 14 commits, 9 claimed
 
 | SHA | UTC | Claimed | Subject (English) |
 |---|---|:---:|---|
@@ -452,5 +457,13 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`08a7dd1`](https://github.com/kzmttkc/vet402/commit/08a7dd1a233f72ef78ede69aadbde8bfcad92806) | 06:19 | ✔ | docs(ethonline): summarise the private #ticket-5926 reply instead of quoting it; regenerate COMMITS_EN |
 | [`e5e5914`](https://github.com/kzmttkc/vet402/commit/e5e5914629f194381dbeab3904254c8547109767) | 19:55 | ✔ | docs(ethonline): settle the /api/health degradation on deadline:getLogsChunked and bound its blast radius |
 | [`d0346b3`](https://github.com/kzmttkc/vet402/commit/d0346b3460cd22d4e4bd89eb4c473b3af0d679da) | 23:16 | ✔ | docs(ethonline): the answer to Bazantic's JWT bypass is x402/MPP with the price zeroed — close the Day 6 exploration and record that Test Connection/Activate are due to be fixed within 48 hours |
+| [`1244663`](https://github.com/kzmttkc/vet402/commit/124466367df71e93aa8cde0cbbe80303ca20189e) | 23:55 | ✔ | fix(commits-en): a missing translation is a note, not a red main — nothing hackathon-only may block every push |
+
+### 2026-09-10 — 2 commits, 2 claimed
+
+| SHA | UTC | Claimed | Subject (English) |
+|---|---|:---:|---|
+| [`593c9e2`](https://github.com/kzmttkc/vet402/commit/593c9e2bd178d05ebb6e4b6fa365f40b816f507c) | 00:10 | ✔ | docs(ethonline): stop promising the block advances between two runs; mark the payee score as moving |
+| [`f076122`](https://github.com/kzmttkc/vet402/commit/f076122b02971d72c40efd2b32c86af3e95e13b8) | 00:38 | ✔ | fix(numbers): guard recorded values against their source — sdk_mutations said 44 while the harness kills 45 |
 
 </details>
