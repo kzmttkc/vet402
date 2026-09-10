@@ -13,6 +13,19 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-11 09:xx JST — Dependabot 12件のうち、非破壊で直せる3件（js-yaml・browserslist・baseline-browser-mapping）を lockfile だけで上げた
+
+- **変えたもの**: `package-lock.json` のみ。`package.json`・`overrides`・コード・env・DB は無変更。`npm update js-yaml browserslist baseline-browser-mapping` で動いた7パッケージは、すべて親の semver 範囲内（メジャー上げ0）
+  - dev（eslint 経由）: js-yaml 4.3.1→4.3.2 / browserslist 4.28.6→4.28.9 / update-browserslist-db 1.2.3→1.3.3 / electron-to-chromium 1.5.389→1.5.427 / node-releases 2.0.51→2.0.55
+  - 本番依存（next がビルド時に読むブラウザ対応表のデータ）: baseline-browser-mapping 2.10.43→2.11.22 / caniuse-lite 1.0.30001805→1.0.30001810
+- **触っていない決済経路**: `src/lib/observatory/*payer*`・`packages/sdk/src/x402-pay.ts`・`pay-or-refuse.ts`・署名器、`packages/sdk` の lockfile。
+  `@solana/web3.js`→jayson が引く stream-json 1.9.1・uuid 8.3.2 は**上げていない**（パッチ版 3.5.0・11.1.1 は jayson の範囲 `^1.9.1`・`^8.3.2` の外。上げると Solana payer の RPC クライアントの実行時が変わる）
+- **本番ビルドで確かめたこと**: 同じ worktree で上げる前と後に `next build` を1回ずつ走らせ、`.next/server` を比べた。
+  payer 系（`sol402` / `x402-payer` / `pay-or-refuse`）を含むチャンク4本はバイト一致。差が出た13ファイルは build ID・server action の暗号鍵と ID・その ID を含むクライアントチャンク名だけ（ビルドのたびに変わる値。ID を伏せると一致）
+- **直していない9件**: esbuild 0.18.20（drizzle-kit→@esbuild-kit/core-utils `~0.18.20`、パッチは 0.25＝破壊的。dev のみ・serve 未使用）/ bigint-buffer（パッチ無し。devDependency の @solana/spl-token からだけ引かれ、本番コードは 09-07 に `spl-token-lite.ts` へ置換済み）/ stream-json・uuid（上記）/ examples/langchain-tool の langsmith ×4・uuid（@langchain/core 0.3.80 の `^0.3.67`・`^10.0.0` の外。直すには @langchain/core 1.x へのメジャー上げが要る）
+- **npm audit**: root `--omit=dev` 5→4（high 0→0）／root 全体 16（high 5）→13（high 3）／examples/langchain-tool 3→3
+- **そちらへの影響**: 想定なし。クライアントのブラウザ対応表データが新しくなるだけ
+
 ## 2026-09-11 06:4x JST — `/api/health` の `feedback_stats_unavailable(deadline:getLogsChunked)` は**上流RPCの劣化ではなく、日次 cron と tail 走査の設計から出る「のこぎり波」**だった（発注の因果を実測で訂正）
 
 - **変えたもの**: **本番は何も変えていない。** この節だけ。env・cron・コード・DB いずれも未変更（本番DBは読み取りのみ）
