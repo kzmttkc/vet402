@@ -4,7 +4,7 @@
 
 ## How this file is made
 
-This is `git log pre-ethonline-2026..ecad214` (357 commits), grouped by day in UTC and rendered by
+This is `git log pre-ethonline-2026..d60d73c` (358 commits), grouped by day in UTC and rendered by
 [`scripts/ethonline-commits-en.mjs`](../../scripts/ethonline-commits-en.mjs) — `node scripts/ethonline-commits-en.mjs` regenerates it;
 `--check` (run by `npm test`) fails if this file is not what the script produces from the commit named in the **Generated** row — that is,
 if it was edited by hand. A Japanese subject with no translation, and commits after that one which did not regenerate this file, are warnings;
@@ -12,10 +12,10 @@ if it was edited by hand. A Japanese subject with no translation, and commits af
 the window contains work we do **not** submit; the **Claimed** column is derived from the path filter in `README.md`:
 
 ```bash
-git log pre-ethonline-2026..ecad214 -- packages/sdk packages/mcp-server \
+git log pre-ethonline-2026..d60d73c -- packages/sdk packages/mcp-server \
     examples/ethonline-2026-demo examples/ethonline-2026-ab \
     SKILL.md AI_USAGE.md docs/ethonline-2026    # ✔ claimed
-git log pre-ethonline-2026..ecad214             # everything, ✔ and —
+git log pre-ethonline-2026..d60d73c             # everything, ✔ and —
 ```
 
 A commit is ✔ when it touches at least one of those paths, — otherwise. Subjects written before the English-subject rule took effect
@@ -26,12 +26,12 @@ that instant are marked **⚠ pre-window** below and listed in [`DISCLOSURE_2026
 
 | | |
 |---|---|
-| Generated | 2026-09-10 21:41:34 UTC from `ecad214f97895ae93fb23dcd0014b0fd87aa240a` |
-| Range | `pre-ethonline-2026..ecad214` — **357 commits** on 7 days (UTC), 13 of them merges |
-| Claimed (✔) | **210** — touch at least one path in the filter |
+| Generated | 2026-09-10 22:44:55 UTC from `d60d73cf13c873727a7e8fce82b1fc4faa7035e1` |
+| Range | `pre-ethonline-2026..d60d73c` — **358 commits** on 7 days (UTC), 13 of them merges |
+| Claimed (✔) | **211** — touch at least one path in the filter |
 | Not claimed (—) | **147** — production work in the same days |
 | Claimed but before 2026-09-04 16:00:00 UTC | **3** (⚠) |
-| Subjects translated from Japanese | **286** (English already: 71) |
+| Subjects translated from Japanese | **286** (English already: 72) |
 
 ## Claimed, by day (UTC)
 
@@ -74,16 +74,16 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 - [`a783dab`](https://github.com/kzmttkc/vet402/commit/a783dab6b0a391fe4cd186d11714b3d93a280d07) 05:33 — fix(security): widen the A/B secret filter, gate prod DB host names out of public docs (153 lines)
 - [`421cd05`](https://github.com/kzmttkc/vet402/commit/421cd0539ea64309fafcd5b1f399d7fb96f483b3) 05:58 — docs(handoffs): hand off today's fourth round (aeb338c..690b4fc, 7 commits) with health attribution and two ops notes (82 lines)
 
-### 2026-09-10 — 12 of 12 claimed
+### 2026-09-10 — 13 of 13 claimed
 
 - [`cdba5d8`](https://github.com/kzmttkc/vet402/commit/cdba5d8448f9eab9f0422d72d2fa0cf095367fb9) 11:57 — ethonline: docs(prizes): the prize canon named a path that does not exist and dropped one Bazantic requirement (306 lines)
+- [`d60d73c`](https://github.com/kzmttkc/vet402/commit/d60d73cf13c873727a7e8fce82b1fc4faa7035e1) 21:44 — docs(handoffs): /api/health degraded is a cron-shaped saw-tooth, not upstream RPC (262 lines)
 - [`096a029`](https://github.com/kzmttkc/vet402/commit/096a0292cd4dc0e9b6352ac82407aba187e13189) 10:53 — docs(ethonline): record ETHGlobal's eligibility answer as a primary record — the SDK alone qualifies, the MCP surface is differentiation (181 lines)
-- [`f076122`](https://github.com/kzmttkc/vet402/commit/f076122b02971d72c40efd2b32c86af3e95e13b8) 00:38 — fix(numbers): guard recorded values against their source — sdk_mutations said 44 while the harness kills 45 (123 lines)
 
 ## Every commit, by day (UTC), oldest first
 
 <details>
-<summary>All 357 commits — ✔ claimed and — not claimed (click to expand)</summary>
+<summary>All 358 commits — ✔ claimed and — not claimed (click to expand)</summary>
 
 ### 2026-09-04 — 87 commits, 11 claimed
 
@@ -460,7 +460,7 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`d0346b3`](https://github.com/kzmttkc/vet402/commit/d0346b3460cd22d4e4bd89eb4c473b3af0d679da) | 23:16 | ✔ | docs(ethonline): the answer to Bazantic's JWT bypass is x402/MPP with the price zeroed — close the Day 6 exploration and record that Test Connection/Activate are due to be fixed within 48 hours |
 | [`1244663`](https://github.com/kzmttkc/vet402/commit/124466367df71e93aa8cde0cbbe80303ca20189e) | 23:55 | ✔ | fix(commits-en): a missing translation is a note, not a red main — nothing hackathon-only may block every push |
 
-### 2026-09-10 — 12 commits, 12 claimed
+### 2026-09-10 — 13 commits, 13 claimed
 
 | SHA | UTC | Claimed | Subject (English) |
 |---|---|:---:|---|
@@ -476,5 +476,6 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`8d630d6`](https://github.com/kzmttkc/vet402/commit/8d630d677bfecd3306b582acac026719b23a0f65) | 11:27 | ✔ | docs(commits): regenerate COMMITS_EN.md |
 | [`cdba5d8`](https://github.com/kzmttkc/vet402/commit/cdba5d8448f9eab9f0422d72d2fa0cf095367fb9) | 11:57 | ✔ | ethonline: docs(prizes): the prize canon named a path that does not exist and dropped one Bazantic requirement |
 | [`ecad214`](https://github.com/kzmttkc/vet402/commit/ecad214f97895ae93fb23dcd0014b0fd87aa240a) | 11:57 | ✔ | ethonline: docs(commits): regenerate COMMITS_EN.md |
+| [`d60d73c`](https://github.com/kzmttkc/vet402/commit/d60d73cf13c873727a7e8fce82b1fc4faa7035e1) | 21:44 | ✔ | docs(handoffs): /api/health degraded is a cron-shaped saw-tooth, not upstream RPC |
 
 </details>
