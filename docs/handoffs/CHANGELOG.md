@@ -12,6 +12,247 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 **数字や主張が変わったら書く**——そちらの実測と食い違えば、そちらが気づける。
 
 ---
+
+## 2026-09-11 06:4x JST — `/api/health` の `feedback_stats_unavailable(deadline:getLogsChunked)` は**上流RPCの劣化ではなく、日次 cron と tail 走査の設計から出る「のこぎり波」**だった（発注の因果を実測で訂正）
+
+- **変えたもの**: **本番は何も変えていない。** この節だけ。env・cron・コード・DB いずれも未変更（本番DBは読み取りのみ）
+- **なぜ書くか**: 執行部がこの degraded を「上流 RPC が遅くなった」として WORK_ORDERS に載せかけた。
+  実測すると因果が違い、**その誤りの半分は計器の若さを事象の不在と読んだこと**だった。
+  そちらが同じ読み違いをしないよう、因果と計器の初出の両方を残す
+
+### 1. 実測した因果 —— 日次ののこぎり波
+
+`(deadline:getLogsChunked)` を持つ行は **85 件**、UTC の時刻で露骨に偏る。
+
+```sql
+SELECT to_char(checked_at AT TIME ZONE 'UTC','MM-DD') AS d,
+       to_char(checked_at AT TIME ZONE 'UTC','HH24') AS h, count(*) AS n
+FROM health_snapshots
+WHERE detail LIKE '%feedback_stats_unavailable(deadline:getLogsChunked)%'
+GROUP BY 1,2 ORDER BY 1,2;
+```
+```
+   d   | h  | n
+-------+----+----
+ 09-09 | 17 |  1
+ 09-09 | 18 |  8
+ 09-09 | 19 |  3
+ 09-09 | 20 |  6
+ 09-09 | 21 |  8
+ 09-09 | 22 |  8
+ 09-09 | 23 | 11
+ 09-10 | 00 |  4
+ 09-10 | 01 |  3
+ 09-10 | 10 |  1
+ 09-10 | 14 |  2
+ 09-10 | 18 | 10
+ 09-10 | 19 |  6
+ 09-10 | 20 |  6
+ 09-10 | 21 |  8
+```
+
+**18:00–01:59 UTC に 85 件中 81 件（95.3%）。02:00–09:59 UTC は 2 日とも 0 件。**
+残る 4 件は 17 時台 1・10 時台 1・14 時台 2 で、いずれも単発。
+
+止む時刻が答えを持っている。`vercel.json`:
+
+```json
+{ "path": "/api/cron/index-feedback", "schedule": "0 2 * * *" }
+```
+
+**索引は 1 日 1 回しか進まない。** だからリクエスト経路に残った唯一のチェーン走査
+（checkpoint → tip の tail 走査）の幅 `tip − checkpoint` が、**02:00 UTC から翌 02:00 UTC まで単調に開き続ける**。
+
+本番の checkpoint（読み取りのみ）:
+
+```sql
+SELECT scope, last_block, updated_at FROM indexer_checkpoints
+WHERE scope = 'reputation_registry_feedback';
+```
+```
+            scope             | last_block |          updated_at
+------------------------------+------------+----------------------------
+ reputation_registry_feedback |   51108877 | 2026-09-10 02:25:06.733+00
+```
+
+この checkpoint に対する **2026-09-10 21:3x UTC 時点**の Base tip（公開 RPC `https://mainnet.base.org` / `eth_blockNumber`）:
+
+```
+base tip:   51143394
+checkpoint: 51108877
+gap blocks: 34517      → 2s/block で 19.2 時間ぶん
+chunks @ GET_LOGS_CHUNK_BLOCKS=2000: 18
+round-trips @ TAIL_SCAN_CONCURRENCY=2: 9
+TAIL_SCAN_DEADLINE_MS 2500 ÷ 9 = 1 往復あたり 278ms
+```
+
+**1 往復 278ms を切れなければ必ず期限切れになる。** 上流が「遅くなった」必要はない。
+Neon リージョン → RPC の往復は平常時でも 150–300ms（`src/lib/chain/chunked-logs.ts` のコメントが
+オーナー索引で実測した値）なので、**夕方以降の gap ではこの予算は設計上ほぼ確実に割れる**。
+
+そして逃げ道が塞がっている。`FEEDBACK_TAIL_MAX_DAYS = 2`（`src/lib/chain/feedback-window.ts:45`）＝
+Base で 86,400 ブロック。gap 34,517 はその内側なので `index_behind_tip`（走査を諦めて素直に unavailable を返す枝）
+には落ちず、**必ず走査に入り、必ず期限切れになる**。
+
+→ **RPC 提供元より先に見るべきは `GET_LOGS_CHUNK_BLOCKS`（既定 2,000・`liveScanChunkBlocks()` の上限 10,000）と
+cron 間隔。** 本番の RPC 実提供元は依然【未確認】（Vercel が値を隠す）。
+
+### 2. 「計器が見ていなかった」——こちらが本題の半分
+
+この degraded は昨日今日始まったものではない。**名前を書ける状態になったのが昨日**だった。
+
+```sql
+SELECT
+  (SELECT min(checked_at AT TIME ZONE 'UTC') FROM health_snapshots WHERE detail IS NOT NULL) AS detail_first,
+  (SELECT count(*) FROM health_snapshots WHERE detail IS NULL) AS detail_null_rows,
+  (SELECT min(checked_at AT TIME ZONE 'UTC') FROM health_snapshots
+     WHERE detail LIKE '%feedback_stats_unavailable%') AS flag_first,
+  (SELECT min(checked_at AT TIME ZONE 'UTC') FROM health_snapshots
+     WHERE detail ~ '\(deadline:[a-zA-Z_]+\)') AS route_name_first,
+  (SELECT min(checked_at AT TIME ZONE 'UTC') FROM health_snapshots
+     WHERE detail LIKE '%(deadline:getLogsChunked)%') AS this_route_first,
+  (SELECT min(checked_at AT TIME ZONE 'UTC') FROM health_snapshots WHERE status='degraded') AS degraded_first;
+```
+```
+        detail_first        | detail_null_rows |         flag_first         |      route_name_first      |      this_route_first      |       degraded_first
+----------------------------+------------------+----------------------------+----------------------------+----------------------------+----------------------------
+ 2026-09-08 09:51:07.726615 |             2303 | 2026-09-08 16:30:38.582726 | 2026-09-08 23:20:40.469432 | 2026-09-09 17:59:28.816907 | 2026-08-18 23:52:58.947973
+```
+
+- `detail` 列が値を持ち始めたのは **2026-09-08 09:51:07 UTC**。**それ以前の 2,303 行は全て NULL**
+- flag 名（`feedback_stats_unavailable`）の初出は **2026-09-08 16:30:38 UTC**
+- 経路名（`(deadline:...)` の形）の初出は **2026-09-08 23:20:40 UTC**（中身は `wallet_metrics` の方）
+- **この経路名 `(deadline:getLogsChunked)` の初出は 2026-09-09 17:59:28 UTC**
+
+一方 degraded 自体は **2026-08-18 から出ていた**:
+
+```sql
+SELECT to_char(checked_at AT TIME ZONE 'UTC','YYYY-MM-DD') AS utc_day,
+       count(*) FILTER (WHERE status='degraded') AS deg, count(*) AS total
+FROM health_snapshots WHERE checked_at >= '2026-08-15Z' GROUP BY 1 ORDER BY 1;
+```
+```
+  utc_day   | deg | total
+------------+-----+-------
+ 2026-08-15 |   0 |    34
+ 2026-08-16 |   0 |   238
+ 2026-08-17 |   0 |   159
+ 2026-08-18 |   1 |   160
+ 2026-08-19 |   0 |    17
+ 2026-08-20 |   0 |    62
+ 2026-08-21 |   0 |     8
+ 2026-08-22 |   0 |    30
+ 2026-08-23 |   1 |    55
+ 2026-08-24 |   2 |    59
+ 2026-08-25 |   0 |    29
+ 2026-08-26 |   7 |   102
+ 2026-08-27 |   5 |    69
+ 2026-08-28 |   0 |    49
+ 2026-08-29 |   1 |    47
+ 2026-08-30 |   0 |    70
+ 2026-08-31 |   0 |    75
+ 2026-09-01 |   0 |    80
+ 2026-09-02 |  11 |   211
+ 2026-09-03 |   2 |    54
+ 2026-09-04 |   3 |   169
+ 2026-09-05 |   0 |    73
+ 2026-09-06 |   0 |    55
+ 2026-09-07 |  15 |   278
+ 2026-09-08 |  18 |   327
+ 2026-09-09 |  45 |   258
+ 2026-09-10 |  42 |   171
+```
+
+**08-26 に 7 件、09-02 に 11 件、09-07 に 15 件。**
+その全てが `detail IS NULL`＝**何が壊れたのか一行も残っていない**。
+09-09 の 45 件は「急に増えた」のではなく、**そこで初めて名前がついた**と読むのが正しい。
+
+「名前を書ける状態で、かつ清潔だった窓」は次のとおり短い。経路名が書けるようになった
+09-08 23:20:40 UTC 以降で、最後の非 `getLogsChunked` degraded は 09-08 23:36:38 UTC、
+次の degraded は 09-09 17:59:28 UTC。**その間 18.4 時間だけが「名前を書ける計器が緑を出していた」窓**
+（この 18.4 時間、計器は止まっていない——09-09 だけで 258 行を書いている）。
+
+```sql
+SELECT checked_at AT TIME ZONE 'UTC' AS utc, status, left(detail,95)
+FROM health_snapshots
+WHERE checked_at >= '2026-09-08 23:00Z' AND checked_at < '2026-09-09 18:05Z' AND status <> 'ok'
+ORDER BY checked_at;
+```
+```
+            utc             |  status  |                                             left
+----------------------------+----------+-----------------------------------------------------------------------------------------------
+ 2026-09-08 23:20:40.469432 | degraded | scoring=degraded fresh: wallet_metrics_unavailable(deadline:wallet_metrics); payee=ok fresh
+ 2026-09-08 23:34:42.816479 | degraded | scoring=degraded fresh: wallet_metrics_unavailable(deadline:wallet_metrics); payee=ok fresh
+ 2026-09-08 23:36:38.623331 | degraded | scoring=degraded fresh: wallet_metrics_unavailable(deadline:wallet_metrics); payee=ok cached
+ 2026-09-09 17:59:28.816907 | degraded | scoring=degraded fresh: feedback_stats_unavailable(deadline:getLogsChunked); payee=ok cached
+ 2026-09-09 18:00:01.20698  | degraded | scoring=degraded cached: feedback_stats_unavailable(deadline:getLogsChunked); payee=ok cached
+```
+
+> **【訂正】** 執行部が先に流していた「清潔だった窓は 09-09 06:25→17:59 UTC の 11.6 時間」は、
+> `health_snapshots` から再現できなかった。06:25 に相当する行・デプロイ境界・欠測のいずれも無い
+> （09-09 05 時台 12 行・06 時台 12 行で連続）。**採るのは 18.4 時間の方**。
+
+**教訓（`state/ALERTS.md` にも他の計器にも当てはまる）**:
+**新しい計器の `count(*) = 0` は「起きていない」ではなく「見えていなかった」。
+計器の初出時刻を必ず併記する。**
+
+### 3. 会期中の決定 —— **2026-09-15 まで本番の env・cron・締切値・RPC を触らない**
+
+- (a) 締切値（`TAIL_SCAN_DEADLINE_MS`）を上げるのは **fail-closed を弱める**方向。判定の中核なので会期中に動かさない
+- (b) `GET_LOGS_CHUNK_BLOCKS` を上げるのは env 変更だけで可逆だが、**スコアリングの読み経路の挙動が変わる**。
+  会期中に測り直す余裕がない
+- (c) cron の高頻度化は **Hobby プランだとデプロイが静かに失敗し続ける既知の罠**（日次を超える頻度）。
+  **プランの確認が先**
+- (d) health に出さない（隠す）のは論外
+
+### 4. 会期後（09-15 以降）の材料 —— **ここでは決めない**
+
+1. まず `GET_LOGS_CHUNK_BLOCKS` を 2,000 → 大きく（`liveScanChunkBlocks()` の上限 10,000）して**往復数を測る**。
+   env 変更のみ・可逆。ただし `src/lib/chain/erc8004.ts:190-198` に
+   「10,000 は提供元が block-range で拒み、全 chunk が二分割されて逆に増えた」という**実測の記録**がある。
+   上げるなら 10,000 ではなく中間値から
+2. cron 間隔を上げる（**プランの確認が先**・(c)）
+3. `FEEDBACK_TAIL_MAX_DAYS`（2 日）と `TAIL_SCAN_DEADLINE_MS`（2,500ms）の関係を見直す。
+   **`TAIL_SCAN_DEADLINE_MS` を動かすなら判定への影響を先に測る**——
+   `src/lib/scoring/verdict.ts:75` で risk="high"、`src/lib/scoring/helpers.ts:364` で score −15
+4. RPC 提供元の確認は**その後**（本番の実提供元は【未確認】）
+
+### 5. 会期の提出物への影響 —— **無い**
+
+- `/api/health` は **`/ethonline` からリンクされていない**（`grep -n health src/app/ethonline/page.tsx` → 0 行）。
+  **`SKILL.md` にも記載が無い**（`health` の唯一のヒットは 602 行目の "on a healthy run" という散文）
+- 決済関門の判定 2 面（SDK が叩く `/resources/{id}/decision`・`/payees/{addr}/score`）は
+  **DB 由来の別の脚**を読む。この degraded の到達 0 件
+- 帯（18:00–01:00 UTC）に対し、**ライブ審査 09-14 16:00 UTC は帯の外**。
+  Round 1 09-13 19:00 UTC は帯の中だが**非同期審査**（審査員が画面の前に座る時間ではない）
+
+**ただし放置してよいという意味ではない。** 直近 48 時間の ok 率:
+
+```sql
+SELECT count(*) AS rows_48h, count(*) FILTER (WHERE status='ok') AS ok,
+       round(100.0*count(*) FILTER (WHERE status='ok')/count(*),1) AS ok_pct
+FROM health_snapshots WHERE checked_at >= now() - interval '48 hours';
+```
+```
+ rows_48h | ok  | ok_pct
+----------+-----+--------
+      468 | 378 |   80.8
+```
+
+**製品としては 48h ok 率 80.8%。**（執行部が先に流した 81.7% は数時間前の値。分母が動く指標なので、
+引用するときは取得時刻を添えてほしい）
+
+### 6. 進行中の検証
+
+執行部が「cron 起因なら **02:00 UTC 直後に止む**」という予測を仕掛けた（**2026-09-11 02:30 UTC 判定**）。
+上の 09-10 のデータは既にその形（02–09 時台 0 件）だが、**同じ形が翌日も出るか**を独立に見る。
+**結果が出たらこの節に追記する。**
+
+- **そちらへの依頼**: 無し。**会期中は触らないでほしい**（§3）。
+  もし `/api/health` の degraded を根拠に何かを判断しかけたら、**まず時刻を見てほしい**——
+  18:00–01:00 UTC ならこれ
+
+
 ## 2026-09-09 08:3x — Discord 定期走査で Bazantic の第3トラック賞が判明・WINDOW_PLAN §末尾へ追記（`93df57e`）
 
 - **変えたもの**: `docs/ethonline-2026/WINDOW_PLAN.md` に「【2026-09-09 08:2x 追記】」節（29 行）を末尾追加。既存は1行も消していない。作業ツリーは触らず plumbing で `origin/main` へ直接。
