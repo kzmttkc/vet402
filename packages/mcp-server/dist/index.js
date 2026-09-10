@@ -357,9 +357,13 @@ async function main() {
                     ...result.refuse_reasons.filter((r) => r !== "payment_target_unknown"),
                     "payer_not_configured",
                 ];
+                // viem を先に言う。既定のインストールに viem は入らないので、鍵だけ設定した利用者が
+                // ここに来るのが最も多い経路。**この分岐は鍵の不在と viem の不在を区別できない**
+                // （理由コードを分けるのは会期後・WINDOW_PLAN 会期後 TODO #10）ので、両方を並べる。
                 result.summary =
-                    "This server has no payer: set VOUCH_PAYER_PRIVATE_KEY in its env block and install viem " +
-                        "in the server package to enable payment. The decision above was still measured.";
+                    "This server has no payer: run `npm install viem` in packages/mcp-server, and set " +
+                        "VOUCH_PAYER_PRIVATE_KEY in its env block, to enable payment. This code cannot tell " +
+                        "which of the two is missing. The decision above was still measured.";
             }
             return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         }

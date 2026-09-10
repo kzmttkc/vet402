@@ -23,6 +23,16 @@
 //   # live: expect <jq 式>
 //   # live: needs VAR[,VAR] expect <jq 式>     ← VAR が env に無ければ実行せず skip と数える（CI は secrets から渡す）
 //   # live: skip <理由>                        ← 実走しない本。理由は必須（「なぜ印の外か」をその場に残す）
+//   needs の項目は env 変数名のほか `module:<指定子>@<ディレクトリ>` を取る（例:
+//   `module:viem/accounts@packages/mcp-server`）。そのディレクトリから指定子が解決できなければ、
+//   env が無いときと同じく実行せず skip と数える。
+//   なぜ module を足したか（2026-09-10）: `pay_if_trusted` の evidence 系 2 本は、鍵を 3 本とも渡しても
+//   `packages/mcp-server` に viem が無ければ `payer_not_configured` で止まり、The Graph を一度も読まない
+//   （`resolvePayer()` は鍵と viem の**両方**が揃ったときだけ署名者を返す）。viem は意図的に依存ではないので
+//   `npm ci` では入らない。この計器は env しか見ていなかったため、THROWAWAY_KEY を持たない CI では
+//   その 2 本が skip となり、欠陥は緑のまま通っていた（鍵を持つ人の手元では、逆に本番が壊れたかのような
+//   赤が出る——CI の issue 本文は「本番に合わせて SKILL.md を直せ」と言う。どちらの顔も誤り）。
+//   **緑を出している計器ほど、何を見ていないかを確かめる。**
 // ブロック本文を bash -o pipefail で cwd=リポ直下から実行し、stdout 全体を `jq -s`（複数の JSON 値を配列に束ねる）に
 // かけて <jq 式> が true になれば ok。それ以外（式が false／stdout が JSON でない／終了コード非 0）は FAIL。
 // bash 以外のフェンス・2 行目以降の印は対象外。壊れた印・**印の無い ```bash ブロック**・印がゼロの文書は exit 1。
@@ -37,10 +47,13 @@
 // ============================================================
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 
 const MARKER = /^# live:(.*)$/;
-const MARKER_RUN = /^\s*(?:needs\s+([A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*)\s+)?expect\s+(\S.*)$/;
+// needs の 1 項目: env 変数名か `module:<指定子>@<ディレクトリ>`。
+const NEED = String.raw`(?:[A-Za-z_][A-Za-z0-9_]*|module:[^\s,]+@[^\s,]+)`;
+const MARKER_RUN = new RegExp(String.raw`^\s*(?:needs\s+(${NEED}(?:\s*,\s*${NEED})*)\s+)?expect\s+(\S.*)$`);
 const MARKER_SKIP = /^\s*skip\s+(\S.*)$/;
 const TIMEOUT_MS = 90_000;
 
@@ -144,6 +157,28 @@ export function lintJsonRpcLines(blocks) {
   return problems;
 }
 
+/**
+ * needs の 1 項目が満たされているか。env 変数は env に在るか、`module:<指定子>@<ディレクトリ>` は
+ * そのディレクトリから指定子が **実際に解決できるか**（`package.json` の記載ではなく node の解決）。
+ * 記載を見ると嘘をつく: viem は `packages/mcp-server/package.json` に**書かれていない**のが正しい状態で、
+ * それでも解決できることが要る。
+ * @returns {string|null} 満たされていなければ表に出す短い理由、満たされていれば null
+ */
+export function unmetNeed(need, root) {
+  if (!need.startsWith("module:")) return process.env[need] ? null : `${need} (unset)`;
+  const rest = need.slice("module:".length);
+  const at = rest.lastIndexOf("@");
+  if (at <= 0) return `${need} (malformed — want module:<specifier>@<dir>)`;
+  const specifier = rest.slice(0, at);
+  const dir = rest.slice(at + 1);
+  try {
+    createRequire(join(root, dir, "noop.js")).resolve(specifier);
+    return null;
+  } catch {
+    return `${specifier} not resolvable from ${dir} (unmet)`;
+  }
+}
+
 function runBlock(block, root) {
   const start = Date.now();
   const r = spawnSync("bash", ["-o", "pipefail", "-c", block.body], {
@@ -212,8 +247,8 @@ function main() {
   const rows = [];
   for (const b of blocks) {
     if (b.kind === "skip") { rows.push({ ...b, status: "skip", note: b.reason, secs: "-" }); continue; }
-    const missing = b.needs.filter((v) => !process.env[v]);
-    if (missing.length) { rows.push({ ...b, status: "skip", note: `needs ${missing.join(",")} (unset)`, secs: "-" }); continue; }
+    const missing = b.needs.map((n) => unmetNeed(n, opt.root)).filter(Boolean);
+    if (missing.length) { rows.push({ ...b, status: "skip", note: `needs ${missing.join("; ")}`, secs: "-" }); continue; }
     const r = runBlock(b, opt.root);
     rows.push({ ...b, ...r });
     if (r.status === "FAIL") {
