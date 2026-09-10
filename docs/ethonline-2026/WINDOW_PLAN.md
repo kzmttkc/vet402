@@ -605,7 +605,7 @@ vet402.com は「会期後でよい」と言ったが、**そこは同意しな�
 
 **D. The Graph 経路の fail-closed**
 13. Gateway が 403/5xx/タイムアウト → `evidence_unavailable`・signer 0回
-14. **全 Graph リクエストに User-Agent が付く**（無いと Cloudflare 1010。共通ラッパの単体テスト）
+14. **全 Graph リクエストに User-Agent が付く**（共通ラッパの単体テスト）。**理由は「無いと 1010 で 403 になるから」ではない**——**09-05 の実測では UA を外しても HTTP 200**（§「そのまま動く問い合わせ」）。付ける実装を保つのは礼儀と追跡可能性のためで、**「必須」と断定しない**
 15. `source: "subgraph"` の決定行に **subgraphId と `_meta.block`** が載る（賞の証跡要件）
 16. 自社台帳の件数と subgraph の件数を**1つの数に合算しない**
 
@@ -690,14 +690,31 @@ vet402.com は「会期後でよい」と言ったが、**そこは同意しな�
 
 ## 7. 境界タグの打ち直し（09-04 09:00 JST 直前・必須）
 
-現状 `pre-ethonline-2026` = `ec264ca`（9/2 19:58）で、**タグ以降 main に9コミット・`src/` に実コード164行**が入った。
-main は本番リポでもあり会期中も動くので、放置すると `git log pre-ethonline-2026..main` に**提出外が混入**し、
-規約の「会期中に作ったと誤認させる」に触れる。
+**【2026-09-10 更新・この節は完了済み。下の数字は 09-02 時点の計画値であって現在値ではない】**
 
-1. 09-04 09:00 JST 直前、**その時点の main 先端に注釈タグを打ち直す**（会期前の移動は正当）
-2. ブランチ `ethonline-2026` は**そのタグから**切る
-3. 提出物の検算コマンドは `git log --oneline <tag>..ethonline-2026` に統一し、一文添える:
-   「main はこの製品の本番リポでもあり、会期中も提出とは無関係な運用コミットを受ける。提出範囲は接頭辞 `ethonline:` のこのブランチのみ」
+**現在値**: `pre-ethonline-2026` = **`c42daca`**（**2026-09-04 09:05:36 +0900**・注釈タグ `8e05ce5`）。
+**タグは 09-04 に打ち直し済みで、以後動かしていない。**
+
+| | 09-02 に書いた計画値 | **現在（2026-09-10 実測）** |
+|---|---|---|
+| タグ | `ec264ca`（9/2 19:58） | **`c42daca`**（09-04 09:05:36） |
+| タグ以降 main のコミット | 9本 | **355本**（`git rev-list --count pre-ethonline-2026..origin/main`） |
+| うち提出範囲 | `src/` 実コード164行 | **208本**（下の検算コマンド） |
+
+**検算経路も変わった。** 当初は `<tag>..ethonline-2026`（ブランチ）で検算する計画だったが、
+**ブランチ `ethonline-2026` は使わず main 直で作業した**ので、**この経路は破棄済み**である。
+現行の検算は **`pre-ethonline-2026..main`** の2本:
+
+```
+git log pre-ethonline-2026..main -- packages/sdk packages/mcp-server \
+  examples/ethonline-2026-demo examples/ethonline-2026-ab SKILL.md AI_USAGE.md docs/ethonline-2026
+  # 我々が主張する範囲（2026-09-10 20:45 JST 実測 208 本）
+git log pre-ethonline-2026..main
+  # 同じ期間の main 全体（同 355 本）
+```
+
+添える一文: 「main はこの製品の本番リポでもあり、会期中も提出とは無関係な運用コミットを受ける。
+**提出範囲は上のパス限定コマンドが返す範囲**」。**`ethonline-2026` ブランチには言及しない**（存在しない前提を配らない）。
 
 ## 8. 規約適合（会期中にやる・忘れると失格側に触れる）
 
@@ -1103,13 +1120,27 @@ curl -sL -X POST "https://gateway.thegraph.com/api/$GRAPH_API_KEY/subgraphs/id/C
 | # | 要件 | 状態 |
 |---|---|---|
 | 1 | bazantic.com にアカウントを作る | ✅ 09-03（`TakeshiTGAL`・GitHub OAuth） |
-| 2 | プロジェクト用の x402/MPP Gateway を作る | ✅ 09-03（LIVE・56ルート $0.00） |
-| 3 | **サービスを「いつ・なぜ・どう使うか」を説明する Recipe を作る** | ❌ **未作成。これが最大の残件** |
+| 2 | プロジェクト用の x402/MPP Gateway を作る | ✅ 09-03（LIVE・**57ルート** $0.00） |
+| 3 | **サービスを「いつ・なぜ・どう使うか」を説明する Recipe を作る** | ✅ **09-07 06:15 JST 公開済**（`https://bazantic.com/recipes/x402-payee-verification-via-vet402-gateway`・`SUBMISSION_DRAFT.md`）。**「未作成・最大の残件」は 09-07 に解消した** |
 | 4 | 両テストで同じプロンプト・モデル・設定・API アクセス | ✅ ハーネスが構造で強制（変異 M7 が固定） |
 | 5 | **Recipe を唯一の実質的な違いにする** | ⚠️ **設計を訂正した**（上） |
 | 6 | 両方の結果を、入力ごと提出物で示す | ✅ 生ログを `results/` に出す |
-| 7 | **結果の違いを歩いて見せる動画を録る** | ⏳ 動画の台本に組み込む（§6） |
+| 7 | **結果の違いを歩いて見せる動画を録る** | ⏳ **これが唯一の残件**（09-11〜09-12 に画面収録・§6） |
 | 8 | bazantic のユーザー名を提出物に書く | ✅ `TakeshiTGAL` |
+
+#### 【2026-09-10 確定】**57 と 56 はどちらも正しい。数えている対象が違う**
+
+このファイルは同じ Gateway を「56ルート」とも「57 ルート」とも書いていた。**取り違えではない**ので、
+片方を消さずに対応を固定する。**次に見た者が 57 を 56 へ「直し」に来ないための行である。**
+
+| 数 | 何を数えたか | 出典 |
+|---|---|---|
+| **57** | Gateway の `tools/list` が返すツール数／Bazantic ダッシュボードが $0 で並べるルート数 | `SKILL.md`（「57 tools・`tools/list`・measured 2026-09-06」）・`BAZANTIC_FEEDBACK.md`・`VIDEO_SCRIPT.md`・§16.1 |
+| **56** | **vet402 側の operation 数**＝ 57 から **Bazantic 自身のツール `info` を除いた**数 | `~/Takeshi_Automation/state/bazantic_gateway_drift.json`（**2026-09-10 09:30 実測**: `spec_operations` 56 ／ `gateway_tools` 56 ／ `exclude_tools: ["info"]`） |
+
+**対外に出す数は 57**（`tools/list` が返す実数であり、**動画のナレーションが "fifty-seven tools" を読む**）。
+**56 は毎朝の突合計器の内部値**で、`vet402.com/openapi.yaml` と突き合わせるために `info` を除いている。
+`57 − 1(info) = 56` が両者の関係。**この式が崩れたら、どちらかが本当に壊れている。**
 
 ### Bazantic で応募できるのは **1ブラケットだけ**（2026-09-06 訂正）
 
@@ -1332,7 +1363,8 @@ v1（§16.3）は**製品の穴**（上限超えの理由コードをどのツ�
 
 `PRIZES.md:14` は「会期中に新規で立てる自前 x402 seller を Gateway として登録し」と書いているが、
 **WINDOW_PLAN §2 は自前 seller の新設を範囲外**にしており、Gateway は **09-03 に `vet402.com` を上流として
-既に LIVE**（56ルート・全て $0.00）。**正典は WINDOW_PLAN。**
+既に LIVE**（**57ルート**・全て $0.00）。**正典は WINDOW_PLAN。**
+**【2026-09-10 追記】`PRIZES.md` の当該記述（存在しない `examples/ethonline-2026-agent/seller` を応募経路として書いていた）は同日に直した。**
 
 ## 17. 【2026-09-06 夜】第三者監査4本＋検証1本の結果と、残り7日の実装順
 
@@ -1340,7 +1372,7 @@ v1（§16.3）は**製品の穴**（上限超えの理由コードをどのツ�
 
 | 対象 | 判定 | 決め手 |
 |---|---|---|
-| ETHGlobal 規定・Continuity | 適合 | タグ c42daca・差分167コミット・MIT・PROMPTS 3日分・AI 開示。clean clone で SDK/MCP/demo fail 0 |
+| ETHGlobal 規定・Continuity | 適合 | タグ c42daca・**差分167コミット【2026-09-06 時点の値】**・MIT・PROMPTS 3日分・AI 開示。clean clone で SDK/MCP/demo fail 0<br>**この数は毎日増える。** 導出は `git rev-list --count pre-ethonline-2026..origin/main`（**09-10 20:45 実測 355**）と、パス限定の主張範囲（**同 208**）。§7 に両コマンド |
 | The Graph 枠 | 条件付き適合 | live（block 差 23）・件数で判定が変わる。**弱点は MCP から Graph に届かない**（09-06 夜 `3fa685c` で解消）・SKILL.md から live 手順に到達不能（`1e8112d` で解消） |
 | Bazantic 枠 | 設計は適合・提出物が未 | A/B は Recipe だけが差。無いもの: 橋つき実 A/B・画面収録・フィードバック doc・Recipe 公開 |
 
@@ -1352,7 +1384,7 @@ v1（§16.3）は**製品の穴**（上限超えの理由コードをどのツ�
 
 | 日 | やること | 効く先 |
 |---|---|---|
-| 09-06 夜 | #1 MCP 証拠源 policy＋404 経路（**済 `3fa685c`**）／#6 SDK 変異テスト（27 変異・SURVIVED 4 を是正中）／#3 `judge <URL>`（実装中） | Graph 枠・Technicality・Practicality |
+| 09-06 夜 | #1 MCP 証拠源 policy＋404 経路（**済 `3fa685c`**）／#6 SDK 変異テスト（**27 変異**・当時 SURVIVED 4 を是正中。**2026-09-10 実測で 27 変異すべて killed**——`npm run judge-check` の step 11 `ab: node test-mutations.mjs` が `all 27 mutations killed` を出す）／#3 `judge <URL>`（実装中） | Graph 枠・Technicality・Practicality |
 | 09-07 | #3 を main へ・SKILL.md に judge 節／#5 DX（Node 要件・ビルド順・`judge-check`）／PROMPTS | Usability |
 | 09-08 | AQ-053 が通れば `/decision` 鍵なし枠（IP 10/分）／フィードバック doc の下書き | Usability・Bazantic |
 | 09-09 | **先に Recipe を v2.1 に再公開**（`recipe/x402-payee-verification.json` の語彙説明に `l1_inconclusive` を 1 行足す。09-08 のサーバ語彙追加への追随で、戦略は変えない。§16.5 の注記に日付を足す）→ Anthropic 鍵で A/B v2 を 1 回実行・生ログ収載・A/B 画面収録 | Bazantic 枠の資格 |

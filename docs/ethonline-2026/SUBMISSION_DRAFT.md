@@ -250,7 +250,7 @@ Model-side judgement never decides a payment; the gate does. Our demo's own deci
 | WARN (69) / l1_inconclusive（拒否側 0x.org・09-08 から。1 回決済・4xx・結論なし） | `WINDOW_PLAN.md` §3・§16 F2/F3 | **スコアは動く**（09-07 12:xx は 68）。提出日に `{{graph_score}}` と `grep reasons` で取り直す |
 | 259 / 0.01 USDC / 50898704 / tx | `WINDOW_PLAN.md` §10.5 | 固定 |
 | 404 | `WINDOW_PLAN.md` §3.1（登録しない決定） | 固定 |
-| `{{graph_receipts}}` | `VIDEO_SCRIPT.md` §5 のコマンド（09-07 07:5x 実測 417） | **動く・提出日に埋める** |
+| `{{graph_receipts}}` | `VIDEO_SCRIPT.md` §5 のコマンド（直近の記録は **483**・09-08 09:0x。09-07 は 417） | **動く・提出日に埋める** |
 | `{{sdk_tests}}` / `{{mcp_tests}}` / `{{demo_tests}}` | `VIDEO_SCRIPT.md` §5 のコマンド（09-08: 1615 / 748 / 169） | **動く** |
 | internal resource URL | `WINDOW_PLAN.md` §3 注意書き | 固定 |
 
@@ -329,12 +329,12 @@ One keystore-related item was sent privately to support@bazantic.com on 2026-09-
 
 **規律**: `VIDEO_SCRIPT.md` §5 と同じ。提出日の朝にこの表を上から叩き、値を本文へ書き込む。**手で数えない。** 鍵が要る行は `set -a; source ~/vouch/.env.rehearsal.local; set +a` の後。
 
-| プレースホルダ | コマンド（リポ root から） | 09-07 の値 | 使う節 |
+| プレースホルダ | コマンド（リポ root から） | **直近の記録値（日付つき・提出日に取り直す）** | 使う節 |
 |---|---|---|---|
 | `{{as_of}}` | `TZ=UTC date +%F`（提出日） | 2026-09-07【実測】 | C・I |
-| `{{window_commits}}` | `git log pre-ethonline-2026..main --oneline \| wc -l` | 233【実測 09-07 12:2x・この作業ツリー】 | C |
-| `{{claimed_commits}}` | `git log pre-ethonline-2026..main --oneline -- packages/sdk packages/mcp-server examples/ethonline-2026-demo examples/ethonline-2026-ab SKILL.md AI_USAGE.md docs/ethonline-2026 \| wc -l` | 123【実測 同上】 | C |
-| `{{graph_receipts}}` | `cd examples/ethonline-2026-demo && node src/run.ts pay 2>&1 \| grep totalPayments`（`GRAPH_API_KEY` 要） | 417【一次・`VIDEO_SCRIPT.md` §5 09-07 07:5x】 | I |
+| `{{window_commits}}` | `git log pre-ethonline-2026..main --oneline \| wc -l` | **355**【実測 2026-09-10 20:45・`origin/main`】（09-07 は 233） | C |
+| `{{claimed_commits}}` | `git log pre-ethonline-2026..main --oneline -- packages/sdk packages/mcp-server examples/ethonline-2026-demo examples/ethonline-2026-ab SKILL.md AI_USAGE.md docs/ethonline-2026 \| wc -l` | **208**【実測 2026-09-10 20:45・`origin/main`】（09-07 は 123） | C |
+| `{{graph_receipts}}` | `cd examples/ethonline-2026-demo && node src/run.ts pay 2>&1 \| grep totalPayments`（`GRAPH_API_KEY` 要） | **483**【一次・09-08 09:0x・`VIDEO_SCRIPT.md` §「録音後に動いた数字」】（09-06 は 260、09-07 は 417）。**毎日増える。撮影日に取り直し、口では下限で言う** | I |
 | `{{graph_score}}` | 同上 `\| grep 'payee verdict'` | 09-07 07:5x は WARN (69)、同日 12:xx は **WARN (68)**【一次・`VIDEO_SCRIPT.md` §5 ／ `LIVE_JUDGING.md`】＝**同じ日に動いた**。**69 でなければ本文の "WARN (69)" をその値に置換** | C・I |
 | `{{sdk_tests}}` | `cd packages/sdk && npm ci && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 1615 / fail 0【`refresh-numbers.json` 09-08】 | I |
 | `{{mcp_tests}}` | `cd packages/mcp-server && npm ci && npm run build && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 748 / fail 0【`refresh-numbers.json` 09-08】 | I |

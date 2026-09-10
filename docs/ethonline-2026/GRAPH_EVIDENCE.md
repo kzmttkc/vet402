@@ -17,7 +17,9 @@ The Graph の分散ネットワーク上に **`x402 Base`** が在る。
 | `X402Payment` の列 | `transactionHash, from, to, amount, amountDecimal, asset, assetSymbol, facilitator, settlement, nonce, transferMethod, isEscrowDeposit, chainId, network, blockNumber, blockTimestamp` |
 | `X402AddressSummary` の列 | `address, role, totalPayments, totalVolume(Decimal), firstPaymentTimestamp, lastPaymentTimestamp, isKnownEscrow` |
 
-**UA 必須**（無いと Cloudflare が HTTP 403 `error code: 1010`。キー不正ではない）。
+**UA は「必須」ではない**（2026-09-10 訂正）。長らく「無いと Cloudflare が HTTP 403 `error code: 1010`」と書いていたが、
+**2026-09-05 の実測では UA を完全に外しても HTTP 200** が返った（`-H 'User-Agent:'`・`WINDOW_PLAN.md` §「そのまま動く問い合わせ」）。
+実装は UA を付けたままにする（外す理由が無い）。**1010 が出たときは鍵エラーと区別する**——原因が違えば直し方も違う。
 他に `x402-bsc` と `x402loops-subgraph` も active——**多チェーンへ広げる余地がある**。
 
 ## 2. フィクスチャ2件を実データで引いた（これが賞の証跡になる）
