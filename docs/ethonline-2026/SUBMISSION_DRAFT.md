@@ -284,7 +284,7 @@ RESULT — no difference in success. A (no Recipe): 5/10. B (Recipe): 5/10. Both
 
 WHAT THE RECIPE DID FIX — vocabulary. Without it the agent turns screen words into "codes" (WARN, thin, Unverified, receiving.paymentCount=0). With it the agent uses vet402's real identifiers (resource_uncatalogued, l1_not_attempted, evidence_unavailable). Share of reason codes that are real vet402 identifiers: A 20/32 (63%) → B 29/32 (91%). This metric is exploratory (not pre-registered) and is labelled so.
 
-WHY THE TWO FAILURES ARE OURS. The over-ceiling fixture expects price_above_ceiling, a caller-side word from our SDK that no gateway tool returns and the Recipe did not mention — so no condition could produce it. The uncatalogued fixture fails because B lists more real codes than the oracle returns. We fixed the product side after the run (/decision now accepts the caller's ceiling and returns caller_policy.reason_codes) and pre-registered a v2 run rather than re-running v1. {{ab_v2_line}}
+WHY THE TWO FAILURES ARE OURS. The over-ceiling fixture expects price_above_ceiling, a caller-side word from our SDK that no gateway tool returns and the Recipe did not mention — so no condition could produce it. The uncatalogued fixture fails because B lists more real codes than the oracle returns. We fixed the product side after the run (/decision now accepts the caller's ceiling and returns caller_policy.reason_codes) and pre-registered a v2 run rather than re-running v1. v2, run once on 2026-09-11 (docs/ethonline-2026/ab/2026-09-10T233702Z, no payer key, 0 transactions): A 7/10, B 5/10. A passed the over-ceiling fixture 2/2 by sending the amount and ceiling parameters that both conditions can see in the tool schema and the API list; B failed it 0/2 because it also listed the top-level codes, which our Recipe's wording ("including caller_policy.reason_codes") invites.
 
 INPUTS AND RESULTS, REPRODUCIBLE. Raw logs: docs/ethonline-2026/ab/2026-09-06T213134Z/ (every prompt, every tool call, every answer). Recount: cd examples/ethonline-2026-ab && npm run metrics -- ../../docs/ethonline-2026/ab/2026-09-06T213134Z — it regrades from raw and reads no summary. The earlier same-day run 2026-09-06T093254Z (0/10 and 0/10, every tool call answered 402) is kept, not deleted.
 
@@ -309,7 +309,7 @@ One keystore-related item was sent privately to support@bazantic.com on 2026-09-
 | 0/10・0/10（093254Z） | `WINDOW_PLAN.md` §16.1 | 固定 |
 | `{{bazantic_tools}}` | `tools/list`（09-06 実測 57） | 動く。提出日に再確認 |
 | 2026-09-03 LIVE／0 mcents／`@bazantic/cli@0.8.0` | `BAZANTIC_FEEDBACK.md` §1・§4 | 固定 |
-| `{{ab_v2_line}}` | `WINDOW_PLAN.md` §16.5（09-09 に 1 回実走予定） | **v2 を走らせたら 1 文で結果を書く（例: "v2 (…/ab/<timestamp>): A x/10, B y/10."）。走らせなかったら "v2 has not run yet." に置換** |
+| v2（旧 ab_v2_line・09-11 置換済み） | `npm run metrics -- docs/ethonline-2026/ab/2026-09-10T233702Z`（`BAZANTIC_FEEDBACK.md` §6・`WINDOW_PLAN.md` §16.5） | 固定（生ログ・回し直さない）。A 7/10・B 5/10／F4 A 2/2・B 0/2／102 calls・0 tx |
 | `{{video_ab_timestamp}}` | `VIDEO_SCRIPT.md` §1（台本では 2:12–2:41） | 09-12 の編集後に確定 |
 
 **明日確かめること**: Recipe の公開ページが 200 で開くこと（`curl -sL -o /dev/null -w '%{http_code}' https://bazantic.com/recipes/x402-payee-verification-via-vet402-gateway`）。Select prizes 画面に **Bazantic が出ること**（`PRIZES.md` §3 P3「未確定」・出なければ Ledger Continuity に差し替えず**2枠のまま出す**——Ledger は実機未確認で、使っていない製品の枠に応募しない §16 の判断と同じ）。
@@ -341,10 +341,10 @@ One keystore-related item was sent privately to support@bazantic.com on 2026-09-
 | `{{demo_tests}}` | `cd examples/ethonline-2026-demo && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 169 / fail 0【`refresh-numbers.json` 09-08】 | I |
 | `{{mutations}}` | `npm run refresh-numbers` → `<!-- n:sdk_mutations -->` | 45【`refresh-numbers.json` 09-10】 | D |
 | `{{bazantic_tools}}` | `curl -s -X POST https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \| python3 -c 'import sys,json;print(len(json.load(sys.stdin)["result"]["tools"]))'` | 57【一次・`SKILL.md` 09-06】 | D・J |
-| `{{ab_v2_line}}` | v2 を走らせた場合のみ `npm run metrics -- <v2 dir>` | 未実走（09-09 予定・§16.5） | J |
+| v2（旧 ab_v2_line） | `npm run metrics -- docs/ethonline-2026/ab/2026-09-10T233702Z` | **09-11 実走・置換済み**: A 7/10・B 5/10【実測】 | J |
 | `{{video_url}}` / `{{video_ab_timestamp}}` | 09-12 の編集後 | — | F・J |
 
-**固定の数字（動かない・確認だけ）**: tx `0xf12093fb…e469ad`／block 50898704／0.01 USDC／payTo `0x79DC34E41B2b591078d3dE222C43EcaaBD52FcCB`／259 receipts（支払い時点）／`c42daca` 2026-09-04 00:05:36 UTC／214・412・+28,414・−1,913／A 5/10・B 5/10／63%・91%／110・88・88／`TakeshiTGAL`。
+**固定の数字（動かない・確認だけ）**: tx `0xf12093fb…e469ad`／block 50898704／0.01 USDC／payTo `0x79DC34E41B2b591078d3dE222C43EcaaBD52FcCB`／259 receipts（支払い時点）／`c42daca` 2026-09-04 00:05:36 UTC／214・412・+28,414・−1,913／A 5/10・B 5/10／63%・91%／110・88・88／v2: A 7/10・B 5/10・102・0／`TakeshiTGAL`。
 
 ---
 

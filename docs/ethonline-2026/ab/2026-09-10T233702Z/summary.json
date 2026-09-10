@@ -1,0 +1,173 @@
+{
+  "computedAt": "2026-09-10T23:37:02.333Z",
+  "derivedFrom": "trials[] only",
+  "overall": {
+    "trials": 20,
+    "verdictMatch": 20,
+    "reasonSubset": 12,
+    "success": 12,
+    "successRate": 0.6,
+    "errors": 0,
+    "unparseable": 0,
+    "fabricatedReasonTrials": 8,
+    "successUnderOriginalRule": 12,
+    "refusedWithNoReasonCodes": 0,
+    "medianDurationMs": 34870,
+    "totalDurationMs": 760253
+  },
+  "perCondition": {
+    "A": {
+      "trials": 10,
+      "verdictMatch": 10,
+      "reasonSubset": 7,
+      "success": 7,
+      "successRate": 0.7,
+      "errors": 0,
+      "unparseable": 0,
+      "fabricatedReasonTrials": 3,
+      "successUnderOriginalRule": 7,
+      "refusedWithNoReasonCodes": 0,
+      "medianDurationMs": 42737,
+      "totalDurationMs": 432476
+    },
+    "B": {
+      "trials": 10,
+      "verdictMatch": 10,
+      "reasonSubset": 5,
+      "success": 5,
+      "successRate": 0.5,
+      "errors": 0,
+      "unparseable": 0,
+      "fabricatedReasonTrials": 5,
+      "successUnderOriginalRule": 5,
+      "refusedWithNoReasonCodes": 0,
+      "medianDurationMs": 33029.5,
+      "totalDurationMs": 327777
+    }
+  },
+  "perConditionFixture": {
+    "A": {
+      "F1": {
+        "trials": 3,
+        "verdictMatch": 3,
+        "reasonSubset": 3,
+        "success": 3,
+        "successRate": 1,
+        "errors": 0,
+        "unparseable": 0,
+        "fabricatedReasonTrials": 0,
+        "successUnderOriginalRule": 3,
+        "refusedWithNoReasonCodes": 0,
+        "medianDurationMs": 56225,
+        "totalDurationMs": 170958
+      },
+      "F2": {
+        "trials": 3,
+        "verdictMatch": 3,
+        "reasonSubset": 0,
+        "success": 0,
+        "successRate": 0,
+        "errors": 0,
+        "unparseable": 0,
+        "fabricatedReasonTrials": 3,
+        "successUnderOriginalRule": 0,
+        "refusedWithNoReasonCodes": 0,
+        "medianDurationMs": 33084,
+        "totalDurationMs": 98955
+      },
+      "F3": {
+        "trials": 2,
+        "verdictMatch": 2,
+        "reasonSubset": 2,
+        "success": 2,
+        "successRate": 1,
+        "errors": 0,
+        "unparseable": 0,
+        "fabricatedReasonTrials": 0,
+        "successUnderOriginalRule": 2,
+        "refusedWithNoReasonCodes": 0,
+        "medianDurationMs": 35997,
+        "totalDurationMs": 71994
+      },
+      "F4": {
+        "trials": 2,
+        "verdictMatch": 2,
+        "reasonSubset": 2,
+        "success": 2,
+        "successRate": 1,
+        "errors": 0,
+        "unparseable": 0,
+        "fabricatedReasonTrials": 0,
+        "successUnderOriginalRule": 2,
+        "refusedWithNoReasonCodes": 0,
+        "medianDurationMs": 45284.5,
+        "totalDurationMs": 90569
+      }
+    },
+    "B": {
+      "F1": {
+        "trials": 3,
+        "verdictMatch": 3,
+        "reasonSubset": 3,
+        "success": 3,
+        "successRate": 1,
+        "errors": 0,
+        "unparseable": 0,
+        "fabricatedReasonTrials": 0,
+        "successUnderOriginalRule": 3,
+        "refusedWithNoReasonCodes": 0,
+        "medianDurationMs": 32632,
+        "totalDurationMs": 97643
+      },
+      "F2": {
+        "trials": 3,
+        "verdictMatch": 3,
+        "reasonSubset": 0,
+        "success": 0,
+        "successRate": 0,
+        "errors": 0,
+        "unparseable": 0,
+        "fabricatedReasonTrials": 3,
+        "successUnderOriginalRule": 0,
+        "refusedWithNoReasonCodes": 0,
+        "medianDurationMs": 35896,
+        "totalDurationMs": 114120
+      },
+      "F3": {
+        "trials": 2,
+        "verdictMatch": 2,
+        "reasonSubset": 2,
+        "success": 2,
+        "successRate": 1,
+        "errors": 0,
+        "unparseable": 0,
+        "fabricatedReasonTrials": 0,
+        "successUnderOriginalRule": 2,
+        "refusedWithNoReasonCodes": 0,
+        "medianDurationMs": 20764.5,
+        "totalDurationMs": 41529
+      },
+      "F4": {
+        "trials": 2,
+        "verdictMatch": 2,
+        "reasonSubset": 0,
+        "success": 0,
+        "successRate": 0,
+        "errors": 0,
+        "unparseable": 0,
+        "fabricatedReasonTrials": 2,
+        "successUnderOriginalRule": 0,
+        "refusedWithNoReasonCodes": 0,
+        "medianDurationMs": 37242.5,
+        "totalDurationMs": 74485
+      }
+    }
+  },
+  "delta": {
+    "of": "B − A",
+    "success": -2,
+    "successRate": -0.19999999999999996,
+    "verdictMatch": 0,
+    "reasonSubset": -2
+  }
+}

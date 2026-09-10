@@ -1368,6 +1368,8 @@ v1（§16.3）は**製品の穴**（上限超えの理由コードをどのツ�
 - **09-11 の直前確認（payer 鍵なし・未払いの `tools/call` だけ）**: ゲートウェイ **57 ツール**。`getResourceDecision` に `amount_usd` / `max_per_tx_usd` / `require_vet402_allow` がある。v1 で呼ばれた 12 ツールに未払い `tools/call` を1回ずつ打って **402 は 0 件**。本番応答: F1 = ALLOW `[l0_pass, l1_delivered, l2_undeclared]`・`caller_policy` ALLOW `[]`／F2 = `/decision` 404 `not_found`・payee WARN（v1 と同じ）／F3 = WARN `[l0_pass, l1_inconclusive, l2_undeclared]`＋`caller_policy` REFUSE `[payee_recommendation_not_allow]`（oracle の4語と一致）／F4（amount 5・上限 1）= ALLOW `[l0_pass, l1_delivered, l2_undeclared]`＋`caller_policy` REFUSE `[price_above_ceiling]`。
 - **v1 と条件が違う点**: v2 には **payer 鍵を渡さない**。橋は作られず、署名もオンチェーン tx も 0 本になる。v1 は橋が決済した tx が 88 本（各 0 USDC）あった。09-09 以降、0 mcents のツールは未払いの `tools/call` に本文を返すので、橋が無くてもモデルには本物の応答が届く（上の 402 0 件）。
 
+**【2026-09-11 実行・本文は書き換えない】** 09-11 08:24 JST に1回実行（`startedAt` 2026-09-10T23:24:22Z・上の注記のコミット `91898a2` は 23:11:02Z）。結果は `docs/ethonline-2026/ab/2026-09-10T233702Z`（数字と予測の照合は `BAZANTIC_FEEDBACK.md` §6）。
+
 ### 記録: `PRIZES.md` の P3 記述は古い
 
 `PRIZES.md:14` は「会期中に新規で立てる自前 x402 seller を Gateway として登録し」と書いているが、

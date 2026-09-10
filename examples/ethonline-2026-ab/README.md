@@ -168,7 +168,7 @@ MCP の `tools/call` では払えない（PAYMENT-SIGNATURE を載せても無�
 
 | 場所 | 中身 |
 |---|---|
-| `docs/ethonline-2026/ab/<timestamp>/` | **提出物としての実走**。`2026-09-06T093254Z`（橋なし・全ツール呼び出しが 402 で 0/0——計器の故障として残す）と `2026-09-06T213134Z`（橋あり・本走・A 5/10・B 5/10）。読みは `WINDOW_PLAN.md` §16.1〜16.3、審査員向けの所見は `docs/ethonline-2026/BAZANTIC_FEEDBACK.md` |
+| `docs/ethonline-2026/ab/<timestamp>/` | **提出物としての実走**。`2026-09-06T093254Z`（橋なし・全ツール呼び出しが 402 で 0/0——計器の故障として残す）と `2026-09-06T213134Z`（橋あり・本走・A 5/10・B 5/10）。2026-09-11 に `2026-09-10T233702Z`（v2・§16.5・payer 鍵なし＝橋なし・tx 0・A 7/10・B 5/10）。読みは `WINDOW_PLAN.md` §16.1〜16.3、審査員向けの所見は `docs/ethonline-2026/BAZANTIC_FEEDBACK.md` |
 | `examples/ethonline-2026-ab/results/<timestamp>/` | ハーネスが書く先。コミットされているのはモックの実行だけで、実走はここから `docs/ethonline-2026/ab/` へ移す |
 
 **mock と live の見分け方**: `run.json` の `meta.isMock`（`true` なら台本のスタブ・モデルの能力を表さない）と

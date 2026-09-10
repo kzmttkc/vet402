@@ -60,6 +60,33 @@ An earlier run the same day (`ab/2026-09-06T093254Z`) scored 0/10 in both condit
 - Put the Recipe text into MCP `initialize.instructions` for the Gateway it belongs to — then "Add to Claude" delivers the Recipe without anyone pasting it.
 - Show the Recipe prompt on the public page; a reviewer should not need an account to read what the agent is told.
 
+## 6. A/B v2 — after closing the product hole (run 2026-09-11)
+
+**What changed, and what did not.** v1's F4 failure was ours: no tool returned `price_above_ceiling`. We changed the product (`getResourceDecision` now takes `amount_usd` / `max_per_tx_usd` / `require_vet402_allow` and returns `caller_policy.reason_codes`) and added one sentence to the Recipe (v2) telling the agent to pass the 402 amount and its ceiling and to use `caller_policy.reason_codes`. Same model (`claude-opus-5`, effort `high`), same 57 tools in both conditions, same fixtures, same grading rule, 10 trials per condition, `temperature` not sent. Pre-registered in `WINDOW_PLAN.md` §16.5 on 2026-09-07; a pre-run note (commit `91898a2`, 2026-09-10 23:11:02 UTC) fixed F4's oracle at `{price_above_ceiling}` before the run started (23:24:22 UTC). Run once, not re-run: `docs/ethonline-2026/ab/2026-09-10T233702Z`.
+
+**Differences from v1 that are not the Recipe.** No payer key was passed, so the bridge was never built: **102 tool calls, 0 settled, 0 transactions** (v1: 110 calls, 88 transactions of 0 USDC). The Gateway's 0-mcent tools now answer an unpaid `tools/call` with the body (12 of the tools v1 used: 0 × 402 right before and right after the run). The Recipe on bazantic.com is still v2; the planned v2.1 (one line about `l1_inconclusive`) was not published — a recorded deviation.
+
+| condition | success | verdict match | codes ⊆ oracle | fabricated ≥1 | errors | unparseable |
+|---|---|---|---|---|---|---|
+| A (no Recipe) | **7/10** | 10 | 7 | 3 | 0 | 0 |
+| B (Recipe v2) | **5/10** | 10 | 5 | 5 | 0 | 0 |
+
+Per fixture — A: F1 3/3 · F2 0/3 · F3 2/2 · F4 2/2. B: F1 3/3 · F2 0/3 · F3 2/2 · F4 0/2. **Delta (B − A) = −2 (−20pt).**
+
+| run | A | B | F4 A | F4 B | vocabulary set ii, A | set ii, B | tool calls | on-chain tx |
+|---|---|---|---|---|---|---|---|---|
+| v1 `2026-09-06T213134Z` | 5/10 | 5/10 | 0/2 | 0/2 | 20/32 (63%) | 29/32 (91%) | 110 | 88 |
+| v2 `2026-09-10T233702Z` | 7/10 | 5/10 | 2/2 | 0/2 | 17/26 (65%) | 29/37 (78%) | 102 | 0 |
+
+(Vocabulary is exploratory and not used for scoring. v2 set i: A 6/26 (23%), B 10/37 (27%); trials in which every code was real (set ii): A 7/10, B 7/10.)
+
+**Our predictions, checked.**
+- "F4 is fixed in B and not in A" — **wrong, both halves.** Both A trials passed `amount_usd: 5` and `max_per_tx_usd: 1` to `getResourceDecision`, parameters both conditions can see in the tool schema and the API list, and answered with `price_above_ceiling` alone. Both B trials answered `price_above_ceiling` plus the top-level codes `l0_pass`, `l1_delivered`, `l2_undeclared`. The top-level decision for that resource is ALLOW; only `caller_policy` refuses, so those three codes are reasons to pay and are not in the oracle. Our Recipe's step 5 asks for reason codes "including caller_policy.reason_codes", which reads as "the top-level codes and the caller-policy codes". We named this risk in the pre-run note; it happened.
+- "F2 is not fixed in either condition" — **right.** `/decision` still answers 404 `not_found` for The Graph's resource; both conditions scored 0/3.
+- "If there is a difference, it is at most the two F4 trials (+20pt)" — **the difference came from F4, in the other direction (−20pt).**
+
+**What we take from it.** Without the Recipe, the tool schema and the API list were enough for the agent to use the ceiling parameters; the Recipe sentence we added made B's reason list less exact. A Recipe line is an instruction the agent follows literally, so its wording is part of the product.
+
 ## Recount command
 
 Every number in this document comes from one script; nothing is counted by hand.
@@ -68,6 +95,7 @@ Every number in this document comes from one script; nothing is counted by hand.
 cd examples/ethonline-2026-ab
 npm run metrics -- ../../docs/ethonline-2026/ab/2026-09-06T213134Z          # Markdown tables
 npm run metrics -- ../../docs/ethonline-2026/ab/2026-09-06T213134Z --json   # same numbers as JSON
+npm run metrics -- ../../docs/ethonline-2026/ab/2026-09-10T233702Z          # v2 (§6)
 ```
 
 It regrades every trial from `answer` + `oracle` with the pre-registered rule (`src/grade.mjs`) and does not read
