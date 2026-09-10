@@ -280,6 +280,15 @@ Tom 自身が "will require a user to sign a transaction everytime" と書いて
 未回答の資格質問は最低6件。**答えを待って設計を決めない**方針（上記）は変えない。
 09-10 22:00 JST の Project Feedback Session #12 が、この質問を人に直接当てられる最後の場になる。
 
+**【2026-09-10 18:46 追記】我々の 1 件には回答が来た。** `#partner-the-graph` のスレッド
+「Quick eligibility question for the AI」で `ethonline 2026` が
+> Good question. You'll be eligible even if consuming only the x402 Base subgraph
+
+と回答。**x402 Base subgraph を消費するだけで AI Tooling / AI Use Case（Continuity）の資格を満たす**——
+MCP／エージェント面からの到達可能性は資格の条件ではない。原文・射程・執行部の判断（MCP は資格ではなく
+**差別化**として維持する）は `PRIZES.md` §1.1 が正典。**下の資格要件表は 1 行も変えていない**
+（資格の下限が下がっただけで、賞ページの評価軸は動いていない）。他 5 件は未回答のまま。
+
 ## 1.45 提出の要件（2026-09-06 08:20・運営の `info/details` と `prizes` を実読）—— **正典より厳しい点が5つあった**
 
 ### 動画（**canon が緩かった**）
@@ -1383,7 +1392,7 @@ v1（§16.3）は**製品の穴**（上限超えの理由コードをどのツ�
 どちらの枠が vet402 の実物に近いかを1回だけ検算する**（vet402 は自前 API を持ち、
 それをエージェントが踏める形にしている——後者に寄る可能性がある）。
 
-**The Graph の資格質問（AQ-054・`Sen_web3` 09-07 06:17）は 09-09 08:2x 時点でも未回答。**
+**The Graph の資格質問（AQ-054・`Sen_web3` 09-07 06:17）は 09-09 08:2x 時点でも未回答。**（**09-10 18:46 に回答。`PRIZES.md` §1.1**）
 ❤️ が1つ付いただけで、The Graph 側の人からの返信は無い。
 同じ問いを別チームも投げている（`Luc`・09-07 14:26・"Same question @LNiu asked on Sep 3, still open."）——
 **我々の質問の書き方の問題ではなく、パートナー側が答えていない。**

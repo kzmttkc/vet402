@@ -69,7 +69,7 @@ curl -sL -X POST https://mainnet.base.org -H 'content-type: application/json' \
 **時間配分の検算**: 30＋60＋60＋45＋45＝240 秒。`judge`・`pay`・MCP は各 3〜5 秒の網の待ちがある（切れない——live の証拠）。
 言う文は各段 40〜60 語（150 語/分で 16〜24 秒）で、待ちと合わせて枠に収まる。**4:00 で止められる前提**で 3:15 の段は削れる作りにしてある。
 
-## 3. 想定質問 20 件（英語の質問 → 30 秒で言える答え → 証拠の場所）
+## 3. 想定質問 21 件（英語の質問 → 30 秒で言える答え → 証拠の場所）
 
 各項: **A** ＝ そのまま言う英語、**要旨** ＝ 日本語 1 行、**証拠** ＝ ファイル:行 か URL か コマンド。
 
@@ -251,6 +251,11 @@ A: *We did not use it, and we read it as an owner-side setting. `@bazantic/cli` 
 要旨: ゲートウェイ所有者側の上流認証設定と読む。買い手ヘッダ（`Authorization: Bearer` / `x-api-key`）として送っても 09-09 の再計測で差なし。当社の gateway は既定 `x402-mpp` のまま。
 証拠: `BAZANTIC_FEEDBACK.md` §4 #5（Tom Hay の 09-09 Discord 回答と CLI の読み）／`WINDOW_PLAN.md` §1.4「Bazantic：Tom Hay 本人の発言 3 件」／Discord `#partner-bazantic`。
 
+**Q21. Why build the MCP server at all? Wasn't the SDK enough to qualify?**
+A: *Eligibility was never the reason. On September 7 we asked ETHGlobal directly whether judging weighs the Graph evidence being reachable from the MCP/agent surface, or whether the SDK path alone counts as AI tooling. On September 10, 18:46, they answered: "Good question. You'll be eligible even if consuming only the x402 Base subgraph." So the SDK alone would have qualified. We kept the MCP server, the Agent Skill, the plugin and the devcontainer because the prize asks for AI tooling that makes The Graph easier to use — that is the bar, not the eligibility floor. An agent inside Claude or Cursor calls one tool and gets back a decision pinned to a block and a deployment. Qualifying and being useful are different things, and we spent the days on the second.*
+要旨: 資格は SDK だけで足りると運営が **2026-09-10 18:46** に回答した（原文: *"Good question. You'll be eligible even if consuming only the x402 Base subgraph"*・我々の質問は 09-07 06:17）。MCP・Agent Skill・プラグイン・devcontainer は**資格のためではなく**、賞ページが挙げる「The Graph を使いやすくする AI ツール」の形に合わせたもの。**運営の回答を手柄にしない**——言うのは「資格の下限は低かった。我々はその上を作った」まで。
+証拠: `PRIZES.md` §1.1（質問と回答の原文・チャネルは `#partner-the-graph` の公開スレッド "Quick eligibility question for the AI"）／`WINDOW_PLAN.md`「The Graph（Continuity）の資格要件」表（賞ページ側の要件は 1 行も動いていない）／`SKILL.md` ブロック 11・12（MCP から The Graph を読んで払う／拒む）／`.claude-plugin/plugin.json`・`.devcontainer/devcontainer.json`。
+
 **予備（時間があれば聞かれる）**
 - *"Is the settlement verified?"* → *"The SDK says at most `settle_claimed` — the seller's header is a claim. Only a verifier that re-reads the chain says `settled`; that is the production observatory's word, not the SDK's."*（`WINDOW_PLAN.md` §15 語彙・`SKILL.md` "Reading the answer"）
 - *"Why 120 seconds?"* → *"An EIP-3009 authorization stays live until `validBefore`; a short window bounds what a failed settle can do later. Production cut it on September 4 after an audit; the SDK matches."*（§14.1 #3）
@@ -424,3 +429,4 @@ viem が解決できるかだけ（`packages/mcp-server/src/index.ts:221`）。�
 | Q12 の「42 変異・M01〜M42・39.2s」 | **本数と終端 id を手で書くのをやめた**（`all N mutations killed`・09-08 実走 53.8s） | 09-08 clean checkout 実走: `all 44 mutations killed in 53.8s`・id は M01〜M44。`beac4f9` が pin の 2 本を足していた。印 `n:sdk_mutations` は 44 で正しく、腐っていたのは**印の隣に手で書いた本文**だった（§8 の 1 つ上と同じ穴） |
 | Q17 の答え「**Then we found it**／503 は **30 分 cron のみ**」 | **狭めた。** 「機構は再現して確かめ、直した。ただし当日の 503 全件の原因だとはまだ言えない——切り分けは継続中」。`30 分 cron のみ` は削除 | 09-08 22:5x 実測: (a) 最後の error 行 18:25:52 JST は `8e165cc`（18:37）・`c7ec6f6`（20:01）の**どちらのデプロイよりも前**——止まったのは修正の前。(b) `detail` を持つ error 行は **0 件**（理由を残す計器はまだ 503 を 1 件も捕らえていない）。(c) 30 分監視ログの最後の FAIL は 16:30 JST で、18:25 の 503 はどの cron の時刻でもない。11:30 の cron が OK の 2 分後にも error 行がある。(d) episodic（JST 02 時台・15 時台は error 0）。加えてこちらの測定トラフィックという交絡があるが、`health_snapshots` は 5 分間引きで流量を測れないので本数は**【未確認】**。**審査員の前で言い切ると、反証が 4 つある主張になる** |
 | 想定質問 15 件 | **18 件**（Q16 コミットの言語 / Q17 `/status` の error / Q18 動画の数字） | 審査基準に *"Proper use of git commit history"* が明記されており、§4.5 が `/status` を「見せてよい 2 本」に挙げているのに、どちらも答えが無かった。動画の receipts は 09-07 の 427 から動いている |
+| 想定質問 20 件 | **21 件**（Q21「なぜ MCP まで作ったのか」） | 09-10 18:46 に運営が「x402 Base subgraph を消費するだけで資格を満たす」と回答した（`PRIZES.md` §1.1）。**資格が SDK だけで足りたと審査員が知っている場合に、MCP を作った理由を答えられないと「余計なもの」に見える**。資格の下限と賞ページの評価軸は別だ、と言い切る 1 問を足した |

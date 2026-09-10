@@ -645,3 +645,99 @@ WO の該当項目は引き取り不要です。
 - 変異: `cd packages/sdk && node test-mutations.mjs | tail -1` → `all 45 mutations killed`
 - CI: `gh run list --branch main --limit 3 --json headSha,conclusion,workflowName`（【実測】`ci` は `690b4fc`・`9ea5991` ともに success。同時刻の `Dependabot Updates` に failure が 1 本あるが `ci` ではない）
 - 健全性の行: 上の SQL（本番 DB は読み取りだけ）
+
+## 2026-09-10 20:0x ハッカソン戦略 → vet402.com セッション: **`690b4fc..2994716` の 10 コミット（`SKILL.md` の live ブロックが鍵だけでは動かなかった件を含む）＋ The Graph の資格回答を正典化**
+
+**前項が記帳した最後の SHA は `690b4fc`**（本ファイルの「2026-09-09 15:00」の項。`93df57e` は
+`git merge-base --is-ancestor 93df57e 690b4fc` で祖先＝既に含まれている）。そこから `origin/main` までを
+1 件も落とさず下に置きます。**製品本体に効くものを先に。**
+
+### 1. コードが動いたもの（そちらが知るべき順）
+
+- **`3aeb407` — `SKILL.md` の live ブロック 11・12 は、鍵を 3 本すべて export しても動かなかった。**
+  clean clone で `payer_not_configured` になり `decision_record: null` を返し、**The Graph を一度も読まない**。
+  原因は `resolvePayer()` が「鍵が在る **かつ** `packages/mcp-server` から `viem/accounts` が解決する」時にだけ
+  signer を返すのに、**viem は `packages/mcp-server` の依存に意図的に入っていない**ので `npm ci` が持ってこないこと。
+  `npm install viem` を足すだけで両ブロックとも紙面どおりの出力になった（2026-09-10・origin/main の clean worktree で実測）。
+  - **`SKILL.md` の Build order に段 5 を新設**（`packages/mcp-server` で `npm install viem`・段 2 が持ってこない理由つき）。
+    ブロック 11・12 の本文と鍵の表も「鍵 **と** viem」に直し、切り分けの 1 行
+    （`node -e 'require.resolve("viem/accounts")'`）を添えた
+  - **`scripts/skill-live-check.mjs` の `needs` が env 名だけでなく `module:<specifier>@<dir>` を取るようにした**
+    （`createRequire` で**実解決を見る**。`package.json` の記載は見ない）。モジュール前提が欠けたブロックは
+    「見ないまま素通り」でも「本番が壊れた」でもなく、**理由つき skip** になる。
+    **会計は不変: 12 ブロック・6 印・6 skip。**
+  - `packages/mcp-server/src/index.ts` は失敗要約の文言のみ（viem を先に出し、2 つのどちらが欠けたかは
+    判別できないと明記）。**reason code・決済経路・依存は 1 つも変えていない。**
+  - 会期後 TODO #10 に「`payer_not_configured` を『鍵が無い』と『signer モジュールが無い』へ割る」を積んだ。
+    **会期中にやらない理由**: reason code の語彙を提出文・A/B オラクル・verdict 形テストが引用している
+- **`f076122` — `refresh-numbers` に `guard` を新設。** `recorded` 型の印は「文書の中の印」としか
+  突き合わせておらず、**測った元とはずれても永久に緑**だった。実害が出ていた——`4b281ab`（09-09 14:21）が
+  変異 M45 を足した後も `--check` は 44 のまま緑。`guard: { command, why }` を `recorded` に付けられるようにし、
+  `--check` が git/grep だけの安いコマンドで**ずれの検出だけ**を行う（**値は書かない**。印の意味は
+  「変異の本数」ではなく「**全部殺せた**本数」で、grep の数を印に入れると生き残りが「N mutations, all killed」で
+  出荷される）。`sdk_mutations` 44 → 45（clean checkout 実走 `all 45 mutations killed in 44.3s`）、
+  `--refresh --only <id>` も追加（`as_of` を動かさずに 1 印だけ測り直す）
+- **`1244663` — `commits-en` の判定を 2 段に割った。「遅れているだけ」は note、「自己矛盾」だけが赤。**
+  `d0346b3` が対訳の無い日本語件名で入り、root `npm test` が赤 → main の CI 赤 → issue が開き、
+  **リポの全セッションが push を失った**（1 ブランチが実際に待たされた）。
+
+### 2. 文書のみ（提出物の文言に効く）
+
+- **`d83e408` — Bazantic の JWT について Tom Hay は 09-09 に別々の 2 つを言っていた。**
+  `d0346b3` は**他チーム（zkenk）宛の回答だけ**を読んで「JWT の迂回口は存在しない」と結論し、
+  実際にレビュアー 1 名を誤らせた。(A) 我々宛＝ JWT は在る（bazantic.com/api-keys で作り、gateway の API キーとして
+  送れば 402 を飛ばせる）／(B) zkenk 宛＝価格 0 の x402/MPP（毎回署名は起きる）。`WINDOW_PLAN.md` は (A) を先に、
+  (B) を帰属つきで残し、日付つきの訂正注記を持つ。`SUBMISSION_DRAFT.md` の開発者フィードバック 4 も
+  「docs にもダッシュボードのナビにも無い」へ直した（`BAZANTIC_FEEDBACK.md` §4 #5 と `LIVE_JUDGING` Q20 は
+  `7b5c58d` 以来 (A) に忠実で無変更）
+- **`e5e5914` — `/api/health` の劣化の帰属が 1 本確定した。** 09-10 02:59–04:00 JST の 11 行はすべて
+  `feedback_stats_unavailable(deadline:getLogsChunked)`＝**内側 2,500 ms**（`src/lib/chain/erc8004.ts:222`）で、
+  Q17 が寄っていた外側 3,500 ms ではない。**血の届く範囲も測った**: フラグは 1 箇所で立ち
+  （`src/lib/scoring/engine.ts:327`）、届くのは agent-score 面だけ（15 点・risk 語が high）。
+  SDK が実際に叩く 2 経路が到達する 81 ファイルに scoring engine・erc8004・feedback window は**無い**
+  ——**この行が赤でもデモの verdict は動かない**。**コードは 1 行も変えていない**（会期中に上流を触らない）
+- **`593c9e2` — `SUBMISSION_DRAFT.md` §I の「2 回叩けば block が進むのが見える」を削除。**
+  自分の記録が反証していた（09-08 に連続 3 回とも block 51041641）。payee スコアを「安定」と呼んでいた
+  内部注記 3 件も「動く」に訂正（提出日に §Z の差し替え段を飛ばさないため）
+- **`08a7dd1` — 非公開スレッド（`#ticket-5926`）の運営回答の原文引用を、氏名なしの要約に置換**
+  （`690b4fc` がメールに施したのと同じ処置の続き）。**裁定そのものと、そこから導いた決定は 1 つも変えていない。**
+  公開チャンネル（`#information`・`#announcements`・`#partner-the-graph`）の帰属は対象外
+- **`421cd05`** — 前項（09-09 15:00）の記帳そのもの。**`2994716`** — `COMMITS_EN.md` の再生成のみ
+- **`d0346b3`** — Day 6 の Bazantic 探索（上の `d83e408` が訂正した版）。Tom Hay の「自作 API を
+  ゲートウェイに載せるのも Agentify a New API に数える」・「Test Connection / Activate を 48 時間以内に直す」も同時に記録
+
+### 3. 今回の変更（この記帳コミット自身・**docs のみ・コードは 1 行も触っていない**）
+
+- **`PRIZES.md` §1.1 を新設**——The Graph（Continuity）の資格について **2026-09-10 18:46 に ETHGlobal から回答**が来た。
+  質問（`Sen_web3`・09-07 06:17）と回答の**原文**、チャネル（`#partner-the-graph` の公開スレッド
+  「Quick eligibility question for the AI」）、含意を置いた。**x402 Base subgraph を消費するだけで資格を満たす**
+  ——MCP／エージェント面からの到達可能性は資格の条件ではない。**§1「資格の憲法」の直下に置いた**のは、
+  資格に関する運営一次回答が既にそこに集まっているから（新しい置き場は作っていない）
+- 同時に `PRIZES.md` §2 の「**08-25 回答が引き続き唯一の運営一次回答である**」を訂正（回答が 2 件になった）
+- `LIVE_JUDGING.md` に **Q21「なぜ MCP まで作ったのか。SDK だけで資格は足りたのでは？」** を追加（20 件 → 21 件）
+- **賞ページの評価軸は動いていない**（「The Graph を使いやすくする AI ツール」）。
+  **MCP・Agent Skill・プラグイン・devcontainer は資格のためではなく差別化として維持する**、が執行部の判断。
+  `WINDOW_PLAN.md` の資格要件表は 1 行も変えていない
+- **提出フォームの文面には入れない。** 運営の回答を賞コメントに引用すると、作ったものでなく権威で押していると読まれる
+
+### 運用上の帰結（そちらの push に効く）
+
+- **未対訳のコミット件名は push を止めない。** 既定は `note: … [untranslated]` で exit 0、`--strict` でだけ赤。
+  常に赤なのは**自己矛盾**だけ（Generated 行が無い／指す SHA が祖先でない／手編集で再生成結果と一致しない／
+  `ja` が件名と違う・`en` に CJK が残る）
+- **日本語件名を入れたら `docs/ethonline-2026/commit-titles-en.json` に英題を足すのが望ましい。**
+  提出前の最終通し（`RELEASE_NOTES_SUBMISSION.md` / `LIVE_JUDGING.md` の手順）は `--check --strict` を通すので、
+  対訳の穴はそこで赤になる。審査員が `COMMITS_EN.md` を読む以上、穴のまま出荷はしない
+- **`SKILL.md` の live ブロックを clean clone で試すときは、鍵 3 本に加えて
+  `npm install viem --prefix packages/mcp-server` が要る**（Build order 段 5）。
+  切り分けは `node -e 'require.resolve("viem/accounts")'`
+
+### 確かめ方（読み取りだけ）
+
+- 件数: `git log --format='%h' 690b4fc..2994716 | wc -l` → **10**（上に列挙したのは
+  `3aeb407` `f076122` `1244663` `d83e408` `e5e5914` `593c9e2` `08a7dd1` `421cd05` `2994716` `d0346b3` の 10。**漏れ 0**）
+- 順序: `git log --format='%h %ad %s' --date=iso-strict 690b4fc..2994716`
+- live ブロックの関門: `node scripts/skill-live-check.mjs`（12 blocks / 6 marked / 6 excused）
+- 印の guard: `node scripts/refresh-numbers.mjs --check`／`cd packages/sdk && node test-mutations.mjs | tail -1` → `all 45 mutations killed`
+- 対訳の判定: `node scripts/ethonline-commits-en.mjs --check`（note で exit 0）／`--check --strict`（赤）
+- 資格の一次記録: `docs/ethonline-2026/PRIZES.md` §1.1

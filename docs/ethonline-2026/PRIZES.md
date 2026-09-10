@@ -59,6 +59,45 @@
 
 → `pre-ethonline-2026` タグ・`CHANGED_FILES.md`・README の「既存 / 会期中」分離は**規約上の必須物**であって作法ではない。
 
+### 1.1 The Graph（Continuity）の資格 —— 2026-09-10 の運営回答（**公開チャンネルなので原文を置く**）
+
+**チャネル**: ETHGlobal Discord `#partner-the-graph` のスレッド
+**「Quick eligibility question for the AI」**（`Sen_web3` の 09-07 質問から立ったスレッド）。
+**公開チャンネルなので原文を転載する** ——`08a7dd1` が原文の転載をやめたのは非公開スレッド
+（`#ticket-5926`）と私信だけで、公開チャンネルの帰属はその対象外である。時刻は Discord の表示（JST）で、
+一次はオーナー提示のスクリーンショット。
+
+我々の質問（`Sen_web3`・**2026-09-07 06:17**・原文）:
+
+> Quick eligibility question for the AI Tooling / AI Use Case (Continuity) track. Our SDK consumes the x402 Base
+> subgraph as a live, block-pinned decision input (an agent refuses or pays based on receipts the subgraph shows).
+> We also expose the same evidence through an MCP tool so Claude/Cursor can call it. Does judging weigh whether the
+> Graph evidence is reachable from the MCP/agent surface, or is the SDK path alone considered AI tooling? Asking so
+> we spend the remaining days on the right surface. Thanks!
+
+運営（`ethonline 2026`）の回答（**2026-09-10 18:46**・原文）:
+
+> Good question. You'll be eligible even if consuming only the x402 Base subgraph
+
+**含意（資格）**: AI Tooling / AI Use Case（Continuity）は、**x402 Base subgraph を消費するだけで資格を満たす**。
+**MCP／エージェント面から Graph の証拠に到達できることは、資格の条件ではない。**
+09-10 08:09 時点で未回答の資格質問は最低 6 件あった（`WINDOW_PLAN.md` の同日実読）。**そのうち我々の 1 件が閉じた**——
+残り 5 件（他チームの分）は未回答のままで、The Graph 側の人からの返信は 1 件も来ていない。
+
+**含意（競争力）— 資格と競争力は別。** 賞ページの評価軸は
+**「The Graph を使いやすくする AI ツール（MCP サーバー・SKILL・プラグイン）」**のままで、そこは動いていない。
+**MCP ツール・Agent Skill・プラグイン・devcontainer は資格のために持っているのではなく、差別化として維持する**
+——これが執行部の判断であり、この回答を理由に MCP 面を薄くしない。
+
+**この回答の射程**（誤読を防ぐために書いておく）: 答えたのは `ethonline 2026`＝**ETHGlobal 側**である。
+同じチャンネルで 09-07 19:06 に ETHGlobal スタッフが「The Graph の賞の資格には答えられない・自分は The Graph の
+人間ではない」と述べている（`WINDOW_PLAN.md` §「The Graph：資格質問は…未回答」に原文）。
+したがってこれは**運営が資格の下限を示した記録**であって、**The Graph 側の審査基準（§1 の賞ページ要件・
+`WINDOW_PLAN.md` §「The Graph（Continuity）の資格要件」）を上書きするものではない**。要件表は 1 行も変えていない。
+
+**提出フォームには書かない。** 運営の回答を賞コメントに引用すると、作ったものでなく権威で押していると読まれる。
+この記録は docs の中だけで使う。
+
 ---
 
 ## 2. 2026-08-24 07:40 の基準線からの差分（今日の実測）
@@ -79,8 +118,10 @@
 | 0G | $15,000・記載なし | **賞ページから消滅**（08-27 に機械監視が検出済み） | 消滅 |
 
 **基準線の「未解決 6本（$50,000）」は今日で決着した。** The Graph / ENS / Ledger / Chainlink は
-continuity ブラケットを新設し、World は既知、0G は消滅。**Discord `#ticket-5926` の追加返信は本日確認していない**
-（Discord へはこのセッションから接続できない）。上の 08-25 回答が引き続き唯一の運営一次回答である。
+continuity ブラケットを新設し、World は既知、0G は消滅。**Discord `#ticket-5926` の追加返信は 09-04 時点では確認していない**
+（当時 Discord へ接続できなかった）。**運営の一次回答は 08-25 の 1 件だけではない** ——`#partner-the-graph` の
+公開スレッドに **2026-09-10 18:46 の回答**が来ており、原文と射程は §1.1 に置いた（この行は 09-10 に訂正した。
+訂正前は「08-25 回答が引き続き唯一の運営一次回答である」と書いていた）。
 
 **08-31 の当ファイル記録で今日誤りになったもの（訂正）**:
 - 「The Graph の continuity 枠は3つ・各 $5,000」→ **誤り。continuity は1枠（AI Tooling）だけ**で、
