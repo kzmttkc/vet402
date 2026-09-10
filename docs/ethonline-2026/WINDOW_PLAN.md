@@ -1359,6 +1359,15 @@ v1（§16.3）は**製品の穴**（上限超えの理由コードをどのツ�
 `l1_not_attempted` → `l1_inconclusive` に変わるので、採点表（`fixtures.mjs` の F3 oracle）の語を更新した。
 **両腕（A/B）とも同じ採点表で採点する。仮説・予測・成功の定義は不変。** F2（カタログ外 404）は無影響。
 
+**【2026-09-11 実行前注記・本文は書き換えない・実データを見る前】** v2 は **09-11 に実行する**（下の日程表の 09-09 行は書き換えない）。この注記は実行より前にコミットする。
+- **F4 の oracle は `{price_above_ceiling}` のまま据え置く。** 規則: 上位の判定そのものが拒否の理由になる場合（F3＝上位 WARN）は、上位の語を oracle に入れる。上位が ALLOW で `caller_policy` だけが REFUSE の場合（F4）は、上位の語は「払ってよい」側の理由なので oracle に入れない。
+- **和集合に広げない理由**: 09-11 に v1 の生ログ（`ab/2026-09-06T213134Z`）を F4 だけ和集合（`price_above_ceiling`＋上位3語）で採点し直すと、条件 A の F4 が 0/2 → **2/2** に変わる（A は上位3語だけを挙げて拒否していた）。B は 0/2 のまま（`policy:*` 等の造語が残る）。広げると A と B の差が測れなくなる。
+- **既知のリスク**: Recipe v2 の手順5は `reason_codes` を "including caller_policy.reason_codes" と書いている。B が上位の語（`l0_pass` 等）まで並べて F4 を落とす可能性がある。
+- **予測が外れうる点**: A もツール定義（`getResourceDecision` の `amount_usd`・`max_per_tx_usd`）から上限を渡せる。A が F4 を取れば「B で直り A では直らない」は外れる。
+- **逸脱**: Recipe は **v2 のまま**走らせる。09-09 に予定した v2.1 の再公開（語彙説明に `l1_inconclusive` を1行足す）は未実施。F3 の採点表は 09-08 に `l1_inconclusive` へ更新済みで、09-11 に本番で `l1_inconclusive` が返ることを再測した（下）。
+- **09-11 の直前確認（payer 鍵なし・未払いの `tools/call` だけ）**: ゲートウェイ **57 ツール**。`getResourceDecision` に `amount_usd` / `max_per_tx_usd` / `require_vet402_allow` がある。v1 で呼ばれた 12 ツールに未払い `tools/call` を1回ずつ打って **402 は 0 件**。本番応答: F1 = ALLOW `[l0_pass, l1_delivered, l2_undeclared]`・`caller_policy` ALLOW `[]`／F2 = `/decision` 404 `not_found`・payee WARN（v1 と同じ）／F3 = WARN `[l0_pass, l1_inconclusive, l2_undeclared]`＋`caller_policy` REFUSE `[payee_recommendation_not_allow]`（oracle の4語と一致）／F4（amount 5・上限 1）= ALLOW `[l0_pass, l1_delivered, l2_undeclared]`＋`caller_policy` REFUSE `[price_above_ceiling]`。
+- **v1 と条件が違う点**: v2 には **payer 鍵を渡さない**。橋は作られず、署名もオンチェーン tx も 0 本になる。v1 は橋が決済した tx が 88 本（各 0 USDC）あった。09-09 以降、0 mcents のツールは未払いの `tools/call` に本文を返すので、橋が無くてもモデルには本物の応答が届く（上の 402 0 件）。
+
 ### 記録: `PRIZES.md` の P3 記述は古い
 
 `PRIZES.md:14` は「会期中に新規で立てる自前 x402 seller を Gateway として登録し」と書いているが、
