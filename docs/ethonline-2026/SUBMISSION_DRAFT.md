@@ -212,7 +212,7 @@ Built during the window: payOrRefuse (SDK), The Graph subgraph evidence source, 
 **選ぶ**: **1. Finalist and Partner Prizes**（`WINDOW_PLAN.md` §1.45 決定）。
 
 根拠（`info/details` 09-07 実読）: "The first round of judging has no impact on your project's eligibility for partner prizes" ／ Continuity のファイナリスト枠は最大 3（`WINDOW_PLAN.md` §1.4・Pascal 2026-08-17）。
-**副作用**: Round 1 を通ると **ライブ審査（1 チーム 7 分＝デモ 4 分＋Q&A 3 分）**に Takeshi が出る。2025 は締切の約 1 日後（`WINDOW_PLAN.md` §1.4）。**09-14〜16 を空ける。Round 1 の通過連絡はメール。**
+**副作用**: Round 1 を通ると **ライブ審査（1 チーム 7 分＝デモ 4 分＋Q&A 3 分）**に Takeshi が出る。2025 は締切の約 1 日後（`WINDOW_PLAN.md` §1.4）。**09-14〜16 を空ける。Round 1 の通過連絡は Hacker Dashboard に出る**（メールではない・【一次】`https://ethglobal.com/events/ethonline2026/info/details`（2026-09-10 実読）: *"Once you've submitted your project, information about your Finalist judging session will appear on your Hacker Dashboard."*）。
 
 ---
 
@@ -356,6 +356,6 @@ One keystore-related item was sent privately to support@bazantic.com on 2026-09-
 4. **Submission type**: Finalist and Partner Prizes（§H）。
 5. **送信前**: `npm run refresh-numbers`（記録値を更新）→ §Z の表を上から叩く → `{{…}}` を全部埋める → **`grep -c '{{' <貼った文章>` が 0** であること。動画 URL が入っていること。
 6. **送信 → スクショ**（確認画面と提出後の画面）。スクショは `docs/ethonline-2026/` には置かない（個人情報が映る）。提出後に外から実物を見る: showcase の URL が出たら `curl` で 200 を確認し、`WINDOW_PLAN.md` §0 に URL を記録する。
-7. **提出後の手番**: メールを見る（Round 1 の通過連絡）。**09-14〜16 を空ける**（ライブ審査 7 分）。
+7. **提出後の手番**: **提出直後に Hacker Dashboard を開き、Finalist judging の枠と時刻を実読する**（【一次】`https://ethglobal.com/events/ethonline2026/info/details`（2026-09-10 実読）: *"Once you've submitted your project, information about your Finalist judging session will appear on your Hacker Dashboard."*。**メールでは来ない**）。**09-14〜16 を空ける**（ライブ審査 7 分）。
 
 **ここで止まる条件**: フォームに「事前作業の開示」の**専用欄が無く、かつ Description に文字数制限があって §C の "THE BOUNDARY" 段が入らない**場合——その時は §G の文を Description の**冒頭**に置き、"WHAT THE WINDOW ADDED" を削る（開示は規約上の必須物・`PRIZES.md` §1、機能説明は SKILL.md が持つ）。

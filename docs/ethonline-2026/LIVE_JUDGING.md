@@ -1,7 +1,9 @@
 # ETHOnline 2026 — ライブ審査（Finalist Round 2）の台本・問答・逃げ道
 
-> 作成 2026-09-07（Takeshi 採用 12:18）。**事実**（`WINDOW_PLAN.md` §1.4・§1.45）: Round 1 は非同期・通過はメール → Round 2 は**ライブ**、
-> **1 チーム 7 分＝デモ 4 分＋Q&A 3 分**。日時は**確定**——提出フォームに **09-14 12:00 pm EDT ＝ 09-15 01:00 JST** と明記（`WINDOW_PLAN.md` の 09-08 実測の表）。Continuity の枠は **3 つ**。
+> 作成 2026-09-07（Takeshi 採用 12:18）。**事実**: Round 1 は非同期 → **通過は Hacker Dashboard に出る**——【一次】`https://ethglobal.com/events/ethonline2026/info/details`（2026-09-10 実読）: *"Once you've submitted your project, information about your Finalist judging session will appear on your Hacker Dashboard."*・*"If you're selected for final judging, on judging day, you'll be sent to the green room and then to your official judging room"*。**メールではない**（§1 #14）。
+> Round 2 は**ライブ**、**1 チーム 7 分＝デモ 4 分＋Q&A 3 分**（同ページ）。
+> 日時は **09-08 に提出フォームで実測**（【一次】`WINDOW_PLAN.md` §1.4 の「【2026-09-08 09:0x 実測】提出フォームを 6 タブ埋めて保存した」の表）: **09-14 12:00 pm EDT ＝ 09-15 01:00 JST**。**`info/details` に日時は無い**（載っているのは提出締切 09-13 12:00 pm EDT だけ・09-10 実読）ので、**09-13 の提出直後に Dashboard で読み直す**（§1 #14）。
+> Continuity の枠は **3 つ**（【一次】ETHGlobal Discord `#👂information`・Pascal・2026-08-17。原文は `WINDOW_PLAN.md` §1.4。`info/details` には無い）。
 > 動画（`VIDEO_SCRIPT.md`）は**録画を見せる**もの。ライブは**その場でターミナルを叩く**もの。同じ絵を二度見せない——
 > 動画に無いのは「**審査員が指定した 402 URL を `judge` に入れる**」（Practicality／WOW）。
 > この文書の数字は **<!-- n:as_of -->2026-09-08<!-- /n --> の実測**（§6・印は `npm run check-numbers` が見る）。**動く数字は当日の朝に §7 のスクリプトで取り直す。**
@@ -28,14 +30,14 @@ Node は **≥ 22.18**（demo が `.ts` を直接走らせる）。09-07 実測 
 | 4 | 鍵なしで全部緑 | **前日にやる。当日はやらない。** リポ root で `npm run judge-check` → 表の **exit が全部 0**（09-07: clean clone で 17 秒）。これが sdk/mcp-server の `dist/` も作る。ただし **`npm ci` を 4 箇所（sdk・mcp-server・root・ab）で走らせて `node_modules` を作り直す**（`scripts/judge-check.sh:67,70,74,75`）ので、当日の朝に打つと動いていた環境を壊しうる。同じ前日に `node scripts/ethonline-commits-en.mjs && node scripts/ethonline-commits-en.mjs --check --strict` → 末尾が `file fresh, 0 problem(s)`（`npm test` の `--check` は遅れを note で通すが、提出の Release 前は `--strict` で赤にする） |
 | 5 | The Graph の鍵が生きている | demo dir で `node src/run.ts pay 2>&1 \| grep 'subgraph evidence is live'` → `[ok  ] … block N, M receipts`。`[FAIL] … graph_query_error: auth error` なら Subgraph Studio で鍵を作り直す |
 | 6 | `/decision` の 404 が保たれている（§3.1「登録しない」） | `curl -sL -o /dev/null -w '%{http_code}\n' 'https://vet402.com/api/v1/resources/9e8469d365d65bc9b4a3f588f951bfc70ae64cc1afa2ebdf7e8f11a940d40763/decision?role=payer'` → **404**（09-07 実測 404） |
-| 7 | 逃げ道用の実出力を採る | **§7 のスクリプトを 1 回走らせ、`~/ethonline-live/<日付>/` に全コマンドの出力を置く**。当日の朝にもう 1 回（block と件数が動く）。合格条件: `ls ~/ethonline-live/$(date +%F)` が **00〜10 の 11 ファイル**で、末尾の漏洩検査が**何も印字しない**。**09-08 に初回採取済み**（`~/ethonline-live/2026-09-08/`・11 ファイル・漏洩検査 空） |
-| 8 | MCP の live 段の準備（§2 の 2:30） | **`npm i --no-save viem` は打たない。** 09-08 実測: `packages/mcp-server` から `viem/accounts` は**リポ root の `node_modules` で解決する**（`require.resolve` → `~/vouch/node_modules/viem/_cjs/accounts/index.js`。`packages/mcp-server/node_modules/viem` は存在しない）。#4 の `npm ci` が済んでいれば足り、打つと repo が汚れるだけ。**要るのは payer 鍵が「形として在る」ことだけ**——`resolvePayer()` は `/^0x[0-9a-fA-F]{64}$/` しか見ず（`packages/mcp-server/src/index.ts:221`）、床 10⁹ の拒否は `pay-or-refuse.ts:749` で返るので**支払いモジュールの動的 import（同 :843）へ到達しない**。だから**その場限りの鍵を env にだけ渡す**: `VOUCH_PAYER_PRIVATE_KEY=0x$(openssl rand -hex 32)`。**ファイルに書かない・印字しない・残高 0 のまま**。§7 の 08 行がこの形。合格条件: 出力の `decision_record.evidence[0].source` が `"subgraph"` |
+| 7 | 逃げ道用の実出力を採る | **§7 のスクリプトを 1 回走らせ、`~/ethonline-live/<日付>/` に全コマンドの出力を置く**。当日の朝にもう 1 回（block と件数が動く）。合格条件: `ls ~/ethonline-live/$(date +%F)` が **00〜10 の 11 ファイル**で、末尾の漏洩検査が**何も印字しない**。**09-08 に初回採取済み**（`~/ethonline-live/2026-09-08/`・11 ファイル・漏洩検査 空）。**ただし 09-08 の 06 は旧版（`refuse`）で、§4 が読み上げると決めた `graph_query_error` の語を持っていない**——`judge` 版に直して 09-10 に採り直した（`~/ethonline-live/2026-09-10/06-judge-graph-down.txt`・【実測】`grep -c graph_query_error` → **1**）。前日と当日の全採取は下の直した 06 行で走る |
+| 8 | MCP の live 段の準備（§2 の 2:30） | **`npm i --no-save viem` は打たない。** 09-08 実測: `packages/mcp-server` から `viem/accounts` は**リポ root の `node_modules` で解決する**（`require.resolve` → `~/vouch/node_modules/viem/_cjs/accounts/index.js`。`packages/mcp-server/node_modules/viem` は存在しない）。#4 の `npm ci` が済んでいれば足り、打つと repo が汚れるだけ。**要るのは payer 鍵が「形として在る」ことだけ**——`resolvePayer()` は `/^0x[0-9a-fA-F]{64}$/` しか見ず（`packages/mcp-server/src/index.ts:222`——宣言は `:220`）、床 10⁹ の拒否は `pay-or-refuse.ts:749` で返るので**支払いモジュールの動的 import（同 :843）へ到達しない**。だから**その場限りの鍵を env にだけ渡す**: `VOUCH_PAYER_PRIVATE_KEY=0x$(openssl rand -hex 32)`。**ファイルに書かない・印字しない・残高 0 のまま**。§7 の 08 行がこの形。合格条件: 出力の `decision_record.evidence[0].source` が `"subgraph"` |
 | 9 | `--live` 1 回の可否（**ここで決める。当日は決めない**） | (a) 残高: 下のチェーン読みで **USDC ≥ 0.02**（09-07 実測 **0.99**）。(b) `DEMO_PAYER_PRIVATE_KEY` が `.env.rehearsal.local` にある（名前だけ）。**09-08 実測ではどの `.env*` にも無い**——入れるのは Takeshi。入らないまま当日を迎えたら (b) は不成立なので、**既定どおり空撃ち＋09-05 の Basescan で行く**。(c) 前日に `node src/run.ts pay` の空撃ちが `predicted --live would sign and send $0.01` を出している。**3 つ揃わなければ §2 の 1:30 は空撃ち＋09-05 の Basescan で行く** |
 | 10 | ブラウザのタブを先に開く | Basescan `https://basescan.org/tx/0xf12093fba9314b1d3a514e7b667969201be8d021a6f4d6bdeb8d6c7f2de469ad`／`https://github.com/kzmttkc/vet402/blob/main/SKILL.md`／`https://bazantic.com/recipes/x402-payee-verification-via-vet402-gateway`／`https://vet402.com/observatory`。**ダッシュボード類（Vercel・Neon・Bazantic の鍵ページ・1Password）は閉じる** |
-| 11 | 画面共有の練習 | 招待メールの会議ツールで **1 回接続テスト**（ツール名は【未確認】——メールに書いてある）。共有するのは「ターミナルのウィンドウ」と「ブラウザのウィンドウ」の 2 つだけ（画面全体を共有しない）。macOS の**集中モード ON**（通知を出さない） |
+| 11 | 画面共有の練習 | **接続テストは無い。** 招待メールも外部の会議ツールも存在しない——提出後に **Hacker Dashboard に枠と時刻が出て**、当日は **green room → judging room** へ運営が送る（【一次】`info/details` 09-10 実読）。**練習の本体は窓単位の共有**: 「ターミナルのウィンドウ」と「ブラウザのウィンドウ」だけを選んで共有し、**画面全体を共有しない**操作を 1 回やる。macOS の**集中モード ON**（通知を出さない） |
 | 12 | 通し練習 | ストップウォッチで §2 を **2 回**。4:00 を超えたら 3:15 の段（A/B）を口頭だけにする |
 | 13 | ネット | 有線かテザリングの**予備**を用意し、テザリングで #5 の 1 行が通ることを確かめる |
-| 14 | 時刻とメール | Round 1 の通過連絡は**メール**。ライブは **09-15 01:00 JST（= 09-14 12:00 pm EDT）で確定**——カレンダーに入れ、**00:30 JST に入室**。深夜枠なので前日の睡眠を先に確保する |
+| 14 | 時刻と Dashboard | **Round 1 の通過連絡はメールではない——`Hacker Dashboard` に出る**（【一次】`info/details` 09-10 実読）。**メール待ちで構えると枠を落とす。** → **09-13 の提出直後に `https://ethglobal.com/events/ethonline2026` の Dashboard を開き、枠と時刻を実読する**（読んだ値をここに追記する）。09-08 のフォーム実測は **09-15 01:00 JST（= 09-14 12:00 pm EDT）**——カレンダーに入れ、**00:30 JST に入室**。深夜枠なので前日の睡眠を先に確保する |
 | 15 | A/B v2 が走っていたら | `cd examples/ethonline-2026-ab && npm run metrics -- ../../docs/ethonline-2026/ab/<v2 のディレクトリ>` を採り、§2 の 3:15 で v1 の下に並べる。**口で言う数字は v1 のまま** |
 
 **#9 の残高の読み方**（tx の Transfer ログから買い手アドレスを取り、USDC の `balanceOf` を引く。手でアドレスを書かない）:
@@ -264,7 +266,7 @@ A: *Eligibility was never the reason. On September 7 we asked ETHGlobal directly
 
 | 断 | 何が起きるか | やること | 言うこと |
 |---|---|---|---|
-| **ネット断**（全部） | `judge`/`pay` が `graph_unreachable` や `/decision` null で止まる | `cat ~/ethonline-live/<今朝>/<段の番号>-*.txt` を §2 の順に読む（§7 が採っている。**09-08 に初回採取済み**: `00-tag` `01/02-judge` `03-judge-kronos` `04-refuse` `05-pay-dryrun` `06-refuse-graph-down` `07-mcp-tools-list` `08-mcp-pay-if-trusted` `09-ab-metrics` `10-check-numbers`）。ファイル先頭の `date -u` 行を先に見せる | *"The network dropped. This is this morning's output at HH:MM UTC; the block number on it is the timestamp you can check on The Graph."* |
+| **ネット断**（全部） | `judge`/`pay` が `graph_unreachable` や `/decision` null で止まる | `cat ~/ethonline-live/<今朝>/<段の番号>-*.txt` を §2 の順に読む（§7 が採っている。**09-08 に初回採取済み**: `00-tag` `01/02-judge` `03-judge-kronos` `04-refuse` `05-pay-dryrun` `06-judge-graph-down` `07-mcp-tools-list` `08-mcp-pay-if-trusted` `09-ab-metrics` `10-check-numbers`）。ファイル先頭の `date -u` 行を先に見せる | *"The network dropped. This is this morning's output at HH:MM UTC; the block number on it is the timestamp you can check on The Graph."* |
 | **vet402.com 断** | `/decision` が読めない → `evidence_unavailable`。`pay` の空撃ちは**ローカル関門**（ceiling・chain/asset・payTo 一致・EIP-712 固定）までは緑で出る | そのまま見せる（**それ自体が fail-closed のデモ**）。次に `SKILL.md` §2 のオフラインブロック（fetch を差し替えた `payIfTrusted` → REFUSE・`nonce null`）を貼る | *"Our own API is down, and the gate refuses — no answer is not an ALLOW. The local money gates still ran. Here is the same refusal fully offline."* |
 | **The Graph 断**（Gateway 5xx／鍵失効） | `[FAIL] subgraph evidence is live  not read (graph_http_5xx / graph_query_error: …)` → `evidence_unavailable, subgraph_evidence_unavailable` → REFUSE | そのまま見せる。**復旧を待たない**。同じ絵は `GRAPH_API_KEY=not_a_real_key node src/run.ts judge "$G" --method POST --ceiling-usd 0.01` でいつでも再現できる（09-08 実測: 関門行 `[FAIL] subgraph evidence is live   not read (graph_query_error: auth error: malformed API key)` → `reason_codes  resource_uncatalogued, evidence_unavailable, subgraph_evidence_unavailable`）。**`refuse` では再現しない**——2 列の画に出るのは `—  subgraph not read` と `reasons … evidence_unavailable, subgraph_evidence_unavailable` だけで、`graph_query_error` の語は**どこにも出ない**（09-08 実測） | *"The Graph could not be read, and the gate refuses with the reason on the record — it never falls back to our own ledger. This failure mode is a test, not an accident."* |
 | **画面共有断** | 審査員に画面が見えない | 動画の秒を口で指す: 0:12 三つの情報源／0:36 `refuse`（block・deployment・`signed false`）／1:12 空撃ち／1:36 Basescan／1:54 テストと変異／2:12 A/B／2:41 MCP。可能なら §7 の出力ファイルをチャットに貼る | *"I lost screen share. In the video you have: at 0:36 the two-column refusal with the block number; at 1:36 the transaction; at 2:12 the A/B table. I will paste the terminal output in chat."* |
@@ -274,7 +276,7 @@ A: *Eligibility was never the reason. On September 7 we asked ETHGlobal directly
 | **MCP の viem／鍵で詰まる** | `payer_not_configured`（Graph を読む前に止まる・09-07 実測） | 鍵なし `tools/list`（§7）→ 7 ツール → `judge` の出力（2:30 より前に見せた）を指す | *"Without a payer this server cannot move money — by design. The evidence row you saw in `judge` is the same SDK path."* |
 | **審査中に `/api/health` が degraded を返す** | `detail` が `feedback_stats_unavailable(deadline:getLogsChunked); payee=ok`（09-10 に 11 行・#7）。**エージェントスコア面だけ**が慎重側に倒れる | (a) `detail` の**経路名をそのまま読み上げる**（隠さない・打ち直さない・§4.5）。(b) `curl -s https://vet402.com/api/health` を叩き、`https://vet402.com/status` §3 の "A missing observation is never reported as ok." を出す。(c) **デモへの影響は無し**——`judge` / `pay` が叩く `/resources/{id}/decision` と `/payees/{addr}/score` は DB 由来の別の脚を読む（Q17 #7）。**ただし `/agent/<id>`・badge・passport をその場で開くと、その面は risk "high"・score −15 に振れる**ので、開くなら先に断る | *"That is our own observatory naming the input it could not read — an upstream log scan that overran a 2.5-second budget — and failing closed, which is the design. The gate's two faces stand on a different leg, so the verdicts you are watching are unchanged; the upstream itself is a post-window fix."* |
 
-**注記（09-10 実測・#7）**: **審査時刻は劣化が集中する時間帯と重なる**——Round 1 = 09-13 **19:00 UTC**（`utc19 deg=7 ok=47`）、ライブ審査 = 09-14 **16:00 UTC**（`utc16 deg=7 ok=36`）。出ても驚かない。上の行のとおり経路名を読み上げる。
+**注記（09-10 実測・#7）**: **審査時刻は劣化が集中する時間帯と重なる**——Round 1 = 09-13 **19:00 UTC**（出典は【一次】ETHGlobal Discord `#👂information`・Pascal・2026-09-07 17:21 の *"3:00pm ET - Judging Round 1"*。原文は `WINDOW_PLAN.md` §1.4 の 09-07 20:15 追記。ET は EDT なので 19:00 UTC。**`info/details` には無い**）（`utc19 deg=7 ok=47`）、ライブ審査 = 09-14 **16:00 UTC**（09-08 のフォーム実測 12:00 pm EDT・冒頭）（`utc16 deg=7 ok=36`）。出ても驚かない。上の行のとおり経路名を読み上げる。
 
 ## 4.5 拒否が出たとき（`judge` / `pay` が REFUSE を返した）
 
@@ -358,7 +360,7 @@ A: *Eligibility was never the reason. On September 7 we asked ETHGlobal directly
 
 **固定**（提出まで動かない・出典つき）: tx `0xf12093fb…e469ad`・block **50898704**・**0.01 USDC**（チェーン再読 09-07 `status 0x1`）／A/B v1 **5/10・5/10**、語彙 **63%→91%**、**110 calls・88 settled・88 tx・57 tools**（`npm run metrics -- docs/ethonline-2026/ab/2026-09-06T213134Z`）／境界タグ `c42daca 2026-09-04 09:05:36 +0900`。
 
-**当日取り直す**（§7 が採る。口では下限か画面の値）: The Graph 受取ウォレットの `totalPayments`（09-07 12:xx: **427**・block 50981065）／受取人スコア（09-07: **WARN (68)**）／会期コミット数／kronos の受領件数／各テスト本数。**受領は "more than four hundred" で言う**（画面の値より大きい下限を言わない）。
+**当日取り直す**（§7 が採る。口では下限か画面の値）: The Graph 受取ウォレットの `totalPayments`（09-07 12:xx: **427**・block 50981065 → **09-10 11:05 UTC 実測: 512**・block 51124468。**10 日で 85 増えており、当日はさらに動く**）／受取人スコア（09-07・09-10 とも **WARN (68)**）／会期コミット数／kronos の受領件数／各テスト本数。**既定は画面の値をそのまま読む。** 下限で言うなら **"more than five hundred"**（09-10 実測 512 が根拠。件数は単調増加なので当日も下回らない）——**画面の値より大きい下限を言わない**。
 
 ## 7. 事前採取スクリプト（逃げ道用・リポの外に置く・鍵の値は出さない）
 
@@ -375,7 +377,7 @@ cd examples/ethonline-2026-demo
 { date -u; node src/run.ts judge https://kronossignals.com/api/v1/price/btc; } > "$D/03-judge-kronos.txt" 2>&1
 { date -u; node src/run.ts refuse; } > "$D/04-refuse.txt" 2>&1
 { date -u; node src/run.ts pay; } > "$D/05-pay-dryrun.txt" 2>&1           # --live は打たない
-{ date -u; GRAPH_API_KEY=not_a_real_key node src/run.ts refuse; } > "$D/06-refuse-graph-down.txt" 2>&1
+{ date -u; GRAPH_API_KEY=not_a_real_key node src/run.ts judge "$G" --method POST --ceiling-usd 0.01; } > "$D/06-judge-graph-down.txt" 2>&1   # judge。refuse では graph_query_error が画に出ない（§8）
 cd ../../packages/mcp-server
 I='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"judge","version":"0"}}}'
 N='{"jsonrpc":"2.0","method":"notifications/initialized"}'
@@ -396,7 +398,7 @@ ls -la "$D"
 動的 import は同 :843——**手前で返るので署名器に触れない**。
 
 **鍵は「形として在る」ことだけが要る。** `resolvePayer()` が見るのは `/^0x[0-9a-fA-F]{64}$/` と
-viem が解決できるかだけ（`packages/mcp-server/src/index.ts:221`）。だから**その場限りの
+viem が解決できるかだけ（正規表現は `packages/mcp-server/src/index.ts:222`・宣言は `:220`）。だから**その場限りの
 `0x$(openssl rand -hex 32)` を env にだけ渡す**——ファイルに書かない・印字しない・残高 0・
 当日限り。`.env` に長生きする鍵を置くより安全で、`DEMO_PAYER_PRIVATE_KEY` を待たなくても回る。
 **キーストア（`~/.bazantic/gateway/wallet.json`）は使わない**——資金のある鍵で、§5 の禁止表にも載っている。
@@ -426,7 +428,8 @@ viem が解決できるかだけ（`packages/mcp-server/src/index.ts:221`）。�
 | Q2「2 回叩けば block が進む」 | **落とし、`--pin-deployment` の 2 枚に替えた** | 09-08 実測: 連続 3 回とも同じ block。**台本が保証できない絵**だった。pin は 1〜2 秒で一致／不一致の 2 枚が確実に出て、しかも「読んだ先が本当にその subgraph か」というより強い問いに答える（`beac4f9`・変異 M43/M44） |
 | §4「The Graph 断」の再現を `refuse` で行う | **`judge` に替えた** | 09-08 実測: `graph_query_error: auth error: malformed API key` は `judge` の `[FAIL] … not read (…)` 行にだけ出る。`refuse` の 2 列の画には**出ない**（`— subgraph not read` だけ）。手控えどおりに `refuse` を打つと、言うつもりの語が画に無い |
 | §4 の 429 行を「入っていれば起きない」で終える | **見え方と言う一文を書いた** | 09-08 実測: `cd246d9`（09-08 20:22 JST）以降、`judge`/`pay` の画は `HTTP 429` を 3 箇所に出す（`test/gate-parity.test.mjs` が固定）。**リハーサルで「429 の語が出ない」と観測されたのはこの修正より前の版**。`refuse` だけは今も出ない |
-| Q12 の「42 変異・M01〜M42・39.2s」 | **本数と終端 id を手で書くのをやめた**（`all N mutations killed`・09-08 実走 53.8s） | 09-08 clean checkout 実走: `all 44 mutations killed in 53.8s`・id は M01〜M44。`beac4f9` が pin の 2 本を足していた。印 `n:sdk_mutations` は 44 で正しく、腐っていたのは**印の隣に手で書いた本文**だった（§8 の 1 つ上と同じ穴） |
+| Q12 の「42 変異・M01〜M42・39.2s」 | **本数と終端 id を手で書くのをやめた**（`all N mutations killed`。09-08 実走 53.8s → 09-10 実走 44.3s） | 09-08 clean checkout 実走: `all 44 mutations killed in 53.8s`・id は M01〜M44。`beac4f9` が pin の 2 本を足していた。**現在は 45・M01〜M45**（【実測】09-10 `git show origin/main:packages/sdk/test-mutations.mjs \| grep -cE '^\s+id:'` → **45**。`f076122` が印を 44→45 に更新済みで、§6・Q12 の印は 45 で正しい）。腐っていたのは**印の隣に手で書いた本文**だった（§8 の 1 つ上と同じ穴） |
+| **この §8 の行そのもの**（「印は 44 で正しく」「M01〜M44」） | **45 / M01〜M45 に直した**（09-10） | **腐った数字を直した記録の節が、同じ形で腐っていた。** 印の外に書いた「44」は `check-numbers` が見ないので、印が 45 に動いても赤が出ない。**再発防止は 1 つ**——§8 の理由欄でも**本数と終端 id を裸で書かず、書くなら日付と実測コマンドを必ず添える**（この行がその形） |
 | Q17 の答え「**Then we found it**／503 は **30 分 cron のみ**」 | **狭めた。** 「機構は再現して確かめ、直した。ただし当日の 503 全件の原因だとはまだ言えない——切り分けは継続中」。`30 分 cron のみ` は削除 | 09-08 22:5x 実測: (a) 最後の error 行 18:25:52 JST は `8e165cc`（18:37）・`c7ec6f6`（20:01）の**どちらのデプロイよりも前**——止まったのは修正の前。(b) `detail` を持つ error 行は **0 件**（理由を残す計器はまだ 503 を 1 件も捕らえていない）。(c) 30 分監視ログの最後の FAIL は 16:30 JST で、18:25 の 503 はどの cron の時刻でもない。11:30 の cron が OK の 2 分後にも error 行がある。(d) episodic（JST 02 時台・15 時台は error 0）。加えてこちらの測定トラフィックという交絡があるが、`health_snapshots` は 5 分間引きで流量を測れないので本数は**【未確認】**。**審査員の前で言い切ると、反証が 4 つある主張になる** |
 | 想定質問 15 件 | **18 件**（Q16 コミットの言語 / Q17 `/status` の error / Q18 動画の数字） | 審査基準に *"Proper use of git commit history"* が明記されており、§4.5 が `/status` を「見せてよい 2 本」に挙げているのに、どちらも答えが無かった。動画の receipts は 09-07 の 427 から動いている |
 | 想定質問 20 件 | **21 件**（Q21「なぜ MCP まで作ったのか」） | 09-10 18:46 に運営が「x402 Base subgraph を消費するだけで資格を満たす」と回答した（`PRIZES.md` §1.1）。**資格が SDK だけで足りたと審査員が知っている場合に、MCP を作った理由を答えられないと「余計なもの」に見える**。資格の下限と賞ページの評価軸は別だ、と言い切る 1 問を足した |

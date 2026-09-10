@@ -57,14 +57,21 @@
 | | |
 |---|---|
 | 提出締切 | 締切後すぐ受付終了 |
-| **Round 1** | **非同期**のファイナリスト審査。通過者に**メール**で連絡 |
+| **Round 1** | **非同期**のファイナリスト審査。通過者に**メール**で連絡（**これは 2025 の実績。2026 は違う**——下の訂正） |
 | **Round 2** | **ライブ**のファイナリスト審査。**2025 は締切の約1日後**（10/26 締切 → 10/28 12:00 ET） |
 | パートナー賞 | **非同期。ライブ審査に出る必要は無い**。ただし**提出フォームで該当パートナーに応募しておくこと**が条件 |
 | ステーク返却 | **提出を成功させた者のみ**。返却はバッチで約1ヶ月後 |
 
 **→ 我々への含意**: 提出は 09-13 だが、**ショートリストに入ればその翌日前後にライブ審査がある**。
 Takeshi の手番になる可能性があるので、**09-14〜09-16 を空けておく必要がある**（TAKESHI_TODO に記載）。
-**メールを見る**のも手番（Round 1 の通過連絡はメール）。
+
+**【2026-09-10 訂正・一次】上の表の「通過者にメール」は 2025 の実績であって、2026 の運営の記載ではない。**
+> Once you've submitted your project, **information about your Finalist judging session will appear on your Hacker Dashboard.**
+> If you're selected for final judging, on judging day, **you'll be sent to the green room and then to your official judging room**
+> —— `https://ethglobal.com/events/ethonline2026/info/details`、2026-09-10 実読
+
+**手番はメールを見ることではなく、09-13 の提出直後に Hacker Dashboard を開いて枠と時刻を実読すること。**
+招待メールも外部の会議ツールも無い（当日は運営が green room → judging room へ送る）。`LIVE_JUDGING.md` §1 #11・#14 に反映済み。
 
 ### ETHGlobal Tokyo 2026（#announcements 2026-08-18）
 
@@ -102,7 +109,7 @@ Takeshi の手番になる可能性があるので、**09-14〜09-16 を空け�
 | Project Feedback Session #12 — 09-10 9:00am ET | **09-10 22:00** | 任意 |
 | **Check-in #2 Due — 09-10 11:59pm ET** | **09-11 12:59** | ⏳ **未着手。Takeshi 手番**（`TAKESHI_TODO.md` に追加） |
 | Project Submissions Due — 09-13 12:00pm ET | **09-14 01:00** | 正典と一致。**変更なし** |
-| **Judging Round 1（非同期）— 09-13 3:00pm ET** | **09-14 04:00** | 「No interaction needed」＝**この時点での手番は無い**。Round 2 の呼び出しはメール |
+| **Judging Round 1（非同期）— 09-13 3:00pm ET** | **09-14 04:00** | 「No interaction needed」＝**この時点での手番は無い**。Round 2 の呼び出しは **Hacker Dashboard**（09-10 訂正・上の一次引用） |
 
 **訂正: 「check-in は規定上任意」は言い過ぎだった。** 09-07 18:5x に `info/details` の記載 0 件を根拠に
 TODO の優先度を 🟠 へ下げたが、**運営の週次スケジュールは check-in を "Due" として列挙している**。
@@ -196,8 +203,10 @@ Finalist Judging に進む。パートナー賞の資格は落ちず、応募す
 §1.4 冒頭の「**Continuity のファイナリスト枠は 3 つ**」と合わせると、②は**自分から枠を捨てる**選択になる。
 ライブ審査の台本・問答 15 件・逃げ道は `LIVE_JUDGING.md` に用意済みで、Takeshi の 09-14〜16 も空けてある。
 
-**ライブ審査の日付**: メールは **Monday, September 14th**（ET）。JST では 09-14 夜〜09-15 になり得る。
-**時刻は Round 1 通過メールで確定する**——それまで日付を断定しない（`TAKESHI_TODO` は 09-14〜16 を空ける形で押さえてある）。
+**ライブ審査の日付**: 運営の返信は **Monday, September 14th**（ET）。JST では 09-14 夜〜09-15 になり得る。
+→ **下の 09-08 フォーム実測で 09-14 12:00 pm EDT ＝ 09-15 01:00 JST に確定した。**
+**【2026-09-10 訂正】「時刻は Round 1 通過メールで確定する」は誤り**——枠と時刻は **Hacker Dashboard** に出る（上の一次引用）。
+提出直後に Dashboard で読み直す（`TAKESHI_TODO` は 09-14〜16 を空ける形で押さえてある）。
 
 #### 【2026-09-08 09:0x 実測】提出フォームを 6 タブ埋めて保存した——実物のタブ構成と、記録と違っていた 3 点
 
