@@ -457,7 +457,7 @@ Verified 2026-09-06 (live, keys redacted by the demo itself):
 
 Mutation check on the demo: flipping the floor comparison, removing the BLOCK boundary, or touching the
 signer each turns tests red (7 / 2 / 3 failures). `packages/sdk/test-mutations.mjs` does the same for the
-SDK itself: <!-- n:sdk_mutations -->44<!-- /n --> mutations, all killed, ~20 s.
+SDK itself: <!-- n:sdk_mutations -->45<!-- /n --> mutations, all killed, ~20 s.
 
 **`npm run judge-check` does not run the SDK's set.** Its `test-mutations` step is the A/B harness's own
 set — <!-- n:ab_mutations -->27<!-- /n --> mutations in `examples/ethonline-2026-ab/test-mutations.mjs`

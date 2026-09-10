@@ -3,9 +3,10 @@
 // 提出物の文書に載る「動く数字」を1コマンドで再計算し、古ければ CI で赤にする。
 // 2026-09-07 Takeshi 採用（「提出直前に数字だけ拾って変える」を1コマンドに）。
 //
-//   node scripts/refresh-numbers.mjs --check               # CI: derive は導出して文書と比べ、recorded は印の値 == 記録値か
+//   node scripts/refresh-numbers.mjs --check               # CI: derive は導出して文書と比べ、recorded は印の値 == 記録値か + guard
 //   node scripts/refresh-numbers.mjs --refresh             # 全コマンドを実走 → 記録値と文書の印を書き換える
 //   node scripts/refresh-numbers.mjs --refresh --dry-run   # 差分だけ表示、何も書かない
+//   node scripts/refresh-numbers.mjs --refresh --only sdk_mutations   # その id だけ実走（as_of は動かさない）
 //
 // 印の形（Markdown を壊さず、レンダリングにも出ない）:   <!-- n:sdk_tests -->164<!-- /n -->
 // 定義と記録値は scripts/refresh-numbers.json の1ファイル:
@@ -22,6 +23,18 @@
 //   "recorded" 実行に時間か鍵が要る数字（npm test は build 込みで数十秒、The Graph 系は鍵）。
 //              --check は「文書の印の値 == JSON の記録値」だけを見る。
 //   check の無い id・上のどちらでもない値は --check / --refresh とも exit 1（黙って recorded 扱いにしない）。
+//
+// guard（recorded 専用・2026-09-10）:
+//   recorded の穴は「記録値そのものが実物と古くなっても緑」。実際に開いた: 09-09 14:21 の `4b281ab` が
+//   変異 M45 を足したのに sdk_mutations の記録値は 44 のまま、--check は 09-10 まで緑を出し続けた。
+//   guard は { command, why } で、**実物から git / grep だけで安く数えられる不変量**を持たせる。
+//   --check はこれを実走し、記録値と違えば赤にする（--refresh を打て、と言うだけで値は書かない）。
+//   --refresh は実測値と guard を突き合わせ、食い違えば**何も書かない**。
+//   なぜ derive にしないか: 印の意味は「変異の本数」ではなく「**全部殺せた**変異の本数」で、
+//   `all N mutations killed` は survived が 0 のときしか印字されない。grep の数を印へ直接入れると、
+//   生き残る変異を足しても文書が「N mutations, all killed」と言い続ける——今より悪い緑になる。
+//   だから数を出す責任は harness に置いたまま、**ずれたことだけ**を安く検出する。
+//   guard の command はネットも鍵も使わない（--check は全セッションの push 経路で走る）。
 //
 // 基準時刻 id=as_of（recorded・2026-09-07）:
 //   value = 文書に出る日付（JST・command は TZ=Asia/Tokyo date +%F）、end = --refresh を打った瞬間（+09:00・秒精度）。
@@ -116,12 +129,13 @@ function expand(command, asOf) {
 }
 
 function parseArgs(argv) {
-  const a = { check: false, refresh: false, dryRun: false, root: null, config: null };
+  const a = { check: false, refresh: false, dryRun: false, root: null, config: null, only: [] };
   for (let i = 0; i < argv.length; i++) {
     const x = argv[i];
     if (x === "--check") a.check = true;
     else if (x === "--refresh") a.refresh = true;
     else if (x === "--dry-run") a.dryRun = true;
+    else if (x === "--only") a.only.push(argv[++i]);
     else if (x === "--root") a.root = argv[++i];
     else if (x === "--config") a.config = argv[++i];
     else {
@@ -130,7 +144,16 @@ function parseArgs(argv) {
     }
   }
   if (a.check === a.refresh) {
-    console.error("usage: refresh-numbers.mjs (--check | --refresh [--dry-run]) [--root DIR] [--config FILE]");
+    console.error("usage: refresh-numbers.mjs (--check | --refresh [--dry-run] [--only ID]…) [--root DIR] [--config FILE]");
+    process.exit(2);
+  }
+  // --check は全部を見る関門なので、部分実行を受け付けない（緑の範囲が黙って狭まる）。
+  if (a.check && a.only.length) {
+    console.error("--only is for --refresh; --check always looks at every id");
+    process.exit(2);
+  }
+  if (a.only.some((id) => !id || id.startsWith("--"))) {
+    console.error("--only needs an id (e.g. --only sdk_mutations)");
     process.exit(2);
   }
   return a;
@@ -146,6 +169,14 @@ function loadConfig(path) {
     if (!n.id || !n.command) throw new Error(`${path}: every number needs id and command (${JSON.stringify(n)})`);
     if (!CHECK_MODES.has(n.check)) {
       throw new Error(`${path}: id=${n.id} needs check: "derive" | "recorded" (got ${JSON.stringify(n.check ?? null)}) — a missing check is not silently treated as recorded`);
+    }
+    if (n.guard !== undefined) {
+      if (n.check !== "recorded") {
+        throw new Error(`${path}: id=${n.id} has a guard but check is "${n.check}" — a guard only means anything on recorded (derive already re-measures every --check)`);
+      }
+      if (!n.guard || typeof n.guard.command !== "string" || n.guard.command.trim() === "") {
+        throw new Error(`${path}: id=${n.id}: guard needs { command } — a cheap git/grep-only command whose output must equal the recorded value`);
+      }
     }
     if (seen.has(n.id)) throw new Error(`${path}: duplicate id ${n.id}`);
     seen.add(n.id);
@@ -243,6 +274,24 @@ function check(root, cfg) {
     else derived.set(n.id, r.value);
   }
 
+  // guard: recorded の記録値が、実物から安く数えた不変量とずれていないか。
+  // ここでは値を直さない——記録値を書けるのは実走する --refresh だけで、直し方まで言って赤にする。
+  for (const n of cfg.numbers) {
+    if (!n.guard) continue;
+    const r = runCommand(root, expand(n.guard.command, asOf));
+    if (r.error) {
+      problems.push(`id=${n.id}: guard command failed — ${n.guard.command}\n    ${r.error}`);
+      continue;
+    }
+    if (String(n.value) !== r.value) {
+      problems.push(
+        `id=${n.id}: recorded="${n.value}" (updatedAt ${n.updatedAt}) but guard="${r.value}" — ${n.guard.why ?? "the source moved"}\n` +
+          `    the source changed and nobody re-ran it. Fix: node scripts/refresh-numbers.mjs --refresh --only ${n.id}\n` +
+          `    (do NOT hand-edit the recorded value or the mark — the number has to come from a real run)`,
+      );
+    }
+  }
+
   for (const m of marks) {
     const n = byId.get(m.id);
     if (m.inFence) {
@@ -272,7 +321,8 @@ function check(root, cfg) {
     return 1;
   }
   const nDerive = cfg.numbers.filter((n) => n.check === "derive").length;
-  console.log(`✔ ${cfg.numbers.length} number(s) consistent across ${cfg.docs.length} doc(s), ${marks.length} mark(s) — ${nDerive} derived now, ${cfg.numbers.length - nDerive} against recorded values`);
+  const nGuard = cfg.numbers.filter((n) => n.guard).length;
+  console.log(`✔ ${cfg.numbers.length} number(s) consistent across ${cfg.docs.length} doc(s), ${marks.length} mark(s) — ${nDerive} derived now, ${cfg.numbers.length - nDerive} against recorded values (${nGuard} of them guarded)`);
   return 0;
 }
 
@@ -284,17 +334,20 @@ function runCommand(root, command) {
   return { value };
 }
 
-function refresh(root, cfg, configPath, dryRun) {
+function refresh(root, cfg, configPath, dryRun, only) {
   const marksBefore = [...collectMarks(root, cfg.docs), ...collectLiterals(root, cfg.numbers)];
   const nowDate = new Date();
   const now = nowDate.toISOString();
   const rows = [];
   let failed = false;
+  // --only: 名指しした id だけ実走する。as_of は名指ししない限り動かない——動かすと derive が全部
+  // 取り直しになり、1 つの数字を直したいだけで AI_USAGE.md まで書き換わる。
+  const selected = (id) => !only || only.has(id);
 
   // 基準時刻を先に今へ動かす（value = 今日 JST、end = この瞬間）。dry-run では cfg に書かず、導出にだけ使う。
   const a = cfg.numbers.find((n) => n.id === AS_OF_ID);
   let asOf = null;
-  if (a) {
+  if (a && selected(AS_OF_ID)) {
     const r = runCommand(root, a.command);
     if (r.error) {
       console.log(`✖ ${a.id}: ${a.command}\n    ${r.error}\n\n✖ a command failed — nothing written`);
@@ -328,7 +381,7 @@ function refresh(root, cfg, configPath, dryRun) {
   }
 
   for (const n of cfg.numbers) {
-    if (n === a) continue;
+    if (n === a || !selected(n.id)) continue;
     const missing = (n.env ?? []).filter((k) => !process.env[k]);
     if (missing.length) {
       console.log(`⚠ ${n.id}: skipped — env ${missing.join(", ")} not set (keeping "${n.value}")`);
@@ -341,6 +394,23 @@ function refresh(root, cfg, configPath, dryRun) {
       failed = true;
       rows.push({ id: n.id, before: n.value, after: null, status: "error" });
       continue;
+    }
+    // guard がある id は、実走した値と安い不変量が一致することまで見てから記録する。
+    // ここで食い違うのは「harness の数え方か guard の数え方が壊れた」なので、黙って新しい値を焼き付けない。
+    if (n.guard) {
+      const g = runCommand(root, expand(n.guard.command, asOf));
+      if (g.error) {
+        console.log(`✖ ${n.id}: guard command failed — ${n.guard.command}\n    ${g.error}`);
+        failed = true;
+        rows.push({ id: n.id, before: n.value, after: null, status: "error" });
+        continue;
+      }
+      if (g.value !== r.value) {
+        console.log(`✖ ${n.id}: measured "${r.value}" but guard says "${g.value}" (${n.guard.command}) — they disagree, so one of the two ways of counting is wrong`);
+        failed = true;
+        rows.push({ id: n.id, before: n.value, after: null, status: "error" });
+        continue;
+      }
     }
     const changed = String(n.value) !== r.value;
     rows.push({ id: n.id, before: n.value, after: r.value, status: changed ? "changed" : "same" });
@@ -398,4 +468,15 @@ try {
   console.log(`✖ ${e.message}`);
   process.exit(1);
 }
-process.exit(args.check ? check(root, cfg) : refresh(root, cfg, configPath, args.dryRun));
+let only = null;
+if (args.only.length) {
+  const known = new Set(cfg.numbers.map((n) => n.id));
+  const unknown = args.only.filter((id) => !known.has(id));
+  if (unknown.length) {
+    console.log(`✖ --only: no such id in ${configPath}: ${unknown.join(", ")}`);
+    process.exit(2);
+  }
+  only = new Set(args.only);
+  console.log(`--only ${[...only].join(", ")} — every other id keeps its recorded value (as_of is not moved unless named)`);
+}
+process.exit(args.check ? check(root, cfg) : refresh(root, cfg, configPath, args.dryRun, only));

@@ -140,8 +140,8 @@ A: *You get a refusal, not an allow. The demo records `/decision` as status null
 証拠: `examples/ethonline-2026-demo/src/assess.ts:64`（`status: null`）／`packages/sdk/src/pay-or-refuse.ts:571,577`（`evidence_unavailable`）／`SKILL.md` §2・§4／`docs/audits/2026-09-05-cia-availability-audit.md` §0。
 
 **Q12. Mutation testing — what did it find?**
-A: *It found that green tests were lying. Tests that only looked at `status` and signer calls stayed green when the whole ALLOW gate was removed — the run refused for a different reason. Switching the payment module to a static import turned no test red until we added the `dist` module-graph test. The mutation script breaks one gate at a time — BLOCK waiver, floor comparison, `payTo` check, ceiling, nonce retention, `_meta.block` — rebuilds, and requires red. Today <!-- n:sdk_mutations -->44<!-- /n --> mutations, all killed; four survived on September 6 and became tests.*
-要旨: 「緑のテストが嘘」を検出。<!-- n:sdk_mutations -->44<!-- /n --> 変異全部赤。9/6 に 4 つ生き残り→テスト追加。
+A: *It found that green tests were lying. Tests that only looked at `status` and signer calls stayed green when the whole ALLOW gate was removed — the run refused for a different reason. Switching the payment module to a static import turned no test red until we added the `dist` module-graph test. The mutation script breaks one gate at a time — BLOCK waiver, floor comparison, `payTo` check, ceiling, nonce retention, `_meta.block` — rebuilds, and requires red. Today <!-- n:sdk_mutations -->45<!-- /n --> mutations, all killed; four survived on September 6 and became tests.*
+要旨: 「緑のテストが嘘」を検出。<!-- n:sdk_mutations -->45<!-- /n --> 変異全部赤。9/6 に 4 つ生き残り→テスト追加。
 証拠: `WINDOW_PLAN.md` §4（A1/B5–B7 の偽の緑）・§14.3・§17（SURVIVED 4）／`packages/sdk/test-mutations.mjs`（id は **M01 から 0 埋め 2 桁の連番**——本数は印が出す。手で終端を書かない）／印 `n:sdk_mutations`。
 **言うのは「all killed」まで。** 本数は印が出す——`cd packages/sdk && node test-mutations.mjs 2>&1 | tail -1` が `all N mutations killed in …`（**09-08 実走 53.8 秒・clean checkout**。09-07 の 42 本は `beac4f9` が pin の変異 2 本を足して増えた）。1 つでも生き残ると harness はこの行を印字しないので、`--refresh` が空出力で落ちる。
 （`judge-check` が回すのは **A/B 側**の別の集合で **27 本**・id は `M1`・`M1b`・`M1c`・`M2`〜`M25`。`n:ab_mutations`。混ぜない）
@@ -339,7 +339,7 @@ A: *We did not use it, and we read it as an owner-side setting. `@bazantic/cli` 
 
 | 印 | 値【実測 09-08】 | それを出すコマンド（リポ root から） | どこで使う |
 |---|---|---|---|
-| `n:sdk_mutations` | <!-- n:sdk_mutations -->44<!-- /n --> | `cd packages/sdk && node test-mutations.mjs 2>&1 \| tail -1` の `all N mutations killed`（09-08 実走 53.8s） | Q12（"all killed"） |
+| `n:sdk_mutations` | <!-- n:sdk_mutations -->45<!-- /n --> | `cd packages/sdk && node test-mutations.mjs 2>&1 \| tail -1` の `all N mutations killed`（09-10 実走 44.3s） | Q12（"all killed"） |
 | `n:ab_mutations` | <!-- n:ab_mutations -->27<!-- /n --> | `cd examples/ethonline-2026-ab && node test-mutations.mjs 2>&1 \| tail -1`（13.2s・`judge-check` が回す方） | 混同したときの訂正用（口では言わない） |
 | `n:sdk_tests` | <!-- n:sdk_tests -->1615<!-- /n --> | `npm test --prefix packages/sdk 2>&1 \| sed -n 's/^ℹ tests //p'` | 画面のみ（言わない） |
 | `n:mcp_tests` | <!-- n:mcp_tests -->748<!-- /n --> | `npm run build --prefix packages/mcp-server && npm test --prefix packages/mcp-server 2>&1 \| sed -n 's/^ℹ tests //p'` | 画面のみ（言わない） |

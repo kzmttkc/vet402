@@ -194,16 +194,24 @@
       "description": "examples/ethonline-2026-ab/test-mutations.mjs の変異の本数（SKILL.md）。judge-check が走らせるのはこちらで、SDK の set（id=sdk_mutations）は含まれない。**source を grep して数えない。harness 自身が最後に印字する `all N mutations killed` の N を読む。** 2026-09-08: 旧 command `^ +id: \"M[0-9]+\"` が M1b / M1c を落として 27 を 25 と誤報し、その 25 を SKILL.md と申し送りへ伝播させた（f53a887 → 0e794d9 で訂正）。数える道具が壊れても気づけないのが欠陥の本体だったので、数を出す責任を harness へ返した。1 つでも生き残ると harness はこの行を印字せず、--refresh は empty output で落ちる。check は recorded のまま: この harness は @anthropic-ai/sdk と viem の install が要り 13.2s かかる（--check は CI の毎 push で走る）。",
       "check": "recorded",
       "command": "cd examples/ethonline-2026-ab && node test-mutations.mjs 2>&1 | awk '$1==\"all\" && $3==\"mutations\" && $4==\"killed\" {print $2}'",
+      "guard": {
+        "command": "grep -cE '^ +id: \"' examples/ethonline-2026-ab/test-mutations.mjs | tr -d ' '",
+        "why": "harness が印字する N は `MUTATIONS.length` なので、ソースの変異定義の数と必ず一致する。id の綴りは見ない（`M[0-9]+` に絞ると M1b / M1c を落とす。2026-09-08 に実際に落とした）"
+      },
       "value": "27",
       "updatedAt": "2026-09-08T11:59:08.285Z"
     },
     {
       "id": "sdk_mutations",
-      "description": "packages/sdk/test-mutations.mjs の変異の本数（SKILL.md・LIVE_JUDGING.md Q12）。**source を grep して数えない。harness 自身が最後に印字する `all N mutations killed in Xs` の N を読む**（ab_mutations と同じ理由）。2026-09-08 実走: `all 42 mutations killed in 39.2s`。1 つでも生き残ると harness はこの行を印字せず、--refresh は empty output で落ちる。check は recorded のまま: 変異ごとに tsc を通すので 39.2s かかり、typescript の install も要る。--check は CI の毎 push で走るので derive にしない（demo_tests が derive なのは 0.5s・依存ゼロだから）。",
+      "description": "packages/sdk/test-mutations.mjs の変異の本数（SKILL.md・LIVE_JUDGING.md Q12）。**source を grep して数えない。harness 自身が最後に印字する `all N mutations killed in Xs` の N を読む**（ab_mutations と同じ理由）。2026-09-10 実走: `all 45 mutations killed in 44.3s`。1 つでも生き残ると harness はこの行を印字せず、--refresh は empty output で落ちる。check は recorded のまま: 変異ごとに tsc を通すので 44.3s かかり、typescript の install も要る。--check は CI の毎 push で走るので derive にしない（demo_tests が derive なのは 0.5s・依存ゼロだから）。**derive にしてはいけない理由はもう1つあり、そちらが本質**: この印の意味は「変異の本数」ではなく「**全部殺せた**変異の本数」で、grep で数えた本数を印へ入れると、生き残る変異を足しても文書が「N mutations, all killed」と言い続ける。数を出す責任は harness に置いたまま、ずれたことだけを guard が安く見る。",
       "check": "recorded",
       "command": "cd packages/sdk && node test-mutations.mjs 2>&1 | awk '$1==\"all\" && $3==\"mutations\" && $4==\"killed\" {print $2}'",
-      "value": "44",
-      "updatedAt": "2026-09-08T11:59:08.285Z",
+      "guard": {
+        "command": "grep -cE '^ +id: \"' packages/sdk/test-mutations.mjs | tr -d ' '",
+        "why": "harness が印字する N は `rows.length` = 変異定義の数。2026-09-09 14:21 の `4b281ab` が M45 を足したのに記録値は 44 のままで、--check は 09-10 まで緑を出し続けた"
+      },
+      "value": "45",
+      "updatedAt": "2026-09-10T00:31:23.773Z",
       "literal": [
         {
           "doc": "docs/ethonline-2026/SUBMISSION_DRAFT.md",
