@@ -4,7 +4,7 @@
 
 ## How this file is made
 
-This is `git log pre-ethonline-2026..8b0a841` (365 commits), grouped by day in UTC and rendered by
+This is `git log pre-ethonline-2026..3535d2e` (368 commits), grouped by day in UTC and rendered by
 [`scripts/ethonline-commits-en.mjs`](../../scripts/ethonline-commits-en.mjs) — `node scripts/ethonline-commits-en.mjs` regenerates it;
 `--check` (run by `npm test`) fails if this file is not what the script produces from the commit named in the **Generated** row — that is,
 if it was edited by hand. A Japanese subject with no translation, and commits after that one which did not regenerate this file, are warnings;
@@ -12,10 +12,10 @@ if it was edited by hand. A Japanese subject with no translation, and commits af
 the window contains work we do **not** submit; the **Claimed** column is derived from the path filter in `README.md`:
 
 ```bash
-git log pre-ethonline-2026..8b0a841 -- packages/sdk packages/mcp-server \
+git log pre-ethonline-2026..3535d2e -- packages/sdk packages/mcp-server \
     examples/ethonline-2026-demo examples/ethonline-2026-ab \
     SKILL.md AI_USAGE.md docs/ethonline-2026    # ✔ claimed
-git log pre-ethonline-2026..8b0a841             # everything, ✔ and —
+git log pre-ethonline-2026..3535d2e             # everything, ✔ and —
 ```
 
 A commit is ✔ when it touches at least one of those paths, — otherwise. Subjects written before the English-subject rule took effect
@@ -26,12 +26,12 @@ that instant are marked **⚠ pre-window** below and listed in [`DISCLOSURE_2026
 
 | | |
 |---|---|
-| Generated | 2026-09-10 23:54:08 UTC from `8b0a84131d109f1d56b5748a0da02a2a1a68c733` |
-| Range | `pre-ethonline-2026..8b0a841` — **365 commits** on 7 days (UTC), 13 of them merges |
-| Claimed (✔) | **217** — touch at least one path in the filter |
-| Not claimed (—) | **148** — production work in the same days |
+| Generated | 2026-09-11 00:34:30 UTC from `3535d2edeacef36fc9e3ac6c0deffa9755313506` |
+| Range | `pre-ethonline-2026..3535d2e` — **368 commits** on 8 days (UTC), 13 of them merges |
+| Claimed (✔) | **219** — touch at least one path in the filter |
+| Not claimed (—) | **149** — production work in the same days |
 | Claimed but before 2026-09-04 16:00:00 UTC | **3** (⚠) |
-| Subjects translated from Japanese | **286** (English already: 79) |
+| Subjects translated from Japanese | **286** (English already: 82) |
 
 ## Claimed, by day (UTC)
 
@@ -74,16 +74,20 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 - [`a783dab`](https://github.com/kzmttkc/vet402/commit/a783dab6b0a391fe4cd186d11714b3d93a280d07) 05:33 — fix(security): widen the A/B secret filter, gate prod DB host names out of public docs (153 lines)
 - [`421cd05`](https://github.com/kzmttkc/vet402/commit/421cd0539ea64309fafcd5b1f399d7fb96f483b3) 05:58 — docs(handoffs): hand off today's fourth round (aeb338c..690b4fc, 7 commits) with health attribution and two ops notes (82 lines)
 
-### 2026-09-10 — 19 of 20 claimed
+### 2026-09-10 — 20 of 21 claimed
 
 - [`79488a1`](https://github.com/kzmttkc/vet402/commit/79488a15186b86f49cf7801c105f3580178b7d4d) 23:41 — docs(ab): A/B v2 raw log (run once 2026-09-11) - A 7/10, B 5/10 (324 lines)
+- [`c39f4a3`](https://github.com/kzmttkc/vet402/commit/c39f4a3718dd9949772f6c2d99fe5b4a53b12c85) 23:54 — docs(prompts): replace the hand-picked 09-04 to 09-07 owner quotes with every owner message of each day (318 lines)
 - [`cdba5d8`](https://github.com/kzmttkc/vet402/commit/cdba5d8448f9eab9f0422d72d2fa0cf095367fb9) 11:57 — ethonline: docs(prizes): the prize canon named a path that does not exist and dropped one Bazantic requirement (306 lines)
-- [`d60d73c`](https://github.com/kzmttkc/vet402/commit/d60d73cf13c873727a7e8fce82b1fc4faa7035e1) 21:44 — docs(handoffs): /api/health degraded is a cron-shaped saw-tooth, not upstream RPC (262 lines)
+
+### 2026-09-11 — 1 of 2 claimed
+
+- [`276cdae`](https://github.com/kzmttkc/vet402/commit/276cdae2d6030f109a02c73ff703e3c516ad8400) 00:34 — docs(judge-walk): make the pay_if_trusted blocks runnable as pasted, refresh test counts, match pay/refuse wording to production (102 lines)
 
 ## Every commit, by day (UTC), oldest first
 
 <details>
-<summary>All 365 commits — ✔ claimed and — not claimed (click to expand)</summary>
+<summary>All 368 commits — ✔ claimed and — not claimed (click to expand)</summary>
 
 ### 2026-09-04 — 87 commits, 11 claimed
 
@@ -460,7 +464,7 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`d0346b3`](https://github.com/kzmttkc/vet402/commit/d0346b3460cd22d4e4bd89eb4c473b3af0d679da) | 23:16 | ✔ | docs(ethonline): the answer to Bazantic's JWT bypass is x402/MPP with the price zeroed — close the Day 6 exploration and record that Test Connection/Activate are due to be fixed within 48 hours |
 | [`1244663`](https://github.com/kzmttkc/vet402/commit/124466367df71e93aa8cde0cbbe80303ca20189e) | 23:55 | ✔ | fix(commits-en): a missing translation is a note, not a red main — nothing hackathon-only may block every push |
 
-### 2026-09-10 — 20 commits, 19 claimed
+### 2026-09-10 — 21 commits, 20 claimed
 
 | SHA | UTC | Claimed | Subject (English) |
 |---|---|:---:|---|
@@ -484,5 +488,13 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`365d94b`](https://github.com/kzmttkc/vet402/commit/365d94b17a32517fabad231cfed220e337456f95) | 23:23 | — | chore(deps): bump js-yaml, browserslist and baseline-browser-mapping within semver ranges |
 | [`79488a1`](https://github.com/kzmttkc/vet402/commit/79488a15186b86f49cf7801c105f3580178b7d4d) | 23:41 | ✔ | docs(ab): A/B v2 raw log (run once 2026-09-11) - A 7/10, B 5/10 |
 | [`8b0a841`](https://github.com/kzmttkc/vet402/commit/8b0a84131d109f1d56b5748a0da02a2a1a68c733) | 23:41 | ✔ | docs(commits): regenerate COMMITS_EN.md |
+| [`c39f4a3`](https://github.com/kzmttkc/vet402/commit/c39f4a3718dd9949772f6c2d99fe5b4a53b12c85) | 23:54 | ✔ | docs(prompts): replace the hand-picked 09-04 to 09-07 owner quotes with every owner message of each day |
+
+### 2026-09-11 — 2 commits, 1 claimed
+
+| SHA | UTC | Claimed | Subject (English) |
+|---|---|:---:|---|
+| [`276cdae`](https://github.com/kzmttkc/vet402/commit/276cdae2d6030f109a02c73ff703e3c516ad8400) | 00:34 | ✔ | docs(judge-walk): make the pay_if_trusted blocks runnable as pasted, refresh test counts, match pay/refuse wording to production |
+| [`3535d2e`](https://github.com/kzmttkc/vet402/commit/3535d2edeacef36fc9e3ac6c0deffa9755313506) | 00:34 | — | ci(skill-live): note why the two pay_if_trusted blocks still skip in CI after they began generating their own key |
 
 </details>
