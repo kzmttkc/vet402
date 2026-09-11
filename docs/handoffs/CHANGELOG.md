@@ -13,6 +13,72 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-11 12:0x JST — 【訂正】06:4x の節（`d60d73c`「上流RPCではなく日次 cron ののこぎり波」）は**実測で説明しきれない**。原因は未確定
+
+- **変えたもの**: この節だけ。**本番の env・cron・コード・DB は何も変えていない**（本番DBは読み取りのみ。`indexer_checkpoints`・`job_leases` を1本ずつ、`health_snapshots` 09-07 00:00Z 以降 1,088 行の書き出し1本）
+- **なぜ書くか**: 06:4x の節を読んで対策に着手すると、原因を外したまま fail-closed を弱めうる。元の節は書き換えず、ここで訂正する
+- **対策は保留**: **「cron の頻度を上げる」「`TAIL_SCAN_DEADLINE_MS` を延ばす」「`GET_LOGS_CHUNK_BLOCKS` を変える」は、原因が確定するまで着手しない**（06:4x §4 の順序も保留）
+
+### 1. 合っていた前提 —— 走査の起点は checkpoint
+
+- 起点は `src/lib/chain/erc8004.ts:350` の `plan.index.checkpoint + 1n`（→ `latestBlock`）。checkpoint は `src/lib/db/feedback-index.ts:48` が
+  `indexer_checkpoints.reputation_registry_feedback` を**リクエストのたびに DB から直接**読む（`src/lib/db/owner-index.ts:43`・キャッシュ無し）。gap の計算は `src/lib/chain/feedback-window.ts:209`
+- 走査が gap とともに重くなることも実測と合う。**時計の時刻がほぼ同じで gap だけが違う**、cron の前後を比べると:
+
+| 窓（UTC・09-08 09:51Z〜09-11 02:46Z の理由付き行） | gap（ブロック） | `getLogsChunked` 行 | scoring=ok 行 | ok fresh の latency p90 |
+|---|---|---|---|---|
+| 00:00–02:25 | 39.7k–43.2k | 27 | 54 | 2,509ms |
+| 02:25–05:00 | 0–4.6k | **0** | 60 | 671ms |
+
+  gap 帯で見ても、25,200 ブロック未満は `getLogsChunked` 3 行 / ok 326 行、以上は 121 行 / 228 行
+
+### 2. 合わなかった前提
+
+1. **checkpoint が進む時刻は 02:00 UTC ではなく 02:25 UTC。** 09-10 と 09-11 の run が読んだ tip（`last_block` = `chain_tip_at_run`）のブロック時刻は、
+   Base 公開 RPC の `eth_getBlockByNumber` で**どちらも 02:25:01 UTC**（51108877 / 51152077。差は 43,200 ブロック＝ちょうど 24 時間）。`updated_at` は 02:25:06 / 02:25:08
+2. **09-11 の劣化は checkpoint が進む前に止んだ。** 最後の degraded は 02:08:10。次の 02:15:50・02:23:31 は ok（scoring=ok fresh・latency 1,926 / 2,359ms）で、
+   **この 2 行は1日で最も gap が広い時点**（42,924 / 43,155 ブロック）。09-10 も 02:00–02:17 の 3 行は gap 42.4k–43.0k で全て ok（2,297–2,494ms）
+3. **gap が同じでも日によって走査の重さが違う。** gap ≈32.5k（20 時台 UTC）の ok 行（latency 300ms 以上＝エンジンのキャッシュに当たらず走査した行）の中央値:
+   09-08 **789ms**（n=5）／09-09 **2,207ms**（n=5）／09-10 **1,452ms**（n=3）。この間、走査経路（`chunked-logs.ts`・`erc8004.ts`・`feedback-window.ts`・`client.ts`・`engine.ts`）へのコミットは
+   `64a6eb2`（09-08 18:08Z・理由名を付けただけ）しかない。env の変更の有無は【未確認】
+4. **「上流 RPC ではない」とは言えない。degraded の大半は、2.5 秒を使い切る前に落ちている。**
+   理由付きの fresh 行 95 行のうち **90 行で health 全体の `latency_ms` が 2,500 未満**（うち 32 行は 2,000 未満。最小 1,285）。
+   `latency_ms` は `src/lib/health/liveness.ts:81` で両プローブより前から測っているので、走査の経過時間はこれより短い。
+   壁時計の締切（`throwIfExpired`・`src/lib/chain/chunked-logs.ts:246` / `:350`）は残りが 0ms になるまで投げない。
+   **締切より前に同じ `DeadlineExceededError("getLogsChunked")` を投げる経路は `chunked-logs.ts:260` だけ**で、これは RPC がレート制限（429 など）を返し、
+   次の待ち時間（800ms × 2^n）が残り予算に収まらないときの分岐。`classifyDegradation`（`src/lib/health/probe-detail.ts:77`）はどちらも
+   `deadline:getLogsChunked` に丸めて `budgetMs` を捨てるので、detail の文字列だけでは区別できない
+   → 【推定】少なくともこの 90 行には RPC のレート制限応答が関わっている。§4-1 のログを見るまで確定とは書かない
+
+### 3. 候補ごとの判定
+
+| 候補 | 当てた実測 | 判定 |
+|---|---|---|
+| 走査ブロック数（gap） | cron 前後で `getLogsChunked` 27→0 行・ok の p90 2,509→671ms。gap 25,200 未満 3 行／以上 121 行 | 合う（強い条件） |
+| gap だけで決まる／checkpoint の前進で止む | 09-11 02:15:50・02:23:31 は gap 最大で ok、前進は 02:25:01。gap ≈32.5k で中央値 789 / 2,207 / 1,452ms | 合わない |
+| 時刻帯 18:00–01:59 UTC | cron が毎日 02:25:01 固定なので gap と完全に共線。分けられるのは 02:00–02:25 の窓だけで、そこは ok 11 行（うち 6 行はキャッシュ当たり）/ degraded 4 行 | 判定できない |
+| RPC の応答（レート制限） | 理由付き fresh 95 行中 90 行が全体 latency 2,500ms 未満。締切前に同じエラーを投げるのは `chunked-logs.ts:260` だけ | 合う【推定】（ログ未確認） |
+| 同時に走る他の cron | `vercel.json`: 18:00–01:59 に入るのは `catalog-sync`（01:00）だけ。GitHub Actions: `uptime`（*/10）は終日、`skill-live` は 23:00 | 合わない |
+| Vercel のコールドスタート | 09-08 09:51Z 以降で 319 インスタンス。18:00–01:59 でインスタンス初回行の degraded 56/128（44%）、2 行目以降 60/165（36%） | 弱い（主因ではない） |
+
+### 4. 結論と次に測るもの
+
+**結論: 06:4x の説では説明できない。原因は未確定。** 最有力の候補は「tail 走査のチャンク数（gap に比例）× RPC のレート制限応答」。
+gap は悪化の強い条件だが、gap だけでは ok / degraded は決まらない。checkpoint の前進は 09-11 の回復の原因ではない。
+時刻帯（18–02 UTC）は gap と分けられないので、時刻が原因とも、時刻は無関係とも言えない。
+
+次に測るもの（どれも読み取りだけ。本番は変えない）:
+1. 18:00–02:25 UTC の間に Vercel の実行ログから `[chunked-logs] rate-limited`（`chunked-logs.ts:264`）と `non-range failure`（`:278`）の行を数え、degraded 行の時刻と並べる。どちらの行も現行コードがすでに出している
+2. 本番 env の `INDEXER_RPC_URL`・`BASE_RPC_URL`・`GET_LOGS_CHUNK_BLOCKS` について、**設定があるかどうかと提供元のホスト名だけ**を見る（値は出さない）。あわせて、その提供元のレート上限と、同じ鍵を使う他の経路
+3. 会期後（09-15 以降）の計器案: detail に `budgetMs` を残す（2500 なら壁時計切れ、800 / 1600 / … ならレート制限の分岐）。コード変更なので**ここでは決めない**
+
+- **そちらへの影響**: 06:4x の §1 のうち「必ず期限切れになる」「上流が遅くなった必要はない」と、§3–4 の対策の順序は、この節で保留にする。
+  §2（`detail` 列ができる前の行を 0 件と数えない）はそのまま有効
+- **触っていない**: `docs/ethonline-2026/LIVE_JUDGING.md`・`WINDOW_PLAN.md` には、のこぎり波の説も `index-feedback` も書かれていない（grep `saw-tooth`・`sawtooth`・`のこぎり`・`index-feedback` で 0 件）。
+  `docs/ethonline-2026/PROMPTS/2026-09-11-day7-health-sawtooth.md` の要約行はその日の記録なので書き換えない
+
+---
+
 ## 2026-09-11 10:xx JST — 審査員条件の再走で見つかった文書の食い違い4件を直した（`/ethonline` の1段落を含む）
 
 - **変えたもの**: `SKILL.md`・`examples/ethonline-2026-demo/README.md`・`src/app/ethonline/page.tsx`（1段落の文言のみ）・`scripts/refresh-numbers.json` と印4文書（テスト件数）・`.github/workflows/skill-live.yml`（コメントのみ）。コード・env・DB・決済経路（`*payer*`・`x402-pay.ts`・`pay-or-refuse.ts`・署名器）は無変更

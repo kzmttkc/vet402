@@ -4,7 +4,7 @@
 
 ## How this file is made
 
-This is `git log pre-ethonline-2026..780be69` (370 commits), grouped by day in UTC and rendered by
+This is `git log pre-ethonline-2026..d2ad83d` (371 commits), grouped by day in UTC and rendered by
 [`scripts/ethonline-commits-en.mjs`](../../scripts/ethonline-commits-en.mjs) — `node scripts/ethonline-commits-en.mjs` regenerates it;
 `--check` (run by `npm test`) fails if this file is not what the script produces from the commit named in the **Generated** row — that is,
 if it was edited by hand. A Japanese subject with no translation, and commits after that one which did not regenerate this file, are warnings;
@@ -12,10 +12,10 @@ if it was edited by hand. A Japanese subject with no translation, and commits af
 the window contains work we do **not** submit; the **Claimed** column is derived from the path filter in `README.md`:
 
 ```bash
-git log pre-ethonline-2026..780be69 -- packages/sdk packages/mcp-server \
+git log pre-ethonline-2026..d2ad83d -- packages/sdk packages/mcp-server \
     examples/ethonline-2026-demo examples/ethonline-2026-ab \
     SKILL.md AI_USAGE.md docs/ethonline-2026    # ✔ claimed
-git log pre-ethonline-2026..780be69             # everything, ✔ and —
+git log pre-ethonline-2026..d2ad83d             # everything, ✔ and —
 ```
 
 A commit is ✔ when it touches at least one of those paths, — otherwise. Subjects written before the English-subject rule took effect
@@ -26,12 +26,12 @@ that instant are marked **⚠ pre-window** below and listed in [`DISCLOSURE_2026
 
 | | |
 |---|---|
-| Generated | 2026-09-11 01:24:46 UTC from `780be6969d5ac5dfd3737eb24070ff708bf10fe2` |
-| Range | `pre-ethonline-2026..780be69` — **370 commits** on 8 days (UTC), 13 of them merges |
-| Claimed (✔) | **221** — touch at least one path in the filter |
+| Generated | 2026-09-11 02:59:13 UTC from `d2ad83d78ea3d51f635396b433044e19671aa4f9` |
+| Range | `pre-ethonline-2026..d2ad83d` — **371 commits** on 8 days (UTC), 13 of them merges |
+| Claimed (✔) | **222** — touch at least one path in the filter |
 | Not claimed (—) | **149** — production work in the same days |
 | Claimed but before 2026-09-04 16:00:00 UTC | **3** (⚠) |
-| Subjects translated from Japanese | **286** (English already: 84) |
+| Subjects translated from Japanese | **286** (English already: 85) |
 
 ## Claimed, by day (UTC)
 
@@ -80,16 +80,16 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 - [`c39f4a3`](https://github.com/kzmttkc/vet402/commit/c39f4a3718dd9949772f6c2d99fe5b4a53b12c85) 23:54 — docs(prompts): replace the hand-picked 09-04 to 09-07 owner quotes with every owner message of each day (318 lines)
 - [`cdba5d8`](https://github.com/kzmttkc/vet402/commit/cdba5d8448f9eab9f0422d72d2fa0cf095367fb9) 11:57 — ethonline: docs(prizes): the prize canon named a path that does not exist and dropped one Bazantic requirement (306 lines)
 
-### 2026-09-11 — 3 of 4 claimed
+### 2026-09-11 — 4 of 5 claimed
 
 - [`276cdae`](https://github.com/kzmttkc/vet402/commit/276cdae2d6030f109a02c73ff703e3c516ad8400) 00:34 — docs(judge-walk): make the pay_if_trusted blocks runnable as pasted, refresh test counts, match pay/refuse wording to production (102 lines)
 - [`780be69`](https://github.com/kzmttkc/vet402/commit/780be6969d5ac5dfd3737eb24070ff708bf10fe2) 01:05 — docs(live-judging): match the on-screen expectations to 2026-09-11 production output (46 lines)
-- [`f7f719f`](https://github.com/kzmttkc/vet402/commit/f7f719f952cb6d8f6950d3a56395536d9b75e832) 00:34 — docs(commits): regenerate COMMITS_EN.md (36 lines)
+- [`d2ad83d`](https://github.com/kzmttkc/vet402/commit/d2ad83d78ea3d51f635396b433044e19671aa4f9) 01:30 — docs(live-judging): record the owner's no --live decision and rewrite the 1:30 step as dry run plus the 09-05 Basescan tx (40 lines)
 
 ## Every commit, by day (UTC), oldest first
 
 <details>
-<summary>All 370 commits — ✔ claimed and — not claimed (click to expand)</summary>
+<summary>All 371 commits — ✔ claimed and — not claimed (click to expand)</summary>
 
 ### 2026-09-04 — 87 commits, 11 claimed
 
@@ -492,7 +492,7 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`8b0a841`](https://github.com/kzmttkc/vet402/commit/8b0a84131d109f1d56b5748a0da02a2a1a68c733) | 23:41 | ✔ | docs(commits): regenerate COMMITS_EN.md |
 | [`c39f4a3`](https://github.com/kzmttkc/vet402/commit/c39f4a3718dd9949772f6c2d99fe5b4a53b12c85) | 23:54 | ✔ | docs(prompts): replace the hand-picked 09-04 to 09-07 owner quotes with every owner message of each day |
 
-### 2026-09-11 — 4 commits, 3 claimed
+### 2026-09-11 — 5 commits, 4 claimed
 
 | SHA | UTC | Claimed | Subject (English) |
 |---|---|:---:|---|
@@ -500,5 +500,6 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`3535d2e`](https://github.com/kzmttkc/vet402/commit/3535d2edeacef36fc9e3ac6c0deffa9755313506) | 00:34 | — | ci(skill-live): note why the two pay_if_trusted blocks still skip in CI after they began generating their own key |
 | [`f7f719f`](https://github.com/kzmttkc/vet402/commit/f7f719f952cb6d8f6950d3a56395536d9b75e832) | 00:34 | ✔ | docs(commits): regenerate COMMITS_EN.md |
 | [`780be69`](https://github.com/kzmttkc/vet402/commit/780be6969d5ac5dfd3737eb24070ff708bf10fe2) | 01:05 | ✔ | docs(live-judging): match the on-screen expectations to 2026-09-11 production output |
+| [`d2ad83d`](https://github.com/kzmttkc/vet402/commit/d2ad83d78ea3d51f635396b433044e19671aa4f9) | 01:30 | ✔ | docs(live-judging): record the owner's no --live decision and rewrite the 1:30 step as dry run plus the 09-05 Basescan tx |
 
 </details>
