@@ -208,7 +208,7 @@ export function vet402Sentence(view: RefuseView): string {
   if (conclusive <= 0) {
     return (
       `[A] ${l0}; it paid ${n_settled} time(s) and every paid response ` +
-      "came back non-2xx from our own request shape — no delivery on record (L1 delivered 0)."
+      "came back non-2xx from vet402's own request shape — no delivery on record (L1 delivered 0)."
     );
   }
   return `[A] ${l0} and has never been delivered to (L1 delivered 0 of ${conclusive}).`;

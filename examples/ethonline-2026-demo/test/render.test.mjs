@@ -296,7 +296,7 @@ test("本番と同じ L1（settled 1, tried 1, inconclusive 1）でも画は幅�
   assert.ok(lines.length <= 32, `${lines.length} 行あり1画面に収まらない`);
   // 折り返しても1文として読める（切り詰めない）。
   const text = lines.join("\n").replace(/\n\s+/g, " ");
-  assert.match(text, /\[A\] has SEEN this seller \(l0_pass\); it paid 1 time\(s\) and every paid response came back non-2xx from our own request shape — no delivery on record \(L1 delivered 0\)\./, text);
+  assert.match(text, /\[A\] has SEEN this seller \(l0_pass\); it paid 1 time\(s\) and every paid response came back non-2xx from vet402's own request shape — no delivery on record \(L1 delivered 0\)\./, text);
 });
 
 test("どの L1 分岐でも画は幅で崩れない", () => {

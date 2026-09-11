@@ -205,8 +205,8 @@ async function main() {
         "measurement carries the full decision body: facts (L0 liveness, L1 settle-through, L2 conformance),",
         "reason_codes, freshness, evidence, and the rules_version that produced the recommendation.",
         "The L1 reason codes name whose gap it is: l1_not_attempted (vet402 signed no paid attempt),",
-        "l1_inconclusive (settled purchases exist, but each paid response was a 4xx we attribute to our",
-        "own request shape - a gap in our measurement, not evidence against the seller; facts.l1.n_inconclusive",
+        "l1_inconclusive (settled purchases exist, but each paid response was a 4xx vet402 attributes to its",
+        "own request shape - a gap in vet402's measurement, not evidence against the seller; facts.l1.n_inconclusive",
         "carries the count and those rows do not count toward a BLOCK), l1_never_delivered (a conclusive",
         "paid response existed and nothing was delivered), l1_delivered.",
         "",
@@ -318,7 +318,7 @@ async function main() {
                 source: z
                     .enum(["vet402", "subgraph", "both"])
                     .optional()
-                    .describe("Default vet402 (our ledger). subgraph reads only The Graph's x402 Base subgraph; both reads both and refuses if either cannot be read."),
+                    .describe("Default vet402 (vet402's own ledger). subgraph reads only The Graph's x402 Base subgraph; both reads both and refuses if either cannot be read."),
                 minL1Deliveries: z.number().int().nonnegative().optional().describe("Floor on vet402's delivered L1 purchases (source vet402 or both)"),
                 minSubgraphReceipts: z.number().int().nonnegative().optional().describe("Floor on receipts The Graph's subgraph knows for the payee (source subgraph or both)"),
             })

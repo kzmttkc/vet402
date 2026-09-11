@@ -393,7 +393,7 @@ export async function assess(options: AssessOptions): Promise<{ view: PayView; r
       gate(
         "/decision was readable",
         "fail",
-        `${decision.status === null ? "not reachable" : `HTTP ${decision.status}`} — a verdict we could not read is not a verdict`,
+        `${decision.status === null ? "not reachable" : `HTTP ${decision.status}`} — a verdict the gate could not read is not a verdict`,
       ),
     );
   }

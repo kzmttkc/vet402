@@ -4,7 +4,7 @@
 
 ## How this file is made
 
-This is `git log pre-ethonline-2026..fa10182` (374 commits), grouped by day in UTC and rendered by
+This is `git log pre-ethonline-2026..04a186b` (375 commits), grouped by day in UTC and rendered by
 [`scripts/ethonline-commits-en.mjs`](../../scripts/ethonline-commits-en.mjs) — `node scripts/ethonline-commits-en.mjs` regenerates it;
 `--check` (run by `npm test`) fails if this file is not what the script produces from the commit named in the **Generated** row — that is,
 if it was edited by hand. A Japanese subject with no translation, and commits after that one which did not regenerate this file, are warnings;
@@ -12,10 +12,10 @@ if it was edited by hand. A Japanese subject with no translation, and commits af
 the window contains work we do **not** submit; the **Claimed** column is derived from the path filter in `README.md`:
 
 ```bash
-git log pre-ethonline-2026..fa10182 -- packages/sdk packages/mcp-server \
+git log pre-ethonline-2026..04a186b -- packages/sdk packages/mcp-server \
     examples/ethonline-2026-demo examples/ethonline-2026-ab \
     SKILL.md AI_USAGE.md docs/ethonline-2026    # ✔ claimed
-git log pre-ethonline-2026..fa10182             # everything, ✔ and —
+git log pre-ethonline-2026..04a186b             # everything, ✔ and —
 ```
 
 A commit is ✔ when it touches at least one of those paths, — otherwise. Subjects written before the English-subject rule took effect
@@ -26,12 +26,12 @@ that instant are marked **⚠ pre-window** below and listed in [`DISCLOSURE_2026
 
 | | |
 |---|---|
-| Generated | 2026-09-11 05:18:53 UTC from `fa1018256abd5f3af917d0f9a78701ebe093289d` |
-| Range | `pre-ethonline-2026..fa10182` — **374 commits** on 8 days (UTC), 13 of them merges |
-| Claimed (✔) | **225** — touch at least one path in the filter |
+| Generated | 2026-09-11 05:19:10 UTC from `04a186b1fc63cbe2c24027b436bca300bb9a2e99` |
+| Range | `pre-ethonline-2026..04a186b` — **375 commits** on 8 days (UTC), 13 of them merges |
+| Claimed (✔) | **226** — touch at least one path in the filter |
 | Not claimed (—) | **149** — production work in the same days |
 | Claimed but before 2026-09-04 16:00:00 UTC | **3** (⚠) |
-| Subjects translated from Japanese | **286** (English already: 88) |
+| Subjects translated from Japanese | **286** (English already: 89) |
 
 ## Claimed, by day (UTC)
 
@@ -80,16 +80,16 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 - [`c39f4a3`](https://github.com/kzmttkc/vet402/commit/c39f4a3718dd9949772f6c2d99fe5b4a53b12c85) 23:54 — docs(prompts): replace the hand-picked 09-04 to 09-07 owner quotes with every owner message of each day (318 lines)
 - [`cdba5d8`](https://github.com/kzmttkc/vet402/commit/cdba5d8448f9eab9f0422d72d2fa0cf095367fb9) 11:57 — ethonline: docs(prizes): the prize canon named a path that does not exist and dropped one Bazantic requirement (306 lines)
 
-### 2026-09-11 — 7 of 8 claimed
+### 2026-09-11 — 8 of 9 claimed
 
 - [`fa10182`](https://github.com/kzmttkc/vet402/commit/fa1018256abd5f3af917d0f9a78701ebe093289d) 05:03 — docs(ethonline): write the judge-facing English in the first person singular, not "we" (193 lines)
+- [`04a186b`](https://github.com/kzmttkc/vet402/commit/04a186b1fc63cbe2c24027b436bca300bb9a2e99) 05:18 — docs(live-judging): speak as I, not we, and put the A/B v2 result on the 3:15 screen and in Q4, Q5, Q14 (119 lines)
 - [`276cdae`](https://github.com/kzmttkc/vet402/commit/276cdae2d6030f109a02c73ff703e3c516ad8400) 00:34 — docs(judge-walk): make the pay_if_trusted blocks runnable as pasted, refresh test counts, match pay/refuse wording to production (102 lines)
-- [`2d5f78e`](https://github.com/kzmttkc/vet402/commit/2d5f78eaaed809417b40cc03e50248e4f2c0c973) 02:59 — docs(handoffs): correct d60d73c — the health saw-tooth story does not fit the 09-11 rows; cause left open (89 lines)
 
 ## Every commit, by day (UTC), oldest first
 
 <details>
-<summary>All 374 commits — ✔ claimed and — not claimed (click to expand)</summary>
+<summary>All 375 commits — ✔ claimed and — not claimed (click to expand)</summary>
 
 ### 2026-09-04 — 87 commits, 11 claimed
 
@@ -492,7 +492,7 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`8b0a841`](https://github.com/kzmttkc/vet402/commit/8b0a84131d109f1d56b5748a0da02a2a1a68c733) | 23:41 | ✔ | docs(commits): regenerate COMMITS_EN.md |
 | [`c39f4a3`](https://github.com/kzmttkc/vet402/commit/c39f4a3718dd9949772f6c2d99fe5b4a53b12c85) | 23:54 | ✔ | docs(prompts): replace the hand-picked 09-04 to 09-07 owner quotes with every owner message of each day |
 
-### 2026-09-11 — 8 commits, 7 claimed
+### 2026-09-11 — 9 commits, 8 claimed
 
 | SHA | UTC | Claimed | Subject (English) |
 |---|---|:---:|---|
@@ -504,5 +504,6 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`2d5f78e`](https://github.com/kzmttkc/vet402/commit/2d5f78eaaed809417b40cc03e50248e4f2c0c973) | 02:59 | ✔ | docs(handoffs): correct d60d73c — the health saw-tooth story does not fit the 09-11 rows; cause left open |
 | [`0c8b01c`](https://github.com/kzmttkc/vet402/commit/0c8b01c8e5a090dd515756cc05764b6344a04349) | 03:33 | ✔ | docs(live-judging): do not read health detail aloud, refresh hourly degraded rates, stop calling getLogsChunked a spent 2.5s budget |
 | [`fa10182`](https://github.com/kzmttkc/vet402/commit/fa1018256abd5f3af917d0f9a78701ebe093289d) | 05:03 | ✔ | docs(ethonline): write the judge-facing English in the first person singular, not "we" |
+| [`04a186b`](https://github.com/kzmttkc/vet402/commit/04a186b1fc63cbe2c24027b436bca300bb9a2e99) | 05:18 | ✔ | docs(live-judging): speak as I, not we, and put the A/B v2 result on the 3:15 screen and in Q4, Q5, Q14 |
 
 </details>

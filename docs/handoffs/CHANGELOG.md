@@ -13,6 +13,8 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-11 14:xx JST — ライブデモと MCP ツール説明の表示文字列から we/our を外した（オーナー指示・ソロ参加）: `examples/ethonline-2026-demo/src/assess.ts`「a verdict we could not read」→「the gate could not read」・`src/render.ts`「our own request shape」→「vet402's own request shape」（テスト期待値も同じ変更）・`packages/mcp-server/src/index.ts` の `l1_inconclusive` 説明と `evidence.source` の describe。判定・理由コード・数値・JSON キーは不変。本番 API の `src/lib/observatory/vocabulary.ts:146,192` の we/our は未変更
+
 ## 2026-09-11 13:58 JST — 審査員が読む英文の一人称を we/our/us → I/my に統一（オーナー指示 09-11 13:35〜13:47）。`/ethonline` の表示文言を含む。人がしたこと＝I、システムが自動でしていること＝vet402/it/the gate。数字・URL・コードは不変。README 見出し "what is ours" は `/ethonline` のアンカーURLを保つため据え置き
 
 ## 2026-09-11 12:0x JST — 【訂正】06:4x の節（`d60d73c`「上流RPCではなく日次 cron ののこぎり波」）は**実測で説明しきれない**。原因は未確定
