@@ -45,7 +45,7 @@ The suites it runs include the boundary-shape tests (`packages/sdk/test/_shapes.
 | 2. `packages/mcp-server` — `npm ci && npm run build` | depends on the SDK through `file:../sdk`; `npm ci` here creates the link, so the SDK's `dist/` must already exist |
 | 3. `examples/ethonline-2026-demo` — nothing to install | imports `packages/sdk/dist` by relative path; `npm test` and all three commands run without an install |
 | 4. `examples/ethonline-2026-ab` — `npm ci` here | the harness's x402 bridge signer imports `viem`, which is now a direct dependency of this example (it was a root-borrowed peer until 2026-09-07) |
-| 5. `packages/mcp-server` — `npm install viem` | only the last two blocks need it (*`pay_if_trusted` with The Graph evidence*, *Paying a seller outside the catalogue — live*), and step 2 does **not** bring it: viem is deliberately not a dependency of this package, because an MCP server that can hold a private key should be something you opt into. Without it `resolvePayer()` returns `null` exactly as it does with no key, the server withholds `resource` / `payee` / `amountUsd` from the SDK, and both blocks stop at `payer_not_configured` **before** The Graph is read — reproduced on a fresh clone 2026-09-10. Skip this step and everything above still runs |
+| 5. `packages/mcp-server` — `npm install viem` | only the last two blocks need it (*`pay_if_trusted` with The Graph evidence*, *Paying a seller outside the catalogue — live*), and step 2 does **not** bring it: viem is deliberately not a dependency of this package, because an MCP server that can hold a private key should be something you opt into. Without it `resolvePayer()` returns `null` exactly as it does with no key, the server withholds `resource` / `payee` / `amountUsd` from the SDK, and both blocks stop at `payer_not_configured` **before** The Graph is read — reproduced on a fresh clone 2026-09-10. Since 2026-09-11 those two blocks run `npm install --no-save viem@2.56.3` themselves (package.json untouched). After `npm run judge-check` it is usually already resolvable: that script's root `npm ci` installs viem, and node finds it from `packages/mcp-server` through the parent directory (measured 2026-09-11). Skip this step and everything above still runs |
 
 **Keys — which blocks need one, and where a free one comes from.**
 
@@ -54,7 +54,7 @@ The suites it runs include the boundary-shape tests (`packages/sdk/test/_shapes.
 | *(none)* | — | `npm run judge-check`, sections **1–3** below (tests, offline refusal, `tools/list`), section **4** (it deliberately uses a wrong key) | — |
 | `VOUCH_API_KEY` | **any judgement of an *uncatalogued* seller** — there the verdict comes from the **payee score**, which is a keyed read. The demo's `pay` (its payee is The Graph, uncatalogued) and `judge <url>` on an uncatalogued URL read `[ ? ] verdict not read` without it and flip to REFUSE (measured both ways, 2026-09-08). Also the payee-score and attest tools | catalogued sellers — their verdict comes from `/decision`, which answers key-less at 10/min per IP since 2026-09-07 (`judge https://kronossignals.com/api/v1/price/btc` measured key-less 2026-09-08: `verdict ALLOW`, `verdict from decision`). The demo's `refuse` likewise (same WARN, same refusal). Key-less REST reads: `GET /api/v1/resolve?q=…` and the object reads listed in `README.md` → *Resolve, then decide*; the Bazantic MCP gateway (see **What is not built yet**) | free: <https://vet402.com/signup> (1,000 lookups/month, no card) → <https://vet402.com/dashboard/keys> |
 | `GRAPH_API_KEY` | the demo (all three commands read The Graph live) and any `policy.evidence.source: "subgraph" \| "both"` call | everything that reads vet402 only | free key from Subgraph Studio: <https://thegraph.com/studio> → *API Keys* |
-| `VOUCH_PAYER_PRIVATE_KEY` / `DEMO_PAYER_PRIVATE_KEY` | moving real money (`--live`) — **and the two `pay_if_trusted` blocks that show a subgraph evidence row** (*`pay_if_trusted` with The Graph evidence*, *Paying a seller outside the catalogue — live*). Those two do not sign: their floor of 10⁹ receipts cannot be met. They need a payer only because the server withholds `resource` / `payee` / `amountUsd` from the SDK when none is configured (`packages/mcp-server/src/index.ts`), so without it the call refuses at `payer_not_configured` before The Graph is read — the measured payer-less output is printed in that section. **A payer is the key *and* viem** (`resolvePayer()` needs both): see **Build order** step 5, and the one-line way to tell the two apart in that section | sections **1–4**, the demo's three commands, and every dry run — those load no signing module | your own throwaway wallet on Base. **Nothing on this page signs or spends**, with or without it |
+| `VOUCH_PAYER_PRIVATE_KEY` / `DEMO_PAYER_PRIVATE_KEY` | moving real money (`--live`) — **and the two `pay_if_trusted` blocks that show a subgraph evidence row** (*`pay_if_trusted` with The Graph evidence*, *Paying a seller outside the catalogue — live*). Those two do not sign: their floor of 10⁹ receipts cannot be met. They need a payer only because the server withholds `resource` / `payee` / `amountUsd` from the SDK when none is configured (`packages/mcp-server/src/index.ts`), so without it the call refuses at `payer_not_configured` before The Graph is read — the measured payer-less output is printed in that section. **A payer is the key *and* viem** (`resolvePayer()` needs both): see **Build order** step 5, and the one-line way to tell the two apart in that section | sections **1–4**, the demo's three commands, and every dry run — those load no signing module | the two blocks generate their own in the shell (`generatePrivateKey()`, no funds, never printed) and read it as `$THROWAWAY_KEY`; `--live` needs your own funded throwaway wallet on Base. **Nothing on this page signs or spends**, with or without it |
 
 Export keys in the shell, never in a file that gets committed. The demo rewrites the key inside
 the gateway URL to `<KEY>` on every line it prints (`examples/ethonline-2026-demo/src/emit.ts`), and
@@ -139,9 +139,9 @@ cd packages/mcp-server && npm test 2>&1 | grep -E '^ℹ '
 ```
 
 ```
-ℹ tests 748
+ℹ tests 780
 ℹ suites 0
-ℹ pass 748
+ℹ pass 780
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
@@ -339,8 +339,8 @@ cd packages/sdk && npm install && npm test 2>&1 | grep -E '^ℹ '
 ```
 
 ```
-ℹ tests 1615
-ℹ pass 1615
+ℹ tests 1679
+ℹ pass 1679
 ℹ fail 0
 ```
 
@@ -401,25 +401,27 @@ both keys            [waiv] payee verdict is ALLOW   WARN (68) — not required 
 That is fail-closed working as designed — an unread verdict is not an ALLOW — but a judge running
 with one key would see a REFUSE and conclude the gate is broken. It is not; the key is missing.
 
-Both were run on 2026-09-06 13:01 UTC. Key values are never printed — the demo's own redactor
-(`examples/ethonline-2026-demo/src/emit.ts`) rewrites the key inside the gateway URL to `<KEY>`. `refuse`, abridged to the lines
-that matter:
+`refuse` below was re-run on 2026-09-11 00:26 UTC with `GRAPH_API_KEY` only. Since 2026-09-08 the server calls a paid
+attempt that ended in a non-2xx caused by our own request `l1_inconclusive`, not `l1_not_attempted`
+(`src/lib/observatory/vocabulary.ts`): we paid this seller once and have no delivery on record. Key values are never
+printed — the demo's own redactor (`examples/ethonline-2026-demo/src/emit.ts`) rewrites the key inside the gateway URL
+to `<KEY>`. `refuse`, abridged to the lines that matter:
 
 ```
  [A] vet402  GET /decision?role=payer           [B] The Graph  x402 Base subgraph (live)
- recommendation  WARN                           _meta.block.number   50955183
- reason_codes    l0_pass                        _meta.block.time     2026-09-06T13:01:53Z
-                 l1_not_attempted               _meta.deployment
+ recommendation  WARN                           _meta.block.number   51148514
+ reason_codes    l0_pass                        _meta.block.time     2026-09-11T00:26:15Z
+                 l1_inconclusive                _meta.deployment
                  l2_undeclared                    QmcE24HARdXXnziPii9bWFRV6njfWW82H1RKPe5x9hBkUN
- L1 delivered    0  (settled 0, tried 0)        totalPayments        30
+ L1 delivered    0  (settled 1, tried 1)        totalPayments        117
  result    refused    signed  false    nonce  null    tx  null
- reasons   l0_pass, l1_not_attempted, l2_undeclared, payee_recommendation_not_allow
- evidence[0]  L1  source=subgraph  receipts=30  block=50955183
+ reasons   l0_pass, l1_inconclusive, l2_undeclared, payee_recommendation_not_allow
+ evidence[0]  L1  source=subgraph  receipts=117  block=51148514
  requests  2  —  0 signatures, 0 RPC, 0 settle
            POST https://gateway.thegraph.com/api/<KEY>/subgraphs/id/Cb56epg3EvQ6JRpPfknbkM54QxpzTvLa7mwKNQQfUyoj
 ```
 
-`pay` (dry run, same minute):
+`pay` (dry run, 2026-09-06 13:01 UTC, both keys set):
 
 ```
  [ok  ] subgraph evidence is live        block 50955185, 260 receipts
@@ -588,8 +590,11 @@ met with which numbers. `measurement` stays what it was: the `/decision` body un
 Launch with the key in env (Claude Desktop / Cursor: the same `env` block as `VOUCH_API_KEY`):
 
 ```bash
-# live: needs VOUCH_API_KEY,GRAPH_API_KEY,THROWAWAY_KEY,module:viem/accounts@packages/mcp-server expect .[0].result.content[0].text | fromjson | .decision == "REFUSE" and .signed == false and .nonce == null and ((.refuse_reasons | index("insufficient_subgraph_evidence")) != null) and ((.decision_record.evidence | map(.source) | index("subgraph")) != null)
-cd packages/mcp-server && printf '%s\n%s\n%s\n' \
+# live: needs VOUCH_API_KEY,GRAPH_API_KEY expect .[0].result.content[0].text | fromjson | .decision == "REFUSE" and .signed == false and .nonce == null and ((.refuse_reasons | index("insufficient_subgraph_evidence")) != null) and ((.decision_record.evidence | map(.source) | index("subgraph")) != null)
+cd packages/mcp-server
+npm install --no-save --no-audit --no-fund viem@2.56.3 >/dev/null   # the payer's second half (Build order step 5); --no-save leaves package.json alone
+export THROWAWAY_KEY=$(node -e 'process.stdout.write(require("viem/accounts").generatePrivateKey())')   # a fresh key with no funds; the value is never printed
+printf '%s\n%s\n%s\n' \
  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"judge","version":"0"}}}' \
  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"pay_if_trusted","arguments":{"resourceId":"ae0091e802c83179e3b1464a7b15dac64a0c1d3a00cb690eb6a5ac9811c47e3b","resource":"https://kronossignals.com/api/v1/price/btc","payee":"0x36038e1d712c5e39f35952164ec58ec2b96caee7","amountUsd":0.02,"policy":{"evidence":{"source":"subgraph","minSubgraphReceipts":1000000000}}}}}' \
@@ -605,6 +610,12 @@ real — a stack trace here means the build step above did not finish.
 That `resourceId` is a catalogued seller our engine rates **ALLOW**. The floor of 10⁹ receipts is
 deliberately unmeetable, so the run reads the **live Gateway** and stops before a signature — a way
 to show the evidence row without moving money.
+
+**This block makes its own payer: viem, and a fresh key with no funds.** It still signs nothing. Measured 2026-09-11
+on both `pay_if_trusted` blocks from a fresh checkout, with a preload that wraps `viem/accounts` and `fetch` to count calls,
+once with `GRAPH_API_KEY` only and once with `VOUCH_API_KEY` too: `signTypedData` was called **0** times and **0** requests
+carried a payment header. The requests were 2 GETs to vet402.com and 1 POST to The Graph. The same preload did catch a
+signature and a `PAYMENT-SIGNATURE` header in a control script, so a zero from it means zero.
 
 **This block needs a payer, and a payer is two things** — even though it never signs.
 `resolvePayer()` (`packages/mcp-server/src/index.ts`) returns a signer only when **both**
@@ -759,8 +770,11 @@ Run against the real Gateway on 2026-09-06 13:30 UTC — The Graph's own 402 URL
 it reads The Graph live and stops before a signature (key values redacted; nothing else edited):
 
 ```bash
-# live: needs VOUCH_API_KEY,GRAPH_API_KEY,THROWAWAY_KEY,module:viem/accounts@packages/mcp-server expect .[0].result.content[0].text | fromjson | .decision == "REFUSE" and .refuse_reasons == ["resource_uncatalogued","insufficient_subgraph_evidence"] and .signed == false and .nonce == null
-cd packages/mcp-server && printf '%s\n%s\n%s\n' \
+# live: needs VOUCH_API_KEY,GRAPH_API_KEY expect .[0].result.content[0].text | fromjson | .decision == "REFUSE" and .refuse_reasons == ["resource_uncatalogued","insufficient_subgraph_evidence"] and .signed == false and .nonce == null
+cd packages/mcp-server
+npm install --no-save --no-audit --no-fund viem@2.56.3 >/dev/null   # same payer as the block above: viem + a fresh key with no funds
+export THROWAWAY_KEY=$(node -e 'process.stdout.write(require("viem/accounts").generatePrivateKey())')   # the value is never printed
+printf '%s\n%s\n%s\n' \
  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"judge","version":"0"}}}' \
  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"pay_if_trusted","arguments":{"resourceId":"9e8469d365d65bc9b4a3f588f951bfc70ae64cc1afa2ebdf7e8f11a940d40763","resource":"https://gateway.thegraph.com/api/x402/subgraphs/id/Cb56epg3EvQ6JRpPfknbkM54QxpzTvLa7mwKNQQfUyoj","payee":"0x79DC34E41B2b591078d3dE222C43EcaaBD52FcCB","amountUsd":0.01,"method":"POST","policy":{"requireVet402Allow":false,"evidence":{"source":"subgraph","minSubgraphReceipts":1000000000}}}}}' \

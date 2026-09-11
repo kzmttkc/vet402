@@ -7,7 +7,7 @@ The two commands filmed in the demo video. Both read **live** production data �
 cd examples/ethonline-2026-demo
 
 export GRAPH_API_KEY=…        # https://thegraph.com/studio  (both commands)
-export VOUCH_API_KEY=…        # optional: /decision answers key-less at 10/min per IP (2026-09-07); set it to send it as the bearer token
+export VOUCH_API_KEY=…        # refuse: optional (/decision answers key-less at 10/min per IP). pay: required — see `pay` below
 
 node src/run.ts refuse        # refuse before a signature can exist
 node src/run.ts pay           # dry run: what would have been signed. Nothing is signed.
@@ -27,7 +27,8 @@ resolves 2.55.1 — both satisfy the `^2.55.1` peer range in `package.json`).
 Puts two independent sources side by side for the same address
 (`0xb15a55e85FdF5edc41B6c1eaf7813e2c6e6def59`, the payee behind `agent.api.0x.org`):
 
-- **[A] vet402** has *seen* this seller (`l0_pass`) and has **never bought from it** (`L1 delivered 0`).
+- **[A] vet402** has *seen* this seller (`l0_pass`) and has paid it once, but has **no delivery on record**
+  (`l1_inconclusive`, `L1 delivered 0`): the one paid response came back non-2xx from our own request shape.
 - **[B] The Graph** knows that same address has received payments, reported with
   `_meta.block.number` and `_meta.deployment` — the only self-evident proof that the data is live.
 
@@ -41,6 +42,11 @@ because the payment module is never loaded on this path.
 shows what would have been signed — amount, `payTo`, asset, the EIP-3009 authorisation window — and
 then stops. `payOrRefuse` is not called, so the signing module is never loaded. It also prints, from
 the facts it just read, what `--live` would do today.
+
+**`pay` needs `VOUCH_API_KEY` as well as `GRAPH_API_KEY`.** Its payee (The Graph's gateway) is not in vet402's catalogue
+(`/decision` 404), so the verdict comes from the payee score, a keyed read. With the Graph key alone the run prints
+`[  ? ] payee verdict is ALLOW   verdict not read` and `predicted --live would REFUSE before signing`; with both keys it
+prints `WARN (68) — not required by policy` and `predicted --live would sign and send $0.01` (both measured 2026-09-11, dry run).
 
 `--live` is the only thing that lets a signature exist, and it is meant to be typed by a person.
 

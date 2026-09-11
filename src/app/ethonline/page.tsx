@@ -158,7 +158,11 @@ export default function EthOnlinePage() {
           The demo CLI&apos;s <code>pay</code> and <code>refuse</code> need a free Graph key:{" "}
           <code>export GRAPH_API_KEY=…</code> from{" "}
           <Ext href="https://thegraph.com/studio">https://thegraph.com/studio</Ext> (both commands).
-          <code>judge-check</code> above does not.
+          <code>pay</code> also needs <code>VOUCH_API_KEY</code> (free, no card:{" "}
+          <Ext href="https://vet402.com/signup">vet402.com/signup</Ext>): its payee, The Graph&apos;s
+          gateway, is not in our catalogue, so the verdict comes from a keyed payee-score read. With the
+          Graph key alone, <code>pay</code> prints <code>verdict not read</code> and predicts a refusal;{" "}
+          <code>refuse</code> runs without it. <code>judge-check</code> above needs neither.
         </p>
 
         <h2 className="sec-head">

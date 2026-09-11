@@ -251,7 +251,7 @@ Model-side judgement never decides a payment; the gate does. Our demo's own deci
 | 259 / 0.01 USDC / 50898704 / tx | `WINDOW_PLAN.md` §10.5 | 固定 |
 | 404 | `WINDOW_PLAN.md` §3.1（登録しない決定） | 固定 |
 | `{{graph_receipts}}` | `VIDEO_SCRIPT.md` §5 のコマンド（直近の記録は **483**・09-08 09:0x。09-07 は 417） | **動く・提出日に埋める** |
-| `{{sdk_tests}}` / `{{mcp_tests}}` / `{{demo_tests}}` | `VIDEO_SCRIPT.md` §5 のコマンド（09-08: 1615 / 748 / 169） | **動く** |
+| `{{sdk_tests}}` / `{{mcp_tests}}` / `{{demo_tests}}` | `VIDEO_SCRIPT.md` §5 のコマンド（09-11: 1679 / 780 / 169） | **動く** |
 | internal resource URL | `WINDOW_PLAN.md` §3 注意書き | 固定 |
 
 **明日確かめること**: 冒頭の WARN 段を読んで「The Graph を疑っている」と読めないか。読めたら書き直す。
@@ -336,8 +336,8 @@ One keystore-related item was sent privately to support@bazantic.com on 2026-09-
 | `{{claimed_commits}}` | `git log pre-ethonline-2026..main --oneline -- packages/sdk packages/mcp-server examples/ethonline-2026-demo examples/ethonline-2026-ab SKILL.md AI_USAGE.md docs/ethonline-2026 \| wc -l` | **208**【実測 2026-09-10 20:45・`origin/main`】（09-07 は 123） | C |
 | `{{graph_receipts}}` | `cd examples/ethonline-2026-demo && node src/run.ts pay 2>&1 \| grep totalPayments`（`GRAPH_API_KEY` 要） | **483**【一次・09-08 09:0x・`VIDEO_SCRIPT.md` §「録音後に動いた数字」】（09-06 は 260、09-07 は 417）。**毎日増える。撮影日に取り直し、口では下限で言う** | I |
 | `{{graph_score}}` | 同上 `\| grep 'payee verdict'` | 09-07 07:5x は WARN (69)、同日 12:xx は **WARN (68)**【一次・`VIDEO_SCRIPT.md` §5 ／ `LIVE_JUDGING.md`】＝**同じ日に動いた**。**69 でなければ本文の "WARN (69)" をその値に置換** | C・I |
-| `{{sdk_tests}}` | `cd packages/sdk && npm ci && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 1615 / fail 0【`refresh-numbers.json` 09-08】 | I |
-| `{{mcp_tests}}` | `cd packages/mcp-server && npm ci && npm run build && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 748 / fail 0【`refresh-numbers.json` 09-08】 | I |
+| `{{sdk_tests}}` | `cd packages/sdk && npm ci && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 1679 / fail 0【`refresh-numbers.json` 09-11】 | I |
+| `{{mcp_tests}}` | `cd packages/mcp-server && npm ci && npm run build && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 780 / fail 0【`refresh-numbers.json` 09-11】 | I |
 | `{{demo_tests}}` | `cd examples/ethonline-2026-demo && npm test 2>&1 \| grep -E '^ℹ (tests\|fail)'` | 169 / fail 0【`refresh-numbers.json` 09-08】 | I |
 | `{{mutations}}` | `npm run refresh-numbers` → `<!-- n:sdk_mutations -->` | 45【`refresh-numbers.json` 09-10】 | D |
 | `{{bazantic_tools}}` | `curl -s -X POST https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \| python3 -c 'import sys,json;print(len(json.load(sys.stdin)["result"]["tools"]))'` | 57【一次・`SKILL.md` 09-06】 | D・J |

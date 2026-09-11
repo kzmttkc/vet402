@@ -13,6 +13,16 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-11 10:xx JST — 審査員条件の再走で見つかった文書の食い違い4件を直した（`/ethonline` の1段落を含む）
+
+- **変えたもの**: `SKILL.md`・`examples/ethonline-2026-demo/README.md`・`src/app/ethonline/page.tsx`（1段落の文言のみ）・`scripts/refresh-numbers.json` と印4文書（テスト件数）・`.github/workflows/skill-live.yml`（コメントのみ）。コード・env・DB・決済経路（`*payer*`・`x402-pay.ts`・`pay-or-refuse.ts`・署名器）は無変更
+- **なぜ**: 新しい clone（`c39f4a3`・鍵なし／GRAPH 鍵だけ）で README・SKILL.md・WINDOW_PLAN §359 を書いてあるとおりに打つと、次の4点で詰まった
+  1. `SKILL.md` の `pay_if_trusted` 2ブロックは `$THROWAWAY_KEY` がどこにも定義されておらず、`payer_not_configured` で止まって期待式が false になった → ブロックの中で `npm install --no-save viem@2.56.3` を実行し、資金の無い鍵を `generatePrivateKey()` でその場で生成するようにした（値は印字しない）。**署名は発生しない**: `viem/accounts` と `fetch` を包む preload で実測し、2ブロック×（GRAPH のみ／GRAPH+VOUCH）で `signTypedData` 0回・支払いヘッダ 0件。同じ preload は対照スクリプトで署名とヘッダを捕まえた
+  2. テスト件数 748 / 1615 → **780 / 1679**（`refresh-numbers --refresh --only sdk_tests --only mcp_tests`・as_of は動かしていない）
+  3. `pay` は GRAPH 鍵だけだと `verdict not read` になり、「REFUSE を予測」と出る（VOUCH を足すと `WARN (68)` を免除して「sign を予測」。09-11 に dry run で両方を実測）。`/ethonline` と demo README に1行ずつ書いた
+  4. 本番の `refuse` は `l1_inconclusive`（09-08 のサーバ語彙追加以降）。demo README の「never bought」と SKILL.md の出力例 `l1_not_attempted` を、09-11 の本番出力に合わせた（09-08 以前の記録文書・PROMPTS は触っていない）
+- **そちらへの影響**: `/ethonline` の「Run it yourself」節に3行増える。skill-live CI の挙動は変わらない（2ブロックは `needs VOUCH_API_KEY,GRAPH_API_KEY` のままで、CI は VOUCH を渡さないので skip）。テスト件数を recorded から derive にするのは見送った: `--check` はほかのセッションの push 経路でも走り、パッケージを install していない環境では赤になるため
+
 ## 2026-09-11 09:xx JST — Dependabot 12件のうち、非破壊で直せる3件（js-yaml・browserslist・baseline-browser-mapping）を lockfile だけで上げた
 
 - **変えたもの**: `package-lock.json` のみ。`package.json`・`overrides`・コード・env・DB は無変更。`npm update js-yaml browserslist baseline-browser-mapping` で動いた7パッケージは、すべて親の semver 範囲内（メジャー上げ0）
