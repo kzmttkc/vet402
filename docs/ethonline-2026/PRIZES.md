@@ -132,6 +132,25 @@ Ledger $1,500／Hedera $1,000／Bazantic $1,000（**選択中**）／ENS $500／
 **提出フォームには書かない。** 運営の回答を賞コメントに引用すると、作ったものでなく権威で押していると読まれる。
 この記録は docs の中だけで使う。
 
+### 1.2 Continuity 提出と Final checklist の文言 —— 2026-09-11 の ETHGlobal 回答
+
+**チャネル**: ETHOnline Discord。時刻は Discord の表示（JST）。一次はオーナー（`Sen_web3`）の提示。
+
+オーナーが送った質問（`Sen_web3`・要旨）:
+- 提出フォームの Final checklist にある `I will be starting this project from scratch` と
+  `no work was completed before the event` は、Continuity で提出することと整合するか
+- 同じチェックリストの `I will not be submitting this project to another hackathon` は、
+  ETHGlobal Tokyo（2026-09-25〜27）の Continuity 枠に vet402 の新しい作業で応募することと整合するか
+
+ETHGlobal（`Pascal | ETHGlobal`）の `@Sen_web3` への返信（**2026-09-11 14:39 JST**・原文）:
+
+> Yes both are fine. The wording needs to be adjusted for those. Thanks for bringing this up.
+
+**含意**:
+- ETHOnline の **Continuity 提出はそのままでよい**。チェックリストの 2 行に合わせて提出を変えない
+- **ETHGlobal Tokyo の Continuity 枠に、vet402 の新しい作業で出てよい**
+- チェックリストの文言は **ETHGlobal 側で直す**
+
 ---
 
 ## 2. 2026-08-24 07:40 の基準線からの差分（今日の実測）

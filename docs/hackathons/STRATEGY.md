@@ -246,6 +246,7 @@ WIN_EV がキャンペーン草案より優先。カタログから始めない�
 - 動詞: 支払い先を ENS 名で指定。検証/観測を ENS records へ。`payOrRefuse` は解決のあと。
 - 任意: World ID 等による WARN / 高額の人間上書き。ENS がカメラで動くまで始めない。
 - 賞: **ENS Continuity 必須**。World は上書きを出したとき。Sui は選ばない。Uniswap は本物の swap がデモに無い限り選ばない。
+- 資格: ETHOnline の Continuity 提出の後に、Tokyo の Continuity 枠へ vet402 の新しい作業で出てよい（2026-09-11 ETHGlobal 回答・原文は [`../ethonline-2026/PRIZES.md`](../ethonline-2026/PRIZES.md) §1.2）。
 - 金曜夜までに ENS メンターへ見せる。土曜で機能凍結。日曜提出。
 - git: `pre-tokyo-2026` / `tokyo-2026` / 接頭辞 `tokyo:`。
 - 完了: 動画最初の1分が hex ではなく名前。
