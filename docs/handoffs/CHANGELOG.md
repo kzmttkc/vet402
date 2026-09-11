@@ -13,6 +13,15 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-11 14:40 JST — 【訂正】09-09 15:00 の節「§4 運用の申し送り (a)」の2項目。台帳の日次控えは Takeshi の手番ではなかった（剪定の失敗を非致命にして状態更新と警報を復旧・Takeshi_Automation `f5992c2`）。launchd の 60 分遅れは原因を特定して修正済み
+
+- **変えたもの**: Takeshi_Automation の `scripts/vet402_ledger_snapshot.py` だけ（ブランチ `kabau-trust-board`・`f5992c2`、テスト `tests/test_vet402_ledger_snapshot_prune.py`）。iCloud Drive の古い控えの剪定（`prune()` の `os.listdir`）が `PermissionError` を投げても、それをつかまえて `state/vet402_ledger_snapshot.json` の `prune_errors` とログに理由を残し、先へ進む。警報と終了コードは変えない。**vet402 のコード・本番 env・DB は何も変えていない**（このジョブは本番 DB の公開表を COPY で読むだけ）
+- **09-09 の (a) 1項目めの訂正**: 「Full Disk Access か保存先の変更が要る——Takeshi の手番」は取り下げる。執行部の方針として、**フルディスクアクセスは付けない。保存先（iCloud Drive＝端末外の控え）も変えない**。launchd からでも iCloud への複製（copytree）は通っていて、落ちていたのは複製の後の剪定だけだった
+- **影響（09-09 の節に書かれていなかったこと）**: 09-09 の節は「台帳の写しは取れている」と書いた。写しは確かに毎日取れていた。ただ、例外が出ていたのは状態ファイルの書き込みと警報より**前**の段だった。そのため **09-06〜09-11 05:20 の 6 回は、前日との sha256 突合（改ざんの検知）と行数 5% 超減（削除の検知）の警報を出せない状態だった**。状態ファイルは 09-05 08:03 のまま止まり、ログには Traceback が 6 件ある
+- **復旧の実測**: `launchctl kickstart gui/501/com.kizuna.vet402-ledger-snapshot` を 09-11 14:20 JST に 1 回だけ実行 → `last exit code = 0`。ログは `剪定失敗 [icloud] PermissionError(errno=1) Operation not permitted` と `OK 2026-09-11: 8 表 + settlements 日次集約 39 行 / gz 合計 14.7 MB / 連鎖 1 日 / iCloud 済 / 剪定失敗 icloud` の 2 行。状態ファイルは `taken_at 2026-09-11T14:20:14+09:00`、09-10 の控えとの突合 `prev_integrity_problems=[]`・`row_drops=[]`・`errors=[]`
+- **残っていること**: iCloud 側の剪定は止まったまま（最古の控えは 09-05。30 日の保持を超えるのは 10 月上旬から）。どう消すかは未決で、削除の試行もしていない。`chain_length` は、09-06〜09-11 の manifest に書き戻しが入らなかったので 1 から数え直しになった（`prev_manifest_sha256` によるハッシュ連鎖は切れていない）
+- **09-09 の (a) 2項目め「launchd が 60 分遅れて走る」**: 09-11 13:36 JST に原因を特定して直した。UserEventAgent (Aqua) が 08-26 の UTC+8 を保持し続けていた。Takeshi_Automation `5130496`（09:09・実際の発火の痕跡からずれを検知）、`7724fff`（13:44・UserEventAgent (Aqua) を再起動し、発火ずれ 0 を実測）
+
 ## 2026-09-11 14:xx JST — ライブデモと MCP ツール説明の表示文字列から we/our を外した（オーナー指示・ソロ参加）: `examples/ethonline-2026-demo/src/assess.ts`「a verdict we could not read」→「the gate could not read」・`src/render.ts`「our own request shape」→「vet402's own request shape」（テスト期待値も同じ変更）・`packages/mcp-server/src/index.ts` の `l1_inconclusive` 説明と `evidence.source` の describe。判定・理由コード・数値・JSON キーは不変。本番 API の `src/lib/observatory/vocabulary.ts:146,192` の we/our は未変更
 
 ## 2026-09-11 13:58 JST — 審査員が読む英文の一人称を we/our/us → I/my に統一（オーナー指示 09-11 13:35〜13:47）。`/ethonline` の表示文言を含む。人がしたこと＝I、システムが自動でしていること＝vet402/it/the gate。数字・URL・コードは不変。README 見出し "what is ours" は `/ethonline` のアンカーURLを保つため据え置き
