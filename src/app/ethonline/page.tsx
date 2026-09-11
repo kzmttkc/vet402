@@ -238,10 +238,11 @@ export default function EthOnlinePage() {
           exploratory and labelled so.
         </p>
         <p className="doc-p">
-          <strong>One finding for Bazantic itself.</strong> $0 routes still answer 402, and paying
-          $0 posts a real 0-USDC transfer on chain: in 20 trials, 110 tool calls, 88 settled,{" "}
+          <strong>One finding for Bazantic itself.</strong> On 2026-09-06, $0 routes answered 402, and
+          paying $0 posted a real 0-USDC transfer on chain: in 20 trials, 110 tool calls, 88 settled,{" "}
           <strong>88 free reads cost 88 facilitator transactions</strong>. Each hash is in the raw
-          log. Harness and results:{" "}
+          log. On 2026-09-09 and 2026-09-11 the free tools I checked answered without a 402.
+          Harness and results:{" "}
           <Ext href={`${REPO}/tree/main/examples/ethonline-2026-ab`}>
             examples/ethonline-2026-ab
           </Ext>

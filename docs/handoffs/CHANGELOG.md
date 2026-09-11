@@ -13,6 +13,8 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-11 14:58 JST — 審査日（09-14）に読むと偽になる現在形を、日付つきの過去形に直した（`/ethonline` の表示文言を含む）: `src/app/ethonline/page.tsx` の Bazantic 段落「$0 routes still answer 402」→「On 2026-09-06, $0 routes answered 402 … On 2026-09-09 and 2026-09-11 the free tools I checked answered without a 402」、`docs/ethonline-2026/BAZANTIC_FEEDBACK.md` §4 #1〜#3 と §6 の now/still/today。根拠は 09-11 05:41Z の probe（v1 で使った 12 ツールに未払い tools/call、402 は 0 件）。57 ツール中 12 本しか見ていないので「全ルートで直った」とは書いていない。数字・URL・コードは不変。`LIVE_JUDGING.md` は別の役が編集中のため未変更
+
 ## 2026-09-11 14:40 JST — 【訂正】09-09 15:00 の節「§4 運用の申し送り (a)」の2項目。台帳の日次控えは Takeshi の手番ではなかった（剪定の失敗を非致命にして状態更新と警報を復旧・Takeshi_Automation `f5992c2`）。launchd の 60 分遅れは原因を特定して修正済み
 
 - **変えたもの**: Takeshi_Automation の `scripts/vet402_ledger_snapshot.py` だけ（ブランチ `kabau-trust-board`・`f5992c2`、テスト `tests/test_vet402_ledger_snapshot_prune.py`）。iCloud Drive の古い控えの剪定（`prune()` の `os.listdir`）が `PermissionError` を投げても、それをつかまえて `state/vet402_ledger_snapshot.json` の `prune_errors` とログに理由を残し、先へ進む。警報と終了コードは変えない。**vet402 のコード・本番 env・DB は何も変えていない**（このジョブは本番 DB の公開表を COPY で読むだけ）
