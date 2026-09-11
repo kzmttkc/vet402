@@ -31,7 +31,7 @@ const READING_ORDER: { n: number; label: string; href: string; why: string }[] =
   {
     n: 1,
     label: "README — §ETHOnline 2026 (Continuity)",
-    href: `${REPO}#ethonline-2026-continuity--what-is-ours-from-this-window`,
+    href: `${REPO}#ethonline-2026-continuity--what-i-claim-from-this-window`,
     why: "the boundary tag, the two git log commands (what I claim / everything on main), the caveat.",
   },
   {

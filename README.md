@@ -32,7 +32,9 @@ vet402 buys what x402 endpoints actually sell, verifies fulfillment against the 
 
 This repository is the source of the vet402 service and of the three npm packages published from `packages/`.
 
-## ETHOnline 2026 (Continuity) — what is ours from *this* window
+<a id="ethonline-2026-continuity--what-is-ours-from-this-window"></a>
+
+## ETHOnline 2026 (Continuity) — what I claim from *this* window
 
 The boundary tag `pre-ethonline-2026` is commit `c42daca`, cut **2026-09-04 00:05:36 UTC**, and it is
 pushed, so anyone can verify the split themselves. The window opened at **2026-09-04 16:00 UTC**
