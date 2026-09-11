@@ -4,34 +4,34 @@
 
 ## How this file is made
 
-This is `git log pre-ethonline-2026..9b83cef` (379 commits), grouped by day in UTC and rendered by
+This is `git log pre-ethonline-2026..f0e1c20` (382 commits), grouped by day in UTC and rendered by
 [`scripts/ethonline-commits-en.mjs`](../../scripts/ethonline-commits-en.mjs) — `node scripts/ethonline-commits-en.mjs` regenerates it;
 `--check` (run by `npm test`) fails if this file is not what the script produces from the commit named in the **Generated** row — that is,
 if it was edited by hand. A Japanese subject with no translation, and commits after that one which did not regenerate this file, are warnings;
 `--check --strict` (the final pass before the submission Release) makes both of them failures too. `main` is also this product's production branch, so
-the window contains work we do **not** submit; the **Claimed** column is derived from the path filter in `README.md`:
+the window contains work I do **not** submit; the **Claimed** column is derived from the path filter in `README.md`:
 
 ```bash
-git log pre-ethonline-2026..9b83cef -- packages/sdk packages/mcp-server \
+git log pre-ethonline-2026..f0e1c20 -- packages/sdk packages/mcp-server \
     examples/ethonline-2026-demo examples/ethonline-2026-ab \
     SKILL.md AI_USAGE.md docs/ethonline-2026    # ✔ claimed
-git log pre-ethonline-2026..9b83cef             # everything, ✔ and —
+git log pre-ethonline-2026..f0e1c20             # everything, ✔ and —
 ```
 
 A commit is ✔ when it touches at least one of those paths, — otherwise. Subjects written before the English-subject rule took effect
-(20:00 JST on 2026-09-08, [`GIT_RULES.md`](./GIT_RULES.md)) are Japanese in the log; their English here is our translation, kept by full SHA in
+(20:00 JST on 2026-09-08, [`GIT_RULES.md`](./GIT_RULES.md)) are Japanese in the log; their English here is my translation, kept by full SHA in
 [`commit-titles-en.json`](./commit-titles-en.json) next to the original (`git show -s --format=%s <sha>` is the original). History is not rewritten.
 Hacking began at 2026-09-04 16:00:00 UTC; the boundary tag points at `pre-ethonline-2026` = 2026-09-04 00:05:36 UTC, 15 h 54 min before that, and the claimed commits made before
 that instant are marked **⚠ pre-window** below and listed in [`DISCLOSURE_2026-09-05.md`](./DISCLOSURE_2026-09-05.md).
 
 | | |
 |---|---|
-| Generated | 2026-09-11 05:59:36 UTC from `9b83cef3da71c3b93806bfebf96fda28c8230737` |
-| Range | `pre-ethonline-2026..9b83cef` — **379 commits** on 8 days (UTC), 13 of them merges |
-| Claimed (✔) | **229** — touch at least one path in the filter |
+| Generated | 2026-09-11 06:16:36 UTC from `f0e1c20c4567c0ce20b35f9265db84661e2ac2a1` |
+| Range | `pre-ethonline-2026..f0e1c20` — **382 commits** on 8 days (UTC), 13 of them merges |
+| Claimed (✔) | **232** — touch at least one path in the filter |
 | Not claimed (—) | **150** — production work in the same days |
 | Claimed but before 2026-09-04 16:00:00 UTC | **3** (⚠) |
-| Subjects translated from Japanese | **286** (English already: 93) |
+| Subjects translated from Japanese | **286** (English already: 96) |
 
 ## Claimed, by day (UTC)
 
@@ -80,7 +80,7 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 - [`c39f4a3`](https://github.com/kzmttkc/vet402/commit/c39f4a3718dd9949772f6c2d99fe5b4a53b12c85) 23:54 — docs(prompts): replace the hand-picked 09-04 to 09-07 owner quotes with every owner message of each day (318 lines)
 - [`cdba5d8`](https://github.com/kzmttkc/vet402/commit/cdba5d8448f9eab9f0422d72d2fa0cf095367fb9) 11:57 — ethonline: docs(prizes): the prize canon named a path that does not exist and dropped one Bazantic requirement (306 lines)
 
-### 2026-09-11 — 11 of 13 claimed
+### 2026-09-11 — 14 of 16 claimed
 
 - [`fa10182`](https://github.com/kzmttkc/vet402/commit/fa1018256abd5f3af917d0f9a78701ebe093289d) 05:03 — docs(ethonline): write the judge-facing English in the first person singular, not "we" (193 lines)
 - [`04a186b`](https://github.com/kzmttkc/vet402/commit/04a186b1fc63cbe2c24027b436bca300bb9a2e99) 05:18 — docs(live-judging): speak as I, not we, and put the A/B v2 result on the 3:15 screen and in Q4, Q5, Q14 (119 lines)
@@ -89,7 +89,7 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 ## Every commit, by day (UTC), oldest first
 
 <details>
-<summary>All 379 commits — ✔ claimed and — not claimed (click to expand)</summary>
+<summary>All 382 commits — ✔ claimed and — not claimed (click to expand)</summary>
 
 ### 2026-09-04 — 87 commits, 11 claimed
 
@@ -492,7 +492,7 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`8b0a841`](https://github.com/kzmttkc/vet402/commit/8b0a84131d109f1d56b5748a0da02a2a1a68c733) | 23:41 | ✔ | docs(commits): regenerate COMMITS_EN.md |
 | [`c39f4a3`](https://github.com/kzmttkc/vet402/commit/c39f4a3718dd9949772f6c2d99fe5b4a53b12c85) | 23:54 | ✔ | docs(prompts): replace the hand-picked 09-04 to 09-07 owner quotes with every owner message of each day |
 
-### 2026-09-11 — 13 commits, 11 claimed
+### 2026-09-11 — 16 commits, 14 claimed
 
 | SHA | UTC | Claimed | Subject (English) |
 |---|---|:---:|---|
@@ -509,5 +509,8 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`753f7ec`](https://github.com/kzmttkc/vet402/commit/753f7eced2eebd063c41fd6ed1466989d08abb5d) | 05:29 | — | docs(handoffs): correct 09-09 §4 (a) — ledger snapshot prune failure made non-fatal (state + tamper/deletion alerts restored), launchd 60-min lag root-caused |
 | [`b109531`](https://github.com/kzmttkc/vet402/commit/b109531487493cc16e6a89178b1837b54a9e54bf) | 05:41 | ✔ | docs(readme): retitle the Continuity section in the first person singular, keep the old anchor |
 | [`9b83cef`](https://github.com/kzmttkc/vet402/commit/9b83cef3da71c3b93806bfebf96fda28c8230737) | 05:53 | ✔ | docs(live-judging): cut Q4, Q5 and Q14 to 30 seconds and check the 3:15 line against the raw logs |
+| [`c057f79`](https://github.com/kzmttkc/vet402/commit/c057f79f7ff543a0bea2b3b2b6f7244ec11ce266) | 05:59 | ✔ | docs(ethonline): date the Bazantic $0-route finding so it stays true on judging day |
+| [`c864e86`](https://github.com/kzmttkc/vet402/commit/c864e86f688ab975586a210435141afb0b59393b) | 06:16 | ✔ | docs(live-judging): date every moving line for the 09-14 judging, and give Q8 the SDK's 45 mutations |
+| [`f0e1c20`](https://github.com/kzmttkc/vet402/commit/f0e1c20c4567c0ce20b35f9265db84661e2ac2a1) | 06:16 | ✔ | docs(prizes): record ETHGlobal's 2026-09-11 answer on the Final checklist wording |
 
 </details>

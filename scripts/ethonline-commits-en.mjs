@@ -202,7 +202,7 @@ function render(head, generatedAt) {
   lines.push("`--check` (run by `npm test`) fails if this file is not what the script produces from the commit named in the **Generated** row — that is,");
   lines.push("if it was edited by hand. A Japanese subject with no translation, and commits after that one which did not regenerate this file, are warnings;");
   lines.push("`--check --strict` (the final pass before the submission Release) makes both of them failures too. `main` is also this product's production branch, so");
-  lines.push("the window contains work we do **not** submit; the **Claimed** column is derived from the path filter in `README.md`:");
+  lines.push("the window contains work I do **not** submit; the **Claimed** column is derived from the path filter in `README.md`:");
   lines.push("");
   lines.push("```bash");
   lines.push(`git log ${TAG}..${shown} -- ${CLAIM_PATHS.slice(0, 2).join(" ")} \\`);
@@ -212,7 +212,7 @@ function render(head, generatedAt) {
   lines.push("```");
   lines.push("");
   lines.push(`A commit is ✔ when it touches at least one of those paths, — otherwise. Subjects written before the English-subject rule took effect`);
-  lines.push(`(20:00 JST on 2026-09-08, [\`GIT_RULES.md\`](./GIT_RULES.md)) are Japanese in the log; their English here is our translation, kept by full SHA in`);
+  lines.push(`(20:00 JST on 2026-09-08, [\`GIT_RULES.md\`](./GIT_RULES.md)) are Japanese in the log; their English here is my translation, kept by full SHA in`);
   lines.push(`[\`commit-titles-en.json\`](./commit-titles-en.json) next to the original (\`git show -s --format=%s <sha>\` is the original). History is not rewritten.`);
   lines.push(`Hacking began at ${HACKING_BEGINS.replace("T", " ").replace("Z", " UTC")}; the boundary tag points at \`${TAG}\` = ${utcStamp(tagAt)}, ${lead} that, and the claimed commits made before`);
   lines.push(`that instant are marked **⚠ pre-window** below and listed in [\`DISCLOSURE_2026-09-05.md\`](./DISCLOSURE_2026-09-05.md).`);
