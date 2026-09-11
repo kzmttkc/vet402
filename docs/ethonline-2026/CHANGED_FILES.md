@@ -28,7 +28,7 @@ git diff --diff-filter=M --name-only pre-ethonline-2026..main \
 
 **<!-- n:window_modified_files -->194<!-- /n --> pre-existing files modified, by area** (the counts are the command's output; the "why" column is prose):
 
-| Area | Files | Why we were in there |
+| Area | Files | Why I was in there |
 |---|---|---|
 | `src/app/` | 48 | Admin route for the runtime spending halt; observatory/state surfaces with the two-tier `settled` split; `/decision` key-less read and `caller_policy`; SEO/AEO; site consistency (header month derived at build time instead of a hand-written "August 2026", the `/observatory` note on what `active` counts, the SKILL.md link in `/docs/api`, the 404 title for a malformed `/agent/<id>`) |
 | `src/lib/` | 36 | Kill switch; settlement rollup and late-settlement recovery; nonce binding; census coverage; cached reads; `caller-policy.ts`; repo hygiene 09-07: gate2 report no longer defaults to a hard-coded operator e-mail; `sol402-payer.ts` builds its two SPL Token calls from `spl-token-lite.ts` so production carries no `bigint-buffer`; 09-07 money-gate fixes: `public-route.ts` returns the consumed `bucketKey` (A7) |
@@ -88,10 +88,10 @@ the only pre-existing file touched is:
 
 Production measured on 2026-09-08: api.exa.ai (`521e929e…`) showed `attemptCount 10 / settledCount 10 /
 inconclusiveCount 10` on `/purchases` but `n_attempts 0 / n_settled 0 / n_probe_error 10` on `/facts`, and
-`/decision` said `l1_not_attempted` — the same ten rows counted under two vocabularies, a seller we paid ten
+`/decision` said `l1_not_attempted` — the same ten rows counted under two vocabularies, a seller vet402 paid ten
 times published as "never attempted". Fix: settled/4xx rows count in `n_attempts` / `n_settled` (same set as
 `/purchases`), a new `n_inconclusive` field, and the rules read `conclusive = n_attempts − n_inconclusive`
-so our own 4xx never adds up to a BLOCK; a seller with attempts but no conclusion gets the neutral
+so vet402's own 4xx never adds up to a BLOCK; a seller with attempts but no conclusion gets the neutral
 `l1_inconclusive` (WARN). Rules version `2026-09-08.1`. New: `tests/l1-inconclusive.test.ts`.
 
 | File | Why |
@@ -101,9 +101,9 @@ so our own 4xx never adds up to a BLOCK; a seller with attempts but no conclusio
 | `src/lib/decision/types.ts`, `packages/sdk/src/index.ts` (+ `dist/index.d.ts`) | `SellerFacts.l1.n_inconclusive`; `n_probe_error` marked deprecated |
 | `docs/openapi.yaml` | `n_inconclusive` property and required; `n_probe_error` deprecated; `reason_codes` description lists the four L1 words |
 | `tests/openapi-schema-parity.test.ts`, `tests/seller-facts.test.ts`, `tests/decision-rules.test.ts`, `tests/decision-build.test.ts`, `tests/acceptance-spec-1-2.test.ts`, `tests/passport-facts-summary.test.ts` | field list and fixtures carry `n_inconclusive`; the old "probe_error is not an attempt" test now asserts the new counting; rules version pinned to `2026-09-08.1` |
-| `src/app/observatory/methodology/page.tsx`, `src/app/docs/api/page.tsx` | one paragraph / one sentence defining `l1_inconclusive` as our gap (the vocabulary gate requires the term in prose) |
+| `src/app/observatory/methodology/page.tsx`, `src/app/docs/api/page.tsx` | one paragraph / one sentence defining `l1_inconclusive` as vet402's gap (the vocabulary gate requires the term in prose) |
 | `packages/mcp-server/src/index.ts` (+ `dist/index.js`) | `check_resource_decision` description names the four L1 reason codes and whose gap each is |
-| `SKILL.md` | the "our gap" sentence now covers both `l1_not_attempted` and `l1_inconclusive` |
+| `SKILL.md` | the "vet402's gap" sentence now covers both `l1_not_attempted` and `l1_inconclusive` |
 | `docs/ethonline-2026/WINDOW_PLAN.md` | §16 F3 measured row updated to the 09-08 words (09-05 values kept beside them); dated notes after the `not_attempted_reason` paragraph and at the end of §16.5 (pre-registration body untouched) |
 | `docs/ethonline-2026/fixtures.md` | dated note: 0x.org reads `l1_inconclusive` from 09-08 |
 
@@ -115,7 +115,7 @@ and signed; on the uncatalogued payee-score path `degraded: "true"` / `1` and a 
 `signalsUnavailable` slid through `=== true` / `?.length ?? 0` and signed. The `typeof !== "boolean"` fix
 added to the `/decision` branch on 09-07 had never reached the payee-score branch or `SpendGuard`.
 Production is not exploitable through this — it answers `degraded: false` (bool) and unpadded verdict
-words, measured 09-08 — but the claim rested on the server's serialisation instead of on our own gate.
+words, measured 09-08 — but the claim rested on the server's serialisation instead of on the SDK's own gate.
 New: `packages/sdk/src/verdict-shape.ts` (one shared rule for both money paths),
 `packages/sdk/test/verdict-normalization.test.mjs` (37 tests). Normalisation is deliberately one-way:
 `" BLOCK "` reads as a BLOCK, `" ALLOW "` does NOT read as an ALLOW. Verified unchanged on production's

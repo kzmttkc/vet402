@@ -72,9 +72,9 @@ Most trust tools *answer a question* and leave the payment to you. `pay_if_trust
 on anything other than `ALLOW`, **the payment module is never even loaded**, so no signature can
 exist. The refusal is machine-readable and it happens *before* a signature, not after.
 
-The refusal names **our** gap, not the seller's fault: `l1_not_attempted` means "we have not
-signed a paid attempt against them", and `l1_inconclusive` means "we paid, and our own request
-was answered 4xx — no conclusion" (a gap in our measurement, not evidence against the seller).
+The refusal names **vet402's** gap, not the seller's fault: `l1_not_attempted` means "vet402 has not
+signed a paid attempt against them", and `l1_inconclusive` means "vet402 paid, and its own request
+was answered 4xx — no conclusion" (a gap in vet402's measurement, not evidence against the seller).
 Neither means "they are bad".
 
 ## Install
@@ -256,7 +256,7 @@ The tool result text (production, 2026-09-08 — the server's own word for the 4
 
 That `resourceId` is real: `sha256("POST https://gateway.thegraph.com/api/x402/subgraphs/id/…")`,
 The Graph's own x402 endpoint. With a valid key it returns **HTTP 404 `not_found`** — The Graph is
-not in our catalogue, and we did not add it (see *The uncatalogued-seller path in MCP* under
+not in vet402's catalogue, and I did not add it (see *The uncatalogued-seller path in MCP* under
 **What is not built yet**). The subgraph evidence source does not need the catalogue — see
 **Paying on The Graph's own data**.
 
@@ -270,7 +270,7 @@ Read two fields and nothing else:
 | `safe_to_pay` | boolean, always `decision === "PAID"` |
 
 - **`REFUSE`** — stopped *before* a signature existed. `refuse_reasons` carries the server's own
-  `reason_codes` **unchanged** (we do not overwrite them with our vocabulary), plus one of
+  `reason_codes` **unchanged** (the gate does not overwrite them with its vocabulary), plus one of
   `evidence_unavailable`, `payee_recommendation_not_allow`, `payment_target_unknown`,
   `payer_not_configured`, `payee_mismatch`, `chain_or_asset_mismatch`, `price_above_ceiling`
   (the 402 asks more than `maxPerTxUsd`), `price_above_declared` (the 402 asks more than the `amountUsd` you named).
@@ -278,11 +278,11 @@ Read two fields and nothing else:
   hidden: an EIP-3009 authorization stays live until `validBefore`, so it can still be settled
   later, and the nonce is the only way to tie an on-chain tx back to this purchase.
 - **`settlement`** is at most `"settle_claimed"`. The seller's `PAYMENT-RESPONSE` header is a
-  *claim*; only a verifier that re-reads the chain may say `settled`. We do not blur that line.
+  *claim*; only a verifier that re-reads the chain may say `settled`. The gate does not blur that line.
 - **`measurement`** is the `/decision` body **verbatim**, including `evidence[]` with each row's own
-  `source`. A test fails if we rewrite those rows — see *Why `source` matters*.
+  `source`. A test fails if I rewrite those rows — see *Why `source` matters*.
 - **`measurement.caller_policy`** (since 2026-09-07) — *your* rule, applied by the server next to
-  ours, in the same words the SDK uses. See *Your own policy on `/decision`* below. When its
+  vet402's, in the same words the SDK uses. See *Your own policy on `/decision`* below. When its
   `verdict` is `REFUSE`, its `reason_codes` are in `refuse_reasons` too.
 
 ## Actually paying
@@ -312,8 +312,8 @@ read the receipt from the response header. A test asserts zero calls to any `/se
 
 ## Why `source` matters
 
-`source: "subgraph"` reads **only** The Graph — our ledger is not consulted at all.
-**You do not have to trust us.** Every decision returns which source it actually read, so the answer
+`source: "subgraph"` reads **only** The Graph — vet402's ledger is not consulted at all.
+**You do not have to trust vet402.** Every decision returns which source it actually read, so the answer
 is checkable after the fact. `pay_if_trusted` passes `evidence[]` through untouched for exactly this
 reason, and two mutation tests fail if a future change strips `source` or rewrites every row to
 `"vet402"`.
@@ -325,7 +325,7 @@ reason, and two mutation tests fail if a future change strips `source` or rewrit
 the decision as its own evidence row — `source: "subgraph"`, with `subgraphId`, `_meta.block` and
 `queriedAt`, so a reader can tell a live read from a cached number. `minSubgraphReceipts` is the
 floor you can then require. If the subgraph cannot be read, the call **refuses** with
-`evidence_unavailable` + `subgraph_evidence_unavailable`; it never falls back to our own ledger.
+`evidence_unavailable` + `subgraph_evidence_unavailable`; it never falls back to vet402's own ledger.
 
 Wiring: `packages/sdk/src/subgraph-evidence.ts` (the reader) → `packages/sdk/src/pay-or-refuse.ts`
 (§3.5, read before the judgement so a refusal still carries what the other source knew) →
@@ -348,7 +348,7 @@ cd packages/sdk && npm install && npm test 2>&1 | grep -E '^ℹ '
 trust this line.)
 
 **It has moved real money.** On 2026-09-05 a throwaway payer bought The Graph's own x402 endpoint
-with `requireVet402Allow: false` and `minSubgraphReceipts: 1`. Our own engine rates that payee
+with `requireVet402Allow: false` and `minSubgraphReceipts: 1`. vet402's own engine rates that payee
 **WARN 69**; the caller's policy said "The Graph's own ledger is enough". It read **259** receipts
 and paid.
 
@@ -365,8 +365,8 @@ Re-read on-chain, not taken from the API's own word: block **50898704**, success
 `0x79dc34e4…d52fccb`, payer balance 1.00 → 0.99, payer ETH still 0 (EIP-3009 — the buyer pays no
 gas). Check it yourself:
 <https://basescan.org/tx/0xf12093fba9314b1d3a514e7b667969201be8d021a6f4d6bdeb8d6c7f2de469ad>.
-The decision record kept `verdict from: caller_policy` and the waived `WARN`: **we did not rewrite
-our own judgement to match the payment.** (Details: `docs/ethonline-2026/WINDOW_PLAN.md` §10.5 — Japanese, internal plan.)
+The decision record kept `verdict from: caller_policy` and the waived `WARN`: **vet402 did not rewrite
+its own judgement to match the payment.** (Details: `docs/ethonline-2026/WINDOW_PLAN.md` §10.5 — Japanese, internal plan.)
 
 ### Paying on The Graph's own data — live
 
@@ -387,7 +387,7 @@ node src/run.ts pay       # dry run: fetches the real 402 challenge, signs nothi
 **`VOUCH_API_KEY` is not optional for `pay`.** `/decision` answers key-less (10/min per IP), so
 `refuse` is unaffected — measured key-less on 2026-09-08, same `WARN`, same refusal, and so is
 `judge` on a **catalogued** URL (`verdict ALLOW`, `verdict from decision`). But `pay`'s payee is The
-Graph, which is **not** in our catalogue, so its verdict comes from the **payee score** — a keyed
+Graph, which is **not** in vet402's catalogue, so its verdict comes from the **payee score** — a keyed
 read. Without the key that gate cannot be read and the run's conclusion inverts. `judge` inherits
 the same rule for any uncatalogued URL. Both conditions, run on 2026-09-08:
 
@@ -402,8 +402,8 @@ That is fail-closed working as designed — an unread verdict is not an ALLOW �
 with one key would see a REFUSE and conclude the gate is broken. It is not; the key is missing.
 
 `refuse` below was re-run on 2026-09-11 00:26 UTC with `GRAPH_API_KEY` only. Since 2026-09-08 the server calls a paid
-attempt that ended in a non-2xx caused by our own request `l1_inconclusive`, not `l1_not_attempted`
-(`src/lib/observatory/vocabulary.ts`): we paid this seller once and have no delivery on record. Key values are never
+attempt that ended in a non-2xx caused by vet402's own request `l1_inconclusive`, not `l1_not_attempted`
+(`src/lib/observatory/vocabulary.ts`): vet402 paid this seller once and has no delivery on record. Key values are never
 printed — the demo's own redactor (`examples/ethonline-2026-demo/src/emit.ts`) rewrites the key inside the gateway URL
 to `<KEY>`. `refuse`, abridged to the lines that matter:
 
@@ -469,7 +469,7 @@ separately: `cd packages/sdk && node test-mutations.mjs`.
 
 ### Your own policy on `/decision` — the server answers in the SDK's words
 
-The first real A/B (`docs/ethonline-2026/WINDOW_PLAN.md` §16.3 — Japanese, internal plan; 2026-09-07) found a hole that was ours,
+The first real A/B (`docs/ethonline-2026/WINDOW_PLAN.md` §16.3 — Japanese, internal plan; 2026-09-07) found a hole that was mine,
 not the model's: for the over-ceiling fixture the right reason, `price_above_ceiling`, **was a word no
 tool ever returned** — it lived only in the SDK's caller-side policy. A Recipe cannot make a model say a
 word the tool does not give it. So since 2026-09-07 `GET /api/v1/resources/{id}/decision` takes the
@@ -479,7 +479,7 @@ caller's policy as query parameters and returns the verdict **in the same docume
 |---|---|
 | `amount_usd` | what the 402 asks (compared with the ceiling) |
 | `max_per_tx_usd` | your per-payment ceiling, default `1` (= the SDK's `DEFAULT_MAX_PER_TX_USD`) |
-| `min_l1_deliveries` | floor on `facts.l1.n_delivered` — our own delivered L1 purchases |
+| `min_l1_deliveries` | floor on `facts.l1.n_delivered` — vet402's own delivered L1 purchases |
 | `require_vet402_allow` | default `true` (= the SDK's `requireVet402Allow`): a WARN refuses with `payee_recommendation_not_allow`; `false` waives the WARN and needs `min_l1_deliveries` ≥ 1, else `400 invalid_policy` |
 
 The response gains one block and changes nothing else (without these queries the body is byte-identical):
@@ -502,7 +502,7 @@ The response gains one block and changes nothing else (without these queries the
 - `recommendation` is **never rewritten**. A waived WARN stays a WARN beside a `caller_policy` ALLOW; you
   read both. A floor or a waiver never lifts BLOCK or degraded (§3.2.1).
 - `not_evaluated` says what the server did **not** check. `min_subgraph_receipts` is always there: The
-  Graph is read only with *your* Gateway key, by `payOrRefuse` / `pay_if_trusted`, never by us.
+  Graph is read only with *your* Gateway key, by `payOrRefuse` / `pay_if_trusted`, never by vet402.
 - A bad value is `400` with the SDK's own caller-error word (`invalid_amount_usd`, `invalid_policy`,
   `invalid_evidence_policy`). An uncatalogued resource stays `404` — the SDK judges those from the 402's
   `payTo` and the payee score (I23).
@@ -607,7 +607,7 @@ per line: a request folded over several lines is dropped without a word, and you
 `initialize` reply back. Nothing is written to stderr on a healthy run, so anything you see there is
 real — a stack trace here means the build step above did not finish.
 
-That `resourceId` is a catalogued seller our engine rates **ALLOW**. The floor of 10⁹ receipts is
+That `resourceId` is a catalogued seller vet402's engine rates **ALLOW**. The floor of 10⁹ receipts is
 deliberately unmeetable, so the run reads the **live Gateway** and stops before a signature — a way
 to show the evidence row without moving money.
 

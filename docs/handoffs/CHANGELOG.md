@@ -13,6 +13,8 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-11 13:58 JST — 審査員が読む英文の一人称を we/our/us → I/my に統一（オーナー指示 09-11 13:35〜13:47）。`/ethonline` の表示文言を含む。人がしたこと＝I、システムが自動でしていること＝vet402/it/the gate。数字・URL・コードは不変。README 見出し "what is ours" は `/ethonline` のアンカーURLを保つため据え置き
+
 ## 2026-09-11 12:0x JST — 【訂正】06:4x の節（`d60d73c`「上流RPCではなく日次 cron ののこぎり波」）は**実測で説明しきれない**。原因は未確定
 
 - **変えたもの**: この節だけ。**本番の env・cron・コード・DB は何も変えていない**（本番DBは読み取りのみ。`indexer_checkpoints`・`job_leases` を1本ずつ、`health_snapshots` 09-07 00:00Z 以降 1,088 行の書き出し1本）

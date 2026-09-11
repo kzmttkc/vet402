@@ -2,7 +2,7 @@
 
 ## In English (summary)
 
-**What it measures.** Can an agent use vet402 through the Bazantic Gateway without our explanation? Condition A gets the Gateway URL, the raw API list and the Gateway's MCP tools; condition B gets the same plus the Recipe (`recipe/x402-payee-verification.json`, a copy of the original on bazantic.com). The Recipe is the only difference — `stripRecipe()` turns B's prompt into A's byte for byte, and a test pins it.
+**What it measures.** Can an agent use vet402 through the Bazantic Gateway without my explanation? Condition A gets the Gateway URL, the raw API list and the Gateway's MCP tools; condition B gets the same plus the Recipe (`recipe/x402-payee-verification.json`, a copy of the original on bazantic.com). The Recipe is the only difference — `stripRecipe()` turns B's prompt into A's byte for byte, and a test pins it.
 
 **How to run.** Mock (no keys, no network): `npm ci` in this directory (`viem` is a direct dependency since 2026-09-07), then `cd examples/ethonline-2026-ab && npm ci && npm test && node src/cli.mjs --agent mock` (20 trials) and `node test-mutations.mjs` (breaks the harness on purpose; every mutant must turn a test red). Live: `export ANTHROPIC_API_KEY=…` and `node src/cli.mjs --agent anthropic --model <model>`; add `DEMO_PAYER_PRIVATE_KEY` for the bridge below. `run.json` records `meta.fixtureReadiness.blockers` — the unmeasured oracles that must be filled before a live run counts.
 

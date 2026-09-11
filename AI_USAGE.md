@@ -6,12 +6,12 @@ This file answers both, with numbers anyone can re-derive from the public histor
 
 ## The short answer
 
-**A human built the foundation and directs the work. AI writes most of the code under that direction.**
+**I built the foundation and direct the work. AI writes most of the code under that direction.**
 
 The project did not start from an AI prompt. It started on **2026-07-13** with a commit authored by
 **Takeshi Kazumoto** — `Initial commit: Vouch agent-trust MVP (M0–M5)`, **130 files, +19,245 lines** —
-written before any AI-assisted commit exists in this repository. He handed that codebase over along
-with the architecture and the milestones it was to grow into, and has directed the build ever since.
+written before any AI-assisted commit exists in this repository. I handed that codebase over along
+with the architecture and the milestones it was to grow into, and have directed the build ever since.
 
 ```bash
 git log --reverse --format='%h %ad %an %s' --date=short | head -1
@@ -26,21 +26,21 @@ Every item below is a decision or an action that the AI cannot take, and each on
 
 | | |
 |---|---|
-| **Foundation** | Wrote and handed over the initial MVP (130 files, 19,245 lines) and specified how it was to be built |
-| **Direction** | Sets what gets built and what does not. He cut one planned item from the window scope |
-| **Judgement** | Overrules the AI. During this window alone he corrected the AI on the ownership of the work, on the framing of this very file, and on when to stop deferring work |
+| **Foundation** | I wrote and handed over the initial MVP (130 files, 19,245 lines) and specified how it was to be built |
+| **Direction** | I set what gets built and what does not. I cut one planned item from the window scope |
+| **Judgement** | I overrule the AI. During this window alone I corrected the AI on the ownership of the work, on the framing of this very file, and on when to stop deferring work |
 | **Approval** | Every action that spends money or leaves the company. Nothing external is sent without it |
-| **Money** | Funds the wallets. He sent the 1.000000 USDC that paid The Graph $0.01 on chain during this window |
-| **Voice** | Records the demo narration. AI voiceover is disqualifying, and we do not use one |
-| **Submission** | Clicks submit. Attends live judging if we are shortlisted |
+| **Money** | I fund the wallets. I sent the 1.000000 USDC that paid The Graph $0.01 on chain during this window |
+| **Voice** | I record the demo narration. AI voiceover is disqualifying, and I do not use one |
+| **Submission** | I click submit. I attend live judging if I am shortlisted |
 
-**The AI is fast, and it is wrong often enough that the human's corrections are load-bearing.**
-Three separate decisions in this window exist only because he pushed back.
+**The AI is fast, and it is wrong often enough that my corrections are load-bearing.**
+Three separate decisions in this window exist only because I pushed back.
 
 ## What the AI does
 
 Implementation, tests, and audits, under the direction above. Claude (Opus / Fable, via Claude Code)
-writes most of the code in this repository. We say that plainly rather than annotate a handful of files.
+writes most of the code in this repository. I say that plainly rather than annotate a handful of files.
 
 ```bash
 git rev-list --count HEAD                                  # 820 commits (2026-09-08)
@@ -49,7 +49,7 @@ git rev-list --count --merges HEAD                         # 34 are merge commit
 ```
 
 **The <!-- n:no_trailer_commits -->130<!-- /n --> without the trailer are not "written by a human".** <!-- n:merge_commits -->34<!-- /n --> are merges; most of the rest are AI
-commits from before we adopted the trailer, or ones where it was simply forgotten. **Read the absence of
+commits from before I adopted the trailer, or ones where it was simply forgotten. **Read the absence of
 a trailer as "unknown", not as "human".** The numbers move every day — re-run the commands.
 
 ## Window boundary
@@ -58,7 +58,7 @@ a trailer as "unknown", not as "human".** The numbers move every day — re-run 
 |---|---|
 | Boundary tag | `pre-ethonline-2026` = `c42daca`, **2026-09-04 00:05:36 UTC** — 15 h 54 min *before* the window opened at 2026-09-04 16:00 UTC (`hacking-begins`). **3 commits in the claimed range predate 16:00 UTC**; they are listed in [`docs/ethonline-2026/DISCLOSURE_2026-09-05.md`](./docs/ethonline-2026/DISCLOSURE_2026-09-05.md) |
 | Everything submitted as hackathon work | `git log pre-ethonline-2026..main` |
-| Pre-window work since our 2026-08-23 application | **214** commits, 412 files, +28,414 / −1,913 lines — disclosed to ETHGlobal in writing on 2026-09-05 |
+| Pre-window work since my 2026-08-23 application | **214** commits, 412 files, +28,414 / −1,913 lines — disclosed to ETHGlobal in writing on 2026-09-05 |
 
 ## Window work, by area
 
@@ -70,7 +70,7 @@ a trailer as "unknown", not as "human".** The numbers move every day — re-run 
 | **Evidence provenance** | `src/lib/decision/evidence.ts`, `docs/openapi.yaml`, `src/lib/observatory/vocabulary.ts` | Written by AI |
 | **Settlement integrity** | `src/lib/settlements/rollup.ts`, `recover-late.ts`, nonce-binding tests | Written by AI |
 | **Security audits** | `docs/audits/2026-09-05-*` | Conducted and written by AI agents, cross-checked against production data |
-| **Planning artifacts** | `docs/ethonline-2026/**`, including `PROMPTS/` | Written by AI. `PROMPTS/` carries the human's verbatim instructions, by day |
+| **Planning artifacts** | `docs/ethonline-2026/**`, including `PROMPTS/` | Written by AI. `PROMPTS/` carries my verbatim instructions, by day |
 
 **Window totals move daily; derive them rather than trusting this line:**
 
@@ -81,7 +81,7 @@ git diff --diff-filter=M --name-only pre-ethonline-2026..main | wc -l   # 194 mo
 
 **Not all of that is this submission.** `main` is also the production branch and carries work unrelated
 to the hackathon in the same days — see the caveat in [`README.md`](./README.md). The table above lists
-what we are claiming.
+what I am claiming.
 
 ## How to check any of this yourself
 

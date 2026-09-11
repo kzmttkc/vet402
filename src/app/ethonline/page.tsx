@@ -32,7 +32,7 @@ const READING_ORDER: { n: number; label: string; href: string; why: string }[] =
     n: 1,
     label: "README — §ETHOnline 2026 (Continuity)",
     href: `${REPO}#ethonline-2026-continuity--what-is-ours-from-this-window`,
-    why: "the boundary tag, the two git log commands (what we claim / everything on main), the caveat.",
+    why: "the boundary tag, the two git log commands (what I claim / everything on main), the caveat.",
   },
   {
     n: 2,
@@ -44,13 +44,13 @@ const READING_ORDER: { n: number; label: string; href: string; why: string }[] =
     n: 3,
     label: "docs/ethonline-2026/DISCLOSURE_2026-09-05.md",
     href: `${REPO}/blob/main/docs/ethonline-2026/DISCLOSURE_2026-09-05.md`,
-    why: "the message we sent ETHGlobal before judging, verbatim, and the two corrections we made to it.",
+    why: "the message I sent ETHGlobal before judging, verbatim, and the two corrections I made to it.",
   },
   {
     n: 4,
     label: "AI_USAGE.md",
     href: `${REPO}/blob/main/AI_USAGE.md`,
-    why: "who wrote which code, by area and representative file, and what the human did.",
+    why: "who wrote which code, by area and representative file, and what I did.",
   },
 ];
 
@@ -130,8 +130,8 @@ export default function EthOnlinePage() {
             <Ext href={BASESCAN_TX}>
               <span className="text-signal">block 50898704</span> on Basescan
             </Ext>
-            . Our own engine rated that payee WARN; the record keeps the WARN next to the payment.
-            We did not rewrite our judgement to match the money.
+            . vet402&apos;s own engine rated that payee WARN; the record keeps the WARN next to the payment.
+            vet402 did not rewrite its judgement to match the money.
           </p>
         </div>
 
@@ -143,7 +143,7 @@ export default function EthOnlinePage() {
           The command under the title, explained. A clean clone. <code>judge-check</code> installs
           the SDK, the MCP server, the demo and the A/B harness, runs the test suites, and prints
           one exit code per step. Any API key in your environment is dropped first, so a green run
-          cannot be borrowing our credentials.
+          cannot be borrowing my credentials.
         </p>
         <p className="doc-p">
           Then the walkthrough in{" "}
@@ -160,7 +160,7 @@ export default function EthOnlinePage() {
           <Ext href="https://thegraph.com/studio">https://thegraph.com/studio</Ext> (both commands).
           <code>pay</code> also needs <code>VOUCH_API_KEY</code> (free, no card:{" "}
           <Ext href="https://vet402.com/signup">vet402.com/signup</Ext>): its payee, The Graph&apos;s
-          gateway, is not in our catalogue, so the verdict comes from a keyed payee-score read. With the
+          gateway, is not in vet402&apos;s catalogue, so the verdict comes from a keyed payee-score read. With the
           Graph key alone, <code>pay</code> prints <code>verdict not read</code> and predicts a refusal;{" "}
           <code>refuse</code> runs without it. <code>judge-check</code> above needs neither.
         </p>
@@ -191,12 +191,12 @@ export default function EthOnlinePage() {
           </Ext>{" "}
           is commit <code>c42daca</code>, cut <strong>2026-09-04 00:05:36 UTC</strong>. Hacking
           began at <strong>2026-09-04 16:00 UTC</strong> (ETHGlobal&apos;s published schedule), so
-          the tag sits <strong>15 h 54 min before</strong> the start. Between our application
-          (2026-08-23) and the tag we made <strong>214 commits</strong> of ordinary product work. The
-          message we sent ETHGlobal on 2026-09-05 said 207; the disclosure explains why the count
+          the tag sits <strong>15 h 54 min before</strong> the start. Between my application
+          (2026-08-23) and the tag I made <strong>214 commits</strong> of ordinary product work. The
+          message I sent ETHGlobal on 2026-09-05 said 207; the disclosure explains why the count
           here is 214. <strong>Three commits</strong>{" "}
-          in the range we claim were made before 16:00 UTC — their SHAs, times and contents are
-          listed in the disclosure, with the command that lists them. We are not moving the tag:
+          in the range I claim were made before 16:00 UTC — their SHAs, times and contents are
+          listed in the disclosure, with the command that lists them. I am not moving the tag:
           the submission and the disclosure link to it.
         </p>
 
@@ -209,7 +209,7 @@ export default function EthOnlinePage() {
           <code>policy.evidence.source: &quot;subgraph&quot;</code> the gate reads the x402 Base
           subgraph through the Graph Gateway; if the read fails it refuses with{" "}
           <code>evidence_unavailable</code> + <code>subgraph_evidence_unavailable</code> and does
-          not fall back to our ledger.
+          not fall back to vet402&apos;s ledger.
         </p>
         <p className="doc-p">
           <strong>Live, and provably so.</strong> The evidence row on the decision carries the
@@ -219,7 +219,7 @@ export default function EthOnlinePage() {
           or the read counts as unavailable.
         </p>
         <p className="doc-p">
-          The payment above ran on exactly this path — The Graph&apos;s data, not ours. Details:{" "}
+          The payment above ran on exactly this path — The Graph&apos;s data, not vet402&apos;s. Details:{" "}
           <Ext href={`${REPO}/blob/main/SKILL.md#paying-on-the-graphs-own-data`}>
             SKILL.md — Paying on The Graph&apos;s own data
           </Ext>
@@ -232,7 +232,7 @@ export default function EthOnlinePage() {
         </h2>
         <p className="doc-p">
           <strong>Recipe vs no Recipe, 10 trials each, same model, same prompt, same 57 tools.</strong>{" "}
-          Success (right verdict, and each reason code real) was <strong>5/10 and 5/10</strong> — no difference, and we say so first. What
+          Success (right verdict, and each reason code real) was <strong>5/10 and 5/10</strong> — no difference, and I say so first. What
           the Recipe did fix is vocabulary: the share of reason codes that are real vet402
           identifiers went from <strong>63% to 91%</strong> (20/32 → 29/32). That metric is
           exploratory and labelled so.
@@ -262,7 +262,7 @@ export default function EthOnlinePage() {
           <Link href="/observatory" className="underline">
             observatory
           </Link>{" "}
-          (each purchase we made, settled or not), and the{" "}
+          (each purchase vet402 made, settled or not), and the{" "}
           <Ext href={`${REPO}/tree/main/examples/ethonline-2026-demo`}>
             demo CLI
           </Ext>{" "}

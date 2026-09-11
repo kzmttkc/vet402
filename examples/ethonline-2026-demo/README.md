@@ -28,11 +28,11 @@ Puts two independent sources side by side for the same address
 (`0xb15a55e85FdF5edc41B6c1eaf7813e2c6e6def59`, the payee behind `agent.api.0x.org`):
 
 - **[A] vet402** has *seen* this seller (`l0_pass`) and has paid it once, but has **no delivery on record**
-  (`l1_inconclusive`, `L1 delivered 0`): the one paid response came back non-2xx from our own request shape.
+  (`l1_inconclusive`, `L1 delivered 0`): the one paid response came back non-2xx from vet402's own request shape.
 - **[B] The Graph** knows that same address has received payments, reported with
   `_meta.block.number` and `_meta.deployment` — the only self-evident proof that the data is live.
 
-They know different things, and the refusal names **our** gap, not the seller's fault.
+They know different things, and the refusal names **vet402's** gap, not the seller's fault.
 `payOrRefuse` returns `status=refused`, `signed=false`, `nonce=null`: the signature does not exist,
 because the payment module is never loaded on this path.
 

@@ -4,7 +4,7 @@
 
 **Independent Verification of the x402 Agent-Payment Economy**
 
-*We buy. We settle. We publish the measurements.*
+*vet402 buys. It settles. It publishes the measurements.*
 
 ## Judges: 60 seconds
 
@@ -20,7 +20,7 @@ GRAPH_API_KEY=… node examples/ethonline-2026-demo/src/run.ts judge https://kro
 - Keys: one free Graph key from <https://thegraph.com/studio> → *API Keys*. `/decision` answers key-less (10/min per IP); nothing else is required.
 - Everything else a judge can run, in dependency order, with the recorded output: [`SKILL.md`](./SKILL.md).
 - **Continuity Track boundary** — what predates the hackathon window, what does not, and the git commands that separate them: [`docs/ethonline-2026/README_CONTINUITY_SECTION.md`](./docs/ethonline-2026/README_CONTINUITY_SECTION.md).
-- **Language.** Source comments are written in Japanese, our working language; commit subjects are Japanese, and **the rule from 20:00 JST on 2026-09-08 is to write new ones in English** (`docs/ethonline-2026/GIT_RULES.md`) — a rule going forward, not a property of the log behind it. It took effect mid-evening, not at the start of that day, and work already in flight kept landing in Japanese for a few commits after. Nothing is rewritten to tidy this up, so count it rather than take our word: `TZ=Asia/Tokyo git log origin/main --since='2026-09-08 20:00:00 +0900' --pretty=%s`. The English route through the work is [`SKILL.md`](./SKILL.md), [`AI_USAGE.md`](./AI_USAGE.md) and [`docs/ethonline-2026/CHANGED_FILES.md`](./docs/ethonline-2026/CHANGED_FILES.md). **Seven** source files carry an English header above the Japanese one — the SDK's decision and payment path, the MCP bridge, and the two example front-ends: `packages/sdk/src/pay-or-refuse.ts`, `packages/sdk/src/subgraph-evidence.ts`, `packages/sdk/src/x402-pay.ts`, `packages/mcp-server/src/pay-if-trusted.ts`, `examples/ethonline-2026-demo/src/run.ts`, `examples/ethonline-2026-demo/src/render.ts`, `examples/ethonline-2026-ab/src/mcp.mjs`. Count them yourself: `grep -rln "English header for judges" packages/ examples/ | grep -v dist`.
+- **Language.** Source comments are written in Japanese, my working language; commit subjects are Japanese, and **the rule from 20:00 JST on 2026-09-08 is to write new ones in English** (`docs/ethonline-2026/GIT_RULES.md`) — a rule going forward, not a property of the log behind it. It took effect mid-evening, not at the start of that day, and work already in flight kept landing in Japanese for a few commits after. Nothing is rewritten to tidy this up, so count it rather than take my word: `TZ=Asia/Tokyo git log origin/main --since='2026-09-08 20:00:00 +0900' --pretty=%s`. The English route through the work is [`SKILL.md`](./SKILL.md), [`AI_USAGE.md`](./AI_USAGE.md) and [`docs/ethonline-2026/CHANGED_FILES.md`](./docs/ethonline-2026/CHANGED_FILES.md). **Seven** source files carry an English header above the Japanese one — the SDK's decision and payment path, the MCP bridge, and the two example front-ends: `packages/sdk/src/pay-or-refuse.ts`, `packages/sdk/src/subgraph-evidence.ts`, `packages/sdk/src/x402-pay.ts`, `packages/mcp-server/src/pay-if-trusted.ts`, `examples/ethonline-2026-demo/src/run.ts`, `examples/ethonline-2026-demo/src/render.ts`, `examples/ethonline-2026-ab/src/mcp.mjs`. Count them yourself: `grep -rln "English header for judges" packages/ examples/ | grep -v dist`.
 
 vet402 buys what x402 endpoints actually sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence.
 
@@ -37,16 +37,16 @@ This repository is the source of the vet402 service and of the three npm package
 The boundary tag `pre-ethonline-2026` is commit `c42daca`, cut **2026-09-04 00:05:36 UTC**, and it is
 pushed, so anyone can verify the split themselves. The window opened at **2026-09-04 16:00 UTC**
 (ETHGlobal's published schedule, `hacking-begins`), so the tag sits 15 h 54 min *before* the start, not
-five minutes after it as this file said until 2026-09-08. **Three commits in the range we claim were made
+five minutes after it as this file said until 2026-09-08. **Three commits in the range I claim were made
 before the window opened** — their SHAs, times and contents, and the command that lists them, are in
 [`docs/ethonline-2026/DISCLOSURE_2026-09-05.md`](./docs/ethonline-2026/DISCLOSURE_2026-09-05.md), which
-also carries the message we sent ETHGlobal on **2026-09-05** disclosing the volume of work that predates
+also carries the message I sent ETHGlobal on **2026-09-05** disclosing the volume of work that predates
 the tag, and why its commit count reads 207 where this file says 214.
 
 **One caveat.** `main` is also this product's production branch, so the range
 `pre-ethonline-2026..main` contains work that has nothing to do with this submission — grant
-applications for other programmes, SEO and marketing, a secret rotation, operational fixes. **We are not
-claiming all of it.** What we submit is the payment gate and what it needed:
+applications for other programmes, SEO and marketing, a secret rotation, operational fixes. **I am not
+claiming all of it.** What I submit is the payment gate and what it needed:
 
 ```bash
 git log pre-ethonline-2026..main -- packages/sdk packages/mcp-server \
@@ -55,17 +55,17 @@ git log pre-ethonline-2026..main -- packages/sdk packages/mcp-server \
 git log pre-ethonline-2026..main                # everything on main in the same days
 ```
 
-Both commands are worth running. The first is our claim; the second is the full picture, including the
-parts we are not claiming.
+Both commands are worth running. The first is my claim; the second is the full picture, including the
+parts I am not claiming.
 
-Who wrote the code, by area and representative file — and what the human did: [`AI_USAGE.md`](./AI_USAGE.md). The instructions we worked from, by day:
+Who wrote the code, by area and representative file — and what I did: [`AI_USAGE.md`](./AI_USAGE.md). The instructions I gave, by day:
 [`docs/ethonline-2026/PROMPTS/`](./docs/ethonline-2026/PROMPTS/). The payment gate itself:
 [`SKILL.md`](./SKILL.md).
 
 **Start here** — four doors, all reachable from this page:
 
 - <https://vet402.com/ethonline> — the judge's landing page: one command to run, what to read in which order, the continuity disclosure, The Graph.
-- [`docs/ethonline-2026/COMMITS_EN.md`](./docs/ethonline-2026/COMMITS_EN.md) — every commit in the window in English, derived from `git log pre-ethonline-2026..main` by [`scripts/ethonline-commits-en.mjs`](./scripts/ethonline-commits-en.mjs) (✔ marks what we claim; `--check` fails if the file is not what the script produces).
+- [`docs/ethonline-2026/COMMITS_EN.md`](./docs/ethonline-2026/COMMITS_EN.md) — every commit in the window in English, derived from `git log pre-ethonline-2026..main` by [`scripts/ethonline-commits-en.mjs`](./scripts/ethonline-commits-en.mjs) (✔ marks what I claim; `--check` fails if the file is not what the script produces).
 - [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/kzmttkc/vet402?quickstart=1) — one click: Node 24 with SKILL.md's build order already run ([`.devcontainer/devcontainer.json`](./.devcontainer/devcontainer.json)), so `npm run judge-check` works as written.
 - [`skills/pay-or-refuse/SKILL.md`](./skills/pay-or-refuse/SKILL.md) (Agent Skill) and [`.claude-plugin/plugin.json`](./.claude-plugin/plugin.json) (Claude Code plugin) — the same gate, packaged the way The Graph's own skills repositories are.
 
@@ -83,7 +83,7 @@ npm i @vet402/middleware   # x402 transaction gate (Express / Next.js / Hono)
 npm i @vet402/mcp-server   # MCP tools for Cursor / Claude Desktop
 ```
 
-> **Use the scoped names exactly as written above.** The unscoped npm package `vouch-sdk` is an unrelated project published by a different vendor and has nothing to do with vet402. Only `@vet402/*` packages are ours.
+> **Use the scoped names exactly as written above.** The unscoped npm package `vouch-sdk` is an unrelated project published by a different vendor and has nothing to do with vet402. Only `@vet402/*` packages are vet402's.
 
 > **The published packages predate this window.** `@vet402/sdk` on npm is 0.5.0 (published 2026-08-25) and ships `index` and `spend-guard` only — it does **not** contain `payOrRefuse`. Publishing is out of scope until after submission ([`SKILL.md`](./SKILL.md) → *Install*). To read or run this window's code, clone this repository and build from `packages/`.
 
