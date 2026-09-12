@@ -13,6 +13,18 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-13 09:xx JST — 公開文書の残り 4 件（PROMPTS の 09-11 残り・09-12・09-13、SUBMISSION_DRAFT の $0 ルート、LIVE_JUDGING Q6 の "since July"、09-13 の取り直し）
+
+- **何を変えたか**: `docs/ethonline-2026/PROMPTS/` に 09-12（day8）・09-13（day9）を新設し、day7 に 09-11 07:45 より後のオーナー発言 27 件とコミット 25 件の要約を追記（07:45 までの行と `d60d73c` の要約行は書き換えていない）。
+  `SUBMISSION_DRAFT.md` の DEVELOPER FEEDBACK 1・2・5 を日付つき過去形に、1・3・4 を一人称単数に（「$0 routes still answer 402」→ 2026-09-06 の出来事＋2026-09-09 の再測、`our`/`we`/`us` → `my`/`I`/`me`、`baz recipe` は 0.8.0 を見た日付を明記）。
+  `LIVE_JUDGING.md` Q6 から "the observatory that has been buying x402 endpoints with its own money since July" を削除（一次記録で裏付けが無い。観測所の初コミットは 2026-08-14）。要旨の「観測所」も削除。
+  `BAZANTIC_FEEDBACK.md` §4 #6 の「the docs run ahead of the CLI」を 2026-09-06 の日付つき過去形に（npm の `@bazantic/cli` latest が 2026-09-13 08:3x JST に 0.10.1 へ進んでいた。0.9.0 以降に `baz recipe` があるかは未確認）。
+- **なぜ**: 審査（09-13〜15）に読まれる時点で偽になる現在形と、主語 `we` と、裏付けの無い主張が残っていた。PROMPTS は規約の "all … prompts"。
+- **取り直し（09-13 08:28–08:34 JST・読み取りのみ）**: Bazantic 未払い `tools/call` 12/12 で 402 無し・tools 57／`/decision`（The Graph）404／The Graph 鍵なし 200 + auth error／x402 402 の resource.url は arbitrum-03-asia-ne1・payTo `0x79DC…FcCB`・amount 10000／check-numbers 緑（total_commits 910・sdk_mutations 45）／日本語件名 291/403（72%）／judge-check 11 段 exit 0（origin/main `9ac1ba9` の clean worktree）。09-11 から変わったのは npm の CLI の版だけ。審査枠の時刻は ETHGlobal のログインが要るので測っていない。
+- **影響**: コード・決済経路・数字の印・Release `ethonline-2026-submission`（`9ac1ba9`）は動かしていない。
+
+---
+
 ## 2026-09-13 07:xx JST — 提出 Release `ethonline-2026-submission` を切った（`RELEASE_NOTES_SUBMISSION.md` の `{{…}}` を実測値で確定・一人称を `I` に統一）
 
 - **何を変えたか**: `docs/ethonline-2026/RELEASE_NOTES_SUBMISSION.md` の冒頭注記を「まだ切っていない」から

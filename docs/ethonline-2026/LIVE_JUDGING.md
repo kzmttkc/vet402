@@ -113,8 +113,8 @@ A: *On September 6, the Bazantic Gateway answered 402 to every unpaid call, even
 証拠: `BAZANTIC_FEEDBACK.md` §4（1〜4・各項の "Re-measured 2026-09-09"）・§6（v2: "102 tool calls, 0 settled, 0 transactions"）／`WINDOW_PLAN.md` §16.1／生ログ `docs/ethonline-2026/ab/2026-09-06T213134Z/trials.jsonl` の `raw.toolCalls[].x402Bridge.txHash`。
 
 **Q6. What is pre-existing vs new?**
-A: *Pre-existing: the catalogue, the `/decision` API, the payee score, and the observatory that has been buying x402 endpoints with its own money since July. New, after tag `c42daca`, cut 2026-09-04 00:05:36 UTC — 15 h 54 min before hacking began at 16:00 UTC, and three commits in the claimed range predate that start, listed in `DISCLOSURE_2026-09-05.md`: `payOrRefuse` in the SDK, the x402 payment path, the subgraph evidence source, the MCP tool `pay_if_trusted`, the demo CLI, the A/B harness, and the audits. `main` is also vet402's production branch, so the tag range contains work I do not claim. The README says so and gives the exact path filter.*
-要旨: 既存＝カタログ・decision・スコア・観測所。新規＝関門・支払い・Graph 証拠・MCP・demo・A/B。README が主張範囲を限定。
+A: *Pre-existing: the catalogue, the `/decision` API, and the payee score. New, after tag `c42daca`, cut 2026-09-04 00:05:36 UTC — 15 h 54 min before hacking began at 16:00 UTC, and three commits in the claimed range predate that start, listed in `DISCLOSURE_2026-09-05.md`: `payOrRefuse` in the SDK, the x402 payment path, the subgraph evidence source, the MCP tool `pay_if_trusted`, the demo CLI, the A/B harness, and the audits. `main` is also vet402's production branch, so the tag range contains work I do not claim. The README says so and gives the exact path filter.*
+要旨: 既存＝カタログ・decision・スコア。新規＝関門・支払い・Graph 証拠・MCP・demo・A/B。README が主張範囲を限定。
 証拠: `README.md` "One caveat."（境界と主張範囲の節）／`docs/ethonline-2026/CHANGED_FILES.md`（コマンドで導出）／`git log pre-ethonline-2026..main -- packages/sdk packages/mcp-server examples/ethonline-2026-demo examples/ethonline-2026-ab SKILL.md AI_USAGE.md docs/ethonline-2026`。
 
 **Q7. How much did AI write?**

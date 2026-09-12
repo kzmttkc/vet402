@@ -291,11 +291,11 @@ INPUTS AND RESULTS, REPRODUCIBLE. Raw logs: docs/ethonline-2026/ab/2026-09-06T21
 VIDEO. The A/B walk-through is at {{video_ab_timestamp}} of the demo video (both runs, the tables, the Recipe page).
 
 DEVELOPER FEEDBACK (full: docs/ethonline-2026/BAZANTIC_FEEDBACK.md)
-1. $0 routes still answer 402, and paying $0 posts a real 0-USDC transfer on chain. In our 20 trials: 110 tool calls, 88 settled with a 200, 88 distinct on-chain transactions of 0 USDC. 88 free reads cost 88 facilitator transactions.
-2. MCP tools/call cannot carry a payment: a PAYMENT-SIGNATURE header on the /mcp POST is ignored, the tool result is isError: true with the 402 body. So a standard "Add to Claude / Cursor / ChatGPT" client lists the tools and can use none of them — run 093254Z measured exactly that.
-3. Our workaround in the harness: a bridge that, only when the quoted amount is exactly "0", signs and re-sends the same resource over REST; non-zero amounts fail loudly.
-4. The "JWT that bypasses x402/MPP for testing" mentioned in #partner-bazantic exists, but it is in neither the docs nor the dashboard's navigation: we learned where it lives only when Tom Hay answered us on Discord on 2026-09-09 (create it at bazantic.com/api-keys, send it as the gateway's API key). A line next to the pricing docs would save the next team the round trip.
-5. baz recipe (the documented way to run a public Recipe with a payer) is not in @bazantic/cli@0.8.0 on npm.
+1. On 2026-09-06, $0 routes answered 402, and paying $0 posted a real 0-USDC transfer on chain. In my 20 trials: 110 tool calls, 88 settled with a 200, 88 distinct on-chain transactions of 0 USDC. 88 free reads cost 88 facilitator transactions. When I re-measured on 2026-09-09, the free tools I checked answered an unpaid call without a 402.
+2. On 2026-09-06, MCP tools/call could not carry a payment: a PAYMENT-SIGNATURE header on the /mcp POST was ignored, and the tool result was isError: true with the 402 body. So a standard "Add to Claude / Cursor / ChatGPT" client listed the tools and could use none of them — run 093254Z measured exactly that.
+3. My workaround in the harness: a bridge that, only when the quoted amount is exactly "0", signs and re-sends the same resource over REST; non-zero amounts fail loudly.
+4. The "JWT that bypasses x402/MPP for testing" mentioned in #partner-bazantic exists, but it is in neither the docs nor the dashboard's navigation: I learned where it lives only when Tom Hay answered me on Discord on 2026-09-09 (create it at bazantic.com/api-keys, send it as the gateway's API key). A line next to the pricing docs would save the next team the round trip.
+5. baz recipe (the documented way to run a public Recipe with a payer) was not in @bazantic/cli@0.8.0, the npm latest when I checked on 2026-09-06.
 6. The public Recipe page shows name, author, description and input form, but not the prompt text — a reviewer cannot read what the agent is told without an account.
 What would help agents: return the body for 0-mcent routes without a settlement (or a "free below N" switch); let tools/call carry a payment or return the 402 as a structured accepts object; put the Recipe into MCP initialize.instructions; show the Recipe prompt on the public page.
 One keystore-related item was sent privately to support@bazantic.com on 2026-09-06 and is intentionally not described here.
