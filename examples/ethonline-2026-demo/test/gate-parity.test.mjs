@@ -277,6 +277,16 @@ export const CASES = [
   ["decision body", "degraded:1 (数)", { decision: D({ degraded: 1 }) }],
   ["decision body", "degraded 欄が無い", { decision: { status: 200, body: { recommendation: "ALLOW", reason_codes: [], facts: { l1: { n_delivered: 3 } } } } }],
   ["decision body", "recommendation 欄が無い", { decision: { status: 200, body: { degraded: false, reason_codes: [], facts: { l1: { n_delivered: 3 } } } } }],
+  // `signalsUnavailable`（「この信号は読めなかった」の申告）。`degraded: false` でも、
+  // 読めなかった信号があるなら測れていない——`payee score` の面と同じ5形をここにも置く
+  // （2026-09-12: `/decision` 経路だけが `degraded` しか見ておらず、★3形で judge が拒み
+  //  payOrRefuse が**署名していた**）。
+  ["decision body", 'signalsUnavailable:["native_drain"]', { decision: D({ signalsUnavailable: ["native_drain"] }) }],
+  ["decision body", "signalsUnavailable:[] (空配列)", { decision: D({ signalsUnavailable: [] }) }],
+  ["decision body", 'signalsUnavailable:"native_drain" (非配列)', { decision: D({ signalsUnavailable: "native_drain" }) }],
+  ["decision body", "signalsUnavailable:null", { decision: D({ signalsUnavailable: null }) }],
+  ["decision body", "signalsUnavailable:{} (object)", { decision: D({ signalsUnavailable: {} }) }],
+  ["decision body", "signalsUnavailable 欄が無い", { decision: D() }],
 
   // ---- 面: `facts.l1.n_delivered` の形（床 1 を置いて、初めて関門になる） ----
   // 床を 0 のままにすると「どの形でも通る」ので、この面だけ第4要素で 1 に上げる。

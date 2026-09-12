@@ -64,8 +64,8 @@ const MUTATIONS = [
     what: "degraded を requireVet402Allow:false で通す（/decision 経路）",
     rule: "J7 測れなかったことと ALLOW でないことは別",
     file: PAY,
-    find: '    if (typeof decision.degraded !== "boolean" || decision.degraded === true) {',
-    replace: '    if (/* MUTANT */ requireVet402Allow && (typeof decision.degraded !== "boolean" || decision.degraded === true)) {',
+    find: "    if (scoreQualityDefect(decision) !== null) {",
+    replace: "    if (/* MUTANT */ requireVet402Allow && scoreQualityDefect(decision) !== null) {",
   },
   {
     id: "M04",
@@ -152,10 +152,10 @@ const MUTATIONS = [
   },
   {
     id: "M30",
-    what: "degraded の型検査を外す（文字列 \"true\" が === true を素通りして払う）",
-    rule: "追加1 degraded は boolean でなければ止める",
+    what: "/decision の品質検査を `degraded === true` だけに戻す（型検査も signalsUnavailable の申告も見ずに払う）",
+    rule: "追加1 degraded は boolean でなければ止める ／ 2026-09-12 読めなかった信号の申告も「測れた」ではない",
     file: PAY,
-    find: '    if (typeof decision.degraded !== "boolean" || decision.degraded === true) {',
+    find: "    if (scoreQualityDefect(decision) !== null) {",
     replace: "    if (/* MUTANT */ decision.degraded === true) {",
   },
   // ---- 境界表（test/_shapes.mjs × test/boundary-shapes.test.mjs・2026-09-08）----

@@ -696,9 +696,14 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
     // A2: degraded は「測れなかった」。fail-closed のゲートにとっては読めなかったのと同じ。
     // **`requireVet402Allow: false` でもここは通さない**——免除したのは判定の中身であって、
     // 判定が存在しないことではない（J7）。
-    // `degraded` は boolean でなければ「測れた」と言えない（2026-09-07 監査 追加1: 文字列 "true" が
-    // `=== true` を素通りして払っていた）。型が違えば止める側に倒す。
-    if (typeof decision.degraded !== "boolean" || decision.degraded === true) {
+    // 「測れたか」は `verdict-shape` の 1 本（`scoreQualityDefect`）に訊く。ここに条件を写して
+    // いたので、`degraded` しか見ておらず——`degraded: false` のまま `signalsUnavailable` が
+    // 「この信号は読めなかった」と申告していても**署名して払っていた**（2026-09-12 実測:
+    // `["native_drain"]` / 非配列 / `null` の 3 形で、デモの `judge` と 404 経路は拒み、
+    // ここだけが払う）。`degraded` の型検査（2026-09-07 監査 追加1: 文字列 "true" が
+    // `=== true` を素通りして払っていた）は `scoreQualityDefect` が "degraded" として持つ。
+    // 理由コードは変えない——呼び手にとっては同じ「証拠が読めなかった」である。
+    if (scoreQualityDefect(decision) !== null) {
       return refuse([...serverReasons, "evidence_unavailable"], "decision", decision);
     }
     // A1: ALLOW 以外。理由はサーバの reason_codes をそのまま通す（我々の語で上書きしない）。
