@@ -1148,6 +1148,18 @@
     "ae9bec8cad0684450b123a9950b02f728f5d871d": {
       "ja": "docs: npm 公開済み（sdk 0.6.0 / mcp-server 0.3.0）に合わせて「公開前」前提の現在形を直す",
       "en": "docs: correct the present-tense wording that assumed npm had no payOrRefuse / pay_if_trusted (sdk 0.6.0 and mcp-server 0.3.0 are published)"
+    },
+    "cf9701b95c1ff1106f649be3d173727def5c9a7c": {
+      "ja": "docs(ethonline): Discord 定期走査 09-12 — 運営回答3件を §1.4 へ追記（ファイナリスト審査はデプロイ必須の原文・Continuity の from scratch 両立の裏付け・Tokyo 会場時間）。締切と審査日程に変更なし",
+      "en": "docs(ethonline): Discord sweep 09-12 - three organiser answers added to §1.4 (the wording that finalist judging requires a deployment, the backing for Continuity being compatible with \"from scratch\", Tokyo venue hours). Deadlines and the judging schedule are unchanged"
+    },
+    "837d099bc9b3640c933db7d39410ed0e36c89c39": {
+      "ja": "fix(demo): 配達件数の述語を金の関門にそろえる——Infinity と小数で予告が外れていた（監査 H-2）",
+      "en": "fix(demo): align the delivery-count predicate with the money gate - Infinity and a fraction made the prediction disagree with it (audit H-2)"
+    },
+    "18a91d1dadcc1507cda1fc0dd5ca7cd4ae74f74b": {
+      "ja": "chore(numbers): npm run refresh-numbers——demo_tests 169 → 178（`gate-parity` に面「l1 floor」を 9 マス足した分）",
+      "en": "chore(numbers): npm run refresh-numbers - demo_tests 169 -> 178 (the nine `l1 floor` cases added to `gate-parity`)"
     }
   }
 }
