@@ -4,7 +4,7 @@
 
 ## How this file is made
 
-This is `git log pre-ethonline-2026..18a91d1` (394 commits), grouped by day in UTC and rendered by
+This is `git log pre-ethonline-2026..6d0c388` (400 commits), grouped by day in UTC and rendered by
 [`scripts/ethonline-commits-en.mjs`](../../scripts/ethonline-commits-en.mjs) — `node scripts/ethonline-commits-en.mjs` regenerates it;
 `--check` (run by `npm test`) fails if this file is not what the script produces from the commit named in the **Generated** row — that is,
 if it was edited by hand. A Japanese subject with no translation, and commits after that one which did not regenerate this file, are warnings;
@@ -12,10 +12,10 @@ if it was edited by hand. A Japanese subject with no translation, and commits af
 the window contains work I do **not** submit; the **Claimed** column is derived from the path filter in `README.md`:
 
 ```bash
-git log pre-ethonline-2026..18a91d1 -- packages/sdk packages/mcp-server \
+git log pre-ethonline-2026..6d0c388 -- packages/sdk packages/mcp-server \
     examples/ethonline-2026-demo examples/ethonline-2026-ab \
     SKILL.md AI_USAGE.md docs/ethonline-2026    # ✔ claimed
-git log pre-ethonline-2026..18a91d1             # everything, ✔ and —
+git log pre-ethonline-2026..6d0c388             # everything, ✔ and —
 ```
 
 A commit is ✔ when it touches at least one of those paths, — otherwise. Subjects written before the English-subject rule took effect
@@ -26,12 +26,12 @@ that instant are marked **⚠ pre-window** below and listed in [`DISCLOSURE_2026
 
 | | |
 |---|---|
-| Generated | 2026-09-12 11:28:34 UTC from `18a91d1dadcc1507cda1fc0dd5ca7cd4ae74f74b` |
-| Range | `pre-ethonline-2026..18a91d1` — **394 commits** on 9 days (UTC), 13 of them merges |
-| Claimed (✔) | **244** — touch at least one path in the filter |
-| Not claimed (—) | **150** — production work in the same days |
+| Generated | 2026-09-12 21:49:52 UTC from `6d0c388e25487f9c0cca8180559d59d4985f360c` |
+| Range | `pre-ethonline-2026..6d0c388` — **400 commits** on 9 days (UTC), 13 of them merges |
+| Claimed (✔) | **249** — touch at least one path in the filter |
+| Not claimed (—) | **151** — production work in the same days |
 | Claimed but before 2026-09-04 16:00:00 UTC | **3** (⚠) |
-| Subjects translated from Japanese | **290** (English already: 104) |
+| Subjects translated from Japanese | **291** (English already: 109) |
 
 ## Claimed, by day (UTC)
 
@@ -86,16 +86,16 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 - [`04a186b`](https://github.com/kzmttkc/vet402/commit/04a186b1fc63cbe2c24027b436bca300bb9a2e99) 05:18 — docs(live-judging): speak as I, not we, and put the A/B v2 result on the 3:15 screen and in Q4, Q5, Q14 (119 lines)
 - [`276cdae`](https://github.com/kzmttkc/vet402/commit/276cdae2d6030f109a02c73ff703e3c516ad8400) 00:34 — docs(judge-walk): make the pay_if_trusted blocks runnable as pasted, refresh test counts, match pay/refuse wording to production (102 lines)
 
-### 2026-09-12 — 11 of 11 claimed
+### 2026-09-12 — 16 of 17 claimed
 
+- [`309f959`](https://github.com/kzmttkc/vet402/commit/309f959940d0163c3c2c6fcc211c4ff88e386be8) 11:58 — fix(mcp): the per-payment ceiling is the operator's, not the model's (685 lines)
 - [`27594a9`](https://github.com/kzmttkc/vet402/commit/27594a9a2f3ad739be3eb4a56d17187eb92eb5f5) 10:16 — feat(ethonline): A/B v3 — rewriting one Recipe sentence closes v2's 20-point gap (B 5/10 -> 7/10) (369 lines)
 - [`b790716`](https://github.com/kzmttkc/vet402/commit/b79071681b642b16d5243135563306bd4da49990) 05:47 — docs(strategy): record the owner-confirmed hackathon strategy as a cross-event section — GTM first, partner prizes second (129 lines)
-- [`837d099`](https://github.com/kzmttkc/vet402/commit/837d099bc9b3640c933db7d39410ed0e36c89c39) 11:20 — fix(demo): align the delivery-count predicate with the money gate - Infinity and a fraction made the prediction disagree with it (audit H-2) (115 lines)
 
 ## Every commit, by day (UTC), oldest first
 
 <details>
-<summary>All 394 commits — ✔ claimed and — not claimed (click to expand)</summary>
+<summary>All 400 commits — ✔ claimed and — not claimed (click to expand)</summary>
 
 ### 2026-09-04 — 87 commits, 11 claimed
 
@@ -520,7 +520,7 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`f0e1c20`](https://github.com/kzmttkc/vet402/commit/f0e1c20c4567c0ce20b35f9265db84661e2ac2a1) | 06:16 | ✔ | docs(prizes): record ETHGlobal's 2026-09-11 answer on the Final checklist wording |
 | [`2fd99df`](https://github.com/kzmttkc/vet402/commit/2fd99df630f46af79fad90cd1050fba62ec5b943) | 06:16 | ✔ | fix(commits-en): write the generated header in the first person singular, and regenerate COMMITS_EN.md |
 
-### 2026-09-12 — 11 commits, 11 claimed
+### 2026-09-12 — 17 commits, 16 claimed
 
 | SHA | UTC | Claimed | Subject (English) |
 |---|---|:---:|---|
@@ -535,5 +535,11 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`cf9701b`](https://github.com/kzmttkc/vet402/commit/cf9701b95c1ff1106f649be3d173727def5c9a7c) | 11:16 | ✔ | docs(ethonline): Discord sweep 09-12 - three organiser answers added to §1.4 (the wording that finalist judging requires a deployment, the backing for Continuity being compatible with "from scratch", Tokyo venue hours). Deadlines and the judging schedule are unchanged |
 | [`837d099`](https://github.com/kzmttkc/vet402/commit/837d099bc9b3640c933db7d39410ed0e36c89c39) | 11:20 | ✔ | fix(demo): align the delivery-count predicate with the money gate - Infinity and a fraction made the prediction disagree with it (audit H-2) |
 | [`18a91d1`](https://github.com/kzmttkc/vet402/commit/18a91d1dadcc1507cda1fc0dd5ca7cd4ae74f74b) | 11:22 | ✔ | chore(numbers): npm run refresh-numbers - demo_tests 169 -> 178 (the nine `l1 floor` cases added to `gate-parity`) |
+| [`6ed731e`](https://github.com/kzmttkc/vet402/commit/6ed731e86d8fe52d941b79db8444fa86d1257f0b) | 11:29 | ✔ | chore(docs): translate three Japanese subjects and regenerate COMMITS_EN.md |
+| [`6847b41`](https://github.com/kzmttkc/vet402/commit/6847b4119113a063b9fb197482c405c2d0a08538) | 11:38 | ✔ | docs(ethonline): make the submission's cited numbers greppable, and re-date SKILL.md from a clean judge-check |
+| [`243da16`](https://github.com/kzmttkc/vet402/commit/243da16bd354e7e4de3bf139be7fc3b1dfc2ee1c) | 11:50 | ✔ | docs(ethonline): the screen VIDEO_SCRIPT.md called "the finished video" is not in the submitted cut — measure v4 and record its real timeline |
+| [`309f959`](https://github.com/kzmttkc/vet402/commit/309f959940d0163c3c2c6fcc211c4ff88e386be8) | 11:58 | ✔ | fix(mcp): the per-payment ceiling is the operator's, not the model's |
+| [`15f7eef`](https://github.com/kzmttkc/vet402/commit/15f7eef1c4bfdbc7eeeb16efb94ee1f9d662b295) | 12:07 | — | test(commits-en): count the untranslated grade from the bare baseline, not from zero |
+| [`6d0c388`](https://github.com/kzmttkc/vet402/commit/6d0c388e25487f9c0cca8180559d59d4985f360c) | 12:17 | ✔ | fix(sdk): move the /decision quality check onto scoreQualityDefect — it kept paying while ignoring a declared signalsUnavailable |
 
 </details>

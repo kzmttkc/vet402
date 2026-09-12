@@ -1160,6 +1160,10 @@
     "18a91d1dadcc1507cda1fc0dd5ca7cd4ae74f74b": {
       "ja": "chore(numbers): npm run refresh-numbers——demo_tests 169 → 178（`gate-parity` に面「l1 floor」を 9 マス足した分）",
       "en": "chore(numbers): npm run refresh-numbers - demo_tests 169 -> 178 (the nine `l1 floor` cases added to `gate-parity`)"
+    },
+    "6d0c388e25487f9c0cca8180559d59d4985f360c": {
+      "ja": "fix(sdk): /decision の品質検査を scoreQualityDefect に寄せる——signalsUnavailable の申告を無視して払っていた",
+      "en": "fix(sdk): move the /decision quality check onto scoreQualityDefect — it kept paying while ignoring a declared signalsUnavailable"
     }
   }
 }
