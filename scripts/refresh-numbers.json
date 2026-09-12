@@ -26,8 +26,8 @@
         }
       ],
       "value": "2026-09-12",
-      "updatedAt": "2026-09-12T06:10:27.776Z",
-      "end": "2026-09-12T15:10:27+09:00"
+      "updatedAt": "2026-09-12T11:20:55.254Z",
+      "end": "2026-09-12T20:20:55+09:00"
     },
     {
       "id": "total_commits",
@@ -40,8 +40,8 @@
           "pattern": "^git rev-list --count HEAD +# (?<v>\\d+) commits \\("
         }
       ],
-      "value": "903",
-      "updatedAt": "2026-09-12T06:10:27.776Z"
+      "value": "910",
+      "updatedAt": "2026-09-12T11:20:55.254Z"
     },
     {
       "id": "ai_trailer_commits",
@@ -54,8 +54,8 @@
           "pattern": "^git log --grep='Co-Authored-By: Claude' --oneline \\| wc -l +# (?<v>\\d+) carry the AI trailer"
         }
       ],
-      "value": "770",
-      "updatedAt": "2026-09-12T06:10:27.776Z"
+      "value": "773",
+      "updatedAt": "2026-09-12T11:20:55.254Z"
     },
     {
       "id": "merge_commits",
@@ -69,15 +69,15 @@
         }
       ],
       "value": "34",
-      "updatedAt": "2026-09-12T06:10:27.776Z"
+      "updatedAt": "2026-09-12T11:20:55.254Z"
     },
     {
       "id": "no_trailer_commits",
       "description": "as_of 時点で trailer の無いコミット数 = total_commits - ai_trailer_commits（AI_USAGE.md）。",
       "check": "derive",
       "command": "echo $(( $(git rev-list --count --until='{{AS_OF_END}}' HEAD) - $(git log --grep='Co-Authored-By: Claude' --until='{{AS_OF_END}}' --oneline | wc -l) ))",
-      "value": "133",
-      "updatedAt": "2026-09-12T06:10:27.776Z"
+      "value": "137",
+      "updatedAt": "2026-09-12T11:20:55.254Z"
     },
     {
       "id": "window_added_files",
@@ -90,8 +90,8 @@
           "pattern": "^git diff --diff-filter=A --name-only pre-ethonline-2026\\.\\.main \\| wc -l +# (?<v>\\d+) added"
         }
       ],
-      "value": "227",
-      "updatedAt": "2026-09-12T06:10:27.776Z"
+      "value": "231",
+      "updatedAt": "2026-09-12T11:20:55.254Z"
     },
     {
       "id": "window_modified_files",
@@ -105,7 +105,7 @@
         }
       ],
       "value": "206",
-      "updatedAt": "2026-09-12T06:10:27.776Z"
+      "updatedAt": "2026-09-12T11:20:55.254Z"
     },
     {
       "id": "sdk_tests",
@@ -135,7 +135,7 @@
         }
       ],
       "value": "1679",
-      "updatedAt": "2026-09-12T06:10:27.776Z"
+      "updatedAt": "2026-09-12T11:20:55.254Z"
     },
     {
       "id": "mcp_tests",
@@ -165,7 +165,7 @@
         }
       ],
       "value": "780",
-      "updatedAt": "2026-09-12T06:10:27.776Z"
+      "updatedAt": "2026-09-12T11:20:55.254Z"
     },
     {
       "id": "demo_tests",
@@ -186,8 +186,8 @@
           "pattern": "§5 のコマンド（\\d{2}-\\d{2}: \\d+ / \\d+ / (?<v>\\d+)）"
         }
       ],
-      "value": "169",
-      "updatedAt": "2026-09-12T06:10:27.776Z"
+      "value": "178",
+      "updatedAt": "2026-09-12T11:20:55.254Z"
     },
     {
       "id": "ab_mutations",
@@ -199,7 +199,7 @@
         "why": "harness が印字する N は `MUTATIONS.length` なので、ソースの変異定義の数と必ず一致する。id の綴りは見ない（`M[0-9]+` に絞ると M1b / M1c を落とす。2026-09-08 に実際に落とした）"
       },
       "value": "27",
-      "updatedAt": "2026-09-12T06:10:27.776Z"
+      "updatedAt": "2026-09-12T11:20:55.254Z"
     },
     {
       "id": "sdk_mutations",
@@ -211,7 +211,7 @@
         "why": "harness が印字する N は `rows.length` = 変異定義の数。2026-09-09 14:21 の `4b281ab` が M45 を足したのに記録値は 44 のままで、--check は 09-10 まで緑を出し続けた"
       },
       "value": "45",
-      "updatedAt": "2026-09-12T06:10:27.776Z",
+      "updatedAt": "2026-09-12T11:20:55.254Z",
       "literal": [
         {
           "doc": "docs/ethonline-2026/SUBMISSION_DRAFT.md",

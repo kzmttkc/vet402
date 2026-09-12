@@ -63,7 +63,7 @@ The gate has settled one real payment on Base; that receipt and its numbers are 
 
 ## Size of the window, counted rather than asserted
 
-`git diff --diff-filter=A --name-only pre-ethonline-2026..main | wc -l` → <!-- n:window_added_files -->227<!-- /n --> files added, and
+`git diff --diff-filter=A --name-only pre-ethonline-2026..main | wc -l` → <!-- n:window_added_files -->231<!-- /n --> files added, and
 `git diff --diff-filter=M --name-only pre-ethonline-2026..main | wc -l` → <!-- n:window_modified_files -->206<!-- /n --> pre-existing files touched
 (listed in [`CHANGED_FILES.md`](./CHANGED_FILES.md)), both as of <!-- n:as_of -->2026-09-12<!-- /n -->. CI re-derives them every run
 (`npm run check-numbers`), so a stale number here turns the build red instead of sitting quietly.
