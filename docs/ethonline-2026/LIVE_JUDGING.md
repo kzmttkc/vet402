@@ -155,8 +155,8 @@ A: *Three audits in the window, all written down with commit hashes. From Septem
 証拠: `docs/audits/2026-09-04-adversarial-audit.md`「是正」／`docs/audits/2026-09-05-blockchain-security-audit.md` S-1 `1fddaf2`・S-4 `ae5ff67`・S-6 `4ba2274`・S-21／`WINDOW_PLAN.md` §14.2。
 
 **Q14. What's next?**
-A: *My plan for ETHGlobal Tokyo, September 25, is resolve-then-pay. In this submission the gate rejects a payee that is not a 0x address. It does not resolve names. In Tokyo the payee becomes an ENS name, and `payOrRefuse` runs after resolution, on a new git tag, so the boundary can be checked again. After this judging, I will publish the SDK and MCP server to npm. I kept that out of scope for the window.*
-要旨: Tokyo（09-25）の計画は resolve-then-pay。ENS 名を解決した後に `payOrRefuse`（新しい git タグで境界を引き直す）。今回の提出の関門は 0x 以外の payee を拒否し、名前は解決しない。npm 公開はこの審査の後（会期中は範囲外）。
+A: *My plan for ETHGlobal Tokyo, September 25, is resolve-then-pay. In this submission the gate rejects a payee that is not a 0x address. It does not resolve names. In Tokyo the payee becomes an ENS name, and `payOrRefuse` runs after resolution, on a new git tag, so the boundary can be checked again. I published the SDK and MCP server to npm on September 12, after the submission closed: `@vet402/sdk@0.6.0` with `payOrRefuse`, and `@vet402/mcp-server@0.3.0` with `pay_if_trusted`. The versions that stood through the window, 0.5.0 and 0.2.0, had neither, so what you judge is the clone.*
+要旨: Tokyo（09-25）の計画は resolve-then-pay。ENS 名を解決した後に `payOrRefuse`（新しい git タグで境界を引き直す）。今回の提出の関門は 0x 以外の payee を拒否し、名前は解決しない。npm 公開は提出締切後の 09-12 に実施済み（sdk 0.6.0・mcp-server 0.3.0）。会期中の版 0.5.0 / 0.2.0 には `payOrRefuse` も `pay_if_trusted` も無く、審査対象は clone のまま。
 証拠: `docs/ethonline-2026/APPLY.md:21`（resolve-then-pay・`pre-tokyo-2026`）／`PRIZES.md:186`（ENS は今回除外）／`WINDOW_PLAN.md` §4 B8・§16.5／`SKILL.md` "What is not built yet"。
 
 **Q15. Why not catalogue The Graph yourself?**

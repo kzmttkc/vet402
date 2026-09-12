@@ -7,7 +7,7 @@
 #
 # What it runs (no API keys, no live calls; the only network is the npm registry):
 #   sdk:        npm ci -> npm run build -> npm test
-#   mcp-server: npm ci -> npm run build -> npm test   (depends on packages/sdk via file:../sdk)
+#   mcp-server: npm ci -> npm run build -> npm test   (@vet402/sdk@^0.6.0; the lockfile links packages/sdk)
 #   demo:       npm test                              (imports packages/sdk/dist, nothing to install)
 #   root:       npm ci                                (kept for parity with CI's "examples" job; the A/B
 #                                                      harness has viem as a direct dependency since 2026-09-07)

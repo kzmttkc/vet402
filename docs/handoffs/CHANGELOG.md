@@ -13,6 +13,20 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-12 19:4x JST — `@vet402/sdk@0.6.0` / `@vet402/mcp-server@0.3.0` を npm へ公開したので、「公開前」を前提にした現在形の案内を審査日（09-13〜15）に真になる文へ直した
+
+- **公開の実測**（`npm view`・2026-09-12 に自分で取り直した）: `@vet402/sdk` 0.6.0 = `2026-09-12T06:41:38.278Z`、`@vet402/mcp-server` 0.3.0 = `2026-09-12T06:45:12.469Z`。
+  まっさらな場所で `npm i @vet402/sdk@0.6.0` → `payOrRefuse` が function、`readSubgraphReceipts`・`X402_BASE_SUBGRAPH_ID`・`PAY_REFUSE_REASONS`（13 語）も取れる。
+  `npx -y @vet402/mcp-server@0.3.0` の `tools/list` は **7 本**で `pay_if_trusted` を含む（支払い鍵なしで起動）。
+  会期中に立っていた版は `npm pack @vet402/sdk@0.5.0` が `dist/index.js` と `dist/spend-guard.js` の 2 本だけ（`payOrRefuse` の文字列なし）、`@vet402/mcp-server@0.2.0` の `tools/list` は **5 本**で `pay_if_trusted` なし
+- **変えたもの（文言だけ・6 ファイル）**: `README.md`（Install の注記）／`SKILL.md`（Install 節・Build order 段 2・Scope notes の `npm publish` 行）／`skills/pay-or-refuse/SKILL.md`（Path A 冒頭・Setup）／`docs/ethonline-2026/LIVE_JUDGING.md` Q14（英文と要旨）／`docs/ethonline-2026/WINDOW_PLAN.md` §16 の #1・#8 を実施済みに更新／`scripts/judge-check.sh` の冒頭コメント 1 行。
+  **コード・理由コード語彙・`.claude-plugin/mcp.json`・`packages/*/package.json`・決済経路には触れていない**
+- **なぜ**: 審査員が読むのは 09-13〜15。`README.md` と `SKILL.md` は「npm の最新は 0.5.0 / 0.2.0 で `payOrRefuse` も `pay_if_trusted` も入っていない・公開は提出後まで範囲外」と現在形で書いており、いま読むと偽になる。
+  `LIVE_JUDGING.md` Q14 の「After this judging, I will publish」も同じ
+- **clone して build する経路は残した**: `.claude-plugin/mcp.json` は `node` ＋ `${CLAUDE_PLUGIN_ROOT}/packages/mcp-server/dist/index.js` のまま据え置き（`tests/agent-skill-plugin.test.ts` の期待も不変）。審査員が掴む面を凍結中に動かさない。`npx` への差し戻しは 09-15 のライブ審査後
+- **ついでに直した不整合**: `packages/mcp-server` の依存は公開時に `file:../sdk` → `^0.6.0` へ替わっているのに、`SKILL.md` の Build order・`skills/pay-or-refuse/SKILL.md` の Setup・`judge-check.sh` のコメントが `file:../sdk` のままだった。clone 側の挙動は変わらない（lockfile が `../sdk` への link を保つ）ので、その旨に書き換えた
+- **そちらへの影響**: 無し（文言のみ）。ただし **npm を使う利用者には `payOrRefuse` / `pay_if_trusted` が今日から届く**ので、対外文で「未公開」と書いている箇所があれば同じ理由で古い
+
 ## 2026-09-11 14:58 JST — 審査日（09-14）に読むと偽になる現在形を、日付つきの過去形に直した（`/ethonline` の表示文言を含む）: `src/app/ethonline/page.tsx` の Bazantic 段落「$0 routes still answer 402」→「On 2026-09-06, $0 routes answered 402 … On 2026-09-09 and 2026-09-11 the free tools I checked answered without a 402」、`docs/ethonline-2026/BAZANTIC_FEEDBACK.md` §4 #1〜#3 と §6 の now/still/today。根拠は 09-11 05:41Z の probe（v1 で使った 12 ツールに未払い tools/call、402 は 0 件）。57 ツール中 12 本しか見ていないので「全ルートで直った」とは書いていない。数字・URL・コードは不変。`LIVE_JUDGING.md` は別の役が編集中のため未変更
 
 ## 2026-09-11 14:40 JST — 【訂正】09-09 15:00 の節「§4 運用の申し送り (a)」の2項目。台帳の日次控えは Takeshi の手番ではなかった（剪定の失敗を非致命にして状態更新と警報を復旧・Takeshi_Automation `f5992c2`）。launchd の 60 分遅れは原因を特定して修正済み

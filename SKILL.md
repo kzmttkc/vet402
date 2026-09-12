@@ -42,7 +42,7 @@ The suites it runs include the boundary-shape tests (`packages/sdk/test/_shapes.
 | step | why it must come first |
 |---|---|
 | 1. `packages/sdk` — `npm ci && npm run build` | everything else imports its `dist/` |
-| 2. `packages/mcp-server` — `npm ci && npm run build` | depends on the SDK through `file:../sdk`; `npm ci` here creates the link, so the SDK's `dist/` must already exist |
+| 2. `packages/mcp-server` — `npm ci && npm run build` | depends on `@vet402/sdk@^0.6.0`, which this repo's lockfile resolves to the local `../sdk`; `npm ci` here creates that link, so the SDK's `dist/` must already exist |
 | 3. `examples/ethonline-2026-demo` — nothing to install | imports `packages/sdk/dist` by relative path; `npm test` and all three commands run without an install |
 | 4. `examples/ethonline-2026-ab` — `npm ci` here | the harness's x402 bridge signer imports `viem`, which is now a direct dependency of this example (it was a root-borrowed peer until 2026-09-07) |
 | 5. `packages/mcp-server` — `npm install viem` | only the last two blocks need it (*`pay_if_trusted` with The Graph evidence*, *Paying a seller outside the catalogue — live*), and step 2 does **not** bring it: viem is deliberately not a dependency of this package, because an MCP server that can hold a private key should be something you opt into. Without it `resolvePayer()` returns `null` exactly as it does with no key, the server withholds `resource` / `payee` / `amountUsd` from the SDK, and both blocks stop at `payer_not_configured` **before** The Graph is read — reproduced on a fresh clone 2026-09-10. Since 2026-09-11 those two blocks run `npm install --no-save viem@2.56.3` themselves (package.json untouched). After `npm run judge-check` it is usually already resolvable: that script's root `npm ci` installs viem, and node finds it from `packages/mcp-server` through the parent directory (measured 2026-09-11). Skip this step and everything above still runs |
@@ -79,8 +79,12 @@ Neither means "they are bad".
 
 ## Install
 
-`@vet402/sdk@0.5.0` and `@vet402/mcp-server@0.2.0` on npm predate this work — publishing is out of
-scope until after submission (WINDOW_PLAN §2 — Japanese, internal plan). **Build from the repo:**
+`@vet402/sdk@0.6.0` and `@vet402/mcp-server@0.3.0` have been on npm since 2026-09-12, after the
+submission closed. `npm i @vet402/sdk@0.6.0` gives `payOrRefuse`, and `npx -y @vet402/mcp-server@0.3.0`
+answers `tools/list` with 7 tools including `pay_if_trusted`. The releases that stood through the
+window had neither: 0.5.0 (2026-08-25) ships `index` and `spend-guard` only, and 0.2.0 (2026-08-24)
+answers `tools/list` with 5 tools. **Building from the repo is the route this runbook walks, and the
+route the Claude Code plugin uses, so what a judge runs is the code in this commit:**
 
 ```bash
 # live: skip clones the repo — it cannot run inside a checkout of the repo it clones
@@ -863,5 +867,5 @@ Stated plainly, because a SKILL.md that oversells is worse than none.
 |---|---|
 | **Evidence policy on the MCP tool** | Since 2026-09-06: `policy.requireVet402Allow` and `policy.evidence` (`source`, `minSubgraphReceipts`, `minL1Deliveries`) are tool inputs; the Graph key comes from `GRAPH_API_KEY`. See **`pay_if_trusted` with The Graph evidence**. |
 | **The uncatalogued-seller path in MCP** | Since 2026-09-06: when `resource` is given, a `/decision` 404 is handed to `payOrRefuse`, which judges from the 402 `payTo`, the payee score for that address and the caller's evidence floors (I23). Without `resource` a 404 still refuses with `evidence_unavailable`. See **Paying a seller outside the catalogue — live**. |
-| **npm publish** | Out of scope until after submission. Build from the repo. |
+| **npm publish** | Done 2026-09-12, after the submission closed: `@vet402/sdk@0.6.0` carries `payOrRefuse` and `@vet402/mcp-server@0.3.0` carries `pay_if_trusted` (7 tools). The window's releases, 0.5.0 and 0.2.0, carried neither. This runbook and the plugin still build from the repo. |
 | **The hosted MCP gateway** | Two MCP surfaces, two roles. The Bazantic gateway (`https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp`, Recipe `x402-payee-verification-via-vet402-gateway`) fronts vet402's REST API as **57 tools** (`tools/list`, measured 2026-09-06) — use it for discovery and every key-free read (`/decision`, `/resolve`, scores). `pay_if_trusted` is the one tool that holds a signer, and it is **only** in this package over stdio, not on the gateway. |

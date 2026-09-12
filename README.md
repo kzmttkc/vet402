@@ -87,7 +87,7 @@ npm i @vet402/mcp-server   # MCP tools for Cursor / Claude Desktop
 
 > **Use the scoped names exactly as written above.** The unscoped npm package `vouch-sdk` is an unrelated project published by a different vendor and has nothing to do with vet402. Only `@vet402/*` packages are vet402's.
 
-> **The published packages predate this window.** `@vet402/sdk` on npm is 0.5.0 (published 2026-08-25) and ships `index` and `spend-guard` only — it does **not** contain `payOrRefuse`. Publishing is out of scope until after submission ([`SKILL.md`](./SKILL.md) → *Install*). To read or run this window's code, clone this repository and build from `packages/`.
+> **On npm since 2026-09-12, after the submission closed.** `@vet402/sdk` is 0.6.0 (published 06:41:38 UTC) and exports `payOrRefuse`; `@vet402/mcp-server` is 0.3.0 (06:45:12 UTC) and answers `tools/list` with 7 tools, `pay_if_trusted` among them. The releases that stood through the window contained neither: the `@vet402/sdk@0.5.0` tarball (2026-08-25) ships `index` and `spend-guard` only, and `@vet402/mcp-server@0.2.0` (2026-08-24) answers `tools/list` with 5 tools. Publishing is therefore not part of the judged work. To read or run this window's code from source, clone this repository and build from `packages/` ([`SKILL.md`](./SKILL.md) → *Install*).
 
 - [@vet402/sdk](https://www.npmjs.com/package/@vet402/sdk)
 - [@vet402/middleware](https://www.npmjs.com/package/@vet402/middleware)

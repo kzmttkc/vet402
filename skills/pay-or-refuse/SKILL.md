@@ -30,10 +30,11 @@ skill is the path where the tool itself holds the signer.
 ## Path A — MCP tool `pay_if_trusted` (Claude Code, Claude Desktop, Cursor)
 
 The server is `packages/mcp-server` **in this repository**, launched with `node` from the plugin's
-own checkout (`.claude-plugin/mcp.json` runs `${CLAUDE_PLUGIN_ROOT}/packages/mcp-server/dist/index.js`). The npm
-release `@vet402/mcp-server` is 0.2.0 (2026-08-24) and does **not** contain `pay_if_trusted`;
-publishing is out of scope until after submission, so the plugin starts the build from the clone,
-not the npm package. This plugin registers the server as `vet402`; without the plugin, add the
+own checkout (`.claude-plugin/mcp.json` runs `${CLAUDE_PLUGIN_ROOT}/packages/mcp-server/dist/index.js`). `@vet402/mcp-server`
+on npm is 0.3.0 since 2026-09-12 and **does** carry `pay_if_trusted` (`tools/list` returns 7 tools),
+but the plugin still starts the build from the clone, not the npm package, so what runs is the code
+in this commit. The 0.2.0 release that stood through the window (2026-08-24) returned 5 tools and
+had no `pay_if_trusted`. This plugin registers the server as `vet402`; without the plugin, add the
 block from `packages/mcp-server/README.md` to your client, pointing `command`/`args` at the same
 `dist/index.js`.
 
@@ -188,12 +189,13 @@ a verifier that re-reads the chain may say "settled".
 Install as a Claude Code plugin from a clone of the repository (the manifest is
 `.claude-plugin/plugin.json`; it registers this skill, and the MCP server `vet402` from the
 `.claude-plugin/mcp.json`). The server's `dist/` is committed, but its `node_modules` are not, and
-`@vet402/sdk` is linked from `packages/sdk` through `file:../sdk` — so install in the same order
-as the root `SKILL.md`'s **Build order** before starting Claude Code:
+`@vet402/sdk` is declared as `^0.6.0` and resolved by this repo's lockfile to the local
+`packages/sdk` — so install in the same order as the root `SKILL.md`'s **Build order** before
+starting Claude Code:
 
 ```bash
 # live: skip installs dependencies and then starts an interactive Claude Code session — nothing to assert from stdout
-cd packages/sdk && npm ci && npm run build        # 1. the SDK first — the MCP server links it through file:../sdk
+cd packages/sdk && npm ci && npm run build        # 1. the SDK first — the MCP server's npm ci links this checkout, not the registry
 cd ../mcp-server && npm ci && npm run build       # 2. then the MCP server (dist/ is committed; its node_modules are not)
 cd ../.. && claude --plugin-dir "$PWD"            # 3. the plugin root is the clone: ${CLAUDE_PLUGIN_ROOT} resolves to it
 ```
