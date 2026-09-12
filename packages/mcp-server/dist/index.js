@@ -5,6 +5,7 @@ import { z } from "zod";
 import { explainTrustScore } from "./explain.js";
 import { sanitizeToolError } from "./tool-errors.js";
 import { payIfTrusted } from "./pay-if-trusted.js";
+import { resolveMaxPerTxUsd, ceilingNotes, MAX_PER_TX_USD_ENV, DEFAULT_MAX_PER_TX_USD } from "./ceiling.js";
 import { decideFromScore, decideFromFailure } from "./decision.js";
 import { attestX402Payment, fetchAgentScore, fetchDecision, fetchPayeeScore, fetchWalletScore, } from "./vouch-client.js";
 const server = new McpServer({
@@ -226,18 +227,32 @@ async function main() {
         "A caller_policy REFUSE makes this tool REFUSE and those words are in refuse_reasons. caller_policy",
         "never rewrites recommendation; not_evaluated lists what the server did not check (min_subgraph_receipts",
         "is always there - The Graph is read only with your own key, through pay_if_trusted).",
+        `The ceiling you name is capped by this server's own ${MAX_PER_TX_USD_ENV} (default $${DEFAULT_MAX_PER_TX_USD}), so this`,
+        "answer matches what pay_if_trusted would actually do; tool input can lower that ceiling, never raise it.",
     ].join("\n"), {
         resourceId: RESOURCE_ID,
         role: z.enum(["payer", "payee"]).optional().describe("payer (default): should my agent pay this resource? payee: should this seller serve this payer?"),
         payer: z.string().max(120).optional().describe("Required when role=payee: chain:address, or a bare 0x / base58 address"),
         callerDialect: z.enum(["v1", "v2"]).optional().describe("Your x402 client dialect; a mismatch with the seller's wall is a WARN"),
         amountUsd: z.number().nonnegative().optional().describe("What the 402 asks, in USD; compared with maxPerTxUsd server-side (role=payer only)"),
-        maxPerTxUsd: z.number().positive().optional().describe("Your per-payment ceiling in USD (default 1)"),
+        maxPerTxUsd: z.number().positive().optional().describe(`Your per-payment ceiling in USD (default 1). This server clamps it to its own ${MAX_PER_TX_USD_ENV}: tool input can lower the ceiling, never raise it (role=payer only).`),
         minL1Deliveries: z.number().int().nonnegative().optional().describe("Floor on vet402's delivered L1 purchases for this resource"),
         requireVet402Allow: z.boolean().optional().describe("Default true (a WARN refuses with payee_recommendation_not_allow). false waives a WARN and needs minL1Deliveries >= 1"),
     }, async ({ resourceId, role, payer, callerDialect, amountUsd, maxPerTxUsd, minL1Deliveries, requireVet402Allow }) => {
         try {
-            const result = await fetchDecision(resourceId, { role, payer, callerDialect, amountUsd, maxPerTxUsd, minL1Deliveries, requireVet402Allow });
+            // 2026-09-12 監査 H-1: 天井は運用者のもの。ここは署名器を握らない**助言**のツールだが、
+            // 助言が「$500 でも ALLOW_PAY」と言えば呼び手はそれで払う。同じ天井を当てて、
+            // この助言がこのサーバの実際の振る舞いと食い違わないようにする。
+            //
+            // 当てるのは role=payer（既定）で、かつ呼び手が既に policy を尋ねているときだけ:
+            //   - `role=payee` に caller policy を付けるとサーバは 400 invalid_policy を返す
+            //     （src/app/api/v1/resources/[resourceId]/decision/route.ts の roleRaw 検査）
+            //   - `amountUsd` も `maxPerTxUsd` も無い呼び出しに天井だけ足すと、頼まれていない
+            //     `caller_policy` ブロックが応答に生える。しかも比べる相手（amount_usd）が無いので
+            //     天井は `not_evaluated` 行きで、意味は増えずに応答の形だけが変わる。
+            const asksPolicy = amountUsd !== undefined || maxPerTxUsd !== undefined;
+            const ceiling = role === "payee" || !asksPolicy ? null : resolveMaxPerTxUsd(maxPerTxUsd, process.env[MAX_PER_TX_USD_ENV]);
+            const result = await fetchDecision(resourceId, { role, payer, callerDialect, amountUsd, maxPerTxUsd: ceiling ? ceiling.effective : maxPerTxUsd, minL1Deliveries, requireVet402Allow });
             // 2026-09-07 (§16.3): the caller's own policy, applied by the server, can refuse too — and
             // its words (price_above_ceiling, …) are the ones the A/B showed no tool ever returned.
             const policy = result.caller_policy;
@@ -248,7 +263,10 @@ async function main() {
                 decision: allow ? "ALLOW_PAY" : "REFUSE",
                 safe_to_pay: allow,
                 refuse_reasons: allow ? [] : [...new Set([...result.reason_codes, ...policyWords])],
-                summary: `${result.recommendation} (${result.rules_version}) — ${result.reason_codes.join(", ")}${policy ? ` · caller_policy ${policy.verdict}${policyWords.length ? ` (${policyWords.join(", ")})` : ""}` : ""}`,
+                summary: [
+                    `${result.recommendation} (${result.rules_version}) — ${result.reason_codes.join(", ")}${policy ? ` · caller_policy ${policy.verdict}${policyWords.length ? ` (${policyWords.join(", ")})` : ""}` : ""}`,
+                    ...(ceiling ? ceilingNotes(ceiling) : []),
+                ].join(" "),
             };
             return { content: [{ type: "text", text: JSON.stringify({ ...decision, measurement: result }, null, 2) }] };
         }
@@ -285,6 +303,12 @@ async function main() {
         "BLOCK payee score refuses even with requireVet402Allow:false. Without resource a 404 refuses",
         "with evidence_unavailable - there is nothing to judge from.",
         "",
+        "The per-payment ceiling is the OPERATOR's, not yours: the effective limit is min(your maxPerTxUsd,",
+        `${MAX_PER_TX_USD_ENV} in this server's env, default $${DEFAULT_MAX_PER_TX_USD}). A maxPerTxUsd above it is lowered to it and summary`,
+        "says so; you can lower the ceiling for one call but you can never raise it. Like the payer key and",
+        "the Graph key, it is set by the person who runs this server, not through tool input. A 402 asking",
+        "more than the effective ceiling refuses with price_above_ceiling, as before.",
+        "",
         "Omit resource/payee/amountUsd to get the pre-payment checks alone (Graph-key presence, degraded,",
         "the server's caller_policy, ALLOW): it refuses with payment_target_unknown, and the evidence floors",
         "and The Graph read are not evaluated (they live inside the SDK's payOrRefuse, which is only reached",
@@ -306,7 +330,7 @@ async function main() {
         payee: WALLET.optional().describe("Address you already expect to be paid; the 402's payTo must match it"),
         amountUsd: z.number().nonnegative().optional().describe("What you believe this costs, in USD"),
         method: z.string().max(10).optional().describe("HTTP method of the resource (default GET; The Graph's x402 endpoint is POST)"),
-        maxPerTxUsd: z.number().positive().optional().describe("Per-payment ceiling in USD (default 1)"),
+        maxPerTxUsd: z.number().positive().optional().describe(`Per-payment ceiling in USD (default 1). CANNOT raise this server's ceiling: the effective limit is min(this value, ${MAX_PER_TX_USD_ENV} in the server env, default 1), and a value above it is lowered to it — summary says so when that happens.`),
         policy: z
             .object({
             requireVet402Allow: z
@@ -340,6 +364,11 @@ async function main() {
             const boundedFetch = (url, init) => fetch(url, { ...init, signal: init?.signal ?? AbortSignal.timeout(timeoutMs) });
             const signer = await resolvePayer();
             const wantsPayment = resource !== undefined || payee !== undefined || amountUsd !== undefined;
+            // 2026-09-12 監査 H-1: **天井は運用者のもので、モデルは上げられない。**
+            // ここが金の出口——`maxPerTxUsd` は SDK の `payOrRefuse` で 402 が実際に要求する額と
+            // 比べられる唯一の上限であり、これまでその値はツール入力（＝モデルの出力）だった。
+            // env の天井で切り下げてから渡す。詳しくは ./ceiling.ts。
+            const ceiling = resolveMaxPerTxUsd(maxPerTxUsd, process.env[MAX_PER_TX_USD_ENV]);
             const result = await payIfTrusted({
                 resourceId,
                 signer: signer ?? UNCONFIGURED_SIGNER,
@@ -350,7 +379,10 @@ async function main() {
                 policy,
                 graphApiKey: process.env.GRAPH_API_KEY,
                 // payer が無いなら支払い先を**渡さない**。渡さなければ ALLOW でも第5段へ進めない。
-                ...(signer ? { resource, payee, amountUsd, method, maxPerTxUsd } : {}),
+                // `ceiling.effective` は常に数（省略しない）。省略すると SDK 側が
+                // `policy.maxPerTxUsd` を見に行き、そこはツール入力から埋まり得る経路が残る。
+                // 常に上書きすることで、天井の入口を env の1本だけにする。
+                ...(signer ? { resource, payee, amountUsd, method, maxPerTxUsd: ceiling.effective } : {}),
             });
             if (!signer && wantsPayment) {
                 result.refuse_reasons = [
@@ -365,6 +397,11 @@ async function main() {
                         "VOUCH_PAYER_PRIVATE_KEY in its env block, to enable payment. This code cannot tell " +
                         "which of the two is missing. The decision above was still measured.";
             }
+            // 切り下げたこと（と、読めない env を既定へ落としたこと）は応答から読めるようにする。
+            // 新しい理由コードは作らない——天井を超えた 402 は既存の `price_above_ceiling` で拒否される。
+            const notes = ceilingNotes(ceiling);
+            if (notes.length > 0)
+                result.summary = [result.summary, ...notes].filter(Boolean).join(" ");
             return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         }
         catch (error) {

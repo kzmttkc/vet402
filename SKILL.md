@@ -109,6 +109,7 @@ The MCP server takes no constructor arguments — **its env block is its options
       "env": {
         "VOUCH_API_KEY": "…",          // optional since 2026-09-07: check_resource_decision / pay_if_trusted read /decision key-less (10/min per IP); the score and attest tools still need one. https://vet402.com/dashboard/keys
         "VOUCH_TIMEOUT_MS": "10000"    // optional, default 10000
+        // "VOUCH_MAX_PER_TX_USD": "1"      // optional, default 1 — the ceiling a tool call cannot raise
         // "VOUCH_PAYER_PRIVATE_KEY": "0x…"  // optional — see "Actually paying"
       }
     }
@@ -310,6 +311,14 @@ refusing with `payment_target_unknown` (floors not evaluated there either).
 gate, unchanged from the SDK: Base mainnet only, canonical USDC `0x8335…2913`, scheme `exact`,
 EIP-3009, EIP-712 domain pinned to the token's on-chain values (never read from the seller), a
 120-second authorization window, and a per-payment ceiling (`maxPerTxUsd`, default $1).
+
+**The ceiling is the operator's, not the model's** (2026-09-12 audit H-1). `maxPerTxUsd` is a tool
+input, which means it is *model output*: before this fix, `maxPerTxUsd: 500` signed a $500
+authorization. The effective limit is now `min(the call's maxPerTxUsd, VOUCH_MAX_PER_TX_USD in the
+server env, default $1)`. A call may lower the ceiling for itself; nothing in tool input can raise
+it, the same way the payer key and the Graph key are env-only. A value above the ceiling is lowered
+and `summary` says so; an unreadable `VOUCH_MAX_PER_TX_USD` falls back to $1 and says that too —
+it is never read as "no ceiling". The refusal word is unchanged: `price_above_ceiling`.
 
 The buyer never calls a facilitator: sign → resend the original request with `PAYMENT-SIGNATURE` →
 read the receipt from the response header. A test asserts zero calls to any `/settle` URL.
