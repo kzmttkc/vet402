@@ -1,16 +1,18 @@
 # Bazantic — developer feedback from the vet402 A/B (ETHOnline 2026, Continuity)
 
-Written for the judges and for Bazantic. Every number below is recomputed from the raw trial log
-(`docs/ethonline-2026/ab/2026-09-06T213134Z/trials.jsonl`) by one command —
-`npm run metrics -- docs/ethonline-2026/ab/2026-09-06T213134Z` (run inside `examples/ethonline-2026-ab/`); it is quoted at the end.
+Written for the judges and for Bazantic. There were **three A/B runs** — v1 (§2, 2026-09-06), v2 (§6, 2026-09-11)
+and v3 (§7, 2026-09-12) — each run once and never re-run. Every number below is recomputed from that run's own raw
+trial log (`docs/ethonline-2026/ab/<timestamp>/trials.jsonl`) by one command, `npm run metrics -- <that directory>`
+(run inside `examples/ethonline-2026-ab/`); all three commands are quoted at the end.
 Bazantic account: **`TakeshiTGAL`**.
 
 ## 1. What I built on Bazantic
 
 - **Gateway** `https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com` (upstream `vet402.com`, live since 2026-09-03, every route priced at 0 mcents).
   Its MCP endpoint `…/mcp` lists **57 tools**.
-- **Recipe** `x402-payee-verification-via-vet402-gateway`, published 2026-09-07 06:15 JST at
-  `https://bazantic.com/recipes/x402-payee-verification-via-vet402-gateway`. The copy the harness feeds to condition B
+- **Recipe** `x402-payee-verification-via-vet402-gateway`, first published 2026-09-07 06:15 JST at
+  `https://bazantic.com/recipes/x402-payee-verification-via-vet402-gateway`, and republished twice at the same URL —
+  v2 on 2026-09-07 (§6) and v3 on 2026-09-12 (§7). Each run names the version it used. The copy the harness feeds to condition B
   (`examples/ethonline-2026-ab/recipe/x402-payee-verification.json`) has the same `description` as the public page, byte for byte.
 - **Harness** `examples/ethonline-2026-ab/` — pre-registered in `docs/ethonline-2026/WINDOW_PLAN.md §16` on 2026-09-05, before any real trial.
 
@@ -87,6 +89,35 @@ Per fixture — A: F1 3/3 · F2 0/3 · F3 2/2 · F4 2/2. B: F1 3/3 · F2 0/3 · 
 
 **What I take from it.** Without the Recipe, the tool schema and the API list were enough for the agent to use the ceiling parameters; the Recipe sentence I added made B's reason list less exact. A Recipe line is an instruction the agent follows literally, so its wording is part of the product.
 
+## 7. A/B v3 — one sentence of the Recipe, rewritten (run 2026-09-12)
+
+**What changed, and what did not.** v2's only gap was F4 in condition B: 0/2. Both B trials answered `price_above_ceiling` **plus** `l0_pass`, `l1_delivered`, `l2_undeclared` — codes that are real in the response but belong to a layer that returned ALLOW, so they are not reasons to refuse. My Recipe's step 5 had asked for the codes that appear verbatim "including `caller_policy.reason_codes`", and the agent read that literally. For v3 I rewrote **that one bullet** on bazantic.com — "only the codes that are a reason for the decision you returned; if `caller_policy.verdict` is REFUSE, those are its `reason_codes`; do not carry over codes from a layer that returned ALLOW" — and changed nothing else: steps 1–4, the output fields, the example code list (not one word), `description`, `inputs`, and the three tools are byte-identical to v2. **The product was not touched**: same server, same vocabulary, same gateway, same 57 tools in both conditions, and condition A's prompt is unchanged from v2. Same model (`claude-opus-5`, effort `high`), same fixtures, same grading rule, 10 trials per condition, `temperature` not sent. Pre-registered in `WINDOW_PLAN.md` §16.6 on 2026-09-12, before the Recipe was republished and before any trial. Run once, not re-run: `docs/ethonline-2026/ab/2026-09-12T101235Z`.
+
+**Conditions around the run.** No payer key was passed, so the bridge was never built: **95 tool calls (A 65, B 30), 0 settled, 0 transactions**. The Gateway's 0-mcent tools answered an unpaid `tools/call` with the body. I probed the four fixtures immediately before and immediately after the run with the same command: **57 tools both times, 0 × 402 both times**, and every field of all four answers was identical before and after (F1 ALLOW `[l0_pass, l1_delivered, l2_undeclared]` with `caller_policy` ALLOW `[]`; F2 404 `not_found`; F3 WARN `[l0_pass, l1_inconclusive, l2_undeclared]` with `caller_policy` REFUSE `[payee_recommendation_not_allow]`; F4 ALLOW with `caller_policy` REFUSE `[price_above_ceiling]`). The repository copy of the Recipe was updated **after** publishing, from the published body: 2,069 characters, sha256 `3884d603bbfb…`.
+
+| condition | success | verdict match | codes ⊆ oracle | fabricated ≥1 | errors | unparseable |
+|---|---|---|---|---|---|---|
+| A (no Recipe) | **7/10** | 10 | 7 | 3 | 0 | 0 |
+| B (Recipe v3) | **7/10** | 10 | 7 | 3 | 0 | 0 |
+
+Per fixture — A: F1 3/3 · F2 0/3 · F3 2/2 · F4 2/2. B: F1 3/3 · F2 0/3 · F3 2/2 · F4 2/2. **Delta (B − A) = 0 (0pt).**
+
+| run | A | B | F4 A | F4 B | vocabulary set ii, A | set ii, B | tool calls | on-chain tx |
+|---|---|---|---|---|---|---|---|---|
+| v1 `2026-09-06T213134Z` | 5/10 | 5/10 | 0/2 | 0/2 | 20/32 (63%) | 29/32 (91%) | 110 | 88 |
+| v2 `2026-09-10T233702Z` | 7/10 | 5/10 | 2/2 | 0/2 | 17/26 (65%) | 29/37 (78%) | 102 | 0 |
+| v3 `2026-09-12T101235Z` | 7/10 | 7/10 | 2/2 | **2/2** | 17/26 (65%) | 16/23 (70%) | 95 | 0 |
+
+(Vocabulary is exploratory and not used for scoring. v3 set i: A 6/26 (23%), B 7/23 (30%); trials in which every code was real (set ii): A 7/10, B 7/10.)
+
+**My predictions, checked — all four held.**
+- "B's F4 returns to 2/2 and B ties A at 7/10" — **right.** Both B trials answered `["price_above_ceiling"]` and nothing else. The three ALLOW-layer codes that sank v2 did not appear.
+- "F2 is fixed in neither condition" — **right.** 0/3 in both. Five of the six trials answered `not_found`, `WARN`, `thin`; one B trial answered `not_found`, `payee_recommendation_not_allow`. `not_found` is in every one of them, and my oracle is `{resource_uncatalogued, payee_recommendation_not_allow}`, so wording could not move it. **This one is mine to fix, not the agent's**: the 404 body says `{"error":"not_found"}` while `payOrRefuse` calls the same condition `resource_uncatalogued`. Two names for one state, and the agent can only repeat the one it was shown.
+- "A stays at 7/10" — **right.** A's input did not change by a byte, and neither did its per-fixture breakdown.
+- "B might answer F1 with an empty code list" (the risk I named in the pre-registration) — **it did not happen.** No trial in either condition returned an empty list. B did drop `l2_undeclared` in two of its three F1 trials, answering `["l0_pass", "l1_delivered"]`; still a subset, still a success, but it is the same instruction pulling in that direction.
+
+**What I take from it.** v2's gap was not the product and not the model — it was one sentence I wrote in the Recipe, and rewriting that sentence closed a 20-point gap without touching anything else. **A Recipe line is an instruction an agent follows literally, so its wording is part of the product.** The practical ask for Bazantic is in §5: let a Recipe be versioned and diffed in place. All three runs here are one-sentence experiments, and I had to unpublish, edit, republish, and keep the provenance by hand in `recipe/x402-payee-verification.json` to know which text produced which numbers.
+
 ## Recount command
 
 Every number in this document comes from one script; nothing is counted by hand.
@@ -96,6 +127,7 @@ cd examples/ethonline-2026-ab
 npm run metrics -- ../../docs/ethonline-2026/ab/2026-09-06T213134Z          # Markdown tables
 npm run metrics -- ../../docs/ethonline-2026/ab/2026-09-06T213134Z --json   # same numbers as JSON
 npm run metrics -- ../../docs/ethonline-2026/ab/2026-09-10T233702Z          # v2 (§6)
+npm run metrics -- ../../docs/ethonline-2026/ab/2026-09-12T101235Z          # v3 (§7)
 ```
 
 It regrades every trial from `answer` + `oracle` with the pre-registered rule (`src/grade.mjs`) and does not read

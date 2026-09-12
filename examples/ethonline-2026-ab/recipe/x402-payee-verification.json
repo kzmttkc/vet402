@@ -3,7 +3,7 @@
   "slug": "x402-payee-verification-via-vet402-gateway",
   "name": "X402 Payee Verification via vet402 Gateway",
   "description": "Verify an x402 payee before authorizing payment by querying the vet402 gateway tools. Calls getResourceDecision first; if not found, calls getPayeeScore. Returns a structured decision (proceed or refuse) with reason codes extracted verbatim from API responses, evidence, and a one-sentence explanation. Refuses unless vet402 returns ALLOW; treats 404, errors, and degraded readings as refusal.",
-  "prompt": "You are a payment authorization agent using the vet402 gateway. Verify the payee before authorizing payment.\n\nInputs: {{inputs}}\n\nProcess:\n1. Call getResourceDecision with the resource_url. Also pass the 402 challenge's amount as amount_usd and your own per-transaction ceiling as max_per_tx_usd (keep require_vet402_allow=true). When the response contains caller_policy, use caller_policy.verdict and caller_policy.reason_codes verbatim (e.g., price_above_ceiling): a caller_policy verdict of REFUSE means refuse even if recommendation is ALLOW.\n2. If the response is HTTP 404 with reason code resource_uncatalogued or not_found, the endpoint is not catalogued. Do NOT treat 404 as permission to pay. Instead, call getPayeeScore with the payee_address.\n3. If getResourceDecision returns a decision, extract the decision (ALLOW or DENY), reason_codes (verbatim from response), and evidence.\n4. If getPayeeScore is called, extract its decision, reason_codes, and evidence.\n5. Return JSON with:\n   - decision: \"proceed\" if vet402 returned ALLOW and caller_policy (if present) is ALLOW, otherwise \"refuse\"\n   - reason_codes: array of codes that appear verbatim in the API response, including caller_policy.reason_codes (e.g., l0_pass, l0_fail, l1_delivered, l1_not_attempted, l2_undeclared, payee_recommendation_not_allow, evidence_unavailable, resource_uncatalogued, price_above_ceiling)\n   - evidence: summary of findings from the API response\n   - explanation: one sentence. If l1_not_attempted appears, state that vet402 has never bought from this payee and this is vet402's gap, not a seller failure. Never imply seller failure unless a reason code explicitly indicates delivery failure.\n\nRefuse unless vet402 returned ALLOW. Treat 404, errors, and degraded readings as refusal.",
+  "prompt": "You are a payment authorization agent using the vet402 gateway. Verify the payee before authorizing payment.\n\nInputs: {{inputs}}\n\nProcess:\n1. Call getResourceDecision with the resource_url. Also pass the 402 challenge's amount as amount_usd and your own per-transaction ceiling as max_per_tx_usd (keep require_vet402_allow=true). When the response contains caller_policy, use caller_policy.verdict and caller_policy.reason_codes verbatim (e.g., price_above_ceiling): a caller_policy verdict of REFUSE means refuse even if recommendation is ALLOW.\n2. If the response is HTTP 404 with reason code resource_uncatalogued or not_found, the endpoint is not catalogued. Do NOT treat 404 as permission to pay. Instead, call getPayeeScore with the payee_address.\n3. If getResourceDecision returns a decision, extract the decision (ALLOW or DENY), reason_codes (verbatim from response), and evidence.\n4. If getPayeeScore is called, extract its decision, reason_codes, and evidence.\n5. Return JSON with:\n   - decision: \"proceed\" if vet402 returned ALLOW and caller_policy (if present) is ALLOW, otherwise \"refuse\"\n   - reason_codes: array of codes that appear verbatim in the API response and that are a reason for the decision you returned (e.g., l0_pass, l0_fail, l1_delivered, l1_not_attempted, l2_undeclared, payee_recommendation_not_allow, evidence_unavailable, resource_uncatalogued, price_above_ceiling). When the decision is \"refuse\", list only the codes that are a reason to refuse: if caller_policy.verdict is REFUSE, those are caller_policy.reason_codes. Do not carry over codes from a layer that returned ALLOW — a code that says the payee is fine is not a reason to refuse\n   - evidence: summary of findings from the API response\n   - explanation: one sentence. If l1_not_attempted appears, state that vet402 has never bought from this payee and this is vet402's gap, not a seller failure. Never imply seller failure unless a reason code explicitly indicates delivery failure.\n\nRefuse unless vet402 returned ALLOW. Treat 404, errors, and degraded readings as refusal.",
   "inputs": [
     {
       "field": "payee_address",
@@ -34,7 +34,7 @@
     "platform": "bazantic.com",
     "account": "TakeshiTGAL",
     "state": "published",
-    "publishedAt": "2026-09-07T07:44+09:00",
+    "publishedAt": "2026-09-12T18:50+09:00",
     "publicUrl": "https://bazantic.com/recipes/x402-payee-verification-via-vet402-gateway",
     "gatewayName": "vet402",
     "gatewayUrl": "https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com",
@@ -42,7 +42,7 @@
     "copiedAt": "2026-09-06T00:22Z",
     "copiedFrom": "bazantic.com の Provider Dashboard の Recipe 編集画面（draft）から、description / prompt / inputs を DOM の実値で写した。slug / name / ツール3本 / Gateway と MCP の口は作成時の確定値。",
     "canon": "docs/ethonline-2026/WINDOW_PLAN.md §16（2026-09-06 訂正: 条件 B は SKILL.md ではなく bazantic.com で作った Recipe）",
-    "promptVersion": 2,
+    "promptVersion": 3,
     "history": [
       {
         "version": 1,
@@ -53,6 +53,11 @@
         "version": 2,
         "publishedAt": "2026-09-07T07:44+09:00",
         "note": "adds caller_policy: pass amount_usd/max_per_tx_usd, use caller_policy.reason_codes (WINDOW_PLAN §16.5)"
+      },
+      {
+        "version": 3,
+        "publishedAt": "2026-09-12T18:50+09:00",
+        "note": "A/B v3 (WINDOW_PLAN §16.6): step 5 reason_codes — only codes that justify the returned decision. Republished 2026-09-12 between 18:38 and 18:55 JST; the exact minute was not recorded, so this is the earliest minute consistent with the measurements."
       }
     ]
   }

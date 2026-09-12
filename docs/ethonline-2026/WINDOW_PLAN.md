@@ -1436,6 +1436,33 @@ v2（§16.5）の差は **F4 の 2 試行だけ**だった。A 7/10・B 5/10 で
 **`DEMO_PAYER_PRIVATE_KEY` は渡さない**（v2 と同じく橋を作らない。0 mcents のツールは未払いの
 `tools/call` に本文を返す）。実走の手順は別に書き起こしてある。
 
+
+**【2026-09-12 実行・本文は書き換えない】** 実走 1 回のみ。開始 2026-09-12T09:59:53Z、終了 2026-09-12T10:12:35Z（JST 18:59:52〜19:12:35）。
+生ログ `ab/2026-09-12T101235Z`（`run.json` / `summary.json` / `summary.md` / `trials.jsonl`）。`claude-opus-5`・effort `high`・`temperature` 未送信・10 試行 × 2 条件。
+`DEMO_PAYER_PRIVATE_KEY` は渡していない（tool calls 95・settled 0・tx 0）。数字はすべて `npm run metrics -- docs/ethonline-2026/ab/2026-09-12T101235Z` の出力で、手で書いた数は無い。
+**保存済み `grade.*` と事前登録規則による再採点の食い違いは 0 件。**
+
+- **リポの写しの更新（関門3）**: 公開後に写した。`prompt` は公開値 2,069 文字（sha256 頭 12 桁 `3884d603bbfb`）、`source.promptVersion` 2→3、`source.publishedAt` と `history` に v3 を追記。他は触っていない。
+  写しの差分は手順5の 1 項目のみで、v2 と 1 語も違わないことを diff で確認した。なお `renderRecipe` は `source.publishedAt` も条件 B の本文に出す（"read-only since …"）ので、B のプロンプトの実差分は**手順5の1文＋この日付行**の 2 箇所である。
+  公開時刻の分は記録に残っていない。公開は 18:38〜18:55 JST の間で、`publishedAt` には測定と矛盾しない最も早い分（18:50+09:00）を入れた。
+  **公開ページの Prompt 欄は作者ログイン時のみ表示される**ため、未ログインでの再実測はできない（未ログインで確認できたのは 200・"Published Recipe"・name / description / inputs）。2,069 文字・`3884d603bbfb` は公開直後の実測値を採用した。
+- **402 probe（実走の前と後で同一コマンド）**: `tools/list` は前後とも **57 本**。4 フィクスチャの未払い `tools/call` は前後とも **HTTP 402 が 0 件**で、F1 / F2 / F3 / F4 の recommendation・`reason_codes`・`caller_policy` は前後で**全フィールド一致**し、§16.5 の 09-11 実測とも一致した（F1 ALLOW `[l0_pass, l1_delivered, l2_undeclared]` / caller_policy ALLOW `[]`、F2 404 `not_found`、F3 WARN `[l0_pass, l1_inconclusive, l2_undeclared]` + caller_policy REFUSE `[payee_recommendation_not_allow]`、F4 ALLOW + caller_policy REFUSE `[price_above_ceiling]`）。**ゲートウェイ側の差は出ていない。**
+
+| 条件 | success | F1 | F2 | F3 | F4 | verdictMatch | reasonSubset | fabricated | errors | unparseable |
+|---|---|---|---|---|---|---|---|---|---|---|
+| A | **7/10** | 3/3 | 0/3 | 2/2 | 2/2 | 10 | 7 | 3 | 0 | 0 |
+| B | **7/10** | 3/3 | 0/3 | 2/2 | 2/2 | 10 | 7 | 3 | 0 | 0 |
+
+delta (B − A) = **0pt**。非採点の語彙率（set ii）は A 17/26 (65%)・B 16/23 (70%)、set i は A 6/26 (23%)・B 7/23 (30%)。
+
+**予測との照合——4 件すべて当たり。**
+- 「B の F4 が 0/2 → 2/2 に戻り、B は 7/10 で A と並ぶ（delta 0pt）」→ **当たり。** B の F4 は 2 試行とも `["price_above_ceiling"]` だけを返した（v2 では 2 試行とも上位 3 語を連れてきていた）。
+- 「F2 は両条件とも直らない」→ **当たり。** 両条件 0/3。6 試行中 5 試行が `not_found` + `WARN` + `thin`、B の 1 試行が `not_found` + `payee_recommendation_not_allow`。**どの試行も `not_found` が残る**ので、予測どおり文面では動かなかった。
+- 「A は 7/10 のまま」→ **当たり。** A の内訳も v2 と同じ（F1 3/3・F2 0/3・F3 2/2・F4 2/2）。
+- 「外れうる点: B が F1 で理由コードを空にするかもしれない」→ **起きなかった。** B の F1 は 3 試行とも非空（`reason_codes` が空の試行は A・B 通じて 0 件）。ただし B の F1 は 3 試行中 2 試行で `l2_undeclared` を落とし `["l0_pass", "l1_delivered"]` になった。部分集合なので success は変わらないが、「理由になる語だけ」を強く読む向きに動いた痕跡ではある。
+
+**この 1 回で分かったこと**: v2 で B を A より下げていたのは Recipe 手順5の 1 文であり、その 1 文を直すと差は消えた（−20pt → 0pt）。製品・条件 A・採点規則・フィクスチャは一切変えていない。**Recipe の文面は製品の一部である。**
+
 ### 記録: `PRIZES.md` の P3 記述は古い
 
 `PRIZES.md:14` は「会期中に新規で立てる自前 x402 seller を Gateway として登録し」と書いているが、
