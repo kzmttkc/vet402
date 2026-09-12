@@ -1144,6 +1144,10 @@
     "d0346b3460cd22d4e4bd89eb4c473b3af0d679da": {
       "ja": "docs(ethonline): Bazantic の JWT 迂回は「価格0の x402/MPP」が答え——Day 6 の探索を閉じ、Test Connection/Activate は48時間内に直る予定を記録",
       "en": "docs(ethonline): the answer to Bazantic's JWT bypass is x402/MPP with the price zeroed — close the Day 6 exploration and record that Test Connection/Activate are due to be fixed within 48 hours"
+    },
+    "ae9bec8cad0684450b123a9950b02f728f5d871d": {
+      "ja": "docs: npm 公開済み（sdk 0.6.0 / mcp-server 0.3.0）に合わせて「公開前」前提の現在形を直す",
+      "en": "docs: correct the present-tense wording that assumed npm had no payOrRefuse / pay_if_trusted (sdk 0.6.0 and mcp-server 0.3.0 are published)"
     }
   }
 }
