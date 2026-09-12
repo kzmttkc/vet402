@@ -1545,3 +1545,42 @@ delta (B − A) = **0pt**。非採点の語彙率（set ii）は A 17/26 (65%)�
 09-10 22:00 の Project Feedback Session #12 が次の機会。
 
 **`#🚨click-for-info🚨`（Tokyo）は引き続き閲覧権限なし。** Tokyo 2026 の締切・枠はここからは取れない。
+
+---
+
+### 【2026-09-12 20:2x 追記】Discord 定期走査 —— 新着は運営の回答3件。締切・審査日程・Continuity 枠・ステーク/賞金に変更なし
+
+`#👂information`（最新 2026-09-08 00:06）/ `#📣announcements`（最新 2026-09-05 00:46）/
+`#⏰event-schedule`（最新 2026-09-11 12:57・Check-in #2 のリマインダ bot）/
+`#partner-the-graph`（最新 2026-09-12 16:34・他チームの質問）/
+`#partner-bazantic`（最新 2026-09-12 19:17・他チームのサポート往復）を実読。
+**提出締切 09-14 01:00 JST（= 09-13 12:00 ET）・Round 1 は 09-13 15:00 ET の非同期審査のまま。
+Continuity のファイナリスト枠 3／従来枠 7 も変わっていない。**
+
+**新しい一次情報は `#❓questions`（`993965805056307320`）の運営回答3件。**
+
+**(1) ファイナリスト審査に進むには「どこかにデプロイされている」ことが要る**
+（`Pascal | ETHGlobal`・**2026-09-11 16:49 JST**・`@Niraj`「デモ欄に GitHub のリポジトリ URL を貼ってよいか」への返信・原文）:
+
+> Can you share the reason and restrictions? If you want to qualify for a finalist judging it has to be
+> deployed somewhere. You can open 🆘│sos-support ticket if you want to provide more information there
+
+**「deployed somewhere」が何を指すかは原文に無い。推測で埋めない。**
+ただし我々は提出の選択肢1（Finalist & Partner Prizes）を選んでおり（§1.45）、提出物は SDK・MCP・CLI で**画面が無い**。
+**ハッカソン戦略セッションが 09-13 の提出前に1回だけ判定すること。** §1.45 の要件表は 1 行も変えていない。
+
+**(2) Continuity と Final checklist の「from scratch」は両立する** —— 09-11 の `@Sen_web3` への回答と同趣旨が、
+**4日早く別チームにも出ていた**（`Pascal | ETHGlobal`・**2026-09-07 20:56 JST**・`@ulysse98` への返信・原文）:
+
+> Thanks for flagging this. This is fine on the continuity track as long as the work that you are submitting,
+> aka the functionallity you added to your project, was only built out during ETHOnline 2026
+
+**`@Sen_web3` への 09-11 14:39 の回答（"Yes both are fine…"）の正典は `PRIZES.md` §1.2。ここには写さない。**
+09-07 のこの回答はその裏付けで、加えて「提出するのは**会期中に足した機能だけ**」という範囲の限定を明示している。
+
+**(3) ETHGlobal Tokyo の会場は会期中ずっと開いている**（`Pascal | ETHGlobal`・**2026-09-08 17:32 JST**・原文）:
+
+> Yes. Throughout the duration of the Hackathon. Friday 1PM to Sunday Closing (5-6pm)
+
+**Tokyo 2026 の応募締切と枠は Discord からは依然取れない。**
+`#🚨click-for-info🚨` は `Sen_web3` に履歴の閲覧権限が無いまま（今回も「メッセージ履歴を表示する権限がありません」）。
