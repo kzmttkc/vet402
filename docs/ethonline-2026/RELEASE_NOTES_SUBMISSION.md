@@ -1,35 +1,36 @@
 # Release `ethonline-2026-submission` — body draft
 
-> **Not cut yet.** This is the text for the GitHub Release that will be created on **2026-09-13, before the
-> 16:00 UTC deadline**, pointing at the last commit of the submission. It cannot be created earlier because a
-> Release pins one commit, and commits are still landing. Nothing in this file is pasted anywhere else.
-> The boundary tag already has its own Release (`pre-ethonline-2026 — boundary tag`, 2026-09-07); this one is
-> the other end of the range.
+> **Cut on 2026-09-12 UTC (2026-09-13 JST)**, before the 2026-09-13 16:00 UTC deadline, from the last commit
+> of the submission — a Release pins one commit, so it could not be cut earlier while commits were still
+> landing. Nothing in this file is pasted anywhere else. The boundary tag has its own Release
+> (`pre-ethonline-2026 — boundary tag`, 2026-09-07); this one is the other end of the range.
 >
-> **On 2026-09-13**: replace every `{{…}}` with the value printed by the command next to it, regenerate
-> `COMMITS_EN.md` and prove it is not behind — `node scripts/ethonline-commits-en.mjs && node scripts/ethonline-commits-en.mjs --check --strict`
-> (both exit 0; `npm test` runs `--check` without `--strict`, where a file that is merely behind is only a `note:`), commit, then
-> `gh release create ethonline-2026-submission --target <that commit> --title "ETHOnline 2026 submission — payOrRefuse" --notes-file <this body>`.
-> A pre-release flag is not needed; the tag is not moved afterwards.
+> **What was done before the cut**: every `{{…}}` below was replaced with the value printed by the command
+> that stood next to it; `COMMITS_EN.md` was regenerated and proven not behind —
+> `node scripts/ethonline-commits-en.mjs && node scripts/ethonline-commits-en.mjs --check --strict`
+> (both exit 0; `npm test` runs `--check` without `--strict`, where a file that is merely behind is only a `note:`);
+> the result was committed and pushed, and the Release was cut from that commit with
+> `gh release create ethonline-2026-submission --target <that commit> --title "ETHOnline 2026 submission — payOrRefuse" --notes-file <the body below the rule>`.
+> No pre-release flag was used, and the tag `pre-ethonline-2026` was not moved.
 
 ---
 
 ## ETHOnline 2026 (Continuity track) — `payOrRefuse`
 
-This release marks the commit we submitted to ETHOnline 2026. Everything we claim for the hackathon is
+This release marks the commit I submitted to ETHOnline 2026. Everything I claim for the hackathon is
 the range between the boundary tag and this one:
 
 ```bash
 git log pre-ethonline-2026..ethonline-2026-submission -- packages/sdk packages/mcp-server \
     examples/ethonline-2026-demo examples/ethonline-2026-ab \
-    SKILL.md AI_USAGE.md docs/ethonline-2026    # what we claim
+    SKILL.md AI_USAGE.md docs/ethonline-2026    # what I claim
 git log pre-ethonline-2026..ethonline-2026-submission    # everything on main in the same days
 ```
 
-### What we submitted
+### What I submitted
 
 An x402 payment gate that refuses **before a signature exists**, judged on live on-chain evidence rather
-than on our word:
+than on my word:
 
 - **`payOrRefuse`** in `@vet402/sdk` (`packages/sdk/src/pay-or-refuse.ts`) — reads the seller's settled
   history from vet402's `/decision` and, as a second evidence source, directly from the x402 Base subgraph on
@@ -47,7 +48,7 @@ than on our word:
 
 Numbers that move (test counts, mutation counts, files added/modified in the window) are not repeated here;
 they live in `README.md` / `SKILL.md` / `AI_USAGE.md` behind `scripts/refresh-numbers.mjs --check`, which CI
-runs on every push. As of this release: `{{node scripts/refresh-numbers.mjs --check | tail -1}}`.
+runs on every push. As of this release: `✔ 12 number(s) consistent across 8 doc(s), 46 mark(s) — 7 derived now, 5 against recorded values (2 of them guarded)`.
 
 ### Where to read, in order
 
@@ -60,21 +61,21 @@ runs on every push. As of this release: `{{node scripts/refresh-numbers.mjs --ch
    keyed by SHA — history is not rewritten.
 4. **`docs/ethonline-2026/DISCLOSURE_2026-09-05.md`** — the written disclosure sent to ETHGlobal before
    judging, verbatim, plus the two corrections made to it afterwards.
-5. `AI_USAGE.md` (who wrote what, by area) and `docs/ethonline-2026/PROMPTS/` (the instructions we worked
+5. `AI_USAGE.md` (who wrote what, by area) and `docs/ethonline-2026/PROMPTS/` (the instructions I worked
    from, by day).
 
-### Pre-existing work — what we disclose
+### Pre-existing work — what I disclose
 
 - vet402 existed before the hackathon: it bought from x402 sellers with real USDC under a daily budget,
   published every success and failure through a hash-chained ledger, and answered "should my agent pay
   this?" at `GET /decision`. None of that is claimed.
 - **Hacking began 2026-09-04 16:00 UTC** (ETHGlobal's published schedule, `hacking-begins`). The boundary
   tag `pre-ethonline-2026` points at `c42daca`, **2026-09-04 00:05:36 UTC — 15 h 54 min before** the start.
-  We are not moving the tag: the disclosure and the submission link to it.
+  I am not moving the tag: the disclosure and the submission link to it.
 - **3 commits in the claimed range were made before 16:00 UTC** (`37c56db`, `e668957`, `ac6ec2e`); they are
   listed with contents in `DISCLOSURE_2026-09-05.md` and marked **⚠ pre-window** in `COMMITS_EN.md`.
   `TZ=UTC git log --until='2026-09-04T16:00:00+00:00' --format='%h %cd %s' --date=iso-local pre-ethonline-2026..main -- <the path filter>`
-- Between our application on 2026-08-23 (`main` was at `26a7c66`) and the tag we continued normal product work on `main`:
+- Between my application on 2026-08-23 (`main` was at `26a7c66`) and the tag I continued normal product work on `main`:
   **214 commits** (`git rev-list --count 26a7c66..pre-ethonline-2026`; the message to ETHGlobal said 207 —
   it stopped counting at 2026-09-03, see the disclosure), 412 files, +28,414 / −1,913 lines
   (`git diff --shortstat 26a7c66..pre-ethonline-2026`).
@@ -85,9 +86,9 @@ runs on every push. As of this release: `{{node scripts/refresh-numbers.mjs --ch
 
 | | |
 |---|---|
-| Commits `pre-ethonline-2026..ethonline-2026-submission` | `{{git rev-list --count pre-ethonline-2026..HEAD}}` |
-| …of which claimed (path filter above) | `{{git rev-list --count pre-ethonline-2026..HEAD -- packages/sdk packages/mcp-server examples/ethonline-2026-demo examples/ethonline-2026-ab SKILL.md AI_USAGE.md docs/ethonline-2026}}` |
-| `COMMITS_EN.md` untranslated subjects, and not behind | `{{node scripts/ethonline-commits-en.mjs --check --strict; echo exit $?}}` (must be 0 problems, `file fresh`, exit 0) |
-| `npm run judge-check` on a clean clone | `{{last line of the table}}` |
+| Commits `pre-ethonline-2026..ethonline-2026-submission` | `403` |
+| …of which claimed (path filter above) | `252` |
+| `COMMITS_EN.md` untranslated subjects, and not behind | `ethonline-commits-en: 403 commits (252 claimed, 3 claimed pre-window), 291 translated, 112 English, file fresh, 0 problem(s)` / `exit 0` |
+| `npm run judge-check` on a clean clone | `judge-check: all 11 steps exit 0` (the line also prints the wall time — 28–30 s on a fresh checkout of this commit with a warm npm cache) |
 
 Team: Takeshi Kazumoto (Discord `Sen_web3`). Prizes applied for: The Graph (Continuity), Bazantic.

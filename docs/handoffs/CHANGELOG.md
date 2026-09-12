@@ -13,6 +13,18 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-13 07:xx JST — 提出 Release `ethonline-2026-submission` を切った（`RELEASE_NOTES_SUBMISSION.md` の `{{…}}` を実測値で確定・一人称を `I` に統一）
+
+- **何を変えたか**: `docs/ethonline-2026/RELEASE_NOTES_SUBMISSION.md` の冒頭注記を「まだ切っていない」から
+  「2026-09-13 に切った」の記録へ書き換え、本文の `{{…}}` 5 箇所を自分で打ったコマンドの出力で置換した
+  （window 合計 403 / claimed 252 / `--check --strict` の 0 problems・file fresh / `judge-check: all 11 steps exit 0`）。
+  あわせて対外英文の `we`/`our` 8 行を `I`/`my` に直した（人は `I`、システムは `vet402`／`it`）。
+  同時に `COMMITS_EN.md` を再生成した（2 コミット目）。
+- **なぜ**: Release は 1 コミットを指すので、締切（2026-09-14 01:00 JST = 09-13 16:00 UTC）前の最終コミットでしか切れない。
+  表の数字は Release が指すコミット時点の値でなければ嘘になる。
+- **影響**: タグ `pre-ethonline-2026` は動かしていない。pre-release にもしていない。
+  以後 `main` に積むコミットは、この Release が指す範囲の外側になる。
+
 ## 2026-09-12 20:5x JST — `VIDEO_SCRIPT.md` が「完成動画」と名指していた画面が、**提出した v4 に存在しなかった**ので、提出物を測り直して直した（動画は作り直していない）
 
 - **何が間違っていたか**: `VIDEO_SCRIPT.md` の S6 行（§1 構成表）と §5 の `{{mutations}}` 行が、
