@@ -6,7 +6,7 @@
 > Continuity の枠は **3 つ**（【一次】ETHGlobal Discord `#👂information`・Pascal・2026-08-17。原文は `WINDOW_PLAN.md` §1.4。`info/details` には無い）。
 > 動画（`VIDEO_SCRIPT.md`）は**録画を見せる**もの。ライブは**その場でターミナルを叩く**もの。同じ絵を二度見せない——
 > 動画に無いのは「**審査員が指定した 402 URL を `judge` に入れる**」（Practicality／WOW）。
-> この文書の数字は **<!-- n:as_of -->2026-09-08<!-- /n --> の実測**（§6・印は `npm run check-numbers` が見る）。**動く数字は当日の朝に §7 のスクリプトで取り直す。**
+> この文書の数字は **<!-- n:as_of -->2026-09-12<!-- /n --> の実測**（§6・印は `npm run check-numbers` が見る）。**動く数字は当日の朝に §7 のスクリプトで取り直す。**
 > 受取人スコア・受領件数など鍵と回線が要るものだけは印に載らない——§6 の「当日取り直す」で扱う。
 
 ## 0. 先に決めたこと
@@ -348,7 +348,7 @@ A: *Eligibility was never the reason. On September 7 I asked ETHGlobal directly 
 
 ## 6. 数字（印 か 当日取り直し）
 
-**印がある数字**（`scripts/refresh-numbers.json` の id・基準日は `n:as_of` = <!-- n:as_of -->2026-09-08<!-- /n -->。**この文書は 09-08 から `docs` に登録されているので、下の値は印そのもの**——前日に `npm run check-numbers` が緑であることを確かめる。赤なら**言わずに**画面の値を読む）:
+**印がある数字**（`scripts/refresh-numbers.json` の id・基準日は `n:as_of` = <!-- n:as_of -->2026-09-12<!-- /n -->。**この文書は 09-08 から `docs` に登録されているので、下の値は印そのもの**——前日に `npm run check-numbers` が緑であることを確かめる。赤なら**言わずに**画面の値を読む）:
 
 | 印 | 値【実測 09-08】 | それを出すコマンド（リポ root から） | どこで使う |
 |---|---|---|---|
@@ -357,10 +357,10 @@ A: *Eligibility was never the reason. On September 7 I asked ETHGlobal directly 
 | `n:sdk_tests` | <!-- n:sdk_tests -->1679<!-- /n --> | `npm test --prefix packages/sdk 2>&1 \| sed -n 's/^ℹ tests //p'` | 画面のみ（言わない） |
 | `n:mcp_tests` | <!-- n:mcp_tests -->780<!-- /n --> | `npm run build --prefix packages/mcp-server && npm test --prefix packages/mcp-server 2>&1 \| sed -n 's/^ℹ tests //p'` | 画面のみ（言わない） |
 | `n:demo_tests` | <!-- n:demo_tests -->169<!-- /n --> | `npm test --prefix examples/ethonline-2026-demo 2>&1 \| sed -n 's/^ℹ tests //p'`（鍵不要・0.5s） | 画面のみ（言わない） |
-| `n:total_commits` | <!-- n:total_commits -->820<!-- /n --> | `git rev-list --count --until='{{AS_OF_END}}' HEAD` | Q7（言うのは「大半」。値は `AI_USAGE.md` を指す） |
-| `n:ai_trailer_commits` | <!-- n:ai_trailer_commits -->690<!-- /n --> | `git log --grep='Co-Authored-By: Claude' --until='{{AS_OF_END}}' --oneline \| wc -l` | 同上 |
-| `n:merge_commits` / `n:no_trailer_commits` | <!-- n:merge_commits -->34<!-- /n --> / <!-- n:no_trailer_commits -->130<!-- /n --> | `git rev-list --count --merges --until='{{AS_OF_END}}' HEAD`／`n:total_commits` − `n:ai_trailer_commits` | 同上（trailer 無し＝「不明」であって「人間」ではない） |
-| `n:window_added_files` / `n:window_modified_files` | <!-- n:window_added_files -->206<!-- /n --> / <!-- n:window_modified_files -->194<!-- /n --> | `git diff --diff-filter=A --name-only pre-ethonline-2026..{{AS_OF_SHA}} \| wc -l`（`M` で変更分） | Q6（画面のみ） |
+| `n:total_commits` | <!-- n:total_commits -->903<!-- /n --> | `git rev-list --count --until='{{AS_OF_END}}' HEAD` | Q7（言うのは「大半」。値は `AI_USAGE.md` を指す） |
+| `n:ai_trailer_commits` | <!-- n:ai_trailer_commits -->770<!-- /n --> | `git log --grep='Co-Authored-By: Claude' --until='{{AS_OF_END}}' --oneline \| wc -l` | 同上 |
+| `n:merge_commits` / `n:no_trailer_commits` | <!-- n:merge_commits -->34<!-- /n --> / <!-- n:no_trailer_commits -->133<!-- /n --> | `git rev-list --count --merges --until='{{AS_OF_END}}' HEAD`／`n:total_commits` − `n:ai_trailer_commits` | 同上（trailer 無し＝「不明」であって「人間」ではない） |
+| `n:window_added_files` / `n:window_modified_files` | <!-- n:window_added_files -->227<!-- /n --> / <!-- n:window_modified_files -->206<!-- /n --> | `git diff --diff-filter=A --name-only pre-ethonline-2026..{{AS_OF_SHA}} \| wc -l`（`M` で変更分） | Q6（画面のみ） |
 
 `{{AS_OF_END}}` / `{{AS_OF_SHA}}` は `n:as_of` に固定した基準時刻と sha（`scripts/refresh-numbers.json` が展開する）。**手で日付を入れない。**
 

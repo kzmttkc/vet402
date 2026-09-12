@@ -4,7 +4,7 @@
 
 ## How this file is made
 
-This is `git log pre-ethonline-2026..b790716` (384 commits), grouped by day in UTC and rendered by
+This is `git log pre-ethonline-2026..221708d` (386 commits), grouped by day in UTC and rendered by
 [`scripts/ethonline-commits-en.mjs`](../../scripts/ethonline-commits-en.mjs) — `node scripts/ethonline-commits-en.mjs` regenerates it;
 `--check` (run by `npm test`) fails if this file is not what the script produces from the commit named in the **Generated** row — that is,
 if it was edited by hand. A Japanese subject with no translation, and commits after that one which did not regenerate this file, are warnings;
@@ -12,10 +12,10 @@ if it was edited by hand. A Japanese subject with no translation, and commits af
 the window contains work I do **not** submit; the **Claimed** column is derived from the path filter in `README.md`:
 
 ```bash
-git log pre-ethonline-2026..b790716 -- packages/sdk packages/mcp-server \
+git log pre-ethonline-2026..221708d -- packages/sdk packages/mcp-server \
     examples/ethonline-2026-demo examples/ethonline-2026-ab \
     SKILL.md AI_USAGE.md docs/ethonline-2026    # ✔ claimed
-git log pre-ethonline-2026..b790716             # everything, ✔ and —
+git log pre-ethonline-2026..221708d             # everything, ✔ and —
 ```
 
 A commit is ✔ when it touches at least one of those paths, — otherwise. Subjects written before the English-subject rule took effect
@@ -26,12 +26,12 @@ that instant are marked **⚠ pre-window** below and listed in [`DISCLOSURE_2026
 
 | | |
 |---|---|
-| Generated | 2026-09-12 06:00:18 UTC from `b79071681b642b16d5243135563306bd4da49990` |
-| Range | `pre-ethonline-2026..b790716` — **384 commits** on 9 days (UTC), 13 of them merges |
-| Claimed (✔) | **234** — touch at least one path in the filter |
+| Generated | 2026-09-12 06:10:27 UTC from `221708d9637ee2cab56eb7832cb6cb34c036939b` |
+| Range | `pre-ethonline-2026..221708d` — **386 commits** on 9 days (UTC), 13 of them merges |
+| Claimed (✔) | **236** — touch at least one path in the filter |
 | Not claimed (—) | **150** — production work in the same days |
 | Claimed but before 2026-09-04 16:00:00 UTC | **3** (⚠) |
-| Subjects translated from Japanese | **286** (English already: 98) |
+| Subjects translated from Japanese | **286** (English already: 100) |
 
 ## Claimed, by day (UTC)
 
@@ -86,14 +86,16 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 - [`04a186b`](https://github.com/kzmttkc/vet402/commit/04a186b1fc63cbe2c24027b436bca300bb9a2e99) 05:18 — docs(live-judging): speak as I, not we, and put the A/B v2 result on the 3:15 screen and in Q4, Q5, Q14 (119 lines)
 - [`276cdae`](https://github.com/kzmttkc/vet402/commit/276cdae2d6030f109a02c73ff703e3c516ad8400) 00:34 — docs(judge-walk): make the pay_if_trusted blocks runnable as pasted, refresh test counts, match pay/refuse wording to production (102 lines)
 
-### 2026-09-12 — 1 of 1 claimed
+### 2026-09-12 — 3 of 3 claimed
 
 - [`b790716`](https://github.com/kzmttkc/vet402/commit/b79071681b642b16d5243135563306bd4da49990) 05:47 — docs(strategy): record the owner-confirmed hackathon strategy as a cross-event section — GTM first, partner prizes second (129 lines)
+- [`97a6788`](https://github.com/kzmttkc/vet402/commit/97a67880af9070cebff08de0a7d2d0c2e41ae600) 06:00 — docs(ab): pre-register A/B v3 as WINDOW_PLAN §16.6 — one sentence of Recipe step 5, fixed before the data (92 lines)
+- [`221708d`](https://github.com/kzmttkc/vet402/commit/221708d9637ee2cab56eb7832cb6cb34c036939b) 06:10 — chore(packages): release @vet402/sdk 0.6.0 and @vet402/mcp-server 0.3.0 to npm (22 lines)
 
 ## Every commit, by day (UTC), oldest first
 
 <details>
-<summary>All 384 commits — ✔ claimed and — not claimed (click to expand)</summary>
+<summary>All 386 commits — ✔ claimed and — not claimed (click to expand)</summary>
 
 ### 2026-09-04 — 87 commits, 11 claimed
 
@@ -518,10 +520,12 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`f0e1c20`](https://github.com/kzmttkc/vet402/commit/f0e1c20c4567c0ce20b35f9265db84661e2ac2a1) | 06:16 | ✔ | docs(prizes): record ETHGlobal's 2026-09-11 answer on the Final checklist wording |
 | [`2fd99df`](https://github.com/kzmttkc/vet402/commit/2fd99df630f46af79fad90cd1050fba62ec5b943) | 06:16 | ✔ | fix(commits-en): write the generated header in the first person singular, and regenerate COMMITS_EN.md |
 
-### 2026-09-12 — 1 commits, 1 claimed
+### 2026-09-12 — 3 commits, 3 claimed
 
 | SHA | UTC | Claimed | Subject (English) |
 |---|---|:---:|---|
 | [`b790716`](https://github.com/kzmttkc/vet402/commit/b79071681b642b16d5243135563306bd4da49990) | 05:47 | ✔ | docs(strategy): record the owner-confirmed hackathon strategy as a cross-event section — GTM first, partner prizes second |
+| [`97a6788`](https://github.com/kzmttkc/vet402/commit/97a67880af9070cebff08de0a7d2d0c2e41ae600) | 06:00 | ✔ | docs(ab): pre-register A/B v3 as WINDOW_PLAN §16.6 — one sentence of Recipe step 5, fixed before the data |
+| [`221708d`](https://github.com/kzmttkc/vet402/commit/221708d9637ee2cab56eb7832cb6cb34c036939b) | 06:10 | ✔ | chore(packages): release @vet402/sdk 0.6.0 and @vet402/mcp-server 0.3.0 to npm |
 
 </details>

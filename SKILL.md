@@ -344,7 +344,7 @@ cd packages/sdk && npm install && npm test 2>&1 | grep -E '^ℹ '
 ℹ fail 0
 ```
 
-(Re-run <!-- n:as_of -->2026-09-08<!-- /n --> with `npm ci && npm test`. The count grows as tests are added — run it, do not
+(Re-run <!-- n:as_of -->2026-09-12<!-- /n --> with `npm ci && npm test`. The count grows as tests are added — run it, do not
 trust this line.)
 
 **It has moved real money.** On 2026-09-05 a throwaway payer bought The Graph's own x402 endpoint

@@ -43,12 +43,12 @@ Implementation, tests, and audits, under the direction above. Claude (Opus / Fab
 writes most of the code in this repository. I say that plainly rather than annotate a handful of files.
 
 ```bash
-git rev-list --count HEAD                                  # 820 commits (2026-09-08)
-git log --grep='Co-Authored-By: Claude' --oneline | wc -l  # 690 carry the AI trailer
+git rev-list --count HEAD                                  # 903 commits (2026-09-12)
+git log --grep='Co-Authored-By: Claude' --oneline | wc -l  # 770 carry the AI trailer
 git rev-list --count --merges HEAD                         # 34 are merge commits
 ```
 
-**The <!-- n:no_trailer_commits -->130<!-- /n --> without the trailer are not "written by a human".** <!-- n:merge_commits -->34<!-- /n --> are merges; most of the rest are AI
+**The <!-- n:no_trailer_commits -->133<!-- /n --> without the trailer are not "written by a human".** <!-- n:merge_commits -->34<!-- /n --> are merges; most of the rest are AI
 commits from before I adopted the trailer, or ones where it was simply forgotten. **Read the absence of
 a trailer as "unknown", not as "human".** The numbers move every day — re-run the commands.
 
@@ -75,8 +75,8 @@ a trailer as "unknown", not as "human".** The numbers move every day — re-run 
 **Window totals move daily; derive them rather than trusting this line:**
 
 ```bash
-git diff --diff-filter=A --name-only pre-ethonline-2026..main | wc -l   # 206 added   (2026-09-08)
-git diff --diff-filter=M --name-only pre-ethonline-2026..main | wc -l   # 194 modified
+git diff --diff-filter=A --name-only pre-ethonline-2026..main | wc -l   # 227 added   (2026-09-12)
+git diff --diff-filter=M --name-only pre-ethonline-2026..main | wc -l   # 206 modified
 ```
 
 **Not all of that is this submission.** `main` is also the production branch and carries work unrelated
