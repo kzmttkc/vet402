@@ -1,6 +1,6 @@
 # SKILL: pay an x402 endpoint only when the evidence is there
 
-> **Status: implemented and green as of 2026-09-07 (ETHOnline 2026 window; re-run on a clean clone).**
+> **Status: implemented and green as of 2026-09-12 (ETHOnline 2026 window; re-run on a clean clone).**
 > `payOrRefuse` (`@vet402/sdk`) and the MCP tool `pay_if_trusted` (`@vet402/mcp-server`) both exist
 > and are exercised by tests you can run yourself — see **How a judge can run it** below.
 > **The Graph subgraph evidence source is built, wired and paid for.** `payOrRefuse` reads the

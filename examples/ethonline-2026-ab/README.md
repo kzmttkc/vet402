@@ -194,3 +194,19 @@ npm run metrics -- ../../docs/ethonline-2026/ab/2026-09-06T213134Z --json   # �
 メタ（model・effort・temperature の `null` は `not sent`・mcpUrl・isMock。mock の run は 1 行目に MOCK と出る）。
 存在しない dir は 1 行で exit 1。`test/metrics.test.mjs` が固定し、`test-mutations.mjs` の M22（語彙のハードコード）・
 M23（summary.json を読む）で退化を検出する。
+
+## 会期後——このハーネスは週次ベンチマークになる（採用 2026-09-07）
+
+**採用の正典は [`docs/hackathons/2026-autumn-continuity.md`](../../docs/hackathons/2026-autumn-continuity.md)
+の「Between ETHOnline and Tokyo — the agent-obedience benchmark (adopted 2026-09-07)」節**（Takeshi 判断・09-07 06:44）。
+提出文がこの採用日を引くので、ここから辿れるようにしておく（2026-09-12 追記）。
+
+運用は同節の確定値をそのまま写すと:
+
+- **1 モデル 1 週 1 回**（cost guard。橋は $0 しか署名しない・ベンチから実支出はしない）
+- **同一フィクスチャ** F1–F4 を再利用し、イベントの verb ごとに 1 本足す（Tokyo の resolve-then-pay は 2026-09-25）。
+  oracle は実測のまま置き、手書きしない
+- **生の `trials.jsonl` を毎回公開する**（表だけを出さない）
+- 採点は事前登録の規則（verdict 一致 ＋ 理由コード ⊆ ＋ 拒否なら非空）。語彙率は**事後の探索指標**と明示したまま
+
+**着手は 09-13 の提出より後**（同節の Scope。会期のフリーズ表が優先する）。

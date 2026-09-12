@@ -1065,6 +1065,24 @@ curl -sL -X POST "https://gateway.thegraph.com/api/$GRAPH_API_KEY/subgraphs/id/C
 **`_meta.block.number` と `deployment` が「live のデータを読んだ」ことの唯一の自明な証明**なので、
 `evidence[].source` の subgraph 行に必ず同梱する（§2 #3）。
 
+### 2026-09-08 の実測値（deployment pin を足したときの live check）
+
+`beac4f9`（`--pin-deployment` を実装したコミット）の本文に書いた live check を、ここへ写す。
+**この数字はコミット本文にしか無く、`git grep` では出てこなかった**（提出文がこの値を引くので、
+ファイル側にも1行置く。2026-09-12 追記）。
+
+| | |
+|---|---|
+| `_meta.deployment` | `QmcE24HARdXXnziPii9bWFRV6njfWW82H1RKPe5x9hBkUN` |
+| `_meta.block.number` | **51,039,617** |
+| pin 一致のとき | `judge` が **1,374 receipts** を読んで `ALLOW` |
+| 別 id に pin したとき | `REFUSE` `subgraph_evidence_unavailable`（vet402 自身の評決が `ALLOW` でも） |
+
+対象はデモのもう一方のフィクスチャ（`kronossignals.com` の受取人）。`SKILL.md` の
+2026-09-06 の実測が同じ受取人で **1,351 receipts・block 50956189** なので、2日で 1,351 → 1,374 と増えている。
+
+確かめ方（鍵不要・読み取りだけ）: `git log -1 --format=%B beac4f9 | grep -A3 'Live check'`
+
 ### 語彙: 決済の主張は**3状態**（2026-09-05 09:03 に本番 `llms-full.txt` と方法論の DefinedTermSet から取得）
 
 **私は「vet402.com がこれから足す文案」として別の文を書いていたが、誤りだった。**
