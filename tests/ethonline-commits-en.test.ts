@@ -29,7 +29,8 @@
 //   4. ピンを「再生成しなかったコミットの1つ前」へ戻した写し（= 本当に遅れているファイル）は、既定では
 //      exit 0 + "note: … stale"、--strict では exit 1（2段が実際に分かれていることの負の試験）
 //   5. 対訳の無い日本語件名がある状態（titles から1件抜いた写しを --titles で読ませる）は、既定では
-//      exit 0 + "note: … [untranslated]"、--strict では exit 1（同上）
+//      exit 0 + "note: … [untranslated]"、--strict では exit 1（同上）。件数は「素の件数 + 1」で見る——
+//      main が対訳の遅れを抱えていてよいのが2段の趣旨なので、素を 0 と決め打つと試験自身が赤の原因になる
 //
 // 前提: リポに tag pre-ethonline-2026 と全履歴がある（CI の test ジョブは fetch-depth: 0。depth 1 では走らない）。
 // ============================================================
@@ -116,31 +117,57 @@ test("a Japanese subject with no translation is a note by default and red under 
   // Punch one hole in a *copy* of the titles file (never the real one — other tests read it), then render a
   // copy of the index from that. The rendered copy matches what the script renders from its own pin, so the
   // always-red content check passes and only the untranslated grade is exercised.
-  const titles = JSON.parse(readFileSync(TITLES, "utf8")) as { titles: Record<string, { ja: string; en: string }> };
-  const inWindow = new Set(git("log", "--format=%H", "pre-ethonline-2026..HEAD").split("\n").filter(Boolean));
-  const dropped = Object.keys(titles.titles).find((sha) => inWindow.has(sha));
-  assert.ok(dropped, "no translated commit inside the window to drop");
-  delete titles.titles[dropped];
+  //
+  // Counted against a baseline, not against zero (2026-09-12). A gap on `main` is a note by design — that is
+  // the whole point of the two grades — so `main` may carry any number of untranslated subjects. Asserting
+  // the literal "1 untranslated" quietly made the repo's own backlog part of this fixture: on 2026-09-12 a
+  // Japanese subject landed with no entry, the bare count became 1, the hole made it 2, the assertion missed,
+  // root `npm test` went red and every session lost `push` — the same accident as d0346b3 on 2026-09-10, which
+  // is exactly what the two grades exist to prevent. So measure the bare count first and assert bare + 1. The
+  // meaning is unchanged: one hole must add exactly one untranslated row, and --strict must still be red.
   const dir = mkdtempSync(join(tmpdir(), "commits-en-"));
+
+  // The bare count on this ref, asked of the generator itself (no --check — it only renders to a temp path).
+  // No suffix in the summary means zero.
+  const bare = run(["--out", join(dir, "baseline.md")]);
+  assert.equal(bare.code, 0, `the generator is red on the real titles file:\n${bare.text}`);
+  const baseline = Number(/, (\d+) untranslated \(note\)/.exec(bare.text)?.[1] ?? 0);
+  const expected = baseline + 1;
+
+  const titles = JSON.parse(readFileSync(TITLES, "utf8")) as { titles: Record<string, { ja: string; en: string }> };
+  // The commit whose entry we drop must have a Japanese subject: the generator prints a non-CJK subject as is
+  // and never looks the entry up, so dropping an English-subject entry would add no untranslated row at all.
+  const CJK = /[぀-ヿ一-鿿！-｠]/; // identical to the one in scripts/ethonline-commits-en.mjs
+  const subjects = new Map(
+    git("log", "--format=%H%x1f%s", "pre-ethonline-2026..HEAD")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => l.split("\x1f") as [string, string]),
+  );
+  const dropped = Object.keys(titles.titles).find((sha) => CJK.test(subjects.get(sha) ?? ""));
+  assert.ok(dropped, "no translated Japanese subject inside the window to drop");
+  delete titles.titles[dropped];
   const holed = join(dir, "commit-titles-en.json");
   writeFileSync(holed, JSON.stringify(titles, null, 2));
   const p = join(dir, "COMMITS_EN.md");
 
   // The generator must still write the file and exit 0 — a gap is a note, so a gap cannot block the runbook's
-  // `generate && --check --strict` chain before the strict pass gets to speak.
+  // `generate && --check --strict` chain before the strict pass gets to speak. The count must be exactly one
+  // more than the bare count: the hole added a row, and nothing else moved.
   const gen = run(["--titles", holed, "--out", p]);
   assert.equal(gen.code, 0, `generator went red on a missing translation:\n${gen.text}`);
   assert.match(gen.text, /\[untranslated\]/);
+  assert.match(gen.text, new RegExp(`, ${expected} untranslated \\(note\\)`));
   assert.match(readFileSync(p, "utf8"), /\[untranslated\]/);
 
   const soft = check(p, "--titles", holed);
   assert.equal(soft.code, 0, `expected exit 0 without --strict, got ${soft.code}:\n${soft.text}`);
   assert.match(soft.text, new RegExp(`note: ${dropped.slice(0, 7)} \\[untranslated\\]`));
-  assert.match(soft.text, /1 untranslated \(note\)/);
-  assert.match(soft.text, /0 problem\(s\)/);
+  assert.match(soft.text, new RegExp(`, ${expected} untranslated \\(note\\)`));
+  assert.match(soft.text, /, 0 problem\(s\)/);
 
   const strict = check(p, "--titles", holed, "--strict");
   assert.equal(strict.code, 1, `expected exit 1 with --strict, got ${strict.code}:\n${strict.text}`);
   assert.match(strict.text, new RegExp(`^ethonline-commits-en: ${dropped.slice(0, 7)} \\[untranslated\\]`, "m"));
-  assert.match(strict.text, /1 problem\(s\)/);
+  assert.match(strict.text, new RegExp(`, ${expected} problem\\(s\\)`));
 });
