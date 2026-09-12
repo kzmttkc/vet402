@@ -117,9 +117,19 @@ function defectNote(defect: "degraded" | "unreadable" | "partial", signals: unkn
   return ` — unread inputs: ${names}; not measured, never waived`;
 }
 
+/**
+ * 台帳が言う配達件数。**述語は SDK `evaluateEvidencePolicy` と同じ 1 行**——
+ * `Number.isInteger(n) && n >= 0` でなければ 0 件と読む。
+ *
+ * `typeof n === "number"` だけで通していたので、`JSON.parse` が `1e400` を読んだ
+ * `Infinity` と小数 `2.5` が床を満たし、**画が「通る」と予告した世界で金の経路は
+ * `insufficient_delivery_evidence` で拒んでいた**（2026-09-12 監査 H-2・
+ * `test/gate-parity.test.mjs` の面「l1 floor」が 4 マスで実測）。
+ * 予告が外れる画は動画の嘘になるので、**判定する側に合わせる**（緩める側ではない）。
+ */
 export function l1Delivered(decision: DecisionBody | null): number {
   const n = decision?.facts?.l1?.n_delivered;
-  return typeof n === "number" ? n : 0;
+  return typeof n === "number" && Number.isInteger(n) && n >= 0 ? n : 0;
 }
 
 export async function assess(options: AssessOptions): Promise<{ view: PayView; reads: Reads }> {

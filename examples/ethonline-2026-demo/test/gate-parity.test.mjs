@@ -19,6 +19,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { runPay, PAY_TARGET, PAY_POLICY } from "../src/pay.ts";
 import { runJudge, parseJudgeArgs } from "../src/judge.ts";
+import { assess } from "../src/assess.ts";
+import { instrument, probeChallenge } from "../src/probe.ts";
+import { renderPayDryRun } from "../src/render.ts";
 import { createEmitter } from "../src/emit.ts";
 import { payOrRefuse } from "../../../packages/sdk/dist/index.js";
 
@@ -115,8 +118,49 @@ function makeFetch(world = {}) {
   return { fetch, calls };
 }
 
+/**
+ * **床を上げた世界の A。** `runPay` は `PAY_POLICY` を持ち回りで固定していて、規則を
+ * 差し替える引数を持たない——持たせれば「画に出した規則と本当に効いた規則」が別物になり得る
+ * （`pay.ts` の設計理由そのもの）。なので床を振る世界だけ、`pay` が使うのと同じ `assess` +
+ * `renderPayDryRun` を直に呼ぶ。**予告の判定規則はここに写さず、`render` の出した行を読む。**
+ *
+ * `assess` には署名の経路が1行も無い（`payOrRefuse` を import すらしない）ので、
+ * この道では署名器を Proxy で見張る意味がない——`signed` は常に false。
+ */
+async function runAWithFloor(world, minL1Deliveries) {
+  const net = instrument(makeFetch(world).fetch);
+  const probe = await probeChallenge(net.fetch, PAY_TARGET.method, PAY_TARGET.url, PAY_TARGET.body);
+  const { view } = await assess({
+    target: {
+      method: PAY_TARGET.method,
+      url: PAY_TARGET.url,
+      body: PAY_TARGET.body,
+      expectedPayee: PAY_TARGET.payee,
+      ceilingUsd: PAY_TARGET.amountUsd,
+    },
+    policy: { requireVet402Allow: PAY_POLICY.requireVet402Allow, evidence: { ...PAY_POLICY.evidence, minL1Deliveries } },
+    env: ENV,
+    net,
+    probe,
+    envNames: ["GRAPH_API_KEY", "VOUCH_API_KEY"],
+    mode: "pay",
+    live: false,
+  });
+  const screen = renderPayDryRun(view, { color: false }).join("\n");
+  const m = screen.match(/predicted\s+(--live would [\s\S]*?)(?=\n\s*-{5,})/);
+  const predicted = m ? m[1].replace(/\n\s+/g, " ").trim() : "(no predicted line)";
+  return {
+    signal: /would sign and send/.test(predicted) ? "SIGN" : /would REFUSE/.test(predicted) ? "REFUSE" : "?",
+    predicted,
+    screen,
+    gates: view.gates,
+    signed: false,
+  };
+}
+
 /** A: `pay` 空撃ち。画の `predicted` 行が SIGN と言うか REFUSE と言うか。 */
-async function runA(world) {
+async function runA(world, floor) {
+  if (floor !== undefined) return runAWithFloor(world, floor);
   const out = [];
   const f = makeFetch(world);
   const w = watchedAccount();
@@ -162,7 +206,7 @@ async function runB(world, extraArgs = []) {
 }
 
 /** C: 拘束力を持つ関門。偽 fetch + Proxy account なので、ネットも金も動かない。 */
-async function runC(world) {
+async function runC(world, floor) {
   const f = makeFetch(world);
   const w = watchedAccount();
   const r = await payOrRefuse({
@@ -171,7 +215,11 @@ async function runC(world) {
     policy: {
       maxPerTxUsd: PAY_TARGET.amountUsd,
       requireVet402Allow: PAY_POLICY.requireVet402Allow,
-      evidence: { ...PAY_POLICY.evidence, graphApiKey: ENV.GRAPH_API_KEY },
+      evidence: {
+        ...PAY_POLICY.evidence,
+        ...(floor === undefined ? {} : { minL1Deliveries: floor }),
+        graphApiKey: ENV.GRAPH_API_KEY,
+      },
     },
   });
   const signed = w.signAccesses().length > 0;
@@ -192,7 +240,13 @@ const META = { block: { number: 50890586, timestamp: 1788570519 }, deployment: "
 const ROW = (t) => [{ role: "RECIPIENT", totalPayments: t, totalVolumeDecimal: "2.5", firstPaymentTimestamp: "1", lastPaymentTimestamp: "2" }];
 
 /**
- * 監査役が歩いた 78 マス。`[面, 壊れた形, world]`。
+ * 監査役が歩いた 78 マス。`[面, 壊れた形, world]`、床を振る世界だけ第4要素に
+ * `minL1Deliveries`（A・B・C の3本すべてに同じ値を渡す）。
+ *
+ * **床を明示しない世界は `minL1Deliveries: 0`** ——`PAY_POLICY` が読取の宣言として 0 を
+ * 置いているからで、0 の床はどの件数でも満たされる。だから `facts.l1.n_delivered` の形を
+ * ここに足しても、床を上げない限り A も B も C も一度も L1 を判定しない（＝関門にならない）。
+ *
  * ここに世界を足すのは自由（期待値は C から取るので、表を書き足しても嘘は入らない）。
  */
 export const CASES = [
@@ -223,6 +277,21 @@ export const CASES = [
   ["decision body", "degraded:1 (数)", { decision: D({ degraded: 1 }) }],
   ["decision body", "degraded 欄が無い", { decision: { status: 200, body: { recommendation: "ALLOW", reason_codes: [], facts: { l1: { n_delivered: 3 } } } } }],
   ["decision body", "recommendation 欄が無い", { decision: { status: 200, body: { degraded: false, reason_codes: [], facts: { l1: { n_delivered: 3 } } } } }],
+
+  // ---- 面: `facts.l1.n_delivered` の形（床 1 を置いて、初めて関門になる） ----
+  // 床を 0 のままにすると「どの形でも通る」ので、この面だけ第4要素で 1 に上げる。
+  // 2026-09-12 の監査が実測した反例: `1e400`（JSON の Infinity）と `2.5` が
+  // デモ側の床を満たし、`payOrRefuse` は 0 件と読んで拒んでいた。
+  ["l1 floor", "n_delivered 3（整数・床を満たす）", { decision: D() }, 1],
+  ["l1 floor", "n_delivered Infinity (1e400)", { decision: D({ facts: { l1: { n_delivered: 1e400 } } }) }, 1],
+  ["l1 floor", "n_delivered 2.5（小数）", { decision: D({ facts: { l1: { n_delivered: 2.5 } } }) }, 1],
+  ["l1 floor", "n_delivered -1（負）", { decision: D({ facts: { l1: { n_delivered: -1 } } }) }, 1],
+  ["l1 floor", 'n_delivered "3"（文字列）', { decision: D({ facts: { l1: { n_delivered: "3" } } }) }, 1],
+  ["l1 floor", "n_delivered 欄が無い", { decision: D({ facts: { l1: {} } }) }, 1],
+  ["l1 floor", "facts 欄が無い", { decision: { status: 200, body: { recommendation: "ALLOW", degraded: false, reason_codes: [] } } }, 1],
+  // 監査の再現そのまま: WARN を `requireVet402Allow:false` で免除した上で床だけが判定する世界。
+  ["l1 floor", "WARN 免除 + n_delivered Infinity", { decision: D({ recommendation: "WARN", facts: { l1: { n_delivered: 1e400 } } }) }, 1],
+  ["l1 floor", "WARN 免除 + n_delivered 2.5", { decision: D({ recommendation: "WARN", facts: { l1: { n_delivered: 2.5 } } }) }, 1],
 
   // ---- 面: 買い手（受取人）スコア。uncatalogued 経路 ----
   ["payee score", "ALLOW", {}],
@@ -306,10 +375,10 @@ const JUDGE_IS_A_DIFFERENT_DOOR = new Set([
  */
 const JUDGE_NAMES_ITS_OWN_REASON = new Set(["402 / payTo が非 0x (ENS 名)"]);
 
-for (const [surface, shape, world] of CASES) {
+for (const [surface, shape, world, floor] of CASES) {
   test(`関門の一致 A=B=C — ${surface} / ${shape}`, async () => {
-    const c = await runC(world);
-    const a = await runA(world);
+    const c = await runC(world, floor);
+    const a = await runA(world, floor);
     assert.equal(
       a.signal,
       c.signal,
@@ -319,7 +388,7 @@ for (const [surface, shape, world] of CASES) {
     );
     assert.equal(a.signed, false, "空撃ちは、どの世界でも署名器へ触れてはならない");
     if (JUDGE_IS_A_DIFFERENT_DOOR.has(`${surface} / ${shape}`)) return;
-    const b = await runB(world);
+    const b = await runB(world, floor === undefined ? [] : ["--min-l1-deliveries", String(floor)]);
     assert.equal(
       b.signal,
       c.signal,

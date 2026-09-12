@@ -13,6 +13,24 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-12 20:19 JST — デモ CLI の配達件数の読み方が金の関門とずれていた（監査 H-2）ので、述語を関門側にそろえた。`gate-parity` に床 1 の面を足して、ずれを関門で捕まえるようにした
+
+- **変えたもの（デモとテストだけ・2 ファイル）**: `examples/ethonline-2026-demo/src/assess.ts` の `l1Delivered`（`typeof n === "number" ? n : 0` → `typeof n === "number" && Number.isInteger(n) && n >= 0 ? n : 0`）と、`examples/ethonline-2026-demo/test/gate-parity.test.mjs`（面「l1 floor」9 マスと、床を A・B・C の3本へ同時に渡す仕掛け）。
+  **`packages/sdk`・`packages/mcp-server`・決済経路・理由コード語彙・本番コードには触れていない**
+- **何がずれていたか（直す前に自分で再現した）**: `facts.l1.n_delivered` が `1e400`（`JSON.parse` が読む `Infinity`）または小数 `2.5` で、床が `--min-l1-deliveries 1` のとき、
+  `judge` は **ALLOW**、空撃ちの画は **「would sign and send」**、同じ入力で金の関門は **REFUSE `insufficient_delivery_evidence`**。
+  金の関門は `Number.isInteger(n) && n >= 0` でなければ 0 件と読む（2026-09-08 に同じ穴を塞いである）が、デモは `typeof n === "number"` しか見ていなかった
+- **なぜ直すのか**: 提出物の中心の主張は「デモで見せている関門は、本当に金を動かす関門と同じ」。予告が外れる画はその反例になる。
+  **緩める側ではなく判定する側にそろえた**（デモが甘い方を直した）
+- **テストが先に赤くなることを見てから直した**: 面「l1 floor」を足した時点で 4 マスが赤（`Infinity` / `2.5` × ALLOW / WARN 免除）。修正後 `gate-parity` は 89/89 緑
+- **床を明示しない世界は判定していない**: `PAY_POLICY` の `minL1Deliveries` は読取の宣言としての 0 で、0 の床はどの件数でも満たされる。
+  だから `n_delivered` の形だけ表に足しても関門にならない——この面だけ第4要素で床を 1 に上げてある
+- **そちらへの影響**: 無し（デモ CLI の画と判定のみ）。ただし `--min-l1-deliveries` を 1 以上で使った過去のデモ出力は、上の 2 形について ALLOW 側に偏っていた
+- **止めて残したもの（H-3・オーナー承認が要る）**: `packages/sdk/src/pay-or-refuse.ts` の `/decision` 本文の品質判定が `degraded` しか見ておらず、`scoreQualityDefect`（`signalsUnavailable` も読む）を通っていない。
+  そのため `decision body` × `signalsUnavailable` の 5 形を測ると **3 形でデモと金の関門が食い違う**（デモが厳しい側）:
+  `["native_drain"]` → judge REFUSE `evidence_unavailable` / 関門 ALLOW、`"native_drain"`（非配列）→ 同じ、`null` → 同じ。`[]` と欠落は一致。
+  **閉じるには決済経路を1行変える必要があるので、手を付けずに報告した。** この軸を `gate-parity` に足すのは、H-3 の可否が決まってから（いま足すと恒久的に赤になる）
+
 ## 2026-09-12 19:4x JST — `@vet402/sdk@0.6.0` / `@vet402/mcp-server@0.3.0` を npm へ公開したので、「公開前」を前提にした現在形の案内を審査日（09-13〜15）に真になる文へ直した
 
 - **公開の実測**（`npm view`・2026-09-12 に自分で取り直した）: `@vet402/sdk` 0.6.0 = `2026-09-12T06:41:38.278Z`、`@vet402/mcp-server` 0.3.0 = `2026-09-12T06:45:12.469Z`。
