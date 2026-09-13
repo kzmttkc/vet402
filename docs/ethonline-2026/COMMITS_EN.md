@@ -4,7 +4,7 @@
 
 ## How this file is made
 
-This is `git log pre-ethonline-2026..ff4972b` (404 commits), grouped by day in UTC and rendered by
+This is `git log pre-ethonline-2026..935b935` (406 commits), grouped by day in UTC and rendered by
 [`scripts/ethonline-commits-en.mjs`](../../scripts/ethonline-commits-en.mjs) — `node scripts/ethonline-commits-en.mjs` regenerates it;
 `--check` (run by `npm test`) fails if this file is not what the script produces from the commit named in the **Generated** row — that is,
 if it was edited by hand. A Japanese subject with no translation, and commits after that one which did not regenerate this file, are warnings;
@@ -12,10 +12,10 @@ if it was edited by hand. A Japanese subject with no translation, and commits af
 the window contains work I do **not** submit; the **Claimed** column is derived from the path filter in `README.md`:
 
 ```bash
-git log pre-ethonline-2026..ff4972b -- packages/sdk packages/mcp-server \
+git log pre-ethonline-2026..935b935 -- packages/sdk packages/mcp-server \
     examples/ethonline-2026-demo examples/ethonline-2026-ab \
     SKILL.md AI_USAGE.md docs/ethonline-2026    # ✔ claimed
-git log pre-ethonline-2026..ff4972b             # everything, ✔ and —
+git log pre-ethonline-2026..935b935             # everything, ✔ and —
 ```
 
 A commit is ✔ when it touches at least one of those paths, — otherwise. Subjects written before the English-subject rule took effect
@@ -26,12 +26,12 @@ that instant are marked **⚠ pre-window** below and listed in [`DISCLOSURE_2026
 
 | | |
 |---|---|
-| Generated | 2026-09-12 23:42:17 UTC from `ff4972b0ccb755f3b087a407004d04626f6cb44c` |
-| Range | `pre-ethonline-2026..ff4972b` — **404 commits** on 9 days (UTC), 13 of them merges |
-| Claimed (✔) | **253** — touch at least one path in the filter |
+| Generated | 2026-09-13 00:00:23 UTC from `935b935a08386d6b4c06213df7575f6b17ac38cd` |
+| Range | `pre-ethonline-2026..935b935` — **406 commits** on 10 days (UTC), 13 of them merges |
+| Claimed (✔) | **255** — touch at least one path in the filter |
 | Not claimed (—) | **151** — production work in the same days |
 | Claimed but before 2026-09-04 16:00:00 UTC | **3** (⚠) |
-| Subjects translated from Japanese | **291** (English already: 113) |
+| Subjects translated from Japanese | **291** (English already: 115) |
 
 ## Claimed, by day (UTC)
 
@@ -86,16 +86,20 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 - [`04a186b`](https://github.com/kzmttkc/vet402/commit/04a186b1fc63cbe2c24027b436bca300bb9a2e99) 05:18 — docs(live-judging): speak as I, not we, and put the A/B v2 result on the 3:15 screen and in Q4, Q5, Q14 (119 lines)
 - [`276cdae`](https://github.com/kzmttkc/vet402/commit/276cdae2d6030f109a02c73ff703e3c516ad8400) 00:34 — docs(judge-walk): make the pay_if_trusted blocks runnable as pasted, refresh test counts, match pay/refuse wording to production (102 lines)
 
-### 2026-09-12 — 20 of 21 claimed
+### 2026-09-12 — 21 of 22 claimed
 
 - [`309f959`](https://github.com/kzmttkc/vet402/commit/309f959940d0163c3c2c6fcc211c4ff88e386be8) 11:58 — fix(mcp): the per-payment ceiling is the operator's, not the model's (685 lines)
 - [`ff4972b`](https://github.com/kzmttkc/vet402/commit/ff4972b0ccb755f3b087a407004d04626f6cb44c) 23:42 — docs(ethonline): add the owner's 09-11 to 09-13 instructions, date the $0-route feedback, drop the unsupported "since July" line (475 lines)
 - [`27594a9`](https://github.com/kzmttkc/vet402/commit/27594a9a2f3ad739be3eb4a56d17187eb92eb5f5) 10:16 — feat(ethonline): A/B v3 — rewriting one Recipe sentence closes v2's 20-point gap (B 5/10 -> 7/10) (369 lines)
 
+### 2026-09-13 — 1 of 1 claimed
+
+- [`935b935`](https://github.com/kzmttkc/vet402/commit/935b935a08386d6b4c06213df7575f6b17ac38cd) 00:00 — docs(ethonline): first person singular in SUBMISSION_DRAFT, pin the 09-12 20:30/20:47 approvals, baz recipe is in @bazantic/cli@0.10.0 (50 lines)
+
 ## Every commit, by day (UTC), oldest first
 
 <details>
-<summary>All 404 commits — ✔ claimed and — not claimed (click to expand)</summary>
+<summary>All 406 commits — ✔ claimed and — not claimed (click to expand)</summary>
 
 ### 2026-09-04 — 87 commits, 11 claimed
 
@@ -520,7 +524,7 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`f0e1c20`](https://github.com/kzmttkc/vet402/commit/f0e1c20c4567c0ce20b35f9265db84661e2ac2a1) | 06:16 | ✔ | docs(prizes): record ETHGlobal's 2026-09-11 answer on the Final checklist wording |
 | [`2fd99df`](https://github.com/kzmttkc/vet402/commit/2fd99df630f46af79fad90cd1050fba62ec5b943) | 06:16 | ✔ | fix(commits-en): write the generated header in the first person singular, and regenerate COMMITS_EN.md |
 
-### 2026-09-12 — 21 commits, 20 claimed
+### 2026-09-12 — 22 commits, 21 claimed
 
 | SHA | UTC | Claimed | Subject (English) |
 |---|---|:---:|---|
@@ -545,5 +549,12 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`2c803cf`](https://github.com/kzmttkc/vet402/commit/2c803cfb371ccdb821c1608fd65739b47c06ba1a) | 22:22 | ✔ | docs(ethonline): fill in the submission Release body — measured values for every {{…}}, first person singular |
 | [`9ac1ba9`](https://github.com/kzmttkc/vet402/commit/9ac1ba92503ecaf990a80fd23389d3e8894fed04) | 22:22 | ✔ | docs(ethonline): regenerate COMMITS_EN.md at the submission Release commit — 403 commits, 252 claimed |
 | [`ff4972b`](https://github.com/kzmttkc/vet402/commit/ff4972b0ccb755f3b087a407004d04626f6cb44c) | 23:42 | ✔ | docs(ethonline): add the owner's 09-11 to 09-13 instructions, date the $0-route feedback, drop the unsupported "since July" line |
+| [`5ece5d1`](https://github.com/kzmttkc/vet402/commit/5ece5d167c20304fcbc224ad9e1bec27d4f78138) | 23:42 | ✔ | docs(ethonline): regenerate COMMITS_EN.md for the 09-13 leftovers commit |
+
+### 2026-09-13 — 1 commits, 1 claimed
+
+| SHA | UTC | Claimed | Subject (English) |
+|---|---|:---:|---|
+| [`935b935`](https://github.com/kzmttkc/vet402/commit/935b935a08386d6b4c06213df7575f6b17ac38cd) | 00:00 | ✔ | docs(ethonline): first person singular in SUBMISSION_DRAFT, pin the 09-12 20:30/20:47 approvals, baz recipe is in @bazantic/cli@0.10.0 |
 
 </details>
