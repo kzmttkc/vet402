@@ -43,12 +43,12 @@ Implementation, tests, and audits, under the direction above. Claude (Opus / Fab
 writes most of the code in this repository. I say that plainly rather than annotate a handful of files.
 
 ```bash
-git rev-list --count HEAD                                  # 910 commits (2026-09-12)
-git log --grep='Co-Authored-By: Claude' --oneline | wc -l  # 773 carry the AI trailer
+git rev-list --count HEAD                                  # 927 commits (2026-09-13)
+git log --grep='Co-Authored-By: Claude' --oneline | wc -l  # 785 carry the AI trailer
 git rev-list --count --merges HEAD                         # 34 are merge commits
 ```
 
-**The <!-- n:no_trailer_commits -->137<!-- /n --> without the trailer are not "written by a human".** <!-- n:merge_commits -->34<!-- /n --> are merges; most of the rest are AI
+**The <!-- n:no_trailer_commits -->142<!-- /n --> without the trailer are not "written by a human".** <!-- n:merge_commits -->34<!-- /n --> are merges; most of the rest are AI
 commits from before I adopted the trailer, or ones where it was simply forgotten. **Read the absence of
 a trailer as "unknown", not as "human".** The numbers move every day — re-run the commands.
 
@@ -70,12 +70,12 @@ a trailer as "unknown", not as "human".** The numbers move every day — re-run 
 | **Evidence provenance** | `src/lib/decision/evidence.ts`, `docs/openapi.yaml`, `src/lib/observatory/vocabulary.ts` | Written by AI |
 | **Settlement integrity** | `src/lib/settlements/rollup.ts`, `recover-late.ts`, nonce-binding tests | Written by AI |
 | **Security audits** | `docs/audits/2026-09-05-*` | Conducted and written by AI agents, cross-checked against production data |
-| **Planning artifacts** | `docs/ethonline-2026/**`, including `PROMPTS/` | Written by AI. `PROMPTS/` carries, by day, an excerpt of the decisions, instructions and approvals I gave, each with the commit it landed in |
+| **Planning artifacts** | `docs/ethonline-2026/**`, including `PROMPTS/` | Compiled by AI from my own messages — the instructions quoted in `PROMPTS/` are mine. `PROMPTS/` carries, by day, an excerpt of the decisions, instructions and approvals I gave, each with the commit it landed in |
 
 **Window totals move daily; derive them rather than trusting this line:**
 
 ```bash
-git diff --diff-filter=A --name-only pre-ethonline-2026..main | wc -l   # 231 added   (2026-09-12)
+git diff --diff-filter=A --name-only pre-ethonline-2026..main | wc -l   # 237 added   (2026-09-13)
 git diff --diff-filter=M --name-only pre-ethonline-2026..main | wc -l   # 206 modified
 ```
 
@@ -89,7 +89,7 @@ what I am claiming.
 git log --reverse --format='%h %ad %an %s' --date=short | head -1   # who started it, and when
 git show --shortstat 6f38202                                       # the human-written foundation
 git log pre-ethonline-2026..main --stat                            # everything built during the window
-ls docs/ethonline-2026/PROMPTS/                                    # the instructions, by day
+ls docs/ethonline-2026/PROMPTS/                                    # an excerpt of the instructions I gave, by day
 ```
 
 Commits carry a `Co-Authored-By: Claude` trailer where AI wrote them. Where a commit message says

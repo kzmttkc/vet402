@@ -1,9 +1,11 @@
 # Release `ethonline-2026-submission` — body draft
 
 > **Re-cut on 2026-09-13 UTC (2026-09-13 JST evening)**, before the 2026-09-13 16:00 UTC deadline. The first
-> cut of this Release (2026-09-12 UTC, `9ac1ba9`) was deleted and re-created from the last commit of the
-> submission because `docs/ethonline-2026/PROMPTS/` was rewritten after it as a day-by-day excerpt of the
-> owner's decisions and instructions (commit `29e94b8`); the old tree carried the earlier, longer form.
+> cut of this Release (2026-09-12 UTC, `9ac1ba9`) was deleted and re-created because `docs/ethonline-2026/PROMPTS/`
+> was rewritten after it as a day-by-day excerpt of the owner's decisions and instructions (commit `29e94b8`);
+> a second re-cut the same evening (from `749148d`) picked up the final pre-deadline audit: two factual fixes
+> in judge-facing text (the npm publish date relative to the deadline; the Node version), first-person wording
+> in the disclosure files, an English opening for `PROMPTS/README.md`, and refreshed derived numbers.
 > A Release pins one commit, so it could not be cut earlier while commits were still landing. Nothing in this
 > file is pasted anywhere else. The boundary tag has its own Release (`pre-ethonline-2026 — boundary tag`,
 > 2026-09-07); this one is the other end of the range.
@@ -89,9 +91,11 @@ runs on every push. As of this release: `✔ 12 number(s) consistent across 8 do
 
 | | |
 |---|---|
-| Commits `pre-ethonline-2026..ethonline-2026-submission` | `410` |
-| …of which claimed (path filter above) | `259` |
-| `COMMITS_EN.md` untranslated subjects, and not behind | `ethonline-commits-en: 410 commits (259 claimed, 3 claimed pre-window), 291 translated, 119 English, file fresh, 0 problem(s)` / `exit 0` |
+| Commits `pre-ethonline-2026..ethonline-2026-submission` | `411` |
+| …of which claimed (path filter above) | `260` |
+| `COMMITS_EN.md` untranslated subjects, and not behind | `ethonline-commits-en: 411 commits (260 claimed, 3 claimed pre-window), 291 translated, 120 English, file fresh, 0 problem(s)` / `exit 0` |
 | `npm run judge-check` on a clean clone | `judge-check: all 11 steps exit 0` (the line also prints the wall time — 28–30 s on a fresh checkout of this commit with a warm npm cache) |
+
+`COMMITS_EN.md` inside the tree lists the commits up to the one that regenerated it, so its own header reads one commit (and one claimed commit) fewer than this table; the table counts the release commit itself.
 
 Team: Takeshi Kazumoto (Discord `Sen_web3`). Prizes applied for: The Graph (Continuity), Bazantic.

@@ -19,7 +19,7 @@ the start — not five minutes after it, as this file said until 2026-09-08. Thr
 range predate 16:00 UTC; they are listed in [`DISCLOSURE_2026-09-05.md`](./DISCLOSURE_2026-09-05.md).
 Anyone can run the three commands above.
 
-## Snapshot — 2026-09-07 08:5x JST (derived; regenerate with the command below)
+## Snapshot — 2026-09-13 18:5x JST (derived; regenerate with the command below)
 
 ```bash
 git diff --diff-filter=M --name-only pre-ethonline-2026..main \
@@ -30,16 +30,17 @@ git diff --diff-filter=M --name-only pre-ethonline-2026..main \
 
 | Area | Files | Why I was in there |
 |---|---|---|
-| `src/app/` | 48 | Admin route for the runtime spending halt; observatory/state surfaces with the two-tier `settled` split; `/decision` key-less read and `caller_policy`; SEO/AEO; site consistency (header month derived at build time instead of a hand-written "August 2026", the `/observatory` note on what `active` counts, the SKILL.md link in `/docs/api`, the 404 title for a malformed `/agent/<id>`) |
-| `src/lib/` | 36 | Kill switch; settlement rollup and late-settlement recovery; nonce binding; census coverage; cached reads; `caller-policy.ts`; repo hygiene 09-07: gate2 report no longer defaults to a hard-coded operator e-mail; `sol402-payer.ts` builds its two SPL Token calls from `spl-token-lite.ts` so production carries no `bigint-buffer`; 09-07 money-gate fixes: `public-route.ts` returns the consumed `bucketKey` (A7) |
+| `src/app/` | 50 | Admin route for the runtime spending halt; observatory/state surfaces with the two-tier `settled` split; `/decision` key-less read and `caller_policy`; SEO/AEO; site consistency (header month derived at build time instead of a hand-written "August 2026", the `/observatory` note on what `active` counts, the SKILL.md link in `/docs/api`, the 404 title for a malformed `/agent/<id>`) |
+| `src/lib/` | 46 | Kill switch; settlement rollup and late-settlement recovery; nonce binding; census coverage; cached reads; `caller-policy.ts`; repo hygiene 09-07: gate2 report no longer defaults to a hard-coded operator e-mail; `sol402-payer.ts` builds its two SPL Token calls from `spl-token-lite.ts` so production carries no `bigint-buffer`; 09-07 money-gate fixes: `public-route.ts` returns the consumed `bucketKey` (A7) |
 | `tests/` | 32 | Tests for all of the above, the Postgres test guard, key-less read, caller-policy parity, refresh-numbers |
-| `docs/` | 26 | The window's own planning artifacts, three security audits, the incident runbook, OpenAPI; `docs/hackathons/2026-autumn-continuity.md` (A/B vocabulary figure corrected 2026-09-07); repo hygiene 09-07: personal e-mail addresses in ROADMAP/continuity replaced by a reference to the disclosure |
+| `docs/` | 34 | The window's own planning artifacts, three security audits, the incident runbook, OpenAPI; `docs/hackathons/2026-autumn-continuity.md` (A/B vocabulary figure corrected 2026-09-07); repo hygiene 09-07: personal e-mail addresses in ROADMAP/continuity replaced by a reference to the disclosure |
 | `packages/mcp-server` | 17 | `pay_if_trusted`, evidence policy, the uncatalogued path, key-less `/decision`, typed refuse reasons; repo hygiene 09-07: lockfile bumps for the fast-uri / hono / ip-address / qs advisories (supersedes Dependabot #8–#11) |
 | repo root | 8 | `README.md`, `AI_USAGE.md`, `SKILL.md`, `.env.example`, `.gitignore`, `package.json`, config. 2026-09-07: `README.md` and `SKILL.md` corrected after the judge-doc audit (production `/decision` body, timings, dates, wording); repo hygiene 09-07: `.gitignore` wallet/keystore patterns, package name `vet402`, `@solana/spl-token` moved out of production deps ; 2026-09-08: `README.md` gained a wayfinding note (commits and comments are Japanese; the English route is SKILL.md / AI_USAGE.md / this file) and an Install note that npm's `@vet402/sdk` 0.5.0 predates the window and has no `payOrRefuse`, and `SKILL.md` now says `judge-check`'s mutation step is the A/B set, not the SDK's own |
-| `packages/sdk` | 7 | `payOrRefuse`, the x402 payment path, the subgraph evidence source, optional `apiKey`, typed refuse reasons |
+| `packages/sdk` | 9 | `payOrRefuse`, the x402 payment path, the subgraph evidence source, optional `apiKey`, typed refuse reasons |
 | `scripts/` | 5 | Schema drift, settlements rollup, judge-check; repo hygiene 09-07: dev-setup / provision-neon print DATABASE_URL with credentials masked |
 | `src/components` | 2 | Proxy/CSP |
 | `public/` | 1 | `llms.txt` (key-less `/decision`) |
+| `packages/middleware` | 1 | `package-lock.json` only (lockfile bump; no source change) |
 | `.github/` | 1 | Pinning actions to SHAs; the gate jobs |
 
 The per-area sum must equal the total above; if it does not, the table is stale — rerun the command.

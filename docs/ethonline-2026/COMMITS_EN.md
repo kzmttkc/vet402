@@ -4,7 +4,7 @@
 
 ## How this file is made
 
-This is `git log pre-ethonline-2026..77c10a2` (409 commits), grouped by day in UTC and rendered by
+This is `git log pre-ethonline-2026..749148d` (410 commits), grouped by day in UTC and rendered by
 [`scripts/ethonline-commits-en.mjs`](../../scripts/ethonline-commits-en.mjs) — `node scripts/ethonline-commits-en.mjs` regenerates it;
 `--check` (run by `npm test`) fails if this file is not what the script produces from the commit named in the **Generated** row — that is,
 if it was edited by hand. A Japanese subject with no translation, and commits after that one which did not regenerate this file, are warnings;
@@ -12,10 +12,10 @@ if it was edited by hand. A Japanese subject with no translation, and commits af
 the window contains work I do **not** submit; the **Claimed** column is derived from the path filter in `README.md`:
 
 ```bash
-git log pre-ethonline-2026..77c10a2 -- packages/sdk packages/mcp-server \
+git log pre-ethonline-2026..749148d -- packages/sdk packages/mcp-server \
     examples/ethonline-2026-demo examples/ethonline-2026-ab \
     SKILL.md AI_USAGE.md docs/ethonline-2026    # ✔ claimed
-git log pre-ethonline-2026..77c10a2             # everything, ✔ and —
+git log pre-ethonline-2026..749148d             # everything, ✔ and —
 ```
 
 A commit is ✔ when it touches at least one of those paths, — otherwise. Subjects written before the English-subject rule took effect
@@ -26,12 +26,12 @@ that instant are marked **⚠ pre-window** below and listed in [`DISCLOSURE_2026
 
 | | |
 |---|---|
-| Generated | 2026-09-13 06:54:51 UTC from `77c10a2f13fd254b9893a73ae78767171c7265af` |
-| Range | `pre-ethonline-2026..77c10a2` — **409 commits** on 10 days (UTC), 13 of them merges |
-| Claimed (✔) | **258** — touch at least one path in the filter |
+| Generated | 2026-09-13 09:38:22 UTC from `749148d87d18d2938c9c20f57d888ddf31889d7e` |
+| Range | `pre-ethonline-2026..749148d` — **410 commits** on 10 days (UTC), 13 of them merges |
+| Claimed (✔) | **259** — touch at least one path in the filter |
 | Not claimed (—) | **151** — production work in the same days |
 | Claimed but before 2026-09-04 16:00:00 UTC | **3** (⚠) |
-| Subjects translated from Japanese | **291** (English already: 118) |
+| Subjects translated from Japanese | **291** (English already: 119) |
 
 ## Claimed, by day (UTC)
 
@@ -92,16 +92,16 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 - [`ff4972b`](https://github.com/kzmttkc/vet402/commit/ff4972b0ccb755f3b087a407004d04626f6cb44c) 23:42 — docs(ethonline): add the owner's 09-11 to 09-13 instructions, date the $0-route feedback, drop the unsupported "since July" line (475 lines)
 - [`27594a9`](https://github.com/kzmttkc/vet402/commit/27594a9a2f3ad739be3eb4a56d17187eb92eb5f5) 10:16 — feat(ethonline): A/B v3 — rewriting one Recipe sentence closes v2's 20-point gap (B 5/10 -> 7/10) (369 lines)
 
-### 2026-09-13 — 4 of 4 claimed
+### 2026-09-13 — 5 of 5 claimed
 
 - [`29e94b8`](https://github.com/kzmttkc/vet402/commit/29e94b80039657618fde31127324985255e8131d) 06:35 — docs(ethonline): excerpt PROMPTS to the owner's decisions, requirements and approvals, each with the commit it landed in (1473 lines)
 - [`935b935`](https://github.com/kzmttkc/vet402/commit/935b935a08386d6b4c06213df7575f6b17ac38cd) 00:00 — docs(ethonline): first person singular in SUBMISSION_DRAFT, pin the 09-12 20:30/20:47 approvals, baz recipe is in @bazantic/cli@0.10.0 (50 lines)
-- [`60ec043`](https://github.com/kzmttkc/vet402/commit/60ec0432df7a9b951de9eae87b56c5d36482ed3f) 00:00 — docs(ethonline): regenerate COMMITS_EN.md for the first-person and baz recipe commit (31 lines)
+- [`749148d`](https://github.com/kzmttkc/vet402/commit/749148d87d18d2938c9c20f57d888ddf31889d7e) 06:54 — docs(ethonline): re-cut the submission Release from the PROMPTS excerpt tree — update the Release body draft and regenerate COMMITS_EN.md (44 lines)
 
 ## Every commit, by day (UTC), oldest first
 
 <details>
-<summary>All 409 commits — ✔ claimed and — not claimed (click to expand)</summary>
+<summary>All 410 commits — ✔ claimed and — not claimed (click to expand)</summary>
 
 ### 2026-09-04 — 87 commits, 11 claimed
 
@@ -553,7 +553,7 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`ff4972b`](https://github.com/kzmttkc/vet402/commit/ff4972b0ccb755f3b087a407004d04626f6cb44c) | 23:42 | ✔ | docs(ethonline): add the owner's 09-11 to 09-13 instructions, date the $0-route feedback, drop the unsupported "since July" line |
 | [`5ece5d1`](https://github.com/kzmttkc/vet402/commit/5ece5d167c20304fcbc224ad9e1bec27d4f78138) | 23:42 | ✔ | docs(ethonline): regenerate COMMITS_EN.md for the 09-13 leftovers commit |
 
-### 2026-09-13 — 4 commits, 4 claimed
+### 2026-09-13 — 5 commits, 5 claimed
 
 | SHA | UTC | Claimed | Subject (English) |
 |---|---|:---:|---|
@@ -561,5 +561,6 @@ merges count 0). The full table, ✔ and — alike, is folded below.
 | [`60ec043`](https://github.com/kzmttkc/vet402/commit/60ec0432df7a9b951de9eae87b56c5d36482ed3f) | 00:00 | ✔ | docs(ethonline): regenerate COMMITS_EN.md for the first-person and baz recipe commit |
 | [`29e94b8`](https://github.com/kzmttkc/vet402/commit/29e94b80039657618fde31127324985255e8131d) | 06:35 | ✔ | docs(ethonline): excerpt PROMPTS to the owner's decisions, requirements and approvals, each with the commit it landed in |
 | [`77c10a2`](https://github.com/kzmttkc/vet402/commit/77c10a2f13fd254b9893a73ae78767171c7265af) | 06:35 | ✔ | docs(ethonline): regenerate COMMITS_EN.md for the PROMPTS excerpt commit |
+| [`749148d`](https://github.com/kzmttkc/vet402/commit/749148d87d18d2938c9c20f57d888ddf31889d7e) | 06:54 | ✔ | docs(ethonline): re-cut the submission Release from the PROMPTS excerpt tree — update the Release body draft and regenerate COMMITS_EN.md |
 
 </details>

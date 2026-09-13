@@ -1,6 +1,6 @@
 # Written disclosure to ETHGlobal — sent 2026-09-05 08:49 JST
 
-A copy of the message we sent to ETHGlobal before judging, so the disclosure that `README.md` and
+A copy of the message I sent to ETHGlobal before judging, so the disclosure that `README.md` and
 `AI_USAGE.md` refer to is in the repository and not only in a mailbox.
 
 | | |
@@ -36,16 +36,16 @@ The commit count in the message was written to match its day-by-day sentence, wh
 that landed between midnight JST and the tag at 09:05 JST (00:05 UTC):
 `git rev-list --count --until=2026-09-03T23:59:59+09:00 26a7c66..pre-ethonline-2026` → 207.
 On 2026-09-06 (commit `f844ae6`, after an independent audit found that the number in `README.md` did
-not reproduce) we attached the command the count is derived from and counted the whole range up to
+not reproduce) I attached the command the count is derived from and counted the whole range up to
 the tag: `git rev-list --count 26a7c66..pre-ethonline-2026` → 214. Per-day figures that anyone can
 re-derive: `git log --format=%ad --date=short 26a7c66..pre-ethonline-2026 | sort | uniq -c`
 (2026-09-02: 99, 2026-09-03: 11, 2026-09-04: 7). The same commit also corrected the message's last
 claim — `main` is this product's production branch, so `git log pre-ethonline-2026..main` contains
-work we are **not** submitting; the range we do claim is in `README.md`.
+work I am **not** submitting; the range I do claim is in `README.md`.
 
 ## Why the window start in the message is wrong — corrected 2026-09-08
 
-The message says the tag was cut **five minutes after the window opened**. That is wrong. We had taken
+The message says the tag was cut **five minutes after the window opened**. That is wrong. I had taken
 2026-09-04 00:00 UTC as the start. ETHGlobal's own published schedule for ETHOnline 2026 puts
 `hacking-begins` — and `ethonline-2026-kickoff` — at **2026-09-04 16:00:00 UTC**:
 
@@ -60,11 +60,11 @@ Measured against 16:00 UTC:
 |---|---|
 | Boundary commit `c42daca` (what the tag points at) | 2026-09-04 00:05:36 UTC — **15 h 54 min before** hacking began |
 | The annotated tag object itself | 2026-09-04 02:45:06 UTC — 13 h 15 min before hacking began |
-| Commits in the range we claim that were made **before** 16:00 UTC | **3** |
+| Commits in the range I claim that were made **before** 16:00 UTC | **3** |
 
-We are not moving the tag. It was pushed on 2026-09-04, and this disclosure and the submission link to
+I am not moving the tag. It was pushed on 2026-09-04, and this disclosure and the submission link to
 it; re-cutting it would invalidate those links. The consequence is stated rather than hidden: the range
-we claim — `pre-ethonline-2026..main` under the path filter in `README.md` — contains three commits made
+I claim — `pre-ethonline-2026..main` under the path filter in `README.md` — contains three commits made
 before the window opened. Anyone can list them:
 
 ```bash

@@ -9,7 +9,7 @@
 ## Judges: 60 seconds
 
 ```bash
-# Node >= 22.18 (examples/ethonline-2026-demo engines)
+# Node 24.x (package.json engines; Node 22 cancels the timeout tests)
 git clone https://github.com/kzmttkc/vet402 && cd vet402
 npm run judge-check   # sdk → mcp-server → demo → root → ab: builds, tests, mutation runs. No key, nothing live. About 25–30 s on a clean clone (24–27 s across three measurements on 2026-09-07, warm npm cache)
 GRAPH_API_KEY=… node examples/ethonline-2026-demo/src/run.ts judge https://kronossignals.com/api/v1/price/btc
@@ -60,7 +60,7 @@ git log pre-ethonline-2026..main                # everything on main in the same
 Both commands are worth running. The first is my claim; the second is the full picture, including the
 parts I am not claiming.
 
-Who wrote the code, by area and representative file — and what I did: [`AI_USAGE.md`](./AI_USAGE.md). The instructions I gave, by day:
+Who wrote the code, by area and representative file — and what I did: [`AI_USAGE.md`](./AI_USAGE.md). An excerpt of the instructions I gave, by day (Japanese; the folder's README opens in English):
 [`docs/ethonline-2026/PROMPTS/`](./docs/ethonline-2026/PROMPTS/). The payment gate itself:
 [`SKILL.md`](./SKILL.md).
 
@@ -87,7 +87,7 @@ npm i @vet402/mcp-server   # MCP tools for Cursor / Claude Desktop
 
 > **Use the scoped names exactly as written above.** The unscoped npm package `vouch-sdk` is an unrelated project published by a different vendor and has nothing to do with vet402. Only `@vet402/*` packages are vet402's.
 
-> **On npm since 2026-09-12, after the submission closed.** `@vet402/sdk` is 0.6.0 (published 06:41:38 UTC) and exports `payOrRefuse`; `@vet402/mcp-server` is 0.3.0 (06:45:12 UTC) and answers `tools/list` with 7 tools, `pay_if_trusted` among them. The releases that stood through the window contained neither: the `@vet402/sdk@0.5.0` tarball (2026-08-25) ships `index` and `spend-guard` only, and `@vet402/mcp-server@0.2.0` (2026-08-24) answers `tools/list` with 5 tools. Publishing is therefore not part of the judged work. To read or run this window's code from source, clone this repository and build from `packages/` ([`SKILL.md`](./SKILL.md) → *Install*).
+> **On npm since 2026-09-12 (06:41 UTC, the day before the 2026-09-13 16:00 UTC deadline).** `@vet402/sdk` is 0.6.0 (published 06:41:38 UTC) and exports `payOrRefuse`; `@vet402/mcp-server` is 0.3.0 (06:45:12 UTC) and answers `tools/list` with 7 tools, `pay_if_trusted` among them. The releases that stood through the window contained neither: the `@vet402/sdk@0.5.0` tarball (2026-08-25) ships `index` and `spend-guard` only, and `@vet402/mcp-server@0.2.0` (2026-08-24) answers `tools/list` with 5 tools. Publishing is not part of the claimed work; what is judged is the clone, not the tarball. To read or run this window's code from source, clone this repository and build from `packages/` ([`SKILL.md`](./SKILL.md) → *Install*).
 
 - [@vet402/sdk](https://www.npmjs.com/package/@vet402/sdk)
 - [@vet402/middleware](https://www.npmjs.com/package/@vet402/middleware)

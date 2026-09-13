@@ -6,7 +6,7 @@
 > Continuity の枠は **3 つ**（【一次】ETHGlobal Discord `#👂information`・Pascal・2026-08-17。原文は `WINDOW_PLAN.md` §1.4。`info/details` には無い）。
 > 動画（`VIDEO_SCRIPT.md`）は**録画を見せる**もの。ライブは**その場でターミナルを叩く**もの。同じ絵を二度見せない——
 > 動画に無いのは「**審査員が指定した 402 URL を `judge` に入れる**」（Practicality／WOW）。
-> この文書の数字は **<!-- n:as_of -->2026-09-12<!-- /n --> の実測**（§6・印は `npm run check-numbers` が見る）。**動く数字は当日の朝に §7 のスクリプトで取り直す。**
+> この文書の数字は **<!-- n:as_of -->2026-09-13<!-- /n --> の実測**（§6・印は `npm run check-numbers` が見る）。**動く数字は当日の朝に §7 のスクリプトで取り直す。**
 > 受取人スコア・受領件数など鍵と回線が要るものだけは印に載らない——§6 の「当日取り直す」で扱う。
 
 ## 0. 先に決めたこと
@@ -155,7 +155,7 @@ A: *Three audits in the window, all written down with commit hashes. From Septem
 証拠: `docs/audits/2026-09-04-adversarial-audit.md`「是正」／`docs/audits/2026-09-05-blockchain-security-audit.md` S-1 `1fddaf2`・S-4 `ae5ff67`・S-6 `4ba2274`・S-21／`WINDOW_PLAN.md` §14.2。
 
 **Q14. What's next?**
-A: *My plan for ETHGlobal Tokyo, September 25, is resolve-then-pay. In this submission the gate rejects a payee that is not a 0x address. It does not resolve names. In Tokyo the payee becomes an ENS name, and `payOrRefuse` runs after resolution, on a new git tag, so the boundary can be checked again. I published the SDK and MCP server to npm on September 12, after the submission closed: `@vet402/sdk@0.6.0` with `payOrRefuse`, and `@vet402/mcp-server@0.3.0` with `pay_if_trusted`. The versions that stood through the window, 0.5.0 and 0.2.0, had neither, so what you judge is the clone.*
+A: *My plan for ETHGlobal Tokyo, September 25, is resolve-then-pay. In this submission the gate rejects a payee that is not a 0x address. It does not resolve names. In Tokyo the payee becomes an ENS name, and `payOrRefuse` runs after resolution, on a new git tag, so the boundary can be checked again. I published the SDK and MCP server to npm on September 12, the day before the deadline: `@vet402/sdk@0.6.0` with `payOrRefuse`, and `@vet402/mcp-server@0.3.0` with `pay_if_trusted`. The versions that stood through the window, 0.5.0 and 0.2.0, had neither, so what you judge is the clone.*
 要旨: Tokyo（09-25）の計画は resolve-then-pay。ENS 名を解決した後に `payOrRefuse`（新しい git タグで境界を引き直す）。今回の提出の関門は 0x 以外の payee を拒否し、名前は解決しない。npm 公開は提出締切後の 09-12 に実施済み（sdk 0.6.0・mcp-server 0.3.0）。会期中の版 0.5.0 / 0.2.0 には `payOrRefuse` も `pay_if_trusted` も無く、審査対象は clone のまま。
 証拠: `docs/ethonline-2026/APPLY.md:21`（resolve-then-pay・`pre-tokyo-2026`）／`PRIZES.md:186`（ENS は今回除外）／`WINDOW_PLAN.md` §4 B8・§16.5／`SKILL.md` "What is not built yet"。
 
@@ -348,19 +348,19 @@ A: *Eligibility was never the reason. On September 7 I asked ETHGlobal directly 
 
 ## 6. 数字（印 か 当日取り直し）
 
-**印がある数字**（`scripts/refresh-numbers.json` の id・基準日は `n:as_of` = <!-- n:as_of -->2026-09-12<!-- /n -->。**この文書は 09-08 から `docs` に登録されているので、下の値は印そのもの**——前日に `npm run check-numbers` が緑であることを確かめる。赤なら**言わずに**画面の値を読む）:
+**印がある数字**（`scripts/refresh-numbers.json` の id・基準日は `n:as_of` = <!-- n:as_of -->2026-09-13<!-- /n -->。**この文書は 09-08 から `docs` に登録されているので、下の値は印そのもの**——前日に `npm run check-numbers` が緑であることを確かめる。赤なら**言わずに**画面の値を読む）:
 
 | 印 | 値【実測 09-08】 | それを出すコマンド（リポ root から） | どこで使う |
 |---|---|---|---|
 | `n:sdk_mutations` | <!-- n:sdk_mutations -->45<!-- /n --> | `cd packages/sdk && node test-mutations.mjs 2>&1 \| tail -1` の `all N mutations killed`（09-10 実走 44.3s） | Q12（"all killed"） |
 | `n:ab_mutations` | <!-- n:ab_mutations -->27<!-- /n --> | `cd examples/ethonline-2026-ab && node test-mutations.mjs 2>&1 \| tail -1`（13.2s・`judge-check` が回す方） | 混同したときの訂正用（口では言わない） |
 | `n:sdk_tests` | <!-- n:sdk_tests -->1679<!-- /n --> | `npm test --prefix packages/sdk 2>&1 \| sed -n 's/^ℹ tests //p'` | 画面のみ（言わない） |
-| `n:mcp_tests` | <!-- n:mcp_tests -->780<!-- /n --> | `npm run build --prefix packages/mcp-server && npm test --prefix packages/mcp-server 2>&1 \| sed -n 's/^ℹ tests //p'` | 画面のみ（言わない） |
+| `n:mcp_tests` | <!-- n:mcp_tests -->797<!-- /n --> | `npm run build --prefix packages/mcp-server && npm test --prefix packages/mcp-server 2>&1 \| sed -n 's/^ℹ tests //p'` | 画面のみ（言わない） |
 | `n:demo_tests` | <!-- n:demo_tests -->184<!-- /n --> | `npm test --prefix examples/ethonline-2026-demo 2>&1 \| sed -n 's/^ℹ tests //p'`（鍵不要・0.5s） | 画面のみ（言わない） |
-| `n:total_commits` | <!-- n:total_commits -->910<!-- /n --> | `git rev-list --count --until='{{AS_OF_END}}' HEAD` | Q7（言うのは「大半」。値は `AI_USAGE.md` を指す） |
-| `n:ai_trailer_commits` | <!-- n:ai_trailer_commits -->773<!-- /n --> | `git log --grep='Co-Authored-By: Claude' --until='{{AS_OF_END}}' --oneline \| wc -l` | 同上 |
-| `n:merge_commits` / `n:no_trailer_commits` | <!-- n:merge_commits -->34<!-- /n --> / <!-- n:no_trailer_commits -->137<!-- /n --> | `git rev-list --count --merges --until='{{AS_OF_END}}' HEAD`／`n:total_commits` − `n:ai_trailer_commits` | 同上（trailer 無し＝「不明」であって「人間」ではない） |
-| `n:window_added_files` / `n:window_modified_files` | <!-- n:window_added_files -->231<!-- /n --> / <!-- n:window_modified_files -->206<!-- /n --> | `git diff --diff-filter=A --name-only pre-ethonline-2026..{{AS_OF_SHA}} \| wc -l`（`M` で変更分） | Q6（画面のみ） |
+| `n:total_commits` | <!-- n:total_commits -->927<!-- /n --> | `git rev-list --count --until='{{AS_OF_END}}' HEAD` | Q7（言うのは「大半」。値は `AI_USAGE.md` を指す） |
+| `n:ai_trailer_commits` | <!-- n:ai_trailer_commits -->785<!-- /n --> | `git log --grep='Co-Authored-By: Claude' --until='{{AS_OF_END}}' --oneline \| wc -l` | 同上 |
+| `n:merge_commits` / `n:no_trailer_commits` | <!-- n:merge_commits -->34<!-- /n --> / <!-- n:no_trailer_commits -->142<!-- /n --> | `git rev-list --count --merges --until='{{AS_OF_END}}' HEAD`／`n:total_commits` − `n:ai_trailer_commits` | 同上（trailer 無し＝「不明」であって「人間」ではない） |
+| `n:window_added_files` / `n:window_modified_files` | <!-- n:window_added_files -->237<!-- /n --> / <!-- n:window_modified_files -->206<!-- /n --> | `git diff --diff-filter=A --name-only pre-ethonline-2026..{{AS_OF_SHA}} \| wc -l`（`M` で変更分） | Q6（画面のみ） |
 
 `{{AS_OF_END}}` / `{{AS_OF_SHA}}` は `n:as_of` に固定した基準時刻と sha（`scripts/refresh-numbers.json` が展開する）。**手で日付を入れない。**
 

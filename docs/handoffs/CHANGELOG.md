@@ -13,6 +13,14 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-13 19:xx JST — 最終監査の直し（審査員が読む面の事実誤り 2 件・主語・鮮度）と Release の 2 度目の切り直し
+
+- **何を変えたか**: (1) 「npm 公開は after the submission closed」を 4 か所（`README.md`・`SKILL.md` ×2・`LIVE_JUDGING.md`）で日付だけの表現に（公開 09-12 06:41 UTC は締切 09-13 16:00 UTC の 33 時間前で、この文は偽だった）。(2) `README.md` の Node 版を `>= 22.18` → `24.x`（Node 22 では `judge-check` の timeout テストが cancelled になり exit 1。`package.json` engines と一致させた）。(3) `PROMPTS/README.md` の先頭に英語の案内と「抜粋であり削除ではない・全件版は `c39f4a3`」を明記、規約引用に出典 URL と条件句 "If you use one" を復元。(4) `AI_USAGE.md` の Planning artifacts 行を「Compiled by AI from my own messages」に（prompts を AI が書いたと読めた）。(5) `DISCLOSURE_2026-09-05.md`・`README_CONTINUITY_SECTION.md` の引用外の `we` を `I` / `vet402` に。(6) `npm run refresh-numbers`（tests 780→797・commits 910→927 ほか）、`CHANGED_FILES.md` の面積表を awk の出力に合わせ直し（合計 183→206・`packages/middleware` 行を追加）。(7) GitHub の About を `we buy` → `it buys`（リポ設定・git の外）。(8) Release `ethonline-2026-submission` をこのコミットへ切り直し（1 度目の切り直しは 16:07 JST・`749148d`）
+- **なぜ**: 締切前の最終監査（審査員・パートナー・機密・コード・PROMPTS の 5 視点）で、提出不可 0・事実誤り 2 と出たため。数字の捏造は 0 件、直したのは日付・主語・鮮度
+- **影響**: コード・決済経路・境界タグ `c42daca` は動かしていない。提出フォームの Description（継続性の数字を `f53a887` 基準 164/283 からタグ基準へ・冒頭 1 行目）と Graph/Bazantic の賞文 3 か所は git の外で同時に直す
+
+---
+
 ## 2026-09-13 15:xx JST — `PROMPTS/` を「審査に要る判断と反映」の抜粋に組み直した（全 11 ファイル）
 
 - **何を変えたか**: `docs/ethonline-2026/PROMPTS/` の day0〜day9 と README を、会話の全件抽出から「オーナーが関与した判断・指示・承認」と「反映したコミット（git の外ならその旨）」の抜粋へ書き直した。進捗の問い合わせ・作業確認・画面操作のやり取り・応答の形式への注文・画像・個人名は外した。README の「原文のまま・要約しない」の規則を、抜粋の方針 1 段落に置き換えた。

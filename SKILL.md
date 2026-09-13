@@ -79,8 +79,8 @@ Neither means "they are bad".
 
 ## Install
 
-`@vet402/sdk@0.6.0` and `@vet402/mcp-server@0.3.0` have been on npm since 2026-09-12, after the
-submission closed. `npm i @vet402/sdk@0.6.0` gives `payOrRefuse`, and `npx -y @vet402/mcp-server@0.3.0`
+`@vet402/sdk@0.6.0` and `@vet402/mcp-server@0.3.0` have been on npm since 2026-09-12 (06:41 UTC,
+the day before the deadline). `npm i @vet402/sdk@0.6.0` gives `payOrRefuse`, and `npx -y @vet402/mcp-server@0.3.0`
 answers `tools/list` with 7 tools including `pay_if_trusted`. The releases that stood through the
 window had neither: 0.5.0 (2026-08-25) ships `index` and `spend-guard` only, and 0.2.0 (2026-08-24)
 answers `tools/list` with 5 tools. **Building from the repo is the route this runbook walks, and the
@@ -144,9 +144,9 @@ cd packages/mcp-server && npm test 2>&1 | grep -E '^ℹ '
 ```
 
 ```
-ℹ tests 780
+ℹ tests 797
 ℹ suites 0
-ℹ pass 780
+ℹ pass 797
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
@@ -357,7 +357,7 @@ cd packages/sdk && npm install && npm test 2>&1 | grep -E '^ℹ '
 ℹ fail 0
 ```
 
-(Re-run <!-- n:as_of -->2026-09-12<!-- /n --> with `npm ci && npm test`. The count grows as tests are added — run it, do not
+(Re-run <!-- n:as_of -->2026-09-13<!-- /n --> with `npm ci && npm test`. The count grows as tests are added — run it, do not
 trust this line.)
 
 **It has moved real money.** On 2026-09-05 a throwaway payer bought The Graph's own x402 endpoint
@@ -876,5 +876,5 @@ Stated plainly, because a SKILL.md that oversells is worse than none.
 |---|---|
 | **Evidence policy on the MCP tool** | Since 2026-09-06: `policy.requireVet402Allow` and `policy.evidence` (`source`, `minSubgraphReceipts`, `minL1Deliveries`) are tool inputs; the Graph key comes from `GRAPH_API_KEY`. See **`pay_if_trusted` with The Graph evidence**. |
 | **The uncatalogued-seller path in MCP** | Since 2026-09-06: when `resource` is given, a `/decision` 404 is handed to `payOrRefuse`, which judges from the 402 `payTo`, the payee score for that address and the caller's evidence floors (I23). Without `resource` a 404 still refuses with `evidence_unavailable`. See **Paying a seller outside the catalogue — live**. |
-| **npm publish** | Done 2026-09-12, after the submission closed: `@vet402/sdk@0.6.0` carries `payOrRefuse` and `@vet402/mcp-server@0.3.0` carries `pay_if_trusted` (7 tools). The window's releases, 0.5.0 and 0.2.0, carried neither. This runbook and the plugin still build from the repo. |
+| **npm publish** | Done 2026-09-12, the day before the deadline; the clone is what is judged: `@vet402/sdk@0.6.0` carries `payOrRefuse` and `@vet402/mcp-server@0.3.0` carries `pay_if_trusted` (7 tools). The window's releases, 0.5.0 and 0.2.0, carried neither. This runbook and the plugin still build from the repo. |
 | **The hosted MCP gateway** | Two MCP surfaces, two roles. The Bazantic gateway (`https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp`, Recipe `x402-payee-verification-via-vet402-gateway`) fronts vet402's REST API as **57 tools** (`tools/list`, measured 2026-09-06) — use it for discovery and every key-free read (`/decision`, `/resolve`, scores). `pay_if_trusted` is the one tool that holds a signer, and it is **only** in this package over stdio, not on the gateway. |

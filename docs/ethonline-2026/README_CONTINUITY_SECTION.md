@@ -10,7 +10,7 @@
 Tag `pre-ethonline-2026` — commit `c42daca`, **2026-09-04 00:05:36 UTC**. The window opened at
 **2026-09-04 16:00 UTC** (`hacking-begins`), so the tag sits 15 h 54 min before the start; this file said
 "five minutes after the window opened" until 2026-09-08. Everything reachable from the tag is
-pre-existing, and we claim none of it. **Three commits on the claimed side were made before 16:00 UTC** —
+pre-existing, and I claim none of it. **Three commits on the claimed side were made before 16:00 UTC** —
 SHAs, times and contents in [`DISCLOSURE_2026-09-05.md`](./DISCLOSURE_2026-09-05.md).
 
 ```bash
@@ -18,8 +18,8 @@ git log -1 --format='%H %cI' pre-ethonline-2026       # the line itself
 git rev-list --count pre-ethonline-2026..origin/main  # commits since
 ```
 
-`main` is also production here, so that second range holds work we do **not** claim; the narrower range
-we do, and the disclosure sent to ETHGlobal on 2026-09-05, are in [`SUBMISSION_DRAFT.md`](./SUBMISSION_DRAFT.md)
+`main` is also production here, so that second range holds work I do **not** claim; the narrower range
+I do claim, and the disclosure sent to ETHGlobal on 2026-09-05, are in [`SUBMISSION_DRAFT.md`](./SUBMISSION_DRAFT.md)
 and [`DISCLOSURE_2026-09-05.md`](./DISCLOSURE_2026-09-05.md). There is no hackathon branch to read: the work
 landed on `main`, in the open, one commit at a time.
 
@@ -40,10 +40,10 @@ answer, and to refuse without asking a model's permission.
 2. **Cite The Graph in the caller's own name, and reject a citation from elsewhere.** Evidence reads
    live from the x402 Base subgraph with the caller's key, carrying block and deployment; a read from
    another deployment is refused — `git show --stat 51f7445 beac4f9`
-3. **Let a caller set their own floor without us rewriting our verdict.** `requireVet402Allow: false`
-   waives our WARN when their floors are met; BLOCK and degraded never are, and the record still says
+3. **Let a caller set their own floor without vet402 rewriting its verdict.** `requireVet402Allow: false`
+   waives vet402's WARN when their floors are met; BLOCK and degraded never are, and the record still says
    the verdict came from `caller_policy` — `grep -n requireVet402Allow packages/sdk/src/pay-or-refuse.ts`
-4. **Judge a seller who is not in our catalogue.** On a 404 from `/decision` the gate decides from the
+4. **Judge a seller who is not in vet402's catalogue.** On a 404 from `/decision` the gate decides from the
    402 challenge's `payTo` and that address's payee score, instead of registering the seller to make
    the demo look tidy — `grep -n not_found packages/sdk/src/pay-or-refuse.ts`
 5. **Hand the whole gate to an agent as one MCP tool.** `pay_if_trusted` forwards the caller's policy
@@ -63,7 +63,7 @@ The gate has settled one real payment on Base; that receipt and its numbers are 
 
 ## Size of the window, counted rather than asserted
 
-`git diff --diff-filter=A --name-only pre-ethonline-2026..main | wc -l` → <!-- n:window_added_files -->231<!-- /n --> files added, and
+`git diff --diff-filter=A --name-only pre-ethonline-2026..main | wc -l` → <!-- n:window_added_files -->237<!-- /n --> files added, and
 `git diff --diff-filter=M --name-only pre-ethonline-2026..main | wc -l` → <!-- n:window_modified_files -->206<!-- /n --> pre-existing files touched
-(listed in [`CHANGED_FILES.md`](./CHANGED_FILES.md)), both as of <!-- n:as_of -->2026-09-12<!-- /n -->. CI re-derives them every run
+(listed in [`CHANGED_FILES.md`](./CHANGED_FILES.md)), both as of <!-- n:as_of -->2026-09-13<!-- /n -->. CI re-derives them every run
 (`npm run check-numbers`), so a stale number here turns the build red instead of sitting quietly.
