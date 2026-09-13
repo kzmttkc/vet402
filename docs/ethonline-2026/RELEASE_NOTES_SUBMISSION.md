@@ -1,12 +1,15 @@
 # Release `ethonline-2026-submission` — body draft
 
-> **Cut on 2026-09-12 UTC (2026-09-13 JST)**, before the 2026-09-13 16:00 UTC deadline, from the last commit
-> of the submission — a Release pins one commit, so it could not be cut earlier while commits were still
-> landing. Nothing in this file is pasted anywhere else. The boundary tag has its own Release
-> (`pre-ethonline-2026 — boundary tag`, 2026-09-07); this one is the other end of the range.
+> **Re-cut on 2026-09-13 UTC (2026-09-13 JST evening)**, before the 2026-09-13 16:00 UTC deadline. The first
+> cut of this Release (2026-09-12 UTC, `9ac1ba9`) was deleted and re-created from the last commit of the
+> submission because `docs/ethonline-2026/PROMPTS/` was rewritten after it as a day-by-day excerpt of the
+> owner's decisions and instructions (commit `29e94b8`); the old tree carried the earlier, longer form.
+> A Release pins one commit, so it could not be cut earlier while commits were still landing. Nothing in this
+> file is pasted anywhere else. The boundary tag has its own Release (`pre-ethonline-2026 — boundary tag`,
+> 2026-09-07); this one is the other end of the range.
 >
 > **What was done before the cut**: every `{{…}}` below was replaced with the value printed by the command
-> that stood next to it; `COMMITS_EN.md` was regenerated and proven not behind —
+> that stood next to it; `COMMITS_EN.md` was regenerated in the same commit and proven not behind —
 > `node scripts/ethonline-commits-en.mjs && node scripts/ethonline-commits-en.mjs --check --strict`
 > (both exit 0; `npm test` runs `--check` without `--strict`, where a file that is merely behind is only a `note:`);
 > the result was committed and pushed, and the Release was cut from that commit with
@@ -61,8 +64,8 @@ runs on every push. As of this release: `✔ 12 number(s) consistent across 8 do
    keyed by SHA — history is not rewritten.
 4. **`docs/ethonline-2026/DISCLOSURE_2026-09-05.md`** — the written disclosure sent to ETHGlobal before
    judging, verbatim, plus the two corrections made to it afterwards.
-5. `AI_USAGE.md` (who wrote what, by area) and `docs/ethonline-2026/PROMPTS/` (the instructions I worked
-   from, by day).
+5. `AI_USAGE.md` (who wrote what, by area) and `docs/ethonline-2026/PROMPTS/` (a day-by-day excerpt of the
+   decisions and instructions I gave, each with the commit it landed in).
 
 ### Pre-existing work — what I disclose
 
@@ -86,9 +89,9 @@ runs on every push. As of this release: `✔ 12 number(s) consistent across 8 do
 
 | | |
 |---|---|
-| Commits `pre-ethonline-2026..ethonline-2026-submission` | `403` |
-| …of which claimed (path filter above) | `252` |
-| `COMMITS_EN.md` untranslated subjects, and not behind | `ethonline-commits-en: 403 commits (252 claimed, 3 claimed pre-window), 291 translated, 112 English, file fresh, 0 problem(s)` / `exit 0` |
+| Commits `pre-ethonline-2026..ethonline-2026-submission` | `410` |
+| …of which claimed (path filter above) | `259` |
+| `COMMITS_EN.md` untranslated subjects, and not behind | `ethonline-commits-en: 410 commits (259 claimed, 3 claimed pre-window), 291 translated, 119 English, file fresh, 0 problem(s)` / `exit 0` |
 | `npm run judge-check` on a clean clone | `judge-check: all 11 steps exit 0` (the line also prints the wall time — 28–30 s on a fresh checkout of this commit with a warm npm cache) |
 
 Team: Takeshi Kazumoto (Discord `Sen_web3`). Prizes applied for: The Graph (Continuity), Bazantic.
