@@ -22,6 +22,7 @@ A submission wins when a judge can answer, in 60 seconds of video:
 | ETHOnline 2026 | 2026-09-04 → 09-16（提出締切 09-13 12:00 EDT） | `payOrRefuse` | スコアを見てから払うな。拒めるなら、払うな。 |
 | ETHGlobal Tokyo | 2026-09-25 → 09-27 | `resolve-then-pay` | エージェントはアドレスではなく、名前に払う。 |
 | ETHGlobal Mumbai | 2026-11-06 → 11-08 | `write the registry` | 支払いの証明はある。履行の証明を、空のレジストリに書く。 |
+| Arbitrum Open House (HackQuest・並行・ETHGlobal ではない) | 2026-09-14 → 10-04 23:59 | `/rwa`（Stock Token 実績の再構成） | 下の「Parallel venue」節。実装の正本は `docs/rwa/SPEC.md`（branch `rwa-v0`） |
 
 Substrate that is **never** claimed as new work:
 
@@ -236,6 +237,25 @@ Do **not** implement:
 Allowed before those clocks: specs, SDK reading, testnet accounts, ENS name **registration** (owning a name is not project code), Devcon ticket, applications, ops of the existing product.
 
 ---
+
+## Parallel venue — Arbitrum Open House / vet402 `/rwa`（2026-09-13 決定・Takeshi 承認）
+
+Open House（HackQuest `arbitrum-singapore.hackquest.io/projects/vet402`）は **09-14 → 10-04** で、
+ETHGlobal Tokyo（09-25 → 27）を丸ごと含む。同じリポ・同じ `main` に両方の差分が入るので、**請求（claim）を
+パスとコミットで分ける**。実装は別セッション（vet402 RWA instrument構築）、この節の維持はハッカソン戦略セッション。
+
+| # | 衝突 | 決まり（例外なし） | 確かめ方 |
+|---|---|---|---|
+| 1 | ETHGlobal の提出時チェック *"I will not be submitting this project to another hackathon"*（ETHOnline で押した・Tokyo でも押す） | Open House の請求に **`payOrRefuse` / `pay_if_trusted` / `resolve-then-pay`（ENS 経由の支払い）を含めない**。Open House が請求するのは `/rwa` のパスとそのコミットだけ。提出文にもこの3語を「新規作業」として書かない | Open House 提出前に、提出文と README の請求節を `grep -nE 'payOrRefuse\|pay_if_trusted\|resolve-then-pay'` → 「既存・請求外」の文脈以外で 0 件 |
+| 2 | Tokyo の境界タグ以降の差分に `/rwa` のコミットが混ざる | Tokyo の請求パスフィルタに **`packages/rwa` `src/app/rwa` `app/rwa` `docs/rwa` を入れない**。Tokyo の開示に「同じ週に別のハッカソン（Arbitrum Open House・`/rwa`）の作業が `main` に入っている。請求外」と1行 | Tokyo の `git log pre-tokyo..<tag> -- <請求フィルタ>` に `rwa` を含むパスが 0 件 |
+| 3 | 逆方向 | Open House の README/提出文に「ETHGlobal Tokyo の作業（ENS 経由の支払い）と ETHOnline の `payOrRefuse` は含まない」と1行。`/rwa` の会期差分は `09-14 以降 -- packages/rwa src/app/rwa app/rwa docs/rwa (+ rwa 専用 migration)` で出す | 提出文の該当行の実在 |
+| 4 | 共有ファイル（`package.json`・lockfile・DB schema/migration・`next.config.ts`・`vercel.json`） | `/rwa` が触る共有ファイルは **1コミットに分けて件名に `rwa:` を付ける**。Tokyo の請求フィルタには共有ファイルを入れない。DB は `/rwa` 専用テーブル・専用 migration（本体の既存テーブルを変えない。`docs/rwa/SPEC.md` の「本体 `/score` に混ぜない」と同じ線） | `git log --grep='^.*rwa' -- package.json package-lock.json drizzle` |
+| 5 | ETHOnline の審査中（〜09-17 01:00 JST Finale） | `/rwa` 作業は ETHOnline の請求パス（`packages/sdk` `packages/mcp-server` `examples/ethonline-2026-*` `SKILL.md` `AI_USAGE.md` `docs/ethonline-2026`）に**触らない**。Release `ethonline-2026-submission` とタグ `pre-ethonline-2026` は動かさない | `git diff --name-only <rwa の範囲> -- <ETHOnline の請求パス>` が空 |
+| 6 | Takeshi が Tokyo 会場にいる 09-25 → 27 | **`/rwa` はこの3日間凍結**（`docs/rwa/SPEC.md` §13 の「凍結してよい」を「凍結する」に読み替える）。`/rwa` の提出準備は 09-28 → 10-04 に置く | その3日間の `main` に `rwa` パスのコミットが 0 件 |
+| 7 | 名前 | Open House 側の表示名は **`vet402 /rwa`**（製品名 vet402 と、ETHGlobal の提出物 `payOrRefuse` / Tokyo の verb と区別する）。ETHGlobal 側の提出物に `/rwa` を載せない | 両提出ページの表示名 |
+| 8 | 英語件名の規則 | `/rwa` のコミットも **件名は英語**（`docs/ethonline-2026/commit-titles-en.json` の対訳なしで日本語件名を `main` に載せると全員の push が止まる）。`main` へは `bash scripts/push-main.sh --full` だけ | push-main の exit 0 |
+
+**Tokyo の請求フィルタ（09-25 kickoff で確定・この節が先に置く既定）**: `packages/sdk packages/mcp-server examples/tokyo-2026-* docs/tokyo-2026 SKILL.md AI_USAGE.md` を起点に、ENS 解決で実際に触ったパスだけを足す。`rwa` を含むパスは足さない。
 
 ## Continuity application (reuse, fill brackets)
 

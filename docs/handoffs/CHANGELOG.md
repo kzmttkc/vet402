@@ -13,6 +13,14 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-13 20:xx JST — Arbitrum Open House（`/rwa`）と ETHGlobal Tokyo の請求を分ける決まりを置いた
+
+- **何を変えたか**: `docs/hackathons/2026-autumn-continuity.md` の Locked verbs に Open House の行、新節「Parallel venue — Arbitrum Open House / vet402 `/rwa`」に衝突 8 件の決まりと確かめ方を追記（コードは変えていない）
+- **なぜ**: Open House（09-14 → 10-04）が Tokyo（09-25 → 27）を含み、同じ `main` に両方の差分が入る。ETHGlobal の提出時チェック「別のハッカソンに出さない」に触れないよう、請求をパスとコミットで分ける（Takeshi 承認 09-13）
+- **影響**: `/rwa` の実装セッションは `packages/rwa` `src/app/rwa` `app/rwa` `docs/rwa` と `/rwa` 専用 migration の中で作業し、ETHOnline の請求パスには 09-17 まで触らない。09-25 → 27 は `/rwa` 凍結。件名は英語
+
+---
+
 ## 2026-09-13 19:xx JST — 最終監査の直し（審査員が読む面の事実誤り 2 件・主語・鮮度）と Release の 2 度目の切り直し
 
 - **何を変えたか**: (1) 「npm 公開は after the submission closed」を 4 か所（`README.md`・`SKILL.md` ×2・`LIVE_JUDGING.md`）で日付だけの表現に（公開 09-12 06:41 UTC は締切 09-13 16:00 UTC の 33 時間前で、この文は偽だった）。(2) `README.md` の Node 版を `>= 22.18` → `24.x`（Node 22 では `judge-check` の timeout テストが cancelled になり exit 1。`package.json` engines と一致させた）。(3) `PROMPTS/README.md` の先頭に英語の案内と「抜粋であり削除ではない・全件版は `c39f4a3`」を明記、規約引用に出典 URL と条件句 "If you use one" を復元。(4) `AI_USAGE.md` の Planning artifacts 行を「Compiled by AI from my own messages」に（prompts を AI が書いたと読めた）。(5) `DISCLOSURE_2026-09-05.md`・`README_CONTINUITY_SECTION.md` の引用外の `we` を `I` / `vet402` に。(6) `npm run refresh-numbers`（tests 780→797・commits 910→927 ほか）、`CHANGED_FILES.md` の面積表を awk の出力に合わせ直し（合計 183→206・`packages/middleware` 行を追加）。(7) GitHub の About を `we buy` → `it buys`（リポ設定・git の外）。(8) Release `ethonline-2026-submission` をこのコミットへ切り直し（1 度目の切り直しは 16:07 JST・`749148d`）
