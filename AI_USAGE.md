@@ -70,7 +70,7 @@ a trailer as "unknown", not as "human".** The numbers move every day — re-run 
 | **Evidence provenance** | `src/lib/decision/evidence.ts`, `docs/openapi.yaml`, `src/lib/observatory/vocabulary.ts` | Written by AI |
 | **Settlement integrity** | `src/lib/settlements/rollup.ts`, `recover-late.ts`, nonce-binding tests | Written by AI |
 | **Security audits** | `docs/audits/2026-09-05-*` | Conducted and written by AI agents, cross-checked against production data |
-| **Planning artifacts** | `docs/ethonline-2026/**`, including `PROMPTS/` | Written by AI. `PROMPTS/` carries my verbatim instructions, by day |
+| **Planning artifacts** | `docs/ethonline-2026/**`, including `PROMPTS/` | Written by AI. `PROMPTS/` carries, by day, an excerpt of the decisions, instructions and approvals I gave, each with the commit it landed in |
 
 **Window totals move daily; derive them rather than trusting this line:**
 

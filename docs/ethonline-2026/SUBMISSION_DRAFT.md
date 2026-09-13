@@ -147,7 +147,7 @@ MCP. pay_if_trusted takes the same policy object and forwards it to payOrRefuse 
 
 BAZANTIC. A Bazantic-built x402 gateway fronts vet402's REST API as {{bazantic_tools}} MCP tools (https://2vjhqfgvw5dt5lja2zpjsjwrem.bazgateway.com/mcp) and a public Recipe explains when and how to use it. The A/B harness (examples/ethonline-2026-ab) gives the same model the same prompt and the same tools twice, with the Recipe as the only difference (a test pins stripRecipe(B) === A byte for byte), grades every trial against what vet402's API actually returned, and writes raw trials.jsonl that npm run metrics regrades from scratch. Because the gateway answers 402 even on $0 routes and MCP tools/call cannot carry a payment, the harness includes a bridge that signs only when the quoted amount is exactly "0" and re-sends over REST.
 
-AI. Claude (Opus / Fable, via Claude Code) wrote most of the code under human direction; the failing tests for the gate were written before the implementation. AI_USAGE.md lists the areas and files and what the human did; docs/ethonline-2026/PROMPTS/ holds the day-by-day instructions verbatim. No AI voice is used in the video.
+AI. Claude (Opus / Fable, via Claude Code) wrote most of the code under human direction; the failing tests for the gate were written before the implementation. AI_USAGE.md lists the areas and files and what the human did; docs/ethonline-2026/PROMPTS/ holds, day by day, an excerpt of the decisions and instructions I gave and the commits they landed in. No AI voice is used in the video.
 ```
 
 **文中の数字と出典**
