@@ -12,5 +12,8 @@ Do not render ALLOW/WARN/BLOCK on public pages.
 Do not emit realized_usd until fixtures/rwa/B.md exists and its test passes.
 Do not infer that a wallet is an agent.
 Do not merge two addresses into one PnL.
+- Do not touch ETHOnline request paths until 2026-09-17.
+- Commit subjects in English. Prefix shared-tree commits with `rwa:`.
+- Do not implement payOrRefuse / pay_if_trusted / resolve-then-pay in this session.
 
 Source of truth: docs/rwa/SPEC.md (copy of artifacts/vet402-rwa-spec.md).
