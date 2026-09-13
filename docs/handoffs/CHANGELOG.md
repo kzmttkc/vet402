@@ -17,7 +17,7 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 - **何を変えたか**: `docs/hackathons/2026-autumn-continuity.md` の Locked verbs に Open House の行、新節「Parallel venue — Arbitrum Open House / vet402 `/rwa`」に衝突 8 件の決まりと確かめ方を追記（コードは変えていない）
 - **なぜ**: Open House（09-14 → 10-04）が Tokyo（09-25 → 27）を含み、同じ `main` に両方の差分が入る。ETHGlobal の提出時チェック「別のハッカソンに出さない」に触れないよう、請求をパスとコミットで分ける（Takeshi 承認 09-13）
-- **影響**: `/rwa` の実装セッションは `packages/rwa` `src/app/rwa` `app/rwa` `docs/rwa` と `/rwa` 専用 migration の中で作業し、ETHOnline の請求パスには 09-17 まで触らない。09-25 → 27 は `/rwa` 凍結。件名は英語
+- **影響**: `/rwa` の実装セッションは RWA パス（`packages/rwa` `src/app/rwa` `src/app/api/v1/rwa` `src/app/api/v1/wallets/[address]/rwa` `fixtures/rwa` `docs/rwa` `src/lib/db/rwa-schema.ts` `drizzle-rwa.config.ts`）の中で作業し、ETHOnline の請求パスには 09-17 まで触らない。09-25 → 27 は `/rwa` 凍結。件名は英語
 
 ---
 
