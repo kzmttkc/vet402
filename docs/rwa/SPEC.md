@@ -512,6 +512,20 @@ Do not merge two addresses into one PnL.
 
 やらない: 賞取りのための会場追加、Arbitrum One への移植、トークン、実行エンジン。
 
+### §13c 会場の分離（patch 002・2026-09-13）
+
+出典: `docs/hackathons/2026-autumn-continuity.md` 節「Parallel venue — Arbitrum Open House / vet402 `/rwa`」（b68e186・Takeshi 承認）。食い違ったら出典を正とし、この節をパッチで直す。
+
+- 表示名: Open House 側は `vet402 /rwa`。
+- 請求: Open House が請求するのは下の RWA パスと、そのパスに触れた 2026-09-14 以降のコミットだけ。§13 の「9/14以降」と §13b の「9/16 以降」は **2026-09-14 以降**に揃える（コードは 9/16 から。9/14–15 は docs だけ）。
+- RWA パス（請求フィルタ）: `packages/rwa` `src/app/rwa` `src/app/api/v1/rwa` `src/app/api/v1/wallets/[address]/rwa` `fixtures/rwa` `docs/rwa` `src/lib/db/rwa-schema.ts` `drizzle-rwa.config.ts` と `drizzle/` の RWA 専用 migration。`app/rwa` はこのリポに作らない（patch 001）。
+- 請求しないもの: `payOrRefuse` / `pay_if_trusted` / `resolve-then-pay` を新規作業として書かない。README と提出文に1行「ETHGlobal Tokyo の作業（ENS 経由の支払い）と ETHOnline の `payOrRefuse` は含まない」。
+- ETHOnline 審査中（〜2026-09-17 01:00 JST）: `packages/sdk` `packages/mcp-server` `examples/ethonline-2026-*` `SKILL.md` `AI_USAGE.md` `docs/ethonline-2026` に触らない。タグ `pre-ethonline-2026` と Release `ethonline-2026-submission` を動かさない。
+- 共有ファイル（`package.json`・lockfile・DB schema/migration・`next.config.ts`・`vercel.json`）: 1コミットに分け、件名に `rwa:` を入れる。本体の既存テーブルは変えない。
+- コミット件名: 英語。`main` へはトピックブランチから `bash scripts/push-main.sh --full` だけ。
+- 凍結: §13 の「9/25–27 ETHTokyo 移動 | 凍結してよい」は **凍結する**（`rwa` パスのコミット 0 件）。提出準備は 9/28–10/4 に置く。
+- 未決: §13 の「9/23–26 FIFO、partial、catalog」と「9/27–29 opinion API、アンカー1発、提出文」は凍結日と重なる。凍結日には作業しない。行の再配置は patch 003 で決める。
+
 ---
 
 ## 14. 計画として先に予約し、3週間は触らないもの
