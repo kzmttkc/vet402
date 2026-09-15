@@ -11,6 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  SOLANA_CHECKPOINT_SCOPE_PREFIX,
   SOLANA_MAX_PAYEES_PER_RUN,
   SOLANA_MAX_SIGNATURES_PER_PAYEE,
   runSolanaIndex,
@@ -66,10 +67,12 @@ function fakeStore(payees: string[]) {
   let clock = 0;
   const deps = (rpc: SolanaRpc): SolanaIndexDeps => ({
     rpc,
+    // 走査の完全性の検査なので問い合わせ先は受取人の文字列そのまま（ATA は settlements-solana-index-ata で検査）
+    signatureAddressFor: (payee) => payee,
     async listPayees() {
       return payees.map((payTo) => ({
         payTo,
-        checkpointUpdatedAt: checkpoints.get(`settlements:solana:${payTo}`)?.updatedAt ?? null,
+        checkpointUpdatedAt: checkpoints.get(`${SOLANA_CHECKPOINT_SCOPE_PREFIX}${payTo}`)?.updatedAt ?? null,
       }));
     },
     async getCheckpoint(scope) {
@@ -129,7 +132,7 @@ test("新しい署名が 26 件を超えても before でページングして�
   assert.equal(store.persisted.length, total);
   assert.equal(calls.length, 3, "25 + 25 + 10 の 3 ページ");
   assert.equal(calls[1].before, list[24].signature);
-  const cp = store.checkpoints.get("settlements:solana:P")!;
+  const cp = store.checkpoints.get(`${SOLANA_CHECKPOINT_SCOPE_PREFIX}P`)!;
   assert.equal(cp.lastSignature, list[0].signature, "最新の署名がカーソル");
   assert.equal(cp.lastSlot, BigInt(list[0].slot));
 
@@ -150,7 +153,7 @@ test("予算切れで途中終了したときはチェックポイントを進�
   // 各 now() 呼び出しで 10ms 進む → 予算 45ms は署名処理の途中で切れる
   const s = await runSolanaIndex(store.deps(rpc), { budgetMs: 45, now: () => (t += 10) });
   assert.ok(store.persisted.length > 0 && store.persisted.length < 30, `途中で止まる (${store.persisted.length})`);
-  assert.equal(store.checkpoints.has("settlements:solana:P"), false, "チェックポイントは書かれない");
+  assert.equal(store.checkpoints.has(`${SOLANA_CHECKPOINT_SCOPE_PREFIX}P`), false, "チェックポイントは書かれない");
   assert.equal(s.budgetExhausted, true);
 });
 
@@ -158,7 +161,7 @@ test("署名が無い受取先もチェックポイントに触れて順番を�
   const { rpc } = fakeRpc({ A: [], B: [sig(1)] });
   const store = fakeStore(["A", "B"]);
   await runSolanaIndex(store.deps(rpc));
-  const a = store.checkpoints.get("settlements:solana:A");
+  const a = store.checkpoints.get(`${SOLANA_CHECKPOINT_SCOPE_PREFIX}A`);
   assert.ok(a, "空の受取先も updated_at が進む");
   assert.equal(a.lastSignature, null);
 });
@@ -167,7 +170,7 @@ test("旧形式（slot だけ）のチェックポイントでも動く: slot �
   const list = [sig(5), sig(4), sig(3), sig(2), sig(1)];
   const { rpc, calls } = fakeRpc({ P: list });
   const store = fakeStore(["P"]);
-  await store.deps(rpc).setCheckpoint("settlements:solana:P", { lastSlot: BigInt(1000 + 3), lastSignature: null });
+  await store.deps(rpc).setCheckpoint(`${SOLANA_CHECKPOINT_SCOPE_PREFIX}P`, { lastSlot: BigInt(1000 + 3), lastSignature: null });
   const s = await runSolanaIndex(store.deps(rpc));
   assert.equal(calls[0].until, undefined);
   assert.equal(s.signatures, 2);
@@ -176,7 +179,7 @@ test("旧形式（slot だけ）のチェックポイントでも動く: slot �
     [sig(4).signature, sig(5).signature],
     "古い順に処理する",
   );
-  assert.equal(store.checkpoints.get("settlements:solana:P")!.lastSignature, sig(5).signature);
+  assert.equal(store.checkpoints.get(`${SOLANA_CHECKPOINT_SCOPE_PREFIX}P`)!.lastSignature, sig(5).signature);
 });
 
 test("RPC の失敗は errors に数え、理由をログに出す（握りつぶさない）", async () => {

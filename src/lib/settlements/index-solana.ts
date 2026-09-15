@@ -15,8 +15,15 @@
 //   - 予算切れで途中終了した受取先はチェックポイントを進めない（次回、先頭で再開）。
 //   - SOLANA_RPC_URL 未設定は公開 RPC へ黙って倒れず skipped を返す（fail-loud）。
 //   - RPC/DB の失敗は数えるだけでなく理由をログに出す。
+//
+// 2026-09-15: 署名は受取人の**本体ではなく USDC 受取口座（ATA）**に問い合わせる。x402 の SVM exact
+//   決済（TransferChecked）が口座一覧に載せるのは ATA だけで、本体は載らない（公開 RPC で実測:
+//   本体の署名一覧に取引 0/3・ATA には 3/3、palmyr.ai の受取人1件の直近30日は本体 3 件／ATA 155 件）。
+//   ATA の履歴は旧 scope（本体のカーソル）を引き継がず、新しい scope で最初から読む。
 // ============================================================
 import { sql } from "drizzle-orm";
+import { PublicKey } from "@solana/web3.js";
+import { getAssociatedTokenAddressSync } from "@/lib/observatory/spl-token-lite";
 import { getDb } from "@/lib/db/client";
 import { getIndexerCheckpointWithCursor, setIndexerCheckpoint } from "@/lib/db/owner-index";
 import { payeeId as toPartyId } from "@/lib/ids/canonical";
@@ -64,6 +71,8 @@ export type SolanaCheckpoint = { lastSlot: bigint; lastSignature: string | null 
 export type SolanaPayeeRow = { payTo: string; checkpointUpdatedAt: Date | null };
 
 export type SolanaIndexDeps = {
+  /** 受取人ごとに getSignaturesForAddress を掛ける口座。本番は USDC の ATA。導けなければ null。 */
+  signatureAddressFor: (payee: string) => string | null;
   rpc: SolanaRpc;
   listPayees(): Promise<SolanaPayeeRow[]>;
   getCheckpoint(scope: string): Promise<SolanaCheckpoint | null>;
@@ -114,7 +123,20 @@ export function selectPayeesForRun(rows: readonly SolanaPayeeRow[], max = SOLANA
     .map((r) => r.payTo);
 }
 
-const scopeOf = (payee: string) => `settlements:solana:${payee}`;
+/** 旧 scope: 受取人本体の署名一覧のカーソル（2026-09-15 まで）。ATA の履歴には流用しない。 */
+export const SOLANA_LEGACY_OWNER_SCOPE_PREFIX = "settlements:solana:";
+/** 現 scope: 受取人の USDC ATA の署名一覧のカーソル。 */
+export const SOLANA_CHECKPOINT_SCOPE_PREFIX = "settlements:solana-usdc-ata:";
+const scopeOf = (payee: string) => `${SOLANA_CHECKPOINT_SCOPE_PREFIX}${payee}`;
+
+/** 受取人の USDC ATA（PDA の受取人も許す）。base58 の公開鍵でなければ null。純関数。 */
+export function solanaUsdcTokenAccount(owner: string): string | null {
+  try {
+    return getAssociatedTokenAddressSync(new PublicKey(SOLANA_USDC_MINT), new PublicKey(owner), true).toBase58();
+  } catch {
+    return null;
+  }
+}
 
 export async function runSolanaIndex(
   deps: SolanaIndexDeps,
@@ -144,6 +166,14 @@ export async function runSolanaIndex(
     }
     const scope = scopeOf(payee);
     try {
+      const address = deps.signatureAddressFor(payee);
+      if (!address) {
+        // 導けない受取人は数えて後ろへ回す（先頭に居座って毎回の枠を食わない）
+        summary.errors++;
+        logServerError("settlements.index-solana.no_token_account", new Error(`payee ${payee}: cannot derive USDC token account`));
+        await deps.setCheckpoint(scope, { lastSlot: 0n, lastSignature: null });
+        continue;
+      }
       const cp = (await deps.getCheckpoint(scope)) ?? { lastSlot: 0n, lastSignature: null };
 
       // 1) 署名を新しい順に集める。until = 保存済み署名（無ければ slot で止める）。
@@ -157,7 +187,7 @@ export async function runSolanaIndex(
           cut = true;
           break;
         }
-        const page = await deps.rpc.getSignaturesForAddress(payee, {
+        const page = await deps.rpc.getSignaturesForAddress(address, {
           limit: SOLANA_MAX_SIGNATURES_PER_PAYEE,
           before,
           until: cp.lastSignature ?? undefined,
@@ -250,6 +280,7 @@ export async function indexSolana(
   const classifier = options.classifier ?? (await loadWashClassifier());
 
   const deps: SolanaIndexDeps = {
+    signatureAddressFor: solanaUsdcTokenAccount,
     rpc: {
       getSignaturesForAddress: (address, opts) => conn.getSignaturesForAddress(new PublicKey(address), opts, "confirmed"),
       getParsedTransaction: (signature) =>
@@ -265,7 +296,7 @@ export async function indexSolana(
             SELECT DISTINCT pay_to FROM x402_endpoints
             WHERE network = ${SOLANA_MAINNET_CAIP2} AND pay_to IS NOT NULL AND status = 'active'
           ) e
-          LEFT JOIN indexer_checkpoints c ON c.scope = ${"settlements:solana:"} || e.pay_to
+          LEFT JOIN indexer_checkpoints c ON c.scope = ${SOLANA_CHECKPOINT_SCOPE_PREFIX} || e.pay_to
         `),
       ).map((r) => ({ payTo: r.pay_to, checkpointUpdatedAt: r.updated_at ? new Date(r.updated_at) : null }));
     },
