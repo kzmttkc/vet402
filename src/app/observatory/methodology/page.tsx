@@ -10,6 +10,9 @@ import {
 } from "@/lib/observatory/l0-probe";
 import { SETTLE_DROP_MIN_PREV_CALLS, SETTLE_DROP_RATIO } from "@/lib/observatory/catalog-diff";
 import {
+  FIRST_PURCHASE_DAILY_QUOTA,
+  MATURE_SETTLED_MIN,
+  MATURE_SWEEP_WINDOW_DAYS,
   PRIORITY_SELLER_HOSTS,
   PRIORITY_SWEEP_WINDOW_DAYS,
   SWEEP_WINDOW_DAYS,
@@ -300,7 +303,8 @@ export default async function ObservatoryMethodologyPage() {
         <p className="doc-p">
           An L1 purchase is a real transaction: one purchase per endpoint, at most once per{" "}
           {SWEEP_WINDOW_DAYS}-day window for the catalog at large — see the priority list below for
-          the {PRIORITY_SELLER_HOSTS.length} hosts bought from more often — targeting endpoints
+          the {PRIORITY_SELLER_HOSTS.length} hosts bought from more often, and the paragraph after
+          it for endpoints we have already settled with {MATURE_SETTLED_MIN} times — targeting endpoints
           whose most recent L0 verdict is <code>pass</code>, prioritised by real observed demand
           (30-day payer and call counts reported by the catalog). We request unpaid first to read the <code>402</code> challenge,
           then select a payment option and refuse to proceed unless every one of these holds:
@@ -353,6 +357,22 @@ export default async function ObservatoryMethodologyPage() {
           than left for a reader to infer from the timestamps. Until 2026-09-04 this section said
           &ldquo;at most once per {SWEEP_WINDOW_DAYS}-day window&rdquo; with no exception named,
           which was false for these four.
+        </p>
+        <p className="doc-p">
+          <strong>Endpoints already proved, and the daily intake limit.</strong> Once an endpoint
+          has {MATURE_SETTLED_MIN} purchases we re-read on-chain and confirmed (<code>settled</code>
+          {" "}— a seller claim we have not verified does not count), its window widens from{" "}
+          {SWEEP_WINDOW_DAYS} days to {MATURE_SWEEP_WINDOW_DAYS}. A fourth confirmed row on the same
+          endpoint does not change what this site says about it, and the budget it would have taken
+          goes to endpoints nobody has measured yet. The priority hosts above are exempt and stay on
+          their{" "}
+          {PRIORITY_SWEEP_WINDOW_DAYS === 1 ? "daily" : `${PRIORITY_SWEEP_WINDOW_DAYS}-day`} window,
+          because there the series itself is the measurement. Separately, at most{" "}
+          {FIRST_PURCHASE_DAILY_QUOTA} endpoints get their <em>first</em> purchase in any one UTC
+          day: when the catalog grows in a single jump, first purchases would otherwise crowd repeat
+          purchases out of the daily budget, and an endpoint held back is bought the next day rather
+          than dropped. Neither rule removes anything from the catalog, from L0, or from the
+          published ledger — only the interval changes.
         </p>
         <p className="doc-p">
           <strong>settled</strong> — <em>vet402 re-read the transaction on-chain</em> and found

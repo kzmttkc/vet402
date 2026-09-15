@@ -26,7 +26,7 @@
 //     weekly-sweep cadence emerges from the daily budget, not from a queue.
 // ============================================================
 import { privateKeyToAccount } from "viem/accounts";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { utcDayStart } from "@/lib/db/utc-day";
@@ -100,6 +100,8 @@ type Candidate = {
   network: string | null;
   declaredSchema: unknown;
   isPriority: boolean;
+  /** 成立が MATURE_SETTLED_MIN 件以上＝証拠が足りている（買い直しは 30 日間隔）。 */
+  isMature: boolean;
 };
 
 /**
@@ -194,6 +196,38 @@ export const PRIORITY_SELLER_HOSTS = [
 export const PRIORITY_SWEEP_WINDOW_DAYS = 1;
 
 /**
+ * 証拠が溜まったエンドポイントの買い直し間隔（2026-09-16）。
+ *
+ * 公開台帳 export.csv?days=30 の実測（2026-09-16）: 30 日で $83.81・成立 2,639 件・
+ * エンドポイント 1,743。うち **初回購入 55.5%（$46.54）／買い直し 44%（$37.27）**。
+ * カタログは増え続けるので、全件を 6 日間隔で回し続けると、買い直しの側だけが
+ * 単調に積み上がる（この形のまま年 $3,400 に向かう）。
+ *
+ * 判断は「何件あれば、その売り手について言えることが変わらなくなるか」。成立を
+ * 3 件積んだ相手に 4 件目を足しても、公開する所見（決済する／届く）は動かない。
+ * だから成熟したエンドポイントは 30 日間隔へ落とし、空いた枠を**まだ何も測って
+ * いない相手**へ回す。分母（掃引の対象）は減らさない——間隔が延びるだけで、
+ * L0 の生存観測も公開台帳の行もそのまま残る。
+ */
+export const MATURE_SWEEP_WINDOW_DAYS = 30;
+
+/** 「成熟」の線。status='settled' だけを数える（下の settledCountSql を見よ）。 */
+export const MATURE_SETTLED_MIN = 3;
+
+/**
+ * その UTC 日に許す**初回購入**の件数（2026-09-16）。
+ *
+ * 9/02 週に $47.66 と跳ねたのは、カタログへ 1,059 件が一度に入って初回購入が
+ * 一斉に走ったから。日次 $25 の上限はそれ自体は正しく働いたが、上限に張り付いた
+ * 日は買い直し（＝時系列の密度＝堀）が押し出される。枠は上限の代わりではなく、
+ * **上限の内側で初回購入と買い直しの取り分を決める**ためのもの。
+ *
+ * 枠に達した日は「購入行がまだ 1 件も無いエンドポイント」だけを候補から外す。
+ * 行は書かない——書けばスイープ窓のあいだ再選択されず、翌日の枠にも戻らない。
+ */
+export const FIRST_PURCHASE_DAILY_QUOTA = 120;
+
+/**
  * resource_key is host+path; a priority host matches itself and any path under
  * it — but NOTHING else. The old `${h}%` matched any prefix, so a look-alike
  * host an attacker can register (`api.exa.aique.com/paid` under `api.exa.ai%`,
@@ -231,6 +265,53 @@ export { operatorPayToDenylist };
 const prioritySqlArray = () =>
   sql`ARRAY[${sql.join(PRIORITY_PATTERNS.map((p) => sql`${p}`), sql`, `)}]::text[]`;
 
+/**
+ * 成熟の判定に数える行は **status='settled' だけ**。
+ *
+ * ここを「有料試行の件数」にすると、決済しない売り手ほど速く成熟して測られなく
+ * なる——検証者としては逆向きの誘因になる。settle_claimed（主張はあるが未照合）も
+ * 数えない: 照合が済んでいない主張は、まだ我々の証拠ではない。
+ */
+const settledCountSql = (endpointRef: SQL) => sql`(
+    SELECT count(*) FROM x402_l1_purchases s
+    WHERE s.endpoint_id = ${endpointRef} AND s.status = 'settled'
+  )`;
+
+/**
+ * 候補 SQL のスイープ窓。**優先売り手を最初に判定する**——成熟の条件（成立 3 件）
+ * は優先売り手ほど先に満たすので、順番を逆にすると堀そのものが 30 日間隔へ落ちる。
+ * JS 側の sweepWindowDaysFor が同じ順番を持つ（予約もこの窓で締める）。
+ */
+const sweepWindowDaysSql = (endpointRef: SQL, resourceKeyRef: SQL) => sql`(CASE
+            WHEN ${resourceKeyRef} ILIKE ANY(${prioritySqlArray()}) THEN ${PRIORITY_SWEEP_WINDOW_DAYS}::int
+            WHEN ${settledCountSql(endpointRef)} >= ${MATURE_SETTLED_MIN} THEN ${MATURE_SWEEP_WINDOW_DAYS}::int
+            ELSE ${SWEEP_WINDOW_DAYS}::int
+          END)`;
+
+/**
+ * 予約が締めるスイープ窓。sweepWindowDaysSql と同じ順番（優先売り手が先）。
+ * DB 無しで固定できるよう純関数で出す。
+ */
+export function sweepWindowDaysFor(input: { isPriority: boolean; isMature: boolean }): number {
+  if (input.isPriority) return PRIORITY_SWEEP_WINDOW_DAYS;
+  return input.isMature ? MATURE_SWEEP_WINDOW_DAYS : SWEEP_WINDOW_DAYS;
+}
+
+/**
+ * その UTC 日に「それまで購入行の無かったエンドポイント」を買った件数。
+ *
+ * 数え方は endpoint ごとの min(attempted_at) が今日の 0 時 UTC 以降か——status は
+ * 見ない。budget_denied や request_error でも、その endpoint は「今日もう手を
+ * 付けた」ので枠を 1 つ使っている（候補 SQL の「未購入」判定＝行の有無とも揃う）。
+ */
+const firstPurchasesTodayCountSql = () => sql`(
+    SELECT count(*) FROM (
+      SELECT pu.endpoint_id FROM x402_l1_purchases pu
+      GROUP BY pu.endpoint_id
+      HAVING min(pu.attempted_at) >= ${utcDayStart()}
+    ) f
+  )`;
+
 function unitsToUsd(units: bigint): number {
   return Number(units) / USDC_PER_USD;
 }
@@ -244,7 +325,14 @@ function rowsOf(raw: unknown): Record<string, unknown>[] {
 
 type Reservation =
   | { ok: true; rowId: string }
-  | { ok: false; reason: "daily_budget_exceeded" | "already_purchased" | "solana_daily_cap" };
+  | {
+      ok: false;
+      reason:
+        | "daily_budget_exceeded"
+        | "already_purchased"
+        | "solana_daily_cap"
+        | "first_purchase_quota";
+    };
 
 /**
  * Claim the spend before it can happen. ONE statement, so the day's total and
@@ -287,20 +375,31 @@ async function reserveSpend(input: {
         WHERE pu.endpoint_id = ${endpointId}::uuid
           AND pu.attempted_at > now() - make_interval(days => ${windowDays})
       ) AS taken
+    ), first_day AS (
+      -- 初回購入の日次枠（FIRST_PURCHASE_DAILY_QUOTA）。候補 SQL がバッチ開始時に
+      -- 一度外すが、1 バッチの途中で枠を跨ぐぶんはそこでは止まらない。Solana の
+      -- 別枠と同じで、締めるのは予約の側（同じ 1 文の中で数える）。
+      SELECT ${firstPurchasesTodayCountSql()} AS n,
+             NOT EXISTS (
+               SELECT 1 FROM x402_l1_purchases pu WHERE pu.endpoint_id = ${endpointId}::uuid
+             ) AS is_first
     ), ins AS (
       INSERT INTO x402_l1_purchases
         (endpoint_id, status, payer, network, asset, pay_to, amount_units, spent_units)
       SELECT ${endpointId}::uuid, 'in_flight', ${payer}, ${network}, ${asset},
              ${payTo}, ${amountUnits}, ${amountUnits}
-      FROM day, sol_day, dup
+      FROM day, sol_day, dup, first_day
       WHERE NOT dup.taken
         AND day.spent + ${amountUnits}::numeric <= ${String(DAILY_BUDGET_UNITS)}::numeric
         AND (${network} NOT LIKE 'solana:%'
              OR sol_day.spent + ${amountUnits}::numeric <= ${String(solanaDailyCapUnits())}::numeric)
+        AND (NOT first_day.is_first OR first_day.n < ${FIRST_PURCHASE_DAILY_QUOTA})
       RETURNING id
     )
     SELECT (SELECT id FROM ins)::text AS row_id, (SELECT taken FROM dup) AS taken,
-           (SELECT spent FROM sol_day)::text AS sol_spent
+           (SELECT spent FROM sol_day)::text AS sol_spent,
+           (SELECT is_first FROM first_day) AS is_first,
+           (SELECT n FROM first_day)::text AS first_day_count
   `);
   const row = rowsOf(raw)[0];
   // No row back at all means the statement did not run as written — refuse to
@@ -309,6 +408,14 @@ async function reserveSpend(input: {
   const rowId = typeof row.row_id === "string" && row.row_id !== "" ? row.row_id : null;
   if (rowId) return { ok: true, rowId };
   if (row.taken === true) return { ok: false, reason: "already_purchased" };
+  if (row.is_first === true) {
+    const firstCount =
+      typeof row.first_day_count === "string" ? Number(row.first_day_count.split(".")[0]) : null;
+    // 読めなければ枠が尽きた側へ倒す（行を書かない——書くと掃引の窓ぶん締め出す）。
+    if (firstCount === null || !Number.isFinite(firstCount) || firstCount >= FIRST_PURCHASE_DAILY_QUOTA) {
+      return { ok: false, reason: "first_purchase_quota" };
+    }
+  }
   if (network.startsWith("solana:")) {
     const solSpent = typeof row.sol_spent === "string" ? BigInt(row.sol_spent.split(".")[0]) : null;
     // 読めなければ別枠の判定とみなす（行を書かない側へ倒す——書くと 6 日締め出す）
@@ -594,6 +701,25 @@ export async function runL1Batch(
     }
   }
 
+  // 2.6 初回購入の日次枠（FIRST_PURCHASE_DAILY_QUOTA）。枠に達した日は「購入行が
+  //     まだ 1 件も無いエンドポイント」を候補から外す（買い直しは続く）。読めなければ
+  //     外す側へ倒す——初回購入を 1 日見送っても翌日また候補になるが、枠を数えられない
+  //     まま走ると、カタログが跳ねた日に初回購入だけで日次予算を使い切る。
+  let firstPurchasesSelectable = true;
+  try {
+    const rawFirst = await db.execute(sql`SELECT ${firstPurchasesTodayCountSql()}::text AS n`);
+    const firstRows = (Array.isArray(rawFirst)
+      ? rawFirst
+      : ((rawFirst as { rows?: unknown[] }).rows ?? [])) as { n: string }[];
+    const firstRaw = firstRows[0]?.n;
+    if (typeof firstRaw !== "string" || Number(firstRaw) >= FIRST_PURCHASE_DAILY_QUOTA) {
+      firstPurchasesSelectable = false;
+    }
+  } catch (error) {
+    logServerError("observatory.l1.first_purchase_quota_read", error);
+    firstPurchasesSelectable = false;
+  }
+
   // 3. Targets: L0-passing active endpoints. Priority sellers (verified
   //    organic demand, PRIORITY_SELLER_HOSTS) are pinned to the head and
   //    re-enter daily so their receipt series accumulates; the long tail
@@ -611,7 +737,8 @@ export async function runL1Batch(
   // 表がまだ無い環境では生行だけの式へ落とす（withDailyFallback）。
   const targetsSql = (daily: boolean) => sql`
     SELECT e.id, e.resource_url, e.method, e.price_amount, e.pay_to, e.network, e.declared_schema,
-           (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS is_priority
+           (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS is_priority,
+           (${settledCountSql(sql`e.id`)} >= ${MATURE_SETTLED_MIN}) AS is_mature
     FROM x402_endpoints e
     JOIN LATERAL (
       SELECT verdict FROM x402_l0_probes p
@@ -638,13 +765,17 @@ export async function runL1Batch(
         solanaSelectable ? sql`` : sql`AND (e.network IS NULL OR e.network NOT LIKE 'solana:%')`
       }
       ${selfExclusion}
+      ${
+        // 初回購入の枠を使い切った日は、購入行がまだ無いエンドポイントを外す
+        // （買い直しは続く）。行を書かないので、翌 UTC 日にまた候補へ戻る。
+        firstPurchasesSelectable
+          ? sql``
+          : sql`AND EXISTS (SELECT 1 FROM x402_l1_purchases fp WHERE fp.endpoint_id = e.id)`
+      }
       AND NOT EXISTS (
         SELECT 1 FROM x402_l1_purchases pu
         WHERE pu.endpoint_id = e.id
-          AND pu.attempted_at > now() - make_interval(days => (CASE
-            WHEN e.resource_key ILIKE ANY(${prioritySqlArray()}) THEN ${PRIORITY_SWEEP_WINDOW_DAYS}::int
-            ELSE ${SWEEP_WINDOW_DAYS}::int
-          END))
+          AND pu.attempted_at > now() - make_interval(days => ${sweepWindowDaysSql(sql`e.id`, sql`e.resource_key`)})
       )
       -- 2026-08-24 監査: 署名後失敗による予算 Griefing への耐性。
       -- reserveSpend は署名の前に計上する（正しい——署名済み EIP-3009 は
@@ -713,6 +844,7 @@ export async function runL1Batch(
     network: (r.network as string | null) ?? null,
     declaredSchema: r.declared_schema ?? null,
     isPriority: r.is_priority === true,
+    isMature: r.is_mature === true,
   }));
 
   for (const [index, candidate] of candidates.entries()) {
@@ -964,11 +1096,19 @@ async function purchaseOne(input: {
     asset: accept.asset,
     payTo: accept.payTo.startsWith("0x") ? accept.payTo.toLowerCase() : accept.payTo,
     amountUnits: String(amount),
-    windowDays: candidate.isPriority ? PRIORITY_SWEEP_WINDOW_DAYS : SWEEP_WINDOW_DAYS,
+    windowDays: sweepWindowDaysFor({
+      isPriority: candidate.isPriority,
+      isMature: candidate.isMature,
+    }),
   });
   if (!reservation.ok) {
     if (reservation.reason === "already_purchased") {
       // A concurrent run got this endpoint first — its row is the record.
+      return { kind: "skipped", settled: false, spent: 0n };
+    }
+    if (reservation.reason === "first_purchase_quota") {
+      // その UTC 日の初回購入の枠が尽きた。行を書かない——書くとスイープ窓の
+      // あいだ再選択されず、翌日の枠にも戻らない（枠は延期であって除外ではない）。
       return { kind: "skipped", settled: false, spent: 0n };
     }
     if (reservation.reason === "solana_daily_cap") {
