@@ -35,7 +35,7 @@ import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { readBodyCapped } from "@/lib/net/read-capped";
 import { UnsafeTargetError, createSafeFetchImpl } from "@/lib/net/safe-fetch";
 import { createDeadline } from "@/lib/util/deadline";
-import { checkL1Budget, isL1Enabled, DAILY_BUDGET_USD } from "./budget";
+import { checkL1Budget, isL1Enabled, DAILY_BUDGET_USD, solanaDailyCapUnits } from "./budget";
 import { isSpendingHalted, type HaltVerdict } from "./kill-switch";
 import { addDerivedOperatorAddresses, isOperatorPayTo, operatorPayToDenylist } from "./operator";
 import {
@@ -244,7 +244,7 @@ function rowsOf(raw: unknown): Record<string, unknown>[] {
 
 type Reservation =
   | { ok: true; rowId: string }
-  | { ok: false; reason: "daily_budget_exceeded" | "already_purchased" };
+  | { ok: false; reason: "daily_budget_exceeded" | "already_purchased" | "solana_daily_cap" };
 
 /**
  * Claim the spend before it can happen. ONE statement, so the day's total and
@@ -276,6 +276,11 @@ async function reserveSpend(input: {
       SELECT coalesce(sum(spent_units::numeric), 0) AS spent
       FROM x402_l1_purchases
       WHERE attempted_at >= ${utcDayStart()}
+    ), sol_day AS (
+      -- Solana の別枠（budget.ts solanaDailyCapUnits）。Base の定期購入を押し出さない。
+      SELECT coalesce(sum(spent_units::numeric), 0) AS spent
+      FROM x402_l1_purchases
+      WHERE attempted_at >= ${utcDayStart()} AND network LIKE 'solana:%'
     ), dup AS (
       SELECT EXISTS (
         SELECT 1 FROM x402_l1_purchases pu
@@ -287,12 +292,15 @@ async function reserveSpend(input: {
         (endpoint_id, status, payer, network, asset, pay_to, amount_units, spent_units)
       SELECT ${endpointId}::uuid, 'in_flight', ${payer}, ${network}, ${asset},
              ${payTo}, ${amountUnits}, ${amountUnits}
-      FROM day, dup
+      FROM day, sol_day, dup
       WHERE NOT dup.taken
         AND day.spent + ${amountUnits}::numeric <= ${String(DAILY_BUDGET_UNITS)}::numeric
+        AND (${network} NOT LIKE 'solana:%'
+             OR sol_day.spent + ${amountUnits}::numeric <= ${String(solanaDailyCapUnits())}::numeric)
       RETURNING id
     )
-    SELECT (SELECT id FROM ins)::text AS row_id, (SELECT taken FROM dup) AS taken
+    SELECT (SELECT id FROM ins)::text AS row_id, (SELECT taken FROM dup) AS taken,
+           (SELECT spent FROM sol_day)::text AS sol_spent
   `);
   const row = rowsOf(raw)[0];
   // No row back at all means the statement did not run as written — refuse to
@@ -300,7 +308,15 @@ async function reserveSpend(input: {
   if (!row) throw new Error("l1 spend reservation returned no verdict row");
   const rowId = typeof row.row_id === "string" && row.row_id !== "" ? row.row_id : null;
   if (rowId) return { ok: true, rowId };
-  return { ok: false, reason: row.taken === true ? "already_purchased" : "daily_budget_exceeded" };
+  if (row.taken === true) return { ok: false, reason: "already_purchased" };
+  if (network.startsWith("solana:")) {
+    const solSpent = typeof row.sol_spent === "string" ? BigInt(row.sol_spent.split(".")[0]) : null;
+    // 読めなければ別枠の判定とみなす（行を書かない側へ倒す——書くと 6 日締め出す）
+    if (solSpent === null || solSpent + BigInt(amountUnits) > solanaDailyCapUnits()) {
+      return { ok: false, reason: "solana_daily_cap" };
+    }
+  }
+  return { ok: false, reason: "daily_budget_exceeded" };
 }
 
 /**
@@ -557,6 +573,27 @@ export async function runL1Batch(
     return summary; // table missing → cold start, nothing to do safely
   }
 
+  // 2.5 Solana の別枠がその日すでに尽きていれば、Solana を候補から外す（試行して断られた行を
+  //     書くと、その売り手はスイープ窓のあいだ再選択されない）。読めなければ外す側へ倒す。
+  let solanaSelectable = solanaReady;
+  if (solanaReady) {
+    try {
+      const rawSol = await db.execute(sql`
+        SELECT coalesce(sum(spent_units::numeric), 0)::text AS spent
+        FROM x402_l1_purchases
+        WHERE attempted_at >= ${utcDayStart()} AND network LIKE 'solana:%'
+      `);
+      const solRows = (Array.isArray(rawSol) ? rawSol : (rawSol as { rows?: unknown[] }).rows ?? []) as { spent: string }[];
+      const solSpentRaw = solRows[0]?.spent;
+      if (typeof solSpentRaw !== "string" || BigInt(solSpentRaw.split(".")[0]) >= solanaDailyCapUnits()) {
+        solanaSelectable = false;
+      }
+    } catch (error) {
+      logServerError("observatory.l1.solana_cap_read", error);
+      solanaSelectable = false;
+    }
+  }
+
   // 3. Targets: L0-passing active endpoints. Priority sellers (verified
   //    organic demand, PRIORITY_SELLER_HOSTS) are pinned to the head and
   //    re-enter daily so their receipt series accumulates; the long tail
@@ -598,7 +635,7 @@ export async function runL1Batch(
       ${
         // Solana購入が無効（フラグ無し or 鍵が読めない）の間は候補から
         // SQLの段階で外す——「試行してskip」の雑音でなく、最初から対象外。
-        solanaReady ? sql`` : sql`AND (e.network IS NULL OR e.network NOT LIKE 'solana:%')`
+        solanaSelectable ? sql`` : sql`AND (e.network IS NULL OR e.network NOT LIKE 'solana:%')`
       }
       ${selfExclusion}
       AND NOT EXISTS (
@@ -932,6 +969,11 @@ async function purchaseOne(input: {
   if (!reservation.ok) {
     if (reservation.reason === "already_purchased") {
       // A concurrent run got this endpoint first — its row is the record.
+      return { kind: "skipped", settled: false, spent: 0n };
+    }
+    if (reservation.reason === "solana_daily_cap") {
+      // Solana の別枠に届かなかった。行を書かない——書くとこの売り手はスイープ窓のあいだ
+      // 再選択されず、掃引が終わらない。翌 UTC 日にまた候補になる。
       return { kind: "skipped", settled: false, spent: 0n };
     }
     await record({

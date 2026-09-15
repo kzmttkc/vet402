@@ -20,6 +20,25 @@
 
 export const DAILY_BUDGET_USD = 25;
 
+/**
+ * Solana の L1 が 1 UTC 日に使える別枠（全チェーン共有の $25 の内側・2026-09-15）。
+ * 未購入を先に選ぶ並び順のせいで、Solana の掃引が Base の定期購入の枠を先に食わないようにする。
+ * 公開台帳の実測（2026-09-02〜15）: Base の日次支出は平均 $13.95・最大 $22.73。
+ * 環境変数 L1_SOLANA_DAILY_CAP_USD で下げられる（0 で Solana を止める）。壊れた値は既定へ倒す。
+ */
+export const SOLANA_DAILY_CAP_USD_DEFAULT = 2;
+
+export function solanaDailyCapUnits(): bigint {
+  const raw = process.env.L1_SOLANA_DAILY_CAP_USD;
+  let usd = SOLANA_DAILY_CAP_USD_DEFAULT;
+  if (raw !== undefined && raw.trim() !== "") {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 0) usd = n;
+  }
+  usd = Math.min(usd, DAILY_BUDGET_USD);
+  return BigInt(Math.round(usd * 1_000_000));
+}
+
 export function isL1Enabled(): boolean {
   return process.env.OBSERVATORY_L1_ENABLED === "true";
 }
