@@ -72,7 +72,10 @@
 import { DEFAULT_API_URL, decisionQueryString, type CallerPolicy } from "./vouch-client.js";
 // 型だけ。値の import は ALLOW ブランチ内の動的 import に限る（第3層）。`import type` は
 // tsc が消すので、dist の拒否経路に `@vet402/sdk` への静的な参照は残らない。
-import type { PayDecisionRecord, PayEvidencePolicy, PayPolicy, PayRefuseReason } from "@vet402/sdk";
+import type { PayDecisionRecord, PayEvidencePolicy, PayPolicy, PayRefuseReason, SvmPayerAccount } from "@vet402/sdk";
+
+/** Solana の base58 アドレス。SDK の `payOrRefuse` がレールを決めるのと同じ形（0x でなければこれ）。 */
+export const SOLANA_PAYEE_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 /**
  * この橋が**自分で足す**拒否語。型 {@link RefuseReason} はここから導く——`refuse(...)` の引数は
@@ -127,10 +130,24 @@ export type PayIfTrustedSigner = {
   }) => Promise<string>;
 };
 
+/**
+ * Solana の署名者（SDK の `SvmPayerAccount` と同じ形）。EVM の {@link PayIfTrustedSigner} と同じく、
+ * **ALLOW ブランチに入るまでこの値のプロパティには触らない。**
+ */
+export type PayIfTrustedSvmSigner = SvmPayerAccount;
+
 export type PayIfTrustedInput = {
   /** `sha256("<METHOD> <正規化URL>")`。`GET /api/v1/resolve?q=<url>` が返す。 */
   resourceId: string;
+  /** 0x の payee に払う署名者（EIP-3009）。 */
   signer: PayIfTrustedSigner;
+  /**
+   * base58 の payee（Solana）に払う署名者。payee が base58 のときだけ使い、`signer` には触らない。
+   * `index.ts` が環境変数 `VOUCH_SOLANA_PAYER_SECRET_KEY` から作る（ツール入力には載せない）。
+   */
+  svmSigner?: PayIfTrustedSvmSigner;
+  /** Solana の blockhash を引く RPC。`index.ts` が `SOLANA_RPC_URL` から渡す。 */
+  solanaRpcUrl?: string;
   /**
    * 使う fetch。**必須**——グローバル fetch を黙って掴むと、拒否経路が本当に
    * どこへも出ていないことを呼び手が検算できない。
@@ -356,12 +373,21 @@ export async function payIfTrusted(input: PayIfTrustedInput): Promise<PayIfTrust
   }
 
   // --- 5. ここから先だけが支払い。実装は ALLOW ブランチ内の動的 import（第3層）---
+  // payee の形でレールが決まる（SDK と同じ規則）。base58 なら Solana の署名者だけを渡し、EVM の signer には触らない。
+  // 署名者の**有無**だけを見る（`=== undefined` は Proxy の get を起こさない）。
+  const solanaPayee = SOLANA_PAYEE_RE.test(input.payee);
+  if (solanaPayee && (input.svmSigner === undefined || typeof input.solanaRpcUrl !== "string")) {
+    throw new Error("invalid_payer: a base58 payee is paid on Solana — pass svmSigner and solanaRpcUrl (VOUCH_SOLANA_PAYER_SECRET_KEY / SOLANA_RPC_URL)");
+  }
+  const payer = solanaPayee
+    ? { svm: { account: input.svmSigner as PayIfTrustedSvmSigner, rpcUrl: input.solanaRpcUrl as string } }
+    : { account: input.signer };
   const { payOrRefuse } = await import("@vet402/sdk");
   const paid = await payOrRefuse({
     payee: input.payee,
     resource: input.resource,
     amountUsd: input.amountUsd,
-    account: input.signer,
+    ...payer,
     fetch: fetchFn,
     method: input.method,
     resourceId: input.resourceId,

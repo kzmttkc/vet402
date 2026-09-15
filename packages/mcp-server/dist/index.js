@@ -5,6 +5,7 @@ import { z } from "zod";
 import { explainTrustScore } from "./explain.js";
 import { sanitizeToolError } from "./tool-errors.js";
 import { payIfTrusted } from "./pay-if-trusted.js";
+import { payerConfiguredFor, resolveSvmPayer, UNCONFIGURED_SVM_SIGNER } from "./payer.js";
 import { resolveMaxPerTxUsd, ceilingNotes, MAX_PER_TX_USD_ENV, DEFAULT_MAX_PER_TX_USD } from "./ceiling.js";
 import { decideFromScore, decideFromFailure } from "./decision.js";
 import { attestX402Payment, fetchAgentScore, fetchDecision, fetchPayeeScore, fetchWalletScore, } from "./vouch-client.js";
@@ -42,6 +43,13 @@ function scoreToolFailure(error) {
 }
 const AGENT_ID = z.string().max(78).describe("ERC-8004 agent ID (tokenId)");
 const WALLET = z.string().max(42).describe("EVM wallet address (0x...)");
+// pay_if_trusted の payee だけは Solana の base58 も受ける（2026-09-15）。WALLET は check_agent_trust と
+// 共有しているので変えない。長さの上限は base58 の公開鍵の最大 44 字。
+const PAYEE = z
+    .string()
+    .max(44)
+    .regex(/^(0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})$/)
+    .describe("Payee address: 0x... (paid on Base) or base58 (paid on Solana)");
 const TX_HASH = z.string().max(66).describe("Payment transaction hash (0x + 64 hex)");
 server.tool("check_agent_trust", [
     "ERC-8004 agent trust check on Base.",
@@ -316,6 +324,16 @@ async function main() {
         "installed; without them resource/payee/amountUsd are dropped before the SDK, the same checks run,",
         "and the tool refuses with payer_not_configured (floors not evaluated on this path either).",
         "",
+        "Solana: a base58 payee is paid on Solana mainnet in USDC (x402 v2, scheme exact, extra.feePayer",
+        "a facilitator other than payTo). The signer is built from VOUCH_SOLANA_PAYER_SECRET_KEY and",
+        "SOLANA_RPC_URL in this server's env with @solana/web3.js installed; without them the tool refuses",
+        "with payer_not_configured, and the Base signer is never used for a Solana payee (or the reverse).",
+        "The same gate runs before the signer: BLOCK, WARN and degraded refuse, payTo must equal payee",
+        "exactly (base58 is case-sensitive), the 402's mint and network must be Solana USDC, and a seller",
+        "outside the catalogue refuses with resource_uncatalogued and evidence_unavailable. On PAID, txHash",
+        "is the seller-claimed Solana signature, nonce is the memo vet402 wrote into the transaction, and",
+        "attested is false. policy.evidence.source subgraph/both is a caller error for a Solana payee.",
+        "",
         "policy is passed to the SDK's payOrRefuse unchanged. policy.evidence.source \"subgraph\" or \"both\"",
         "reads The Graph's x402 Base subgraph through the Graph Gateway and puts that read on",
         "decision_record.evidence[] as its own row (source subgraph, receipts, block.number). The Gateway",
@@ -327,7 +345,7 @@ async function main() {
     ].join("\n"), {
         resourceId: RESOURCE_ID,
         resource: z.string().max(2048).optional().describe("URL that answers 402. Required to actually pay."),
-        payee: WALLET.optional().describe("Address you already expect to be paid; the 402's payTo must match it"),
+        payee: PAYEE.optional().describe("Address you already expect to be paid (0x for Base, base58 for Solana); the 402's payTo must match it"),
         amountUsd: z.number().nonnegative().optional().describe("What you believe this costs, in USD"),
         method: z.string().max(10).optional().describe("HTTP method of the resource (default GET; The Graph's x402 endpoint is POST)"),
         maxPerTxUsd: z.number().positive().optional().describe(`Per-payment ceiling in USD (default 1). CANNOT raise this server's ceiling: the effective limit is min(this value, ${MAX_PER_TX_USD_ENV} in the server env, default 1), and a value above it is lowered to it — summary says so when that happens.`),
@@ -363,6 +381,11 @@ async function main() {
             // 返らない呼び出しはモデルが fail-closed に扱えない（vouch-client.ts と同じ規律）。
             const boundedFetch = (url, init) => fetch(url, { ...init, signal: init?.signal ?? AbortSignal.timeout(timeoutMs) });
             const signer = await resolvePayer();
+            // Solana の署名者（base58 の payee 用）。鍵と RPC は env だけから。ツール入力には存在しない。
+            const svmPayer = await resolveSvmPayer(process.env.VOUCH_SOLANA_PAYER_SECRET_KEY, process.env.SOLANA_RPC_URL);
+            // payee の形に合う署名者があるか。無ければ支払い先を渡さない（EVM の署名者で Solana に払わない・逆も）。
+            const payerReady = payerConfiguredFor(payee, signer, svmPayer);
+            const solanaPayee = payee !== undefined && !payee.startsWith("0x");
             const wantsPayment = resource !== undefined || payee !== undefined || amountUsd !== undefined;
             // 2026-09-12 監査 H-1: **天井は運用者のもので、モデルは上げられない。**
             // ここが金の出口——`maxPerTxUsd` は SDK の `payOrRefuse` で 402 が実際に要求する額と
@@ -372,6 +395,7 @@ async function main() {
             const result = await payIfTrusted({
                 resourceId,
                 signer: signer ?? UNCONFIGURED_SIGNER,
+                svmSigner: svmPayer?.signer ?? UNCONFIGURED_SVM_SIGNER,
                 fetch: boundedFetch,
                 apiUrl: process.env.VOUCH_API_URL,
                 apiKey,
@@ -382,9 +406,9 @@ async function main() {
                 // `ceiling.effective` は常に数（省略しない）。省略すると SDK 側が
                 // `policy.maxPerTxUsd` を見に行き、そこはツール入力から埋まり得る経路が残る。
                 // 常に上書きすることで、天井の入口を env の1本だけにする。
-                ...(signer ? { resource, payee, amountUsd, method, maxPerTxUsd: ceiling.effective } : {}),
+                ...(payerReady ? { resource, payee, amountUsd, method, maxPerTxUsd: ceiling.effective, solanaRpcUrl: svmPayer?.rpcUrl } : {}),
             });
-            if (!signer && wantsPayment) {
+            if (!payerReady && wantsPayment) {
                 result.refuse_reasons = [
                     ...result.refuse_reasons.filter((r) => r !== "payment_target_unknown"),
                     "payer_not_configured",
@@ -392,8 +416,11 @@ async function main() {
                 // viem を先に言う。既定のインストールに viem は入らないので、鍵だけ設定した利用者が
                 // ここに来るのが最も多い経路。**この分岐は鍵の不在と viem の不在を区別できない**
                 // （理由コードを分けるのは会期後・WINDOW_PLAN 会期後 TODO #10）ので、両方を並べる。
-                result.summary =
-                    "This server has no payer: run `npm install viem` in packages/mcp-server, and set " +
+                result.summary = solanaPayee
+                    ? "This server has no Solana payer for this base58 payee: run `npm install @solana/web3.js` in " +
+                        "packages/mcp-server, and set VOUCH_SOLANA_PAYER_SECRET_KEY and SOLANA_RPC_URL in its env block, " +
+                        "to enable payment. The Base payer is never used for a Solana payee. The decision above was still measured."
+                    : "This server has no payer: run `npm install viem` in packages/mcp-server, and set " +
                         "VOUCH_PAYER_PRIVATE_KEY in its env block, to enable payment. This code cannot tell " +
                         "which of the two is missing. The decision above was still measured.";
             }

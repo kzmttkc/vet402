@@ -70,7 +70,9 @@
  * 2回引く。GET は副作用を持たない。
  */
 import { type CallerPolicy } from "./vouch-client.js";
-import type { PayDecisionRecord, PayEvidencePolicy, PayPolicy } from "@vet402/sdk";
+import type { PayDecisionRecord, PayEvidencePolicy, PayPolicy, SvmPayerAccount } from "@vet402/sdk";
+/** Solana の base58 アドレス。SDK の `payOrRefuse` がレールを決めるのと同じ形（0x でなければこれ）。 */
+export declare const SOLANA_PAYEE_RE: RegExp;
 /**
  * この橋が**自分で足す**拒否語。型 {@link RefuseReason} はここから導く——`refuse(...)` の引数は
  * 裸の `string[]` ではないので、この配列に無い語をリテラルで書けばコンパイルで止まる
@@ -100,10 +102,23 @@ export type PayIfTrustedSigner = {
         message: Record<string, unknown>;
     }) => Promise<string>;
 };
+/**
+ * Solana の署名者（SDK の `SvmPayerAccount` と同じ形）。EVM の {@link PayIfTrustedSigner} と同じく、
+ * **ALLOW ブランチに入るまでこの値のプロパティには触らない。**
+ */
+export type PayIfTrustedSvmSigner = SvmPayerAccount;
 export type PayIfTrustedInput = {
     /** `sha256("<METHOD> <正規化URL>")`。`GET /api/v1/resolve?q=<url>` が返す。 */
     resourceId: string;
+    /** 0x の payee に払う署名者（EIP-3009）。 */
     signer: PayIfTrustedSigner;
+    /**
+     * base58 の payee（Solana）に払う署名者。payee が base58 のときだけ使い、`signer` には触らない。
+     * `index.ts` が環境変数 `VOUCH_SOLANA_PAYER_SECRET_KEY` から作る（ツール入力には載せない）。
+     */
+    svmSigner?: PayIfTrustedSvmSigner;
+    /** Solana の blockhash を引く RPC。`index.ts` が `SOLANA_RPC_URL` から渡す。 */
+    solanaRpcUrl?: string;
     /**
      * 使う fetch。**必須**——グローバル fetch を黙って掴むと、拒否経路が本当に
      * どこへも出ていないことを呼び手が検算できない。

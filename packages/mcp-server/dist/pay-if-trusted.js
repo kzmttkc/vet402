@@ -70,6 +70,8 @@
  * 2回引く。GET は副作用を持たない。
  */
 import { DEFAULT_API_URL, decisionQueryString } from "./vouch-client.js";
+/** Solana の base58 アドレス。SDK の `payOrRefuse` がレールを決めるのと同じ形（0x でなければこれ）。 */
+export const SOLANA_PAYEE_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 /**
  * この橋が**自分で足す**拒否語。型 {@link RefuseReason} はここから導く——`refuse(...)` の引数は
  * 裸の `string[]` ではないので、この配列に無い語をリテラルで書けばコンパイルで止まる
@@ -203,12 +205,21 @@ export async function payIfTrusted(input) {
         return refuse(m, [...serverWords, "payment_target_unknown"], `${m.recommendation ?? "absent"}, but pay_if_trusted was not told what to pay: pass resource, payee and amountUsd to execute the payment.`);
     }
     // --- 5. ここから先だけが支払い。実装は ALLOW ブランチ内の動的 import（第3層）---
+    // payee の形でレールが決まる（SDK と同じ規則）。base58 なら Solana の署名者だけを渡し、EVM の signer には触らない。
+    // 署名者の**有無**だけを見る（`=== undefined` は Proxy の get を起こさない）。
+    const solanaPayee = SOLANA_PAYEE_RE.test(input.payee);
+    if (solanaPayee && (input.svmSigner === undefined || typeof input.solanaRpcUrl !== "string")) {
+        throw new Error("invalid_payer: a base58 payee is paid on Solana — pass svmSigner and solanaRpcUrl (VOUCH_SOLANA_PAYER_SECRET_KEY / SOLANA_RPC_URL)");
+    }
+    const payer = solanaPayee
+        ? { svm: { account: input.svmSigner, rpcUrl: input.solanaRpcUrl } }
+        : { account: input.signer };
     const { payOrRefuse } = await import("@vet402/sdk");
     const paid = await payOrRefuse({
         payee: input.payee,
         resource: input.resource,
         amountUsd: input.amountUsd,
-        account: input.signer,
+        ...payer,
         fetch: fetchFn,
         method: input.method,
         resourceId: input.resourceId,
