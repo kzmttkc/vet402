@@ -72,6 +72,7 @@ A `serverInfo` line on stdout means the server starts and speaks MCP.
 |---|---|---|
 | `VOUCH_API_KEY` | No for `check_resource_decision` / `pay_if_trusted` (key-less `/decision`, 10/min per IP); yes for the score and attest tools | — |
 | `VOUCH_API_URL` | No | `https://vet402.com/api/v1` |
+| `VOUCH_SOLANA_PAYER_SECRET_KEY` + `SOLANA_RPC_URL` | Only for `pay_if_trusted` with a base58 (Solana) `payee`; also `npm install @solana/web3.js` | — (such a call refuses with `payer_not_configured`; the Base payer is never used for a Solana payee) |
 | `GRAPH_API_KEY` | Only for `pay_if_trusted` with `policy.evidence.source` `"subgraph"` / `"both"` | — (such a call refuses with `graph_key_not_configured`; the key is never a tool input) |
 
 > Version 0.1.0 defaulted `VOUCH_API_URL` to `http://localhost:3000/api/v1` — a

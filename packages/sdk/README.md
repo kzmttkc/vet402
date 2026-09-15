@@ -119,6 +119,41 @@ which the fast body can supply. It is a pre-check, not a replacement for
 > fail-closed `trustPolicy` default (see SpendGuard below). Everything else
 > below is the same on both.
 
+## `payOrRefuse` on Solana (0.7.0)
+
+`payOrRefuse` gates a payment **before** a signature exists: on anything other than `ALLOW` the
+signer is never reached. Since 0.7.0 the payee's shape picks the rail — a `0x` address pays on Base
+(EIP-3009, `account`), a base58 address pays on Solana (SVM `exact`, `svm`). The `0x` path is
+unchanged.
+
+```ts
+import { Keypair } from "@solana/web3.js"; // optional peer dependency, loaded only on ALLOW
+import { payOrRefuse, svmAccountFromKeypair } from "@vet402/sdk";
+
+const r = await payOrRefuse({
+  payee: "<seller's base58 wallet>",
+  resource: "https://seller.example/api/paid",
+  amountUsd: 0.01,
+  fetch,
+  svm: { account: svmAccountFromKeypair(Keypair.fromSecretKey(secret)), rpcUrl: process.env.SOLANA_RPC_URL! },
+});
+// r.status: "paid" | "refused" | "failed" · r.rail: "svm" · r.svmTransaction: signed tx (base64) or null
+```
+
+- `BLOCK`, `WARN` (unless waived with `requireVet402Allow: false` and a floor), `degraded`, an unreadable
+  decision, and a resource outside the catalogue (`resource_uncatalogued` + `evidence_unavailable`) all
+  refuse before the 402 is fetched, with zero `sign*` accesses and zero RPC calls.
+- The 402 must offer `scheme: "exact"`, network `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`, asset
+  `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` (exact match), x402 v2, and an `extra.feePayer` that is
+  neither `payTo` nor your signer. `payTo` must equal `payee` exactly — base58 is case-sensitive.
+  Otherwise: `chain_or_asset_mismatch` / `payee_mismatch` / `price_above_ceiling` / `price_above_declared`.
+- On `ALLOW` the SDK builds the transaction itself (compute-unit limit, compute-unit price ≤ 5,
+  `TransferChecked` to the ATA of `payTo`, a memo it generates), asks your signer to sign, and re-sends it to
+  the seller. If the signed transaction's message is not byte-identical to what it built, nothing is sent.
+  `nonce` is that memo, `txHash` the seller-claimed Solana signature, and `attested` is always `false`.
+- `evidence.source: "subgraph" | "both"` is a caller error for a Solana payee (The Graph's x402 Base subgraph
+  does not index Solana). `@solana/web3.js` is never imported on a refusal, so EVM-only users need not install it.
+
 ## Errors
 
 A non-2xx answer throws a `VouchApiError` carrying the API's machine-readable
