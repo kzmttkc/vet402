@@ -426,6 +426,27 @@ test("S10 ALLOW → signTransaction ちょうど 1 回・RPC ちょうど 1 回�
   assert.equal(r.decision.verdict_source, "decision");
 });
 
+test("S10d 402 の額が名乗りより小さい → 取引の額は 402 の amount（名乗りの額では組まない）", async () => {
+  const w = watchedSvmAccount();
+  const h = harness({ wall: { x402Version: 2, accepts: [solAccept({ amount: "10000" })] } });
+  const r = await payOrRefuse(svmInput(w, h, { amountUsd: 0.02 }));
+  assert.equal(r.status, "paid", r.decision.reason_codes.join(","));
+  const tx = VersionedTransaction.deserialize(Uint8Array.from(atob(h.paid[0].payload.transaction), (c) => c.charCodeAt(0)));
+  const keys = tx.message.staticAccountKeys.map((k) => k.toBase58());
+  const transfer = tx.message.compiledInstructions.find((i) => keys[i.programIdIndex] === TOKEN_PROGRAM_ID.toBase58());
+  assert.equal(new DataView(Uint8Array.from(transfer.data).buffer).getBigUint64(1, true), 10000n, "額は 402 の 10000（名乗りの 20000 ではない）");
+  assert.equal(h.paid[0].accepted.amount, "10000");
+});
+
+test("E0 0x の payee で account を渡さない JS の呼び手: BLOCK なら 0.6.0 と同じく refused を返す（冒頭で throw しない）", async () => {
+  const h = harness({ decision: { status: 200, body: decisionBody({ recommendation: "BLOCK", reason_codes: ["l1_never_delivered"] }) } });
+  const r = await payOrRefuse({ payee: baseAccept.payTo, resource: RESOURCE, amountUsd: 0.02, fetch: h.fetch });
+  assert.equal(r.status, "refused");
+  assert.ok(r.decision.reason_codes.includes("payee_recommendation_block"));
+  assert.equal(r.signed, false);
+  assert.equal(r.rail, "evm");
+});
+
 test("S10b svmAccountFromKeypair は web3.js の Keypair から署名者を作り、そのまま払える", async () => {
   assert.equal(typeof svmAccountFromKeypair, "function");
   const account = svmAccountFromKeypair(PAYER);

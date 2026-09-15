@@ -606,13 +606,13 @@ export async function payOrRefuse(input: PayOrRefuseInput): Promise<PayOrRefuseR
 }
 
 /**
- * `account` を渡さなかった呼び手（Solana の payee）の代わりに置く番兵。**触れたら throw する**。
- * 0x の payee でこれが残っていれば、冒頭で `invalid_payer` として止まる（同一性で見る）。
+ * `account` を渡さなかった呼び手の代わりに置く番兵。**署名に触れたら throw する**。
+ * Solana の payee では使われない。0x の payee で `account` が欠けたまま ALLOW に着いたときだけ、ここで止まる。
  */
 const NO_EVM_ACCOUNT: PayerAccount = {
   address: "0x0000000000000000000000000000000000000000",
   signTypedData: async () => {
-    throw new Error("invalid_payer: no EIP-3009 account was given (this call pays on Solana)");
+    throw new Error("invalid_payer: no EIP-3009 account was given — a 0x payee needs account to pay on Base");
   },
 };
 
@@ -639,10 +639,12 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   // 触らない（有無だけを見る。`typeof` は Proxy の get を起こさない）——拒否経路から署名者への参照を作らない。
   const rail: PayRail = isEvmPayee ? "evm" : "svm";
   const svm = rail === "svm" ? assertSvmPayer(input) : null;
-  if (rail === "evm" && (input.account === NO_EVM_ACCOUNT || input.svm !== undefined)) {
+  // 0x の payee に `svm` を渡すのは 0.7.0 で足した入力の誤り（旧い呼び手は渡さない）ので throw する。
+  // `account` の欠落は冒頭で止めない——0.6.0 は判定の前に `account` を見ておらず、BLOCK なら refused を
+  // 返していた（JS の呼び手）。欠落のまま ALLOW に着いたときは、署名の番兵（NO_EVM_ACCOUNT）が throw する。
+  if (rail === "evm" && input.svm !== undefined) {
     throw new Error(
-      "invalid_payer: a 0x payee is paid on Base — pass account (an EIP-3009 signer) and no svm. " +
-        `Got account ${input.account === NO_EVM_ACCOUNT ? "missing" : "present"}, svm ${input.svm === undefined ? "absent" : "present"}.`,
+      "invalid_payer: a 0x payee is paid on Base — pass account (an EIP-3009 signer) and no svm. Got svm present.",
     );
   }
   if (typeof input.resource !== "string" || input.resource.trim() === "") {
