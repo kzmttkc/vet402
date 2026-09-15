@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
 import { syncCatalog } from "@/lib/observatory/catalog-sync";
 import { notifyDelistedEvents } from "@/lib/observatory/notify";
+import { refreshSolanaDiscoveryPayees } from "@/lib/settlements/discovery-payees";
 import { logServerError } from "@/lib/util/log";
 
 // vet402 Observatory L0 — daily Bazaar catalog ingestion + delisting diff.
@@ -25,8 +26,17 @@ export async function GET(request: NextRequest) {
     } catch (error) {
       logServerError("cron.catalog-sync.notify", error);
     }
+    // 決済索引の受取人（カタログの外・PayAI の公開 discovery）。失敗しても同期は成功のまま返す。
+    let discoveryPayees: unknown = null;
+    try {
+      discoveryPayees = await refreshSolanaDiscoveryPayees();
+    } catch (error) {
+      logServerError("cron.catalog-sync.discovery-payees", error);
+      discoveryPayees = { error: "discovery_payees_failed" };
+    }
     return NextResponse.json({
       notify,
+      discoveryPayees,
       ok: true,
       snapshotDate: summary.snapshotDate,
       totalCount: summary.totalCount,

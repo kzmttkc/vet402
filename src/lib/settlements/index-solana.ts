@@ -26,6 +26,8 @@ import { PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@/lib/observatory/spl-token-lite";
 import { getDb } from "@/lib/db/client";
 import { getIndexerCheckpointWithCursor, setIndexerCheckpoint } from "@/lib/db/owner-index";
+import { isMissingSchemaError } from "@/lib/db/pg-errors";
+import { DISCOVERY_PAYEE_FRESH_DAYS } from "./discovery-payees";
 import { payeeId as toPartyId } from "@/lib/ids/canonical";
 import { SOLANA_MAINNET_CAIP2, SOLANA_USDC_MINT } from "@/lib/observatory/sol402-payer";
 import { logServerError } from "@/lib/util/log";
@@ -256,6 +258,58 @@ export async function runSolanaIndex(
   return summary;
 }
 
+/**
+ * 索引の受取人 = カタログの全 accept の Solana 受取人（先頭だけでなく）∪ カタログ外の discovery（14 日以内）。
+ * x402_discovery_payees が未作成（DDL 前のデプロイ）ならカタログだけで返す。
+ */
+export async function listSolanaPayees(db: NonNullable<ReturnType<typeof getDb>>): Promise<SolanaPayeeRow[]> {
+  // 受取人 = カタログの全 accept の Solana 受取人（先頭だけでなく）∪ カタログ外の discovery（14 日以内）。
+  const toRows = (raw: unknown) =>
+    rowsOf<{ pay_to: string; updated_at: string | Date | null }>(raw).map((r) => ({
+      payTo: r.pay_to,
+      checkpointUpdatedAt: r.updated_at ? new Date(r.updated_at) : null,
+    }));
+  const catalogPayees = sql`
+    SELECT DISTINCT a->>'payTo' AS pay_to
+    FROM x402_endpoints e
+    CROSS JOIN LATERAL jsonb_array_elements(
+      CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE '[]'::jsonb END
+    ) a
+    WHERE e.status = 'active'
+      AND (a->>'network' = ${SOLANA_MAINNET_CAIP2} OR lower(a->>'network') IN ('solana', 'solana-mainnet'))
+      AND a->>'payTo' IS NOT NULL AND a->>'payTo' !~ '^0x'
+    UNION
+    SELECT pay_to FROM x402_endpoints
+    WHERE network = ${SOLANA_MAINNET_CAIP2} AND pay_to IS NOT NULL AND status = 'active'`;
+  try {
+    return toRows(
+      await db.execute(sql`
+        WITH p AS (
+          ${catalogPayees}
+          UNION
+          SELECT pay_to FROM x402_discovery_payees
+          WHERE chain = ${SOLANA_MAINNET_CAIP2}
+            AND last_seen_at > now() - make_interval(days => ${DISCOVERY_PAYEE_FRESH_DAYS})
+        )
+        SELECT p.pay_to, c.updated_at
+        FROM p
+        LEFT JOIN indexer_checkpoints c ON c.scope = ${SOLANA_CHECKPOINT_SCOPE_PREFIX} || p.pay_to
+      `),
+    );
+  } catch (error) {
+    if (!isMissingSchemaError(error)) throw error;
+    // x402_discovery_payees が未作成（DDL 前のデプロイ）: カタログだけで続ける
+    return toRows(
+      await db.execute(sql`
+        WITH p AS (${catalogPayees})
+        SELECT p.pay_to, c.updated_at
+        FROM p
+        LEFT JOIN indexer_checkpoints c ON c.scope = ${SOLANA_CHECKPOINT_SCOPE_PREFIX} || p.pay_to
+      `),
+    );
+  }
+}
+
 /** 本番配線: DB と @solana/web3.js を runSolanaIndex へ差し込む。 */
 export async function indexSolana(
   options: { budgetMs?: number; classifier?: WashClassifier; now?: () => number } = {},
@@ -289,16 +343,7 @@ export async function indexSolana(
         >,
     },
     async listPayees() {
-      return rowsOf<{ pay_to: string; updated_at: string | Date | null }>(
-        await db.execute(sql`
-          SELECT e.pay_to, c.updated_at
-          FROM (
-            SELECT DISTINCT pay_to FROM x402_endpoints
-            WHERE network = ${SOLANA_MAINNET_CAIP2} AND pay_to IS NOT NULL AND status = 'active'
-          ) e
-          LEFT JOIN indexer_checkpoints c ON c.scope = ${SOLANA_CHECKPOINT_SCOPE_PREFIX} || e.pay_to
-        `),
-      ).map((r) => ({ payTo: r.pay_to, checkpointUpdatedAt: r.updated_at ? new Date(r.updated_at) : null }));
+      return listSolanaPayees(db);
     },
     async getCheckpoint(scope) {
       const row = await getIndexerCheckpointWithCursor(scope);

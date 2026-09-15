@@ -1251,6 +1251,23 @@ export const jobLeases = pgTable("job_leases", {
  * updated_at / updated_by / reason は履歴そのもの——誰がいつ何のために止めた・
  * 戻したかを、行が答えられる状態に保つ。
  */
+/**
+ * x402_discovery_payees — 決済索引が見る受取人のうち、カタログ（x402_endpoints）の外から来たもの（2026-09-15）。
+ * PayAI facilitator の公開 discovery の Solana 受取人を入れる。カタログの総数・L0・L1 の候補には入らない。
+ * 行は消さない。索引は last_seen_at が新しいものだけを読む（DISCOVERY_PAYEE_FRESH_DAYS）。
+ */
+export const x402DiscoveryPayees = pgTable(
+  "x402_discovery_payees",
+  {
+    chain: text("chain").notNull(),
+    payTo: text("pay_to").notNull(),
+    source: text("source").notNull(),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.chain, t.payTo, t.source] })],
+);
+
 export const runtimeFlags = pgTable("runtime_flags", {
   name: text("name").primaryKey(),
   enabled: boolean("enabled").notNull(),
