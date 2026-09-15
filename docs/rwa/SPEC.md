@@ -541,6 +541,17 @@ patch 006（2026-09-14）: ETHOnline 審査中（〜09-17 01:00 JST）に提出�
 | 9/28–10/1 | opinion API・アンカー・提出文 |
 | 10/2–4 | 機能を足さない。壊れないことの確認だけ |
 
+会場のセッション（patch 008・2026-09-15 Takeshi 決定。時刻は JST・Google Meet。上の作業の枠は変えない）:
+
+| いつ | 何 | 扱い |
+|---|---|---|
+| 9/22 17:00 | Tokenized RWAs（SBI） | 出る候補 |
+| 9/23 18:00 | フィードバック #2（17:30 の x402 ワークショップの直後） | 出る |
+| 9/24 17:00 | Robinhood Chain 入門 | 出る候補 |
+| 9/28 18:00 | フィードバック #4（凍結明け） | 出る |
+
+フィードバック #3（9/25 18:00）は見送る。Tokyo 初日の境界タグ（19:30）の直前で、`/rwa` も凍結中のため。
+
 ### §13e 一次情報との照合（patch 005・2026-09-14）
 
 出典（09-14 07:10 JST 取得）: HackQuest の会場ページ `arbitrum-singapore.hackquest.io/buildathons/Arbitrum-Open-House-Singapore-Online-Buildathon`（ページデータ）と、そこからリンクされた規約 PDF `openhouse.arbitrum.io/singapore_version_open_house_buildathon_terms___conditions.pdf`（Last Updated: June 18, 2026・14ページ）。
