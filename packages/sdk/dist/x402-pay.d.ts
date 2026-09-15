@@ -76,6 +76,11 @@ export type X402Accept = {
         /** 売り手が名乗る EIP-712 ドメイン。**採用しない**。矛盾の検出にだけ使う。 */
         name?: string;
         version?: string;
+        /**
+         * Solana（SVM exact）の手数料を払うファシリテータ（base58）。**払う側の署名者であってはならない**
+         * ——`payOrRefuse` の SVM 選別と `svm-pay.ts` の署名前検査が持つ。EVM の accept には現れない。
+         */
+        feePayer?: string;
     };
 };
 /** 署名者。`payOrRefuse` はこの型の値を ALLOW ブランチまで**一度も触らない**。 */

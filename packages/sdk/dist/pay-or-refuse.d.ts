@@ -7,6 +7,58 @@ export declare const BASE_CHAIN_ID = 8453;
 /** Base の正規 USDC。ここを可変にしない——「別トークンを掴まされる」が最も安い攻撃。 */
 export declare const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 /**
+ * Solana メインネット（CAIP-2）と、その正規 USDC mint（decimals 6）。2026-09-15 に足した 2 本目のレール。
+ * 値は本番 `src/lib/observatory/sol402-payer.ts` と同じ（本番の Solana L1 が実決済に使っている）。
+ * mint は `===` で照合する——base58 は大文字小文字で別の鍵になる。
+ */
+export declare const SOLANA_MAINNET = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
+export declare const SOLANA_USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+/** どのレールで払うか。**payee の形で決まる**（0x → EVM、base58 → Solana）。呼び手が選ぶ引数ではない。 */
+export type PayRail = "evm" | "svm";
+/**
+ * Solana の取引。`@solana/web3.js` の `VersionedTransaction` がそのまま当てはまる形だけを書く
+ * ——SDK の型に web3.js を持ち込まない（EVM だけの利用者に型の依存も求めない）。
+ */
+export type SvmTransactionLike = {
+    serialize(): Uint8Array;
+    message: {
+        serialize(): Uint8Array;
+    };
+};
+/**
+ * Solana の署名者。**`payOrRefuse` はこの値の `sign*` に、ALLOW ブランチの最後まで一度も触らない**
+ * （EVM の {@link PayerAccount} と同じ規律）。受け取った取引に自分の鍵で署名して返す。
+ * 返した取引の message が SDK の組んだものとバイト単位で違えば、SDK は売り手へ送らない。
+ */
+export type SvmPayerAccount = {
+    /** base58 の公開鍵。feePayer と同じなら署名の前に拒否する。 */
+    address: string;
+    signTransaction(tx: SvmTransactionLike): Promise<SvmTransactionLike>;
+};
+/** Solana の payee に払うときに渡す。`rpcUrl` は blockhash を 1 回だけ引く先（注入した fetch で呼ぶ）。 */
+export type SvmPayOptions = {
+    account: SvmPayerAccount;
+    rpcUrl: string;
+};
+/** `@solana/web3.js` の `Keypair` が当てはまる形。{@link svmAccountFromKeypair} の引数。 */
+export type SvmKeypairLike = {
+    publicKey: {
+        toBase58(): string;
+    };
+    secretKey: Uint8Array;
+};
+/**
+ * web3.js の `Keypair` から {@link SvmPayerAccount} を作る。**web3.js を import しない純関数**——
+ * 呼び手が既に持っている Keypair を包むだけ。署名は取引自身の `sign([keypair])`（VersionedTransaction）。
+ *
+ * ```ts
+ * import { Keypair } from "@solana/web3.js";
+ * const r = await payOrRefuse({ payee, resource, amountUsd, fetch,
+ *   svm: { account: svmAccountFromKeypair(Keypair.fromSecretKey(secret)), rpcUrl } });
+ * ```
+ */
+export declare function svmAccountFromKeypair(keypair: SvmKeypairLike): SvmPayerAccount;
+/**
  * 1件あたりの既定上限 $1。呼び手が `policy.maxPerTxUsd` を書かなくても
  * 上限が存在する状態にしておく（DESIGN_payOrRefuse.md §2 の `maxAmountUnits` 既定と同値）。
  */
@@ -154,13 +206,27 @@ export type PayPolicyOverride = {
     /** 代わりに満たした床の内訳。空になることはない（空なら呼び出し側エラーで到達しない）。 */
     floors_met: EvidenceFloorCheck[];
 };
-export type PayOrRefuseInput = {
-    /** 0x アドレス。ENS 名は**解決しない**（名前解決を支払いゲートの中で起こさない）。 */
+/**
+ * 署名者は**レールごとに1つ**。0x の payee には `account`（EIP-3009）、base58 の payee には
+ * `svm`（Solana の署名者と RPC）。payee の形と合わない方を渡す・両方渡す・どちらも無いは、
+ * 通信の前に `invalid_payer` で throw する。
+ */
+export type PayOrRefuseInput = PayOrRefuseBaseInput & ({
+    account: PayerAccount;
+    svm?: undefined;
+} | {
+    svm: SvmPayOptions;
+    account?: undefined;
+});
+export type PayOrRefuseBaseInput = {
+    /**
+     * 0x アドレス（Base）か base58 アドレス（Solana）。ENS 名は**解決しない**（名前解決を支払いゲートの中で起こさない）。
+     * Solana の payee は大文字小文字を含めて 402 の payTo と完全一致でなければ払わない。
+     */
     payee: string;
     /** 402 を返す資源の URL。 */
     resource: string;
     amountUsd: number;
-    account: PayerAccount;
     /**
      * 使う fetch。**必須**——グローバル fetch を黙って掴むと、拒否経路が本当に
      * どこへも出ていないことを呼び手が検算できない。
@@ -222,6 +288,14 @@ export type PayOrRefuseResult = {
     stored: boolean;
     /** 書けなかった理由。書けた／書こうとしなかったときは null。 */
     storeError: string | null;
+    /**
+     * どのレールで判定・支払いをしたか（payee の形で決まる）。2026-09-15 に**足しただけ**で、上の欄の意味は
+     * レールで変わらない。Solana では `nonce` は取引の Memo 命令に載せた 32 hex（我々しか作れない値）、
+     * `txHash` は PAYMENT-RESPONSE の base58 署名、`attested` は常に false（attest API は 0x の txHash しか受けない）。
+     */
+    rail: PayRail;
+    /** Solana で売り手へ送った署名済み取引（base64）。送っていなければ・EVM では null。 */
+    svmTransaction: string | null;
 };
 /**
  * 判定を引き、全部の条件を通ったときにだけ払う。結果は `decisionStore` を渡したときだけ

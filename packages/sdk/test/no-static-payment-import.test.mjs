@@ -187,3 +187,119 @@ test("第3層: ネガティブコントロール——同じ差し替えで ALLO
     /PAYMENT MODULE EVALUATED/,
   );
 });
+
+// ------------------------------------------------------------
+// Solana（SVM）の第3層（2026-09-15）。
+//
+// Solana の支払い実装は `./svm-pay.js`（取引の組み立て・署名・再送）と `./spl-token-lite.js`、
+// その下の `@solana/web3.js`。**3 つとも拒否経路では評価されない**ことを、EVM と同じ 2 つの形で見る:
+// 静的グラフに現れない（テキスト）／ロード即 throw に差し替えても Solana の BLOCK が拒否で返る（実行）。
+// 加えて、web3.js が**入っていない**環境で EVM の利用者が今までどおり払えることを、node_modules の
+// 無い tmp に dist だけを写して固定する（peerDependency を optional にした約束の検算）。
+// ------------------------------------------------------------
+
+const SVM_PAYMENT_MODULES = ["svm-pay.js", "spl-token-lite.js"].map((f) => resolve(DIST, f));
+
+test("第3層(SVM): dist の静的グラフに svm-pay.js / spl-token-lite.js が現れず、@solana/web3.js を静的に import するファイルも無い", () => {
+  const entry = resolve(DIST, "index.js");
+  for (const f of SVM_PAYMENT_MODULES) assert.ok(existsSync(f), `${f} がある（検査対象が実在する）`);
+  const { files, edges } = staticGraphFrom(entry);
+  for (const f of SVM_PAYMENT_MODULES) {
+    assert.equal(files.has(f), false, `${f} へ静的に到達できてしまう。辿った辺:\n${edges.join("\n")}`);
+  }
+  for (const file of files) {
+    const specs = staticSpecifiers(readFileSync(file, "utf8"));
+    assert.deepEqual(specs.filter((s) => s.startsWith("@solana/")), [], `${file} が @solana/* を静的に import している`);
+  }
+});
+
+test("第3層(SVM): dist のどこにも @solana/web3.js の静的 import もリテラル指定子の動的 import も無い（変数指定子だけ）", () => {
+  for (const f of readdirSync(DIST).filter((f) => f.endsWith(".js"))) {
+    const code = stripComments(readFileSync(join(DIST, f), "utf8"));
+    assert.deepEqual(staticSpecifiers(code).filter((s) => s.startsWith("@solana/")), [], `${f} に @solana/* の静的 import`);
+    assert.doesNotMatch(code, /import\(\s*["']@solana\//, `${f} にリテラル指定子の import("@solana/…")（バンドラが静的依存として辿る）`);
+  }
+  const pay = stripComments(readFileSync(resolve(DIST, "pay-or-refuse.js"), "utf8"));
+  assert.match(pay, /await\s+import\(\s*["']\.\/svm-pay\.js["']\s*\)/, "ALLOW ブランチ内の svm-pay.js の動的 import が消えている");
+});
+
+/** dist を tmp へ写し、`poison` に挙げたファイルをロード即 throw に差し替えた入口の URL を返す。 */
+function isolatedDist(poison = []) {
+  const dir = mkdtempSync(join(tmpdir(), "vet402-sdk-svm-"));
+  for (const f of readdirSync(DIST).filter((f) => f.endsWith(".js"))) copyFileSync(join(DIST, f), join(dir, f));
+  for (const f of poison) writeFileSync(join(dir, f), `throw new Error("PAYMENT MODULE EVALUATED: ${f}");\n`);
+  return { dir, entry: pathToFileURL(join(dir, "index.js")).href };
+}
+
+const SOL_PAYEE = "FMUEmtxhU46GzhKF4FW9MLJdQWiLgjiXP9TYRWSrqTpV";
+const SOL_FEE_PAYER = "6TcyBfPdBt1kjsvDZLzmBFnuMaLWiTaAt4RjUr9VA5YD";
+const SOL_ACCOUNT = { address: "4MfyR4G3NWfVRDWo6iNAHDBZqWMgwZX6FNtMqEW3a9JT", signTransaction: async (tx) => tx };
+const solWall402 = () => ({
+  ok: false,
+  status: 402,
+  json: async () => ({}),
+  headers: new Map([[
+    "payment-required",
+    btoa(JSON.stringify({ x402Version: 2, accepts: [{ scheme: "exact", network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", amount: "20000", asset: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", payTo: SOL_PAYEE, extra: { feePayer: SOL_FEE_PAYER } }] })),
+  ]]),
+});
+const solFetchWith = (recommendation) => async (url) => {
+  const u = String(url);
+  if (u.includes("/decision")) return { ok: true, status: 200, json: async () => decisionBody(recommendation), headers: new Map() };
+  if (u.startsWith(RESOURCE)) return solWall402();
+  throw new Error(`unexpected call: ${u}`);
+};
+
+test("第3層(SVM): svm-pay.js と spl-token-lite.js をロード即 throw にしても、Solana の BLOCK は拒否で返る", async () => {
+  const { payOrRefuse } = await import(isolatedDist(["svm-pay.js", "spl-token-lite.js"]).entry);
+  const r = await payOrRefuse({ payee: SOL_PAYEE, resource: RESOURCE, amountUsd: 0.02, svm: { account: SOL_ACCOUNT, rpcUrl: "https://rpc.example/" }, fetch: solFetchWith("BLOCK") });
+  assert.equal(r.status, "refused");
+  assert.equal(r.rail, "svm");
+  assert.equal(r.decision.reason_codes.includes("payee_recommendation_block"), true);
+});
+
+test("第3層(SVM): ネガティブコントロール——同じ差し替えで Solana の ALLOW は svm-pay.js の評価で落ちる", async () => {
+  const { payOrRefuse } = await import(isolatedDist(["svm-pay.js"]).entry);
+  await assert.rejects(
+    () => payOrRefuse({ payee: SOL_PAYEE, resource: RESOURCE, amountUsd: 0.02, svm: { account: SOL_ACCOUNT, rpcUrl: "https://rpc.example/" }, fetch: solFetchWith("ALLOW") }),
+    /PAYMENT MODULE EVALUATED: svm-pay\.js/,
+  );
+});
+
+test("peer 任意: @solana/web3.js が解決できない場所に dist だけを置いても、EVM の ALLOW は払える", async () => {
+  const { dir, entry } = isolatedDist();
+  // 隔離の検算: この tmp からは web3.js が本当に解決できない（解決できるなら、この検査は何も証明しない）。
+  writeFileSync(join(dir, "probe.mjs"), 'export default async () => { const s = "@solana/web3.js"; return import(s); };\n');
+  const probe = (await import(pathToFileURL(join(dir, "probe.mjs")).href)).default;
+  await assert.rejects(() => probe(), /Cannot find|ERR_MODULE_NOT_FOUND/);
+
+  const { payOrRefuse } = await import(entry);
+  let signed = 0;
+  const account = { address: "0xDB62BD202914609830fA656F87996b91be3Aa673", signTypedData: async () => { signed++; return "0xsig"; } };
+  const fetch = async (url, init) => {
+    const u = String(url);
+    if (u.includes("/decision")) return { ok: true, status: 200, json: async () => decisionBody("ALLOW"), headers: new Map() };
+    if (u.startsWith(RESOURCE)) {
+      if (!(init?.headers ?? {})["PAYMENT-SIGNATURE"]) return wall402();
+      return { ok: true, status: 200, json: async () => ({}), headers: new Map([["PAYMENT-RESPONSE", btoa(JSON.stringify({ success: true, transaction: "0xtx", network: "eip155:8453" }))]]) };
+    }
+    if (u.includes("/payments/x402")) return { ok: true, status: 200, json: async () => ({}), headers: new Map() };
+    throw new Error(`unexpected call: ${u}`);
+  };
+  const r = await payOrRefuse({ payee: PAYEE, resource: RESOURCE, amountUsd: 0.02, account, fetch });
+  assert.equal(r.status, "paid");
+  assert.equal(r.rail, "evm");
+  assert.equal(r.svmTransaction, null);
+  assert.equal(signed, 1);
+});
+
+test("peer 任意: web3.js が解決できない場所で Solana の ALLOW は、署名の前に原因を名指しで throw する", async () => {
+  const { payOrRefuse } = await import(isolatedDist().entry);
+  let touched = 0;
+  const account = new Proxy(SOL_ACCOUNT, { get(t, p) { if (String(p).startsWith("sign")) touched++; return Reflect.get(t, p); } });
+  await assert.rejects(
+    () => payOrRefuse({ payee: SOL_PAYEE, resource: RESOURCE, amountUsd: 0.02, svm: { account, rpcUrl: "https://rpc.example/" }, fetch: solFetchWith("ALLOW") }),
+    /invalid_svm_setup: .*@solana\/web3\.js/,
+  );
+  assert.equal(touched, 0);
+});

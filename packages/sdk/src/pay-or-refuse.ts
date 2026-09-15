@@ -66,6 +66,65 @@ export const BASE_CHAIN_ID = 8453;
 export const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
 /**
+ * Solana メインネット（CAIP-2）と、その正規 USDC mint（decimals 6）。2026-09-15 に足した 2 本目のレール。
+ * 値は本番 `src/lib/observatory/sol402-payer.ts` と同じ（本番の Solana L1 が実決済に使っている）。
+ * mint は `===` で照合する——base58 は大文字小文字で別の鍵になる。
+ */
+export const SOLANA_MAINNET = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
+export const SOLANA_USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
+/** どのレールで払うか。**payee の形で決まる**（0x → EVM、base58 → Solana）。呼び手が選ぶ引数ではない。 */
+export type PayRail = "evm" | "svm";
+
+/**
+ * Solana の取引。`@solana/web3.js` の `VersionedTransaction` がそのまま当てはまる形だけを書く
+ * ——SDK の型に web3.js を持ち込まない（EVM だけの利用者に型の依存も求めない）。
+ */
+export type SvmTransactionLike = { serialize(): Uint8Array; message: { serialize(): Uint8Array } };
+
+/**
+ * Solana の署名者。**`payOrRefuse` はこの値の `sign*` に、ALLOW ブランチの最後まで一度も触らない**
+ * （EVM の {@link PayerAccount} と同じ規律）。受け取った取引に自分の鍵で署名して返す。
+ * 返した取引の message が SDK の組んだものとバイト単位で違えば、SDK は売り手へ送らない。
+ */
+export type SvmPayerAccount = {
+  /** base58 の公開鍵。feePayer と同じなら署名の前に拒否する。 */
+  address: string;
+  signTransaction(tx: SvmTransactionLike): Promise<SvmTransactionLike>;
+};
+
+/** Solana の payee に払うときに渡す。`rpcUrl` は blockhash を 1 回だけ引く先（注入した fetch で呼ぶ）。 */
+export type SvmPayOptions = { account: SvmPayerAccount; rpcUrl: string };
+
+/** `@solana/web3.js` の `Keypair` が当てはまる形。{@link svmAccountFromKeypair} の引数。 */
+export type SvmKeypairLike = { publicKey: { toBase58(): string }; secretKey: Uint8Array };
+
+/**
+ * web3.js の `Keypair` から {@link SvmPayerAccount} を作る。**web3.js を import しない純関数**——
+ * 呼び手が既に持っている Keypair を包むだけ。署名は取引自身の `sign([keypair])`（VersionedTransaction）。
+ *
+ * ```ts
+ * import { Keypair } from "@solana/web3.js";
+ * const r = await payOrRefuse({ payee, resource, amountUsd, fetch,
+ *   svm: { account: svmAccountFromKeypair(Keypair.fromSecretKey(secret)), rpcUrl } });
+ * ```
+ */
+export function svmAccountFromKeypair(keypair: SvmKeypairLike): SvmPayerAccount {
+  const address = keypair.publicKey.toBase58();
+  return {
+    address,
+    async signTransaction(tx) {
+      const signable = tx as SvmTransactionLike & { sign?: (signers: SvmKeypairLike[]) => void };
+      if (typeof signable.sign !== "function") {
+        throw new Error("invalid_svm_transaction: expected a @solana/web3.js VersionedTransaction with sign(signers)");
+      }
+      signable.sign([keypair]);
+      return tx;
+    },
+  };
+}
+
+/**
  * 1件あたりの既定上限 $1。呼び手が `policy.maxPerTxUsd` を書かなくても
  * 上限が存在する状態にしておく（DESIGN_payOrRefuse.md §2 の `maxAmountUnits` 既定と同値）。
  */
@@ -251,13 +310,23 @@ export type PayPolicyOverride = {
   floors_met: EvidenceFloorCheck[];
 };
 
-export type PayOrRefuseInput = {
-  /** 0x アドレス。ENS 名は**解決しない**（名前解決を支払いゲートの中で起こさない）。 */
+/**
+ * 署名者は**レールごとに1つ**。0x の payee には `account`（EIP-3009）、base58 の payee には
+ * `svm`（Solana の署名者と RPC）。payee の形と合わない方を渡す・両方渡す・どちらも無いは、
+ * 通信の前に `invalid_payer` で throw する。
+ */
+export type PayOrRefuseInput = PayOrRefuseBaseInput &
+  ({ account: PayerAccount; svm?: undefined } | { svm: SvmPayOptions; account?: undefined });
+
+export type PayOrRefuseBaseInput = {
+  /**
+   * 0x アドレス（Base）か base58 アドレス（Solana）。ENS 名は**解決しない**（名前解決を支払いゲートの中で起こさない）。
+   * Solana の payee は大文字小文字を含めて 402 の payTo と完全一致でなければ払わない。
+   */
   payee: string;
   /** 402 を返す資源の URL。 */
   resource: string;
   amountUsd: number;
-  account: PayerAccount;
   /**
    * 使う fetch。**必須**——グローバル fetch を黙って掴むと、拒否経路が本当に
    * どこへも出ていないことを呼び手が検算できない。
@@ -321,9 +390,19 @@ export type PayOrRefuseResult = {
   stored: boolean;
   /** 書けなかった理由。書けた／書こうとしなかったときは null。 */
   storeError: string | null;
+  /**
+   * どのレールで判定・支払いをしたか（payee の形で決まる）。2026-09-15 に**足しただけ**で、上の欄の意味は
+   * レールで変わらない。Solana では `nonce` は取引の Memo 命令に載せた 32 hex（我々しか作れない値）、
+   * `txHash` は PAYMENT-RESPONSE の base58 署名、`attested` は常に false（attest API は 0x の txHash しか受けない）。
+   */
+  rail: PayRail;
+  /** Solana で売り手へ送った署名済み取引（base64）。送っていなければ・EVM では null。 */
+  svmTransaction: string | null;
 };
 
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
+/** Solana の base58 アドレス（32〜44 文字・0 O I l を含まない）。 */
+const SOLANA_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const USDC_DECIMALS = 6;
 
 function sameAddress(a: unknown, b: unknown): boolean {
@@ -372,6 +451,9 @@ function normalizeAccept(raw: unknown): X402Accept | null {
   const network =
     rec.network === "base" ? BASE_CHAIN
     : rec.network === "base-sepolia" ? "eip155:84532"
+    // v1 の Solana スラグ（本番 `x402-payer.ts` の normalizeAccept と同じ）。v1 の壁は Solana では払わない
+    // （SVM の選別が x402 v2 を要求する）が、「何を提示されたか」は正規形で残す。
+    : rec.network === "solana" ? SOLANA_MAINNET
     : typeof rec.network === "string" ? rec.network
     : "";
   return {
@@ -399,6 +481,29 @@ function isProtocolEligible(accept: X402Accept): boolean {
   // `exact` は構造上 EIP-3009 であり、未提示を拒むと実在する 402 に払えなくなる。
   const transfer = accept.extra?.assetTransferMethod;
   return transfer === undefined || transfer === "eip3009";
+}
+
+/**
+ * Solana（SVM exact）で**プロトコル上そもそも払える形か**。本番 `sol402-payer.ts` の `selectSolanaAccept`
+ * と同じ条件に、SDK の再送が話す transport（v2 の PAYMENT-SIGNATURE）を足したもの:
+ * scheme exact ∧ network が {@link SOLANA_MAINNET} と完全一致 ∧ asset が {@link SOLANA_USDC} と完全一致
+ * ∧ `extra.feePayer` が base58 で payTo と違う ∧ x402 v2。
+ * payTo が曲線上の鍵か・feePayer が署名者でないかは web3.js と署名者のアドレスが要るので、
+ * ALLOW ブランチ内（`svm-pay.ts` の署名前検査）が持つ。
+ */
+function isSvmProtocolEligible(accept: X402Accept, x402Version: 1 | 2): boolean {
+  if (x402Version !== 2) return false;
+  if (accept.scheme !== "exact") return false;
+  if (accept.network !== SOLANA_MAINNET) return false;
+  if (accept.asset !== SOLANA_USDC) return false;
+  if (!SOLANA_RE.test(accept.payTo)) return false;
+  const feePayer = accept.extra?.feePayer;
+  return typeof feePayer === "string" && SOLANA_RE.test(feePayer) && feePayer !== accept.payTo;
+}
+
+/** レールごとの「払える形か」。選別と金銭ゲートが**同じ述語**を使うための 1 本。 */
+function isEligibleOnRail(accept: X402Accept, rail: PayRail, x402Version: 1 | 2): boolean {
+  return rail === "svm" ? isSvmProtocolEligible(accept, x402Version) : isProtocolEligible(accept);
 }
 
 /**
@@ -431,9 +536,19 @@ function hasCanonicalUsdcDomain(accept: X402Accept): boolean {
  *   そのときも `accept` には**実際に提示された1件**を入れて返す——
  *   拒否理由を具体的に出すため、そして画に存在しない accept を映さないため。
  */
-function selectAccept(raw: unknown[]): { accept: X402Accept; eligible: boolean } | null {
+function selectAccept(
+  raw: unknown[],
+  rail: PayRail = "evm",
+  x402Version: 1 | 2 = 2,
+): { accept: X402Accept; eligible: boolean } | null {
   const normalized = raw.map(normalizeAccept).filter((a): a is X402Accept => a !== null);
   if (normalized.length === 0) return null;
+  // Solana の payee なら Solana の accept だけを候補にする。**Base が先頭でも Solana を選べる**（逆も同じ）。
+  // EIP-712 ドメインの優先順位は EVM だけのもの。
+  if (rail === "svm") {
+    const svmEligible = normalized.filter((a) => isSvmProtocolEligible(a, x402Version));
+    return svmEligible.length === 0 ? { accept: normalized[0], eligible: false } : { accept: svmEligible[0], eligible: true };
+  }
   const eligible = normalized.filter(isProtocolEligible);
   if (eligible.length === 0) return { accept: normalized[0], eligible: false };
   return { accept: eligible.find(hasCanonicalUsdcDomain) ?? eligible[0], eligible: true };
@@ -442,15 +557,17 @@ function selectAccept(raw: unknown[]): { accept: X402Accept; eligible: boolean }
 /** チャレンジは **transport のバージョンごと**読む——答える側のヘッダ名がそれで決まる。 */
 function decodeChallenge(
   raw: string,
+  rail: PayRail = "evm",
 ): { x402Version: 1 | 2; accept: X402Accept; eligible: boolean } | null {
   try {
     const json = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(raw), (c) => c.charCodeAt(0))));
     const accepts = (json as { accepts?: unknown[] }).accepts;
     if (!Array.isArray(accepts) || accepts.length === 0) return null;
-    const selected = selectAccept(accepts);
+    const version: 1 | 2 = (json as { x402Version?: unknown }).x402Version === 1 ? 1 : 2;
+    const selected = selectAccept(accepts, rail, version);
     if (!selected) return null;
     return {
-      x402Version: (json as { x402Version?: unknown }).x402Version === 1 ? 1 : 2,
+      x402Version: version,
       accept: selected.accept,
       eligible: selected.eligible,
     };
@@ -464,7 +581,9 @@ function decodeChallenge(
  * 1本の JSONL へ追記される（下の {@link appendDecision}）。
  */
 export async function payOrRefuse(input: PayOrRefuseInput): Promise<PayOrRefuseResult> {
-  const result = await decideAndPay(input);
+  // 0x の経路の署名者欄は、内部では常に値を持つ（Solana の呼び手には触れたら throw する番兵を置く）。
+  // 判定の中で `account` を「無いかもしれない値」として扱わないため——型の上でも EVM の経路は 1 行も変えない。
+  const result = await decideAndPay({ ...input, account: input.account ?? NO_EVM_ACCOUNT });
   if (input.decisionStore === undefined) return result;
   try {
     await appendDecision(
@@ -486,7 +605,21 @@ export async function payOrRefuse(input: PayOrRefuseInput): Promise<PayOrRefuseR
   }
 }
 
-async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult> {
+/**
+ * `account` を渡さなかった呼び手（Solana の payee）の代わりに置く番兵。**触れたら throw する**。
+ * 0x の payee でこれが残っていれば、冒頭で `invalid_payer` として止まる（同一性で見る）。
+ */
+const NO_EVM_ACCOUNT: PayerAccount = {
+  address: "0x0000000000000000000000000000000000000000",
+  signTypedData: async () => {
+    throw new Error("invalid_payer: no EIP-3009 account was given (this call pays on Solana)");
+  },
+};
+
+/** 判定の内部入力。`account` は常に値（{@link NO_EVM_ACCOUNT} を含む）。 */
+type DecideInput = PayOrRefuseBaseInput & { account: PayerAccount; svm?: SvmPayOptions };
+
+async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   const fetchFn = input.fetch;
   if (typeof fetchFn !== "function") {
     throw new Error("invalid_fetch: pass the fetch implementation payOrRefuse should use");
@@ -494,10 +627,22 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
   // **呼び出し側の誤り**は判定でも拒否でもなく throw。0x でない payee はここで止まる:
   // 名前解決を支払いゲートの中で起こさない（解決先が入れ替われば payee_mismatch すら
   // 通ってしまうので、解決は呼び手の責任として外に出す）。B8。
-  if (typeof input.payee !== "string" || !WALLET_RE.test(input.payee)) {
+  const isEvmPayee = typeof input.payee === "string" && WALLET_RE.test(input.payee);
+  const isSvmPayee = typeof input.payee === "string" && SOLANA_RE.test(input.payee);
+  if (!isEvmPayee && !isSvmPayee) {
     throw new Error(
-      `invalid_payee_address: payOrRefuse takes a 0x address, got ${JSON.stringify(input.payee)}. ` +
+      `invalid_payee_address: payOrRefuse takes a 0x address (Base) or a base58 address (Solana), got ${JSON.stringify(input.payee)}. ` +
         "ENS names are not resolved here — resolve it yourself and pass the resulting address.",
+    );
+  }
+  // **レールは payee の形で決まる。** 署名者は形に合う方をちょうど 1 つ。`account` / `svm` の中身には
+  // 触らない（有無だけを見る。`typeof` は Proxy の get を起こさない）——拒否経路から署名者への参照を作らない。
+  const rail: PayRail = isEvmPayee ? "evm" : "svm";
+  const svm = rail === "svm" ? assertSvmPayer(input) : null;
+  if (rail === "evm" && (input.account === NO_EVM_ACCOUNT || input.svm !== undefined)) {
+    throw new Error(
+      "invalid_payer: a 0x payee is paid on Base — pass account (an EIP-3009 signer) and no svm. " +
+        `Got account ${input.account === NO_EVM_ACCOUNT ? "missing" : "present"}, svm ${input.svm === undefined ? "absent" : "present"}.`,
     );
   }
   if (typeof input.resource !== "string" || input.resource.trim() === "") {
@@ -522,6 +667,17 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
   // 2026-09-05 まで、`minSubgraphReceipts` は既定 source が "vet402" のときどの分岐にも
   // 当たらず、床を指定したのに拒否も警告も出なかった。「壊れて見えない」型の欠陥。
   assertEvidencePolicy(input.policy?.evidence);
+  // Solana の payee は The Graph の x402 Base subgraph に居ない（あの subgraph は Base の 0x アドレスを索引する）。
+  // 読めば必ず 0 件か読めないので、床を宣言した呼び手に黙って「足りない」を返す代わりに、ここで原因を言う。
+  if (rail === "svm") {
+    const source = input.policy?.evidence?.source ?? "vet402";
+    if (source === "subgraph" || source === "both") {
+      throw new Error(
+        `invalid_evidence_policy: evidence.source ${JSON.stringify(source)} reads The Graph's x402 Base subgraph, which does not index Solana payees. ` +
+          'Use source "vet402" (the default) for a base58 payee.',
+      );
+    }
+  }
   // §3.2: vet402 の判定を外すなら代わりの床が要る。**順序は evidence の整合が先**——
   // `{ minL1Deliveries: 3, source: "subgraph" }` のような誤りは、床の有無より前に、
   // 「その床は評価されない」と言われるべきだから。
@@ -581,6 +737,8 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
     challenge,
     stored: false,
     storeError: null,
+    rail,
+    svmTransaction: null,
   });
 
   // --- 2. 呼び手が名乗った上限は、判定を引く前に当てる（C9）---
@@ -638,6 +796,13 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
   } catch {
     // A3: 読めなかったのだから払わない。
     return refuse(["evidence_unavailable"], "decision");
+  }
+
+  // Solana のカタログ外は**ここで止める**。EVM の 404 経路は 402 の payTo で受取人スコアを引くが、
+  // 受取人スコア API は base58 のアドレスを 400 で返す（0x しか受けない）。引いても判定材料は来ないので、
+  // 402 も取らずに「一度も見たことがない資源で、証拠が読めない」と言って返す。
+  if (uncatalogued && rail === "svm") {
+    return refuse(["resource_uncatalogued", "evidence_unavailable"], "payee_score");
   }
 
   const pathReasons: PayRefuseReason[] = uncatalogued ? ["resource_uncatalogued"] : [];
@@ -764,7 +929,7 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
   try {
     const response = await fetchFn(input.resource, { method });
     const raw = readHeader(response.headers, "payment-required");
-    const challenge = raw ? decodeChallenge(raw) : null;
+    const challenge = raw ? decodeChallenge(raw, rail) : null;
     if (challenge) {
       accept = challenge.accept;
       x402Version = challenge.x402Version;
@@ -778,11 +943,22 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
     return refuse([...pathReasons, "evidence_unavailable"], uncatalogued ? "payee_score" : "decision", decision);
   }
 
+  if (rail === "svm") {
+    // Solana: 払える形の accept が 1 件も無いなら、提示された別レールの accept の payTo を照合しても意味が無い
+    // （Base の 0x と base58 の payee は必ず違う）。一次の所見 `no_eligible_accept` と具体の不一致を返す。
+    if (selectionReasons.length > 0) {
+      return refuse([...selectionReasons, "chain_or_asset_mismatch"], "decision", decision, null, accept);
+    }
+    // base58 は大文字小文字で別の鍵。**`===` で比べる**（下の sameAddress は 0x 用に大小を畳む）。
+    if (accept.payTo !== input.payee) {
+      return refuse(["payee_mismatch"], "decision", decision, null, accept);
+    }
+  }
   // A4: 照合は payTo で行う。402 の resource.url は内部ホスト名を返すことがある（§3）。
   if (!sameAddress(accept.payTo, input.payee)) {
     return refuse([...pathReasons, ...selectionReasons, "payee_mismatch"], uncatalogued ? "payee_score" : "decision", decision, null, accept);
   }
-  const moneyGate = evaluateMoneyGate(accept, maxPerTxUsd);
+  const moneyGate = evaluateMoneyGate(accept, maxPerTxUsd, rail, x402Version);
   if (moneyGate) {
     return refuse([...pathReasons, ...selectionReasons, ...moneyGate], uncatalogued ? "payee_score" : "decision", decision, null, accept);
   }
@@ -845,10 +1021,52 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
 
   // --- 5. ここから先だけが支払い。実装は ALLOW ブランチ内の動的 import（第3層）---
   // 署名 → **売り手へ再送** → 応答ヘッダのレシート。facilitator は買い手の経路に無い。
-  const { executeX402Payment } = await import("./x402-pay.js");
   // 通したのが vet402 の判定なのか、呼び手の規則なのか。**審査員が読むのはここ**（§3.2）。
   const verdictSource: PayDecisionRecord["verdict_source"] =
     policyOverride ? "caller_policy" : uncatalogued ? "payee_score" : "decision";
+
+  if (svm !== null) {
+    // Solana（SVM exact）。**支払い実装と @solana/web3.js はここで初めて評価される**（第3層・EVM と同じ形）。
+    // 取引は SDK が組み、呼び手の署名者は署名するだけ。attest は POST しない（attest API は 0x の txHash しか受けない）。
+    const { executeSvmPayment } = await import("./svm-pay.js");
+    let svmMemo: string | null = null;
+    const svmPaid = await executeSvmPayment({
+      account: svm.account,
+      rpcUrl: svm.rpcUrl,
+      accept,
+      resource: input.resource,
+      method,
+      fetch: fetchFn,
+      onSigned: ({ memo }) => {
+        svmMemo = memo;
+      },
+    }).catch((error: unknown) => {
+      // 署名の**前**に落ちた（web3.js が無い・RPC が blockhash を返さない等）なら金は動いていない。そのまま投げる。
+      if (svmMemo === null) throw error;
+      return null;
+    });
+    if (svmPaid !== null && svmPaid.refused !== null) {
+      // ALLOW ブランチ内の、署名者に触る前の拒否（payTo が曲線外・feePayer が署名者自身）。
+      return refuse([svmPaid.refused], verdictSource, decision, payeeScore, accept);
+    }
+    const svmSettled = svmPaid !== null && svmPaid.settled;
+    return {
+      status: svmSettled ? "paid" : "failed",
+      decision: record("ALLOW", svmSettled ? allowReasons : [...allowReasons, "settle_failed"], verdictSource, decision, payeeScore, policyOverride),
+      // 署名者が値を返した以上 true。送らなかった（message 不一致）ときも隠さない（E18）。
+      signed: true,
+      attested: false,
+      txHash: svmPaid?.txHash ?? null,
+      nonce: svmPaid?.memo ?? svmMemo,
+      challenge: accept,
+      stored: false,
+      storeError: null,
+      rail,
+      svmTransaction: svmPaid?.transactionB64 ?? null,
+    };
+  }
+
+  const { executeX402Payment } = await import("./x402-pay.js");
   // 署名の直後に nonce を確定させる。ここから先で落ちても「何に署名したか」は残る。
   let signedNonce: string | null = null;
   const paid = await executeX402Payment({
@@ -882,6 +1100,8 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
       challenge: accept,
       stored: false,
       storeError: null,
+      rail,
+      svmTransaction: null,
     };
   }
 
@@ -898,6 +1118,8 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
       challenge: accept,
       stored: false,
       storeError: null,
+      rail,
+      svmTransaction: null,
     };
   }
 
@@ -935,6 +1157,8 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
     challenge: accept,
     stored: false,
     storeError: null,
+    rail,
+    svmTransaction: null,
   };
 }
 
@@ -942,14 +1166,20 @@ async function decideAndPay(input: PayOrRefuseInput): Promise<PayOrRefuseResult>
  * 金銭ゲート。**署名の前**にしか意味が無いので、呼ぶ位置を動かさないこと。
  * 本番には4チェーン提示の 402 が実在する（WINDOW_PLAN §4 B）。
  */
-function evaluateMoneyGate(accept: X402Accept, maxPerTxUsd: number): PayRefuseReason[] | null {
+function evaluateMoneyGate(
+  accept: X402Accept,
+  maxPerTxUsd: number,
+  rail: PayRail = "evm",
+  x402Version: 1 | 2 = 2,
+): PayRefuseReason[] | null {
   // scheme / network / asset / 転送方式。**選別と同じ述語**で見る——別の述語を書くと、
   // 選ばれたのに関門で落ちる（またはその逆の）食い違いが静かに入り込む。
-  if (!isProtocolEligible(accept)) return ["chain_or_asset_mismatch"];
+  if (!isEligibleOnRail(accept, rail, x402Version)) return ["chain_or_asset_mismatch"];
   // EIP-712 ドメインはトークンのものであって売り手のものではない（本番 2026-08-22 監査）。
   // 矛盾する accept を**署名の前に**落とす: 誤ったドメインの署名は決済され得ないので、
   // 通せば「一円も動かないまま署名だけが生きている」状態を売り手が無料で作れてしまう。
-  if (!hasCanonicalUsdcDomain(accept)) return ["chain_or_asset_mismatch"];
+  // Solana の accept に EIP-712 ドメインは無い（署名するのは取引であって型付きデータではない）。
+  if (rail === "evm" && !hasCanonicalUsdcDomain(accept)) return ["chain_or_asset_mismatch"];
   // `amount` は uint256 の 10 進表記（数字だけ）に限る（2026-09-07 監査 A6）。`Number()` は
   // "0x10" / "1e4" / "20000.5" / " 20000 " を上限内の数に読むが、署名に載るのは**生文字列**なので、
   // 関門が見た額と署名した額が食い違う。読めない額は「いくら払うのか分からない」＝402 が読めないのと同じ語。
@@ -977,6 +1207,28 @@ function evaluateMoneyGate(accept: X402Accept, maxPerTxUsd: number): PayRefuseRe
  *      通信の前に、call site で、原因そのものが名指しで返る。
  * 対称に、`{ source: "subgraph", minL1Deliveries: 3 }` も同じ理由で呼び出し側エラー。
  */
+/**
+ * Solana の payee に渡された署名者の**形**を、通信の前に見る。見るのは `svm` の欄の有無と `rpcUrl` だけで、
+ * `svm.account` のプロパティには触らない（`typeof` は Proxy の get を起こさない）。
+ */
+function assertSvmPayer(input: DecideInput): SvmPayOptions {
+  const svm: unknown = input.svm;
+  if (input.account !== NO_EVM_ACCOUNT || typeof svm !== "object" || svm === null) {
+    throw new Error(
+      "invalid_payer: a base58 payee is paid on Solana — pass svm: { account, rpcUrl } and no account. " +
+        `Got account ${input.account === NO_EVM_ACCOUNT ? "missing" : "present"}, svm ${typeof svm === "object" && svm !== null ? "present" : "missing"}.`,
+    );
+  }
+  const { account, rpcUrl } = svm as { account?: unknown; rpcUrl?: unknown };
+  if (typeof account !== "object" || account === null) {
+    throw new Error("invalid_payer: svm.account must be a Solana signer ({ address, signTransaction })");
+  }
+  if (typeof rpcUrl !== "string" || !/^https?:\/\//.test(rpcUrl)) {
+    throw new Error("invalid_payer: svm.rpcUrl must be an http(s) Solana RPC URL (the blockhash is read from it once, on ALLOW only)");
+  }
+  return svm as SvmPayOptions;
+}
+
 function assertMaxPerTxUsd(maxPerTxUsd: unknown): void {
   if (maxPerTxUsd === undefined) return;
   if (typeof maxPerTxUsd === "number" && Number.isFinite(maxPerTxUsd) && maxPerTxUsd > 0) return;
