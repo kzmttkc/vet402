@@ -1,6 +1,7 @@
 # 2026 Autumn Continuity Campaign
 
 > Status: locked 2026-08-22. This is the operating plan for ETHOnline, ETHGlobal Tokyo, and ETHGlobal Mumbai.
+> Revised 2026-09-17 after the ETHOnline results: Mumbai verb, Devcon, Open House deadline, Colosseum. Each change says why.
 > Full narrative (rules, Token2049, AI, Devcon): [`STRATEGY.md`](./STRATEGY.md). File map: [`README.md`](./README.md).
 > Repo: https://github.com/kzmttkc/vet402 · Site: https://vet402.com
 > Do not implement the next event's verb before that event's kickoff.
@@ -19,19 +20,21 @@ A submission wins when a judge can answer, in 60 seconds of video:
 
 | Event | Window | Verb | One sentence |
 |---|---|---|---|
-| ETHOnline 2026 | 2026-09-04 → 09-16（提出締切 09-13 12:00 EDT） | `payOrRefuse` | スコアを見てから払うな。拒めるなら、払うな。 |
+| ETHOnline 2026 | 2026-09-04 → 09-16（提出締切 09-13 12:00 EDT） | `payOrRefuse` | スコアを見てから払うな。拒めるなら、払うな。**結果（2026-09-17）: Bazantic「Help an Agent Use Your Hackathon Project」受賞。The Graph は受賞なし。** |
 | ETHGlobal Tokyo | 2026-09-25 → 09-27 | `resolve-then-pay` | エージェントはアドレスではなく、名前に払う。 |
-| ETHGlobal Mumbai | 2026-11-06 → 11-08 | `write the registry` | 支払いの証明はある。履行の証明を、空のレジストリに書く。 |
-| Arbitrum Open House (HackQuest・並行・ETHGlobal ではない) | 2026-09-14 → 10-04 23:59 | `/rwa`（Stock Token 実績の再構成） | 下の「Parallel venue」節。実装の正本は `docs/rwa/SPEC.md`（branch `rwa-v0`） |
+| ETHGlobal Mumbai | 2026-11-06 → 11-08 | `write the result back` | 払った結果を、その agent の記録（ERC-8004 Reputation Registry `giveFeedback`）に書き戻す。**参加は賞の詳細（10月）を見て決める**（下の Event 3） |
+| Arbitrum Open House (HackQuest・並行・ETHGlobal ではない) | 2026-09-14 → 10-04 23:59 SGT | `/rwa`（Stock Token 実績の再構成） | 下の「Parallel venue」節。実装の正本は `docs/rwa/SPEC.md`（branch `rwa-v0`） |
 
 Substrate that is **never** claimed as new work:
 
 - Observatory L0–L2, scores, badges, SDK / middleware / MCP, `/decisions`, `/impact`, accuracy ledger.
-- ERC-8004 Validation Registry **dry-run** (read-only, merged 2026-08-21). Mumbai's new work is the actual write.
+- ERC-8004 Validation Registry **dry-run** (read-only, merged 2026-08-21). Not the Mumbai verb any more (see Event 3).
 
-## Devcon 8 — go
+Not entered: **Colosseum Crypto World's Fair** (2026-09-14 → 10-12). Decided 2026-09-14: Tokyo takes the September window; the next Colosseum is spring 2027.
 
-**Go. Treat it as Mumbai prize work, not as a conference.**
+## Devcon 8 — only together with Mumbai
+
+**Go only if vet402 enters ETHGlobal Mumbai** (revised 2026-09-17; the 2026-08-22 text said go regardless). Treat it as Mumbai prize work, not as a conference. The ticket can be bought at any time, so it is decided together with the Mumbai entry.
 
 | | |
 |---|---|
@@ -181,12 +184,15 @@ The video's first minute is a **name**, not a hex address, going through pay-or-
 
 ### Scope
 
-One feature: **write the empty ERC-8004 Validation Registry**.
+One feature: **write the result of a purchase back to the agent's record** — ERC-8004 Reputation Registry `giveFeedback`, with the purchase as the proof of payment. Failures carry the same weight as successes.
 
-- Dry-run already exists and is pre-existing. Disclose it.
-- New work: signed, on-chain validation records for L0–L2 facts (failures with the same weight as successes).
+Why not the Validation Registry (revised 2026-09-17, measured 2026-09-14): `validationRequest` can only be sent by the agent's owner or operator (14 of 14 production calls reverted), and the Base Validation Registry has had 9 requests and 4 responses, none since 2026-08-17. `giveFeedback` is open to any client, has a proof-of-payment field, and carried about 2,200 entries in 24 hours. It is also the next step after Tokyo: Tokyo pays a name, Mumbai writes what that payment delivered.
+
+**Entry rule**: enter only if at least three Mumbai partner prizes fit this verb as Continuity work once the prize details are published (expected in October). Travel is booked after that decision.
+
+- The Validation Registry dry-run and write code are pre-existing. Disclose them; do not claim them.
 - Public page: record → tx → reproduce.
-- Demo path: observatory fact → write → anyone verifies on-chain.
+- Demo path: observatory fact → purchase → `giveFeedback` → anyone verifies on-chain.
 
 Out of scope: new scores, ENS work beyond what Tokyo already shipped, Solana writes.
 
@@ -232,7 +238,7 @@ Do **not** implement:
 |---|---|
 | 2026-09-04 00:00 UTC | `payOrRefuse`, `pay_if_trusted`, ETHOnline demo agent |
 | 2026-09-25 kickoff | ENS resolution in the payment path, ENS text records for verification |
-| 2026-11-06 kickoff | Mainnet (or prize-chain) Validation Registry **writes** used in the demo |
+| 2026-11-06 kickoff | Mainnet (or prize-chain) Reputation Registry **`giveFeedback` writes** used in the demo |
 
 Allowed before those clocks: specs, SDK reading, testnet accounts, ENS name **registration** (owning a name is not project code), Devcon ticket, applications, ops of the existing product.
 

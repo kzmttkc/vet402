@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-17 08:xx JST — ETHOnline の結果を受けて秋の3大会計画を改訂（ハッカソン戦略）
+
+- **何を変えたか**: `docs/hackathons/2026-autumn-continuity.md` に ETHOnline の結果（Bazantic 受賞・The Graph なし）、Mumbai の動詞を Validation Registry から Reputation Registry `giveFeedback` へ、参加は10月の賞の詳細を見て決める、Devcon は Mumbai に出るときだけ、Open House 締切に SGT、Colosseum 見送りを追記。`SUBMISSION_DRAFT.md` の動画時刻の差し込み記号を提出フォームと同じ「2:30 to 3:15・v1 の表のみ」に。`WINDOW_PLAN.md` の `0x6777…` の役割を訂正（賞金・グラントの受取先ではない）。コードは変えていない
+- **なぜ**: 審査が終わり（09-17 01:00 JST）凍結が解けたため、審査中に見つけて保留していた誤りを直す。Mumbai の動詞は 09-14 の実測（`validationRequest` は所有者/operator のみで本番 14/14 revert・Base の Validation Registry は 08-17 から停止）による
+- **影響**: Validation Registry の書き込みコードは既存扱い（Mumbai で請求しない）。凍結表の Mumbai 行は Reputation Registry の書き込みに変わった。Tokyo の作品の中身は会期前に公開しない方針のため、この文書の Tokyo 節は変えていない
+
 ## 2026-09-13 20:xx JST — Arbitrum Open House（`/rwa`）と ETHGlobal Tokyo の請求を分ける決まりを置いた
 
 - **何を変えたか**: `docs/hackathons/2026-autumn-continuity.md` の Locked verbs に Open House の行、新節「Parallel venue — Arbitrum Open House / vet402 `/rwa`」に衝突 8 件の決まりと確かめ方を追記（コードは変えていない）

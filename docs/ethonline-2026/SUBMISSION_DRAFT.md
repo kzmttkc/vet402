@@ -288,7 +288,7 @@ WHY THE TWO FAILURES ARE ON VET402'S SIDE. The over-ceiling fixture expects pric
 
 INPUTS AND RESULTS, REPRODUCIBLE. Raw logs: docs/ethonline-2026/ab/2026-09-06T213134Z/ (every prompt, every tool call, every answer). Recount: cd examples/ethonline-2026-ab && npm run metrics -- ../../docs/ethonline-2026/ab/2026-09-06T213134Z — it regrades from raw and reads no summary. The earlier same-day run 2026-09-06T093254Z (0/10 and 0/10, every tool call answered 402) is kept, not deleted.
 
-VIDEO. The A/B walk-through is at {{video_ab_timestamp}} of the demo video (both runs, the tables, the Recipe page).
+VIDEO. The A/B walk-through is at 2:30 to 3:15 of the demo video. It shows the v1 tables only. (Draft line corrected 2026-09-17 to match the submitted form.)
 
 DEVELOPER FEEDBACK (full: docs/ethonline-2026/BAZANTIC_FEEDBACK.md)
 1. On 2026-09-06, $0 routes answered 402, and paying $0 posted a real 0-USDC transfer on chain. In my 20 trials: 110 tool calls, 88 settled with a 200, 88 distinct on-chain transactions of 0 USDC. 88 free reads cost 88 facilitator transactions. When I re-measured on 2026-09-09, the free tools I checked answered an unpaid call without a 402.
