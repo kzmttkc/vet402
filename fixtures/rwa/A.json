@@ -1,0 +1,43 @@
+{
+  "fixture_id": "A",
+  "spec": "docs/rwa/SPEC.md §2, §11",
+  "method_version": "rwa-recon-0.1",
+  "chain_id": 4663,
+  "rpc": "https://rpc.mainnet.chain.robinhood.com",
+  "frozen_at": "2026-09-16T22:02:21.838Z",
+  "head_at_freeze": 64850567,
+  "block": 64850467,
+  "block_hash": "0x3b7a3268764be3bbb23fc9d53d8608f7bffe928639ae1dbc1d5e740fa60d962a",
+  "block_timestamp": 1789596123,
+  "token": {
+    "address": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
+    "symbol": "NVDA",
+    "decimals": 18
+  },
+  "feed": {
+    "address": "0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15",
+    "description": "RHNVDA / USD",
+    "decimals": 8
+  },
+  "holder": {
+    "address": "0xa8553db0049fc6843c0d00d0efc08d31848e3c74",
+    "selection_rule": "newest NVDA Transfer recipient in [N-2000, N] with no code at N and balanceOf >= 1e18 at N",
+    "source_tx": "0x8c63b785b1a1290a97ac81a1acf3939d4c878bb1b9687563ff0f1dc0d0c1d55f",
+    "source_log_index": 0,
+    "source_block": 64850276
+  },
+  "raw": "186109735330000000000",
+  "ui_multiplier": "1000775159164630595",
+  "oracle_paused": false,
+  "feed_round": {
+    "round_id": "18446744073709552665",
+    "answer": "21417088793",
+    "started_at": "1789587689",
+    "updated_at": "1789587701",
+    "answered_in_round": "18446744073709552665"
+  },
+  "expected": {
+    "usd_cents": "3985928",
+    "formula": "raw * feed_answer * 100 / 1e8 / 1e18 (integer floor); uiMultiplier is not applied"
+  }
+}
