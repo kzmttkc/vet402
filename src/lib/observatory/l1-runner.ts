@@ -60,6 +60,7 @@ import { withDailyFallback } from "@/lib/settlements/rollup";
 import { l1TierWhere } from "./coverage";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
 import { declaredRequestBody, type RequestBodySource } from "./declared-input";
+import { createPayerFunds, defaultPayerUsdcBalance, type PayerFunds, type PayerUsdcBalanceReader } from "./payer-funds";
 import { createHash } from "node:crypto";
 
 export type L1BatchSummary = {
@@ -90,6 +91,12 @@ export type L1BatchSummary = {
   halted: boolean;
   haltReason: string | null;
   disabledReason: "l1_disabled" | "wallet_key_missing" | "spending_halted" | null;
+  /**
+   * 購入元の USDC 残高が足りない（または読めない）ために署名しなかった候補の数
+   * （2026-09-17 Issue #29・payer-funds.ts）。台帳には行を書かないので、ここと
+   * サーバログ（observatory.l1.payer_unfunded）だけが資金切れを知らせる。
+   */
+  payerUnfunded: number;
 };
 
 type Candidate = {
@@ -575,6 +582,8 @@ export async function runL1Batch(
     getSolanaBlockhash?: () => Promise<string>;
     /** Whole-batch wall-clock budget; default L1_BATCH_BUDGET_MS (test seam). */
     batchBudgetMs?: number;
+    /** Test seam: 購入元の USDC 残高（基本単位）。既定は BASE_RPC_URL / SOLANA_RPC_URL を読む。 */
+    getPayerUsdcBalance?: PayerUsdcBalanceReader;
   } = {},
 ): Promise<L1BatchSummary> {
   // SSRF (2026-08-15 audit): resourceUrl is a seller-declared string from the
@@ -605,6 +614,7 @@ export async function runL1Batch(
     halted: false,
     haltReason: null,
     disabledReason: null,
+    payerUnfunded: 0,
   };
 
   // 1. Master switches — fail-closed before any network traffic.
@@ -848,6 +858,17 @@ export async function runL1Batch(
     isMature: r.is_mature === true,
   }));
 
+  // 購入元残高の関門（2026-09-17 Issue #29）。チェーンごとに 1 バッチ 1 回だけ読み、
+  // 読めなければ署名しない側へ倒す。ログはチェーンごとに 1 回。
+  const payerFunds = createPayerFunds(options.getPayerUsdcBalance ?? defaultPayerUsdcBalance);
+  const unfundedLogged = new Set<string>();
+  const onPayerUnfunded = (chain: string, detail: Record<string, unknown>) => {
+    summary.payerUnfunded++;
+    if (unfundedLogged.has(chain)) return;
+    unfundedLogged.add(chain);
+    logServerError("observatory.l1.payer_unfunded", new Error(`payer_unfunded chain=${chain} ${JSON.stringify(detail)}`));
+  };
+
   for (const [index, candidate] of candidates.entries()) {
     // Start nothing we cannot finish inside maxDuration. Purchases already in
     // flight are never interrupted — the whole point is that a signed
@@ -864,7 +885,7 @@ export async function runL1Batch(
       continue;
     }
     try {
-      const outcome = await purchaseOne({ candidate, account, solanaKeypair, getSolanaBlockhash, fetchImpl, timeoutMs, db, spentToday });
+      const outcome = await purchaseOne({ candidate, account, solanaKeypair, getSolanaBlockhash, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded });
       spentToday += outcome.spent;
       summary.spentUnitsTotal = String(BigInt(summary.spentUnitsTotal) + outcome.spent);
       if (outcome.kind === "attempted") {
@@ -880,6 +901,9 @@ export async function runL1Batch(
         summary.disabledReason = "spending_halted";
         summary.notAttempted = candidates.length - index - 1;
         break;
+      } else if (outcome.kind === "payer_unfunded") {
+        // 署名していない。summary.payerUnfunded は onPayerUnfunded が数える。残りの候補は
+        // 安いものなら買える（バッチ内の署名額を差し引いた残高で比べる）ので歩き続ける。
       } else if (outcome.kind === "budget_denied") {
         summary.budgetDenied++;
         // Budget exhausted for anything at this price — later candidates may
@@ -905,8 +929,10 @@ async function purchaseOne(input: {
   timeoutMs: number;
   db: NonNullable<ReturnType<typeof getDb>>;
   spentToday: bigint;
+  payerFunds: PayerFunds;
+  onPayerUnfunded: (chain: string, detail: Record<string, unknown>) => void;
 }): Promise<{
-  kind: "attempted" | "skipped" | "budget_denied" | "halted";
+  kind: "attempted" | "skipped" | "budget_denied" | "halted" | "payer_unfunded";
   settled: boolean;
   spent: bigint;
   /** 台帳に書いた status（attempted のときのみ）——summary の集計はこれを見る。 */
@@ -914,7 +940,7 @@ async function purchaseOne(input: {
   /** kind === "halted" のときの判定理由（cron 応答とログに出る）。 */
   haltReason?: string;
 }> {
-  const { candidate, account, solanaKeypair, getSolanaBlockhash, fetchImpl, timeoutMs, db, spentToday } = input;
+  const { candidate, account, solanaKeypair, getSolanaBlockhash, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded } = input;
   const method = (candidate.method ?? "GET").toUpperCase();
   const startedAt = Date.now();
   const isSolana = candidate.network === SOLANA_MAINNET_CAIP2;
@@ -1092,6 +1118,18 @@ async function purchaseOne(input: {
     return { kind: "halted", settled: false, spent: 0n, haltReason: preReserveHalt.reason };
   }
 
+  // 購入元残高の関門（2026-09-17 Issue #29）。予約と署名の**前**。2026-09-13〜15 に Base の
+  // 購入元の USDC が尽きたまま署名を続け、売り手の 402 を `settle_failed` として 972 行
+  // 記録した——我々の資金切れを売り手の失敗にした。足りない／読めないなら署名しない。
+  // 行は書かない（solana_daily_cap と同じ: 書くとスイープ窓のあいだ再選択されない）。
+  const payerChain = isSolana ? "solana" : "base";
+  const payerOwner = isSolana ? solanaKeypair!.publicKey.toBase58() : account.address;
+  const funds = await payerFunds.check(payerChain, payerOwner, amount);
+  if (!funds.ok) {
+    onPayerUnfunded(payerChain, { ...funds, amountUnits: String(amount) });
+    return { kind: "payer_unfunded", settled: false, spent: 0n };
+  }
+
   // Reserve BEFORE signing. This is the authoritative gate: it re-reads the
   // day's total and the sweep window inside one statement and writes the row
   // that carries spent_units, so the money is on the ledger before it can
@@ -1161,6 +1199,10 @@ async function purchaseOne(input: {
     invalidateDecisionCache(candidate.id);
     return { kind: "halted", settled: false, spent: 0n, haltReason: preSignHalt.reason };
   }
+
+  // ここから先は署名する。このバッチの残高の見積もりから差し引く（決済は非同期なので、
+  // 成立を待たずに「使った」とみなす——過大に見積もって署名し続けないため）。
+  payerFunds.commit(payerChain, payerOwner, amount);
 
   try {
     // Sign — from here on the money is live, so the ledger row ALWAYS carries

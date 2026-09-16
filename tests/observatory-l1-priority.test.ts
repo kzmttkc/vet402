@@ -20,6 +20,10 @@
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 
+// 2026-09-17 Issue #29: runL1Batch は署名の前に購入元の USDC 残高を読む（既定は RPC）。
+// このファイルは残高の関門の検査ではないので、十分な残高を返す読み手を渡す。
+const FUNDED_PAYER = async () => 1_000_000_000n;
+
 const TEST_DB = process.env.TEST_DATABASE_URL;
 
 if (!TEST_DB) {
@@ -142,7 +146,7 @@ if (!TEST_DB) {
 
     await t.test("a priority seller outranks a 100x-demand long-tail seller", async () => {
       const seen: string[] = [];
-      await runL1Batch({
+      await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER,
         fetchImpl: async (url: string, init?: RequestInit) => {
           seen.push(url);
           return settleFetch(url, init);
@@ -177,7 +181,7 @@ if (!TEST_DB) {
         }
 
         const seen: string[] = [];
-        const summary = await runL1Batch({
+        const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER,
           fetchImpl: async (url: string, init?: RequestInit) => {
             seen.push(url);
             return settleFetch(url, init);
@@ -281,7 +285,7 @@ if (!TEST_DB) {
     });
 
     const seen: string[] = [];
-    await runL1Batch({
+    await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER,
       fetchImpl: async (url: string, init?: RequestInit) => {
         seen.push(url);
         const headers = new Headers(init?.headers);

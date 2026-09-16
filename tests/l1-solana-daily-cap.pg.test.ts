@@ -13,6 +13,10 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+
+// 2026-09-17 Issue #29: runL1Batch は署名の前に購入元の USDC 残高を読む（既定は RPC）。
+// このファイルは残高の関門の検査ではないので、十分な残高を返す読み手を渡す。
+const FUNDED_PAYER = async () => 1_000_000_000n;
 import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
@@ -165,7 +169,7 @@ if (!TEST_DB) {
       await seed();
       await spendSolanaToday(2_000_000); // $2 ちょうど
       const w = wall();
-      const summary = await runL1Batch({ limit: 10, getSolanaBlockhash: async () => BLOCKHASH, fetchImpl: w.fetchImpl });
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER, limit: 10, getSolanaBlockhash: async () => BLOCKHASH, fetchImpl: w.fetchImpl });
       assert.ok(
         w.seen.every((s) => !s.url.includes("solseller1") && !s.url.includes("solseller2")),
         "Solana の候補には触れない",
@@ -180,7 +184,7 @@ if (!TEST_DB) {
       await seed();
       await spendSolanaToday(2_000_000 - 1000); // 残り 1000 units < 1 件 4000 units
       const w = wall();
-      await runL1Batch({ limit: 10, getSolanaBlockhash: async () => BLOCKHASH, fetchImpl: w.fetchImpl });
+      await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER, limit: 10, getSolanaBlockhash: async () => BLOCKHASH, fetchImpl: w.fetchImpl });
       assert.ok(!w.seen.some((s) => s.url.includes("solseller") && s.paid), "Solana へ支払い付きのリクエストは出ない");
       assert.deepEqual(await ledgerFor("https://solseller1.example/api"), [], "行が無い＝翌日また選ばれる");
       assert.deepEqual(await ledgerFor("https://solseller2.example/api"), []);
@@ -190,7 +194,7 @@ if (!TEST_DB) {
     await t.test("別枠の内側なら Solana も買う（別枠は止めるためだけの仕組みではない）", async () => {
       await seed();
       const w = wall();
-      await runL1Batch({ limit: 10, getSolanaBlockhash: async () => BLOCKHASH, fetchImpl: w.fetchImpl });
+      await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER, limit: 10, getSolanaBlockhash: async () => BLOCKHASH, fetchImpl: w.fetchImpl });
       assert.ok(w.seen.some((s) => s.url.includes("solseller") && s.paid), "Solana の候補を支払い付きで買う");
       const spent = await db.execute(sql`
         SELECT coalesce(sum(spent_units::numeric), 0)::text AS s FROM x402_l1_purchases WHERE network LIKE 'solana:%'`);

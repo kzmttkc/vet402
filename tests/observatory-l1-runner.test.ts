@@ -14,6 +14,10 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+
+// 2026-09-17 Issue #29: runL1Batch は署名の前に購入元の USDC 残高を読む（既定は RPC）。
+// このファイルは残高の関門の検査ではないので、十分な残高を返す読み手を渡す。
+const FUNDED_PAYER = async () => 1_000_000_000n;
 import { randomUUID } from "node:crypto";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
@@ -94,7 +98,7 @@ if (!TEST_DB) {
       delete process.env.OBSERVATORY_L1_ENABLED;
       process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
       let called = 0;
-      const summary = await runL1Batch({
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER,
         fetchImpl: async () => {
           called++;
           return new Response("", { status: 402 });
@@ -108,7 +112,7 @@ if (!TEST_DB) {
     await t.test("no key → zero requests even with the flag on", async () => {
       process.env.OBSERVATORY_L1_ENABLED = "true";
       delete process.env.OBSERVATORY_WALLET_PRIVATE_KEY;
-      const summary = await runL1Batch({ fetchImpl: async () => new Response("", { status: 402 }) });
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER, fetchImpl: async () => new Response("", { status: 402 }) });
       assert.equal(summary.attempted, 0);
       assert.equal(summary.disabledReason, "wallet_key_missing");
     });
@@ -116,7 +120,7 @@ if (!TEST_DB) {
     await t.test("wallet key without the 0x prefix (MetaMask export) is accepted", async () => {
       process.env.OBSERVATORY_L1_ENABLED = "true";
       process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK.slice(2); // no 0x
-      const summary = await runL1Batch({
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER,
         fetchImpl: async () => new Response("", { status: 500 }), // no purchase, just past the key gate
         limit: 0,
       });
@@ -148,7 +152,7 @@ if (!TEST_DB) {
           },
         });
       };
-      const summary = await runL1Batch({ fetchImpl, limit: 1 });
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER, fetchImpl, limit: 1 });
       assert.equal(summary.attempted, 1);
       assert.equal(summary.settled, 1);
       // highest-demand seller first
@@ -205,7 +209,7 @@ if (!TEST_DB) {
     });
 
     await t.test("one purchase per endpoint per sweep window (no double-buy)", async () => {
-      const summary = await runL1Batch({
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER,
         fetchImpl: async (url: string) => new Response(challengeFor(url), { status: 402, headers: { "content-type": "application/json" } }),
         limit: 2,
       });
@@ -250,7 +254,7 @@ if (!TEST_DB) {
         });
       }
       const seen: string[] = [];
-      const summary = await runL1Batch({
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER,
         fetchImpl: async (url: string) => {
           seen.push(url);
           return new Response(challengeFor(url), { status: 402, headers: { "content-type": "application/json" } });
@@ -276,7 +280,7 @@ if (!TEST_DB) {
       const seller2 = eps.find((e) => e.url.includes("seller2"));
       assert.ok(seller2, "fixture seller2 must exist");
       const seen: string[] = [];
-      const summary = await runL1Batch({
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER,
         fetchImpl: async (url: string) => {
           seen.push(url);
           return new Response(challengeFor(url), {
@@ -350,7 +354,7 @@ if (!TEST_DB) {
       delete process.env.OBSERVATORY_SOLANA_L1_ENABLED;
       delete process.env.OBSERVATORY_SOLANA_SECRET_KEY;
       const seenOff: string[] = [];
-      await runL1Batch({
+      await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER,
         fetchImpl: async (url: string) => {
           seenOff.push(url);
           return new Response(anyChallenge(url), { status: 402, headers: { "content-type": "application/json" } });
@@ -363,7 +367,7 @@ if (!TEST_DB) {
       process.env.OBSERVATORY_SOLANA_L1_ENABLED = "true";
       process.env.OBSERVATORY_SOLANA_SECRET_KEY = Buffer.from(solKeypair.secretKey).toString("base64");
       await db.execute(sql`TRUNCATE x402_l1_purchases`);
-      const summary = await runL1Batch({
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER,
         limit: 10,
         getSolanaBlockhash: async () => BLOCKHASH,
         fetchImpl: async (url: string, init?: RequestInit) => {
@@ -419,7 +423,7 @@ if (!TEST_DB) {
           ],
         });
       };
-      const summary = await runL1Batch({
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER,
         fetchImpl: async (url: string) =>
           new Response(overcharging(url), { status: 402, headers: { "content-type": "application/json" } }),
         limit: 2,
@@ -441,7 +445,7 @@ if (!TEST_DB) {
           { scheme: "exact", network: "eip155:8453", amount: "3000", asset: BASE_USDC, payTo: payToFor("9"), extra: { name: "USD Coin", version: "2" } },
         ],
       });
-      const summary = await runL1Batch({
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER,
         fetchImpl: async () =>
           new Response(swapped, { status: 402, headers: { "content-type": "application/json" } }),
         limit: 2,
@@ -485,7 +489,7 @@ if (!TEST_DB) {
             { scheme: "exact", network: "eip155:8453", amount: "3000", asset: BASE_USDC, payTo: OPERATOR, extra: { name: "USD Coin", version: "2" } },
           ],
         });
-        const summary = await runL1Batch({
+        const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER,
           onlyEndpointId: nullPayToEp.id,
           fetchImpl: async () =>
             new Response(wall, { status: 402, headers: { "content-type": "application/json" } }),
@@ -512,7 +516,7 @@ if (!TEST_DB) {
       // settle_failed を区別しているのに、cron 応答の summary は両方を
       // settleFailed に吸収していて外から判別できなかった。
       await db.execute(sql`TRUNCATE x402_l1_purchases, observed_purchases`);
-      const summary = await runL1Batch({
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER,
         fetchImpl: async (url: string, init?: RequestInit) => {
           const headers = new Headers(init?.headers);
           if (!headers.has("PAYMENT-SIGNATURE") && !headers.has("X-PAYMENT")) {
@@ -556,7 +560,7 @@ if (!TEST_DB) {
         spentUnits: "24999000",
         amountUnits: "24999000",
       });
-      const summary = await runL1Batch({
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER,
         fetchImpl: async (url: string) => new Response(challengeFor(url), { status: 402, headers: { "content-type": "application/json" } }),
         limit: 2,
       });
@@ -591,7 +595,7 @@ if (!TEST_DB) {
         }
         return new Response(challengeFor(url), { status: 402, headers: { "content-type": "application/json" } });
       };
-      const summary = await runL1Batch({ fetchImpl, limit: 1 });
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER, fetchImpl, limit: 1 });
       assert.equal(summary.settled, 1, "a spend that reaches the cap exactly must go through");
       assert.equal(summary.budgetDenied, 0);
     });
@@ -610,7 +614,7 @@ if (!TEST_DB) {
         spentUnits: "25000000",
         amountUnits: "25000000",
       });
-      const summary = await runL1Batch({
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER,
         fetchImpl: async (url: string) => new Response(challengeFor(url), { status: 402, headers: { "content-type": "application/json" } }),
         limit: 2,
       });
@@ -648,7 +652,7 @@ if (!TEST_DB) {
           headers: { "content-type": "application/json" },
         });
       };
-      const summary = await runL1Batch({ fetchImpl, limit: 1 });
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER, fetchImpl, limit: 1 });
       assert.equal(summary.attempted, 1);
       assert.deepEqual(
         ledgerDuringPaidRequest,
@@ -732,10 +736,10 @@ if (!TEST_DB) {
       };
 
       await Promise.all([
-        runL1Batch({ fetchImpl: raceFetch, limit: 45 }),
+        runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER, fetchImpl: raceFetch, limit: 45 }),
         (async () => {
           await new Promise((r) => setTimeout(r, 25));
-          return runL1Batch({ fetchImpl: raceFetch, limit: 45 });
+          return runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER, fetchImpl: raceFetch, limit: 45 });
         })(),
       ]);
 

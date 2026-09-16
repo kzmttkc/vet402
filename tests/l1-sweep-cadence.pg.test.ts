@@ -20,6 +20,10 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+
+// 2026-09-17 Issue #29: runL1Batch は署名の前に購入元の USDC 残高を読む（既定は RPC）。
+// このファイルは残高の関門の検査ではないので、十分な残高を返す読み手を渡す。
+const FUNDED_PAYER = async () => 1_000_000_000n;
 import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
@@ -204,7 +208,7 @@ if (!TEST_DB) {
 
     const run = async () => {
       const w = wall();
-      const summary = await runL1Batch({ limit: 50, fetchImpl: w.fetchImpl });
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER, limit: 50, fetchImpl: w.fetchImpl });
       return { ...w, summary };
     };
 

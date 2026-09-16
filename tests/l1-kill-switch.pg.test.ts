@@ -18,6 +18,10 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+
+// 2026-09-17 Issue #29: runL1Batch は署名の前に購入元の USDC 残高を読む（既定は RPC）。
+// このファイルは残高の関門の検査ではないので、十分な残高を返す読み手を渡す。
+const FUNDED_PAYER = async () => 1_000_000_000n;
 import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
@@ -155,7 +159,7 @@ if (!TEST_DB) {
         updatedBy: "test",
       });
       const { seen, fetchImpl } = wall();
-      const summary = await runL1Batch({ fetchImpl });
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER, fetchImpl });
       assert.equal(summary.halted, true);
       assert.equal(summary.disabledReason, "spending_halted");
       assert.match(String(summary.haltReason), /suspicious payout/);
@@ -168,7 +172,7 @@ if (!TEST_DB) {
       await clearLedger();
       await setSpendingHalt({ enabled: false, reason: "resumed", updatedBy: "test" });
       const { seen, fetchImpl } = wall();
-      const summary = await runL1Batch({ fetchImpl, limit: 1 });
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER, fetchImpl, limit: 1 });
       assert.equal(summary.halted, false);
       assert.equal(summary.attempted, 1);
       assert.equal(summary.settled, 1);
@@ -190,7 +194,7 @@ if (!TEST_DB) {
       const { seen, fetchImpl } = wall(async () => {
         await setSpendingHalt({ enabled: true, reason: "operator pulled the cord", updatedBy: "test" });
       });
-      const summary = await runL1Batch({ fetchImpl, limit: 2 });
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER, fetchImpl, limit: 2 });
       assert.equal(summary.attempted, 1, "1 件目は飛行中なので最後まで記帳する");
       assert.equal(summary.halted, true);
       assert.match(String(summary.haltReason), /pulled the cord/);
@@ -226,7 +230,7 @@ if (!TEST_DB) {
       `);
       try {
         const { seen, fetchImpl } = wall();
-        const summary = await runL1Batch({ fetchImpl, limit: 1 });
+        const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER, fetchImpl, limit: 1 });
         assert.equal(seen.filter((s) => s.paid).length, 0, "署名済みリクエストが 1 本も出ていないこと");
         assert.equal(summary.attempted, 0);
         assert.equal(summary.halted, true);
