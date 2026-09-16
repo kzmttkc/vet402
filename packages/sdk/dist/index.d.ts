@@ -312,7 +312,7 @@ export type SellerFacts = {
         n_attempts: number;
         /**
          * 売り手の不履行として数えない署名済みの試行。有料応答が 4xx（決済済み、または決済レシートなしで
-         * 402 以外）か、vet402 自身の購入元ウォレットの資金切れ期間（2026-09-13〜15）の 402。n_attempts に
+         * 402 以外）か、vet402 自身の購入元ウォレットの資金切れ期間（2026-09-13〜15）の 402・5xx。n_attempts に
          * 含まれ、決済済みなら n_settled にも含まれる。判定は conclusive = n_attempts − n_inconclusive で読む
          * （2026-09-08・reason code `l1_inconclusive`。2026-09-17 に範囲を広げた）。
          */

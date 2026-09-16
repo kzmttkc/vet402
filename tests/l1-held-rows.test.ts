@@ -5,9 +5,9 @@
 //   settled_4xx     … settled かつ有料応答 4xx（2026-09-05 からの既存規則）
 //   unsettled_4xx   … settle_failed・tx なし・有料応答 4xx（402 以外）。
 //                     売り手が決済せずに我々の要求を断った（A）
-//   payer_unfunded  … settle_failed・tx なし・402・Base・我々の購入元ウォレットの
-//                     USDC が尽きていた期間の内側（C）
-// 5xx は救わない。期間の外の 402 は従来どおり売り手の記録。
+//   payer_unfunded  … settle_failed・tx なし・402 または 5xx・Base・我々の購入元ウォレットの
+//                     USDC が尽きていた期間の内側（C。5xx は 2026-09-17 検証役の実測で追加）
+// 期間の外の 5xx と 402 は従来どおり売り手の記録。
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -82,8 +82,21 @@ test("C の境界: 開始は含み、終了（補充後の最初の成立 23:49Z
   assert.equal(heldReasonOf(row({ httpStatusPaid: 402, attemptedAt: "2026-09-16T01:00:00Z" })), null);
 });
 
-test("C の境界: 期間内でも 5xx・tx あり・Solana・時刻不明は数える側（救わない）", () => {
-  assert.equal(heldReasonOf(row({ httpStatusPaid: 500, attemptedAt: IN_WINDOW })), null);
+test("C: 資金切れ期間の内側の 5xx（Base・tx なし）も payer_unfunded（09-13/14/15 に 17/27/17 件、前後は 0〜11 件）", () => {
+  for (const code of [500, 502, 503, 599]) {
+    assert.equal(heldReasonOf(row({ httpStatusPaid: code, attemptedAt: IN_WINDOW })), "payer_unfunded", String(code));
+  }
+  assert.equal(heldReasonOf(row({ httpStatusPaid: 500, attemptedAt: "2026-09-12T23:59:59Z" })), null, "期間の外の 5xx は数える");
+  assert.equal(heldReasonOf(row({ httpStatusPaid: 500, attemptedAt: "2026-09-15T23:49:00Z" })), null);
+  assert.equal(heldReasonOf(row({ httpStatusPaid: 600, attemptedAt: IN_WINDOW })), null, "5xx の外は対象外");
+  assert.equal(heldReasonOf(row({ status: "settled", txHash: "0xabc", httpStatusPaid: 500, attemptedAt: IN_WINDOW })), null, "settled の 5xx は対象外");
+});
+
+test("C の境界: 期間内でも tx あり・Solana・時刻不明・2xx/null は数える側（救わない）", () => {
+  assert.equal(heldReasonOf(row({ httpStatusPaid: 500, attemptedAt: IN_WINDOW, txHash: "0xabc" })), null);
+  assert.equal(heldReasonOf(row({ httpStatusPaid: 503, attemptedAt: IN_WINDOW, network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" })), null);
+  assert.equal(heldReasonOf(row({ httpStatusPaid: null, attemptedAt: IN_WINDOW })), null);
+  assert.equal(heldReasonOf(row({ httpStatusPaid: 200, attemptedAt: IN_WINDOW })), null);
   assert.equal(heldReasonOf(row({ httpStatusPaid: 402, attemptedAt: IN_WINDOW, txHash: "0xabc" })), null);
   assert.equal(
     heldReasonOf(row({ httpStatusPaid: 402, attemptedAt: IN_WINDOW, network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" })),
@@ -107,6 +120,7 @@ test("SQL: 3 つの理由と期間の定数が述語に入り、alias は素の�
   assert.ok(s.includes("2026-09-13T00:00:00Z") && s.includes("2026-09-15T23:49:00Z"));
   assert.ok(s.includes("p.tx_hash IS NULL"));
   assert.ok(s.includes("<> 402"));
+  assert.ok(s.includes("BETWEEN 500 AND 599"), "C の SQL も 5xx を含む");
   assert.ok(inconclusivePredicate("p").includes(heldReasonSql("p")));
   assert.throws(() => heldReasonSql("p; DROP TABLE x"), /plain identifier/);
 });

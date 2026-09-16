@@ -38,7 +38,7 @@ export type ReceiptBadgeInput = {
   inconclusiveCount?: number;
   /**
    * inconclusiveCount のうち settled のもの（2026-09-17 Issue #29）。保留は settled の外にも
-   * ある（決済レシートなしの 4xx・我々の資金切れ期間の 402）ので、delivered の上限に効く
+   * ある（決済レシートなしの 4xx・我々の資金切れ期間の 402・5xx）ので、delivered の上限に効く
    * のはこの分だけ。省略時は min(inconclusiveCount, settledCount)（従来の呼び手と同じ）。
    */
   inconclusiveSettledCount?: number;
@@ -111,7 +111,7 @@ export function endpointReceiptBadge(input: ReceiptBadgeInput): ReceiptBadge {
       ? ` ${inconclusive} paid attempt${inconclusive === 1 ? " is" : "s are"} held as inconclusive ` +
         `rather than counted against the seller: a paid request that answered 4xx, settled or not, ` +
         `can be our own request being malformed, because vet402 buys with no API key and sends a ` +
-        `request body only when the seller declares one; and a 402 from 2026-09-13 to 2026-09-15 ` +
+        `request body only when the seller declares one; and a 402 or 5xx from 2026-09-13 to 2026-09-15 ` +
         `came while vet402's own payer wallet was out of USDC.`
       : "") +
     ` A measurement of what happened when vet402 paid this endpoint, not a recommendation.` +

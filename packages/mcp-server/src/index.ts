@@ -257,7 +257,7 @@ server.tool(
     "reason_codes, freshness, evidence, and the rules_version that produced the recommendation.",
     "The L1 reason codes name whose gap it is: l1_not_attempted (vet402 signed no paid attempt),",
     "l1_inconclusive (signed paid attempts exist, but each one is held: a 4xx vet402 attributes to its",
-    "own request shape, or a 402 while vet402's own payer wallet was unfunded - a gap in vet402's measurement,",
+    "own request shape, or a 402 or 5xx while vet402's own payer wallet was unfunded - a gap in vet402's measurement,",
     "not evidence against the seller; facts.l1.n_inconclusive",
     "carries the count and those rows do not count toward a BLOCK), l1_never_delivered (a conclusive",
     "paid response existed and nothing was delivered), l1_delivered.",

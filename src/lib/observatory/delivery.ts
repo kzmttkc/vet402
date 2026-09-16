@@ -57,9 +57,9 @@ export function isDelivered(row: { status: string; httpStatusPaid: number | null
 // 理由（HeldReason）:
 //   settled_4xx     settled かつ有料応答 4xx（2026-09-05 からの既存規則のまま）
 //   unsettled_4xx   settle_failed・tx なし・有料応答 4xx（402 を除く）
-//   payer_unfunded  settle_failed・tx なし・402・Base・資金切れ期間の内側
-// 5xx は救わない（売り手側の障害は我々の要求の形で説明がつかない）。期間の外の 402 は
-// 「売り手が我々の支払いを受け付けなかった」事実として従来どおり数える。
+//   payer_unfunded  settle_failed・tx なし・402 または 5xx・Base・資金切れ期間の内側
+// 期間の外の 5xx は救わない（売り手側の障害は我々の要求の形で説明がつかない）。期間の外の
+// 402 は「売り手が我々の支払いを受け付けなかった」事実として従来どおり数える。
 //
 // 注意（2026-09-17 実測）: `settle_failed`・4xx・tx なしで書かれた行の一部は、売り手が
 // 後から決済していて recover-late.ts が settle_claimed → settled へ戻す（09-11〜16 の
@@ -76,6 +76,9 @@ export const INCONCLUSIVE_HTTP_MIN = 400;
 export const INCONCLUSIVE_HTTP_MAX = 499;
 /** 402 は「支払いが受け付けられなかった」であって要求の形の問題ではない（A から除く）。 */
 export const PAYMENT_REQUIRED_HTTP = 402;
+/** 資金切れ期間に payer_unfunded として保留にする 5xx の範囲。 */
+export const SERVER_ERROR_HTTP_MIN = 500;
+export const SERVER_ERROR_HTTP_MAX = 599;
 
 export type HeldReason = "settled_4xx" | "unsettled_4xx" | "payer_unfunded";
 export const HELD_REASONS: readonly HeldReason[] = ["settled_4xx", "unsettled_4xx", "payer_unfunded"];
@@ -88,7 +91,13 @@ export const HELD_REASONS: readonly HeldReason[] = ["settled_4xx", "unsettled_4x
  * 支払い付き要求が 402 で断られ始め（09-12 は 402 が 0 件、09-13/14/15 は 314/313/352 件）、
  * 補充後の最初の成立は 2026-09-15T23:49Z（手動実行）。期間内の settle_failed・402・tx なしは
  * 972 行・965 エンドポイント、うち 57 エンドポイントが「納品 0・署名 3 件以上」で BLOCK に
- * 届きうる状態だった。以後は l1-runner の残高の関門（payer-funds.ts）が署名の前に止めるので、
+ * 届きうる状態だった。
+ *
+ * 5xx も同じ期間に含める（2026-09-17 独立検証役の実測・公開 export）: Base の支払い付き要求への
+ * 5xx（settle_failed・tx なし）が 09-13/14/15 に 17/27/17 件、前後の日は 0〜11 件（09-12 は 11、
+ * 09-16 は 3）。期間内 60 行・60 エンドポイント（500×50・503×8・502×2）。中身の無い支払いを
+ * 検証できずに落ちる売り手の実装が 5xx を返したと読むのが自然で、期間の外の 5xx とは区別する。
+ * 以後は l1-runner の残高の関門（payer-funds.ts）が署名の前に止めるので、
  * この表に行を足す運用にはしない。
  */
 export const PAYER_UNFUNDED_WINDOWS: readonly { networks: readonly string[]; from: string; until: string }[] = [
@@ -119,8 +128,11 @@ export function heldReasonOf(row: HeldRowInput): HeldReason | null {
   const code = row.httpStatusPaid;
   if (row.status === "settled") return is4xx(code) ? "settled_4xx" : null;
   if (row.status !== "settle_failed" || (row.txHash !== null && row.txHash !== undefined)) return null;
-  if (!is4xx(code)) return null;
-  if (code !== PAYMENT_REQUIRED_HTTP) return "unsettled_4xx";
+  if (is4xx(code) && code !== PAYMENT_REQUIRED_HTTP) return "unsettled_4xx";
+  const unfundedShape =
+    code === PAYMENT_REQUIRED_HTTP ||
+    (typeof code === "number" && code >= SERVER_ERROR_HTTP_MIN && code <= SERVER_ERROR_HTTP_MAX);
+  if (!unfundedShape) return null;
   const at = epochMs(row.attemptedAt);
   if (at === null) return null;
   for (const w of PAYER_UNFUNDED_WINDOWS) {
@@ -176,7 +188,7 @@ export function heldReasonSql(alias = ""): string {
     `CASE` +
     ` WHEN ${p}status = 'settled' AND ${fourxx} THEN 'settled_4xx'` +
     ` WHEN ${p}status = 'settle_failed' AND ${p}tx_hash IS NULL AND ${fourxx} AND ${p}http_status_paid <> ${PAYMENT_REQUIRED_HTTP} THEN 'unsettled_4xx'` +
-    ` WHEN ${p}status = 'settle_failed' AND ${p}tx_hash IS NULL AND ${p}http_status_paid = ${PAYMENT_REQUIRED_HTTP} AND (${inWindow}) THEN 'payer_unfunded'` +
+    ` WHEN ${p}status = 'settle_failed' AND ${p}tx_hash IS NULL AND (${p}http_status_paid = ${PAYMENT_REQUIRED_HTTP} OR ${p}http_status_paid BETWEEN ${SERVER_ERROR_HTTP_MIN} AND ${SERVER_ERROR_HTTP_MAX}) AND (${inWindow}) THEN 'payer_unfunded'` +
     ` END`
   );
 }

@@ -5,7 +5,7 @@
 //   l1.n_attempts    = 署名した試行（spent が立つ status）。署名前の拒否は数えない
 //   l1.n_settled     = チェーンで確定（status = settled）
 //   l1.n_inconclusive= 売り手の不履行として数えない署名済みの試行（delivery.ts の heldReasonOf）:
-//                      settled かつ 4xx／決済レシートなしで 4xx（402 以外）／資金切れ期間の 402。
+//                      settled かつ 4xx／決済レシートなしで 4xx（402 以外）／資金切れ期間の 402・5xx。
 //                      n_attempts に含める（/purchases と同じ集合・2026-09-08／2026-09-17 拡張）。
 //                      判定は rules.ts が conclusive = n_attempts − n_inconclusive で読む
 //   l1.n_delivered   = settled かつ 2xx かつ非空
@@ -123,7 +123,7 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
   // n_inconclusive）が持つ。F-1（2026-08-26）型の冤罪はそちらで防ぐ。
   //
   // 2026-09-17（Issue #29）: 保留は settled の中だけではない。決済レシートが返らずに
-  // 4xx（402 以外）で断られた settle_failed と、我々の資金切れ期間の 402 も保留に入る
+  // 4xx（402 以外）で断られた settle_failed と、我々の資金切れ期間の 402・5xx も保留に入る
   // （delivery.ts の heldReasonOf が正典）。n_inconclusive は署名した試行全体から数え、
   // n_settled に入るのはそのうち settled のものだけ。
   const signed = purchases.filter((p) => SIGNED_STATUSES.has(p.status));

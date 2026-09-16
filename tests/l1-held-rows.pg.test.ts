@@ -78,7 +78,8 @@ if (!TEST_DB) {
       { status: "settle_failed", http: 402, at: "2026-09-15T23:48:59Z" }, // payer_unfunded
       { status: "settle_failed", http: 402, at: "2026-09-15T23:49:00Z" }, // 終了は含まない → 数える
       { status: "settle_failed", http: 402, at: "2026-09-14T00:00:00Z", network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" }, // Solana → 数える
-      { status: "settle_failed", http: 500, at: "2026-09-14T01:00:00Z" }, // 期間内 5xx → 数える
+      { status: "settle_failed", http: 500, at: "2026-09-14T01:00:00Z" }, // 期間内 5xx → payer_unfunded
+      { status: "settle_failed", http: 503, at: "2026-09-14T02:00:00Z", network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" }, // Solana の期間内 5xx → 数える
       { status: "settle_claimed", http: 400, tx: true, at: "2026-09-16T00:00:00Z" }, // 対象外
       { status: "budget_denied", http: null, at: "2026-09-16T01:00:00Z" }, // 署名前 → 分母外
     ];
@@ -103,7 +104,7 @@ if (!TEST_DB) {
         assert.equal(r.sql_reason, js, `${r.status}/${r.http_status_paid}/${r.attempted_at}/${r.network}`);
       }
       const reasons = ledger.filter((r) => r.endpoint_id === mixed.id).map((r) => r.sql_reason).filter(Boolean).sort();
-      assert.deepEqual(reasons, ["payer_unfunded", "payer_unfunded", "settled_4xx", "unsettled_4xx", "unsettled_4xx"]);
+      assert.deepEqual(reasons, ["payer_unfunded", "payer_unfunded", "payer_unfunded", "settled_4xx", "unsettled_4xx", "unsettled_4xx"]);
     });
 
     const jsHeld = (endpointId?: string) =>
@@ -141,14 +142,14 @@ if (!TEST_DB) {
           WHERE endpoint_id = ${mixed.id}::uuid AND status IN ${sql.raw(`(${PAID.map((s) => `'${s}'`).join(", ")})`)}
             AND ${sql.raw(inconclusivePredicate())}`),
       )[0].n;
-      assert.equal(jsHeld(mixed.id), 5);
-      assert.equal(facts.l1.n_inconclusive, 5);
-      assert.equal(purchases!.inconclusiveCount, 5);
-      assert.equal(sqlCount, 5);
+      assert.equal(jsHeld(mixed.id), 6);
+      assert.equal(facts.l1.n_inconclusive, 6);
+      assert.equal(purchases!.inconclusiveCount, 6);
+      assert.equal(sqlCount, 6);
       assert.equal(facts.l1.n_attempts, purchases!.attemptCount);
       assert.equal(facts.l1.n_settled, purchases!.settledCount);
       assert.equal(facts.l1.n_delivered, purchases!.deliveredCount);
-      assert.deepEqual(purchases!.inconclusiveByReason, { settled4xx: 1, unsettled4xx: 2, payerUnfunded: 2 });
+      assert.deepEqual(purchases!.inconclusiveByReason, { settled4xx: 1, unsettled4xx: 2, payerUnfunded: 3 });
       assert.equal(purchases!.inconclusiveSettledCount, 1);
       // delivered 1 / (settled 3 − settled の保留 1)
       assert.equal(purchases!.deliveryRatePct, 50);
@@ -157,8 +158,8 @@ if (!TEST_DB) {
     await t.test("/observatory/state の l1 集計も同じ件数（理由別の和 = inconclusive）", async () => {
       const stats = await getObservatoryStats();
       assert.equal(stats.l1.inconclusive, jsHeld());
-      assert.equal(stats.l1.inconclusive, 7);
-      assert.deepEqual(stats.l1.inconclusiveByReason, { settled4xx: 1, unsettled4xx: 3, payerUnfunded: 3 });
+      assert.equal(stats.l1.inconclusive, 8);
+      assert.deepEqual(stats.l1.inconclusiveByReason, { settled4xx: 1, unsettled4xx: 3, payerUnfunded: 4 });
       assert.equal(stats.l1.inconclusiveSettled, 1);
       const byChainSum = stats.l1.byChain.reduce((a, c) => a + c.inconclusive, 0);
       assert.equal(byChainSum, stats.l1.inconclusive);

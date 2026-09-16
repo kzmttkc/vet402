@@ -85,14 +85,17 @@ const CORRECTIONS: Correction[] = [
       "From the first batch of 2026-09-13 until a manual run at 2026-09-15T23:49Z, the Base wallet vet402 buys from " +
       "had run out of USDC, and the runner kept signing. Sellers answered those payments with 402, as they should, " +
       "and we recorded each one as settle_failed against the seller: 972 rows across 965 endpoints in the public " +
-      "export. 402 counts were 0 on 2026-09-12 and 314, 313 and 352 on the three days that followed. 57 endpoints " +
+      "export. 402 counts were 0 on 2026-09-12 and 314, 313 and 352 on the three days that followed. Some sellers " +
+      "answered the same unfunded payments with a 5xx instead, and those were recorded the same way: 60 rows across " +
+      "60 endpoints (500 x50, 503 x8, 502 x2), 17, 27 and 17 on those three days against 0 to 11 on the days " +
+      "around them. 57 endpoints " +
       "reached zero deliveries on three or more signed attempts in that state, which is the condition for a BLOCK. " +
       "Nothing checked the balance before signing, and nothing alerted on the change.",
     action:
-      "Changed on 2026-09-17. A 402 with no transaction on Base from 2026-09-13T00:00Z to 2026-09-15T23:49Z is held " +
-      "as inconclusive with the reason payer_unfunded: it does not count toward a BLOCK or against delivered, and " +
-      "the rows stay published. A 402 outside that window still counts, because it says the seller did not accept " +
-      "our payment. The runner now reads the payer's USDC balance on each chain before it signs, once per batch; " +
+      "Changed on 2026-09-17. A 402 or 5xx with no transaction on Base from 2026-09-13T00:00Z to 2026-09-15T23:49Z " +
+      "is held as inconclusive with the reason payer_unfunded: it does not count toward a BLOCK or against " +
+      "delivered, it is no longer listed as a loss on /decisions, and the rows stay published. A 402 or 5xx outside " +
+      "that window still counts, because it says the seller did not accept our payment or failed to serve it. The runner now reads the payer's USDC balance on each chain before it signs, once per batch; " +
       "when the balance is short or cannot be read it does not sign and writes no row, so the seller is picked " +
       "again in the next batch, and the shortfall is logged. The counts ship as payerUnfunded in " +
       "l1.inconclusiveByReason and as held_reason in export.csv.",

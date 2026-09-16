@@ -1752,7 +1752,7 @@ paths:
                         description: >-
                           Sums to inconclusive. settled4xx — settled and answered 4xx;
                           unsettled4xx — answered a 4xx other than 402 with no
-                          settlement receipt; payerUnfunded — answered 402 while
+                          settlement receipt; payerUnfunded — answered 402 or 5xx while
                           vet402's own Base payer wallet was out of USDC
                           (2026-09-13T00:00Z–2026-09-15T23:49Z).
                         properties:
@@ -2919,7 +2919,7 @@ components:
             wash_dominated, …). The L1 words name whose gap it is:
             l1_not_attempted — no paid attempt was signed; l1_inconclusive —
             signed paid attempts exist, but each one is held as inconclusive (a
-            4xx we attribute to our own request shape, or a 402 while vet402's
+            4xx we attribute to our own request shape, or a 402 or 5xx while vet402's
             own payer wallet was unfunded), a gap in our measurement rather
             than evidence against the seller; l1_never_delivered — at least one
             conclusive paid response and none delivered.
@@ -3348,7 +3348,7 @@ components:
                 Signed paid attempts held rather than counted against the seller:
                 the paid request answered 4xx and the payment settled (since
                 2026-09-08); the paid request answered a 4xx other than 402 with
-                no settlement receipt, or answered 402 between
+                no settlement receipt, or answered 402 or 5xx between
                 2026-09-13T00:00Z and 2026-09-15T23:49Z while vet402's own Base
                 payer wallet was out of USDC (both since 2026-09-17). Counted in
                 n_attempts (and in n_settled when settled) — the same set the

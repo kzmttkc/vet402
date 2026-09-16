@@ -332,7 +332,7 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
                 <code>inconclusive</code> rather than counted against this seller</strong>
                 {" "}({l1.inconclusiveByReason.settled4xx} settled and answered 4xx,{" "}
                 {l1.inconclusiveByReason.unsettled4xx} answered 4xx with no settlement receipt,{" "}
-                {l1.inconclusiveByReason.payerUnfunded} answered 402 while our own payer wallet was
+                {l1.inconclusiveByReason.payerUnfunded} answered 402 or 5xx while our own payer wallet was
                 out of USDC, 2026-09-13 00:00 to 2026-09-15 23:49 UTC). A 4xx says the request was
                 not one the server would accept, and we cannot rule out that the request was ours to
                 get wrong: vet402 buys with no API key of the seller&apos;s, and sends a POST body only

@@ -94,7 +94,7 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "inconclusive",
     group: "l1",
     definition:
-      "inconclusive means vet402 holds a paid attempt rather than counting it against the seller, because the paid request answered 4xx or ran while vet402's own payer wallet was unfunded. The 4xx case covers a settled payment and a seller that refused with no settlement receipt (a 402 excepted); the unfunded case is a 402 between 2026-09-13T00:00Z and 2026-09-15T23:49Z, when vet402's Base payer wallet had run out of USDC. A 4xx says the request was not one the server would accept, and vet402 buys with no API key of the seller's and sends {} as the POST body when the seller declares none, so it cannot rule out that the request was its own to get wrong; the rows stay published with their status and HTTP code, and they do not count toward a BLOCK or against delivered.",
+      "inconclusive means vet402 holds a paid attempt rather than counting it against the seller, because the paid request answered 4xx or ran while vet402's own payer wallet was unfunded. The 4xx case covers a settled payment and a seller that refused with no settlement receipt (a 402 excepted); the unfunded case is a 402 or 5xx between 2026-09-13T00:00Z and 2026-09-15T23:49Z, when vet402's Base payer wallet had run out of USDC. A 4xx says the request was not one the server would accept, and vet402 buys with no API key of the seller's and sends {} as the POST body when the seller declares none, so it cannot rule out that the request was its own to get wrong; the rows stay published with their status and HTTP code, and they do not count toward a BLOCK or against delivered.",
   },
   {
     term: "settle_claimed",
@@ -143,7 +143,7 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "l1_inconclusive",
     group: "l1",
     definition:
-      "l1_inconclusive means vet402 has signed paid attempts against this resource, but each one is held as inconclusive, so there is no paid response to judge; this is a gap in our measurement, not evidence against the seller. The held attempts are a 4xx we attribute to our own request shape (no API key, or {} as the POST body where the seller declares none) or a 402 while our own payer wallet was unfunded. It sits between l1_not_attempted (no paid attempt was signed) and l1_never_delivered (a conclusive paid response existed and nothing was delivered): facts.l1.n_inconclusive carries the count, the decision rules read conclusive attempts as n_attempts minus n_inconclusive, and these rows do not count toward a BLOCK.",
+      "l1_inconclusive means vet402 has signed paid attempts against this resource, but each one is held as inconclusive, so there is no paid response to judge; this is a gap in our measurement, not evidence against the seller. The held attempts are a 4xx we attribute to our own request shape (no API key, or {} as the POST body where the seller declares none) or a 402 or 5xx while our own payer wallet was unfunded. It sits between l1_not_attempted (no paid attempt was signed) and l1_never_delivered (a conclusive paid response existed and nothing was delivered): facts.l1.n_inconclusive carries the count, the decision rules read conclusive attempts as n_attempts minus n_inconclusive, and these rows do not count toward a BLOCK.",
   },
   {
     term: "match",

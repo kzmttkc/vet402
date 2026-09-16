@@ -373,7 +373,7 @@ export type InconclusiveByReason = {
   settled4xx: number;
   /** 決済レシートなし（settle_failed・tx なし）で有料応答 4xx（402 を除く）。 */
   unsettled4xx: number;
-  /** 我々の購入元ウォレットの資金切れ期間に 402 で断られた行。 */
+  /** 我々の購入元ウォレットの資金切れ期間に 402 か 5xx が返った行。 */
   payerUnfunded: number;
 };
 
@@ -409,7 +409,7 @@ async function countPaidAttempts(
       // 2026-09-05: 支払い後 4xx は「我々が要求を正しく組めなかった」可能性が消せない。
       // delivered の判定から外して保留にする（delivery.ts が規則の正典）。
       inconclusive: sql<number>`count(*) filter (where ${sql.raw(inconclusivePredicate("x402_l1_purchases"))})::int`,
-      // 2026-09-17 Issue #29: 決済レシートなしの 4xx と資金切れ期間の 402 も保留に入る。
+      // 2026-09-17 Issue #29: 決済レシートなしの 4xx と資金切れ期間の 402・5xx も保留に入る。
       // 理由別に出す（和は inconclusive）。
       settled4xx: sql<number>`count(*) filter (where (${sql.raw(heldReasonSql("x402_l1_purchases"))}) = 'settled_4xx')::int`,
       unsettled4xx: sql<number>`count(*) filter (where (${sql.raw(heldReasonSql("x402_l1_purchases"))}) = 'unsettled_4xx')::int`,
@@ -556,7 +556,7 @@ export type EndpointPurchases = {
   /**
    * **判定を保留にした署名済み試行の件数**（2026-09-05・2026-09-17 拡張）。「売り手が
    * 納品しなかった」ではない。settled かつ 4xx、決済レシートなしの 4xx（402 以外）、
-   * 我々の資金切れ期間の 402。規則は delivery.ts が持ち、/decision の
+   * 我々の資金切れ期間の 402・5xx。規則は delivery.ts が持ち、/decision の
    * facts.l1.n_inconclusive と同じ集合。
    */
   inconclusiveCount: number;
@@ -864,7 +864,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
                count(*) FILTER (WHERE status = 'settled')::int AS settled,
                count(*) FILTER (WHERE ${sql.raw(deliveredPredicate())})::int AS delivered,
                -- 2026-09-05: 支払い後 4xx は判定保留。delivered の分母から外す（delivery.ts）。
-               -- 2026-09-17 Issue #29: 決済レシートなしの 4xx と資金切れ期間の 402 も保留。
+               -- 2026-09-17 Issue #29: 決済レシートなしの 4xx と資金切れ期間の 402・5xx も保留。
                count(*) FILTER (WHERE ${sql.raw(inconclusivePredicate())})::int AS inconclusive,
                count(*) FILTER (WHERE ${sql.raw(inconclusiveSettledPredicate())})::int AS inconclusive_settled,
                count(*) FILTER (WHERE (${sql.raw(heldReasonSql())}) = 'unsettled_4xx')::int AS inconclusive_unsettled_4xx,

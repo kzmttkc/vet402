@@ -258,7 +258,9 @@ export default async function ObservatoryMethodologyPage() {
           <code>402</code> is different: it says the seller did not accept our payment, and it
           stays counted, with one exception we caused ourselves. From 2026-09-13 00:00 to
           2026-09-15 23:49 UTC our Base payer wallet had run out of USDC, sellers answered our
-          unfunded payments with <code>402</code>, and those rows are held as{" "}
+          unfunded payments with <code>402</code> (and some with a <code>5xx</code>, which during
+          that window we cannot separate from a seller failing on an empty payment), and those
+          rows are held as{" "}
           <code>inconclusive</code> with the reason <code>payer_unfunded</code>; since 2026-09-17
           the runner reads the payer&apos;s USDC balance before signing and does not sign when it
           is short or cannot be read. The rows are not deleted, not hidden and not corrected away
@@ -412,7 +414,7 @@ export default async function ObservatoryMethodologyPage() {
           <strong>settle_failed</strong> — no successful paid response came back at all.{" "}
           <strong>inconclusive</strong> — the paid request answered <code>4xx</code> (settled, or
           refused with no settlement receipt and not a <code>402</code>), or it answered{" "}
-          <code>402</code> while our own payer wallet was unfunded, so the judgement is held rather
+          <code>402</code> or <code>5xx</code> while our own payer wallet was unfunded, so the judgement is held rather
           than counted against the seller (§2, the same principle as <code>path_template</code>);
           the row still publishes, it is simply out of the denominator for <code>delivered</code>{" "}
           and does not count toward a <code>BLOCK</code>. Every attempt, including
@@ -437,7 +439,8 @@ export default async function ObservatoryMethodologyPage() {
         <p className="doc-p">
           <strong>l1_inconclusive</strong> — since 2026-09-08, the neighbouring case: we did
           sign, but each paid attempt is held as <code>inconclusive</code> (§2): a{" "}
-          <code>4xx</code> we attribute to our own request shape, or a <code>402</code> while our
+          <code>4xx</code> we attribute to our own request shape, or a <code>402</code> or{" "}
+          <code>5xx</code> while our
           own payer wallet was unfunded, so there is no paid response to judge. Those rows are
           counted in <code>facts.l1.n_attempts</code> (and in <code>n_settled</code> when the
           payment settled) — the same set the per-endpoint purchases route reports — and

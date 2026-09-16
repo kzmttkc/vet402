@@ -435,7 +435,7 @@ export default async function ObservatoryStatePage() {
                     4xx は「送られた要求が不正」であり、我々は空のボディ・API キー無しで買う。
                     行は消さず、判定を保留にして別枠へ出す（delivery.ts が規則の正典）。 */}
                 {/* 2026-09-17 Issue #29: 保留は settled の中だけではない。決済レシートなしの 4xx
-                    （売り手が決済前に要求を検証して断った形）と、我々の資金切れ期間の 402 も
+                    （売り手が決済前に要求を検証して断った形）と、我々の資金切れ期間の 402・5xx も
                     保留に入る。理由別に出し、settled の分だけを下の差し引きに使う。 */}
                 <tr>
                   <td className="text-brand">
@@ -461,7 +461,7 @@ export default async function ObservatoryStatePage() {
                 </tr>
                 <tr>
                   <td className="text-brand">
-                    of which answered <code>402</code> while our Base payer wallet was out of USDC
+                    of which answered <code>402</code> or <code>5xx</code> while our Base payer wallet was out of USDC
                     (2026-09-13 00:00 to 2026-09-15 23:49 UTC)
                   </td>
                   <td className="num">{stats.l1.inconclusiveByReason.payerUnfunded.toLocaleString()}</td>

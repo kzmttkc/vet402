@@ -5,7 +5,7 @@
 //   conclusive = n_attempts − n_inconclusive（2026-09-08。inconclusive は settled だが
 //                有料応答が 4xx で、我々の要求の形で説明がつく行。売り手の不履行に数えない。
 //                2026-09-17 Issue #29: 決済レシートなしの 4xx（402 以外）と、我々の資金切れ
-//                期間の 402 も含む。規則の正典は delivery.ts の heldReasonOf。式は変えていないが
+//                期間の 402・5xx も含む。規則の正典は delivery.ts の heldReasonOf。式は変えていないが
 //                BLOCK に届く行が変わるので版を上げた）
 //   BLOCK if l0 ∈ {fail, unverified} ∨ (conclusive ≥ 3 ∧ n_delivered = 0) ∨ l2 = mismatch
 //            ∨ wash_dominated ∨ operator_blacklist

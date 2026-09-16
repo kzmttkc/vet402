@@ -183,7 +183,7 @@ claims:
   - id: corrections_payer_unfunded_window
     surface: src/app/corrections/page.tsx
     quote: "we recorded each one as settle_failed against the seller: 972 rows across 965 endpoints"
-    means: "2026-09-13〜15 の我々の資金切れで売り手が返した 402 を、売り手の失敗として 972 行（965 エンドポイント）記録していた（Issue #29 の C）"
+    means: "2026-09-13〜15 の我々の資金切れで売り手が返した 402 を、売り手の失敗として 972 行（965 エンドポイント）記録していた（Issue #29 の C）。同じ期間の 5xx 60 行（60 エンドポイント）も同じく保留に入れた（2026-09-17 検証役の実測）"
     check: null
     why_unverifiable: "期間は過去で固定だが、export.csv は取得日から 30 日窓なので 2026-10-13 以降は ?days= を広げないと同じ行が出ない。held_reason 列の payer_unfunded で再計算できる。残高の関門は tests/l1-body-and-funds.pg.test.ts が固定する"
     verified_at: 2026-09-17
@@ -1014,7 +1014,7 @@ claims:
   - id: inconclusive_state_publishes_inconclusive
     surface: src/app/observatory/state/page.tsx
     quote: "Inconclusive: held, not counted against the seller"
-    means: "判定保留（支払い後 4xx・決済レシートなしの 4xx・資金切れ期間の 402）の件数を独立の行で出し、理由別の内訳も出す（消さない・隠さない。2026-09-17 Issue #29 で範囲を広げた）"
+    means: "判定保留（支払い後 4xx・決済レシートなしの 4xx・資金切れ期間の 402・5xx）の件数を独立の行で出し、理由別の内訳も出す（消さない・隠さない。2026-09-17 Issue #29 で範囲を広げた）"
     check:
       url: https://vet402.com/api/v1/observatory/state
       assert: "l1.inconclusive >= 0"
