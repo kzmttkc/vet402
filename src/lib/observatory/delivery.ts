@@ -199,6 +199,16 @@ export function inconclusivePredicate(alias = ""): string {
   return `(${heldReasonSql(alias)}) IS NOT NULL`;
 }
 
+/**
+ * payer_unfunded ではない行（2026-09-17 Issue #29 の独立検証）。status を直接読む公開面
+ * （/decisions の損失・backtest の事前シグナル・受取スコアの天井）が、我々の資金切れの行を
+ * 売り手や支出の事実として数えないために使う。
+ */
+export function notPayerUnfundedPredicate(alias = ""): string {
+  assertAlias("notPayerUnfundedPredicate", alias);
+  return `(${heldReasonSql(alias)}) IS DISTINCT FROM 'payer_unfunded'`;
+}
+
 /** settled のうち保留にした行（delivered の分母から外す分）。 */
 export function inconclusiveSettledPredicate(alias = ""): string {
   assertAlias("inconclusiveSettledPredicate", alias);

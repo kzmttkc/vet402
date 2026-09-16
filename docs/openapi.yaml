@@ -1573,7 +1573,10 @@ paths:
         The daily L1 runner's real-money decisions, mapped 1:1 from the ledger:
         refusals before signing (overcharging or unpayable walls) and outcomes
         after paying (settled / no-settlement), same weight. Excludes vet402-side
-        non-decisions (budget_denied / halted / request_error / in_flight). Includes the
+        non-decisions (budget_denied / halted / request_error / in_flight) and, since
+        2026-09-17, payer_unfunded rows (a 402 or 5xx while vet402's own payer wallet
+        was out of USDC, 2026-09-13T00:00Z–2026-09-15T23:49Z; no funds were at stake,
+        and the rows stay in export.csv with held_reason). Includes the
         SpendGuard backtest as cumulative. Key-less; 30/min; cached 15 min.
       security: []
       parameters:

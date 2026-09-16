@@ -20,12 +20,18 @@
 // 除外: budget_denied / halted / request_error / in_flight（我々側の都合・進行中は
 // 判定ではない——facts with denominators の分母から正直に外し、その旨を
 // definition で明示する）。
+// 2026-09-17（Issue #29 独立検証）: payer_unfunded（delivery.ts）も除外する。我々の購入元の
+// USDC が尽きていた期間に売り手が 402/5xx を返した settle_failed で、金も日次予算も
+// 賭かっていない——paid_no_settlement（損失）として出すと我々の空の財布が損失に見える。
+// 行は export.csv に held_reason 付きで残る。unsettled_4xx は損失のまま（生きた署名を出して
+// 決済されなかった支出の事実で、この面は売り手の帰責を述べない）。
 // ============================================================
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
+import { notPayerUnfundedPredicate } from "@/lib/observatory/delivery";
 
 export const DECISION_DEFINITION =
-  "Each row is a decision the daily L1 runner actually made with real funds at stake, mapped 1:1 from the public ledger: refused_price_mismatch / refused_over_cap (wall demanded more than declared or over the hard cap — nothing signed), refused_payto_mismatch (wall named a payee other than the one the catalog declared — nothing signed), refused_payto_operator_self (wall named vet402's own receiving address — nothing signed), refused_wall_unpayable (no valid 402 / no machine-payable accept), paid_settled, paid_delivered_no_receipt, paid_settlement_claim_unverifiable (the wall claimed a successful settlement but the transaction identifier it returned is not even well-formed for that chain), paid_settlement_claim_unverified (claimed with a well-formed id, not yet re-read on-chain by us), paid_settlement_claim_refuted (we re-read it on-chain and the expected USDC transfer to the declared payee is not there — a finding about the seller, not about us), paid_no_settlement. As of 2026-08-23, paid_settled means vet402 confirmed the transfer on-chain (recipient, amount, token, chain, confirmations), not that the seller asserted it. Excluded as non-decisions: budget_denied, halted (the operator's runtime spending halt stopped the batch before signing), request_error, in_flight (vet402-side states).";
+  "Each row is a decision the daily L1 runner actually made with real funds at stake, mapped 1:1 from the public ledger: refused_price_mismatch / refused_over_cap (wall demanded more than declared or over the hard cap — nothing signed), refused_payto_mismatch (wall named a payee other than the one the catalog declared — nothing signed), refused_payto_operator_self (wall named vet402's own receiving address — nothing signed), refused_wall_unpayable (no valid 402 / no machine-payable accept), paid_settled, paid_delivered_no_receipt, paid_settlement_claim_unverifiable (the wall claimed a successful settlement but the transaction identifier it returned is not even well-formed for that chain), paid_settlement_claim_unverified (claimed with a well-formed id, not yet re-read on-chain by us), paid_settlement_claim_refuted (we re-read it on-chain and the expected USDC transfer to the declared payee is not there — a finding about the seller, not about us), paid_no_settlement. As of 2026-08-23, paid_settled means vet402 confirmed the transfer on-chain (recipient, amount, token, chain, confirmations), not that the seller asserted it. Excluded as non-decisions: budget_denied, halted (the operator's runtime spending halt stopped the batch before signing), request_error, in_flight (vet402-side states), and payer_unfunded rows (a settle_failed answered 402 or 5xx on Base between 2026-09-13T00:00Z and 2026-09-15T23:49Z, when vet402's own payer wallet had run out of USDC, so no funds were at stake; since 2026-09-17 — they stay in export.csv with held_reason payer_unfunded).";
 
 const STATUS_TO_DECISION: Record<string, string> = {
   price_mismatch: "refused_price_mismatch",
@@ -118,6 +124,7 @@ export async function getDecisionFeed(days: number, limit = 200): Promise<Decisi
     JOIN x402_endpoints e ON e.id = pu.endpoint_id
     WHERE pu.attempted_at >= now() - make_interval(days => ${span}::int)
       AND pu.status IN (${sql.join(DECISION_STATUSES.map((st) => sql`${st}`), sql`, `)})
+      AND ${sql.raw(notPayerUnfundedPredicate("pu"))}
     ORDER BY pu.attempted_at DESC
     LIMIT ${cap}
   `);
@@ -142,6 +149,7 @@ export async function getDecisionFeed(days: number, limit = 200): Promise<Decisi
     FROM x402_l1_purchases pu
     WHERE pu.attempted_at >= now() - make_interval(days => ${span}::int)
       AND pu.status IN (${sql.join(DECISION_STATUSES.map((st) => sql`${st}`), sql`, `)})
+      AND ${sql.raw(notPayerUnfundedPredicate("pu"))}
     GROUP BY pu.status
   `);
   const countRows = (Array.isArray(countRaw) ? countRaw : (countRaw as { rows?: unknown[] }).rows ?? []) as Record<

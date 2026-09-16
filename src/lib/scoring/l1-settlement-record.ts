@@ -30,6 +30,7 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { SCORE_THRESHOLDS } from "@/lib/chain/config";
+import { notPayerUnfundedPredicate } from "@/lib/observatory/delivery";
 
 /**
  * 署名して実際に払った試行のうち、**結果が確定している不履行**。
@@ -56,9 +57,13 @@ export const RESOLVED_NON_SETTLING_STATUSES = [
   "delivered_no_receipt",
 ] as const;
 
-/** settle_failed を売り手起因と数える条件（上の理由で 5xx のみ）。 */
+/**
+ * settle_failed を売り手起因と数える条件（上の理由で 5xx のみ）。
+ * 2026-09-17（Issue #29）: 我々の購入元の USDC が尽きていた期間の 5xx は payer_unfunded
+ * （delivery.ts）で、売り手の咎ではないので数えない。
+ */
 export const SELLER_FAULT_SETTLE_FAILED_SQL =
-  "(status = 'settle_failed' AND http_status_paid >= 500)";
+  `(status = 'settle_failed' AND http_status_paid >= 500 AND ${notPayerUnfundedPredicate()})`;
 
 export type L1SettlementRecord = {
   /** オンチェーンで確認できた決済の件数。 */

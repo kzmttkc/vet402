@@ -13,12 +13,18 @@
 // 対象は署名済み試行（settled / settle_failed / delivered_no_receipt /
 // settle_claimed_unverifiable）。
 // budget_denied / halted / request_error / in_flight は我々側の都合なので母数外。
+// 2026-09-17（Issue #29 独立検証）: payer_unfunded（delivery.ts）も母数外で、事前シグナル
+// （先行 settle_failed）にも数えない。我々の購入元の USDC が尽きていた期間の行は売り手に
+// ついて何も予告せず、その期間の試行はシグナルに関係なく決済し得なかった（avoided の水増し）。
+// unsettled_4xx はシグナルに残す: この指標は「従っていたら避けられた支出」の予測で、同じ
+// 形の要求が同じ相手にまた決済されないことは予告になる（売り手の帰責を述べる面ではない）。
 // ============================================================
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
+import { notPayerUnfundedPredicate } from "@/lib/observatory/delivery";
 
 export const BACKTEST_DEFINITION =
-  "prior signal = at attempt time, (a) the two most recent L0 probes of the endpoint were both fail (two consecutive fails — the same threshold the public register uses), or (b) an earlier settle_failed purchase existed on the same endpoint. avoided = signalled attempts that did not settle; forgone = signalled attempts that settled anyway. Denominator: signed attempts only (settled / settle_failed / delivered_no_receipt / settle_claimed_unverifiable).";
+  "prior signal = at attempt time, (a) the two most recent L0 probes of the endpoint were both fail (two consecutive fails — the same threshold the public register uses), or (b) an earlier settle_failed purchase existed on the same endpoint. avoided = signalled attempts that did not settle; forgone = signalled attempts that settled anyway. Denominator: signed attempts only (settled / settle_failed / delivered_no_receipt / settle_claimed_unverifiable). payer_unfunded rows (a settle_failed answered 402 or 5xx on Base between 2026-09-13T00:00Z and 2026-09-15T23:49Z, while vet402's own payer wallet was out of USDC) are neither attempts nor prior signals, since 2026-09-17.";
 
 export type BacktestResult = {
   attemptsTotal: number;
@@ -40,6 +46,7 @@ export async function computeSpendGuardBacktest(): Promise<BacktestResult> {
                WHERE prior.endpoint_id = pu.endpoint_id
                  AND prior.attempted_at < pu.attempted_at
                  AND prior.status = 'settle_failed'
+                 AND ${sql.raw(notPayerUnfundedPredicate("prior"))}
              ) AS prior_fail_purchase,
              (
                SELECT count(*) FILTER (WHERE t.verdict = 'fail') = 2
@@ -51,6 +58,7 @@ export async function computeSpendGuardBacktest(): Promise<BacktestResult> {
              ) AS two_consecutive_l0_fails
       FROM x402_l1_purchases pu
       WHERE pu.status IN ('settled', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable', 'settle_claimed', 'settle_claim_refuted')
+        AND ${sql.raw(notPayerUnfundedPredicate("pu"))}
     )
     SELECT
       count(*)::int AS attempts_total,
