@@ -212,6 +212,8 @@ rubric_version: `rwa-r3-0.1`
 
 週末（UTC 土日）は `weekend=true` を付ける。数字は隠さない。
 stale 中も `usd` は出す。`stale=true`。ALLOW 禁止。
+
+改正（patch 009・2026-09-17 Takeshi 指示「オラクルが古いときは USD を出さない」）: **stale 中は `usd` と `unrealized_usd` を `null` にする。** `raw` と `shares_ui` は出す。`stale=true` と `stale_reasons`（`age` / `paused`）を付ける。上の「stale 中も `usd` は出す」はこの改正で失効。
 公式 heartbeat 秒は未掲載なので 26h を v0 の固定値にする。改正するまで変えない。
 
 ---
