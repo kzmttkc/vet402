@@ -36,6 +36,12 @@ export type ReceiptBadgeInput = {
    * `10/10 settled · 0 delivered` を実名の会社に対して配っていた。
    */
   inconclusiveCount?: number;
+  /**
+   * inconclusiveCount のうち settled のもの（2026-09-17 Issue #29）。保留は settled の外にも
+   * ある（決済レシートなしの 4xx・我々の資金切れ期間の 402）ので、delivered の上限に効く
+   * のはこの分だけ。省略時は min(inconclusiveCount, settledCount)（従来の呼び手と同じ）。
+   */
+  inconclusiveSettledCount?: number;
   /** 測った相手のホスト名（バッジの中に焼き込む。無ければ endpoint ID の先頭）。 */
   subject?: string | null;
   /** 最後に測った日（UTC, YYYY-MM-DD）。無ければ第二行は主体だけになる。 */
@@ -83,10 +89,14 @@ export function endpointReceiptBadge(input: ReceiptBadgeInput): ReceiptBadge {
     };
   }
 
-  const inconclusive = Math.max(0, Math.min(settled, Math.trunc(input.inconclusiveCount ?? 0)));
+  const inconclusive = Math.max(0, Math.min(attempts, Math.trunc(input.inconclusiveCount ?? 0)));
+  const inconclusiveSettled = Math.max(
+    0,
+    Math.min(settled, inconclusive, Math.trunc(input.inconclusiveSettledCount ?? Math.min(inconclusive, settled))),
+  );
   const delivered = Math.max(
     0,
-    Math.min(settled - inconclusive, Math.trunc(input.deliveredCount ?? 0)),
+    Math.min(settled - inconclusiveSettled, Math.trunc(input.deliveredCount ?? 0)),
   );
 
   const label = inconclusive > 0
@@ -98,10 +108,11 @@ export function endpointReceiptBadge(input: ReceiptBadgeInput): ReceiptBadge {
     `${delivered} of those also returned a 2xx response. settled is the confirmed transfer; ` +
     `delivered is the response arriving.` +
     (inconclusive > 0
-      ? ` ${inconclusive} settled attempt${inconclusive === 1 ? "" : "s"} answered 4xx and ` +
-        `${inconclusive === 1 ? "is" : "are"} held as inconclusive rather than counted against the ` +
-        `seller: vet402 buys with an empty request body and no API key, so a 4xx can be our own ` +
-        `request being malformed.`
+      ? ` ${inconclusive} paid attempt${inconclusive === 1 ? " is" : "s are"} held as inconclusive ` +
+        `rather than counted against the seller: a paid request that answered 4xx, settled or not, ` +
+        `can be our own request being malformed, because vet402 buys with no API key and sends a ` +
+        `request body only when the seller declares one; and a 402 from 2026-09-13 to 2026-09-15 ` +
+        `came while vet402's own payer wallet was out of USDC.`
       : "") +
     ` A measurement of what happened when vet402 paid this endpoint, not a recommendation.` +
     (sublabel ? ` (${sublabel})` : "");

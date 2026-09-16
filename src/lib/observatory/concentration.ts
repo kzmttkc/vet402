@@ -9,10 +9,11 @@
 // 解釈（運用の分散か・名義の分散か）は読者とキー付き面（graph/flags）の仕事。
 // ============================================================
 import { sql } from "drizzle-orm";
+import { inconclusivePredicate } from "@/lib/observatory/delivery";
 import { getDb } from "@/lib/db/client";
 
 export const CONCENTRATION_DEFINITION =
-  "Structural aggregates over the active catalog, denominators included, no entities named: hostsWithMultiplePayTos (active hosts receiving to >=2 distinct payTo), payTosOnMultipleHosts (payTo receiving on >=2 hosts), repeatFailNoSuccessPayTos (payTo whose endpoints have >=2 settle_failed and 0 settled in vet402's own ledger — same predicate as the keyed history-flags surface). Interpretation is deliberately left out.";
+  "Structural aggregates over the active catalog, denominators included, no entities named: hostsWithMultiplePayTos (active hosts receiving to >=2 distinct payTo), payTosOnMultipleHosts (payTo receiving on >=2 hosts), repeatFailNoSuccessPayTos (payTo whose endpoints have >=2 settle_failed and 0 settled in vet402's own ledger, not counting settle_failed rows held as inconclusive — same predicate as the keyed history-flags surface). Interpretation is deliberately left out.";
 
 export type Concentration = {
   activeHosts: number;
@@ -38,7 +39,7 @@ export async function computeConcentration(): Promise<Concentration | null> {
       SELECT pay_to, count(DISTINCT host) AS n FROM act GROUP BY pay_to
     ), fails AS (
       SELECT act.pay_to,
-             count(*) FILTER (WHERE pu.status = 'settle_failed') AS failed,
+             count(*) FILTER (WHERE pu.status = 'settle_failed' AND NOT (${sql.raw(inconclusivePredicate("pu"))})) AS failed,
              count(*) FILTER (WHERE pu.status = 'settled') AS settled
       FROM x402_l1_purchases pu JOIN act ON act.id = pu.endpoint_id
       GROUP BY act.pay_to

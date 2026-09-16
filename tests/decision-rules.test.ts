@@ -19,7 +19,7 @@ const ok: SellerFacts = {
   wash_dominated: false,
 };
 
-test("版が固定されている", () => assert.equal(DECISION_RULES_VERSION, "2026-09-08.1"));
+test("版が固定されている", () => assert.equal(DECISION_RULES_VERSION, "2026-09-17.1"));
 
 test("ALLOW: l0 pass ∧ n_delivered ≥ 1 ∧ l2 ≠ mismatch。l2_undeclared は reason に載るが ALLOW を妨げない", () => {
   const d = decidePayer(ok);

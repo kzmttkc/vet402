@@ -4,8 +4,9 @@
 //   l0.status        = publishedVerdict（2 連続 fail ゲート。1 回の fail を公開しない）
 //   l1.n_attempts    = 署名した試行（spent が立つ status）。署名前の拒否は数えない
 //   l1.n_settled     = チェーンで確定（status = settled）
-//   l1.n_inconclusive= settled かつ有料応答が 4xx（我々の要求の形で説明がつく）。
-//                      n_attempts / n_settled に含める（/purchases と同じ集合・2026-09-08）。
+//   l1.n_inconclusive= 売り手の不履行として数えない署名済みの試行（delivery.ts の heldReasonOf）:
+//                      settled かつ 4xx／決済レシートなしで 4xx（402 以外）／資金切れ期間の 402。
+//                      n_attempts に含める（/purchases と同じ集合・2026-09-08／2026-09-17 拡張）。
 //                      判定は rules.ts が conclusive = n_attempts − n_inconclusive で読む
 //   l1.n_delivered   = settled かつ 2xx かつ非空
 //   l2.status        = 宣言が無ければ undeclared。あれば直近の配達の l2_schema:
@@ -120,9 +121,14 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
   // 以後 n_attempts / n_settled は purchases と同じ集合（inconclusive を含む）で数え、
   // 売り手の不履行として読まない役目は rules.ts の conclusive（n_attempts −
   // n_inconclusive）が持つ。F-1（2026-08-26）型の冤罪はそちらで防ぐ。
+  //
+  // 2026-09-17（Issue #29）: 保留は settled の中だけではない。決済レシートが返らずに
+  // 4xx（402 以外）で断られた settle_failed と、我々の資金切れ期間の 402 も保留に入る
+  // （delivery.ts の heldReasonOf が正典）。n_inconclusive は署名した試行全体から数え、
+  // n_settled に入るのはそのうち settled のものだけ。
   const signed = purchases.filter((p) => SIGNED_STATUSES.has(p.status));
   const settled = signed.filter((p) => p.status === "settled");
-  const inconclusive = settled.filter((p) => isInconclusive(p));
+  const inconclusive = signed.filter((p) => isInconclusive(p));
   const conclusiveSettled = settled.filter((p) => !isInconclusive(p));
   const delivered = conclusiveSettled.filter(
     (p) => p.httpStatusPaid !== null && p.httpStatusPaid >= 200 && p.httpStatusPaid < 300 && p.payloadNonEmpty === true,

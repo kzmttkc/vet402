@@ -9,6 +9,7 @@
 // 述語を変えたら名前も変える（同名で意味を変えない）。
 // ============================================================
 import { sql } from "drizzle-orm";
+import { inconclusivePredicate } from "@/lib/observatory/delivery";
 import { getDb } from "@/lib/db/client";
 
 export type HistoryFlags = {
@@ -34,7 +35,7 @@ export type HistoryFlags = {
 };
 
 export const HISTORY_FLAGS_DEFINITION =
-  "Deterministic predicates over vet402's own ledger for endpoints whose payTo equals the queried wallet. repeatSettleFailureNoSuccess: some endpoint has >=2 settle_failed and 0 settled. l0Flapping14d: some endpoint's L0 verdict changed >=3 times in the last 14 days. priceMismatchRecorded: any price_mismatch attempt recorded. payToMismatchRecorded: any payto_mismatch attempt recorded (the wall named a payee other than the catalog-declared one). Facts summarized, not opinions; weighting is the caller's.";
+  "Deterministic predicates over vet402's own ledger for endpoints whose payTo equals the queried wallet. repeatSettleFailureNoSuccess: some endpoint has >=2 settle_failed and 0 settled, not counting settle_failed rows held as inconclusive (a 4xx with no settlement receipt, or a 402 while vet402's own payer wallet was unfunded, 2026-09-13T00:00Z–2026-09-15T23:49Z; since 2026-09-17). l0Flapping14d: some endpoint's L0 verdict changed >=3 times in the last 14 days. priceMismatchRecorded: any price_mismatch attempt recorded. payToMismatchRecorded: any payto_mismatch attempt recorded (the wall named a payee other than the catalog-declared one). Facts summarized, not opinions; weighting is the caller's.";
 
 export async function computeHistoryFlags(payTo: string): Promise<HistoryFlags | null> {
   const db = getDb();
@@ -46,7 +47,9 @@ export async function computeHistoryFlags(payTo: string): Promise<HistoryFlags |
     ), purch AS (
       SELECT pu.endpoint_id,
              count(*) FILTER (WHERE pu.status = 'settled') AS settled,
-             count(*) FILTER (WHERE pu.status = 'settle_failed') AS failed,
+             -- 2026-09-17 Issue #29: 保留の行（決済レシートなしの 4xx・資金切れ期間の 402）は
+             -- 売り手の失敗として数えない（delivery.ts が正典）。
+             count(*) FILTER (WHERE pu.status = 'settle_failed' AND NOT (${sql.raw(inconclusivePredicate("pu"))})) AS failed,
              count(*) FILTER (WHERE pu.status = 'price_mismatch') AS mismatch,
              count(*) FILTER (WHERE pu.status = 'payto_mismatch') AS payto_mismatch
       FROM x402_l1_purchases pu JOIN eps ON eps.id = pu.endpoint_id

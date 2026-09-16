@@ -51,7 +51,7 @@ const factsOf = (purchases: PurchaseInput[]) =>
   });
 
 test("版: 判定の意味が変わったので DECISION_RULES_VERSION を上げる", () => {
-  assert.equal(DECISION_RULES_VERSION, "2026-09-08.1");
+  assert.equal(DECISION_RULES_VERSION, "2026-09-17.1");
 });
 
 test("再現（exa 型・10 行 settled/4xx）: facts は purchases と同じ集合で数え、n_inconclusive 10 / n_delivered 0", () => {

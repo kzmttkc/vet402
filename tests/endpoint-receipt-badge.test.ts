@@ -138,6 +138,36 @@ test("delivered は「判定できた settled」を超えない", () => {
   assert.equal(b.label, "10/10 settled · 2 delivered · 8 inconclusive");
 });
 
+// 2026-09-17 Issue #29: 保留は settled の外にもある（決済レシートなしの 4xx・資金切れ期間の 402）。
+test("決済されずに 4xx で断られた試行も inconclusive として出る（Douglas 型: 0/2 settled）", () => {
+  const b = endpointReceiptBadge({
+    attemptCount: 2,
+    settledCount: 0,
+    deliveredCount: 0,
+    inconclusiveCount: 2,
+    inconclusiveSettledCount: 0,
+  });
+  assert.equal(b.label, "0/2 settled · 0 delivered · 2 inconclusive");
+  assert.doesNotMatch(b.aria.toLowerCase(), /failed to deliver|did not deliver/);
+  assert.match(b.aria, /2 paid attempts are held as inconclusive/);
+});
+
+test("delivered の上限は settled の保留分だけで決まる（settled 外の保留で delivered を削らない）", () => {
+  const b = endpointReceiptBadge({
+    attemptCount: 10,
+    settledCount: 5,
+    deliveredCount: 4,
+    inconclusiveCount: 6,
+    inconclusiveSettledCount: 1,
+  });
+  assert.equal(b.label, "5/10 settled · 4 delivered · 6 inconclusive");
+});
+
+test("inconclusiveSettledCount を渡さない呼び手は従来どおり settled で頭打ち", () => {
+  const b = endpointReceiptBadge({ attemptCount: 10, settledCount: 10, deliveredCount: 9, inconclusiveCount: 8 });
+  assert.equal(b.label, "10/10 settled · 2 delivered · 8 inconclusive");
+});
+
 // ------------------------------------------------------------
 // 2026-09-05: バッジ自身に「誰の・いつの」を焼き込む。
 //

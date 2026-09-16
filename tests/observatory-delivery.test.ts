@@ -87,32 +87,45 @@ import {
   isInconclusive,
 } from "@/lib/observatory/delivery";
 
+/** 分類に要る列を揃えた行（settled は tx あり、それ以外は tx なし）。 */
+const r = (status: string, httpStatusPaid: number | null) => ({
+  status,
+  httpStatusPaid,
+  txHash: status === "settled" ? "0xabc" : null,
+  attemptedAt: "2026-09-10T00:00:00Z",
+  network: "eip155:8453",
+});
+
 test("支払い後 4xx は inconclusive（判定保留）", () => {
-  assert.equal(isInconclusive({ status: "settled", httpStatusPaid: 400 }), true);
-  assert.equal(isInconclusive({ status: "settled", httpStatusPaid: 401 }), true);
-  assert.equal(isInconclusive({ status: "settled", httpStatusPaid: 403 }), true);
-  assert.equal(isInconclusive({ status: "settled", httpStatusPaid: 404 }), true);
-  assert.equal(isInconclusive({ status: "settled", httpStatusPaid: 422 }), true);
+  assert.equal(isInconclusive(r("settled", 400)), true);
+  assert.equal(isInconclusive(r("settled", 401)), true);
+  assert.equal(isInconclusive(r("settled", 403)), true);
+  assert.equal(isInconclusive(r("settled", 404)), true);
+  assert.equal(isInconclusive(r("settled", 422)), true);
 });
 
 test("5xx は保留にしない——サーバ側の障害は我々の要求の形では説明できない", () => {
-  assert.equal(isInconclusive({ status: "settled", httpStatusPaid: 500 }), false);
-  assert.equal(isInconclusive({ status: "settled", httpStatusPaid: 502 }), false);
-  assert.equal(isInconclusive({ status: "settled", httpStatusPaid: 503 }), false);
+  assert.equal(isInconclusive(r("settled", 500)), false);
+  assert.equal(isInconclusive(r("settled", 502)), false);
+  assert.equal(isInconclusive(r("settled", 503)), false);
 });
 
 test("2xx は保留にしない（届いた行を保留に逃がさない）", () => {
-  assert.equal(isInconclusive({ status: "settled", httpStatusPaid: 200 }), false);
+  assert.equal(isInconclusive(r("settled", 200)), false);
 });
 
-test("settled 以外は保留にもならない（金が動いていない行は別の話）", () => {
-  assert.equal(isInconclusive({ status: "settle_failed", httpStatusPaid: 400 }), false);
-  assert.equal(isInconclusive({ status: "settled", httpStatusPaid: null }), false);
+// 2026-09-17（Issue #29）: 逆転していた。決済レシートが返らずに 4xx で断られた行
+// （売り手が決済前に我々の要求を検証した）も保留に入る。規則の境界は
+// tests/l1-held-rows.test.ts が持つ。ここでは tx のある settle_failed が入らないことだけ残す。
+test("settle_failed でも決済レシートなしの 4xx は保留、tx のある行は保留にしない", () => {
+  assert.equal(isInconclusive(r("settle_failed", 400)), true);
+  assert.equal(isInconclusive({ ...r("settle_failed", 400), txHash: "0xabc" }), false);
+  assert.equal(isInconclusive(r("settled", null)), false);
 });
 
 test("delivered と inconclusive は排他（同じ行が両方には数えられない）", () => {
   for (const code of [200, 204, 299, 400, 401, 404, 422, 499, 500, 502, null]) {
-    const row = { status: "settled", httpStatusPaid: code };
+    const row = r("settled", code);
     assert.ok(
       !(isDelivered(row) && isInconclusive(row)),
       `HTTP ${code} が delivered と inconclusive の両方になった`,
@@ -124,6 +137,7 @@ test("SQL 述語は JS の判定と同じ境界を使う（2 箇所で腐らな�
   const p = inconclusivePredicate("x");
   assert.ok(p.includes(`BETWEEN ${INCONCLUSIVE_HTTP_MIN} AND ${INCONCLUSIVE_HTTP_MAX}`));
   assert.ok(p.includes("x.status = 'settled'"));
+  assert.ok(p.includes("x.status = 'settle_failed' AND x.tx_hash IS NULL"));
   // delivered の境界と重ならない。
   assert.ok(INCONCLUSIVE_HTTP_MIN > DELIVERED_HTTP_MAX);
 });

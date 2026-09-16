@@ -90,6 +90,8 @@ export async function GET(
       // 2026-09-05: 支払い後 4xx は判定保留。実名の売り手に対して
       // 「10/10 settled · 0 delivered」を配っていたのを止める。
       inconclusiveCount: record.inconclusiveCount,
+      // 2026-09-17 Issue #29: 保留は settled の外にもある。delivered の上限に使うのは settled の分だけ。
+      inconclusiveSettledCount: record.inconclusiveSettledCount,
       // 2026-09-05: 誰の・いつの数字かをバッジ自身に焼き込む（落として固定できないように）。
       subject: badgeSubject(record.resourceUrl, record.endpointId),
       measuredOn: lastMeasuredOn(record.purchases),

@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { getClientIp } from "@/lib/api/client-ip";
 import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
 import { getDb } from "@/lib/db/client";
+import { heldReasonSql } from "@/lib/observatory/delivery";
 import { logServerError } from "@/lib/util/log";
 
 /**
@@ -14,6 +15,10 @@ import { logServerError } from "@/lib/util/log";
  * 全paid-attempt系列（budget_denied / halted / request_error は我々側の都合なので
  * 含めない: 台帳の対外的な意味は「売り手に何が起きたか」）。
  * days は 1..366 に飽和・行数は 50,000 で打ち切り（打ち切り時はヘッダで明示）。
+ *
+ * 2026-09-17（Issue #29）: 末尾に `held_reason` を 1 列足した。その行を売り手の不履行として
+ * 数えない理由（settled_4xx / unsettled_4xx / payer_unfunded、数える行は空）で、
+ * 規則は delivery.ts の heldReasonSql。既存の 10 列の名前・順序・値は変えていない。
  */
 
 const RL_LIMIT = 6;
@@ -31,6 +36,8 @@ const CSV_COLUMNS = [
   "http_status_paid",
   "latency_ms",
   "l2_schema",
+  // 2026-09-17: 追加は末尾だけ（列位置で読む既存の利用者を壊さない）。
+  "held_reason",
 ] as const;
 
 function csvCell(v: unknown): string {
@@ -66,7 +73,8 @@ export async function GET(request: NextRequest) {
     const raw = await db.execute(sql`
       SELECT to_char(pu.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS attempted_at,
              e.resource_key, pu.network, pu.status, pu.amount_units, pu.spent_units,
-             pu.tx_hash, pu.http_status_paid, pu.latency_ms, pu.l2_schema
+             pu.tx_hash, pu.http_status_paid, pu.latency_ms, pu.l2_schema,
+             (${sql.raw(heldReasonSql("pu"))}) AS held_reason
       FROM x402_l1_purchases pu
       JOIN x402_endpoints e ON e.id = pu.endpoint_id
       WHERE pu.attempted_at >= now() - make_interval(days => ${days}::int)
