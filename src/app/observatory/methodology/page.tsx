@@ -234,20 +234,40 @@ export default async function ObservatoryMethodologyPage() {
             That principle is about the request, not about the URL, so it applies to the body and
             the authentication header too.
           </strong>{" "}
-          A listing declares a URL, a price and a payee. It does not tell us what JSON body the
-          endpoint expects, and it does not hand us an API key. We send <code>{"{}"}</code> on a{" "}
-          <code>POST</code> and we carry no credential of the seller&apos;s. So when a paid request
-          comes back <code>400</code> (the request is malformed), <code>401</code> or{" "}
-          <code>403</code> (not authenticated), <code>404</code> or <code>422</code>, the most
-          likely explanation is the same one we already accept for a template URL:{" "}
-          <strong>we could not form the request correctly.</strong> Since 2026-09-05 those rows are
-          labelled <code>inconclusive</code> and are out of the denominator for{" "}
-          <code>delivered</code>. They are not deleted, not hidden and not corrected away — the
-          status and the HTTP code stay on the endpoint&apos;s page, and the count is published as{" "}
-          <code>l1.inconclusive</code>. A <code>5xx</code> is not treated this way: a server fault
-          is not something our request shape explains. Before that date every 4xx was published as
-          settled-and-not-delivered, which reads as &ldquo;this named company took the money and
-          did not deliver&rdquo; — see{" "}
+          A bare listing declares a URL, a price and a payee; it does not hand us an API key, and
+          we carry no credential of the seller&apos;s. What JSON body a <code>POST</code> expects
+          is a different matter: a listing that carries the Bazaar discovery extension declares it
+          as <code>extensions.bazaar.info.input.body</code>, and the same declaration rides on the{" "}
+          <code>402</code> the endpoint answers our unpaid request with. Since 2026-09-17, when that
+          402 declares a JSON object or array of at most 16&nbsp;KB, the paid <code>POST</code>{" "}
+          sends that body as declared, without editing it, and the row records{" "}
+          <code>requestBody: declared</code>; otherwise we send <code>{"{}"}</code> and record{" "}
+          <code>requestBody: empty</code>. Before that date we sent <code>{"{}"}</code> on every{" "}
+          <code>POST</code>, declaration or not. So when a paid request comes back{" "}
+          <code>400</code> (the request is malformed), <code>401</code> or <code>403</code> (not
+          authenticated), <code>404</code> or <code>422</code>, the most likely explanation is the
+          same one we already accept for a template URL:{" "}
+          <strong>we could not form the request correctly.</strong> Those rows are labelled{" "}
+          <code>inconclusive</code> and are not counted against the seller: not toward a{" "}
+          <code>BLOCK</code>, and not in the denominator for <code>delivered</code>. The label
+          follows the reason, not whether money moved. Since 2026-09-05 it covered a settled
+          payment answered with a 4xx; since 2026-09-17 it also covers a paid request answered
+          with a 4xx other than <code>402</code> and no settlement receipt, which is what a seller
+          that checks the request before settling it returns. Before that change the seller that
+          declined to charge for a request we got wrong was published in the harsher bucket. A{" "}
+          <code>402</code> is different: it says the seller did not accept our payment, and it
+          stays counted, with one exception we caused ourselves. From 2026-09-13 00:00 to
+          2026-09-15 23:49 UTC our Base payer wallet had run out of USDC, sellers answered our
+          unfunded payments with <code>402</code>, and those rows are held as{" "}
+          <code>inconclusive</code> with the reason <code>payer_unfunded</code>; since 2026-09-17
+          the runner reads the payer&apos;s USDC balance before signing and does not sign when it
+          is short or cannot be read. The rows are not deleted, not hidden and not corrected away
+          — the status and the HTTP code stay on the endpoint&apos;s page, the count is published as{" "}
+          <code>l1.inconclusive</code> with the split in <code>l1.inconclusiveByReason</code>, and
+          the ledger export carries the reason in its last column, <code>held_reason</code>. A{" "}
+          <code>5xx</code> is not treated this way: a server fault is not something our request
+          shape explains. Before 2026-09-05 every 4xx was published as settled-and-not-delivered,
+          which reads as &ldquo;this named company took the money and did not deliver&rdquo; — see{" "}
           <Link href="/corrections" className="underline">
             /corrections
           </Link>
@@ -390,10 +410,12 @@ export default async function ObservatoryMethodologyPage() {
           for that chain. <strong>delivered_no_receipt</strong> — the seller returned{" "}
           <code>200</code> but the response carried no settlement receipt.{" "}
           <strong>settle_failed</strong> — no successful paid response came back at all.{" "}
-          <strong>inconclusive</strong> — the payment settled and the paid request answered{" "}
-          <code>4xx</code>, so the delivery judgement is held rather than counted against the
-          seller (§2, the same principle as <code>path_template</code>); the row still publishes,
-          it is simply out of the denominator for <code>delivered</code>. Every attempt, including
+          <strong>inconclusive</strong> — the paid request answered <code>4xx</code> (settled, or
+          refused with no settlement receipt and not a <code>402</code>), or it answered{" "}
+          <code>402</code> while our own payer wallet was unfunded, so the judgement is held rather
+          than counted against the seller (§2, the same principle as <code>path_template</code>);
+          the row still publishes, it is simply out of the denominator for <code>delivered</code>{" "}
+          and does not count toward a <code>BLOCK</code>. Every attempt, including
           refusals before any money moved, is visible on the endpoint&apos;s page with its
           evidence.
         </p>
@@ -414,11 +436,12 @@ export default async function ObservatoryMethodologyPage() {
         </p>
         <p className="doc-p">
           <strong>l1_inconclusive</strong> — since 2026-09-08, the neighbouring case: we did
-          sign and the payment settled, but each paid response was a <code>4xx</code> we
-          attribute to our own request shape (an empty POST body, no API key), so there is no
-          paid response to judge. Those rows are counted in <code>facts.l1.n_attempts</code>{" "}
-          and <code>n_settled</code> — the same set the per-endpoint purchases route reports —
-          and disclosed as <code>n_inconclusive</code>; the decision rules read conclusive
+          sign, but each paid attempt is held as <code>inconclusive</code> (§2): a{" "}
+          <code>4xx</code> we attribute to our own request shape, or a <code>402</code> while our
+          own payer wallet was unfunded, so there is no paid response to judge. Those rows are
+          counted in <code>facts.l1.n_attempts</code> (and in <code>n_settled</code> when the
+          payment settled) — the same set the per-endpoint purchases route reports — and
+          disclosed as <code>n_inconclusive</code>; the decision rules read conclusive
           attempts as <code>n_attempts − n_inconclusive</code>, so they do not count toward a
           BLOCK. Before that date the same rows were left out of <code>n_attempts</code>, and a
           seller with ten settled purchases was published as <code>l1_not_attempted</code> —

@@ -390,10 +390,13 @@ export default async function ObservatoryPage({
           <strong>L1</strong> is shown as <code>delivered · settled / attempts</code> for that endpoint;{" "}
           <code>—</code> means no purchase was attempted. <strong>settled</strong> is the transfer vet402
           re-read on-chain; <strong>delivered</strong> is a settled attempt whose paid request also
-          answered <code>2xx</code>. A settled attempt that answered <code>4xx</code> is published as{" "}
-          <code>inconclusive</code> and is not counted against the seller — vet402 buys with an empty
-          request body and no API key of the seller&apos;s, so a <code>4xx</code> can be vet402&apos;s
-          own request being malformed; the endpoint&apos;s page shows those rows and the count (
+          answered <code>2xx</code>. A paid attempt that answered <code>4xx</code> — settled, or
+          refused with no settlement receipt — is published as <code>inconclusive</code> and is not
+          counted against the seller: vet402 buys with no API key of the seller&apos;s and sends a
+          POST body only when the seller declares one, so a <code>4xx</code> can be vet402&apos;s own
+          request being malformed. So is a <code>402</code> from 2026-09-13 00:00 to 2026-09-15 23:49
+          UTC, when vet402&apos;s own payer wallet had run out of USDC. The endpoint&apos;s page shows
+          those rows and the count (
           <Link href="/observatory/methodology" className="underline">
             methodology §2
           </Link>

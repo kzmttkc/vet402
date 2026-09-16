@@ -100,6 +100,7 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
     settledCount: l1.settled,
     deliveredCount: l1.delivered,
     inconclusiveCount: l1.inconclusive,
+    inconclusiveSettledCount: l1.inconclusiveSettled,
     subject: (() => {
       try {
         return new URL(endpoint.resourceUrl).host;
@@ -327,11 +328,15 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
             </p>
             {l1.inconclusive > 0 && (
               <p className="doc-p">
-                <strong>{l1.inconclusive} of those settled attempts answered 4xx, and we hold them
-                as <code>inconclusive</code> rather than counting them against this seller.</strong>{" "}
-                A 4xx says the request was not one the server would accept, and we cannot rule out
-                that the request was ours to get wrong: vet402 buys with an empty JSON body and no
-                API key of the seller&apos;s. This is the same principle the methodology already
+                <strong>{l1.inconclusive} of those paid attempts are held as{" "}
+                <code>inconclusive</code> rather than counted against this seller</strong>
+                {" "}({l1.inconclusiveByReason.settled4xx} settled and answered 4xx,{" "}
+                {l1.inconclusiveByReason.unsettled4xx} answered 4xx with no settlement receipt,{" "}
+                {l1.inconclusiveByReason.payerUnfunded} answered 402 while our own payer wallet was
+                out of USDC, 2026-09-13 00:00 to 2026-09-15 23:49 UTC). A 4xx says the request was
+                not one the server would accept, and we cannot rule out that the request was ours to
+                get wrong: vet402 buys with no API key of the seller&apos;s, and sends a POST body only
+                when the seller declares one. This is the same principle the methodology already
                 applied to <code>path_template</code> URLs, applied to the body and the
                 authentication header as well. The rows are not deleted and not hidden — they are
                 below, with their status and HTTP code, and they are out of the denominator for{" "}

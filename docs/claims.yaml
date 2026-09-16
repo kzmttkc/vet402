@@ -173,6 +173,27 @@ claims:
     check: null
     why_unverifiable: "直した後の挙動なので、現在の公開 GET には当時の値が残らない。当時の分布は公開 export.csv の全行集計（settled 1,669 行中 4xx/5xx 180 行）で、記事本文にその内訳を書いている"
     verified_at: 2026-09-05
+  - id: corrections_unsettled_4xx_counted_against_seller
+    surface: src/app/corrections/page.tsx
+    quote: "2,487 paid attempts ended settle_failed, with no transaction and a 4xx other"
+    means: "2026-09-17 以前は、決済レシートなしで 4xx（402 以外）を返した試行を売り手の不履行側に数えていた（Issue #29 の A）。件数は公開 export.csv（2026-09-16T22:27Z 取得・30 日）の集計"
+    check: null
+    why_unverifiable: "件数は取得時点の 30 日窓の集計で、窓が動くと同じ値にならない。再計算は export.csv の held_reason 列（unsettled_4xx）で誰でもできる。分類の規則は tests/l1-held-rows.test.ts と tests/l1-held-rows.pg.test.ts が固定する"
+    verified_at: 2026-09-17
+  - id: corrections_payer_unfunded_window
+    surface: src/app/corrections/page.tsx
+    quote: "we recorded each one as settle_failed against the seller: 972 rows across 965 endpoints"
+    means: "2026-09-13〜15 の我々の資金切れで売り手が返した 402 を、売り手の失敗として 972 行（965 エンドポイント）記録していた（Issue #29 の C）"
+    check: null
+    why_unverifiable: "期間は過去で固定だが、export.csv は取得日から 30 日窓なので 2026-10-13 以降は ?days= を広げないと同じ行が出ない。held_reason 列の payer_unfunded で再計算できる。残高の関門は tests/l1-body-and-funds.pg.test.ts が固定する"
+    verified_at: 2026-09-17
+  - id: methodology_post_body_from_declaration
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "sends that body as declared, without editing it"
+    means: "402 が extensions.bazaar.info.input.body を宣言していれば、支払い付き POST はその本文を書き換えずに送る（16KB 以下の JSON object/array）。行の raw_response_meta.requestBody に declared / empty を残す"
+    check: null
+    why_unverifiable: "送った本文は公開 GET に出ない（有料リクエストの内容は公開しない）。挙動は tests/l1-declared-input-body.test.ts と tests/l1-body-and-funds.pg.test.ts が固定する"
+    verified_at: 2026-09-17
   - id: corrections_inconclusive_rows_are_not_deleted
     surface: src/app/corrections/page.tsx
     quote: "every row keeps its status and HTTP code on the endpoint's page"
@@ -992,8 +1013,8 @@ claims:
     verified_at: 2026-09-05
   - id: inconclusive_state_publishes_inconclusive
     surface: src/app/observatory/state/page.tsx
-    quote: "Inconclusive: settled and the paid request answered"
-    means: "支払い後 4xx の件数を、判定保留として独立の行で出す（消さない・隠さない）"
+    quote: "Inconclusive: held, not counted against the seller"
+    means: "判定保留（支払い後 4xx・決済レシートなしの 4xx・資金切れ期間の 402）の件数を独立の行で出し、理由別の内訳も出す（消さない・隠さない。2026-09-17 Issue #29 で範囲を広げた）"
     check:
       url: https://vet402.com/api/v1/observatory/state
       assert: "l1.inconclusive >= 0"

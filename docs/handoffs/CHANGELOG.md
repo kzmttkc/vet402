@@ -19,6 +19,16 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 - **なぜ**: 審査が終わり（09-17 01:00 JST）凍結が解けたため、審査中に見つけて保留していた誤りを直す。Mumbai の動詞は 09-14 の実測（`validationRequest` は所有者/operator のみで本番 14/14 revert・Base の Validation Registry は 08-17 から停止）による
 - **影響**: Validation Registry の書き込みコードは既存扱い（Mumbai で請求しない）。凍結表の Mumbai 行は Reputation Registry の書き込みに変わった。Tokyo の作品の中身は会期前に公開しない方針のため、この文書の Tokyo 節は変えていない
 
+---
+
+## 2026-09-17 JST — Issue #29: 決済前 4xx と資金切れ期間の 402 を売り手の記録から外し、POST に宣言本文を送り、署名前に残高を見る
+
+- **何を変えたか**: (1) `delivery.ts` に保留の分類を 1 つ置いた（`settled_4xx` / `unsettled_4xx` = settle_failed・tx なし・402 以外の 4xx / `payer_unfunded` = settle_failed・tx なし・402・Base・2026-09-13T00:00Z〜09-15T23:49Z）。seller-facts・/purchases・/observatory/state・バッジ・history-flags・concentration・export.csv（末尾に `held_reason` 列）が同じ規則を読む（`1162003`）。(2) 支払い付き POST は 402 の `extensions.bazaar.info.input.body`（16KB 以下の JSON object/array）をそのまま送り、行に `requestBody: declared|empty` を残す（`64fae6c`）。(3) 署名前に購入元の USDC 残高を読み、足りない／読めなければ署名せず行も書かない（`3674816`）。(4) methodology §2・§6・§10、/corrections 2 件、openapi、FAQ、MCP/SDK の説明（このコミット）
+- **なぜ**: 売り手（api.insumermodel.com）の公開 Issue #29 に「審査明けに直す」と約束した。誠実に事前検証する売り手ほど悪く表示される逆転と、我々の資金切れを売り手の失敗として 972 行記録していた誤り
+- **影響**: `/decision` の facts.l1 のキーは不変。`rules_version` は `2026-09-17.1`。公開 export（09-16 取得・30 日）で数え直すと保留は 266 → 3,725 行、L1 だけで BLOCK 条件に届く endpoint は 101 → 10。本番の L1 cron は `BASE_RPC_URL`（Solana は `SOLANA_RPC_URL`）が読めないと署名しない。/observatory/state と /purchases に `inconclusiveSettled(Count)` と `inconclusiveByReason` が増え、`inconclusive` は settled の部分集合ではなくなった
+
+---
+
 ## 2026-09-13 20:xx JST — Arbitrum Open House（`/rwa`）と ETHGlobal Tokyo の請求を分ける決まりを置いた
 
 - **何を変えたか**: `docs/hackathons/2026-autumn-continuity.md` の Locked verbs に Open House の行、新節「Parallel venue — Arbitrum Open House / vet402 `/rwa`」に衝突 8 件の決まりと確かめ方を追記（コードは変えていない）

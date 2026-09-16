@@ -52,6 +52,52 @@ type Correction = {
  */
 const CORRECTIONS: Correction[] = [
   {
+    date: "2026-09-17",
+    subject:
+      "Counting a seller's refusal of a request we formed wrongly against the seller, because the seller refused before settling",
+    wrong:
+      "Since 2026-09-05 we held a 4xx as inconclusive, but we applied that to settled payments alone. A seller that " +
+      "checks the request before it settles the payment answers a malformed request with a 4xx and takes nothing; " +
+      "that row was written as settle_failed with no transaction and published in the harsher bucket, next to sellers " +
+      "that charged for the same kind of request and were labelled inconclusive. The sellers who declined to charge " +
+      "us for our own mistake read worse than the ones who charged. Reading the public export (retrieved " +
+      "2026-09-16T22:27Z, last 30 days): 2,487 paid attempts ended settle_failed, with no transaction and a 4xx other " +
+      "than 402 (400 x2,157, 422 x294, 404 x15, 401 x12, 403 x4, 405 x4, 415 x1), across 1,975 endpoints, against " +
+      "266 settled attempts answered with a 4xx. Part of the cause was ours in a second way: we sent {} on a POST " +
+      "even when the seller's 402 declared the body it expects in extensions.bazaar.info.input.body, and our " +
+      "methodology said a listing does not tell us the body. A seller, api.insumermodel.com, reported both in " +
+      "public, with its own 2026-09-12 row as the example (github.com/kzmttkc/vet402/issues/29).",
+    action:
+      "Changed on 2026-09-17. A paid attempt answered with a 4xx other than 402 and no settlement receipt is now held " +
+      "as inconclusive (reason unsettled_4xx), beside the settled case (settled_4xx): it does not count toward a " +
+      "BLOCK or against delivered, and it keeps its status and HTTP code on the endpoint's page. The label follows " +
+      "the reason, not whether money moved. Some of these rows do settle later, when a seller settles and still " +
+      "answers 4xx; the late-settlement recovery then moves them to settled, where they stay held. A POST now sends " +
+      "the body the seller's 402 declares, as declared, when it is a JSON object or array of at most 16 KB, and " +
+      "records which body it sent. The counts ship as l1.inconclusiveByReason on /api/v1/observatory/state, as " +
+      "inconclusiveByReason on the per-endpoint purchases API, and as the held_reason column at the end of " +
+      "export.csv. The decision rules version is now 2026-09-17.1.",
+  },
+  {
+    date: "2026-09-17",
+    subject: "Recording our own empty wallet as sellers refusing payment, 2026-09-13 to 2026-09-15",
+    wrong:
+      "From the first batch of 2026-09-13 until a manual run at 2026-09-15T23:49Z, the Base wallet vet402 buys from " +
+      "had run out of USDC, and the runner kept signing. Sellers answered those payments with 402, as they should, " +
+      "and we recorded each one as settle_failed against the seller: 972 rows across 965 endpoints in the public " +
+      "export. 402 counts were 0 on 2026-09-12 and 314, 313 and 352 on the three days that followed. 57 endpoints " +
+      "reached zero deliveries on three or more signed attempts in that state, which is the condition for a BLOCK. " +
+      "Nothing checked the balance before signing, and nothing alerted on the change.",
+    action:
+      "Changed on 2026-09-17. A 402 with no transaction on Base from 2026-09-13T00:00Z to 2026-09-15T23:49Z is held " +
+      "as inconclusive with the reason payer_unfunded: it does not count toward a BLOCK or against delivered, and " +
+      "the rows stay published. A 402 outside that window still counts, because it says the seller did not accept " +
+      "our payment. The runner now reads the payer's USDC balance on each chain before it signs, once per batch; " +
+      "when the balance is short or cannot be read it does not sign and writes no row, so the seller is picked " +
+      "again in the next batch, and the shortfall is logged. The counts ship as payerUnfunded in " +
+      "l1.inconclusiveByReason and as held_reason in export.csv.",
+  },
+  {
     date: "2026-09-05",
     subject:
       "Naming named companies as having taken payment without delivering, when the failing request may have been ours",

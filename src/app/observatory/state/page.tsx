@@ -434,13 +434,38 @@ export default async function ObservatoryStatePage() {
                 {/* 2026-09-05: 支払い後 4xx を「売り手が納品しなかった」として出していた。
                     4xx は「送られた要求が不正」であり、我々は空のボディ・API キー無しで買う。
                     行は消さず、判定を保留にして別枠へ出す（delivery.ts が規則の正典）。 */}
+                {/* 2026-09-17 Issue #29: 保留は settled の中だけではない。決済レシートなしの 4xx
+                    （売り手が決済前に要求を検証して断った形）と、我々の資金切れ期間の 402 も
+                    保留に入る。理由別に出し、settled の分だけを下の差し引きに使う。 */}
                 <tr>
                   <td className="text-brand">
-                    Inconclusive: settled and the paid request answered <code>4xx</code> — held, not
-                    counted against the seller
+                    Inconclusive: held, not counted against the seller — the paid request answered{" "}
+                    <code>4xx</code>, or it ran while our own payer wallet was unfunded
                   </td>
                   <td className="num">{stats.l1.inconclusive.toLocaleString()}</td>
-                  <td className="num">{pct(stats.l1.inconclusive, stats.l1.settled)} of settled</td>
+                  <td className="num">{pct(stats.l1.inconclusive, stats.l1.attempts)} of attempts</td>
+                </tr>
+                <tr>
+                  <td className="text-brand">
+                    of which settled and answered <code>4xx</code>
+                  </td>
+                  <td className="num">{stats.l1.inconclusiveByReason.settled4xx.toLocaleString()}</td>
+                  <td className="num">{pct(stats.l1.inconclusiveByReason.settled4xx, stats.l1.settled)} of settled</td>
+                </tr>
+                <tr>
+                  <td className="text-brand">
+                    of which answered <code>4xx</code> (not <code>402</code>) with no settlement receipt
+                  </td>
+                  <td className="num">{stats.l1.inconclusiveByReason.unsettled4xx.toLocaleString()}</td>
+                  <td className="num">{pct(stats.l1.inconclusiveByReason.unsettled4xx, stats.l1.attempts)} of attempts</td>
+                </tr>
+                <tr>
+                  <td className="text-brand">
+                    of which answered <code>402</code> while our Base payer wallet was out of USDC
+                    (2026-09-13 00:00 to 2026-09-15 23:49 UTC)
+                  </td>
+                  <td className="num">{stats.l1.inconclusiveByReason.payerUnfunded.toLocaleString()}</td>
+                  <td className="num">{pct(stats.l1.inconclusiveByReason.payerUnfunded, stats.l1.attempts)} of attempts</td>
                 </tr>
                 <tr>
                   <td className="text-brand">
@@ -451,12 +476,12 @@ export default async function ObservatoryStatePage() {
                   <td className="num">
                     {Math.max(
                       0,
-                      stats.l1.settled - stats.l1.delivered - stats.l1.inconclusive,
+                      stats.l1.settled - stats.l1.delivered - stats.l1.inconclusiveSettled,
                     ).toLocaleString()}
                   </td>
                   <td className="num">
                     {pct(
-                      Math.max(0, stats.l1.settled - stats.l1.delivered - stats.l1.inconclusive),
+                      Math.max(0, stats.l1.settled - stats.l1.delivered - stats.l1.inconclusiveSettled),
                       stats.l1.attempts,
                     )}{" "}
                     of attempts
@@ -502,7 +527,7 @@ export default async function ObservatoryStatePage() {
                     Delivered
                   </th>
                   <th scope="col" className="num">
-                    Inconclusive (4xx)
+                    Inconclusive
                   </th>
                   <th scope="col" className="num">
                     settled (nonce-bound)
