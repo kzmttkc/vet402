@@ -23,9 +23,9 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ## 2026-09-17 JST — Issue #29: 決済前 4xx と資金切れ期間の 402 を売り手の記録から外し、POST に宣言本文を送り、署名前に残高を見る
 
-- **何を変えたか**: (1) `delivery.ts` に保留の分類を 1 つ置いた（`settled_4xx` / `unsettled_4xx` = settle_failed・tx なし・402 以外の 4xx / `payer_unfunded` = settle_failed・tx なし・402・Base・2026-09-13T00:00Z〜09-15T23:49Z）。seller-facts・/purchases・/observatory/state・バッジ・history-flags・concentration・export.csv（末尾に `held_reason` 列）が同じ規則を読む（`1162003`）。(2) 支払い付き POST は 402 の `extensions.bazaar.info.input.body`（16KB 以下の JSON object/array）をそのまま送り、行に `requestBody: declared|empty` を残す（`64fae6c`）。(3) 署名前に購入元の USDC 残高を読み、足りない／読めなければ署名せず行も書かない（`3674816`）。(4) methodology §2・§6・§10、/corrections 2 件、openapi、FAQ、MCP/SDK の説明（このコミット）
-- **なぜ**: 売り手（api.insumermodel.com）の公開 Issue #29 に「審査明けに直す」と約束した。誠実に事前検証する売り手ほど悪く表示される逆転と、我々の資金切れを売り手の失敗として 972 行記録していた誤り
-- **影響**: `/decision` の facts.l1 のキーは不変。`rules_version` は `2026-09-17.1`。公開 export（09-16 取得・30 日）で数え直すと保留は 266 → 3,725 行、L1 だけで BLOCK 条件に届く endpoint は 101 → 10。本番の L1 cron は `BASE_RPC_URL`（Solana は `SOLANA_RPC_URL`）が読めないと署名しない。/observatory/state と /purchases に `inconclusiveSettled(Count)` と `inconclusiveByReason` が増え、`inconclusive` は settled の部分集合ではなくなった
+- **何を変えたか**: (1) `delivery.ts` に保留の分類を 1 つ置いた（`settled_4xx` / `unsettled_4xx` = settle_failed・tx なし・402 以外の 4xx / `payer_unfunded` = settle_failed・tx なし・402 または 5xx・Base・2026-09-13T00:00Z〜09-15T23:49Z）。seller-facts・/purchases・/observatory/state・バッジ・history-flags・concentration・export.csv（末尾に `held_reason` 列）・/decisions と /impact の損失・backtest の事前シグナル・受取人スコアの上限が同じ規則を読む（`3f5a8e2`・`a1157dc`・`6a763e7`）。(2) 支払い付き POST は 402 の `extensions.bazaar.info.input.body`（16KB 以下の JSON object/array）をそのまま送り、行に `requestBody: declared|empty` を残す。宣言本文を持つ要求は別オリジンへの転送に従わない（`02fc857`・`715f697`）。(3) 署名前に購入元の USDC 残高を読み、足りない／読めなければ署名せず行も書かない（`24587c1`）。(4) methodology §2・§6・§10、/corrections 2 件、openapi、FAQ、MCP/SDK の説明（このコミット）
+- **なぜ**: 売り手（api.insumermodel.com）の公開 Issue #29 に「審査明けに直す」と約束した。誠実に事前検証する売り手ほど悪く表示される逆転と、我々の資金切れを売り手の失敗として 1,032 行（402 が 972・5xx が 60）記録していた誤り
+- **影響**: `/decision` の facts.l1 のキーは不変。`rules_version` は `2026-09-17.1`。公開 export（09-16 取得・30 日）で数え直すと保留は 266 → 3,785 行、L1 だけで BLOCK 条件に届く endpoint は 101 → 9。本番の L1 cron は `BASE_RPC_URL`（Solana は `SOLANA_RPC_URL`）が読めないと署名しない。/observatory/state と /purchases に `inconclusiveSettled(Count)` と `inconclusiveByReason` が増え、`inconclusive` は settled の部分集合ではなくなった
 
 ---
 
