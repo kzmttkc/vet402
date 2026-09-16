@@ -420,6 +420,7 @@ RPC: `https://rpc.mainnet.chain.robinhood.com`。失敗時だけ予備（実装�
 - そのブロックの `balanceOf` / `uiMultiplier` / `latestRoundData`
 - 期待 USD はセクション2の式
 - 第二テスト: `usd * uiMultiplier / 1e18` を期待値にした実装は fail
+- 改正（patch 010・2026-09-17 Takeshi 決定）: A の holder（`0xa8553db0…`）は発行体の運用ウォレットで、取引が約 960 件ありライブ再構成がルート上限（60 秒）を超える。**公開 URL と審査デモに使わない。A は式の正本としてだけ残す。** 提出に出すのは取引が数十件の普通のアドレス（選定日は §13d の範囲で別途）。
 
 ### Fixture B（1約定）
 実装開始日（ETHOnline ゲート後の最初のコーディング日）にやること:
