@@ -155,3 +155,66 @@ test("the caller's own init.headers object is not mutated by stripping", async (
   );
   assert.equal(callerHeaders["x-payment"], CREDENTIALS["x-payment"]);
 });
+
+// ------------------------------------------------------------
+// 2026-09-17（Issue #29 独立検証）: 売り手が宣言した本文は、その売り手のオリジンから出さない。
+//
+// L1 は 402 が宣言した input.body を支払い付き POST に載せる。safeFetch は別オリジンへの
+// 307/308 で支払いヘッダを落とすが、307/308 は本文を保ったまま転送するので、宣言本文は
+// 第三者のオリジンへ届いていた。呼び手が crossOriginBody: "refuse" を渡したときは、
+// 本文を運ぶ別オリジンの転送に従わず 3xx をそのまま返す。303 と POST の 301/302 は
+// 本文を落として GET にするので従ってよい。同一オリジンは従う。既定（指定なし）は従来どおり。
+// ------------------------------------------------------------
+import { createSafeFetchImpl } from "@/lib/net/safe-fetch";
+
+function bodyRecorder(script: Array<{ status: number; location?: string }>) {
+  const hops: Array<{ url: string; method: string; body: unknown }> = [];
+  const fetchImpl = async (url: string, init?: RequestInit) => {
+    hops.push({ url, method: String(init?.method), body: init?.body });
+    const step = script[hops.length - 1] ?? { status: 200 };
+    return new Response("", { status: step.status, headers: step.location ? { location: step.location } : {} });
+  };
+  return { hops, fetchImpl };
+}
+const DECLARED_BODY = JSON.stringify({ wallet: "0x0000000000000000000000000000000000000001", conditions: [{ type: "token_balance" }] });
+
+test("crossOriginBody refuse: 別オリジンへの 307/308 は本文を運ばず、3xx をそのまま返す", async () => {
+  for (const status of [307, 308]) {
+    const { hops, fetchImpl } = bodyRecorder([{ status, location: "https://other.example/collect" }, { status: 200 }]);
+    const res = await safeFetch(
+      "https://seller.example/paid",
+      { method: "POST", body: DECLARED_BODY, headers: { "content-type": "application/json" } },
+      { fetchImpl, resolve: resolveAllPublic, crossOriginBody: "refuse" },
+    );
+    assert.equal(res.status, status);
+    assert.equal(hops.length, 1, `${status}: 別オリジンへ 1 本も出さない`);
+  }
+});
+
+test("crossOriginBody refuse: 同一オリジンの 307 は本文ごと従う・303 は本文を落として従う", async () => {
+  const same = bodyRecorder([{ status: 307, location: "https://seller.example/paid/" }, { status: 200 }]);
+  const r1 = await safeFetch("https://seller.example/paid", { method: "POST", body: DECLARED_BODY }, { fetchImpl: same.fetchImpl, resolve: resolveAllPublic, crossOriginBody: "refuse" });
+  assert.equal(r1.status, 200);
+  assert.equal(same.hops[1].body, DECLARED_BODY);
+
+  const see = bodyRecorder([{ status: 303, location: "https://other.example/result" }, { status: 200 }]);
+  const r2 = await safeFetch("https://seller.example/paid", { method: "POST", body: DECLARED_BODY }, { fetchImpl: see.fetchImpl, resolve: resolveAllPublic, crossOriginBody: "refuse" });
+  assert.equal(r2.status, 200);
+  assert.equal(see.hops[1].method, "GET");
+  assert.equal(see.hops[1].body, undefined);
+});
+
+test("既定（crossOriginBody 指定なし）は従来どおり別オリジンの 307 に本文ごと従う", async () => {
+  const { hops, fetchImpl } = bodyRecorder([{ status: 307, location: "https://other.example/collect" }, { status: 200 }]);
+  const res = await safeFetch("https://seller.example/paid", { method: "POST", body: "{}" }, { fetchImpl, resolve: resolveAllPublic });
+  assert.equal(res.status, 200);
+  assert.equal(hops[1].body, "{}");
+});
+
+test("createSafeFetchImpl は呼び出しごとの crossOriginBody を受け取る", async () => {
+  const { hops, fetchImpl } = bodyRecorder([{ status: 307, location: "https://other.example/collect" }, { status: 200 }]);
+  const guarded = createSafeFetchImpl({ fetchImpl, resolve: resolveAllPublic });
+  const res = await guarded("https://seller.example/paid", { method: "POST", body: DECLARED_BODY }, { crossOriginBody: "refuse" });
+  assert.equal(res.status, 307);
+  assert.equal(hops.length, 1);
+});

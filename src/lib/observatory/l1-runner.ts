@@ -33,7 +33,7 @@ import { utcDayStart } from "@/lib/db/utc-day";
 import { x402L1Purchases } from "@/lib/db/schema";
 import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { readBodyCapped } from "@/lib/net/read-capped";
-import { UnsafeTargetError, createSafeFetchImpl } from "@/lib/net/safe-fetch";
+import { UnsafeTargetError, createSafeFetchImpl, type SafeFetchCallOptions } from "@/lib/net/safe-fetch";
 import { createDeadline } from "@/lib/util/deadline";
 import { checkL1Budget, isL1Enabled, DAILY_BUDGET_USD, solanaDailyCapUnits } from "./budget";
 import { isSpendingHalted, type HaltVerdict } from "./kill-switch";
@@ -569,7 +569,7 @@ async function haltGate(db: NonNullable<ReturnType<typeof getDb>>): Promise<Halt
 export async function runL1Batch(
   options: {
     limit?: number;
-    fetchImpl?: (url: string, init?: RequestInit) => Promise<Response>;
+    fetchImpl?: (url: string, init?: RequestInit, call?: SafeFetchCallOptions) => Promise<Response>;
     timeoutMs?: number;
     /**
      * Playground demo path: narrow candidate selection to this one endpoint.
@@ -925,7 +925,7 @@ async function purchaseOne(input: {
   account: ReturnType<typeof privateKeyToAccount>;
   solanaKeypair: Keypair | null;
   getSolanaBlockhash: () => Promise<string>;
-  fetchImpl: (url: string, init?: RequestInit) => Promise<Response>;
+  fetchImpl: (url: string, init?: RequestInit, call?: SafeFetchCallOptions) => Promise<Response>;
   timeoutMs: number;
   db: NonNullable<ReturnType<typeof getDb>>;
   spentToday: bigint;
@@ -1268,7 +1268,12 @@ async function purchaseOne(input: {
           ...(method === "POST" ? { "content-type": "application/json" } : {}),
         },
         ...(paidRequestBody ? { body: paidRequestBody.body } : {}),
-      });
+      },
+        // 2026-09-17（Issue #29 独立検証）: 宣言本文は売り手のオリジンから出さない。別オリジンへ
+        // 本文を運ぶ転送には従わず 3xx をそのまま記録する（safe-fetch.ts の crossOriginBody）。
+        // `{}` の要求は従来どおり。
+        paidRequestBody?.source === "declared" ? { crossOriginBody: "refuse" } : undefined,
+      );
       paidBody = await readBodyCapped(paid, 16_000);
     } catch (error) {
       paidError = String(error).slice(0, 300);

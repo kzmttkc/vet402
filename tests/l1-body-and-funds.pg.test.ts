@@ -107,13 +107,19 @@ if (!TEST_DB) {
         },
       });
 
-    type Seen = { url: string; paid: boolean; method: string; body: string | null };
+    type Seen = { url: string; paid: boolean; method: string; body: string | null; crossOriginBody: string | null };
     const wall = () => {
       const seen: Seen[] = [];
-      const fetchImpl = async (url: string, init?: RequestInit) => {
+      const fetchImpl = async (url: string, init?: RequestInit, call?: { crossOriginBody?: string }) => {
         const headers = new Headers(init?.headers);
         const paid = headers.has("PAYMENT-SIGNATURE") || headers.has("X-PAYMENT");
-        seen.push({ url, paid, method: String(init?.method ?? "GET"), body: typeof init?.body === "string" ? init.body : null });
+        seen.push({
+          url,
+          paid,
+          method: String(init?.method ?? "GET"),
+          body: typeof init?.body === "string" ? init.body : null,
+          crossOriginBody: call?.crossOriginBody ?? null,
+        });
         if (!paid) return wall402(url);
         const isSol = url.includes("solseller");
         return new Response(JSON.stringify({ ok: true }), {
@@ -160,9 +166,12 @@ if (!TEST_DB) {
       assert.equal(paid1.length, 1);
       assert.deepEqual(JSON.parse(paid1[0].body ?? "null"), DECLARED, "支払い付き POST の本文は宣言そのもの");
       assert.equal(unpaid1[0].body, "{}", "無払いの要求は宣言を読む前なので {}");
+      assert.equal(paid1[0].crossOriginBody, "refuse", "宣言本文を運ぶ要求は別オリジンの転送に従わない");
+      assert.equal(unpaid1[0].crossOriginBody, null, "{} の無払いの要求は従来どおり");
       const paid2 = w.seen.filter((s) => s.url.includes("seller2") && s.paid);
       assert.equal(paid2.length, 1);
       assert.equal(paid2[0].body, "{}", "宣言が無ければ従来どおり {}");
+      assert.equal(paid2[0].crossOriginBody, null, "{} の支払い付き要求の転送は従来どおり");
       const paid3 = w.seen.filter((s) => s.url.includes("seller3") && s.paid);
       assert.equal(paid3[0].body, null, "GET に本文は付けない");
       assert.deepEqual(await rowsFor("https://seller1.example/api"), [{ status: "settle_claimed", request_body: "declared" }]);

@@ -212,7 +212,27 @@ export type SafeFetchOptions = {
   resolve?: AddressResolver;
   /** Hops followed after the initial request. */
   maxRedirects?: number;
+  /**
+   * What to do when a redirect would carry the request BODY to another origin
+   * (a 307/308, or a 301/302 that does not demote the method). `"follow"` (the
+   * default) keeps the fetch-spec behaviour. `"refuse"` hands the 3xx back
+   * without sending anything to the other origin.
+   *
+   * 2026-09-17 (Issue #29): the L1 paid POST now carries the input body the
+   * seller's own 402 declares. The payment headers already stop at the origin
+   * boundary, but a 307/308 would still deliver that body to whatever host the
+   * seller's Location names. The runner passes "refuse" for a declared body.
+   * Refusing rather than stripping the body: the cross-origin hop carries no
+   * payment header either way, so it cannot be the purchase; following it
+   * with a bodiless POST would only record a third party's answer as the
+   * seller's paid response. A `{}` body is not affected, so every request
+   * this runner sent before the declared body existed behaves as it did.
+   */
+  crossOriginBody?: "follow" | "refuse";
 };
+
+/** Per-call options a drop-in fetchImpl accepts as a third argument. */
+export type SafeFetchCallOptions = Pick<SafeFetchOptions, "crossOriginBody">;
 
 /**
  * `fetch`, except every hop's target must be a public address. Redirects are
@@ -229,7 +249,7 @@ export async function safeFetch(
   init: RequestInit = {},
   options: SafeFetchOptions = {},
 ): Promise<Response> {
-  const { fetchImpl = pinnedFetch, resolve = defaultResolver, maxRedirects = 5 } = options;
+  const { fetchImpl = pinnedFetch, resolve = defaultResolver, maxRedirects = 5, crossOriginBody = "follow" } = options;
 
   let current: URL;
   try {
@@ -285,6 +305,12 @@ export async function safeFetch(
       headers.delete("content-type");
       headers.delete("content-length");
     }
+    // A body that would reach another origin: refuse when the caller asked
+    // (see SafeFetchOptions.crossOriginBody). Checked after demotion, because
+    // a 303 or a demoted 301/302 no longer carries the body.
+    if (crossOriginBody === "refuse" && body !== undefined && body !== null && crossesOrigin(current, next)) {
+      return response;
+    }
     // Credentials stop at the origin boundary (see the header block above).
     // Cloned rather than mutated in place so the caller's own `init.headers`
     // is never edited underneath it.
@@ -303,6 +329,6 @@ export async function safeFetch(
  */
 export function createSafeFetchImpl(
   options: SafeFetchOptions = {},
-): (url: string, init?: RequestInit) => Promise<Response> {
-  return (url, init) => safeFetch(url, init ?? {}, options);
+): (url: string, init?: RequestInit, call?: SafeFetchCallOptions) => Promise<Response> {
+  return (url, init, call) => safeFetch(url, init ?? {}, { ...options, ...(call ?? {}) });
 }

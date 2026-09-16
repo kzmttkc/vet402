@@ -240,7 +240,9 @@ export default async function ObservatoryMethodologyPage() {
           as <code>extensions.bazaar.info.input.body</code>, and the same declaration rides on the{" "}
           <code>402</code> the endpoint answers our unpaid request with. Since 2026-09-17, when that
           402 declares a JSON object or array of at most 16&nbsp;KB, the paid <code>POST</code>{" "}
-          sends that body as declared, without editing it, and the row records{" "}
+          sends that body as declared, without editing it, and only to the seller&apos;s own
+          origin (a redirect that would carry it to another origin is not followed; the row keeps
+          the redirect&apos;s status), and the row records{" "}
           <code>requestBody: declared</code>; otherwise we send <code>{"{}"}</code> and record{" "}
           <code>requestBody: empty</code>. Before that date we sent <code>{"{}"}</code> on every{" "}
           <code>POST</code>, declaration or not. So when a paid request comes back{" "}
