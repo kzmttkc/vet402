@@ -59,6 +59,7 @@ import {
 import { withDailyFallback } from "@/lib/settlements/rollup";
 import { l1TierWhere } from "./coverage";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
+import { declaredRequestBody, type RequestBodySource } from "./declared-input";
 import { createHash } from "node:crypto";
 
 export type L1BatchSummary = {
@@ -947,6 +948,10 @@ async function purchaseOne(input: {
   // to dribble a body out forever, and timeoutMs stopped meaning anything. The
   // clear now lives in `finally`, so the whole request+body is inside one
   // budget and a slow body aborts like any other timeout.
+  // 無払いの要求の本文は `{}` のまま（2026-09-17 Issue #29 で判断）。売り手の本文の宣言
+  // （extensions.bazaar.info.input.body）はこの要求への 402 応答に載っていて、読む前に
+  // 送れる宣言は無い。x402 の壁は本文を見る前に 402 を返すので `{}` で足りる——公開
+  // export（2026-09-16 取得・30 日）で無払いが 402 にならなかった行（no_402）は 24 行／約 6,700 行。
   let first: Response;
   let firstBody = "";
   const firstController = new AbortController();
@@ -1012,6 +1017,10 @@ async function purchaseOne(input: {
   }
   const accept = selection.accept;
   const amount = BigInt(accept.amount);
+  // 支払い付き POST の本文（2026-09-17 Issue #29）。売り手が 402 で宣言した input.body を
+  // そのまま送り、無ければ従来どおり `{}`。規則は declared-input.ts。
+  const paidRequestBody: { body: string; source: RequestBodySource } | null =
+    method === "POST" ? declaredRequestBody({ bodyText: firstBody, headers: first.headers }) : null;
 
   // Budget gate — BEFORE signing. The ledger, not memory, is the truth.
   const budget = checkL1Budget({
@@ -1216,7 +1225,7 @@ async function purchaseOne(input: {
           [header.headerName]: header.headerValue,
           ...(method === "POST" ? { "content-type": "application/json" } : {}),
         },
-        ...(method === "POST" ? { body: "{}" } : {}),
+        ...(paidRequestBody ? { body: paidRequestBody.body } : {}),
       });
       paidBody = await readBodyCapped(paid, 16_000);
     } catch (error) {
@@ -1283,6 +1292,9 @@ async function purchaseOne(input: {
       status: paid?.status ?? null,
       contentType,
       bodyHead: paidBody.slice(0, 500),
+      // どの本文で POST したか（2026-09-17 Issue #29）。"declared" は売り手の 402 が宣言した
+      // input.body、"empty" は `{}`。GET には付けない。
+      ...(paidRequestBody ? { requestBody: paidRequestBody.source } : {}),
       // A response whose HEADERS arrived but whose body aborted/failed: the
       // error would otherwise be dropped (rawSettlement keeps the settlement
       // when one exists), so it is kept here rather than silently lost.
