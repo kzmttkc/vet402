@@ -6,11 +6,14 @@
 // 上限ブロック数と締切で止め、未読は次回に持ち越す（cron 1 回で終わらなくてよい）。
 //
 // チェーンは表で足す。Polygon（eip155:137）は POLYGON_RPC_URL が入れば有効。
+// Arc（eip155:5042・2026-09-17）は ARC_RPC_URL が入れば有効。scoring の CHAINS 登録簿には
+// 載せない（chain/arc.ts 参照）ので、クライアントは行の makeClient で組む。
 // ============================================================
 import { parseAbiItem, type Address } from "viem";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { getLogScanClient } from "@/lib/chain/client";
+import { ARC_CHAIN_ID, ARC_USDC_ADDRESS, getArcPublicClient } from "@/lib/chain/arc";
 import { getLogsChunked } from "@/lib/chain/chunked-logs";
 import { getIndexerCheckpoint, setIndexerCheckpoint } from "@/lib/db/owner-index";
 import { payeeId as toPartyId } from "@/lib/ids/canonical";
@@ -34,6 +37,8 @@ export type EvmIndexChain = {
   maxBlocksPerRun: bigint;
   /** 確定待ち（reorg 余裕）。 */
   confirmations: bigint;
+  /** 既定は getLogScanClient(chainId)。CHAINS 登録簿に無いチェーン（Arc）はここで組む。 */
+  makeClient?: () => ReturnType<typeof getLogScanClient>;
 };
 
 export const EVM_INDEX_CHAINS: EvmIndexChain[] = [
@@ -54,6 +59,28 @@ export const EVM_INDEX_CHAINS: EvmIndexChain[] = [
     initialLookbackBlocks: 40_000n * 7n,
     maxBlocksPerRun: 40_000n,
     confirmations: 64n,
+  },
+  // Arc（Circle のステーブルコイン L1・メインネット公開 2026-09-16）。2026-09-17 Arc レーン。
+  //  - ブロックは約 1 秒（オーナー実測 2026-09-17）。7 日の遡りは 86,400 × 7 ブロック。
+  //    チェーンが若いので初回は safeTip − lookback が 0 を割り、実際には genesis 付近から読む。
+  //  - 1 回の走査は 40,000 ブロック（≈ 11 時間）。cron は 1 日 1 回（vercel.json 13:00 UTC）
+  //    なので 1 日 86,400 ブロックに追いつくには 3 走査ぶん要るが、走査は payee ごとに
+  //    eth_getLogs を切るので、若いチェーンで payee が数件のうちは 1 走査あたりの往復は
+  //    Base と同じ桁。追いつかない日は partial として開示され、次回に持ち越す。
+  //    （Base は 2 秒/ブロックで同じ 40,000 = ≈ 22 時間。）
+  //  - 確定待ち 64 ブロック（≈ 64 秒）。Arc の合意は BFT 系で確定的と Circle は説明するが、
+  //    我々はそれを実測していない。Polygon と同じ余裕を取っても遅れは 1 分で、reorg を
+  //    「確認済み」と刻む事故に比べれば安い。
+  //  - ARC_RPC_URL が無ければ skipped（`ARC_RPC_URL_unset`）——公開 RPC へ無言で倒れない。
+  {
+    caip2: "eip155:5042",
+    chainId: ARC_CHAIN_ID,
+    usdc: ARC_USDC_ADDRESS,
+    rpcEnv: "ARC_RPC_URL",
+    initialLookbackBlocks: 86_400n * 7n,
+    maxBlocksPerRun: 40_000n,
+    confirmations: 64n,
+    makeClient: () => getArcPublicClient("batch"),
   },
 ];
 
@@ -97,7 +124,7 @@ export async function indexEvmChain(
   summary.payees = payees.length;
   if (payees.length === 0) return { ...summary, skipped: "no_known_payees" };
 
-  const client = getLogScanClient(chain.chainId);
+  const client = chain.makeClient ? chain.makeClient() : getLogScanClient(chain.chainId);
   const latest = await client.getBlockNumber();
   const safeTip = latest > chain.confirmations ? latest - chain.confirmations : 0n;
   const scope = `settlements:${chain.caip2}`;
