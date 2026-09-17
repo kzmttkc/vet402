@@ -39,6 +39,7 @@ import { CHAIN_DAILY_CAPS, cappedChainFor, chainDailyCapUnits, checkL1Budget, is
 import { isSpendingHalted, type HaltVerdict } from "./kill-switch";
 import { addDerivedOperatorAddresses, isOperatorPayTo, operatorPayToDenylist } from "./operator";
 import {
+  ARC_CAIP2,
   buildAuthorization,
   encodePaymentHeader,
   evmChainFor,
@@ -136,7 +137,32 @@ type Candidate = {
   isPriority: boolean;
   /** 成立が MATURE_SETTLED_MIN 件以上＝証拠が足りている（買い直しは 30 日間隔）。 */
   isMature: boolean;
+  /** このエンドポイントで settled 行がある network（CAIP-2）。レーンの accept 優先の材料（2026-09-17）。 */
+  settledNetworks: string[];
 };
+
+/**
+ * レーンが選ぶ accept の network（2026-09-17）。別枠を持つレーン（budget.ts CHAIN_DAILY_CAPS）が
+ * selectable なとき、purchaseOne は「そのエンドポイントにそのチェーンでの settled 行がまだ無い」
+ * レーンの network を selectAccept の preferNetworks に渡す。一度そのチェーンで settled したら
+ * 従来の並び（Base 先頭）に戻す＝レーンの実績は 1 エンドポイント 1 回でよい。
+ */
+const LANE_NETWORK: Partial<Record<CappedChain, string>> = {
+  solana: SOLANA_MAINNET_CAIP2,
+  arc: ARC_CAIP2,
+  // tempo は入れない（2026-09-17）: Tempo は MPP 方言で accept 選択の経路（mpp-payer）が別。
+  // x402 の challenge に Tempo の accept が混ざることも無いので、preferNetworks の対象外。
+  // xrpl も入れない（2026-09-17）: 署名器が別（xrpl402-payer・selectXrplAccept）で、EVM の
+  // selectAccept は xrpl:0 の accept を eligible にしない。
+};
+
+/**
+ * raw_accepts の 2 番目以降の accept まで見てレーン候補にするか。Arc（EVM）は同じ EOA・同じ
+ * EVM の署名経路なので、Base が先頭の exa.ai の行も Arc の accept で買える。Solana は
+ * purchaseOne の経路が主ネットワーク（e.network）で分かれるため、先頭が Base の行を Solana の
+ * 枠に入れても Base で買われてしまう——e.network が Solana の行だけを従来どおり枠に入れる。
+ */
+const LANE_SECONDARY_ACCEPTS: Record<CappedChain, boolean> = { solana: false, arc: true, tempo: false, xrpl: false };
 
 /**
  * OBSERVATORY_SOLANA_SECRET_KEY: JSON配列（solana-keygenの出力）または
@@ -774,6 +800,8 @@ export async function runL1Batch(
   ];
   const laneExclusions: SQL[] = [];
   const laneSelectable = new Map<CappedChain, boolean>();
+  /** selectable（旗 on・別枠が残る）なレーンの network。purchaseOne の preferNetworks の元（LANE_NETWORK に無いレーンは入らない）。 */
+  const selectableLaneNetworks: string[] = [];
   for (const lane of lanes) {
     let selectable = lane.ready;
     if (selectable) {
@@ -798,6 +826,9 @@ export async function runL1Batch(
     laneSelectable.set(lane.chain, selectable);
     if (!selectable) {
       laneExclusions.push(sql`AND (e.network IS NULL OR e.network NOT LIKE ${CHAIN_DAILY_CAPS[lane.chain].networkLike})`);
+    } else {
+      const laneNetwork = LANE_NETWORK[lane.chain];
+      if (laneNetwork !== undefined) selectableLaneNetworks.push(laneNetwork);
     }
   }
 
@@ -835,10 +866,14 @@ export async function runL1Batch(
     : sql``;
   // 候補 SQL は settlement_daily を読む（C2 の 30 日窓が生行の保持期間へ縮まないため）。
   // 表がまだ無い環境では生行だけの式へ落とす（withDailyFallback）。
-  const targetsSql = (daily: boolean, lane?: { networkLike: string; limit: number }) => sql`
+  const targetsSql = (daily: boolean, lane?: { chain: CappedChain; networkLike: string; limit: number }) => sql`
     SELECT e.id, e.resource_url, e.method, e.price_amount, e.pay_to, e.network, e.declared_schema,
            (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS is_priority,
-           (${settledCountSql(sql`e.id`)} >= ${MATURE_SETTLED_MIN}) AS is_mature
+           (${settledCountSql(sql`e.id`)} >= ${MATURE_SETTLED_MIN}) AS is_mature,
+           -- レーンの accept 優先（2026-09-17）: このエンドポイントで settled 済みの network。
+           (SELECT coalesce(array_agg(DISTINCT s.network), '{}'::text[])
+              FROM x402_l1_purchases s
+              WHERE s.endpoint_id = e.id AND s.status = 'settled' AND s.network IS NOT NULL) AS settled_networks
     FROM x402_endpoints e
     JOIN LATERAL (
       SELECT verdict FROM x402_l0_probes p
@@ -860,7 +895,23 @@ export async function runL1Batch(
       AND ${notPathTemplateSql()}
       ${onlyEndpointId ? sql`AND e.id = ${onlyEndpointId}::uuid` : sql``}
       ${sql.join(laneExclusions, sql` `)}
-      ${lane ? sql`AND e.network LIKE ${lane.networkLike}` : sql``}
+      ${
+        // レーン枠（2026-09-17・laneFloorCandidates）。主ネットワークが一致する行に加え、
+        // LANE_SECONDARY_ACCEPTS のレーンは raw_accepts のいずれかの accept が一致する行
+        // （exa.ai: Base 先頭・Arc 2 番目）も入れる。そのチェーンで settled 済みの行は入れない
+        // （レーンの実績は 1 エンドポイント 1 回でよい——以後は従来の並びで Base を買う）。
+        lane
+          ? sql`AND (e.network LIKE ${lane.networkLike}${
+              LANE_SECONDARY_ACCEPTS[lane.chain]
+                ? sql` OR (jsonb_typeof(e.raw_accepts) = 'array' AND EXISTS (
+                      SELECT 1 FROM jsonb_array_elements(e.raw_accepts) a WHERE a->>'network' LIKE ${lane.networkLike}))`
+                : sql``
+            })
+             AND NOT EXISTS (
+               SELECT 1 FROM x402_l1_purchases ls
+               WHERE ls.endpoint_id = e.id AND ls.status = 'settled' AND ls.network LIKE ${lane.networkLike})`
+          : sql``
+      }
       ${selfExclusion}
       -- Tempo（MPP・2026-09-17 レビュー #4）: directory は受取先を載せない。L0 が生きた challenge から
       -- 学習した pay_to を持つ行だけを L1 候補にする（受取先を知らない相手に署名しない）。
@@ -947,7 +998,7 @@ export async function runL1Batch(
     lanes,
     floor: onlyEndpointId ? 0 : laneFloorPerRun(),
     fetchLane: async (chain, laneLimit) => {
-      const lane = { networkLike: CHAIN_DAILY_CAPS[chain].networkLike, limit: laneLimit };
+      const lane = { chain, networkLike: CHAIN_DAILY_CAPS[chain].networkLike, limit: laneLimit };
       return await withDailyFallback(
         async () => await db.execute(targetsSql(true, lane)),
         async () => await db.execute(targetsSql(false, lane)),
@@ -999,7 +1050,10 @@ export async function runL1Batch(
       continue;
     }
     try {
-      const outcome = await purchaseOne({ candidate, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge });
+      // レーンの accept 優先（LANE_NETWORK）: selectable なレーンのうち、この endpoint にその
+      // チェーンでの settled 行がまだ無いものを先に選ばせる。
+      const preferNetworks = selectableLaneNetworks.filter((n) => !candidate.settledNetworks.includes(n));
+      const outcome = await purchaseOne({ candidate, preferNetworks, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge });
       spentToday += outcome.spent;
       if (isXrplCandidate && outcome.spent > 0n) xrplLaneClosed = true;
       summary.spentUnitsTotal = String(BigInt(summary.spentUnitsTotal) + outcome.spent);
@@ -1055,7 +1109,18 @@ function rowToCandidate(r: Record<string, unknown>): Candidate {
     declaredSchema: r.declared_schema ?? null,
     isPriority: r.is_priority === true,
     isMature: r.is_mature === true,
+    settledNetworks: parseTextArray(r.settled_networks),
   };
+}
+
+/** text[] は pg では配列、経路によっては '{a,b}' の文字列で来る。どちらも読む。無ければ空。 */
+function parseTextArray(v: unknown): string[] {
+  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string");
+  if (typeof v === "string" && v.startsWith("{") && v.endsWith("}")) {
+    const inner = v.slice(1, -1);
+    return inner === "" ? [] : inner.split(",").map((x) => x.replace(/^"|"$/g, ""));
+  }
+  return [];
 }
 
 /**
@@ -1102,6 +1167,8 @@ export async function laneFloorCandidates(input: {
 
 async function purchaseOne(input: {
   candidate: Candidate;
+  /** selectAccept に先に選ばせる network（LANE_NETWORK・settled 済みは除く）。 */
+  preferNetworks: readonly string[];
   account: ReturnType<typeof privateKeyToAccount>;
   solanaKeypair: Keypair | null;
   getSolanaBlockhash: () => Promise<string>;
@@ -1126,7 +1193,7 @@ async function purchaseOne(input: {
   /** kind === "halted" のときの判定理由（cron 応答とログに出る）。 */
   haltReason?: string;
 }> {
-  const { candidate, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge } = input;
+  const { candidate, preferNetworks, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge } = input;
   const method = (candidate.method ?? "GET").toUpperCase();
   const startedAt = Date.now();
   const isSolana = candidate.network === SOLANA_MAINNET_CAIP2;
@@ -1254,7 +1321,13 @@ async function purchaseOne(input: {
       : selectAccept(challenge.accepts, {
           declaredAmount: candidate.priceAmount,
           declaredPayTo: candidate.payTo,
+          // 宣言額はカタログの先頭 accept（e.network）の値。別チェーンの accept とは比べない。
+          declaredNetwork: candidate.network,
+          preferNetworks,
         });
+  // ここから先の台帳の network・別枠（reserveSpend の cappedChainFor）・残高の chain（payerChain）は
+  // すべて「選んだ accept の network」で決まる——Base 先頭の exa の行を Arc の accept で買えば、
+  // 行は eip155:5042・別枠 arc・残高 arc になる（tests/l1-lane-accept-preference.pg.test.ts）。
   // XRPL の封筒は v2 だけ（正本に v1 の形が無い）。v1 の壁には署名しない。
   const xrplV1Wall = isXrpl && selection.accept !== null && challenge.x402Version !== 2;
   if (!selection.accept || xrplV1Wall) {

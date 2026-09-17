@@ -327,7 +327,21 @@ export type AcceptSelection =
  */
 export function selectAccept(
   accepts: readonly unknown[],
-  options: { declaredAmount: string | null; declaredPayTo: string | null },
+  options: {
+    declaredAmount: string | null;
+    declaredPayTo: string | null;
+    /**
+     * The catalog's own network (`e.network`, CAIP-2 or v1 slug). When given, the
+     * declared price is compared only against accepts ON THAT NETWORK (see the
+     * price loop). Omitted ⇒ every accept is compared, as before 2026-09-17.
+     */
+    declaredNetwork?: string | null;
+    /**
+     * Networks whose eligible accepts are tried first (2026-09-17, lane preference).
+     * Everything else keeps the challenge's own order. Never widens eligibility.
+     */
+    preferNetworks?: readonly string[];
+  },
 ): AcceptSelection {
   const protocolEligible = accepts
     .map((a) => normalizeAccept(a)) // 厳格（lenient=false）——ここは署名する経路
@@ -367,7 +381,31 @@ export function selectAccept(
       : protocolEligible.filter((a) => a.payTo.toLowerCase() === declaredPayTo);
   if (eligible.length === 0) return { accept: null, reason: "payto_mismatch" };
 
-  for (const accept of eligible) {
+  // Lane preference (2026-09-17). Live fact: no active endpoint has Arc as its
+  // primary network; api.exa.ai lists Base first and Arc second in raw_accepts.
+  // Picking in challenge order meant Base always won and the Arc lane could not
+  // buy a single row with its flag on. Preferred networks go first; the rest keep
+  // the seller's order. This reorders eligible accepts only — it never admits one.
+  const preferred = new Set((options.preferNetworks ?? []).map(normalizeNetwork));
+  const ordered =
+    preferred.size === 0
+      ? eligible
+      : [...eligible.filter((a) => preferred.has(a.network)), ...eligible.filter((a) => !preferred.has(a.network))];
+
+  // The catalog's declared price is the price of its FIRST accept — the one on
+  // `e.network`. An accept on another chain (Arc behind a Base-first listing) is
+  // priced independently by the seller, so comparing it to the Base figure would
+  // brand every such accept `price_mismatch` and the lane could never buy. The
+  // declaration therefore gates only accepts on the declared network; accepts on
+  // other chains still sit under MAX_PER_PURCHASE_UNITS, and payTo / domain /
+  // asset gates above apply to all of them unchanged. Callers that pass no
+  // declaredNetwork keep the pre-2026-09-17 behaviour (every accept compared).
+  const declaredNetwork =
+    options.declaredNetwork === undefined || options.declaredNetwork === null ? null : normalizeNetwork(options.declaredNetwork);
+  const priceDeclaredFor = (a: ChallengeAccept): boolean =>
+    options.declaredAmount !== null && (declaredNetwork === null || a.network === declaredNetwork);
+
+  for (const accept of ordered) {
     let amount: bigint;
     try {
       amount = BigInt(accept.amount);
@@ -375,7 +413,7 @@ export function selectAccept(
       continue;
     }
     if (amount <= 0n) continue;
-    if (options.declaredAmount !== null && accept.amount !== options.declaredAmount) continue;
+    if (priceDeclaredFor(accept) && accept.amount !== options.declaredAmount) continue;
     if (amount > MAX_PER_PURCHASE_UNITS) continue;
     return { accept, reason: null };
   }
@@ -388,7 +426,7 @@ export function selectAccept(
       return false;
     }
   });
-  if (options.declaredAmount !== null && eligible.some((a) => a.amount !== options.declaredAmount)) {
+  if (eligible.some((a) => priceDeclaredFor(a) && a.amount !== options.declaredAmount)) {
     // A seller charging other than it advertised is the more specific finding
     // unless everything was simply over the ceiling.
     const allOverCap = eligible.every((a) => {
