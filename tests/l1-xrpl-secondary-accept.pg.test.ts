@@ -11,6 +11,9 @@
 //  3. XRPL で settle_claimed の行がある endpoint は、次に買い直すとき Base に戻る（レーンの実績は 1 回でよい）。
 //  4. 壁の XRPL accept の payTo がカタログの raw_accepts の宣言に無い r アドレスなら払わない（Base へ落ち、理由を行に残す）。
 //  5. 1 バッチ 1 件: 2 件目の XRPL レーン候補は署名されず、行も無い（Base でも買わない）。
+//  6. 我々の側の XRPL 障害（署名の材料が読めない）: 1 件目は行なし、レーンを 1 回目で閉じ、以降の Base 先頭の
+//     レーン候補は Base の通常経路で買う（行を書かずに飛ばし続けない）。summary.xrplLaneClosed に理由。
+//  7. 台帳の asset は定数の大文字 hex。壁が `RLUSD` リテラルを名乗っても行に原文を残さない。
 //
 // Run: TEST_DATABASE_URL=postgres://localhost/vet402_observatory_test \
 //   npx tsx --test --test-force-exit --test-concurrency=1 tests/l1-xrpl-secondary-accept.pg.test.ts
@@ -60,10 +63,12 @@ if (!TEST_DB) {
     delete process.env.L1_LANE_FLOOR_PER_RUN;
 
     const baseAccept = (n: number) => ({ scheme: "exact", network: "eip155:8453", amount: "10000", asset: BASE_USDC, payTo: payToFor(n), maxTimeoutSeconds: 300, extra: { name: "USD Coin", version: "2" } });
+    /** XRPL accept の asset 表記（7 の回帰で `RLUSD` リテラルに切り替える）。 */
+    let xrplAsset = RLUSD;
     const xrplAccept = (n: number) => ({
       scheme: "exact",
       network: "xrpl:0",
-      asset: RLUSD,
+      asset: xrplAsset,
       extra: { issuer: ISSUER, invoiceId: `INV${n}`, sourceTag: 804681468 },
       payTo: xrplPayTo(n),
       amount: "0.01",
@@ -239,6 +244,53 @@ if (!TEST_DB) {
         assert.equal(rows[0].xrpl_lane_reason, "payto_mismatch");
       } finally {
         wallXrplPayTo = null;
+      }
+    });
+
+    await t.test("署名の材料が読めない（我々の側の障害）: 1 件目は行なし、レーンを閉じ、以降の Base 先頭の行は Base で買う", async () => {
+      process.env.OBSERVATORY_XRPL_L1_ENABLED = "true";
+      await seedItems([dualItem(3), dualItem(4), dualItem(5)]);
+      const w = wall();
+      let signingCalls = 0;
+      const summary = await runL1Batch({
+        limit: 10,
+        fetchImpl: w.fetchImpl,
+        getPayerUsdcBalance: FUNDED,
+        getXrplSigningInputs: async () => {
+          signingCalls++;
+          throw new Error("xrpl_rpc_http_503");
+        },
+      });
+      assert.equal(signingCalls, 1, "1 回目で閉じる（同じ RPC を叩き直さない）");
+      assert.equal(summary.xrplLaneClosed, "signing_inputs_unavailable");
+      assert.ok(!w.seen.some((s) => s.paid && s.acceptedNetwork === "xrpl:0"), "XRPL には署名しない");
+      const first = /dualseller(\d)/.exec(w.seen[0].url)![1];
+      assert.deepEqual(await ledgerFor(`https://dualseller${first}.example/api`), [], "1 件目は行なし（Base の売り手の request_error にしない）");
+      for (const n of ["3", "4", "5"].filter((x) => x !== first)) {
+        const rows = await ledgerFor(`https://dualseller${n}.example/api`);
+        assert.equal(rows.length, 1, `dualseller${n} は Base の通常経路で買われる`);
+        assert.equal(rows[0].network, "eip155:8453");
+        assert.equal(rows[0].status, "settle_claimed");
+      }
+    });
+
+    await t.test("台帳の asset は定数の大文字 hex: 壁とカタログが `RLUSD` リテラルでも行に原文を残さない", async () => {
+      process.env.OBSERVATORY_XRPL_L1_ENABLED = "true";
+      xrplAsset = "RLUSD";
+      try {
+        await seedItems([dualItem(3)]);
+        const w = wall();
+        const summary = await run(w);
+        assert.equal(summary.laneFloor.xrpl, 1, "リテラル表記の行も XRPL の枠に載る");
+        const paid = w.seen.filter((s) => s.paid && s.acceptedNetwork === "xrpl:0");
+        assert.equal(paid.length, 1);
+        const tx = decode(String(paid[0].payload!.signedTxBlob)) as Record<string, unknown>;
+        assert.deepEqual(tx.Amount, { currency: RLUSD, issuer: ISSUER, value: "0.01" }, "tx の通貨コードも hex");
+        const rows = await ledgerFor("https://dualseller3.example/api");
+        assert.equal(rows[0].network, "xrpl:0");
+        assert.equal(rows[0].asset, RLUSD, "行の asset は hex（壁の原文 RLUSD ではない）");
+      } finally {
+        xrplAsset = RLUSD;
       }
     });
 

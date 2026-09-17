@@ -130,6 +130,13 @@ export type L1BatchSummary = {
    * 台帳には行を書かない（payer_unfunded と同じ作法）。1 件出たらそのバッチの XRPL は閉じる。
    */
   xrplFeeOverCap: number;
+  /**
+   * このバッチで XRPL のレーンを **我々の側の理由** で閉じたときの理由（2026-09-18 レビュー W1）。
+   *   "signing_inputs_unavailable" 署名の材料（Sequence・validated ledger）を XRPL_RPC_URL から読めなかった
+   *   "fee_over_cap"               網の open_ledger_fee が上限超（xrplFeeOverCap と同じ出来事）
+   * 1 件署名して閉じる通常の 1 バッチ 1 件は null のまま（それは障害ではない）。
+   */
+  xrplLaneClosed: "signing_inputs_unavailable" | "fee_over_cap" | null;
 };
 
 type Candidate = {
@@ -742,6 +749,7 @@ export async function runL1Batch(
     laneFloor: {},
     laneFloorHostCapped: {},
     xrplFeeOverCap: 0,
+    xrplLaneClosed: null,
   };
 
   // 1. Master switches — fail-closed before any network traffic.
@@ -1090,6 +1098,11 @@ export async function runL1Batch(
   // XRPL 候補は候補選択の段階で外し、行を書かず別枠も減らさない（翌バッチにまた候補になる）。
   // 網の手数料が上限を超えていた（xrpl_fee_over_cap）ときも同じく、そのバッチの XRPL は閉じる。
   let xrplLaneClosed = false;
+  // 我々の側の XRPL 障害（署名の材料が読めない）で閉じたとき（2026-09-18 レビュー W1）。このときは
+  // XRPL の accept を優先しないだけで、Base 先頭のレーン候補は **Base の通常経路へ落とす**
+  // （行を書かずに飛ばし続けると、RPC が直るまでその売り手を誰の経路でも測れない）。
+  // 主ネットワークが XRPL の行は他に買う経路が無いので飛ばす（同じ RPC を叩き直して request_error を積まない）。
+  let xrplLaneUnavailable = false;
 
   for (const [index, candidate] of candidates.entries()) {
     // Start nothing we cannot finish inside maxDuration. Purchases already in
@@ -1108,11 +1121,16 @@ export async function runL1Batch(
       summary.skipped++;
       continue;
     }
+    if (xrplLaneUnavailable && candidate.network === XRPL_MAINNET_CAIP2) {
+      summary.skipped++;
+      continue;
+    }
     // XRPL の secondary accept の優先（2026-09-18・Arc の preferNetworks と同じ条件）: レーン枠から来た
     // 候補にだけ、別枠がまだ開いていて、この endpoint に XRPL での決済主張も非決済も無いとき。
     const xrplLanePreferred =
       candidate.laneChain === "xrpl" &&
       candidate.network !== XRPL_MAINNET_CAIP2 &&
+      !xrplLaneUnavailable &&
       laneOpen("xrpl") &&
       !candidate.settledNetworks.includes(XRPL_MAINNET_CAIP2) &&
       !candidate.failedNetworks.includes(XRPL_MAINNET_CAIP2);
@@ -1167,6 +1185,13 @@ export async function runL1Batch(
           logServerError("observatory.l1.xrpl_fee_over_cap", new Error(`open_ledger_fee above ${1_000} drops; XRPL lane closed for this batch`));
         }
         xrplLaneClosed = true;
+        summary.xrplLaneClosed = "fee_over_cap";
+      } else if (outcome.kind === "xrpl_lane_unavailable") {
+        // 署名の材料が読めなかった（我々の側の障害）。1 回目で XRPL の優先を外し、以降の Base 先頭の
+        // レーン候補は Base の通常経路で買う。理由は summary とサーバログ（purchaseOne 側）に残る。
+        xrplLaneUnavailable = true;
+        summary.xrplLaneClosed = "signing_inputs_unavailable";
+        summary.skipped++;
       } else if (outcome.kind === "budget_denied") {
         summary.budgetDenied++;
         // Budget exhausted for anything at this price — later candidates may
@@ -1303,7 +1328,7 @@ async function purchaseOne(input: {
   tempoEnabled: boolean;
   mppxCharge?: MppxCharge;
 }): Promise<{
-  kind: "attempted" | "skipped" | "budget_denied" | "halted" | "payer_unfunded" | "xrpl_fee_over_cap";
+  kind: "attempted" | "skipped" | "budget_denied" | "halted" | "payer_unfunded" | "xrpl_fee_over_cap" | "xrpl_lane_unavailable";
   settled: boolean;
   spent: bigint;
   /** 台帳に書いた status（attempted のときのみ）——summary の集計はこれを見る。 */
@@ -1526,6 +1551,9 @@ async function purchaseOne(input: {
   // 行に書く network は定数（2026-09-17 レビュー #1）。selectXrplAccept は完全一致しか通さないので accept.network と
   // 同じ値だが、別枠の `LIKE 'xrpl:%'` と照合の `=== "xrpl:0"` が壁の表記に依存しないことをここで固定する。
   const ledgerNetwork = isXrpl ? XRPL_MAINNET_CAIP2 : accept.network;
+  // asset も定数の大文字 hex で書く（2026-09-18 レビュー S2）: 壁が `RLUSD` リテラルや小文字 hex を名乗っても、
+  // 台帳・照合・索引（index-xrpl.ts）が同じ 1 つの表記を読む。封筒の accepted には壁の原文をそのまま返す。
+  const ledgerAsset = isXrpl ? RLUSD_CURRENCY_HEX : accept.asset;
   // 支払い付き POST の本文（2026-09-17 Issue #29）。売り手が 402 で宣言した input.body を
   // そのまま送り、無ければ従来どおり `{}`。規則は declared-input.ts。
   const paidRequestBody: { body: string; source: RequestBodySource } | null =
@@ -1568,15 +1596,16 @@ async function purchaseOne(input: {
     } catch (error) {
       // secondary（Base 先頭の行）では行を書かない: 我々の RPC の失敗を Base の売り手の request_error に
       // しない（書くとスイープ窓のあいだ再選択されず、冷却の streak にも数えられる）。
+      logServerError("observatory.l1.xrpl_signing_inputs", error);
       if (!isXrplPrimary) {
-        logServerError("observatory.l1.xrpl_signing_inputs", error);
-        return { kind: "skipped", settled: false, spent: 0n };
+        return { kind: "xrpl_lane_unavailable", settled: false, spent: 0n };
       }
       await record({
         status: "request_error",
         rawResponseMeta: { phase: "xrpl_signing_inputs", error: String(error).slice(0, 300) },
       });
-      return { kind: "skipped", settled: false, spent: 0n };
+      // 主ネットワークが XRPL の行は従来どおり行を残すが、レーンは同じく 1 回目で閉じる（W1）。
+      return { kind: "xrpl_lane_unavailable", settled: false, spent: 0n };
     }
     // 手数料が上限超（clampFeeDrops → null）。署名せず、行も書かない（payer_unfunded と同じ作法）。
     if (xrplSigningInputs.feeDrops === null) {
@@ -1596,7 +1625,7 @@ async function purchaseOne(input: {
     await record({
       status: "payto_operator_self",
       network: ledgerNetwork,
-      asset: accept.asset,
+      asset: ledgerAsset,
       payTo: accept.payTo.startsWith("0x") ? accept.payTo.toLowerCase() : accept.payTo,
       amountUnits: amountUnitsText,
       rawResponseMeta: {
@@ -1649,7 +1678,7 @@ async function purchaseOne(input: {
     endpointId: candidate.id,
     payer: payerLabel,
     network: ledgerNetwork,
-    asset: accept.asset,
+    asset: ledgerAsset,
     payTo: accept.payTo.startsWith("0x") ? accept.payTo.toLowerCase() : accept.payTo,
     amountUnits: String(amount),
     windowDays: sweepWindowDaysFor({

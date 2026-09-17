@@ -52,6 +52,9 @@ test("Base 先頭 + XRPL 2 番目の壁: レーンとして優先された候補
   assert.equal(sel.accept && "amountUnits" in sel ? sel.amountUnits : null, 10_000n);
   // v1 スラグの宣言（base）も同じチェーンとして読む
   assert.equal(selectXrplSecondaryAccept([baseAccept(), xrplAccept()], opts({ declaredNetwork: "base" })).reason, null);
+  // 大文字の "BASE"（カタログの生の表記）も chains.toCaip2 が同じチェーンに寄せる。免除が効くこと（"0.02" は宣言額と
+  // 一致しないので、免除が効かなければ price_mismatch になる）を固定する（2026-09-18 レビュー S1）。
+  assert.equal(selectXrplSecondaryAccept([baseAccept(), xrplAccept({ amount: "0.02" })], opts({ declaredNetwork: "BASE" })).reason, null);
 });
 
 test("レーンとして優先されていない候補は XRPL レールへ入れない", () => {
@@ -98,6 +101,9 @@ test("宣言額の免除条件: 宣言 network の accept が壁に無い／宣�
     assert.equal(sel.accept, null, String(declaredAmount));
     assert.equal(sel.reason, "price_mismatch", String(declaredAmount));
   }
+  // カタログの pay_to が null の行では免除を開かない（レビュー W3）: 宣言額と units の一致だけで判定する
+  assert.equal(selectXrplSecondaryAccept([baseAccept(), xrplAccept({ amount: "0.02" })], opts({ declaredPayTo: null })).reason, "price_mismatch");
+  assert.equal(selectXrplSecondaryAccept([baseAccept(), xrplAccept()], opts({ declaredPayTo: null })).reason, null, "一致すれば通る");
   // 宣言 network が寄せられない表記（base-mainnet）→ 免除なし（一致すれば通る・一致しなければ断る）
   assert.equal(selectXrplSecondaryAccept([baseAccept(), xrplAccept({ amount: "0.02" })], opts({ declaredNetwork: "base-mainnet" })).reason, "price_mismatch");
   assert.equal(selectXrplSecondaryAccept([baseAccept(), xrplAccept()], opts({ declaredNetwork: "base-mainnet" })).reason, null);

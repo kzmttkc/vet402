@@ -235,6 +235,7 @@ export function selectXrplAccept(
  *     カタログの pay_to は Base の 0x アドレスで r アドレスとは比べられない。宣言に無い r アドレスへは払わない。
  *   - 宣言額（カタログ先頭 accept の額・基本単位の整数）の免除は、次が全部そろったときだけ:
  *       宣言 network の accept が壁にあり、それ自体が宣言どおり払える（EVM の selectAccept が通る）・
+ *       カタログの pay_to が宣言されている（null では開かない）・
  *       宣言 network は XRPL ではない・宣言額が正の整数として読める・レーンとして優先された。
  *     免除された accept は min(3 × 宣言額, $1) 以下（"0.01" を 6 桁 units に直して比べる）。
  *   - 免除されない accept は宣言額と **units で一致** しなければ price_mismatch（宣言額が読めなければ常に不一致）。
@@ -282,7 +283,9 @@ export function selectXrplSecondaryAccept(
   // selectAccept は並び順で最初に通った accept を返す。それが **宣言 network のもの** でなければ、カタログが
   // 値付けした accept が壁にあるとは言えない（"base-mainnet" のような寄せられない表記も免除しない）。
   const declaredLegOnDeclaredNetwork = declaredLeg !== null && declaredLeg.network === toCaip2(options.declaredNetwork);
-  const exempt = declaredUnits !== null && declaredLegOnDeclaredNetwork;
+  // カタログの pay_to が null の行では免除を開かない（2026-09-18 レビュー W3）: selectAccept は宣言の無い payTo を
+  // 何とも照合しないので、「宣言どおり払える」の証拠が額だけになる。そのときは宣言額と units の一致を要求する。
+  const exempt = declaredUnits !== null && options.declaredPayTo !== null && declaredLegOnDeclaredNetwork;
   const relativeCap =
     declaredUnits === null ? 0n : declaredUnits * 3n < MAX_PER_PURCHASE_UNITS ? declaredUnits * 3n : MAX_PER_PURCHASE_UNITS;
 
