@@ -448,6 +448,11 @@ async function reserveSpend(input: {
   const capChain = cappedChainFor(network);
   const capLike = capChain ? CHAIN_DAILY_CAPS[capChain].networkLike : null;
   const capUnits = capChain ? String(chainDailyCapUnits(capChain)) : null;
+  // 初回購入の日次枠は、別枠を持つチェーンには掛けない（2026-09-17 本番: 枠 120 が当日ぶん
+  // 使い切られ、Tempo 265 件・XRPL 1 件の候補が「購入行が無い」だけで除外され、レーン枠が
+  // 0 だった）。新しいチェーンの掃引は初回購入しか無いので、この枠に当たると永久に始まらない。
+  // 支出はそのチェーンの別枠（$2/日）で既に縛られている。Base の初回購入の枠は従来どおり。
+  const firstQuotaApplies = capChain === null;
   const raw = await db.execute(sql`
     WITH day AS (
       SELECT coalesce(sum(spent_units::numeric), 0) AS spent
@@ -482,7 +487,7 @@ async function reserveSpend(input: {
       WHERE NOT dup.taken
         AND day.spent + ${amountUnits}::numeric <= ${String(DAILY_BUDGET_UNITS)}::numeric
         ${capUnits === null ? sql`` : sql`AND chain_day.spent + ${amountUnits}::numeric <= ${capUnits}::numeric`}
-        AND (NOT first_day.is_first OR first_day.n < ${FIRST_PURCHASE_DAILY_QUOTA})
+        ${firstQuotaApplies ? sql`AND (NOT first_day.is_first OR first_day.n < ${FIRST_PURCHASE_DAILY_QUOTA})` : sql``}
       RETURNING id
     )
     SELECT (SELECT id FROM ins)::text AS row_id, (SELECT taken FROM dup) AS taken,
@@ -497,7 +502,7 @@ async function reserveSpend(input: {
   const rowId = typeof row.row_id === "string" && row.row_id !== "" ? row.row_id : null;
   if (rowId) return { ok: true, rowId };
   if (row.taken === true) return { ok: false, reason: "already_purchased" };
-  if (row.is_first === true) {
+  if (firstQuotaApplies && row.is_first === true) {
     const firstCount =
       typeof row.first_day_count === "string" ? Number(row.first_day_count.split(".")[0]) : null;
     // 読めなければ枠が尽きた側へ倒す（行を書かない——書くと掃引の窓ぶん締め出す）。
@@ -919,7 +924,10 @@ export async function runL1Batch(
       ${
         // 初回購入の枠を使い切った日は、購入行がまだ無いエンドポイントを外す
         // （買い直しは続く）。行を書かないので、翌 UTC 日にまた候補へ戻る。
-        firstPurchasesSelectable
+        // レーン枠（lane 付き）の問い合わせには掛けない（2026-09-17）: 別枠を持つチェーンの
+        // 掃引は初回購入しか無く、この枠で除外すると新しいチェーンが永久に始まらない。
+        // 支出はそのチェーンの別枠で縛られる（reserveSpend の firstQuotaApplies と同じ判断）。
+        firstPurchasesSelectable || lane
           ? sql``
           : sql`AND EXISTS (SELECT 1 FROM x402_l1_purchases fp WHERE fp.endpoint_id = e.id)`
       }
