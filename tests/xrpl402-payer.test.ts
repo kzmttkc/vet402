@@ -88,13 +88,14 @@ test("selectXrplAccept: network は完全一致。`xrpl` / `XRPL` / `xrpl:mainne
   assert.equal(selectXrplAccept([{ ...RLUSD_ACCEPT, network: XRPL_MAINNET_CAIP2 }], { declaredAmount: null, declaredPayTo: null }).accept?.network, "xrpl:0");
 });
 
-test("clampFeeDrops: fee の open_ledger_fee を (12, 1000] に収める。読めない・0・上限超は 12（レビュー #6）", () => {
+test("clampFeeDrops: fee の open_ledger_fee を [12, 1000] に収める。読めない・0 は 12、上限超は null（署名しない）", () => {
   assert.equal(XRPL_FEE_CAP_DROPS, 1_000n);
   assert.equal(clampFeeDrops("10"), "12", "基本手数料より下は既定へ");
   assert.equal(clampFeeDrops("12"), "12");
   assert.equal(clampFeeDrops("250"), "250");
   assert.equal(clampFeeDrops("1000"), "1000");
-  assert.equal(clampFeeDrops("1001"), "12", "上限超は払わず既定へ");
+  assert.equal(clampFeeDrops("1001"), null, "上限超は 12 に倒さず、そのバッチの XRPL を署名しない（出荷前レビュー #1）");
+  assert.equal(clampFeeDrops("999999999"), null);
   assert.equal(clampFeeDrops("0"), "12");
   assert.equal(clampFeeDrops(undefined), "12");
   assert.equal(clampFeeDrops("abc"), "12");

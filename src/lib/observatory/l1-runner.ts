@@ -118,6 +118,11 @@ export type L1BatchSummary = {
    * 無い日は 0。購入の可否は従来の経路（デッドライン・別枠・残高・原子的予約）がそのまま決める。
    */
   laneFloor: Partial<Record<CappedChain, number>>;
+  /**
+   * XRPL の open_ledger_fee が上限（1,000 drops）を超えていて署名しなかった候補の数（2026-09-17）。
+   * 台帳には行を書かない（payer_unfunded と同じ作法）。1 件出たらそのバッチの XRPL は閉じる。
+   */
+  xrplFeeOverCap: number;
 };
 
 type Candidate = {
@@ -174,8 +179,11 @@ async function loadXrplPayerModule(): Promise<XrplPayerModule | null> {
   return await import("./xrpl402-payer");
 }
 
-/** XRPL の署名に要る Sequence・validated ledger・手数料（テストは options.getXrplSigningInputs で差し替える）。 */
-export type XrplSigningInputs = { sequence: number; validatedLedgerIndex: number; feeDrops?: string };
+/**
+ * XRPL の署名に要る Sequence・validated ledger・手数料（テストは options.getXrplSigningInputs で差し替える）。
+ * `feeDrops: null` は「網の open_ledger_fee が上限 1,000 drops を超えている」——そのバッチの XRPL は署名しない。
+ */
+export type XrplSigningInputs = { sequence: number; validatedLedgerIndex: number; feeDrops?: string | null };
 /** XRPL_RPC_URL 未設定は createXrplJsonRpc が throw（公開 RPC へ無言で倒れない）。手数料は `fee` を 1 回読み、上限 1,000 drops。 */
 async function defaultXrplSigningInputs(address: string): Promise<XrplSigningInputs> {
   const { createXrplJsonRpc, getAccountSequence, getNetworkFeeDrops, getValidatedLedgerIndex } = await import("./xrpl402-payer");
@@ -668,6 +676,7 @@ export async function runL1Batch(
     disabledReason: null,
     payerUnfunded: 0,
     laneFloor: {},
+    xrplFeeOverCap: 0,
   };
 
   // 1. Master switches — fail-closed before any network traffic.
@@ -705,7 +714,9 @@ export async function runL1Batch(
   // XRPL（2026-09-17）も同じ形: 独立フラグ + 独立 seed。RLUSD は 1 単位 = $1 なので台帳の目盛りは共有。
   const xrplPayer = await loadXrplPayerModule();
   const xrplWallet = xrplPayer ? xrplPayer.loadXrplWallet() : null;
-  const xrplReady = xrplWallet !== null;
+  // ready = フラグ + seed + XRPL_RPC_URL。RPC が無ければ SQL の段階で候補外にする——署名の材料（Sequence・
+  // validated ledger）を読めない失敗を、売り手の request_error 行にしない（2026-09-17 出荷前レビュー #2）。
+  const xrplReady = xrplWallet !== null && !!process.env.XRPL_RPC_URL?.trim();
 
   // 2026-08-23 監査: 自己除外が VET402_OPERATOR_PAYTO の手入力だけに依存していて、
   // **本番では未設定＝完全な no-op** だった。中立性は堀そのものなので、忘れられる
@@ -964,7 +975,8 @@ export async function runL1Batch(
   // XRPL は **1 バッチ 1 件**（2026-09-17 レビュー #2）。署名は account_info の Sequence を使うので、
   // 同じバッチで 2 件署名すると同じ Sequence の tx が 2 本できる（片方は tefPAST_SEQ）。署名した後の
   // XRPL 候補は候補選択の段階で外し、行を書かず別枠も減らさない（翌バッチにまた候補になる）。
-  let xrplSignedThisBatch = false;
+  // 網の手数料が上限を超えていた（xrpl_fee_over_cap）ときも同じく、そのバッチの XRPL は閉じる。
+  let xrplLaneClosed = false;
 
   for (const [index, candidate] of candidates.entries()) {
     // Start nothing we cannot finish inside maxDuration. Purchases already in
@@ -976,7 +988,7 @@ export async function runL1Batch(
       break;
     }
     const isXrplCandidate = candidate.network === XRPL_MAINNET_CAIP2;
-    if (isXrplCandidate && xrplSignedThisBatch) {
+    if (isXrplCandidate && xrplLaneClosed) {
       summary.skipped++;
       continue;
     }
@@ -989,7 +1001,7 @@ export async function runL1Batch(
     try {
       const outcome = await purchaseOne({ candidate, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge });
       spentToday += outcome.spent;
-      if (isXrplCandidate && outcome.spent > 0n) xrplSignedThisBatch = true;
+      if (isXrplCandidate && outcome.spent > 0n) xrplLaneClosed = true;
       summary.spentUnitsTotal = String(BigInt(summary.spentUnitsTotal) + outcome.spent);
       if (outcome.kind === "attempted") {
         summary.attempted++;
@@ -1007,6 +1019,14 @@ export async function runL1Batch(
       } else if (outcome.kind === "payer_unfunded") {
         // 署名していない。summary.payerUnfunded は onPayerUnfunded が数える。残りの候補は
         // 安いものなら買える（バッチ内の署名額を差し引いた残高で比べる）ので歩き続ける。
+      } else if (outcome.kind === "xrpl_fee_over_cap") {
+        // 網の open_ledger_fee が上限超。署名していない・行も無い。このバッチの XRPL は閉じ、
+        // 他チェーンの候補は歩き続ける。理由は summary とサーバログに残す。
+        summary.xrplFeeOverCap++;
+        if (!xrplLaneClosed) {
+          logServerError("observatory.l1.xrpl_fee_over_cap", new Error(`open_ledger_fee above ${1_000} drops; XRPL lane closed for this batch`));
+        }
+        xrplLaneClosed = true;
       } else if (outcome.kind === "budget_denied") {
         summary.budgetDenied++;
         // Budget exhausted for anything at this price — later candidates may
@@ -1098,7 +1118,7 @@ async function purchaseOne(input: {
   tempoEnabled: boolean;
   mppxCharge?: MppxCharge;
 }): Promise<{
-  kind: "attempted" | "skipped" | "budget_denied" | "halted" | "payer_unfunded";
+  kind: "attempted" | "skipped" | "budget_denied" | "halted" | "payer_unfunded" | "xrpl_fee_over_cap";
   settled: boolean;
   spent: bigint;
   /** 台帳に書いた status（attempted のときのみ）——summary の集計はこれを見る。 */
@@ -1323,6 +1343,10 @@ async function purchaseOne(input: {
       });
       return { kind: "skipped", settled: false, spent: 0n };
     }
+    // 手数料が上限超（clampFeeDrops → null）。署名せず、行も書かない（payer_unfunded と同じ作法）。
+    if (xrplSigningInputs.feeDrops === null) {
+      return { kind: "xrpl_fee_over_cap", settled: false, spent: 0n };
+    }
   }
 
   // Self-dealing backstop (2026-08-22 audit), the LAST gate before money is
@@ -1491,7 +1515,7 @@ async function purchaseOne(input: {
         accept,
         sequence: xrplSigningInputs!.sequence,
         validatedLedgerIndex: xrplSigningInputs!.validatedLedgerIndex,
-        feeDrops: xrplSigningInputs!.feeDrops,
+        feeDrops: xrplSigningInputs!.feeDrops ?? undefined,
       });
       const signed = xrplPayer!.signXrplPayment(xrplWallet!, tx);
       authNonce = signed.hash;

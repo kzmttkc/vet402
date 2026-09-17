@@ -354,18 +354,23 @@ function asNumber(v: unknown, what: string): number {
 }
 
 /**
- * `fee` の open_ledger_fee（drops）を、(0, XRPL_FEE_CAP_DROPS] に収めて採用する。読めない・0・上限超は既定へ倒す
- * （上限超で既定に倒すのは「払いすぎない」側——その tx は混雑中に落ちるだけで、金は動かない）。純関数。
+ * `fee` の open_ledger_fee（drops）を採用する手数料に直す。純関数。
+ *   - 読めない・0 → 既定 12 drops（払いすぎない側）
+ *   - 12 未満 → 12（基本手数料を下回る tx は載らない）
+ *   - 12〜1,000 → その値
+ *   - **1,000 超 → null**（網が混んでいる。既定 12 に倒すと載らない tx を署名し続けるので、そのバッチの XRPL は
+ *     署名せず・行も書かず skip する——呼び手（l1-runner）の xrpl_fee_over_cap。2026-09-17 出荷前レビュー #1）
  */
-export function clampFeeDrops(raw: unknown): string {
+export function clampFeeDrops(raw: unknown): string | null {
   if (typeof raw !== "string" || !/^\d+$/.test(raw)) return XRPL_FEE_DROPS;
   const v = BigInt(raw);
-  if (v <= 0n || v > XRPL_FEE_CAP_DROPS) return XRPL_FEE_DROPS;
+  if (v <= 0n) return XRPL_FEE_DROPS;
+  if (v > XRPL_FEE_CAP_DROPS) return null;
   return v < BigInt(XRPL_FEE_DROPS) ? XRPL_FEE_DROPS : v.toString();
 }
 
-/** `fee` を 1 回読む。失敗は既定 12 drops（fail-closed の向きが「払いすぎない」なので throw しない）。 */
-export async function getNetworkFeeDrops(rpc: XrplRpc): Promise<string> {
+/** `fee` を 1 回読む。読めなければ既定 12 drops（throw しない）。上限超は null（署名しない）。 */
+export async function getNetworkFeeDrops(rpc: XrplRpc): Promise<string | null> {
   try {
     const r = await rpc("fee", {});
     return clampFeeDrops((r.drops as { open_ledger_fee?: unknown } | undefined)?.open_ledger_fee);

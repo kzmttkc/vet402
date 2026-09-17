@@ -10,6 +10,8 @@
 //  3. その UTC 日の XRPL 支出が別枠（既定 $2）に達したら XRPL には触れない。Base は買う。
 //     残りが 1 件分に足りないときは予約で断り、行を書かない。
 //  4. 購入元の RLUSD が足りない／XRP が手数料に足りない（読み手が throw）なら署名せず、行を書かない。
+//  5. XRPL_RPC_URL が無ければ SQL の段階で候補外（無払いのリクエストも出ない・行も無い）。
+//  6. 網の open_ledger_fee が上限（1,000 drops）超なら署名せず・行も書かず、そのバッチの XRPL を閉じる。
 //
 // Run: TEST_DATABASE_URL=postgres://localhost/vet402_observatory_test \
 //   npx tsx --test --test-force-exit --test-concurrency=1 tests/l1-xrpl-lane.pg.test.ts
@@ -53,6 +55,7 @@ if (!TEST_DB) {
       xOn: process.env.OBSERVATORY_XRPL_L1_ENABLED,
       xSeed: process.env.OBSERVATORY_XRPL_SEED,
       cap: process.env.L1_XRPL_DAILY_CAP_USD,
+      rpc: process.env.XRPL_RPC_URL,
     };
     const restore = (k: string, v: string | undefined) => (v === undefined ? delete process.env[k] : (process.env[k] = v));
     t.after(() => {
@@ -61,10 +64,13 @@ if (!TEST_DB) {
       restore("OBSERVATORY_XRPL_L1_ENABLED", saved.xOn);
       restore("OBSERVATORY_XRPL_SEED", saved.xSeed);
       restore("L1_XRPL_DAILY_CAP_USD", saved.cap);
+      restore("XRPL_RPC_URL", saved.rpc);
     });
     process.env.OBSERVATORY_L1_ENABLED = "true";
     process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
     process.env.OBSERVATORY_XRPL_SEED = xrplWallet.seed!;
+    // ready 条件に要る。署名の材料は getXrplSigningInputs の seam が返すので、この URL へは到達しない。
+    process.env.XRPL_RPC_URL = "https://xrpl.invalid:51234/";
     delete process.env.L1_XRPL_DAILY_CAP_USD; // 既定 $2
 
     const xrplAccept = (n: number) => ({
@@ -225,6 +231,38 @@ if (!TEST_DB) {
       const s = ((Array.isArray(spent) ? spent : (spent as { rows?: unknown[] }).rows ?? []) as { s: string }[])[0].s;
       assert.ok(Number(s) <= 2_000_000, `XRPL の当日支出は別枠以内 (${s})`);
       assert.ok(summary.settled >= 1);
+    });
+
+    await t.test("XRPL_RPC_URL が無ければ候補外: 無払いのリクエストも出ず、行も無い（Base は買う）", async () => {
+      process.env.OBSERVATORY_XRPL_L1_ENABLED = "true";
+      delete process.env.XRPL_RPC_URL;
+      try {
+        await seed();
+        const w = wall();
+        await runL1Batch({ limit: 10, fetchImpl: w.fetchImpl, getPayerUsdcBalance: FUNDED, getXrplSigningInputs: SIGNING });
+        assert.ok(w.seen.every((s) => !s.url.includes("xrplseller")), "XRPL には 1 リクエストも出ない（request_error 行にもならない）");
+        for (const n of [1, 2, 3]) assert.deepEqual(await ledgerFor(`https://xrplseller${n}.example/api`), []);
+        assert.ok(w.seen.some((s) => s.url.includes("seller1.example") && s.paid), "Base は買う");
+      } finally {
+        process.env.XRPL_RPC_URL = "https://xrpl.invalid:51234/";
+      }
+    });
+
+    await t.test("手数料が上限超（feeDrops null）: 署名せず・行も書かず、そのバッチの XRPL は閉じる", async () => {
+      process.env.OBSERVATORY_XRPL_L1_ENABLED = "true";
+      await seed();
+      const w = wall();
+      const summary = await runL1Batch({
+        limit: 10,
+        fetchImpl: w.fetchImpl,
+        getPayerUsdcBalance: FUNDED,
+        getXrplSigningInputs: async () => ({ sequence: 7, validatedLedgerIndex: 99_000_000, feeDrops: null }),
+      });
+      assert.ok(!w.seen.some((s) => s.url.includes("xrplseller") && s.paid), "XRPL へ支払い付きは出ない");
+      assert.equal(w.seen.filter((s) => s.url.includes("xrplseller")).length, 1, "1 件目で閉じる（残りは無払いの要求も出ない）");
+      assert.equal(summary.xrplFeeOverCap, 1);
+      for (const n of [1, 2, 3]) assert.deepEqual(await ledgerFor(`https://xrplseller${n}.example/api`), [], "行を書かない");
+      assert.ok(w.seen.some((s) => s.url.includes("seller1.example") && s.paid), "Base は買う");
     });
 
     await t.test("壁が network を `xrpl` と名乗れば選ばない: 支払い付きは出ず、行は no_eligible_accept で network を書かない", async () => {
