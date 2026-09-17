@@ -54,6 +54,12 @@ export async function syncCatalog(
     /** 'YYYY-MM-DD'; injectable for tests. */
     today?: string;
     source?: string;
+    /**
+     * 出どころが受取先を載せない（MPP directory・2026-09-17）とき true。再同期の行が
+     * pay_to を null で運んでも、L0 が生きた challenge から学習した pay_to / payee_id を
+     * 消さない。Bazaar（既定 false）は従来どおり出どころの値で上書きする。
+     */
+    keepLearnedPayTo?: boolean;
   } = {},
 ): Promise<SyncSummary> {
   const db = getDb();
@@ -150,7 +156,7 @@ export async function syncCatalog(
           resourceUrl: sql`excluded.resource_url`,
           method: sql`excluded.method`,
           network: sql`excluded.network`,
-          payTo: sql`excluded.pay_to`,
+          payTo: options.keepLearnedPayTo ? sql`coalesce(excluded.pay_to, ${x402Endpoints.payTo})` : sql`excluded.pay_to`,
           priceAmount: sql`excluded.price_amount`,
           priceAsset: sql`excluded.price_asset`,
           description: sql`excluded.description`,
@@ -162,7 +168,7 @@ export async function syncCatalog(
           canonicalUrl: sql`excluded.canonical_url`,
           resourceId: sql`excluded.resource_id`,
           endpointHash: sql`excluded.endpoint_hash`,
-          payeeId: sql`excluded.payee_id`,
+          payeeId: options.keepLearnedPayTo ? sql`coalesce(excluded.payee_id, ${x402Endpoints.payeeId})` : sql`excluded.payee_id`,
           undeclaredQuery: sql`excluded.undeclared_query`,
           lastSeenAt: sql`now()`,
           // Presence in today's catalog IS the relist evidence; the event row

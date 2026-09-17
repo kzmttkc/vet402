@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
 import { syncCatalog } from "@/lib/observatory/catalog-sync";
 import { notifyDelistedEvents } from "@/lib/observatory/notify";
+import { syncMppDirectory } from "@/lib/observatory/mpp-directory";
 import { refreshSolanaDiscoveryPayees } from "@/lib/settlements/discovery-payees";
 import { logServerError } from "@/lib/util/log";
 
@@ -34,9 +35,20 @@ export async function GET(request: NextRequest) {
       logServerError("cron.catalog-sync.discovery-payees", error);
       discoveryPayees = { error: "discovery_payees_failed" };
     }
+    // Tempo の MPP directory（source = mpp_directory・2026-09-17）。1 回の fetch・別 snapshot。
+    // 失敗しても Bazaar の同期は成功のまま返す（原因はログへ）。
+    let mppDirectory: unknown = null;
+    try {
+      const m = await syncMppDirectory();
+      mppDirectory = { totalCount: m.totalCount, fetchedCount: m.fetchedCount, complete: m.complete, upserted: m.upserted, skipped: m.skipped, delisted: m.events.filter((e) => e.eventType === "delisted").length };
+    } catch (error) {
+      logServerError("cron.catalog-sync.mpp-directory", error);
+      mppDirectory = { error: "mpp_directory_failed" };
+    }
     return NextResponse.json({
       notify,
       discoveryPayees,
+      mppDirectory,
       ok: true,
       snapshotDate: summary.snapshotDate,
       totalCount: summary.totalCount,
