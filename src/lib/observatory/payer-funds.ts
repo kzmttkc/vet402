@@ -15,14 +15,17 @@
 //     このバッチで既に署名した額を差し引いて比べる（決済が非同期でも過大に見積もらない）。
 //   - 台帳には行を書かない（l1-runner 側）。行を書くと、その売り手はスイープ窓の
 //     あいだ再選択されず、初回購入の枠と「未購入を先に」の並びも狂い、facts の
-//     last_attempt_at に我々の資金切れが売り手の時刻として出る。solana_daily_cap と
+//     last_attempt_at に我々の資金切れが売り手の時刻として出る。chain_daily_cap と
 //     同じ作法で、翌バッチにまた候補になる。資金切れはバッチの summary と
 //     サーバログ（observatory.l1.payer_unfunded）に出す。
+//   - チェーンごとに別の残高（2026-09-17 Arc レーン）。Arc は Base と同じ EOA だが、
+//     Arc の USDC は Base の USDC ではない。同じ鍵でも残高は chain で分けて読む。
 // ============================================================
 import { SOLANA_USDC_MINT } from "./sol402-payer";
-import { BASE_USDC } from "./x402-payer";
+import { ARC_USDC, BASE_USDC } from "./x402-payer";
+import { getArcPublicClient } from "@/lib/chain/arc";
 
-export type PayerChain = "base" | "solana";
+export type PayerChain = "base" | "solana" | "arc";
 
 /** 購入元（owner）の USDC 残高を基本単位（6 桁）で返す。読めなければ throw する。 */
 export type PayerUsdcBalanceReader = (input: { chain: PayerChain; owner: string }) => Promise<bigint>;
@@ -81,8 +84,21 @@ const ERC20_BALANCE_OF_ABI = [
   },
 ] as const;
 
-/** 本番の読み手。Base は BASE_RPC_URL、Solana は SOLANA_RPC_URL。未設定は throw（公開 RPC へ無言で倒れない）。 */
+/**
+ * 本番の読み手。Base は BASE_RPC_URL、Solana は SOLANA_RPC_URL。未設定は throw（公開 RPC へ無言で倒れない）。
+ * Arc は ARC_RPC_URL、未設定なら公開 RPC https://rpc.mainnet.arc.io（オーナー指定 2026-09-17・chain/arc.ts）。
+ * どのチェーンも、読めなければ throw → 呼び手は署名しない側へ倒す。
+ */
 export const defaultPayerUsdcBalance: PayerUsdcBalanceReader = async ({ chain, owner }) => {
+  if (chain === "arc") {
+    const client = getArcPublicClient("live");
+    return await client.readContract({
+      address: ARC_USDC as `0x${string}`,
+      abi: ERC20_BALANCE_OF_ABI,
+      functionName: "balanceOf",
+      args: [owner as `0x${string}`],
+    });
+  }
   if (chain === "base") {
     const rpc = process.env.BASE_RPC_URL?.trim();
     if (!rpc) throw new Error("base_rpc_unset: BASE_RPC_URL is required to read the payer's USDC balance");

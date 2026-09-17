@@ -35,12 +35,14 @@ import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { readBodyCapped } from "@/lib/net/read-capped";
 import { UnsafeTargetError, createSafeFetchImpl, type SafeFetchCallOptions } from "@/lib/net/safe-fetch";
 import { createDeadline } from "@/lib/util/deadline";
-import { checkL1Budget, isL1Enabled, DAILY_BUDGET_USD, solanaDailyCapUnits } from "./budget";
+import { CHAIN_DAILY_CAPS, cappedChainFor, chainDailyCapUnits, checkL1Budget, isL1Enabled, DAILY_BUDGET_USD, type CappedChain } from "./budget";
 import { isSpendingHalted, type HaltVerdict } from "./kill-switch";
 import { addDerivedOperatorAddresses, isOperatorPayTo, operatorPayToDenylist } from "./operator";
 import {
   buildAuthorization,
   encodePaymentHeader,
+  evmChainFor,
+  isArcL1Enabled,
   parseChallenge,
   parseSettlementResponse,
   selectAccept,
@@ -60,7 +62,7 @@ import { withDailyFallback } from "@/lib/settlements/rollup";
 import { l1TierWhere } from "./coverage";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
 import { declaredRequestBody, type RequestBodySource } from "./declared-input";
-import { createPayerFunds, defaultPayerUsdcBalance, type PayerFunds, type PayerUsdcBalanceReader } from "./payer-funds";
+import { createPayerFunds, defaultPayerUsdcBalance, type PayerChain, type PayerFunds, type PayerUsdcBalanceReader } from "./payer-funds";
 import { createHash } from "node:crypto";
 
 export type L1BatchSummary = {
@@ -338,7 +340,8 @@ type Reservation =
       reason:
         | "daily_budget_exceeded"
         | "already_purchased"
-        | "solana_daily_cap"
+        /** その network の日次別枠（budget.ts CHAIN_DAILY_CAPS: Solana・Arc）に届かなかった。 */
+        | "chain_daily_cap"
         | "first_purchase_quota";
     };
 
@@ -367,16 +370,22 @@ async function reserveSpend(input: {
   windowDays: number;
 }): Promise<Reservation> {
   const { db, endpointId, payer, network, asset, payTo, amountUnits, windowDays } = input;
+  // チェーン別の別枠（budget.ts CHAIN_DAILY_CAPS）。2026-09-15 の Solana の別枠を 2026-09-17 に
+  // Arc と共通の表にした。Base は別枠を持たないので CTE も条件も入らない（従来と同じ 1 文）。
+  const capChain = cappedChainFor(network);
+  const capLike = capChain ? CHAIN_DAILY_CAPS[capChain].networkLike : null;
+  const capUnits = capChain ? String(chainDailyCapUnits(capChain)) : null;
   const raw = await db.execute(sql`
     WITH day AS (
       SELECT coalesce(sum(spent_units::numeric), 0) AS spent
       FROM x402_l1_purchases
       WHERE attempted_at >= ${utcDayStart()}
-    ), sol_day AS (
-      -- Solana の別枠（budget.ts solanaDailyCapUnits）。Base の定期購入を押し出さない。
+    ), chain_day AS (
+      -- その network の別枠の当日支出。Base の定期購入を押し出さない。別枠の無い network は
+      -- 何にも一致しないパターンで 0 を返す（条件も付かない）。
       SELECT coalesce(sum(spent_units::numeric), 0) AS spent
       FROM x402_l1_purchases
-      WHERE attempted_at >= ${utcDayStart()} AND network LIKE 'solana:%'
+      WHERE attempted_at >= ${utcDayStart()} AND network LIKE ${capLike ?? ""}
     ), dup AS (
       SELECT EXISTS (
         SELECT 1 FROM x402_l1_purchases pu
@@ -396,16 +405,15 @@ async function reserveSpend(input: {
         (endpoint_id, status, payer, network, asset, pay_to, amount_units, spent_units)
       SELECT ${endpointId}::uuid, 'in_flight', ${payer}, ${network}, ${asset},
              ${payTo}, ${amountUnits}, ${amountUnits}
-      FROM day, sol_day, dup, first_day
+      FROM day, chain_day, dup, first_day
       WHERE NOT dup.taken
         AND day.spent + ${amountUnits}::numeric <= ${String(DAILY_BUDGET_UNITS)}::numeric
-        AND (${network} NOT LIKE 'solana:%'
-             OR sol_day.spent + ${amountUnits}::numeric <= ${String(solanaDailyCapUnits())}::numeric)
+        ${capUnits === null ? sql`` : sql`AND chain_day.spent + ${amountUnits}::numeric <= ${capUnits}::numeric`}
         AND (NOT first_day.is_first OR first_day.n < ${FIRST_PURCHASE_DAILY_QUOTA})
       RETURNING id
     )
     SELECT (SELECT id FROM ins)::text AS row_id, (SELECT taken FROM dup) AS taken,
-           (SELECT spent FROM sol_day)::text AS sol_spent,
+           (SELECT spent FROM chain_day)::text AS chain_spent,
            (SELECT is_first FROM first_day) AS is_first,
            (SELECT n FROM first_day)::text AS first_day_count
   `);
@@ -424,11 +432,11 @@ async function reserveSpend(input: {
       return { ok: false, reason: "first_purchase_quota" };
     }
   }
-  if (network.startsWith("solana:")) {
-    const solSpent = typeof row.sol_spent === "string" ? BigInt(row.sol_spent.split(".")[0]) : null;
+  if (capChain !== null) {
+    const chainSpent = typeof row.chain_spent === "string" ? BigInt(row.chain_spent.split(".")[0]) : null;
     // 読めなければ別枠の判定とみなす（行を書かない側へ倒す——書くと 6 日締め出す）
-    if (solSpent === null || solSpent + BigInt(amountUnits) > solanaDailyCapUnits()) {
-      return { ok: false, reason: "solana_daily_cap" };
+    if (chainSpent === null || chainSpent + BigInt(amountUnits) > chainDailyCapUnits(capChain)) {
+      return { ok: false, reason: "chain_daily_cap" };
     }
   }
   return { ok: false, reason: "daily_budget_exceeded" };
@@ -691,24 +699,38 @@ export async function runL1Batch(
     return summary; // table missing → cold start, nothing to do safely
   }
 
-  // 2.5 Solana の別枠がその日すでに尽きていれば、Solana を候補から外す（試行して断られた行を
+  // 2.5 別枠を持つレーン（Solana・Arc）ごとに、(a) レーンが有効か、(b) その日の別枠が
+  //     もう尽きていないかを見て、どちらかが否なら候補から外す（試行して断られた行を
   //     書くと、その売り手はスイープ窓のあいだ再選択されない）。読めなければ外す側へ倒す。
-  let solanaSelectable = solanaReady;
-  if (solanaReady) {
-    try {
-      const rawSol = await db.execute(sql`
-        SELECT coalesce(sum(spent_units::numeric), 0)::text AS spent
-        FROM x402_l1_purchases
-        WHERE attempted_at >= ${utcDayStart()} AND network LIKE 'solana:%'
-      `);
-      const solRows = (Array.isArray(rawSol) ? rawSol : (rawSol as { rows?: unknown[] }).rows ?? []) as { spent: string }[];
-      const solSpentRaw = solRows[0]?.spent;
-      if (typeof solSpentRaw !== "string" || BigInt(solSpentRaw.split(".")[0]) >= solanaDailyCapUnits()) {
-        solanaSelectable = false;
+  //     Arc（2026-09-17）は Base と同じ鍵で署名するので、有効条件はフラグだけ。
+  const lanes: { chain: CappedChain; ready: boolean }[] = [
+    { chain: "solana", ready: solanaReady },
+    { chain: "arc", ready: isArcL1Enabled() },
+  ];
+  const laneExclusions: SQL[] = [];
+  for (const lane of lanes) {
+    let selectable = lane.ready;
+    if (selectable) {
+      try {
+        const rawLane = await db.execute(sql`
+          SELECT coalesce(sum(spent_units::numeric), 0)::text AS spent
+          FROM x402_l1_purchases
+          WHERE attempted_at >= ${utcDayStart()} AND network LIKE ${CHAIN_DAILY_CAPS[lane.chain].networkLike}
+        `);
+        const laneRows = (Array.isArray(rawLane) ? rawLane : (rawLane as { rows?: unknown[] }).rows ?? []) as { spent: string }[];
+        const spentRaw = laneRows[0]?.spent;
+        if (typeof spentRaw !== "string" || BigInt(spentRaw.split(".")[0]) >= chainDailyCapUnits(lane.chain)) {
+          selectable = false;
+        }
+      } catch (error) {
+        logServerError(`observatory.l1.${lane.chain}_cap_read`, error);
+        selectable = false;
       }
-    } catch (error) {
-      logServerError("observatory.l1.solana_cap_read", error);
-      solanaSelectable = false;
+    }
+    // レーンが無効（フラグ無し or 鍵が読めない）か別枠が尽きた間は、候補から SQL の段階で
+    // 外す——「試行して skip」の雑音でなく、最初から対象外。行も書かない。
+    if (!selectable) {
+      laneExclusions.push(sql`AND (e.network IS NULL OR e.network NOT LIKE ${CHAIN_DAILY_CAPS[lane.chain].networkLike})`);
     }
   }
 
@@ -770,11 +792,7 @@ export async function runL1Batch(
       -- 下の候補ループにも isPathTemplate のガードを置く二重防御）。
       AND ${notPathTemplateSql()}
       ${onlyEndpointId ? sql`AND e.id = ${onlyEndpointId}::uuid` : sql``}
-      ${
-        // Solana購入が無効（フラグ無し or 鍵が読めない）の間は候補から
-        // SQLの段階で外す——「試行してskip」の雑音でなく、最初から対象外。
-        solanaSelectable ? sql`` : sql`AND (e.network IS NULL OR e.network NOT LIKE 'solana:%')`
-      }
+      ${sql.join(laneExclusions, sql` `)}
       ${selfExclusion}
       ${
         // 初回購入の枠を使い切った日は、購入行がまだ無いエンドポイントを外す
@@ -1121,8 +1139,9 @@ async function purchaseOne(input: {
   // 購入元残高の関門（2026-09-17 Issue #29）。予約と署名の**前**。2026-09-13〜15 に Base の
   // 購入元の USDC が尽きたまま署名を続け、売り手の 402 を `settle_failed` として 972 行
   // 記録した——我々の資金切れを売り手の失敗にした。足りない／読めないなら署名しない。
-  // 行は書かない（solana_daily_cap と同じ: 書くとスイープ窓のあいだ再選択されない）。
-  const payerChain = isSolana ? "solana" : "base";
+  // 行は書かない（chain_daily_cap と同じ: 書くとスイープ窓のあいだ再選択されない）。
+  // 2026-09-17 Arc レーン: 残高はチェーンごと。Arc は Base と同じ EOA だが Arc の USDC は別。
+  const payerChain: PayerChain = isSolana ? "solana" : evmChainFor(accept.network)?.chainId === 5042 ? "arc" : "base";
   const payerOwner = isSolana ? solanaKeypair!.publicKey.toBase58() : account.address;
   const funds = await payerFunds.check(payerChain, payerOwner, amount);
   if (!funds.ok) {
@@ -1158,9 +1177,9 @@ async function purchaseOne(input: {
       // あいだ再選択されず、翌日の枠にも戻らない（枠は延期であって除外ではない）。
       return { kind: "skipped", settled: false, spent: 0n };
     }
-    if (reservation.reason === "solana_daily_cap") {
-      // Solana の別枠に届かなかった。行を書かない——書くとこの売り手はスイープ窓のあいだ
-      // 再選択されず、掃引が終わらない。翌 UTC 日にまた候補になる。
+    if (reservation.reason === "chain_daily_cap") {
+      // そのチェーン（Solana・Arc）の別枠に届かなかった。行を書かない——書くとこの売り手は
+      // スイープ窓のあいだ再選択されず、掃引が終わらない。翌 UTC 日にまた候補になる。
       return { kind: "skipped", settled: false, spent: 0n };
     }
     await record({

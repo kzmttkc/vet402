@@ -28,15 +28,50 @@ export const DAILY_BUDGET_USD = 25;
  */
 export const SOLANA_DAILY_CAP_USD_DEFAULT = 2;
 
-export function solanaDailyCapUnits(): bigint {
-  const raw = process.env.L1_SOLANA_DAILY_CAP_USD;
-  let usd = SOLANA_DAILY_CAP_USD_DEFAULT;
+/**
+ * Arc の別枠（2026-09-17・Arc レーン）。Solana と同じ理由・同じ $2。両方引いても Base には
+ * 毎日 $21 が残る（実測最大 $22.73 を割るのは両レーンが同じ日に別枠を使い切った場合だけで、
+ * その日は Arc/Solana の掃引が Base の裾野 1〜2 件ぶんを押し出す——許容する）。
+ * 環境変数 L1_ARC_DAILY_CAP_USD で下げられる（0 で Arc を止める）。
+ */
+export const ARC_DAILY_CAP_USD_DEFAULT = 2;
+
+/** 別枠を持つチェーン。Base は持たない（共有 $25 だけ）。 */
+export type CappedChain = "solana" | "arc";
+
+/**
+ * チェーン別の別枠の表。`networkLike` は x402_l1_purchases.network に対する SQL の LIKE
+ * パターン（l1-runner の予約 CTE と候補 SQL がそのまま使う）。Arc はワイルドカード無し＝
+ * 完全一致で、testnet（eip155:5042002）を巻き込まない。
+ */
+export const CHAIN_DAILY_CAPS: Record<CappedChain, { env: string; defaultUsd: number; networkLike: string }> = {
+  solana: { env: "L1_SOLANA_DAILY_CAP_USD", defaultUsd: SOLANA_DAILY_CAP_USD_DEFAULT, networkLike: "solana:%" },
+  arc: { env: "L1_ARC_DAILY_CAP_USD", defaultUsd: ARC_DAILY_CAP_USD_DEFAULT, networkLike: "eip155:5042" },
+};
+
+/** その network が別枠を持つチェーンなら、その名前。持たなければ null。 */
+export function cappedChainFor(network: string): CappedChain | null {
+  if (network.startsWith("solana:")) return "solana";
+  if (network === "eip155:5042") return "arc";
+  return null;
+}
+
+/** そのチェーンの別枠（USDC 基本単位）。壊れた値は既定へ倒し、共有の日次上限で頭打ち。 */
+export function chainDailyCapUnits(chain: CappedChain): bigint {
+  const cap = CHAIN_DAILY_CAPS[chain];
+  const raw = process.env[cap.env];
+  let usd = cap.defaultUsd;
   if (raw !== undefined && raw.trim() !== "") {
     const n = Number(raw);
     if (Number.isFinite(n) && n >= 0) usd = n;
   }
   usd = Math.min(usd, DAILY_BUDGET_USD);
   return BigInt(Math.round(usd * 1_000_000));
+}
+
+/** 表の solana 行の別名（2026-09-15 からの呼び手のため）。 */
+export function solanaDailyCapUnits(): bigint {
+  return chainDailyCapUnits("solana");
 }
 
 export function isL1Enabled(): boolean {

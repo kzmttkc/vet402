@@ -56,3 +56,31 @@ test("既定の読み手は RPC の URL が無ければ throw する（公開 RP
     if (saved.sol !== undefined) process.env.SOLANA_RPC_URL = saved.sol;
   }
 });
+
+// ---- Arc（2026-09-17 Arc レーン）----
+test("arc は base・solana と別のチェーンとして数える（Base の署名は Arc の残高を減らさない）", async () => {
+  const f = createPayerFunds(async ({ chain }) => (chain === "arc" ? 20_000n : 5000n));
+  assert.equal((await f.check("base", "0x1", 5000n)).ok, true);
+  f.commit("base", "0x1", 5000n);
+  assert.equal((await f.check("base", "0x1", 1n)).ok, false, "Base は使い切った");
+  assert.equal((await f.check("arc", "0x1", 20_000n)).ok, true, "同じ EOA でも Arc の USDC は別の残高");
+  f.commit("arc", "0x1", 20_000n);
+  assert.equal((await f.check("arc", "0x1", 1n)).ok, false);
+});
+
+test("Arc の RPC は ARC_RPC_URL、無ければ公開 RPC https://rpc.mainnet.arc.io（オーナー指定 2026-09-17）", async () => {
+  const { arcRpcUrl, ARC_PUBLIC_RPC_URL } = await import("@/lib/chain/arc");
+  const saved = process.env.ARC_RPC_URL;
+  try {
+    delete process.env.ARC_RPC_URL;
+    assert.equal(ARC_PUBLIC_RPC_URL, "https://rpc.mainnet.arc.io");
+    assert.equal(arcRpcUrl(), ARC_PUBLIC_RPC_URL);
+    process.env.ARC_RPC_URL = "  ";
+    assert.equal(arcRpcUrl(), ARC_PUBLIC_RPC_URL, "空白は未設定");
+    process.env.ARC_RPC_URL = "https://arc.example.invalid";
+    assert.equal(arcRpcUrl(), "https://arc.example.invalid");
+  } finally {
+    if (saved === undefined) delete process.env.ARC_RPC_URL;
+    else process.env.ARC_RPC_URL = saved;
+  }
+});
