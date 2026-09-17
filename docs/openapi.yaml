@@ -1267,7 +1267,7 @@ paths:
           name: chain
           required: false
           schema: { type: string }
-          description: CAIP-2 (eip155:8453, solana:5eykt…) or a v1 slug (base, solana). Omit for all chains.
+          description: CAIP-2 (eip155:8453, eip155:5042, solana:5eykt…) or a v1 slug (base, polygon, arc, solana). Omit for all chains.
         - in: query
           name: window
           required: false

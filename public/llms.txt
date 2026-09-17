@@ -125,7 +125,7 @@ On npm, all from the same repository: `@vet402/sdk` (spend guard), `@vet402/midd
 
 Base (ERC-8004 agent identity / reputation) is the default and the chain the scoring API measures on. The agent-score endpoint accepts `?chain=` to select another enabled chain; an unknown or disabled chain is a 400 with the live list, never a silent fallback to a different chain.
 
-The observatory is a separate system and is not Base-only: L0 probing runs across every chain present in the public x402 discovery catalog, and https://vet402.com/observatory/state reports the current per-chain breakdown. L1 purchases run on Base and on Solana mainnet, and settlements are re-read on-chain on both: as of 2026-09-04 a Solana purchase is promoted to `settled` only on the same evidence Base requires. A purchase on any other chain stays at `settle_claimed`, because the on-chain re-read exists for these two only; it is never silently paid on a substitute chain.
+The observatory is a separate system and is not Base-only: L0 probing runs across every chain present in the public x402 discovery catalog, and https://vet402.com/observatory/state reports the current per-chain breakdown. L1 purchases run on Base and on Solana mainnet, and settlements are re-read on-chain on both: as of 2026-09-04 a Solana purchase is promoted to `settled` only on the same evidence Base requires. A purchase on any other chain stays at `settle_claimed`, because the on-chain re-read exists for Base, Solana and Arc only (Arc is a recognized purchase chain behind a lane flag); it is never silently paid on a substitute chain.
 
 ## Note on domain
 

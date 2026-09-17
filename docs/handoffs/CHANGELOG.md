@@ -13,6 +13,14 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-17 JST — Arc レーン: EVM の署名の関門を Base 固定からピン留めの表にし、Arc（eip155:5042）を旗の後ろに足した（ブランチ `feat/arc-lane`・未 push）
+
+- **何を変えたか**: (1) `x402-payer.ts` の Base 固定の関門を `EVM_PAY_CHAINS`（chainId・USDC・EIP-712 の name/version・旗）の表にした。Base の行は従来と同じ値、Arc は実測（2026-09-17 RPC: chainId 5042・USDC `0x3600…0000`・name "USDC"・version "2"・EIP-3009 あり）。`selectAccept` は「有効な行の network・その行の USDC・eip3009 か未指定・その行のドメインと矛盾しない」でだけ通し、`extra.verifyingContract` の食い違いも拒否に加えた（Circle Gateway の `GatewayWalletBatched` はここで落ちる）。署名はその行のドメインで行い、旗が off の行・表に無い network では署名しない。(2) 旗 `OBSERVATORY_ARC_L1_ENABLED`（既定 off）。off の間は Arc の endpoint を候補 SQL の段階で外し、行を書かない（Solana の旗と同じ作法）。(3) Solana の別枠を `budget.ts` の `CHAIN_DAILY_CAPS` / `chainDailyCapUnits(chain)` に一般化し、Arc に `L1_ARC_DAILY_CAP_USD`（既定 $2・共有 $25 の内側）。予約 CTE（`chain_day`）と候補の除外が同じ表を読む。別枠での拒否は従来どおり行を書かない（Reservation の理由は `solana_daily_cap` → `chain_daily_cap`）。(4) `payer-funds.ts` の `PayerChain` に `"arc"`。残高は `ARC_RPC_URL`（未設定なら公開 `https://rpc.mainnet.arc.io`）で Arc USDC の `balanceOf` を読み、読めなければ署名しない。同じ EOA でも Base と別の残高として数える。(5) `settlements/index-evm.ts` に Arc（`rpcEnv: ARC_RPC_URL`・遡り 86,400×7 ブロック・1 走査 40,000・確定 64）。env が無ければ `ARC_RPC_URL_unset` で静かに skip。scoring の CHAINS 登録簿には載せず、`src/lib/chain/arc.ts` でクライアントを組む。(6) `settlement-verify.ts` の EVM 照合を表引きに（Arc の行は chainId 5042 を名乗る RPC でだけ照合・USDC は 0x3600…・8453 なら `wrong_chain`）。表に無い EVM は `chain_not_yet_verifiable` のまま。(7) `chains.ts`: `eip155:5042`→Arc・`eip155:5042002`→Arc Testnet（testnet 集合へ）・`toCaip2("arc")`・explorer `https://explorer.arc.io/tx/`。(8) 公開面は「旗 off でも真」の文だけ: methodology §「What L1 measures」と照合の段落、/observatory/state の By chain、llms.txt、openapi の census `chain` 説明、ARCHITECTURE.md。Arc で購入が起きたとは書いていない。(9) `.env.example` に `OBSERVATORY_ARC_L1_ENABLED` / `L1_ARC_DAILY_CAP_USD` / `ARC_RPC_URL`
+- **なぜ**: Arc のメインネットが 2026-09-16 に開き、カタログに Arc の売り手（api.exa.ai の /search・/contents）が eip155:5042 で 2 つの accept（EIP-3009 と GatewayWalletBatched）を出している。Base だけの関門は Arc を `no_eligible_accept` として行に記録していた（買えないのに掃引の窓を消費する）。金を署名する経路なので、足すのは「完全一致以外は拒否」の表であって分岐ではない
+- **影響**: 既存の Base の挙動は 1 バイトも変えていない（Base のテストは全部そのまま緑）。`/decision` の facts.l1 のキー・`l2_*`・`/tokyo`・`/api/tokyo/*` は不変。上限も据え置き（1 件 $1・日次 $25・原子的予約）。**本番で Arc を動かすには** Vercel に `OBSERVATORY_ARC_L1_ENABLED=true`（と任意で `L1_ARC_DAILY_CAP_USD`・`ARC_RPC_URL`）を入れ、購入元 EOA（`0xc9c7…1670`）に Arc の USDC を入金する（ガスも USDC）。決済索引と照合は `ARC_RPC_URL` を要求する（索引は未設定なら skip、照合は公開 RPC へ倒れる）。旗が off の間、Arc の行は台帳に増えない
+
+---
+
 ## 2026-09-17 08:xx JST — ETHOnline の結果を受けて秋の3大会計画を改訂（ハッカソン戦略）
 
 - **何を変えたか**: `docs/hackathons/2026-autumn-continuity.md` に ETHOnline の結果（Bazantic 受賞・The Graph なし）、Mumbai の動詞を Validation Registry から Reputation Registry `giveFeedback` へ、参加は10月の賞の詳細を見て決める、Devcon は Mumbai に出るときだけ、Open House 締切に SGT、Colosseum 見送りを追記。`SUBMISSION_DRAFT.md` の動画時刻の差し込み記号を提出フォームと同じ「2:30 to 3:15・v1 の表のみ」に。`WINDOW_PLAN.md` の `0x6777…` の役割を訂正（賞金・グラントの受取先ではない）。コードは変えていない

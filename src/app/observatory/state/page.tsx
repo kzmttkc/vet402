@@ -290,8 +290,8 @@ export default async function ObservatoryStatePage() {
         <p className="doc-p">
           L0 observation has always been chain-agnostic and costs nothing to run, so this table
           covers every chain the public catalog lists an endpoint on — not only the chain L1
-          purchasing currently targets (Base and Solana). Mainnets only; testnet listings (Base
-          Sepolia, Solana devnet) are excluded below.
+          purchasing currently targets (Base and Solana; Arc when its lane is enabled). Mainnets
+          only; testnet listings (Base Sepolia, Solana devnet, Arc testnet) are excluded below.
         </p>
         {chainStats.length === 0 ? (
           <p className="doc-p text-brand-lift">No chain data yet.</p>

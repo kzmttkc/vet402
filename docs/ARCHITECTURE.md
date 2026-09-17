@@ -117,6 +117,13 @@ flowchart LR
 
 - **Base (EVM)**: `x402-payer.ts` — the `exact` scheme via EIP-3009 signed
   authorization. The home chain; all figures published to date are Base.
+- **Arc (EVM, Circle's stablecoin L1)**: the same `x402-payer.ts` funnel, driven
+  by a pinned table (`EVM_PAY_CHAINS`: chain id 5042, USDC `0x3600…`, EIP-712
+  domain "USDC"/"2" — measured 2026-09-17). Same EOA as Base, funded with Arc
+  USDC separately. Off by default (`OBSERVATORY_ARC_L1_ENABLED`); while off, Arc
+  candidates are excluded in SQL and no row is written. Its own $2/day cap
+  (`L1_ARC_DAILY_CAP_USD`) inside the shared $25, like Solana's. Circle Gateway's
+  `GatewayWalletBatched` accepts are refused (different signing domain).
 - **Solana**: `sol402-payer.ts` — the `exact` scheme per
   `scheme_exact_svm.md`: a partially-signed versioned transaction
   (ComputeBudget → TransferChecked → Memo) with the facilitator as sponsored

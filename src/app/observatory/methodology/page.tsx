@@ -332,8 +332,9 @@ export default async function ObservatoryMethodologyPage() {
           whose most recent L0 verdict is <code>pass</code>, prioritised by real observed demand
           (30-day payer and call counts reported by the catalog). We request unpaid first to read the <code>402</code> challenge,
           then select a payment option and refuse to proceed unless every one of these holds:
-          scheme <code>exact</code>, a network we purchase on (Base, or Solana mainnet when the
-          Solana payer is enabled), the canonical USDC asset for that network, and a price that
+          scheme <code>exact</code>, a network we purchase on (Base; Solana mainnet when the
+          Solana payer is enabled; Arc when the Arc lane is enabled), the canonical USDC asset for
+          that network, and a price that
           matches what the catalog declared when we chose the target. Any deviation — a
           different asset, a different chain, a higher price — is recorded as a refusal, never
           paid. A hard per-purchase ceiling (${MAX_PER_PURCHASE_USD.toFixed(2)}) and a daily
@@ -512,8 +513,8 @@ export default async function ObservatoryMethodologyPage() {
           — is closed: <strong>Solana settlements are now re-read on-chain</strong> by a
           Solana-specific verifier, and a Solana purchase is promoted to <code>settled</code> only
           on the same evidence Base requires. What remains open is narrower and still worth naming:
-          the re-read exists for Base and Solana only, so a purchase on any other chain would stay
-          at <code>settle_claimed</code> rather than be promoted on evidence we do not have. When
+          the re-read exists for Base, Solana and Arc only, so a purchase on any other chain would
+          stay at <code>settle_claimed</code> rather than be promoted on evidence we do not have. When
           our own RPC cannot answer, or reports a different cluster than the purchase declared, the
           row stays unverified rather than being called refuted — an instrument we could not read
           is not a finding about the seller.
