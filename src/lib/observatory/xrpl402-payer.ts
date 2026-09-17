@@ -27,15 +27,11 @@
 // ============================================================
 import { createHash } from "node:crypto";
 import { Wallet, hashes, isValidClassicAddress } from "xrpl";
-import { XRPL_MAINNET_CAIP2 } from "./chains";
-import { MAX_AUTHORIZATION_WINDOW_SECONDS, MAX_PER_PURCHASE_UNITS, type ChallengeAccept } from "./x402-payer";
+import { XRPL_MAINNET_CAIP2, toCaip2 } from "./chains";
+import { MAX_AUTHORIZATION_WINDOW_SECONDS, MAX_PER_PURCHASE_UNITS, selectAccept, type ChallengeAccept } from "./x402-payer";
+import { RLUSD_CURRENCY_HEX, RLUSD_ISSUER } from "./xrpl-constants";
 
-export { XRPL_MAINNET_CAIP2 };
-
-/** RLUSD の 40 桁 hex 通貨コード（"RLUSD" を右 0 詰め）。カタログ 1,683 accept がこの形。 */
-export const RLUSD_CURRENCY_HEX = "524C555344000000000000000000000000000000";
-/** Ripple の RLUSD 発行者（mainnet）。**固定**——壁の extra.issuer がこれと違えば署名しない。 */
-export const RLUSD_ISSUER = "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De";
+export { XRPL_MAINNET_CAIP2, RLUSD_CURRENCY_HEX, RLUSD_ISSUER };
 /** 台帳の目盛り（USDC と同じ 6 桁）。 */
 export const RLUSD_LEDGER_DECIMALS = 6;
 
@@ -167,10 +163,10 @@ export function isBuildableXrplAccept(a: ChallengeAccept): boolean {
  * 拒否語彙は EVM / Solana の selectAccept と同じ順序（payTo → 価格 → 上限）。
  * 通貨は RLUSD かつ発行者が固定値、network は xrpl:0、scheme は exact に限る。
  */
-export function selectXrplAccept(
-  accepts: readonly unknown[],
-  options: { declaredAmount: string | null; declaredPayTo: string | null },
-): XrplAcceptSelection {
+type XrplRefusalDetail = "asset_not_usd" | "asset_unsupported" | "issuer_mismatch" | "unbuildable" | null;
+
+/** 署名できる XRPL の RLUSD accept（scheme・network 完全一致・RLUSD・固定発行者・組める形）と、無いときの内訳。 */
+function xrplProtocolEligible(accepts: readonly unknown[]): { eligible: ChallengeAccept[]; detail: XrplRefusalDetail } {
   const onXrpl = (accepts as ChallengeAccept[])
     .filter((a) => a && typeof a === "object")
     .filter((a) => a.scheme === "exact")
@@ -178,20 +174,28 @@ export function selectXrplAccept(
     .filter((a) => isXrplNetwork(a));
   const rlusd = onXrpl.filter((a) => isRlusdAsset(a.asset));
   const pinnedIssuer = rlusd.filter((a) => issuerOf(a) === RLUSD_ISSUER);
-  const protocolEligible = pinnedIssuer.filter((a) => isBuildableXrplAccept(a));
+  const eligible = pinnedIssuer.filter((a) => isBuildableXrplAccept(a));
+  if (eligible.length > 0) return { eligible, detail: null };
+  const detail: XrplRefusalDetail =
+    pinnedIssuer.length > 0
+      ? "unbuildable"
+      : rlusd.length > 0
+        ? "issuer_mismatch"
+        : onXrpl.some((a) => a.asset.toUpperCase() === "XRP")
+          ? "asset_not_usd"
+          : onXrpl.length > 0
+            ? "asset_unsupported"
+            : null;
+  return { eligible: [], detail };
+}
 
+export function selectXrplAccept(
+  accepts: readonly unknown[],
+  options: { declaredAmount: string | null; declaredPayTo: string | null },
+): XrplAcceptSelection {
+  const { eligible: protocolEligible, detail: refusalDetail } = xrplProtocolEligible(accepts);
   if (protocolEligible.length === 0) {
-    const detail =
-      pinnedIssuer.length > 0
-        ? "unbuildable"
-        : rlusd.length > 0
-          ? "issuer_mismatch"
-          : onXrpl.some((a) => a.asset.toUpperCase() === "XRP")
-            ? "asset_not_usd"
-            : onXrpl.length > 0
-              ? "asset_unsupported"
-              : null;
-    return { accept: null, reason: "no_eligible_accept", detail };
+    return { accept: null, reason: "no_eligible_accept", detail: refusalDetail };
   }
 
   // r アドレスは base58 で大文字小文字が同一性を担うが、L0 と同じく比較は大小を問わない
@@ -219,6 +223,87 @@ export function selectXrplAccept(
     return { accept: null, reason: "price_mismatch", detail: null };
   }
   return { accept: null, reason: "no_eligible_accept", detail: null };
+}
+
+/**
+ * **2 番目以降の accept** としての XRPL（2026-09-18）。本番の実測: XRPL を主ネットワーク（e.network = xrpl:0）に
+ * する稼働中エンドポイントは 1 件だけで、約 1,600 件は Base が先頭・XRPL の RLUSD accept は raw_accepts の
+ * 2 番目以降に居る。Arc の lane accept 優先（x402-payer.selectAccept・レビュー C1/C3/N1）と同じ規律を XRPL の形で置く:
+ *
+ *   - **レーンとして優先された候補だけ**（lanePreferred）。主候補から XRPL レールへは入れない。
+ *   - payTo は **カタログの raw_accepts が宣言した XRPL の RLUSD accept の payTo**（declaredXrplPayTos）と完全一致。
+ *     カタログの pay_to は Base の 0x アドレスで r アドレスとは比べられない。宣言に無い r アドレスへは払わない。
+ *   - 宣言額（カタログ先頭 accept の額・基本単位の整数）の免除は、次が全部そろったときだけ:
+ *       宣言 network の accept が壁にあり、それ自体が宣言どおり払える（EVM の selectAccept が通る）・
+ *       宣言 network は XRPL ではない・宣言額が正の整数として読める・レーンとして優先された。
+ *     免除された accept は min(3 × 宣言額, $1) 以下（"0.01" を 6 桁 units に直して比べる）。
+ *   - 免除されない accept は宣言額と **units で一致** しなければ price_mismatch（宣言額が読めなければ常に不一致）。
+ *   - $1 の絶対上限は常に掛かる。
+ * null を返したら呼び手は従来どおり EVM の selectAccept（Base）へ落ちる。
+ */
+export function selectXrplSecondaryAccept(
+  accepts: readonly unknown[],
+  options: {
+    /** カタログの宣言額（e.price_amount）。先頭 accept（e.network）の基本単位の整数文字列。 */
+    declaredAmount: string | null;
+    /** カタログの宣言 network（e.network）。 */
+    declaredNetwork: string | null;
+    /** カタログの pay_to（宣言 network 側の受取先）。宣言 network の accept が払えるかの判定にだけ使う。 */
+    declaredPayTo: string | null;
+    /** カタログの raw_accepts にある XRPL（xrpl:0・RLUSD・固定発行者）accept の payTo。 */
+    declaredXrplPayTos: readonly string[];
+    /** レーン枠（laneHead）由来で、別枠が開いていて、この endpoint に XRPL の決済主張も非決済も無い。 */
+    lanePreferred: boolean;
+  },
+): XrplAcceptSelection {
+  if (!options.lanePreferred) return { accept: null, reason: "no_eligible_accept", detail: null };
+  const { eligible: protocolEligible, detail } = xrplProtocolEligible(accepts);
+  if (protocolEligible.length === 0) return { accept: null, reason: "no_eligible_accept", detail };
+
+  // r アドレスは大文字小文字が同一性を担う。宣言との照合は完全一致（寄せない）。
+  const declaredPayTos = new Set(options.declaredXrplPayTos);
+  const eligible = protocolEligible.filter((a) => declaredPayTos.has(a.payTo));
+  if (eligible.length === 0) return { accept: null, reason: "payto_mismatch", detail: null };
+
+  const declaredUnits = ((): bigint | null => {
+    if (options.declaredAmount === null || !/^\d+$/.test(options.declaredAmount)) return null;
+    const v = BigInt(options.declaredAmount);
+    return v > 0n ? v : null;
+  })();
+  // 宣言 network の accept が壁にあり、宣言どおり（payTo・額・ドメイン）払えること。
+  const declaredLeg =
+    options.declaredNetwork === null || options.declaredNetwork === XRPL_MAINNET_CAIP2
+      ? null
+      : selectAccept(accepts, {
+          declaredAmount: options.declaredAmount,
+          declaredPayTo: options.declaredPayTo,
+          declaredNetwork: options.declaredNetwork,
+        }).accept;
+  // selectAccept は並び順で最初に通った accept を返す。それが **宣言 network のもの** でなければ、カタログが
+  // 値付けした accept が壁にあるとは言えない（"base-mainnet" のような寄せられない表記も免除しない）。
+  const declaredLegOnDeclaredNetwork = declaredLeg !== null && declaredLeg.network === toCaip2(options.declaredNetwork);
+  const exempt = declaredUnits !== null && declaredLegOnDeclaredNetwork;
+  const relativeCap =
+    declaredUnits === null ? 0n : declaredUnits * 3n < MAX_PER_PURCHASE_UNITS ? declaredUnits * 3n : MAX_PER_PURCHASE_UNITS;
+
+  let sawOverCap = false;
+  for (const accept of eligible) {
+    const units = rlusdToUnits(accept.amount)!;
+    if (units > MAX_PER_PURCHASE_UNITS) {
+      sawOverCap = true;
+      continue;
+    }
+    if (exempt) {
+      if (units > relativeCap) {
+        sawOverCap = true;
+        continue;
+      }
+    } else if (declaredUnits === null || units !== declaredUnits) {
+      continue;
+    }
+    return { accept, reason: null, detail: null, amountUnits: units };
+  }
+  return { accept: null, reason: sawOverCap ? "over_cap" : "price_mismatch", detail: null };
 }
 
 // ------------------------------------------------------------
