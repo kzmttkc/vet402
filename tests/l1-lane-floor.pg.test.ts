@@ -197,8 +197,8 @@ if (!TEST_DB) {
       assert.equal(paid.filter(isSol).length, SOL_COUNT, "Solana は 3 件ちょうど（重複しない）");
       assert.equal(paid.filter((u) => !isSol(u)).length, 10, "主候補の LIMIT 10 は減らない（Base 10 件）");
       assert.equal(summary.attempted, 13);
-      // Tempo レーン（2026-09-17・MPP）は旗 off なので 0（レーンの表に居るぶん、鍵だけは出る）。
-      assert.deepEqual(summary.laneFloor, { solana: 3, arc: 0, tempo: 0 });
+      // Tempo レーン（2026-09-17・MPP）と XRPL レーン（feat/xrpl-lane）は旗 off なので 0（レーンの表に居るぶん、鍵だけは出る）。
+      assert.deepEqual(summary.laneFloor, { solana: 3, arc: 0, tempo: 0, xrpl: 0 });
       assert.equal(await solanaRows(), SOL_COUNT);
     });
 
