@@ -305,10 +305,29 @@ if (!TEST_DB) {
       // model/2 の学習済み受取先を消す（L0 は pass のまま）
       await db.execute(sql`UPDATE x402_endpoints SET pay_to = NULL, payee_id = NULL WHERE resource_url = 'https://fal.mpp.tempo.example/model/2'`);
       const w = wall();
-      await runL1Batch({ getPayerUsdcBalance: FUNDED, limit: 10, fetchImpl: w.fetchImpl, mppxCharge });
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED, limit: 10, fetchImpl: w.fetchImpl, mppxCharge });
       assert.ok(!w.seen.some((s) => s.url.includes("/model/2")), "no request at all to the endpoint without a learned recipient");
       assert.deepEqual(await ledgerFor("https://fal.mpp.tempo.example/model/2"), []);
       assert.ok(w.seen.some((s) => s.url.includes("/model/1") && s.paid), "the endpoint with a learned recipient is still bought");
+      // レーン枠（laneFloorCandidates・同じ targetsSql）にも同じ規則が効く: Tempo の枠は model/1 の 1 件だけ
+      assert.equal(summary.laneFloor.tempo, 1, `lane floor counted ${JSON.stringify(summary.laneFloor)}`);
+      // Tempo のレーンは主候補の先頭に来る（最初の要求が Tempo）
+      assert.ok(w.seen[0]?.url.includes("fal.mpp.tempo.example"), `first request was ${w.seen[0]?.url}`);
+    });
+
+    await t.test("lane floor: with the flag on, both learned Tempo endpoints sit at the head of the batch; with the flag off the Tempo floor is 0", async () => {
+      await seed();
+      process.env.OBSERVATORY_TEMPO_L1_ENABLED = "true";
+      const on = wall();
+      const s1 = await runL1Batch({ getPayerUsdcBalance: FUNDED, limit: 10, fetchImpl: on.fetchImpl, mppxCharge });
+      assert.equal(s1.laneFloor.tempo, 2);
+      assert.ok(on.seen[0]?.url.includes("fal.mpp.tempo.example"));
+      await seed();
+      delete process.env.OBSERVATORY_TEMPO_L1_ENABLED;
+      const off = wall();
+      const s2 = await runL1Batch({ getPayerUsdcBalance: FUNDED, limit: 10, fetchImpl: off.fetchImpl, mppxCharge });
+      assert.equal(s2.laneFloor.tempo, 0);
+      assert.ok(off.seen.every((s) => !s.url.includes("fal.mpp.tempo.example")));
     });
 
     await t.test("selection: a wall charging other than declared is recorded as price_mismatch, never paid", async () => {
