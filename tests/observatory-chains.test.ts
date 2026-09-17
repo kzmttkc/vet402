@@ -137,3 +137,8 @@ test("chainLabel: Arc mainnet and testnet resolve to their names; toCaip2 accept
   assert.equal(isTestnet("eip155:5042"), false);
   assert.equal(explorerTxUrl("eip155:5042", `0x${"ab".repeat(32)}`), `https://explorer.arc.io/tx/0x${"ab".repeat(32)}`);
 });
+
+test("eip155:4663 is Robinhood Chain (measured eth_chainId 0x1237); IoTeX is 4689 (0x1251)", () => {
+  assert.equal(chainLabel("eip155:4663"), "Robinhood Chain");
+  assert.equal(chainLabel("eip155:4689"), "IoTeX");
+});

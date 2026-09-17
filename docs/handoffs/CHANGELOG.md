@@ -21,6 +21,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 - **影響**: 既存の Base の挙動は 1 バイトも変えていない（Base のテストは全部そのまま緑）。`/decision` の facts.l1 のキー・`l2_*`・`/tokyo`・`/api/tokyo/*` は不変。上限も据え置き（1 件 $1・日次 $25・原子的予約）。**本番で Arc を動かすには** Vercel に `OBSERVATORY_ARC_L1_ENABLED=true`（と任意で `L1_ARC_DAILY_CAP_USD`・`ARC_RPC_URL`）を入れ、購入元 EOA（`0xc9c7…1670`）に Arc の USDC を入金する（ガスも USDC）。決済索引と照合は `ARC_RPC_URL` を要求する（索引は未設定なら skip、照合は公開 RPC へ倒れる）。旗が off の間、Arc の行は台帳に増えない
 
 ---
+## 2026-09-17 21:0x JST — eip155:4663 のラベルを "IoTeX" から "Robinhood Chain" へ（vet402.com コア）
+
+- **何を**: `src/lib/observatory/chains.ts` の `eip155:4663` を "Robinhood Chain" に直し、`eip155:4689` を "IoTeX" として追加。テスト 1 件。
+- **なぜ**: RPC の `eth_chainId` で実測: `https://rpc.mainnet.chain.robinhood.com` → `0x1237`（4663）、`https://babel-api.mainnet.iotex.io` → `0x1251`（4689）。本番カタログで 4663 を accept に含む稼働中エンドポイントは 822 件（29 ホスト・受取人 12。ほぼ 2 番目以降の accept。主ネットワーク行は廃止済みの 1 件）。決済索引 0・購入 0。
+- **影響**: 公開面のチェーン名（state・endpoint 頁・census の by chain）で 4663 が「Robinhood Chain」と出る。数字は変わらない。RWA セッション（branch rwa-v0・`/rwa`）には触っていない。
 
 ## 2026-09-17 08:xx JST — ETHOnline の結果を受けて秋の3大会計画を改訂（ハッカソン戦略）
 

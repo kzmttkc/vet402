@@ -18,12 +18,16 @@ const KNOWN: Record<string, string> = {
   "eip155:42161": "Arbitrum",
   "eip155:137": "Polygon",
   "eip155:196": "X Layer",
-  "eip155:4663": "IoTeX",
   // Arc（Circle のステーブルコイン L1）。実測 2026-09-17（RPC）: mainnet 5042・testnet 5042002。
   "eip155:5042": "Arc",
   arc: "Arc",
   "eip155:5042002": "Arc Testnet",
   "arc-testnet": "Arc Testnet",
+  // 2026-09-17: 4663 は Robinhood Chain（Arbitrum Orbit・本番網）。RPC の eth_chainId で実測
+  // （https://rpc.mainnet.chain.robinhood.com → 0x1237、IoTeX https://babel-api.mainnet.iotex.io → 0x1251=4689）。
+  // それまで "IoTeX" と誤表示していた（稼働中 822 件が 2 番目以降の accept で宣言）。
+  "eip155:4663": "Robinhood Chain",
+  "eip155:4689": "IoTeX",
 };
 
 /** Solana genesis hashes (case-sensitive base58) — lower-casing would corrupt them, so match separately. */
