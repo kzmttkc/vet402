@@ -139,6 +139,8 @@ export type EvmIndexSummary = {
   partial?: boolean;
   checkpoint?: string;
   skippedKnown?: number;
+  /** 額を decode できず行にしなかった transfer log の数（event 宣言と実物のずれの fail-loud）。 */
+  undecodable?: number;
   /** 走査後もチェックポイントが安全な先端から 1 日ぶん以上遅れているとき、その差（ブロック）。 */
   lagBlocks?: string;
 };
@@ -301,7 +303,16 @@ export async function indexEvmChain(
         if (seenTx.has(key)) continue;
         seenTx.add(key);
       }
-      merged.push({ transactionHash: l.transactionHash, blockNumber: l.blockNumber, args: { from: l.args.from, to: l.args.to, value: l.args.value ?? l.args.amount ?? 0n } });
+      // 額を decode できなかった log は行にしない（fail-loud）。2026-09-18: event の宣言が実物とずれると
+      // viem は例外を出さず args から amount を落とすだけで、ここが `?? 0n` のままだと **額 0 の決済行**が
+      // 黙って書かれる（memo を非 indexed と決めつけていた 2026-09-17 の宣言がまさにその形だった）。
+      const value = l.args.value ?? l.args.amount;
+      if (typeof value !== "bigint") {
+        summary.undecodable = (summary.undecodable ?? 0) + 1;
+        logServerError("settlements.index_evm.undecodable_log", new Error(`${chain.caip2} ${l.transactionHash}: transfer log decoded without an amount`));
+        continue;
+      }
+      merged.push({ transactionHash: l.transactionHash, blockNumber: l.blockNumber, args: { from: l.args.from, to: l.args.to, value } });
     }
     const sorted = merged.sort((a, b) =>
       a.blockNumber < b.blockNumber ? -1 : a.blockNumber > b.blockNumber ? 1 : 0,

@@ -9,7 +9,9 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { EVM_INDEX_CHAINS, evmIndexLag, isEvmChainIndexable, perChainBudgetMs } from "@/lib/settlements/index-evm";
+import { EVM_INDEX_CHAINS, TRANSFER_WITH_MEMO_EVENT, evmIndexLag, isEvmChainIndexable, perChainBudgetMs } from "@/lib/settlements/index-evm";
+import { decodeEventLog } from "viem";
+import { readFileSync } from "node:fs";
 import { ARC_CHAIN_ID, ARC_USDC_ADDRESS } from "@/lib/chain/arc";
 
 const byId = (id: number) => EVM_INDEX_CHAINS.find((c) => c.chainId === id);
@@ -130,3 +132,30 @@ test("Arc builds its own client (it is not in the scoring chain registry, so get
     else process.env.ARC_RPC_URL = saved;
   }
 });
+
+// ---- Tempo の TransferWithMemo の宣言（2026-09-18・本番の receipt で実測）----
+test("TransferWithMemo is declared with an INDEXED memo and decodes the production log (tx 0xbd1049ed…95e8)", () => {
+  const memoInput = TRANSFER_WITH_MEMO_EVENT.inputs.find((i) => i.name === "memo");
+  assert.equal(memoInput?.indexed, true, "memo is topics[3] on Tempo; a non-indexed declaration drops amount and memo from args");
+  const p32 = (a: string) => `0x${"0".repeat(24)}${a.slice(2)}` as `0x${string}`;
+  const decoded = decodeEventLog({
+    abi: [TRANSFER_WITH_MEMO_EVENT],
+    topics: [
+      "0x57bc7354aa85aed339e000bccffabbc529466af35f0772c8f8ee1145927de7f0",
+      p32("0xc9c7b38c0942914fc8ea12063bc92dcd3b581670"),
+      p32("0xca4e835f803cb0b7c428222b3a3b98518d4779fe"),
+      "0xef1ed712018bdbf8cc304c4816750e6065bcf287cc18ca700fbeb5c7584f9206",
+    ],
+    data: `0x${(40_000n).toString(16).padStart(64, "0")}`,
+  });
+  const args = decoded.args as { amount: bigint; memo: string };
+  assert.equal(args.amount, 40_000n);
+  assert.equal(args.memo, "0xef1ed712018bdbf8cc304c4816750e6065bcf287cc18ca700fbeb5c7584f9206");
+});
+
+test("a transfer log decoded without an amount is not written as a zero-amount row (source check: no `?? 0n`)", () => {
+  const src = readFileSync("src/lib/settlements/index-evm.ts", "utf8");
+  assert.ok(!/args\.amount \?\? 0n/.test(src), "the silent `?? 0n` fallback must not come back");
+  assert.match(src, /undecodable_log/);
+});
+
