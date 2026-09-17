@@ -414,19 +414,26 @@ export function selectAccept(
   const declaredNetwork =
     options.declaredNetwork === undefined || options.declaredNetwork === null ? null : normalizeNetwork(options.declaredNetwork);
   const declaredPresent = declaredNetwork !== null && eligible.some((a) => a.network === declaredNetwork);
+  // 再レビュー N1（2026-09-17）: 宣言額が**正の整数として読めない**（"0" / "0.01" / "1e4" / 負）
+  // ときは免除しない。読めない宣言額では相対上限（3 倍）を組めず、免除だけが残って別チェーンの
+  // accept が $1 まで通っていた（C1 と同じ「生の文字列が parse できないと関門が消える」型）。
+  const declaredUnits = ((): bigint | null => {
+    if (options.declaredAmount === null) return null;
+    try {
+      const v = BigInt(options.declaredAmount);
+      return v > 0n ? v : null;
+    } catch {
+      return null;
+    }
+  })();
   const exemptFromDeclaredPrice = (a: ChallengeAccept): boolean =>
-    declaredPresent && a.network !== declaredNetwork && preferred.has(a.network);
+    declaredUnits !== null && declaredPresent && a.network !== declaredNetwork && preferred.has(a.network);
   const priceDeclaredFor = (a: ChallengeAccept): boolean => options.declaredAmount !== null && !exemptFromDeclaredPrice(a);
   /** Ceiling for an exempt (other-chain, preferred) accept: 3 × the declared price, never above the hard cap. */
   const relativeCapUnits = ((): bigint => {
-    if (options.declaredAmount === null) return MAX_PER_PURCHASE_UNITS;
-    try {
-      const declared = BigInt(options.declaredAmount);
-      const triple = declared * 3n;
-      return declared > 0n && triple < MAX_PER_PURCHASE_UNITS ? triple : MAX_PER_PURCHASE_UNITS;
-    } catch {
-      return MAX_PER_PURCHASE_UNITS;
-    }
+    if (declaredUnits === null) return MAX_PER_PURCHASE_UNITS; // 免除自体が効かないので使われない
+    const triple = declaredUnits * 3n;
+    return triple < MAX_PER_PURCHASE_UNITS ? triple : MAX_PER_PURCHASE_UNITS;
   })();
   const overRelativeCap = (a: ChallengeAccept, amount: bigint): boolean =>
     options.declaredAmount !== null && exemptFromDeclaredPrice(a) && amount > relativeCapUnits;

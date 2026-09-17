@@ -158,3 +158,19 @@ test("preferNetworks は payTo とドメインの関門を緩めない", () => {
     assert.equal(unknownPref.accept?.network, BASE_CAIP2, "優先先に eligible が無ければ従来の並び");
   });
 });
+
+
+test("N1: 宣言額が正の整数として読めない（\"0\" / \"0.01\" / \"1e4\" / \"-7000\"）なら免除しない → price_mismatch", () => {
+  withArc(true, () => {
+    for (const declared of ["0", "0.01", "1e4", "-7000"]) {
+      // L0 を通る形: 壁の Base accept はカタログと同じ文字列、そこへ Arc の $1 を並べる
+      const chosen = selectAccept(
+        [{ ...BASE, amount: declared }, { ...ARC, amount: "1000000" }],
+        { declaredAmount: declared, declaredPayTo: null, declaredNetwork: BASE_CAIP2, preferNetworks: [ARC_CAIP2] },
+      );
+      assert.equal(chosen.accept, null, `declared ${JSON.stringify(declared)} must not pay`);
+      assert.equal(chosen.reason, "price_mismatch", `declared ${JSON.stringify(declared)}`);
+    }
+  });
+});
+
