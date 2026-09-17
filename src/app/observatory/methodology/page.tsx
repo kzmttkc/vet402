@@ -344,6 +344,22 @@ export default async function ObservatoryMethodologyPage() {
           is live money the moment it exists.
         </p>
         <p className="doc-p">
+          <strong>Tempo (MPP).</strong> Tempo has no x402 wall. Services listed in the MPP directory
+          (mpp.dev) answer <code>402</code> with a <code>WWW-Authenticate: Payment</code> challenge —
+          the Machine Payments Protocol (Stripe + Tempo). Since 2026-09-17 the catalog carries those
+          endpoints under the source <code>mpp_directory</code>, and L0 records the challenge as
+          dialect <code>mpp</code>: a pass requires a <code>tempo</code>/<code>charge</code> challenge
+          on chain <code>eip155:4217</code>, in USDC.e, at the price the directory declared, naming a
+          valid recipient (the directory lists no recipient; L0 learns it from the challenge). L1
+          purchases on Tempo have not yet been made: the Tempo payer ships behind a flag that is off,
+          so no Tempo endpoint has been bought and no Tempo settlement has been re-read on-chain.
+          When the flag is turned on, the same ceilings apply (${MAX_PER_PURCHASE_USD.toFixed(2)} per
+          purchase, the shared ${DAILY_BUDGET_USD} per UTC day, and a $2 per UTC day lane for Tempo)
+          together with the same refusal funnel: anything other than a tempo/charge challenge on
+          4217 in USDC.e, at the declared price, to the recipient L0 learned, is refused before the
+          budget is reserved.
+        </p>
+        <p className="doc-p">
           <strong>We buy under our own name.</strong> Every request in this pipeline &mdash; the
           unpaid L0 probe, the unpaid read of the <code>402</code> challenge, and the paid request
           itself &mdash; carries a <code>User-Agent</code> that says who we are and links back to

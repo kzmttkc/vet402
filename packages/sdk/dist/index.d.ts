@@ -295,7 +295,7 @@ export declare const DEFAULT_REQUEST_TIMEOUT_MS = 10000;
  */
 export type DecisionRecommendation = "ALLOW" | "WARN" | "BLOCK";
 export type L0Status = "pass" | "fail" | "unverified";
-export type Dialect = "v1" | "v2" | "both" | "unpayable";
+export type Dialect = "v1" | "v2" | "both" | "unpayable" | "mpp";
 export type L2Status = "conform" | "mismatch" | "undeclared";
 export type OfferStability = "stable" | "drifting" | "unknown";
 /** §8.1 売り手事実（role=payer の facts）。スコアも判定も含まない。 */
