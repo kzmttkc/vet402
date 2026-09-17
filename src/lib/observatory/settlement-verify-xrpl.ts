@@ -87,7 +87,13 @@ export async function verifyXrplSettlement(
     return { ok: false, reason: "nonce_not_used", detail: `claimed ${hash} is not the blob we signed (${expectedHash})`.slice(0, 200) };
   }
 
-  const rpc = deps?.rpc ?? createXrplJsonRpc();
+  let rpc: XrplRpc;
+  try {
+    rpc = deps?.rpc ?? createXrplJsonRpc();
+  } catch (error) {
+    // XRPL_RPC_URL 未設定。公開 RPC へ黙って倒れない（Solana と同じ・TRANSIENT）。
+    return unavailable(String(error));
+  }
 
   // いま読んでいるのは本当に mainnet か（network_id 無し = 0 = mainnet）。
   try {

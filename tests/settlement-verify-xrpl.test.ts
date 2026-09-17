@@ -123,6 +123,19 @@ test("恒久の否定: 失敗 tx / 宛先違い / 払い元違い / XRP で届�
   assert.equal((await verifyXrplSettlement(input(), { rpc: fakeRpc({ tx: txDoc({}, { delivered_amount: { currency: RLUSD_CURRENCY_HEX, issuer: RLUSD_ISSUER, value: "0.02" } }) }) })).ok, true);
 });
 
+test("XRPL_RPC_URL 未設定なら公開 RPC へ倒れず rpc_unavailable（レビュー #2）", async () => {
+  const saved = process.env.XRPL_RPC_URL;
+  delete process.env.XRPL_RPC_URL;
+  try {
+    const r = await verifyXrplSettlement(input());
+    assert.equal(!r.ok && r.reason, "rpc_unavailable");
+    assert.match((!r.ok && r.detail) || "", /xrpl_rpc_unset/);
+  } finally {
+    if (saved === undefined) delete process.env.XRPL_RPC_URL;
+    else process.env.XRPL_RPC_URL = saved;
+  }
+});
+
 test("readXrplTxResponse: API v1（最上位）と v2（tx_json）の両方を読む", () => {
   const v1 = readXrplTxResponse(txDoc());
   assert.equal(v1.tx.Destination, PAYEE);

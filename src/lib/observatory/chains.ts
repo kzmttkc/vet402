@@ -39,6 +39,9 @@ const KNOWN: Record<string, string> = {
   "xrpl:2": "XRPL Devnet",
 };
 
+/** XRPL mainnet の CAIP-2（NetworkID 0）。台帳・別枠・照合はこの完全一致だけを XRPL と扱う（2026-09-17 レビュー #1）。 */
+export const XRPL_MAINNET_CAIP2 = "xrpl:0";
+
 /** Solana genesis hashes (case-sensitive base58) — lower-casing would corrupt them, so match separately. */
 const SOLANA_MAINNET_GENESIS = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
 const SOLANA_DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1";

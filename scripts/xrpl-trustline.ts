@@ -33,17 +33,24 @@ import {
   createXrplJsonRpc,
   getAccountSequence,
   getValidatedLedgerIndex,
+  XRPL_RPC_URL_DEFAULT,
   unitsToRlusdValue,
-  xrplRpcUrl,
   type XrplRpc,
 } from "../src/lib/observatory/xrpl402-payer";
+
+/** この script だけが公開ノードへ倒れてよい（署名器・照合器・索引は XRPL_RPC_URL 必須）。 */
+const RPC_URL = process.env.XRPL_RPC_URL?.trim() || XRPL_RPC_URL_DEFAULT;
 
 /** TrustSet の tfSetNoRipple（発行者を経由した rippling を止める、一般的な設定）。 */
 const TF_SET_NO_RIPPLE = 0x00020000;
 
+/** `--flag value`。flag があるのに値が無い／別の flag が続くときは黙って null にせず止める（2026-09-17 レビュー #7b）。 */
 function argValue(flag: string): string | null {
   const i = process.argv.indexOf(flag);
-  return i >= 0 && process.argv[i + 1] !== undefined ? process.argv[i + 1] : null;
+  if (i < 0) return null;
+  const v = process.argv[i + 1];
+  if (v === undefined || v.startsWith("--")) throw new Error(`${flag} needs a value (e.g. ${flag} 8)`);
+  return v;
 }
 
 /** submit 済みの tx が validated になるまで最大 30 秒待ち、meta を返す。 */
@@ -60,14 +67,16 @@ async function waitValidated(rpc: XrplRpc, hash: string): Promise<Record<string,
   return null;
 }
 
-async function swapXrp(rpc: XrplRpc, wallet: Wallet, xrp: string, opts: { dryRun: boolean; yes: boolean }): Promise<void> {
+async function swapXrp(rpc: XrplRpc, wallet: Wallet, xrp: string, opts: { dryRun: boolean; yes: boolean; pendingTrustLines?: number }): Promise<void> {
   const swapDrops = xrpToDrops(xrp);
   if (swapDrops === null) throw new Error(`--swap-xrp is not a positive XRP amount (6 decimals): ${xrp}`);
 
-  // 事前検査は trust line を張った **後** の OwnerCount で。
+  // 事前検査は trust line を張った **後** の OwnerCount で。dry-run で TrustSet を送っていないときは
+  // その分（pendingTrustLines）を足して見る（2026-09-17 レビュー #7a）。
   const info = await rpc("account_info", { account: wallet.classicAddress, ledger_index: "validated" });
   const data = info.account_data as { Balance: string; OwnerCount: number };
-  const pre = swapPreflight({ balanceDrops: BigInt(data.Balance), ownerCount: data.OwnerCount ?? 0, swapDrops });
+  const ownerCount = (data.OwnerCount ?? 0) + (opts.pendingTrustLines ?? 0);
+  const pre = swapPreflight({ balanceDrops: BigInt(data.Balance), ownerCount, swapDrops });
   console.log(JSON.stringify({ swap: "preflight", balanceXrp: dropsToXrp(BigInt(data.Balance)), reserveXrp: dropsToXrp(pre.reserveDrops), spendableXrp: dropsToXrp(pre.spendableDrops), swapXrp: xrp, ok: pre.ok }));
   if (!pre.ok) throw new Error(`insufficient XRP: spendable ${dropsToXrp(pre.spendableDrops)} < swap ${xrp}`);
 
@@ -126,8 +135,8 @@ async function main() {
   const limit = process.env.TRUST_LIMIT?.trim() || "100";
   if (!/^\d+(\.\d+)?$/.test(limit)) throw new Error(`TRUST_LIMIT is not a decimal: ${limit}`);
   const wallet = Wallet.fromSeed(seed);
-  const rpc = createXrplJsonRpc({ url: xrplRpcUrl(), timeoutMs: 15_000 });
-  console.log(JSON.stringify({ address: wallet.classicAddress, rpc: xrplRpcUrl(), issuer: RLUSD_ISSUER, limit }));
+  const rpc = createXrplJsonRpc({ url: RPC_URL, timeoutMs: 15_000 });
+  console.log(JSON.stringify({ address: wallet.classicAddress, rpc: RPC_URL, issuer: RLUSD_ISSUER, limit }));
 
   const info = await rpc("account_info", { account: wallet.classicAddress, ledger_index: "validated" });
   const data = info.account_data as { Balance: string; OwnerCount: number; Sequence: number };
@@ -159,7 +168,8 @@ async function main() {
   };
   if (dryRun) {
     console.log(JSON.stringify({ dryRun: true, tx }));
-    if (swapXrpAmount !== null) await swapXrp(rpc, wallet, swapXrpAmount, { dryRun, yes });
+    // TrustSet はまだ送っていないので、交換の事前検査は「trust line 1 本ぶんの準備金が増えた後」で見る。
+    if (swapXrpAmount !== null) await swapXrp(rpc, wallet, swapXrpAmount, { dryRun, yes, pendingTrustLines: 1 });
     return;
   }
   const signed = wallet.sign(tx);

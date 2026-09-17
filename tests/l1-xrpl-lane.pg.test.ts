@@ -5,6 +5,8 @@
 //  1. OBSERVATORY_XRPL_L1_ENABLED が "true" でなければ、XRPL の候補には 1 リクエストも出さず行も書かない。
 //  2. 有効なら、支払い付きリクエストは PAYMENT-SIGNATURE を運び、payload.signedTxBlob が decode できる
 //     RLUSD Payment。行には network / asset / pay_to / amount_units（"0.01" → 10000）/ auth_nonce（blob の hash）。
+//     **1 バッチ 1 件**: 2 件目以降の XRPL 候補は署名されず、行も書かれない（Sequence の衝突を作らない・レビュー #2）。
+//  2b. 壁が network を `xrpl` と名乗れば選ばない（行は no_eligible_accept・network は書かない・レビュー #1）。
 //  3. その UTC 日の XRPL 支出が別枠（既定 $2）に達したら XRPL には触れない。Base は買う。
 //     残りが 1 件分に足りないときは予約で断り、行を書かない。
 //  4. 購入元の RLUSD が足りない／XRP が手数料に足りない（読み手が throw）なら署名せず、行を書かない。
@@ -89,10 +91,13 @@ if (!TEST_DB) {
         extensions: { bazaar: { info: { input: { method: "GET" } } } },
         quality: { l30DaysTotalCalls: 5000, l30DaysUniquePayers: 500 },
       });
+    /** 壁が名乗る network（2b の回帰で "xrpl" に切り替える）。 */
+    let wallNetwork = "xrpl:0";
     const challengeDoc = (url: string) => {
       if (url.includes("xrplseller")) {
         const n = Number(/xrplseller(\d)/.exec(url)?.[1] ?? "1");
-        return { x402Version: 2, accepts: [xrplAccept(n), { ...xrplAccept(n), asset: "XRP", amount: "10000", extra: { invoiceId: `INV${n}`, sourceTag: 804681468 } }] };
+        const a = { ...xrplAccept(n), network: wallNetwork };
+        return { x402Version: 2, accepts: [a, { ...a, asset: "XRP", amount: "10000", extra: { invoiceId: `INV${n}`, sourceTag: 804681468 } }] };
       }
       const n = /seller(\d)/.exec(url)?.[1] ?? "1";
       return { x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:8453", amount: "3000", asset: BASE_USDC, payTo: payToFor(n), maxTimeoutSeconds: 300, extra: { name: "USD Coin", version: "2" } }] };
@@ -187,7 +192,7 @@ if (!TEST_DB) {
       const w = wall();
       const summary = await runL1Batch({ limit: 10, fetchImpl: w.fetchImpl, getPayerUsdcBalance: FUNDED, getXrplSigningInputs: SIGNING });
       const paid = w.seen.filter((s) => s.url.includes("xrplseller") && s.paid);
-      assert.ok(paid.length >= 1, "XRPL の候補を支払い付きで買う");
+      assert.equal(paid.length, 1, "XRPL は 1 バッチ 1 件だけ署名する（2 件目は候補選択で外れる）");
       for (const p of paid) {
         const body = JSON.parse(Buffer.from(p.header!, "base64").toString("utf8"));
         assert.equal(body.x402Version, 2);
@@ -204,7 +209,7 @@ if (!TEST_DB) {
         assert.equal(typeof tx.TxnSignature, "string");
       }
       const rows = (await Promise.all([1, 2, 3].map((n) => ledgerFor(`https://xrplseller${n}.example/api`)))).flat();
-      assert.ok(rows.length >= 1);
+      assert.equal(rows.length, 1, "2 件目以降の XRPL 候補には行を書かない");
       for (const r of rows) {
         assert.equal(r.status, "settle_claimed");
         assert.equal(r.network, "xrpl:0");
@@ -220,6 +225,26 @@ if (!TEST_DB) {
       const s = ((Array.isArray(spent) ? spent : (spent as { rows?: unknown[] }).rows ?? []) as { s: string }[])[0].s;
       assert.ok(Number(s) <= 2_000_000, `XRPL の当日支出は別枠以内 (${s})`);
       assert.ok(summary.settled >= 1);
+    });
+
+    await t.test("壁が network を `xrpl` と名乗れば選ばない: 支払い付きは出ず、行は no_eligible_accept で network を書かない", async () => {
+      process.env.OBSERVATORY_XRPL_L1_ENABLED = "true";
+      await seed();
+      wallNetwork = "xrpl";
+      try {
+        const w = wall();
+        await runL1Batch({ limit: 10, fetchImpl: w.fetchImpl, getPayerUsdcBalance: FUNDED, getXrplSigningInputs: SIGNING });
+        assert.ok(!w.seen.some((s) => s.url.includes("xrplseller") && s.paid), "XRPL へ支払い付きは出ない");
+        const rows = (await Promise.all([1, 2, 3].map((n) => ledgerFor(`https://xrplseller${n}.example/api`)))).flat();
+        assert.equal(rows.length, 3, "3 件とも署名前に断られた行になる（1 バッチ 1 件は署名した後にだけ効く）");
+        for (const r of rows) {
+          assert.equal(r.status, "no_eligible_accept");
+          assert.equal(r.network, null, "壁の表記を台帳に書かない");
+          assert.equal(r.spent_units, "0");
+        }
+      } finally {
+        wallNetwork = "xrpl:0";
+      }
     });
 
     await t.test("別枠を使い切った日は XRPL に触れず、残りが 1 件分に足りないときは予約で断って行を書かない", async () => {

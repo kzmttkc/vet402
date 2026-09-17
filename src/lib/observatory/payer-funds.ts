@@ -109,6 +109,7 @@ export const defaultPayerUsdcBalance: PayerUsdcBalanceReader = async ({ chain, o
   if (chain === "tempo") return await readTempoUsdcBalance(owner);
   if (chain === "xrpl") {
     const { XRPL_FEE_DROPS, createXrplJsonRpc, getRlusdBalanceUnits, getXrpSpendableDrops } = await import("./xrpl402-payer");
+    // XRPL_RPC_URL 未設定は createXrplJsonRpc が throw → 「読めない」＝署名しない（base/solana と同じ）。
     const rpc = createXrplJsonRpc();
     const [rlusd, spendable] = await Promise.all([getRlusdBalanceUnits(owner, rpc), getXrpSpendableDrops(owner, rpc)]);
     if (spendable < BigInt(XRPL_FEE_DROPS)) {

@@ -33,9 +33,9 @@ async function main() {
     const l1 = await ingestL1();
     const payments = await ingestPayments({ classifier });
     const evm = await indexEvm({ budgetMs: Math.floor(budgetMs * 0.75), classifier });
-    const solana = await indexSolana({ budgetMs: Math.floor(budgetMs * 0.2), classifier });
-    // XRPL（2026-09-17）: XRPL_RPC_URL が無ければ no-op。
-    const xrpl = await indexXrpl({ budgetMs: Math.floor(budgetMs * 0.05), classifier });
+    const solana = await indexSolana({ budgetMs: Math.floor(budgetMs * 0.25), classifier });
+    // XRPL（2026-09-17）: XRPL_RPC_URL が無ければ no-op。既存レーンの取り分は減らさず、lease の余裕（60 秒）の内側に置く。
+    const xrpl = await indexXrpl({ budgetMs: Math.min(Math.floor(budgetMs * 0.04), 45_000), classifier });
     // 2026-09-04 監査 P2: 索引を更新した**あと**に、遅れて決済された settle_failed を
     // 拾って tx へ結びつける（settled とは名乗らせない——照合器が決める）。
     const lateSettlements = await recoverLateSettlements();

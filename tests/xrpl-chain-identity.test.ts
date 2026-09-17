@@ -44,6 +44,8 @@ test("party id / purchase id: r アドレスと hash は小文字化しない。
   assert.equal(payeeId("xrpl:0", "rMnHeutYALco8RYFVcmuU4BCgSzBpPEh32"), "xrpl:0:rMnHeutYALco8RYFVcmuU4BCgSzBpPEh32");
   assert.equal(payeeId("xrpl:mainnet", "rMnHeutYALco8RYFVcmuU4BCgSzBpPEh32"), "xrpl:0:rMnHeutYALco8RYFVcmuU4BCgSzBpPEh32");
   assert.equal(purchaseId("xrpl:0", HASH), `xrpl:0:${HASH}`);
+  assert.equal(purchaseId("xrpl:0", HASH.toLowerCase()), purchaseId("xrpl:0", HASH), "tx hash の大小で settlements を 2 行にしない（レビュー #3）");
+  assert.equal(purchaseId("xrpl:mainnet", HASH.toLowerCase()), `xrpl:0:${HASH}`);
   assert.deepEqual(parsePartyId("xrpl:0:rMnHeutYALco8RYFVcmuU4BCgSzBpPEh32"), { chain: "xrpl:0", address: "rMnHeutYALco8RYFVcmuU4BCgSzBpPEh32" });
 });
 

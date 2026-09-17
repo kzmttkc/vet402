@@ -122,6 +122,13 @@ export function extractRlusdDelivery(entry: XrplAccountTxEntry, payee: string): 
   };
 }
 
+/** 走査後に保存する ledger。純関数（テストで固定）。 */
+export function checkpointAfterRun(input: { complete: boolean; maxLedger: bigint; previous: bigint }): bigint {
+  if (input.complete) return input.maxLedger;
+  const beforeLast = input.maxLedger - 1n;
+  return beforeLast > input.previous ? beforeLast : input.previous;
+}
+
 /** 印のある受取は x402 由来（受取先が 1 つのカタログ endpoint に落ちなくても probable）、印が無ければ unmatched。 */
 export function xrplAttribution(marked: boolean, resolved: Attribution): Attribution {
   if (!marked) return "unmatched";
@@ -148,7 +155,11 @@ export async function runXrplIndex(
     }
     const scope = scopeOf(payee);
     try {
-      const cp = (await deps.getCheckpoint(scope)) ?? { lastLedger: 0n };
+      const saved = await deps.getCheckpoint(scope);
+      const cp = saved ?? { lastLedger: 0n };
+      // 初回は -1（そのノードが持つ最古の ledger）。`1` は full-history でない公開ノードで lgrIdxsInvalid になる
+      // （2026-09-17 レビュー #5）。2 回目以降はチェックポイント + 1。
+      const ledgerIndexMin = saved === null ? -1 : Number(cp.lastLedger) + 1;
       let maxLedger = cp.lastLedger;
       let marker: unknown = undefined;
       let pages = 0;
@@ -159,7 +170,7 @@ export async function runXrplIndex(
           cut = true;
           break;
         }
-        const page = await deps.rpc.accountTx(payee, { ledgerIndexMin: Number(cp.lastLedger) + 1, limit: XRPL_PAGE_LIMIT, marker });
+        const page = await deps.rpc.accountTx(payee, { ledgerIndexMin, limit: XRPL_PAGE_LIMIT, marker });
         pages++;
         for (const entry of page.transactions) {
           if (overBudget()) {
@@ -189,8 +200,10 @@ export async function runXrplIndex(
       if (!complete) {
         logServerError("settlements.index-xrpl.page_cap", new Error(`payee ${payee}: more than ${XRPL_MAX_PAGES_PER_PAYEE * XRPL_PAGE_LIMIT} transactions in one run; the rest continues next run`));
       }
-      // 完走した受取先だけ前進。取引 0 件でも触れて updated_at を進める（飢餓防止）。
-      await deps.setCheckpoint(scope, { lastLedger: maxLedger });
+      // 完走した受取先はそのまま前進。ページ上限で打ち切った受取先は、最後に見た ledger の **1 つ手前** まで
+      // （同じ ledger の残りを次回読み直す。upsert は冪等）。手前がチェックポイント以下なら進めない
+      // （2026-09-17 レビュー #4）。取引 0 件でも触れて updated_at を進める（飢餓防止）。
+      await deps.setCheckpoint(scope, { lastLedger: checkpointAfterRun({ complete, maxLedger, previous: cp.lastLedger }) });
     } catch (error) {
       summary.errors++;
       logServerError(`settlements.index-xrpl payee=${payee}`, error);

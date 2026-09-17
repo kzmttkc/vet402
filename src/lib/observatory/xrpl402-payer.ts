@@ -27,10 +27,10 @@
 // ============================================================
 import { createHash } from "node:crypto";
 import { Wallet, hashes, isValidClassicAddress } from "xrpl";
-import { toCaip2 } from "./chains";
+import { XRPL_MAINNET_CAIP2 } from "./chains";
 import { MAX_AUTHORIZATION_WINDOW_SECONDS, MAX_PER_PURCHASE_UNITS, type ChallengeAccept } from "./x402-payer";
 
-export const XRPL_MAINNET_CAIP2 = "xrpl:0";
+export { XRPL_MAINNET_CAIP2 };
 
 /** RLUSD の 40 桁 hex 通貨コード（"RLUSD" を右 0 詰め）。カタログ 1,683 accept がこの形。 */
 export const RLUSD_CURRENCY_HEX = "524C555344000000000000000000000000000000";
@@ -39,14 +39,17 @@ export const RLUSD_ISSUER = "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De";
 /** 台帳の目盛り（USDC と同じ 6 桁）。 */
 export const RLUSD_LEDGER_DECIMALS = 6;
 
-/** 手数料（drops）。基本手数料 10 drops に余裕を持たせた固定値。 */
+/** 手数料（drops）。基本手数料 10 drops に余裕を持たせた既定値（`fee` が読めないときの値）。 */
 export const XRPL_FEE_DROPS = "12";
+/** ネットワークの open_ledger_fee を採用するときの上限（drops）。混雑時でも 0.001 XRP 以上は払わない（2026-09-17 レビュー #6）。 */
+export const XRPL_FEE_CAP_DROPS = 1_000n;
 /** アカウントの基本準備金と、オブジェクト（trust line 等）1 つあたりの追加準備金（drops・2026-09-17 実測）。 */
 export const XRPL_RESERVE_BASE_DROPS = 1_000_000n;
 export const XRPL_RESERVE_INC_DROPS = 200_000n;
 /** ledger の close 間隔の見積もり（秒）。LastLedgerSequence の幅をこれで秒から引く。 */
 export const XRPL_LEDGER_INTERVAL_SECONDS = 4;
 
+/** 公開ノード。**運用者がローカルで打つ script だけ**がこれへ倒れる（署名器・照合器・索引は XRPL_RPC_URL 必須）。 */
 export const XRPL_RPC_URL_DEFAULT = "https://s1.ripple.com:51234/";
 
 export function isXrplL1Enabled(): boolean {
@@ -119,8 +122,13 @@ export type XrplAcceptSelection =
       detail: "asset_not_usd" | "asset_unsupported" | "issuer_mismatch" | "unbuildable" | null;
     };
 
+/**
+ * network は **完全一致**（Solana と同じ・2026-09-17 レビュー #1）。`xrpl` / `XRPL` / `xrpl:mainnet` と名乗る壁は
+ * 選ばない——寄せて選ぶと台帳に原文が書かれ、別枠の `LIKE 'xrpl:%'` を素通りし、照合が wrong_chain で止まる。
+ * 表記の寄せ（toCaip2）は L0 の表示・索引の受取先集めにだけ使う。
+ */
 function isXrplNetwork(a: ChallengeAccept): boolean {
-  return toCaip2(a.network) === XRPL_MAINNET_CAIP2;
+  return a.network === XRPL_MAINNET_CAIP2;
 }
 
 export function isRlusdAsset(asset: string): boolean {
@@ -258,8 +266,14 @@ export function buildXrplPayment(input: {
   accept: ChallengeAccept;
   sequence: number;
   validatedLedgerIndex: number;
+  /** drops。省略時 XRPL_FEE_DROPS。呼び手は clampFeeDrops を通した値を渡す。 */
+  feeDrops?: string;
 }): XrplPaymentTx {
   const { account, accept, sequence, validatedLedgerIndex } = input;
+  const feeDrops = input.feeDrops ?? XRPL_FEE_DROPS;
+  if (!/^\d+$/.test(feeDrops) || BigInt(feeDrops) <= 0n || BigInt(feeDrops) > XRPL_FEE_CAP_DROPS) {
+    throw new Error(`xrpl402: fee ${feeDrops} drops is outside (0, ${XRPL_FEE_CAP_DROPS}]`);
+  }
   if (!isRlusdAsset(accept.asset) || issuerOf(accept) !== RLUSD_ISSUER) {
     throw new Error("xrpl402: accept is not RLUSD from the pinned issuer");
   }
@@ -275,8 +289,8 @@ export function buildXrplPayment(input: {
     Account: account,
     Destination: accept.payTo,
     Amount: amount,
-    SendMax: amount,
-    Fee: XRPL_FEE_DROPS,
+    SendMax: { ...amount },
+    Fee: feeDrops,
     Sequence: sequence,
     LastLedgerSequence: validatedLedgerIndex + lastLedgerOffset(accept.maxTimeoutSeconds),
     InvoiceID: invoiceIdField(invoiceId),
@@ -299,8 +313,11 @@ export function signXrplPayment(wallet: Wallet, tx: XrplPaymentTx): { signedTxBl
 // ------------------------------------------------------------
 export type XrplRpc = (method: string, params: Record<string, unknown>) => Promise<Record<string, unknown>>;
 
+/** XRPL_RPC_URL。未設定は throw（base/solana と同じく、公開 RPC へ無言で倒れない・2026-09-17 レビュー #2）。 */
 export function xrplRpcUrl(): string {
-  return process.env.XRPL_RPC_URL?.trim() || XRPL_RPC_URL_DEFAULT;
+  const url = process.env.XRPL_RPC_URL?.trim();
+  if (!url) throw new Error("xrpl_rpc_unset: set XRPL_RPC_URL before enabling the XRPL lane");
+  return url;
 }
 
 export function createXrplJsonRpc(options: { url?: string; fetchImpl?: typeof fetch; timeoutMs?: number } = {}): XrplRpc {
@@ -334,6 +351,27 @@ export function createXrplJsonRpc(options: { url?: string; fetchImpl?: typeof fe
 function asNumber(v: unknown, what: string): number {
   if (typeof v !== "number" || !Number.isFinite(v)) throw new Error(`xrpl_rpc_malformed: ${what}`);
   return v;
+}
+
+/**
+ * `fee` の open_ledger_fee（drops）を、(0, XRPL_FEE_CAP_DROPS] に収めて採用する。読めない・0・上限超は既定へ倒す
+ * （上限超で既定に倒すのは「払いすぎない」側——その tx は混雑中に落ちるだけで、金は動かない）。純関数。
+ */
+export function clampFeeDrops(raw: unknown): string {
+  if (typeof raw !== "string" || !/^\d+$/.test(raw)) return XRPL_FEE_DROPS;
+  const v = BigInt(raw);
+  if (v <= 0n || v > XRPL_FEE_CAP_DROPS) return XRPL_FEE_DROPS;
+  return v < BigInt(XRPL_FEE_DROPS) ? XRPL_FEE_DROPS : v.toString();
+}
+
+/** `fee` を 1 回読む。失敗は既定 12 drops（fail-closed の向きが「払いすぎない」なので throw しない）。 */
+export async function getNetworkFeeDrops(rpc: XrplRpc): Promise<string> {
+  try {
+    const r = await rpc("fee", {});
+    return clampFeeDrops((r.drops as { open_ledger_fee?: unknown } | undefined)?.open_ledger_fee);
+  } catch {
+    return XRPL_FEE_DROPS;
+  }
 }
 
 /** account_info（validated）の Sequence。ticket は使わない（正本の "sequence" 方式）。 */

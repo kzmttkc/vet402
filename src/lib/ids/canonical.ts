@@ -95,7 +95,10 @@ export const payerId = payeeId;
 
 export function purchaseId(chain: string, txHash: string): string {
   const caip2 = toCaip2(chain) ?? chain;
-  return `${caip2}:${caip2.startsWith("eip155:") ? txHash.toLowerCase() : txHash}`;
+  // XRPL の tx hash は hex（ノードは大文字・売り手は小文字で返しうる）。大文字に寄せて同じ tx を 2 行にしない
+  // （2026-09-17 レビュー #3・index-xrpl.ts と同じ正規化）。
+  const tx = caip2.startsWith("eip155:") ? txHash.toLowerCase() : caip2.startsWith("xrpl:") ? txHash.toUpperCase() : txHash;
+  return `${caip2}:${tx}`;
 }
 
 export function observationId(resourceIdHex: string, observedAtIso: string, probeType: "L0" | "L1" | "L2"): string {

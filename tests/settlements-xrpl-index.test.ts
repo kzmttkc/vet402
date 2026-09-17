@@ -9,7 +9,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   XRPL_CHECKPOINT_SCOPE_PREFIX,
+  XRPL_MAX_PAGES_PER_PAYEE,
   XRPL_X402_SOURCE_TAG,
+  checkpointAfterRun,
   extractRlusdDelivery,
   isX402Marked,
   runXrplIndex,
@@ -49,9 +51,11 @@ function fakeRpc(all: XrplAccountTxEntry[]) {
   const rpc: XrplIndexRpc = {
     async accountTx(account, opts) {
       calls.push({ account, ledgerIndexMin: opts.ledgerIndexMin, marker: opts.marker });
+      // -1 = そのノードが持つ最古の ledger（本物と同じ意味）
+      const min = opts.ledgerIndexMin === -1 ? 0 : opts.ledgerIndexMin;
       const sorted = all
         .filter((e) => e.tx!.Destination === account || e.tx!.Account === account)
-        .filter((e) => (e.tx!.ledger_index as number) >= opts.ledgerIndexMin)
+        .filter((e) => (e.tx!.ledger_index as number) >= min)
         .sort((a, b) => (a.tx!.ledger_index as number) - (b.tx!.ledger_index as number));
       const start = typeof opts.marker === "number" ? opts.marker : 0;
       const slice = sorted.slice(start, start + opts.limit);
@@ -122,7 +126,7 @@ test("ページを辿って全件を記録し、チェックポイントが最�
   assert.equal(first.inserted, 5);
   assert.equal(first.transactions, 5);
   assert.equal(calls.length, 3, "2 件ずつ 3 ページ");
-  assert.equal(calls[0].ledgerIndexMin, 1, "初回は ledger 1 から");
+  assert.equal(calls[0].ledgerIndexMin, -1, "初回は -1（ノードが持つ最古の ledger）。1 は full-history でないノードで lgrIdxsInvalid（レビュー #5）");
   assert.equal(s.checkpoints.get(`${XRPL_CHECKPOINT_SCOPE_PREFIX}${PAYEE}`)?.lastLedger, 99_000_005n);
 
   all.push(entry(6, { tx: { SourceTag: XRPL_X402_SOURCE_TAG } }));
@@ -140,6 +144,26 @@ test("XRP 建て・失敗 tx は数えるが記録しない。取引 0 件でも
   assert.equal(summary.transactions, 2);
   assert.equal(summary.payees, 2);
   assert.ok(s.checkpoints.has(`${XRPL_CHECKPOINT_SCOPE_PREFIX}${OTHER}`), "取引の無い受取先も触れる（飢餓防止）");
+});
+
+test("ページ上限で打ち切った受取先は最後に見た ledger の 1 つ手前まで進め、次回その ledger を読み直す（レビュー #4）", async () => {
+  const n = XRPL_MAX_PAGES_PER_PAYEE + 2; // 1 ページ 1 件で上限を 2 件超える
+  const all = Array.from({ length: n }, (_, i) => entry(i + 1));
+  const { rpc } = fakeRpc(all);
+  const s = store([PAYEE]);
+  const first = await runXrplIndex(s.deps(rpc, 1));
+  assert.equal(first.inserted, XRPL_MAX_PAGES_PER_PAYEE);
+  const cp = s.checkpoints.get(`${XRPL_CHECKPOINT_SCOPE_PREFIX}${PAYEE}`)!.lastLedger;
+  assert.equal(cp, BigInt(99_000_000 + XRPL_MAX_PAGES_PER_PAYEE - 1), "最後に見た ledger の 1 つ手前");
+  const second = await runXrplIndex(s.deps(rpc, 1));
+  // 前回最後に見た ledger（読み直し）+ 残り 2 件
+  assert.equal(second.inserted, 3);
+  assert.equal(s.checkpoints.get(`${XRPL_CHECKPOINT_SCOPE_PREFIX}${PAYEE}`)!.lastLedger, BigInt(99_000_000 + n));
+  // 純関数: 完走はそのまま、打ち切りは 1 つ手前、手前が前回以下なら進めない
+  assert.equal(checkpointAfterRun({ complete: true, maxLedger: 10n, previous: 3n }), 10n);
+  assert.equal(checkpointAfterRun({ complete: false, maxLedger: 10n, previous: 3n }), 9n);
+  assert.equal(checkpointAfterRun({ complete: false, maxLedger: 4n, previous: 3n }), 3n);
+  assert.equal(checkpointAfterRun({ complete: false, maxLedger: 3n, previous: 3n }), 3n);
 });
 
 test("締切で途中終了した受取先はチェックポイントを進めない", async () => {

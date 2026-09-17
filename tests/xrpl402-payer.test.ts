@@ -16,8 +16,10 @@ import { Wallet, decode, hashes } from "xrpl";
 import {
   RLUSD_CURRENCY_HEX,
   RLUSD_ISSUER,
+  XRPL_FEE_CAP_DROPS,
   XRPL_MAINNET_CAIP2,
   buildXrplPayment,
+  clampFeeDrops,
   invoiceIdField,
   lastLedgerOffset,
   rlusdToUnits,
@@ -75,8 +77,28 @@ test("selectXrplAccept: 実物の壁（RLUSD + XRP）から RLUSD を選ぶ。un
   assert.equal(sel.accept && "amountUnits" in sel ? sel.amountUnits : null, 10_000n);
   // カタログの宣言が別表記でも同じ額なら通る
   assert.equal(selectXrplAccept([RLUSD_ACCEPT], { declaredAmount: "0.010", declaredPayTo: null }).reason, null);
-  // 非標準の network 表記（xrpl:mainnet）も mainnet として読む
-  assert.equal(selectXrplAccept([{ ...RLUSD_ACCEPT, network: "xrpl:mainnet" }], { declaredAmount: null, declaredPayTo: null }).reason, null);
+});
+
+test("selectXrplAccept: network は完全一致。`xrpl` / `XRPL` / `xrpl:mainnet` と名乗る壁は選ばない（レビュー #1）", () => {
+  for (const network of ["xrpl", "XRPL", "xrpl:mainnet", "Xrpl:0", "xrpl:1"]) {
+    const sel = selectXrplAccept([{ ...RLUSD_ACCEPT, network }], { declaredAmount: "0.01", declaredPayTo: RLUSD_ACCEPT.payTo });
+    assert.equal(sel.reason, "no_eligible_accept", network);
+    assert.equal(sel.detail, null, network);
+  }
+  assert.equal(selectXrplAccept([{ ...RLUSD_ACCEPT, network: XRPL_MAINNET_CAIP2 }], { declaredAmount: null, declaredPayTo: null }).accept?.network, "xrpl:0");
+});
+
+test("clampFeeDrops: fee の open_ledger_fee を (12, 1000] に収める。読めない・0・上限超は 12（レビュー #6）", () => {
+  assert.equal(XRPL_FEE_CAP_DROPS, 1_000n);
+  assert.equal(clampFeeDrops("10"), "12", "基本手数料より下は既定へ");
+  assert.equal(clampFeeDrops("12"), "12");
+  assert.equal(clampFeeDrops("250"), "250");
+  assert.equal(clampFeeDrops("1000"), "1000");
+  assert.equal(clampFeeDrops("1001"), "12", "上限超は払わず既定へ");
+  assert.equal(clampFeeDrops("0"), "12");
+  assert.equal(clampFeeDrops(undefined), "12");
+  assert.equal(clampFeeDrops("abc"), "12");
+  assert.equal(clampFeeDrops(12), "12");
 });
 
 test("selectXrplAccept: XRP だけの壁は v1 では払わない（no_eligible_accept / asset_not_usd）", () => {
@@ -142,7 +164,11 @@ test("buildXrplPayment: 正本の Payment の形・決定的・LastLedgerSequenc
   assert.equal(tx.Destination, RLUSD_ACCEPT.payTo);
   assert.deepEqual(tx.Amount, { currency: RLUSD_CURRENCY_HEX, issuer: RLUSD_ISSUER, value: "0.01" });
   assert.deepEqual(tx.SendMax, tx.Amount);
+  assert.notEqual(tx.SendMax, tx.Amount, "Amount と SendMax は別オブジェクト（レビュー #7c）");
   assert.equal(tx.Fee, "12");
+  assert.equal(buildXrplPayment({ account: WALLET.classicAddress, accept: RLUSD_ACCEPT, sequence: 1, validatedLedgerIndex: 1, feeDrops: "250" }).Fee, "250");
+  assert.throws(() => buildXrplPayment({ account: WALLET.classicAddress, accept: RLUSD_ACCEPT, sequence: 1, validatedLedgerIndex: 1, feeDrops: "1001" }), /fee/);
+  assert.throws(() => buildXrplPayment({ account: WALLET.classicAddress, accept: RLUSD_ACCEPT, sequence: 1, validatedLedgerIndex: 1, feeDrops: "0" }), /fee/);
   assert.equal(tx.Sequence, 42);
   assert.equal(tx.SourceTag, 804681468);
   assert.equal(tx.InvoiceID, invoiceIdField("9ACC8E92BFAA468E8E02F67F82FFBEDB"));
