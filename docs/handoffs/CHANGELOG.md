@@ -18,6 +18,7 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 - **何を**: `src/lib/observatory/settlement-verify-tempo.ts` は `TransferWithMemo` の memo を **topics[3]**（indexed）から読む（data の 2 語目の形も読めるまま）。`src/lib/settlements/index-evm.ts` の event 宣言を `bytes32 indexed memo` に。テストの fixture を本番の receipt（`0xbd1049ed…95e8`）の形に直し、実物 1 件をそのまま固定。`/corrections` に 2026-09-18 の訂正を追加。
 - **なぜ**: 本番の実測。Tempo の初購入 2 件（aviationstack `0x0883…12f5` $0.005・fal `0xbd10…95e8` $0.04）はオンチェーンで成立（status 1・購入元→受取先・額一致・我々の memo）していたが、照合器が memo を data の 2 語目と決めつけていて `nonce_not_used` → `settle_claim_refuted`（2026-09-17T18:45Z）。売り手への冤罪。テストの log の形は実物を読まずに想定で書いたものだった。
 - **影響**: 出荷後に該当 2 行を `settle_claimed`・`settlement_verified = NULL` へ戻して再照合する（本番 DB の手当て・この節に結果を追記）。Tempo の決済索引は TransferWithMemo を decode できるようになる（MPP 帰属の memo が入る）。Base・Arc・Solana・XRPL の照合は不変。索引は、額を decode できない transfer log を行にせず `undecodable` に数えて `settlements.index_evm.undecodable_log` をログする（旧宣言では額 0 の行が黙って書かれる形だった）。
+- **再照合の結果（2026-09-17T22:02Z・本番）**: 修正が本番に出た後（deploy `04b4edb`）、該当 2 行を `settle_claimed`・`settlement_verified = NULL` に戻し、`/api/cron/verify-settlements` を 1 回実行。応答 `scanned 5 / verified 3 / refuted 0 / deferred 2`。2 行とも `settled`・`settlement_verified = true` になった: `0x0883890465be42c6309786c62defb67917e521c6a70252bc6bbeaede264112f5`（block 39957104）、`0xbd1049edadb1b676fe51f65246b2b919ffb677ebff10a3d8a3ea6241aede95e8`（block 39973670）。`settle_claim_refuted` の Tempo 行は 0 件。
 
 ## 2026-09-18 JST — XRPL の secondary accept: Base が先頭・XRPL の RLUSD accept が 2 番目以降の行を XRPL のレーンで買う（ブランチ `feat/xrpl-secondary-accept`・未 push・独立レビュー待ち）
 
