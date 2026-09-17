@@ -35,7 +35,7 @@ import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { readBodyCapped } from "@/lib/net/read-capped";
 import { UnsafeTargetError, createSafeFetchImpl, type SafeFetchCallOptions } from "@/lib/net/safe-fetch";
 import { createDeadline } from "@/lib/util/deadline";
-import { CHAIN_DAILY_CAPS, cappedChainFor, chainDailyCapUnits, checkL1Budget, isL1Enabled, DAILY_BUDGET_USD, type CappedChain } from "./budget";
+import { CHAIN_DAILY_CAPS, cappedChainFor, chainDailyCapUnits, checkL1Budget, isL1Enabled, laneFloorPerRun, DAILY_BUDGET_USD, type CappedChain } from "./budget";
 import { isSpendingHalted, type HaltVerdict } from "./kill-switch";
 import { addDerivedOperatorAddresses, isOperatorPayTo, operatorPayToDenylist } from "./operator";
 import {
@@ -99,6 +99,12 @@ export type L1BatchSummary = {
    * サーバログ（observatory.l1.payer_unfunded）だけが資金切れを知らせる。
    */
   payerUnfunded: number;
+  /**
+   * チェーンごとの候補の最低枠（2026-09-17・budget.ts laneFloorPerRun）で主候補の先頭に置いた
+   * 件数。別枠を持つレーン（CHAIN_DAILY_CAPS）だけが鍵になる。旗が off・別枠が尽きた・候補が
+   * 無い日は 0。購入の可否は従来の経路（デッドライン・別枠・残高・原子的予約）がそのまま決める。
+   */
+  laneFloor: Partial<Record<CappedChain, number>>;
 };
 
 type Candidate = {
@@ -623,6 +629,7 @@ export async function runL1Batch(
     haltReason: null,
     disabledReason: null,
     payerUnfunded: 0,
+    laneFloor: {},
   };
 
   // 1. Master switches — fail-closed before any network traffic.
@@ -768,7 +775,7 @@ export async function runL1Batch(
     : sql``;
   // 候補 SQL は settlement_daily を読む（C2 の 30 日窓が生行の保持期間へ縮まないため）。
   // 表がまだ無い環境では生行だけの式へ落とす（withDailyFallback）。
-  const targetsSql = (daily: boolean) => sql`
+  const targetsSql = (daily: boolean, lane?: { networkLike: string; limit: number }) => sql`
     SELECT e.id, e.resource_url, e.method, e.price_amount, e.pay_to, e.network, e.declared_schema,
            (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS is_priority,
            (${settledCountSql(sql`e.id`)} >= ${MATURE_SETTLED_MIN}) AS is_mature
@@ -793,6 +800,7 @@ export async function runL1Batch(
       AND ${notPathTemplateSql()}
       ${onlyEndpointId ? sql`AND e.id = ${onlyEndpointId}::uuid` : sql``}
       ${sql.join(laneExclusions, sql` `)}
+      ${lane ? sql`AND e.network LIKE ${lane.networkLike}` : sql``}
       ${selfExclusion}
       ${
         // 初回購入の枠を使い切った日は、購入行がまだ無いエンドポイントを外す
@@ -855,7 +863,7 @@ export async function runL1Batch(
              (NOT EXISTS (SELECT 1 FROM x402_l1_purchases np WHERE np.endpoint_id = e.id)) DESC,
              (e.resource_key ILIKE ANY(${prioritySqlArray()})) DESC,
              e.quality_payers_30d DESC NULLS LAST, e.quality_calls_30d DESC NULLS LAST
-    LIMIT ${limit}
+    LIMIT ${lane?.limit ?? limit}
   `;
   const rawTargets = await withDailyFallback(
     async () => await db.execute(targetsSql(true)),
@@ -864,17 +872,31 @@ export async function runL1Batch(
   const targetList = (Array.isArray(rawTargets)
     ? rawTargets
     : (rawTargets as { rows?: unknown[] }).rows ?? []) as Record<string, unknown>[];
-  const candidates: Candidate[] = targetList.map((r) => ({
-    id: String(r.id),
-    resourceUrl: String(r.resource_url),
-    method: (r.method as string | null) ?? null,
-    priceAmount: (r.price_amount as string | null) ?? null,
-    payTo: (r.pay_to as string | null) ?? null,
-    network: (r.network as string | null) ?? null,
-    declaredSchema: r.declared_schema ?? null,
-    isPriority: r.is_priority === true,
-    isMature: r.is_mature === true,
-  }));
+  let candidates: Candidate[] = targetList.map(rowToCandidate);
+
+  // 3.5 チェーンごとの候補の最低枠（2026-09-17・budget.ts laneFloorPerRun）。需要順の主候補は
+  //     EVM の未購入の裾野に埋まり、Solana（候補 204・未購入 192）は別枠 $2 を一度も使い切れずに
+  //     1 件/日だった。別枠を持つレーンごとに、同じ WHERE で network を絞った候補を先頭に置く。
+  //     主候補の LIMIT は減らさない（Base の候補は毎回 20 件以上残す）。旗が off・別枠が尽きた
+  //     レーンは laneExclusions が同じ WHERE で外すので、ここでも 0 行。playground の 1 件指定
+  //     （onlyEndpointId）では枠を使わない。
+  const laneHead = await laneFloorCandidates({
+    lanes,
+    floor: onlyEndpointId ? 0 : laneFloorPerRun(),
+    fetchLane: async (chain, laneLimit) => {
+      const lane = { networkLike: CHAIN_DAILY_CAPS[chain].networkLike, limit: laneLimit };
+      return await withDailyFallback(
+        async () => await db.execute(targetsSql(true, lane)),
+        async () => await db.execute(targetsSql(false, lane)),
+      );
+    },
+  });
+  summary.laneFloor = laneHead.counts;
+  if (laneHead.head.length > 0) {
+    // 主候補にも入っていた行は先頭へ移す（同じ売り手を 1 回のバッチで 2 度買わない）。
+    const headIds = new Set(laneHead.head.map((c) => c.id));
+    candidates = [...laneHead.head, ...candidates.filter((c) => !headIds.has(c.id))];
+  }
 
   // 購入元残高の関門（2026-09-17 Issue #29）。チェーンごとに 1 バッチ 1 回だけ読み、
   // 読めなければ署名しない側へ倒す。ログはチェーンごとに 1 回。
@@ -936,6 +958,63 @@ export async function runL1Batch(
   }
 
   return summary;
+}
+
+/** 候補 SQL の 1 行 → Candidate（主候補とレーン枠の候補が同じ形になるように共有）。 */
+function rowToCandidate(r: Record<string, unknown>): Candidate {
+  return {
+    id: String(r.id),
+    resourceUrl: String(r.resource_url),
+    method: (r.method as string | null) ?? null,
+    priceAmount: (r.price_amount as string | null) ?? null,
+    payTo: (r.pay_to as string | null) ?? null,
+    network: (r.network as string | null) ?? null,
+    declaredSchema: r.declared_schema ?? null,
+    isPriority: r.is_priority === true,
+    isMature: r.is_mature === true,
+  };
+}
+
+/**
+ * チェーンごとの候補の最低枠（2026-09-17）。別枠を持つレーン（CHAIN_DAILY_CAPS の表）を順に
+ * 回し、有効なレーンごとに最大 `floor` 件を取って主候補の先頭に置く行を返す。
+ *
+ *  - レーン同士は id で重複排除する。主候補との重複は呼び手が主候補側から抜く（先頭へ移す）。
+ *  - 旗が off（`ready` でない）レーンは問い合わせない。別枠が尽きたレーンは候補 SQL の
+ *    laneExclusions が同じ WHERE で外すので 0 行になる（行は書かない・従来どおり除外）。
+ *  - 1 レーンの問い合わせが失敗しても、バッチは止めない（枠は並びの補助であって金の関門では
+ *    ない）。ログに残して 0 件として続ける。
+ *  - 購入の可否はここでは決めない。返した候補は主候補と同じく purchaseOne を通り、デッドライン・
+ *    別枠・残高・原子的予約の関門をそのまま受ける。
+ */
+export async function laneFloorCandidates(input: {
+  lanes: readonly { chain: CappedChain; ready: boolean }[];
+  floor: number;
+  fetchLane: (chain: CappedChain, limit: number) => Promise<unknown>;
+}): Promise<{ head: Candidate[]; counts: Partial<Record<CappedChain, number>> }> {
+  const head: Candidate[] = [];
+  const counts: Partial<Record<CappedChain, number>> = {};
+  const seen = new Set<string>();
+  for (const lane of input.lanes) {
+    counts[lane.chain] = 0;
+    if (!lane.ready || input.floor <= 0) continue;
+    let rows: Record<string, unknown>[] = [];
+    try {
+      const raw = await input.fetchLane(lane.chain, input.floor);
+      rows = (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as Record<string, unknown>[];
+    } catch (error) {
+      if (!isMissingSchemaError(error)) logServerError(`observatory.l1.lane_floor_${lane.chain}`, error);
+      continue;
+    }
+    for (const row of rows) {
+      const candidate = rowToCandidate(row);
+      if (seen.has(candidate.id)) continue;
+      seen.add(candidate.id);
+      head.push(candidate);
+      counts[lane.chain] = (counts[lane.chain] ?? 0) + 1;
+    }
+  }
+  return { head, counts };
 }
 
 async function purchaseOne(input: {

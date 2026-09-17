@@ -74,6 +74,32 @@ export function solanaDailyCapUnits(): bigint {
   return chainDailyCapUnits("solana");
 }
 
+/**
+ * チェーンごとの候補の最低枠（per-lane floor・2026-09-17）。
+ *
+ * 候補 SQL は需要順（quality_payers_30d, quality_calls_30d）で 1 回 LIMIT 100 を取るが、cron が
+ * 300 秒で実際に処理できるのは 20〜30 件。Solana は候補 204 件（未購入 192）あっても需要順で
+ * EVM の未購入 7,898 件に負け、$2 の別枠を一度も使い切れずに 1 件/日（9/17 は 0 件）だった。
+ * Arc も同じ理由で自然には選ばれない。そこで CHAIN_DAILY_CAPS の各レーンにつき、同じ WHERE で
+ * `network LIKE` を足した候補を最大この件数だけ主候補の**先頭**に置く（l1-runner）。
+ *
+ * 上限 20 は「Base の候補を毎回 20 件以上残す」ため（cron 1 回 ≒ 20〜30 件のうち、レーン 2 本
+ * × 既定 5 = 10 件が上限側で先に走る）。デッドライン・別枠・残高・原子的予約は従来の経路のまま。
+ * 環境変数 L1_LANE_FLOOR_PER_RUN（0 で枠なし）。壊れた値は既定へ倒す。
+ */
+export const LANE_FLOOR_PER_RUN_DEFAULT = 5;
+export const LANE_FLOOR_PER_RUN_MAX = 20;
+
+/** 1 回の runL1Batch で、別枠を持つレーン 1 本あたり先頭に置く候補の件数。 */
+export function laneFloorPerRun(): number {
+  const raw = process.env.L1_LANE_FLOOR_PER_RUN;
+  if (raw === undefined) return LANE_FLOOR_PER_RUN_DEFAULT;
+  const trimmed = raw.trim();
+  // 非負の整数の十進表記だけを受け付ける（"2.5"・"1e1"・"0x10"・"-1" は既定へ）。
+  if (!/^\d+$/.test(trimmed)) return LANE_FLOOR_PER_RUN_DEFAULT;
+  return Math.min(Number(trimmed), LANE_FLOOR_PER_RUN_MAX);
+}
+
 export function isL1Enabled(): boolean {
   return process.env.OBSERVATORY_L1_ENABLED === "true";
 }
