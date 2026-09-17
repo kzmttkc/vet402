@@ -12,6 +12,8 @@
 //  4. 購入元の RLUSD が足りない／XRP が手数料に足りない（読み手が throw）なら署名せず、行を書かない。
 //  5. XRPL_RPC_URL が無ければ SQL の段階で候補外（無払いのリクエストも出ない・行も無い）。
 //  6. 網の open_ledger_fee が上限（1,000 drops）超なら署名せず・行も書かず、そのバッチの XRPL を閉じる。
+//  7. レーン枠（budget.ts laneFloorPerRun・CHAIN_DAILY_CAPS.xrpl）で需要の低い XRPL 候補が先頭に来ても、
+//     1 バッチ 1 件のガードは同じく効く（2 件目以降は署名されず、行も無い）。
 //
 // Run: TEST_DATABASE_URL=postgres://localhost/vet402_observatory_test \
 //   npx tsx --test --test-force-exit --test-concurrency=1 tests/l1-xrpl-lane.pg.test.ts
@@ -89,13 +91,13 @@ if (!TEST_DB) {
         extensions: { bazaar: { info: { input: { method: "GET" } } } },
         quality: { l30DaysTotalCalls: 100, l30DaysUniquePayers: 10 },
       });
-    const xrplItem = (n: number) =>
+    const xrplItem = (n: number, quality = { l30DaysTotalCalls: 5000, l30DaysUniquePayers: 500 }) =>
       parseCatalogItem({
         resource: `https://xrplseller${n}.example/api`,
         // 実物の壁と同じく XRP の accept も並ぶ（RLUSD が選ばれる）
         accepts: [xrplAccept(n), { ...xrplAccept(n), asset: "XRP", amount: "10000", extra: { invoiceId: `INV${n}`, sourceTag: 804681468 } }],
         extensions: { bazaar: { info: { input: { method: "GET" } } } },
-        quality: { l30DaysTotalCalls: 5000, l30DaysUniquePayers: 500 },
+        quality,
       });
     /** 壁が名乗る network（2b の回帰で "xrpl" に切り替える）。 */
     let wallNetwork = "xrpl:0";
@@ -141,15 +143,18 @@ if (!TEST_DB) {
       return { seen, fetchImpl };
     };
 
-    async function seed() {
+    async function seedItems(items: ReturnType<typeof parseCatalogItem>[]) {
       await db.execute(
         sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_payee_watchers, x402_l1_purchases, observed_purchases`,
       );
       await syncCatalog({
-        fetchResult: { items: [baseItem(1), xrplItem(1), xrplItem(2), xrplItem(3)], totalCount: 4, fetchedCount: 4, complete: true },
+        fetchResult: { items, totalCount: items.length, fetchedCount: items.length, complete: true },
         today: "2026-09-17",
       });
-      await runL0ProbeBatch({ limit: 10, concurrency: 2, fetchImpl: async (url: string) => wall402(url) });
+      await runL0ProbeBatch({ limit: 20, concurrency: 2, fetchImpl: async (url: string) => wall402(url) });
+    }
+    async function seed() {
+      await seedItems([baseItem(1), xrplItem(1), xrplItem(2), xrplItem(3)]);
     }
     async function spendXrplToday(units: number) {
       const rows = await db.execute(sql`SELECT id FROM x402_endpoints WHERE resource_url = 'https://xrplseller3.example/api'`);
@@ -263,6 +268,31 @@ if (!TEST_DB) {
       assert.equal(summary.xrplFeeOverCap, 1);
       for (const n of [1, 2, 3]) assert.deepEqual(await ledgerFor(`https://xrplseller${n}.example/api`), [], "行を書かない");
       assert.ok(w.seen.some((s) => s.url.includes("seller1.example") && s.paid), "Base は買う");
+    });
+
+    await t.test("レーン枠で先頭に来た需要の低い XRPL 3 件でも、署名は 1 件だけ（2 件目以降は行も無い）", async () => {
+      process.env.OBSERVATORY_XRPL_L1_ENABLED = "true";
+      const saved = process.env.L1_LANE_FLOOR_PER_RUN;
+      delete process.env.L1_LANE_FLOOR_PER_RUN; // 既定 5
+      try {
+        // Base 6 件は高需要、XRPL 3 件は最低需要——需要順の主候補では XRPL は最後尾になる形。
+        const low = { l30DaysTotalCalls: 1, l30DaysUniquePayers: 1 };
+        await seedItems([1, 2, 3, 4, 5, 6].map((n) => baseItem(n)).concat([xrplItem(1, low), xrplItem(2, low), xrplItem(3, low)]));
+        const w = wall();
+        const summary = await runL1Batch({ limit: 10, fetchImpl: w.fetchImpl, getPayerUsdcBalance: FUNDED, getXrplSigningInputs: SIGNING });
+        assert.equal(summary.laneFloor.xrpl, 3, "レーン枠が XRPL 3 件を先頭に置く");
+        assert.ok(w.seen[0].url.includes("xrplseller"), "最初に歩く候補は XRPL");
+        const paidXrpl = w.seen.filter((s) => s.url.includes("xrplseller") && s.paid);
+        assert.equal(paidXrpl.length, 1, "先頭に 3 件並んでも署名は 1 件");
+        assert.equal(w.seen.filter((s) => s.url.includes("xrplseller")).length, 2, "2 件目以降は無払いの要求も出ない（1 件目の無払い + 支払い付き）");
+        const rows = (await Promise.all([1, 2, 3].map((n) => ledgerFor(`https://xrplseller${n}.example/api`)))).flat();
+        assert.equal(rows.length, 1, "行は 1 件だけ");
+        assert.equal(rows[0].status, "settle_claimed");
+        assert.ok(w.seen.filter((s) => s.url.includes("seller") && !s.url.includes("xrplseller") && s.paid).length >= 1, "Base は続けて買う");
+      } finally {
+        if (saved === undefined) delete process.env.L1_LANE_FLOOR_PER_RUN;
+        else process.env.L1_LANE_FLOOR_PER_RUN = saved;
+      }
     });
 
     await t.test("壁が network を `xrpl` と名乗れば選ばない: 支払い付きは出ず、行は no_eligible_accept で network を書かない", async () => {
