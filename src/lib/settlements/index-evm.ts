@@ -9,7 +9,8 @@
 // Arc（eip155:5042・2026-09-17）は ARC_RPC_URL が入れば有効。scoring の CHAINS 登録簿には
 // 載せない（chain/arc.ts 参照）ので、クライアントは行の makeClient で組む。
 // ============================================================
-import { parseAbiItem, type Address } from "viem";
+import { createPublicClient, http, parseAbiItem, type Address } from "viem";
+import { tempo as tempoChain } from "viem/chains";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { getLogScanClient } from "@/lib/chain/client";
@@ -24,8 +25,13 @@ import type { SettlementRow } from "./types";
 import { attribute } from "./attribution";
 import { classifyWash } from "./wash";
 import { purchaseId as toPurchaseId } from "@/lib/ids/canonical";
+import { TEMPO_CHAIN_ID, TEMPO_USDC_E, isMppAttributionMemo, tempoRpcUrl } from "@/lib/observatory/mpp-payer";
 
 export const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
+/** TIP-20（Tempo）の memo 付き転送。MPP の client は transferWithMemo を呼ぶ（2026-09-17）。 */
+export const TRANSFER_WITH_MEMO_EVENT = parseAbiItem(
+  "event TransferWithMemo(address indexed from, address indexed to, uint256 amount, bytes32 memo)",
+);
 
 export type EvmIndexChain = {
   caip2: string;
@@ -40,7 +46,9 @@ export type EvmIndexChain = {
   confirmations: bigint;
   /** 1 日のブロック数（遅れの判定 evmIndexLag に使う）。 */
   blocksPerDay: bigint;
-  /** 既定は getLogScanClient(chainId)。CHAINS 登録簿に無いチェーン（Arc）はここで組む。 */
+  /** TransferWithMemo も読む（TIP-20・Tempo）。memo が MPP の tag を持つ転送は raw.mppAttributed=true。 */
+  memoTransfers?: boolean;
+  /** 既定は getLogScanClient(chainId)。CHAINS 登録簿に無いチェーン（Arc・Tempo）はここで組む。 */
   makeClient?: () => ReturnType<typeof getLogScanClient>;
 };
 
@@ -91,6 +99,31 @@ export const EVM_INDEX_CHAINS: EvmIndexChain[] = [
     blocksPerDay: 86_400n,
     makeClient: () => getArcPublicClient("batch"),
   },
+  // Tempo（MPP・2026-09-17 Tempo レーン）。~1 秒/ブロック = 86,400/日（blocksPerDay）。
+  //   initialLookbackBlocks 259,200 = 3 日（Base の 7 日は 302,400 ブロックで、同じ桁に収める）。
+  //   maxBlocksPerRun 172,800 = 2 日ぶん（Arc と同じ理由: 日次 cron が 1 日 86,400 に追いつき、
+  //     遅れた日も翌日に回収できる）。2,000 ブロック/chunk × 87 chunk・Base 実測 0.14 秒/chunk →
+  //     受取先 500 件までなら ~12 秒。
+  //   confirmations 64 ≈ 1 分。Tempo の確定の仕様は未確認なので、1 秒ブロックに対して深めに取る。
+  //   TEMPO_RPC_URL が無ければ skipped（`TEMPO_RPC_URL_unset`）——公開 RPC へ無言で倒れない（Arc と同じ）。
+  //   TransferWithMemo も読む（MPP の client は transferWithMemo を呼ぶ）。
+  // 受取先は L0 が MPP の challenge から学んだ pay_to（directory には載らない）。
+  {
+    caip2: `eip155:${TEMPO_CHAIN_ID}`,
+    chainId: TEMPO_CHAIN_ID,
+    usdc: TEMPO_USDC_E as Address,
+    rpcEnv: "TEMPO_RPC_URL",
+    initialLookbackBlocks: 86_400n * 3n,
+    maxBlocksPerRun: 86_400n * 2n,
+    confirmations: 64n,
+    blocksPerDay: 86_400n,
+    memoTransfers: true,
+    makeClient: () => {
+      const rpc = tempoRpcUrl();
+      if (!rpc) throw new Error("TEMPO_RPC_URL_unset");
+      return createPublicClient({ chain: tempoChain, transport: http(rpc, { timeout: 20_000, retryCount: 3 }) }) as unknown as ReturnType<typeof getLogScanClient>;
+    },
+  },
 ];
 
 export type EvmIndexSummary = {
@@ -136,7 +169,15 @@ export function isEvmChainIndexable(chain: EvmIndexChain): boolean {
 
 export async function indexEvmChain(
   chain: EvmIndexChain,
-  options: { budgetMs?: number; classifier?: WashClassifier; now?: () => number } = {},
+  options: {
+    budgetMs?: number;
+    classifier?: WashClassifier;
+    now?: () => number;
+    /** Test seam: chain client（getBlockNumber / getBlock / getLogs）。 */
+    client?: ReturnType<typeof getLogScanClient>;
+    /** Test seam: getLogsChunked の差し替え。 */
+    getLogs?: typeof getLogsChunked;
+  } = {},
 ): Promise<EvmIndexSummary> {
   const db = getDb();
   if (!db) throw new Error("indexEvmChain: DATABASE_URL is not configured");
@@ -155,7 +196,7 @@ export async function indexEvmChain(
   summary.payees = payees.length;
   if (payees.length === 0) return { ...summary, skipped: "no_known_payees" };
 
-  const client = chain.makeClient ? chain.makeClient() : getLogScanClient(chain.chainId);
+  const client = options.client ?? (chain.makeClient ? chain.makeClient() : getLogScanClient(chain.chainId));
   const latest = await client.getBlockNumber();
   const safeTip = latest > chain.confirmations ? latest - chain.confirmations : 0n;
   const scope = `settlements:${chain.caip2}`;
@@ -225,15 +266,38 @@ export async function indexEvmChain(
       break;
     }
     const slice = payees.slice(i, i + 500);
-    const logs = await getLogsChunked(
+    const getLogs = options.getLogs ?? getLogsChunked;
+    const logs = await getLogs(
       client,
       { address: chain.usdc, event: TRANSFER_EVENT, args: { to: slice }, fromBlock, toBlock } as never,
       undefined,
       undefined,
       { deadlineMs: Math.max(5_000, budgetMs - (now() - startedAt)) },
     );
-    summary.logs += logs.length;
-    const sorted = (logs as unknown as { transactionHash: string; blockNumber: bigint; args: { from: Address; to: Address; value: bigint } }[]).sort((a, b) =>
+    // TIP-20（Tempo）: transferWithMemo は Transfer と TransferWithMemo の両方を出す（2026-09-17 実測）。
+    // 同じ tx の 2 つのログは purchase_id（chain:tx）で 1 行に畳まれる。memo は MPP 帰属の材料。
+    type Raw = { transactionHash: string; blockNumber: bigint; args: { from: Address; to: Address; value?: bigint; amount?: bigint; memo?: string } };
+    const memoLogs = chain.memoTransfers
+      ? ((await getLogs(
+          client,
+          { address: chain.usdc, event: TRANSFER_WITH_MEMO_EVENT, args: { to: slice }, fromBlock, toBlock } as never,
+          undefined,
+          undefined,
+          { deadlineMs: Math.max(5_000, budgetMs - (now() - startedAt)) },
+        )) as unknown as Raw[])
+      : [];
+    const memoByTx = new Map<string, string>();
+    for (const m of memoLogs) if (typeof m.args.memo === "string") memoByTx.set(m.transactionHash.toLowerCase(), m.args.memo);
+    summary.logs += logs.length + memoLogs.length;
+    const seenTx = new Set<string>();
+    const merged: { transactionHash: string; blockNumber: bigint; args: { from: Address; to: Address; value: bigint } }[] = [];
+    for (const l of [...(logs as unknown as Raw[]), ...memoLogs]) {
+      const key = l.transactionHash.toLowerCase();
+      if (seenTx.has(key)) continue;
+      seenTx.add(key);
+      merged.push({ transactionHash: l.transactionHash, blockNumber: l.blockNumber, args: { from: l.args.from, to: l.args.to, value: l.args.value ?? l.args.amount ?? 0n } });
+    }
+    const sorted = merged.sort((a, b) =>
       a.blockNumber < b.blockNumber ? -1 : a.blockNumber > b.blockNumber ? 1 : 0,
     );
     let sliceLast: bigint = fromBlock - 1n;
@@ -264,9 +328,26 @@ export async function indexEvmChain(
         { payerId, payeeId, blockTime },
         { testWallets: classifier.testWallets, sameCluster: classifier.sameCluster, reverseWithinHours: () => reverseInWindow },
       );
+      const memo = memoByTx.get(log.transactionHash.toLowerCase()) ?? null;
       pending.push(
         buildRow(
-          { chain: chain.caip2, txHash: log.transactionHash, asset: chain.usdc, amount, payer, payee, blockTime, source: "chain_index", raw: { blockNumber: String(log.blockNumber), blockTimeSource: "interpolated" } },
+          {
+            chain: chain.caip2,
+            txHash: log.transactionHash,
+            asset: chain.usdc,
+            amount,
+            payer,
+            payee,
+            blockTime,
+            source: "chain_index",
+            raw: {
+              blockNumber: String(log.blockNumber),
+              blockTimeSource: "interpolated",
+              // MPP の帰属 memo（keccak256("mpp")[0..3] + 0x01）を持つ転送は MPP 由来と記録する。
+              // 素の Transfer は unmatched のまま（Resource への帰属は payTo × amount の規則だけ）。
+              ...(memo !== null ? { memo, mppAttributed: isMppAttributionMemo(memo) } : {}),
+            },
+          },
           { attribution: resolved.attribution, washFlag, resourceId: resolved.resourceId, endpointId: resolved.endpointId },
         ),
       );

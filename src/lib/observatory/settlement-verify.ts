@@ -150,7 +150,7 @@ export async function verifyL1Settlement(
      */
     expectedAuthNonce?: string | null;
   },
-  deps?: { client?: EvmVerifyClient },
+  deps?: { client?: EvmVerifyClient; /** Tempo の照合器へ渡す client（テスト用）。 */ tempoClient?: EvmVerifyClient },
 ): Promise<SettlementVerifyResult> {
   const { txHash, network, expectedPayTo, expectedPayer, expectedAmountUnits } = input;
 
@@ -160,6 +160,13 @@ export async function verifyL1Settlement(
   if (network.startsWith("solana:")) {
     const { verifySolanaSettlement } = await import("./settlement-verify-solana");
     return verifySolanaSettlement(input);
+  }
+
+  // Tempo（MPP・2026-09-17）: USDC.e の Transfer / TransferWithMemo を TEMPO_RPC_URL で読む専用の照合器。
+  // ここ（Base の client・Base の USDC）で読むと wrong_chain にしかならない。
+  if (network === "eip155:4217") {
+    const { verifyTempoSettlement } = await import("./settlement-verify-tempo");
+    return verifyTempoSettlement(input, deps?.tempoClient ? { client: deps.tempoClient } : undefined);
   }
 
   // それ以外のチェーンには照合器が無い。「EVM のやり方で読めなかった」を
