@@ -2,12 +2,17 @@
 // vet402 Observatory L1 — x402 payer (design §1 L1, W3).
 //
 // This module SIGNS MONEY, so its shape is a funnel of refusals: everything
-// is a skip unless it is exactly scheme `exact`, EIP-3009, Base (eip155:8453),
-// canonical Base USDC, at a price that matches what the catalog advertised
-// when we chose the target, under a hard per-purchase ceiling. The
-// facilitator/seller can choose to not deliver after settlement — that is a
-// FINDING we publish — but they must never be able to choose how much we pay
-// or in what asset.
+// is a skip unless it is exactly scheme `exact`, EIP-3009, one of the PINNED
+// EVM chains (EVM_PAY_CHAINS: Base always; Arc behind its flag), that chain's
+// canonical USDC, at a price that matches what the catalog advertised when we
+// chose the target, under a hard per-purchase ceiling. The facilitator/seller
+// can choose to not deliver after settlement — that is a FINDING we publish —
+// but they must never be able to choose how much we pay, in what asset, on
+// which chain, or under which EIP-712 domain.
+//
+// 2026-09-17 (Arc lane): the Base-only funnel became a table. Nothing about the
+// Base row changed; Arc (Circle's stablecoin L1, eip155:5042, mainnet opened
+// 2026-09-16) is the second row, off by default (OBSERVATORY_ARC_L1_ENABLED).
 //
 // Spec grounding (fetched 2026-08-14, coinbase/x402):
 //  - specs/schemes/exact/scheme_exact_evm.md — EIP-3009 payload:
@@ -54,16 +59,109 @@ export const BASE_USDC_EIP712_NAME = "USD Coin";
 export const BASE_USDC_EIP712_VERSION = "2";
 
 /**
- * True iff the accept's `extra` does not contradict the canonical USDC domain.
- * Absent fields are fine (we then use the pinned values); a field that is
- * present and different — or present and not a string — is a refusal.
+ * Arc mainnet (Circle's stablecoin L1). Measured 2026-09-17 by RPC against
+ * https://rpc.mainnet.arc.io — not re-derived here:
+ *   chainId 5042 / USDC 0x3600000000000000000000000000000000000000 / decimals 6
+ *   name() "USDC" / version() "2"  ← NOT Base's "USD Coin"; a Base-domain
+ *   signature can never settle on Arc and vice versa.
+ *   authorizationState(address,bytes32) present → EIP-3009 is available.
+ * Gas is USDC (there is no ETH on Arc); the payer is the same EOA as Base and
+ * is funded with Arc USDC separately (payer-funds.ts reads it per chain).
+ * Duplicated in src/lib/chain/arc.ts on purpose (same reason as BASE_USDC).
  */
-export function hasCanonicalUsdcDomain(extra: Record<string, unknown> | undefined): boolean {
+export const ARC_CAIP2 = "eip155:5042";
+export const ARC_USDC = "0x3600000000000000000000000000000000000000";
+export const ARC_USDC_EIP712_NAME = "USDC";
+export const ARC_USDC_EIP712_VERSION = "2";
+
+/**
+ * One row per EVM chain we can sign EIP-3009 on. Everything the seller could
+ * otherwise choose — chain id, token, EIP-712 domain — is pinned here.
+ */
+export type EvmPayChain = {
+  caip2: string;
+  chainId: number;
+  /** Canonical USDC on that chain (the EIP-712 verifyingContract). */
+  usdc: string;
+  eip712Name: string;
+  eip712Version: string;
+  /** Human label, matches chains.ts chainLabel(). */
+  label: string;
+  /** x402 v1 transport slug, or null when the chain has none we have verified. */
+  v1Slug: string | null;
+  /** Feature flag env (exact string "true" enables); null = always on. */
+  flagEnv: string | null;
+};
+
+export const BASE_CHAIN: EvmPayChain = {
+  caip2: BASE_CAIP2,
+  chainId: 8453,
+  usdc: BASE_USDC,
+  eip712Name: BASE_USDC_EIP712_NAME,
+  eip712Version: BASE_USDC_EIP712_VERSION,
+  label: "Base",
+  v1Slug: "base",
+  flagEnv: null,
+};
+
+export const ARC_CHAIN: EvmPayChain = {
+  caip2: ARC_CAIP2,
+  chainId: 5042,
+  usdc: ARC_USDC,
+  eip712Name: ARC_USDC_EIP712_NAME,
+  eip712Version: ARC_USDC_EIP712_VERSION,
+  label: "Arc",
+  // No v1 slug: we have not seen a v1 (X-PAYMENT) Arc seller and will not
+  // guess one. v1 headers carry the CAIP-2 id verbatim for Arc.
+  v1Slug: null,
+  flagEnv: "OBSERVATORY_ARC_L1_ENABLED",
+};
+
+/** The whole pinned table. Order is irrelevant; nothing outside it can be signed on. */
+export const EVM_PAY_CHAINS: readonly EvmPayChain[] = [BASE_CHAIN, ARC_CHAIN];
+
+export function isArcL1Enabled(): boolean {
+  return process.env.OBSERVATORY_ARC_L1_ENABLED === "true";
+}
+
+/** Base is always on; a flagged chain only when its env is exactly "true" (same discipline as OBSERVATORY_L1_ENABLED). */
+export function isEvmPayChainEnabled(chain: EvmPayChain): boolean {
+  return chain.flagEnv === null || process.env[chain.flagEnv] === "true";
+}
+
+/**
+ * Pinned row for a network id (CAIP-2, or the Base v1 slug), or null. Flag-agnostic:
+ * this answers "which pins apply", not "may we sign" — callers that sign check
+ * isEvmPayChainEnabled as well (selectAccept and signX402Payment both do).
+ */
+export function evmChainFor(network: unknown): EvmPayChain | null {
+  const id = normalizeNetwork(network);
+  if (id === "") return null;
+  return EVM_PAY_CHAINS.find((c) => c.caip2 === id) ?? null;
+}
+
+/**
+ * True iff the accept's `extra` does not contradict the chain's canonical USDC
+ * domain. Absent fields are fine (we then use the pinned values); a field that
+ * is present and different — or present and not a string — is a refusal.
+ *
+ * `verifyingContract` is checked too (2026-09-17): Circle Gateway's
+ * "GatewayWalletBatched" accepts on Arc name 0x7777…00ee as the contract. That
+ * is another signing domain entirely (and needs pre-deposited funds), so it must
+ * fall out here, before any budget is reserved.
+ */
+export function hasCanonicalUsdcDomain(
+  extra: Record<string, unknown> | undefined,
+  chain: EvmPayChain = BASE_CHAIN,
+): boolean {
   const name = extra?.name;
   const version = extra?.version;
+  const verifyingContract = extra?.verifyingContract;
   return (
-    (name === undefined || name === BASE_USDC_EIP712_NAME) &&
-    (version === undefined || version === BASE_USDC_EIP712_VERSION)
+    (name === undefined || name === chain.eip712Name) &&
+    (version === undefined || version === chain.eip712Version) &&
+    (verifyingContract === undefined ||
+      (typeof verifyingContract === "string" && verifyingContract.toLowerCase() === chain.usdc.toLowerCase()))
   );
 }
 
@@ -192,8 +290,9 @@ export type AcceptSelection =
     };
 
 /**
- * The money gate. Only scheme `exact` + (eip3009 | unspecified) on Base in
- * canonical USDC is eligible; then the RECIPIENT must be the one the catalog
+ * The money gate. Only scheme `exact` + (eip3009 | unspecified) on an ENABLED
+ * pinned EVM chain (EVM_PAY_CHAINS) in that chain's canonical USDC is eligible;
+ * then the RECIPIENT must be the one the catalog
  * declared, the amount must equal the CATALOG-declared price (when one exists),
  * and it must sit under the hard ceiling. Order of refusals matters for honest
  * reporting: an eligible accept at the wrong price is `price_mismatch` (a
@@ -220,18 +319,24 @@ export function selectAccept(
     .map((a) => normalizeAccept(a)) // 厳格（lenient=false）——ここは署名する経路
     .filter((a): a is ChallengeAccept => a !== null)
     .filter((a) => a.scheme === "exact")
-    .filter((a) => a.network === BASE_CAIP2)
-    .filter((a) => a.asset.toLowerCase() === BASE_USDC.toLowerCase())
+    // 2026-09-17 (Arc lane): the chain, its USDC and its EIP-712 domain come from
+    // one pinned row. A chain that is not in the table, or whose flag is off, is
+    // not an option — it is a skip, exactly as a non-Base network always was.
     .filter((a) => {
+      const chain = evmChainFor(a.network);
+      if (!chain || !isEvmPayChainEnabled(chain)) return false;
+      if (a.asset.toLowerCase() !== chain.usdc.toLowerCase()) return false;
       const method = a.extra?.assetTransferMethod;
-      return method === undefined || method === "eip3009";
+      if (method !== undefined && method !== "eip3009") return false;
+      // The EIP-712 domain is the token's, not the seller's (see
+      // BASE_USDC_EIP712_NAME / ARC_USDC_EIP712_NAME). Refusing here — before
+      // the budget reservation — is the point: a signature under a bogus domain
+      // can never settle, so accepting one would let a seller burn budget for
+      // free. The full accepts[] is recorded by the caller, so the
+      // contradiction stays visible. (Circle Gateway's GatewayWalletBatched
+      // accepts on Arc fall out here.)
+      return hasCanonicalUsdcDomain(a.extra, chain);
     })
-    // The EIP-712 domain is the token's, not the seller's (see
-    // BASE_USDC_EIP712_NAME). Refusing here — before the budget reservation —
-    // is the point: a signature under a bogus domain can never settle, so
-    // accepting one would let a seller burn budget for free. The full
-    // accepts[] is recorded by the caller, so the contradiction stays visible.
-    .filter((a) => hasCanonicalUsdcDomain(a.extra))
     // 2026-09-04 監査 P1-2: **署名できない accept はここで落とす。** 予算は
     // 署名の前に予約されるので、署名器が throw する形を通すと、一円も動かない
     // まま日次 $25 が減り、行は in_flight のまま冷却にも掛からない。
@@ -360,15 +465,17 @@ function isSignableEvmAccept(accept: ChallengeAccept): boolean {
 }
 
 /**
- * EIP-3009 TransferWithAuthorization signature over the CANONICAL Base USDC
- * domain. The domain is never taken from the seller: chainId and
- * verifyingContract were always pinned, and since 2026-08-22 name/version are
- * too (BASE_USDC_EIP712_NAME — measured on-chain, not assumed).
+ * EIP-3009 TransferWithAuthorization signature over the CANONICAL USDC domain
+ * of the accept's chain (EVM_PAY_CHAINS). The domain is never taken from the
+ * seller: chainId and verifyingContract were always pinned, and since
+ * 2026-08-22 name/version are too (measured on-chain, not assumed — Base
+ * "USD Coin"/"2", Arc "USDC"/"2").
  *
- * selectAccept already refuses any accept whose `extra` contradicts the pin,
- * so the guard below is belt-and-braces for a caller that skips the gate: this
- * module signs money, and it must not be possible to talk it into signing
- * under a domain of someone else's choosing.
+ * selectAccept already refuses any accept whose chain is unknown or disabled or
+ * whose `extra` contradicts the pin, so the guards below are belt-and-braces for
+ * a caller that skips the gate: this module signs money, and it must not be
+ * possible to talk it into signing under a domain of someone else's choosing,
+ * nor on a chain whose lane is off.
  */
 export async function signX402Payment(input: {
   account: Account;
@@ -377,16 +484,19 @@ export async function signX402Payment(input: {
 }): Promise<{ signature: string }> {
   const { account, accept, authorization } = input;
   if (!account.signTypedData) throw new Error("account cannot sign typed data");
-  if (!hasCanonicalUsdcDomain(accept.extra)) {
-    throw new Error("x402: accept contradicts the canonical Base USDC EIP-712 domain");
+  const chain = evmChainFor(accept.network);
+  if (!chain) throw new Error(`x402: ${accept.network} is not a pinned EVM purchase chain`);
+  if (!isEvmPayChainEnabled(chain)) throw new Error(`x402: the ${chain.label} lane is not enabled`);
+  if (!hasCanonicalUsdcDomain(accept.extra, chain)) {
+    throw new Error(`x402: accept contradicts the canonical ${chain.label} USDC EIP-712 domain`);
   }
 
   const signature = await account.signTypedData({
     domain: {
-      name: BASE_USDC_EIP712_NAME,
-      version: BASE_USDC_EIP712_VERSION,
-      chainId: 8453,
-      verifyingContract: BASE_USDC as `0x${string}`,
+      name: chain.eip712Name,
+      version: chain.eip712Version,
+      chainId: chain.chainId,
+      verifyingContract: chain.usdc as `0x${string}`,
     },
     types: {
       TransferWithAuthorization: [
@@ -427,7 +537,8 @@ export function encodePaymentHeader(input: {
     const body = {
       x402Version: 1,
       scheme: "exact",
-      network: accept.network === BASE_CAIP2 ? "base" : accept.network,
+      // v1 slug when the chain has one we verified (Base); otherwise the CAIP-2 id verbatim.
+      network: evmChainFor(accept.network)?.v1Slug ?? accept.network,
       payload,
     };
     return {
