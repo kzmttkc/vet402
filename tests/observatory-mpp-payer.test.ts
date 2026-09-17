@@ -25,8 +25,8 @@ import {
   parseMppChallenges,
   parseMppReceipt,
   selectMppChallenge,
-  tempoDailyCapUnits,
 } from "@/lib/observatory/mpp-payer";
+import { tempoDailyCapUnits } from "@/lib/observatory/budget";
 
 const RECIPIENT = "0xca4e835F803cB0b7C428222B3A3B98518d4779Fe";
 const PATH_USD = "0x20c0000000000000000000000000000000000000";

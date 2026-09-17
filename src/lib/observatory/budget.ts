@@ -36,8 +36,14 @@ export const SOLANA_DAILY_CAP_USD_DEFAULT = 2;
  */
 export const ARC_DAILY_CAP_USD_DEFAULT = 2;
 
+/**
+ * Tempo の別枠（2026-09-17・Tempo レーン・MPP）。Solana / Arc と同じ理由・同じ $2。
+ * 環境変数 L1_TEMPO_DAILY_CAP_USD で下げられる（0 で Tempo を止める）。
+ */
+export const TEMPO_DAILY_CAP_USD_DEFAULT = 2;
+
 /** 別枠を持つチェーン。Base は持たない（共有 $25 だけ）。 */
-export type CappedChain = "solana" | "arc";
+export type CappedChain = "solana" | "arc" | "tempo";
 
 /**
  * チェーン別の別枠の表。`networkLike` は x402_l1_purchases.network に対する SQL の LIKE
@@ -47,12 +53,15 @@ export type CappedChain = "solana" | "arc";
 export const CHAIN_DAILY_CAPS: Record<CappedChain, { env: string; defaultUsd: number; networkLike: string }> = {
   solana: { env: "L1_SOLANA_DAILY_CAP_USD", defaultUsd: SOLANA_DAILY_CAP_USD_DEFAULT, networkLike: "solana:%" },
   arc: { env: "L1_ARC_DAILY_CAP_USD", defaultUsd: ARC_DAILY_CAP_USD_DEFAULT, networkLike: "eip155:5042" },
+  // 完全一致（Moderato eip155:42431 を巻き込まない）。
+  tempo: { env: "L1_TEMPO_DAILY_CAP_USD", defaultUsd: TEMPO_DAILY_CAP_USD_DEFAULT, networkLike: "eip155:4217" },
 };
 
 /** その network が別枠を持つチェーンなら、その名前。持たなければ null。 */
 export function cappedChainFor(network: string): CappedChain | null {
   if (network.startsWith("solana:")) return "solana";
   if (network === "eip155:5042") return "arc";
+  if (network === "eip155:4217") return "tempo";
   return null;
 }
 
@@ -98,6 +107,11 @@ export function laneFloorPerRun(): number {
   // 非負の整数の十進表記だけを受け付ける（"2.5"・"1e1"・"0x10"・"-1" は既定へ）。
   if (!/^\d+$/.test(trimmed)) return LANE_FLOOR_PER_RUN_DEFAULT;
   return Math.min(Number(trimmed), LANE_FLOOR_PER_RUN_MAX);
+}
+
+/** 表の tempo 行の別名（mpp-payer のテストと同じ名前）。 */
+export function tempoDailyCapUnits(): bigint {
+  return chainDailyCapUnits("tempo");
 }
 
 export function isL1Enabled(): boolean {

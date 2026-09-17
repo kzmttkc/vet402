@@ -64,6 +64,17 @@ import { isPathTemplate, notPathTemplateSql } from "./path-template";
 import { declaredRequestBody, type RequestBodySource } from "./declared-input";
 import { createPayerFunds, defaultPayerUsdcBalance, type PayerChain, type PayerFunds, type PayerUsdcBalanceReader } from "./payer-funds";
 import { createHash } from "node:crypto";
+// Tempo の MPP 方言（2026-09-17・mpp-payer.ts）。x402 ではなく WWW-Authenticate: Payment の壁。
+// フラグ OBSERVATORY_TEMPO_L1_ENABLED（既定 off）が無ければ Tempo は lanes で候補外（行 0）。
+import {
+  TEMPO_MAINNET_CAIP2,
+  createMppCredential,
+  isTempoL1Enabled,
+  parseMppChallengesFromHeaders,
+  parseMppReceipt,
+  selectMppChallenge,
+  type MppxCharge,
+} from "./mpp-payer";
 
 export type L1BatchSummary = {
   attempted: number;
@@ -598,6 +609,8 @@ export async function runL1Batch(
     batchBudgetMs?: number;
     /** Test seam: 購入元の USDC 残高（基本単位）。既定は BASE_RPC_URL / SOLANA_RPC_URL を読む。 */
     getPayerUsdcBalance?: PayerUsdcBalanceReader;
+    /** Test seam: Tempo（MPP）の署名器。既定は mppx/client（Tempo RPC へ出る）。 */
+    mppxCharge?: MppxCharge;
   } = {},
 ): Promise<L1BatchSummary> {
   // SSRF (2026-08-15 audit): resourceUrl is a seller-declared string from the
@@ -713,8 +726,11 @@ export async function runL1Batch(
   const lanes: { chain: CappedChain; ready: boolean }[] = [
     { chain: "solana", ready: solanaReady },
     { chain: "arc", ready: isArcL1Enabled() },
+    // Tempo（MPP・2026-09-17）: Base と同じ EOA・USDC.e。有効条件はフラグだけ。
+    { chain: "tempo", ready: isTempoL1Enabled() },
   ];
   const laneExclusions: SQL[] = [];
+  const laneSelectable = new Map<CappedChain, boolean>();
   for (const lane of lanes) {
     let selectable = lane.ready;
     if (selectable) {
@@ -736,6 +752,7 @@ export async function runL1Batch(
     }
     // レーンが無効（フラグ無し or 鍵が読めない）か別枠が尽きた間は、候補から SQL の段階で
     // 外す——「試行して skip」の雑音でなく、最初から対象外。行も書かない。
+    laneSelectable.set(lane.chain, selectable);
     if (!selectable) {
       laneExclusions.push(sql`AND (e.network IS NULL OR e.network NOT LIKE ${CHAIN_DAILY_CAPS[lane.chain].networkLike})`);
     }
@@ -925,7 +942,7 @@ export async function runL1Batch(
       continue;
     }
     try {
-      const outcome = await purchaseOne({ candidate, account, solanaKeypair, getSolanaBlockhash, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded });
+      const outcome = await purchaseOne({ candidate, account, solanaKeypair, getSolanaBlockhash, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge });
       spentToday += outcome.spent;
       summary.spentUnitsTotal = String(BigInt(summary.spentUnitsTotal) + outcome.spent);
       if (outcome.kind === "attempted") {
@@ -1028,6 +1045,9 @@ async function purchaseOne(input: {
   spentToday: bigint;
   payerFunds: PayerFunds;
   onPayerUnfunded: (chain: string, detail: Record<string, unknown>) => void;
+  /** Tempo（MPP）を買ってよいか（フラグ・別枠）。false なら Tempo 候補は試行しない。 */
+  tempoEnabled: boolean;
+  mppxCharge?: MppxCharge;
 }): Promise<{
   kind: "attempted" | "skipped" | "budget_denied" | "halted" | "payer_unfunded";
   settled: boolean;
@@ -1037,10 +1057,12 @@ async function purchaseOne(input: {
   /** kind === "halted" のときの判定理由（cron 応答とログに出る）。 */
   haltReason?: string;
 }> {
-  const { candidate, account, solanaKeypair, getSolanaBlockhash, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded } = input;
+  const { candidate, account, solanaKeypair, getSolanaBlockhash, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge } = input;
   const method = (candidate.method ?? "GET").toUpperCase();
   const startedAt = Date.now();
   const isSolana = candidate.network === SOLANA_MAINNET_CAIP2;
+  // Tempo（MPP・2026-09-17）: 壁は x402 の封筒ではなく WWW-Authenticate: Payment。
+  const isTempo = candidate.network === TEMPO_MAINNET_CAIP2;
   // 台帳上の payer 表記: EVM は小文字（既存の join 規約）・base58 は原文
   // （小文字化は base58 を破壊する——catalog-source と同じ理由）。
   const payerLabel = isSolana
@@ -1060,6 +1082,10 @@ async function purchaseOne(input: {
   // runL1Batch が solanaReady で候補を絞るので、ここに solana 候補が来て
   // 鍵が無いのは onlyEndpointId 経路等の異常系だけ——黙って進まない。
   if (isSolana && !solanaKeypair) {
+    return { kind: "skipped", settled: false, spent: 0n };
+  }
+  // 同じく二重防御: フラグ無しの Tempo 候補はここへ来ないが、来ても 1 リクエストも出さない。
+  if (isTempo && !tempoEnabled) {
     return { kind: "skipped", settled: false, spent: 0n };
   }
 
@@ -1110,13 +1136,25 @@ async function purchaseOne(input: {
     return { kind: "skipped", settled: false, spent: 0n };
   }
 
-  const challenge = parseChallenge({ bodyText: firstBody, headers: first.headers });
+  // MPP の challenge（Tempo）は WWW-Authenticate に載る。x402 の封筒は Tempo では読まない
+  // （x402 の accept に署名する経路が Tempo に向かって開かない）。
+  const mppChallenges = isTempo ? parseMppChallengesFromHeaders(first.headers) : [];
+  const challenge = isTempo
+    ? mppChallenges.length > 0
+      ? { x402Version: 2 as const, accepts: [] as never[] }
+      : null
+    : parseChallenge({ bodyText: firstBody, headers: first.headers });
   if (!challenge) {
-    await record({ status: "no_eligible_accept", rawResponseMeta: { phase: "unpaid", note: "unparseable challenge" } });
+    await record({ status: "no_eligible_accept", rawResponseMeta: { phase: "unpaid", note: isTempo ? "no MPP Payment challenge" : "unparseable challenge", ...(isTempo ? { protocol: "mpp" } : {}) } });
     return { kind: "skipped", settled: false, spent: 0n };
   }
 
-  const selection = isSolana
+  const mppSelection = isTempo
+    ? selectMppChallenge(mppChallenges, { declaredAmount: candidate.priceAmount, declaredPayTo: candidate.payTo })
+    : null;
+  const selection = mppSelection
+    ? mppSelection
+    : isSolana
     ? selectSolanaAccept(challenge.accepts, {
         declaredAmount: candidate.priceAmount,
         declaredPayTo: candidate.payTo,
@@ -1133,7 +1171,23 @@ async function purchaseOne(input: {
         phase: "select",
         declaredAmount: candidate.priceAmount,
         declaredPayTo: candidate.payTo,
-        challengeAccepts: challenge.accepts.slice(0, 4),
+        ...(mppSelection
+          ? {
+              protocol: "mpp",
+              detail: mppSelection.detail,
+              challenges: mppChallenges.slice(0, 4).map((c) => ({
+                id: c.id,
+                realm: c.realm,
+                method: c.method,
+                intent: c.intent,
+                chainId: c.request?.methodDetails.chainId ?? null,
+                currency: c.request?.currency ?? null,
+                amount: c.request?.amount ?? null,
+                recipient: c.request?.recipient ?? null,
+                expires: c.expires,
+              })),
+            }
+          : { challengeAccepts: challenge.accepts.slice(0, 4) }),
       },
     });
     return { kind: "skipped", settled: false, spent: 0n };
@@ -1220,7 +1274,7 @@ async function purchaseOne(input: {
   // 記録した——我々の資金切れを売り手の失敗にした。足りない／読めないなら署名しない。
   // 行は書かない（chain_daily_cap と同じ: 書くとスイープ窓のあいだ再選択されない）。
   // 2026-09-17 Arc レーン: 残高はチェーンごと。Arc は Base と同じ EOA だが Arc の USDC は別。
-  const payerChain: PayerChain = isSolana ? "solana" : evmChainFor(accept.network)?.chainId === 5042 ? "arc" : "base";
+  const payerChain: PayerChain = isTempo ? "tempo" : isSolana ? "solana" : evmChainFor(accept.network)?.chainId === 5042 ? "arc" : "base";
   const payerOwner = isSolana ? solanaKeypair!.publicKey.toBase58() : account.address;
   const funds = await payerFunds.check(payerChain, payerOwner, amount);
   if (!funds.ok) {
@@ -1309,7 +1363,17 @@ async function purchaseOne(input: {
     // 我々しか作れない一回性の値。行に残して初めて「その決済 tx はこの購入のもの」
     // と照合できる（2026-09-04 監査 P1-1・settlement-verify.ts の nonce 束縛）。
     let authNonce: string;
-    if (isSolana) {
+    if (mppSelection && mppSelection.accept) {
+      // Tempo（MPP）: 署名は参照実装 mppx に委ね、ピン（chainId 4217・受取先の許可リスト・
+      // pull）は我々が渡す。memo（帰属 bytes32）を auth_nonce として残し、決済照合が
+      // tx の TransferWithMemo と突き合わせる。
+      const cred = await createMppCredential(
+        { account, challenge: mppSelection.accept.mpp, recipient: accept.payTo },
+        mppxCharge ? { mppxCharge } : {},
+      );
+      authNonce = cred.memo;
+      header = { headerName: cred.headerName, headerValue: cred.headerValue };
+    } else if (isSolana) {
       const built = await buildSolanaPaymentTransaction({
         accept,
         payer: solanaKeypair!,
@@ -1380,7 +1444,9 @@ async function purchaseOne(input: {
     }
 
     const latencyMs = Date.now() - startedAt;
-    const settlement = paid ? parseSettlementResponse(paid.headers) : null;
+    // MPP の受領証は Payment-Receipt（base64url JSON・reference = tx hash）。x402 と同じ形へ写してある。
+    const mppReceipt = paid && isTempo ? parseMppReceipt(paid.headers) : null;
+    const settlement = paid ? (isTempo ? mppReceipt : parseSettlementResponse(paid.headers)) : null;
     const payloadNonEmpty = paidBody.trim().length > 0;
     const contentType = paid?.headers.get("content-type") ?? null;
     const contentTypeMatch = contentType === null ? null : contentType.includes("json");
@@ -1436,6 +1502,8 @@ async function purchaseOne(input: {
       phase: "paid",
       status: paid?.status ?? null,
       contentType,
+      // Tempo は MPP（WWW-Authenticate: Payment / Authorization: Payment / Payment-Receipt）。
+      ...(isTempo ? { protocol: "mpp" } : {}),
       bodyHead: paidBody.slice(0, 500),
       // どの本文で POST したか（2026-09-17 Issue #29）。"declared" は売り手の 402 が宣言した
       // input.body、"empty" は `{}`。GET には付けない。
@@ -1455,7 +1523,13 @@ async function purchaseOne(input: {
       payloadNonEmpty: paid ? payloadNonEmpty : null,
       contentTypeMatch,
       l2Schema,
-      rawSettlement: settlement ?? (paidError ? { error: paidError } : null),
+      rawSettlement: settlement
+        ? isTempo && mppReceipt
+          ? { ...settlement, receipt: mppReceipt.receipt, header: paid?.headers.get("payment-receipt") ?? null }
+          : settlement
+        : paidError
+          ? { error: paidError }
+          : null,
       rawResponseMeta,
     };
     let recordedStatus = status;

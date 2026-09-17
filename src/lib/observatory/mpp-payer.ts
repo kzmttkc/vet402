@@ -23,11 +23,10 @@
 // ガス token が無く手数料は USD 建て TIP-20 で払うが、directory の challenge は
 // `feePayer:true`（売り手側がガスを肩代わり）なので、我々が持つのは USDC.e だけでよい。
 //
-// 資金の関門は payer-funds.ts（USDC.e の balanceOf）、日次の別枠は tempoDailyCapUnits
-// （既定 $2・全チェーン共有の $25 の内側）、予約は l1-runner.reserveSpend の 1 文。
+// 資金の関門は payer-funds.ts（USDC.e の balanceOf）、日次の別枠は budget.ts の
+// CHAIN_DAILY_CAPS.tempo（既定 $2・全チェーン共有の $25 の内側）、予約は l1-runner.reserveSpend の 1 文。
 // ============================================================
 import { isAddress, keccak256, toBytes, type Account } from "viem";
-import { DAILY_BUDGET_USD } from "./budget";
 import { MAX_PER_PURCHASE_UNITS, type ChallengeAccept } from "./x402-payer";
 
 export const TEMPO_CHAIN_ID = 4217;
@@ -53,23 +52,7 @@ export function isTempoL1Enabled(): boolean {
   return process.env.OBSERVATORY_TEMPO_L1_ENABLED === "true";
 }
 
-/**
- * Tempo の L1 が 1 UTC 日に使える別枠（Solana の solanaDailyCapUnits と同じ作法・
- * 全チェーン共有の $25 の内側）。L1_TEMPO_DAILY_CAP_USD で下げられる（0 で止める）。
- * 壊れた値は既定へ倒す。
- */
-export const TEMPO_DAILY_CAP_USD_DEFAULT = 2;
-
-export function tempoDailyCapUnits(): bigint {
-  const raw = process.env.L1_TEMPO_DAILY_CAP_USD;
-  let usd = TEMPO_DAILY_CAP_USD_DEFAULT;
-  if (raw !== undefined && raw.trim() !== "") {
-    const n = Number(raw);
-    if (Number.isFinite(n) && n >= 0) usd = n;
-  }
-  usd = Math.min(usd, DAILY_BUDGET_USD);
-  return BigInt(Math.round(usd * 1_000_000));
-}
+// 日次の別枠は budget.ts の CHAIN_DAILY_CAPS（tempo 行・L1_TEMPO_DAILY_CAP_USD・既定 $2）。
 
 // ------------------------------------------------------------
 // WWW-Authenticate: Payment … の構造化ヘッダを読む。
