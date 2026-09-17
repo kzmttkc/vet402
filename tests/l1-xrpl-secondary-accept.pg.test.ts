@@ -14,6 +14,8 @@
 //  6. 我々の側の XRPL 障害（署名の材料が読めない）: 1 件目は行なし、レーンを 1 回目で閉じ、以降の Base 先頭の
 //     レーン候補は Base の通常経路で買う（行を書かずに飛ばし続けない）。summary.xrplLaneClosed に理由。
 //  7. 台帳の asset は定数の大文字 hex。壁が `RLUSD` リテラルを名乗っても行に原文を残さない。
+//  8. 1 ホストが多数の行を持つ形（本番の theaslangroup は約 1,600 件）: レーン枠は同一ホスト 2 件まで
+//     （budget.ts LANE_FLOOR_MAX_PER_HOST）、その上で 1 バッチ 1 件——1 回の cron で XRPL の署名は 1 件。
 //
 // Run: TEST_DATABASE_URL=postgres://localhost/vet402_observatory_test \
 //   npx tsx --test --test-force-exit --test-concurrency=1 tests/l1-xrpl-secondary-accept.pg.test.ts
@@ -82,6 +84,14 @@ if (!TEST_DB) {
         extensions: { bazaar: { info: { input: { method: "GET" } } } },
         quality: { l30DaysTotalCalls: 1, l30DaysUniquePayers: 1 },
       });
+    /** 同じホストの別パス（1 ホストが多数の行を持つ形）。 */
+    const sameHostItem = (n: number) =>
+      parseCatalogItem({
+        resource: `https://onehost.example/api/seller${n}`,
+        accepts: [baseAccept(n), xrplAccept(n)],
+        extensions: { bazaar: { info: { input: { method: "GET" } } } },
+        quality: { l30DaysTotalCalls: 1, l30DaysUniquePayers: 1 },
+      });
     const baseItem = (n: number) =>
       parseCatalogItem({
         resource: `https://baseonly${n}.example/api`,
@@ -94,7 +104,7 @@ if (!TEST_DB) {
     let wallXrplPayTo: ((n: number) => string) | null = null;
     const challengeDoc = (url: string) => {
       const n = Number(/seller(\d)|only(\d)/.exec(url)?.slice(1).find(Boolean) ?? "1");
-      if (url.includes("dualseller")) {
+      if (url.includes("dualseller") || url.includes("onehost.example")) {
         const x = xrplAccept(n);
         return { x402Version: 2, accepts: [baseAccept(n), wallXrplPayTo ? { ...x, payTo: wallXrplPayTo(n) } : x] };
       }
@@ -292,6 +302,25 @@ if (!TEST_DB) {
       } finally {
         xrplAsset = RLUSD;
       }
+    });
+
+    await t.test("1 ホストに 6 行: レーン枠は同一ホスト 2 件まで、XRPL の署名は 1 回の cron で 1 件", async () => {
+      process.env.OBSERVATORY_XRPL_L1_ENABLED = "true";
+      await seedItems([1, 2, 3, 4, 5, 6].map((n) => sameHostItem(n)));
+      const w = wall();
+      const summary = await run(w);
+      assert.equal(summary.laneFloor.xrpl, 2, "枠（既定 5）でも同一ホストは 2 件まで");
+      assert.equal(summary.laneFloorHostCapped.xrpl, 4, "残り 4 行はホスト上限で枠から外れた");
+      const paidXrpl = w.seen.filter((s) => s.paid && s.acceptedNetwork === "xrpl:0");
+      assert.equal(paidXrpl.length, 1, "XRPL の署名は 1 件");
+      const xrplRows = await db.execute(sql`SELECT count(*)::int AS n FROM x402_l1_purchases WHERE network = 'xrpl:0'`);
+      assert.equal(((Array.isArray(xrplRows) ? xrplRows : (xrplRows as { rows?: unknown[] }).rows ?? []) as { n: number }[])[0].n, 1);
+      // 枠の 2 件目は要求も行も無い。枠から外れた 4 行は主候補として従来どおり Base で買われる。
+      const second = w.seen.filter((s) => !s.paid).map((s) => s.url)[1];
+      assert.ok(second !== undefined);
+      const byNetwork = await db.execute(sql`SELECT network, count(*)::int AS n FROM x402_l1_purchases GROUP BY network ORDER BY network`);
+      const counts = Object.fromEntries((((Array.isArray(byNetwork) ? byNetwork : (byNetwork as { rows?: unknown[] }).rows ?? []) as { network: string; n: number }[])).map((r) => [r.network, r.n]));
+      assert.deepEqual(counts, { "eip155:8453": 4, "xrpl:0": 1 }, "XRPL 1 件 + 枠外の 4 行は Base。枠の 2 件目は行なし");
     });
 
     await t.test("1 バッチ 1 件: 2 件目の XRPL レーン候補は署名されず、行も無い（Base でも買わない）", async () => {
