@@ -30,6 +30,18 @@ import { toCaip2 } from "./chains";
 import { PATH_TEMPLATE_REASON, isPathTemplate } from "./path-template";
 import { MPP_DIRECTORY_SOURCE, TEMPO_MAINNET_CAIP2, mppChallengeToAccept, parseMppChallengesFromHeaders } from "./mpp-payer";
 
+/**
+ * MPP の壁が支払いを求める**前に**要求の形を検証した（challenge 無しの 400/422）ときの理由語。
+ * vet402 は要求の本文を推測して送らない（L0 は 1 要求・副作用なし・方法論 §1）ので、その endpoint は
+ * 測れていない＝ unverified。2026-09-18 の独立レビューで「OpenAPI から本文を組んで再試行」は外した
+ * （売り手のハンドラが受理する形の本文は、壁が支払いを求めなければ sign-up・SMS などを実行させうる）。
+ */
+export const REQUEST_SHAPE_REASON = "request_shape" as const;
+/** mppx の client が既定で送る値（AcceptPayment.resolve([tempo.charge()]) の実測）。MPP の壁はこれを見て challenge を出す（govlaws 実測: 無いと 200 の HTML）。 */
+export const MPP_ACCEPT_PAYMENT = "tempo/charge";
+/** MPP の壁が「要求の形」を支払いより先に検証したと読む HTTP 状態（実測: 400 が 477 件）。 */
+export const REQUEST_SHAPE_HTTP = new Set([400, 422]);
+
 export type ProbeTarget = {
   resourceUrl: string;
   /** Catalog-declared method or null (undeclared → probed with GET, §6.1). */
@@ -207,23 +219,30 @@ export async function probeEndpoint(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const startedAt = Date.now();
   const ACCEPT = options.recheck ? "*/*" : "application/json";
+  // MPP を期待する endpoint（出どころ mpp_directory、または network が Tempo）。
+  const expectMpp = target.source === MPP_DIRECTORY_SOURCE || toCaip2(target.network) === TEMPO_MAINNET_CAIP2;
+  const baseHeaders: Record<string, string> = {
+    accept: ACCEPT,
+    "user-agent": UA,
+    // MPP の壁は Accept-Payment を見て challenge を出す（govlaws 実測 2026-09-17: 無いと 200 の HTML）。
+    ...(expectMpp ? { "accept-payment": MPP_ACCEPT_PAYMENT } : {}),
+  };
+  const requestInit = (body: string | null): RequestInit => ({
+    method,
+    signal: controller.signal,
+    // The guarded default follows redirects itself, re-checking each hop
+    // (safe-fetch.ts); it overrides this to "manual" so the platform cannot
+    // follow one for us. Left declared for an injected fetchImpl.
+    redirect: "follow",
+    headers: body !== null ? { ...baseHeaders, "content-type": "application/json" } : baseHeaders,
+    ...(body !== null ? { body } : {}),
+  });
 
   let response: Response;
   try {
-    response = await fetchImpl(target.resourceUrl, {
-      method,
-      signal: controller.signal,
-      // The guarded default follows redirects itself, re-checking each hop
-      // (safe-fetch.ts); it overrides this to "manual" so the platform cannot
-      // follow one for us. Left declared for an injected fetchImpl.
-      redirect: "follow",
-      headers: { accept: ACCEPT, "user-agent": UA },
-      // Empty JSON body on POST: the x402 wall answers 402 before the handler
-      // parses anything, so this cannot trigger work on a compliant server.
-      ...(method === "POST"
-        ? { body: "{}", headers: { accept: ACCEPT, "content-type": "application/json", "user-agent": UA } }
-        : {}),
-    });
+    // Empty JSON body on POST: the x402 wall answers 402 before the handler
+    // parses anything, so this cannot trigger work on a compliant server.
+    response = await fetchImpl(target.resourceUrl, requestInit(method === "POST" ? "{}" : null));
   } catch (error) {
     const reason = classifyNetworkError(error);
     clearTimeout(timer);
@@ -288,6 +307,31 @@ export async function probeEndpoint(
     };
   }
 
+  // MPP（2026-09-17）: MPP を期待する endpoint が challenge 無しの 400/422 を返した。壁は支払いを
+  // 求める前に要求の形を検証した（本番の初回 L0 で 477 件）。vet402 は要求の本文を推測して
+  // 送らないので、この endpoint は測れていない——再試行せず unverified(request_shape)。
+  // path_template と同じ原則（我々が正しく組めない要求の 4xx は売り手の不履行ではない）。
+  // x402 の出どころは従来どおり no_402 の fail。判定はこの関数の中で完結するので、通常測定・
+  // 異議の再測定・demo・公開キューのどの経路でも同じ結果になる。
+  if (expectMpp && REQUEST_SHAPE_HTTP.has(response.status) && !response.headers.get("www-authenticate")) {
+    return {
+      method,
+      verdict: "unverified",
+      dialect: null,
+      httpStatus: response.status,
+      has402Challenge: null,
+      acceptsValid: null,
+      priceConsistent: null,
+      metadataConsistent: null,
+      latencyMs,
+      failReason: REQUEST_SHAPE_REASON,
+      rawResponseMeta: {
+        ...meta,
+        detail: "the wall validated the shape of the request before asking for payment; vet402 does not guess a request body, so this endpoint has not been measured",
+      },
+    };
+  }
+
   if (response.status !== 402) {
     // 200 で本編を返すのも、401/403 で鍵を要求するのも「機械が払える 402」ではない。
     return {
@@ -313,7 +357,6 @@ export async function probeEndpoint(
   const mppChallenges = (await parseMppChallengesFromHeaders(response.headers)).challenges.filter(
     (c) => c.method === "tempo" && c.intent === "charge",
   );
-  const expectMpp = target.source === MPP_DIRECTORY_SOURCE || toCaip2(target.network) === TEMPO_MAINNET_CAIP2;
   const mppAccepts = expectMpp ? mppChallenges.map(mppChallengeToAccept).filter((a): a is NonNullable<typeof a> => a !== null) : [];
   const envelope =
     expectMpp && mppChallenges.length > 0
@@ -323,7 +366,14 @@ export async function probeEndpoint(
           source: "www-authenticate" as const,
         }
       : expectMpp
-        ? { accepts: null, dialect: "unpayable" as const, source: "none" as const }
+        ? // MPP を期待する endpoint に Payment challenge が無い。x402 の封筒が在れば「その壁は x402 を
+          // 話す」と観測し（方言はその封筒のもの）、理由は no_mpp_challenge——売り手が MPP の
+          // directory に載せながら MPP の client には払えない壁を出している所見（nansen 実測 2026-09-17）。
+          // 封筒も無ければ従来どおり accepts_invalid / unpayable。
+          (() => {
+            const x402 = parseEnvelope(response.headers, bodyText);
+            return { ...x402, accepts: null, x402Envelope: x402.accepts !== null };
+          })()
         : parseEnvelope(response.headers, bodyText);
   meta.dialect = envelope.dialect;
   meta.envelopeSource = envelope.source;
@@ -338,22 +388,26 @@ export async function probeEndpoint(
       expires: c.expires,
     }));
   } else if (expectMpp) {
-    meta.note = "mpp_directory endpoint answered 402 without a Payment challenge (an x402 envelope is not payable by an MPP client)";
+    meta.note = "MPP endpoint answered 402 without a Payment challenge (an x402 envelope is not payable by an MPP client)";
   }
   const accepts = envelope.accepts;
   if (!accepts) {
+    const x402Only = "x402Envelope" in envelope && envelope.x402Envelope === true;
     return {
       method,
       verdict: "fail",
       // MPP の challenge はあるが払える形（address の受取先）が無い → 方言は mpp のまま残す。
-      dialect: envelope.dialect === "mpp" ? "mpp" : "unpayable",
+      // x402 の封筒だけの MPP endpoint → 観測した封筒の方言（v1/v2/both）で残す。
+      dialect: envelope.dialect === "mpp" ? "mpp" : x402Only ? envelope.dialect : "unpayable",
       httpStatus: 402,
       has402Challenge: true,
-      acceptsValid: false,
+      // no_mpp_challenge: MPP の accepts は 1 つも無い。x402 の封筒が読めたことは dialect と meta に
+      // 残し、acceptsValid は「判定していない」の null（x402 の accepts を MPP の合否に数えない）。
+      acceptsValid: x402Only ? null : false,
       priceConsistent: null,
       metadataConsistent: null,
       latencyMs,
-      failReason: "accepts_invalid",
+      failReason: x402Only ? "no_mpp_challenge" : "accepts_invalid",
       rawResponseMeta: meta,
     };
   }

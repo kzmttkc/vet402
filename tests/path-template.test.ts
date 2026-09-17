@@ -98,3 +98,15 @@ test("Postgres 用の正規表現は isPathTemplate と同じ判定を返す（�
     assert.equal(pg.test(url.split("?")[0]), expected, `pg regex(${url})`);
   }
 });
+
+test("Express/path-to-regexp の修飾つき `:name*` `:name+` もテンプレート（2026-09-17 MPP 実測 `/airline/:rest*`）", () => {
+  assert.equal(isPathTemplate("https://flightapi.mpp.tempo.xyz/airline/:rest*"), true);
+  assert.equal(isPathTemplate("https://x.example/files/:path+"), true);
+  assert.equal(isPathTemplate("https://x.example/files/:path+/download"), true);
+  // 修飾が無ければ素の `:name`（従来どおり）。`*` `+` を外した正規表現では下の 2 つは当たらない
+  assert.equal(/^:[A-Za-z_][\w-]*$/.test(":rest*"), false);
+  assert.equal(/^:[A-Za-z_][\w-]*$/.test(":path+"), false);
+  assert.equal(isPathTemplate("https://x.example/v1/explorer/query-runs/:run_id/status"), true);
+  // 修飾だけ・アルファベットで始まらないものはテンプレートではない
+  assert.equal(isPathTemplate("https://x.example/v1/rest*"), false);
+});

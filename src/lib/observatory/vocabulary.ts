@@ -79,6 +79,18 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
       "path_template means the listed URL still contains an unfilled path parameter, so no request was sent at all. A 4xx from a request we could not have formed correctly is our limitation, not the seller's failure, so the endpoint is recorded unverified and never purchased from; the same principle applies to the request body and the authentication header, where it is recorded as inconclusive.",
   },
   {
+    term: "request_shape",
+    group: "l0",
+    definition:
+      "request_shape means an MPP endpoint answered 400 or 422 with no payment challenge: the wall validated the shape of the request before asking for payment. vet402 does not guess a request body or query — an L0 probe is one request with an empty JSON body at most — so the endpoint has not been measured and the probe is recorded unverified rather than as a failure.",
+  },
+  {
+    term: "no_mpp_challenge",
+    group: "l0",
+    definition:
+      "no_mpp_challenge means an endpoint listed in the MPP directory answered 402 with an x402 envelope but no MPP Payment challenge, so an MPP client cannot pay it; the probe is a failure and the dialect recorded is the x402 envelope that was observed.",
+  },
+  {
     term: "settled",
     group: "l1",
     definition:

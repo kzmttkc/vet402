@@ -108,6 +108,19 @@ export function solanaDailyCapUnits(): bigint {
 export const LANE_FLOOR_PER_RUN_DEFAULT = 5;
 export const LANE_FLOOR_PER_RUN_MAX = 20;
 
+/**
+ * レーン枠の中で、同じホストが 1 回のバッチに占めてよい件数（2026-09-18）。
+ *
+ * 本番実測（9/18 00:2x JST・Tempo）: 枠 5 件の先頭が stableenrich.dev の endpoint で埋まり、
+ * どれも challenge に feePayer が無く `fee_payer_absent` で拒否（支出 0）——同じホストの 8 件で
+ * 2 バッチを消費した。Tempo は 76 ホスト・265 候補あるので、1 ホスト 2 件までにすれば 1 バッチで
+ * 3 ホスト以上を測れる。拒否された行は従来どおり掃引の窓（6 日）のあいだ再選択されない。
+ */
+export const LANE_FLOOR_MAX_PER_HOST = 2;
+/** ホスト上限で間引いても枠を埋められるよう、レーンのクエリは枠の何倍を取るか（上限 200 行）。 */
+export const LANE_FLOOR_OVERSAMPLE = 8;
+export const LANE_FLOOR_FETCH_MAX = 200;
+
 /** 1 回の runL1Batch で、別枠を持つレーン 1 本あたり先頭に置く候補の件数。 */
 export function laneFloorPerRun(): number {
   const raw = process.env.L1_LANE_FLOOR_PER_RUN;

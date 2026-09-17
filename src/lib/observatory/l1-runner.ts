@@ -35,7 +35,7 @@ import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { readBodyCapped } from "@/lib/net/read-capped";
 import { UnsafeTargetError, createSafeFetchImpl, type SafeFetchCallOptions } from "@/lib/net/safe-fetch";
 import { createDeadline } from "@/lib/util/deadline";
-import { CHAIN_DAILY_CAPS, cappedChainFor, chainDailyCapUnits, checkL1Budget, isL1Enabled, laneFloorPerRun, DAILY_BUDGET_USD, type CappedChain } from "./budget";
+import { CHAIN_DAILY_CAPS, LANE_FLOOR_FETCH_MAX, LANE_FLOOR_MAX_PER_HOST, LANE_FLOOR_OVERSAMPLE, cappedChainFor, chainDailyCapUnits, checkL1Budget, isL1Enabled, laneFloorPerRun, DAILY_BUDGET_USD, type CappedChain } from "./budget";
 import { isSpendingHalted, type HaltVerdict } from "./kill-switch";
 import { addDerivedOperatorAddresses, isOperatorPayTo, operatorPayToDenylist } from "./operator";
 import {
@@ -119,6 +119,11 @@ export type L1BatchSummary = {
    * 無い日は 0。購入の可否は従来の経路（デッドライン・別枠・残高・原子的予約）がそのまま決める。
    */
   laneFloor: Partial<Record<CappedChain, number>>;
+  /**
+   * レーン枠を埋める途中で、同一ホストの上限（budget.ts LANE_FLOOR_MAX_PER_HOST）のために
+   * 飛ばした候補の件数（レーン別・2026-09-18）。0 でない日は、1 つのホストが枠を埋めかけていた。
+   */
+  laneFloorHostCapped: Partial<Record<CappedChain, number>>;
   /**
    * XRPL の open_ledger_fee が上限（1,000 drops）を超えていて署名しなかった候補の数（2026-09-17）。
    * 台帳には行を書かない（payer_unfunded と同じ作法）。1 件出たらそのバッチの XRPL は閉じる。
@@ -716,6 +721,7 @@ export async function runL1Batch(
     disabledReason: null,
     payerUnfunded: 0,
     laneFloor: {},
+    laneFloorHostCapped: {},
     xrplFeeOverCap: 0,
   };
 
@@ -1035,6 +1041,7 @@ export async function runL1Batch(
     },
   });
   summary.laneFloor = laneHead.counts;
+  summary.laneFloorHostCapped = laneHead.hostCapped;
   if (laneHead.head.length > 0) {
     // 主候補にも入っていた行は先頭へ移す（同じ売り手を 1 回のバッチで 2 度買わない）。
     const headIds = new Set(laneHead.head.map((c) => c.id));
@@ -1177,35 +1184,62 @@ function parseTextArray(v: unknown): string[] {
  *    ない）。ログに残して 0 件として続ける。
  *  - 購入の可否はここでは決めない。返した候補は主候補と同じく purchaseOne を通り、デッドライン・
  *    別枠・残高・原子的予約の関門をそのまま受ける。
+ *  - 同じホストはレーンの枠の中で最大 `maxPerHost` 件（既定 LANE_FLOOR_MAX_PER_HOST = 2・2026-09-18）。
+ *    1 ホストの endpoint 群が枠を独占すると、その売り手が署名前に断られる形（Tempo の
+ *    `fee_payer_absent`）のとき 1 バッチがまるごと空振りになる。間引いても枠を埋められるよう、
+ *    クエリは枠の LANE_FLOOR_OVERSAMPLE 倍（上限 LANE_FLOOR_FETCH_MAX 行）を同じ並びで取る。
  */
+export function laneHostOf(resourceUrl: string): string {
+  try {
+    return new URL(resourceUrl).hostname.toLowerCase();
+  } catch {
+    // 読めない URL はそれ自身を 1 つのホストとして数える（まとめて 1 ホスト扱いにしない）。
+    return resourceUrl;
+  }
+}
+
 export async function laneFloorCandidates(input: {
   lanes: readonly { chain: CappedChain; ready: boolean }[];
   floor: number;
   fetchLane: (chain: CappedChain, limit: number) => Promise<unknown>;
-}): Promise<{ head: Candidate[]; counts: Partial<Record<CappedChain, number>> }> {
+  /** 同じホストの上限（テスト用に差し替え可）。 */
+  maxPerHost?: number;
+}): Promise<{ head: Candidate[]; counts: Partial<Record<CappedChain, number>>; hostCapped: Partial<Record<CappedChain, number>> }> {
+  const maxPerHost = input.maxPerHost ?? LANE_FLOOR_MAX_PER_HOST;
+  const hostCapped: Partial<Record<CappedChain, number>> = {};
   const head: Candidate[] = [];
   const counts: Partial<Record<CappedChain, number>> = {};
   const seen = new Set<string>();
   for (const lane of input.lanes) {
     counts[lane.chain] = 0;
+    hostCapped[lane.chain] = 0;
     if (!lane.ready || input.floor <= 0) continue;
     let rows: Record<string, unknown>[] = [];
     try {
-      const raw = await input.fetchLane(lane.chain, input.floor);
+      const raw = await input.fetchLane(lane.chain, Math.min(input.floor * LANE_FLOOR_OVERSAMPLE, LANE_FLOOR_FETCH_MAX));
       rows = (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as Record<string, unknown>[];
     } catch (error) {
       if (!isMissingSchemaError(error)) logServerError(`observatory.l1.lane_floor_${lane.chain}`, error);
       continue;
     }
+    const perHost = new Map<string, number>();
     for (const row of rows) {
+      if ((counts[lane.chain] ?? 0) >= input.floor) break;
       const candidate = { ...rowToCandidate(row), laneChain: lane.chain };
       if (seen.has(candidate.id)) continue;
+      const host = laneHostOf(candidate.resourceUrl);
+      const used = perHost.get(host) ?? 0;
+      if (used >= maxPerHost) {
+        hostCapped[lane.chain] = (hostCapped[lane.chain] ?? 0) + 1;
+        continue;
+      }
+      perHost.set(host, used + 1);
       seen.add(candidate.id);
       head.push(candidate);
       counts[lane.chain] = (counts[lane.chain] ?? 0) + 1;
     }
   }
-  return { head, counts };
+  return { head, counts, hostCapped };
 }
 
 async function purchaseOne(input: {
@@ -1297,7 +1331,13 @@ async function purchaseOne(input: {
       method,
       signal: firstController.signal,
       redirect: "follow",
-      headers: { accept: "application/json", "user-agent": "vet402-observatory-l1/1.0 (+https://vet402.com/observatory/methodology)", ...(method === "POST" ? { "content-type": "application/json" } : {}) },
+      headers: {
+        accept: "application/json",
+        "user-agent": "vet402-observatory-l1/1.0 (+https://vet402.com/observatory/methodology)",
+        // MPP の壁は Accept-Payment を見て challenge を出す（govlaws 実測 2026-09-17: 無いと 200）。L0 と同じ値。
+        ...(isTempo ? { "accept-payment": "tempo/charge" } : {}),
+        ...(method === "POST" ? { "content-type": "application/json" } : {}),
+      },
       ...(method === "POST" ? { body: "{}" } : {}),
     });
     firstBody = await readBodyCapped(first, 16_000);

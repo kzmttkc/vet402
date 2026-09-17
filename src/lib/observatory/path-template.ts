@@ -8,7 +8,10 @@
 // L1 は候補から外し、coverage 階層でも C1 の枠を使わない。
 //
 // 検出するのは**パスセグメント単位**: `:name` `{name}` `<name>` `[name]` `*`
-// `%7Bname%7D`。セグメント途中の `:`（`/api/v1:beta`）、ポート番号、クエリ
+// `%7Bname%7D`、および Express/path-to-regexp の修飾つき `:name*` `:name+`
+// （`:name?` は URL では `?` が query の区切りになり pathname に残らないので、素の `:name` として既に当たる）
+// （2026-09-17 MPP directory 実測: `flightapi.mpp.tempo.xyz/airline/:rest*` が 404 の fail に
+// なっていた——`*` 付きは雛形と認識されず要求が出ていた）。セグメント途中の `:`（`/api/v1:beta`）、ポート番号、クエリ
 // 文字列の値は対象外——正当な URL をテンプレート扱いして測定から外すのは、
 // 測れるものを測らない誤りで、逆方向の嘘になる。
 // ============================================================
@@ -24,7 +27,7 @@ export const PATH_TEMPLATE_REASON = "path_template" as const;
  * ここは生の文字列を見るので `{}` `<>` は生と符号化済みの両方を持つ。
  */
 export const PATH_TEMPLATE_PG_REGEX =
-  "/(:[A-Za-z_][A-Za-z0-9_-]*|\\{[^/]*\\}|%7B[^/]*%7D|<[^/]*>|%3C[^/]*%3E|\\[[^/]*\\]|\\*)(/|$)";
+  "/(:[A-Za-z_][A-Za-z0-9_-]*[*+]?|\\{[^/]*\\}|%7B[^/]*%7D|<[^/]*>|%3C[^/]*%3E|\\[[^/]*\\]|\\*)(/|$)";
 
 /** `x402_endpoints e` に対する「テンプレートではない」条件。 */
 export function notPathTemplateSql(): SQL {
@@ -34,7 +37,7 @@ export function notPathTemplateSql(): SQL {
 // WHATWG URL は `{}` `<>` をパス中で `%7B%7D` `%3C%3E` に符号化する（`[]` と `*` は
 // そのまま）ので、生の形と符号化済みの形の両方を見る。
 const TEMPLATE_SEGMENT =
-  /^(?::[A-Za-z_][\w-]*|\{[^/]*\}|%7B[^/]*%7D|<[^/]*>|%3C[^/]*%3E|\[[^/]*\]|\*)$/i;
+  /^(?::[A-Za-z_][\w-]*[*+]?|\{[^/]*\}|%7B[^/]*%7D|<[^/]*>|%3C[^/]*%3E|\[[^/]*\]|\*)$/i;
 
 /** 純関数。resourceUrl のパスに未置換のテンプレートセグメントがあれば true。 */
 export function isPathTemplate(url: string): boolean {

@@ -90,58 +90,104 @@ test("MPP: recipient that is not an address → accepts_invalid (nothing payable
   assert.equal(r.dialect, "mpp");
 });
 
-test("mpp_directory endpoint answering 402 with an x402 envelope (no Payment challenge) is not a pass", async () => {
+test("mpp_directory endpoint answering 402 with an x402 envelope only (nansen, 2026-09-17) → fail no_mpp_challenge, the observed x402 dialect is kept", async () => {
   const v2 = Buffer.from(
-    JSON.stringify({ x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:4217", amount: "25000", asset: USDC_E, payTo: RECIPIENT }] }),
+    JSON.stringify({ x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:8453", amount: "50000", asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", payTo: RECIPIENT }] }),
   ).toString("base64");
   const r = await probeEndpoint(target(), { fetchImpl: fake(402, { "payment-required": v2, "content-type": "application/json" }, "{}") });
   assert.equal(r.verdict, "fail");
-  assert.equal(r.failReason, "accepts_invalid");
-  assert.equal(r.dialect, "unpayable");
-  assert.match(String(r.rawResponseMeta?.note), /not payable by an MPP client/);
-});
-
-test("a Bazaar-sourced Base endpoint that ALSO sends WWW-Authenticate: Payment keeps its x402 verdict and dialect (review #3); the challenge is only observed in meta", async () => {
-  const v2 = Buffer.from(
-    JSON.stringify({ x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:8453", amount: "3000", asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", payTo: "0x52e29e0d2aa49bfbfc548c0a9f2196f4aa51f3ea" }] }),
-  ).toString("base64");
-  const base = target({ resourceUrl: "https://example.com/api/x", network: "eip155:8453", priceAmount: "3000", priceAsset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", payTo: "0x52e29e0d2aa49bfbfc548c0a9f2196f4aa51f3ea", source: "cdp_bazaar" });
-  const withPayment = await probeEndpoint(base, { fetchImpl: fake(402, { "payment-required": v2, "www-authenticate": paymentHeader() }, "{}") });
-  const without = await probeEndpoint(base, { fetchImpl: fake(402, { "payment-required": v2 }, "{}") });
-  assert.equal(withPayment.verdict, without.verdict);
-  assert.equal(withPayment.dialect, without.dialect);
-  assert.equal(withPayment.dialect, "v2");
-  assert.equal(withPayment.failReason, without.failReason);
-  assert.equal(withPayment.learnedPayTo ?? null, null);
-  assert.ok(Array.isArray(withPayment.rawResponseMeta?.mpp), "the Payment challenge is kept as an observation");
-  // 封筒が無い Bazaar endpoint は、Payment ヘッダがあっても従来どおり accepts_invalid / unpayable
-  const noEnvelope = await probeEndpoint(base, { fetchImpl: fake(402, { "www-authenticate": paymentHeader() }, "{}") });
-  assert.equal(noEnvelope.verdict, "fail");
-  assert.equal(noEnvelope.failReason, "accepts_invalid");
-  assert.equal(noEnvelope.dialect, "unpayable");
-});
-
-test("a Tempo-network endpoint from any source expects MPP (network alone selects the branch)", async () => {
-  const r = await probeEndpoint(target({ source: "cdp_bazaar" }), { fetchImpl: fake(402, { "www-authenticate": paymentHeader() }) });
-  assert.equal(r.verdict, "pass");
-  assert.equal(r.dialect, "mpp");
-});
-
-test("a Bazaar-sourced endpoint keeps the x402 envelope path untouched (no Payment header → v2 as before)", async () => {
-  const v2 = Buffer.from(
-    JSON.stringify({ x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:8453", amount: "3000", asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", payTo: "0x52e29e0d2aa49bfbfc548c0a9f2196f4aa51f3ea" }] }),
-  ).toString("base64");
-  const r = await probeEndpoint(
-    target({ resourceUrl: "https://example.com/api/x", network: "eip155:8453", priceAmount: "3000", priceAsset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", payTo: "0x52e29e0d2aa49bfbfc548c0a9f2196f4aa51f3ea", source: "cdp_bazaar" }),
-    { fetchImpl: fake(402, { "payment-required": v2 }, "{}") },
-  );
-  assert.equal(r.verdict, "pass");
+  assert.equal(r.failReason, "no_mpp_challenge");
   assert.equal(r.dialect, "v2");
-  assert.equal(r.learnedPayTo ?? null, null);
+  assert.equal(r.acceptsValid, null, "x402 accepts are not counted as MPP accepts — not judged, not false");
+  assert.match(String(r.rawResponseMeta?.note), /not payable by an MPP client/);
+  // 封筒も challenge も無い 402 は従来どおり accepts_invalid / unpayable
+  const bare = await probeEndpoint(target(), { fetchImpl: fake(402, { "content-type": "application/json" }, "{}") });
+  assert.equal(bare.failReason, "accepts_invalid");
+  assert.equal(bare.dialect, "unpayable");
 });
 
-test("MPP: a 200 from an MPP endpoint is no_402 like any other wall that did not stand", async () => {
-  const r = await probeEndpoint(target(), { fetchImpl: fake(200, { "content-type": "application/json" }, "{}") });
-  assert.equal(r.verdict, "fail");
-  assert.equal(r.failReason, "no_402");
+test("MPP probes send Accept-Payment: tempo/charge (the reference client's header); Bazaar probes do not", async () => {
+  const seen: Record<string, string | null>[] = [];
+  const capture = (status: number, headers: Record<string, string>) => async (_url: string, init?: RequestInit) => {
+    const h = new Headers(init?.headers);
+    seen.push({ accept: h.get("accept"), acceptPayment: h.get("accept-payment"), contentType: h.get("content-type"), body: typeof init?.body === "string" ? init.body : null });
+    return new Response("{}", { status, headers });
+  };
+  await probeEndpoint(target(), { fetchImpl: capture(402, { "www-authenticate": paymentHeader() }) });
+  assert.equal(seen[0].acceptPayment, "tempo/charge");
+  assert.equal(seen[0].body, "{}");
+  await probeEndpoint(target({ resourceUrl: "https://example.com/api/x", network: "eip155:8453", source: "cdp_bazaar", priceAmount: "3000", priceAsset: "0xUSDC" }), { fetchImpl: capture(402, {}) });
+  assert.equal(seen[1].acceptPayment, null);
+});
+
+// ---- request_shape（2026-09-17・L0 の公平）: challenge 無しの 400/422 を返す MPP endpoint ----------
+// vet402 は要求の本文を推測して送らない（L0 は 1 要求・副作用なし）。再試行はしない。
+function counting(status: number, headers: Record<string, string> = {}, body = "{}") {
+  const calls: { url: string; body: string | null }[] = [];
+  const fetchImpl = async (url: string, init?: RequestInit) => {
+    calls.push({ url, body: typeof init?.body === "string" ? init.body : null });
+    return new Response(body, { status, headers });
+  };
+  return { calls, fetchImpl };
+}
+
+test("MPP 400 / 422 with no Payment challenge → unverified request_shape, exactly one request, never a guessed body", async () => {
+  for (const status of [400, 422]) {
+    const c = counting(status, { "content-type": "application/json", link: '</openapi.json>; rel="service-desc"' }, '{"error":"symbol is required"}');
+    const r = await probeEndpoint(target(), { fetchImpl: c.fetchImpl });
+    assert.equal(r.verdict, "unverified");
+    assert.equal(r.failReason, "request_shape");
+    assert.equal(r.httpStatus, status);
+    assert.equal(r.has402Challenge, null);
+    assert.equal(r.acceptsValid, null);
+    assert.equal(r.dialect, null);
+    assert.equal(c.calls.length, 1, "one request — no retry, no OpenAPI fetch even when the 400 advertises one");
+    assert.equal(c.calls[0].body, "{}", "the only body we send is the empty JSON object");
+    assert.match(String(r.rawResponseMeta?.detail), /does not guess a request body/);
+    assert.equal(r.rawResponseMeta?.retry, undefined);
+  }
+});
+
+test("request_shape is scoped: Bazaar 400 stays no_402 fail; MPP 404 / 401 / 500 stay no_402 fail; a 400 that carries a Payment challenge stays no_402", async () => {
+  const bazaar = await probeEndpoint(target({ resourceUrl: "https://example.com/api/x", network: "eip155:8453", source: "cdp_bazaar" }), { fetchImpl: fake(400, {}, "{}") });
+  assert.equal(bazaar.verdict, "fail");
+  assert.equal(bazaar.failReason, "no_402");
+  for (const status of [401, 404, 500]) {
+    const r = await probeEndpoint(target(), { fetchImpl: fake(status, {}, "{}") });
+    assert.equal(r.verdict, "fail", `status ${status}`);
+    assert.equal(r.failReason, "no_402");
+  }
+  const withChallenge = await probeEndpoint(target(), { fetchImpl: fake(400, { "www-authenticate": paymentHeader() }, "{}") });
+  assert.equal(withChallenge.verdict, "fail");
+  assert.equal(withChallenge.failReason, "no_402");
+});
+
+// H3（独立レビュー）: 判定は probeEndpoint の中で完結する。source を渡さない経路（demo/verify・disputes・
+// requests は network だけ渡す）でも、recheck の経路でも同じ結果になる。
+test("the same 400 gives the same verdict on every path: runner (source+network), demo/requests (network only), dispute recheck", async () => {
+  const body = '{"error":"query required"}';
+  const viaRunner = await probeEndpoint(target(), { fetchImpl: fake(400, {}, body) });
+  const viaNetworkOnly = await probeEndpoint(target({ source: undefined }), { fetchImpl: fake(400, {}, body) });
+  const viaRecheck = await probeEndpoint(target({ source: undefined }), { fetchImpl: fake(400, {}, body), recheck: true });
+  for (const r of [viaRunner, viaNetworkOnly, viaRecheck]) {
+    assert.equal(r.verdict, "unverified");
+    assert.equal(r.failReason, "request_shape");
+    assert.equal(r.httpStatus, 400);
+  }
+  assert.equal(viaRecheck.rawResponseMeta?.route, "recheck_same_egress");
+});
+
+test("every caller of probeEndpoint hands it the endpoint's network (that alone selects the MPP rules), and none passes a request-shaping option", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  for (const rel of ["src/lib/demo/verify.ts", "src/lib/observatory/disputes.ts", "src/lib/observatory/requests.ts", "src/lib/observatory/probe-runner.ts"]) {
+    const src = readFileSync(join(process.cwd(), rel), "utf8");
+    const at = src.indexOf("probeEndpoint(");
+    assert.ok(at > 0, `${rel} calls probeEndpoint`);
+    const call = src.slice(at, at + 700);
+    assert.match(call, /network:/, `${rel} passes network`);
+    assert.doesNotMatch(src, /requestShape|mpp-request-shape|openapi/i, `${rel} has no request-shaping path`);
+  }
+  const probe = readFileSync(join(process.cwd(), "src/lib/observatory/l0-probe.ts"), "utf8");
+  assert.equal((probe.match(/await fetchImpl\(/g) ?? []).length, 1, "probeEndpoint sends exactly one request");
 });

@@ -204,7 +204,8 @@ export default async function ObservatoryMethodologyPage() {
               </li>
               <li>
                 {unverified.otherNotReached.toLocaleString()} we could not reach for a reason of our
-                own (rate limiting, TLS)
+                own (rate limiting, TLS, or an MPP wall that checks the request before asking for
+                payment: <code>request_shape</code>)
               </li>
               <li>
                 {unverified.pathTemplate.toLocaleString()} whose listed URL still contains an
@@ -227,7 +228,20 @@ export default async function ObservatoryMethodologyPage() {
           <code>/files/*</code>); we do not know the real value, so no request is sent, the
           probe is recorded as <code>unverified</code> with this reason, and the endpoint is
           never purchased from — a 4xx from a request we could not have formed correctly is our
-          limitation, not the seller&apos;s failure.
+          limitation, not the seller&apos;s failure. Since 2026-09-17 a path segment with a
+          modifier (<code>/airline/:rest*</code>) counts as well.
+        </p>
+        <p className="doc-p">
+          <strong>request_shape</strong> — an MPP endpoint (Tempo) that answers <code>400</code>{" "}
+          or <code>422</code> with no <code>Payment</code> challenge validated the shape of the
+          request before asking for payment. vet402 does not guess a request body or query: an L0
+          probe stays one request, with an empty JSON body at most, so the endpoint has not been
+          measured and the probe is recorded <code>unverified</code> with this reason — the same
+          principle as <code>path_template</code>. MPP probes send{" "}
+          <code>Accept-Payment: tempo/charge</code>, the header the reference client sends, because
+          some walls answer with plain content without it. An MPP endpoint that answers 402 with an
+          x402 envelope and no Payment challenge is a failure with reason{" "}
+          <code>no_mpp_challenge</code>: the wall is not one an MPP client can pay.
         </p>
         <p className="doc-p">
           <strong>

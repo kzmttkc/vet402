@@ -12,8 +12,9 @@
 //     消さない（catalog-sync の keepLearnedPayTo）。
 //   - ページングが無い。1 回で取り、上限（MAX_ITEMS）を超えたぶんは切って complete=false と
 //     言う（黙って全部取れたことにしない）。
-//   - `:id` `{id}` のようなパス変数は Bazaar と同じ扱い: カタログには入れ、L0 は path_template で
-//     unverified、L1 は候補にしない（path-template.ts が正典）。
+//   - `:id` `{id}` `:rest*` のようなパス変数は Bazaar と同じ扱い: カタログには入れ（行は残す＝
+//     「測らなかった理由」を履歴に持つ）、L0 は要求を出さず path_template で unverified、
+//     L1 は候補にしない（path-template.ts が正典・2026-09-17 に `:name*` 形を足した）。
 //
 // snapshot / delisting は source ごとに独立（x402_catalog_snapshots.source）なので、
 // cdp_bazaar の差分計算はこの source が増えても変わらない。

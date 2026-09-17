@@ -330,6 +330,31 @@ if (!TEST_DB) {
       assert.ok(off.seen.every((s) => !s.url.includes("fal.mpp.tempo.example")));
     });
 
+    await t.test("lane floor host cap: one host with four learned Tempo endpoints takes two head slots per batch, the other host still gets in (2026-09-18)", async () => {
+      await seed();
+      process.env.OBSERVATORY_TEMPO_L1_ENABLED = "true";
+      // fal（seed の 2 件）に同じホストの 2 件を足し、別ホストを 1 件足す。どれも L0 pass・受取先学習済みの形で置く。
+      for (const [key, url] of [
+        ["fal.mpp.tempo.example/model/3", "https://fal.mpp.tempo.example/model/3"],
+        ["fal.mpp.tempo.example/model/4", "https://fal.mpp.tempo.example/model/4"],
+        ["other.mpp.tempo.example/v1/x", "https://other.mpp.tempo.example/v1/x"],
+      ]) {
+        const inserted = rows<{ id: string }>(
+          await db.execute(sql`
+            INSERT INTO x402_endpoints (resource_key, resource_url, source, method, network, pay_to, price_amount, price_asset, status)
+            VALUES (${key}, ${url}, 'mpp_directory', 'POST', ${TEMPO}, ${RECIPIENT.toLowerCase()}, '25000', ${USDC_E}, 'active') RETURNING id::text AS id`),
+        );
+        await db.insert(schema.x402L0Probes).values({ endpointId: inserted[0].id, method: "POST", verdict: "pass", dialect: "mpp" });
+      }
+      const w = wall();
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED, limit: 10, fetchImpl: w.fetchImpl, mppxCharge });
+      assert.equal(summary.laneFloor.tempo, 3, `2 from fal + 1 from the other host, got ${JSON.stringify(summary.laneFloor)}`);
+      assert.equal(summary.laneFloorHostCapped.tempo, 2, "the two extra fal endpoints were skipped by the host cap and the summary says so");
+      const firstThreeHosts = w.seen.filter((s) => !s.paid).slice(0, 3).map((s) => new URL(s.url).hostname);
+      assert.equal(firstThreeHosts.filter((h) => h === "fal.mpp.tempo.example").length, 2);
+      assert.ok(firstThreeHosts.includes("other.mpp.tempo.example"), `head hosts were ${firstThreeHosts.join(",")}`);
+    });
+
     await t.test("selection: a wall charging other than declared is recorded as price_mismatch, never paid", async () => {
       await seed();
       process.env.OBSERVATORY_TEMPO_L1_ENABLED = "true";
