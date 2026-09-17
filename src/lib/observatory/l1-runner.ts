@@ -137,8 +137,12 @@ type Candidate = {
   isPriority: boolean;
   /** 成立が MATURE_SETTLED_MIN 件以上＝証拠が足りている（買い直しは 30 日間隔）。 */
   isMature: boolean;
-  /** このエンドポイントで settled 行がある network（CAIP-2）。レーンの accept 優先の材料（2026-09-17）。 */
+  /** このエンドポイントで settled / settle_claimed の行がある network（CAIP-2）。レーンの accept 優先の材料（2026-09-17）。 */
   settledNetworks: string[];
+  /** このエンドポイントで非決済（settle_failed / delivered_no_receipt / settle_claim_refuted）が 1 度でも出た network。 */
+  failedNetworks: string[];
+  /** レーン枠（laneFloorCandidates）から来た候補なら、そのレーン。主候補は null。 */
+  laneChain: CappedChain | null;
 };
 
 /**
@@ -146,6 +150,11 @@ type Candidate = {
  * selectable なとき、purchaseOne は「そのエンドポイントにそのチェーンでの settled 行がまだ無い」
  * レーンの network を selectAccept の preferNetworks に渡す。一度そのチェーンで settled したら
  * 従来の並び（Base 先頭）に戻す＝レーンの実績は 1 エンドポイント 1 回でよい。
+ *
+ * 2026-09-17 レビュー C2/C4: 優先は**レーン枠から来た候補（candidate.laneChain）にだけ**渡す。
+ * 主候補（Base の需要順）には掛けない。バッチ内でそのレーンの支出を加算し、別枠を使い切ったら
+ * 以後は渡さない。そのチェーンで settle_claimed 以上の行があるか、非決済（settle_failed 等）が
+ * 1 度でも出た endpoint にも渡さない。
  */
 const LANE_NETWORK: Partial<Record<CappedChain, string>> = {
   solana: SOLANA_MAINNET_CAIP2,
@@ -805,8 +814,8 @@ export async function runL1Batch(
   ];
   const laneExclusions: SQL[] = [];
   const laneSelectable = new Map<CappedChain, boolean>();
-  /** selectable（旗 on・別枠が残る）なレーンの network。purchaseOne の preferNetworks の元（LANE_NETWORK に無いレーンは入らない）。 */
-  const selectableLaneNetworks: string[] = [];
+  /** そのレーンの当日支出（バッチ開始時の台帳 + このバッチで署名した額）。別枠を使い切ったら優先を止める（レビュー C2）。 */
+  const laneSpent = new Map<CappedChain, bigint>();
   for (const lane of lanes) {
     let selectable = lane.ready;
     if (selectable) {
@@ -820,6 +829,8 @@ export async function runL1Batch(
         const spentRaw = laneRows[0]?.spent;
         if (typeof spentRaw !== "string" || BigInt(spentRaw.split(".")[0]) >= chainDailyCapUnits(lane.chain)) {
           selectable = false;
+        } else {
+          laneSpent.set(lane.chain, BigInt(spentRaw.split(".")[0]));
         }
       } catch (error) {
         logServerError(`observatory.l1.${lane.chain}_cap_read`, error);
@@ -831,11 +842,11 @@ export async function runL1Batch(
     laneSelectable.set(lane.chain, selectable);
     if (!selectable) {
       laneExclusions.push(sql`AND (e.network IS NULL OR e.network NOT LIKE ${CHAIN_DAILY_CAPS[lane.chain].networkLike})`);
-    } else {
-      const laneNetwork = LANE_NETWORK[lane.chain];
-      if (laneNetwork !== undefined) selectableLaneNetworks.push(laneNetwork);
     }
   }
+  /** レーンの優先がまだ開いているか: selectable で、バッチ内の加算込みの支出が別枠未満。 */
+  const laneOpen = (chain: CappedChain): boolean =>
+    laneSelectable.get(chain) === true && (laneSpent.get(chain) ?? chainDailyCapUnits(chain)) < chainDailyCapUnits(chain);
 
   // 2.6 初回購入の日次枠（FIRST_PURCHASE_DAILY_QUOTA）。枠に達した日は「購入行が
   //     まだ 1 件も無いエンドポイント」を候補から外す（買い直しは続く）。読めなければ
@@ -875,10 +886,15 @@ export async function runL1Batch(
     SELECT e.id, e.resource_url, e.method, e.price_amount, e.pay_to, e.network, e.declared_schema,
            (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS is_priority,
            (${settledCountSql(sql`e.id`)} >= ${MATURE_SETTLED_MIN}) AS is_mature,
-           -- レーンの accept 優先（2026-09-17）: このエンドポイントで settled 済みの network。
+           -- レーンの accept 優先（2026-09-17）: このエンドポイントで決済済み／決済主張のある network と、
+           -- 非決済が 1 度でも出た network（レビュー C4: どちらも優先の対象から外す）。
            (SELECT coalesce(array_agg(DISTINCT s.network), '{}'::text[])
               FROM x402_l1_purchases s
-              WHERE s.endpoint_id = e.id AND s.status = 'settled' AND s.network IS NOT NULL) AS settled_networks
+              WHERE s.endpoint_id = e.id AND s.status IN ('settled', 'settle_claimed') AND s.network IS NOT NULL) AS settled_networks,
+           (SELECT coalesce(array_agg(DISTINCT s.network), '{}'::text[])
+              FROM x402_l1_purchases s
+              WHERE s.endpoint_id = e.id AND s.status IN ('settle_failed', 'delivered_no_receipt', 'settle_claim_refuted')
+                AND s.network IS NOT NULL) AS failed_networks
     FROM x402_endpoints e
     JOIN LATERAL (
       SELECT verdict FROM x402_l0_probes p
@@ -901,20 +917,25 @@ export async function runL1Batch(
       ${onlyEndpointId ? sql`AND e.id = ${onlyEndpointId}::uuid` : sql``}
       ${sql.join(laneExclusions, sql` `)}
       ${
-        // レーン枠（2026-09-17・laneFloorCandidates）。主ネットワークが一致する行に加え、
-        // LANE_SECONDARY_ACCEPTS のレーンは raw_accepts のいずれかの accept が一致する行
-        // （exa.ai: Base 先頭・Arc 2 番目）も入れる。そのチェーンで settled 済みの行は入れない
-        // （レーンの実績は 1 エンドポイント 1 回でよい——以後は従来の並びで Base を買う）。
+        // レーン枠（2026-09-17・laneFloorCandidates）。主ネットワークが一致する行（従来どおり・
+        // 全レーン）に加え、LANE_SECONDARY_ACCEPTS のレーン（Arc）だけは raw_accepts のいずれかの
+        // accept が一致する行（exa.ai: Base 先頭・Arc 2 番目）も入れる。この secondary の枝にだけ
+        // 「そのチェーンで settled / settle_claimed の行がまだ無い・非決済が 1 度も出ていない」を
+        // 掛ける（レビュー W1・C4: Solana/Tempo/XRPL の枠の意味は従来のまま）。
+        // raw_accepts の network は実行時（x402-payer normalizeNetwork）と同じ**完全一致**で見る
+        // （レビュー W5）: 実行時は `arc` スラグを Arc に寄せない（署名の経路に推測を入れない）ので、
+        // SQL でも寄せない。`arc` とだけ書く行は枠にも署名にも載らない——同じ集合。
         lane
           ? sql`AND (e.network LIKE ${lane.networkLike}${
               LANE_SECONDARY_ACCEPTS[lane.chain]
-                ? sql` OR (jsonb_typeof(e.raw_accepts) = 'array' AND EXISTS (
-                      SELECT 1 FROM jsonb_array_elements(e.raw_accepts) a WHERE a->>'network' LIKE ${lane.networkLike}))`
+                ? sql` OR (jsonb_typeof(e.raw_accepts) = 'array'
+                      AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.raw_accepts) a WHERE a->>'network' LIKE ${lane.networkLike})
+                      AND NOT EXISTS (
+                        SELECT 1 FROM x402_l1_purchases ls
+                        WHERE ls.endpoint_id = e.id AND ls.network LIKE ${lane.networkLike}
+                          AND ls.status IN ('settled', 'settle_claimed', 'settle_failed', 'delivered_no_receipt', 'settle_claim_refuted')))`
                 : sql``
-            })
-             AND NOT EXISTS (
-               SELECT 1 FROM x402_l1_purchases ls
-               WHERE ls.endpoint_id = e.id AND ls.status = 'settled' AND ls.network LIKE ${lane.networkLike})`
+            })`
           : sql``
       }
       ${selfExclusion}
@@ -1058,11 +1079,23 @@ export async function runL1Batch(
       continue;
     }
     try {
-      // レーンの accept 優先（LANE_NETWORK）: selectable なレーンのうち、この endpoint にその
-      // チェーンでの settled 行がまだ無いものを先に選ばせる。
-      const preferNetworks = selectableLaneNetworks.filter((n) => !candidate.settledNetworks.includes(n));
+      // レーンの accept 優先（LANE_NETWORK・レビュー C2/C4）: レーン枠から来た候補にだけ、その
+      // レーンがまだ開いていて（別枠が残る）、この endpoint にそのチェーンでの決済主張も非決済も
+      // 無いときに、そのレーンの network を先に選ばせる。主候補には掛けない。
+      const laneNetwork = candidate.laneChain !== null ? LANE_NETWORK[candidate.laneChain] : undefined;
+      const preferNetworks =
+        candidate.laneChain !== null &&
+        laneNetwork !== undefined &&
+        laneOpen(candidate.laneChain) &&
+        !candidate.settledNetworks.includes(laneNetwork) &&
+        !candidate.failedNetworks.includes(laneNetwork)
+          ? [laneNetwork]
+          : [];
       const outcome = await purchaseOne({ candidate, preferNetworks, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge });
       spentToday += outcome.spent;
+      // バッチ内のレーン支出を加算する（署名した額。決済は非同期なので使ったとみなす）。
+      const outcomeLane = outcome.network ? cappedChainFor(outcome.network) : null;
+      if (outcomeLane !== null && outcome.spent > 0n) laneSpent.set(outcomeLane, (laneSpent.get(outcomeLane) ?? 0n) + outcome.spent);
       if (isXrplCandidate && outcome.spent > 0n) xrplLaneClosed = true;
       summary.spentUnitsTotal = String(BigInt(summary.spentUnitsTotal) + outcome.spent);
       if (outcome.kind === "attempted") {
@@ -1118,6 +1151,8 @@ function rowToCandidate(r: Record<string, unknown>): Candidate {
     isPriority: r.is_priority === true,
     isMature: r.is_mature === true,
     settledNetworks: parseTextArray(r.settled_networks),
+    failedNetworks: parseTextArray(r.failed_networks),
+    laneChain: null,
   };
 }
 
@@ -1163,7 +1198,7 @@ export async function laneFloorCandidates(input: {
       continue;
     }
     for (const row of rows) {
-      const candidate = rowToCandidate(row);
+      const candidate = { ...rowToCandidate(row), laneChain: lane.chain };
       if (seen.has(candidate.id)) continue;
       seen.add(candidate.id);
       head.push(candidate);
@@ -1200,6 +1235,8 @@ async function purchaseOne(input: {
   status?: string;
   /** kind === "halted" のときの判定理由（cron 応答とログに出る）。 */
   haltReason?: string;
+  /** 署名した accept の network（attempted のとき）。バッチ内のレーン支出の加算に使う。 */
+  network?: string;
 }> {
   const { candidate, preferNetworks, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge } = input;
   const method = (candidate.method ?? "GET").toUpperCase();
@@ -1833,12 +1870,13 @@ async function purchaseOne(input: {
       settled: settled && recordedStatus === status,
       spent: amount,
       status: recordedStatus,
+      network: accept.network,
     };
   } catch (error) {
     logServerError("observatory.l1.purchase_after_reservation", error);
     await resolveReservationAsFailed(db, reservation.rowId, error);
     invalidateDecisionCache(candidate.id);
-    return { kind: "attempted", settled: false, spent: amount, status: "settle_failed" };
+    return { kind: "attempted", settled: false, spent: amount, status: "settle_failed", network: accept.network };
   }
 }
 

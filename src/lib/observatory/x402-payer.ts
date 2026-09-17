@@ -395,15 +395,41 @@ export function selectAccept(
   // The catalog's declared price is the price of its FIRST accept — the one on
   // `e.network`. An accept on another chain (Arc behind a Base-first listing) is
   // priced independently by the seller, so comparing it to the Base figure would
-  // brand every such accept `price_mismatch` and the lane could never buy. The
-  // declaration therefore gates only accepts on the declared network; accepts on
-  // other chains still sit under MAX_PER_PURCHASE_UNITS, and payTo / domain /
-  // asset gates above apply to all of them unchanged. Callers that pass no
-  // declaredNetwork keep the pre-2026-09-17 behaviour (every accept compared).
+  // brand every such accept `price_mismatch` and the lane could never buy.
+  //
+  // 2026-09-17 review C1 (Critical): the first version exempted every accept
+  // whenever `declaredNetwork` did not equal that accept's network — and the
+  // catalog's `e.network` is a RAW value ("base-mainnet" ×12, "Base", "solana",
+  // "arc"…). Any spelling that matched nothing dropped the price gate entirely,
+  // so a Base seller could be paid whatever its wall asked (up to the $1 ceiling).
+  // The exemption is now narrow and requires positive evidence:
+  //   - the declared network must be PRESENT among the eligible accepts
+  //     (declaredPresent) — otherwise we cannot tell which accept the catalog
+  //     priced, and every accept is compared, exactly as before 2026-09-17;
+  //   - only an accept on ANOTHER network that the caller explicitly preferred
+  //     (preferNetworks — the lane the candidate came from) is exempt;
+  //   - an exempt accept still sits under min(3 × declared, MAX_PER_PURCHASE_UNITS)
+  //     (review C3): a lane may cost a little more than the Base listing, not 300×.
+  // Everything else (payTo / domain / asset / ceiling) applies to all accepts unchanged.
   const declaredNetwork =
     options.declaredNetwork === undefined || options.declaredNetwork === null ? null : normalizeNetwork(options.declaredNetwork);
-  const priceDeclaredFor = (a: ChallengeAccept): boolean =>
-    options.declaredAmount !== null && (declaredNetwork === null || a.network === declaredNetwork);
+  const declaredPresent = declaredNetwork !== null && eligible.some((a) => a.network === declaredNetwork);
+  const exemptFromDeclaredPrice = (a: ChallengeAccept): boolean =>
+    declaredPresent && a.network !== declaredNetwork && preferred.has(a.network);
+  const priceDeclaredFor = (a: ChallengeAccept): boolean => options.declaredAmount !== null && !exemptFromDeclaredPrice(a);
+  /** Ceiling for an exempt (other-chain, preferred) accept: 3 × the declared price, never above the hard cap. */
+  const relativeCapUnits = ((): bigint => {
+    if (options.declaredAmount === null) return MAX_PER_PURCHASE_UNITS;
+    try {
+      const declared = BigInt(options.declaredAmount);
+      const triple = declared * 3n;
+      return declared > 0n && triple < MAX_PER_PURCHASE_UNITS ? triple : MAX_PER_PURCHASE_UNITS;
+    } catch {
+      return MAX_PER_PURCHASE_UNITS;
+    }
+  })();
+  const overRelativeCap = (a: ChallengeAccept, amount: bigint): boolean =>
+    options.declaredAmount !== null && exemptFromDeclaredPrice(a) && amount > relativeCapUnits;
 
   for (const accept of ordered) {
     let amount: bigint;
@@ -414,6 +440,7 @@ export function selectAccept(
     }
     if (amount <= 0n) continue;
     if (priceDeclaredFor(accept) && accept.amount !== options.declaredAmount) continue;
+    if (overRelativeCap(accept, amount)) continue;
     if (amount > MAX_PER_PURCHASE_UNITS) continue;
     return { accept, reason: null };
   }
@@ -426,7 +453,14 @@ export function selectAccept(
       return false;
     }
   });
-  if (eligible.some((a) => priceDeclaredFor(a) && a.amount !== options.declaredAmount)) {
+  const relativeOver = eligible.some((a) => {
+    try {
+      return overRelativeCap(a, BigInt(a.amount));
+    } catch {
+      return false;
+    }
+  });
+  if (eligible.some((a) => priceDeclaredFor(a) && a.amount !== options.declaredAmount) || relativeOver) {
     // A seller charging other than it advertised is the more specific finding
     // unless everything was simply over the ceiling.
     const allOverCap = eligible.every((a) => {

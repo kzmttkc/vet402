@@ -188,15 +188,15 @@ if (!TEST_DB) {
       assert.equal(rows[1].network, "eip155:8453");
     });
 
-    await t.test("Arc の行が settle_claimed 止まり（未照合）なら、次の掃引でもまだ Arc を優先する", async () => {
+    await t.test("Arc の行が settle_claimed 止まり（未照合）でも決済主張として数え、次の掃引は Base に戻る（レビュー C4）", async () => {
       await seed();
       process.env.OBSERVATORY_ARC_L1_ENABLED = "true";
       await run(wall());
       await db.execute(sql`UPDATE x402_l1_purchases SET attempted_at = now() - interval '8 days'`);
       const w = wall();
       const summary = await run(w);
-      assert.equal(summary.laneFloor.arc, 1);
-      assert.equal(w.paidTo(EXA_URL)[0]?.network, ARC_CAIP2);
+      assert.equal(summary.laneFloor.arc ?? 0, 0, "settle_claimed の行がある endpoint は secondary の枠に入らない");
+      assert.equal(w.paidTo(EXA_URL)[0]?.network, "eip155:8453");
     });
   });
 }
