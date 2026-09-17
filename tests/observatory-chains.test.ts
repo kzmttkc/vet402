@@ -121,3 +121,19 @@ test("chainLabel normalizes the raw legacy slug `base` (any case) to Base", () =
   assert.equal(chainLabel("Base"), "Base");
   assert.equal(chainLabel("eip155:8453"), "Base");
 });
+
+// ---- Arc（Circle のステーブルコイン L1・メインネット公開 2026-09-16）— 2026-09-17 Arc レーン ----
+// 実測 2026-09-17（RPC）: mainnet eip155:5042 / testnet eip155:5042002。
+
+test("chainLabel: Arc mainnet and testnet resolve to their names; toCaip2 accepts the 'arc' slug", async () => {
+  const { toCaip2, explorerTxUrl } = await import("@/lib/observatory/chains");
+  assert.equal(chainLabel("eip155:5042"), "Arc");
+  assert.equal(chainLabel("eip155:5042002"), "Arc Testnet");
+  assert.equal(toCaip2("arc"), "eip155:5042");
+  assert.equal(toCaip2("ARC"), "eip155:5042");
+  assert.equal(toCaip2("arc-testnet"), "eip155:5042002");
+  assert.equal(toCaip2("eip155:5042"), "eip155:5042", "CAIP-2 passes through");
+  assert.equal(isTestnet("eip155:5042002"), true, "Arc testnet is excluded from mainnet-only views");
+  assert.equal(isTestnet("eip155:5042"), false);
+  assert.equal(explorerTxUrl("eip155:5042", `0x${"ab".repeat(32)}`), `https://explorer.arc.io/tx/0x${"ab".repeat(32)}`);
+});

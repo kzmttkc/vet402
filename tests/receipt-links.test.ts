@@ -63,3 +63,11 @@ test("endpoint record page uses explorerTxUrl, not a hard-coded basescan", () =>
   assert.ok(page.includes("explorerTxUrl"));
   assert.ok(!page.includes("https://basescan.org/tx/"));
 });
+
+// 2026-09-17 Arc レーン: Arc の受領証は explorer.arc.io（testnet には作らない——URL を確かめていない）。
+test("explorerTxUrl: Arc mainnet goes to explorer.arc.io; the 'arc' slug and the testnet are handled", () => {
+  assert.equal(explorerTxUrl("eip155:5042", EVM_TX), `https://explorer.arc.io/tx/${EVM_TX}`);
+  assert.equal(explorerTxUrl("arc", EVM_TX), `https://explorer.arc.io/tx/${EVM_TX}`);
+  assert.equal(explorerTxUrl("eip155:5042", SOL_TX), null, "a base58 signature is not an Arc tx");
+  assert.equal(explorerTxUrl("eip155:5042002", EVM_TX), null, "no explorer pinned for the testnet → no link rather than a guessed one");
+});

@@ -19,6 +19,11 @@ const KNOWN: Record<string, string> = {
   "eip155:137": "Polygon",
   "eip155:196": "X Layer",
   "eip155:4663": "IoTeX",
+  // Arc（Circle のステーブルコイン L1）。実測 2026-09-17（RPC）: mainnet 5042・testnet 5042002。
+  "eip155:5042": "Arc",
+  arc: "Arc",
+  "eip155:5042002": "Arc Testnet",
+  "arc-testnet": "Arc Testnet",
 };
 
 /** Solana genesis hashes (case-sensitive base58) — lower-casing would corrupt them, so match separately. */
@@ -29,7 +34,7 @@ const SOLANA_DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
  * 2026-09-02 監査 A3: /observatory/state「Mainnets only」に Solana devnet の active 33 件が
  * 混ざっていた（TESTNET_LABELS が Base Sepolia だけ）。devnet はテストネット。
  */
-const TESTNET_LABELS = new Set(["Base Sepolia", "Solana Devnet"]);
+const TESTNET_LABELS = new Set(["Base Sepolia", "Solana Devnet", "Arc Testnet"]);
 
 /** Human label for a raw CAIP-2 / legacy network identifier. Never guesses — unknown ids pass through verbatim so nothing is silently mislabeled. */
 export function chainLabel(network: unknown): string {
@@ -53,6 +58,8 @@ export function toCaip2(network: unknown): string | null {
   if (key === "base") return "eip155:8453";
   if (key === "base-sepolia") return "eip155:84532";
   if (key === "polygon") return "eip155:137";
+  if (key === "arc") return "eip155:5042";
+  if (key === "arc-testnet") return "eip155:5042002";
   if (key === "solana" || key === "solana-mainnet") return `solana:${SOLANA_MAINNET_GENESIS}`;
   if (key === "solana-devnet") return `solana:${SOLANA_DEVNET_GENESIS}`;
   return network;
@@ -75,6 +82,8 @@ const SOLANA_TX_RE = /^[1-9A-HJ-NP-Za-km-z]{86,88}$/;
 const EVM_EXPLORERS: Record<string, string> = {
   Base: "https://basescan.org/tx/",
   Polygon: "https://polygonscan.com/tx/",
+  // 2026-09-17 Arc レーン。testnet の explorer は確かめていないので載せない（壊れたリンクより「—」）。
+  Arc: "https://explorer.arc.io/tx/",
 };
 
 /** Block-explorer URL for a settlement tx on the given network, or null when the chain has no explorer here or the tx is not well-formed for it. */
