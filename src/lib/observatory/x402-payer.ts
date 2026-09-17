@@ -543,7 +543,8 @@ export async function signX402Payment(input: {
 export function encodePaymentHeader(input: {
   x402Version: 1 | 2;
   accept: ChallengeAccept;
-  payload: { signature: string; authorization: Eip3009Authorization };
+  /** EVM は EIP-3009、XRPL（2026-09-17・xrpl402-payer.ts）は署名済み tx blob。封筒は同じ。 */
+  payload: { signature: string; authorization: Eip3009Authorization } | { signedTxBlob: string };
   resourceUrl: string;
 }): { headerName: string; headerValue: string } {
   const { x402Version, accept, payload, resourceUrl } = input;
