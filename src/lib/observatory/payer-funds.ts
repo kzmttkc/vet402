@@ -38,6 +38,15 @@ export type FundsVerdict =
 type ChainState = { read: Promise<{ balance: bigint } | { error: string }>; committed: bigint };
 
 /**
+ * 記録用の誤り文字列（2026-09-17 レビュー）。viem の transport エラーは RPC の URL を
+ * 本文に含み、URL には鍵が入る形（…/v2/<key>）がある。summary・ログ・台帳のどこにも
+ * URL を落とさないよう、`https?://…` を伏字にしてから 300 字に切る。
+ */
+export function redactForLog(error: unknown): string {
+  return String(error).replace(/https?:\/\/\S+/g, "<url>").slice(0, 300);
+}
+
+/**
  * 1 バッチぶんの残高台帳。`check` は署名の前、`commit` は署名の直前に呼ぶ。
  */
 export function createPayerFunds(reader: PayerUsdcBalanceReader) {
@@ -48,7 +57,7 @@ export function createPayerFunds(reader: PayerUsdcBalanceReader) {
       s = {
         read: reader({ chain, owner }).then(
           (balance) => (typeof balance === "bigint" && balance >= 0n ? { balance } : { error: `invalid balance: ${String(balance)}` }),
-          (error: unknown) => ({ error: String(error).slice(0, 300) }),
+          (error: unknown) => ({ error: redactForLog(error) }),
         ),
         committed: 0n,
       };

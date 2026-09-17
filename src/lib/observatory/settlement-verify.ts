@@ -61,11 +61,17 @@ export const AUTHORIZATION_USED_TOPIC = keccak256(toBytes("AuthorizationUsed(add
 
 /**
  * チェーンごとの読み取りクライアント（2026-09-17 Arc レーン）。Base は従来どおり
- * chain/client（BASE_RPC_URL）、Arc は chain/arc（ARC_RPC_URL・無ければ公開 RPC）。
+ * chain/client（BASE_RPC_URL）。Arc は **ARC_RPC_URL 必須**——無ければ null を返し、
+ * 呼び手は chain_not_yet_verifiable で未確認のまま置く（索引の `ARC_RPC_URL_unset` と
+ * 同じ作法。公開 RPC へ黙って倒れて「確認済み」を刻まない。残高読みの公開 RPC
+ * フォールバックは署名を止める側に倒れるので別扱い）。
  * 表に無い EVM は照合器が無い＝ chain_not_yet_verifiable のまま置く。
  */
-function clientFor(chain: EvmPayChain): EvmVerifyClient {
-  if (chain.chainId === 5042) return getArcPublicClient("live");
+function clientFor(chain: EvmPayChain): EvmVerifyClient | null {
+  if (chain.chainId === 5042) {
+    if (!process.env.ARC_RPC_URL?.trim()) return null;
+    return getArcPublicClient("live");
+  }
   return getPublicClient();
 }
 
@@ -169,7 +175,10 @@ export async function verifyL1Settlement(
     return { ok: false, reason: "malformed_tx" };
   }
 
-  const client: EvmVerifyClient = deps?.client ?? clientFor(chain);
+  const client: EvmVerifyClient | null = deps?.client ?? clientFor(chain);
+  if (!client) {
+    return { ok: false, reason: "chain_not_yet_verifiable", detail: `${network}: ARC_RPC_URL_unset` };
+  }
 
   // 1. まず「いま読んでいるのは本当にその購入のチェーンか」（Base 8453 / Arc 5042）。
   let chainId: number;

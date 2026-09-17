@@ -77,6 +77,28 @@ test("Base: a Base row read from a chainId-5042 RPC is wrong_chain (unchanged di
   assert.equal(ok.ok, true);
 });
 
+// ---- 2026-09-17 review 3: the verifier needs ARC_RPC_URL; it never falls back to the public RPC ----
+test("Arc without ARC_RPC_URL and without an injected client is chain_not_yet_verifiable (no public-RPC fallback)", async () => {
+  const saved = process.env.ARC_RPC_URL;
+  try {
+    delete process.env.ARC_RPC_URL;
+    const result = await verifyL1Settlement({
+      txHash: TX,
+      network: "eip155:5042",
+      expectedPayTo: PAY_TO,
+      expectedPayer: PAYER,
+      expectedAmountUnits: AMOUNT,
+      expectedAuthNonce: NONCE,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.ok === false && result.reason, "chain_not_yet_verifiable");
+    assert.match((result.ok === false && result.detail) || "", /ARC_RPC_URL_unset/);
+  } finally {
+    if (saved === undefined) delete process.env.ARC_RPC_URL;
+    else process.env.ARC_RPC_URL = saved;
+  }
+});
+
 test("an EVM chain not in the pinned table stays chain_not_yet_verifiable (no refutation on evidence we do not hold)", async () => {
   const result = await run("eip155:137", fakeClient(137, [authUsedLog(BASE_USDC), transferLog(BASE_USDC)]));
   assert.equal(result.ok, false);

@@ -9,7 +9,7 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { EVM_INDEX_CHAINS, isEvmChainIndexable } from "@/lib/settlements/index-evm";
+import { EVM_INDEX_CHAINS, evmIndexLag, isEvmChainIndexable, perChainBudgetMs } from "@/lib/settlements/index-evm";
 import { ARC_CHAIN_ID, ARC_USDC_ADDRESS } from "@/lib/chain/arc";
 
 const byId = (id: number) => EVM_INDEX_CHAINS.find((c) => c.chainId === id);
@@ -25,7 +25,11 @@ test("Arc is in the EVM index table with the measured USDC and ARC_RPC_URL", () 
   // ~1s blocks: the lookback must express the same 7 days as Base's (2s blocks) window,
   // and the per-run cap must stay inside what one cron pass can read.
   assert.equal(arc.initialLookbackBlocks, 86_400n * 7n);
-  assert.ok(arc.maxBlocksPerRun <= 40_000n);
+  assert.equal(arc.blocksPerDay, 86_400n);
+  // 2026-09-17 review: the cron runs once a day; 40,000 blocks/run could never catch up with
+  // 86,400 blocks/day. One run must cover more than a day, so a lagging day is recovered.
+  assert.ok(arc.maxBlocksPerRun >= 120_000n, `maxBlocksPerRun ${arc.maxBlocksPerRun} < 120,000`);
+  assert.ok(arc.maxBlocksPerRun > arc.blocksPerDay);
   assert.ok(arc.confirmations >= 32n, "never fewer confirmations than Base");
 });
 
@@ -41,9 +45,59 @@ test("Base's row is unchanged", () => {
       initialLookbackBlocks: 43_200n * 7n,
       maxBlocksPerRun: 40_000n,
       confirmations: 32n,
+      blocksPerDay: 43_200n,
       makeClient: undefined,
     },
   );
+});
+
+// ---- 2026-09-17 review 1: the per-chain budget divides by INDEXABLE chains, not table rows ----
+
+test("perChainBudgetMs: Arc's row does not take budget away from Base while ARC_RPC_URL is unset", () => {
+  const saved = { arc: process.env.ARC_RPC_URL, polygon: process.env.POLYGON_RPC_URL };
+  try {
+    delete process.env.ARC_RPC_URL;
+    delete process.env.POLYGON_RPC_URL;
+    // Base alone is indexable → the whole budget (never less than the pre-Arc 60s of a 2-row table).
+    assert.equal(perChainBudgetMs(120_000), 120_000);
+    assert.ok(perChainBudgetMs(120_000) >= 60_000, "must not be below what Base had before Arc was added");
+    process.env.ARC_RPC_URL = "https://rpc.example.invalid";
+    assert.equal(perChainBudgetMs(120_000), 60_000, "Base + Arc indexable → halves");
+    process.env.POLYGON_RPC_URL = "https://polygon.example.invalid";
+    assert.equal(perChainBudgetMs(120_000), 40_000, "three indexable → thirds");
+    assert.equal(perChainBudgetMs(30_000), 20_000, "floor of 20s per chain");
+  } finally {
+    if (saved.arc === undefined) delete process.env.ARC_RPC_URL;
+    else process.env.ARC_RPC_URL = saved.arc;
+    if (saved.polygon === undefined) delete process.env.POLYGON_RPC_URL;
+    else process.env.POLYGON_RPC_URL = saved.polygon;
+  }
+});
+
+test("perChainBudgetMs never divides by zero (a table with nothing indexable still returns the budget)", () => {
+  const none = [{ ...byId(5042)!, rpcEnv: "NEVER_SET_RPC_URL_FOR_THIS_TEST" }];
+  assert.equal(perChainBudgetMs(90_000, none), 90_000);
+});
+
+// ---- 2026-09-17 review 2: lag past one day is fail-loud (lagBlocks + partial) ----
+
+test("evmIndexLag: null while within a day of the safe tip, the block gap once behind by more than a day", () => {
+  const arc = byId(5042)!;
+  assert.equal(evmIndexLag(arc, 1_000_000n, 1_000_000n), null, "caught up");
+  assert.equal(evmIndexLag(arc, 1_000_000n, 1_000_000n - 86_400n), null, "exactly a day is not yet lag");
+  assert.equal(evmIndexLag(arc, 1_000_000n, 1_000_000n - 86_401n), 86_401n);
+  const base = byId(8453)!;
+  assert.equal(evmIndexLag(base, 500_000n, 500_000n - 43_200n), null);
+  assert.equal(evmIndexLag(base, 500_000n, 400_000n), 100_000n, "Base is measured against its own 43,200/day");
+});
+
+test("indexEvmChain reports lag in the summary (lagBlocks set, partial true) — the source wires evmIndexLag in", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const src = readFileSync(join(process.cwd(), "src", "lib", "settlements", "index-evm.ts"), "utf8");
+  assert.match(src, /const lag = evmIndexLag\(chain, safeTip, nextCheckpoint\)/);
+  assert.match(src, /summary\.lagBlocks = String\(lag\)/);
+  assert.match(src, /summary\.partial = true;\s*\n\s*logServerError\("settlements\.index_evm\.lag"/);
 });
 
 test("Arc is indexable only when ARC_RPC_URL is set (unset → skipped quietly, like Polygon)", () => {

@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { getLogScanClient } from "@/lib/chain/client";
 import { ARC_CHAIN_ID, ARC_USDC_ADDRESS, getArcPublicClient } from "@/lib/chain/arc";
+import { logServerError } from "@/lib/util/log";
 import { getLogsChunked } from "@/lib/chain/chunked-logs";
 import { getIndexerCheckpoint, setIndexerCheckpoint } from "@/lib/db/owner-index";
 import { payeeId as toPartyId } from "@/lib/ids/canonical";
@@ -37,6 +38,8 @@ export type EvmIndexChain = {
   maxBlocksPerRun: bigint;
   /** 確定待ち（reorg 余裕）。 */
   confirmations: bigint;
+  /** 1 日のブロック数（遅れの判定 evmIndexLag に使う）。 */
+  blocksPerDay: bigint;
   /** 既定は getLogScanClient(chainId)。CHAINS 登録簿に無いチェーン（Arc）はここで組む。 */
   makeClient?: () => ReturnType<typeof getLogScanClient>;
 };
@@ -50,6 +53,7 @@ export const EVM_INDEX_CHAINS: EvmIndexChain[] = [
     initialLookbackBlocks: 43_200n * 7n,
     maxBlocksPerRun: 40_000n,
     confirmations: 32n,
+    blocksPerDay: 43_200n,
   },
   {
     caip2: "eip155:137",
@@ -59,15 +63,19 @@ export const EVM_INDEX_CHAINS: EvmIndexChain[] = [
     initialLookbackBlocks: 40_000n * 7n,
     maxBlocksPerRun: 40_000n,
     confirmations: 64n,
+    blocksPerDay: 40_000n,
   },
   // Arc（Circle のステーブルコイン L1・メインネット公開 2026-09-16）。2026-09-17 Arc レーン。
   //  - ブロックは約 1 秒（オーナー実測 2026-09-17）。7 日の遡りは 86,400 × 7 ブロック。
   //    チェーンが若いので初回は safeTip − lookback が 0 を割り、実際には genesis 付近から読む。
-  //  - 1 回の走査は 40,000 ブロック（≈ 11 時間）。cron は 1 日 1 回（vercel.json 13:00 UTC）
-  //    なので 1 日 86,400 ブロックに追いつくには 3 走査ぶん要るが、走査は payee ごとに
-  //    eth_getLogs を切るので、若いチェーンで payee が数件のうちは 1 走査あたりの往復は
-  //    Base と同じ桁。追いつかない日は partial として開示され、次回に持ち越す。
-  //    （Base は 2 秒/ブロックで同じ 40,000 = ≈ 22 時間。）
+  //  - 1 回の走査は 172,800 ブロック（= 2 日ぶん）。cron は 1 日 1 回（vercel.json 13:00 UTC）
+  //    なので、Base と同じ 40,000 では 1 日 86,400 ブロックに永遠に追いつかない（レビュー
+  //    2026-09-17 指摘）。2 日ぶん読めば、遅れた日も翌日に回収できる。往復数: 既定の
+  //    GET_LOGS_CHUNK_BLOCKS 2,000 で 87 チャンク／payee 500 件のスライス 1 つ、
+  //    GET_LOGS_CHUNK_CONCURRENCY 4 で約 22 ラウンド。1 ラウンド 0.2〜0.5 秒なら 5〜11 秒。
+  //    （Base は 2 秒/ブロックで 40,000 = ≈ 22 時間・20 チャンク。）
+  //  - 遅れが 1 日ぶん（blocksPerDay）を超えたら summary.lagBlocks と partial で鳴らす
+  //    （evmIndexLag・全チェーン共通）。
   //  - 確定待ち 64 ブロック（≈ 64 秒）。Arc の合意は BFT 系で確定的と Circle は説明するが、
   //    我々はそれを実測していない。Polygon と同じ余裕を取っても遅れは 1 分で、reorg を
   //    「確認済み」と刻む事故に比べれば安い。
@@ -78,8 +86,9 @@ export const EVM_INDEX_CHAINS: EvmIndexChain[] = [
     usdc: ARC_USDC_ADDRESS,
     rpcEnv: "ARC_RPC_URL",
     initialLookbackBlocks: 86_400n * 7n,
-    maxBlocksPerRun: 40_000n,
+    maxBlocksPerRun: 86_400n * 2n,
     confirmations: 64n,
+    blocksPerDay: 86_400n,
     makeClient: () => getArcPublicClient("batch"),
   },
 ];
@@ -96,7 +105,29 @@ export type EvmIndexSummary = {
   partial?: boolean;
   checkpoint?: string;
   skippedKnown?: number;
+  /** 走査後もチェックポイントが安全な先端から 1 日ぶん以上遅れているとき、その差（ブロック）。 */
+  lagBlocks?: string;
 };
+
+/**
+ * 走査後の遅れ（2026-09-17 レビュー）。safeTip − checkpoint が 1 日ぶんを超えたら
+ * その差を返す（summary.lagBlocks に載せ、partial として鳴らす）。超えなければ null。
+ * 純関数。cron の日次 1 回で追いつけていないチェーンを、静かに遅れさせない。
+ */
+export function evmIndexLag(chain: Pick<EvmIndexChain, "blocksPerDay">, safeTip: bigint, checkpoint: bigint): bigint | null {
+  const lag = safeTip - checkpoint;
+  return lag > chain.blocksPerDay ? lag : null;
+}
+
+/**
+ * チェーンごとの実行予算（2026-09-17 レビュー）。割る数は**実行可能な**チェーン数
+ * （isEvmChainIndexable・最低 1）。以前は表の行数で割っていたので、Arc の行が増えただけで
+ * ARC_RPC_URL 未設定でも Base の予算が 60 秒 → 40 秒に減った。skip される行に予算を配らない。
+ */
+export function perChainBudgetMs(budgetMs: number, chains: readonly EvmIndexChain[] = EVM_INDEX_CHAINS): number {
+  const indexable = chains.filter(isEvmChainIndexable).length;
+  return Math.max(20_000, Math.floor(budgetMs / Math.max(1, indexable)));
+}
 
 export function isEvmChainIndexable(chain: EvmIndexChain): boolean {
   // Base は既定 RPC がある。それ以外は env が要る（未設定は skipped として開示）。
@@ -252,12 +283,19 @@ export async function indexEvmChain(
   await setIndexerCheckpoint(scope, nextCheckpoint, latest);
   summary.partial = cutOff;
   summary.checkpoint = String(nextCheckpoint);
+  const lag = evmIndexLag(chain, safeTip, nextCheckpoint);
+  if (lag !== null) {
+    // 1 日 1 回の cron で追いつけていない。partial に乗せて cron の応答に出し、ログでも鳴らす。
+    summary.lagBlocks = String(lag);
+    summary.partial = true;
+    logServerError("settlements.index_evm.lag", new Error(`${chain.caip2} is ${lag} blocks behind the safe tip (> ${chain.blocksPerDay}/day)`));
+  }
   return summary;
 }
 
 export async function indexEvm(options: { budgetMs?: number; classifier?: WashClassifier } = {}): Promise<EvmIndexSummary[]> {
   const out: EvmIndexSummary[] = [];
-  const perChain = Math.max(20_000, Math.floor((options.budgetMs ?? 120_000) / EVM_INDEX_CHAINS.length));
+  const perChain = perChainBudgetMs(options.budgetMs ?? 120_000);
   for (const chain of EVM_INDEX_CHAINS) {
     try {
       out.push(await indexEvmChain(chain, { ...options, budgetMs: perChain }));

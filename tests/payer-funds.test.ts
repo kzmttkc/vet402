@@ -4,7 +4,7 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createPayerFunds, defaultPayerUsdcBalance } from "@/lib/observatory/payer-funds";
+import { createPayerFunds, defaultPayerUsdcBalance, redactForLog } from "@/lib/observatory/payer-funds";
 
 test("残高が額以上なら ok、未満なら insufficient（等号は ok）", async () => {
   const f = createPayerFunds(async () => 3000n);
@@ -83,4 +83,27 @@ test("Arc の RPC は ARC_RPC_URL、無ければ公開 RPC https://rpc.mainnet.a
     if (saved === undefined) delete process.env.ARC_RPC_URL;
     else process.env.ARC_RPC_URL = saved;
   }
+});
+
+// ---- 2026-09-17 レビュー 6: 記録する誤り文字列から URL（鍵入りの RPC URL）を伏せる ----
+test("redactForLog: https?:// で始まる語は <url> に置き換わり、300 字に切る", () => {
+  const e = new Error("HTTP request failed. URL: https://base-mainnet.g.alchemy.com/v2/SECRETKEY123 Request body: {}");
+  const out = redactForLog(e);
+  assert.ok(!out.includes("SECRETKEY123"), out);
+  assert.ok(!out.includes("alchemy.com"), out);
+  assert.match(out, /URL: <url> Request body/);
+  assert.equal(redactForLog("a http://x.example/k?key=1 b https://y.example/z c"), "a <url> b <url> c");
+  assert.equal(redactForLog("x".repeat(400)).length, 300);
+});
+
+test("残高が読めなかったときの verdict.error に RPC の URL が残らない", async () => {
+  const f = createPayerFunds(async () => {
+    throw new Error("fetch failed: https://rpc.example/v2/topsecret (timeout)");
+  });
+  const v = await f.check("arc", "0x1", 1n);
+  assert.equal(v.ok, false);
+  assert.equal(v.ok === false && v.reason, "unreadable");
+  const err = v.ok === false && v.reason === "unreadable" ? v.error : "";
+  assert.ok(!err.includes("topsecret") && !err.includes("rpc.example"), err);
+  assert.match(err, /<url>/);
 });

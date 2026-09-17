@@ -49,9 +49,13 @@ test("恒久の否定に残るのは売り手についての所見だけ", () =>
   }
 });
 
-test("wrong_chain を見たらバッチを中断し fail-loud で記録する", () => {
+test("wrong_chain を見たら fail-loud で記録し、そのチェーンだけ以後スキップする（バッチは中断しない）", () => {
   const v = read("src", "lib", "observatory", "settlement-verifier.ts");
   assert.match(v, /INSTRUMENT_FAILURE_REASONS/, "計器故障の語彙が無い");
+  // 2026-09-17 レビュー 4: 以前は wrong_chain で break していた（Arc の RPC 誤設定で Base の照合まで止まる）。
+  assert.doesNotMatch(v, /reason === "wrong_chain"\)\s*\{[^}]*break;/, "wrong_chain でバッチごと中断している");
+  assert.match(v, /wrongChain\.has\(row\.network\)/, "wrong_chain を出したチェーンの行を飛ばす分岐が無い");
+  assert.match(v, /wrongChainNetworks/, "スキップしたチェーンが summary に出ない");
   assert.match(
     v,
     /logServerError\(\s*"settlement-verifier\.instrument_failure"/,

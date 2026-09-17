@@ -142,27 +142,41 @@ export function evmChainFor(network: unknown): EvmPayChain | null {
 
 /**
  * True iff the accept's `extra` does not contradict the chain's canonical USDC
- * domain. Absent fields are fine (we then use the pinned values); a field that
- * is present and different — or present and not a string — is a refusal.
+ * EIP-712 domain. The domain words are an allowlist — exactly the EIP-712
+ * domain fields: `name`, `version`, `chainId`, `verifyingContract`, `salt`.
+ * Absent fields are fine (we then use the pinned values); a field that is
+ * present and different — or present and not of the pinned shape — is a
+ * refusal. `salt` present at all is a refusal (the pinned domains have none).
+ * Words outside the domain (`acceptId`, `assetTransferMethod`, …) are ignored
+ * here; they are not domain, so they cannot change what we sign under.
  *
- * `verifyingContract` is checked too (2026-09-17): Circle Gateway's
- * "GatewayWalletBatched" accepts on Arc name 0x7777…00ee as the contract. That
- * is another signing domain entirely (and needs pre-deposited funds), so it must
- * fall out here, before any budget is reserved.
+ * `verifyingContract` (2026-09-17): Circle Gateway's "GatewayWalletBatched"
+ * accepts on Arc name 0x7777…00ee as the contract. That is another signing
+ * domain entirely (and needs pre-deposited funds), so it must fall out here,
+ * before any budget is reserved.
  */
 export function hasCanonicalUsdcDomain(
   extra: Record<string, unknown> | undefined,
   chain: EvmPayChain = BASE_CHAIN,
 ): boolean {
-  const name = extra?.name;
-  const version = extra?.version;
-  const verifyingContract = extra?.verifyingContract;
-  return (
-    (name === undefined || name === chain.eip712Name) &&
-    (version === undefined || version === chain.eip712Version) &&
-    (verifyingContract === undefined ||
-      (typeof verifyingContract === "string" && verifyingContract.toLowerCase() === chain.usdc.toLowerCase()))
-  );
+  if (!extra) return true;
+  const { name, version, chainId, verifyingContract, salt } = extra;
+  if (name !== undefined && name !== chain.eip712Name) return false;
+  if (version !== undefined && version !== chain.eip712Version) return false;
+  if (chainId !== undefined) {
+    const same =
+      (typeof chainId === "number" && chainId === chain.chainId) ||
+      (typeof chainId === "string" && chainId === String(chain.chainId));
+    if (!same) return false;
+  }
+  if (
+    verifyingContract !== undefined &&
+    (typeof verifyingContract !== "string" || verifyingContract.toLowerCase() !== chain.usdc.toLowerCase())
+  ) {
+    return false;
+  }
+  if (salt !== undefined) return false;
+  return true;
 }
 
 /**

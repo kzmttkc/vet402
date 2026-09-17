@@ -180,6 +180,33 @@ test("a verifyingContract in extra that is not the pinned USDC is a contradictio
   assert.equal(hasCanonicalUsdcDomain({ verifyingContract: 42 }, BASE_CHAIN), false, "present and not a string is a refusal");
 });
 
+// ---- 2026-09-17 review 5: the domain check is an allowlist of EIP-712 domain words ----
+
+test("hasCanonicalUsdcDomain: chainId must match the pin (number or decimal string); salt is always a refusal", () => {
+  assert.equal(hasCanonicalUsdcDomain({ chainId: 8453 }, BASE_CHAIN), true);
+  assert.equal(hasCanonicalUsdcDomain({ chainId: "8453" }, BASE_CHAIN), true);
+  assert.equal(hasCanonicalUsdcDomain({ chainId: 5042 }, BASE_CHAIN), false, "Arc's chainId on a Base accept");
+  assert.equal(hasCanonicalUsdcDomain({ chainId: 5042 }, ARC_CHAIN), true);
+  assert.equal(hasCanonicalUsdcDomain({ chainId: 8453 }, ARC_CHAIN), false);
+  assert.equal(hasCanonicalUsdcDomain({ chainId: "0x1fb2" }, ARC_CHAIN), false, "hex form is not the pinned shape");
+  assert.equal(hasCanonicalUsdcDomain({ chainId: 8453n as unknown as number }, BASE_CHAIN), false, "bigint is not the pinned shape");
+  assert.equal(hasCanonicalUsdcDomain({ salt: `0x${"00".repeat(32)}` }, BASE_CHAIN), false, "the pinned domains have no salt");
+  assert.equal(hasCanonicalUsdcDomain({ salt: null }, ARC_CHAIN), false, "salt present in any form");
+  assert.equal(hasCanonicalUsdcDomain({ name: "USDC", version: "2", chainId: 5042, verifyingContract: ARC_USDC }, ARC_CHAIN), true, "the full pinned domain spelled out");
+});
+
+test("hasCanonicalUsdcDomain ignores words outside the EIP-712 domain", () => {
+  assert.equal(hasCanonicalUsdcDomain({ acceptId: "x", assetTransferMethod: "eip3009", feePayer: "abc", foo: 1 }, ARC_CHAIN), true);
+  assert.equal(hasCanonicalUsdcDomain({ acceptId: "x", name: "USDC" }, BASE_CHAIN), false, "but a domain word still counts");
+  // The selection gate follows: an otherwise-eligible Arc accept with a salt is refused.
+  withArcFlag("true", () => {
+    const salted = { ...EXA_ARC_EIP3009, extra: { ...EXA_ARC_EIP3009.extra, salt: `0x${"11".repeat(32)}` } };
+    assert.equal(selectAccept([salted], { declaredAmount: "10000", declaredPayTo: null }).accept, null);
+    const wrongChainId = { ...EXA_ARC_EIP3009, extra: { ...EXA_ARC_EIP3009.extra, chainId: 8453 } };
+    assert.equal(selectAccept([wrongChainId], { declaredAmount: "10000", declaredPayTo: null }).accept, null);
+  });
+});
+
 // ---- selectAccept: the money gate, now with two chains ----------------------
 
 test("flag off: the real exa.ai Arc EIP-3009 accept is no_eligible_accept — nothing on Arc is ever signed", () => {

@@ -60,8 +60,10 @@ export const TRANSIENT_REASONS = new Set([
  * （旧 `settled` 行・チェーン判定の取り違え）を意味する。
  *
  * 見つけたら黙って deferred を積まない——logServerError で鳴らし、
- * `wrong_chain` ならそのバッチを中断する（同じ壊れた RPC で残りを読みに行っても
- * 全部同じ結果になるだけで、デッドラインを食うだけ）。
+ * `wrong_chain` なら**そのチェーンの残りの行**を以後読みに行かない（同じ壊れた RPC で
+ * 読んでも全部同じ結果になるだけで、デッドラインを食うだけ）。他のチェーンの行は
+ * 歩き続ける（2026-09-17 レビュー: 以前はバッチごと中断していたので、Arc の RPC の
+ * 誤設定で Base の照合まで毎日止まった）。
  */
 export const INSTRUMENT_FAILURE_REASONS = new Set(["wrong_chain", "malformed_tx"]);
 
@@ -73,10 +75,12 @@ export type VerifySettlementsSummary = {
   evidenceWritten: number;
   deadlineHit: boolean;
   /**
-   * 我々の計器が壊れていてバッチを中断した理由（2026-09-04 監査 P1-3）。
-   * null が正常。cron の応答に出るので、外から見て気づける。
+   * 我々の計器が壊れていた理由（2026-09-04 監査 P1-3）。null が正常。
+   * cron の応答に出るので、外から見て気づける。
    */
   instrumentFailure: string | null;
+  /** `wrong_chain` を出して以後スキップしたチェーン（network）。空が正常。 */
+  wrongChainNetworks: string[];
 };
 
 /**
@@ -122,7 +126,10 @@ export async function runSettlementVerification(options?: {
     evidenceWritten: 0,
     deadlineHit: false,
     instrumentFailure: null,
+    wrongChainNetworks: [],
   };
+  // wrong_chain を出したチェーン。その行は読みに行かず wrong_chain として deferred に積む。
+  const wrongChain = new Set<string>();
   const db = getDb();
   if (!db) throw new Error("DATABASE_URL is not configured");
 
@@ -227,6 +234,14 @@ export async function runSettlementVerification(options?: {
       continue;
     }
 
+    // このバッチで既に「RPC が別のチェーンを指している」と分かったチェーンの行は、
+    // 読みに行かない（結果は同じ）。他のチェーンの行は続ける。
+    if (wrongChain.has(row.network)) {
+      await db.update(x402L1Purchases).set({ settlementVerifyReason: "wrong_chain" }).where(eq(x402L1Purchases.id, row.id));
+      summary.deferred++;
+      continue;
+    }
+
     const result = await verify({
       txHash: row.tx_hash,
       network: row.network,
@@ -324,11 +339,15 @@ export async function runSettlementVerification(options?: {
           "settlement-verifier.instrument_failure",
           `${result.reason} on purchase ${row.id} (${row.network})${result.detail ? `: ${result.detail}` : ""}`,
         );
-        // wrong_chain は RPC そのものが別のチェーンを指している。残りの行を
-        // 読みに行っても全部同じ結果になるだけなので、このバッチは中断する。
+        // wrong_chain は RPC そのものが別のチェーンを指している。そのチェーンの残りの
+        // 行を読みに行っても全部同じ結果になるだけなので、以後はそのチェーンだけ飛ばす
+        // （バッチは中断しない——他のチェーンの照合を道連れにしない）。
         if (result.reason === "wrong_chain") {
           summary.instrumentFailure = result.reason;
-          break;
+          if (!wrongChain.has(row.network)) {
+            wrongChain.add(row.network);
+            summary.wrongChainNetworks.push(row.network);
+          }
         }
       }
       continue;
