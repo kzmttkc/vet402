@@ -114,14 +114,33 @@ test("parseMppDirectory maps tempo/charge endpoints only, in the catalog row sha
   assert.equal(items.some((i) => i.resourceUrl.endsWith("/stripe-only")), false);
 });
 
-test("parseMppEndpoint refuses rows without serviceUrl / path / payment, and non-tempo chains get their own CAIP-2", () => {
+test("parseMppEndpoint refuses rows without serviceUrl / path / payment, and drops endpoints on any chain but Tempo mainnet (4217)", () => {
   assert.equal(parseMppEndpoint({ serviceUrl: "https://a.example" }, { path: "/x" }), null);
   assert.equal(parseMppEndpoint({}, { path: "/x", payment: { intent: "charge", method: "tempo", currency: USDC_E, amount: "1" } }), null);
   const moderato = parseMppEndpoint(
     { serviceUrl: "https://a.example", realm: "a.example" },
     { method: "GET", path: "/x", payment: { intent: "charge", method: "tempo", currency: USDC_E, amount: "1", chainId: 42431 } },
   );
-  assert.equal(moderato?.network, "eip155:42431");
+  assert.equal(moderato, null, "Moderato (42431) is not measured (review #4)");
+  const other = parseMppEndpoint(
+    { serviceUrl: "https://a.example", realm: "a.example" },
+    { method: "GET", path: "/x", payment: { intent: "charge", method: "tempo", currency: USDC_E, amount: "1", chainId: 8453 } },
+  );
+  assert.equal(other, null);
+  const mainnet = parseMppEndpoint(
+    { serviceUrl: "https://a.example", realm: "a.example" },
+    { method: "GET", path: "/x", payment: { intent: "charge", method: "tempo", currency: USDC_E, amount: "1", chainId: 4217 } },
+  );
+  assert.equal(mainnet?.network, "eip155:4217");
+  // directory 全体でも落ちる
+  const dir = parseMppDirectory({
+    services: [{ serviceUrl: "https://a.example", realm: "a.example", endpoints: [
+      { method: "GET", path: "/main", payment: { intent: "charge", method: "tempo", currency: USDC_E, amount: "1" } },
+      { method: "GET", path: "/moderato", payment: { intent: "charge", method: "tempo", currency: USDC_E, amount: "1", chainId: 42431 } },
+    ] }],
+  });
+  assert.deepEqual(dir.items.map((i) => i.resourceUrl), ["https://a.example/main"]);
+  assert.equal(dir.endpointCount, 1);
   // NUL は落とす（Bazaar と同じ事故を繰り返さない）
   const nul = parseMppEndpoint(
     { serviceUrl: "https://a.example", realm: "a.example" },

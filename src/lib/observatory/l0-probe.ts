@@ -28,7 +28,7 @@ import { UnsafeTargetError, createSafeFetchImpl } from "@/lib/net/safe-fetch";
 import { parseChallenge, type ChallengeAccept as EnvelopeAccept } from "./x402-payer";
 import { toCaip2 } from "./chains";
 import { PATH_TEMPLATE_REASON, isPathTemplate } from "./path-template";
-import { MPP_DIRECTORY_SOURCE, mppChallengeToAccept, parseMppChallengesFromHeaders } from "./mpp-payer";
+import { MPP_DIRECTORY_SOURCE, TEMPO_MAINNET_CAIP2, mppChallengeToAccept, parseMppChallengesFromHeaders } from "./mpp-payer";
 
 export type ProbeTarget = {
   resourceUrl: string;
@@ -305,15 +305,18 @@ export async function probeEndpoint(
     };
   }
 
-  // MPP（Tempo）の壁は WWW-Authenticate: Payment … に載る（2026-09-17）。x402 の封筒より
-  // 先に読む。tempo/charge の challenge があれば方言は "mpp"、受取先は challenge から。
-  // 出どころが mpp_directory の endpoint は、x402 の封筒しか無くても pass にしない
-  // （その壁は MPP の client には払えない）。
-  const mppChallenges = parseMppChallengesFromHeaders(response.headers).filter((c) => c.method === "tempo" && c.intent === "charge");
-  const expectMpp = target.source === MPP_DIRECTORY_SOURCE;
-  const mppAccepts = mppChallenges.map(mppChallengeToAccept).filter((a): a is NonNullable<typeof a> => a !== null);
+  // MPP（Tempo）の壁は WWW-Authenticate: Payment … に載る（2026-09-17）。
+  // MPP 分岐に入るのは **MPP を期待する endpoint**（出どころ mpp_directory、または network が
+  // Tempo）だけ（2026-09-17 独立レビュー #3）。それ以外の出どころ（Bazaar 等）は従来どおり
+  // x402 の封筒を読み、Payment ヘッダは meta.mpp に観測として残すだけ——判定も方言も変えない。
+  // MPP を期待する endpoint に x402 の封筒しか無ければ pass にしない（その壁は MPP の client には払えない）。
+  const mppChallenges = (await parseMppChallengesFromHeaders(response.headers)).challenges.filter(
+    (c) => c.method === "tempo" && c.intent === "charge",
+  );
+  const expectMpp = target.source === MPP_DIRECTORY_SOURCE || toCaip2(target.network) === TEMPO_MAINNET_CAIP2;
+  const mppAccepts = expectMpp ? mppChallenges.map(mppChallengeToAccept).filter((a): a is NonNullable<typeof a> => a !== null) : [];
   const envelope =
-    mppChallenges.length > 0
+    expectMpp && mppChallenges.length > 0
       ? {
           accepts: mppAccepts.length > 0 ? mppAccepts : null,
           dialect: "mpp" as const,

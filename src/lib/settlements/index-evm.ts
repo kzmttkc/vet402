@@ -289,12 +289,17 @@ export async function indexEvmChain(
     const memoByTx = new Map<string, string>();
     for (const m of memoLogs) if (typeof m.args.memo === "string") memoByTx.set(m.transactionHash.toLowerCase(), m.args.memo);
     summary.logs += logs.length + memoLogs.length;
+    // 同じ tx の畳み込みは memoTransfers のチェーン（Tempo）だけ——Transfer と TransferWithMemo が
+    // 同じ tx から 2 本出るため。Base / Polygon / Arc の既存挙動（ログ 1 本 = 1 行の upsert）は変えない
+    // （2026-09-17 レビュー #10）。
     const seenTx = new Set<string>();
     const merged: { transactionHash: string; blockNumber: bigint; args: { from: Address; to: Address; value: bigint } }[] = [];
     for (const l of [...(logs as unknown as Raw[]), ...memoLogs]) {
-      const key = l.transactionHash.toLowerCase();
-      if (seenTx.has(key)) continue;
-      seenTx.add(key);
+      if (chain.memoTransfers) {
+        const key = l.transactionHash.toLowerCase();
+        if (seenTx.has(key)) continue;
+        seenTx.add(key);
+      }
       merged.push({ transactionHash: l.transactionHash, blockNumber: l.blockNumber, args: { from: l.args.from, to: l.args.to, value: l.args.value ?? l.args.amount ?? 0n } });
     }
     const sorted = merged.sort((a, b) =>

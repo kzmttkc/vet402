@@ -35,7 +35,8 @@ export const TEMPO_MODERATO_CAIP2 = "eip155:42431";
 /** Bridged USDC（Stargate）— directory に載る唯一の資産（2026-09-17 実測）。decimals 6。 */
 export const TEMPO_USDC_E = "0x20C000000000000000000000b9537d11c60E8b50";
 export const TEMPO_USDC_E_DECIMALS = 6;
-export const TEMPO_RPC_URL_DEFAULT = "https://rpc.tempo.xyz";
+/** 公開 RPC。既定には**しない**（レビュー #7）: 未設定は「読めない＝署名しない／照合しない／索引しない」。 */
+export const TEMPO_PUBLIC_RPC_URL = "https://rpc.tempo.xyz";
 /** MPP の帰属 memo に載せる我々の識別子（keccak の 10 バイト指紋になる）。 */
 export const MPP_CLIENT_ID = "vet402-observatory";
 /** x402_endpoints.source の値（mpp-directory.ts が同期する）。L0 が「MPP の壁を期待する」判定に使う。 */
@@ -43,9 +44,10 @@ export const MPP_DIRECTORY_SOURCE = "mpp_directory";
 /** MPP の scheme 名。x402 の `exact` と同じ位置（ChallengeAccept.scheme）に置く観測属性。 */
 export const MPP_CHARGE_SCHEME = "mpp:charge";
 
-export function tempoRpcUrl(): string {
+/** TEMPO_RPC_URL。未設定なら null——公開 RPC へ黙って倒れない（Arc の ARC_RPC_URL と同じ作法）。 */
+export function tempoRpcUrl(): string | null {
   const raw = process.env.TEMPO_RPC_URL?.trim();
-  return raw && raw.length > 0 ? raw : TEMPO_RPC_URL_DEFAULT;
+  return raw && raw.length > 0 ? raw : null;
 }
 
 export function isTempoL1Enabled(): boolean {
@@ -60,7 +62,12 @@ export function isTempoL1Enabled(): boolean {
 // 実測（2026-09-17・POST https://fal.mpp.tempo.xyz/fal-ai/flux/dev）: 1 本のヘッダに
 // 通貨ごとの `Payment …` challenge がカンマ区切りで複数並ぶ。値は引用文字列
 // （`realm="…"`）で、`request` と `opaque` は base64url の JSON。
-// 引用文字列の中のカンマで割らないよう、字句単位で読む（正規表現の split を使わない）。
+//
+// 読むのは参照実装 mppx の `Challenge.deserializeList` **だけ**（2026-09-17 独立レビュー #6）。
+// 自前のパーサを真実にすると、mppx が `\uXXXX` を戻す realm と我々の realm が食い違い、
+// 帰属 memo（realm の keccak）が mppx の署名と一致せず、照合が `nonce_not_used` になる。
+// mppx が読めないヘッダは「署名できない」（unsignable）——予約より前に落とす（#5）。
+// 我々の漏斗（selectMppChallenge）は mppx の出力に対して掛ける。
 // ------------------------------------------------------------
 export type MppPaymentRequest = {
   amount: string;
@@ -68,8 +75,14 @@ export type MppPaymentRequest = {
   recipient: string | null;
   methodDetails: {
     chainId: number | null;
-    feePayer: boolean | null;
+    /**
+     * `true` か非 null のオブジェクト（mppx は Account も許して true に畳む）→ true、
+     * それ以外（false・欠落・null・文字列）→ false。false の challenge には署名しない
+     * （自払いガスで USDC.e が台帳の外へ出るのを防ぐ・レビュー #1）。
+     */
+    feePayer: boolean;
     supportedModes: string[] | null;
+    /** 売り手が指定した memo。あれば我々は帰属を束縛できないので署名しない（レビュー #2）。 */
     memo: string | null;
     splits: unknown[] | null;
   };
@@ -85,7 +98,9 @@ export type MppChallenge = {
   description: string | null;
   opaque: string | null;
   digest: string | null;
-  /** この challenge だけを切り出したヘッダ原文（`Payment …`）。署名器へ渡すのはこれ。 */
+  /** credential を載せるヘッダ名（challenge の `header` パラメータ・既定 Authorization）。 */
+  credentialHeader: string;
+  /** この challenge だけを mppx が直列化し直したヘッダ値（`Payment …`）。署名器へ渡すのはこれ。 */
   raw: string;
 };
 
@@ -102,68 +117,9 @@ export function decodeBase64UrlJson(value: string): unknown {
   }
 }
 
-/** `key=value` 列を字句で読む。`Payment ` の開始位置の配列を返す（引用文字列の内側は無視）。 */
-function splitPaymentChallenges(header: string): string[] {
-  const out: string[] = [];
-  let inQuote = false;
-  let i = 0;
-  let start = -1;
-  const isSchemeAt = (pos: number) => {
-    if (header.slice(pos, pos + 8).toLowerCase() !== "payment ") return false;
-    // scheme はヘッダ先頭か、`,` と空白の後にだけ現れる。
-    let j = pos - 1;
-    while (j >= 0 && (header[j] === " " || header[j] === "\t")) j--;
-    return j < 0 || header[j] === ",";
-  };
-  while (i < header.length) {
-    const ch = header[i];
-    if (inQuote) {
-      if (ch === "\\") i++;
-      else if (ch === '"') inQuote = false;
-    } else if (ch === '"') {
-      inQuote = true;
-    } else if (isSchemeAt(i)) {
-      if (start >= 0) out.push(header.slice(start, i).replace(/[\s,]+$/, ""));
-      start = i;
-      i += 8;
-      continue;
-    }
-    i++;
-  }
-  if (start >= 0) out.push(header.slice(start).replace(/[\s,]+$/, ""));
-  return out;
-}
-
-/** 1 つの `Payment k="v", k2=v2 …` を辞書へ。引用文字列の `\"` を戻す。 */
-function parseAuthParams(challenge: string): Record<string, string> {
-  const params: Record<string, string> = {};
-  let i = 8; // "Payment "
-  const s = challenge;
-  while (i < s.length) {
-    while (i < s.length && (s[i] === " " || s[i] === "," || s[i] === "\t")) i++;
-    let key = "";
-    while (i < s.length && /[A-Za-z0-9_-]/.test(s[i])) key += s[i++];
-    while (i < s.length && s[i] === " ") i++;
-    if (s[i] !== "=") {
-      if (key === "") i++;
-      continue;
-    }
-    i++;
-    while (i < s.length && s[i] === " ") i++;
-    let value = "";
-    if (s[i] === '"') {
-      i++;
-      while (i < s.length && s[i] !== '"') {
-        if (s[i] === "\\" && i + 1 < s.length) i++;
-        value += s[i++];
-      }
-      i++;
-    } else {
-      while (i < s.length && s[i] !== "," && s[i] !== " ") value += s[i++];
-    }
-    if (key && !(key.toLowerCase() in params)) params[key.toLowerCase()] = value;
-  }
-  return params;
+/** mppx の feePayer の畳み方と同じ: true か非 null のオブジェクトだけを true にする。 */
+export function feePayerFlag(v: unknown): boolean {
+  return v === true || (typeof v === "object" && v !== null);
 }
 
 function parsePaymentRequest(raw: unknown): MppPaymentRequest | null {
@@ -180,43 +136,69 @@ function parsePaymentRequest(raw: unknown): MppPaymentRequest | null {
     recipient: typeof rec.recipient === "string" ? rec.recipient : null,
     methodDetails: {
       chainId: typeof md?.chainId === "number" && Number.isInteger(md.chainId) ? md.chainId : null,
-      feePayer: typeof md?.feePayer === "boolean" ? md.feePayer : null,
+      feePayer: feePayerFlag(md?.feePayer),
       supportedModes: modes,
-      memo: typeof md?.memo === "string" ? md.memo : null,
+      memo: typeof md?.memo === "string" && md.memo !== "" ? md.memo : null,
       splits: Array.isArray(md?.splits) ? md!.splits : null,
     },
   };
 }
 
+const HEADER_NAME_RE = /^[A-Za-z0-9-]{1,64}$/;
+
+export type MppChallengeParse = { challenges: MppChallenge[]; error: string | null };
+
 /**
- * `WWW-Authenticate` の値から Payment challenge を全部読む。Payment 以外の scheme
- * （Bearer 等）は飛ばす。壊れた challenge は落とす（黙って推測しない）。
+ * `WWW-Authenticate` の値から Payment challenge を全部読む（mppx `Challenge.deserializeList`）。
+ * 読めなければ challenges は空で error に理由——L1 はこれを unsignable として予約前に落とす。
  */
-export function parseMppChallenges(header: string | null | undefined): MppChallenge[] {
-  if (!header) return [];
+export async function parseMppChallengeHeader(header: string | null | undefined): Promise<MppChallengeParse> {
+  if (!header || header.trim() === "") return { challenges: [], error: null };
+  const { Challenge } = await import("mppx");
+  let list: ReturnType<typeof Challenge.deserializeList>;
+  try {
+    list = Challenge.deserializeList(header);
+  } catch (error) {
+    return { challenges: [], error: `unsignable: ${String(error).slice(0, 200)}` };
+  }
   const out: MppChallenge[] = [];
-  for (const raw of splitPaymentChallenges(header)) {
-    const p = parseAuthParams(raw);
-    if (!p.id || !p.realm || !p.method || !p.intent) continue;
+  for (const c of list) {
+    const rec = c as unknown as Record<string, unknown>;
+    if (typeof rec.id !== "string" || typeof rec.realm !== "string" || typeof rec.method !== "string" || typeof rec.intent !== "string") continue;
+    let raw: string;
+    let credentialHeader: string;
+    try {
+      raw = Challenge.serialize(c);
+      credentialHeader = Challenge.credentialHeader(c);
+    } catch {
+      continue;
+    }
+    if (!HEADER_NAME_RE.test(credentialHeader)) credentialHeader = "Authorization";
     out.push({
-      id: p.id,
-      realm: p.realm,
-      method: p.method,
-      intent: p.intent,
-      request: p.request ? parsePaymentRequest(decodeBase64UrlJson(p.request)) : null,
-      expires: p.expires ?? null,
-      description: p.description ?? null,
-      opaque: p.opaque ?? null,
-      digest: p.digest ?? null,
+      id: rec.id,
+      realm: rec.realm,
+      method: rec.method,
+      intent: rec.intent,
+      request: parsePaymentRequest(rec.request),
+      expires: typeof rec.expires === "string" ? rec.expires : null,
+      description: typeof rec.description === "string" ? rec.description : null,
+      opaque: typeof rec.opaque === "string" ? rec.opaque : null,
+      digest: typeof rec.digest === "string" ? rec.digest : null,
+      credentialHeader,
       raw,
     });
   }
-  return out;
+  return { challenges: out, error: null };
+}
+
+/** 配列だけ要る呼び手（L0）向け。読めないヘッダは空。 */
+export async function parseMppChallenges(header: string | null | undefined): Promise<MppChallenge[]> {
+  return (await parseMppChallengeHeader(header)).challenges;
 }
 
 /** Headers から読む（L0 / L1 共通の入口）。 */
-export function parseMppChallengesFromHeaders(headers: Headers): MppChallenge[] {
-  return parseMppChallenges(headers.get("www-authenticate"));
+export async function parseMppChallengesFromHeaders(headers: Headers): Promise<MppChallengeParse> {
+  return await parseMppChallengeHeader(headers.get("www-authenticate"));
 }
 
 /**
@@ -257,6 +239,8 @@ export type MppSelection =
         | "wrong_currency"
         | "recipient_invalid"
         | "has_splits"
+        | "fee_payer_absent"
+        | "seller_memo"
         | "pull_not_supported"
         | "challenge_expired"
         | "recipient_mismatch"
@@ -293,7 +277,15 @@ export function selectMppChallenge(
   if (validRecipient.length === 0) return refuse("no_eligible_accept", "recipient_invalid");
   const noSplits = validRecipient.filter((c) => !c.request!.methodDetails.splits || c.request!.methodDetails.splits.length === 0);
   if (noSplits.length === 0) return refuse("no_eligible_accept", "has_splits");
-  const pullable = noSplits.filter((c) => {
+  // レビュー #1: feePayer が true でない challenge は、我々が手数料 token（USD 建て TIP-20）を
+  // 自払いする形になる。台帳（USDC.e の額）の外へ資金が出るので署名しない。
+  const sponsored = noSplits.filter((c) => c.request!.methodDetails.feePayer === true);
+  if (sponsored.length === 0) return refuse("no_eligible_accept", "fee_payer_absent");
+  // レビュー #2: 売り手が memo を指定すると mppx はそれを transferWithMemo に載せる。我々の
+  // 帰属 memo（challengeId・realm の keccak）で tx を購入に束縛できなくなるので署名しない。
+  const ownMemo = sponsored.filter((c) => c.request!.methodDetails.memo === null);
+  if (ownMemo.length === 0) return refuse("no_eligible_accept", "seller_memo");
+  const pullable = ownMemo.filter((c) => {
     const modes = c.request!.methodDetails.supportedModes;
     return modes === null || modes.includes("pull");
   });
@@ -419,7 +411,7 @@ export function buildMppChargePins(recipient: string): MppChargePins {
     expectedRecipients: [recipient as `0x${string}`],
     mode: "pull",
     clientId: MPP_CLIENT_ID,
-    rpcUrl: { [TEMPO_CHAIN_ID]: tempoRpcUrl() },
+    rpcUrl: { [TEMPO_CHAIN_ID]: tempoRpcUrl() ?? "" },
   };
 }
 
@@ -436,7 +428,7 @@ export const defaultMppxCharge: MppxCharge = async ({ account, pins, response })
   const { createClient, http } = await import("viem");
   const { tempo: tempoChain } = await import("viem/tempo/chains");
   const rpc = pins.rpcUrl[pins.expectedChainId];
-  if (!rpc) throw new Error("mpp: no RPC url for the pinned chain");
+  if (!rpc) throw new Error("tempo_rpc_unset: TEMPO_RPC_URL is required to sign an MPP charge");
   const mppx = Mppx.create({
     methods: [
       tempo.charge({
@@ -463,9 +455,11 @@ export const defaultMppxCharge: MppxCharge = async ({ account, pins, response })
 export async function createMppCredential(
   input: { account: Account; challenge: MppChallenge; recipient: string },
   deps: { mppxCharge?: MppxCharge } = {},
-): Promise<{ headerName: "authorization"; headerValue: string; memo: `0x${string}`; pins: MppChargePins }> {
+): Promise<{ headerName: string; headerValue: string; memo: `0x${string}`; pins: MppChargePins }> {
   const { account, challenge, recipient } = input;
   if (challenge.method !== "tempo" || challenge.intent !== "charge") throw new Error("mpp: not a tempo/charge challenge");
+  // 売り手 memo の challenge はここまで来ない（selectMppChallenge が seller_memo で落とす）が、二重防御。
+  if (challenge.request?.methodDetails.memo) throw new Error("mpp: seller-specified memo cannot be bound to this purchase");
   if (challenge.request?.recipient?.toLowerCase() !== recipient.toLowerCase()) throw new Error("mpp: recipient does not match the challenge");
   const pins = buildMppChargePins(recipient);
   const response = new Response(null, { status: 402, headers: { "www-authenticate": challenge.raw } });
@@ -473,10 +467,10 @@ export async function createMppCredential(
   if (typeof credential !== "string" || !/^Payment\s+\S+$/.test(credential)) {
     throw new Error("mpp: signer returned a credential that is not `Payment <base64url>`");
   }
-  const memo = challenge.request?.methodDetails.memo
-    ? (challenge.request.methodDetails.memo as `0x${string}`)
-    : encodeMppAttributionMemo({ challengeId: challenge.id, realm: challenge.realm, clientId: MPP_CLIENT_ID });
-  return { headerName: "authorization", headerValue: credential, memo, pins };
+  // auth_nonce は常に我々の帰属 memo（mppx も同じ入力・同じ配置で作る——テストがバイト一致を固定）。
+  const memo = encodeMppAttributionMemo({ challengeId: challenge.id, realm: challenge.realm, clientId: MPP_CLIENT_ID });
+  // credential を載せるヘッダは challenge の `header` パラメータ（既定 Authorization）。
+  return { headerName: challenge.credentialHeader.toLowerCase(), headerValue: credential, memo, pins };
 }
 
 const ERC20_BALANCE_OF_ABI = [
@@ -489,11 +483,13 @@ const ERC20_BALANCE_OF_ABI = [
   },
 ] as const;
 
-/** 購入元の USDC.e 残高（基本単位）。TEMPO_RPC_URL（既定 rpc.tempo.xyz）を読む。 */
+/** 購入元の USDC.e 残高（基本単位）。TEMPO_RPC_URL を読む。未設定は throw → 呼び手は署名しない側へ倒す。 */
 export async function readTempoUsdcBalance(owner: string): Promise<bigint> {
+  const rpc = tempoRpcUrl();
+  if (!rpc) throw new Error("tempo_rpc_unset: TEMPO_RPC_URL is required to read the payer's USDC.e balance");
   const { createPublicClient, http } = await import("viem");
   const { tempo } = await import("viem/chains");
-  const client = createPublicClient({ chain: tempo, transport: http(tempoRpcUrl(), { timeout: 5_000, retryCount: 1 }) });
+  const client = createPublicClient({ chain: tempo, transport: http(rpc, { timeout: 5_000, retryCount: 1 }) });
   return await client.readContract({
     address: TEMPO_USDC_E as `0x${string}`,
     abi: ERC20_BALANCE_OF_ABI,

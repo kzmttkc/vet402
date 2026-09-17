@@ -299,6 +299,18 @@ if (!TEST_DB) {
       assert.ok(w.seen.some((s) => s.url.includes("seller1.example") && s.paid), "Base bought");
     });
 
+    await t.test("an mpp_directory endpoint whose recipient was never learned (pay_to IS NULL) is not an L1 candidate (review #4)", async () => {
+      await seed();
+      process.env.OBSERVATORY_TEMPO_L1_ENABLED = "true";
+      // model/2 の学習済み受取先を消す（L0 は pass のまま）
+      await db.execute(sql`UPDATE x402_endpoints SET pay_to = NULL, payee_id = NULL WHERE resource_url = 'https://fal.mpp.tempo.example/model/2'`);
+      const w = wall();
+      await runL1Batch({ getPayerUsdcBalance: FUNDED, limit: 10, fetchImpl: w.fetchImpl, mppxCharge });
+      assert.ok(!w.seen.some((s) => s.url.includes("/model/2")), "no request at all to the endpoint without a learned recipient");
+      assert.deepEqual(await ledgerFor("https://fal.mpp.tempo.example/model/2"), []);
+      assert.ok(w.seen.some((s) => s.url.includes("/model/1") && s.paid), "the endpoint with a learned recipient is still bought");
+    });
+
     await t.test("selection: a wall charging other than declared is recorded as price_mismatch, never paid", async () => {
       await seed();
       process.env.OBSERVATORY_TEMPO_L1_ENABLED = "true";

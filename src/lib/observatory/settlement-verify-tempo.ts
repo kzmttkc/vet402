@@ -34,13 +34,18 @@ function topicToAddress(topic: string): string {
   return `0x${topic.slice(-40)}`.toLowerCase();
 }
 
-/** TEMPO_RPC_URL（既定 rpc.tempo.xyz）を読む本番の client。 */
-export async function defaultTempoVerifyClient(): Promise<EvmVerifyClient> {
+/**
+ * TEMPO_RPC_URL を読む本番の client。**未設定なら null**——呼び手は chain_not_yet_verifiable で
+ * 未確認のまま置く（Arc の ARC_RPC_URL と同じ作法。公開 RPC へ黙って倒れて「確認済み」を刻まない）。
+ */
+export async function defaultTempoVerifyClient(): Promise<EvmVerifyClient | null> {
+  const rpc = tempoRpcUrl();
+  if (!rpc) return null;
   const { createPublicClient, http } = await import("viem");
   const { tempo } = await import("viem/chains");
   // 型は Base の client で書かれた EvmVerifyClient に合わせる。使う面（getChainId / getBlockNumber /
   // getTransactionReceipt / getBlock）はチェーンに依らない。
-  return createPublicClient({ chain: tempo, transport: http(tempoRpcUrl(), { timeout: 10_000, retryCount: 1 }) }) as unknown as EvmVerifyClient;
+  return createPublicClient({ chain: tempo, transport: http(rpc, { timeout: 10_000, retryCount: 1 }) }) as unknown as EvmVerifyClient;
 }
 
 export async function verifyTempoSettlement(
@@ -58,12 +63,13 @@ export async function verifyTempoSettlement(
   const { txHash, expectedPayTo, expectedPayer, expectedAmountUnits } = input;
   if (!isWellFormedSettlementTx(txHash, "evm")) return { ok: false, reason: "malformed_tx" };
 
-  let client: EvmVerifyClient;
+  let client: EvmVerifyClient | null;
   try {
     client = deps?.client ?? (await defaultTempoVerifyClient());
   } catch (error) {
     return { ok: false, reason: "rpc_unavailable", detail: String(error).slice(0, 200) };
   }
+  if (!client) return { ok: false, reason: "chain_not_yet_verifiable", detail: `${input.network}: TEMPO_RPC_URL_unset` };
 
   let chainId: number;
   let tip: bigint;

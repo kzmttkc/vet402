@@ -63,6 +63,22 @@ test("verifyL1Settlement dispatches eip155:4217 to the Tempo verifier (Base clie
   assert.equal(r.ok, true);
 });
 
+test("TEMPO_RPC_URL unset and no injected client → chain_not_yet_verifiable (no public-RPC fallback, review #7)", async () => {
+  const saved = process.env.TEMPO_RPC_URL;
+  try {
+    delete process.env.TEMPO_RPC_URL;
+    const r = await verifyTempoSettlement(input);
+    assert.equal(r.ok, false);
+    assert.equal(!r.ok && r.reason, "chain_not_yet_verifiable");
+    assert.match((!r.ok && r.detail) || "", /TEMPO_RPC_URL_unset/);
+    const viaDispatch = await verifyL1Settlement(input);
+    assert.equal(!viaDispatch.ok && viaDispatch.reason, "chain_not_yet_verifiable");
+  } finally {
+    if (saved === undefined) delete process.env.TEMPO_RPC_URL;
+    else process.env.TEMPO_RPC_URL = saved;
+  }
+});
+
 test("wrong chain / reverted / not found / too few confirmations", async () => {
   assert.equal((await verifyTempoSettlement(input, { client: fakeClient({ chainId: 8453 }) })).ok, false);
   const wrong = await verifyTempoSettlement(input, { client: fakeClient({ chainId: 8453 }) });

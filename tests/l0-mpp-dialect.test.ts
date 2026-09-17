@@ -101,6 +101,32 @@ test("mpp_directory endpoint answering 402 with an x402 envelope (no Payment cha
   assert.match(String(r.rawResponseMeta?.note), /not payable by an MPP client/);
 });
 
+test("a Bazaar-sourced Base endpoint that ALSO sends WWW-Authenticate: Payment keeps its x402 verdict and dialect (review #3); the challenge is only observed in meta", async () => {
+  const v2 = Buffer.from(
+    JSON.stringify({ x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:8453", amount: "3000", asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", payTo: "0x52e29e0d2aa49bfbfc548c0a9f2196f4aa51f3ea" }] }),
+  ).toString("base64");
+  const base = target({ resourceUrl: "https://example.com/api/x", network: "eip155:8453", priceAmount: "3000", priceAsset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", payTo: "0x52e29e0d2aa49bfbfc548c0a9f2196f4aa51f3ea", source: "cdp_bazaar" });
+  const withPayment = await probeEndpoint(base, { fetchImpl: fake(402, { "payment-required": v2, "www-authenticate": paymentHeader() }, "{}") });
+  const without = await probeEndpoint(base, { fetchImpl: fake(402, { "payment-required": v2 }, "{}") });
+  assert.equal(withPayment.verdict, without.verdict);
+  assert.equal(withPayment.dialect, without.dialect);
+  assert.equal(withPayment.dialect, "v2");
+  assert.equal(withPayment.failReason, without.failReason);
+  assert.equal(withPayment.learnedPayTo ?? null, null);
+  assert.ok(Array.isArray(withPayment.rawResponseMeta?.mpp), "the Payment challenge is kept as an observation");
+  // 封筒が無い Bazaar endpoint は、Payment ヘッダがあっても従来どおり accepts_invalid / unpayable
+  const noEnvelope = await probeEndpoint(base, { fetchImpl: fake(402, { "www-authenticate": paymentHeader() }, "{}") });
+  assert.equal(noEnvelope.verdict, "fail");
+  assert.equal(noEnvelope.failReason, "accepts_invalid");
+  assert.equal(noEnvelope.dialect, "unpayable");
+});
+
+test("a Tempo-network endpoint from any source expects MPP (network alone selects the branch)", async () => {
+  const r = await probeEndpoint(target({ source: "cdp_bazaar" }), { fetchImpl: fake(402, { "www-authenticate": paymentHeader() }) });
+  assert.equal(r.verdict, "pass");
+  assert.equal(r.dialect, "mpp");
+});
+
 test("a Bazaar-sourced endpoint keeps the x402 envelope path untouched (no Payment header → v2 as before)", async () => {
   const v2 = Buffer.from(
     JSON.stringify({ x402Version: 2, accepts: [{ scheme: "exact", network: "eip155:8453", amount: "3000", asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", payTo: "0x52e29e0d2aa49bfbfc548c0a9f2196f4aa51f3ea" }] }),

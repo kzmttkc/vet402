@@ -63,8 +63,18 @@ export function joinServiceUrl(serviceUrl: string, path: string): string {
  * tempo/charge 以外（session・subscription・stripe 等）は null——測る対象ではない。
  */
 export function parseMppEndpoint(service: unknown, endpoint: unknown): ParsedCatalogItem | null {
-  const svc = stripNul(asRecord(service) ?? {});
-  const ep = stripNul(asRecord(endpoint) ?? {});
+  return parseMppEndpointPrepared(prepareService(service), stripNul(asRecord(endpoint) ?? {}));
+}
+
+/** service の NUL 除去を 1 回だけ行う（endpoints は各行で別に除去する・レビュー #9）。 */
+function prepareService(service: unknown): Record<string, unknown> {
+  const rec = asRecord(service) ?? {};
+  const { endpoints: _endpoints, ...rest } = rec;
+  void _endpoints;
+  return stripNul(rest);
+}
+
+function parseMppEndpointPrepared(svc: Record<string, unknown>, ep: Record<string, unknown>): ParsedCatalogItem | null {
   const serviceUrl = asString(svc.serviceUrl) ?? asString(svc.url);
   const path = asString(ep.path);
   if (!serviceUrl || !path) return null;
@@ -74,8 +84,10 @@ export function parseMppEndpoint(service: unknown, endpoint: unknown): ParsedCat
   const currency = asString(payment.currency);
   const amount = asString(payment.amount) ?? (typeof payment.amount === "number" ? String(payment.amount) : null);
   if (!currency || !amount) return null;
+  // Tempo mainnet（4217）だけを測る。Moderato（42431）や他のチェーン ID は行にしない（レビュー #4）。
   const chainId = typeof payment.chainId === "number" ? payment.chainId : TEMPO_CHAIN_ID;
-  const network = chainId === TEMPO_CHAIN_ID ? TEMPO_MAINNET_CAIP2 : `eip155:${chainId}`;
+  if (chainId !== TEMPO_CHAIN_ID) return null;
+  const network = TEMPO_MAINNET_CAIP2;
   const realm = asString(svc.realm);
   const rawMethod = asString(ep.method)?.toUpperCase() ?? null;
   const method = rawMethod && DECLARED_METHODS.has(rawMethod) ? rawMethod : null;
@@ -130,8 +142,9 @@ export function parseMppDirectory(body: unknown): { items: ParsedCatalogItem[]; 
   let truncated = false;
   for (const service of services) {
     const endpoints = Array.isArray(asRecord(service)?.endpoints) ? (asRecord(service)!.endpoints as unknown[]) : [];
+    const svc = prepareService(service);
     for (const endpoint of endpoints) {
-      const item = parseMppEndpoint(service, endpoint);
+      const item = parseMppEndpointPrepared(svc, stripNul(asRecord(endpoint) ?? {}));
       if (!item) continue;
       endpointCount++;
       if (byKey.size >= MPP_DIRECTORY_MAX_ITEMS) {

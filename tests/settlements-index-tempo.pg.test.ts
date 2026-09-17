@@ -40,9 +40,14 @@ if (!TEST_DB) {
     assert.equal(chain.memoTransfers, true);
     assert.ok(chain.maxBlocksPerRun >= 86_400n, "one run must cover a day of ~1s blocks");
     const savedRpc = process.env.TEMPO_RPC_URL;
-    delete process.env.TEMPO_RPC_URL;
     t.after(() => (savedRpc === undefined ? delete process.env.TEMPO_RPC_URL : (process.env.TEMPO_RPC_URL = savedRpc)));
-    assert.equal(isEvmChainIndexable(chain), true, "indexable without the env var (public default RPC)");
+    delete process.env.TEMPO_RPC_URL;
+    assert.equal(isEvmChainIndexable(chain), false, "no env → not indexable (skipped as TEMPO_RPC_URL_unset, no public-RPC fallback; review #7/#8)");
+    const { perChainBudgetMs } = await import("@/lib/settlements/index-evm");
+    const withoutTempo = perChainBudgetMs(120_000);
+    process.env.TEMPO_RPC_URL = "https://rpc.tempo.example";
+    assert.equal(isEvmChainIndexable(chain), true);
+    assert.ok(perChainBudgetMs(120_000) <= withoutTempo, "the per-chain budget divides by indexable chains, so Tempo only takes a share once it is indexable");
 
     const PAYEE = "0xca4e835f803cb0b7c428222b3a3b98518d4779fe";
     const PAYER = "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670";
@@ -114,6 +119,26 @@ if (!TEST_DB) {
     assert.equal(other.raw.memo, NOT_MPP);
     assert.equal(other.raw.mppAttributed, false, "a memo without the MPP tag is not MPP");
     assert.equal(other.attribution, "probable", "the single-endpoint payee rule stays: amount 7 ≠ 25000 → probable, not confirmed");
+
+    // Base の既存挙動は変えない（レビュー #10）: 同じ tx のログ 2 本は畳まず、1 行の insert + 1 回の update。
+    const base = EVM_INDEX_CHAINS.find((c) => c.caip2 === "eip155:8453")!;
+    await db.execute(sql`
+      INSERT INTO x402_endpoints (resource_key, resource_url, source, method, network, pay_to, price_amount, price_asset, status, resource_id)
+      VALUES ('seller.example/api', 'https://seller.example/api', 'cdp_bazaar', 'GET', 'eip155:8453', ${PAYEE}, '25000', ${base.usdc.toLowerCase()}, 'active', 'res-base-1')
+    `);
+    const baseCalls: string[] = [];
+    const baseGetLogs = (async (_c: unknown, params: { event: { name: string } }) => {
+      baseCalls.push(params.event.name);
+      return [
+        { transactionHash: `0x${"b1".repeat(32)}`, blockNumber: 40_000_000n, args: { from: PAYER, to: PAYEE, value: 25_000n } },
+        { transactionHash: `0x${"b1".repeat(32)}`, blockNumber: 40_000_000n, args: { from: PAYER, to: PAYEE, value: 25_000n } },
+      ];
+    }) as never;
+    const baseSummary = await indexEvmChain(base, { client: client as never, getLogs: baseGetLogs, classifier, budgetMs: 30_000 });
+    assert.deepEqual(baseCalls, [TRANSFER_EVENT.name], "Base asks for Transfer only (no TransferWithMemo)");
+    assert.equal(baseSummary.logs, 2);
+    assert.equal(baseSummary.inserted, 1);
+    assert.equal(baseSummary.updated, 0, "Base: same-tx logs reach the existing batch upsert, which keeps the first by purchase_id (unchanged behaviour); the memo fold never runs here");
 
     // チェックポイントは Tempo 固有の scope。初回は safeTip − 遡り幅 から maxBlocksPerRun ぶんだけ進む
     // （3 日分の遡りは 1 回では終わらず、次回に持ち越す——Base と同じ）。

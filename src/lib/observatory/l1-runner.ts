@@ -819,6 +819,9 @@ export async function runL1Batch(
       ${sql.join(laneExclusions, sql` `)}
       ${lane ? sql`AND e.network LIKE ${lane.networkLike}` : sql``}
       ${selfExclusion}
+      -- Tempo（MPP・2026-09-17 レビュー #4）: directory は受取先を載せない。L0 が生きた challenge から
+      -- 学習した pay_to を持つ行だけを L1 候補にする（受取先を知らない相手に署名しない）。
+      AND (e.source <> 'mpp_directory' OR e.pay_to IS NOT NULL)
       ${
         // 初回購入の枠を使い切った日は、購入行がまだ無いエンドポイントを外す
         // （買い直しは続く）。行を書かないので、翌 UTC 日にまた候補へ戻る。
@@ -1138,14 +1141,25 @@ async function purchaseOne(input: {
 
   // MPP の challenge（Tempo）は WWW-Authenticate に載る。x402 の封筒は Tempo では読まない
   // （x402 の accept に署名する経路が Tempo に向かって開かない）。
-  const mppChallenges = isTempo ? parseMppChallengesFromHeaders(first.headers) : [];
+  // 読むのは mppx の Challenge.deserializeList（2026-09-17 レビュー #5/#6）。mppx が読めない
+  // ヘッダは署名器も読めない＝ unsignable。**予約より前に**落とす（2026-09-04 監査 P1-2 と同じ規律。
+  // status の語彙は閉じているので no_eligible_accept に載せ、detail に unsignable を残す）。
+  const mppParsed = isTempo ? await parseMppChallengesFromHeaders(first.headers) : { challenges: [], error: null };
+  const mppChallenges = mppParsed.challenges;
   const challenge = isTempo
     ? mppChallenges.length > 0
       ? { x402Version: 2 as const, accepts: [] as never[] }
       : null
     : parseChallenge({ bodyText: firstBody, headers: first.headers });
   if (!challenge) {
-    await record({ status: "no_eligible_accept", rawResponseMeta: { phase: "unpaid", note: isTempo ? "no MPP Payment challenge" : "unparseable challenge", ...(isTempo ? { protocol: "mpp" } : {}) } });
+    await record({
+      status: "no_eligible_accept",
+      rawResponseMeta: {
+        phase: "unpaid",
+        note: isTempo ? (mppParsed.error ? "mppx could not deserialize the Payment challenge" : "no MPP Payment challenge") : "unparseable challenge",
+        ...(isTempo ? { protocol: "mpp", ...(mppParsed.error ? { detail: "unsignable", error: mppParsed.error } : {}) } : {}),
+      },
+    });
     return { kind: "skipped", settled: false, spent: 0n };
   }
 
