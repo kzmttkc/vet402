@@ -6,6 +6,7 @@ import { ingestL1 } from "@/lib/settlements/ingest-l1";
 import { ingestPayments } from "@/lib/settlements/ingest-payments";
 import { indexEvm } from "@/lib/settlements/index-evm";
 import { indexSolana } from "@/lib/settlements/index-solana";
+import { indexXrpl } from "@/lib/settlements/index-xrpl";
 import { recoverLateSettlements } from "@/lib/settlements/recover-late";
 import { logServerError } from "@/lib/util/log";
 
@@ -27,10 +28,12 @@ export async function GET(request: NextRequest) {
     const payments = await ingestPayments({ classifier });
     const evm = await indexEvm({ budgetMs: 120_000, classifier });
     const solana = await indexSolana({ budgetMs: 60_000, classifier });
+    // XRPL（2026-09-17）: XRPL_RPC_URL が無ければ no-op（skipped）。受取先は 7 つなので短い予算で足りる。
+    const xrpl = await indexXrpl({ budgetMs: 20_000, classifier });
     // 2026-09-04 監査 P2: 索引を更新した**あと**に、遅れて決済された settle_failed を
     // 拾って tx へ結びつける（settled とは名乗らせない——照合器が決める）。
     const lateSettlements = await recoverLateSettlements();
-    return NextResponse.json({ ok: true, testWallets: classifier.testWallets.size, l1, payments, evm, solana, lateSettlements });
+    return NextResponse.json({ ok: true, testWallets: classifier.testWallets.size, l1, payments, evm, solana, xrpl, lateSettlements });
   } catch (error) {
     logServerError("cron.index-settlements", error);
     return NextResponse.json({ ok: false, error: "index_failed" }, { status: 500 });
