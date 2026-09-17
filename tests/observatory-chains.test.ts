@@ -142,3 +142,17 @@ test("eip155:4663 is Robinhood Chain (measured eth_chainId 0x1237); IoTeX is 468
   assert.equal(chainLabel("eip155:4663"), "Robinhood Chain");
   assert.equal(chainLabel("eip155:4689"), "IoTeX");
 });
+
+// ---- Tempo（MPP・2026-09-17）----------------------------------------------
+test("Tempo mainnet / Moderato are recognized by CAIP-2 id; Moderato is a testnet", async () => {
+  const { explorerTxUrl } = await import("@/lib/observatory/chains");
+  assert.equal(chainLabel("eip155:4217"), "Tempo");
+  assert.equal(chainLabel("eip155:42431"), "Tempo Moderato");
+  assert.equal(isTestnet("eip155:4217"), false);
+  assert.equal(isTestnet("eip155:42431"), true);
+  const tx = `0x${"ab".repeat(32)}`;
+  assert.equal(explorerTxUrl("eip155:4217", tx), `https://explore.tempo.xyz/tx/${tx}`);
+  assert.equal(explorerTxUrl("eip155:4217", "not-a-hash"), null);
+  // テストネットの受領証リンクは作らない（探索器の URL を持たない）。
+  assert.equal(explorerTxUrl("eip155:42431", tx), null);
+});

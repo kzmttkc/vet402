@@ -28,6 +28,10 @@ const KNOWN: Record<string, string> = {
   // それまで "IoTeX" と誤表示していた（稼働中 822 件が 2 番目以降の accept で宣言）。
   "eip155:4663": "Robinhood Chain",
   "eip155:4689": "IoTeX",
+  // Tempo（Stripe + Paradigm・MPP の決済チェーン、2026-09-17）。x402 の壁は無く、
+  // vet402 は MPP 方言（mpp-payer.ts）で観測する。Moderato はテストネット。
+  "eip155:4217": "Tempo",
+  "eip155:42431": "Tempo Moderato",
 };
 
 /** Solana genesis hashes (case-sensitive base58) — lower-casing would corrupt them, so match separately. */
@@ -38,7 +42,7 @@ const SOLANA_DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
  * 2026-09-02 監査 A3: /observatory/state「Mainnets only」に Solana devnet の active 33 件が
  * 混ざっていた（TESTNET_LABELS が Base Sepolia だけ）。devnet はテストネット。
  */
-const TESTNET_LABELS = new Set(["Base Sepolia", "Solana Devnet", "Arc Testnet"]);
+const TESTNET_LABELS = new Set(["Base Sepolia", "Solana Devnet", "Arc Testnet", "Tempo Moderato"]);
 
 /** Human label for a raw CAIP-2 / legacy network identifier. Never guesses — unknown ids pass through verbatim so nothing is silently mislabeled. */
 export function chainLabel(network: unknown): string {
@@ -88,6 +92,7 @@ const EVM_EXPLORERS: Record<string, string> = {
   Polygon: "https://polygonscan.com/tx/",
   // 2026-09-17 Arc レーン。testnet の explorer は確かめていないので載せない（壊れたリンクより「—」）。
   Arc: "https://explorer.arc.io/tx/",
+  Tempo: "https://explore.tempo.xyz/tx/",
 };
 
 /** Block-explorer URL for a settlement tx on the given network, or null when the chain has no explorer here or the tx is not well-formed for it. */
