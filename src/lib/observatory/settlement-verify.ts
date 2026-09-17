@@ -161,6 +161,11 @@ export async function verifyL1Settlement(
     const { verifySolanaSettlement } = await import("./settlement-verify-solana");
     return verifySolanaSettlement(input);
   }
+  // XRPL（2026-09-17）: validated + tesSUCCESS + Destination/Account/delivered_amount + 署名 blob の hash。
+  if (network.startsWith("xrpl:")) {
+    const { verifyXrplSettlement } = await import("./settlement-verify-xrpl");
+    return verifyXrplSettlement(input);
+  }
 
   // Tempo（MPP・2026-09-17）: USDC.e の Transfer / TransferWithMemo を TEMPO_RPC_URL で読む専用の照合器。
   // ここ（Base の client・Base の USDC）で読むと wrong_chain にしかならない。
