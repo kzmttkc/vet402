@@ -25,7 +25,7 @@ import type { EvmVerifyClient, SettlementVerifyResult } from "./settlement-verif
 
 /** ERC-20 Transfer(address,address,uint256) */
 export const TEMPO_TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-/** TIP-20 TransferWithMemo(address indexed from, address indexed to, uint256 amount, bytes32 memo) — 2026-09-17 実測の topic。 */
+/** TIP-20 TransferWithMemo(address indexed from, address indexed to, uint256 amount, bytes32 indexed memo) — topic0 は indexed の有無で変わらない（2026-09-17 実測）。 */
 export const TEMPO_TRANSFER_WITH_MEMO_TOPIC = keccak256(toBytes("TransferWithMemo(address,address,uint256,bytes32)"));
 
 export const TEMPO_REQUIRED_CONFIRMATIONS = 64n;
@@ -103,7 +103,7 @@ export async function verifyTempoSettlement(
     return { ok: false, reason: "no_matching_transfer", detail: "unparseable expected amount" };
   }
 
-  // 一致した Transfer / TransferWithMemo レグの memo（TransferWithMemo のみ・data の 2 語目）。
+  // 一致した Transfer / TransferWithMemo レグの memo（TransferWithMemo のみ・topics[3]。下の注）。
   const matchedMemos: (string | null)[] = [];
   for (const log of receipt.logs) {
     if (log.address?.toLowerCase() !== usdcLower) continue;
@@ -123,7 +123,20 @@ export async function verifyTempoSettlement(
       continue;
     }
     if (value !== expectedValue) continue;
-    matchedMemos.push(isMemo && data.length >= 130 ? `0x${data.slice(66, 130)}`.toLowerCase() : null);
+    // memo の位置（2026-09-18 本番で実測）: TIP-20 の event は
+    //   TransferWithMemo(address indexed from, address indexed to, uint256 amount, bytes32 indexed memo)
+    // で、memo は **topics[3]**（data は amount の 1 語だけ）。2026-09-17 の実装は memo を data の
+    // 2 語目と決めつけていて、本物の決済 2 件（0x0883…12f5・0xbd10…95e8）を nonce_not_used で
+    // refute した＝売り手への冤罪。topics[3] を正とし、非 indexed の形（data の 2 語目）も読む。
+    const memoTopic = log.topics[3];
+    const memo = !isMemo
+      ? null
+      : typeof memoTopic === "string" && memoTopic.length === 66
+        ? memoTopic.toLowerCase()
+        : data.length >= 130
+          ? `0x${data.slice(66, 130)}`.toLowerCase()
+          : null;
+    matchedMemos.push(memo);
   }
   if (matchedMemos.length === 0) {
     return {

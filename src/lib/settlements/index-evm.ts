@@ -30,7 +30,8 @@ import { TEMPO_CHAIN_ID, TEMPO_USDC_E, isMppAttributionMemo, tempoRpcUrl } from 
 export const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 /** TIP-20（Tempo）の memo 付き転送。MPP の client は transferWithMemo を呼ぶ（2026-09-17）。 */
 export const TRANSFER_WITH_MEMO_EVENT = parseAbiItem(
-  "event TransferWithMemo(address indexed from, address indexed to, uint256 amount, bytes32 memo)",
+  // memo は indexed（topics[3]）。2026-09-18 本番の receipt で実測。非 indexed で宣言すると viem が decode できない。
+  "event TransferWithMemo(address indexed from, address indexed to, uint256 amount, bytes32 indexed memo)",
 );
 
 export type EvmIndexChain = {

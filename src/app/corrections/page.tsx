@@ -79,6 +79,24 @@ const CORRECTIONS: Correction[] = [
       "export.csv. The decision rules version is now 2026-09-17.1.",
   },
   {
+    date: "2026-09-18",
+    subject: "Refuting two real Tempo settlements because our verifier read the memo from the wrong place",
+    wrong:
+      "vet402 began buying on Tempo through MPP on 2026-09-17. The first two purchases settled on-chain: " +
+      "0x0883890465be42c6309786c62defb67917e521c6a70252bc6bbeaede264112f5 (aviationstack.mpp.tempo.xyz, 0.005 USDC.e) " +
+      "and 0xbd1049edadb1b676fe51f65246b2b919ffb677ebff10a3d8a3ea6241aede95e8 (fal.mpp.tempo.xyz, 0.04 USDC.e). " +
+      "Each carries a TransferWithMemo from our payer to the seller for the exact amount, with the memo we signed. " +
+      "Our settlement verifier marked both settle_claim_refuted at 2026-09-17T18:45Z with the reason nonce_not_used, " +
+      "which reads as the seller claiming a settlement that did not happen. The sellers were right and we were " +
+      "wrong: the TIP-20 event indexes the memo, so it arrives as the fourth topic of the log, and our verifier " +
+      "looked for it in the log data. The tests used a log shape we had assumed, not one read from the chain.",
+    action:
+      "Changed on 2026-09-18. The verifier reads the memo from the indexed topic, with the production receipt of " +
+      "the second purchase as a test fixture, and the settlement indexer declares the event the same way. Both rows " +
+      "were put back to settle_claimed and re-verified. No other Tempo row existed. Rows stay published with their " +
+      "transaction hashes, so anyone can read the same receipts on explore.tempo.xyz.",
+  },
+  {
     date: "2026-09-17",
     subject: "Recording our own empty wallet as sellers refusing payment, 2026-09-13 to 2026-09-15",
     wrong:

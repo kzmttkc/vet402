@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-18 06:4x JST — Tempo の決済照合器が本物の決済 2 件を refute していた（memo は topics[3]）（vet402.com コア）
+
+- **何を**: `src/lib/observatory/settlement-verify-tempo.ts` は `TransferWithMemo` の memo を **topics[3]**（indexed）から読む（data の 2 語目の形も読めるまま）。`src/lib/settlements/index-evm.ts` の event 宣言を `bytes32 indexed memo` に。テストの fixture を本番の receipt（`0xbd1049ed…95e8`）の形に直し、実物 1 件をそのまま固定。`/corrections` に 2026-09-18 の訂正を追加。
+- **なぜ**: 本番の実測。Tempo の初購入 2 件（aviationstack `0x0883…12f5` $0.005・fal `0xbd10…95e8` $0.04）はオンチェーンで成立（status 1・購入元→受取先・額一致・我々の memo）していたが、照合器が memo を data の 2 語目と決めつけていて `nonce_not_used` → `settle_claim_refuted`（2026-09-17T18:45Z）。売り手への冤罪。テストの log の形は実物を読まずに想定で書いたものだった。
+- **影響**: 出荷後に該当 2 行を `settle_claimed`・`settlement_verified = NULL` へ戻して再照合する（本番 DB の手当て・この節に結果を追記）。Tempo の決済索引は TransferWithMemo を decode できるようになる（MPP 帰属の memo が入る）。Base・Arc・Solana・XRPL の照合は不変。
+
 ## 2026-09-18 JST — XRPL の secondary accept: Base が先頭・XRPL の RLUSD accept が 2 番目以降の行を XRPL のレーンで買う（ブランチ `feat/xrpl-secondary-accept`・未 push・独立レビュー待ち）
 
 - **何を変えたか**: (1) `l1-runner.ts`: `LANE_SECONDARY_ACCEPTS.xrpl = true`。レーン枠の secondary の枝に XRPL 用の条件（`LANE_SECONDARY_ACCEPT_FILTER.xrpl`: raw_accepts の accept が `xrpl:0`・asset が RLUSD の hex か `RLUSD`・`extra.issuer` が固定発行者）を足し、Arc と同じ `NOT EXISTS (そのチェーンで settled / settle_claimed / 非決済の行)` つきで Base 先頭の行を XRPL の枠に載せる。候補に `xrplDeclaredPayTos`（raw_accepts が宣言した XRPL の RLUSD accept の payTo）を持たせた。(2) `purchaseOne`: XRPL レールの決定をカタログの `e.network` だけでなく「XRPL のレーン枠から来た候補（`candidate.laneChain === "xrpl"`）で、別枠が開いていて、この endpoint に XRPL の決済主張も非決済も無く、壁の 402 に宣言どおりの XRPL accept がある」ときにも入れる。通らなければ従来どおり EVM の `selectAccept`（Base）へ落ち、理由を行の `raw_response_meta.xrplLane` に残す。XRPL で署名したら `network = xrpl:0`・asset は hex・payer は XRPL のアドレス・別枠 xrpl・残高 xrpl。(3) `xrpl402-payer.ts` に `selectXrplSecondaryAccept`（純関数）: payTo は raw_accepts の宣言と**完全一致**（カタログの pay_to は 0x なので比べない・宣言に無い r アドレスへは払わない）。宣言額の免除は「宣言 network の accept が壁にあり EVM の `selectAccept` が宣言どおり通す・その accept が宣言 network のもの・宣言 network が XRPL でない・宣言額が正の整数・レーンとして優先された」ときだけで、免除された accept は min(3 × 宣言額, $1) 以下（"0.01" を 6 桁 units に直して比べる）。免除されない accept は宣言額と units で一致しなければ price_mismatch。(4) 1 バッチ 1 件のガードは XRPL のレーン候補にも掛かる（署名した後の候補は行を書かず飛ばす。Base でも買わない——買うとスイープ窓のあいだ XRPL の枠に戻らない）。secondary で署名の材料（Sequence 等）が読めないときは行を書かない。(5) SQL に要る固定値を `xrpl-constants.ts`（依存なし）へ分けた（`xrpl` パッケージをフラグ OFF のバンドルに入れないため）

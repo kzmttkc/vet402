@@ -26,7 +26,16 @@ function transferLog(value: bigint, over: Partial<{ address: string; from: strin
     data: `0x${word(value)}`,
   };
 }
+// 本番の形（2026-09-18 実測・tx 0xbd1049ed…95e8）: memo は indexed で topics[3]、data は amount の 1 語だけ。
 function memoLog(value: bigint, memo: string) {
+  return {
+    address: TEMPO_USDC_E,
+    topics: [TEMPO_TRANSFER_WITH_MEMO_TOPIC, pad(PAYER), pad(PAY_TO), memo],
+    data: `0x${word(value)}`,
+  };
+}
+/** 非 indexed の形（memo が data の 2 語目）。2026-09-17 の実装が決めつけていた形で、読めるままにしておく。 */
+function memoLogInData(value: bigint, memo: string) {
   return {
     address: TEMPO_USDC_E,
     topics: [TEMPO_TRANSFER_WITH_MEMO_TOPIC, pad(PAYER), pad(PAY_TO)],
@@ -115,3 +124,32 @@ test("memo binding: a plain Transfer (or another purchase's memo) does not settl
   const legacy = await verifyTempoSettlement({ ...input, expectedAuthNonce: null }, { client: plainOnly });
   assert.equal(legacy.ok, true);
 });
+
+test("production receipt shape (2026-09-18): memo is the indexed topics[3] — a real settlement is verified, not refuted", async () => {
+  // 本番の実物をそのまま: fal.mpp.tempo.xyz への 40000 units・memo 0xef1ed712018bdbf8…9206。
+  const payer = "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670";
+  const payTo = "0xca4e835f803cb0b7c428222b3a3b98518d4779fe";
+  const memo = "0xef1ed712018bdbf8cc304c4816750e6065bcf287cc18ca700fbeb5c7584f9206";
+  const tx = "0xbd1049edadb1b676fe51f65246b2b919ffb677ebff10a3d8a3ea6241aede95e8";
+  const p32 = (a: string) => `0x${"0".repeat(24)}${a.slice(2)}`;
+  const logs = [
+    { address: TEMPO_USDC_E, topics: [TEMPO_TRANSFER_TOPIC, p32(payer), p32(payTo)], data: `0x${word(40_000n)}` },
+    { address: TEMPO_USDC_E, topics: [TEMPO_TRANSFER_WITH_MEMO_TOPIC, p32(payer), p32(payTo), memo], data: `0x${word(40_000n)}` },
+    // ガスの肩代わり（売り手側 → fee 受け）。無関係なログは無視される。
+    { address: "0x20c0000000000000000000000000000000000000", topics: [TEMPO_TRANSFER_TOPIC, p32("0x58aa7ce42e1d13b2919e2ac7e006c4fbc171442c"), p32("0xfeec000000000000000000000000000000000000")], data: `0x${word(34n)}` },
+  ];
+  const client = fakeClient({ receipt: { status: "success", blockNumber: 39_973_670n, logs } });
+  const result = await verifyTempoSettlement({ txHash: tx, network: "eip155:4217", expectedPayTo: payTo, expectedAmountUnits: "40000", expectedPayer: payer, expectedAuthNonce: memo }, { client });
+  assert.equal(result.ok, true);
+  // 別の購入の memo（topics[3] が違う）は、同じ受取先・同じ額でも通さない。
+  const other = await verifyTempoSettlement({ txHash: tx, network: "eip155:4217", expectedPayTo: payTo, expectedAmountUnits: "40000", expectedPayer: payer, expectedAuthNonce: `0x${"ab".repeat(32)}` }, { client });
+  assert.equal(other.ok, false);
+  assert.equal((other as { reason: string }).reason, "nonce_not_used");
+});
+
+test("a non-indexed memo (second data word) is still read", async () => {
+  const client = fakeClient({ receipt: { status: "success", blockNumber: 39_999_000n, logs: [transferLog(25_000n), memoLogInData(25_000n, MEMO)] } });
+  const result = await verifyTempoSettlement({ ...input }, { client });
+  assert.equal(result.ok, true);
+});
+
