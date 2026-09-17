@@ -28,7 +28,10 @@ const EVM_TX_RE = /^0x[0-9a-fA-F]{64}$/;
  */
 const SOLANA_SIG_RE = /^[1-9A-HJ-NP-Za-km-z]{80,90}$/;
 
-export type SettlementChain = "evm" | "solana";
+/** XRPL: 32 バイトの 16 進（0x 無し）。ノードは大文字で返すが、小文字も同じ tx なので通す。 */
+const XRPL_TX_RE = /^[0-9A-Fa-f]{64}$/;
+
+export type SettlementChain = "evm" | "solana" | "xrpl";
 
 /**
  * 申告された決済識別子が、そのチェーンのトランザクションIDとして**あり得る形**か。
@@ -41,5 +44,7 @@ export function isWellFormedSettlementTx(
   if (typeof tx !== "string") return false;
   const trimmed = tx.trim();
   if (trimmed.length === 0) return false;
-  return chain === "solana" ? SOLANA_SIG_RE.test(trimmed) : EVM_TX_RE.test(trimmed);
+  if (chain === "solana") return SOLANA_SIG_RE.test(trimmed);
+  if (chain === "xrpl") return XRPL_TX_RE.test(trimmed);
+  return EVM_TX_RE.test(trimmed);
 }

@@ -42,8 +42,14 @@ export const ARC_DAILY_CAP_USD_DEFAULT = 2;
  */
 export const TEMPO_DAILY_CAP_USD_DEFAULT = 2;
 
+/**
+ * XRPL の別枠（2026-09-17・XRPL レーン）。同じ理由・同じ $2。RLUSD は 1 単位 = $1 なので台帳の units
+ * （6 桁）は USDC と同じ目盛り。環境変数 L1_XRPL_DAILY_CAP_USD で下げられる（0 で XRPL を止める）。
+ */
+export const XRPL_DAILY_CAP_USD_DEFAULT = 2;
+
 /** 別枠を持つチェーン。Base は持たない（共有 $25 だけ）。 */
-export type CappedChain = "solana" | "arc" | "tempo";
+export type CappedChain = "solana" | "arc" | "tempo" | "xrpl";
 
 /**
  * チェーン別の別枠の表。`networkLike` は x402_l1_purchases.network に対する SQL の LIKE
@@ -55,6 +61,8 @@ export const CHAIN_DAILY_CAPS: Record<CappedChain, { env: string; defaultUsd: nu
   arc: { env: "L1_ARC_DAILY_CAP_USD", defaultUsd: ARC_DAILY_CAP_USD_DEFAULT, networkLike: "eip155:5042" },
   // 完全一致（Moderato eip155:42431 を巻き込まない）。
   tempo: { env: "L1_TEMPO_DAILY_CAP_USD", defaultUsd: TEMPO_DAILY_CAP_USD_DEFAULT, networkLike: "eip155:4217" },
+  // 完全一致（ワイルドカード無し）。testnet（xrpl:1 / xrpl:2）と非標準表記を巻き込まない。
+  xrpl: { env: "L1_XRPL_DAILY_CAP_USD", defaultUsd: XRPL_DAILY_CAP_USD_DEFAULT, networkLike: "xrpl:0" },
 };
 
 /** その network が別枠を持つチェーンなら、その名前。持たなければ null。 */
@@ -62,6 +70,7 @@ export function cappedChainFor(network: string): CappedChain | null {
   if (network.startsWith("solana:")) return "solana";
   if (network === "eip155:5042") return "arc";
   if (network === "eip155:4217") return "tempo";
+  if (network === "xrpl:0") return "xrpl";
   return null;
 }
 
@@ -112,6 +121,11 @@ export function laneFloorPerRun(): number {
 /** 表の tempo 行の別名（mpp-payer のテストと同じ名前）。 */
 export function tempoDailyCapUnits(): bigint {
   return chainDailyCapUnits("tempo");
+}
+
+/** 表の xrpl 行の別名（tests/xrpl-chain-identity.test.ts）。 */
+export function xrplDailyCapUnits(): bigint {
+  return chainDailyCapUnits("xrpl");
 }
 
 export function isL1Enabled(): boolean {

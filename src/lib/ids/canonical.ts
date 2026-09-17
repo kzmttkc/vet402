@@ -108,7 +108,8 @@ export function agentId8004(chainId: number, tokenId: string | bigint): string {
 
 /** payee_id / payer_id を (chain, address) に戻す。形が違えば null。 */
 export function parsePartyId(id: string): { chain: string; address: string } | null {
-  const m = /^((?:eip155:\d+)|(?:solana:[1-9A-HJ-NP-Za-km-z]{32,44})):(.+)$/.exec(id);
+  // xrpl:<NetworkID>（2026-09-17）。r アドレスは base58 で大文字小文字が同一性を担う（Solana と同じ）。
+  const m = /^((?:eip155:\d+)|(?:solana:[1-9A-HJ-NP-Za-km-z]{32,44})|(?:xrpl:\d+)):(.+)$/.exec(id);
   if (!m) return null;
   return { chain: m[1], address: m[2] };
 }

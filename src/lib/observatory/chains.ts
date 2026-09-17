@@ -32,6 +32,11 @@ const KNOWN: Record<string, string> = {
   // vet402 は MPP 方言（mpp-payer.ts）で観測する。Moderato はテストネット。
   "eip155:4217": "Tempo",
   "eip155:42431": "Tempo Moderato",
+  // 2026-09-17 XRPL レーン。CAIP-2 の xrpl 名前空間は NetworkID（mainnet 0 / testnet 1 / devnet 2）。
+  // カタログには `xrpl:0`（1,636 件・2026-09-17 実測）と非標準の `xrpl:mainnet`（1 件）が居る。
+  "xrpl:0": "XRPL",
+  "xrpl:1": "XRPL Testnet",
+  "xrpl:2": "XRPL Devnet",
 };
 
 /** Solana genesis hashes (case-sensitive base58) — lower-casing would corrupt them, so match separately. */
@@ -42,7 +47,7 @@ const SOLANA_DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
  * 2026-09-02 監査 A3: /observatory/state「Mainnets only」に Solana devnet の active 33 件が
  * 混ざっていた（TESTNET_LABELS が Base Sepolia だけ）。devnet はテストネット。
  */
-const TESTNET_LABELS = new Set(["Base Sepolia", "Solana Devnet", "Arc Testnet", "Tempo Moderato"]);
+const TESTNET_LABELS = new Set(["Base Sepolia", "Solana Devnet", "Arc Testnet", "Tempo Moderato", "XRPL Testnet", "XRPL Devnet"]);
 
 /** Human label for a raw CAIP-2 / legacy network identifier. Never guesses — unknown ids pass through verbatim so nothing is silently mislabeled. */
 export function chainLabel(network: unknown): string {
@@ -70,6 +75,8 @@ export function toCaip2(network: unknown): string | null {
   if (key === "arc-testnet") return "eip155:5042002";
   if (key === "solana" || key === "solana-mainnet") return `solana:${SOLANA_MAINNET_GENESIS}`;
   if (key === "solana-devnet") return `solana:${SOLANA_DEVNET_GENESIS}`;
+  // XRPL（2026-09-17）: 壁が `xrpl` / `xrpl:mainnet` と書く非標準表記を mainnet の CAIP-2 に寄せる。
+  if (key === "xrpl" || key === "xrpl:mainnet") return "xrpl:0";
   return network;
 }
 
@@ -86,6 +93,8 @@ export function isTestnet(network: unknown): boolean {
 const EVM_TX_RE = /^0x[0-9a-fA-F]{64}$/;
 /** Solana signature: base58, 64 bytes → 86–88 chars. */
 const SOLANA_TX_RE = /^[1-9A-HJ-NP-Za-km-z]{86,88}$/;
+/** XRPL transaction hash: 32 bytes as bare hex（0x 無し・慣例は大文字）。 */
+const XRPL_TX_RE = /^[0-9A-Fa-f]{64}$/;
 
 const EVM_EXPLORERS: Record<string, string> = {
   Base: "https://basescan.org/tx/",
@@ -102,6 +111,9 @@ export function explorerTxUrl(network: unknown, tx: unknown): string | null {
   const label = chainLabel(toCaip2(network));
   if (label === "Solana") {
     return SOLANA_TX_RE.test(tx) ? `https://solscan.io/tx/${tx}` : null;
+  }
+  if (label === "XRPL") {
+    return XRPL_TX_RE.test(tx) ? `https://livenet.xrpl.org/transactions/${tx}` : null;
   }
   const base = EVM_EXPLORERS[label];
   if (!base) return null;
