@@ -32,8 +32,10 @@ test("C4: settled は settled / settle_claimed、failed は 3 つの非決済。
 });
 
 test("W1: 枠の NOT EXISTS は secondary の枝（LANE_SECONDARY_ACCEPTS）の内側だけ。主ネットワーク一致の枝には無い", () => {
-  const m = /lane\s*\n\s*\? sql`AND \(e\.network LIKE \$\{lane\.networkLike\}\$\{\s*\n\s*LANE_SECONDARY_ACCEPTS\[lane\.chain\]\s*\n\s*\? sql` OR \(jsonb_typeof\(e\.raw_accepts\) = 'array'\s*\n\s*AND EXISTS \(SELECT 1 FROM jsonb_array_elements\(e\.raw_accepts\) a WHERE a->>'network' LIKE \$\{lane\.networkLike\}\)\s*\n\s*AND NOT EXISTS \(/.exec(src);
+  const m = /lane\s*\n\s*\? sql`AND \(e\.network LIKE \$\{lane\.networkLike\}\$\{\s*\n\s*LANE_SECONDARY_ACCEPTS\[lane\.chain\]\s*\n\s*\? sql` OR \(jsonb_typeof\(e\.raw_accepts\) = 'array'\s*\n\s*AND EXISTS \(SELECT 1 FROM jsonb_array_elements\(e\.raw_accepts\) a WHERE a->>'network' LIKE \$\{lane\.networkLike\} \$\{LANE_SECONDARY_ACCEPT_FILTER\[lane\.chain\] \?\? sql``\}\)\s*\n\s*AND NOT EXISTS \(/.exec(src);
   assert.ok(m, "secondary の枝の中に NOT EXISTS が無い");
+  // 2026-09-18（XRPL の secondary accept）: 枝の EXISTS にはレーンごとの accept 条件が足せる。XRPL は RLUSD + 固定発行者だけ。
+  assert.match(src, /xrpl: sql`AND \(upper\(a->>'asset'\) = \$\{RLUSD_CURRENCY_HEX\} OR a->>'asset' = 'RLUSD'\) AND a->'extra'->>'issuer' = \$\{RLUSD_ISSUER\}`/);
   // 枝を閉じた後（`: sql``\n })`）に NOT EXISTS が続かない。
   assert.match(src, /: sql``\s*\n\s*\}\)`\s*\n\s*: sql``\s*\n\s*\}/, "枝の外側にレーン共通の NOT EXISTS が残っている");
   assert.match(src, /ls\.status IN \('settled', 'settle_claimed', 'settle_failed', 'delivered_no_receipt', 'settle_claim_refuted'\)/);
