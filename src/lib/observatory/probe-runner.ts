@@ -8,6 +8,7 @@
 // every day; the probe answers "does the payment wall actually stand".
 // ============================================================
 import { sql } from "drizzle-orm";
+import { payeeId } from "@/lib/ids/canonical";
 import { getDb } from "@/lib/db/client";
 import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { x402L0Probes } from "@/lib/db/schema";
@@ -31,6 +32,7 @@ type Candidate = {
   network: string | null;
   priceAmount: string | null;
   priceAsset: string | null;
+  source: string | null;
 };
 
 export async function runL0ProbeBatch(
@@ -62,7 +64,7 @@ export async function runL0ProbeBatch(
     // 表がまだ無い環境では生行だけの式へ落とす（withDailyFallback）。
     const candidatesSql = (daily: boolean) => sql`
       SELECT e.id, e.resource_url, e.method, e.pay_to, e.network,
-             e.price_amount, e.price_asset
+             e.price_amount, e.price_asset, e.source
       FROM x402_endpoints e
       LEFT JOIN LATERAL (
         SELECT max(p.probed_at) AS last_probed_at,
@@ -89,6 +91,7 @@ export async function runL0ProbeBatch(
       network: (r.network as string | null) ?? null,
       priceAmount: (r.price_amount as string | null) ?? null,
       priceAsset: (r.price_asset as string | null) ?? null,
+      source: (r.source as string | null) ?? null,
     }));
   } catch (error) {
     if (isMissingSchemaError(error)) return { probed: 0, pass: 0, fail: 0, unverified: 0 };
@@ -112,6 +115,7 @@ export async function runL0ProbeBatch(
           network: c.network,
           priceAmount: c.priceAmount,
           priceAsset: c.priceAsset,
+          source: c.source,
         },
         { fetchImpl, timeoutMs },
       );
@@ -129,6 +133,21 @@ export async function runL0ProbeBatch(
         failReason: result.failReason,
         rawResponseMeta: result.rawResponseMeta,
       });
+      // MPP（2026-09-17）: directory は受取先を載せない。宣言と一致した壁の受取先を、
+      // まだ受取先を知らない行にだけ書く（既にある値は動かさない——「変わった提案」に
+      // 見せないため。offer_stability は probe 行の metadata_consistent だけを見るので、
+      // ここで endpoint の pay_to を埋めても drifting にはならない）。
+      if (result.verdict === "pass" && result.learnedPayTo && c.payTo === null && c.network) {
+        try {
+          await db!.execute(sql`
+            UPDATE x402_endpoints
+            SET pay_to = ${result.learnedPayTo}, payee_id = ${payeeId(c.network, result.learnedPayTo)}
+            WHERE id = ${c.id}::uuid AND pay_to IS NULL
+          `);
+        } catch (error) {
+          if (!isMissingSchemaError(error)) throw error;
+        }
+      }
       invalidateDecisionCache(c.id); // L0 判定は判定材料（このインスタンスのみ・cache.ts 参照）
       summary.probed++;
       summary[result.verdict]++;

@@ -28,6 +28,7 @@ import { UnsafeTargetError, createSafeFetchImpl } from "@/lib/net/safe-fetch";
 import { parseChallenge, type ChallengeAccept as EnvelopeAccept } from "./x402-payer";
 import { toCaip2 } from "./chains";
 import { PATH_TEMPLATE_REASON, isPathTemplate } from "./path-template";
+import { MPP_DIRECTORY_SOURCE, mppChallengeToAccept, parseMppChallengesFromHeaders } from "./mpp-payer";
 
 export type ProbeTarget = {
   resourceUrl: string;
@@ -38,6 +39,12 @@ export type ProbeTarget = {
   network: string | null;
   priceAmount: string | null;
   priceAsset: string | null;
+  /**
+   * x402_endpoints.source（2026-09-17）。`mpp_directory` の endpoint は MPP の壁
+   * （WWW-Authenticate: Payment …）だけを合格にする——x402 の封筒が返っても pass にしない。
+   * 省略時（旧呼び手・demo）は出どころを問わない。
+   */
+  source?: string | null;
 };
 
 /**
@@ -45,7 +52,7 @@ export type ProbeTarget = {
  * v1 = JSON ボディ、both = 両方、unpayable = 402 だがどちらにも封筒が無い。
  * 402 以外・到達不能のときは null（方言を語れない）。
  */
-export type ProbeDialect = "v1" | "v2" | "both" | "unpayable";
+export type ProbeDialect = "v1" | "v2" | "both" | "unpayable" | "mpp";
 
 export type ProbeResult = {
   method: string;
@@ -60,6 +67,11 @@ export type ProbeResult = {
   latencyMs: number | null;
   failReason: string | null;
   rawResponseMeta: Record<string, unknown> | null;
+  /**
+   * MPP（2026-09-17）: 壁が名乗った受取先（小文字）。directory は受取先を載せないので、
+   * pass のときだけ呼び手（probe-runner）が pay_to IS NULL の行へ書く。x402 では常に null。
+   */
+  learnedPayTo?: string | null;
 };
 
 export type ProbeOptions = {
@@ -293,15 +305,45 @@ export async function probeEndpoint(
     };
   }
 
-  const envelope = parseEnvelope(response.headers, bodyText);
+  // MPP（Tempo）の壁は WWW-Authenticate: Payment … に載る（2026-09-17）。x402 の封筒より
+  // 先に読む。tempo/charge の challenge があれば方言は "mpp"、受取先は challenge から。
+  // 出どころが mpp_directory の endpoint は、x402 の封筒しか無くても pass にしない
+  // （その壁は MPP の client には払えない）。
+  const mppChallenges = parseMppChallengesFromHeaders(response.headers).filter((c) => c.method === "tempo" && c.intent === "charge");
+  const expectMpp = target.source === MPP_DIRECTORY_SOURCE;
+  const mppAccepts = mppChallenges.map(mppChallengeToAccept).filter((a): a is NonNullable<typeof a> => a !== null);
+  const envelope =
+    mppChallenges.length > 0
+      ? {
+          accepts: mppAccepts.length > 0 ? mppAccepts : null,
+          dialect: "mpp" as const,
+          source: "www-authenticate" as const,
+        }
+      : expectMpp
+        ? { accepts: null, dialect: "unpayable" as const, source: "none" as const }
+        : parseEnvelope(response.headers, bodyText);
   meta.dialect = envelope.dialect;
   meta.envelopeSource = envelope.source;
+  if (mppChallenges.length > 0) {
+    meta.mpp = mppChallenges.slice(0, 4).map((c) => ({
+      id: c.id,
+      realm: c.realm,
+      chainId: c.request?.methodDetails.chainId ?? null,
+      currency: c.request?.currency ?? null,
+      amount: c.request?.amount ?? null,
+      recipient: c.request?.recipient ?? null,
+      expires: c.expires,
+    }));
+  } else if (expectMpp) {
+    meta.note = "mpp_directory endpoint answered 402 without a Payment challenge (an x402 envelope is not payable by an MPP client)";
+  }
   const accepts = envelope.accepts;
   if (!accepts) {
     return {
       method,
       verdict: "fail",
-      dialect: "unpayable",
+      // MPP の challenge はあるが払える形（address の受取先）が無い → 方言は mpp のまま残す。
+      dialect: envelope.dialect === "mpp" ? "mpp" : "unpayable",
       httpStatus: 402,
       has402Challenge: true,
       acceptsValid: false,
@@ -375,6 +417,19 @@ export async function probeEndpoint(
     };
   }
 
+  // MPP: 宣言と一致した challenge の受取先を学習させる（宣言があればそれと一致するものだけ）。
+  let learnedPayTo: string | null = null;
+  if (dialect === "mpp") {
+    const matched = accepts.find(
+      (a) =>
+        (target.priceAmount === null || String(a.amount) === target.priceAmount) &&
+        (target.priceAsset === null || lower(a.asset) === lower(target.priceAsset)) &&
+        (target.payTo === null || lower(a.payTo) === lower(target.payTo)) &&
+        (declaredNetwork === null || toCaip2(a.network) === declaredNetwork),
+    );
+    learnedPayTo = matched ? matched.payTo.toLowerCase() : null;
+  }
+
   return {
     method,
     verdict: "pass",
@@ -387,5 +442,6 @@ export async function probeEndpoint(
     latencyMs,
     failReason: null,
     rawResponseMeta: meta,
+    learnedPayTo,
   };
 }

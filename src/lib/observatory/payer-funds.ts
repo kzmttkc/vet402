@@ -24,8 +24,10 @@
 import { SOLANA_USDC_MINT } from "./sol402-payer";
 import { ARC_USDC, BASE_USDC } from "./x402-payer";
 import { getArcPublicClient } from "@/lib/chain/arc";
+import { readTempoUsdcBalance } from "./mpp-payer";
 
-export type PayerChain = "base" | "solana" | "arc";
+/** tempo（2026-09-17 Tempo レーン）: 同じ EOA・USDC.e の balanceOf・TEMPO_RPC_URL。 */
+export type PayerChain = "base" | "solana" | "arc" | "tempo";
 
 /** 購入元（owner）の USDC 残高を基本単位（6 桁）で返す。読めなければ throw する。 */
 export type PayerUsdcBalanceReader = (input: { chain: PayerChain; owner: string }) => Promise<bigint>;
@@ -99,6 +101,7 @@ const ERC20_BALANCE_OF_ABI = [
  * どのチェーンも、読めなければ throw → 呼び手は署名しない側へ倒す。
  */
 export const defaultPayerUsdcBalance: PayerUsdcBalanceReader = async ({ chain, owner }) => {
+  if (chain === "tempo") return await readTempoUsdcBalance(owner);
   if (chain === "arc") {
     const client = getArcPublicClient("live");
     return await client.readContract({

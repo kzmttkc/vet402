@@ -39,6 +39,8 @@ export const TEMPO_USDC_E_DECIMALS = 6;
 export const TEMPO_RPC_URL_DEFAULT = "https://rpc.tempo.xyz";
 /** MPP の帰属 memo に載せる我々の識別子（keccak の 10 バイト指紋になる）。 */
 export const MPP_CLIENT_ID = "vet402-observatory";
+/** x402_endpoints.source の値（mpp-directory.ts が同期する）。L0 が「MPP の壁を期待する」判定に使う。 */
+export const MPP_DIRECTORY_SOURCE = "mpp_directory";
 /** MPP の scheme 名。x402 の `exact` と同じ位置（ChallengeAccept.scheme）に置く観測属性。 */
 export const MPP_CHARGE_SCHEME = "mpp:charge";
 
@@ -239,7 +241,8 @@ export function parseMppChallengesFromHeaders(headers: Headers): MppChallenge[] 
  * L1 の予約・記帳が同じ列を読めるように）。request の無い challenge は null。
  */
 export function mppChallengeToAccept(c: MppChallenge): (ChallengeAccept & { mpp: MppChallenge }) | null {
-  if (!c.request || !c.request.recipient) return null;
+  // 受取先が address でない challenge は「払える accept」ではない（L0 は accepts_invalid、L1 は予約前に落ちる）。
+  if (!c.request || !c.request.recipient || !isAddress(c.request.recipient, { strict: false })) return null;
   const chainId = c.request.methodDetails.chainId;
   return {
     scheme: MPP_CHARGE_SCHEME,

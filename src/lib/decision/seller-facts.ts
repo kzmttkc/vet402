@@ -80,7 +80,7 @@ export const DRIFT_CHANGES_PER_24H = 3;
 export const WASH_DOMINATED_MIN_RAW = 10;
 export const WASH_DOMINATED_REAL_SHARE = 0.1;
 
-const DIALECTS = new Set(["v1", "v2", "both", "unpayable"]);
+const DIALECTS = new Set(["v1", "v2", "both", "unpayable", "mpp"]);
 
 function percentile(sorted: number[], p: number): number | null {
   if (sorted.length === 0) return null;

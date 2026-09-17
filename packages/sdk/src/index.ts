@@ -343,7 +343,7 @@ export type DecisionRecommendation = "ALLOW" | "WARN" | "BLOCK";
 // §8.1 / §8.2 の事実。docs/openapi.yaml の SellerFacts / BuyerFacts と
 // src/lib/decision/types.ts の 3 面一致を tests/openapi-schema-parity.test.ts が検査する。
 export type L0Status = "pass" | "fail" | "unverified";
-export type Dialect = "v1" | "v2" | "both" | "unpayable";
+export type Dialect = "v1" | "v2" | "both" | "unpayable" | "mpp";
 export type L2Status = "conform" | "mismatch" | "undeclared";
 export type OfferStability = "stable" | "drifting" | "unknown";
 
