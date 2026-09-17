@@ -58,6 +58,18 @@ import {
   isSolanaL1Enabled,
   selectSolanaAccept,
 } from "./sol402-payer";
+import type { Wallet as XrplWallet } from "xrpl";
+import {
+  XRPL_MAINNET_CAIP2,
+  buildXrplPayment,
+  createXrplJsonRpc,
+  getAccountSequence,
+  getValidatedLedgerIndex,
+  isXrplL1Enabled,
+  loadXrplWallet,
+  selectXrplAccept,
+  signXrplPayment,
+} from "./xrpl402-payer";
 import { withDailyFallback } from "@/lib/settlements/rollup";
 import { l1TierWhere } from "./coverage";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
@@ -160,6 +172,14 @@ async function defaultSolanaBlockhash(): Promise<string> {
   const conn = new Connection(rpc, "confirmed");
   const { blockhash } = await conn.getLatestBlockhash("confirmed");
   return blockhash;
+}
+
+/** XRPL の署名に要る Sequence と validated ledger（テストは options.getXrplSigningInputs で差し替える）。 */
+export type XrplSigningInputs = { sequence: number; validatedLedgerIndex: number };
+async function defaultXrplSigningInputs(address: string): Promise<XrplSigningInputs> {
+  const rpc = createXrplJsonRpc();
+  const [sequence, validatedLedgerIndex] = await Promise.all([getAccountSequence(address, rpc), getValidatedLedgerIndex(rpc)]);
+  return { sequence, validatedLedgerIndex };
 }
 
 const guardedFetch = createSafeFetchImpl();
@@ -611,6 +631,8 @@ export async function runL1Batch(
     getPayerUsdcBalance?: PayerUsdcBalanceReader;
     /** Test seam: Tempo（MPP）の署名器。既定は mppx/client（Tempo RPC へ出る）。 */
     mppxCharge?: MppxCharge;
+    /** Test seam: XRPL の Sequence と validated ledger。既定は XRPL_RPC_URL（JSON-RPC）を読む。 */
+    getXrplSigningInputs?: (address: string) => Promise<XrplSigningInputs>;
   } = {},
 ): Promise<L1BatchSummary> {
   // SSRF (2026-08-15 audit): resourceUrl is a seller-declared string from the
@@ -627,6 +649,7 @@ export async function runL1Batch(
   } = options;
   const deadline = createDeadline(batchBudgetMs);
   const getSolanaBlockhash = options.getSolanaBlockhash ?? defaultSolanaBlockhash;
+  const getXrplSigningInputs = options.getXrplSigningInputs ?? defaultXrplSigningInputs;
   const summary: L1BatchSummary = {
     attempted: 0,
     settled: 0,
@@ -677,6 +700,9 @@ export async function runL1Batch(
   // （試行すらしない）。予算・台帳は Base と共有（USDC 基本単位が共通）。
   const solanaKeypair = isSolanaL1Enabled() ? loadSolanaKeypair() : null;
   const solanaReady = solanaKeypair !== null;
+  // XRPL（2026-09-17）も同じ形: 独立フラグ + 独立 seed。RLUSD は 1 単位 = $1 なので台帳の目盛りは共有。
+  const xrplWallet = isXrplL1Enabled() ? loadXrplWallet() : null;
+  const xrplReady = xrplWallet !== null;
 
   // 2026-08-23 監査: 自己除外が VET402_OPERATOR_PAYTO の手入力だけに依存していて、
   // **本番では未設定＝完全な no-op** だった。中立性は堀そのものなので、忘れられる
@@ -685,6 +711,7 @@ export async function runL1Batch(
   addDerivedOperatorAddresses([
     account.address,
     solanaKeypair?.publicKey.toBase58() ?? null,
+    xrplWallet?.classicAddress ?? null,
   ]);
 
   // 1.5 Resolve orphaned reservations from earlier runs BEFORE anything else
@@ -728,6 +755,8 @@ export async function runL1Batch(
     { chain: "arc", ready: isArcL1Enabled() },
     // Tempo（MPP・2026-09-17）: Base と同じ EOA・USDC.e。有効条件はフラグだけ。
     { chain: "tempo", ready: isTempoL1Enabled() },
+    // XRPL（2026-09-17）: 独立フラグ + 独立 seed。どちらか欠ければ候補から外れる。
+    { chain: "xrpl", ready: xrplReady },
   ];
   const laneExclusions: SQL[] = [];
   const laneSelectable = new Map<CappedChain, boolean>();
@@ -945,7 +974,7 @@ export async function runL1Batch(
       continue;
     }
     try {
-      const outcome = await purchaseOne({ candidate, account, solanaKeypair, getSolanaBlockhash, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge });
+      const outcome = await purchaseOne({ candidate, account, solanaKeypair, getSolanaBlockhash, xrplWallet, getXrplSigningInputs, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge });
       spentToday += outcome.spent;
       summary.spentUnitsTotal = String(BigInt(summary.spentUnitsTotal) + outcome.spent);
       if (outcome.kind === "attempted") {
@@ -1042,6 +1071,8 @@ async function purchaseOne(input: {
   account: ReturnType<typeof privateKeyToAccount>;
   solanaKeypair: Keypair | null;
   getSolanaBlockhash: () => Promise<string>;
+  xrplWallet: XrplWallet | null;
+  getXrplSigningInputs: (address: string) => Promise<XrplSigningInputs>;
   fetchImpl: (url: string, init?: RequestInit, call?: SafeFetchCallOptions) => Promise<Response>;
   timeoutMs: number;
   db: NonNullable<ReturnType<typeof getDb>>;
@@ -1060,17 +1091,20 @@ async function purchaseOne(input: {
   /** kind === "halted" のときの判定理由（cron 応答とログに出る）。 */
   haltReason?: string;
 }> {
-  const { candidate, account, solanaKeypair, getSolanaBlockhash, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge } = input;
+  const { candidate, account, solanaKeypair, getSolanaBlockhash, xrplWallet, getXrplSigningInputs, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge } = input;
   const method = (candidate.method ?? "GET").toUpperCase();
   const startedAt = Date.now();
   const isSolana = candidate.network === SOLANA_MAINNET_CAIP2;
   // Tempo（MPP・2026-09-17）: 壁は x402 の封筒ではなく WWW-Authenticate: Payment。
   const isTempo = candidate.network === TEMPO_MAINNET_CAIP2;
+  const isXrpl = candidate.network === XRPL_MAINNET_CAIP2;
   // 台帳上の payer 表記: EVM は小文字（既存の join 規約）・base58 は原文
   // （小文字化は base58 を破壊する——catalog-source と同じ理由）。
   const payerLabel = isSolana
     ? (solanaKeypair?.publicKey.toBase58() ?? "solana_key_missing")
-    : account.address.toLowerCase();
+    : isXrpl
+      ? (xrplWallet?.classicAddress ?? "xrpl_key_missing")
+      : account.address.toLowerCase();
 
   const record = async (row: Partial<typeof x402L1Purchases.$inferInsert>) => {
     await db.insert(x402L1Purchases).values({
@@ -1089,6 +1123,9 @@ async function purchaseOne(input: {
   }
   // 同じく二重防御: フラグ無しの Tempo 候補はここへ来ないが、来ても 1 リクエストも出さない。
   if (isTempo && !tempoEnabled) {
+    return { kind: "skipped", settled: false, spent: 0n };
+  }
+  if (isXrpl && !xrplWallet) {
     return { kind: "skipped", settled: false, spent: 0n };
   }
 
@@ -1174,13 +1211,20 @@ async function purchaseOne(input: {
         declaredPayTo: candidate.payTo,
         payerAddress: solanaKeypair?.publicKey.toBase58() ?? null,
       })
-    : selectAccept(challenge.accepts, {
-        declaredAmount: candidate.priceAmount,
-        declaredPayTo: candidate.payTo,
-      });
-  if (!selection.accept) {
+    : isXrpl
+      ? selectXrplAccept(challenge.accepts, {
+          declaredAmount: candidate.priceAmount,
+          declaredPayTo: candidate.payTo,
+        })
+      : selectAccept(challenge.accepts, {
+          declaredAmount: candidate.priceAmount,
+          declaredPayTo: candidate.payTo,
+        });
+  // XRPL の封筒は v2 だけ（正本に v1 の形が無い）。v1 の壁には署名しない。
+  const xrplV1Wall = isXrpl && selection.accept !== null && challenge.x402Version !== 2;
+  if (!selection.accept || xrplV1Wall) {
     await record({
-      status: selection.reason,
+      status: xrplV1Wall ? "no_eligible_accept" : selection.reason!,
       rawResponseMeta: {
         phase: "select",
         declaredAmount: candidate.priceAmount,
@@ -1201,13 +1245,20 @@ async function purchaseOne(input: {
                 expires: c.expires,
               })),
             }
-          : { challengeAccepts: challenge.accepts.slice(0, 4) }),
+          : {
+              challengeAccepts: challenge.accepts.slice(0, 4),
+              // XRPL の no_eligible_accept の内訳（asset_not_usd = XRP 建てだけの壁・v1 は RLUSD のみ）。
+              ...(xrplV1Wall ? { reason: "x402_v1_unsupported" } : "detail" in selection && selection.detail ? { reason: selection.detail } : {}),
+            }),
       },
     });
     return { kind: "skipped", settled: false, spent: 0n };
   }
   const accept = selection.accept;
-  const amount = BigInt(accept.amount);
+  // XRPL の IOU は "0.01" のような単位の 10 進文字列（selectXrplAccept が 6 桁 units に落とす）。
+  // EVM / Solana は基本単位の整数文字列。台帳（amount_units / spent_units）は常に 6 桁 units。
+  const amount: bigint = "amountUnits" in selection ? (selection.amountUnits as bigint) : BigInt(accept.amount);
+  const amountUnitsText = String(amount);
   // 支払い付き POST の本文（2026-09-17 Issue #29）。売り手が 402 で宣言した input.body を
   // そのまま送り、無ければ従来どおり `{}`。規則は declared-input.ts。
   const paidRequestBody: { body: string; source: RequestBodySource } | null =
@@ -1221,7 +1272,7 @@ async function purchaseOne(input: {
   if (!budget.allowed) {
     await record({
       status: "budget_denied",
-      amountUnits: accept.amount,
+      amountUnits: amountUnitsText,
       rawResponseMeta: { reason: budget.reason, dailyBudgetUsd: DAILY_BUDGET_USD },
     });
     return { kind: "budget_denied", settled: false, spent: 0n };
@@ -1241,6 +1292,20 @@ async function purchaseOne(input: {
       return { kind: "skipped", settled: false, spent: 0n };
     }
   }
+  // XRPL（2026-09-17）: Sequence と validated ledger（LastLedgerSequence の基準）。Solana の blockhash と
+  // 同じ理由で予約の前に取る。
+  let xrplSigningInputs: XrplSigningInputs | null = null;
+  if (isXrpl) {
+    try {
+      xrplSigningInputs = await getXrplSigningInputs(xrplWallet!.classicAddress);
+    } catch (error) {
+      await record({
+        status: "request_error",
+        rawResponseMeta: { phase: "xrpl_signing_inputs", error: String(error).slice(0, 300) },
+      });
+      return { kind: "skipped", settled: false, spent: 0n };
+    }
+  }
 
   // Self-dealing backstop (2026-08-22 audit), the LAST gate before money is
   // committed. Candidate selection excludes our own payTo, but it can only
@@ -1256,7 +1321,7 @@ async function purchaseOne(input: {
       network: accept.network,
       asset: accept.asset,
       payTo: accept.payTo.startsWith("0x") ? accept.payTo.toLowerCase() : accept.payTo,
-      amountUnits: accept.amount,
+      amountUnits: amountUnitsText,
       rawResponseMeta: {
         phase: "select",
         reason: "wall named the operator's own payTo",
@@ -1277,7 +1342,7 @@ async function purchaseOne(input: {
     // 稀なので許容する。バッチは次の候補へ進まず降りるので、行は 1 件だけ。
     await record({
       status: "halted",
-      amountUnits: accept.amount,
+      amountUnits: amountUnitsText,
       rawResponseMeta: { phase: "pre_reserve", reason: preReserveHalt.reason },
     });
     return { kind: "halted", settled: false, spent: 0n, haltReason: preReserveHalt.reason };
@@ -1288,8 +1353,9 @@ async function purchaseOne(input: {
   // 記録した——我々の資金切れを売り手の失敗にした。足りない／読めないなら署名しない。
   // 行は書かない（chain_daily_cap と同じ: 書くとスイープ窓のあいだ再選択されない）。
   // 2026-09-17 Arc レーン: 残高はチェーンごと。Arc は Base と同じ EOA だが Arc の USDC は別。
-  const payerChain: PayerChain = isTempo ? "tempo" : isSolana ? "solana" : evmChainFor(accept.network)?.chainId === 5042 ? "arc" : "base";
-  const payerOwner = isSolana ? solanaKeypair!.publicKey.toBase58() : account.address;
+  // XRPL（2026-09-17）は独立の seed。残高は RLUSD + 手数料ぶんの XRP（payer-funds.ts）。
+  const payerChain: PayerChain = isTempo ? "tempo" : isSolana ? "solana" : isXrpl ? "xrpl" : evmChainFor(accept.network)?.chainId === 5042 ? "arc" : "base";
+  const payerOwner = isSolana ? solanaKeypair!.publicKey.toBase58() : isXrpl ? xrplWallet!.classicAddress : account.address;
   const funds = await payerFunds.check(payerChain, payerOwner, amount);
   if (!funds.ok) {
     onPayerUnfunded(payerChain, { ...funds, amountUnits: String(amount) });
@@ -1331,7 +1397,7 @@ async function purchaseOne(input: {
     }
     await record({
       status: "budget_denied",
-      amountUnits: accept.amount,
+      amountUnits: amountUnitsText,
       rawResponseMeta: { reason: "daily_budget_exceeded", dailyBudgetUsd: DAILY_BUDGET_USD },
     });
     return { kind: "budget_denied", settled: false, spent: 0n };
@@ -1397,6 +1463,23 @@ async function purchaseOne(input: {
       header = encodeSolanaPaymentHeader({
         accept,
         transactionB64: built.transactionB64,
+        resourceUrl: candidate.resourceUrl,
+      });
+    } else if (isXrpl) {
+      // XRPL（2026-09-17）: 署名済み blob の hash が「その tx はこの購入のもの」の材料。
+      // 提出前に我々だけが知り、売り手には選べない（照合器は claimed tx == この hash を要求する）。
+      const tx = buildXrplPayment({
+        account: xrplWallet!.classicAddress,
+        accept,
+        sequence: xrplSigningInputs!.sequence,
+        validatedLedgerIndex: xrplSigningInputs!.validatedLedgerIndex,
+      });
+      const signed = signXrplPayment(xrplWallet!, tx);
+      authNonce = signed.hash;
+      header = encodePaymentHeader({
+        x402Version: 2,
+        accept,
+        payload: { signedTxBlob: signed.signedTxBlob },
         resourceUrl: candidate.resourceUrl,
       });
     } else {
@@ -1488,7 +1571,7 @@ async function purchaseOne(input: {
     const claimedSettlement = settlement?.success === true && !!settlement.transaction;
     const settlementTxWellFormed =
       claimedSettlement &&
-      isWellFormedSettlementTx(settlement!.transaction, isSolana ? "solana" : "evm");
+      isWellFormedSettlementTx(settlement!.transaction, isSolana ? "solana" : isXrpl ? "xrpl" : "evm");
 
     // 2026-08-23 監査 C-4: ここで `settled` と名乗らない。
     // settled の定義は「我々がチェーンで確認した」であって、売り手が success:true と

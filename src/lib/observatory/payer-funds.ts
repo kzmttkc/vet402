@@ -27,7 +27,12 @@ import { getArcPublicClient } from "@/lib/chain/arc";
 import { readTempoUsdcBalance } from "./mpp-payer";
 
 /** tempo（2026-09-17 Tempo レーン）: 同じ EOA・USDC.e の balanceOf・TEMPO_RPC_URL。 */
-export type PayerChain = "base" | "solana" | "arc" | "tempo";
+/**
+ * "xrpl"（2026-09-17）: 残高は RLUSD（account_lines・6 桁 units に切り捨て）。XRPL は手数料を
+ * 我々が XRP で払うので、準備金を引いた XRP が手数料に足りなければ **読めなかった扱いで throw**
+ * ——署名しない側へ倒れ、行を書かず、ログに理由（xrpl_fee_unfunded）が残る。
+ */
+export type PayerChain = "base" | "solana" | "arc" | "tempo" | "xrpl";
 
 /** 購入元（owner）の USDC 残高を基本単位（6 桁）で返す。読めなければ throw する。 */
 export type PayerUsdcBalanceReader = (input: { chain: PayerChain; owner: string }) => Promise<bigint>;
@@ -102,6 +107,15 @@ const ERC20_BALANCE_OF_ABI = [
  */
 export const defaultPayerUsdcBalance: PayerUsdcBalanceReader = async ({ chain, owner }) => {
   if (chain === "tempo") return await readTempoUsdcBalance(owner);
+  if (chain === "xrpl") {
+    const { XRPL_FEE_DROPS, createXrplJsonRpc, getRlusdBalanceUnits, getXrpSpendableDrops } = await import("./xrpl402-payer");
+    const rpc = createXrplJsonRpc();
+    const [rlusd, spendable] = await Promise.all([getRlusdBalanceUnits(owner, rpc), getXrpSpendableDrops(owner, rpc)]);
+    if (spendable < BigInt(XRPL_FEE_DROPS)) {
+      throw new Error(`xrpl_fee_unfunded: ${spendable} drops spendable after reserve < fee ${XRPL_FEE_DROPS}`);
+    }
+    return rlusd;
+  }
   if (chain === "arc") {
     const client = getArcPublicClient("live");
     return await client.readContract({
