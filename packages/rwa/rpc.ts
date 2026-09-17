@@ -25,6 +25,10 @@ export type RpcOptions = {
   sleep?: (ms: number) => Promise<void>;
 };
 
+/** JSON-RPC error messages that mean "the node behind the gateway was slow", not "the request is wrong". */
+const TRANSIENT_RPC_ERROR = /deadline exceeded|try again|temporarily unavailable/i;
+const MAX_TRANSIENT_RETRIES = 2;
+
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 type RpcResponse = { id: number; result?: unknown; error?: { code?: number; message?: string } };
@@ -71,8 +75,12 @@ export async function rpcBatch<T = unknown>(calls: JsonRpcCall[], opts: RpcOptio
         });
       } catch (err) {
         lastError = err;
-        // A JSON-RPC level error (bad params, log cap) is not a transport failure: do not retry or fall back.
-        if (err instanceof RpcError && err.method !== "batch") throw err;
+        if (err instanceof RpcError && err.method !== "batch") {
+          // A JSON-RPC level error (bad params, log cap) is not a transport failure: do not retry or fall back.
+          // The exception is the gateway's own upstream timeout ("context deadline exceeded", measured
+          // 2026-09-18): the same call succeeds a moment later, so it gets a short, bounded retry.
+          if (!TRANSIENT_RPC_ERROR.test(err.message) || attempt >= Math.min(retries, MAX_TRANSIENT_RETRIES)) throw err;
+        }
         if (attempt < retries) await sleep(1_000 * 2 ** attempt);
       }
     }

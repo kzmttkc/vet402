@@ -13,7 +13,7 @@ export const LOG_CHUNK_BLOCKS = 4_000_000;
 const MIN_CHUNK_BLOCKS = 64;
 
 function isSplittable(err: unknown): boolean {
-  return err instanceof RpcError && /timed out|timeout|exceeds limit|too many|response size/i.test(err.message);
+  return err instanceof RpcError && /timed out|timeout|deadline exceeded|exceeds limit|too many|response size/i.test(err.message);
 }
 
 async function getLogsRange(filter: Record<string, unknown>, from: number, to: number, opts?: RpcOptions): Promise<RawLog[]> {
@@ -26,7 +26,7 @@ async function getLogsRange(filter: Record<string, unknown>, from: number, to: n
   }
 }
 
-/** Pause between consecutive log chunks: the public RPC throttles bursts (measured 2026-09-17). */
+/** Pause between consecutive log requests: the public RPC throttles bursts (measured 2026-09-17/18). */
 const LOG_CHUNK_PACING_MS = 250;
 
 async function getLogsChunked(filter: Record<string, unknown>, from: number, to: number, opts?: RpcOptions, chunk = LOG_CHUNK_BLOCKS): Promise<RawLog[]> {
@@ -34,8 +34,24 @@ async function getLogsChunked(filter: Record<string, unknown>, from: number, to:
   // without a token, so log reads stay on the primary and retry longer instead.
   const logOpts: RpcOptions = { retries: 5, ...opts, urls: opts?.urls ?? [RWA_RPC_URL] };
   const pause = opts?.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const starts: number[] = [];
+  for (let start = from; start <= to; start += chunk) starts.push(start);
+
+  // Fast path: every chunk in one JSON-RPC batch. Measured 2026-09-18: 17 chunks answer in
+  // 0.5s as one POST, while 34 paced single requests drew 429s and took 25s+.
+  try {
+    const results = await rpcBatch<RawLog[]>(
+      starts.map((start) => ({ method: "eth_getLogs", params: [{ ...filter, fromBlock: hex(start), toBlock: hex(Math.min(to, start + chunk - 1)) }] })),
+      logOpts,
+    );
+    return results.flat();
+  } catch (err) {
+    if (!isSplittable(err)) throw err;
+  }
+
+  // Slow path: a chunk timed out or hit the 10,000-log cap. Walk one by one and split the offender.
   const out: RawLog[] = [];
-  for (let start = from; start <= to; start += chunk) {
+  for (const start of starts) {
     if (start > from) await pause(LOG_CHUNK_PACING_MS);
     out.push(...(await getLogsRange(filter, start, Math.min(to, start + chunk - 1), logOpts)));
   }
@@ -47,6 +63,7 @@ export async function fetchCanonicalTransfers(token: string, address: string, to
   const me = padAddress(address);
   // The two sides run one after the other: two parallel walks doubled the burst and drew 429s.
   const out = await getLogsChunked({ address: token, topics: [TOPICS.transfer, me] }, 0, toBlock, opts, chunk);
+  await (opts?.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))))(1_000);
   const inn = await getLogsChunked({ address: token, topics: [TOPICS.transfer, null, me] }, 0, toBlock, opts, chunk);
   const seen = new Set<string>();
   const all: RawLog[] = [];

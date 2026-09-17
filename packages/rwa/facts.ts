@@ -150,10 +150,11 @@ export async function reconstructFacts(address: string, opts: RpcOptions & { blo
   const logs = await fetchCanonicalTransfers(NVDA.token, address, block, opts);
   if (logs.length === 0) throw new NoStockTokenActivity();
   const txs = [...new Set(logs.map((l) => l.transactionHash))];
-  const [receipts, read, blockTimestamp] = await Promise.all([
-    fetchReceipts(txs, opts),
-    readTokenAndFeed(NVDA.token, NVDA.feed, address, block, opts),
-    fetchBlockTimestamp(block, opts),
-  ]);
-  return assembleFacts({ address, block, blockTimestamp, receipts, read, resolver: chainPoolResolver(opts), fixtureIds: ["A"] });
+  // One read at a time, with longer retries: the public RPC answers 429 to bursts, and
+  // three parallel reads after the log walk failed the whole request (measured 2026-09-18).
+  const patient: RpcOptions = { retries: 5, ...opts };
+  const receipts = await fetchReceipts(txs, patient);
+  const read = await readTokenAndFeed(NVDA.token, NVDA.feed, address, block, patient);
+  const blockTimestamp = await fetchBlockTimestamp(block, patient);
+  return assembleFacts({ address, block, blockTimestamp, receipts, read, resolver: chainPoolResolver(patient), fixtureIds: ["A"] });
 }
