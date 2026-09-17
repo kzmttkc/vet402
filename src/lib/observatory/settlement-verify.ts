@@ -20,7 +20,9 @@
 // 意図的に厳しい側へ倒している箇所と、その理由:
 //   - チェーンIDを毎回読む。BASE_RPC_URL が Base を指している保証はどこにも
 //     無かった（監査 H-4）。別チェーンの同名イベントを Base の決済と読むのが
-//     一番静かな失敗の仕方なので、最初に潰す。
+//     一番静かな失敗の仕方なので、最初に潰す。2026-09-17（Arc レーン）からは
+//     期待するチェーン ID と USDC を購入行の network から x402-payer の表
+//     （EVM_PAY_CHAINS）で引く——Arc の行を Base の RPC で読まない、の同じ規律。
 //   - 確定数を要求する。この照合は日次 cron で購入の何時間も後に走るので、
 //     深めの確定数はタダで買える。reorg で消えた tx を「確認済み」と刻まない。
 //   - Transfer レグは from / to / value / トークンの4つすべてが期待値と一致する
@@ -29,7 +31,8 @@
 // ============================================================
 import { keccak256, toBytes } from "viem";
 import { getPublicClient } from "@/lib/chain/client";
-import { BASE_USDC_ADDRESS } from "@/lib/chain/config";
+import { getArcPublicClient } from "@/lib/chain/arc";
+import { evmChainFor, type EvmPayChain } from "./x402-payer";
 import { isWellFormedSettlementTx } from "@/lib/validation/settlement-tx";
 
 /** ERC-20 Transfer(address,address,uint256) */
@@ -56,7 +59,15 @@ const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a
  */
 export const AUTHORIZATION_USED_TOPIC = keccak256(toBytes("AuthorizationUsed(address,bytes32)"));
 
-const BASE_CHAIN_ID = 8453;
+/**
+ * チェーンごとの読み取りクライアント（2026-09-17 Arc レーン）。Base は従来どおり
+ * chain/client（BASE_RPC_URL）、Arc は chain/arc（ARC_RPC_URL・無ければ公開 RPC）。
+ * 表に無い EVM は照合器が無い＝ chain_not_yet_verifiable のまま置く。
+ */
+function clientFor(chain: EvmPayChain): EvmVerifyClient {
+  if (chain.chainId === 5042) return getArcPublicClient("live");
+  return getPublicClient();
+}
 
 /**
  * 照合が使う EVM RPC の面（テストでは偽物を注入する）。
@@ -147,8 +158,10 @@ export async function verifyL1Settlement(
 
   // それ以外のチェーンには照合器が無い。「EVM のやり方で読めなかった」を
   // 「偽物」と言うのは、測っていないものを所見にすることなので、専用の理由で
-  // 返して未確認のまま置く。
-  if (!network.startsWith("eip155:")) {
+  // 返して未確認のまま置く。EVM でも、署名の表（EVM_PAY_CHAINS）に無いチェーンは
+  // 同じ——期待するチェーン ID も USDC も我々は持っていない。
+  const chain = network.startsWith("eip155:") ? evmChainFor(network) : null;
+  if (!chain) {
     return { ok: false, reason: "chain_not_yet_verifiable", detail: network };
   }
 
@@ -156,9 +169,9 @@ export async function verifyL1Settlement(
     return { ok: false, reason: "malformed_tx" };
   }
 
-  const client: EvmVerifyClient = deps?.client ?? getPublicClient();
+  const client: EvmVerifyClient = deps?.client ?? clientFor(chain);
 
-  // 1. まず「いま読んでいるのは本当に Base か」。
+  // 1. まず「いま読んでいるのは本当にその購入のチェーンか」（Base 8453 / Arc 5042）。
   let chainId: number;
   let tip: bigint;
   try {
@@ -166,8 +179,8 @@ export async function verifyL1Settlement(
   } catch (error) {
     return { ok: false, reason: "rpc_unavailable", detail: String(error).slice(0, 200) };
   }
-  if (chainId !== BASE_CHAIN_ID) {
-    return { ok: false, reason: "wrong_chain", detail: `rpc reports chainId ${chainId}` };
+  if (chainId !== chain.chainId) {
+    return { ok: false, reason: "wrong_chain", detail: `rpc reports chainId ${chainId}, purchase is on ${chain.caip2}` };
   }
 
   // 2. レシート。
@@ -197,7 +210,7 @@ export async function verifyL1Settlement(
   // 4. 期待どおりの USDC Transfer が実際に入っているか。4条件すべて一致。
   const payToLower = expectedPayTo.toLowerCase();
   const payerLower = expectedPayer.toLowerCase();
-  const usdcLower = BASE_USDC_ADDRESS.toLowerCase();
+  const usdcLower = chain.usdc.toLowerCase();
   let expectedValue: bigint;
   try {
     expectedValue = BigInt(expectedAmountUnits);
