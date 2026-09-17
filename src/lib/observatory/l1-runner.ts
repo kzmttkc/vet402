@@ -61,6 +61,7 @@ import {
 } from "./sol402-payer";
 import type { Wallet as XrplWallet } from "xrpl";
 import { XRPL_MAINNET_CAIP2 } from "./chains";
+import { RLUSD_CURRENCY_HEX, RLUSD_ISSUER } from "./xrpl-constants";
 import { withDailyFallback } from "@/lib/settlements/rollup";
 import { l1TierWhere } from "./coverage";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
@@ -148,6 +149,12 @@ type Candidate = {
   failedNetworks: string[];
   /** レーン枠（laneFloorCandidates）から来た候補なら、そのレーン。主候補は null。 */
   laneChain: CappedChain | null;
+  /**
+   * カタログの raw_accepts が宣言した XRPL（xrpl:0・RLUSD・固定発行者）accept の payTo（2026-09-18）。
+   * Base が先頭の行を XRPL の accept で買うとき、壁の payTo はこの宣言と完全一致でなければ払わない
+   * （カタログの pay_to は 0x アドレスで、r アドレスとは比べられない）。
+   */
+  xrplDeclaredPayTos: string[];
 };
 
 /**
@@ -176,7 +183,19 @@ const LANE_NETWORK: Partial<Record<CappedChain, string>> = {
  * purchaseOne の経路が主ネットワーク（e.network）で分かれるため、先頭が Base の行を Solana の
  * 枠に入れても Base で買われてしまう——e.network が Solana の行だけを従来どおり枠に入れる。
  */
-const LANE_SECONDARY_ACCEPTS: Record<CappedChain, boolean> = { solana: false, arc: true, tempo: false, xrpl: false };
+// XRPL（2026-09-18）: 本番の実測で、XRPL を主ネットワークにする稼働中の行は 1 件（x402.greenhead.io・unbuildable）。
+// 約 1,600 件は Base が先頭で、XRPL の RLUSD accept は 2 番目以降。purchaseOne がレーン由来の候補に限って
+// XRPL レールを選べるようにした（selectXrplSecondaryAccept）ので、Arc と同じく secondary を枠に入れる。
+const LANE_SECONDARY_ACCEPTS: Record<CappedChain, boolean> = { solana: false, arc: true, tempo: false, xrpl: true };
+
+/**
+ * secondary の枝で raw_accepts の accept（SQL の別名 `a`）に足す条件。XRPL は RLUSD（hex か literal）かつ
+ * 固定発行者の accept を持つ行だけを枠に入れる——XRP 建て・USDC IOU しか無い行を枠に載せても
+ * selectXrplSecondaryAccept が断って Base で買われるだけで、枠（1 回 5 件）を無駄にする。
+ */
+const LANE_SECONDARY_ACCEPT_FILTER: Partial<Record<CappedChain, SQL>> = {
+  xrpl: sql`AND (upper(a->>'asset') = ${RLUSD_CURRENCY_HEX} OR a->>'asset' = 'RLUSD') AND a->'extra'->>'issuer' = ${RLUSD_ISSUER}`,
+};
 
 /**
  * OBSERVATORY_SOLANA_SECRET_KEY: JSON配列（solana-keygenの出力）または
@@ -900,7 +919,14 @@ export async function runL1Batch(
            (SELECT coalesce(array_agg(DISTINCT s.network), '{}'::text[])
               FROM x402_l1_purchases s
               WHERE s.endpoint_id = e.id AND s.status IN ('settle_failed', 'delivered_no_receipt', 'settle_claim_refuted')
-                AND s.network IS NOT NULL) AS failed_networks
+                AND s.network IS NOT NULL) AS failed_networks,
+           -- XRPL の secondary accept（2026-09-18）: カタログが宣言した XRPL の RLUSD accept の payTo。
+           (SELECT coalesce(array_agg(DISTINCT xa->>'payTo'), '{}'::text[])
+              FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE '[]'::jsonb END) xa
+              WHERE xa->>'network' = ${XRPL_MAINNET_CAIP2}
+                AND (upper(xa->>'asset') = ${RLUSD_CURRENCY_HEX} OR xa->>'asset' = 'RLUSD')
+                AND xa->'extra'->>'issuer' = ${RLUSD_ISSUER}
+                AND xa->>'payTo' IS NOT NULL) AS xrpl_declared_pay_tos
     FROM x402_endpoints e
     JOIN LATERAL (
       SELECT verdict FROM x402_l0_probes p
@@ -935,7 +961,7 @@ export async function runL1Batch(
           ? sql`AND (e.network LIKE ${lane.networkLike}${
               LANE_SECONDARY_ACCEPTS[lane.chain]
                 ? sql` OR (jsonb_typeof(e.raw_accepts) = 'array'
-                      AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.raw_accepts) a WHERE a->>'network' LIKE ${lane.networkLike})
+                      AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.raw_accepts) a WHERE a->>'network' LIKE ${lane.networkLike} ${LANE_SECONDARY_ACCEPT_FILTER[lane.chain] ?? sql``})
                       AND NOT EXISTS (
                         SELECT 1 FROM x402_l1_purchases ls
                         WHERE ls.endpoint_id = e.id AND ls.network LIKE ${lane.networkLike}
@@ -1074,11 +1100,22 @@ export async function runL1Batch(
       summary.notAttempted = candidates.length - index;
       break;
     }
-    const isXrplCandidate = candidate.network === XRPL_MAINNET_CAIP2;
+    // XRPL の候補 = 主ネットワークが XRPL の行と、XRPL のレーン枠から来た行（Base 先頭・XRPL 2 番目）。
+    // 1 バッチ 1 件のガードは両方に掛かる: 署名した後は行を書かずに飛ばす（Base でも買わない——買うと
+    // スイープ窓のあいだ XRPL の枠に戻らない）。翌バッチにまた XRPL の候補になる。
+    const isXrplCandidate = candidate.network === XRPL_MAINNET_CAIP2 || candidate.laneChain === "xrpl";
     if (isXrplCandidate && xrplLaneClosed) {
       summary.skipped++;
       continue;
     }
+    // XRPL の secondary accept の優先（2026-09-18・Arc の preferNetworks と同じ条件）: レーン枠から来た
+    // 候補にだけ、別枠がまだ開いていて、この endpoint に XRPL での決済主張も非決済も無いとき。
+    const xrplLanePreferred =
+      candidate.laneChain === "xrpl" &&
+      candidate.network !== XRPL_MAINNET_CAIP2 &&
+      laneOpen("xrpl") &&
+      !candidate.settledNetworks.includes(XRPL_MAINNET_CAIP2) &&
+      !candidate.failedNetworks.includes(XRPL_MAINNET_CAIP2);
     // SQL が外しているはずだが、二重防御（2026-09-02 A1）。テンプレート URL に
     // 署名して予算を燃やす経路は、どの入口からも開かない。
     if (isPathTemplate(candidate.resourceUrl)) {
@@ -1098,12 +1135,13 @@ export async function runL1Batch(
         !candidate.failedNetworks.includes(laneNetwork)
           ? [laneNetwork]
           : [];
-      const outcome = await purchaseOne({ candidate, preferNetworks, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge });
+      const outcome = await purchaseOne({ candidate, preferNetworks, xrplLanePreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge });
       spentToday += outcome.spent;
       // バッチ内のレーン支出を加算する（署名した額。決済は非同期なので使ったとみなす）。
       const outcomeLane = outcome.network ? cappedChainFor(outcome.network) : null;
       if (outcomeLane !== null && outcome.spent > 0n) laneSpent.set(outcomeLane, (laneSpent.get(outcomeLane) ?? 0n) + outcome.spent);
-      if (isXrplCandidate && outcome.spent > 0n) xrplLaneClosed = true;
+      // XRPL で署名したら閉じる（主でも secondary でも）。Base へ落ちて買われた secondary 候補は閉じない。
+      if (outcome.network === XRPL_MAINNET_CAIP2 && outcome.spent > 0n) xrplLaneClosed = true;
       summary.spentUnitsTotal = String(BigInt(summary.spentUnitsTotal) + outcome.spent);
       if (outcome.kind === "attempted") {
         summary.attempted++;
@@ -1159,6 +1197,7 @@ function rowToCandidate(r: Record<string, unknown>): Candidate {
     isMature: r.is_mature === true,
     settledNetworks: parseTextArray(r.settled_networks),
     failedNetworks: parseTextArray(r.failed_networks),
+    xrplDeclaredPayTos: parseTextArray(r.xrpl_declared_pay_tos),
     laneChain: null,
   };
 }
@@ -1246,6 +1285,8 @@ async function purchaseOne(input: {
   candidate: Candidate;
   /** selectAccept に先に選ばせる network（LANE_NETWORK・settled 済みは除く）。 */
   preferNetworks: readonly string[];
+  /** XRPL のレーン枠から来た Base 先頭の候補で、XRPL の accept を先に試してよいか（2026-09-18）。 */
+  xrplLanePreferred: boolean;
   account: ReturnType<typeof privateKeyToAccount>;
   solanaKeypair: Keypair | null;
   getSolanaBlockhash: () => Promise<string>;
@@ -1272,16 +1313,19 @@ async function purchaseOne(input: {
   /** 署名した accept の network（attempted のとき）。バッチ内のレーン支出の加算に使う。 */
   network?: string;
 }> {
-  const { candidate, preferNetworks, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge } = input;
+  const { candidate, preferNetworks, xrplLanePreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge } = input;
   const method = (candidate.method ?? "GET").toUpperCase();
   const startedAt = Date.now();
   const isSolana = candidate.network === SOLANA_MAINNET_CAIP2;
   // Tempo（MPP・2026-09-17）: 壁は x402 の封筒ではなく WWW-Authenticate: Payment。
   const isTempo = candidate.network === TEMPO_MAINNET_CAIP2;
-  const isXrpl = candidate.network === XRPL_MAINNET_CAIP2;
+  // XRPL レール（2026-09-18）: 主ネットワークが XRPL の行は最初から、Base 先頭の行は壁の 402 を読んで
+  // selectXrplSecondaryAccept が通ったときにだけ入る（下で isXrpl / payerLabel を切り替える）。
+  const isXrplPrimary = candidate.network === XRPL_MAINNET_CAIP2;
+  let isXrpl = isXrplPrimary;
   // 台帳上の payer 表記: EVM は小文字（既存の join 規約）・base58 は原文
   // （小文字化は base58 を破壊する——catalog-source と同じ理由）。
-  const payerLabel = isSolana
+  let payerLabel = isSolana
     ? (solanaKeypair?.publicKey.toBase58() ?? "solana_key_missing")
     : isXrpl
       ? (xrplWallet?.classicAddress ?? "xrpl_key_missing")
@@ -1390,15 +1434,41 @@ async function purchaseOne(input: {
   const mppSelection = isTempo
     ? selectMppChallenge(mppChallenges, { declaredAmount: candidate.priceAmount, declaredPayTo: candidate.payTo })
     : null;
+  // XRPL の secondary accept（2026-09-18）。レーンとして優先された Base 先頭の候補に限り、壁の 402 に
+  // 宣言どおりの XRPL の RLUSD accept があれば XRPL レールへ入る。通らなければ従来どおり EVM の
+  // selectAccept（Base）へ落ち、断られた理由だけを行の raw_response_meta.xrplLane に残す。
+  // 封筒は v2 だけ（正本に v1 の形が無い）。
+  const xrplSecondary =
+    xrplLanePreferred && !isXrplPrimary && !isSolana && !isTempo && xrplPayer && xrplWallet
+      ? challenge.x402Version === 2
+        ? xrplPayer.selectXrplSecondaryAccept(challenge.accepts, {
+            declaredAmount: candidate.priceAmount,
+            declaredNetwork: candidate.network,
+            declaredPayTo: candidate.payTo,
+            declaredXrplPayTos: candidate.xrplDeclaredPayTos,
+            lanePreferred: true,
+          })
+        : ({ accept: null, reason: "no_eligible_accept", detail: null } as const)
+      : null;
+  const xrplLaneRefusal =
+    xrplSecondary && !xrplSecondary.accept
+      ? { reason: xrplSecondary.reason, detail: challenge.x402Version === 2 ? xrplSecondary.detail : "x402_v1_unsupported" }
+      : null;
+  if (xrplSecondary?.accept) {
+    isXrpl = true;
+    payerLabel = xrplWallet!.classicAddress;
+  }
   const selection = mppSelection
     ? mppSelection
+    : xrplSecondary?.accept
+    ? xrplSecondary
     : isSolana
     ? selectSolanaAccept(challenge.accepts, {
         declaredAmount: candidate.priceAmount,
         declaredPayTo: candidate.payTo,
         payerAddress: solanaKeypair?.publicKey.toBase58() ?? null,
       })
-    : isXrpl
+    : isXrplPrimary
       ? xrplPayer!.selectXrplAccept(challenge.accepts, {
           declaredAmount: candidate.priceAmount,
           declaredPayTo: candidate.payTo,
@@ -1440,6 +1510,7 @@ async function purchaseOne(input: {
             }
           : {
               challengeAccepts: challenge.accepts.slice(0, 4),
+              ...(xrplLaneRefusal ? { xrplLane: xrplLaneRefusal } : {}),
               // XRPL の no_eligible_accept の内訳（asset_not_usd = XRP 建てだけの壁・v1 は RLUSD のみ）。
               ...(xrplV1Wall ? { reason: "x402_v1_unsupported" } : "detail" in selection && selection.detail ? { reason: selection.detail } : {}),
             }),
@@ -1495,6 +1566,12 @@ async function purchaseOne(input: {
     try {
       xrplSigningInputs = await getXrplSigningInputs(xrplWallet!.classicAddress);
     } catch (error) {
+      // secondary（Base 先頭の行）では行を書かない: 我々の RPC の失敗を Base の売り手の request_error に
+      // しない（書くとスイープ窓のあいだ再選択されず、冷却の streak にも数えられる）。
+      if (!isXrplPrimary) {
+        logServerError("observatory.l1.xrpl_signing_inputs", error);
+        return { kind: "skipped", settled: false, spent: 0n };
+      }
       await record({
         status: "request_error",
         rawResponseMeta: { phase: "xrpl_signing_inputs", error: String(error).slice(0, 300) },
@@ -1802,6 +1879,8 @@ async function purchaseOne(input: {
       contentType,
       // Tempo は MPP（WWW-Authenticate: Payment / Authorization: Payment / Payment-Receipt）。
       ...(isTempo ? { protocol: "mpp" } : {}),
+      // XRPL のレーン候補だったが XRPL の accept を選べず Base へ落ちた理由（2026-09-18）。
+      ...(xrplLaneRefusal ? { xrplLane: xrplLaneRefusal } : {}),
       bodyHead: paidBody.slice(0, 500),
       // どの本文で POST したか（2026-09-17 Issue #29）。"declared" は売り手の 402 が宣言した
       // input.body、"empty" は `{}`。GET には付けない。
