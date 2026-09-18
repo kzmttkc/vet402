@@ -246,7 +246,7 @@ Allowed before those clocks: specs, SDK reading, testnet accounts, ENS name **re
 
 ## Parallel venue — Arbitrum Open House / vet402 `/rwa`（2026-09-13 決定・Takeshi 承認）
 
-Open House（HackQuest `arbitrum-singapore.hackquest.io/projects/vet402`）は **09-14 → 10-04** で、
+Open House（HackQuest `arbitrum-singapore.hackquest.io/projects/vet402-rwa`・表示名は 2026-09-19 に `vet402 /rwa` へ変更。旧 URL の `/projects/vet402` は中身を返さない）は **09-14 → 10-04** で、
 ETHGlobal Tokyo（09-25 → 27）を丸ごと含む。同じリポ・同じ `main` に両方の差分が入るので、**請求（claim）を
 パスとコミットで分ける**。実装は別セッション（vet402 RWA instrument構築）、この節の維持はハッカソン戦略セッション。
 
