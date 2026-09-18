@@ -118,7 +118,8 @@ test("優先された Arc の accept は宣言額の 3 倍まで。超えれば�
     assert.equal(noBaseOk.accept, null);
     assert.equal(noBaseOk.reason, "price_mismatch");
     // 宣言額が大きくても $1（MAX_PER_PURCHASE_UNITS）は越えない。
-    const bigDeclared = { declaredAmount: "500000", declaredPayTo: null, declaredNetwork: BASE_CAIP2, preferNetworks: [ARC_CAIP2] };
+    // 2026-09-19: pay_to が null の行では免除を開かない（W3）ので、相対上限の確認は pay_to が宣言された行で行う。
+    const bigDeclared = { declaredAmount: "500000", declaredPayTo: PAYTO.toLowerCase(), declaredNetwork: BASE_CAIP2, preferNetworks: [ARC_CAIP2] };
     assert.equal(selectAccept([{ ...BASE, amount: "500000" }, { ...ARC, amount: String(MAX_PER_PURCHASE_UNITS) }], bigDeclared).accept?.network, ARC_CAIP2);
     assert.equal(selectAccept([{ ...BASE, amount: "500000" }, { ...ARC, amount: String(MAX_PER_PURCHASE_UNITS + 1n) }], bigDeclared).accept?.network, BASE_CAIP2);
     // 宣言額が無ければ $1 だけ。
@@ -174,3 +175,17 @@ test("N1: 宣言額が正の整数として読めない（\"0\" / \"0.01\" / \"1
   });
 });
 
+// ---- 2026-09-19（XRPL の W3 と同じ扱い）: カタログの pay_to が null の行では宣言額の免除を開かない。 ----
+test("W3: declaredPayTo が null なら、優先された Arc の accept にも宣言額との一致を要求する", () => {
+  withArc(true, () => {
+    const nullPayTo = { declaredAmount: "3000", declaredPayTo: null, declaredNetwork: BASE_CAIP2, preferNetworks: [ARC_CAIP2] };
+    // Arc 4000 ≠ 宣言 3000 → Arc は飛ばされ Base（3000）。
+    assert.equal(selectAccept([BASE, ARC], nullPayTo).accept?.network, BASE_CAIP2);
+    // Arc も宣言額と同じなら優先どおり Arc。
+    assert.equal(selectAccept([BASE, { ...ARC, amount: "3000" }], nullPayTo).accept?.network, ARC_CAIP2);
+    // Base も不一致なら price_mismatch（Arc の $1 は通らない）。
+    const none = selectAccept([{ ...BASE, amount: "9999" }, { ...ARC, amount: "1000000" }], nullPayTo);
+    assert.equal(none.accept, null);
+    assert.equal(none.reason, "price_mismatch");
+  });
+});

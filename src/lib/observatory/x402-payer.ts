@@ -341,6 +341,18 @@ export function selectAccept(
      * Everything else keeps the challenge's own order. Never widens eligibility.
      */
     preferNetworks?: readonly string[];
+    /**
+     * Recipients the CATALOG declared per network (2026-09-19): for each CAIP-2 id, the payTo of
+     * every accept in the endpoint's raw_accepts on that network, in that chain's pinned USDC,
+     * eip3009 or unspecified (l1-runner targetsSql `arc_declared_pay_tos`). Live fact: api.exa.ai
+     * declares its Arc accept with a DIFFERENT payTo (0xB98e…) than its first (Base legacy) accept
+     * (0x6d6E…), so comparing the Arc accept against the catalog's head `pay_to` refused it every
+     * time and the Arc lane fell back to Base. Used ONLY for an accept on a network in
+     * `preferNetworks` that is not the declared network; the match is case-insensitive (EVM).
+     * No (or an empty) declaration for that network ⇒ that accept is compared against
+     * `declaredPayTo`, exactly as before. Every other accept's payTo gate is unchanged.
+     */
+    declaredPayTosByNetwork?: Readonly<Record<string, readonly string[]>>;
   },
 ): AcceptSelection {
   const protocolEligible = accepts
@@ -375,10 +387,28 @@ export function selectAccept(
 
   const declaredPayTo =
     options.declaredPayTo === null ? null : options.declaredPayTo.toLowerCase();
-  const eligible =
-    declaredPayTo === null
-      ? protocolEligible
-      : protocolEligible.filter((a) => a.payTo.toLowerCase() === declaredPayTo);
+  const preferred = new Set((options.preferNetworks ?? []).map(normalizeNetwork));
+  const declaredNetwork =
+    options.declaredNetwork === undefined || options.declaredNetwork === null ? null : normalizeNetwork(options.declaredNetwork);
+  // 2026-09-19 (Arc lane, live fact above): the payee an accept is checked against.
+  //   - an accept on a PREFERRED network other than the declared one, for which the catalog
+  //     declared at least one payTo on that network → that declared set (never the wall's word);
+  //   - everything else (Base, non-preferred chains, a preferred chain with no declaration)
+  //     → the catalog's head `pay_to`, byte-for-byte the pre-2026-09-19 gate.
+  // The gate stays "never pay an address the catalog did not declare"; it now reads the
+  // declaration of the accept actually being paid instead of the first accept's only.
+  const laneDeclaredPayTos = (a: ChallengeAccept): ReadonlySet<string> | null => {
+    if (!preferred.has(a.network) || a.network === declaredNetwork) return null;
+    const declared = options.declaredPayTosByNetwork?.[a.network];
+    if (!Array.isArray(declared)) return null;
+    const set = new Set(declared.filter((p): p is string => typeof p === "string" && p !== "").map((p) => p.toLowerCase()));
+    return set.size > 0 ? set : null;
+  };
+  const eligible = protocolEligible.filter((a) => {
+    const lane = laneDeclaredPayTos(a);
+    if (lane !== null) return lane.has(a.payTo.toLowerCase());
+    return declaredPayTo === null || a.payTo.toLowerCase() === declaredPayTo;
+  });
   if (eligible.length === 0) return { accept: null, reason: "payto_mismatch" };
 
   // Lane preference (2026-09-17). Live fact: no active endpoint has Arc as its
@@ -386,7 +416,6 @@ export function selectAccept(
   // Picking in challenge order meant Base always won and the Arc lane could not
   // buy a single row with its flag on. Preferred networks go first; the rest keep
   // the seller's order. This reorders eligible accepts only — it never admits one.
-  const preferred = new Set((options.preferNetworks ?? []).map(normalizeNetwork));
   const ordered =
     preferred.size === 0
       ? eligible
@@ -411,8 +440,6 @@ export function selectAccept(
   //   - an exempt accept still sits under min(3 × declared, MAX_PER_PURCHASE_UNITS)
   //     (review C3): a lane may cost a little more than the Base listing, not 300×.
   // Everything else (payTo / domain / asset / ceiling) applies to all accepts unchanged.
-  const declaredNetwork =
-    options.declaredNetwork === undefined || options.declaredNetwork === null ? null : normalizeNetwork(options.declaredNetwork);
   const declaredPresent = declaredNetwork !== null && eligible.some((a) => a.network === declaredNetwork);
   // 再レビュー N1（2026-09-17）: 宣言額が**正の整数として読めない**（"0" / "0.01" / "1e4" / 負）
   // ときは免除しない。読めない宣言額では相対上限（3 倍）を組めず、免除だけが残って別チェーンの
@@ -426,8 +453,15 @@ export function selectAccept(
       return null;
     }
   })();
+  // 2026-09-19（XRPL の W3 と同じ扱い）: カタログの pay_to が null の行では免除を開かない。宣言の無い payTo は
+  // 何とも照合されないので、「宣言 network の accept が壁にある」の証拠が network の一致だけになる。そのときは
+  // 別チェーンの accept にも宣言額との一致を要求する（declaredAmount が null の行は従来どおり $1 の上限だけ）。
   const exemptFromDeclaredPrice = (a: ChallengeAccept): boolean =>
-    declaredUnits !== null && declaredPresent && a.network !== declaredNetwork && preferred.has(a.network);
+    declaredUnits !== null &&
+    options.declaredPayTo !== null &&
+    declaredPresent &&
+    a.network !== declaredNetwork &&
+    preferred.has(a.network);
   const priceDeclaredFor = (a: ChallengeAccept): boolean => options.declaredAmount !== null && !exemptFromDeclaredPrice(a);
   /** Ceiling for an exempt (other-chain, preferred) accept: 3 × the declared price, never above the hard cap. */
   const relativeCapUnits = ((): bigint => {

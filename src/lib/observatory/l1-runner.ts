@@ -40,6 +40,7 @@ import { isSpendingHalted, type HaltVerdict } from "./kill-switch";
 import { addDerivedOperatorAddresses, isOperatorPayTo, operatorPayToDenylist } from "./operator";
 import {
   ARC_CAIP2,
+  ARC_CHAIN,
   buildAuthorization,
   encodePaymentHeader,
   evmChainFor,
@@ -162,6 +163,13 @@ type Candidate = {
    * （カタログの pay_to は 0x アドレスで、r アドレスとは比べられない）。
    */
   xrplDeclaredPayTos: string[];
+  /**
+   * カタログの raw_accepts が宣言した Arc（eip155:5042・固定 USDC・eip3009 か未指定）accept の payTo（2026-09-19）。
+   * 本番の実測: api.exa.ai は Arc の accept を先頭（Base legacy）と**別の payTo** で宣言している。先頭の pay_to と
+   * 比べると Arc の accept は必ず payto_mismatch で落ち、Base で買われていた。レーンとして優先された Arc の
+   * accept の payTo は、この宣言の集合と照合する（selectAccept の declaredPayTosByNetwork）。
+   */
+  arcDeclaredPayTos: string[];
 };
 
 /**
@@ -934,7 +942,15 @@ export async function runL1Batch(
               WHERE xa->>'network' = ${XRPL_MAINNET_CAIP2}
                 AND (upper(xa->>'asset') = ${RLUSD_CURRENCY_HEX} OR xa->>'asset' = 'RLUSD')
                 AND xa->'extra'->>'issuer' = ${RLUSD_ISSUER}
-                AND xa->>'payTo' IS NOT NULL) AS xrpl_declared_pay_tos
+                AND xa->>'payTo' IS NOT NULL) AS xrpl_declared_pay_tos,
+           -- Arc の lane accept（2026-09-19）: カタログが宣言した Arc の accept（固定 USDC・eip3009 か未指定）の payTo。
+           -- network は実行時（normalizeNetwork）と同じ完全一致。SELECT リストの相関サブクエリ＝Sort/Limit 後の行だけで走る。
+           (SELECT coalesce(array_agg(DISTINCT lower(aa->>'payTo')), '{}'::text[])
+              FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE '[]'::jsonb END) aa
+              WHERE aa->>'network' = ${ARC_CAIP2}
+                AND lower(aa->>'asset') = ${ARC_CHAIN.usdc.toLowerCase()}
+                AND (aa->'extra'->>'assetTransferMethod' IS NULL OR aa->'extra'->>'assetTransferMethod' = 'eip3009')
+                AND aa->>'payTo' IS NOT NULL) AS arc_declared_pay_tos
     FROM x402_endpoints e
     JOIN LATERAL (
       SELECT verdict FROM x402_l0_probes p
@@ -1223,6 +1239,7 @@ function rowToCandidate(r: Record<string, unknown>): Candidate {
     settledNetworks: parseTextArray(r.settled_networks),
     failedNetworks: parseTextArray(r.failed_networks),
     xrplDeclaredPayTos: parseTextArray(r.xrpl_declared_pay_tos),
+    arcDeclaredPayTos: parseTextArray(r.arc_declared_pay_tos),
     laneChain: null,
   };
 }
@@ -1504,6 +1521,9 @@ async function purchaseOne(input: {
           // 宣言額はカタログの先頭 accept（e.network）の値。別チェーンの accept とは比べない。
           declaredNetwork: candidate.network,
           preferNetworks,
+          // 優先された別チェーン（Arc）の accept の payTo は、カタログがそのチェーンについて宣言した集合と照合する
+          // （2026-09-19）。優先していない accept（Base）の照合先は従来どおり candidate.payTo。
+          declaredPayTosByNetwork: { [ARC_CAIP2]: candidate.arcDeclaredPayTos },
         });
   // ここから先の台帳の network・別枠（reserveSpend の cappedChainFor）・残高の chain（payerChain）は
   // すべて「選んだ accept の network」で決まる——Base 先頭の exa の行を Arc の accept で買えば、
