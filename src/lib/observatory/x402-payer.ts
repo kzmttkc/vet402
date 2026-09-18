@@ -622,8 +622,12 @@ export async function signX402Payment(input: {
 export function encodePaymentHeader(input: {
   x402Version: 1 | 2;
   accept: ChallengeAccept;
-  /** EVM は EIP-3009、XRPL（2026-09-17・xrpl402-payer.ts）は署名済み tx blob。封筒は同じ。 */
-  payload: { signature: string; authorization: Eip3009Authorization } | { signedTxBlob: string };
+  /**
+   * EVM は EIP-3009、XRPL（2026-09-17・xrpl402-payer.ts）は署名済み tx blob。封筒は同じ。
+   * XRPL の `invoiceId` は型で必須（2026-09-19）: t54 の facilitator は無いと `invalid_payload` で断る。
+   * xrpl402-payer.xrplPaymentPayload で作る。
+   */
+  payload: { signature: string; authorization: Eip3009Authorization } | { signedTxBlob: string; invoiceId: string };
   resourceUrl: string;
 }): { headerName: string; headerValue: string } {
   const { x402Version, accept, payload, resourceUrl } = input;

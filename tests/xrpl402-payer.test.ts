@@ -6,7 +6,8 @@
 //    発行者が固定値と違う RLUSD・invoiceId 無し・sourceTag 不正は予約より前に落ちる。
 //  - InvoiceID は正本 invoiceIdToInvoiceIdField と同じ SHA-256（大文字 hex）。
 //  - tx は入力（sequence・validated ledger）が同じなら blob も hash も同じ（決定的）。
-//  - 封筒は EVM / Solana と同じ v2 PAYMENT-SIGNATURE、payload は { signedTxBlob }。
+//  - 封筒は EVM / Solana と同じ v2 PAYMENT-SIGNATURE、payload は { signedTxBlob, invoiceId }（2026-09-19:
+//    t54 の facilitator は payload.invoiceId が無いと invalid_payload で断る。本番 2026-09-18T00:01:27Z の 402）。
 //  - "0.01" → 10000 units（USDC と同じ 6 桁の目盛り）。
 // ============================================================
 import { test } from "node:test";
@@ -27,6 +28,7 @@ import {
   selectXrplAccept,
   signXrplPayment,
   unitsToRlusdValue,
+  xrplPaymentPayload,
 } from "@/lib/observatory/xrpl402-payer";
 import { encodePaymentHeader } from "@/lib/observatory/x402-payer";
 
@@ -209,10 +211,34 @@ test("signXrplPayment: blob を decode すると同じ tx、hash は blob から
   assert.equal(decoded.SigningPubKey, WALLET.publicKey);
 });
 
-test("封筒: v2 PAYMENT-SIGNATURE、accepted は壁の accept そのもの、payload は { signedTxBlob }", () => {
+/**
+ * 本番で断られた壁の実物（2026-09-19 取得・https://macropulse.theaslangroupllc.com/api/session-brief の
+ * payment-required ヘッダの 14 accept のうち XRPL の 2 つ。invoiceId は 402 ごとに新しい）。
+ */
+const MACROPULSE_XRP_ACCEPT = {
+  scheme: "exact",
+  network: "xrpl:0",
+  asset: "XRP",
+  amount: "100000",
+  payTo: "rMnHeutYALco8RYFVcmuU4BCgSzBpPEh32",
+  maxTimeoutSeconds: 300,
+  extra: { sourceTag: 804681468, invoiceId: "459218C4E8C04467ABBF1232597338F2" },
+};
+const MACROPULSE_RLUSD_ACCEPT = {
+  scheme: "exact",
+  network: "xrpl:0",
+  asset: "524C555344000000000000000000000000000000",
+  amount: "0.1",
+  payTo: "rMnHeutYALco8RYFVcmuU4BCgSzBpPEh32",
+  maxTimeoutSeconds: 300,
+  extra: { sourceTag: 804681468, issuer: "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De", invoiceId: "97F7BA1328FE4BD8996E10ADC16D1B47" },
+};
+const MACROPULSE_URL = "https://macropulse.theaslangroupllc.com/api/session-brief";
+
+test("封筒: v2 PAYMENT-SIGNATURE、accepted は壁の accept そのもの、payload は { signedTxBlob, invoiceId }", () => {
   const tx = buildXrplPayment({ account: WALLET.classicAddress, accept: RLUSD_ACCEPT, sequence: 1, validatedLedgerIndex: 1 });
   const { signedTxBlob } = signXrplPayment(WALLET, tx);
-  const h = encodePaymentHeader({ x402Version: 2, accept: RLUSD_ACCEPT, payload: { signedTxBlob }, resourceUrl: "https://gridpulse.theaslangroupllc.com/api/energy/carbon-intensity" });
+  const h = encodePaymentHeader({ x402Version: 2, accept: RLUSD_ACCEPT, payload: xrplPaymentPayload(RLUSD_ACCEPT, signedTxBlob), resourceUrl: "https://gridpulse.theaslangroupllc.com/api/energy/carbon-intensity" });
   assert.equal(h.headerName, "PAYMENT-SIGNATURE");
   const body = JSON.parse(Buffer.from(h.headerValue, "base64").toString("utf8"));
   assert.equal(body.x402Version, 2);
@@ -221,5 +247,49 @@ test("封筒: v2 PAYMENT-SIGNATURE、accepted は壁の accept そのもの、pa
   assert.equal(body.accepted.amount, "0.01");
   assert.deepEqual(body.accepted.extra, RLUSD_ACCEPT.extra);
   assert.equal(body.payload.signedTxBlob, signedTxBlob);
+  assert.equal(body.payload.invoiceId, RLUSD_ACCEPT.extra.invoiceId);
   assert.equal(decode(body.payload.signedTxBlob).TransactionType, "Payment");
+});
+
+test("t54 の facilitator の形（2026-09-19）: 本番で invalid_payload だった壁の accept から、/verify が isValid:true を返した形を作る", () => {
+  // 壁は XRP と RLUSD を並べる。払うのは RLUSD の方（"0.1" = 100000 units）。
+  const selection = selectXrplAccept([MACROPULSE_XRP_ACCEPT, MACROPULSE_RLUSD_ACCEPT], { declaredAmount: "0.1", declaredPayTo: MACROPULSE_RLUSD_ACCEPT.payTo });
+  assert.equal(selection.reason, null);
+  assert.equal(selection.accept, MACROPULSE_RLUSD_ACCEPT);
+  assert.equal(selection.accept && selection.amountUnits, 100_000n);
+
+  const tx = buildXrplPayment({ account: WALLET.classicAddress, accept: MACROPULSE_RLUSD_ACCEPT, sequence: 1, validatedLedgerIndex: 100_000 });
+  const { signedTxBlob } = signXrplPayment(WALLET, tx);
+  const payload = xrplPaymentPayload(MACROPULSE_RLUSD_ACCEPT, signedTxBlob);
+  // 原因そのもの: payload のキーは signedTxBlob と invoiceId の 2 つ。invoiceId は壁の extra.invoiceId の原文（hash ではない）。
+  assert.deepEqual(Object.keys(payload).sort(), ["invoiceId", "signedTxBlob"]);
+  assert.equal(payload.invoiceId, "97F7BA1328FE4BD8996E10ADC16D1B47");
+
+  const h = encodePaymentHeader({ x402Version: 2, accept: MACROPULSE_RLUSD_ACCEPT, payload, resourceUrl: MACROPULSE_URL });
+  const body = JSON.parse(Buffer.from(h.headerValue, "base64").toString("utf8"));
+  // t54 の facilitator が isValid:true を返した封筒の形（2026-09-19・未入金の使い捨てウォレットで /verify を実測）。
+  assert.deepEqual(body, {
+    x402Version: 2,
+    resource: { url: MACROPULSE_URL },
+    accepted: MACROPULSE_RLUSD_ACCEPT,
+    payload: { signedTxBlob, invoiceId: "97F7BA1328FE4BD8996E10ADC16D1B47" },
+  });
+
+  // tx 側は現行のまま通る: InvoiceID = SHA-256(invoiceId)・SourceTag・Amount = SendMax・Flags 0・LastLedgerSequence あり・Memo 無し。
+  const decoded = decode(body.payload.signedTxBlob) as Record<string, unknown>;
+  assert.equal(decoded.InvoiceID, createHash("sha256").update(payload.invoiceId, "utf8").digest("hex").toUpperCase());
+  assert.equal(decoded.SourceTag, 804681468);
+  assert.deepEqual(decoded.Amount, { currency: RLUSD_CURRENCY_HEX, issuer: RLUSD_ISSUER, value: "0.1" });
+  assert.deepEqual(decoded.SendMax, decoded.Amount);
+  assert.equal(decoded.Flags, 0);
+  assert.equal(decoded.LastLedgerSequence, 100_032);
+  assert.equal(decoded.Memos, undefined);
+  assert.equal(decoded.NetworkID, undefined, "xrpl:0 には NetworkID を付けない");
+});
+
+test("xrplPaymentPayload: extra.invoiceId の無い accept では作らない（invoiceId の無い payload を送る経路を残さない）", () => {
+  const { invoiceId: _omit, ...extra } = RLUSD_ACCEPT.extra;
+  void _omit;
+  assert.throws(() => xrplPaymentPayload({ ...RLUSD_ACCEPT, extra }, "AB"), /no extra\.invoiceId/);
+  assert.throws(() => xrplPaymentPayload({ ...RLUSD_ACCEPT, extra: { ...RLUSD_ACCEPT.extra, invoiceId: "" } }, "AB"), /no extra\.invoiceId/);
 });

@@ -6,6 +6,14 @@
 // 載せ、v2 の PAYMENT-SIGNATURE 封筒で送る。ファシリテータ（売り手側・t54）が submit する。
 // 手数料は我々（payer）が払う（`areFeesSponsored: false`）。
 //
+// **payload は `{ signedTxBlob, invoiceId }`（2026-09-19）。** 上の正本（x402-foundation）の payload は
+// `{ signedTxBlob }` だけだが、カタログの XRPL の壁が実際に使う t54 の facilitator
+// （https://xrpl-facilitator-mainnet.t54.ai）は **`payload.invoiceId` が無い payload を `invalid_payload` で断る**
+// （本番 2026-09-18T00:01:27Z の 402 `{"error":"payment_invalid","reason":"invalid_payload"}` の原因）。
+// t54 自前の SDK（npm `x402-xrpl` 0.3.3 の `XRPLPresignedPaymentPayer.preparePayment`）は
+// `payload: { signedTxBlob, invoiceId }` を送る。tx 側（InvoiceID = SHA-256・SourceTag・SendMax・Flags 0）は
+// 現行のままで /verify を通る（Memo は不要）。形は xrplPaymentPayload が 1 か所で作る。
+//
 // カタログの実測（2026-09-17・x402_endpoints.raw_accepts）: `xrpl:0` の accept は RLUSD
 // （40 桁 hex 通貨コード + Ripple の発行者）1,683・XRP 977・USDC IOU 23。受取先は 7 つだけ。
 // 実物の 402（gridpulse.theaslangroupllc.com）:
@@ -394,6 +402,26 @@ export function signXrplPayment(wallet: Wallet, tx: XrplPaymentTx): { signedTxBl
   const hash = hashes.hashSignedTx(signed.tx_blob);
   if (hash !== signed.hash) throw new Error("xrpl402: signed blob hash does not match the signer's hash");
   return { signedTxBlob: signed.tx_blob, hash };
+}
+
+/** v2 封筒の `payload`。`invoiceId` は壁の `extra.invoiceId` の原文（tx の InvoiceID に載せた SHA-256 の元）。 */
+export type XrplPaymentPayload = { signedTxBlob: string; invoiceId: string };
+
+/**
+ * 封筒の payload を作る（2026-09-19）。t54 の facilitator は `payload.invoiceId` が無いと、tx の中身を見る前に
+ * `invalid_payload` で断る（未入金の使い捨てウォレットで /verify を実測: 無し → `invalid_payload`、有り → `isValid:true`）。
+ *
+ * **壁の手掛かりで出し分けず、常に両方を載せる。** 理由:
+ *   - x402-foundation の参照 facilitator（`@x402/xrpl` 2.26.0 の `getExactXrplPayload`）は `payload.signedTxBlob` が
+ *     文字列であることしか見ない。余分なキーは読まれないので、載せても壊れない。
+ *   - 我々が署名するのは `extra.invoiceId` と uint32 の `extra.sourceTag` がある accept だけ（isBuildableXrplAccept）。
+ *     これは t54 の方言そのもので、参照実装の壁（sourceTag を要求しない）は今も予約より前に unbuildable で落ちる。
+ *     `sourceTag === 804681468` で分けると、別の tag を使う t54 互換の facilitator でまた同じ 402 を踏む。
+ */
+export function xrplPaymentPayload(accept: ChallengeAccept, signedTxBlob: string): XrplPaymentPayload {
+  const invoiceId = invoiceIdOf(accept);
+  if (invoiceId === null) throw new Error("xrpl402: accept has no extra.invoiceId");
+  return { signedTxBlob, invoiceId };
 }
 
 // ------------------------------------------------------------

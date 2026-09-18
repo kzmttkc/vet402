@@ -210,6 +210,9 @@ if (!TEST_DB) {
         assert.equal(body.accepted.network, "xrpl:0");
         assert.equal(body.accepted.asset, RLUSD, "RLUSD を選ぶ（XRP ではない）");
         assert.equal(body.accepted.amount, "0.01");
+        // 2026-09-19: t54 の facilitator は payload.invoiceId（壁の extra.invoiceId の原文）が無いと invalid_payload で断る。
+        assert.equal(body.payload.invoiceId, body.accepted.extra.invoiceId);
+        assert.equal(typeof body.payload.invoiceId, "string");
         const tx = decode(body.payload.signedTxBlob) as Record<string, unknown>;
         assert.equal(tx.TransactionType, "Payment");
         assert.equal(tx.Account, xrplWallet.classicAddress);

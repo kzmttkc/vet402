@@ -1786,7 +1786,8 @@ async function purchaseOne(input: {
       header = encodePaymentHeader({
         x402Version: 2,
         accept,
-        payload: { signedTxBlob: signed.signedTxBlob },
+        // payload は { signedTxBlob, invoiceId }（2026-09-19）: t54 の facilitator は invoiceId が無いと invalid_payload で断る。
+        payload: xrplPayer!.xrplPaymentPayload(accept, signed.signedTxBlob),
         resourceUrl: candidate.resourceUrl,
       });
     } else {

@@ -173,6 +173,9 @@ if (!TEST_DB) {
       const paid = w.seen.filter((s) => s.url.includes("dualseller3") && s.paid);
       assert.equal(paid.length, 1);
       assert.equal(paid[0].acceptedNetwork, "xrpl:0");
+      // 2026-09-19: t54 の facilitator は payload.invoiceId が無いと invalid_payload で断る。
+      assert.equal(typeof paid[0].payload!.invoiceId, "string");
+      assert.ok(String(paid[0].payload!.invoiceId).length > 0);
       const tx = decode(String(paid[0].payload!.signedTxBlob)) as Record<string, unknown>;
       assert.equal(tx.TransactionType, "Payment");
       assert.equal(tx.Destination, xrplPayTo(3));
