@@ -1602,3 +1602,49 @@ Continuity のファイナリスト枠 3／従来枠 7 も変わっていない�
 
 **Tokyo 2026 の応募締切と枠は Discord からは依然取れない。**
 `#🚨click-for-info🚨` は `Sen_web3` に履歴の閲覧権限が無いまま（今回も「メッセージ履歴を表示する権限がありません」）。
+
+---
+
+### 【2026-09-19 20:1x 追記】Discord 定期走査 —— 会期は終了。ステーク返却と賞金の配布に**日付が付いた**
+
+読んだ面: `#👂information` / `#📣announcements` / `#⏰event-schedule` / `#🚨click-for-info🚨`（Tokyo）。
+**`#partner-the-graph` と `#partner-bazantic` は ETHOnline のイベント用チャンネルごと消えていた**（URL を開くと
+`#code-of-conduct` に飛ばされる）。09-07 06:17 に `Sen_web3` が The Graph へ出した資格質問の返答は、
+**回答が付いたかどうかを含め、もう Discord からは取れない。**
+
+**(1) ステーク返却・賞金の配布は「10月23日まで」**（`Pascal | ETHGlobal`・**2026-09-17 03:09 JST**・`#information`・原文）:
+
+> 💸 Stake Return: In order to have your stake returned, you must have successfully submitted a project. You can read
+> more about this on your Hacker Dashboard and in our FAQs. We'll be returning stakes in batches by **October 23rd**.
+> You can expect to find it in your internal transactions tab on Etherscan. Stakes and prizes are sent to your primary
+> wallet. Please check on https://ethglobal.com/me
+
+> 🏆 Prizes: All finalists and partner prize winners will be contacted in a separate email for the prize distribution.
+> Prizes will be distributed by **October 23rd**.
+
+§1.4 の表の「ステーク返却＝返却はバッチで約1ヶ月後」に**具体日**が付いた（→ **2026-10-23 まで**）。
+**送り先は ethglobal.com/me の primary wallet。** パートナー賞の当落は**別メール**で来る。
+同じ投稿の実績値: hackers 1462・projects 814・**finalists 8**・89カ国。
+
+**(2) Round 2 ライブ審査は 09-14 12:00pm ET で確定・追加は無し**（`Pascal | ETHGlobal`・`#information`・原文）:
+
+> Please check your email now to see if your project has made it through to Round 2 - Live Finalist Judging taking
+> place on Monday, 14th September @ 12:00pm ET
+
+> • We will *not* be adding any additional projects to the Live Finalist Judging session - this list of projects is final
+> • You are still eligible for the Partner Prizes you applied for (no further action required from your side!)
+
+**(3) ファイナリストとパートナー賞の発表は 09-16 12:00pm ET のライブ配信**（`Pascal | ETHGlobal`・**2026-09-16 01:54 JST**・原文）:
+
+> All Finalists have been notified of their status. […] We'll be releasing the list of Finalists and all the Partner
+> Prize winners on this livestream on **Wednesday**.
+
+Finale 本編は **2026-09-17 01:02 JST** に `#announcements` で告知され配信済み（`tv.ethglobal.com/ethonline2026-finale-rgnex`）。
+
+**(4) ETHGlobal Tokyo 2026 の応募締切と枠は、今回も Discord から取れない。**
+`#🚨click-for-info🚨` に見えるのは 2022-08-11 の定型トラブルシュートのみ。
+`#announcements` の Tokyo 関連は **2026-08-18 07:06** の募集告知（Toranomon Hills Forum・09-25〜27・
+hacker/mentor/volunteer 受付中）が最後で、**締切の記載は無い**。
+（同 09-16 の告知は ETHGlobal **Mumbai** の日程変更＝11月5〜7日。Tokyo とは別イベント。）
+
+**締切・審査方式・Continuity 規則に新たな変更は無い。** 変わったのは上記(1)の日付だけ。
