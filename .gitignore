@@ -69,3 +69,6 @@ __pycache__/
 # whatever directory they are generated in.
 *wallet*.json
 *.keystore
+
+# Tokyo 2026 demo run logs (untracked files here would fail push-main preflight)
+examples/tokyo-2026-demo/out/
