@@ -74,11 +74,11 @@ if (!TEST_DB) {
     delete process.env.VET402_OPERATOR_PAYTO;
 
     /** exa.ai /search の実物の形: 先頭は Base legacy（カタログの pay_to になる）、Base circle、Arc eip3009、Arc Gateway。 */
-    const exaAccepts = (arcPayTo: string) => [
+    const exaAccepts = (arcPayTo: string, gatewayPayTo: string = arcPayTo) => [
       { scheme: "exact", network: BASE_CAIP2, amount: "7000", asset: BASE_USDC, payTo: LEGACY_PAYTO, maxTimeoutSeconds: 300, extra: { name: "USD Coin", version: "2", acceptId: "legacy" } },
       { scheme: "exact", network: BASE_CAIP2, amount: "7000", asset: BASE_USDC, payTo: CIRCLE_PAYTO, maxTimeoutSeconds: 300, extra: { name: "USD Coin", version: "2", acceptId: "base-usdc-circle", assetTransferMethod: "eip3009" } },
       { scheme: "exact", network: ARC_CAIP2, amount: "7000", asset: ARC_USDC, payTo: arcPayTo, maxTimeoutSeconds: 300, extra: { name: "USDC", version: "2", acceptId: "arc-usdc-circle", assetTransferMethod: "eip3009" } },
-      { scheme: "exact", network: ARC_CAIP2, amount: "7000", asset: ARC_USDC, payTo: arcPayTo, maxTimeoutSeconds: 300, extra: { name: "GatewayWalletBatched", version: "1", verifyingContract: GATEWAY_CONTRACT, acceptId: "arc-usdc-gateway" } },
+      { scheme: "exact", network: ARC_CAIP2, amount: "7000", asset: ARC_USDC, payTo: gatewayPayTo, maxTimeoutSeconds: 300, extra: { name: "GatewayWalletBatched", version: "1", verifyingContract: GATEWAY_CONTRACT, acceptId: "arc-usdc-gateway" } },
     ];
     const CATALOG_ACCEPTS = exaAccepts(CIRCLE_PAYTO);
     const EXA_URL = "https://api.exa.example/search";
@@ -108,18 +108,18 @@ if (!TEST_DB) {
       return { fetchImpl, paid };
     };
 
-    async function seed() {
+    async function seed(catalogAccepts: unknown[] = CATALOG_ACCEPTS) {
       await db.execute(
         sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_payee_watchers, x402_l1_purchases, observed_purchases`,
       );
       const list = [
-        parseCatalogItem({ resource: EXA_URL, accepts: CATALOG_ACCEPTS, extensions: { bazaar: { info: { input: { method: "GET" } } } }, quality: { l30DaysTotalCalls: 10, l30DaysUniquePayers: 1 } }),
+        parseCatalogItem({ resource: EXA_URL, accepts: catalogAccepts, extensions: { bazaar: { info: { input: { method: "GET" } } } }, quality: { l30DaysTotalCalls: 10, l30DaysUniquePayers: 1 } }),
       ];
       await syncCatalog({ fetchResult: { items: list, totalCount: list.length, fetchedCount: list.length, complete: true }, today: "2026-09-19" });
       await runL0ProbeBatch({
         limit: 10,
         concurrency: 1,
-        fetchImpl: async () => new Response(JSON.stringify({ x402Version: 2, accepts: CATALOG_ACCEPTS }), { status: 402, headers: { "content-type": "application/json" } }),
+        fetchImpl: async () => new Response(JSON.stringify({ x402Version: 2, accepts: catalogAccepts }), { status: 402, headers: { "content-type": "application/json" } }),
       });
       // seed の前提を固定する: カタログの先頭 pay_to は legacy（本番の exa と同じ）。
       const raw = await db.execute(sql`SELECT pay_to, network, price_amount FROM x402_endpoints WHERE resource_url = ${EXA_URL}`);
@@ -186,6 +186,28 @@ if (!TEST_DB) {
         { status: "settle_claimed", network: BASE_CAIP2, asset: BASE_USDC, pay_to: LEGACY_PAYTO.toLowerCase(), spent_units: "7000" },
       ]);
       assert.equal(await arcSpentToday(), 0);
+    });
+
+    await t.test("レビュー W1: カタログの Gateway accept が別アドレスを名乗り、壁が eip3009 の accept にそのアドレスを載せても Arc では払わない", async () => {
+      // カタログ: Arc eip3009 は 0xB98e…、Arc Gateway は GatewayWallet コントラクト。宣言集合に入るのは前者だけ。
+      await seed(exaAccepts(CIRCLE_PAYTO, GATEWAY_CONTRACT));
+      process.env.OBSERVATORY_ARC_L1_ENABLED = "true";
+      const w = wall(exaAccepts(GATEWAY_CONTRACT, GATEWAY_CONTRACT));
+      await run(w);
+      const paid = w.paid();
+      assert.equal(paid.length, 1);
+      assert.equal(paid[0]?.network, BASE_CAIP2);
+      assert.equal(paid[0]?.payTo, LEGACY_PAYTO);
+      assert.equal(await arcSpentToday(), 0);
+      // 同じカタログで壁が正直なら Arc（0xB98e…）で買われる。
+      await seed(exaAccepts(CIRCLE_PAYTO, GATEWAY_CONTRACT));
+      const honest = wall(exaAccepts(CIRCLE_PAYTO, GATEWAY_CONTRACT));
+      await run(honest);
+      assert.equal(honest.paid()[0]?.network, ARC_CAIP2);
+      assert.equal(honest.paid()[0]?.payTo, CIRCLE_PAYTO);
+      assert.deepEqual(await rows(), [
+        { status: "settle_claimed", network: ARC_CAIP2, asset: ARC_USDC, pay_to: CIRCLE_PAYTO.toLowerCase(), spent_units: "7000" },
+      ]);
     });
 
     await t.test("自己取引の関門は選んだ accept の payTo に掛かる: Arc の payTo が運用者のものなら払わない", async () => {

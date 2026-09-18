@@ -42,6 +42,7 @@ import {
   ARC_CAIP2,
   ARC_CHAIN,
   buildAuthorization,
+  declaredPayTosFor,
   encodePaymentHeader,
   evmChainFor,
   isArcL1Enabled,
@@ -164,7 +165,8 @@ type Candidate = {
    */
   xrplDeclaredPayTos: string[];
   /**
-   * カタログの raw_accepts が宣言した Arc（eip155:5042・固定 USDC・eip3009 か未指定）accept の payTo（2026-09-19）。
+   * カタログの raw_accepts が宣言した Arc の accept のうち、**署名の関門と同じ述語**（x402-payer declaredPayTosFor:
+   * scheme exact・固定 USDC・eip3009 か未指定・正規の EIP-712 ドメイン・署名できる形）を通ったものの payTo（2026-09-19）。
    * 本番の実測: api.exa.ai は Arc の accept を先頭（Base legacy）と**別の payTo** で宣言している。先頭の pay_to と
    * 比べると Arc の accept は必ず payto_mismatch で落ち、Base で買われていた。レーンとして優先された Arc の
    * accept の payTo は、この宣言の集合と照合する（selectAccept の declaredPayTosByNetwork）。
@@ -943,14 +945,13 @@ export async function runL1Batch(
                 AND (upper(xa->>'asset') = ${RLUSD_CURRENCY_HEX} OR xa->>'asset' = 'RLUSD')
                 AND xa->'extra'->>'issuer' = ${RLUSD_ISSUER}
                 AND xa->>'payTo' IS NOT NULL) AS xrpl_declared_pay_tos,
-           -- Arc の lane accept（2026-09-19）: カタログが宣言した Arc の accept（固定 USDC・eip3009 か未指定）の payTo。
-           -- network は実行時（normalizeNetwork）と同じ完全一致。SELECT リストの相関サブクエリ＝Sort/Limit 後の行だけで走る。
-           (SELECT coalesce(array_agg(DISTINCT lower(aa->>'payTo')), '{}'::text[])
+           -- Arc の lane accept（2026-09-19）: カタログが宣言した Arc の accept を**生の JSON のまま**取る。どの accept の
+           -- payTo を「宣言された受取先」と数えるかは TS の declaredPayTosFor が署名の関門と同じ述語で決める
+           -- （レビュー W1: SQL に別の述語を置かない）。network は実行時（normalizeNetwork）と同じ完全一致。
+           -- SELECT リストの相関サブクエリ＝Sort/Limit 後の行だけで走る。
+           (SELECT coalesce(jsonb_agg(aa), '[]'::jsonb)
               FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE '[]'::jsonb END) aa
-              WHERE aa->>'network' = ${ARC_CAIP2}
-                AND lower(aa->>'asset') = ${ARC_CHAIN.usdc.toLowerCase()}
-                AND (aa->'extra'->>'assetTransferMethod' IS NULL OR aa->'extra'->>'assetTransferMethod' = 'eip3009')
-                AND aa->>'payTo' IS NOT NULL) AS arc_declared_pay_tos
+              WHERE aa->>'network' = ${ARC_CAIP2}) AS arc_declared_accepts
     FROM x402_endpoints e
     JOIN LATERAL (
       SELECT verdict FROM x402_l0_probes p
@@ -1239,7 +1240,7 @@ function rowToCandidate(r: Record<string, unknown>): Candidate {
     settledNetworks: parseTextArray(r.settled_networks),
     failedNetworks: parseTextArray(r.failed_networks),
     xrplDeclaredPayTos: parseTextArray(r.xrpl_declared_pay_tos),
-    arcDeclaredPayTos: parseTextArray(r.arc_declared_pay_tos),
+    arcDeclaredPayTos: declaredPayTosFor(ARC_CHAIN, r.arc_declared_accepts),
     laneChain: null,
   };
 }
@@ -1573,7 +1574,9 @@ async function purchaseOne(input: {
   const ledgerNetwork = isXrpl ? XRPL_MAINNET_CAIP2 : accept.network;
   // asset も定数の大文字 hex で書く（2026-09-18 レビュー S2）: 壁が `RLUSD` リテラルや小文字 hex を名乗っても、
   // 台帳・照合・索引（index-xrpl.ts）が同じ 1 つの表記を読む。封筒の accepted には壁の原文をそのまま返す。
-  const ledgerAsset = isXrpl ? RLUSD_CURRENCY_HEX : accept.asset;
+  // Arc も定数で書く（2026-09-19 レビュー N3）: selectAccept は固定 USDC と大小無視で一致した accept しか通さないので
+  // 同じアドレスだが、台帳の表記を壁の書き方に依存させない。Base は従来どおり壁の原文。
+  const ledgerAsset = isXrpl ? RLUSD_CURRENCY_HEX : accept.network === ARC_CAIP2 ? ARC_CHAIN.usdc : accept.asset;
   // 支払い付き POST の本文（2026-09-17 Issue #29）。売り手が 402 で宣言した input.body を
   // そのまま送り、無ければ従来どおり `{}`。規則は declared-input.ts。
   const paidRequestBody: { body: string; source: RequestBodySource } | null =

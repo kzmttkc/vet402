@@ -296,6 +296,65 @@ export function parseChallenge(
   return null;
 }
 
+/**
+ * The protocol gate, as ONE predicate (2026-09-19 review W1): strict normalizeAccept (scheme and
+ * amount present — this is the signing path) → scheme `exact` → a pinned EVM chain (EVM_PAY_CHAINS)
+ * → that chain's canonical USDC → `assetTransferMethod` unset or `eip3009` → `extra` does not
+ * contradict the canonical EIP-712 domain → signable by viem. Flag-agnostic (callers that sign
+ * check isEvmPayChainEnabled). selectAccept filters a wall's accepts with it and declaredPayTosFor
+ * filters the catalog's raw_accepts with it, so "a payee the catalog declared" always means
+ * "the payee of an accept we would have signed".
+ *
+ * Notes kept from the inline version:
+ *  - 2026-09-17 (Arc lane): the chain, its USDC and its EIP-712 domain come from one pinned row.
+ *    A chain that is not in the table is not an option — it is a skip.
+ *  - The EIP-712 domain is the token's, not the seller's. Refusing before the budget reservation
+ *    is the point: a signature under a bogus domain can never settle, so accepting one would let
+ *    a seller burn budget for free. (Circle Gateway's GatewayWalletBatched accepts fall out here.)
+ *  - 2026-09-04 監査 P1-2: 署名できない accept はここで落とす。予算は署名の前に予約されるので、
+ *    署名器が throw する形を通すと一円も動かないまま日次予算が減る。判定は署名器と同じ述語。
+ */
+function signableUsdcAccept(raw: unknown): { accept: ChallengeAccept; chain: EvmPayChain } | null {
+  const accept = normalizeAccept(raw); // 厳格（lenient=false）——ここは署名する経路
+  if (!accept) return null;
+  if (accept.scheme !== "exact") return null;
+  const chain = evmChainFor(accept.network);
+  if (!chain) return null;
+  if (accept.asset.toLowerCase() !== chain.usdc.toLowerCase()) return null;
+  const method = accept.extra?.assetTransferMethod;
+  if (method !== undefined && method !== "eip3009") return null;
+  if (!hasCanonicalUsdcDomain(accept.extra, chain)) return null;
+  if (!isSignableEvmAccept(accept)) return null;
+  return { accept, chain };
+}
+
+/**
+ * The payTos the CATALOG declared for `chain` (2026-09-19 review W1): of the endpoint's
+ * raw_accepts, only accepts that pass signableUsdcAccept on exactly that chain contribute their
+ * payTo (lowercased; the match in selectAccept is case-insensitive). A GatewayWalletBatched
+ * accept, a non-`exact` scheme, an accept without scheme/amount, an `extra.salt`, or a payTo
+ * that is not an address declares nothing — otherwise a wall could put such an address on its
+ * eip3009 accept and be paid there. `rawAccepts` is whatever the DB returned (array, JSON text,
+ * null); anything unreadable is an empty declaration.
+ */
+export function declaredPayTosFor(chain: EvmPayChain, rawAccepts: unknown): string[] {
+  let list: unknown = rawAccepts;
+  if (typeof list === "string") {
+    try {
+      list = JSON.parse(list);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(list)) return [];
+  const out = new Set<string>();
+  for (const raw of list) {
+    const hit = signableUsdcAccept(raw);
+    if (hit && hit.chain.caip2 === chain.caip2) out.add(hit.accept.payTo.toLowerCase());
+  }
+  return [...out];
+}
+
 export type AcceptSelection =
   | { accept: ChallengeAccept; reason: null }
   | {
@@ -343,45 +402,25 @@ export function selectAccept(
     preferNetworks?: readonly string[];
     /**
      * Recipients the CATALOG declared per network (2026-09-19): for each CAIP-2 id, the payTo of
-     * every accept in the endpoint's raw_accepts on that network, in that chain's pinned USDC,
-     * eip3009 or unspecified (l1-runner targetsSql `arc_declared_pay_tos`). Live fact: api.exa.ai
+     * every accept in the endpoint's raw_accepts on that network that passes the SAME protocol
+     * gate as a wall's accept (declaredPayTosFor — never a looser predicate). Live fact: api.exa.ai
      * declares its Arc accept with a DIFFERENT payTo (0xB98e…) than its first (Base legacy) accept
      * (0x6d6E…), so comparing the Arc accept against the catalog's head `pay_to` refused it every
      * time and the Arc lane fell back to Base. Used ONLY for an accept on a network in
      * `preferNetworks` that is not the declared network; the match is case-insensitive (EVM).
-     * No (or an empty) declaration for that network ⇒ that accept is compared against
-     * `declaredPayTo`, exactly as before. Every other accept's payTo gate is unchanged.
+     * No (or an empty) declaration for that network, or a declared amount that is not a positive
+     * integer ⇒ that accept is compared against `declaredPayTo`, exactly as before. Every other accept's payTo gate is unchanged.
      */
     declaredPayTosByNetwork?: Readonly<Record<string, readonly string[]>>;
   },
 ): AcceptSelection {
+  // One predicate (signableUsdcAccept) decides "an accept this module could sign": it is shared
+  // with declaredPayTosFor so the catalog's declared-payee set can never be wider than this gate.
+  // The lane flag is checked here only — a declaration is a fact about the catalog, not a permission.
   const protocolEligible = accepts
-    .map((a) => normalizeAccept(a)) // 厳格（lenient=false）——ここは署名する経路
-    .filter((a): a is ChallengeAccept => a !== null)
-    .filter((a) => a.scheme === "exact")
-    // 2026-09-17 (Arc lane): the chain, its USDC and its EIP-712 domain come from
-    // one pinned row. A chain that is not in the table, or whose flag is off, is
-    // not an option — it is a skip, exactly as a non-Base network always was.
-    .filter((a) => {
-      const chain = evmChainFor(a.network);
-      if (!chain || !isEvmPayChainEnabled(chain)) return false;
-      if (a.asset.toLowerCase() !== chain.usdc.toLowerCase()) return false;
-      const method = a.extra?.assetTransferMethod;
-      if (method !== undefined && method !== "eip3009") return false;
-      // The EIP-712 domain is the token's, not the seller's (see
-      // BASE_USDC_EIP712_NAME / ARC_USDC_EIP712_NAME). Refusing here — before
-      // the budget reservation — is the point: a signature under a bogus domain
-      // can never settle, so accepting one would let a seller burn budget for
-      // free. The full accepts[] is recorded by the caller, so the
-      // contradiction stays visible. (Circle Gateway's GatewayWalletBatched
-      // accepts on Arc fall out here.)
-      return hasCanonicalUsdcDomain(a.extra, chain);
-    })
-    // 2026-09-04 監査 P1-2: **署名できない accept はここで落とす。** 予算は
-    // 署名の前に予約されるので、署名器が throw する形を通すと、一円も動かない
-    // まま日次 $25 が減り、行は in_flight のまま冷却にも掛からない。
-    // 判定は署名器（viem の validateTypedData）と同じ述語で行う。
-    .filter((a) => isSignableEvmAccept(a));
+    .map((a) => signableUsdcAccept(a))
+    .filter((hit): hit is { accept: ChallengeAccept; chain: EvmPayChain } => hit !== null && isEvmPayChainEnabled(hit.chain))
+    .map((hit) => hit.accept);
 
   if (protocolEligible.length === 0) return { accept: null, reason: "no_eligible_accept" };
 
@@ -397,8 +436,24 @@ export function selectAccept(
   //     → the catalog's head `pay_to`, byte-for-byte the pre-2026-09-19 gate.
   // The gate stays "never pay an address the catalog did not declare"; it now reads the
   // declaration of the accept actually being paid instead of the first accept's only.
+  // 再レビュー N1（2026-09-17）: 宣言額が**正の整数として読めない**（"0" / "0.01" / "1e4" / 負）
+  // ときは免除しない。読めない宣言額では相対上限（3 倍）を組めず、免除だけが残って別チェーンの
+  // accept が $1 まで通っていた（C1 と同じ「生の文字列が parse できないと関門が消える」型）。
+  const declaredUnits = ((): bigint | null => {
+    if (options.declaredAmount === null) return null;
+    try {
+      const v = BigInt(options.declaredAmount);
+      return v > 0n ? v : null;
+    } catch {
+      return null;
+    }
+  })();
   const laneDeclaredPayTos = (a: ChallengeAccept): ReadonlySet<string> | null => {
     if (!preferred.has(a.network) || a.network === declaredNetwork) return null;
+    // 2026-09-19 review W2: no readable declared price (null / "0" / "0.01" / "1e4" / negative) ⇒
+    // neither the price gate nor the relative cap can bind this accept, so the payee gate is not
+    // widened for it either — it is compared against the head `pay_to`, as before 2026-09-19.
+    if (declaredUnits === null) return null;
     const declared = options.declaredPayTosByNetwork?.[a.network];
     if (!Array.isArray(declared)) return null;
     const set = new Set(declared.filter((p): p is string => typeof p === "string" && p !== "").map((p) => p.toLowerCase()));
@@ -441,18 +496,7 @@ export function selectAccept(
   //     (review C3): a lane may cost a little more than the Base listing, not 300×.
   // Everything else (payTo / domain / asset / ceiling) applies to all accepts unchanged.
   const declaredPresent = declaredNetwork !== null && eligible.some((a) => a.network === declaredNetwork);
-  // 再レビュー N1（2026-09-17）: 宣言額が**正の整数として読めない**（"0" / "0.01" / "1e4" / 負）
-  // ときは免除しない。読めない宣言額では相対上限（3 倍）を組めず、免除だけが残って別チェーンの
-  // accept が $1 まで通っていた（C1 と同じ「生の文字列が parse できないと関門が消える」型）。
-  const declaredUnits = ((): bigint | null => {
-    if (options.declaredAmount === null) return null;
-    try {
-      const v = BigInt(options.declaredAmount);
-      return v > 0n ? v : null;
-    } catch {
-      return null;
-    }
-  })();
+  // （declaredUnits は payTo の関門の上で読む——N1: 正の整数として読めない宣言額では免除しない。）
   // 2026-09-19（XRPL の W3 と同じ扱い）: カタログの pay_to が null の行では免除を開かない。宣言の無い payTo は
   // 何とも照合されないので、「宣言 network の accept が壁にある」の証拠が network の一致だけになる。そのときは
   // 別チェーンの accept にも宣言額との一致を要求する（declaredAmount が null の行は従来どおり $1 の上限だけ）。

@@ -16,7 +16,7 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ARC_CAIP2, ARC_USDC, BASE_CAIP2, BASE_USDC, MAX_PER_PURCHASE_UNITS, selectAccept } from "@/lib/observatory/x402-payer";
+import { ARC_CAIP2, ARC_CHAIN, ARC_USDC, BASE_CAIP2, BASE_CHAIN, BASE_USDC, MAX_PER_PURCHASE_UNITS, declaredPayTosFor, selectAccept } from "@/lib/observatory/x402-payer";
 
 const LEGACY_PAYTO = "0x6d6E695b09861467c7d462f5AAF31cF3540B9192";
 const CIRCLE_PAYTO = "0xB98eF29eb2be19Ae646A8FC0248255B90A332dbC";
@@ -134,8 +134,9 @@ test("宣言額の異形（\"0\"・\"0.01\"・\"1e4\"・負）では免除なし
         [{ ...BASE_LEGACY, amount: declared }, { ...ARC, amount: "1000000" }],
         { ...LANE, declaredAmount: declared },
       );
+      // W2 以降、読めない宣言額では Arc の accept は payTo の関門で先に落ちる。理由の語は Base 側の形で決まる
+      // （"0"・負は amount <= 0 で no_eligible_accept、"0.01"・"1e4" は BigInt で読めず同じ）。払わないことだけを固定する。
       assert.equal(chosen.accept, null, `declared ${JSON.stringify(declared)} must not pay`);
-      assert.equal(chosen.reason, "price_mismatch", `declared ${JSON.stringify(declared)}`);
     }
   });
 });
@@ -152,5 +153,73 @@ test("W3: 先頭 pay_to が null の行では免除を開かない——Arc の�
     const wrong = selectAccept([{ ...ARC, payTo: OTHER_PAYTO }], nullHead);
     assert.equal(wrong.accept, null);
     assert.equal(wrong.reason, "payto_mismatch");
+  });
+});
+
+// ---- 2026-09-19 レビュー W1: 宣言集合の述語は署名の関門と同じ 1 本（declaredPayTosFor）。 ----
+test("declaredPayTosFor: 署名の関門を通る accept の payTo だけが宣言になる（レビューの 6 形）", () => {
+  // 正規: exa の実物 → Arc は 0xB98e… だけ（Gateway は同じ payTo でも数えない・Base の accept は Arc の宣言にならない）。
+  assert.deepEqual(declaredPayTosFor(ARC_CHAIN, EXA), [CIRCLE_PAYTO.toLowerCase()]);
+  assert.deepEqual(declaredPayTosFor(ARC_CHAIN, [BASE_CIRCLE, BASE_LEGACY, ARC_GATEWAY]), [], "Gateway だけなら宣言なし");
+  assert.deepEqual(declaredPayTosFor(BASE_CHAIN, EXA).sort(), [LEGACY_PAYTO.toLowerCase(), CIRCLE_PAYTO.toLowerCase()].sort());
+  const refused: [string, unknown][] = [
+    ["Gateway 別アドレス", { ...ARC_GATEWAY, payTo: GATEWAY_CONTRACT }],
+    ["scheme 非 exact", { ...ARC, scheme: "upto", payTo: OTHER_PAYTO }],
+    ["scheme 無し", { network: ARC.network, amount: ARC.amount, asset: ARC.asset, payTo: OTHER_PAYTO, extra: ARC.extra }],
+    ["amount 無し", { scheme: "exact", network: ARC.network, asset: ARC.asset, payTo: OTHER_PAYTO, extra: ARC.extra }],
+    ["salt 付き", { ...ARC, payTo: OTHER_PAYTO, extra: { ...ARC.extra, salt: "0x01" } }],
+    ["not-an-address", { ...ARC, payTo: "not-an-address" }],
+    ["チェックサム不一致の大小混在", { ...ARC, payTo: "0xB98eF29eb2be19Ae646A8FC0248255B90A332DBC" }],
+    ["別の asset", { ...ARC, asset: BASE_USDC, payTo: OTHER_PAYTO }],
+    ["assetTransferMethod が eip3009 以外", { ...ARC, payTo: OTHER_PAYTO, extra: { ...ARC.extra, assetTransferMethod: "permit2" } }],
+  ];
+  for (const [label, accept] of refused) {
+    assert.deepEqual(declaredPayTosFor(ARC_CHAIN, [accept]), [], label);
+    // 正規の accept と並んでも、正規の payTo だけ。
+    assert.deepEqual(declaredPayTosFor(ARC_CHAIN, [ARC, accept]), [CIRCLE_PAYTO.toLowerCase()], label);
+  }
+  // DB の返し方: 配列・JSON 文字列・null・壊れた値。
+  assert.deepEqual(declaredPayTosFor(ARC_CHAIN, JSON.stringify(EXA)), [CIRCLE_PAYTO.toLowerCase()]);
+  for (const junk of [null, undefined, "", "{not json", "{a,b}", 7, {}, [null, 1, "x"]]) assert.deepEqual(declaredPayTosFor(ARC_CHAIN, junk), []);
+  // 旗に依らない（宣言はカタログの事実。署名の可否は selectAccept が旗で決める）。
+  withArc(false, () => assert.deepEqual(declaredPayTosFor(ARC_CHAIN, EXA), [CIRCLE_PAYTO.toLowerCase()]));
+});
+
+test("W1 の失敗シナリオ: カタログの Gateway accept が別アドレスを名乗り、壁が eip3009 の accept にそのアドレスを載せても払わない", () => {
+  withArc(true, () => {
+    const catalog = [BASE_LEGACY, ARC, { ...ARC_GATEWAY, payTo: GATEWAY_CONTRACT }];
+    const declared = { [ARC_CAIP2]: declaredPayTosFor(ARC_CHAIN, catalog) };
+    assert.deepEqual(declared[ARC_CAIP2], [CIRCLE_PAYTO.toLowerCase()]);
+    const wallAccepts = [BASE_LEGACY, { ...ARC, payTo: GATEWAY_CONTRACT }, { ...ARC_GATEWAY, payTo: GATEWAY_CONTRACT }];
+    const chosen = selectAccept(wallAccepts, { ...CATALOG, preferNetworks: [ARC_CAIP2], declaredPayTosByNetwork: declared });
+    assert.equal(chosen.accept?.network, BASE_CAIP2);
+    assert.equal(chosen.accept?.payTo, LEGACY_PAYTO);
+    // 正直な壁なら Arc。
+    const honest = selectAccept(catalog, { ...CATALOG, preferNetworks: [ARC_CAIP2], declaredPayTosByNetwork: declared });
+    assert.equal(honest.accept?.network, ARC_CAIP2);
+    assert.equal(honest.accept?.payTo, CIRCLE_PAYTO);
+  });
+});
+
+// ---- 2026-09-19 レビュー W2: 宣言額が正の整数として読めない行では payTo の照合先を広げない。 ----
+test("W2: declaredAmount が null・異形の行では Arc の宣言 payTo を使わない（Arc の $1 は通らず、従来どおり Base）", () => {
+  withArc(true, () => {
+    for (const declared of [null, "0", "0.01", "1e4", "-7000"]) {
+      const label = `declared ${JSON.stringify(declared)}`;
+      // 壁の Base legacy はカタログと同じ文字列（null の行は 7000）。Arc は $1。
+      const base = { ...BASE_LEGACY, amount: declared ?? "7000" };
+      const chosen = selectAccept([base, { ...ARC, amount: "1000000" }], { ...LANE, declaredAmount: declared });
+      assert.notEqual(chosen.accept?.network, ARC_CAIP2, label);
+      if (declared === null) {
+        assert.equal(chosen.accept?.network, BASE_CAIP2, "宣言額の無い行は main と同じく Base の legacy");
+        assert.equal(chosen.accept?.payTo, LEGACY_PAYTO);
+      } else {
+        assert.equal(chosen.accept, null, label);
+      }
+      // Arc しか無い壁: 宣言 payTo を使わないので、先頭 pay_to と違う Arc の accept は payto_mismatch。
+      const arcOnly = selectAccept([{ ...ARC, amount: "7000" }], { ...LANE, declaredAmount: declared });
+      assert.equal(arcOnly.accept, null, label);
+      assert.equal(arcOnly.reason, "payto_mismatch", label);
+    }
   });
 });
