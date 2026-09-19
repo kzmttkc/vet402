@@ -13,6 +13,14 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-19 15:40 JST — `/api/health` が毎日 03:00〜11:00 JST に 503 degraded を返していた原因: 評判索引（index-feedback）が 1 日 1 回だった（vet402.com コア）
+
+- **何を変えたか**: `vercel.json` に `/api/cron/index-feedback` を 3 本足した（`0 8`・`0 14`・`0 20` UTC。既存の `0 2` と合わせて 6 時間おき）。コードは変えていない。
+- **なぜ**: 本番 `health_snapshots` の直近 60 時間を時間別に数えると、02:00 UTC の索引の直後から約 16 時間は `scoring=ok`、18:00 UTC 頃から次の 02:00 UTC までは `feedback_stats_unavailable(deadline:getLogsChunked)` で degraded だった（3 日とも同じ形）。未索引の tail が約 29,000 ブロックを超えると、リクエスト経路の live 走査が 2,500ms の期限に収まらない。管理リポの監視（uptime-cron）は 9/19 だけで 23 回失敗を記帳していた。
+- **実測**: 9/19 15:20 JST に手で 1 回叩くと 6,563 ブロック・490 件を 1.2 秒で索引し `caughtUp:true`。1 回の費用は小さい。
+- **影響**: Hobby の上限は「1 本の式が 1 日 1 回まで」（Vercel docs 2026-07-15 版で確認）。4 本とも日次式。Hobby は時刻精度が ±59 分なので、間隔は最大で約 7 時間。**cron を触ったので、この push のデプロイ成否を必ず見る**（2026-08-06 の前例）。
+- 買い手側のスコア（SDK の SpendGuard が読む側）が 1 日 8 時間「確かめられない」を返していた、という意味でもある。期限や tail の上限（`FEEDBACK_TAIL_MAX_DAYS`）は動かしていない。
+
 ## 2026-09-19 JST — Arc のレーン: カタログが Arc の accept を「先頭と別の payTo」で宣言している行を Arc で買えるようにした（vet402.com コア・独立レビュー SHIP）
 
 - **何を変えたか**: (1) `x402-payer.ts` `selectAccept` に `declaredPayTosByNetwork?: Record<string, readonly string[]>`。**`preferNetworks` に入っていて、宣言 network（`e.network`）とは別のチェーンの accept** に限り、payTo の照合先を「カタログの先頭 `pay_to`」ではなく「カタログがそのチェーンについて宣言した payTo の集合」にする（EVM なので大小無視）。宣言が無い・空ならその accept も従来どおり先頭 `pay_to` と照合。優先していない accept（Base ほか）の関門は不変。(2) `l1-runner.ts` の候補 SQL（`targetsSql`）に `arc_declared_accepts`: その endpoint の `raw_accepts` のうち `network = eip155:5042`（完全一致）の accept を**生の JSON のまま**取る（SELECT リストの相関サブクエリ）。どの accept の payTo を「宣言された受取先」と数えるかは `x402-payer.ts` の `declaredPayTosFor(ARC_CHAIN, rawAccepts)` が決める——`selectAccept` が壁の accept に掛けるのと**同じ 1 本の述語**（`signableUsdcAccept`: 厳格な normalizeAccept → scheme exact → 固定 USDC → `assetTransferMethod` 未指定か eip3009 → `hasCanonicalUsdcDomain` → `isSignableEvmAccept`）を通った accept の payTo だけ。`Candidate.arcDeclaredPayTos` として `selectAccept` に渡す。(3) XRPL の W3 と同じ扱いを Arc に: カタログの `pay_to` が null の行では宣言額の免除を開かない（優先された別チェーンの accept にも宣言額との一致を要求）。
