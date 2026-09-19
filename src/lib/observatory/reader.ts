@@ -27,7 +27,7 @@ import { CATALOG_SOURCE } from "./catalog-source";
 import { publishedVerdict, MIN_CONSECUTIVE_FAILS_TO_PUBLISH } from "./l0-probe";
 import { isOperatorPayTo } from "./operator";
 import { isOperatorExclusionConfigured, operatorExclusionPredicate, operatorMatchPredicate } from "./operator-sql";
-import { chainLabel, isTestnet } from "./chains";
+import { chainLabel, isTestnet, toCaip2 } from "./chains";
 import { deliveredPredicate, heldReasonSql, inconclusivePredicate, inconclusiveSettledPredicate } from "./delivery";
 import {
   settledTier,
@@ -985,7 +985,9 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       }[];
       const folded = new Map<string, L1ChainStats>();
       for (const row of chainRows) {
-        const chain = chainLabel(row.network);
+        // v1 スラグ（"base" / "solana" / "xrpl" …）は先に CAIP-2 へ寄せてからラベルを引く
+        // （explorerTxUrl と同じ流儀）。同じラベルに畳まれた行は下で合算される。
+        const chain = chainLabel(toCaip2(row.network));
         const entry = folded.get(chain) ?? {
           chain,
           attempts: 0,

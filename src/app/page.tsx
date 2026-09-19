@@ -18,6 +18,7 @@ import {
 } from "@/lib/observatory/cached-reads";
 import { FunnelFigure } from "@/components/site/Figures";
 import { SupportedChains } from "@/components/site/SupportedChains";
+import { settledByChainOf } from "@/components/site/supported-chains-data";
 
 /**
  * The front page is the memo.
@@ -769,7 +770,7 @@ export default async function Home() {
         {/* 2026-09-19: 対応チェーンの節。§4 は「この節はぜんぶ今動いている」、§6 は「まだ出していない
             ものだけ」と言い切っているので、稼働・初回購入待ち・実装中が混ざるこの表はどちらにも置けない。
             §4 の直後に独立の節として置き、行ごとの状態印（§4 / §6 と同じ文法）で混在を読めるようにする。
-            件数は静的に書かない——Fig. 1 と同じ `stats`（l1.byChain）から引き、読めない時は件数ごと出さない。
+            件数は静的に書かない——Fig. 1 と同じ `stats`（l1.byChain）から引き、読めない時は件数も状態の上書きも出さない。
             文言と状態の正典は supported-chains-data.ts（Arc の差し替えはそこの 1 行）。 */}
         <h2 id="chains" className="sec-head scroll-mt-24">
           <span className="sec-no">5.</span>
@@ -784,13 +785,9 @@ export default async function Home() {
           </Link>
           .
         </p>
-        <SupportedChains
-          settledByChain={
-            stats && stats.totalEndpoints > 0
-              ? new Map(stats.l1.byChain.map((c) => [c.chain, c.settled]))
-              : null
-          }
-        />
+        {/* 関門は L1 台帳そのもの（byChain が空 = 読めなかった）。totalEndpoints は L0 カタログの件数で、
+            L1 が読めたかどうかを語らない（2026-09-19 レビュー C1）。 */}
+        <SupportedChains settledByChain={settledByChainOf(stats?.l1.byChain)} />
 
         {/* ================= 6. Status of this work ================= */}
         <h2 id="status" className="sec-head scroll-mt-24">

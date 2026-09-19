@@ -1,7 +1,8 @@
 import {
   SUPPORTED_CHAINS,
-  effectiveLaneState,
   laneBody,
+  markerOf,
+  settledCountOf,
   type SupportedChain,
 } from "@/components/site/supported-chains-data";
 
@@ -9,9 +10,8 @@ import {
  * LP §5 — one row per chain, in the same grammar as the §4 / §6 rows of the front
  * page (marker column, display-face title, body): no new tokens, no new parts.
  *
- * `settledByChain` is `stats.l1.byChain` folded to chain → settled, or null when
- * the ledger could not be read. With null the rows print their static state and
- * no count. A chain absent from a readable ledger has no settled purchase: 0.
+ * `settledByChain` comes from `settledByChainOf(stats.l1.byChain)`: null when the L1
+ * ledger was not read, and then the rows print their static state and no count.
  */
 export function SupportedChains({ settledByChain }: { settledByChain: Map<string, number> | null }) {
   return (
@@ -20,20 +20,11 @@ export function SupportedChains({ settledByChain }: { settledByChain: Map<string
         <ChainRow
           key={row.chain}
           row={row}
-          settled={
-            row.kind === "lane" && settledByChain ? (settledByChain.get(row.chain) ?? 0) : null
-          }
+          settled={settledCountOf(row, settledByChain)}
         />
       ))}
     </div>
   );
-}
-
-function markerOf(row: SupportedChain, settled: number | null): { label: string; live: boolean } {
-  if (row.kind === "building") return { label: "building", live: false };
-  return effectiveLaneState(row.state, settled) === "pending_first_purchase"
-    ? { label: "pending", live: false }
-    : { label: "implemented", live: true };
 }
 
 function ChainRow({ row, settled }: { row: SupportedChain; settled: number | null }) {

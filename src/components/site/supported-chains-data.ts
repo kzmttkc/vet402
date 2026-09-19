@@ -6,19 +6,28 @@
  * lane from `stats.l1.byChain` (the ledger read the page already performs for
  * Fig. 1), and `effectiveLaneState` lets that ledger overrule the static word
  * below in both directions — a lane marked pending stops reading "pending" the
- * moment the ledger holds a settled purchase on it, and a lane marked running
- * stops reading "running" if the ledger holds none.
+ * moment the ledger holds a settled purchase on it, and a lane marked as having
+ * settled purchases stops saying so if a readable ledger holds none.
+ *
+ * "Readable" means `l1.byChain` is non-empty (`settledByChainOf`). An empty array
+ * is what the reader returns when the L1 aggregate could not be read (it swallows
+ * a missing-schema error), so empty is "unknown", never "zero everywhere": the
+ * page then prints the static words and no counts. `totalEndpoints` is the L0
+ * catalog and says nothing about whether the L1 ledger was read (2026-09-19 review C1).
+ *
+ * There is no "running" state (2026-09-19 review W1): nothing on this page backs
+ * the freshness of such a word, and it would keep saying so on a day the lane is
+ * switched off. The lanes state what the ledger holds, which stays true.
  *
  * The file sits under src/components/site so tests/claims-registry.test.ts
  * scans its prose like any other public copy.
  */
 
 /**
- * - running:                purchases and settlement reconciliation both run
  * - settled_on_record:      at least one purchase settled and was reconciled
  * - pending_first_purchase: lane and reconciliation are built, nothing bought yet
  */
-export type LaneState = "running" | "settled_on_record" | "pending_first_purchase";
+export type LaneState = "settled_on_record" | "pending_first_purchase";
 
 export type LaneChain = {
   kind: "lane";
@@ -41,15 +50,14 @@ export type BuildingChain = {
 export type SupportedChain = LaneChain | BuildingChain;
 
 export const LANE_STATE_SENTENCE: Record<LaneState, string> = {
-  running: "Purchases and settlement reconciliation are both running.",
   settled_on_record: "Settled and reconciled purchases are on record.",
   pending_first_purchase:
     "The purchase lane and settlement reconciliation are implemented. The first real purchase on this chain is still pending.",
 };
 
 export const SUPPORTED_CHAINS: SupportedChain[] = [
-  { kind: "lane", chain: "Base", asset: "USDC", rail: "x402", state: "running" },
-  { kind: "lane", chain: "Solana", asset: "USDC", rail: "x402", state: "running" },
+  { kind: "lane", chain: "Base", asset: "USDC", rail: "x402", state: "settled_on_record" },
+  { kind: "lane", chain: "Solana", asset: "USDC", rail: "x402", state: "settled_on_record" },
   { kind: "lane", chain: "Tempo", asset: "USDC.e", rail: "MPP, not x402", state: "settled_on_record" },
   {
     kind: "lane",
@@ -83,8 +91,41 @@ export const SUPPORTED_CHAINS: SupportedChain[] = [
  */
 export function effectiveLaneState(state: LaneState, settled: number | null): LaneState {
   if (settled === null) return state;
-  if (settled <= 0) return "pending_first_purchase";
-  return state === "pending_first_purchase" ? "settled_on_record" : state;
+  return settled > 0 ? "settled_on_record" : "pending_first_purchase";
+}
+
+/**
+ * `stats.l1.byChain` folded to chain → settled, or null when the L1 ledger was not
+ * read. Empty counts as not read (see the header): the precedent is
+ * /observatory/state, which draws its per-chain table on `byChain.length > 0`.
+ * Rows that share a chain label are summed, not overwritten.
+ */
+export function settledByChainOf(
+  byChain: readonly { chain: string; settled: number }[] | null | undefined,
+): Map<string, number> | null {
+  if (!byChain || byChain.length === 0) return null;
+  const out = new Map<string, number>();
+  for (const row of byChain) out.set(row.chain, (out.get(row.chain) ?? 0) + row.settled);
+  return out;
+}
+
+/**
+ * The count a row prints, or null for no count line. A building row has no lane, so
+ * it prints no count whatever the ledger holds. A lane absent from a readable ledger
+ * has no settled purchase: 0.
+ */
+export function settledCountOf(row: SupportedChain, settledByChain: Map<string, number> | null): number | null {
+  if (row.kind !== "lane" || settledByChain === null) return null;
+  return settledByChain.get(row.chain) ?? 0;
+}
+
+export type ChainMarker = { label: "implemented" | "pending" | "building"; live: boolean };
+
+export function markerOf(row: SupportedChain, settled: number | null): ChainMarker {
+  if (row.kind === "building") return { label: "building", live: false };
+  return effectiveLaneState(row.state, settled) === "pending_first_purchase"
+    ? { label: "pending", live: false }
+    : { label: "implemented", live: true };
 }
 
 export function laneBody(row: LaneChain, settled: number | null): string {

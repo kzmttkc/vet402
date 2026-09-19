@@ -10,14 +10,20 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createElement } from "react";
 import {
   LANE_STATE_SENTENCE,
   SUPPORTED_CHAINS,
   effectiveLaneState,
   laneBody,
+  markerOf,
+  settledByChainOf,
+  settledCountOf,
   type LaneChain,
 } from "@/components/site/supported-chains-data";
-import { chainLabel } from "@/lib/observatory/chains";
+import { SupportedChains } from "@/components/site/SupportedChains";
+import { chainLabel, toCaip2 } from "@/lib/observatory/chains";
 
 const read = (rel: string) => readFileSync(join(process.cwd(), rel), "utf8");
 const lanes = SUPPORTED_CHAINS.filter((c): c is LaneChain => c.kind === "lane");
@@ -43,25 +49,86 @@ test("every lane name is the chainLabel() of its mainnet id — the join key int
   }
 });
 
+test("a testnet id never joins a mainnet lane", () => {
+  assert.notEqual(chainLabel("eip155:5042002"), "Arc");
+  assert.notEqual(chainLabel("eip155:42431"), "Tempo");
+  assert.notEqual(chainLabel("xrpl:1"), "XRPL");
+  // the reader folds through toCaip2 first; that must not move a testnet onto a mainnet label either
+  assert.notEqual(chainLabel(toCaip2("arc-testnet")), "Arc");
+  assert.notEqual(chainLabel(toCaip2("solana-devnet")), "Solana");
+  // and the v1 slugs the ledger may carry do land on the lane
+  assert.equal(chainLabel(toCaip2("base")), "Base");
+  assert.equal(chainLabel(toCaip2("solana")), "Solana");
+  assert.equal(chainLabel(toCaip2("xrpl")), "XRPL");
+});
+
 test("the ledger overrules the static word in both directions", () => {
   // unreadable ledger: the static word stands
   assert.equal(effectiveLaneState("pending_first_purchase", null), "pending_first_purchase");
-  assert.equal(effectiveLaneState("running", null), "running");
+  assert.equal(effectiveLaneState("settled_on_record", null), "settled_on_record");
   // a settled purchase exists: a pending lane stops reading pending
   assert.equal(effectiveLaneState("pending_first_purchase", 1), "settled_on_record");
-  assert.equal(effectiveLaneState("running", 3396), "running");
   assert.equal(effectiveLaneState("settled_on_record", 8), "settled_on_record");
-  // none exists: no lane reads as running
-  assert.equal(effectiveLaneState("running", 0), "pending_first_purchase");
+  // a readable ledger holds none: the lane stops claiming settled purchases
   assert.equal(effectiveLaneState("settled_on_record", 0), "pending_first_purchase");
+});
+
+test("an empty byChain is an unread ledger: no counts, no overrule (review C1)", () => {
+  // reader.ts swallows a missing-schema error on the L1 aggregate and returns byChain: [] while
+  // totalEndpoints (the L0 catalog) is still > 0. That must never print "Base: 0, pending".
+  for (const unread of [[], null, undefined]) {
+    const map = settledByChainOf(unread);
+    assert.equal(map, null);
+    for (const row of SUPPORTED_CHAINS) {
+      assert.equal(settledCountOf(row, map), null, `${row.chain}: no count line`);
+    }
+    const base = lanes.find((l) => l.chain === "Base")!;
+    assert.equal(markerOf(base, settledCountOf(base, map)).label, "implemented");
+    assert.equal(laneBody(base, settledCountOf(base, map)), `USDC over x402. ${LANE_STATE_SENTENCE.settled_on_record}`);
+    const html = renderToStaticMarkup(createElement(SupportedChains, { settledByChain: map }));
+    assert.ok(!html.includes("Settled purchases on record"), "no count line anywhere");
+    assert.ok(!html.split("Solana")[0].includes(">pending<"), "the Base row is not marked pending");
+  }
+});
+
+test("a readable ledger: counts per lane, absent lane is 0, same-label rows are summed", () => {
+  const map = settledByChainOf([
+    { chain: "Base", settled: 3000 },
+    { chain: "Base", settled: 396 },
+    { chain: "XRPL", settled: 1 },
+  ]);
+  assert.ok(map);
+  const by = new Map(SUPPORTED_CHAINS.map((r) => [r.chain, r]));
+  assert.equal(settledCountOf(by.get("Base")!, map), 3396);
+  assert.equal(settledCountOf(by.get("XRPL")!, map), 1);
+  assert.equal(settledCountOf(by.get("Arc")!, map), 0);
+  assert.equal(markerOf(by.get("Arc")!, 0).label, "pending");
+  assert.equal(markerOf(by.get("Arc")!, 1).label, "implemented");
+  const html = renderToStaticMarkup(createElement(SupportedChains, { settledByChain: map }));
+  assert.ok(html.includes("Settled purchases on record: 3,396"));
+  assert.equal(html.split("Settled purchases on record").length - 1, lanes.length, "one count line per lane");
+});
+
+test("a building row stays building and prints no count, whatever the ledger holds", () => {
+  const row = SUPPORTED_CHAINS.find((c) => c.kind === "building")!;
+  for (const settled of [null, 0, 1, 822]) {
+    assert.deepEqual(markerOf(row, settled), { label: "building", live: false });
+  }
+  // even a ledger row under the very same name does not give it a count
+  const map = settledByChainOf([{ chain: row.chain, settled: 5 }, { chain: "Robinhood Chain", settled: 5 }]);
+  assert.equal(settledCountOf(row, map), null);
+  const html = renderToStaticMarkup(createElement(SupportedChains, { settledByChain: map }));
+  const tail = html.slice(html.indexOf("Robinhood Chain"));
+  assert.ok(!tail.includes("Settled purchases on record"));
 });
 
 test("lane copy names the asset and the rail; Tempo says it is not x402", () => {
   const byName = new Map(lanes.map((l) => [l.chain, l]));
-  assert.equal(
-    laneBody(byName.get("Base")!, null),
-    `USDC over x402. ${LANE_STATE_SENTENCE.running}`,
-  );
+  for (const name of ["Base", "Solana"]) {
+    assert.equal(laneBody(byName.get(name)!, null), `USDC over x402. ${LANE_STATE_SENTENCE.settled_on_record}`);
+  }
+  // no freshness word without a freshness measurement behind it (review W1)
+  for (const s of Object.values(LANE_STATE_SENTENCE)) assert.ok(!/\brunning\b/i.test(s));
   assert.equal(
     laneBody(byName.get("Tempo")!, null),
     `USDC.e over MPP, not x402. ${LANE_STATE_SENTENCE.settled_on_record}`,
@@ -101,7 +168,4 @@ test("no static count in the section copy — counts come from stats.l1.byChain"
   ].join(" ");
   assert.ok(!/\d{2,}/.test(copy.replace(/x402|t54/g, "")), "no multi-digit number in lane copy");
   assert.ok(data.includes("ARC-SWAP"), "the Arc swap line stays marked");
-  const home = read("src/app/page.tsx");
-  assert.ok(home.includes("stats.l1.byChain.map((c) => [c.chain, c.settled])"));
-  assert.ok(home.includes('id="chains"'));
 });
