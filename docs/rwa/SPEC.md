@@ -516,6 +516,15 @@ Do not merge two addresses into one PnL.
 
 やらない: 賞取りのための会場追加、Arbitrum One への移植、トークン、実行エンジン。
 
+提出フォームの必須欄（patch 012・2026-09-19 実測。HackQuest `…/buildathon/17bfad43-…/bb8b9fc1-…/submit`。未提出のまま閉じた）:
+- What is your contract address?*（"To qualify, your project must be deployed on the corresponding ecosystem."）→ §9 のアンカーを 4663 か 46630 にデプロイした後でないと書けない
+- Which Prize Track*（Overall Prize / Promising Products Track / Grants。複数可）
+- Link to frontend/UI/website*（300 字）→ `/rwa/<デモ用アドレス>` が本番に出た後
+- Core Protocol / Smart Contract Addresses*・Factory/Pool Contracts*・Token Contract Address*（各 300 字。該当なしはそう書く）
+- Which parts of your code have been produced during the Buildathon?*（300 字）→ §13c の RWA パスと 09-17 以降のコミット
+- Sponsor/partner technologies*（選択肢に Robinhood Chain・Paxos/USDG・Alchemy・OpenZeppelin ほか）
+- プロジェクトページ側で Demo Video が必須（"Video Required"）。公開 URL は `…/projects/vet402-rwa`（表示名を変えるとスラッグも変わる）
+
 ### §13c 会場の分離（patch 002・2026-09-13）
 
 出典: `docs/hackathons/2026-autumn-continuity.md` 節「Parallel venue — Arbitrum Open House / vet402 `/rwa`」（b68e186・Takeshi 承認）。食い違ったら出典を正とし、この節をパッチで直す。
