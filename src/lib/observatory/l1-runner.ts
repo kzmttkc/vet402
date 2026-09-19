@@ -731,7 +731,7 @@ export async function resolveReservationAsFailed(
     `);
   } catch (writeError) {
     // ここまで失敗したら 30 分後の孤児掃除が拾う。黙って消さない。
-    logServerError("observatory.l1.resolve_reservation_failed", writeError);
+    logServerError("observatory.l1.resolve_reservation_failed", redactedError(writeError));
   }
 }
 
@@ -866,7 +866,7 @@ export async function runL1Batch(
   try {
     summary.orphansResolved = await sweepOrphanedInFlight(db);
   } catch (error) {
-    if (!isMissingSchemaError(error)) logServerError("observatory.l1.orphan_sweep", error);
+    if (!isMissingSchemaError(error)) logServerError("observatory.l1.orphan_sweep", redactedError(error));
   }
 
   // 2. Today's spend from the ledger (UTC day).
@@ -923,7 +923,7 @@ export async function runL1Batch(
           laneSpent.set(lane.chain, BigInt(spentRaw.split(".")[0]));
         }
       } catch (error) {
-        logServerError(`observatory.l1.${lane.chain}_cap_read`, error);
+        logServerError(`observatory.l1.${lane.chain}_cap_read`, redactedError(error));
         selectable = false;
       }
     }
@@ -953,7 +953,7 @@ export async function runL1Batch(
       firstPurchasesSelectable = false;
     }
   } catch (error) {
-    logServerError("observatory.l1.first_purchase_quota_read", error);
+    logServerError("observatory.l1.first_purchase_quota_read", redactedError(error));
     firstPurchasesSelectable = false;
   }
 
@@ -1356,7 +1356,7 @@ export async function laneFloorCandidates(input: {
       const raw = await input.fetchLane(lane.chain, Math.min(input.floor * LANE_FLOOR_OVERSAMPLE, LANE_FLOOR_FETCH_MAX));
       rows = (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as Record<string, unknown>[];
     } catch (error) {
-      if (!isMissingSchemaError(error)) logServerError(`observatory.l1.lane_floor_${lane.chain}`, error);
+      if (!isMissingSchemaError(error)) logServerError(`observatory.l1.lane_floor_${lane.chain}`, redactedError(error));
       continue;
     }
     const perHost = new Map<string, number>();
@@ -2017,28 +2017,36 @@ async function purchaseOne(input: {
     // だから購入は `settle_claimed` で置き、日次の照合 cron が
     // `settled` / `settle_claim_refuted` へ確定させる。
     const claimedAndWellFormed = claimedSettlement && settlementTxWellFormed;
-    // 2026-09-19（独立レビュー W-4）: 資格情報を**我々が**境界で落とした要求の 401/402 は、
-    // 売り手についての所見ではない。売り手は別オリジンへ転送し、我々の SSRF / 資格情報の
-    // 関門がそこへ credential を運ばなかった——断ったのは転送先であって、売り手の壁ではない。
-    // `settle_failed` にすると「決済に失敗した売り手」として公開台帳・decisions・冷却の分母に
-    // 載る。こちら側の事実なので `request_error`（export.csv・decisions・backtest・
-    // PAID_ATTEMPT_STATUSES のいずれにも入らない）で記録する。
-    // `spent_units` は戻さない——1 ホップ目で売り手は credential を受け取っており、x402 の
-    // EIP-3009 も MPP の pull も、そこから決済され得る（署名したら計上する、は不変）。
-    // レーンで分けないのは、この経路が x402 でも MPP でも同じ仕組みで起きるから。
-    const strippedRefusal =
-      credentialStripped !== null && paid !== null && (paid.status === 401 || paid.status === 402);
+    // 2026-09-19（レビュー 2 巡目 W-4）: 資格情報を境界で落とした要求が 401/402 で
+    // 返ってきても、**status は変えない**（`settle_failed` のまま）。
+    //
+    // 一度は「我々の関門が起こした事実だから request_error」と書いたが、同じ事実から
+    // 逆の結論になる: 有料レグは必ず `candidate.resourceUrl`——台帳で採点している売り手
+    // 自身の origin——へ最初に出るので、境界が立つ頃には売り手は 1 ホップ目で署名済みの
+    // 資格情報を受け取り終えている（だから `spent_units` も戻さない）。つまり売り手は
+    // 有料の口に `302 → 別オリジン` を 1 行足すだけで、$1 を引ける状態を手にしたまま
+    // 「払ったのに何も返ってこなかった」という観測を公開台帳から消せてしまう
+    // （request_error は export.csv・decisions・backtest・PAID_ATTEMPT_STATUSES のどれにも
+    // 入らない）。損失は冷却で 1 エンドポイント 1 窓 3 × $1 に収まるが、消えるのは台帳の
+    // 意味のほうで、それがこの製品の資産である。
+    // 語の定義とも合わない: `request_error` は「我々のランナーが死んだ」という我々側の
+    // 事実（この file の resolveReservationAsFailed の節）で、転送を選んだのは売り手の壁。
+    // `PAID_ATTEMPT_STATUSES` の定義（reader.ts）は「署名して実際に払った試行」で、
+    // これはまさにそれ。
+    //
+    // 正直な売り手が巻き込まれる形は実在しうるが、**まだ 1 件も観測していない**。
+    // 数えられるようにだけしておく: 境界は下の `rawResponseMeta.credentialStripped` に
+    // 残るので、`raw_response_meta ? 'credentialStripped'` で件数を数えられる。
+    // 実在するほど多いと分かってから分母の扱いを決める。
     const status = !paid
       ? "settle_failed"
-      : strippedRefusal
-        ? "request_error"
-        : claimedAndWellFormed
-          ? "settle_claimed"
-          : claimedSettlement
-            ? "settle_claimed_unverifiable" // 決済したと主張したが識別子が形式不正
-            : paid.status === 200
-              ? "delivered_no_receipt" // goods returned but no settlement receipt header
-              : "settle_failed";
+      : claimedAndWellFormed
+        ? "settle_claimed"
+        : claimedSettlement
+          ? "settle_claimed_unverifiable" // 決済したと主張したが識別子が形式不正
+          : paid.status === 200
+            ? "delivered_no_receipt" // goods returned but no settlement receipt header
+            : "settle_failed";
     // summary の互換のため「売り手が決済を主張したか」は残すが、これは
     // settled ではない。名前で取り違えないよう別名にしてある。
     const settled = claimedAndWellFormed;

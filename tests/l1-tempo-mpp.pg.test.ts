@@ -427,18 +427,26 @@ if (!TEST_DB) {
         assert.equal(h.headers["authorization"], undefined);
       }
 
-      // 独立レビュー W-4: 転送先が返した 402 は**我々の関門が起こした事実**。売り手の
-      // 不履行（settle_failed・公開分母の中）にしない。金は動きうる（1 ホップ目で売り手は
-      // credential を受け取っている）ので spent_units は残す——`request_error` は
-      // export.csv・decisions からは外れるが、予算は使ったままにする。
+      // レビュー 2 巡目 W-4: 転送先が返した 402 でも **status は従来どおり `settle_failed`**。
+      // 売り手は 1 ホップ目で署名済みの資格情報を受け取り終えている（だから spent_units も
+      // 残る）ので、ここを我々側の `request_error` に倒すと、売り手は有料の口に 302 を
+      // 1 行足すだけで「払ったのに何も返らなかった」という観測を公開台帳から消せてしまう。
+      // 代わりに、どの境界で落としたかを行に残して**数えられる**ようにしておく
+      // （`raw_response_meta ? 'credentialStripped'`）。
       const ledger = await ledgerFor("https://fal.mpp.tempo.example/model/1");
       assert.equal(ledger.length, 1);
-      assert.equal(ledger[0].status, "request_error", `status が ${ledger[0].status}`);
+      assert.equal(ledger[0].status, "settle_failed", `status が ${ledger[0].status}`);
       assert.equal(ledger[0].spent_units, "25000", "署名して売り手へ渡した額は計上したまま");
       const meta = ledger[0].raw_response_meta as Record<string, unknown>;
       const strip = meta.credentialStripped as Record<string, unknown> | undefined;
+      assert.equal(strip?.from, "https://fal.mpp.tempo.example");
       assert.equal(strip?.to, "https://collector.example", `どこで落としたかを行に残す: ${JSON.stringify(meta)}`);
       assert.equal(meta.status, 402);
+      // 数える側の形（後から件数を出す経路）を固定する。
+      const counted = rows<{ n: string }>(
+        await db.execute(sql`SELECT count(*)::text AS n FROM x402_l1_purchases WHERE raw_response_meta ? 'credentialStripped'`),
+      )[0];
+      assert.equal(counted.n, "2", "Tempo の 2 件とも同じ境界で落ちている");
     });
 
     // ------------------------------------------------------------
