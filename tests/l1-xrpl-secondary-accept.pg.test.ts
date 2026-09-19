@@ -13,6 +13,9 @@
 //  5. 1 バッチ 1 件: 2 件目の XRPL レーン候補は署名されず、行も無い（Base でも買わない）。
 //  6. 我々の側の XRPL 障害（署名の材料が読めない）: 1 件目は行なし、レーンを 1 回目で閉じ、以降の Base 先頭の
 //     レーン候補は Base の通常経路で買う（行を書かずに飛ばし続けない）。summary.xrplLaneClosed に理由。
+//  6b. 購入元（XRPL）の残高不足・残高が読めない（payer_unfunded・2026-09-19）も我々の側の理由: 1 件目は署名せず
+//      行なし、レーンを 1 回目で閉じ、以降の Base 先頭のレーン候補は Base の通常経路で買う。
+//      summary.xrplLaneClosed = "payer_unfunded"。Base の残高は別なので Base の購入は止まらない。
 //  7. 台帳の asset は定数の大文字 hex。壁が `RLUSD` リテラルを名乗っても行に原文を残さない。
 //  8. 1 ホストが多数の行を持つ形（本番の theaslangroup は約 1,600 件）: レーン枠は同一ホスト 2 件まで
 //     （budget.ts LANE_FLOOR_MAX_PER_HOST）、その上で 1 バッチ 1 件——1 回の cron で XRPL の署名は 1 件。
@@ -286,6 +289,37 @@ if (!TEST_DB) {
         assert.equal(rows[0].status, "settle_claimed");
       }
     });
+
+    for (const c of [
+      { name: "残高不足", xrplBalance: async (): Promise<bigint> => 0n },
+      { name: "残高が読めない", xrplBalance: async (): Promise<bigint> => { throw new Error("xrpl_fee_unfunded: 0 drops spendable after reserve < fee 12"); } },
+    ]) {
+      await t.test(`XRPL の購入元が payer_unfunded（${c.name}）: 1 件目は行なし、レーンを閉じ、以降の Base 先頭の行は Base で買う`, async () => {
+        process.env.OBSERVATORY_XRPL_L1_ENABLED = "true";
+        await seedItems([dualItem(3), dualItem(4), dualItem(5)]);
+        const w = wall();
+        const summary = await runL1Batch({
+          limit: 10,
+          fetchImpl: w.fetchImpl,
+          // XRPL の購入元だけ資金切れ。Base の残高は別（同じバッチで Base の購入は通る）。
+          getPayerUsdcBalance: async ({ chain }) => (chain === "xrpl" ? c.xrplBalance() : 1_000_000_000n),
+          getXrplSigningInputs: SIGNING,
+        });
+        assert.equal(summary.xrplLaneClosed, "payer_unfunded");
+        assert.equal(summary.payerUnfunded, 1, "1 回目で閉じる（残りの候補を資金切れのレーンへ流し続けない）");
+        assert.ok(!w.seen.some((s) => s.paid && s.acceptedNetwork === "xrpl:0"), "XRPL には署名しない");
+        const first = /dualseller(\d)/.exec(w.seen[0].url)![1];
+        assert.deepEqual(await ledgerFor(`https://dualseller${first}.example/api`), [], "1 件目は行なし（我々の資金切れを売り手の行にしない）");
+        for (const n of ["3", "4", "5"].filter((x) => x !== first)) {
+          const rows = await ledgerFor(`https://dualseller${n}.example/api`);
+          assert.equal(rows.length, 1, `dualseller${n} は Base の通常経路で買われる`);
+          assert.equal(rows[0].network, "eip155:8453");
+          assert.equal(rows[0].status, "settle_claimed");
+        }
+        const xrplSpent = await db.execute(sql`SELECT count(*)::int AS n FROM x402_l1_purchases WHERE network = 'xrpl:0'`);
+        assert.equal(((Array.isArray(xrplSpent) ? xrplSpent : (xrplSpent as { rows?: unknown[] }).rows ?? []) as { n: number }[])[0].n, 0, "XRPL の予約行は 1 つも無い");
+      });
+    }
 
     await t.test("台帳の asset は定数の大文字 hex: 壁とカタログが `RLUSD` リテラルでも行に原文を残さない", async () => {
       process.env.OBSERVATORY_XRPL_L1_ENABLED = "true";

@@ -80,20 +80,42 @@ if (!TEST_DB) {
       return row.id;
     };
 
-    const seedSettlement = async (txHash: string, amount: string, blockTime: Date) => {
+    const seedSettlement = async (txHash: string, amount: string, blockTime: Date, over: { payer?: string; payee?: string } = {}) => {
       await db.insert(schema.settlements).values({
         chain: CHAIN,
         txHash,
         purchaseId: `${CHAIN}:${txHash}`,
         asset: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
         amount,
-        payer: PAYER,
-        payee: PAY_TO,
+        payer: over.payer ?? PAYER,
+        payee: over.payee ?? PAY_TO,
         blockTime,
         source: "chain_index",
         attribution: "confirmed",
       });
     };
+
+    /** 署名済みで決済が確定していない行（2026-09-19）。settle_claimed_unverifiable は売り手の形式不正な主張を tx_hash に持つ。 */
+    const seedUnsettledPurchase = async (endpointId: string, status: string, txHash: string | null = null) => {
+      const [row] = await db
+        .insert(schema.x402L1Purchases)
+        .values({
+          endpointId,
+          status,
+          network: CHAIN,
+          payTo: PAY_TO,
+          payer: PAYER,
+          amountUnits: "1000",
+          spentUnits: "1000",
+          attemptedAt,
+          txHash,
+          httpStatusPaid: 200,
+        })
+        .returning();
+      return row.id;
+    };
+    const purchaseRow = async (id: string) =>
+      (await db.select().from(schema.x402L1Purchases).where(eq(schema.x402L1Purchases.id, id)))[0];
 
     await t.test("窓の内側の一致は settle_claimed へ戻り、tx_hash が入る", async () => {
       await reset();
@@ -173,6 +195,120 @@ if (!TEST_DB) {
 
       const summary = await recoverLateSettlements();
       assert.equal(summary.recovered, 1, "同じ tx を 2 行へ貼っている");
+    });
+
+    // 2026-09-19: settle_failed 以外にも「署名したが決済を名指せていない」行がある。
+    //   delivered_no_receipt        … 200 で品は来たがレシート無し（tx_hash は null）
+    //   settle_claimed_unverifiable … 売り手の主張した識別子が形式不正（tx_hash にその原文）
+    // どちらも署名は生きているので、索引に一致する決済が載れば同じ関門で回収する。
+    await t.test("delivered_no_receipt も一致する決済で settle_claimed へ戻り、訂正ログに元の status が残る", async () => {
+      await reset();
+      const purchaseId = await seedUnsettledPurchase(await seedEndpoint(), "delivered_no_receipt");
+      const tx = `0x${"66".repeat(32)}`;
+      await seedSettlement(tx, "1000", new Date(attemptedAt.getTime() + 90_000));
+
+      const summary = await recoverLateSettlements();
+      assert.deepEqual(summary.links, [{ purchaseId, txHash: tx }]);
+      const row = await purchaseRow(purchaseId);
+      assert.equal(row.status, "settle_claimed", "settled を名乗らせてはいけない（未照合）");
+      assert.equal(row.txHash, tx);
+      assert.equal(row.settlementVerified, null);
+      const late = (row.rawResponseMeta as { lateSettlement?: Record<string, unknown> }).lateSettlement;
+      assert.equal(late?.priorStatus, "delivered_no_receipt");
+      const log = await db.execute(sql`SELECT before, after FROM correction_log WHERE subject_id = ${purchaseId}`);
+      const entries = (Array.isArray(log) ? log : (log as { rows?: unknown[] }).rows ?? []) as { before: Record<string, unknown>; after: Record<string, unknown> }[];
+      assert.equal(entries.length, 1);
+      assert.deepEqual(entries[0].before, { status: "delivered_no_receipt", txHash: null });
+      assert.deepEqual(entries[0].after, { status: "settle_claimed", txHash: tx });
+    });
+
+    await t.test("settle_claimed_unverifiable は形式不正の主張を索引の tx に置き換え、原文を残す", async () => {
+      await reset();
+      const purchaseId = await seedUnsettledPurchase(await seedEndpoint(), "settle_claimed_unverifiable", "not-a-transaction-id");
+      const tx = `0x${"77".repeat(32)}`;
+      await seedSettlement(tx, "1000", new Date(attemptedAt.getTime() + 90_000));
+
+      assert.equal((await recoverLateSettlements()).recovered, 1);
+      const row = await purchaseRow(purchaseId);
+      assert.equal(row.status, "settle_claimed");
+      assert.equal(row.txHash, tx);
+      const late = (row.rawResponseMeta as { lateSettlement?: Record<string, unknown> }).lateSettlement;
+      assert.equal(late?.priorStatus, "settle_claimed_unverifiable");
+      assert.equal(late?.replacedTxHash, "not-a-transaction-id");
+    });
+
+    await t.test("広げた status でも照合条件は同じ: 額・宛先・払い元・窓のどれか 1 つでも違えば結びつけない", async () => {
+      const OTHER = "0x00000000000000000000000000000000000000aa";
+      const inWindow = new Date(attemptedAt.getTime() + 90_000);
+      const cases: { name: string; seed: () => Promise<void> }[] = [
+        { name: "額が違う", seed: () => seedSettlement(`0x${"81".repeat(32)}`, "999", inWindow) },
+        { name: "宛先が違う", seed: () => seedSettlement(`0x${"82".repeat(32)}`, "1000", inWindow, { payee: OTHER }) },
+        { name: "払い元が違う", seed: () => seedSettlement(`0x${"83".repeat(32)}`, "1000", inWindow, { payer: OTHER }) },
+        { name: "窓の外", seed: () => seedSettlement(`0x${"84".repeat(32)}`, "1000", new Date(attemptedAt.getTime() + 6 * 3600_000)) },
+      ];
+      for (const c of cases) {
+        await reset();
+        const noReceipt = await seedUnsettledPurchase(await seedEndpoint(), "delivered_no_receipt");
+        const unverifiable = await seedUnsettledPurchase(await seedEndpoint(), "settle_claimed_unverifiable", "not-a-transaction-id");
+        await c.seed();
+        assert.equal((await recoverLateSettlements()).recovered, 0, c.name);
+        assert.equal((await purchaseRow(noReceipt)).status, "delivered_no_receipt", c.name);
+        const row = await purchaseRow(unverifiable);
+        assert.equal(row.status, "settle_claimed_unverifiable", c.name);
+        assert.equal(row.txHash, "not-a-transaction-id", c.name);
+      }
+    });
+
+    await t.test("別の購入が既に使っている tx は、広げた status にも貼らない", async () => {
+      await reset();
+      const tx = `0x${"91".repeat(32)}`;
+      await db.insert(schema.x402L1Purchases).values({
+        endpointId: await seedEndpoint(),
+        status: "settled",
+        network: CHAIN,
+        payTo: PAY_TO,
+        payer: PAYER,
+        amountUnits: "1000",
+        spentUnits: "1000",
+        txHash: tx,
+        settlementVerified: true,
+      });
+      const noReceipt = await seedUnsettledPurchase(await seedEndpoint(), "delivered_no_receipt");
+      const unverifiable = await seedUnsettledPurchase(await seedEndpoint(), "settle_claimed_unverifiable", "not-a-transaction-id");
+      await seedSettlement(tx, "1000", new Date(attemptedAt.getTime() + 60_000));
+
+      assert.equal((await recoverLateSettlements()).recovered, 0);
+      assert.equal((await purchaseRow(noReceipt)).status, "delivered_no_receipt");
+      assert.equal((await purchaseRow(unverifiable)).status, "settle_claimed_unverifiable");
+    });
+
+    await t.test("1 本の tx は status をまたいでも 1 行にだけ貼る（先に試行した行）", async () => {
+      await reset();
+      const first = await seedFailedPurchase(await seedEndpoint());
+      const second = await seedUnsettledPurchase(await seedEndpoint(), "delivered_no_receipt");
+      const third = await seedUnsettledPurchase(await seedEndpoint(), "settle_claimed_unverifiable", "not-a-transaction-id");
+      await seedSettlement(`0x${"92".repeat(32)}`, "1000", new Date(attemptedAt.getTime() + 60_000));
+
+      const summary = await recoverLateSettlements();
+      assert.equal(summary.recovered, 1, "同じ tx を 2 行以上へ貼っている");
+      const statuses = [(await purchaseRow(first)).status, (await purchaseRow(second)).status, (await purchaseRow(third)).status];
+      assert.equal(statuses.filter((s) => s === "settle_claimed").length, 1);
+    });
+
+    await t.test("対象外の status（決済を確定済み・否定済み・署名していない行）は一致しても触らない", async () => {
+      await reset();
+      const ids: Record<string, string> = {};
+      for (const status of ["settle_claim_refuted", "request_error", "budget_denied", "in_flight", "price_mismatch"]) {
+        ids[status] = await seedUnsettledPurchase(await seedEndpoint(), status);
+      }
+      await seedSettlement(`0x${"93".repeat(32)}`, "1000", new Date(attemptedAt.getTime() + 60_000));
+
+      assert.equal((await recoverLateSettlements()).recovered, 0);
+      for (const [status, id] of Object.entries(ids)) {
+        const row = await purchaseRow(id);
+        assert.equal(row.status, status);
+        assert.equal(row.txHash, null);
+      }
     });
   });
 }

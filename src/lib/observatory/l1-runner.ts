@@ -136,9 +136,11 @@ export type L1BatchSummary = {
    * このバッチで XRPL のレーンを **我々の側の理由** で閉じたときの理由（2026-09-18 レビュー W1）。
    *   "signing_inputs_unavailable" 署名の材料（Sequence・validated ledger）を XRPL_RPC_URL から読めなかった
    *   "fee_over_cap"               網の open_ledger_fee が上限超（xrplFeeOverCap と同じ出来事）
+   *   "payer_unfunded"             XRPL の購入元の RLUSD（または手数料ぶんの XRP）が足りない／読めない
+   *                                （2026-09-19・payerUnfunded に数えた出来事。以降のレーン候補は Base へ戻す）
    * 1 件署名して閉じる通常の 1 バッチ 1 件は null のまま（それは障害ではない）。
    */
-  xrplLaneClosed: "signing_inputs_unavailable" | "fee_over_cap" | null;
+  xrplLaneClosed: "signing_inputs_unavailable" | "fee_over_cap" | "payer_unfunded" | null;
 };
 
 type Candidate = {
@@ -1115,7 +1117,7 @@ export async function runL1Batch(
   // XRPL 候補は候補選択の段階で外し、行を書かず別枠も減らさない（翌バッチにまた候補になる）。
   // 網の手数料が上限を超えていた（xrpl_fee_over_cap）ときも同じく、そのバッチの XRPL は閉じる。
   let xrplLaneClosed = false;
-  // 我々の側の XRPL 障害（署名の材料が読めない）で閉じたとき（2026-09-18 レビュー W1）。このときは
+  // 我々の側の XRPL 障害（署名の材料が読めない・購入元の資金切れ）で閉じたとき（2026-09-18 レビュー W1）。このときは
   // XRPL の accept を優先しないだけで、Base 先頭のレーン候補は **Base の通常経路へ落とす**
   // （行を書かずに飛ばし続けると、RPC が直るまでその売り手を誰の経路でも測れない）。
   // 主ネットワークが XRPL の行は他に買う経路が無いので飛ばす（同じ RPC を叩き直して request_error を積まない）。
@@ -1194,6 +1196,14 @@ export async function runL1Batch(
       } else if (outcome.kind === "payer_unfunded") {
         // 署名していない。summary.payerUnfunded は onPayerUnfunded が数える。残りの候補は
         // 安いものなら買える（バッチ内の署名額を差し引いた残高で比べる）ので歩き続ける。
+        // XRPL（2026-09-19）だけは 1 回目でレーンを閉じる: XRPL を優先したまま歩くと、残りのレーン候補は
+        // 全部ここへ落ちて行も書かれず、購入元に資金が戻るまで Base 先頭の売り手をどの経路でも測れない。
+        // 署名の材料が読めないときと同じく、以降の Base 先頭のレーン候補は Base の通常経路で買う
+        // （主ネットワークが XRPL の行は飛ばす）。残高はチェーンごとなので他チェーンの購入は止めない。
+        if (outcome.payerChain === "xrpl") {
+          xrplLaneUnavailable = true;
+          summary.xrplLaneClosed = "payer_unfunded";
+        }
       } else if (outcome.kind === "xrpl_fee_over_cap") {
         // 網の open_ledger_fee が上限超。署名していない・行も無い。このバッチの XRPL は閉じ、
         // 他チェーンの候補は歩き続ける。理由は summary とサーバログに残す。
@@ -1355,6 +1365,8 @@ async function purchaseOne(input: {
   haltReason?: string;
   /** 署名した accept の network（attempted のとき）。バッチ内のレーン支出の加算に使う。 */
   network?: string;
+  /** kind === "payer_unfunded" のとき、残高が足りなかった（読めなかった）購入元のチェーン。 */
+  payerChain?: PayerChain;
 }> {
   const { candidate, preferNetworks, xrplLanePreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge } = input;
   const method = (candidate.method ?? "GET").toUpperCase();
@@ -1688,7 +1700,7 @@ async function purchaseOne(input: {
   const funds = await payerFunds.check(payerChain, payerOwner, amount);
   if (!funds.ok) {
     onPayerUnfunded(payerChain, { ...funds, amountUnits: String(amount) });
-    return { kind: "payer_unfunded", settled: false, spent: 0n };
+    return { kind: "payer_unfunded", settled: false, spent: 0n, payerChain };
   }
 
   // Reserve BEFORE signing. This is the authoritative gate: it re-reads the

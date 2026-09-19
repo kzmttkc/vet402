@@ -351,6 +351,10 @@ if (!TEST_DB) {
         const summary = await runL1Batch({ limit: 10, fetchImpl: w.fetchImpl, getPayerUsdcBalance: reader, getXrplSigningInputs: SIGNING });
         assert.ok(!w.seen.some((s) => s.url.includes("xrplseller") && s.paid), "XRPL へ支払い付きは出ない");
         assert.ok(summary.payerUnfunded >= 1);
+        // 2026-09-19: 1 回目でレーンを閉じる。主ネットワークが XRPL の残り 2 件は同じ残高の関門へ流さず飛ばす。
+        assert.equal(summary.payerUnfunded, 1, "資金切れの XRPL へ残りの候補を流し続けない");
+        assert.equal(summary.xrplLaneClosed, "payer_unfunded");
+        assert.equal(w.seen.filter((s) => s.url.includes("xrplseller")).length, 1, "閉じた後の XRPL 候補には無払いのリクエストも出ない");
         for (const n of [1, 2, 3]) assert.deepEqual(await ledgerFor(`https://xrplseller${n}.example/api`), [], "行を書かない");
         assert.ok(w.seen.some((s) => s.url.includes("seller1.example") && s.paid), "Base は買う");
       }
