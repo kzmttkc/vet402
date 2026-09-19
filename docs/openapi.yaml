@@ -1843,8 +1843,9 @@ paths:
                       applied to totalEndpoints, byChain, coverage7d and the daily rollup
                       behind /api/v1/observatory/history (as of 2026-09-19; each rollup run
                       restates the trailing recomputeWindowDays days, so the step sits at the
-                      oldest day still inside that window at the first run after 2026-09-19
-                      and moves forward each day until the window has passed it).
+                      oldest day still inside that window at the first run after 2026-09-19,
+                      and that boundary then stays where it is — a restated day is not
+                      restated back).
                       This count does not distinguish "the denylist matched nothing" from
                       "the denylist is empty" — operatorExclusionConfigured does.
                   operatorExclusionConfigured:

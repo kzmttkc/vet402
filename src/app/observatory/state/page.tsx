@@ -328,9 +328,14 @@ export default async function ObservatoryStatePage() {
           up to a few minutes apart, so read that difference as of those reads rather than as a
           fixed count. The two denominators are otherwise the same set: both apply the
           same exclusion of endpoints paying vet402&apos;s own addresses.{" "}
-          {(stats.operatorExclusionConfigured ?? true)
-            ? `As this page was rendered that exclusion was taking out ${(stats.operatorEndpointsExcluded ?? 0).toLocaleString()} of them — the count is printed rather than the rule, so a day when it removes nothing reads as nothing removed.`
-            : "As this page was rendered no such address was on file, so the exclusion is a no-op here: it takes out nothing because there is nothing to take out, which is a different state from having checked and found none."}
+          {/* 2026-09-19 最終確認 Note: 値そのものが無いとき（デプロイ直後、固定キーの
+              unstable_cache が旧い形を返している 5 分間）は、件数の文を**出さない**。
+              `?? true` で倒すと「設定あり・除外 0 件」という、確かめていない側に読める。 */}
+          {stats.operatorExclusionConfigured === undefined
+            ? ""
+            : stats.operatorExclusionConfigured
+              ? `As this page was rendered that exclusion was taking out ${(stats.operatorEndpointsExcluded ?? 0).toLocaleString()} of them — the count is printed rather than the rule, so a day when it removes nothing reads as nothing removed.`
+              : "As this page was rendered no such address was on file, so the exclusion is a no-op here: it takes out nothing because there is nothing to take out, which is a different state from having checked and found none."}
         </p>
         {chainStats.length === 0 ? (
           <p className="doc-p text-brand-lift">No chain data yet.</p>

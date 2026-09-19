@@ -1485,3 +1485,17 @@ claims:
     check: null
     why_unverifiable: "2026-09-19 独立レビュー W5: 同じ主張を公開 GET の 1 式で検査できない（api_corrections_three_paths_through_the_ledger と同じ理由）"
     verified_at: 2026-09-19
+  # 2026-09-19 最終確認 Note: 2026-08-23 の事故の本体は「VET402_OPERATOR_PAYTO が本番で
+  # 外れていて、誰も気づけなかった」ことだった。気づく経路はこれまで logServerError 1 行
+  # （標準エラー出力だけ・health も ALERTS も動かない）しか無く、式にも書けなかった——
+  # 「除外が設定されているか」を公開面が持っていなかったため。この便で
+  # operatorExclusionConfigured を公開したので、**いまなら書ける**。env が外れた日に
+  # claims:canary が赤くなる。
+  - id: state_self_exclusion_is_configured
+    surface: src/app/observatory/state/page.tsx
+    quote: "same exclusion of endpoints paying vet402&apos;s own addresses."
+    means: "§1 と §2 の母数に自己除外が実際に掛かっている——名簿が空なら規則は no-op で、この文は空手形になる。真偽は API の operatorExclusionConfigured が出す（アドレスそのものは出さない）"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "operatorExclusionConfigured == true"
+    verified_at: 2026-09-19
