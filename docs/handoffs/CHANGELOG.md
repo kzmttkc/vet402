@@ -17,7 +17,9 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 - **何を変えたか**:
   - **R-C1** `docs/claims.yaml`: `check: null` の代わりに置いた根拠のうち、**テスト 7 本が実在しない名前**だった（`tests/catalog-diff.test.ts`・`tests/l1-budget.test.ts`・`tests/l1-budget.pg.test.ts`・`tests/l0-probe.test.ts`・`tests/l1-priority-hosts.test.ts`・`tests/settlement-verify.test.ts`・`tests/l2-schema.test.ts`）。実体は別名で全部あるので実在するものへ差し替え、どのテストが何を固定しているかまで書いた。ほかに出典の誤り 2 件——`delivery.ts` に `l2` は無い（実体は `l1-runner.ts:596` の `isDeliveryVerified`）、`release-packages.mjs` は `manifests[0]` のスコープ 1 つしか扱わない（`@vouchscore` へ出す経路はリポに無い）。**根拠が実在しないなら「登録すれば緑」と同じ**なので、`tests/claims-registry.test.ts` に「registry が名指す `src/…`・`tests/…`・`scripts/…`・`packages/…` のパスは全て実在する」検査を 1 本足した。
-  - **R-C2** `src/lib/claims/extract.ts`: 関門の穴が残っていた。直前が**空白や `(`** だと散文の `/*` が今もコメント扱いで、そこから**ファイル末尾まで**が無音で空白になっていた（レビュアーの実測 2 例を再現: `A trailing glob (/*) is never expanded…` → 抽出 0 件）。閉じないブロックコメントはコンパイルできないので、**閉じ `*/` が後ろに無ければ開きとして扱わない**ようにした（2 例とも検出されるようになった）。そのうえで **面ごとの検出数の下限**を `tests/claims-registry.test.ts` に焼いた（methodology ≥ 41・LP ≥ 10・docs/api ≥ 56・corrections ≥ 21・vocabulary ≥ 15・合計 ≥ 295）。折返しや書き方で検出が落ちたらここが赤くなる＝**黙って盲にならない**。
+  - **R-C2** `src/lib/claims/extract.ts`: 関門の穴が残っていた。直前が**空白や `(`** だと散文の `/*` が今もコメント扱いで、そこから**ファイル末尾まで**が無音で空白になっていた（レビュアーの実測 2 例を再現: `A trailing glob (/*) is never expanded…` → 抽出 0 件）。閉じないブロックコメントはコンパイルできないので、**閉じ `*/` が後ろに無ければ開きとして扱わない**ようにした。
+    **ただしこれで穴が塞がったわけではない。** `indexOf("*/")` はファイル全体を見るので、実ページのようにコメントが 1 つでもあれば条件は真になり、散文の `(/*)` は**次の本物の `*/` まで**を飲む。実測（2026-09-19）: `methodology/page.tsx` に `(/*)` を 1 つ入れると検出は **41 → 14**（27 件が消える）。抽出器の変更が消したのは「ファイル末尾まで無音で飲む」という無限の形だけで、**実際に塞いでいるのは下の床値検査**（14 < 41 で赤くなる＝無音ではなくなる）。
+  - **R-C2b** そのうえで **面ごとの検出数の下限**を `tests/claims-registry.test.ts` に焼いた。断定を 5 件以上載せている **16 面すべて**に床を置き（methodology ≥ 41・docs/api ≥ 56・corrections ≥ 21・accuracy ≥ 16・faq ≥ 15・vocabulary ≥ 15・terms ≥ 14・state ≥ 14・LP ≥ 10 ほか）、合計 ≥ 300。さらに「**5 件以上の面は床を持っていなければ赤**」という検査を足したので、新しく濃い面が増えても床の無いまま通らない。`scripts/` で床を生成する案は採らなかった——生成器は現状に合わせて床を**下げる**こともでき、下がったことを人が見落とせば同じ穴になる。床は手で書き、生成する代わりに「床を持つべき面」のほうを検査する。
   - **R-C3** `methodology/page.tsx`: 「73% of organic calls」の出典は `l1-runner.ts` と `observatory-l1-priority.test.ts` のコメントだけで、そこが引く「要件定義v2 2026-08-14 §0.5」はリポに無く、URL も著者も無い（`rikocr8orh8` は出所を特定できない）。**数字ごと落とし**、「独立に報告された需要から選んだ（社内記録 2026-08-14）／その第三者の数字は再測定しておらず、読者が確かめられる出所を示せない／今の需要は register の 30 日呼出数で判断できる」に留めた。
   - **R-W1** `tests/claims-registry.test.ts`: 引用の照合が面をまたいでいて、別の面に登録した文が**まったく別の面の断定**を黙って通していた。`c.surface === file` で絞った。増えた孤児は 1 件（`/api/v1/accuracy` の「A rate is published only at …」が `/accuracy` 頁の登録に覆われていた）で、実装（`benchmark-report.ts:122` の `den >= MIN_SAMPLE ? rate : null`）とテスト（`accuracy.test.ts` の境界 2 本）を確かめて API 面として登録した。
   - **R-W2** 唯一の `check` が主張を見ていなかった（`license == "CC-BY-4.0"`）。`cite` の文字列そのものを見る式に変えた。
@@ -25,14 +27,17 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
   - **R-W4** `methodology/page.tsx` の静的な「Four hosts」を `PRIORITY_SELLER_HOSTS.length` から描く形に。
   - **R-W5** §8「These pages publish facts …」を **"These observatory pages"** に 1 語だけ狭めた（`/leaderboard` との切り分けが claims.yaml の `means` にしか無かったのを、読者の見る頁に出した）。
   - **追加** `src/app/docs/api/page.tsx`: 上の裏取りで `@vouchscore/*` の「the same code」が**今は偽**と分かった（`npm view`: `@vet402/sdk` 0.6.0 / `@vouchscore/sdk` 0.3.0・maintainer はどちらも `vouchscore`）。「同じ npm アカウントから出ている・改名時の版で凍結・`@vet402/*` とは揃っていない」に直した。
+  - **Note** パス実在検査が裸のファイル名を見ていなかったので、根拠に出る唯一の裸名 `vercel.json`（cron の定義＝「日次」の根拠）と `docs/…` を網に入れた。`docs/` は直前が `/` なら拾わない（そうしないと `src/app/docs/api/page.tsx` の尻尾を `docs/api/page.tsx` と誤検出する・実測）。抽出は 91 パス・欠落 0。
+  - **Note** 上の R-C2 の 2 本のテストは「他にコメントが 1 つも無い fixture」なので、**実ページと違う理由で通っていた**。実ページ相当（後方に本物の `*/` がある）の fixture を足し、「これは床値が捕まえる／抽出器ではない」をテスト名と本文に書いた。
 
-- **そちらが知っておくべき影響**: 公開文言が変わったのは methodology §6（73% を落とした）・§8（1 語）・§6 の「Four hosts」、および docs/api の npm スコープの段。カナリアは 58 件のまま（1 件の式が `license` → `cite` に変わっただけ）。関門のテストは 32 → 35 本。
+- **そちらが知っておくべき影響**: 公開文言が変わったのは methodology §6（73% を落とした）・§8（1 語）・§6 の「Four hosts」、および docs/api の npm スコープの段。カナリアは 58 件のまま（1 件の式が `license` → `cite` に変わっただけ）。関門のテストは 32 → 37 本。
 
-- **残る懸念**: 抽出器の `CODE_SHAPED` が散文の `…2026),` を「コード」と読んでテキストノードごと落とす。今回それを自分の copy edit で踏み、docs/api の検出が 56 → 55 に落ちたのを**下限検査が捕まえた**（文言を戻して 56 に復帰）。`)` の扱いを緩めると 40 面すべてにコード断片が混じるので今回は触っていない。下限検査があるので黙って落ちることはない。
+- **残る懸念（1）**: 散文の `(/*)` は実ページでは今も次の `*/` まで飲む（上の R-C2）。抽出器を本当に直すには JSX を構文解析するしかなく、今回はやっていない。床値検査が唯一の防波堤なので、**床を下げる差分は必ずレビューで見てほしい**。
+- **残る懸念（2）**: 抽出器の `CODE_SHAPED` が散文の `…2026),` を「コード」と読んでテキストノードごと落とす。今回それを自分の copy edit で踏み、docs/api の検出が 56 → 55 に落ちたのを**下限検査が捕まえた**（文言を戻して 56 に復帰）。`)` の扱いを緩めると 40 面すべてにコード断片が混じるので今回は触っていない。下限検査があるので黙って落ちることはない。
 
 ---
 
-## 2026-09-19 JST — 主張の関門が公開面の 430 行を見ていなかった穴を塞いだ（vet402.com コア・ブランチ `fix/claims-gate-coverage`・`fix/public-surface-truth` の上・push は依頼元）
+## 2026-09-19 JST — 主張の関門が公開面の 430 行を見ていなかった穴を塞いだ（vet402.com コア・ブランチ `fix/claims-gate-coverage`・2026-09-19 に origin/main `50bcb0e` へ載せ替え済み・push は依頼元）
 
 - **何を変えたか**:
   - **G1** `src/lib/claims/extract.ts` の `stripComments`: 散文に出るスラッシュをブロックコメント／行コメントの開きと誤読し、そこから次の閉じまでを空白に潰していた。`/observatory/methodology` は `<code>/files/*</code>`（§6）で **430 行**、LP は `@vet402/*` で **25 行**が関門の外にいた。同じ形で `/ethonline` は JSX テキストに裸で置いた `https://…` の `//` で行の後半を、`TrackedLink.tsx` は正規表現の `\/` で行の残りを失っていた。JS/TS のコメントは前のトークンにくっつかないので、直前の 1 文字が語・パス・URL のスキーム・エスケープ・JSX テキストの先頭（`>`）なら開きとして扱わない（`opensComment`）。迷ったらコメントでない側に倒す——落として関門が盲になるより、拾って登録を迫られるほうが安全。

@@ -156,8 +156,12 @@ export function stripComments(src: string): string {
     // 「the suffix /* is never expanded」はここで落ちる——直前が空白や `(` だと
     // opensComment を通ってしまい、**そこからファイル末尾まで**が無音で空白に
     // なっていた（2026-09-19 レビュー C2 の実測 2 例）。
-    // これでも「後ろに本物の `*/` がある」場合までは防げないので、面ごとの
-    // 検出数の下限を tests/claims-registry.test.ts に焼いてある。
+    // **これは穴を塞いでいない。** 実ページには必ずコメントがあるので
+    // `indexOf("*/")` は真になり、散文の `(/*)` は次の本物の `*/` まで飲む。
+    // 実測（2026-09-19）: methodology/page.tsx に `(/*)` を 1 つ入れると検出が
+    // 41 → 14 に落ちる。塞いでいるのは tests/claims-registry.test.ts の
+    // DETECTION_FLOOR（14 < 41 で赤くなる）で、ここが消しているのは
+    // 「ファイル末尾まで無音で飲む」という無限の形だけ。
     if (
       c === "/" &&
       src[i + 1] === "*" &&

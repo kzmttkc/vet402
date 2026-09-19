@@ -110,7 +110,11 @@ test("extractor still strips a real block comment that follows prose with a slas
 test("extractor does not swallow the file when prose contains an unclosed /*", () => {
   // 2026-09-19 レビュー C2 の実測 2 例。直前が空白や `(` だと opensComment を
   // 通り、閉じが無いので**そこからファイル末尾まで**が無音で空白になっていた。
-  // 閉じないブロックコメントはコンパイルできないので、実物なら必ず `*/` がある。
+  // 閉じないブロックコメントはコンパイルできないので、これは開きではない。
+  //
+  // 注意: この 2 例が通るのは「ファイル内に本物の `*/` が 1 つも無い」から。
+  // 実ページには必ずコメントがあるので、この経路だけでは塞がらない——下の
+  // テストがその実物どおりの形で、何が捕まえるのかを書いてある。
   const a = extractAssertions(
     `const j = <p>A trailing glob (/*) is never expanded, and the endpoint is always skipped.</p>;`,
     "x.tsx",
@@ -118,6 +122,24 @@ test("extractor does not swallow the file when prose contains an unclosed /*", (
   assert.deepEqual(a.map((x) => x.term).sort(), ["always", "never"]);
   const b = extractAssertions(`const j = <p>the suffix /* is never expanded</p>;`, "x.tsx");
   assert.deepEqual(b.map((x) => x.term), ["never"]);
+});
+
+test("a prose /* on a real page still swallows to the next comment — this is what DETECTION_FLOOR catches, not the extractor", () => {
+  // 正直に固定する。実ページはコメントを持つので `src.indexOf("*/")` は真になり、
+  // 散文の `(/*)` は**次の本物の `*/` まで**を飲む。実測（2026-09-19）:
+  // methodology/page.tsx に `(/*)` を 1 つ入れると検出が 41 → 14 へ落ちた。
+  // 抽出器はここを塞げていない。塞いでいるのは検出数の床（14 < 41 で赤くなる）。
+  // 次にこの周りを触る人が「もう安全」と誤解しないよう、形のまま残す。
+  const src = [
+    `const j = (`,
+    `  <p>A trailing glob (/*) is never expanded.</p>`,
+    `);`,
+    `{/* a real comment further down closes the fake opener */}`,
+    `const k = <p>every endpoint is probed daily</p>;`,
+  ].join("\n");
+  const terms = extractAssertions(src, "x.tsx").map((t) => t.term);
+  assert.ok(!terms.includes("never"), "前提が変わった: 散文の (/*) が飲まなくなったなら、このテストと床の説明を書き直すこと");
+  assert.deepEqual(terms.sort(), ["daily", "every"], "飲まれる範囲が変わった");
 });
 
 test("extractor does not read a bare URL in JSX text as a line comment", () => {
@@ -409,14 +431,14 @@ test("every file path named anywhere in the registry exists", () => {
   // 全部あったが、根拠が実在しないなら「登録すれば緑」と同じこと。
   // 人が名前を思い出して書く限り同じ誤りは再発するので、経路に関門を置く。
   const registrySrc = read("docs/claims.yaml");
-  const referenced = new Set(
-    // `src/…` / `tests/…` / `scripts/…` / `packages/…` で始まり拡張子で終わるもの。
-    // 末尾の読点・括弧・引用符は拾わない。`packages/*/package.json` のような
-    // グロブは実在判定にかけられないので除く。
-    (registrySrc.match(/\b(?:src|tests|scripts|packages)\/[\w./@[\]-]*\.\w+\b/g) ?? []).filter(
-      (p) => !p.includes("*"),
-    ),
-  );
+  // `src/…` `tests/…` `scripts/…` `packages/…` `docs/…` と、根拠に出る唯一の
+  // 裸のファイル名 `vercel.json`（cron の定義＝「日次」の根拠）。
+  // 直前が `/` や語なら拾わない——そうしないと `src/app/docs/api/page.tsx` の
+  // 尻尾が `docs/api/page.tsx` として誤検出される（実測）。
+  // `packages/*/package.json` のようなグロブは実在判定にかけられないので除く。
+  const PATH_RE =
+    /(?<![\w/.@-])(?:src|tests|scripts|packages|docs)\/[\w./@[\]-]*\.\w+\b|(?<![\w/.-])vercel\.json\b/g;
+  const referenced = new Set((registrySrc.match(PATH_RE) ?? []).filter((p) => !p.includes("*")));
   assert.ok(referenced.size > 20, `registry should reference files; found ${referenced.size}`);
 
   const missing = [...referenced].filter((p) => !existsSync(join(ROOT, p))).sort();
@@ -508,22 +530,57 @@ test("no unregistered assertive claim ships on a public surface", () => {
  * それが狙い（黙って下がらない）。
  */
 const DETECTION_FLOOR: Record<string, number> = {
-  "src/app/observatory/methodology/page.tsx": 41,
-  "src/app/page.tsx": 10,
-  "src/app/docs/api/page.tsx": 56,
+  "src/app/accuracy/page.tsx": 16,
+  "src/app/api/v1/accuracy/route.ts": 5,
   "src/app/corrections/page.tsx": 21,
+  "src/app/docs/api/page.tsx": 56,
+  "src/app/impact/page.tsx": 9,
+  "src/app/leaderboard/page.tsx": 5,
+  "src/app/legal/privacy/page.tsx": 8,
+  "src/app/legal/terms/page.tsx": 14,
+  "src/app/observatory/methodology/page.tsx": 41,
+  "src/app/observatory/page.tsx": 8,
+  "src/app/observatory/state/page.tsx": 14,
+  "src/app/operator-log/page.tsx": 7,
+  "src/app/page.tsx": 10,
+  "src/app/status/page.tsx": 7,
+  "src/components/site/faq-data.ts": 15,
   "src/lib/observatory/vocabulary.ts": 15,
 };
-const TOTAL_DETECTION_FLOOR = 295;
+const TOTAL_DETECTION_FLOOR = 300;
+
+/**
+ * 床を必ず持たせる線。これ以上の断定を載せている面は、床の無いまま増やせない。
+ *
+ * 面ごとの床を手で選ぶと、選ばれなかった面が黙って落ちる余地が残る
+ * （2026-09-19 レビュー W3: 床が 5 面しか無く、残り 135 面は合計の余白ぶん
+ * まで無音で減れた）。`scripts/` で床を書き出す案もあったが、生成器は
+ * 「現状に合わせて床を**下げる**」こともできてしまい、下がったことを人が
+ * 見落とせば同じ穴になる。だから生成せず、**床を持つべき面を検査する**。
+ * 新しく濃い面が増えたらこのテストが赤くなり、床を書くまで通らない。
+ */
+const FLOOR_REQUIRED_AT = 5;
+
+test("every recorded floor points at a surface that is still scanned", () => {
+  // 面が改名・削除されると、その床は誰にも当たらないまま残る（黙って保護が消える）。
+  const surfaces = new Set(publicSurfaces());
+  const stale = Object.keys(DETECTION_FLOOR).filter((k) => !surfaces.has(k)).sort();
+  assert.deepEqual(stale, [], `DETECTION_FLOOR names surfaces that are no longer scanned:\n  ${stale.join("\n  ")}`);
+});
 
 test("the extractor does not go blind: per-surface detection counts hold their floor", () => {
   let total = 0;
   const shortfalls: string[] = [];
+  const unprotected: string[] = [];
   for (const file of publicSurfaces()) {
     const n = extractAssertions(read(file), file).length;
     total += n;
     const floor = DETECTION_FLOOR[file];
-    if (floor !== undefined && n < floor) shortfalls.push(`${file}: ${n} < ${floor}`);
+    if (floor === undefined) {
+      if (n >= FLOOR_REQUIRED_AT) unprotected.push(`${file}: ${n}`);
+      continue;
+    }
+    if (n < floor) shortfalls.push(`${file}: ${n} < ${floor}`);
   }
   assert.deepEqual(
     shortfalls,
@@ -531,6 +588,13 @@ test("the extractor does not go blind: per-surface detection counts hold their f
     `Detected assertions dropped below the recorded floor:\n  ${shortfalls.join("\n  ")}\n` +
       `Either the extractor went blind on part of a surface (fix it), or prose was deliberately\n` +
       `removed (lower the floor in the same commit, so the drop is visible in review).`,
+  );
+  assert.deepEqual(
+    unprotected,
+    [],
+    `These surfaces carry ${FLOOR_REQUIRED_AT}+ assertions but have no floor, so the extractor\n` +
+      `could go blind on them without anything failing. Add them to DETECTION_FLOOR:\n  ` +
+      unprotected.join("\n  "),
   );
   assert.ok(
     total >= TOTAL_DETECTION_FLOOR,
