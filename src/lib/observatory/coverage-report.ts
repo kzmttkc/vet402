@@ -5,6 +5,7 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { rowsOf } from "@/lib/settlements/upsert";
+import { operatorExclusionPredicate } from "./operator-sql";
 
 export type CoverageWeekly = {
   window_days: 7;
@@ -36,10 +37,13 @@ export async function getCoverageWeekly(): Promise<CoverageWeekly> {
   const r = rowsOf<Record<string, number>>(
     await db.execute(sql`
       SELECT
-        (SELECT count(*)::int FROM x402_endpoints e WHERE e.status = 'active' AND e.last_seen_at > now() - interval '30 days') AS listed,
         (SELECT count(*)::int FROM x402_endpoints e WHERE e.status = 'active' AND e.last_seen_at > now() - interval '30 days'
+           AND ${operatorExclusionPredicate("e")}) AS listed,
+        (SELECT count(*)::int FROM x402_endpoints e WHERE e.status = 'active' AND e.last_seen_at > now() - interval '30 days'
+           AND ${operatorExclusionPredicate("e")}
            AND EXISTS (SELECT 1 FROM x402_l0_probes p WHERE p.endpoint_id = e.id AND p.probed_at > now() - interval '7 days')) AS l0,
         (SELECT count(*)::int FROM x402_endpoints e WHERE e.status = 'active' AND e.last_seen_at > now() - interval '30 days'
+           AND ${operatorExclusionPredicate("e")}
            AND EXISTS (SELECT 1 FROM x402_l1_purchases pu WHERE pu.endpoint_id = e.id AND pu.attempted_at > now() - interval '7 days')) AS l1,
         (SELECT count(*)::int FROM settlements s WHERE coalesce(s.block_time, s.observed_at) > now() - interval '7 days' AND s.wash_flag = 'none') AS real,
         (SELECT count(*)::int FROM settlements s WHERE coalesce(s.block_time, s.observed_at) > now() - interval '7 days') AS raw

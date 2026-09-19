@@ -1839,11 +1839,21 @@ paths:
                     description: >-
                       How many catalog endpoints were left out of every count in this
                       response because they pay an address vet402 controls — a measurer
-                      is not a neutral third party in its own numbers. 0 means nothing
-                      matched, not that the rule is off; the same exclusion is applied to
-                      totalEndpoints, byChain, coverage7d and the daily rollup behind
-                      /api/v1/observatory/history (from 2026-09-19; earlier rollup rows
-                      were not rewritten, so a series spanning that date can step at it).
+                      is not a neutral third party in its own numbers. The same exclusion is
+                      applied to totalEndpoints, byChain, coverage7d and the daily rollup
+                      behind /api/v1/observatory/history (as of 2026-09-19; each rollup run
+                      restates the trailing recomputeWindowDays days, so the step sits at the
+                      oldest day still inside that window at the first run after 2026-09-19
+                      and moves forward each day until the window has passed it).
+                      This count does not distinguish "the denylist matched nothing" from
+                      "the denylist is empty" — operatorExclusionConfigured does.
+                  operatorExclusionConfigured:
+                    type: boolean
+                    description: >-
+                      Whether that exclusion list is configured at all. false means the rule
+                      is a no-op on this response, whatever operatorEndpointsExcluded says;
+                      true with operatorEndpointsExcluded 0 means the rule is on and nothing
+                      matched. The addresses themselves are not published.
                   latestSnapshot:
                     type: object
                     nullable: true

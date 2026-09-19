@@ -245,6 +245,40 @@ if (!TEST_DB) {
     await t.test("the aggregate publishes how many rows the exclusion actually removed", async () => {
       const stats = await getObservatoryStats();
       assert.equal(stats.operatorEndpointsExcluded, 1, "one seeded endpoint pays the operator address");
+      assert.equal(stats.operatorExclusionConfigured, true, "the denylist is set in this test");
+    });
+
+    // 2026-09-19 最終確認 H3: 件数 0 は「一致が無かった」と「名簿が空＝規則が no-op」を
+    // 区別できない。真偽で分ける。**アドレスそのものは出さない。**
+    await t.test("an empty denylist reads as unconfigured, not as a clean zero", async () => {
+      const saved = process.env.VET402_OPERATOR_PAYTO;
+      process.env.VET402_OPERATOR_PAYTO = "";
+      try {
+        const stats = await getObservatoryStats();
+        assert.equal(stats.operatorExclusionConfigured, false);
+        assert.equal(stats.operatorEndpointsExcluded, 0, "空の名簿では一致 0 件——件数だけでは見分けられない");
+        assert.equal(stats.totalEndpoints, 2, "除外が no-op なので自社の endpoint も数に入る");
+      } finally {
+        if (saved === undefined) delete process.env.VET402_OPERATOR_PAYTO;
+        else process.env.VET402_OPERATOR_PAYTO = saved;
+      }
+    });
+
+    // 2026-09-19 最終確認 Note: 母集団の 5 つ目（/api/v1/accuracy の coverageWeekly）にも
+    // 同じ述語を通した。
+    await t.test("coverageWeekly counts the same population", async () => {
+      const { getCoverageWeekly } = await import("@/lib/observatory/coverage-report");
+      const before = await getCoverageWeekly();
+      assert.equal(before.listed, 1, "the operator's own endpoint must not pad the weekly coverage denominator");
+      const saved = process.env.VET402_OPERATOR_PAYTO;
+      process.env.VET402_OPERATOR_PAYTO = "";
+      try {
+        const unconfigured = await getCoverageWeekly();
+        assert.equal(unconfigured.listed, 2, "名簿が空なら除外は no-op——同じ述語を通っている証拠");
+      } finally {
+        if (saved === undefined) delete process.env.VET402_OPERATOR_PAYTO;
+        else process.env.VET402_OPERATOR_PAYTO = saved;
+      }
     });
   });
 

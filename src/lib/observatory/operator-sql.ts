@@ -79,6 +79,21 @@ export function operatorExclusionPredicate(alias: string): SQL {
 }
 
 /**
+ * 自己除外が**設定されているか**（denylist に 1 件でも入っているか）。
+ *
+ * `operatorEndpointsExcluded`（一致した件数）は「空」と「一致 0 件」を区別できない——
+ * どちらも 0 になる。2026-08-23 に env が実際に外れていた前歴がある以上、0 を見て
+ * 「規則は効いているが一致が無いだけ」と断定するのは「測っていないことを言わない」に
+ * 反する。区別を機械可読に出す（2026-09-19 最終確認 H3）。
+ *
+ * **アドレスそのものは返さない。** 出すのは真偽だけ——誰を外しているかは運用の内部事情で、
+ * 引用される事実ではない（`spendingHalted` の source を出さないのと同じ作法）。
+ */
+export function isOperatorExclusionConfigured(): boolean {
+  return operatorPayToDenylist().length > 0;
+}
+
+/**
  * 上の否定——「この行は運営自身のもの」。除外が**今日何件取り除いているか**を
  * 数えて公開面に出すために使う（効いていない除外を、効いている保証のように書かないため）。
  */

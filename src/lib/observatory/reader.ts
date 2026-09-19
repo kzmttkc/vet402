@@ -26,7 +26,7 @@ import {
 import { CATALOG_SOURCE } from "./catalog-source";
 import { publishedVerdict, MIN_CONSECUTIVE_FAILS_TO_PUBLISH } from "./l0-probe";
 import { isOperatorPayTo } from "./operator";
-import { operatorExclusionPredicate, operatorMatchPredicate } from "./operator-sql";
+import { isOperatorExclusionConfigured, operatorExclusionPredicate, operatorMatchPredicate } from "./operator-sql";
 import { chainLabel, isTestnet } from "./chains";
 import { deliveredPredicate, heldReasonSql, inconclusivePredicate, inconclusiveSettledPredicate } from "./delivery";
 import {
@@ -745,6 +745,12 @@ export type ObservatoryStats = {
    */
   operatorEndpointsExcluded: number;
   /**
+   * 自己除外の名簿が設定されているか。`operatorEndpointsExcluded` の 0 が
+   * 「一致が無かった」なのか「名簿が空＝規則が効いていない」なのかを分ける
+   * （2026-09-19 最終確認 H3）。**誰を外しているかは出さない。**
+   */
+  operatorExclusionConfigured: boolean;
+  /**
    * 主カタログ（CDP Bazaar）の最新スナップショット。**別カタログの行を混ぜない**——
    * 2026-09-19 まではタイブレークが無く、Tempo の mpp_directory の「取得が不完全」が
    * Bazaar 側の件数の見出しに付いていた。
@@ -802,6 +808,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       byChain: [],
     },
     operatorEndpointsExcluded: 0,
+    operatorExclusionConfigured: isOperatorExclusionConfigured(),
     latestSnapshot: null,
     catalogSnapshots: [],
   };
@@ -1080,6 +1087,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
         settleDrop: ev.settle_drop ?? 0,
       },
       operatorEndpointsExcluded,
+      operatorExclusionConfigured: isOperatorExclusionConfigured(),
       latestSnapshot: snap,
       catalogSnapshots: [...latestBySource.values()].sort((a, b) => a.source.localeCompare(b.source)),
     };

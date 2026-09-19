@@ -60,7 +60,14 @@ test("denylist に値があれば除外の式を返す（句ではなく式—�
 
 test("denylist が空なら no-op の式を返し、1 プロセス 1 回だけ鳴らす", () => {
   withEnv("", () => {
-    const first = capturingStderr(() => operatorExclusionPredicate("e"));
+    let predicate: unknown;
+    const first = capturingStderr(() => {
+      predicate = operatorExclusionPredicate("e");
+    });
+    // 2026-09-19 最終確認 Note: l1-runner の候補 SQL は以前「句ごと空」だった。
+    // いまは `AND ${predicate}` を継ぐので、空のとき **ちょうど `true`** でなければ
+    // 買い手の候補集合が変わってしまう。動作が変わらないことをここで縛る。
+    assert.match(JSON.stringify(predicate), /"true"/);
     assert.equal(first.length, 1, "空の denylist は必ず鳴らす（2026-08-23 の事故の本体）");
     assert.match(first[0], /operator_denylist_empty/);
     const second = capturingStderr(() => operatorExclusionPredicate("e"));

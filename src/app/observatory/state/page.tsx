@@ -124,8 +124,11 @@ export default async function ObservatoryStatePage() {
   const catalogSnapshots = stats.catalogSnapshots ?? [];
   // §2 の分母は §1 の分母から testnet を落としたもの。差を語で言い切らず、
   // 両方の実数とその差を出す（2026-09-19 再レビュー V2・W1）。
+  // §2 の分母は「§1 の分母から testnet を落としたもの」。差を語で言い切らず、両方の実数を
+  // 出して読み手に引かせる。**差そのものは印字しない**（2026-09-19 最終確認 Note）——
+  // この 2 つは別々にキャッシュされた読み取り（observatory:stats と stats-by-chain、各 300s）
+  // なので、取り込みのズレが「testnet の件数」として断定され、負なら 0 に丸められていた。
   const chainTotal = chainStats.reduce((n, c) => n + c.totalEndpoints, 0);
-  const testnetGap = Math.max(0, denom - chainTotal);
   const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   const dataset = datasetJsonLd({
@@ -320,13 +323,14 @@ export default async function ObservatoryStatePage() {
           only; testnet listings (Base Sepolia, Solana devnet, Arc testnet) are excluded below.
           That makes this table&apos;s denominator narrower than the one in §1, which counts every
           listing on record including testnets: the rows here sum to{" "}
-          {chainTotal.toLocaleString()}, against {denom.toLocaleString()} in §1, and the{" "}
-          {testnetGap.toLocaleString()} listing{testnetGap === 1 ? "" : "s"} in between are the
-          testnet ones this table drops. The two denominators are otherwise the same set: both apply the
-          same exclusion of endpoints paying vet402&apos;s own addresses, and that exclusion is
-          taking out {stats.operatorEndpointsExcluded.toLocaleString()} of them as this page was
-          rendered — the count is printed rather than the rule, so a day when it removes nothing
-          reads as nothing removed.
+          {chainTotal.toLocaleString()}, against {denom.toLocaleString()} in §1, and the testnet
+          listings this table drops are the difference. The two figures come from separate reads,
+          up to a few minutes apart, so read that difference as of those reads rather than as a
+          fixed count. The two denominators are otherwise the same set: both apply the
+          same exclusion of endpoints paying vet402&apos;s own addresses.{" "}
+          {(stats.operatorExclusionConfigured ?? true)
+            ? `As this page was rendered that exclusion was taking out ${(stats.operatorEndpointsExcluded ?? 0).toLocaleString()} of them — the count is printed rather than the rule, so a day when it removes nothing reads as nothing removed.`
+            : "As this page was rendered no such address was on file, so the exclusion is a no-op here: it takes out nothing because there is nothing to take out, which is a different state from having checked and found none."}
         </p>
         {chainStats.length === 0 ? (
           <p className="doc-p text-brand-lift">No chain data yet.</p>

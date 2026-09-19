@@ -39,6 +39,7 @@ import { createDeadline } from "@/lib/util/deadline";
 import { CHAIN_DAILY_CAPS, LANE_FLOOR_FETCH_MAX, LANE_FLOOR_MAX_PER_HOST, LANE_FLOOR_OVERSAMPLE, cappedChainFor, chainDailyCapUnits, checkL1Budget, isL1Enabled, laneFloorPerRun, DAILY_BUDGET_USD, type CappedChain } from "./budget";
 import { isSpendingHalted, type HaltVerdict } from "./kill-switch";
 import { addDerivedOperatorAddresses, isOperatorPayTo, operatorPayToDenylist } from "./operator";
+import { operatorExclusionPredicate } from "./operator-sql";
 import {
   ARC_CAIP2,
   ARC_CHAIN,
@@ -963,13 +964,10 @@ export async function runL1Batch(
   //    follows by observed demand and is swept once per SWEEP_WINDOW_DAYS.
   //    (要件定義v2 2026-08-14 §2.1-2: concentrate the daily budget on repeat
   //    purchases of the endpoints buyers depend on, not one-shot coverage.)
-  const denylist = operatorPayToDenylist();
-  const selfExclusion = denylist.length
-    ? sql`AND (e.pay_to IS NULL OR lower(e.pay_to) <> ALL(ARRAY[${sql.join(
-        denylist.map((a) => sql`${a}`),
-        sql`, `,
-      )}]::text[]))`
-    : sql``;
+  // 2026-09-19 最終確認 Note: 読み取り経路の逐語コピーは operator-sql.ts へ寄せた。
+  // 買い手側に残っていたこの 1 箇所も同じ述語を通す（denylist が空なら `AND true` で、
+  // 以前の「句ごと空」と結果は同じ。違いは、空なら 1 回鳴ること）。
+  const selfExclusion = sql`AND ${operatorExclusionPredicate("e")}`;
   // 候補 SQL は settlement_daily を読む（C2 の 30 日窓が生行の保持期間へ縮まないため）。
   // 表がまだ無い環境では生行だけの式へ落とす（withDailyFallback）。
   const targetsSql = (daily: boolean, lane?: { chain: CappedChain; networkLike: string; limit: number }) => sql`
