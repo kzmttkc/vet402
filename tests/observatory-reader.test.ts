@@ -231,6 +231,21 @@ if (!TEST_DB) {
       const stats = await getObservatoryStats();
       assert.equal(total, stats.totalEndpoints, "§1 and §2 must count the same population (no testnets seeded here)");
     });
+
+    // 2026-09-19 再レビュー V1: 同じ述語が 4 つ目の読み取り（coverage7d）に無く、母集団が
+    // もう 1 つ残っていた。除外は operator-sql.ts の 1 本を全員が通る。
+    await t.test("coverage7d counts the same population as the headline total", async () => {
+      const { getCoverageShare } = await import("@/lib/observatory/reader");
+      const coverage = await getCoverageShare();
+      assert.equal(coverage.activeEndpoints, 1, "the operator's own active endpoint must not pad the coverage denominator");
+    });
+
+    // 2026-09-19 再レビュー V2: 「自社を外している」を文で保証しない。除外が今日
+    // 何件取り除いたかを出す（0 は「効いていない」ではなく「取り除く行が無かった」）。
+    await t.test("the aggregate publishes how many rows the exclusion actually removed", async () => {
+      const stats = await getObservatoryStats();
+      assert.equal(stats.operatorEndpointsExcluded, 1, "one seeded endpoint pays the operator address");
+    });
   });
 
   // 2026-09-19 公開面監査 B1: snapshot は (snapshot_date, source) の複合キーで、毎日

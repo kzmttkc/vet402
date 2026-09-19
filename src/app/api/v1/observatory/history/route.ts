@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
         recomputeWindowDays: window,
         semantics: `Daily rollup, recomputed for the trailing ${window} days on each run; late settlements are folded in on the next run, so a day older than that window is frozen until a backfill. Attempts use the same paid-attempt denominator as /api/v1/observatory/state. For live totals use /api/v1/observatory/state.`,
         disclaimer:
-          "Daily L0/L1 aggregates per chain, rolled up from the same raw measurements the Observatory publishes. Counts with denominators, not an assessment. Chain 'unknown' means neither the payment rail nor the catalog row declares a network.",
+          "Daily L0/L1 aggregates per chain, rolled up from the same raw measurements the Observatory publishes. Counts with denominators, not an assessment. Chain 'unknown' means neither the payment rail nor the catalog row declares a network. Endpoints paying vet402's own addresses are left out of the rollup from 2026-09-19 onward, matching /api/v1/observatory/state; rows rolled up before that date were not rewritten to match, because this ledger is not edited in place, so a series that spans that date can step at it.",
         humanReadable: "https://vet402.com/observatory/state",
         methodology: "https://vet402.com/observatory/methodology",
       },

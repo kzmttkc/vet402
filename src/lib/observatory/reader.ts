@@ -25,7 +25,8 @@ import {
 } from "@/lib/db/schema";
 import { CATALOG_SOURCE } from "./catalog-source";
 import { publishedVerdict, MIN_CONSECUTIVE_FAILS_TO_PUBLISH } from "./l0-probe";
-import { isOperatorPayTo, operatorPayToDenylist } from "./operator";
+import { isOperatorPayTo } from "./operator";
+import { operatorExclusionPredicate, operatorMatchPredicate } from "./operator-sql";
 import { chainLabel, isTestnet } from "./chains";
 import { deliveredPredicate, heldReasonSql, inconclusivePredicate, inconclusiveSettledPredicate } from "./delivery";
 import {
@@ -737,6 +738,13 @@ export type ObservatoryStats = {
     byChain: L1ChainStats[];
   };
   /**
+   * 運営自身（vet402）の endpoint として、上のどの数からも取り除かれた件数。
+   * **0 は「除外が効いていない」ではなく「取り除く行が無かった」**——vet402 が
+   * 自分の endpoint をカタログに載せていなければ 0 になる。denylist そのものが
+   * 空なら operator-sql.ts が鳴らす（この数では区別できない）。
+   */
+  operatorEndpointsExcluded: number;
+  /**
    * 主カタログ（CDP Bazaar）の最新スナップショット。**別カタログの行を混ぜない**——
    * 2026-09-19 まではタイブレークが無く、Tempo の mpp_directory の「取得が不完全」が
    * Bazaar 側の件数の見出しに付いていた。
@@ -793,6 +801,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       lastAttemptAt: null,
       byChain: [],
     },
+    operatorEndpointsExcluded: 0,
     latestSnapshot: null,
     catalogSnapshots: [],
   };
@@ -801,13 +810,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
 
   // vet402's own endpoint(s) never pad the aggregate — a measurer is not a
   // neutral third party in its own numbers. Empty denylist → no-op.
-  const opDenylist = operatorPayToDenylist();
-  const operatorExclusion = opDenylist.length
-    ? sql`WHERE e.pay_to IS NULL OR lower(e.pay_to) <> ALL(ARRAY[${sql.join(
-        opDenylist.map((a) => sql`${a}`),
-        sql`, `,
-      )}]::text[])`
-    : sql``;
+  const operatorExclusion = sql`WHERE ${operatorExclusionPredicate("e")}`;
 
   try {
     // Publication-gated verdict per endpoint, computed in SQL with the same
@@ -852,6 +855,17 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
     const total = Number(agg.total ?? 0);
     const publishedPass = Number(agg.published_pass ?? 0);
     const publishedFail = Number(agg.published_fail ?? 0);
+
+    // 2026-09-19 再レビュー V2: 除外が**今日何件取り除いているか**を数えて出す。
+    // 「自社を外している」とだけ書くと、env が外れて 0 件になった日にも同じ文が
+    // 「効いている保証」として読まれる。件数なら、0 は 0 と読める。
+    const exRaw = await db.execute(sql`
+      SELECT count(*)::int AS n FROM x402_endpoints e WHERE ${operatorMatchPredicate("e")}
+    `);
+    const exList = (Array.isArray(exRaw) ? exRaw : (exRaw as { rows?: unknown[] }).rows ?? []) as {
+      n: number;
+    }[];
+    const operatorEndpointsExcluded = Number(exList[0]?.n ?? 0);
 
     const evRaw = await db.execute(sql`
       SELECT event_type, count(*)::int AS n
@@ -1065,6 +1079,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
         relisted: ev.relisted ?? 0,
         settleDrop: ev.settle_drop ?? 0,
       },
+      operatorEndpointsExcluded,
       latestSnapshot: snap,
       catalogSnapshots: [...latestBySource.values()].sort((a, b) => a.source.localeCompare(b.source)),
     };
@@ -1098,18 +1113,10 @@ export async function getObservatoryStatsByChain(
   const db = getDb();
   if (!db) return [];
 
-  // 2026-09-19 独立レビュー W1: §1 の総数（getObservatoryStats）は運営自身の
-  // endpoint を母数から外しているのに、このチェーン別集計は外していなかった。
-  // 同じ頁の 2 つの表が別の母集団を数えていたことになる（「測る側は自分の数字の中で
-  // 中立な第三者ではない」を片方にだけ適用していた）。**文でごまかさずに除外を揃える**
-  // ——これで §1 と §2 の差はテストネットだけになり、頁の注記がそのまま真になる。
-  const opDenylist = operatorPayToDenylist();
-  const operatorExclusion = opDenylist.length
-    ? sql`WHERE e.pay_to IS NULL OR lower(e.pay_to) <> ALL(ARRAY[${sql.join(
-        opDenylist.map((a) => sql`${a}`),
-        sql`, `,
-      )}]::text[])`
-    : sql``;
+  // 2026-09-19 独立レビュー W1: §1 の総数だけが運営自身の endpoint を外していて、
+  // このチェーン別集計は外していなかった（同じ頁の 2 表が別の母集団を数えていた）。
+  // 述語は operator-sql.ts の 1 本を通す——写経を増やすと同じ写し忘れがまた起きる。
+  const operatorExclusion = sql`WHERE ${operatorExclusionPredicate("e")}`;
 
   try {
     const raw = await db.execute(sql`
@@ -1192,6 +1199,9 @@ export async function getCoverageShare(): Promise<CoverageShare> {
           )
         )::int AS measured
       FROM x402_endpoints e
+      -- 2026-09-19 再レビュー V1: ここだけ母集団が 4 つ目として残っていた。
+      -- coverage7d は「カタログのどれだけを測れているか」なので、分母は §1 と同じ集合。
+      WHERE ${operatorExclusionPredicate("e")}
     `);
     const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as {
       active: number;
@@ -1246,13 +1256,7 @@ const EMPTY_UNVERIFIED: UnverifiedBreakdown = {
 export async function getUnverifiedBreakdown(): Promise<UnverifiedBreakdown> {
   const db = getDb();
   if (!db) return EMPTY_UNVERIFIED;
-  const opDenylist = operatorPayToDenylist();
-  const operatorExclusion = opDenylist.length
-    ? sql`WHERE e.pay_to IS NULL OR lower(e.pay_to) <> ALL(ARRAY[${sql.join(
-        opDenylist.map((a) => sql`${a}`),
-        sql`, `,
-      )}]::text[])`
-    : sql``;
+  const operatorExclusion = sql`WHERE ${operatorExclusionPredicate("e")}`;
   try {
     const raw = await db.execute(sql`
       WITH latest AS (

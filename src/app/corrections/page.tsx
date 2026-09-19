@@ -253,6 +253,13 @@ function CorrectionTableRow({
 /** 表に描くために読み込む行数（listCorrections の上限と同じ）。件数はこの値ではなく count(*) で数える。 */
 const ROWS_FETCHED = 500;
 
+/**
+ * 2026-09-04 にこの頁が「machine-recorded corrections」と呼んでいた行数。**当時の実数**で、
+ * 今日の件数ではない（2026-09-19 再レビュー V3: ここは `rows.length` を使っていて、取得上限
+ * 500 に張り付いた値を過去の事実として印字していた。当時の実数は 484）。
+ */
+const ROWS_IN_LOG_2026_09_04 = 484;
+
 export default async function CorrectionsPage() {
   // 2026-09-02: §10 の訂正ログ（correction_log）はここで公開する。9/2 に path_template の
   // 訂正 12 件が入ったのに、この頁は手書きの定数だけを見て「0 件」と言っていた。
@@ -430,23 +437,27 @@ export default async function CorrectionsPage() {
               row is linked at <code>settle_claimed</code>, not at <code>settled</code>: a transfer
               that fits is not a proof that it belongs to this purchase, so it goes through the same
               on-chain verifier as any seller-asserted row before the ledger calls it settled.{" "}
-              <strong>Three:</strong> that verifier read the signature binding and the transfer we
-              had linked did not carry it, so we take our own guess back — the row returns to the
-              status it held before we touched it and the transaction is struck off, without the
-              seller being refuted for a link vet402 made. So this table is not only good news about
+              <strong>Three:</strong> that verifier could not confirm the linked transfer belonged
+              to that purchase, so we take our own guess back — the row returns to the status it
+              held before we touched it, the transaction vet402 had attached is removed, and the
+              seller is not refuted for a link vet402 made. The reason the verifier gave is
+              published on the row itself, as <code>after.lateLinkWithdrawn</code>; a missing
+              signature binding is one of several, and the row names which one rather than this
+              paragraph guessing. So this table is not only good news about
               us: it records the pipeline finishing its job, and it records vet402 withdrawing its
               own inference. They are written to the same append-only log so the path
               from claim to confirmation is auditable, and they are listed separately here because
               counting them as corrections would inflate our own error count and bury the{" "}
               {totals.verdictChanges.toLocaleString()} entries above. Until 2026-09-04 this page
-              called all {rows.length.toLocaleString()} of them &ldquo;machine-recorded
-              corrections&rdquo; and drew every row as <code>— → —</code>, because a promotion
-              carries a <code>status</code>, not a <code>publishedVerdict</code>.
+              called all {ROWS_IN_LOG_2026_09_04.toLocaleString()} of them
+              &ldquo;machine-recorded corrections&rdquo; and drew every row as{" "}
+              <code>— → —</code>, because a ledger status change carries a <code>status</code>, not
+              a <code>publishedVerdict</code>.
             </p>
             <div className="mt-4 overflow-x-auto">
               <table className="fact-table">
                 <caption className="sr-only">
-                  Ledger status promotions, newest first
+                  Ledger status changes, newest first
                 </caption>
                 <thead>
                   <tr>

@@ -1054,14 +1054,13 @@ claims:
   # 主張を、`l1.settled >= 1452`（全チェーン合計の下限）で緑にしていた。**その主張を検査して
   # いない check** なので、Arc・Tempo・XRPL の照合器が増えても赤くならない。文を
   # methodology §6 と同じ形（チェーンごとの束縛材料＋実績は l1.byChain）に直し、
-  # check も「XRPL の settled が 1 件以上ある」——つまり Base/Solana の 2 つだけでは
-  # ないこと——を実際に見る式へ替えた。
+  # check は式にできなかった（why_unverifiable に理由を書いた）。
   - id: faq_settlement_reread_is_chain_specific
     surface: src/components/site/faq-data.ts
     quote: "what does the binding differs by chain"
     means: "決済の再読は Base/Solana の 2 つに限らず、チェーンごとの束縛材料（EIP-3009 nonce・自前 memo・TIP-20 の memo・署名 blob の hash）で行う。照合器の無いチェーンは settle_claimed に留まる"
     check: null
-    why_unverifiable: "どのチェーンに照合器があるかを名前で返す公開 GET が無い。l1.byChain は配列で、評価器は path の完全一致しか読めないため、位置（byChain.3）に頼る式しか書けず、並び順が変われば主張と無関係に赤くなる——W5 と同じ「主張を検査していない check」になる。照合器の分岐は src/lib/observatory/settlement-verify.ts の verifySettlement が持ち、tests/settlement-verify-arc.test.ts・settlement-verify-solana.test.ts・settlement-verify-tempo.test.ts・settlement-verify-xrpl.test.ts が守る"
+    why_unverifiable: "どのチェーンに照合器があるかを名前で返す公開 GET が無い。l1.byChain は配列で、評価器は path の完全一致しか読めないため、位置（byChain.3）に頼る式しか書けず、並び順が変われば主張と無関係に赤くなる——W5 と同じ「主張を検査していない check」になる。照合器の分岐は src/lib/observatory/settlement-verify.ts の verifyL1Settlement が持ち、tests/settlement-verify-arc.test.ts・settlement-verify-solana.test.ts・settlement-verify-tempo.test.ts・settlement-verify-xrpl.test.ts が守る"
     verified_at: 2026-09-19
   - id: audit_e_decision_totals_span_the_window
     surface: src/app/decisions/page.tsx

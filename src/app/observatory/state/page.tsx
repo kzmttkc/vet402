@@ -122,6 +122,10 @@ export default async function ObservatoryStatePage() {
   // unstable_cache（revalidate 300）なので、デプロイ直後の 5 分間は catalogSnapshots を
   // 持たない旧い形の値が返りうる。undefined.length で公開頁が 500 になる経路を塞ぐ。
   const catalogSnapshots = stats.catalogSnapshots ?? [];
+  // §2 の分母は §1 の分母から testnet を落としたもの。差を語で言い切らず、
+  // 両方の実数とその差を出す（2026-09-19 再レビュー V2・W1）。
+  const chainTotal = chainStats.reduce((n, c) => n + c.totalEndpoints, 0);
+  const testnetGap = Math.max(0, denom - chainTotal);
   const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   const dataset = datasetJsonLd({
@@ -315,9 +319,14 @@ export default async function ObservatoryStatePage() {
           L1 purchasing has reached, which are the rows of the by-chain table in §3. Mainnets
           only; testnet listings (Base Sepolia, Solana devnet, Arc testnet) are excluded below.
           That makes this table&apos;s denominator narrower than the one in §1, which counts every
-          listing on record including testnets: the rows here sum to less than the §1 total, and
-          the difference is the testnet listings. Both tables leave out vet402&apos;s own
-          endpoints — a measurer is not a neutral third party in its own numbers.
+          listing on record including testnets: the rows here sum to{" "}
+          {chainTotal.toLocaleString()}, against {denom.toLocaleString()} in §1, and the{" "}
+          {testnetGap.toLocaleString()} listing{testnetGap === 1 ? "" : "s"} in between are the
+          testnet ones this table drops. The two denominators are otherwise the same set: both apply the
+          same exclusion of endpoints paying vet402&apos;s own addresses, and that exclusion is
+          taking out {stats.operatorEndpointsExcluded.toLocaleString()} of them as this page was
+          rendered — the count is printed rather than the rule, so a day when it removes nothing
+          reads as nothing removed.
         </p>
         {chainStats.length === 0 ? (
           <p className="doc-p text-brand-lift">No chain data yet.</p>

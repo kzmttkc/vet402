@@ -1834,6 +1834,16 @@ paths:
                         publishedPass: { type: integer }
                         publishedFail: { type: integer }
                         publishedUnverified: { type: integer }
+                  operatorEndpointsExcluded:
+                    type: integer
+                    description: >-
+                      How many catalog endpoints were left out of every count in this
+                      response because they pay an address vet402 controls — a measurer
+                      is not a neutral third party in its own numbers. 0 means nothing
+                      matched, not that the rule is off; the same exclusion is applied to
+                      totalEndpoints, byChain, coverage7d and the daily rollup behind
+                      /api/v1/observatory/history (from 2026-09-19; earlier rollup rows
+                      were not rewritten, so a series spanning that date can step at it).
                   latestSnapshot:
                     type: object
                     nullable: true

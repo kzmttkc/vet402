@@ -160,5 +160,62 @@ if (!TEST_DB) {
       const after = await db.select().from(schema.x402DailyMetrics);
       assert.ok(after.some((r) => r.chain === "ghost:2" && r.day === "2026-08-16"));
     });
+
+    // 2026-09-19 再レビュー V5: /state の byChain が運営自身を外すようになったのに、
+    // この日次ロールアップだけ母集団が旧いままで、公開 API 2 本のチェーン別件数が
+    // ずれていた。除外は operator-sql.ts の同じ述語を通る。
+    await t.test("運営自身の endpoint はロールアップの母集団から外れる", async () => {
+      const { resetDerivedOperatorAddresses } = await import("@/lib/observatory/operator");
+      const SELF = `0x${"e".repeat(40)}`;
+      const saved = process.env.VET402_OPERATOR_PAYTO;
+      t.after(() => {
+        if (saved === undefined) delete process.env.VET402_OPERATOR_PAYTO;
+        else process.env.VET402_OPERATOR_PAYTO = saved;
+        resetDerivedOperatorAddresses();
+      });
+
+      const [own] = await db
+        .insert(schema.x402Endpoints)
+        .values({
+          resourceKey: "self.vet402.example/score",
+          resourceUrl: "https://self.vet402.example/score",
+          network: "eip155:8453",
+          method: "GET",
+          payTo: SELF,
+        })
+        .returning();
+      await db.insert(schema.x402L0Probes).values({
+        endpointId: own.id,
+        method: "GET",
+        verdict: "pass",
+        probedAt: new Date(`${DAY}T06:00:00Z`),
+      });
+      await db.insert(schema.x402L1Purchases).values({
+        endpointId: own.id,
+        status: "settled",
+        spentUnits: "5000",
+        attemptedAt: new Date(`${DAY}T06:00:00Z`),
+      });
+
+      process.env.VET402_OPERATOR_PAYTO = "";
+      await rollupDailyMetrics(DAY);
+      const withSelf = (await db.select().from(schema.x402DailyMetrics)).find(
+        (r) => r.day === DAY && r.chain === "eip155:8453",
+      )!;
+
+      process.env.VET402_OPERATOR_PAYTO = SELF;
+      await rollupDailyMetrics(DAY);
+      const withoutSelf = (await db.select().from(schema.x402DailyMetrics)).find(
+        (r) => r.day === DAY && r.chain === "eip155:8453",
+      )!;
+
+      assert.equal(withSelf.l0Probes - withoutSelf.l0Probes, 1, "自社のプローブが 1 件落ちる");
+      assert.equal(withSelf.l1Settled - withoutSelf.l1Settled, 1, "自社の決済が 1 件落ちる");
+      assert.equal(
+        Number(withSelf.spentUnits) - Number(withoutSelf.spentUnits),
+        5000,
+        "自社への支出は合計から外れる",
+      );
+    });
   });
 }

@@ -38,6 +38,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { utcDayStartOf } from "@/lib/db/utc-day";
 import { PAID_ATTEMPT_STATUSES } from "./reader";
+import { operatorExclusionPredicate } from "./operator-sql";
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 86_400_000;
@@ -106,6 +107,11 @@ function partsAndAggCte(day: string) {
       FROM x402_l0_probes p
       JOIN x402_endpoints e ON e.id = p.endpoint_id
       WHERE p.probed_at >= ${dayStart} AND p.probed_at < ${nextStart}
+        -- 2026-09-19 再レビュー V5: /state の byChain が自社を外すようになったので、
+        -- ここだけ母集団が旧いままだと公開 API 2 本のチェーン別件数がずれる。
+        -- **過去の行は遡って書き換えない**（台帳を書き換えない）ので、この変更より
+        -- 前の日付は旧い母集団のまま残る。
+        AND ${operatorExclusionPredicate("e")}
       GROUP BY 1
       UNION ALL
       SELECT
@@ -124,6 +130,7 @@ function partsAndAggCte(day: string) {
         -- state と同じ分母。払っていない試行（budget_denied / no_402 /
         -- no_eligible_accept / over_cap / …）を attempts と呼ばない。
         AND pu.status IN (${paidStatuses})
+        AND ${operatorExclusionPredicate("e")}
       GROUP BY 1
     ),
     agg AS (
