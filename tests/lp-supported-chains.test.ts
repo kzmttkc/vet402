@@ -169,3 +169,13 @@ test("no static count in the section copy — counts come from stats.l1.byChain"
   assert.ok(!/\d{2,}/.test(copy.replace(/x402|t54/g, "")), "no multi-digit number in lane copy");
   assert.ok(data.includes("ARC-SWAP"), "the Arc swap line stays marked");
 });
+
+test("the contents row for the section points at the heading that exists", () => {
+  const home = read("src/app/page.tsx");
+  const toc = home.match(/\{ no: "5\.", title: "Chains", href: "#([a-z-]+)"/);
+  assert.ok(toc, "the contents list carries a row for section 5, Chains");
+  const heading = home.match(/<h2 id="([a-z-]+)" className="sec-head scroll-mt-24">\s*<span className="sec-no">5\.<\/span>\s*<span>Chains<\/span>/);
+  assert.ok(heading, "section 5 has an <h2> with an id");
+  assert.equal(toc[1], heading[1], "the contents href and the heading id are the same anchor");
+  assert.equal(heading[1], "chains");
+});

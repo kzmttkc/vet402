@@ -1155,8 +1155,12 @@ export async function getObservatoryStatsByChain(
 
     const byChain = new Map<string, ChainStats>();
     for (const row of rows) {
-      if (!options.includeTestnets && isTestnet(row.network)) continue;
-      const chain = chainLabel(row.network);
+      // L1 の畳み込み（上の l1.byChain）と同じく、v1 スラグを先に CAIP-2 へ寄せてからラベルを引く。
+      // 片方だけ寄せると、同じチェーンが L0 と L1 で別のラベルになる。行は endpoint 単位で、
+      // 同じラベルに落ちた行は下の ++ で 1 つの entry に合算される。
+      const network = toCaip2(row.network);
+      if (!options.includeTestnets && isTestnet(network)) continue;
+      const chain = chainLabel(network);
       const entry = byChain.get(chain) ?? {
         chain,
         totalEndpoints: 0,
