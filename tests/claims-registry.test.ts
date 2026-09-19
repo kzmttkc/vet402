@@ -30,6 +30,17 @@ import { runClaimChecks } from "@/lib/claims/canary";
 const ROOT = process.cwd();
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 
+/**
+ * 引用の照合は空白を 1 個に潰してから当てる。
+ *
+ * 2026-09-19: 生文字列の `src.includes(quote)` だと、引用は**ソースの 1 行に
+ * 収まる範囲**しか書けなかった。JSX の散文は 90 桁で折り返されているので、
+ * 文の前半だけを登録するしかない箇所が実際にあり、その文の後半は
+ * （関門が見るのは「登録済みの引用を含むか」なので）永久に未検査で通る。
+ * 抽出側は既に空白を正規化しているから、照合側を合わせるだけでよい。
+ */
+const squash = (s: string) => s.replace(/\s+/g, " ").trim();
+
 // ---------- 1. 抽出器の単体 ----------
 
 test("extractor finds an assertive term in JSX text", () => {
@@ -61,6 +72,58 @@ test("extractor ignores /* */ and {/* */} comments, including Japanese ones", ()
   const found = extractAssertions(src, "x.tsx");
   assert.deepEqual(found.map((a) => a.term), ["always"]);
   assert.equal(found[0].line, 4);
+});
+
+test("extractor does not read a slash glued to prose as a comment opener", () => {
+  // 2026-09-19 の穴。methodology §6 の `<code>/files/*</code>` を
+  // ブロックコメントの開きと読み、そこから次の閉じまで 430 行を空白に潰していた。
+  // 同じ形で LP の `@vet402/*` が 25 行を落としていた。
+  // 潰された側にいた文が関門を素通りしてはならない。
+  const src = [
+    `const j = (`,
+    `  <p>`,
+    `    an unfilled path parameter such as <code>/files/*</code>: no request is sent and the`,
+    `    endpoint is never purchased from.`,
+    `  </p>`,
+    `);`,
+  ].join("\n");
+  const found = extractAssertions(src, "x.tsx");
+  assert.deepEqual(found.map((a) => a.term), ["never"]);
+  assert.match(found[0].text, /never purchased from/);
+});
+
+test("extractor still strips a real block comment that follows prose with a slash", () => {
+  // 上の修正で本物のコメントを取りこぼしてはいけない。
+  // `<code>@vet402/*</code>` の後ろにある本物の JSX コメントは今までどおり落ちる。
+  const src = [
+    `const j = (`,
+    `  <p>`,
+    `    <code>@vet402/*</code> is the canonical scope.`,
+    `    {/* 2026-09-05 監査メモ: ここは every scope と書かない */}`,
+    `    <span>Published under one account.</span>`,
+    `  </p>`,
+    `);`,
+  ].join("\n");
+  assert.deepEqual(extractAssertions(src, "x.tsx"), []);
+});
+
+test("extractor does not read a bare URL in JSX text as a line comment", () => {
+  // /ethonline は `>https://thegraph.com/studio</Ext>` の `//` を行コメントと読み、
+  // 同じ行の後半を落としていた（文字列の中ではないので従来の保護が効かない）。
+  const src = `const j = <p>See <Ext href="https://x.test/a">https://x.test/a</Ext> — probed daily.</p>;`;
+  const found = extractAssertions(src, "x.tsx");
+  assert.deepEqual(found.map((a) => a.term), ["daily"]);
+});
+
+test("extractor does not read an escaped slash in a regex as a comment", () => {
+  // TrackedLink.tsx の `/^https?:\/\//` で行の残りが消えていた。
+  const src = [`const external = /^https?:\\/\\//.test(href);`, `const j = <p>never mixed</p>;`].join(
+    "\n",
+  );
+  assert.deepEqual(
+    extractAssertions(src, "x.tsx").map((a) => a.term),
+    ["never"],
+  );
 });
 
 test("extractor ignores import lines", () => {
@@ -309,8 +372,11 @@ test("a claim without a check must say why it is unverifiable", () => {
 
 test("every registered quote actually appears in the surface it names", () => {
   for (const c of registry.claims) {
-    const src = read(c.surface);
-    assert.ok(src.includes(c.quote), `${c.id}: quote not found in ${c.surface}: ${JSON.stringify(c.quote)}`);
+    const src = squash(read(c.surface));
+    assert.ok(
+      src.includes(squash(c.quote)),
+      `${c.id}: quote not found in ${c.surface}: ${JSON.stringify(c.quote)}`,
+    );
   }
 });
 
@@ -358,13 +424,17 @@ function publicSurfaces(): string[] {
 }
 
 test("no unregistered assertive claim ships on a public surface", () => {
-  const quotes = registry.claims.map((c) => c.quote);
+  const quotes = registry.claims.map((c) => squash(c.quote));
   const allowed = registry.allow_phrases.map((a) => a.phrase.toLowerCase());
   const orphans: string[] = [];
 
   for (const file of publicSurfaces()) {
     for (const a of extractAssertions(read(file), file)) {
-      const low = a.text.toLowerCase();
+      // allow_phrases は " only after " のように前後の空白で語境界を書いている。
+      // JSX のテキストノードが `only after` ちょうどで切れると（`<code>fail</code> only after{" "}`）
+      // その境界が無く、限定用法だと分かっている語が孤児として出る。両端を空白で
+      // 埋めてから当てる——語境界の意図はそのままに、ノードの切れ目だけを吸収する。
+      const low = ` ${a.text.toLowerCase()} `;
       if (allowed.some((p) => low.includes(p))) continue;
       if (quotes.some((q) => a.text.includes(q))) continue;
       orphans.push(`${a.file}:${a.line} [${a.term}] ${a.text}`);

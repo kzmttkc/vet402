@@ -28,6 +28,7 @@ import {
 } from "@/lib/observatory/vocabulary";
 import { MAX_PER_PURCHASE_UNITS } from "@/lib/observatory/x402-payer";
 import { DAILY_BUDGET_USD } from "@/lib/observatory/budget";
+import { REQUIRED_CONFIRMATIONS } from "@/lib/observatory/settlement-verify";
 
 const MAX_PER_PURCHASE_USD = Number(MAX_PER_PURCHASE_UNITS) / 1_000_000;
 
@@ -259,8 +260,8 @@ export default async function ObservatoryMethodologyPage() {
           origin (a redirect that would carry it to another origin is not followed; the row keeps
           the redirect&apos;s status), and the row records{" "}
           <code>requestBody: declared</code>; otherwise we send <code>{"{}"}</code> and record{" "}
-          <code>requestBody: empty</code>. Before that date we sent <code>{"{}"}</code> on every{" "}
-          <code>POST</code>, declaration or not. So when a paid request comes back{" "}
+          <code>requestBody: empty</code>. Before that date every paid{" "}
+          <code>POST</code> carried <code>{"{}"}</code>, declaration or not. So when a paid request comes back{" "}
           <code>400</code> (the request is malformed), <code>401</code> or <code>403</code> (not
           authenticated), <code>404</code> or <code>422</code>, the most likely explanation is the
           same one we already accept for a template URL:{" "}
@@ -311,7 +312,10 @@ export default async function ObservatoryMethodologyPage() {
           <span>Delisting detection</span>
         </h2>
         <p className="doc-p">
-          The public discovery catalog is fetched in full daily. An endpoint present on an earlier
+          The public discovery catalog is re-fetched daily, and every fetch is compared with the
+          catalog&apos;s own reported total for that day — both counts are published as{" "}
+          <code>latestSnapshot</code> (<code>fetchedCount</code> and <code>totalCount</code>), so a
+          short day is visible rather than smoothed over. An endpoint present on an earlier
           day and absent from a <strong>complete</strong> fetch is recorded as{" "}
           <code>delisted</code>, with the before/after values kept on the event. On any day our
           own fetch is incomplete (fetched count below the catalog&apos;s reported total), no
@@ -408,9 +412,16 @@ export default async function ObservatoryMethodologyPage() {
             </span>
           ))}
           . The reason is that a settle-through record is worth more as a series than as a single
-          row, and these four carry the bulk of the organic call volume the public catalog reports,
-          so a daily point on them says more about the x402 economy than a one-shot row on the long
-          tail. Two things this does <em>not</em> change: the measurement is the identical pipeline
+          row, and the list was picked from independently reported demand rather than from our own
+          ledger: a public survey of the Bazaar catalog, on data of 2026-07-28, put these four at
+          73% of organic calls. That is a third party&apos;s measurement on one date — vet402 has
+          not re-measured it, and it is not restated here as a standing fact. What we do publish
+          is the per-endpoint 30-day call count the catalog reports, a column on the{" "}
+          <Link href="/observatory" className="underline">
+            register
+          </Link>
+          , so the list can be checked against current demand instead of taken on our word.
+          Two things this does <em>not</em> change: the measurement is the identical pipeline
           with the identical gates, and the result publishes exactly as anyone else&apos;s does,
           pass and fail alike. What differs is how often we buy, and that is stated here rather
           than left for a reader to infer from the timestamps. Until 2026-09-04 this section said
@@ -437,7 +448,8 @@ export default async function ObservatoryMethodologyPage() {
           <strong>settled</strong> — <em>vet402 re-read the transaction on-chain</em> and found
           the exact USDC transfer it paid for: from our payer, to the catalog-declared payee, for
           the declared amount, in the canonical USDC contract. On Base that means an ERC-20{" "}
-          <code>Transfer</code> log matching all four of those with at least 32 confirmations; on
+          <code>Transfer</code> log matching all four of those with at least{" "}
+          {REQUIRED_CONFIRMATIONS.toString()} confirmations; on
           Solana it means the transaction is <code>finalized</code>, succeeded, and the
           USDC token-balance deltas in it show the payee&apos;s wallet receiving at least the
           declared amount while our payer&apos;s wallet loses it — read from balances rather than

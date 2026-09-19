@@ -13,6 +13,26 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-19 JST — 主張の関門が公開面の 430 行を見ていなかった穴を塞いだ（vet402.com コア・ブランチ `fix/claims-gate-coverage`・`fix/public-surface-truth` の上・push は依頼元）
+
+- **何を変えたか**:
+  - **G1** `src/lib/claims/extract.ts` の `stripComments`: 散文に出るスラッシュをブロックコメント／行コメントの開きと誤読し、そこから次の閉じまでを空白に潰していた。`/observatory/methodology` は `<code>/files/*</code>`（§6）で **430 行**、LP は `@vet402/*` で **25 行**が関門の外にいた。同じ形で `/ethonline` は JSX テキストに裸で置いた `https://…` の `//` で行の後半を、`TrackedLink.tsx` は正規表現の `\/` で行の残りを失っていた。JS/TS のコメントは前のトークンにくっつかないので、直前の 1 文字が語・パス・URL のスキーム・エスケープ・JSX テキストの先頭（`>`）なら開きとして扱わない（`opensComment`）。迷ったらコメントでない側に倒す——落として関門が盲になるより、拾って登録を迫られるほうが安全。
+  - **G2** `tests/claims-registry.test.ts`: 上の 4 形の再現をテストで固定し、本物のブロックコメント（`{/* … */}`・日本語の監査メモ）が今までどおり落ちることも同時に固定した。あわせて、`allow_phrases` を当てる前に本文の両端を空白で埋めるようにした（JSX のテキストノードが `only after` ちょうどで切れると語境界が無く、限定用法と分かっている語が孤児になっていた）。
+  - **G3** `tests/claims-registry.test.ts`: 引用の照合を空白正規化にした。生文字列の `src.includes(quote)` だと引用はソースの 1 行に収まる範囲しか書けず、**文の前半だけを登録すると後半が永久に未検査**になる（実際にそうしか書けない箇所があった）。抽出側は既に正規化しているので照合側を合わせただけ。
+  - **G4** `docs/claims.yaml`: 関門が見えるようになった断定 31 件を 1 件ずつ実装・データに当てて処理した。28 件を登録、3 件は**裏付けが無いので文のほうを直した**。登録のうち本番 GET に当たる `check` を付けたのは 1 件だけ（`license == "CC-BY-4.0"`）——残りは「その主張を検査していない check」になるので `check: null` + `why_unverifiable` にした。とくに `l1.byChain.1.settled` のような**添字の式は使わない**（byChain は配列で、並びが変われば別のチェーンを見に行き、緑のまま見ていない所ができる）。カナリアは 57 → 58 件。
+  - **G5** `src/app/observatory/methodology/page.tsx` の文言 3 箇所（下の「影響」）。
+
+- **なぜ**: 2026-09-19 の監査で、公開面が自分の台帳と食い違う文が 6 件見つかり、そのすべてを関門（`tests/claims-registry.test.ts`）が素通りさせていた。関門に正解を書き写すのではなく、関門が見えていない経路を塞ぐのが目的。検出数は methodology **8 → 41**、LP **8 → 10**、全体 **268 → 304**。取りこぼしはゼロ（修正前に拾えていた 268 件は全部そのまま拾える）。
+
+- **そちらが知っておくべき影響**（公開面の文言が変わった 3 箇所）:
+  - **§4 Delisting detection**: 「The public discovery catalog is fetched in full daily.」は**読まれた日に偽**だった（2026-09-19 の本番 `latestSnapshot` は fetchedCount 1,065 / totalCount 1,071 で、同じ段落の次の文が「取得が欠けた日は delisting を判定しない」と書いている）。「re-fetched daily, and every fetch is compared with the catalog's own reported total for that day — both counts are published as `latestSnapshot`」に直し、`latestSnapshot.fetchedCount > 0` をカナリアに載せた。
+  - **§6 優先リスト**: 「these four carry the bulk of the organic call volume the public catalog reports」は vet402 の測定ではなく、`l1-runner.ts` のコメントが引く**外部調査（rikocr8orh8 の Bazaar survey・データ 2026-07-28・organic calls の 73%）**が出典だった。現在形の自社主張として書くのをやめ、出典と日付を明記して「第三者の 1 時点の測定で、vet402 は再測定していない」と添え、今の需要は register の 30 日呼出数の列で確かめられる、という形にした。
+  - **§6 settled の定義**: 「at least 32 confirmations」の **32 が静的**だった。`settlement-verify.ts` の `REQUIRED_CONFIRMATIONS` から描画する。
+  - （§2 の「we sent `{}` on every `POST`」は意味を変えず「every paid `POST` carried `{}`」に語順だけ変えた。JSX のテキストノードが `on every` の 2 語で切れて、登録できる引用が汎用的すぎる形になるのを避けるため。）
+
+- **残る懸念**: §8 の「These pages publish facts …; they do not publish composite scores, rankings, or evaluative language about any operator.」は「These pages」＝観測所の頁・対象＝事業者、という読みに依存している。`/leaderboard` は合成スコアで順位づけした頁で、対象がエージェント／ウォレットという別物・別 API だから両立する、という整理で登録した（`method_only_the_cadence_differs_for_priority_hosts` の `means` に明記）。範囲の語を強めるかは対外文言の判断なので、そちらで見てほしい。
+
+---
 ## 2026-09-19 JST — 横断監査の Warning 4 件: MPP の資格情報が別オリジンへ漏れる経路・Tempo だけ署名が予約の後・公開口が停止理由を返す・RPC の URL を伏せずに DB へ（vet402.com コア・push は依頼元）
 
 - **何を変えたか**:

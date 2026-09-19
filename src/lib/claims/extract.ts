@@ -96,8 +96,36 @@ function blank(s: string): string {
 }
 
 /**
+ * `/` がコメントの開きになれる位置か。直前の1文字だけで判定する。
+ *
+ * 2026-09-19 の監査で見つかった穴: 散文の中のスラッシュを開きと読み、そこから
+ * 次の閉じまでを空白に潰していた。methodology §6 の `<code>/files/*</code>` で
+ * 430 行、LP の `@vet402/*` で 25 行、合計 6 件の公開面の断定が関門の外に出た。
+ *
+ * JS/TS のコメントは前のトークンに**くっつかない**（`a /* c *​/` とは書いても
+ * `a/* c *​/` とは書かない）。逆に散文のスラッシュは語やパスにくっついている。
+ * その差だけを見る。迷ったらコメントでない側に倒す——落としすぎて関門が
+ * 盲になるより、拾いすぎて登録を迫られるほうが安全だから。
+ */
+function opensComment(prev: string | undefined): boolean {
+  if (prev === undefined) return true; // ファイル先頭
+  // 語・パスの続き。`@vet402/*` `@vouchscore/*` `<code>/files/*</code>`
+  if (/[A-Za-z0-9_$]/.test(prev)) return false;
+  // URL のスキーム。JSX テキストに裸で置かれた `https://thegraph.com/studio`
+  // （/ethonline はこれで 1 行の後半を失っていた）
+  if (prev === ":") return false;
+  // 正規表現・文字列のエスケープ。`/^https?:\/\//.test(href)`
+  // （TrackedLink.tsx はこれで行の残りを失っていた）
+  if (prev === "\\") return false;
+  // JSX テキストの先頭。`<code>/*…` はコード例であってコメントではない
+  if (prev === ">") return false;
+  return true;
+}
+
+/**
  * コメントを空白に潰す。文字列リテラルの中の `//`（URL）は潰さない。
  * JSX のコメントは中身だけ潰し、波括弧は残す（JSX テキストの切れ目になる）。
+ * 散文の中のスラッシュは開きとして扱わない（`opensComment`）。
  */
 export function stripComments(src: string): string {
   const out = src.split("");
@@ -116,14 +144,14 @@ export function stripComments(src: string): string {
       i++;
       continue;
     }
-    if (c === "/" && src[i + 1] === "/") {
+    if (c === "/" && src[i + 1] === "/" && opensComment(i > 0 ? src[i - 1] : undefined)) {
       while (i < n && src[i] !== "\n") {
         out[i] = " ";
         i++;
       }
       continue;
     }
-    if (c === "/" && src[i + 1] === "*") {
+    if (c === "/" && src[i + 1] === "*" && opensComment(i > 0 ? src[i - 1] : undefined)) {
       while (i < n && !(src[i] === "*" && src[i + 1] === "/")) {
         if (src[i] !== "\n") out[i] = " ";
         i++;
