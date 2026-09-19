@@ -1,0 +1,92 @@
+/**
+ * LP §5 "Chains" — the copy and the state of each chain, in one place.
+ *
+ * Facts as of 2026-09-19. Nothing here is a count: a static number is wrong on
+ * the day it is read. The LP prints the per-chain settled count next to each
+ * lane from `stats.l1.byChain` (the ledger read the page already performs for
+ * Fig. 1), and `effectiveLaneState` lets that ledger overrule the static word
+ * below in both directions — a lane marked pending stops reading "pending" the
+ * moment the ledger holds a settled purchase on it, and a lane marked running
+ * stops reading "running" if the ledger holds none.
+ *
+ * The file sits under src/components/site so tests/claims-registry.test.ts
+ * scans its prose like any other public copy.
+ */
+
+/**
+ * - running:                purchases and settlement reconciliation both run
+ * - settled_on_record:      at least one purchase settled and was reconciled
+ * - pending_first_purchase: lane and reconciliation are built, nothing bought yet
+ */
+export type LaneState = "running" | "settled_on_record" | "pending_first_purchase";
+
+export type LaneChain = {
+  kind: "lane";
+  /** Must equal chainLabel() for the chain — it is the join key into `stats.l1.byChain`. */
+  chain: string;
+  asset: string;
+  /** The payment rail, as it reads after "over". */
+  rail: string;
+  state: LaneState;
+};
+
+export type BodyPart = string | { code: string };
+
+export type BuildingChain = {
+  kind: "building";
+  chain: string;
+  body: BodyPart[];
+};
+
+export type SupportedChain = LaneChain | BuildingChain;
+
+export const LANE_STATE_SENTENCE: Record<LaneState, string> = {
+  running: "Purchases and settlement reconciliation are both running.",
+  settled_on_record: "Settled and reconciled purchases are on record.",
+  pending_first_purchase:
+    "The purchase lane and settlement reconciliation are implemented. The first real purchase on this chain is still pending.",
+};
+
+export const SUPPORTED_CHAINS: SupportedChain[] = [
+  { kind: "lane", chain: "Base", asset: "USDC", rail: "x402", state: "running" },
+  { kind: "lane", chain: "Solana", asset: "USDC", rail: "x402", state: "running" },
+  { kind: "lane", chain: "Tempo", asset: "USDC.e", rail: "MPP, not x402", state: "settled_on_record" },
+  {
+    kind: "lane",
+    chain: "XRPL",
+    asset: "RLUSD",
+    rail: "x402, through the t54 facilitator",
+    state: "settled_on_record",
+  },
+  // ARC-SWAP: the one line to change once the first real Arc purchase has settled and been
+  // reconciled — `state: "pending_first_purchase"` becomes `state: "settled_on_record"`.
+  { kind: "lane", chain: "Arc", asset: "USDC", rail: "x402", state: "pending_first_purchase" },
+  // Robinhood Chain: the wording is fixed by agreement with the RWA session. The Japanese
+  // source, verbatim:
+  //   「Robinhood Chain（4663・本番網）: Stock Token の保有と取引履歴を公開チェーンデータから
+  //   再構成する `vet402 /rwa` を実装中。購入レーンと決済索引は未対応」
+  // The English below is a faithful translation of that sentence and carries nothing else.
+  {
+    kind: "building",
+    chain: "Robinhood Chain (4663, mainnet)",
+    body: [
+      { code: "vet402 /rwa" },
+      ", which reconstructs Stock Token holdings and trade history from public chain data, is being implemented. The purchase lane and the settlement index are not supported.",
+    ],
+  },
+];
+
+/**
+ * The state the page prints for a lane. `settled` is that chain's settled count
+ * from the ledger, or null when the ledger could not be read (then the static
+ * word stands, and the page prints no count).
+ */
+export function effectiveLaneState(state: LaneState, settled: number | null): LaneState {
+  if (settled === null) return state;
+  if (settled <= 0) return "pending_first_purchase";
+  return state === "pending_first_purchase" ? "settled_on_record" : state;
+}
+
+export function laneBody(row: LaneChain, settled: number | null): string {
+  return `${row.asset} over ${row.rail}. ${LANE_STATE_SENTENCE[effectiveLaneState(row.state, settled)]}`;
+}

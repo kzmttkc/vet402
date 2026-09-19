@@ -17,6 +17,7 @@ import {
   getObservatoryStatsCached,
 } from "@/lib/observatory/cached-reads";
 import { FunnelFigure } from "@/components/site/Figures";
+import { SupportedChains } from "@/components/site/SupportedChains";
 
 /**
  * The front page is the memo.
@@ -29,8 +30,9 @@ import { FunnelFigure } from "@/components/site/Figures";
  *
  * Copy is the approved deck, verbatim except for typesetting breaks. Nothing on
  * this page claims a measurement that has not been made: §4 lists only what is
- * running today (including the live observatory), §5 is only work that has not
- * shipped.
+ * running today (including the live observatory), §5 states each chain row by row
+ * (2026-09-19; the state and the count come from the ledger, the words from
+ * supported-chains-data.ts), §6 is only work that has not shipped.
  */
 
 const HEAD_LEFT = [
@@ -62,7 +64,8 @@ const CONTENTS = [
   { no: "2.", title: "Verification levels", href: "#methodology", kind: "method" },
   { no: "3.", title: "What a verdict must carry", href: "#evidence", kind: "policy" },
   { no: "4.", title: "Implemented and live", href: "#working", kind: "live" },
-  { no: "5.", title: "Status of this work", href: "#status", kind: "building" },
+  { no: "5.", title: "Chains", href: "#chains", kind: "lanes" },
+  { no: "6.", title: "Status of this work", href: "#status", kind: "building" },
   { no: "A.", title: "Access tiers", href: "#pricing", kind: "terms" },
   { no: "B.", title: "References", href: "#references", kind: "sources" },
 ];
@@ -762,9 +765,36 @@ export default async function Home() {
           />
         </div>
 
-        {/* ================= 5. The observatory ================= */}
-        <h2 id="status" className="sec-head scroll-mt-24">
+        {/* ================= 5. Chains ================= */}
+        {/* 2026-09-19: 対応チェーンの節。§4 は「この節はぜんぶ今動いている」、§6 は「まだ出していない
+            ものだけ」と言い切っているので、稼働・初回購入待ち・実装中が混ざるこの表はどちらにも置けない。
+            §4 の直後に独立の節として置き、行ごとの状態印（§4 / §6 と同じ文法）で混在を読めるようにする。
+            件数は静的に書かない——Fig. 1 と同じ `stats`（l1.byChain）から引き、読めない時は件数ごと出さない。
+            文言と状態の正典は supported-chains-data.ts（Arc の差し替えはそこの 1 行）。 */}
+        <h2 id="chains" className="sec-head scroll-mt-24">
           <span className="sec-no">5.</span>
+          <span>Chains</span>
+        </h2>
+        <p className="doc-p">
+          What vet402 does on each chain today. A lane is marked implemented when the public
+          ledger holds a settled purchase on that chain, pending when it is built but has not
+          bought yet, and building when the work has not shipped.{" "}
+          <Link href="/observatory/state" className="doc-link">
+            L1 figures by chain
+          </Link>
+          .
+        </p>
+        <SupportedChains
+          settledByChain={
+            stats && stats.totalEndpoints > 0
+              ? new Map(stats.l1.byChain.map((c) => [c.chain, c.settled]))
+              : null
+          }
+        />
+
+        {/* ================= 6. Status of this work ================= */}
+        <h2 id="status" className="sec-head scroll-mt-24">
+          <span className="sec-no">6.</span>
           <span>Status of this work</span>
         </h2>
         <p className="doc-p">
@@ -799,7 +829,7 @@ export default async function Home() {
           />
         </div>
 
-        {/* 2026-09-02 Takeshi「ここだけ浮いている」: 破線の囲み（dashbox）は §5 の
+        {/* 2026-09-02 Takeshi「ここだけ浮いている」: 破線の囲み（dashbox）は §5（2026-09-19 から §6）の
             登録簿の直後に唯一の「箱」として置かれ、紙面の文法（罫と段落）から外れていた。
             RFC の back matter に倣い、§5 を閉じる 1 文として同じ段落文法で置く。
             イベント名 follow_click と channel は据え置き。フッタの About 列にも同じ 2 本を置く。 */}
@@ -886,9 +916,9 @@ export default async function Home() {
 }
 
 /**
- * ItemRow — one entry in §4 / §5. The state marker is the whole point of the
+ * ItemRow — one entry in §4 / §6. The state marker is the whole point of the
  * row: `live` means it runs today, `building` means it does not. Keeping the
- * two states in one visual grammar is what stops §5 from reading as a claim.
+ * two states in one visual grammar is what stops §6 from reading as a claim.
  */
 function ItemRow({
   state,
