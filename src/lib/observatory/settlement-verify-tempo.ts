@@ -20,6 +20,8 @@
 // ============================================================
 import { keccak256, toBytes } from "viem";
 import { isWellFormedSettlementTx } from "@/lib/validation/settlement-tx";
+// 2026-09-19（横断監査 W4）: detail は DB に残る。RPC の URL（鍵入りの形がある）を伏せてから書く。
+import { redactForLog } from "./redact";
 import { TEMPO_CHAIN_ID, TEMPO_USDC_E, tempoRpcUrl } from "./mpp-payer";
 import type { EvmVerifyClient, SettlementVerifyResult } from "./settlement-verify";
 
@@ -67,7 +69,7 @@ export async function verifyTempoSettlement(
   try {
     client = deps?.client ?? (await defaultTempoVerifyClient());
   } catch (error) {
-    return { ok: false, reason: "rpc_unavailable", detail: String(error).slice(0, 200) };
+    return { ok: false, reason: "rpc_unavailable", detail: redactForLog(error).slice(0, 200) };
   }
   if (!client) return { ok: false, reason: "chain_not_yet_verifiable", detail: `${input.network}: TEMPO_RPC_URL_unset` };
 
@@ -76,7 +78,7 @@ export async function verifyTempoSettlement(
   try {
     [chainId, tip] = await Promise.all([client.getChainId(), client.getBlockNumber()]);
   } catch (error) {
-    return { ok: false, reason: "rpc_unavailable", detail: String(error).slice(0, 200) };
+    return { ok: false, reason: "rpc_unavailable", detail: redactForLog(error).slice(0, 200) };
   }
   if (chainId !== TEMPO_CHAIN_ID) return { ok: false, reason: "wrong_chain", detail: `rpc reports chainId ${chainId}` };
 

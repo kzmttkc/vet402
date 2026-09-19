@@ -4,7 +4,7 @@ import { acquireLease } from "@/lib/cron/lease";
 import { consumeIpRateLimit, ipRateLimitHeaders, refundIpRateLimit } from "@/lib/api/ip-rate-limit";
 import { runDemoL0 } from "@/lib/demo/verify";
 import { isSpendingHalted } from "@/lib/observatory/kill-switch";
-import { runL1Batch } from "@/lib/observatory/l1-runner";
+import { publicL1Summary, runL1Batch } from "@/lib/observatory/l1-runner";
 import { getEndpointPurchases } from "@/lib/observatory/reader";
 import { logServerError } from "@/lib/util/log";
 import { UUID_RE } from "@/lib/validation/uuid";
@@ -163,7 +163,10 @@ export async function POST(request: NextRequest) {
       if (BigInt(summary.spentUnitsTotal || "0") === 0n) await refundIpRateLimit(demoBudgetKey);
       const purchases = await getEndpointPurchases(endpointId);
       return NextResponse.json(
-        { ok: true, level: "l1", summary, purchases },
+        // summary は白名簿を通す（2026-09-19 横断監査 W3）。ここは鍵不要の公開口なので、
+        // 停止スイッチの理由文言（運用者のメモ・DB ドライバの error.message）は返さない
+        // ——上の 503 の枝が「どの上流が不調かは admin 限定」としているのと同じ判断。
+        { ok: true, level: "l1", summary: publicL1Summary(summary), purchases },
         { headers: { ...perCaller, "Cache-Control": "no-store" } },
       );
     } catch (error) {

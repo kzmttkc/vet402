@@ -34,6 +34,7 @@ import { x402L1Purchases } from "@/lib/db/schema";
 import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { readBodyCapped } from "@/lib/net/read-capped";
 import { UnsafeTargetError, createSafeFetchImpl, type SafeFetchCallOptions } from "@/lib/net/safe-fetch";
+import { redactForLog } from "./redact";
 import { createDeadline } from "@/lib/util/deadline";
 import { CHAIN_DAILY_CAPS, LANE_FLOOR_FETCH_MAX, LANE_FLOOR_MAX_PER_HOST, LANE_FLOOR_OVERSAMPLE, cappedChainFor, chainDailyCapUnits, checkL1Budget, isL1Enabled, laneFloorPerRun, DAILY_BUDGET_USD, type CappedChain } from "./budget";
 import { isSpendingHalted, type HaltVerdict } from "./kill-switch";
@@ -143,6 +144,43 @@ export type L1BatchSummary = {
    */
   xrplLaneClosed: "signing_inputs_unavailable" | "fee_over_cap" | "payer_unfunded" | null;
 };
+
+/**
+ * 鍵の要らない公開口（POST /api/v1/demo/verify）へ返してよい summary（2026-09-19 横断監査 W3）。
+ *
+ * 落とすのは haltReason ひとつ。中身は kill-switch.ts の
+ * `halted_by_operator: <運用者が書いた理由>` か `halt_flag_unreadable: <DB ドライバの error.message>`
+ * で、前者は内部の事情、後者は上流の素の文言——同じルートの 503 の枝が
+ * 「どの上流が不調かは admin 限定」としてわざと伏せている種類のものである。
+ * 「止まっている」という事実（halted / disabledReason）は隠さない: 503 の枝も
+ * `spending_halted` と名乗るし、隠すと呼び手からは動いて見えてしまう。
+ *
+ * 白名簿を Omit の型で書いているのは関門にするため——L1BatchSummary に列を足すと
+ * ここが型不足で落ち、「公開してよいか」を決めない限り typecheck が通らない。
+ */
+export type PublicL1BatchSummary = Omit<L1BatchSummary, "haltReason">;
+
+export function publicL1Summary(summary: L1BatchSummary): PublicL1BatchSummary {
+  return {
+    attempted: summary.attempted,
+    settled: summary.settled,
+    settleFailed: summary.settleFailed,
+    deliveredNoReceipt: summary.deliveredNoReceipt,
+    skipped: summary.skipped,
+    budgetDenied: summary.budgetDenied,
+    spentUnitsTotal: summary.spentUnitsTotal,
+    stoppedForDeadline: summary.stoppedForDeadline,
+    notAttempted: summary.notAttempted,
+    orphansResolved: summary.orphansResolved,
+    halted: summary.halted,
+    disabledReason: summary.disabledReason,
+    payerUnfunded: summary.payerUnfunded,
+    laneFloor: summary.laneFloor,
+    laneFloorHostCapped: summary.laneFloorHostCapped,
+    xrplFeeOverCap: summary.xrplFeeOverCap,
+    xrplLaneClosed: summary.xrplLaneClosed,
+  };
+}
 
 type Candidate = {
   id: string;
@@ -668,6 +706,12 @@ export async function sweepOrphanedInFlight(
  * 解決先を settle_failed にするのは、我々が署名して払える状態にした試行だから
  * ——公開面の分母（PAID_ATTEMPT_STATUSES）に入り、冷却の対象にもなる。
  * spent_units は触らない（「署名したら計上する」は予算の不変条件）。
+ *
+ * 2026-09-19（横断監査 W4）: `error` は redactForLog を通す（RPC の URL に鍵が入る形がある）。
+ * 同時に `$1::text` の明示キャストを足した——付けないと postgres は
+ * `jsonb_build_object('error', $1)` の型を決められず（could not determine data type of
+ * parameter $1）、この UPDATE は**毎回落ちていた**。行は in_flight のまま残り、30 分後の
+ * 孤児掃除が request_error として拾っていたので、誰も気づかなかった。
  */
 export async function resolveReservationAsFailed(
   db: NonNullable<ReturnType<typeof getDb>>,
@@ -681,13 +725,40 @@ export async function resolveReservationAsFailed(
           raw_response_meta = coalesce(raw_response_meta, '{}'::jsonb) || jsonb_build_object(
             'phase', 'post_reservation',
             'reason', 'threw_after_reservation',
-            'error', ${String(error).slice(0, 300)}
+            'error', ${redactForLog(error)}::text
           )
       WHERE id = ${rowId}::uuid
     `);
   } catch (writeError) {
     // ここまで失敗したら 30 分後の孤児掃除が拾う。黙って消さない。
     logServerError("observatory.l1.resolve_reservation_failed", writeError);
+  }
+}
+
+/**
+ * 予約を**解放する**（行ごと消す・2026-09-19 横断監査 W2）。
+ *
+ * resolveReservationAsFailed との違いは「署名したか」。あちらは署名して払える状態に
+ * した試行の後始末で、spent_units を残すのが正しい。こちらは **まだ署名していない**
+ * のに予約だけ立っている状態——外部 I/O（Tempo RPC）が落ちて credential を作れな
+ * かった場合で、一円も動いていない。行を残すと、その売り手はスイープ窓のあいだ
+ * 再選択されず、我々の RPC 障害が公開台帳（export.csv）に売り手の不履行として載る。
+ * 資金切れ（payer_unfunded）・日次枠（chain_daily_cap）と同じ「行を書かない」へ揃える。
+ *
+ * `status = 'in_flight' AND tx_hash IS NULL` を条件に付けるのは、消してよいのが
+ * 「予約したまま何も起きていない行」だけだから。消せなければ 30 分後の孤児掃除が拾う。
+ */
+export async function releaseReservation(
+  db: NonNullable<ReturnType<typeof getDb>>,
+  rowId: string,
+): Promise<void> {
+  try {
+    await db.execute(sql`
+      DELETE FROM x402_l1_purchases
+      WHERE id = ${rowId}::uuid AND status = 'in_flight' AND tx_hash IS NULL
+    `);
+  } catch (deleteError) {
+    logServerError("observatory.l1.release_reservation_failed", deleteError);
   }
 }
 
@@ -1618,7 +1689,7 @@ async function purchaseOne(input: {
     } catch (error) {
       await record({
         status: "request_error",
-        rawResponseMeta: { phase: "blockhash", error: String(error).slice(0, 300) },
+        rawResponseMeta: { phase: "blockhash", error: redactForLog(error) },
       });
       return { kind: "skipped", settled: false, spent: 0n };
     }
@@ -1638,7 +1709,7 @@ async function purchaseOne(input: {
       }
       await record({
         status: "request_error",
-        rawResponseMeta: { phase: "xrpl_signing_inputs", error: String(error).slice(0, 300) },
+        rawResponseMeta: { phase: "xrpl_signing_inputs", error: redactForLog(error) },
       });
       // 主ネットワークが XRPL の行は従来どおり行を残すが、レーンは同じく 1 回目で閉じる（W1）。
       return { kind: "xrpl_lane_unavailable", settled: false, spent: 0n };
@@ -1789,10 +1860,28 @@ async function purchaseOne(input: {
       // Tempo（MPP）: 署名は参照実装 mppx に委ね、ピン（chainId 4217・受取先の許可リスト・
       // pull）は我々が渡す。memo（帰属 bytes32）を auth_nonce として残し、決済照合が
       // tx の TransferWithMemo と突き合わせる。
-      const cred = await createMppCredential(
-        { account, challenge: mppSelection.accept.mpp, recipient: accept.payTo },
-        mppxCharge ? { mppxCharge } : {},
-      );
+      //
+      // 2026-09-19（横断監査 W2）: この 1 行は **Tempo RPC へ出る**（mppx の
+      // prepareTransactionRequest が nonce・gas を読む）。Solana の blockhash・XRPL の
+      // Sequence と違って予約より前へは出せない: mppx は材料の取得と署名を 1 つの
+      // createCredential に畳んでいて、切り離すには type 0x76 の封筒を自前で持つことに
+      // なる（この module が明示的に避けている）。丸ごと予約の前へ動かすと今度は
+      // 「署名したのに予約が取れない」（別枠・初回枠・同時実行）が起きて、reserveSpend を
+      // 署名の前に置いた理由そのものが壊れる。
+      // だから順番は変えず、**落ちたら予約を解放して行を書かない**。一円も動いていない
+      // 失敗を、売り手の不履行として公開台帳に載せないため。
+      let cred: Awaited<ReturnType<typeof createMppCredential>>;
+      try {
+        cred = await createMppCredential(
+          { account, challenge: mppSelection.accept.mpp, recipient: accept.payTo },
+          mppxCharge ? { mppxCharge } : {},
+        );
+      } catch (error) {
+        logServerError("observatory.l1.mpp_credential", error);
+        await releaseReservation(db, reservation.rowId);
+        invalidateDecisionCache(candidate.id);
+        return { kind: "skipped", settled: false, spent: 0n };
+      }
       authNonce = cred.memo;
       header = { headerName: cred.headerName, headerValue: cred.headerValue };
     } else if (isSolana) {
@@ -1872,10 +1961,17 @@ async function purchaseOne(input: {
         },
         ...(paidRequestBody ? { body: paidRequestBody.body } : {}),
       },
-        // 2026-09-17（Issue #29 独立検証）: 宣言本文は売り手のオリジンから出さない。別オリジンへ
-        // 本文を運ぶ転送には従わず 3xx をそのまま記録する（safe-fetch.ts の crossOriginBody）。
-        // `{}` の要求は従来どおり。
-        paidRequestBody?.source === "declared" ? { crossOriginBody: "refuse" } : undefined,
+        {
+          // 2026-09-19（横断監査 W1）: この要求が資格情報を載せるヘッダ名を gate へ宣言する。
+          // x402 の 2 つ（X-PAYMENT / PAYMENT-SIGNATURE）は safe-fetch の固定名の表にあるが、
+          // MPP（Tempo）のヘッダ名は**売り手の challenge** が決める（mppx の `header` パラメータ）
+          // ので表に載せようがない。毎回この 1 本を渡し、別オリジンへの転送では必ず落とす。
+          sensitiveHeaders: [header.headerName],
+          // 2026-09-17（Issue #29 独立検証）: 宣言本文は売り手のオリジンから出さない。別オリジンへ
+          // 本文を運ぶ転送には従わず 3xx をそのまま記録する（safe-fetch.ts の crossOriginBody）。
+          // `{}` の要求は従来どおり。
+          ...(paidRequestBody?.source === "declared" ? { crossOriginBody: "refuse" as const } : {}),
+        },
       );
       paidBody = await readBodyCapped(paid, 16_000);
     } catch (error) {

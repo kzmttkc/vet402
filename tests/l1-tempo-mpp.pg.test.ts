@@ -369,5 +369,90 @@ if (!TEST_DB) {
       assert.equal(meta.detail, "amount_mismatch");
       assert.equal(ledger[0].spent_units, "0");
     });
+
+    // ------------------------------------------------------------
+    // 2026-09-19（横断監査 W1）: credential のヘッダ名は売り手が決める。別オリジンへ運ばない。
+    //
+    // MPP の challenge は `header` パラメータで credential を載せるヘッダ名を指定できる。
+    // safe-fetch の固定名の表（authorization / x-payment / …）は我々が選んだ名前しか知らないので、
+    // 売り手が `header="x-pay"` を返して有料リトライを 302 で別オリジンへ飛ばすと、署名済みの
+    // credential がそのまま第三者へ渡っていた。ここは本物の safe-fetch を通して見る
+    // （createSafeFetchImpl でスタブを包む）——固定名の表ではなく、呼び手が宣言した名前で落ちること。
+    // ------------------------------------------------------------
+    await t.test("credential header named by the seller does not ride a cross-origin redirect", async () => {
+      await seed();
+      process.env.OBSERVATORY_TEMPO_L1_ENABLED = "true";
+      const { createSafeFetchImpl } = await import("@/lib/net/safe-fetch");
+      const hops: { url: string; headers: Record<string, string> }[] = [];
+      const inner = async (url: string, init?: RequestInit) => {
+        const headers: Record<string, string> = {};
+        new Headers(init?.headers).forEach((v, k) => {
+          headers[k] = v;
+        });
+        hops.push({ url, headers });
+        const isTempo = url.includes("fal.mpp.tempo.example");
+        const paid = headers["x-pay"] !== undefined || headers["authorization"] !== undefined || headers["x-payment"] !== undefined || headers["payment-signature"] !== undefined;
+        if (isTempo && !paid) {
+          // 壁は `header="x-pay"` を指定する（mppx の Challenge はこのパラメータを運ぶ）。
+          return new Response(JSON.stringify({ error: "payment required" }), {
+            status: 402,
+            headers: { "content-type": "application/json", "www-authenticate": `${paymentChallenge()}, header="x-pay"` },
+          });
+        }
+        if (isTempo && paid) {
+          // 有料リトライを別オリジンへ転送する。
+          return new Response("", { status: 302, headers: { location: "https://collector.example/take" } });
+        }
+        if (url.includes("collector.example")) return new Response(JSON.stringify({ data: "x" }), { status: 200, headers: { "content-type": "application/json" } });
+        // Base の売り手は従来どおり
+        if (!paid) return new Response(baseChallenge, { status: 402, headers: { "content-type": "application/json" } });
+        return new Response(JSON.stringify({ data: "goods" }), {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "PAYMENT-RESPONSE": Buffer.from(JSON.stringify({ success: true, transaction: `0x${"ab".repeat(32)}`, network: "eip155:8453", payer: "0x0000000000000000000000000000000000000001" })).toString("base64"),
+          },
+        });
+      };
+      const guarded = createSafeFetchImpl({ fetchImpl: inner, resolve: async () => [{ address: "93.184.216.34", family: 4 }] });
+      await runL1Batch({ getPayerUsdcBalance: FUNDED, limit: 10, fetchImpl: guarded, mppxCharge });
+
+      const paidToSeller = hops.filter((h) => h.url.includes("fal.mpp.tempo.example") && h.headers["x-pay"] !== undefined);
+      assert.ok(paidToSeller.length >= 1, `売り手の指定した x-pay で払っている（hops: ${hops.map((h) => h.url).join(" ")}）`);
+      const collector = hops.filter((h) => h.url.includes("collector.example"));
+      assert.ok(collector.length >= 1, "転送先まで歩いている");
+      for (const h of collector) {
+        assert.equal(h.headers["x-pay"], undefined, "売り手が名付けた資格情報が第三者へ渡ってはいけない");
+        assert.equal(h.headers["authorization"], undefined);
+      }
+    });
+
+    // ------------------------------------------------------------
+    // 2026-09-19（横断監査 W2）: Tempo の署名が落ちても、冤罪の行を公開台帳に書かない。
+    //
+    // mppx の createCredential は Tempo RPC（nonce・gas）へ出る。予約の**後**にあるので、
+    // RPC が落ちると resolveReservationAsFailed が settle_failed に倒し、spent_units が残った。
+    // 一円も動いていないのに別枠と共有 $25 が減り、その行が売り手の不履行として export.csv に載る。
+    // 資金切れ・日次枠と同じく「行を書かない」へ揃える。
+    // ------------------------------------------------------------
+    await t.test("tempo signer failure (RPC down) leaves no row and no spend; Base is still bought", async () => {
+      await seed();
+      process.env.OBSERVATORY_TEMPO_L1_ENABLED = "true";
+      const w = wall();
+      const failing = async () => {
+        throw new Error("HTTP request failed. URL: https://tempo-rpc.example/v2/SECRETKEY");
+      };
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED, limit: 10, fetchImpl: w.fetchImpl, mppxCharge: failing });
+      assert.deepEqual(await ledgerFor("https://fal.mpp.tempo.example/model/1"), [], "行を書かない（翌バッチでまた候補）");
+      assert.deepEqual(await ledgerFor("https://fal.mpp.tempo.example/model/2"), []);
+      assert.ok(!w.seen.some((s) => s.url.includes("fal.mpp.tempo.example") && s.paid), "署名できていないので有料要求も出ない");
+      // 支出は Base の 1 件だけ（Tempo の予約は解放されている）
+      const day = rows<{ spent: string }>(
+        await db.execute(sql`SELECT coalesce(sum(spent_units::numeric), 0)::text AS spent FROM x402_l1_purchases WHERE network LIKE 'eip155:4217'`),
+      )[0];
+      assert.equal(day.spent, "0", "Tempo の別枠は減らない");
+      assert.ok(w.seen.some((s) => s.url.includes("seller1.example") && s.paid), "Base は買う");
+      assert.equal(summary.settled, 1);
+    });
   });
 }

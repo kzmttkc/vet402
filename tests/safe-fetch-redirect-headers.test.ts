@@ -218,3 +218,58 @@ test("createSafeFetchImpl は呼び出しごとの crossOriginBody を受け取�
   assert.equal(res.status, 307);
   assert.equal(hops.length, 1);
 });
+
+// ------------------------------------------------------------
+// 2026-09-19（横断監査 W1）: 資格情報のヘッダ名を**売り手が決める**レーンがある。
+//
+// MPP（Tempo）の challenge は `header` パラメータで credential を載せるヘッダ名を指定でき、
+// mppx の既定は `Authorization` だが、サーバ側は自分が広告した名前でしか読まない
+// （node_modules/mppx/dist/server/Transport.js の getCredential）。つまり我々は売り手の
+// 指定どおりの名前で署名済み credential を送るしかない。固定名の表は当然それを知らないので、
+// 売り手が `header="x-pay"` を返して有料リトライを別オリジンへ 302 すると、表に無い名前の
+// 資格情報がそのまま第三者へ渡っていた。
+//
+// 直し: 呼び手がその要求で使う機微ヘッダ名を `sensitiveHeaders` で渡し、safeFetch は
+// 固定名の表と合わせて cross-origin で必ず落とす。
+// ------------------------------------------------------------
+
+test("sensitiveHeaders: 呼び手が宣言した名前は cross-origin で落ちる（同一オリジンでは残る）", async () => {
+  const cross = scriptedFetch([{ status: 302, location: "https://evil.example/collect" }, { status: 200 }]);
+  await safeFetch(
+    "https://seller.example/paid",
+    { method: "GET", headers: { "x-pay": "Payment eyJhIjoxfQ", accept: "application/json" } },
+    { fetchImpl: cross.fetchImpl, resolve: resolveAllPublic, sensitiveHeaders: ["X-Pay"] },
+  );
+  assert.equal(cross.hops[0].headers["x-pay"], "Payment eyJhIjoxfQ", "売り手本人には載る");
+  assert.equal(cross.hops[1].headers["x-pay"], undefined, "別オリジンの 2 ホップ目には載らない");
+  assert.equal(cross.hops[1].headers["accept"], "application/json", "機微でないヘッダは落とさない");
+
+  const same = scriptedFetch([{ status: 301, location: "https://seller.example/paid/" }, { status: 200 }]);
+  await safeFetch(
+    "https://seller.example/paid",
+    { method: "GET", headers: { "x-pay": "Payment eyJhIjoxfQ" } },
+    { fetchImpl: same.fetchImpl, resolve: resolveAllPublic, sensitiveHeaders: ["x-pay"] },
+  );
+  assert.equal(same.hops[1].headers["x-pay"], "Payment eyJhIjoxfQ", "同一オリジンの 301 は従来どおり運ぶ");
+});
+
+test("sensitiveHeaders: 宣言しなかった独自ヘッダは落ちない（一般のヘッダ消しではない）", async () => {
+  const { hops, fetchImpl } = scriptedFetch([{ status: 302, location: "https://evil.example/collect" }, { status: 200 }]);
+  await safeFetch(
+    "https://seller.example/paid",
+    { method: "GET", headers: { "x-trace-id": "abc" } },
+    { fetchImpl, resolve: resolveAllPublic, sensitiveHeaders: ["x-pay"] },
+  );
+  assert.equal(hops[1].headers["x-trace-id"], "abc");
+});
+
+test("createSafeFetchImpl は呼び出しごとの sensitiveHeaders を受け取る", async () => {
+  const { hops, fetchImpl } = scriptedFetch([{ status: 302, location: "https://evil.example/collect" }, { status: 200 }]);
+  const guarded = createSafeFetchImpl({ fetchImpl, resolve: resolveAllPublic });
+  await guarded(
+    "https://seller.example/paid",
+    { method: "GET", headers: { "payment-authorization": "Payment eyJhIjoxfQ" } },
+    { sensitiveHeaders: ["payment-authorization"] },
+  );
+  assert.equal(hops[1].headers["payment-authorization"], undefined);
+});

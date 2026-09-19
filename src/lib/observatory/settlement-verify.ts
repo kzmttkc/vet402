@@ -34,6 +34,8 @@ import { getPublicClient } from "@/lib/chain/client";
 import { getArcPublicClient } from "@/lib/chain/arc";
 import { evmChainFor, type EvmPayChain } from "./x402-payer";
 import { isWellFormedSettlementTx } from "@/lib/validation/settlement-tx";
+// 2026-09-19（横断監査 W4）: detail は DB に残る。RPC の URL（鍵入りの形がある）を伏せてから書く。
+import { redactForLog } from "./redact";
 
 /** ERC-20 Transfer(address,address,uint256) */
 const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
@@ -198,7 +200,7 @@ export async function verifyL1Settlement(
   try {
     [chainId, tip] = await Promise.all([client.getChainId(), client.getBlockNumber()]);
   } catch (error) {
-    return { ok: false, reason: "rpc_unavailable", detail: String(error).slice(0, 200) };
+    return { ok: false, reason: "rpc_unavailable", detail: redactForLog(error).slice(0, 200) };
   }
   if (chainId !== chain.chainId) {
     return { ok: false, reason: "wrong_chain", detail: `rpc reports chainId ${chainId}, purchase is on ${chain.caip2}` };

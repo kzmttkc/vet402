@@ -45,6 +45,13 @@
 // it still allows a double settle and makes the on-chain payer disagree with
 // who we think paid.
 //
+// WHAT IT ALSO GUARANTEES (2026-09-19 audit). The same removal for credential
+// headers whose NAME the seller chose. MPP (Tempo) challenges carry a `header`
+// parameter and the credential must ride in that field or the seller cannot
+// read it, so the fixed table below could never cover this lane: the caller
+// declares the names for that one request (SafeFetchOptions.sensitiveHeaders)
+// and they are dropped on the same boundary.
+//
 // WHAT IT STILL DOES NOT: a SAME-origin redirect keeps every header, which is
 // intended (that is one server talking to itself, and the paid retry has to
 // survive a trailing-slash 301). Nor does it re-sign anything: a stripped
@@ -181,6 +188,14 @@ const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308]);
  *
  * A name added to the payer must be added here too — there is a test that
  * asserts both of the current ones are stripped, so a rename breaks loudly.
+ *
+ * A FIXED table can only cover header names WE choose. The MPP lane (Tempo)
+ * does not choose: the seller's challenge carries a `header` parameter naming
+ * the field the credential must ride in, and the reference server reads the
+ * credential from that field only (mppx server/Transport.js getCredential), so
+ * answering in `Authorization` would simply look unpaid. Those names are
+ * therefore passed per call in SafeFetchOptions.sensitiveHeaders and dropped
+ * on the same boundary — see the L1 paid leg in observatory/l1-runner.ts.
  */
 const CROSS_ORIGIN_SENSITIVE_HEADERS = [
   "authorization",
@@ -229,10 +244,21 @@ export type SafeFetchOptions = {
    * this runner sent before the declared body existed behaves as it did.
    */
   crossOriginBody?: "follow" | "refuse";
+  /**
+   * Extra header names this request carries a credential in, dropped on a
+   * cross-origin redirect exactly like the fixed table above (case-insensitive).
+   *
+   * 2026-09-19（横断監査 W1）: MPP（Tempo）の credential のヘッダ名は売り手の
+   * challenge が決める（`header` パラメータ・既定 Authorization）。固定名の表は
+   * 我々が選んだ名前しか知らないので、売り手が `header="x-pay"` を返して有料
+   * リトライを別オリジンへ 302 すると、署名済みの credential が第三者に渡った。
+   * 呼び手が「この要求で機微なヘッダ」を宣言し、gate はここで必ず落とす。
+   */
+  sensitiveHeaders?: readonly string[];
 };
 
 /** Per-call options a drop-in fetchImpl accepts as a third argument. */
-export type SafeFetchCallOptions = Pick<SafeFetchOptions, "crossOriginBody">;
+export type SafeFetchCallOptions = Pick<SafeFetchOptions, "crossOriginBody" | "sensitiveHeaders">;
 
 /**
  * `fetch`, except every hop's target must be a public address. Redirects are
@@ -249,7 +275,12 @@ export async function safeFetch(
   init: RequestInit = {},
   options: SafeFetchOptions = {},
 ): Promise<Response> {
-  const { fetchImpl = pinnedFetch, resolve = defaultResolver, maxRedirects = 5, crossOriginBody = "follow" } = options;
+  const { fetchImpl = pinnedFetch, resolve = defaultResolver, maxRedirects = 5, crossOriginBody = "follow", sensitiveHeaders = [] } = options;
+  // 固定名の表＋この要求ぶんの宣言。Headers は set/delete で正規化するので小文字で持つ。
+  const dropOnCrossOrigin = [
+    ...CROSS_ORIGIN_SENSITIVE_HEADERS,
+    ...sensitiveHeaders.map((name) => name.toLowerCase()),
+  ];
 
   let current: URL;
   try {
@@ -316,7 +347,7 @@ export async function safeFetch(
     // is never edited underneath it.
     if (crossesOrigin(current, next)) {
       headers = new Headers(headers);
-      for (const name of CROSS_ORIGIN_SENSITIVE_HEADERS) headers.delete(name);
+      for (const name of dropOnCrossOrigin) headers.delete(name);
     }
     current = next;
   }

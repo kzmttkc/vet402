@@ -470,6 +470,13 @@ export async function createMppCredential(
   // auth_nonce は常に我々の帰属 memo（mppx も同じ入力・同じ配置で作る——テストがバイト一致を固定）。
   const memo = encodeMppAttributionMemo({ challengeId: challenge.id, realm: challenge.realm, clientId: MPP_CLIENT_ID });
   // credential を載せるヘッダは challenge の `header` パラメータ（既定 Authorization）。
+  //
+  // 2026-09-19（横断監査 W1）: ここを `authorization` に固定しない。MPP のサーバは自分が
+  // 広告した名前でしか credential を読まない（mppx server/Transport.js getCredential は
+  // `header` の名前——requiresAuth の売り手なら `Payment-Authorization`——だけを見る）ので、
+  // 固定すると払ったのに 402 が返り、我々の不具合を売り手の不履行として台帳に書くことになる。
+  // 代わりに、**漏れる経路の側**に関門を置いた: 呼び手（l1-runner の有料レグ）がこの名前を
+  // safe-fetch へ宣言し、別オリジンへの転送では固定名の表と同じく必ず落ちる。
   return { headerName: challenge.credentialHeader.toLowerCase(), headerValue: credential, memo, pins };
 }
 

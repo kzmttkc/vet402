@@ -25,6 +25,7 @@ import { SOLANA_USDC_MINT } from "./sol402-payer";
 import { ARC_USDC, BASE_USDC } from "./x402-payer";
 import { getArcPublicClient } from "@/lib/chain/arc";
 import { readTempoUsdcBalance } from "./mpp-payer";
+import { redactForLog } from "./redact";
 
 /** tempo（2026-09-17 Tempo レーン）: 同じ EOA・USDC.e の balanceOf・TEMPO_RPC_URL。 */
 /**
@@ -48,10 +49,12 @@ type ChainState = { read: Promise<{ balance: bigint } | { error: string }>; comm
  * 記録用の誤り文字列（2026-09-17 レビュー）。viem の transport エラーは RPC の URL を
  * 本文に含み、URL には鍵が入る形（…/v2/<key>）がある。summary・ログ・台帳のどこにも
  * URL を落とさないよう、`https?://…` を伏字にしてから 300 字に切る。
+ *
+ * 2026-09-19（横断監査 W4）: 本体は ./redact へ移した——同じ形の書き込みが l1-runner と
+ * settlement-verify にもあり、そちらから payer-funds（Solana / Arc / Tempo の client を
+ * 引く）を import させたくないため。ここは呼び手の互換のために再輸出する。
  */
-export function redactForLog(error: unknown): string {
-  return String(error).replace(/https?:\/\/\S+/g, "<url>").slice(0, 300);
-}
+export { redactForLog } from "./redact";
 
 /**
  * 1 バッチぶんの残高台帳。`check` は署名の前、`commit` は署名の直前に呼ぶ。

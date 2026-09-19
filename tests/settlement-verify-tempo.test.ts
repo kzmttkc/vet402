@@ -153,3 +153,51 @@ test("a non-indexed memo (second data word) is still read", async () => {
   assert.equal(result.ok, true);
 });
 
+
+// ------------------------------------------------------------
+// 2026-09-19（横断監査 W4）: rpc_unavailable の detail に RPC の URL を残さない。
+//
+// detail は x402_l1_purchases.settlement_verify_reason として DB に残る。viem の transport
+// エラーは本文に URL を含み、TEMPO_RPC_URL / SOLANA_RPC_URL は `…/v2/<key>` の形を取りうる。
+// payer-funds は 2026-09-17 から redactForLog を通していたが、照合器の側は素通しだった。
+// ------------------------------------------------------------
+const RPC_ERROR = new Error("HTTP request failed. URL: https://tempo.example/v2/SECRETKEY. Details: fetch failed");
+
+test("rpc_unavailable の detail は RPC の URL を伏字にする（chainId が読めない側）", async () => {
+  const client = {
+    getChainId: async () => {
+      throw RPC_ERROR;
+    },
+    getBlockNumber: async () => 40_000_000n,
+    getTransactionReceipt: async () => ({}) as never,
+    getBlock: async () => ({}) as never,
+  } as unknown as EvmVerifyClient;
+  const r = await verifyTempoSettlement(input, { client });
+  assert.equal(r.ok, false);
+  if (!r.ok) {
+    assert.equal(r.reason, "rpc_unavailable");
+    assert.equal(r.detail?.includes("SECRETKEY"), false, `detail に鍵が残っている: ${r.detail}`);
+    assert.ok(r.detail?.includes("<url>"), `伏字が入っていない: ${r.detail}`);
+  }
+});
+
+test("Base（settlement-verify.ts）の rpc_unavailable も同じく伏字にする", async () => {
+  const client = {
+    getChainId: async () => {
+      throw RPC_ERROR;
+    },
+    getBlockNumber: async () => 30_000_000n,
+    getTransactionReceipt: async () => ({}) as never,
+    getBlock: async () => ({}) as never,
+  } as unknown as EvmVerifyClient;
+  const r = await verifyL1Settlement(
+    { txHash: TX, network: "eip155:8453", expectedPayTo: PAY_TO, expectedPayer: PAYER, expectedAmountUnits: "25000" },
+    { client },
+  );
+  assert.equal(r.ok, false);
+  if (!r.ok) {
+    assert.equal(r.reason, "rpc_unavailable");
+    assert.equal(r.detail?.includes("SECRETKEY"), false, `detail に鍵が残っている: ${r.detail}`);
+    assert.ok(r.detail?.includes("<url>"), `伏字が入っていない: ${r.detail}`);
+  }
+});
