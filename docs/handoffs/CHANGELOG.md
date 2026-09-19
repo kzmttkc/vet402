@@ -13,6 +13,25 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-19 JST — 上の関門修正に独立レビューの BLOCK（Critical 3・Warning 5）を反映（vet402.com コア・ブランチ `fix/claims-gate-coverage` 2 本目・push は依頼元）
+
+- **何を変えたか**:
+  - **R-C1** `docs/claims.yaml`: `check: null` の代わりに置いた根拠のうち、**テスト 7 本が実在しない名前**だった（`tests/catalog-diff.test.ts`・`tests/l1-budget.test.ts`・`tests/l1-budget.pg.test.ts`・`tests/l0-probe.test.ts`・`tests/l1-priority-hosts.test.ts`・`tests/settlement-verify.test.ts`・`tests/l2-schema.test.ts`）。実体は別名で全部あるので実在するものへ差し替え、どのテストが何を固定しているかまで書いた。ほかに出典の誤り 2 件——`delivery.ts` に `l2` は無い（実体は `l1-runner.ts:596` の `isDeliveryVerified`）、`release-packages.mjs` は `manifests[0]` のスコープ 1 つしか扱わない（`@vouchscore` へ出す経路はリポに無い）。**根拠が実在しないなら「登録すれば緑」と同じ**なので、`tests/claims-registry.test.ts` に「registry が名指す `src/…`・`tests/…`・`scripts/…`・`packages/…` のパスは全て実在する」検査を 1 本足した。
+  - **R-C2** `src/lib/claims/extract.ts`: 関門の穴が残っていた。直前が**空白や `(`** だと散文の `/*` が今もコメント扱いで、そこから**ファイル末尾まで**が無音で空白になっていた（レビュアーの実測 2 例を再現: `A trailing glob (/*) is never expanded…` → 抽出 0 件）。閉じないブロックコメントはコンパイルできないので、**閉じ `*/` が後ろに無ければ開きとして扱わない**ようにした（2 例とも検出されるようになった）。そのうえで **面ごとの検出数の下限**を `tests/claims-registry.test.ts` に焼いた（methodology ≥ 41・LP ≥ 10・docs/api ≥ 56・corrections ≥ 21・vocabulary ≥ 15・合計 ≥ 295）。折返しや書き方で検出が落ちたらここが赤くなる＝**黙って盲にならない**。
+  - **R-C3** `methodology/page.tsx`: 「73% of organic calls」の出典は `l1-runner.ts` と `observatory-l1-priority.test.ts` のコメントだけで、そこが引く「要件定義v2 2026-08-14 §0.5」はリポに無く、URL も著者も無い（`rikocr8orh8` は出所を特定できない）。**数字ごと落とし**、「独立に報告された需要から選んだ（社内記録 2026-08-14）／その第三者の数字は再測定しておらず、読者が確かめられる出所を示せない／今の需要は register の 30 日呼出数で判断できる」に留めた。
+  - **R-W1** `tests/claims-registry.test.ts`: 引用の照合が面をまたいでいて、別の面に登録した文が**まったく別の面の断定**を黙って通していた。`c.surface === file` で絞った。増えた孤児は 1 件（`/api/v1/accuracy` の「A rate is published only at …」が `/accuracy` 頁の登録に覆われていた）で、実装（`benchmark-report.ts:122` の `den >= MIN_SAMPLE ? rate : null`）とテスト（`accuracy.test.ts` の境界 2 本）を確かめて API 面として登録した。
+  - **R-W2** 唯一の `check` が主張を見ていなかった（`license == "CC-BY-4.0"`）。`cite` の文字列そのものを見る式に変えた。
+  - **R-W3** 下のエントリの「`latestSnapshot.fetchedCount > 0` をカナリアに載せた」は偽だったので事実に直した（実際は `check: null`）。
+  - **R-W4** `methodology/page.tsx` の静的な「Four hosts」を `PRIORITY_SELLER_HOSTS.length` から描く形に。
+  - **R-W5** §8「These pages publish facts …」を **"These observatory pages"** に 1 語だけ狭めた（`/leaderboard` との切り分けが claims.yaml の `means` にしか無かったのを、読者の見る頁に出した）。
+  - **追加** `src/app/docs/api/page.tsx`: 上の裏取りで `@vouchscore/*` の「the same code」が**今は偽**と分かった（`npm view`: `@vet402/sdk` 0.6.0 / `@vouchscore/sdk` 0.3.0・maintainer はどちらも `vouchscore`）。「同じ npm アカウントから出ている・改名時の版で凍結・`@vet402/*` とは揃っていない」に直した。
+
+- **そちらが知っておくべき影響**: 公開文言が変わったのは methodology §6（73% を落とした）・§8（1 語）・§6 の「Four hosts」、および docs/api の npm スコープの段。カナリアは 58 件のまま（1 件の式が `license` → `cite` に変わっただけ）。関門のテストは 32 → 35 本。
+
+- **残る懸念**: 抽出器の `CODE_SHAPED` が散文の `…2026),` を「コード」と読んでテキストノードごと落とす。今回それを自分の copy edit で踏み、docs/api の検出が 56 → 55 に落ちたのを**下限検査が捕まえた**（文言を戻して 56 に復帰）。`)` の扱いを緩めると 40 面すべてにコード断片が混じるので今回は触っていない。下限検査があるので黙って落ちることはない。
+
+---
+
 ## 2026-09-19 JST — 主張の関門が公開面の 430 行を見ていなかった穴を塞いだ（vet402.com コア・ブランチ `fix/claims-gate-coverage`・`fix/public-surface-truth` の上・push は依頼元）
 
 - **何を変えたか**:
@@ -25,7 +44,7 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 - **なぜ**: 2026-09-19 の監査で、公開面が自分の台帳と食い違う文が 6 件見つかり、そのすべてを関門（`tests/claims-registry.test.ts`）が素通りさせていた。関門に正解を書き写すのではなく、関門が見えていない経路を塞ぐのが目的。検出数は methodology **8 → 41**、LP **8 → 10**、全体 **268 → 304**。取りこぼしはゼロ（修正前に拾えていた 268 件は全部そのまま拾える）。
 
 - **そちらが知っておくべき影響**（公開面の文言が変わった 3 箇所）:
-  - **§4 Delisting detection**: 「The public discovery catalog is fetched in full daily.」は**読まれた日に偽**だった（2026-09-19 の本番 `latestSnapshot` は fetchedCount 1,065 / totalCount 1,071 で、同じ段落の次の文が「取得が欠けた日は delisting を判定しない」と書いている）。「re-fetched daily, and every fetch is compared with the catalog's own reported total for that day — both counts are published as `latestSnapshot`」に直し、`latestSnapshot.fetchedCount > 0` をカナリアに載せた。
+  - **§4 Delisting detection**: 「The public discovery catalog is fetched in full daily.」は**読まれた日に偽**だった（2026-09-19 の本番 `latestSnapshot` は fetchedCount 1,065 / totalCount 1,071 で、同じ段落の次の文が「取得が欠けた日は delisting を判定しない」と書いている）。「re-fetched daily, and every fetch is compared with the catalog's own reported total for that day — both counts are published as `latestSnapshot`」に直した。**カナリアには載せていない**——`latestSnapshot.fetchedCount > 0` は取得が何日止まっても古い値で真を返し「日次であること」を見ないので `check: null` にし、`why_unverifiable` にその式を使ってはいけない理由を書いた（日次は vercel.json の cron `catalog-sync` が持つ）。
   - **§6 優先リスト**: 「these four carry the bulk of the organic call volume the public catalog reports」は vet402 の測定ではなく、`l1-runner.ts` のコメントが引く**外部調査（rikocr8orh8 の Bazaar survey・データ 2026-07-28・organic calls の 73%）**が出典だった。現在形の自社主張として書くのをやめ、出典と日付を明記して「第三者の 1 時点の測定で、vet402 は再測定していない」と添え、今の需要は register の 30 日呼出数の列で確かめられる、という形にした。
   - **§6 settled の定義**: 「at least 32 confirmations」の **32 が静的**だった。`settlement-verify.ts` の `REQUIRED_CONFIRMATIONS` から描画する。
   - （§2 の「we sent `{}` on every `POST`」は意味を変えず「every paid `POST` carried `{}`」に語順だけ変えた。JSX のテキストノードが `on every` の 2 語で切れて、登録できる引用が汎用的すぎる形になるのを避けるため。）

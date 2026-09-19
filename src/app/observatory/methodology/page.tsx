@@ -401,7 +401,8 @@ export default async function ObservatoryMethodologyPage() {
           .
         </p>
         <p className="doc-p">
-          <strong>The priority list, and why it exists.</strong> Four hosts are not on the{" "}
+          <strong>The priority list, and why it exists.</strong> The{" "}
+          {PRIORITY_SELLER_HOSTS.length} hosts named below are not on the{" "}
           {SWEEP_WINDOW_DAYS}-day window. They may be re-purchased once every{" "}
           {PRIORITY_SWEEP_WINDOW_DAYS === 1 ? "day" : `${PRIORITY_SWEEP_WINDOW_DAYS} days`}, and
           they are pinned to the head of candidate selection:{" "}
@@ -413,14 +414,14 @@ export default async function ObservatoryMethodologyPage() {
           ))}
           . The reason is that a settle-through record is worth more as a series than as a single
           row, and the list was picked from independently reported demand rather than from our own
-          ledger: a public survey of the Bazaar catalog, on data of 2026-07-28, put these four at
-          73% of organic calls. That is a third party&apos;s measurement on one date — vet402 has
-          not re-measured it, and it is not restated here as a standing fact. What we do publish
-          is the per-endpoint 30-day call count the catalog reports, a column on the{" "}
+          ledger (internal record of 2026-08-14). We are not restating that third party&apos;s
+          figure here: we have not re-measured it, and we cannot point you at a source you could
+          check. What we can point at is current demand — the per-endpoint 30-day call count the
+          catalog reports, a column on the{" "}
           <Link href="/observatory" className="underline">
             register
           </Link>
-          , so the list can be checked against current demand instead of taken on our word.
+          , which is the number to judge this list against.
           Two things this does <em>not</em> change: the measurement is the identical pipeline
           with the identical gates, and the result publishes exactly as anyone else&apos;s does,
           pass and fail alike. What differs is how often we buy, and that is stated here rather
@@ -607,12 +608,12 @@ export default async function ObservatoryMethodologyPage() {
           vet402&apos;s own endpoints, when listed in the catalog, run through exactly the same
           measurement pipeline as everyone else&apos;s, and vet402&apos;s own rows are excluded
           from the aggregate rates — a verifier that grades itself is not a neutral party in its
-          own numbers. What is <em>not</em> uniform is purchase frequency: the four hosts in the
+          own numbers. What is <em>not</em> uniform is purchase frequency: the hosts in the
           priority list in section 6 are bought from more often than the rest of the catalog. The
           pipeline, the gates and the publication rules are identical for them; only the cadence
           differs, and the list is named there rather than left implicit. No operator gets a
           different measurement, a suppressed result, or a softer word for the same finding, and
-          that is what partners are told they cannot buy. These pages publish facts with reason
+          that is what partners are told they cannot buy. These observatory pages publish facts with reason
           codes and timestamps; they do not publish composite scores, rankings, or evaluative
           language about any operator.
           Corrections follow the site-wide{" "}

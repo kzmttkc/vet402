@@ -1545,7 +1545,7 @@ claims:
     quote: "The public discovery catalog is re-fetched daily, and every fetch is compared with the catalog&apos;s own reported total for that day"
     means: "カタログの再取得は日次（cron catalog-sync が 0 1 * * *）。取得件数とカタログ自身の申告総数は latestSnapshot として公開し、取得が欠けた日は delisting の判定をしない"
     check: null
-    why_unverifiable: "カナリアの式（path op literal）では『日次であること』を検査できない——`latestSnapshot.fetchedCount > 0` は取得が何日止まっても古い値で真を返すので、この主張を見ていない check になる。日次は vercel.json の cron `catalog-sync`（0 1 * * *）が持ち、取得が欠けた日に delisting を判定しない規則は src/lib/observatory/catalog-diff.ts と tests/catalog-diff.test.ts が固定する"
+    why_unverifiable: "カナリアの式（path op literal）では『日次であること』を検査できない——`latestSnapshot.fetchedCount > 0` は取得が何日止まっても古い値で真を返すので、この主張を見ていない check になる。日次は vercel.json の cron `catalog-sync`（0 1 * * *）が持ち、取得が欠けた日に delisting を判定しない規則は src/lib/observatory/catalog-diff.ts と tests/observatory-diff.test.ts が固定する（「an endpoint present yesterday and absent today is delisted — only on a complete fetch」）"
     verified_at: 2026-09-19
   - id: method_l1_refuses_unless_every_condition_holds
     surface: src/app/observatory/methodology/page.tsx
@@ -1559,21 +1559,21 @@ claims:
     quote: ") and a daily budget ($"
     means: "1 回あたりの上限（MAX_PER_PURCHASE_UNITS）と 1 UTC 日の予算（DAILY_BUDGET_USD）が有料購入にかかる。どちらも頁は定数を描画していて静的な数字を持たない"
     check: null
-    why_unverifiable: "上限の値は公開 GET が返さない（返すのは使った結果の行）。値は src/lib/observatory/x402-payer.ts と budget.ts の定数で、予算の関門は tests/l1-budget.test.ts が固定する"
+    why_unverifiable: "上限の値は公開 GET が返さない（返すのは使った結果の行）。値は src/lib/observatory/x402-payer.ts と budget.ts の定数で、予算の関門は tests/observatory-budget.test.ts が固定する（「the daily cap is $25 and the guard denies at the boundary」）"
     verified_at: 2026-09-19
   - id: method_budget_checked_in_db_before_every_signature
     surface: src/app/observatory/methodology/page.tsx
     quote: "are checked against a database ledger, not memory, before every signature"
     means: "支出の確認はプロセスのメモリではなく台帳（x402_l1_purchases）に当てる。予約は reserveSpend の単一 SQL 文が原子的に取るので、再起動や同時実行でも二重に使えない"
     check: null
-    why_unverifiable: "「メモリではなく台帳で数えている」は実装の性質で、公開 GET には出ない。予約は src/lib/observatory/l1-runner.ts の reserveSpend（1 文の CTE）で、tests/l1-budget.pg.test.ts が同時実行の二重取りで赤になる"
+    why_unverifiable: "「メモリではなく台帳で数えている」は実装の性質で、公開 GET には出ない。予約は src/lib/observatory/l1-runner.ts の reserveSpend（1 文の CTE）で、署名前に spent_units を立てる順序は tests/l1-budget-burn.test.ts が、レーン別の枠と併走は tests/l1-lane-first-purchase-quota.pg.test.ts が固定する"
     verified_at: 2026-09-19
   - id: method_every_request_carries_our_user_agent
     surface: src/app/observatory/methodology/page.tsx
     quote: "Every request in this pipeline &mdash; the unpaid L0 probe, the unpaid read of the"
     means: "L0 probe・402 の読み取り・有料要求のどれも、我々を名乗りこのページへ戻る User-Agent を付けて出す。回転も偽装もしない"
     check: null
-    why_unverifiable: "我々が送る要求ヘッダは公開 GET に出ない（売り手側のログにしか残らない）。文字列は src/lib/observatory/l0-probe.ts と l1-runner.ts に直に書かれていて、tests/l0-probe.test.ts が固定する"
+    why_unverifiable: "我々が送る要求ヘッダは公開 GET に出ない（売り手側のログにしか残らない）。文字列は src/lib/observatory/l0-probe.ts と l1-runner.ts に直に書かれていて、tests/covert-wording.test.ts の「L0 / L1 の実装は vet402 を名乗る User-Agent を送る」が 3 本すべてを逐語で固定する"
     verified_at: 2026-09-19
   - id: method_covert_was_never_true
     surface: src/app/observatory/methodology/page.tsx
@@ -1587,7 +1587,7 @@ claims:
     quote: "They may be re-purchased once every"
     means: "優先ホストだけは通常の掃引窓ではなく PRIORITY_SWEEP_WINDOW_DAYS の間隔で買い直せる。窓の値は定数から描画する"
     check: null
-    why_unverifiable: "掃引の間隔は公開 GET が返す値ではない。定数は src/lib/observatory/l1-runner.ts の PRIORITY_SWEEP_WINDOW_DAYS で、優先ホストの照合（完全一致＋配下のパスだけ）は tests/l1-priority-hosts.test.ts が固定する"
+    why_unverifiable: "掃引の間隔は公開 GET が返す値ではない。定数は src/lib/observatory/l1-runner.ts の PRIORITY_SWEEP_WINDOW_DAYS で、優先ホストの照合（完全一致＋配下のパスだけ）は tests/observatory-priority-match.test.ts が、掃引の優先順位は tests/observatory-l1-priority.test.ts が固定する"
     verified_at: 2026-09-19
   - id: method_mature_endpoints_and_daily_intake_limit
     surface: src/app/observatory/methodology/page.tsx
@@ -1608,7 +1608,7 @@ claims:
     quote: "log matching all four of those with at least"
     means: "Base の settled は、払い元・カタログ申告の宛先・申告額・正規 USDC の 4 つが揃った ERC-20 Transfer ログを、REQUIRED_CONFIRMATIONS 以上の確定数で再読みできたときだけ。確定数は定数から描画する"
     check: null
-    why_unverifiable: "`l1.settled >= 1` は件数が 1 以上であることしか言わず、4 つの一致と確定数という主張そのものを見ていない。照合の条件は src/lib/observatory/settlement-verify.ts（REQUIRED_CONFIRMATIONS と Transfer ログの 4 条件）にあり、tests/settlement-verify.test.ts が条件を1つ外す変異で赤になる"
+    why_unverifiable: "`l1.settled >= 1` は件数が 1 以上であることしか言わず、4 つの一致と確定数という主張そのものを見ていない。照合の条件は src/lib/observatory/settlement-verify.ts（REQUIRED_CONFIRMATIONS と Transfer ログの 4 条件）にあり、tests/settlement-verification.test.ts が REQUIRED_CONFIRMATIONS と insufficient_confirmations の判定の存在を固定する"
     verified_at: 2026-09-19
   - id: method_every_attempt_including_refusals_is_visible
     surface: src/app/observatory/methodology/page.tsx
@@ -1643,14 +1643,14 @@ claims:
     quote: "output schema; never counted as a failure."
     means: "カタログの entry が出力スキーマを宣言していない（no_declaration）場合、それを失敗として数えない"
     check: null
-    why_unverifiable: "減点しないことは集計 GET の単一の値では表せない。判定は src/lib/observatory/l1-runner.ts の L2 評価（宣言が無ければ no_declaration を返す）にあり、delivery.ts の合否述語も l2Schema !== 'mismatch' で見ている"
+    why_unverifiable: "減点しないことは集計 GET の単一の値では表せない。判定は src/lib/observatory/l1-runner.ts の L2 評価（宣言が無ければ no_declaration を返す）にあり、同じファイルの isDeliveryVerified（l1-runner.ts:596）が l2Schema !== 'mismatch' で見る。tests/observatory-l1-delivery-verified.test.ts が no_declaration を減点しないことを固定する"
     verified_at: 2026-09-19
   - id: method_l2_match_requires_every_declared_required_key
     surface: src/app/observatory/methodology/page.tsx
     quote: "the response parses and every declared required key is present."
     means: "L2 の match は、応答が JSON として読めて、カタログが required と宣言した最上位キーが全部あるときだけ"
     check: null
-    why_unverifiable: "キーの照合結果は行ごとの値で、集計 GET には match の件数しか出ない。判定は l1-runner.ts の required キー走査で、tests/l2-schema.test.ts が固定する"
+    why_unverifiable: "キーの照合結果は行ごとの値で、集計 GET には match の件数しか出ない。判定は l1-runner.ts の required キー走査で、語彙の値域は tests/observatory-vocabulary.test.ts が、配送判定側の扱いは tests/observatory-l1-delivery-verified.test.ts が固定する"
     verified_at: 2026-09-19
   - id: method_l2_canon_is_what_every_api_returns
     surface: src/app/observatory/methodology/page.tsx
@@ -1668,7 +1668,7 @@ claims:
     verified_at: 2026-09-19
   - id: method_only_the_cadence_differs_for_priority_hosts
     surface: src/app/observatory/methodology/page.tsx
-    quote: "uniform is purchase frequency: the four hosts in the"
+    quote: "uniform is purchase frequency: the hosts in the"
     means: "優先ホストで違うのは買う頻度だけ。パイプライン・関門・公開の規則は同じで、結果は他と同じように pass も fail も出す。観測所の頁が出すのは理由コードと時刻の付いた事実で、事業者についての合成スコアや順位づけ・評価語ではない（0–100 のスコアと /leaderboard は別の API・別の対象で、§2 に切り分けを書いている）"
     check: null
     why_unverifiable: "公平性の約束は編集方針で、公開 GET が数値で返す種類の主張ではない。頻度の差は PRIORITY_SWEEP_WINDOW_DAYS として頁に明記し、同じ関門を通ることは L1 の経路が 1 本しかないこと（l1-runner.ts の purchaseOne）で担保する"
@@ -1686,14 +1686,23 @@ claims:
     means: "ここの数字は動くので、取得日の無い引用は測定ではない。JSON 側は license / licenseUrl / retrievedAt / cite を応答に載せる"
     check:
       url: https://vet402.com/api/v1/observatory/state
-      assert: "license == \"CC-BY-4.0\""
+      assert: "cite == \"KIZUNA Creation. vet402 observatory. Dataset, retrieved {retrievedAt}. https://vet402.com/api/v1/observatory/state\""
     verified_at: 2026-09-19
   - id: docs_api_vouchscore_scope_kept_for_existing_installs
     surface: src/app/docs/api/page.tsx
-    quote: "kept only so existing installs keep resolving"
-    means: "@vouchscore/* は旧名（2026-08 までの Vouch）で、同じアカウントが同じコードを出している。既存の install が解決し続けるためだけに残してあり、正典のスコープは @vet402/*"
+    quote: "in place only so existing installs keep resolving"
+    means: "@vouchscore/* は旧名（2026-08 までの Vouch）で、発行元の npm アカウントは同じ。既存の install が解決し続けるためだけに残してあり、改名時の版で凍結していて @vet402/* とは揃っていない。正典のスコープは @vet402/*"
     check: null
-    why_unverifiable: "npm レジストリは我々の公開 GET ではないので、カナリアの対象にしない（`npm view @vouchscore/sdk` で誰でも確かめられる）。パッケージの発行は scripts/release-packages.mjs が両スコープへ同じ tarball を出す経路"
+    why_unverifiable: "npm レジストリは我々の公開 GET ではないので、カナリアの対象にしない（`npm view @vouchscore/sdk` で誰でも確かめられる）。`npm view @vet402/sdk` と `npm view @vouchscore/sdk` が同じ maintainer（vouchscore）を返し、版は 0.6.0 と 0.3.0 で揃っていない（2026-09-19 実測）。scripts/release-packages.mjs が扱うスコープは manifests[0] の 1 つだけで、packages/*/package.json は全て @vet402/* なので、@vouchscore へ出す経路はこのリポに無い＝旧スコープは凍結されている"
+    verified_at: 2026-09-19
+  # 2026-09-19 レビュー W1: 引用の照合を面ごとに絞ったら、/accuracy 頁の登録が
+  # 覆い隠していた API 側の同文が孤児として出た。面が違えば別の主張として登録する。
+  - id: api_accuracy_rate_published_only_at_min_sample
+    surface: src/app/api/v1/accuracy/route.ts
+    quote: "A rate is published only at ${report.minSample}+ resolved verdicts for that bucket"
+    means: "バケツごとの解決済み判定が minSample 件に満たなければ率を出さず null を返す（雑音から計算した数字を公開しない）。閾値は応答の minSample として同じ JSON に載せる"
+    check: null
+    why_unverifiable: "『下回ったら null』は標本が閾値未満のバケツでしか現れず、本番の値が今どちらかは日によって変わるので、カナリアの式（path op literal）で安定して書けない。実装は src/lib/scoring/benchmark-report.ts:122 の `den >= MIN_SAMPLE ? rate : null` で、tests/accuracy.test.ts の「rates are null below the minimum sample — noise is never published」と「at the minimum sample the rate is published」が境界の両側を固定する"
     verified_at: 2026-09-19
   - id: lp_validation_registry_is_written_in_one_direction
     surface: src/app/page.tsx

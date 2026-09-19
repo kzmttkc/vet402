@@ -661,8 +661,11 @@ npm i @vet402/mcp-server   # MCP tool, so an agent can ask before it pays`}
         <p className="text-sm text-brand-lift">
           <code className="text-brand-deep">@vet402/*</code> is the canonical scope.{" "}
           <code className="text-brand-deep">@vouchscore/*</code> is the old name (the product
-          was called Vouch until August 2026) and is published by the same account &mdash; the
-          same code, kept only so existing installs keep resolving. Unscoped{" "}
+          was called Vouch until August 2026) and is published from the same npm account and left
+          in place only so existing installs keep resolving. It is frozen at the version it had when
+          the name changed, not kept in step with{" "}
+          <code className="text-brand-deep">@vet402/*</code>, so new work should take the
+          canonical scope. Unscoped{" "}
           <code>vouch-sdk</code> and <code>@getvouch/sdk</code> exist on npm and are unrelated
           packages by other publishers &mdash; installing those gets you someone else&apos;s code,
           not ours.

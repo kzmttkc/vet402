@@ -20,7 +20,7 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { extractAssertions, ASSERTIVE_TERMS } from "@/lib/claims/extract";
 import { parseRegistry } from "@/lib/claims/yaml";
@@ -105,6 +105,19 @@ test("extractor still strips a real block comment that follows prose with a slas
     `);`,
   ].join("\n");
   assert.deepEqual(extractAssertions(src, "x.tsx"), []);
+});
+
+test("extractor does not swallow the file when prose contains an unclosed /*", () => {
+  // 2026-09-19 レビュー C2 の実測 2 例。直前が空白や `(` だと opensComment を
+  // 通り、閉じが無いので**そこからファイル末尾まで**が無音で空白になっていた。
+  // 閉じないブロックコメントはコンパイルできないので、実物なら必ず `*/` がある。
+  const a = extractAssertions(
+    `const j = <p>A trailing glob (/*) is never expanded, and the endpoint is always skipped.</p>;`,
+    "x.tsx",
+  );
+  assert.deepEqual(a.map((x) => x.term).sort(), ["always", "never"]);
+  const b = extractAssertions(`const j = <p>the suffix /* is never expanded</p>;`, "x.tsx");
+  assert.deepEqual(b.map((x) => x.term), ["never"]);
 });
 
 test("extractor does not read a bare URL in JSX text as a line comment", () => {
@@ -389,6 +402,32 @@ test("claim ids are unique and every claim states what it means", () => {
   }
 });
 
+test("every file path named anywhere in the registry exists", () => {
+  // 2026-09-19 レビュー C1: check を書けない主張の唯一の根拠として
+  // `why_unverifiable` に挙げていたテスト 7 本が**すべて実在しなかった**
+  // （tests/catalog-diff.test.ts、tests/l1-budget.test.ts …）。実体は別名で
+  // 全部あったが、根拠が実在しないなら「登録すれば緑」と同じこと。
+  // 人が名前を思い出して書く限り同じ誤りは再発するので、経路に関門を置く。
+  const registrySrc = read("docs/claims.yaml");
+  const referenced = new Set(
+    // `src/…` / `tests/…` / `scripts/…` / `packages/…` で始まり拡張子で終わるもの。
+    // 末尾の読点・括弧・引用符は拾わない。`packages/*/package.json` のような
+    // グロブは実在判定にかけられないので除く。
+    (registrySrc.match(/\b(?:src|tests|scripts|packages)\/[\w./@[\]-]*\.\w+\b/g) ?? []).filter(
+      (p) => !p.includes("*"),
+    ),
+  );
+  assert.ok(referenced.size > 20, `registry should reference files; found ${referenced.size}`);
+
+  const missing = [...referenced].filter((p) => !existsSync(join(ROOT, p))).sort();
+  assert.deepEqual(
+    missing,
+    [],
+    `docs/claims.yaml names files that do not exist:\n  ${missing.join("\n  ")}\n` +
+      `A claim whose only backing is a file that is not there is not backed at all.`,
+  );
+});
+
 test("every allow_phrase carries a reason", () => {
   for (const a of registry.allow_phrases) {
     assert.ok(a.why.trim().length > 5, `allow_phrase ${JSON.stringify(a.phrase)} needs a reason`);
@@ -424,11 +463,15 @@ function publicSurfaces(): string[] {
 }
 
 test("no unregistered assertive claim ships on a public surface", () => {
-  const quotes = registry.claims.map((c) => squash(c.quote));
   const allowed = registry.allow_phrases.map((a) => a.phrase.toLowerCase());
   const orphans: string[] = [];
 
   for (const file of publicSurfaces()) {
+    // 2026-09-19: 引用を面で絞る。全 claim の引用を面をまたいで当てていたので、
+    // 別の面に登録した文が、たまたま同じ語を含むだけの**まったく別の面の断定**を
+    // 黙って通していた（実測で 6 件）。claim は surface を名乗っているのだから、
+    // その面の断定だけを覆わせる。
+    const quotes = registry.claims.filter((c) => c.surface === file).map((c) => squash(c.quote));
     for (const a of extractAssertions(read(file), file)) {
       // allow_phrases は " only after " のように前後の空白で語境界を書いている。
       // JSX のテキストノードが `only after` ちょうどで切れると（`<code>fail</code> only after{" "}`）
@@ -448,6 +491,50 @@ test("no unregistered assertive claim ships on a public surface", () => {
       `Register each in docs/claims.yaml (with a check, or check: null + why_unverifiable),\n` +
       `or add the wording to allow_phrases with a reason:\n  ` +
       orphans.join("\n  "),
+  );
+});
+
+/**
+ * 面ごとの検出数の下限（2026-09-19 レビュー C2）。
+ *
+ * 関門の本当の失敗は「赤くなる」ことではなく、**見えなくなって緑のまま通る**こと。
+ * 2026-09-19 の事故はまさにそれで、methodology の 430 行が抽出器のバグで消えても
+ * 誰も気づかなかった。抽出器をどれだけ直しても「散文の中のスラッシュ」は
+ * 書かれ続けるので、同じ形は必ず再発する。
+ *
+ * だから検出数そのものに下限を置く。prettier の折返しが変わった／著者が
+ * 「パスの末尾 (/*)」と書いた、で検出が落ちたら**ここが赤くなる**。
+ * 文を消したくて数が減ったときは、この数字を下げる差分がレビューに出る——
+ * それが狙い（黙って下がらない）。
+ */
+const DETECTION_FLOOR: Record<string, number> = {
+  "src/app/observatory/methodology/page.tsx": 41,
+  "src/app/page.tsx": 10,
+  "src/app/docs/api/page.tsx": 56,
+  "src/app/corrections/page.tsx": 21,
+  "src/lib/observatory/vocabulary.ts": 15,
+};
+const TOTAL_DETECTION_FLOOR = 295;
+
+test("the extractor does not go blind: per-surface detection counts hold their floor", () => {
+  let total = 0;
+  const shortfalls: string[] = [];
+  for (const file of publicSurfaces()) {
+    const n = extractAssertions(read(file), file).length;
+    total += n;
+    const floor = DETECTION_FLOOR[file];
+    if (floor !== undefined && n < floor) shortfalls.push(`${file}: ${n} < ${floor}`);
+  }
+  assert.deepEqual(
+    shortfalls,
+    [],
+    `Detected assertions dropped below the recorded floor:\n  ${shortfalls.join("\n  ")}\n` +
+      `Either the extractor went blind on part of a surface (fix it), or prose was deliberately\n` +
+      `removed (lower the floor in the same commit, so the drop is visible in review).`,
+  );
+  assert.ok(
+    total >= TOTAL_DETECTION_FLOOR,
+    `total detected assertions ${total} < floor ${TOTAL_DETECTION_FLOOR}`,
   );
 });
 

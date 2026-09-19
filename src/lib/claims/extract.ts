@@ -151,7 +151,19 @@ export function stripComments(src: string): string {
       }
       continue;
     }
-    if (c === "/" && src[i + 1] === "*" && opensComment(i > 0 ? src[i - 1] : undefined)) {
+    // 閉じの無い `/*` はコメントではない。閉じないブロックコメントはそもそも
+    // コンパイルできないので、実物なら必ず `*/` がある。散文の `(/*)` や
+    // 「the suffix /* is never expanded」はここで落ちる——直前が空白や `(` だと
+    // opensComment を通ってしまい、**そこからファイル末尾まで**が無音で空白に
+    // なっていた（2026-09-19 レビュー C2 の実測 2 例）。
+    // これでも「後ろに本物の `*/` がある」場合までは防げないので、面ごとの
+    // 検出数の下限を tests/claims-registry.test.ts に焼いてある。
+    if (
+      c === "/" &&
+      src[i + 1] === "*" &&
+      opensComment(i > 0 ? src[i - 1] : undefined) &&
+      src.indexOf("*/", i + 2) !== -1
+    ) {
       while (i < n && !(src[i] === "*" && src[i + 1] === "/")) {
         if (src[i] !== "\n") out[i] = " ";
         i++;
