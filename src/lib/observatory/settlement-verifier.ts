@@ -97,6 +97,12 @@ export type VerifySettlementsSummary = {
    * （2026-09-19 レビュー C1）。refuted には数えない——売り手の所見ではなく、我々の推定の取り消し。
    */
   lateLinksWithdrawn: number;
+  /**
+   * 1 行の処理が例外で落ちた件数（2026-09-19 レビュー 2 巡目）。落ちた行は触らずに次の行へ進む
+   * ——1 件の DB エラーや RPC クライアントの故障で、残りの行の照合まで道連れにしない。
+   * 0 が正常。理由はサーバログ（settlement-verifier.row）に出る。
+   */
+  rowErrors: number;
   deferred: number;
   evidenceWritten: number;
   deadlineHit: boolean;
@@ -149,6 +155,7 @@ export async function runSettlementVerification(options?: {
     verified: 0,
     refuted: 0,
     lateLinksWithdrawn: 0,
+    rowErrors: 0,
     deferred: 0,
     evidenceWritten: 0,
     deadlineHit: false,
@@ -237,29 +244,55 @@ export async function runSettlementVerification(options?: {
   }
 
   /**
-   * 遅延回収の取り消し（2026-09-19 レビュー C1）。`settle_claim_refuted` は「売り手が主張した tx に期待した
-   * 決済が無かった」という売り手についての所見で、Registry の L1 fail にもなる。遅延回収の tx は売り手が
-   * 名指したものではなく、払い元・宛先・額・窓の一致から vet402 が推定で貼ったもの。nonce の束縛で
-   * 「その tx はこの購入のものではない」と分かったら、推定を取り消すだけにする:
+   * 遅延回収の取り消し（2026-09-19 レビュー C1）。`settle_claim_refuted` の公開定義（vocabulary.ts）は
+   * 「**売り手が指した** tx を再読したら、その転送が無かった」。遅延回収の tx は売り手が名指したものではなく、
+   * 払い元・宛先・額・窓の一致から vet402 が推定で貼ったものなので、否定の理由が何であれその定義は成り立たない
+   * （2 巡目レビュー 1: `nonce_not_used` 限定から全理由へ広げた）。確定的な否定が出たら推定を取り消すだけにする:
    *   - status と tx_hash を回収前へ戻す（lateSettlement.priorStatus / replacedTxHash。priorStatus の無い
    *     旧い行は settle_failed——2026-09-19 より前の回収は settle_failed・tx なしだけが対象だった）
    *   - settlement_verified / reason は NULL のまま、Registry へは書かない
    *   - その tx を lateSettlement.rejectedTxHashes（小文字）に残す。recover-late はそれを候補から外すので、
    *     戻した行が同じ tx をまた拾って往復しない
    *   - 訂正ログに 1 行残す（公開面が「いつ何が変わったか」を言える）
+   *
+   * `nonce_not_used` 以外（`no_matching_transfer`・`amount_mismatch`・`tx_reverted`・`payee_mismatch` …）は
+   * **鳴らす**。索引（settlements）と照合器は同じ 4 条件（chain・払い元・宛先・額）を見ているので、索引に
+   * 載った tx がその 4 条件で落ちるのは計器の故障か reorg でしかありえない。黙って取り消すと、索引か照合器の
+   * どちらかが壊れていることに誰も気づけない（2026-09-04 P1-3 と同じ規律・2 巡目レビュー 1）。
    */
-  async function withdrawLateLink(row: PurchaseRow, late: Record<string, unknown>, reason: string): Promise<void> {
+  async function withdrawLateLink(row: PurchaseRow, late: Record<string, unknown>, reason: string, detail?: string): Promise<void> {
     const priorStatus =
       typeof late.priorStatus === "string" && (LATE_RECOVERABLE_STATUSES as readonly string[]).includes(late.priorStatus)
         ? late.priorStatus
         : "settle_failed";
     const priorTxHash = typeof late.replacedTxHash === "string" ? late.replacedTxHash : null;
     const rejected = row.tx_hash.toLowerCase();
+    if (reason !== "nonce_not_used") {
+      logServerError(
+        "settlement-verifier.late_link_unexpected_refutation",
+        `purchase ${row.id} (${row.network}) linked ${row.tx_hash} from the settlements index, but the verifier answered ` +
+          `${reason}${detail ? `: ${detail}` : ""} — the index and the verifier read the same chain, payer, payee and amount, ` +
+          `so this is an instrument failure or a reorg`,
+      );
+    }
     // raw_response_meta は SQL の中で継ぎ足す（読んでから書くと、その間の別の書き込みを潰す）。
+    // tx_hash の戻し先は SQL の中で決める（2 巡目レビュー 2）。売り手の原文を別の行が既に持っていると
+    // 部分一意 index（x402_l1_purchases_tx_unique）で throw し、このバッチの残りの行が照合されない。
+    // 衝突するなら NULL で戻す——主張された原文は raw_settlement と lateSettlement.replacedTxHash に残る。
     await db!.execute(sql`
-      UPDATE x402_l1_purchases
+      UPDATE x402_l1_purchases pu
       SET status = ${priorStatus},
-          tx_hash = ${priorTxHash},
+          tx_hash = CASE
+            WHEN ${priorTxHash}::text IS NULL THEN NULL
+            WHEN EXISTS (
+              SELECT 1 FROM x402_l1_purchases o
+              WHERE o.id <> pu.id
+                AND o.tx_hash IS NOT NULL
+                AND o.network IS NOT DISTINCT FROM pu.network
+                AND lower(o.tx_hash) = lower(${priorTxHash}::text)
+            ) THEN NULL
+            ELSE ${priorTxHash}::text
+          END,
           settlement_verified = NULL,
           settlement_verified_at = NULL,
           settlement_verify_reason = NULL,
@@ -268,37 +301,37 @@ export async function runSettlementVerification(options?: {
             '{lateSettlement,rejectedTxHashes}',
             coalesce(raw_response_meta->'lateSettlement'->'rejectedTxHashes', '[]'::jsonb) || to_jsonb(${rejected}::text)
           )
-      WHERE id = ${row.id}::uuid
+      WHERE pu.id = ${row.id}::uuid
     `);
     summary.lateLinksWithdrawn++;
     invalidateDecisionCache(row.endpoint_id);
+    // 訂正ログは**実際に書き戻した値**を載せる（衝突で NULL になった場合も含めて、行と食い違わないように）。
+    const [written] = await db!.select({ txHash: x402L1Purchases.txHash }).from(x402L1Purchases).where(eq(x402L1Purchases.id, row.id));
     await recordCorrection({
       subjectType: "purchase",
       subjectId: row.id,
       level: "l1",
       before: { status: row.status, txHash: row.tx_hash },
-      after: { status: priorStatus, txHash: priorTxHash, lateLinkWithdrawn: reason },
+      after: { status: priorStatus, txHash: written?.txHash ?? null, lateLinkWithdrawn: reason },
       reason: "settlement_backfill",
     }).catch(logAndSwallow("settlement-verifier.record_correction.late_link_withdrawn"));
   }
 
-  for (const row of rows) {
-    // 1件あたり最大 ~6s（RPC 3往復 + 予備）。残りが足りなければ次回へ回す。
-    if (deadline.remaining() < 8_000) {
-      summary.deadlineHit = true;
-      break;
-    }
-    summary.scanned++;
+  /**
+   * 1 行ぶんの照合（2026-09-19 レビュー 2 巡目で関数へ切り出した）。呼び手が例外を受け止めて
+   * 次の行へ進むので、1 件の DB エラー・RPC クライアントの故障が残りの行を道連れにしない。
+   */
+  async function verifyOneRow(row: PurchaseRow): Promise<void> {
 
     if (!row.pay_to || !row.payer || !row.amount_units) {
       // 期待値が台帳に無い＝我々が何を期待したか言えない。照合できないので
       // 触らず、理由だけ残す（推測で期待値を作らない）。
-      await db
+      await db!
         .update(x402L1Purchases)
         .set({ settlementVerifyReason: "expected_values_missing" })
         .where(eq(x402L1Purchases.id, row.id));
       summary.deferred++;
-      continue;
+      return;
     }
 
     // 2026-09-04 監査 P1-1: 1 本の決済 tx は 1 つの購入にしか属せない。
@@ -307,15 +340,15 @@ export async function runSettlementVerification(options?: {
     // 「その tx は実在する」としか分からず、区別できない）。
     if (Number(row.tx_claim_count ?? 1) > 1) {
       await refute(row, "tx_hash_reused", `${row.tx_claim_count} purchases claim ${row.tx_hash}`);
-      continue;
+      return;
     }
 
     // このバッチで既に「RPC が別のチェーンを指している」と分かったチェーンの行は、
     // 読みに行かない（結果は同じ）。他のチェーンの行は続ける。
     if (wrongChain.has(row.network)) {
-      await db.update(x402L1Purchases).set({ settlementVerifyReason: "wrong_chain" }).where(eq(x402L1Purchases.id, row.id));
+      await db!.update(x402L1Purchases).set({ settlementVerifyReason: "wrong_chain" }).where(eq(x402L1Purchases.id, row.id));
       summary.deferred++;
-      continue;
+      return;
     }
 
     const result = await verify({
@@ -328,7 +361,7 @@ export async function runSettlementVerification(options?: {
     });
 
     if (result.ok) {
-      await db
+      await db!
         .update(x402L1Purchases)
         .set({
           status: "settled",
@@ -399,12 +432,12 @@ export async function runSettlementVerification(options?: {
         // 黙って消さない。
         logServerError("observatory.settlement_verify.evidence", error);
       }
-      continue;
+      return;
     }
 
     if (TRANSIENT_REASONS.has(result.reason)) {
       // 見えなかっただけ。否定ではないので status は倒さない。
-      await db
+      await db!
         .update(x402L1Purchases)
         .set({ settlementVerifyReason: result.reason })
         .where(eq(x402L1Purchases.id, row.id));
@@ -426,19 +459,37 @@ export async function runSettlementVerification(options?: {
           }
         }
       }
-      continue;
+      return;
     }
 
-    // 遅延回収で vet402 が貼った tx が、nonce の束縛（EVM の EIP-3009 nonce・Solana / Tempo の memo・
-    // XRPL の blob hash。どれも nonce_not_used）で落ちた。売り手は tx を名指していない——refute しない。
+    // 遅延回収で vet402 が貼った tx が確定的に否定された。売り手は tx を名指していないので、否定の理由が
+    // 何であれ refute しない（2 巡目レビュー 1）。nonce の束縛で落ちるのは正常な結果、それ以外は計器の
+    // 故障か reorg——withdrawLateLink がその区別を鳴らす。
     const late = lateLinkOf(row);
-    if (late && result.reason === "nonce_not_used") {
-      await withdrawLateLink(row, late, result.reason);
-      continue;
+    if (late) {
+      await withdrawLateLink(row, late, result.reason, result.detail);
+      return;
     }
 
     // 見に行って一致しなかった。売り手についての所見として確定させる。
     await refute(row, result.reason, result.detail);
+  }
+
+  for (const row of rows) {
+    // 1件あたり最大 ~6s（RPC 3往復 + 予備）。残りが足りなければ次回へ回す。
+    if (deadline.remaining() < 8_000) {
+      summary.deadlineHit = true;
+      break;
+    }
+    summary.scanned++;
+    try {
+      await verifyOneRow(row);
+    } catch (error) {
+      // 落ちた行は触らない（status は倒さず、次回のバッチがまた拾う）。黙って飲み込まず、
+      // 件数を summary に出してログに理由を残す（2026-09-19 レビュー 2 巡目）。
+      summary.rowErrors++;
+      logServerError(`settlement-verifier.row ${row.id} (${row.network})`, error);
+    }
   }
 
   return summary;
