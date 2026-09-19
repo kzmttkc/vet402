@@ -23,6 +23,7 @@ import {
   x402L0Probes,
   x402L1Purchases,
 } from "@/lib/db/schema";
+import { CATALOG_SOURCE } from "./catalog-source";
 import { publishedVerdict, MIN_CONSECUTIVE_FAILS_TO_PUBLISH } from "./l0-probe";
 import { isOperatorPayTo, operatorPayToDenylist } from "./operator";
 import { chainLabel, isTestnet } from "./chains";
@@ -247,6 +248,11 @@ export async function getObservatoryOverview(
         fetchedCount: x402CatalogSnapshots.fetchedCount,
       })
       .from(x402CatalogSnapshots)
+      // 2026-09-19: source を固定しないと、同じ日付の行が source ごとに 1 本ずつ
+      // 書かれている（Bazaar と mpp_directory）ので LIMIT 1 がどちらを返すか決まらない。
+      // 主カタログ（Bazaar）の取得健全性だけをここで出す——別カタログの「取得が不完全」を
+      // 主カタログの件数に貼るのが、直そうとしている不具合そのもの。
+      .where(eq(x402CatalogSnapshots.source, CATALOG_SOURCE))
       .orderBy(desc(x402CatalogSnapshots.snapshotDate))
       .limit(1);
 
@@ -730,7 +736,22 @@ export type ObservatoryStats = {
      */
     byChain: L1ChainStats[];
   };
-  latestSnapshot: { snapshotDate: string; totalCount: number; fetchedCount: number } | null;
+  /**
+   * 主カタログ（CDP Bazaar）の最新スナップショット。**別カタログの行を混ぜない**——
+   * 2026-09-19 まではタイブレークが無く、Tempo の mpp_directory の「取得が不完全」が
+   * Bazaar 側の件数の見出しに付いていた。
+   */
+  latestSnapshot: CatalogSnapshot | null;
+  /** source ごとの最新スナップショット（Bazaar・mpp_directory）。取得時点は面で別々に出す。 */
+  catalogSnapshots: CatalogSnapshot[];
+};
+
+/** 1 カタログ source の最新取得。fetchedCount < totalCount はその source だけの不完全さ。 */
+export type CatalogSnapshot = {
+  source: string;
+  snapshotDate: string;
+  totalCount: number;
+  fetchedCount: number;
 };
 
 /** 1 チェーン分の L1 実測。settledNonceBound + settledAmountPayeeOnly = settled。 */
@@ -773,6 +794,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       byChain: [],
     },
     latestSnapshot: null,
+    catalogSnapshots: [],
   };
   const db = getDb();
   if (!db) return empty;
@@ -1000,15 +1022,22 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       if (!isMissingSchemaError(error)) throw error;
     }
 
-    const [snap] = await db
+    // 2026-09-19: カタログは 1 本ではない（Bazaar と Tempo の mpp_directory）。日付だけで
+    // 並べて LIMIT 1 すると、どちらの行が返るかがタイブレーク無しで決まらず、実際には
+    // mpp_directory（1,065/1,071）の「取得が不完全」が 29,337 件の表の見出しに付いていた。
+    // 主カタログを名指しで取り、他の source は catalogSnapshots に別立てで出す。
+    const snapRows = await db
       .select({
+        source: x402CatalogSnapshots.source,
         snapshotDate: x402CatalogSnapshots.snapshotDate,
         totalCount: x402CatalogSnapshots.totalCount,
         fetchedCount: x402CatalogSnapshots.fetchedCount,
       })
       .from(x402CatalogSnapshots)
-      .orderBy(desc(x402CatalogSnapshots.snapshotDate))
-      .limit(1);
+      .orderBy(desc(x402CatalogSnapshots.snapshotDate));
+    const latestBySource = new Map<string, CatalogSnapshot>();
+    for (const r of snapRows) if (!latestBySource.has(r.source)) latestBySource.set(r.source, r);
+    const snap = latestBySource.get(CATALOG_SOURCE) ?? null;
 
     return {
       l1,
@@ -1024,7 +1053,8 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
         relisted: ev.relisted ?? 0,
         settleDrop: ev.settle_drop ?? 0,
       },
-      latestSnapshot: snap ?? null,
+      latestSnapshot: snap,
+      catalogSnapshots: [...latestBySource.values()].sort((a, b) => a.source.localeCompare(b.source)),
     };
   } catch (error) {
     if (isMissingSchemaError(error)) return empty;

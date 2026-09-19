@@ -221,4 +221,54 @@ if (!TEST_DB) {
       assert.equal(stats.totalEndpoints, 1, "only the third-party endpoint counts toward the network total");
     });
   });
+
+  // 2026-09-19 公開面監査 B1: snapshot は (snapshot_date, source) の複合キーで、毎日
+  // Bazaar と mpp_directory の 2 行が書かれる。latestSnapshot が日付だけで並べて
+  // LIMIT 1 していたため、本番では MPP ディレクトリ側の行（1,065/1,071 = 取得不完全）が
+  // 返り、29,337 件の表の見出しに「figures provisional」が付いていた。
+  test("latestSnapshot names the primary catalog, not whichever source sorts first", async (t) => {
+    const { getObservatoryStats, getObservatoryOverview } = await import("@/lib/observatory/reader");
+    const { getDb } = await import("@/lib/db/client");
+    const schema = await import("@/lib/db/schema");
+    const { sql } = await import("drizzle-orm");
+    const { CATALOG_SOURCE } = await import("@/lib/observatory/catalog-source");
+    const { MPP_DIRECTORY_SOURCE } = await import("@/lib/observatory/mpp-payer");
+
+    const db = getDb()!;
+    await db.execute(sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_l1_purchases`);
+
+    // 同じ日付の 2 行。MPP 側だけ取得が不完全。
+    await db.insert(schema.x402CatalogSnapshots).values([
+      { snapshotDate: "2026-09-19", source: CATALOG_SOURCE, totalCount: 28_272, fetchedCount: 28_272, resourceKeys: [] },
+      { snapshotDate: "2026-09-19", source: MPP_DIRECTORY_SOURCE, totalCount: 1_071, fetchedCount: 1_065, resourceKeys: [] },
+    ]);
+
+    await t.test("the primary row wins the tie and carries its own fetch health", async () => {
+      const stats = await getObservatoryStats();
+      assert.ok(stats.latestSnapshot);
+      assert.equal(stats.latestSnapshot!.source, CATALOG_SOURCE);
+      assert.equal(stats.latestSnapshot!.fetchedCount, 28_272);
+      assert.ok(
+        stats.latestSnapshot!.fetchedCount >= stats.latestSnapshot!.totalCount,
+        "the MPP row's incomplete fetch must not attach to the primary catalog's figures",
+      );
+    });
+
+    await t.test("every catalog's latest snapshot is published separately", async () => {
+      const stats = await getObservatoryStats();
+      assert.deepEqual(
+        stats.catalogSnapshots.map((s) => [s.source, s.fetchedCount, s.totalCount]),
+        [
+          [CATALOG_SOURCE, 28_272, 28_272],
+          [MPP_DIRECTORY_SOURCE, 1_065, 1_071],
+        ],
+      );
+    });
+
+    await t.test("the register page's snapshot line is fixed the same way", async () => {
+      const overview = await getObservatoryOverview();
+      assert.ok(overview.latestSnapshot);
+      assert.equal(overview.latestSnapshot!.fetchedCount, 28_272);
+    });
+  });
 }

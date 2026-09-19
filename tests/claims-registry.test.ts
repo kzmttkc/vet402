@@ -342,6 +342,11 @@ function publicSurfaces(): string[] {
   };
   walk(join(ROOT, "src/app"), (p) => p.endsWith("/page.tsx"));
   walk(join(ROOT, "src/components/site"), (p) => p.endsWith(".tsx") || p.endsWith(".ts"));
+  // 2026-09-19: 公開 API のルートが走査範囲の外にいた。`disclaimer` / `definition` /
+  // `note` は機械が引用して配る散文で、HTML の段落と同じ強さの断定を載せている
+  // （state/route.ts の disclaimer は「x402 on XRPL は測定母集団の外」と書きながら、
+  // 同じ応答の byChain に XRPL の実測が入っていた）。ページと同じ関門に入れる。
+  walk(join(ROOT, "src/app/api"), (p) => p.endsWith("/route.ts"));
   // 2026-09-05: 観測所の語彙は src/lib/observatory/vocabulary.ts が正典で、
   // そこから /observatory/methodology §10 の HTML・DefinedTermSet JSON-LD・
   // /llms-full.txt が生成される。**公開面のコピーが src/lib に置かれた**ので、

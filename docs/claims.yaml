@@ -18,6 +18,8 @@
 allow_phrases:
   - phrase: "-only"
     why: "read-only / append-only / allow-only / API-only のような複合語。範囲を狭める語であって、網羅や頻度を主張しない"
+  - phrase: "select * from ("
+    why: "drizzle の sql タグに書いた購読クエリ（src/app/api/v1/observatory/live/route.ts）。公開コピーではなく、再現のために echo している SQL 文"
   - phrase: " at all"
     why: "英語の慣用句（「そもそも」）。網羅の主張ではない"
   - phrase: " only after "
@@ -676,8 +678,8 @@ claims:
     verified_at: 2026-09-04
   - id: method_the_whole_x402_economy_x402
     surface: src/app/observatory/methodology/page.tsx
-    quote: "the whole x402 economy: x402 traffic that is never listed there — x402 on XRPL, for"
-    means: "カタログは測定母集団であって x402 経済の全体ではない（明示した限界）"
+    quote: "the whole x402 economy: discovery surfaces vet402 does not read are outside what we probe"
+    means: "カタログは測定母集団であって x402 経済の全体ではない（明示した限界）。チェーンが byChain に小さい件数で載ることも同じ被覆の限界で、そのチェーンについての所見ではない"
     check: null
     why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
     verified_at: 2026-09-04
@@ -1393,3 +1395,94 @@ claims:
     check: null
     why_unverifiable: "コードの性質（src/lib/observatory/catalog-sync.ts の upsert が status='active'、catalog-diff.ts が currentComplete の日だけ delisted を出す）であって、公開 GET が返す数値では真偽を判定できない。性質は tests/observatory-diff.test.ts が守る"
     verified_at: 2026-09-07
+  # 2026-09-19 公開面監査 E: 関門の走査範囲に **公開 API ルートの散文** が入っていなかった
+  # （tests/claims-registry.test.ts publicSurfaces が src/app/**/page.tsx と
+  # src/components/site だけを歩いていた）。disclaimer / definition / note / semantics は
+  # 機械が引用して配る文で、HTML の段落と同じ強さの断定を載せている。走査範囲に足し、
+  # そこで孤児になった断定をここに登録する。
+  - id: api_operator_overrides_are_global_only
+    surface: src/app/api/transparency/operator-overrides/route.ts
+    quote: "Global operator overrides only. Customer-scoped lists are private to the customer and never appear here."
+    means: "この API が返すのはグローバルな上書きだけで、顧客スコープの許可・拒否リストは含まれない"
+    check: null
+    why_unverifiable: "「出ていないもの」の主張なので、公開 GET の応答からは真偽を判定できない。クエリの範囲は src/app/api/transparency/operator-overrides/route.ts の読み取りが決めている"
+    verified_at: 2026-09-19
+  - id: api_guarantee_quote_is_indicative
+    surface: src/app/api/v1/guarantee/quote/route.ts
+    quote: "Indicative underwriting quote from measured accuracy only. Not a bound guarantee, insurance policy, or offer of coverage"
+    means: "見積りは実測精度から引いた参考値で、保証・保険・引受の申し込みではない（範囲を狭める但し書き）"
+    check: null
+    why_unverifiable: "法的な位置づけの宣言であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-09-19
+  - id: api_anchor_root_covers_all_l1_rows_of_the_day
+    surface: src/app/api/v1/observatory/anchors/route.ts
+    quote: "canonical day JSON of all L1 rows, pk-ascending"
+    means: "日次ルートはその日の L1 行を全部入れて計算する（抜き取りではない）。鎖が実在し、日ごとにエントリ数を持つことが前提"
+    check:
+      url: https://vet402.com/api/v1/observatory/anchors
+      assert: "anchors.0.entryCount >= 1"
+    verified_at: 2026-09-19
+  - id: api_disputes_records_are_never_deleted
+    surface: src/app/api/v1/observatory/disputes/route.ts
+    quote: "Records are never deleted on dispute — corrections publish with the same weight."
+    means: "異議申立で記録を消さない。覆った判定は訂正として同じ重さで公開する"
+    check: null
+    why_unverifiable: "「消していない」は公開 GET の応答からは判定できない。台帳が追記のみであることは src/lib/observatory/corrections.ts と /corrections の公開ログが示す"
+    verified_at: 2026-09-19
+  - id: api_subscribe_records_are_never_deleted
+    surface: src/app/api/v1/observatory/endpoints/[id]/subscribe/route.ts
+    quote: "A person reads this. Records are never deleted on dispute — corrections publish with the same weight."
+    means: "購読の申請文は人が読む。異議で記録を消さないという同じ約束を、この応答でも同じ文で返す"
+    check: null
+    why_unverifiable: "「消していない」は公開 GET の応答からは判定できない（api_disputes_records_are_never_deleted と同じ理由）"
+    verified_at: 2026-09-19
+  - id: api_history_is_a_recomputed_daily_rollup
+    surface: src/app/api/v1/observatory/history/route.ts
+    quote: "Daily rollup, recomputed for the trailing ${window} days on each run"
+    means: "history は日次ロールアップで、直近 window 日分は毎回計算し直す（遅れて届いた決済は次の走行で入る）。window は応答の recomputeWindowDays がそのまま出す"
+    check:
+      url: https://vet402.com/api/v1/observatory/history
+      assert: "recomputeWindowDays > 0"
+    verified_at: 2026-09-19
+  - id: api_history_disclaimer_counts_not_assessment
+    surface: src/app/api/v1/observatory/history/route.ts
+    quote: "Daily L0/L1 aggregates per chain, rolled up from the same raw measurements the Observatory publishes."
+    means: "日次のチェーン別集計は、観測所が公開しているのと同じ生の測定から積み上げたもので、評価ではない"
+    check: null
+    why_unverifiable: "「同じ生データから積み上げた」は出所についての記述で、公開 GET の数値では判定できない。積み上げ経路は src/lib/observatory/metrics-rollup.ts と tests/observatory-metrics-rollup.test.ts が守る"
+    verified_at: 2026-09-19
+  - id: api_requests_next_daily_probe_run
+    surface: src/app/api/v1/observatory/requests/route.ts
+    quote: "Queued. The next daily probe run measures queued endpoints first; results publish through the normal gate."
+    means: "申請したエンドポイントは次の L0 走行で先に測る。走行そのものは日次（vercel.json の /api/cron/l0-probe は 10:30 UTC 毎日）で、1 回の走行がカタログ全件を測るという意味ではない"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "coverage7d.measuredLast7d > 0"
+    verified_at: 2026-09-19
+  - id: api_verdict_fast_never_computes
+    surface: src/app/api/v1/payees/[address]/verdict-fast/route.ts
+    quote: "This surface never computes. Treat cache_cold as not-ALLOW (fail closed) and warm asynchronously."
+    means: "この面はキャッシュを読むだけで採点を走らせない。冷えていたら ALLOW 以外として扱う（fail closed）"
+    check: null
+    why_unverifiable: "「計算しない」は実装の性質で、公開 GET の応答からは判定できない。経路は src/app/api/v1/payees/[address]/verdict-fast/route.ts のハンドラが持つ"
+    verified_at: 2026-09-19
+  # 2026-09-19 公開面監査 A4: 「昇格はすべて売り手の申告」は事実と食い違っていた。直近 500 行の
+  # うち 100 行（delivered_no_receipt→settle_claimed 77・settle_failed→settle_claimed 23）は
+  # 売り手が何も名指しておらず、vet402 自身の決済索引が貼った行（src/lib/settlements/recover-late.ts）。
+  # 2 経路あることと、貼った行も同じ照合器を通ることを、頁と API の両方に書いた。
+  - id: api_corrections_two_paths_to_a_promotion
+    surface: src/app/api/v1/observatory/corrections/route.ts
+    quote: "before.status settle_failed or delivered_no_receipt means the seller named no usable transaction"
+    means: "settlement_backfill には 2 経路ある（売り手の申告／vet402 自身の索引）。before.status がどちらかを示し、索引が貼った行も settle_claimed 止まりで、同じオンチェーン照合器を通ってからでないと settled にならない"
+    check:
+      url: https://vet402.com/api/v1/observatory/corrections?limit=500
+      assert: "corrections.0.reason == \"settlement_backfill\""
+    verified_at: 2026-09-19
+  - id: corrections_page_two_paths_to_a_promotion
+    surface: src/app/corrections/page.tsx
+    quote: "vet402&apos;s own settlement index then found a transfer from our payer to that"
+    means: "昇格の 2 経路目。売り手が取引を名指していない行に、vet402 の決済索引が払い元・宛先・額・窓の一致する tx を結びつける。結びつけた行は settle_claimed で、結論は照合器が出す"
+    check:
+      url: https://vet402.com/api/v1/observatory/corrections?limit=500
+      assert: "corrections.0.reason == \"settlement_backfill\""
+    verified_at: 2026-09-19

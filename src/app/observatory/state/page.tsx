@@ -12,6 +12,8 @@ import {
 } from "@/lib/observatory/cached-reads";
 import { getDailyMetricsHistory, type DailyMetricsRow } from "@/lib/observatory/metrics-rollup";
 import { getAnchors } from "@/lib/observatory/anchors";
+import { CATALOG_SOURCE } from "@/lib/observatory/catalog-source";
+import { MPP_DIRECTORY_SOURCE } from "@/lib/observatory/mpp-payer";
 
 /**
  * /observatory/state — the State of x402 headline numbers (design §7).
@@ -35,6 +37,17 @@ export const revalidate = 600;
 function pct(n: number, denom: number): string {
   if (denom === 0) return "—";
   return `${((n / denom) * 100).toFixed(1)}%`;
+}
+
+/**
+ * カタログ source の見出し。取得時点と取得健全性は source ごとに別の事実なので、
+ * 面でも別々に出す（2026-09-19）。未知の source は id のまま出す——黙って
+ * 主カタログの名前を貸さない。
+ */
+function catalogSourceLabel(source: string): string {
+  if (source === CATALOG_SOURCE) return "Bazaar catalog";
+  if (source === MPP_DIRECTORY_SOURCE) return "MPP directory";
+  return source;
 }
 
 /**
@@ -105,7 +118,7 @@ export default async function ObservatoryStatePage() {
   const [latestAnchor] = await getAnchors(1);
   const denom = stats.totalEndpoints;
   const snap = stats.latestSnapshot;
-  const fetchComplete = snap ? snap.fetchedCount >= snap.totalCount : false;
+  const catalogSnapshots = stats.catalogSnapshots;
   const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   const dataset = datasetJsonLd({
@@ -179,16 +192,22 @@ export default async function ObservatoryStatePage() {
           <div className="doc-head-col">
             <span>Independent Measurement</span>
             <span>Report: State of x402 (L0 aggregate)</span>
-            <span>
-              {snap ? (
-                <>
-                  Data as of <span className="text-signal">{snap.snapshotDate}</span>
-                  {fetchComplete ? "" : " (incomplete fetch — figures provisional)"}
-                </>
-              ) : (
-                "No catalog snapshot yet"
-              )}
-            </span>
+            {/* 2026-09-19: 取得時点はカタログごとに出す。1 本にまとめていたころは、
+                Tempo の MPP ディレクトリ側の「取得が不完全」が Bazaar 由来の件数にも
+                付いていた（source のタイブレーク無しで LIMIT 1 していたため）。 */}
+            {catalogSnapshots.length === 0 ? (
+              <span>No catalog snapshot yet</span>
+            ) : (
+              catalogSnapshots.map((s) => (
+                <span key={s.source}>
+                  {catalogSourceLabel(s.source)} as of{" "}
+                  <span className="text-signal">{s.snapshotDate}</span>
+                  {s.fetchedCount >= s.totalCount
+                    ? ""
+                    : " (incomplete fetch — this catalog's figures provisional)"}
+                </span>
+              ))
+            )}
           </div>
           <div className="doc-head-col">
             <span>vet402</span>
@@ -289,9 +308,12 @@ export default async function ObservatoryStatePage() {
         </h2>
         <p className="doc-p">
           L0 observation has always been chain-agnostic and costs nothing to run, so this table
-          covers every chain the public catalog lists an endpoint on — not only the chain L1
-          purchasing currently targets (Base and Solana; Arc when its lane is enabled). Mainnets
+          covers every chain the public catalog lists an endpoint on — a wider set than the chains
+          L1 purchasing has reached, which are the rows of the by-chain table in §3. Mainnets
           only; testnet listings (Base Sepolia, Solana devnet, Arc testnet) are excluded below.
+          That makes this table&apos;s denominator narrower than the one in §1, which counts every
+          listing on record including testnets: the rows here sum to less than the §1 total, and
+          the difference is the testnet listings.
         </p>
         {chainStats.length === 0 ? (
           <p className="doc-p text-brand-lift">No chain data yet.</p>
@@ -450,7 +472,10 @@ export default async function ObservatoryStatePage() {
                     of which settled and answered <code>4xx</code>
                   </td>
                   <td className="num">{stats.l1.inconclusiveByReason.settled4xx.toLocaleString()}</td>
-                  <td className="num">{pct(stats.l1.inconclusiveByReason.settled4xx, stats.l1.settled)} of settled</td>
+                  <td className="num">
+                    {pct(stats.l1.inconclusiveByReason.settled4xx, stats.l1.attempts)} of attempts (
+                    {pct(stats.l1.inconclusiveByReason.settled4xx, stats.l1.settled)} of settled)
+                  </td>
                 </tr>
                 <tr>
                   <td className="text-brand">

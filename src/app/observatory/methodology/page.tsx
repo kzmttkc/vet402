@@ -149,9 +149,10 @@ export default async function ObservatoryMethodologyPage() {
         <p className="doc-p">
           Every endpoint on this page was discovered through the <strong>CDP x402 Bazaar</strong>{" "}
           (and equivalent public discovery surfaces). That catalog is the measured population, not
-          the whole x402 economy: x402 traffic that is never listed there — x402 on XRPL, for
-          example — is outside what we probe or purchase, and appears as <code>0</code> in{" "}
-          <code>byChain</code>. A zero there is a coverage limit of this observatory, not a finding
+          the whole x402 economy: discovery surfaces vet402 does not read are outside what we probe
+          or purchase. A chain can be absent from <code>byChain</code> for that reason, and it can
+          also sit there with a small count because part of its listings reach this catalog and
+          part do not. Either way the figure is a coverage limit of this observatory, not a finding
           about that chain. The catalog is an input; the measurements are the record.
         </p>
 
@@ -346,8 +347,10 @@ export default async function ObservatoryMethodologyPage() {
           whose most recent L0 verdict is <code>pass</code>, prioritised by real observed demand
           (30-day payer and call counts reported by the catalog). We request unpaid first to read the <code>402</code> challenge,
           then select a payment option and refuse to proceed unless every one of these holds:
-          scheme <code>exact</code>, a network we purchase on (Base; Solana mainnet when the
-          Solana payer is enabled; Arc when the Arc lane is enabled), the canonical USDC asset for
+          scheme <code>exact</code>, a network whose payer lane is switched on for that run (Base
+          is on by default; each other lane sits behind its own flag, and the chains L1 has
+          actually bought on are the rows of the by-chain table in the State of x402 report), the
+          canonical USDC asset for
           that network, and a price that
           matches what the catalog declared when we chose the target. Any deviation — a
           different asset, a different chain, a higher price — is recorded as a refusal, never
@@ -364,10 +367,11 @@ export default async function ObservatoryMethodologyPage() {
           endpoints under the source <code>mpp_directory</code>, and L0 records the challenge as
           dialect <code>mpp</code>: a pass requires a <code>tempo</code>/<code>charge</code> challenge
           on chain <code>eip155:4217</code>, in USDC.e, at the price the directory declared, naming a
-          valid recipient (the directory lists no recipient; L0 learns it from the challenge). L1
-          purchases on Tempo have not yet been made: the Tempo payer ships behind a flag that is off,
-          so no Tempo endpoint has been bought and no Tempo settlement has been re-read on-chain.
-          When the flag is turned on, the same ceilings apply (${MAX_PER_PURCHASE_USD.toFixed(2)} per
+          valid recipient (the directory lists no recipient; L0 learns it from the challenge). The
+          Tempo payer ships behind its own flag; while that flag is on, Tempo purchases are made and
+          Tempo settlements are re-read on-chain by a Tempo-specific verifier, and the count reached
+          so far is the Tempo row of the by-chain table in the State of x402 report. The same
+          ceilings apply (${MAX_PER_PURCHASE_USD.toFixed(2)} per
           purchase, the shared ${DAILY_BUDGET_USD} per UTC day, and a $2 per UTC day lane for Tempo)
           together with the same refusal funnel: anything other than a tempo/charge challenge on
           4217 in USDC.e, at the declared price, to the recipient L0 learned, is refused before the
@@ -486,7 +490,8 @@ export default async function ObservatoryMethodologyPage() {
         <p className="doc-p">
           <strong>settled comes at two evidence strengths, and both counts are published.</strong>{" "}
           Since 2026-09-04 12:00 UTC each purchase carries a one-time value we generate
-          ourselves — the EIP-3009 authorization nonce on Base, our own memo on Solana — and
+          ourselves — the EIP-3009 authorization nonce on Base and Arc, our own memo on Solana,
+          the memo of a TIP-20 transfer on Tempo, the hash of the signed blob on XRPL — and
           the re-read binds the transaction to that value. We publish those rows as{" "}
           <strong>nonce-bound</strong>: the transaction is the one that paid for this purchase.
           Rows that settled before that timestamp were matched on amount, payee, asset and
@@ -543,8 +548,12 @@ export default async function ObservatoryMethodologyPage() {
           — is closed: <strong>Solana settlements are now re-read on-chain</strong> by a
           Solana-specific verifier, and a Solana purchase is promoted to <code>settled</code> only
           on the same evidence Base requires. What remains open is narrower and still worth naming:
-          the re-read exists for Base, Solana and Arc only, so a purchase on any other chain would
-          stay at <code>settle_claimed</code> rather than be promoted on evidence we do not have. When
+          the re-read is chain-specific, because what binds a transfer to the signature we hold
+          differs by chain — on Base and Arc the EIP-3009 authorization nonce, on Solana a memo we
+          wrote ourselves, on Tempo the indexed memo of a TIP-20{" "}
+          <code>TransferWithMemo</code>, on XRPL the hash of the blob we signed (which is the
+          transaction hash itself). A purchase on a chain we have built no re-reader for stays at{" "}
+          <code>settle_claimed</code> rather than being promoted on evidence we do not have. When
           our own RPC cannot answer, or reports a different cluster than the purchase declared, the
           row stays unverified rather than being called refuted — an instrument we could not read
           is not a finding about the seller.

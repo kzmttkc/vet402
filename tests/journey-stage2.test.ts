@@ -35,7 +35,17 @@ test("abstract copy is unchanged", () => {
       "vet402 buys what x402 endpoints actually sell, verifies fulfillment against the\n            seller&apos;s own declaration, and publishes the results with evidence.",
     ),
   );
-  assert.ok(home.includes("<strong>Nothing on this site is an estimate.</strong>"));
+  // 2026-09-19 公開面監査 D2: 「Nothing on this site is an estimate.」は降ろした。
+  // settledAmountPayeeOnly が settled の 44.7% あり、/observatory/state は同じ面で
+  // 「同じ価格・同じ受取先の別 listing でも満たせる」と開示している——額と宛先だけの
+  // 一致は推定である。実装が実際に保証しているのは「証拠の強さを添えて出す・弱いものを
+  // 強いほうへ丸めない」で、抽象のコピーはそちらに合わせた。元の文へ戻さない。
+  assert.ok(!home.includes("Nothing on this site is an estimate.</strong>"));
+  assert.ok(
+    home.includes(
+      "Each figure here carries the strength of the evidence behind it, and a weaker tier is\n              not rounded up into a stronger one.",
+    ),
+  );
 });
 
 test("DESIGN.md records the 2026-09-02 hero decision instead of the old freeze", () => {

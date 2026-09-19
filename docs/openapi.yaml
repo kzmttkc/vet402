@@ -1767,7 +1767,9 @@ paths:
                         description: >-
                           Settled rows where the re-read also matched the signature nonce
                           vet402 itself generated (the EIP-3009 authorization nonce on EVM,
-                          our own memo on Solana), so the transaction provably belongs to
+                          our own memo on Solana, the indexed memo of a TIP-20 TransferWithMemo on
+                          Tempo, the hash of the signed blob on XRPL), so the transaction
+                          provably belongs to
                           that purchase.
                       settledAmountPayeeOnly:
                         type: integer
@@ -1813,6 +1815,12 @@ paths:
                             attempts: { type: integer }
                             settled: { type: integer }
                             delivered: { type: integer }
+                            inconclusive:
+                              type: integer
+                              description: >-
+                                The chain's share of l1.inconclusive — paid attempts held
+                                rather than counted against the seller. Not a subset of
+                                that chain's settled.
                             settledNonceBound: { type: integer }
                             settledAmountPayeeOnly: { type: integer }
                   byChain:
@@ -1829,10 +1837,30 @@ paths:
                   latestSnapshot:
                     type: object
                     nullable: true
+                    description: >-
+                      Latest snapshot of the PRIMARY catalog (source cdp_bazaar) only.
+                      vet402 reads more than one discovery catalog, each with its own
+                      snapshot date and its own fetch health, so a second catalog's
+                      incomplete fetch must not be read as a caveat on these figures.
+                      Every catalog's latest snapshot is in catalogSnapshots.
                     properties:
+                      source: { type: string }
                       snapshotDate: { type: string }
                       totalCount: { type: integer }
                       fetchedCount: { type: integer }
+                  catalogSnapshots:
+                    type: array
+                    description: >-
+                      The latest snapshot of each discovery catalog vet402 reads
+                      (cdp_bazaar, mpp_directory), sorted by source. fetchedCount below
+                      totalCount marks an incomplete fetch of THAT catalog alone.
+                    items:
+                      type: object
+                      properties:
+                        source: { type: string }
+                        snapshotDate: { type: string }
+                        totalCount: { type: integer }
+                        fetchedCount: { type: integer }
                   spendingHalted:
                     type: boolean
                     description: >-

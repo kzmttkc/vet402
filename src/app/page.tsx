@@ -303,7 +303,10 @@ export default async function Home() {
                 デッキの主張は1つも減っていない。 */}
             vet402 buys what x402 endpoints actually sell, verifies fulfillment against the
             seller&apos;s own declaration, and publishes the results with evidence.{" "}
-            <strong>Nothing on this site is an estimate.</strong>
+            <strong>
+              Each figure here carries the strength of the evidence behind it, and a weaker tier is
+              not rounded up into a stronger one.
+            </strong>
           </p>
         </div>
 
@@ -646,6 +649,14 @@ export default async function Home() {
                 {stats.delistedEndpoints.toLocaleString()} no longer listed in the catalog;{" "}
                 {stats.activeEndpoints.toLocaleString()} are active. L1 counts endpoints where at least one paid
                 attempt returned an on-chain receipt, as reported by <code>/api/v1/observatory/state</code>.
+                {/* 2026-09-19 監査 C1: 棒は先頭行に比例するが、L1 行の分母は先頭行ではない。
+                    L1 が買いに行けたのは endpointsAttempted 件で、その率をここに書く。 */}{" "}
+                Its own denominator is the {stats.l1.endpointsAttempted.toLocaleString()} endpoints L1 has
+                attempted a paid purchase against, not the first row — read as a share of those, the L1 row is{" "}
+                {stats.l1.endpointsAttempted > 0
+                  ? `${((stats.l1.endpointsSettled / stats.l1.endpointsAttempted) * 100).toFixed(1)}%`
+                  : "—"}
+                .
               </>
             }
           />
@@ -718,8 +729,11 @@ export default async function Home() {
             title="Public accuracy ledger"
             body={
               <>
-                Every past verdict and its outcome, misfire rate included &mdash; published whether
-                or not the numbers flatter us.
+                The misfire rates vet402 already has a sample for are published &mdash; the L0
+                false-fail and false-pass rates against re-measurement. The verdict-outcome rates
+                wait for one: until enough issued verdicts have resolved, the page says so instead
+                of printing a number. What it does print goes up whether or not the numbers flatter
+                us.
               </>
             }
             action={{ label: "Measured accuracy", href: "/accuracy", event: "docs_click", position: "s4_accuracy" }}

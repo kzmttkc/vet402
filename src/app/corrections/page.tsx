@@ -400,9 +400,18 @@ export default async function CorrectionsPage() {
             </h2>
             <p className="doc-p">
               {ledgerPromotions.length.toLocaleString()} row
-              {ledgerPromotions.length === 1 ? "" : "s"} where a purchase moved from{" "}
-              <code>settle_claimed</code> (the seller asserted a settlement we had not re-read) to{" "}
-              <code>settled</code> (we re-read it on-chain and found the transfer). That is the
+              {ledgerPromotions.length === 1 ? "" : "s"} where a purchase moved up the ledger. Two
+              paths lead here and the <strong>Before → after</strong> column says which one a row
+              took. In one the seller asserted a settlement we had not re-read, so the row waited at{" "}
+              <code>settle_claimed</code> until we re-read it on-chain and found the transfer, which
+              moves it to <code>settled</code>. In the other the seller named no transaction at all
+              and the row waited at <code>settle_failed</code> or <code>delivered_no_receipt</code>;
+              vet402&apos;s own settlement index then found a transfer from our payer to that
+              endpoint&apos;s payee, for the expected amount, inside the attempt window, which no
+              other purchase could be claiming. Such a row is linked at <code>settle_claimed</code>,
+              not at <code>settled</code>: a transfer that fits is not a proof that it belongs to
+              this purchase, so it goes through the same on-chain verifier as any seller-asserted
+              row before the ledger calls it settled. Either way that is the
               verification pipeline finishing its job on schedule, not vet402 publishing something
               untrue and taking it back. They are written to the same append-only log so the path
               from claim to confirmation is auditable, and they are listed separately here because
