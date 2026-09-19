@@ -26,7 +26,8 @@
 // **auth_nonce の有無による近似**である——これは「nonce を持って照合を通った行」と
 // 一致するが、「nonce を持つが照合が nonce 段で落ちた行」は refuted 側へ抜けるので
 // settled には残らない、という前提に依存している（settlement-verify.ts の
-// nonce_not_used が refute を呼ぶ）。前提が崩れたら層の意味も崩れるため、
+// nonce_not_used が refute を呼ぶ。2026-09-19 から、遅延回収で vet402 が貼った tx だけは refuted ではなく
+// 回収前の status へ戻る——どちらも settled には残らない）。前提が崩れたら層の意味も崩れるため、
 // tests/settled-tiers.test.ts が定義そのものを固定している。
 // ============================================================
 

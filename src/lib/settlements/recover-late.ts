@@ -36,12 +36,19 @@
 // だと、同じ売り手への同額の支払いが 30 分の窓に 2 件あるとき先に試行した行へ貼ってしまい、照合器が
 // それを nonce_not_used で否定する——我々の貼り間違いが売り手の settle_claim_refuted になる。
 // auth_nonce の無い XRPL の行は貼らない（何に署名したか分からない行に、額と宛先だけで tx を結びつけない）。
+//
+// 推定で貼らない（同日・独立レビュー C1）: EVM・Solana の索引には nonce が無いので、払い元・宛先・額・窓が合う
+// 候補の購入が 2 行以上ある tx は、どちらのものか言えない。以前は「先に試行した行」へ貼っていたが、外れた行は
+// 照合器が nonce_not_used で落とす。**候補が 1 行に決まる tx だけを貼る**（tx_candidates = 1）。
+// それでも外れることはある（本当の持ち主が回収対象外の status にいる）。そのとき照合器は売り手の
+// settle_claim_refuted にせず、行を lateSettlement.priorStatus / replacedTxHash へ戻し、その tx を
+// lateSettlement.rejectedTxHashes（小文字）に残す（settlement-verifier.ts withdrawLateLink）。ここは
+// その tx を二度と候補にしない——戻した行がまた同じ tx を拾って往復しないため。
 // ============================================================
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { logAndSwallow } from "@/lib/util/log";
 import { recordCorrection } from "@/lib/observatory/corrections";
-import { XRPL_MAINNET_CAIP2 } from "@/lib/observatory/chains";
 
 /**
  * 試行時刻からどれだけ後までを「この購入の決済」と見るか。
@@ -78,8 +85,8 @@ export async function recoverLateSettlements(): Promise<LateSettlementSummary> {
   // 1 文で解決する。候補の列挙と UPDATE を分けると、その間に別の行が同じ tx を
   // 取れてしまう（部分一意 index が弾いてくれるが、そこで throw させるより
   // 最初から 1 つに決める方がよい）。
-  //   match  … 条件を満たす (purchase, settlement) の全対
-  //   ranked … 購入ごとに 1 本、tx ごとに 1 購入だけ残す
+  //   match  … 条件を満たす (purchase, settlement) の全対。tx_candidates = その tx の候補になった購入の行数
+  //   chosen … 購入ごとに 1 本。候補の購入が 1 行に決まる tx だけ残す（2 行以上なら誰にも貼らない）
   const raw = await db.execute(sql`
     WITH match AS (
       SELECT pu.id AS purchase_id,
@@ -88,7 +95,7 @@ export async function recoverLateSettlements(): Promise<LateSettlementSummary> {
              s.tx_hash AS tx_hash,
              s.block_time AS block_time,
              row_number() OVER (PARTITION BY pu.id ORDER BY s.block_time ASC, s.tx_hash ASC) AS rn_purchase,
-             row_number() OVER (PARTITION BY lower(s.tx_hash) ORDER BY pu.attempted_at ASC, pu.id ASC) AS rn_tx
+             count(*) OVER (PARTITION BY s.chain, lower(s.tx_hash)) AS tx_candidates
       FROM x402_l1_purchases pu
       JOIN x402_endpoints e ON e.id = pu.endpoint_id
       JOIN settlements s
@@ -99,8 +106,14 @@ export async function recoverLateSettlements(): Promise<LateSettlementSummary> {
        AND s.block_time >= pu.attempted_at - make_interval(mins => ${LATE_SETTLEMENT_BACKDATE_MINUTES}::int)
        AND s.block_time <= pu.attempted_at + make_interval(mins => ${LATE_SETTLEMENT_WINDOW_MINUTES}::int)
        -- XRPL: 索引の tx は我々が署名した blob そのものでなければならない（auth_nonce = 署名済み blob の hash）。
-       AND (pu.network IS DISTINCT FROM ${XRPL_MAINNET_CAIP2}
+       -- xrpl:0 に限らず xrpl で始まる network すべてに掛ける（将来の xrpl:* が束縛を素通りしない）。
+       -- 候補の行数（tx_candidates）はこの束縛の後で数えるので、XRPL は hash の合う 1 行だけが候補になる。
+       AND (lower(coalesce(pu.network, '')) NOT LIKE 'xrpl%'
             OR (pu.auth_nonce IS NOT NULL AND upper(s.tx_hash) = upper(btrim(pu.auth_nonce))))
+       -- 照合器が「この購入のものではない」と取り消した tx は二度と候補にしない。
+       AND NOT jsonb_exists(
+             coalesce(pu.raw_response_meta->'lateSettlement'->'rejectedTxHashes', '[]'::jsonb),
+             lower(s.tx_hash))
       WHERE pu.status IN (${sql.join(LATE_RECOVERABLE_STATUSES.map((s) => sql`${s}`), sql`, `)})
         -- tx_hash を持ってよいのは settle_claimed_unverifiable だけ（売り手の形式不正な原文。索引の tx に置き換える）。
         AND (pu.tx_hash IS NULL OR pu.status = 'settle_claimed_unverifiable')
@@ -116,17 +129,25 @@ export async function recoverLateSettlements(): Promise<LateSettlementSummary> {
             AND lower(o.tx_hash) = lower(s.tx_hash)
         )
     ), chosen AS (
-      SELECT purchase_id, prior_status, prior_tx_hash, tx_hash FROM match WHERE rn_purchase = 1 AND rn_tx = 1
+      SELECT purchase_id, prior_status, prior_tx_hash, tx_hash FROM match WHERE rn_purchase = 1 AND tx_candidates = 1
     )
     UPDATE x402_l1_purchases pu
     SET status = 'settle_claimed',
         tx_hash = chosen.tx_hash,
+        -- 回収した行は照合前。以前の照合の跡が残っていると照合器（settlement_verified IS NULL）が拾わない。
+        settlement_verified = NULL,
+        settlement_verified_at = NULL,
+        settlement_verify_reason = NULL,
         raw_response_meta = coalesce(pu.raw_response_meta, '{}'::jsonb) || jsonb_build_object(
           'lateSettlement', jsonb_strip_nulls(jsonb_build_object(
             'source', 'settlements_index',
             'note', 'the seller settled after we recorded ' || chosen.prior_status || '; the verifier decides whether it is ours',
+            -- 照合器が取り消すときの戻し先（必ず書く）と、いま貼った tx。
             'priorStatus', chosen.prior_status,
             'replacedTxHash', chosen.prior_tx_hash,
+            'txHash', chosen.tx_hash,
+            -- 以前の取り消しの記録は貼り直しても持ち越す。
+            'rejectedTxHashes', pu.raw_response_meta->'lateSettlement'->'rejectedTxHashes',
             'linkedAt', to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
           ))
         )

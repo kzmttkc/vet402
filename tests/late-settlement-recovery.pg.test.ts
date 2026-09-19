@@ -185,16 +185,22 @@ if (!TEST_DB) {
       assert.equal(row.status, "settle_failed");
     });
 
-    await t.test("1 本の tx を 2 つの settle_failed へ同時に貼らない", async () => {
+    // 2026-09-19 レビュー C1: 以前は「先に試行した行」へ貼っていた。EVM の索引には nonce が無いので、
+    // 候補が 2 行以上ある tx はどちらのものか言えない。外れた行は照合器が nonce_not_used で落とす
+    // ——推定で貼らない。
+    await t.test("1 本の tx に候補の購入が 2 行あれば、どちらにも貼らない", async () => {
       await reset();
-      const a = await seedEndpoint();
-      const b = await seedEndpoint();
-      await seedFailedPurchase(a);
-      await seedFailedPurchase(b);
+      const a = await seedFailedPurchase(await seedEndpoint());
+      const b = await seedFailedPurchase(await seedEndpoint());
       await seedSettlement(`0x${"55".repeat(32)}`, "1000", new Date(attemptedAt.getTime() + 60_000));
 
       const summary = await recoverLateSettlements();
-      assert.equal(summary.recovered, 1, "同じ tx を 2 行へ貼っている");
+      assert.equal(summary.recovered, 0, "どちらの購入の決済か言えない tx を貼っている");
+      for (const id of [a, b]) {
+        const row = await purchaseRow(id);
+        assert.equal(row.status, "settle_failed");
+        assert.equal(row.txHash, null);
+      }
     });
 
     // 2026-09-19: settle_failed 以外にも「署名したが決済を名指せていない」行がある。
@@ -282,7 +288,7 @@ if (!TEST_DB) {
       assert.equal((await purchaseRow(unverifiable)).status, "settle_claimed_unverifiable");
     });
 
-    await t.test("1 本の tx は status をまたいでも 1 行にだけ貼る（先に試行した行）", async () => {
+    await t.test("候補が status をまたいで 2 行以上ある tx も、どの行にも貼らない", async () => {
       await reset();
       const first = await seedFailedPurchase(await seedEndpoint());
       const second = await seedUnsettledPurchase(await seedEndpoint(), "delivered_no_receipt");
@@ -290,9 +296,85 @@ if (!TEST_DB) {
       await seedSettlement(`0x${"92".repeat(32)}`, "1000", new Date(attemptedAt.getTime() + 60_000));
 
       const summary = await recoverLateSettlements();
-      assert.equal(summary.recovered, 1, "同じ tx を 2 行以上へ貼っている");
-      const statuses = [(await purchaseRow(first)).status, (await purchaseRow(second)).status, (await purchaseRow(third)).status];
-      assert.equal(statuses.filter((s) => s === "settle_claimed").length, 1);
+      assert.equal(summary.recovered, 0, "どちらの購入の決済か言えない tx を貼っている");
+      assert.equal((await purchaseRow(first)).status, "settle_failed");
+      assert.equal((await purchaseRow(second)).status, "delivered_no_receipt");
+      const row = await purchaseRow(third);
+      assert.equal(row.status, "settle_claimed_unverifiable");
+      assert.equal(row.txHash, "not-a-transaction-id");
+    });
+
+    await t.test("候補が 2 行の tx と 1 行の tx が並んでいれば、1 行の方だけ貼る", async () => {
+      await reset();
+      await seedFailedPurchase(await seedEndpoint());
+      await seedFailedPurchase(await seedEndpoint());
+      const [alone] = await db
+        .insert(schema.x402L1Purchases)
+        .values({ endpointId: await seedEndpoint(), status: "settle_failed", network: CHAIN, payTo: PAY_TO, payer: PAYER, amountUnits: "2000", spentUnits: "2000", attemptedAt, txHash: null })
+        .returning();
+      await seedSettlement(`0x${"94".repeat(32)}`, "1000", new Date(attemptedAt.getTime() + 60_000));
+      const tx = `0x${"95".repeat(32)}`;
+      await seedSettlement(tx, "2000", new Date(attemptedAt.getTime() + 60_000));
+
+      assert.deepEqual((await recoverLateSettlements()).links, [{ purchaseId: alone.id, txHash: tx }]);
+    });
+
+    // レビュー C1 (b): 照合器が「この tx はこの購入のものではない」と取り消した tx は二度と拾わない。
+    await t.test("照合器が取り消した tx（lateSettlement.rejectedTxHashes）は候補にしない。別の tx なら貼り、取り消しの記録は残る", async () => {
+      await reset();
+      const rejected = `0x${"A6".repeat(32)}`;
+      const [seeded] = await db
+        .insert(schema.x402L1Purchases)
+        .values({
+          endpointId: await seedEndpoint(),
+          status: "settle_failed",
+          network: CHAIN,
+          payTo: PAY_TO,
+          payer: PAYER,
+          amountUnits: "1000",
+          spentUnits: "1000",
+          attemptedAt,
+          txHash: null,
+          rawResponseMeta: { phase: "paid", lateSettlement: { source: "settlements_index", priorStatus: "settle_failed", rejectedTxHashes: [rejected.toLowerCase()] } },
+        })
+        .returning();
+      await seedSettlement(rejected, "1000", new Date(attemptedAt.getTime() + 60_000));
+      assert.equal((await recoverLateSettlements()).recovered, 0, "取り消した tx をまた拾っている");
+      assert.equal((await purchaseRow(seeded.id)).status, "settle_failed");
+
+      const other = `0x${"a7".repeat(32)}`;
+      await seedSettlement(other, "1000", new Date(attemptedAt.getTime() + 120_000));
+      assert.deepEqual((await recoverLateSettlements()).links, [{ purchaseId: seeded.id, txHash: other }]);
+      const late = ((await purchaseRow(seeded.id)).rawResponseMeta as { lateSettlement: Record<string, unknown> }).lateSettlement;
+      assert.deepEqual(late.rejectedTxHashes, [rejected.toLowerCase()], "貼り直しで取り消しの記録が消えている");
+      assert.equal(late.priorStatus, "settle_failed");
+      assert.equal(late.txHash, other);
+    });
+
+    // レビュー W2: 回収した行は照合前。以前の照合の跡が残っていると照合器（settlement_verified IS NULL）が拾わない。
+    await t.test("回収した行の settlement_verified / settlement_verify_reason は NULL に戻る", async () => {
+      await reset();
+      const [seeded] = await db
+        .insert(schema.x402L1Purchases)
+        .values({
+          endpointId: await seedEndpoint(),
+          status: "settle_failed",
+          network: CHAIN,
+          payTo: PAY_TO,
+          payer: PAYER,
+          amountUnits: "1000",
+          spentUnits: "1000",
+          attemptedAt,
+          txHash: null,
+          settlementVerified: false,
+          settlementVerifyReason: "rpc_unavailable",
+        })
+        .returning();
+      await seedSettlement(`0x${"a8".repeat(32)}`, "1000", new Date(attemptedAt.getTime() + 60_000));
+      assert.equal((await recoverLateSettlements()).recovered, 1);
+      const row = await purchaseRow(seeded.id);
+      assert.equal(row.settlementVerified, null);
+      assert.equal(row.settlementVerifyReason, null);
     });
 
     await t.test("対象外の status（決済を確定済み・否定済み・署名していない行）は一致しても触らない", async () => {

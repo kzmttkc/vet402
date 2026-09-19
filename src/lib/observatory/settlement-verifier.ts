@@ -24,6 +24,7 @@ import { createDeadline } from "@/lib/util/deadline";
 import { verifyL1Settlement } from "./settlement-verify";
 import { isDeliveryVerified } from "./l1-runner";
 import { ingestL1 } from "@/lib/settlements/ingest-l1";
+import { LATE_RECOVERABLE_STATUSES } from "@/lib/settlements/recover-late";
 import { recordCorrection } from "./corrections";
 import { fireL1RegistryHook, fireL2RegistryHook } from "@/lib/chain/registry-hook";
 
@@ -67,10 +68,35 @@ export const TRANSIENT_REASONS = new Set([
  */
 export const INSTRUMENT_FAILURE_REASONS = new Set(["wrong_chain", "malformed_tx"]);
 
+/**
+ * その行の tx は遅延回収（recover-late.ts）が貼ったものか。純関数。
+ * 印は raw_response_meta.lateSettlement。2026-09-19 以降の回収は貼った tx を lateSettlement.txHash に残すので、
+ * あればいまの tx_hash と一致することも要求する（旧い行には無い——印だけで判定する）。
+ */
+export function lateLinkOf(row: { tx_hash: string; late_settlement: unknown }): Record<string, unknown> | null {
+  let late = row.late_settlement;
+  if (typeof late === "string") {
+    try {
+      late = JSON.parse(late);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof late !== "object" || late === null || Array.isArray(late)) return null;
+  const rec = late as Record<string, unknown>;
+  if (typeof rec.txHash === "string" && rec.txHash.toLowerCase() !== row.tx_hash.toLowerCase()) return null;
+  return rec;
+}
+
 export type VerifySettlementsSummary = {
   scanned: number;
   verified: number;
   refuted: number;
+  /**
+   * 遅延回収（recover-late.ts）で vet402 が貼った tx が nonce の束縛で落ち、行を回収前へ戻した件数
+   * （2026-09-19 レビュー C1）。refuted には数えない——売り手の所見ではなく、我々の推定の取り消し。
+   */
+  lateLinksWithdrawn: number;
   deferred: number;
   evidenceWritten: number;
   deadlineHit: boolean;
@@ -122,6 +148,7 @@ export async function runSettlementVerification(options?: {
     scanned: 0,
     verified: 0,
     refuted: 0,
+    lateLinksWithdrawn: 0,
     deferred: 0,
     evidenceWritten: 0,
     deadlineHit: false,
@@ -140,6 +167,8 @@ export async function runSettlementVerification(options?: {
     SELECT pu.id::text AS id, pu.tx_hash, pu.network, pu.pay_to, pu.payer,
            pu.amount_units, pu.http_status_paid, pu.payload_non_empty, pu.l2_schema,
            pu.status, pu.endpoint_id::text AS endpoint_id, pu.auth_nonce, e.resource_url,
+           -- 遅延回収の印（recover-late.ts）。あれば tx を結び付けたのは売り手ではなく vet402 自身。
+           pu.raw_response_meta->'lateSettlement' AS late_settlement,
            -- 2026-09-04 監査 P1-1: 同じ (network, lower(tx_hash)) を主張している
            -- 他の購入行が居るか。決済 tx は 1 購入にしか属せないので、2 行以上が
            -- 同じ tx を指していたら**どちらも** settled にできない（どちらが
@@ -170,6 +199,7 @@ export async function runSettlementVerification(options?: {
     endpoint_id: string;
     auth_nonce: string | null;
     resource_url: string | null;
+    late_settlement: unknown;
     tx_claim_count: number | string | null;
   }[];
 
@@ -204,6 +234,52 @@ export async function runSettlementVerification(options?: {
     await fireHook(
       hooks.l1({ endpointId: row.endpoint_id, payTo: row.pay_to, settled: false, txHash: row.tx_hash, network: row.network }),
     );
+  }
+
+  /**
+   * 遅延回収の取り消し（2026-09-19 レビュー C1）。`settle_claim_refuted` は「売り手が主張した tx に期待した
+   * 決済が無かった」という売り手についての所見で、Registry の L1 fail にもなる。遅延回収の tx は売り手が
+   * 名指したものではなく、払い元・宛先・額・窓の一致から vet402 が推定で貼ったもの。nonce の束縛で
+   * 「その tx はこの購入のものではない」と分かったら、推定を取り消すだけにする:
+   *   - status と tx_hash を回収前へ戻す（lateSettlement.priorStatus / replacedTxHash。priorStatus の無い
+   *     旧い行は settle_failed——2026-09-19 より前の回収は settle_failed・tx なしだけが対象だった）
+   *   - settlement_verified / reason は NULL のまま、Registry へは書かない
+   *   - その tx を lateSettlement.rejectedTxHashes（小文字）に残す。recover-late はそれを候補から外すので、
+   *     戻した行が同じ tx をまた拾って往復しない
+   *   - 訂正ログに 1 行残す（公開面が「いつ何が変わったか」を言える）
+   */
+  async function withdrawLateLink(row: PurchaseRow, late: Record<string, unknown>, reason: string): Promise<void> {
+    const priorStatus =
+      typeof late.priorStatus === "string" && (LATE_RECOVERABLE_STATUSES as readonly string[]).includes(late.priorStatus)
+        ? late.priorStatus
+        : "settle_failed";
+    const priorTxHash = typeof late.replacedTxHash === "string" ? late.replacedTxHash : null;
+    const rejected = row.tx_hash.toLowerCase();
+    // raw_response_meta は SQL の中で継ぎ足す（読んでから書くと、その間の別の書き込みを潰す）。
+    await db!.execute(sql`
+      UPDATE x402_l1_purchases
+      SET status = ${priorStatus},
+          tx_hash = ${priorTxHash},
+          settlement_verified = NULL,
+          settlement_verified_at = NULL,
+          settlement_verify_reason = NULL,
+          raw_response_meta = jsonb_set(
+            raw_response_meta,
+            '{lateSettlement,rejectedTxHashes}',
+            coalesce(raw_response_meta->'lateSettlement'->'rejectedTxHashes', '[]'::jsonb) || to_jsonb(${rejected}::text)
+          )
+      WHERE id = ${row.id}::uuid
+    `);
+    summary.lateLinksWithdrawn++;
+    invalidateDecisionCache(row.endpoint_id);
+    await recordCorrection({
+      subjectType: "purchase",
+      subjectId: row.id,
+      level: "l1",
+      before: { status: row.status, txHash: row.tx_hash },
+      after: { status: priorStatus, txHash: priorTxHash, lateLinkWithdrawn: reason },
+      reason: "settlement_backfill",
+    }).catch(logAndSwallow("settlement-verifier.record_correction.late_link_withdrawn"));
   }
 
   for (const row of rows) {
@@ -350,6 +426,14 @@ export async function runSettlementVerification(options?: {
           }
         }
       }
+      continue;
+    }
+
+    // 遅延回収で vet402 が貼った tx が、nonce の束縛（EVM の EIP-3009 nonce・Solana / Tempo の memo・
+    // XRPL の blob hash。どれも nonce_not_used）で落ちた。売り手は tx を名指していない——refute しない。
+    const late = lateLinkOf(row);
+    if (late && result.reason === "nonce_not_used") {
+      await withdrawLateLink(row, late, result.reason);
       continue;
     }
 

@@ -139,6 +139,7 @@ export type L1BatchSummary = {
    *   "payer_unfunded"             XRPL の購入元の RLUSD（または手数料ぶんの XRP）が足りない／読めない
    *                                （2026-09-19・payerUnfunded に数えた出来事。以降のレーン候補は Base へ戻す）
    * 1 件署名して閉じる通常の 1 バッチ 1 件は null のまま（それは障害ではない）。
+   * 同じバッチで 2 つ目の理由が出ても、最初に閉じた理由を残す（上書きしない）。
    */
   xrplLaneClosed: "signing_inputs_unavailable" | "fee_over_cap" | "payer_unfunded" | null;
 };
@@ -1202,7 +1203,7 @@ export async function runL1Batch(
         // （主ネットワークが XRPL の行は飛ばす）。残高はチェーンごとなので他チェーンの購入は止めない。
         if (outcome.payerChain === "xrpl") {
           xrplLaneUnavailable = true;
-          summary.xrplLaneClosed = "payer_unfunded";
+          summary.xrplLaneClosed ??= "payer_unfunded";
         }
       } else if (outcome.kind === "xrpl_fee_over_cap") {
         // 網の open_ledger_fee が上限超。署名していない・行も無い。このバッチの XRPL は閉じ、
@@ -1212,12 +1213,12 @@ export async function runL1Batch(
           logServerError("observatory.l1.xrpl_fee_over_cap", new Error(`open_ledger_fee above ${1_000} drops; XRPL lane closed for this batch`));
         }
         xrplLaneClosed = true;
-        summary.xrplLaneClosed = "fee_over_cap";
+        summary.xrplLaneClosed ??= "fee_over_cap";
       } else if (outcome.kind === "xrpl_lane_unavailable") {
         // 署名の材料が読めなかった（我々の側の障害）。1 回目で XRPL の優先を外し、以降の Base 先頭の
         // レーン候補は Base の通常経路で買う。理由は summary とサーバログ（purchaseOne 側）に残る。
         xrplLaneUnavailable = true;
-        summary.xrplLaneClosed = "signing_inputs_unavailable";
+        summary.xrplLaneClosed ??= "signing_inputs_unavailable";
         summary.skipped++;
       } else if (outcome.kind === "budget_denied") {
         summary.budgetDenied++;

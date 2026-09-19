@@ -224,6 +224,35 @@ if (!TEST_DB) {
       assert.equal((await purchaseRow(earlier)).status, "settle_failed");
     });
 
+    await t.test("xrpl:0 以外の xrpl:* の行も hash の束縛を素通りしない", async () => {
+      await reset();
+      const OTHER_NET = "xrpl:1";
+      const seedOn = async (authNonce: string) => {
+        const [row] = await db
+          .insert(schema.x402L1Purchases)
+          .values({ endpointId: await seedEndpoint(PAYEE), status: "settle_failed", network: OTHER_NET, asset: RLUSD_CURRENCY_HEX, payTo: PAYEE, payer: PAYER, amountUnits: "10000", spentUnits: "10000", attemptedAt, txHash: null, authNonce })
+          .returning();
+        return row.id;
+      };
+      const wrong = await seedOn(OTHER_HASH);
+      await db.insert(schema.settlements).values({
+        chain: OTHER_NET,
+        txHash: SIGNED_HASH,
+        purchaseId: `${OTHER_NET}:${SIGNED_HASH}`,
+        asset: RLUSD_CURRENCY_HEX,
+        amount: "10000",
+        payer: PAYER,
+        payee: PAYEE,
+        blockTime: new Date(attemptedAt.getTime() + 90_000),
+        source: "chain_index",
+        attribution: "probable",
+      });
+      assert.equal((await recoverLateSettlements()).recovered, 0, "hash の合わない行へ貼っている");
+      assert.equal((await purchaseRow(wrong)).status, "settle_failed");
+      const right = await seedOn(SIGNED_HASH);
+      assert.deepEqual((await recoverLateSettlements()).links, [{ purchaseId: right, txHash: SIGNED_HASH }]);
+    });
+
     await t.test("auth_nonce の無い XRPL の行は回収しない", async () => {
       await reset();
       const purchaseId = await seedPurchase(await seedEndpoint(PAYEE), { authNonce: null });
