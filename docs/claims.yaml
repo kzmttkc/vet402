@@ -1050,14 +1050,19 @@ claims:
     check: null
     why_unverifiable: "編集方針の宣言であって、公開 GET が数値で返す種類の主張ではない"
     verified_at: 2026-09-04
-  - id: audit_e_solana_settlements_are_reread
+  # 2026-09-19 独立レビュー C2: この登録は「照合器は Base と Solana の 2 つだけ」という
+  # 主張を、`l1.settled >= 1452`（全チェーン合計の下限）で緑にしていた。**その主張を検査して
+  # いない check** なので、Arc・Tempo・XRPL の照合器が増えても赤くならない。文を
+  # methodology §6 と同じ形（チェーンごとの束縛材料＋実績は l1.byChain）に直し、
+  # check も「XRPL の settled が 1 件以上ある」——つまり Base/Solana の 2 つだけでは
+  # ないこと——を実際に見る式へ替えた。
+  - id: faq_settlement_reread_is_chain_specific
     surface: src/components/site/faq-data.ts
-    quote: "settlements are re-read on-chain on both"
-    means: "Solana の決済もオンチェーンで読み直しており、settle_claimed 止まりではない"
-    check:
-      url: https://vet402.com/api/v1/observatory/state
-      assert: "l1.settled >= 1452"
-    verified_at: 2026-09-04
+    quote: "what does the binding differs by chain"
+    means: "決済の再読は Base/Solana の 2 つに限らず、チェーンごとの束縛材料（EIP-3009 nonce・自前 memo・TIP-20 の memo・署名 blob の hash）で行う。照合器の無いチェーンは settle_claimed に留まる"
+    check: null
+    why_unverifiable: "どのチェーンに照合器があるかを名前で返す公開 GET が無い。l1.byChain は配列で、評価器は path の完全一致しか読めないため、位置（byChain.3）に頼る式しか書けず、並び順が変われば主張と無関係に赤くなる——W5 と同じ「主張を検査していない check」になる。照合器の分岐は src/lib/observatory/settlement-verify.ts の verifySettlement が持ち、tests/settlement-verify-arc.test.ts・settlement-verify-solana.test.ts・settlement-verify-tempo.test.ts・settlement-verify-xrpl.test.ts が守る"
+    verified_at: 2026-09-19
   - id: audit_e_decision_totals_span_the_window
     surface: src/app/decisions/page.tsx
     quote: "The three counts in the header are the whole"
@@ -1130,8 +1135,8 @@ claims:
     verified_at: 2026-09-04
   - id: audit_e_promotions_are_not_corrections
     surface: src/app/corrections/page.tsx
-    quote: "Ledger promotions — recorded here, but not corrections"
-    means: "settle_claimed → settled の昇格は検証が予定どおり終わった記録であって、誤りの訂正ではない"
+    quote: "Ledger status changes — recorded here, but not corrections"
+    means: "settlement_backfill の行（売り手の申告を再読した昇格・vet402 の索引が貼った行・貼った推定の取り消し）は検証が予定どおり動いた記録であって、公開した判定を取り下げた訂正ではない。見出しは 2026-09-19 に「promotions」から改めた——同じ表に settle_claim_refuted と、貼った推定を戻す降格が入っており、昇格だけではない"
     check: null
     why_unverifiable: "分類の宣言であって、公開 GET が数値で返す種類の主張ではない。行の中身は /api/v1/observatory/corrections で誰でも数え直せる"
     verified_at: 2026-09-04
@@ -1202,8 +1207,8 @@ claims:
     verified_at: 2026-09-04
   - id: audit_e_snapshot_shows_both_denominators
     surface: src/app/observatory/page.tsx
-    quote: "entries fetched by vet402 out of the"
-    means: "ヘッダの N/N は「我々が取得できた件数 / カタログの自己申告総数」であることを明示する"
+    quote: "entries fetched by vet402 from the CDP x402 Bazaar out of the"
+    means: "ヘッダの N/N は「我々が Bazaar から取得できた件数 / そのカタログの自己申告総数」であることを明示する（2026-09-19: どのカタログの話かを名指した。register には MPP ディレクトリ由来の行も並ぶ）"
     check:
       url: https://vet402.com/api/v1/observatory/state
       assert: "latestSnapshot.fetchedCount >= 1"
@@ -1417,10 +1422,9 @@ claims:
   - id: api_anchor_root_covers_all_l1_rows_of_the_day
     surface: src/app/api/v1/observatory/anchors/route.ts
     quote: "canonical day JSON of all L1 rows, pk-ascending"
-    means: "日次ルートはその日の L1 行を全部入れて計算する（抜き取りではない）。鎖が実在し、日ごとにエントリ数を持つことが前提"
-    check:
-      url: https://vet402.com/api/v1/observatory/anchors
-      assert: "anchors.0.entryCount >= 1"
+    means: "日次ルートはその日の L1 行を全部入れて計算する（抜き取りではない）"
+    check: null
+    why_unverifiable: "2026-09-19 独立レビュー W5: 以前は anchors.0.entryCount >= 1 を当てていたが、それは「鎖が存在する」しか見ておらず、**その日の L1 行を全部入れたか**を検査していない。突合には生の購入行が要り、公開 API はそれを返さない。射影は src/lib/observatory/anchors.ts（オープンソース）で、tests/observatory-anchors.test.ts・anchors-backfill.pg.test.ts が日ごとの行の網羅を守る"
     verified_at: 2026-09-19
   - id: api_disputes_records_are_never_deleted
     surface: src/app/api/v1/observatory/disputes/route.ts
@@ -1440,9 +1444,8 @@ claims:
     surface: src/app/api/v1/observatory/history/route.ts
     quote: "Daily rollup, recomputed for the trailing ${window} days on each run"
     means: "history は日次ロールアップで、直近 window 日分は毎回計算し直す（遅れて届いた決済は次の走行で入る）。window は応答の recomputeWindowDays がそのまま出す"
-    check:
-      url: https://vet402.com/api/v1/observatory/history
-      assert: "recomputeWindowDays > 0"
+    check: null
+    why_unverifiable: "2026-09-19 独立レビュー W5: 以前は recomputeWindowDays > 0 を当てていたが、それは窓の値が正であることしか見ておらず、**直近 window 日を毎回計算し直しているか**を検査していない（走行間で値が変わることを見ないと言えない）。再計算は src/lib/observatory/metrics-rollup.ts が持ち、tests/observatory-metrics-rollup.test.ts が守る"
     verified_at: 2026-09-19
   - id: api_history_disclaimer_counts_not_assessment
     surface: src/app/api/v1/observatory/history/route.ts
@@ -1455,9 +1458,8 @@ claims:
     surface: src/app/api/v1/observatory/requests/route.ts
     quote: "Queued. The next daily probe run measures queued endpoints first; results publish through the normal gate."
     means: "申請したエンドポイントは次の L0 走行で先に測る。走行そのものは日次（vercel.json の /api/cron/l0-probe は 10:30 UTC 毎日）で、1 回の走行がカタログ全件を測るという意味ではない"
-    check:
-      url: https://vet402.com/api/v1/observatory/state
-      assert: "coverage7d.measuredLast7d > 0"
+    check: null
+    why_unverifiable: "2026-09-19 独立レビュー W5: 以前は coverage7d.measuredLast7d > 0 を当てていたが、それは「7 日のうちに測定があった」しか見ておらず、**申請した endpoint を先に測るか**を検査していない。順序は src/lib/observatory/probe-runner.ts の候補並べ替えが決め、tests/observatory-requests.test.ts が守る"
     verified_at: 2026-09-19
   - id: api_verdict_fast_never_computes
     surface: src/app/api/v1/payees/[address]/verdict-fast/route.ts
@@ -1470,19 +1472,17 @@ claims:
   # うち 100 行（delivered_no_receipt→settle_claimed 77・settle_failed→settle_claimed 23）は
   # 売り手が何も名指しておらず、vet402 自身の決済索引が貼った行（src/lib/settlements/recover-late.ts）。
   # 2 経路あることと、貼った行も同じ照合器を通ることを、頁と API の両方に書いた。
-  - id: api_corrections_two_paths_to_a_promotion
+  - id: api_corrections_three_paths_through_the_ledger
     surface: src/app/api/v1/observatory/corrections/route.ts
-    quote: "before.status settle_failed or delivered_no_receipt means the seller named no usable transaction"
-    means: "settlement_backfill には 2 経路ある（売り手の申告／vet402 自身の索引）。before.status がどちらかを示し、索引が貼った行も settle_claimed 止まりで、同じオンチェーン照合器を通ってからでないと settled にならない"
-    check:
-      url: https://vet402.com/api/v1/observatory/corrections?limit=500
-      assert: "corrections.0.reason == \"settlement_backfill\""
+    quote: "they say which of three paths a row took"
+    means: "settlement_backfill には 3 経路ある——(1) 売り手の申告を再読して settled か settle_claim_refuted へ、(2) 売り手が取引を名指していない行（settle_failed / delivered_no_receipt / settle_claimed_unverifiable）に vet402 の索引が転送を貼り settle_claimed へ、(3) 照合で署名の束縛が無く vet402 が自分の推定を取り消す（lateLinkWithdrawn）。台帳は上にも下にも動く"
+    check: null
+    why_unverifiable: "2026-09-19 独立レビュー W5: 以前は corrections.0.reason == \"settlement_backfill\" を当てていたが、最新 1 行の reason を見るだけで、**3 経路あること**を検査していない（最新行が reverify になれば主張と無関係に赤くなる）。公開 API は before/after を返すが、評価器は配列の全走査や件数の条件を書けないので、この主張は式にできない。経路は src/lib/settlements/recover-late.ts（LATE_RECOVERABLE_STATUSES）と src/lib/observatory/settlement-verifier.ts（withdrawLateLink）が持ち、tests/late-settlement-recovery.pg.test.ts が守る"
     verified_at: 2026-09-19
-  - id: corrections_page_two_paths_to_a_promotion
+  - id: corrections_page_three_paths_through_the_ledger
     surface: src/app/corrections/page.tsx
-    quote: "vet402&apos;s own settlement index then found a transfer from our payer to that"
-    means: "昇格の 2 経路目。売り手が取引を名指していない行に、vet402 の決済索引が払い元・宛先・額・窓の一致する tx を結びつける。結びつけた行は settle_claimed で、結論は照合器が出す"
-    check:
-      url: https://vet402.com/api/v1/observatory/corrections?limit=500
-      assert: "corrections.0.reason == \"settlement_backfill\""
+    quote: "ledger on on-chain evidence. Three paths lead here, and the"
+    means: "/corrections §1b の 3 経路の説明。売り手の申告の再読・vet402 の索引が貼った行・貼った推定の取り消しを、Before → after の列で見分けられると書く"
+    check: null
+    why_unverifiable: "2026-09-19 独立レビュー W5: 同じ主張を公開 GET の 1 式で検査できない（api_corrections_three_paths_through_the_ledger と同じ理由）"
     verified_at: 2026-09-19

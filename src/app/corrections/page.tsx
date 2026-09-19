@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "@/lib/support";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
-import { listCorrections, type CorrectionRow } from "@/lib/observatory/corrections";
+import { countCorrectionsByReason, listCorrections, type CorrectionRow } from "@/lib/observatory/corrections";
 import { getEndpointNames } from "@/lib/observatory/reader";
 
 /**
@@ -250,17 +250,23 @@ function CorrectionTableRow({
   );
 }
 
+/** 表に描くために読み込む行数（listCorrections の上限と同じ）。件数はこの値ではなく count(*) で数える。 */
+const ROWS_FETCHED = 500;
+
 export default async function CorrectionsPage() {
   // 2026-09-02: §10 の訂正ログ（correction_log）はここで公開する。9/2 に path_template の
   // 訂正 12 件が入ったのに、この頁は手書きの定数だけを見て「0 件」と言っていた。
-  const rows: CorrectionRow[] = await listCorrections({ limit: 500 }).catch(() => []);
+  const rows: CorrectionRow[] = await listCorrections({ limit: ROWS_FETCHED }).catch(() => []);
+  // 2026-09-19 独立レビュー W7: 見出しの件数は配列長ではなく count(*) で取る。
+  // rows は上限に張り付くので、その長さは「件数」ではなく「上限」だった。
+  const totals = await countCorrectionsByReason().catch(() => ({ settlementBackfill: 0, verdictChanges: 0 }));
   // 2026-09-04 外部監査 E・P1-11: この表は 484 行を丸ごと "machine-recorded
   // corrections" と呼んでいたが、うち 472 行は settlement_backfill——
   // settle_claimed → settled という**想定内の昇格**で、誤りの訂正ではない。
   // しかも昇格行は before/after に publishedVerdict を持たないので、表には
   // 「— → —」と描かれていた。2 つは別のものなので、別の表にする。
   const verdictCorrections = rows.filter((r) => r.reason !== "settlement_backfill");
-  const ledgerPromotions = rows.filter((r) => r.reason === "settlement_backfill");
+  const ledgerMoves = rows.filter((r) => r.reason === "settlement_backfill");
   const names = await getEndpointNames(rows.filter((r) => r.subject_type === "endpoint").map((r) => r.subject_id)).catch(() => new Map<string, string>());
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   const breadcrumb = breadcrumbJsonLd([
@@ -287,8 +293,8 @@ export default async function CorrectionsPage() {
                   別の数を名乗っていた。訂正の件数（散文 + 機械）に統一し、
                   昇格は訂正ではないので別に数える。 */}
               Corrections:{" "}
-              <span className="text-signal">{CORRECTIONS.length + verdictCorrections.length}</span>{" "}
-              · Ledger promotions: {ledgerPromotions.length.toLocaleString()}
+              <span className="text-signal">{CORRECTIONS.length + totals.verdictChanges}</span>{" "}
+              · Ledger status changes: {totals.settlementBackfill.toLocaleString()}
             </span>
           </div>
           <div className="doc-head-col">
@@ -327,12 +333,21 @@ export default async function CorrectionsPage() {
         {verdictCorrections.length > 0 && (
           <>
             <p className="doc-p">
-              {verdictCorrections.length.toLocaleString()} machine-recorded correction
-              {verdictCorrections.length === 1 ? "" : "s"} to a <em>published</em> observatory verdict
+              {totals.verdictChanges.toLocaleString()} machine-recorded correction
+              {totals.verdictChanges === 1 ? "" : "s"} to a <em>published</em> observatory verdict
               (product spec §10) — a verdict we had put on a public page and then had to take back.
               Newest first. The same rows are served at{" "}
               <code>/api/v1/observatory/corrections</code>.
             </p>
+            {/* 2026-09-19 レビュー W7: 表は読み込んだ ROWS_FETCHED 行の中の分しか描けない。
+                見出しの件数（count(*)）と表の行数が食い違うときは、そう書く。 */}
+            {totals.verdictChanges > verdictCorrections.length && (
+              <p className="doc-note mt-3">
+                {verdictCorrections.length.toLocaleString()} of them are in the newest{" "}
+                {ROWS_FETCHED.toLocaleString()} log rows and are drawn below. The full set is at{" "}
+                <code>/api/v1/observatory/corrections</code>.
+              </p>
+            )}
             <div className="mt-4 overflow-x-auto">
               <table className="fact-table">
                 <caption className="sr-only">
@@ -392,31 +407,38 @@ export default async function CorrectionsPage() {
         )}
 
         {/* ===== 1b. 昇格（訂正ではない） ===== */}
-        {ledgerPromotions.length > 0 && (
+        {ledgerMoves.length > 0 && (
           <>
             <h2 className="sec-head">
               <span className="sec-no">1b.</span>
-              <span>Ledger promotions — recorded here, but not corrections</span>
+              <span>Ledger status changes — recorded here, but not corrections</span>
             </h2>
             <p className="doc-p">
-              {ledgerPromotions.length.toLocaleString()} row
-              {ledgerPromotions.length === 1 ? "" : "s"} where a purchase moved up the ledger. Two
-              paths lead here and the <strong>Before → after</strong> column says which one a row
-              took. In one the seller asserted a settlement we had not re-read, so the row waited at{" "}
-              <code>settle_claimed</code> until we re-read it on-chain and found the transfer, which
-              moves it to <code>settled</code>. In the other the seller named no transaction at all
-              and the row waited at <code>settle_failed</code> or <code>delivered_no_receipt</code>;
-              vet402&apos;s own settlement index then found a transfer from our payer to that
-              endpoint&apos;s payee, for the expected amount, inside the attempt window, which no
-              other purchase could be claiming. Such a row is linked at <code>settle_claimed</code>,
-              not at <code>settled</code>: a transfer that fits is not a proof that it belongs to
-              this purchase, so it goes through the same on-chain verifier as any seller-asserted
-              row before the ledger calls it settled. Either way that is the
-              verification pipeline finishing its job on schedule, not vet402 publishing something
-              untrue and taking it back. They are written to the same append-only log so the path
+              {totals.settlementBackfill.toLocaleString()} row
+              {totals.settlementBackfill === 1 ? "" : "s"} where a purchase moved up or down the
+              ledger on on-chain evidence. Three paths lead here, and the{" "}
+              <strong>Before → after</strong> column says which one a row took.{" "}
+              <strong>One:</strong> the seller asserted a settlement we had not re-read, so the row
+              waited at <code>settle_claimed</code> until we read the chain — finding the transfer
+              moves it to <code>settled</code>, and failing to find it moves it to{" "}
+              <code>settle_claim_refuted</code>, which is a row against the seller and is
+              recorded here too. <strong>Two:</strong> the seller named no usable transaction and
+              the row waited at <code>settle_failed</code>, <code>delivered_no_receipt</code> or{" "}
+              <code>settle_claimed_unverifiable</code>; vet402&apos;s own settlement index then
+              found a transfer from our payer to that endpoint&apos;s payee, for the expected
+              amount, inside the attempt window, which no other purchase could be claiming. Such a
+              row is linked at <code>settle_claimed</code>, not at <code>settled</code>: a transfer
+              that fits is not a proof that it belongs to this purchase, so it goes through the same
+              on-chain verifier as any seller-asserted row before the ledger calls it settled.{" "}
+              <strong>Three:</strong> that verifier read the signature binding and the transfer we
+              had linked did not carry it, so we take our own guess back — the row returns to the
+              status it held before we touched it and the transaction is struck off, without the
+              seller being refuted for a link vet402 made. So this table is not only good news about
+              us: it records the pipeline finishing its job, and it records vet402 withdrawing its
+              own inference. They are written to the same append-only log so the path
               from claim to confirmation is auditable, and they are listed separately here because
               counting them as corrections would inflate our own error count and bury the{" "}
-              {verdictCorrections.length.toLocaleString()} entries above. Until 2026-09-04 this page
+              {totals.verdictChanges.toLocaleString()} entries above. Until 2026-09-04 this page
               called all {rows.length.toLocaleString()} of them &ldquo;machine-recorded
               corrections&rdquo; and drew every row as <code>— → —</code>, because a promotion
               carries a <code>status</code>, not a <code>publishedVerdict</code>.
@@ -436,15 +458,15 @@ export default async function CorrectionsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {ledgerPromotions.slice(0, 100).map((r) => (
+                  {ledgerMoves.slice(0, 100).map((r) => (
                     <CorrectionTableRow key={r.id} row={r} names={names} />
                   ))}
                 </tbody>
               </table>
             </div>
-            {ledgerPromotions.length > 100 && (
+            {totals.settlementBackfill > 100 && (
               <p className="doc-note mt-3">
-                Newest 100 of {ledgerPromotions.length.toLocaleString()} shown. The full set is at{" "}
+                Newest 100 of {totals.settlementBackfill.toLocaleString()} shown. The full set is at{" "}
                 <code>/api/v1/observatory/corrections</code>.
               </p>
             )}

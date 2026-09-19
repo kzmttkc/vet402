@@ -304,9 +304,14 @@ export default async function Home() {
             vet402 buys what x402 endpoints actually sell, verifies fulfillment against the
             seller&apos;s own declaration, and publishes the results with evidence.{" "}
             <strong>
-              Each figure here carries the strength of the evidence behind it, and a weaker tier is
-              not rounded up into a stronger one.
-            </strong>
+              A weaker tier of evidence is not rounded up into a stronger one: the settlements
+              vet402 bound to its own signature and the ones matched on amount and payee alone are
+              published as separate counts.
+            </strong>{" "}
+            <Link href="/observatory/state" className="doc-link">
+              See both counts
+            </Link>
+            .
           </p>
         </div>
 
@@ -729,11 +734,11 @@ export default async function Home() {
             title="Public accuracy ledger"
             body={
               <>
-                The misfire rates vet402 already has a sample for are published &mdash; the L0
-                false-fail and false-pass rates against re-measurement. The verdict-outcome rates
-                wait for one: until enough issued verdicts have resolved, the page says so instead
-                of printing a number. What it does print goes up whether or not the numbers flatter
-                us.
+                The misfire rates vet402 already has a sample for are published: the L0 false-fail
+                and false-pass rates against re-measurement ship as <code>l0</code> on{" "}
+                <code>/api/v1/accuracy</code>. The verdict-outcome rates wait for a sample &mdash;
+                until enough issued verdicts have resolved, the page below says so instead of
+                printing a number. What is printed goes up whether or not the numbers flatter us.
               </>
             }
             action={{ label: "Measured accuracy", href: "/accuracy", event: "docs_click", position: "s4_accuracy" }}

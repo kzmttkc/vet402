@@ -60,6 +60,30 @@ export type CorrectionRow = {
   created_at: string;
 };
 
+/**
+ * 訂正ログの**全件**を reason で数える（2026-09-19 独立レビュー W7）。
+ *
+ * /corrections の見出しは `listCorrections({ limit: 500 })` の配列長を件数として出していたが、
+ * 本番ではその上限に張り付いていて、見出しの「500」は件数ではなく**上限**だった
+ * （2026-09-04 監査 P1-11 と同種の事故——同じ頁で見出しと本文が別の数を名乗る）。
+ * 見出しはここで数え、表は読み込んだ分だけ描く。
+ */
+export async function countCorrectionsByReason(): Promise<{ settlementBackfill: number; verdictChanges: number }> {
+  const db = getDb();
+  if (!db) return { settlementBackfill: 0, verdictChanges: 0 };
+  const rows = rowsOf<{ settlement_backfill: number; verdict_changes: number }>(
+    await db.execute(sql`
+      SELECT count(*) FILTER (WHERE reason = 'settlement_backfill')::int AS settlement_backfill,
+             count(*) FILTER (WHERE reason <> 'settlement_backfill')::int AS verdict_changes
+      FROM correction_log
+    `),
+  );
+  return {
+    settlementBackfill: Number(rows[0]?.settlement_backfill ?? 0),
+    verdictChanges: Number(rows[0]?.verdict_changes ?? 0),
+  };
+}
+
 export async function listCorrections(filter: { endpointId?: string; limit?: number } = {}): Promise<CorrectionRow[]> {
   const db = getDb();
   if (!db) return [];

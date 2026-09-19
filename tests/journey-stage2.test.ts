@@ -41,9 +41,14 @@ test("abstract copy is unchanged", () => {
   // 一致は推定である。実装が実際に保証しているのは「証拠の強さを添えて出す・弱いものを
   // 強いほうへ丸めない」で、抽象のコピーはそちらに合わせた。元の文へ戻さない。
   assert.ok(!home.includes("Nothing on this site is an estimate.</strong>"));
+  // 2026-09-19 独立レビュー W3: 初稿の "Each figure here carries the strength of the
+  // evidence behind it" は LP が保証していない（LP が出す L1 の数字は endpointsSettled
+  // 1 本で、証拠の層はこの面に無い）。実装が保証しているのは「丸めない・層ごとに件数を
+  // 公開する」だけなので、そこまでに狭めた。
+  assert.ok(!home.includes("Each figure here carries the strength of the evidence"));
   assert.ok(
     home.includes(
-      "Each figure here carries the strength of the evidence behind it, and a weaker tier is\n              not rounded up into a stronger one.",
+      "A weaker tier of evidence is not rounded up into a stronger one: the settlements\n              vet402 bound to its own signature and the ones matched on amount and payee alone are\n              published as separate counts.",
     ),
   );
 });

@@ -186,7 +186,7 @@ if (!TEST_DB) {
   });
 
   test("observatory marks and excludes vet402's own endpoint (self-neutrality)", async (t) => {
-    const { getEndpointDetail, getObservatoryStats } = await import("@/lib/observatory/reader");
+    const { getEndpointDetail, getObservatoryStats, getObservatoryStatsByChain } = await import("@/lib/observatory/reader");
     const { getDb } = await import("@/lib/db/client");
     const schema = await import("@/lib/db/schema");
     const { sql } = await import("drizzle-orm");
@@ -204,11 +204,11 @@ if (!TEST_DB) {
 
     const [own] = await db
       .insert(schema.x402Endpoints)
-      .values({ resourceKey: "self.vet402.example/score", resourceUrl: "https://self.vet402.example/score", payTo: SELF, status: "active" })
+      .values({ resourceKey: "self.vet402.example/score", resourceUrl: "https://self.vet402.example/score", payTo: SELF, status: "active", network: "eip155:8453" })
       .returning();
     await db
       .insert(schema.x402Endpoints)
-      .values({ resourceKey: "third.example/api", resourceUrl: "https://third.example/api", payTo: `0x${"7".repeat(40)}`, status: "active" });
+      .values({ resourceKey: "third.example/api", resourceUrl: "https://third.example/api", payTo: `0x${"7".repeat(40)}`, status: "active", network: "eip155:8453" });
 
     await t.test("the operator's own endpoint is flagged on its detail page", async () => {
       const detail = await getEndpointDetail(own.id);
@@ -219,6 +219,17 @@ if (!TEST_DB) {
     await t.test("the aggregate excludes the operator endpoint (2 seeded → 1 counted)", async () => {
       const stats = await getObservatoryStats();
       assert.equal(stats.totalEndpoints, 1, "only the third-party endpoint counts toward the network total");
+    });
+
+    // 2026-09-19 独立レビュー W1: §1 の総数だけが自社を外し、チェーン別の表は外して
+    // いなかった。同じ頁の 2 表が別の母集団を数えていたので、/observatory/state §2 の
+    // 「§1 との差はテストネットだけ」という注記も厳密には偽になっていた。
+    await t.test("the per-chain table excludes it too, so both tables count one population", async () => {
+      const byChain = await getObservatoryStatsByChain();
+      const total = byChain.reduce((n, c) => n + c.totalEndpoints, 0);
+      assert.equal(total, 1, "the operator's own endpoint must not pad the per-chain table either");
+      const stats = await getObservatoryStats();
+      assert.equal(total, stats.totalEndpoints, "§1 and §2 must count the same population (no testnets seeded here)");
     });
   });
 

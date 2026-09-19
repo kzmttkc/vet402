@@ -120,10 +120,14 @@ export default async function ObservatoryPage({
                       左は catalog-source.ts の fetchedCount＝ページ横断で受け取った生件数（resource_key
                       で重複を畳む前）、右は totalCount＝カタログが pagination.total で自己申告した総数。
                       重複 URL が正規化で 1 本に畳まれるので、生件数が総数を超えうる。語で言う。 */}
-                  Snapshot{" "}
+                  {/* 2026-09-19 レビュー W8: この行は Bazaar の snapshot だけを出す
+                      （reader が主カタログを名指しで取るようになった）。何のカタログの
+                      取得健全性かを書かないと、頁の総数（MPP ディレクトリの行も含む）の
+                      取得状況だと読まれる。 */}
+                  Bazaar catalog snapshot{" "}
                   <span className="text-signal">{overview.latestSnapshot.snapshotDate}</span>{" "}
                   <span
-                    title={`${overview.latestSnapshot.fetchedCount.toLocaleString()} entries fetched by vet402 out of the ${overview.latestSnapshot.totalCount.toLocaleString()} the catalog reports about itself. Fetched counts raw items across pages before duplicate URLs collapse into one key, so it can exceed the reported total. See section 2.`}
+                    title={`${overview.latestSnapshot.fetchedCount.toLocaleString()} entries fetched by vet402 from the CDP x402 Bazaar out of the ${overview.latestSnapshot.totalCount.toLocaleString()} that catalog reports about itself. Fetched counts raw items across pages before duplicate URLs collapse into one key, so it can exceed the reported total. The register also lists endpoints from the MPP directory, which is fetched separately; /observatory/state prints each catalog's own as-of line. See section 2.`}
                   >
                     · fetched {overview.latestSnapshot.fetchedCount.toLocaleString()} of catalog{" "}
                     {overview.latestSnapshot.totalCount.toLocaleString()}

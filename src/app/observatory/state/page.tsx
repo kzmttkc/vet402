@@ -118,7 +118,10 @@ export default async function ObservatoryStatePage() {
   const [latestAnchor] = await getAnchors(1);
   const denom = stats.totalEndpoints;
   const snap = stats.latestSnapshot;
-  const catalogSnapshots = stats.catalogSnapshots;
+  // 2026-09-19 レビュー W2: `?? []` を外さない。getObservatoryStatsCached は固定キーの
+  // unstable_cache（revalidate 300）なので、デプロイ直後の 5 分間は catalogSnapshots を
+  // 持たない旧い形の値が返りうる。undefined.length で公開頁が 500 になる経路を塞ぐ。
+  const catalogSnapshots = stats.catalogSnapshots ?? [];
   const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   const dataset = datasetJsonLd({
@@ -313,7 +316,8 @@ export default async function ObservatoryStatePage() {
           only; testnet listings (Base Sepolia, Solana devnet, Arc testnet) are excluded below.
           That makes this table&apos;s denominator narrower than the one in §1, which counts every
           listing on record including testnets: the rows here sum to less than the §1 total, and
-          the difference is the testnet listings.
+          the difference is the testnet listings. Both tables leave out vet402&apos;s own
+          endpoints — a measurer is not a neutral third party in its own numbers.
         </p>
         {chainStats.length === 0 ? (
           <p className="doc-p text-brand-lift">No chain data yet.</p>

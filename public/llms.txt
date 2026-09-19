@@ -108,7 +108,7 @@ On npm, all from the same repository: `@vet402/sdk` (spend guard), `@vet402/midd
 - Verified Payee: prove control of a wallet by signature, get a public page and an SVG badge
 - Drop-in x402 middleware, REST API, and MCP tool
 - Public accuracy ledger, published whether or not the numbers flatter us
-- The x402 Observatory: L0 liveness probes across the full public discovery catalog, multi-chain (see /observatory/state for the breakdown), with delisting alerts for claimed sellers; L1 settle-through — real USDC purchases on Base and Solana mainnet, budget-capped, one purchase per endpoint per sweep window, recording every settlement and every refusal; L2 — a minimal structural check of the response against the seller's own declared schema
+- The x402 Observatory: L0 liveness probes across the full public discovery catalog, multi-chain (see /observatory/state for the breakdown), with delisting alerts for claimed sellers; L1 settle-through — real USDC purchases on the chains whose payer lane is switched on (the chains reached so far, with their counts, are the `l1.byChain` rows of https://vet402.com/api/v1/observatory/state), budget-capped, one purchase per endpoint per sweep window, recording every settlement and every refusal; L2 — a minimal structural check of the response against the seller's own declared schema
 
 ## Being built (not measurements yet)
 

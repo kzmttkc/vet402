@@ -1026,17 +1026,29 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
     // 並べて LIMIT 1 すると、どちらの行が返るかがタイブレーク無しで決まらず、実際には
     // mpp_directory（1,065/1,071）の「取得が不完全」が 29,337 件の表の見出しに付いていた。
     // 主カタログを名指しで取り、他の source は catalogSnapshots に別立てで出す。
-    const snapRows = await db
-      .select({
-        source: x402CatalogSnapshots.source,
-        snapshotDate: x402CatalogSnapshots.snapshotDate,
-        totalCount: x402CatalogSnapshots.totalCount,
-        fetchedCount: x402CatalogSnapshots.fetchedCount,
-      })
-      .from(x402CatalogSnapshots)
-      .orderBy(desc(x402CatalogSnapshots.snapshotDate));
+    // 2026-09-19 レビュー N2: source ごとに 1 行だけ読む（DISTINCT ON）。日付順に全行
+    // 読むと、日数 × source で伸び続ける表を毎リクエスト舐めることになる。
+    const snapRaw = await db.execute(sql`
+      SELECT DISTINCT ON (source)
+             source, snapshot_date, total_count, fetched_count
+      FROM x402_catalog_snapshots
+      ORDER BY source, snapshot_date DESC
+    `);
+    const snapRows = (Array.isArray(snapRaw) ? snapRaw : (snapRaw as { rows?: unknown[] }).rows ?? []) as {
+      source: string;
+      snapshot_date: string;
+      total_count: number;
+      fetched_count: number;
+    }[];
     const latestBySource = new Map<string, CatalogSnapshot>();
-    for (const r of snapRows) if (!latestBySource.has(r.source)) latestBySource.set(r.source, r);
+    for (const r of snapRows) {
+      latestBySource.set(r.source, {
+        source: String(r.source),
+        snapshotDate: String(r.snapshot_date),
+        totalCount: Number(r.total_count ?? 0),
+        fetchedCount: Number(r.fetched_count ?? 0),
+      });
+    }
     const snap = latestBySource.get(CATALOG_SOURCE) ?? null;
 
     return {
@@ -1086,6 +1098,19 @@ export async function getObservatoryStatsByChain(
   const db = getDb();
   if (!db) return [];
 
+  // 2026-09-19 独立レビュー W1: §1 の総数（getObservatoryStats）は運営自身の
+  // endpoint を母数から外しているのに、このチェーン別集計は外していなかった。
+  // 同じ頁の 2 つの表が別の母集団を数えていたことになる（「測る側は自分の数字の中で
+  // 中立な第三者ではない」を片方にだけ適用していた）。**文でごまかさずに除外を揃える**
+  // ——これで §1 と §2 の差はテストネットだけになり、頁の注記がそのまま真になる。
+  const opDenylist = operatorPayToDenylist();
+  const operatorExclusion = opDenylist.length
+    ? sql`WHERE e.pay_to IS NULL OR lower(e.pay_to) <> ALL(ARRAY[${sql.join(
+        opDenylist.map((a) => sql`${a}`),
+        sql`, `,
+      )}]::text[])`
+    : sql``;
+
   try {
     const raw = await db.execute(sql`
       WITH latest AS (
@@ -1101,6 +1126,7 @@ export async function getObservatoryStatsByChain(
             LIMIT ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH}
           ) v
         ) lp ON true
+        ${operatorExclusion}
       )
       SELECT network, status, verdicts FROM latest
     `);

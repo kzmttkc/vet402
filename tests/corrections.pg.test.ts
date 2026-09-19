@@ -19,7 +19,7 @@ if (!TEST_DB) {
     const { getDb } = await import("@/lib/db/client");
     const { sql } = await import("drizzle-orm");
     const { submitDispute, disputeMessage } = await import("@/lib/observatory/disputes");
-    const { listCorrections, recordCorrection } = await import("@/lib/observatory/corrections");
+    const { countCorrectionsByReason, listCorrections, recordCorrection } = await import("@/lib/observatory/corrections");
     const db = getDb()!;
     await db.execute(sql`TRUNCATE correction_log, disputes, x402_l0_probes, x402_endpoints`);
 
@@ -96,6 +96,22 @@ if (!TEST_DB) {
       assert.ok(id);
       const all = await listCorrections({});
       assert.equal(all.length, 2);
+    });
+
+    // 2026-09-19 独立レビュー W7: /corrections の見出しは listCorrections の配列長を
+    // 件数として出していたが、本番ではその上限（500）に張り付いていて「Ledger
+    // promotions: 500」は件数ではなく上限だった。件数は count(*) で数える。
+    await t.test("件数は取得上限ではなく count(*) で数える", async () => {
+      const capped = await listCorrections({ limit: 1 });
+      assert.equal(capped.length, 1, "上限 1 なら配列は 1 行——ここを件数として読んではいけない");
+      const totals = await countCorrectionsByReason();
+      assert.equal(totals.settlementBackfill, 1);
+      assert.equal(totals.verdictChanges, 1);
+      assert.equal(
+        totals.settlementBackfill + totals.verdictChanges,
+        (await listCorrections({})).length,
+        "reason の 2 分割は全件を覆う",
+      );
     });
   });
 }
