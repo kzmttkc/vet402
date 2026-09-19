@@ -34,7 +34,7 @@ import { x402L1Purchases } from "@/lib/db/schema";
 import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { readBodyCapped } from "@/lib/net/read-capped";
 import { UnsafeTargetError, createSafeFetchImpl, type SafeFetchCallOptions } from "@/lib/net/safe-fetch";
-import { redactForLog } from "./redact";
+import { redactForLog, redactedError } from "./redact";
 import { createDeadline } from "@/lib/util/deadline";
 import { CHAIN_DAILY_CAPS, LANE_FLOOR_FETCH_MAX, LANE_FLOOR_MAX_PER_HOST, LANE_FLOOR_OVERSAMPLE, cappedChainFor, chainDailyCapUnits, checkL1Budget, isL1Enabled, laneFloorPerRun, DAILY_BUDGET_USD, type CappedChain } from "./budget";
 import { isSpendingHalted, type HaltVerdict } from "./kill-switch";
@@ -732,33 +732,6 @@ export async function resolveReservationAsFailed(
   } catch (writeError) {
     // ここまで失敗したら 30 分後の孤児掃除が拾う。黙って消さない。
     logServerError("observatory.l1.resolve_reservation_failed", writeError);
-  }
-}
-
-/**
- * 予約を**解放する**（行ごと消す・2026-09-19 横断監査 W2）。
- *
- * resolveReservationAsFailed との違いは「署名したか」。あちらは署名して払える状態に
- * した試行の後始末で、spent_units を残すのが正しい。こちらは **まだ署名していない**
- * のに予約だけ立っている状態——外部 I/O（Tempo RPC）が落ちて credential を作れな
- * かった場合で、一円も動いていない。行を残すと、その売り手はスイープ窓のあいだ
- * 再選択されず、我々の RPC 障害が公開台帳（export.csv）に売り手の不履行として載る。
- * 資金切れ（payer_unfunded）・日次枠（chain_daily_cap）と同じ「行を書かない」へ揃える。
- *
- * `status = 'in_flight' AND tx_hash IS NULL` を条件に付けるのは、消してよいのが
- * 「予約したまま何も起きていない行」だけだから。消せなければ 30 分後の孤児掃除が拾う。
- */
-export async function releaseReservation(
-  db: NonNullable<ReturnType<typeof getDb>>,
-  rowId: string,
-): Promise<void> {
-  try {
-    await db.execute(sql`
-      DELETE FROM x402_l1_purchases
-      WHERE id = ${rowId}::uuid AND status = 'in_flight' AND tx_hash IS NULL
-    `);
-  } catch (deleteError) {
-    logServerError("observatory.l1.release_reservation_failed", deleteError);
   }
 }
 
@@ -1703,7 +1676,7 @@ async function purchaseOne(input: {
     } catch (error) {
       // secondary（Base 先頭の行）では行を書かない: 我々の RPC の失敗を Base の売り手の request_error に
       // しない（書くとスイープ窓のあいだ再選択されず、冷却の streak にも数えられる）。
-      logServerError("observatory.l1.xrpl_signing_inputs", error);
+      logServerError("observatory.l1.xrpl_signing_inputs", redactedError(error));
       if (!isXrplPrimary) {
         return { kind: "xrpl_lane_unavailable", settled: false, spent: 0n };
       }
@@ -1868,8 +1841,15 @@ async function purchaseOne(input: {
       // なる（この module が明示的に避けている）。丸ごと予約の前へ動かすと今度は
       // 「署名したのに予約が取れない」（別枠・初回枠・同時実行）が起きて、reserveSpend を
       // 署名の前に置いた理由そのものが壊れる。
-      // だから順番は変えず、**落ちたら予約を解放して行を書かない**。一円も動いていない
-      // 失敗を、売り手の不履行として公開台帳に載せないため。
+      //
+      // だから順番は変えず、落ちたら**予約をその場で `request_error` へ倒す**（独立レビュー W-2）。
+      // `spent_units` は 0 に戻す——署名していない予約は金ではない（pre_sign の halted と同じ扱い）。
+      // 行を消さないのは、この throw が一過性の RPC 障害だけではないから: gas 見積りが必ず
+      // revert する売り手なら毎バッチ同じ所で落ち、行が無ければ dup 判定（窓内の行の有無だけを
+      // 見る）が空のままで翌バッチも先頭に戻る。Tempo のレーン枠は 1 回 5 件・1 ホスト 2 件なので、
+      // そういう売り手が数件あるだけでレーンが永久に 1 件も買わない。`request_error` は
+      // export.csv・decisions・backtest・PAID_ATTEMPT_STATUSES のどれにも入らない（冤罪にならない）
+      // 一方で、冷却の 3 連続と掃引の窓には数えられる＝必要な backoff がそのまま効く。
       let cred: Awaited<ReturnType<typeof createMppCredential>>;
       try {
         cred = await createMppCredential(
@@ -1877,8 +1857,19 @@ async function purchaseOne(input: {
           mppxCharge ? { mppxCharge } : {},
         );
       } catch (error) {
-        logServerError("observatory.l1.mpp_credential", error);
-        await releaseReservation(db, reservation.rowId);
+        // spent_units を 0 に戻してよいのは mppx へ渡すピンが `mode: "pull"` 固定だから
+        // ——pull の createCredential は署名した封筒を返すだけで送信しない（push は
+        // sendTransactionSync でブロードキャストした後に throw しうる＝金が動いている）。
+        // ログにも RPC の URL を出さない（レビュー W-1: logServerError は message をそのまま出す）。
+        logServerError("observatory.l1.mpp_credential", redactedError(error));
+        await db
+          .update(x402L1Purchases)
+          .set({
+            status: "request_error",
+            spentUnits: "0",
+            rawResponseMeta: { phase: "mpp_credential", error: redactForLog(error) },
+          })
+          .where(eq(x402L1Purchases.id, reservation.rowId));
         invalidateDecisionCache(candidate.id);
         return { kind: "skipped", settled: false, spent: 0n };
       }
@@ -1948,6 +1939,9 @@ async function purchaseOne(input: {
     // still recorded, with the body error kept in rawResponseMeta.bodyError.
     const paidController = new AbortController();
     const paidTimer = setTimeout(() => paidController.abort(), timeoutMs);
+    // 2026-09-19（独立レビュー W-4）: safe-fetch が別オリジンの境界で資格情報を落としたら、
+    // その事実をここで受け取る（最初の 1 回だけ）。下の status の判定で使う。
+    let credentialStripped: { from: string; to: string } | null = null;
     try {
       paid = await fetchImpl(candidate.resourceUrl, {
         method,
@@ -1967,6 +1961,9 @@ async function purchaseOne(input: {
           // MPP（Tempo）のヘッダ名は**売り手の challenge** が決める（mppx の `header` パラメータ）
           // ので表に載せようがない。毎回この 1 本を渡し、別オリジンへの転送では必ず落とす。
           sensitiveHeaders: [header.headerName],
+          onCredentialsStripped: (hop) => {
+            credentialStripped ??= hop;
+          },
           // 2026-09-17（Issue #29 独立検証）: 宣言本文は売り手のオリジンから出さない。別オリジンへ
           // 本文を運ぶ転送には従わず 3xx をそのまま記録する（safe-fetch.ts の crossOriginBody）。
           // `{}` の要求は従来どおり。
@@ -2020,15 +2017,28 @@ async function purchaseOne(input: {
     // だから購入は `settle_claimed` で置き、日次の照合 cron が
     // `settled` / `settle_claim_refuted` へ確定させる。
     const claimedAndWellFormed = claimedSettlement && settlementTxWellFormed;
+    // 2026-09-19（独立レビュー W-4）: 資格情報を**我々が**境界で落とした要求の 401/402 は、
+    // 売り手についての所見ではない。売り手は別オリジンへ転送し、我々の SSRF / 資格情報の
+    // 関門がそこへ credential を運ばなかった——断ったのは転送先であって、売り手の壁ではない。
+    // `settle_failed` にすると「決済に失敗した売り手」として公開台帳・decisions・冷却の分母に
+    // 載る。こちら側の事実なので `request_error`（export.csv・decisions・backtest・
+    // PAID_ATTEMPT_STATUSES のいずれにも入らない）で記録する。
+    // `spent_units` は戻さない——1 ホップ目で売り手は credential を受け取っており、x402 の
+    // EIP-3009 も MPP の pull も、そこから決済され得る（署名したら計上する、は不変）。
+    // レーンで分けないのは、この経路が x402 でも MPP でも同じ仕組みで起きるから。
+    const strippedRefusal =
+      credentialStripped !== null && paid !== null && (paid.status === 401 || paid.status === 402);
     const status = !paid
       ? "settle_failed"
-      : claimedAndWellFormed
-        ? "settle_claimed"
-        : claimedSettlement
-          ? "settle_claimed_unverifiable" // 決済したと主張したが識別子が形式不正
-          : paid.status === 200
-            ? "delivered_no_receipt" // goods returned but no settlement receipt header
-            : "settle_failed";
+      : strippedRefusal
+        ? "request_error"
+        : claimedAndWellFormed
+          ? "settle_claimed"
+          : claimedSettlement
+            ? "settle_claimed_unverifiable" // 決済したと主張したが識別子が形式不正
+            : paid.status === 200
+              ? "delivered_no_receipt" // goods returned but no settlement receipt header
+              : "settle_failed";
     // summary の互換のため「売り手が決済を主張したか」は残すが、これは
     // settled ではない。名前で取り違えないよう別名にしてある。
     const settled = claimedAndWellFormed;
@@ -2043,6 +2053,9 @@ async function purchaseOne(input: {
       ...(isTempo ? { protocol: "mpp" } : {}),
       // XRPL のレーン候補だったが XRPL の accept を選べず Base へ落ちた理由（2026-09-18）。
       ...(xrplLaneRefusal ? { xrplLane: xrplLaneRefusal } : {}),
+      // どのオリジン境界で資格情報を落としたか（2026-09-19 レビュー W-4）。status が
+      // request_error になった行の理由はこれ。
+      ...(credentialStripped ? { credentialStripped } : {}),
       bodyHead: paidBody.slice(0, 500),
       // どの本文で POST したか（2026-09-17 Issue #29）。"declared" は売り手の 402 が宣言した
       // input.body、"empty" は `{}`。GET には付けない。
@@ -2154,7 +2167,7 @@ async function purchaseOne(input: {
       network: accept.network,
     };
   } catch (error) {
-    logServerError("observatory.l1.purchase_after_reservation", error);
+    logServerError("observatory.l1.purchase_after_reservation", redactedError(error));
     await resolveReservationAsFailed(db, reservation.rowId, error);
     invalidateDecisionCache(candidate.id);
     return { kind: "attempted", settled: false, spent: amount, status: "settle_failed", network: accept.network };

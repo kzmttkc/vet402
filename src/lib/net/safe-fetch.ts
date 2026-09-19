@@ -255,10 +255,23 @@ export type SafeFetchOptions = {
    * 呼び手が「この要求で機微なヘッダ」を宣言し、gate はここで必ず落とす。
    */
   sensitiveHeaders?: readonly string[];
+  /**
+   * Called once per hop where a credential header was actually removed because
+   * the redirect crossed an origin. Not called when the request carried none.
+   *
+   * 2026-09-19（独立レビュー W-4）: 落とすと次のホップは当然 401/402 を返す。呼び手が
+   * それを「売り手が決済に失敗した」として公開台帳に書いてしまわないよう、**落とした側が
+   * 事実を伝える**。最終 URL から推測させない——`Response.url` は手で作った Response では
+   * 空で、転送を手で追うこの実装では当てにできない。
+   */
+  onCredentialsStripped?: (hop: { from: string; to: string }) => void;
 };
 
 /** Per-call options a drop-in fetchImpl accepts as a third argument. */
-export type SafeFetchCallOptions = Pick<SafeFetchOptions, "crossOriginBody" | "sensitiveHeaders">;
+export type SafeFetchCallOptions = Pick<
+  SafeFetchOptions,
+  "crossOriginBody" | "sensitiveHeaders" | "onCredentialsStripped"
+>;
 
 /**
  * `fetch`, except every hop's target must be a public address. Redirects are
@@ -275,7 +288,7 @@ export async function safeFetch(
   init: RequestInit = {},
   options: SafeFetchOptions = {},
 ): Promise<Response> {
-  const { fetchImpl = pinnedFetch, resolve = defaultResolver, maxRedirects = 5, crossOriginBody = "follow", sensitiveHeaders = [] } = options;
+  const { fetchImpl = pinnedFetch, resolve = defaultResolver, maxRedirects = 5, crossOriginBody = "follow", sensitiveHeaders = [], onCredentialsStripped } = options;
   // 固定名の表＋この要求ぶんの宣言。Headers は set/delete で正規化するので小文字で持つ。
   const dropOnCrossOrigin = [
     ...CROSS_ORIGIN_SENSITIVE_HEADERS,
@@ -346,8 +359,11 @@ export async function safeFetch(
     // Cloned rather than mutated in place so the caller's own `init.headers`
     // is never edited underneath it.
     if (crossesOrigin(current, next)) {
+      // 実際に何か載っていたときだけ呼び手へ伝える（下の onCredentialsStripped）。
+      const carried = dropOnCrossOrigin.some((name) => headers.has(name));
       headers = new Headers(headers);
       for (const name of dropOnCrossOrigin) headers.delete(name);
+      if (carried) onCredentialsStripped?.({ from: current.origin, to: next.origin });
     }
     current = next;
   }

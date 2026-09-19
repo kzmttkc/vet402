@@ -28,6 +28,7 @@
 //     2026-09-02 の是正（index-solana.ts / l1-runner.ts）と同じ fail-loud。
 // ============================================================
 import { isWellFormedSettlementTx } from "@/lib/validation/settlement-tx";
+import { redactUrls } from "./redact";
 import { SOLANA_USDC_MINT } from "./sol402-payer";
 import type { SettlementVerifyResult } from "./settlement-verify";
 
@@ -275,10 +276,12 @@ function usdcReceivedFromInstructions(
   return total;
 }
 
+// detail は DB（settlement_verify_reason）に残る。RPC の URL は鍵を含む形があり、Solana の
+// Connection は https から wss を内部生成する——呼び手ではなくここで伏せる（2026-09-19 W-1）。
 const unavailable = (detail: string): SettlementVerifyResult => ({
   ok: false,
   reason: "rpc_unavailable",
-  detail: detail.slice(0, 200),
+  detail: redactUrls(detail).slice(0, 200),
 });
 
 /**

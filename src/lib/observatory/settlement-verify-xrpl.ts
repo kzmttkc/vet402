@@ -15,6 +15,7 @@
 //     network_id が 0 以外なら同じく wrong_chain（別ネットワークの同名 tx を読まない）。
 // ============================================================
 import { isWellFormedSettlementTx } from "@/lib/validation/settlement-tx";
+import { redactUrls } from "./redact";
 import type { SettlementVerifyResult } from "./settlement-verify";
 import { RLUSD_ISSUER, XRPL_MAINNET_CAIP2, createXrplJsonRpc, isRlusdAsset, rlusdToUnitsFloor, type XrplRpc } from "./xrpl402-payer";
 
@@ -26,7 +27,8 @@ export function rippleTimeToDate(rippleSeconds: unknown): Date | null {
   return new Date((rippleSeconds + RIPPLE_EPOCH_OFFSET_SECONDS) * 1000);
 }
 
-const unavailable = (detail: string): SettlementVerifyResult => ({ ok: false, reason: "rpc_unavailable", detail: detail.slice(0, 200) });
+// detail は DB（settlement_verify_reason）に残る。XRPL_RPC_URL も鍵入りの形を取りうる（2026-09-19 W-1）。
+const unavailable = (detail: string): SettlementVerifyResult => ({ ok: false, reason: "rpc_unavailable", detail: redactUrls(detail).slice(0, 200) });
 
 type Rec = Record<string, unknown>;
 const asRec = (v: unknown): Rec | null => (typeof v === "object" && v !== null ? (v as Rec) : null);

@@ -3,10 +3,7 @@
 //
 //   resolveReservationAsFailed … 署名して払える状態にした後で落ちた。settle_failed へ倒し、
 //                                spent_units は残す（「署名したら計上する」は予算の不変条件）。
-//   releaseReservation         … まだ署名していないのに予約だけ立っている（Tempo の署名器が
-//                                RPC へ出て落ちた）。一円も動いていないので行ごと消す。
-//                                残すと、我々の RPC 障害が公開台帳に売り手の不履行として載り、
-//                                スイープ窓のあいだその売り手を測れなくなる。
+//   （まだ署名していない予約の後始末は `request_error` へ倒す側。l1-tempo-mpp.pg.test.ts が見る。）
 //
 // ついでに固定する 2 つ:
 //   - error は redactForLog を通す（RPC の URL に鍵が入る形がある）。
@@ -32,7 +29,7 @@ if (!TEST_DB) {
   const RPC_ERROR = new Error("HTTP request failed. URL: https://tempo.example/v2/SECRETKEY. Details: fetch failed");
 
   test("reservation resolution", async (t) => {
-    const { resolveReservationAsFailed, releaseReservation } = await import("@/lib/observatory/l1-runner");
+    const { resolveReservationAsFailed } = await import("@/lib/observatory/l1-runner");
     const { getDb } = await import("@/lib/db/client");
     const schema = await import("@/lib/db/schema");
     const { sql } = await import("drizzle-orm");
@@ -84,22 +81,5 @@ if (!TEST_DB) {
       assert.ok(String(meta.error).includes("<url>"), `伏字が入っていない: ${String(meta.error)}`);
     });
 
-    await t.test("releaseReservation: 署名前の in_flight は行ごと消える", async () => {
-      const rowId = await seedReservation();
-      await releaseReservation(db, rowId);
-      assert.deepEqual(await purchases(), [], "行が無い＝翌バッチでまた候補になる");
-    });
-
-    await t.test("releaseReservation: 決済 tx を持つ行と in_flight でない行は消さない", async () => {
-      const withTx = await seedReservation({ txHash: `0x${"cd".repeat(32)}` });
-      await releaseReservation(db, withTx);
-      assert.equal((await purchases()).length, 1, "tx がある行は「何も起きていない予約」ではない");
-
-      const settled = await seedReservation({ status: "settle_claimed" });
-      await releaseReservation(db, settled);
-      const after = await purchases();
-      assert.equal(after.length, 1);
-      assert.equal(after[0].status, "settle_claimed");
-    });
   });
 }

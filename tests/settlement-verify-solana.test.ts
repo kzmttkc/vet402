@@ -290,3 +290,21 @@ test("not_final は一時的な理由として扱う（settle_claim_refuted へ�
   const transient = j.slice(j.indexOf("TRANSIENT_REASONS"), j.indexOf("export type VerifySettlementsSummary"));
   assert.match(transient, /"not_final"/, "not_final が一時扱いから外れている");
 });
+
+// 2026-09-19（横断監査 W4 → レビュー W-1）: rpc_unavailable の detail は
+// x402_l1_purchases.settlement_verify_reason として DB に残る。Solana の Connection は
+// https の RPC URL から wss を内部生成するので、誤り本文には鍵入りの wss:// が出る。
+test("rpc_unavailable の detail は RPC の URL（wss を含む）を伏字にする", async () => {
+  const result = await verifySolanaSettlement(input, {
+    rpc: fakeRpc({
+      getTransaction: async () => {
+        throw new Error("ws error: wss://solana-mainnet.g.alchemy.com/v2/SECRETKEY123 closed");
+      },
+    }),
+  });
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.reason, "rpc_unavailable");
+  assert.equal(result.detail?.includes("SECRETKEY123"), false, result.detail);
+  assert.ok(result.detail?.includes("<url>"), result.detail);
+});

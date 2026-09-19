@@ -403,7 +403,8 @@ if (!TEST_DB) {
           // 有料リトライを別オリジンへ転送する。
           return new Response("", { status: 302, headers: { location: "https://collector.example/take" } });
         }
-        if (url.includes("collector.example")) return new Response(JSON.stringify({ data: "x" }), { status: 200, headers: { "content-type": "application/json" } });
+        // 資格情報が境界で落ちているので、転送先は当然「払っていない」と見て 402 を返す。
+        if (url.includes("collector.example")) return new Response(JSON.stringify({ error: "payment required" }), { status: 402, headers: { "content-type": "application/json" } });
         // Base の売り手は従来どおり
         if (!paid) return new Response(baseChallenge, { status: 402, headers: { "content-type": "application/json" } });
         return new Response(JSON.stringify({ data: "goods" }), {
@@ -425,34 +426,79 @@ if (!TEST_DB) {
         assert.equal(h.headers["x-pay"], undefined, "売り手が名付けた資格情報が第三者へ渡ってはいけない");
         assert.equal(h.headers["authorization"], undefined);
       }
+
+      // 独立レビュー W-4: 転送先が返した 402 は**我々の関門が起こした事実**。売り手の
+      // 不履行（settle_failed・公開分母の中）にしない。金は動きうる（1 ホップ目で売り手は
+      // credential を受け取っている）ので spent_units は残す——`request_error` は
+      // export.csv・decisions からは外れるが、予算は使ったままにする。
+      const ledger = await ledgerFor("https://fal.mpp.tempo.example/model/1");
+      assert.equal(ledger.length, 1);
+      assert.equal(ledger[0].status, "request_error", `status が ${ledger[0].status}`);
+      assert.equal(ledger[0].spent_units, "25000", "署名して売り手へ渡した額は計上したまま");
+      const meta = ledger[0].raw_response_meta as Record<string, unknown>;
+      const strip = meta.credentialStripped as Record<string, unknown> | undefined;
+      assert.equal(strip?.to, "https://collector.example", `どこで落としたかを行に残す: ${JSON.stringify(meta)}`);
+      assert.equal(meta.status, 402);
     });
 
     // ------------------------------------------------------------
-    // 2026-09-19（横断監査 W2）: Tempo の署名が落ちても、冤罪の行を公開台帳に書かない。
+    // 2026-09-19（横断監査 W2 → 独立レビュー W-2）: Tempo の署名が落ちた行の扱い。
     //
     // mppx の createCredential は Tempo RPC（nonce・gas）へ出る。予約の**後**にあるので、
-    // RPC が落ちると resolveReservationAsFailed が settle_failed に倒し、spent_units が残った。
-    // 一円も動いていないのに別枠と共有 $25 が減り、その行が売り手の不履行として export.csv に載る。
-    // 資金切れ・日次枠と同じく「行を書かない」へ揃える。
+    // 落ちると resolveReservationAsFailed が settle_failed に倒し、spent_units が残った
+    // ——一円も動いていないのに別枠と共有 $25 が減り、その行が売り手の不履行として
+    // 公開台帳（export.csv）に載る。
+    //
+    // 直しは「行を消す」ではなく「`request_error` で残す」。`request_error` は export.csv・
+    // decisions・backtest・PAID_ATTEMPT_STATUSES のどれにも入らない（冤罪にならない）一方、
+    // 行が在ることで同じ売り手がスイープ窓のあいだ再選択されない＝ backoff になる。
+    // 消すと、決定的に落ちる売り手（gas 見積りが revert する等）が毎バッチ先頭に戻り、
+    // 1 回 5 件・1 ホスト 2 件のレーン枠を埋め続けて Tempo が永久に 1 件も買わない。
     // ------------------------------------------------------------
-    await t.test("tempo signer failure (RPC down) leaves no row and no spend; Base is still bought", async () => {
+    await t.test("tempo signer failure: request_error の行が残り（spent 0・URL は伏字）、次のバッチでは再選択されない", async () => {
       await seed();
       process.env.OBSERVATORY_TEMPO_L1_ENABLED = "true";
       const w = wall();
       const failing = async () => {
         throw new Error("HTTP request failed. URL: https://tempo-rpc.example/v2/SECRETKEY");
       };
-      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED, limit: 10, fetchImpl: w.fetchImpl, mppxCharge: failing });
-      assert.deepEqual(await ledgerFor("https://fal.mpp.tempo.example/model/1"), [], "行を書かない（翌バッチでまた候補）");
-      assert.deepEqual(await ledgerFor("https://fal.mpp.tempo.example/model/2"), []);
+      // W-1: サーバログにも鍵を出さない（logServerError は error.message をそのまま console へ出す）。
+      const logged: string[] = [];
+      const realError = console.error;
+      console.error = (...args: unknown[]) => {
+        logged.push(args.map(String).join(" "));
+      };
+      let summary;
+      try {
+        summary = await runL1Batch({ getPayerUsdcBalance: FUNDED, limit: 10, fetchImpl: w.fetchImpl, mppxCharge: failing });
+      } finally {
+        console.error = realError;
+      }
       assert.ok(!w.seen.some((s) => s.url.includes("fal.mpp.tempo.example") && s.paid), "署名できていないので有料要求も出ない");
-      // 支出は Base の 1 件だけ（Tempo の予約は解放されている）
+      assert.equal(logged.some((line) => line.includes("SECRETKEY")), false, `ログに鍵が出ている: ${logged.join(" | ")}`);
+
+      const ledger = await ledgerFor("https://fal.mpp.tempo.example/model/1");
+      assert.equal(ledger.length, 1);
+      assert.equal(ledger[0].status, "request_error", "公開分母の外（export.csv からも除外される status）");
+      assert.equal(ledger[0].spent_units, "0", "署名していないので計上しない");
+      const meta = ledger[0].raw_response_meta as Record<string, unknown>;
+      assert.equal(meta.phase, "mpp_credential");
+      assert.equal(String(meta.error).includes("SECRETKEY"), false, `台帳に鍵が残っている: ${String(meta.error)}`);
+      assert.ok(String(meta.error).includes("<url>"));
+      // Tempo の別枠は減らない（spent_units 0）
       const day = rows<{ spent: string }>(
         await db.execute(sql`SELECT coalesce(sum(spent_units::numeric), 0)::text AS spent FROM x402_l1_purchases WHERE network LIKE 'eip155:4217'`),
       )[0];
-      assert.equal(day.spent, "0", "Tempo の別枠は減らない");
+      assert.equal(day.spent, "0");
       assert.ok(w.seen.some((s) => s.url.includes("seller1.example") && s.paid), "Base は買う");
-      assert.equal(summary.settled, 1);
+      assert.equal(summary!.settled, 1);
+
+      // backoff: 行が在るので、同じ売り手は次のバッチでスイープ窓のあいだ選ばれない。
+      const again = wall();
+      await runL1Batch({ getPayerUsdcBalance: FUNDED, limit: 10, fetchImpl: again.fetchImpl, mppxCharge: failing });
+      assert.ok(!again.seen.some((s) => s.url.includes("fal.mpp.tempo.example")), `再選択された: ${again.seen.map((s) => s.url).join(" ")}`);
+      assert.equal((await ledgerFor("https://fal.mpp.tempo.example/model/1")).length, 1, "行は増えない");
     });
+
   });
 }

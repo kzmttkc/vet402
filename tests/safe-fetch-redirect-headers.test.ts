@@ -273,3 +273,53 @@ test("createSafeFetchImpl は呼び出しごとの sensitiveHeaders を受け取
   );
   assert.equal(hops[1].headers["payment-authorization"], undefined);
 });
+
+// ------------------------------------------------------------
+// 2026-09-19（独立レビュー W-4）: 落としたことを呼び手に知らせる。
+//
+// 資格情報が境界で落ちると、次のホップは当然 401/402 を返す。呼び手（L1）はそれを
+// 「売り手が決済に失敗した」として公開台帳に書いていた——**我々の関門が起こした事実**
+// なのに。どのホップで落としたかを呼び手へ渡し、L1 はその応答を request_error にする。
+// 最終 URL を見て推測するのではなく、落とした側が言う（Response.url は手で作った
+// Response では空で、転送を手で追うこの実装では当てにできない）。
+// ------------------------------------------------------------
+
+test("onCredentialsStripped: 落としたホップの from/to を 1 度だけ伝える", async () => {
+  const { hops, fetchImpl } = scriptedFetch([
+    { status: 302, location: "https://evil.example/collect" },
+    { status: 402 },
+  ]);
+  const stripped: { from: string; to: string }[] = [];
+  await safeFetch(
+    "https://seller.example/paid",
+    { method: "GET", headers: { "x-pay": "Payment eyJhIjoxfQ" } },
+    {
+      fetchImpl,
+      resolve: resolveAllPublic,
+      sensitiveHeaders: ["x-pay"],
+      onCredentialsStripped: (hop) => stripped.push(hop),
+    },
+  );
+  assert.equal(hops.length, 2);
+  assert.deepEqual(stripped, [{ from: "https://seller.example", to: "https://evil.example" }]);
+});
+
+test("onCredentialsStripped: 落とすものが無いホップでは呼ばない（同一オリジンでも呼ばない）", async () => {
+  const cross = scriptedFetch([{ status: 302, location: "https://evil.example/collect" }, { status: 200 }]);
+  const a: unknown[] = [];
+  await safeFetch(
+    "https://seller.example/paid",
+    { method: "GET", headers: { accept: "application/json" } },
+    { fetchImpl: cross.fetchImpl, resolve: resolveAllPublic, sensitiveHeaders: ["x-pay"], onCredentialsStripped: (h) => a.push(h) },
+  );
+  assert.deepEqual(a, [], "機微ヘッダを 1 つも載せていない要求では呼ばない");
+
+  const same = scriptedFetch([{ status: 301, location: "https://seller.example/paid/" }, { status: 200 }]);
+  const b: unknown[] = [];
+  await safeFetch(
+    "https://seller.example/paid",
+    { method: "GET", headers: { "x-pay": "Payment eyJhIjoxfQ" } },
+    { fetchImpl: same.fetchImpl, resolve: resolveAllPublic, sensitiveHeaders: ["x-pay"], onCredentialsStripped: (h) => b.push(h) },
+  );
+  assert.deepEqual(b, [], "同一オリジンでは落としていない");
+});

@@ -146,3 +146,15 @@ test("readXrplTxResponse: API v1（最上位）と v2（tx_json）の両方を�
   assert.equal(v2.closeTime?.toISOString(), "2026-09-17T00:00:00.000Z");
   assert.equal(rippleTimeToDate(0)?.toISOString(), "2000-01-01T00:00:00.000Z");
 });
+
+// 2026-09-19（横断監査 W4 → レビュー W-1）: detail は DB に残る。XRPL_RPC_URL も鍵入りの形を取りうる。
+test("rpc_unavailable の detail は RPC の URL を伏字にする", async () => {
+  const r = await verifyXrplSettlement(input(), {
+    rpc: fakeRpc({ serverInfoError: new Error("connect ECONNREFUSED wss://xrpl.example/v2/SECRETKEY123") }),
+  });
+  assert.equal(r.ok, false);
+  if (r.ok) return;
+  assert.equal(r.reason, "rpc_unavailable");
+  assert.equal(r.detail?.includes("SECRETKEY123"), false, r.detail);
+  assert.ok(r.detail?.includes("<url>"), r.detail);
+});
