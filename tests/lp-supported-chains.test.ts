@@ -182,7 +182,7 @@ test("an unread ledger: the legend does not define the markers by the ledger, an
     assert.equal(
       chainsLegend(settledByChainOf(unread)),
       "A lane is marked implemented when a settled purchase is on record, and building when the work has not shipped. " +
-        "The public ledger could not be read for this rendering, so the markers below are the last recorded state and no counts are shown.",
+        "The public ledger could not be read for this rendering, so the markers below are the state written into this page when it was last updated and no counts are shown.",
     );
   }
   // the read shape never carries the unread sentence

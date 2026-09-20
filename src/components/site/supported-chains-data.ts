@@ -154,7 +154,7 @@ export function laneBody(row: LaneChain, settled: number | null): string {
  * sentence does not name the ledger as their source, and a second sentence says it was not read.
  */
 export const LEDGER_UNREAD_SENTENCE =
-  "The public ledger could not be read for this rendering, so the markers below are the last recorded state and no counts are shown.";
+  "The public ledger could not be read for this rendering, so the markers below are the state written into this page when it was last updated and no counts are shown.";
 
 export function chainsLegend(settledByChain: Map<string, number> | null): string {
   const anyPending = SUPPORTED_CHAINS.some(
