@@ -2,17 +2,22 @@
 // L1 ランナー: 支払い付き要求のクエリを売り手の宣言から取る（2026-09-20）。
 //
 // 守ること:
-//  1. フラグ OFF（既定）: 402 が queryParams を宣言していても、支払い付き要求の URL は
-//     カタログの URL のまま。行の raw_response_meta に requestQuery を書かない。
-//  2. フラグ ON: 宣言があれば支払い付き要求の URL にだけ足す。無払いの要求はカタログの
-//     URL のまま（宣言はその 402 を読んで初めて手に入る）。行に requestQuery を残す。
-//  3. 署名するもの（額・宛先・封筒の resource.url）はフラグで変わらない。
+//  1. 許可リスト OBSERVATORY_L1_DECLARED_QUERY_NETWORKS（CAIP-2・カンマ区切り・完全一致）に
+//     署名する accept の network が無ければ（未設定・空・別チェーンだけ・大小違い・旧 boolean）、
+//     402 が queryParams を宣言していても支払い付き要求の URL はカタログの URL のまま。
+//     行の raw_response_meta に requestQuery を書かない。
+//  2. 許可リストにあれば、宣言を支払い付き要求の URL にだけ足す。無払いの要求はカタログの
+//     URL のまま（宣言はその 402 を読んで初めて手に入る）。行に requestQuery（ラベル）と
+//     requestQuerySha256（足したクエリ文字列の SHA-256）を残す。
+//  3. 署名するもの（額・宛先・封筒の resource.url）は許可リストで変わらない。
+//  （Tempo は許可リストに載せても対象外: tests/l1-tempo-mpp.pg.test.ts）
 //
 // Run: TEST_DATABASE_URL=postgres://localhost/vet402_x400_test \
 //   npx tsx --test --test-force-exit --test-concurrency=1 tests/l1-declared-query.pg.test.ts
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
@@ -39,13 +44,15 @@ if (!TEST_DB) {
     const saved = {
       l1: process.env.OBSERVATORY_L1_ENABLED,
       pk: process.env.OBSERVATORY_WALLET_PRIVATE_KEY,
-      flag: process.env.OBSERVATORY_L1_DECLARED_QUERY_ENABLED,
+      nets: process.env.OBSERVATORY_L1_DECLARED_QUERY_NETWORKS,
+      legacy: process.env.OBSERVATORY_L1_DECLARED_QUERY_ENABLED,
     };
     const restore = (k: string, v: string | undefined) => (v === undefined ? delete process.env[k] : (process.env[k] = v));
     t.after(() => {
       restore("OBSERVATORY_L1_ENABLED", saved.l1);
       restore("OBSERVATORY_WALLET_PRIVATE_KEY", saved.pk);
-      restore("OBSERVATORY_L1_DECLARED_QUERY_ENABLED", saved.flag);
+      restore("OBSERVATORY_L1_DECLARED_QUERY_NETWORKS", saved.nets);
+      restore("OBSERVATORY_L1_DECLARED_QUERY_ENABLED", saved.legacy);
     });
     process.env.OBSERVATORY_L1_ENABLED = "true";
     process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
@@ -112,11 +119,12 @@ if (!TEST_DB) {
     const rowsFor = async (resourceUrl: string) => {
       const raw = await db.execute(sql`
         SELECT pu.status, pu.http_status_paid, pu.amount_units, pu.spent_units, pu.pay_to,
-               pu.raw_response_meta->>'requestQuery' AS request_query, pu.raw_response_meta ? 'requestQuery' AS has_key
+               pu.raw_response_meta->>'requestQuery' AS request_query, pu.raw_response_meta->>'requestQuerySha256' AS request_query_sha256,
+               pu.raw_response_meta ? 'requestQuery' AS has_key, pu.raw_response_meta ? 'requestQuerySha256' AS has_sha_key
         FROM x402_l1_purchases pu JOIN x402_endpoints e ON e.id = pu.endpoint_id
         WHERE e.resource_url = ${resourceUrl}`);
       return (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as {
-        status: string; http_status_paid: number | null; amount_units: string; spent_units: string; pay_to: string; request_query: string | null; has_key: boolean;
+        status: string; http_status_paid: number | null; amount_units: string; spent_units: string; pay_to: string; request_query: string | null; request_query_sha256: string | null; has_key: boolean; has_sha_key: boolean;
       }[];
     };
     const FUNDED = async () => 10_000_000n;
@@ -128,7 +136,8 @@ if (!TEST_DB) {
 
     let offShape: ReturnType<typeof signedShape> | null = null;
 
-    await t.test("フラグ OFF（既定）: 宣言があっても URL はカタログのまま・行に requestQuery を書かない", async () => {
+    await t.test("許可リストに無い（既定）: 宣言があっても URL はカタログのまま・行に requestQuery を書かない", async () => {
+      delete process.env.OBSERVATORY_L1_DECLARED_QUERY_NETWORKS;
       delete process.env.OBSERVATORY_L1_DECLARED_QUERY_ENABLED;
       await seed();
       const w = wall();
@@ -138,22 +147,38 @@ if (!TEST_DB) {
       assert.equal(row.status, "settle_failed");
       assert.equal(row.http_status_paid, 400);
       assert.equal(row.has_key, false);
+      assert.equal(row.has_sha_key, false);
       offShape = signedShape(w.seen.find((s) => s.url.includes("seller1") && s.paid)!);
       assert.deepEqual(
         { resource: offShape.resource, to: offShape.to, value: offShape.value },
         { resource: { url: "https://seller1.example/api" }, to: payToFor(1), value: "3000" },
         "比較の基準が空でないこと",
       );
-      // "true" 以外の値は OFF。
-      process.env.OBSERVATORY_L1_DECLARED_QUERY_ENABLED = "1";
-      await seed();
-      const w2 = wall();
-      await runL1Batch({ limit: 10, fetchImpl: w2.fetchImpl, getPayerUsdcBalance: FUNDED });
-      assert.ok(w2.seen.every((s) => !s.url.includes("?")));
+      // N-3: 空文字・別チェーンだけ・大小違い・前方一致・旧 boolean の env はどれも OFF。
+      const offValues: [string, string][] = [
+        ["OBSERVATORY_L1_DECLARED_QUERY_NETWORKS", ""],
+        ["OBSERVATORY_L1_DECLARED_QUERY_NETWORKS", " , "],
+        ["OBSERVATORY_L1_DECLARED_QUERY_NETWORKS", "xrpl:0,solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp,eip155:5042"],
+        ["OBSERVATORY_L1_DECLARED_QUERY_NETWORKS", "EIP155:8453"],
+        ["OBSERVATORY_L1_DECLARED_QUERY_NETWORKS", "eip155:84530,eip155:845,eip155:*,true"],
+        ["OBSERVATORY_L1_DECLARED_QUERY_ENABLED", "true"],
+      ];
+      for (const [name, value] of offValues) {
+        delete process.env.OBSERVATORY_L1_DECLARED_QUERY_NETWORKS;
+        delete process.env.OBSERVATORY_L1_DECLARED_QUERY_ENABLED;
+        process.env[name] = value;
+        await seed();
+        const w2 = wall();
+        await runL1Batch({ limit: 10, fetchImpl: w2.fetchImpl, getPayerUsdcBalance: FUNDED });
+        assert.equal(w2.seen.filter((s) => s.paid).length, 2, `${name}=${JSON.stringify(value)}: 2 件とも払う`);
+        assert.ok(w2.seen.every((s) => !s.url.includes("?")), `${name}=${JSON.stringify(value)} は OFF`);
+        assert.equal((await rowsFor("https://seller1.example/api"))[0].has_key, false);
+      }
+      delete process.env.OBSERVATORY_L1_DECLARED_QUERY_ENABLED;
     });
 
-    await t.test("フラグ ON: 支払い付き要求にだけ宣言のクエリが付く。署名するものは変わらない", async () => {
-      process.env.OBSERVATORY_L1_DECLARED_QUERY_ENABLED = "true";
+    await t.test("許可リストにある network: 支払い付き要求にだけ宣言のクエリが付く。署名するものは変わらない", async () => {
+      process.env.OBSERVATORY_L1_DECLARED_QUERY_NETWORKS = "xrpl:0, eip155:8453";
       await seed();
       const w = wall();
       await runL1Batch({ limit: 10, fetchImpl: w.fetchImpl, getPayerUsdcBalance: FUNDED });
@@ -163,11 +188,13 @@ if (!TEST_DB) {
       assert.equal(s1[0].url, "https://seller1.example/api", "無払いの要求は宣言を読む前なのでカタログの URL");
       assert.equal(s1[1].paid, true);
       assert.equal(s1[1].url, "https://seller1.example/api?exchange=NYSE&at=2026-12-25T14%3A30%3A00Z");
-      assert.deepEqual(signedShape(s1[1]), offShape, "額・宛先・封筒の resource はフラグで変わらない");
+      assert.deepEqual(signedShape(s1[1]), offShape, "額・宛先・封筒の resource は許可リストで変わらない");
 
       const [row1] = await rowsFor("https://seller1.example/api");
       assert.equal(row1.status, "settle_claimed");
       assert.equal(row1.request_query, "declared");
+      // W-4: どの引数で払ったかを行から再現できる（足したクエリ文字列の SHA-256）。
+      assert.equal(row1.request_query_sha256, createHash("sha256").update("exchange=NYSE&at=2026-12-25T14%3A30%3A00Z", "utf8").digest("hex"));
       assert.equal(row1.amount_units, "3000");
       assert.equal(row1.spent_units, "3000");
       assert.equal(row1.pay_to, payToFor(1));
@@ -177,6 +204,7 @@ if (!TEST_DB) {
       const [row2] = await rowsFor("https://seller2.example/api");
       assert.equal(row2.status, "settle_claimed");
       assert.equal(row2.request_query, "empty");
+      assert.equal(row2.has_sha_key, false, "足していない行にハッシュは付けない");
     });
   });
 }

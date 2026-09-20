@@ -240,6 +240,39 @@ if (!TEST_DB) {
       assert.ok(w.seen.some((s) => s.url.includes("seller1.example") && s.x402));
     });
 
+    await t.test("declared query (2026-09-20): Tempo is out of scope even when its network is on the allow list", async () => {
+      await seed();
+      process.env.OBSERVATORY_TEMPO_L1_ENABLED = "true";
+      const savedNets = process.env.OBSERVATORY_L1_DECLARED_QUERY_NETWORKS;
+      process.env.OBSERVATORY_L1_DECLARED_QUERY_NETWORKS = `${TEMPO},eip155:8453`;
+      try {
+        const w = wall();
+        // MPP の壁が x402 の封筒（queryParams の宣言つき）も一緒に返してくる場合。
+        const x402Doc = {
+          x402Version: 2,
+          accepts: [{ scheme: "exact", network: TEMPO, amount: "25000", asset: USDC_E, payTo: RECIPIENT, maxTimeoutSeconds: 300 }],
+          extensions: { bazaar: { info: { input: { type: "http", method: "POST", queryParams: { model: "fast" } } } } },
+        };
+        const fetchImpl = async (url: string, init?: RequestInit) => {
+          const res = await w.fetchImpl(url, init);
+          if (res.status !== 402 || !url.includes("fal.mpp.tempo.example")) return res;
+          const headers = new Headers(res.headers);
+          headers.set("PAYMENT-REQUIRED", Buffer.from(JSON.stringify(x402Doc)).toString("base64"));
+          return new Response(await res.text(), { status: 402, headers });
+        };
+        await runL1Batch({ getPayerUsdcBalance: FUNDED, limit: 10, fetchImpl, mppxCharge });
+        const paidTempo = w.seen.filter((s) => s.url.includes("fal.mpp.tempo.example") && s.paid);
+        assert.ok(paidTempo.length >= 1, "a Tempo endpoint was bought");
+        for (const p of paidTempo) assert.ok(!p.url.includes("?"), `Tempo の有料要求にクエリを足さない: ${p.url}`);
+        const meta = (await ledgerFor("https://fal.mpp.tempo.example/model/1"))[0].raw_response_meta as Record<string, unknown>;
+        assert.equal("requestQuery" in meta, false);
+        assert.equal("requestQuerySha256" in meta, false);
+      } finally {
+        if (savedNets === undefined) delete process.env.OBSERVATORY_L1_DECLARED_QUERY_NETWORKS;
+        else process.env.OBSERVATORY_L1_DECLARED_QUERY_NETWORKS = savedNets;
+      }
+    });
+
     await t.test("daily cap ($2): once spent, no Tempo request and no row; Base still bought", async () => {
       await seed();
       process.env.OBSERVATORY_TEMPO_L1_ENABLED = "true";

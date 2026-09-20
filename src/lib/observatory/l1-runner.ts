@@ -1379,10 +1379,18 @@ export async function laneFloorCandidates(input: {
 
 /**
  * 支払い付き要求に、売り手が宣言したクエリを足すか（2026-09-20・既定 OFF）。
- * OFF のあいだ purchaseOne の要求と台帳の行は 1 バイトも変わらない（tests/l1-declared-query.pg.test.ts）。
+ * `OBSERVATORY_L1_DECLARED_QUERY_NETWORKS` は CAIP-2 の許可リスト（カンマ区切り・完全一致・例 `xrpl:0`）で、
+ * **署名する accept の network** がそこに載っているときだけ足す。未設定・空は全 OFF。boolean にしないのは、
+ * XRPL の 4 行のための変更が ON の瞬間に Base / Solana / Arc の全行へ同時に効かないようにするため
+ * （独立レビュー W-3）。旧 `OBSERVATORY_L1_DECLARED_QUERY_ENABLED` は読まない（二重の意味にしない）。
+ * 許可リストに無いあいだ purchaseOne の要求と台帳の行は 1 バイトも変わらない（tests/l1-declared-query.pg.test.ts）。
  */
-function declaredQueryEnabled(): boolean {
-  return process.env.OBSERVATORY_L1_DECLARED_QUERY_ENABLED === "true";
+function declaredQueryEnabled(network: string): boolean {
+  const allowed = (process.env.OBSERVATORY_L1_DECLARED_QUERY_NETWORKS ?? "")
+    .split(",")
+    .map((n) => n.trim())
+    .filter((n) => n.length > 0);
+  return network.length > 0 && allowed.includes(network);
 }
 
 async function purchaseOne(input: {
@@ -1645,11 +1653,11 @@ async function purchaseOne(input: {
   const paidRequestBody: { body: string; source: RequestBodySource } | null =
     method === "POST" ? declaredRequestBody({ bodyText: firstBody, headers: first.headers }) : null;
   // 支払い付き要求のクエリ（2026-09-20）。売り手が 402 で宣言した input.queryParams を URL に足す
-  // （規則は declared-input.ts）。フラグ OFF（既定）なら null＝URL も行も従来どおり。
+  // （規則は declared-input.ts）。accept の network が許可リストに無ければ（既定）null＝URL も行も従来どおり。
   // 差し替えるのは**要求の URL だけ**: 封筒の resource.url・署名する額と宛先は candidate / accept のまま。
   // Tempo（MPP）は x402 の文書を読まないので対象外。
-  const paidRequestUrl: { url: string; source: RequestQuerySource } | null =
-    declaredQueryEnabled() && !isTempo
+  const paidRequestUrl: { url: string; source: RequestQuerySource; query: string | null } | null =
+    declaredQueryEnabled(accept.network) && !isTempo
       ? declaredRequestUrl({ resourceUrl: candidate.resourceUrl, bodyText: firstBody, headers: first.headers })
       : null;
 
@@ -2035,8 +2043,8 @@ async function purchaseOne(input: {
     // 返ってきても、**status は変えない**（`settle_failed` のまま）。
     //
     // 一度は「我々の関門が起こした事実だから request_error」と書いたが、同じ事実から
-    // 逆の結論になる: 有料レグは必ず `candidate.resourceUrl`——台帳で採点している売り手
-    // 自身の origin——へ最初に出るので、境界が立つ頃には売り手は 1 ホップ目で署名済みの
+    // 逆の結論になる: 有料レグは必ず `candidate.resourceUrl` と同じ origin・同じ経路（2026-09-20 以降は
+    // 売り手が宣言したクエリを足した URL のことがある）——台帳で採点している売り手自身の origin——へ最初に出るので、境界が立つ頃には売り手は 1 ホップ目で署名済みの
     // 資格情報を受け取り終えている（だから `spent_units` も戻さない）。つまり売り手は
     // 有料の口に `302 → 別オリジン` を 1 行足すだけで、$1 を引ける状態を手にしたまま
     // 「払ったのに何も返ってこなかった」という観測を公開台帳から消せてしまう
@@ -2082,15 +2090,21 @@ async function purchaseOne(input: {
       // どの本文で POST したか（2026-09-17 Issue #29）。"declared" は売り手の 402 が宣言した
       // input.body、"empty" は `{}`。GET には付けない。
       ...(paidRequestBody ? { requestBody: paidRequestBody.source } : {}),
-      // どの URL で払ったか（2026-09-20）。"declared" は売り手の 402 が宣言した input.queryParams を
-      // 足した URL、"empty" はカタログの URL のまま。フラグ OFF のあいだは付けない。
-      ...(paidRequestUrl ? { requestQuery: paidRequestUrl.source } : {}),
       // A response whose HEADERS arrived but whose body aborted/failed: the
       // error would otherwise be dropped (rawSettlement keeps the settlement
       // when one exists), so it is kept here rather than silently lost.
       ...(paid && paidError ? { bodyError: paidError } : {}),
       // §6.3: L2 の判定材料。mismatch の公開に要る宣言ハッシュ・応答ハッシュ・欠落キー。
       ...(l2Detail ? { l2: l2Detail } : {}),
+      // どの URL で払ったか（2026-09-20）。"declared" は売り手の 402 が宣言した input.queryParams を
+      // 足した URL、"empty" はカタログの URL のまま。許可リストに無い network の行には付けない。
+      // "declared" の行には、足したクエリ文字列（`?`/`&` を除く・符号化後）の SHA-256 を別キーで添える
+      // ——どの引数で払ったかを行から再現できるように（独立レビュー W-4。形は本文側の
+      // requestBody ＋ requestBodySha256 と揃える）。
+      ...(paidRequestUrl ? { requestQuery: paidRequestUrl.source } : {}),
+      ...(paidRequestUrl?.query != null
+        ? { requestQuerySha256: createHash("sha256").update(paidRequestUrl.query, "utf8").digest("hex") }
+        : {}),
     };
     const outcomeRow = {
       status,

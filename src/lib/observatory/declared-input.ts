@@ -94,6 +94,11 @@ export function declaredRequestBody(input: { bodyText: string; headers: Headers 
 //     1 つでもあれば**宣言ごと使わない**（一部だけ送って別の要求を作らない）。
 //   - カタログの URL に既にある名前は足さない（掲載された URL が先）。既存のクエリ文字列は
 //     書き換えない——後ろに足すだけ。ホスト・経路は変わらない（変わったら使わない）。
+//   - 「同じ名前」は畳んでから比べる（2026-09-20 独立レビュー W-1）: 前後の空白を落とし、小文字にし、
+//     空白・ドット・`[` を `_` にする。裏側がクエリ名を大小無視で引く（ASP.NET 等）か、PHP のように
+//     空白とドットを `_` に畳むと、`SYMBOL=TSLA` は掲載の `symbol=AAPL` を実質上書きし、台帳は
+//     `symbol=AAPL` の行のまま別のものを買う。畳んで衝突する名前は足さない。**宣言の名前どうしが
+//     畳んだ後に衝突するなら宣言ごと使わない**（どちらが効くかを裏側の実装に委ねない）。
 //   - 上限: 名前 32 個・足すクエリ 2KB・URL 全体 4KB（いずれも符号化後のバイト数）。
 //     超えたら宣言ごと使わない。
 //   - 無払いの要求はカタログの URL のまま（宣言はその 402 を読んで初めて手に入る）。
@@ -112,7 +117,27 @@ export const DECLARED_URL_MAX_BYTES = 4 * 1024;
 
 export type RequestQuerySource = "declared" | "empty";
 
-export type DeclaredRequestUrl = { url: string; source: RequestQuerySource };
+/** `query` は URL に足した文字列そのもの（`?`/`&` を除く・符号化後）。足していなければ null。行に残す SHA-256 の元。 */
+export type DeclaredRequestUrl = { url: string; source: RequestQuerySource; query: string | null };
+
+/** クエリ名の畳み方（上の規則）。比べるためだけに使い、送る名前は宣言のまま。 */
+function foldQueryName(name: string): string {
+  return name.trim().toLowerCase().replace(/[ .[]/g, "_");
+}
+
+/**
+ * 最後の関門: 出来た URL が掲載の URL と違うのはクエリ（とフラグメント）だけか。
+ * いまの組み立て（フラグメントを落として後ろに足す）ではここで落ちる入力を作れない。それでも置くのは、
+ * 将来組み立て方を変えたときに、払う先が動く不具合を黙って通さないため（tests が直接叩いて固定）。
+ */
+export function onlyQueryAdded(listed: URL, built: URL): boolean {
+  return (
+    built.origin === listed.origin &&
+    built.pathname === listed.pathname &&
+    built.username === listed.username &&
+    built.password === listed.password
+  );
+}
 
 function scalarToQueryValue(v: unknown): string | null {
   if (typeof v === "string") return v;
@@ -122,7 +147,7 @@ function scalarToQueryValue(v: unknown): string | null {
 }
 
 export function declaredRequestUrl(input: { resourceUrl: string; bodyText: string; headers: Headers }): DeclaredRequestUrl {
-  const unchanged: DeclaredRequestUrl = { url: input.resourceUrl, source: "empty" };
+  const unchanged: DeclaredRequestUrl = { url: input.resourceUrl, source: "empty", query: null };
   const doc = asRecord(challengeDocument(input));
   const bazaar = asRecord(asRecord(doc?.extensions)?.bazaar);
   const declared = asRecord(asRecord(asRecord(bazaar?.info)?.input)?.queryParams);
@@ -137,11 +162,16 @@ export function declaredRequestUrl(input: { resourceUrl: string; bodyText: strin
     return unchanged;
   }
 
+  const listedNames = new Set([...listed.searchParams.keys()].map(foldQueryName));
+  const declaredNames = new Set<string>();
   const add = new URLSearchParams();
   for (const [name, raw] of entries) {
     const value = scalarToQueryValue(raw);
-    if (name.length === 0 || value === null) return unchanged;
-    if (listed.searchParams.has(name)) continue;
+    const folded = foldQueryName(name);
+    if (name.length === 0 || folded.length === 0 || value === null) return unchanged;
+    if (declaredNames.has(folded)) return unchanged;
+    declaredNames.add(folded);
+    if (listedNames.has(folded)) continue;
     add.append(name, value);
   }
   const query = add.toString();
@@ -161,8 +191,6 @@ export function declaredRequestUrl(input: { resourceUrl: string; bodyText: strin
   } catch {
     return unchanged;
   }
-  if (built.origin !== listed.origin || built.pathname !== listed.pathname || built.username !== listed.username || built.password !== listed.password) {
-    return unchanged;
-  }
-  return { url, source: "declared" };
+  if (!onlyQueryAdded(listed, built)) return unchanged;
+  return { url, source: "declared", query };
 }
