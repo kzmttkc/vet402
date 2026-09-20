@@ -1341,6 +1341,36 @@ claims:
     check: null
     why_unverifiable: "カナリアの式は `path op literal` の 1 行だけで、和の一致（settledNonceBound + settledAmountPayeeOnly == settled）を書けない。不変条件は tests/observatory-state-api.test.ts と tests/settled-tiers.pg.test.ts が実 DB で固定する"
     verified_at: 2026-09-05
+  # ---- 2026-09-20 公開 export の末尾 3 列と、遅延回収の件数の開示 ----
+  - id: settled_late_linked_is_disclosed
+    surface: src/app/observatory/state/page.tsx
+    quote: "settled where the seller returned no receipt and our own settlements index found"
+    means: "settled のうち、tx を売り手が名指さず vet402 の決済索引が貼った行（遅延回収）を、件数のまま公開する。証拠の強さの 2 層とは別の軸で、その和には入らない"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "l1.settledLateLinked >= 1"
+    verified_at: 2026-09-20
+  - id: settlement_source_names_who_named_the_tx
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "The seller did not name that transaction; we did, and the record"
+    means: "遅延回収で貼った tx は売り手が名指したものではない。export.csv の settlement_source（seller_claim / vet402_index）・エンドポイント頁の行の印・l1.settledLateLinked の 3 面が同じ規則（src/lib/observatory/settlement-source.ts）で区別する。取り消した遅延回収は vet402_index と名乗らない"
+    check: null
+    why_unverifiable: "行ごとの区別であって、公開 GET の 1 値に `path op literal` で当てられない。規則は tests/export-request-body.test.ts（照合器の lateLinkOf と同じ行を選ぶ）と tests/export-request-body.pg.test.ts（export・state・読み手が実 DB で同じ行を選ぶ）が固定する。件数の公開は settled_late_linked_is_disclosed が本番に当てる"
+    verified_at: 2026-09-20
+  - id: late_link_needs_a_single_candidate
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "Since 2026-09-19 it is attached to a row only when that row is its single candidate"
+    means: "索引の tx は、払い元・宛先・額・窓が合う購入が 1 行に決まるときだけ貼る。XRPL は署名済み blob の hash の一致も要る。窓の幅は src/lib/settlements/recover-late.ts の定数から描画している"
+    check: null
+    why_unverifiable: "結合条件の規則で、公開 GET に値として出ない。tests/late-settlement-recovery.pg.test.ts が「候補が 2 行以上ある tx は貼らない」と rejectedTxHashes を、tests/late-settlement-recovery-xrpl.pg.test.ts が XRPL の hash 束縛を実 DB で固定する"
+    verified_at: 2026-09-20
+  - id: export_request_body_blank_is_not_empty
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "A blank cell means the row holds no record"
+    means: "export.csv の request_body は declared / empty / none。記録の無い行（2026-09-17 より前・2026-09-20 より前の本文なしの要求・有料の要求を出していない行）は空で、empty に倒さない。過去の行は遡って埋めない。declared の行の request_body_sha256 は送ったバイト列の SHA-256 で、本文そのものは再配布しない"
+    check: null
+    why_unverifiable: "CSV の行ごとの値で、カナリアの式（JSON の `path op literal`）で当てられない。分類は tests/export-request-body.test.ts、SQL と JS の一致と export の実出力は tests/export-request-body.pg.test.ts、ランナーが残す記録は tests/l1-body-and-funds.pg.test.ts が固定する"
+    verified_at: 2026-09-20
   # --- 2026-09-07 呼び手の policy（/decision の caller_policy・WINDOW_PLAN §16.3）---
   - id: caller_policy_never_rewrites_recommendation_never_lifts_block
     surface: src/app/observatory/methodology/page.tsx

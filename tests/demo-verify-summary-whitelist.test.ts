@@ -34,6 +34,7 @@ const HALTED: L1BatchSummary = {
   haltReason: "halted_by_operator: Base の購入元が枯れた。補充するまで止める（社内連絡先 …）",
   disabledReason: "spending_halted",
   payerUnfunded: 0,
+  payerFundsUnreadable: [],
   laneFloor: {},
   laneFloorHostCapped: {},
   xrplFeeOverCap: 0,

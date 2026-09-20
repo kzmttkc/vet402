@@ -30,6 +30,31 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
   - **なぜ慎重か（W-2・推測であり未実測）**: 署名する値に要求 URL は入っていないが、売り手が `invoiceId` を要求ごとに発行して照合する実装や、`resource` を `req.originalUrl` から作って封筒の `resource.url` と比べる実装なら、引数なしの 402 で得た支払い条件を引数付きの要求に出すと落ちる。その場合の `settle_failed` は売り手ではなくこちらの都合。上の 4 の基準はこれを捕まえるためでもある。
 - **採らなかったもの**: 「400 の本文（`missing_parameter`）を読んで再購入を止める」は入れていない。本文の文字列は売り手が選べるので根拠にしない。4xx の行は既に `inconclusive`（売り手の不履行に数えない）で、台帳の意味は変えていない。
 - **残る懸念**: (1) 宣言が空（`queryParams: {}`）なのに必須の引数がある売り手は今も 400 になる（実測: `macropulse…/api/sentiment` は `{}` を宣言して `?pair=` を要求）。これは売り手の宣言不足で、vet402 は埋めない。払う前に落とすなら「スキーマの `required` の名前が URL にも宣言値にも無い」を根拠にできるが、行を書かずに飛ばすと 1 バッチ 1 件のレーンが同じ候補で詰まるので、status の設計ごと別件。(2) 支払い条件は引数なしの 402 から取る。引数で値段を変える売り手なら有料の要求は 402 で返る（`settle_failed`・従来と同じ扱い）。実測した 1 件（is-open）は引数付きの無払いでも 402。(3) 例の値は売り手が選ぶので、古い日付などで 4xx が返ることはありうる（`inconclusive` に入る）。
+## 2026-09-20 JST — 公開 export に「何を送ったか」「tx を名指したのは誰か」の 3 列、遅延回収の件数の開示、前後比較のスクリプト（vet402.com コア・ブランチ `feat/export-request-body`・push と独立レビューは依頼元）
+
+- **何を変えたか**:
+  - **A-1 export.csv の末尾に 3 列**（既存 11 列の名前・順序・意味は変えていない。列の正典は `src/lib/observatory/export-columns.ts`）:
+    - `request_body` = `declared` / `empty` / `none` / 空。元は行の `raw_response_meta.requestBody`（2026-09-17 から POST に記録済みだった）。**空は「記録なし」で、`empty` に倒さない**——2026-09-17 より前の行、2026-09-20 より前の本文なしの要求、有料の要求を出していない行（no_402・no_eligible_accept …）。過去の行は遡って埋めていない。行はメソッドを持たず、`x402_endpoints.method` は「いまの掲載」の値なので後から言えない（本番に「掲載は GET・行は declared」が 1 行ある）。
+    - `request_body_sha256` = `declared` の行の、**送ったバイト列**の SHA-256（小文字 hex 64 桁）。今日から記録（`raw_response_meta.requestBodySha256`）。それより前の declared 行は空。
+    - `settlement_source` = `seller_claim` / `vet402_index` / 空（tx なし）。`vet402_index` は遅延回収（`recover-late.ts`）が索引から貼った tx。規則は照合器の `lateLinkOf` と同じ（`lateSettlement.txHash` があればいまの `tx_hash` と一致すること）なので、**取り消した遅延回収は `vet402_index` と名乗らない**。規則は `src/lib/observatory/settlement-source.ts`（JS と SQL を同じファイルから）。
+    - 列名を依頼文の例 `request_shape` に**しなかった**: その語は L0 の unverified の理由として既に公開語彙にある（`vocabulary.ts`・methodology §2・別の意味）。値も方法論 §2 が既に公開している語（`requestBody: declared` / `empty`）に揃えた。
+    - **本文そのものは出さない**。売り手の書いた文字列（最大 16KB）を vet402 が再配布しない。売り手の 402 は無払いで誰でも取れるので、読みたい人は一次情報を読める。hash は切り詰めていない（本文が公開なので隠せるものが無く、先頭だけにすると照合の手順が増えるだけ）。
+  - **A-2 ランナーの記録**（`l1-runner.ts` の `rawResponseMeta` の 1 行だけ・上限／予約／署名の関門は触っていない）: POST 以外にも `requestBody: "none"` を残し、declared には `requestBodySha256` を添える（`request-body.ts` の `requestBodyRecord`）。
+  - **A-3 遅延回収の開示**: `/api/v1/observatory/state` に `l1.settledLateLinked`（settled のうち索引が tx を貼った件数。証拠の強さ 2 層とは別の軸で、その和に入らない）。`/observatory/state` の表に同じ 1 行。エンドポイント頁の Result セルに「tx from our index」の印と説明の段落（該当行があるときだけ）。purchases API の各行にも `settlementSource`（読み手が同じなので自動的に出る。openapi に追記）。`/decision` の `facts.l1` は触っていない。
+  - **A-4 文書**: methodology §2（request_body の 2 列）・§6 に「Who named the transaction」の段落（窓の幅は `recover-late.ts` の定数から描画、件数は state と同じ reader から）、`docs/openapi.yaml`（export の列の説明を新設・`settledLateLinked`・`settlementSource`）、`public/llms.txt`、state API の disclaimer。**`held_reason` はもう末尾の列ではない**ので、methodology の「in its last column」と corrections の「at the end of export.csv」を列名で指す形に直した。`docs/claims.yaml` に 4 件（本番に当たる check は `l1.settledLateLinked >= 1` の 1 件だけ。残りは `check: null` + 理由）。
+  - **B `scripts/declared-body-before-after.mjs`**: 公開 export の CSV **だけ**を入力に（DB もリポの内部も読まない）、宣言本文の導入前後・同じ endpoint の有料 2xx 率を出す。切替時刻は CSV の最初の `declared` 行から導く。対照として「一度も declared で買っていない endpoint」と、その中の「切替後に `empty` で買った endpoint（宣言の無い POST）」を並べる。`payer_unfunded` の行と、有料の要求を出していない行は分母から外して件数を出す。旧い export（列なし）・declared が 0 行の export では**数えずに exit 2**（0% と書かない）。数字はどの文書にも書いていない——走らせて得る。
+  - **C-ⓑ 直していない**（実測で取りこぼしが無い）。本番 2026-09-20: `x402_l1_purchases.network` は `eip155:8453` 8,016・NULL 223・Solana 121・`eip155:4217` 24・`xrpl:0` 7・`eip155:5042` 1、`settlements.chain` は `eip155:8453` 752,275・`eip155:4217` 34,367・Solana 109・`xrpl:0` 4・`eip155:5042` 1。**旧表記 `base` はどちらの表にも 0 行**。network が NULL の 223 行は `IS NOT DISTINCT FROM` で chain NULL としか合わず、chain NULL は 0 行なので誤結合も無い。
+  - **C-ⓒ 小さく手当て**: `L1BatchSummary.payerFundsUnreadable`（残高を**読めなかった**チェーン名の配列）を足した。これまで `payerUnfunded` は「足りない」と「読めない」の合算で、cron は 200 のまま返す。管理リポの `vet402_l1_extra.py`（1 日 3 回この cron を叩く）は**非 2xx でしか ALERTS に書かない**ので、どちらも拾えていなかった（summary は state に保存されるだけ）。非 200 にはしなかった——XRPL の「手数料ぶんの XRP が足りない」も unreadable 扱いで、補充されるまで毎回 500 になり ALERTS を埋める。
+
+- **なぜ**: Probe402 の Zach に「宣言本文で買い始めて台帳で何が変わったかを 10 月上旬に公開する」と約束してあるが、公開 export にその購入が宣言本文で行われたかを示す列が無く、第三者が数え直せなかった。`settlement_source` は 2026-09-19 の公開面監査の宿題（自社に不利な方向の開示）。
+
+- **そちらが知っておくべき影響**:
+  - export.csv は 11 列 → 14 列。名前で読む利用者は無影響（管理リポの `vet402_l1_canary.py` は `csv.DictReader` で 3 列を名前で読むのを確認）。**行末を正規表現で読む利用者は壊れる**（このリポでは `tests/l1-held-rows.pg.test.ts` がそうだったので 11 列目を読む形に直した）。
+  - `tests/l1-body-and-funds.pg.test.ts` の「GET の行の requestBody は null」は `"none"` に変えた（意図した挙動の変更）。
+  - 管理リポ側への提案（こちらでは触っていない）: `vet402_l1_extra.py` で `summary.payerFundsUnreadable` が空でないとき、または `summary.payerUnfunded > 0` のときに ALERTS へ 1 行。
+  - デプロイ直後は `request_body = none` と `request_body_sha256` の入った行がまだ無い（記録は今日のデプロイ以降の購入から）。
+
+- **残る懸念**: ① 前後比較の「前」は行ごとに `{}` を証明できない（方法論 §2 の記述に依る。スクリプトの冒頭と出力の note に明記）。② `vet402_index` の行が `settled` になる前（`settle_claimed` の間）も export では `vet402_index` と出る——status 列と併読すれば区別できるが、`l1.settledLateLinked` は settled だけを数える。③ claims のカナリア `l1.settledLateLinked >= 1` はデプロイが終わるまで本番に鍵が無く赤になる。
 
 ---
 

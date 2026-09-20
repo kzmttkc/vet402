@@ -4,6 +4,9 @@ import { getClientIp } from "@/lib/api/client-ip";
 import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
 import { getDb } from "@/lib/db/client";
 import { heldReasonSql } from "@/lib/observatory/delivery";
+import { EXPORT_CSV_COLUMNS } from "@/lib/observatory/export-columns";
+import { requestBodySha256Sql, requestBodyKindSql } from "@/lib/observatory/request-body";
+import { settlementSourceSql } from "@/lib/observatory/settlement-source";
 import { logServerError } from "@/lib/util/log";
 
 /**
@@ -19,26 +22,22 @@ import { logServerError } from "@/lib/util/log";
  * 2026-09-17（Issue #29）: 末尾に `held_reason` を 1 列足した。その行を売り手の不履行として
  * 数えない理由（settled_4xx / unsettled_4xx / payer_unfunded、数える行は空）で、
  * 規則は delivery.ts の heldReasonSql。既存の 10 列の名前・順序・値は変えていない。
+ *
+ * 2026-09-20: 末尾にさらに 3 列（列の正典は export-columns.ts）。既存の 11 列は変えていない。
+ *   request_body        有料の要求の本文: declared（売り手の 402 が宣言した本文）/ empty（`{}`）/
+ *                        none（POST 以外）/ 空（記録なし——2026-09-17 より前の行、2026-09-20 より前の
+ *                        POST 以外の行、有料の要求を出していない行）。空を empty に倒さない。
+ *   request_body_sha256  declared の行の、送ったバイト列の SHA-256（2026-09-20 以降の行だけ）。
+ *                        **本文そのものは出さない**——売り手の書いた文字列を再配布しない。理由は request-body.ts。
+ *   settlement_source    tx_hash を名指したのが売り手のレシートか（seller_claim）、vet402 の決済索引が
+ *                        貼ったものか（vet402_index・遅延回収）。tx の無い行は空。規則は settlement-source.ts。
  */
 
 const RL_LIMIT = 6;
 const RL_WINDOW_MS = 60_000;
 const MAX_ROWS = 50_000;
 
-const CSV_COLUMNS = [
-  "attempted_at",
-  "resource_key",
-  "network",
-  "status",
-  "amount_units",
-  "spent_units",
-  "tx_hash",
-  "http_status_paid",
-  "latency_ms",
-  "l2_schema",
-  // 2026-09-17: 追加は末尾だけ（列位置で読む既存の利用者を壊さない）。
-  "held_reason",
-] as const;
+const CSV_COLUMNS = EXPORT_CSV_COLUMNS;
 
 function csvCell(v: unknown): string {
   if (v === null || v === undefined) return "";
@@ -74,7 +73,10 @@ export async function GET(request: NextRequest) {
       SELECT to_char(pu.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS attempted_at,
              e.resource_key, pu.network, pu.status, pu.amount_units, pu.spent_units,
              pu.tx_hash, pu.http_status_paid, pu.latency_ms, pu.l2_schema,
-             (${sql.raw(heldReasonSql("pu"))}) AS held_reason
+             (${sql.raw(heldReasonSql("pu"))}) AS held_reason,
+             (${sql.raw(requestBodyKindSql("pu"))}) AS request_body,
+             (${sql.raw(requestBodySha256Sql("pu"))}) AS request_body_sha256,
+             (${sql.raw(settlementSourceSql("pu"))}) AS settlement_source
       FROM x402_l1_purchases pu
       JOIN x402_endpoints e ON e.id = pu.endpoint_id
       WHERE pu.attempted_at >= now() - make_interval(days => ${days}::int)

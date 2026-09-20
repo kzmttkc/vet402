@@ -907,6 +907,41 @@ paths:
         non-events (budget_denied / halted / request_error / in_flight). `days`
         saturates to 1..366; output truncates at 50,000 rows and says so in
         the `x-vet402-truncated` header. IP-throttled to 6/min.
+
+        Columns, in order (columns are only ever appended; existing names,
+        order and meaning do not change): `attempted_at`, `resource_key`,
+        `network`, `status`, `amount_units`, `spent_units`, `tx_hash`,
+        `http_status_paid`, `latency_ms`, `l2_schema`, `held_reason`
+        (since 2026-09-17), `request_body`, `request_body_sha256`,
+        `settlement_source` (since 2026-09-20).
+
+        - `held_reason` — why the row is held rather than counted against the
+          seller: `settled_4xx`, `unsettled_4xx`, `payer_unfunded`; blank when
+          the row is counted.
+        - `request_body` — what the paid request carried: `declared` (the body
+          the seller's own 402 declares in `extensions.bazaar.info.input.body`,
+          sent unedited; since 2026-09-17), `empty` (`{}`), `none` (a request
+          sent with no body; recorded since 2026-09-20). Blank means the row
+          holds no record: rows before 2026-09-17, bodiless requests before
+          2026-09-20, and rows that ended before a paid request went out.
+          Blank is not `empty`. The row does not record the HTTP method, so
+          older rows are not back-filled.
+        - `request_body_sha256` — on `declared` rows since 2026-09-20, the
+          lowercase hex SHA-256 of the exact bytes sent (the declared body
+          passed through `JSON.stringify`). The body itself is not
+          republished; it is the seller's text and the seller's 402 serves it
+          to anyone. Blank otherwise.
+        - `settlement_source` — who named `tx_hash`: `seller_claim` (the paid
+          response carried a settlement receipt naming it) or `vet402_index`
+          (no receipt came back; vet402's own settlements index found the
+          transfer by payer, payee, exact amount and time window, and the row
+          then went through the same on-chain re-read). Blank when the row has
+          no `tx_hash`. The settled count of `vet402_index` rows is
+          `l1.settledLateLinked` on `/api/v1/observatory/state`.
+
+        `scripts/declared-body-before-after.mjs` recomputes, from this CSV
+        alone, the paid 2xx rate of the same endpoints before and after the
+        declared body.
       security: []
       parameters:
         - in: query
@@ -1789,6 +1824,16 @@ paths:
                         description: >-
                           Settled rows with no settlement block time on record — neither
                           inside nor outside the window.
+                      settledLateLinked:
+                        type: integer
+                        description: >-
+                          Settled rows whose transaction the seller did not name: the paid
+                          response carried no settlement receipt, and vet402's own
+                          settlements index found the transfer afterwards (payer, payee,
+                          exact amount, time window) before the same on-chain re-read. A
+                          different axis from the two evidence strengths — not part of
+                          their sum. The ledger export marks these rows
+                          `settlement_source=vet402_index`. Since 2026-09-20.
                       endpointsAttempted: { type: integer }
                       endpointsSettled: { type: integer }
                       endpointsDelivered: { type: integer }
@@ -2091,6 +2136,16 @@ paths:
                         httpStatusPaid: { type: integer, nullable: true }
                         latencyMs: { type: integer, nullable: true }
                         l2Schema: { type: string, nullable: true }
+                        settlementSource:
+                          type: string
+                          nullable: true
+                          enum: [seller_claim, vet402_index, null]
+                          description: >-
+                            Who named `txHash`: the seller's settlement receipt
+                            (`seller_claim`) or vet402's own settlements index after no
+                            receipt came back (`vet402_index`). Null when the row has no
+                            `txHash`. Same rule as the `settlement_source` column of
+                            export.csv. Since 2026-09-20.
                   disclaimer: { type: string }
                   methodology: { type: string }
         "400":

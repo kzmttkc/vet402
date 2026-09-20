@@ -29,6 +29,7 @@ import {
 import { MAX_PER_PURCHASE_UNITS } from "@/lib/observatory/x402-payer";
 import { DAILY_BUDGET_USD } from "@/lib/observatory/budget";
 import { REQUIRED_CONFIRMATIONS } from "@/lib/observatory/settlement-verify";
+import { LATE_SETTLEMENT_BACKDATE_MINUTES, LATE_SETTLEMENT_WINDOW_MINUTES } from "@/lib/settlements/recover-late";
 
 const MAX_PER_PURCHASE_USD = Number(MAX_PER_PURCHASE_UNITS) / 1_000_000;
 
@@ -261,7 +262,15 @@ export default async function ObservatoryMethodologyPage() {
           the redirect&apos;s status), and the row records{" "}
           <code>requestBody: declared</code>; otherwise we send <code>{"{}"}</code> and record{" "}
           <code>requestBody: empty</code>. Before that date every paid{" "}
-          <code>POST</code> carried <code>{"{}"}</code>, declaration or not. So when a paid request comes back{" "}
+          <code>POST</code> carried <code>{"{}"}</code>, declaration or not. The ledger export
+          carries that record as the column <code>request_body</code>: <code>declared</code>,{" "}
+          <code>empty</code>, or <code>none</code> for a paid request sent with no body, which
+          rows record from 2026-09-20. A blank cell means the row holds no record — rows from
+          before 2026-09-17, and rows that ended before a paid request went out — and is not
+          the same as <code>empty</code>. From 2026-09-20 a <code>declared</code> row also
+          carries <code>request_body_sha256</code>, the SHA-256 of the exact bytes we sent. We
+          do not republish the body: it is the seller&apos;s text, and the seller&apos;s own{" "}
+          <code>402</code> shows it to anyone who asks. So when a paid request comes back{" "}
           <code>400</code> (the request is malformed), <code>401</code> or <code>403</code> (not
           authenticated), <code>404</code> or <code>422</code>, the most likely explanation is the
           same one we already accept for a template URL:{" "}
@@ -284,7 +293,7 @@ export default async function ObservatoryMethodologyPage() {
           is short or cannot be read. The rows are not deleted, not hidden and not corrected away
           — the status and the HTTP code stay on the endpoint&apos;s page, the count is published as{" "}
           <code>l1.inconclusive</code> with the split in <code>l1.inconclusiveByReason</code>, and
-          the ledger export carries the reason in its last column, <code>held_reason</code>. A{" "}
+          the ledger export carries the reason in its <code>held_reason</code> column. A{" "}
           <code>5xx</code> is not treated this way: a server fault is not something our request
           shape explains. Before 2026-09-05 every 4xx was published as settled-and-not-delivered,
           which reads as &ldquo;this named company took the money and did not deliver&rdquo; — see{" "}
@@ -537,6 +546,33 @@ export default async function ObservatoryMethodologyPage() {
           <code>l1.settledTimeWindowOk</code>, with{" "}
           <code>l1.settledTimeWindowUnknown</code> for the rows whose block time we do not
           hold — those are neither inside nor outside it, and we do not count them as either.
+        </p>
+        <p className="doc-p">
+          <strong>Who named the transaction.</strong> On most <code>settled</code> rows the
+          seller named it: the paid response carried a settlement receipt, and we re-read the
+          transaction it pointed to. Some sellers settle and return no receipt — the paid
+          request times out or answers an error, and the transfer lands anyway. Since
+          2026-09-04 our own index of on-chain settlements looks for that transfer: from our
+          payer, to the endpoint&apos;s payee, for the exact amount, between{" "}
+          {LATE_SETTLEMENT_BACKDATE_MINUTES.toString()} minutes before the attempt and{" "}
+          {LATE_SETTLEMENT_WINDOW_MINUTES.toString()} minutes after it, and not already tied to
+          another purchase. Since 2026-09-19 it is attached to a row only when that row is its
+          single candidate, and on XRPL only when it is the hash of the blob we signed. The row
+          then goes through the same re-read as a seller&apos;s claim before it reads{" "}
+          <code>settled</code>. The seller did not name that transaction; we did, and the record
+          says so: the ledger export carries <code>settlement_source</code> as{" "}
+          <code>seller_claim</code> or <code>vet402_index</code>, the endpoint page marks the row,
+          and the count is live as <code>l1.settledLateLinked</code>.{" "}
+          {l1Tiers && l1Tiers.settled > 0 ? (
+            <>
+              At the current reading, {l1Tiers.settledLateLinked.toLocaleString()} of{" "}
+              {l1Tiers.settled.toLocaleString()} settled rows carry a transaction our index
+              attached.{" "}
+            </>
+          ) : null}
+          When the re-read rejects a transaction our index attached, the row goes back to what
+          it was before, and the seller is not marked <code>settle_claim_refuted</code> for a
+          match that was ours.
         </p>
         <p className="doc-p">
           <strong>settled is not delivered.</strong> <code>settled</code> is a statement about the

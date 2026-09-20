@@ -165,17 +165,17 @@ if (!TEST_DB) {
       assert.equal(byChainSum, stats.l1.inconclusive);
     });
 
-    await t.test("export.csv の末尾 held_reason 列も同じ行を選び、既存 10 列の形は変えない", async () => {
+    await t.test("export.csv の held_reason 列（11 列目）も同じ行を選び、既存 10 列の形は変えない", async () => {
       const { GET } = await import("@/app/api/v1/observatory/export.csv/route");
       const { NextRequest } = await import("next/server");
       const res = await GET(new NextRequest("https://vet402.com/api/v1/observatory/export.csv?days=366", { headers: { "x-forwarded-for": "203.0.113.29" } }));
       assert.equal(res.status, 200);
       const lines = (await res.text()).trim().split("\n");
-      assert.equal(
-        lines[0],
-        "attempted_at,resource_key,network,status,amount_units,spent_units,tx_hash,http_status_paid,latency_ms,l2_schema,held_reason",
-      );
-      const held = lines.slice(1).filter((l) => /,(settled_4xx|unsettled_4xx|payer_unfunded)$/.test(l));
+      // 2026-09-20: held_reason の後ろに 3 列足した（tests/export-request-body.pg.test.ts）。ここが守るのは
+      // 「先頭 11 列の名前と順序は変わらない」と「held_reason は 11 列目のまま」。
+      const FIRST_11 = "attempted_at,resource_key,network,status,amount_units,spent_units,tx_hash,http_status_paid,latency_ms,l2_schema,held_reason";
+      assert.ok(lines[0] === FIRST_11 || lines[0].startsWith(`${FIRST_11},`), lines[0]);
+      const held = lines.slice(1).filter((l) => /^(settled_4xx|unsettled_4xx|payer_unfunded)$/.test(l.split(",")[10] ?? ""));
       // export は budget_denied を含まない。保留は全部 PAID の行なので jsHeld() と同じ数。
       assert.equal(held.length, jsHeld());
     });

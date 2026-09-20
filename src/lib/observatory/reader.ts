@@ -35,6 +35,7 @@ import {
   settlementTimeWindowPredicate,
   type SettledTier,
 } from "./settled-tier";
+import { settledLateLinkedPredicate, settlementSourceOf, type SettlementSource } from "./settlement-source";
 import type { ObservatoryQuery, ObservatoryVerdict } from "./query";
 import { UUID_RE } from "@/lib/validation/uuid";
 
@@ -320,6 +321,11 @@ export type EndpointDetail = {
      * 分類は settled-tier.ts が単独で持ち、描画は純粋に保つ。
      */
     settledTier: SettledTier | null;
+    /**
+     * その行の tx を名指したのは売り手のレシートか、vet402 の決済索引か（2026-09-20）。tx の無い行は null。
+     * 規則は settlement-source.ts。内部の印（raw_response_meta.lateSettlement）は出さず、結論だけ出す。
+     */
+    settlementSource: SettlementSource | null;
   }[];
 } | null;
 
@@ -328,11 +334,17 @@ export type EndpointDetail = {
  * 公開面へは出さない——出すのは「その tx がこの購入のものと言えるか」という結論だけ。
  */
 function withSettledTier<
-  T extends { status: string; authNonce: string | null; settlementVerified: boolean | null },
->(rows: T[]): (Omit<T, "authNonce" | "settlementVerified"> & { settledTier: SettledTier | null })[] {
-  return rows.map(({ authNonce, settlementVerified, ...rest }) => ({
+  T extends { status: string; txHash: string | null; authNonce: string | null; settlementVerified: boolean | null; lateSettlement: unknown },
+>(
+  rows: T[],
+): (Omit<T, "authNonce" | "settlementVerified" | "lateSettlement"> & {
+  settledTier: SettledTier | null;
+  settlementSource: SettlementSource | null;
+})[] {
+  return rows.map(({ authNonce, settlementVerified, lateSettlement, ...rest }) => ({
     ...rest,
     settledTier: settledTier({ status: rest.status, authNonce, settlementVerified }),
+    settlementSource: settlementSourceOf({ txHash: rest.txHash, lateSettlement }),
   }));
 }
 
@@ -495,6 +507,7 @@ export async function getEndpointDetail(id: string): Promise<EndpointDetail> {
           l2Schema: x402L1Purchases.l2Schema,
           authNonce: x402L1Purchases.authNonce,
           settlementVerified: x402L1Purchases.settlementVerified,
+          lateSettlement: sql<unknown>`${x402L1Purchases.rawResponseMeta}->'lateSettlement'`,
         })
         .from(x402L1Purchases)
         .where(
@@ -621,6 +634,7 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
           l2Schema: x402L1Purchases.l2Schema,
           authNonce: x402L1Purchases.authNonce,
           settlementVerified: x402L1Purchases.settlementVerified,
+          lateSettlement: sql<unknown>`${x402L1Purchases.rawResponseMeta}->'lateSettlement'`,
         })
         .from(x402L1Purchases)
         .where(
@@ -716,6 +730,11 @@ export type ObservatoryStats = {
     settledNonceBound: number;
     /** settled のうち nonce 束縛の無い件数。nonceBound との和は必ず settled。 */
     settledAmountPayeeOnly: number;
+    /**
+     * settled のうち、tx を売り手が名指さず vet402 の決済索引が貼った件数（遅延回収・2026-09-20）。
+     * nonceBound / amountPayeeOnly とは別の軸（証拠の強さではなく、tx の出所）。規則は settlement-source.ts。
+     */
+    settledLateLinked: number;
     /** 決済ブロック時刻が試行の -5 分〜+15 分に入った settled 件数。 */
     settledTimeWindowOk: number;
     /** 決済ブロック時刻を我々が持っていない settled 件数（ok とも outside とも言えない）。 */
@@ -799,6 +818,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       inconclusiveByReason: { settled4xx: 0, unsettled4xx: 0, payerUnfunded: 0 },
       settledNonceBound: 0,
       settledAmountPayeeOnly: 0,
+      settledLateLinked: 0,
       settledTimeWindowOk: 0,
       settledTimeWindowUnknown: 0,
       endpointsAttempted: 0,
@@ -893,6 +913,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       inconclusiveByReason: { settled4xx: 0, unsettled4xx: 0, payerUnfunded: 0 } as InconclusiveByReason,
       settledNonceBound: 0,
       settledAmountPayeeOnly: 0,
+      settledLateLinked: 0,
       settledTimeWindowOk: 0,
       settledTimeWindowUnknown: 0,
       endpointsAttempted: 0,
@@ -916,6 +937,8 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
                -- 定義は settled-tier.ts が単独で持つ（JS の分類と同じ規則）。
                count(*) FILTER (WHERE ${sql.raw(settledTierPredicate("nonce_bound"))})::int AS settled_nonce_bound,
                count(*) FILTER (WHERE ${sql.raw(settledTierPredicate("amount_payee_only"))})::int AS settled_amount_payee_only,
+               -- 2026-09-20: tx を売り手ではなく vet402 の索引が貼った settled（settlement-source.ts）。
+               count(*) FILTER (WHERE ${sql.raw(settledLateLinkedPredicate())})::int AS settled_late_linked,
                count(DISTINCT endpoint_id)::int AS endpoints,
                count(DISTINCT endpoint_id) FILTER (WHERE status = 'settled')::int AS endpoints_settled,
                count(DISTINCT endpoint_id) FILTER (WHERE ${sql.raw(deliveredPredicate())})::int AS endpoints_delivered
@@ -932,6 +955,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
         inconclusive_payer_unfunded: number;
         settled_nonce_bound: number;
         settled_amount_payee_only: number;
+        settled_late_linked: number;
         endpoints: number;
         endpoints_settled: number;
         endpoints_delivered: number;
@@ -951,6 +975,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
           },
           settledNonceBound: Number(l1List[0].settled_nonce_bound ?? 0),
           settledAmountPayeeOnly: Number(l1List[0].settled_amount_payee_only ?? 0),
+          settledLateLinked: Number(l1List[0].settled_late_linked ?? 0),
           endpointsAttempted: Number(l1List[0].endpoints),
           endpointsSettled: Number(l1List[0].endpoints_settled ?? 0),
           endpointsDelivered: Number(l1List[0].endpoints_delivered ?? 0),

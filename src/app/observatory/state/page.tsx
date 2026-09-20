@@ -466,6 +466,16 @@ export default async function ObservatoryStatePage() {
                     {pct(stats.l1.settledTimeWindowUnknown, stats.l1.settled)} of settled
                   </td>
                 </tr>
+                {/* 2026-09-20: settled のうち、tx を売り手が名指さず vet402 の決済索引が貼った件数
+                    （settlement-source.ts）。証拠の強さとは別の軸なので、上の 2 行の和には入らない。 */}
+                <tr>
+                  <td className="text-brand">
+                    settled where the seller returned no receipt and our own settlements index found
+                    the transfer afterwards (same on-chain re-read as the rest)
+                  </td>
+                  <td className="num">{stats.l1.settledLateLinked.toLocaleString()}</td>
+                  <td className="num">{pct(stats.l1.settledLateLinked, stats.l1.settled)} of settled</td>
+                </tr>
                 {/* 2026-09-04 外部監査 E・P0-3: settled と delivered は別の事実。
                     本番実測では settled のうち 120 件が非 2xx だった。 */}
                 <tr>

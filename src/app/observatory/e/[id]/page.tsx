@@ -326,6 +326,19 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
               </Link>
               .
             </p>
+            {purchases.some((p) => p.settlementSource === "vet402_index") && (
+              <p className="doc-p">
+                A row marked <strong>tx from our index</strong> came back with no settlement receipt
+                from the seller. Our own index of on-chain settlements found the transfer afterwards
+                — our payer, this endpoint&apos;s payee, the exact amount, inside the time window —
+                and the row goes through the same on-chain re-read as any other before it reads{" "}
+                <code>settled</code>. The seller did not name that transaction; we did (
+                <Link href="/observatory/methodology" className="underline">
+                  methodology
+                </Link>
+                ).
+              </p>
+            )}
             {l1.inconclusive > 0 && (
               <p className="doc-p">
                 <strong>{l1.inconclusive} of those paid attempts are held as{" "}
@@ -398,6 +411,11 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
                             : p.settledTier === "amount_payee_only"
                               ? "settled (amount + payee)"
                               : p.status}
+                          {/* 2026-09-20: その tx を名指したのが売り手でなく vet402 の決済索引なら、行でそう言う
+                              （settlement-source.ts）。売り手がレシートを返した行と同じ顔で出さない。 */}
+                          {p.settlementSource === "vet402_index" && (
+                            <span className="block text-xs font-normal text-brand-lift">tx from our index</span>
+                          )}
                         </td>
                         <td
                           className={`num border-b-0 pb-0.5 ${typeof p.httpStatusPaid === "number" && p.httpStatusPaid >= 400 ? "text-[#9f0712]" : ""}`}

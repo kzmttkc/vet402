@@ -176,7 +176,25 @@ if (!TEST_DB) {
       assert.equal(paid3[0].body, null, "GET に本文は付けない");
       assert.deepEqual(await rowsFor("https://seller1.example/api"), [{ status: "settle_claimed", request_body: "declared" }]);
       assert.deepEqual(await rowsFor("https://seller2.example/api"), [{ status: "settle_claimed", request_body: "empty" }]);
-      assert.equal((await rowsFor("https://seller3.example/api"))[0].request_body, null);
+      // 2026-09-20: POST 以外にも "none" を残す（行はメソッドを持たないので、記録が無いと「本文なし」と
+      // 「記録なし」を後から分けられない）。宣言本文の行には、送ったバイト列の SHA-256 が付く。
+      assert.equal((await rowsFor("https://seller3.example/api"))[0].request_body, "none");
+      const shaRaw = await db.execute(sql`
+        SELECT e.resource_url, pu.raw_response_meta->>'requestBodySha256' AS sha
+        FROM x402_l1_purchases pu JOIN x402_endpoints e ON e.id = pu.endpoint_id`);
+      const shaBy = new Map(
+        ((Array.isArray(shaRaw) ? shaRaw : ((shaRaw as { rows?: unknown[] }).rows ?? [])) as { resource_url: string; sha: string | null }[]).map(
+          (r) => [r.resource_url, r.sha],
+        ),
+      );
+      const { createHash } = await import("node:crypto");
+      assert.equal(
+        shaBy.get("https://seller1.example/api"),
+        createHash("sha256").update(paid1[0].body ?? "", "utf8").digest("hex"),
+        "hash は実際に送った本文のもの",
+      );
+      assert.equal(shaBy.get("https://seller2.example/api"), null, "{} の行に hash は付けない");
+      assert.equal(shaBy.get("https://seller3.example/api"), null);
     });
 
     await t.test("残高不足: 署名 0・行を書かない・翌バッチ（補充後）にまた選ばれて買う", async () => {
@@ -195,6 +213,7 @@ if (!TEST_DB) {
       assert.equal(reads, 1, "RPC はバッチで 1 回");
       assert.equal(summary.attempted, 0);
       assert.equal(summary.payerUnfunded, 2);
+      assert.deepEqual(summary.payerFundsUnreadable, [], "残高不足は『読めない』ではない");
       assert.deepEqual(await rowsFor("https://seller1.example/api"), [], "台帳に行を書かない（settle_failed にしない）");
       assert.deepEqual(await rowsFor("https://seller2.example/api"), []);
 
@@ -227,6 +246,9 @@ if (!TEST_DB) {
       assert.equal(w.seen.filter((s) => s.paid).length, 0);
       assert.equal(reads, 1, "失敗もキャッシュする（候補ごとに RPC を叩かない）");
       assert.equal(summary.payerUnfunded, 2);
+      // 2026-09-20: 「足りない」と「読めない」を summary で分ける。読めなかったチェーンは 1 回だけ名前で出る
+      // （cron の応答は 200 のままなので、監視が拾える鍵はこれ）。
+      assert.deepEqual(summary.payerFundsUnreadable, ["base"]);
       assert.deepEqual(await rowsFor("https://seller1.example/api"), []);
     });
 

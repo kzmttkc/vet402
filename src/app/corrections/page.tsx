@@ -75,7 +75,7 @@ const CORRECTIONS: Correction[] = [
       "answers 4xx; the late-settlement recovery then moves them to settled, where they stay held. A POST now sends " +
       "the body the seller's 402 declares, as declared, when it is a JSON object or array of at most 16 KB, and " +
       "records which body it sent. The counts ship as l1.inconclusiveByReason on /api/v1/observatory/state, as " +
-      "inconclusiveByReason on the per-endpoint purchases API, and as the held_reason column at the end of " +
+      "inconclusiveByReason on the per-endpoint purchases API, and as the held_reason column of " +
       "export.csv. The decision rules version is now 2026-09-17.1.",
   },
   {

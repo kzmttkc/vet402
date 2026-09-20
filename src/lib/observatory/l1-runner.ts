@@ -70,6 +70,7 @@ import { withDailyFallback } from "@/lib/settlements/rollup";
 import { l1TierWhere } from "./coverage";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
 import { declaredRequestBody, declaredRequestUrl, type RequestBodySource, type RequestQuerySource } from "./declared-input";
+import { requestBodyRecord } from "./request-body";
 import { createPayerFunds, defaultPayerUsdcBalance, type PayerChain, type PayerFunds, type PayerUsdcBalanceReader } from "./payer-funds";
 import { createHash } from "node:crypto";
 // Tempo の MPP 方言（2026-09-17・mpp-payer.ts）。x402 ではなく WWW-Authenticate: Payment の壁。
@@ -118,6 +119,13 @@ export type L1BatchSummary = {
    * サーバログ（observatory.l1.payer_unfunded）だけが資金切れを知らせる。
    */
   payerUnfunded: number;
+  /**
+   * 上の payerUnfunded のうち、残高を**読めなかった**チェーンの名前（2026-09-20・Issue #29 レビューの宿題 ⓒ）。
+   * 読み取りはチェーンごとに 1 バッチ 1 回で、失敗もそのバッチの間は使い回すので、1 回の RPC 障害で
+   * そのチェーンは全件署名しない。payerUnfunded は「足りない」と「読めない」を足した数で、cron は 200 の
+   * まま返す——監視が障害を資金切れと分けて拾えるよう、鍵を分ける。誤りの本文（RPC の文言）は出さない。
+   */
+  payerFundsUnreadable: string[];
   /**
    * チェーンごとの候補の最低枠（2026-09-17・budget.ts laneFloorPerRun）で主候補の先頭に置いた
    * 件数。別枠を持つレーン（CHAIN_DAILY_CAPS）だけが鍵になる。旗が off・別枠が尽きた・候補が
@@ -176,6 +184,7 @@ export function publicL1Summary(summary: L1BatchSummary): PublicL1BatchSummary {
     halted: summary.halted,
     disabledReason: summary.disabledReason,
     payerUnfunded: summary.payerUnfunded,
+    payerFundsUnreadable: summary.payerFundsUnreadable,
     laneFloor: summary.laneFloor,
     laneFloorHostCapped: summary.laneFloorHostCapped,
     xrplFeeOverCap: summary.xrplFeeOverCap,
@@ -804,6 +813,7 @@ export async function runL1Batch(
     haltReason: null,
     disabledReason: null,
     payerUnfunded: 0,
+    payerFundsUnreadable: [],
     laneFloor: {},
     laneFloorHostCapped: {},
     xrplFeeOverCap: 0,
@@ -1150,6 +1160,7 @@ export async function runL1Batch(
   const unfundedLogged = new Set<string>();
   const onPayerUnfunded = (chain: string, detail: Record<string, unknown>) => {
     summary.payerUnfunded++;
+    if (detail.reason === "unreadable" && !summary.payerFundsUnreadable.includes(chain)) summary.payerFundsUnreadable.push(chain);
     if (unfundedLogged.has(chain)) return;
     unfundedLogged.add(chain);
     logServerError("observatory.l1.payer_unfunded", new Error(`payer_unfunded chain=${chain} ${JSON.stringify(detail)}`));
@@ -2087,9 +2098,11 @@ async function purchaseOne(input: {
       // request_error になった行の理由はこれ。
       ...(credentialStripped ? { credentialStripped } : {}),
       bodyHead: paidBody.slice(0, 500),
-      // どの本文で POST したか（2026-09-17 Issue #29）。"declared" は売り手の 402 が宣言した
-      // input.body、"empty" は `{}`。GET には付けない。
-      ...(paidRequestBody ? { requestBody: paidRequestBody.source } : {}),
+      // どの本文で有料の要求を出したか（2026-09-17 Issue #29）。"declared" は売り手の 402 が宣言した
+      // input.body、"empty" は `{}`。2026-09-20: POST 以外にも "none" を残し（行はメソッドを持たないので、
+      // 記録が無いと「本文なし」と「記録なし」を後から分けられない）、宣言本文には送ったバイト列の
+      // SHA-256 を添える。公開 export の request_body / request_body_sha256 の元（request-body.ts）。
+      ...requestBodyRecord(paidRequestBody),
       // A response whose HEADERS arrived but whose body aborted/failed: the
       // error would otherwise be dropped (rawSettlement keeps the settlement
       // when one exists), so it is kept here rather than silently lost.
