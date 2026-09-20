@@ -1,7 +1,7 @@
 /**
  * LP §5 "Chains" — the copy and the state of each chain, in one place.
  *
- * Facts as of 2026-09-19. Nothing here is a count: a static number is wrong on
+ * Facts as of 2026-09-20. Nothing here is a count: a static number is wrong on
  * the day it is read. The LP prints the per-chain settled count next to each
  * lane from `stats.l1.byChain` (the ledger read the page already performs for
  * Fig. 1), and `effectiveLaneState` lets that ledger overrule the static word
@@ -26,6 +26,11 @@
 /**
  * - settled_on_record:      at least one purchase settled and was reconciled
  * - pending_first_purchase: lane and reconciliation are built, nothing bought yet
+ *
+ * 2026-09-20: no row starts as pending_first_purchase any more (Arc settled). The state
+ * stays for two reasons: a future lane will start there, and a readable ledger that holds
+ * no settled purchase for a lane still moves that lane to it (`effectiveLaneState`). The
+ * section's legend names "pending" only when a row is drawn with it (`chainsLegend`).
  */
 export type LaneState = "settled_on_record" | "pending_first_purchase";
 
@@ -66,9 +71,11 @@ export const SUPPORTED_CHAINS: SupportedChain[] = [
     rail: "x402, through the t54 facilitator",
     state: "settled_on_record",
   },
-  // ARC-SWAP: the one line to change once the first real Arc purchase has settled and been
-  // reconciled — `state: "pending_first_purchase"` becomes `state: "settled_on_record"`.
-  { kind: "lane", chain: "Arc", asset: "USDC", rail: "x402", state: "pending_first_purchase" },
+  // ARC-SWAP (done 2026-09-20): the first real Arc purchase settled on 2026-09-20 00:00:17 UTC
+  // and the production reconciler marked it settled, so this line moved from
+  // `state: "pending_first_purchase"` to `state: "settled_on_record"`. The tx is in
+  // docs/handoffs/CHANGELOG.md; the count on the page still comes from the ledger.
+  { kind: "lane", chain: "Arc", asset: "USDC", rail: "x402", state: "settled_on_record" },
   // Robinhood Chain: the wording is fixed by agreement with the RWA session. The Japanese
   // source, verbatim:
   //   「Robinhood Chain（4663・本番網）: Stock Token の保有と取引履歴を公開チェーンデータから
@@ -130,4 +137,22 @@ export function markerOf(row: SupportedChain, settled: number | null): ChainMark
 
 export function laneBody(row: LaneChain, settled: number | null): string {
   return `${row.asset} over ${row.rail}. ${LANE_STATE_SENTENCE[effectiveLaneState(row.state, settled)]}`;
+}
+
+/**
+ * The legend sentence under the section heading. It explains the markers the rows below
+ * actually carry: "pending" is named only when some row is drawn pending (2026-09-20 — with
+ * every lane settled, a legend that defines a marker no row shows sends the reader looking
+ * for a pending chain that is not there). "building" is always named: the Robinhood Chain
+ * row is static.
+ */
+export function chainsLegend(settledByChain: Map<string, number> | null): string {
+  const anyPending = SUPPORTED_CHAINS.some(
+    (row) => markerOf(row, settledCountOf(row, settledByChain)).label === "pending",
+  );
+  return (
+    "A lane is marked implemented when the public ledger holds a settled purchase on that chain" +
+    (anyPending ? ", pending when it is built but has not bought yet" : "") +
+    ", and building when the work has not shipped."
+  );
 }

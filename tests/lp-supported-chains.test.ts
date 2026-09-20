@@ -15,6 +15,7 @@ import { createElement } from "react";
 import {
   LANE_STATE_SENTENCE,
   SUPPORTED_CHAINS,
+  chainsLegend,
   effectiveLaneState,
   laneBody,
   markerOf,
@@ -137,10 +138,49 @@ test("lane copy names the asset and the rail; Tempo says it is not x402", () => 
     laneBody(byName.get("XRPL")!, null),
     `RLUSD over x402, through the t54 facilitator. ${LANE_STATE_SENTENCE.settled_on_record}`,
   );
+  // 2026-09-20: the first real Arc purchase settled and was reconciled; Arc reads like the other lanes.
   assert.equal(
     laneBody(byName.get("Arc")!, null),
-    `USDC over x402. ${LANE_STATE_SENTENCE.pending_first_purchase}`,
+    "USDC over x402. Settled and reconciled purchases are on record.",
   );
+});
+
+test("no lane starts as pending today; the state itself stays reachable from the ledger", () => {
+  for (const lane of lanes) assert.equal(lane.state, "settled_on_record", lane.chain);
+  // unread ledger: no row is drawn pending
+  const unread = renderToStaticMarkup(createElement(SupportedChains, { settledByChain: null }));
+  assert.ok(!unread.includes(">pending<"));
+  // a readable ledger that holds nothing for Arc still overrules the static word
+  const arc = lanes.find((l) => l.chain === "Arc")!;
+  assert.equal(laneBody(arc, 0), `USDC over x402. ${LANE_STATE_SENTENCE.pending_first_purchase}`);
+});
+
+test("the legend names the pending marker only when a row is drawn pending", () => {
+  const everyLane = settledByChainOf(lanes.map((l) => ({ chain: l.chain, settled: 1 })));
+  for (const map of [null, everyLane]) {
+    const legend = chainsLegend(map);
+    assert.equal(
+      legend,
+      "A lane is marked implemented when the public ledger holds a settled purchase on that chain, and building when the work has not shipped.",
+    );
+    const html = renderToStaticMarkup(createElement(SupportedChains, { settledByChain: map }));
+    assert.ok(!html.includes(">pending<"), "no pending row, so no pending in the legend");
+  }
+  // a readable ledger with nothing on Arc: the row is pending, and the legend says what that means
+  const noArc = settledByChainOf([{ chain: "Base", settled: 2 }]);
+  const html = renderToStaticMarkup(createElement(SupportedChains, { settledByChain: noArc }));
+  assert.ok(html.includes(">pending<"));
+  assert.equal(
+    chainsLegend(noArc),
+    "A lane is marked implemented when the public ledger holds a settled purchase on that chain, pending when it is built but has not bought yet, and building when the work has not shipped.",
+  );
+});
+
+test("the page folds the ledger once and feeds the legend and the rows from that one read", () => {
+  const home = read("src/app/page.tsx");
+  assert.equal(home.split("settledByChainOf(").length - 1, 1, "one fold");
+  assert.ok(home.includes("{chainsLegend(settledByChain)}"));
+  assert.ok(home.includes("<SupportedChains settledByChain={settledByChain} />"));
 });
 
 test("the Robinhood Chain row carries the agreed sentence and nothing else", () => {

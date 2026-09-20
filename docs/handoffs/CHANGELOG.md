@@ -13,6 +13,29 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-20 JST — トップページに「5. Chains」節（チェーンごとの状態・件数は台帳から）／Arc の初購入が成立し Arc の行を settled へ（vet402.com コア・ブランチ `feat/lp-supported-chains`・origin/main `b17c6d9` へ載せ替え済み・push は依頼元）
+
+- **何を変えたか**:
+  - **節の追加** `src/app/page.tsx`: §4「Implemented and live」の直後に **§5 Chains** を足し、旧 §5「Status of this work」は **§6** へ繰り下げた（目次・節番号・アンカー `#chains`。`#status` は据え置き）。行は Base / Solana / Tempo / XRPL / Arc / Robinhood Chain (4663, mainnet) の 6 本。文言と状態の正典は `src/components/site/supported-chains-data.ts`、描画は `src/components/site/SupportedChains.tsx`。
+  - **件数は静的に書かない**: 各レーンの「Settled purchases on record: N」は Fig. 1 と同じ読み（`stats.l1.byChain`）から引く。台帳は静的な状態語を**両方向に上書き**する（settled が 1 件でもあれば pending と言わない／読めた台帳に 0 件なら settled と言わない）。`l1.byChain` が空 = L1 を読めなかった、として件数も上書きも出さない（`totalEndpoints` は L0 カタログの件数で、L1 が読めたかを語らない）。
+  - **Arc** `supported-chains-data.ts` の `ARC-SWAP`: `pending_first_purchase` → `settled_on_record`。Arc の行は他の稼働レーンと同じ「USDC over x402. Settled and reconciled purchases are on record.」になった。`pending_first_purchase` は型として残した（将来のレーンの初期状態・台帳に 0 件のときの落ち先）。
+  - **導入文の凡例** `chainsLegend()`: 静的に pending の行が無くなったので、導入文が「pending when it is built but has not bought yet」を**常に**説明していると、読者は存在しない pending のチェーンを探すことになる。凡例は**実際に pending で描かれる行があるときだけ** pending を説明する（行と同じ 1 回の台帳の読みから決まる）。いま本番で出る文は「A lane is marked implemented when the public ledger holds a settled purchase on that chain, and building when the work has not shipped.」。
+  - **ラベルの寄せ** `src/lib/observatory/reader.ts`: L1 のチェーン別集計と L0 の `getObservatoryStatsByChain` の 2 箇所で、`chainLabel(row.network)` を `chainLabel(toCaip2(row.network))` にした（v1 スラグ `base` / `solana` / `xrpl` の行が CAIP-2 の行と同じラベルに畳まれる。L0 側は testnet 判定も寄せた後の id で行う）。**9/19 に main へ入った運営 endpoint の除外（`operatorExclusionPredicate`）・`catalogSnapshots`・`operatorEndpointsExcluded` には触れていない**（載せ替えの衝突は import 行だけで、main 側の import をそのまま残し `toCaip2` を足した）。
+  - **Robinhood Chain の行**は RWA セッションと合意した固定文言のまま（日本語原文をファイルに残し、テストで英文を逐語固定）。
+
+- **なぜ**: vet402 がどのチェーンで実際に買っているかを、LP の 1 箇所で行ごとに言い切るため。§4 は「全部いま動いている」、§6 は「まだ出していないものだけ」と言い切っているので、稼働と実装中が混ざる表はどちらにも置けず、独立の節にした。Arc は 2026-09-20 に初購入が成立したので、待ちの文言を残す理由が無くなった。
+
+- **Arc の初購入（根拠）**: 2026-09-20 00:00:17 UTC・`api.exa.ai/search`・network `eip155:5042`（Arc mainnet）・USDC 7,000 units・tx `0xf38fb9962dbee2fc35bd156140bd623d3ce74b92efdcf6a50c5869126c0b6273`・status `settled`。チェーン上の確認は依頼元。こちらでは公開面で裏を取った: `GET /api/v1/observatory/export.csv` に同じ行があり、`GET /api/v1/observatory/state` の `l1.byChain` に `Arc: attempts 1 / settled 1 / delivered 1` が出ている（2026-09-20 取得）。
+
+- **そちらが知っておくべき影響**:
+  - LP の節番号が 1 つずれた（旧 §5 → §6）。コード内コメントの「§5」は直してあるが、外の文書が「LP §5 = Status」と書いていたらずれる。
+  - 主張の関門（`tests/claims-registry.test.ts`）: 新しい節の散文には断定語（daily / every / all / only …）が 1 つも無く、抽出は `supported-chains-data.ts` 0 件・`SupportedChains.tsx` 0 件、LP は 10 件のまま（床 10 と同数）。**孤児なし・`docs/claims.yaml` の登録なし・床の変更なし。** 「Settled and reconciled purchases are on record.」に本番 GET の check を付けなかったのは、`l1.byChain` が配列で、添字の式は並びが変わると別のチェーンを見るから（9/19 G4 と同じ判断）。この文は台帳が読めれば台帳で上書きされる。
+  - `/decision` の `facts.l1` のキー形・`/tokyo`・`/api/tokyo/*`・rwa 関連パスには触れていない。`l1.byChain` の `chain` の値は、v1 スラグの行があった場合にだけ CAIP-2 の行と同じラベルへ合流する（キーの形は不変）。
+
+- **残る懸念**: LP の検出数は床ちょうど（10）。この節とは無関係だが、LP の断定文を 1 つ消すと床で赤くなる（狙いどおりの挙動）。
+
+---
+
 ## 2026-09-19 JST — 上の関門修正に独立レビューの BLOCK（Critical 3・Warning 5）を反映（vet402.com コア・ブランチ `fix/claims-gate-coverage` 2 本目・push は依頼元）
 
 - **何を変えたか**:

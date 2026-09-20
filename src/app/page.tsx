@@ -18,7 +18,7 @@ import {
 } from "@/lib/observatory/cached-reads";
 import { FunnelFigure } from "@/components/site/Figures";
 import { SupportedChains } from "@/components/site/SupportedChains";
-import { settledByChainOf } from "@/components/site/supported-chains-data";
+import { chainsLegend, settledByChainOf } from "@/components/site/supported-chains-data";
 
 /**
  * The front page is the memo.
@@ -115,6 +115,9 @@ export default async function Home() {
   const coverage = await getCoverageShareCached().catch(() => null);
   // 2026-09-02 UI/UX 監査（続）: §4 に図を 1 枚——登録 → L0 pass → L1 受領証あり。実数のみ。
   const stats = await getObservatoryStatsCached().catch(() => null);
+  // §5 Chains: 関門は L1 台帳そのもの（byChain が空 = 読めなかった → null）。導入文の凡例と行が
+  // 同じ 1 つの読みから出るよう、ここで 1 回だけ畳む。
+  const settledByChain = settledByChainOf(stats?.l1.byChain);
   const organization = organizationJsonLd(
     "Independent verification of the x402 agent-payment economy. vet402 buys what x402 endpoints sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence.",
   );
@@ -771,15 +774,14 @@ export default async function Home() {
             ものだけ」と言い切っているので、稼働・初回購入待ち・実装中が混ざるこの表はどちらにも置けない。
             §4 の直後に独立の節として置き、行ごとの状態印（§4 / §6 と同じ文法）で混在を読めるようにする。
             件数は静的に書かない——Fig. 1 と同じ `stats`（l1.byChain）から引き、読めない時は件数も状態の上書きも出さない。
-            文言と状態の正典は supported-chains-data.ts（Arc の差し替えはそこの 1 行）。 */}
+            文言と状態の正典は supported-chains-data.ts。2026-09-20 Arc の初購入が成立し settled_on_record へ。
+            導入文の凡例（chainsLegend）は、pending の行が実際に描かれる時だけ pending を説明する。 */}
         <h2 id="chains" className="sec-head scroll-mt-24">
           <span className="sec-no">5.</span>
           <span>Chains</span>
         </h2>
         <p className="doc-p">
-          What vet402 does on each chain today. A lane is marked implemented when the public
-          ledger holds a settled purchase on that chain, pending when it is built but has not
-          bought yet, and building when the work has not shipped.{" "}
+          What vet402 does on each chain today. {chainsLegend(settledByChain)}{" "}
           <Link href="/observatory/state" className="doc-link">
             L1 figures by chain
           </Link>
@@ -787,7 +789,7 @@ export default async function Home() {
         </p>
         {/* 関門は L1 台帳そのもの（byChain が空 = 読めなかった）。totalEndpoints は L0 カタログの件数で、
             L1 が読めたかどうかを語らない（2026-09-19 レビュー C1）。 */}
-        <SupportedChains settledByChain={settledByChainOf(stats?.l1.byChain)} />
+        <SupportedChains settledByChain={settledByChain} />
 
         {/* ================= 6. Status of this work ================= */}
         <h2 id="status" className="sec-head scroll-mt-24">
