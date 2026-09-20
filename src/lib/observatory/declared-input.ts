@@ -99,6 +99,10 @@ export function declaredRequestBody(input: { bodyText: string; headers: Headers 
 //     空白とドットを `_` に畳むと、`SYMBOL=TSLA` は掲載の `symbol=AAPL` を実質上書きし、台帳は
 //     `symbol=AAPL` の行のまま別のものを買う。畳んで衝突する名前は足さない。**宣言の名前どうしが
 //     畳んだ後に衝突するなら宣言ごと使わない**（どちらが効くかを裏側の実装に委ねない）。
+//   - PHP の配列記法（再レビュー W-5）: PHP は `symbol[]`・`symbol[0]`・`symbol[x]` を配列キー `symbol` として
+//     読み、後勝ちにする。だから**掲載名との照合だけ**、宣言名を `[` の手前で切った形でも当てる。
+//     宣言名どうしの一意判定は切らない（切ると `filter[status]` と `filter[type]` が衝突扱いになり、
+//     正当な宣言を丸ごと捨てる）。
 //   - 上限: 名前 32 個・足すクエリ 2KB・URL 全体 4KB（いずれも符号化後のバイト数）。
 //     超えたら宣言ごと使わない。
 //   - 無払いの要求はカタログの URL のまま（宣言はその 402 を読んで初めて手に入る）。
@@ -115,13 +119,31 @@ export const DECLARED_QUERY_MAX_PARAMS = 32;
 /** クエリを足した後の URL 全体の上限（バイト）。 */
 export const DECLARED_URL_MAX_BYTES = 4 * 1024;
 
-export type RequestQuerySource = "declared" | "empty";
+/**
+ * 行に残すラベル（2026-09-20 再レビュー N-7 で 3 つに分けた）:
+ *   - "declared": 宣言のクエリを足した URL で払った。
+ *   - "empty":    売り手が宣言していない（文書なし・queryParams なし・null・`{}`）。
+ *   - "refused":  宣言は在ったが**我々の規則で使わなかった**（object でない・スカラーでない値・空の名前・
+ *                 上限超・宣言名どうしの衝突・掲載名との衝突で足すものが残らなかった・URL を読めない）。
+ * ON の実験で「効かなかったのは売り手の宣言不足か、我々の規則か」を行から分けるため。
+ */
+export type RequestQuerySource = "declared" | "empty" | "refused";
 
-/** `query` は URL に足した文字列そのもの（`?`/`&` を除く・符号化後）。足していなければ null。行に残す SHA-256 の元。 */
+/**
+ * `query` は**先頭の区切りを除いた、足した対だけの form-urlencoded 文字列**。足していなければ null。
+ * 行の `requestQuerySha256` の元。第三者が再計算するときの取り決め:
+ *   1. 入るのは足した分だけ。掲載の URL に元からあるクエリも、掲載名と衝突して落とした宣言名も入らない。
+ *   2. 並び順は 402 の宣言（JSON）のキー順。ソートしない。
+ *   3. 符号化は `application/x-www-form-urlencoded`（URLSearchParams）——空白は `+`。
+ *   4. 対と対のあいだは `&`、名前と値のあいだは `=`。先頭に `?` も `&` も付けない。
+ *   5. その文字列の UTF-8 バイト列の SHA-256 を小文字の hex で。
+ * 文字列そのものと 402 の宣言は行に保存しない。だからハッシュで出来るのは**照合**まで（2 つの行が同じ
+ * 要求だったか・いま 402 を取り直して同じ文字列になるか）で、行だけから何を送ったかは復元できない。
+ */
 export type DeclaredRequestUrl = { url: string; source: RequestQuerySource; query: string | null };
 
 /** クエリ名の畳み方（上の規則）。比べるためだけに使い、送る名前は宣言のまま。 */
-function foldQueryName(name: string): string {
+export function foldQueryName(name: string): string {
   return name.trim().toLowerCase().replace(/[ .[]/g, "_");
 }
 
@@ -147,13 +169,18 @@ function scalarToQueryValue(v: unknown): string | null {
 }
 
 export function declaredRequestUrl(input: { resourceUrl: string; bodyText: string; headers: Headers }): DeclaredRequestUrl {
-  const unchanged: DeclaredRequestUrl = { url: input.resourceUrl, source: "empty", query: null };
+  const none: DeclaredRequestUrl = { url: input.resourceUrl, source: "empty", query: null };
+  // ここから下の `unchanged` はすべて「宣言は在ったが我々の規則で使わなかった」。
+  const unchanged: DeclaredRequestUrl = { url: input.resourceUrl, source: "refused", query: null };
   const doc = asRecord(challengeDocument(input));
   const bazaar = asRecord(asRecord(doc?.extensions)?.bazaar);
-  const declared = asRecord(asRecord(asRecord(bazaar?.info)?.input)?.queryParams);
+  const rawDeclared = asRecord(asRecord(bazaar?.info)?.input)?.queryParams;
+  if (rawDeclared === undefined || rawDeclared === null) return none;
+  const declared = asRecord(rawDeclared);
   if (!declared) return unchanged;
   const entries = Object.entries(declared);
-  if (entries.length === 0 || entries.length > DECLARED_QUERY_MAX_PARAMS) return unchanged;
+  if (entries.length === 0) return none;
+  if (entries.length > DECLARED_QUERY_MAX_PARAMS) return unchanged;
 
   let listed: URL;
   try {
@@ -171,7 +198,8 @@ export function declaredRequestUrl(input: { resourceUrl: string; bodyText: strin
     if (name.length === 0 || folded.length === 0 || value === null) return unchanged;
     if (declaredNames.has(folded)) return unchanged;
     declaredNames.add(folded);
-    if (listedNames.has(folded)) continue;
+    // 掲載名との照合だけ、PHP の配列記法（`symbol[]` → `symbol`）でも当てる（W-5）。
+    if (listedNames.has(folded) || listedNames.has(foldQueryName(name.split("[")[0]))) continue;
     add.append(name, value);
   }
   const query = add.toString();

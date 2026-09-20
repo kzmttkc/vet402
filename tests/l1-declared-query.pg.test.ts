@@ -66,7 +66,7 @@ if (!TEST_DB) {
         extensions: { bazaar: { info: { input: { method: "GET" } } } },
         quality: { l30DaysTotalCalls: 100 * n, l30DaysUniquePayers: 10 },
       });
-    /** seller1 は queryParams を宣言、seller2 は宣言なし。 */
+    /** seller1 は queryParams を宣言、seller2 は宣言なし、seller3 は規則に合わない宣言（値が配列）。 */
     const challengeDoc = (url: string) => {
       const n = /seller(\d)/.exec(url)?.[1] ?? "1";
       return {
@@ -74,6 +74,7 @@ if (!TEST_DB) {
         accepts: [{ scheme: "exact", network: "eip155:8453", amount: "3000", asset: BASE_USDC, payTo: payToFor(n), maxTimeoutSeconds: 300, extra: { name: "USD Coin", version: "2" } }],
         resource: { url: `https://seller${n}.example/api` },
         ...(n === "1" ? { extensions: { bazaar: { info: { input: { type: "http", method: "GET", queryParams: DECLARED } } } } } : {}),
+        ...(n === "3" ? { extensions: { bazaar: { info: { input: { type: "http", method: "GET", queryParams: { exchange: ["NYSE"] } } } } } } : {}),
       };
     };
     const wall402 = (url: string) =>
@@ -109,7 +110,7 @@ if (!TEST_DB) {
     };
 
     async function seed() {
-      const items = [item(1), item(2)];
+      const items = [item(1), item(2), item(3)];
       await db.execute(
         sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_payee_watchers, x402_l1_purchases, observed_purchases`,
       );
@@ -170,7 +171,7 @@ if (!TEST_DB) {
         await seed();
         const w2 = wall();
         await runL1Batch({ limit: 10, fetchImpl: w2.fetchImpl, getPayerUsdcBalance: FUNDED });
-        assert.equal(w2.seen.filter((s) => s.paid).length, 2, `${name}=${JSON.stringify(value)}: 2 件とも払う`);
+        assert.equal(w2.seen.filter((s) => s.paid).length, 3, `${name}=${JSON.stringify(value)}: 3 件とも払う`);
         assert.ok(w2.seen.every((s) => !s.url.includes("?")), `${name}=${JSON.stringify(value)} は OFF`);
         assert.equal((await rowsFor("https://seller1.example/api"))[0].has_key, false);
       }
@@ -193,7 +194,7 @@ if (!TEST_DB) {
       const [row1] = await rowsFor("https://seller1.example/api");
       assert.equal(row1.status, "settle_claimed");
       assert.equal(row1.request_query, "declared");
-      // W-4: どの引数で払ったかを行から再現できる（足したクエリ文字列の SHA-256）。
+      // W-4: 同じ要求だったかを行どうしで照合できる（先頭の区切りを除いた、足した対だけの form-urlencoded 文字列の SHA-256）。
       assert.equal(row1.request_query_sha256, createHash("sha256").update("exchange=NYSE&at=2026-12-25T14%3A30%3A00Z", "utf8").digest("hex"));
       assert.equal(row1.amount_units, "3000");
       assert.equal(row1.spent_units, "3000");
@@ -205,6 +206,13 @@ if (!TEST_DB) {
       assert.equal(row2.status, "settle_claimed");
       assert.equal(row2.request_query, "empty");
       assert.equal(row2.has_sha_key, false, "足していない行にハッシュは付けない");
+
+      // N-7: 宣言は在ったが我々の規則で使わなかった行は "refused"。URL はカタログのまま。
+      const s3 = w.seen.filter((s) => s.url.includes("seller3"));
+      assert.deepEqual(s3.map((s) => s.url), ["https://seller3.example/api", "https://seller3.example/api"]);
+      const [row3] = await rowsFor("https://seller3.example/api");
+      assert.equal(row3.request_query, "refused");
+      assert.equal(row3.has_sha_key, false);
     });
   });
 }

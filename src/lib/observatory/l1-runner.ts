@@ -2097,10 +2097,12 @@ async function purchaseOne(input: {
       // §6.3: L2 の判定材料。mismatch の公開に要る宣言ハッシュ・応答ハッシュ・欠落キー。
       ...(l2Detail ? { l2: l2Detail } : {}),
       // どの URL で払ったか（2026-09-20）。"declared" は売り手の 402 が宣言した input.queryParams を
-      // 足した URL、"empty" はカタログの URL のまま。許可リストに無い network の行には付けない。
-      // "declared" の行には、足したクエリ文字列（`?`/`&` を除く・符号化後）の SHA-256 を別キーで添える
-      // ——どの引数で払ったかを行から再現できるように（独立レビュー W-4。形は本文側の
-      // requestBody ＋ requestBodySha256 と揃える）。
+      // 足した URL。"empty"（売り手が宣言していない）と "refused"（宣言は在ったが我々の規則で使わなかった）は
+      // カタログの URL のまま。許可リストに無い network の行には付けない。
+      // "declared" の行には SHA-256 を別キーで添える（独立レビュー W-4。形は本文側の requestBody ＋
+      // requestBodySha256 と揃える）。元は「先頭の区切りを除いた、足した対だけの form-urlencoded 文字列」で、
+      // 再計算の取り決め 5 条は declared-input.ts の DeclaredRequestUrl。文字列も 402 の宣言も保存しないので、
+      // 出来るのは照合（2 行が同じ要求か・402 を取り直して同じ文字列になるか）まで。
       ...(paidRequestUrl ? { requestQuery: paidRequestUrl.source } : {}),
       ...(paidRequestUrl?.query != null
         ? { requestQuerySha256: createHash("sha256").update(paidRequestUrl.query, "utf8").digest("hex") }

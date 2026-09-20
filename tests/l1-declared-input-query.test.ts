@@ -53,8 +53,12 @@ test("本文の宣言も読む（ヘッダに accepts が無いとき）。数�
 });
 
 test("宣言が無い・空・object でないなら URL は 1 文字も変わらない", () => {
-  for (const bad of [undefined, null, {}, [], ["exchange"], "exchange=NYSE", 1, true]) {
-    assert.deepEqual(run(bad), { url: URL_PLAIN, source: "empty", query: null }, JSON.stringify(bad));
+  for (const none of [undefined, null, {}]) {
+    assert.deepEqual(run(none), { url: URL_PLAIN, source: "empty", query: null }, JSON.stringify(none));
+  }
+  // 宣言は在るが「名前 → スカラー値」の object ではない: 我々の規則で使わなかった（refused）。
+  for (const bad of [[], ["exchange"], "exchange=NYSE", 1, true]) {
+    assert.deepEqual(run(bad), { url: URL_PLAIN, source: "refused", query: null }, JSON.stringify(bad));
   }
   assert.deepEqual(
     declaredRequestUrl({ resourceUrl: URL_PLAIN, bodyText: "not json", headers: new Headers({ "PAYMENT-REQUIRED": "%%%" }) }),
@@ -70,7 +74,7 @@ test("スカラーでない値・空の名前が 1 つでもあれば宣言ご�
     { exchange: Number.NaN },
     { "": "NYSE" },
   ]) {
-    assert.deepEqual(run(bad), { url: URL_PLAIN, source: "empty", query: null }, JSON.stringify(bad));
+    assert.deepEqual(run(bad), { url: URL_PLAIN, source: "refused", query: null }, JSON.stringify(bad));
   }
 });
 
@@ -105,7 +109,7 @@ test("カタログの URL に既にある名前は上書きしない。既存の
   assert.equal(r.source, "declared");
   assert.equal(r.url, `${listed}&at=now`);
   // 足す名前が残らなければ URL はそのまま。
-  assert.deepEqual(run({ exchange: "NYSE" }, listed), { url: listed, source: "empty", query: null });
+  assert.deepEqual(run({ exchange: "NYSE" }, listed), { url: listed, source: "refused", query: null });
 });
 
 test("フラグメントは送らない部分なので、クエリはその手前に入る", () => {
@@ -125,19 +129,19 @@ test("ホストと経路は変わらない（値に URL の区切り文字があ
 
 test("上限: 名前の数・クエリのバイト数・URL 全体のバイト数。超えたら宣言ごと使わない", () => {
   const many = Object.fromEntries(Array.from({ length: DECLARED_QUERY_MAX_PARAMS + 1 }, (_, i) => [`k${i}`, "v"]));
-  assert.equal(run(many).source, "empty");
+  assert.equal(run(many).source, "refused");
   const atLimit = Object.fromEntries(Array.from({ length: DECLARED_QUERY_MAX_PARAMS }, (_, i) => [`k${i}`, "v"]));
   assert.equal(run(atLimit).source, "declared");
 
   // "q=" + n 文字でちょうど上限。
   const exact = "a".repeat(DECLARED_QUERY_MAX_BYTES - 2);
   assert.equal(run({ q: exact }).source, "declared");
-  assert.deepEqual(run({ q: `${exact}a` }), { url: URL_PLAIN, source: "empty", query: null });
+  assert.deepEqual(run({ q: `${exact}a` }), { url: URL_PLAIN, source: "refused", query: null });
   // 上限は符号化した後のバイト数で測る（「あ」は %E3%81%82 で 9 バイト）。
-  assert.equal(run({ q: "あ".repeat(Math.ceil(DECLARED_QUERY_MAX_BYTES / 9)) }).source, "empty");
+  assert.equal(run({ q: "あ".repeat(Math.ceil(DECLARED_QUERY_MAX_BYTES / 9)) }).source, "refused");
 
   const longListed = `https://macropulse.example/${"p".repeat(DECLARED_URL_MAX_BYTES - 40)}`;
-  assert.deepEqual(run({ exchange: "NYSE" }, longListed), { url: longListed, source: "empty", query: null });
+  assert.deepEqual(run({ exchange: "NYSE" }, longListed), { url: longListed, source: "refused", query: null });
 });
 
 test("読むのは支払い条件を取ったのと同じ文書だけ。読めない URL は触らない", () => {
@@ -145,7 +149,7 @@ test("読むのは支払い条件を取ったのと同じ文書だけ。読め�
   assert.deepEqual(declaredRequestUrl({ resourceUrl: URL_PLAIN, bodyText: "", headers: header(noAccepts) }), { url: URL_PLAIN, source: "empty", query: null });
   const r = declaredRequestUrl({ resourceUrl: URL_PLAIN, bodyText: JSON.stringify(doc({ exchange: "LSE" })), headers: header(doc({ exchange: "NYSE" })) });
   assert.equal(new URL(r.url).searchParams.get("exchange"), "NYSE", "ヘッダが accepts を持てばヘッダ");
-  assert.deepEqual(declaredRequestUrl({ resourceUrl: "not a url", bodyText: "", headers: header(doc({ exchange: "NYSE" })) }), { url: "not a url", source: "empty", query: null });
+  assert.deepEqual(declaredRequestUrl({ resourceUrl: "not a url", bodyText: "", headers: header(doc({ exchange: "NYSE" })) }), { url: "not a url", source: "refused", query: null });
 });
 
 // 2026-09-20 独立レビュー W-1: 名前の照合が完全一致だけだと、大小・空白・ドット違いの名前で
@@ -161,7 +165,7 @@ test("W-1: 大小・空白・ドット・[ 違いの名前は、カタログの 
     assert.equal(r.query, "fresh=ok", variant);
   }
   // 衝突する名前しか無ければ URL はそのまま。
-  assert.deepEqual(run({ SYMBOL: "TSLA", Tier: "premium" }, listed), { url: listed, source: "empty", query: null });
+  assert.deepEqual(run({ SYMBOL: "TSLA", Tier: "premium" }, listed), { url: listed, source: "refused", query: null });
 });
 
 test("W-1: 宣言の名前どうしが畳んだ後に衝突するなら宣言ごと使わない", () => {
@@ -171,7 +175,7 @@ test("W-1: 宣言の名前どうしが畳んだ後に衝突するなら宣言ご
     { "a b": "1", a_b: "2", other: "x" },
     { q: "1", " q ": "2" },
   ]) {
-    assert.deepEqual(run(bad), { url: URL_PLAIN, source: "empty", query: null }, JSON.stringify(bad));
+    assert.deepEqual(run(bad), { url: URL_PLAIN, source: "refused", query: null }, JSON.stringify(bad));
   }
 });
 
@@ -186,4 +190,57 @@ test("N-1: 足したのがクエリだけでなければ使わない（origin・
   assert.equal(onlyQueryAdded(listed, new URL("https://seller.example:8443/api?x=1&q=2")), false);
   assert.equal(onlyQueryAdded(listed, new URL("https://seller.example/api/other?x=1&q=2")), false);
   assert.equal(onlyQueryAdded(listed, new URL("https://user:pw@seller.example/api?x=1&q=2")), false);
+});
+
+// 2026-09-20 再レビュー N-7: "empty" が 3 つの意味を持っていた。ON の実験で「効かなかったのは
+// 売り手の宣言不足か、我々の規則か」を行から分けられるよう、ラベルを 3 つにする。
+test("N-7: ラベルは 3 つ——empty（宣言なし）・refused（宣言はあったが規則で使わなかった）・declared", () => {
+  const listed = `${URL_PLAIN}?exchange=LSE`;
+  // 売り手が宣言していない。
+  assert.equal(run(undefined).source, "empty");
+  assert.equal(run({}).source, "empty");
+  assert.equal(declaredRequestUrl({ resourceUrl: URL_PLAIN, bodyText: "", headers: new Headers() }).source, "empty");
+  // 宣言が規則に合わず捨てた。
+  assert.equal(run({ exchange: ["NYSE"] }).source, "refused");
+  assert.equal(run({ q: "a".repeat(DECLARED_QUERY_MAX_BYTES) }).source, "refused");
+  assert.equal(run({ symbol: "A", SYMBOL: "B" }).source, "refused");
+  // 名前が掲載の URL と衝突して、足すものが残らなかった。
+  assert.deepEqual(run({ EXCHANGE: "NYSE" }, listed), { url: listed, source: "refused", query: null });
+  assert.deepEqual(run({ exchange: "NYSE" }, listed), { url: listed, source: "refused", query: null });
+  // 一部が衝突して落ちても、足したものがあれば declared（何を足したかは query / SHA-256 が示す）。
+  assert.deepEqual(run({ EXCHANGE: "NYSE", at: "now" }, listed), { url: `${listed}&at=now`, source: "declared", query: "at=now" });
+});
+
+// 2026-09-20 再レビュー W-5: PHP は `symbol[]`・`symbol[0]`・`symbol[x]` を配列キー `symbol` として読み、
+// 後勝ちにする。`[` を `_` に畳むだけでは `symbol_]` になって掲載の `symbol` と衝突しない。
+test("W-5: PHP の配列記法は `[` の手前の名前で掲載名と照合する", () => {
+  const listed = "https://seller.example/quote?symbol=AAPL&user.id=1";
+  for (const variant of ["symbol[]", "symbol[0]", "symbol[x]", "SYMBOL[]", " Symbol [a][b]", "user_id[]", "USER ID[0]"]) {
+    const r = run({ [variant]: "TSLA", fresh: "ok" }, listed);
+    assert.deepEqual(r, { url: `${listed}&fresh=ok`, source: "declared", query: "fresh=ok" }, variant);
+  }
+  assert.equal(run({ "symbol[]": "TSLA" }, listed).source, "refused");
+});
+
+test("W-5: 宣言名どうしの一意判定は full fold のまま——filter[status] と filter[type] は両方通る", () => {
+  const r = run({ "filter[status]": "open", "filter[type]": "rule" });
+  assert.equal(r.source, "declared");
+  assert.deepEqual([...new URL(r.url).searchParams.entries()], [["filter[status]", "open"], ["filter[type]", "rule"]]);
+  // 掲載に `filter[status]` があるなら、`filter[…]` の宣言は掲載名 `filter[status]`（畳んで filter_status]）と
+  // 完全に同じ名前だけが衝突する。手前で切った `filter` は掲載に無いので `filter[type]` は足される。
+  const listed = "https://seller.example/rules?filter%5Bstatus%5D=open";
+  assert.deepEqual(run({ "filter[status]": "closed", "filter[type]": "rule" }, listed), {
+    url: `${listed}&filter%5Btype%5D=rule`,
+    source: "declared",
+    query: "filter%5Btype%5D=rule",
+  });
+});
+
+// 2026-09-20 再レビュー N-8: query（SHA-256 の元）の取り決め 5 条を固定する。
+test("N-8: query は足した対だけ・宣言のキー順・form-urlencoded（空白は +）・先頭の区切りなし", () => {
+  const listed = "https://seller.example/s?b=1";
+  const r = run({ z: "last first", B: "dropped", a: "x&y=z", "k e y": "あ" }, listed);
+  assert.equal(r.source, "declared");
+  assert.equal(r.query, "z=last+first&a=x%26y%3Dz&k+e+y=%E3%81%82");
+  assert.equal(r.url, `${listed}&${r.query}`);
 });
