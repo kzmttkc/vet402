@@ -26,22 +26,26 @@
 //                 NOT required: this measures whether the request was accepted, not who got paid.
 //   cutover       the attempted_at of the first row whose request_body is declared.
 //                 Derived from the CSV, not hard-coded.
+//   before        a paid row earlier than the cutover, earlier than 2026-09-17T00:00Z (the day the
+//                 declared body shipped) AND with a blank request_body. A row that
+//                 carries any request_body record was written after the declared body shipped,
+//                 whatever its timestamp says relative to the first declared row in this CSV, so
+//                 it is never "before".
+//   refuses       a CSV whose oldest row is on or after 2026-09-17, the day the declared body
+//                 shipped, holds no "before" at all. The script then prints no rate and exits 2
+//                 (a 90-day window stops reaching 2026-09-17 in mid-December 2026; widen --days).
 //   declared set  endpoints (resource_key) with at least one declared row.
-//                 before = their paid rows earlier than the cutover;
-//                 after  = their paid rows with request_body = declared.
+//                 before = their "before" rows; after = their rows with request_body = declared.
 //                 Only endpoints with at least one row on BOTH sides are paired.
-//   comparison    endpoints with no declared row at all, paid rows before vs. from the
-//                 cutover on. They got no new body, so their change is the background drift
+//   comparison    endpoints with no declared row at all, "before" rows vs. every other paid
+//                 row. They got no new body, so their change is the background drift
 //                 (catalog churn, seller outages) the declared set also lived through.
 //   emptyBody     the part of the comparison set that is closest to the declared set: endpoints
-//                 bought after the cutover with request_body = empty, i.e. a POST whose 402
+//                 bought with request_body = empty, i.e. a POST whose 402
 //                 declared no body, so vet402 still sent `{}`. after = their empty rows.
 //
-// What the CSV cannot tell you, so this cannot either:
-//   - Rows before 2026-09-17 carry no request_body. The methodology states every paid POST then
-//     carried `{}`; the row itself does not record the method, so "before" is "whatever vet402
-//     sent then", not a per-row proof of `{}`.
-//   - The export window is at most 366 days and 50,000 rows.
+// What this does NOT show is printed with every result (NOTES below): the declared set is a
+// selected group, "before" is not proven row by row, and the export window is bounded.
 // ============================================================
 import { readFileSync } from "node:fs";
 
@@ -53,6 +57,16 @@ const PAID_STATUSES = new Set([
   "settle_claimed_unverifiable",
   "settle_claim_refuted",
 ]);
+/** The day the declared body shipped (methodology §2). A CSV that starts on or after it has no "before". */
+const DECLARED_BODY_SHIPPED = "2026-09-17T00:00:00Z";
+
+/** Printed with every result, in --json (`notes`) and in the text output, word for word. */
+export const NOTES = [
+  "Selection: the declared set is selected, not sampled. It is the endpoints whose 402 declares a request body, that is, sellers that needed a body all along and mostly failed on the `{}` vet402 used to send. The change on that set measures how many of vet402's earlier failures were caused by vet402's own request; it is not the effect of declared bodies in general, and the comparison sets are different endpoints, not a control group.",
+  "Before: rows from before 2026-09-17 carry no request_body. The methodology states every paid POST then carried `{}`, but a row does not record its HTTP method, so \"before\" means whatever vet402 sent then; it is not proven row by row.",
+  "Window: the export holds at most 366 days and 50,000 rows, and endpoints leave and join the catalog, so the paired endpoints are the ones vet402 happened to buy on both sides of the change.",
+];
+
 const REQUIRED = ["attempted_at", "resource_key", "status", "http_status_paid", "held_reason", "request_body"];
 
 function args(argv) {
@@ -129,15 +143,23 @@ export function compute(csvText) {
     shape: r[col.request_body] ?? "",
   }));
 
+  const oldest = rows.reduce((min, r) => (r.at && r.at < min ? r.at : min), rows[0]?.at ?? "");
+  if (rows.length > 0 && oldest >= DECLARED_BODY_SHIPPED) {
+    return {
+      error:
+        `this CSV starts after the declared body shipped (oldest row ${oldest}, shipped ${DECLARED_BODY_SHIPPED}), ` +
+        "so it holds no purchase from before the change and there is nothing to compare; widen --days until the window reaches 2026-09-16",
+    };
+  }
   const declaredRows = rows.filter((r) => r.shape === "declared");
   if (declaredRows.length === 0) {
     return { error: "no declared row in this CSV, so there is no cutover and nothing to compare (not the same as a rate of zero)" };
   }
   const cutover = declaredRows.reduce((min, r) => (r.at < min ? r.at : min), declaredRows[0].at);
   const declaredKeys = new Set(declaredRows.map((r) => r.key));
-  const emptyKeys = new Set(rows.filter((r) => r.shape === "empty" && r.at >= cutover && !declaredKeys.has(r.key)).map((r) => r.key));
+  const emptyKeys = new Set(rows.filter((r) => r.shape === "empty" && !declaredKeys.has(r.key)).map((r) => r.key));
 
-  const excluded = { payerUnfunded: 0, noPaidRequest: 0, declaredSetOtherShapeAfterCutover: 0 };
+  const excluded = { payerUnfunded: 0, noPaidRequest: 0, declaredSetOtherBodyAfterShip: 0 };
   /** key -> { before, after } */
   const declared = new Map();
   const comparison = new Map();
@@ -155,7 +177,10 @@ export function compute(csvText) {
       excluded.payerUnfunded++;
       continue;
     }
-    const isBefore = r.at < cutover;
+    // "before" needs both: earlier than the first declared row, and no request_body record. A recorded
+    // row (declared / empty / none) was written after the declared body shipped by definition.
+    // A blank row on or after the ship date (a bodiless request before 2026-09-20) is not "before" either.
+    const isBefore = r.at < cutover && r.at < DECLARED_BODY_SHIPPED && r.shape === "";
     let side;
     if (declaredKeys.has(r.key)) {
       if (isBefore) side = slot(declared, r.key).before;
@@ -163,7 +188,7 @@ export function compute(csvText) {
       else {
         // The endpoint declared a body on another day but not on this one; this row is not a
         // declared-body purchase and would blur the comparison either way.
-        excluded.declaredSetOtherShapeAfterCutover++;
+        excluded.declaredSetOtherBodyAfterShip++;
         continue;
       }
     } else {
@@ -207,6 +232,7 @@ export function compute(csvText) {
     comparison: summarize(comparison),
     emptyBody: summarize(emptyBody),
     excluded,
+    notes: NOTES,
   };
 }
 
@@ -226,10 +252,10 @@ function render(out) {
     "\n" +
     line("Endpoints never bought with a declared body (background drift over the same dates)", out.comparison) +
     "\n" +
-    line("  of those, endpoints bought after the cutover with an empty body — a POST that declared none (after = empty rows only)", out.emptyBody) +
+    line("  of those, endpoints bought with an empty body — a POST that declared none (after = empty rows only)", out.emptyBody) +
     `\nleft out  ${out.excluded.payerUnfunded} payer_unfunded rows, ${out.excluded.noPaidRequest} rows with no paid request, ` +
-    `${out.excluded.declaredSetOtherShapeAfterCutover} rows of declared-set endpoints sent without a declared body after the cutover\n` +
-    `note      rows before 2026-09-17 carry no request_body; see the header of this script for what that limits.\n`
+    `${out.excluded.declaredSetOtherBodyAfterShip} rows of declared-set endpoints bought without a declared body after it shipped\n\n` +
+    out.notes.map((n) => `note  ${n}\n`).join("")
   );
 }
 

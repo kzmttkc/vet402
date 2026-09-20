@@ -119,6 +119,11 @@ test("列の説明: 足した列は openapi・methodology・llms.txt のどれ�
       assert.ok(text.includes(col), `${file} が列 ${col} を説明していない`);
     }
   }
+  // 「空セル」が何を指すかは openapi と methodology で逐語に揃える（レビュー N2: 片方だけ 1 種類欠けていた）。
+  const BLANK_MEANS = "rows before 2026-09-17, bodiless requests before 2026-09-20, and rows that ended before a paid request went out";
+  for (const file of ["docs/openapi.yaml", "src/app/observatory/methodology/page.tsx"]) {
+    assert.ok(read(file).replace(/\s+/g, " ").includes(BLANK_MEANS), `${file} の空セルの列挙が食い違っている`);
+  }
   // held_reason はもう末尾の列ではない。「最後の列」と書いた文が残っていないこと。
   assert.ok(!/last column,?\s*<code>held_reason/.test(read("src/app/observatory/methodology/page.tsx")));
   assert.ok(!read("src/app/corrections/page.tsx").includes("held_reason column at the end of"));
@@ -181,6 +186,73 @@ test("B: request_body 列の無い旧い export・declared が 1 行も無い ex
   const r2 = runScript(HEADER + "\n" + line({ at: "2026-09-10T00:00:00Z", key: "a.example/x", status: "settled", http: 200, tx: "0x1" }) + "\n");
   assert.equal(r2.status, 2);
   assert.match(r2.stderr, /declared/);
+});
+
+test("B（レビュー C1）: 切替後だけの CSV は数えずに止まる——『前 0% → 後 100%』を刷らない", () => {
+  // 独立レビューの実測そのまま: 4 行・全行 2026-09-19。以前は empty の 2 行が「前」に入り 0/2 → 2/2 と出た。
+  const rows: Row[] = [
+    { at: "2026-09-19T01:00:00Z", key: "a.example/x", status: "settle_failed", http: 400, shape: "empty", held: "unsettled_4xx" },
+    { at: "2026-09-19T02:00:00Z", key: "a.example/x", status: "settle_failed", http: 400, shape: "empty", held: "unsettled_4xx" },
+    { at: "2026-09-19T03:00:00Z", key: "a.example/x", status: "settled", http: 200, shape: "declared", tx: "0x1", src: "seller_claim" },
+    { at: "2026-09-19T04:00:00Z", key: "a.example/x", status: "settled", http: 200, shape: "declared", tx: "0x2", src: "seller_claim" },
+  ];
+  for (const extra of [[], ["--json"]] as string[][]) {
+    const dir = mkdtempSync(join(tmpdir(), "vet402-before-after-"));
+    const file = join(dir, "ledger.csv");
+    writeFileSync(file, [HEADER, ...rows.map(line)].join("\n") + "\n");
+    const res = spawnSync(process.execPath, [SCRIPT, "--file", file, ...extra], { encoding: "utf8" });
+    assert.equal(res.status, 2, res.stdout);
+    assert.equal(res.stdout, "", "率を 1 つも刷らない");
+    assert.match(res.stderr, /starts after the declared body shipped/);
+    assert.match(res.stderr, /--days/);
+  }
+});
+
+test("B（レビュー C1）: 『前』は記録の無い行だけ——記録のある行は、最初の declared 行より早くても『後』", () => {
+  const rows: Row[] = [
+    // 窓は出荷日より前から始まる（止まらない）
+    { at: "2026-09-10T00:00:00Z", key: "a.example/x", status: "settle_failed", http: 400, held: "unsettled_4xx" },
+    // この CSV の最初の declared 行（09-19）より早い empty / none の行。記録がある＝出荷後の行。
+    { at: "2026-09-18T00:00:00Z", key: "a.example/x", status: "settle_failed", http: 400, shape: "empty", held: "unsettled_4xx" },
+    { at: "2026-09-10T00:00:00Z", key: "e.example/p", status: "settled", http: 200, tx: "0x9", src: "seller_claim" },
+    { at: "2026-09-18T00:00:00Z", key: "e.example/p", status: "settle_failed", http: 400, shape: "empty", held: "unsettled_4xx" },
+    { at: "2026-09-19T00:00:00Z", key: "a.example/x", status: "settled", http: 200, shape: "declared", tx: "0x1", src: "seller_claim" },
+    // 出荷日以降の記録なしの行（2026-09-20 より前の GET）も「前」ではない。本番の CSV では、最初の declared 行の
+    // 57 秒前から同じバッチの GET が 18 行並んでいる（2026-09-20 実測）。f.example は「前」が無いので対にならない。
+    { at: "2026-09-17T00:00:04Z", key: "f.example/g", status: "settled", http: 200, tx: "0xa", src: "seller_claim" },
+    { at: "2026-09-18T05:00:00Z", key: "f.example/g", status: "settled", http: 200, tx: "0xb", src: "seller_claim" },
+  ];
+  const res = runScript([HEADER, ...rows.map(line)].join("\n") + "\n");
+  assert.equal(res.status, 0, res.stderr);
+  const out = JSON.parse(res.stdout);
+  assert.equal(out.comparison.endpointsWithoutBefore, 1, "f.example の 2 行はどちらも『後』");
+  // a.example: 前は 09-10 の 1 行だけ。09-18 の empty は「前」に入らず、declared でもないので外れる。
+  assert.deepEqual(out.declared.paired, { endpoints: 1, before: { paid: 1, http2xx: 0 }, after: { paid: 1, http2xx: 1 } });
+  assert.equal(out.excluded.declaredSetOtherBodyAfterShip, 1);
+  // e.example: 09-18 の empty は「後」。以前の規則（at < cutover）なら前 2 行・後 0 行で対にならなかった。
+  assert.deepEqual(out.comparison.paired, { endpoints: 1, before: { paid: 1, http2xx: 1 }, after: { paid: 1, http2xx: 0 } });
+  assert.deepEqual(out.emptyBody.paired, { endpoints: 1, before: { paid: 1, http2xx: 1 }, after: { paid: 1, http2xx: 0 } });
+});
+
+test("B（レビュー W1）: 注記は compute の戻り値にあり、--json と人間向けの出力で同じ文言", () => {
+  const rows: Row[] = [
+    { at: "2026-09-10T00:00:00Z", key: "a.example/x", status: "settle_failed", http: 400, held: "unsettled_4xx" },
+    { at: "2026-09-18T00:00:00Z", key: "a.example/x", status: "settled", http: 200, shape: "declared", tx: "0x1", src: "seller_claim" },
+  ];
+  const csv = [HEADER, ...rows.map(line)].join("\n") + "\n";
+  const json = runScript(csv);
+  assert.equal(json.status, 0, json.stderr);
+  const notes: string[] = JSON.parse(json.stdout).notes;
+  assert.ok(Array.isArray(notes) && notes.length >= 3);
+  assert.ok(notes.some((n) => /selected|selection/i.test(n) && /not the effect of declared bodies in general/i.test(n)), "選択バイアス");
+  assert.ok(notes.some((n) => /2026-09-17/.test(n) && /row/i.test(n)), "『前』を行ごとには証明できない");
+  assert.ok(notes.some((n) => /366 days/.test(n) && /50,000 rows/.test(n)), "窓の上限");
+  const dir = mkdtempSync(join(tmpdir(), "vet402-before-after-"));
+  const file = join(dir, "ledger.csv");
+  writeFileSync(file, csv);
+  const human = spawnSync(process.execPath, [SCRIPT, "--file", file], { encoding: "utf8" });
+  assert.equal(human.status, 0, human.stderr);
+  for (const n of notes) assert.ok(human.stdout.includes(n), `人間向けの出力に注記が無い: ${n.slice(0, 60)}…`);
 });
 
 test("B: 引用符つきのセル（resource_key にカンマ）を 1 セルとして読む", () => {

@@ -921,7 +921,8 @@ paths:
         - `request_body` — what the paid request carried: `declared` (the body
           the seller's own 402 declares in `extensions.bazaar.info.input.body`,
           sent unedited; since 2026-09-17), `empty` (`{}`), `none` (a request
-          sent with no body; recorded since 2026-09-20). Blank means the row
+          formed with no body, whether or not it reached the seller; recorded
+          since 2026-09-20). Blank means the row
           holds no record: rows before 2026-09-17, bodiless requests before
           2026-09-20, and rows that ended before a paid request went out.
           Blank is not `empty`. The row does not record the HTTP method, so

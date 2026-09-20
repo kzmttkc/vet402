@@ -264,10 +264,10 @@ export default async function ObservatoryMethodologyPage() {
           <code>requestBody: empty</code>. Before that date every paid{" "}
           <code>POST</code> carried <code>{"{}"}</code>, declaration or not. The ledger export
           carries that record as the column <code>request_body</code>: <code>declared</code>,{" "}
-          <code>empty</code>, or <code>none</code> for a paid request sent with no body, which
-          rows record from 2026-09-20. A blank cell means the row holds no record — rows from
-          before 2026-09-17, and rows that ended before a paid request went out — and is not
-          the same as <code>empty</code>. From 2026-09-20 a <code>declared</code> row also
+          <code>empty</code>, or <code>none</code> for a paid request formed with no body, which
+          rows record from 2026-09-20. A blank cell means the row holds no record — rows
+          before 2026-09-17, bodiless requests before 2026-09-20, and rows that ended before a
+          paid request went out — and is not the same as <code>empty</code>. From 2026-09-20 a <code>declared</code> row also
           carries <code>request_body_sha256</code>, the SHA-256 of the exact bytes we sent. We
           do not republish the body: it is the seller&apos;s text, and the seller&apos;s own{" "}
           <code>402</code> shows it to anyone who asks. So when a paid request comes back{" "}
