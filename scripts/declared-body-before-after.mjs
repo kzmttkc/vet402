@@ -34,6 +34,9 @@
 //   refuses       a CSV whose oldest row is on or after 2026-09-17, the day the declared body
 //                 shipped, holds no "before" at all. The script then prints no rate and exits 2
 //                 (a 90-day window stops reaching 2026-09-17 in mid-December 2026; widen --days).
+//                 A row whose attempted_at is not an ISO UTC timestamp stops the run the same way:
+//                 every comparison here is a string comparison of timestamps, and a blank one
+//                 would sort before everything and pass as "before".
 //   declared set  endpoints (resource_key) with at least one declared row.
 //                 before = their "before" rows; after = their rows with request_body = declared.
 //                 Only endpoints with at least one row on BOTH sides are paired.
@@ -57,15 +60,25 @@ const PAID_STATUSES = new Set([
   "settle_claimed_unverifiable",
   "settle_claim_refuted",
 ]);
-/** The day the declared body shipped (methodology §2). A CSV that starts on or after it has no "before". */
+/**
+ * The day the declared body shipped (methodology §2). A CSV that starts on or after it has no "before".
+ * The actual deploy landed between 2026-09-16T18:02Z and 2026-09-17T00:00Z; this constant rounds it to the
+ * day boundary, the conservative side (a post-deploy row from those hours can only land in "before").
+ */
 const DECLARED_BODY_SHIPPED = "2026-09-17T00:00:00Z";
 
 /** Printed with every result, in --json (`notes`) and in the text output, word for word. */
 export const NOTES = [
-  "Selection: the declared set is selected, not sampled. It is the endpoints whose 402 declares a request body, that is, sellers that needed a body all along and mostly failed on the `{}` vet402 used to send. The change on that set measures how many of vet402's earlier failures were caused by vet402's own request; it is not the effect of declared bodies in general, and the comparison sets are different endpoints, not a control group.",
+  "Selection: the declared set is selected, not sampled. It is the endpoints whose 402 declares a request body, that is, sellers whose 402 declares one. The change on that set is at most how many of vet402's earlier failures were caused by vet402's own request (the two sides are also different dates); it is not the effect of declared bodies in general, and the comparison sets are different endpoints, not a control group.",
   "Before: rows from before 2026-09-17 carry no request_body. The methodology states every paid POST then carried `{}`, but a row does not record its HTTP method, so \"before\" means whatever vet402 sent then; it is not proven row by row.",
+  "No answer: a paid row whose http_status_paid is blank (a timeout or a failed connection) stays in the denominator as not-2xx, so a network failure on vet402's side and a seller's refusal count as the same failure here.",
   "Window: the export holds at most 366 days and 50,000 rows, and endpoints leave and join the catalog, so the paired endpoints are the ones vet402 happened to buy on both sides of the change.",
 ];
+
+/** attempted_at as the export writes it (UTC, seconds; a fraction is tolerated). */
+const ISO_UTC_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
+/** The export's row cap. A file cannot carry the x-vet402-truncated header, so the count is the only sign. */
+const EXPORT_MAX_ROWS = 50_000;
 
 const REQUIRED = ["attempted_at", "resource_key", "status", "http_status_paid", "held_reason", "request_body"];
 
@@ -143,6 +156,12 @@ export function compute(csvText) {
     shape: r[col.request_body] ?? "",
   }));
 
+  // Every comparison below is a string comparison of ISO timestamps. One row without a timestamp would
+  // sort before everything: it would slip past the ship-date check and be counted as "before".
+  const badAt = rows.findIndex((r) => !ISO_UTC_RE.test(r.at ?? ""));
+  if (badAt !== -1) {
+    return { error: `a row has no attempted_at (data row ${badAt + 1}: ${JSON.stringify(rows[badAt].at ?? "")}) — this is not an export.csv` };
+  }
   const oldest = rows.reduce((min, r) => (r.at && r.at < min ? r.at : min), rows[0]?.at ?? "");
   if (rows.length > 0 && oldest >= DECLARED_BODY_SHIPPED) {
     return {
@@ -281,6 +300,9 @@ async function main() {
   }
   const out = compute(text);
   if (out.error) fail(out.error);
+  if (out.rows === EXPORT_MAX_ROWS) {
+    process.stderr.write("note: this CSV has exactly 50,000 rows, the export's cap — it was probably truncated and the newest rows are missing; narrow --days\n");
+  }
   out.source = source;
   process.stdout.write(a.json ? `${JSON.stringify(out, null, 2)}\n` : render(out));
 }

@@ -234,6 +234,34 @@ test("B（レビュー C1）: 『前』は記録の無い行だけ——記録�
   assert.deepEqual(out.emptyBody.paired, { endpoints: 1, before: { paid: 1, http2xx: 1 }, after: { paid: 1, http2xx: 0 } });
 });
 
+test("B（再レビュー W1）: attempted_at が ISO の日時でない行が 1 つでもあれば数えずに止まる——C1 の関門を素通りさせない", () => {
+  // 再レビューの実測: 切替後だけの CSV の先頭に attempted_at が空の行を足すと、最古の行が "" になって
+  // 「出荷日より後に始まる CSV」の関門が false で抜け、exit 0 で before 0/1 → after 1/1 を刷った。
+  const after: Row[] = [
+    { at: "2026-09-19T03:00:00Z", key: "a.example/x", status: "settled", http: 200, shape: "declared", tx: "0x1", src: "seller_claim" },
+  ];
+  for (const bad of ["", "yesterday", "2026-09-10", "2026-09-10 00:00:00"]) {
+    const rows: Row[] = [{ at: bad, key: "a.example/x", status: "settle_failed", http: 400, held: "unsettled_4xx" }, ...after];
+    const res = runScript([HEADER, ...rows.map(line)].join("\n") + "\n");
+    assert.equal(res.status, 2, `attempted_at=${JSON.stringify(bad)}: ${res.stdout}`);
+    assert.equal(res.stdout, "");
+    assert.match(res.stderr, /has no attempted_at/);
+    assert.match(res.stderr, /not an export\.csv/);
+  }
+});
+
+test("B（再レビュー N1）: ちょうど 50,000 行の CSV は打ち切りの可能性を stderr に出す（--file では応答ヘッダを見られない）", () => {
+  const body: string[] = [line({ at: "2026-09-10T00:00:00Z", key: "a.example/x", status: "settle_failed", http: 400, held: "unsettled_4xx" })];
+  const filler = line({ at: "2026-09-18T00:00:00Z", key: "a.example/x", status: "settled", http: 200, shape: "declared", src: "seller_claim" });
+  while (body.length < 50_000) body.push(filler);
+  const full = runScript([HEADER, ...body].join("\n") + "\n");
+  assert.equal(full.status, 0, full.stderr);
+  assert.match(full.stderr, /exactly 50,000 rows/);
+  const short = runScript([HEADER, ...body.slice(0, 49_999)].join("\n") + "\n");
+  assert.equal(short.status, 0, short.stderr);
+  assert.doesNotMatch(short.stderr, /50,000 rows/);
+});
+
 test("B（レビュー W1）: 注記は compute の戻り値にあり、--json と人間向けの出力で同じ文言", () => {
   const rows: Row[] = [
     { at: "2026-09-10T00:00:00Z", key: "a.example/x", status: "settle_failed", http: 400, held: "unsettled_4xx" },
@@ -247,6 +275,12 @@ test("B（レビュー W1）: 注記は compute の戻り値にあり、--json �
   assert.ok(notes.some((n) => /selected|selection/i.test(n) && /not the effect of declared bodies in general/i.test(n)), "選択バイアス");
   assert.ok(notes.some((n) => /2026-09-17/.test(n) && /row/i.test(n)), "『前』を行ごとには証明できない");
   assert.ok(notes.some((n) => /366 days/.test(n) && /50,000 rows/.test(n)), "窓の上限");
+  // 再レビュー: この run で測っていないことを固定文で言わない。上限は上限と書く。応答なしの行の扱いを言う。
+  const all = notes.join(" ");
+  assert.doesNotMatch(all, /needed a body all along|mostly failed/);
+  assert.doesNotMatch(all, /\bmeasures how many\b/);
+  assert.match(all, /is at most how many/);
+  assert.ok(notes.some((n) => /http_status_paid/.test(n) && /blank/i.test(n) && /timeout|timed out/i.test(n)), "応答なしの行");
   const dir = mkdtempSync(join(tmpdir(), "vet402-before-after-"));
   const file = join(dir, "ledger.csv");
   writeFileSync(file, csv);
