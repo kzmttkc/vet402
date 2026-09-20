@@ -538,7 +538,8 @@ const DETECTION_FLOOR: Record<string, number> = {
   "src/app/leaderboard/page.tsx": 5,
   "src/app/legal/privacy/page.tsx": 8,
   "src/app/legal/terms/page.tsx": 14,
-  "src/app/observatory/methodology/page.tsx": 41,
+  // 2026-09-20: 41 -> 42. The "Who named the transaction" paragraph added one detected sentence ("only when that row is its single candidate").
+  "src/app/observatory/methodology/page.tsx": 42,
   "src/app/observatory/page.tsx": 8,
   "src/app/observatory/state/page.tsx": 14,
   "src/app/operator-log/page.tsx": 7,

@@ -60,6 +60,7 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
   - **N1** `settlement_source` の規則の穴（`lateSettlement` に `replacedTxHash` があって `txHash` が無い行＝旧い回収で売り手の原文へ戻った行が `vet402_index` と出る形）は、**依頼元が 2026-09-20 に本番で 0 件を確認**。対応不要。
   - **N2** methodology §2 の「空セル」の列挙に「2026-09-20 より前の本文なしの要求」が抜けていた。openapi と逐語で揃え、テストで固定。**N4** `none` の説明の "sent" を "formed" に（送れていない行にも載るため）。**N5** 上の A-2 を実態に合わせた。
   - **再レビュー（SHIP）の宿題を 3 本目で反映**: ① `attempted_at` が ISO の日時でない行が 1 つでもあれば数えずに exit 2（空の 1 行で最古の行が `""` になり、上の②の関門が false で抜けて `before 0/1 → after 1/1` を刷った・再レビューの実測。本物の export では起きないが `--file` は手元の CSV を受ける）。② notes の言い過ぎ 2 箇所——「本文を要る売り手で `{}` では大半が落ちていた」はその run で測っていない固定文なので「402 が本文を宣言している売り手」までで切り、「measures how many」は時期の交絡が残るので「is at most how many」（上限）に。③ note を 1 つ追加——`http_status_paid` が空の行（タイムアウト・接続失敗）は 2xx でない側として分母に残り、vet402 側の通信失敗と売り手の拒否が同じ失敗に混ざる。④ 行数がちょうど 50,000 のとき stderr に打ち切りの可能性を 1 行（`--file` では応答ヘッダを見られない）。⑤ 出荷日の定数に「実デプロイは 09-16T18:02Z〜09-17T00:00Z の間・日境界に丸めた保守値」。
+  - **origin/main（`7e95cc7`・LP の「5. Chains」節）へ載せ替え**: 衝突はこのファイルだけで、両方のエントリを残した。`reader.ts` は自動マージで main 側の変更は 1 行も落ちていない（`git diff origin/main` の削除行は自分の `withSettledTier` の 3 行だけ）。主張の関門の床は載せ替え後に 16 面すべて測り直し、**下がった面は 0**。methodology だけ自分の追記で 41 → 42 に上がったので、床を 42 に上げた（下げる更新は無い）。
 
 - **残る懸念**: ① 前後比較の「前」は行ごとに `{}` を証明できない（方法論 §2 の記述に依る。スクリプトの冒頭と出力の note に明記）。② `vet402_index` の行が `settled` になる前（`settle_claimed` の間）も export では `vet402_index` と出る——status 列と併読すれば区別できるが、`l1.settledLateLinked` は settled だけを数える。③ claims のカナリア `l1.settledLateLinked >= 1` はデプロイが終わるまで本番に鍵が無く赤になる。
 
