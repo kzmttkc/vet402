@@ -946,16 +946,24 @@ paths:
           URL as declared), `empty` (the seller declared none), `refused` (a
           declaration was there and vet402's own rules did not use it — a
           non-scalar value, an empty name, over the caps, declared names that
-          collide once folded, a collision with a name the listed URL already
-          carries, or a host or path that would move). Recorded since
-          2026-09-21 on the networks named in vet402's per-network allow-list;
-          the paid request's URL and the row are unchanged on every other
-          network. Blank means the row holds no record: a row on a network the
+          collide once folded, a host or path that would move, or a collision
+          with names the listed URL already carries that left nothing to
+          append). A declared name the listed URL already carries is dropped
+          on its own: the listing's query stands and the declaration's other
+          pairs are still appended, so that row is `declared` and the hash
+          below says what went out. The label has been recorded on the row
+          since 2026-09-20 and published as this column since 2026-09-21, on
+          the networks named in vet402's per-network allow-list; the paid
+          request's URL and the row are unchanged on every other network.
+          Blank means the row holds no record: a row on a network the
           allow-list does not name, a Tempo (MPP) row, a row that ended before
-          a paid request went out, and rows before 2026-09-20. The column does
-          not separate those four from one another, and blank is not `empty`.
-          Older rows are not back-filled. To read where this has been in
-          effect, group the `declared` rows by `network`.
+          a paid request went out, and rows before 2026-09-20. The column
+          alone does not separate those four from one another, and blank is
+          not `empty`. Older rows are not back-filled. Within the window the
+          response covers, the rows whose `request_query` is not blank are the
+          networks this has been in effect on, and the `declared` ones are
+          where pairs were actually appended; a network can be on the
+          allow-list and carry nothing but `empty` and `refused`.
         - `request_query_sha256` — on `declared` rows, the lowercase hex
           SHA-256 of the appended pairs written as one form-urlencoded string:
           the appended pairs alone (neither the query the listed URL already
@@ -963,10 +971,11 @@ paths:
           declaration's own key order (integer-like names first, ascending, by
           the JavaScript rule), `application/x-www-form-urlencoded` so a space
           is `+`, `&` between pairs and `=` between name and value, and no
-          leading `?` or `&`. The query string itself is not republished; it is
-          the seller's declaration and the seller's 402 serves it to anyone, so
-          the hash supports matching (two rows, or a fresh 402) rather than
-          recovering what was sent. Blank otherwise.
+          leading `?` or `&`. The query string itself is not republished: the
+          names and values are the seller's own, and the 402 that answered
+          vet402's unpaid request is where they were read from. The hash is
+          for matching (two rows, or a fresh 402), not a way of hiding a short
+          declared query. Blank otherwise.
 
         `scripts/declared-body-before-after.mjs` recomputes, from this CSV
         alone, the paid 2xx rate of the same endpoints before and after the

@@ -1376,10 +1376,10 @@ claims:
   # 公開面はチェーン名を持たない。だから「XRPL だけ」という主張は登録簿にも無い。
   - id: methodology_paid_query_from_declaration
     surface: src/app/observatory/methodology/page.tsx
-    quote: "the paid request appends those declared names and values to the listed URL as the seller wrote them"
-    means: "402 が extensions.bazaar.info.input.queryParams を宣言していれば、許可リストに載った network の支払い付き要求は、その名前と値を掲載 URL の後ろに宣言のまま足す（値は文字列・有限の数・真偽値だけ）。読むのは支払い条件を取ったのと同じ文書だけ"
+    quote: "the paid request appends to the listed URL those declared names the URL does not already carry, with the values the seller wrote"
+    means: "402 が extensions.bazaar.info.input.queryParams を宣言していれば、許可リストに載った network の支払い付き要求は、掲載 URL に無い宣言名だけを、値を書き換えずに後ろへ足す（値は文字列・有限の数・真偽値だけ）。読むのは支払い条件を取ったのと同じ文書だけ"
     check: null
-    why_unverifiable: "送った URL は公開 GET に出ない（有料リクエストの中身は公開しない）。規則は src/lib/observatory/declared-input.ts が正典で、tests/l1-declared-input-query.test.ts が組み立てを、tests/l1-declared-query.pg.test.ts が実 DB で「許可リストにある network の支払い付き要求にだけ付く」を固定する"
+    why_unverifiable: "送った URL は公開 GET に出ない（有料リクエストの中身は公開しない）。規則は src/lib/observatory/declared-input.ts が正典で、tests/l1-declared-input-query.test.ts の「ヘッダの宣言（名前 → 文字列）は URL のクエリになる。値は宣言のまま」と「カタログの URL に既にある名前は上書きしない。既存のクエリは 1 文字も書き換えない」が組み立てを、tests/l1-declared-query.pg.test.ts が実 DB で「許可リストにある network の支払い付き要求にだけ付く」を固定する"
     verified_at: 2026-09-21
   - id: methodology_paid_query_values_are_not_invented
     surface: src/app/observatory/methodology/page.tsx
@@ -1391,27 +1391,34 @@ claims:
   - id: methodology_paid_query_partial_declaration_is_unused
     surface: src/app/observatory/methodology/page.tsx
     quote: "any one of these and the declaration goes unused whole"
-    means: "スカラーでない値・空の名前・上限超（名前の数・足すクエリのバイト数・URL 全体のバイト数は declared-input.ts の定数）・宣言名どうしの畳み込み衝突・掲載名との衝突・ホストや経路が動く場合、宣言の一部だけを送らず宣言ごと使わない。名前の比較は畳んでから（掲載名との照合だけ `[` の手前で切った形も当てる）"
+    means: "スカラーでない値・空の名前・上限超（名前の数・足すクエリのバイト数・URL 全体のバイト数は declared-input.ts の定数）・宣言名どうしの畳み込み衝突・ホストや経路が動く場合は、一部だけ送らず宣言ごと使わない（refused）。**掲載名との衝突はここに含めない**——衝突した名前だけ落として残りは送る（下の methodology_paid_query_listing_name_wins）。名前の比較は畳んでから"
     check: null
-    why_unverifiable: "要求の組み立ての規則で、公開 GET に値として出ない。tests/l1-declared-input-query.test.ts が各条件を 1 本ずつ固定し（スカラーでない値・空の名前・上限 3 種・W-1 の畳み込み衝突・W-5 の PHP 配列記法・N-1 の onlyQueryAdded）、上限の数字は src/lib/observatory/declared-input.ts の定数から描画している"
+    why_unverifiable: "要求の組み立ての規則で、公開 GET に値として出ない。tests/l1-declared-input-query.test.ts が各条件を 1 本ずつ固定する（「スカラーでない値・空の名前が 1 つでもあれば宣言ごと使わない（一部だけ送らない）」「上限: 名前の数・クエリのバイト数・URL 全体のバイト数。超えたら宣言ごと使わない」「W-1: 宣言の名前どうしが畳んだ後に衝突するなら宣言ごと使わない」「N-1: 足したのがクエリだけでなければ使わない（origin・経路・認証情報）」）。上限の数字は src/lib/observatory/declared-input.ts の定数から描画している"
+    verified_at: 2026-09-21
+  - id: methodology_paid_query_listing_name_wins
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "that one name is dropped and the declaration"
+    means: "掲載 URL が既に持つ名前と衝突した宣言名は、その名前だけを落として残りの対は足す（掲載の query が優先。既存のクエリ文字列は書き換えない）。足すものが 1 つも残らなかったときだけ refused。だから一部が落ちた行も declared として公開され、何を足したかは request_query_sha256 が示す"
+    check: null
+    why_unverifiable: "行ごとの組み立てで公開 GET に値として出ない。tests/l1-declared-input-query.test.ts の「カタログの URL に既にある名前は上書きしない。既存のクエリは 1 文字も書き換えない」（`{exchange,at}` が掲載 `?exchange=LSE` に当たって `&at=now` だけ足り、`{exchange}` だけなら refused）と「N-7: ラベルは 3 つ」の最後の 1 行（一部が衝突して落ちても、足したものがあれば declared）が固定する"
     verified_at: 2026-09-21
   - id: methodology_paid_query_page_names_no_chain
     surface: src/app/observatory/methodology/page.tsx
     quote: "This page names no chain because the ledger already does"
-    means: "有効な範囲は許可リスト（OBSERVATORY_L1_DECLARED_QUERY_NETWORKS・CAIP-2 の完全一致・未設定と空は全 OFF）で決まるので公開面はチェーン名を持たない。読者は export.csv の request_query が declared の行の network を数えれば、現に効いている範囲を自分で読める"
+    means: "有効な範囲は許可リスト（OBSERVATORY_L1_DECLARED_QUERY_NETWORKS・CAIP-2 の完全一致・未設定と空は全 OFF）で決まるので公開面はチェーン名を持たない。読者は export.csv の request_query が**空でない**行の network を見れば効いている範囲を、declared の行を見れば実際に対を足した範囲を、窓の中で自分で読める（許可リストに載っていても宣言する売り手が居なければ empty / refused しか立たない）"
     check: null
     why_unverifiable: "env の値と台帳の行に依るので、公開 GET の 1 値に `path op literal` で当てられない（export は CSV でカナリアが読めない）。列は src/lib/observatory/export-columns.ts が正典で tests/export-request-query.test.ts が固定し、許可リストに無いあいだ行に何も付かないことは tests/l1-declared-query.pg.test.ts の 1 本目、Tempo が対象外であることは tests/l1-tempo-mpp.pg.test.ts が実 DB で固定する"
     verified_at: 2026-09-21
   - id: methodology_paid_query_hash_is_for_matching_only
     surface: src/app/observatory/methodology/page.tsx
-    quote: "What that hash supports is matching, not reading"
-    means: "requestQuerySha256 は「先頭の区切りを除いた、足した対だけの form-urlencoded 文字列」の SHA-256。文字列そのものも 402 の宣言も行に保存しないので、行だけ持つ読者は何を送ったかを復元できない（できるのは 2 行の照合と、402 を取り直したときの一致）"
+    quote: "It is not a way of hiding the query"
+    means: "requestQuerySha256 は「先頭の区切りを除いた、足した対だけの form-urlencoded 文字列」の SHA-256。行に残るのは hash だけで文字列は持たない。用途は照合（2 行が同じ要求か・402 を取り直して同じか）であって、**秘匿ではない**——名前も値も売り手が公開の 402 で宣言した短い語なので、総当りで復元されうる（2026-09-21 独立レビューが候補 900 個で 2 対を復元）。不可能性は主張しない"
     check: null
-    why_unverifiable: "保存していないことは公開 GET に出ない（出たら保存していることになる）。ハッシュの元の取り決め 5 条は src/lib/observatory/declared-input.ts の DeclaredRequestUrl に逐語で置き、tests/l1-declared-input-query.test.ts の N-8 が並び順・符号化・先頭の区切りなしを、tests/l1-declared-query.pg.test.ts が行に入る値そのものを固定する"
+    why_unverifiable: "hash の取り決めは公開 GET の 1 値に `path op literal` で当てられない。取り決め 5 条は src/lib/observatory/declared-input.ts の DeclaredRequestUrl に逐語で置き、tests/l1-declared-input-query.test.ts の N-8 が並び順・符号化・先頭の区切りなしを、tests/l1-declared-query.pg.test.ts が行に入る値そのものを固定する"
     verified_at: 2026-09-21
   - id: export_request_query_blank_is_not_a_label
     surface: src/app/observatory/methodology/page.tsx
-    quote: "and the column does not separate those from one another"
+    quote: "and the column alone does not separate those from one another"
     means: "export.csv の request_query は declared / empty / refused。空は「記録なし」で、empty にも refused にも倒さない。空になるのは 4 つ（許可リストに無い network の行・Tempo の行・有料の要求を出していない行・2026-09-20 より前の行）で、**列だけではその 4 つを区別できない**。過去の行は遡って埋めない"
     check: null
     why_unverifiable: "CSV の行ごとの値で、カナリアの式（JSON の `path op literal`）で当てられない。分類は tests/export-request-query.test.ts、SQL と JS の一致と export の実出力は tests/export-request-body.pg.test.ts が実 DB で固定し、空セルの列挙が openapi と methodology で逐語に揃っていることは tests/export-request-body.test.ts が当てる"

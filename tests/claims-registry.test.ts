@@ -539,7 +539,8 @@ const DETECTION_FLOOR: Record<string, number> = {
   "src/app/legal/privacy/page.tsx": 8,
   "src/app/legal/terms/page.tsx": 14,
   // 2026-09-20: 41 -> 42. The "Who named the transaction" paragraph added one detected sentence ("only when that row is its single candidate").
-  "src/app/observatory/methodology/page.tsx": 42,
+  // 2026-09-21: 42 -> 43. The declared-query paragraphs added one ("a window with no such row at all means it has not run on any network yet").
+  "src/app/observatory/methodology/page.tsx": 43,
   "src/app/observatory/page.tsx": 8,
   "src/app/observatory/state/page.tsx": 14,
   "src/app/operator-log/page.tsx": 7,

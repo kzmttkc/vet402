@@ -153,17 +153,26 @@ test("列の説明: 「列に無い」と書いた文は、その列が在るあ
   // 同じ日に列を足したとき、この関門は**実際に赤くなった**（"export に request_query 列が入った。
   // methodology の「列に無い」の文を、列の説明に書き替えること"）。文はそれを見てから書き替えた。
   // 逆向き（列を消して文を戻す）も同じ 1 本で見る。
-  const NOT_A_COLUMN = "is not among the columns of the ledger export";
+  //
+  // 2026-09-21 独立レビュー Note: 鍵を英文 1 句にすると、別の言い回しで「列に無い」と書けば
+  // 緑のまま通る。だから ①「列に無い」系の言い回しを**正規表現で**落とし、②列が在るほうは
+  // 「列名＋空セルの列挙」が面に在ることを要求する（言い換えでは満たせない対応に寄せる）。
+  const ABSENT_CLAIM = /not (?:among|one of|in|listed among) the columns|not published beside the rows/;
+  const BLANK_LIST = "a row on a network the allow-list does not name";
   const methodology = read("src/app/observatory/methodology/page.tsx").replace(/\s+/g, " ");
   const hasQueryColumn = (EXPORT_CSV_COLUMNS as readonly string[]).includes("request_query");
   if (hasQueryColumn) {
     assert.ok(
-      !methodology.includes(NOT_A_COLUMN),
+      !ABSENT_CLAIM.test(methodology),
       "export に request_query 列が在る。methodology の「列に無い」の文は、列の説明に書き替えること",
+    );
+    assert.ok(
+      methodology.includes("<code>request_query</code>") && methodology.includes(BLANK_LIST),
+      "列が在るなら methodology は列名で指し、空セルが何を意味するかを列挙すること",
     );
   } else {
     assert.ok(
-      methodology.includes(NOT_A_COLUMN),
+      ABSENT_CLAIM.test(methodology),
       "request_query 列を外したなら、methodology は「列に無い」と書き戻すこと（読者が数えられない事実を隠さない）",
     );
   }

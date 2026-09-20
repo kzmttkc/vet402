@@ -13,6 +13,18 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-21 JST（3）— 独立レビュー BLOCK（Critical 2）を反映。公開面が実装より強く言っていた 2 箇所を訂正（同ブランチ 3 コミット目・文書だけ・push は依頼元）
+
+- **C1 「掲載名と衝突したら宣言ごと使わない」は嘘だった**。実装（`declared-input.ts:205` の `continue`）は衝突した名前だけ落として**残りを送り、行を `declared` と書く**。refused になるのは足すものが 0 になったときだけ（`:209`）。レビュアーの実測: 掲載 `?exchange=LSE` に `{EXCHANGE:"NYSE", at:"now", mark:true}` → `?exchange=LSE&at=now&mark=true` / `declared`。`tests/l1-declared-input-query.test.ts` が最初からそう固定していた。内部の正典（`request-query.ts`・`declared-input.ts:127`）は正しく、**公開面だけが一般化して嘘になっていた**。methodology・openapi・llms.txt・claims.yaml の 4 面を「衝突した名前だけ落ちて残りは送る／足すものが残らなければ宣言ごと使わない」に分けた。冒頭の 1 文も「掲載 URL に無い宣言名だけを足す」に狭めた（旧い言い方は衝突分も送ると読めた）。
+- **C2 「cannot recover what was sent」は実装が保証していない**。レビュアーが候補 900 個の総当りで 2 対（`mark=true&exchange=NYSE`）を復元した。名前も値も売り手の公開 402 由来の短い語なので、ハッシュは何も隠していない。不可能性の主張を削り、本文側（`request-body.ts`）と同じ「行は文字列を持たない・読むなら 402」に揃えた。あわせて「the seller's 402 shows it to anyone who asks」（全数未測）を「the `402` that answered our unpaid request」に狭めた。
+- **W1** 「`declared` の行の network を読め」は有効範囲を過小に言っていた（宣言する売り手が居なければ ON でも 0 行）。→「空でない行の network が効いている範囲、`declared` が実際に足した範囲、1 行も無ければどの network でも動いていない。許可リストに載っていても `empty` / `refused` だけのことがある」を足した。**W2** ハッシュ再計算に「整数に見える名前は先頭に昇順（JS の規則）」を methodology にも足した（openapi と `declared-input.ts` にはあった。落ちていると第三者が不一致のハッシュを得て「宣言が変わった」と誤読する）。**W3** openapi の日付の食い違いを「行に記録し始めたのが 2026-09-20、列として公開したのが 2026-09-21」に。**W4** 「within the window the export returns」を足した（既定 90 日・最大 366 日・50,000 行で打ち切り）。**Note** 「列だけでは区別できない」→「the column **alone**」。
+- **関門の穴も塞いだ（Note）**: 逆向きの関門が英文 1 句を鍵にしていたので、①「列に無い」系の言い回しを正規表現で落とす ②列が在るときは「列名 + 空セルの列挙」が面に在ることを要求する、の 2 本立てにした。言い換えでは満たせない対応に寄せた。
+- **`docs/claims.yaml` は 7 → 8 件**。`methodology_paid_query_listing_name_wins` を**新規登録**（掲載名と衝突した名前だけ落として残りは送る・足すものが残らなければ refused・一部が落ちた行も declared として公開される）。`..._partial_declaration_is_unused` の means から掲載名との衝突を外し、**根拠も差し替えた**——旧い `why_unverifiable` は W-5・N-1 を挙げていたが、そのテストは means の逆（衝突しても残りを送る）を証明していた。`..._from_declaration` は引用と means を狭め、根拠を「カタログの URL に既にある名前は上書きしない」のテストに。`..._hash_is_for_matching_only` の means から「復元できない」を外し、総当りで復元されうることを明記。`..._page_names_no_chain` の means を W1 に追随。
+- **床は 42 → 43**（上げ方向のみ）。新しい 1 文「a window with no such row at all means it has not run on any network yet」の `at all` が検出に入る（allow_phrases に理由付きで既にある慣用句なので孤児にはならない）。
+- **ゲート**: judge-check 11/11 exit 0・`refresh-numbers --check` OK・typecheck 0・lint 0 error・`npm test` fail 0（root 1,894 pass）・`test:db` fail 0・**pg の skip 0**・`next build` exit 0・`claims:canary` 60/60 true・0 false・a11y 8/8（dev 4800）。実装（`declared-input.ts` / `l1-runner.ts` / `request-query.ts` / route）は 1 文字も変えていない。
+
+---
+
 ## 2026-09-21 JST（2）— 公開 export に `request_query` / `request_query_sha256` の 2 列。方法論を「台帳から読める」形へ書き替え（同ブランチ 2 コミット目・push と独立レビューは依頼元）
 
 - **方針変更（依頼元）**: 1 コミット目で報告した食い違い——ラベルが `raw_response_meta` にしか無く、読者はどのチェーンで効いているか数えられなかった——を受けて、**列を足してから ON にする**ことになった。ON 条件 ③ の後半をここで片付ける。

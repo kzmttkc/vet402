@@ -317,22 +317,22 @@ export default async function ObservatoryMethodologyPage() {
           <code>extensions.bazaar.info.input.queryParams</code>, names with example values, and that
           declaration rides on the same <code>402</code> we took the payment terms from. Since
           2026-09-20 the runner carries this behind a per-network allow-list: on a network that list
-          names, the paid request appends those declared names and values to the listed URL as the
-          seller wrote them. Nothing else is turned into a value — the schema&apos;s{" "}
-          <code>required</code>, <code>enum</code>, <code>default</code> and{" "}
+          names, the paid request appends to the listed URL those declared names the URL does not
+          already carry, with the values the seller wrote. Nothing else is turned into a value — the
+          schema&apos;s <code>required</code>, <code>enum</code>, <code>default</code> and{" "}
           <code>description</code> are not read for one, so a name the schema marks as required and
           the declaration leaves out goes unsent. A value that is not a string, a finite number or a
           boolean; an empty name; more than our caps ({DECLARED_QUERY_MAX_PARAMS} names,{" "}
           {DECLARED_QUERY_MAX_BYTES / 1024}&nbsp;KB of appended query,{" "}
-          {DECLARED_URL_MAX_BYTES / 1024}&nbsp;KB of URL); two declared names that collide; a
-          declared name that collides with one the listed URL already carries; a host or a path that
-          would move — any one of these and the declaration goes unused whole, because a request
-          built from part of a declaration is not one this ledger could describe. Names are folded
-          before they are compared: trimmed, lower-cased, with spaces, dots and <code>[</code>{" "}
-          turned into <code>_</code>, because a back end that reads query names case-insensitively,
-          or folds them the way PHP does, would let a declared name overwrite one the listing
-          published; against the listed URL a declared name is also tried cut at its first{" "}
-          <code>[</code>.
+          {DECLARED_URL_MAX_BYTES / 1024}&nbsp;KB of URL); two declared names that collide; a host or
+          a path that would move — any one of these and the declaration goes unused whole. A name the
+          listed URL already carries is handled differently: the listing&apos;s own query stands, so
+          that one name is dropped and the declaration&apos;s other pairs are still appended. The
+          declaration goes unused only when nothing is left to append. Names are folded before they
+          are compared: trimmed, lower-cased, with spaces, dots and <code>[</code> turned into{" "}
+          <code>_</code>, because a back end that reads query names case-insensitively, or folds them
+          the way PHP does, would let a declared name overwrite one the listing published; against
+          the listed URL a declared name is also tried cut at its first <code>[</code>.
         </p>
         <p className="doc-p">
           The row records <code>requestQuery</code>: <code>declared</code> when the pairs went out,{" "}
@@ -340,21 +340,27 @@ export default async function ObservatoryMethodologyPage() {
           declaration was there and these rules did not use it. The ledger export carries that record
           as the column <code>request_query</code>, from 2026-09-21. A blank cell means the row holds
           no record — a row on a network the allow-list does not name, a Tempo (MPP) row, a row that
-          ended before a paid request went out, and rows before 2026-09-20 — and the column does not
-          separate those from one another. This page names no chain because the ledger already does:
-          read the <code>network</code> of the rows whose <code>request_query</code> is{" "}
-          <code>declared</code>, and that is where this has happened.
+          ended before a paid request went out, and rows before 2026-09-20 — and the column alone
+          does not separate those from one another. This page names no chain because the ledger
+          already does. Within the window the export returns, the rows whose{" "}
+          <code>request_query</code> is not blank are the networks this has been in effect on, and
+          the <code>declared</code> ones are where pairs were actually appended; a window with no
+          such row at all means it has not run on any network yet. A network can be on the allow-list
+          and still show nothing but <code>empty</code> and <code>refused</code>, which says the
+          sellers reached there declared no usable query — not that the runner was off.
         </p>
         <p className="doc-p">
           A <code>declared</code> row also carries <code>requestQuerySha256</code>, published as the
           column <code>request_query_sha256</code>: the SHA-256 of the appended pairs written as one
           form-urlencoded string — the appended pairs by themselves, in the declaration&apos;s own
-          key order, a space as <code>+</code>, and no leading <code>?</code> or{" "}
-          <code>&amp;</code>. What that hash supports is matching, not reading. We do not publish the
-          query string: it is the seller&apos;s own declaration, and the seller&apos;s <code>402</code>{" "}
-          shows it to anyone who asks. The string is not kept, so a reader holding the row can ask
-          whether two rows carried the same request, or whether a fresh <code>402</code> still
-          declares the same names and values, and cannot recover what was sent. The unpaid request
+          key order, except that an integer-like name sorts ahead of the rest in ascending order, by
+          the rule JavaScript applies to object keys; a space as <code>+</code>; and no leading{" "}
+          <code>?</code> or <code>&amp;</code>. What that hash supports is matching: whether two rows
+          carried the same request, or whether a fresh <code>402</code> still declares the same names
+          and values. It is not a way of hiding the query — the names and values are the
+          seller&apos;s own, and the <code>402</code> that answered our unpaid request is where they
+          were read from. The row does not carry the string; that <code>402</code> is where to read
+          it. The unpaid request
           goes to the URL the catalog lists, because the declaration arrives with the{" "}
           <code>402</code> that answers it — and the amount and the recipient we sign, and the{" "}
           <code>resource.url</code> inside the payment envelope, come from the catalog and are
