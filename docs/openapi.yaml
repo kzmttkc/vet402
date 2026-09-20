@@ -913,7 +913,8 @@ paths:
         `network`, `status`, `amount_units`, `spent_units`, `tx_hash`,
         `http_status_paid`, `latency_ms`, `l2_schema`, `held_reason`
         (since 2026-09-17), `request_body`, `request_body_sha256`,
-        `settlement_source` (since 2026-09-20).
+        `settlement_source` (since 2026-09-20), `request_query`,
+        `request_query_sha256` (since 2026-09-21).
 
         - `held_reason` — why the row is held rather than counted against the
           seller: `settled_4xx`, `unsettled_4xx`, `payer_unfunded`; blank when
@@ -939,6 +940,33 @@ paths:
           then went through the same on-chain re-read). Blank when the row has
           no `tx_hash`. The settled count of `vet402_index` rows is
           `l1.settledLateLinked` on `/api/v1/observatory/state`.
+        - `request_query` — which URL the paid request went to: `declared`
+          (the query arguments the seller's own 402 declares in
+          `extensions.bazaar.info.input.queryParams`, appended to the listed
+          URL as declared), `empty` (the seller declared none), `refused` (a
+          declaration was there and vet402's own rules did not use it — a
+          non-scalar value, an empty name, over the caps, declared names that
+          collide once folded, a collision with a name the listed URL already
+          carries, or a host or path that would move). Recorded since
+          2026-09-21 on the networks named in vet402's per-network allow-list;
+          the paid request's URL and the row are unchanged on every other
+          network. Blank means the row holds no record: a row on a network the
+          allow-list does not name, a Tempo (MPP) row, a row that ended before
+          a paid request went out, and rows before 2026-09-20. The column does
+          not separate those four from one another, and blank is not `empty`.
+          Older rows are not back-filled. To read where this has been in
+          effect, group the `declared` rows by `network`.
+        - `request_query_sha256` — on `declared` rows, the lowercase hex
+          SHA-256 of the appended pairs written as one form-urlencoded string:
+          the appended pairs alone (neither the query the listed URL already
+          carried nor a declared name dropped for colliding with one), in the
+          declaration's own key order (integer-like names first, ascending, by
+          the JavaScript rule), `application/x-www-form-urlencoded` so a space
+          is `+`, `&` between pairs and `=` between name and value, and no
+          leading `?` or `&`. The query string itself is not republished; it is
+          the seller's declaration and the seller's 402 serves it to anyone, so
+          the hash supports matching (two rows, or a fresh 402) rather than
+          recovering what was sent. Blank otherwise.
 
         `scripts/declared-body-before-after.mjs` recomputes, from this CSV
         alone, the paid 2xx rate of the same endpoints before and after the

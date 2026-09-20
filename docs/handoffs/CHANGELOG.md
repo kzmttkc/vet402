@@ -13,6 +13,23 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-21 JST（2）— 公開 export に `request_query` / `request_query_sha256` の 2 列。方法論を「台帳から読める」形へ書き替え（同ブランチ 2 コミット目・push と独立レビューは依頼元）
+
+- **方針変更（依頼元）**: 1 コミット目で報告した食い違い——ラベルが `raw_response_meta` にしか無く、読者はどのチェーンで効いているか数えられなかった——を受けて、**列を足してから ON にする**ことになった。ON 条件 ③ の後半をここで片付ける。
+- **列**（末尾に 2 つ。既存 14 列の名前・順序・意味は変えていない。正典は `src/lib/observatory/export-columns.ts` の `EXPORT_CSV_COLUMNS_SINCE_2026_09_21`。実出力のヘッダは 16 列で確認済み）:
+  - `request_query` = `declared`（売り手の 402 が宣言した `queryParams` を足した URL で払った）/ `empty`（売り手が宣言していない）/ `refused`（宣言は在ったが我々の規則で使わなかった）/ **空**。
+  - `request_query_sha256` = `declared` の行の、足した対だけの form-urlencoded 文字列の SHA-256（小文字 hex 64 桁）。それ以外は空。**クエリ文字列そのものは出さない**（売り手の 402 が一次情報。出来るのは照合まで）。
+  - **空の意味を厳密に**: 空になるのは ①許可リストに無い network の行 ②Tempo（MPP）の行 ③有料の要求を出していない行 ④ラベルを書き始めた 2026-09-20 より前の行 の 4 つで、**列だけではこの 4 つを区別できない**。openapi・methodology の両方にそう書き、`empty` に倒さない（`request_body` の「記録なし」と同じ扱い）。過去の行は遡って埋めない。
+- **形は `request_body` / `request_body_sha256` の踏襲**: 新しい `src/lib/observatory/request-query.ts` は `request-body.ts` と同じ構成（`REQUEST_QUERY_KINDS`・`requestQueryKindOf` / `requestQuerySha256Of`・同じ規則の SQL 式・alias は素の識別子だけ）。語彙が組み立て側（`declared-input.ts` の `RequestQuerySource`）と 1 文字でもずれたら **typecheck が落ちる**よう型で縛った。書く側はランナーが 2026-09-20 から置いている 2 キーのままで、**`l1-runner.ts` は触っていない**（キー名が動いたら export が黙って空になるので、`tests/export-request-query.test.ts` が名前を固定する）。
+- **文書を同時に**: `docs/openapi.yaml`（列の一覧と 2 列の説明・`request_body` と同じ粒度）、`public/llms.txt`（export の 1 行に追記）、methodology §2。1 コミット目で「列が無いから足さない」と見送った判断はここで解消。
+- **methodology の書き替え（旧→新）**: 旧「`request_query` is not among the columns of the ledger export, so the labels are not published beside the rows」→ 新「The ledger export carries that record as the column `request_query`, from 2026-09-21. A blank cell means the row holds no record — a row on a network the allow-list does not name, a Tempo (MPP) row, a row that ended before a paid request went out, and rows before 2026-09-20 — and the column does not separate those from one another. This page names no chain because the ledger already does: read the `network` of the rows whose `request_query` is `declared`, and that is where this has happened.」。ハッシュの段落も列名（`request_query_sha256`）で指し、「クエリ文字列は公開しない」の 1 文を本文側と同じ理由で足した。**チェーン名は引き続き手書きしていない。**
+- **置いた関門が実際に赤くなった**: 列を足した直後、1 コミット目で入れた `tests/export-request-body.test.ts` の 1 本が `AssertionError: export に request_query 列が入った。methodology の「列に無い」の文を、列の説明に書き替えること` で落ちた（同時に「追加は末尾の 3 列だけ」も落ちた）。**その赤を見てから**文を書き替えた。関門は逆向き（列を外して文を戻す）も見る 1 本に整えた。
+- **`docs/claims.yaml`**: 7 件のまま増減なし。`methodology_paid_query_not_in_export_columns` を**削除**し（列ができて主張ごと成り立たない）、`export_request_query_blank_is_not_a_label`（空の 4 つと「列だけでは区別できない」）に置き換え。`methodology_paid_query_page_names_no_chain` は引用と means を新しい文に追随（「台帳の `declared` 行の network を数えれば読者が自分で読める」）。残る 5 件は文が変わっていないのでそのまま。全件 `check: null`（export は CSV で、カナリアの式は JSON の `path op literal`）。
+- **床**: methodology の検出数は **42 のまま**（書き替えで `ASSERTIVE_TERMS` の語は増えても減してもいない）。下げる更新は無い。
+- **ゲート**: judge-check 11/11 exit 0（27 mutations killed）・`refresh-numbers --check` OK・typecheck 0・lint 0 error・`npm test` fail 0（root 1,894 pass）・`test:db` fail 0・**pg の skip 0**（残る 8 skip は dev サーバ不在の a11y。dev を 4800 に立てて別途 8/8 pass、`export.csv` の実ヘッダ 16 列も確認）・`next build` exit 0・`claims:canary` 60/60 true・0 false。push はしていない。
+
+---
+
 ## 2026-09-21 JST — 宣言クエリの仕組みを methodology §2 に公開（文書だけ・実装は触っていない・ブランチ `docs/declared-query-methodology`・push と独立レビューは依頼元）
 
 - **何を変えたか**: `src/app/observatory/methodology/page.tsx` の §2、宣言本文の段落の直後に段落を 2 つ足した。1 つ目は何を送るか（同じ 402 が `extensions.bazaar.info.input.queryParams` に宣言した名前と値だけ・スキーマの required / enum / default / description から値を作らない）と、送らない条件（スカラーでない値・空の名前・上限超・宣言名どうしの衝突・掲載名との衝突・ホストや経路が動く——1 つでも外れたら宣言ごと使わない）と名前の畳み方。2 つ目は行に何が残るか（`requestQuery` の `declared` / `empty` / `refused`、`declared` の行の `requestQuerySha256`、そのハッシュで出来るのは照合までで文字列は保存していないこと）と、無払いの要求・署名する額と宛先・封筒の `resource.url` は変えていないこと。

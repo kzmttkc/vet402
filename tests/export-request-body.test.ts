@@ -20,7 +20,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 
-import { EXPORT_CSV_COLUMNS, EXPORT_CSV_COLUMNS_SINCE_2026_09_20 } from "@/lib/observatory/export-columns";
+import {
+  EXPORT_CSV_COLUMNS,
+  EXPORT_CSV_COLUMNS_ADDED,
+  EXPORT_CSV_COLUMNS_SINCE_2026_09_20,
+  EXPORT_CSV_COLUMNS_SINCE_2026_09_21,
+} from "@/lib/observatory/export-columns";
 import { requestBodyKindOf, requestBodySha256Of, requestBodyRecord, REQUEST_BODY_KINDS } from "@/lib/observatory/request-body";
 import { settlementSourceOf, SETTLEMENT_SOURCES } from "@/lib/observatory/settlement-source";
 import { lateLinkOf } from "@/lib/observatory/settlement-verifier";
@@ -28,7 +33,7 @@ import { lateLinkOf } from "@/lib/observatory/settlement-verifier";
 const ROOT = join(__dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
-test("列: 既存 11 列はそのまま、追加は末尾の 3 列だけ", () => {
+test("列: 既存 11 列はそのまま、追加は末尾だけ（2026-09-20 の 3 列 → 2026-09-21 の 2 列）", () => {
   assert.deepEqual(EXPORT_CSV_COLUMNS.slice(0, 11), [
     "attempted_at",
     "resource_key",
@@ -42,8 +47,11 @@ test("列: 既存 11 列はそのまま、追加は末尾の 3 列だけ", () =>
     "l2_schema",
     "held_reason",
   ]);
-  assert.deepEqual(EXPORT_CSV_COLUMNS.slice(11), ["request_body", "request_body_sha256", "settlement_source"]);
-  assert.deepEqual([...EXPORT_CSV_COLUMNS_SINCE_2026_09_20], EXPORT_CSV_COLUMNS.slice(11));
+  assert.deepEqual(EXPORT_CSV_COLUMNS.slice(11, 14), ["request_body", "request_body_sha256", "settlement_source"]);
+  assert.deepEqual(EXPORT_CSV_COLUMNS.slice(14), ["request_query", "request_query_sha256"]);
+  assert.deepEqual([...EXPORT_CSV_COLUMNS_SINCE_2026_09_20], EXPORT_CSV_COLUMNS.slice(11, 14));
+  assert.deepEqual([...EXPORT_CSV_COLUMNS_SINCE_2026_09_21], EXPORT_CSV_COLUMNS.slice(14));
+  assert.deepEqual([...EXPORT_CSV_COLUMNS_ADDED], EXPORT_CSV_COLUMNS.slice(11), "追加列の一覧が本体とずれていない");
 });
 
 test("request_body: 記録が無い行は null（empty にも none にも倒さない）", () => {
@@ -115,36 +123,49 @@ test("列の説明: 足した列は openapi・methodology・llms.txt のどれ�
   ];
   for (const file of surfaces) {
     const text = read(file);
-    for (const col of EXPORT_CSV_COLUMNS_SINCE_2026_09_20) {
+    for (const col of EXPORT_CSV_COLUMNS_ADDED) {
       assert.ok(text.includes(col), `${file} が列 ${col} を説明していない`);
     }
   }
   // 「空セル」が何を指すかは openapi と methodology で逐語に揃える（レビュー N2: 片方だけ 1 種類欠けていた）。
-  const BLANK_MEANS = "rows before 2026-09-17, bodiless requests before 2026-09-20, and rows that ended before a paid request went out";
+  const BLANK_MEANS = [
+    "rows before 2026-09-17, bodiless requests before 2026-09-20, and rows that ended before a paid request went out",
+    // 2026-09-21 request_query の空。4 つあり、**列だけでは区別できない**ことまで両面で同じに書く。
+    "a row on a network the allow-list does not name, a Tempo (MPP) row, a row that ended before a paid request went out, and rows before 2026-09-20",
+  ];
   for (const file of ["docs/openapi.yaml", "src/app/observatory/methodology/page.tsx"]) {
-    assert.ok(read(file).replace(/\s+/g, " ").includes(BLANK_MEANS), `${file} の空セルの列挙が食い違っている`);
+    const text = read(file).replace(/\s+/g, " ");
+    for (const means of BLANK_MEANS) {
+      assert.ok(text.includes(means), `${file} の空セルの列挙が食い違っている: ${means.slice(0, 40)}…`);
+    }
   }
   // held_reason はもう末尾の列ではない。「最後の列」と書いた文が残っていないこと。
   assert.ok(!/last column,?\s*<code>held_reason/.test(read("src/app/observatory/methodology/page.tsx")));
   assert.ok(!read("src/app/corrections/page.tsx").includes("held_reason column at the end of"));
 });
 
-test("列の説明: request_query が列になったら、methodology の「列に無い」の 1 文は残せない", () => {
-  // 2026-09-21 の宣言クエリ（declared-input.ts）はラベルを raw_response_meta にだけ残し、
-  // export には列が無い。methodology §2 はそれを読者に向けて書いている。
-  // ところが上のテストは「足した列が名前で出ているか」しか見ないので、`request_query` を
-  // 列に足した日も、**この文が `request_query` という名前を含んでいるおかげで緑のまま**通り、
-  // 公開面が嘘になる（登録すれば緑と同じ穴）。列が増えた側からこの文を赤くする。
+test("列の説明: 「列に無い」と書いた文は、その列が在るあいだ残せない", () => {
+  // 2026-09-21 の経緯。宣言クエリ（declared-input.ts）のラベルは最初 raw_response_meta にしか
+  // 無く、methodology §2 は「`request_query` is not among the columns of the ledger export」と
+  // 書いて公開した。上のテストは「足した列が名前で出ているか」しか見ないので、列を足した日も
+  // **この文が `request_query` という名前を含んでいるおかげで緑のまま**通り、公開面が嘘になる
+  // （登録すれば緑と同じ穴）。だから列が増えた側から赤くする関門を先に置いた。
+  // 同じ日に列を足したとき、この関門は**実際に赤くなった**（"export に request_query 列が入った。
+  // methodology の「列に無い」の文を、列の説明に書き替えること"）。文はそれを見てから書き替えた。
+  // 逆向き（列を消して文を戻す）も同じ 1 本で見る。
   const NOT_A_COLUMN = "is not among the columns of the ledger export";
   const methodology = read("src/app/observatory/methodology/page.tsx").replace(/\s+/g, " ");
   const hasQueryColumn = (EXPORT_CSV_COLUMNS as readonly string[]).includes("request_query");
   if (hasQueryColumn) {
     assert.ok(
       !methodology.includes(NOT_A_COLUMN),
-      "export に request_query 列が入った。methodology の「列に無い」の文を、列の説明に書き替えること",
+      "export に request_query 列が在る。methodology の「列に無い」の文は、列の説明に書き替えること",
     );
   } else {
-    assert.ok(methodology.includes(NOT_A_COLUMN), "列が無いあいだ、methodology はそう書いていること");
+    assert.ok(
+      methodology.includes(NOT_A_COLUMN),
+      "request_query 列を外したなら、methodology は「列に無い」と書き戻すこと（読者が数えられない事実を隠さない）",
+    );
   }
 });
 
@@ -155,7 +176,7 @@ const SCRIPT = join(ROOT, "scripts/declared-body-before-after.mjs");
 const HEADER = EXPORT_CSV_COLUMNS.join(",");
 type Row = { at: string; key: string; status: string; http: number | ""; shape?: string; held?: string; tx?: string; src?: string };
 const line = (r: Row) =>
-  [r.at, r.key, "eip155:8453", r.status, "1000", "1000", r.tx ?? "", r.http, "120", "", r.held ?? "", r.shape ?? "", "", r.src ?? ""].join(",");
+  [r.at, r.key, "eip155:8453", r.status, "1000", "1000", r.tx ?? "", r.http, "120", "", r.held ?? "", r.shape ?? "", "", r.src ?? "", "", ""].join(",");
 function runScript(csv: string, extra: string[] = []) {
   const dir = mkdtempSync(join(tmpdir(), "vet402-before-after-"));
   const file = join(dir, "ledger.csv");

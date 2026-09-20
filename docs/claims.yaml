@@ -1397,10 +1397,10 @@ claims:
     verified_at: 2026-09-21
   - id: methodology_paid_query_page_names_no_chain
     surface: src/app/observatory/methodology/page.tsx
-    quote: "A row on a network the allow-list does not name carries no such label, which is why this page states no chain"
-    means: "許可リスト（OBSERVATORY_L1_DECLARED_QUERY_NETWORKS・CAIP-2 の完全一致・未設定と空は全 OFF）に無い network の行には requestQuery も requestQuerySha256 も付かず、要求も行も変わらない。だから公開面はチェーン名を書かない"
+    quote: "This page names no chain because the ledger already does"
+    means: "有効な範囲は許可リスト（OBSERVATORY_L1_DECLARED_QUERY_NETWORKS・CAIP-2 の完全一致・未設定と空は全 OFF）で決まるので公開面はチェーン名を持たない。読者は export.csv の request_query が declared の行の network を数えれば、現に効いている範囲を自分で読める"
     check: null
-    why_unverifiable: "env の値に依るので公開 GET の 1 値では言えない。tests/l1-declared-query.pg.test.ts の 1 本目が、未設定・空・別チェーンだけ・大小違い・前方一致・旧 boolean で URL も行も変わらないことを実 DB で固定し、tests/l1-tempo-mpp.pg.test.ts が Tempo（MPP）は許可リストに載せても対象外でメタに両キーが付かないことを固定する"
+    why_unverifiable: "env の値と台帳の行に依るので、公開 GET の 1 値に `path op literal` で当てられない（export は CSV でカナリアが読めない）。列は src/lib/observatory/export-columns.ts が正典で tests/export-request-query.test.ts が固定し、許可リストに無いあいだ行に何も付かないことは tests/l1-declared-query.pg.test.ts の 1 本目、Tempo が対象外であることは tests/l1-tempo-mpp.pg.test.ts が実 DB で固定する"
     verified_at: 2026-09-21
   - id: methodology_paid_query_hash_is_for_matching_only
     surface: src/app/observatory/methodology/page.tsx
@@ -1409,12 +1409,12 @@ claims:
     check: null
     why_unverifiable: "保存していないことは公開 GET に出ない（出たら保存していることになる）。ハッシュの元の取り決め 5 条は src/lib/observatory/declared-input.ts の DeclaredRequestUrl に逐語で置き、tests/l1-declared-input-query.test.ts の N-8 が並び順・符号化・先頭の区切りなしを、tests/l1-declared-query.pg.test.ts が行に入る値そのものを固定する"
     verified_at: 2026-09-21
-  - id: methodology_paid_query_not_in_export_columns
+  - id: export_request_query_blank_is_not_a_label
     surface: src/app/observatory/methodology/page.tsx
-    quote: "is not among the columns of the ledger export, so the labels are not published beside the rows"
-    means: "2026-09-21 時点で export.csv の列は export-columns.ts の 14 列で、request_query / request_query_sha256 はその中に無い。行の requestQuery はどの公開面にも出ていない"
+    quote: "and the column does not separate those from one another"
+    means: "export.csv の request_query は declared / empty / refused。空は「記録なし」で、empty にも refused にも倒さない。空になるのは 4 つ（許可リストに無い network の行・Tempo の行・有料の要求を出していない行・2026-09-20 より前の行）で、**列だけではその 4 つを区別できない**。過去の行は遡って埋めない"
     check: null
-    why_unverifiable: "列の集合は CSV のヘッダ行で、カナリアの式（JSON の `path op literal`）で当てられない。列の正典は src/lib/observatory/export-columns.ts で、tests/export-request-body.test.ts が列の並びを逐語で固定し、同じテストに『request_query が列になったらこの文は残せない』の 1 本を足した"
+    why_unverifiable: "CSV の行ごとの値で、カナリアの式（JSON の `path op literal`）で当てられない。分類は tests/export-request-query.test.ts、SQL と JS の一致と export の実出力は tests/export-request-body.pg.test.ts が実 DB で固定し、空セルの列挙が openapi と methodology で逐語に揃っていることは tests/export-request-body.test.ts が当てる"
     verified_at: 2026-09-21
   - id: methodology_paid_query_does_not_move_the_payment
     surface: src/app/observatory/methodology/page.tsx

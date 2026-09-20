@@ -30,4 +30,18 @@ const COLUMNS_UNTIL_2026_09_17 = [
  */
 export const EXPORT_CSV_COLUMNS_SINCE_2026_09_20 = ["request_body", "request_body_sha256", "settlement_source"] as const;
 
-export const EXPORT_CSV_COLUMNS = [...COLUMNS_UNTIL_2026_09_17, ...EXPORT_CSV_COLUMNS_SINCE_2026_09_20] as const;
+/**
+ * 2026-09-21 の追加（本文の 2 列と同じ形で、宣言クエリの側）。
+ *   request_query         有料の要求がどの URL で出たか: declared / empty / refused（request-query.ts）
+ *   request_query_sha256  宣言クエリを足した行の、足した対の form-urlencoded 文字列の SHA-256
+ *                         （文字列そのものは出さない）
+ */
+export const EXPORT_CSV_COLUMNS_SINCE_2026_09_21 = ["request_query", "request_query_sha256"] as const;
+
+/** 列を足したら openapi・methodology・llms.txt の説明にも名前で出す（tests/export-request-body.test.ts）。 */
+export const EXPORT_CSV_COLUMNS_ADDED = [
+  ...EXPORT_CSV_COLUMNS_SINCE_2026_09_20,
+  ...EXPORT_CSV_COLUMNS_SINCE_2026_09_21,
+] as const;
+
+export const EXPORT_CSV_COLUMNS = [...COLUMNS_UNTIL_2026_09_17, ...EXPORT_CSV_COLUMNS_ADDED] as const;

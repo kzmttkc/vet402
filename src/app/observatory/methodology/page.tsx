@@ -337,20 +337,28 @@ export default async function ObservatoryMethodologyPage() {
         <p className="doc-p">
           The row records <code>requestQuery</code>: <code>declared</code> when the pairs went out,{" "}
           <code>empty</code> when the seller declared none, and <code>refused</code> when a
-          declaration was there and these rules did not use it. A row on a network the allow-list
-          does not name carries no such label, which is why this page states no chain: the label on
-          the row is the record of where this happened. A <code>declared</code> row also carries{" "}
-          <code>requestQuerySha256</code>, the SHA-256 of the appended pairs written as one
+          declaration was there and these rules did not use it. The ledger export carries that record
+          as the column <code>request_query</code>, from 2026-09-21. A blank cell means the row holds
+          no record — a row on a network the allow-list does not name, a Tempo (MPP) row, a row that
+          ended before a paid request went out, and rows before 2026-09-20 — and the column does not
+          separate those from one another. This page names no chain because the ledger already does:
+          read the <code>network</code> of the rows whose <code>request_query</code> is{" "}
+          <code>declared</code>, and that is where this has happened.
+        </p>
+        <p className="doc-p">
+          A <code>declared</code> row also carries <code>requestQuerySha256</code>, published as the
+          column <code>request_query_sha256</code>: the SHA-256 of the appended pairs written as one
           form-urlencoded string — the appended pairs by themselves, in the declaration&apos;s own
           key order, a space as <code>+</code>, and no leading <code>?</code> or{" "}
-          <code>&amp;</code>. What that hash supports is matching, not reading. The string itself is
-          not kept, so a reader holding the row can ask whether two rows carried the same request, or
-          whether a fresh <code>402</code> still declares the same names and values, and cannot
-          recover what was sent; <code>request_query</code> is not among the columns of the ledger
-          export, so the labels are not published beside the rows. The unpaid request goes to the URL
-          the catalog lists, because the declaration arrives with the <code>402</code> that answers
-          it — and the amount and the recipient we sign, and the <code>resource.url</code> inside the
-          payment envelope, come from the catalog and are unchanged.
+          <code>&amp;</code>. What that hash supports is matching, not reading. We do not publish the
+          query string: it is the seller&apos;s own declaration, and the seller&apos;s <code>402</code>{" "}
+          shows it to anyone who asks. The string is not kept, so a reader holding the row can ask
+          whether two rows carried the same request, or whether a fresh <code>402</code> still
+          declares the same names and values, and cannot recover what was sent. The unpaid request
+          goes to the URL the catalog lists, because the declaration arrives with the{" "}
+          <code>402</code> that answers it — and the amount and the recipient we sign, and the{" "}
+          <code>resource.url</code> inside the payment envelope, come from the catalog and are
+          unchanged.
         </p>
 
         <h2 className="sec-head">

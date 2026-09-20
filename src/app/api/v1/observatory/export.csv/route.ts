@@ -6,6 +6,7 @@ import { getDb } from "@/lib/db/client";
 import { heldReasonSql } from "@/lib/observatory/delivery";
 import { EXPORT_CSV_COLUMNS } from "@/lib/observatory/export-columns";
 import { requestBodySha256Sql, requestBodyKindSql } from "@/lib/observatory/request-body";
+import { requestQuerySha256Sql, requestQueryKindSql } from "@/lib/observatory/request-query";
 import { settlementSourceSql } from "@/lib/observatory/settlement-source";
 import { logServerError } from "@/lib/util/log";
 
@@ -31,6 +32,14 @@ import { logServerError } from "@/lib/util/log";
  *                        **本文そのものは出さない**——売り手の書いた文字列を再配布しない。理由は request-body.ts。
  *   settlement_source    tx_hash を名指したのが売り手のレシートか（seller_claim）、vet402 の決済索引が
  *                        貼ったものか（vet402_index・遅延回収）。tx の無い行は空。規則は settlement-source.ts。
+ *
+ * 2026-09-21: さらに末尾に 2 列（本文の 2 列と同じ形）。既存の 14 列は変えていない。
+ *   request_query         有料の要求の URL: declared（売り手の 402 が宣言した queryParams を足した）/
+ *                        empty（売り手が宣言していない）/ refused（宣言は在ったが我々の規則で使わなかった）/
+ *                        空（記録なし——許可リストに無い network の行・Tempo の行・有料の要求を出していない行・
+ *                        2026-09-20 より前の行）。**空をこの 4 つに分ける材料は列に無い。**
+ *   request_query_sha256  declared の行の、足した対だけの form-urlencoded 文字列の SHA-256。
+ *                        **クエリ文字列そのものは出さない**。規則は request-query.ts。
  */
 
 const RL_LIMIT = 6;
@@ -76,7 +85,9 @@ export async function GET(request: NextRequest) {
              (${sql.raw(heldReasonSql("pu"))}) AS held_reason,
              (${sql.raw(requestBodyKindSql("pu"))}) AS request_body,
              (${sql.raw(requestBodySha256Sql("pu"))}) AS request_body_sha256,
-             (${sql.raw(settlementSourceSql("pu"))}) AS settlement_source
+             (${sql.raw(settlementSourceSql("pu"))}) AS settlement_source,
+             (${sql.raw(requestQueryKindSql("pu"))}) AS request_query,
+             (${sql.raw(requestQuerySha256Sql("pu"))}) AS request_query_sha256
       FROM x402_l1_purchases pu
       JOIN x402_endpoints e ON e.id = pu.endpoint_id
       WHERE pu.attempted_at >= now() - make_interval(days => ${days}::int)
