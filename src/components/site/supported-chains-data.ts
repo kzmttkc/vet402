@@ -20,7 +20,10 @@
  * switched off. The lanes state what the ledger holds, which stays true.
  *
  * The file sits under src/components/site so tests/claims-registry.test.ts
- * scans its prose like any other public copy.
+ * scans its prose like any other public copy. Mind what that scan does not see: the
+ * `LANE_STATE_SENTENCE` and legend sentences carry none of the gate's assertive terms, so the
+ * extractor returns nothing for them — a date or a count added to one of them would ship
+ * unchecked. Keep them free of both (tests/lp-supported-chains.test.ts pins the wording).
  */
 
 /**
@@ -145,14 +148,33 @@ export function laneBody(row: LaneChain, settled: number | null): string {
  * every lane settled, a legend that defines a marker no row shows sends the reader looking
  * for a pending chain that is not there). "building" is always named: the Robinhood Chain
  * row is static.
+ *
+ * Two shapes. Ledger read: the markers are defined by the ledger, because the ledger set them.
+ * Ledger not read (`settledByChain === null`): the markers are the static states above, so the
+ * sentence does not name the ledger as their source, and a second sentence says it was not read.
  */
+export const LEDGER_UNREAD_SENTENCE =
+  "The public ledger could not be read for this rendering, so the markers below are the last recorded state and no counts are shown.";
+
 export function chainsLegend(settledByChain: Map<string, number> | null): string {
   const anyPending = SUPPORTED_CHAINS.some(
     (row) => markerOf(row, settledCountOf(row, settledByChain)).label === "pending",
   );
+  const pending = anyPending ? ", pending when it is built but has not bought yet" : "";
+  // 2026-09-20 review W1: when the ledger was not read, the markers come from the static
+  // defaults in this file, not from the ledger — so the legend must not define them by the
+  // ledger, and it says outright that the ledger was not read.
+  if (settledByChain === null) {
+    return (
+      "A lane is marked implemented when a settled purchase is on record" +
+      pending +
+      ", and building when the work has not shipped. " +
+      LEDGER_UNREAD_SENTENCE
+    );
+  }
   return (
     "A lane is marked implemented when the public ledger holds a settled purchase on that chain" +
-    (anyPending ? ", pending when it is built but has not bought yet" : "") +
+    pending +
     ", and building when the work has not shipped."
   );
 }

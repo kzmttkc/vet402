@@ -157,12 +157,12 @@ test("no lane starts as pending today; the state itself stays reachable from the
 
 test("the legend names the pending marker only when a row is drawn pending", () => {
   const everyLane = settledByChainOf(lanes.map((l) => ({ chain: l.chain, settled: 1 })));
+  assert.equal(
+    chainsLegend(everyLane),
+    "A lane is marked implemented when the public ledger holds a settled purchase on that chain, and building when the work has not shipped.",
+  );
   for (const map of [null, everyLane]) {
-    const legend = chainsLegend(map);
-    assert.equal(
-      legend,
-      "A lane is marked implemented when the public ledger holds a settled purchase on that chain, and building when the work has not shipped.",
-    );
+    assert.ok(!/\bpending\b/.test(chainsLegend(map)));
     const html = renderToStaticMarkup(createElement(SupportedChains, { settledByChain: map }));
     assert.ok(!html.includes(">pending<"), "no pending row, so no pending in the legend");
   }
@@ -174,6 +174,24 @@ test("the legend names the pending marker only when a row is drawn pending", () 
     chainsLegend(noArc),
     "A lane is marked implemented when the public ledger holds a settled purchase on that chain, pending when it is built but has not bought yet, and building when the work has not shipped.",
   );
+});
+
+test("an unread ledger: the legend does not define the markers by the ledger, and says it was not read (review W1)", () => {
+  // with settledByChain === null the markers come from the static states, not from the ledger
+  for (const unread of [[], null, undefined]) {
+    assert.equal(
+      chainsLegend(settledByChainOf(unread)),
+      "A lane is marked implemented when a settled purchase is on record, and building when the work has not shipped. " +
+        "The public ledger could not be read for this rendering, so the markers below are the last recorded state and no counts are shown.",
+    );
+  }
+  // the read shape never carries the unread sentence
+  assert.ok(!chainsLegend(settledByChainOf([{ chain: "Base", settled: 2 }])).includes("could not be read"));
+  // these sentences are invisible to the claims gate (no assertive term), so pin here that no
+  // date or count slips into them unchecked
+  for (const s of [chainsLegend(null), chainsLegend(settledByChainOf([{ chain: "Base", settled: 2 }]))]) {
+    assert.ok(!/\d/.test(s), `no digit in the legend: ${s}`);
+  }
 });
 
 test("the page folds the ledger once and feeds the legend and the rows from that one read", () => {
