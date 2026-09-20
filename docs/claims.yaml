@@ -1371,6 +1371,58 @@ claims:
     check: null
     why_unverifiable: "CSV の行ごとの値で、カナリアの式（JSON の `path op literal`）で当てられない。分類は tests/export-request-body.test.ts、SQL と JS の一致と export の実出力は tests/export-request-body.pg.test.ts、ランナーが残す記録は tests/l1-body-and-funds.pg.test.ts が固定する"
     verified_at: 2026-09-20
+  # --- 2026-09-21 宣言クエリ（methodology §2 の 2 段落。仕組みの記述であって「いま有効」とは書いていない）---
+  # どのチェーンで有効かは許可リスト（OBSERVATORY_L1_DECLARED_QUERY_NETWORKS）で決まるので、
+  # 公開面はチェーン名を持たない。だから「XRPL だけ」という主張は登録簿にも無い。
+  - id: methodology_paid_query_from_declaration
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "the paid request appends those declared names and values to the listed URL as the seller wrote them"
+    means: "402 が extensions.bazaar.info.input.queryParams を宣言していれば、許可リストに載った network の支払い付き要求は、その名前と値を掲載 URL の後ろに宣言のまま足す（値は文字列・有限の数・真偽値だけ）。読むのは支払い条件を取ったのと同じ文書だけ"
+    check: null
+    why_unverifiable: "送った URL は公開 GET に出ない（有料リクエストの中身は公開しない）。規則は src/lib/observatory/declared-input.ts が正典で、tests/l1-declared-input-query.test.ts が組み立てを、tests/l1-declared-query.pg.test.ts が実 DB で「許可リストにある network の支払い付き要求にだけ付く」を固定する"
+    verified_at: 2026-09-21
+  - id: methodology_paid_query_values_are_not_invented
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "so a name the schema marks as required and the declaration leaves out goes unsent"
+    means: "値を作らない。スキーマ（bazaar.schema / declared_schema）の required・enum・default・description からは値を導かず、宣言に無い必須の名前は埋めない"
+    check: null
+    why_unverifiable: "送らなかったことは公開 GET の 1 値に出ない。tests/l1-declared-input-query.test.ts の「値を作らない: スキーマの required・enum・default・description は読まない」が、required だけのスキーマで URL が 1 文字も動かないことを固定する"
+    verified_at: 2026-09-21
+  - id: methodology_paid_query_partial_declaration_is_unused
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "any one of these and the declaration goes unused whole"
+    means: "スカラーでない値・空の名前・上限超（名前の数・足すクエリのバイト数・URL 全体のバイト数は declared-input.ts の定数）・宣言名どうしの畳み込み衝突・掲載名との衝突・ホストや経路が動く場合、宣言の一部だけを送らず宣言ごと使わない。名前の比較は畳んでから（掲載名との照合だけ `[` の手前で切った形も当てる）"
+    check: null
+    why_unverifiable: "要求の組み立ての規則で、公開 GET に値として出ない。tests/l1-declared-input-query.test.ts が各条件を 1 本ずつ固定し（スカラーでない値・空の名前・上限 3 種・W-1 の畳み込み衝突・W-5 の PHP 配列記法・N-1 の onlyQueryAdded）、上限の数字は src/lib/observatory/declared-input.ts の定数から描画している"
+    verified_at: 2026-09-21
+  - id: methodology_paid_query_page_names_no_chain
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "A row on a network the allow-list does not name carries no such label, which is why this page states no chain"
+    means: "許可リスト（OBSERVATORY_L1_DECLARED_QUERY_NETWORKS・CAIP-2 の完全一致・未設定と空は全 OFF）に無い network の行には requestQuery も requestQuerySha256 も付かず、要求も行も変わらない。だから公開面はチェーン名を書かない"
+    check: null
+    why_unverifiable: "env の値に依るので公開 GET の 1 値では言えない。tests/l1-declared-query.pg.test.ts の 1 本目が、未設定・空・別チェーンだけ・大小違い・前方一致・旧 boolean で URL も行も変わらないことを実 DB で固定し、tests/l1-tempo-mpp.pg.test.ts が Tempo（MPP）は許可リストに載せても対象外でメタに両キーが付かないことを固定する"
+    verified_at: 2026-09-21
+  - id: methodology_paid_query_hash_is_for_matching_only
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "What that hash supports is matching, not reading"
+    means: "requestQuerySha256 は「先頭の区切りを除いた、足した対だけの form-urlencoded 文字列」の SHA-256。文字列そのものも 402 の宣言も行に保存しないので、行だけ持つ読者は何を送ったかを復元できない（できるのは 2 行の照合と、402 を取り直したときの一致）"
+    check: null
+    why_unverifiable: "保存していないことは公開 GET に出ない（出たら保存していることになる）。ハッシュの元の取り決め 5 条は src/lib/observatory/declared-input.ts の DeclaredRequestUrl に逐語で置き、tests/l1-declared-input-query.test.ts の N-8 が並び順・符号化・先頭の区切りなしを、tests/l1-declared-query.pg.test.ts が行に入る値そのものを固定する"
+    verified_at: 2026-09-21
+  - id: methodology_paid_query_not_in_export_columns
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "is not among the columns of the ledger export, so the labels are not published beside the rows"
+    means: "2026-09-21 時点で export.csv の列は export-columns.ts の 14 列で、request_query / request_query_sha256 はその中に無い。行の requestQuery はどの公開面にも出ていない"
+    check: null
+    why_unverifiable: "列の集合は CSV のヘッダ行で、カナリアの式（JSON の `path op literal`）で当てられない。列の正典は src/lib/observatory/export-columns.ts で、tests/export-request-body.test.ts が列の並びを逐語で固定し、同じテストに『request_query が列になったらこの文は残せない』の 1 本を足した"
+    verified_at: 2026-09-21
+  - id: methodology_paid_query_does_not_move_the_payment
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "payment envelope, come from the catalog and are unchanged"
+    means: "宣言クエリで差し替えるのは支払い付き要求の URL だけ。無払いの要求は掲載 URL のまま、署名する額と宛先、封筒の resource.url はカタログの値のまま"
+    check: null
+    why_unverifiable: "署名の中身は公開 GET に出ない。tests/l1-declared-query.pg.test.ts の 2 本目が、無払いの要求が掲載 URL のままであること・署名の形（額・宛先・封筒の resource）が許可リストの有無で変わらないこと・amount_units と pay_to が動かないことを実 DB で固定する"
+    verified_at: 2026-09-21
   # --- 2026-09-07 呼び手の policy（/decision の caller_policy・WINDOW_PLAN §16.3）---
   - id: caller_policy_never_rewrites_recommendation_never_lifts_block
     surface: src/app/observatory/methodology/page.tsx

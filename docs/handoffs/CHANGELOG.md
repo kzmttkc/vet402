@@ -13,6 +13,20 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-21 JST — 宣言クエリの仕組みを methodology §2 に公開（文書だけ・実装は触っていない・ブランチ `docs/declared-query-methodology`・push と独立レビューは依頼元）
+
+- **何を変えたか**: `src/app/observatory/methodology/page.tsx` の §2、宣言本文の段落の直後に段落を 2 つ足した。1 つ目は何を送るか（同じ 402 が `extensions.bazaar.info.input.queryParams` に宣言した名前と値だけ・スキーマの required / enum / default / description から値を作らない）と、送らない条件（スカラーでない値・空の名前・上限超・宣言名どうしの衝突・掲載名との衝突・ホストや経路が動く——1 つでも外れたら宣言ごと使わない）と名前の畳み方。2 つ目は行に何が残るか（`requestQuery` の `declared` / `empty` / `refused`、`declared` の行の `requestQuerySha256`、そのハッシュで出来るのは照合までで文字列は保存していないこと）と、無払いの要求・署名する額と宛先・封筒の `resource.url` は変えていないこと。
+- **上限の数字は静的に書いていない**: `DECLARED_QUERY_MAX_PARAMS` / `DECLARED_QUERY_MAX_BYTES` / `DECLARED_URL_MAX_BYTES` を `declared-input.ts` から import して描画する（定数を変えた日に文面が勝手に追随する）。
+- **チェーン名を書いていない**: 有効な範囲は許可リスト（`OBSERVATORY_L1_DECLARED_QUERY_NETWORKS`）で決まるので、「XRPL だけ」と書くと許可リストを増やした日に嘘になる。公開文は「許可リストが名指ししていない network の行にはラベルが付かない、だからこの頁はチェーンを書かない」とだけ言う。ON かどうかも書いていない（この文は仕組みの記述で、いま有効だとは言わない）。
+- **実装と食い違っていた点（直していない・報告）**: 依頼の前提は「読者は台帳を見れば現に有効なチェーンが分かる」だったが、`requestQuery` は `raw_response_meta` にしか無く、**export.csv の列にも purchases API にもエンドポイント頁にも出ていない**（列の正典 `src/lib/observatory/export-columns.ts` は 14 列で `request_query` を持たない。`reader.ts` が行から引くのは `lateSettlement` だけ）。つまり CHANGELOG の ON 条件 ③ の後半「入ったら `request_query` / `request_query_sha256` の列を別途足す」は未了。だから公開文はその指し方を採らず、「`request_query` は台帳 export の列に無いので、ラベルは行の横に公開されていない」と**事実のまま**書いた。ON の前に列を足すなら、この 1 文を列の説明に書き替えること。
+- **経路に関門**: `tests/export-request-body.test.ts` に 1 本足した——`EXPORT_CSV_COLUMNS` に `request_query` が入った瞬間、methodology の「列に無い」の文が残っていたら赤になる。既存の「足した列は openapi・methodology・llms.txt に名前で出る」だけだと、**この文が `request_query` という名前を含んでいるおかげで緑のまま嘘になる**穴があった。
+- **`public/llms.txt` と `docs/openapi.yaml` は触っていない**: どちらも宣言本文を「export の列」として説明している面で、クエリには列が無い。列が無いものを列の説明に足さない（依頼の「無ければ足さない」）。
+- **`docs/claims.yaml` に 7 件**（すべて `check: null` ＋ `why_unverifiable`。有料要求の URL・署名の中身・保存していないことは公開 GET に出ないので、カナリアの式 `path op literal` で当てられない。根拠は `declared-input.ts` と `tests/l1-declared-input-query.test.ts` / `tests/l1-declared-query.pg.test.ts` / `tests/l1-tempo-mpp.pg.test.ts` / `tests/export-request-body.test.ts` を名指しし、実在と中身を確認した）。
+- **検出数の床は動かしていない**: methodology の検出数は追記の前後どちらも **42**（新しい文に `ASSERTIVE_TERMS` の語が 1 つも無い）。抽出器が新しい段落に盲でないことは別に実測した（段落の中に `always` を 1 つ入れると 42 → 43 になる）ので、床 42 はこの文も守っている。
+- **ゲート**: judge-check 11/11 exit 0（27 mutations killed）・`refresh-numbers --check` 12 数値 OK・typecheck 0・lint 0 error（warning 12 は既存）・`npm test` fail 0（root 1,888 pass / 75 skip は pg と a11y）・`TEST_DATABASE_URL` を私的 DB に向けた `test:db` fail 0・**pg の skip 0**（残る 8 skip は dev サーバ不在の a11y で、dev サーバを 4800 に立てて別途 8/8 pass。`/observatory/methodology` の実描画で新しい 2 段落と上限の数字も確認）・`next build` exit 0。push はしていない。
+
+---
+
 ## 2026-09-20 JST — L1 の支払い付き要求に、売り手が 402 で宣言したクエリを足す（既定 OFF・CAIP-2 の許可リスト・vet402.com コア・ブランチ `fix/xrpl-declared-query` 3 コミット・独立レビュー 2 巡反映済み・push は依頼元）
 
 - **何が起きていたか（本番の実測・2026-09-20）**: XRPL レーン（RLUSD・1 日の別枠 $0.1・1 バッチ 1 件）の直近 6 件のうち 4 件が `settle_failed 400`。本文は `missing_parameter`・`mark parameter required` 等で、**有料の要求に必須のクエリが付いていなかった**。売り手はほぼ 1 事業者（`*.theaslangroupllc.com`）でサブドメインが違うのでホスト上限は効かず、別枠を毎回 400 で使い切っていた。

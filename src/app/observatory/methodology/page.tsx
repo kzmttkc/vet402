@@ -27,6 +27,11 @@ import {
   vocabularyJsonLd,
 } from "@/lib/observatory/vocabulary";
 import { MAX_PER_PURCHASE_UNITS } from "@/lib/observatory/x402-payer";
+import {
+  DECLARED_QUERY_MAX_BYTES,
+  DECLARED_QUERY_MAX_PARAMS,
+  DECLARED_URL_MAX_BYTES,
+} from "@/lib/observatory/declared-input";
 import { DAILY_BUDGET_USD } from "@/lib/observatory/budget";
 import { REQUIRED_CONFIRMATIONS } from "@/lib/observatory/settlement-verify";
 import { LATE_SETTLEMENT_BACKDATE_MINUTES, LATE_SETTLEMENT_WINDOW_MINUTES } from "@/lib/settlements/recover-late";
@@ -301,6 +306,51 @@ export default async function ObservatoryMethodologyPage() {
             /corrections
           </Link>
           .
+        </p>
+        {/* 2026-09-21: 宣言クエリ（declared-input.ts の declaredRequestUrl・2026-09-20 に main へ）。
+            上の宣言本文と同じ粒度・同じ節に置く。**どのチェーンで有効かは手書きしない**——
+            許可リスト（OBSERVATORY_L1_DECLARED_QUERY_NETWORKS）で決まるので、「XRPL だけ」と
+            書くと許可リストを増やした日に嘘になる。上限の数字は declared-input.ts の定数から描く。 */}
+        <p className="doc-p">
+          <strong>The same declaration also states the query.</strong> A listing that carries the
+          Bazaar discovery extension declares query arguments as{" "}
+          <code>extensions.bazaar.info.input.queryParams</code>, names with example values, and that
+          declaration rides on the same <code>402</code> we took the payment terms from. Since
+          2026-09-20 the runner carries this behind a per-network allow-list: on a network that list
+          names, the paid request appends those declared names and values to the listed URL as the
+          seller wrote them. Nothing else is turned into a value — the schema&apos;s{" "}
+          <code>required</code>, <code>enum</code>, <code>default</code> and{" "}
+          <code>description</code> are not read for one, so a name the schema marks as required and
+          the declaration leaves out goes unsent. A value that is not a string, a finite number or a
+          boolean; an empty name; more than our caps ({DECLARED_QUERY_MAX_PARAMS} names,{" "}
+          {DECLARED_QUERY_MAX_BYTES / 1024}&nbsp;KB of appended query,{" "}
+          {DECLARED_URL_MAX_BYTES / 1024}&nbsp;KB of URL); two declared names that collide; a
+          declared name that collides with one the listed URL already carries; a host or a path that
+          would move — any one of these and the declaration goes unused whole, because a request
+          built from part of a declaration is not one this ledger could describe. Names are folded
+          before they are compared: trimmed, lower-cased, with spaces, dots and <code>[</code>{" "}
+          turned into <code>_</code>, because a back end that reads query names case-insensitively,
+          or folds them the way PHP does, would let a declared name overwrite one the listing
+          published; against the listed URL a declared name is also tried cut at its first{" "}
+          <code>[</code>.
+        </p>
+        <p className="doc-p">
+          The row records <code>requestQuery</code>: <code>declared</code> when the pairs went out,{" "}
+          <code>empty</code> when the seller declared none, and <code>refused</code> when a
+          declaration was there and these rules did not use it. A row on a network the allow-list
+          does not name carries no such label, which is why this page states no chain: the label on
+          the row is the record of where this happened. A <code>declared</code> row also carries{" "}
+          <code>requestQuerySha256</code>, the SHA-256 of the appended pairs written as one
+          form-urlencoded string — the appended pairs by themselves, in the declaration&apos;s own
+          key order, a space as <code>+</code>, and no leading <code>?</code> or{" "}
+          <code>&amp;</code>. What that hash supports is matching, not reading. The string itself is
+          not kept, so a reader holding the row can ask whether two rows carried the same request, or
+          whether a fresh <code>402</code> still declares the same names and values, and cannot
+          recover what was sent; <code>request_query</code> is not among the columns of the ledger
+          export, so the labels are not published beside the rows. The unpaid request goes to the URL
+          the catalog lists, because the declaration arrives with the <code>402</code> that answers
+          it — and the amount and the recipient we sign, and the <code>resource.url</code> inside the
+          payment envelope, come from the catalog and are unchanged.
         </p>
 
         <h2 className="sec-head">

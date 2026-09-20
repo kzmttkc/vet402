@@ -129,6 +129,25 @@ test("列の説明: 足した列は openapi・methodology・llms.txt のどれ�
   assert.ok(!read("src/app/corrections/page.tsx").includes("held_reason column at the end of"));
 });
 
+test("列の説明: request_query が列になったら、methodology の「列に無い」の 1 文は残せない", () => {
+  // 2026-09-21 の宣言クエリ（declared-input.ts）はラベルを raw_response_meta にだけ残し、
+  // export には列が無い。methodology §2 はそれを読者に向けて書いている。
+  // ところが上のテストは「足した列が名前で出ているか」しか見ないので、`request_query` を
+  // 列に足した日も、**この文が `request_query` という名前を含んでいるおかげで緑のまま**通り、
+  // 公開面が嘘になる（登録すれば緑と同じ穴）。列が増えた側からこの文を赤くする。
+  const NOT_A_COLUMN = "is not among the columns of the ledger export";
+  const methodology = read("src/app/observatory/methodology/page.tsx").replace(/\s+/g, " ");
+  const hasQueryColumn = (EXPORT_CSV_COLUMNS as readonly string[]).includes("request_query");
+  if (hasQueryColumn) {
+    assert.ok(
+      !methodology.includes(NOT_A_COLUMN),
+      "export に request_query 列が入った。methodology の「列に無い」の文を、列の説明に書き替えること",
+    );
+  } else {
+    assert.ok(methodology.includes(NOT_A_COLUMN), "列が無いあいだ、methodology はそう書いていること");
+  }
+});
+
 // ------------------------------------------------------------
 // B: 公開 export だけを入力にした前後比較
 // ------------------------------------------------------------
