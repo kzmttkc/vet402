@@ -13,6 +13,19 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-20 JST — L1 の支払い付き要求に、売り手が 402 で宣言したクエリを足す（既定 OFF・vet402.com コア・ブランチ `fix/xrpl-declared-query`・push と独立レビューは依頼元）
+
+- **何が起きていたか（本番の実測・2026-09-20）**: XRPL レーン（RLUSD・1 日の別枠 $0.1・1 バッチ 1 件）の直近 6 件のうち 4 件が `settle_failed 400`。本文は `missing_parameter`・`mark parameter required` 等で、**有料の要求に必須のクエリが付いていなかった**。売り手はほぼ 1 事業者（`*.theaslangroupllc.com`）でサブドメインが違うのでホスト上限は効かず、別枠を毎回 400 で使い切っていた。
+- **原因は vet402 側**: 4 件とも、無払いの 402（`PAYMENT-REQUIRED` ヘッダ）が `extensions.bazaar.info.input.queryParams` に名前と値を宣言していた（`{exchange:"NYSE", at:"2026-12-25T14:30:00Z"}`・`{mark:"PulsePay", goods:"payment software"}`・`{from_currency:"USD", to_currency:"PHP"}`・`{q:"stablecoin", agency:"securities and exchange commission"}`）。Issue #29 の宣言入力は `input.body`（POST）しか読んでおらず、GET の `queryParams` は捨てていた。カタログの `declared_schema` は必須の**名前**（`required: ["exchange"]`）までで値は持たない（`description` の "e.g." だけ）——値があるのは 402 の `info` の側。
+- **L0 は 4 件とも pass（402）**。この売り手は無払いなら引数なしでも 402 を返し、引数の検証は支払いヘッダが付いた要求にだけ掛かる（決済の前に 400）。だから L0 では分からない。L0 は触っていない（宣言は 402 を読んで初めて手に入るので、無払いの 1 本に足せる値は無い）。
+- **何を変えたか**: `src/lib/observatory/declared-input.ts` に `declaredRequestUrl` を足し、`l1-runner.ts` の**支払い付き要求の URL だけ**を差し替える。規則は本文と揃えた——同じ文書だけ読む／宣言に実在する名前と値だけ（スキーマの required・enum・default・description から値を作らない）／値は文字列・有限の数・真偽値のみで、1 つでも外れたら宣言ごと使わない／カタログの URL に既にある名前は足さず、既存のクエリ文字列は書き換えない／上限は名前 32・クエリ 2KB・URL 4KB／ホスト・経路が動いたら使わない。無払いの要求・署名する額と宛先・封筒の `resource.url`・`reserveSpend`・別枠・status の語彙は**変えていない**。行には `raw_response_meta.requestQuery`（`declared` / `empty`）を残す。Tempo（MPP）は対象外。
+- **フラグ**: `OBSERVATORY_L1_DECLARED_QUERY_ENABLED=true` で ON。**既定 OFF**で、OFF のあいだ要求も行も 1 バイトも変わらない（`tests/l1-declared-query.pg.test.ts` の 1 本目が固定）。
+- **そちらが知っておくべき影響**: ON にするのは XRPL に限らない全レーン（active 15,960 行中 2,305 行のスキーマが必須クエリを宣言・うち XRPL の accept を持つのは 25 行）。**ON にする日に** methodology §「That principle is about the request…」へ 1 文足すこと（案: "Since <date>, when that 402 declares `extensions.bazaar.info.input.queryParams` as names with string, number or boolean values, the paid request appends them to the listed URL as declared, and the row records `requestQuery: declared`."）。OFF のまま公開文言を先に変えると主張が実装より先に出るので、今回は公開面に触っていない。
+- **採らなかったもの**: 「400 の本文（`missing_parameter`）を読んで再購入を止める」は入れていない。本文の文字列は売り手が選べるので根拠にしない。4xx の行は既に `inconclusive`（売り手の不履行に数えない）で、台帳の意味は変えていない。
+- **残る懸念**: (1) 宣言が空（`queryParams: {}`）なのに必須の引数がある売り手は今も 400 になる（実測: `macropulse…/api/sentiment` は `{}` を宣言して `?pair=` を要求）。これは売り手の宣言不足で、vet402 は埋めない。払う前に落とすなら「スキーマの `required` の名前が URL にも宣言値にも無い」を根拠にできるが、行を書かずに飛ばすと 1 バッチ 1 件のレーンが同じ候補で詰まるので、status の設計ごと別件。(2) 支払い条件は引数なしの 402 から取る。引数で値段を変える売り手なら有料の要求は 402 で返る（`settle_failed`・従来と同じ扱い）。実測した 1 件（is-open）は引数付きの無払いでも 402。(3) 例の値は売り手が選ぶので、古い日付などで 4xx が返ることはありうる（`inconclusive` に入る）。
+
+---
+
 ## 2026-09-20 JST — トップページに「5. Chains」節（チェーンごとの状態・件数は台帳から）／Arc の初購入が成立し Arc の行を settled へ（vet402.com コア・ブランチ `feat/lp-supported-chains`・origin/main `b17c6d9` へ載せ替え済み・push は依頼元）
 
 - **何を変えたか**:

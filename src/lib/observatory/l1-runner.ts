@@ -69,7 +69,7 @@ import { RLUSD_CURRENCY_HEX, RLUSD_ISSUER } from "./xrpl-constants";
 import { withDailyFallback } from "@/lib/settlements/rollup";
 import { l1TierWhere } from "./coverage";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
-import { declaredRequestBody, type RequestBodySource } from "./declared-input";
+import { declaredRequestBody, declaredRequestUrl, type RequestBodySource, type RequestQuerySource } from "./declared-input";
 import { createPayerFunds, defaultPayerUsdcBalance, type PayerChain, type PayerFunds, type PayerUsdcBalanceReader } from "./payer-funds";
 import { createHash } from "node:crypto";
 // Tempo の MPP 方言（2026-09-17・mpp-payer.ts）。x402 ではなく WWW-Authenticate: Payment の壁。
@@ -1377,6 +1377,14 @@ export async function laneFloorCandidates(input: {
   return { head, counts, hostCapped };
 }
 
+/**
+ * 支払い付き要求に、売り手が宣言したクエリを足すか（2026-09-20・既定 OFF）。
+ * OFF のあいだ purchaseOne の要求と台帳の行は 1 バイトも変わらない（tests/l1-declared-query.pg.test.ts）。
+ */
+function declaredQueryEnabled(): boolean {
+  return process.env.OBSERVATORY_L1_DECLARED_QUERY_ENABLED === "true";
+}
+
 async function purchaseOne(input: {
   candidate: Candidate;
   /** selectAccept に先に選ばせる network（LANE_NETWORK・settled 済みは除く）。 */
@@ -1636,6 +1644,14 @@ async function purchaseOne(input: {
   // そのまま送り、無ければ従来どおり `{}`。規則は declared-input.ts。
   const paidRequestBody: { body: string; source: RequestBodySource } | null =
     method === "POST" ? declaredRequestBody({ bodyText: firstBody, headers: first.headers }) : null;
+  // 支払い付き要求のクエリ（2026-09-20）。売り手が 402 で宣言した input.queryParams を URL に足す
+  // （規則は declared-input.ts）。フラグ OFF（既定）なら null＝URL も行も従来どおり。
+  // 差し替えるのは**要求の URL だけ**: 封筒の resource.url・署名する額と宛先は candidate / accept のまま。
+  // Tempo（MPP）は x402 の文書を読まないので対象外。
+  const paidRequestUrl: { url: string; source: RequestQuerySource } | null =
+    declaredQueryEnabled() && !isTempo
+      ? declaredRequestUrl({ resourceUrl: candidate.resourceUrl, bodyText: firstBody, headers: first.headers })
+      : null;
 
   // Budget gate — BEFORE signing. The ledger, not memory, is the truth.
   const budget = checkL1Budget({
@@ -1941,7 +1957,7 @@ async function purchaseOne(input: {
     // その事実をここで受け取る（最初の 1 回だけ）。下の status の判定で使う。
     let credentialStripped: { from: string; to: string } | null = null;
     try {
-      paid = await fetchImpl(candidate.resourceUrl, {
+      paid = await fetchImpl(paidRequestUrl?.url ?? candidate.resourceUrl, {
         method,
         signal: paidController.signal,
         redirect: "follow",
@@ -2066,6 +2082,9 @@ async function purchaseOne(input: {
       // どの本文で POST したか（2026-09-17 Issue #29）。"declared" は売り手の 402 が宣言した
       // input.body、"empty" は `{}`。GET には付けない。
       ...(paidRequestBody ? { requestBody: paidRequestBody.source } : {}),
+      // どの URL で払ったか（2026-09-20）。"declared" は売り手の 402 が宣言した input.queryParams を
+      // 足した URL、"empty" はカタログの URL のまま。フラグ OFF のあいだは付けない。
+      ...(paidRequestUrl ? { requestQuery: paidRequestUrl.source } : {}),
       // A response whose HEADERS arrived but whose body aborted/failed: the
       // error would otherwise be dropped (rawSettlement keeps the settlement
       // when one exists), so it is kept here rather than silently lost.
