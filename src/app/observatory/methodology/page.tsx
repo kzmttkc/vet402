@@ -327,7 +327,7 @@ export default async function ObservatoryMethodologyPage() {
           {DECLARED_URL_MAX_BYTES / 1024}&nbsp;KB of URL); two declared names that collide; a host or
           a path that would move — any one of these and the declaration goes unused whole. A name the
           listed URL already carries is handled differently: the listing&apos;s own query stands, so
-          that one name is dropped and the declaration&apos;s other pairs are still appended. The
+          that one name is dropped and the declaration&apos;s other pairs are still appended. In that case the
           declaration goes unused only when nothing is left to append. Names are folded before they
           are compared: trimmed, lower-cased, with spaces, dots and <code>[</code> turned into{" "}
           <code>_</code>, because a back end that reads query names case-insensitively, or folds them
@@ -345,7 +345,9 @@ export default async function ObservatoryMethodologyPage() {
           already does. Within the window the export returns, the rows whose{" "}
           <code>request_query</code> is not blank are the networks this has been in effect on, and
           the <code>declared</code> ones are where pairs were actually appended; a window with no
-          such row at all means it has not run on any network yet. A network can be on the allow-list
+          such row at all means it did not run on any network inside that window — and a
+          response carrying <code>x-vet402-truncated: true</code> is missing its newest rows,
+          which is where a lane that just started would show. A network can be on the allow-list
           and still show nothing but <code>empty</code> and <code>refused</code>, which says the
           sellers reached there declared no usable query — not that the runner was off.
         </p>
@@ -356,8 +358,10 @@ export default async function ObservatoryMethodologyPage() {
           key order, except that an integer-like name sorts ahead of the rest in ascending order, by
           the rule JavaScript applies to object keys; a space as <code>+</code>; and no leading{" "}
           <code>?</code> or <code>&amp;</code>. What that hash supports is matching: whether two rows
-          carried the same request, or whether a fresh <code>402</code> still declares the same names
-          and values. It is not a way of hiding the query — the names and values are the
+          on the same endpoint appended the same pairs, or whether a fresh <code>402</code> still
+          declares the same names and values. It covers the appended pairs alone, not the listed
+          URL, the body, or which endpoint was bought, so two rows on different endpoints can
+          carry one hash. It is not a way of hiding the query — the names and values are the
           seller&apos;s own, and the <code>402</code> that answered our unpaid request is where they
           were read from. The row does not carry the string; that <code>402</code> is where to read
           it. The unpaid request

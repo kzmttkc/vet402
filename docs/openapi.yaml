@@ -973,9 +973,10 @@ paths:
           is `+`, `&` between pairs and `=` between name and value, and no
           leading `?` or `&`. The query string itself is not republished: the
           names and values are the seller's own, and the 402 that answered
-          vet402's unpaid request is where they were read from. The hash is
-          for matching (two rows, or a fresh 402), not a way of hiding a short
-          declared query. Blank otherwise.
+          vet402's unpaid request is where they were read from. The hash covers the appended pairs alone, not the listed URL or
+          which endpoint was bought, so it matches two rows on the same
+          endpoint, or a row against a fresh 402; it is not a way of hiding a
+          short declared query. Blank otherwise.
 
         `scripts/declared-body-before-after.mjs` recomputes, from this CSV
         alone, the paid 2xx rate of the same endpoints before and after the
