@@ -13,6 +13,14 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-23 JST（2）— 主張の抽出器のコメント判定を TSX の構文解析に置き換えた（穴を実際に塞いだ）
+
+- **何が穴だったか**: `stripComments` はスラッシュの直前 1 文字だけで「コメントの開きか」を決めていた。散文の `(/*)` を開きと読み、次の本物の閉じまでを空白に潰していた。実測（2026-09-19）: methodology に 1 つ入れると検出が 41 → 14 に落ちた。支えていたのは `DETECTION_FLOOR` だけで、抽出器自身は盲のままだった。
+- **何に変えたか**: `ts.createSourceFile(..., ScriptKind.TSX)` で解析し、各トークンの trivia（`getLeadingCommentRanges` / `getTrailingCommentRanges`）が返す範囲だけを潰す。JSX テキストは trivia を持たないので、その中の `/*` はテキストのまま残る。`{/* … */}` は波括弧のトークンに付くので、子トークンまで降りて拾う。
+- **実測（2026-09-23）**: 同じ `(/*)` を methodology に入れて 43 → **44**（足した 1 文が増えるだけ。以前は 14）。既存の床は全面そのまま（methodology 43・合計 300）。`tests/claims-registry.test.ts` 37 件すべて緑。
+- **テストの書き換え**: 壊れた挙動を固定していた「a prose /* on a real page still swallows…」を、直った挙動を固定する形に置き換えた。JSX の中のコメントを主張として拾わないことも同じテストで見る。
+- **依存**: `typescript` を `src/lib/claims/extract.ts` が import する。この経路はテストと `claims:canary` だけが使う（本番の描画には載らない）。
+
 ## 2026-09-23 JST（1）— Vercel が無料枠超過でチームごと停止。cron を 19→17 本に減らす（vercel.json だけ）
 
 - **何が起きたか**: 2026-09-23 06:24:47 JST、Vercel のチーム `gokaku` が `softBlock = {reason: FAIR_USE_LIMITS_EXCEEDED, blockedDueToOverageType: fluidCpuDuration}` で止まった。vet402.com は全 URL が `402` + `x-vercel-error: DEPLOYMENT_DISABLED`。同チームの banto-roumu.com・agentrix.biz も 402、uitruth.app は 200 だった。9/22 UTC の購入回（120 件成立）は止まる前に完走している。

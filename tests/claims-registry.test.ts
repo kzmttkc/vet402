@@ -124,22 +124,25 @@ test("extractor does not swallow the file when prose contains an unclosed /*", (
   assert.deepEqual(b.map((x) => x.term), ["never"]);
 });
 
-test("a prose /* on a real page still swallows to the next comment — this is what DETECTION_FLOOR catches, not the extractor", () => {
-  // 正直に固定する。実ページはコメントを持つので `src.indexOf("*/")` は真になり、
-  // 散文の `(/*)` は**次の本物の `*/` まで**を飲む。実測（2026-09-19）:
-  // methodology/page.tsx に `(/*)` を 1 つ入れると検出が 41 → 14 へ落ちた。
-  // 抽出器はここを塞げていない。塞いでいるのは検出数の床（14 < 41 で赤くなる）。
-  // 次にこの周りを触る人が「もう安全」と誤解しないよう、形のまま残す。
+test("a prose /* in JSX text is text, not the start of a comment", () => {
+  // 2026-09-19 の実測: methodology に `(/*)` を 1 つ入れると検出が 41 → 14 に落ちた。
+  // 手書きの走査が散文のスラッシュ星を開きと読み、次の本物の閉じまでを飲んでいた。
+  // 2026-09-23 に TSX の構文解析へ置き換えた（`stripComments`）。同じ形をもう一度
+  // 入れて測ると、methodology は 43 → 44（足した 1 文が増えるだけ）になる。
   const src = [
     `const j = (`,
     `  <p>A trailing glob (/*) is never expanded.</p>`,
     `);`,
-    `{/* a real comment further down closes the fake opener */}`,
+    `{/* a real comment further down must still be stripped */}`,
     `const k = <p>every endpoint is probed daily</p>;`,
   ].join("\n");
   const terms = extractAssertions(src, "x.tsx").map((t) => t.term);
-  assert.ok(!terms.includes("never"), "前提が変わった: 散文の (/*) が飲まなくなったなら、このテストと床の説明を書き直すこと");
-  assert.deepEqual(terms.sort(), ["daily", "every"], "飲まれる範囲が変わった");
+  assert.ok(terms.includes("never"), "散文の (/*) が飲まれている: 構文解析側が壊れた");
+  assert.deepEqual(terms.sort(), ["daily", "every", "never"], "拾う範囲が変わった");
+  assert.ok(
+    !extractAssertions(src, "x.tsx").some((a) => /real comment/.test(a.text)),
+    "JSX の中のコメントは主張として拾わない",
+  );
 });
 
 test("extractor does not read a bare URL in JSX text as a line comment", () => {

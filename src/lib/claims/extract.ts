@@ -10,6 +10,8 @@
 // 非散文属性は取り除いてから語を探す。
 // ============================================================
 
+import ts from "typescript";
+
 export type Term = { name: string; pattern: RegExp };
 
 /** 断定語。2026-08-13 の事故で問題になった語の族。 */
@@ -95,93 +97,46 @@ function blank(s: string): string {
   return s.replace(/[^\n]/g, " ");
 }
 
-/**
- * `/` がコメントの開きになれる位置か。直前の1文字だけで判定する。
- *
- * 2026-09-19 の監査で見つかった穴: 散文の中のスラッシュを開きと読み、そこから
- * 次の閉じまでを空白に潰していた。methodology §6 の `<code>/files/*</code>` で
- * 430 行、LP の `@vet402/*` で 25 行、合計 6 件の公開面の断定が関門の外に出た。
- *
- * JS/TS のコメントは前のトークンに**くっつかない**（`a /* c *​/` とは書いても
- * `a/* c *​/` とは書かない）。逆に散文のスラッシュは語やパスにくっついている。
- * その差だけを見る。迷ったらコメントでない側に倒す——落としすぎて関門が
- * 盲になるより、拾いすぎて登録を迫られるほうが安全だから。
- */
-function opensComment(prev: string | undefined): boolean {
-  if (prev === undefined) return true; // ファイル先頭
-  // 語・パスの続き。`@vet402/*` `@vouchscore/*` `<code>/files/*</code>`
-  if (/[A-Za-z0-9_$]/.test(prev)) return false;
-  // URL のスキーム。JSX テキストに裸で置かれた `https://thegraph.com/studio`
-  // （/ethonline はこれで 1 行の後半を失っていた）
-  if (prev === ":") return false;
-  // 正規表現・文字列のエスケープ。`/^https?:\/\//.test(href)`
-  // （TrackedLink.tsx はこれで行の残りを失っていた）
-  if (prev === "\\") return false;
-  // JSX テキストの先頭。`<code>/*…` はコード例であってコメントではない
-  if (prev === ">") return false;
-  return true;
-}
-
-/**
- * コメントを空白に潰す。文字列リテラルの中の `//`（URL）は潰さない。
- * JSX のコメントは中身だけ潰し、波括弧は残す（JSX テキストの切れ目になる）。
- * 散文の中のスラッシュは開きとして扱わない（`opensComment`）。
- */
+// コメントの範囲は TypeScript 自身の構文解析に答えさせる。
+//
+// 2026-09-23 まではスラッシュの直前 1 文字だけを見て「ここはコメントの開きか」を
+// 決めていた（旧 opensComment）。その手書きの規則では散文の (/*) を開きと読み、
+// 次の本物の */ までを空白に潰していた。実測（2026-09-19）: methodology に
+// (/*) を 1 つ入れると検出が 41 → 14 に落ちた。支えていたのは
+// tests/claims-registry.test.ts の DETECTION_FLOOR だけで、穴そのものは開いていた。
+//
+// TSX として解析すれば、JSX テキストの中の /* はテキストのままで、コメントは
+// トークンに付く trivia として位置が返る。推測する余地が無くなる。
+//
+// この説明を行コメントで書いているのは、ブロックコメントの中に */ を書けないから。
 export function stripComments(src: string): string {
+  const sf = ts.createSourceFile("surface.tsx", src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const out = src.split("");
-  const n = src.length;
-  let i = 0;
-  let quote: '"' | "'" | "`" | null = null;
+  const seen = new Set<number>();
 
-  while (i < n) {
-    const c = src[i];
-    if (quote) {
-      if (c === "\\") {
-        i += 2;
-        continue;
-      }
-      if (c === quote) quote = null;
-      i++;
-      continue;
+  const blank = (pos: number, end: number) => {
+    for (let i = pos; i < end && i < out.length; i++) if (out[i] !== "\n") out[i] = " ";
+  };
+  const takeAt = (pos: number) => {
+    for (const r of ts.getLeadingCommentRanges(src, pos) ?? []) {
+      if (seen.has(r.pos)) continue;
+      seen.add(r.pos);
+      blank(r.pos, r.end);
     }
-    if (c === "/" && src[i + 1] === "/" && opensComment(i > 0 ? src[i - 1] : undefined)) {
-      while (i < n && src[i] !== "\n") {
-        out[i] = " ";
-        i++;
-      }
-      continue;
+    for (const r of ts.getTrailingCommentRanges(src, pos) ?? []) {
+      if (seen.has(r.pos)) continue;
+      seen.add(r.pos);
+      blank(r.pos, r.end);
     }
-    // 閉じの無い `/*` はコメントではない。閉じないブロックコメントはそもそも
-    // コンパイルできないので、実物なら必ず `*/` がある。散文の `(/*)` や
-    // 「the suffix /* is never expanded」はここで落ちる——直前が空白や `(` だと
-    // opensComment を通ってしまい、**そこからファイル末尾まで**が無音で空白に
-    // なっていた（2026-09-19 レビュー C2 の実測 2 例）。
-    // **これは穴を塞いでいない。** 実ページには必ずコメントがあるので
-    // `indexOf("*/")` は真になり、散文の `(/*)` は次の本物の `*/` まで飲む。
-    // 実測（2026-09-19）: methodology/page.tsx に `(/*)` を 1 つ入れると検出が
-    // 41 → 14 に落ちる。塞いでいるのは tests/claims-registry.test.ts の
-    // DETECTION_FLOOR（14 < 41 で赤くなる）で、ここが消しているのは
-    // 「ファイル末尾まで無音で飲む」という無限の形だけ。
-    if (
-      c === "/" &&
-      src[i + 1] === "*" &&
-      opensComment(i > 0 ? src[i - 1] : undefined) &&
-      src.indexOf("*/", i + 2) !== -1
-    ) {
-      while (i < n && !(src[i] === "*" && src[i + 1] === "/")) {
-        if (src[i] !== "\n") out[i] = " ";
-        i++;
-      }
-      if (i < n) {
-        out[i] = " ";
-        out[i + 1] = " ";
-        i += 2;
-      }
-      continue;
-    }
-    if (c === '"' || c === "'" || c === "`") quote = c;
-    i++;
-  }
+  };
+
+  // トークンまで降りる。`{/* … */}` のコメントは波括弧のトークンに付くので、
+  // ノードだけを辿ると取りこぼす。JSX テキストは trivia を持たないので触らない。
+  const walk = (node: ts.Node) => {
+    if (node.kind !== ts.SyntaxKind.JsxText) takeAt(node.getFullStart());
+    for (const child of node.getChildren(sf)) walk(child);
+  };
+  walk(sf);
   return out.join("");
 }
 
