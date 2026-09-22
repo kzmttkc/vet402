@@ -26,3 +26,6 @@ node_modules
 
 # tests/ は外していない。tsconfig の include が **/*.ts なので、
 # next build 中の型検査に必要。CSS への焼き込みは @source not で閉じてある。
+
+# 45GB の監査実行の生成物（2026-09-23）。ビルド機へ送る理由がない。
+packages/mcp-server/audit-500
