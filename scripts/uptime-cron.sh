@@ -31,6 +31,41 @@ note_alert() {
   } >>"$ALERTS"
 }
 
+# 2026-09-23: 会期中は支出上限を置かない判断（オーナー）。上限が無い以上、
+# 止まる前に気づける値を毎回読む。Vercel の使用量 API は時間範囲が通らない
+# （invalid_time_range を 3 形式で実測）ので、読めるのはチームの状態だけ:
+#   billing.plan（pro から落ちていないか）と softBlock（fair use で止まっていないか）。
+# 402 が出てからでは遅い面——ここで先に鳴らす。token は vercel CLI のものを読むだけで、
+# 値はログにも ALERTS にも書かない。
+check_vercel_team() {
+  local auth="$HOME/Library/Application Support/com.vercel.cli/auth.json"
+  [[ -f "$auth" ]] || return 0
+  local token
+  token=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("token",""))' "$auth" 2>/dev/null) || return 0
+  [[ -n "$token" ]] || return 0
+  local body
+  body=$(curl -sL --max-time 20 -H "Authorization: Bearer $token" https://api.vercel.com/v2/teams/gokaku 2>/dev/null) || return 0
+  python3 - "$body" <<'PYEOF' 2>/dev/null
+import json, sys
+try:
+    d = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(0)
+plan = (d.get("billing") or {}).get("plan")
+sb = d.get("softBlock")
+if sb:
+    print(f"VERCEL_TEAM_BLOCKED reason={sb.get('reason')} type={sb.get('blockedDueToOverageType')}")
+elif plan and plan != "pro":
+    print(f"VERCEL_TEAM_PLAN_CHANGED plan={plan}")
+PYEOF
+}
+
+TEAM_NOTE="$(check_vercel_team)"
+if [[ -n "$TEAM_NOTE" ]]; then
+  printf '[%s] %s\n' "$ts" "$TEAM_NOTE" >>"$LOG"
+  note_alert "$TEAM_NOTE — Vercel のチーム状態。プランか停止状態が変わった。課金ページ: https://vercel.com/gokaku/~/settings/billing"
+fi
+
 if OUT=$(./scripts/smoke-production.sh 2>&1); then
   printf '%s\n[%s] OK\n' "$OUT" "$ts" >>"$LOG"
   if [[ -f "$FAIL_MARKER" ]]; then

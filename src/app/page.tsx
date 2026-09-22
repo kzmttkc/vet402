@@ -817,8 +817,8 @@ export default async function Home() {
                   the validator answers it. A validator cannot open a request about someone
                   else&rsquo;s agent &mdash; <code>validationRequest</code> reverts with{" "}
                   <em>Not authorized</em>, which is what our fourteen attempts between 2026-08-21
-                  and 2026-09-03 did. So this is not a build problem. In 750,000 blocks of Base
-                  (roughly 17 days) the whole registry received{" "}
+                  and 2026-09-03 did. So this is not a build problem. In the 750,000 blocks of Base we
+                  read on 2026-09-03 (roughly 17 days) the whole registry received{" "}
                   <strong>two</strong> events, from one validator, about one agent, and{" "}
                   <strong>none</strong> named us. We can answer the first request the day someone
                   sends one; until then the honest number is zero.
