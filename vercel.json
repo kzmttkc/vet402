@@ -18,15 +18,7 @@
     },
     {
       "path": "/api/cron/index-feedback",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/cron/index-feedback",
       "schedule": "0 14 * * *"
-    },
-    {
-      "path": "/api/cron/index-feedback",
-      "schedule": "0 20 * * *"
     },
     {
       "path": "/api/cron/monitor-health",

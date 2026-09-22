@@ -13,6 +13,14 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-23 JST（1）— Vercel が無料枠超過でチームごと停止。cron を 19→17 本に減らす（vercel.json だけ）
+
+- **何が起きたか**: 2026-09-23 06:24:47 JST、Vercel のチーム `gokaku` が `softBlock = {reason: FAIR_USE_LIMITS_EXCEEDED, blockedDueToOverageType: fluidCpuDuration}` で止まった。vet402.com は全 URL が `402` + `x-vercel-error: DEPLOYMENT_DISABLED`。同チームの banto-roumu.com・agentrix.biz も 402、uitruth.app は 200 だった。9/22 UTC の購入回（120 件成立）は止まる前に完走している。
+- **何を変えたか**: `/api/cron/index-feedback` を 1 日 4 回（02/08/14/20 UTC）から 2 回（02/14 UTC）に減らした。1 本あたり `maxDuration = 300`・`maxBlocks = 400_000` で、Base は 1 日約 43,200 ブロックなので 12 時間間隔でも取りこぼさない。
+- **変えていないもの**: 12:00 UTC の `l1-purchase`、`verify-settlements`、`l0-probe`、その他 15 本。購入の回数（1 日 4 回・160〜400 件/日）は `docs/applications/solana-grant-proposal.md` と `docs/hackathons/GRANTS.md` の主張なので触っていない。
+- **影響**: ERC-8004 の feedback 取り込みの最短反映が 6 時間から 12 時間に延びる。公開面にこの頻度の主張は無い（`docs/claims.yaml` に feedback の項目なし）。
+- **停止の解除は有料プランへの切り替えが要る**（オーナーの手番）。解除されるまで push しても本番は出ない。
+
 ## 2026-09-21 JST（3）— 独立レビュー BLOCK（Critical 2）を反映。公開面が実装より強く言っていた 2 箇所を訂正（同ブランチ 3 コミット目・文書だけ・push は依頼元）
 
 - **C1 「掲載名と衝突したら宣言ごと使わない」は嘘だった**。実装（`declared-input.ts:205` の `continue`）は衝突した名前だけ落として**残りを送り、行を `declared` と書く**。refused になるのは足すものが 0 になったときだけ（`:209`）。レビュアーの実測: 掲載 `?exchange=LSE` に `{EXCHANGE:"NYSE", at:"now", mark:true}` → `?exchange=LSE&at=now&mark=true` / `declared`。`tests/l1-declared-input-query.test.ts` が最初からそう固定していた。内部の正典（`request-query.ts`・`declared-input.ts:127`）は正しく、**公開面だけが一般化して嘘になっていた**。methodology・openapi・llms.txt・claims.yaml の 4 面を「衝突した名前だけ落ちて残りは送る／足すものが残らなければ宣言ごと使わない」に分けた。冒頭の 1 文も「掲載 URL に無い宣言名だけを足す」に狭めた（旧い言い方は衝突分も送ると読めた）。
