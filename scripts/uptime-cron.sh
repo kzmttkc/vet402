@@ -45,7 +45,25 @@ else
   [[ -f "$FAIL_MARKER" ]] && last=$(sed -n '2p' "$FAIL_MARKER" 2>/dev/null || echo 0)
   [[ "$last" =~ ^[0-9]+$ ]] || last=0
   if (( last == 0 || now - last >= REALERT_SECONDS )); then
-    note_alert "$(printf '%s' "$OUT" | grep -m1 '^FAIL:' || echo 'smoke-production.sh が非ゼロ終了')"
+    reason="$(printf '%s' "$OUT" | grep -m1 '^FAIL:' || echo 'smoke-production.sh が非ゼロ終了')"
+    # 2026-09-23: 無料枠の超過でチームごと止まると全URLが 402 になる。原因は本文に出ず
+    # ヘッダの x-vercel-error にしか無いので、ここで1回だけ引いて理由に書き足す。
+    # 実測（09-23 06:24 JST）: softBlock = FAIL_USE… の hobby 停止で vet402/banto/agentrix が同時に 402。
+    if printf '%s' "$OUT" | grep -q '402'; then
+      verr="$(curl -sLI https://vet402.com/ 2>/dev/null | grep -i '^x-vercel-error:' | tr -d '\r')"
+      case "$verr" in
+        *DEPLOYMENT_DISABLED*)
+          reason="$reason
+
+Vercel がデプロイを止めている（$verr）。コードの不具合ではない。
+無料枠の超過（fair use）か支払いが原因なので、`https://vercel.com/gokaku/~/settings/billing` を見る。
+プランと停止の状態は次で読める（token は vercel CLI の auth.json）:
+\`curl -sL -H \"Authorization: Bearer \$TOKEN\" https://api.vercel.com/v2/teams/gokaku\` の billing.plan と softBlock。
+解除は有料プランへの切り替え＝オーナーの手番。"
+          ;;
+      esac
+    fi
+    note_alert "$reason"
     printf '%s\n%s\n' "$ts" "$now" >"$FAIL_MARKER"
   else
     # マーカーは維持したまま最終アラート時刻を保つ（連投しない）。
