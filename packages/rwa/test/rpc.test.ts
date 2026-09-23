@@ -35,3 +35,22 @@ test("a plain JSON-RPC error is not retried", async () => {
   await assert.rejects(rpcCall("eth_call", [], opts(s.fetchImpl)), /invalid argument/);
   assert.equal(s.count(), 1);
 });
+
+test("only head-side methods may fall back to the second RPC", async () => {
+  const seen: string[] = [];
+  const fetchImpl = (async (url: string, init: { body: string }) => {
+    seen.push(url);
+    const b = JSON.parse(init.body);
+    const id = Array.isArray(b) ? b[0].id : b.id;
+    if (seen.length === 1) return new Response(JSON.stringify({ id, error: { code: -32000, message: "rate limited upstream" } }), { status: 429 });
+    return new Response(JSON.stringify({ id, result: "0x1" }), { status: 200 });
+  }) as unknown as typeof fetch;
+  // An archive read stays on the primary: one URL, retried there.
+  seen.length = 0;
+  await rpcCall("eth_getTransactionReceipt", ["0x0"], { fetchImpl, retries: 1, sleep: async () => {} });
+  assert.equal(new Set(seen).size, 1, `archive read must not reach the fallback: ${[...new Set(seen)].join(", ")}`);
+  // A head read may use the fallback.
+  seen.length = 0;
+  await rpcCall("eth_blockNumber", [], { fetchImpl, retries: 0, sleep: async () => {} });
+  assert.equal(new Set(seen).size, 2, "eth_blockNumber should try the fallback");
+});

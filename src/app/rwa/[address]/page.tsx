@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getAddress } from "viem";
+import { getClientIp } from "@/lib/api/client-ip";
+import { consumeIpRateLimit } from "@/lib/api/ip-rate-limit";
 import { isValidAddress } from "@/lib/chain/client";
-import { cachedFacts } from "../../../../packages/rwa/cache";
+import { TooBusy, cachedFacts } from "../../../../packages/rwa/cache";
 import { NoStockTokenActivity, type RwaFacts } from "../../../../packages/rwa/facts";
 
 /**
@@ -30,15 +33,29 @@ export async function generateMetadata({ params }: { params: Promise<{ address: 
   };
 }
 
+function Busy({ retryAfterSec }: { retryAfterSec: number }) {
+  return (
+    <main className="mx-auto max-w-3xl px-6 py-12">
+      <h1 className="text-xl font-semibold">vet402 /rwa</h1>
+      <p className="mt-4">再構成が立て込んでいます。{retryAfterSec} 秒ほど置いてから開き直してください。</p>
+    </main>
+  );
+}
+
 export default async function RwaAddressPage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
   if (!isValidAddress(address)) notFound();
+
+  const ip = getClientIp(new Request("http://localhost", { headers: await headers() })) ?? "unknown";
+  const limited = await consumeIpRateLimit(`rwa-page:${ip}`, 10, 60_000);
+  if (!limited.allowed) return <Busy retryAfterSec={limited.retryAfter ?? 60} />;
 
   let facts: RwaFacts;
   try {
     facts = await cachedFacts(address);
   } catch (err) {
     if (err instanceof NoStockTokenActivity) notFound();
+    if (err instanceof TooBusy) return <Busy retryAfterSec={err.retryAfterSec} />;
     return (
       <main className="mx-auto max-w-3xl px-6 py-12">
         <h1 className="text-xl font-semibold">vet402 /rwa</h1>

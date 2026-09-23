@@ -4,7 +4,7 @@ import { publicRateLimit } from "@/lib/api/public-route";
 import { isValidAddress } from "@/lib/chain/client";
 import { logServerError } from "@/lib/util/log";
 import { RWA_CHAIN_ID } from "../../../../../../../packages/rwa/config";
-import { cachedFacts } from "../../../../../../../packages/rwa/cache";
+import { TooBusy, cachedFacts } from "../../../../../../../packages/rwa/cache";
 import { NoStockTokenActivity, type RwaFacts } from "../../../../../../../packages/rwa/facts";
 
 /**
@@ -12,8 +12,11 @@ import { NoStockTokenActivity, type RwaFacts } from "../../../../../../../packag
  *
  * Reconstruction only. There is no opinion field on this path and no import
  * from /score: the RWA instrument lives in packages/rwa and this route.
- * Key-less, on the existing key-less ceiling (120/min/IP). One address is
- * cached in-process for 60 seconds, shared with the /rwa page (SPEC §9).
+ * Key-less. 10 requests/min/IP (2026-09-23: down from the shared 120 after the
+ * Vercel quota stop — one request here costs ~30 RPC calls and tens of seconds,
+ * so this path is nothing like the other key-less reads). The address cache and
+ * the cap on concurrent reconstructions live in packages/rwa/cache.ts and are
+ * shared with the /rwa page (SPEC §9).
  *
  * A stale equity feed refuses the USD mark (`usd: null`, `stale: true`);
  * realized_usd is null until fixtures/rwa/B.md exists and its test passes.
@@ -25,7 +28,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  const gate = await publicRateLimit(request, "rwa-facts", 120, 60_000);
+  const gate = await publicRateLimit(request, "rwa-facts", 10, 60_000);
   if (!gate.ok) return gate.response;
 
   const { address } = await context.params;
@@ -41,6 +44,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const facts = await cachedFacts(address);
     return NextResponse.json(render(facts), { headers: gate.cacheHeaders });
   } catch (err) {
+    if (err instanceof TooBusy) {
+      return NextResponse.json(
+        { error: "too_busy" },
+        { status: 503, headers: { ...gate.headers, "Retry-After": String(err.retryAfterSec) } },
+      );
+    }
     if (err instanceof NoStockTokenActivity) {
       return NextResponse.json({ error: "no_stock_token_activity" }, { status: 404, headers: gate.headers });
     }
