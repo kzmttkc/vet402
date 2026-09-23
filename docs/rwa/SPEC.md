@@ -537,6 +537,7 @@ Do not merge two addresses into one PnL.
 - 共有ファイル（`package.json`・lockfile・DB schema/migration・`next.config.ts`・`vercel.json`）: 1コミットに分け、件名に `rwa:` を入れる。本体の既存テーブルは変えない。
 - コミット件名: 英語。`main` へはトピックブランチから `bash scripts/push-main.sh --full` だけ。
 - 凍結: §13 の「9/25–27 ETHTokyo 移動 | 凍結してよい」は **凍結する**（`rwa` パスのコミット 0 件）。提出準備は 9/28–10/4 に置く。
+- 凍結の改正（patch 013・2026-09-23 コアセッションの申し合わせ）: **本番へ出さない期間は 2026-09-24 18:00 〜 09-27 15:00 JST**（9/25–27 より広い方を採る）。ブランチでの実装・テストは通常どおり続ける。`scripts/push-main.sh` をこの間打たない（main への push はアプリ全体の本番デプロイを起こす。docs だけでも同じ）。本番 DB のマイグレーションと新規 cron も 09-27 15:00 以降。提出は 9/28–10/1 のまま。
 - 未決: §13 の「9/23–26 FIFO、partial、catalog」と「9/27–29 opinion API、アンカー1発、提出文」は凍結日と重なる。凍結日には作業しない。行の再配置は patch 003 で決める。
 
 ### §13d 時間箱の再配置（patch 003・2026-09-13）
