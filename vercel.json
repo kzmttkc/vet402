@@ -67,6 +67,14 @@
     {
       "path": "/api/cron/notify-subscribers",
       "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/cron/index-feedback",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/index-feedback",
+      "schedule": "0 20 * * *"
     }
   ]
 }
