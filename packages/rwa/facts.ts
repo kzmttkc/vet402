@@ -7,7 +7,9 @@ import { fetchBlockTimestamp, fetchCanonicalTransfers, fetchHead, fetchReceipts 
 import { classifyReceipt, summarize, type EventsSummary, type PoolResolver, type RwaEvent, type RwaReceipt } from "./classify";
 import { NVDA, RWA_CHAIN_ID } from "./config";
 import { feedStatus, isWeekendUtc, readTokenAndFeed, type TokenFeedRead } from "./feed";
+import { runFifo, type PricedEvent } from "./fifo";
 import { chainPoolResolver } from "./pools";
+import { quoteForSwap } from "./quote";
 import type { RpcOptions } from "./rpc";
 import { markUsdCents } from "./usd";
 
@@ -42,8 +44,13 @@ export type RwaFacts = {
     weekend: boolean;
   }[];
   events_summary: EventsSummary;
-  realized_usd: null;
+  /** raw quantity the replayed events leave the address holding; equals `tokens[].raw` unless a leg was missed */
+  replayed_raw: string;
+  /** null until every lot the sale consumed had a known cost (SPEC §4, Fixture B) */
+  realized_usd: string | null;
+  realized_status: "complete" | "partial" | "none";
   unrealized_usd: string | null;
+  /** null in v0: MDD needs stored NAV snapshots, and nothing is stored yet (SPEC §4) */
   mdd_usd: null;
   gaps: string[];
   evidence: { txs: string[]; fixture_ids: string[] };
@@ -71,13 +78,41 @@ export function usdString(cents: bigint): string {
   return `${sign}${abs / 100n}.${(abs % 100n).toString().padStart(2, "0")}`;
 }
 
-export function r1Status(events: RwaEvent[], summary: EventsSummary, raw: bigint): R1Status {
+/** SPEC §5: reconstructed needs a decodable history AND no cost-unknown lot left. */
+export function r1Status(summary: EventsSummary, unknownCostRaw: bigint): R1Status {
   if (summary.other_unparsed > 0) return "partial";
-  // SPEC §5: reconstructed needs no cost-unknown lot left. Until FIFO lands
-  // (09-22) a positive balance with any inbound transfer is treated as such a lot.
-  const inboundTransfer = events.some((e) => e.type === "transfer" && e.raw_delta > 0n);
-  if (inboundTransfer && raw > 0n) return "partial";
+  if (unknownCostRaw > 0n) return "partial";
   return "reconstructed";
+}
+
+/**
+ * One priced event per (transaction, token): the legs of a transaction are netted
+ * before pricing, so a route that moves the canonical token twice inside one
+ * transaction cannot be charged the quote twice. The quote itself comes from the
+ * transaction's own USDG/WETH legs (packages/rwa/quote.ts).
+ */
+export function priceEvents(receipts: RwaReceipt[], events: RwaEvent[], address: string): PricedEvent[] {
+  const byTx = new Map<string, RwaReceipt>(receipts.map((r) => [r.transactionHash, r]));
+  const grouped = new Map<string, PricedEvent>();
+  for (const e of events) {
+    const key = `${e.tx}:${e.token}`;
+    const seen = grouped.get(key);
+    if (seen) {
+      seen.raw_delta += e.raw_delta;
+      seen.log_index = Math.min(seen.log_index, e.log_index);
+      // A transaction that both swaps and transfers the token is not a clean swap.
+      if (seen.type !== e.type) seen.type = "other_unparsed";
+      continue;
+    }
+    grouped.set(key, { tx: e.tx, log_index: e.log_index, block_number: e.block_number, type: e.type, raw_delta: e.raw_delta, quote_usd_cents: null });
+  }
+  for (const priced of grouped.values()) {
+    if (priced.type !== "univ3_swap" && priced.type !== "univ4_swap") continue;
+    const receipt = byTx.get(priced.tx);
+    if (!receipt) continue;
+    priced.quote_usd_cents = quoteForSwap(receipt.logs, address, priced.raw_delta > 0n)?.usd_cents ?? null;
+  }
+  return [...grouped.values()];
 }
 
 export type FactsInputs = {
@@ -99,6 +134,7 @@ export async function assembleFacts(input: FactsInputs): Promise<RwaFacts> {
   if (events.length === 0) throw new NoStockTokenActivity();
   events.sort((a, b) => a.block_number - b.block_number || a.log_index - b.log_index);
   const summary = summarize(events);
+  const fifo = runFifo(priceEvents(input.receipts, events, address));
 
   const { read } = input;
   const status = feedStatus({ updatedAt: read.round.updatedAt, oraclePaused: read.oraclePaused, asOf: input.blockTimestamp });
@@ -106,7 +142,14 @@ export async function assembleFacts(input: FactsInputs): Promise<RwaFacts> {
   const gaps: string[] = [];
   if (summary.other_unparsed > 0) gaps.push("other_unparsed");
   if (status.stale) gaps.push("feed_stale");
-  gaps.push("fifo_pending"); // realized / mdd wait for Fixture B and the FIFO engine (SPEC §4, §11)
+  if (fifo.unknown_cost_raw > 0n) gaps.push("unknown_cost_lots");
+  if (fifo.oversold_raw > 0n) gaps.push("incomplete_history");
+  // The one invariant that proves no leg was dropped: replaying every classified
+  // event must land on the balance the chain reports. Measured 2026-09-24 on the
+  // demo address: both said 41012742373747910457. A mismatch means the decoder
+  // missed a movement, so it is published rather than smoothed over.
+  if (fifo.remaining_raw !== read.raw) gaps.push("balance_mismatch");
+  gaps.push("mdd_pending"); // MDD needs stored NAV snapshots (SPEC §4); nothing is stored in v0
 
   return {
     address,
@@ -116,7 +159,7 @@ export async function assembleFacts(input: FactsInputs): Promise<RwaFacts> {
     method_version: METHOD_VERSION,
     identity_binding: "unknown",
     r0: "present",
-    r1_status: r1Status(events, summary, read.raw),
+    r1_status: r1Status(summary, fifo.unknown_cost_raw),
     r2: "no_declaration",
     tokens: [
       {
@@ -135,7 +178,9 @@ export async function assembleFacts(input: FactsInputs): Promise<RwaFacts> {
       },
     ],
     events_summary: summary,
-    realized_usd: null,
+    replayed_raw: fifo.remaining_raw.toString(),
+    realized_usd: fifo.realized_usd_cents === null ? null : usdString(fifo.realized_usd_cents),
+    realized_status: fifo.realized_status,
     unrealized_usd: usdCents === null ? null : usdString(usdCents),
     mdd_usd: null,
     gaps,

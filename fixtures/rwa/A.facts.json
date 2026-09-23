@@ -30,11 +30,14 @@
     "univ4": 0,
     "other_unparsed": 0
   },
+  "replayed_raw": "186109735330000000000",
   "realized_usd": null,
+  "realized_status": "partial",
   "unrealized_usd": "39859.28",
   "mdd_usd": null,
   "gaps": [
-    "fifo_pending"
+    "unknown_cost_lots",
+    "mdd_pending"
   ],
   "evidence": {
     "txs": [
