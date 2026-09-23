@@ -114,3 +114,15 @@ test("the current code reproduces fixtures/rwa/A.facts.json exactly (regression 
   const f = JSON.parse(JSON.stringify(await assembleFacts(base())));
   assert.deepEqual(f, golden);
 });
+
+test("the replayed quantity is published next to the balance, so a dropped leg is visible", async () => {
+  const f = await assembleFacts(base());
+  assert.equal(f.replayed_raw, f.tokens[0].raw, "fixture A's legs must replay to its balance");
+  assert.equal(f.gaps.includes("balance_mismatch"), false);
+});
+
+test("a balance the replayed events cannot explain is reported as a gap", async () => {
+  const short = { ...read(), raw: BigInt(A.raw) + 10n ** 18n };
+  const f = await assembleFacts({ ...base(), read: short });
+  assert.ok(f.gaps.includes("balance_mismatch"));
+});
