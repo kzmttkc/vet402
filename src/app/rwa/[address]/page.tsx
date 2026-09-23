@@ -97,6 +97,17 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
         </tbody>
       </table>
 
+      {facts.realized_usd !== null && (
+        <>
+          <h2 className="mt-8 text-lg font-semibold">実現損益</h2>
+          <p className="mt-2 font-mono text-sm">{facts.realized_usd} USD</p>
+          <p className="mt-1 text-sm">
+            FIFO で、売った分に対応する買いの原価を古い順に当てた結果です（{facts.realized_status}）。
+            {facts.realized_status === "partial" && "原価の分からない口が混ざっているため、その分は含めていません。"}
+          </p>
+        </>
+      )}
+
       <h2 className="mt-8 text-lg font-semibold">再構成の状態</h2>
       <p className="mt-2 text-sm">r1_status: {facts.r1_status}</p>
       <p className="mt-1 text-sm">
