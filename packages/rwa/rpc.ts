@@ -15,6 +15,12 @@ export class RpcError extends Error {
   }
 }
 
+/** Methods the fallback RPC can actually serve. It has no archive state (measured
+ *  2026-09-23: "Archive requests require a personal token"), so a historical
+ *  eth_call, a receipt or a log range sent there fails with a misleading error.
+ *  Everything else stays on the primary and retries there instead. */
+const FALLBACK_SAFE_METHODS = new Set(["eth_blockNumber", "eth_chainId"]);
+
 export type RpcOptions = {
   urls?: string[];
   /** retries per URL on 429 / network failure */
@@ -53,7 +59,9 @@ async function post(url: string, body: unknown, timeoutMs: number, fetchImpl: ty
 /** Send `calls` as one JSON-RPC batch. Returns results in order; throws RpcError on the first error entry. */
 export async function rpcBatch<T = unknown>(calls: JsonRpcCall[], opts: RpcOptions = {}): Promise<T[]> {
   if (calls.length === 0) return [];
-  const urls = opts.urls ?? [RWA_RPC_URL, RWA_RPC_FALLBACK_URL];
+  const urls =
+    opts.urls ??
+    (calls.every((c) => FALLBACK_SAFE_METHODS.has(c.method)) ? [RWA_RPC_URL, RWA_RPC_FALLBACK_URL] : [RWA_RPC_URL]);
   const retries = opts.retries ?? 3;
   const timeoutMs = opts.timeoutMs ?? 20_000;
   const fetchImpl = opts.fetchImpl ?? fetch;
