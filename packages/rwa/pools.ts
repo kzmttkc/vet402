@@ -16,8 +16,13 @@ export type PoolFacts = {
   v4: Record<string, { currency0: string; currency1: string } | null>;
 };
 
+/** Pool identity never changes, so what one request learned serves the next.
+ *  Measured 2026-09-23: resolving pools was most of the ~176 RPC calls a cold
+ *  reconstruction made. Kept on globalThis so both bundles share one memo. */
+const sharedMemo: PoolFacts = ((globalThis as unknown as { __rwaPoolFacts?: PoolFacts }).__rwaPoolFacts ??= { v3: {}, v4: {} });
+
 /** A resolver that reads the chain and remembers what it read (the memo doubles as a fixture). */
-export function chainPoolResolver(opts?: RpcOptions, memo: PoolFacts = { v3: {}, v4: {} }): PoolResolver & { facts: PoolFacts } {
+export function chainPoolResolver(opts?: RpcOptions, memo: PoolFacts = sharedMemo): PoolResolver & { facts: PoolFacts } {
   return {
     facts: memo,
     async isUniswapV3PoolWith(pool, token) {
