@@ -4,6 +4,7 @@
 // Run from the repo root: npx tsx --test packages/rwa/test/anchor.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { keccak256, toHex } from "viem";
@@ -59,7 +60,7 @@ test("the committed artifact is the compiled contract and exposes the SPEC §9 s
   assert.ok(artifact.bytecode.startsWith("0x") && artifact.bytecode.length > 200);
   // The source in the tree is the source that was compiled.
   const src = readFileSync(join(process.cwd(), "packages/rwa/contracts/RwaAnchor.sol"), "utf8");
-  const sha = require("node:crypto").createHash("sha256").update(src).digest("hex");
+  const sha = createHash("sha256").update(src).digest("hex");
   assert.equal(artifact.sourceSha256, sha, "RwaAnchor.sol changed since it was compiled; recompile before deploying");
   // Nothing upgradeable, no owner, no token (SPEC §9).
   for (const banned of ["owner", "upgradeTo", "initialize", "transfer", "mint"]) {
