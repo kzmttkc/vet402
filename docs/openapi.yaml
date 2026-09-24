@@ -88,6 +88,8 @@ tags:
     description: Embeddable SVG verification badges
   - name: System
     description: Health and metadata
+  - name: RWA
+    description: vet402 /rwa — a wallet's Stock Token track record on Robinhood Chain (4663), reconstructed from public chain data. Measurement only; no opinion field.
 
 # Every public endpoint the product serves is below (2026-08-13 — the spec
 # previously carried 10 of them and called itself the "full machine-readable
@@ -1112,6 +1114,91 @@ paths:
         "404": { description: Unknown endpoint }
         "429": { description: Rate limited }
         "503": { description: Store unavailable }
+
+  /api/v1/rwa/facts/{address}:
+    get:
+      operationId: getRwaFacts
+      tags: [RWA]
+      summary: Stock Token track record of one address on Robinhood Chain — reconstruction only
+      description: |
+        docs/rwa/SPEC.md §7. Rebuilds the address's canonical Stock Token
+        history from public chain data: token Transfers, Uniswap v3/v4 swaps
+        verified against the official factory and PoolManager, and the
+        Chainlink feed for the token. Every movement is classified as
+        `transfer`, `univ3`, `univ4` or `other_unparsed`; nothing is dropped.
+        Realized PnL is FIFO only. A stale feed (26h+ or oracle paused)
+        returns `usd: null`. `replayed_raw` must equal `tokens[].raw`; when it
+        does not, `gaps` carries `balance_mismatch`. There is no opinion field
+        on this path. Key-less; 10/min/IP; one address is cached for 5 minutes
+        and at most 3 reconstructions run at once.
+      security: []
+      parameters:
+        - in: path
+          name: address
+          required: true
+          schema: { type: string, pattern: "^0x[a-fA-F0-9]{40}$" }
+        - in: query
+          name: chain
+          required: false
+          schema: { type: string, enum: ["4663"], default: "4663" }
+      responses:
+        "200":
+          description: The reconstruction.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [address, chain_id, as_of, method_version, r1_status, tokens, events_summary, replayed_raw, realized_usd, realized_status, gaps, disclaimer]
+                properties:
+                  address: { type: string, description: EIP-55 }
+                  chain_id: { type: integer, enum: [4663] }
+                  as_of: { type: string, format: date-time }
+                  as_of_block: { type: integer }
+                  method_version: { type: string, example: rwa-recon-0.1 }
+                  identity_binding: { type: string, enum: [unknown, declared, bound] }
+                  r0: { type: string, enum: [present] }
+                  r1_status: { type: string, enum: [reconstructed, partial, unverified] }
+                  r2: { type: string, enum: [no_declaration] }
+                  tokens:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        symbol: { type: string }
+                        token: { type: string }
+                        canonical: { type: boolean }
+                        raw: { type: string, description: uint256 as a decimal string }
+                        shares_ui: { type: string, description: raw × uiMultiplier / 1e18, 8 decimals }
+                        usd: { type: string, nullable: true, description: null while the feed is stale }
+                        feed: { type: string }
+                        feed_answer: { type: string }
+                        feed_updated_at: { type: string, format: date-time }
+                        stale: { type: boolean }
+                        stale_reasons: { type: array, items: { type: string, enum: [age, paused] } }
+                        weekend: { type: boolean }
+                  events_summary:
+                    type: object
+                    properties:
+                      transfer: { type: integer }
+                      univ3: { type: integer }
+                      univ4: { type: integer }
+                      other_unparsed: { type: integer }
+                  replayed_raw: { type: string, description: What replaying every classified event leaves the address holding }
+                  realized_usd: { type: string, nullable: true, description: FIFO; null when no sale could be priced against a known cost }
+                  realized_status: { type: string, enum: [complete, partial, none] }
+                  unrealized_usd: { type: string, nullable: true }
+                  mdd_usd: { type: string, nullable: true }
+                  gaps: { type: array, items: { type: string } }
+                  evidence:
+                    type: object
+                    properties:
+                      txs: { type: array, items: { type: string } }
+                      fixture_ids: { type: array, items: { type: string } }
+                  disclaimer: { type: string }
+        "400": { description: "`invalid_address` — not 20-byte hex, or chain other than 4663" }
+        "404": { description: "`no_stock_token_activity` — no canonical Transfer touches this address" }
+        "429": { description: Rate limited }
+        "503": { description: "`feed_unavailable` (chain read failed) or `too_busy` (3 reconstructions already running; see Retry-After)" }
 
   /api/v1/observatory/endpoints/{id}/facts:
     get:
