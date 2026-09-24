@@ -33,6 +33,13 @@ the record `partial`; it is never dropped.
 
 ## Check it yourself
 
+The anchor needs no new contract function to be checked. Recompute the hash
+from the published JSON (the five SPEC §9 fields, newline-joined, `realized_usd`
+written as `null` when absent, then keccak256) and compare it with the
+`Anchored` event, which `eth_getLogs` returns for the anchor tx; `count()` is
+readable with a plain `eth_call`. That is all the contract exposes, on purpose
+([DECISION_010_anchor_read.md](DECISION_010_anchor_read.md)).
+
 ```bash
 npm run rwa:test                                           # Fixture A (price formula), Fixture B (FIFO by hand), 60+ tests
 npx tsx packages/rwa/scripts/anchor.ts --verify <tx> --mainnet   # recompute the anchored hash from the JSON
