@@ -21,7 +21,7 @@ token, or give advice. Specification: [SPEC.md](SPEC.md). Rules for this code:
 | | |
 |---|---|
 | Page | `https://vet402.com/rwa/<address>` |
-| Facts JSON | `GET https://vet402.com/api/v1/rwa/facts/<address>?chain=4663` (no key; 10/min/IP) |
+| Facts JSON | `GET https://vet402.com/api/v1/rwa/facts/<address>?chain=4663` (no key; 10/min/IP across instances; 5-minute cache and 3 concurrent reconstructions per instance) |
 | Anchor | `RwaAnchor` on Robinhood Chain — see `fixtures/rwa/anchor.json` |
 
 ## Venue scope
