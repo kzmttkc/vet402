@@ -1203,8 +1203,9 @@ paths:
         Realized PnL is FIFO only. A stale feed (26h+ or oracle paused)
         returns `usd: null`. `replayed_raw` must equal `tokens[].raw`; when it
         does not, `gaps` carries `balance_mismatch`. There is no opinion field
-        on this path. Key-less; 10/min/IP; one address is cached for 5 minutes
-        and at most 3 reconstructions run at once.
+        on this path. Key-less; 10/min/IP (counted in the shared store, so it
+        holds across instances). One address is cached for 5 minutes and at
+        most 3 reconstructions run at once, both per server instance.
       security: []
       parameters:
         - in: path
@@ -1272,7 +1273,7 @@ paths:
         "400": { description: "`invalid_address` — not 20-byte hex, or chain other than 4663" }
         "404": { description: "`no_stock_token_activity` — no canonical Transfer touches this address" }
         "429": { description: Rate limited }
-        "503": { description: "`feed_unavailable` (chain read failed) or `too_busy` (3 reconstructions already running; see Retry-After)" }
+        "503": { description: "`feed_unavailable` (chain read failed) or `too_busy` (3 reconstructions already running on this instance; see Retry-After)" }
 
   /api/v1/observatory/endpoints/{id}/facts:
     get:
