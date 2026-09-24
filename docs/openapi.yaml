@@ -3951,6 +3951,9 @@ components:
             (malformed JSON, failed schema checks, empty/oversized batches, etc.)
             always use `invalid_request`.
           enum:
+            - feed_unavailable
+            - no_stock_token_activity
+            - too_busy
             - invalid_request
             - subscribe_unavailable
             - db_unavailable
