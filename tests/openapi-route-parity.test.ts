@@ -53,6 +53,7 @@ const INTERNAL_PREFIXES = [
   "/api/cron/",
   "/api/dashboard/",
   "/api/billing/",
+  "/api/tokyo/", // ETHGlobal Tokyo 2026 demo routes (Base Sepolia test USDC), not part of the public vet402 contract
 ];
 const ALLOWLIST = new Set([
   "/api/signup", // dashboard signup, not a public data endpoint
