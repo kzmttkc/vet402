@@ -52,7 +52,6 @@ const WHOLE_FILES = {
   attesterSpec: 'docs/tokyo-2026/attester-spec.md',
   trustList: 'examples/tokyo-2026-demo/trusted-attesters.json',
   screeningTest: 'examples/tokyo-2026-demo/test/screening.test.mjs',
-  feedbackEns: 'docs/tokyo-2026/FEEDBACK-ENS.md',
 };
 
 function fail(msg: string): never {
@@ -81,6 +80,15 @@ function resolveSha(root: string, ref: string): string {
     return git(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).trim();
   } catch {
     return fail(`${ref} is not a commit in ${root}`);
+  }
+}
+
+/** The commit a tag points at, or null when the tag does not exist. */
+function tagSha(root: string, tag: string): string | null {
+  try {
+    return git(root, ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}^{commit}`]).trim() || null;
+  } catch {
+    return null;
   }
 }
 
@@ -128,14 +136,15 @@ function render(root: string, sha: string): string {
   const short = sha.slice(0, 12);
   const checkLine = lineOf(root, sha, ENS_ANCHORS[0]);
   const scanLine = lineOf(root, sha, INTERCEPTA_ANCHORS[0]);
-  const feedback = existsAt(root, sha, WHOLE_FILES.feedbackEns)
-    ? `[\`${WHOLE_FILES.feedbackEns}\`](${blob(sha, WHOLE_FILES.feedbackEns)}), published after submission.`
-    : `\`${WHOLE_FILES.feedbackEns}\`, published after submission.`;
+  // The submission tag, when it exists, must be this commit. Before the tag is made, the page does not name it.
+  const tagged = tagSha(root, SUBMISSION_TAG);
+  if (tagged !== null && tagged !== sha) fail(`tag ${SUBMISSION_TAG} is ${tagged}, not --sha ${sha}`);
+  const tagNote = tagged === null ? '' : ` (tag \`${SUBMISSION_TAG}\`)`;
 
   const out: string[] = [
     '# For reviewers: vet402 at ETHGlobal Tokyo 2026',
     '',
-    `Every link on this page points at one frozen commit, \`${sha}\` (tag \`${SUBMISSION_TAG}\`). This page was generated from that commit by \`examples/tokyo-2026-demo/src/gen-for-reviewers.ts\`, which looks up each line number with \`git grep\` at generation time.`,
+    `Every code link on this page points at one frozen commit, \`${sha}\`${tagNote}. This page was generated from that commit by \`examples/tokyo-2026-demo/src/gen-for-reviewers.ts\`, which looks up each line number with \`git grep\` at generation time.`,
     '',
     `**If you only look at one thing:** run the line below. It runs [\`checkEnsOffer\`](${blob(sha, ENS_ANCHORS[0].file)}#L${checkLine}), the same check the agent runs before it pays, against live Sepolia data.`,
     '',
@@ -159,7 +168,6 @@ function render(root: string, sha: string): string {
     '',
     `- What a second attester has to do: [\`${WHOLE_FILES.attesterSpec}\`](${blob(sha, WHOLE_FILES.attesterSpec)})`,
     `- The trust list the agent keeps: [\`${WHOLE_FILES.trustList}\`](${blob(sha, WHOLE_FILES.trustList)})`,
-    `- Feedback for ENS from this build: ${feedback}`,
     '',
     '## Intercepta',
     '',
