@@ -23,7 +23,7 @@ import {
   ROLE_RENEW, SELLER_ENDPOINT, USDC_BASE_SEPOLIA, W_ENS, W_VET, amounts, buildChecks, buildCtx, buildSteps, client, dns, fmtEth, mkOffer,
   type Check, type Cmd, type Ctx, type Roles, type Step,
 } from './lib/k1.ts';
-import { DEMO_DIR, KEY_SPECS, OWNER_PK_ENV, appendEnvLine, baseSepoliaRpc, envFilePath, loadEnvFile, sepoliaRpcs } from './lib/env.ts';
+import { DEMO_DIR, KEY_SPECS, OWNER_PK_ENV, appendEnvLine, b5cAutoConfirm, baseSepoliaRpc, envFilePath, loadEnvFile, sepoliaRpcs } from './lib/env.ts';
 import { checkEnvelopeOnChain, type EnvelopeCheck } from './lib/attestation.ts';
 import { loadEnsSdk } from './lib/sdk.ts';
 import { hostOf, pickRpc, rpc, simulateBlocks, type SimBlock, type SimResult } from './lib/rpc.ts';
@@ -381,6 +381,7 @@ async function baseGate(roles: Roles, checkBalance: boolean, fromId?: string): P
 
 // ---------------------------------------------------------------- live
 async function confirm(question: string): Promise<boolean> {
+  if (process.argv.includes('publish-attestations') && process.argv.includes('--live') && b5cAutoConfirm(question.trim())) return true;
   if (!process.stdin.isTTY) { console.log('標準入力が端末でないので送らない（人が y を打つ場でだけ送る）'); return false; }
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const a = (await rl.question(question)).trim();

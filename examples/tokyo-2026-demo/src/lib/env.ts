@@ -81,3 +81,15 @@ export function appendEnvLine(key: string, value: string, file = envFilePath()):
   try { fs.writeSync(fd, (cur && !cur.endsWith('\n') ? '\n' : '') + `${key}=${value}\n`); } finally { fs.closeSync(fd); }
   fs.chmodSync(file, 0o600);
 }
+
+/**
+ * B5c (re-sign before the 09-27 09:00 deadline) runs unattended: the owner delegated the typed y for this one step
+ * on 2026-09-26 06:57 JST. Only when TOKYO_B5C_AUTOCONFIRM equals the JST date 2026-09-27, and only for
+ * `attester.ts --live-pay` and `admin.ts publish-attestations --live`. Every other gate still runs.
+ */
+export function b5cAutoConfirm(what: string): boolean {
+  const jst = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+  const ok = process.env.TOKYO_B5C_AUTOCONFIRM === '2026-09-27' && jst === '2026-09-27';
+  if (ok) console.log(`  auto-confirm (B5c, delegated by the owner 2026-09-26 06:57 JST): ${what}`);
+  return ok;
+}

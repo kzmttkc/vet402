@@ -39,7 +39,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { baseSepolia, sepolia } from 'viem/chains';
-import { DEMO_DIR, loadEnvFile } from './lib/env.ts';
+import { DEMO_DIR, b5cAutoConfirm, loadEnvFile } from './lib/env.ts';
 import { hostOf } from './lib/rpc.ts';
 import { loadEnsSdk, loadPaySdk } from './lib/sdk.ts';
 import { screenPayment, type PaymentScreening } from './screening.ts';
@@ -251,6 +251,7 @@ async function waitForLaterBlock(ens: any, clients: any, after: bigint): Promise
 }
 
 async function confirm(q: string): Promise<boolean> {
+  if (b5cAutoConfirm(q.trim())) return true;
   if (!process.stdin.isTTY) { console.log('標準入力が端末でないので送らない（人が y を打つ場でだけ送る）'); return false; }
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const a = (await rl.question(q)).trim();
