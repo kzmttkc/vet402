@@ -182,6 +182,12 @@ export const PAY_REFUSE_REASONS = [
   "subgraph_evidence_unavailable",
   "no_eligible_accept",
   "allowed_by_caller_policy",
+  // 2026-09-26（ETHGlobal Tokyo B3・D1-a）: 支払いチェーンで payTo 宛ての USDC 受領を数える床 `minChainReceipts` の2語。
+  //  - `insufficient_chain_evidence` … 読めたが、受領が床に届かない
+  //  - `chain_evidence_unavailable` … 読めない（reader が throw・chainId 違い・2系統の受領が食い違う）。
+  //    `evidence_unavailable` と併記する（subgraph の `subgraph_evidence_unavailable` と同じ形）
+  "insufficient_chain_evidence",
+  "chain_evidence_unavailable",
 ] as const;
 
 export type PayRefuseReason = (typeof PAY_REFUSE_REASONS)[number];
@@ -202,7 +208,7 @@ function serverReasonCodes(words: string[]): ServerReasonCode[] {
 }
 
 /** 証拠源。`payOrRefuse` の判定が「誰の台帳を読んだか」を機械可読で残す。 */
-export type PayEvidenceSource = "vet402" | "subgraph";
+export type PayEvidenceSource = "vet402" | "subgraph" | "chain";
 
 export type PayEvidenceRow = {
   level: "L0" | "L1" | "L2";
@@ -233,6 +239,19 @@ export type PayEvidencePolicy = {
    * `source` が `"subgraph"` か `"both"` でなければ**呼び出し側エラー**（下記）。
    */
   minSubgraphReceipts?: number;
+  /**
+   * **支払いチェーンそのもの**（profile の USDC・`Transfer` の宛先が payee・額 > 0）の受領件数の下限（D1-a・Tokyo B3）。
+   * 読むのは呼び手が渡す `chainReader` と `chainReaderCrossCheck` の2系統で、**2つの受領の集合が一致したときだけ**数える
+   * （違えば・どちらかが読めなければ `chain_evidence_unavailable`）。`source` とは無関係（どの値でも評価する）。
+   * 0 以上の整数。0x の payee だけ（base58 の payee に渡せば呼び出し側エラー）。
+   */
+  minChainReceipts?: number;
+  /**
+   * `minChainReceipts` を数え始めるブロック（含む）。省略は「2系統の head の小さい方から
+   * {@link DEFAULT_CHAIN_LOOKBACK_BLOCKS} ブロック」。`getLogs` は {@link CHAIN_LOGS_SPAN} ブロックずつに分けて引く
+   * （公開 RPC の範囲上限。Base Sepolia の公開 RPC は 1,000・2026-09-25 実測）。
+   */
+  chainFromBlock?: number | bigint;
   /**
    * 既定 `"vet402"`。`"subgraph"` は**我々の台帳を証拠の床に使わない**——
    * 呼び手が自分の鍵で The Graph を引いて自分で確かめる。`"both"` は両方読め、
@@ -290,7 +309,7 @@ export type PayPolicy = {
 
 /** 満たした床1つ。**要求値と実測値を両方持つ**——「床を見たふり」を機械可読に潰す。 */
 export type EvidenceFloorCheck = {
-  floor: "minL1Deliveries" | "minSubgraphReceipts";
+  floor: "minL1Deliveries" | "minSubgraphReceipts" | "minChainReceipts";
   /** どの源の数で当てたか。源をまたいで足さない（D16）。 */
   source: PayEvidenceSource;
   required: number;
@@ -375,7 +394,47 @@ export type PayOrRefuseBaseInput = {
    * デモも L1 も同じ既定パスを渡すので、行は1本の store に混ざる（F19/F20 の主題）。
    */
   decisionStore?: string;
+  /**
+   * `policy.evidence.minChainReceipts` の受領を読む2系統（D1-a・Tokyo B3）。viem の `PublicClient` がそのまま当てはまる。
+   * **別の RPC を2本**渡す（同じ RPC を2回読んでも2系統にならない）。床を宣言しないなら読まない。
+   */
+  chainReader?: ChainReceiptReader;
+  chainReaderCrossCheck?: ChainReceiptReader;
 };
+
+/**
+ * 支払いチェーンの受領を読む口（viem `PublicClient` の部分集合）。`getLogs` は ERC-20 `Transfer` を
+ * `event` と `args.to` で絞って引く。戻りの log は**信じずに**読み直す（address・topics・額・ブロック範囲）。
+ */
+export type ChainReceiptReader = {
+  getChainId(): Promise<number>;
+  getBlockNumber(): Promise<bigint>;
+  getLogs(args: {
+    address: string;
+    event: typeof ERC20_TRANSFER_EVENT;
+    args: { to: string };
+    fromBlock: bigint;
+    toBlock: bigint;
+  }): Promise<readonly unknown[]>;
+};
+
+/** `Transfer(address indexed from, address indexed to, uint256 value)`（viem の `AbiEvent` の形）。 */
+export const ERC20_TRANSFER_EVENT = {
+  type: "event",
+  name: "Transfer",
+  inputs: [
+    { indexed: true, name: "from", type: "address" },
+    { indexed: true, name: "to", type: "address" },
+    { indexed: false, name: "value", type: "uint256" },
+  ],
+} as const;
+const ERC20_TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+/** `chainFromBlock` 省略時に遡るブロック数（Base / Base Sepolia の 2 秒ブロックで約 5.5 時間）。 */
+export const DEFAULT_CHAIN_LOOKBACK_BLOCKS = 10_000n;
+/** `getLogs` 1本あたりのブロック数（両端を含む）。 */
+export const CHAIN_LOGS_SPAN = 1_000n;
+/** 1回の評価で読む上限。これを超える範囲は読まずに `chain_evidence_unavailable`。 */
+export const MAX_CHAIN_SCAN_BLOCKS = 100_000n;
 
 /** `payOrRefuse` が出した1件の決定。拒否でも通過でも同じ形で残る。 */
 export type PayDecisionRecord = {
@@ -740,6 +799,10 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   // `{ minL1Deliveries: 3, source: "subgraph" }` のような誤りは、床の有無より前に、
   // 「その床は評価されない」と言われるべきだから。
   assertOverridePolicy(input.policy);
+  // D1-a（Tokyo B3）: 支払いチェーンの床は、読む口が2系統そろっていなければ評価できない。黙って 0 件にしない。
+  if (input.policy?.evidence?.minChainReceipts !== undefined) {
+    assertChainReaders(rail, input.chainReader, input.chainReaderCrossCheck);
+  }
   // account は**検査しない**。`typeof account.signTypedData === "function"` と書いた瞬間に
   // 拒否経路から signer へのプロパティ参照が発生し、「到達できない」が嘘になる。
 
@@ -915,6 +978,33 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
       receipts: read.receipts,
     });
   }
+  // D1-a（Tokyo B3）: 支払いチェーンの受領。宣言したときだけ、2系統で読む。
+  let chain: { receipts: number } | null = null;
+  if (input.policy?.evidence?.minChainReceipts !== undefined) {
+    const read = await readChainReceipts(
+      input.chainReader as ChainReceiptReader,
+      input.chainReaderCrossCheck as ChainReceiptReader,
+      profile,
+      payeeAddr,
+      input.policy.evidence.chainFromBlock,
+    );
+    if (read === null) {
+      return refuse(
+        [...pathReasons, ...serverReasons, "evidence_unavailable", "chain_evidence_unavailable"],
+        evidenceVerdictSource,
+        decision,
+      );
+    }
+    chain = { receipts: read.receipts };
+    evidence.push({
+      level: "L1",
+      source: "chain",
+      url: `${profile.network}/erc20:${profile.asset}`,
+      block: { number: Number(read.toBlock) },
+      queriedAt: read.queriedAt,
+      receipts: read.receipts,
+    });
+  }
 
   // 免除した判定。**通したときにだけ**決定行へ載せる（§3.2）。ここで控えておいて、
   // 床を当てたあとに `policy_override` を組む——免除だけしても床で落ちれば「通した規則」は
@@ -979,7 +1069,7 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   // --- 3.6 呼び手が名指しした床を当てる。**カタログ外（decision が null）でも当てる**——
   // ここで無視すると、この機能がいちばん要る場所（一度も見たことのない売り手）で
   // 効かないことになる（C11c）。
-  const floors = evaluateEvidencePolicy(input.policy?.evidence, decision, subgraph);
+  const floors = evaluateEvidencePolicy(input.policy?.evidence, decision, subgraph, chain);
   if (floors.shortfall) {
     return refuse([...pathReasons, ...serverReasons, ...floors.shortfall], evidenceVerdictSource, decision);
   }
@@ -1306,7 +1396,7 @@ function assertMaxPerTxUsd(maxPerTxUsd: unknown): void {
 }
 
 /** 床は有限・非負の数でなければ呼び出し側エラー（A2）。NaN の床は `delivered < NaN` が常に false で床にならない。 */
-function assertFiniteFloor(name: "minL1Deliveries" | "minSubgraphReceipts", floor: unknown): void {
+function assertFiniteFloor(name: EvidenceFloorCheck["floor"], floor: unknown): void {
   if (floor === undefined) return;
   if (typeof floor === "number" && Number.isFinite(floor) && floor >= 0) return;
   throw new Error(
@@ -1319,6 +1409,18 @@ function assertEvidencePolicy(policy: PayEvidencePolicy | undefined): void {
   if (!policy) return;
   assertFiniteFloor("minL1Deliveries", policy.minL1Deliveries);
   assertFiniteFloor("minSubgraphReceipts", policy.minSubgraphReceipts);
+  assertFiniteFloor("minChainReceipts", policy.minChainReceipts);
+  // 新しい床は整数に限る（件数の床。1.5 件は数えられない）。既存の2つの床の規則は変えない。
+  if (policy.minChainReceipts !== undefined && !Number.isInteger(policy.minChainReceipts)) {
+    throw new Error(`invalid_evidence_policy: evidence.minChainReceipts must be an integer ≥ 0, got ${String(policy.minChainReceipts)}`);
+  }
+  const fromBlock = policy.chainFromBlock;
+  if (
+    fromBlock !== undefined &&
+    !(typeof fromBlock === "bigint" ? fromBlock >= 0n : Number.isSafeInteger(fromBlock) && fromBlock >= 0)
+  ) {
+    throw new Error(`invalid_evidence_policy: evidence.chainFromBlock must be a block number ≥ 0, got ${String(fromBlock)}`);
+  }
   const wanted = policy.source ?? "vet402";
   if (wanted !== "vet402" && wanted !== "subgraph" && wanted !== "both") {
     throw new Error(`invalid_evidence_policy: unknown evidence source ${JSON.stringify(wanted)}`);
@@ -1338,6 +1440,111 @@ function assertEvidencePolicy(policy: PayEvidencePolicy | undefined): void {
 }
 
 /**
+ * `minChainReceipts` の読み口の形を、通信の前に見る（D1-a・Tokyo B3）。
+ * 読み口は署名者ではないので `typeof` でメソッドの有無を見てよい。
+ */
+function assertChainReaders(rail: PayRail, primary: unknown, cross: unknown): void {
+  if (rail !== "evm") {
+    throw new Error(
+      "invalid_evidence_policy: evidence.minChainReceipts counts USDC receipts on an EVM chain; a base58 (Solana) payee cannot use it.",
+    );
+  }
+  const isReader = (r: unknown): boolean =>
+    typeof r === "object" &&
+    r !== null &&
+    typeof (r as ChainReceiptReader).getChainId === "function" &&
+    typeof (r as ChainReceiptReader).getBlockNumber === "function" &&
+    typeof (r as ChainReceiptReader).getLogs === "function";
+  if (!isReader(primary) || !isReader(cross) || primary === cross) {
+    throw new Error(
+      "invalid_evidence_policy: evidence.minChainReceipts needs two independent readers, chainReader and chainReaderCrossCheck " +
+        "(each with getChainId, getBlockNumber and getLogs — a viem PublicClient fits). The same reader twice is one source, not two.",
+    );
+  }
+}
+
+/**
+ * 支払いチェーンで `payee` 宛ての USDC 受領を2系統で数える（D1-a・Tokyo B3）。
+ *
+ * 読めなかったら null（呼び手は `evidence_unavailable` ＋ `chain_evidence_unavailable`）。null になるのは:
+ * どちらかが throw／chainId が profile と違う／範囲が {@link MAX_CHAIN_SCAN_BLOCKS} を超える／
+ * **2系統の受領の集合が一致しない**（片方にしか無い受領がある＝どちらかが古いか偽っている）。
+ *
+ * 数える log は RPC の答えを信じずに読み直す: address が profile の USDC・topic0 が `Transfer`・
+ * topic2 が payee・額 > 0・ブロックがその回の範囲内。額 0 の `Transfer` は誰でも作れる（アドレス汚染）ので数えない。
+ * 同じ受領は `transactionHash:logIndex` で1件に畳む。
+ */
+async function readChainReceipts(
+  primary: ChainReceiptReader,
+  cross: ChainReceiptReader,
+  profile: ChainProfile,
+  payee: string,
+  chainFromBlock: number | bigint | undefined,
+): Promise<{ receipts: number; toBlock: bigint; queriedAt: string } | null> {
+  try {
+    const [chainA, headA, chainB, headB] = await Promise.all([
+      primary.getChainId(),
+      primary.getBlockNumber(),
+      cross.getChainId(),
+      cross.getBlockNumber(),
+    ]);
+    if (Number(chainA) !== profile.chainId || Number(chainB) !== profile.chainId) return null;
+    if (typeof headA !== "bigint" || typeof headB !== "bigint") return null;
+    // 2系統は同じ範囲を読む（head が1ブロックずれただけで集合が食い違わないように、小さい方で揃える）。
+    const toBlock = headA < headB ? headA : headB;
+    const lookbackStart = toBlock - DEFAULT_CHAIN_LOOKBACK_BLOCKS + 1n;
+    const fromBlock =
+      chainFromBlock !== undefined ? BigInt(chainFromBlock) : lookbackStart > 0n ? lookbackStart : 0n;
+    if (fromBlock > toBlock) return { receipts: 0, toBlock, queriedAt: new Date().toISOString() };
+    if (toBlock - fromBlock + 1n > MAX_CHAIN_SCAN_BLOCKS) return null;
+    const [a, b] = await Promise.all([
+      scanTransfers(primary, profile, payee, fromBlock, toBlock),
+      scanTransfers(cross, profile, payee, fromBlock, toBlock),
+    ]);
+    if (a.size !== b.size || [...a].some((k) => !b.has(k))) return null;
+    return { receipts: a.size, toBlock, queriedAt: new Date().toISOString() };
+  } catch {
+    return null;
+  }
+}
+
+/** 1系統を {@link CHAIN_LOGS_SPAN} ずつ読み、数えてよい受領の `transactionHash:logIndex` の集合を返す。 */
+async function scanTransfers(
+  reader: ChainReceiptReader,
+  profile: ChainProfile,
+  payee: string,
+  fromBlock: bigint,
+  toBlock: bigint,
+): Promise<Set<string>> {
+  const payeeTopic = `0x${payee.toLowerCase().replace(/^0x/, "").padStart(64, "0")}`;
+  const seen = new Set<string>();
+  for (let start = fromBlock; start <= toBlock; start += CHAIN_LOGS_SPAN) {
+    const end = start + CHAIN_LOGS_SPAN - 1n < toBlock ? start + CHAIN_LOGS_SPAN - 1n : toBlock;
+    const logs = await reader.getLogs({
+      address: profile.asset,
+      event: ERC20_TRANSFER_EVENT,
+      args: { to: payee },
+      fromBlock: start,
+      toBlock: end,
+    });
+    if (!Array.isArray(logs)) throw new Error("chain reader: getLogs did not return an array");
+    for (const raw of logs) {
+      if (!isPlainObject(raw)) continue;
+      const log = raw as Record<string, unknown>;
+      const topics = Array.isArray(log.topics) ? log.topics.map((t) => String(t).toLowerCase()) : [];
+      if (!sameAddress(log.address, profile.asset)) continue;
+      if (topics[0] !== ERC20_TRANSFER_TOPIC || topics[2] !== payeeTopic) continue;
+      const block = typeof log.blockNumber === "bigint" ? log.blockNumber : typeof log.blockNumber === "number" ? BigInt(log.blockNumber) : null;
+      if (block === null || block < start || block > end) continue;
+      if (typeof log.data !== "string" || !/^0x[0-9a-fA-F]{1,64}$/.test(log.data) || BigInt(log.data) <= 0n) continue;
+      if (typeof log.transactionHash !== "string" || log.transactionHash === "") continue;
+      seen.add(`${log.transactionHash.toLowerCase()}:${String(log.logIndex)}`);
+    }
+  }
+  return seen;
+}
+
+/**
  * 呼び手が名指しした証拠の床を当てる。**判定（`/decision`）と policy 評価を分けてある**のは、
  * 証拠源を足すときにここだけを差し替えられるようにするため。
  *
@@ -1352,6 +1559,7 @@ function evaluateEvidencePolicy(
   policy: PayEvidencePolicy | undefined,
   decision: DecisionResult | null,
   subgraph: SubgraphReceipts | null,
+  chain: { receipts: number } | null = null,
 ): { shortfall: PayRefuseReason[] | null; met: EvidenceFloorCheck[] } {
   const met: EvidenceFloorCheck[] = [];
   if (!policy) return { shortfall: null, met };
@@ -1385,6 +1593,19 @@ function evaluateEvidencePolicy(
       observed: subgraph.receipts,
     });
   }
+  // D1-a（Tokyo B3）。`source` に関係なく当てる。null は「読めなかった」であって 0 件ではない。
+  if (policy.minChainReceipts !== undefined) {
+    if (!chain) return { shortfall: ["evidence_unavailable", "chain_evidence_unavailable"], met };
+    if (chain.receipts < policy.minChainReceipts) {
+      return { shortfall: ["insufficient_chain_evidence"], met };
+    }
+    met.push({
+      floor: "minChainReceipts",
+      source: "chain",
+      required: policy.minChainReceipts,
+      observed: chain.receipts,
+    });
+  }
   return { shortfall: null, met };
 }
 
@@ -1407,7 +1628,7 @@ function evaluateEvidencePolicy(
 function assertOverridePolicy(policy: PayPolicy | undefined): void {
   if (!policy || policy.requireVet402Allow !== false) return;
   const evidence = policy.evidence;
-  const floors = [evidence?.minL1Deliveries, evidence?.minSubgraphReceipts];
+  const floors = [evidence?.minL1Deliveries, evidence?.minSubgraphReceipts, evidence?.minChainReceipts];
   if (floors.some((floor) => typeof floor === "number" && floor > 0)) return;
   throw new Error(
     "invalid_policy: requireVet402Allow: false waives vet402's verdict, so it needs at least one " +
