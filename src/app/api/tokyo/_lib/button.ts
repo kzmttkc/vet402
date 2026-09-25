@@ -42,7 +42,11 @@ const MESSAGES = {
   too_fast: `Please wait ${IP_INTERVAL_MS / 1000} seconds between presses.`,
   busy: "Another press is being written right now. Try again in a few seconds.",
   revert_first: "The previous change could not be undone yet, so no new change was made.",
+  reverting_first: `The previous change is being put back first. Press again in ${IP_INTERVAL_MS / 1000} seconds.`,
   tx_failed: "The transaction could not be sent.",
+  tx_reverted: "The transaction was mined but failed on chain, so the promise did not change.",
+  already_reverting: "Someone else is putting 10000 back right now. Reload in a few seconds.",
+  resolver_moved: "seller-d.eth no longer uses the button's resolver, so nothing was written.",
 } as const;
 
 type ErrorCode = keyof typeof MESSAGES;
@@ -169,7 +173,7 @@ async function checkAfterWrite(deps: ButtonDeps, lastTx: Hex | null, startedAt: 
   if (!lastTx) return null;
   const minBlock = deps.blockOf(lastTx);
   if (minBlock === null) return null;
-  const budget = Math.min(AFTER_WRITE_BUDGET_MS, startedAt + RESPONSE_DEADLINE_MS - Date.now());
+  const budget = Math.min(AFTER_WRITE_BUDGET_MS, startedAt + RESPONSE_DEADLINE_MS - deps.now());
   if (budget <= 0) return null;
   const view = await readAfterWrite(() => deps.checkSellerD(), minBlock, budget);
   if (view) rememberVerified(SELLER_D, view);
@@ -208,13 +212,14 @@ async function readOfferForState(deps: ButtonDeps, row: MutationRow | null): Pro
 type MutateOutcome =
   | { kind: "capped" }
   | { kind: "revert_blocked"; revert: RevertResult }
+  | { kind: "reverting_first"; revert: RevertResult }
   | { kind: "tx_failed"; revert: RevertResult }
   | { kind: "reverted_only"; revert: RevertResult }
   | { kind: "mutated"; revert: RevertResult; tx: Hex; receipt: ReceiptStatus; pressesToday: number };
 
 /** POST /api/tokyo/mutate — seller-d.eth の amount を 10000 → 10001（{"to":"10000"} は戻すだけ）。 */
 export async function handleMutate(request: Request, deps: ButtonDeps): Promise<Response> {
-  const startedAt = Date.now();
+  const startedAt = deps.now();
   if (deps.envDisabled()) return fail(503, "button_disabled");
   const side = await parseToBody(request, ["on", "off"]);
   if (!side) return invalidBody();
@@ -239,6 +244,8 @@ export async function handleMutate(request: Request, deps: ButtonDeps): Promise<
       const revert = await revertLocked(deps);
       if (!REVERT_OK.includes(revert.status)) return { kind: "revert_blocked", revert };
       if (side === "off") return { kind: "reverted_only", revert };
+      // 戻す tx を打ったら、同じ要求で変える tx を続けない（受領待ちを2本直列にすると maxDuration 60 秒を越えうる）。
+      if (revertTx(revert)) return { kind: "reverting_first", revert };
 
       const now = deps.now();
       const pressesToday = await deps.store.consumeDaily(dayKeyOf(now), DAILY_CAP, nextUtcMidnight(now));
@@ -272,6 +279,8 @@ export async function handleMutate(request: Request, deps: ButtonDeps): Promise<
       return fail(429, "daily_cap", { max: DAILY_CAP });
     case "revert_blocked":
       return fail(409, "revert_first", { revert: o.revert.status });
+    case "reverting_first":
+      return fail(409, "reverting_first", { revert: o.revert.status, retryAfterSeconds: IP_INTERVAL_MS / 1000 });
     case "tx_failed":
       return fail(502, "tx_failed");
     case "reverted_only":
@@ -285,6 +294,7 @@ export async function handleMutate(request: Request, deps: ButtonDeps): Promise<
       return json(200, {
         ok: true,
         status: o.receipt === "reverted" ? "tx_reverted" : "mutated",
+        ...(o.receipt === "reverted" ? { message: MESSAGES.tx_reverted } : {}),
         name: SELLER_D,
         amount: AMOUNT.on,
         tx: o.tx,
@@ -299,7 +309,7 @@ export async function handleMutate(request: Request, deps: ButtonDeps): Promise<
 
 /** POST /api/tokyo/reset — 10000 に戻す（時間の条件なし）。本文は {"to":"10000"} だけ。 */
 export async function handleReset(request: Request, deps: ButtonDeps): Promise<Response> {
-  const startedAt = Date.now();
+  const startedAt = deps.now();
   if (deps.envDisabled()) return fail(503, "button_disabled");
   const side = await parseToBody(request, ["off"]);
   if (!side) return invalidBody();
@@ -319,10 +329,12 @@ export async function handleReset(request: Request, deps: ButtonDeps): Promise<R
   }
   if (revert.status === "busy") return fail(409, "busy");
   const ok = REVERT_OK.includes(revert.status) || revert.status === "pending";
+  const status = revert.status;
   return json(ok ? 200 : 409, {
     ok,
-    status: revert.status,
+    status,
     revert,
+    ...(!ok && status in MESSAGES ? { message: MESSAGES[status as ErrorCode] } : {}),
     check: ok ? await checkAfterWrite(deps, revertTx(revert), startedAt) : null,
   });
 }

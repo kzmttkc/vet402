@@ -4,6 +4,7 @@
 // /api/tokyo/verify は引き直さない（別のプロセスが押す前の結果を使い回していることがある）。
 // 押せないときは理由の1行を出し、ボタンを黙って消さない。
 import { useCallback, useEffect, useState } from "react";
+import { VERIFY_CACHE_MS } from "../api/tokyo/_lib/constants";
 import { TraceView, type TraceData } from "./trace-view";
 
 type Blocker = { error: string; message?: string };
@@ -90,9 +91,13 @@ export function JudgePanel() {
       const check = j.check && Array.isArray(j.check.trace) ? j.check : null;
       setTrace(check);
       if (!r.ok) setNotice(j.message ?? j.error ?? `HTTP ${r.status}`);
+      else if (j.status === "tx_reverted")
+        setNotice(j.message ?? "The transaction was mined but failed on chain, so the promise did not change.");
       else if (j.status === "pending") setNotice("The transaction is sent and waiting for a block. Reload in a few seconds.");
       else if (!check && j.status !== "clean")
-        setNotice("The seven steps could not be read after the write. Run them above on seller-d.eth in a few seconds.");
+        setNotice(
+          `The seven steps could not be read after the write. Wait at least ${VERIFY_CACHE_MS / 1000} seconds, then run them above on seller-d.eth and check the block and read time.`,
+        );
     } catch {
       setTrace(null);
       setNotice("The request did not reach the server.");

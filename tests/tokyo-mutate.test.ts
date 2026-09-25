@@ -18,6 +18,7 @@ import { pathToFileURL } from "node:url";
 import {
   AMOUNT, CHAIN_ID, DAILY_CAP, KEY, MAX_AGE_SECONDS, MIN_VALID, NODE, P_D, SELLER_D, TRUSTED_ATTESTERS, VALUES, W_OP,
   BALANCE_FLOOR_WEI, GAS_SAFETY, PRESS_GAS, STATE_REVERT_AFTER_MS, DEFAULT_RPC, SECONDARY_RPC, STATE_CACHE_MS,
+  RESPONSE_DEADLINE_MS,
 } from "@/app/api/tokyo/_lib/constants";
 import { TtlCache, forgetVerified, rememberVerified } from "@/app/api/tokyo/_lib/cache";
 import type { VerifyView } from "@/app/api/tokyo/_lib/check";
@@ -338,9 +339,11 @@ test("W03: 61 回目は 429 {error:\"daily_cap\", max:60}・署名しない", as
       const j = await r.json();
       assert.equal(j.error, "daily_cap");
       assert.equal(j.max, 60);
-      // 61 回目は前回の 10001 を戻す1本だけ。10001 へ変える tx は打たない
-      const mine = f.writes.slice(before);
-      assert.ok(mine.every((w) => w.args[2] === VALUES.off), "上限の後に 10001 を書いた");
+      // 61 回目は tx を1本も打たない（戻しは前の回の後に済んでいる）
+      assert.deepEqual(f.writes.slice(before), [], "上限の後に書いた");
+    } else {
+      // 戻しと変更は1回の要求で続けないので、次の押下の前に戻しておく
+      assert.equal((await handleReset(post("reset", '{"to":"10000"}'), f.deps)).status, 200);
     }
   }
   assert.equal(statuses.filter((s) => s === 200).length, 60);
@@ -465,14 +468,24 @@ test("W05: clean なら tx 0 本", async () => {
   assert.equal(f.writes.length, 0);
 });
 
-test("W05: mutate の先頭で前回が戻る（writeContract 2 回・1本目 off・2本目 on）", async () => {
+test("W05: mutate の先頭で前回が戻る。戻しを打ったら同じ要求で変えず 409 reverting_first（受領待ちを2本直列にしない）", async () => {
   const f = makeFake({ chainValue: VALUES.on, dbValue: AMOUNT.on });
   const r = await handleMutate(post("mutate", '{"to":"10001"}'), f.deps);
-  assert.equal(r.status, 200);
-  assert.equal(f.writes.length, 2);
+  assert.equal(r.status, 409);
+  const j = await r.json();
+  assert.equal(j.error, "reverting_first");
+  assert.equal(j.revert, "reverted");
+  assert.equal(j.retryAfterSeconds, 20);
+  assert.equal(typeof j.message, "string");
+  assert.equal(f.writes.length, 1, "戻す1本だけ");
   assert.equal(f.writes[0].args[2], VALUES.off);
+  assert.equal(f.daily.count, 0, "1日の回数を減らさない");
+  assert.deepEqual(f.log.map((l) => `${l.from}->${l.to}`), ["10001->10000"]);
+  // 戻った後の押下は変える1本だけ
+  const again = await handleMutate(post("mutate", '{"to":"10001"}'), f.deps);
+  assert.equal(again.status, 200);
+  assert.equal(f.writes.length, 2);
   assert.equal(f.writes[1].args[2], VALUES.on);
-  assert.deepEqual(f.log.map((l) => `${l.from}->${l.to}`), ["10000->10001", "10001->10000"]);
 });
 
 test("W05: 二重に押されても戻す tx は 1 本（リースが素通りでも戻す権利が1つ）", async () => {
@@ -1045,4 +1058,88 @@ test("押した後: 読む時間の上限までに受領のブロックへ届か
   assert.equal((await readAfterWrite(lagging, 100n, 60, 10))?.block, "100");
   const failing = async () => ({ name: SELLER_D, error: "verify_failed" as const, message: "x" });
   assert.equal(await readAfterWrite(failing, null, 40, 10), null);
+});
+
+test("押した後: 受領のブロックに届いていても ens_evidence_unavailable（2本の不一致・pin の後の読み失敗）は採用せず読み直す", async () => {
+  const { readAfterWrite } = await import("@/app/api/tokyo/_lib/check");
+  let runs = 0;
+  const flaky = async () => {
+    runs += 1;
+    const v = fakeView(VALUES.on, 101n, 0);
+    return runs === 1 ? { ...v, ok: false, reasons: ["ens_evidence_unavailable"] } : v;
+  };
+  const r = await readAfterWrite(flaky, 101n, 1_000, 10);
+  assert.equal(runs, 2);
+  assert.deepEqual(r?.reasons, ["ens_attestation_signer_mismatch"]);
+  const never = async () => ({ ...fakeView(VALUES.on, 105n, 0), ok: false, reasons: ["ens_evidence_unavailable"] });
+  assert.equal(await readAfterWrite(never, 101n, 50, 10), null);
+});
+
+test("押した後: 開始から 50 秒（RESPONSE_DEADLINE_MS）を越えていたら7段を読まずに check: null", async () => {
+  const f = makeFake();
+  const wait = f.deps.waitForReceipt;
+  f.deps.waitForReceipt = async (h) => {
+    f.clock.now += RESPONSE_DEADLINE_MS + 1_000; // 受領待ちで締め切りを越えた
+    return wait(h);
+  };
+  const j = await (await handleMutate(post("mutate", '{"to":"10001"}'), f.deps)).json();
+  assert.equal(j.status, "mutated");
+  assert.equal(j.check, null);
+  assert.equal(f.checks.n, 0, "読まない");
+  // 締め切りの内側なら読む
+  const g = makeFake();
+  const k = await (await handleMutate(post("mutate", '{"to":"10001"}'), g.deps)).json();
+  assert.equal(k.check.amount, AMOUNT.on);
+  assert.equal(g.checks.n, 1);
+});
+
+test("押した後: reset の戻しが例外でも、seller-d.eth の使い回しを捨ててから 503", async () => {
+  await withFakeRpc(async (count) => {
+    const f = makeFake({ chainValue: VALUES.on, dbValue: AMOUNT.on });
+    rememberVerified(SELLER_D, fakeView(VALUES.on, 100n, f.clock.now));
+    f.deps.store.finishRevert = async () => {
+      throw new Error("db down");
+    };
+    const r = await handleReset(post("reset", '{"to":"10000"}'), f.deps);
+    assert.equal(r.status, 503);
+    assert.equal(f.writes.length, 1, "戻す tx は送られた");
+    await verifyName(SELLER_D);
+    assert.ok(count() > 0, "使い回しは捨てられ、次の検証は読み直す");
+    forgetVerified(SELLER_D);
+  });
+});
+
+test("押した後: state の戻しが例外でも、seller-d.eth の使い回しを捨てる（state は 200 のまま）", async () => {
+  await withFakeRpc(async (count) => {
+    const f = makeFake({ chainValue: VALUES.on, dbValue: AMOUNT.on });
+    f.row.mutatedAt = new Date(f.clock.now - STATE_REVERT_AFTER_MS - 1_000);
+    rememberVerified(SELLER_D, fakeView(VALUES.on, 100n, f.clock.now));
+    f.deps.store.finishRevert = async () => {
+      throw new Error("db down");
+    };
+    const r = await handleState(get("state"), f.deps);
+    assert.equal(r.status, 200);
+    assert.equal(f.writes.length, 1, "戻す tx は送られた");
+    await verifyName(SELLER_D);
+    assert.ok(count() > 0, "使い回しは捨てられ、次の検証は読み直す");
+    forgetVerified(SELLER_D);
+  });
+});
+
+test("tx がチェーン上で失敗（tx_reverted）したら、応答に理由の1行を入れる（mutate は 200・reset は 409）", async () => {
+  const f = makeFake();
+  f.deps.waitForReceipt = async () => "reverted";
+  const j = await (await handleMutate(post("mutate", '{"to":"10001"}'), f.deps)).json();
+  assert.equal(j.status, "tx_reverted");
+  assert.match(j.message, /failed on chain/);
+  const g = makeFake({ chainValue: VALUES.on, dbValue: AMOUNT.on });
+  g.deps.waitForReceipt = async () => "reverted";
+  const r = await handleReset(post("reset", '{"to":"10000"}'), g.deps);
+  assert.equal(r.status, 409);
+  const k = await r.json();
+  assert.equal(k.status, "tx_reverted");
+  assert.match(k.message, /failed on chain/);
+  // 画面はこの1行を出す（本文の message を notice へ）
+  const panel = readFileSync(join(TOKYO_PAGE, "judge-panel.tsx"), "utf8");
+  assert.match(panel, /j\.status === "tx_reverted"/);
 });

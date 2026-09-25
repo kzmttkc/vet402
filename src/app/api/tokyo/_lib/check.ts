@@ -104,7 +104,8 @@ const AFTER_WRITE_PAUSE_MS = 1_500;
 
 /**
  * ボタンが書いた後の7段。SDK は B = min(2本の head) で読むので、受領の直後でも片方の RPC が遅れていれば
- * 押す前のブロックを読みうる。minBlock（受領のブロック）以上で読めるまで、budgetMs の内側で読み直す。
+ * 押す前のブロックを読みうる。minBlock（受領のブロック）以上で、証拠が揃った（ens_evidence_unavailable でない）
+ * 読みが得られるまで、budgetMs の内側で読み直す。
  * 読めなければ null（押す前の値を「押した後」と言って返さない）。
  */
 export async function readAfterWrite(
@@ -127,7 +128,16 @@ export async function readAfterWrite(
   };
   while (Date.now() < deadline) {
     const r = await timeout(run().catch(() => null));
-    if (r && !("error" in r) && r.block !== "0" && (minBlock === null || BigInt(r.block) >= minBlock)) return r;
+    // 2本の不一致・pin の後の読み失敗（ens_evidence_unavailable）は、ブロックが足りていても採用しない。
+    if (
+      r &&
+      !("error" in r) &&
+      r.block !== "0" &&
+      !r.reasons.includes("ens_evidence_unavailable") &&
+      (minBlock === null || BigInt(r.block) >= minBlock)
+    ) {
+      return r;
+    }
     if (deadline - Date.now() <= pauseMs) break;
     await new Promise((resolve) => setTimeout(resolve, pauseMs));
   }
