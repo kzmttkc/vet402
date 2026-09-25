@@ -10,6 +10,8 @@ export type TraceData = {
   amount: string | null;
   trace: TraceStep[];
   ms?: number;
+  /** サーバが読み終えた時刻（ISO）。使い回した結果でも読んだ時刻のまま出す。 */
+  readAt?: string;
 };
 
 const STATUS_LABEL: Record<TraceStep["status"], string> = { ok: "ok", fail: "FAIL", skipped: "skip" };
@@ -31,7 +33,8 @@ export function TraceView({ data, buttonNote }: { data: TraceData; buttonNote?: 
     <div className="mt-4">
       <p className="doc-p">
         <strong>{data.name}</strong> at Sepolia block <code>{data.block}</code>
-        {utc(data.blockTimestamp) ? ` (${utc(data.blockTimestamp)})` : ""}. Draft format: <code>ensip29-draft</code>.
+        {utc(data.blockTimestamp) ? ` (${utc(data.blockTimestamp)})` : ""}
+        {data.readAt ? `, read at ${data.readAt.slice(11, 19)} UTC` : ""}. Draft format: <code>ensip29-draft</code>.
       </p>
       <p className={`doc-p ${data.ok ? "text-signal" : "text-block-ink"}`}>
         <strong>{data.ok ? "VALID" : "REFUSE"}</strong> {data.ok ? "" : data.reasons.join(", ")} — {okSteps}/7 steps ok

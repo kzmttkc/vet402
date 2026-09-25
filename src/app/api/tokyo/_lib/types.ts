@@ -61,4 +61,9 @@ export type ButtonDeps = {
   store: MutationStore;
   withLease<T>(fn: () => Promise<T>): Promise<{ acquired: true; value: T } | { acquired: false }>;
   now(): number;
+  /**
+   * state だけが使う短い使い回し（STATE_CACHE_MS）。同じ key の読みを1回にまとめる。
+   * 署名の判断（mutate・reset・ensureReverted）には使わない。無ければ毎回読む。
+   */
+  memo?<T>(key: string, load: () => Promise<T>): Promise<T>;
 };

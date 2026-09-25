@@ -76,6 +76,14 @@ export const LEASE_TTL_SECONDS = 60;
 /** 1本の tx の受領を待つ上限。mutate は最大2本を順に待つので、maxDuration 60 秒の内側に収める。 */
 export const RECEIPT_TIMEOUT_MS = 25_000;
 
+// ---- 読み取りの使い回し（RPC を大量に呼ばせない）----
+/** 同じ名前の検証結果をプロセス内で使い回す長さ。読み終えた時刻から数える。 */
+export const VERIFY_CACHE_MS = 12_000;
+/** 使い回す名前の数の上限（古いものから捨てる）。 */
+export const VERIFY_CACHE_MAX = 200;
+/** state が読むチェーンの値（chainId・残高・gasPrice・seller-d.eth の約束）を使い回す長さ。 */
+export const STATE_CACHE_MS = 5_000;
+
 // ---- 読み取り（verify）----
 export const DEFAULT_RPC = "https://sepolia.rpc.sentio.xyz" as const;
 export const SECONDARY_RPC = "https://rpc.sepolia.ethpandaops.io" as const;

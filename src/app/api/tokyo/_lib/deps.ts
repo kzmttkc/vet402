@@ -8,7 +8,8 @@ import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { sepolia } from "viem/chains";
 import { resolveText, type EnsReadClients } from "@vet402/sdk/ens";
 import { acquireLease } from "@/lib/cron/lease";
-import { KEY, LEASE_NAME, LEASE_TTL_SECONDS, RECEIPT_TIMEOUT_MS, SELLER_D } from "./constants";
+import { KEY, LEASE_NAME, LEASE_TTL_SECONDS, RECEIPT_TIMEOUT_MS, SELLER_D, STATE_CACHE_MS } from "./constants";
+import { TtlCache } from "./cache";
 import { envButtonDisabled, readOperatorKey } from "./env";
 import { probeTokyoHalt } from "./halt";
 import { readRpcUrl } from "./rpc-env";
@@ -16,6 +17,9 @@ import { dbStore } from "./store";
 import type { ButtonDeps, WriteRequest } from "./types";
 
 const SET_TEXT_ABI = parseAbi(["function setText(bytes name, string key, string value)"]);
+
+/** state の読みの使い回し（プロセスに1つ。route.ts は要求ごとに realButtonDeps() を作るので、ここに置く）。 */
+const stateCache = new TtlCache<unknown>(STATE_CACHE_MS, 32);
 
 export function realButtonDeps(): ButtonDeps {
   const rpc = readRpcUrl();
@@ -77,5 +81,6 @@ export function realButtonDeps(): ButtonDeps {
       }
     },
     now: () => Date.now(),
+    memo: <T>(key: string, load: () => Promise<T>) => stateCache.get(key, load) as Promise<T>,
   };
 }

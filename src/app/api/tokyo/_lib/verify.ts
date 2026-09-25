@@ -2,14 +2,18 @@
 // /tokyo の読み取り（ページと /api/tokyo/verify が使う）。署名器も鍵も無い。
 // checkEnsOffer は凍結した tarball（vendor/vet402-sdk-0.7.0.tgz）の SDK から読む。
 // RPC は別々の提供者の2本（SDK の pinBlock が両方の一致を見る）。env は TOKYO_SEPOLIA_RPC_URL だけ。
+// 同じ名前の結果はプロセス内で VERIFY_CACHE_MS だけ使い回す（cache.ts）。結果は block と読んだ時刻を持つので、
+// 使い回しても「block N で読んだ」事実のまま。審査員ボタンが seller-d.eth を書いたら button.ts が
+// cache.ts の forgetVerified で忘れさせる。
 // ============================================================
 import { createPublicClient, decodeErrorResult, encodeFunctionData, http, keccak256, parseAbi, toBytes, type BaseError } from "viem";
 import { sepolia } from "viem/chains";
 import { checkEnsOffer, type EnsReadClients } from "@vet402/sdk/ens";
 import {
   ATTESTATION_KEY, BASE_SEPOLIA_PROFILE, KEY, MAX_AGE_SECONDS, MIN_VALID, NODE, P_D, SELLER_METHOD,
-  SELLER_RESOURCE, TRUSTED_ATTESTERS, W_OP,
+  SELLER_RESOURCE, TRUSTED_ATTESTERS, VERIFY_CACHE_MS, W_OP,
 } from "./constants";
+import { TtlCache, verifyCache } from "./cache";
 import { readVerifyRpcUrls } from "./rpc-env";
 
 export const STEP_NAMES: Record<number, string> = {
@@ -40,6 +44,8 @@ export type VerifyView = {
   attesters: { name: string; address: string }[];
   maxAgeSeconds: number;
   ms: number;
+  /** サーバが読み終えた時刻（ISO）。使い回した結果でもこの値のまま。 */
+  readAt: string;
 };
 
 export type VerifyError = { name: string; error: "invalid_name" | "verify_failed"; message: string };
@@ -59,10 +65,17 @@ export function cleanName(input: string | null | undefined): string | null {
   return n;
 }
 
-/** ENSIP-29 草案の7段を今の Sepolia で走らせる。RPC が落ちたときも SDK は投げず ens_evidence_unavailable を返す。 */
+/**
+ * ENSIP-29 草案の7段を今の Sepolia で走らせる。RPC が落ちたときも SDK は投げず ens_evidence_unavailable を返す。
+ * 名前の形（長さ 255 まで）は正規化より前に cleanName で切る。形の悪い名前は RPC を読まないので使い回さない。
+ */
 export async function verifyName(input: string): Promise<VerifyView | VerifyError> {
   const name = cleanName(input);
   if (!name) return { name: String(input ?? "").slice(0, 64), error: "invalid_name", message: "Enter an ENS name such as seller-a.eth." };
+  return verifyCache.get(name, () => readVerify(name)) as Promise<VerifyView | VerifyError>;
+}
+
+async function readVerify(name: string): Promise<VerifyView | VerifyError> {
   const t0 = Date.now();
   try {
     const r = await checkEnsOffer({
@@ -100,6 +113,7 @@ export async function verifyName(input: string): Promise<VerifyView | VerifyErro
       attesters: TRUSTED_ATTESTERS.map((a) => ({ name: a.name, address: a.address })),
       maxAgeSeconds: MAX_AGE_SECONDS,
       ms: Date.now() - t0,
+      readAt: new Date().toISOString(),
     };
   } catch (e) {
     // checkEnsOffer が投げるのは方針の誤りだけ（チェーンの状態では投げない）。文言は返さない。
@@ -120,11 +134,18 @@ const EAC_ABI = parseAbi([
   "error EACUnauthorizedAccountRoles(uint256 resource, uint256 roleBitmap, address account)",
 ]);
 
+const scopeCache = new TtlCache<KeyScope>(VERIFY_CACHE_MS, 1);
+
 /**
  * 鍵を隠す代わりに、鍵の狭さをチェーンから示す: P_d で W_op が持つロールと、
  * W_op が証明のキーを書こうとしたときの eth_call の結果（送らない。読むだけ）。
+ * ページを開くたびに読まないよう、VERIFY_CACHE_MS だけ使い回す。
  */
-export async function readKeyScope(): Promise<KeyScope> {
+export function readKeyScope(): Promise<KeyScope> {
+  return scopeCache.get("scope", readKeyScopeLive);
+}
+
+async function readKeyScopeLive(): Promise<KeyScope> {
   const c = createPublicClient({ chain: sepolia, transport: http(readVerifyRpcUrls().primary, { timeout: 15_000, retryCount: 1 }) });
   let roleBitmap: string | null = null;
   try {

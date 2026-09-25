@@ -6,7 +6,7 @@
 //   W02 chainId は定数。サーバの RPC の getChainId() が違えば 503
 //   W03 1日 60 回（ip_rate_limits の1文 upsert）・runtime_flags.tokyo_button_halt・env "1" の保険
 //   W04 balance − 0.005 ETH ≥ PRESS_GAS × gasPrice × 3。満たさなければ 503、署名しない
-//   W05 mutate の先頭・state（90 秒以上）・reset で ensureReverted
+//   W05 mutate の先頭・state（90 秒以上・DB かチェーンがまだ戻っていないときだけ）・reset で ensureReverted
 //   W06 書き込みの4点（宛先・node・キー・値）は constants.ts の定数だけ
 // 関門で止めた応答は「押せない理由の1行」（message）を持つ。画面はそれをそのまま出す。
 // ============================================================
@@ -16,6 +16,7 @@ import {
   AMOUNT, BALANCE_FLOOR_WEI, CHAIN_ID, DAILY_CAP, GAS_SAFETY, IP_INTERVAL_MS, KEY, NODE, P_D, PRESS_GAS,
   SELLER_D, STATE_REVERT_AFTER_MS, VALUES, W_OP,
 } from "./constants";
+import { forgetVerified } from "./cache";
 import { decideHalt } from "./halt";
 import { callerKey } from "./ip";
 import { amountOf, ensureReverted, revertLocked, type RevertResult } from "./revert";
@@ -143,6 +144,45 @@ const nextUtcMidnight = (nowMs: number) => {
 
 const REVERT_OK: RevertResult["status"][] = ["clean", "reverted", "superseded"];
 
+/** チェーンか DB の seller-d.eth を動かした戻し結果。 */
+const REVERT_WROTE: RevertResult["status"][] = ["reverted", "superseded", "pending"];
+
+/** このプロセスで seller-d.eth を書いたら、検証の使い回しを捨てる（次の /api/tokyo/verify は今のチェーンを読む）。 */
+function forgetAfterWrite(revert: RevertResult | null, mutated = false): void {
+  if (mutated || (revert && (REVERT_WROTE.includes(revert.status) || (revert.status === "clean" && revert.synced)))) {
+    forgetVerified(SELLER_D);
+  }
+}
+
+/**
+ * state の関門だけが使う deps。chainId・残高・gasPrice を STATE_CACHE_MS だけ使い回す。
+ * mutate・reset・ensureReverted（署名の判断）には渡さない。
+ */
+function stateReads(deps: ButtonDeps): ButtonDeps {
+  const memo = deps.memo;
+  if (!memo) return deps;
+  return {
+    ...deps,
+    getChainId: () => memo("chainId", () => deps.getChainId()),
+    getBalance: (address) => memo(`balance:${address.toLowerCase()}`, () => deps.getBalance(address)),
+    getGasPrice: () => memo("gasPrice", () => deps.getGasPrice()),
+  };
+}
+
+/**
+ * state が表示と「戻し済みか」の判断に使う seller-d.eth の約束。使い回しの鍵に DB の行（generation・値・last_tx）を
+ * 入れるので、どのインスタンスでボタンが書いても行が変わり、次の state は読み直す。
+ */
+async function readOfferForState(deps: ButtonDeps, row: MutationRow | null): Promise<{ value: string; resolver: Hex | null } | null> {
+  const key = row ? `offer:${row.generation}:${row.currentValue}:${row.lastTx ?? ""}` : "offer:no-row";
+  try {
+    return await (deps.memo ? deps.memo(key, () => deps.readOffer()) : deps.readOffer());
+  } catch (e) {
+    logSafe("tokyo.state.offer", e);
+    return null;
+  }
+}
+
 type MutateOutcome =
   | { kind: "capped" }
   | { kind: "revert_blocked"; revert: RevertResult }
@@ -201,6 +241,7 @@ export async function handleMutate(request: Request, deps: ButtonDeps): Promise<
 
   if (!leased.acquired) return fail(409, "busy");
   const o = leased.value;
+  forgetAfterWrite("revert" in o ? o.revert : null, o.kind === "mutated");
   switch (o.kind) {
     case "capped":
       return fail(429, "daily_cap", { max: DAILY_CAP });
@@ -238,6 +279,7 @@ export async function handleReset(request: Request, deps: ButtonDeps): Promise<R
   try {
     await deps.store.ensureRow();
     revert = await ensureReverted(deps);
+    forgetAfterWrite(revert);
   } catch (e) {
     logSafe("tokyo.reset", e);
     return fail(503, "state_unavailable");
@@ -257,7 +299,7 @@ export async function handleState(_request: Request, deps: ButtonDeps): Promise<
   if (deps.envDisabled()) {
     blockers.push(blocker("button_disabled"));
   } else {
-    const gate = await txGates(deps);
+    const gate = await txGates(stateReads(deps));
     if (gate.ok) gateOk = true;
     else blockers.push(gate.body);
   }
@@ -271,14 +313,25 @@ export async function handleState(_request: Request, deps: ButtonDeps): Promise<
     blockers.push(blocker("state_unavailable"));
   }
 
+  let offer = await readOfferForState(deps, row);
+
   // W05: 変えてから STATE_REVERT_AFTER_MS 以上たっていれば、描画の前に戻す。
+  // ただし DB が戻し済み（current_value = 10000）で、チェーンも VALUES.off（か読めない）なら、リースを取らない。
+  // mutated_at は「最後に変えた時刻」のまま残るので、ここで見ないと 90 秒後から毎回リースを取り、
+  // その間に押した審査員が 409 busy になる。チェーンが読めないときの revertLocked も clean を返すだけなので同じ答え。
+  // DB だけが 10001 のまま（受領待ちの timeout 等）なら ensureReverted が markClean で DB を戻し済みにする。
   let revert: RevertResult | null = null;
   if (gateOk && row) {
     const age = row.mutatedAt ? deps.now() - row.mutatedAt.getTime() : Number.POSITIVE_INFINITY;
-    if (age >= STATE_REVERT_AFTER_MS) {
+    const settled = row.currentValue === AMOUNT.off && (offer === null || offer.value === VALUES.off);
+    if (age >= STATE_REVERT_AFTER_MS && !settled) {
       try {
         revert = await ensureReverted(deps);
-        if (revert.status !== "clean" || revert.synced) row = await deps.store.readRow();
+        forgetAfterWrite(revert);
+        if (revert.status !== "clean" || revert.synced) {
+          row = await deps.store.readRow();
+          offer = await readOfferForState(deps, row);
+        }
       } catch (e) {
         logSafe("tokyo.state.revert", e);
       }
@@ -300,15 +353,8 @@ export async function handleState(_request: Request, deps: ButtonDeps): Promise<
     log = [];
   }
 
-  let raw: string | null = null;
-  let resolver: string | null = null;
-  try {
-    const r = await deps.readOffer();
-    raw = r.value;
-    resolver = r.resolver;
-  } catch (e) {
-    logSafe("tokyo.state.offer", e);
-  }
+  const raw = offer?.value ?? null;
+  const resolver = offer?.resolver ?? null;
   const amount = amountOf(raw);
 
   return json(200, {

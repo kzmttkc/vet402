@@ -17,8 +17,10 @@ import { dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   AMOUNT, CHAIN_ID, DAILY_CAP, KEY, MAX_AGE_SECONDS, MIN_VALID, NODE, P_D, SELLER_D, TRUSTED_ATTESTERS, VALUES, W_OP,
-  BALANCE_FLOOR_WEI, GAS_SAFETY, PRESS_GAS, STATE_REVERT_AFTER_MS,
+  BALANCE_FLOOR_WEI, GAS_SAFETY, PRESS_GAS, STATE_REVERT_AFTER_MS, DEFAULT_RPC, SECONDARY_RPC, STATE_CACHE_MS,
 } from "@/app/api/tokyo/_lib/constants";
+import { TtlCache, forgetVerified } from "@/app/api/tokyo/_lib/cache";
+import { verifyName } from "@/app/api/tokyo/_lib/verify";
 import { handleMutate, handleReset, handleState } from "@/app/api/tokyo/_lib/button";
 import { decideHalt, type HaltProbe } from "@/app/api/tokyo/_lib/halt";
 import { ensureReverted } from "@/app/api/tokyo/_lib/revert";
@@ -654,4 +656,257 @@ test("schema.ts の tokyo_mutations・tokyo_mutation_log が本番へ流す DDL 
       ["tx", "text", false],
     ],
   );
+});
+
+// ============================================================ RPC を大量に呼ばせない（使い回し）・戻し済みはリースを取らない・連打の関門
+// 検証は本物の route と verifyName を通し、RPC だけを偽物（globalThis.fetch）にして数える。
+const RPC_HOSTS = [new URL(DEFAULT_RPC).host, new URL(SECONDARY_RPC).host];
+
+async function withFakeRpc<T>(run: (count: () => number) => Promise<T>): Promise<T> {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (!RPC_HOSTS.includes(new URL(url).host)) return original(input, init);
+    calls += 1;
+    const body = JSON.parse(String(init?.body ?? "{}")) as { id?: number };
+    // 何を聞かれても JSON-RPC の誤りで答える。SDK は投げずに ens_evidence_unavailable を返す。
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id ?? 0, error: { code: -32000, message: "fake rpc" } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+  try {
+    return await run(() => calls);
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+test("TtlCache: 読み込み中は相乗り・期限は読み終えてから・件数の上限で古いものから捨てる・失敗は残さない・forget 後に入れ直さない", async () => {
+  const clock = { now: 0 };
+  const c = new TtlCache<number>(12_000, 3, () => clock.now);
+  let loads = 0;
+  const load = (v: number) => async () => {
+    loads += 1;
+    return v;
+  };
+  assert.deepEqual(await Promise.all(Array.from({ length: 20 }, () => c.get("a", load(1)))), Array(20).fill(1));
+  assert.equal(loads, 1);
+  clock.now = 11_999;
+  assert.equal(await c.get("a", load(2)), 1);
+  clock.now = 12_000;
+  assert.equal(await c.get("a", load(2)), 2);
+  assert.equal(loads, 2);
+  await c.get("b", load(3));
+  await c.get("c", load(4));
+  await c.get("a", load(9)); // a を使った順の最後へ
+  await c.get("d", load(5)); // 4 件目 → 一番古い b を捨てる
+  assert.equal(c.size, 3);
+  loads = 0;
+  await c.get("b", load(6));
+  assert.equal(loads, 1);
+  await assert.rejects(c.get("e", async () => Promise.reject(new Error("rpc down"))));
+  assert.equal(await c.get("e", load(7)), 7);
+  let release!: (v: number) => void;
+  const pending = c.get("f", () => new Promise<number>((r) => (release = r)));
+  c.forget("f");
+  await new Promise((r) => setImmediate(r));
+  release(8);
+  assert.equal(await pending, 8);
+  assert.equal(await c.get("f", load(10)), 10);
+});
+
+test("verify: 同じ名前で /api/tokyo/verify を 20 回続けて叩いても RPC を読むのは1回分（同時 20 本も同じ）", async () => {
+  const { GET } = await import("@/app/api/tokyo/verify/route");
+  await withFakeRpc(async (count) => {
+    const name = "cache-seq.eth";
+    forgetVerified(name);
+    const first = await GET(new Request(`http://localhost/api/tokyo/verify?name=${name}`));
+    assert.equal(first.status, 200);
+    const firstBody = await first.json();
+    const once = count();
+    assert.ok(once > 0, "1回目は RPC を読む");
+    for (let i = 0; i < 19; i++) {
+      const r = await GET(new Request(`http://localhost/api/tokyo/verify?name=${name}`));
+      assert.equal(r.status, 200);
+      assert.equal(r.headers.get("cache-control"), "no-store");
+      const j = await r.json();
+      assert.equal(j.readAt, firstBody.readAt, "使い回した結果は読んだ時刻も block もそのまま");
+      assert.equal(j.block, firstBody.block);
+    }
+    assert.equal(count(), once, `20 回で RPC ${count()} 回（1回分は ${once}）`);
+
+    const par = "cache-par.eth";
+    forgetVerified(par);
+    const before = count();
+    await Promise.all(Array.from({ length: 20 }, () => GET(new Request(`http://localhost/api/tokyo/verify?name=${par}`))));
+    assert.equal(count() - before, once, "同時 20 本でも1回分");
+
+    // 形の悪い名前（長さ 256）は正規化の前に切り、RPC を読まない
+    const bad = await GET(new Request(`http://localhost/api/tokyo/verify?name=${"a".repeat(252)}.eth`));
+    assert.equal(bad.status, 400);
+    assert.equal(count() - before, once);
+  });
+});
+
+test("verify: このプロセスでボタンが seller-d.eth を書いたら使い回しを捨て、次の検証は読み直す", async () => {
+  await withFakeRpc(async (count) => {
+    forgetVerified(SELLER_D);
+    await verifyName(SELLER_D);
+    const once = count();
+    await verifyName(SELLER_D);
+    assert.equal(count(), once);
+    const f = makeFake();
+    assert.equal((await handleMutate(post("mutate", '{"to":"10001"}'), f.deps)).status, 200);
+    await verifyName(SELLER_D);
+    assert.equal(count(), once * 2, "押した後は読み直す");
+    // 関門で止まった押下（書いていない）は使い回しを捨てない
+    const g = makeFake({ operatorAddress: () => null });
+    await handleMutate(post("mutate", '{"to":"10001"}'), g.deps);
+    await verifyName(SELLER_D);
+    assert.equal(count(), once * 2);
+    forgetVerified(SELLER_D);
+  });
+});
+
+function countLeases(f: Fake): { n: number } {
+  const leases = { n: 0 };
+  const inner = f.deps.withLease;
+  f.deps.withLease = (fn) => {
+    leases.n += 1;
+    return inner(fn);
+  };
+  return leases;
+}
+
+test("W05: 戻し済み（DB もチェーンも 10000）なら GET /state を何度叩いてもリースを取らず tx も出さない。戻す前は1本だけ戻す", async () => {
+  const f = makeFake();
+  const leases = countLeases(f);
+  await handleMutate(post("mutate", '{"to":"10001"}'), f.deps);
+  assert.equal(leases.n, 1);
+  assert.equal(f.writes.length, 1);
+  f.clock.now += STATE_REVERT_AFTER_MS + 1_000; // 91 秒・未戻し
+  const j = await (await handleState(get("state"), f.deps)).json();
+  assert.equal(j.revert.status, "reverted");
+  assert.equal(j.amount, AMOUNT.off);
+  assert.equal(f.writes.length, 2);
+  assert.equal(leases.n, 2);
+  assert.equal(f.row.currentValue, AMOUNT.off, "DB は戻し済み");
+  assert.notEqual(f.row.mutatedAt, null, "mutated_at は最後に変えた時刻のまま（列の意味は変えない）");
+  for (let i = 0; i < 10; i++) {
+    f.clock.now += 30_000;
+    const s = await (await handleState(get("state"), f.deps)).json();
+    assert.equal(s.revert, null);
+    assert.equal(s.amount, AMOUNT.off);
+    assert.equal(s.canPress, true);
+  }
+  assert.equal(leases.n, 2, "戻し済みの後はリースを取らない");
+  assert.equal(f.writes.length, 2, "tx も出さない");
+  // その間に別の審査員が押しても busy にならない
+  let held = false;
+  const inner = f.deps.withLease;
+  f.deps.withLease = async (fn) => {
+    if (held) return { acquired: false };
+    held = true;
+    try {
+      return await inner(fn);
+    } finally {
+      held = false;
+    }
+  };
+  const [press, state] = await Promise.all([
+    handleMutate(post("mutate", '{"to":"10001"}'), f.deps),
+    handleState(get("state"), f.deps),
+  ]);
+  assert.equal(press.status, 200);
+  assert.equal(state.status, 200);
+});
+
+test("W05: DB だけ 10001 のまま（受領待ちの timeout）でチェーンが戻っていれば、1回だけリースを取って DB を戻し済みにし、以後は取らない", async () => {
+  const f = makeFake({ chainValue: VALUES.off, dbValue: AMOUNT.on });
+  f.row.mutatedAt = new Date(f.clock.now - STATE_REVERT_AFTER_MS - 1_000);
+  const leases = countLeases(f);
+  const j = await (await handleState(get("state"), f.deps)).json();
+  assert.deepEqual(j.revert, { status: "clean", synced: true });
+  assert.equal(f.row.currentValue, AMOUNT.off);
+  assert.equal(leases.n, 1);
+  for (let i = 0; i < 5; i++) await handleState(get("state"), f.deps);
+  assert.equal(leases.n, 1);
+  assert.equal(f.writes.length, 0);
+});
+
+test("W05: DB は戻し済みでもチェーンが 10001（送った後に DB へ記録できなかった）なら、90 秒後に1本だけ戻す", async () => {
+  const f = makeFake({ chainValue: VALUES.on, dbValue: AMOUNT.off });
+  const leases = countLeases(f);
+  const j = await (await handleState(get("state"), f.deps)).json();
+  assert.equal(j.revert.status, "reverted");
+  assert.equal(f.writes.length, 1);
+  assert.equal(f.writes[0].args[2], VALUES.off);
+  await handleState(get("state"), f.deps);
+  assert.equal(leases.n, 1);
+  assert.equal(f.writes.length, 1);
+});
+
+test("state: chainId・残高・gasPrice・約束の読みを 5 秒使い回す。ボタンが書いたら（DB の行が変わったら）約束は読み直す", async () => {
+  const f = makeFake();
+  const cache = new TtlCache<unknown>(STATE_CACHE_MS, 32, () => f.clock.now);
+  f.deps.memo = <T,>(key: string, load: () => Promise<T>) => cache.get(key, load) as Promise<T>;
+  const calls = { chain: 0, balance: 0, gas: 0, offer: 0 };
+  const { getChainId, getBalance, getGasPrice, readOffer } = f.deps;
+  f.deps.getChainId = () => (calls.chain++, getChainId());
+  f.deps.getBalance = (a) => (calls.balance++, getBalance(a));
+  f.deps.getGasPrice = () => (calls.gas++, getGasPrice());
+  f.deps.readOffer = () => (calls.offer++, readOffer());
+  for (let i = 0; i < 20; i++) await handleState(get("state"), f.deps);
+  assert.deepEqual(calls, { chain: 1, balance: 1, gas: 1, offer: 1 });
+  f.clock.now += STATE_CACHE_MS;
+  await handleState(get("state"), f.deps);
+  assert.deepEqual(calls, { chain: 2, balance: 2, gas: 2, offer: 2 });
+  // 押した直後の state は使い回さずに 10001 を返す（mutate の関門と戻しの判断は使い回しを通らない）
+  await handleMutate(post("mutate", '{"to":"10001"}'), f.deps);
+  const after = { ...calls };
+  const j = await (await handleState(get("state"), f.deps)).json();
+  assert.equal(j.amount, AMOUNT.on);
+  assert.equal(calls.offer, after.offer + 1);
+});
+
+test("連打の関門: 同じ呼び手の 20 秒以内の2回目は 429 too_fast・署名0回・1日の回数を減らさない。20 秒を過ぎれば通る", async () => {
+  const f = makeFake();
+  const until = new Map<string, number>();
+  const keys: string[] = [];
+  f.deps.store.consumeInterval = async (key, windowMs) => {
+    keys.push(key);
+    const t = until.get(key);
+    if (t !== undefined && t > f.clock.now) return false;
+    until.set(key, f.clock.now + windowMs);
+    return true;
+  };
+  const ip = { "x-vercel-forwarded-for": "203.0.113.7" };
+  const first = await handleMutate(post("mutate", '{"to":"10001"}', ip), f.deps);
+  assert.equal(first.status, 200);
+  assert.equal(f.writes.length, 1);
+  assert.equal(f.daily.count, 1);
+
+  f.clock.now += 19_000;
+  const second = await handleMutate(post("mutate", '{"to":"10001"}', ip), f.deps);
+  assert.equal(second.status, 429);
+  const j = await second.json();
+  assert.equal(j.error, "too_fast");
+  assert.equal(j.retryAfterSeconds, 20);
+  assert.equal(typeof j.message, "string");
+  assert.equal(f.writes.length, 1, "署名0回");
+  assert.equal(f.daily.count, 1, "1日の回数を減らさない");
+  assert.equal(keys[0], keys[1]);
+  assert.ok(!keys[0].includes("203.0.113.7"), "IP そのものを鍵に入れない");
+
+  // 戻す（{"to":"10000"}）は間隔の関門を通らない
+  const back = await handleMutate(post("mutate", '{"to":"10000"}', ip), f.deps);
+  assert.equal(back.status, 200);
+  assert.equal(keys.length, 2);
+
+  f.clock.now += 2_000; // 1回目から 21 秒
+  const third = await handleMutate(post("mutate", '{"to":"10001"}', ip), f.deps);
+  assert.equal(third.status, 200);
+  assert.equal(f.daily.count, 2);
 });
