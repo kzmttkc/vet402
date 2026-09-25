@@ -81,6 +81,17 @@ test('pass: low score with a non-blocking trait stays pass and names it', async 
   assert.match(r.reason, /below threshold: non_kyc_transfers/);
 });
 
+test('block: txsCount missing or a numeric string (live answer had none)', async () => {
+  const body = JSON.stringify({
+    toxicScore: 100,
+    traits: [{ risk: 100, name: 'known_scammer', description: '' }, { risk: 100, name: 'sanction_address', txsCount: '7', description: '' }],
+  });
+  const f = fakeFetch({ [RONIN.toLowerCase()]: { status: 200, body } });
+  const r = await screenAddress(RONIN, opts(f));
+  assert.equal(r.verdict, 'block');
+  assert.equal(r.reason, 'toxicScore 100, known_scammer (txsCount n/a), sanction_address (txsCount 7)');
+});
+
 test('404 (contract address) is unavailable', async () => {
   const f = fakeFetch({ [ROUTER.toLowerCase()]: { status: 404, body: '' } });
   const r = await screenAddress(ROUTER, opts(f));

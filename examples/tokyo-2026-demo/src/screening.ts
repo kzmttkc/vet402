@@ -105,6 +105,13 @@ const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
 const unavailable = (address: string, reason: string): ScreeningResult => ({ verdict: 'unavailable', address, reason });
 
+/** txsCount is documented as a number but the live answer on 2026-09-25 did not carry a numeric one. */
+function numberish(v: unknown): number | undefined {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string' && /^\d+$/.test(v)) return Number(v);
+  return undefined;
+}
+
 function parseBody(address: string, text: string, blockAt: number): ScreeningResult {
   let body: unknown;
   try {
@@ -125,13 +132,13 @@ function parseBody(address: string, text: string, blockAt: number): ScreeningRes
     list.push({
       name: r.name,
       ...(typeof r.risk === 'number' ? { risk: r.risk } : {}),
-      ...(typeof r.txsCount === 'number' ? { txsCount: r.txsCount } : {}),
+      ...(numberish(r.txsCount) !== undefined ? { txsCount: numberish(r.txsCount) } : {}),
       ...(typeof r.description === 'string' ? { description: r.description } : {}),
     });
   }
   const hits = list.filter((t) => BLOCKING_TRAITS.includes(t.name));
   const describe = (ts: ScreeningTrait[]): string =>
-    ts.map((t) => `${t.name} (txsCount ${t.txsCount ?? '?'})`).join(', ');
+    ts.map((t) => `${t.name} (txsCount ${t.txsCount ?? 'n/a'})`).join(', ');
   if (hits.length > 0) {
     return { verdict: 'block', address, toxicScore, traits: list, reason: `toxicScore ${toxicScore}, ${describe(hits)}` };
   }
