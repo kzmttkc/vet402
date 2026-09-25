@@ -223,7 +223,7 @@ const MUTATIONS = [
     what: "payTo と payee の照合を外す（常に一致扱い）",
     rule: "A4 照合は payTo で行う（B-4）",
     file: PAY,
-    find: "  if (!sameAddress(accept.payTo, input.payee)) {",
+    find: "  if (!sameAddress(accept.payTo, payeeAddr)) {",
     replace: "  if (/* MUTANT */ !sameAddress(accept.payTo, accept.payTo)) {",
   },
   {
@@ -287,8 +287,8 @@ const MUTATIONS = [
     what: "accepts の先頭だけを見る（並べ替えで結論が変わる）",
     rule: "K1 条件を満たす accept が先頭でなくても選ぶ",
     file: PAY,
-    find: "  const eligible = normalized.filter(isProtocolEligible);",
-    replace: "  const eligible = normalized.slice(0, 1).filter(isProtocolEligible); /* MUTANT */",
+    find: "  const eligible = normalized.filter((a) => isProtocolEligible(a, profile));",
+    replace: "  const eligible = normalized.slice(0, 1).filter((a) => isProtocolEligible(a, profile)); /* MUTANT */",
   },
   // ---- 署名への到達（4層）----
   {
