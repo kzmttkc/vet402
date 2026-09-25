@@ -316,14 +316,30 @@ export type PayPolicyOverride = {
  * 通信の前に `invalid_payer` で throw する。
  */
 export type PayOrRefuseInput = PayOrRefuseBaseInput &
+  (PayOrRefusePayeeInput | PayOrRefuseNamedPayeeInput) &
   ({ account: PayerAccount; svm?: undefined } | { svm: SvmPayOptions; account?: undefined });
 
-export type PayOrRefuseBaseInput = {
+/** 既存の呼び方（`payee` を渡す）。型も実行時の挙動も 2026-09-25 までと同じ。 */
+export type PayOrRefusePayeeInput = {
   /**
    * 0x アドレス（Base）か base58 アドレス（Solana）。ENS 名は**解決しない**（名前解決を支払いゲートの中で起こさない）。
    * Solana の payee は大文字小文字を含めて 402 の payTo と完全一致でなければ払わない。
    */
   payee: string;
+  payeeName?: undefined;
+};
+
+/**
+ * 名前で払う呼び方（ETHGlobal Tokyo 2026）。`payee` は ENSIP-29 の証明が有効な約束の `payTo` から決まる
+ * （段 2.5・B6 が入れる。`ens` の欄も B6 が足す）。**段 2.5 が入るまでは、通信の前に throw する。**
+ */
+export type PayOrRefuseNamedPayeeInput = {
+  payeeName: string;
+  /** 渡したときは約束の `payTo` と一致しなければ拒否（B6）。 */
+  payee?: string;
+};
+
+export type PayOrRefuseBaseInput = {
   /** 402 を返す資源の URL。 */
   resource: string;
   amountUsd: number;
@@ -617,7 +633,12 @@ const NO_EVM_ACCOUNT: PayerAccount = {
 };
 
 /** 判定の内部入力。`account` は常に値（{@link NO_EVM_ACCOUNT} を含む）。 */
-type DecideInput = PayOrRefuseBaseInput & { account: PayerAccount; svm?: SvmPayOptions };
+type DecideInput = PayOrRefuseBaseInput & {
+  payee?: string;
+  payeeName?: string;
+  account: PayerAccount;
+  svm?: SvmPayOptions;
+};
 
 async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   const fetchFn = input.fetch;
@@ -627,9 +648,15 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   // **呼び出し側の誤り**は判定でも拒否でもなく throw。0x でない payee はここで止まる:
   // 名前解決を支払いゲートの中で起こさない（解決先が入れ替われば payee_mismatch すら
   // 通ってしまうので、解決は呼び手の責任として外に出す）。B8。
-  const isEvmPayee = typeof input.payee === "string" && WALLET_RE.test(input.payee);
-  const isSvmPayee = typeof input.payee === "string" && SOLANA_RE.test(input.payee);
-  if (!isEvmPayee && !isSvmPayee) {
+  // #17〜#20（Tokyo B3）: 呼び手の payee を読むのはこの分割代入の1か所だけ。以下の照合・証拠の読み・attest は
+  // 全部ローカルの `payeeAddr` を見る（段 2.5 が payeeName から決めた値も同じ変数に入る・B6）。
+  const { payee: givenPayee, payeeName } = input;
+  // 名前だけの呼び出し（payee なし・payeeName あり）。レールは payee の形ではなく profile で決まり、
+  // `base` も `base-sepolia` も EVM。**`assertSvmPayer` はこの経路で呼ばない**。
+  const byName = givenPayee === undefined && typeof payeeName === "string";
+  const isEvmPayee = typeof givenPayee === "string" && WALLET_RE.test(givenPayee);
+  const isSvmPayee = typeof givenPayee === "string" && SOLANA_RE.test(givenPayee);
+  if (!byName && !isEvmPayee && !isSvmPayee) {
     throw new Error(
       `invalid_payee_address: payOrRefuse takes a 0x address (Base) or a base58 address (Solana), got ${JSON.stringify(input.payee)}. ` +
         "ENS names are not resolved here — resolve it yourself and pass the resulting address.",
@@ -637,7 +664,8 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   }
   // **レールは payee の形で決まる。** 署名者は形に合う方をちょうど 1 つ。`account` / `svm` の中身には
   // 触らない（有無だけを見る。`typeof` は Proxy の get を起こさない）——拒否経路から署名者への参照を作らない。
-  const rail: PayRail = isEvmPayee ? "evm" : "svm";
+  const rail: PayRail = byName || isEvmPayee ? "evm" : "svm";
+  let payeeAddr: string | undefined = byName ? undefined : givenPayee;
   const svm = rail === "svm" ? assertSvmPayer(input) : null;
   // 0x の payee に `svm` を渡すのは 0.7.0 で足した入力の誤り（旧い呼び手は渡さない）ので throw する。
   // `account` の欠落は冒頭で止めない——0.6.0 は判定の前に `account` を見ておらず、BLOCK なら refused を
@@ -748,6 +776,12 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
     return refuse(["price_above_ceiling"], "local_policy");
   }
 
+  // --- 2.5 ENSIP-29（B6 がここに入れる）: payeeName の約束から payeeAddr を決める ---
+  // 段 2.5 がまだ無いので、名前だけの呼び出しはここで止める（通信 0・署名者参照 0・fail-closed）。
+  if (payeeAddr === undefined) {
+    throw new Error("invalid_payee_address: payeeName needs the ENSIP-29 gate, which this build does not include — pass payee (a 0x address).");
+  }
+
   // --- 3. /decision ---
   const resourceId = input.resourceId ?? (await computeResourceId(method, input.resource));
   // 呼び手の policy をサーバにも当てさせる（§16.3）。402 の金額・上限・L1 の床を名乗ると、
@@ -825,7 +859,7 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   let subgraph: SubgraphReceipts | null = null;
   if (wantedSource === "subgraph" || wantedSource === "both") {
     const read = await readSubgraphReceipts({
-      address: input.payee,
+      address: payeeAddr,
       fetch: fetchFn,
       apiKey: input.policy?.evidence?.graphApiKey,
       subgraphId: input.policy?.evidence?.subgraphId ?? X402_BASE_SUBGRAPH_ID,
@@ -952,12 +986,12 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
       return refuse([...selectionReasons, "chain_or_asset_mismatch"], "decision", decision, null, accept);
     }
     // base58 は大文字小文字で別の鍵。**`===` で比べる**（下の sameAddress は 0x 用に大小を畳む）。
-    if (accept.payTo !== input.payee) {
+    if (accept.payTo !== payeeAddr) {
       return refuse(["payee_mismatch"], "decision", decision, null, accept);
     }
   }
   // A4: 照合は payTo で行う。402 の resource.url は内部ホスト名を返すことがある（§3）。
-  if (!sameAddress(accept.payTo, input.payee)) {
+  if (!sameAddress(accept.payTo, payeeAddr)) {
     return refuse([...pathReasons, ...selectionReasons, "payee_mismatch"], uncatalogued ? "payee_score" : "decision", decision, null, accept);
   }
   const moneyGate = evaluateMoneyGate(accept, maxPerTxUsd, rail, x402Version);
@@ -1132,7 +1166,7 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
-          wallet: input.payee,
+          wallet: payeeAddr,
           txHash: paid.txHash,
           amount: accept.amount,
           network: accept.network,
