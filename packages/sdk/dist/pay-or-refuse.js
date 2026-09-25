@@ -54,11 +54,16 @@ import { DEFAULT_API_URL } from "./index.js";
 import { readSubgraphReceipts, X402_BASE_SUBGRAPH_ID } from "./subgraph-evidence.js";
 // 判定語と「測れたか」の欄の読み方。2つの金の経路で1つの規則を共有する（`./verdict-shape.js`）。
 import { isBlockVerdict, isDecimalUnits, isPlainObject, scoreQualityDefect } from "./verdict-shape.js";
-/** Base メインネット。会期スコープは1チェーンだけ（WINDOW_PLAN §2「範囲外: 新チェーン」）。 */
-export const BASE_CHAIN = "eip155:8453";
-export const BASE_CHAIN_ID = 8453;
+// 支払いチェーンの定数表（Tokyo B3）。import を持たない定数だけのモジュールなので静的 import でよい。
+import { CHAIN_PROFILES, profileFor } from "./chain-profile.js";
+/**
+ * Base メインネット（`network` の既定）。値は `chain-profile.ts` の `base` の行から引く（2026-09-26 に移した・値は同じ）。
+ * testnet（`base-sepolia`）は呼び手が `network` で名指ししたときだけ。
+ */
+export const BASE_CHAIN = CHAIN_PROFILES.base.network;
+export const BASE_CHAIN_ID = CHAIN_PROFILES.base.chainId;
 /** Base の正規 USDC。ここを可変にしない——「別トークンを掴まされる」が最も安い攻撃。 */
-export const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+export const BASE_USDC = CHAIN_PROFILES.base.asset;
 /**
  * Solana メインネット（CAIP-2）と、その正規 USDC mint（decimals 6）。2026-09-15 に足した 2 本目のレール。
  * 値は本番 `src/lib/observatory/sol402-payer.ts` と同じ（本番の Solana L1 が実決済に使っている）。
@@ -142,11 +147,34 @@ export const PAY_REFUSE_REASONS = [
     "subgraph_evidence_unavailable",
     "no_eligible_accept",
     "allowed_by_caller_policy",
+    // 2026-09-26（ETHGlobal Tokyo B3・D1-a）: 支払いチェーンで payTo 宛ての USDC 受領を数える床 `minChainReceipts` の2語。
+    //  - `insufficient_chain_evidence` … 読めたが、受領が床に届かない
+    //  - `chain_evidence_unavailable` … 読めない（reader が throw・chainId 違い・2系統の受領が食い違う）。
+    //    `evidence_unavailable` と併記する（subgraph の `subgraph_evidence_unavailable` と同じ形）
+    "insufficient_chain_evidence",
+    "chain_evidence_unavailable",
 ];
 /** サーバの語に「透過してよい」印を付ける唯一の場所。語は 1 つも変えない・落とさない。 */
 function serverReasonCodes(words) {
     return words;
 }
+/** `Transfer(address indexed from, address indexed to, uint256 value)`（viem の `AbiEvent` の形）。 */
+export const ERC20_TRANSFER_EVENT = {
+    type: "event",
+    name: "Transfer",
+    inputs: [
+        { indexed: true, name: "from", type: "address" },
+        { indexed: true, name: "to", type: "address" },
+        { indexed: false, name: "value", type: "uint256" },
+    ],
+};
+const ERC20_TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+/** `chainFromBlock` 省略時に遡るブロック数（Base / Base Sepolia の 2 秒ブロックで約 5.5 時間）。 */
+export const DEFAULT_CHAIN_LOOKBACK_BLOCKS = 10000n;
+/** `getLogs` 1本あたりのブロック数（両端を含む）。 */
+export const CHAIN_LOGS_SPAN = 1000n;
+/** 1回の評価で読む上限。これを超える範囲は読まずに `chain_evidence_unavailable`。 */
+export const MAX_CHAIN_SCAN_BLOCKS = 100000n;
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
 /** Solana の base58 アドレス（32〜44 文字・0 O I l を含まない）。 */
 const SOLANA_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -215,12 +243,12 @@ function normalizeAccept(raw) {
  * 金額と payTo は**含めない**——それは「払えるか」ではなく「払ってよいか」で、
  * 呼び手の上限と期待値に依存する（{@link evaluateMoneyGate} と payee 照合が持つ）。
  */
-function isProtocolEligible(accept) {
+function isProtocolEligible(accept, profile = CHAIN_PROFILES.base) {
     if (accept.scheme !== "exact")
         return false;
-    if (accept.network !== BASE_CHAIN)
+    if (accept.network !== profile.network)
         return false;
-    if (!sameAddress(accept.asset, BASE_USDC))
+    if (!sameAddress(accept.asset, profile.asset))
         return false;
     // 明示された転送方式が eip3009 でなければ払えない。未提示は許す——Base 正規 USDC の
     // `exact` は構造上 EIP-3009 であり、未提示を拒むと実在する 402 に払えなくなる。
@@ -250,17 +278,18 @@ function isSvmProtocolEligible(accept, x402Version) {
     return typeof feePayer === "string" && SOLANA_RE.test(feePayer) && feePayer !== accept.payTo;
 }
 /** レールごとの「払える形か」。選別と金銭ゲートが**同じ述語**を使うための 1 本。 */
-function isEligibleOnRail(accept, rail, x402Version) {
-    return rail === "svm" ? isSvmProtocolEligible(accept, x402Version) : isProtocolEligible(accept);
+function isEligibleOnRail(accept, rail, x402Version, profile = CHAIN_PROFILES.base) {
+    return rail === "svm" ? isSvmProtocolEligible(accept, x402Version) : isProtocolEligible(accept, profile);
 }
 /**
  * EIP-712 ドメインがトークンのもの（本番 2026-08-22 の `eth_call` 実測）と矛盾しないか。
  * **売り手の名乗りを採用するためではなく、矛盾を検出するために読む。**
  */
-function hasCanonicalUsdcDomain(accept) {
+function hasCanonicalUsdcDomain(accept, profile = CHAIN_PROFILES.base) {
     const name = accept.extra?.name;
     const version = accept.extra?.version;
-    return (name === undefined || name === "USD Coin") && (version === undefined || version === "2");
+    return ((name === undefined || name === profile.usdcEip712.name) &&
+        (version === undefined || version === profile.usdcEip712.version));
 }
 /**
  * **提示された accepts から、条件を満たす最初のものを選ぶ。**
@@ -282,7 +311,7 @@ function hasCanonicalUsdcDomain(accept) {
  *   そのときも `accept` には**実際に提示された1件**を入れて返す——
  *   拒否理由を具体的に出すため、そして画に存在しない accept を映さないため。
  */
-function selectAccept(raw, rail = "evm", x402Version = 2) {
+function selectAccept(raw, rail = "evm", x402Version = 2, profile = CHAIN_PROFILES.base) {
     const normalized = raw.map(normalizeAccept).filter((a) => a !== null);
     if (normalized.length === 0)
         return null;
@@ -292,20 +321,20 @@ function selectAccept(raw, rail = "evm", x402Version = 2) {
         const svmEligible = normalized.filter((a) => isSvmProtocolEligible(a, x402Version));
         return svmEligible.length === 0 ? { accept: normalized[0], eligible: false } : { accept: svmEligible[0], eligible: true };
     }
-    const eligible = normalized.filter(isProtocolEligible);
+    const eligible = normalized.filter((a) => isProtocolEligible(a, profile));
     if (eligible.length === 0)
         return { accept: normalized[0], eligible: false };
-    return { accept: eligible.find(hasCanonicalUsdcDomain) ?? eligible[0], eligible: true };
+    return { accept: eligible.find((a) => hasCanonicalUsdcDomain(a, profile)) ?? eligible[0], eligible: true };
 }
 /** チャレンジは **transport のバージョンごと**読む——答える側のヘッダ名がそれで決まる。 */
-function decodeChallenge(raw, rail = "evm") {
+function decodeChallenge(raw, rail = "evm", profile = CHAIN_PROFILES.base) {
     try {
         const json = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(raw), (c) => c.charCodeAt(0))));
         const accepts = json.accepts;
         if (!Array.isArray(accepts) || accepts.length === 0)
             return null;
         const version = json.x402Version === 1 ? 1 : 2;
-        const selected = selectAccept(accepts, rail, version);
+        const selected = selectAccept(accepts, rail, version, profile);
         if (!selected)
             return null;
         return {
@@ -363,16 +392,28 @@ async function decideAndPay(input) {
     // **呼び出し側の誤り**は判定でも拒否でもなく throw。0x でない payee はここで止まる:
     // 名前解決を支払いゲートの中で起こさない（解決先が入れ替われば payee_mismatch すら
     // 通ってしまうので、解決は呼び手の責任として外に出す）。B8。
-    const isEvmPayee = typeof input.payee === "string" && WALLET_RE.test(input.payee);
-    const isSvmPayee = typeof input.payee === "string" && SOLANA_RE.test(input.payee);
-    if (!isEvmPayee && !isSvmPayee) {
+    // #17〜#20（Tokyo B3）: 呼び手の payee を読むのはこの分割代入の1か所だけ。以下の照合・証拠の読み・attest は
+    // 全部ローカルの `payeeAddr` を見る（段 2.5 が payeeName から決めた値も同じ変数に入る・B6）。
+    const { payee: givenPayee, payeeName } = input;
+    // 名前だけの呼び出し（payee なし・payeeName あり）。レールは payee の形ではなく profile で決まり、
+    // `base` も `base-sepolia` も EVM。**`assertSvmPayer` はこの経路で呼ばない**。
+    const byName = givenPayee === undefined && typeof payeeName === "string";
+    const isEvmPayee = typeof givenPayee === "string" && WALLET_RE.test(givenPayee);
+    const isSvmPayee = typeof givenPayee === "string" && SOLANA_RE.test(givenPayee);
+    if (!byName && !isEvmPayee && !isSvmPayee) {
         throw new Error(`invalid_payee_address: payOrRefuse takes a 0x address (Base) or a base58 address (Solana), got ${JSON.stringify(input.payee)}. ` +
             "ENS names are not resolved here — resolve it yourself and pass the resulting address.");
     }
     // **レールは payee の形で決まる。** 署名者は形に合う方をちょうど 1 つ。`account` / `svm` の中身には
     // 触らない（有無だけを見る。`typeof` は Proxy の get を起こさない）——拒否経路から署名者への参照を作らない。
-    const rail = isEvmPayee ? "evm" : "svm";
+    const rail = byName || isEvmPayee ? "evm" : "svm";
+    let payeeAddr = byName ? undefined : givenPayee;
     const svm = rail === "svm" ? assertSvmPayer(input) : null;
+    // 支払いチェーン（Tokyo B3）。省略は "base"＝今までの挙動。知らない値は通信の前に throw（invalid_network）。
+    const profile = profileFor(input.network);
+    if (rail === "svm" && input.network !== undefined && input.network !== "base") {
+        throw new Error(`invalid_network: network ${JSON.stringify(input.network)} selects an EVM chain, but a base58 payee is paid on Solana. Omit network for a Solana payee.`);
+    }
     // 0x の payee に `svm` を渡すのは 0.7.0 で足した入力の誤り（旧い呼び手は渡さない）ので throw する。
     // `account` の欠落は冒頭で止めない——0.6.0 は判定の前に `account` を見ておらず、BLOCK なら refused を
     // 返していた（JS の呼び手）。欠落のまま ALLOW に着いたときは、署名の番兵（NO_EVM_ACCOUNT）が throw する。
@@ -414,6 +455,10 @@ async function decideAndPay(input) {
     // `{ minL1Deliveries: 3, source: "subgraph" }` のような誤りは、床の有無より前に、
     // 「その床は評価されない」と言われるべきだから。
     assertOverridePolicy(input.policy);
+    // D1-a（Tokyo B3）: 支払いチェーンの床は、読む口が2系統そろっていなければ評価できない。黙って 0 件にしない。
+    if (input.policy?.evidence?.minChainReceipts !== undefined) {
+        assertChainReaders(rail, input.chainReader, input.chainReaderCrossCheck, profile);
+    }
     // account は**検査しない**。`typeof account.signTypedData === "function"` と書いた瞬間に
     // 拒否経路から signer へのプロパティ参照が発生し、「到達できない」が嘘になる。
     const method = (input.method ?? "GET").toUpperCase();
@@ -458,6 +503,11 @@ async function decideAndPay(input) {
     // --- 2. 呼び手が名乗った上限は、判定を引く前に当てる（C9）---
     if (input.amountUsd > maxPerTxUsd) {
         return refuse(["price_above_ceiling"], "local_policy");
+    }
+    // --- 2.5 ENSIP-29（B6 がここに入れる）: payeeName の約束から payeeAddr を決める ---
+    // 段 2.5 がまだ無いので、名前だけの呼び出しはここで止める（通信 0・署名者参照 0・fail-closed）。
+    if (payeeAddr === undefined) {
+        throw new Error("invalid_payee_address: payeeName needs the ENSIP-29 gate, which this build does not include — pass payee (a 0x address).");
     }
     // --- 3. /decision ---
     const resourceId = input.resourceId ?? (await computeResourceId(method, input.resource));
@@ -535,7 +585,7 @@ async function decideAndPay(input) {
     let subgraph = null;
     if (wantedSource === "subgraph" || wantedSource === "both") {
         const read = await readSubgraphReceipts({
-            address: input.payee,
+            address: payeeAddr,
             fetch: fetchFn,
             apiKey: input.policy?.evidence?.graphApiKey,
             subgraphId: input.policy?.evidence?.subgraphId ?? X402_BASE_SUBGRAPH_ID,
@@ -555,6 +605,23 @@ async function decideAndPay(input) {
             subgraphId: read.subgraphId,
             block: read.block,
             ...(read.deployment ? { deployment: read.deployment } : {}),
+            queriedAt: read.queriedAt,
+            receipts: read.receipts,
+        });
+    }
+    // D1-a（Tokyo B3）: 支払いチェーンの受領。宣言したときだけ、2系統で読む。
+    let chain = null;
+    if (input.policy?.evidence?.minChainReceipts !== undefined) {
+        const read = await readChainReceipts(input.chainReader, input.chainReaderCrossCheck, profile, payeeAddr, input.policy.evidence.chainFromBlock);
+        if (read === null) {
+            return refuse([...pathReasons, ...serverReasons, "evidence_unavailable", "chain_evidence_unavailable"], evidenceVerdictSource, decision);
+        }
+        chain = { receipts: read.receipts };
+        evidence.push({
+            level: "L1",
+            source: "chain",
+            url: `${profile.network}/erc20:${profile.asset}`,
+            block: { number: Number(read.toBlock) },
             queriedAt: read.queriedAt,
             receipts: read.receipts,
         });
@@ -619,7 +686,7 @@ async function decideAndPay(input) {
     // --- 3.6 呼び手が名指しした床を当てる。**カタログ外（decision が null）でも当てる**——
     // ここで無視すると、この機能がいちばん要る場所（一度も見たことのない売り手）で
     // 効かないことになる（C11c）。
-    const floors = evaluateEvidencePolicy(input.policy?.evidence, decision, subgraph);
+    const floors = evaluateEvidencePolicy(input.policy?.evidence, decision, subgraph, chain);
     if (floors.shortfall) {
         return refuse([...pathReasons, ...serverReasons, ...floors.shortfall], evidenceVerdictSource, decision);
     }
@@ -632,7 +699,7 @@ async function decideAndPay(input) {
     try {
         const response = await fetchFn(input.resource, { method });
         const raw = readHeader(response.headers, "payment-required");
-        const challenge = raw ? decodeChallenge(raw, rail) : null;
+        const challenge = raw ? decodeChallenge(raw, rail, profile) : null;
         if (challenge) {
             accept = challenge.accept;
             x402Version = challenge.x402Version;
@@ -653,15 +720,15 @@ async function decideAndPay(input) {
             return refuse([...selectionReasons, "chain_or_asset_mismatch"], "decision", decision, null, accept);
         }
         // base58 は大文字小文字で別の鍵。**`===` で比べる**（下の sameAddress は 0x 用に大小を畳む）。
-        if (accept.payTo !== input.payee) {
+        if (accept.payTo !== payeeAddr) {
             return refuse(["payee_mismatch"], "decision", decision, null, accept);
         }
     }
     // A4: 照合は payTo で行う。402 の resource.url は内部ホスト名を返すことがある（§3）。
-    if (!sameAddress(accept.payTo, input.payee)) {
+    if (!sameAddress(accept.payTo, payeeAddr)) {
         return refuse([...pathReasons, ...selectionReasons, "payee_mismatch"], uncatalogued ? "payee_score" : "decision", decision, null, accept);
     }
-    const moneyGate = evaluateMoneyGate(accept, maxPerTxUsd, rail, x402Version);
+    const moneyGate = evaluateMoneyGate(accept, maxPerTxUsd, rail, x402Version, profile);
     if (moneyGate) {
         return refuse([...pathReasons, ...selectionReasons, ...moneyGate], uncatalogued ? "payee_score" : "decision", decision, null, accept);
     }
@@ -774,7 +841,8 @@ async function decideAndPay(input) {
         accept,
         resource: input.resource,
         method,
-        chainId: BASE_CHAIN_ID,
+        chainId: profile.chainId,
+        profile,
         x402Version,
         fetch: fetchFn,
         onSigned: ({ nonce }) => {
@@ -823,13 +891,14 @@ async function decideAndPay(input) {
         };
     }
     let attested = false;
-    if (paid.txHash) {
+    // testnet（profile.attest が false）の支払いは本番の台帳へ入れない。
+    if (paid.txHash && profile.attest) {
         try {
             const response = await fetchFn(`${apiUrl}/payments/x402`, {
                 method: "POST",
                 headers: { ...headers, "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    wallet: input.payee,
+                    wallet: payeeAddr,
                     txHash: paid.txHash,
                     amount: accept.amount,
                     network: accept.network,
@@ -864,16 +933,16 @@ async function decideAndPay(input) {
  * 金銭ゲート。**署名の前**にしか意味が無いので、呼ぶ位置を動かさないこと。
  * 本番には4チェーン提示の 402 が実在する（WINDOW_PLAN §4 B）。
  */
-function evaluateMoneyGate(accept, maxPerTxUsd, rail = "evm", x402Version = 2) {
+function evaluateMoneyGate(accept, maxPerTxUsd, rail = "evm", x402Version = 2, profile = CHAIN_PROFILES.base) {
     // scheme / network / asset / 転送方式。**選別と同じ述語**で見る——別の述語を書くと、
     // 選ばれたのに関門で落ちる（またはその逆の）食い違いが静かに入り込む。
-    if (!isEligibleOnRail(accept, rail, x402Version))
+    if (!isEligibleOnRail(accept, rail, x402Version, profile))
         return ["chain_or_asset_mismatch"];
     // EIP-712 ドメインはトークンのものであって売り手のものではない（本番 2026-08-22 監査）。
     // 矛盾する accept を**署名の前に**落とす: 誤ったドメインの署名は決済され得ないので、
     // 通せば「一円も動かないまま署名だけが生きている」状態を売り手が無料で作れてしまう。
     // Solana の accept に EIP-712 ドメインは無い（署名するのは取引であって型付きデータではない）。
-    if (rail === "evm" && !hasCanonicalUsdcDomain(accept))
+    if (rail === "evm" && !hasCanonicalUsdcDomain(accept, profile))
         return ["chain_or_asset_mismatch"];
     // `amount` は uint256 の 10 進表記（数字だけ）に限る（2026-09-07 監査 A6）。`Number()` は
     // "0x10" / "1e4" / "20000.5" / " 20000 " を上限内の数に読むが、署名に載るのは**生文字列**なので、
@@ -945,6 +1014,16 @@ function assertEvidencePolicy(policy) {
         return;
     assertFiniteFloor("minL1Deliveries", policy.minL1Deliveries);
     assertFiniteFloor("minSubgraphReceipts", policy.minSubgraphReceipts);
+    assertFiniteFloor("minChainReceipts", policy.minChainReceipts);
+    // 新しい床は整数に限る（件数の床。1.5 件は数えられない）。既存の2つの床の規則は変えない。
+    if (policy.minChainReceipts !== undefined && !Number.isInteger(policy.minChainReceipts)) {
+        throw new Error(`invalid_evidence_policy: evidence.minChainReceipts must be an integer ≥ 0, got ${String(policy.minChainReceipts)}`);
+    }
+    const fromBlock = policy.chainFromBlock;
+    if (fromBlock !== undefined &&
+        !(typeof fromBlock === "bigint" ? fromBlock >= 0n : Number.isSafeInteger(fromBlock) && fromBlock >= 0)) {
+        throw new Error(`invalid_evidence_policy: evidence.chainFromBlock must be a block number ≥ 0, got ${String(fromBlock)}`);
+    }
     const wanted = policy.source ?? "vet402";
     if (wanted !== "vet402" && wanted !== "subgraph" && wanted !== "both") {
         throw new Error(`invalid_evidence_policy: unknown evidence source ${JSON.stringify(wanted)}`);
@@ -959,6 +1038,109 @@ function assertEvidencePolicy(policy) {
     }
 }
 /**
+ * `minChainReceipts` の読み口の形を、通信の前に見る（D1-a・Tokyo B3）。
+ * 読み口は署名者ではないので `typeof` でメソッドの有無を見てよい。
+ */
+function assertChainReaders(rail, primary, cross, profile) {
+    if (rail !== "evm") {
+        throw new Error("invalid_evidence_policy: evidence.minChainReceipts counts USDC receipts on an EVM chain; a base58 (Solana) payee cannot use it.");
+    }
+    // 当面は testnet だけ（2026-09-25 Takeshi 決定）。payTo 宛ての USDC 受領は売り手が自分で作れるので、
+    // 本番 Base で vet402 の判定を外す床としては弱い。Tokyo の後で広げるかを決める。
+    if (profile.name !== "base-sepolia") {
+        throw new Error(`invalid_evidence_policy: evidence.minChainReceipts is limited to network "base-sepolia" for now, got "${profile.name}". ` +
+            "A payee can create its own USDC receipts, so on mainnet it is too weak to stand in for vet402's verdict.");
+    }
+    const isReader = (r) => typeof r === "object" &&
+        r !== null &&
+        typeof r.getChainId === "function" &&
+        typeof r.getBlockNumber === "function" &&
+        typeof r.getLogs === "function";
+    if (!isReader(primary) || !isReader(cross) || primary === cross) {
+        throw new Error("invalid_evidence_policy: evidence.minChainReceipts needs two independent readers, chainReader and chainReaderCrossCheck " +
+            "(each with getChainId, getBlockNumber and getLogs — a viem PublicClient fits). The same reader twice is one source, not two.");
+    }
+}
+/**
+ * 支払いチェーンで `payee` 宛ての USDC 受領を2系統で数える（D1-a・Tokyo B3）。
+ *
+ * 読めなかったら null（呼び手は `evidence_unavailable` ＋ `chain_evidence_unavailable`）。null になるのは:
+ * どちらかが throw／chainId が profile と違う／範囲が {@link MAX_CHAIN_SCAN_BLOCKS} を超える／
+ * **2系統の受領の集合が一致しない**（片方にしか無い受領がある＝どちらかが古いか偽っている）。
+ *
+ * 数える log は RPC の答えを信じずに読み直す: address が profile の USDC・topic0 が `Transfer`・
+ * topic2 が payee・額 > 0・ブロックがその回の範囲内。額 0 の `Transfer` は誰でも作れる（アドレス汚染）ので数えない。
+ * 同じ受領は `transactionHash:logIndex` で1件に畳む。
+ */
+async function readChainReceipts(primary, cross, profile, payee, chainFromBlock) {
+    try {
+        const [chainA, headA, chainB, headB] = await Promise.all([
+            primary.getChainId(),
+            primary.getBlockNumber(),
+            cross.getChainId(),
+            cross.getBlockNumber(),
+        ]);
+        if (Number(chainA) !== profile.chainId || Number(chainB) !== profile.chainId)
+            return null;
+        if (typeof headA !== "bigint" || typeof headB !== "bigint")
+            return null;
+        // 2系統は同じ範囲を読む（head が1ブロックずれただけで集合が食い違わないように、小さい方で揃える）。
+        const toBlock = headA < headB ? headA : headB;
+        const lookbackStart = toBlock - DEFAULT_CHAIN_LOOKBACK_BLOCKS + 1n;
+        const fromBlock = chainFromBlock !== undefined ? BigInt(chainFromBlock) : lookbackStart > 0n ? lookbackStart : 0n;
+        if (fromBlock > toBlock)
+            return { receipts: 0, toBlock, queriedAt: new Date().toISOString() };
+        if (toBlock - fromBlock + 1n > MAX_CHAIN_SCAN_BLOCKS)
+            return null;
+        const [a, b] = await Promise.all([
+            scanTransfers(primary, profile, payee, fromBlock, toBlock),
+            scanTransfers(cross, profile, payee, fromBlock, toBlock),
+        ]);
+        if (a.size !== b.size || [...a].some((k) => !b.has(k)))
+            return null;
+        return { receipts: a.size, toBlock, queriedAt: new Date().toISOString() };
+    }
+    catch {
+        return null;
+    }
+}
+/** 1系統を {@link CHAIN_LOGS_SPAN} ずつ読み、数えてよい受領の `transactionHash:logIndex` の集合を返す。 */
+async function scanTransfers(reader, profile, payee, fromBlock, toBlock) {
+    const payeeTopic = `0x${payee.toLowerCase().replace(/^0x/, "").padStart(64, "0")}`;
+    const seen = new Set();
+    for (let start = fromBlock; start <= toBlock; start += CHAIN_LOGS_SPAN) {
+        const end = start + CHAIN_LOGS_SPAN - 1n < toBlock ? start + CHAIN_LOGS_SPAN - 1n : toBlock;
+        const logs = await reader.getLogs({
+            address: profile.asset,
+            event: ERC20_TRANSFER_EVENT,
+            args: { to: payee },
+            fromBlock: start,
+            toBlock: end,
+        });
+        if (!Array.isArray(logs))
+            throw new Error("chain reader: getLogs did not return an array");
+        for (const raw of logs) {
+            if (!isPlainObject(raw))
+                continue;
+            const log = raw;
+            const topics = Array.isArray(log.topics) ? log.topics.map((t) => String(t).toLowerCase()) : [];
+            if (!sameAddress(log.address, profile.asset))
+                continue;
+            if (topics[0] !== ERC20_TRANSFER_TOPIC || topics[2] !== payeeTopic)
+                continue;
+            const block = typeof log.blockNumber === "bigint" ? log.blockNumber : typeof log.blockNumber === "number" ? BigInt(log.blockNumber) : null;
+            if (block === null || block < start || block > end)
+                continue;
+            if (typeof log.data !== "string" || !/^0x[0-9a-fA-F]{1,64}$/.test(log.data) || BigInt(log.data) <= 0n)
+                continue;
+            if (typeof log.transactionHash !== "string" || log.transactionHash === "")
+                continue;
+            seen.add(`${log.transactionHash.toLowerCase()}:${String(log.logIndex)}`);
+        }
+    }
+    return seen;
+}
+/**
  * 呼び手が名指しした証拠の床を当てる。**判定（`/decision`）と policy 評価を分けてある**のは、
  * 証拠源を足すときにここだけを差し替えられるようにするため。
  *
@@ -969,7 +1151,7 @@ function assertEvidencePolicy(policy) {
  * 未実装／未取得の証拠源を黙って弱い方（自社台帳）に落とさない: `subgraph` を名指しされたのに
  * 読めていないなら、それは `evidence_unavailable` である（DESIGN §3.5）。
  */
-function evaluateEvidencePolicy(policy, decision, subgraph) {
+function evaluateEvidencePolicy(policy, decision, subgraph, chain = null) {
     const met = [];
     if (!policy)
         return { shortfall: null, met };
@@ -1004,6 +1186,20 @@ function evaluateEvidencePolicy(policy, decision, subgraph) {
             observed: subgraph.receipts,
         });
     }
+    // D1-a（Tokyo B3）。`source` に関係なく当てる。null は「読めなかった」であって 0 件ではない。
+    if (policy.minChainReceipts !== undefined) {
+        if (!chain)
+            return { shortfall: ["evidence_unavailable", "chain_evidence_unavailable"], met };
+        if (chain.receipts < policy.minChainReceipts) {
+            return { shortfall: ["insufficient_chain_evidence"], met };
+        }
+        met.push({
+            floor: "minChainReceipts",
+            source: "chain",
+            required: policy.minChainReceipts,
+            observed: chain.receipts,
+        });
+    }
     return { shortfall: null, met };
 }
 /**
@@ -1026,11 +1222,11 @@ function assertOverridePolicy(policy) {
     if (!policy || policy.requireVet402Allow !== false)
         return;
     const evidence = policy.evidence;
-    const floors = [evidence?.minL1Deliveries, evidence?.minSubgraphReceipts];
+    const floors = [evidence?.minL1Deliveries, evidence?.minSubgraphReceipts, evidence?.minChainReceipts];
     if (floors.some((floor) => typeof floor === "number" && floor > 0))
         return;
     throw new Error("invalid_policy: requireVet402Allow: false waives vet402's verdict, so it needs at least one " +
-        "evidence floor above zero (policy.evidence.minL1Deliveries or policy.evidence.minSubgraphReceipts). " +
+        "evidence floor above zero (policy.evidence.minL1Deliveries, minSubgraphReceipts, or minChainReceipts on base-sepolia). " +
         "Without one, nothing would judge this payment — a floor of 0 judges nothing either.");
 }
 // ============================================================

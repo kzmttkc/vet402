@@ -568,12 +568,13 @@ test("T32 profile の取り違え（4枝と期待を1対1）", { skip: !process.
   assert.deepEqual(codes(x.r), ["no_eligible_accept", "chain_or_asset_mismatch"]);
   // (c) network は合うが asset が本番 USDC
   x = await run("base-sepolia", { ...ACCEPT_SEPOLIA, asset: USDC_BASE });
-  assert.deepEqual(codes(x.r), ["chain_or_asset_mismatch"]);
-  // (d) EIP-712 domain の取り違え（両方向）→ 署名者参照 0
-  x = await run("base-sepolia", { ...ACCEPT_SEPOLIA, extra: { ...ACCEPT_SEPOLIA.extra, verifyingContract: USDC_BASE } });
+  assert.deepEqual(codes(x.r), ["no_eligible_accept", "chain_or_asset_mismatch"]); // 本番 Base と同じ語（払える形が1件も無い）
+  // (d) EIP-712 domain の取り違え（両方向）→ 署名者参照 0。profile で違うのは name（Base "USD Coin"／Base Sepolia "USDC"）。
+  //     verifyingContract は x402 の extra の欄ではなく、SDK は accept.asset で署名する。
+  x = await run("base-sepolia", { ...ACCEPT_SEPOLIA, extra: { ...ACCEPT_SEPOLIA.extra, name: "USD Coin" } });
   assert.deepEqual(codes(x.r), ["chain_or_asset_mismatch"]);
   assert.deepEqual(x.acct.signAccesses(), []);
-  x = await run("base", { ...ACCEPT_BASE, extra: { ...ACCEPT_BASE.extra, verifyingContract: USDC_SEPOLIA } });
+  x = await run("base", { ...ACCEPT_BASE, extra: { ...ACCEPT_BASE.extra, name: "USDC" } });
   assert.deepEqual(codes(x.r), ["chain_or_asset_mismatch"]);
   assert.deepEqual(x.acct.signAccesses(), []);
 });
@@ -594,6 +595,14 @@ test("T33 D1-a の床（minChainReceipts:1）: 0 件／reader が throw／片系
   refusedWith(r, "evidence_unavailable"); refusedWith(r, "chain_evidence_unavailable");
   r = await run(chainReader(), chainReader({ logs: [] }));
   refusedWith(r, "evidence_unavailable"); refusedWith(r, "chain_evidence_unavailable");
+  // 本番 Base では床として使えない（通信の前に throw・署名者参照 0）
+  const acct = watchedAccount(); const f = router();
+  await assert.rejects(
+    payOrRefuse({ payee: W_ENS, network: "base", resource: RESOURCE, amountUsd: 0.01, apiUrl: API, account: acct.account, fetch: f.fetch,
+      policy: { requireVet402Allow: false, evidence: { minChainReceipts: 1 } }, chainReader: chainReader().reader, chainReaderCrossCheck: chainReader().reader }),
+    /invalid_evidence_policy: evidence\.minChainReceipts is limited to network "base-sepolia"/,
+  );
+  assert.deepEqual(acct.signAccesses(), []);
 });
 
 // ---- 補助の走査・親名の固定（切り捨て対象）----

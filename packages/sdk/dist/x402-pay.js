@@ -41,8 +41,9 @@
  * static import に戻すと、この保証は消える——`test/no-static-payment-import.test.mjs` が
  * dist の静的モジュールグラフを辿って、それを赤で知らせる。
  */
-/** Base メインネットの CAIP-2。 */
-export const BASE_CAIP2 = "eip155:8453";
+import { CHAIN_PROFILES, profileForCaip2 } from "./chain-profile.js";
+/** Base メインネットの CAIP-2。値は `chain-profile.ts` の `base` の行（2026-09-26 に移した・値は同じ）。 */
+export const BASE_CAIP2 = CHAIN_PROFILES.base.network;
 /**
  * Base 正規 USDC の EIP-712 ドメイン。**売り手からは取らない**（本番 2026-08-22 監査）。
  * 2026-08-22 に一次確認済み（https://mainnet.base.org への eth_call・0x8335…2913）:
@@ -52,17 +53,18 @@ export const BASE_CAIP2 = "eip155:8453";
  * それでも売り手に選ばせてはいけないのは、**署名は無料ではない**からで、
  * 決済され得ない認可を掴まされると予算と署名だけが焼ける。
  */
-export const BASE_USDC_EIP712_NAME = "USD Coin";
-export const BASE_USDC_EIP712_VERSION = "2";
+export const BASE_USDC_EIP712_NAME = CHAIN_PROFILES.base.usdcEip712.name;
+export const BASE_USDC_EIP712_VERSION = CHAIN_PROFILES.base.usdcEip712.version;
 /**
  * accept の `extra` が正規ドメインと矛盾していないか。未提示は可（ピン留め値を使う）。
  * 提示されていて値が違うなら拒否——`payOrRefuse` の金銭ゲートが署名の前に落とす。
+ * 正規の値は profile の行から引く。**省略は `base`**（今までの挙動）。
  */
-export function hasCanonicalUsdcDomain(extra) {
+export function hasCanonicalUsdcDomain(extra, profile = CHAIN_PROFILES.base) {
     const name = extra?.name;
     const version = extra?.version;
-    return ((name === undefined || name === BASE_USDC_EIP712_NAME) &&
-        (version === undefined || version === BASE_USDC_EIP712_VERSION));
+    return ((name === undefined || name === profile.usdcEip712.name) &&
+        (version === undefined || version === profile.usdcEip712.version));
 }
 const TRANSFER_WITH_AUTHORIZATION = [
     { name: "from", type: "address" },
@@ -113,20 +115,25 @@ export function buildAuthorization(input) {
 }
 /**
  * EIP-3009 TransferWithAuthorization の署名。ドメインは**トークンのもの**であって
- * 売り手のものではない（{@link BASE_USDC_EIP712_NAME}）。呼び手のゲートを素通りした
- * 場合の保険として、矛盾する `extra` はここでも拒否する——このモジュールは金に署名する。
+ * 売り手のものではない（profile の `usdcEip712`・既定は `base` の {@link BASE_USDC_EIP712_NAME}）。
+ * 呼び手のゲートを素通りした場合の保険として、矛盾する `extra` はここでも拒否する——このモジュールは金に署名する。
+ * `chainId` と profile が食い違う呼び出しも、署名の前に拒否する（testnet のドメインで本番の chainId に署名しない）。
  */
 export async function signX402Payment(input) {
     const { account, accept, authorization, chainId } = input;
-    if (!hasCanonicalUsdcDomain(accept.extra)) {
+    const profile = input.profile ?? CHAIN_PROFILES.base;
+    if (input.profile !== undefined && chainId !== profile.chainId) {
+        throw new Error(`x402: chainId ${chainId} contradicts the ${profile.name} profile (chainId ${profile.chainId})`);
+    }
+    if (!hasCanonicalUsdcDomain(accept.extra, profile)) {
         throw new Error("x402: accept contradicts the canonical Base USDC EIP-712 domain");
     }
     // ここが「署名が存在する」唯一の行。プロパティ参照は1回だけに保つ
     // （テスト側の Proxy は回数ではなく参照そのものを数えている）。
     const signature = await account.signTypedData({
         domain: {
-            name: BASE_USDC_EIP712_NAME,
-            version: BASE_USDC_EIP712_VERSION,
+            name: profile.usdcEip712.name,
+            version: profile.usdcEip712.version,
             chainId,
             verifyingContract: accept.asset,
         },
@@ -147,7 +154,7 @@ export function encodePaymentHeader(input) {
         const body = {
             x402Version: 1,
             scheme: "exact",
-            network: accept.network === BASE_CAIP2 ? "base" : accept.network,
+            network: profileForCaip2(accept.network)?.v1Slug ?? accept.network,
             payload,
         };
         return { headerName: "X-PAYMENT", headerValue: toBase64(JSON.stringify(body)) };
@@ -228,6 +235,7 @@ export async function executeX402Payment(args) {
         accept,
         authorization,
         chainId: args.chainId,
+        ...(args.profile === undefined ? {} : { profile: args.profile }),
     });
     // ここから先は金が生きている。nonce を先に外へ出す。
     args.onSigned?.({ nonce: authorization.nonce, authorization, signature });

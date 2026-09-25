@@ -150,6 +150,7 @@ fails if this table and those constants drift apart. Server `reason_codes` (for 
 | `payee_recommendation_not_allow` | vet402 says WARN (or degraded) and you require ALLOW | either stop, or declare your own floors and set `requireVet402Allow: false` (WARN only; see below) |
 | `insufficient_delivery_evidence` | vet402's delivered-purchase count is below `minL1Deliveries` | lower the floor only if the user accepts the risk; otherwise stop |
 | `insufficient_subgraph_evidence` | The Graph's receipt count for the payee is below `minSubgraphReceipts` | same as above; the count read is on `decision_record.evidence[]` |
+| `insufficient_chain_evidence` | `network: "base-sepolia"` only: USDC receipts to the payee, read by your two `chainReader`s, are below `minChainReceipts` | same as above; the floor throws `invalid_evidence_policy` on any other network |
 | `resource_uncatalogued` | `/decision` answered 404; judgement came from the 402's `payTo` and that address's payee score | informational; it always sits next to the decisive code |
 | `payment_target_unknown` | MCP only: `resource`/`payee`/`amountUsd` were not all given | expected on the dry-run; otherwise pass all three |
 | `payer_not_configured` | MCP only: the server has no `VOUCH_PAYER_PRIVATE_KEY` (and `viem`) | the decision was still measured; to pay, configure the server (see Setup) |
@@ -167,6 +168,8 @@ fails if this table and those constants drift apart. Server `reason_codes` (for 
   `deployment`, `queriedAt` — the proof it came from a live index.
 - `"both"` — both are read; if either cannot be read, refuse. Counts from different sources are
   never added together.
+
+`network: "base-sepolia"` switches USDC, its EIP-712 domain (`"USDC"`, version `"2"`) and chain id 84532 together; the default stays Base mainnet.
 
 `requireVet402Allow: false` waives a vet402 **WARN** — never BLOCK, never `degraded` — and only when
 every floor you declared is met. Declare at least one floor above 0 or the call throws

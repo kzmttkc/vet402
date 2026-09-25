@@ -1,11 +1,15 @@
 import type { DecisionResult, PayeeScoreResult } from "./index.js";
 import type { PayerAccount, X402Accept } from "./x402-pay.js";
+import { type ChainProfileName } from "./chain-profile.js";
 export type { PayerAccount, X402Accept, X402Settlement, Eip3009Authorization } from "./x402-pay.js";
-/** Base メインネット。会期スコープは1チェーンだけ（WINDOW_PLAN §2「範囲外: 新チェーン」）。 */
-export declare const BASE_CHAIN = "eip155:8453";
-export declare const BASE_CHAIN_ID = 8453;
+/**
+ * Base メインネット（`network` の既定）。値は `chain-profile.ts` の `base` の行から引く（2026-09-26 に移した・値は同じ）。
+ * testnet（`base-sepolia`）は呼び手が `network` で名指ししたときだけ。
+ */
+export declare const BASE_CHAIN: "eip155:8453";
+export declare const BASE_CHAIN_ID: 8453;
 /** Base の正規 USDC。ここを可変にしない——「別トークンを掴まされる」が最も安い攻撃。 */
-export declare const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+export declare const BASE_USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 /**
  * Solana メインネット（CAIP-2）と、その正規 USDC mint（decimals 6）。2026-09-15 に足した 2 本目のレール。
  * 値は本番 `src/lib/observatory/sol402-payer.ts` と同じ（本番の Solana L1 が実決済に使っている）。
@@ -93,10 +97,10 @@ export declare const DEFAULT_MAX_PER_TX_USD = 1;
  *    $1 の 402 を上限内だからと払うのは、上限は守っても名乗りを破っている。サーバの
  *    `caller_policy` は 402 を見ないのでこの語を出せない（SDK だけの語・parity テストが固定）
  */
-export declare const PAY_REFUSE_REASONS: readonly ["price_above_ceiling", "price_above_declared", "payee_mismatch", "chain_or_asset_mismatch", "evidence_unavailable", "payee_recommendation_block", "payee_recommendation_not_allow", "insufficient_delivery_evidence", "insufficient_subgraph_evidence", "resource_uncatalogued", "subgraph_evidence_unavailable", "no_eligible_accept", "allowed_by_caller_policy"];
+export declare const PAY_REFUSE_REASONS: readonly ["price_above_ceiling", "price_above_declared", "payee_mismatch", "chain_or_asset_mismatch", "evidence_unavailable", "payee_recommendation_block", "payee_recommendation_not_allow", "insufficient_delivery_evidence", "insufficient_subgraph_evidence", "resource_uncatalogued", "subgraph_evidence_unavailable", "no_eligible_accept", "allowed_by_caller_policy", "insufficient_chain_evidence", "chain_evidence_unavailable"];
 export type PayRefuseReason = (typeof PAY_REFUSE_REASONS)[number];
 /** 証拠源。`payOrRefuse` の判定が「誰の台帳を読んだか」を機械可読で残す。 */
-export type PayEvidenceSource = "vet402" | "subgraph";
+export type PayEvidenceSource = "vet402" | "subgraph" | "chain";
 export type PayEvidenceRow = {
     level: "L0" | "L1" | "L2";
     source: PayEvidenceSource;
@@ -128,6 +132,19 @@ export type PayEvidencePolicy = {
      * `source` が `"subgraph"` か `"both"` でなければ**呼び出し側エラー**（下記）。
      */
     minSubgraphReceipts?: number;
+    /**
+     * **支払いチェーンそのもの**（profile の USDC・`Transfer` の宛先が payee・額 > 0）の受領件数の下限（D1-a・Tokyo B3）。
+     * 読むのは呼び手が渡す `chainReader` と `chainReaderCrossCheck` の2系統で、**2つの受領の集合が一致したときだけ**数える
+     * （違えば・どちらかが読めなければ `chain_evidence_unavailable`）。`source` とは無関係（どの値でも評価する）。
+     * 0 以上の整数。0x の payee だけ（base58 の payee に渡せば呼び出し側エラー）。
+     */
+    minChainReceipts?: number;
+    /**
+     * `minChainReceipts` を数え始めるブロック（含む）。省略は「2系統の head の小さい方から
+     * {@link DEFAULT_CHAIN_LOOKBACK_BLOCKS} ブロック」。`getLogs` は {@link CHAIN_LOGS_SPAN} ブロックずつに分けて引く
+     * （公開 RPC の範囲上限。Base Sepolia の公開 RPC は 1,000・2026-09-25 実測）。
+     */
+    chainFromBlock?: number | bigint;
     /**
      * 既定 `"vet402"`。`"subgraph"` は**我々の台帳を証拠の床に使わない**——
      * 呼び手が自分の鍵で The Graph を引いて自分で確かめる。`"both"` は両方読め、
@@ -183,7 +200,7 @@ export type PayPolicy = {
 };
 /** 満たした床1つ。**要求値と実測値を両方持つ**——「床を見たふり」を機械可読に潰す。 */
 export type EvidenceFloorCheck = {
-    floor: "minL1Deliveries" | "minSubgraphReceipts";
+    floor: "minL1Deliveries" | "minSubgraphReceipts" | "minChainReceipts";
     /** どの源の数で当てたか。源をまたいで足さない（D16）。 */
     source: PayEvidenceSource;
     required: number;
@@ -211,19 +228,38 @@ export type PayPolicyOverride = {
  * `svm`（Solana の署名者と RPC）。payee の形と合わない方を渡す・両方渡す・どちらも無いは、
  * 通信の前に `invalid_payer` で throw する。
  */
-export type PayOrRefuseInput = PayOrRefuseBaseInput & ({
+export type PayOrRefuseInput = PayOrRefuseBaseInput & (PayOrRefusePayeeInput | PayOrRefuseNamedPayeeInput) & ({
     account: PayerAccount;
     svm?: undefined;
 } | {
     svm: SvmPayOptions;
     account?: undefined;
 });
-export type PayOrRefuseBaseInput = {
+/** 既存の呼び方（`payee` を渡す）。型も実行時の挙動も 2026-09-25 までと同じ。 */
+export type PayOrRefusePayeeInput = {
     /**
      * 0x アドレス（Base）か base58 アドレス（Solana）。ENS 名は**解決しない**（名前解決を支払いゲートの中で起こさない）。
      * Solana の payee は大文字小文字を含めて 402 の payTo と完全一致でなければ払わない。
      */
     payee: string;
+    payeeName?: undefined;
+};
+/**
+ * 名前で払う呼び方（ETHGlobal Tokyo 2026）。`payee` は ENSIP-29 の証明が有効な約束の `payTo` から決まる
+ * （段 2.5・B6 が入れる。`ens` の欄も B6 が足す）。**段 2.5 が入るまでは、通信の前に throw する。**
+ */
+export type PayOrRefuseNamedPayeeInput = {
+    payeeName: string;
+    /** 渡したときは約束の `payTo` と一致しなければ拒否（B6）。 */
+    payee?: string;
+};
+export type PayOrRefuseBaseInput = {
+    /**
+     * 0x の payee を払うチェーン。**既定 `"base"`（Base メインネット・今までの挙動）**。
+     * `"base-sepolia"` は testnet の USDC で払い、本番の台帳へは attest しない。知らない値は `invalid_network` で throw。
+     * base58（Solana）の payee には渡さない（渡せば throw）。
+     */
+    network?: ChainProfileName;
     /** 402 を返す資源の URL。 */
     resource: string;
     amountUsd: number;
@@ -248,7 +284,54 @@ export type PayOrRefuseBaseInput = {
      * デモも L1 も同じ既定パスを渡すので、行は1本の store に混ざる（F19/F20 の主題）。
      */
     decisionStore?: string;
+    /**
+     * `policy.evidence.minChainReceipts` の受領を読む2系統（D1-a・Tokyo B3）。viem の `PublicClient` がそのまま当てはまる。
+     * **別の RPC を2本**渡す（同じ RPC を2回読んでも2系統にならない）。床を宣言しないなら読まない。
+     */
+    chainReader?: ChainReceiptReader;
+    chainReaderCrossCheck?: ChainReceiptReader;
 };
+/**
+ * 支払いチェーンの受領を読む口（viem `PublicClient` の部分集合）。`getLogs` は ERC-20 `Transfer` を
+ * `event` と `args.to` で絞って引く。戻りの log は**信じずに**読み直す（address・topics・額・ブロック範囲）。
+ */
+export type ChainReceiptReader = {
+    getChainId(): Promise<number>;
+    getBlockNumber(): Promise<bigint>;
+    getLogs(args: {
+        address: string;
+        event: typeof ERC20_TRANSFER_EVENT;
+        args: {
+            to: string;
+        };
+        fromBlock: bigint;
+        toBlock: bigint;
+    }): Promise<readonly unknown[]>;
+};
+/** `Transfer(address indexed from, address indexed to, uint256 value)`（viem の `AbiEvent` の形）。 */
+export declare const ERC20_TRANSFER_EVENT: {
+    readonly type: "event";
+    readonly name: "Transfer";
+    readonly inputs: readonly [{
+        readonly indexed: true;
+        readonly name: "from";
+        readonly type: "address";
+    }, {
+        readonly indexed: true;
+        readonly name: "to";
+        readonly type: "address";
+    }, {
+        readonly indexed: false;
+        readonly name: "value";
+        readonly type: "uint256";
+    }];
+};
+/** `chainFromBlock` 省略時に遡るブロック数（Base / Base Sepolia の 2 秒ブロックで約 5.5 時間）。 */
+export declare const DEFAULT_CHAIN_LOOKBACK_BLOCKS = 10000n;
+/** `getLogs` 1本あたりのブロック数（両端を含む）。 */
+export declare const CHAIN_LOGS_SPAN = 1000n;
+/** 1回の評価で読む上限。これを超える範囲は読まずに `chain_evidence_unavailable`。 */
+export declare const MAX_CHAIN_SCAN_BLOCKS = 100000n;
 /** `payOrRefuse` が出した1件の決定。拒否でも通過でも同じ形で残る。 */
 export type PayDecisionRecord = {
     recommendation: "ALLOW" | "REFUSE";

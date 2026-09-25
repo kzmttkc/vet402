@@ -801,7 +801,7 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   assertOverridePolicy(input.policy);
   // D1-a（Tokyo B3）: 支払いチェーンの床は、読む口が2系統そろっていなければ評価できない。黙って 0 件にしない。
   if (input.policy?.evidence?.minChainReceipts !== undefined) {
-    assertChainReaders(rail, input.chainReader, input.chainReaderCrossCheck);
+    assertChainReaders(rail, input.chainReader, input.chainReaderCrossCheck, profile);
   }
   // account は**検査しない**。`typeof account.signTypedData === "function"` と書いた瞬間に
   // 拒否経路から signer へのプロパティ参照が発生し、「到達できない」が嘘になる。
@@ -1443,10 +1443,18 @@ function assertEvidencePolicy(policy: PayEvidencePolicy | undefined): void {
  * `minChainReceipts` の読み口の形を、通信の前に見る（D1-a・Tokyo B3）。
  * 読み口は署名者ではないので `typeof` でメソッドの有無を見てよい。
  */
-function assertChainReaders(rail: PayRail, primary: unknown, cross: unknown): void {
+function assertChainReaders(rail: PayRail, primary: unknown, cross: unknown, profile: ChainProfile): void {
   if (rail !== "evm") {
     throw new Error(
       "invalid_evidence_policy: evidence.minChainReceipts counts USDC receipts on an EVM chain; a base58 (Solana) payee cannot use it.",
+    );
+  }
+  // 当面は testnet だけ（2026-09-25 Takeshi 決定）。payTo 宛ての USDC 受領は売り手が自分で作れるので、
+  // 本番 Base で vet402 の判定を外す床としては弱い。Tokyo の後で広げるかを決める。
+  if (profile.name !== "base-sepolia") {
+    throw new Error(
+      `invalid_evidence_policy: evidence.minChainReceipts is limited to network "base-sepolia" for now, got "${profile.name}". ` +
+        "A payee can create its own USDC receipts, so on mainnet it is too weak to stand in for vet402's verdict.",
     );
   }
   const isReader = (r: unknown): boolean =>
@@ -1632,7 +1640,7 @@ function assertOverridePolicy(policy: PayPolicy | undefined): void {
   if (floors.some((floor) => typeof floor === "number" && floor > 0)) return;
   throw new Error(
     "invalid_policy: requireVet402Allow: false waives vet402's verdict, so it needs at least one " +
-      "evidence floor above zero (policy.evidence.minL1Deliveries or policy.evidence.minSubgraphReceipts). " +
+      "evidence floor above zero (policy.evidence.minL1Deliveries, minSubgraphReceipts, or minChainReceipts on base-sepolia). " +
       "Without one, nothing would judge this payment — a floor of 0 judges nothing either.",
   );
 }
