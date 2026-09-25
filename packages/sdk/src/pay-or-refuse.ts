@@ -56,14 +56,19 @@ import type { PayerAccount, X402Accept } from "./x402-pay.js";
 import { readSubgraphReceipts, X402_BASE_SUBGRAPH_ID, type SubgraphReceipts } from "./subgraph-evidence.js";
 // 判定語と「測れたか」の欄の読み方。2つの金の経路で1つの規則を共有する（`./verdict-shape.js`）。
 import { isBlockVerdict, isDecimalUnits, isPlainObject, scoreQualityDefect } from "./verdict-shape.js";
+// 支払いチェーンの定数表（Tokyo B3）。import を持たない定数だけのモジュールなので静的 import でよい。
+import { CHAIN_PROFILES, profileFor, type ChainProfile, type ChainProfileName } from "./chain-profile.js";
 
 export type { PayerAccount, X402Accept, X402Settlement, Eip3009Authorization } from "./x402-pay.js";
 
-/** Base メインネット。会期スコープは1チェーンだけ（WINDOW_PLAN §2「範囲外: 新チェーン」）。 */
-export const BASE_CHAIN = "eip155:8453";
-export const BASE_CHAIN_ID = 8453;
+/**
+ * Base メインネット（`network` の既定）。値は `chain-profile.ts` の `base` の行から引く（2026-09-26 に移した・値は同じ）。
+ * testnet（`base-sepolia`）は呼び手が `network` で名指ししたときだけ。
+ */
+export const BASE_CHAIN = CHAIN_PROFILES.base.network;
+export const BASE_CHAIN_ID = CHAIN_PROFILES.base.chainId;
 /** Base の正規 USDC。ここを可変にしない——「別トークンを掴まされる」が最も安い攻撃。 */
-export const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+export const BASE_USDC = CHAIN_PROFILES.base.asset;
 
 /**
  * Solana メインネット（CAIP-2）と、その正規 USDC mint（decimals 6）。2026-09-15 に足した 2 本目のレール。
@@ -340,6 +345,12 @@ export type PayOrRefuseNamedPayeeInput = {
 };
 
 export type PayOrRefuseBaseInput = {
+  /**
+   * 0x の payee を払うチェーン。**既定 `"base"`（Base メインネット・今までの挙動）**。
+   * `"base-sepolia"` は testnet の USDC で払い、本番の台帳へは attest しない。知らない値は `invalid_network` で throw。
+   * base58（Solana）の payee には渡さない（渡せば throw）。
+   */
+  network?: ChainProfileName;
   /** 402 を返す資源の URL。 */
   resource: string;
   amountUsd: number;
@@ -489,10 +500,10 @@ function normalizeAccept(raw: unknown): X402Accept | null {
  * 金額と payTo は**含めない**——それは「払えるか」ではなく「払ってよいか」で、
  * 呼び手の上限と期待値に依存する（{@link evaluateMoneyGate} と payee 照合が持つ）。
  */
-function isProtocolEligible(accept: X402Accept): boolean {
+function isProtocolEligible(accept: X402Accept, profile: ChainProfile = CHAIN_PROFILES.base): boolean {
   if (accept.scheme !== "exact") return false;
-  if (accept.network !== BASE_CHAIN) return false;
-  if (!sameAddress(accept.asset, BASE_USDC)) return false;
+  if (accept.network !== profile.network) return false;
+  if (!sameAddress(accept.asset, profile.asset)) return false;
   // 明示された転送方式が eip3009 でなければ払えない。未提示は許す——Base 正規 USDC の
   // `exact` は構造上 EIP-3009 であり、未提示を拒むと実在する 402 に払えなくなる。
   const transfer = accept.extra?.assetTransferMethod;
@@ -518,18 +529,26 @@ function isSvmProtocolEligible(accept: X402Accept, x402Version: 1 | 2): boolean 
 }
 
 /** レールごとの「払える形か」。選別と金銭ゲートが**同じ述語**を使うための 1 本。 */
-function isEligibleOnRail(accept: X402Accept, rail: PayRail, x402Version: 1 | 2): boolean {
-  return rail === "svm" ? isSvmProtocolEligible(accept, x402Version) : isProtocolEligible(accept);
+function isEligibleOnRail(
+  accept: X402Accept,
+  rail: PayRail,
+  x402Version: 1 | 2,
+  profile: ChainProfile = CHAIN_PROFILES.base,
+): boolean {
+  return rail === "svm" ? isSvmProtocolEligible(accept, x402Version) : isProtocolEligible(accept, profile);
 }
 
 /**
  * EIP-712 ドメインがトークンのもの（本番 2026-08-22 の `eth_call` 実測）と矛盾しないか。
  * **売り手の名乗りを採用するためではなく、矛盾を検出するために読む。**
  */
-function hasCanonicalUsdcDomain(accept: X402Accept): boolean {
+function hasCanonicalUsdcDomain(accept: X402Accept, profile: ChainProfile = CHAIN_PROFILES.base): boolean {
   const name = accept.extra?.name;
   const version = accept.extra?.version;
-  return (name === undefined || name === "USD Coin") && (version === undefined || version === "2");
+  return (
+    (name === undefined || name === profile.usdcEip712.name) &&
+    (version === undefined || version === profile.usdcEip712.version)
+  );
 }
 
 /**
@@ -556,6 +575,7 @@ function selectAccept(
   raw: unknown[],
   rail: PayRail = "evm",
   x402Version: 1 | 2 = 2,
+  profile: ChainProfile = CHAIN_PROFILES.base,
 ): { accept: X402Accept; eligible: boolean } | null {
   const normalized = raw.map(normalizeAccept).filter((a): a is X402Accept => a !== null);
   if (normalized.length === 0) return null;
@@ -565,22 +585,23 @@ function selectAccept(
     const svmEligible = normalized.filter((a) => isSvmProtocolEligible(a, x402Version));
     return svmEligible.length === 0 ? { accept: normalized[0], eligible: false } : { accept: svmEligible[0], eligible: true };
   }
-  const eligible = normalized.filter(isProtocolEligible);
+  const eligible = normalized.filter((a) => isProtocolEligible(a, profile));
   if (eligible.length === 0) return { accept: normalized[0], eligible: false };
-  return { accept: eligible.find(hasCanonicalUsdcDomain) ?? eligible[0], eligible: true };
+  return { accept: eligible.find((a) => hasCanonicalUsdcDomain(a, profile)) ?? eligible[0], eligible: true };
 }
 
 /** チャレンジは **transport のバージョンごと**読む——答える側のヘッダ名がそれで決まる。 */
 function decodeChallenge(
   raw: string,
   rail: PayRail = "evm",
+  profile: ChainProfile = CHAIN_PROFILES.base,
 ): { x402Version: 1 | 2; accept: X402Accept; eligible: boolean } | null {
   try {
     const json = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(raw), (c) => c.charCodeAt(0))));
     const accepts = (json as { accepts?: unknown[] }).accepts;
     if (!Array.isArray(accepts) || accepts.length === 0) return null;
     const version: 1 | 2 = (json as { x402Version?: unknown }).x402Version === 1 ? 1 : 2;
-    const selected = selectAccept(accepts, rail, version);
+    const selected = selectAccept(accepts, rail, version, profile);
     if (!selected) return null;
     return {
       x402Version: version,
@@ -667,6 +688,13 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   const rail: PayRail = byName || isEvmPayee ? "evm" : "svm";
   let payeeAddr: string | undefined = byName ? undefined : givenPayee;
   const svm = rail === "svm" ? assertSvmPayer(input) : null;
+  // 支払いチェーン（Tokyo B3）。省略は "base"＝今までの挙動。知らない値は通信の前に throw（invalid_network）。
+  const profile = profileFor(input.network);
+  if (rail === "svm" && input.network !== undefined && input.network !== "base") {
+    throw new Error(
+      `invalid_network: network ${JSON.stringify(input.network)} selects an EVM chain, but a base58 payee is paid on Solana. Omit network for a Solana payee.`,
+    );
+  }
   // 0x の payee に `svm` を渡すのは 0.7.0 で足した入力の誤り（旧い呼び手は渡さない）ので throw する。
   // `account` の欠落は冒頭で止めない——0.6.0 は判定の前に `account` を見ておらず、BLOCK なら refused を
   // 返していた（JS の呼び手）。欠落のまま ALLOW に着いたときは、署名の番兵（NO_EVM_ACCOUNT）が throw する。
@@ -965,7 +993,7 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   try {
     const response = await fetchFn(input.resource, { method });
     const raw = readHeader(response.headers, "payment-required");
-    const challenge = raw ? decodeChallenge(raw, rail) : null;
+    const challenge = raw ? decodeChallenge(raw, rail, profile) : null;
     if (challenge) {
       accept = challenge.accept;
       x402Version = challenge.x402Version;
@@ -994,7 +1022,7 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   if (!sameAddress(accept.payTo, payeeAddr)) {
     return refuse([...pathReasons, ...selectionReasons, "payee_mismatch"], uncatalogued ? "payee_score" : "decision", decision, null, accept);
   }
-  const moneyGate = evaluateMoneyGate(accept, maxPerTxUsd, rail, x402Version);
+  const moneyGate = evaluateMoneyGate(accept, maxPerTxUsd, rail, x402Version, profile);
   if (moneyGate) {
     return refuse([...pathReasons, ...selectionReasons, ...moneyGate], uncatalogued ? "payee_score" : "decision", decision, null, accept);
   }
@@ -1110,7 +1138,8 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
     accept,
     resource: input.resource,
     method,
-    chainId: BASE_CHAIN_ID,
+    chainId: profile.chainId,
+    profile,
     x402Version,
     fetch: fetchFn,
     onSigned: ({ nonce }) => {
@@ -1160,7 +1189,8 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   }
 
   let attested = false;
-  if (paid.txHash) {
+  // testnet（profile.attest が false）の支払いは本番の台帳へ入れない。
+  if (paid.txHash && profile.attest) {
     try {
       const response = await fetchFn(`${apiUrl}/payments/x402`, {
         method: "POST",
@@ -1207,15 +1237,16 @@ function evaluateMoneyGate(
   maxPerTxUsd: number,
   rail: PayRail = "evm",
   x402Version: 1 | 2 = 2,
+  profile: ChainProfile = CHAIN_PROFILES.base,
 ): PayRefuseReason[] | null {
   // scheme / network / asset / 転送方式。**選別と同じ述語**で見る——別の述語を書くと、
   // 選ばれたのに関門で落ちる（またはその逆の）食い違いが静かに入り込む。
-  if (!isEligibleOnRail(accept, rail, x402Version)) return ["chain_or_asset_mismatch"];
+  if (!isEligibleOnRail(accept, rail, x402Version, profile)) return ["chain_or_asset_mismatch"];
   // EIP-712 ドメインはトークンのものであって売り手のものではない（本番 2026-08-22 監査）。
   // 矛盾する accept を**署名の前に**落とす: 誤ったドメインの署名は決済され得ないので、
   // 通せば「一円も動かないまま署名だけが生きている」状態を売り手が無料で作れてしまう。
   // Solana の accept に EIP-712 ドメインは無い（署名するのは取引であって型付きデータではない）。
-  if (rail === "evm" && !hasCanonicalUsdcDomain(accept)) return ["chain_or_asset_mismatch"];
+  if (rail === "evm" && !hasCanonicalUsdcDomain(accept, profile)) return ["chain_or_asset_mismatch"];
   // `amount` は uint256 の 10 進表記（数字だけ）に限る（2026-09-07 監査 A6）。`Number()` は
   // "0x10" / "1e4" / "20000.5" / " 20000 " を上限内の数に読むが、署名に載るのは**生文字列**なので、
   // 関門が見た額と署名した額が食い違う。読めない額は「いくら払うのか分からない」＝402 が読めないのと同じ語。
