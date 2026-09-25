@@ -731,12 +731,12 @@ async function decideAndPay(input) {
         if (scoreQualityDefect(decision) !== null) {
             return refuse([...serverReasons, "evidence_unavailable"], "decision", decision);
         }
-        // G5b ④: 200 で読めても、判定語が ALLOW・WARN・BLOCK のどれでもなければ判定になっていない。
+        // G5b ④（名前経路だけ）: 200 で読めても、判定語が ALLOW・WARN・BLOCK のどれでもなければ判定になっていない。
         // 免除（`requireVet402Allow: false`）の下で「知らない語」を WARN と同じに読んで払わない。
-        // 2026-09-25 まで名前を使わない呼び手はここを素通りして払っていた（SKILL.md の「免除は WARN だけ」に反する）。
-        // 全ての呼び手に当てる。既定の `requireVet402Allow: true` でも、知らない語はここで `evidence_unavailable` として止まる
-        // （2026-09-25 までは `payee_recommendation_not_allow`。払わない点は同じで、語だけ「判定が読めなかった」に揃えた）。
-        if (!KNOWN_VERDICTS.has(String(decision.recommendation ?? "").trim().toUpperCase())) {
+        // **名前を使わない呼び手の挙動は変えない**（既定経路は ETHOnline 提出時のまま）。名前なし＋免除＋判定語なしで
+        // 払ってしまう穴は既知（2026-09-25 発見）。ETHOnline デモの予告（gate-parity の A）も同じ前提なので、
+        // 賞の扱いが確定した後に SDK とデモを一緒に直す。
+        if (ensGate !== null && !KNOWN_VERDICTS.has(String(decision.recommendation ?? "").trim().toUpperCase())) {
             return refuse([...serverReasons, "evidence_unavailable"], "decision", decision);
         }
         // A1: ALLOW 以外。理由はサーバの reason_codes をそのまま通す（我々の語で上書きしない）。

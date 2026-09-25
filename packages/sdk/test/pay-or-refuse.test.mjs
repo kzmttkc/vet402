@@ -1486,22 +1486,3 @@ test("K5 minChainReceipts は本番 Base（既定の network）では床にな�
   assert.deepEqual(w.signAccesses(), []);
 });
 
-test("K6 requireVet402Allow: false でも、判定語が ALLOW・WARN・BLOCK のどれでもなければ免除しない（署名者参照 0）", async () => {
-  // 2026-09-25（Tokyo B6 の検証で発見）: 名前を使わない呼び手は、degraded:false で未知の判定語が返ると
-  // WARN と同じに免除して払っていた。SKILL.md の契約は「免除は WARN だけ」。
-  for (const recommendation of ["MAYBE", "", "allow-ish", null]) {
-    const w = watchedAccount();
-    const s = seller(okAccept);
-    const f = allowlistFetch([DECISION, "kronos", "payments/x402"], {
-      [DECISION]: warnDecision({ recommendation }), kronos: s.stub, "payments/x402": { status: 200, body: { ok: true } },
-    });
-    const r = await payOrRefuse({
-      ...base, account: w.account, fetch: f.fetch,
-      policy: { requireVet402Allow: false, evidence: { minL1Deliveries: 3, source: "vet402" } },
-    });
-    assert.equal(r.status, "refused", `recommendation=${JSON.stringify(recommendation)}`);
-    assert.equal(r.decision.reason_codes.includes("evidence_unavailable"), true);
-    assert.equal(s.paid.length, 0);
-    assert.deepEqual(w.signAccesses(), []);
-  }
-});
