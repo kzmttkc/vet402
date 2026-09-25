@@ -227,7 +227,7 @@ export async function signX402Payment(input: {
     throw new Error(`x402: chainId ${chainId} contradicts the ${profile.name} profile (chainId ${profile.chainId})`);
   }
   if (!hasCanonicalUsdcDomain(accept.extra, profile)) {
-    throw new Error("x402: accept contradicts the canonical Base USDC EIP-712 domain");
+    throw new Error(`x402: accept contradicts the canonical ${profile.name} USDC EIP-712 domain`);
   }
   // ここが「署名が存在する」唯一の行。プロパティ参照は1回だけに保つ
   // （テスト側の Proxy は回数ではなく参照そのものを数えている）。

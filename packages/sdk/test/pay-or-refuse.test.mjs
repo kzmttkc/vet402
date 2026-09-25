@@ -1468,3 +1468,20 @@ test("D18b pin が一致する呼び出しは、pin を渡さない呼び出し�
   const withoutPin = await run({ source: "subgraph", minSubgraphReceipts: 100 });
   assert.deepEqual(withPin, withoutPin, "pin が一致するとき、pin は判定に一切影響しない");
 });
+
+test("K5 minChainReceipts は本番 Base（既定の network）では床にならない — 通信の前に throw・署名者参照 0", async () => {
+  // Tokyo B3（2026-09-25 Takeshi 決定）: payTo 宛ての USDC 受領は売り手が自分で作れる。
+  // 本番で vet402 の判定を外す床にさせない。T33 は TOKYO_OPT_TESTNET_PAY の下でしか走らないので、既定の npm test でも守る。
+  const w = watchedAccount();
+  const f = allowlistFetch([], {});
+  const reader = () => ({ getChainId: async () => 8453, getBlockNumber: async () => 1n, getLogs: async () => [] });
+  for (const network of [undefined, "base"]) {
+    await assert.rejects(
+      payOrRefuse({ ...base, ...(network ? { network } : {}), account: w.account, fetch: f.fetch,
+        policy: { requireVet402Allow: false, evidence: { minChainReceipts: 1 } },
+        chainReader: reader(), chainReaderCrossCheck: reader() }),
+      /invalid_evidence_policy: evidence\.minChainReceipts is limited to network "base-sepolia"/,
+    );
+  }
+  assert.deepEqual(w.signAccesses(), []);
+});
