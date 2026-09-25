@@ -370,7 +370,7 @@ export async function checkEnsOffer(input: CheckEnsOfferInput): Promise<EnsOffer
 
   if (out.offerRaw === "") {
     const step = Math.min(best?.failStep ?? 1, 3) as Fail["step"];
-    return finish(["ens_offer_missing"], { step, detail: step === 3 ? { reason: "ens_offer_missing", error: `${recordKey} is empty` } : { reason: "ens_offer_missing", note: `${recordKey} is empty too` } });
+    return finish(["ens_offer_missing"], { step, detail: step === 3 ? { reason: "ens_offer_missing", error: `${recordKey} is empty` } : { alsoEmpty: `${recordKey} (ens_offer_missing ranks first in reason_codes)` } });
   }
 
   const reasons: EnsAttestationReason[] = [];
