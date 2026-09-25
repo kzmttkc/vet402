@@ -16,6 +16,6 @@
     "selfcheck": "node tools/selfcheck.mjs"
   },
   "dependencies": {
-    "viem": "2.38.0"
+    "viem": "2.56.9"
   }
 }
