@@ -1,62 +1,19 @@
 // ============================================================
 // /tokyo の読み取り（ページと /api/tokyo/verify が使う）。署名器も鍵も無い。
-// checkEnsOffer は凍結した tarball（vendor/vet402-sdk-0.7.0.tgz）の SDK から読む。
-// RPC は別々の提供者の2本（SDK の pinBlock が両方の一致を見る）。env は TOKYO_SEPOLIA_RPC_URL だけ。
-// 同じ名前の結果はプロセス内で VERIFY_CACHE_MS だけ使い回す（cache.ts）。結果は block と読んだ時刻を持つので、
-// 使い回しても「block N で読んだ」事実のまま。審査員ボタンが seller-d.eth を書いたら button.ts が
-// cache.ts の forgetVerified で忘れさせる。
+// 7段そのものは check.ts。ここは名前の形の関門と、名前ごとの使い回し（cache.ts の verifyCache）と、鍵の狭さの表示。
+// 使い回しの鍵は SDK の正規化（normalize）後の名前。結果は block と読んだ時刻を持つので、使い回しても
+// 「block N で読んだ」事実のまま。押した直後の表示は使い回しを通らない（mutate / reset の応答の check）。
 // ============================================================
 import { createPublicClient, decodeErrorResult, encodeFunctionData, http, keccak256, parseAbi, toBytes, type BaseError } from "viem";
 import { sepolia } from "viem/chains";
-import { checkEnsOffer, type EnsReadClients } from "@vet402/sdk/ens";
-import {
-  ATTESTATION_KEY, BASE_SEPOLIA_PROFILE, KEY, MAX_AGE_SECONDS, MIN_VALID, NODE, P_D, SELLER_METHOD,
-  SELLER_RESOURCE, TRUSTED_ATTESTERS, VERIFY_CACHE_MS, W_OP,
-} from "./constants";
-import { TtlCache, verifyCache } from "./cache";
+import { ATTESTATION_KEY, KEY, NODE, P_D, VERIFY_CACHE_MS, W_OP } from "./constants";
+import { TtlCache, verifyCache, verifyKey } from "./cache";
+import { readCheck, type VerifyError, type VerifyView } from "./check";
 import { readVerifyRpcUrls } from "./rpc-env";
 
-export const STEP_NAMES: Record<number, string> = {
-  1: "envelope",
-  2: "manager",
-  3: "record value",
-  4: "payload",
-  5: "recover signer",
-  6: "attester name",
-  7: "compare",
-};
-
-export type TraceStep = { step: number; name: string; status: "ok" | "fail" | "skipped"; detail: Record<string, string> };
-
-export type VerifyView = {
-  name: string;
-  ok: boolean;
-  reasons: string[];
-  chainId: number;
-  block: string;
-  blockTimestamp: string;
-  manager: string | null;
-  offerRaw: string | null;
-  amount: string | null;
-  trace: TraceStep[];
-  format: "ensip29-draft";
-  request: { method: string; resource: string };
-  attesters: { name: string; address: string }[];
-  maxAgeSeconds: number;
-  ms: number;
-  /** サーバが読み終えた時刻（ISO）。使い回した結果でもこの値のまま。 */
-  readAt: string;
-};
-
-export type VerifyError = { name: string; error: "invalid_name" | "verify_failed"; message: string };
+export { STEP_NAMES, type TraceStep, type VerifyError, type VerifyView } from "./check";
 
 const MAX_NAME = 255;
-
-function clients(): EnsReadClients {
-  const { primary, secondary } = readVerifyRpcUrls();
-  const mk = (url: string) => createPublicClient({ chain: sepolia, transport: http(url, { timeout: 15_000, retryCount: 1 }) });
-  return { primary: mk(primary), secondary: mk(secondary) } as unknown as EnsReadClients;
-}
 
 /** 名前の形だけを先に見る（正規化は SDK の checkEnsOffer がする。正規化できなければ段1の ens_name_unresolved）。 */
 export function cleanName(input: string | null | undefined): string | null {
@@ -72,53 +29,10 @@ export function cleanName(input: string | null | undefined): string | null {
 export async function verifyName(input: string): Promise<VerifyView | VerifyError> {
   const name = cleanName(input);
   if (!name) return { name: String(input ?? "").slice(0, 64), error: "invalid_name", message: "Enter an ENS name such as seller-a.eth." };
-  return verifyCache.get(name, () => readVerify(name)) as Promise<VerifyView | VerifyError>;
-}
-
-async function readVerify(name: string): Promise<VerifyView | VerifyError> {
-  const t0 = Date.now();
-  try {
-    const r = await checkEnsOffer({
-      name,
-      resource: SELLER_RESOURCE,
-      method: SELLER_METHOD,
-      profile: BASE_SEPOLIA_PROFILE,
-      clients: clients(),
-      policy: {
-        trustedAttesters: TRUSTED_ATTESTERS.map((a) => ({ name: a.name, address: a.address, recordKeys: [...a.recordKeys] })),
-        minValid: MIN_VALID,
-        maxAgeSeconds: MAX_AGE_SECONDS,
-      },
-    });
-    let amount: string | null = null;
-    try {
-      const j = r.offerRaw ? (JSON.parse(r.offerRaw) as { amount?: unknown }) : null;
-      amount = typeof j?.amount === "string" ? j.amount : null;
-    } catch {
-      amount = null;
-    }
-    return {
-      name: r.name,
-      ok: r.ok,
-      reasons: r.reason_codes,
-      chainId: r.chainId,
-      block: r.block.number.toString(),
-      blockTimestamp: r.block.timestamp.toString(),
-      manager: r.manager,
-      offerRaw: r.offerRaw,
-      amount,
-      trace: r.trace.map((s) => ({ step: s.step, name: STEP_NAMES[s.step] ?? String(s.step), status: s.status, detail: s.detail })),
-      format: "ensip29-draft",
-      request: { method: SELLER_METHOD, resource: SELLER_RESOURCE },
-      attesters: TRUSTED_ATTESTERS.map((a) => ({ name: a.name, address: a.address })),
-      maxAgeSeconds: MAX_AGE_SECONDS,
-      ms: Date.now() - t0,
-      readAt: new Date().toISOString(),
-    };
-  } catch (e) {
-    // checkEnsOffer が投げるのは方針の誤りだけ（チェーンの状態では投げない）。文言は返さない。
-    return { name, error: "verify_failed", message: e instanceof Error && /invalid_attestation_policy/.test(e.message) ? "The verification policy is invalid." : "The check could not run." };
-  }
+  // 正規化できない名前は SDK が RPC を読まずに段1で返すので、使い回さずにそのまま走らせる。
+  const key = verifyKey(name);
+  if (key === null) return readCheck(name);
+  return verifyCache.get(key, () => readCheck(name)) as Promise<VerifyView | VerifyError>;
 }
 
 export type KeyScope = {

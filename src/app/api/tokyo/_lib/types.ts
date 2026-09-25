@@ -1,6 +1,7 @@
 // 審査員ボタンの差し替え口。route.ts は realButtonDeps()（deps.ts）を渡し、
 // tests/tokyo-mutate.test.ts は署名・送信・DB を偽物に差し替えて同じ handle* を走らせる。
 import type { KEY, NODE, P_D } from "./constants";
+import type { VerifyError, VerifyView } from "./check";
 import type { HaltProbe } from "./halt";
 
 export type Hex = `0x${string}`;
@@ -57,6 +58,10 @@ export type ButtonDeps = {
   readOffer(): Promise<{ value: string; resolver: Hex | null }>;
   writeContract(request: WriteRequest): Promise<Hex>;
   waitForReceipt(hash: Hex): Promise<ReceiptStatus>;
+  /** waitForReceipt が受領を得た tx の載ったブロック。受領が無い（timeout・知らない tx）なら null。 */
+  blockOf(hash: Hex): bigint | null;
+  /** seller-d.eth の7段を今の Sepolia で1回読む（使い回しを通さない）。押した後の応答に入れる。 */
+  checkSellerD(): Promise<VerifyView | VerifyError>;
   readHalt(): Promise<HaltProbe>;
   store: MutationStore;
   withLease<T>(fn: () => Promise<T>): Promise<{ acquired: true; value: T } | { acquired: false }>;

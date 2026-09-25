@@ -13,10 +13,11 @@
 import { formatEther } from "viem";
 import { logServerError } from "@/lib/util/log";
 import {
-  AMOUNT, BALANCE_FLOOR_WEI, CHAIN_ID, DAILY_CAP, GAS_SAFETY, IP_INTERVAL_MS, KEY, NODE, P_D, PRESS_GAS,
-  SELLER_D, STATE_REVERT_AFTER_MS, VALUES, W_OP,
+  AFTER_WRITE_BUDGET_MS, AMOUNT, BALANCE_FLOOR_WEI, CHAIN_ID, DAILY_CAP, GAS_SAFETY, IP_INTERVAL_MS, KEY, NODE, P_D,
+  PRESS_GAS, RESPONSE_DEADLINE_MS, SELLER_D, STATE_REVERT_AFTER_MS, VALUES, W_OP,
 } from "./constants";
-import { forgetVerified } from "./cache";
+import { forgetVerified, rememberVerified } from "./cache";
+import { readAfterWrite, type VerifyView } from "./check";
 import { decideHalt } from "./halt";
 import { callerKey } from "./ip";
 import { amountOf, ensureReverted, revertLocked, type RevertResult } from "./revert";
@@ -154,6 +155,27 @@ function forgetAfterWrite(revert: RevertResult | null, mutated = false): void {
   }
 }
 
+/** 戻し結果のうち、tx を送ったもの。 */
+function revertTx(revert: RevertResult | null): Hex | null {
+  return revert && "tx" in revert ? revert.tx : null;
+}
+
+/**
+ * mutate / reset の応答に入れる「押した後の seller-d.eth の7段」。使い回しを通さず、最後に送った tx の
+ * 受領のブロック以上で読む（受領が無い＝まだ載っていないなら読まずに null）。何も送っていなければ読まない。
+ * 読めた結果でこのプロセスの使い回しも置き換える。別のプロセスの使い回しには届かないので、画面はこの値を出す。
+ */
+async function checkAfterWrite(deps: ButtonDeps, lastTx: Hex | null, startedAt: number): Promise<VerifyView | null> {
+  if (!lastTx) return null;
+  const minBlock = deps.blockOf(lastTx);
+  if (minBlock === null) return null;
+  const budget = Math.min(AFTER_WRITE_BUDGET_MS, startedAt + RESPONSE_DEADLINE_MS - Date.now());
+  if (budget <= 0) return null;
+  const view = await readAfterWrite(() => deps.checkSellerD(), minBlock, budget);
+  if (view) rememberVerified(SELLER_D, view);
+  return view;
+}
+
 /**
  * state の関門だけが使う deps。chainId・残高・gasPrice を STATE_CACHE_MS だけ使い回す。
  * mutate・reset・ensureReverted（署名の判断）には渡さない。
@@ -192,6 +214,7 @@ type MutateOutcome =
 
 /** POST /api/tokyo/mutate — seller-d.eth の amount を 10000 → 10001（{"to":"10000"} は戻すだけ）。 */
 export async function handleMutate(request: Request, deps: ButtonDeps): Promise<Response> {
+  const startedAt = Date.now();
   if (deps.envDisabled()) return fail(503, "button_disabled");
   const side = await parseToBody(request, ["on", "off"]);
   if (!side) return invalidBody();
@@ -235,6 +258,8 @@ export async function handleMutate(request: Request, deps: ButtonDeps): Promise<
       return { kind: "mutated", revert, tx, receipt, pressesToday };
     });
   } catch (e) {
+    // tx を送った後に DB の記録で落ちたかもしれない。使い回しを捨ててから返す。
+    forgetVerified(SELLER_D);
     logSafe("tokyo.mutate", e);
     return fail(503, "state_unavailable");
   }
@@ -250,7 +275,12 @@ export async function handleMutate(request: Request, deps: ButtonDeps): Promise<
     case "tx_failed":
       return fail(502, "tx_failed");
     case "reverted_only":
-      return json(200, { ok: true, status: o.revert.status, revert: o.revert });
+      return json(200, {
+        ok: true,
+        status: o.revert.status,
+        revert: o.revert,
+        check: await checkAfterWrite(deps, revertTx(o.revert), startedAt),
+      });
     case "mutated":
       return json(200, {
         ok: true,
@@ -262,12 +292,14 @@ export async function handleMutate(request: Request, deps: ButtonDeps): Promise<
         revert: o.revert,
         pressesToday: o.pressesToday,
         dailyMax: DAILY_CAP,
+        check: await checkAfterWrite(deps, o.tx, startedAt),
       });
   }
 }
 
 /** POST /api/tokyo/reset — 10000 に戻す（時間の条件なし）。本文は {"to":"10000"} だけ。 */
 export async function handleReset(request: Request, deps: ButtonDeps): Promise<Response> {
+  const startedAt = Date.now();
   if (deps.envDisabled()) return fail(503, "button_disabled");
   const side = await parseToBody(request, ["off"]);
   if (!side) return invalidBody();
@@ -281,14 +313,17 @@ export async function handleReset(request: Request, deps: ButtonDeps): Promise<R
     revert = await ensureReverted(deps);
     forgetAfterWrite(revert);
   } catch (e) {
+    forgetVerified(SELLER_D);
     logSafe("tokyo.reset", e);
     return fail(503, "state_unavailable");
   }
   if (revert.status === "busy") return fail(409, "busy");
-  return json(REVERT_OK.includes(revert.status) || revert.status === "pending" ? 200 : 409, {
-    ok: REVERT_OK.includes(revert.status) || revert.status === "pending",
+  const ok = REVERT_OK.includes(revert.status) || revert.status === "pending";
+  return json(ok ? 200 : 409, {
+    ok,
     status: revert.status,
     revert,
+    check: ok ? await checkAfterWrite(deps, revertTx(revert), startedAt) : null,
   });
 }
 
@@ -325,15 +360,22 @@ export async function handleState(_request: Request, deps: ButtonDeps): Promise<
     const age = row.mutatedAt ? deps.now() - row.mutatedAt.getTime() : Number.POSITIVE_INFINITY;
     const settled = row.currentValue === AMOUNT.off && (offer === null || offer.value === VALUES.off);
     if (age >= STATE_REVERT_AFTER_MS && !settled) {
-      try {
-        revert = await ensureReverted(deps);
-        forgetAfterWrite(revert);
-        if (revert.status !== "clean" || revert.synced) {
-          row = await deps.store.readRow();
-          offer = await readOfferForState(deps, row);
+      // 署名へ進む前の関門は、使い回した結果でなく、その場でチェーンを読み直す。
+      const fresh = await txGates(deps);
+      if (!fresh.ok) {
+        blockers.push(fresh.body);
+      } else {
+        try {
+          revert = await ensureReverted(deps);
+          forgetAfterWrite(revert);
+          if (revert.status !== "clean" || revert.synced) {
+            row = await deps.store.readRow();
+            offer = await readOfferForState(deps, row);
+          }
+        } catch (e) {
+          forgetVerified(SELLER_D);
+          logSafe("tokyo.state.revert", e);
         }
-      } catch (e) {
-        logSafe("tokyo.state.revert", e);
       }
     }
   }

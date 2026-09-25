@@ -10,6 +10,7 @@ import { resolveText, type EnsReadClients } from "@vet402/sdk/ens";
 import { acquireLease } from "@/lib/cron/lease";
 import { KEY, LEASE_NAME, LEASE_TTL_SECONDS, RECEIPT_TIMEOUT_MS, SELLER_D, STATE_CACHE_MS } from "./constants";
 import { TtlCache } from "./cache";
+import { readCheck } from "./check";
 import { envButtonDisabled, readOperatorKey } from "./env";
 import { probeTokyoHalt } from "./halt";
 import { readRpcUrl } from "./rpc-env";
@@ -25,6 +26,8 @@ export function realButtonDeps(): ButtonDeps {
   const rpc = readRpcUrl();
   const transport = http(rpc, { timeout: 15_000, retryCount: 1 });
   const pub = createPublicClient({ chain: sepolia, transport });
+
+  const receiptBlocks = new Map<string, bigint>();
 
   let account: PrivateKeyAccount | null | undefined;
   const operator = (): PrivateKeyAccount | null => {
@@ -64,11 +67,14 @@ export function realButtonDeps(): ButtonDeps {
     async waitForReceipt(hash) {
       try {
         const r = await pub.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
+        receiptBlocks.set(hash.toLowerCase(), r.blockNumber);
         return r.status === "success" ? "success" : "reverted";
       } catch {
         return "timeout";
       }
     },
+    blockOf: (hash) => receiptBlocks.get(hash.toLowerCase()) ?? null,
+    checkSellerD: () => readCheck(SELLER_D),
     readHalt: probeTokyoHalt,
     store: dbStore(),
     async withLease(fn) {

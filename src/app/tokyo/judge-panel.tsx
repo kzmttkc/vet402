@@ -1,11 +1,9 @@
 "use client";
 // 審査員ボタンの欄。現在値は /api/tokyo/state から（そこで 90 秒を過ぎた変更は先に戻る）。
-// 押した後は /api/tokyo/verify?name=seller-d.eth を引き直して、同じ7段を見せる。
-// verify は同じ名前の結果をサーバのプロセスごとに VERIFY_CACHE_MS 使い回す。書いたプロセスは使い回しを捨てるが、
-// 別のプロセスが押す前の結果を返すことがある。state の金額と違えば、使い回しが切れる時刻まで待って1回だけ読み直す。
+// 押した後の7段は、mutate / reset の応答の check をそのまま出す（受領のブロック以上で、使い回しを通さず読んだもの）。
+// /api/tokyo/verify は引き直さない（別のプロセスが押す前の結果を使い回していることがある）。
 // 押せないときは理由の1行を出し、ボタンを黙って消さない。
 import { useCallback, useEffect, useState } from "react";
-import { VERIFY_CACHE_MS } from "../api/tokyo/_lib/constants";
 import { TraceView, type TraceData } from "./trace-view";
 
 type Blocker = { error: string; message?: string };
@@ -42,23 +40,6 @@ async function fetchState(): Promise<StateData | null> {
   }
 }
 
-async function fetchTrace(): Promise<TraceData | null> {
-  try {
-    const r = await fetch("/api/tokyo/verify?name=seller-d.eth", { cache: "no-store" });
-    const j = await r.json();
-    return Array.isArray(j?.trace) ? (j as TraceData) : null;
-  } catch {
-    return null;
-  }
-}
-
-/** 使い回しが切れるまでの待ち（端末とサーバの時計のずれがあっても VERIFY_CACHE_MS + 1 秒を超えない）。 */
-function waitForFreshRead(readAt: string | undefined): Promise<void> {
-  const at = readAt ? Date.parse(readAt) : Number.NaN;
-  const ms = Number.isFinite(at) ? Math.min(VERIFY_CACHE_MS + 1_000, Math.max(0, at + VERIFY_CACHE_MS + 500 - Date.now())) : 0;
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 const hhmmss = (iso: string | null) => (iso ? `${iso.slice(11, 19)} UTC` : "");
 const short = (tx: string) => `${tx.slice(0, 10)}…${tx.slice(-6)}`;
 
@@ -69,7 +50,7 @@ export function JudgePanel() {
   const [notice, setNotice] = useState<string | null>(null);
   const [trace, setTrace] = useState<TraceData | null>(null);
 
-  const loadState = useCallback(async (): Promise<StateData | null> => {
+  const loadState = useCallback(async () => {
     const next = await fetchState();
     if (next) {
       setState(next);
@@ -77,17 +58,6 @@ export function JudgePanel() {
     } else {
       setStateError(STATE_ERROR);
     }
-    return next;
-  }, []);
-
-  const loadTrace = useCallback(async (expectAmount: string | null) => {
-    let t = await fetchTrace();
-    if (t && expectAmount && t.amount !== expectAmount) {
-      // 押す前に別のプロセスで読んだ結果が返った。使い回しが切れてから1回だけ読み直す。
-      await waitForFreshRead(t.readAt);
-      t = (await fetchTrace()) ?? t;
-    }
-    setTrace(t);
   }, []);
 
   useEffect(() => {
@@ -111,14 +81,23 @@ export function JudgePanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ to }),
       });
-      const j = (await r.json().catch(() => ({}))) as { message?: string; error?: string; status?: string };
+      const j = (await r.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+        status?: string;
+        check?: TraceData | null;
+      };
+      const check = j.check && Array.isArray(j.check.trace) ? j.check : null;
+      setTrace(check);
       if (!r.ok) setNotice(j.message ?? j.error ?? `HTTP ${r.status}`);
       else if (j.status === "pending") setNotice("The transaction is sent and waiting for a block. Reload in a few seconds.");
+      else if (!check && j.status !== "clean")
+        setNotice("The seven steps could not be read after the write. Run them above on seller-d.eth in a few seconds.");
     } catch {
+      setTrace(null);
       setNotice("The request did not reach the server.");
     } finally {
-      const next = await loadState();
-      await loadTrace(next?.amount ?? null);
+      await loadState();
       setPressing(false);
     }
   };

@@ -19,7 +19,9 @@ import {
   AMOUNT, CHAIN_ID, DAILY_CAP, KEY, MAX_AGE_SECONDS, MIN_VALID, NODE, P_D, SELLER_D, TRUSTED_ATTESTERS, VALUES, W_OP,
   BALANCE_FLOOR_WEI, GAS_SAFETY, PRESS_GAS, STATE_REVERT_AFTER_MS, DEFAULT_RPC, SECONDARY_RPC, STATE_CACHE_MS,
 } from "@/app/api/tokyo/_lib/constants";
-import { TtlCache, forgetVerified } from "@/app/api/tokyo/_lib/cache";
+import { TtlCache, forgetVerified, rememberVerified } from "@/app/api/tokyo/_lib/cache";
+import type { VerifyView } from "@/app/api/tokyo/_lib/check";
+import { amountOf } from "@/app/api/tokyo/_lib/revert";
 import { verifyName } from "@/app/api/tokyo/_lib/verify";
 import { handleMutate, handleReset, handleState } from "@/app/api/tokyo/_lib/button";
 import { decideHalt, type HaltProbe } from "@/app/api/tokyo/_lib/halt";
@@ -112,7 +114,33 @@ type Fake = {
   log: LogRow[];
   clock: { now: number };
   daily: { count: number };
+  /** 偽のチェーンの head。tx を1本送るごとに1つ進み、その tx はそのブロックに載る。 */
+  head: { n: bigint };
+  checks: { n: number };
 };
+
+/** 偽のチェーンで読んだ seller-d.eth の7段（形は VerifyView）。 */
+function fakeView(value: string, block: bigint, readAtMs: number): VerifyView {
+  const ok = value === VALUES.off;
+  return {
+    name: SELLER_D,
+    ok,
+    reasons: ok ? [] : ["ens_attestation_signer_mismatch"],
+    chainId: CHAIN_ID,
+    block: block.toString(),
+    blockTimestamp: "0",
+    manager: null,
+    offerRaw: value,
+    amount: amountOf(value),
+    trace: [],
+    format: "ensip29-draft",
+    request: { method: "GET", resource: "https://vet402.com/api/tokyo/seller" },
+    attesters: [],
+    maxAgeSeconds: MAX_AGE_SECONDS,
+    ms: 0,
+    readAt: new Date(readAtMs).toISOString(),
+  };
+}
 
 function makeFake(over: Partial<ButtonDeps> & { chainValue?: string; balance?: bigint; gasPrice?: bigint; dbValue?: string } = {}): Fake {
   const clock = { now: Date.UTC(2026, 8, 27, 3, 0, 0) };
@@ -127,6 +155,9 @@ function makeFake(over: Partial<ButtonDeps> & { chainValue?: string; balance?: b
   const log: LogRow[] = [];
   const daily = { count: 0 };
   const writes: WriteRequest[] = [];
+  const head = { n: 100n };
+  const checks = { n: 0 };
+  const txBlocks = new Map<string, bigint>();
   let n = 0;
   const deps: ButtonDeps = {
     envDisabled: () => false,
@@ -139,9 +170,17 @@ function makeFake(over: Partial<ButtonDeps> & { chainValue?: string; balance?: b
       writes.push(req);
       chain.value = req.args[2];
       n += 1;
-      return `0x${n.toString(16).padStart(64, "0")}` as `0x${string}`;
+      head.n += 1n;
+      const hash = `0x${n.toString(16).padStart(64, "0")}` as `0x${string}`;
+      txBlocks.set(hash, head.n);
+      return hash;
     },
     waitForReceipt: async (): Promise<ReceiptStatus> => "success",
+    blockOf: (hash) => txBlocks.get(hash) ?? null,
+    checkSellerD: async () => {
+      checks.n += 1;
+      return fakeView(chain.value, head.n, clock.now);
+    },
     readHalt: async (): Promise<HaltProbe> => ({ kind: "absent" }),
     store: {
       ensureRow: async () => {},
@@ -184,7 +223,7 @@ function makeFake(over: Partial<ButtonDeps> & { chainValue?: string; balance?: b
     now: () => clock.now,
   };
   Object.assign(deps, over);
-  return { deps, writes, chain, row, log, clock, daily };
+  return { deps, writes, chain, row, log, clock, daily, head, checks };
 }
 
 const post = (path: string, body: string | null, headers: Record<string, string> = {}) =>
@@ -750,24 +789,110 @@ test("verify: 同じ名前で /api/tokyo/verify を 20 回続けて叩いても 
   });
 });
 
-test("verify: このプロセスでボタンが seller-d.eth を書いたら使い回しを捨て、次の検証は読み直す", async () => {
+test("verify: 使い回しの鍵は SDK の正規化後の名前（大文字・小文字を変えても RPC は1回分）", async () => {
+  const { GET } = await import("@/app/api/tokyo/verify/route");
   await withFakeRpc(async (count) => {
-    forgetVerified(SELLER_D);
-    await verifyName(SELLER_D);
+    forgetVerified("case-key.eth");
+    await GET(new Request("http://localhost/api/tokyo/verify?name=case-key.eth"));
     const once = count();
-    await verifyName(SELLER_D);
+    assert.ok(once > 0);
+    for (const n of ["CASE-KEY.eth", "Case-Key.ETH", "case-key.eth"]) {
+      assert.equal((await GET(new Request(`http://localhost/api/tokyo/verify?name=${n}`))).status, 200);
+    }
     assert.equal(count(), once);
+  });
+});
+
+test("押した後: mutate の応答の7段は、使い回しに古い VALID を入れた状態でも、受領のブロック以上で読んだ押した後の値（REFUSE・10001）", async () => {
+  const f = makeFake();
+  // このプロセスの使い回しに、押す前の VALID を入れておく（別のプロセスが押す前に読んだのと同じ状態）
+  const stale = fakeView(VALUES.off, 100n, f.clock.now);
+  rememberVerified(SELLER_D, stale);
+  // 2本の RPC の片方が遅れていて、1回目の読みは押す前のブロック（100）を返す
+  const { checkSellerD } = f.deps;
+  f.deps.checkSellerD = async () => (f.checks.n === 0 ? (f.checks.n++, stale) : checkSellerD());
+  const r = await handleMutate(post("mutate", '{"to":"10001"}'), f.deps);
+  assert.equal(r.status, 200);
+  const j = await r.json();
+  const minBlock = f.deps.blockOf(j.tx);
+  assert.equal(minBlock, 101n);
+  assert.ok(j.check, "応答に押した後の7段がある");
+  assert.equal(j.check.amount, AMOUNT.on);
+  assert.equal(j.check.ok, false);
+  assert.deepEqual(j.check.reasons, ["ens_attestation_signer_mismatch"]);
+  assert.ok(BigInt(j.check.block) >= minBlock!, `block ${j.check.block} < 受領 ${minBlock}`);
+  assert.equal(f.checks.n, 2, "押す前のブロックの読みは捨てて読み直した");
+  // このプロセスの使い回しも押した後の値に置き換わる（RPC を読まずに 10001 を返す）
+  await withFakeRpc(async (count) => {
+    const v = await verifyName("Seller-D.eth");
+    assert.equal(count(), 0);
+    assert.ok(!("error" in v));
+    assert.equal((v as VerifyView).amount, AMOUNT.on);
+  });
+  // 戻す（reset）の応答も同じ: 押した後の 10000・VALID
+  f.clock.now += 1_000;
+  const back = await (await handleReset(post("reset", '{"to":"10000"}'), f.deps)).json();
+  assert.equal(back.status, "reverted");
+  assert.equal(back.check.amount, AMOUNT.off);
+  assert.equal(back.check.ok, true);
+  assert.ok(BigInt(back.check.block) >= f.deps.blockOf(back.revert.tx)!);
+  forgetVerified(SELLER_D);
+});
+
+test("押した後: 受領が取れない（timeout）ときは7段を読まずに check: null（押す前の値を押した後と言わない）", async () => {
+  const f = makeFake();
+  f.deps.waitForReceipt = async () => "timeout";
+  f.deps.blockOf = () => null;
+  const j = await (await handleMutate(post("mutate", '{"to":"10001"}'), f.deps)).json();
+  assert.equal(j.receipt, "timeout");
+  assert.equal(j.check, null);
+  assert.equal(f.checks.n, 0);
+  // 何も書かなかった戻し（clean）も読まない
+  const g = makeFake();
+  const c = await (await handleReset(post("reset", '{"to":"10000"}'), g.deps)).json();
+  assert.equal(c.status, "clean");
+  assert.equal(c.check, null);
+  assert.equal(g.checks.n, 0);
+});
+
+test("押した後: tx を送った後に DB の記録が例外でも、seller-d.eth の使い回しを捨ててから 503 を返す", async () => {
+  await withFakeRpc(async (count) => {
     const f = makeFake();
-    assert.equal((await handleMutate(post("mutate", '{"to":"10001"}'), f.deps)).status, 200);
+    rememberVerified(SELLER_D, fakeView(VALUES.off, 100n, f.clock.now));
+    f.deps.store.recordMutation = async () => {
+      throw new Error("db down");
+    };
+    const r = await handleMutate(post("mutate", '{"to":"10001"}'), f.deps);
+    assert.equal(r.status, 503);
+    assert.equal((await r.json()).error, "state_unavailable");
+    assert.equal(f.writes.length, 1, "tx は送られた");
     await verifyName(SELLER_D);
-    assert.equal(count(), once * 2, "押した後は読み直す");
+    assert.ok(count() > 0, "使い回しは捨てられ、次の検証は読み直す");
     // 関門で止まった押下（書いていない）は使い回しを捨てない
+    rememberVerified(SELLER_D, fakeView(VALUES.off, 100n, f.clock.now));
+    const before = count();
     const g = makeFake({ operatorAddress: () => null });
     await handleMutate(post("mutate", '{"to":"10001"}'), g.deps);
     await verifyName(SELLER_D);
-    assert.equal(count(), once * 2);
+    assert.equal(count(), before);
     forgetVerified(SELLER_D);
   });
+});
+
+test("W05: state の戻しは使い回した関門ではなく、その場で読んだ関門で署名へ進む（残高が床を割ったら戻さない）", async () => {
+  const f = makeFake();
+  const cache = new TtlCache<unknown>(STATE_CACHE_MS, 32, () => f.clock.now);
+  f.deps.memo = <T,>(key: string, load: () => Promise<T>) => cache.get(key, load) as Promise<T>;
+  await handleMutate(post("mutate", '{"to":"10001"}'), f.deps);
+  f.clock.now += STATE_REVERT_AFTER_MS - 1_000; // 89 秒: 戻さない。関門（残高あり）を使い回しに入れる
+  await handleState(get("state"), f.deps);
+  f.deps.getBalance = async () => 0n;
+  f.clock.now += 2_000; // 91 秒・使い回しはまだ有効
+  const j = await (await handleState(get("state"), f.deps)).json();
+  assert.equal(f.writes.length, 1, "署名 0 回");
+  assert.equal(j.revert, null);
+  assert.equal(j.canPress, false);
+  assert.ok(j.blockers.some((b: { error: string }) => b.error === "balance_below_floor"));
 });
 
 function countLeases(f: Fake): { n: number } {
@@ -909,4 +1034,15 @@ test("連打の関門: 同じ呼び手の 20 秒以内の2回目は 429 too_fast
   const third = await handleMutate(post("mutate", '{"to":"10001"}', ip), f.deps);
   assert.equal(third.status, 200);
   assert.equal(f.daily.count, 2);
+});
+
+test("押した後: 読む時間の上限までに受領のブロックへ届かなければ null（押す前の読みを返さない）", async () => {
+  const { readAfterWrite } = await import("@/app/api/tokyo/_lib/check");
+  let runs = 0;
+  const lagging = async () => (runs++, fakeView(VALUES.off, 100n, 0));
+  assert.equal(await readAfterWrite(lagging, 101n, 60, 10), null);
+  assert.ok(runs >= 2, `読み直した回数 ${runs}`);
+  assert.equal((await readAfterWrite(lagging, 100n, 60, 10))?.block, "100");
+  const failing = async () => ({ name: SELLER_D, error: "verify_failed" as const, message: "x" });
+  assert.equal(await readAfterWrite(failing, null, 40, 10), null);
 });
