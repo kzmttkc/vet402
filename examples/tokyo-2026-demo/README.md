@@ -30,13 +30,13 @@ The demo commands live in `src/run.ts`. Each `npm run` script below calls it.
 
 `--dry-run` never signs a transaction or a payment: `mutate`, `reset` and `scene3` run on `eth_simulateV1`, and `pay` runs every SDK gate and stops at a payer that holds no key. `--live` checks the chainId, simulates the transaction alone, checks the signer's balance, and sends nothing until a person types `y`. `--test-attester` works only with `--dry-run`: inside the simulation a public test key stands in for `atst.vet402.eth`.
 
-`pay` needs `TOKYO_W_PAY_ADDRESS` (the payer's address) and an Intercepta key file (see below). `VET402_API_KEY` is optional.
+`pay` needs `TOKYO_W_PAY_ADDRESS` (the payer's address) and an Intercepta key file (see below). Without `VET402_API_KEY`, vet402's `/payees/{payTo}/score` answers 401 for this seller and `pay` refuses with `evidence_unavailable` (measured 2026-09-25), unless `cut-vet402` is on. `--agent <name>` picks the agent whose `x402-policy` is read (default `agent-1.vet402.eth`).
 
 ### Operator commands
 
 These set up and maintain the Sepolia names. They need the owners' keys and are not needed to check anything.
 
-- `npm run attester -- --names seller-a,seller-b,seller-c,seller-d [--dry-run | --live-pay] [--screen]`: `atst.vet402.eth` buys from each seller, checks the delivery, and only then signs the attestation. The six steps are in `docs/tokyo-2026/attester-spec.md`.
+- `npm run attester -- --names seller-a,seller-b,seller-c,seller-d [--dry-run | --live-pay] [--screen]`: vet402 buys from each seller with W_pay, checks the delivery, and only then signs with `atst.vet402.eth`'s key. The six steps are in `docs/tokyo-2026/attester-spec.md`.
 - `npm run observe -- <resourceId> [<resourceId> ...] [--dry-run | --live | --check]`: writes the observation log for third-party x402 sellers under `<resourceId>.obs.vet402.eth`, with no addr record.
 - `npm run admin -- <command> [--dry-run | --live]`, where `<command>` is one of `deploy-resolvers`, `k1a`, `k1b`, `register-d`, `publish-attestations`, `unlink`, `link`, `relink`, `agents`, `register-e`, `set-offer-e`, `align-bc`, `agent-off`, `agent-on`, `emancipate`. An unknown command prints the list with one line each.
 - `npx tsx src/keys.ts init | addresses`: creates the testnet keys in `.env.tokyo.local` (git-ignored) and prints only addresses.
@@ -48,7 +48,7 @@ These set up and maintain the Sepolia names. They need the owners' keys and are 
 - A block or an unavailable answer stops the payment, with the reason on screen: `payee_screening_blocked` (a listed trait, or `toxicScore` of 70 or more) or `payee_screening_unavailable` (404, no answer within 3 s, any other non-200, a body that is not the documented shape, or no key file). Nothing is paid in either case. The key is read from `~/.vet402/intercepta-sandbox-key.txt` (`INTERCEPTA_KEY_FILE` overrides the path) and goes only into the request header.
 - `src/attester.ts` uses the same module before it buys: always with `--live-pay`, and in a dry run only with `--screen`.
 - The `/tokyo` page and its API routes do not call Intercepta (`tests/tokyo-mutate.test.ts` checks this).
-- The payments here are on Base Sepolia, and the screening asks about the same addresses as mainnet accounts: a testnet payment is screened against mainnet history.
+- The payments here are on Base Sepolia. quick-scan takes no chain parameter, so the demo sends the same address, and the answer does not say which chain's history it used.
 
 Notes from using the API:
 
