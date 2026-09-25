@@ -242,3 +242,30 @@ test('screenPayment: block wins over unavailable; unavailable alone refuses', as
   assert.match(u.line, /UNAVAILABLE: HTTP 404/);
   noKeyIn([b, u]);
 });
+
+test('threshold edge: 69 passes without calling it clean, 70 blocks', async () => {
+  const f = fakeFetch({
+    [CLEAN.toLowerCase()]: { status: 200, body: '{"toxicScore":69,"traits":[]}' },
+    [ROUTER.toLowerCase()]: { status: 200, body: '{"toxicScore":70,"traits":[]}' },
+  });
+  const low = await screenAddress(CLEAN, opts(f));
+  assert.equal(low.verdict, 'pass');
+  assert.doesNotMatch(low.reason, /clean/);
+  const high = await screenAddress(ROUTER, opts(f));
+  assert.equal(high.verdict, 'block');
+});
+
+test('a blocking trait blocks even with a low score', async () => {
+  const f = fakeFetch({ [CLEAN.toLowerCase()]: { status: 200, body: '{"toxicScore":10,"traits":[{"name":"blacklist","risk":10}]}' } });
+  const r = await screenAddress(CLEAN, opts(f));
+  assert.equal(r.verdict, 'block');
+  assert.match(r.reason, /blacklist/);
+});
+
+test('a block is cached under the lower-cased address', async () => {
+  const f = fakeFetch({ [RONIN.toLowerCase()]: { status: 200, body: '{"toxicScore":100,"traits":[{"name":"known_scammer"}]}' } });
+  const o = opts(f);
+  assert.equal((await screenAddress(RONIN, o)).verdict, 'block');
+  assert.equal((await screenAddress(RONIN.toLowerCase(), o)).verdict, 'block');
+  assert.equal(f.calls.length, 1);
+});

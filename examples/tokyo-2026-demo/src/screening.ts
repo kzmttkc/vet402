@@ -146,7 +146,7 @@ function parseBody(address: string, text: string, blockAt: number): ScreeningRes
     const why = list.length > 0 ? describe(list) : 'no traits listed';
     return { verdict: 'block', address, toxicScore, traits: list, reason: `toxicScore ${toxicScore} >= ${blockAt}, ${why}` };
   }
-  const note = list.length > 0 ? `, below threshold: ${describe(list)}` : ' (clean)';
+  const note = list.length > 0 ? `, below threshold: ${describe(list)}` : toxicScore === 0 ? ' (clean)' : ` (below ${blockAt}, no traits listed)`;
   return { verdict: 'pass', address, toxicScore, traits: list, reason: `toxicScore ${toxicScore}${note}` };
 }
 
