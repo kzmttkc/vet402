@@ -8,10 +8,15 @@
   "scripts": {
     "verify": "tsx src/run.ts verify",
     "census": "tsx src/run.ts census",
+    "pay": "tsx src/run.ts pay",
+    "cut-vet402": "tsx src/run.ts cut-vet402",
+    "mutate": "tsx src/run.ts mutate",
+    "reset": "tsx src/run.ts reset",
+    "scene3": "tsx src/run.ts scene3",
     "attester": "tsx src/attester.ts",
     "observe": "tsx src/observe.ts",
     "admin": "tsx src/admin.ts",
-    "test": "node --test test/screening.test.mjs test/observe-attester.test.mjs"
+    "test": "node --test test/screening.test.mjs test/observe-attester.test.mjs test/scene.test.mjs"
   },
   "devDependencies": {
     "@vet402/sdk": "file:../../vendor/vet402-sdk-0.7.0.tgz",

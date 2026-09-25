@@ -3,6 +3,7 @@
 //
 //   npx tsx src/run.ts verify <name> [--resource URL] [--method GET|POST] [--json] [--strict]
 //   npx tsx src/run.ts census <name> [<name> ...] [--json]
+//   npx tsx src/run.ts pay <name> | mutate | reset | cut-vet402 | scene3   (src/lib/scene.ts; --dry-run by default)
 //
 // verify runs the same checkEnsOffer as payOrRefuse and /tokyo: two independent Sepolia RPCs,
 // one pinned block, the ENSIP-29 draft's seven steps. It prints the seven-step trace.
@@ -182,11 +183,16 @@ async function main(): Promise<number> {
   const { pos, flags } = parseArgs(rest);
   if (cmd === "verify" && pos.length === 1) return verify(pos[0], flags);
   if (cmd === "census" && pos.length >= 1) return census(pos, flags);
+  // B7: the demo commands. Their flags are parsed in src/lib/scene.ts (dry-run unless --live).
+  if (["pay", "mutate", "reset", "cut-vet402", "scene3"].includes(cmd)) return (await import("./lib/scene.ts")).runScene(cmd, rest);
   console.error([
     "usage:",
     "  npx tsx src/run.ts verify <name> [--resource URL] [--method GET|POST] [--attester name=0x…] [--json] [--strict]",
     "  npx tsx src/run.ts census <name> [<name> ...] [--json]",
-    "(pay / mutate / reset / cut-vet402 / scene3 are added in later blocks)",
+    "  npx tsx src/run.ts pay <name> [--dry-run | --live] [--test-attester]",
+    "  npx tsx src/run.ts cut-vet402 [--mode refused|503] [pay <name> ...] | cut-vet402 --restore",
+    "  npx tsx src/run.ts mutate | reset [--dry-run | --live] [--test-attester]",
+    "  npx tsx src/run.ts scene3 [--dry-run | --live] [--test-attester] [--assume-align-bc]",
   ].join("\n"));
   return 1;
 }
