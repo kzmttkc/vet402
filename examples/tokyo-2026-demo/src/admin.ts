@@ -54,13 +54,14 @@ function help(): string {
     '    --print-predicted    with deploy-resolvers: print P_a, P_bc, P_d, U, P_AG1',
     '    --envelopes <file>   with publish-attestations: JSON {"seller-a.eth":"<base64>", ...}',
     '    --block <n>          dry-run at a fixed block',
+    '    --base-from <ID>     with k1b: send nothing on Sepolia; send the Base Sepolia rows from <ID> on (resume after a stop)',
     '',
     `env: ${envFilePath()} (ENS_SEPOLIA_RPC_URL[_2|_3], BASE_SEPOLIA_RPC_URL, TOKYO_*_ADDRESS, and for --live the keys)`,
     'dry-run skips the 60 s commit wait: the register row runs in a second simulated block 180 s later.',
   ].join('\n');
 }
 
-type Opts = { cmd: string; live: boolean; post: boolean; printPredicted: boolean; envelopes?: string; block?: bigint; args: string[] };
+type Opts = { cmd: string; live: boolean; post: boolean; printPredicted: boolean; envelopes?: string; block?: bigint; baseFrom?: string; args: string[] };
 function parseArgs(argv: string[]): Opts {
   const o: Opts = { cmd: '', live: false, post: false, printPredicted: false, args: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -71,12 +72,14 @@ function parseArgs(argv: string[]): Opts {
     else if (a === '--print-predicted') o.printPredicted = true;
     else if (a === '--envelopes') o.envelopes = argv[++i];
     else if (a === '--block') o.block = BigInt(argv[++i]);
+    else if (a === '--base-from') o.baseFrom = argv[++i];
     else if (a === '--help' || a === '-h') o.cmd = 'help';
     else if (a.startsWith('--')) throw new Error(`知らないオプション ${a}`);
     else if (!o.cmd) o.cmd = a;
     else o.args.push(a);
   }
   if (argv.includes('--live') && argv.includes('--dry-run')) throw new Error('--live と --dry-run を同時に付けない');
+  if (o.baseFrom && o.cmd !== 'k1b') throw new Error('--base-from は k1b でだけ使う');
   return o;
 }
 
@@ -243,14 +246,18 @@ function printRow(r: Row, tag = '') {
 }
 
 // ---------------------------------------------------------------- Base Sepolia (k1b)
-function bsSteps(roles: Roles) {
+function bsSteps(roles: Roles, fromId?: string) {
   const a = amounts();
   const t = (to: Address, v: bigint) => encodeFunctionData({ abi: ERC20, functionName: 'transfer', args: [to, v] });
-  return [
+  const all = [
     { id: 'BS-01a', signer: 'W_ens' as const, from: W_ENS, to: USDC_BASE_SEPOLIA, data: t(roles.W_pay, a.bs01UsdcUnits), what: `USDC ${Number(a.bs01UsdcUnits) / 1e6} W_ens -> W_pay` },
     { id: 'BS-01b', signer: 'W_ens' as const, from: W_ENS, to: roles.W_pay, value: a.bs01EthWei, what: `ETH ${fmtEth(a.bs01EthWei)} W_ens -> W_pay` },
     { id: 'BS-02', signer: 'W_pay' as const, from: roles.W_pay, to: USDC_BASE_SEPOLIA, data: t(W_ENS, a.bs02UsdcUnits), what: `USDC ${Number(a.bs02UsdcUnits) / 1e6} W_pay -> W_ens = SEED_TX` },
   ];
+  if (!fromId) return all;
+  const i = all.findIndex(s => s.id === fromId);
+  if (i < 0) throw new Error(`--base-from ${fromId} は BS-01a / BS-01b / BS-02 のどれでもない`);
+  return all.slice(i);
 }
 
 type BaseGate = { ok: boolean; url?: string; gas: Record<string, number> };
@@ -258,14 +265,14 @@ type BaseGate = { ok: boolean; url?: string; gas: Record<string, number> };
  * Base Sepolia rows of k1b. The same gate for --dry-run and --live: chainId 84532, the three rows pass
  * eth_simulateV1 in order, and (live) every sender holds gas x1.3 + 30k (W_pay may count the ETH BS-01b brings).
  */
-async function baseGate(roles: Roles, checkBalance: boolean): Promise<BaseGate> {
+async function baseGate(roles: Roles, checkBalance: boolean, fromId?: string): Promise<BaseGate> {
   const gas: Record<string, number> = {};
   let url: string;
   try { url = baseSepoliaRpc(); } catch (e: any) { console.log(`  NG     BS-01/BS-02  ${e.message}`); return { ok: false, gas }; }
   const chainId = parseInt(await rpc<string>(url, 'eth_chainId', []), 16);
   if (chainId !== BASE_SEPOLIA_CHAIN_ID) { console.log(`  NG     Base Sepolia の chainId が ${chainId}`); return { ok: false, gas }; }
   const bn = BigInt(await rpc<string>(url, 'eth_blockNumber', []));
-  const steps = bsSteps(roles);
+  const steps = bsSteps(roles, fromId);
   try {
     const r = await simulateBlocks([{ calls: steps.map(s => ({ from: s.from, to: s.to, data: s.data, value: s.value })) }], bn, [url]);
     let ok = true;
@@ -279,9 +286,11 @@ async function baseGate(roles: Roles, checkBalance: boolean): Promise<BaseGate> 
       const fees = await bc.estimateFeesPerGas();
       const price = fees.maxFeePerGas ?? (await bc.getGasPrice());
       const cost = (id: string) => BigInt(Math.ceil(gas[id] * 1.3) + 30_000) * price;
-      const incoming: Record<string, bigint> = { W_pay: steps[1].value ?? 0n };
+      const bs01b = steps.find(s => s.id === 'BS-01b');
+      const incoming: Record<string, bigint> = { W_pay: bs01b?.value ?? 0n };
       for (const signer of ['W_ens', 'W_pay'] as const) {
         const mineS = steps.filter(s => s.signer === signer);
+        if (mineS.length === 0) continue;
         const need = mineS.reduce((t, s) => t + cost(s.id) + (s.value ?? 0n), 0n);
         const bal = await bc.getBalance({ address: mineS[0].from });
         const have = bal + (incoming[signer] ?? 0n);
@@ -329,7 +338,14 @@ async function sendAll(c: PublicClient, url: string, chain: typeof sepolia | typ
     console.log(`  sent   ${pad(s.id, 10)} ${hash}`);
     const rc = await c.waitForTransactionReceipt({ hash, timeout: 180_000 });
     if (rc.status !== 'success') throw new Error(`${s.id} が失敗した (tx ${hash})。ここで止める`);
-    const ts = Number((await c.getBlock({ blockNumber: rc.blockNumber })).timestamp);
+    // Public RPCs behind a load balancer can return the receipt from one node and miss the block on the
+    // next ("Block at number N could not be found", seen 2026-09-25 22:1x on Base Sepolia). Retry, then
+    // fall back to the local clock: the tx is already mined, so stopping here would only strand later rows.
+    let ts = Math.floor(Date.now() / 1000);
+    for (let k = 0; k < 10; k++) {
+      try { ts = Number((await c.getBlock({ blockNumber: rc.blockNumber })).timestamp); break; }
+      catch { await new Promise(r => setTimeout(r, 2000)); }
+    }
     console.log(`  mined  ${pad(s.id, 10)} block ${rc.blockNumber} gasUsed ${rc.gasUsed}`);
     if (onSent) await onSent(s.id, hash, ts);
   }
@@ -416,7 +432,7 @@ async function main(): Promise<number> {
   for (const m of noCode) console.log(`  NG     ${m}`);
 
   let base: BaseGate = { ok: true, gas: {} };
-  if (o.cmd === 'k1b') { console.log('\n[3] Base Sepolia（BS-01 / BS-02）'); base = await baseGate(roles, o.live); }
+  if (o.cmd === 'k1b') { console.log(`\n[3] Base Sepolia（BS-01 / BS-02${o.baseFrom ? ' — ' + o.baseFrom + ' から後ろだけ' : ''}）`); base = await baseGate(roles, o.live, o.baseFrom); }
 
   if (!o.live) {
     const reallyFails = !aloneOk && missing.length === 0;
@@ -426,6 +442,8 @@ async function main(): Promise<number> {
   }
 
   // ------------------------------------------------ live
+  if (o.baseFrom) console.log(`\n[live] --base-from ${o.baseFrom}: Sepolia には1本も送らない`);
+  if (!o.baseFrom) {
   if (!aloneOk) { console.log('\n--live を止める: このコマンドが今の鎖の上で通らない'); return 2; }
   if (!base.ok) { console.log('\n--live を止める: Base Sepolia の行が単独で通らないか、送り手の残高が足りない（[3]）'); return 2; }
   const gasOf = (id: string) => alone.rows.find(r => r.step?.id === id)!.res.gas;
@@ -455,16 +473,17 @@ async function main(): Promise<number> {
   } else {
     await sendAll(c, url, sepolia, mine, gasOf);
   }
+  } // end of the Sepolia part (skipped with --base-from)
 
   if (o.cmd === 'k1b') {
     const bUrl = baseSepoliaRpc();
     const bc = createPublicClient({ chain: baseSepolia, transport: http(bUrl) }) as PublicClient;
     const bId = await bc.getChainId();
     if (bId !== BASE_SEPOLIA_CHAIN_ID) throw new Error(`Base Sepolia の chainId が ${bId}。止める`);
-    const bs = bsSteps(roles);
+    const bs = bsSteps(roles, o.baseFrom);
     // Gate again right before sending: the Sepolia rows took minutes and balances may have moved.
     console.log('\n[live] Base Sepolia の関門（単独の simulate と残高）をもう一度');
-    const again = await baseGate(roles, true);
+    const again = await baseGate(roles, true, o.baseFrom);
     if (!again.ok || again.url !== bUrl) { console.log('Base Sepolia の関門が外れた。送らない'); return 2; }
     const gasBs = (id: string) => again.gas[id];
     for (const s of bs) console.log(`  ${pad(s.id, 10)} ${pad(s.signer, 5)} ${s.from} -> ${s.to}  ${s.what}`);
