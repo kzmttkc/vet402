@@ -1189,7 +1189,8 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
     // G5b ④: 200 で読めても、判定語が ALLOW・WARN・BLOCK のどれでもなければ判定になっていない。
     // 免除（`requireVet402Allow: false`）の下で「知らない語」を WARN と同じに読んで払わない。
     // 2026-09-25 まで名前を使わない呼び手はここを素通りして払っていた（SKILL.md の「免除は WARN だけ」に反する）。
-    // 全ての呼び手に当てる。`requireVet402Allow` が既定の true なら、知らない語は元から not_allow で止まる。
+    // 全ての呼び手に当てる。既定の `requireVet402Allow: true` でも、知らない語はここで `evidence_unavailable` として止まる
+    // （2026-09-25 までは `payee_recommendation_not_allow`。払わない点は同じで、語だけ「判定が読めなかった」に揃えた）。
     if (!KNOWN_VERDICTS.has(String(decision.recommendation ?? "").trim().toUpperCase())) {
       return refuse([...serverReasons, "evidence_unavailable"], "decision", decision);
     }

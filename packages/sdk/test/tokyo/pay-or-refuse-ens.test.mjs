@@ -49,6 +49,8 @@ const ENV_A2_HEX = "0xda6174737483011a6ab73530584134268c0adbdf4875b31c2d00acb160
 const ENV_B_HEX = "0xda6174737483011a6ab7353058412b4893afbd572c15f9c647474703e40fa61a356b21c4cc7bb59b7329937b86c96106e9c1356ec32ca062083907cef37b0417c82dd00e62c54cbaed500ff7ec691b";
 // JSON でない値に正しく署名したもの（T18）
 const BAD_VALUE = "not-json{amount:10000}";
+// OFFER_1CHAR に K_atst（anvil #0）が正しく署名し直した envelope（T47 の「約束を差し替えて証明し直した」枝）
+const ENV_1CHAR_HEX = "0xda6174737483011a6ab73530584191eacad75b10a81b014aaaef0751b66984ecc5048429f032000a657950769ab928975ebdef197802068565a8ef512c4ba870dd8e857d1d2c72f3aa61154c6b681c";
 const ENV_BAD_HEX = "0xda6174737483011a6ab735305841a630e77301a67bd51b11c0a848e21f2e93e6a0b5e2401676f69cad07982d5fff3bc6d8cf88bebbea87307325504c63783b7144d92f2807dfd65da51811a889511b";
 
 const lc = (a) => String(a).toLowerCase();
@@ -654,6 +656,14 @@ test("T39 vet402 に届かなくても払える（throw＋証明有効＋床2つ
   const ensFloor = r.decision.policy_override.floors_met.find((m) => m.floor === "minEnsAttestations");
   assert.deepEqual(ensFloor, { floor: "minEnsAttestations", source: "ens", required: 1, observed: 1 });
   assert.equal(f.paid.length, 1);
+  // HTTP 5xx も「届かない」（cut-vet402 は接続不能か 503）。throw だけでなく 503 でも同じく払う。
+  for (const status of [503, 500]) {
+    const w5 = ensWorld(); const a5 = watchedAccount(); const f5 = router({ decision: { status, body: { error: "unavailable" } } });
+    const r5 = await payOrRefuse(withChain(nameInput(w5, f5, a5, { input: { policy: unreachablePolicy() } }).input));
+    assert.equal(r5.status, "paid", `HTTP ${status}: ${JSON.stringify(codes(r5))}`);
+    assert.equal(codes(r5).includes("vet402_unreachable"), true, `HTTP ${status}`);
+    assert.equal(f5.paid.length, 1, `HTTP ${status}`);
+  }
 });
 
 test("T40 届かない＋既定の requireVet402Allow → REFUSE evidence_unavailable", { skip: !process.env.TOKYO_OPT_UNREACHABLE }, async () => {
@@ -721,6 +731,12 @@ test("T44 届かない＋vet402 の台帳の床（minL1Deliveries:1）→ REFUSE
   const r = await payOrRefuse(withChain(nameInput(w, f, acct, { input: { policy: unreachablePolicy({ minL1Deliveries: 1 }) } }).input));
   refusedWith(r, "evidence_unavailable");
   assert.deepEqual(acct.signAccesses(), []);
+  // 免除の条件は minEnsAttestations ≥ 1。チェーンの床（minChainReceipts:1）だけでは、届かないときに払わない。
+  const w0 = ensWorld(); const a0 = watchedAccount(); const f0 = router({ decision: unreachable() });
+  const r0 = await payOrRefuse(withChain(nameInput(w0, f0, a0, { input: { policy: unreachablePolicy({ minEnsAttestations: 0 }) } }).input));
+  refusedWith(r0, "evidence_unavailable");
+  assert.equal(codes(r0).includes("vet402_unreachable"), false);
+  assert.deepEqual(a0.signAccesses(), []);
 });
 
 test("T45 ENS の床の呼び出し側エラー（3枝）", { skip: !process.env.TOKYO_OPT_UNREACHABLE }, async () => {
@@ -766,6 +782,13 @@ test("T47 届かない経路でも約束が変われば払えない（再検証�
   assert.equal(f.walls(), 1, "1回目は通って 402 まで来ている");
   assert.deepEqual(acct.signAccesses(), []);
   assert.equal(f.paid.length, 0, "支払いは起きない");
+  // 約束を差し替えたうえで**正しく証明し直した**場合も、1回目に確かめた約束と違うので払わない（再検証で文面を比べる）。
+  const w2 = ensWorld(); const a2 = watchedAccount();
+  const f2 = router({ decision: unreachable(), onWall: () => { w2.texts["seller-a.eth"][KEY_OFFER] = OFFER_1CHAR; w2.texts["seller-a.eth"][KEY_ATST] = ENV_1CHAR_HEX; } });
+  const r2 = await payOrRefuse(withChain(nameInput(w2, f2, a2, { input: { policy: unreachablePolicy() } }).input));
+  assert.equal(r2.status, "refused", JSON.stringify(codes(r2)));
+  assert.deepEqual(a2.signAccesses(), []);
+  assert.equal(f2.paid.length, 0);
 });
 
 test("T48 配備の食い違い（同じブロックで UH.ROOT_REGISTRY ≠ UR.ROOT_REGISTRY）→ REFUSE ens_evidence_unavailable＋evidence_unavailable", async () => {
