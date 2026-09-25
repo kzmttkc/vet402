@@ -9,8 +9,9 @@
     "verify": "tsx src/run.ts verify"
   },
   "devDependencies": {
+    "@vet402/sdk": "file:../../vendor/vet402-sdk-0.7.0.tgz",
     "tsx": "^4.20.3",
-    "viem": "2.38.0"
+    "viem": "2.55.1"
   },
   "engines": {
     "node": ">=22.18"
