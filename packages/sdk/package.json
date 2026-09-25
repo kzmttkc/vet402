@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./ens": {
+      "types": "./dist/ens.d.ts",
+      "default": "./dist/ens.js"
     }
   },
   "scripts": {
@@ -18,10 +22,14 @@
     "mutations:svm": "node test-mutations-svm.mjs"
   },
   "peerDependencies": {
-    "@solana/web3.js": "^1.98.4"
+    "@solana/web3.js": "^1.98.4",
+    "viem": "^2.55.1"
   },
   "peerDependenciesMeta": {
     "@solana/web3.js": {
+      "optional": true
+    },
+    "viem": {
       "optional": true
     }
   },
@@ -29,7 +37,8 @@
     "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.98.4",
     "@types/node": "^22.20.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "viem": "^2.55.1"
   },
   "description": "Trust scores for AI agents and x402 payees on Base. Read a score, or gate a payment with SpendGuard before it settles.",
   "license": "MIT",
