@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- ETHGlobal Tokyo 2026: viem ABI helpers and JSON from RPCs are loosely typed here; behaviour is pinned by tests. */
 // K1 calldata. One place builds every tx that admin.ts can send, in the order a human sends them.
 // Source of truth: PLAN_v4.3 section 4 (K1 table) and the rehearsal (rehearsal/checks/k1.mjs, gas.mjs),
 // which simulates the same calldata with eth_simulateV1. Addresses, salts, strings and role bits are

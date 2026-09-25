@@ -1,4 +1,5 @@
 #!/usr/bin/env -S npx tsx
+/* eslint-disable @typescript-eslint/no-explicit-any -- ETHGlobal Tokyo 2026: viem ABI helpers and JSON from RPCs are loosely typed here; behaviour is pinned by tests. */
 // ETHGlobal Tokyo 2026 demo CLI — PLAN_v4.3 §3.8. Read-only: nothing here signs or sends.
 //
 //   npx tsx src/run.ts verify <name> [--resource URL] [--method GET|POST] [--json] [--strict]

@@ -84,7 +84,7 @@ export const VERIFY_CACHE_MAX = 200;
 /** state が読むチェーンの値（chainId・残高・gasPrice・seller-d.eth の約束）を使い回す長さ。 */
 export const STATE_CACHE_MS = 5_000;
 /** mutate / reset の応答に入れる「押した後の7段」を読む時間の上限。 */
-export const AFTER_WRITE_BUDGET_MS = 12_000;
+export const AFTER_WRITE_BUDGET_MS = 30_000;
 /** mutate / reset がここまでに応答を返す（maxDuration 60 秒の内側）。押した後の7段はこの残りでだけ読む。 */
 export const RESPONSE_DEADLINE_MS = 50_000;
 

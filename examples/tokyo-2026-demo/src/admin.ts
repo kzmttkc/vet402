@@ -1,4 +1,5 @@
 #!/usr/bin/env -S npx tsx
+/* eslint-disable @typescript-eslint/no-explicit-any -- ETHGlobal Tokyo 2026: viem ABI helpers and JSON from RPCs are loosely typed here; behaviour is pinned by tests. */
 // admin.ts: the Sepolia setup a human runs during K1 (PLAN_v4.3 section 3.4 and section 4).
 //
 //   npx tsx src/admin.ts <command> [--dry-run | --live] [options]

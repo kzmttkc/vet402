@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- ETHGlobal Tokyo 2026: viem ABI helpers and JSON from RPCs are loosely typed here; behaviour is pinned by tests. */
 // The K1 judgement line of `run.ts census` (PLAN_v4.3 section 4, "K1 の判定コマンド"). Read-only.
 // Every read goes through the SDK's readBoth: both Sepolia RPCs at the pinned block, or it throws.
 import fs from 'node:fs';

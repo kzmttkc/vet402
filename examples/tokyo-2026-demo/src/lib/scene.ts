@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- ETHGlobal Tokyo 2026: viem ABI helpers and JSON from RPCs are loosely typed here; behaviour is pinned by tests. */
 // run.ts pay / mutate / reset / cut-vet402 / scene3 (PLAN_v4.3 sections 3.8, 3.3.3, 3.10, section 4 D-1..D-5, 8.2).
 //
 //   npx tsx src/run.ts pay <name> [--dry-run | --live] [--test-attester] [--agent agent-1.vet402.eth]

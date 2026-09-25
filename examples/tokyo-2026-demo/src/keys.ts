@@ -1,4 +1,5 @@
 #!/usr/bin/env -S npx tsx
+/* eslint-disable @typescript-eslint/no-explicit-any -- ETHGlobal Tokyo 2026: viem ABI helpers and JSON from RPCs are loosely typed here; behaviour is pinned by tests. */
 // keys.ts: the six testnet keys used during ETHGlobal Tokyo 2026 (PLAN_v4.3 section 10).
 //
 //   npx tsx src/keys.ts init        create K_atst, W_obs, W_op, W_pay, K_ag1, K_ag2 when missing

@@ -1,4 +1,5 @@
 #!/usr/bin/env -S npx tsx
+/* eslint-disable @typescript-eslint/no-explicit-any -- ETHGlobal Tokyo 2026: viem ABI helpers and JSON from RPCs are loosely typed here; behaviour is pinned by tests. */
 // attester.ts: atst.vet402.eth buys from a seller's name, checks what arrived, and only then signs the
 // ENSIP-29 draft attestation for the seller's x402-offer (PLAN_v4.3 section 3.9, "attester steps").
 //

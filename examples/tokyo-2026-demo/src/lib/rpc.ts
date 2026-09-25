@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- ETHGlobal Tokyo 2026: viem ABI helpers and JSON from RPCs are loosely typed here; behaviour is pinned by tests. */
 // Read-only JSON-RPC and eth_simulateV1 helpers. Nothing in this file signs or sends.
 import { decodeErrorResult, toEventSelector, toHex, type Hex } from 'viem';
 import { ALL_ERRORS, ALL_EVENTS } from './abi.ts';

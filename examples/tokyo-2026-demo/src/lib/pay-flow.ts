@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- ETHGlobal Tokyo 2026: viem ABI helpers and JSON from RPCs are loosely typed here; behaviour is pinned by tests. */
 // `run.ts pay <name>` (PLAN_v4.3 sections 3.8, 3.10, 3.3.3, 8.2): one line per stage, in the order the money
 // path runs them.
 //

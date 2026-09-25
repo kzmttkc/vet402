@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- ETHGlobal Tokyo 2026: viem ABI helpers and JSON from RPCs are loosely typed here; behaviour is pinned by tests. */
 // Dry-run worlds for mutate / reset / scene3 / pay --test-attester. Read-only: nothing here signs a transaction
 // or sends one.
 //

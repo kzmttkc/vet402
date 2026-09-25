@@ -1,4 +1,5 @@
 #!/usr/bin/env -S npx tsx
+/* eslint-disable @typescript-eslint/no-explicit-any -- ETHGlobal Tokyo 2026: viem ABI helpers and JSON from RPCs are loosely typed here; behaviour is pinned by tests. */
 // observe.ts: the observation log for third-party x402 sellers (PLAN_v4.3 section 3.6).
 //
 //   npx tsx src/observe.ts <resourceId> [<resourceId> ...] [--dry-run | --live | --check]

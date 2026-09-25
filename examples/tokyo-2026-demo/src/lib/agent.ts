@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- ETHGlobal Tokyo 2026: viem ABI helpers and JSON from RPCs are loosely typed here; behaviour is pinned by tests. */
 // The agent's policy on its own ENS name (PLAN_v4.3 sections 3.5.1-3.5.3), read before payOrRefuse is called.
 //
 //   payAsAgent({ agentName, clients, expectedResolver, localAttesters, payOrRefuse, request })

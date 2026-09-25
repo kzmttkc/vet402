@@ -10,12 +10,12 @@ export declare const ENS_SEPOLIA: {
  * a test double only has to implement these four.
  */
 export type EnsRpc = {
-    readContract(args: any): Promise<unknown>;
-    getBlock(args?: any): Promise<{
+    readContract(args: unknown): Promise<unknown>;
+    getBlock(args?: unknown): Promise<{
         number: bigint | null;
         timestamp: bigint;
     }>;
-    getBlockNumber(args?: any): Promise<bigint>;
+    getBlockNumber(args?: unknown): Promise<bigint>;
     getChainId(): Promise<number>;
 };
 /** Two independent RPCs (different providers). */

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- ETHGlobal Tokyo 2026: viem ABI helpers and JSON from RPCs are loosely typed here; behaviour is pinned by tests. */
 // Check an ENSIP-29 envelope against the chain before it is published (admin.ts publish-attestations).
 // Same reconstruction as the draft's verification steps 1-7: the payload is rebuilt from ENS data
 // (manager from findExactOwner, value from x402-offer) and the envelope's t; the signature must recover to

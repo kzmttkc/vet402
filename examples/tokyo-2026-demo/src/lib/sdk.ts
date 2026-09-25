@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- ETHGlobal Tokyo 2026: viem ABI helpers and JSON from RPCs are loosely typed here; behaviour is pinned by tests. */
 // Load @vet402/sdk from this repo (packages/sdk/dist, committed) for the demo scripts and tests.
 //
 // Why a resolve hook: the SDK files live in packages/sdk, but viem is installed only in
