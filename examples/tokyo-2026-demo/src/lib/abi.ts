@@ -36,6 +36,10 @@ export const ETHRegistrar_FNS = [
 export const UserRegistryImpl_FNS = [
   "function initialize((address account, uint256 roleBitmap)[] grants)",
   "function register(string label, address owner, address registry, address resolver, uint256 roleBitmap, uint64 expiry) returns (uint256)",
+  // D-6a / T7 (ABI from the 2026-09-15 UserRegistryImpl: unregister(uint256 anyId), revokeRootRoles(uint256,address) 0xce156e82)
+  "function unregister(uint256 anyId)",
+  "function revokeRootRoles(uint256 roleBitmap, address account) returns (bool)",
+  "function isEmancipated() view returns (bool)",
 ] as const;
 
 export const UniversalResolverV2_FNS = [

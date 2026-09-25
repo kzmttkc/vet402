@@ -12,15 +12,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import {
-  createPublicClient, createWalletClient, encodeFunctionData, getAddress, http, namehash, type Address, type Hex,
+  createPublicClient, createWalletClient, encodeFunctionData, getAddress, http, labelhash, namehash, type Address, type Hex,
   type PublicClient,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { baseSepolia, sepolia } from 'viem/chains';
-import { ERC20, PR, RG } from './lib/abi.ts';
+import { ERC20, PR, RG, URI } from './lib/abi.ts';
 import {
   ADDR, ATT_KEY, BASE_SEPOLIA_CHAIN_ID, COMMIT_WAIT_MARGIN_S, DUMMY, DUMMY_ENVELOPE_B64, SEPOLIA_CHAIN_ID,
-  SELLER_ENDPOINT, USDC_BASE_SEPOLIA, W_ENS, W_VET, amounts, buildChecks, buildCtx, buildSteps, client, dns, fmtEth, mkOffer,
+  ROLE_RENEW, SELLER_ENDPOINT, USDC_BASE_SEPOLIA, W_ENS, W_VET, amounts, buildChecks, buildCtx, buildSteps, client, dns, fmtEth, mkOffer,
   type Check, type Cmd, type Ctx, type Roles, type Step,
 } from './lib/k1.ts';
 import { DEMO_DIR, KEY_SPECS, OWNER_PK_ENV, appendEnvLine, baseSepoliaRpc, envFilePath, loadEnvFile, sepoliaRpcs } from './lib/env.ts';
@@ -42,6 +42,9 @@ const COMMANDS: ReadonlyArray<[string, string]> = [
   ['register-e', 'K1-E1: MockUSDC approve -> commit -> wait 60 s -> register seller-e.eth (W_ens)'],
   ['set-offer-e', 'K1-E2/E3: setResolver(seller-e, P_bc) + x402-offer with the flagged payTo, no attestation'],
   ['align-bc', 'BC-1: seller-b/c offer to amount 10000 + agent-endpoint[x402] (one P_bc multicall, W_ens). Before B5a'],
+  ['agent-off', 'D-6a: U.unregister(agent-1) (W_vet). The policy is gone, so the agent stops paying'],
+  ['agent-on', 'D-6b: U.register(agent-1, K_ag1, 0, P_AG1, RENEW, expiry) again (W_vet)'],
+  ['emancipate', 'T7: U.revokeRootRoles(UNEMANCIPATED, W_vet). IRREVERSIBLE; only after agent-on. Needs --irreversible'],
 ];
 
 function help(): string {
@@ -56,6 +59,8 @@ function help(): string {
     '    --live               sign and send. Checks chainId and balances, then waits for a typed y',
     '    --post               with agents: the K1-post rows instead of K1-10..K1-15b',
     '    --print-predicted    with deploy-resolvers: print P_a, P_bc, P_d, U, P_AG1',
+    '    --after-off          with agent-on --dry-run: simulate agent-off first (agent-1 is registered until D-6a)',
+    '    --irreversible       with emancipate --live: required, because T7 cannot be undone',
     '    --envelopes <file>   with publish-attestations: JSON {"seller-a.eth":"<base64>", ...}',
     '    --block <n>          dry-run at a fixed block',
     '    --base-from <ID>     with k1b: send nothing on Sepolia; send the Base Sepolia rows from <ID> on (resume after a stop)',
@@ -65,7 +70,7 @@ function help(): string {
   ].join('\n');
 }
 
-type Opts = { cmd: string; live: boolean; post: boolean; printPredicted: boolean; envelopes?: string; block?: bigint; baseFrom?: string; args: string[] };
+type Opts = { cmd: string; live: boolean; post: boolean; printPredicted: boolean; irreversible?: boolean; afterOff?: boolean; envelopes?: string; block?: bigint; baseFrom?: string; args: string[] };
 function parseArgs(argv: string[]): Opts {
   const o: Opts = { cmd: '', live: false, post: false, printPredicted: false, args: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -74,6 +79,8 @@ function parseArgs(argv: string[]): Opts {
     else if (a === '--dry-run') o.live = false;
     else if (a === '--post') o.post = true;
     else if (a === '--print-predicted') o.printPredicted = true;
+    else if (a === '--irreversible') o.irreversible = true;
+    else if (a === '--after-off') o.afterOff = true;
     else if (a === '--envelopes') o.envelopes = argv[++i];
     else if (a === '--block') o.block = BigInt(argv[++i]);
     else if (a === '--base-from') o.baseFrom = argv[++i];
@@ -121,6 +128,8 @@ const CENSUS_NODE: Record<string, string> = { 'agent-1.seller-a.eth': 'agent-1.v
 const ALIGNED_OFFER = mkOffer('10000', W_ENS);
 
 const prd = (functionName: any, args: any): Hex => encodeFunctionData({ abi: PR, functionName, args } as any);
+const usrw = (functionName: any, args: any): Hex => encodeFunctionData({ abi: URI, functionName, args } as any);
+const ZERO_ADDR = '0x0000000000000000000000000000000000000000' as Address;
 
 function extraSteps(o: Opts, x: Ctx): Step[] {
   const mk = (id: string, name: string, data: Hex, what: string): Step => {
@@ -139,6 +148,20 @@ function extraSteps(o: Opts, x: Ctx): Step[] {
         prd('setText', [dns(n), 'agent-endpoint[x402]', SELLER_ENDPOINT]),
       ]);
       return [mk('BC-1', 'seller-b.eth', prd('multicall', [calls]), 'P_bc.multicall[setText(seller-b|c, x402-offer, amount 10000) x2, setText(seller-b|c, agent-endpoint[x402]) x2]')];
+    }
+    case 'agent-off': case 'agent-on': case 'emancipate': {
+      const u = (id: string, data: Hex, what: string): Step => ({ id, cmd: o.cmd as Cmd, signer: 'W_vet', from: W_VET, to: x.predicted.U, data, block: 1, what });
+      if (o.cmd === 'agent-off') return [u('D-6a', usrw('unregister', [BigInt(labelhash('agent-1'))]), 'U.unregister(agent-1)')];
+      // --after-off (dry-run only): simulate D-6a first, so D-6b is checked on the state it will really meet.
+      if (o.cmd === 'agent-on' && o.afterOff && o.live) throw new Error('--after-off は dry-run 専用');
+      if (o.cmd === 'agent-on' && o.afterOff) return [u('D-6a', usrw('unregister', [BigInt(labelhash('agent-1'))]), 'U.unregister(agent-1) [simulated first]'), u('D-6b', usrw('register', ['agent-1', x.roles.K_ag1, ZERO_ADDR, x.predicted.P_AG1, ROLE_RENEW, x.expiry]), 'U.register(agent-1, K_ag1, 0, P_AG1, RENEW, expiry)')];
+      if (o.cmd === 'agent-on') return [u('D-6b', usrw('register', ['agent-1', x.roles.K_ag1, ZERO_ADDR, x.predicted.P_AG1, ROLE_RENEW, x.expiry]), 'U.register(agent-1, K_ag1, 0, P_AG1, RENEW, expiry)')];
+      // UNEMANCIPATED = SET_SUBREGISTRY | SET_RESOLVER | UNREGISTER | UPGRADE, each with its admin bit (<<128) [PLAN section 4, T7].
+      // It includes UNREGISTER, so after this W_vet can no longer run agent-off: send it only after agent-on.
+      if (o.live && !o.irreversible) throw new Error('emancipate は戻せない。agent-on の後に --irreversible を付けて打つ');
+      const R_SUB = 1n << 20n, R_RES = 1n << 24n, R_UNREG = 1n << 12n, R_UPG = 1n << 124n;
+      const UNEMANCIPATED = [R_SUB, R_RES, R_UNREG, R_UPG].reduce((a, r) => a | r | (r << 128n), 0n);
+      return [u('T7', usrw('revokeRootRoles', [UNEMANCIPATED, W_VET]), 'U.revokeRootRoles(UNEMANCIPATED, W_vet) = emancipation')];
     }
     case 'unlink':
       if (!name) throw new Error('unlink <name>');
