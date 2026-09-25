@@ -731,10 +731,11 @@ async function decideAndPay(input) {
         if (scoreQualityDefect(decision) !== null) {
             return refuse([...serverReasons, "evidence_unavailable"], "decision", decision);
         }
-        // G5b ④（名前経路だけ）: 200 で読めても、判定語が ALLOW・WARN・BLOCK のどれでもなければ判定になっていない。
+        // G5b ④: 200 で読めても、判定語が ALLOW・WARN・BLOCK のどれでもなければ判定になっていない。
         // 免除（`requireVet402Allow: false`）の下で「知らない語」を WARN と同じに読んで払わない。
-        // **名前を使わない呼び手の挙動は変えない**（既定経路は1バイトも変えない・B6 の条件）。
-        if (ensGate !== null && !KNOWN_VERDICTS.has(String(decision.recommendation ?? "").trim().toUpperCase())) {
+        // 2026-09-25 まで名前を使わない呼び手はここを素通りして払っていた（SKILL.md の「免除は WARN だけ」に反する）。
+        // 全ての呼び手に当てる。`requireVet402Allow` が既定の true なら、知らない語は元から not_allow で止まる。
+        if (!KNOWN_VERDICTS.has(String(decision.recommendation ?? "").trim().toUpperCase())) {
             return refuse([...serverReasons, "evidence_unavailable"], "decision", decision);
         }
         // A1: ALLOW 以外。理由はサーバの reason_codes をそのまま通す（我々の語で上書きしない）。
