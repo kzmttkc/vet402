@@ -1,0 +1,7 @@
+{
+  "trustedAttesters": [
+    { "name": "atst.vet402.eth", "address": "0xDeb7C52356bCc227c1688cb39C9b66AF00A50b27", "recordKeys": ["x402-offer"] }
+  ],
+  "minValid": 1,
+  "maxAgeSeconds": 604800
+}
