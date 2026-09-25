@@ -376,6 +376,14 @@ async function cmdMutateReset(o: Opts): Promise<number> {
   const tx = demoTx(isMutate ? 'D-1' : 'D-1r', wOp);
   if (o.live) {
     console.log(`${o.cmd} --live: ${tx.id} ${tx.what}`);
+    // Do not pay gas for a write that changes nothing (reset when the offer is already the K1-04 bytes, or mutate twice).
+    {
+      const ens0 = await loadEnsSdk();
+      const r0 = sepoliaReaders();
+      const pin = await ens0.pinBlock(r0.clients, 120);
+      const now = (await ens0.resolveText(r0.clients, pin.B, 'seller-a.eth', 'x402-offer')).value;
+      if (now === (isMutate ? OFFER_A_1CHAR : OFFER_A)) { console.log(`  seller-a.eth x402-offer is already ${isMutate ? 'mutated (10001)' : 'the K1-04 bytes (10000)'}: nothing to send`); return 0; }
+    }
     const sent = await sendGated([{ ...tx, signer: 'W_op' }]);
     if (!sent) return 2;
     const ens = await loadEnsSdk();
