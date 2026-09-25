@@ -212,6 +212,25 @@ async function codelessTargets(c: PublicClient, seq: Step[], x: Ctx, blockNumber
   return bad;
 }
 
+// On-chain facts each command needs from earlier commands. If one is missing, [2] failing is expected.
+async function missingPrereqs(c: PublicClient, o: Opts, x: Ctx): Promise<string[]> {
+  const P = x.predicted;
+  const code = async (label: string, a: Address) => { const k = await c.getCode({ address: a, blockNumber: x.block }); return k && k !== '0x' ? null : `${label} ${a} が未配備`; };
+  const registered = async (label: string) => (await c.readContract({ address: ADDR.rg, abi: RG, functionName: 'isAvailable', args: [label], blockNumber: x.block })) ? `${label}.eth が未登録` : null;
+  const need: Array<Promise<string | null>> = [];
+  const resolverFor = (n?: string) => (n && RESOLVER_OF[n] ? need.push(code(RESOLVER_OF[n].key, P[RESOLVER_OF[n].key])) : 0);
+  switch (o.cmd) {
+    case 'deploy-resolvers': need.push(registered('seller-d')); break;
+    case 'k1b': need.push(code('P_a', P.P_a), code('P_d', P.P_d)); break;
+    case 'agents': if (o.post) need.push(code('U', P.U), code('P_AG1', P.P_AG1)); break;
+    case 'set-offer-e': need.push(registered('seller-e'), code('P_bc', P.P_bc)); break;
+    case 'publish-attestations': need.push(code('P_a', P.P_a), code('P_bc', P.P_bc), code('P_d', P.P_d)); break;
+    case 'unlink': case 'link': case 'relink': resolverFor(o.args[0]); break;
+    default: break;
+  }
+  return (await Promise.all(need)).filter((m): m is string => !!m);
+}
+
 const pad = (s: string, n: number) => (s.length >= n ? s : s + ' '.repeat(n - s.length));
 function printRow(r: Row, tag = '') {
   if (r.step) {
@@ -234,11 +253,17 @@ function bsSteps(roles: Roles) {
   ];
 }
 
-async function dryRunBase(roles: Roles): Promise<boolean> {
+type BaseGate = { ok: boolean; url?: string; gas: Record<string, number> };
+/**
+ * Base Sepolia rows of k1b. The same gate for --dry-run and --live: chainId 84532, the three rows pass
+ * eth_simulateV1 in order, and (live) every sender holds gas x1.3 + 30k (W_pay may count the ETH BS-01b brings).
+ */
+async function baseGate(roles: Roles, checkBalance: boolean): Promise<BaseGate> {
+  const gas: Record<string, number> = {};
   let url: string;
-  try { url = baseSepoliaRpc(); } catch (e: any) { console.log(`  NG     BS-01/BS-02  ${e.message}`); return false; }
+  try { url = baseSepoliaRpc(); } catch (e: any) { console.log(`  NG     BS-01/BS-02  ${e.message}`); return { ok: false, gas }; }
   const chainId = parseInt(await rpc<string>(url, 'eth_chainId', []), 16);
-  if (chainId !== BASE_SEPOLIA_CHAIN_ID) { console.log(`  NG     Base Sepolia の chainId が ${chainId}`); return false; }
+  if (chainId !== BASE_SEPOLIA_CHAIN_ID) { console.log(`  NG     Base Sepolia の chainId が ${chainId}`); return { ok: false, gas }; }
   const bn = BigInt(await rpc<string>(url, 'eth_blockNumber', []));
   const steps = bsSteps(roles);
   try {
@@ -246,18 +271,35 @@ async function dryRunBase(roles: Roles): Promise<boolean> {
     let ok = true;
     r.blocks[0].forEach((res, i) => {
       ok &&= res.status === 'OK';
+      gas[steps[i].id] = res.gas;
       console.log(`  ${pad(res.status, 6)} ${pad(steps[i].id, 10)} ${pad(steps[i].signer, 5)} gas=${pad(String(res.gas), 8)} ${steps[i].what}  ${res.status === 'OK' ? '' : res.error}  [Base Sepolia ${hostOf(url)}]`);
     });
-    return ok;
+    if (ok && checkBalance) {
+      const bc = createPublicClient({ chain: baseSepolia, transport: http(url) }) as PublicClient;
+      const fees = await bc.estimateFeesPerGas();
+      const price = fees.maxFeePerGas ?? (await bc.getGasPrice());
+      const cost = (id: string) => BigInt(Math.ceil(gas[id] * 1.3) + 30_000) * price;
+      const incoming: Record<string, bigint> = { W_pay: steps[1].value ?? 0n };
+      for (const signer of ['W_ens', 'W_pay'] as const) {
+        const mineS = steps.filter(s => s.signer === signer);
+        const need = mineS.reduce((t, s) => t + cost(s.id) + (s.value ?? 0n), 0n);
+        const bal = await bc.getBalance({ address: mineS[0].from });
+        const have = bal + (incoming[signer] ?? 0n);
+        const good = have >= need;
+        ok &&= good;
+        console.log(`  ${good ? 'OK    ' : 'NG    '} balance ${pad(signer, 5)} ${mineS[0].from} ${fmtEth(bal)}${incoming[signer] ? ' + BS-01b ' + fmtEth(incoming[signer]) : ''} >= ${fmtEth(need)} (Base Sepolia maxFee ${Number(price) / 1e9} gwei, gas x1.3 + 30k)`);
+      }
+    }
+    return { ok, url, gas };
   } catch (e: any) {
     // RPC without eth_simulateV1: BS-01a alone by eth_call; BS-02 can only be checked after BS-01.
     console.log(`  注意: ${hostOf(url)} は eth_simulateV1 を受けない (${String(e.message).slice(0, 80)})。BS-01a を eth_call だけで見る`);
     try {
       await rpc(url, 'eth_call', [{ from: steps[0].from, to: steps[0].to, data: steps[0].data }, 'latest']);
       console.log(`  OK     BS-01a     W_ens eth_call ${steps[0].what}`);
-    } catch (e2: any) { console.log(`  REVERT BS-01a     ${String(e2.message).slice(0, 160)}`); return false; }
-    console.log('  未確認 BS-01b/BS-02 （BS-01 の後でしか確かめられない）');
-    return false;
+    } catch (e2: any) { console.log(`  REVERT BS-01a     ${String(e2.message).slice(0, 160)}`); return { ok: false, gas }; }
+    console.log('  未確認 BS-01b/BS-02 （BS-01 の後でしか確かめられない）。eth_simulateV1 を受ける Base Sepolia RPC にする');
+    return { ok: false, gas };
   }
 }
 
@@ -367,21 +409,25 @@ async function main(): Promise<number> {
   const alone = await runChain(mine, checks.filter(ch => mineIds.has(ch.afterStep)), x, sim, x.block, x.now);
   const noCode = await codelessTargets(c, mine, x, x.block);
   const aloneOk = alone.rows.every(r => r.verdict === 'OK') && noCode.length === 0;
-  console.log(`\n[2] このコマンドだけを今の鎖の上で（= --live の関門）: ${aloneOk ? 'OK' : '通らない（前の手順がまだ鎖に無ければ正常）'}`);
+  const missing = aloneOk ? [] : await missingPrereqs(c, o, x);
+  const aloneVerdict = aloneOk ? 'OK' : missing.length ? `通らない・想定どおり（前のコマンドがまだ鎖に無い: ${missing.join(' / ')}）` : '通らない・本当に通らない（前提はそろっているのに revert する）';
+  console.log(`\n[2] このコマンドだけを今の鎖の上で（= --live の関門）: ${aloneVerdict}`);
   if (!aloneOk) for (const r of alone.rows.filter(r => r.verdict !== 'OK')) printRow(r);
   for (const m of noCode) console.log(`  NG     ${m}`);
 
-  let baseOk = true;
-  if (o.cmd === 'k1b') { console.log('\n[3] Base Sepolia（BS-01 / BS-02）'); baseOk = await dryRunBase(roles); }
+  let base: BaseGate = { ok: true, gas: {} };
+  if (o.cmd === 'k1b') { console.log('\n[3] Base Sepolia（BS-01 / BS-02）'); base = await baseGate(roles, o.live); }
 
   if (!o.live) {
-    const ok = ownOk && baseOk;
+    const reallyFails = !aloneOk && missing.length === 0;
+    const ok = ownOk && base.ok && !reallyFails;
     console.log(`\n${ok ? 'dry-run ok' : 'dry-run NG'}: ${o.cmd}${o.post ? ' --post' : ''}（署名・送信はしていない）`);
     return ok ? 0 : 2;
   }
 
   // ------------------------------------------------ live
   if (!aloneOk) { console.log('\n--live を止める: このコマンドが今の鎖の上で通らない'); return 2; }
+  if (!base.ok) { console.log('\n--live を止める: Base Sepolia の行が単独で通らないか、送り手の残高が足りない（[3]）'); return 2; }
   const gasOf = (id: string) => alone.rows.find(r => r.step?.id === id)!.res.gas;
   console.log('\n[live] 残高の関門');
   if (!(await balanceGate(c, mine, gasOf))) { console.log('残高が足りない。止める'); return 2; }
@@ -416,9 +462,11 @@ async function main(): Promise<number> {
     const bId = await bc.getChainId();
     if (bId !== BASE_SEPOLIA_CHAIN_ID) throw new Error(`Base Sepolia の chainId が ${bId}。止める`);
     const bs = bsSteps(roles);
-    const gasBs = (id: string) => (id === 'BS-01b' ? 21_000 : 65_000);
-    console.log('\n[live] Base Sepolia の残高の関門');
-    if (!(await balanceGate(bc, bs.slice(0, 2), gasBs))) { console.log('残高が足りない。止める'); return 2; }
+    // Gate again right before sending: the Sepolia rows took minutes and balances may have moved.
+    console.log('\n[live] Base Sepolia の関門（単独の simulate と残高）をもう一度');
+    const again = await baseGate(roles, true);
+    if (!again.ok || again.url !== bUrl) { console.log('Base Sepolia の関門が外れた。送らない'); return 2; }
+    const gasBs = (id: string) => again.gas[id];
     for (const s of bs) console.log(`  ${pad(s.id, 10)} ${pad(s.signer, 5)} ${s.from} -> ${s.to}  ${s.what}`);
     if (!(await confirm('Base Sepolia に送るなら y を打つ: '))) { console.log('Base Sepolia は送らなかった'); return 1; }
     await sendAll(bc, bUrl, baseSepolia, bs, gasBs, async (id, hash) => {
