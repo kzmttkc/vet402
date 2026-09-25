@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- ETHGlobal Tokyo 2026: viem ABI helpers and JSON from RPCs are loosely typed here; behaviour is pinned by tests. */
 // ENSIP-29 gate: verify the x402 offer a seller published on its ENS name — PLAN_v4.3 §3.3.1.
 // Loaded only by `await import()` from pay-or-refuse.ts or through "@vet402/sdk/ens".
 //

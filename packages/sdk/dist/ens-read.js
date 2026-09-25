@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- ETHGlobal Tokyo 2026: viem ABI helpers and JSON from RPCs are loosely typed here; behaviour is pinned by tests. */
 // ENSv2 Sepolia read layer for the ENSIP-29 gate — PLAN_v4.3 §3.2.
 // Imported only by ens-attestation.ts / ens.ts (the "@vet402/sdk/ens" subpath), never statically
 // from index.ts or pay-or-refuse.ts, so callers that never pass a name never load viem.
