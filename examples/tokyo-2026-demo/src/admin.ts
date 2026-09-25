@@ -9,6 +9,7 @@
 // --live is for the human. It checks chainId 11155111, checks every signer's balance against the
 // gas estimate, prints what will be sent and sends nothing until a human types y.
 import fs from 'node:fs';
+import path from 'node:path';
 import readline from 'node:readline/promises';
 import {
   createPublicClient, createWalletClient, encodeFunctionData, getAddress, http, namehash, type Address, type Hex,
@@ -22,7 +23,9 @@ import {
   SELLER_ENDPOINT, USDC_BASE_SEPOLIA, W_ENS, W_VET, amounts, buildChecks, buildCtx, buildSteps, client, dns, fmtEth, mkOffer,
   type Check, type Cmd, type Ctx, type Roles, type Step,
 } from './lib/k1.ts';
-import { KEY_SPECS, OWNER_PK_ENV, appendEnvLine, baseSepoliaRpc, envFilePath, loadEnvFile, sepoliaRpcs } from './lib/env.ts';
+import { DEMO_DIR, KEY_SPECS, OWNER_PK_ENV, appendEnvLine, baseSepoliaRpc, envFilePath, loadEnvFile, sepoliaRpcs } from './lib/env.ts';
+import { checkEnvelopeOnChain, type EnvelopeCheck } from './lib/attestation.ts';
+import { loadEnsSdk } from './lib/sdk.ts';
 import { hostOf, pickRpc, rpc, simulateBlocks, type SimBlock, type SimResult } from './lib/rpc.ts';
 
 // ---------------------------------------------------------------- commands
@@ -31,7 +34,7 @@ const COMMANDS: ReadonlyArray<[string, string]> = [
   ['k1a', 'K1-02, K1-03 and the ETH for W_obs (W_vet). K1-01 is not sent (dropped 2026-09-24)'],
   ['k1b', 'K1-06, K1-D4, BS-03 on Sepolia (W_ens) + BS-01/BS-02 on Base Sepolia (SEED_TX)'],
   ['register-d', 'K1-D1: MockUSDC approve -> commit -> wait 60 s -> register seller-d.eth (W_ens)'],
-  ['publish-attestations', 'B5b: attestation key on seller-a/b/c/d (W_ens). --envelopes <json>'],
+  ['publish-attestations', 'B5b/B5c: attestation key on seller-a/b/c/d (W_ens). Envelopes from out/envelopes.json (attester.ts). Re-runnable'],
   ['unlink', 'linkToRecord(<name>, 0): empty every key of <name> at once'],
   ['link', 'link <name> <recordId|target-name>: linkToRecord / linkToNode'],
   ['relink', 'relink <name> [recordId]: back to the census record id (seller-b=1, seller-c=2)'],
@@ -53,7 +56,8 @@ function help(): string {
     '    --live               sign and send. Checks chainId and balances, then waits for a typed y',
     '    --post               with agents: the K1-post rows instead of K1-10..K1-15b',
     '    --print-predicted    with deploy-resolvers: print P_a, P_bc, P_d, U, P_AG1',
-    '    --envelopes <file>   with publish-attestations: JSON {"seller-a.eth":"<base64>", ...}',
+    '    --envelopes <file>   with publish-attestations: JSON {"seller-a.eth":"<base64>", ...} (default out/envelopes.json)',
+    '    --no-endpoint        with publish-attestations: do not add agent-endpoint[x402] where it is empty (seller-b/c)',
     '    --block <n>          dry-run at a fixed block',
     '    --base-from <ID>     with k1b: send nothing on Sepolia; send the Base Sepolia rows from <ID> on (resume after a stop)',
     '',
@@ -62,7 +66,7 @@ function help(): string {
   ].join('\n');
 }
 
-type Opts = { cmd: string; live: boolean; post: boolean; printPredicted: boolean; envelopes?: string; block?: bigint; baseFrom?: string; args: string[] };
+type Opts = { cmd: string; live: boolean; post: boolean; printPredicted: boolean; envelopes?: string; noEndpoint?: boolean; block?: bigint; baseFrom?: string; args: string[] };
 function parseArgs(argv: string[]): Opts {
   const o: Opts = { cmd: '', live: false, post: false, printPredicted: false, args: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -72,6 +76,7 @@ function parseArgs(argv: string[]): Opts {
     else if (a === '--post') o.post = true;
     else if (a === '--print-predicted') o.printPredicted = true;
     else if (a === '--envelopes') o.envelopes = argv[++i];
+    else if (a === '--no-endpoint') o.noEndpoint = true;
     else if (a === '--block') o.block = BigInt(argv[++i]);
     else if (a === '--base-from') o.baseFrom = argv[++i];
     else if (a === '--help' || a === '-h') o.cmd = 'help';
@@ -127,17 +132,7 @@ function extraSteps(o: Opts, x: Ctx): Step[] {
   };
   const name = o.args[0];
   switch (o.cmd) {
-    case 'publish-attestations': {
-      const env = o.envelopes ? JSON.parse(fs.readFileSync(o.envelopes, 'utf8')) as Record<string, string> : null;
-      if (o.live && !env) throw new Error('--live の publish-attestations には --envelopes <json> が要る（B5a で署名した本物）');
-      const rows: Array<[string, string]> = [['B5b-a', 'seller-a.eth'], ['B5b-b', 'seller-b.eth'], ['B5b-c', 'seller-c.eth'], ['K1-D5', 'seller-d.eth']];
-      return rows.map(([id, n]) => {
-        const v = env ? env[n] : DUMMY_ENVELOPE_B64;
-        if (!v) throw new Error(`--envelopes に ${n} が無い`);
-        if (v.length !== DUMMY_ENVELOPE_B64.length) console.log(`  注意: ${n} の envelope は ${v.length} 文字（想定 ${DUMMY_ENVELOPE_B64.length}）`);
-        return mk(id, n, prd('setText', [dns(n), ATT_KEY, v]), `setText(${n}, ${ATT_KEY}, <envelope${env ? '' : ' DUMMY'}>)`);
-      });
-    }
+    // publish-attestations: see attestationSteps() (it reads the chain, so it is async).
     case 'align-bc': {
       // 2026-09-25 23:4x: K1-07 wrote b/c offers at 20000/30000 and no agent-endpoint[x402]. The live seller
       // route is 10000 only, and checkEnsOffer requires endpoint === offer.resource, so B5a could not buy b or c.
@@ -165,6 +160,51 @@ function extraSteps(o: Opts, x: Ctx): Step[] {
     }
     default: return [];
   }
+}
+
+// ---------------------------------------------------------------- publish-attestations (B5b, and B5c re-sign)
+// Four rows, all from W_ens (root on P_a / P_bc / P_d): setText(<name>, attestations[x402-offer][atst.vet402.eth],
+// <envelope base64>). K1-D5 is the seller-d row. setText overwrites, so the command can be run again with
+// new envelopes (B5c, 09-27 07:45: attester.ts --live-pay again, then this). Where agent-endpoint[x402] is
+// empty (seller-b / seller-c: K1-07 did not write it), the row becomes P_bc.multicall[setText(attestation),
+// setText(agent-endpoint[x402], SELLER_ENDPOINT)], because checkEnsOffer requires endpoint == offer.resource
+// and run.ts verify would otherwise say ens_offer_mismatch. --no-endpoint keeps the plain setText.
+const PUBLISH_ROWS: ReadonlyArray<[string, string]> = [['B5b-a', 'seller-a.eth'], ['B5b-b', 'seller-b.eth'], ['B5b-c', 'seller-c.eth'], ['K1-D5', 'seller-d.eth']];
+const DEFAULT_ENVELOPES = path.join(DEMO_DIR, 'out', 'envelopes.json');
+type Publish = { steps: Step[]; rerun: Step[]; checks: EnvelopeCheck[] | null; source: string };
+
+async function attestationSteps(o: Opts, x: Ctx): Promise<Publish> {
+  const file = o.envelopes ?? (fs.existsSync(DEFAULT_ENVELOPES) ? DEFAULT_ENVELOPES : undefined);
+  const env = file ? JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, string> : null;
+  if (o.live && !env) throw new Error(`--live の publish-attestations には署名済みの envelope が要る（${DEFAULT_ENVELOPES} が無い。先に attester.ts --live-pay）`);
+  const ens = await loadEnsSdk();
+  const { read } = sepoliaRpcs();
+  if (read.length < 2) throw new Error('publish-attestations は Sepolia の読み口を2系統使う（ENS_SEPOLIA_RPC_URL と _2 か _3）');
+  const mkc = (u: string) => createPublicClient({ chain: sepolia, transport: http(u, { timeout: 30_000, retryCount: 1 }) });
+  const clients = { primary: mkc(read[0]), secondary: mkc(read[1]) };
+  const pin = await ens.pinBlock(clients, 120);
+  const checks: EnvelopeCheck[] | null = env ? [] : null;
+  const build = (v: (n: string) => string, tag: string) => Promise.all(PUBLISH_ROWS.map(async ([id, n]): Promise<Step> => {
+    const r = RESOLVER_OF[n];
+    const value = v(n);
+    const att = prd('setText', [dns(n), ATT_KEY, value]);
+    const ep = (await ens.resolveText(clients, pin.B, n, 'agent-endpoint[x402]')).value;
+    const addEp = !o.noEndpoint && ep === '';
+    const data = addEp ? prd('multicall', [[att, prd('setText', [dns(n), 'agent-endpoint[x402]', SELLER_ENDPOINT])]]) : att;
+    const what = `${addEp ? `${r.key}.multicall[setText(${n}, ${ATT_KEY}, <${tag}>), setText(${n}, agent-endpoint[x402], ${SELLER_ENDPOINT})]` : `setText(${n}, ${ATT_KEY}, <${tag}>)`}`;
+    return { id, cmd: o.cmd as Cmd, signer: r.signer, from: W_ENS, to: x.predicted[r.key], data, block: 1, what };
+  }));
+  for (const [, n] of PUBLISH_ROWS) {
+    if (!env) continue;
+    const v = env[n];
+    if (!v) { checks!.push({ name: n, ok: false, why: `${file} に ${n} が無い（attester が署名しなかった）`, t: null, ageSeconds: null, recovered: null }); continue; }
+    checks!.push(await checkEnvelopeOnChain(ens, clients, pin.B, Number(pin.ts), n, v));
+  }
+  const steps = await build(n => env?.[n] ?? DUMMY_ENVELOPE_B64, env ? 'envelope' : 'envelope DUMMY');
+  // The re-run (B5c) overwrites the same keys with new envelopes of the same length.
+  const DUMMY2 = Buffer.from(Buffer.from(DUMMY_ENVELOPE_B64, 'base64').map(b => b ^ 0x5a)).toString('base64');
+  const rerun = (await build(() => DUMMY2, 'envelope, re-run')).map(s => ({ ...s, id: s.id + "'" }));
+  return { steps, rerun, checks, source: file ?? '(none: DUMMY envelopes of the real length)' };
 }
 
 function ownCmds(o: Opts): Cmd[] {
@@ -399,7 +439,8 @@ async function main(): Promise<number> {
   const x = await buildCtx(c, roles, dummy, o.live ? undefined : o.block);
   const steps = buildSteps(x);
   const checks = buildChecks(x);
-  const extra = extraSteps(o, x);
+  const publish = o.cmd === 'publish-attestations' ? await attestationSteps(o, x) : null;
+  const extra = publish ? publish.steps : extraSteps(o, x);
   const own = ownCmds(o);
   const mine = [...steps.filter(s => own.includes(s.cmd)), ...extra.map(s => ({ ...s, block: 1 as const }))];
   // extra (post-K1) rows go in a third simulated block after the whole K1 chain.
@@ -444,12 +485,25 @@ async function main(): Promise<number> {
   if (!aloneOk) for (const r of alone.rows.filter(r => r.verdict !== 'OK')) printRow(r);
   for (const m of noCode) console.log(`  NG     ${m}`);
 
+  // publish-attestations: [3] the envelopes against the chain, [4] the re-run (B5c) overwrites the same keys.
+  let publishOk = true;
+  if (publish) {
+    console.log(`\n[3] envelope の検証（${publish.source}）: 草案の手順どおり ENS から payload を組み直し、署名者が atst.vet402.eth の固定アドレスか`);
+    if (!publish.checks) { console.log(`  署名する材料が無い: envelope がまだ無い（B5a の attester.ts --live-pay が ${DEFAULT_ENVELOPES} を書く）。[1][2] は同じ長さの DUMMY で測った`); publishOk = !o.live; }
+    else for (const ch of publish.checks) { console.log(`  ${ch.ok ? 'OK    ' : 'NG    '} ${pad(ch.name, 14)} ${ch.why}`); publishOk &&= ch.ok; }
+    const twice = await runChain([...mine.map(s => ({ ...s, block: 0 as const })), ...publish.rerun.map(s => ({ ...s, block: 1 as const }))], [], x, sim, x.block, x.now);
+    const rerunOk = twice.rows.every(r => r.verdict === 'OK');
+    console.log(`\n[4] 打ち直し（B5c: 同じ4キーを新しい envelope で上書き）を続けて eth_simulateV1: ${rerunOk ? 'OK' : 'NG'}`);
+    for (const r of twice.rows) printRow(r);
+    publishOk &&= rerunOk;
+  }
+
   let base: BaseGate = { ok: true, gas: {} };
   if (o.cmd === 'k1b') { console.log(`\n[3] Base Sepolia（BS-01 / BS-02${o.baseFrom ? ' — ' + o.baseFrom + ' から後ろだけ' : ''}）`); base = await baseGate(roles, o.live, o.baseFrom); }
 
   if (!o.live) {
     const reallyFails = !aloneOk && missing.length === 0;
-    const ok = ownOk && base.ok && !reallyFails;
+    const ok = ownOk && base.ok && !reallyFails && publishOk;
     console.log(`\n${ok ? 'dry-run ok' : 'dry-run NG'}: ${o.cmd}${o.post ? ' --post' : ''}（署名・送信はしていない）`);
     return ok ? 0 : 2;
   }
@@ -459,6 +513,7 @@ async function main(): Promise<number> {
   if (!o.baseFrom) {
   if (!aloneOk) { console.log('\n--live を止める: このコマンドが今の鎖の上で通らない'); return 2; }
   if (!base.ok) { console.log('\n--live を止める: Base Sepolia の行が単独で通らないか、送り手の残高が足りない（[3]）'); return 2; }
+  if (!publishOk) { console.log('\n--live を止める: envelope が今の鎖の上で有効でない（[3]）か、打ち直しの模擬が通らない（[4]）'); return 2; }
   const gasOf = (id: string) => alone.rows.find(r => r.step?.id === id)!.res.gas;
   console.log('\n[live] 残高の関門');
   if (!(await balanceGate(c, mine, gasOf))) { console.log('残高が足りない。止める'); return 2; }

@@ -8,7 +8,7 @@
 //                    last_purchase_id が無ければ throw "observation_without_purchase: …"
 //   src/attester.ts  attestIfVerified({ name, manager, offerRaw, accept, purchaseBody, offerRawAfterPurchase, t, signer })
 //                    → { envelope: string | null, reason: string | null }（条件を満たさなければ signer に触れない）
-//   src/agent.ts     payAsAgent({ agentName, clients, expectedResolver, localAttesters, payOrRefuse, request })
+//   src/lib/agent.ts payAsAgent({ agentName, clients, expectedResolver, localAttesters, payOrRefuse, request })
 //                    方針が読めなければ payOrRefuse を呼ばずに throw "agent_policy_missing: …"
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -245,7 +245,7 @@ function spyPay() {
   return { calls, fn: async (input) => { calls.push(input); return { status: "refused", decision: { reason_codes: ["spy"] } }; } };
 }
 async function runAgent(w, spy, localAttesters = LOCAL_ATTESTERS) {
-  const { payAsAgent } = await import("../src/agent.ts");
+  const { payAsAgent } = await import("../src/lib/agent.ts");
   const { clients } = ensClients(w);
   return payAsAgent({
     agentName: "agent-1.vet402.eth", clients, expectedResolver: P_AG1, localAttesters, payOrRefuse: spy.fn,

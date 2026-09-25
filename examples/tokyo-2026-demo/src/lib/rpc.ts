@@ -4,7 +4,7 @@ import { ALL_ERRORS, ALL_EVENTS } from './abi.ts';
 
 const READ_ONLY = new Set([
   'eth_call', 'eth_simulateV1', 'eth_getCode', 'eth_gasPrice', 'eth_blockNumber', 'eth_getBlockByNumber',
-  'eth_getBalance', 'eth_chainId', 'eth_estimateGas', 'eth_maxPriorityFeePerGas',
+  'eth_getBalance', 'eth_chainId', 'eth_estimateGas', 'eth_maxPriorityFeePerGas', 'eth_getTransactionReceipt',
 ]);
 
 export async function rpc<T = any>(url: string, method: string, params: unknown[], timeoutMs = 60_000): Promise<T> {

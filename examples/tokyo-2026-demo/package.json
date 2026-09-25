@@ -6,7 +6,12 @@
   "description": "ETHGlobal Tokyo 2026 demo: verify ENS-published x402 offers before paying, plus the operator scripts (keys.ts, admin.ts) that set up the Sepolia names.",
   "license": "MIT",
   "scripts": {
-    "verify": "tsx src/run.ts verify"
+    "verify": "tsx src/run.ts verify",
+    "census": "tsx src/run.ts census",
+    "attester": "tsx src/attester.ts",
+    "observe": "tsx src/observe.ts",
+    "admin": "tsx src/admin.ts",
+    "test": "node --test test/screening.test.mjs test/observe-attester.test.mjs"
   },
   "devDependencies": {
     "@vet402/sdk": "file:../../vendor/vet402-sdk-0.7.0.tgz",

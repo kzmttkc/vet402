@@ -134,7 +134,12 @@ async function verify(name: string, flags: Record<string, string | true>): Promi
   return !r.ok && flags.strict ? 2 : 0;
 }
 
+// census (B4b): one row per name, then the K1 judgement line (PLAN_v4.3 section 4). Names without an
+// exact owner (wildcard subnames such as <resourceId>.obs.vet402.eth) are still resolved: their addr is
+// printed as "addr: (none)" when nothing answers, which is what the observation log must show.
+// Exit code: 0 when K1 holds (or --no-k1), 2 when a K1 item fails, 1 when it could not read.
 async function census(names: string[], flags: Record<string, string | true>): Promise<number> {
+  (await import("./lib/sdk.ts")).installSdkDepsResolver(); // viem for packages/sdk in a clean checkout
   const ens = await loadEns();
   const { clients: c, hosts } = clients();
   const pin = await ens.pinBlock(c, 120);
@@ -144,25 +149,32 @@ async function census(names: string[], flags: Record<string, string | true>): Pr
     const owner = await ens.findExactOwner(c, pin.B, name);
     const labels = name.split(".");
     const st = owner && labels.length === 2 && labels[1] === "eth" ? await ens.getState(c, pin.B, labels[0]) : null;
-    const addr = owner ? await ens.resolveAddr(c, pin.B, name) : { value: null, resolver: null };
-    const offer = owner ? await ens.resolveText(c, pin.B, name, "x402-offer") : { value: "", resolver: null };
-    const ep = owner ? await ens.resolveText(c, pin.B, name, "agent-endpoint[x402]") : { value: "", resolver: null };
-    const env = owner ? await ens.resolveText(c, pin.B, name, ens.attestationKey("x402-offer", DEFAULT_ATTESTER)) : { value: "", resolver: null };
+    const addr = await ens.resolveAddr(c, pin.B, name);
+    const offer = await ens.resolveText(c, pin.B, name, "x402-offer");
+    const ep = await ens.resolveText(c, pin.B, name, "agent-endpoint[x402]");
+    const cls = await ens.resolveText(c, pin.B, name, "class");
+    const env = await ens.resolveText(c, pin.B, name, ens.attestationKey("x402-offer", DEFAULT_ATTESTER));
     rows.push({
-      name, owner, status: st?.status ?? null, expiry: st?.expiry ?? null, resolver: addr.resolver ?? offer.resolver,
-      addr: addr.value, offerBytes: new TextEncoder().encode(offer.value).length, endpoint: ep.value || null,
+      name, owner, status: st?.status ?? null, expiry: st?.expiry ?? null, resolver: addr.resolver ?? offer.resolver ?? cls.resolver,
+      addr: addr.value, class: cls.value || null, offerBytes: new TextEncoder().encode(offer.value).length, endpoint: ep.value || null,
       attestation: env.value ? `${env.value.length} chars` : null,
     });
   }
+  const { k1Items, k1Line } = await import("./lib/census.ts");
+  const items = flags["no-k1"] ? [] : await k1Items(ens, c, pin.B);
+  const k1 = items.length ? k1Line(items) : null;
   if (flags.json) {
-    console.log(json({ block: pin.B, heads: pin.heads, rpc: hosts, rows }));
+    console.log(json({ block: pin.B, heads: pin.heads, rpc: hosts, rows, k1: items.length ? { line: k1, items } : null }));
   } else {
     console.log(`census at block ${pin.B} (both RPCs agree: ${hosts.primary}, ${hosts.secondary})`);
     for (const r of rows) {
-      console.log(`  ${String(r.name).padEnd(22)} owner=${r.owner ?? "0x0 (unresolved)"} status=${r.status ?? "-"} resolver=${r.resolver ?? "-"} addr=${r.addr ?? "-"} x402-offer=${r.offerBytes}B endpoint=${r.endpoint ?? "-"} attestation[${DEFAULT_ATTESTER}]=${r.attestation ?? "-"}`);
+      console.log(`  ${String(r.name).padEnd(22)} owner=${r.owner ?? "0x0 (unresolved)"} status=${r.status ?? "-"} resolver=${r.resolver ?? "-"} addr: ${r.addr ?? "(none)"} class=${r.class ?? "-"} x402-offer=${r.offerBytes}B endpoint=${r.endpoint ?? "-"} attestation[${DEFAULT_ATTESTER}]=${r.attestation ?? "-"}`);
     }
+    const none = rows.filter((r) => r.addr === null).length;
+    console.log(`  addr: (none) x${none} of ${rows.length}`);
+    if (k1) console.log(k1);
   }
-  return 0;
+  return items.some((i) => !i.ok) ? 2 : 0;
 }
 
 async function main(): Promise<number> {
