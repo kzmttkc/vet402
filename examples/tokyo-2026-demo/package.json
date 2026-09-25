@@ -16,7 +16,7 @@
     "attester": "tsx src/attester.ts",
     "observe": "tsx src/observe.ts",
     "admin": "tsx src/admin.ts",
-    "test": "node --test test/screening.test.mjs test/observe-attester.test.mjs test/scene.test.mjs"
+    "test": "node --test test/screening.test.mjs test/observe-attester.test.mjs test/scene.test.mjs test/vendor-sdk.test.mjs"
   },
   "devDependencies": {
     "@vet402/sdk": "file:../../vendor/vet402-sdk-0.7.0.tgz",
