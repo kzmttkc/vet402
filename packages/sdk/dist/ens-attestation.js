@@ -15,6 +15,71 @@ const ALL_PROFILES = ["ensip29-draft", "atst-me-v2"];
 const POLICY_KEYS = new Set(["recordKey", "trustedAttesters", "minValid", "maxAgeSeconds", "futureSkewSeconds", "maxHeadLagSeconds", "profiles", "sinceIssuanceScan", "now"]);
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const lc = (s) => String(s ?? "").toLowerCase();
+// ---------- since-issuance scan (PLAN §3.3.1 step 10; off by default) ----------
+/** PermissionedResolver events (ENSv2, 09-15 deployment). Events carry the recordId, not the name. */
+const TEXT_UPDATED_EVENT = {
+    type: "event", name: "TextUpdated",
+    inputs: [
+        { indexed: true, name: "recordId", type: "uint256" },
+        { indexed: true, name: "keyHash", type: "string" },
+        { indexed: false, name: "key", type: "string" },
+        { indexed: false, name: "value", type: "string" },
+    ],
+};
+const LINKED_EVENT = {
+    type: "event", name: "Linked",
+    inputs: [
+        { indexed: true, name: "recordId", type: "uint256" },
+        { indexed: true, name: "node", type: "bytes32" },
+        { indexed: false, name: "name", type: "bytes" },
+    ],
+};
+/** Sepolia produces at most one block per 12 s slot, so B − ceil((ts(B) − t) / 12) − 1 is at or before t's block. */
+const SLOT_SECONDS = 12n;
+const SCAN_SPAN = 1000n;
+const hasGetLogs = (c) => typeof c?.getLogs === "function";
+/**
+ * Count TextUpdated(x402-offer) and Linked(node) logs on the answering resolver since the attestation was issued,
+ * on both RPCs. Any log either RPC returns counts as a change — the RPC does the filtering, and a log that should
+ * not be there can only cause a refusal, never a payment. A missing log is what the canary guards against:
+ * when nothing was found and a canary is configured, both RPCs must return the canary log, or the absence is not
+ * evidence (ens_evidence_unavailable).
+ */
+async function scanSinceIssuance(clients, B, ts, oldestT, resolver, node, recordKey, canary) {
+    const t = BigInt(oldestT);
+    const back = t >= ts ? 0n : (ts - t + SLOT_SECONDS - 1n) / SLOT_SECONDS + 1n;
+    const fromBlock = B > back ? B - back : 0n;
+    const sides = [clients.primary, clients.secondary];
+    const logsOf = async (c, args) => {
+        const out = await c.getLogs({ ...args, strict: false });
+        if (!Array.isArray(out))
+            throw new EnsEvidenceUnavailable("getLogs did not return an array");
+        return out;
+    };
+    let changes = 0;
+    try {
+        for (let start = fromBlock; start <= B; start += SCAN_SPAN) {
+            const end = start + SCAN_SPAN - 1n < B ? start + SCAN_SPAN - 1n : B;
+            const found = await Promise.all(sides.flatMap((c) => [
+                logsOf(c, { address: resolver, event: TEXT_UPDATED_EVENT, args: { keyHash: recordKey }, fromBlock: start, toBlock: end }),
+                logsOf(c, { address: resolver, event: LINKED_EVENT, args: { node }, fromBlock: start, toBlock: end }),
+            ]));
+            changes += found.reduce((n, logs) => n + logs.length, 0);
+        }
+        if (changes === 0 && canary) {
+            const seen = await Promise.all(sides.map((c) => logsOf(c, { address: canary.address, fromBlock: canary.blockNumber, toBlock: canary.blockNumber })));
+            const hasCanary = (logs) => logs.some((l) => lc(l?.transactionHash) === lc(canary.txHash));
+            if (!seen.every(hasCanary))
+                throw new EnsEvidenceUnavailable(`the canary log ${canary.txHash} was not returned by both RPCs, so an empty scan proves nothing`);
+        }
+    }
+    catch (e) {
+        if (e instanceof EnsEvidenceUnavailable)
+            throw e;
+        throw new EnsEvidenceUnavailable(`since-issuance scan failed: ${String(e?.message ?? e).slice(0, 200)}`);
+    }
+    return { changes, fromBlock };
+}
 // ---------- policy ----------
 function bad(msg) {
     throw new Error(`invalid_attestation_policy: ${msg}`);
@@ -85,9 +150,6 @@ export function assertEnsAttestationPolicy(p) {
                 bad("sinceIssuanceScan.canary needs address, blockNumber (bigint) and txHash");
             }
         }
-        // Cut #2 (PLAN §7): the since-issuance scan is not in this build. Refuse loudly instead of
-        // silently running without a check the caller asked for.
-        bad("sinceIssuanceScan is not implemented in this build; pass false or omit it");
     }
     if (o.now !== undefined && typeof o.now !== "function")
         bad("now must be a function");
@@ -172,6 +234,10 @@ export async function checkEnsOffer(input) {
     const profiles = policy.profiles ?? ["ensip29-draft"];
     const now = Math.floor(policy.now ? policy.now() : Date.now() / 1000);
     const trusted = policy.trustedAttesters.filter((a) => a.recordKeys.includes(recordKey));
+    const scan = policy.sinceIssuanceScan === undefined || policy.sinceIssuanceScan === false ? null : policy.sinceIssuanceScan;
+    if (scan && (!hasGetLogs(clients.primary) || !hasGetLogs(clients.secondary))) {
+        bad("sinceIssuanceScan needs getLogs on both clients (a viem PublicClient has it)");
+    }
     const out = {
         ok: false, reason_codes: [], name: input.name, node: "0x", chainId: ENS_SEPOLIA_CHAIN_ID,
         block: { number: 0n, timestamp: 0n }, heads: { primary: 0n, secondary: 0n },
@@ -201,6 +267,7 @@ export async function checkEnsOffer(input) {
     out.attestations = works.map((w) => w.result);
     // ---- reads (all at the pinned block, on both RPCs) ----
     let stage = 1;
+    let offerResolver = null;
     try {
         const pin = await pinBlock(clients, maxLag, now);
         out.block = { number: pin.B, timestamp: pin.ts };
@@ -226,6 +293,7 @@ export async function checkEnsOffer(input) {
         stage = 3;
         const offer = await resolveText(clients, B, name, recordKey);
         out.offerRaw = offer.value;
+        offerResolver = offer.resolver;
         const ep = await resolveText(clients, B, name, ENDPOINT_KEY);
         out.endpoint = ep.value;
         stage = 6;
@@ -327,6 +395,36 @@ export async function checkEnsOffer(input) {
         r.valid = true;
         w.failStep = 8;
         w.details[7] = { signer: "matches attester", t: String(d.t), ageSeconds: String(now - d.t) };
+    }
+    // ---- step 10 (off by default): was the record changed or relinked after t? ----
+    const validWorks = works.filter((w) => w.result.valid);
+    if (scan && out.offerRaw !== "" && validWorks.length > 0) {
+        try {
+            if (!offerResolver)
+                throw new EnsEvidenceUnavailable(`no resolver answered ${recordKey}, so there is nothing to scan`);
+            const oldestT = Math.min(...validWorks.map((w) => w.result.t));
+            const res = await scanSinceIssuance(clients, out.block.number, out.block.timestamp, oldestT, offerResolver, out.node, recordKey, scan.canary);
+            for (const w of validWorks) {
+                if (res.changes > 0) {
+                    w.result.valid = false;
+                    w.result.reason = "ens_record_changed_after_attestation";
+                    w.failStep = 7;
+                    w.details[7] = {
+                        reason: "ens_record_changed_after_attestation",
+                        error: `${res.changes} TextUpdated(${recordKey})/Linked log(s) on ${offerResolver} in blocks ${res.fromBlock}..${out.block.number}`,
+                    };
+                }
+                else {
+                    w.details[7] = { ...(w.details[7] ?? {}), scan: `no change on ${offerResolver} in blocks ${res.fromBlock}..${out.block.number}` };
+                }
+            }
+        }
+        catch (e) {
+            if (e instanceof EnsEvidenceUnavailable) {
+                return finish(["ens_evidence_unavailable"], { step: 7, detail: { reason: "ens_evidence_unavailable", error: e.message.slice(0, 300) } });
+            }
+            throw e;
+        }
     }
     // The attester that got furthest provides the per-step details of the trace.
     const best = works.reduce((b, w) => (b === null || w.failStep > b.failStep ? w : b), null);

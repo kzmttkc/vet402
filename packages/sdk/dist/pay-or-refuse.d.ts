@@ -1,6 +1,8 @@
 import type { DecisionResult, PayeeScoreResult } from "./index.js";
 import type { PayerAccount, X402Accept } from "./x402-pay.js";
 import { type ChainProfileName } from "./chain-profile.js";
+import type { EnsAttestationPolicy, EnsOfferCheck } from "./ens-attestation.js";
+import type { EnsReadClients } from "./ens-read.js";
 export type { PayerAccount, X402Accept, X402Settlement, Eip3009Authorization } from "./x402-pay.js";
 /**
  * Base メインネット（`network` の既定）。値は `chain-profile.ts` の `base` の行から引く（2026-09-26 に移した・値は同じ）。
@@ -97,10 +99,10 @@ export declare const DEFAULT_MAX_PER_TX_USD = 1;
  *    $1 の 402 を上限内だからと払うのは、上限は守っても名乗りを破っている。サーバの
  *    `caller_policy` は 402 を見ないのでこの語を出せない（SDK だけの語・parity テストが固定）
  */
-export declare const PAY_REFUSE_REASONS: readonly ["price_above_ceiling", "price_above_declared", "payee_mismatch", "chain_or_asset_mismatch", "evidence_unavailable", "payee_recommendation_block", "payee_recommendation_not_allow", "insufficient_delivery_evidence", "insufficient_subgraph_evidence", "resource_uncatalogued", "subgraph_evidence_unavailable", "no_eligible_accept", "allowed_by_caller_policy", "insufficient_chain_evidence", "chain_evidence_unavailable"];
+export declare const PAY_REFUSE_REASONS: readonly ["price_above_ceiling", "price_above_declared", "payee_mismatch", "chain_or_asset_mismatch", "evidence_unavailable", "payee_recommendation_block", "payee_recommendation_not_allow", "insufficient_delivery_evidence", "insufficient_subgraph_evidence", "resource_uncatalogued", "subgraph_evidence_unavailable", "no_eligible_accept", "allowed_by_caller_policy", "insufficient_chain_evidence", "chain_evidence_unavailable", "ens_name_unresolved", "ens_offer_missing", "ens_offer_malformed", "ens_offer_mismatch", "ens_attestation_missing", "ens_attestation_malformed", "ens_attestation_signer_mismatch", "ens_attestation_stale", "ens_attester_unresolved", "ens_attester_unpinned", "ens_attester_anchor_changed", "ens_record_changed_after_attestation", "ens_evidence_unavailable", "insufficient_ens_attestations", "vet402_unreachable"];
 export type PayRefuseReason = (typeof PAY_REFUSE_REASONS)[number];
 /** 証拠源。`payOrRefuse` の判定が「誰の台帳を読んだか」を機械可読で残す。 */
-export type PayEvidenceSource = "vet402" | "subgraph" | "chain";
+export type PayEvidenceSource = "vet402" | "subgraph" | "chain" | "ens";
 export type PayEvidenceRow = {
     level: "L0" | "L1" | "L2";
     source: PayEvidenceSource;
@@ -124,6 +126,36 @@ export type PayEvidenceRow = {
      */
     receipts?: number;
 };
+/**
+ * 決定行に残す段 2.5 の内訳（`checkEnsOffer` の結果から、payload のバイト列を落としたもの）。
+ * `attestations[].recovered`（署名から復元した鍵）と `expected`（固定した attester の鍵）を**両方**残す——
+ * 拒否したときに「誰の署名が、誰のはずだったか」が決定行から読める。
+ * 証拠の行（{@link PayEvidenceRow}）には入れない: あちらは `/decision` の `Evidence` の部分集合でなければならない
+ * （`tests/openapi-schema-parity.test.ts`）。
+ */
+export type PayEnsEvidence = {
+    /** `"gate"` は段 2.5、`"recheck"` は署名直前の読み直し。 */
+    pass: "gate" | "recheck";
+    ok: boolean;
+    name: string;
+    node: string;
+    chainId: number;
+    manager: string | null;
+    reason_codes: string[];
+    /** 有効な証明の数。 */
+    valid: number;
+    attestations: Array<{
+        attester: string;
+        profile: string | null;
+        t: number | null;
+        recovered: string | null;
+        expected: string | null;
+        digest: string | null;
+        valid: boolean;
+        reason: string | null;
+    }>;
+    trace: EnsOfferCheck["trace"];
+};
 export type PayEvidencePolicy = {
     /** vet402 の L1 配達台帳（実際に払って届いた件数）の下限。 */
     minL1Deliveries?: number;
@@ -145,6 +177,15 @@ export type PayEvidencePolicy = {
      * （公開 RPC の範囲上限。Base Sepolia の公開 RPC は 1,000・2026-09-25 実測）。
      */
     chainFromBlock?: number | bigint;
+    /**
+     * 段 2.5（ENSIP-29）で**有効だった証明の数**の下限（Tokyo B6・§3.3.3 G1）。`payeeName` と `ens` を渡した
+     * 呼び出しでだけ宣言できる（それ以外は呼び出し側エラー `invalid_evidence_policy`）。0 以上の整数。
+     * `source` とは無関係（どの値でも評価する・S4）。
+     *
+     * **vet402 に届かないとき**（接続不能・HTTP 5xx）、`requireVet402Allow: false` とこの床 ≥ 1 がそろっていれば、
+     * 取りに行けなかったことを免除して先へ進む（G5）。届いた答えが悪い（degraded・BLOCK・4xx・読めない 200）なら免除しない。
+     */
+    minEnsAttestations?: number;
     /**
      * 既定 `"vet402"`。`"subgraph"` は**我々の台帳を証拠の床に使わない**——
      * 呼び手が自分の鍵で The Graph を引いて自分で確かめる。`"both"` は両方読め、
@@ -187,6 +228,8 @@ export type PayPolicy = {
      * **床を1つも宣言せずに `false` にするのは呼び出し側エラー**（`invalid_policy`）。
      * vet402 の判定を外し、代わりを置かなければ、**誰もこの支払いを判定していない**。
      * 0 の床は床ではない（何も判定しない）ので、少なくとも1つは 1 以上でなければならない。
+     * ただし判定を取りに行けなかったときに限り、呼び手が ENS の証明の床を宣言していれば、取りに行けなかったことを
+     * 免除する。届いた判定の degraded と BLOCK は免除しない（Tokyo B6・§3.3.3 G7）。
      *
      * **免除するのは「判定の中身」であって「判定が存在すること」ではない。**
      * `degraded`（測れなかった）と `signalsUnavailable`（一部が測れなかった）は
@@ -200,7 +243,7 @@ export type PayPolicy = {
 };
 /** 満たした床1つ。**要求値と実測値を両方持つ**——「床を見たふり」を機械可読に潰す。 */
 export type EvidenceFloorCheck = {
-    floor: "minL1Deliveries" | "minSubgraphReceipts" | "minChainReceipts";
+    floor: "minL1Deliveries" | "minSubgraphReceipts" | "minChainReceipts" | "minEnsAttestations";
     /** どの源の数で当てたか。源をまたいで足さない（D16）。 */
     source: PayEvidenceSource;
     required: number;
@@ -214,7 +257,11 @@ export type PayPolicyOverride = {
     rule: "requireVet402Allow:false";
     /** 免除した判定。**消さずに残す**——弱くしたことを隠さない。 */
     waived: {
-        source: "decision" | "payee_score";
+        /**
+         * `"vet402_unreachable"` は判定そのものが**届かなかった**ことを免除した（Tokyo B6・G8）。そのとき
+         * `recommendation` は `"unreachable"`、`score` は null、`reason_codes` は空。
+         */
+        source: "decision" | "payee_score" | "vet402_unreachable";
         recommendation: string;
         /** 受取人スコアの点数（`/decision` 経路には無いので null）。 */
         score: number | null;
@@ -245,13 +292,24 @@ export type PayOrRefusePayeeInput = {
     payeeName?: undefined;
 };
 /**
- * 名前で払う呼び方（ETHGlobal Tokyo 2026）。`payee` は ENSIP-29 の証明が有効な約束の `payTo` から決まる
- * （段 2.5・B6 が入れる。`ens` の欄も B6 が足す）。**段 2.5 が入るまでは、通信の前に throw する。**
+ * 名前で払う呼び方（ETHGlobal Tokyo 2026）。`payee` は ENSIP-29 の証明が有効な約束の `payTo` から決まる（段 2.5）。
+ * **払えるのは `network: "base-sepolia"` だけ**（本番 Base を名前経路で払わない）。
  */
 export type PayOrRefuseNamedPayeeInput = {
+    /** 売り手の ENS 名（Sepolia の ENSv2）。ENSIP-15 で正規化でき、ドットを含むこと。 */
     payeeName: string;
-    /** 渡したときは約束の `payTo` と一致しなければ拒否（B6）。 */
+    /** 段 2.5 が読む2系統の Sepolia RPC と、信じる attester の設定。 */
+    ens: EnsGateInput;
+    /** 渡したときは約束の `payTo` と一致しなければ拒否（`payee_mismatch`・`/decision` の前）。 */
     payee?: string;
+};
+/**
+ * 段 2.5 の入力。`clients` は**別々の** Sepolia（chainId 11155111）RPC 2本（viem の `PublicClient` がそのまま当てはまる）。
+ * `policy` は `assertEnsAttestationPolicy` の規則で、通信の前に検査する（外れれば `invalid_attestation_policy`）。
+ */
+export type EnsGateInput = {
+    clients: EnsReadClients;
+    policy: EnsAttestationPolicy;
 };
 export type PayOrRefuseBaseInput = {
     /**
@@ -351,6 +409,11 @@ export type PayDecisionRecord = {
     /** 呼び手の規則が vet402 の非 ALLOW を免除して**通した**ときだけ非 null。 */
     policy_override: PayPolicyOverride | null;
     source: string;
+    /**
+     * 段 2.5（ENSIP-29）の内訳（Tokyo B6）。**名前で払った呼び出しの決定行にだけ**あり、段 2.5 と署名直前の
+     * 読み直しの順に並ぶ。名前を使わない呼び手の決定行には、このキー自体が無い（形を1バイトも変えない）。
+     */
+    ens?: PayEnsEvidence[];
 };
 export type PayOrRefuseResult = {
     /** "refused" は署名前に止まったこと。"failed" は署名後に settle が失敗したこと。 */

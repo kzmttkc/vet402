@@ -151,11 +151,27 @@ fails if this table and those constants drift apart. Server `reason_codes` (for 
 | `insufficient_delivery_evidence` | vet402's delivered-purchase count is below `minL1Deliveries` | lower the floor only if the user accepts the risk; otherwise stop |
 | `insufficient_subgraph_evidence` | The Graph's receipt count for the payee is below `minSubgraphReceipts` | same as above; the count read is on `decision_record.evidence[]` |
 | `insufficient_chain_evidence` | `network: "base-sepolia"` only: USDC receipts to the payee, read by your two `chainReader`s, are below `minChainReceipts` | same as above; the floor throws `invalid_evidence_policy` on any other network |
+| `chain_evidence_unavailable` | your two `chainReader`s could not be read, are on the wrong chain, or disagree on the receipts (always next to `evidence_unavailable`) | check both RPC URLs; do not drop the floor to make it pass |
+| `ens_name_unresolved` | pay by name only: the name has no exact owner on Sepolia ENS (unregistered, expired, reserved, or an unregistered subname) | stop; check the spelling. Never fall back to the parent name's owner |
+| `ens_offer_missing` | the name has no `x402-offer` record (for example it was unlinked from its record) | stop; the seller has not published a promise on this name |
+| `ens_offer_malformed` | the `x402-offer` record is not a valid one-line x402 offer JSON | stop; report the raw record to the user |
+| `ens_offer_mismatch` | the offer on the name differs from your request (`resource`, `method`, `agent-endpoint[x402]`), from the 402 the seller returned, or changed between the gate and the signature | stop; the more specific code next to it (`payee_mismatch`, `price_above_declared`, `chain_or_asset_mismatch`) says what differs |
+| `ens_attestation_missing` | fewer valid attestations than `minValid` from attesters you trust for `x402-offer` | stop; an attestation from an attester you did not configure is never counted |
+| `ens_attestation_malformed` | an attestation envelope could not be decoded, or its profile is not in `profiles` | stop; report the attester name to the user |
+| `ens_attestation_signer_mismatch` | the attestation was not signed over this name, owner, record and value — the offer or the owner changed after it was attested | stop. This is the gate working; the decision record keeps `recovered` and `expected` |
+| `ens_attestation_stale` | the attestation is older than `maxAgeSeconds` or dated in the future | stop; ask the seller to have the offer re-attested |
+| `ens_attester_unresolved` | the attester's name has no address on Sepolia ENS | stop; do not trust an attester you cannot resolve |
+| `ens_attester_unpinned` | the attester's name resolves to a different address than the one you pinned | stop; do not update the pin from the chain. Confirm the new key out of band first |
+| `ens_attester_anchor_changed` | the owner of the attester's parent name differs from the pinned `anchor.owner` | stop; same as above |
+| `ens_record_changed_after_attestation` | with `sinceIssuanceScan` on: the offer record was written or relinked after the attestation was issued | stop, even if the value looks the same now |
+| `ens_evidence_unavailable` | the two Sepolia RPCs failed, disagree, lag, or point at different ENS deployments (always next to `evidence_unavailable`) | check both RPC URLs and retry later; never pay on one RPC |
+| `insufficient_ens_attestations` | the name's valid attestations are below your `minEnsAttestations` floor | same as the other floors: lower it only if the user accepts the risk |
 | `resource_uncatalogued` | `/decision` answered 404; judgement came from the 402's `payTo` and that address's payee score | informational; it always sits next to the decisive code |
 | `payment_target_unknown` | MCP only: `resource`/`payee`/`amountUsd` were not all given | expected on the dry-run; otherwise pass all three |
 | `payer_not_configured` | MCP only: the server has no `VOUCH_PAYER_PRIVATE_KEY` (and `viem`) | the decision was still measured; to pay, configure the server (see Setup) |
 | `settle_failed` | on `FAILED`: signed, the seller did not settle | see "If it FAILED" |
 | `allowed_by_caller_policy` | not a refusal: your floors, not vet402, allowed it | appears on ALLOW records with `verdict_source: "caller_policy"`; report that to the user |
+| `vet402_unreachable` | not a refusal: pay by name only — vet402 was asked but did not answer (connection failure or HTTP 5xx), and your `minEnsAttestations` floor with `requireVet402Allow: false` stood in | report it; a reachable vet402 that answers degraded, BLOCK, 4xx or an unreadable 200 is never waived |
 
 ## Your own evidence source — you do not have to trust vet402
 

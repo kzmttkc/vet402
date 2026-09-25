@@ -34,6 +34,11 @@ export {
   type SvmKeypairLike,
   type PayOrRefuseBaseInput,
   type PayOrRefuseInput,
+  // 2026-09-26（ETHGlobal Tokyo B6）: 名前で払う呼び方（段 2.5・ENSIP-29）。型だけ——実装は payeeName を渡したときだけ動的 import。
+  type PayOrRefusePayeeInput,
+  type PayOrRefuseNamedPayeeInput,
+  type EnsGateInput,
+  type PayEnsEvidence,
   type PayOrRefuseResult,
   type PayDecisionRecord,
   type PayPolicy,

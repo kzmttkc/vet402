@@ -58,6 +58,12 @@ import { readSubgraphReceipts, X402_BASE_SUBGRAPH_ID, type SubgraphReceipts } fr
 import { isBlockVerdict, isDecimalUnits, isPlainObject, scoreQualityDefect } from "./verdict-shape.js";
 // 支払いチェーンの定数表（Tokyo B3）。import を持たない定数だけのモジュールなので静的 import でよい。
 import { CHAIN_PROFILES, profileFor, type ChainProfile, type ChainProfileName } from "./chain-profile.js";
+// ENSIP-29 の拒否語（Tokyo B6）。`ens-reasons.ts` は何も import しない語彙だけのモジュールなので静的 import でよい。
+// **段 2.5 の本体（`ens-attestation.js`・`ens-read.js`・viem）は `payeeName` を渡した呼び手のときだけ動的 import する**
+// ——名前を使わない呼び手の静的グラフに viem を入れない（`test/tokyo/regression.test.mjs` の T30・T30b）。
+import { ENS_ATTESTATION_REASONS } from "./ens-reasons.js";
+import type { EnsAttestationPolicy, EnsOfferCheck, X402Offer } from "./ens-attestation.js";
+import type { EnsReadClients } from "./ens-read.js";
 
 export type { PayerAccount, X402Accept, X402Settlement, Eip3009Authorization } from "./x402-pay.js";
 
@@ -188,6 +194,14 @@ export const PAY_REFUSE_REASONS = [
   //    `evidence_unavailable` と併記する（subgraph の `subgraph_evidence_unavailable` と同じ形）
   "insufficient_chain_evidence",
   "chain_evidence_unavailable",
+  // 2026-09-26（ETHGlobal Tokyo B6）: 段 2.5（ENSIP-29）の 13 語は `ens-reasons.ts` が正典。ここへ展開するだけで、
+  // 語を書き写さない。`payeeName` を渡した呼び手にしか出ない。
+  ...ENS_ATTESTATION_REASONS,
+  //  - `insufficient_ens_attestations` … 段 2.5 は通ったが、有効な証明の数が床 `minEnsAttestations` に届かない
+  //  - `vet402_unreachable` … 拒否理由ではなく**経路の印**（`resource_uncatalogued` と同じ扱い）。vet402 の判定を
+  //    取りに行ったが届かず（接続不能・HTTP 5xx）、呼び手の ENS の床が免除した経路で出た決定行に載る（G5）
+  "insufficient_ens_attestations",
+  "vet402_unreachable",
 ] as const;
 
 export type PayRefuseReason = (typeof PAY_REFUSE_REASONS)[number];
@@ -208,7 +222,7 @@ function serverReasonCodes(words: string[]): ServerReasonCode[] {
 }
 
 /** 証拠源。`payOrRefuse` の判定が「誰の台帳を読んだか」を機械可読で残す。 */
-export type PayEvidenceSource = "vet402" | "subgraph" | "chain";
+export type PayEvidenceSource = "vet402" | "subgraph" | "chain" | "ens";
 
 export type PayEvidenceRow = {
   level: "L0" | "L1" | "L2";
@@ -229,6 +243,37 @@ export type PayEvidenceRow = {
    * 合算した1つの数は何も意味しない。
    */
   receipts?: number;
+};
+
+/**
+ * 決定行に残す段 2.5 の内訳（`checkEnsOffer` の結果から、payload のバイト列を落としたもの）。
+ * `attestations[].recovered`（署名から復元した鍵）と `expected`（固定した attester の鍵）を**両方**残す——
+ * 拒否したときに「誰の署名が、誰のはずだったか」が決定行から読める。
+ * 証拠の行（{@link PayEvidenceRow}）には入れない: あちらは `/decision` の `Evidence` の部分集合でなければならない
+ * （`tests/openapi-schema-parity.test.ts`）。
+ */
+export type PayEnsEvidence = {
+  /** `"gate"` は段 2.5、`"recheck"` は署名直前の読み直し。 */
+  pass: "gate" | "recheck";
+  ok: boolean;
+  name: string;
+  node: string;
+  chainId: number;
+  manager: string | null;
+  reason_codes: string[];
+  /** 有効な証明の数。 */
+  valid: number;
+  attestations: Array<{
+    attester: string;
+    profile: string | null;
+    t: number | null;
+    recovered: string | null;
+    expected: string | null;
+    digest: string | null;
+    valid: boolean;
+    reason: string | null;
+  }>;
+  trace: EnsOfferCheck["trace"];
 };
 
 export type PayEvidencePolicy = {
@@ -252,6 +297,15 @@ export type PayEvidencePolicy = {
    * （公開 RPC の範囲上限。Base Sepolia の公開 RPC は 1,000・2026-09-25 実測）。
    */
   chainFromBlock?: number | bigint;
+  /**
+   * 段 2.5（ENSIP-29）で**有効だった証明の数**の下限（Tokyo B6・§3.3.3 G1）。`payeeName` と `ens` を渡した
+   * 呼び出しでだけ宣言できる（それ以外は呼び出し側エラー `invalid_evidence_policy`）。0 以上の整数。
+   * `source` とは無関係（どの値でも評価する・S4）。
+   *
+   * **vet402 に届かないとき**（接続不能・HTTP 5xx）、`requireVet402Allow: false` とこの床 ≥ 1 がそろっていれば、
+   * 取りに行けなかったことを免除して先へ進む（G5）。届いた答えが悪い（degraded・BLOCK・4xx・読めない 200）なら免除しない。
+   */
+  minEnsAttestations?: number;
   /**
    * 既定 `"vet402"`。`"subgraph"` は**我々の台帳を証拠の床に使わない**——
    * 呼び手が自分の鍵で The Graph を引いて自分で確かめる。`"both"` は両方読め、
@@ -295,6 +349,8 @@ export type PayPolicy = {
    * **床を1つも宣言せずに `false` にするのは呼び出し側エラー**（`invalid_policy`）。
    * vet402 の判定を外し、代わりを置かなければ、**誰もこの支払いを判定していない**。
    * 0 の床は床ではない（何も判定しない）ので、少なくとも1つは 1 以上でなければならない。
+   * ただし判定を取りに行けなかったときに限り、呼び手が ENS の証明の床を宣言していれば、取りに行けなかったことを
+   * 免除する。届いた判定の degraded と BLOCK は免除しない（Tokyo B6・§3.3.3 G7）。
    *
    * **免除するのは「判定の中身」であって「判定が存在すること」ではない。**
    * `degraded`（測れなかった）と `signalsUnavailable`（一部が測れなかった）は
@@ -309,7 +365,7 @@ export type PayPolicy = {
 
 /** 満たした床1つ。**要求値と実測値を両方持つ**——「床を見たふり」を機械可読に潰す。 */
 export type EvidenceFloorCheck = {
-  floor: "minL1Deliveries" | "minSubgraphReceipts" | "minChainReceipts";
+  floor: "minL1Deliveries" | "minSubgraphReceipts" | "minChainReceipts" | "minEnsAttestations";
   /** どの源の数で当てたか。源をまたいで足さない（D16）。 */
   source: PayEvidenceSource;
   required: number;
@@ -324,7 +380,11 @@ export type PayPolicyOverride = {
   rule: "requireVet402Allow:false";
   /** 免除した判定。**消さずに残す**——弱くしたことを隠さない。 */
   waived: {
-    source: "decision" | "payee_score";
+    /**
+     * `"vet402_unreachable"` は判定そのものが**届かなかった**ことを免除した（Tokyo B6・G8）。そのとき
+     * `recommendation` は `"unreachable"`、`score` は null、`reason_codes` は空。
+     */
+    source: "decision" | "payee_score" | "vet402_unreachable";
     recommendation: string;
     /** 受取人スコアの点数（`/decision` 経路には無いので null）。 */
     score: number | null;
@@ -354,14 +414,23 @@ export type PayOrRefusePayeeInput = {
 };
 
 /**
- * 名前で払う呼び方（ETHGlobal Tokyo 2026）。`payee` は ENSIP-29 の証明が有効な約束の `payTo` から決まる
- * （段 2.5・B6 が入れる。`ens` の欄も B6 が足す）。**段 2.5 が入るまでは、通信の前に throw する。**
+ * 名前で払う呼び方（ETHGlobal Tokyo 2026）。`payee` は ENSIP-29 の証明が有効な約束の `payTo` から決まる（段 2.5）。
+ * **払えるのは `network: "base-sepolia"` だけ**（本番 Base を名前経路で払わない）。
  */
 export type PayOrRefuseNamedPayeeInput = {
+  /** 売り手の ENS 名（Sepolia の ENSv2）。ENSIP-15 で正規化でき、ドットを含むこと。 */
   payeeName: string;
-  /** 渡したときは約束の `payTo` と一致しなければ拒否（B6）。 */
+  /** 段 2.5 が読む2系統の Sepolia RPC と、信じる attester の設定。 */
+  ens: EnsGateInput;
+  /** 渡したときは約束の `payTo` と一致しなければ拒否（`payee_mismatch`・`/decision` の前）。 */
   payee?: string;
 };
+
+/**
+ * 段 2.5 の入力。`clients` は**別々の** Sepolia（chainId 11155111）RPC 2本（viem の `PublicClient` がそのまま当てはまる）。
+ * `policy` は `assertEnsAttestationPolicy` の規則で、通信の前に検査する（外れれば `invalid_attestation_policy`）。
+ */
+export type EnsGateInput = { clients: EnsReadClients; policy: EnsAttestationPolicy };
 
 export type PayOrRefuseBaseInput = {
   /**
@@ -455,6 +524,11 @@ export type PayDecisionRecord = {
   /** 呼び手の規則が vet402 の非 ALLOW を免除して**通した**ときだけ非 null。 */
   policy_override: PayPolicyOverride | null;
   source: string;
+  /**
+   * 段 2.5（ENSIP-29）の内訳（Tokyo B6）。**名前で払った呼び出しの決定行にだけ**あり、段 2.5 と署名直前の
+   * 読み直しの順に並ぶ。名前を使わない呼び手の決定行には、このキー自体が無い（形を1バイトも変えない）。
+   */
+  ens?: PayEnsEvidence[];
 };
 
 export type PayOrRefuseResult = {
@@ -487,6 +561,8 @@ export type PayOrRefuseResult = {
 };
 
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
+/** `/decision` の判定語（G5b ④ で名前経路が読む）。 */
+const KNOWN_VERDICTS = new Set(["ALLOW", "WARN", "BLOCK"]);
 /** Solana の base58 アドレス（32〜44 文字・0 O I l を含まない）。 */
 const SOLANA_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const USDC_DECIMALS = 6;
@@ -716,8 +792,17 @@ const NO_EVM_ACCOUNT: PayerAccount = {
 type DecideInput = PayOrRefuseBaseInput & {
   payee?: string;
   payeeName?: string;
+  ens?: EnsGateInput;
   account: PayerAccount;
   svm?: SvmPayOptions;
+};
+
+/** 段 2.5 に要るもの。`payeeName` を渡した呼び手のときだけ、通信の前にそろえる（{@link prepareEnsGate}）。 */
+type EnsGate = {
+  name: string;
+  clients: EnsReadClients;
+  policy: EnsAttestationPolicy;
+  mod: typeof import("./ens-attestation.js");
 };
 
 async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
@@ -731,12 +816,13 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   // #17〜#20（Tokyo B3）: 呼び手の payee を読むのはこの分割代入の1か所だけ。以下の照合・証拠の読み・attest は
   // 全部ローカルの `payeeAddr` を見る（段 2.5 が payeeName から決めた値も同じ変数に入る・B6）。
   const { payee: givenPayee, payeeName } = input;
-  // 名前だけの呼び出し（payee なし・payeeName あり）。レールは payee の形ではなく profile で決まり、
-  // `base` も `base-sepolia` も EVM。**`assertSvmPayer` はこの経路で呼ばない**。
-  const byName = givenPayee === undefined && typeof payeeName === "string";
+  // 名前で払う呼び出し（payeeName あり・payee は任意）。レールは payee の形ではなく profile で決まり、
+  // `base-sepolia` の EVM だけ。**`assertSvmPayer` はこの経路で呼ばない**。null は「未指定」（`??` と同じ規則）。
+  const named = payeeName !== undefined && payeeName !== null;
   const isEvmPayee = typeof givenPayee === "string" && WALLET_RE.test(givenPayee);
   const isSvmPayee = typeof givenPayee === "string" && SOLANA_RE.test(givenPayee);
-  if (!byName && !isEvmPayee && !isSvmPayee) {
+  // `payee` を渡したときは今のまま検査する（名前経路でも 0x でなければ throw・名前経路は Solana を払わない）。
+  if (named ? givenPayee != null && !isEvmPayee : !isEvmPayee && !isSvmPayee) {
     throw new Error(
       `invalid_payee_address: payOrRefuse takes a 0x address (Base) or a base58 address (Solana), got ${JSON.stringify(input.payee)}. ` +
         "ENS names are not resolved here — resolve it yourself and pass the resulting address.",
@@ -744,11 +830,21 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   }
   // **レールは payee の形で決まる。** 署名者は形に合う方をちょうど 1 つ。`account` / `svm` の中身には
   // 触らない（有無だけを見る。`typeof` は Proxy の get を起こさない）——拒否経路から署名者への参照を作らない。
-  const rail: PayRail = byName || isEvmPayee ? "evm" : "svm";
-  let payeeAddr: string | undefined = byName ? undefined : givenPayee;
+  const rail: PayRail = named || isEvmPayee ? "evm" : "svm";
+  // 名前経路では段 2.5 が約束の payTo をここに入れるまで undefined（それより前に payeeAddr を読む処理は無い）。
+  let payeeAddr: string | undefined = named ? undefined : givenPayee;
   const svm = rail === "svm" ? assertSvmPayer(input) : null;
+  // 段 2.5 の設定の誤り（#6・#7）。**すべて通信の前**。名前を使わない呼び手には何もしない（モジュールも読まない）。
+  const ensGate = named ? await prepareEnsGate(input.ens, payeeName) : null;
   // 支払いチェーン（Tokyo B3）。省略は "base"＝今までの挙動。知らない値は通信の前に throw（invalid_network）。
   const profile = profileFor(input.network);
+  // 名前経路は testnet だけ（§1.6・本番 Base を名前経路で払わない）。
+  if (ensGate !== null && profile.name !== "base-sepolia") {
+    throw new Error(
+      `invalid_ens_chain: payeeName pays on network "base-sepolia" only, got ${JSON.stringify(input.network ?? "base")}. ` +
+        "Paying Base mainnet by name is not supported.",
+    );
+  }
   if (rail === "svm" && input.network !== undefined && input.network !== "base") {
     throw new Error(
       `invalid_network: network ${JSON.stringify(input.network)} selects an EVM chain, but a base58 payee is paid on Solana. Omit network for a Solana payee.`,
@@ -784,6 +880,13 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   // 2026-09-05 まで、`minSubgraphReceipts` は既定 source が "vet402" のときどの分岐にも
   // 当たらず、床を指定したのに拒否も警告も出なかった。「壊れて見えない」型の欠陥。
   assertEvidencePolicy(input.policy?.evidence);
+  // G1（Tokyo B6）: ENS の証明の床は、段 2.5 が走る呼び出しでしか数えられない。黙って 0 件にしない。
+  if (input.policy?.evidence?.minEnsAttestations !== undefined && ensGate === null) {
+    throw new Error(
+      "invalid_evidence_policy: evidence.minEnsAttestations counts ENSIP-29 attestations, which are read only when you pay by name " +
+        "(payeeName and ens). Without them it would never be applied.",
+    );
+  }
   // Solana の payee は The Graph の x402 Base subgraph に居ない（あの subgraph は Base の 0x アドレスを索引する）。
   // 読めば必ず 0 件か読めないので、床を宣言した呼び手に黙って「足りない」を返す代わりに、ここで原因を言う。
   if (rail === "svm") {
@@ -823,6 +926,8 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
    * 食い違いは新語（`policy_disagreement` 等）で言わず、**両方の語を並べる**。
    */
   let serverPolicyReasons: string[] = [];
+  /** 段 2.5 の内訳（名前経路だけが積む）。決定行の `ens` に載る。 */
+  const ensChecks: PayEnsEvidence[] = [];
   const record = (
     recommendation: "ALLOW" | "REFUSE",
     reason_codes: string[],
@@ -840,6 +945,7 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
     payeeScore,
     policy_override,
     source,
+    ...(ensChecks.length > 0 ? { ens: ensChecks } : {}),
   });
 
   const refuse = (
@@ -867,11 +973,34 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
     return refuse(["price_above_ceiling"], "local_policy");
   }
 
-  // --- 2.5 ENSIP-29（B6 がここに入れる）: payeeName の約束から payeeAddr を決める ---
-  // 段 2.5 がまだ無いので、名前だけの呼び出しはここで止める（通信 0・署名者参照 0・fail-closed）。
-  if (payeeAddr === undefined) {
-    throw new Error("invalid_payee_address: payeeName needs the ENSIP-29 gate, which this build does not include — pass payee (a 0x address).");
+  // --- 2.5 ENSIP-29: 売り手の名前に載った約束と、その証明を確かめてから先へ進む（Tokyo B6・§3.3.2 #8）---
+  // 読むのは呼び手が渡した2系統の Sepolia RPC だけ。**ここで止まれば vet402 の API を1本も叩かない**（T03）。
+  // ENS の拒否は `requireVet402Allow: false` でも免除しない（T26）——床が免除するのは vet402 の判定であって、約束ではない。
+  let ens: EnsOfferCheck | null = null;
+  let offer: X402Offer | null = null;
+  if (ensGate !== null) {
+    ens = await ensGate.mod.checkEnsOffer({
+      name: ensGate.name, resource: input.resource, method, profile, clients: ensGate.clients, policy: ensGate.policy,
+    });
+    evidence.push(ensEvidenceRow(ens));
+    ensChecks.push(ensCheckSummary(ens, "gate"));
+    if (!ens.ok || ens.offer === null) {
+      return refuse(ensRefusalReasons(ens), "local_policy");
+    }
+    // 呼び手が payee も名乗ったなら、約束の payTo と一致しなければ `/decision` の前に止める（T28）。
+    if (givenPayee != null && !sameAddress(givenPayee, ens.offer.payTo)) {
+      return refuse(["payee_mismatch"], "local_policy");
+    }
+    offer = ens.offer;
+    payeeAddr = ens.offer.payTo;
   }
+  if (payeeAddr === undefined) {
+    // 到達しない（名前経路は上で payeeAddr を決めるか return する）。型の上でも黙って進まない。
+    throw new Error("invalid_payee_address: no payee was determined before the decision fetch");
+  }
+  // G5: vet402 に**届かなかった**ときに免除してよいか。3つがそろうときだけ（段 2.5 は上で ok が確定している）。
+  const ensFloor = input.policy?.evidence?.minEnsAttestations;
+  const mayWaiveUnreachable = ensGate !== null && !requireVet402Allow && typeof ensFloor === "number" && ensFloor >= 1;
 
   // --- 3. /decision ---
   const resourceId = input.resourceId ?? (await computeResourceId(method, input.resource));
@@ -898,8 +1027,23 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   const decisionUrl = `${apiUrl}/resources/${resourceId}/decision?${decisionQuery.toString()}`;
   let decision: DecisionResult | null = null;
   let uncatalogued = false;
+  // G5: vet402 に届かなかった（トランスポートの throw・HTTP 5xx）うえで、呼び手の ENS の床が免除した経路の印。
+  let unreachable = false;
+  // G5b: **fetch だけを先に try する**。本文の読み取り（JSON.parse）を同じ try に入れると、パース失敗が
+  // 「届かなかった」に落ちて払う側に倒れる。免除が効かない呼び手（名前を使わない呼び手の全部）には、
+  // 下の try と合わせて今までと同じ `evidence_unavailable` を返す。
+  let decisionResponse: Response | undefined;
   try {
-    const response = await fetchFn(decisionUrl, { headers });
+    decisionResponse = await fetchFn(decisionUrl, { headers });
+  } catch {
+    // A3: 読めなかったのだから払わない。
+    if (!mayWaiveUnreachable) return refuse(["evidence_unavailable"], "decision");
+    unreachable = true;
+  }
+  // fetch が値を返したなら（null・undefined を返す壊れた fetch も含めて）必ず下の try を通す——ここを
+  // 「値があるか」で分岐させると、null を返す fetch が判定なしで先へ進む（fail-open）。見るのは throw したかだけ。
+  if (!unreachable) try {
+    const response = decisionResponse as Response;
     // 本文は**読めた object** だけを判定として扱う（2026-09-07 監査 A1 / A4）。
     // 2026-09-07 まで、読めなかった本文は `{}`、200 の JSON `null` はそのまま `decision` に入り、
     // `if (decision)` が偽になって ALLOW 検査ごと飛び、既定 policy のまま署名まで到達していた
@@ -914,7 +1058,11 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
       // §3.1: カタログ外。`getResource()` は resource_id の単純照会なので未登録は必ずここ。
       uncatalogued = true;
     } else if (!response.ok) {
-      return refuse(["evidence_unavailable"], "decision");
+      // G5/G6: 「届かない」は 500-599 だけ。3xx・4xx（404 を含む・例外なし）は届いて悪い答えが返ったので免除しない。
+      if (!(mayWaiveUnreachable && response.status >= 500 && response.status <= 599)) {
+        return refuse(["evidence_unavailable"], "decision");
+      }
+      unreachable = true;
     } else if (!isPlainObject(body)) {
       return refuse(["evidence_unavailable"], "decision");
     } else {
@@ -925,6 +1073,12 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
     return refuse(["evidence_unavailable"], "decision");
   }
 
+  // G9: 届かなかったなら vet402 の台帳は読めていない。その台帳に依存する床（minL1Deliveries）を宣言していれば、
+  // 0 件と読まずに「読めなかった」と言う。評価できるのは ENS・chain・subgraph の床だけ。
+  if (unreachable && input.policy?.evidence?.minL1Deliveries !== undefined) {
+    return refuse(["vet402_unreachable", "evidence_unavailable"], "local_policy");
+  }
+
   // Solana のカタログ外は**ここで止める**。EVM の 404 経路は 402 の payTo で受取人スコアを引くが、
   // 受取人スコア API は base58 のアドレスを 400 で返す（0x しか受けない）。引いても判定材料は来ないので、
   // 402 も取らずに「一度も見たことがない資源で、証拠が読めない」と言って返す。
@@ -932,7 +1086,8 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
     return refuse(["resource_uncatalogued", "evidence_unavailable"], "payee_score");
   }
 
-  const pathReasons: PayRefuseReason[] = uncatalogued ? ["resource_uncatalogued"] : [];
+  // 経路の印。カタログ外（3'）と、vet402 に届かず ENS の床が免除した経路（G5）。どちらも拒否理由ではない。
+  const pathReasons: PayRefuseReason[] = uncatalogued ? ["resource_uncatalogued"] : unreachable ? ["vet402_unreachable"] : [];
 
   const serverReasons = serverReasonCodes(
     decision && Array.isArray(decision.reason_codes) ? decision.reason_codes : [],
@@ -940,7 +1095,9 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   serverPolicyReasons = Array.isArray(decision?.caller_policy?.reason_codes)
     ? decision.caller_policy.reason_codes.filter((r): r is string => typeof r === "string")
     : [];
-  const evidenceVerdictSource: PayDecisionRecord["verdict_source"] = uncatalogued ? "payee_score" : "decision";
+  // 届かなかった経路（G5）には vet402 の判定が無い。そこで拒否したなら、拒んだのは手元の規則である。
+  const evidenceVerdictSource: PayDecisionRecord["verdict_source"] =
+    uncatalogued ? "payee_score" : unreachable ? "local_policy" : "decision";
 
   // --- 3.5 宣言された証拠源を**すべて**読む。judgement の前に読むのは意図的で、
   // 「拒否したときにも、もう一方の源が何を知っているかは残る」ようにするため——
@@ -1010,6 +1167,10 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   // 床を当てたあとに `policy_override` を組む——免除だけしても床で落ちれば「通した規則」は
   // 存在しないので、そのときは何も書かない。
   let waived: PayPolicyOverride["waived"] | null = null;
+  // G8: 届かなかったことを免除した。免除の内訳は決定行に必ず残る（通したときの `policy_override.waived`）。
+  if (unreachable) {
+    waived = { source: "vet402_unreachable", recommendation: "unreachable", score: null, reason_codes: [] };
+  }
 
   if (decision) {
     // A2: degraded は「測れなかった」。fail-closed のゲートにとっては読めなかったのと同じ。
@@ -1023,6 +1184,12 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
     // `=== true` を素通りして払っていた）は `scoreQualityDefect` が "degraded" として持つ。
     // 理由コードは変えない——呼び手にとっては同じ「証拠が読めなかった」である。
     if (scoreQualityDefect(decision) !== null) {
+      return refuse([...serverReasons, "evidence_unavailable"], "decision", decision);
+    }
+    // G5b ④（名前経路だけ）: 200 で読めても、判定語が ALLOW・WARN・BLOCK のどれでもなければ判定になっていない。
+    // 免除（`requireVet402Allow: false`）の下で「知らない語」を WARN と同じに読んで払わない。
+    // **名前を使わない呼び手の挙動は変えない**（既定経路は1バイトも変えない・B6 の条件）。
+    if (ensGate !== null && !KNOWN_VERDICTS.has(String(decision.recommendation ?? "").trim().toUpperCase())) {
       return refuse([...serverReasons, "evidence_unavailable"], "decision", decision);
     }
     // A1: ALLOW 以外。理由はサーバの reason_codes をそのまま通す（我々の語で上書きしない）。
@@ -1069,7 +1236,7 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   // --- 3.6 呼び手が名指しした床を当てる。**カタログ外（decision が null）でも当てる**——
   // ここで無視すると、この機能がいちばん要る場所（一度も見たことのない売り手）で
   // 効かないことになる（C11c）。
-  const floors = evaluateEvidencePolicy(input.policy?.evidence, decision, subgraph, chain);
+  const floors = evaluateEvidencePolicy(input.policy?.evidence, decision, subgraph, chain, ens);
   if (floors.shortfall) {
     return refuse([...pathReasons, ...serverReasons, ...floors.shortfall], evidenceVerdictSource, decision);
   }
@@ -1094,7 +1261,16 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   }
   if (!accept) {
     // 402 を読めない＝いくら誰に払うのかが分からない。判定と同じく fail-closed。
-    return refuse([...pathReasons, "evidence_unavailable"], uncatalogued ? "payee_score" : "decision", decision);
+    return refuse([...pathReasons, "evidence_unavailable"], evidenceVerdictSource, decision);
+  }
+
+  // #10（Tokyo B6）: 売り手が名前に載せた約束と、実際に返した 402 を突き合わせる。**具体の語を消さず**、
+  // `ens_offer_mismatch` を先頭側に足す（payTo・額・チェーンと資産のどれが約束と違ったかが残る）。署名の前。
+  if (ensGate !== null && offer !== null) {
+    const offerDiff = ensGate.mod.compareOfferToAccept(offer, accept);
+    if (offerDiff.length > 0) {
+      return refuse([...pathReasons, "ens_offer_mismatch", ...selectionReasons, ...offerDiff], evidenceVerdictSource, decision, null, accept);
+    }
   }
 
   if (rail === "svm") {
@@ -1110,18 +1286,18 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   }
   // A4: 照合は payTo で行う。402 の resource.url は内部ホスト名を返すことがある（§3）。
   if (!sameAddress(accept.payTo, payeeAddr)) {
-    return refuse([...pathReasons, ...selectionReasons, "payee_mismatch"], uncatalogued ? "payee_score" : "decision", decision, null, accept);
+    return refuse([...pathReasons, ...selectionReasons, "payee_mismatch"], evidenceVerdictSource, decision, null, accept);
   }
   const moneyGate = evaluateMoneyGate(accept, maxPerTxUsd, rail, x402Version, profile);
   if (moneyGate) {
-    return refuse([...pathReasons, ...selectionReasons, ...moneyGate], uncatalogued ? "payee_score" : "decision", decision, null, accept);
+    return refuse([...pathReasons, ...selectionReasons, ...moneyGate], evidenceVerdictSource, decision, null, accept);
   }
   // A3（2026-09-07 監査）: 402 の額を**呼び手の名乗り**（amountUsd）とも照合する。上限は「これ以上は
   // 絶対に払わない」、名乗りは「この買い物はこの額のはず」で、別の関門。2026-09-07 まで後者が無く、
   // amountUsd 0.01 の呼び手に $1 の 402 を（上限 $1 以内だからと）払っていた。単位は USDC 6 桁の整数で
   // 比べる（浮動小数で 1 単位の差を丸めない）。amount は上で 10 進整数と確かめてある。
   if (BigInt(accept.amount) > BigInt(Math.round(input.amountUsd * 10 ** USDC_DECIMALS))) {
-    return refuse([...pathReasons, ...selectionReasons, "price_above_declared"], uncatalogued ? "payee_score" : "decision", decision, null, accept);
+    return refuse([...pathReasons, ...selectionReasons, "price_above_declared"], evidenceVerdictSource, decision, null, accept);
   }
 
   // --- 3'. カタログ外なら、ここまでで分かった payTo で受取人スコアを引く（I23）---
@@ -1178,6 +1354,24 @@ async function decideAndPay(input: DecideInput): Promise<PayOrRefuseResult> {
   // 通したのが vet402 の判定なのか、呼び手の規則なのか。**審査員が読むのはここ**（§3.2）。
   const verdictSource: PayDecisionRecord["verdict_source"] =
     policyOverride ? "caller_policy" : uncatalogued ? "payee_score" : "decision";
+
+  // #12（Tokyo B6・G10）: **署名の直前に、名前の約束と証明をもう一度読む。** 段 2.5 から 402 を読むまでの間に
+  // 約束が書き換わっていれば（読みと署名の間の差し替え）、ここで止める。`x402-pay.js` はまだ評価されていない。
+  // vet402 に届かなかった経路（G5）でも同じく読み直す。
+  if (ensGate !== null && ens !== null) {
+    const again = await ensGate.mod.checkEnsOffer({
+      name: ensGate.name, resource: input.resource, method, profile, clients: ensGate.clients, policy: ensGate.policy,
+    });
+    evidence.push(ensEvidenceRow(again));
+    ensChecks.push(ensCheckSummary(again, "recheck"));
+    if (!again.ok) {
+      return refuse([...pathReasons, ...ensRefusalReasons(again)], "local_policy", decision, payeeScore, accept);
+    }
+    // 証明は有効でも、1回目と別の約束なら、402 と照合したのは今の約束ではない。
+    if (again.offerRaw !== ens.offerRaw) {
+      return refuse([...pathReasons, "ens_offer_mismatch"], "local_policy", decision, payeeScore, accept);
+    }
+  }
 
   if (svm !== null) {
     // Solana（SVM exact）。**支払い実装と @solana/web3.js はここで初めて評価される**（第3層・EVM と同じ形）。
@@ -1386,6 +1580,112 @@ function assertSvmPayer(input: DecideInput): SvmPayOptions {
   return svm as SvmPayOptions;
 }
 
+/** 段 2.5 が読む Sepolia の chainId（`ens-read.ts` の `ENS_SEPOLIA_CHAIN_ID` と同じ値。あちらは viem を読むので写す）。 */
+const ENS_CHAIN_ID = 11155111;
+
+/**
+ * 段 2.5 の設定を**通信の前に**確かめ、段 2.5 のモジュールを読み込む（Tokyo B6・§3.3.2 #6・#7）。
+ * `payeeName` を渡した呼び手からしか呼ばれない——viem と ENS の読み手は、ここで初めて評価される。
+ * throw する語: `invalid_ens_config`（`ens` が無い・RPC が2系統でない・viem が無い）／`invalid_payee_name`
+ * （ENSIP-15 で正規化できない・ドットを含まない）／`invalid_ens_chain`（RPC の chain が Sepolia でない）／
+ * `invalid_attestation_policy`（`assertEnsAttestationPolicy`）。RPC には1本も出ない。
+ */
+async function prepareEnsGate(ens: unknown, raw: unknown): Promise<EnsGate> {
+  if (typeof ens !== "object" || ens === null) {
+    throw new Error(
+      "invalid_ens_config: payeeName needs ens: { clients: { primary, secondary }, policy } — two Sepolia RPCs and the attesters you trust.",
+    );
+  }
+  const { clients, policy } = ens as { clients?: unknown; policy?: unknown };
+  const isRpc = (c: unknown): boolean =>
+    typeof c === "object" &&
+    c !== null &&
+    ["readContract", "getBlock", "getBlockNumber", "getChainId"].every(
+      (m) => typeof (c as Record<string, unknown>)[m] === "function",
+    );
+  const pair = (typeof clients === "object" && clients !== null ? clients : {}) as { primary?: unknown; secondary?: unknown };
+  if (!isRpc(pair.primary) || !isRpc(pair.secondary) || pair.primary === pair.secondary) {
+    throw new Error(
+      "invalid_ens_config: ens.clients needs two independent Sepolia RPCs, primary and secondary " +
+        "(each with readContract, getBlock, getBlockNumber and getChainId — a viem PublicClient fits). The same RPC twice is one source, not two.",
+    );
+  }
+  let mod: typeof import("./ens-attestation.js");
+  let read: typeof import("./ens-read.js");
+  try {
+    [mod, read] = await Promise.all([import("./ens-attestation.js"), import("./ens-read.js")]);
+  } catch (error) {
+    throw new Error(
+      `invalid_ens_config: paying by name needs the optional peer dependency viem (${String(error instanceof Error ? error.message : error).slice(0, 200)})`,
+    );
+  }
+  let name: string;
+  try {
+    if (typeof raw !== "string") throw new Error(`not a string (${typeof raw})`);
+    name = read.normalizeName(raw);
+  } catch (error) {
+    throw new Error(
+      `invalid_payee_name: payeeName must be an ENS name that normalizes under ENSIP-15, got ${JSON.stringify(raw)} ` +
+        `(${String(error instanceof Error ? error.message : error).slice(0, 200)})`,
+    );
+  }
+  if (!name.includes(".")) {
+    throw new Error(`invalid_payee_name: payeeName must be a full ENS name such as "seller.eth", got ${JSON.stringify(raw)}`);
+  }
+  for (const [side, c] of [["primary", pair.primary], ["secondary", pair.secondary]] as const) {
+    // viem の client は `chain` を持つ（持たない client は段 2.5 の最初の読み（getChainId）が止める）。
+    const chain = (c as { chain?: { id?: unknown } | null }).chain;
+    if (chain !== undefined && chain !== null && Number(chain.id) !== ENS_CHAIN_ID) {
+      throw new Error(`invalid_ens_chain: ens.clients.${side} is on chain ${String(chain.id)}; the ENSIP-29 gate reads Sepolia (${ENS_CHAIN_ID})`);
+    }
+  }
+  mod.assertEnsAttestationPolicy(policy);
+  return { name, clients: pair as EnsReadClients, policy: policy as EnsAttestationPolicy, mod };
+}
+
+/** 段 2.5 の拒否語。ENS が読めなかったときは、既存の呼び手が読む `evidence_unavailable` を併記する（T15・T48）。 */
+function ensRefusalReasons(check: EnsOfferCheck): PayRefuseReason[] {
+  const words: PayRefuseReason[] = check.reason_codes.length > 0 ? [...check.reason_codes] : ["ens_evidence_unavailable"];
+  if (words.includes("ens_evidence_unavailable")) words.push("evidence_unavailable");
+  return words;
+}
+
+/** 段 2.5 で読んだことを証拠の1行にする（どの名前の約束を、Sepolia のどのブロックで読んだか）。 */
+function ensEvidenceRow(check: EnsOfferCheck): PayEvidenceRow {
+  return {
+    level: "L0",
+    source: "ens",
+    url: `ens:eip155:${check.chainId}/${check.name}#x402-offer`,
+    block: { number: Number(check.block.number), timestamp: Number(check.block.timestamp) },
+    queriedAt: new Date().toISOString(),
+  };
+}
+
+/** 段 2.5 の結果を決定行の `ens` の1件にする（payload のバイト列は落とす・`recovered` と `expected` は残す）。 */
+function ensCheckSummary(check: EnsOfferCheck, pass: PayEnsEvidence["pass"]): PayEnsEvidence {
+  return {
+    pass,
+    ok: check.ok,
+    name: check.name,
+    node: check.node,
+    chainId: check.chainId,
+    manager: check.manager,
+    reason_codes: [...check.reason_codes],
+    valid: check.attestations.filter((a) => a.valid).length,
+    attestations: check.attestations.map((a) => ({
+      attester: a.attester,
+      profile: a.profile,
+      t: a.t,
+      recovered: a.recovered,
+      expected: a.expected,
+      digest: a.digest,
+      valid: a.valid,
+      reason: a.reason,
+    })),
+    trace: check.trace,
+  };
+}
+
 function assertMaxPerTxUsd(maxPerTxUsd: unknown): void {
   if (maxPerTxUsd === undefined) return;
   if (typeof maxPerTxUsd === "number" && Number.isFinite(maxPerTxUsd) && maxPerTxUsd > 0) return;
@@ -1410,9 +1710,13 @@ function assertEvidencePolicy(policy: PayEvidencePolicy | undefined): void {
   assertFiniteFloor("minL1Deliveries", policy.minL1Deliveries);
   assertFiniteFloor("minSubgraphReceipts", policy.minSubgraphReceipts);
   assertFiniteFloor("minChainReceipts", policy.minChainReceipts);
+  assertFiniteFloor("minEnsAttestations", policy.minEnsAttestations);
   // 新しい床は整数に限る（件数の床。1.5 件は数えられない）。既存の2つの床の規則は変えない。
   if (policy.minChainReceipts !== undefined && !Number.isInteger(policy.minChainReceipts)) {
     throw new Error(`invalid_evidence_policy: evidence.minChainReceipts must be an integer ≥ 0, got ${String(policy.minChainReceipts)}`);
+  }
+  if (policy.minEnsAttestations !== undefined && !Number.isInteger(policy.minEnsAttestations)) {
+    throw new Error(`invalid_evidence_policy: evidence.minEnsAttestations must be an integer ≥ 0, got ${String(policy.minEnsAttestations)}`);
   }
   const fromBlock = policy.chainFromBlock;
   if (
@@ -1568,6 +1872,7 @@ function evaluateEvidencePolicy(
   decision: DecisionResult | null,
   subgraph: SubgraphReceipts | null,
   chain: { receipts: number } | null = null,
+  ens: EnsOfferCheck | null = null,
 ): { shortfall: PayRefuseReason[] | null; met: EvidenceFloorCheck[] } {
   const met: EvidenceFloorCheck[] = [];
   if (!policy) return { shortfall: null, met };
@@ -1614,6 +1919,21 @@ function evaluateEvidencePolicy(
       observed: chain.receipts,
     });
   }
+  // G2〜G4（Tokyo B6）。`source` に関係なく当てる。数えるのは段 2.5 で**有効だった**証明だけ。
+  // null は「段 2.5 が走っていない」で、G1 が通信の前に止めるので到達しないが、黙って 0 件にはしない。
+  if (policy.minEnsAttestations !== undefined) {
+    if (!ens) return { shortfall: ["evidence_unavailable"], met };
+    const valid = ens.attestations.filter((a) => a.valid).length;
+    if (valid < policy.minEnsAttestations) {
+      return { shortfall: ["insufficient_ens_attestations"], met };
+    }
+    met.push({
+      floor: "minEnsAttestations",
+      source: "ens",
+      required: policy.minEnsAttestations,
+      observed: valid,
+    });
+  }
   return { shortfall: null, met };
 }
 
@@ -1636,8 +1956,16 @@ function evaluateEvidencePolicy(
 function assertOverridePolicy(policy: PayPolicy | undefined): void {
   if (!policy || policy.requireVet402Allow !== false) return;
   const evidence = policy.evidence;
-  const floors = [evidence?.minL1Deliveries, evidence?.minSubgraphReceipts, evidence?.minChainReceipts];
+  const floors = [evidence?.minL1Deliveries, evidence?.minSubgraphReceipts, evidence?.minChainReceipts, evidence?.minEnsAttestations];
   if (floors.some((floor) => typeof floor === "number" && floor > 0)) return;
+  // 名前経路の呼び手には ENS の床も名指しする。名前を使わない呼び手の文言は今までと同じ（1バイトも変えない）。
+  if (evidence?.minEnsAttestations !== undefined) {
+    throw new Error(
+      "invalid_policy: requireVet402Allow: false waives vet402's verdict, so it needs at least one " +
+        "evidence floor above zero (policy.evidence.minEnsAttestations, minChainReceipts, minL1Deliveries, or minSubgraphReceipts). " +
+        "Without one, nothing would judge this payment — a floor of 0 judges nothing either.",
+    );
+  }
   throw new Error(
     "invalid_policy: requireVet402Allow: false waives vet402's verdict, so it needs at least one " +
       "evidence floor above zero (policy.evidence.minL1Deliveries, minSubgraphReceipts, or minChainReceipts on base-sepolia). " +
