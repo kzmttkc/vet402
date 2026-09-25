@@ -1,7 +1,9 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  bigserial,
   boolean,
+  check,
   date,
   index,
   integer,
@@ -1292,3 +1294,33 @@ export const decisionIdempotency = pgTable(
   },
   (t) => [index("decision_idempotency_expires_idx").on(t.expiresAt)],
 );
+
+/**
+ * tokyo_mutations / tokyo_mutation_log — ETHGlobal Tokyo 2026 の審査員ボタン（/tokyo・PLAN_v4.3 §3.7.1）。
+ * src/app/api/tokyo/_lib/store.ts が1文ずつ読み書きする。本番へは会期中に DDL を1回だけ流す
+ * （drizzle-kit push では流さない）。押した人は記録しない（IP も鍵も入れない）。
+ *
+ * tokyo_mutations は1行だけ（id = 1）。current_value は seller-d.eth の amount（'10000' / '10001'）、
+ * generation は「戻す権利」を取るたび・変えるたびに進み、戻した結果が後から来た変更を上書きしないための番号。
+ * reverting_until は戻す権利の期限（二重に戻す tx を打たない）。
+ */
+export const tokyoMutations = pgTable(
+  "tokyo_mutations",
+  {
+    id: integer("id").primaryKey().default(1),
+    currentValue: text("current_value").notNull(),
+    generation: bigint("generation", { mode: "number" }).notNull().default(0),
+    mutatedAt: timestamp("mutated_at", { withTimezone: true }),
+    revertingUntil: timestamp("reverting_until", { withTimezone: true }),
+    lastTx: text("last_tx"),
+  },
+  (t) => [check("tokyo_mutations_singleton", sql`${t.id} = 1`)],
+);
+
+export const tokyoMutationLog = pgTable("tokyo_mutation_log", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  fromValue: text("from_value").notNull(),
+  toValue: text("to_value").notNull(),
+  tx: text("tx"),
+});
