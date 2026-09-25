@@ -74,8 +74,8 @@ const MUTATIONS = [
     what: "Solana の payTo 照合を大文字小文字を畳んで比べる",
     rule: "base58 は大小で別の鍵 → payee_mismatch（S3）",
     file: PAY,
-    find: "    if (accept.payTo !== input.payee) {",
-    replace: "    if (/* MUTANT */ accept.payTo.toLowerCase() !== input.payee.toLowerCase()) {",
+    find: "    if (accept.payTo !== payeeAddr) {",
+    replace: "    if (/* MUTANT */ accept.payTo.toLowerCase() !== payeeAddr.toLowerCase()) {",
   },
   {
     id: "V07",
