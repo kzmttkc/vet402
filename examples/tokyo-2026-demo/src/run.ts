@@ -129,6 +129,8 @@ async function verify(name: string, flags: Record<string, string | true>): Promi
     if (r.ok) console.log(`VALID  ${okSteps}/7 steps ok  payTo=${r.offer?.payTo} amount=${r.offer?.amount}  (${ms} ms)`);
     else console.log(`REFUSE ${r.reason_codes.join(", ")}  ${okSteps}/7 steps ok  (${ms} ms)`);
   }
+  // An RPC outage is not a verdict about the seller: exit 3 so a script never reads it as a clean run.
+  if (r.reason_codes.includes("ens_evidence_unavailable")) return 3;
   return !r.ok && flags.strict ? 2 : 0;
 }
 
