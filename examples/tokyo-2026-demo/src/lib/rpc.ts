@@ -33,12 +33,20 @@ export const hostOf = (u: string): string => { try { return new URL(u).host; } c
 
 export type SimCall = { from: string; to: string; data?: Hex; value?: bigint };
 export type SimBlock = { calls: SimCall[]; time?: number };
+/** Per-call gas cap in simulations only (the largest K1 row uses ~0.92M). Never used for sending.
+ *  Kept small because public RPCs cap the total gas of one eth_simulateV1 request (~50M on sentio):
+ *  32 rows x 1.4M = 44.8M stays under it. */
+export const SIM_CALL_GAS = 1_400_000;
+
 export type SimResult = { status: 'OK' | 'REVERT'; gas: number; logs: string[]; error?: string; returnData: Hex };
 
 export async function simulateBlocks(blocks: SimBlock[], blockNumber: bigint, urls: string[]): Promise<{ rpc: string; blocks: SimResult[][] }> {
+  // Each call gets its own gas cap. Without it, a row that fails by burning all of its gas
+  // (e.g. a CREATE2 re-deploy of a proxy that is already on chain) eats the whole block, and
+  // every later call in the simulation dies with "intrinsic gas too low" (seen 2026-09-25 22:1x).
   const blockStateCalls = blocks.map(b => ({
     ...(b.time === undefined ? {} : { blockOverrides: { time: toHex(b.time) } }),
-    calls: b.calls.map(c => ({ from: c.from, to: c.to, ...(c.data ? { data: c.data } : {}), ...(c.value ? { value: toHex(c.value) } : {}) })),
+    calls: b.calls.map(c => ({ from: c.from, to: c.to, gas: toHex(SIM_CALL_GAS), ...(c.data ? { data: c.data } : {}), ...(c.value ? { value: toHex(c.value) } : {}) })),
   }));
   const errs: string[] = [];
   for (const u of urls) {
