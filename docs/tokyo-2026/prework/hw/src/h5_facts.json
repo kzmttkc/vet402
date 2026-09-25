@@ -1,0 +1,2113 @@
+[
+ {
+  "key": "x402-factory.com/v1/ping",
+  "settled": 4,
+  "match": 4,
+  "h12": [
+   "2026-08-23",
+   "2026-08-30",
+   "2026-09-10"
+  ],
+  "days": [
+   "2026-08-23",
+   "2026-08-30",
+   "2026-09-10",
+   "2026-09-16"
+  ],
+  "amt": 1000,
+  "last": "2026-09-16T18:01:45Z",
+  "lasttx": "0x440cd4b383e322ad247fa9a1fa731abaa7068d6effd63f1bc6ce07038b3a0c3a",
+  "lastl2": "match",
+  "lastamt": 1000,
+  "method": "GET",
+  "resource_id": "430f6841f85d6c535c65bb0c6abe0723264b33eaee566d5188e2cbedfe59169f",
+  "endpoint_id": "4d1d47d257d7fbf503cc04f765e66b21dfd398c25caa0877093757b044abcde7",
+  "observatory_id": "8c57d075-c4c7-4a74-8dc9-4d5f8183da76",
+  "canonical_url": "https://x402-factory.com/v1/movers",
+  "l2_status": "undeclared",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0xcc42ed39a06b6cf3f484307ef76b88bf56fb305f"
+  ],
+  "p50": null
+ },
+ {
+  "key": "router.mudko.com/api/x402/route",
+  "settled": 4,
+  "match": 4,
+  "h12": [
+   "2026-08-21",
+   "2026-08-27",
+   "2026-09-16"
+  ],
+  "days": [
+   "2026-08-21",
+   "2026-08-27",
+   "2026-09-10",
+   "2026-09-16"
+  ],
+  "amt": 5000,
+  "last": "2026-09-16T12:09:38Z",
+  "lasttx": "0xc1ef3bfeb480e89f435877e1f36849ee56414c88d904a86c09e1a6610418a03a",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "c7f72b184870fca52ccb34ac6b64d13bbac259d9ea46adf8c003cdfa2a927dac",
+  "endpoint_id": "ce4d3b72a61175b1869459006ee08b7a9a4c1fa7b6446dad3d6ba89829e1aa53",
+  "observatory_id": "7d55e5b0-5501-4c2e-abb4-ad093c997984",
+  "canonical_url": "https://router.mudko.com/api/x402/route",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 11,
+  "settlement_real": 13,
+  "wash_dominated": false,
+  "avail7": 0.9090909090909091,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x53598173ce7c26025bab0520d9e9d0c28fbcf7de"
+  ],
+  "p50": 1120
+ },
+ {
+  "key": "perpsignals.use.x402atlas.com/pairs",
+  "settled": 4,
+  "match": 4,
+  "h12": [
+   "2026-08-21",
+   "2026-08-28",
+   "2026-09-16"
+  ],
+  "days": [
+   "2026-08-21",
+   "2026-08-28",
+   "2026-09-10",
+   "2026-09-16"
+  ],
+  "amt": 5000,
+  "last": "2026-09-16T12:09:22Z",
+  "lasttx": "0x587209f2454ef706fc6b1e763257fffe86c3acf6037453369e0612417e84187e",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "030ecd3bb72cccdcff082ec21af52be6c2ae83ce0ec52a624cf6257e3cfe1950",
+  "endpoint_id": "2f73caceec095b9711b6cc5b1c8c7088443ce4cb8b6378b22fae84287f37e2af",
+  "observatory_id": "32cb3f54-8c69-4f22-81ce-b4cd58f48c89",
+  "canonical_url": "https://perpsignals.use.x402atlas.com/funding-rates",
+  "l2_status": "undeclared",
+  "l0": "pass",
+  "payers": 14,
+  "settlement_real": 20,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x82096bf08d81c14c678e915a04fcf150958ee571"
+  ],
+  "p50": null
+ },
+ {
+  "key": "headers.use.x402atlas.com",
+  "settled": 4,
+  "match": 4,
+  "h12": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-16"
+  ],
+  "days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-10",
+   "2026-09-16"
+  ],
+  "amt": 10000,
+  "last": "2026-09-16T12:09:34Z",
+  "lasttx": "0xfb91a55f40fd2cec2efac8fbfa60718f43f6ec446003545ea63da630bf4ef587",
+  "lastl2": "match",
+  "lastamt": 10000,
+  "method": "GET",
+  "resource_id": "bc6fa9199bafec35dbec3bcb7f4ff0ba6ecd2a4b102e09a9e65d19e519580164",
+  "endpoint_id": "fe52e101da6553dfa7614afa7d8a523821271e9f871ac603ad8af398a72bf79b",
+  "observatory_id": "68d1d5f6-3199-4086-9f59-40ea17867773",
+  "canonical_url": "https://headers.use.x402atlas.com",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 11,
+  "settlement_real": 17,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x7f8043c400799643bcb62b41b84b297a8ecb7b9c"
+  ],
+  "p50": 877
+ },
+ {
+  "key": "regimeshift.xyz/api/v1/rate/sofr/usd",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "amt": 1000,
+  "last": "2026-09-09T12:08:21Z",
+  "lasttx": "0x377aa0bd09020a12093657f4cb763c1da06dab4a2597151c2d0fc49aa512f19b",
+  "lastl2": "match",
+  "lastamt": 1000,
+  "method": "GET",
+  "resource_id": "055ba024c72d82094e936c0b209ede6a5707a149b26fe966d266b5750087af52",
+  "endpoint_id": "7c8cbce423b650e339d689a6f5c5b74e5a3bf1f7b9dfb70582fe097e194d1f20",
+  "observatory_id": "ea90f3a3-a25a-4011-b44d-dab393e78810",
+  "canonical_url": "https://regimeshift.xyz/api/v1/rate/sofr/usd",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 13,
+  "settlement_real": 22,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x82b17d0bb4de9ae6c3491257b60e8245e70acd7b"
+  ],
+  "p50": 10300
+ },
+ {
+  "key": "gateway.spraay.app/api/v1/prices",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-10"
+  ],
+  "days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-10"
+  ],
+  "amt": 5000,
+  "last": "2026-09-10T12:09:20Z",
+  "lasttx": "0xbdde401d6f9dbafd5b76c1ffcbc583f921f646654834b8f67791f7572342d628",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "37a1d93efba84a6c3ac660486583f986e69132cfc9f46b16bdddce50de25fd7e",
+  "endpoint_id": "fc584384109c0d103d7f2f4020e875f705a69209b5e346cc34c3654612376f53",
+  "observatory_id": "6716a432-8801-469f-b1f1-52877616b962",
+  "canonical_url": "https://gateway.spraay.app/api/v1/models",
+  "l2_status": "mismatch",
+  "l0": "pass",
+  "payers": 2,
+  "settlement_real": 11,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0xad62f03c7514bb8c51f1ea70c2b75c37404695c8"
+  ],
+  "p50": 1256
+ },
+ {
+  "key": "coingecko.use.x402atlas.com/ohlc",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-20",
+   "2026-08-28",
+   "2026-09-10"
+  ],
+  "days": [
+   "2026-08-20",
+   "2026-08-28",
+   "2026-09-10"
+  ],
+  "amt": 5000,
+  "last": "2026-09-10T12:08:17Z",
+  "lasttx": "0x1c6ac1a6dec5a92219baf9964afa6010ac28c406434b97572c0212bd8600e494",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "8cf168eaeff279335a564b751c9f44dfd8fdf9f69927f13ea487723b5c4fc652",
+  "endpoint_id": "29e2a794e10989b685f3c4441d980a6b68ad81b67b10bc85dade05b0fa307c32",
+  "observatory_id": "04c1ba47-0174-4b03-9c03-4f0787c98902",
+  "canonical_url": "https://coingecko.use.x402atlas.com/coin",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x32793f68dc2ea26bbc75eb900da120069e8b6d02"
+  ],
+  "p50": 774
+ },
+ {
+  "key": "agent-arcade.use.x402atlas.com/trivia/daily",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-21",
+   "2026-08-29",
+   "2026-09-11"
+  ],
+  "days": [
+   "2026-08-21",
+   "2026-08-29",
+   "2026-09-11"
+  ],
+  "amt": 5000,
+  "last": "2026-09-11T12:09:36Z",
+  "lasttx": "0x9c4d342ebed7344095024f07fd3848c5ec4935ce49a8019eec22ac86f0b18d97",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "b0df45257c220b260c357abb1433e87bcbaed078affec6d073b5acfedebb7934",
+  "endpoint_id": "7af60b2405eb67ffa36ff74b295321523d9fddbce8e2c44597e51460c5c819ba",
+  "observatory_id": "72f48d59-d90f-4edd-8d38-6e6d13cf6cfe",
+  "canonical_url": "https://agent-arcade.use.x402atlas.com/trivia/daily",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x8c128f1ee62bb5e47867cfbae2ad89be325df1b2"
+  ],
+  "p50": 900
+ },
+ {
+  "key": "websearch.use.x402atlas.com/extract",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "amt": 10000,
+  "last": "2026-09-09T12:09:22Z",
+  "lasttx": "0x566101e81ef8a606e902e7ea85f70dfd075b56c17fb36123cee2d2d3235e9a3d",
+  "lastl2": "match",
+  "lastamt": 10000,
+  "method": "GET",
+  "resource_id": "52deb3edf5e5bca94a2d16e3adf4585d3bffbbd8423b2ae3f6a4aa2af662e680",
+  "endpoint_id": "4695eef488ca4768c6653c80b9accab50c045675b4181b3086fbd056f8a10cae",
+  "observatory_id": "90740720-6a86-4cda-a06d-9c4bed09cfde",
+  "canonical_url": "https://websearch.use.x402atlas.com/search",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 29,
+  "settlement_real": 341,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0xf752eeb75d3bea24aa867ad93bfd8ef5a2f431b9"
+  ],
+  "p50": 856
+ },
+ {
+  "key": "hyperliquid-accounts.use.x402atlas.com/spot",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "amt": 10000,
+  "last": "2026-09-09T12:09:04Z",
+  "lasttx": "0x14ff9071112b25691d7ae1dae612f974b02bed04e7eda52845a1af694c4e5859",
+  "lastl2": "match",
+  "lastamt": 10000,
+  "method": "GET",
+  "resource_id": "15d6abd92369b320e856cce32f6657370ee6e3e8fc7d8f3865338a2570ade983",
+  "endpoint_id": "45f3e92f22970f29c8baef56e4fdfc4c4f8bbff5d93b48f5f18ce9ca7b014230",
+  "observatory_id": "550f0e1b-4428-495b-ac17-f67c82bd1ba5",
+  "canonical_url": "https://hyperliquid-accounts.use.x402atlas.com/portfolio",
+  "l2_status": "undeclared",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0xe79aa9d55170f7e1ac420266ec93a6c28c436de8"
+  ],
+  "p50": null
+ },
+ {
+  "key": "websearch.use.x402atlas.com/search",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "amt": 10000,
+  "last": "2026-09-09T12:08:37Z",
+  "lasttx": "0x37c58f5408db2dcc7d52802fc56173aa87e54126af983ad64863c71e8567a507",
+  "lastl2": "match",
+  "lastamt": 10000,
+  "method": "GET",
+  "resource_id": "e37fa1988ecf70fef1dc87538456d5e2f0b28240738aa39f79257feffeb63c42",
+  "endpoint_id": "4695eef488ca4768c6653c80b9accab50c045675b4181b3086fbd056f8a10cae",
+  "observatory_id": "90740720-6a86-4cda-a06d-9c4bed09cfde",
+  "canonical_url": "https://websearch.use.x402atlas.com/search",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 29,
+  "settlement_real": 341,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0xf752eeb75d3bea24aa867ad93bfd8ef5a2f431b9"
+  ],
+  "p50": 856
+ },
+ {
+  "key": "the-stall.intuitek.ai/cap/earnings-calendar",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-25",
+   "2026-09-01",
+   "2026-09-09"
+  ],
+  "days": [
+   "2026-08-25",
+   "2026-09-01",
+   "2026-09-09"
+  ],
+  "amt": 10000,
+  "last": "2026-09-09T12:08:33Z",
+  "lasttx": "0x70e228da36fcdfae5ddeede9930b8324a7d35f8b2001f79a53c3ea68491efb33",
+  "lastl2": "match",
+  "lastamt": 10000,
+  "method": "GET",
+  "resource_id": "1759840741d0395f1858149b19cc8bfc627542166ee3ccd86025378da93fdf54",
+  "endpoint_id": "6690acae428c172187ba4c20d751ea0d3eadba30c509b39db292c8fcdd70b923",
+  "observatory_id": "4f9253a4-0e21-436f-9f73-665e9d9d6e58",
+  "canonical_url": "https://the-stall.intuitek.ai/cap/github-repo-intel",
+  "l2_status": "undeclared",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x03d773c52b67993e60ecb3134b17436fe03b584c"
+  ],
+  "p50": null
+ },
+ {
+  "key": "api.aidress.ai/pay/agent_edgar_apitoll_cloud",
+  "settled": 3,
+  "match": 2,
+  "h12": [
+   "2026-09-02",
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "days": [
+   "2026-09-02",
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "amt": 3000,
+  "last": "2026-09-17T12:53:47Z",
+  "lasttx": "0x1cb45d4033494983f2bcafb4653fabc90fb40f5a3823447d4ac90dabadb46755",
+  "lastl2": "match",
+  "lastamt": 3000,
+  "method": "GET",
+  "resource_id": "c1d420a13eed5c0157b7fea78331778b1a4f3c88f87d0cb631c2e648f2fb8385",
+  "endpoint_id": "9b8233c4df53e001bf06c836b44f7a95b22606a1353d2ffa69dcbbf192a59800",
+  "observatory_id": "a8395b0d-3a81-40b4-8cf3-eb65b43919cc",
+  "canonical_url": "https://api.aidress.ai/pay/agent_tick_hugen_tokyo",
+  "l2_status": "undeclared",
+  "l0": "pass",
+  "payers": 14,
+  "settlement_real": 34,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x29322ea7ecb34aa6164cb2ddeb9ce650902e4f60"
+  ],
+  "p50": 2833
+ },
+ {
+  "key": "netintel.dev/gas/price",
+  "settled": 4,
+  "match": 4,
+  "h12": [
+   "2026-08-23",
+   "2026-08-30"
+  ],
+  "days": [
+   "2026-08-23",
+   "2026-08-30",
+   "2026-09-10",
+   "2026-09-16"
+  ],
+  "amt": 2000,
+  "last": "2026-09-16T18:02:11Z",
+  "lasttx": "0x302a272a1392b491048dd2589da985537ebc750bad5387e90b77bbf9e241c932",
+  "lastl2": "match",
+  "lastamt": 2000,
+  "method": "GET",
+  "resource_id": "ba618050c02908e1916eb98a0a3296791ff2f2e171aeb77e6592132d387bceaf",
+  "endpoint_id": "0dc2dfcfa13a732445bc6aa8f2d3506976ca1f6d75bf4ff313d9bbc3ab10c11b",
+  "observatory_id": "720b6d45-a2df-4911-b395-a278d995d7a3",
+  "canonical_url": "https://netintel.dev/gas/price",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0xdadc335482ad545296fd7b28518a251ffcbeb9df"
+  ],
+  "p50": 1531
+ },
+ {
+  "key": "wiki.use.x402atlas.com/summary",
+  "settled": 4,
+  "match": 4,
+  "h12": [
+   "2026-08-27",
+   "2026-09-16"
+  ],
+  "days": [
+   "2026-08-21",
+   "2026-08-27",
+   "2026-09-10",
+   "2026-09-16"
+  ],
+  "amt": 5000,
+  "last": "2026-09-16T12:09:39Z",
+  "lasttx": "0xe7d7646b7ee479e0b70826fcad6d0b3567422ad31bbf6d974f7419ac57fbf5da",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "912ff23b862456713190db1915eaa53808035bf84093a2d08203aeba8fa05e9d",
+  "endpoint_id": "c124be00425f079f9e8ad7d2d1f1bbf5334adf432d48a11831da0c4325afb4e5",
+  "observatory_id": "7d3d14f1-5d2c-4bf2-995d-aabd2a53c619",
+  "canonical_url": "https://wiki.use.x402atlas.com/summary",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 10,
+  "settlement_real": 13,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x6a706d6fcf192c15fb592d7502258ed41425dd36"
+  ],
+  "p50": 865
+ },
+ {
+  "key": "coingecko.use.x402atlas.com/trending",
+  "settled": 4,
+  "match": 4,
+  "h12": [
+   "2026-08-23",
+   "2026-08-30"
+  ],
+  "days": [
+   "2026-08-23",
+   "2026-08-30",
+   "2026-09-10",
+   "2026-09-16"
+  ],
+  "amt": 5000,
+  "last": "2026-09-16T18:01:16Z",
+  "lasttx": "0x3c68edd0ff4309ff25ddd3ea6d713f587413fcbab1176d03dd102abf2e621505",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "16779f5e05707068b0a3f6e870b5e34b6133645adf25747f3d0ae0744e15bafe",
+  "endpoint_id": "29e2a794e10989b685f3c4441d980a6b68ad81b67b10bc85dade05b0fa307c32",
+  "observatory_id": "04c1ba47-0174-4b03-9c03-4f0787c98902",
+  "canonical_url": "https://coingecko.use.x402atlas.com/coin",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x32793f68dc2ea26bbc75eb900da120069e8b6d02"
+  ],
+  "p50": 774
+ },
+ {
+  "key": "holidays.use.x402atlas.com/check",
+  "settled": 4,
+  "match": 4,
+  "h12": [
+   "2026-08-31",
+   "2026-09-16"
+  ],
+  "days": [
+   "2026-08-24",
+   "2026-08-31",
+   "2026-09-10",
+   "2026-09-16"
+  ],
+  "amt": 5000,
+  "last": "2026-09-16T12:09:37Z",
+  "lasttx": "0xb43af744ab1cfbe6fd199b4e037ced381f36a8c7331ff87c23909bc73670fa0c",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "ea72915c8801e7341aa48acc8e4d601b2ba0328e30b36cf4932ed3d21c0d3c0d",
+  "endpoint_id": "dc3266cc9ae6ef656db364f81cf2ab408511e75efdff5c535a1f1476163f7a0a",
+  "observatory_id": "fe6196d9-52d3-4afc-a38d-7148d2f8a963",
+  "canonical_url": "https://holidays.use.x402atlas.com/list",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 6,
+  "settlement_real": 59,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x8c128f1ee62bb5e47867cfbae2ad89be325df1b2"
+  ],
+  "p50": 1199
+ },
+ {
+  "key": "space-weather.use.x402atlas.com/now",
+  "settled": 4,
+  "match": 4,
+  "h12": [
+   "2026-08-31",
+   "2026-09-16"
+  ],
+  "days": [
+   "2026-08-24",
+   "2026-08-31",
+   "2026-09-10",
+   "2026-09-16"
+  ],
+  "amt": 5000,
+  "last": "2026-09-16T12:09:26Z",
+  "lasttx": "0x0c537ab38a3b99bd2dee8620e9f50e6a583dcbab86d837a987241a4bebb24499",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "1599bfd5cff10cb735ed73ddd74838f3d34cf3c49e0cae68c1fb0cb0aa9d787e",
+  "endpoint_id": "9487d2870ecbbc1cb93febe7133bb7498b60f3065603da9b4c8e7e5ff92e043c",
+  "observatory_id": "d5e98dd6-df39-4770-a86d-26f6457307af",
+  "canonical_url": "https://space-weather.use.x402atlas.com/forecast",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x8c128f1ee62bb5e47867cfbae2ad89be325df1b2"
+  ],
+  "p50": 805
+ },
+ {
+  "key": "unwrap.use.x402atlas.com",
+  "settled": 4,
+  "match": 4,
+  "h12": [
+   "2026-08-28",
+   "2026-09-10"
+  ],
+  "days": [
+   "2026-08-21",
+   "2026-08-28",
+   "2026-09-10",
+   "2026-09-16"
+  ],
+  "amt": 9000,
+  "last": "2026-09-16T18:00:19Z",
+  "lasttx": "0x5319171ba3e3b99d39624ab04db20efe09fbfde5a7272ff8bd6e7a3eee3a53d1",
+  "lastl2": "match",
+  "lastamt": 9000,
+  "method": "GET",
+  "resource_id": "755578e52aa2a09c0327f342d59202807d12461f9a3efc0de821651e74af264b",
+  "endpoint_id": "a69f3a974cca51cb528d007b965c13f503378ab1dd04f792d39d36a50c27ea97",
+  "observatory_id": "a9027c54-17cd-4cb8-9190-6226f0355ef3",
+  "canonical_url": "https://unwrap.use.x402atlas.com",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 12,
+  "settlement_real": 14,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x492ec81ecf395fbea2f19fece203ee14d0544b71"
+  ],
+  "p50": 1933
+ },
+ {
+  "key": "regimeshift.xyz/api/v1/asset/btc/vrp",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-08"
+  ],
+  "amt": 1000,
+  "last": "2026-09-08T19:01:39Z",
+  "lasttx": "0x1fb1231b2b851df26d067ee05acf51902fc76c3d07142c742f34e4b52d2d9674",
+  "lastl2": "match",
+  "lastamt": 1000,
+  "method": "GET",
+  "resource_id": "198679a10170859967099a3dca8187bde32773f6874e74bb28f61af17b08de51",
+  "endpoint_id": "9948896f5233280940cdca4a7cacb3d0f4ff64da1db4d0b5350ca6e40d02ea2e",
+  "observatory_id": "e2cf4067-97b6-4116-a72b-ea86b1b18cc4",
+  "canonical_url": "https://regimeshift.xyz/api/v1/asset/btc/vrp",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 9,
+  "settlement_real": 88,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x82b17d0bb4de9ae6c3491257b60e8245e70acd7b"
+  ],
+  "p50": 1772
+ },
+ {
+  "key": "x402.tbs-digital.com/crypto/bundle",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-29",
+   "2026-09-10"
+  ],
+  "days": [
+   "2026-08-21",
+   "2026-08-29",
+   "2026-09-10"
+  ],
+  "amt": 1000,
+  "last": "2026-09-10T12:08:18Z",
+  "lasttx": "0x831ec0d73d91aad355f7fb9660245b36937acd5609f3c2f431580712522f6a44",
+  "lastl2": "match",
+  "lastamt": 1000,
+  "method": "GET",
+  "resource_id": "64776daf51996ad6c464c604fd60059d7e063cf86aecac7885d8c42701e5b2ae",
+  "endpoint_id": "05c6e66cdbc5bab82f2092d6244c0faf38cd0b3fe208aa0577102e4ad0601ca5",
+  "observatory_id": "0d86f1c9-0d97-4e47-ab2f-7e4686ce88cf",
+  "canonical_url": "https://x402.tbs-digital.com/crypto/bundle",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 9,
+  "settlement_real": 10,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0xd6fce15298fc9d60f867d9455d497177da9bfb0a"
+  ],
+  "p50": 2281
+ },
+ {
+  "key": "regimeshift.xyz/api/v1/risk/max-ltv",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-23",
+   "2026-08-30"
+  ],
+  "days": [
+   "2026-08-23",
+   "2026-08-30",
+   "2026-09-10"
+  ],
+  "amt": 1000,
+  "last": "2026-09-10T07:01:47Z",
+  "lasttx": "0x80533a0ae695d1b830f5348a65d1e2715172dfc484e443f6ee27856c5e3d1e66",
+  "lastl2": "match",
+  "lastamt": 1000,
+  "method": "GET",
+  "resource_id": "5cb2fe4d7c52921032e6d235925b6da7579c192dd48b19ea75f3a59784f1684f",
+  "endpoint_id": "b903b2df50840fce564d9b10cf133c18635cb2185cbb325b4f3c4cd8bf4501c7",
+  "observatory_id": "19e18901-fcda-4b2e-b69b-2b9549df72e8",
+  "canonical_url": "https://regimeshift.xyz/api/v1/risk/max-ltv",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 5,
+  "settlement_real": 7,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x82b17d0bb4de9ae6c3491257b60e8245e70acd7b"
+  ],
+  "p50": 1806
+ },
+ {
+  "key": "regimeshift.xyz/api/v1/asset/eth/vrp",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-31",
+   "2026-09-16"
+  ],
+  "days": [
+   "2026-08-31",
+   "2026-09-10",
+   "2026-09-16"
+  ],
+  "amt": 1000,
+  "last": "2026-09-16T12:09:47Z",
+  "lasttx": "0x0db369543b003fe24f42bd039dc06cbef9dbbde5af16163ef6b9ca83ac1a2e03",
+  "lastl2": "match",
+  "lastamt": 1000,
+  "method": "GET",
+  "resource_id": "af52fbe066b8e14f11c981840afc9d7448d102c064516befb17df6ea0f2d40c3",
+  "endpoint_id": "6e018a2cb06a9f92db8b7fe72c3684b4c7c18013942993fde66096861d9c1927",
+  "observatory_id": "912dc9c3-54b5-44f4-b9c4-3b5198a0ba99",
+  "canonical_url": "https://regimeshift.xyz/api/v1/asset/eth/vrp",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 2,
+  "settlement_real": 2,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x82b17d0bb4de9ae6c3491257b60e8245e70acd7b"
+  ],
+  "p50": 1773
+ },
+ {
+  "key": "agentproof-murex.vercel.app/json/repair",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-31",
+   "2026-09-16"
+  ],
+  "days": [
+   "2026-08-31",
+   "2026-09-10",
+   "2026-09-16"
+  ],
+  "amt": 1000,
+  "last": "2026-09-16T12:09:23Z",
+  "lasttx": "0x059cb0a4c16d54cb0a251a7b9c1ba6ae117f110bd8ffa09b6b9423e336ed3dd1",
+  "lastl2": "match",
+  "lastamt": 1000,
+  "method": "POST",
+  "resource_id": "74fba70f07fd8ec187ffdba7e76f8d2c29edaf150497dba32c5f55fb6a821ea2",
+  "endpoint_id": "58c0e20d89d9e5f4ee71cb8b6049b0f82c6124d8e18aefd6cfeac11b9569baff",
+  "observatory_id": "e9b3f996-3258-4f05-a4d2-cee9050cbb9c",
+  "canonical_url": "https://agentproof-murex.vercel.app/json/repair",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 9,
+  "settlement_real": 16,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x9299ea851fcf213071a6dd94ffcd026834d61023"
+  ],
+  "p50": 1184
+ },
+ {
+  "key": "gblin-sentinel.vercel.app/api/data/base-risk-pulse",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-31",
+   "2026-09-10"
+  ],
+  "days": [
+   "2026-08-24",
+   "2026-08-31",
+   "2026-09-10"
+  ],
+  "amt": 2000,
+  "last": "2026-09-10T12:08:11Z",
+  "lasttx": "0x0695867dcb14ae1fdc945be29d0ef1e8d99096a42bd3c06fa447df30526142de",
+  "lastl2": "match",
+  "lastamt": 2000,
+  "method": "GET",
+  "resource_id": "8e103478e098ece50157f4733a21005862cdfa7979d5ff39c030cb54e83ebba5",
+  "endpoint_id": "863c7e35f57303c8db4448648407af0131dc35f1937856d20bcf2cf2899aa527",
+  "observatory_id": "70e8585e-0d05-4454-8a04-7c7b206ac7c3",
+  "canonical_url": "https://gblin-sentinel.vercel.app/api/data/risk-pulse-pro",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 2,
+  "settlement_real": 3,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x0eba5d314f4f5dcb7a094953fa9311a45172dd1b"
+  ],
+  "p50": 3004
+ },
+ {
+  "key": "gblin-sentinel.vercel.app/api/data/keeper-opps",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "days": [
+   "2026-08-25",
+   "2026-09-01",
+   "2026-09-10"
+  ],
+  "amt": 2000,
+  "last": "2026-09-10T19:01:39Z",
+  "lasttx": "0xb438b1821e71c4a9f369606e8b3a688acbd3ad87c2c5fa6c76dee53c15816816",
+  "lastl2": "match",
+  "lastamt": 2000,
+  "method": "GET",
+  "resource_id": "62408bff537e4e6575129dedf35dd420bec468201612cd01a03ea9aba719699e",
+  "endpoint_id": "863c7e35f57303c8db4448648407af0131dc35f1937856d20bcf2cf2899aa527",
+  "observatory_id": "70e8585e-0d05-4454-8a04-7c7b206ac7c3",
+  "canonical_url": "https://gblin-sentinel.vercel.app/api/data/risk-pulse-pro",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 2,
+  "settlement_real": 3,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x0eba5d314f4f5dcb7a094953fa9311a45172dd1b"
+  ],
+  "p50": 3004
+ },
+ {
+  "key": "jmt-x402-proxy.jmthomasofficial.workers.dev/v2/api/whois",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-09-02",
+   "2026-09-16"
+  ],
+  "days": [
+   "2026-09-02",
+   "2026-09-10",
+   "2026-09-16"
+  ],
+  "amt": 2000,
+  "last": "2026-09-16T12:09:03Z",
+  "lasttx": "0x43c9a4a8c21dcb9b5ae4f8252d81ba664b6c861e540289a1c18c7301e22093bc",
+  "lastl2": "match",
+  "lastamt": 2000,
+  "method": "GET",
+  "resource_id": "66dba89773aa92a9ae58416bb105f39cd2761f8cf87a10c1368be6820bc8a6d3",
+  "endpoint_id": "db36c81703cde73b83b698219e9e3e3ea1b5c9b95acef7a5f3dc0edfbb022bd0",
+  "observatory_id": "cd47ca54-e43e-409d-b21c-4b3b815f7aba",
+  "canonical_url": "https://jmt-x402-proxy.jmthomasofficial.workers.dev/v2/api/news-briefing",
+  "l2_status": "undeclared",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x624faf18c78456c8da5bf156cd77c1a2033f21c5"
+  ],
+  "p50": null
+ },
+ {
+  "key": "api.reloadpi.com/api/catalog/esims/offers",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-09-03",
+   "2026-09-17"
+  ],
+  "days": [
+   "2026-09-03",
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "amt": 2000,
+  "last": "2026-09-17T12:53:40Z",
+  "lasttx": "0x1fce8862dcae13bbaed14d56318c6db4e5dc3845702b3eb12e556a17e59b2264",
+  "lastl2": "match",
+  "lastamt": 2000,
+  "method": "GET",
+  "resource_id": "c0c507302802c4918d9c5e221ad14f83b6fb12f276b296745310a54f0a92c476",
+  "endpoint_id": "9887db1bec8f6fb4f1efc34440d3fe11615d0c7a039cd416a7a92a5a47576262",
+  "observatory_id": "64e52c65-416a-4c09-abe3-79663675ce00",
+  "canonical_url": "https://api.reloadpi.com/api/catalog/esims/offers",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 1,
+  "settlement_real": 3,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x8a598a28a435fe44d31854251b1c88d0781ea822"
+  ],
+  "p50": 1412
+ },
+ {
+  "key": "coingecko.use.x402atlas.com/price",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "amt": 5000,
+  "last": "2026-09-09T01:01:22Z",
+  "lasttx": "0x5885fafd9b738fa4c7233d2f10f8a109f1e69a0f1a971d7e5ab2f899aa6eed70",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "d33caa9fb6bd621ba2fecba24e02f37f48e6ba60c619c1bbae23774606f91b5e",
+  "endpoint_id": "29e2a794e10989b685f3c4441d980a6b68ad81b67b10bc85dade05b0fa307c32",
+  "observatory_id": "04c1ba47-0174-4b03-9c03-4f0787c98902",
+  "canonical_url": "https://coingecko.use.x402atlas.com/coin",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x32793f68dc2ea26bbc75eb900da120069e8b6d02"
+  ],
+  "p50": 774
+ },
+ {
+  "key": "dns.use.x402atlas.com/whois",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "amt": 5000,
+  "last": "2026-09-09T01:01:16Z",
+  "lasttx": "0x7f88d9072087a63e58be166e9e6bfdcf715ca6d1c426fe04a7b5a21ce95164e1",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "86d840eaf9fb36db861a7cbd1a1f5c3119e53cf37af6b0278bc37870b0448b9a",
+  "endpoint_id": "bf38a3510a9f15ad9c0ed07369aefd5ffad3578bd5652ad1ff5055e20fd03740",
+  "observatory_id": "9f9e89f4-362f-4cdd-8c48-ed4bee970161",
+  "canonical_url": "https://dns.use.x402atlas.com/dnssec",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x446e51deab3ae656c99e65369e8ef1148d23d7f7"
+  ],
+  "p50": 748
+ },
+ {
+  "key": "dns.use.x402atlas.com/a",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-11"
+  ],
+  "amt": 5000,
+  "last": "2026-09-11T01:01:06Z",
+  "lasttx": "0x97e7758f74779e2d5c365a56d2846db0999b1ada6e346361d4b5c4f6f2db44e1",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "2efeadd4041a35f6db862bb558ab50df1f0855ec595a47c85f21ae8b39624bb0",
+  "endpoint_id": "bf38a3510a9f15ad9c0ed07369aefd5ffad3578bd5652ad1ff5055e20fd03740",
+  "observatory_id": "9f9e89f4-362f-4cdd-8c48-ed4bee970161",
+  "canonical_url": "https://dns.use.x402atlas.com/dnssec",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x446e51deab3ae656c99e65369e8ef1148d23d7f7"
+  ],
+  "p50": 748
+ },
+ {
+  "key": "dns.use.x402atlas.com/mx",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-10"
+  ],
+  "amt": 5000,
+  "last": "2026-09-10T07:02:32Z",
+  "lasttx": "0x3e2e5f52514490b3e876fcaaa7b48fe9d143037336739e3f15c0252fb8935f3c",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "383d993261c2c641d517a9065f46f7f4e740e318c472a90222cbf1e2a86661ba",
+  "endpoint_id": "bf38a3510a9f15ad9c0ed07369aefd5ffad3578bd5652ad1ff5055e20fd03740",
+  "observatory_id": "9f9e89f4-362f-4cdd-8c48-ed4bee970161",
+  "canonical_url": "https://dns.use.x402atlas.com/dnssec",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x446e51deab3ae656c99e65369e8ef1148d23d7f7"
+  ],
+  "p50": 748
+ },
+ {
+  "key": "dns.use.x402atlas.com/rdap",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-28",
+   "2026-09-10"
+  ],
+  "days": [
+   "2026-08-21",
+   "2026-08-28",
+   "2026-09-10"
+  ],
+  "amt": 5000,
+  "last": "2026-09-10T12:08:42Z",
+  "lasttx": "0x90add4ee6edb132fbee4fd74407b55952fde8ad4e39ae87edcfe07290fd5359f",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "82c24cdfb8fa2ab6be1b94596eab8882c4f209cb43e800a856d0f597a4f56fd5",
+  "endpoint_id": "bf38a3510a9f15ad9c0ed07369aefd5ffad3578bd5652ad1ff5055e20fd03740",
+  "observatory_id": "9f9e89f4-362f-4cdd-8c48-ed4bee970161",
+  "canonical_url": "https://dns.use.x402atlas.com/dnssec",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x446e51deab3ae656c99e65369e8ef1148d23d7f7"
+  ],
+  "p50": 748
+ },
+ {
+  "key": "netintel.dev/crypto/market",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-23",
+   "2026-08-30"
+  ],
+  "days": [
+   "2026-08-23",
+   "2026-08-30",
+   "2026-09-09"
+  ],
+  "amt": 5000,
+  "last": "2026-09-09T01:01:03Z",
+  "lasttx": "0x13610bcb1fd7e4e2e57b117811c64a486bb3f64f9fc447070a9ce6696171a33c",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "5422d40321d88dc3029091ce055f42c66cbed4309a30bb35fe8d17c145a2b74e",
+  "endpoint_id": "693142c31679efdbf6e57b238818c10171088e15af071714345d8ee87780a04f",
+  "observatory_id": "6c931a17-f90a-4cb1-96da-9350ac98b93f",
+  "canonical_url": "https://netintel.dev/crypto/ohlc",
+  "l2_status": "undeclared",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0xdadc335482ad545296fd7b28518a251ffcbeb9df"
+  ],
+  "p50": null
+ },
+ {
+  "key": "gdelt.use.x402atlas.com/search",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-23",
+   "2026-08-30"
+  ],
+  "days": [
+   "2026-08-23",
+   "2026-08-30",
+   "2026-09-12"
+  ],
+  "amt": 5000,
+  "last": "2026-09-12T00:01:37Z",
+  "lasttx": "0x7f5ba5df60a4e42f716670df077b9690de866f27ea5409474800fb4acae0d420",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "222284bc0cd6e7361857873915a0284d6d6138690b8d6655461a71ea095929d7",
+  "endpoint_id": "fef20c8057486ef2e68773406d7e1d4fdf573be93f6ceffffa351a10bf2ba296",
+  "observatory_id": "0148cc49-7b3b-4d8e-890a-a1cda919a8c6",
+  "canonical_url": "https://gdelt.use.x402atlas.com/timeline",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 1,
+  "settlement_real": 2,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x8d64a4834e262d96d1264e8900b5a4f1405b8982"
+  ],
+  "p50": 855
+ },
+ {
+  "key": "globalrules-api.onrender.com/api/v1/countries",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-09-02",
+   "2026-09-17"
+  ],
+  "days": [
+   "2026-09-02",
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "amt": 5000,
+  "last": "2026-09-17T12:09:57Z",
+  "lasttx": "0x2c84f0f93929eb91eb17546ac6ea5518485d1aac3657e92215805e5a2c44cb45",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "b4a1c90393f123b1c02f7986312a1cc1dba2569477191ca0fbbed9d2e6756be8",
+  "endpoint_id": "57b5ba8e03dfc0bc2b3dd9e0adfb46f29ebe7db6b1fae2938cf4e42d5cd2f362",
+  "observatory_id": "9f2a69c8-782e-4542-9fce-00d0e7f552c0",
+  "canonical_url": "https://globalrules-api.onrender.com/api/v1/countries",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 10,
+  "settlement_real": 33,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x22c24daf579629a6d7418e09e9c71e6c8883f8e2"
+  ],
+  "p50": 1429
+ },
+ {
+  "key": "agent-commerce-factory-jm.austriaeast.cloudapp.azure.com/v1/crypto/prices",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-09-02",
+   "2026-09-11"
+  ],
+  "days": [
+   "2026-09-02",
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "amt": 8000,
+  "last": "2026-09-17T15:28:20Z",
+  "lasttx": "0x2c89136404d81ceae545c9623cbd8c41e0ae8f1926cc631f25b5f4e668596f0a",
+  "lastl2": "match",
+  "lastamt": 8000,
+  "method": "POST",
+  "resource_id": "07248a49a22e0385c4d822675647344e4f9d0dd85c249e771dce5c7a86f2a17e",
+  "endpoint_id": "8c088fafb9cec2e044f14b7a1d6fda7994be7e99e091d2bc6b49650c1689ee45",
+  "observatory_id": "076b3019-a4f7-40fb-9343-75437aa9521b",
+  "canonical_url": "https://agent-commerce-factory-jm.austriaeast.cloudapp.azure.com/v1/crypto/prices",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 6,
+  "settlement_real": 19,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0xce339395d7f2ea5a5009022ef1c392fb208a989e"
+  ],
+  "p50": 2334
+ },
+ {
+  "key": "email-auth.use.x402atlas.com/check",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "amt": 10000,
+  "last": "2026-09-09T01:01:44Z",
+  "lasttx": "0x355087affc01f540e8799793797fea0ad0c10c673601cf3bb80d062d3d73676e",
+  "lastl2": "match",
+  "lastamt": 10000,
+  "method": "GET",
+  "resource_id": "fecf0e775992aae94a42e40035388812804e215d7c169165f3bba5b1d3676786",
+  "endpoint_id": "6e5460d75635e4fa4f4c3e13ea61b9142afd5918c0a7af4646f0d7ab0dcc42e1",
+  "observatory_id": "a653a48d-7546-42e7-8d9c-95fba231fd46",
+  "canonical_url": "https://email-auth.use.x402atlas.com/check",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 10,
+  "settlement_real": 15,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x3731f5c2c1835e3ace2ac157c4e31b1cea0cb0e0"
+  ],
+  "p50": 963
+ },
+ {
+  "key": "hyperliquid-predict.use.x402atlas.com/settled",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-23",
+   "2026-08-30"
+  ],
+  "days": [
+   "2026-08-23",
+   "2026-08-30",
+   "2026-09-12"
+  ],
+  "amt": 10000,
+  "last": "2026-09-12T18:02:33Z",
+  "lasttx": "0xa9405ddc38cb3f8967de50d371fe88b04e5b242b7c053132f0e053475089a606",
+  "lastl2": "match",
+  "lastamt": 10000,
+  "method": "GET",
+  "resource_id": "0c0a1125bd415618be33a2a9e3570b1893867610435209034a8483711c42fce3",
+  "endpoint_id": "47d94320e277b0344a316c6d2b9cf54ae1fd9c8dfd92d7e7e0ef47874a9bfc14",
+  "observatory_id": "b5696d34-e934-4277-adfa-9aaea0d6a6cc",
+  "canonical_url": "https://hyperliquid-predict.use.x402atlas.com/settled",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 3,
+  "settlement_real": 5,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0xa55b06462a2e48661badf22f5841f95ae654b716"
+  ],
+  "p50": 960
+ },
+ {
+  "key": "api.craigmbrown.com/v1/services/agent.trust-badge",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "days": [
+   "2026-08-25",
+   "2026-09-01",
+   "2026-09-11"
+  ],
+  "amt": 10000,
+  "last": "2026-09-11T01:00:36Z",
+  "lasttx": "0xbe0042cb0559102c830f0bd026274951dbdc62a60bf41f3a2645958731ba855a",
+  "lastl2": "match",
+  "lastamt": 10000,
+  "method": "POST",
+  "resource_id": "5902f51bab1767d7b49062d8031192709c3b475af52ede172166c0e75cc03e6c",
+  "endpoint_id": "a7e7003211fbd58aa88461edb6b4b8fcf91847997e493d33c5fb4e686a4550fb",
+  "observatory_id": "b31c1fb0-fe36-4572-8ae5-c38a0c14c205",
+  "canonical_url": "https://api.craigmbrown.com/v1/services/arbitration.dispute-settlement",
+  "l2_status": "undeclared",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x5e709929a4ab69ec3a8811d03417869059bc4eb9"
+  ],
+  "p50": null
+ },
+ {
+  "key": "oracles-production.up.railway.app/v1/edgar-ma/status",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-09-02",
+   "2026-09-11"
+  ],
+  "days": [
+   "2026-09-02",
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "amt": 10000,
+  "last": "2026-09-17T15:27:08Z",
+  "lasttx": "0xf93bb49efbfbb0b23d2a5fde3ea2967e0ace0ee5fffbeda755769feac0532230",
+  "lastl2": "match",
+  "lastamt": 10000,
+  "method": "GET",
+  "resource_id": "d14f2a3e88ac677a01e9374a938d1302698d1da9f3f642de2a7890379605166c",
+  "endpoint_id": "a1d561cd403962e4bb5e4e4077e424fd3db5eb3127e4047f05fdf62dcefef9e7",
+  "observatory_id": "c59ad244-6a98-4d05-86b9-1d96cee97bef",
+  "canonical_url": "https://oracles-production.up.railway.app/v1/edgar-ma/status",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 4,
+  "settlement_real": 4,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0xc66ee26cae6cd34970f51f644f36d720826d392a"
+  ],
+  "p50": 1409
+ },
+ {
+  "key": "anomaly.forgemesh.io/api/mempool-anomaly",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-09-02",
+   "2026-09-10"
+  ],
+  "days": [
+   "2026-09-02",
+   "2026-09-10",
+   "2026-09-17"
+  ],
+  "amt": 10000,
+  "last": "2026-09-17T18:01:07Z",
+  "lasttx": "0x5f492809e3824a14dab8ebe3b90a111bd5ad630c75cbda0a7bf35a99a7168f1e",
+  "lastl2": "match",
+  "lastamt": 10000,
+  "method": "GET",
+  "resource_id": "4dd69b4cc7142b060ea8cef562a3a448a310370a1067e69ba311da81ee851cb2",
+  "endpoint_id": "a704e8fe2ad8834df602e1082e4e907fcaef925e30673d3c63718bc593a9e0ab",
+  "observatory_id": "7e43a967-da90-406d-bd39-955153b3908a",
+  "canonical_url": "https://anomaly.forgemesh.io/api/claude-feature-watch",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 2,
+  "settlement_real": 2,
+  "wash_dominated": false,
+  "avail7": 0.9,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0xe295b6641b32998537ae0f8e61babf729eaed6e5"
+  ],
+  "p50": 2473
+ },
+ {
+  "key": "gateway.spraay.app/api/v1/swap/tokens",
+  "settled": 2,
+  "match": 2,
+  "h12": [
+   "2026-08-30",
+   "2026-09-11"
+  ],
+  "days": [
+   "2026-08-30",
+   "2026-09-11"
+  ],
+  "amt": 1000,
+  "last": "2026-09-11T12:09:38Z",
+  "lasttx": "0x5d48e065e9a58294df2ae3cc7825811e8eefa04f6ad48c4135a09fd012e1c4d1",
+  "lastl2": "match",
+  "lastamt": 1000,
+  "method": "GET",
+  "resource_id": "56ac59b2eb8630a0dc662c709d44d2ffe8afa0100b4d9528840577147f832173",
+  "endpoint_id": "e8d2ca38c8a25046ab536398f26cb7b18e1844fb7e8b8b6d711af43ad8180cf9",
+  "observatory_id": "b0d9e337-da7b-45a0-b8d9-a0945864f93f",
+  "canonical_url": "https://gateway.spraay.app/api/v1/swap/tokens",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 2,
+  "settlement_real": 2,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0xad62f03c7514bb8c51f1ea70c2b75c37404695c8"
+  ],
+  "p50": 1047
+ },
+ {
+  "key": "x402.ottoai.services/news-recaps",
+  "settled": 2,
+  "match": 2,
+  "h12": [
+   "2026-09-02",
+   "2026-09-09"
+  ],
+  "days": [
+   "2026-09-02",
+   "2026-09-09"
+  ],
+  "amt": 3000,
+  "last": "2026-09-09T12:09:25Z",
+  "lasttx": "0x88d4aff41ad233007a8f87eacbf9380fc7c5a0f645f62ca5241a682e1a1ed0ac",
+  "lastl2": "match",
+  "lastamt": 3000,
+  "method": "GET",
+  "resource_id": "1ac3bd048a93b66a97cc61dec12cd684576f76bc0236252a58cc8c3b869827fb",
+  "endpoint_id": "558958ec12515e0141dfcd6fdd1c71788b8020537601c88c87d1ec4c9695121a",
+  "observatory_id": "c8fa4498-9d4f-4d45-a17d-2fb33f4d8551",
+  "canonical_url": "https://x402.ottoai.services/feedback",
+  "l2_status": "undeclared",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x0e84ddedaae6a779c462c22a59f301ec31b6b808"
+  ],
+  "p50": null
+ },
+ {
+  "key": "holidays.use.x402atlas.com/list",
+  "settled": 2,
+  "match": 2,
+  "h12": [
+   "2026-08-21",
+   "2026-08-29"
+  ],
+  "days": [
+   "2026-08-21",
+   "2026-08-29"
+  ],
+  "amt": 5000,
+  "last": "2026-08-29T12:08:53Z",
+  "lasttx": "0x2d1693894373aa11bae85f2eacffe1975507c401a424c48a7e106e8d88e98837",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "82b378aa94227799e4701032076d1714f35c0329f82ef35502a7ee4ab0d4d519",
+  "endpoint_id": "dc3266cc9ae6ef656db364f81cf2ab408511e75efdff5c535a1f1476163f7a0a",
+  "observatory_id": "fe6196d9-52d3-4afc-a38d-7148d2f8a963",
+  "canonical_url": "https://holidays.use.x402atlas.com/list",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 6,
+  "settlement_real": 59,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x8c128f1ee62bb5e47867cfbae2ad89be325df1b2"
+  ],
+  "p50": 1199
+ },
+ {
+  "key": "holidays.use.x402atlas.com/next",
+  "settled": 2,
+  "match": 2,
+  "h12": [
+   "2026-08-21",
+   "2026-08-29"
+  ],
+  "days": [
+   "2026-08-21",
+   "2026-08-29"
+  ],
+  "amt": 5000,
+  "last": "2026-08-29T12:09:07Z",
+  "lasttx": "0xd30db9e66100e6949c1a43a29d1f35a7b6db1829faf260b9b76cba898b9bcd35",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "49a2863c6fe0d4ad2547a395b025dad0e757bbe183d66999f61d367556c823e3",
+  "endpoint_id": "dc3266cc9ae6ef656db364f81cf2ab408511e75efdff5c535a1f1476163f7a0a",
+  "observatory_id": "fe6196d9-52d3-4afc-a38d-7148d2f8a963",
+  "canonical_url": "https://holidays.use.x402atlas.com/list",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 6,
+  "settlement_real": 59,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x8c128f1ee62bb5e47867cfbae2ad89be325df1b2"
+  ],
+  "p50": 1199
+ },
+ {
+  "key": "twitter.use.x402atlas.com/trends",
+  "settled": 2,
+  "match": 2,
+  "h12": [
+   "2026-08-21",
+   "2026-08-30"
+  ],
+  "days": [
+   "2026-08-21",
+   "2026-08-30"
+  ],
+  "amt": 5000,
+  "last": "2026-08-30T12:08:56Z",
+  "lasttx": "0x5faeb9ddb5e3e0011007d48a37d07c1c578bf21388f09136b3c1d0c832952859",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "e4f0923ba8fd49f71c45b9bb7515ebb0cfd505e58817a86b6b934e94b4ade57c",
+  "endpoint_id": "c0e2ddeacbd06c779e3fb1b2299f61eb5cec6a685038cebbcb6dc25d84dc1099",
+  "observatory_id": "688c9891-76ba-4006-8ee3-51cfa8d4e85c",
+  "canonical_url": "https://twitter.use.x402atlas.com/community-members",
+  "l2_status": "undeclared",
+  "l0": "unverified",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 0.5,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x51d577c8cbb8b3fb1ba0ce31c7923cc27a07f78b"
+  ],
+  "p50": null
+ },
+ {
+  "key": "api.craigmbrown.com/v1/services/ops.link-integrity",
+  "settled": 3,
+  "match": 2,
+  "h12": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "days": [
+   "2026-08-25",
+   "2026-09-01",
+   "2026-09-11"
+  ],
+  "amt": 10000,
+  "last": "2026-09-11T01:01:09Z",
+  "lasttx": "0x0c7091ea938c1b4a9d0fdb18e260e733a209e28be8120333e59ce98c32c646bb",
+  "lastl2": "not_checked",
+  "lastamt": 10000,
+  "method": "POST",
+  "resource_id": "a0a83c8b84adf4a04f16bb75d79127794e8e2407ea12eed5c7904d6a1514320e",
+  "endpoint_id": "a7e7003211fbd58aa88461edb6b4b8fcf91847997e493d33c5fb4e686a4550fb",
+  "observatory_id": "b31c1fb0-fe36-4572-8ae5-c38a0c14c205",
+  "canonical_url": "https://api.craigmbrown.com/v1/services/arbitration.dispute-settlement",
+  "l2_status": "undeclared",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x5e709929a4ab69ec3a8811d03417869059bc4eb9"
+  ],
+  "p50": null
+ },
+ {
+  "key": "api.craigmbrown.com/v1/services/reputation.lookup",
+  "settled": 4,
+  "match": 2,
+  "h12": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "days": [
+   "2026-08-25",
+   "2026-09-01",
+   "2026-09-10",
+   "2026-09-16"
+  ],
+  "amt": 10000,
+  "last": "2026-09-16T18:01:43Z",
+  "lasttx": "0x9589cd9d5d988186ce6a4b3b836650a39a2460a0774ed592f092fa086d452abb",
+  "lastl2": "not_checked",
+  "lastamt": 10000,
+  "method": "POST",
+  "resource_id": "07fdfb193c7647e065e0a4b1cae9f63274c6509e5391449df8c0ad4a5262f94f",
+  "endpoint_id": "a7e7003211fbd58aa88461edb6b4b8fcf91847997e493d33c5fb4e686a4550fb",
+  "observatory_id": "b31c1fb0-fe36-4572-8ae5-c38a0c14c205",
+  "canonical_url": "https://api.craigmbrown.com/v1/services/arbitration.dispute-settlement",
+  "l2_status": "undeclared",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x5e709929a4ab69ec3a8811d03417869059bc4eb9"
+  ],
+  "p50": null
+ },
+ {
+  "key": "api.craigmbrown.com/v1/services/social.verified_introduction",
+  "settled": 2,
+  "match": 2,
+  "h12": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "days": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "amt": 10000,
+  "last": "2026-09-01T12:08:42Z",
+  "lasttx": "0x226a3360bda1187cb3939acf76c4fba6f7028ee34c4921f0c8cac73093560aad",
+  "lastl2": "match",
+  "lastamt": 10000,
+  "method": "POST",
+  "resource_id": "f35dabf26834c0d0113cefee649e929a09130faad6a1d3d7ee2905a60cd10c52",
+  "endpoint_id": "a7e7003211fbd58aa88461edb6b4b8fcf91847997e493d33c5fb4e686a4550fb",
+  "observatory_id": "b31c1fb0-fe36-4572-8ae5-c38a0c14c205",
+  "canonical_url": "https://api.craigmbrown.com/v1/services/arbitration.dispute-settlement",
+  "l2_status": "undeclared",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x5e709929a4ab69ec3a8811d03417869059bc4eb9"
+  ],
+  "p50": null
+ },
+ {
+  "key": "www.capminal.ai/api/x402/research",
+  "settled": 2,
+  "match": 2,
+  "h12": [
+   "2026-09-02",
+   "2026-09-09"
+  ],
+  "days": [
+   "2026-09-02",
+   "2026-09-09"
+  ],
+  "amt": 10000,
+  "last": "2026-09-09T12:09:24Z",
+  "lasttx": "0x1f6a4cefbcdc9010e677a840c7fc46b63e696321b400dfd930eefbaa0532d7de",
+  "lastl2": "match",
+  "lastamt": 10000,
+  "method": "GET",
+  "resource_id": "9381f59d40dd0e692da303444fec5675a398c311a67467b359250eeebb3dfd6a",
+  "endpoint_id": "618a068b3d8ef0faf68ab74946e9303c274c3d6f6cbd73fd888ec1e7d0ae873f",
+  "observatory_id": "4aeff7e3-14ba-400c-a9de-dce699066068",
+  "canonical_url": "https://www.capminal.ai/api/x402/research",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 8,
+  "settlement_real": 40,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0xf9d1d63f362bbf1ee08ab9acb36fe74afc48d5f1"
+  ],
+  "p50": 693
+ },
+ {
+  "key": "vu.velvetdao.xyz/api/v1/wallet_402",
+  "settled": 3,
+  "match": 2,
+  "h12": [
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "days": [
+   "2026-09-03",
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "amt": 10000,
+  "last": "2026-09-17T12:52:46Z",
+  "lasttx": "0x6b81a2038896448ad2d9141c5fbbec735d3d58b023ad040d560ccab308065cf7",
+  "lastl2": "not_checked",
+  "lastamt": 10000,
+  "method": "POST",
+  "resource_id": "64abb0990d3491ab6cbc97c1a8b17ab9c81b2b1c1a0b3b1f896480ddf27d5392",
+  "endpoint_id": "07aa68837c432f5b06830e7c2091af131f2d7bc0efaf31acb5b2a97a805c3f73",
+  "observatory_id": "ad2ecfb9-a54d-4aaf-baa8-44d466ed78b3",
+  "canonical_url": "https://vu.velvetdao.xyz/api/v1/wallet_402",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 8,
+  "settlement_real": 59,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0xd8ca10c55296bd8ca1dd409ea2f0fa72fb0c643f"
+  ],
+  "p50": 1446
+ },
+ {
+  "key": "gateway.spraay.app/api/v1/rpc/chains",
+  "settled": 4,
+  "match": 4,
+  "h12": [
+   "2026-08-26"
+  ],
+  "days": [
+   "2026-08-26",
+   "2026-09-02",
+   "2026-09-10",
+   "2026-09-16"
+  ],
+  "amt": 1000,
+  "last": "2026-09-16T18:02:30Z",
+  "lasttx": "0x29225a8baaebe29ac77e20076ce5772d0328835e97befa544ed1bf6e021fc39b",
+  "lastl2": "match",
+  "lastamt": 1000,
+  "method": "GET",
+  "resource_id": "113b898ce7350bbe556d02bbf402574596a0394dc9d2492d70c47a731741f4d1",
+  "endpoint_id": "a547436ffe48d76099854652cbc56c9101f50f1cc2a4954dc1db6e3b44fa007d",
+  "observatory_id": "34a2f264-1ba5-4188-9ac7-5036bc914617",
+  "canonical_url": "https://gateway.spraay.app/api/v1/rpc/chains",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0xad62f03c7514bb8c51f1ea70c2b75c37404695c8"
+  ],
+  "p50": 1711
+ },
+ {
+  "key": "agent-arcade.use.x402atlas.com/twenty-four/daily",
+  "settled": 4,
+  "match": 4,
+  "h12": [
+   "2026-08-28"
+  ],
+  "days": [
+   "2026-08-21",
+   "2026-08-28",
+   "2026-09-10",
+   "2026-09-16"
+  ],
+  "amt": 5000,
+  "last": "2026-09-16T18:02:08Z",
+  "lasttx": "0x77b37b45f4436582ee9380be164fbf31b8ed62b1b1484e3ea89b5e6a17749ae8",
+  "lastl2": "match",
+  "lastamt": 5000,
+  "method": "GET",
+  "resource_id": "4516a382205ba21581f01636605df526c471dbd1418410d74f4b63cede3186dd",
+  "endpoint_id": "f2ffbd6e4518f47c767f1a8a82434bea42952a7d7479f8b3f99ff33f0206b814",
+  "observatory_id": "e4d30594-0d83-4446-8149-da9f037843ce",
+  "canonical_url": "https://agent-arcade.use.x402atlas.com/twenty-four/daily",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x8c128f1ee62bb5e47867cfbae2ad89be325df1b2"
+  ],
+  "p50": 799
+ },
+ {
+  "key": "redlynr.com/run",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-09-12"
+  ],
+  "days": [
+   "2026-09-02",
+   "2026-09-12",
+   "2026-09-18"
+  ],
+  "amt": 1000,
+  "last": "2026-09-18T18:02:08Z",
+  "lasttx": "0xa5c8f5bd50fa22898d572f2a5a27ae7c9af86c6beda13dd917c060d257a633f4",
+  "lastl2": "match",
+  "lastamt": 1000,
+  "method": "POST",
+  "resource_id": "c7bb013e70370cb30b5418d818b6cd7978bf0927f38bc9d6984241cb730bb7c9",
+  "endpoint_id": "4eec4dc6b2a40868dc2ae9cb77472dcaf07101e1a0b95c53877a059bf15a680e",
+  "observatory_id": "fb16b0ef-a3a6-4dda-937b-54b30810ddbc",
+  "canonical_url": "https://redlynr.com/run",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 5,
+  "settlement_real": 71,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x1a9a7c72208abf3552750eb1c4a4f2ca9e8733e5"
+  ],
+  "p50": 1918
+ },
+ {
+  "key": "willimake-it.dylan-caponi.workers.dev/ask",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-09-10"
+  ],
+  "days": [
+   "2026-09-02",
+   "2026-09-10",
+   "2026-09-16"
+  ],
+  "amt": 1000,
+  "last": "2026-09-16T18:00:15Z",
+  "lasttx": "0xb47df9c23735e850bde3d99bfc037718d8b2eb41f2b372f7722892d87ac4c3f7",
+  "lastl2": "match",
+  "lastamt": 1000,
+  "method": "GET",
+  "resource_id": "1832a1c9c81af42807bf73db7f1ab45ec51ca01c6dc3798b8ecfe5fc01bc9d44",
+  "endpoint_id": "def19805701ace3077ff39834b4744390dce8bd388308daf2fc43affb3918c8f",
+  "observatory_id": "fd40e9ec-70a4-4ff4-9597-9f42f6f4801d",
+  "canonical_url": "https://willimake-it.dylan-caponi.workers.dev/ask",
+  "l2_status": "conform",
+  "l0": "pass",
+  "payers": 6,
+  "settlement_real": 7,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x309fd902b4b29905c8493c94a569673e1d6dc0d3"
+  ],
+  "p50": 1368
+ },
+ {
+  "key": "crypto.apitoll.cloud/v1/crypto/tvl",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-09-03"
+  ],
+  "days": [
+   "2026-09-03",
+   "2026-09-11",
+   "2026-09-18"
+  ],
+  "amt": 1000,
+  "last": "2026-09-18T18:02:14Z",
+  "lasttx": "0x7541aafa294873f46a5585c3b302192d8dc1a770b75c763e2fb1541b0757dd42",
+  "lastl2": "match",
+  "lastamt": 1000,
+  "method": "GET",
+  "resource_id": "f848796b8006bcf2002bb1fecd350c5c561815480834d8da8a8c1713119a64b2",
+  "endpoint_id": "58e0c11591d07226d670ba902d8e5bee40c7c4a6a5b931bba02c6a58973a6ecc",
+  "observatory_id": "9e4b2963-f020-48c1-a556-fe5f8729c12d",
+  "canonical_url": "https://crypto.apitoll.cloud/v1/crypto/protocol",
+  "l2_status": "undeclared",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x3da40a9ad36640a2c0f533bac368490095574664"
+  ],
+  "p50": null
+ },
+ {
+  "key": "api.seneschal.space/v1/q/zec/pools",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-09-10"
+  ],
+  "days": [
+   "2026-09-03",
+   "2026-09-10",
+   "2026-09-16"
+  ],
+  "amt": 1000,
+  "last": "2026-09-16T18:02:07Z",
+  "lasttx": "0xe9bd5f7eacade48343e919494b32147a1aa007efbfd4786c1e284d80cbe9dab8",
+  "lastl2": "match",
+  "lastamt": 1000,
+  "method": "GET",
+  "resource_id": "f4c3277528d3f036ada68a074c32b92d6b13b8284caa82473d675d8d435c4ccb",
+  "endpoint_id": "8348f82419208afba35bcea1c08d3ccda81aafb2d51613b317a7094a373433d1",
+  "observatory_id": "d4666ccc-ebab-483b-a328-3967b252628a",
+  "canonical_url": "https://api.seneschal.space/v1/q/zec/mempool",
+  "l2_status": "undeclared",
+  "l0": "pass",
+  "payers": 0,
+  "settlement_real": 0,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0x46ba634261566cf242c853d1f49511f9268ba674"
+  ],
+  "p50": null
+ },
+ {
+  "key": "store.agentexchange.work/chain/block-number",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-09-18"
+  ],
+  "days": [
+   "2026-09-04",
+   "2026-09-12",
+   "2026-09-18"
+  ],
+  "amt": 1000,
+  "last": "2026-09-18T12:09:15Z",
+  "lasttx": "0xa1faaad163aea49714f1d8bb3094f347df3d9070f0f49f87771a48d82284b4be",
+  "lastl2": "match",
+  "lastamt": 1000,
+  "method": "GET",
+  "resource_id": "43a17b2d1f8c7163f38138ef5fac1cefbbf478a08663384fae0d3d1b31126330",
+  "endpoint_id": "b2745a984cf652b8d887f9aeebb4367405e24a9aced75f8baad744243de001ab",
+  "observatory_id": "80afcc85-b300-4a4b-95a0-dcc9226e851e",
+  "canonical_url": "https://store.agentexchange.work/chain/ens",
+  "l2_status": "undeclared",
+  "l0": "pass",
+  "payers": 3,
+  "settlement_real": 5,
+  "wash_dominated": false,
+  "avail7": 1,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0xc91ce6291edc0713ec753bafba002506ffb2b95c"
+  ],
+  "p50": null
+ },
+ {
+  "key": "agent402.tools/api/uuid",
+  "settled": 3,
+  "match": 3,
+  "h12": [
+   "2026-09-04"
+  ],
+  "days": [
+   "2026-09-04",
+   "2026-09-10",
+   "2026-09-17"
+  ],
+  "amt": 1000,
+  "last": "2026-09-17T18:02:06Z",
+  "lasttx": "0xf2451a0c2646c514cfad7734b5a6bbc6ea8fddf05cd647f281dba3bfa2c31531",
+  "lastl2": "match",
+  "lastamt": 1000,
+  "method": "GET",
+  "resource_id": "6a6767b9b90a8279671dc42a0551b6015cd005ccb73eaf8861059baa2ea23b15",
+  "endpoint_id": "05847e62fb11f19ede961ef7a38b0bff8bdcaf071b249a9bcdaafd559fdaea37",
+  "observatory_id": "448c9649-4556-4d6f-a258-8cf94aa841c7",
+  "canonical_url": "https://agent402.tools/api/markdown-to-html",
+  "l2_status": "undeclared",
+  "l0": "fail",
+  "payers": 2,
+  "settlement_real": 11,
+  "wash_dominated": false,
+  "avail7": 0,
+  "stability": "stable",
+  "payees": [
+   "eip155:8453:0xabf4fabd7c416fb67202e5f9002389fc75e2a9d0"
+  ],
+  "p50": null
+ }
+]

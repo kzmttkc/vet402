@@ -1,0 +1,260 @@
+{
+ "recorded_at": "2026-09-23T22:17:09.618Z",
+ "rows": [
+  {
+   "id": "STR x402-offer bytes",
+   "status": "OK",
+   "value": "266"
+  },
+  {
+   "id": "STR x402-policy bytes",
+   "status": "OK",
+   "value": "178"
+  },
+  {
+   "id": "CD-K1-04 calldata keccak",
+   "status": "OK",
+   "value": "0x1954be7b8d4ca532157ffcfcadbef900fa262a7d72ca7a6de6ebbdc398c56411"
+  },
+  {
+   "id": "CD-K1-07 calldata keccak",
+   "status": "OK",
+   "value": "0x394ce215e80a5c232f42ac7c8ffdf3b5f4c62615686ac365d15ccf5e76d982d9"
+  },
+  {
+   "id": "ADDR P_A",
+   "status": "OK",
+   "value": "0xC54403186Db35B9D92cc393Ae665D3960117ac14"
+  },
+  {
+   "id": "ADDR P_BC",
+   "status": "OK",
+   "value": "0xd6A089Fc08e5e97697a3293d02F40837CeA1d2bf"
+  },
+  {
+   "id": "ADDR U",
+   "status": "OK",
+   "value": "0xB093cEC6D1Cc355c40020f0df5103ecEFfD30dac"
+  },
+  {
+   "id": "ADDR P_AG1",
+   "status": "OK",
+   "value": "0xd3F4818c0bB93e54780525b21380D44D6D06bcd6"
+  },
+  {
+   "id": "K1-01",
+   "status": "OK",
+   "value": "[EACRolesChanged]"
+  },
+  {
+   "id": "K1-02",
+   "status": "OK",
+   "value": "[TextUpdated,TextUpdated,Linked,AddressUpdated]"
+  },
+  {
+   "id": "K1-03",
+   "status": "OK",
+   "value": "[ResourceArgument,EACRolesChanged,ResourceArgument,EACRolesChanged,ResourceArgument,EACRolesChanged,ResourceArgument,EACRolesChanged,ResourceArgument,EACRolesChanged,ResourceArgument,EACRolesChanged,ResourceArgument,EACRolesChanged,ResourceArgument,EACRolesChanged,ResourceArgument,EACRolesChanged,ResourceArgument,EACRolesChanged,ResourceArgument,EACRolesChanged,ResourceArgument,EACRolesChanged,ResourceArgument,EACRolesChanged,ResourceArgument,EACRolesChanged,ResourceArgument,EACRolesChanged]"
+  },
+  {
+   "id": "K1-03b",
+   "status": "OK",
+   "value": "[Linked,TextUpdated]"
+  },
+  {
+   "id": "K1-04",
+   "status": "OK",
+   "value": "[Upgraded,ResolverCreated,EACRolesChanged,Linked,TextUpdated,TextUpdated,AddressUpdated,Initialized,ProxyDeployed]"
+  },
+  {
+   "id": "K1-05",
+   "status": "OK",
+   "value": "[ResolverUpdated]"
+  },
+  {
+   "id": "K1-06",
+   "status": "OK",
+   "value": "[ResourceArgument,EACRolesChanged]"
+  },
+  {
+   "id": "K1-07",
+   "status": "OK",
+   "value": "[Upgraded,ResolverCreated,EACRolesChanged,Linked,TextUpdated,TextUpdated,AddressUpdated,Linked,TextUpdated,TextUpdated,AddressUpdated,Initialized,ProxyDeployed]"
+  },
+  {
+   "id": "K1-08",
+   "status": "OK",
+   "value": "[ResolverUpdated]"
+  },
+  {
+   "id": "K1-09",
+   "status": "OK",
+   "value": "[ResolverUpdated]"
+  },
+  {
+   "id": "K1-10",
+   "status": "OK",
+   "value": "[Upgraded,RegistryCreated,EACRolesChanged,Initialized,ProxyDeployed]"
+  },
+  {
+   "id": "K1-11",
+   "status": "OK",
+   "value": "[SubregistryUpdated]"
+  },
+  {
+   "id": "K1-12",
+   "status": "OK",
+   "value": "[Upgraded,ResolverCreated,EACRolesChanged,Linked,TextUpdated,TextUpdated,AddressUpdated,Initialized,ProxyDeployed]"
+  },
+  {
+   "id": "K1-13",
+   "status": "OK",
+   "value": "[LabelRegistered,TransferSingle,TokenResource,EACRolesChanged,ResolverUpdated]"
+  },
+  {
+   "id": "K1-14",
+   "status": "OK",
+   "value": "[ResourceArgument,EACRolesChanged]"
+  },
+  {
+   "id": "K1-15",
+   "status": "OK",
+   "value": "[LabelRegistered,TransferSingle,TokenResource,EACRolesChanged]"
+  },
+  {
+   "id": "K1 totalGas",
+   "status": "OK",
+   "value": "gas は鎖の状態で動くので合否には使わない"
+  },
+  {
+   "id": "K1 txCount",
+   "status": "OK",
+   "value": "16"
+  },
+  {
+   "id": "C-01 W_op が P_a で x402-offer を書ける",
+   "status": "OK",
+   "value": "ok"
+  },
+  {
+   "id": "C-02 W_op が P_a で 証明キーを書く",
+   "status": "REVERT",
+   "value": "EACUnauthorizedAccountRoles(0x2363e661af8704f60b1b70f1cd40864cd938b26b6a163c91f7b1768270888359,0x10,0x00000000000000000000000000000000000000A1)"
+  },
+  {
+   "id": "C-03 W_op が P_bc で seller-b の x402-offer を書く",
+   "status": "REVERT",
+   "value": "EACUnauthorizedAccountRoles(0xddc514092bff3ea55777839913a19846ed3eb35a8cf0d4c605f0d703b31dd435,0x10,0x00000000000000000000000000000000000000A1)"
+  },
+  {
+   "id": "C-04 W_op が P_a で 別の名前(sub)の x402-offer を書く",
+   "status": "OK",
+   "value": "ok"
+  },
+  {
+   "id": "C-05 W_op が P_a で setAddress",
+   "status": "REVERT",
+   "value": "EACUnauthorizedAccountRoles(0xc6bb06cb7f92603de181bf256cd16846b93b752a170ff24824098b31aa008a7e,0x1,0x00000000000000000000000000000000000000A1)"
+  },
+  {
+   "id": "C-06 W_vet(作者) が P_a で 証明キーを書く",
+   "status": "REVERT",
+   "value": "EACUnauthorizedAccountRoles(0x2363e661af8704f60b1b70f1cd40864cd938b26b6a163c91f7b1768270888359,0x10,0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6)"
+  },
+  {
+   "id": "C-07 W_vet(作者) が P_a で x402-offer を書く",
+   "status": "REVERT",
+   "value": "EACUnauthorizedAccountRoles(0xddc514092bff3ea55777839913a19846ed3eb35a8cf0d4c605f0d703b31dd435,0x10,0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6)"
+  },
+  {
+   "id": "C-08 W_ens(売り手) が P_a で 証明キーを書く",
+   "status": "OK",
+   "value": "ok"
+  },
+  {
+   "id": "C-09 W_obs が R_vet で atst.vet402.eth の class を書く",
+   "status": "OK",
+   "value": "ok"
+  },
+  {
+   "id": "C-10 W_obs が R_vet で atst の addr を書く",
+   "status": "REVERT",
+   "value": "EACUnauthorizedAccountRoles(0xc6bb06cb7f92603de181bf256cd16846b93b752a170ff24824098b31aa008a7e,0x1,0x00000000000000000000000000000000000000B1)"
+  },
+  {
+   "id": "C-11 K1-11 後 resolve(addr atst.vet402.eth)",
+   "status": "OK",
+   "value": "0x41000000000000000000000000000000000000A7 via 0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391"
+  },
+  {
+   "id": "C-12 K1-11 後 resolve(text obs class)",
+   "status": "OK",
+   "value": "\"x402-observation\""
+  },
+  {
+   "id": "C-13 resolve(text agent-1 x402-policy)",
+   "status": "OK",
+   "value": "\"{\\\"v\\\":1,\\\"network\\\":\\\"eip155:84532\\\",\\\"trust\\\":[\\\"atst.vet402.eth\\\"],\\\"floors\\\":{\\\"minEnsAttestations\\\":1,\\\"minChainReceipts\\\":1},\\\"requireVet402Allow\\\":false,\\\"max\\\":\\\"50000\\\",\\\"maxAgeSeconds\\\":86400}\""
+  },
+  {
+   "id": "C-14 resolve(addr agent-1)",
+   "status": "OK",
+   "value": "0x41000000000000000000000000000000000000c1 via 0xd3F4818c0bB93e54780525b21380D44D6D06bcd6"
+  },
+  {
+   "id": "C-15 resolve(text agent-2 x402-policy) ＝ 対照(親 wildcard)",
+   "status": "OK",
+   "value": "\"\""
+  },
+  {
+   "id": "C-16 K_ag1 が P_AG1 で agent-1 の方針を書ける",
+   "status": "OK",
+   "value": "ok"
+  },
+  {
+   "id": "C-17 K_ag1 が R_vet で 親 vet402.eth の x402-policy を書く",
+   "status": "REVERT",
+   "value": "EACUnauthorizedAccountRoles(0x1c0754232f48fc306cedd0a65442157964f44f2481314faec5a4bee29b1d877f,0x10,0x41000000000000000000000000000000000000c1)"
+  },
+  {
+   "id": "C-18 K_ag2 が R_vet で 親 vet402.eth の x402-policy を書く（対照）",
+   "status": "REVERT",
+   "value": "EACUnauthorizedAccountRoles(0x1c0754232f48fc306cedd0a65442157964f44f2481314faec5a4bee29b1d877f,0x10,0x41000000000000000000000000000000000000c2)"
+  },
+  {
+   "id": "C-19 resolve(text seller-a x402-offer)",
+   "status": "OK",
+   "value": "\"{\\\"v\\\":1,\\\"resource\\\":\\\"https://vet402.com/api/tokyo/seller\\\",\\\"method\\\":\\\"GET\\\",\\\"network\\\":\\\"eip155:84532\\\",\\\"asset\\\":\\\"0x036CbD53842c5426634e7929541eC2318f3dCF7e\\\",\\\"amount\\\":\\\"10001\\\",\\\"payTo\\\":\\\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\\\",\\\"output\\\":{\\\"required\\\":[\\\"result\\\",\\\"observed_at\\\"]}}\""
+  },
+  {
+   "id": "C-20 UH.findExactOwner(seller-a.eth)",
+   "status": "OK",
+   "value": "0x000000000000000000000000c0f58df8753a4c53fd98c17e46e9f4ce6b8e9fa6"
+  },
+  {
+   "id": "C-21 UH.findExactOwner(agent-1.vet402.eth)",
+   "status": "OK",
+   "value": "0x00000000000000000000000041000000000000000000000000000000000000c1"
+  },
+  {
+   "id": "C-11b K1-11 後 resolve(text vet402.eth class) 親本体",
+   "status": "OK",
+   "value": "\"x402-verifier\""
+  },
+  {
+   "id": "C-12b K1-11 後 UR.findResolver(obs ラベル)",
+   "status": "OK",
+   "value": "0x0000000000000000000000003368219eddfdd1fac6409fb9a1b8bf7d2159839121be26cad7e9aa9d04f5c30ada9446bd7260c265d6140c2d66c19fe3dcaf52ad0000000000000000000000000000000000000000000000000000000000000045"
+  },
+  {
+   "id": "C-12c K1-11 後 UR.findResolver(atst.vet402.eth)",
+   "status": "OK",
+   "value": "0x0000000000000000000000003368219eddfdd1fac6409fb9a1b8bf7d2159839185403798e95f16011eb55d5cdb18723fa32a8a0ef1536314bcc7f7fab6002cc60000000000000000000000000000000000000000000000000000000000000005"
+  },
+  {
+   "id": "C-22 UH.findExactOwner(atst.vet402.eth)",
+   "status": "OK",
+   "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+  }
+ ]
+}

@@ -1,0 +1,940 @@
+[
+ {
+  "key": "regimeshift.xyz/api/v1/rate/sofr/usd",
+  "url": "https://regimeshift.xyz/api/v1/rate/sofr/usd",
+  "http": "HTTP/2 402 ",
+  "has_payment_required": true,
+  "amt": 1000,
+  "payers": 13,
+  "l2": "conform",
+  "settled": 3,
+  "h12": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "last": "2026-09-09T12:08:21Z",
+  "lasttx": "0x377aa0bd09020a12093657f4cb763c1da06dab4a2597151c2d0fc49aa512f19b",
+  "payees": [
+   "eip155:8453:0x82b17d0bb4de9ae6c3491257b60e8245e70acd7b"
+  ],
+  "p50": 10300,
+  "avail7": 1,
+  "stability": "stable",
+  "wash": false,
+  "obs": "ea90f3a3-a25a-4011-b44d-dab393e78810",
+  "rid": "055ba024c72d82094e936c0b209ede6a5707a149b26fe966d266b5750087af52",
+  "eid": "7c8cbce423b650e339d689a6f5c5b74e5a3bf1f7b9dfb70582fe097e194d1f20",
+  "method": "GET",
+  "receipt": {
+   "status": "0x1",
+   "block": 51083183,
+   "transfers": [
+    {
+     "from": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+     "to": "0x82b17d0bb4de9ae6c3491257b60e8245e70acd7b",
+     "units": 1000
+    }
+   ]
+  },
+  "offer_payTo": "0x82B17D0bb4De9ae6c3491257B60E8245e70acd7B",
+  "offer_amount": null,
+  "tx_ok": true,
+  "payto_match_live": true,
+  "amount_match": true,
+  "decision": "ALLOW",
+  "reasons": [
+   {
+    "level": "L0",
+    "url": "https://vet402.com/observatory/e/ea90f3a3-a25a-4011-b44d-dab393e78810",
+    "source": "vet402"
+   },
+   {
+    "level": "L1",
+    "purchase_id": "eip155:8453:0x377aa0bd09020a12093657f4cb763c1da06dab4a2597151c2d0fc49aa512f19b",
+    "url": "https://vet402.com/api/v1/observatory/endpoints/ea90f3a3-a25a-4011-b44d-dab393e78810/purchases",
+    "source": "vet402"
+   },
+   {
+    "level": "L2",
+    "source": "vet402",
+    "purchase_id": "eip155:8453:0x377aa0bd09020a12093657f4cb763c1da06dab4a2597151c2d0fc49aa512f19b",
+    "url": "https://vet402.com/observatory/e/ea90f3a3-a25a-4011-b44d-dab393e78810",
+    "declaration_hash": "fa53881f07d9e4fdd988c765da1436489db2a80f2071858eb4e62a7676fca44e",
+    "response_hash": "b907ff7d5f5d9155a0c7b6e5b7d4f0e784bbd235965db18360973de1f21a530c",
+    "diff_hash": null,
+    "missing_keys": null
+   }
+  ],
+  "rules_version": "2026-09-17.1",
+  "reason_codes": [
+   "l0_pass",
+   "l1_delivered",
+   "l2_conform"
+  ]
+ },
+ {
+  "key": "websearch.use.x402atlas.com/search",
+  "url": "https://websearch.use.x402atlas.com/search",
+  "http": "HTTP/2 402 ",
+  "has_payment_required": true,
+  "amt": 10000,
+  "payers": 29,
+  "l2": "conform",
+  "settled": 3,
+  "h12": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "last": "2026-09-09T12:08:37Z",
+  "lasttx": "0x37c58f5408db2dcc7d52802fc56173aa87e54126af983ad64863c71e8567a507",
+  "payees": [
+   "eip155:8453:0xf752eeb75d3bea24aa867ad93bfd8ef5a2f431b9"
+  ],
+  "p50": 856,
+  "avail7": 1,
+  "stability": "stable",
+  "wash": false,
+  "obs": "90740720-6a86-4cda-a06d-9c4bed09cfde",
+  "rid": "e37fa1988ecf70fef1dc87538456d5e2f0b28240738aa39f79257feffeb63c42",
+  "eid": "4695eef488ca4768c6653c80b9accab50c045675b4181b3086fbd056f8a10cae",
+  "method": "GET",
+  "receipt": {
+   "status": "0x1",
+   "block": 51083186,
+   "transfers": [
+    {
+     "from": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+     "to": "0xf752eeb75d3bea24aa867ad93bfd8ef5a2f431b9",
+     "units": 10000
+    }
+   ]
+  },
+  "offer_payTo": "0xF752eEB75d3Bea24AA867ad93bfd8EF5a2F431B9",
+  "offer_amount": null,
+  "tx_ok": true,
+  "payto_match_live": true,
+  "amount_match": true,
+  "decision": "ALLOW",
+  "reasons": [
+   {
+    "level": "L0",
+    "url": "https://vet402.com/observatory/e/90740720-6a86-4cda-a06d-9c4bed09cfde",
+    "source": "vet402"
+   },
+   {
+    "level": "L1",
+    "purchase_id": "eip155:8453:0x37c58f5408db2dcc7d52802fc56173aa87e54126af983ad64863c71e8567a507",
+    "url": "https://vet402.com/api/v1/observatory/endpoints/90740720-6a86-4cda-a06d-9c4bed09cfde/purchases",
+    "source": "vet402"
+   },
+   {
+    "level": "L2",
+    "source": "vet402",
+    "purchase_id": "eip155:8453:0x37c58f5408db2dcc7d52802fc56173aa87e54126af983ad64863c71e8567a507",
+    "url": "https://vet402.com/observatory/e/90740720-6a86-4cda-a06d-9c4bed09cfde",
+    "declaration_hash": "5832bfee4ecaeea82161d78f9878bfb03068de15ffd5ab28f487c587552aac4a",
+    "response_hash": "3fcadbe376ae636c5bed341ce2a5ba9e7b09171a6fb742472ae906dc2a8e289f",
+    "diff_hash": null,
+    "missing_keys": null
+   }
+  ],
+  "rules_version": "2026-09-17.1",
+  "reason_codes": [
+   "l0_pass",
+   "l1_delivered",
+   "l2_conform"
+  ]
+ },
+ {
+  "key": "router.mudko.com/api/x402/route",
+  "url": "https://router.mudko.com/api/x402/route",
+  "http": "HTTP/2 402 ",
+  "has_payment_required": true,
+  "amt": 5000,
+  "payers": 11,
+  "l2": "conform",
+  "settled": 4,
+  "h12": [
+   "2026-08-21",
+   "2026-08-27",
+   "2026-09-16"
+  ],
+  "last": "2026-09-16T12:09:38Z",
+  "lasttx": "0xc1ef3bfeb480e89f435877e1f36849ee56414c88d904a86c09e1a6610418a03a",
+  "payees": [
+   "eip155:8453:0x53598173ce7c26025bab0520d9e9d0c28fbcf7de"
+  ],
+  "p50": 1120,
+  "avail7": 0.9090909090909091,
+  "stability": "stable",
+  "wash": false,
+  "obs": "7d55e5b0-5501-4c2e-abb4-ad093c997984",
+  "rid": "c7f72b184870fca52ccb34ac6b64d13bbac259d9ea46adf8c003cdfa2a927dac",
+  "eid": "ce4d3b72a61175b1869459006ee08b7a9a4c1fa7b6446dad3d6ba89829e1aa53",
+  "method": "GET",
+  "receipt": {
+   "status": "0x1",
+   "block": 51385617,
+   "transfers": [
+    {
+     "from": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+     "to": "0x53598173ce7c26025bab0520d9e9d0c28fbcf7de",
+     "units": 5000
+    }
+   ]
+  },
+  "offer_payTo": "0x53598173ce7c26025bab0520d9e9d0c28fbcf7de",
+  "offer_amount": null,
+  "tx_ok": true,
+  "payto_match_live": true,
+  "amount_match": true,
+  "decision": "ALLOW",
+  "reasons": [
+   {
+    "level": "L0",
+    "url": "https://vet402.com/observatory/e/7d55e5b0-5501-4c2e-abb4-ad093c997984",
+    "source": "vet402"
+   },
+   {
+    "level": "L1",
+    "purchase_id": "eip155:8453:0xc1ef3bfeb480e89f435877e1f36849ee56414c88d904a86c09e1a6610418a03a",
+    "url": "https://vet402.com/api/v1/observatory/endpoints/7d55e5b0-5501-4c2e-abb4-ad093c997984/purchases",
+    "source": "vet402"
+   },
+   {
+    "level": "L2",
+    "source": "vet402",
+    "purchase_id": "eip155:8453:0xc1ef3bfeb480e89f435877e1f36849ee56414c88d904a86c09e1a6610418a03a",
+    "url": "https://vet402.com/observatory/e/7d55e5b0-5501-4c2e-abb4-ad093c997984",
+    "declaration_hash": "aca01c2bb1a8ac3f85ca23374c21ee523e84e12a9cfe8d1b8ecc5e5f1981555a",
+    "response_hash": "de8b4adc6238906da18a9095f75a1ceb6eef3e1dce394b9782b09888b8dfe449",
+    "diff_hash": null,
+    "missing_keys": null
+   }
+  ],
+  "rules_version": "2026-09-17.1",
+  "reason_codes": [
+   "l0_pass",
+   "l1_delivered",
+   "l2_conform"
+  ]
+ },
+ {
+  "key": "headers.use.x402atlas.com",
+  "url": "https://headers.use.x402atlas.com",
+  "http": "HTTP/2 402 ",
+  "has_payment_required": true,
+  "amt": 10000,
+  "payers": 11,
+  "l2": "conform",
+  "settled": 4,
+  "h12": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-16"
+  ],
+  "last": "2026-09-16T12:09:34Z",
+  "lasttx": "0xfb91a55f40fd2cec2efac8fbfa60718f43f6ec446003545ea63da630bf4ef587",
+  "payees": [
+   "eip155:8453:0x7f8043c400799643bcb62b41b84b297a8ecb7b9c"
+  ],
+  "p50": 877,
+  "avail7": 1,
+  "stability": "stable",
+  "wash": false,
+  "obs": "68d1d5f6-3199-4086-9f59-40ea17867773",
+  "rid": "bc6fa9199bafec35dbec3bcb7f4ff0ba6ecd2a4b102e09a9e65d19e519580164",
+  "eid": "fe52e101da6553dfa7614afa7d8a523821271e9f871ac603ad8af398a72bf79b",
+  "method": "GET",
+  "receipt": {
+   "status": "0x1",
+   "block": 51385615,
+   "transfers": [
+    {
+     "from": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+     "to": "0x7f8043c400799643bcb62b41b84b297a8ecb7b9c",
+     "units": 10000
+    }
+   ]
+  },
+  "offer_payTo": "0x7f8043c400799643bcb62B41B84b297a8Ecb7b9c",
+  "offer_amount": null,
+  "tx_ok": true,
+  "payto_match_live": true,
+  "amount_match": true,
+  "decision": "ALLOW",
+  "reasons": [
+   {
+    "level": "L0",
+    "url": "https://vet402.com/observatory/e/68d1d5f6-3199-4086-9f59-40ea17867773",
+    "source": "vet402"
+   },
+   {
+    "level": "L1",
+    "purchase_id": "eip155:8453:0xfb91a55f40fd2cec2efac8fbfa60718f43f6ec446003545ea63da630bf4ef587",
+    "url": "https://vet402.com/api/v1/observatory/endpoints/68d1d5f6-3199-4086-9f59-40ea17867773/purchases",
+    "source": "vet402"
+   },
+   {
+    "level": "L2",
+    "source": "vet402",
+    "purchase_id": "eip155:8453:0xfb91a55f40fd2cec2efac8fbfa60718f43f6ec446003545ea63da630bf4ef587",
+    "url": "https://vet402.com/observatory/e/68d1d5f6-3199-4086-9f59-40ea17867773",
+    "declaration_hash": "084fd7b8b705ca328940befcc34e0d9c7930e08fd970e7b6f2603c94923537f6",
+    "response_hash": "9a728327d53f64441b68c0ab549067ff539135bd3932199d7931feecd20bfabb",
+    "diff_hash": null,
+    "missing_keys": null
+   }
+  ],
+  "rules_version": "2026-09-17.1",
+  "reason_codes": [
+   "l0_pass",
+   "l1_delivered",
+   "l2_conform"
+  ]
+ },
+ {
+  "key": "globalrules-api.onrender.com/api/v1/countries",
+  "url": "https://globalrules-api.onrender.com/api/v1/countries",
+  "http": "HTTP/2 402 ",
+  "has_payment_required": true,
+  "amt": 5000,
+  "payers": 10,
+  "l2": "conform",
+  "settled": 3,
+  "h12": [
+   "2026-09-02",
+   "2026-09-17"
+  ],
+  "last": "2026-09-17T12:09:57Z",
+  "lasttx": "0x2c84f0f93929eb91eb17546ac6ea5518485d1aac3657e92215805e5a2c44cb45",
+  "payees": [
+   "eip155:8453:0x22c24daf579629a6d7418e09e9c71e6c8883f8e2"
+  ],
+  "p50": 1429,
+  "avail7": 1,
+  "stability": "stable",
+  "wash": false,
+  "obs": "9f2a69c8-782e-4542-9fce-00d0e7f552c0",
+  "rid": "b4a1c90393f123b1c02f7986312a1cc1dba2569477191ca0fbbed9d2e6756be8",
+  "eid": "57b5ba8e03dfc0bc2b3dd9e0adfb46f29ebe7db6b1fae2938cf4e42d5cd2f362",
+  "method": "GET",
+  "receipt": {
+   "status": "0x1",
+   "block": 51428826,
+   "transfers": [
+    {
+     "from": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+     "to": "0x22c24daf579629a6d7418e09e9c71e6c8883f8e2",
+     "units": 5000
+    }
+   ]
+  },
+  "offer_payTo": "0x22c24Daf579629a6d7418e09e9C71E6C8883F8e2",
+  "offer_amount": null,
+  "tx_ok": true,
+  "payto_match_live": true,
+  "amount_match": true,
+  "decision": "ALLOW",
+  "reasons": [
+   {
+    "level": "L0",
+    "url": "https://vet402.com/observatory/e/9f2a69c8-782e-4542-9fce-00d0e7f552c0",
+    "source": "vet402"
+   },
+   {
+    "level": "L1",
+    "purchase_id": "eip155:8453:0x2c84f0f93929eb91eb17546ac6ea5518485d1aac3657e92215805e5a2c44cb45",
+    "url": "https://vet402.com/api/v1/observatory/endpoints/9f2a69c8-782e-4542-9fce-00d0e7f552c0/purchases",
+    "source": "vet402"
+   },
+   {
+    "level": "L2",
+    "source": "vet402",
+    "purchase_id": "eip155:8453:0x2c84f0f93929eb91eb17546ac6ea5518485d1aac3657e92215805e5a2c44cb45",
+    "url": "https://vet402.com/observatory/e/9f2a69c8-782e-4542-9fce-00d0e7f552c0",
+    "declaration_hash": "61bb7dec8e4bcfcf6237123487e4bda9148a50771b054386bf3e7da1c2d5609f",
+    "response_hash": "0858c30197798f31f172871de8a648dd3b315ea98cb8b4601928d7f1367072da",
+    "diff_hash": null,
+    "missing_keys": null
+   }
+  ],
+  "rules_version": "2026-09-17.1",
+  "reason_codes": [
+   "l0_pass",
+   "l1_delivered",
+   "l2_conform"
+  ]
+ },
+ {
+  "key": "wiki.use.x402atlas.com/summary",
+  "url": "https://wiki.use.x402atlas.com/summary",
+  "http": "HTTP/2 402 ",
+  "has_payment_required": true,
+  "amt": 5000,
+  "payers": 10,
+  "l2": "conform",
+  "settled": 4,
+  "h12": [
+   "2026-08-27",
+   "2026-09-16"
+  ],
+  "last": "2026-09-16T12:09:39Z",
+  "lasttx": "0xe7d7646b7ee479e0b70826fcad6d0b3567422ad31bbf6d974f7419ac57fbf5da",
+  "payees": [
+   "eip155:8453:0x6a706d6fcf192c15fb592d7502258ed41425dd36"
+  ],
+  "p50": 865,
+  "avail7": 1,
+  "stability": "stable",
+  "wash": false,
+  "obs": "7d3d14f1-5d2c-4bf2-995d-aabd2a53c619",
+  "rid": "912ff23b862456713190db1915eaa53808035bf84093a2d08203aeba8fa05e9d",
+  "eid": "c124be00425f079f9e8ad7d2d1f1bbf5334adf432d48a11831da0c4325afb4e5",
+  "method": "GET",
+  "receipt": {
+   "status": "0x1",
+   "block": 51385617,
+   "transfers": [
+    {
+     "from": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+     "to": "0x6a706d6fcf192c15fb592d7502258ed41425dd36",
+     "units": 5000
+    }
+   ]
+  },
+  "offer_payTo": "0x6A706D6Fcf192C15fB592d7502258Ed41425DD36",
+  "offer_amount": null,
+  "tx_ok": true,
+  "payto_match_live": true,
+  "amount_match": true,
+  "decision": "ALLOW",
+  "reasons": [
+   {
+    "level": "L0",
+    "url": "https://vet402.com/observatory/e/7d3d14f1-5d2c-4bf2-995d-aabd2a53c619",
+    "source": "vet402"
+   },
+   {
+    "level": "L1",
+    "purchase_id": "eip155:8453:0xe7d7646b7ee479e0b70826fcad6d0b3567422ad31bbf6d974f7419ac57fbf5da",
+    "url": "https://vet402.com/api/v1/observatory/endpoints/7d3d14f1-5d2c-4bf2-995d-aabd2a53c619/purchases",
+    "source": "vet402"
+   },
+   {
+    "level": "L2",
+    "source": "vet402",
+    "purchase_id": "eip155:8453:0xe7d7646b7ee479e0b70826fcad6d0b3567422ad31bbf6d974f7419ac57fbf5da",
+    "url": "https://vet402.com/observatory/e/7d3d14f1-5d2c-4bf2-995d-aabd2a53c619",
+    "declaration_hash": "e4298837e23cd66bd0e781e08f6163501ea3d913e24b0fefbf58ac416741c1a1",
+    "response_hash": "014cbc265f32f3ed42893c20d8a0c975cbf218ccc77bea827e7396dcadd4b090",
+    "diff_hash": null,
+    "missing_keys": null
+   }
+  ],
+  "rules_version": "2026-09-17.1",
+  "reason_codes": [
+   "l0_pass",
+   "l1_delivered",
+   "l2_conform"
+  ]
+ },
+ {
+  "key": "agentproof-murex.vercel.app/json/repair",
+  "url": "https://agentproof-murex.vercel.app/json/repair",
+  "http": "HTTP/2 405 ",
+  "has_payment_required": false,
+  "amt": 1000,
+  "payers": 9,
+  "l2": "conform",
+  "settled": 3,
+  "h12": [
+   "2026-08-31",
+   "2026-09-16"
+  ],
+  "last": "2026-09-16T12:09:23Z",
+  "lasttx": "0x059cb0a4c16d54cb0a251a7b9c1ba6ae117f110bd8ffa09b6b9423e336ed3dd1",
+  "payees": [
+   "eip155:8453:0x9299ea851fcf213071a6dd94ffcd026834d61023"
+  ],
+  "p50": 1184,
+  "avail7": 1,
+  "stability": "stable",
+  "wash": false,
+  "obs": "e9b3f996-3258-4f05-a4d2-cee9050cbb9c",
+  "rid": "74fba70f07fd8ec187ffdba7e76f8d2c29edaf150497dba32c5f55fb6a821ea2",
+  "eid": "58c0e20d89d9e5f4ee71cb8b6049b0f82c6124d8e18aefd6cfeac11b9569baff",
+  "method": "POST",
+  "receipt": {
+   "status": "0x1",
+   "block": 51385609,
+   "transfers": [
+    {
+     "from": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+     "to": "0x9299ea851fcf213071a6dd94ffcd026834d61023",
+     "units": 1000
+    }
+   ]
+  },
+  "offer_payTo": null,
+  "offer_amount": null,
+  "tx_ok": true,
+  "payto_match_live": null,
+  "amount_match": true,
+  "decision": "ALLOW",
+  "reasons": [
+   {
+    "level": "L0",
+    "url": "https://vet402.com/observatory/e/e9b3f996-3258-4f05-a4d2-cee9050cbb9c",
+    "source": "vet402"
+   },
+   {
+    "level": "L1",
+    "purchase_id": "eip155:8453:0x059cb0a4c16d54cb0a251a7b9c1ba6ae117f110bd8ffa09b6b9423e336ed3dd1",
+    "url": "https://vet402.com/api/v1/observatory/endpoints/e9b3f996-3258-4f05-a4d2-cee9050cbb9c/purchases",
+    "source": "vet402"
+   },
+   {
+    "level": "L2",
+    "source": "vet402",
+    "purchase_id": "eip155:8453:0x059cb0a4c16d54cb0a251a7b9c1ba6ae117f110bd8ffa09b6b9423e336ed3dd1",
+    "url": "https://vet402.com/observatory/e/e9b3f996-3258-4f05-a4d2-cee9050cbb9c",
+    "declaration_hash": "8e1da0c0ef6e33c8d4432f942cd3ad718b553028da092c74ac2766f4d05ac273",
+    "response_hash": "63bc218e5e449b9c86b0ad994c70a1894fd3751bd7ed8ebf4d15a8219569ede3",
+    "diff_hash": null,
+    "missing_keys": null
+   }
+  ],
+  "rules_version": "2026-09-17.1",
+  "reason_codes": [
+   "l0_pass",
+   "l1_delivered",
+   "l2_conform"
+  ]
+ },
+ {
+  "key": "x402.tbs-digital.com/crypto/bundle",
+  "url": "https://x402.tbs-digital.com/crypto/bundle",
+  "http": "HTTP/2 402 ",
+  "has_payment_required": true,
+  "amt": 1000,
+  "payers": 9,
+  "l2": "conform",
+  "settled": 3,
+  "h12": [
+   "2026-08-29",
+   "2026-09-10"
+  ],
+  "last": "2026-09-10T12:08:18Z",
+  "lasttx": "0x831ec0d73d91aad355f7fb9660245b36937acd5609f3c2f431580712522f6a44",
+  "payees": [
+   "eip155:8453:0xd6fce15298fc9d60f867d9455d497177da9bfb0a"
+  ],
+  "p50": 2281,
+  "avail7": 1,
+  "stability": "stable",
+  "wash": false,
+  "obs": "0d86f1c9-0d97-4e47-ab2f-7e4686ce88cf",
+  "rid": "64776daf51996ad6c464c604fd60059d7e063cf86aecac7885d8c42701e5b2ae",
+  "eid": "05c6e66cdbc5bab82f2092d6244c0faf38cd0b3fe208aa0577102e4ad0601ca5",
+  "method": "GET",
+  "receipt": {
+   "status": "0x1",
+   "block": 51126377,
+   "transfers": [
+    {
+     "from": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+     "to": "0xd6fce15298fc9d60f867d9455d497177da9bfb0a",
+     "units": 1000
+    }
+   ]
+  },
+  "offer_payTo": "0xd6fCE15298Fc9D60f867d9455D497177Da9BFB0a",
+  "offer_amount": null,
+  "tx_ok": true,
+  "payto_match_live": true,
+  "amount_match": true,
+  "decision": "ALLOW",
+  "reasons": [
+   {
+    "level": "L0",
+    "url": "https://vet402.com/observatory/e/0d86f1c9-0d97-4e47-ab2f-7e4686ce88cf",
+    "source": "vet402"
+   },
+   {
+    "level": "L1",
+    "purchase_id": "eip155:8453:0x831ec0d73d91aad355f7fb9660245b36937acd5609f3c2f431580712522f6a44",
+    "url": "https://vet402.com/api/v1/observatory/endpoints/0d86f1c9-0d97-4e47-ab2f-7e4686ce88cf/purchases",
+    "source": "vet402"
+   },
+   {
+    "level": "L2",
+    "source": "vet402",
+    "purchase_id": "eip155:8453:0x831ec0d73d91aad355f7fb9660245b36937acd5609f3c2f431580712522f6a44",
+    "url": "https://vet402.com/observatory/e/0d86f1c9-0d97-4e47-ab2f-7e4686ce88cf",
+    "declaration_hash": "1016fe2ad7b8195d7ccd7c02f2c58060f9cb2b5ea4d60f8b90e7d6435d27bc7f",
+    "response_hash": "a11a0c1bd66d001a51738925e9097a05ccafdae247bff0041a7641abe17021e9",
+    "diff_hash": null,
+    "missing_keys": null
+   }
+  ],
+  "rules_version": "2026-09-17.1",
+  "reason_codes": [
+   "l0_pass",
+   "l1_delivered",
+   "l2_conform"
+  ]
+ },
+ {
+  "key": "www.capminal.ai/api/x402/research",
+  "url": "https://www.capminal.ai/api/x402/research",
+  "http": "HTTP/2 402 ",
+  "has_payment_required": true,
+  "amt": 10000,
+  "payers": 8,
+  "l2": "conform",
+  "settled": 2,
+  "h12": [
+   "2026-09-02",
+   "2026-09-09"
+  ],
+  "last": "2026-09-09T12:09:24Z",
+  "lasttx": "0x1f6a4cefbcdc9010e677a840c7fc46b63e696321b400dfd930eefbaa0532d7de",
+  "payees": [
+   "eip155:8453:0xf9d1d63f362bbf1ee08ab9acb36fe74afc48d5f1"
+  ],
+  "p50": 693,
+  "avail7": 1,
+  "stability": "stable",
+  "wash": false,
+  "obs": "4aeff7e3-14ba-400c-a9de-dce699066068",
+  "rid": "9381f59d40dd0e692da303444fec5675a398c311a67467b359250eeebb3dfd6a",
+  "eid": "618a068b3d8ef0faf68ab74946e9303c274c3d6f6cbd73fd888ec1e7d0ae873f",
+  "method": "GET",
+  "receipt": {
+   "status": "0x1",
+   "block": 51083210,
+   "transfers": [
+    {
+     "from": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+     "to": "0xf9d1d63f362bbf1ee08ab9acb36fe74afc48d5f1",
+     "units": 10000
+    }
+   ]
+  },
+  "offer_payTo": "0xf9d1d63f362bbf1ee08ab9acb36fe74afc48d5f1",
+  "offer_amount": null,
+  "tx_ok": true,
+  "payto_match_live": true,
+  "amount_match": true,
+  "decision": "ALLOW",
+  "reasons": [
+   {
+    "level": "L0",
+    "url": "https://vet402.com/observatory/e/4aeff7e3-14ba-400c-a9de-dce699066068",
+    "source": "vet402"
+   },
+   {
+    "level": "L1",
+    "purchase_id": "eip155:8453:0x1f6a4cefbcdc9010e677a840c7fc46b63e696321b400dfd930eefbaa0532d7de",
+    "url": "https://vet402.com/api/v1/observatory/endpoints/4aeff7e3-14ba-400c-a9de-dce699066068/purchases",
+    "source": "vet402"
+   },
+   {
+    "level": "L2",
+    "source": "vet402",
+    "purchase_id": "eip155:8453:0x1f6a4cefbcdc9010e677a840c7fc46b63e696321b400dfd930eefbaa0532d7de",
+    "url": "https://vet402.com/observatory/e/4aeff7e3-14ba-400c-a9de-dce699066068",
+    "declaration_hash": "0fe1e802f8ff877411351f745ea67a77d326fae0beede58c967d4aa25f8c3976",
+    "response_hash": "4ac2e06ed82775f4c4fe6a7d362194fb4a26431a7ed879c4789f2a61ec76b711",
+    "diff_hash": null,
+    "missing_keys": null
+   }
+  ],
+  "rules_version": "2026-09-17.1",
+  "reason_codes": [
+   "l0_pass",
+   "l1_delivered",
+   "l2_conform"
+  ]
+ },
+ {
+  "key": "vu.velvetdao.xyz/api/v1/wallet_402",
+  "url": "https://vu.velvetdao.xyz/api/v1/wallet_402",
+  "http": "HTTP/2 405 ",
+  "has_payment_required": false,
+  "amt": 10000,
+  "payers": 8,
+  "l2": "conform",
+  "settled": 3,
+  "h12": [
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "last": "2026-09-17T12:52:46Z",
+  "lasttx": "0x6b81a2038896448ad2d9141c5fbbec735d3d58b023ad040d560ccab308065cf7",
+  "payees": [
+   "eip155:8453:0xd8ca10c55296bd8ca1dd409ea2f0fa72fb0c643f"
+  ],
+  "p50": 1446,
+  "avail7": 1,
+  "stability": "stable",
+  "wash": false,
+  "obs": "ad2ecfb9-a54d-4aaf-baa8-44d466ed78b3",
+  "rid": "64abb0990d3491ab6cbc97c1a8b17ab9c81b2b1c1a0b3b1f896480ddf27d5392",
+  "eid": "07aa68837c432f5b06830e7c2091af131f2d7bc0efaf31acb5b2a97a805c3f73",
+  "method": "POST",
+  "receipt": {
+   "status": "0x1",
+   "block": 51430122,
+   "transfers": [
+    {
+     "from": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+     "to": "0xd8ca10c55296bd8ca1dd409ea2f0fa72fb0c643f",
+     "units": 10000
+    }
+   ]
+  },
+  "offer_payTo": null,
+  "offer_amount": null,
+  "tx_ok": true,
+  "payto_match_live": null,
+  "amount_match": true,
+  "decision": "ALLOW",
+  "reasons": [
+   {
+    "level": "L0",
+    "url": "https://vet402.com/observatory/e/ad2ecfb9-a54d-4aaf-baa8-44d466ed78b3",
+    "source": "vet402"
+   },
+   {
+    "level": "L1",
+    "purchase_id": "eip155:8453:0x6b81a2038896448ad2d9141c5fbbec735d3d58b023ad040d560ccab308065cf7",
+    "url": "https://vet402.com/api/v1/observatory/endpoints/ad2ecfb9-a54d-4aaf-baa8-44d466ed78b3/purchases",
+    "source": "vet402"
+   },
+   {
+    "level": "L2",
+    "source": "vet402",
+    "purchase_id": "eip155:8453:0x6b81a2038896448ad2d9141c5fbbec735d3d58b023ad040d560ccab308065cf7",
+    "url": "https://vet402.com/observatory/e/ad2ecfb9-a54d-4aaf-baa8-44d466ed78b3",
+    "declaration_hash": "4165314d532a506e2d4836dc561b14393ed3ef8073fdc2cb5840d4a1babad2d9",
+    "response_hash": "f04ebf612246e938ce8699f5c6fcf8daf5807bdc71cfc71347800a1ef28ac4c9",
+    "diff_hash": null,
+    "missing_keys": null
+   }
+  ],
+  "rules_version": "2026-09-17.1",
+  "reason_codes": [
+   "l0_pass",
+   "l1_delivered",
+   "l2_conform"
+  ]
+ },
+ {
+  "key": "holidays.use.x402atlas.com/check",
+  "url": "https://holidays.use.x402atlas.com/check",
+  "http": "HTTP/2 402 ",
+  "has_payment_required": true,
+  "amt": 5000,
+  "payers": 6,
+  "l2": "conform",
+  "settled": 4,
+  "h12": [
+   "2026-08-31",
+   "2026-09-16"
+  ],
+  "last": "2026-09-16T12:09:37Z",
+  "lasttx": "0xb43af744ab1cfbe6fd199b4e037ced381f36a8c7331ff87c23909bc73670fa0c",
+  "payees": [
+   "eip155:8453:0x8c128f1ee62bb5e47867cfbae2ad89be325df1b2"
+  ],
+  "p50": 1199,
+  "avail7": 1,
+  "stability": "stable",
+  "wash": false,
+  "obs": "fe6196d9-52d3-4afc-a38d-7148d2f8a963",
+  "rid": "ea72915c8801e7341aa48acc8e4d601b2ba0328e30b36cf4932ed3d21c0d3c0d",
+  "eid": "dc3266cc9ae6ef656db364f81cf2ab408511e75efdff5c535a1f1476163f7a0a",
+  "method": "GET",
+  "receipt": {
+   "status": "0x1",
+   "block": 51385616,
+   "transfers": [
+    {
+     "from": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+     "to": "0x8c128f1ee62bb5e47867cfbae2ad89be325df1b2",
+     "units": 5000
+    }
+   ]
+  },
+  "offer_payTo": "0x8C128f1Ee62Bb5e47867CfbAe2ad89be325Df1b2",
+  "offer_amount": null,
+  "tx_ok": true,
+  "payto_match_live": true,
+  "amount_match": true,
+  "decision": "ALLOW",
+  "reasons": null,
+  "rules_version": "2026-09-17.1",
+  "reason_codes": [
+   "l0_pass",
+   "l1_delivered",
+   "l2_conform"
+  ]
+ },
+ {
+  "key": "unwrap.use.x402atlas.com",
+  "url": "https://unwrap.use.x402atlas.com",
+  "http": "HTTP/2 402 ",
+  "has_payment_required": true,
+  "amt": 9000,
+  "payers": 12,
+  "l2": "conform",
+  "settled": 4,
+  "h12": [
+   "2026-08-28",
+   "2026-09-10"
+  ],
+  "last": "2026-09-16T18:00:19Z",
+  "lasttx": "0x5319171ba3e3b99d39624ab04db20efe09fbfde5a7272ff8bd6e7a3eee3a53d1",
+  "payees": [
+   "eip155:8453:0x492ec81ecf395fbea2f19fece203ee14d0544b71"
+  ],
+  "p50": 1933,
+  "avail7": 1,
+  "stability": "stable",
+  "wash": false,
+  "obs": "a9027c54-17cd-4cb8-9190-6226f0355ef3",
+  "rid": "755578e52aa2a09c0327f342d59202807d12461f9a3efc0de821651e74af264b",
+  "eid": "a69f3a974cca51cb528d007b965c13f503378ab1dd04f792d39d36a50c27ea97",
+  "method": "GET",
+  "receipt": {
+   "status": "0x1",
+   "block": 51396138,
+   "transfers": [
+    {
+     "from": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+     "to": "0x492ec81ecf395fbea2f19fece203ee14d0544b71",
+     "units": 9000
+    }
+   ]
+  },
+  "offer_payTo": "0x492eC81ECf395FbEa2F19fECe203ee14D0544B71",
+  "offer_amount": null,
+  "tx_ok": true,
+  "payto_match_live": true,
+  "amount_match": true,
+  "decision": "ALLOW",
+  "reasons": null,
+  "rules_version": "2026-09-17.1",
+  "reason_codes": [
+   "l0_pass",
+   "l1_delivered",
+   "l2_conform"
+  ]
+ },
+ {
+  "key": "api.reloadpi.com/api/catalog/esims/offers",
+  "url": "https://api.reloadpi.com/api/catalog/esims/offers",
+  "http": "HTTP/2 402 ",
+  "has_payment_required": true,
+  "amt": 2000,
+  "payers": 1,
+  "l2": "conform",
+  "settled": 3,
+  "h12": [
+   "2026-09-03",
+   "2026-09-17"
+  ],
+  "last": "2026-09-17T12:53:40Z",
+  "lasttx": "0x1fce8862dcae13bbaed14d56318c6db4e5dc3845702b3eb12e556a17e59b2264",
+  "payees": [
+   "eip155:8453:0x8a598a28a435fe44d31854251b1c88d0781ea822"
+  ],
+  "p50": 1412,
+  "avail7": 1,
+  "stability": "stable",
+  "wash": false,
+  "obs": "64e52c65-416a-4c09-abe3-79663675ce00",
+  "rid": "c0c507302802c4918d9c5e221ad14f83b6fb12f276b296745310a54f0a92c476",
+  "eid": "9887db1bec8f6fb4f1efc34440d3fe11615d0c7a039cd416a7a92a5a47576262",
+  "method": "GET",
+  "receipt": {
+   "status": "0x1",
+   "block": 51430138,
+   "transfers": [
+    {
+     "from": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+     "to": "0x8a598a28a435fe44d31854251b1c88d0781ea822",
+     "units": 2000
+    }
+   ]
+  },
+  "offer_payTo": "0x8a598A28a435Fe44D31854251b1c88d0781ea822",
+  "offer_amount": null,
+  "tx_ok": true,
+  "payto_match_live": true,
+  "amount_match": true,
+  "decision": "ALLOW",
+  "reasons": null,
+  "rules_version": "2026-09-17.1",
+  "reason_codes": [
+   "l0_pass",
+   "l1_delivered",
+   "l2_conform"
+  ]
+ },
+ {
+  "key": "oracles-production.up.railway.app/v1/edgar-ma/status",
+  "url": "https://oracles-production.up.railway.app/v1/edgar-ma/status",
+  "http": "HTTP/2 402 ",
+  "has_payment_required": true,
+  "amt": 10000,
+  "payers": 4,
+  "l2": "conform",
+  "settled": 3,
+  "h12": [
+   "2026-09-02",
+   "2026-09-11"
+  ],
+  "last": "2026-09-17T15:27:08Z",
+  "lasttx": "0xf93bb49efbfbb0b23d2a5fde3ea2967e0ace0ee5fffbeda755769feac0532230",
+  "payees": [
+   "eip155:8453:0xc66ee26cae6cd34970f51f644f36d720826d392a"
+  ],
+  "p50": 1409,
+  "avail7": 1,
+  "stability": "stable",
+  "wash": false,
+  "obs": "c59ad244-6a98-4d05-86b9-1d96cee97bef",
+  "rid": "d14f2a3e88ac677a01e9374a938d1302698d1da9f3f642de2a7890379605166c",
+  "eid": "a1d561cd403962e4bb5e4e4077e424fd3db5eb3127e4047f05fdf62dcefef9e7",
+  "method": "GET",
+  "receipt": {
+   "status": "0x1",
+   "block": 51434742,
+   "transfers": [
+    {
+     "from": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+     "to": "0xc66ee26cae6cd34970f51f644f36d720826d392a",
+     "units": 10000
+    }
+   ]
+  },
+  "offer_payTo": "0xC66EE26cAE6cd34970f51f644f36D720826d392A",
+  "offer_amount": null,
+  "tx_ok": true,
+  "payto_match_live": true,
+  "amount_match": true,
+  "decision": "ALLOW",
+  "reasons": null,
+  "rules_version": "2026-09-17.1",
+  "reason_codes": [
+   "l0_pass",
+   "l1_delivered",
+   "l2_conform"
+  ]
+ }
+]

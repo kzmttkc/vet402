@@ -1,0 +1,8 @@
+{
+  "name": "hackathon-monitor",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "viem": "^2.38.0"
+  }
+}

@@ -1,0 +1,119 @@
+{
+ "block": "11734203",
+ "rows": [
+  {
+   "id": "C1 UR_IMPL code size",
+   "sentio": "18841",
+   "pandaops": "18841",
+   "match": true
+  },
+  {
+   "id": "C2 UR_IMPL.LABEL_STORE()",
+   "sentio": "0x375C082021E677a40eA2AE094D050602dba90992",
+   "pandaops": "0x375C082021E677a40eA2AE094D050602dba90992",
+   "match": true
+  },
+  {
+   "id": "C3 UR_IMPL.canUpgradeFrom(0)",
+   "sentio": "true",
+   "pandaops": "true",
+   "match": true
+  },
+  {
+   "id": "C4 ETHRegistry.getSubregistry(\"vet402\")",
+   "sentio": "0x0000000000000000000000000000000000000000",
+   "pandaops": "0x0000000000000000000000000000000000000000",
+   "match": true
+  },
+  {
+   "id": "C5 ETHRegistry.roles(vet402,W_vet)",
+   "sentio": "0x1110000000000000000000000000000001100000",
+   "pandaops": "0x1110000000000000000000000000000001100000",
+   "match": true
+  },
+  {
+   "id": "C6 hasRoles(vet402,SET_SUBREGISTRY,W_vet)",
+   "sentio": "true",
+   "pandaops": "true",
+   "match": true
+  },
+  {
+   "id": "C7 findResolver(vet402.eth)",
+   "sentio": "[\"0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391\",\"0x4d724311918bea7ec56ed534176a7d708f456a1630d8f7ed82000fad0c776697\",\"0\"]",
+   "pandaops": "[\"0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391\",\"0x4d724311918bea7ec56ed534176a7d708f456a1630d8f7ed82000fad0c776697\",\"0\"]",
+   "match": true
+  },
+  {
+   "id": "C7 findResolver(atst.vet402.eth)",
+   "sentio": "[\"0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391\",\"0x85403798e95f16011eb55d5cdb18723fa32a8a0ef1536314bcc7f7fab6002cc6\",\"5\"]",
+   "pandaops": "[\"0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391\",\"0x85403798e95f16011eb55d5cdb18723fa32a8a0ef1536314bcc7f7fab6002cc6\",\"5\"]",
+   "match": true
+  },
+  {
+   "id": "C7 findResolver(x.obs.vet402.eth)",
+   "sentio": "[\"0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391\",\"0xfae7f66ca8a919c4c4ac285c4276dacd31b9c23d67999ccde5a20ec7f40ed130\",\"6\"]",
+   "pandaops": "[\"0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391\",\"0xfae7f66ca8a919c4c4ac285c4276dacd31b9c23d67999ccde5a20ec7f40ed130\",\"6\"]",
+   "match": true
+  },
+  {
+   "id": "C7 findResolver(agent-1.vet402.eth)",
+   "sentio": "[\"0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391\",\"0xcb231341ad95bd3bcf950c262045baf16448aa30058adf67c4e4a7317585daa9\",\"8\"]",
+   "pandaops": "[\"0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391\",\"0xcb231341ad95bd3bcf950c262045baf16448aa30058adf67c4e4a7317585daa9\",\"8\"]",
+   "match": true
+  },
+  {
+   "id": "C7 findResolver(agent-2.vet402.eth)",
+   "sentio": "[\"0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391\",\"0xceda8d5a580ddce0ecbc8cc463b55660630ecd6f2827ef142cf1f96704a0ffba\",\"8\"]",
+   "pandaops": "[\"0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391\",\"0xceda8d5a580ddce0ecbc8cc463b55660630ecd6f2827ef142cf1f96704a0ffba\",\"8\"]",
+   "match": true
+  },
+  {
+   "id": "C7 findResolver(seller-a.eth)",
+   "sentio": "[\"0x49f5022dDe516B92AC1609158bC6AdC772088055\",\"0x1ba002b11b3c61f5721a5fd1edea641775dc866451e8192788512616dc829b91\",\"0\"]",
+   "pandaops": "[\"0x49f5022dDe516B92AC1609158bC6AdC772088055\",\"0x1ba002b11b3c61f5721a5fd1edea641775dc866451e8192788512616dc829b91\",\"0\"]",
+   "match": true
+  },
+  {
+   "id": "C8 予測 U (eth_call VF.deployProxy)",
+   "sentio": "0xB093cEC6D1Cc355c40020f0df5103ecEFfD30dac",
+   "pandaops": "0xB093cEC6D1Cc355c40020f0df5103ecEFfD30dac",
+   "match": true
+  },
+  {
+   "id": "C9 予測 P_AG1 (eth_call VF.deployProxy)",
+   "sentio": "0xd3F4818c0bB93e54780525b21380D44D6D06bcd6",
+   "pandaops": "0xd3F4818c0bB93e54780525b21380D44D6D06bcd6",
+   "match": true
+  },
+  {
+   "id": "C10 keccak(\"x402-policy\") = EAC resource",
+   "sentio": "0x1c0754232f48fc306cedd0a65442157964f44f2481314faec5a4bee29b1d877f",
+   "pandaops": "0x1c0754232f48fc306cedd0a65442157964f44f2481314faec5a4bee29b1d877f",
+   "match": true
+  },
+  {
+   "id": "C11 ETHRegistry.getResolver(\"vet402\")",
+   "sentio": "0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391",
+   "pandaops": "0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391",
+   "match": true
+  },
+  {
+   "id": "C12 ETHRegistry.getResolver(\"seller-a\")",
+   "sentio": "0x49f5022dDe516B92AC1609158bC6AdC772088055",
+   "pandaops": "0x49f5022dDe516B92AC1609158bC6AdC772088055",
+   "match": true
+  },
+  {
+   "id": "C12 ETHRegistry.getResolver(\"seller-b\")",
+   "sentio": "0x49f5022dDe516B92AC1609158bC6AdC772088055",
+   "pandaops": "0x49f5022dDe516B92AC1609158bC6AdC772088055",
+   "match": true
+  },
+  {
+   "id": "C12 ETHRegistry.getResolver(\"seller-c\")",
+   "sentio": "0x49f5022dDe516B92AC1609158bC6AdC772088055",
+   "pandaops": "0x49f5022dDe516B92AC1609158bC6AdC772088055",
+   "match": true
+  }
+ ]
+}

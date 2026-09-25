@@ -1,0 +1,35 @@
+import { createRequire } from 'module';
+import fs from 'fs';
+const require = createRequire(import.meta.url);
+const { createPublicClient, http, namehash, toHex, keccak256, packetToBytes, labelhash } = require('viem');
+const { sepolia } = require('viem/chains');
+const rpc = process.argv[2] || 'https://sepolia.rpc.sentio.xyz';
+const c = createPublicClient({ chain: sepolia, transport: http(rpc) });
+const A = n => JSON.parse(fs.readFileSync(`abi/${n}.json`)).abi;
+const R = async (address, abi, functionName, args=[]) => { try { return await c.readContract({address, abi, functionName, args}); } catch(e) { return 'ERR:'+(e.shortMessage||e.message).split('\n')[0].slice(0,90); } };
+const NEW = { reg:'0xabe76f6c8dfced81aa5a2bb8034202a7136b94ca', eth:'0x657ea849311d3d5823348dded7c2aaafb3ede09e', root:'0x9703dbd26dab89504490994138cf2c575251a9ce', helper:'0x33f571aa8a160a21b877cf6e0fb8806692b97df5', oracle:'0x9b0b9c65bdaf9794ff7697e4dcfb1f50581072bb', usdc:'0x16f95d91dba7da3aca778ec053df0ff6c6a8aa8e' };
+const OLD = { reg:'0xa88553f454b77203b0d036a05c894d555eaaa2cc', eth:'0xbdc85dd5b15d7ecb354cd7cb6f2c50b4f2c4f0e2', root:'0x8115186e8f2e0b0281e86ab91f0f48ba90364354' };
+const labels=['vet402','seller-a','seller-b','seller-c','ens','nymspace'];
+console.log('block', await c.getBlockNumber(), 'rpc', rpc);
+const UR='0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe';
+console.log('UR.ROOT_REGISTRY', await R(UR, A('new_UniversalResolverV2'), 'ROOT_REGISTRY'));
+console.log('new reg: ETH_REGISTRY', await R(NEW.reg, A('new_ETHRegistrar'),'ETH_REGISTRY'), 'MIN_REGISTER_DURATION', await R(NEW.reg, A('new_ETHRegistrar'),'MIN_REGISTER_DURATION'), 'MIN_COMMIT', await R(NEW.reg, A('new_ETHRegistrar'),'MIN_COMMITMENT_AGE'), 'MAX_COMMIT', await R(NEW.reg, A('new_ETHRegistrar'),'MAX_COMMITMENT_AGE'), 'oracle', await R(NEW.reg, A('new_ETHRegistrar'),'rentPriceOracle'), 'owner', await R(NEW.reg, A('new_ETHRegistrar'),'owner'));
+console.log('root.getSubregistry(eth) new', await R(NEW.root, A('new_RootRegistry'),'getSubregistry',['eth']), 'old', await R(OLD.root, A('old_RootRegistry'),'getSubregistry',['eth']));
+console.log('usdc isPaymentToken', await R(NEW.oracle, A('new_StandardRentPriceOracle'),'isPaymentToken',[NEW.usdc]), 'baseRates', await R(NEW.oracle, A('new_StandardRentPriceOracle'),'getBaseRates'));
+const YEAR=31536000n;
+for (const l of labels){
+  const tid = BigInt(labelhash(l));
+  const nNew = await R(NEW.reg, A('new_ETHRegistrar'),'isAvailable',[l]);
+  const nOld = await R(OLD.reg, A('old_ETHRegistrar'),'isAvailable',[l]);
+  const price = await R(NEW.reg, A('new_ETHRegistrar'),'getRegisterPrice',[l, YEAR, NEW.usdc]);
+  const priceMin = await R(NEW.reg, A('new_ETHRegistrar'),'getRegisterPrice',[l, 28n*86400n, NEW.usdc]);
+  const stNew = await R(NEW.eth, A('new_ETHRegistry'),'getState',[tid]);
+  const stOld = await R(OLD.eth, A('old_ETHRegistry'),'getState',[tid]);
+  const ownNew = await R(NEW.eth, A('new_ETHRegistry'),'ownerOf',[tid]);
+  const ownOld = await R(OLD.eth, A('old_ETHRegistry'),'ownerOf',[tid]);
+  const resNew = await R(NEW.eth, A('new_ETHRegistry'),'getResolver',[l]);
+  const resOld = await R(OLD.eth, A('old_ETHRegistry'),'getResolver',[l]);
+  const dns = '0x'+Buffer.concat([...(l+'.eth').split('.').map(p=>Buffer.concat([Buffer.from([p.length]),Buffer.from(p)])),Buffer.from([0])]).toString('hex');
+  const helperOwner = await R(NEW.helper, A('new_UniversalHelper'),'findExactOwner',[dns]);
+  console.log(JSON.stringify({l, availNew:nNew, availOld:nOld, priceNew1y:price, priceNew28d:priceMin, stateNew:stNew, stateOld:stOld, ownerNew:ownNew, ownerOld:ownOld, resolverNew:resNew, resolverOld:resOld, helperExactOwner:helperOwner}, (k,v)=>typeof v==='bigint'?v.toString():v));
+}

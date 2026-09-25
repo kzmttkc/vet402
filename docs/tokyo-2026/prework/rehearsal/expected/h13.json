@@ -1,0 +1,275 @@
+{
+ "recorded_at": "2026-09-19T07:45:22.875Z",
+ "rows": [
+  {
+   "id": "PRE seller-a.subregistry",
+   "status": "OK",
+   "value": "0x0000000000000000000000000000000000000000"
+  },
+  {
+   "id": "PRE seller-a.resolver",
+   "status": "OK",
+   "value": "0x49f5022dde516b92ac1609158bc6adc772088055"
+  },
+  {
+   "id": "PRE W_ens.roles(seller-a)",
+   "status": "OK",
+   "value": "0x1110000000000000000000000000000001100000"
+  },
+  {
+   "id": "PRE W_ens.hasSetSubregistry",
+   "status": "OK",
+   "value": "true"
+  },
+  {
+   "id": "PRE W_vet.hasSetSubregistry",
+   "status": "OK",
+   "value": "false"
+  },
+  {
+   "id": "ADDR U",
+   "status": "OK",
+   "value": "0xB093cEC6D1Cc355c40020f0df5103ecEFfD30dac"
+  },
+  {
+   "id": "ADDR P_AG1",
+   "status": "OK",
+   "value": "0xd3F4818c0bB93e54780525b21380D44D6D06bcd6"
+  },
+  {
+   "id": "ADDR P_A",
+   "status": "OK",
+   "value": "0xC54403186Db35B9D92cc393Ae665D3960117ac14"
+  },
+  {
+   "id": "U7-A base B1 VF.deployProxy(impl,SALT_A) → P_a",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-A base B2 ETHRegistry.setResolver(seller-a, P_a)",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-A base B3 VF.deployProxy(UserRegistryImpl,SALT_U) → U",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-A base B4 ETHRegistry.setSubregistry(vet402, U)",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-A base B5 VF.deployProxy(impl,SALT_A1) → P_AG1",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-A base B6 U.register(\"agent-1\",K_ag1,0,P_AG1,RENEW,exp)",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-A A1 ETHRegistry.setSubregistry(seller-a, U)",
+   "status": "OK",
+   "value": "0x"
+  },
+  {
+   "id": "U7-A A2 findResolver(seller-a.eth)",
+   "status": "OK",
+   "value": "0xC54403186Db35B9D92cc393Ae665D3960117ac14"
+  },
+  {
+   "id": "U7-A A3 resolve(text seller-a.eth x402-offer)",
+   "status": "OK",
+   "value": "\"{\\\"v\\\":1,\\\"amount\\\":\\\"10000\\\",\\\"asset\\\":\\\"USDC\\\"}\""
+  },
+  {
+   "id": "U7-A A4 resolve(text seller-a.eth 証明キー)",
+   "status": "OK",
+   "value": "\"ENVELOPE_A\""
+  },
+  {
+   "id": "U7-A A5 resolve(addr seller-a.eth)",
+   "status": "OK",
+   "value": "0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6 via 0xC54403186Db35B9D92cc393Ae665D3960117ac14"
+  },
+  {
+   "id": "U7-A A6 findResolver(agent-1.seller-a.eth)",
+   "status": "OK",
+   "value": "0xd3F4818c0bB93e54780525b21380D44D6D06bcd6"
+  },
+  {
+   "id": "U7-A A7 UH.findExactOwner(agent-1.seller-a.eth)",
+   "status": "OK",
+   "value": "0x00000000000000000000000041000000000000000000000000000000000000c1"
+  },
+  {
+   "id": "U7-A A8 resolve(text agent-1.seller-a.eth x402-policy)",
+   "status": "OK",
+   "value": "\"\""
+  },
+  {
+   "id": "U7-A A9 findResolver(x.seller-a.eth 未登録の子)",
+   "status": "OK",
+   "value": "0xC54403186Db35B9D92cc393Ae665D3960117ac14"
+  },
+  {
+   "id": "U7-A A10 resolve(text vet402側 agent-1.vet402.eth)",
+   "status": "OK",
+   "value": "\"{\\\"v\\\":1,\\\"trust\\\":[\\\"atst.vet402.eth\\\"],\\\"floor\\\":\\\"l2_match\\\",\\\"max\\\":\\\"50000\\\"}\""
+  },
+  {
+   "id": "U7-B base B1 VF.deployProxy(impl,SALT_A) → P_a",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-B base B2 ETHRegistry.setResolver(seller-a, P_a)",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-B base B3 VF.deployProxy(UserRegistryImpl,SALT_U) → U",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-B base B4 ETHRegistry.setSubregistry(vet402, U)",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-B base B5 VF.deployProxy(impl,SALT_A1) → P_AG1",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-B base B6 U.register(\"agent-1\",K_ag1,0,P_AG1,RENEW,exp)",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-B B-1 ETHRegistry.setSubregistry(seller-a, U)",
+   "status": "OK",
+   "value": "0x"
+  },
+  {
+   "id": "U7-B B-2 P_AG1.linkToNode(agent-1.seller-a.eth → node(agent-1.vet402.eth))",
+   "status": "OK",
+   "value": "0x"
+  },
+  {
+   "id": "U7-B B-3 resolve(text agent-1.seller-a.eth x402-policy)",
+   "status": "OK",
+   "value": "\"{\\\"v\\\":1,\\\"trust\\\":[\\\"atst.vet402.eth\\\"],\\\"floor\\\":\\\"l2_match\\\",\\\"max\\\":\\\"50000\\\"}\""
+  },
+  {
+   "id": "U7-B B-4 resolve(text seller-a.eth x402-offer) 影響なしか",
+   "status": "OK",
+   "value": "\"{\\\"v\\\":1,\\\"amount\\\":\\\"10000\\\",\\\"asset\\\":\\\"USDC\\\"}\""
+  },
+  {
+   "id": "U7-C base B1 VF.deployProxy(impl,SALT_A) → P_a",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-C base B2 ETHRegistry.setResolver(seller-a, P_a)",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-C base B3 VF.deployProxy(UserRegistryImpl,SALT_U) → U",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-C base B4 ETHRegistry.setSubregistry(vet402, U)",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-C base B5 VF.deployProxy(impl,SALT_A1) → P_AG1",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-C base B6 U.register(\"agent-1\",K_ag1,0,P_AG1,RENEW,exp)",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-C C1 W_vet（他人）が setSubregistry(seller-a, U)",
+   "status": "REVERT",
+   "value": "EACUnauthorizedAccountRoles(0x115f4e025c78ed6588b2837305afe6232e6f12ce0ed8d2707972e9b200000000,0x100000,0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6)"
+  },
+  {
+   "id": "U7-C C2 W_ens が setSubregistry(seller-a, U)",
+   "status": "OK",
+   "value": "0x"
+  },
+  {
+   "id": "U7-C C3 W_ens が setSubregistry(seller-a, 0) で戻す",
+   "status": "OK",
+   "value": "0x"
+  },
+  {
+   "id": "U7-C C4 findResolver(agent-1.seller-a.eth) 戻した後",
+   "status": "OK",
+   "value": "0xC54403186Db35B9D92cc393Ae665D3960117ac14"
+  },
+  {
+   "id": "U7-D base B1 VF.deployProxy(impl,SALT_A) → P_a",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-D base B2 ETHRegistry.setResolver(seller-a, P_a)",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-D base B3 VF.deployProxy(UserRegistryImpl,SALT_U) → U",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-D base B4 ETHRegistry.setSubregistry(vet402, U)",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-D base B5 VF.deployProxy(impl,SALT_A1) → P_AG1",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-D base B6 U.register(\"agent-1\",K_ag1,0,P_AG1,RENEW,exp)",
+   "status": "OK",
+   "value": ""
+  },
+  {
+   "id": "U7-D D1 ETHRegistry.setSubregistry(seller-a, U)",
+   "status": "OK",
+   "value": "0x"
+  },
+  {
+   "id": "U7-D D2 U.revokeRootRoles(UNEMANCIPATED, W_vet) = emancipation",
+   "status": "OK",
+   "value": "0x0000000000000000000000000000000000000000000000000000000000000001"
+  },
+  {
+   "id": "U7-D D3 emancipation 後に W_ens が setSubregistry(seller-a,0) で戻せるか",
+   "status": "OK",
+   "value": "0x"
+  },
+  {
+   "id": "U7-D D4 emancipation 後に W_vet が setSubregistry(vet402,0) で戻せるか",
+   "status": "OK",
+   "value": "0x"
+  }
+ ]
+}

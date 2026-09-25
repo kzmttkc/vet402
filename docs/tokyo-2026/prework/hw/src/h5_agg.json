@@ -1,0 +1,8079 @@
+[
+ {
+  "key": "api.exa.ai/search",
+  "settled": 14,
+  "total": 16,
+  "amt": 7000,
+  "last": "2026-09-18T18:00:18Z",
+  "lasttx": "0xcf61550bf624b50397cb7b644356ce26f03886f223886fc6f77e7726112aac12",
+  "l2": {
+   "not_checked": 14,
+   "no_declaration": 2
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-23",
+   "2026-08-26",
+   "2026-08-28",
+   "2026-08-30",
+   "2026-09-01",
+   "2026-09-12",
+   "2026-09-16",
+   "2026-09-17"
+  ],
+  "h12": 9,
+  "days": 14,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.twit.sh/users/following",
+  "settled": 8,
+  "total": 10,
+  "amt": 10000,
+  "last": "2026-09-18T18:00:31Z",
+  "lasttx": "0x061aaabec1b3e36e77be4f816c2bb0ccd3350d411daf88de6341ee70a7925c6c",
+  "l2": {
+   "no_declaration": 8,
+   "not_checked": 2
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-12",
+   "2026-09-16",
+   "2026-09-17"
+  ],
+  "h12": 3,
+  "days": 8,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.twit.sh/tweets/user",
+  "settled": 8,
+  "total": 10,
+  "amt": 10000,
+  "last": "2026-09-18T18:00:26Z",
+  "lasttx": "0x0ea6b75142cd43c346ea8b5a434e2372ce81f7a9c2bab1bc2169a9a7b501aa63",
+  "l2": {
+   "no_declaration": 8,
+   "not_checked": 2
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-12",
+   "2026-09-16",
+   "2026-09-17"
+  ],
+  "h12": 3,
+  "days": 8,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.twit.sh/tweets/search",
+  "settled": 7,
+  "total": 10,
+  "amt": 6000,
+  "last": "2026-09-17T12:52:20Z",
+  "lasttx": "0x7f3a87762b3c8ea68ba87be3edb17ec84f0798ee9e62e718227e50eb870f7203",
+  "l2": {
+   "mismatch": 7,
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-12",
+   "2026-09-16",
+   "2026-09-17"
+  ],
+  "h12": 3,
+  "days": 7,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.twit.sh/tweets/replies",
+  "settled": 7,
+  "total": 9,
+  "amt": 10000,
+  "last": "2026-09-18T18:00:29Z",
+  "lasttx": "0xa841976ba7f25115c3d825907dcc0c4ed665a9d7284cd12b9a6802127d5682d1",
+  "l2": {
+   "no_declaration": 7,
+   "not_checked": 2
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-11",
+   "2026-09-16",
+   "2026-09-17"
+  ],
+  "h12": 3,
+  "days": 7,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.twit.sh/users/by/username",
+  "settled": 6,
+  "total": 10,
+  "amt": 5000,
+  "last": "2026-09-17T12:52:25Z",
+  "lasttx": "0x866dbc95ada4f985fdea6053c9d5292db7c6fd4c4e0cd6a60eea980be70ce980",
+  "l2": {
+   "not_checked": 4,
+   "no_declaration": 6
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-12",
+   "2026-09-16",
+   "2026-09-17"
+  ],
+  "h12": 3,
+  "days": 6,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "headers.use.x402atlas.com",
+  "settled": 4,
+  "total": 4,
+  "amt": 10000,
+  "last": "2026-09-16T12:09:34Z",
+  "lasttx": "0xfb91a55f40fd2cec2efac8fbfa60718f43f6ec446003545ea63da630bf4ef587",
+  "l2": {
+   "match": 4
+  },
+  "conform_n": 4,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-16"
+  ],
+  "h12": 3,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "router.mudko.com/api/x402/route",
+  "settled": 4,
+  "total": 4,
+  "amt": 5000,
+  "last": "2026-09-16T12:09:38Z",
+  "lasttx": "0xc1ef3bfeb480e89f435877e1f36849ee56414c88d904a86c09e1a6610418a03a",
+  "l2": {
+   "match": 4
+  },
+  "conform_n": 4,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-27",
+   "2026-09-16"
+  ],
+  "h12": 3,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "rubric-protocol.com/v1/x402/regwatch-feed",
+  "settled": 4,
+  "total": 4,
+  "amt": 50000,
+  "last": "2026-09-16T18:01:30Z",
+  "lasttx": "0x474cf68bfebd8c4f20fbab08dfe7836732a16a24b8a07f4d45383e205d14f494",
+  "l2": {
+   "no_declaration": 4
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-28",
+   "2026-09-10"
+  ],
+  "h12": 3,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.oblique.markets/api/v1/paid/bazaar-seller-rank",
+  "settled": 4,
+  "total": 4,
+  "amt": 3000,
+  "last": "2026-09-16T18:00:26Z",
+  "lasttx": "0xdc9561e9502832255ecfd2a9af34dd0dc09b534faeadfdb73aee59bdf4c90a65",
+  "l2": {
+   "no_declaration": 4
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-29",
+   "2026-09-10"
+  ],
+  "h12": 3,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.oblique.markets/api/v1/paid/x402-facilitator-health",
+  "settled": 4,
+  "total": 4,
+  "amt": 3000,
+  "last": "2026-09-16T12:09:20Z",
+  "lasttx": "0x81bb4608715d425c00e52018d9d0954dfb1b144832800b2632f9c8bacba48562",
+  "l2": {
+   "no_declaration": 4
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-28",
+   "2026-09-16"
+  ],
+  "h12": 3,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.hyperextend.xyz/v1/outcome_ctx/%231000/latest",
+  "settled": 4,
+  "total": 4,
+  "amt": 3475,
+  "last": "2026-09-16T12:09:45Z",
+  "lasttx": "0xc179f5b5c2d68125b87bb7223971d2fb6f63a8d80669c6df0b73bcf64aeea083",
+  "l2": {
+   "mismatch": 4
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-28",
+   "2026-09-16"
+  ],
+  "h12": 3,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "perpsignals.use.x402atlas.com/pairs",
+  "settled": 4,
+  "total": 4,
+  "amt": 5000,
+  "last": "2026-09-16T12:09:22Z",
+  "lasttx": "0x587209f2454ef706fc6b1e763257fffe86c3acf6037453369e0612417e84187e",
+  "l2": {
+   "match": 4
+  },
+  "conform_n": 4,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-28",
+   "2026-09-16"
+  ],
+  "h12": 3,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402-factory.com/v1/ping",
+  "settled": 4,
+  "total": 4,
+  "amt": 1000,
+  "last": "2026-09-16T18:01:45Z",
+  "lasttx": "0x440cd4b383e322ad247fa9a1fa731abaa7068d6effd63f1bc6ce07038b3a0c3a",
+  "l2": {
+   "match": 4
+  },
+  "conform_n": 4,
+  "h12_days": [
+   "2026-08-23",
+   "2026-08-30",
+   "2026-09-10"
+  ],
+  "h12": 3,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "rubric-protocol.com/v1/x402/hedera-facts/topic-state",
+  "settled": 4,
+  "total": 4,
+  "amt": 1000,
+  "last": "2026-09-16T18:01:52Z",
+  "lasttx": "0x3b20f1171acda140ec6c2754c7f9284d155145bc505c04e5dc9cb69580090037",
+  "l2": {
+   "no_declaration": 4
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-01",
+   "2026-09-10"
+  ],
+  "h12": 3,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "gateway.spraay.app/api/v1/prices",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-10T12:09:20Z",
+  "lasttx": "0xbdde401d6f9dbafd5b76c1ffcbc583f921f646654834b8f67791f7572342d628",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-10"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "google-trends.use.x402atlas.com/trend",
+  "settled": 3,
+  "total": 4,
+  "amt": 50000,
+  "last": "2026-09-09T12:08:35Z",
+  "lasttx": "0x1ea4e442967cb897d800d7703aaf609379aca78d22f68279de163a97a50976ad",
+  "l2": {
+   "match": 3,
+   "not_checked": 1
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.interzoid.com/getfullnamematch",
+  "settled": 3,
+  "total": 4,
+  "amt": 10000,
+  "last": "2026-09-09T12:08:40Z",
+  "lasttx": "0x136ad4bb55104f954a37db6259c7a253a7059baeec2a6bdbb2b9539a3fba1ebd",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "websearch.use.x402atlas.com/extract",
+  "settled": 3,
+  "total": 4,
+  "amt": 10000,
+  "last": "2026-09-09T12:09:22Z",
+  "lasttx": "0x566101e81ef8a606e902e7ea85f70dfd075b56c17fb36123cee2d2d3235e9a3d",
+  "l2": {
+   "match": 3,
+   "not_checked": 1
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "kronossignals.com/api/v1/options-iv/btc",
+  "settled": 3,
+  "total": 4,
+  "amt": 30000,
+  "last": "2026-09-09T12:09:50Z",
+  "lasttx": "0xfcc0a93797c9c27f32374a827e45beb4ad6956ff718f748509d26a8dc8554217",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-28",
+   "2026-09-09"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "gblin.digital/api/x402/governance",
+  "settled": 3,
+  "total": 4,
+  "amt": 1000,
+  "last": "2026-09-09T12:08:57Z",
+  "lasttx": "0xd2cb0a1fbb291084013a998b711189fe5d8a1ff2c789aec8e2b2439dac90747f",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "regimeshift.xyz/api/v1/rate/sofr/usd",
+  "settled": 3,
+  "total": 4,
+  "amt": 1000,
+  "last": "2026-09-09T12:08:21Z",
+  "lasttx": "0x377aa0bd09020a12093657f4cb763c1da06dab4a2597151c2d0fc49aa512f19b",
+  "l2": {
+   "match": 3,
+   "not_checked": 1
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.biotechcatalystsentinel.com/v1/catalysts/upcoming",
+  "settled": 3,
+  "total": 4,
+  "amt": 20000,
+  "last": "2026-09-09T12:08:43Z",
+  "lasttx": "0x2ad9d18ac1594e263fff38e5d488b38285abef84a14d093882463afbfe40cad3",
+  "l2": {
+   "mismatch": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.aidress.ai/pay/agent_api_dev_v2_ixs_finance",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-10T12:09:35Z",
+  "lasttx": "0x94adc9a3e71e17132b28f431aae5bb98e4790acf0dd729c691bbb1d7bb7b91fe",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-10"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.nativebtc.org/v1/mempool/stream-ticket",
+  "settled": 3,
+  "total": 4,
+  "amt": 5000,
+  "last": "2026-09-09T12:09:01Z",
+  "lasttx": "0x00a2e2e876265ffe3136be3248f145f6b2f2e95f2b020cfbae9c70677366d914",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.bitrefill.com/x402/checkout/info",
+  "settled": 3,
+  "total": 4,
+  "amt": 1000,
+  "last": "2026-09-09T12:09:06Z",
+  "lasttx": "0x21523c7c4353de38d80dd6e9a38160577c0b221f0e2ae7ba049ed2acc3ec7c16",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-28",
+   "2026-09-09"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "hyperliquid-accounts.use.x402atlas.com/spot",
+  "settled": 3,
+  "total": 4,
+  "amt": 10000,
+  "last": "2026-09-09T12:09:04Z",
+  "lasttx": "0x14ff9071112b25691d7ae1dae612f974b02bed04e7eda52845a1af694c4e5859",
+  "l2": {
+   "match": 3,
+   "not_checked": 1
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "websearch.use.x402atlas.com/search",
+  "settled": 3,
+  "total": 4,
+  "amt": 10000,
+  "last": "2026-09-09T12:08:37Z",
+  "lasttx": "0x37c58f5408db2dcc7d52802fc56173aa87e54126af983ad64863c71e8567a507",
+  "l2": {
+   "match": 3,
+   "not_checked": 1
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27",
+   "2026-09-09"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.robinx.io/callers",
+  "settled": 3,
+  "total": 4,
+  "amt": 10000,
+  "last": "2026-09-09T12:08:56Z",
+  "lasttx": "0x44c4a47176c7bbc0681f73ab6b48370d4ac6769145579e8aa2af94eae2e6ca82",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-28",
+   "2026-09-09"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "coingecko.use.x402atlas.com/ohlc",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-10T12:08:17Z",
+  "lasttx": "0x1c6ac1a6dec5a92219baf9964afa6010ac28c406434b97572c0212bd8600e494",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-28",
+   "2026-09-10"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "google-trends.use.x402atlas.com/related-queries",
+  "settled": 3,
+  "total": 4,
+  "amt": 30000,
+  "last": "2026-09-09T12:09:14Z",
+  "lasttx": "0x121241737553e8db4d87ee3e0188717e660a21d9aaf52eb41e6f03e11c25403f",
+  "l2": {
+   "match": 3,
+   "not_checked": 1
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-28",
+   "2026-09-09"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "kronossignals.com/api/v1/funding-extremes",
+  "settled": 3,
+  "total": 4,
+  "amt": 20000,
+  "last": "2026-09-09T12:09:59Z",
+  "lasttx": "0xd5a62b2121f7947907fa5cf086d02ed1312500d389c7f7e56c75ca9e82511817",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-28",
+   "2026-09-09"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.oblique.markets/api/v1/paid/bazaar-trending",
+  "settled": 3,
+  "total": 3,
+  "amt": 3000,
+  "last": "2026-09-11T12:08:57Z",
+  "lasttx": "0x551c34ea3329c7e467a199ea4a83eb5b40c419702c0febb391df68f9e561995d",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-29",
+   "2026-09-11"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.oblique.markets/api/v1/paid/listing-triage",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-12T12:09:09Z",
+  "lasttx": "0xd60e7fcf8e8cefa47f38855047d45466ba9fd577f35f3bfcb63c86cb91006485",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-29",
+   "2026-09-12"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agent-arcade.use.x402atlas.com/trivia/daily",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-11T12:09:36Z",
+  "lasttx": "0x9c4d342ebed7344095024f07fd3848c5ec4935ce49a8019eec22ac86f0b18d97",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-29",
+   "2026-09-11"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "hyperliquid-accounts.use.x402atlas.com/state",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-10T12:08:16Z",
+  "lasttx": "0x765473aea1d02d7457edacc070df60908e0088c608f9189d9eeb8fb587044aa9",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-28",
+   "2026-09-10"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "hotels.use.x402atlas.com/search",
+  "settled": 3,
+  "total": 3,
+  "amt": 50000,
+  "last": "2026-09-10T12:08:22Z",
+  "lasttx": "0xc58e0cfff161d890e7c5e6dea449f020b84e5ef052edd8a7bffd8cbcd9ba96fa",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-23",
+   "2026-08-30",
+   "2026-09-10"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "quietstore-production.edge-7e13f.workers.dev/v1/packs/demo-extras-v1",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-10T12:08:37Z",
+  "lasttx": "0x8007ebe6b38c49d0daca06a31ca5efdd7ab38a44c266e9e1f2d55351a1f912d2",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-23",
+   "2026-08-30",
+   "2026-09-10"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "twitter.use.x402atlas.com/community-details",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-10T12:08:34Z",
+  "lasttx": "0x310a8ca7626ff1123f1a2094acce9221fe18f6283556509afa32da6cc7db3aef",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-23",
+   "2026-08-30",
+   "2026-09-10"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "tiktok.palmyr.ai/v1/accounts",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-13T12:08:46Z",
+  "lasttx": "GWMAhY1nEHorekoFC7Zarqru8VQvQJVHzwRZ4nR6mZPHHXpbekXx4KWr5isFZLKz8qoArm3F71CiwEhPf5UyCmP",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-23",
+   "2026-08-30",
+   "2026-09-13"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+  ]
+ },
+ {
+  "key": "api.printmoneylab.com/api/v1/stablecoin-premium",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-10T12:08:54Z",
+  "lasttx": "0xa84ddbff5900c2f60c5ad8cd60480031f5acfbd9deb5391a38e0027aef6b6110",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-23",
+   "2026-08-30",
+   "2026-09-10"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/avg-interest-rates",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-10T12:09:40Z",
+  "lasttx": "0x201f514c5e90b40386368cf18894b0cea2591f326ae8667d2d6e4a4a9cc5f464",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-01",
+   "2026-09-10"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "the-stall.intuitek.ai/cap/earnings-calendar",
+  "settled": 3,
+  "total": 4,
+  "amt": 10000,
+  "last": "2026-09-09T12:08:33Z",
+  "lasttx": "0x70e228da36fcdfae5ddeede9930b8324a7d35f8b2001f79a53c3ea68491efb33",
+  "l2": {
+   "match": 3,
+   "not_checked": 1
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-01",
+   "2026-09-09"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.slamai.dev/token/price",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-11T12:09:54Z",
+  "lasttx": "0xc75de229e77b4f35a84d936339a1e9a394cdea1a0954123e7431f7f0de3b02e7",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-01",
+   "2026-09-11"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.aidress.ai/pay/agent_edgar_apitoll_cloud",
+  "settled": 3,
+  "total": 3,
+  "amt": 3000,
+  "last": "2026-09-17T12:53:47Z",
+  "lasttx": "0x1cb45d4033494983f2bcafb4653fabc90fb40f5a3823447d4ac90dabadb46755",
+  "l2": {
+   "not_checked": 1,
+   "match": 2
+  },
+  "conform_n": 2,
+  "h12_days": [
+   "2026-09-02",
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "h12": 3,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.stakedbots.com/leaderboard",
+  "settled": 4,
+  "total": 4,
+  "amt": 20000,
+  "last": "2026-09-16T18:00:27Z",
+  "lasttx": "0xa58acb627a234e2f9857f530d974d66d522083dab9603adff104b41987628d7b",
+  "l2": {
+   "no_declaration": 4
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-28"
+  ],
+  "h12": 2,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "unwrap.use.x402atlas.com",
+  "settled": 4,
+  "total": 4,
+  "amt": 9000,
+  "last": "2026-09-16T18:00:19Z",
+  "lasttx": "0x5319171ba3e3b99d39624ab04db20efe09fbfde5a7272ff8bd6e7a3eee3a53d1",
+  "l2": {
+   "match": 4
+  },
+  "conform_n": 4,
+  "h12_days": [
+   "2026-08-28",
+   "2026-09-10"
+  ],
+  "h12": 2,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "wiki.use.x402atlas.com/summary",
+  "settled": 4,
+  "total": 4,
+  "amt": 5000,
+  "last": "2026-09-16T12:09:39Z",
+  "lasttx": "0xe7d7646b7ee479e0b70826fcad6d0b3567422ad31bbf6d974f7419ac57fbf5da",
+  "l2": {
+   "match": 4
+  },
+  "conform_n": 4,
+  "h12_days": [
+   "2026-08-27",
+   "2026-09-16"
+  ],
+  "h12": 2,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "marketdata.use.x402atlas.com/insider-trades",
+  "settled": 4,
+  "total": 4,
+  "amt": 15000,
+  "last": "2026-09-16T12:09:46Z",
+  "lasttx": "0x70db7630cfc24a1b0916e9b27677935942368945f5c42c513a0ab27998390303",
+  "l2": {
+   "match": 4
+  },
+  "conform_n": 4,
+  "h12_days": [
+   "2026-08-28",
+   "2026-09-16"
+  ],
+  "h12": 2,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "proxy.suverse.io/v1/swap/base/quote",
+  "settled": 4,
+  "total": 4,
+  "amt": 1000,
+  "last": "2026-09-16T12:09:52Z",
+  "lasttx": "0x052e84f626cd504b5276c1832434ba0ce025db2508a593e9632ada20823a86bd",
+  "l2": {
+   "not_checked": 4
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-27",
+   "2026-09-16"
+  ],
+  "h12": 2,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.robinx.io/feed/new",
+  "settled": 4,
+  "total": 4,
+  "amt": 10000,
+  "last": "2026-09-16T12:09:10Z",
+  "lasttx": "0xca52bb13c43d8be5a5cf2c54b5a4b319b67762e54624b858b68eb621b6954baf",
+  "l2": {
+   "no_declaration": 4
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-29",
+   "2026-09-16"
+  ],
+  "h12": 2,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "netintel.dev/gas/price",
+  "settled": 4,
+  "total": 4,
+  "amt": 2000,
+  "last": "2026-09-16T18:02:11Z",
+  "lasttx": "0x302a272a1392b491048dd2589da985537ebc750bad5387e90b77bbf9e241c932",
+  "l2": {
+   "match": 4
+  },
+  "conform_n": 4,
+  "h12_days": [
+   "2026-08-23",
+   "2026-08-30"
+  ],
+  "h12": 2,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "coingecko.use.x402atlas.com/trending",
+  "settled": 4,
+  "total": 4,
+  "amt": 5000,
+  "last": "2026-09-16T18:01:16Z",
+  "lasttx": "0x3c68edd0ff4309ff25ddd3ea6d713f587413fcbab1176d03dd102abf2e621505",
+  "l2": {
+   "match": 4
+  },
+  "conform_n": 4,
+  "h12_days": [
+   "2026-08-23",
+   "2026-08-30"
+  ],
+  "h12": 2,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "rubric-protocol.com/v1/x402/hedera-facts/throughput",
+  "settled": 4,
+  "total": 4,
+  "amt": 1000,
+  "last": "2026-09-16T12:09:05Z",
+  "lasttx": "0x9db1e64ff1b34fd3521af1b44d72439f28bf64ee83e38c2bca69975ced863f02",
+  "l2": {
+   "no_declaration": 4
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-31",
+   "2026-09-16"
+  ],
+  "h12": 2,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "holidays.use.x402atlas.com/check",
+  "settled": 4,
+  "total": 4,
+  "amt": 5000,
+  "last": "2026-09-16T12:09:37Z",
+  "lasttx": "0xb43af744ab1cfbe6fd199b4e037ced381f36a8c7331ff87c23909bc73670fa0c",
+  "l2": {
+   "match": 4
+  },
+  "conform_n": 4,
+  "h12_days": [
+   "2026-08-31",
+   "2026-09-16"
+  ],
+  "h12": 2,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "rubric-protocol.com/v1/x402/hedera-facts/nodes",
+  "settled": 4,
+  "total": 4,
+  "amt": 1000,
+  "last": "2026-09-16T18:01:51Z",
+  "lasttx": "0x4fa50fcbdf76f9fc637d2567f19466880e189e746f7bfa4a0822ac680717625a",
+  "l2": {
+   "no_declaration": 4
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-31",
+   "2026-09-10"
+  ],
+  "h12": 2,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "space-weather.use.x402atlas.com/now",
+  "settled": 4,
+  "total": 4,
+  "amt": 5000,
+  "last": "2026-09-16T12:09:26Z",
+  "lasttx": "0x0c537ab38a3b99bd2dee8620e9f50e6a583dcbab86d837a987241a4bebb24499",
+  "l2": {
+   "match": 4
+  },
+  "conform_n": 4,
+  "h12_days": [
+   "2026-08-31",
+   "2026-09-16"
+  ],
+  "h12": 2,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "rubric-protocol.com/v1/x402/hedera-facts/gas-fees",
+  "settled": 4,
+  "total": 4,
+  "amt": 1000,
+  "last": "2026-09-16T18:00:41Z",
+  "lasttx": "0x3ebb7f146da7d6f9e3712cb2b64d0d60714701f670806969272f2eb2a8a6b37a",
+  "l2": {
+   "no_declaration": 4
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-31",
+   "2026-09-10"
+  ],
+  "h12": 2,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "dartapi.ljaysk.com/v1/events",
+  "settled": 4,
+  "total": 4,
+  "amt": 2000,
+  "last": "2026-09-16T18:01:18Z",
+  "lasttx": "0x7c643e437677afe7f89f2983fb23f1c65a1b249fb2aa15ad060539b899811421",
+  "l2": {
+   "mismatch": 4
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "h12": 2,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.craigmbrown.com/v1/services/reputation.lookup",
+  "settled": 4,
+  "total": 4,
+  "amt": 10000,
+  "last": "2026-09-16T18:01:43Z",
+  "lasttx": "0x9589cd9d5d988186ce6a4b3b836650a39a2460a0774ed592f092fa086d452abb",
+  "l2": {
+   "match": 2,
+   "not_checked": 2
+  },
+  "conform_n": 2,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "h12": 2,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.printmoneylab.com/api/v1/kr-prices",
+  "settled": 3,
+  "total": 4,
+  "amt": 2000,
+  "last": "2026-09-08T19:01:05Z",
+  "lasttx": "0x205ac90e9c5951da02cf00d0b995328f9f3b0e0563128be28488cf4d88eb6e15",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.bitrefill.com/x402/gift-cards/search",
+  "settled": 3,
+  "total": 4,
+  "amt": 2000,
+  "last": "2026-09-08T19:00:56Z",
+  "lasttx": "0x4be527bb2b699440834c408aabd74453fc6ff07429f2fa17796fdcba19eba3bf",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.linkedpanda.com/agent/v1/profiles/search",
+  "settled": 3,
+  "total": 4,
+  "amt": 300000,
+  "last": "2026-09-08T19:01:11Z",
+  "lasttx": "0x5ef46f349df55d9a051770a83344f3cdfaa8b9c5bbd14558f0b3c5a4ef092647",
+  "l2": {
+   "not_checked": 4
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.nansen.ai/api/v1/prediction-market/categories",
+  "settled": 3,
+  "total": 4,
+  "amt": 10000,
+  "last": "2026-09-08T19:02:15Z",
+  "lasttx": "0xb101b76ee0f9896bd5ba91215e1544254fbc0dd9683a57a91c37f28ce441adaa",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "kronossignals.com/api/v1/price/btc",
+  "settled": 3,
+  "total": 4,
+  "amt": 20000,
+  "last": "2026-09-08T19:01:44Z",
+  "lasttx": "0x2f0a2166bb10bc8a2617532a753d469360a92cefd82ea3b48c35c470847ab64a",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api-dev-v2.ixs.finance/x402/vaults",
+  "settled": 3,
+  "total": 4,
+  "amt": 1000,
+  "last": "2026-09-08T19:01:25Z",
+  "lasttx": "0x87a8d0aabddd801d9b2a335bf3ab1ee2e4f0dfee0b1e8bd72f9b4d2418fe95ff",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.myceliasignal.com/oracle/price/btc/usd",
+  "settled": 3,
+  "total": 4,
+  "amt": 10000,
+  "last": "2026-09-08T19:02:03Z",
+  "lasttx": "0xd7bfa255d4b586a18dc38d96c2063c9fd76af8f4016d08ee77eacecd1126f833",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "kronossignals.com/api/v1/fear-greed",
+  "settled": 3,
+  "total": 4,
+  "amt": 20000,
+  "last": "2026-09-08T19:01:49Z",
+  "lasttx": "0x1b8123fab2eab21c396d482853aec248f78bb3ce92827104e832f05fbfb51d37",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "kronossignals.com/api/v1/forecast/btc",
+  "settled": 3,
+  "total": 4,
+  "amt": 50000,
+  "last": "2026-09-09T01:01:27Z",
+  "lasttx": "0x48e0f991a292863f8c66179c119d1f54ac018ba9d9cbc92aa280413653a3c3d4",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "kronossignals.com/api/v1/liquidations/btc",
+  "settled": 3,
+  "total": 4,
+  "amt": 20000,
+  "last": "2026-09-08T19:00:57Z",
+  "lasttx": "0xcc02981fb8e98f957ecc3ca51957e666796e1d3c26f3eb36a50cf7e22168d805",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.printmoneylab.com/api/v1/kimchi-premium",
+  "settled": 3,
+  "total": 4,
+  "amt": 2000,
+  "last": "2026-09-08T19:02:06Z",
+  "lasttx": "0xb18d0d9f4a005458592bc0b4499835f4f10c4f24244c7baddf9312c337269509",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "regimeshift.xyz/api/v1/asset/btc/vrp",
+  "settled": 3,
+  "total": 4,
+  "amt": 1000,
+  "last": "2026-09-08T19:01:39Z",
+  "lasttx": "0x1fb1231b2b851df26d067ee05acf51902fc76c3d07142c742f34e4b52d2d9674",
+  "l2": {
+   "match": 3,
+   "not_checked": 1
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.gitbeacon.dev/v1/repos",
+  "settled": 3,
+  "total": 4,
+  "amt": 10000,
+  "last": "2026-09-08T19:01:41Z",
+  "lasttx": "0x3b2f6f7180661af0cb28082d2963dd5d70f23bbbf39d18cd0ce86370a07878ad",
+  "l2": {
+   "mismatch": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.x402dataapi.com/v1/agent-accessibility",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000000,
+  "last": "2026-09-12T18:00:29Z",
+  "lasttx": "0x959e53b13abb3fe3a265f84fa362d518264a0a5d64a703780cb259373b212b7f",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.orcatrace.dev/v1/latest",
+  "settled": 3,
+  "total": 4,
+  "amt": 10000,
+  "last": "2026-09-08T19:02:17Z",
+  "lasttx": "0x650f18dc3684e1f1691e7d03f2ff6fb815148a1f367b5bda7463f607d552e72e",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.signalis.dev/v1/pulse/narratives",
+  "settled": 3,
+  "total": 4,
+  "amt": 10000,
+  "last": "2026-09-08T19:02:11Z",
+  "lasttx": "0x788b00a34769d3d382fa8a2bde9ebf34e2dcdad3059062e6e5408127b162d3bf",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "coingecko.use.x402atlas.com/price",
+  "settled": 3,
+  "total": 4,
+  "amt": 5000,
+  "last": "2026-09-09T01:01:22Z",
+  "lasttx": "0x5885fafd9b738fa4c7233d2f10f8a109f1e69a0f1a971d7e5ab2f899aa6eed70",
+  "l2": {
+   "match": 3,
+   "not_checked": 1
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "kronossignals.com/api/v1/stablecoins",
+  "settled": 3,
+  "total": 4,
+  "amt": 20000,
+  "last": "2026-09-09T07:02:31Z",
+  "lasttx": "0xd7fc9b4b0afa1da179dfa37cd820f3d8cf146938b4bbf2dbf18f3090937a40d5",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "email-auth.use.x402atlas.com/check",
+  "settled": 3,
+  "total": 4,
+  "amt": 10000,
+  "last": "2026-09-09T01:01:44Z",
+  "lasttx": "0x355087affc01f540e8799793797fea0ad0c10c673601cf3bb80d062d3d73676e",
+  "l2": {
+   "match": 3,
+   "not_checked": 1
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "dns.use.x402atlas.com/whois",
+  "settled": 3,
+  "total": 4,
+  "amt": 5000,
+  "last": "2026-09-09T01:01:16Z",
+  "lasttx": "0x7f88d9072087a63e58be166e9e6bfdcf715ca6d1c426fe04a7b5a21ce95164e1",
+  "l2": {
+   "match": 3,
+   "not_checked": 1
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.moltalyzer.xyz/api/moltbook/digests",
+  "settled": 3,
+  "total": 4,
+  "amt": 20000,
+  "last": "2026-09-09T01:01:14Z",
+  "lasttx": "0x6bce1c9ec159da159cf597a65a38b5cae5de406f68d4b335ebaa6a966dc1de97",
+  "l2": {
+   "mismatch": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "coingecko.use.x402atlas.com/markets",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-10T01:02:12Z",
+  "lasttx": "0x41a213ea7c2b176f663fe66f834ab410f0478a3ed6a3828febac08c5f115d399",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.demandex.dev/v1/opportunities/trending",
+  "settled": 3,
+  "total": 4,
+  "amt": 10000,
+  "last": "2026-09-09T01:01:13Z",
+  "lasttx": "0xebec0eba9594d2514e966f1532fe42a68a0e4f97bfff133a083aef06d7a675e2",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.slamai.dev/chain/tokens/trending",
+  "settled": 3,
+  "total": 4,
+  "amt": 1000,
+  "last": "2026-09-16T18:02:12Z",
+  "lasttx": "0x7ba6a2cad0ba86b7eb41a26822872ac9eeaea39fecbbb430ac79c8de43ad5048",
+  "l2": {
+   "not_checked": 3,
+   "no_declaration": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-27",
+   "2026-09-10"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.hyperextend.xyz/v1/candles/BTC/1m/latest",
+  "settled": 3,
+  "total": 4,
+  "amt": 2000,
+  "last": "2026-09-08T19:01:58Z",
+  "lasttx": "0x69fbabfb3e67ca0659bbd690ce6f8d6499cccb779d3b26add33d005e46c78f49",
+  "l2": {
+   "mismatch": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "dns.use.x402atlas.com/a",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-11T01:01:06Z",
+  "lasttx": "0x97e7758f74779e2d5c365a56d2846db0999b1ada6e346361d4b5c4f6f2db44e1",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "oblique.markets/api/v1/paid/bazaar-pulse",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-10T01:01:14Z",
+  "lasttx": "0xadbcbb3332bff7173c16a8a01f69bb1378837b7ad1d6dda6ca028d9bfdd493ae",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "dns.use.x402atlas.com/mx",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-10T07:02:32Z",
+  "lasttx": "0x3e2e5f52514490b3e876fcaaa7b48fe9d143037336739e3f15c0252fb8935f3c",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-27"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "places.use.x402atlas.com/local",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-11T01:01:13Z",
+  "lasttx": "0x03fdfcfe7d1dd70fc3c2f385f0b5acc54e736f63577f45a247f3fe2ad58c7635",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-29"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.bitrefill.com/x402/topups/search",
+  "settled": 3,
+  "total": 4,
+  "amt": 2000,
+  "last": "2026-09-09T01:01:26Z",
+  "lasttx": "0xc17d7ad46cb0497308e377e7fb63d4c503f531bd1638975430c23d4b73dcb229",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-28"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "kronossignals.com/api/v1/funding-arb/btc",
+  "settled": 3,
+  "total": 4,
+  "amt": 20000,
+  "last": "2026-09-08T19:01:28Z",
+  "lasttx": "0x050173ac0ddfb0dfb623ee7013fe3101e4a9dac2795cb996f1830868695337c3",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-28"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "kronossignals.com/api/v1/alerts/btc",
+  "settled": 3,
+  "total": 4,
+  "amt": 20000,
+  "last": "2026-09-09T01:01:10Z",
+  "lasttx": "0xb1bbb3f93c1e83eabbecf05ab82007f7c03fc16c42775cfa74ada7388af77cf8",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-28"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "polynews.news/api/v1/arbitrage",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-16T00:01:20Z",
+  "lasttx": "0xac86c646cb32676cda9955ad4c0fe434f59c364651399e1ecc1680e2f19a0711",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-20",
+   "2026-08-29"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "dns.use.x402atlas.com/rdap",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-10T12:08:42Z",
+  "lasttx": "0x90add4ee6edb132fbee4fd74407b55952fde8ad4e39ae87edcfe07290fd5359f",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-28",
+   "2026-09-10"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "hyperliquid.use.x402atlas.com/perps-meta",
+  "settled": 3,
+  "total": 4,
+  "amt": 5000,
+  "last": "2026-09-09T12:09:09Z",
+  "lasttx": "0x16040f088791d0b36ffea519f4dac37331eac3462fd85372e9df52769984f2f6",
+  "l2": {
+   "mismatch": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-28",
+   "2026-09-09"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.bitrefill.com/x402/esims/search",
+  "settled": 3,
+  "total": 4,
+  "amt": 2000,
+  "last": "2026-09-09T12:08:48Z",
+  "lasttx": "0x1ee5b5683b0c87fb8a1ce6fc83d6facb6d2e40803f5fd1c9a023a6aa5e983c7a",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-28",
+   "2026-09-09"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "defillama.use.x402atlas.com/yields",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-10T12:08:20Z",
+  "lasttx": "0x3ccdd3eedd83b5049b87c905476ab6def420683fd7ec3a029da7a439fa825816",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-28",
+   "2026-09-10"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "kronossignals.com/api/v1/overview",
+  "settled": 3,
+  "total": 4,
+  "amt": 20000,
+  "last": "2026-09-09T12:09:36Z",
+  "lasttx": "0x9e190e9d0d71f4e3f8c7c0784579f08e110e256a7ccd5db62c18d48bd384b9be",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-30",
+   "2026-09-09"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.tbs-digital.com/crypto/bundle",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-10T12:08:18Z",
+  "lasttx": "0x831ec0d73d91aad355f7fb9660245b36937acd5609f3c2f431580712522f6a44",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-29",
+   "2026-09-10"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.hergertsynthora.com/v1/ecb-forex-fixing-vs-market",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-10T12:08:08Z",
+  "lasttx": "0x20c3e470667d1e8f3f6cbd52f0df11f3f5f84882328abaeeecad9518fb4366f6",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-28",
+   "2026-09-10"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "2s.io/api/calendar/earnings",
+  "settled": 3,
+  "total": 3,
+  "amt": 2500,
+  "last": "2026-09-12T06:02:15Z",
+  "lasttx": "0x97abf346638e574ab0f1f084184a9e7d036c345a311828f1648fe2789be38204",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-28"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "kronossignals.com/api/v1/liquidations/sol",
+  "settled": 3,
+  "total": 4,
+  "amt": 20000,
+  "last": "2026-09-09T01:01:07Z",
+  "lasttx": "0xbefa695cbda9be779c8ee608331a26f6de4320ddb2b1bf0aeace616d99ff6715",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-28"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "kronossignals.com/api/v1/liquidations/eth",
+  "settled": 3,
+  "total": 4,
+  "amt": 20000,
+  "last": "2026-09-09T01:01:05Z",
+  "lasttx": "0x039cb85a7cfc939008cd4b718b9f87b977ff8358440f5671f7f82932a294b7d8",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-28"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "google-trends.use.x402atlas.com/interest-by-region",
+  "settled": 3,
+  "total": 3,
+  "amt": 30000,
+  "last": "2026-09-11T01:02:05Z",
+  "lasttx": "0x027986a6d9c9d02aeaae19bcc87338759c692e48cada830a8076fa84d7fadbd3",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-28"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "appstore.use.x402atlas.com/reviews",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-11T01:02:09Z",
+  "lasttx": "0xd57ad4747085e2e8936aa55e65624eb31b267ffc9e03a922a559e51c9a26c8a0",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-29"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "google-trends.use.x402atlas.com/related-topics",
+  "settled": 3,
+  "total": 3,
+  "amt": 30000,
+  "last": "2026-09-12T18:02:17Z",
+  "lasttx": "0x2f78d10fab39c44feb9455fb973d0c7ad86920e4c793bc1ea93da0cfa9f8360f",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-29"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.hergertsynthora.com/v1/bitcoin-fees",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-10T07:02:06Z",
+  "lasttx": "0x210c02b12c372985c65a274e6b5df73669316b545b95a9b29975239e7a0951ce",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-29"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.oblique.markets/api/v1/paid/bazaar-delta",
+  "settled": 3,
+  "total": 3,
+  "amt": 4000,
+  "last": "2026-09-11T06:02:33Z",
+  "lasttx": "0x9a1e7d0c971c4cdd5b11aa73c85d6429802ac6274d9ecb26426f267ceb59a694",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-29"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.oblique.markets/api/v1/paid/bazaar-new-listings",
+  "settled": 3,
+  "total": 3,
+  "amt": 3000,
+  "last": "2026-09-11T06:02:32Z",
+  "lasttx": "0x294534e13b0763d2330bb922c1293c1cec8cf2151a04e9c0d6bb1271abae4fcc",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-29"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.oblique.markets/api/v1/paid/bazaar-price-stats",
+  "settled": 3,
+  "total": 4,
+  "amt": 2000,
+  "last": "2026-09-09T07:02:30Z",
+  "lasttx": "0xa88b6ed9dbe2871f88eabbb283f99cd5fe0eb78bba9954a591966b38c553fc04",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-28"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.oblique.markets/api/v1/paid/base-gas-price",
+  "settled": 3,
+  "total": 4,
+  "amt": 2000,
+  "last": "2026-09-09T01:01:51Z",
+  "lasttx": "0x8bf4d3234dd216558f993d80490f742907f60c6b547897f5da1db2c46b5f9d52",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-28"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "twitter.use.x402atlas.com/community-tweets",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-10T07:02:31Z",
+  "lasttx": "0x44df3de8cb4ce0c49b488f46e4a2d8fb34afb7b6cd8a57350fcc065c73708350",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-29"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "hotels.use.x402atlas.com/reviews",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-10T19:02:15Z",
+  "lasttx": "0x1d95e699fd2001456c28b05eafcdaa5a7263b76bb1da0fec5145f5e90ef1742c",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-21",
+   "2026-08-29"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "netintel.dev/crypto/market",
+  "settled": 3,
+  "total": 4,
+  "amt": 5000,
+  "last": "2026-09-09T01:01:03Z",
+  "lasttx": "0x13610bcb1fd7e4e2e57b117811c64a486bb3f64f9fc447070a9ce6696171a33c",
+  "l2": {
+   "match": 3,
+   "not_checked": 1
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-23",
+   "2026-08-30"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "youtube.use.x402atlas.com/transcript",
+  "settled": 3,
+  "total": 4,
+  "amt": 20000,
+  "last": "2026-09-09T01:02:31Z",
+  "lasttx": "0xa428043a540524067f4a6d7756f40bccdbd443e46f3d68cf4a58989ed780fa0b",
+  "l2": {
+   "mismatch": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-23",
+   "2026-08-30"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.robinx.io/social/follows",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-10T19:02:05Z",
+  "lasttx": "0x5179bfe87fc025516840e6c718867d7487c886eb6e91f8c712486da67f3c947a",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-23",
+   "2026-08-30"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.devvizion.com/v0/bounty-radar",
+  "settled": 3,
+  "total": 3,
+  "amt": 15000,
+  "last": "2026-09-11T06:02:15Z",
+  "lasttx": "0xb439b3afb3c4f4f04f5db957b25cba063108c63d6b26e241733d3295fff7be9c",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-23",
+   "2026-08-30"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "fiatdock.com/v1/chain/gas-price",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-12T06:01:30Z",
+  "lasttx": "0x40cc2230f5472efcccd598d0f9c00dd137f2dbd2a917d7770d187ea0b6cb6958",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-23",
+   "2026-08-31"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "gdelt.use.x402atlas.com/search",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-12T00:01:37Z",
+  "lasttx": "0x7f5ba5df60a4e42f716670df077b9690de866f27ea5409474800fb4acae0d420",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-23",
+   "2026-08-30"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "rest.coincap.io/v3/agentFriendly/full_assets_by_slug",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-12T00:00:56Z",
+  "lasttx": "0x1cd0add1d8033ec6efdccc87f0d32988ea0c0e51eee1476ec18ad2d7c04fc79e",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-23",
+   "2026-08-30"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "funding-arb.api.klymax402.com/api/scan",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-10T19:02:09Z",
+  "lasttx": "0x446f50e466905e8c1cdf46573e91a535f8a3c1849613eea69828108251536e0e",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-23",
+   "2026-08-30"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "regimeshift.xyz/api/v1/risk/max-ltv",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-10T07:01:47Z",
+  "lasttx": "0x80533a0ae695d1b830f5348a65d1e2715172dfc484e443f6ee27856c5e3d1e66",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-23",
+   "2026-08-30"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "hyperliquid-predict.use.x402atlas.com/settled",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-12T18:02:33Z",
+  "lasttx": "0xa9405ddc38cb3f8967de50d371fe88b04e5b242b7c053132f0e053475089a606",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-23",
+   "2026-08-30"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.linkedpanda.com/agent/v1/jobs/search",
+  "settled": 3,
+  "total": 3,
+  "amt": 50000,
+  "last": "2026-09-10T12:09:08Z",
+  "lasttx": "0x82887c8c45657d6cb616a7a5c1a24143eaba6196da687580ec80cfc4b24560f8",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-31",
+   "2026-09-10"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "gblin-sentinel.vercel.app/api/data/base-risk-pulse",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-10T12:08:11Z",
+  "lasttx": "0x0695867dcb14ae1fdc945be29d0ef1e8d99096a42bd3c06fa447df30526142de",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-31",
+   "2026-09-10"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "palmyr.ai/phone/temp",
+  "settled": 3,
+  "total": 3,
+  "amt": 200000,
+  "last": "2026-09-12T12:09:38Z",
+  "lasttx": "31BnqfY383EDFbVGoehn54HXjcQfW8JMidsp9x6svG6SjBbezJY3dnv2NwNqAmVqqNdWDMDhQPV62PYge6DQK4Eq",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-31",
+   "2026-09-12"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+  ]
+ },
+ {
+  "key": "hyperliquid.use.x402atlas.com/mids",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-11T12:09:25Z",
+  "lasttx": "0xdf08e6df358bd605e94ce5e28bbf50a2c297e1a234d299fccdd4707376e02b64",
+  "l2": {
+   "match": 1,
+   "mismatch": 2
+  },
+  "conform_n": 1,
+  "h12_days": [
+   "2026-09-01",
+   "2026-09-11"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.craigmbrown.com/v1/services/research.topic-news-scanner",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T06:01:21Z",
+  "lasttx": "0x8ed120845423e1e2b16d87af47ac2ee850d3acdde7852eedb72e10a3b2fa7b33",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "gblin-sentinel.vercel.app/api/data/keeper-opps",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-10T19:01:39Z",
+  "lasttx": "0xb438b1821e71c4a9f369606e8b3a688acbd3ad87c2c5fa6c76dee53c15816816",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "cnvrt.ing/api/analyze-image",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-16T00:00:10Z",
+  "lasttx": "0x0671fa23135949955ee8599289116f06708ab604bddf9599c285c28da255b4ff",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "liquidation-oracle.api.klymax402.com/api/levels",
+  "settled": 3,
+  "total": 3,
+  "amt": 3000,
+  "last": "2026-09-11T06:02:20Z",
+  "lasttx": "0x4f129c3a8f179bdc6cf85463417e9fdbc50774c439b45a7da875ffb0012d7557",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "error404.life/toll/402",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-12T18:01:54Z",
+  "lasttx": "0x7361260f87caa8673276a91268509be6c18982a95d639408c20ec16fb61534f4",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.craigmbrown.com/v1/services/data.web-extract",
+  "settled": 3,
+  "total": 3,
+  "amt": 50000,
+  "last": "2026-09-11T01:01:22Z",
+  "lasttx": "0x95b1918e68eb8b7fd7be0f63a1bbcede7169724af91de634eaec63010c68f63b",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "twitter.use.x402atlas.com/list-followers",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-10T01:01:33Z",
+  "lasttx": "0x5ae32477bb1934e6ef84b58dc0cb127bd7233b0ffc100a721ee6a004ff8661ed",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.craigmbrown.com/v1/services/ops.link-integrity",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-11T01:01:09Z",
+  "lasttx": "0x0c7091ea938c1b4a9d0fdb18e260e733a209e28be8120333e59ce98c32c646bb",
+  "l2": {
+   "match": 2,
+   "not_checked": 1
+  },
+  "conform_n": 2,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.craigmbrown.com/v1/services/agent.prehire-check",
+  "settled": 3,
+  "total": 3,
+  "amt": 250000,
+  "last": "2026-09-12T12:08:40Z",
+  "lasttx": "0x169705b765ad4a19c2abcedc1062da644b8d09c185e180265c54f61d0dcf4193",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-12"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.craigmbrown.com/v1/services/agent.trust-badge",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-11T01:00:36Z",
+  "lasttx": "0xbe0042cb0559102c830f0bd026274951dbdc62a60bf41f3a2645958731ba855a",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/calendar/fomc",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-12T18:00:31Z",
+  "lasttx": "0xec618690fe7a024de628a0fca7b4c21a19d7b316c5b4494f9ab271fd1d70ae7d",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "twitter.use.x402atlas.com/community-media",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-11T01:00:52Z",
+  "lasttx": "0xa82dd4b570f66798483bf30e18d9592603ffca762c95aaac097ab75c1d8eb3f6",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/regulatory",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T12:08:51Z",
+  "lasttx": "0x72205f8e2418e7ff48d15f058029981c079b027312e123a23547f90dce6acdad",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-12"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "regime.nsgoods.org/regime",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-10T01:01:34Z",
+  "lasttx": "0xcfbe94dd469c5744dbe2c151ae3953981368b1aa6ba35667057eded16a03fd47",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-25",
+   "2026-09-01"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/tickers",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-10T12:09:23Z",
+  "lasttx": "0x3c2ecb6e6fb381f57e64c8cc15c72b8d5f24ffd69d89fb34962b2713a1e9665d",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26",
+   "2026-09-10"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/news-sentiment",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T12:09:42Z",
+  "lasttx": "0x548cf19619e924560b4ad2a7a4c5065e6432782f274a8bbae17aba97cc339534",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26",
+   "2026-09-12"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/gov-contracts",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T12:09:35Z",
+  "lasttx": "0xa125cf3d11b9a66df1bf4e38c9cd460c236db151603a97c452076216507229bd",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26",
+   "2026-09-12"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/exchange-rates",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T12:09:45Z",
+  "lasttx": "0xcc7e358652a7a6e4ba5abade639fcbacd147075441b2d06d69565bc39be5fd2f",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26",
+   "2026-09-12"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/frames",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T12:09:01Z",
+  "lasttx": "0x5b472072addcdfd1afc6d3e341e06ad575447b6acf6214be094729866267fa58",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26",
+   "2026-09-12"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/national-debt",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-12T12:09:48Z",
+  "lasttx": "0x18ed1160c0a925b6c3cdd4e9cbebec31f6b0c98f450a512233ca69dde6aae48b",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26",
+   "2026-09-12"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/calendar",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T12:09:53Z",
+  "lasttx": "0x42fad8699f7f47dd64e1646c75e78ea782d6c4e0a421c61f0dd322f44a94ab29",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26",
+   "2026-09-12"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/solana/jlp",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T12:09:06Z",
+  "lasttx": "0xeb60fc835656b551a30f084cfeea5d7194a7af36eeef11adfd5cd0269f78b018",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26",
+   "2026-09-12"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/private-stocks",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T12:09:25Z",
+  "lasttx": "0xc6e0440068de73d118930485cbbad6ce46288bae7e3a1b46370f60e85bacb43c",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26",
+   "2026-09-12"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/patents",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T12:08:54Z",
+  "lasttx": "0xf6ffc3beef2f2ecf5360fe5224897de1b1f7071e59ed6f8211d1deaceb18354e",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26",
+   "2026-09-12"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/clinical-trials",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T12:08:58Z",
+  "lasttx": "0x32e4f73f9ba65fb1140c298bca5f708e180887766e93225b66f11323b314b4ef",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26",
+   "2026-09-12"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agentkit-x402-buy.netlify.app/api/eth-price",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-16T12:09:41Z",
+  "lasttx": "0x3c70457609c29812c0e42ea923289d4bce67a2a63afe05284aff65add78113bb",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-28",
+   "2026-09-16"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/trending/reddit",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-16T18:02:00Z",
+  "lasttx": "0x6bc57eec98f804eacc9ae86419146baaee432df6f29d9bdbcfaf9086a5cb1b9e",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-29",
+   "2026-09-10"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agent-proxy.alchemy.com/v1/x402/4013ed2b4f50e768/abc-test-123",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-17T18:01:19Z",
+  "lasttx": "0x5845e9f5545381179147abe12b920c7f227cb4c58bee13c405011832e572b133",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-29",
+   "2026-09-11"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/fear-greed/liquidity",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T15:23:55Z",
+  "lasttx": "0xaca47122d74e3d726dc3576258195952991dec27df66d7eb7afd547d84ff7f63",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-29",
+   "2026-09-10"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "kronossignals.com/api/v1/digest/btc",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-16T12:09:50Z",
+  "lasttx": "0x7a930b53d16af885757b78c893d2d6f64ba9f9082b9e346a99b9c54bf32daeae",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-29",
+   "2026-09-16"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.oblique.markets/api/v1/paid/crypto-price",
+  "settled": 3,
+  "total": 3,
+  "amt": 4000,
+  "last": "2026-09-16T12:09:33Z",
+  "lasttx": "0x72d92abe01f8967d275225c84498f5fbb4f2cc4dd962be71f1b17bbc9247d9c8",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-30",
+   "2026-09-16"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.govparse.io/v1/stats/sponsors",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T12:54:27Z",
+  "lasttx": "0xe95e6e360e141b0f14c8e64763fbc6c77e91405b5ddb95ec7f87c0065eb0ba8b",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-30",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "regimeshift.xyz/api/v1/asset/eth/vrp",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-16T12:09:47Z",
+  "lasttx": "0x0db369543b003fe24f42bd039dc06cbef9dbbde5af16163ef6b9ca83ac1a2e03",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-31",
+   "2026-09-16"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agentproof-murex.vercel.app/json/repair",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-16T12:09:23Z",
+  "lasttx": "0x059cb0a4c16d54cb0a251a7b9c1ba6ae117f110bd8ffa09b6b9423e336ed3dd1",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-31",
+   "2026-09-16"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "hyperliquid-whales.api.klymax402.com/api/positions",
+  "settled": 3,
+  "total": 3,
+  "amt": 8000,
+  "last": "2026-09-17T12:53:06Z",
+  "lasttx": "0x1d8bc6e1293965a3cd6a7fcc62e4023edc8e840a2e0efdc5c22ad42e17ff0ac0",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-31",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agent-paycheck.onrender.com/v1/check",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-17T12:53:58Z",
+  "lasttx": "0x1dd360810146cf2727da24a245d148be1bfabd58fa3ec17690ec4af1da36085f",
+  "l2": {
+   "mismatch": 2,
+   "match": 1
+  },
+  "conform_n": 1,
+  "h12_days": [
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "jmt-x402-proxy.jmthomasofficial.workers.dev/v2/api/whois",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-16T12:09:03Z",
+  "lasttx": "0x43c9a4a8c21dcb9b5ae4f8252d81ba664b6c861e540289a1c18c7301e22093bc",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-02",
+   "2026-09-16"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agentdataapi.onrender.com/launches",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-16T12:09:42Z",
+  "lasttx": "0x6b3d246aa6c9a0c236004f7530a6deca69540fd63c671e22fb88782af54b1bbd",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-02",
+   "2026-09-16"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agenttoll.app/api/gas",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-16T12:09:09Z",
+  "lasttx": "0x08b85baa750f5f2486e1eef7d65bf7b9346292c8100da8af8f2ecb57eda130ea",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-02",
+   "2026-09-16"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "aiagentoracle.ai/api/v1/tokens",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-16T18:00:13Z",
+  "lasttx": "0x0fb571b44f6d15ec839be26528953d0ba3de764b4925b15616ddc66046a572c1",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-02",
+   "2026-09-10"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "toolsmith-api.dassad10.workers.dev/t/crypto/gas",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-16T18:01:39Z",
+  "lasttx": "0xd44a32399a2f295a287ee3905b6353716c474892266ee9a9186007d5bf79bff5",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-02",
+   "2026-09-10"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.signalfuse.co/v1/arena/vwap_reversion/BTC",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T12:54:06Z",
+  "lasttx": "0x075f45e3773df0cd2553c8334b5a95e04ebd7d193c21f85cd20d2b6bbbba6d33",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-02",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.node4all.com/v1/x402-test",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-16T18:01:15Z",
+  "lasttx": "0xfd53f16d0cb5eb094061143e9d0050fd4a3c0109a8382ee8c4ac6f0127b7b0c9",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-02",
+   "2026-09-10"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "globalrules-api.onrender.com/api/v1/countries",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T12:09:57Z",
+  "lasttx": "0x2c84f0f93929eb91eb17546ac6ea5518485d1aac3657e92215805e5a2c44cb45",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-02",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.polym.uk/resolution-risk",
+  "settled": 3,
+  "total": 3,
+  "amt": 50000,
+  "last": "2026-09-16T12:10:02Z",
+  "lasttx": "0x445f2a09fbcf7fb1a22c6a6ab39c285ba31cac53762910da59a3a8d6bc90aab8",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-02",
+   "2026-09-16"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agent-commerce-factory-jm.austriaeast.cloudapp.azure.com/v1/crypto/prices",
+  "settled": 3,
+  "total": 3,
+  "amt": 8000,
+  "last": "2026-09-17T15:28:20Z",
+  "lasttx": "0x2c89136404d81ceae545c9623cbd8c41e0ae8f1926cc631f25b5f4e668596f0a",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-02",
+   "2026-09-11"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "oracles-production.up.railway.app/v1/edgar-ma/status",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T15:27:08Z",
+  "lasttx": "0xf93bb49efbfbb0b23d2a5fde3ea2967e0ace0ee5fffbeda755769feac0532230",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-02",
+   "2026-09-11"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "library.proofivy.com/cryptoslate",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T15:28:48Z",
+  "lasttx": "0xcece082bf34f44baeabde914580d8d6a1cbc67612ddd024b3abfce24dcf3345b",
+  "l2": {
+   "match": 2,
+   "mismatch": 1
+  },
+  "conform_n": 2,
+  "h12_days": [
+   "2026-09-02",
+   "2026-09-11"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "anomaly.forgemesh.io/api/mempool-anomaly",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T18:01:07Z",
+  "lasttx": "0x5f492809e3824a14dab8ebe3b90a111bd5ad630c75cbda0a7bf35a99a7168f1e",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-02",
+   "2026-09-10"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "risk.yo.xyz/api/v1/agent/schema",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T12:53:26Z",
+  "lasttx": "0x2b9e8ff2701313de72ea2ceec8e00a871726574d428ad4a5b0915c6f4ac2b165",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-02",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.lucidcove.org/v1/ping",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T12:09:55Z",
+  "lasttx": "0x541700e4054f5a1fea57c7be3b5d8f269567e57271a3edd5b7bfc3a6a9381ad5",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-02",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "signal.keelbase.io/api/v1/daily/latest",
+  "settled": 3,
+  "total": 3,
+  "amt": 30000,
+  "last": "2026-09-17T15:24:41Z",
+  "lasttx": "0xcf2f4bd181fecea25ec50b11e1a990886c87578f92f1291b40a8c1018f3d4c00",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-02",
+   "2026-09-11"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "hello-world-x402.vercel.app/hello",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T12:54:01Z",
+  "lasttx": "0xec0bc64d3d6b9962ad0a44453b19d0b10a57b3a25613a1f2d8bde580128ef5f0",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-10",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.dripmetrics.ai/metrics/large-trade-share",
+  "settled": 3,
+  "total": 3,
+  "amt": 50000,
+  "last": "2026-09-17T12:53:52Z",
+  "lasttx": "0x3100d3192acc7c54ff872aa9e0eb41d6e079cdebee13eeed69a03bbf8916e793",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "stockwaves.net/api/cn/pulse",
+  "settled": 3,
+  "total": 3,
+  "amt": 3000,
+  "last": "2026-09-17T12:53:09Z",
+  "lasttx": "0x0e52474967428e887b43afb1434c50b3f6f358cab378155372a72237fa059dbe",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.fairseal.io/v1/rng/latest",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T12:53:38Z",
+  "lasttx": "0x054bd64777cde9c860a5b834f6b5455b1d6966823b814edf3d328f8a20bcc892",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "crypto.forgemesh.io/api/kronos/risk",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-17T12:53:12Z",
+  "lasttx": "0xa4d408a7b160d8b32021493b1c8a20b17b64a0c99b03e3ca82b7a427751cb602",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-10",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "monitor.memoryapi.org/x402/monitor/activity",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T12:53:13Z",
+  "lasttx": "0xf3f482626bdd610cb5385f049fdc5e93c44352fdb6f773bbbf20fa0e247ab710",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agentcrush.xyz/api/agent/crewai/verification-status",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T12:54:18Z",
+  "lasttx": "0x2cb09cbf3dec2e4dc781ca951ac2067e9d0957e9f08ce5fff6dcd518064fba32",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "vu.velvetdao.xyz/api/v1/wallet_402",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T12:52:46Z",
+  "lasttx": "0x6b81a2038896448ad2d9141c5fbbec735d3d58b023ad040d560ccab308065cf7",
+  "l2": {
+   "match": 2,
+   "not_checked": 1
+  },
+  "conform_n": 2,
+  "h12_days": [
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.loyalspark.online/x402-gateway/analytics",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-16T12:09:00Z",
+  "lasttx": "0x1d55f892f99f7565b3a9f7ab6656626f29ce5f70bea60e0741ce6c7031c30edf",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-03",
+   "2026-09-16"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "defi-ops-402.vercel.app/api/best",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-16T12:09:12Z",
+  "lasttx": "0xdddc5a015a07b0b74bbca30d7d3b701934d40de81a3d1a4df048954a32c748e2",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-03",
+   "2026-09-16"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.reloadpi.com/api/catalog/esims/offers",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-17T12:53:40Z",
+  "lasttx": "0x1fce8862dcae13bbaed14d56318c6db4e5dc3845702b3eb12e556a17e59b2264",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-03",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "free-api-resell.relayhop.workers.dev/v1/polymarket/markets",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-16T18:01:29Z",
+  "lasttx": "0x577f47d33c13303a45408b8913069788558110c9ceadff172aea9f0ef55112a8",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-03",
+   "2026-09-10"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "whaletape.xyz/coverage",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T12:51:58Z",
+  "lasttx": "2PaXofpYBto6KDZaMB7WJnSHdBxd8cpXXGwFVFy39SxnpUNrWuvWD9dvqVLgVY82MwaZoDCsodeTdAxaRVzRYmke",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453",
+   "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+  ]
+ },
+ {
+  "key": "x402.swaphunt.dev/v1/tools/price/multi",
+  "settled": 3,
+  "total": 3,
+  "amt": 3000,
+  "last": "2026-09-17T12:54:23Z",
+  "lasttx": "0x72857fe1bb087ea7cf51bffc17704599801b0dae0c6c672329fafb7a28096550",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-04",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402-trends-server.onrender.com/api/crypto-market",
+  "settled": 3,
+  "total": 3,
+  "amt": 50000,
+  "last": "2026-09-17T18:01:59Z",
+  "lasttx": "0x6d703d60207bcacedfb414450d6ab85f36911e52f64c3d0510771a0688a502c0",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-04",
+   "2026-09-11"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.loyalspark.online/x402-gateway/merchant-profile",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T12:52:30Z",
+  "lasttx": "0xb59591ad9cb3c3677d264f6408da79519385b80f4945c3900ff22051d1f2ae68",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.boonprotocol.com/api/v1/x402/routes",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T12:53:53Z",
+  "lasttx": "0xdb98d9cc360b778d52a601f9b490723cd5b4176c8c5d3079e57a03f338115859",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "zeroclick.affiliate.com/v1/merchants",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-17T12:52:33Z",
+  "lasttx": "0x14846c28286bb0551119a55c80c7c7991b700c9413e07024b647475bf9402ac9",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-11",
+   "2026-09-17"
+  ],
+  "h12": 2,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.vaults.fyi/v2/vaults",
+  "settled": 4,
+  "total": 4,
+  "amt": 2000,
+  "last": "2026-09-16T18:01:27Z",
+  "lasttx": "0xae8fb3309fb9469becc2ab3fd9a3fc90f695d1d1990e43a93ad4d41ffd337ace",
+  "l2": {
+   "mismatch": 4
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-27"
+  ],
+  "h12": 1,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "defillama.use.x402atlas.com/historical-chain-tvl",
+  "settled": 4,
+  "total": 4,
+  "amt": 5000,
+  "last": "2026-09-16T18:01:35Z",
+  "lasttx": "0xe087983590b3a66c1b16eccdac348239f226a9aa6ee1abee26a218b5f96d682a",
+  "l2": {
+   "mismatch": 4
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-27"
+  ],
+  "h12": 1,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.stelardigital.com/telemetry",
+  "settled": 4,
+  "total": 4,
+  "amt": 5000,
+  "last": "2026-09-16T18:01:36Z",
+  "lasttx": "0x38380dc66aa613bbff6aaf28335fe3994dd52f9eebb5d03bded27c598b5b2fca",
+  "l2": {
+   "no_declaration": 4
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-28"
+  ],
+  "h12": 1,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agent-arcade.use.x402atlas.com/twenty-four/daily",
+  "settled": 4,
+  "total": 4,
+  "amt": 5000,
+  "last": "2026-09-16T18:02:08Z",
+  "lasttx": "0x77b37b45f4436582ee9380be164fbf31b8ed62b1b1484e3ea89b5e6a17749ae8",
+  "l2": {
+   "match": 4
+  },
+  "conform_n": 4,
+  "h12_days": [
+   "2026-08-28"
+  ],
+  "h12": 1,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "gateway.spraay.app/api/v1/rpc/chains",
+  "settled": 4,
+  "total": 4,
+  "amt": 1000,
+  "last": "2026-09-16T18:02:30Z",
+  "lasttx": "0x29225a8baaebe29ac77e20076ce5772d0328835e97befa544ed1bf6e021fc39b",
+  "l2": {
+   "match": 4
+  },
+  "conform_n": 4,
+  "h12_days": [
+   "2026-08-26"
+  ],
+  "h12": 1,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/grouped-daily",
+  "settled": 4,
+  "total": 4,
+  "amt": 20000,
+  "last": "2026-09-16T18:01:47Z",
+  "lasttx": "0x52ced5418680f97d44b2b434cdc769a67445d253ac7a4886b2c2ce2f87949fc3",
+  "l2": {
+   "not_checked": 4
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26"
+  ],
+  "h12": 1,
+  "days": 4,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "palmyr.ai/social/twitter/registered/mine",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-12T06:01:34Z",
+  "lasttx": "391FELDdif2ExjfYBTHwm3xVaJaPhRtvKL59kRnoep5sjBk8rt89Foj9uFo4WSnMCDLxVdFaA4a1V7n7ZzPJFEqP",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-28"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+  ]
+ },
+ {
+  "key": "kronossignals.com/api/v1/forecast/doge",
+  "settled": 3,
+  "total": 3,
+  "amt": 50000,
+  "last": "2026-09-10T19:01:22Z",
+  "lasttx": "0xd7750f0fbda22e94524e54c9f9d37042d7fea99000b2397cc728e42052ec8e68",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-28"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.predictionmarketdata.io/prediction-markets",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-10T01:01:21Z",
+  "lasttx": "0xaeca11c659204f361d6e559bc541937a0f0df8fabe6f64633e7888e7aba420b5",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-31"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "hyperliquid-predict.use.x402atlas.com/outcomes",
+  "settled": 3,
+  "total": 4,
+  "amt": 5000,
+  "last": "2026-09-09T01:02:19Z",
+  "lasttx": "0x3b5483c75841b0d857c598429e6bab358ba9f2753dfd5694aaa4b0f2dc4690fe",
+  "l2": {
+   "match": 2,
+   "mismatch": 1,
+   "not_checked": 1
+  },
+  "conform_n": 2,
+  "h12_days": [
+   "2026-08-27"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "wallet-sanctions.use.x402atlas.com/check",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-11T01:00:59Z",
+  "lasttx": "0x9fe7eeccf06873366c3195c0a4a81dc2850f30a4809ddebcf3a2a6bfb4fb14d7",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-28"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "gblin.digital/api/x402/treasury-state",
+  "settled": 3,
+  "total": 4,
+  "amt": 1000,
+  "last": "2026-09-09T01:02:23Z",
+  "lasttx": "0x299a9619048e63d247924d2f7a1e1c23eca1bbd970f132f621ee9dc631dd00cd",
+  "l2": {
+   "no_declaration": 2,
+   "match": 1,
+   "not_checked": 1
+  },
+  "conform_n": 1,
+  "h12_days": [
+   "2026-08-28"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "hyperliquid.use.x402atlas.com/predicted-funding",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-10T07:01:46Z",
+  "lasttx": "0x5118aee2c78f93589fc3208aaa34cc99a03d1d88ce6b2820fcf573651503bf2e",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-28"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.devvizion.com/v0/bid-draft",
+  "settled": 3,
+  "total": 4,
+  "amt": 10000,
+  "last": "2026-09-17T00:02:11Z",
+  "lasttx": "0x56a81693d4ddb062dcf9ede1c0611bf62271d58c1e86f440f80c3bf16aec95b5",
+  "l2": {
+   "not_checked": 3,
+   "no_declaration": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-28"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "twitter.use.x402atlas.com/user-tweets",
+  "settled": 3,
+  "total": 4,
+  "amt": 5000,
+  "last": "2026-09-09T01:01:24Z",
+  "lasttx": "0x73c0641a00cdc0d1c657b82c7f3071989b036aefc582d8136f7654742a01bf55",
+  "l2": {
+   "mismatch": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-27"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "gblin.digital/api/x402/attestation",
+  "settled": 3,
+  "total": 3,
+  "amt": 3000,
+  "last": "2026-09-10T19:01:43Z",
+  "lasttx": "0x8e607190a8cd2f55355ad3c833f5c2b273877aa49ef94372883910c6bcca7d50",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-29"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "ssl.use.x402atlas.com/check",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-11T01:01:10Z",
+  "lasttx": "0x7e885dde24d35d36fae1f6d90521f54062f3b9930fc22a50cd475a48fcb94739",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-28"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "kronossignals.com/api/v1/signals/btc",
+  "settled": 3,
+  "total": 4,
+  "amt": 20000,
+  "last": "2026-09-08T19:01:34Z",
+  "lasttx": "0x13604d69a8b71846fe21d07f360f988faddac273e35cb80d1b40321443222e0f",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-27"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "chain-analyzer.com/api/v1/x402/ping",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-11T01:01:14Z",
+  "lasttx": "0x7cc0a53f2445b80c2718f92b61a5dd4d9e6521744fef65af5669a50bacf99995",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-28"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "xmedia.use.x402atlas.com/tweet",
+  "settled": 3,
+  "total": 4,
+  "amt": 5000,
+  "last": "2026-09-09T01:02:18Z",
+  "lasttx": "0xb28ba7085abd77d3d7816c26ce840737c412e2f2216880788537fac18e4c4610",
+  "l2": {
+   "match": 3,
+   "not_checked": 1
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-27"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "liquita-x402-edge.liquita.workers.dev/v1/at-risk",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-11T01:00:50Z",
+  "lasttx": "0x84f106a24abd591db285501c1b12eb84738249f572ef059b20ff7df1f7be948d",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-28"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "entropy.rip/api/financial/gas",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-11T01:01:24Z",
+  "lasttx": "0xc4a610d7341a19f2b6ab1dfdbe5bf738fd94086f1176bfcd346bce596b6a0da2",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-28"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.xona-agent.com/base-main/audio/x-text-to-speech",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-16T00:01:31Z",
+  "lasttx": "0xb01027d11ed55dbed88f06024cb512ad456e717269c7797b621965e448e72694",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-28"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.oblique.markets/api/v1/paid/time",
+  "settled": 3,
+  "total": 4,
+  "amt": 10000,
+  "last": "2026-09-08T19:01:27Z",
+  "lasttx": "0x19c7f13119e541428e7565921103ba2924664a96c9c1402a4a4020a015af935b",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-28"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "holidays.use.x402atlas.com/add-business-days",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-10T07:02:14Z",
+  "lasttx": "0x16593d605026d1ab3ea0d864799b2dd5c7db1d0027f5d136719f14b54ffeed69",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-29"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.oblique.markets/api/v1/paid/base-block-number",
+  "settled": 3,
+  "total": 4,
+  "amt": 2000,
+  "last": "2026-09-09T07:02:28Z",
+  "lasttx": "0x10f064f172280db92e32711061a0ec8e5d2f9cf88af9c045604c54e04b0d0964",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-28"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.hergertsynthora.com/v1/polymarket-markets",
+  "settled": 3,
+  "total": 3,
+  "amt": 50000,
+  "last": "2026-09-10T07:02:26Z",
+  "lasttx": "0xefa83e12e233b94fc607fa7593cdf4546584dfd150c559c2c3b60fc967e01e48",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-28"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.devvizion.com/v0/agent-rep",
+  "settled": 3,
+  "total": 3,
+  "amt": 15000,
+  "last": "2026-09-11T01:01:04Z",
+  "lasttx": "0x94e78f3a2f53e310700f942d3ac9ee8446429d1422c6f9c356a1cd4a2d083c5e",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-28"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "kronossignals.com/api/v1/macro",
+  "settled": 3,
+  "total": 4,
+  "amt": 20000,
+  "last": "2026-09-09T01:02:27Z",
+  "lasttx": "0x280c8e8f70e018864e0ca983b185595cd2892d28ba4d2034c6dae9c762a54844",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-28"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "proxy.suverse.io/v1/proxy/reskey_1166628d/bazaar-test",
+  "settled": 3,
+  "total": 4,
+  "amt": 1000,
+  "last": "2026-09-08T19:01:36Z",
+  "lasttx": "0x18f9accf3a0ae0be3dcbbdc3faaf2021a04ef50bb7ce87c23f4498bbcd4a1a6f",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-31"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "proxy.suverse.io/v1/swap/solana/quote",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-12T06:02:04Z",
+  "lasttx": "2yM1ungmScjvDJ7KhrT5AwM2riuurbTpGR1pNW71z5edhktqkzZC5zbm6nmUDekirksh2WQmK3iB9Jq4D2ywhmXh",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-31"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+  ]
+ },
+ {
+  "key": "api.craigmbrown.com/v1/services/procurement.trust-layer",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-10T01:00:48Z",
+  "lasttx": "0x97f746cb191eae260520641f6439d44f87c768f9c0b99c11e43734ecd763d142",
+  "l2": {
+   "match": 2,
+   "not_checked": 1
+  },
+  "conform_n": 2,
+  "h12_days": [
+   "2026-08-31"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.hergertsynthora.com/v1/stablecoin-supply",
+  "settled": 3,
+  "total": 3,
+  "amt": 6000,
+  "last": "2026-09-10T07:02:18Z",
+  "lasttx": "0xcbc22492eed0907dea3188dbd6d5688b10b9788d4676322de047d7d17cdeaca1",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-31"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "signals.nsgoods.org/signals",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-10T01:01:28Z",
+  "lasttx": "0x7d79945941d2363663ab01a3419e72579969910fdf95eb06de67d49057f4d6cf",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-31"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api-v2.ixs.finance/x402/vaults",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-10T01:01:40Z",
+  "lasttx": "0x9bc26ff2209262863ced85a042db810b9e207277c9c9743b6f748290e5670be8",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-31"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.myceliasignal.com/oracle/price/eth/usd",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-10T01:02:02Z",
+  "lasttx": "0xf4ec8cfaba27525076f594b3e0e33ae55eeb7b9c36e9c8451856651e51538a7f",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-31"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "rubric-protocol.com/v1/x402/hedera-facts/exchange-rate",
+  "settled": 3,
+  "total": 4,
+  "amt": 1000,
+  "last": "2026-09-09T07:02:29Z",
+  "lasttx": "0xe730b6c57909a4915119cf5b9239cbe2a639f54d3e0f7085a75fc902a95f0c16",
+  "l2": {
+   "no_declaration": 3,
+   "not_checked": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-31"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agent-arcade.use.x402atlas.com/gridlock/daily",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-12T18:02:09Z",
+  "lasttx": "0xe2ff0256abf95df1c32e49606062c4fefd283bcda613e3e4e66f7b7451ccb803",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-31"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "mysticapi.com/v1/sky/today",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-12T06:01:25Z",
+  "lasttx": "0xa43bdafb52c1c0bf27b4259f5f8090eb6ed4fffd558f62163123b5f5e0d6d278",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-31"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agent-arcade.use.x402atlas.com/shortest-path/daily",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-12T18:02:33Z",
+  "lasttx": "0x29da1b6729991c58fad1d8a761ab8200a9918fd9c69c0a85696130e55ab29f8d",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-31"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.predictionmarketdata.io/prediction-markets/taxonomy",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-11T18:00:55Z",
+  "lasttx": "0xe7151982d012af19f61f6127cdbc3c9500b95186cf3971aa9b7cd3246502c788",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-31"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agent-arcade.use.x402atlas.com/chess/daily",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-12T06:01:31Z",
+  "lasttx": "0x69eaa1799c05ea7a5a35ccf2122416b7f6d4905f41c5be722fed5186b82c798d",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-31"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.craigmbrown.com/v1/services/crypto.investment-plays",
+  "settled": 3,
+  "total": 3,
+  "amt": 50000,
+  "last": "2026-09-15T23:51:34Z",
+  "lasttx": "0x3d0618220731f880d1348966a18f4a8b85de3b94718ee42e1b581590684206b6",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-25"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "gblin-sentinel.vercel.app/api/data/gblin-analytics",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-10T19:02:26Z",
+  "lasttx": "0x9461f0b394db188c6bffa1d8b938f9088d4a45c3d0105ab298af94d73a253eb1",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-08-26"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/unified-snapshot",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T18:00:35Z",
+  "lasttx": "0x0484bc3dd117b3de77eada5ef41739cc6332ffccc6d451c6a6e6bdb30efd2504",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/news",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T18:02:11Z",
+  "lasttx": "0xd6274e1e95e3315744d9a760d23aa94dcddbb063df6306cb52079ebb46639966",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/cot",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T18:01:25Z",
+  "lasttx": "0x9735f62379abc9db8c287e5ed97041b74bebccdba431e23d0cf654689632166f",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/energy",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T18:00:57Z",
+  "lasttx": "0x8151b0793ecd13236a1c6bc8032d6264e08dde6fbd70031bbcb9de8f50587ea8",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/archive",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T18:01:19Z",
+  "lasttx": "0x87f180280e14e2c56e582c591daccd6452bbe7cec07065a1723f50377eb29081",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/gov-awards",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T18:01:28Z",
+  "lasttx": "0xf732dbe1d93e4e05684d64486f050f93d87aeada18bc106fd0b3408d84460622",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/pce",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T18:01:09Z",
+  "lasttx": "0xd571cb0a0a8066874a069f64874b7308160ec80ae1481121f2f14e809ff2a9e9",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/filing-search",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T18:00:37Z",
+  "lasttx": "0x8e9ab4d1d7a21107362f161af6bad6eb16c32b0a62f31d0e6ec0fd7110b67371",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/fda/shortages",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-12T18:00:47Z",
+  "lasttx": "0xdb34e5564ccc1db354a7c4056f6bd67e829b0d52f1245a905227fc1c4d15c48f",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-26"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.metalend.tech/v1/services",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-18T18:01:35Z",
+  "lasttx": "0x783e40685a0669a9a41056d043bf5badeb71d617d3dc87e0d3c06c452d727301",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-29"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.printmoneylab.com/api/v1/fx-rate",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-18T18:01:30Z",
+  "lasttx": "0x0244d8ebb488b042703d6d3595e2c5561fc7122ac959ad9ad42726ea2f9b93fa",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-29"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "web-production-18a32.up.railway.app/current-weather",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-16T18:02:09Z",
+  "lasttx": "0x6ca1e697dc47f7178d1bb74349d6388dfc9e6443a7d1744269f4138a3a9277e8",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-30"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "paddock.finance/api/paddock/mcp/gaps",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T15:26:42Z",
+  "lasttx": "0x9fc22c981278a919c21997cbe68c01d62f083d7bd37327259976e2fa4b69a701",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-30"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "archtools.dev/v1/tools/search-web",
+  "settled": 3,
+  "total": 3,
+  "amt": 15000,
+  "last": "2026-09-17T15:23:08Z",
+  "lasttx": "0xbf26ae73625bbdc9cba2988cc8a8c0522de3a01538a04116a597e867b688faae",
+  "l2": {
+   "not_checked": 2,
+   "no_declaration": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-31"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/fear-greed/crypto",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T15:23:52Z",
+  "lasttx": "0x4c3977f4bfa2dbaad5ce44c1f202c308ba338fe42155d2664d3ce047a1dc44f6",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-08-31"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.tcgapi.dev/v1/sets/100001/prices",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-18T18:02:25Z",
+  "lasttx": "0xf31318075275bfbb63277f37451d0284f76d190ca0e9011d198473809ef3a655",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-01"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "money-agent-production-736f.up.railway.app/v1/radar",
+  "settled": 3,
+  "total": 3,
+  "amt": 50000,
+  "last": "2026-09-17T18:02:22Z",
+  "lasttx": "0x82f6a5e9e4785879a075f65f306960943f51156bf93eaade94fe4c2cef19ad77",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-11"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "intel.chainquery.com/v1/fee-pressure",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-16T12:09:07Z",
+  "lasttx": "0xd92e2789f4339d2bbad6810faf1c5d1dd4b0ad4c5bbbe9200fdead6bab52775f",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-16"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.signalfuse.co/v1/regime",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-16T12:09:36Z",
+  "lasttx": "0x8d10fbdf0bf67a7580f7fa6035c8f830beb9bde567eb64694ded5f0fabd10638",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-16"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "hl-tool.darren-pi.workers.dev/v1/funding/extremes",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-17T12:53:14Z",
+  "lasttx": "0x9d6a848d475591658aae85e0d37dce96a0a7a896fa2cbd2018884e63132d1632",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-17"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "4yearcycle.com/x402/tenders",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-16T12:09:27Z",
+  "lasttx": "0x78ca06aa971f9b1e7874211e50d027fcc3939567494ffa125ead18abdf421827",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-16"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.immuta.app/pulsechain/head",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-16T18:00:18Z",
+  "lasttx": "0x9649f7d9104379c92561bac668be89bbe539b705467d3fde581f5cd161f2ffa4",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-10"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.n0brains.com/x402/macro",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-16T12:09:24Z",
+  "lasttx": "0xd07b1b15a782dd8f9ac02f368c79ab4a67423a0fc11f376fada8dbf424d115c5",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-16"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "cpi-report-us.underscoredone.com/cpi",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-16T18:01:50Z",
+  "lasttx": "0x88447ed6bc8ca8ca8de4250f0b9871d04e04055a0839a6867e1d72cf855d075a",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-10"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "base-gas-x402-production.up.railway.app/gas",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-16T12:09:04Z",
+  "lasttx": "0x8a4967d5cceb8f8158729a81e2e7251ab4597ef176c0b4d0e67e9d569765503c",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-16"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "srv1334799.hstgr.cloud/v1/x402/demand/snapshot",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-16T12:09:14Z",
+  "lasttx": "0xe2826657500e27c5caedc1b45dfac660469902a8d5aa80eebbae79e25e2877d0",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-16"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "rpc.nodeflare.app/base/x402",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-16T18:01:41Z",
+  "lasttx": "0x051044162ac779422abe968aa452ff42c53aab6f1e108162bec0d6798091fb0e",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-02"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "conch402.dylan-caponi.workers.dev/hail",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-16T18:00:29Z",
+  "lasttx": "0xe64d680664fbf852a1c009a367fc6f0bea0fb59aa38efc5ccf6f92d6a79de82c",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-02"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.usenami.io/v1/funding/current",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-18T18:02:21Z",
+  "lasttx": "0x644e6a782ca3540aa38c7f81b29918939950ded4e6412c5f5e161b51967fa7fc",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-02"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "telesint-api.onrender.com/ioc",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-18T18:01:03Z",
+  "lasttx": "0x96ea464f2f25cf5fddbec99b15590e2f13adfce78d063c368d3cc4a59a154579",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-02"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.coinopai.com/api/categories",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T15:27:25Z",
+  "lasttx": "0x40525239973e93def5fd15951630699c787ae9d5683a330134845f6f4d7587ec",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-02"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.basefeed.io/v1/ping",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T00:01:52Z",
+  "lasttx": "0xb62569e1055fa8964330bca0d33d746da9cccd92a64cde15293ea2a714ce4150",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-02"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "darrylbots.com/api/research-report-standard",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-18T18:02:33Z",
+  "lasttx": "0xf5c529a3ec616249478bee464430a6249a0c1caff040f094fb6470756cfe98d7",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-02"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "thevaultreport.com/api/x402/comex/warehouse",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T15:24:58Z",
+  "lasttx": "0x7294bd5aea84826dae0a5be0160afd4723f74c8d600cceef4754c8e69e533493",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-02"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "lionx402.com/api/x402/web-search-json",
+  "settled": 3,
+  "total": 3,
+  "amt": 25000,
+  "last": "2026-09-17T15:24:35Z",
+  "lasttx": "0xa29c0369a364ab531a80742e3bdddd04f8a9b5ca086febf56bf0e50678052cec",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-02"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "fortune.fulinlabs.com/api/fortune",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T15:23:10Z",
+  "lasttx": "0xb274a68b8332ae755e03fcc64c8877c2074b35e99766cd0e9ddec36a297f46b2",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-02"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.m2msentinel.com/v1/gas/fees",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-18T18:01:01Z",
+  "lasttx": "0x26f93c3dcdd2b80c398117a82383515ca254611ec6c2de155c5b8213dc938f2d",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-02"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "orchard-data.netlify.app/api/trending",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-18T18:02:19Z",
+  "lasttx": "0xbb6cc71b79a22d52c0b2c2624f2e1906c23b6c126de176b712d44c1049bb5827",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-02"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.you.com/v1/finance_research",
+  "settled": 3,
+  "total": 3,
+  "amt": 110000,
+  "last": "2026-09-17T18:02:28Z",
+  "lasttx": "0x664a39a9a7799c98be420c3df08b9649b6057a9a4970095954b4954c0e74d355",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-10"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "fresh-feeds.foomworks.workers.dev/feeds/mcp-registry/changes",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-16T12:09:30Z",
+  "lasttx": "0xae869eda0180e88cd4ac4de646e234876ade0bb1e0f2c3b3fb71c1b3a35e583c",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-16"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "straits.live/api/premium/brief",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T12:52:39Z",
+  "lasttx": "0x0856bf831eb518a1986ae563b6ab651134801aabb6ed5530838bb1b14a403f5e",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-17"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "seoul-weather-402.fly.dev/weather/seoul/current",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-16T12:09:31Z",
+  "lasttx": "0xb11da2b8059a9765ab283b2a02c0d7a5c39a7c68bfe427facdf66f457870cc94",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-16"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "obagents.vercel.app/api/obigen/protected/igen",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-16T12:09:58Z",
+  "lasttx": "0x67b8db29d3175497cfb0e8e908fb8071b27c4e2f8ce349bc68ca4632d58a552c",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-16"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402-mcp.onrender.com/base/tx-decision",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T15:27:19Z",
+  "lasttx": "0x10ce4fe1569075bc6bffe84c2326e0803fcff39bde6b2d03dd211d2634fa7510",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-11"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "racingpulse.theaslangroupllc.com/api/going",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-16T18:00:47Z",
+  "lasttx": "0x65d3370f27fb5f688ea19b56776916e67dcf6328c443d0c001647c45507df492",
+  "l2": {
+   "not_checked": 2,
+   "no_declaration": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-10"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "raptor-base-yields.vercel.app/v1/yields",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-16T18:01:31Z",
+  "lasttx": "0xe651a90be253ecfddfd39f13731a007a32f1499f2a9c3af829ba5c5f1337869f",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-10"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "redlynr.com/run",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-18T18:02:08Z",
+  "lasttx": "0xa5c8f5bd50fa22898d572f2a5a27ae7c9af86c6beda13dd917c060d257a633f4",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-12"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "coil.trade/api/board/top-volume",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-16T12:09:55Z",
+  "lasttx": "0x0fd2a4018ba7fc23a777444cac1fac8ffadb852ec7a08f05a60f8454a3c0adb8",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-16"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "vending-machine-seven.vercel.app/api/v/fx-rate",
+  "settled": 3,
+  "total": 3,
+  "amt": 3000,
+  "last": "2026-09-17T15:24:21Z",
+  "lasttx": "0xa217daee3dfe83866c0fc111c065d2981b4326c3fba89cdf3d6ad98e5d0769ea",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-11"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.naiko.io/data/momentum",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T12:09:52Z",
+  "lasttx": "0x2825319feb35fe4e40dab8842e96f839b25b9743523825e3e4ea11f1f7b51135",
+  "l2": {
+   "mismatch": 2,
+   "no_declaration": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-17"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "willimake-it.dylan-caponi.workers.dev/ask",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-16T18:00:15Z",
+  "lasttx": "0xb47df9c23735e850bde3d99bfc037718d8b2eb41f2b372f7722892d87ac4c3f7",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-10"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.freestylevault.com/v1/rates",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T00:02:29Z",
+  "lasttx": "0x5f039e4217e15d29c7d2c1fe2ddbc4a8440b3f634bf37adf0ee555568fd6ff16",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-10"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "orchard-data.letom1176.workers.dev/api/fear-greed",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-18T12:09:25Z",
+  "lasttx": "0x0ac215a2a4cbe8fa7250d53e1c7c1bc6883054f96d135dcae723fa19c0f4d3b8",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-18"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.newsgurus.ai/x402/agents/status",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-16T18:01:33Z",
+  "lasttx": "0xb84cdea317f55994e0d8bf4fe792441ef61271b208e57b06b63211fffd816881",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-10"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "observer.137-184-67-179.sslip.io/paid/evidence-summary.json",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T12:53:24Z",
+  "lasttx": "0xb5c7c527be2afc38f38af78cfe1cc24585d53b05d18a8fda91b659b9cd43f847",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-17"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "www.moltbillboard.com/api/x402/placements",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T12:53:27Z",
+  "lasttx": "0xa32c64b5ceacbd5563433876f996e9c15fe2aa0ad54e12628a1eee51e7ac7588",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-17"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "peptidesdirect.io/api/v1",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T12:53:17Z",
+  "lasttx": "0x38e7ff6a7dbf28b01aff503e30cc94fc0fed1861b89c8403795d5f5caaf06de2",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-17"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.speccy.cloud/v1/predictions/polymarket",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-18T18:02:01Z",
+  "lasttx": "0x333463cf04d81d65b73b25682e7991195def352362ec66af5eda254a422475c3",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-12"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "coil.trade/api/board/day",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-16T18:01:54Z",
+  "lasttx": "0xd37c94a177ffea6f6a1da628510671b4ea6878516b8507d08f7b9d00ac9a7ac0",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-10"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.oblique.markets/api/v1/paid/bazaar-category-heat",
+  "settled": 3,
+  "total": 3,
+  "amt": 3000,
+  "last": "2026-09-16T12:09:21Z",
+  "lasttx": "0xf521a31648784cc3954791e46692b6caf7c7ad59df8de9400b6c8eb58385b9a6",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-16"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "stabletickets.dev/api/events/search",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T15:23:05Z",
+  "lasttx": "0x9f1c55e0d4af82c9f0f2279472e4aff0d23a9e7dd9dcbaf07f03bc1400be85f6",
+  "l2": {
+   "mismatch": 2,
+   "no_declaration": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-11"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.clawfetch.ai/extractors",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-16T18:00:16Z",
+  "lasttx": "0xf910a0eb0c7bf73a0b6098ad36c4e832472973adab8af7bc57b626accea1ecab",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-10"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "thevaultreport.com/api/x402/anomalies",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-17T18:02:25Z",
+  "lasttx": "0xabdb1d84474e0dd3a00746d89f9a2f175f3aa3ce207f272210b2d87c2d1a1d56",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-11"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "thevaultreport.com/api/x402/cot/positioning",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T12:54:00Z",
+  "lasttx": "0xdf59ec41d0115ecad55033d40d872074f504190136adef7a87f0adbbe129f4d0",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-17"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "polymarket-signal-api.pwnker-polymarket-signals.workers.dev/v1/performance",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T12:54:20Z",
+  "lasttx": "0xae0e65c17bdee56a8a806597d8c4d13d4b572f22727670b64c7c3c1f2db717ed",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-17"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.ottoai.services/yield-markets",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-15T23:49:17Z",
+  "lasttx": "0xdde08798012ecd4158a45b20c1765decff80a5173bdfd3f4549c0223c50dae75",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-03"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "crypto.apitoll.cloud/v1/crypto/tvl",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-18T18:02:14Z",
+  "lasttx": "0x7541aafa294873f46a5585c3b302192d8dc1a770b75c763e2fb1541b0757dd42",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-03"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "keystone-opportunity-api.keystone-opportunity.workers.dev/v1/opportunities",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-18T18:01:42Z",
+  "lasttx": "0x29fb0f55a84ba3497b4c37c6470067819d6c0642a40b90ab05bafe1f0558fe02",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-03"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agent.api.0x.org/v1/x402/swap-allowance-holder-quote",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-18T18:01:23Z",
+  "lasttx": "0x2b045ff4dd930ee6e2f2d0aeb4e749f48517c459b766248389a880aeb433aad2",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-03"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.seneschal.space/v1/q/zec/pools",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-16T18:02:07Z",
+  "lasttx": "0xe9bd5f7eacade48343e919494b32147a1aa007efbfd4786c1e284d80cbe9dab8",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-10"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "kronossignals.com/api/v1/signals/eth",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-16T12:09:18Z",
+  "lasttx": "0x50e19d1965a1fbe9a33bbf4d783807e0036362f61ea5bd1b92db2f27bbdc42d2",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-16"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.brazilayer.com/v1/fundos/fluxos",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T15:28:50Z",
+  "lasttx": "0xf2fdbb942ef6f7c9a34ff622f4d083d793639849fff9174051fd8251e4add782",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-11"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.signalfuse.co/v1/sentiment/TSLA",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-17T18:00:57Z",
+  "lasttx": "0x3bafea8de6d06f3ae5bdd2073842bb74a66ed97f913516a2702ec4fb0cf49d41",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-11"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "ai-data-marketplace-1042299154756.us-central1.run.app/api/v1/contracts",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T15:27:13Z",
+  "lasttx": "0xeac45ac37ee336c4db064f4f2de50b510b546593774e2f4a0cbcbe72dc9dad9d",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-10"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agent402.tools/api/unemployment-rate",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T18:00:39Z",
+  "lasttx": "0x2884040a4bb16ef988e3d6a83f70363335b97420f41378aac1224755070b2976",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-11"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "767-2676.com/v1/time",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T12:52:38Z",
+  "lasttx": "0x53e513fbb4be09a1aa96772b2cc156ca07f9fa3bf936a2711baed055f7906679",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-17"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "win.oneshotagent.com/v1/tools/research/people",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T15:27:31Z",
+  "lasttx": "0x5539f317fa1c57cdd95f9f4cd617a5a143488dd115c064807d77c1791c0691c5",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-10"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "rubric-protocol.com/v1/x402/hedera-facts/all",
+  "settled": 3,
+  "total": 3,
+  "amt": 3000,
+  "last": "2026-09-16T18:00:22Z",
+  "lasttx": "0xd4a1172a57d9208cb8d9745c4184c1ac9760d45b8a8060ce0e258c9139e64444",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-10"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "store.agentexchange.work/chain/block-number",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-18T12:09:15Z",
+  "lasttx": "0xa1faaad163aea49714f1d8bb3094f347df3d9070f0f49f87771a48d82284b4be",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-18"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "blockrun.ai/api/v1/pm/kalshi/markets",
+  "settled": 3,
+  "total": 3,
+  "amt": 8500,
+  "last": "2026-09-17T00:01:49Z",
+  "lasttx": "0xa1ba3a602a8f0b72e4d2704bfe59a6bdf0b738314e5393d06377dd95e78d8cf2",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-04"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agent402.tools/api/uuid",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T18:02:06Z",
+  "lasttx": "0xf2451a0c2646c514cfad7734b5a6bbc6ea8fddf05cd647f281dba3bfa2c31531",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-04"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.ottoai.services/yield-alpha",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-17T00:01:51Z",
+  "lasttx": "0x2172d812a4720e96a5f38eae45bc8c3c69243e4791e08ae5ddec864008af9001",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-04"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agentres.dev/api/book",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T00:01:57Z",
+  "lasttx": "0xa58c5bc18710a0305529238865304fb07bf2fd4daa5873ff095ca2c2bc0f3a9b",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-04"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.agentstools.dev/crypto/news",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T00:01:54Z",
+  "lasttx": "0x940e53a00a793e620544f034c7082df0e0afa5608c8230cf558fa6a2497190a9",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-04"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "apexrunner.ai/signals/btc-price-tick",
+  "settled": 3,
+  "total": 3,
+  "amt": 7000,
+  "last": "2026-09-17T00:01:56Z",
+  "lasttx": "0x86e2c9be87dbfc0c5c484fd5260a0f984fc890e3f6b4d19466a91673e9735d99",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-04"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "www.x402scan.com/api/x402/facilitators/stats",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T00:02:02Z",
+  "lasttx": "0xec3fcffebd872ef5c206dd8256124ede4cbcf83fa28e557d4a03d404c763e556",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-04"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "skim402.com/api/v2/signal/ai-news/latest",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T15:24:42Z",
+  "lasttx": "0xfedf41e0c4b8b75fa87e49f9e58ee49634518c107e2b0d997b3c5e0f45e44dbd",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-04"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.tickersfeed.net/crypto/market",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T00:02:05Z",
+  "lasttx": "0xf5efaa42df3293c8df2274e5bb5450bf0babfe28d85df8847382dc1a100246de",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-04"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "brokenkey-api-link-tau.vercel.app/api/brokenkeyremapperlink",
+  "settled": 3,
+  "total": 3,
+  "amt": 3000,
+  "last": "2026-09-17T00:01:47Z",
+  "lasttx": "0x3442daa6c7928a843aabd1f90644c7c7e9ce457f56eeb9925f016669870c0440",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-04"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agent402.tools/api/x402-trending",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T15:27:34Z",
+  "lasttx": "0xf16b040490753a4c9acc65bd3e1a777b029f9dd7c3df142233b5b3dd2d8ca91b",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-04"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.nansen.ai/api/v1/smart-money/perp-trades",
+  "settled": 3,
+  "total": 3,
+  "amt": 50000,
+  "last": "2026-09-17T00:02:04Z",
+  "lasttx": "0xab92d2defc8953d24c3ff3d2e4e40437b98d2984ff2bef5161a3bbb5ef448d7b",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-04"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.dripmetrics.ai/metrics/order-flow-hhi",
+  "settled": 3,
+  "total": 3,
+  "amt": 50000,
+  "last": "2026-09-17T18:00:56Z",
+  "lasttx": "0x51f82dc11a932ca9cdadc1f511904017b2bd3b7ea784c1dfb15ba051b0b8e708",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-04"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402-echo-service.onrender.com/chain/gas",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T15:23:06Z",
+  "lasttx": "0x251eefd0a27dd90d898b18a79edeb6dcb7b69083c807d4913da398647510d26c",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-04"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.orthogonal.com/apollo/api/v1/people/match",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T15:23:14Z",
+  "lasttx": "0xc36ddb717fe96f07215985f4ea46f75a517d55aa90ae29448e98e90cdef48f03",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-04"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.brazilayer.com/v1/commodities/clima",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T18:02:04Z",
+  "lasttx": "0x340302ff6e167d861e570b46bbb263d23bb610b4b1a18f8ae9703bac7ce9cc36",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-11"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "coil.trade/api/crypto/day",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T15:28:12Z",
+  "lasttx": "0x1ebb7285d7070ae409965426534e5eafd8efc5ae4ef2e27feadbc96b43408c16",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-11"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "coil.trade/api/board/rotation",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T15:28:17Z",
+  "lasttx": "0x32b73cec4e3042bc9b710a8caded3333087ad781bf786be5db6d6d2955f9e545",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-11"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agents.x402stock.xyz/api/v1/congress-trades",
+  "settled": 3,
+  "total": 3,
+  "amt": 30000,
+  "last": "2026-09-17T15:23:20Z",
+  "lasttx": "0xd3cf8d8c8d9afd9cf7b73d6274ff7b3836fb238edee9fdcfe8893bff2b9384a6",
+  "l2": {
+   "mismatch": 2,
+   "no_declaration": 1
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-11"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "uptime.cyberwarex.com/stats",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-18T18:01:58Z",
+  "lasttx": "0x1e6e6eb7317682adb0c46c8636f4b9376658df4fb1d7c11dfd807add91b60d35",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-12"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "arbipulse.theaslangroupllc.com/api/calculator",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-18T12:07:53Z",
+  "lasttx": "0xe7b155a5d100dff1a537c2bcf6d2f1a53453f712ea9dfc8bd90fdc0704b9c1d6",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-18"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "gateway.stride20k.com/v1/category-breakdown",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-18T18:00:39Z",
+  "lasttx": "0x69df0cedccecd0ade105caa911655b6d11d25c77369313d01c9a6c0426a594a7",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [
+   "2026-09-12"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.ottoai.services/pm-markets",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-18T18:00:37Z",
+  "lasttx": "0x87764f81816ba7a2a2200911f7720018e1cd116668465f4bfe9331201e0429c1",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-12"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "vibesprings.net/api/price/eth-usd",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-18T18:01:24Z",
+  "lasttx": "0x961d39469d4da05f739425f83b2f7efda9884cbea230ea7f9c0dcbfbc60b0c59",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-12"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "lionx402.com/api/x402/domain-enrich",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-18T18:02:29Z",
+  "lasttx": "0x96fefb829642ad0d5f741f90decb52c44d8b6122e40e715cbdc0c3ef241a0fe0",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [
+   "2026-09-12"
+  ],
+  "h12": 1,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "www.bitcoind.app/api/v1/methods",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-16T18:01:28Z",
+  "lasttx": "0x995f724d590ae0ede434509cda99f4d428501b92c4fbfde79738f946ae9dc12f",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "sports-predictor-api.fly.dev/api/v1/probabilities",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-16T18:01:07Z",
+  "lasttx": "0xa483e14cda53cfee77227eb82d655e2f69d14e6d44798fb0a4996a6ed1921c72",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "alpha402x.com/10q-highlights/AAPL",
+  "settled": 3,
+  "total": 3,
+  "amt": 50000,
+  "last": "2026-09-17T15:23:11Z",
+  "lasttx": "0xcd58d2d3645d7ee75bc48b00470236fe20c1b846cab20dfac0b8b1ac7417e46e",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "ai-data-marketplace-1042299154756.us-central1.run.app/api/v1/website_due_diligence",
+  "settled": 3,
+  "total": 3,
+  "amt": 40000,
+  "last": "2026-09-17T18:01:11Z",
+  "lasttx": "0x8f4bafdcddf7d6dcc40369b5254ff20a6fefca1415bd119974ddd86205b03412",
+  "l2": {
+   "mismatch": 1,
+   "match": 2
+  },
+  "conform_n": 2,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "signal-engine-production-d88d.up.railway.app/v1/arena/rsi_7_extremes/BTC",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T15:27:40Z",
+  "lasttx": "0x71e548c9d562c7f1ba6c402846ff75d98227af8843424c952bf3ab89df2f1155",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "scvd.store/api/buy/small_blessing",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T00:02:14Z",
+  "lasttx": "0xdf8c64a709d03af21b9569fad16be84ad90d7955e97a028387375d97410a99c9",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "tollbooth-hello.sjwilliams8.workers.dev/hello",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-16T18:00:10Z",
+  "lasttx": "0x9e24b66b41d2d1c47b8a7964cfbf41b5225304dfdad3c55e0f9c22372a3f944b",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "edgar.apitoll.cloud/v1/edgar/insider",
+  "settled": 3,
+  "total": 3,
+  "amt": 3000,
+  "last": "2026-09-17T15:28:51Z",
+  "lasttx": "0xe1602fb838d3b24e1139993a3eba182c717dd06110624922dd118e89867c734f",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "signals.edge.report/v1/gas",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T00:02:09Z",
+  "lasttx": "0xbb8d3f74b55910effbbcfe1fc1622f354145ab445fb9505444d062afae526f81",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.agentfeeds.jp/v1/reg/sanctions/heartbeat",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T15:27:10Z",
+  "lasttx": "0x03bf2f53fa9016d28d16100e16b28110228fccbc3f0b1a77ef942b0a65de57a4",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "ads.forgemesh.io/api/intent/trends",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T18:01:10Z",
+  "lasttx": "0x5adb670b128241c805e61e2587f9f5144b00bd96fdd46d8451e2329054352183",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "kaisha-api.hp-vladic.workers.dev/calendar/business-days",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-17T15:27:12Z",
+  "lasttx": "0x0446ae95aa42015bc968d1749dc7d3bf6e9b2a7f4d8c9a4710cfb6cc72ed7980",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.payperbyte.io/feeds/weather",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T00:02:32Z",
+  "lasttx": "0x15c1df1f71343b0a194bc6c11ac456d6b8631302593e9321d605173b6b53c783",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "blockrun.ai/api/v1/modal/sandbox/create",
+  "settled": 3,
+  "total": 3,
+  "amt": 11000,
+  "last": "2026-09-16T18:01:57Z",
+  "lasttx": "0x73732e2019312e76279c59057a1d0fb2082b3ad204f325b8b4c30ee3e419d893",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.clashofcoins.com/x402/cheap-health",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-16T18:00:44Z",
+  "lasttx": "0x3f6ca3ca1516f922f096d8c936e5225b4900f86a142d08a7c378518bbf24887a",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "hello-world-x402.vercel.app/test1",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T18:01:06Z",
+  "lasttx": "0xf312e7566445d9a0179946195c7c69ec4335d24b42a95cd0ef0fc636c53de98a",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "app.wellnizz.com/labs/search",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T00:02:12Z",
+  "lasttx": "0xcc8aef2464b4b9e9732406e7f98cff6bc8fbee781b7df6ace00c6af4fe7d4ae8",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "realestate.lonestaroracle.xyz/report",
+  "settled": 3,
+  "total": 3,
+  "amt": 30000,
+  "last": "2026-09-17T18:02:26Z",
+  "lasttx": "0x39a419c3238fc646a35f63bea155417f884ee64abc8a09d06e26eb958723bb4d",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.reloadpi.com/api/catalog/vouchers/offers",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-17T15:23:50Z",
+  "lasttx": "0xa09f76d505fc63e3a5d259c2a3aae8c54e75668255c39d3be2267ffef9de62be",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "www.robbiegeorgephotography.com/v1/query/atomic/robbie-george-biography-plate",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T00:02:31Z",
+  "lasttx": "0x372616e55a28a9ecb066b1e2883ee1690951e16ca3856443581b2ca35ad2387b",
+  "l2": {
+   "mismatch": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "dokimo.augaster.com/paid/verify",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T00:02:08Z",
+  "lasttx": "0xe9d2038fcf527c300dbd268a124ebbe91a7147aff711352701c9169b39beccb8",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.reloadpi.com/api/catalog/vouchers/countries",
+  "settled": 3,
+  "total": 3,
+  "amt": 4000,
+  "last": "2026-09-17T15:24:19Z",
+  "lasttx": "0xac0d8f8abd5b644cd259314c180bf65626033347299157d076835560bc07a42a",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "vedetta.dethboy.com/v1/track-record",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T18:01:00Z",
+  "lasttx": "0xcc69f615a54db2010a304498f8aa94b08be6ae3c05a706aace3b73720252e53f",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "api.lastlookdata.com/api/treasury/current",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-18T18:01:10Z",
+  "lasttx": "0x00c3e9a5bb6b3f5230aeb57eaadbf02832be5290e4a60112bd6697db134ec082",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "trading-perps.vercel.app/api/enso/indices",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-18T18:02:32Z",
+  "lasttx": "0x0ee3716919edf0c02e2269a4379ac8b08a21d512a37a0b487d3b16eaf82f8031",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "market.memoryapi.org/x402/market/calendar",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T18:01:22Z",
+  "lasttx": "0x88d772acee8bb4278fcf94821231633b41c428238a0b4e36f97c3184c6133f0e",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "crypto.apitoll.cloud/v1/crypto/yields",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T15:25:01Z",
+  "lasttx": "0xec26829ce697d47fbfdd686e58277f178b5b4af881d80e044f0b55f8b2e3f1a4",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "vibesprings.net/api/exchange/convert",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-17T18:01:04Z",
+  "lasttx": "0x562098e1d2c5fd0090e5fdc8e093ff2b54bd7c13ee60444844bf20893f268620",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "www.x402scan.com/api/x402/facilitators",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T15:24:36Z",
+  "lasttx": "0x332903c1b272224b831683e85f7a0c51f36869ebd385be1c9bf19296078c9b19",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402endpoint-utiwoa54hq-uc.a.run.app/auth",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-18T18:02:12Z",
+  "lasttx": "0xc8ef39dc0ed531f7f778f2136c909decafbe5f1fe9cd476173201e7023af3dcb",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "poketpoker.com/api/play/deal",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T00:02:27Z",
+  "lasttx": "0x70e6845d45eb76754d8b98fcf3768baad20eb415c3da1e441225a3bf30212a07",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "k-data-x402-production.theblack1022.workers.dev/api/fx/usdkrw",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-18T18:01:52Z",
+  "lasttx": "0x8c4920b23716e26fe514eb9b839ecc61d7b457729407e69f268bd93552835765",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "wallet-intelligence-three.vercel.app/api/wallet/audit",
+  "settled": 3,
+  "total": 3,
+  "amt": 50000,
+  "last": "2026-09-16T18:00:30Z",
+  "lasttx": "0x0614e14a2843fd10e1add78d8135a8b7057fa658eba3dd6dea47a495bc16d69c",
+  "l2": {
+   "not_checked": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "lotusnetworkapi.com/api/v1/gas/preflight",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-18T18:01:54Z",
+  "lasttx": "0xf765040d8f74d61c6aecc44ad2d6d049d7273ce0d79eae32801461f62aaf733d",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "coil.trade/api/crypto/night",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T15:23:24Z",
+  "lasttx": "0x24e644d487205f177f94ee344845825b9eb4f6a4b5ba3cb5ffd01dd21da28a37",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402.coinstats.app/markets",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-18T18:02:04Z",
+  "lasttx": "0x9d6b5e4a7bb0dbf59c7e81d1fc64c0a6a0743b86da0e981c2e61d01d568cb292",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "apexrunner.ai/signals/market-tick",
+  "settled": 3,
+  "total": 3,
+  "amt": 7000,
+  "last": "2026-09-17T15:27:31Z",
+  "lasttx": "0x01353b2eb79238499a1f407fca55b1f56a8ced6ea9cc421ca07cd178bc69eaca",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "agentservices.to/v1/indicators/eth",
+  "settled": 3,
+  "total": 3,
+  "amt": 20000,
+  "last": "2026-09-17T15:23:17Z",
+  "lasttx": "0x4ff414b648d6565e6b91c683191f1e43529c19095c0bd68f553c755f9346e74b",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402-crypto-data.vercel.app/api/yields",
+  "settled": 3,
+  "total": 3,
+  "amt": 2000,
+  "last": "2026-09-18T18:02:27Z",
+  "lasttx": "0xc13e93ea2fa6ed2fd615b7df6fc7510b553cf356b28011814c34f9bef09b1f3a",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "x402-demo-discovery-endpoint.vercel.app/protected",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-18T18:02:31Z",
+  "lasttx": "0xad7803b4f4d2a65ab2cc0e019241bb3721e248a46d92c2c62a2f720f18ce18a5",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "rubric-protocol.com/v1/x402/hedera-facts/latest-tx",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T15:27:14Z",
+  "lasttx": "0x8cc4547ac9e7a36fd09b13e7dfa4291bac928db41c231281abca09dc9912fe7d",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "transit.agentic-jp.com/lines",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-17T15:27:17Z",
+  "lasttx": "0x267a56025afc285f6cc8e7d66e69e79ed2d9a812f5c0cc480454a0cdddcf8f4d",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "diet.agentic-jp.com/members/search",
+  "settled": 3,
+  "total": 3,
+  "amt": 5000,
+  "last": "2026-09-17T15:26:44Z",
+  "lasttx": "0x421e091d045f07a417dfdc20688b51159fdd63cb6cd0f4f9266bbd64c77056f4",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "rng.sociologic.ai/random/int",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T18:01:14Z",
+  "lasttx": "0x8f06252e40ea7ca2b0ec67854f63669eaa1b4f29daaaf19bea424e969b0fd5b7",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "vape-x402.vapex402.workers.dev/data/stablecoins",
+  "settled": 3,
+  "total": 3,
+  "amt": 10000,
+  "last": "2026-09-17T18:01:03Z",
+  "lasttx": "0x31a37d51c3d6234a54bec9183a1f69dccee76927b89702a2868908e486ac66a3",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "space.bip-rep.com/satellites",
+  "settled": 3,
+  "total": 3,
+  "amt": 50000,
+  "last": "2026-09-17T18:01:16Z",
+  "lasttx": "0x3141a5ac3547d777518e11e6a7a2e0cd49ae81809b09bab82b1c88bbdd29def4",
+  "l2": {
+   "match": 3
+  },
+  "conform_n": 3,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ },
+ {
+  "key": "redbtco.com/x402/redbtc/models",
+  "settled": 3,
+  "total": 3,
+  "amt": 1000,
+  "last": "2026-09-18T18:01:21Z",
+  "lasttx": "0x2c2d5a3b9866f9c51998a23599f75fe6b2b28850f84b64a60ee80a9d808432fa",
+  "l2": {
+   "no_declaration": 3
+  },
+  "conform_n": 0,
+  "h12_days": [],
+  "h12": 0,
+  "days": 3,
+  "nets": [
+   "eip155:8453"
+  ]
+ }
+]

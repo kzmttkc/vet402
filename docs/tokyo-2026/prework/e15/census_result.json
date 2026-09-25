@@ -1,0 +1,696 @@
+{
+ "generated": "2026-09-18T11:18:08.259Z",
+ "block": "11730341",
+ "rpc": [
+  "https://sepolia.rpc.sentio.xyz",
+  "https://rpc.sepolia.ethpandaops.io"
+ ],
+ "rows": [
+  {
+   "label": "UR.ROOT_REGISTRY()",
+   "sentio": "\"0x9703DBD26dAB89504490994138cF2c575251a9cE\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "UH.ROOT_REGISTRY()",
+   "sentio": "\"0x9703DBD26dAB89504490994138cF2c575251a9cE\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "Root.getSubregistry(\"eth\")",
+   "sentio": "\"0x657eA849311d3D5823348ddEd7C2AaAFb3EDE09E\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "impl.supportsInterface(0x8c2427cc)",
+   "sentio": "ERR:Address \"0x14F09Fd05d4585759e54844dc9b00147131Cf243\" is invalid.",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "impl.supportsInterface(0x91413117 旧)",
+   "sentio": "ERR:Address \"0x14F09Fd05d4585759e54844dc9b00147131Cf243\" is invalid.",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "UR.isENSv2()",
+   "sentio": "true",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "registrar.isAvailable(vet402)",
+   "sentio": "false",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.getState(labelhash(vet402))",
+   "sentio": "{\"status\":2,\"expiry\":\"1821179124\",\"latestOwner\":\"0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6\",\"tokenId\":\"61145509245434290235950529297521332894110489513729356225976163788630918168576\",\"resource\":\"61145509245434290235950529297521332894110489513729356225976163788630918168576\"}",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "UH.findExactOwner(vet402.eth)",
+   "sentio": "\"0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "UH.findNearestOwner(vet402.eth)",
+   "sentio": "[\"0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6\",\"0\"]",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.getResolver(\"vet402\")",
+   "sentio": "\"0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "UR.findResolver(vet402.eth)",
+   "sentio": "[\"0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391\",\"0x4d724311918bea7ec56ed534176a7d708f456a1630d8f7ed82000fad0c776697\",\"0\"]",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.roles(resource(vet402), owner)",
+   "sentio": "\"97409655027181761882228017414928043058140282880\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.roleCount(resource(vet402))",
+   "sentio": "\"97409655027181761882228017414928043058140282880\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.isOnlyAssignee(resource(vet402), ALL, owner)",
+   "sentio": "true",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "registrar.isAvailable(seller-a)",
+   "sentio": "false",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.getState(labelhash(seller-a))",
+   "sentio": "{\"status\":2,\"expiry\":\"1821178728\",\"latestOwner\":\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\",\"tokenId\":\"7857707296942895563816093989158587260326720943060240158505058742226183520256\",\"resource\":\"7857707296942895563816093989158587260326720943060240158505058742226183520256\"}",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "UH.findExactOwner(seller-a.eth)",
+   "sentio": "\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "UH.findNearestOwner(seller-a.eth)",
+   "sentio": "[\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\",\"0\"]",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.getResolver(\"seller-a\")",
+   "sentio": "\"0x49f5022dDe516B92AC1609158bC6AdC772088055\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "UR.findResolver(seller-a.eth)",
+   "sentio": "[\"0x49f5022dDe516B92AC1609158bC6AdC772088055\",\"0x1ba002b11b3c61f5721a5fd1edea641775dc866451e8192788512616dc829b91\",\"0\"]",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.roles(resource(seller-a), owner)",
+   "sentio": "\"97409655027181761882228017414928043058140282880\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.roleCount(resource(seller-a))",
+   "sentio": "\"97409655027181761882228017414928043058140282880\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.isOnlyAssignee(resource(seller-a), ALL, owner)",
+   "sentio": "true",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "registrar.isAvailable(seller-b)",
+   "sentio": "false",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.getState(labelhash(seller-b))",
+   "sentio": "{\"status\":2,\"expiry\":\"1821178848\",\"latestOwner\":\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\",\"tokenId\":\"72107572503011512549952379496751278251058892366964650321848560032315365916672\",\"resource\":\"72107572503011512549952379496751278251058892366964650321848560032315365916672\"}",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "UH.findExactOwner(seller-b.eth)",
+   "sentio": "\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "UH.findNearestOwner(seller-b.eth)",
+   "sentio": "[\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\",\"0\"]",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.getResolver(\"seller-b\")",
+   "sentio": "\"0x49f5022dDe516B92AC1609158bC6AdC772088055\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "UR.findResolver(seller-b.eth)",
+   "sentio": "[\"0x49f5022dDe516B92AC1609158bC6AdC772088055\",\"0x33d06a619fef377721bcc2ddb9000ba0aaf6911cfd72920046fa97b3e9a34627\",\"0\"]",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.roles(resource(seller-b), owner)",
+   "sentio": "\"97409655027181761882228017414928043058140282880\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.roleCount(resource(seller-b))",
+   "sentio": "\"97409655027181761882228017414928043058140282880\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.isOnlyAssignee(resource(seller-b), ALL, owner)",
+   "sentio": "true",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "registrar.isAvailable(seller-c)",
+   "sentio": "false",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.getState(labelhash(seller-c))",
+   "sentio": "{\"status\":2,\"expiry\":\"1821178968\",\"latestOwner\":\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\",\"tokenId\":\"53039682325057237500674300503734182907171841023541683078866763178044586721280\",\"resource\":\"53039682325057237500674300503734182907171841023541683078866763178044586721280\"}",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "UH.findExactOwner(seller-c.eth)",
+   "sentio": "\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "UH.findNearestOwner(seller-c.eth)",
+   "sentio": "[\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\",\"0\"]",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.getResolver(\"seller-c\")",
+   "sentio": "\"0x49f5022dDe516B92AC1609158bC6AdC772088055\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "UR.findResolver(seller-c.eth)",
+   "sentio": "[\"0x49f5022dDe516B92AC1609158bC6AdC772088055\",\"0x8169cefe628926619a63c07334bb9a689635279265e42c5f1526126e0d35a5a1\",\"0\"]",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.roles(resource(seller-c), owner)",
+   "sentio": "\"97409655027181761882228017414928043058140282880\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.roleCount(resource(seller-c))",
+   "sentio": "\"97409655027181761882228017414928043058140282880\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.isOnlyAssignee(resource(seller-c), ALL, owner)",
+   "sentio": "true",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "registrar.isAvailable(pandas)",
+   "sentio": "false",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.getState(labelhash(pandas))",
+   "sentio": "{\"status\":2,\"expiry\":\"1867264992\",\"latestOwner\":\"0xb60EA8C853e8ea9369C372ABEA4Ed4330fbC20A9\",\"tokenId\":\"71047440704936793724131711624988247968309798974171631512935812885473763786752\",\"resource\":\"71047440704936793724131711624988247968309798974171631512935812885473763786752\"}",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "UH.findExactOwner(pandas.eth)",
+   "sentio": "\"0xb60EA8C853e8ea9369C372ABEA4Ed4330fbC20A9\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "UH.findNearestOwner(pandas.eth)",
+   "sentio": "[\"0xb60EA8C853e8ea9369C372ABEA4Ed4330fbC20A9\",\"0\"]",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "ETHRegistry.getResolver(\"pandas\")",
+   "sentio": "\"0xD2A36AeDd9E926F3aE9e747Dbc46e73B63d86cd2\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "UR.findResolver(pandas.eth)",
+   "sentio": "[\"0xD2A36AeDd9E926F3aE9e747Dbc46e73B63d86cd2\",\"0xbc99e192ca049fcc308840ed1c523be11ae40b7a1ced37f7e4f7ad1bcaa47971\",\"0\"]",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "resolver(0x3368219eddfdd1fac6409fb9a1b8bf7d21598391).supportsInterface(0x8c2427cc)",
+   "sentio": "true",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "resolver(0x3368219eddfdd1fac6409fb9a1b8bf7d21598391).supportsInterface(0x91413117)",
+   "sentio": "false",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "resolver(0x3368219eddfdd1fac6409fb9a1b8bf7d21598391).getRecordCount()",
+   "sentio": "\"1\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "resolver(0x3368219eddfdd1fac6409fb9a1b8bf7d21598391).roleCount(0)",
+   "sentio": "\"15438945231642159389809464667825054380435997955418741871927677867721750618658\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "VF.verifyContract(0x3368219eddfdd1fac6409fb9a1b8bf7d21598391)",
+   "sentio": "\"0x14F09Fd05d4585759e54844DC9B00147131Cf243\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "resolver(0x3368219eddfdd1fac6409fb9a1b8bf7d21598391).getRecordId(namehash(vet402.eth))",
+   "sentio": "\"1\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "resolver(0x49f5022dde516b92ac1609158bc6adc772088055).supportsInterface(0x8c2427cc)",
+   "sentio": "true",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "resolver(0x49f5022dde516b92ac1609158bc6adc772088055).supportsInterface(0x91413117)",
+   "sentio": "false",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "resolver(0x49f5022dde516b92ac1609158bc6adc772088055).getRecordCount()",
+   "sentio": "\"3\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "resolver(0x49f5022dde516b92ac1609158bc6adc772088055).roleCount(0)",
+   "sentio": "\"15438945231642159389809464667825054380435997955418741871927677867721750618658\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "VF.verifyContract(0x49f5022dde516b92ac1609158bc6adc772088055)",
+   "sentio": "\"0x14F09Fd05d4585759e54844DC9B00147131Cf243\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "resolver(0x49f5022dde516b92ac1609158bc6adc772088055).getRecordId(namehash(seller-a.eth))",
+   "sentio": "\"1\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "resolver(0x49f5022dde516b92ac1609158bc6adc772088055).getRecordId(namehash(seller-b.eth))",
+   "sentio": "\"2\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "resolver(0x49f5022dde516b92ac1609158bc6adc772088055).getRecordId(namehash(seller-c.eth))",
+   "sentio": "\"3\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "resolver(0xd2a36aedd9e926f3ae9e747dbc46e73b63d86cd2).supportsInterface(0x8c2427cc)",
+   "sentio": "true",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "resolver(0xd2a36aedd9e926f3ae9e747dbc46e73b63d86cd2).supportsInterface(0x91413117)",
+   "sentio": "false",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "resolver(0xd2a36aedd9e926f3ae9e747dbc46e73b63d86cd2).getRecordCount()",
+   "sentio": "\"1\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "resolver(0xd2a36aedd9e926f3ae9e747dbc46e73b63d86cd2).roleCount(0)",
+   "sentio": "\"7719472615821079694904732333912527190217998977709370935963838933860875309329\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "VF.verifyContract(0xd2a36aedd9e926f3ae9e747dbc46e73b63d86cd2)",
+   "sentio": "\"0x14F09Fd05d4585759e54844DC9B00147131Cf243\"",
+   "match": true,
+   "pandaops": "(same)"
+  },
+  {
+   "label": "resolver(0xd2a36aedd9e926f3ae9e747dbc46e73b63d86cd2).getRecordId(namehash(pandas.eth))",
+   "sentio": "\"0\"",
+   "match": true,
+   "pandaops": "(same)"
+  }
+ ],
+ "names": {
+  "vet402.eth": {
+   "name": "vet402.eth",
+   "expectedOwner": "0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6",
+   "isAvailable": "false",
+   "getState": "{\"status\":2,\"expiry\":\"1821179124\",\"latestOwner\":\"0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6\",\"tokenId\":\"61145509245434290235950529297521332894110489513729356225976163788630918168576\",\"resource\":\"61145509245434290235950529297521332894110489513729356225976163788630918168576\"}",
+   "findExactOwner": "\"0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6\"",
+   "findNearestOwner": "[\"0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6\",\"0\"]",
+   "resolver": "\"0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391\"",
+   "urFindResolver": "[\"0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391\",\"0x4d724311918bea7ec56ed534176a7d708f456a1630d8f7ed82000fad0c776697\",\"0\"]",
+   "tokenId": "61145509245434290235950529297521332894110489513729356225976163788630918168576",
+   "resource": "61145509245434290235950529297521332894110489513729356225976163788630918168576",
+   "status": 2,
+   "latestOwner": "0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6",
+   "expiry": "1821179124",
+   "registryRolesOfOwner": "\"97409655027181761882228017414928043058140282880\"",
+   "registryRoleCount": "\"97409655027181761882228017414928043058140282880\"",
+   "registryOnlyAssignee": "true"
+  },
+  "seller-a.eth": {
+   "name": "seller-a.eth",
+   "expectedOwner": "0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6",
+   "isAvailable": "false",
+   "getState": "{\"status\":2,\"expiry\":\"1821178728\",\"latestOwner\":\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\",\"tokenId\":\"7857707296942895563816093989158587260326720943060240158505058742226183520256\",\"resource\":\"7857707296942895563816093989158587260326720943060240158505058742226183520256\"}",
+   "findExactOwner": "\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\"",
+   "findNearestOwner": "[\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\",\"0\"]",
+   "resolver": "\"0x49f5022dDe516B92AC1609158bC6AdC772088055\"",
+   "urFindResolver": "[\"0x49f5022dDe516B92AC1609158bC6AdC772088055\",\"0x1ba002b11b3c61f5721a5fd1edea641775dc866451e8192788512616dc829b91\",\"0\"]",
+   "tokenId": "7857707296942895563816093989158587260326720943060240158505058742226183520256",
+   "resource": "7857707296942895563816093989158587260326720943060240158505058742226183520256",
+   "status": 2,
+   "latestOwner": "0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6",
+   "expiry": "1821178728",
+   "registryRolesOfOwner": "\"97409655027181761882228017414928043058140282880\"",
+   "registryRoleCount": "\"97409655027181761882228017414928043058140282880\"",
+   "registryOnlyAssignee": "true"
+  },
+  "seller-b.eth": {
+   "name": "seller-b.eth",
+   "expectedOwner": "0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6",
+   "isAvailable": "false",
+   "getState": "{\"status\":2,\"expiry\":\"1821178848\",\"latestOwner\":\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\",\"tokenId\":\"72107572503011512549952379496751278251058892366964650321848560032315365916672\",\"resource\":\"72107572503011512549952379496751278251058892366964650321848560032315365916672\"}",
+   "findExactOwner": "\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\"",
+   "findNearestOwner": "[\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\",\"0\"]",
+   "resolver": "\"0x49f5022dDe516B92AC1609158bC6AdC772088055\"",
+   "urFindResolver": "[\"0x49f5022dDe516B92AC1609158bC6AdC772088055\",\"0x33d06a619fef377721bcc2ddb9000ba0aaf6911cfd72920046fa97b3e9a34627\",\"0\"]",
+   "tokenId": "72107572503011512549952379496751278251058892366964650321848560032315365916672",
+   "resource": "72107572503011512549952379496751278251058892366964650321848560032315365916672",
+   "status": 2,
+   "latestOwner": "0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6",
+   "expiry": "1821178848",
+   "registryRolesOfOwner": "\"97409655027181761882228017414928043058140282880\"",
+   "registryRoleCount": "\"97409655027181761882228017414928043058140282880\"",
+   "registryOnlyAssignee": "true"
+  },
+  "seller-c.eth": {
+   "name": "seller-c.eth",
+   "expectedOwner": "0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6",
+   "isAvailable": "false",
+   "getState": "{\"status\":2,\"expiry\":\"1821178968\",\"latestOwner\":\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\",\"tokenId\":\"53039682325057237500674300503734182907171841023541683078866763178044586721280\",\"resource\":\"53039682325057237500674300503734182907171841023541683078866763178044586721280\"}",
+   "findExactOwner": "\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\"",
+   "findNearestOwner": "[\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\",\"0\"]",
+   "resolver": "\"0x49f5022dDe516B92AC1609158bC6AdC772088055\"",
+   "urFindResolver": "[\"0x49f5022dDe516B92AC1609158bC6AdC772088055\",\"0x8169cefe628926619a63c07334bb9a689635279265e42c5f1526126e0d35a5a1\",\"0\"]",
+   "tokenId": "53039682325057237500674300503734182907171841023541683078866763178044586721280",
+   "resource": "53039682325057237500674300503734182907171841023541683078866763178044586721280",
+   "status": 2,
+   "latestOwner": "0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6",
+   "expiry": "1821178968",
+   "registryRolesOfOwner": "\"97409655027181761882228017414928043058140282880\"",
+   "registryRoleCount": "\"97409655027181761882228017414928043058140282880\"",
+   "registryOnlyAssignee": "true"
+  },
+  "pandas.eth": {
+   "name": "pandas.eth",
+   "expectedOwner": null,
+   "isAvailable": "false",
+   "getState": "{\"status\":2,\"expiry\":\"1867264992\",\"latestOwner\":\"0xb60EA8C853e8ea9369C372ABEA4Ed4330fbC20A9\",\"tokenId\":\"71047440704936793724131711624988247968309798974171631512935812885473763786752\",\"resource\":\"71047440704936793724131711624988247968309798974171631512935812885473763786752\"}",
+   "findExactOwner": "\"0xb60EA8C853e8ea9369C372ABEA4Ed4330fbC20A9\"",
+   "findNearestOwner": "[\"0xb60EA8C853e8ea9369C372ABEA4Ed4330fbC20A9\",\"0\"]",
+   "resolver": "\"0xD2A36AeDd9E926F3aE9e747Dbc46e73B63d86cd2\"",
+   "urFindResolver": "[\"0xD2A36AeDd9E926F3aE9e747Dbc46e73B63d86cd2\",\"0xbc99e192ca049fcc308840ed1c523be11ae40b7a1ced37f7e4f7ad1bcaa47971\",\"0\"]",
+   "tokenId": "71047440704936793724131711624988247968309798974171631512935812885473763786752",
+   "resource": "71047440704936793724131711624988247968309798974171631512935812885473763786752",
+   "status": 2,
+   "latestOwner": "0xb60EA8C853e8ea9369C372ABEA4Ed4330fbC20A9",
+   "expiry": "1867264992"
+  }
+ },
+ "resolvers": {
+  "0x3368219eddfdd1fac6409fb9a1b8bf7d21598391": {
+   "address": "0x3368219eddfdd1fac6409fb9a1b8bf7d21598391",
+   "names": [
+    "vet402.eth"
+   ],
+   "supportsInterface_new": "true",
+   "supportsInterface_old": "false",
+   "getRecordCount": "\"1\"",
+   "rootRoleCount": "\"15438945231642159389809464667825054380435997955418741871927677867721750618658\"",
+   "verifyContract": "\"0x14F09Fd05d4585759e54844DC9B00147131Cf243\"",
+   "rootRoleLog": [
+    {
+     "block": "11721578",
+     "tx": "0xdcab8a45bf4a4ce7485666dfdc0863b148e7610fe8f683f1a967a9b3f41bf149",
+     "account": "0xE96b16ab865Aede373C6DE768b3943FA615f173f",
+     "old": "0x0",
+     "new": "0x1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+     "block": "11721578",
+     "tx": "0xdcab8a45bf4a4ce7485666dfdc0863b148e7610fe8f683f1a967a9b3f41bf149",
+     "account": "0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6",
+     "old": "0x0",
+     "new": "0x1111111111111111111111111111111111111111111111111111111111111111"
+    }
+   ],
+   "rootHoldersFromLogs": [
+    "0xE96b16ab865Aede373C6DE768b3943FA615f173f",
+    "0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6"
+   ],
+   "rootHoldersNow": {
+    "0xE96b16ab865Aede373C6DE768b3943FA615f173f": "\"7719472615821079694904732333912527190217998977709370935963838933860875309329\"",
+    "0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6": "\"7719472615821079694904732333912527190217998977709370935963838933860875309329\""
+   },
+   "resourceArguments": [],
+   "allEacRolesChanged": [
+    {
+     "block": "11721578",
+     "resource": "0x0",
+     "account": "0xE96b16ab865Aede373C6DE768b3943FA615f173f",
+     "new": "0x1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+     "block": "11721578",
+     "resource": "0x0",
+     "account": "0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6",
+     "new": "0x1111111111111111111111111111111111111111111111111111111111111111"
+    }
+   ],
+   "getRecordId(vet402.eth)": "\"1\""
+  },
+  "0x49f5022dde516b92ac1609158bc6adc772088055": {
+   "address": "0x49f5022dde516b92ac1609158bc6adc772088055",
+   "names": [
+    "seller-a.eth",
+    "seller-b.eth",
+    "seller-c.eth"
+   ],
+   "supportsInterface_new": "true",
+   "supportsInterface_old": "false",
+   "getRecordCount": "\"3\"",
+   "rootRoleCount": "\"15438945231642159389809464667825054380435997955418741871927677867721750618658\"",
+   "verifyContract": "\"0x14F09Fd05d4585759e54844DC9B00147131Cf243\"",
+   "rootRoleLog": [
+    {
+     "block": "11721545",
+     "tx": "0xca6c2f28266dbf563ddd5ff6d32d72ba4af8d93162753db211d6bd35b2497f81",
+     "account": "0xd45a2E001A8e0681A7C4AFa27fa88fFF0FA1A5D9",
+     "old": "0x0",
+     "new": "0x1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+     "block": "11721545",
+     "tx": "0xca6c2f28266dbf563ddd5ff6d32d72ba4af8d93162753db211d6bd35b2497f81",
+     "account": "0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6",
+     "old": "0x0",
+     "new": "0x1111111111111111111111111111111111111111111111111111111111111111"
+    }
+   ],
+   "rootHoldersFromLogs": [
+    "0xd45a2E001A8e0681A7C4AFa27fa88fFF0FA1A5D9",
+    "0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6"
+   ],
+   "rootHoldersNow": {
+    "0xd45a2E001A8e0681A7C4AFa27fa88fFF0FA1A5D9": "\"7719472615821079694904732333912527190217998977709370935963838933860875309329\"",
+    "0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6": "\"7719472615821079694904732333912527190217998977709370935963838933860875309329\""
+   },
+   "resourceArguments": [],
+   "allEacRolesChanged": [
+    {
+     "block": "11721545",
+     "resource": "0x0",
+     "account": "0xd45a2E001A8e0681A7C4AFa27fa88fFF0FA1A5D9",
+     "new": "0x1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+     "block": "11721545",
+     "resource": "0x0",
+     "account": "0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6",
+     "new": "0x1111111111111111111111111111111111111111111111111111111111111111"
+    }
+   ],
+   "getRecordId(seller-a.eth)": "\"1\"",
+   "getRecordId(seller-b.eth)": "\"2\"",
+   "getRecordId(seller-c.eth)": "\"3\""
+  },
+  "0xd2a36aedd9e926f3ae9e747dbc46e73b63d86cd2": {
+   "address": "0xd2a36aedd9e926f3ae9e747dbc46e73b63d86cd2",
+   "names": [
+    "pandas.eth"
+   ],
+   "supportsInterface_new": "true",
+   "supportsInterface_old": "false",
+   "getRecordCount": "\"1\"",
+   "rootRoleCount": "\"7719472615821079694904732333912527190217998977709370935963838933860875309329\"",
+   "verifyContract": "\"0x14F09Fd05d4585759e54844DC9B00147131Cf243\"",
+   "rootRoleLog": [
+    {
+     "block": "11717478",
+     "tx": "0x6ccca3cb5695f65c9f1e12fa3e39376e8284ef26eb29332c14d982d6c6f86223",
+     "account": "0xb60EA8C853e8ea9369C372ABEA4Ed4330fbC20A9",
+     "old": "0x0",
+     "new": "0x1111111111111111111111111111111111111111111111111111111111111111"
+    }
+   ],
+   "rootHoldersFromLogs": [
+    "0xb60EA8C853e8ea9369C372ABEA4Ed4330fbC20A9"
+   ],
+   "rootHoldersNow": {
+    "0xb60EA8C853e8ea9369C372ABEA4Ed4330fbC20A9": "\"7719472615821079694904732333912527190217998977709370935963838933860875309329\""
+   },
+   "resourceArguments": [],
+   "allEacRolesChanged": [
+    {
+     "block": "11717478",
+     "resource": "0x0",
+     "account": "0xb60EA8C853e8ea9369C372ABEA4Ed4330fbC20A9",
+     "new": "0x1111111111111111111111111111111111111111111111111111111111111111"
+    }
+   ],
+   "getRecordId(pandas.eth)": "\"0\""
+  }
+ },
+ "resolverSharing": {
+  "0x3368219eddfdd1fac6409fb9a1b8bf7d21598391": [
+   "vet402.eth"
+  ],
+  "0x49f5022dde516b92ac1609158bc6adc772088055": [
+   "seller-a.eth",
+   "seller-b.eth",
+   "seller-c.eth"
+  ],
+  "0xd2a36aedd9e926f3ae9e747dbc46e73b63d86cd2": [
+   "pandas.eth"
+  ]
+ },
+ "defaultRecords": {
+  "vet402.eth": {
+   "addr(node)": "\"0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6\"",
+   "text:x402-offer": "\"\"",
+   "text:description": "\"\"",
+   "text:avatar": "\"\""
+  },
+  "seller-a.eth": {
+   "addr(node)": "\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\"",
+   "text:x402-offer": "\"\"",
+   "text:description": "\"\"",
+   "text:avatar": "\"\""
+  },
+  "seller-b.eth": {
+   "addr(node)": "\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\"",
+   "text:x402-offer": "\"\"",
+   "text:description": "\"\"",
+   "text:avatar": "\"\""
+  },
+  "seller-c.eth": {
+   "addr(node)": "\"0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6\"",
+   "text:x402-offer": "\"\"",
+   "text:description": "\"\"",
+   "text:avatar": "\"\""
+  },
+  "pandas.eth": {
+   "addr(node)": "\"0x0000000000000000000000000000000000000000\"",
+   "text:x402-offer": "\"\"",
+   "text:description": "\"\"",
+   "text:avatar": "\"\""
+  }
+ }
+}

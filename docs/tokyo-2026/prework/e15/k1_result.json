@@ -1,0 +1,177 @@
+{
+ "block": "11730379",
+ "totalGas": 2329308,
+ "txCount": 9,
+ "P_A": "0xC54403186Db35B9D92cc393Ae665D3960117ac14",
+ "P_BC": "0xd6A089Fc08e5e97697a3293d02F40837CeA1d2bf",
+ "tokenIds": {
+  "vet402": "61145509245434290235950529297521332894110489513729356225976163788630918168576",
+  "seller-a": "7857707296942895563816093989158587260326720943060240158505058742226183520256",
+  "seller-b": "72107572503011512549952379496751278251058892366964650321848560032315365916672",
+  "seller-c": "53039682325057237500674300503734182907171841023541683078866763178044586721280"
+ },
+ "rows": [
+  {
+   "id": "K1-01",
+   "from": "W_vet",
+   "to": "0x3368219eddfdd1fac6409fb9a1b8bf7d21598391",
+   "fn": "revokeRootRoles(ALL, HCA_vet)",
+   "status": "OK",
+   "gas": 41137,
+   "logs": [
+    "EACRolesChanged"
+   ],
+   "note": "app.ens.dev のスマートアカウントを R_vet の root から外す"
+  },
+  {
+   "id": "K1-02",
+   "from": "W_vet",
+   "to": "0x3368219eddfdd1fac6409fb9a1b8bf7d21598391",
+   "fn": "multicall[setText(vet402.eth,agent-endpoint[x402]) / setText(vet402.eth,class) / setAddress(atst.vet402.eth,60,K_atst)]",
+   "status": "OK",
+   "gas": 172786,
+   "logs": [
+    "TextUpdated",
+    "TextUpdated",
+    "Linked",
+    "AddressUpdated"
+   ],
+   "note": "attester の鍵を ENS に置く。K1-01 の後"
+  },
+  {
+   "id": "K1-03",
+   "from": "W_vet",
+   "to": "0x3368219eddfdd1fac6409fb9a1b8bf7d21598391",
+   "fn": "multicall[grantSetterRoles(setText(*,key_i,\"\"), W_obs) ×15]",
+   "status": "OK",
+   "gas": 918878,
+   "logs": [
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged"
+   ],
+   "note": "観測ログの 15 キーだけを W_obs に委任。ResourceArgument が 15 本残る"
+  },
+  {
+   "id": "K1-04",
+   "from": "W_ens",
+   "to": "0x9e726eb570beb6bceb495ab8cda7df517d4e841c",
+   "fn": "deployProxy(impl, SALT_A, initA)  → P_a",
+   "status": "OK",
+   "gas": 448516,
+   "logs": [
+    "Upgraded",
+    "ResolverCreated",
+    "EACRolesChanged",
+    "Linked",
+    "TextUpdated",
+    "TextUpdated",
+    "TextUpdated",
+    "AddressUpdated",
+    "Initialized",
+    "ProxyDeployed"
+   ],
+   "note": "seller-a 専用リゾルバ。記録も initialize の calls で同時に置く。root は W_ens だけ"
+  },
+  {
+   "id": "K1-05",
+   "from": "W_ens",
+   "to": "0x657ea849311d3d5823348dded7c2aaafb3ede09e",
+   "fn": "setResolver(tokenId(seller-a), P_a)",
+   "status": "OK",
+   "gas": 40420,
+   "logs": [
+    "ResolverUpdated"
+   ],
+   "note": "K1-04 に依存。アドレスは送り手＋salt で先に決まる"
+  },
+  {
+   "id": "K1-06",
+   "from": "W_ens",
+   "to": "0xC54403186Db35B9D92cc393Ae665D3960117ac14",
+   "fn": "grantSetterRoles(setText(dns(\"seller-a.eth\"),\"x402-offer\",\"\"), W_op)",
+   "status": "OK",
+   "gas": 87356,
+   "logs": [
+    "ResourceArgument",
+    "EACRolesChanged"
+   ],
+   "note": "K1-04 に依存。initialize の calls に入れると revert（E12）"
+  },
+  {
+   "id": "K1-07",
+   "from": "W_ens",
+   "to": "0x9e726eb570beb6bceb495ab8cda7df517d4e841c",
+   "fn": "deployProxy(impl, SALT_BC, initBC) → P_bc",
+   "status": "OK",
+   "gas": 539375,
+   "logs": [
+    "Upgraded",
+    "ResolverCreated",
+    "EACRolesChanged",
+    "Linked",
+    "TextUpdated",
+    "TextUpdated",
+    "AddressUpdated",
+    "Linked",
+    "TextUpdated",
+    "TextUpdated",
+    "AddressUpdated",
+    "Initialized",
+    "ProxyDeployed"
+   ],
+   "note": "seller-b/c 共用。記録 ID は b=1・c=2 で確定（E9 実測）"
+  },
+  {
+   "id": "K1-08",
+   "from": "W_ens",
+   "to": "0x657ea849311d3d5823348dded7c2aaafb3ede09e",
+   "fn": "setResolver(tokenId(seller-b), P_bc)",
+   "status": "OK",
+   "gas": 40420,
+   "logs": [
+    "ResolverUpdated"
+   ],
+   "note": "K1-07 に依存"
+  },
+  {
+   "id": "K1-09",
+   "from": "W_ens",
+   "to": "0x657ea849311d3d5823348dded7c2aaafb3ede09e",
+   "fn": "setResolver(tokenId(seller-c), P_bc)",
+   "status": "OK",
+   "gas": 40420,
+   "logs": [
+    "ResolverUpdated"
+   ],
+   "note": "K1-07 に依存"
+  }
+ ]
+}

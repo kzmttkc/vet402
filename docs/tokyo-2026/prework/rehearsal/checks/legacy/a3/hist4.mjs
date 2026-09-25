@@ -1,0 +1,11 @@
+import { client, UR, TNAME, TKEY, NAME } from './lib.mjs';
+import { parseAbi, namehash } from 'viem';
+const c=client('https://sepolia.gateway.tenderly.co');
+const tres=await c.getEnsResolver({name:TNAME,blockNumber:11708896n,universalResolverAddress:UR});
+const vres=await c.getEnsResolver({name:NAME,blockNumber:11708896n,universalResolverAddress:UR});
+console.log('translator resolver',tres,'vet402 resolver',vres);
+const abi=parseAbi(['function text(bytes32 node,string key) view returns (string)','function addr(bytes32 node) view returns (address)']);
+const h=await c.getBlockNumber();
+console.log('text now', await c.readContract({address:tres,abi,functionName:'text',args:[namehash(TNAME),TKEY],blockNumber:h}).catch(e=>'ERR '+e.shortMessage));
+console.log('addr now', await c.readContract({address:vres,abi,functionName:'addr',args:[namehash(NAME)],blockNumber:h}).catch(e=>'ERR '+e.shortMessage));
+console.log('getEnsText old block', await c.getEnsText({name:TNAME,key:TKEY,blockNumber:11708896n,universalResolverAddress:UR}));

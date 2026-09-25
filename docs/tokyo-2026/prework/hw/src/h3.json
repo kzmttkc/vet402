@@ -1,0 +1,146 @@
+{
+ "block": "11734203",
+ "F1": [
+  {
+   "tag": "vet402.eth→R_vet",
+   "resolver": "0x3368219eddfdd1fac6409fb9a1b8bf7d21598391",
+   "owner EOA": {
+    "addr": "0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6",
+    "roles": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "match": true
+   },
+   "HCA(app.ens.dev)": {
+    "addr": "0xe96b16ab865aede373c6de768b3943fa615f173f",
+    "roles": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "match": true
+   },
+   "旧HCA(FINDINGS記載)": {
+    "addr": "0x7070479db048594bea8ec9e61f3370558e96ada3",
+    "roles": "0x0",
+    "match": true
+   },
+   "roleCount_root": "0x2222222222222222222222222222222222222222222222222222222222222222",
+   "isOnlyAssignee_owner_ALL": false,
+   "root_role_holders_from_logs": [
+    "0xe96b16ab865aede373c6de768b3943fa615f173f",
+    "0x502b59fbff30e21b02ade06ed0328fe03b35b8e6"
+   ],
+   "logCount": 7
+  },
+  {
+   "tag": "seller-a/b/c.eth→R_shared",
+   "resolver": "0x49f5022dde516b92ac1609158bc6adc772088055",
+   "owner EOA": {
+    "addr": "0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6",
+    "roles": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "match": true
+   },
+   "HCA(app.ens.dev)": {
+    "addr": "0xd45a2e001a8e0681a7c4afa27fa88fff0fa1a5d9",
+    "roles": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "match": true
+   },
+   "旧HCA(FINDINGS記載)": {
+    "addr": "0x7070479db048594bea8ec9e61f3370558e96ada3",
+    "roles": "0x0",
+    "match": true
+   },
+   "roleCount_root": "0x2222222222222222222222222222222222222222222222222222222222222222",
+   "isOnlyAssignee_owner_ALL": false,
+   "root_role_holders_from_logs": [
+    "0xd45a2e001a8e0681a7c4afa27fa88fff0fa1a5d9",
+    "0xc0f58df8753a4c53fd98c17e46e9f4ce6b8e9fa6"
+   ],
+   "logCount": 11
+  }
+ ],
+ "F2": {
+  "has_clearRecords": false,
+  "has_linkToRecord": true,
+  "has_linkToNode": true,
+  "has_getRecordId": true,
+  "has_recordVersions": false,
+  "has_setText_bytes": true,
+  "call_clearRecords(bytes32)": "Execution reverted for an unknown reason.",
+  "call_clearRecords(bytes)": "Execution reverted for an unknown reason.",
+  "getRecordCount_R_vet": "1",
+  "getRecordId_vet402": "1",
+  "getRecordId_atst": "0",
+  "getRecordCount_R_shared": "3",
+  "getRecordId_seller-a": "1",
+  "getRecordId_seller-b": "2",
+  "getRecordId_seller-c": "3"
+ },
+ "F4": {
+  "vet402.eth": {
+   "resolver": "0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391",
+   "owner": "0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6",
+   "match": true
+  },
+  "seller-a.eth": {
+   "resolver": "0x49f5022dDe516B92AC1609158bC6AdC772088055",
+   "owner": "0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6",
+   "match": true
+  },
+  "seller-b.eth": {
+   "resolver": "0x49f5022dDe516B92AC1609158bC6AdC772088055",
+   "owner": "0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6",
+   "match": true
+  },
+  "seller-c.eth": {
+   "resolver": "0x49f5022dDe516B92AC1609158bC6AdC772088055",
+   "owner": "0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6",
+   "match": true
+  },
+  "pandas.eth": {
+   "resolver": "0xD2A36AeDd9E926F3aE9e747Dbc46e73B63d86cd2",
+   "owner": "0xb60EA8C853e8ea9369C372ABEA4Ed4330fbC20A9",
+   "match": true
+  }
+ },
+ "F5": [
+  {
+   "id": "G1 W_ens が seller-b.eth の x402-offer を W_op に委任",
+   "status": "OK",
+   "gas": 87356,
+   "err": ""
+  },
+  {
+   "id": "G2 W_op → seller-b.eth（意図どおり）",
+   "status": "OK",
+   "gas": 68482,
+   "err": ""
+  },
+  {
+   "id": "G3 W_op → seller-a.eth（同じリゾルバの別の名前）",
+   "status": "OK",
+   "gas": 68566,
+   "err": ""
+  },
+  {
+   "id": "G4 W_op → seller-c.eth（同上）",
+   "status": "OK",
+   "gas": 68566,
+   "err": ""
+  },
+  {
+   "id": "G5 W_op → never-registered.eth（未登録の名前）",
+   "status": "OK",
+   "gas": 96258,
+   "err": ""
+  },
+  {
+   "id": "G6 W_op → seller-a.eth の別のキー（対照）",
+   "status": "REVERT",
+   "gas": 38475,
+   "err": "EACUnauthorizedAccountRoles(0xd067781c5710daf77c70ab5ed5eec9c55034a0c12ede899e68a13ef6c052f919,0x10,0x00000000000000000000000000000000000000A1)"
+  },
+  {
+   "id": "G7 W_op → 別のリゾルバ R_vet の vet402.eth（対照）",
+   "status": "REVERT",
+   "gas": 38607,
+   "err": "EACUnauthorizedAccountRoles(0xddc514092bff3ea55777839913a19846ed3eb35a8cf0d4c605f0d703b31dd435,0x10,0x00000000000000000000000000000000000000A1)"
+  }
+ ],
+ "resource_x402offer": "0xddc514092bff3ea55777839913a19846ed3eb35a8cf0d4c605f0d703b31dd435"
+}

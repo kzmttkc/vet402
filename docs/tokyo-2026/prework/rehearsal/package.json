@@ -1,0 +1,21 @@
+{
+  "name": "tokyo-2026-rehearsal",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ETHGlobal Tokyo 2026 会期前の予行演習。読み取りだけ・署名/送信なし。",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "rehearse": "node run.mjs --all",
+    "h13": "node run.mjs --h13",
+    "k1": "node run.mjs --k1",
+    "b0": "node run.mjs --b0",
+    "gas": "node run.mjs --gas",
+    "selfcheck": "node tools/selfcheck.mjs"
+  },
+  "dependencies": {
+    "viem": "2.38.0"
+  }
+}

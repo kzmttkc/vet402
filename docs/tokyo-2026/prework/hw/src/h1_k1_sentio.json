@@ -1,0 +1,360 @@
+{
+ "block": "11734203",
+ "now": 1789777848,
+ "totalGas": 3487475,
+ "txCount": 16,
+ "P_A": "0xC54403186Db35B9D92cc393Ae665D3960117ac14",
+ "P_BC": "0xd6A089Fc08e5e97697a3293d02F40837CeA1d2bf",
+ "U": "0xB093cEC6D1Cc355c40020f0df5103ecEFfD30dac",
+ "P_AG1": "0xd3F4818c0bB93e54780525b21380D44D6D06bcd6",
+ "rows": [
+  {
+   "id": "K1-01",
+   "fn": "revokeRootRoles(ALL, HCA_vet)",
+   "status": "OK",
+   "gas": 41137,
+   "logs": [
+    "EACRolesChanged"
+   ]
+  },
+  {
+   "id": "K1-02",
+   "fn": "multicall[setText x2 + setAddress(atst,60,K_atst)]",
+   "status": "OK",
+   "gas": 172786,
+   "logs": [
+    "TextUpdated",
+    "TextUpdated",
+    "Linked",
+    "AddressUpdated"
+   ]
+  },
+  {
+   "id": "K1-03",
+   "fn": "multicall[grantSetterRoles(setText(*,key_i,\"\"),W_obs) x15]",
+   "status": "OK",
+   "gas": 918878,
+   "logs": [
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged",
+    "ResourceArgument",
+    "EACRolesChanged"
+   ]
+  },
+  {
+   "id": "K1-03b",
+   "fn": "W_obs が R_vet に obs ラベルの class を書く（wildcard の実データ）",
+   "status": "OK",
+   "gas": 98912,
+   "logs": [
+    "Linked",
+    "TextUpdated"
+   ]
+  },
+  {
+   "id": "K1-04",
+   "fn": "deployProxy(impl, SALT_A, initA) -> P_a",
+   "status": "OK",
+   "gas": 448516,
+   "logs": [
+    "Upgraded",
+    "ResolverCreated",
+    "EACRolesChanged",
+    "Linked",
+    "TextUpdated",
+    "TextUpdated",
+    "TextUpdated",
+    "AddressUpdated",
+    "Initialized",
+    "ProxyDeployed"
+   ]
+  },
+  {
+   "id": "K1-05",
+   "fn": "setResolver(seller-a, P_a)",
+   "status": "OK",
+   "gas": 40420,
+   "logs": [
+    "ResolverUpdated"
+   ]
+  },
+  {
+   "id": "K1-06",
+   "fn": "grantSetterRoles(setText(seller-a.eth,x402-offer,\"\"), W_op)",
+   "status": "OK",
+   "gas": 87356,
+   "logs": [
+    "ResourceArgument",
+    "EACRolesChanged"
+   ]
+  },
+  {
+   "id": "K1-07",
+   "fn": "deployProxy(impl, SALT_BC, initBC) -> P_bc",
+   "status": "OK",
+   "gas": 539375,
+   "logs": [
+    "Upgraded",
+    "ResolverCreated",
+    "EACRolesChanged",
+    "Linked",
+    "TextUpdated",
+    "TextUpdated",
+    "AddressUpdated",
+    "Linked",
+    "TextUpdated",
+    "TextUpdated",
+    "AddressUpdated",
+    "Initialized",
+    "ProxyDeployed"
+   ]
+  },
+  {
+   "id": "K1-08",
+   "fn": "setResolver(seller-b, P_bc)",
+   "status": "OK",
+   "gas": 40420,
+   "logs": [
+    "ResolverUpdated"
+   ]
+  },
+  {
+   "id": "K1-09",
+   "fn": "setResolver(seller-c, P_bc)",
+   "status": "OK",
+   "gas": 40420,
+   "logs": [
+    "ResolverUpdated"
+   ]
+  },
+  {
+   "id": "K1-10",
+   "fn": "deployProxy(UserRegistryImpl, SALT_U, initU) -> U",
+   "status": "OK",
+   "gas": 178021,
+   "logs": [
+    "Upgraded",
+    "RegistryCreated",
+    "EACRolesChanged",
+    "Initialized",
+    "ProxyDeployed"
+   ]
+  },
+  {
+   "id": "K1-11",
+   "fn": "setSubregistry(vet402, U)",
+   "status": "OK",
+   "gas": 57520,
+   "logs": [
+    "SubregistryUpdated"
+   ]
+  },
+  {
+   "id": "K1-12",
+   "fn": "deployProxy(impl, SALT_A1, initA1) -> P_AG1",
+   "status": "OK",
+   "gas": 393345,
+   "logs": [
+    "Upgraded",
+    "ResolverCreated",
+    "EACRolesChanged",
+    "Linked",
+    "TextUpdated",
+    "TextUpdated",
+    "AddressUpdated",
+    "Initialized",
+    "ProxyDeployed"
+   ]
+  },
+  {
+   "id": "K1-13",
+   "fn": "U.register(\"agent-1\", K_ag1, 0, P_AG1, ROLE_RENEW, expiry)",
+   "status": "OK",
+   "gas": 172536,
+   "logs": [
+    "0x4acabfe3",
+    "LabelRegistered",
+    "TransferSingle",
+    "TokenResource",
+    "EACRolesChanged",
+    "ResolverUpdated"
+   ]
+  },
+  {
+   "id": "K1-14",
+   "fn": "grantSetterRoles(setText(agent-1.vet402.eth,x402-policy,\"\"), K_ag1)",
+   "status": "OK",
+   "gas": 87452,
+   "logs": [
+    "ResourceArgument",
+    "EACRolesChanged"
+   ]
+  },
+  {
+   "id": "K1-15",
+   "fn": "U.register(\"agent-2\", K_ag2, 0, 0, RENEW|CAN_TRANSFER_ADMIN, expiry)",
+   "status": "OK",
+   "gas": 170381,
+   "logs": [
+    "0x4acabfe3",
+    "LabelRegistered",
+    "TransferSingle",
+    "TokenResource",
+    "EACRolesChanged"
+   ]
+  }
+ ],
+ "chk": [
+  {
+   "id": "C-01 W_op が P_a で x402-offer を書ける",
+   "status": "OK",
+   "v": "gas=52297"
+  },
+  {
+   "id": "C-02 W_op が P_a で 証明キーを書く",
+   "status": "REVERT",
+   "v": "EACUnauthorizedAccountRoles(0x2363e661af8704f60b1b70f1cd40864cd938b26b6a163c91f7b1768270888359,0x10,0x00000000000000000000000000000000000000A1)"
+  },
+  {
+   "id": "C-03 W_op が P_bc で seller-b の x402-offer を書く",
+   "status": "REVERT",
+   "v": "EACUnauthorizedAccountRoles(0xddc514092bff3ea55777839913a19846ed3eb35a8cf0d4c605f0d703b31dd435,0x10,0x00000000000000000000000000000000000000A1)"
+  },
+  {
+   "id": "C-04 W_op が P_a で 別の名前(sub)の x402-offer を書く",
+   "status": "OK",
+   "v": "gas=96757"
+  },
+  {
+   "id": "C-05 W_op が P_a で setAddress",
+   "status": "REVERT",
+   "v": "EACUnauthorizedAccountRoles(0xc6bb06cb7f92603de181bf256cd16846b93b752a170ff24824098b31aa008a7e,0x1,0x00000000000000000000000000000000000000A1)"
+  },
+  {
+   "id": "C-06 W_vet(作者) が P_a で 証明キーを書く",
+   "status": "REVERT",
+   "v": "EACUnauthorizedAccountRoles(0x2363e661af8704f60b1b70f1cd40864cd938b26b6a163c91f7b1768270888359,0x10,0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6)"
+  },
+  {
+   "id": "C-07 W_vet(作者) が P_a で x402-offer を書く",
+   "status": "REVERT",
+   "v": "EACUnauthorizedAccountRoles(0xddc514092bff3ea55777839913a19846ed3eb35a8cf0d4c605f0d703b31dd435,0x10,0x502B59FbfF30E21B02Ade06ed0328FE03B35b8e6)"
+  },
+  {
+   "id": "C-08 W_ens(売り手) が P_a で 証明キーを書く",
+   "status": "OK",
+   "v": "gas=52303"
+  },
+  {
+   "id": "C-09 W_obs が R_vet で atst.vet402.eth の class を書く",
+   "status": "OK",
+   "v": "gas=69017"
+  },
+  {
+   "id": "C-10 W_obs が R_vet で atst の addr を書く",
+   "status": "REVERT",
+   "v": "EACUnauthorizedAccountRoles(0xc6bb06cb7f92603de181bf256cd16846b93b752a170ff24824098b31aa008a7e,0x1,0x00000000000000000000000000000000000000B1)"
+  },
+  {
+   "id": "C-11 K1-11 後 resolve(addr atst.vet402.eth)",
+   "status": "OK",
+   "v": "0x41000000000000000000000000000000000000A7 via 0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391"
+  },
+  {
+   "id": "C-12 K1-11 後 resolve(text obs class)",
+   "status": "OK",
+   "v": "\"x402-observation\""
+  },
+  {
+   "id": "C-13 resolve(text agent-1 x402-policy)",
+   "status": "OK",
+   "v": "\"{\\\"v\\\":1,\\\"trust\\\":[\\\"atst.vet402.eth\\\"],\\\"floor\\\":\\\"l2_match\\\",\\\"max\\\":\\\"50000\\\"}\""
+  },
+  {
+   "id": "C-14 resolve(addr agent-1)",
+   "status": "OK",
+   "v": "0x41000000000000000000000000000000000000c1 via 0xd3F4818c0bB93e54780525b21380D44D6D06bcd6"
+  },
+  {
+   "id": "C-15 resolve(text agent-2 x402-policy) ＝ 対照(親 wildcard)",
+   "status": "OK",
+   "v": "\"\""
+  },
+  {
+   "id": "C-16 K_ag1 が P_AG1 で agent-1 の方針を書ける",
+   "status": "OK",
+   "v": "gas=63488"
+  },
+  {
+   "id": "C-17 K_ag1 が R_vet で 親 vet402.eth の x402-policy を書く",
+   "status": "REVERT",
+   "v": "EACUnauthorizedAccountRoles(0x1c0754232f48fc306cedd0a65442157964f44f2481314faec5a4bee29b1d877f,0x10,0x41000000000000000000000000000000000000c1)"
+  },
+  {
+   "id": "C-18 K_ag2 が R_vet で 親 vet402.eth の x402-policy を書く（対照）",
+   "status": "REVERT",
+   "v": "EACUnauthorizedAccountRoles(0x1c0754232f48fc306cedd0a65442157964f44f2481314faec5a4bee29b1d877f,0x10,0x41000000000000000000000000000000000000c2)"
+  },
+  {
+   "id": "C-19 resolve(text seller-a x402-offer)",
+   "status": "OK",
+   "v": "\"{\\\"v\\\":1,\\\"amount\\\":\\\"99999\\\"}\""
+  },
+  {
+   "id": "C-20 UH.findExactOwner(seller-a.eth)",
+   "status": "OK",
+   "v": "0x000000000000000000000000c0f58df8753a4c53fd98c17e46e9f4ce6b8e9fa6"
+  },
+  {
+   "id": "C-21 UH.findExactOwner(agent-1.vet402.eth)",
+   "status": "OK",
+   "v": "0x00000000000000000000000041000000000000000000000000000000000000c1"
+  },
+  {
+   "id": "C-11b K1-11 後 resolve(text vet402.eth class) 親本体",
+   "status": "OK",
+   "v": "\"x402-verifier\""
+  },
+  {
+   "id": "C-12b K1-11 後 UR.findResolver(obs ラベル)",
+   "status": "OK",
+   "v": "gas=75718"
+  },
+  {
+   "id": "C-12c K1-11 後 UR.findResolver(atst.vet402.eth)",
+   "status": "OK",
+   "v": "gas=73628"
+  },
+  {
+   "id": "C-22 UH.findExactOwner(atst.vet402.eth)",
+   "status": "OK",
+   "v": "0x0000000000000000000000000000000000000000000000000000000000000000"
+  }
+ ]
+}

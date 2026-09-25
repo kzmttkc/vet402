@@ -1,0 +1,92 @@
+{
+ "block": "11734203",
+ "P_A": "0xC54403186Db35B9D92cc393Ae665D3960117ac14",
+ "rows": [
+  {
+   "id": "1 deployProxy → P_a",
+   "status": "OK",
+   "gas": 369771,
+   "v": "0x000000000000000000000000c54403186db35b9d92cc393ae665d3960117ac14",
+   "logs": [
+    "Upgraded",
+    "ResolverCreated",
+    "EACRolesChanged",
+    "Linked",
+    "TextUpdated",
+    "TextUpdated",
+    "AddressUpdated",
+    "Initialized",
+    "0x0a2c575f"
+   ]
+  },
+  {
+   "id": "2 setResolver(seller-a, P_a)",
+   "status": "OK",
+   "gas": 40420,
+   "v": "0x",
+   "logs": [
+    "0x9b6b420f"
+   ]
+  },
+  {
+   "id": "3 resolve(text x402-offer) 前",
+   "status": "OK",
+   "gas": 109323,
+   "v": "\"{\\\"v\\\":1,\\\"amount\\\":\\\"10000\\\",\\\"asset\\\":\\\"USDC\\\"}\"",
+   "logs": []
+  },
+  {
+   "id": "4 getRecordId(seller-a.eth)",
+   "status": "OK",
+   "gas": 31867,
+   "v": "0x0000000000000000000000000000000000000000000000000000000000000001",
+   "logs": []
+  },
+  {
+   "id": "5 linkToRecord(seller-a.eth, 0) = 記録を外す（clearRecords の後継）",
+   "status": "OK",
+   "gas": 41355,
+   "v": "0x",
+   "logs": [
+    "Linked"
+   ]
+  },
+  {
+   "id": "6 resolve(text x402-offer) 後",
+   "status": "OK",
+   "gas": 106889,
+   "v": "\"\"",
+   "logs": []
+  },
+  {
+   "id": "7 resolve(text 証明キー) 後",
+   "status": "OK",
+   "gas": 107444,
+   "v": "\"\"",
+   "logs": []
+  },
+  {
+   "id": "8 getRecordId(seller-a.eth) 後",
+   "status": "OK",
+   "gas": 31867,
+   "v": "0x0000000000000000000000000000000000000000000000000000000000000000",
+   "logs": []
+  },
+  {
+   "id": "9 linkToRecord(seller-a.eth, 1) で戻す",
+   "status": "OK",
+   "gas": 63267,
+   "v": "0x",
+   "logs": [
+    "Linked"
+   ]
+  },
+  {
+   "id": "10 resolve(text x402-offer) 戻した後",
+   "status": "OK",
+   "gas": 109323,
+   "v": "\"{\\\"v\\\":1,\\\"amount\\\":\\\"10000\\\",\\\"asset\\\":\\\"USDC\\\"}\"",
+   "logs": []
+  }
+ ]
+}

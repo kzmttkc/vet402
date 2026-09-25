@@ -1,0 +1,375 @@
+{
+ "block": "11734203",
+ "now": 1789777848,
+ "UR_IMPL": "0xa80338aaa8d23831cea25e858d1774534abb0263",
+ "U": "0xB093cEC6D1Cc355c40020f0df5103ecEFfD30dac",
+ "P_AG1": "0xd3F4818c0bB93e54780525b21380D44D6D06bcd6",
+ "tokenId_agent1": "107090315761633334568409503188662521279868207449028230819969254196350497587200",
+ "d0": {
+  "code": 18841,
+  "labelStore": "0x375C082021E677a40eA2AE094D050602dba90992",
+  "rootResource": "0",
+  "canUpgradeFrom": "true",
+  "vfVerify": "ERR",
+  "vet402_subregistry": "0x0000000000000000000000000000000000000000",
+  "vet402_roles_W_VET": "0x1110000000000000000000000000000001100000",
+  "hasSetSubregistry": true,
+  "findResolver_before_vet402.eth": "0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391",
+  "findResolver_before_atst.vet402.eth": "0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391",
+  "findResolver_before_x.obs.vet402.eth": "0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391",
+  "findResolver_before_agent-1.vet402.eth": "0x3368219EDdFdd1faC6409Fb9A1b8bF7D21598391"
+ },
+ "rows": [
+  {
+   "id": "D-01",
+   "from": "W_vet",
+   "fn": "deployProxy(UserRegistryImpl, SALT_U, initialize([(W_vet,ALL)])) → U",
+   "status": "OK",
+   "gas": 178021,
+   "note": "自前のサブ名レジストリを配備",
+   "ret": "0x000000000000000000000000b093cec6d1cc355c40020f0df5103eceffd30dac",
+   "logs": [
+    "Upgraded",
+    "RegistryCreated",
+    "EACRolesChanged",
+    "Initialized",
+    "ProxyDeployed"
+   ]
+  },
+  {
+   "id": "D-02",
+   "from": "W_vet",
+   "fn": "ETHRegistry.setSubregistry(tokenId(vet402.eth), U)",
+   "status": "OK",
+   "gas": 57520,
+   "note": "vet402.eth の下を自前レジストリに委ねる＝階層レジストリ",
+   "ret": "0x",
+   "logs": [
+    "SubregistryUpdated"
+   ]
+  },
+  {
+   "id": "D-03",
+   "from": "W_vet",
+   "fn": "deployProxy(PermissionedResolverImpl, SALT_A1, initialize(...)) → P_AG1",
+   "status": "OK",
+   "gas": 393333,
+   "note": "エージェント専用リゾルバ。方針・class・addr を同時に置く",
+   "ret": "0x000000000000000000000000d3f4818c0bb93e54780525b21380d44d6d06bcd6",
+   "logs": [
+    "Upgraded",
+    "ResolverCreated",
+    "EACRolesChanged",
+    "Linked",
+    "TextUpdated",
+    "TextUpdated",
+    "AddressUpdated",
+    "Initialized",
+    "ProxyDeployed"
+   ]
+  },
+  {
+   "id": "D-04",
+   "from": "W_vet",
+   "fn": "U.register(\"agent-1\", K_AG1, 0, P_AG1, ROLE_RENEW, now+3600)",
+   "status": "OK",
+   "gas": 172524,
+   "note": "期限つき・譲渡不可（ROLE_CAN_TRANSFER_ADMIN 無し）のサブ名を発行",
+   "ret": "0xecc2f8830565cee1ed0e46e3e66f5e3af0cac6cff93297956a00f92000000000",
+   "logs": [
+    "0x4acabfe3",
+    "LabelRegistered",
+    "TransferSingle",
+    "TokenResource",
+    "EACRolesChanged",
+    "ResolverUpdated"
+   ]
+  },
+  {
+   "id": "D-05",
+   "from": "W_vet",
+   "fn": "P_AG1.grantSetterRoles(setText(*, \"x402-policy\", \"\"), K_AG1)",
+   "status": "OK",
+   "gas": 87440,
+   "note": "エージェントの鍵に自分の方針キーだけを委任",
+   "ret": "0x0000000000000000000000000000000000000000000000000000000000000001",
+   "logs": [
+    "ResourceArgument",
+    "EACRolesChanged"
+   ]
+  },
+  {
+   "id": "D-06",
+   "from": "K_ag1",
+   "fn": "K_AG1 が自分の方針を書き換え",
+   "status": "OK",
+   "gas": 53984,
+   "note": "期待: OK",
+   "ret": "0x",
+   "logs": [
+    "TextUpdated"
+   ]
+  },
+  {
+   "id": "D-07",
+   "from": "K_ag1",
+   "fn": "K_AG1 が自分のリゾルバで addr を書く",
+   "status": "REVERT",
+   "gas": 37789,
+   "note": "期待: REVERT（方針キーしか委任していない）",
+   "revert": "EACUnauthorizedAccountRoles(0xc6bb06cb7f92603de181bf256cd16846b93b752a170ff24824098b31aa008a7e,0x1,0x00000000000000000000000000000000000000C1)"
+  },
+  {
+   "id": "D-08",
+   "from": "K_ag1",
+   "fn": "K_AG1 が親のリゾルバ R_vet に x402-policy を書く",
+   "status": "REVERT",
+   "gas": 38499,
+   "note": "期待: REVERT（委任は自分のリゾルバの中だけ）",
+   "revert": "EACUnauthorizedAccountRoles(0x1c0754232f48fc306cedd0a65442157964f44f2481314faec5a4bee29b1d877f,0x10,0x00000000000000000000000000000000000000C1)"
+  },
+  {
+   "id": "D-09",
+   "from": "W_vet",
+   "fn": "UR.resolve(agent-1.vet402.eth, text(\"x402-policy\"))",
+   "status": "OK",
+   "gas": 122675,
+   "note": "解決できるか（P_AG1 が leaf resolver）",
+   "ret": "0x0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000d3f4818c0bb93e54780525b21380d44d6d06bcd60000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000147b2276223a322c226d6178223a2239303030227d000000000000000000000000",
+   "logs": []
+  },
+  {
+   "id": "D-10",
+   "from": "W_vet",
+   "fn": "UR.findResolver(atst.vet402.eth)",
+   "status": "OK",
+   "gas": 73628,
+   "note": "既存の wildcard が subregistry 追加後も壊れないか（= R_vet のままか）",
+   "ret": "0x0000000000000000000000003368219eddfdd1fac6409fb9a1b8bf7d2159839185403798e95f16011eb55d5cdb18723fa32a8a0ef1536314bcc7f7fab6002cc60000000000000000000000000000000000000000000000000000000000000005",
+   "logs": []
+  },
+  {
+   "id": "D-11",
+   "from": "W_vet",
+   "fn": "UR.findResolver(x.obs.vet402.eth)",
+   "status": "OK",
+   "gas": 74567,
+   "note": "同上（観測ログの4ラベル）",
+   "ret": "0x0000000000000000000000003368219eddfdd1fac6409fb9a1b8bf7d21598391fae7f66ca8a919c4c4ac285c4276dacd31b9c23d67999ccde5a20ec7f40ed1300000000000000000000000000000000000000000000000000000000000000006",
+   "logs": []
+  },
+  {
+   "id": "D-12",
+   "from": "W_vet",
+   "fn": "UH.findExactOwner(agent-1.vet402.eth)",
+   "status": "OK",
+   "gas": 89018,
+   "note": "期待: K_AG1（サブ名に持ち主がいる）",
+   "ret": "0x00000000000000000000000000000000000000000000000000000000000000c1",
+   "logs": []
+  },
+  {
+   "id": "D-13",
+   "from": "K_ag1",
+   "fn": "K_AG1 が agent-1 を他人へ譲渡",
+   "status": "REVERT",
+   "gas": 50137,
+   "note": "期待: REVERT（tokenId はこの後 findTokenId で差し替え）",
+   "revert": "TransferDisallowed(0xecc2f8830565cee1ed0e46e3e66f5e3af0cac6cff93297956a00f92000000000,0x00000000000000000000000000000000000000C1)"
+  },
+  {
+   "id": "D-14",
+   "from": "W_vet",
+   "fn": "U.register(\"agent-2\", K_AG2, 0, 0, ROLE_RENEW|ROLE_CAN_TRANSFER_ADMIN, now+3600)",
+   "status": "OK",
+   "gas": 170369,
+   "note": "比較: 譲渡可・専用リゾルバ無し（親の wildcard に落ちる）",
+   "ret": "0x6ddae4ea86d8103e0d72eee1f602a5b5f7d665ceda43cec7c33b486f00000000",
+   "logs": [
+    "0x4acabfe3",
+    "LabelRegistered",
+    "TransferSingle",
+    "TokenResource",
+    "EACRolesChanged"
+   ]
+  },
+  {
+   "id": "D-15",
+   "from": "W_vet",
+   "fn": "UR.findResolver(agent-2.vet402.eth)",
+   "status": "OK",
+   "gas": 75962,
+   "note": "期待: R_vet（親のリゾルバに wildcard で落ちる）",
+   "ret": "0x0000000000000000000000003368219eddfdd1fac6409fb9a1b8bf7d21598391ceda8d5a580ddce0ecbc8cc463b55660630ecd6f2827ef142cf1f96704a0ffba0000000000000000000000000000000000000000000000000000000000000008",
+   "logs": []
+  },
+  {
+   "id": "D-16",
+   "from": "W_vet",
+   "fn": "U.unregister(agent-1)",
+   "status": "OK",
+   "gas": 72604,
+   "note": "取り消し（tokenId は後で差し替え）",
+   "ret": "0x",
+   "logs": [
+    "LabelUnregistered",
+    "TransferSingle"
+   ]
+  },
+  {
+   "id": "D-17",
+   "from": "W_vet",
+   "fn": "UH.findExactOwner(agent-1.vet402.eth)",
+   "status": "OK",
+   "gas": 84318,
+   "note": "期待: 0x0（取り消し後）",
+   "ret": "0x0000000000000000000000000000000000000000000000000000000000000000",
+   "logs": []
+  },
+  {
+   "id": "D-18",
+   "from": "W_vet",
+   "fn": "UR.resolve(agent-1.vet402.eth, text(\"x402-policy\"))",
+   "status": "OK",
+   "gas": 122399,
+   "note": "取り消し後に方針がどう見えるか",
+   "ret": "0x00000000000000000000000000000000000000000000000000000000000000400000000000000000000000003368219eddfdd1fac6409fb9a1b8bf7d21598391000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000",
+   "logs": []
+  },
+  {
+   "id": "D-19",
+   "from": "W_vet",
+   "fn": "U.revokeRootRoles(UNEMANCIPATED_ROLE_BITMAP, W_vet)",
+   "status": "OK",
+   "gas": 44050,
+   "note": "親の支配を外す＝emancipation",
+   "ret": "0x0000000000000000000000000000000000000000000000000000000000000001",
+   "logs": [
+    "EACRolesChanged"
+   ]
+  },
+  {
+   "id": "D-20",
+   "from": "W_vet",
+   "fn": "U.isEmancipated()",
+   "status": "OK",
+   "gas": 31651,
+   "note": "期待: true",
+   "ret": "0x0000000000000000000000000000000000000000000000000000000000000001",
+   "logs": []
+  }
+ ],
+ "expRows": [
+  {
+   "id": "D-01",
+   "status": "OK",
+   "gas": 178021,
+   "ret": "0x000000000000000000000000b093cec6d1cc355c40020f0df5103eceffd30dac"
+  },
+  {
+   "id": "D-02",
+   "status": "OK",
+   "gas": 57520,
+   "ret": "0x"
+  },
+  {
+   "id": "D-03",
+   "status": "OK",
+   "gas": 393333,
+   "ret": "0x000000000000000000000000d3f4818c0bb93e54780525b21380d44d6d06bcd6"
+  },
+  {
+   "id": "D-04",
+   "status": "REVERT",
+   "gas": 70541,
+   "revert": "CannotSetPastExpiry(0x6aade5c8)"
+  },
+  {
+   "id": "D-05",
+   "status": "OK",
+   "gas": 87440,
+   "ret": "0x0000000000000000000000000000000000000000000000000000000000000001"
+  },
+  {
+   "id": "X-findExactOwner",
+   "status": "OK",
+   "gas": 84318,
+   "ret": "0x0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  {
+   "id": "X-findResolver",
+   "status": "OK",
+   "gas": 73664,
+   "ret": "0x0000000000000000000000003368219eddfdd1fac6409fb9a1b8bf7d21598391cb231341ad95bd3bcf950c262045baf16448aa30058adf67c4e4a7317585daa90000000000000000000000000000000000000000000000000000000000000008"
+  },
+  {
+   "id": "X-resolve(text)",
+   "status": "OK",
+   "gas": 122399,
+   "ret": "0x00000000000000000000000000000000000000000000000000000000000000400000000000000000000000003368219eddfdd1fac6409fb9a1b8bf7d215983910000000000000000000000000000000000000000000000000000000000000040000000"
+  },
+  {
+   "id": "X-getStatus",
+   "status": "OK",
+   "gas": 36460,
+   "ret": "0x0000000000000000000000000000000000000000000000000000000000000000"
+  }
+ ],
+ "alRows": [
+  {
+   "id": "D-01",
+   "status": "OK",
+   "gas": 178021,
+   "ret": "0x000000000000000000000000b093cec6d1cc355c40020f0df5103eceffd30dac"
+  },
+  {
+   "id": "D-02",
+   "status": "OK",
+   "gas": 57520,
+   "ret": "0x"
+  },
+  {
+   "id": "D-03",
+   "status": "OK",
+   "gas": 393333,
+   "ret": "0x000000000000000000000000d3f4818c0bb93e54780525b21380d44d6d06bcd6"
+  },
+  {
+   "id": "D-04",
+   "status": "OK",
+   "gas": 172524,
+   "ret": "0xecc2f8830565cee1ed0e46e3e66f5e3af0cac6cff93297956a00f92000000000"
+  },
+  {
+   "id": "D-05",
+   "status": "OK",
+   "gas": 87440,
+   "ret": "0x0000000000000000000000000000000000000000000000000000000000000001"
+  },
+  {
+   "id": "N-setSubregistry(seller-a→U)",
+   "status": "OK",
+   "gas": 57532,
+   "ret": "0x"
+  },
+  {
+   "id": "N-findResolver(agent-1.seller-a.eth)",
+   "status": "OK",
+   "gas": 76002,
+   "ret": "0x000000000000000000000000d3f4818c0bb93e54780525b21380d44d6d06bcd6fca05ca24e61472cf03db22f5423b521e827f39c6457565208d5e3d1b4a77ee50000000000000000000000000000000000000000000000000000000000000000"
+  },
+  {
+   "id": "N-findExactOwner",
+   "status": "OK",
+   "gas": 89042,
+   "ret": "0x00000000000000000000000000000000000000000000000000000000000000c1"
+  },
+  {
+   "id": "N-resolve(text)",
+   "status": "OK",
+   "gas": 124737,
+   "ret": "0x0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000d3f4818c0bb93e54780525b21380d44d6d06bcd60000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000002000"
+  }
+ ],
+ "totalWriteGas": 1261496
+}
