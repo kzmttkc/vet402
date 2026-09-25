@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { getAddress, keccak256, namehash, parseAbi, toBytes, type Address } from 'viem';
 import { DEMO_DIR } from './env.ts';
-import { ADDR, W_ENS, W_VET, mkOffer } from './k1.ts';
+import { ADDR, SELLER_ENDPOINT, W_ENS, W_VET, mkOffer } from './k1.ts';
 
 const EAC = parseAbi([
   'function roles(uint256 resource, address account) view returns (uint256)',
@@ -22,7 +22,7 @@ const K1_ADDR = {
   W_op: '0xE3BB99911A8037F22D4d6b3a4d955D1b02229080',
   K_ag2: '0x6a2bce08AB14123954168C8c030b88FF1c5Bfa97',
 } as const satisfies Record<string, Address>;
-const OFFERS: Array<[string, string]> = [['seller-a.eth', '10000'], ['seller-b.eth', '20000'], ['seller-c.eth', '30000'], ['seller-d.eth', '10000']];
+const OFFERS: Array<[string, string]> = [['seller-a.eth', '10000'], ['seller-b.eth', '10000'], ['seller-c.eth', '10000'], ['seller-d.eth', '10000']];
 
 export type K1Item = { label: string; ok: boolean; got: string };
 
@@ -79,8 +79,11 @@ export async function k1Items(ens: any, clients: any, B: bigint): Promise<K1Item
   for (const [n, amount] of OFFERS) {
     const v = await ens.resolveText(clients, B, n, 'x402-offer');
     if (v.value !== mkOffer(amount, W_ENS)) bad.push(n);
+    // The endpoint gap that K1-07 left on b/c (found 2026-09-25 23:4x): checkEnsOffer needs endpoint === offer.resource.
+    const ep = await ens.resolveText(clients, B, n, 'agent-endpoint[x402]');
+    if (ep.value !== SELLER_ENDPOINT) bad.push(`${n} endpoint`);
   }
-  push('4 offers match on 2 RPCs', bad.length === 0, bad.length ? `differ: ${bad.join(', ')}` : 'a/b/c/d = the 266-byte offers (amount 10000/20000/30000/10000)');
+  push('4 offers match on 2 RPCs', bad.length === 0, bad.length ? `differ: ${bad.join(', ')}` : 'a/b/c/d = the 266-byte offer (amount 10000) + agent-endpoint[x402] = the live seller route');
   return items;
 }
 

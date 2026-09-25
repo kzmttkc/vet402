@@ -81,8 +81,9 @@ export function parseOffer(raw: unknown): Offer | null {
  */
 export function strictOfferDiffs(ens: any, offer: Offer, accept: Record<string, unknown>): string[] {
   const diffs: string[] = [...ens.compareOfferToAccept(offer, accept)];
-  const raw = accept?.amount ?? accept?.maxAmountRequired;
-  if (!diffs.includes('price_above_declared') && String(raw) !== offer.amount) diffs.push(`price_differs_from_offer (402 ${String(raw)} != offer ${offer.amount})`);
+  // Every amount field the 402 carries must equal the offer (the SDK reads maxAmountRequired first, v2 uses amount).
+  const raws = [accept?.amount, accept?.maxAmountRequired].filter(v => v !== undefined);
+  if (!diffs.includes('price_above_declared') && (raws.length === 0 || raws.some(r => String(r) !== offer.amount))) diffs.push(`price_differs_from_offer (402 ${raws.map(String).join('/') || 'none'} != offer ${offer.amount})`);
   return diffs;
 }
 
