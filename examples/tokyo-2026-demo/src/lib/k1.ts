@@ -47,7 +47,7 @@ export const DUMMY = {
   K_ag1: '0x41000000000000000000000000000000000000c1',
   K_ag2: '0x41000000000000000000000000000000000000c2',
 } as const satisfies Record<string, Address>;
-export type Roles = { [K in keyof typeof DUMMY]: Address };
+export type Roles = { -readonly [K in keyof typeof DUMMY]: Address };
 
 // ---- roles ----
 export const ALL_ROLES = BigInt('0x' + '1'.repeat(64));
