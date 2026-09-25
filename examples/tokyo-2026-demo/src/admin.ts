@@ -56,8 +56,7 @@ function help(): string {
     '    --live               sign and send. Checks chainId and balances, then waits for a typed y',
     '    --post               with agents: the K1-post rows instead of K1-10..K1-15b',
     '    --print-predicted    with deploy-resolvers: print P_a, P_bc, P_d, U, P_AG1',
-    '    --envelopes <file>   with publish-attestations: JSON {"seller-a.eth":"<base64>", ...} (default out/envelopes.json)',
-    '    --no-endpoint        with publish-attestations: do not add agent-endpoint[x402] where it is empty (seller-b/c)',
+    '    --envelopes <file>   with publish-attestations: JSON {"seller-a.eth":"<base64>", ...}',
     '    --block <n>          dry-run at a fixed block',
     '    --base-from <ID>     with k1b: send nothing on Sepolia; send the Base Sepolia rows from <ID> on (resume after a stop)',
     '',
@@ -66,7 +65,7 @@ function help(): string {
   ].join('\n');
 }
 
-type Opts = { cmd: string; live: boolean; post: boolean; printPredicted: boolean; envelopes?: string; noEndpoint?: boolean; block?: bigint; baseFrom?: string; args: string[] };
+type Opts = { cmd: string; live: boolean; post: boolean; printPredicted: boolean; envelopes?: string; block?: bigint; baseFrom?: string; args: string[] };
 function parseArgs(argv: string[]): Opts {
   const o: Opts = { cmd: '', live: false, post: false, printPredicted: false, args: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -76,7 +75,6 @@ function parseArgs(argv: string[]): Opts {
     else if (a === '--post') o.post = true;
     else if (a === '--print-predicted') o.printPredicted = true;
     else if (a === '--envelopes') o.envelopes = argv[++i];
-    else if (a === '--no-endpoint') o.noEndpoint = true;
     else if (a === '--block') o.block = BigInt(argv[++i]);
     else if (a === '--base-from') o.baseFrom = argv[++i];
     else if (a === '--help' || a === '-h') o.cmd = 'help';
@@ -165,10 +163,9 @@ function extraSteps(o: Opts, x: Ctx): Step[] {
 // ---------------------------------------------------------------- publish-attestations (B5b, and B5c re-sign)
 // Four rows, all from W_ens (root on P_a / P_bc / P_d): setText(<name>, attestations[x402-offer][atst.vet402.eth],
 // <envelope base64>). K1-D5 is the seller-d row. setText overwrites, so the command can be run again with
-// new envelopes (B5c, 09-27 07:45: attester.ts --live-pay again, then this). Where agent-endpoint[x402] is
-// empty (seller-b / seller-c: K1-07 did not write it), the row becomes P_bc.multicall[setText(attestation),
-// setText(agent-endpoint[x402], SELLER_ENDPOINT)], because checkEnsOffer requires endpoint == offer.resource
-// and run.ts verify would otherwise say ens_offer_mismatch. --no-endpoint keeps the plain setText.
+// new envelopes (B5c, 09-27 07:45: attester.ts --live-pay again, then this). Envelopes come from
+// out/envelopes.json (attester.ts) unless --envelopes is given, and every one is checked against the chain
+// before --live. This command writes only the attestation key (agent-endpoint[x402] is not its job).
 const PUBLISH_ROWS: ReadonlyArray<[string, string]> = [['B5b-a', 'seller-a.eth'], ['B5b-b', 'seller-b.eth'], ['B5b-c', 'seller-c.eth'], ['K1-D5', 'seller-d.eth']];
 const DEFAULT_ENVELOPES = path.join(DEMO_DIR, 'out', 'envelopes.json');
 type Publish = { steps: Step[]; rerun: Step[]; checks: EnvelopeCheck[] | null; source: string };
@@ -184,26 +181,20 @@ async function attestationSteps(o: Opts, x: Ctx): Promise<Publish> {
   const clients = { primary: mkc(read[0]), secondary: mkc(read[1]) };
   const pin = await ens.pinBlock(clients, 120);
   const checks: EnvelopeCheck[] | null = env ? [] : null;
-  const build = (v: (n: string) => string, tag: string) => Promise.all(PUBLISH_ROWS.map(async ([id, n]): Promise<Step> => {
+  const build = (v: (n: string) => string, tag: string): Step[] => PUBLISH_ROWS.map(([id, n]): Step => {
     const r = RESOLVER_OF[n];
-    const value = v(n);
-    const att = prd('setText', [dns(n), ATT_KEY, value]);
-    const ep = (await ens.resolveText(clients, pin.B, n, 'agent-endpoint[x402]')).value;
-    const addEp = !o.noEndpoint && ep === '';
-    const data = addEp ? prd('multicall', [[att, prd('setText', [dns(n), 'agent-endpoint[x402]', SELLER_ENDPOINT])]]) : att;
-    const what = `${addEp ? `${r.key}.multicall[setText(${n}, ${ATT_KEY}, <${tag}>), setText(${n}, agent-endpoint[x402], ${SELLER_ENDPOINT})]` : `setText(${n}, ${ATT_KEY}, <${tag}>)`}`;
-    return { id, cmd: o.cmd as Cmd, signer: r.signer, from: W_ENS, to: x.predicted[r.key], data, block: 1, what };
-  }));
+    return { id, cmd: o.cmd as Cmd, signer: r.signer, from: W_ENS, to: x.predicted[r.key], data: prd('setText', [dns(n), ATT_KEY, v(n)]), block: 1, what: `setText(${n}, ${ATT_KEY}, <${tag}>)` };
+  });
   for (const [, n] of PUBLISH_ROWS) {
     if (!env) continue;
     const v = env[n];
     if (!v) { checks!.push({ name: n, ok: false, why: `${file} に ${n} が無い（attester が署名しなかった）`, t: null, ageSeconds: null, recovered: null }); continue; }
     checks!.push(await checkEnvelopeOnChain(ens, clients, pin.B, Number(pin.ts), n, v));
   }
-  const steps = await build(n => env?.[n] ?? DUMMY_ENVELOPE_B64, env ? 'envelope' : 'envelope DUMMY');
+  const steps = build(n => env?.[n] ?? DUMMY_ENVELOPE_B64, env ? 'envelope' : 'envelope DUMMY');
   // The re-run (B5c) overwrites the same keys with new envelopes of the same length.
   const DUMMY2 = Buffer.from(Buffer.from(DUMMY_ENVELOPE_B64, 'base64').map(b => b ^ 0x5a)).toString('base64');
-  const rerun = (await build(() => DUMMY2, 'envelope, re-run')).map(s => ({ ...s, id: s.id + "'" }));
+  const rerun = build(() => DUMMY2, 'envelope, re-run').map(s => ({ ...s, id: s.id + "'" }));
   return { steps, rerun, checks, source: file ?? '(none: DUMMY envelopes of the real length)' };
 }
 

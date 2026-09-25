@@ -7,7 +7,8 @@
 // Six steps per name. If any one fails, that name is not signed (draft lines 50-54):
 //   1 owner challenge   the name's owner signs a challenge (EIP-191); verifyMessage gives a
 //   2 manager           findExactOwner(dns(n)) == a
-//   3 buy               the live 402 matches the offer (compareOfferToAccept is empty), Intercepta screens
+//   3 buy               agent-endpoint[x402] == offer.resource and the live 402 asks exactly what the offer
+//                       promises (compareOfferToAccept is empty and the amount is equal), Intercepta screens
 //                       payTo and payer, then payOrRefuse buys on Base Sepolia
 //                       (payee = address, requireVet402Allow:false + evidence.minChainReceipts:1, two readers)
 //   4 delivery          the paid response body carries every key of offer.output.required at the top level
@@ -73,6 +74,18 @@ export function parseOffer(raw: unknown): Offer | null {
   return o as Offer;
 }
 
+/**
+ * compareOfferToAccept, plus: the 402 must ask for exactly the promised amount. The SDK's gate lets a
+ * cheaper 402 through (a buyer may pay less), but an attester vouches that the promise is what the seller
+ * charges, so any difference in price stops the attestation.
+ */
+export function strictOfferDiffs(ens: any, offer: Offer, accept: Record<string, unknown>): string[] {
+  const diffs: string[] = [...ens.compareOfferToAccept(offer, accept)];
+  const raw = accept?.amount ?? accept?.maxAmountRequired;
+  if (!diffs.includes('price_above_declared') && String(raw) !== offer.amount) diffs.push(`price_differs_from_offer (402 ${String(raw)} != offer ${offer.amount})`);
+  return diffs;
+}
+
 export type AttestSigner = { address: string; signMessage(args: { message: { raw: Hex } }): Promise<Hex> };
 export type AttestInput = {
   name: string;
@@ -107,7 +120,7 @@ export async function attestIfVerified(i: AttestInput): Promise<AttestResult> {
   const ens = await loadEnsSdk();
   const offer = parseOffer(i.offerRaw);
   if (!offer) return { envelope: null, reason: `offer_malformed: ${RECORD_KEY} of ${i.name} is not an x402 offer`, step: 3 };
-  const diffs: string[] = ens.compareOfferToAccept(offer, i.accept);
+  const diffs: string[] = strictOfferDiffs(ens, offer, i.accept);
   if (diffs.length) return { envelope: null, reason: `offer_mismatch: the paid 402 differs from the offer (${diffs.join(', ')})`, step: 3 };
   const required = offer.output?.required ?? [];
   if (!required.length) return { envelope: null, reason: 'delivery_unverifiable: the offer declares no output.required, so the body cannot be checked', step: 4 };
@@ -327,16 +340,21 @@ async function main(): Promise<number> {
       if (!offer) { w.stop = { step: 3, why: `${RECORD_KEY} is ${v.value ? 'not an x402 offer' : 'empty'}` }; line('FAIL', 3, 'buy', w.stop.why); }
       else {
         w.offerRaw = v.value; w.offer = offer;
-        const note = ep.value === offer.resource ? '' : `  (note: agent-endpoint[x402] is ${JSON.stringify(ep.value)}; run.ts verify says ens_offer_mismatch until it equals offer.resource)`;
-        const ch = await fetchChallenge(offer.resource, offer.method);
-        const accept = ch.accepts?.find((x: any) => x?.network === 'eip155:84532' || x?.network === 'base-sepolia') ?? null;
-        if (!ch.accepts || !accept) {
-          w.stop = { step: 3, why: `no 402 to compare: ${offer.method} ${offer.resource} -> ${ch.why ?? 'no eip155:84532 entry in accepts[]'}` };
-          line('FAIL', 3, 'buy', w.stop.why + note);
+        if (ep.value !== offer.resource) {
+          // Same rule as checkEnsOffer (endpoint == offer.resource). Stop before asking the seller anything.
+          w.stop = { step: 3, why: `agent-endpoint[x402] is ${JSON.stringify(ep.value)}, not offer.resource ${offer.resource}` };
+          line('FAIL', 3, 'buy', w.stop.why);
         } else {
-          const diffs: string[] = ens.compareOfferToAccept(offer, accept);
-          if (diffs.length) { w.stop = { step: 3, why: `402 != offer: ${diffs.join(', ')} (402 amount ${accept.amount} payTo ${accept.payTo}; offer amount ${offer.amount} payTo ${offer.payTo})` }; line('FAIL', 3, 'buy', w.stop.why); }
-          else { w.accept = accept; line(live ? 'ok' : 'dry', '3a', 'offer vs 402', `compareOfferToAccept = [] (402 amount ${accept.amount} <= offer ${offer.amount}, payTo ${accept.payTo}, ${accept.network})${note}`); }
+          const ch = await fetchChallenge(offer.resource, offer.method);
+          const accept = ch.accepts?.find((x: any) => x?.network === 'eip155:84532' || x?.network === 'base-sepolia') ?? null;
+          if (!ch.accepts || !accept) {
+            w.stop = { step: 3, why: `no 402 to compare: ${offer.method} ${offer.resource} -> ${ch.why ?? 'no eip155:84532 entry in accepts[]'}` };
+            line('FAIL', 3, 'buy', w.stop.why);
+          } else {
+            const diffs = strictOfferDiffs(ens, offer, accept);
+            if (diffs.length) { w.stop = { step: 3, why: `402 != offer: ${diffs.join(', ')} (402 amount ${accept.amount} payTo ${accept.payTo}; offer amount ${offer.amount} payTo ${offer.payTo})` }; line('FAIL', 3, 'buy', w.stop.why); }
+            else { w.accept = accept; line(live ? 'ok' : 'dry', '3a', 'offer vs 402', `402 = offer (amount ${accept.amount}, payTo ${accept.payTo}, ${accept.network}, asset ${accept.asset}); agent-endpoint[x402] = offer.resource`); }
+          }
         }
       }
     }
@@ -493,8 +511,15 @@ async function main(): Promise<number> {
 
   fs.mkdirSync(o.outDir, { recursive: true });
   const envFile = path.join(o.outDir, 'envelopes.json');
-  if (fs.existsSync(envFile)) fs.renameSync(envFile, path.join(o.outDir, `envelopes.${new Date().toISOString().replace(/[:.]/g, '-')}.json`));
-  fs.writeFileSync(envFile, JSON.stringify(envelopes, null, 2) + '\n');
+  // Names not in this run keep their earlier envelope (publish-attestations re-checks every one against the
+  // chain and its age). Names in this run that were not signed lose theirs, so nothing stale is re-published.
+  let previous: Record<string, string> = {};
+  if (fs.existsSync(envFile)) {
+    try { previous = JSON.parse(fs.readFileSync(envFile, 'utf8')); } catch { previous = {}; }
+    fs.renameSync(envFile, path.join(o.outDir, `envelopes.${new Date().toISOString().replace(/[:.]/g, '-')}.json`));
+  }
+  for (const w of works) delete previous[w.name];
+  fs.writeFileSync(envFile, JSON.stringify({ ...previous, ...envelopes }, null, 2) + '\n');
   fs.appendFileSync(path.join(o.outDir, 'attester-log.jsonl'), log.map(x => JSON.stringify(x)).join('\n') + '\n');
   const signed = Object.keys(envelopes);
   console.log(`\nsigned ${signed.length}/${works.length}: ${signed.join(', ') || '(none)'}\n  envelopes -> ${envFile}\n  log       -> ${path.join(o.outDir, 'attester-log.jsonl')}`);
