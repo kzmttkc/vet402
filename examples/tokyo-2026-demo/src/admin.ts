@@ -19,7 +19,7 @@ import { baseSepolia, sepolia } from 'viem/chains';
 import { ERC20, PR, RG } from './lib/abi.ts';
 import {
   ADDR, ATT_KEY, BASE_SEPOLIA_CHAIN_ID, COMMIT_WAIT_MARGIN_S, DUMMY, DUMMY_ENVELOPE_B64, SEPOLIA_CHAIN_ID,
-  USDC_BASE_SEPOLIA, W_ENS, W_VET, amounts, buildChecks, buildCtx, buildSteps, client, dns, fmtEth,
+  SELLER_ENDPOINT, USDC_BASE_SEPOLIA, W_ENS, W_VET, amounts, buildChecks, buildCtx, buildSteps, client, dns, fmtEth, mkOffer,
   type Check, type Cmd, type Ctx, type Roles, type Step,
 } from './lib/k1.ts';
 import { KEY_SPECS, OWNER_PK_ENV, appendEnvLine, baseSepoliaRpc, envFilePath, loadEnvFile, sepoliaRpcs } from './lib/env.ts';
@@ -38,6 +38,7 @@ const COMMANDS: ReadonlyArray<[string, string]> = [
   ['agents', 'K1-10..K1-15 + K1-15b (W_vet). --post: K1-post-1/2 + K1-15c (W_ens) + K1-15d'],
   ['register-e', 'K1-E1: MockUSDC approve -> commit -> wait 60 s -> register seller-e.eth (W_ens)'],
   ['set-offer-e', 'K1-E2/E3: setResolver(seller-e, P_bc) + x402-offer with the flagged payTo, no attestation'],
+  ['align-bc', 'BC-1: seller-b/c offer to amount 10000 + agent-endpoint[x402] (one P_bc multicall, W_ens). Before B5a'],
 ];
 
 function help(): string {
@@ -113,6 +114,8 @@ const RESOLVER_OF: Record<string, { key: keyof Ctx['predicted']; signer: 'W_vet'
 // Record ids fixed by K1-07 (P_bc): seller-b = 1, seller-c = 2 [PLAN section 4 / AGENT_PROMPTS section 12].
 const CENSUS_RECORD: Record<string, bigint> = { 'seller-b.eth': 1n, 'seller-c.eth': 2n };
 const CENSUS_NODE: Record<string, string> = { 'agent-1.seller-a.eth': 'agent-1.vet402.eth' };
+// align-bc: the same 266-byte offer as seller-a (amount 10000, payTo W_ens) — the live route serves only this one.
+const ALIGNED_OFFER = mkOffer('10000', W_ENS);
 
 const prd = (functionName: any, args: any): Hex => encodeFunctionData({ abi: PR, functionName, args } as any);
 
@@ -134,6 +137,15 @@ function extraSteps(o: Opts, x: Ctx): Step[] {
         if (v.length !== DUMMY_ENVELOPE_B64.length) console.log(`  注意: ${n} の envelope は ${v.length} 文字（想定 ${DUMMY_ENVELOPE_B64.length}）`);
         return mk(id, n, prd('setText', [dns(n), ATT_KEY, v]), `setText(${n}, ${ATT_KEY}, <envelope${env ? '' : ' DUMMY'}>)`);
       });
+    }
+    case 'align-bc': {
+      // 2026-09-25 23:4x: K1-07 wrote b/c offers at 20000/30000 and no agent-endpoint[x402]. The live seller
+      // route is 10000 only, and checkEnsOffer requires endpoint === offer.resource, so B5a could not buy b or c.
+      const calls = (['seller-b.eth', 'seller-c.eth'] as const).flatMap(n => [
+        prd('setText', [dns(n), 'x402-offer', ALIGNED_OFFER]),
+        prd('setText', [dns(n), 'agent-endpoint[x402]', SELLER_ENDPOINT]),
+      ]);
+      return [mk('BC-1', 'seller-b.eth', prd('multicall', [calls]), 'P_bc.multicall[setText(seller-b|c, x402-offer, amount 10000) x2, setText(seller-b|c, agent-endpoint[x402]) x2]')];
     }
     case 'unlink':
       if (!name) throw new Error('unlink <name>');
@@ -228,6 +240,7 @@ async function missingPrereqs(c: PublicClient, o: Opts, x: Ctx): Promise<string[
     case 'agents': if (o.post) need.push(code('U', P.U), code('P_AG1', P.P_AG1)); break;
     case 'set-offer-e': need.push(registered('seller-e'), code('P_bc', P.P_bc)); break;
     case 'publish-attestations': need.push(code('P_a', P.P_a), code('P_bc', P.P_bc), code('P_d', P.P_d)); break;
+    case 'align-bc': need.push(code('P_bc', P.P_bc)); break;
     case 'unlink': case 'link': case 'relink': resolverFor(o.args[0]); break;
     default: break;
   }
