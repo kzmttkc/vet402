@@ -2,6 +2,8 @@
 
 Everything in this folder was written **before** ETHGlobal Tokyo 2026 started (hacking began 2026-09-25 21:00 JST). It is **pre-existing work and is not claimed** as hackathon work. The claim covers only `pre-tokyo-2026..tokyo-2026-submission` on the paths listed in the submission, and this folder is excluded from that range.
 
+The plan was written before the event and the code during it: every commit in the claimed range has an author date after 2026-09-25 21:00 JST, and the decisions I made while building are in [`../PROMPTS/`](../PROMPTS/) and [`../human-log.md`](../human-log.md). (This paragraph was added on 2026-09-26, during the event.)
+
 It is here because the event rules ask for the spec files, prompts and planning artifacts behind AI-assisted work. Most files are in Japanese, the working language of the plan.
 
 | Path | What it is |
