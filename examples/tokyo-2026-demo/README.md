@@ -4,6 +4,8 @@ An agent pays an x402 seller on Base Sepolia only after it checks an ENSIP-29 dr
 The check compares the seller's `x402-offer` record (price, payTo and URL in one value) with the signature of `atst.vet402.eth`, in the draft's seven steps, on two RPC providers at one pinned block.
 When one character of the offer changes, the signature no longer matches and the agent refuses to pay.
 
+Try it live: <https://vet402.com/tokyo?name=seller-a.eth>. vet402 and `@vet402/sdk` existed before the event (tag `pre-tokyo-2026`); everything in `git log pre-tokyo-2026..tokyo-2026-submission` was made during it, and [`../../AI_USAGE.md`](../../AI_USAGE.md#ethglobal-tokyo-2026) says who did what.
+
 ## Check it yourself (one line)
 
 ```

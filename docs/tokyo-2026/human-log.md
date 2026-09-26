@@ -24,7 +24,7 @@ anything. The AI prepared and started the commands; each send happened only afte
 | Time | What I did or decided | Public trace |
 |---|---|---|
 | 2026-09-25 21:01 | I checked on the ETHGlobal dashboard that the Continuity Track was selected and my entry was confirmed, and took a screenshot of it | outside git |
-| 2026-09-25 21:30 to 21:33 | 21:32: I chose "Top 10 Finalist & Partner Prizes" as the submission type. The AI proposed ENS and Intercepta as the two partners at 21:30, from the screenshot of the prize screen I sent, and I kept them. Both are entered on the dashboard at submission. | outside git (dashboard) |
+| 2026-09-25 21:30 to 21:33 | 21:32: I chose "Top 10 Finalist & Partner Prizes" as the submission type (changed to "Partner Prizes Only" on 2026-09-26 at 14:34, see below). The AI proposed ENS and Intercepta as the two partners at 21:30, from the screenshot of the prize screen I sent, and I kept them. Both are entered on the dashboard at submission. | outside git (dashboard) |
 | 2026-09-25 21:41 | I created the six testnet keys (`keys.ts init`, which prints addresses only) | outside git |
 | 2026-09-25 21:41 to 22:24 | I pressed `y` on each of the 8 stages of the ENS setup: `register-d`, `k1a`, `deploy-resolvers`, `k1b`, `agents`, `agents --post`, `register-e`, `set-offer-e`. 32 Sepolia and 3 Base Sepolia transactions, 0 failed | Sepolia blocks 11779304 to 11779498; Base Sepolia blocks 47286745 to 47286905 |
 | 2026-09-25 22:43 | I approved the four points of the review of the Base Sepolia change to the payment gate, as recommended: fix the test expectations and leave SDK behavior unchanged, allow `minChainReceipts` on Base Sepolia only, correct the error message, commit the built SDK | `bd4ee036`, `0bfec950` |
@@ -38,7 +38,8 @@ anything. The AI prepared and started the commands; each send happened only afte
 | 2026-09-26 09:32 | I chose the recommended way to edit: the AI cuts the live recordings to my voice and adds English subtitles | the video |
 | 2026-09-26 09:48 | I handed over the narration of the video, recorded myself in four recordings | the video |
 | 2026-09-26 10:22 | I asked several agents for an objective and adversarial check of everything made so far | outside git |
-| 2026-09-26 10:38 | I told the AI to go ahead with every fix and recommended move from that check, and handed it the `y` for a re-signing run on 2026-09-26 at 19:00 | `a8cec5b0` |
+| 2026-09-26 10:38 | I told the AI to go ahead with every fix and recommended move from that check, and handed it the `y` for a re-signing run on 2026-09-26 at 19:00 | `b55a5a38` |
+| 2026-09-26 14:34 | I decided to submit as "Partner Prizes Only" instead of the finalist track | outside git (dashboard at submission) |
 
 ## Sends I handed to the AI
 

@@ -128,7 +128,7 @@ The full list, one row per act with its time and a public trace where one exists
 |---|---|
 | **Boundary** | I tagged `pre-tokyo-2026` on 2026-09-25 at 18:05:43 and pushed it at 18:06, before hacking began |
 | **What it proves** | I decided the central sentence on 2026-09-14 at 19:35 and approved the three quality axes before the event. Neither changed during it. Excerpts: [`docs/tokyo-2026/PROMPTS/`](./docs/tokyo-2026/PROMPTS/) |
-| **Prizes** | 2026-09-25 21:32: I chose "Top 10 Finalist & Partner Prizes" as the submission type. The AI proposed ENS and Intercepta as the two partners at 21:30, from the screenshot of the prize screen I sent, and I kept them. Both are entered on the dashboard at submission. |
+| **Prizes** | 2026-09-25 21:32: I chose "Top 10 Finalist & Partner Prizes" as the submission type; on 2026-09-26 at 14:34 I changed it to "Partner Prizes Only". The AI proposed ENS and Intercepta as the two partners at 21:30, from the screenshot of the prize screen I sent, and I kept them. Both are entered on the dashboard at submission. |
 | **Money-path change** | 2026-09-25 22:43: I approved the four points of the review of the Base Sepolia change to the payment gate (`chain-profile.ts`, `x402-pay.ts`, `pay-or-refuse.ts`) as recommended |
 | **Keys** | 2026-09-25 21:41: I created the testnet keys (`keys.ts init`, which prints addresses only) |
 | **Live sends** | I pressed `y` on each live send made with the operator commands from 2026-09-25 21:41 to 2026-09-26 09:36: the ENS setup (8 stages, 32 Sepolia and 3 Base Sepolia transactions), the offer alignment, the first purchases and attestations, the scene runs including the irreversible `revokeRootRoles`, the observation log, and scene 2 of the video |

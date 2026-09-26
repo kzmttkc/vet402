@@ -6,7 +6,20 @@
 
 *vet402 buys. It settles. It publishes the measurements.*
 
-## Judges: 60 seconds
+## ETHGlobal Tokyo 2026 (ENS and Intercepta partner prizes)
+
+For Tokyo, an agent pays an x402 seller only while vet402's draft ENSIP-29 attestation in the seller's ENSv2 name still matches the seller's offer. Check it with one line (Node 22.18 or later, no key):
+
+```bash
+git clone --depth 1 --branch tokyo-2026-submission https://github.com/kzmttkc/vet402 && cd vet402/examples/tokyo-2026-demo && npm ci && npm run verify -- seller-a.eth
+```
+
+- Live page, where you can change one character of a seller's offer on-chain and watch the agent refuse: <https://vet402.com/tokyo?name=seller-a.eth>
+- Demo, commands and the Intercepta screening notes: [`examples/tokyo-2026-demo/README.md`](./examples/tokyo-2026-demo/README.md)
+- Every requirement, transaction and one-line check: [`docs/tokyo-2026/for-reviewers.md`](./docs/tokyo-2026/for-reviewers.md)
+- What existed before the event: vet402 and `@vet402/sdk`, up to the tag `pre-tokyo-2026`. Everything in `git log pre-tokyo-2026..tokyo-2026-submission` was made during it. Who did what, human and AI: [`AI_USAGE.md`](./AI_USAGE.md#ethglobal-tokyo-2026) and [`docs/tokyo-2026/human-log.md`](./docs/tokyo-2026/human-log.md)
+
+## Judges: 60 seconds (ETHOnline 2026, September)
 
 ```bash
 # Node 24.x (package.json engines; Node 22 cancels the timeout tests)
