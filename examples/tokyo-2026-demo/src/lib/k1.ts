@@ -373,9 +373,9 @@ export const ROLE_REGISTRAR = 1n;
 export const AGENT_CONTEXT_KEY = 'agent-context';
 /** ENSIP-26 agent-context: free-form text describing the agent and how to interact with it. Facts only. */
 export const AGENT_CONTEXT =
-  'agent-1.vet402.eth is the paying agent of the vet402 demo for ETHGlobal Tokyo 2026. ' +
-  'It pays x402 sellers on Base Sepolia (eip155:84532) and follows the spending policy in the x402-policy text record of this name. ' +
-  'Its key may write x402-policy only; this record is written by the vet402.eth owner.';
+  'agent-1.vet402.eth names the paying agent in the vet402 demo for ETHGlobal Tokyo 2026. ' +
+  'Before it pays an x402 seller, the demo reads the x402-policy text record of this name (trusted attesters, evidence floors, per-payment maximum). ' +
+  "Both records sit on this name's own resolver; this one was written by the owner of vet402.eth.";
 
 const ut = (functionName: any, args: any): Hex => encodeFunctionData({ abi: USER_TOKEN, functionName, args } as any);
 

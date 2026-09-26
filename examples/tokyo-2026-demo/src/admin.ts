@@ -479,12 +479,12 @@ function stepLine(verdict: string, s: FeatureStep, gas: number | string, tail = 
   console.log(`  ${pad(verdict, 6)} ${pad(s.id, 10)} ${pad(s.signer, 5)} gas=${pad(String(gas), 8)} ${s.what}${tail ? '  ' + tail : ''}`);
 }
 
-async function sendOne(c: PublicClient, url: string, s: FeatureStep, gas: number): Promise<{ hash: Hex; block: bigint; ts: number } | null> {
+async function sendOne(c: PublicClient, url: string, s: FeatureStep, gas: number, confirmed = false): Promise<{ hash: Hex; block: bigint; ts: number } | null> {
   console.log('\n[live] 残高の関門');
   if (!(await balanceGate(c, [s], () => gas))) { console.log('残高が足りない。止める'); return null; }
   console.log(`\n[live] Sepolia (chainId ${SEPOLIA_CHAIN_ID}) に 1 本送る:`);
   console.log(`  ${pad(s.id, 10)} ${pad(s.signer, 5)} ${s.from} -> ${s.to}  ${s.what}`);
-  if (!(await confirm('送るなら y を打つ: '))) { console.log('送らなかった'); return null; }
+  if (!confirmed && !(await confirm('送るなら y を打つ: '))) { console.log('送らなかった'); return null; }
   let out: { hash: Hex; block: bigint; ts: number } | null = null;
   await sendAll(c, url, sepolia, [s], () => gas, async (_id, hash, ts) => {
     const rc = await c.getTransactionReceipt({ hash });
@@ -531,13 +531,16 @@ async function expiringCmd(o: Opts, x: Ctx, c: PublicClient, url: string, sim: s
     return bad ? 2 : 0;
   }
   if (bad) { console.log('\n--live を止める: 模擬が期待どおりでない'); return 2; }
-  // Live: the expiry is fixed right before sending, from the head (+12 s for inclusion, +120 s of life).
+  // Live: ask first, then fix the expiry from the head right before sending (+12 s for inclusion, +120 s of life),
+  // so time spent at the prompt cannot shorten the name's life or push the expiry into the past.
+  console.log(`\n[live] U.register(${EXPIRING_LABEL}) を Sepolia に1本送る（期限は y の後に head の時刻から決める）`);
+  if (!(await confirm('送るなら y を打つ: '))) { console.log('送らなかった'); return 1; }
   const head = await c.getBlock();
   const T2 = Number(head.timestamp) + 12;
   const live = mk(BigInt(T2 + EXPIRING_SECONDS));
   const g2 = (await simulateBlocks([{ time: T2, calls: [live] }], head.number, sim)).blocks[0][0];
   if (g2.status !== 'OK') { console.log(`\n--live を止める: head ${head.number} の上で register が通らない: ${g2.error}`); return 2; }
-  const sent = await sendOne(c, url, live, g2.gas);
+  const sent = await sendOne(c, url, live, g2.gas, true);
   if (!sent) return 1;
   const expiry = T2 + EXPIRING_SECONDS;
   const b = await readName(url, U, EXPIRING_LABEL, EXPIRING_NAME, sent.block);
