@@ -89,7 +89,9 @@ export function appendEnvLine(key: string, value: string, file = envFilePath()):
  */
 export function b5cAutoConfirm(what: string): boolean {
   const jst = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
-  const ok = process.env.TOKYO_B5C_AUTOCONFIRM === '2026-09-27' && jst === '2026-09-27';
-  if (ok) console.log(`  auto-confirm (B5c, delegated by the owner 2026-09-26 06:57 JST): ${what}`);
+  // 2026-09-26 (the 19:00 JST safety re-sign, delegated 10:38 JST) and 2026-09-27 (B5c, delegated 06:57 JST) only.
+  const day = process.env.TOKYO_B5C_AUTOCONFIRM;
+  const ok = (day === '2026-09-26' || day === '2026-09-27') && jst === day;
+  if (ok) console.log(`  auto-confirm (re-sign on ${day}, delegated by the owner): ${what}`);
   return ok;
 }
