@@ -167,3 +167,14 @@ export const RESOLVER_READ = parseAbi([
   'function addr(bytes32 node) view returns (address)',
   'function text(bytes32 node, string key) view returns (string)',
 ]);
+
+// ---- Added by hand 2026-09-26 for admin.ts expiring / nontransferable / agent-context (ENSv2 Best Use: U3, U8, U9).
+// Not part of the generated block above. Each signature was checked on Sepolia by eth_call against U 0xB093…0dac,
+// P_AG1 0xd3F4…bcd6 and UniversalHelper 0x33f5…7DF5 (2026-09-26, block 11,783,064).
+export const USER_TOKEN = parseAbi([
+  'function safeTransferFrom(address from, address to, uint256 id, uint256 amount, bytes data)',
+  'function roles(uint256 resource, address account) view returns (uint256)',
+]);
+export const UNIVERSAL_HELPER_READ = parseAbi([
+  'function findExactOwner(bytes name) view returns (address)',
+]);

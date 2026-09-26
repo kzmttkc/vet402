@@ -23,11 +23,14 @@ import {
   ADDR, ATT_KEY, BASE_SEPOLIA_CHAIN_ID, COMMIT_WAIT_MARGIN_S, DUMMY, DUMMY_ENVELOPE_B64, SEPOLIA_CHAIN_ID,
   ROLE_RENEW, SELLER_ENDPOINT, USDC_BASE_SEPOLIA, W_ENS, W_VET, amounts, buildChecks, buildCtx, buildSteps, client, dns, fmtEth, mkOffer,
   type Check, type Cmd, type Ctx, type Roles, type Step,
+  AGENT_CONTEXT, AGENT_CONTEXT_KEY, EXPIRING_LABEL, EXPIRING_SECONDS, NO_KEY_RECIPIENT, ROLE_CAN_TRANSFER_ADMIN, ROLE_REGISTRAR, STATUS_NAME,
+  UNIVERSAL_HELPER, agentContextData, decodeAddressWord, decodeResolvedTextAndResolver, decodeState, expiringRegisterData, expiringVerdict,
+  findExactOwnerData, getStateData, nontransferableVerdict, resolveText, rolesData, transferData, type NameState,
 } from './lib/k1.ts';
 import { DEMO_DIR, KEY_SPECS, OWNER_PK_ENV, appendEnvLine, b5cAutoConfirm, baseSepoliaRpc, envFilePath, loadEnvFile, sepoliaRpcs } from './lib/env.ts';
 import { checkEnvelopeOnChain, type EnvelopeCheck } from './lib/attestation.ts';
 import { loadEnsSdk } from './lib/sdk.ts';
-import { hostOf, pickRpc, rpc, simulateBlocks, type SimBlock, type SimResult } from './lib/rpc.ts';
+import { decodeRevert, hostOf, pickRpc, rpc, simulateBlocks, type SimBlock, type SimResult } from './lib/rpc.ts';
 
 // ---------------------------------------------------------------- commands
 const COMMANDS: ReadonlyArray<[string, string]> = [
@@ -46,6 +49,9 @@ const COMMANDS: ReadonlyArray<[string, string]> = [
   ['agent-off', 'D-6a: U.unregister(agent-1) (W_vet). The policy is gone, so the agent stops paying'],
   ['agent-on', 'D-6b: U.register(agent-1, K_ag1, 0, P_AG1, RENEW, expiry) again (W_vet)'],
   ['emancipate', 'T7: U.revokeRootRoles(UNEMANCIPATED, W_vet). IRREVERSIBLE; only after agent-on. Needs --irreversible'],
+  ['expiring', `T5: U.register(${EXPIRING_LABEL}, K_ag2, 0, 0, no roles, +${EXPIRING_SECONDS} s) (W_vet). --live reads it again after the expiry`],
+  ['nontransferable', 'D-13: safeTransferFrom of agent-1 (no CAN_TRANSFER_ADMIN) vs agent-2 by eth_call. Read-only, no --live'],
+  ['agent-context', 'ENSIP-26: P_AG1.setText(agent-1.vet402.eth, agent-context, <facts>) (W_vet, root on P_AG1)'],
 ];
 
 function help(): string {
@@ -439,6 +445,190 @@ async function balanceGate(c: PublicClient, steps: Array<{ signer: string; from:
   return ok;
 }
 
+// ---------------------------------------------------------------- ENSv2 feature demos (Best Use of ENSv2: U3 / U8 / U9)
+// expiring        T5    a name on our own UserRegistry U that runs out after 120 s (findExactOwner -> 0x0 = ens_name_unresolved)
+// nontransferable D-13  agent-1 has no ROLE_CAN_TRANSFER_ADMIN, so its token cannot move; agent-2 has it. eth_call only
+// agent-context   ENSIP-26 agent-context on agent-1.vet402.eth, written on its own resolver P_AG1 by W_vet (root there)
+// These do not touch the K1 chain, so [1] is the on-chain facts each command stands on, not the K1 simulation.
+const FEATURE_CMDS = ['expiring', 'nontransferable', 'agent-context'];
+const AGENT_1 = 'agent-1.vet402.eth';
+const EXPIRING_NAME = `${EXPIRING_LABEL}.vet402.eth`;
+type FeatureStep = { id: string; signer: 'W_vet'; from: Address; to: Address; data: Hex; what: string };
+type CallOut = { ok: boolean; ret?: Hex; error?: string };
+
+/** eth_call through the read-only helper (it refuses any sending method). A revert comes back decoded by name. */
+async function ethCall(url: string, from: Address, to: Address, data: Hex, block: bigint): Promise<CallOut> {
+  try {
+    return { ok: true, ret: await rpc<Hex>(url, 'eth_call', [{ from, to, data }, '0x' + block.toString(16)]) };
+  } catch (e: any) {
+    const m = /"data":"(0x[0-9a-fA-F]*)"/.exec(String(e?.message ?? e));
+    return { ok: false, error: m ? decodeRevert(m[1]) : String(e?.message ?? e).slice(0, 160) };
+  }
+}
+const mustRet = (r: CallOut, what: string): Hex => { if (!r.ok || !r.ret) throw new Error(`${what} が読めない: ${r.error}`); return r.ret; };
+
+async function readName(url: string, U: Address, label: string, name: string, block: bigint): Promise<{ state: NameState; exact: Address }> {
+  const state = decodeState(mustRet(await ethCall(url, W_VET, U, getStateData(label), block), `U.getState(${label})`));
+  const exact = decodeAddressWord(mustRet(await ethCall(url, W_VET, UNIVERSAL_HELPER, findExactOwnerData(name), block), `findExactOwner(${name})`));
+  return { state, exact };
+}
+const fmtName = (r: { state: NameState; exact: Address }) =>
+  `status ${STATUS_NAME[r.state.status] ?? r.state.status} expiry ${r.state.expiry} findExactOwner ${r.exact}${r.exact === ZERO_ADDR ? ' -> ens_name_unresolved' : ''}`;
+
+function stepLine(verdict: string, s: FeatureStep, gas: number | string, tail = '') {
+  console.log(`  ${pad(verdict, 6)} ${pad(s.id, 10)} ${pad(s.signer, 5)} gas=${pad(String(gas), 8)} ${s.what}${tail ? '  ' + tail : ''}`);
+}
+
+async function sendOne(c: PublicClient, url: string, s: FeatureStep, gas: number): Promise<{ hash: Hex; block: bigint; ts: number } | null> {
+  console.log('\n[live] 残高の関門');
+  if (!(await balanceGate(c, [s], () => gas))) { console.log('残高が足りない。止める'); return null; }
+  console.log(`\n[live] Sepolia (chainId ${SEPOLIA_CHAIN_ID}) に 1 本送る:`);
+  console.log(`  ${pad(s.id, 10)} ${pad(s.signer, 5)} ${s.from} -> ${s.to}  ${s.what}`);
+  if (!(await confirm('送るなら y を打つ: '))) { console.log('送らなかった'); return null; }
+  let out: { hash: Hex; block: bigint; ts: number } | null = null;
+  await sendAll(c, url, sepolia, [s], () => gas, async (_id, hash, ts) => {
+    const rc = await c.getTransactionReceipt({ hash });
+    out = { hash, block: rc.blockNumber, ts };
+  });
+  return out;
+}
+
+async function expiringCmd(o: Opts, x: Ctx, c: PublicClient, url: string, sim: string[]): Promise<number> {
+  const U = x.predicted.U;
+  const owner = x.roles.K_ag2;
+  const mk = (expiry: bigint): FeatureStep => ({ id: 'T5', signer: 'W_vet', from: W_VET, to: U, data: expiringRegisterData(owner, expiry), what: `U.register(${EXPIRING_LABEL}, K_ag2 ${owner}, registry 0, resolver 0, roles 0, expiry ${expiry})` });
+
+  console.log(`\n[1] 前提（block ${x.block}）`);
+  const em = await ethCall(url, W_VET, U, encodeFunctionData({ abi: URI, functionName: 'isEmancipated' }), x.block);
+  const rootRoles = BigInt(mustRet(await ethCall(url, W_VET, U, rolesData(0n, W_VET), x.block), 'U.roles(0, W_vet)'));
+  const now = await readName(url, U, EXPIRING_LABEL, EXPIRING_NAME, x.block);
+  console.log(`  U.isEmancipated() = ${em.ok ? BigInt(em.ret!) === 1n : em.error}（T7 の後なら true）`);
+  console.log(`  U.roles(root, W_vet) = 0x${rootRoles.toString(16)}  ROLE_REGISTRAR ${rootRoles & ROLE_REGISTRAR ? 'あり' : 'なし'}（解放の後も register に要るのはこれだけ）`);
+  console.log(`  ${EXPIRING_NAME} いま: ${fmtName(now)}`);
+
+  // [2] the register alone, one block after the pinned one (+12 s), expiry +120 s from that block.
+  const T = x.now + 12;
+  const step = mk(BigInt(T + EXPIRING_SECONDS));
+  const gate = (await simulateBlocks([{ time: T, calls: [step] }], x.block, sim)).blocks[0][0];
+  console.log(`\n[2] このコマンドだけを今の鎖の上で（= --live の関門）: ${gate.status === 'OK' ? 'OK' : '通らない'}`);
+  stepLine(gate.status, step, gate.gas, gate.status === 'OK' ? `[${gate.logs.join(',')}]` : gate.error);
+
+  // [3] the same register, then the chain clock moved: +60 s (inside the 120 s) and +120 s (= expiry).
+  const reads = [
+    { from: W_VET, to: U, data: getStateData(EXPIRING_LABEL) },
+    { from: W_VET, to: UNIVERSAL_HELPER, data: findExactOwnerData(EXPIRING_NAME) },
+  ];
+  const r = await simulateBlocks([{ time: T, calls: [step] }, { time: T + 60, calls: reads }, { time: T + EXPIRING_SECONDS, calls: reads }], x.block, sim);
+  const at = (bi: number) => ({ state: decodeState(r.blocks[bi][0].returnData), exact: decodeAddressWord(r.blocks[bi][1].returnData) });
+  const before = at(1), after = at(2);
+  const bad = gate.status === 'OK' ? expiringVerdict(owner, before, after) : 'register が通らない';
+  console.log(`\n[3] eth_simulateV1 で時計を進める（register の block 時刻 T=${T}）: ${bad ? 'NG  ' + bad : 'OK'}`);
+  console.log(`  T+60  (期限の前) ${fmtName(before)}`);
+  console.log(`  T+${EXPIRING_SECONDS} (期限ちょうど) ${fmtName(after)}`);
+
+  if (!o.live) {
+    console.log(`\n${bad ? 'dry-run NG' : 'dry-run ok'}: expiring（署名・送信はしていない）`);
+    return bad ? 2 : 0;
+  }
+  if (bad) { console.log('\n--live を止める: 模擬が期待どおりでない'); return 2; }
+  // Live: the expiry is fixed right before sending, from the head (+12 s for inclusion, +120 s of life).
+  const head = await c.getBlock();
+  const T2 = Number(head.timestamp) + 12;
+  const live = mk(BigInt(T2 + EXPIRING_SECONDS));
+  const g2 = (await simulateBlocks([{ time: T2, calls: [live] }], head.number, sim)).blocks[0][0];
+  if (g2.status !== 'OK') { console.log(`\n--live を止める: head ${head.number} の上で register が通らない: ${g2.error}`); return 2; }
+  const sent = await sendOne(c, url, live, g2.gas);
+  if (!sent) return 1;
+  const expiry = T2 + EXPIRING_SECONDS;
+  const b = await readName(url, U, EXPIRING_LABEL, EXPIRING_NAME, sent.block);
+  console.log(`\n[live] block ${sent.block}（時刻 ${sent.ts}・期限まで ${expiry - sent.ts} 秒）: ${fmtName(b)}`);
+  let last = head;
+  for (;;) {
+    last = await c.getBlock();
+    if (Number(last.timestamp) >= expiry) break;
+    console.log(`  期限待ち: あと ${expiry - Number(last.timestamp)} 秒`);
+    await new Promise(res => setTimeout(res, Math.min(15, expiry - Number(last.timestamp) + 1) * 1000));
+  }
+  const a = await readName(url, U, EXPIRING_LABEL, EXPIRING_NAME, last.number);
+  console.log(`[live] block ${last.number}（時刻 ${last.timestamp}・期限の後）: ${fmtName(a)}`);
+  const liveBad = expiringVerdict(owner, b, a);
+  console.log(`\n${liveBad ? 'live NG: ' + liveBad : 'live ok: expiring'}  tx ${sent.hash}`);
+  return liveBad ? 2 : 0;
+}
+
+async function nontransferableCmd(o: Opts, x: Ctx, url: string, sim: string[]): Promise<number> {
+  if (o.live) throw new Error('nontransferable は読み取りの模擬（eth_call）だけ。--live は無い');
+  const U = x.predicted.U;
+  console.log(`\n[1] 前提（block ${x.block}）`);
+  const rows: Array<{ label: string; key: 'K_ag1' | 'K_ag2'; s: NameState; can: boolean }> = [];
+  for (const [label, key] of [['agent-1', 'K_ag1'], ['agent-2', 'K_ag2']] as const) {
+    const s = decodeState(mustRet(await ethCall(url, W_VET, U, getStateData(label), x.block), `U.getState(${label})`));
+    const bits = BigInt(mustRet(await ethCall(url, W_VET, U, rolesData(s.resource, s.latestOwner), x.block), `U.roles(${label})`));
+    const can = (bits & ROLE_CAN_TRANSFER_ADMIN) !== 0n;
+    rows.push({ label, key, s, can });
+    const who = s.latestOwner.toLowerCase() === x.roles[key].toLowerCase() ? key : `${key} でない`;
+    console.log(`  ${pad(label, 8)} status ${STATUS_NAME[s.status] ?? s.status} 持ち主 ${s.latestOwner}（${who}） roles 0x${bits.toString(16)}  CAN_TRANSFER_ADMIN ${can ? 'あり' : 'なし'}`);
+  }
+  const steps = rows.map((r): FeatureStep => ({ id: r.label === 'agent-1' ? 'D-13' : 'D-13-ctl', signer: 'W_vet', from: r.s.latestOwner, to: U, data: transferData(r.s.latestOwner, NO_KEY_RECIPIENT, r.s.tokenId), what: `U.safeTransferFrom(${r.key} -> ${NO_KEY_RECIPIENT}, ${r.label})  [eth_call, from ${r.key}]` }));
+  const calls = await Promise.all(steps.map(s => ethCall(url, s.from, s.to, s.data, x.block)));
+  const gas = (await simulateBlocks([{ calls: [steps[1]] }], x.block, sim)).blocks[0][0];
+  const bad = nontransferableVerdict(calls[0], calls[1]);
+  console.log(`\n[2] eth_call（送らない）: ${bad ? 'NG  ' + bad : 'OK'}`);
+  console.log(`  ${pad(calls[0].ok ? 'OK' : 'REVERT', 6)} ${pad(steps[0].id, 10)} ${pad(rows[0].key, 5)} gas=${pad('-', 8)} ${steps[0].what}  ${calls[0].ok ? '(通ってしまう)' : calls[0].error}`);
+  console.log(`  ${pad(calls[1].ok ? 'OK' : 'REVERT', 6)} ${pad(steps[1].id, 10)} ${pad(rows[1].key, 5)} gas=${pad(String(gas.gas), 8)} ${steps[1].what}  ${calls[1].ok ? '(対照: 譲渡可の名前は動く)' : calls[1].error}`);
+  console.log(`\n${bad ? 'dry-run NG' : 'dry-run ok'}: nontransferable（署名・送信はしていない。--live は無い）`);
+  return bad ? 2 : 0;
+}
+
+async function agentContextCmd(o: Opts, x: Ctx, c: PublicClient, url: string, sim: string[]): Promise<number> {
+  const P = x.predicted.P_AG1;
+  const read = async (block: bigint) => decodeResolvedTextAndResolver(mustRet(await ethCall(url, W_VET, ADDR.ur, resolveText(AGENT_1, AGENT_CONTEXT_KEY), block), `resolve(${AGENT_1}, ${AGENT_CONTEXT_KEY})`));
+  console.log(`\n[1] 誰が書けるか（block ${x.block}）`);
+  const rootVet = BigInt(mustRet(await ethCall(url, W_VET, P, encodeFunctionData({ abi: PR, functionName: 'roles', args: [0n, W_VET] }), x.block), 'P_AG1.roles(0, W_vet)'));
+  const rootAg1 = BigInt(mustRet(await ethCall(url, W_VET, P, encodeFunctionData({ abi: PR, functionName: 'roles', args: [0n, x.roles.K_ag1] }), x.block), 'P_AG1.roles(0, K_ag1)'));
+  const byAg1 = await ethCall(url, x.roles.K_ag1, P, agentContextData(), x.block);
+  const cur = await read(x.block);
+  console.log(`  P_AG1.roles(root, W_vet) = 0x${rootVet.toString(16)}（root の全ロール: ${rootVet === BigInt('0x' + '1'.repeat(64)) ? 'はい' : 'いいえ'}）`);
+  console.log(`  P_AG1.roles(root, K_ag1) = 0x${rootAg1.toString(16)}`);
+  console.log(`  K_ag1 が ${AGENT_CONTEXT_KEY} を書く eth_call: ${byAg1.ok ? '通る（想定外）' : byAg1.error + '（K_ag1 は x402-policy だけ）'}`);
+  console.log(`  いまの ${AGENT_1} ${AGENT_CONTEXT_KEY}: ${cur.value ? JSON.stringify(cur.value).slice(0, 80) : '(空)'}  resolver ${cur.resolver}`);
+
+  const step: FeatureStep = { id: 'ENSIP26', signer: 'W_vet', from: W_VET, to: P, data: agentContextData(), what: `P_AG1.setText(${AGENT_1}, ${AGENT_CONTEXT_KEY}, <${Buffer.byteLength(AGENT_CONTEXT)} bytes>)` };
+  const r = (await simulateBlocks([{ calls: [step, { from: W_VET, to: ADDR.ur, data: resolveText(AGENT_1, AGENT_CONTEXT_KEY) }] }], x.block, sim)).blocks[0];
+  const after = decodeResolvedTextAndResolver(r[1].returnData);
+  const readOk = r[1].status === 'OK' && after.value === AGENT_CONTEXT && after.resolver?.toLowerCase() === P.toLowerCase();
+  const ok = r[0].status === 'OK' && readOk;
+  console.log(`\n[2] このコマンドだけを今の鎖の上で（= --live の関門）: ${ok ? 'OK' : '通らない'}`);
+  stepLine(r[0].status, step, r[0].gas, r[0].status === 'OK' ? `[${r[0].logs.join(',')}]` : r[0].error);
+  console.log(`  ${pad(readOk ? 'OK' : 'NG', 6)} CHK resolve(${AGENT_1}, ${AGENT_CONTEXT_KEY}) = 書いた値・resolver ${after.resolver}（期待 P_AG1）`);
+  console.log(`  値: ${AGENT_CONTEXT}`);
+
+  if (!o.live) {
+    console.log(`\n${ok ? 'dry-run ok' : 'dry-run NG'}: agent-context（署名・送信はしていない）`);
+    return ok ? 0 : 2;
+  }
+  if (!ok) { console.log('\n--live を止める: このコマンドが今の鎖の上で通らない'); return 2; }
+  if (cur.value === AGENT_CONTEXT) { console.log('\n既に同じ値が載っている。送らない'); return 0; }
+  const sent = await sendOne(c, url, step, r[0].gas);
+  if (!sent) return 1;
+  const back = await read(sent.block);
+  const liveOk = back.value === AGENT_CONTEXT && back.resolver?.toLowerCase() === P.toLowerCase();
+  console.log(`\n[live] block ${sent.block}: resolve(${AGENT_1}, ${AGENT_CONTEXT_KEY}) ${liveOk ? '= 書いた値' : '≠ 書いた値: ' + JSON.stringify(back.value)?.slice(0, 80)}  resolver ${back.resolver}`);
+  console.log(`\n${liveOk ? 'live ok' : 'live NG'}: agent-context  tx ${sent.hash}`);
+  return liveOk ? 0 : 2;
+}
+
+async function featureMain(o: Opts, x: Ctx, c: PublicClient, url: string, sim: string[], chainId: number, envf: { file: string; loaded: boolean }): Promise<number> {
+  console.log(`admin.ts ${o.cmd} ${o.live ? '--live' : '--dry-run'} | Sepolia ${hostOf(url)} (chainId ${chainId}) block ${x.block} | env ${envf.loaded ? envf.file : '(file not found)'}`);
+  const need = o.cmd === 'agent-context' ? ['K_ag1'] : ['K_ag1', 'K_ag2'];
+  const dummyUsed = x.rolesAreDummy.filter(k => need.includes(k));
+  if (dummyUsed.length) console.log(`  注意: ${dummyUsed.join(', ')} がダミー（env に無い）。結果は本物の鍵のものではない`);
+  console.log(`  U ${x.predicted.U}  P_AG1 ${x.predicted.P_AG1}  UniversalHelper ${UNIVERSAL_HELPER}`);
+  if (o.cmd === 'expiring') return expiringCmd(o, x, c, url, sim);
+  if (o.cmd === 'nontransferable') return nontransferableCmd(o, x, url, sim);
+  return agentContextCmd(o, x, c, url, sim);
+}
+
 // ---------------------------------------------------------------- main
 async function main(): Promise<number> {
   const o = parseArgs(process.argv.slice(2));
@@ -453,6 +643,7 @@ async function main(): Promise<number> {
   if (chainId !== SEPOLIA_CHAIN_ID) throw new Error(`chainId ${chainId}（Sepolia ${SEPOLIA_CHAIN_ID} でない）。止める`);
   const { roles, dummy } = readRoles(o.live);
   const x = await buildCtx(c, roles, dummy, o.live ? undefined : o.block);
+  if (FEATURE_CMDS.includes(o.cmd)) return featureMain(o, x, c, url, sim, chainId, envf);
   const steps = buildSteps(x);
   const checks = buildChecks(x);
   const publish = o.cmd === 'publish-attestations' ? await attestationSteps(o, x) : null;

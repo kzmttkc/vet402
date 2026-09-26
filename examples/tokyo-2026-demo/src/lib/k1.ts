@@ -14,7 +14,7 @@ import {
   toBytes, toFunctionSelector, type Address, type Hex, type PublicClient,
 } from 'viem';
 import { sepolia } from 'viem/chains';
-import { ER, ERC20, PR, RG, UR, URI, VF } from './abi.ts';
+import { ER, ERC20, PR, RG, UNIVERSAL_HELPER_READ, UR, URI, USER_TOKEN, VF } from './abi.ts';
 
 // ---- ENSv2 Sepolia, 2026-09-15 deployment [AGENT_PROMPTS section 12 / PLAN section 10] ----
 const A = (a: string): Address => getAddress(a.toLowerCase());
@@ -359,3 +359,73 @@ export const fmtEth = (wei: bigint): string => {
   const s = wei.toString().padStart(19, '0');
   return (s.slice(0, -18) + '.' + s.slice(-18)).replace(/\.?0+$/, '') + ' ETH';
 };
+
+// ---- ENSv2 feature demos (PLAN_v4.3 section 1.4 U3 / U8 / U9): admin.ts expiring, nontransferable, agent-context ----
+// Measured 2026-09-26 (Sepolia block 11,783,064, eth_call only): after T7 (isEmancipated() = true) W_vet still holds
+// ROLE_REGISTRAR on U's root, so U.register(<new label>) from W_vet passes. UNREGISTER / SET_RESOLVER / SET_SUBREGISTRY
+// / UPGRADE are gone, so the expiring name cannot be unregistered early or pointed at a resolver later: it just runs out.
+export const UNIVERSAL_HELPER: Address = '0x33f571aa8A160a21b877cF6E0Fb8806692b97DF5';
+export const EXPIRING_LABEL = 'agent-tmp';
+export const EXPIRING_SECONDS = 120;
+/** A recipient nobody holds a key for. Only ever used inside eth_call / eth_simulateV1 (nontransferable has no --live). */
+export const NO_KEY_RECIPIENT: Address = '0x000000000000000000000000000000000000dEaD';
+export const ROLE_REGISTRAR = 1n;
+export const AGENT_CONTEXT_KEY = 'agent-context';
+/** ENSIP-26 agent-context: free-form text describing the agent and how to interact with it. Facts only. */
+export const AGENT_CONTEXT =
+  'agent-1.vet402.eth is the paying agent of the vet402 demo for ETHGlobal Tokyo 2026. ' +
+  'It pays x402 sellers on Base Sepolia (eip155:84532) and follows the spending policy in the x402-policy text record of this name. ' +
+  'Its key may write x402-policy only; this record is written by the vet402.eth owner.';
+
+const ut = (functionName: any, args: any): Hex => encodeFunctionData({ abi: USER_TOKEN, functionName, args } as any);
+
+/** U.register(agent-tmp, owner, no subregistry, no resolver, no roles, expiry). Passed through guardUserRegistryCall. */
+export function expiringRegisterData(owner: Address, expiry: bigint, label = EXPIRING_LABEL): Hex {
+  if (label === 'agent-1' || label === 'agent-2' || (RESERVED_LABELS as readonly string[]).includes(label)) throw new Error(`${label} は既存か予約のラベル。期限つきの見本には使わない`);
+  const data = usr('register', [label, owner, ZERO, ZERO, 0n, expiry]);
+  guardUserRegistryCall(data);
+  return data;
+}
+export const getStateData = (label: string): Hex => er('getState', [BigInt(labelhash(label))]);
+export const findExactOwnerData = (name: string): Hex => encodeFunctionData({ abi: UNIVERSAL_HELPER_READ, functionName: 'findExactOwner', args: [dns(name)] });
+export const transferData = (from: Address, to: Address, tokenId: bigint): Hex => ut('safeTransferFrom', [from, to, tokenId, 1n, '0x']);
+export const rolesData = (resource: bigint, account: Address): Hex => ut('roles', [resource, account]);
+export const agentContextData = (name = 'agent-1.vet402.eth', value = AGENT_CONTEXT): Hex => pr('setText', [dns(name), AGENT_CONTEXT_KEY, value]);
+
+export type NameState = { status: number; expiry: bigint; latestOwner: Address; tokenId: bigint; resource: bigint };
+export const decodeState = (ret: Hex): NameState => {
+  const [s] = decodeAbiParameters([{ type: 'tuple', components: [{ name: 'status', type: 'uint8' }, { name: 'expiry', type: 'uint64' }, { name: 'latestOwner', type: 'address' }, { name: 'tokenId', type: 'uint256' }, { name: 'resource', type: 'uint256' }] }], ret) as any;
+  return { status: Number(s.status), expiry: s.expiry, latestOwner: getAddress(s.latestOwner), tokenId: s.tokenId, resource: s.resource };
+};
+export const decodeAddressWord = (ret: Hex): Address => getAddress('0x' + ret.slice(26, 66));
+export const STATUS_NAME = ['AVAILABLE', 'RESERVED', 'REGISTERED'] as const;
+
+/** UR.resolve(text) return: the value and the resolver that answered. */
+export function decodeResolvedTextAndResolver(ret: Hex): { value: string | undefined; resolver: Address | undefined } {
+  try {
+    const [b, r] = decodeAbiParameters([{ type: 'bytes' }, { type: 'address' }], ret);
+    return { value: decodeAbiParameters([{ type: 'string' }], b)[0] as string, resolver: getAddress(r as string) };
+  } catch { return { value: undefined, resolver: undefined }; }
+}
+
+/**
+ * The expiring verdict. Before the expiry the name is REGISTERED and findExactOwner is the owner; at the expiry
+ * it is AVAILABLE and findExactOwner is 0x0, which the SDK reports as ens_name_unresolved. Returns null when both hold.
+ */
+export function expiringVerdict(owner: Address, before: { state: NameState; exact: Address }, after: { state: NameState; exact: Address }): string | null {
+  const bad: string[] = [];
+  if (before.state.status !== 2) bad.push(`期限の前の status が ${STATUS_NAME[before.state.status] ?? before.state.status}（期待 REGISTERED）`);
+  if (before.exact.toLowerCase() !== owner.toLowerCase()) bad.push(`期限の前の findExactOwner が ${before.exact}（期待 ${owner}）`);
+  if (after.state.status !== 0) bad.push(`期限の後の status が ${STATUS_NAME[after.state.status] ?? after.state.status}（期待 AVAILABLE）`);
+  if (after.exact !== ZERO) bad.push(`期限の後の findExactOwner が ${after.exact}（期待 0x0 = ens_name_unresolved）`);
+  return bad.length ? bad.join(' / ') : null;
+}
+
+/** The nontransferable verdict: agent-1 (no CAN_TRANSFER_ADMIN) reverts with TransferDisallowed, agent-2 (with it) passes. */
+export function nontransferableVerdict(agent1: { ok: boolean; error?: string }, agent2: { ok: boolean; error?: string }): string | null {
+  const bad: string[] = [];
+  if (agent1.ok) bad.push('agent-1 の移転が通ってしまう（期待 TransferDisallowed）');
+  else if (!String(agent1.error).startsWith('TransferDisallowed(')) bad.push(`agent-1 は revert したが理由が ${agent1.error}（期待 TransferDisallowed）`);
+  if (!agent2.ok) bad.push(`agent-2 の移転が revert する: ${agent2.error}（期待 通る）`);
+  return bad.length ? bad.join(' / ') : null;
+}
