@@ -1,3 +1,5 @@
+> **ETHGlobal Tokyo 2026:** see [the Tokyo section](#ethglobal-tokyo-2026) at the end of this file. Everything above it is the ETHOnline 2026 record, unchanged.
+
 # AI usage — vet402 (ETHOnline 2026, Continuity)
 
 ETHGlobal asks entrants to document **where and how AI tools were used**, and states that submissions
@@ -94,3 +96,109 @@ ls docs/ethonline-2026/PROMPTS/                                    # an excerpt 
 
 Commits carry a `Co-Authored-By: Claude` trailer where AI wrote them. Where a commit message says
 実測 (measured), the number in it came from production or from chain, not from the model.
+
+---
+
+# ETHGlobal Tokyo 2026
+
+ETHGlobal Tokyo 2026 asks entrants to document where and how AI tools were used, and says that work
+relying entirely on AI without meaningful contributions from the team may not be eligible for partner
+prizes or finalist consideration. This section answers both for the Tokyo work. All times are JST.
+Hacking began on 2026-09-25 at 21:00.
+
+## The short answer
+
+**The AI wrote the code. I decided what it should prove, chose the prizes, created the testnet keys,
+pressed `y` on each live send made with the operator commands, and recorded the video's voice myself.**
+Two scheduled re-signing runs are the exception: I handed their `y` to the AI, and they are listed below
+with the AI's test presses of the public judge button.
+
+The AI is Claude Code running Claude Opus 5.5, including the sub-agents it started as independent
+reviewers. Every commit from `pre-tokyo-2026` to `e572257c` carries the trailer
+`Co-Authored-By: Claude Opus 5.5`. One outside proposal written by Grok was compared with the plan on
+2026-09-25 between 21:20 and 21:29. No code came from it; two phrasing ideas from it were kept, one for the
+submission text and one for the in-person demo.
+
+## What I decided and did
+
+The full list, one row per act with its time and a public trace where one exists, is
+[`docs/tokyo-2026/human-log.md`](./docs/tokyo-2026/human-log.md). In short:
+
+| | |
+|---|---|
+| **Boundary** | I tagged `pre-tokyo-2026` on 2026-09-25 at 18:05:43 and pushed it at 18:06, before hacking began |
+| **What it proves** | I decided the central sentence on 2026-09-14 at 19:35 and approved the three quality axes before the event. Neither changed during it. Excerpts: [`docs/tokyo-2026/PROMPTS/`](./docs/tokyo-2026/PROMPTS/) |
+| **Prizes** | 2026-09-25 between 21:30 and 21:39: I chose ENS and Intercepta as the two partners, and at 21:32 "Top 10 Finalist & Partner Prizes" as the submission type |
+| **Money-path change** | 2026-09-25 22:43: I approved the four points of the review of the Base Sepolia change to the payment gate (`chain-profile.ts`, `x402-pay.ts`, `pay-or-refuse.ts`) as recommended |
+| **Keys** | 2026-09-25 21:41: I created the testnet keys (`keys.ts init`, which prints addresses only) |
+| **Live sends** | I pressed `y` on each live send made with the operator commands from 2026-09-25 21:41 to 2026-09-26 09:36: the ENS setup (8 stages, 32 Sepolia and 3 Base Sepolia transactions), the offer alignment, the first purchases and attestations, the scene runs including the irreversible `revokeRootRoles`, the observation log, and scene 2 of the video |
+| **Presence** | I was at the terminal for each screen recording of a live run, because each one waited for my `y` |
+| **Story** | 2026-09-26 07:44: I told the AI to make the video and the submission text a presentation in four parts (setup, answer, turn, close), not a list of facts |
+| **Voice** | 2026-09-26 between 09:40 and 09:49: I recorded the narration myself, in four recordings. No AI voice is used |
+| **Review** | 2026-09-26 10:38: I told the AI to take in every finding of an independent adversarial check |
+| **Submission** | I submit on the ETHGlobal dashboard myself |
+
+## What the AI wrote
+
+Everything below was written by the AI under the direction above. File lists are exact for the range
+`pre-tokyo-2026..e572257c`; commits after `e572257c` in the claimed range follow the same rule.
+
+| Area | Files | AI role |
+|---|---|---|
+| **ENSIP-29 check in the SDK (the core)** | `packages/sdk/src/{atst-codec,ens-read,ens-reasons,ens-attestation,ens,chain-profile}.ts` (new), `packages/sdk/src/pay-or-refuse.ts` (+669 / -45), `packages/sdk/src/x402-pay.ts` (+29 / -14), `packages/sdk/src/index.ts` | Written by AI. The failing tests (`packages/sdk/test/tokyo/**`, `packages/mcp-server/test/tokyo/**`) were committed first, from 21:08, before the gate code, from 21:26 |
+| **Built SDK** | `packages/sdk/dist/**`, `vendor/vet402-sdk-0.7.0.tgz` | Built by AI from the source above and committed, so a clean clone runs the same code |
+| **Demo and operator commands** | `examples/tokyo-2026-demo/**` (`run.ts`, `admin.ts`, `attester.ts`, `observe.ts`, `keys.ts`, `screening.ts` for Intercepta, `gen-for-reviewers.ts`, tests) | Written by AI. The commands that send are dry-run by default and ask for `y` before a live send |
+| **Live page and judge button** | `src/app/tokyo/**`, `src/app/api/tokyo/**`, `src/lib/db/schema.ts` (+32), `scripts/sql/2026-09-26-tokyo-mutations.sql`, `tests/tokyo-*.ts` | Written by AI, then checked by an independent AI reviewer before merge |
+| **Docs** | `docs/tokyo-2026/*.md`, `skills/pay-or-refuse/SKILL.md`, `.env.example` | Written by AI |
+| **This disclosure** | This section, `docs/tokyo-2026/human-log.md`, `docs/tokyo-2026/PROMPTS/` | Compiled by AI from the records of my messages and actions. The decisions quoted are mine |
+| **Outside git** | Screen recordings, English subtitles, video assembly, submission text drafts | Done by AI. The voice and the structure of the story are mine (above) |
+
+**Planning artifacts.** The plan and the work orders given to the AI agents were written before the event
+and are in [`docs/tokyo-2026/prework/`](./docs/tokyo-2026/prework/), on an allow-list. What was left out, and
+why, is stated there and in [`docs/tokyo-2026/PROMPTS/README.md`](./docs/tokyo-2026/PROMPTS/README.md).
+
+## Sends I handed to the AI
+
+| Delegated at | What the AI runs without my `y` | When it runs |
+|---|---|---|
+| 2026-09-26 06:57 | Re-buy from the four demo sellers (0.01 test USDC each, Base Sepolia) and re-publish their ENSIP-29 attestations (Sepolia), so the proofs stay fresh while judges check them | 2026-09-27 07:45 |
+| 2026-09-26 10:38 | The same re-buy and re-publish, as a safety run ahead of the 2026-09-27 run | 2026-09-26 19:00 |
+
+Only the `y` prompt is skipped, and only on the JST date of each run
+(`examples/tokyo-2026-demo/src/lib/env.ts`). Every other check before a send still applies.
+The AI also pressed the public `/tokyo` judge button on production to test it, on 2026-09-26 between
+07:54 and 07:56 and again after 08:20. Each press and each reset sends one Sepolia transaction from the
+server's operator key, which is what every judge's press does.
+
+## History note
+
+On 2026-09-26 at 07:31 the working branch was replayed as a flat history so that its merge commits could
+go through the push script to `main`. The content did not change: the tree of the tip before the replay
+(`39a7e13d`, kept locally as `tokyo-2026-merged-backup`) equals the tree of `687fae79`. That is why many
+committer dates fall between 07:31 and 07:32. The author date of each commit is when the change was made.
+
+## Rule by rule
+
+| Rule (quoted) | Where it is answered |
+|---|---|
+| "Clearly document in your submission where and how AI tools were used in the project." | "What the AI wrote" above, and the `Co-Authored-By` trailer on each commit |
+| "AI tools should be used to assist your development process, not to create the entire project." | "What I decided and did" above, and [`human-log.md`](./docs/tokyo-2026/human-log.md) |
+| "Submissions that rely entirely on AI without meaningful contributions from team members may not be eligible for partner prizes or finalist consideration." | The prize choice, the approvals, the keys, the `y` on each live send, and the voice: [`human-log.md`](./docs/tokyo-2026/human-log.md). The two sends handed to the AI are listed above rather than hidden |
+| "If you use one, you must include all spec files, prompts, and planning artifacts in your submission repository." | [`prework/`](./docs/tokyo-2026/prework/) (plan, work orders, agent prompts, written before the event) and [`PROMPTS/`](./docs/tokyo-2026/PROMPTS/) (decisions during the event), each with its list of what was left out and why |
+| "you must disclose any pre-existing work in writing to the ETHGlobal team and include full details in your submission" (Code of Conduct) | The boundary tag `pre-tokyo-2026` and [`prework/README.md`](./docs/tokyo-2026/prework/README.md). The written disclosure was sent on 2026-09-19, and ETHGlobal replied on 2026-09-24 that nothing was missing |
+| "you must also use version control for your code throughout the course of the event" (Code of Conduct) | 66 commits up to `e572257c`; the largest adds 2,438 lines (`99a09328`, the `/tokyo` page and judge button). See the history note above |
+
+## How to check any of this yourself
+
+```bash
+git show pre-tokyo-2026 --no-patch --format='%ci %H'                     # the boundary, 2026-09-25 18:05:10 +0900
+git log --format='%h %ad %s' --date=iso pre-tokyo-2026..tokyo-2026-submission   # every claimed commit, with its author date
+git log --format='%(trailers:key=Co-Authored-By,valueonly)' pre-tokyo-2026..e572257c | sort | uniq -c
+#      66 Claude Opus 5.5 <noreply@anthropic.com>
+git diff --stat pre-tokyo-2026..e572257c | tail -1
+#  95 files changed, 15397 insertions(+), 165 deletions(-)
+```
+
+The author name on these commits is one of my two git identities (`kzmttkc`, `Takeshi`). It records which
+machine made the commit, not who wrote the change. Read every commit with the Claude trailer as written by
+the AI.
