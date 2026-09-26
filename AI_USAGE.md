@@ -176,7 +176,7 @@ server's operator key, which is what every judge's press does.
 On 2026-09-26 at 07:31 the working branch was replayed as a flat history so that its merge commits could
 go through the push script to `main`. The content did not change: the tree of the tip before the replay
 (`39a7e13d`, kept locally as `tokyo-2026-merged-backup`) equals the tree of `687fae79`. That is why many
-committer dates fall between 07:31 and 07:32. The author date of each commit is when the change was made.
+committer dates fall between 07:31 and 07:32. The same was done once more on 2026-09-26 at 11:05 for the commits made after that, so their committer dates show 11:05. The author date of each commit is when the change was made.
 
 ## Rule by rule
 
@@ -186,7 +186,7 @@ committer dates fall between 07:31 and 07:32. The author date of each commit is 
 | "AI tools should be used to assist your development process, not to create the entire project." | "What I decided and did" above, and [`human-log.md`](./docs/tokyo-2026/human-log.md) |
 | "Submissions that rely entirely on AI without meaningful contributions from team members may not be eligible for partner prizes or finalist consideration." | The prize choice, the approvals, the keys, the `y` on each live send, and the voice: [`human-log.md`](./docs/tokyo-2026/human-log.md). The two sends handed to the AI are listed above rather than hidden |
 | "If you use one, you must include all spec files, prompts, and planning artifacts in your submission repository." | [`prework/`](./docs/tokyo-2026/prework/) (plan, work orders, agent prompts, written before the event) and [`PROMPTS/`](./docs/tokyo-2026/PROMPTS/) (decisions during the event), each with its list of what was left out and why |
-| "you must disclose any pre-existing work in writing to the ETHGlobal team and include full details in your submission" (Code of Conduct) | The boundary tag `pre-tokyo-2026` and [`prework/README.md`](./docs/tokyo-2026/prework/README.md). The written disclosure was sent on 2026-09-19, and ETHGlobal replied on 2026-09-24 that nothing was missing |
+| "you must disclose any pre-existing work in writing to the ETHGlobal team and include full details in your submission" (Code of Conduct) | The boundary tag `pre-tokyo-2026` and [`prework/README.md`](./docs/tokyo-2026/prework/README.md). The written disclosure was sent on 2026-09-18 22:31 UTC (2026-09-19 JST), and ETHGlobal replied on 2026-09-24 that nothing was missing |
 | "you must also use version control for your code throughout the course of the event" (Code of Conduct) | 66 commits up to `e572257c`; the largest adds 2,438 lines (`99a09328`, the `/tokyo` page and judge button). See the history note above |
 
 ## How to check any of this yourself
