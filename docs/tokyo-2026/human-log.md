@@ -24,22 +24,21 @@ anything. The AI prepared and started the commands; each send happened only afte
 | Time | What I did or decided | Public trace |
 |---|---|---|
 | 2026-09-25 21:01 | I checked on the ETHGlobal dashboard that the Continuity Track was selected and my entry was confirmed, and took a screenshot of it | outside git |
-| 2026-09-25 21:30 to 21:39 | I chose ENS and Intercepta as the partners whose prizes this project is entered for | outside git (dashboard) |
-| 2026-09-25 21:32 | I chose the submission type "Top 10 Finalist & Partner Prizes" | outside git (dashboard) |
+| 2026-09-25 21:30 to 21:33 | 21:32: I chose "Top 10 Finalist & Partner Prizes" as the submission type. The AI proposed ENS and Intercepta as the two partners at 21:30, from the screenshot of the prize screen I sent, and I kept them. Both are entered on the dashboard at submission. | outside git (dashboard) |
 | 2026-09-25 21:41 | I created the six testnet keys (`keys.ts init`, which prints addresses only) | outside git |
 | 2026-09-25 21:41 to 22:24 | I pressed `y` on each of the 8 stages of the ENS setup: `register-d`, `k1a`, `deploy-resolvers`, `k1b`, `agents`, `agents --post`, `register-e`, `set-offer-e`. 32 Sepolia and 3 Base Sepolia transactions, 0 failed | Sepolia blocks 11779304 to 11779498; Base Sepolia blocks 47286745 to 47286905 |
 | 2026-09-25 22:43 | I approved the four points of the review of the Base Sepolia change to the payment gate, as recommended: fix the test expectations and leave SDK behavior unchanged, allow `minChainReceipts` on Base Sepolia only, correct the error message, commit the built SDK | `bd4ee036`, `0bfec950` |
 | 2026-09-26 06:50 to 06:59 | I pressed `y` on `admin.ts align-bc`, which made the offers of seller-b and seller-c match seller-a and added the missing endpoint record | Sepolia block 11782000 |
-| 2026-09-26 06:57 | I handed the AI the `y` for the re-signing run of 2026-09-27 07:45 (see below) | `535bafd4` |
+| 2026-09-26 06:57 | I handed the AI the `y` for the re-signing run then planned for 2026-09-27 07:45, moved to 06:30 at 10:42 (see below) | `535bafd4` |
 | 2026-09-26 07:03 to 07:14 | I pressed `y` on the first purchases from the four demo sellers (0.01 test USDC each, one retried after the facilitator failed to settle) and on publishing their attestations. The screen was recorded | Base Sepolia from block 47302765; Sepolia blocks 11782084 to 11782090 |
 | 2026-09-26 07:15 to 07:26 | I pressed `y` on the scene runs: unlink and relink seller-b, link seller-c to the wrong record and back, unregister and re-register `agent-1.vet402.eth`, and the irreversible `revokeRootRoles` (`emancipate --irreversible`). The screen was recorded | Sepolia blocks 11782102 to 11782147 |
 | 2026-09-26 07:30 | I pressed `y` on writing the observation log of a third-party seller under `obs.vet402.eth` | Sepolia block 11782167 |
 | 2026-09-26 07:44 | I told the AI to make the video and the submission text a presentation in four parts (setup, answer, turn, close) that explains why ENS and Intercepta, how they work here, and how vet402 keeps using them, with the facts that actually ran kept short and exact | the video; outside git |
 | 2026-09-26 09:29 to 09:36 | I pressed `y` on scene 2 of the video: pay while vet402's API is unreachable, change one character of the offer, the same payment is refused, change it back. The screen was recorded | Sepolia blocks 11782719 and 11782723 |
-| 2026-09-26 09:40 to 09:49 | I recorded the narration of the video myself, in four recordings | the video |
-| 2026-09-26 09:48 | I asked for English subtitles on the video | the video |
-| 2026-09-26 10:23 | I asked for a heading card at the start of scene S06, the scene that explains why ENSv2 | the video |
-| 2026-09-26 10:38 | I told the AI to take in every finding of an independent adversarial check, and handed it the `y` for a re-signing run on 2026-09-26 at 19:00 (see below) | `git log e572257c..tokyo-2026-submission` |
+| 2026-09-26 09:32 | I chose the recommended way to edit: the AI cuts the live recordings to my voice and adds English subtitles | the video |
+| 2026-09-26 09:48 | I handed over the narration of the video, recorded myself in four recordings | the video |
+| 2026-09-26 10:22 | I asked several agents for an objective and adversarial check of everything made so far | outside git |
+| 2026-09-26 10:38 | I told the AI to go ahead with every fix and recommended move from that check, and handed it the `y` for a re-signing run on 2026-09-26 at 19:00 | `a8cec5b0` |
 
 ## Sends I handed to the AI
 
@@ -47,8 +46,10 @@ These run without my `y`. I decided to hand them over at the times given; the AI
 
 | Delegated at | Runs at | What |
 |---|---|---|
-| 2026-09-26 06:57 | 2026-09-27 07:45 | Re-buy from the four demo sellers and re-publish their attestations, so the proofs stay fresh during judging |
+| 2026-09-26 06:57 | 2026-09-27 06:30 | Re-buy from the four demo sellers and re-publish their attestations, so the proofs stay fresh during judging |
 | 2026-09-26 10:38 | 2026-09-26 19:00 | The same, as a safety run ahead of the 2026-09-27 run |
+
+The unattended runs pass `--allow-unknown`: the payee has no history on Base mainnet, so Intercepta rates it unknown, and the attester buys from an unknown payee only when a person has decided so. My delegation is that decision.
 
 The AI also pressed the public `/tokyo` judge button on production to test it (2026-09-26, between 07:54
 and 07:56 and again after 08:20). Those presses are not listed above because I did not make them.
