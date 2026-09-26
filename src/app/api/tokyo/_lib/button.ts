@@ -4,7 +4,7 @@
 // 関門（PLAN_v4.3 §3.7.1）:
 //   W01 本文は {"to":"10001"} か {"to":"10000"} だけ。他は全部 400 {error:"invalid_body"}（入力を反射しない）
 //   W02 chainId は定数。サーバの RPC の getChainId() が違えば 503
-//   W03 1日 60 回（ip_rate_limits の1文 upsert）・同じ IP から1日 5 回・runtime_flags.tokyo_button_halt・env "1" の保険
+//   W03 1日 60 回（ip_rate_limits の1文 upsert）・同じ IP から1日 10 回（IP_DAILY_CAP）・runtime_flags.tokyo_button_halt・env "1" の保険
 //   W04 balance − 0.005 ETH ≥ PRESS_GAS × gasPrice × 3。満たさなければ 503、署名しない
 //   W05 mutate の先頭・state（90 秒以上・DB かチェーンがまだ戻っていないときだけ）・reset で ensureReverted
 //   W06 書き込みの4点（宛先・node・キー・値）は constants.ts の定数だけ

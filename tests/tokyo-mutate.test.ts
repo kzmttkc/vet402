@@ -1175,9 +1175,9 @@ test("IP の1日の上限: 同じ IP の11回目は 429 ip_daily_cap・署名0�
   assert.equal(f.daily.count, 10);
 
   const writesBefore = f.writes.length;
-  const sixth = await handleMutate(post("mutate", '{"to":"10001"}', a), f.deps);
-  assert.equal(sixth.status, 429);
-  const j = await sixth.json();
+  const eleventh = await handleMutate(post("mutate", '{"to":"10001"}', a), f.deps);
+  assert.equal(eleventh.status, 429);
+  const j = await eleventh.json();
   assert.equal(j.error, "ip_daily_cap");
   assert.equal(j.max, 10);
   assert.equal(j.message, IP_MSG);
