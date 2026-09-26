@@ -54,7 +54,7 @@ export const DAILY_CAP = 60;
  * 審査の時間を潰せないようにする（DAILY_CAP を使い切るには 12 個の IP が要る）。
  * 戻す（reset・mutate の {"to":"10000"}）は押した人の直前の変更を戻すものなので数えない。
  */
-export const IP_DAILY_CAP = 5;
+export const IP_DAILY_CAP = 10;
 /** 同じ IP（のハッシュ）からの連打の間隔。関門には数えない。 */
 export const IP_INTERVAL_MS = 20_000;
 /** runtime_flags.name。止めるのは SQL 1文（§3.7.1「止め方」）。 */

@@ -343,7 +343,7 @@ test("W03: 61 回目は 429 {error:\"daily_cap\", max:60}・署名しない", as
   const statuses: number[] = [];
   for (let i = 0; i < 61; i++) {
     const before = f.writes.length;
-    // IP ごとの上限（IP_DAILY_CAP）に先に当たらないよう、5 回ごとに別の IP から押す
+    // IP ごとの上限（IP_DAILY_CAP）に先に当たらないよう、5 回ごとに別の IP から押す（上限 10 より少ない）
     const ip = { "x-vercel-forwarded-for": `198.51.100.${Math.floor(i / 5)}` };
     const r = await handleMutate(post("mutate", '{"to":"10001"}', ip), f.deps);
     statuses.push(r.status);
@@ -1167,26 +1167,26 @@ async function pressAndReset(f: Fake, headers: Record<string, string>): Promise<
   return r;
 }
 
-test("IP の1日の上限: 同じ IP の6回目は 429 ip_daily_cap・署名0回・全体の回数を減らさない。別の IP は通る", async () => {
+test("IP の1日の上限: 同じ IP の11回目は 429 ip_daily_cap・署名0回・全体の回数を減らさない。別の IP は通る", async () => {
   const f = makeFake();
   const a = { "x-vercel-forwarded-for": "203.0.113.7" };
   const b = { "x-vercel-forwarded-for": "203.0.113.8" };
-  for (let i = 0; i < 5; i++) assert.equal((await pressAndReset(f, a)).status, 200, `${i + 1} 回目`);
-  assert.equal(f.daily.count, 5);
+  for (let i = 0; i < 10; i++) assert.equal((await pressAndReset(f, a)).status, 200, `${i + 1} 回目`);
+  assert.equal(f.daily.count, 10);
 
   const writesBefore = f.writes.length;
   const sixth = await handleMutate(post("mutate", '{"to":"10001"}', a), f.deps);
   assert.equal(sixth.status, 429);
   const j = await sixth.json();
   assert.equal(j.error, "ip_daily_cap");
-  assert.equal(j.max, 5);
+  assert.equal(j.max, 10);
   assert.equal(j.message, IP_MSG);
   assert.equal(f.writes.length, writesBefore, "署名0回");
-  assert.equal(f.daily.count, 5, "全体の 60 回を減らさない");
+  assert.equal(f.daily.count, 10, "全体の 60 回を減らさない");
 
   const other = await handleMutate(post("mutate", '{"to":"10001"}', b), f.deps);
   assert.equal(other.status, 200, "別の IP は通る");
-  assert.equal(f.daily.count, 6);
+  assert.equal(f.daily.count, 11);
 
   const ipKeys = [...f.buckets.keys()].filter((k) => k.startsWith("tokyo-mutate-ipday:"));
   assert.equal(ipKeys.length, 2, "IP ごとに別の鍵");
@@ -1200,9 +1200,9 @@ test("IP の1日の上限: 戻す（reset と mutate の {\"to\":\"10000\"}）�
   const f = makeFake();
   const a = { "x-vercel-forwarded-for": "203.0.113.7" };
   const b = { "x-vercel-forwarded-for": "203.0.113.8" };
-  for (let i = 0; i < 5; i++) assert.equal((await pressAndReset(f, a)).status, 200);
+  for (let i = 0; i < 10; i++) assert.equal((await pressAndReset(f, a)).status, 200);
   const ipKeyOfA = [...f.buckets.keys()].find((k) => k.startsWith("tokyo-mutate-ipday:"))!;
-  assert.equal(f.buckets.get(ipKeyOfA), 5, "reset を5回押しても IP の回数は 5 のまま");
+  assert.equal(f.buckets.get(ipKeyOfA), 10, "reset を10回押しても IP の回数は 10 のまま");
 
   // B が変えた後、上限に達した A が戻せる（reset）
   assert.equal((await handleMutate(post("mutate", '{"to":"10001"}', b), f.deps)).status, 200);
@@ -1216,12 +1216,12 @@ test("IP の1日の上限: 戻す（reset と mutate の {\"to\":\"10000\"}）�
   const back = await handleMutate(post("mutate", '{"to":"10000"}', a), f.deps);
   assert.equal(back.status, 200);
   assert.equal(f.chain.value, VALUES.off);
-  assert.equal(f.buckets.get(ipKeyOfA), 5);
+  assert.equal(f.buckets.get(ipKeyOfA), 10);
 });
 
-test("IP の1日の上限: IP のヘッダが無い呼び手は全員で1つの鍵を共有する（6回目は 429）", async () => {
+test("IP の1日の上限: IP のヘッダが無い呼び手は全員で1つの鍵を共有する（11回目は 429）", async () => {
   const f = makeFake();
-  for (let i = 0; i < 5; i++) assert.equal((await pressAndReset(f, {})).status, 200);
+  for (let i = 0; i < 10; i++) assert.equal((await pressAndReset(f, {})).status, 200);
   const r = await handleMutate(post("mutate", '{"to":"10001"}'), f.deps);
   assert.equal(r.status, 429);
   assert.equal((await r.json()).error, "ip_daily_cap");
@@ -1232,7 +1232,7 @@ test("IP の1日の上限: IP のヘッダが無い呼び手は全員で1つの�
 test("IP の1日の上限: UTC の日付が変われば数え直す", async () => {
   const f = makeFake();
   const a = { "x-vercel-forwarded-for": "203.0.113.7" };
-  for (let i = 0; i < 5; i++) assert.equal((await pressAndReset(f, a)).status, 200);
+  for (let i = 0; i < 10; i++) assert.equal((await pressAndReset(f, a)).status, 200);
   assert.equal((await handleMutate(post("mutate", '{"to":"10001"}', a), f.deps)).status, 429);
   f.clock.now = Date.UTC(2026, 8, 28, 0, 0, 1);
   assert.equal((await handleMutate(post("mutate", '{"to":"10001"}', a), f.deps)).status, 200);
@@ -1241,7 +1241,7 @@ test("IP の1日の上限: UTC の日付が変われば数え直す", async () =
 test("IP の1日の上限: state は上限に達した呼び手にだけ理由の1行を返す（200 のまま）", async () => {
   const f = makeFake();
   const a = { "x-vercel-forwarded-for": "203.0.113.7" };
-  for (let i = 0; i < 5; i++) assert.equal((await pressAndReset(f, a)).status, 200);
+  for (let i = 0; i < 10; i++) assert.equal((await pressAndReset(f, a)).status, 200);
   const mine = await handleState(new Request("http://localhost/api/tokyo/state", { headers: a }), f.deps);
   assert.equal(mine.status, 200);
   const sm = await mine.json();
