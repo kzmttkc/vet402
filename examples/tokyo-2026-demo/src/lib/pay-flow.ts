@@ -3,9 +3,13 @@
 // path runs them.
 //
 //   S  screening   Intercepta quick-scan of the offer's payTo and of the payer (demo words only:
-//                  payee_screening_blocked / payee_screening_unavailable). The payTo comes from the one ENS
-//                  read this stage needs (x402-offer). A block or unavailable stops here: no proof is checked,
-//                  no policy is read, vet402 is not asked.
+//                  payee_screening_blocked / payee_screening_unavailable / payee_unknown_needs_human). The
+//                  payTo comes from the one ENS read this stage needs (x402-offer). A block or unavailable
+//                  stops here: no proof is checked, no policy is read, vet402 is not asked.
+//                  An unknown payTo (no risk record and no activity on Base mainnet) goes on only when the
+//                  offer asks at most 0.01 USDC; otherwise it stops here with payee_unknown_needs_human. When
+//                  it goes on, the SDK's ENS gate (payment by name) must say VALID before any signature, and
+//                  maxPerTxUsd is capped at 0.01 for this payment. The [U] line says why it was paid.
 //   P  policy      agent-1.vet402.eth x402-policy, read by payAsAgent (src/lib/agent.ts) through P_AG1
 //   1-7 ENS        the ENSIP-29 draft's seven steps, as payOrRefuse ran them (decision.ens[0].trace)
 //   D  vet402 API  what the SDK asked and what came back. "unreachable (asked, no answer)" only when the SDK
@@ -25,6 +29,8 @@ import type { PaymentScreening } from '../screening.ts';
 export const UNREACHABLE_LINE = 'vet402 API: unreachable (asked, no answer)';
 export const DRY_SIGNATURE = ('0x' + '00'.repeat(65)) as `0x${string}`;
 const RESOURCE_402_WORDS = new Set(['ens_offer_mismatch', 'payee_mismatch', 'price_above_declared', 'chain_or_asset_mismatch', 'no_eligible_accept', 'price_above_ceiling']);
+/** The most an agent pays an unknown payee without a human: 0.01 USDC (6 decimals). */
+export const UNKNOWN_PAYEE_MAX_UNITS = 10_000n;
 const STEP_NAMES: Record<number, string> = { 1: 'envelope', 2: 'manager', 3: 'record value', 4: 'payload', 5: 'recover signer', 6: 'attester name', 7: 'compare' };
 
 export type ApiCall = { path: string; outcome: string; unreachable: boolean };
@@ -139,7 +145,15 @@ export async function runPayFlow(i: PayFlowInput): Promise<PayFlowOutcome> {
   if (offer) {
     screening = await i.screen({ payTo: offer.payTo, payer: i.payerAddress });
     out(`[S] ${tag('screening')}${screening.line}`);
-    if (screening.verdict !== 'pass') {
+    if (screening.verdict === 'unknown') {
+      const units = BigInt(offer.amount);
+      if (units > UNKNOWN_PAYEE_MAX_UNITS) {
+        out(`[S] ${tag('unknown')}the payTo is unknown and the offer asks ${Number(units) / 1e6} USDC, above the ${Number(UNKNOWN_PAYEE_MAX_UNITS) / 1e6} USDC an agent pays an unknown payee on its own`);
+        out('REFUSE payee_unknown_needs_human  (stopped before any proof, policy or vet402 call; a person decides)');
+        return done({ verdict: 'REFUSE', reasons: ['payee_unknown_needs_human'], stoppedAt: 'screening', screening, result: null });
+      }
+      out(`[S] ${tag('unknown')}the payTo is unknown; going on only because the offer asks ${Number(units) / 1e6} USDC (<= ${Number(UNKNOWN_PAYEE_MAX_UNITS) / 1e6}) and only if the ENS attestation below is VALID`);
+    } else if (screening.verdict !== 'pass') {
       const r = screening.refuse!;
       const flagged = [screening.payTo, screening.payer].filter(s => s.verdict === 'block').flatMap(s => s.traits ?? []);
       if (flagged.length) out(`[S] ${tag('traits')}${flagged.map(t => `${t.name} (txsCount ${t.txsCount ?? 'n/a'})`).join(', ')} — ${flagged.length} trait(s)`);
@@ -151,12 +165,19 @@ export async function runPayFlow(i: PayFlowInput): Promise<PayFlowOutcome> {
   // ---- P + SDK ----
   const pay = i.payOrRefuse ?? (await loadPaySdk()).payOrRefuse;
   let sent: any = null;
+  const unknownPayee = screening?.verdict === 'unknown';
   const wrapped = async (input: any) => {
-    sent = input;
+    // An unknown payee is paid by name only (the SDK's ENS gate refuses anything but VALID before the signature),
+    // and never above 0.01 USDC, whatever the agent's own ceiling says.
+    if (unknownPayee && !input.payeeName) throw new Error('unknown payee: payment by ENS name is required');
+    const capped = unknownPayee
+      ? { ...input, policy: { ...input.policy, maxPerTxUsd: Math.min(input.policy.maxPerTxUsd, Number(UNKNOWN_PAYEE_MAX_UNITS) / 1e6) } }
+      : input;
+    sent = capped;
     // chainFromBlock is where the caller starts counting receipts (a read range, like the RPCs), not a floor.
     // payAsAgent rebuilds `policy` from the name, so it is added here.
-    const withRange = i.chainFromBlock === undefined ? input
-      : { ...input, policy: { ...input.policy, evidence: { ...input.policy.evidence, chainFromBlock: i.chainFromBlock } } };
+    const withRange = i.chainFromBlock === undefined ? capped
+      : { ...capped, policy: { ...capped.policy, evidence: { ...capped.policy.evidence, chainFromBlock: i.chainFromBlock } } };
     return pay(withRange);
   };
   let result: any;
@@ -221,6 +242,13 @@ export async function runPayFlow(i: PayFlowInput): Promise<PayFlowOutcome> {
   }
   const recheck = (d.ens ?? []).find((e: any) => e.pass === 'recheck');
   if (recheck) out(`[R] ${tag('recheck')}ENSIP-29 read again before the signature: ${recheck.ok ? 'VALID, same offer' : 'REFUSE ' + recheck.reason_codes.join(', ')}`);
+
+  // ---- U: why an unknown payee is paid ----
+  if (unknownPayee && result.status !== 'refused') {
+    if (!gate?.ok) throw new Error('unknown payee: the SDK went past the ENS gate without a VALID attestation');
+    const amt = result.challenge?.amount ?? offer!.amount;
+    out(`[U] ${tag('unknown')}paying an unknown payee because the ENS attestation is VALID (${gate.valid}) and the amount ${Number(amt) / 1e6} USDC <= ${Number(UNKNOWN_PAYEE_MAX_UNITS) / 1e6} USDC`);
+  }
 
   // ---- X: verdict ----
   const reasons: string[] = d.reason_codes.filter((r: string) => r !== 'settle_failed');

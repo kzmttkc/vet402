@@ -298,3 +298,16 @@ test("T49 エージェントの方針が読めない（5枝）→ payOrRefuse �
     assert.equal(spy2.calls.length, 0);
   }
 });
+
+test("attester flags: screening is the default; --no-screen is the dry-run \"before\"; --live-pay never skips it", async () => {
+  const { parseArgs } = await import("../src/attester.ts");
+  const d = parseArgs(["--names", "seller-a,seller-e"]);
+  assert.equal(d.screen, true);
+  assert.equal(d.allowUnknown, false);
+  assert.deepEqual(d.names, ["seller-a.eth", "seller-e.eth"]);
+  assert.equal(parseArgs(["--names", "seller-a", "--no-screen"]).screen, false);
+  assert.equal(parseArgs(["--names", "seller-a", "--screen"]).screen, true);
+  assert.equal(parseArgs(["--names", "seller-a", "--allow-unknown"]).allowUnknown, true);
+  assert.throws(() => parseArgs(["--names", "seller-a", "--live-pay", "--no-screen"]), /dry-run だけ/);
+  assert.throws(() => parseArgs(["--names", "seller-a", "--screen", "--no-screen"]), /同時に付けない/);
+});

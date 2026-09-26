@@ -16,6 +16,10 @@
 //   After sending it reads every key back on two RPCs.
 // --check  recomputes the keys now and compares them with what ENS holds (the scene-1 rerun command).
 //
+// --check and --dry-run need no env file: with no ENS_SEPOLIA_RPC_URL they read Sepolia through the same public
+// pair as `run.ts verify`, and --dry-run simulates from W_OBS_GRANTED (the address K1-03 granted the 15 setText
+// roles on R_vet) unless TOKYO_W_OBS_ADDRESS says otherwise. --live still needs the env (RPCs, address and key).
+//
 // The refusal word observation_without_purchase belongs to this file only.
 import readline from 'node:readline/promises';
 import { pathToFileURL } from 'node:url';
@@ -23,7 +27,7 @@ import { createPublicClient, createWalletClient, encodeFunctionData, getAddress,
 import { privateKeyToAccount } from 'viem/accounts';
 import { sepolia } from 'viem/chains';
 import { PR } from './lib/abi.ts';
-import { loadEnvFile, requireEnv, sepoliaRpcs } from './lib/env.ts';
+import { loadEnvFile, requireEnv, sepoliaRpcs, sepoliaRpcsOrPublic } from './lib/env.ts';
 import { ADDR, SEPOLIA_CHAIN_ID, dns, fmtEth } from './lib/k1.ts';
 import { hostOf, pickRpc, rpc, simulateBlocks } from './lib/rpc.ts';
 import { loadEnsSdk } from './lib/sdk.ts';
@@ -33,6 +37,8 @@ export const OBS_DESCRIPTION = "Observation log by vet402. Not the seller's name
 export const OBS_PARENT = 'obs.vet402.eth';
 const DEFAULT_API = 'https://vet402.com/api/v1';
 const DECISION_SPACING_MS = 7_000;
+/** W_obs as granted on R_vet by K1-03 (public address; only --check / --dry-run fall back to it, never --live). */
+export const W_OBS_GRANTED = '0x425943b6D2e6760d44a7fC003fFCbB079B053e6c';
 
 export type ObservationCtx = {
   resource?: string;
@@ -155,13 +161,15 @@ async function main(): Promise<number> {
   loadEnvFile();
   const api = (process.env.VET402_API_URL || DEFAULT_API).replace(/\/$/, '');
   const commit = process.env.TOKYO_PIPELINE_COMMIT || (await gitHead());
-  const { read, sim } = sepoliaRpcs();
+  const { read, sim, source } = mode === 'live' ? { ...sepoliaRpcs(), source: 'env' as const } : sepoliaRpcsOrPublic();
   const url = await pickRpc([...sim, ...read.filter(u => !sim.includes(u))]);
   const c = createPublicClient({ chain: sepolia, transport: http(url, { timeout: 60_000 }) });
   const chainId = await c.getChainId();
   if (chainId !== SEPOLIA_CHAIN_ID) throw new Error(`chainId ${chainId}（Sepolia でない）。止める`);
-  const wObs = process.env.TOKYO_W_OBS_ADDRESS ? getAddress(process.env.TOKYO_W_OBS_ADDRESS) : null;
-  console.log(`observe.ts ${mode} | vet402 ${hostOf(api)} | Sepolia ${hostOf(url)} | W_obs ${wObs ?? '(TOKYO_W_OBS_ADDRESS なし)'} | commit ${commit}`);
+  const wObsEnv = process.env.TOKYO_W_OBS_ADDRESS ? getAddress(process.env.TOKYO_W_OBS_ADDRESS) : null;
+  const wObs = wObsEnv ?? (mode === 'live' ? null : getAddress(W_OBS_GRANTED));
+  const wObsLabel = wObsEnv ? wObs : mode === 'live' ? '(TOKYO_W_OBS_ADDRESS なし)' : `${wObs} (granted address; no TOKYO_W_OBS_ADDRESS)`;
+  console.log(`observe.ts ${mode} | vet402 ${hostOf(api)} | Sepolia ${hostOf(url)} (${source}) | W_obs ${wObsLabel} | commit ${commit}`);
 
   const plans: Array<{ plan: ObservationPlan; data: Hex }> = [];
   for (const [i, id] of ids.entries()) {

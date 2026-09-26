@@ -33,7 +33,7 @@ import { DEMO_DIR, loadEnvFile, sepoliaRpcs } from './env.ts';
 import { hostOf, pickRpc } from './rpc.ts';
 import { loadEnsSdk } from './sdk.ts';
 import { SEED_TX_BLOCK_FALLBACK } from '../attester.ts';
-import { screenPayment, SCREENING_CACHE_TTL_MS, type ScreeningCache, type ScreeningResult } from '../screening.ts';
+import { loadScreeningCacheFile, saveScreeningCacheFile, screenPayment } from '../screening.ts';
 import { dryPayer, runPayFlow, type PayFlowOutcome } from './pay-flow.ts';
 import {
   ANVIL0, OFFER_A, OFFER_A_1CHAR, P_A, P_AG1, P_BC, P_D, W_OP_DEFAULT, alignBcCall, demoTx, recordIdCall, simulateSequence,
@@ -123,26 +123,10 @@ function localMaxAge(): number {
 
 // ---------------------------------------------------------------- screening cache on disk (1,000 calls per key)
 // The in-process cache of screening.ts lasts one run. pay seller-a then pay seller-e are two runs, and both screen
-// the payer: this file keeps pass/block for the same 10 minutes so the payer is asked once. No key is stored.
-function loadScreenCache(): ScreeningCache {
-  const m: ScreeningCache = new Map();
-  try {
-    const j = JSON.parse(fs.readFileSync(SCREEN_CACHE_FILE, 'utf8')) as Record<string, { at: number; result: ScreeningResult }>;
-    for (const [k, v] of Object.entries(j)) {
-      if (Date.now() - v.at < SCREENING_CACHE_TTL_MS && (v.result.verdict === 'pass' || v.result.verdict === 'block')) m.set(k, { at: v.at, promise: Promise.resolve(v.result) });
-    }
-  } catch { /* no file yet */ }
-  return m;
-}
-async function saveScreenCache(m: ScreeningCache): Promise<void> {
-  const o: Record<string, { at: number; result: ScreeningResult }> = {};
-  for (const [k, v] of m) {
-    const r = await v.promise;
-    if (Date.now() - v.at < SCREENING_CACHE_TTL_MS && (r.verdict === 'pass' || r.verdict === 'block')) o[k] = { at: v.at, result: r };
-  }
-  fs.mkdirSync(OUT_DIR, { recursive: true });
-  fs.writeFileSync(SCREEN_CACHE_FILE, JSON.stringify(o, null, 2) + '\n', { mode: 0o600 });
-}
+// the payer: out/screening-cache.json keeps pass / block / unknown for the same 10 minutes so the payer is asked
+// once. attester.ts uses the same file. No key is stored. A line served from it says "(cached, asked … UTC)".
+const loadScreenCache = () => loadScreeningCacheFile(SCREEN_CACHE_FILE);
+const saveScreenCache = (m: Parameters<typeof saveScreeningCacheFile>[1]) => saveScreeningCacheFile(SCREEN_CACHE_FILE, m);
 
 // ---------------------------------------------------------------- cut-vet402
 export type Cut = { mode: 'refused' | '503'; url: string; close: () => Promise<void> };

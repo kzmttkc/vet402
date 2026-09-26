@@ -3,7 +3,7 @@
 // attester.ts: atst.vet402.eth buys from a seller's name, checks what arrived, and only then signs the
 // ENSIP-29 draft attestation for the seller's x402-offer (PLAN_v4.3 section 3.9, "attester steps").
 //
-//   npx tsx src/attester.ts --names seller-a,seller-b,seller-c,seller-d [--dry-run | --live-pay] [--screen]
+//   npx tsx src/attester.ts --names seller-a,seller-b,seller-c,seller-d [--dry-run | --live-pay] [--no-screen] [--allow-unknown]
 //
 // Six steps per name. If any one fails, that name is not signed (draft lines 50-54):
 //   1 owner challenge   the name's owner signs a challenge (EIP-191); verifyMessage gives a
@@ -18,8 +18,15 @@
 //
 // --dry-run (default): signs nothing and moves no funds. Step 1 derives the owner's address without
 //   signing; step 3 runs payOrRefuse with a payer whose signTypedData throws, so every SDK gate runs up
-//   to the signature and stops there; steps 4 and 6 are not run. Intercepta is not called (1,000-call
-//   quota) unless --screen is given.
+//   to the signature and stops there; steps 4 and 6 are not run.
+//
+// Screening (gate 3) runs by default, in dry-run too: Intercepta screens each payTo that reached gate 3 and the
+// payer, and its verdict alone decides whether the name goes on to payOrRefuse. block and unavailable refuse
+// (payee_screening_blocked / payee_screening_unavailable). unknown (no risk record and no activity on Base
+// mainnet) refuses with payee_unknown_needs_human unless --allow-unknown is given (a person decided).
+// Answers are cached for 10 minutes in out/screening-cache.json, shared with run.ts pay (1,000-call quota).
+// --no-screen (dry-run only) skips Intercepta: the "before" run, to compare with the default "after" run.
+// --screen is accepted and changes nothing (screening is the default).
 // --live-pay: sends only when all four gates hold: (1) both Base Sepolia readers say chainId 84532,
 //   (2) W_pay's USDC balance covers the total, (3) screening passes for every payTo and the payer,
 //   (4) a human types y. Before the y, payOrRefuse also runs once per name with the throwing payer, and
@@ -28,7 +35,7 @@
 // VET402_API_KEY (optional env): passed to payOrRefuse as apiKey. The seller URL is not in vet402's
 // catalog, so payOrRefuse asks /payees/{payTo}/score, which answers 401 without a key (measured 2026-09-25).
 //
-// payee_screening_blocked / payee_screening_unavailable are words of this demo only (not the SDK's).
+// payee_screening_blocked / payee_screening_unavailable / payee_unknown_needs_human are words of this demo only (not the SDK's).
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -43,7 +50,7 @@ import { baseSepolia, sepolia } from 'viem/chains';
 import { DEMO_DIR, b5cAutoConfirm, loadEnvFile } from './lib/env.ts';
 import { hostOf } from './lib/rpc.ts';
 import { loadEnsSdk, loadPaySdk } from './lib/sdk.ts';
-import { screenPayment, type PaymentScreening } from './screening.ts';
+import { loadScreeningCacheFile, saveScreeningCacheFile, screenPayment, type PaymentScreening } from './screening.ts';
 
 export const RECORD_KEY = 'x402-offer';
 export const ATTESTER_NAME = 'atst.vet402.eth';
@@ -151,10 +158,10 @@ export async function attestIfVerified(i: AttestInput): Promise<AttestResult> {
 
 // ---------------------------------------------------------------- CLI
 type Mode = 'dry-run' | 'live-pay';
-type Opts = { names: string[]; mode: Mode; screen: boolean; outDir: string };
+type Opts = { names: string[]; mode: Mode; screen: boolean; allowUnknown: boolean; outDir: string };
 
-function parseArgs(argv: string[]): Opts {
-  const o: Opts = { names: [], mode: 'dry-run', screen: false, outDir: path.join(DEMO_DIR, 'out') };
+export function parseArgs(argv: string[]): Opts {
+  const o: Opts = { names: [], mode: 'dry-run', screen: true, allowUnknown: false, outDir: path.join(DEMO_DIR, 'out') };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--names') o.names = String(argv[++i] ?? '').split(',').map(s => s.trim()).filter(Boolean).map(s => (s.includes('.') ? s : `${s}.eth`).toLowerCase());
@@ -162,11 +169,15 @@ function parseArgs(argv: string[]): Opts {
     else if (a === '--live-pay') o.mode = 'live-pay';
     else if (a === '--dry-run') o.mode = 'dry-run';
     else if (a === '--screen') o.screen = true;
+    else if (a === '--no-screen') o.screen = false;
+    else if (a === '--allow-unknown') o.allowUnknown = true;
     else if (a === '--out') o.outDir = path.resolve(String(argv[++i]));
     else throw new Error(`知らないオプション ${a}`);
   }
   if (argv.includes('--live-pay') && argv.includes('--dry-run')) throw new Error('--live-pay と --dry-run を同時に付けない');
-  if (!o.names.length) throw new Error('usage: npx tsx src/attester.ts --names seller-a,seller-b,seller-c,seller-d [--dry-run | --live-pay] [--screen]');
+  if (argv.includes('--screen') && argv.includes('--no-screen')) throw new Error('--screen と --no-screen を同時に付けない');
+  if (o.mode === 'live-pay' && !o.screen) throw new Error('--no-screen は dry-run だけ（--live-pay は必ず Intercepta を通す）');
+  if (!o.names.length) throw new Error('usage: npx tsx src/attester.ts --names seller-a,seller-b,seller-c,seller-d [--dry-run | --live-pay] [--no-screen] [--allow-unknown]');
   return o;
 }
 
@@ -294,7 +305,8 @@ async function main(): Promise<number> {
   const bs = baseSepoliaReaders();
   const att = trustedAttester();
   const payerAddr = process.env.TOKYO_W_PAY_ADDRESS ? getAddress(process.env.TOKYO_W_PAY_ADDRESS) : null;
-  console.log(`attester.ts ${live ? '--live-pay' : '--dry-run'} | names ${o.names.join(', ')} | env ${envf.loaded ? envf.file : '(file not found)'}`);
+  const screenLabel = o.screen ? `screening on${o.allowUnknown ? ' (--allow-unknown)' : ''}` : 'screening OFF (--no-screen: the "before" run)';
+  console.log(`attester.ts ${live ? '--live-pay' : '--dry-run'} | names ${o.names.join(', ')} | ${screenLabel} | env ${envf.loaded ? envf.file : '(file not found)'}`);
   console.log(`  Sepolia ${hosts.join(' + ')} | Base Sepolia ${bs.hosts.join(' + ')} | attester ${att.name}=${att.address} | payer W_pay ${payerAddr ?? '(TOKYO_W_PAY_ADDRESS なし)'}`);
 
   // ---- preflight that does not depend on a name ----
@@ -366,7 +378,7 @@ async function main(): Promise<number> {
   // ---- the four gates of --live-pay (printed in dry-run too) ----
   const buyable = works.filter(w => !w.stop);
   const total = buyable.reduce((t, w) => t + BigInt(String(w.accept!.amount)), 0n);
-  console.log(`\ngates (${live ? 'live-pay' : 'dry-run: evaluated where no key and no quota is needed'})`);
+  console.log(`\ngates (${live ? 'live-pay' : 'dry-run: evaluated without any key; (3) asks Intercepta unless --no-screen'})`);
   const [cA, cB] = await Promise.all([bs.reader.getChainId(), bs.cross.getChainId()]);
   const g1 = cA === BASE_SEPOLIA_CHAIN_ID && cB === BASE_SEPOLIA_CHAIN_ID;
   console.log(`  ${g1 ? 'ok  ' : 'NG  '} (1) chainId ${bs.hosts[0]}=${cA} ${bs.hosts[1]}=${cB} (need ${BASE_SEPOLIA_CHAIN_ID})`);
@@ -381,16 +393,26 @@ async function main(): Promise<number> {
     console.log(`  ${g2 ? 'ok  ' : 'NG  '} (2) USDC of W_pay ${payerAddr} = ${Number(bal) / 1e6} (${bs.hosts[0]} ${balA} / ${bs.hosts[1]} ${balB}) >= total ${Number(total) / 1e6} for ${buyable.length} name(s)`);
   } else console.log('  NG   (2) TOKYO_W_PAY_ADDRESS が env に無い');
   let g3: boolean | null = null;
-  if (live || o.screen) {
+  if (o.screen) {
     g3 = buyable.length > 0;
-    for (const w of buyable) {
-      w.screening = await screenPayment({ payTo: w.offer!.payTo, payer: payerAddr ?? '' });
-      const okS = w.screening.verdict === 'pass';
-      g3 &&= okS;
-      console.log(`  ${okS ? 'ok  ' : 'NG  '} (3) ${w.name}: ${w.screening.line}${okS ? '' : '  -> REFUSE ' + w.screening.refuse}`);
-      if (!okS) w.stop = { step: 3, why: `REFUSE ${w.screening.refuse}` };
+    const cacheFile = path.join(o.outDir, 'screening-cache.json');
+    const cache = loadScreeningCacheFile(cacheFile);
+    try {
+      for (const w of buyable) {
+        w.screening = await screenPayment({ payTo: w.offer!.payTo, payer: payerAddr ?? '' }, { cache });
+        const v = w.screening.verdict;
+        const okS = v === 'pass' || (v === 'unknown' && o.allowUnknown);
+        g3 &&= okS;
+        const why = v === 'unknown'
+          ? (o.allowUnknown ? '  -> go on: unknown payee allowed by --allow-unknown' : `  -> REFUSE ${w.screening.refuse} (a person decides: --allow-unknown)`)
+          : okS ? '' : '  -> REFUSE ' + w.screening.refuse;
+        console.log(`  ${okS ? 'ok  ' : 'NG  '} (3) ${w.name}: ${w.screening.line}${why}`);
+        if (!okS) w.stop = { step: 3, why: `REFUSE ${w.screening.refuse}` };
+      }
+    } finally {
+      await saveScreeningCacheFile(cacheFile, cache);
     }
-  } else console.log('  --   (3) Intercepta quick-scan: not called in dry-run (1,000-call quota). --live-pay calls it for every payTo and the payer before paying; --screen calls it here');
+  } else console.log('  --   (3) Intercepta: not asked (--no-screen, dry-run only). Every name that reached gate 3 goes on to payOrRefuse');
   console.log(`  ${live ? '..  ' : '--  '} (4) typed y: ${live ? 'asked below' : 'asked only with --live-pay'}`);
 
   const from = await chainFromBlock(bs.reader);

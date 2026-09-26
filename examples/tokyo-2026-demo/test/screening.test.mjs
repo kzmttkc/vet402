@@ -2,10 +2,17 @@
 // fetch is always injected: these tests never reach the network.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
+  CHECK_ACTIVITY_BASE,
+  CHECK_ACTIVITY_CHAIN_ID,
   QUICK_SCAN_BASE,
   SCREENING_CACHE_TTL_MS,
   SCREENING_TIMEOUT_MS,
+  loadScreeningCacheFile,
+  saveScreeningCacheFile,
   screenAddress,
   screenPayment,
 } from '../src/screening.ts';
@@ -15,12 +22,16 @@ const RONIN = '0x098B716B8Aaf21512996dC57EB0615e2383E2f96';
 const ROUTER = '0xd90e2f925DA726b50C4Ed8D0Fb90Ad053324F31b';
 const KEY = 'test-key-0123456789abcdef-SECRET';
 
+// routes[addr] answers quick-scan; routes['activity:' + addr] answers check-activity.
 function fakeFetch(routes) {
   const calls = [];
   const fn = async (url, init) => {
     calls.push({ url, init });
-    const addr = url.slice(QUICK_SCAN_BASE.length + 1, -'/quick-scan'.length).toLowerCase();
-    const r = routes[addr];
+    const act = url.startsWith(CHECK_ACTIVITY_BASE + '/') && url.includes('/check-activity?');
+    const addr = act
+      ? url.slice(CHECK_ACTIVITY_BASE.length + 1, url.indexOf('/check-activity?')).toLowerCase()
+      : url.slice(QUICK_SCAN_BASE.length + 1, -'/quick-scan'.length).toLowerCase();
+    const r = routes[act ? 'activity:' + addr : addr];
     if (!r) throw new Error('unexpected address ' + addr);
     if (typeof r === 'function') return r(init);
     return { status: r.status, text: async () => r.body };
@@ -37,13 +48,14 @@ test('defaults are 3 s and 10 min', () => {
   assert.equal(SCREENING_CACHE_TTL_MS, 600000);
 });
 
-test('pass: toxicScore 0, no traits; key only in the header', async () => {
+test('pass: toxicScore 0, no traits is "no risk record" (never "clean"); key only in the header', async () => {
   const f = fakeFetch({ [CLEAN.toLowerCase()]: { status: 200, body: '{"toxicScore":0,"traits":[]}' } });
   const r = await screenAddress(CLEAN, opts(f));
   assert.equal(r.verdict, 'pass');
   assert.equal(r.toxicScore, 0);
   assert.deepEqual(r.traits, []);
-  assert.match(r.reason, /toxicScore 0 \(clean\)/);
+  assert.equal(r.reason, 'toxicScore 0 (no risk record)');
+  assert.doesNotMatch(r.reason, /clean/);
   assert.equal(f.calls.length, 1);
   assert.equal(f.calls[0].url, `${QUICK_SCAN_BASE}/${CLEAN}/quick-scan`);
   assert.equal(f.calls[0].init.method, 'GET');
@@ -212,16 +224,18 @@ test('cache: unavailable is not cached', async () => {
   assert.equal(f.calls.length, 2);
 });
 
-test('screenPayment: clean payee and payer pass with one line', async () => {
+test('screenPayment: payee with Base activity and payer pass with one line; only the payTo is activity-checked', async () => {
   const PAYER = '0x1111111111111111111111111111111111111111';
   const f = fakeFetch({
     [CLEAN.toLowerCase()]: { status: 200, body: '{"toxicScore":0,"traits":[]}' },
+    ['activity:' + CLEAN.toLowerCase()]: { status: 200, body: '{"hasActivity":true}' },
     [PAYER]: { status: 200, body: '{"toxicScore":0,"traits":[]}' },
   });
   const s = await screenPayment({ payTo: CLEAN, payer: PAYER }, opts(f));
   assert.equal(s.verdict, 'pass');
   assert.equal(s.refuse, undefined);
-  assert.equal(s.line, `screening: payTo ${CLEAN} toxicScore 0 (clean) / payer ${PAYER} toxicScore 0 (clean)`);
+  assert.equal(s.line, `screening: payTo ${CLEAN} toxicScore 0 (no risk record), active on Base (chainId 8453) / payer ${PAYER} toxicScore 0 (no risk record)`);
+  assert.equal(f.calls.filter((c) => c.url.includes('/check-activity')).length, 1);
 });
 
 test('screenPayment: block wins over unavailable; unavailable alone refuses', async () => {
@@ -230,6 +244,7 @@ test('screenPayment: block wins over unavailable; unavailable alone refuses', as
     [RONIN.toLowerCase()]: { status: 200, body: blockBody },
     [ROUTER.toLowerCase()]: { status: 404, body: '' },
     [CLEAN.toLowerCase()]: { status: 200, body: '{"toxicScore":0,"traits":[]}' },
+    ['activity:' + CLEAN.toLowerCase()]: { status: 200, body: '{"hasActivity":true}' },
   });
   const o = opts(f);
   const b = await screenPayment({ payTo: RONIN, payer: ROUTER }, o);
@@ -268,4 +283,152 @@ test('a block is cached under the lower-cased address', async () => {
   assert.equal((await screenAddress(RONIN, o)).verdict, 'block');
   assert.equal((await screenAddress(RONIN.toLowerCase(), o)).verdict, 'block');
   assert.equal(f.calls.length, 1);
+});
+
+// ---------------------------------------------------------------- check-activity (unknown payee) and cache labels
+
+const ZERO_BODY = '{"toxicScore":0,"traits":[]}';
+
+test('check-activity: 0 points and no traits, hasActivity false -> unknown; exact URL (v1, chainId 8453), key only in the header', async () => {
+  const f = fakeFetch({
+    [CLEAN.toLowerCase()]: { status: 200, body: ZERO_BODY },
+    ['activity:' + CLEAN.toLowerCase()]: { status: 200, body: '{"hasActivity":false}' },
+  });
+  const r = await screenAddress(CLEAN, opts(f, { checkActivity: true }));
+  assert.equal(r.verdict, 'unknown');
+  assert.equal(r.hasActivity, false);
+  assert.equal(r.reason, 'toxicScore 0 (no risk record), no activity on Base (chainId 8453): unknown payee');
+  assert.equal(CHECK_ACTIVITY_CHAIN_ID, '8453');
+  assert.equal(f.calls.length, 2);
+  assert.equal(f.calls[1].url, `${CHECK_ACTIVITY_BASE}/${CLEAN}/check-activity?chainId=8453`);
+  assert.equal(CHECK_ACTIVITY_BASE, 'https://api.web3antivirus.io/api/public/v1/extension/account');
+  assert.equal(f.calls[1].init.headers['X-API-KEY'], KEY);
+  noKeyIn(r);
+});
+
+test('check-activity: hasActivity true -> pass, still "no risk record"', async () => {
+  const f = fakeFetch({
+    [CLEAN.toLowerCase()]: { status: 200, body: ZERO_BODY },
+    ['activity:' + CLEAN.toLowerCase()]: { status: 200, body: '{"hasActivity":true}' },
+  });
+  const r = await screenAddress(CLEAN, opts(f, { checkActivity: true }));
+  assert.equal(r.verdict, 'pass');
+  assert.equal(r.reason, 'toxicScore 0 (no risk record), active on Base (chainId 8453)');
+});
+
+test('check-activity failures are unavailable (fail-closed) and are not cached', async () => {
+  const cases = [
+    [{ status: 500, body: '' }, /^check-activity: HTTP 500$/],
+    [{ status: 404, body: '' }, /^check-activity: HTTP 404$/],
+    [{ status: 200, body: '{"hasActivity":' }, /^check-activity: response is not JSON$/],
+    [{ status: 200, body: '{"hasActivity":"false"}' }, /^check-activity: response has no boolean hasActivity$/],
+    [{ status: 200, body: '{}' }, /^check-activity: response has no boolean hasActivity$/],
+    [() => { throw new TypeError('boom ' + KEY); }, /^check-activity: request failed \(TypeError\)$/],
+    [() => new Promise(() => {}), /^check-activity: no answer within 30 ms$/],
+  ];
+  for (const [route, re] of cases) {
+    const f = fakeFetch({ [CLEAN.toLowerCase()]: { status: 200, body: ZERO_BODY }, ['activity:' + CLEAN.toLowerCase()]: route });
+    const o = opts(f, { checkActivity: true, timeoutMs: 30 });
+    const r = await screenAddress(CLEAN, o);
+    assert.equal(r.verdict, 'unavailable', String(re));
+    assert.match(r.reason, re);
+    noKeyIn(r);
+    assert.equal(o.cache.size, 0, 'unavailable is not cached');
+  }
+});
+
+test('check-activity is asked only for 0 points with no traits', async () => {
+  const f = fakeFetch({
+    [CLEAN.toLowerCase()]: { status: 200, body: '{"toxicScore":10,"traits":[]}' },
+    [RONIN.toLowerCase()]: { status: 200, body: '{"toxicScore":0,"traits":[{"name":"non_kyc_transfers","risk":1}]}' },
+    [ROUTER.toLowerCase()]: { status: 200, body: '{"toxicScore":100,"traits":[{"name":"known_scammer"}]}' },
+  });
+  const o = opts(f, { checkActivity: true });
+  assert.equal((await screenAddress(CLEAN, o)).verdict, 'pass');
+  assert.equal((await screenAddress(RONIN, o)).verdict, 'pass');
+  assert.equal((await screenAddress(ROUTER, o)).verdict, 'block');
+  assert.equal(f.calls.filter((c) => c.url.includes('/check-activity')).length, 0);
+});
+
+test('screenPayment: unknown payee -> verdict unknown, refuse payee_unknown_needs_human; block and unavailable still win', async () => {
+  const PAYER = '0x1111111111111111111111111111111111111111';
+  const f = fakeFetch({
+    [CLEAN.toLowerCase()]: { status: 200, body: ZERO_BODY },
+    ['activity:' + CLEAN.toLowerCase()]: { status: 200, body: '{"hasActivity":false}' },
+    [PAYER]: { status: 200, body: ZERO_BODY },
+    [RONIN.toLowerCase()]: { status: 200, body: '{"toxicScore":100,"traits":[{"name":"known_scammer"}]}' },
+    [ROUTER.toLowerCase()]: { status: 404, body: '' },
+  });
+  const o = opts(f);
+  const u = await screenPayment({ payTo: CLEAN, payer: PAYER }, o);
+  assert.equal(u.verdict, 'unknown');
+  assert.equal(u.refuse, 'payee_unknown_needs_human');
+  assert.equal(u.line, `screening: payTo ${CLEAN} UNKNOWN: toxicScore 0 (no risk record), no activity on Base (chainId 8453): unknown payee / payer ${PAYER} toxicScore 0 (no risk record)`);
+  const b = await screenPayment({ payTo: RONIN, payer: CLEAN }, o);
+  assert.equal(b.verdict, 'block');
+  const n = await screenPayment({ payTo: CLEAN, payer: ROUTER }, o);
+  assert.equal(n.verdict, 'unavailable');
+  assert.equal(n.refuse, 'payee_screening_unavailable');
+});
+
+test('cache: an answer served from the cache says so with the time it was asked (UTC); the first answer does not', async () => {
+  const f = fakeFetch({
+    [CLEAN.toLowerCase()]: { status: 200, body: ZERO_BODY },
+    ['activity:' + CLEAN.toLowerCase()]: { status: 200, body: '{"hasActivity":false}' },
+  });
+  let t = Date.UTC(2026, 8, 26, 3, 4, 5);
+  const o = opts(f, { checkActivity: true, now: () => t });
+  const first = await screenAddress(CLEAN, o);
+  assert.doesNotMatch(first.reason, /cached/);
+  assert.equal(first.cachedAt, undefined);
+  t += 60_000;
+  const again = await screenAddress(CLEAN, o);
+  assert.equal(again.verdict, 'unknown');
+  assert.equal(again.reason, 'toxicScore 0 (no risk record), no activity on Base (chainId 8453): unknown payee (cached, asked 03:04:05 UTC)');
+  assert.equal(again.cachedAt, Date.UTC(2026, 8, 26, 3, 4, 5));
+  assert.equal(f.calls.length, 2, 'unknown is cached: quick-scan + check-activity once');
+});
+
+test('cache: quick-scan-only and activity-checked answers for one address are kept apart', async () => {
+  const f = fakeFetch({
+    [CLEAN.toLowerCase()]: { status: 200, body: ZERO_BODY },
+    ['activity:' + CLEAN.toLowerCase()]: { status: 200, body: '{"hasActivity":false}' },
+  });
+  const o = opts(f);
+  assert.equal((await screenAddress(CLEAN, o)).verdict, 'pass');
+  assert.equal((await screenAddress(CLEAN, { ...o, checkActivity: true })).verdict, 'unknown');
+});
+
+test('disk cache: pass, block and unknown survive a save/load for 10 minutes; unavailable and expired entries do not; no key on disk', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokyo-screen-'));
+  const file = path.join(dir, 'screening-cache.json');
+  const f = fakeFetch({
+    [CLEAN.toLowerCase()]: { status: 200, body: ZERO_BODY },
+    ['activity:' + CLEAN.toLowerCase()]: { status: 200, body: '{"hasActivity":false}' },
+    [RONIN.toLowerCase()]: { status: 200, body: '{"toxicScore":100,"traits":[{"name":"known_scammer"}]}' },
+    [ROUTER.toLowerCase()]: { status: 503, body: '' },
+  });
+  let t = Date.UTC(2026, 8, 26, 1, 0, 0);
+  const cache = new Map();
+  const o = { fetch: f, readKey: () => KEY, cache, now: () => t };
+  await screenAddress(CLEAN, { ...o, checkActivity: true });
+  await screenAddress(RONIN, o);
+  await screenAddress(ROUTER, o);
+  await saveScreeningCacheFile(file, cache, () => t);
+  const raw = fs.readFileSync(file, 'utf8');
+  assert.ok(!raw.includes(KEY));
+  assert.equal((fs.statSync(file).mode & 0o777), 0o600);
+  t += 5 * 60_000;
+  const loaded = loadScreeningCacheFile(file, () => t);
+  assert.equal(loaded.size, 2);
+  const g = fakeFetch({});
+  const u = await screenAddress(CLEAN, { fetch: g, readKey: () => KEY, cache: loaded, now: () => t, checkActivity: true });
+  assert.equal(u.verdict, 'unknown');
+  assert.match(u.reason, /\(cached, asked 01:00:00 UTC\)$/);
+  assert.equal((await screenAddress(RONIN, { fetch: g, readKey: () => KEY, cache: loaded, now: () => t })).verdict, 'block');
+  assert.equal(g.calls.length, 0);
+  t += 6 * 60_000;
+  assert.equal(loadScreeningCacheFile(file, () => t).size, 0, 'older than 10 minutes');
+  assert.equal(loadScreeningCacheFile(path.join(dir, 'missing.json')).size, 0);
+  fs.rmSync(dir, { recursive: true, force: true });
 });

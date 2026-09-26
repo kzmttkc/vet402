@@ -36,17 +36,20 @@ The demo commands live in `src/run.ts`. Each `npm run` script below calls it.
 
 These set up and maintain the Sepolia names. They need the owners' keys and are not needed to check anything.
 
-- `npm run attester -- --names seller-a,seller-b,seller-c,seller-d [--dry-run | --live-pay] [--screen]`: vet402 buys from each seller with W_pay, checks the delivery, and only then signs with `atst.vet402.eth`'s key. The six steps are in `docs/tokyo-2026/attester-spec.md`.
+- `npm run attester -- --names seller-a,seller-b,seller-c,seller-d [--dry-run | --live-pay] [--no-screen] [--allow-unknown]`: vet402 buys from each seller with W_pay, checks the delivery, and only then signs with `atst.vet402.eth`'s key. The six steps are in `docs/tokyo-2026/attester-spec.md`.
 - `npm run observe -- <resourceId> [<resourceId> ...] [--dry-run | --live | --check]`: writes the observation log for third-party x402 sellers under `<resourceId>.obs.vet402.eth`, with no addr record.
 - `npm run admin -- <command> [--dry-run | --live]`, where `<command>` is one of `deploy-resolvers`, `k1a`, `k1b`, `register-d`, `publish-attestations`, `unlink`, `link`, `relink`, `agents`, `register-e`, `set-offer-e`, `align-bc`, `agent-off`, `agent-on`, `emancipate`. An unknown command prints the list with one line each.
 - `npx tsx src/keys.ts init | addresses`: creates the testnet keys in `.env.tokyo.local` (git-ignored) and prints only addresses.
 
 ## Payment screening (Intercepta)
 
-- The only file that calls the Intercepta API is `src/screening.ts` (`quick-scan` for an account). Its tests are in `test/screening.test.mjs`.
+- The only file that calls the Intercepta API is `src/screening.ts`: `quick-scan` for the payTo and the payer, and `check-activity` (Base mainnet, chainId 8453) for the payTo when quick-scan has nothing on it. Its tests are in `test/screening.test.mjs`.
 - `pay <name>` screens first. It reads the payTo from the seller's `x402-offer` once, then quick-scans that payTo and the payer. This happens before any proof is checked, before the agent policy is read, and before vet402 is asked.
-- A block or an unavailable answer stops the payment, with the reason on screen: `payee_screening_blocked` (a listed trait, or `toxicScore` of 70 or more) or `payee_screening_unavailable` (404, no answer within 3 s, any other non-200, a body that is not the documented shape, or no key file). Nothing is paid in either case. The key is read from `~/.vet402/intercepta-sandbox-key.txt` (`INTERCEPTA_KEY_FILE` overrides the path) and goes only into the request header.
-- `src/attester.ts` uses the same module before it buys: always with `--live-pay`, and in a dry run only with `--screen`.
+- A block or an unavailable answer stops the payment, with the reason on screen: `payee_screening_blocked` (a listed trait, or `toxicScore` of 70 or more) or `payee_screening_unavailable` (404, no answer within 3 s, any other non-200, a body that is not the documented shape, or no key file; the same for `check-activity`). Nothing is paid in either case. The key is read from `~/.vet402/intercepta-sandbox-key.txt` (`INTERCEPTA_KEY_FILE` overrides the path) and goes only into the request header.
+- `toxicScore 0` with no traits is printed as `(no risk record)`, not as clean: a fresh address gets the same answer. For the payTo the demo then asks `check-activity`. `hasActivity: false` makes the payTo `unknown` (an unknown counterparty).
+- An unknown payTo: `pay` goes on only when the offer asks at most 0.01 USDC, and pays only when the ENS attestation is `VALID` (the `[U]` line gives that reason). Above 0.01 USDC it stops with `payee_unknown_needs_human`. `attester` does not buy from an unknown payTo unless `--allow-unknown` is given.
+- `src/attester.ts` uses the same module at its gate (3), before `payOrRefuse`, in every run (dry run included). `--no-screen` (dry run only) skips it, so the same command can be run without screening ("before") and with it ("after").
+- Answers (pass, block, unknown) are kept for 10 minutes on disk in `out/screening-cache.json`, shared by `pay` and `attester`, so repeated runs do not spend the 1,000-call quota. A line served from it ends with `(cached, asked HH:MM:SS UTC)`. Unavailable answers are not kept.
 - The `/tokyo` page and its API routes do not call Intercepta (`tests/tokyo-mutate.test.ts` checks this).
 - The payments here are on Base Sepolia. quick-scan takes no chain parameter, so the demo sends the same address, and the answer does not say which chain's history it used.
 
@@ -56,4 +59,6 @@ Notes from using the API:
 - The `traits` names come from a fixed list, so the blocking rule is a plain list in code. `known_scammer`, `sanction_address` and `blacklist` all came back in real answers (2026-09-25).
 - `traits[].txsCount` is marked required in the OpenAPI document, and it was not in the live answers (two calls, 2026-09-25). The demo reads it as optional.
 - A contract address answered 404 with no body (2026-09-24). The demo treats that as unavailable and does not pay.
-- A fresh address with only a few transactions (the demo's payer, 2026-09-25) came back as `toxicScore 0` with empty `traits`, the same shape as an address that was screened and found clean.
+- A fresh address with only a few transactions (the demo's payer, 2026-09-25) came back as `toxicScore 0` with empty `traits`, the same shape as an address that was screened and found clean. This is why the demo says "no risk record" and asks `check-activity` for the payTo.
+- `check-activity` (`/api/public/v1/.../check-activity?chainId=8453`) answered `{"hasActivity":false}` for seller-a.eth's payTo in about 1.4 s (one call, 2026-09-26). Its `chainId` list has Base mainnet (8453) but not Base Sepolia (84532), so the answer is about Base mainnet.
+- What was missing: the `chainId` list of Scan Message in the OpenAPI document has no 84532, so the demo could not have Intercepta check what the payer signs for a Base Sepolia payment (the EIP-3009 authorization). Only the addresses were screened.

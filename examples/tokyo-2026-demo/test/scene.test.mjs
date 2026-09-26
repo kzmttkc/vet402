@@ -142,17 +142,24 @@ function chainReader() {
     data: "0x" + word(10000), transactionHash: "0x" + "5e".repeat(32), blockNumber: 30_999_500n, logIndex: 0 };
   return { getChainId: async () => 84532, getBlockNumber: async () => 31_000_000n, getLogs: async () => [log] };
 }
-/** The real screening.ts over a fake Intercepta. */
+/** The real screening.ts over a fake Intercepta. routes["activity:" + addr] answers check-activity (default: active). */
 async function screener(routes) {
-  const { screenPayment, QUICK_SCAN_BASE } = await import("../src/screening.ts");
+  const { screenPayment, QUICK_SCAN_BASE, CHECK_ACTIVITY_BASE } = await import("../src/screening.ts");
   const hits = [];
+  const activityHits = [];
   const f = async (url) => {
+    if (url.startsWith(CHECK_ACTIVITY_BASE + "/") && url.includes("/check-activity?")) {
+      const addr = url.slice(CHECK_ACTIVITY_BASE.length + 1, url.indexOf("/check-activity?")).toLowerCase();
+      activityHits.push(addr);
+      const r = routes["activity:" + addr] ?? { status: 200, body: '{"hasActivity":true}' };
+      return { status: r.status, text: async () => r.body };
+    }
     const addr = url.slice(QUICK_SCAN_BASE.length + 1, -"/quick-scan".length).toLowerCase();
     hits.push(addr);
     const r = routes[addr] ?? { status: 200, body: '{"toxicScore":0,"traits":[]}' };
     return { status: r.status, text: async () => r.body };
   };
-  return { hits, screen: (a) => screenPayment(a, { fetch: f, readKey: () => "k", cache: new Map() }) };
+  return { hits, activityHits, screen: (a) => screenPayment(a, { fetch: f, readKey: () => "k", cache: new Map() }) };
 }
 
 async function pay({ name = "seller-a.eth", world, apiUrl = API, api = { status: 200, body: {} }, routes = {}, spyPay } = {}) {
@@ -170,7 +177,7 @@ async function pay({ name = "seller-a.eth", world, apiUrl = API, api = { status:
     chainReader: chainReader(), chainReaderCrossCheck: chainReader(), chainFromBlock: 30_999_000n,
     live: false, print: (l) => lines.push(l), ...(spyPay ? { payOrRefuse: spyPay } : {}),
   });
-  return { out, lines, text: lines.join("\n"), net, ensLog: log, payer, screenHits: s.hits };
+  return { out, lines, text: lines.join("\n"), net, ensLog: log, payer, screenHits: s.hits, activityHits: s.activityHits };
 }
 
 test("cut-vet402 (connection refused on 127.0.0.1): the SDK asks, gets no answer, and ALLOWs on the ENS proof up to the signature", async () => {
@@ -252,6 +259,60 @@ test("screening unavailable (Intercepta 503) -> REFUSE payee_screening_unavailab
   let sdkCalls = 0;
   const r = await pay({ routes: { [W_ENS.toLowerCase()]: { status: 503, body: "" } }, spyPay: async () => { sdkCalls++; throw new Error("no"); } });
   assert.deepEqual(r.out.reasons, ["payee_screening_unavailable"]);
+  assert.equal(sdkCalls, 0);
+});
+
+const UNKNOWN_ROUTE = { ["activity:" + W_ENS.toLowerCase()]: { status: 200, body: '{"hasActivity":false}' } };
+
+test("unknown payee (no risk record, no Base activity) at 0.01 USDC with a VALID attestation: ALLOW, and the [U] line says why", async () => {
+  const { startCut } = await import("../src/lib/scene.ts");
+  const cut = await startCut("refused");
+  let seen = null;
+  const { loadPaySdk } = await import("../src/lib/sdk.ts");
+  const real = (await loadPaySdk()).payOrRefuse;
+  const r = await pay({ apiUrl: cut.url, routes: UNKNOWN_ROUTE, spyPay: async (input) => { seen = input; return real(input); } });
+  await cut.close();
+  assert.equal(r.out.verdict, "ALLOW", r.text);
+  assert.equal(r.out.screening.verdict, "unknown");
+  assert.ok(r.lines.some((l) => l.includes("UNKNOWN: toxicScore 0 (no risk record), no activity on Base (chainId 8453): unknown payee")), r.text);
+  assert.ok(r.lines.some((l) => l.startsWith("[S] unknown") && l.includes("0.01 USDC (<= 0.01)")), r.text);
+  const u = r.lines.find((l) => l.startsWith("[U]"));
+  assert.match(u, /paying an unknown payee because the ENS attestation is VALID \(1\) and the amount 0\.01 USDC <= 0\.01 USDC/);
+  assert.ok(r.lines.findIndex((l) => l.startsWith("[E]")) < r.lines.findIndex((l) => l.startsWith("[U]")), r.text);
+  assert.equal(seen.policy.maxPerTxUsd, 0.01, "the ceiling is capped at 0.01 for an unknown payee (agent policy says 0.05)");
+  assert.equal(seen.payeeName, "seller-a.eth");
+  assert.deepEqual(r.activityHits, [W_ENS.toLowerCase()], "only the payTo is asked check-activity");
+  assert.equal(r.net.paid.length, 0);
+});
+
+test("unknown payee above 0.01 USDC: REFUSE payee_unknown_needs_human before any proof, policy or vet402 call", async () => {
+  const w = await ensWorld();
+  w.texts["seller-a.eth"][KEY_OFFER] = OFFER_1CHAR; // amount 10001
+  let sdkCalls = 0;
+  const r = await pay({ world: w, routes: UNKNOWN_ROUTE, spyPay: async () => { sdkCalls++; throw new Error("must not be called"); } });
+  assert.equal(r.out.verdict, "REFUSE", r.text);
+  assert.deepEqual(r.out.reasons, ["payee_unknown_needs_human"]);
+  assert.equal(r.out.stoppedAt, "screening");
+  assert.equal(sdkCalls, 0);
+  assert.equal(r.net.calls.length, 0);
+  assert.match(r.lines.at(-1), /^REFUSE payee_unknown_needs_human/);
+});
+
+test("unknown payee without an attestation: the ENS gate refuses, nothing is signed", async () => {
+  const w = await ensWorld();
+  delete w.texts["seller-a.eth"][KEY_ATST];
+  const r = await pay({ world: w, routes: UNKNOWN_ROUTE });
+  assert.equal(r.out.verdict, "REFUSE", r.text);
+  assert.ok(r.out.reasons.some((x) => x.startsWith("ens_")), r.text);
+  assert.ok(!r.lines.some((l) => l.startsWith("[U]")), r.text);
+  assert.equal(r.payer.asked.length, 0);
+});
+
+test("check-activity failing for the payTo is unavailable: REFUSE payee_screening_unavailable, the SDK is not called", async () => {
+  let sdkCalls = 0;
+  const r = await pay({ routes: { ["activity:" + W_ENS.toLowerCase()]: { status: 500, body: "" } }, spyPay: async () => { sdkCalls++; throw new Error("no"); } });
+  assert.deepEqual(r.out.reasons, ["payee_screening_unavailable"]);
+  assert.ok(r.lines.some((l) => l.includes("UNAVAILABLE: check-activity: HTTP 500")), r.text);
   assert.equal(sdkCalls, 0);
 });
 

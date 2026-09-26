@@ -1,6 +1,7 @@
 // Local env for the operator scripts (keys.ts, admin.ts).
 // Everything secret or deployment-specific (RPC URLs, private keys, API keys) comes from
-// examples/tokyo-2026-demo/.env.tokyo.local (mode 600, git-ignored). Nothing here has a default URL.
+// examples/tokyo-2026-demo/.env.tokyo.local (mode 600, git-ignored). The only default URLs here are the public
+// Sepolia pair of sepoliaRpcsOrPublic(), for commands that read or simulate only.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -66,6 +67,21 @@ export function sepoliaRpcs(): { read: string[]; sim: string[] } {
   const sim = [...new Set([...simEnv, ...read.filter(u => !NO_SIMULATE.some(r => r.test(u)))])];
   if (!sim.length) throw new Error('eth_simulateV1 を受ける Sepolia RPC が env に無い（ethpandaops は受けない）。ENS_SEPOLIA_RPC_URL か TOKYO_SIM_RPC_URL を足す');
   return { read, sim };
+}
+
+/** The public Sepolia pair that `run.ts verify` defaults to (two different providers). */
+export const PUBLIC_SEPOLIA_RPCS = ['https://sepolia.rpc.sentio.xyz', 'https://rpc.sepolia.ethpandaops.io'] as const;
+
+/**
+ * Like sepoliaRpcs(), but with no env it falls back to verify's public pair instead of stopping. For read-only
+ * and simulate-only commands (observe.ts --check / --dry-run). Anything that sends keeps using sepoliaRpcs().
+ */
+export function sepoliaRpcsOrPublic(): { read: string[]; sim: string[]; source: 'env' | 'public defaults' } {
+  if (['ENS_SEPOLIA_RPC_URL', 'ENS_SEPOLIA_RPC_URL_2', 'ENS_SEPOLIA_RPC_URL_3'].some(k => process.env[k])) return { ...sepoliaRpcs(), source: 'env' };
+  const read = [...PUBLIC_SEPOLIA_RPCS];
+  const simEnv = process.env.TOKYO_SIM_RPC_URL ? [process.env.TOKYO_SIM_RPC_URL] : [];
+  const sim = [...new Set([...simEnv, ...read.filter(u => !NO_SIMULATE.some(r => r.test(u)))])];
+  return { read, sim, source: 'public defaults' };
 }
 
 export const baseSepoliaRpc = (): string => requireEnv('BASE_SEPOLIA_RPC_URL', 'k1b の BS-01 / BS-02（Base Sepolia）に使う');
