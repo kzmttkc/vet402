@@ -107,6 +107,10 @@ export default async function TokyoPage({
             Run the seven steps
           </button>
         </form>
+        <p className="doc-p mt-2 text-sm text-brand-mist">
+          Names registered on the ENSv2 Sepolia deployment of 2026-09-15. The request is fixed to this demo&apos;s
+          seller route.
+        </p>
 
         <h2 className="sec-head">
           <span className="sec-no">1.</span>

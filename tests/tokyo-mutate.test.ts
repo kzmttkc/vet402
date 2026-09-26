@@ -118,6 +118,8 @@ type Fake = {
   /** 偽のチェーンの head。tx を1本送るごとに1つ進み、その tx はそのブロックに載る。 */
   head: { n: bigint };
   checks: { n: number };
+  /** ip_rate_limits の偽物（鍵 → 回数）。 */
+  buckets: Map<string, number>;
 };
 
 /** 偽のチェーンで読んだ seller-d.eth の7段（形は VerifyView）。 */
@@ -155,6 +157,8 @@ function makeFake(over: Partial<ButtonDeps> & { chainValue?: string; balance?: b
   };
   const log: LogRow[] = [];
   const daily = { count: 0 };
+  // ip_rate_limits の偽物。鍵ごとに数える。daily.count は全体の日次（tokyo-mutate-day:）の鍵だけを映す。
+  const buckets = new Map<string, number>();
   const writes: WriteRequest[] = [];
   const head = { n: 100n };
   const checks = { n: 0 };
@@ -216,15 +220,21 @@ function makeFake(over: Partial<ButtonDeps> & { chainValue?: string; balance?: b
         log.unshift({ at: new Date(clock.now).toISOString(), from, to, tx });
       },
       recentLog: async (limit) => log.slice(0, limit),
-      consumeDaily: async (_key, max) => (daily.count >= max ? null : ++daily.count),
-      peekDaily: async () => daily.count,
+      consumeDaily: async (key, max) => {
+        const cur = buckets.get(key) ?? 0;
+        if (cur >= max) return null;
+        buckets.set(key, cur + 1);
+        if (key.startsWith("tokyo-mutate-day:")) daily.count = cur + 1;
+        return cur + 1;
+      },
+      peekDaily: async (key) => buckets.get(key) ?? 0,
       consumeInterval: async () => true,
     },
     withLease: async (fn) => ({ acquired: true, value: await fn() }),
     now: () => clock.now,
   };
   Object.assign(deps, over);
-  return { deps, writes, chain, row, log, clock, daily, head, checks };
+  return { deps, writes, chain, row, log, clock, daily, head, checks, buckets };
 }
 
 const post = (path: string, body: string | null, headers: Record<string, string> = {}) =>
@@ -333,7 +343,9 @@ test("W03: 61 回目は 429 {error:\"daily_cap\", max:60}・署名しない", as
   const statuses: number[] = [];
   for (let i = 0; i < 61; i++) {
     const before = f.writes.length;
-    const r = await handleMutate(post("mutate", '{"to":"10001"}'), f.deps);
+    // IP ごとの上限（IP_DAILY_CAP）に先に当たらないよう、5 回ごとに別の IP から押す
+    const ip = { "x-vercel-forwarded-for": `198.51.100.${Math.floor(i / 5)}` };
+    const r = await handleMutate(post("mutate", '{"to":"10001"}', ip), f.deps);
     statuses.push(r.status);
     if (i === 60) {
       const j = await r.json();
@@ -1142,4 +1154,111 @@ test("tx がチェーン上で失敗（tx_reverted）したら、応答に理由
   // 画面はこの1行を出す（本文の message を notice へ）
   const panel = readFileSync(join(TOKYO_PAGE, "judge-panel.tsx"), "utf8");
   assert.match(panel, /j\.status === "tx_reverted"/);
+});
+
+// ============================================================ IP ごとの1日の上限（B11a）
+const IP_MSG = "This network has used its presses for today. Watch the recording, or try tomorrow.";
+const IP_DAY_KEY = /^tokyo-mutate-ipday:2026-09-27:[0-9a-f]{16}$/;
+
+/** 変える（10001）→ 戻す（reset）を1組押す。戻すのは次の押下が reverting_first にならないように。 */
+async function pressAndReset(f: Fake, headers: Record<string, string>): Promise<Response> {
+  const r = await handleMutate(post("mutate", '{"to":"10001"}', headers), f.deps);
+  if (r.status === 200) assert.equal((await handleReset(post("reset", '{"to":"10000"}', headers), f.deps)).status, 200);
+  return r;
+}
+
+test("IP の1日の上限: 同じ IP の6回目は 429 ip_daily_cap・署名0回・全体の回数を減らさない。別の IP は通る", async () => {
+  const f = makeFake();
+  const a = { "x-vercel-forwarded-for": "203.0.113.7" };
+  const b = { "x-vercel-forwarded-for": "203.0.113.8" };
+  for (let i = 0; i < 5; i++) assert.equal((await pressAndReset(f, a)).status, 200, `${i + 1} 回目`);
+  assert.equal(f.daily.count, 5);
+
+  const writesBefore = f.writes.length;
+  const sixth = await handleMutate(post("mutate", '{"to":"10001"}', a), f.deps);
+  assert.equal(sixth.status, 429);
+  const j = await sixth.json();
+  assert.equal(j.error, "ip_daily_cap");
+  assert.equal(j.max, 5);
+  assert.equal(j.message, IP_MSG);
+  assert.equal(f.writes.length, writesBefore, "署名0回");
+  assert.equal(f.daily.count, 5, "全体の 60 回を減らさない");
+
+  const other = await handleMutate(post("mutate", '{"to":"10001"}', b), f.deps);
+  assert.equal(other.status, 200, "別の IP は通る");
+  assert.equal(f.daily.count, 6);
+
+  const ipKeys = [...f.buckets.keys()].filter((k) => k.startsWith("tokyo-mutate-ipday:"));
+  assert.equal(ipKeys.length, 2, "IP ごとに別の鍵");
+  for (const k of ipKeys) {
+    assert.match(k, IP_DAY_KEY);
+    assert.ok(!k.includes("203.0.113"), "IP そのものを鍵に入れない");
+  }
+});
+
+test("IP の1日の上限: 戻す（reset と mutate の {\"to\":\"10000\"}）は数えず、上限に達した IP からも押せる", async () => {
+  const f = makeFake();
+  const a = { "x-vercel-forwarded-for": "203.0.113.7" };
+  const b = { "x-vercel-forwarded-for": "203.0.113.8" };
+  for (let i = 0; i < 5; i++) assert.equal((await pressAndReset(f, a)).status, 200);
+  const ipKeyOfA = [...f.buckets.keys()].find((k) => k.startsWith("tokyo-mutate-ipday:"))!;
+  assert.equal(f.buckets.get(ipKeyOfA), 5, "reset を5回押しても IP の回数は 5 のまま");
+
+  // B が変えた後、上限に達した A が戻せる（reset）
+  assert.equal((await handleMutate(post("mutate", '{"to":"10001"}', b), f.deps)).status, 200);
+  const reset = await handleReset(post("reset", '{"to":"10000"}', a), f.deps);
+  assert.equal(reset.status, 200);
+  assert.equal(f.chain.value, VALUES.off);
+
+  // mutate の {"to":"10000"} も同じ（戻すだけ）
+  f.clock.now += 21_000;
+  assert.equal((await handleMutate(post("mutate", '{"to":"10001"}', b), f.deps)).status, 200);
+  const back = await handleMutate(post("mutate", '{"to":"10000"}', a), f.deps);
+  assert.equal(back.status, 200);
+  assert.equal(f.chain.value, VALUES.off);
+  assert.equal(f.buckets.get(ipKeyOfA), 5);
+});
+
+test("IP の1日の上限: IP のヘッダが無い呼び手は全員で1つの鍵を共有する（6回目は 429）", async () => {
+  const f = makeFake();
+  for (let i = 0; i < 5; i++) assert.equal((await pressAndReset(f, {})).status, 200);
+  const r = await handleMutate(post("mutate", '{"to":"10001"}'), f.deps);
+  assert.equal(r.status, 429);
+  assert.equal((await r.json()).error, "ip_daily_cap");
+  // ヘッダのある呼び手は別の鍵なので通る
+  assert.equal((await handleMutate(post("mutate", '{"to":"10001"}', { "x-vercel-forwarded-for": "203.0.113.9" }), f.deps)).status, 200);
+});
+
+test("IP の1日の上限: UTC の日付が変われば数え直す", async () => {
+  const f = makeFake();
+  const a = { "x-vercel-forwarded-for": "203.0.113.7" };
+  for (let i = 0; i < 5; i++) assert.equal((await pressAndReset(f, a)).status, 200);
+  assert.equal((await handleMutate(post("mutate", '{"to":"10001"}', a), f.deps)).status, 429);
+  f.clock.now = Date.UTC(2026, 8, 28, 0, 0, 1);
+  assert.equal((await handleMutate(post("mutate", '{"to":"10001"}', a), f.deps)).status, 200);
+});
+
+test("IP の1日の上限: state は上限に達した呼び手にだけ理由の1行を返す（200 のまま）", async () => {
+  const f = makeFake();
+  const a = { "x-vercel-forwarded-for": "203.0.113.7" };
+  for (let i = 0; i < 5; i++) assert.equal((await pressAndReset(f, a)).status, 200);
+  const mine = await handleState(new Request("http://localhost/api/tokyo/state", { headers: a }), f.deps);
+  assert.equal(mine.status, 200);
+  const sm = await mine.json();
+  assert.equal(sm.canPress, false);
+  const blk = sm.blockers.find((x: { error: string }) => x.error === "ip_daily_cap");
+  assert.ok(blk, "ip_daily_cap の理由がある");
+  assert.equal(blk.message, IP_MSG);
+
+  const others = await handleState(new Request("http://localhost/api/tokyo/state", { headers: { "x-vercel-forwarded-for": "203.0.113.8" } }), f.deps);
+  const so = await others.json();
+  assert.equal(so.canPress, true);
+  assert.equal(so.blockers.length, 0);
+});
+
+test("IP の1日の上限: 画面の「戻す」ボタンは daily_cap と ip_daily_cap では止めない", () => {
+  const src = readFileSync(resolve("src/app/tokyo/judge-panel.tsx"), "utf8");
+  const line = src.split("\n").find((l) => l.includes("const resetBlocked"));
+  assert.ok(line, "resetBlocked の行がある");
+  assert.ok(line!.includes('"daily_cap"') && line!.includes('"ip_daily_cap"'), line);
 });

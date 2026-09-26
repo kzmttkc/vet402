@@ -4,7 +4,7 @@
 // 関門（PLAN_v4.3 §3.7.1）:
 //   W01 本文は {"to":"10001"} か {"to":"10000"} だけ。他は全部 400 {error:"invalid_body"}（入力を反射しない）
 //   W02 chainId は定数。サーバの RPC の getChainId() が違えば 503
-//   W03 1日 60 回（ip_rate_limits の1文 upsert）・runtime_flags.tokyo_button_halt・env "1" の保険
+//   W03 1日 60 回（ip_rate_limits の1文 upsert）・同じ IP から1日 5 回・runtime_flags.tokyo_button_halt・env "1" の保険
 //   W04 balance − 0.005 ETH ≥ PRESS_GAS × gasPrice × 3。満たさなければ 503、署名しない
 //   W05 mutate の先頭・state（90 秒以上・DB かチェーンがまだ戻っていないときだけ）・reset で ensureReverted
 //   W06 書き込みの4点（宛先・node・キー・値）は constants.ts の定数だけ
@@ -13,7 +13,7 @@
 import { formatEther } from "viem";
 import { logServerError } from "@/lib/util/log";
 import {
-  AFTER_WRITE_BUDGET_MS, AMOUNT, BALANCE_FLOOR_WEI, CHAIN_ID, DAILY_CAP, GAS_SAFETY, IP_INTERVAL_MS, KEY, NODE, P_D,
+  AFTER_WRITE_BUDGET_MS, AMOUNT, BALANCE_FLOOR_WEI, CHAIN_ID, DAILY_CAP, GAS_SAFETY, IP_DAILY_CAP, IP_INTERVAL_MS, KEY, NODE, P_D,
   PRESS_GAS, RESPONSE_DEADLINE_MS, SELLER_D, STATE_REVERT_AFTER_MS, VALUES, W_OP,
 } from "./constants";
 import { forgetVerified, rememberVerified } from "./cache";
@@ -39,6 +39,7 @@ const MESSAGES = {
   balance_unreadable: "The balance of the button's key could not be read.",
   state_unavailable: "The button's state table could not be read.",
   daily_cap: `Today's limit of ${DAILY_CAP} presses (UTC day) is used up.`,
+  ip_daily_cap: "This network has used its presses for today. Watch the recording, or try tomorrow.",
   too_fast: `Please wait ${IP_INTERVAL_MS / 1000} seconds between presses.`,
   busy: "Another press is being written right now. Try again in a few seconds.",
   revert_first: "The previous change could not be undone yet, so no new change was made.",
@@ -141,7 +142,10 @@ export async function txGates(deps: ButtonDeps): Promise<Gate> {
   return { ok: true, operator };
 }
 
-const dayKeyOf = (nowMs: number) => `tokyo-mutate-day:${new Date(nowMs).toISOString().slice(0, 10)}`;
+const utcDate = (nowMs: number) => new Date(nowMs).toISOString().slice(0, 10);
+const dayKeyOf = (nowMs: number) => `tokyo-mutate-day:${utcDate(nowMs)}`;
+/** IP ごとの1日の上限の鍵。日付は全体の上限と同じ UTC、IP は callerKey（sha256 の先頭 16 桁）。 */
+const ipDayKeyOf = (nowMs: number, caller: string) => `tokyo-mutate-ipday:${utcDate(nowMs)}:${caller}`;
 const nextUtcMidnight = (nowMs: number) => {
   const d = new Date(nowMs);
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1));
@@ -211,6 +215,7 @@ async function readOfferForState(deps: ButtonDeps, row: MutationRow | null): Pro
 
 type MutateOutcome =
   | { kind: "capped" }
+  | { kind: "ip_capped" }
   | { kind: "revert_blocked"; revert: RevertResult }
   | { kind: "reverting_first"; revert: RevertResult }
   | { kind: "tx_failed"; revert: RevertResult }
@@ -227,10 +232,18 @@ export async function handleMutate(request: Request, deps: ButtonDeps): Promise<
   const gate = await txGates(deps);
   if (!gate.ok) return json(gate.status, gate.body);
 
+  // 数えるのは「変える」だけ。戻す（{"to":"10000"}）は押した人の直前の変更を戻すものなので、間隔も IP の上限も当てない。
+  const caller = callerKey(request);
   try {
     await deps.store.ensureRow();
-    if (side === "on" && !(await deps.store.consumeInterval(`tokyo-mutate-ip:${callerKey(request)}`, IP_INTERVAL_MS))) {
-      return fail(429, "too_fast", { retryAfterSeconds: IP_INTERVAL_MS / 1000 });
+    if (side === "on") {
+      // 上限に達した IP は、リースも戻しも取らずにここで返す（署名 0 回）。数えるのはリースの中の1文。
+      if ((await deps.store.peekDaily(ipDayKeyOf(deps.now(), caller))) >= IP_DAILY_CAP) {
+        return fail(429, "ip_daily_cap", { max: IP_DAILY_CAP });
+      }
+      if (!(await deps.store.consumeInterval(`tokyo-mutate-ip:${caller}`, IP_INTERVAL_MS))) {
+        return fail(429, "too_fast", { retryAfterSeconds: IP_INTERVAL_MS / 1000 });
+      }
     }
   } catch (e) {
     logSafe("tokyo.mutate.store", e);
@@ -248,6 +261,11 @@ export async function handleMutate(request: Request, deps: ButtonDeps): Promise<
       if (revertTx(revert)) return { kind: "reverting_first", revert };
 
       const now = deps.now();
+      // IP の上限を全体の上限より先に数える（上限に達した IP が全体の 60 回を1回も減らさないように）。
+      // 同時に押されても越えないよう、比較は consumeDaily の1文の中（全体と同じ書き方）。
+      if ((await deps.store.consumeDaily(ipDayKeyOf(now, caller), IP_DAILY_CAP, nextUtcMidnight(now))) === null) {
+        return { kind: "ip_capped" };
+      }
       const pressesToday = await deps.store.consumeDaily(dayKeyOf(now), DAILY_CAP, nextUtcMidnight(now));
       if (pressesToday === null) return { kind: "capped" };
 
@@ -277,6 +295,8 @@ export async function handleMutate(request: Request, deps: ButtonDeps): Promise<
   switch (o.kind) {
     case "capped":
       return fail(429, "daily_cap", { max: DAILY_CAP });
+    case "ip_capped":
+      return fail(429, "ip_daily_cap", { max: IP_DAILY_CAP });
     case "revert_blocked":
       return fail(409, "revert_first", { revert: o.revert.status });
     case "reverting_first":
@@ -307,7 +327,16 @@ export async function handleMutate(request: Request, deps: ButtonDeps): Promise<
   }
 }
 
-/** POST /api/tokyo/reset — 10000 に戻す（時間の条件なし）。本文は {"to":"10000"} だけ。 */
+/**
+ * POST /api/tokyo/reset — 10000 に戻す（時間の条件なし）。本文は {"to":"10000"} だけ。
+ * IP の1日の上限にも 20 秒の間隔にも数えない。
+ *   - 資金: 戻す tx はチェーンが 10001 のときだけ出る。10001 にできるのは上限つきの mutate だけなので、
+ *     reset を何回叩いても戻す tx は「変えた回数」を越えない（戻す権利は claimRevert の1文で1つ）。
+ *   - 他人の REFUSE を消す連打: 押した人の画面は mutate の応答の check（受領のブロック以上で読んだ7段）を出す。
+ *     戻す tx はリースが空いてからしか出ず、その応答を読む前に次のブロックへ載る場合を除けば、後から戻されても
+ *     押した人の REFUSE は消えない。消えるのは他の来訪者が見る「今の値」で、それは 90 秒後に state が戻すのと同じ。
+ *     20 秒の間隔は、押されるたびに1回戻すだけの妨害を止められず、同じ回線の審査員の「戻す」だけを止める。
+ */
 export async function handleReset(request: Request, deps: ButtonDeps): Promise<Response> {
   const startedAt = deps.now();
   if (deps.envDisabled()) return fail(503, "button_disabled");
@@ -340,7 +369,7 @@ export async function handleReset(request: Request, deps: ButtonDeps): Promise<R
 }
 
 /** GET /api/tokyo/state — 画面が1発で引く現在値・直前の操作 10 件・押せない理由。 */
-export async function handleState(_request: Request, deps: ButtonDeps): Promise<Response> {
+export async function handleState(request: Request, deps: ButtonDeps): Promise<Response> {
   const blockers: Body[] = [];
   let gateOk = false;
   if (deps.envDisabled()) {
@@ -399,6 +428,13 @@ export async function handleState(_request: Request, deps: ButtonDeps): Promise<
     pressesToday = null;
   }
   if (pressesToday !== null && pressesToday >= DAILY_CAP) blockers.push(blocker("daily_cap", { max: DAILY_CAP }));
+  // この呼び手の IP が今日の上限に達していれば、押す前に理由の1行を出す（読めなければ出さない。mutate が数える）。
+  try {
+    const mine = await deps.store.peekDaily(ipDayKeyOf(deps.now(), callerKey(request)));
+    if (mine >= IP_DAILY_CAP) blockers.push(blocker("ip_daily_cap", { max: IP_DAILY_CAP }));
+  } catch {
+    // 読めないときは何も足さない（押せば mutate が1文で数えて止める）
+  }
 
   let log: Awaited<ReturnType<ButtonDeps["store"]["recentLog"]>> = [];
   try {

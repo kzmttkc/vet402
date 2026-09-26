@@ -111,8 +111,8 @@ export function JudgePanel() {
   if (!state) return <p className="doc-p text-brand-mist">Reading seller-d.eth from Sepolia…</p>;
 
   const changed = state.changedByButton;
-  // 1日の上限は「変える」だけを止める。戻すのは上限に関係なく押せる。
-  const resetBlocked = state.blockers.some((b) => b.error !== "daily_cap");
+  // 1日の上限（全体・IP ごと）は「変える」だけを止める。戻すのは上限に関係なく押せる。
+  const resetBlocked = state.blockers.some((b) => b.error !== "daily_cap" && b.error !== "ip_daily_cap");
   const failing = trace?.trace.find((s) => s.status === "fail");
   const note = changed && failing && Object.values(failing.detail).includes(SIGNER_MISMATCH) ? NOTE : null;
 

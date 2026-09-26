@@ -49,6 +49,12 @@ export const ATTESTATION_KEY = "attestations[x402-offer][atst.vet402.eth]" as co
 // ---- W03: 押下の上限と停止スイッチ ----
 /** 1日（UTC）に押せる回数。資金の実測から（§4）。 */
 export const DAILY_CAP = 60;
+/**
+ * 同じ IP（のハッシュ）から1日（UTC）に「変える」を押せる回数。1人が DAILY_CAP を使い切って
+ * 審査の時間を潰せないようにする（DAILY_CAP を使い切るには 12 個の IP が要る）。
+ * 戻す（reset・mutate の {"to":"10000"}）は押した人の直前の変更を戻すものなので数えない。
+ */
+export const IP_DAILY_CAP = 5;
 /** 同じ IP（のハッシュ）からの連打の間隔。関門には数えない。 */
 export const IP_INTERVAL_MS = 20_000;
 /** runtime_flags.name。止めるのは SQL 1文（§3.7.1「止め方」）。 */
