@@ -38,10 +38,12 @@ const ENS_ANCHORS: Anchor[] = [
 
 // Intercepta: the screening stage of `pay`.
 const INTERCEPTA_ANCHORS: Anchor[] = [
-  { label: 'The quick-scan request (the only place that calls the API)', file: 'examples/tokyo-2026-demo/src/screening.ts', pattern: 'const res = await doFetch(`${QUICK_SCAN_BASE}/${address}/quick-scan`' },
+  { label: 'The quick-scan request (screening.ts is the only file that calls the API)', file: 'examples/tokyo-2026-demo/src/screening.ts', pattern: 'const got = await getOnce(`${QUICK_SCAN_BASE}/${address}/quick-scan`' },
+  { label: 'No risk record on the payee: ask Check Address Activity on Base mainnet (chainId 8453)', file: 'examples/tokyo-2026-demo/src/screening.ts', pattern: 'const got = await getOnce(`${CHECK_ACTIVITY_BASE}/${q.address}/check-activity' },
   { label: 'The traits that block a payment on their own', file: 'examples/tokyo-2026-demo/src/screening.ts', pattern: 'export const BLOCKING_TRAITS' },
   { label: 'A 404 is "unavailable", and unavailable does not pay', file: 'examples/tokyo-2026-demo/src/screening.ts', pattern: 'if (got.status === 404) return unavailable(' },
   { label: 'pay screens the payTo and the payer before any proof is checked', file: 'examples/tokyo-2026-demo/src/lib/pay-flow.ts', pattern: 'screening = await i.screen({ payTo: offer.payTo, payer: i.payerAddress });' },
+  { label: 'An unknown payee above 0.01 USDC stops for a person', file: 'examples/tokyo-2026-demo/src/lib/pay-flow.ts', pattern: "return done({ verdict: 'REFUSE', reasons: ['payee_unknown_needs_human'], stoppedAt: 'screening'" },
   { label: 'A block or unavailable answer stops the payment there', file: 'examples/tokyo-2026-demo/src/lib/pay-flow.ts', pattern: "return done({ verdict: 'REFUSE', reasons: [r], stoppedAt: 'screening'" },
   { label: 'The /tokyo page and its API routes do not call Intercepta (test)', file: 'tests/tokyo-mutate.test.ts', pattern: 'test("/tokyo と /api/tokyo から Intercepta を呼ばない' },
 ];
