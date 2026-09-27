@@ -159,3 +159,31 @@ test("ポート違いは 1 売り手（独立レビュー 2026-09-28: api.verigr
   );
   assert.deepEqual(out.map((c) => c.id), ["p2", "q"], "verigrace は 1 件（最安 2000・同額なら id の小さい p2）");
 });
+
+test("retest（2026-09-28）: 同じ規則で選び、selection は retest。retest に入った売り手は census に入れない", async () => {
+  const retest = pickCensusRows([row("r1", "a.example:4449", "2000"), row("r2", "a.example:4450", "1000")], 40, new Set(), "retest");
+  assert.deepEqual(retest.map((c) => [c.id, c.selection]), [["r2", "retest"]], "ポート違いは 1 売り手・最安");
+  const census = await censusCandidates({
+    enabled: true,
+    perRun: 40 - retest.length,
+    excludeIds: new Set(retest.map((c) => c.id)),
+    excludeHosts: new Set(["a.example"]),
+    fetchCensus: async () => [row("c1", "a.example", "10"), row("c2", "b.example", "3000")],
+  });
+  assert.deepEqual(census.map((c) => [c.id, c.selection]), [["c2", "census"]], "a.example は retest 側に居るので census に二重に入らない");
+});
+
+test("retest と census は 1 バッチの上限（40）を分け合う", async () => {
+  let asked = -1;
+  const out = await censusCandidates({
+    enabled: true,
+    perRun: 40 - 38,
+    excludeIds: new Set(),
+    fetchCensus: async (limit) => {
+      asked = limit;
+      return [row("a", "a.example", "1"), row("b", "b.example", "2"), row("c", "c.example", "3")];
+    },
+  });
+  assert.equal(asked, 2);
+  assert.equal(out.length, 2);
+});

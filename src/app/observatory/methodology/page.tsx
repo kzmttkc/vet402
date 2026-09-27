@@ -527,9 +527,10 @@ export default async function ObservatoryMethodologyPage() {
           (a host name in the catalog, with the port ignored) that we have not yet bought from at
           all, with no purchase row of any status on any of its endpoints, goes ahead of the demand
           order. We buy from it once, using the listing whose catalog price is lowest among that
-          seller&apos;s listings with a Base USDC option (ties go to the lower internal id). That
-          catalog price is the amount we pay, because the payment is checked against it; a listing
-          with no such price, or one above the per-purchase ceiling, is not picked. At most{" "}
+          seller&apos;s listings that name Base first and offer Base USDC (ties go to the lower
+          internal id). That catalog price is the amount we pay, because the payment is checked
+          against it; a listing with no such price, or one above the per-purchase ceiling, is not
+          picked. At most{" "}
           {CENSUS_PER_RUN} such sellers enter a single run, placed after the per-chain lanes and
           after the priority hosts above, so both keep their place at the head. The aim is
           that each seller has one row of its own on the published ledger, which it can look up
@@ -537,6 +538,20 @@ export default async function ObservatoryMethodologyPage() {
           the per-chain lanes, the daily limit on first purchases, the reservation before signing
           and the stop switch all apply unchanged, and the result is published like any other
           purchase. After that one purchase, the seller is on the ordinary sweep.
+        </p>
+        <p className="doc-p">
+          <strong>A second try when the failure was ours: the retest.</strong> Since 2026-09-28, a
+          seller on Base whose most recent row failed for a reason on our side is bought from once
+          more, before any census entry and inside the same limits. Two reasons count as ours: our
+          payer wallet had run out of USDC (the rows held as <code>payer_unfunded</code>), or a paid
+          POST was refused with HTTP <code>400</code> before we began sending the request body the
+          seller declares, while the seller&apos;s current listing does declare one. A 400 from a
+          listing that declares no body is not treated as ours, and neither is a settled row or any
+          failure the seller&apos;s own answer explains. The listing is chosen as in the census:
+          one per seller, the lowest catalog price that names Base first, within the per-purchase
+          ceiling, and the census and the retest share the {CENSUS_PER_RUN}-seller limit of a run.
+          The aim is that no seller is judged, when this ledger is announced, on a failure it did
+          not cause. The earlier row stays published; the new one is added after it.
         </p>
         <p className="doc-p">
           <strong>settled</strong> — <em>vet402 re-read the transaction on-chain</em> and found

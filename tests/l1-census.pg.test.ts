@@ -132,6 +132,13 @@ if (!TEST_DB) {
     listings[listings.length - 1].catalogAccepts = [
       { scheme: "exact", maxAmountRequired: "500", asset: BASE_USDC, network: "base", payTo: listings[listings.length - 1].payTo },
     ];
+    // 出品の先頭が Base 以外（eip155:84532）で、2 番目に Base の USDC がある行。price_amount は先頭の額なので、
+    // Base で買うと売り手に落ち度が無いのに price_mismatch が載る——census は選ばない（2026-09-28 レビュー）。
+    add("https://censusg.example/sepolia-first", "100", 14);
+    listings[listings.length - 1].catalogAccepts = [
+      { amount: "100", asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e", network: "eip155:84532", payTo: listings[listings.length - 1].payTo },
+      { amount: "100", asset: BASE_USDC, network: "eip155:8453", payTo: listings[listings.length - 1].payTo },
+    ];
     // ポート違いの同じ売り手（1 売り手として 1 回だけ）と、ポート違いで試し済みの売り手（選ばない）。
     add("https://vg.example:4449/api", "3000", 11);
     add("https://vg.example:4450/api", "3000", 12);
@@ -148,6 +155,13 @@ if (!TEST_DB) {
 
     const challengeFor = (url: string) => {
       const l = byUrl.get(url)!;
+      // 先頭が Base 以外の行（censusg）は、壁もカタログと同じ accepts を出す（L0 はそれで合格する）。
+      if (l.catalogAccepts && l.catalogAccepts[0]?.network === "eip155:84532") {
+        return JSON.stringify({
+          x402Version: 2,
+          accepts: l.catalogAccepts.map((a) => ({ scheme: "exact", maxTimeoutSeconds: 300, extra: { name: "USD Coin", version: "2" }, ...a })),
+        });
+      }
       return JSON.stringify({
         x402Version: 2,
         accepts: [
@@ -265,11 +279,16 @@ if (!TEST_DB) {
       );
       assert.equal(paid.filter(isCensusHost).length, 4, "1 ホスト 1 件。$1 超の censusc と price_amount の無い censusf は選ばない");
       assert.ok(!paid.includes("https://censusf.example/v1"), "price_amount が null の v1 行は census に入らない（W2）");
+      assert.ok(!paid.includes("https://censusg.example/sepolia-first"), "出品の先頭が Base 以外の行は census に入らない（最安の 100 でも）");
+      const gL0 = rowsOf(
+        await db.execute(sql`SELECT verdict FROM x402_l0_probes WHERE endpoint_id = ${await idOf("https://censusg.example/sepolia-first")}::uuid ORDER BY probed_at DESC LIMIT 1`),
+      );
+      assert.equal(gL0[0]?.verdict, "pass", "除外は L0 のせいではない（L0 は合格している）");
       assert.ok(!paid.some((u) => u.includes("triedb.example")), "別の出品に行があるホストは選ばない");
       assert.ok(!paid.some((u) => u.includes("tp.example")), "ポート違いの出品に行があるホストも試し済み（選ばない）");
       assert.equal(paid.filter((u) => !isSol(u) && !isCensusHost(u)).length, 10, "主候補の LIMIT 10 は減らない（優先ホストを含む）");
       assert.equal(summary.censusCandidates, 4);
-      assert.equal(summary.censusRemaining, 6, "バッチ開始時の未購入 Base ホスト: censusa・c・d・e・f・vg（選べないものも含む）");
+      assert.equal(summary.censusRemaining, 7, "バッチ開始時の未購入 Base ホスト: censusa・c・d・e・f・g・vg（選べないものも含む）");
       assert.deepEqual(summary.laneFloor.solana, SOL_COUNT);
 
       const rows = await selectionRows();
@@ -295,8 +314,8 @@ if (!TEST_DB) {
       // 直前のサブテストの台帳を引き継ぐ（seed しない）。
       const w = wall();
       const summary = await run(w);
-      assert.equal(summary.censusCandidates, 0, "残りは $1 超の censusc と price_amount の無い censusf だけ");
-      assert.equal(summary.censusRemaining, 2);
+      assert.equal(summary.censusCandidates, 0, "残りは $1 超の censusc・price_amount の無い censusf・先頭が Base でない censusg だけ");
+      assert.equal(summary.censusRemaining, 3);
       // 試し済みになった censusa の残りの出品（p2・p3）は主候補として従来どおり需要順で買われうるが、
       // census の印は付かない（census は 1 ホスト 1 回）。
       const census = (await selectionRows()).filter((r) => r.selection === "census");

@@ -40,6 +40,7 @@ const HALTED: L1BatchSummary = {
   xrplFeeOverCap: 0,
   xrplLaneClosed: null,
   censusCandidates: 7,
+  retestCandidates: 3,
   censusRemaining: 612,
 };
 
@@ -58,6 +59,7 @@ test("publicL1Summary は census の 2 つ（censusCandidates・censusRemaining�
   const out = publicL1Summary(HALTED) as Record<string, unknown>;
   assert.equal("censusCandidates" in out, false);
   assert.equal("censusRemaining" in out, false);
+  assert.equal("retestCandidates" in out, false);
 });
 
 test("公開口の応答（L1 OFF の実走）に haltReason の鍵が存在しない", async () => {
