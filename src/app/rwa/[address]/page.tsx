@@ -33,11 +33,18 @@ export async function generateMetadata({ params }: { params: Promise<{ address: 
   };
 }
 
-function Busy({ retryAfterSec }: { retryAfterSec: number }) {
+function Busy({ retryAfterSec, reason }: { retryAfterSec: number; reason: "busy" | "timeout" | "limited" }) {
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <h1 className="text-xl font-semibold">vet402 /rwa</h1>
-      <p className="mt-4">Another reconstruction is running. Please reload in about {retryAfterSec} seconds.</p>
+      <p className="mt-4">
+        {reason === "busy"
+          ? "Another reconstruction is running."
+          : reason === "timeout"
+            ? "Reading the chain took too long this time."
+            : "Too many requests from this network."}{" "}
+        Please reload in about {retryAfterSec} seconds.
+      </p>
     </main>
   );
 }
@@ -48,14 +55,15 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
 
   const ip = getClientIp(new Request("http://localhost", { headers: await headers() })) ?? "unknown";
   const limited = await consumeIpRateLimit(`rwa-page:${ip}`, 10, 60_000);
-  if (!limited.allowed) return <Busy retryAfterSec={limited.retryAfter ?? 60} />;
+  if (!limited.allowed) return <Busy retryAfterSec={limited.retryAfter ?? 60} reason="limited" />;
 
   let facts: RwaFacts;
   try {
     facts = await cachedFacts(address);
   } catch (err) {
     if (err instanceof NoStockTokenActivity) notFound();
-    if (err instanceof TooBusy || err instanceof ReconstructionTimeout) return <Busy retryAfterSec={err.retryAfterSec} />;
+    if (err instanceof TooBusy) return <Busy retryAfterSec={err.retryAfterSec} reason="busy" />;
+    if (err instanceof ReconstructionTimeout) return <Busy retryAfterSec={err.retryAfterSec} reason="timeout" />;
     return (
       <main className="mx-auto max-w-3xl px-6 py-12">
         <h1 className="text-xl font-semibold">vet402 /rwa</h1>
@@ -81,22 +89,22 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
       <table className="mt-2 w-full text-sm">
         <thead>
           <tr className="text-left">
-            <th className="py-1">Token</th>
-            <th className="py-1">Shares</th>
-            <th className="py-1">USD</th>
-            <th className="py-1">Feed time (UTC)</th>
-            <th className="py-1">stale</th>
-            <th className="py-1">weekend</th>
+            <th className="py-1 pr-6">Token</th>
+            <th className="py-1 pr-6">Shares</th>
+            <th className="py-1 pr-6">USD</th>
+            <th className="py-1 pr-6">Feed time (UTC)</th>
+            <th className="py-1 pr-6">stale</th>
+            <th className="py-1 pr-6">weekend</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td className="py-1">{t.symbol}</td>
-            <td className="py-1 font-mono">{t.shares_ui}</td>
-            <td className="py-1 font-mono">{t.usd ?? "not shown: the price feed is stale"}</td>
-            <td className="py-1 font-mono">{t.feed_updated_at}</td>
-            <td className="py-1">{String(t.stale)}</td>
-            <td className="py-1">{String(t.weekend)}</td>
+            <td className="py-1 pr-6">{t.symbol}</td>
+            <td className="py-1 pr-6 font-mono">{t.shares_ui}</td>
+            <td className="py-1 pr-6 font-mono">{t.usd ?? "not shown: the price feed is stale"}</td>
+            <td className="py-1 pr-6 font-mono">{t.feed_updated_at}</td>
+            <td className="py-1 pr-6">{String(t.stale)}</td>
+            <td className="py-1 pr-6">{String(t.weekend)}</td>
           </tr>
         </tbody>
       </table>
