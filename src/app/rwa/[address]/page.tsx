@@ -28,7 +28,7 @@ export async function generateMetadata({ params }: { params: Promise<{ address: 
   const { address } = await params;
   return {
     title: `vet402 /rwa — ${address.slice(0, 10)}…`,
-    description: "このアドレスの Stock Token 実績を、公開データから再構成した記録です。",
+    description: "A Stock Token track record rebuilt from public Robinhood Chain data. Not investment advice.",
     robots: { index: false },
   };
 }
@@ -37,7 +37,7 @@ function Busy({ retryAfterSec }: { retryAfterSec: number }) {
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <h1 className="text-xl font-semibold">vet402 /rwa</h1>
-      <p className="mt-4">再構成が立て込んでいます。{retryAfterSec} 秒ほど置いてから開き直してください。</p>
+      <p className="mt-4">Another reconstruction is running. Please reload in about {retryAfterSec} seconds.</p>
     </main>
   );
 }
@@ -59,7 +59,7 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
     return (
       <main className="mx-auto max-w-3xl px-6 py-12">
         <h1 className="text-xl font-semibold">vet402 /rwa</h1>
-        <p className="mt-4">チェーンの読み取りに失敗しました。しばらくしてから開き直してください。</p>
+        <p className="mt-4">Reading the chain failed. Please reload in a minute.</p>
       </main>
     );
   }
@@ -71,16 +71,20 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
     <main className="mx-auto max-w-3xl px-6 py-12">
       <h1 className="text-xl font-semibold">vet402 /rwa</h1>
       <p className="mt-2 break-all font-mono text-sm">{shown}</p>
+      <p className="mt-2 text-sm">
+        This Stock Token track record is rebuilt from public Robinhood Chain data: the token&apos;s transfers,
+        Uniswap swaps checked against the official factory, and the Chainlink price feed. Nothing here is self-reported.
+      </p>
       <p className="mt-1 text-sm">identity_binding: {facts.identity_binding}</p>
 
-      <h2 className="mt-8 text-lg font-semibold">正本残高</h2>
+      <h2 className="mt-8 text-lg font-semibold">Canonical balance</h2>
       <table className="mt-2 w-full text-sm">
         <thead>
           <tr className="text-left">
-            <th className="py-1">トークン</th>
-            <th className="py-1">株数</th>
+            <th className="py-1">Token</th>
+            <th className="py-1">Shares</th>
             <th className="py-1">USD</th>
-            <th className="py-1">feed 時刻 (UTC)</th>
+            <th className="py-1">Feed time (UTC)</th>
             <th className="py-1">stale</th>
             <th className="py-1">weekend</th>
           </tr>
@@ -89,7 +93,7 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
           <tr>
             <td className="py-1">{t.symbol}</td>
             <td className="py-1 font-mono">{t.shares_ui}</td>
-            <td className="py-1 font-mono">{t.usd ?? "—（feed が古いため出しません）"}</td>
+            <td className="py-1 font-mono">{t.usd ?? "not shown: the price feed is stale"}</td>
             <td className="py-1 font-mono">{t.feed_updated_at}</td>
             <td className="py-1">{String(t.stale)}</td>
             <td className="py-1">{String(t.weekend)}</td>
@@ -99,25 +103,25 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
 
       {facts.realized_usd !== null && (
         <>
-          <h2 className="mt-8 text-lg font-semibold">実現損益</h2>
+          <h2 className="mt-8 text-lg font-semibold">Realized PnL</h2>
           <p className="mt-2 font-mono text-sm">{facts.realized_usd} USD</p>
           <p className="mt-1 text-sm">
-            FIFO で、売った分に対応する買いの原価を古い順に当てた結果です（{facts.realized_status}）。
-            {facts.realized_status === "partial" && "原価の分からない口が混ざっているため、その分は含めていません。"}
+            First in, first out: each sale is matched against the oldest purchase still held ({facts.realized_status}).
+            {facts.realized_status === "partial" && " Some tokens arrived without a known cost, so those sales are left out rather than guessed."}
           </p>
         </>
       )}
 
-      <h2 className="mt-8 text-lg font-semibold">再構成の状態</h2>
+      <h2 className="mt-8 text-lg font-semibold">Reconstruction status</h2>
       <p className="mt-2 text-sm">r1_status: {facts.r1_status}</p>
       <p className="mt-1 text-sm">
         events_summary: transfer {facts.events_summary.transfer} / univ3 {facts.events_summary.univ3} / univ4{" "}
         {facts.events_summary.univ4} / other_unparsed {facts.events_summary.other_unparsed}
       </p>
-      <p className="mt-1 text-sm">as_of: {facts.as_of}（block {facts.as_of_block}）・method {facts.method_version}</p>
+      <p className="mt-1 text-sm">as_of: {facts.as_of} (block {facts.as_of_block}) · method {facts.method_version}</p>
       {facts.gaps.length > 0 && <p className="mt-1 text-sm">gaps: {facts.gaps.join(", ")}</p>}
 
-      <h2 className="mt-8 text-lg font-semibold">証拠</h2>
+      <h2 className="mt-8 text-lg font-semibold">Evidence (transactions)</h2>
       <ul className="mt-2 max-h-64 overflow-y-auto text-sm">
         {facts.evidence.txs.map((tx) => (
           <li key={tx} className="font-mono">
@@ -138,8 +142,8 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
       </p>
 
       <p className="mt-8 text-sm">
-        このアドレスの Stock Token 実績を、公開データから再構成した記録です。投資助言ではありません。Stock Token
-        の取得・売却・委任を勧めるものではありません。
+        Reconstruction of public chain data. Not investment advice. Not an offer of Stock Tokens, and not a
+        recommendation to acquire, sell or delegate them.
       </p>
     </main>
   );

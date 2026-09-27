@@ -409,6 +409,8 @@ RPC: `https://rpc.mainnet.chain.robinhood.com`。失敗時だけ予備（実装�
 
 禁止語（公開面）: 預けてよいか、おすすめ、安全、利回り、勝ち続け。
 
+改正（patch 014・2026-09-28 Takeshi「vet402 は X 投稿も含めて全て英語で運用している」）: **公開面の文言は英語にする。** 上の日本語の固定文は、同じ意味の英語 "Reconstruction of public chain data. Not investment advice. Not an offer of Stock Tokens, and not a recommendation to acquire, sell or delegate them." に置き換える。禁止語は英語の同じ意味の語に読み替える（"safe to deposit"・"recommended"・"safe"・"yield"・"keeps winning" を公開面に出さない。免責文の否定形 "not a recommendation" は除く）。表示するものと表示しないもの（ALLOW/WARN/BLOCK・CTA・ランキングを出さない）は変えない。
+
 ---
 
 ## 11. ゴールデン
