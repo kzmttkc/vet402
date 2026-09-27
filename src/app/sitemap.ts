@@ -48,6 +48,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
     // 2026-08-14: operator-log は公開頁（200）で robots も許可済みだが sitemap に
     // 抜けていた。corrections と同じ「公開していること自体が内容」の帳簿。
     { url: `${SITE_URL}/operator-log`, lastModified: SITE_REVISION, changeFrequency: "weekly", priority: 0.5 },
+    // 2026-09-28: 売り手がドメインで自分の購入結果を探す入口。方法論から内部リンクがある。
+    // 個々の /sellers/:host は /observatory/e/:id と同じ理由（数が動く）で列挙しない。
+    { url: `${SITE_URL}/sellers`, lastModified: "2026-09-28", changeFrequency: "daily", priority: 0.7 },
+    { url: `${SITE_URL}/sellers/fix-first`, lastModified: "2026-09-28", changeFrequency: "daily", priority: 0.6 },
     { url: `${SITE_URL}/faq`, lastModified: REV_2026_09_05, changeFrequency: "monthly", priority: 0.7 },
     // 2026-09-02 敵対的監査: 公開・robots 許可・内部リンクありの 4 頁が sitemap に無かった。
     // /demo /live /partners は入れない —— 内部リンクが 0 本の孤立頁で、sitemap に載せると

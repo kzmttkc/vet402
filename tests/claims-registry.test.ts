@@ -484,6 +484,8 @@ function publicSurfaces(): string[] {
   // 素通りする経路ができる。lib 全体を歩くとコードで溢れるため、公開面を
   // 描画するこの 1 本だけを名指しで足す。同種のモジュールを作ったらここに足す。
   out.push(relative(ROOT, join(ROOT, "src/lib/observatory/vocabulary.ts")));
+  // 2026-09-28: /sellers の失敗の分類表。各種類の「What we saw」「What to fix」を頁にそのまま出す。
+  out.push(relative(ROOT, join(ROOT, "src/lib/sellers/fix-modes.ts")));
   return out.sort();
 }
 
@@ -554,6 +556,9 @@ const DETECTION_FLOOR: Record<string, number> = {
   "src/app/status/page.tsx": 7,
   "src/components/site/faq-data.ts": 15,
   "src/lib/observatory/vocabulary.ts": 15,
+  // 2026-09-28: /sellers の 5 面（src/app/sellers/**/page.tsx・src/components/site/sellers/SellersViews.tsx・
+  // src/lib/sellers/fix-modes.ts）は断定語を使わずに書いたので検出が 0 件。床を 0 で書いても何も守らないので置かない。
+  // 事実の主張は docs/claims.yaml に sellers_* として引用で登録してある（引用が面から消えたら「every registered quote」が赤）。
 };
 const TOTAL_DETECTION_FLOOR = 300;
 

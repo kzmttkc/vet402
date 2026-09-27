@@ -307,6 +307,18 @@ export default async function ObservatoryMethodologyPage() {
           </Link>
           .
         </p>
+        {/* 2026-09-28: 売り手がドメインで自分の行を探す入口（/sellers）。分類の正典は src/lib/sellers/fix-modes.ts。 */}
+        <p className="doc-p">
+          A seller on Base can look up its own purchase rows by domain at{" "}
+          <Link href="/sellers" className="underline">
+            /sellers
+          </Link>
+          , with what we saw, what to fix and whose side each failure was on;{" "}
+          <Link href="/sellers/fix-first" className="underline">
+            /sellers/fix-first
+          </Link>{" "}
+          groups the failures by kind.
+        </p>
         {/* 2026-09-21: 宣言クエリ（declared-input.ts の declaredRequestUrl・2026-09-20 に main へ）。
             上の宣言本文と同じ粒度・同じ節に置く。**どのチェーンで有効かは手書きしない**——
             許可リスト（OBSERVATORY_L1_DECLARED_QUERY_NETWORKS）で決まるので、「XRPL だけ」と

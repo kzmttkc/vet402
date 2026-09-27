@@ -1814,3 +1814,61 @@ claims:
     check: null
     why_unverifiable: "外部コントラクト（Base 上の ERC-8004 Validation Registry）の呼び出し規則なので、vet402 の公開 GET には出ない。14 回の revert は同じ段落に日付つきで書いてあり、Base のトランザクション履歴で誰でも確かめられる"
     verified_at: 2026-09-19
+  # 2026-09-28: /sellers（売り手がドメインで自分の購入結果を探す頁）。分類の正典は src/lib/sellers/fix-modes.ts。
+  # 断定語（every / all / only / daily …）を使わずに書いたので抽出器の検出は 0 件だが、事実の主張は在るので登録する。
+  - id: sellers_payer_unfunded_window
+    surface: src/lib/sellers/fix-modes.ts
+    quote: "vet402's Base payer wallet had run out of USDC"
+    means: "2026-09-13 00:00〜2026-09-15 23:49 UTC に Base の購入元の USDC が尽きており、その期間に売り手が 402 / 5xx で断った行は vet402 の側（payer_unfunded）として出す"
+    check: null
+    why_unverifiable: "期間は過去で固定。規則は src/lib/observatory/delivery.ts の PAYER_UNFUNDED_WINDOWS（export.csv の held_reason 列と同じ）で、tests/sellers-fix-modes.test.ts が heldReasonOf と一致することを固定する"
+    verified_at: 2026-09-28
+  - id: sellers_body_not_sent_before_cutover
+    surface: src/lib/sellers/fix-modes.ts
+    quote: "vet402 sent an empty JSON body on paid POST requests, even when the listing declares a body"
+    means: "2026-09-16 23:25:55Z（宣言本文を送る実装の本番反映）より前の有料 POST は、売り手が本文を宣言していても {} を送っていた。その期間に決済されず 400/422 で断られ、今のカタログが本文を宣言している POST の行は vet402 の側（body_not_sent）"
+    check: null
+    why_unverifiable: "時刻は過去で固定。境界は fix-modes.ts の DECLARED_BODY_SENT_SINCE と isBodyNotSent（l1-runner の retest の (b) と同じ条件）で、tests/sellers-fix-modes.test.ts が境界の両側を固定する。台帳でも requestBody の記録の有無で誰でも確かめられる"
+    verified_at: 2026-09-28
+  - id: sellers_sends_declared_input
+    surface: src/lib/sellers/fix-modes.ts
+    quote: "vet402 sends the body and query the listing declares, and an empty JSON body when it declares none"
+    means: "有料の要求には、売り手の出品が宣言した本文・クエリを載せ、宣言が無ければ {} を送る（2026-09-17 以降の本文・2026-09-21 以降のクエリ）"
+    check: null
+    why_unverifiable: "公開 GET は送った本文を返さない（SHA-256 だけ）。export.csv の request_body / request_query 列で行ごとに確かめられる。実装は src/lib/observatory/declared-input.ts"
+    verified_at: 2026-09-28
+  - id: sellers_pays_declared_price
+    surface: src/lib/sellers/fix-modes.ts
+    quote: "vet402 pays the declared price, so it did not sign"
+    means: "402 の金額がカタログの宣言額と違えば署名しない（price_mismatch）"
+    check: null
+    why_unverifiable: "拒否は署名の前に起きるので金額の記録しか残らない。export.csv の status 列の price_mismatch（spent_units 0）で確かめられる。関門は l1-runner の選択の段"
+    verified_at: 2026-09-28
+  - id: sellers_retest_rebuy
+    surface: src/components/site/sellers/SellersViews.tsx
+    quote: "vet402 buys from that seller again and adds the new row here"
+    means: "売り手の最新の行が vet402 の側（残高切れ・宣言本文を送っていなかった期間の 400/422）で失敗していたら、retest でその売り手をもう一度買い、新しい行を古い行の横に足す（古い行は消さない）"
+    check: null
+    why_unverifiable: "retest は l1-runner の RETEST_SELLERS_SQL（census-fair-0928）で、旗 OBSERVATORY_L1_CENSUS が on のときだけ働く。買い直した行は raw_response_meta.selection = retest を持ち、この頁の行に [retest] と出る。公開 GET は選び方を返さない"
+    verified_at: 2026-09-28
+  - id: sellers_held_rows_not_counted
+    surface: src/components/site/sellers/SellersViews.tsx
+    quote: "is not counted against the seller in the"
+    means: "held_reason の付いた行（settled_4xx / unsettled_4xx / payer_unfunded）は、delivered の分母に売り手の不履行として入らない"
+    check: null
+    why_unverifiable: "件数は 30 日窓で動く。規則は delivery.ts の heldReasonOf / heldReasonSql で、tests/l1-held-rows.pg.test.ts が JS と SQL と公開面の一致を固定する"
+    verified_at: 2026-09-28
+  - id: sellers_delivered_definition
+    surface: src/components/site/sellers/SellersViews.tsx
+    quote: "means vet402 confirmed the USDC transfer on-chain and the paid request answered 2xx"
+    means: "delivered は settled（オンチェーンで転送を読み直した）かつ有料の要求が 2xx。delivery.ts の isDelivered と同じ"
+    check: null
+    why_unverifiable: "定義の宣言。src/lib/observatory/delivery.ts の isDelivered が正典で、tests/sellers-fix-modes.test.ts が分類の delivered をそれに揃える"
+    verified_at: 2026-09-28
+  - id: sellers_numbers_read_from_db
+    surface: src/components/site/sellers/SellersViews.tsx
+    quote: "Read from the database"
+    means: "/sellers の件数は描画のたびに台帳（DB）から出し、頁は DB を読んだ時刻を出す。同じ読み取りを最大 PUBLIC_READ_REVALIDATE 秒使い回す"
+    check: null
+    why_unverifiable: "HTML 頁で JSON を返さない。読み取りは src/lib/sellers/cached.ts（unstable_cache・PUBLIC_READ_REVALIDATE）と reader.ts で、tests/sellers-views.test.ts が取得時刻の表示を、tests/sellers-reader.pg.test.ts が読み取りを固定する"
+    verified_at: 2026-09-28
