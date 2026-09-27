@@ -7,7 +7,7 @@
 #   bash scripts/push-main.sh [--full] [--dry-run] [--no-wait]
 #
 #   --full     also run root `npm test` (TEST_DATABASE_URL unset) and require
-#              the four `ℹ fail 0` lines (root / sdk / middleware / mcp)
+#              the five `ℹ fail 0` lines (root / sdk / middleware / mcp / rwa)
 #   --dry-run  `git push --dry-run`; nothing leaves this machine, no CI wait
 #   --no-wait  push, but do not wait for the `ci` workflow (gh not required)
 #
@@ -171,13 +171,13 @@ if [ "$FULL" -eq 1 ]; then
   NT=$?
   ZERO=$(grep -cE '^ℹ fail 0$' "$LOGDIR/npm-test.log")
   RED=$(grep -cE '^ℹ fail [1-9]' "$LOGDIR/npm-test.log")
-  if [ "$NT" -ne 0 ] || [ "$RED" -ne 0 ] || [ "$ZERO" -ne 4 ]; then
+  if [ "$NT" -ne 0 ] || [ "$RED" -ne 0 ] || [ "$ZERO" -ne 5 ]; then
     grep -E '^ℹ (pass|fail) ' "$LOGDIR/npm-test.log" | sed 's/^/  | /'
     tail -20 "$LOGDIR/npm-test.log" | sed 's/^/  | /'
-    fail "root: npm test" "$S" "exit $NT, 'ℹ fail 0' x$ZERO (need 4), red suites $RED — not pushing"
+    fail "root: npm test" "$S" "exit $NT, 'ℹ fail 0' x$ZERO (need 5), red suites $RED — not pushing"
   fi
-  echo "ok    root: npm test — 4 suites, all 'ℹ fail 0'"
-  record "root: npm test" 0 "$S" "4/4 fail 0"
+  echo "ok    root: npm test — 5 suites, all 'ℹ fail 0'"
+  record "root: npm test" 0 "$S" "5/5 fail 0"
 fi
 
 # ---------------------------------------------------------------- 4. push (+ shared tree)
