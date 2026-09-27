@@ -162,8 +162,10 @@ export type L1BatchSummary = {
    */
   censusCandidates: number;
   /**
-   * バッチ開始時点で、L1 の購入行がまだ 1 件も無い Base のホスト（active で Base の accept を持つ行の
-   * ホスト）の数。旗が無い日と、読めなかった日は null（0 と混ぜない）。
+   * バッチ開始時点の、未購入の Base ホスト数: active で Base の accept を持つ行のホスト名（ポート無視）のうち、
+   * L1 の購入行がまだ 1 件も無いもの。$1 超の出品しか無い・L0 不合格・price_amount が無いなど、census が
+   * 選べないホストも含む（＝census の残り件数ではなく、まだ 1 行も無い売り手の数）。
+   * 旗が無い日と、読めなかった日は null（0 と混ぜない）。
    */
   censusRemaining: number | null;
 };
@@ -518,16 +520,23 @@ const firstPurchasesTodayCountSql = () => sql`(
   )`;
 
 /**
- * census（2026-09-28）の「売り手」の単位＝ホスト。resource_key は host+path に正規化済み
- * （catalog-source normalizeResourceKey）なので、最初の `/` の前を小文字で取る（concentration.ts・
- * graph.ts と同じ切り方）。
+ * census（2026-09-28）の「売り手」の単位＝ホスト名。resource_key は host+path に正規化済み
+ * （catalog-source normalizeResourceKey）なので、最初の `/` の前を取り、末尾の `:ポート` を落として
+ * 小文字にする（独立レビュー 2026-09-28: 本番では api.verigrace.com:4449/4450/4451 が 3 つの売り手として
+ * 数えられ 3 回買われるところだった）。JS 側の censusHostOf と同じ規則。
  */
-const CENSUS_HOST_SQL = sql`lower(split_part(e.resource_key, '/', 1))`;
+const censusHostSql = (resourceKey: SQL) => sql`lower(regexp_replace(split_part(${resourceKey}, '/', 1), ':[0-9]+$', ''))`;
+const CENSUS_HOST_SQL = censusHostSql(sql`e.resource_key`);
 
-/** L1 の購入行が 1 件でもあるホスト（status を問わない）。NOT IN の相手。resource_key は NOT NULL。 */
+/** L1 の購入行が 1 件でもあるホスト名（status を問わない・ポート違いも同じ売り手）。NOT IN の相手。resource_key は NOT NULL。 */
 const CENSUS_TRIED_HOSTS_SQL = sql`
-  SELECT lower(split_part(te.resource_key, '/', 1))
+  SELECT ${censusHostSql(sql`te.resource_key`)}
   FROM x402_l1_purchases tp JOIN x402_endpoints te ON te.id = tp.endpoint_id`;
+
+/** census の売り手の単位（SQL の censusHostSql と同じ規則: 小文字・末尾の `:ポート` を落とす）。 */
+export function censusHostOf(host: string): string {
+  return host.toLowerCase().replace(/:[0-9]+$/, "");
+}
 
 function unitsToUsd(units: bigint): number {
   return Number(units) / USDC_PER_USD;
@@ -1059,17 +1068,20 @@ export async function runL1Batch(
       ORDER BY probed_at DESC LIMIT 1
     ) lp ON lp.verdict = 'pass'
     ${
-      // census の値段（2026-09-28）: その行が宣言した Base の USDC accept のうち、いちばん安い額（基本単位）。
-      // v1 の maxAmountRequired も読む。数字として読めない額・0 は数えない（CASE の中でだけ numeric へ落とす
-      // ——WHERE の AND は評価順を保証しないので、壊れた額で文全体を落とさない）。
+      // census の値段（2026-09-28・独立レビュー W2 で改訂）: **実際に払う額**＝e.price_amount（カタログの
+      // accepts[0].amount）。selectAccept が壁の accept と照合するのはこの宣言額なので、raw_accepts の別の
+      // accept の方が安くても、その額では払わない（本番 437 件中 18 件で食い違っていた: 並べた 24 units・
+      // 払う 200 units）。price_amount が null の行（v1 の maxAmountRequired だけの行）は census に入れない。
+      // 数字として読めない額・0 は数えない（CASE の中でだけ numeric へ落とす——WHERE の AND は評価順を
+      // 保証しないので、壊れた額で文全体を落とさない）。has_base は Base の USDC accept の宣言があるか。
       census
         ? sql`CROSS JOIN LATERAL (
-      SELECT min(CASE WHEN ca.amt ~ '^[0-9]{1,30}$' THEN nullif(ca.amt::numeric, 0) END) AS census_price
-      FROM (
-        SELECT coalesce(x->>'amount', x->>'maxAmountRequired') AS amt, x->>'network' AS net, lower(x->>'asset') AS asset
-        FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE '[]'::jsonb END) x
-      ) ca
-      WHERE ca.net IN (${BASE_CAIP2}, 'base') AND ca.asset = ${BASE_USDC.toLowerCase()}
+      SELECT CASE WHEN e.price_amount ~ '^[0-9]{1,30}$' THEN nullif(e.price_amount::numeric, 0) END AS census_price,
+             EXISTS (
+               SELECT 1
+               FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE '[]'::jsonb END) x
+               WHERE x->>'network' IN (${BASE_CAIP2}, 'base') AND lower(x->>'asset') = ${BASE_USDC.toLowerCase()}
+             ) AS has_base
     ) cp`
         : sql``
     }
@@ -1111,11 +1123,12 @@ export async function runL1Batch(
           : sql``
       }
       ${
-        // census（2026-09-28）: (1) Base の USDC accept が $1 以下で宣言されている、(2) 購入の経路が別に
-        // 分かれる主ネットワーク（Solana・Tempo・XRPL——purchaseOne が candidate.network の完全一致で
-        // 分岐する 3 つ）ではない、(3) そのホストに L1 の購入行が 1 件も無い（status を問わない）。
+        // census（2026-09-28）: (1) Base の USDC accept の宣言があり、払う額（price_amount）が $1 以下、
+        // (2) 購入の経路が別に分かれる主ネットワーク（Solana・Tempo・XRPL——purchaseOne が candidate.network の
+        // 完全一致で分岐する 3 つ）ではない、(3) そのホスト名（ポート無視）に L1 の購入行が 1 件も無い（status を問わない）。
         census
-          ? sql`AND cp.census_price IS NOT NULL
+          ? sql`AND cp.has_base
+      AND cp.census_price IS NOT NULL
       AND cp.census_price <= ${String(MAX_PER_PURCHASE_UNITS)}::numeric
       AND (e.network IS NULL OR e.network NOT IN (${SOLANA_MAINNET_CAIP2}, ${TEMPO_MAINNET_CAIP2}, ${XRPL_MAINNET_CAIP2}))
       AND ${CENSUS_HOST_SQL} NOT IN (${CENSUS_TRIED_HOSTS_SQL})`
@@ -1237,7 +1250,8 @@ export async function runL1Batch(
   summary.laneFloor = laneHead.counts;
   summary.laneFloorHostCapped = laneHead.hostCapped;
   // 3.6 売り手の census（2026-09-28・budget.ts CENSUS_PER_RUN）。L1 の購入行がまだ無い Base のホストを、
-  //     そのホストのいちばん安い出品（$1 以下）で 1 件ずつ、レーン枠の**後ろ**・主候補の**前**に置く
+  //     そのホストで払う額（price_amount）がいちばん安い出品（$1 以下）で 1 件ずつ、レーン枠と優先ホストの
+  //     **後ろ**・主候補の残りの**前**に置く
   //     （レーン枠は削らない）。旗 OBSERVATORY_L1_CENSUS=on が無い日・playground の 1 件指定では
   //     1 本も問い合わせない。WHERE は主候補と同じ（L0 合格・自己除外・初回購入の日次枠・冷却・窓）で、
   //     購入の可否もその後の同じ経路（上限・別枠・残高・原子的予約・停止スイッチ）が決める。
@@ -1254,7 +1268,15 @@ export async function runL1Batch(
   });
   summary.censusCandidates = censusHead.length;
   if (censusOn) summary.censusRemaining = await countCensusRemaining(db);
-  const head = [...laneHead.head, ...censusHead];
+  // 並びは「レーン枠 → 優先ホスト → census → 主候補の残り」（独立レビュー W1・2026-09-28）。方法論は
+  // 優先ホスト（PRIORITY_SELLER_HOSTS）を「候補選択の先頭に固定」と書いているので、census の最大 40 件を
+  // その前に置かない。census が 0 件の日（旗 OFF を含む）は従来の並びのまま（何も動かさない）。
+  const priorityHead =
+    censusHead.length > 0
+      ? candidates.filter((c) => c.isPriority && !laneHead.head.some((l) => l.id === c.id))
+      : [];
+  const priorityIds = new Set(priorityHead.map((c) => c.id));
+  const head = [...laneHead.head, ...priorityHead, ...censusHead.filter((c) => !priorityIds.has(c.id))];
   if (head.length > 0) {
     // 主候補にも入っていた行は先頭へ移す（同じ売り手を 1 回のバッチで 2 度買わない）。
     const headIds = new Set(head.map((c) => c.id));
@@ -1500,9 +1522,9 @@ export async function laneFloorCandidates(input: {
  * 売り手の census の候補（2026-09-28）。`fetchCensus` の行（censusTargetsSql: 1 ホスト 1 件・安い順）を
  * Candidate にして返す。SQL が既に選んでいるが、金の経路に入る前にここでも同じ規則を掛け直す（二重防御）:
  *
- *  - 値段（census_price・Base の USDC 基本単位）が正の整数として読めない行・$1（MAX_PER_PURCHASE_UNITS）を
+ *  - 値段（census_price＝払う額 e.price_amount・USDC 基本単位）が正の整数として読めない行・$1（MAX_PER_PURCHASE_UNITS）を
  *    超える行は入れない;
- *  - 1 ホスト 1 件。同じホストが複数あれば値段の小さい方、同額なら id の小さい方;
+ *  - 1 ホスト 1 件（ホスト名は censusHostOf: 小文字・ポート無視）。同じホストが複数あれば値段の小さい方、同額なら id の小さい方;
  *  - `excludeIds`（レーン枠に既に入った行）は入れない——レーン枠は削らない;
  *  - 並びは安い順（同額ならホスト名順）で、最大 `perRun` 件。
  *
@@ -1544,10 +1566,9 @@ export function pickCensusRows(
     if (!m) continue;
     const price = BigInt(m[1]);
     if (price <= 0n || price > MAX_PER_PURCHASE_UNITS) continue;
-    const host =
-      typeof row.census_host === "string" && row.census_host !== ""
-        ? row.census_host.toLowerCase()
-        : laneHostOf(String(row.resource_url));
+    const host = censusHostOf(
+      typeof row.census_host === "string" && row.census_host !== "" ? row.census_host : laneHostOf(String(row.resource_url)),
+    );
     usable.push({ row, id, host, price });
   }
   const byPriceThenId = (a: Row, b: Row) => (a.price < b.price ? -1 : a.price > b.price ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0);

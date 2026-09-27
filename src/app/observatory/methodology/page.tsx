@@ -524,11 +524,14 @@ export default async function ObservatoryMethodologyPage() {
         </p>
         <p className="doc-p">
           <strong>One row for each seller: the census.</strong> Since 2026-09-28, a seller on Base
-          (a host in the catalog) that we have not yet bought from at all, with no purchase row of
-          any status on any of its endpoints, goes ahead of the demand order. We buy from it once,
-          using its cheapest Base listing (ties go to the lower internal id), and a listing above
-          the per-purchase ceiling is not picked. At most {CENSUS_PER_RUN} such sellers enter a
-          single run, placed after the per-chain lanes so those lanes keep their share. The aim is
+          (a host name in the catalog, with the port ignored) that we have not yet bought from at
+          all, with no purchase row of any status on any of its endpoints, goes ahead of the demand
+          order. We buy from it once, using the listing whose catalog price is lowest among that
+          seller&apos;s listings with a Base USDC option (ties go to the lower internal id). That
+          catalog price is the amount we pay, because the payment is checked against it; a listing
+          with no such price, or one above the per-purchase ceiling, is not picked. At most{" "}
+          {CENSUS_PER_RUN} such sellers enter a single run, placed after the per-chain lanes and
+          after the priority hosts above, so both keep their place at the head. The aim is
           that each seller has one row of its own on the published ledger, which it can look up
           and act on. Everything else stays as it was: the per-purchase ceiling, the daily budget,
           the per-chain lanes, the daily limit on first purchases, the reservation before signing

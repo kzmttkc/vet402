@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CENSUS_PER_RUN, isCensusEnabled } from "@/lib/observatory/budget";
-import { censusCandidates, pickCensusRows } from "@/lib/observatory/l1-runner";
+import { censusCandidates, censusHostOf, pickCensusRows } from "@/lib/observatory/l1-runner";
 
 const row = (id: string, host: string, price: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -143,4 +143,19 @@ test("旗が on なら perRun + 除外ぶんを取り、問い合わせの失敗
     },
   });
   assert.deepEqual(failed, []);
+});
+
+test("ポート違いは 1 売り手（独立レビュー 2026-09-28: api.verigrace.com:4449/4450/4451 が 3 回買われるところだった）", () => {
+  assert.equal(censusHostOf("API.Verigrace.com:4449"), "api.verigrace.com");
+  assert.equal(censusHostOf("api.verigrace.com"), "api.verigrace.com");
+  const out = pickCensusRows(
+    [
+      row("p1", "api.verigrace.com:4449", "3000"),
+      row("p2", "api.verigrace.com:4450", "2000"),
+      row("p3", "api.verigrace.com:4451", "2000"),
+      row("q", "other.example", "5000"),
+    ],
+    40,
+  );
+  assert.deepEqual(out.map((c) => c.id), ["p2", "q"], "verigrace は 1 件（最安 2000・同額なら id の小さい p2）");
 });

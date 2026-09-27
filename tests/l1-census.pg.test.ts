@@ -12,6 +12,9 @@
 //  5. 既存の関門はそのまま効く: 日次 $25 を使い切った日は署名しない（budget_denied）、購入元の
 //     残高が無ければ署名しない。
 //  6. 2 回目のバッチでは、買ったホストは census から外れる（全員 1 回ずつ）。
+//  7. （独立レビュー 2026-09-28）並びは「レーン枠 → 優先ホスト → census → 主候補の残り」（W1）。
+//     「最安」は払う額＝price_amount で決め、raw_accepts の別の安い accept では並べない。price_amount が
+//     null の行（v1 の maxAmountRequired だけ）は選ばない（W2）。ポート違いは 1 売り手（試し済みの判定も）。
 //
 // Run: TEST_DATABASE_URL=postgres://localhost/vet402_census_test \
 //   npx tsx --test --test-force-exit --test-concurrency=1 tests/l1-census.pg.test.ts
@@ -86,7 +89,16 @@ if (!TEST_DB) {
     };
 
     // 売り手（URL → 壁の値段と受取先）。壁はカタログと同じ額を出す（price_mismatch にしない）。
-    type Listing = { url: string; amount: string; payTo: string; network: string; asset: string; demand: "high" | "low" };
+    type Listing = {
+      url: string;
+      amount: string;
+      payTo: string;
+      network: string;
+      asset: string;
+      demand: "high" | "low";
+      /** カタログに載せる accepts（省略時は壁と同じ 1 件）。 */
+      catalogAccepts?: Record<string, unknown>[];
+    };
     const listings: Listing[] = [];
     const add = (url: string, amount: string, n: number, demand: "high" | "low" = "low") =>
       listings.push({ url, amount, payTo: `0x${(n % 16).toString(16).repeat(40)}`, network: "eip155:8453", asset: BASE_USDC, demand });
@@ -106,13 +118,33 @@ if (!TEST_DB) {
     // 別の出品に行があるだけのホスト（試し済み＝選ばない）。
     add("https://triedb.example/old", "500", 6);
     add("https://triedb.example/new", "500", 7);
+    // 優先ホスト（PRIORITY_SELLER_HOSTS）。/old は試し済み、/search は需要の高い未購入（W1）。
+    add("https://x402.tavily.com/old", "3000", 8, "high");
+    add("https://x402.tavily.com/search", "3000", 8, "high");
+    // 払う額（accepts[0]＝price_amount）は 9000。2 番目に 10 の Base accept を宣言しているが、その額では払わない（W2）。
+    add("https://censuse.example/two", "9000", 9);
+    listings[listings.length - 1].catalogAccepts = [
+      { amount: "9000", asset: BASE_USDC, network: "eip155:8453", payTo: listings[listings.length - 1].payTo },
+      { amount: "10", asset: BASE_USDC, network: "eip155:8453", payTo: listings[listings.length - 1].payTo },
+    ];
+    // v1 の行（maxAmountRequired だけ・price_amount は null）。いちばん安く見えても選ばない（W2）。
+    add("https://censusf.example/v1", "500", 10);
+    listings[listings.length - 1].catalogAccepts = [
+      { scheme: "exact", maxAmountRequired: "500", asset: BASE_USDC, network: "base", payTo: listings[listings.length - 1].payTo },
+    ];
+    // ポート違いの同じ売り手（1 売り手として 1 回だけ）と、ポート違いで試し済みの売り手（選ばない）。
+    add("https://vg.example:4449/api", "3000", 11);
+    add("https://vg.example:4450/api", "3000", 12);
+    add("https://tp.example:4449/old", "3000", 13);
+    add("https://tp.example:4450/api", "3000", 13);
     // Solana のレーン（需要が低い）。
     for (let i = 1; i <= SOL_COUNT; i++) {
       listings.push({ url: `https://solseller${i}.example/api`, amount: "4000", payTo: solPayTo(i), network: SOL_CAIP2, asset: SOL_USDC, demand: "low" });
     }
     const byUrl = new Map(listings.map((l) => [l.url, l]));
     const isSol = (url: string) => url.includes("solseller");
-    const isCensusHost = (url: string) => /census[a-z]\.example/.test(url);
+    const isCensusHost = (url: string) => /census[a-z]\.example|vg\.example/.test(url);
+    const TAVILY = "https://x402.tavily.com/search";
 
     const challengeFor = (url: string) => {
       const l = byUrl.get(url)!;
@@ -161,7 +193,7 @@ if (!TEST_DB) {
       const items = listings.map((l) =>
         parseCatalogItem({
           resource: l.url,
-          accepts: [{ amount: l.amount, asset: l.asset, network: l.network, payTo: l.payTo }],
+          accepts: l.catalogAccepts ?? [{ amount: l.amount, asset: l.asset, network: l.network, payTo: l.payTo }],
           extensions: { bazaar: { info: { input: { method: "GET" } } } },
           quality: l.demand === "high" ? { l30DaysTotalCalls: 5000, l30DaysUniquePayers: 500 } : { l30DaysTotalCalls: 10, l30DaysUniquePayers: 1 },
         }),
@@ -222,22 +254,35 @@ if (!TEST_DB) {
       const w = wall();
       const summary = await run(w);
       const paid = w.paidUrls();
+      const vgPaid = paid.filter((u) => u.includes("vg.example"));
       assert.deepEqual(paid.slice(0, SOL_COUNT).map(isSol), [true, true, true], "レーン枠は削られず先頭のまま");
+      assert.equal(paid[SOL_COUNT], TAVILY, `優先ホストはレーン枠の直後・census より前（W1）: ${paid.slice(0, 8).join(", ")}`);
+      assert.equal(vgPaid.length, 1, `ポート違い（:4449 / :4450）は 1 売り手として 1 回だけ: ${vgPaid.join(", ")}`);
       assert.deepEqual(
-        paid.slice(SOL_COUNT, SOL_COUNT + 2),
-        ["https://censusd.example/only", expectedA],
-        "census は安い順（1000 → 2000）。censusa は 2000 の 2 件のうち id の小さい方",
+        paid.slice(SOL_COUNT + 1, SOL_COUNT + 5),
+        ["https://censusd.example/only", expectedA, vgPaid[0], "https://censuse.example/two"],
+        "census は払う額の安い順（1000 → 2000 → 3000 → 9000）。censuse は 2 番目の accept の 10 ではなく price_amount の 9000 で並ぶ（W2）",
       );
-      assert.equal(paid.filter(isCensusHost).length, 2, "1 ホスト 1 件。$1 超の censusc は選ばない");
+      assert.equal(paid.filter(isCensusHost).length, 4, "1 ホスト 1 件。$1 超の censusc と price_amount の無い censusf は選ばない");
+      assert.ok(!paid.includes("https://censusf.example/v1"), "price_amount が null の v1 行は census に入らない（W2）");
       assert.ok(!paid.some((u) => u.includes("triedb.example")), "別の出品に行があるホストは選ばない");
-      assert.equal(paid.filter((u) => u.includes("main")).length, 10, "主候補の LIMIT は減らない");
-      assert.equal(summary.censusCandidates, 2);
-      assert.equal(summary.censusRemaining, 3, "バッチ開始時の未試行 Base ホスト: censusa・censusc・censusd");
+      assert.ok(!paid.some((u) => u.includes("tp.example")), "ポート違いの出品に行があるホストも試し済み（選ばない）");
+      assert.equal(paid.filter((u) => !isSol(u) && !isCensusHost(u)).length, 10, "主候補の LIMIT 10 は減らない（優先ホストを含む）");
+      assert.equal(summary.censusCandidates, 4);
+      assert.equal(summary.censusRemaining, 6, "バッチ開始時の未購入 Base ホスト: censusa・c・d・e・f・vg（選べないものも含む）");
       assert.deepEqual(summary.laneFloor.solana, SOL_COUNT);
 
       const rows = await selectionRows();
       const census = rows.filter((r) => r.selection === "census").map((r) => String(r.resource_url)).sort();
-      assert.deepEqual(census, ["https://censusd.example/only", expectedA].sort(), "census の行だけが selection=census を持つ");
+      assert.deepEqual(
+        census,
+        ["https://censusd.example/only", expectedA, vgPaid[0], "https://censuse.example/two"].sort(),
+        "census の行だけが selection=census を持つ",
+      );
+      const eRow = rowsOf(
+        await db.execute(sql`SELECT pu.amount_units FROM x402_l1_purchases pu JOIN x402_endpoints e ON e.id = pu.endpoint_id WHERE e.resource_url = 'https://censuse.example/two'`),
+      );
+      assert.equal(String(eRow[0].amount_units), "9000", "払った額は並べた額と同じ price_amount（W2）");
       // 売り手の決済の主張まで（照合は settlement-verifier の仕事で、ここでは settle_claimed）。
       assert.ok(
         rows.filter((r) => r.selection === "census").every((r) => r.status === "settle_claimed"),
@@ -250,12 +295,12 @@ if (!TEST_DB) {
       // 直前のサブテストの台帳を引き継ぐ（seed しない）。
       const w = wall();
       const summary = await run(w);
-      assert.equal(summary.censusCandidates, 0, "残りは $1 超の censusc だけ");
-      assert.equal(summary.censusRemaining, 1);
+      assert.equal(summary.censusCandidates, 0, "残りは $1 超の censusc と price_amount の無い censusf だけ");
+      assert.equal(summary.censusRemaining, 2);
       // 試し済みになった censusa の残りの出品（p2・p3）は主候補として従来どおり需要順で買われうるが、
       // census の印は付かない（census は 1 ホスト 1 回）。
       const census = (await selectionRows()).filter((r) => r.selection === "census");
-      assert.equal(census.length, 2, "印つきの行は 1 回目の 2 件のまま");
+      assert.equal(census.length, 4, "印つきの行は 1 回目の 4 件のまま");
       assert.ok(!w.paidUrls().includes("https://censusd.example/only"), "同じ出品は窓のあいだ買い直さない");
     });
 
@@ -275,10 +320,10 @@ if (!TEST_DB) {
       const w = wall();
       const summary = await run(w);
       assert.equal(w.paidUrls().length, 0, "支払い付きの要求は 1 本も出ない");
-      assert.equal(summary.censusCandidates, 2, "候補には入る（並びの補助）が、予算の関門で止まる");
-      assert.ok(summary.budgetDenied >= 2);
+      assert.equal(summary.censusCandidates, 4, "候補には入る（並びの補助）が、予算の関門で止まる");
+      assert.ok(summary.budgetDenied >= 4);
       const census = (await selectionRows()).filter((r) => r.selection === "census");
-      assert.equal(census.length, 2);
+      assert.equal(census.length, 4);
       assert.ok(census.every((r) => r.status === "budget_denied"), "記帳は従来どおり budget_denied（印つき）");
     });
 
@@ -288,8 +333,8 @@ if (!TEST_DB) {
       const w = wall();
       const summary = await run(w, { getPayerUsdcBalance: async () => 0n });
       assert.equal(w.paidUrls().length, 0);
-      assert.ok(summary.payerUnfunded >= 2);
-      assert.equal(summary.censusCandidates, 2);
+      assert.ok(summary.payerUnfunded >= 4);
+      assert.equal(summary.censusCandidates, 4);
     });
 
     await t.test("playground の 1 件指定（onlyEndpointId）では census を使わない", async () => {

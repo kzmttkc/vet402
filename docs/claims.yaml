@@ -1039,7 +1039,7 @@ claims:
   - id: method_census_one_row_per_seller
     surface: src/app/observatory/methodology/page.tsx
     quote: "the stop switch all apply unchanged, and the result is published like any other"
-    means: "2026-09-28 から、L1 の購入行が 1 件も無い Base の売り手（ホスト）を、いちばん安い出品で 1 回ずつ、主候補より先に買う（census）。1 回の上限・日次予算・チェーン別の別枠・初回購入の日次枠・署名前の予約・停止スイッチは主候補と同じ経路でそのまま効き、結果は他の購入と同じく公開される"
+    means: "2026-09-28 から、L1 の購入行が 1 件も無い Base の売り手（ホスト名・ポート無視）を、カタログの宣言額（＝払う額）がいちばん安い出品で 1 回ずつ、レーン枠と優先ホストの後ろ・主候補の前で買う（census）。1 回の上限・日次予算・チェーン別の別枠・初回購入の日次枠・署名前の予約・停止スイッチは主候補と同じ経路でそのまま効き、結果は他の購入と同じく公開される"
     check: null
     why_unverifiable: "公開 GET は候補の選び方（どの経路で選ばれたか）を返さない。選び方は l1-runner の censusTargetsSql / pickCensusRows が正典で、tests/l1-census.test.ts（純関数）と tests/l1-census.pg.test.ts（SQL と関門）が固定する。旗 OBSERVATORY_L1_CENSUS が on のときだけ働く"
     verified_at: 2026-09-28
