@@ -13,6 +13,15 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-28 JST（3）— retest に (c)「Base で宣言クエリを送っていなかった期間の 400/422」を足す
+
+- **何を**: `src/lib/observatory/request-query.ts` に `BASE_DECLARED_QUERY_SINCE = "2026-09-27T23:27:16Z"`（/sellers も import する。場所と名前を変えない）。retest の (c): 売り手の最新行が Base（`eip155:8453` / `base`）・`settle_failed`・tx なし・HTTP 400 か 422・この時刻より前・`requestQuery` の記録が無いか `empty`・今の掲載が `queryParams` を宣言（`declared_schema` の `properties.input.properties.queryParams`）。(b) と同じく、失敗した出品そのものがまだ買えればそれを、買えなければ最安。メソッドは問わない。XRPL（9/21 から送っていた）は入らない。
+- **境目の根拠（実測）**: Vercel の API で、env `OBSERVATORY_L1_DECLARED_QUERY_NETWORKS`（production）の createdAt 2026-09-27T23:25:27Z、それを読む Production の再デプロイ（source cli・4d210b1c）created 23:25:49Z・**ready 23:27:16Z**。台帳では Base の支払い付き行で `requestQuery` を持つ行はまだ 0（最後の Base の支払い付き行は 09-27T18:02:35Z）。
+- **なぜ**: 本文の件と同じく、Base では売り手が宣言したクエリを送っていなかった（こちらの側の失敗）。オーナー承認済み（2026-09-28 08:24・支出上限は合計 約 35 USDC）。
+- **本番の数え直し（READ ONLY・2026-09-28・実際の問い合わせを上限なしで）**: 対象の売り手 523（(a) 171・(b) 166・(c) 186）。今日選べる retest は 346 売り手・15.0120 USDC（(a) 110・4.0218／(b) 111・7.1820／(c) 125・3.8082、うち失敗した出品そのものは (b) 98・(c) 51）。census は 418 売り手・16.5337 USDC。合計 31.5457 USDC（約 35 USDC の内側）。EXPLAIN ANALYZE（3 回）: retest の 1 段目 90〜99 ms・2 段目 319〜323 ms・census 159〜274 ms。
+- **影響**: 関門は変えていない。方法論の retest の段落に (c) を 1 句（件数なし）、`docs/claims.yaml` を合わせた。検出の床は 46 のまま。
+- **コミット**: `9ae3b404`（ブランチ `census-query-0928`・未 push。origin/main `4d210b1c` の上）
+
 ## 2026-09-28 JST（4）— LP §5 Chains: Robinhood Chain の行を building から live（公開中の製品・購入レーンではない）へ
 
 - **何を**: `src/components/site/supported-chains-data.ts` に行の種類 `product` を足し、Robinhood Chain (4663, mainnet) の行を `building` から `product` へ。状態印は静的に `live`（他の実装済みの行と同じ `marker-live` の見た目）、件数は出さない（台帳に 4663 の数があっても出さない）。本文は RWA と合意した英文 `` `vet402 /rwa` rebuilds a wallet's Stock Token holdings and trade history from public chain data, and shows what it could not parse. The purchase lane and the settlement index are not supported. `` で、`vet402 /rwa` が入口ページ `/rwa`（住所の入力欄だけ・特定のウォレットへのリンク無し）へのリンク。凡例（`chainsLegend`）は pending と同じく building も「描かれる行があるときだけ」名指しに変え（今は building の行が無い）、live の行があるときは「live は公開中の製品で、購入レーンではなく件数を持たない」の 1 文を足す。台帳が読めないときの文はそのまま（live の印も「ページに書いた状態」なので嘘にならない）。
