@@ -74,6 +74,8 @@ if (!TEST_DB) {
     const aGone = await mk("shop.example/gone", { status: "delisted" });
     // 売り手 B
     const b1 = await mk("b.example/x");
+    // 売り手 C: クエリを宣言した Base の GET が、Base で宣言クエリを送る前に 400（こちらの側）
+    const c1 = await mk("c.example/q", { declaredSchema: { properties: { input: { properties: { queryParams: { type: "object" } } } } } });
 
     // a1: 本文を送る前の POST 422（vet402 の側）→ その後、本文を送って届いた（最新）
     await buy(a1, { status: "settle_failed", http: 422, at: "2026-09-10T00:00:00Z", meta: { phase: "paid" } });
@@ -89,10 +91,12 @@ if (!TEST_DB) {
     // b1: 本文を宣言していない GET の 400（seller の側）
     await buy(b1, { status: "settle_failed", http: 400, at: "2026-09-10T00:00:00Z" });
 
+    await buy(c1, { status: "settle_failed", http: 400, at: "2026-09-25T00:00:00Z", meta: { phase: "paid", requestBody: "none" } });
     const before = await db.execute(sql`SELECT count(*)::int AS n FROM x402_l1_purchases`);
     const board = await readSellerBoard(db);
     const hosts = board.sellers.map((s) => s.host).sort();
-    assert.deepEqual(hosts, ["b.example", "shop.example"], "ports and case fold into one seller");
+    assert.deepEqual(hosts, ["b.example", "c.example", "shop.example"], "ports and case fold into one seller");
+    assert.equal(board.sellers.find((s) => s.host === "c.example")?.vet402, 1, "query declared, not yet sent on Base");
     const shop = board.sellers.find((s) => s.host === "shop.example")!;
     assert.equal(shop.listings, 4, "non-Base and delisted listings are left out");
     assert.equal(shop.delivered, 1);
@@ -100,12 +104,12 @@ if (!TEST_DB) {
     assert.equal(shop.seller, 1, "a3: gone");
     assert.equal(shop.notBought, 1);
     assert.equal(shop.lastAttemptAt, "2026-09-28T01:00:00Z");
-    assert.equal(shop.retestDue, false, "the most recent row delivered");
+    assert.equal(shop.queued, false, "the flag is off in tests (readSellerBoard reads isCensusEnabled)");
     const failed = board.totals.seller + board.totals.vet402 + board.totals.unsorted;
     assert.equal(board.groups.reduce((x, g) => x + g.listings, 0), failed);
     assert.deepEqual(
       board.groups.map((g) => g.key).sort(),
-      ["gone", "input_rejected", "payer_unfunded"],
+      ["gone", "input_rejected", "payer_unfunded", "query_not_sent"],
     );
 
     const d = await readSellerDetail(db, "shop.example");
@@ -180,10 +184,31 @@ if (!TEST_DB) {
         amountUnits: "1000",
       });
     }
-    const retestHosts = rowsOf(await db.execute(RETEST_SELLERS_SQL)).map((r) => String(r.host)).sort();
-    const board = await readSellerBoard(db);
-    const oursHosts = board.sellers.filter((s) => s.retestDue).map((s) => s.host).sort();
-    assert.deepEqual(oursHosts, retestHosts);
+    // Base の出品で、Base の行は残高切れ（こちらの側）だが、同じ出品のより新しい Solana の POST 400 を retest が
+    // 「本文」で選ぶ売り手。頁は Base の行しか見ないので、理由が食い違う → queued と書かない。
+    const [mix] = await db
+      .insert(schema.x402Endpoints)
+      .values({ resourceKey: "mix.example/x", resourceUrl: "https://mix.example/x", network: "eip155:8453", method: "POST", declaredSchema: BODY, priceAmount: "1000" })
+      .returning();
+    await db.insert(schema.x402L1Purchases).values([
+      { endpointId: mix.id, status: "settle_failed", httpStatusPaid: 402, attemptedAt: new Date("2026-09-14T00:00:00Z"), network: "eip155:8453", spentUnits: "0", amountUnits: "1000" },
+      { endpointId: mix.id, status: "settle_failed", httpStatusPaid: 400, attemptedAt: new Date("2026-09-15T00:00:00Z"), network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", spentUnits: "0", amountUnits: "1000" },
+    ]);
+    const picked = rowsOf(await db.execute(RETEST_SELLERS_SQL));
+    assert.ok(picked.some((r) => r.host === "mix.example" && r.reason === "body"), "retest picks mix.example for the Solana row");
+    const retestHosts = picked.map((r) => String(r.host)).filter((h) => h !== "mix.example").sort();
+    const board = await readSellerBoard(db, true);
+    const queuedHosts = board.sellers.filter((s) => s.queued).map((s) => s.host).sort();
+    assert.deepEqual(queuedHosts, retestHosts, "queued = the sellers the retest SQL picks, when the flag is on");
     assert.deepEqual(retestHosts, ["rt1.example", "rt11.example", "rt12.example", "rt2.example"]);
+    // 旗 off: retest の SQL を流さず、誰も queued にしない
+    const off = await readSellerBoard(db, false);
+    assert.equal(off.sellers.filter((s) => s.queued).length, 0);
+    // retest が選ぶ売り手は、この頁でもこちらの側（rt9 の決済済み POST 400 は頁ではこちらの側だが retest は買い直さない）
+    assert.equal(board.sellers.find((s) => s.host === "mix.example")?.queued, false, "retest and this page disagree on the row");
+    assert.equal(board.sellers.find((s) => s.host === "mix.example")?.vet402, 1);
+    for (const h of retestHosts) assert.equal(board.sellers.find((s) => s.host === h)?.vet402, 1, h);
+    assert.equal(board.sellers.find((s) => s.host === "rt9.example")?.vet402, 1, "settled POST 400 before the cutover, body declared");
+    assert.equal(board.sellers.find((s) => s.host === "rt9.example")?.queued, false);
   });
 }

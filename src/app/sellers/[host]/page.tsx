@@ -2,10 +2,9 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { pageMetadata } from "@/lib/seo";
 import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/cached-reads";
-import type { SellerDetail } from "@/lib/sellers/board";
+import { markQueued, type SellerDetail } from "@/lib/sellers/board";
 import { getSellerBoardCached, getSellerDetailCached } from "@/lib/sellers/cached";
 import { parseSellerHostParam } from "@/lib/sellers/host";
-import { sellersRateLimit } from "@/lib/sellers/page-limit";
 import { SellerDetailView, SellersNotice } from "@/components/site/sellers/SellersViews";
 
 /**
@@ -35,19 +34,13 @@ export default async function SellerPage({ params, searchParams }: Props) {
   const { host: raw } = await params;
   const host = parseSellerHostParam(raw);
   if (!host) notFound();
-  const wait = await sellersRateLimit();
-  if (wait !== null) {
-    return (
-      <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
-        <SellersNotice title="Too many requests">Please reload in about {wait} seconds.</SellersNotice>
-      </main>
-    );
-  }
   let detail: SellerDetail | null = null;
   try {
     const board = await getSellerBoardCached();
     if (!board.sellers.some((s) => s.host === host)) notFound();
-    detail = await getSellerDetailCached(host);
+    const fromBoard = board.sellers.find((s) => s.host === host);
+    const read = await getSellerDetailCached(host);
+    detail = read ? markQueued(read, fromBoard) : null;
   } catch (error) {
     // notFound() は例外で抜けるので、そのまま投げ直す（読み取りの失敗とだけ区別する）。
     if (error && typeof error === "object" && "digest" in error) throw error;

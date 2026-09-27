@@ -12,9 +12,10 @@
 //
 // side は「その失敗は誰の側で起きたか」:
 //   vet402   こちらの落ち度・こちらの制限。売り手に直すものは無い。
-//            payer_unfunded（購入元の残高切れ）と body_not_sent（宣言本文を送っていなかった期間の
-//            400/422）は、retest（l1-runner の RETEST_SELLERS_SQL・2026-09-28）と同じ条件にしてある。
-//            ここで vet402 の側と書いた行と、買い直しの対象になる行がずれないため。
+//            payer_unfunded（購入元の残高切れ）、body_not_sent（宣言本文を送っていなかった期間の 400/422）、
+//            query_not_sent（Base で宣言クエリを送っていなかった期間の 400/422）。本文とクエリは決済済みの行も
+//            こちらの側に置く（独立レビュー 2026-09-28: 入力を送らなかったのはこちら）。retest の対象
+//            （買い直しの予定）とは別の判定で、頁が「queued」と書くのは retest の SQL の結果がある時だけ（board.ts）。
 //   seller   売り手の応答・出品の宣言で説明がつく。
 //   unsorted まだ分類していない。
 // effort は直す手間: 1 = 出品・設定の変更、2 = サーバーの変更、3 = facilitator 次第。
@@ -23,6 +24,7 @@
 // ============================================================
 import { heldReasonOf, isDelivered, type HeldReason } from "@/lib/observatory/delivery";
 import { DECLARED_BODY_SENT_SINCE } from "@/lib/observatory/request-body";
+import { BASE_DECLARED_QUERY_SINCE } from "@/lib/observatory/request-query";
 
 export type FixSide = "seller" | "vet402" | "unsorted";
 export type FixEffort = 1 | 2 | 3;
@@ -40,6 +42,8 @@ export interface FixMode {
 
 /** 宣言本文を送り始めた時刻（retest と同じ値・定義は request-body.ts の 1 か所）。 */
 export { DECLARED_BODY_SENT_SINCE };
+/** Base で宣言クエリを送り始めた時刻（定義は request-query.ts の 1 か所）。 */
+export { BASE_DECLARED_QUERY_SINCE };
 
 const NOTHING_FOR_SELLER = "Nothing for the seller to fix.";
 
@@ -97,7 +101,7 @@ export const FIX_MODES: readonly FixMode[] = [
   {
     key: "input_rejected",
     title: "The paid request was refused as invalid",
-    what: "vet402 signed the payment and the paid request got 400, 404, 415 or 422; the payment did not settle. vet402 sends the body and query the listing declares, and an empty JSON body when it declares none.",
+    what: "vet402 signed the payment and the paid request got 400, 404, 415 or 422; the payment did not settle. Since 2026-09-16 23:25 UTC vet402 sends the request body the listing declares (an empty JSON body when it declares none), and since 2026-09-27 23:27 UTC it adds the query parameters the listing declares on Base.",
     fix: "Declare the input in the listing (body or query) with example values that work as written.",
     side: "seller",
     effort: 1,
@@ -105,7 +109,7 @@ export const FIX_MODES: readonly FixMode[] = [
   {
     key: "settled_then_rejected",
     title: "Took the payment, then refused the input",
-    what: "The payment settled on-chain, and then the paid request got 400, 404, 415 or 422: the route took the payment before it checked the input, so the buyer paid for a refused request. Before 2026-09-16 23:25 UTC, vet402 itself sent an empty JSON body on paid POST requests, even when the listing declared a body; rows from that period say so.",
+    what: "The payment settled on-chain, and then the paid request got 400, 404, 415 or 422: the route took the payment before it checked the input, so the buyer paid for a refused request. When the listing declared a body or query that vet402 was not yet sending, the row is on vet402's side instead.",
     fix: "Check the input before you settle, so an invalid request is refused without taking the payment; and declare the input in the listing with example values that work as written.",
     side: "seller",
     effort: 2,
@@ -204,7 +208,15 @@ export const FIX_MODES: readonly FixMode[] = [
   {
     key: "body_not_sent",
     title: "vet402 did not send the declared request body",
-    what: "Before 2026-09-16 23:25 UTC, vet402 sent an empty JSON body on paid POST requests, even when the listing declares a body. The seller refused it with 400 or 422.",
+    what: "Before 2026-09-16 23:25 UTC, vet402 sent an empty JSON body on paid POST requests, even when the listing declares a body. The seller refused it with 400 or 422, before or after the payment settled.",
+    fix: NOTHING_FOR_SELLER,
+    side: "vet402",
+    effort: 1,
+  },
+  {
+    key: "query_not_sent",
+    title: "vet402 did not send the declared query",
+    what: "Before 2026-09-27 23:27 UTC, vet402 did not add the query parameters a listing declares to paid requests on Base. The seller refused the request with 400 or 422.",
     fix: NOTHING_FOR_SELLER,
     side: "vet402",
     effort: 1,
@@ -265,6 +277,10 @@ export interface SellerRowFacts {
   declaresBody: boolean;
   /** raw_response_meta に requestBody の記録がある（2026-09-17 以降の有料の要求）。 */
   bodyRecorded: boolean;
+  /** 今のカタログのそのエンドポイントがクエリを宣言している（declared_schema の properties.input.properties.queryParams）。 */
+  declaresQuery: boolean;
+  /** raw_response_meta に requestQuery の記録がある（宣言クエリの規則が効いた有料の要求）。 */
+  queryRecorded: boolean;
   /** raw_response_meta.status（支払い前の応答の HTTP。no_402 の行で読む）。 */
   unpaidStatus: number | null;
   /** raw_response_meta.selection（census / retest / null）。 */
@@ -290,16 +306,36 @@ function inRange(code: number | null, lo: number, hi: number): code is number {
   return typeof code === "number" && code >= lo && code <= hi;
 }
 
-/** retest の (b) と同じ条件: 宣言本文を送る前の、決済されなかった POST の 400/422。 */
+const BASE_NETWORK_SET: ReadonlySet<string> = new Set(["eip155:8453", "base"]);
+
+/** 有料の要求を出し、入力で断られた行（決済の有無は問わない・tx の無い settle_failed か settled）。 */
+function refusedInputAfterPaying(r: SellerRowFacts): boolean {
+  const paid = r.status === "settled" || (r.status === "settle_failed" && (r.txHash === null || r.txHash === ""));
+  return paid && (r.httpStatusPaid === 400 || r.httpStatusPaid === 422);
+}
+
+/**
+ * 宣言本文を送る前の POST の 400/422（出品が本文を宣言・行に本文の記録なし）。retest の (b) の条件に、
+ * 決済済みの行を足したもの（(b) は tx の無い settle_failed だけを買い直す）。
+ */
 export function isBodyNotSent(r: SellerRowFacts): boolean {
   return (
-    r.status === "settle_failed" &&
-    (r.txHash === null || r.txHash === "") &&
-    (r.httpStatusPaid === 400 || r.httpStatusPaid === 422) &&
+    refusedInputAfterPaying(r) &&
     Date.parse(r.attemptedAt) < Date.parse(DECLARED_BODY_SENT_SINCE) &&
     (r.method ?? "").toUpperCase() === "POST" &&
     !r.bodyRecorded &&
     r.declaresBody
+  );
+}
+
+/** Base で宣言クエリを送る前の 400/422（出品がクエリを宣言・行にクエリの記録なし）。本文と同じ扱い。 */
+export function isQueryNotSent(r: SellerRowFacts): boolean {
+  return (
+    refusedInputAfterPaying(r) &&
+    BASE_NETWORK_SET.has(r.network ?? "") &&
+    Date.parse(r.attemptedAt) < Date.parse(BASE_DECLARED_QUERY_SINCE) &&
+    !r.queryRecorded &&
+    r.declaresQuery
   );
 }
 
@@ -332,6 +368,7 @@ function modeKeyOf(r: SellerRowFacts, held: HeldReason | null): string {
   if (r.status === "settle_claimed") return "settlement_pending";
   if (held === "payer_unfunded") return "payer_unfunded";
   if (isBodyNotSent(r)) return "body_not_sent";
+  if (isQueryNotSent(r)) return "query_not_sent";
   if (VET402_LIMIT_STATUSES.has(r.status)) return "vet402_limit";
   if (VET402_ERROR_STATUSES.has(r.status)) return "vet402_error";
   switch (r.status) {
@@ -358,17 +395,15 @@ function modeKeyOf(r: SellerRowFacts, held: HeldReason | null): string {
 }
 
 /**
- * 行ごとの注記: 宣言本文を送る前（DECLARED_BODY_SENT_SINCE より前）の有料 POST が入力で断られた行には、
- * こちらが `{}` を送っていた事実を並べる。側（seller）は変えない——retest と同じく、決済済みの行や本文を
- * 宣言していない出品の行は vet402 の側に入れないが、売り手だけに非があるようには読ませない。
+ * 行ごとの注記: 宣言本文を送る前の有料 POST が入力で断られ、出品が本文を宣言していない（＝vet402 の側に
+ * 置かない）行に、こちらが `{}` を送っていた事実を並べる。本文を宣言している出品の行は body_not_sent
+ * （vet402 の側）に入るので、ここには来ない。
  */
 export function rowNote(r: SellerRowFacts, modeKey: string | null): string | null {
   if (modeKey !== "settled_then_rejected" && modeKey !== "input_rejected") return null;
   if ((r.method ?? "").toUpperCase() !== "POST" || r.bodyRecorded) return null;
   if (!(Date.parse(r.attemptedAt) < Date.parse(DECLARED_BODY_SENT_SINCE))) return null;
-  return r.declaresBody
-    ? "This purchase is from before 2026-09-16 23:25 UTC, when vet402 sent an empty JSON body on paid POST requests; this listing declares a body, which vet402 did not send."
-    : "This purchase is from before 2026-09-16 23:25 UTC, when vet402 sent an empty JSON body on paid POST requests; this listing declares no body.";
+  return "This purchase is from before 2026-09-16 23:25 UTC, when vet402 sent an empty JSON body on paid POST requests; this listing declares no body.";
 }
 
 /** 1 行を分類する（届いた行は mode が null）。決定的・DB 無し。 */

@@ -8,7 +8,18 @@
 // ============================================================
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { buildSellerBoard, buildSellerDetail, EARLIER_ROWS_SHOWN, type LatestRow, type SellerBoard, type SellerDetail, type SellerEndpointFacts } from "./board";
+import { isCensusEnabled } from "@/lib/observatory/budget";
+import { RETEST_SELLERS_SQL } from "@/lib/observatory/l1-runner";
+import {
+  buildSellerBoard,
+  buildSellerDetail,
+  EARLIER_ROWS_SHOWN,
+  type LatestRow,
+  type RetestQueue,
+  type SellerBoard,
+  type SellerDetail,
+  type SellerEndpointFacts,
+} from "./board";
 import type { SellerRowFacts } from "./fix-modes";
 import { BASE_NETWORKS, sellerHostSql } from "./host";
 
@@ -32,6 +43,8 @@ const ROW_COLUMNS = sql`
   e.method,
   (jsonb_typeof(e.declared_schema #> '{properties,input,properties,body}') = 'object') AS declares_body,
   coalesce(jsonb_typeof(pu.raw_response_meta) = 'object' AND pu.raw_response_meta ? 'requestBody', false) AS body_recorded,
+  (jsonb_typeof(e.declared_schema #> '{properties,input,properties,queryParams}') = 'object') AS declares_query,
+  coalesce(jsonb_typeof(pu.raw_response_meta) = 'object' AND pu.raw_response_meta ? 'requestQuery', false) AS query_recorded,
   CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' AND (pu.raw_response_meta->>'status') ~ '^[0-9]{3}$'
        THEN (pu.raw_response_meta->>'status')::int END AS unpaid_status,
   CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN pu.raw_response_meta->>'selection' END AS selection`;
@@ -62,12 +75,29 @@ export function toRowFacts(r: Record<string, unknown>): SellerRowFacts {
     method: str(r.method),
     declaresBody: r.declares_body === true || r.declares_body === "t",
     bodyRecorded: r.body_recorded === true || r.body_recorded === "t",
+    declaresQuery: r.declares_query === true || r.declares_query === "t",
+    queryRecorded: r.query_recorded === true || r.query_recorded === "t",
     unpaidStatus: toInt(r.unpaid_status),
     selection: str(r.selection),
   };
 }
 
-export async function readSellerBoard(db: Db): Promise<SellerBoard> {
+/**
+ * retest が次に買い直す売り手（l1-runner の RETEST_SELLERS_SQL をそのまま流す・ホスト → その最新の行の
+ * endpoint_id）。旗 OBSERVATORY_L1_CENSUS が on でなければ問い合わせもせず null（＝頁は「queued」と書かない）。
+ * 読めなければ null（書かない側に倒す）。
+ */
+export async function readRetestQueue(db: Db, enabled: boolean = isCensusEnabled()): Promise<RetestQueue | null> {
+  if (!enabled) return null;
+  try {
+    const rows = rowsOf(await db.execute(RETEST_SELLERS_SQL));
+    return new Map(rows.map((r) => [String(r.host), { endpointId: String(r.endpoint_id), reason: String(r.reason) }]));
+  } catch {
+    return null;
+  }
+}
+
+export async function readSellerBoard(db: Db, retestEnabled: boolean = isCensusEnabled()): Promise<SellerBoard> {
   const fetchedAt = new Date().toISOString();
   const hostsRaw = await db.execute(sql`
     SELECT ${HOST_SQL} AS host, count(*)::int AS listings
@@ -81,7 +111,7 @@ export async function readSellerBoard(db: Db): Promise<SellerBoard> {
     ORDER BY pu.endpoint_id, pu.attempted_at DESC, pu.id DESC`);
   const hosts = rowsOf(hostsRaw).map((r) => ({ host: String(r.host), listings: Number(r.listings) }));
   const latest: LatestRow[] = rowsOf(latestRaw).map((r) => ({ ...toRowFacts(r), host: String(r.host) }));
-  return buildSellerBoard(hosts, latest, fetchedAt);
+  return buildSellerBoard(hosts, latest, fetchedAt, await readRetestQueue(db, retestEnabled));
 }
 
 /** その売り手の Base の出品が無ければ null。host は parseSellerHostParam を通した値。 */

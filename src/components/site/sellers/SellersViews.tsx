@@ -4,7 +4,6 @@ import { buttonClass } from "@/components/ui/Button";
 import { TableScroll } from "@/components/site/TableScroll";
 import {
   exportDaysFor,
-  RETEST_MODE_KEYS,
   type FixGroup,
   type OutcomeCounts,
   type SellerBoard,
@@ -262,7 +261,7 @@ function ReadingNotes() {
         means vet402 confirmed the USDC transfer on-chain and the paid request answered 2xx.{" "}
         <strong>Seller&apos;s side</strong> means the seller&apos;s answer or listing explains the failure.{" "}
         <strong>vet402&apos;s side</strong> means the cause was ours or a limit of ours: our wallet ran out of USDC,
-        we did not send the declared request body, the price was over our per-purchase ceiling, our run did not
+        we did not yet send the request body or query the listing declares, the price was over our per-purchase ceiling, our run did not
         finish, or our on-chain check has not run yet. A count is one purchase attempt, not a rating (
         <Link href="/observatory/methodology" className="underline">
           methodology
@@ -337,7 +336,7 @@ function ExportTrace({ r, resourceKey, now }: { r: ShownRow; resourceKey: string
   );
 }
 
-function ListingRows({ l, now }: { l: SellerListing; now: number }) {
+function ListingRows({ l, now, queued }: { l: SellerListing; now: number; queued: boolean }) {
   const r = l.latest;
   return (
     <>
@@ -366,10 +365,16 @@ function ListingRows({ l, now }: { l: SellerListing; now: number }) {
                 </span>
               )}
               {r.note && <span className="block">{r.note}</span>}
-              {r.mode && RETEST_MODE_KEYS.has(r.mode.key) && (
+              {r.mode?.side === "vet402" && (
+                <span className="block">This failure was on vet402&apos;s side, not the seller&apos;s.</span>
+              )}
+              {queued && (
                 <span className="block">
-                  <strong>Re-buy:</strong> a failure like this one is what the retest covers: when a seller&apos;s most
-                  recent purchase failed this way, vet402 buys from that seller again and adds the new row here.
+                  <strong>Re-buy:</strong> this listing is queued for a re-buy under the rules on the{" "}
+                  <Link href="/observatory/methodology" className="underline">
+                    methodology page
+                  </Link>
+                  .
                 </span>
               )}
               {l.deliveredAfterFailure && (
@@ -403,6 +408,10 @@ function ListingRows({ l, now }: { l: SellerListing; now: number }) {
   );
 }
 
+function latestFailedOnOurSide(d: SellerDetail): boolean {
+  return d.listings[0]?.latest?.mode?.side === "vet402";
+}
+
 export function SellerDetailView({
   detail,
   page,
@@ -427,15 +436,21 @@ export function SellerDetailView({
         {n(s.listings)} Base {s.listings === 1 ? "listing" : "listings"}. By the latest purchase of each: <CountsLine c={s} />.
         {s.lastAttemptAt && <> Latest purchase: {fmtUtc(s.lastAttemptAt)}.</>}
       </p>
-      {s.retestDue && (
+      {s.queued ? (
         <p className="doc-p">
-          <strong>Your most recent purchase failed on vet402&apos;s side.</strong> That makes this seller one the retest
-          buys from again (
+          <strong>Your most recent purchase failed on vet402&apos;s side.</strong> This seller is queued for a re-buy
+          under the rules on the{" "}
           <Link href="/observatory/methodology" className="underline">
-            methodology
+            methodology page
           </Link>
-          ). The new row will appear below, next to the old one.
+          .
         </p>
+      ) : (
+        latestFailedOnOurSide(detail) && (
+          <p className="doc-p">
+            <strong>Your most recent purchase failed on vet402&apos;s side.</strong> Nothing for you to fix there.
+          </p>
+        )
       )}
       {(detail.selectedBy.census > 0 || detail.selectedBy.retest > 0) && (
         <p className="doc-p">
@@ -461,7 +476,7 @@ export function SellerDetailView({
           </thead>
           <tbody>
             {shown.map((l) => (
-              <ListingRows key={l.endpointId} l={l} now={now} />
+              <ListingRows key={l.endpointId} l={l} now={now} queued={s.queued && s.queuedEndpointId === l.endpointId} />
             ))}
           </tbody>
         </table>

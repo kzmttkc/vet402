@@ -22,8 +22,14 @@ export interface SellerSummary extends OutcomeCounts {
   listings: number;
   /** その売り手の最新の購入（ISO）。無ければ null。 */
   lastAttemptAt: string | null;
-  /** 売り手の最新の行が vet402 の側（payer_unfunded / body_not_sent）＝retest の対象になる形。 */
-  retestDue: boolean;
+  /**
+   * 買い直しの予定がある: 旗が on で、retest の SQL（RETEST_SELLERS_SQL）がこの売り手を選び、しかも選んだ行
+   * （endpoint_id）がこの頁の見ている最新の行と同じで、その行がこちらの側の失敗。1 つでも欠けたら false
+   * （頁は Base の掲載中の出品しか見ず、retest は全チェーンの最新行を見るので、食い違う売り手には書かない）。
+   */
+  queued: boolean;
+  /** queued のとき、retest が買い直す行の出品（endpoint id）。 */
+  queuedEndpointId: string | null;
 }
 
 export interface FixGroupSeller {
@@ -54,7 +60,18 @@ export interface LatestRow extends SellerRowFacts {
   host: string;
 }
 
-export const RETEST_MODE_KEYS: ReadonlySet<string> = new Set(["payer_unfunded", "body_not_sent"]);
+/** retest が買い直しの理由にする種類（(a) 残高切れ・(b) 本文・(c) クエリ）。 */
+export const RETEST_MODE_KEYS: ReadonlySet<string> = new Set(["payer_unfunded", "body_not_sent", "query_not_sent"]);
+
+/**
+ * retest の SQL（RETEST_SELLERS_SQL）の結果: ホスト → その売り手の最新の行の endpoint_id と理由
+ * （"unfunded" | "body"。(c) が入れば "query"）。null＝旗が off か読めなかった。
+ */
+export type RetestPick = { endpointId: string; reason: string };
+export type RetestQueue = ReadonlyMap<string, RetestPick>;
+
+/** retest の理由 → この頁の種類。理由と種類が食い違う売り手（retest は全チェーンの最新行を見る）には queued と書かない。 */
+const RETEST_REASON_MODE: Readonly<Record<string, string>> = { unfunded: "payer_unfunded", body: "body_not_sent", query: "query_not_sent" };
 
 function zero(): OutcomeCounts {
   return { delivered: 0, seller: 0, vet402: 0, unsorted: 0, notBought: 0 };
@@ -83,10 +100,11 @@ export function buildSellerBoard(
   hostListings: readonly { host: string; listings: number }[],
   latest: readonly LatestRow[],
   fetchedAt: string,
+  retest: RetestQueue | null = null,
 ): SellerBoard {
   const byHost = new Map<string, SellerSummary>();
   for (const h of hostListings) {
-    byHost.set(h.host, { host: h.host, listings: h.listings, ...zero(), lastAttemptAt: null, retestDue: false });
+    byHost.set(h.host, { host: h.host, listings: h.listings, ...zero(), lastAttemptAt: null, queued: false, queuedEndpointId: null });
   }
   const acc = new Map<string, { hosts: Map<string, number>; statuses: Record<string, number>; listings: number }>();
   const newest = new Map<string, LatestRow & { modeKey: string | null }>();
@@ -111,7 +129,15 @@ export function buildSellerBoard(
   for (const s of sellers) {
     const bought = s.delivered + s.seller + s.vet402 + s.unsorted;
     s.notBought = Math.max(0, s.listings - bought);
-    s.retestDue = RETEST_MODE_KEYS.has(newest.get(s.host)?.modeKey ?? "");
+    const last = newest.get(s.host);
+    const pick = retest?.get(s.host);
+    s.queued =
+      !!last &&
+      pick !== undefined &&
+      pick.endpointId === last.endpointId &&
+      RETEST_MODE_KEYS.has(last.modeKey ?? "") &&
+      RETEST_REASON_MODE[pick.reason] === last.modeKey;
+    s.queuedEndpointId = s.queued ? pick!.endpointId : null;
     totals.listings += s.listings;
     totals.delivered += s.delivered;
     totals.seller += s.seller;
@@ -246,8 +272,22 @@ export function buildSellerDetail(
   listings.sort(compareListings);
   const latestRows: LatestRow[] = listings.filter((l) => l.latest).map((l) => ({ ...l.latest!.facts, host }));
   const board = buildSellerBoard([{ host, listings: endpoints.length }], latestRows, fetchedAt);
-  const summary = board.sellers[0] ?? { host, listings: 0, ...zero(), lastAttemptAt: null, retestDue: false };
+  const summary = board.sellers[0] ?? { host, listings: 0, ...zero(), lastAttemptAt: null, queued: false, queuedEndpointId: null };
   return { fetchedAt, host, summary, listings, selectedBy };
+}
+
+/**
+ * 1 売り手の頁に、一覧（board）が持つ retest の判定を移す。board と頁の読み取りは別の時刻なので、
+ * 頁の最新の行が board の選んだ行と同じで、なおかつこちらの側の失敗であるときだけ queued にする。
+ */
+export function markQueued(d: SellerDetail, fromBoard: SellerSummary | undefined): SellerDetail {
+  const newest = d.listings[0]?.latest ? d.listings[0] : undefined;
+  const queued =
+    !!fromBoard?.queued &&
+    !!newest &&
+    fromBoard.queuedEndpointId === newest.endpointId &&
+    RETEST_MODE_KEYS.has(newest.latest?.mode?.key ?? "");
+  return { ...d, summary: { ...d.summary, queued, queuedEndpointId: queued ? newest!.endpointId : null } };
 }
 
 /** export.csv の ?days= で、その行が窓に入る最小の日数（1..366）。366 を超えるなら null。 */

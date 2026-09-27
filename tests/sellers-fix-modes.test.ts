@@ -40,6 +40,8 @@ function row(p: Partial<SellerRowFacts>): SellerRowFacts {
     method: "GET",
     declaresBody: false,
     bodyRecorded: false,
+    declaresQuery: false,
+    queryRecorded: false,
     unpaidStatus: null,
     selection: null,
     ...p,
@@ -96,9 +98,58 @@ const KNOWN: [string, SellerRowFacts, string | null, string][] = [
     "seller",
   ],
   [
-    "決済された POST 400 は retest と同じく我々の側にしない（決済してから入力を断った）",
+    "決済された POST 400 でも、本文を宣言した出品に {} を送った期間なら vet402 の側（レビュー 2026-09-28）",
     row({ status: "settled", httpStatusPaid: 400, txHash: TX, method: "POST", declaresBody: true, attemptedAt: "2026-09-10T00:00:00Z" }),
+    "body_not_sent",
+    "vet402",
+  ],
+  [
+    "決済された POST 400・本文を宣言していない出品は seller（決済してから入力を断った）",
+    row({ status: "settled", httpStatusPaid: 400, txHash: TX, method: "POST", declaresBody: false, attemptedAt: "2026-09-10T00:00:00Z" }),
     "settled_then_rejected",
+    "seller",
+  ],
+  // クエリ（Base で宣言クエリを送り始めたのは 2026-09-27T23:27:16Z）
+  [
+    "Base の GET 400・クエリを宣言・送る前",
+    row({ status: "settle_failed", httpStatusPaid: 400, declaresQuery: true, attemptedAt: "2026-09-27T23:27:15Z" }),
+    "query_not_sent",
+    "vet402",
+  ],
+  [
+    "Base の GET 422・決済済み・クエリを宣言・送る前",
+    row({ status: "settled", httpStatusPaid: 422, txHash: TX, declaresQuery: true, attemptedAt: "2026-09-20T00:00:00Z" }),
+    "query_not_sent",
+    "vet402",
+  ],
+  [
+    "Base の GET 400・クエリを宣言・境界の時刻（送った後）",
+    row({ status: "settle_failed", httpStatusPaid: 400, declaresQuery: true, attemptedAt: "2026-09-27T23:27:16Z" }),
+    "input_rejected",
+    "seller",
+  ],
+  [
+    "Base の GET 400・クエリの記録あり",
+    row({ status: "settle_failed", httpStatusPaid: 400, declaresQuery: true, queryRecorded: true, attemptedAt: "2026-09-20T00:00:00Z" }),
+    "input_rejected",
+    "seller",
+  ],
+  [
+    "Base の GET 400・クエリを宣言していない",
+    row({ status: "settle_failed", httpStatusPaid: 400, declaresQuery: false, attemptedAt: "2026-09-20T00:00:00Z" }),
+    "input_rejected",
+    "seller",
+  ],
+  [
+    "Base の GET 401・クエリを宣言（400/422 だけが対象）",
+    row({ status: "settle_failed", httpStatusPaid: 401, declaresQuery: true, attemptedAt: "2026-09-20T00:00:00Z" }),
+    "auth",
+    "seller",
+  ],
+  [
+    "Solana の 400・クエリを宣言（Base の境目は Base だけ）",
+    row({ status: "settle_failed", httpStatusPaid: 400, declaresQuery: true, network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", attemptedAt: "2026-09-20T00:00:00Z" }),
+    "input_rejected",
     "seller",
   ],
   ["settled 404", row({ status: "settled", httpStatusPaid: 404, txHash: TX }), "settled_then_rejected", "seller"],
@@ -150,7 +201,7 @@ test("vet402 の側の失敗は seller 側に入らない（残高切れ・本�
   }
 });
 
-test("body_not_sent は retest の (b) と同じ境界: 時刻・POST・記録なし・宣言あり・tx なし・400/422", () => {
+test("body_not_sent の境界: 時刻・POST・記録なし・宣言あり・400/422（retest の (b) に決済済みを足したもの）", () => {
   const base = row({ status: "settle_failed", httpStatusPaid: 400, method: "POST", declaresBody: true, attemptedAt: "2026-09-16T23:25:54Z" });
   assert.equal(isBodyNotSent(base), true);
   assert.equal(isBodyNotSent({ ...base, attemptedAt: DECLARED_BODY_SENT_SINCE }), false, "境界の時刻は含まない");
@@ -159,7 +210,9 @@ test("body_not_sent は retest の (b) と同じ境界: 時刻・POST・記録�
   assert.equal(isBodyNotSent({ ...base, declaresBody: false }), false);
   assert.equal(isBodyNotSent({ ...base, txHash: TX }), false);
   assert.equal(isBodyNotSent({ ...base, httpStatusPaid: 401 }), false);
-  assert.equal(isBodyNotSent({ ...base, status: "settled" }), false);
+  // retest の (b) は tx の無い settle_failed だけを買い直すが、/sellers は決済済みの行もこちらの側に置く
+  assert.equal(isBodyNotSent({ ...base, status: "settled", txHash: TX }), true);
+  assert.equal(isBodyNotSent({ ...base, status: "delivered_no_receipt" }), false);
 });
 
 test("分類表: 鍵が重複せず、文言が空でなく、vet402 の側は売り手に直させない", () => {
@@ -211,16 +264,28 @@ test("集計: カタログに無いホストの行は数えない", () => {
   assert.equal(board.groups.length, 0);
 });
 
-test("retestDue: 売り手の最新の行が vet402 の側（残高切れ・本文）のときだけ", () => {
+test("queued: retest の SQL がこの売り手のこの行を選び、その行がこちらの側のときだけ（旗 off＝null なら書かない）", () => {
   const unfunded = row({ endpointId: "e1", status: "settle_failed", httpStatusPaid: 402, attemptedAt: "2026-09-14T00:00:00Z" });
   const laterSeller = row({ endpointId: "e2", status: "settle_failed", httpStatusPaid: 500, attemptedAt: "2026-09-20T00:00:00Z" });
-  const b1 = buildSellerBoard([{ host: "s.example", listings: 2 }], [latest("s.example", unfunded)], "t");
-  assert.equal(b1.sellers[0].retestDue, true);
-  const b2 = buildSellerBoard([{ host: "s.example", listings: 2 }], [latest("s.example", unfunded), latest("s.example", laterSeller)], "t");
-  assert.equal(b2.sellers[0].retestDue, false, "later seller-side failure wins");
+  const one = [{ host: "s.example", listings: 2 }];
+  // 旗 off（retest の結果なし）: こちらの側の失敗でも queued にしない
+  assert.equal(buildSellerBoard(one, [latest("s.example", unfunded)], "t", null).sellers[0].queued, false);
+  // retest がこの売り手のこの行を選んだ
+  const b1 = buildSellerBoard(one, [latest("s.example", unfunded)], "t", new Map([["s.example", { endpointId: "e1", reason: "unfunded" }]]));
+  assert.equal(b1.sellers[0].queued, true);
+  assert.equal(b1.sellers[0].queuedEndpointId, "e1");
+  // retest が別の行を選んだ（全チェーンの最新行が別）: 食い違うので書かない
+  assert.equal(buildSellerBoard(one, [latest("s.example", unfunded)], "t", new Map([["s.example", { endpointId: "other", reason: "unfunded" }]])).sellers[0].queued, false);
+  // 同じ行でも理由が違う（retest は別チェーンの行を「本文」で選んだ）: 書かない
+  assert.equal(buildSellerBoard(one, [latest("s.example", unfunded)], "t", new Map([["s.example", { endpointId: "e1", reason: "body" }]])).sellers[0].queued, false);
+  // retest がこの売り手を選んでいない
+  assert.equal(buildSellerBoard(one, [latest("s.example", unfunded)], "t", new Map([["x.example", { endpointId: "e1", reason: "unfunded" }]])).sellers[0].queued, false);
+  // この頁の最新の行が seller の側
+  const b2 = buildSellerBoard(one, [latest("s.example", unfunded), latest("s.example", laterSeller)], "t", new Map([["s.example", { endpointId: "e2", reason: "unfunded" }]]));
+  assert.equal(b2.sellers[0].queued, false, "the page's latest row is on the seller's side");
+  // 価格の上限はこちらの側でも買い直しの理由ではない
   const over = row({ endpointId: "e3", status: "over_cap", attemptedAt: "2026-09-21T00:00:00Z" });
-  const b3 = buildSellerBoard([{ host: "s.example", listings: 1 }], [latest("s.example", over)], "t");
-  assert.equal(b3.sellers[0].retestDue, false, "our price ceiling is not a retest case");
+  assert.equal(buildSellerBoard([{ host: "s.example", listings: 1 }], [latest("s.example", over)], "t", new Map([["s.example", { endpointId: "e3", reason: "unfunded" }]])).sellers[0].queued, false);
 });
 
 test("1 売り手: 最新の行で数え、届いた後の行に「直った」とは書かず事実だけ持つ", () => {
@@ -292,13 +357,14 @@ test("検索: URL を貼っても、完全一致を先に・部分一致を後�
 
 test("決済してから入力を断った行: 文面が「決済してから断った」と「こちらが本文を送っていなかった期間」を言う", () => {
   const m = fixMode("settled_then_rejected");
+  assert.equal(classifyRow(row({ status: "settled", httpStatusPaid: 400, txHash: TX, method: "POST", declaresBody: true, attemptedAt: "2026-09-10T00:00:00Z" })).bucket, "vet402");
   assert.equal(m.side, "seller");
   assert.match(m.what, /took the payment before it checked the input/);
-  assert.match(m.what, /vet402 itself sent an empty JSON body on paid POST requests/);
+  assert.match(m.what, /When the listing declared a body or query that vet402 was not yet sending, the row is on vet402's side instead/);
   assert.match(m.fix, /Check the input before you settle/);
-  const before = row({ status: "settled", httpStatusPaid: 400, txHash: TX, method: "POST", declaresBody: true, attemptedAt: "2026-09-10T00:00:00Z" });
-  assert.match(rowNote(before, "settled_then_rejected") ?? "", /this listing declares a body, which vet402 did not send/);
-  assert.match(rowNote({ ...before, declaresBody: false }, "settled_then_rejected") ?? "", /this listing declares no body/);
+  const before = row({ status: "settled", httpStatusPaid: 400, txHash: TX, method: "POST", declaresBody: false, attemptedAt: "2026-09-10T00:00:00Z" });
+  assert.equal(classifyRow(before).mode?.key, "settled_then_rejected");
+  assert.match(rowNote(before, "settled_then_rejected") ?? "", /when vet402 sent an empty JSON body on paid POST requests; this listing declares no body/);
   assert.match(rowNote({ ...before, status: "settle_failed", txHash: null }, "input_rejected") ?? "", /empty JSON body/);
   assert.equal(rowNote({ ...before, attemptedAt: DECLARED_BODY_SENT_SINCE }, "settled_then_rejected"), null, "after the cutover");
   assert.equal(rowNote({ ...before, bodyRecorded: true }, "settled_then_rejected"), null, "a body was recorded");
@@ -320,4 +386,30 @@ test("DECLARED_BODY_SENT_SINCE の値は request-body.ts の 1 か所だけ（re
   walk(join(process.cwd(), "src"));
   const holders = files.filter((f) => readFileSync(f, "utf8").includes(`"${CANON_SINCE}"`)).map((f) => f.slice(process.cwd().length + 1));
   assert.deepEqual(holders, ["src/lib/observatory/request-body.ts"]);
+});
+
+test("BASE_DECLARED_QUERY_SINCE の値は request-query.ts の 1 か所だけ（/sellers はそこから読む）", async () => {
+  const { BASE_DECLARED_QUERY_SINCE: CANON_Q } = await import("@/lib/observatory/request-query");
+  const { BASE_DECLARED_QUERY_SINCE: FROM_MODES } = await import("@/lib/sellers/fix-modes");
+  assert.equal(FROM_MODES, CANON_Q);
+  assert.equal(CANON_Q, "2026-09-27T23:27:16Z");
+  const files: string[] = [];
+  const walk = (d: string) => {
+    for (const e of readdirSync(d)) {
+      const p = join(d, e);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (/\.(ts|tsx)$/.test(e)) files.push(p);
+    }
+  };
+  walk(join(process.cwd(), "src"));
+  const holders = files.filter((f) => readFileSync(f, "utf8").includes(`"${CANON_Q}"`)).map((f) => f.slice(process.cwd().length + 1));
+  assert.deepEqual(holders, ["src/lib/observatory/request-query.ts"]);
+});
+
+test("文面: 本文とクエリの送り始めを分けて書き、「宣言どおり送る」を無条件に言わない", () => {
+  const all = FIX_MODES.map((m) => `${m.what} ${m.fix}`).join("\n");
+  assert.doesNotMatch(all, /vet402 sends the body and query the listing declares/);
+  assert.match(fixMode("input_rejected").what, /Since 2026-09-16 23:25 UTC vet402 sends the request body/);
+  assert.match(fixMode("input_rejected").what, /since 2026-09-27 23:27 UTC it adds the query parameters the listing declares on Base/);
+  assert.match(fixMode("query_not_sent").what, /Before 2026-09-27 23:27 UTC/);
 });

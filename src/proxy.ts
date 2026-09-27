@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isSellersPath, sellersRateLimitResponse } from "@/lib/sellers/page-limit";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -19,7 +20,12 @@ function generateNonce(): string {
   return btoa(binary);
 }
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
+  // /sellers（鍵なしの公開面）: IP ごとの上限を超えたら頁を描かずに 429 を返す（src/lib/sellers/page-limit.ts）。
+  if (isSellersPath(request.nextUrl.pathname)) {
+    const limited = await sellersRateLimitResponse(request);
+    if (limited) return limited;
+  }
   const nonce = generateNonce();
 
   const cspDirectives = [

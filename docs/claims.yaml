@@ -1839,17 +1839,24 @@ claims:
     verified_at: 2026-09-28
   - id: sellers_settled_then_rejected_our_empty_body
     surface: src/lib/sellers/fix-modes.ts
-    quote: "vet402 itself sent an empty JSON body on paid POST requests, even when the listing declared a body"
-    means: "決済してから入力を断った行でも、2026-09-16 23:25:55Z より前の有料 POST はこちらが {} を送っていた事実を併記する（売り手だけに非があるように読ませない）。行ごとの注記は rowNote"
+    quote: "When the listing declared a body or query that vet402 was not yet sending, the row is on vet402's side instead"
+    means: "決済してから入力を断った行でも、出品が宣言した本文（2026-09-16 23:25:55Z より前の POST）やクエリ（2026-09-27 23:27:16Z より前の Base）をこちらが送っていなかった行は vet402 の側（body_not_sent / query_not_sent）。本文を宣言していない出品の境目前の POST には、こちらが {} を送っていた事実を行ごとに併記する（rowNote）"
     check: null
-    why_unverifiable: "時刻は過去で固定（request-body.ts の DECLARED_BODY_SENT_SINCE）。注記の条件は fix-modes.ts の rowNote で、tests/sellers-fix-modes.test.ts が固定する。export.csv の request_body 列が空の POST 行で確かめられる"
+    why_unverifiable: "時刻は過去で固定（request-body.ts・request-query.ts）。条件は fix-modes.ts の isBodyNotSent / isQueryNotSent / rowNote で、tests/sellers-fix-modes.test.ts が固定する"
     verified_at: 2026-09-28
   - id: sellers_sends_declared_input
     surface: src/lib/sellers/fix-modes.ts
-    quote: "vet402 sends the body and query the listing declares, and an empty JSON body when it declares none"
-    means: "有料の要求には、売り手の出品が宣言した本文・クエリを載せ、宣言が無ければ {} を送る（2026-09-17 以降の本文・2026-09-21 以降のクエリ）"
+    quote: "Since 2026-09-16 23:25 UTC vet402 sends the request body the listing declares (an empty JSON body when it declares none), and since 2026-09-27 23:27 UTC it adds the query parameters the listing declares on Base"
+    means: "有料の要求の本文は 2026-09-16 23:25:55Z から出品の宣言どおり（宣言が無ければ {}）。Base のクエリは 2026-09-27 23:27:16Z から宣言どおり足す（それまで Base はクエリ送信の許可リストに入っておらず、本番の台帳で Base の行に requestQuery の記録は 0 件）。旧文「vet402 sends the body and query the listing declares」は Base のクエリについて事実と違っていた（独立レビュー 2026-09-28）"
     check: null
-    why_unverifiable: "公開 GET は送った本文を返さない（SHA-256 だけ）。export.csv の request_body / request_query 列で行ごとに確かめられる。実装は src/lib/observatory/declared-input.ts"
+    why_unverifiable: "時刻は src/lib/observatory/request-body.ts の DECLARED_BODY_SENT_SINCE と src/lib/observatory/request-query.ts の BASE_DECLARED_QUERY_SINCE。行ごとには export.csv の request_body / request_query 列で確かめられる。2026-09-28 の実測では Base の行の最新は 2026-09-27T18:02Z で、クエリの境目より後の Base の行はまだ無い（次の L1 の実行から request_query が付く）"
+    verified_at: 2026-09-28
+  - id: sellers_query_not_sent_before_cutover
+    surface: src/lib/sellers/fix-modes.ts
+    quote: "Before 2026-09-27 23:27 UTC, vet402 did not add the query parameters a listing declares to paid requests on Base"
+    means: "Base の有料の要求で、出品が queryParams を宣言しているのにクエリを足していなかった期間の 400/422（決済の有無を問わず・requestQuery の記録なし）は vet402 の側（query_not_sent）"
+    check: null
+    why_unverifiable: "時刻は request-query.ts の BASE_DECLARED_QUERY_SINCE（retest の (c) と同じ名前・同じ場所）。条件は fix-modes.ts の isQueryNotSent で、tests/sellers-fix-modes.test.ts が境界の両側を固定する"
     verified_at: 2026-09-28
   - id: sellers_pays_declared_price
     surface: src/lib/sellers/fix-modes.ts
@@ -1860,10 +1867,10 @@ claims:
     verified_at: 2026-09-28
   - id: sellers_retest_rebuy
     surface: src/components/site/sellers/SellersViews.tsx
-    quote: "vet402 buys from that seller again and adds the new row here"
-    means: "売り手の最新の行が vet402 の側（残高切れ・宣言本文を送っていなかった期間の 400/422）で失敗していたら、retest でその売り手をもう一度買い、新しい行を古い行の横に足す（古い行は消さない）"
+    quote: "is queued for a re-buy"
+    means: "「queued」と書くのは、旗 OBSERVATORY_L1_CENSUS が on で、retest の SQL（RETEST_SELLERS_SQL）がその売り手を選び、選んだ行（endpoint と理由）がこの頁の最新の行と一致し、その行がこちらの側の失敗のときだけ。それ以外は vet402 の側の失敗であることだけを書き、買い直しを約束しない（独立レビュー 2026-09-28）"
     check: null
-    why_unverifiable: "retest は l1-runner の RETEST_SELLERS_SQL（census-fair-0928）で、旗 OBSERVATORY_L1_CENSUS が on のときだけ働く。買い直した行は raw_response_meta.selection = retest を持ち、この頁の行に [retest] と出る。公開 GET は選び方を返さない"
+    why_unverifiable: "公開 GET は retest の選び方を返さない。条件は src/lib/sellers/board.ts（buildSellerBoard・markQueued）と src/lib/sellers/reader.ts の readRetestQueue で、tests/sellers-fix-modes.test.ts・tests/sellers-views.test.ts・tests/sellers-reader.pg.test.ts が固定する"
     verified_at: 2026-09-28
   - id: sellers_held_rows_not_counted
     surface: src/components/site/sellers/SellersViews.tsx
