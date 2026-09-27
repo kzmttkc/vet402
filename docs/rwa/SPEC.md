@@ -411,6 +411,8 @@ RPC: `https://rpc.mainnet.chain.robinhood.com`。失敗時だけ予備（実装�
 
 改正（patch 014・2026-09-28 Takeshi「vet402 は X 投稿も含めて全て英語で運用している」）: **公開面の文言は英語にする。** 上の日本語の固定文は、同じ意味の英語 "Reconstruction of public chain data. Not investment advice. Not an offer of Stock Tokens, and not a recommendation to acquire, sell or delegate them." に置き換える。禁止語は英語の同じ意味の語に読み替える（"safe to deposit"・"recommended"・"safe"・"yield"・"keeps winning" を公開面に出さない。免責文の否定形 "not a recommendation" は除く）。表示するものと表示しないもの（ALLOW/WARN/BLOCK・CTA・ランキングを出さない）は変えない。
 
+改正（patch 015・2026-09-28）: **入口 `/rwa` を足す。** 動画と提出文の結び "Paste any wallet into vet402.com/rwa" が本番で 404 だった（実測 2026-09-28）。`/rwa` は入力欄 1 つの GET フォームだけを持ち、貼られた文字列（アドレス・エクスプローラの URL・/rwa の URL）から最初の 20 バイトのアドレスを取り出して `/rwa/<checksum address>` へ 307 で送る（`packages/rwa/entry.ts`、tx hash はアドレスとして拾わない）。特定のウォレットへのリンク・例示アドレスは置かない。記録の表示と §10 の制限は `/rwa/[address]` のまま。
+
 ---
 
 ## 11. ゴールデン

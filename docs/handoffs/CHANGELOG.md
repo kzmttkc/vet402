@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-28 JST（3）— `/rwa` に入口ページ（貼ったアドレスを記録ページへ送るだけ）
+
+- **何を**: `src/app/rwa/page.tsx`（入力欄 1 つの GET フォーム）と `packages/rwa/entry.ts`（貼られた文字列 → `/rwa/<checksum>`、tx hash は拾わない）＋テスト 6 件。SPEC patch 015。
+- **なぜ**: デモ動画と提出文の結び "Paste any wallet into vet402.com/rwa" の先が本番で 404 だった。
+- **影響**: `/rwa` は例示アドレスも特定のウォレットへのリンクも持たない。LP の Robinhood 行は、特定の人の損益ページではなくここへ向けられる（デモのウォレット `0xE9B0…` は第三者のもの。LP からの直リンクはオーナー判断待ち）。`/score` の import なし・ALLOW/WARN/BLOCK なし。
+
 ## 2026-09-28 JST（2）— L1 に「公平な買い直し（retest）」レーン・census を主ネットワーク Base に限る（旗は census と共通・既定 OFF）
 
 - **何を**: ① census の対象を主ネットワーク（カタログの accepts[0]）が Base の行に限った。② retest: 売り手（ポートを除いたホスト名）の**最新の** L1 行がこちらの側の理由で失敗している Base の売り手を、census と同じ規則（1 売り手 1 件・払う額 `price_amount` の最安・$1 以下・主ネットワーク Base）で 1 回ずつ買い直す。こちらの側の理由は (a) `held_reason = payer_unfunded`（delivery.ts の式そのまま）、(b) `DECLARED_BODY_SENT_SINCE`（2026-09-16T23:25:55Z）より前の POST が 400・tx なしで決済されず、行に `requestBody` の記録が無く、今の掲載が本文を宣言（`declared_schema` の `properties.input.properties.body`）。旗は `OBSERVATORY_L1_CENSUS=on` を共有、1 バッチの上限 40 も census と分け合う（retest が先）。並びは「レーン枠 → 優先ホスト → retest → census → 主候補の残り」。行は `raw_response_meta.selection = "retest"`、summary に `retestCandidates`（公開口の白名簿には入れない）。
