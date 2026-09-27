@@ -39,6 +39,8 @@ const HALTED: L1BatchSummary = {
   laneFloorHostCapped: {},
   xrplFeeOverCap: 0,
   xrplLaneClosed: null,
+  censusCandidates: 7,
+  censusRemaining: 612,
 };
 
 test("publicL1Summary は haltReason を落とし、計測の数字はそのまま通す", () => {
@@ -50,6 +52,12 @@ test("publicL1Summary は haltReason を落とし、計測の数字はそのま�
   assert.equal(out.disabledReason, "spending_halted");
   assert.equal(out.notAttempted, 3);
   assert.equal(out.spentUnitsTotal, "0");
+});
+
+test("publicL1Summary は census の 2 つ（censusCandidates・censusRemaining）を公開口へ出さない（2026-09-28）", () => {
+  const out = publicL1Summary(HALTED) as Record<string, unknown>;
+  assert.equal("censusCandidates" in out, false);
+  assert.equal("censusRemaining" in out, false);
 });
 
 test("公開口の応答（L1 OFF の実走）に haltReason の鍵が存在しない", async () => {

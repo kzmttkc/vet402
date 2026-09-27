@@ -131,6 +131,23 @@ export function laneFloorPerRun(): number {
   return Math.min(Number(trimmed), LANE_FLOOR_PER_RUN_MAX);
 }
 
+/**
+ * 売り手の census（全員 1 回ずつ）レーン（2026-09-28）。
+ *
+ * Base の公開カタログの売り手（ホスト）のうち、L1 の購入行がまだ 1 件も無いホストを、そのホストの
+ * いちばん安い出品（1 回 $1 以下）で 1 回ずつ、通常の候補より先に買う。目的は全売り手に公開台帳の
+ * 1 行を置くこと（Algorand 側で「全売り手を 1 回ずつ買って公開 → 売り手が自分の行を見に来て自分で
+ * 直した」が起きた）。上限は何も足さない・何も外さない: 1 回 $1・日次 $25・チェーン別の別枠・初回購入の
+ * 日次枠・reserveSpend の原子的予約・停止スイッチ・購入元残高の関門は、主候補と同じ経路でそのまま効く。
+ *
+ * 環境変数 OBSERVATORY_L1_CENSUS が正確に "on" のときだけ有効（既定 OFF）。
+ */
+export const CENSUS_PER_RUN = 40;
+
+export function isCensusEnabled(): boolean {
+  return process.env.OBSERVATORY_L1_CENSUS === "on";
+}
+
 /** 表の tempo 行の別名（mpp-payer のテストと同じ名前）。 */
 export function tempoDailyCapUnits(): bigint {
   return chainDailyCapUnits("tempo");

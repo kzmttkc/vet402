@@ -32,7 +32,7 @@ import {
   DECLARED_QUERY_MAX_PARAMS,
   DECLARED_URL_MAX_BYTES,
 } from "@/lib/observatory/declared-input";
-import { DAILY_BUDGET_USD } from "@/lib/observatory/budget";
+import { CENSUS_PER_RUN, DAILY_BUDGET_USD } from "@/lib/observatory/budget";
 import { REQUIRED_CONFIRMATIONS } from "@/lib/observatory/settlement-verify";
 import { LATE_SETTLEMENT_BACKDATE_MINUTES, LATE_SETTLEMENT_WINDOW_MINUTES } from "@/lib/settlements/recover-late";
 
@@ -521,6 +521,19 @@ export default async function ObservatoryMethodologyPage() {
           purchases out of the daily budget, and an endpoint held back is bought the next day rather
           than dropped. Neither rule removes anything from the catalog, from L0, or from the
           published ledger — only the interval changes.
+        </p>
+        <p className="doc-p">
+          <strong>One row for each seller: the census.</strong> Since 2026-09-28, a seller on Base
+          (a host in the catalog) that we have not yet bought from at all, with no purchase row of
+          any status on any of its endpoints, goes ahead of the demand order. We buy from it once,
+          using its cheapest Base listing (ties go to the lower internal id), and a listing above
+          the per-purchase ceiling is not picked. At most {CENSUS_PER_RUN} such sellers enter a
+          single run, placed after the per-chain lanes so those lanes keep their share. The aim is
+          that each seller has one row of its own on the published ledger, which it can look up
+          and act on. Everything else stays as it was: the per-purchase ceiling, the daily budget,
+          the per-chain lanes, the daily limit on first purchases, the reservation before signing
+          and the stop switch all apply unchanged, and the result is published like any other
+          purchase. After that one purchase, the seller is on the ordinary sweep.
         </p>
         <p className="doc-p">
           <strong>settled</strong> — <em>vet402 re-read the transaction on-chain</em> and found

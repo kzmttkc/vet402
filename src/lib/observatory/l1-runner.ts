@@ -36,13 +36,16 @@ import { readBodyCapped } from "@/lib/net/read-capped";
 import { UnsafeTargetError, createSafeFetchImpl, type SafeFetchCallOptions } from "@/lib/net/safe-fetch";
 import { redactForLog, redactedError } from "./redact";
 import { createDeadline } from "@/lib/util/deadline";
-import { CHAIN_DAILY_CAPS, LANE_FLOOR_FETCH_MAX, LANE_FLOOR_MAX_PER_HOST, LANE_FLOOR_OVERSAMPLE, cappedChainFor, chainDailyCapUnits, checkL1Budget, isL1Enabled, laneFloorPerRun, DAILY_BUDGET_USD, type CappedChain } from "./budget";
+import { CENSUS_PER_RUN, CHAIN_DAILY_CAPS, LANE_FLOOR_FETCH_MAX, LANE_FLOOR_MAX_PER_HOST, LANE_FLOOR_OVERSAMPLE, cappedChainFor, chainDailyCapUnits, checkL1Budget, isCensusEnabled, isL1Enabled, laneFloorPerRun, DAILY_BUDGET_USD, type CappedChain } from "./budget";
 import { isSpendingHalted, type HaltVerdict } from "./kill-switch";
 import { addDerivedOperatorAddresses, isOperatorPayTo, operatorPayToDenylist } from "./operator";
 import { operatorExclusionPredicate } from "./operator-sql";
 import {
   ARC_CAIP2,
   ARC_CHAIN,
+  BASE_CAIP2,
+  BASE_USDC,
+  MAX_PER_PURCHASE_UNITS,
   buildAuthorization,
   declaredPayTosFor,
   encodePaymentHeader,
@@ -152,6 +155,17 @@ export type L1BatchSummary = {
    * 同じバッチで 2 つ目の理由が出ても、最初に閉じた理由を残す（上書きしない）。
    */
   xrplLaneClosed: "signing_inputs_unavailable" | "fee_over_cap" | "payer_unfunded" | null;
+  /**
+   * 売り手の census（2026-09-28・budget.ts CENSUS_PER_RUN）から、このバッチの候補に入れた件数。
+   * 旗（OBSERVATORY_L1_CENSUS=on）が無い・playground の 1 件指定・候補が無い日は 0。
+   * 購入の可否は主候補と同じ経路（デッドライン・上限・別枠・初回枠・残高・原子的予約）が決める。
+   */
+  censusCandidates: number;
+  /**
+   * バッチ開始時点で、L1 の購入行がまだ 1 件も無い Base のホスト（active で Base の accept を持つ行の
+   * ホスト）の数。旗が無い日と、読めなかった日は null（0 と混ぜない）。
+   */
+  censusRemaining: number | null;
 };
 
 /**
@@ -167,7 +181,9 @@ export type L1BatchSummary = {
  * 白名簿を Omit の型で書いているのは関門にするため——L1BatchSummary に列を足すと
  * ここが型不足で落ち、「公開してよいか」を決めない限り typecheck が通らない。
  */
-export type PublicL1BatchSummary = Omit<L1BatchSummary, "haltReason">;
+// census の 2 つ（2026-09-28）は公開口へ出さない: 公開口は 1 件指定の playground で census を使わないし、
+// 「まだ試していない売り手の数」は内部の進み具合であって、その 1 件の計測の事実ではない。
+export type PublicL1BatchSummary = Omit<L1BatchSummary, "haltReason" | "censusCandidates" | "censusRemaining">;
 
 export function publicL1Summary(summary: L1BatchSummary): PublicL1BatchSummary {
   return {
@@ -209,6 +225,11 @@ type Candidate = {
   failedNetworks: string[];
   /** レーン枠（laneFloorCandidates）から来た候補なら、そのレーン。主候補は null。 */
   laneChain: CappedChain | null;
+  /**
+   * 売り手の census（censusCandidates・2026-09-28）から来た候補なら "census"。主候補・レーン枠は null。
+   * 台帳の行の raw_response_meta.selection に残す（export の列は増やさない）。
+   */
+  selection: "census" | null;
   /**
    * カタログの raw_accepts が宣言した XRPL（xrpl:0・RLUSD・固定発行者）accept の payTo（2026-09-18）。
    * Base が先頭の行を XRPL の accept で買うとき、壁の payTo はこの宣言と完全一致でなければ払わない
@@ -496,6 +517,18 @@ const firstPurchasesTodayCountSql = () => sql`(
     ) f
   )`;
 
+/**
+ * census（2026-09-28）の「売り手」の単位＝ホスト。resource_key は host+path に正規化済み
+ * （catalog-source normalizeResourceKey）なので、最初の `/` の前を小文字で取る（concentration.ts・
+ * graph.ts と同じ切り方）。
+ */
+const CENSUS_HOST_SQL = sql`lower(split_part(e.resource_key, '/', 1))`;
+
+/** L1 の購入行が 1 件でもあるホスト（status を問わない）。NOT IN の相手。resource_key は NOT NULL。 */
+const CENSUS_TRIED_HOSTS_SQL = sql`
+  SELECT lower(split_part(te.resource_key, '/', 1))
+  FROM x402_l1_purchases tp JOIN x402_endpoints te ON te.id = tp.endpoint_id`;
+
 function unitsToUsd(units: bigint): number {
   return Number(units) / USDC_PER_USD;
 }
@@ -542,8 +575,15 @@ async function reserveSpend(input: {
   amountUnits: string;
   /** Per-candidate: PRIORITY_SWEEP_WINDOW_DAYS for pinned sellers, SWEEP_WINDOW_DAYS otherwise. */
   windowDays: number;
+  /**
+   * 予約行の raw_response_meta（2026-09-28・census の `{ selection: "census" }`）。null / 省略なら列を
+   * 書かない（従来と同じ文）。予約の後に落ちた行（resolveReservationAsFailed・孤児掃除）は
+   * raw_response_meta へ継ぎ足すので、ここで置いた印は消えない。金の条件には関わらない。
+   */
+  meta?: Record<string, unknown> | null;
 }): Promise<Reservation> {
   const { db, endpointId, payer, network, asset, payTo, amountUnits, windowDays } = input;
+  const metaJson = input.meta ? JSON.stringify(input.meta) : null;
   // チェーン別の別枠（budget.ts CHAIN_DAILY_CAPS）。2026-09-15 の Solana の別枠を 2026-09-17 に
   // Arc と共通の表にした。Base は別枠を持たないので CTE も条件も入らない（従来と同じ 1 文）。
   const capChain = cappedChainFor(network);
@@ -581,9 +621,9 @@ async function reserveSpend(input: {
              ) AS is_first
     ), ins AS (
       INSERT INTO x402_l1_purchases
-        (endpoint_id, status, payer, network, asset, pay_to, amount_units, spent_units)
+        (endpoint_id, status, payer, network, asset, pay_to, amount_units, spent_units${metaJson === null ? sql`` : sql`, raw_response_meta`})
       SELECT ${endpointId}::uuid, 'in_flight', ${payer}, ${network}, ${asset},
-             ${payTo}, ${amountUnits}, ${amountUnits}
+             ${payTo}, ${amountUnits}, ${amountUnits}${metaJson === null ? sql`` : sql`, ${metaJson}::jsonb`}
       FROM day, chain_day, dup, first_day
       WHERE NOT dup.taken
         AND day.spent + ${amountUnits}::numeric <= ${String(DAILY_BUDGET_UNITS)}::numeric
@@ -818,6 +858,8 @@ export async function runL1Batch(
     laneFloorHostCapped: {},
     xrplFeeOverCap: 0,
     xrplLaneClosed: null,
+    censusCandidates: 0,
+    censusRemaining: null,
   };
 
   // 1. Master switches — fail-closed before any network traffic.
@@ -980,7 +1022,9 @@ export async function runL1Batch(
   const selfExclusion = sql`AND ${operatorExclusionPredicate("e")}`;
   // 候補 SQL は settlement_daily を読む（C2 の 30 日窓が生行の保持期間へ縮まないため）。
   // 表がまだ無い環境では生行だけの式へ落とす（withDailyFallback）。
-  const targetsSql = (daily: boolean, lane?: { chain: CappedChain; networkLike: string; limit: number }) => sql`
+  // census（2026-09-28）: 同じ SELECT・同じ WHERE に census の条件だけを足し、並びと LIMIT は
+  // censusTargetsSql（下）が包んで決める（1 ホスト 1 件・最安）。ここでは並びも LIMIT も付けない。
+  const targetsSql = (daily: boolean, lane?: { chain: CappedChain; networkLike: string; limit: number }, census?: boolean) => sql`
     SELECT e.id, e.resource_url, e.method, e.price_amount, e.pay_to, e.network, e.declared_schema,
            (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS is_priority,
            (${settledCountSql(sql`e.id`)} >= ${MATURE_SETTLED_MIN}) AS is_mature,
@@ -1007,12 +1051,28 @@ export async function runL1Batch(
            (SELECT coalesce(jsonb_agg(aa), '[]'::jsonb)
               FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE '[]'::jsonb END) aa
               WHERE aa->>'network' = ${ARC_CAIP2}) AS arc_declared_accepts
+           ${census ? sql`, cp.census_price::text AS census_price, ${CENSUS_HOST_SQL} AS census_host` : sql``}
     FROM x402_endpoints e
     JOIN LATERAL (
       SELECT verdict FROM x402_l0_probes p
       WHERE p.endpoint_id = e.id
       ORDER BY probed_at DESC LIMIT 1
     ) lp ON lp.verdict = 'pass'
+    ${
+      // census の値段（2026-09-28）: その行が宣言した Base の USDC accept のうち、いちばん安い額（基本単位）。
+      // v1 の maxAmountRequired も読む。数字として読めない額・0 は数えない（CASE の中でだけ numeric へ落とす
+      // ——WHERE の AND は評価順を保証しないので、壊れた額で文全体を落とさない）。
+      census
+        ? sql`CROSS JOIN LATERAL (
+      SELECT min(CASE WHEN ca.amt ~ '^[0-9]{1,30}$' THEN nullif(ca.amt::numeric, 0) END) AS census_price
+      FROM (
+        SELECT coalesce(x->>'amount', x->>'maxAmountRequired') AS amt, x->>'network' AS net, lower(x->>'asset') AS asset
+        FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE '[]'::jsonb END) x
+      ) ca
+      WHERE ca.net IN (${BASE_CAIP2}, 'base') AND ca.asset = ${BASE_USDC.toLowerCase()}
+    ) cp`
+        : sql``
+    }
     WHERE e.status = 'active'
       -- 2026-08-26 緊急修正（外部レビュー F-1）: resource_url に ':siren' のような
       -- **未置換のパスパラメータ**が残るエンドポイントを対象から外す。パラメータの
@@ -1048,6 +1108,17 @@ export async function runL1Batch(
                           AND ls.status IN ('settled', 'settle_claimed', 'settle_failed', 'delivered_no_receipt', 'settle_claim_refuted')))`
                 : sql``
             })`
+          : sql``
+      }
+      ${
+        // census（2026-09-28）: (1) Base の USDC accept が $1 以下で宣言されている、(2) 購入の経路が別に
+        // 分かれる主ネットワーク（Solana・Tempo・XRPL——purchaseOne が candidate.network の完全一致で
+        // 分岐する 3 つ）ではない、(3) そのホストに L1 の購入行が 1 件も無い（status を問わない）。
+        census
+          ? sql`AND cp.census_price IS NOT NULL
+      AND cp.census_price <= ${String(MAX_PER_PURCHASE_UNITS)}::numeric
+      AND (e.network IS NULL OR e.network NOT IN (${SOLANA_MAINNET_CAIP2}, ${TEMPO_MAINNET_CAIP2}, ${XRPL_MAINNET_CAIP2}))
+      AND ${CENSUS_HOST_SQL} NOT IN (${CENSUS_TRIED_HOSTS_SQL})`
           : sql``
       }
       ${selfExclusion}
@@ -1114,11 +1185,28 @@ export async function runL1Batch(
     -- 2026-09-02 グラント側の指摘: 日次 $25 の枠に対し実支出 $1〜3・購入実績のある endpoint は
     -- 8.1%。C2 の次は「一度も買っていない in-cap endpoint」を優先し、証拠の裾野を広げる
     -- （上限は全て据え置き: 1 件 $1・日次 $25・原子的予約・cooldown）。
-    ORDER BY (${l1TierWhere(daily)}) DESC,
+    ${
+      census
+        ? sql``
+        : sql`ORDER BY (${l1TierWhere(daily)}) DESC,
              (NOT EXISTS (SELECT 1 FROM x402_l1_purchases np WHERE np.endpoint_id = e.id)) DESC,
              (e.resource_key ILIKE ANY(${prioritySqlArray()})) DESC,
              e.quality_payers_30d DESC NULLS LAST, e.quality_calls_30d DESC NULLS LAST
-    LIMIT ${lane?.limit ?? limit}
+    LIMIT ${lane?.limit ?? limit}`
+    }
+  `;
+  /**
+   * census の候補（2026-09-28）: 上の WHERE を通った行から 1 ホスト 1 件（そのホストでいちばん安い行・
+   * 同額なら id の小さい方）を選び、安い順（同額ならホスト名順）に censusLimit 件。決定的な並び。
+   */
+  const censusTargetsSql = (daily: boolean, censusLimit: number) => sql`
+    SELECT d.* FROM (
+      SELECT DISTINCT ON (c.census_host) c.*
+      FROM (${targetsSql(daily, undefined, true)}) c
+      ORDER BY c.census_host, c.census_price::numeric ASC, c.id ASC
+    ) d
+    ORDER BY d.census_price::numeric ASC, d.census_host ASC
+    LIMIT ${censusLimit}
   `;
   const rawTargets = await withDailyFallback(
     async () => await db.execute(targetsSql(true)),
@@ -1148,10 +1236,29 @@ export async function runL1Batch(
   });
   summary.laneFloor = laneHead.counts;
   summary.laneFloorHostCapped = laneHead.hostCapped;
-  if (laneHead.head.length > 0) {
+  // 3.6 売り手の census（2026-09-28・budget.ts CENSUS_PER_RUN）。L1 の購入行がまだ無い Base のホストを、
+  //     そのホストのいちばん安い出品（$1 以下）で 1 件ずつ、レーン枠の**後ろ**・主候補の**前**に置く
+  //     （レーン枠は削らない）。旗 OBSERVATORY_L1_CENSUS=on が無い日・playground の 1 件指定では
+  //     1 本も問い合わせない。WHERE は主候補と同じ（L0 合格・自己除外・初回購入の日次枠・冷却・窓）で、
+  //     購入の可否もその後の同じ経路（上限・別枠・残高・原子的予約・停止スイッチ）が決める。
+  const censusOn = isCensusEnabled() && !onlyEndpointId;
+  const censusHead = await censusCandidates({
+    enabled: censusOn,
+    perRun: CENSUS_PER_RUN,
+    excludeIds: new Set(laneHead.head.map((c) => c.id)),
+    fetchCensus: async (censusLimit) =>
+      await withDailyFallback(
+        async () => await db.execute(censusTargetsSql(true, censusLimit)),
+        async () => await db.execute(censusTargetsSql(false, censusLimit)),
+      ),
+  });
+  summary.censusCandidates = censusHead.length;
+  if (censusOn) summary.censusRemaining = await countCensusRemaining(db);
+  const head = [...laneHead.head, ...censusHead];
+  if (head.length > 0) {
     // 主候補にも入っていた行は先頭へ移す（同じ売り手を 1 回のバッチで 2 度買わない）。
-    const headIds = new Set(laneHead.head.map((c) => c.id));
-    candidates = [...laneHead.head, ...candidates.filter((c) => !headIds.has(c.id))];
+    const headIds = new Set(head.map((c) => c.id));
+    candidates = [...head, ...candidates.filter((c) => !headIds.has(c.id))];
   }
 
   // 購入元残高の関門（2026-09-17 Issue #29）。チェーンごとに 1 バッチ 1 回だけ読み、
@@ -1306,6 +1413,7 @@ function rowToCandidate(r: Record<string, unknown>): Candidate {
     xrplDeclaredPayTos: parseTextArray(r.xrpl_declared_pay_tos),
     arcDeclaredPayTos: declaredPayTosFor(ARC_CHAIN, r.arc_declared_accepts),
     laneChain: null,
+    selection: null,
   };
 }
 
@@ -1389,6 +1497,94 @@ export async function laneFloorCandidates(input: {
 }
 
 /**
+ * 売り手の census の候補（2026-09-28）。`fetchCensus` の行（censusTargetsSql: 1 ホスト 1 件・安い順）を
+ * Candidate にして返す。SQL が既に選んでいるが、金の経路に入る前にここでも同じ規則を掛け直す（二重防御）:
+ *
+ *  - 値段（census_price・Base の USDC 基本単位）が正の整数として読めない行・$1（MAX_PER_PURCHASE_UNITS）を
+ *    超える行は入れない;
+ *  - 1 ホスト 1 件。同じホストが複数あれば値段の小さい方、同額なら id の小さい方;
+ *  - `excludeIds`（レーン枠に既に入った行）は入れない——レーン枠は削らない;
+ *  - 並びは安い順（同額ならホスト名順）で、最大 `perRun` 件。
+ *
+ * 旗が off なら問い合わせもしない（空を返す）。問い合わせが失敗してもバッチは止めない（census は並びの
+ * 補助であって金の関門ではない）。ログに残して 0 件で続ける。
+ */
+export async function censusCandidates(input: {
+  enabled: boolean;
+  perRun: number;
+  excludeIds: ReadonlySet<string>;
+  fetchCensus: (limit: number) => Promise<unknown>;
+}): Promise<Candidate[]> {
+  if (!input.enabled || input.perRun <= 0) return [];
+  let rows: Record<string, unknown>[] = [];
+  try {
+    // レーン枠と重なった行を除いても perRun 件を埋められるよう、除外ぶんだけ多めに取る。
+    rows = rowsOf(await input.fetchCensus(input.perRun + input.excludeIds.size));
+  } catch (error) {
+    if (!isMissingSchemaError(error)) logServerError("observatory.l1.census", redactedError(error));
+    return [];
+  }
+  return pickCensusRows(rows, input.perRun, input.excludeIds);
+}
+
+/** censusCandidates の選び方（純関数・DB 無しで固定するため公開）。 */
+export function pickCensusRows(
+  rows: readonly Record<string, unknown>[],
+  perRun: number,
+  excludeIds: ReadonlySet<string> = new Set(),
+): Candidate[] {
+  type Row = { row: Record<string, unknown>; id: string; host: string; price: bigint };
+  const usable: Row[] = [];
+  for (const row of rows) {
+    const id = String(row.id);
+    if (excludeIds.has(id)) continue;
+    const raw = typeof row.census_price === "string" ? row.census_price.trim() : "";
+    // "123" と、numeric の text 化で付きうる "123.000…" だけを読む。小数部に 0 以外があれば読まない。
+    const m = /^(\d{1,30})(?:\.0*)?$/.exec(raw);
+    if (!m) continue;
+    const price = BigInt(m[1]);
+    if (price <= 0n || price > MAX_PER_PURCHASE_UNITS) continue;
+    const host =
+      typeof row.census_host === "string" && row.census_host !== ""
+        ? row.census_host.toLowerCase()
+        : laneHostOf(String(row.resource_url));
+    usable.push({ row, id, host, price });
+  }
+  const byPriceThenId = (a: Row, b: Row) => (a.price < b.price ? -1 : a.price > b.price ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const cheapestPerHost = new Map<string, Row>();
+  for (const r of [...usable].sort(byPriceThenId)) {
+    if (!cheapestPerHost.has(r.host)) cheapestPerHost.set(r.host, r);
+  }
+  return [...cheapestPerHost.values()]
+    .sort((a, b) => (a.price < b.price ? -1 : a.price > b.price ? 1 : a.host < b.host ? -1 : a.host > b.host ? 1 : 0))
+    .slice(0, Math.max(0, perRun))
+    .map((r) => ({ ...rowToCandidate(r.row), selection: "census" as const }));
+}
+
+/**
+ * まだ L1 の購入行が 1 件も無い Base のホストの数（summary.censusRemaining）。分母は active で Base の accept
+ * （CAIP-2 か v1 の `base`）を 1 つでも宣言している行のホスト。読めなければ null（0 と混ぜない）。
+ */
+async function countCensusRemaining(db: NonNullable<ReturnType<typeof getDb>>): Promise<number | null> {
+  try {
+    const raw = await db.execute(sql`
+      SELECT count(DISTINCT ${CENSUS_HOST_SQL})::text AS n
+      FROM x402_endpoints e
+      WHERE e.status = 'active'
+        AND jsonb_typeof(e.raw_accepts) = 'array'
+        AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.raw_accepts) x WHERE x->>'network' IN (${BASE_CAIP2}, 'base'))
+        AND ${CENSUS_HOST_SQL} NOT IN (${CENSUS_TRIED_HOSTS_SQL})
+    `);
+    const n = rowsOf(raw)[0]?.n;
+    if (typeof n !== "string" || !/^\d+$/.test(n)) return null;
+    return Number(n);
+  } catch (error) {
+    if (!isMissingSchemaError(error)) logServerError("observatory.l1.census_remaining", redactedError(error));
+    return null;
+  }
+}
+
+/**
  * 支払い付き要求に、売り手が宣言したクエリを足すか（2026-09-20・既定 OFF）。
  * `OBSERVATORY_L1_DECLARED_QUERY_NETWORKS` は CAIP-2 の許可リスト（カンマ区切り・完全一致・例 `xrpl:0`）で、
  * **署名する accept の network** がそこに載っているときだけ足す。未設定・空は全 OFF。boolean にしないのは、
@@ -1456,12 +1652,21 @@ async function purchaseOne(input: {
       ? (xrplWallet?.classicAddress ?? "xrpl_key_missing")
       : account.address.toLowerCase();
 
+  // census の候補（2026-09-28）なら、この候補について書く行の raw_response_meta に selection を残す。
+  // census でなければ null で、tagMeta は受け取った値をそのまま返す（従来の行と 1 バイトも変わらない）。
+  const selectionMeta = candidate.selection ? { selection: candidate.selection } : null;
+  const tagMeta = <T,>(meta: T): T | Record<string, unknown> =>
+    selectionMeta
+      ? { ...(typeof meta === "object" && meta !== null && !Array.isArray(meta) ? (meta as Record<string, unknown>) : {}), ...selectionMeta }
+      : meta;
+
   const record = async (row: Partial<typeof x402L1Purchases.$inferInsert>) => {
     await db.insert(x402L1Purchases).values({
       endpointId: candidate.id,
       status: "request_error",
       payer: payerLabel,
       ...row,
+      ...(selectionMeta ? { rawResponseMeta: tagMeta(row.rawResponseMeta ?? null) } : {}),
     });
     invalidateDecisionCache(candidate.id); // 購入結果は判定材料（このインスタンスのみ・cache.ts 参照）
   };
@@ -1798,6 +2003,7 @@ async function purchaseOne(input: {
       isPriority: candidate.isPriority,
       isMature: candidate.isMature,
     }),
+    meta: selectionMeta,
   });
   if (!reservation.ok) {
     if (reservation.reason === "already_purchased") {
@@ -1844,7 +2050,7 @@ async function purchaseOne(input: {
       .set({
         status: "halted",
         spentUnits: "0",
-        rawResponseMeta: { phase: "pre_sign", reason: preSignHalt.reason },
+        rawResponseMeta: tagMeta({ phase: "pre_sign", reason: preSignHalt.reason }),
       })
       .where(eq(x402L1Purchases.id, reservation.rowId));
     invalidateDecisionCache(candidate.id);
@@ -1900,7 +2106,7 @@ async function purchaseOne(input: {
           .set({
             status: "request_error",
             spentUnits: "0",
-            rawResponseMeta: { phase: "mpp_credential", error: redactForLog(error) },
+            rawResponseMeta: tagMeta({ phase: "mpp_credential", error: redactForLog(error) }),
           })
           .where(eq(x402L1Purchases.id, reservation.rowId));
         invalidateDecisionCache(candidate.id);
@@ -2120,6 +2326,8 @@ async function purchaseOne(input: {
       ...(paidRequestUrl?.query != null
         ? { requestQuerySha256: createHash("sha256").update(paidRequestUrl.query, "utf8").digest("hex") }
         : {}),
+      // census の候補から来た行（2026-09-28）。census でなければ鍵ごと無い。
+      ...(selectionMeta ?? {}),
     };
     const outcomeRow = {
       status,

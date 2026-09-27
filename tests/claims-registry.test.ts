@@ -543,7 +543,8 @@ const DETECTION_FLOOR: Record<string, number> = {
   "src/app/legal/terms/page.tsx": 14,
   // 2026-09-20: 41 -> 42. The "Who named the transaction" paragraph added one detected sentence ("only when that row is its single candidate").
   // 2026-09-21: 42 -> 43. The declared-query paragraphs added one ("a window with no such row at all means it has not run on any network yet").
-  "src/app/observatory/methodology/page.tsx": 43,
+  // 2026-09-28: 43 -> 45. The census paragraph ("One row for each seller") added two detections ([all] and [daily]) in one sentence, registered as method_census_one_row_per_seller.
+  "src/app/observatory/methodology/page.tsx": 45,
   "src/app/observatory/page.tsx": 8,
   "src/app/observatory/state/page.tsx": 14,
   "src/app/operator-log/page.tsx": 7,
