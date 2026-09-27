@@ -13,6 +13,8 @@ import {
   FACTS_CACHE_TTL_MS,
   MAX_RECONSTRUCTIONS_IN_FLIGHT,
   TooBusy,
+  RECONSTRUCTION_DEADLINE_MS,
+  ReconstructionTimeout,
   __resetFactsCacheForTest,
   cachedFactsWith,
 } from "../cache";
@@ -85,7 +87,7 @@ test("reconstructions in flight are capped; the caller over the cap is told to r
   let calls = 0;
   await cachedFactsWith(addr(999), async () => { calls++; return {} as never; });
   assert.equal(calls, 1);
-  assert.equal(MAX_RECONSTRUCTIONS_IN_FLIGHT, 3);
+  assert.equal(MAX_RECONSTRUCTIONS_IN_FLIGHT, 1);
 });
 
 test("a cache hit is served even while the in-flight cap is full", async () => {
@@ -98,4 +100,16 @@ test("a cache hit is served even while the in-flight cap is full", async () => {
   assert.deepEqual(await cachedFactsWith(addr(300), async () => { throw new Error("must not reconstruct"); }), { warm: true });
   blockers.forEach((g) => g.resolve({}));
   await Promise.all(busy);
+});
+
+test("a reconstruction that outlives the deadline is abandoned with a clean error, and its slot is released", async () => {
+  const never = new Promise<never>(() => {});
+  await assert.rejects(
+    cachedFactsWith(addr(500), async () => never, Date.now, 20),
+    (e: unknown) => e instanceof ReconstructionTimeout,
+  );
+  let calls = 0;
+  await cachedFactsWith(addr(501), async () => { calls++; return {} as never; });
+  assert.equal(calls, 1, "the slot must be free again after a timeout");
+  assert.ok(RECONSTRUCTION_DEADLINE_MS <= 45_000, "the deadline must leave room under the route's 60s maxDuration");
 });

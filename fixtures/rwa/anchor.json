@@ -1,0 +1,109 @@
+{
+  "chain_id": 4663,
+  "contract": "0x1955137e7773f2459eb75fb88842026c6517c22d",
+  "deploy_tx": "0x79987c7917c6053d76b1920c74c5888b207eaf38bca76b968a2719296def7148",
+  "anchor_tx": "0x9b776d6a4670768e3e85261fcf3a5fc02012668e3323fee7211b07d8deca72d7",
+  "anchor_block": 74268019,
+  "anchored_by": "0x973cD8a91A771C2C04C6036888F8175D6b4F6227",
+  "explorer": "https://robinhoodchain.blockscout.com/tx/0x9b776d6a4670768e3e85261fcf3a5fc02012668e3323fee7211b07d8deca72d7",
+  "subject": {
+    "address": "0xe9b08727131e34010b34006c660d4c1b436ec25f",
+    "keccak": "0xa158baaf573f2b072b47acaa019ef60de680571a8a2a6ad234faf0e8a3d3bfc5"
+  },
+  "facts_hash": "0xd155c8b1b71125aa922fcb517f047e1a42a0aaf6d028f2cf3470ad1372c8f579",
+  "preimage": "rwa-recon-0.1\n0xe9b08727131e34010b34006c660d4c1b436ec25f\n2026-09-27T21:40:28.000Z\npartial\n-113.98",
+  "method_version": {
+    "string": "rwa-recon-0.1",
+    "number": 1
+  },
+  "as_of": {
+    "iso": "2026-09-27T21:40:28.000Z",
+    "unix": "1790545228",
+    "block_on_4663": 74267752
+  },
+  "facts": {
+    "address": "0xe9b08727131e34010b34006c660d4c1b436ec25f",
+    "chain_id": 4663,
+    "as_of": "2026-09-27T21:40:28.000Z",
+    "as_of_block": 74267752,
+    "method_version": "rwa-recon-0.1",
+    "identity_binding": "unknown",
+    "r0": "present",
+    "r1_status": "partial",
+    "r2": "no_declaration",
+    "tokens": [
+      {
+        "symbol": "NVDA",
+        "token": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
+        "canonical": true,
+        "raw": "41012742373747910457",
+        "shares_ui": "41.04453377",
+        "usd": null,
+        "feed": "0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15",
+        "feed_answer": "22566018707",
+        "feed_updated_at": "2026-09-25T19:56:05.000Z",
+        "stale": true,
+        "stale_reasons": [
+          "age"
+        ],
+        "weekend": true
+      }
+    ],
+    "events_summary": {
+      "transfer": 0,
+      "univ3": 10,
+      "univ4": 21,
+      "other_unparsed": 12
+    },
+    "replayed_raw": "41012742373747910457",
+    "realized_usd": "-113.98",
+    "realized_status": "partial",
+    "unrealized_usd": null,
+    "mdd_usd": null,
+    "gaps": [
+      "other_unparsed",
+      "feed_stale",
+      "unknown_cost_lots",
+      "mdd_pending"
+    ],
+    "evidence": {
+      "txs": [
+        "0xa8431b2093a5d821b816500ba9a43727c60fd00569e06cde0956f56465de1045",
+        "0x428d3cdd1f44448dd8bcee53701784a40817aa5b61bd7ba52b30d46764e5d402",
+        "0x1e9a0d3ad59fe99d9daecadf7da4ae6c0b32f0e5720b18ca9ce44dcfdf6c60ad",
+        "0x3e31174872c1282dfaac6f3ce14606ff782afa25b06ed67cb4e0db1dccd09511",
+        "0xaab42295e3e6c4a1a6691b72e099890ce9ed8915cbd8801a5e0a32e5bf79b3b5",
+        "0x9596f50acca76a31f343023639055a082ae05a8faa2d40c5e9a968b607c77ba5",
+        "0x70cfd9128aff5c7206b548e8ef2ad891cbf8926ccaf621dc1d8834a5895b51ee",
+        "0x06f3a45d1bf37bbc977d3d8858ab8eb9a493b285c101d648cccea318715b151f",
+        "0x23c15dc698c84dc859a9ee7e25364e9bbcf7cc4dd341235a85c2b5e73f829f94",
+        "0x5178c61eeae57bb98ddb4e93a118867dc5cefb2beef7565e6c795a030420acda",
+        "0x5f35e085fb1b7a3a30300604cf8c7c518227090f2f2b32fd27ff8d4539386c1a",
+        "0xce0f646f9c28cc66605aa29eb4381029a9d5f956b2473f7a33e0d71ffb0eef26",
+        "0x27077cb73402e79881bb406fa0c9c9a15c255617afe6cdec75bb53ab162e1cd8",
+        "0xbb1801cba7479b8e475b3157c338550f3e35135cfc2820d3a2f4b152e649602e",
+        "0x65612fcdba95eb1c26961ef4d879a6fc9421d6f0ef0d1495ad808f403237cb0a",
+        "0xea623d4f26e81f6e176a304ae610624e31f4baa56574c166f2c9935c14350725",
+        "0x9255af2563f46860ee31f093b6aea37dcb6c21a91f667c15220c3d60f36cf03f",
+        "0x439c98ff2fe5c76e5f2267ccb5ff0d057c944f57babadebe49c58a5077961bae",
+        "0x0b0232a9d60a020b689afd63b4a2c8387a01e368c7c41cea7e3febd2031c9ad1",
+        "0x577ba8a372e7697da23f2d86a6b68b585e33abf3d174742e83435c0d04febd25",
+        "0x70cbe0a65f1915579d2b8147a7b205e72464b86c0b4a1aa13b4eb06dcd4eff7b",
+        "0xb549fc4d0d5f5b05be457b9357c7ec22b07cc5c5ece60b27a30e6078c16dfb0d",
+        "0x6529edd0d240dbef484315698af5ec25d6ac4e9ac30647a738a646a560b6b605",
+        "0x88d10c9ae17470fbe62a01812c774558bbcd606fb8259afa15133d8cc819945e",
+        "0xf4a2b80ecad826ef4d994af30823a301f33ee76d6ca3f04a3178bfaa28ad9474",
+        "0x92c80c4fb3c8d13557c39e78202ab5440aeb1f692ffb3ff6315f14b0d6a78fa9",
+        "0x75038e4d13d52874885aa2a6fd4a4a5aaec36f095bf85670eff7330ea67ac12a",
+        "0x7ac2d2abf7c8ccbda6279d125f8e786a2f57636393dbdbedc6bf41ab5b0af0d7",
+        "0x4412c98180d286080ab076639f41e8d2b51ad1e26bddc35e5fee6181ff3d322d",
+        "0xa8e8b1676cb8b825dc2ca55a7ec5537007d7db00692eb96094c3f381d86ad83a",
+        "0x7b3b904413f73003327d53ab6e3f6ee6d05b5ea834beef328a2afbdebc94486d"
+      ],
+      "fixture_ids": [
+        "A"
+      ]
+    },
+    "disclaimer": "Reconstruction of public chain data. Not investment advice. Not an offer of Stock Tokens."
+  }
+}

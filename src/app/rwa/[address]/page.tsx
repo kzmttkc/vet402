@@ -6,7 +6,7 @@ import { getAddress } from "viem";
 import { getClientIp } from "@/lib/api/client-ip";
 import { consumeIpRateLimit } from "@/lib/api/ip-rate-limit";
 import { isValidAddress } from "@/lib/chain/client";
-import { TooBusy, cachedFacts } from "../../../../packages/rwa/cache";
+import { ReconstructionTimeout, TooBusy, cachedFacts } from "../../../../packages/rwa/cache";
 import { NoStockTokenActivity, type RwaFacts } from "../../../../packages/rwa/facts";
 
 /**
@@ -55,7 +55,7 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
     facts = await cachedFacts(address);
   } catch (err) {
     if (err instanceof NoStockTokenActivity) notFound();
-    if (err instanceof TooBusy) return <Busy retryAfterSec={err.retryAfterSec} />;
+    if (err instanceof TooBusy || err instanceof ReconstructionTimeout) return <Busy retryAfterSec={err.retryAfterSec} />;
     return (
       <main className="mx-auto max-w-3xl px-6 py-12">
         <h1 className="text-xl font-semibold">vet402 /rwa</h1>

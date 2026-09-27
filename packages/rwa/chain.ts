@@ -6,10 +6,14 @@ import { hex, padAddress, rpcBatch, rpcCall, RpcError, type RpcOptions } from ".
 
 type RawLog = { transactionHash: string; blockNumber: string; logIndex: string; topics: string[]; data: string; address: string };
 
-/** Blocks per eth_getLogs range. The public RPC answers "log query timed out" on
- *  genesis-to-head ranges, so ranges are walked in fixed chunks and a chunk that
- *  still times out or exceeds the 10,000-log cap is split in half. */
-export const LOG_CHUNK_BLOCKS = 4_000_000;
+/** Blocks per eth_getLogs range. An address-filtered Transfer query over 40M blocks
+ *  answers in ~0.3s (measured 2026-09-28: the demo address, genesis to head in one
+ *  call, 19 logs). 4M chunks meant ~38 calls per side and, whenever the batch drew
+ *  a 429, the whole batch was retried, which is what pushed a cold reconstruction to
+ *  ~190 JSON-RPC calls. Heavy addresses still time out on wide ranges (the Fixture A
+ *  holder did on 2026-09-17), so a chunk that times out or exceeds the 10,000-log
+ *  cap is split in half, down to MIN_CHUNK_BLOCKS. */
+export const LOG_CHUNK_BLOCKS = 40_000_000;
 const MIN_CHUNK_BLOCKS = 64;
 
 function isSplittable(err: unknown): boolean {

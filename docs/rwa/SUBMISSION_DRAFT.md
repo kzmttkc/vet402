@@ -1,7 +1,8 @@
 # Open House Singapore — submission form draft (vet402 /rwa)
 
-Fields as measured on the HackQuest form (SPEC §13b patch 012). `<…>` is
-filled after the anchor deploy and the production release. Every answer is
+Fields as measured on the HackQuest form (SPEC §13b patch 012). Contract,
+anchor tx and chain filled 2026-09-28 from `fixtures/rwa/anchor.json`
+(source verified on Blockscout, `--verify` printed `match: true`). Every answer is
 under the 300-character limit; the counts are checked by
 `packages/rwa/test/submission-draft.test.ts`.
 
@@ -11,7 +12,7 @@ nothing here mentions other hackathons' prizes.
 
 ## What is your contract address?
 
-<RWA_ANCHOR_ADDRESS> (RwaAnchor on Robinhood Chain <CHAIN_ID>)
+0x1955137e7773f2459eb75fb88842026c6517c22d (RwaAnchor on Robinhood Chain 4663)
 
 ## Which Prize Track
 
@@ -23,7 +24,7 @@ https://vet402.com/rwa/0xE9B08727131E34010b34006c660D4c1B436EC25f
 
 ## List your Core Protocol / Smart Contract Addresses
 
-RwaAnchor <RWA_ANCHOR_ADDRESS> on Robinhood Chain: an ownerless, non-upgradeable contract that records keccak256 commitments to published reconstructions. Anchor tx: <ANCHOR_TX>.
+RwaAnchor 0x1955137e7773f2459eb75fb88842026c6517c22d on Robinhood Chain: an ownerless, non-upgradeable contract that records keccak256 commitments to published reconstructions. Anchor tx: 0x9b776d6a4670768e3e85261fcf3a5fc02012668e3323fee7211b07d8deca72d7.
 
 ## List your Factory/Pool Contracts (if applicable)
 

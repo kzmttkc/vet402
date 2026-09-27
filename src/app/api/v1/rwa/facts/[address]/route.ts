@@ -4,7 +4,7 @@ import { publicRateLimit } from "@/lib/api/public-route";
 import { isValidAddress } from "@/lib/chain/client";
 import { logServerError } from "@/lib/util/log";
 import { RWA_CHAIN_ID } from "../../../../../../../packages/rwa/config";
-import { TooBusy, cachedFacts } from "../../../../../../../packages/rwa/cache";
+import { ReconstructionTimeout, TooBusy, cachedFacts } from "../../../../../../../packages/rwa/cache";
 import { NoStockTokenActivity, type RwaFacts } from "../../../../../../../packages/rwa/facts";
 
 /**
@@ -44,9 +44,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const facts = await cachedFacts(address);
     return NextResponse.json(render(facts), { headers: gate.cacheHeaders });
   } catch (err) {
-    if (err instanceof TooBusy) {
+    if (err instanceof TooBusy || err instanceof ReconstructionTimeout) {
       return NextResponse.json(
-        { error: "too_busy" },
+        { error: err instanceof TooBusy ? "too_busy" : "feed_unavailable" },
         { status: 503, headers: { ...gate.headers, "Retry-After": String(err.retryAfterSec) } },
       );
     }

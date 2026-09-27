@@ -11,15 +11,30 @@
 //      2026-09-23 Vercel quota stop; the venue demo does not feel it)
 //   2. at most 200 addresses are remembered, oldest evicted, so the map cannot
 //      grow without bound
-//   3. at most 3 reconstructions run at once; a caller over the cap is told to
-//      retry rather than being queued behind a 40-second read
+//   3. at most 1 reconstruction runs at once; a caller over the cap is told to
+//      retry rather than being queued behind a long read (2026-09-28: lowered
+//      from 3 after production showed three parallel reconstructions drawing
+//      429s from the public RPC and all three failing)
+//   4. a reconstruction that is still running after 45 seconds is abandoned
+//      with a clean error, so the route answers 503 + Retry-After instead of
+//      Vercel cutting it off at maxDuration (60s) with a raw 504
 //
 // A cached answer is always served, even while the in-flight cap is full.
 import { reconstructFacts, type RwaFacts } from "./facts";
 
 export const FACTS_CACHE_TTL_MS = 5 * 60_000;
 export const FACTS_CACHE_MAX_ENTRIES = 200;
-export const MAX_RECONSTRUCTIONS_IN_FLIGHT = 3;
+export const MAX_RECONSTRUCTIONS_IN_FLIGHT = 1;
+export const RECONSTRUCTION_DEADLINE_MS = 45_000;
+
+/** Thrown when a reconstruction outlives RECONSTRUCTION_DEADLINE_MS. The surfaces answer 503 + Retry-After. */
+export class ReconstructionTimeout extends Error {
+  readonly retryAfterSec = 30;
+  constructor() {
+    super("reconstruction_timeout");
+    this.name = "ReconstructionTimeout";
+  }
+}
 
 /** Thrown when too many reconstructions are already running. The surfaces answer 503 + Retry-After. */
 export class TooBusy extends Error {
@@ -61,6 +76,7 @@ export async function cachedFactsWith<T>(
   address: string,
   load: (address: string) => Promise<T>,
   clock: () => number = Date.now,
+  deadlineMs: number = RECONSTRUCTION_DEADLINE_MS,
 ): Promise<T> {
   const key = address.toLowerCase();
   const now = clock();
@@ -71,12 +87,17 @@ export async function cachedFactsWith<T>(
   state.inFlight++;
 
   evictIfNeeded(now);
-  const promise = load(key)
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new ReconstructionTimeout()), deadlineMs);
+  });
+  const promise = Promise.race([load(key), deadline])
     .catch((err) => {
       state.store.delete(key); // a failed reconstruction is not cached
       throw err;
     })
     .finally(() => {
+      clearTimeout(timer);
       state.inFlight--;
     });
   state.store.set(key, { promise, expiresAt: now + FACTS_CACHE_TTL_MS });
