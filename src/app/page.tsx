@@ -775,7 +775,8 @@ export default async function Home() {
             §4 の直後に独立の節として置き、行ごとの状態印（§4 / §6 と同じ文法）で混在を読めるようにする。
             件数は静的に書かない——Fig. 1 と同じ `stats`（l1.byChain）から引き、読めない時は件数も状態の上書きも出さない。
             文言と状態の正典は supported-chains-data.ts。2026-09-20 Arc の初購入が成立し settled_on_record へ。
-            導入文の凡例（chainsLegend）は、pending の行が実際に描かれる時だけ pending を説明する。 */}
+            導入文の凡例（chainsLegend）は、pending の行が実際に描かれる時だけ pending を説明する。
+            2026-09-28: Robinhood Chain の行は building から live（公開中の製品・購入レーンではない・件数なし）へ。RWA と合意。 */}
         <h2 id="chains" className="sec-head scroll-mt-24">
           <span className="sec-no">5.</span>
           <span>Chains</span>

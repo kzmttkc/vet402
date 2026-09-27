@@ -1,9 +1,9 @@
 /**
  * LP §5 "Chains" — the copy and the state of each chain, in one place.
  *
- * Facts as of 2026-09-20. Nothing here is a count: a static number is wrong on
- * the day it is read. The LP prints the per-chain settled count next to each
- * lane from `stats.l1.byChain` (the ledger read the page already performs for
+ * Facts as of 2026-09-20 for the lanes, 2026-09-28 for the Robinhood Chain row. Nothing
+ * here is a count: a static number is wrong on the day it is read. The LP prints the
+ * per-chain settled count next to each lane from `stats.l1.byChain` (the ledger read the page already performs for
  * Fig. 1), and `effectiveLaneState` lets that ledger overrule the static word
  * below in both directions — a lane marked pending stops reading "pending" the
  * moment the ledger holds a settled purchase on it, and a lane marked as having
@@ -47,21 +47,38 @@ export type LaneChain = {
   state: LaneState;
 };
 
-export type BodyPart = string | { code: string };
+/** A code span; with `href` it is also the row's link (a site path, followed in one click). */
+export type BodyPart = string | { code: string; href?: string };
 
+/** Work that has not shipped. Static: the ledger never moves it and it prints no count. */
 export type BuildingChain = {
   kind: "building";
   chain: string;
   body: BodyPart[];
 };
 
-export type SupportedChain = LaneChain | BuildingChain;
+/**
+ * A public product on the chain that is not a purchase lane (2026-09-28: Robinhood Chain,
+ * `vet402 /rwa`). Static like a building row — marked live, never joined to
+ * `stats.l1.byChain`, no count — because vet402 does not buy there, so the ledger has
+ * nothing to say about it.
+ */
+export type ProductChain = {
+  kind: "product";
+  chain: string;
+  body: BodyPart[];
+};
+
+export type SupportedChain = LaneChain | BuildingChain | ProductChain;
 
 export const LANE_STATE_SENTENCE: Record<LaneState, string> = {
   settled_on_record: "Settled and reconciled purchases are on record.",
   pending_first_purchase:
     "The purchase lane and settlement reconciliation are implemented. The first real purchase on this chain is still pending.",
 };
+
+/** The agreed link for the Robinhood Chain row: https://vet402.com + this path. */
+export const RWA_EXAMPLE_PATH = "/rwa/0xE9B08727131E34010b34006c660D4c1B436EC25f";
 
 export const SUPPORTED_CHAINS: SupportedChain[] = [
   { kind: "lane", chain: "Base", asset: "USDC", rail: "x402", state: "settled_on_record" },
@@ -79,17 +96,22 @@ export const SUPPORTED_CHAINS: SupportedChain[] = [
   // `state: "pending_first_purchase"` to `state: "settled_on_record"`. The tx is in
   // docs/handoffs/CHANGELOG.md; the count on the page still comes from the ledger.
   { kind: "lane", chain: "Arc", asset: "USDC", rail: "x402", state: "settled_on_record" },
-  // Robinhood Chain: the wording is fixed by agreement with the RWA session. The Japanese
-  // source, verbatim:
-  //   「Robinhood Chain（4663・本番網）: Stock Token の保有と取引履歴を公開チェーンデータから
-  //   再構成する `vet402 /rwa` を実装中。購入レーンと決済索引は未対応」
-  // The English below is a faithful translation of that sentence and carries nothing else.
+  // Robinhood Chain: the wording is fixed by agreement with the RWA session (2026-09-28,
+  // English only). The agreement as handed over in Japanese (the delegation brief's summary,
+  // not a verbatim quote of the RWA session's message):
+  //   「Robinhood Chain（4663・本番網）: 公開中の製品。購入レーンではない。状態印は live。
+  //   `vet402 /rwa` は公開チェーンデータからウォレットの Stock Token 保有と取引履歴を再構成する。
+  //   購入レーンと決済索引は未対応。リンクは /rwa/0xE9B08727131E34010b34006c660D4c1B436EC25f」
+  //   （2026-09-28 RWA と合意。アンカーの一文は保留——公開面で確かめられる状態になってから
+  //   RWA が改めて文を送る。それまでアンカーの記述・コントラクトアドレス・会場名・受賞は載せない）
+  // It replaces the 2026-09 "building" sentence (「…を実装中。購入レーンと決済索引は未対応」).
+  // The English below is the agreed sentence and carries nothing else.
   {
-    kind: "building",
+    kind: "product",
     chain: "Robinhood Chain (4663, mainnet)",
     body: [
-      { code: "vet402 /rwa" },
-      ", which reconstructs Stock Token holdings and trade history from public chain data, is being implemented. The purchase lane and the settlement index are not supported.",
+      { code: "vet402 /rwa", href: RWA_EXAMPLE_PATH },
+      " rebuilds a wallet's Stock Token holdings and trade history from public chain data. The purchase lane and the settlement index are not supported.",
     ],
   },
 ];
@@ -120,8 +142,8 @@ export function settledByChainOf(
 }
 
 /**
- * The count a row prints, or null for no count line. A building row has no lane, so
- * it prints no count whatever the ledger holds. A lane absent from a readable ledger
+ * The count a row prints, or null for no count line. A building or product row has no
+ * lane, so it prints no count whatever the ledger holds. A lane absent from a readable ledger
  * has no settled purchase: 0.
  */
 export function settledCountOf(row: SupportedChain, settledByChain: Map<string, number> | null): number | null {
@@ -129,10 +151,11 @@ export function settledCountOf(row: SupportedChain, settledByChain: Map<string, 
   return settledByChain.get(row.chain) ?? 0;
 }
 
-export type ChainMarker = { label: "implemented" | "pending" | "building"; live: boolean };
+export type ChainMarker = { label: "implemented" | "pending" | "building" | "live"; live: boolean };
 
 export function markerOf(row: SupportedChain, settled: number | null): ChainMarker {
   if (row.kind === "building") return { label: "building", live: false };
+  if (row.kind === "product") return { label: "live", live: true };
   return effectiveLaneState(row.state, settled) === "pending_first_purchase"
     ? { label: "pending", live: false }
     : { label: "implemented", live: true };
@@ -144,37 +167,41 @@ export function laneBody(row: LaneChain, settled: number | null): string {
 
 /**
  * The legend sentence under the section heading. It explains the markers the rows below
- * actually carry: "pending" is named only when some row is drawn pending (2026-09-20 — with
- * every lane settled, a legend that defines a marker no row shows sends the reader looking
- * for a pending chain that is not there). "building" is always named: the Robinhood Chain
- * row is static.
+ * actually carry, and no other: "pending" and "building" are named only when some row is
+ * drawn with them (2026-09-20 — a legend that defines a marker no row shows sends the reader
+ * looking for a chain that is not there; 2026-09-28 — the Robinhood Chain row moved from
+ * building to live, so no row is building today). "live" gets its own sentence when a product
+ * row is drawn: it is not a lane, the ledger does not set it, and it carries no count.
  *
- * Two shapes. Ledger read: the markers are defined by the ledger, because the ledger set them.
- * Ledger not read (`settledByChain === null`): the markers are the static states above, so the
- * sentence does not name the ledger as their source, and a second sentence says it was not read.
+ * Two shapes. Ledger read: the lane markers are defined by the ledger, because the ledger set
+ * them. Ledger not read (`settledByChain === null`): the lane markers are the static states
+ * above, so the sentence does not name the ledger as their source, and a last sentence says it
+ * was not read. The live sentence is the same in both shapes: it never depended on the ledger.
  */
 export const LEDGER_UNREAD_SENTENCE =
   "The public ledger could not be read for this rendering, so the markers below are the state written into this page when it was last updated and no counts are shown.";
 
+export const LIVE_MARKER_SENTENCE =
+  "A row marked live is a public product on that chain, not a purchase lane, so it carries no count.";
+
 export function chainsLegend(settledByChain: Map<string, number> | null): string {
-  const anyPending = SUPPORTED_CHAINS.some(
-    (row) => markerOf(row, settledCountOf(row, settledByChain)).label === "pending",
+  const labels = new Set(
+    SUPPORTED_CHAINS.map((row) => markerOf(row, settledCountOf(row, settledByChain)).label),
   );
-  const pending = anyPending ? ", pending when it is built but has not bought yet" : "";
   // 2026-09-20 review W1: when the ledger was not read, the markers come from the static
   // defaults in this file, not from the ledger — so the legend must not define them by the
   // ledger, and it says outright that the ledger was not read.
-  if (settledByChain === null) {
-    return (
-      "A lane is marked implemented when a settled purchase is on record" +
-      pending +
-      ", and building when the work has not shipped. " +
-      LEDGER_UNREAD_SENTENCE
-    );
-  }
-  return (
-    "A lane is marked implemented when the public ledger holds a settled purchase on that chain" +
-    pending +
-    ", and building when the work has not shipped."
-  );
+  const clauses = [
+    settledByChain === null
+      ? "implemented when a settled purchase is on record"
+      : "implemented when the public ledger holds a settled purchase on that chain",
+  ];
+  if (labels.has("pending")) clauses.push("pending when it is built but has not bought yet");
+  if (labels.has("building")) clauses.push("building when the work has not shipped");
+  const listed =
+    clauses.length === 1 ? clauses[0] : `${clauses.slice(0, -1).join(", ")}, and ${clauses[clauses.length - 1]}`;
+  const sentences = [`A lane is marked ${listed}.`];
+  if (labels.has("live")) sentences.push(LIVE_MARKER_SENTENCE);
+  if (settledByChain === null) sentences.push(LEDGER_UNREAD_SENTENCE);
+  return sentences.join(" ");
 }

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   SUPPORTED_CHAINS,
   laneBody,
@@ -12,6 +13,8 @@ import {
  *
  * `settledByChain` comes from `settledByChainOf(stats.l1.byChain)`: null when the L1
  * ledger was not read, and then the rows print their static state and no count.
+ * Building and product rows (not lanes) print their static body and never a count; a
+ * code span with an `href` is that row's link.
  */
 export function SupportedChains({ settledByChain }: { settledByChain: Map<string, number> | null }) {
   return (
@@ -46,6 +49,10 @@ function ChainRow({ row, settled }: { row: SupportedChain; settled: number | nul
             : row.body.map((part, i) =>
                 typeof part === "string" ? (
                   <span key={i}>{part}</span>
+                ) : part.href ? (
+                  <Link key={i} href={part.href} className="doc-link">
+                    <code className="text-brand-deep">{part.code}</code>
+                  </Link>
                 ) : (
                   <code key={i} className="text-brand-deep">
                     {part.code}

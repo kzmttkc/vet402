@@ -14,6 +14,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 import {
   LANE_STATE_SENTENCE,
+  LEDGER_UNREAD_SENTENCE,
+  LIVE_MARKER_SENTENCE,
+  RWA_EXAMPLE_PATH,
   SUPPORTED_CHAINS,
   chainsLegend,
   effectiveLaneState,
@@ -110,17 +113,46 @@ test("a readable ledger: counts per lane, absent lane is 0, same-label rows are 
   assert.equal(html.split("Settled purchases on record").length - 1, lanes.length, "one count line per lane");
 });
 
-test("a building row stays building and prints no count, whatever the ledger holds", () => {
-  const row = SUPPORTED_CHAINS.find((c) => c.kind === "building")!;
+test("the Robinhood Chain row is a product: live, and no count whatever the ledger holds (2026-09-28)", () => {
+  const row = SUPPORTED_CHAINS.find((c) => c.chain === "Robinhood Chain (4663, mainnet)")!;
+  assert.equal(row.kind, "product", "a public product, not a purchase lane and no longer building");
+  assert.equal(SUPPORTED_CHAINS.filter((c) => c.kind === "building").length, 0, "no row is building today");
   for (const settled of [null, 0, 1, 822]) {
-    assert.deepEqual(markerOf(row, settled), { label: "building", live: false });
+    assert.deepEqual(markerOf(row, settled), { label: "live", live: true });
   }
-  // even a ledger row under the very same name does not give it a count
-  const map = settledByChainOf([{ chain: row.chain, settled: 5 }, { chain: "Robinhood Chain", settled: 5 }]);
+  // a ledger that holds 4663 purchases — under the row's name, the chainLabel, or the CAIP-2 id —
+  // still gives the row no count: vet402 does not buy there
+  const map = settledByChainOf([
+    { chain: row.chain, settled: 5 },
+    { chain: chainLabel("eip155:4663"), settled: 5 },
+    { chain: "eip155:4663", settled: 5 },
+    { chain: "Base", settled: 2 },
+  ]);
   assert.equal(settledCountOf(row, map), null);
-  const html = renderToStaticMarkup(createElement(SupportedChains, { settledByChain: map }));
+  for (const m of [map, null]) {
+    const html = renderToStaticMarkup(createElement(SupportedChains, { settledByChain: m }));
+    // the row starts at its marker column, which is drawn before the chain name
+    const tail = html.slice(html.lastIndexOf('<div class="flex', html.indexOf("Robinhood Chain")));
+    assert.ok(!tail.includes("Settled purchases on record"), "no count line on the Robinhood row");
+    assert.ok(tail.includes(">live<"), "the row is drawn live");
+    assert.ok(tail.includes('class="marker marker-live"'), "drawn like the other live rows");
+    assert.ok(!html.includes(">building<"));
+  }
+});
+
+test("the Robinhood Chain row links to the agreed /rwa page from `vet402 /rwa`", () => {
+  assert.equal(
+    new URL(RWA_EXAMPLE_PATH, "https://vet402.com").href,
+    "https://vet402.com/rwa/0xE9B08727131E34010b34006c660D4c1B436EC25f",
+  );
+  const row = SUPPORTED_CHAINS.find((c) => c.kind === "product");
+  assert.ok(row && row.kind === "product");
+  const linked = row.body.filter((p) => typeof p !== "string" && p.href);
+  assert.deepEqual(linked, [{ code: "vet402 /rwa", href: RWA_EXAMPLE_PATH }]);
+  const html = renderToStaticMarkup(createElement(SupportedChains, { settledByChain: null }));
   const tail = html.slice(html.indexOf("Robinhood Chain"));
-  assert.ok(!tail.includes("Settled purchases on record"));
+  assert.match(tail, new RegExp(`<a [^>]*href="${RWA_EXAMPLE_PATH}"[^>]*><code[^>]*>vet402 /rwa</code></a>`));
+  assert.equal(html.split("<a ").length - 1, 1, "one link in the section, on the Robinhood row");
 });
 
 test("lane copy names the asset and the rail; Tempo says it is not x402", () => {
@@ -159,7 +191,8 @@ test("the legend names the pending marker only when a row is drawn pending", () 
   const everyLane = settledByChainOf(lanes.map((l) => ({ chain: l.chain, settled: 1 })));
   assert.equal(
     chainsLegend(everyLane),
-    "A lane is marked implemented when the public ledger holds a settled purchase on that chain, and building when the work has not shipped.",
+    "A lane is marked implemented when the public ledger holds a settled purchase on that chain. " +
+      "A row marked live is a public product on that chain, not a purchase lane, so it carries no count.",
   );
   for (const map of [null, everyLane]) {
     assert.ok(!/\bpending\b/.test(chainsLegend(map)));
@@ -172,8 +205,21 @@ test("the legend names the pending marker only when a row is drawn pending", () 
   assert.ok(html.includes(">pending<"));
   assert.equal(
     chainsLegend(noArc),
-    "A lane is marked implemented when the public ledger holds a settled purchase on that chain, pending when it is built but has not bought yet, and building when the work has not shipped.",
+    "A lane is marked implemented when the public ledger holds a settled purchase on that chain, and pending when it is built but has not bought yet. " +
+      LIVE_MARKER_SENTENCE,
   );
+});
+
+test("the legend names building only when a row is drawn building (2026-09-28: none is)", () => {
+  // the Robinhood row left building for live; a legend that still defined building would send
+  // the reader looking for a chain that is not there
+  for (const map of [null, settledByChainOf([{ chain: "Base", settled: 2 }])]) {
+    assert.ok(!/\bbuilding\b/.test(chainsLegend(map)), chainsLegend(map));
+    assert.ok(chainsLegend(map).includes(LIVE_MARKER_SENTENCE), "a live row is drawn, so live is defined");
+  }
+  // the unread sentence stays true for the live row: its marker is the state written into the page
+  assert.ok(LEDGER_UNREAD_SENTENCE.includes("the state written into this page"));
+  assert.ok(!/ledger/i.test(LIVE_MARKER_SENTENCE), "live is not set by the ledger, so it is not defined by it");
 });
 
 test("an unread ledger: the legend does not define the markers by the ledger, and says it was not read (review W1)", () => {
@@ -181,7 +227,8 @@ test("an unread ledger: the legend does not define the markers by the ledger, an
   for (const unread of [[], null, undefined]) {
     assert.equal(
       chainsLegend(settledByChainOf(unread)),
-      "A lane is marked implemented when a settled purchase is on record, and building when the work has not shipped. " +
+      "A lane is marked implemented when a settled purchase is on record. " +
+        "A row marked live is a public product on that chain, not a purchase lane, so it carries no count. " +
         "The public ledger could not be read for this rendering, so the markers below are the state written into this page when it was last updated and no counts are shown.",
     );
   }
@@ -201,21 +248,40 @@ test("the page folds the ledger once and feeds the legend and the rows from that
   assert.ok(home.includes("<SupportedChains settledByChain={settledByChain} />"));
 });
 
-test("the Robinhood Chain row carries the agreed sentence and nothing else", () => {
-  const row = SUPPORTED_CHAINS.find((c) => c.kind === "building");
-  assert.ok(row && row.kind === "building");
+test("the Robinhood Chain row carries the agreed sentence and nothing else (2026-09-28)", () => {
+  const row = SUPPORTED_CHAINS.find((c) => c.kind === "product");
+  assert.ok(row && row.kind === "product");
+  assert.equal(row.chain, "Robinhood Chain (4663, mainnet)");
   const text = row.body.map((p) => (typeof p === "string" ? p : p.code)).join("");
   assert.equal(
     text,
-    "vet402 /rwa, which reconstructs Stock Token holdings and trade history from public chain data, is being implemented. The purchase lane and the settlement index are not supported.",
+    "vet402 /rwa rebuilds a wallet's Stock Token holdings and trade history from public chain data. The purchase lane and the settlement index are not supported.",
   );
-  // 日本語の原文（申し合わせ）が正典としてファイルに残っていること
+  // 合意（2026-09-28・RWA）の日本語の原文と、アンカーの一文を保留した旨がファイルに残っていること
   const src = read("src/components/site/supported-chains-data.ts");
-  assert.ok(src.includes("Robinhood Chain（4663・本番網）: Stock Token の保有と取引履歴を公開チェーンデータから"));
-  assert.ok(src.includes("再構成する `vet402 /rwa` を実装中。購入レーンと決済索引は未対応"));
-  for (const banned of [/open house/i, /ethonline/i, /\bsafe/i, /recommend/i, /yield/i, /deposit/i, /winning/i]) {
+  assert.ok(src.includes("2026-09-28 RWA と合意。アンカーの一文は保留"));
+  assert.ok(src.includes("購入レーンと決済索引は未対応。リンクは /rwa/0xE9B08727131E34010b34006c660D4c1B436EC25f"));
+  // アンカーは公開面で確かめられるまで載せない。会場名・受賞も載せない
+  const drawn = renderToStaticMarkup(createElement(SupportedChains, { settledByChain: null }));
+  const rowHtml = drawn.slice(drawn.indexOf("Robinhood Chain"));
+  for (const banned of [
+    /anchor/i,
+    /open house/i,
+    /ethonline/i,
+    /\bprize/i,
+    /\baward/i,
+    /\bwinn/i,
+    /\bsafe/i,
+    /recommend/i,
+    /yield/i,
+    /deposit/i,
+  ]) {
     assert.ok(!banned.test(`${row.chain} ${text}`), `Robinhood row must not say ${banned}`);
+    assert.ok(!banned.test(rowHtml), `Robinhood row HTML must not say ${banned}`);
   }
+  // the one address on the row is the example wallet in the link; no contract address in the prose
+  assert.ok(!/0x[0-9a-f]{40}/i.test(text), "no address in the row's prose");
+  assert.deepEqual(rowHtml.match(/0x[0-9a-fA-F]{40}/g), ["0xE9B08727131E34010b34006c660D4c1B436EC25f"]);
 });
 
 test("no static count in the section copy — counts come from stats.l1.byChain", () => {
