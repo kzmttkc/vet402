@@ -13,6 +13,15 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-28 JST（2）— L1 に「公平な買い直し（retest）」レーン・census を主ネットワーク Base に限る（旗は census と共通・既定 OFF）
+
+- **何を**: ① census の対象を主ネットワーク（カタログの accepts[0]）が Base の行に限った。② retest: 売り手（ポートを除いたホスト名）の**最新の** L1 行がこちらの側の理由で失敗している Base の売り手を、census と同じ規則（1 売り手 1 件・払う額 `price_amount` の最安・$1 以下・主ネットワーク Base）で 1 回ずつ買い直す。こちらの側の理由は (a) `held_reason = payer_unfunded`（delivery.ts の式そのまま）、(b) `DECLARED_BODY_SENT_SINCE`（2026-09-16T23:25:55Z）より前の POST が 400・tx なしで決済されず、行に `requestBody` の記録が無く、今の掲載が本文を宣言（`declared_schema` の `properties.input.properties.body`）。旗は `OBSERVATORY_L1_CENSUS=on` を共有、1 バッチの上限 40 も census と分け合う（retest が先）。並びは「レーン枠 → 優先ホスト → retest → census → 主候補の残り」。行は `raw_response_meta.selection = "retest"`、summary に `retestCandidates`（公開口の白名簿には入れない）。
+- **境目の時刻の根拠**: GitHub の deployments で 02fc857 を含む最初の Production は 2b4a4ee0（2026-09-16T23:25:55Z）、直前の Production 09cd25de（23:05:58Z）は含まない。台帳でも POST の支払い付き行で `requestBody` を持たない最後が 09-16T18:02:09Z・持つ最初が 09-17T00:01:01Z、その間の POST 支払い付き行は 0。
+- **なぜ**: 告知の前に、売り手が自分のせいではない失敗（こちらの残高切れ・こちらが本文を送っていなかった）で判断されないようにする。オーナー承認済み（2026-09-28 06:43・合計 約 30 USDC）。
+- **本番の対象（READ ONLY で実測・2026-09-28）**: retest の条件に当たる売り手 311（(a) 171・(b) 140）。うち L0 合格・主ネットワーク Base・$1 以下の出品があり、6 日窓の外にある売り手は 227・最安の合計 8.5158 USDC（3 連続の非決済で冷却中のものを除くと 220・7.7858 USDC）。
+- **影響**: 既存の関門はそのまま（1 回 $1・日次 $25・チェーン別・初回購入の日次枠・`reserveSpend`・停止スイッチ・残高）。前の行は消さず、新しい行が後に足される。方法論に 1 段落（静的な件数なし）と census の段落の「先頭が Base」の追記、`docs/claims.yaml` に 1 件、`.env.example` に説明。検出の床は 46 のまま（新しい段落は断定語を足さない）。
+- **コミット**: `e560cf7b`（ブランチ `census-fair-0928`・未 push。`25168ba6` の上）
+
 ## 2026-09-28 JST（1）— L1 に「売り手の census」レーン（未試行の Base の売り手を 1 回ずつ・既定 OFF）
 
 - **何を**: L1 の購入行が 1 件も無い Base のホストを、そのホストのいちばん安い出品（Base の USDC accept・$1 以下・同額なら id の小さい方）で 1 回ずつ、レーン枠の後ろ・主候補の前に置く。1 バッチ最大 40 件（`CENSUS_PER_RUN`）。旗 `OBSERVATORY_L1_CENSUS=on` のときだけ働く（既定 OFF・本番の env は依頼元が設定）。主ネットワークが Solana・Tempo・XRPL の行（購入経路が別）は対象外。
