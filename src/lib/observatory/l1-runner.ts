@@ -75,6 +75,7 @@ import { heldReasonSql } from "./delivery";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
 import { declaredRequestBody, declaredRequestUrl, type RequestBodySource, type RequestQuerySource } from "./declared-input";
 import { requestBodyRecord } from "./request-body";
+import { BASE_DECLARED_QUERY_SINCE } from "./request-query";
 import { createPayerFunds, defaultPayerUsdcBalance, type PayerChain, type PayerFunds, type PayerUsdcBalanceReader } from "./payer-funds";
 import { createHash } from "node:crypto";
 // Tempo の MPP 方言（2026-09-17・mpp-payer.ts）。x402 ではなく WWW-Authenticate: Payment の壁。
@@ -572,31 +573,44 @@ export const DECLARED_BODY_SENT_SINCE = "2026-09-16T23:25:55Z";
  *      （今も送らない）ので対象にしない。422 は `{}` を検証で弾く実装が多い（レビュー 2026-09-28・本番 26 売り手）。
  *      401・403 は認可の話で本文とは言えないので入れない。
  *
- * 返すのは売り手ごとに host・reason（"unfunded" | "body"）・その最新の行の endpoint_id。(b) では失敗した出品そのものを
- * 優先して買い直す（runL1Batch の retest の段）。
+ *  (c) Base（eip155:8453 / base）の支払い付き要求が HTTP 400 または 422 で決済されず（settle_failed・tx なし）、
+ *      Base で宣言クエリを送り始めた時刻（request-query.ts BASE_DECLARED_QUERY_SINCE）より前で、行に requestQuery の
+ *      記録が無い（または empty）、かつ今のカタログのそのエンドポイントが queryParams を宣言している
+ *      （declared_schema の properties.input.properties.queryParams がある・2026-09-28）。XRPL は 2026-09-21 から
+ *      送っていたので (c) に入らない。メソッドは問わない（クエリは GET にも POST にも足す）。
+ *
+ * 返すのは売り手ごとに host・reason（"unfunded" | "body" | "query"）・その最新の行の endpoint_id。(b)(c) では失敗した
+ * 出品そのものを優先して買い直す（runL1Batch の retest の段）。
  *
  * これは**単独の問い合わせ**として 1 回だけ流し、結果（ホストと優先する出品の id）を候補の問い合わせへ JSON の
  * パラメータで渡す（独立レビュー W3・2026-09-28）: 以前は候補の WHERE に `IN (この問い合わせ)` として埋めていて、
  * プランナーが行数を 49 と見誤り、ネストループの中でホストの正規表現を「ホスト数 × 出品数」回計算していた
  * （本番の EXPLAIN で 5,041 ms・census は 172 ms）。
  */
-export const RETEST_SELLERS_SQL = sql`
-  SELECT lr.host, CASE WHEN lr.held = 'payer_unfunded' THEN 'unfunded' ELSE 'body' END AS reason, lr.endpoint_id::text AS endpoint_id
-  FROM (
-    SELECT DISTINCT ON (${censusHostSql(sql`te.resource_key`)})
-           ${censusHostSql(sql`te.resource_key`)} AS host,
-           (${sql.raw(heldReasonSql("tp"))}) AS held,
-           tp.endpoint_id, tp.status, tp.tx_hash, tp.http_status_paid, tp.attempted_at, tp.raw_response_meta,
-           te.method, te.declared_schema
-    FROM x402_l1_purchases tp JOIN x402_endpoints te ON te.id = tp.endpoint_id
-    ORDER BY ${censusHostSql(sql`te.resource_key`)}, tp.attempted_at DESC, tp.id DESC
-  ) lr
-  WHERE lr.held = 'payer_unfunded'
-     OR (lr.status = 'settle_failed' AND lr.tx_hash IS NULL AND lr.http_status_paid IN (400, 422)
+const RETEST_BODY_COND = sql`(lr.status = 'settle_failed' AND lr.tx_hash IS NULL AND lr.http_status_paid IN (400, 422)
          AND lr.attempted_at < ${DECLARED_BODY_SENT_SINCE}::timestamptz
          AND upper(coalesce(lr.method, '')) = 'POST'
          AND NOT coalesce(lr.raw_response_meta ? 'requestBody', false)
          AND jsonb_typeof(lr.declared_schema #> '{properties,input,properties,body}') = 'object')`;
+const RETEST_QUERY_COND = sql`(lr.status = 'settle_failed' AND lr.tx_hash IS NULL AND lr.http_status_paid IN (400, 422)
+         AND lr.network IN (${BASE_CAIP2}, 'base')
+         AND lr.attempted_at < ${BASE_DECLARED_QUERY_SINCE}::timestamptz
+         AND coalesce(lr.raw_response_meta->>'requestQuery', 'empty') = 'empty'
+         AND jsonb_typeof(lr.declared_schema #> '{properties,input,properties,queryParams}') = 'object')`;
+export const RETEST_SELLERS_SQL = sql`
+  SELECT lr.host,
+         CASE WHEN lr.held = 'payer_unfunded' THEN 'unfunded' WHEN ${RETEST_BODY_COND} THEN 'body' ELSE 'query' END AS reason,
+         lr.endpoint_id::text AS endpoint_id
+  FROM (
+    SELECT DISTINCT ON (${censusHostSql(sql`te.resource_key`)})
+           ${censusHostSql(sql`te.resource_key`)} AS host,
+           (${sql.raw(heldReasonSql("tp"))}) AS held,
+           tp.endpoint_id, tp.network, tp.status, tp.tx_hash, tp.http_status_paid, tp.attempted_at, tp.raw_response_meta,
+           te.method, te.declared_schema
+    FROM x402_l1_purchases tp JOIN x402_endpoints te ON te.id = tp.endpoint_id
+    ORDER BY ${censusHostSql(sql`te.resource_key`)}, tp.attempted_at DESC, tp.id DESC
+  ) lr
+  WHERE lr.held = 'payer_unfunded' OR ${RETEST_BODY_COND} OR ${RETEST_QUERY_COND}`;
 
 function unitsToUsd(units: bigint): number {
   return Number(units) / USDC_PER_USD;
@@ -1708,7 +1722,10 @@ export async function readRetestSellers(db: NonNullable<ReturnType<typeof getDb>
   try {
     const rows = rowsOf(await db.execute(RETEST_SELLERS_SQL));
     const hosts = [...new Set(rows.map((r) => String(r.host)))];
-    const preferred = rows.filter((r) => r.reason === "body" && typeof r.endpoint_id === "string").map((r) => String(r.endpoint_id));
+    // (b)(c) は失敗した出品そのものを優先する。(a)（財布切れ）はどの出品でもこちらの落ち度なので最安のまま。
+    const preferred = rows
+      .filter((r) => (r.reason === "body" || r.reason === "query") && typeof r.endpoint_id === "string")
+      .map((r) => String(r.endpoint_id));
     return { hostsJson: JSON.stringify(hosts), preferredIdsJson: JSON.stringify(preferred), hostCount: hosts.length };
   } catch (error) {
     if (!isMissingSchemaError(error)) logServerError("observatory.l1.retest_sellers", redactedError(error));

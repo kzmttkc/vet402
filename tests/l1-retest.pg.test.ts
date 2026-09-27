@@ -4,7 +4,8 @@
 // 守ること:
 //  1. 売り手（ポートを除いたホスト名）の**最新の** L1 行が、こちらの側の理由で失敗しているときだけ選ぶ:
 //     (a) payer_unfunded（残高切れの期間に 402 / 5xx で決済されなかった Base の行）
-//     (b) 宣言本文を送る実装（DECLARED_BODY_SENT_SINCE）より前の POST が 400 で決済されず、今の掲載が本文を宣言
+//     (b) 宣言本文を送る実装（DECLARED_BODY_SENT_SINCE）より前の POST が 400 / 422 で決済されず、今の掲載が本文を宣言
+//     (c) Base で宣言クエリを送り始める前（BASE_DECLARED_QUERY_SINCE）の 400/422・掲載は queryParams を宣言（2026-09-28）
 //  2. 選ばない: 宣言の無い 400・実装後の 400・最新が決済済み・売り手側の失敗（404・price_mismatch）・
 //     主ネットワークが Base 以外の出品。
 //  3. 1 売り手 1 件（ポート違いも 1 売り手）・払う額（price_amount）の最安・$1 以下。
@@ -73,7 +74,15 @@ if (!TEST_DB) {
       else delete process.env.OBSERVATORY_L1_CENSUS;
     };
 
-    type Past = { status: string; http: number | null; at: string; requestBody?: "declared" | "empty" };
+    type Past = {
+      status: string;
+      http: number | null;
+      at: string;
+      requestBody?: "declared" | "empty";
+      requestQuery?: "declared" | "empty" | "refused";
+      /** 行の network（既定 Base）。 */
+      network?: string;
+    };
     type Listing = {
       url: string;
       amount: string;
@@ -81,6 +90,8 @@ if (!TEST_DB) {
       demand: "high" | "low";
       method: "GET" | "POST";
       declaresBody: boolean;
+      /** 掲載が queryParams を宣言しているか（(c)・2026-09-28）。 */
+      declaresQuery?: boolean;
       /** カタログの先頭の network（既定 Base）。 */
       primary?: string;
       /** この出品の過去の L1 行（古い順）。 */
@@ -103,6 +114,8 @@ if (!TEST_DB) {
     const UNFUNDED_AT = "2026-09-14T03:00:00Z"; // 残高切れの期間（delivery.ts PAYER_UNFUNDED_WINDOWS）の内側
     const BEFORE_BODY = "2026-09-15T03:00:00Z"; // 宣言本文の実装より前
     const AFTER_BODY = "2026-09-18T03:00:00Z"; // 実装より後
+    const QUERY_BEFORE = "2026-09-20T03:00:00Z"; // Base で宣言クエリを送り始める前（本文の実装の後）
+    const QUERY_AFTER = "2026-09-28T01:00:00Z"; // 送り始めた後
     const OLD_OK = "2026-09-10T03:00:00Z";
 
     // 試し済みで最新が決済済みの主候補（需要が高い）。
@@ -128,6 +141,21 @@ if (!TEST_DB) {
     // (b) だが失敗した出品がもう買えない（$1 超）→ 同じ売り手の最安（700）に落ちる。
     add("https://rm.example/post", "2000000", { method: "POST", declaresBody: true, past: [{ status: "settle_failed", http: 400, at: BEFORE_BODY }] });
     add("https://rm.example/alt", "700");
+
+    // (c) Base で宣言クエリを送る前（BASE_DECLARED_QUERY_SINCE より前）の 400/422・掲載は queryParams を宣言（2026-09-28）。
+    // 失敗した出品（1800）を、同じ売り手の安い出品（300）より先に買い直す。
+    add("https://qa.example/get", "1800", { declaresQuery: true, past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE }] });
+    add("https://qa.example/cheap", "300");
+    // requestQuery が empty の行も (c)（Base は許可リストに無かった）→ 選ぶ。
+    add("https://qf.example/get", "2200", { declaresQuery: true, past: [{ status: "settle_failed", http: 422, at: QUERY_BEFORE, requestQuery: "empty" }] });
+    // 境目の後の 422 → 選ばない。
+    add("https://qb.example/get", "1200", { declaresQuery: true, past: [{ status: "settle_failed", http: 422, at: QUERY_AFTER }] });
+    // queryParams の宣言が無い → 選ばない。
+    add("https://qc.example/get", "1200", { past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE }] });
+    // XRPL の行（2026-09-21 から送っていた）→ (c) に入らない。
+    add("https://qd.example/get", "1200", { declaresQuery: true, past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE, network: "xrpl:0" }] });
+    // 宣言クエリを送った行（declared）→ 選ばない。
+    add("https://qe.example/get", "1200", { declaresQuery: true, past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE, requestQuery: "declared" }] });
     // 宣言の無い 400 → 選ばない。
     add("https://rc.example/post", "1500", { method: "POST", declaresBody: false, past: [{ status: "settle_failed", http: 400, at: BEFORE_BODY }] });
     // 実装後の 400（宣言本文を送った）→ 選ばない。
@@ -204,9 +232,28 @@ if (!TEST_DB) {
           accepts,
           extensions: {
             bazaar: {
-              info: { input: { method: l.method, ...(l.declaresBody ? { body: { q: "x" } } : {}) } },
-              ...(l.declaresBody
-                ? { schema: { type: "object", properties: { input: { type: "object", properties: { body: { type: "object", properties: { q: { type: "string" } } } } } } } }
+              info: {
+                input: {
+                  method: l.method,
+                  ...(l.declaresBody ? { body: { q: "x" } } : {}),
+                  ...(l.declaresQuery ? { queryParams: { q: "x" } } : {}),
+                },
+              },
+              ...(l.declaresBody || l.declaresQuery
+                ? {
+                    schema: {
+                      type: "object",
+                      properties: {
+                        input: {
+                          type: "object",
+                          properties: {
+                            ...(l.declaresBody ? { body: { type: "object", properties: { q: { type: "string" } } } } : {}),
+                            ...(l.declaresQuery ? { queryParams: { type: "object", properties: { q: { type: "string" } } } } : {}),
+                          },
+                        },
+                      },
+                    },
+                  }
                 : {}),
             },
           },
@@ -225,14 +272,18 @@ if (!TEST_DB) {
             endpointId: await idOf(l.url),
             status: p.status,
             payer: "0x0000000000000000000000000000000000000001",
-            network: "eip155:8453",
+            network: p.network ?? "eip155:8453",
             asset: BASE_USDC,
             payTo: l.payTo,
             amountUnits: l.amount,
             spentUnits: "0",
             httpStatusPaid: p.http,
             attemptedAt: new Date(p.at),
-            rawResponseMeta: p.requestBody ? { phase: "paid", requestBody: p.requestBody } : { phase: "paid" },
+            rawResponseMeta: {
+              phase: "paid",
+              ...(p.requestBody ? { requestBody: p.requestBody } : {}),
+              ...(p.requestQuery ? { requestQuery: p.requestQuery } : {}),
+            },
           });
         }
       }
@@ -248,6 +299,12 @@ if (!TEST_DB) {
         `),
       ).map((r) => String(r.resource_url));
     const hostOf = (url: string) => new URL(url).hostname;
+
+    await t.test("前提: Base の宣言クエリの境目は本番の再デプロイの ready（2026-09-27T23:27:16Z）", async () => {
+      const { BASE_DECLARED_QUERY_SINCE } = await import("@/lib/observatory/request-query");
+      assert.equal(BASE_DECLARED_QUERY_SINCE, "2026-09-27T23:27:16Z");
+      assert.ok(Date.parse(QUERY_BEFORE) < Date.parse(BASE_DECLARED_QUERY_SINCE) && Date.parse(BASE_DECLARED_QUERY_SINCE) < Date.parse(QUERY_AFTER));
+    });
 
     await t.test("前提: 境目の時刻は本番のデプロイ記録（2b4a4ee0・2026-09-16T23:25:55Z）", () => {
       assert.equal(DECLARED_BODY_SENT_SINCE, "2026-09-16T23:25:55Z");
@@ -271,13 +328,19 @@ if (!TEST_DB) {
       assert.ok(r);
       assert.deepEqual(
         (JSON.parse(r.hostsJson) as string[]).sort(),
-        ["ra.example", "rb.example", "rh.example", "ri.example", "rk.example", "rm.example"],
+        ["qa.example", "qf.example", "ra.example", "rb.example", "rh.example", "ri.example", "rk.example", "rm.example"],
         "rh（先頭が Base 以外）は売り手としては当たるが、出品の条件で外れる",
       );
       assert.deepEqual(
         (JSON.parse(r.preferredIdsJson) as string[]).sort(),
-        [await idOf("https://rb.example/post"), await idOf("https://rk.example/post"), await idOf("https://rm.example/post")].sort(),
-        "優先するのは (b) の失敗した出品だけ（(a) は最安のまま）",
+        [
+          await idOf("https://rb.example/post"),
+          await idOf("https://rk.example/post"),
+          await idOf("https://rm.example/post"),
+          await idOf("https://qa.example/get"),
+          await idOf("https://qf.example/get"),
+        ].sort(),
+        "優先するのは (b)(c) の失敗した出品だけ（(a) は最安のまま）",
       );
     });
 
@@ -302,27 +365,48 @@ if (!TEST_DB) {
       assert.equal(paid[0], "https://x402.tavily.com/search", `優先ホストが先頭: ${paid.slice(0, 6).join(", ")}`);
       assert.equal(riPaid.length, 1, `ポート違いは 1 売り手: ${riPaid.join(", ")}`);
       assert.deepEqual(
-        paid.slice(1, 7),
-        ["https://rm.example/alt", "https://ra.example/cheap", "https://rb.example/post", "https://rk.example/post", riPaid[0], "https://cz.example/api"],
-        "retest（選んだ出品の払う額の安い順 700 → 1000 → 2000 → 2500 → 3000）の後に census（500 でも retest より後ろ）",
+        paid.slice(1, 9),
+        [
+          "https://rm.example/alt",
+          "https://ra.example/cheap",
+          "https://qa.example/get",
+          "https://rb.example/post",
+          "https://qf.example/get",
+          "https://rk.example/post",
+          riPaid[0],
+          "https://cz.example/api",
+        ],
+        "retest（選んだ出品の払う額の安い順 700 → 1000 → 1800 → 2000 → 2200 → 2500 → 3000）の後に census（500 でも retest より後ろ）",
       );
       assert.ok(!paid.includes("https://rb.example/cheapget"), "(b) は失敗した出品そのものを買い直す（同じ売り手の安い GET ではない・W2）");
       assert.ok(!paid.includes("https://rm.example/post"), "$1 超の出品は買わない（最安に落ちる）");
+      assert.ok(!paid.includes("https://qa.example/cheap"), "(c) も失敗した出品そのものを買い直す（同じ売り手の安い出品ではない）");
+      for (const h of ["qb.example", "qc.example", "qd.example", "qe.example"]) {
+        assert.ok(!paid.some((u) => hostOf(u) === h), `${h} は (c) に入らない（境目の後・宣言なし・XRPL・送った行）`);
+      }
       for (const h of ["rc.example", "rd.example", "rj.example", "rl.example", "re.example", "rf.example", "rg.example", "rh.example"]) {
         assert.ok(!paid.some((u) => hostOf(u) === h), `${h} は選ばない`);
       }
       assert.ok(!paid.includes("https://ra.example/dear"), "同じ売り手の高い出品は選ばない");
-      assert.equal(summary.retestCandidates, 5);
+      assert.equal(summary.retestCandidates, 7);
       assert.equal(summary.censusCandidates, 1);
       assert.deepEqual(
         (await bySelection("retest")).sort(),
-        ["https://rm.example/alt", "https://ra.example/cheap", "https://rb.example/post", "https://rk.example/post", riPaid[0]].sort(),
+        [
+          "https://rm.example/alt",
+          "https://ra.example/cheap",
+          "https://qa.example/get",
+          "https://rb.example/post",
+          "https://qf.example/get",
+          "https://rk.example/post",
+          riPaid[0],
+        ].sort(),
       );
       assert.deepEqual(await bySelection("census"), ["https://cz.example/api"]);
       const hosts = paid.map(hostOf);
-      const fair = hosts.filter((h) => /^r[a-m]\.example$|^cz\.example$/.test(h));
+      const fair = hosts.filter((h) => /^r[a-m]\.example$|^q[a-f]\.example$|^cz\.example$/.test(h));
       assert.equal(new Set(fair).size, fair.length, "同じ売り手が 2 度入らない");
-      assert.equal(fair.length, 6);
+      assert.equal(fair.length, 8);
     });
 
     await t.test("2 回目のバッチ: 買い直した売り手は選ばない（最新の行がもう失敗ではない）", async () => {
@@ -330,7 +414,7 @@ if (!TEST_DB) {
       const w = wall();
       const summary = await run(w);
       assert.equal(summary.retestCandidates, 0);
-      assert.equal((await bySelection("retest")).length, 5, "印つきの行は 1 回目の 5 件のまま");
+      assert.equal((await bySelection("retest")).length, 7, "印つきの行は 1 回目の 7 件のまま");
     });
   });
 }

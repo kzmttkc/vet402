@@ -42,6 +42,20 @@
 // ============================================================
 import type { RequestQuerySource } from "./declared-input";
 
+/**
+ * Base で、売り手が 402 で宣言したクエリ（input.queryParams）を支払い付き要求に足し始めた時刻（2026-09-28 実測）。
+ *
+ * 本番の env `OBSERVATORY_L1_DECLARED_QUERY_NETWORKS` に `eip155:8453,base` を足した（Vercel の env の createdAt
+ * 2026-09-27T23:25:27Z）後、それを読む Production の再デプロイ（source cli・commit 4d210b1c・created 23:25:49Z）が
+ * **ready になった時刻**。この時刻より前の Base の行は、売り手が queryParams を宣言していてもクエリを送っていない
+ * （XRPL の xrpl:0 は 2026-09-21 から送っている——Base だけの境目）。台帳でも、Base の支払い付き行で
+ * raw_response_meta.requestQuery を持つ行は 2026-09-28 時点でまだ 0 件（最後の Base の支払い付き行は
+ * 2026-09-27T18:02:35Z で、キーを持たない）。
+ *
+ * 使う側（l1-runner の retest (c)・/sellers）はこの定数を import する。場所と名前を変えない。
+ */
+export const BASE_DECLARED_QUERY_SINCE = "2026-09-27T23:27:16Z";
+
 /** raw_response_meta.requestQuery の語彙＝公開 export の request_query の値。 */
 export const REQUEST_QUERY_KINDS = ["declared", "empty", "refused"] as const;
 export type RequestQueryKind = (typeof REQUEST_QUERY_KINDS)[number];
