@@ -18,7 +18,8 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 - **何を**: L1 の購入行が 1 件も無い Base のホストを、そのホストのいちばん安い出品（Base の USDC accept・$1 以下・同額なら id の小さい方）で 1 回ずつ、レーン枠の後ろ・主候補の前に置く。1 バッチ最大 40 件（`CENSUS_PER_RUN`）。旗 `OBSERVATORY_L1_CENSUS=on` のときだけ働く（既定 OFF・本番の env は依頼元が設定）。主ネットワークが Solana・Tempo・XRPL の行（購入経路が別）は対象外。
 - **なぜ**: Algorand 側で「全売り手を 1 回ずつ買って公開 → 売り手が自分の行を見に来て自分で直した」が起きた。Base でも全売り手に公開台帳の 1 行を置く。2026-09-28 の実測で未試行の売り手 646・合計約 28 USDC、オーナー承認済み（09-28 05:51）。
 - **影響**: 関門は何も足さず何も外していない（1 回 $1・日次 $25・チェーン別の別枠・初回購入の日次枠 120・`reserveSpend`・停止スイッチ・購入元残高）。census の行は `raw_response_meta.selection = "census"`（予約行から付く・export の列は増やさない）。cron の summary に `censusCandidates`・`censusRemaining` を足した（公開口 demo/verify の白名簿には入れない）。方法論に 1 段落（数字は静的に書かない）、`docs/claims.yaml` に 1 件、methodology の検出の床 43 → 45。`.env.example` に旗の説明。旗が on の間は主候補の処理がレーン＋census のぶん後ろへずれる（cron 1 回 20〜30 件のうち、census が最大 40 件ぶん先に並ぶ）。
-- **コミット**: `adb48715`（ブランチ `census-lane-0928`・未 push。独立レビューの SHIP の後に push する）
+- **レビュー後の修正（旗 ON の前）**: ① 並びを「レーン枠 → 優先ホスト → census → 主候補の残り」に（方法論の「優先ホストは先頭に固定」どおり）。② 「最安」を実際に払う額 `price_amount` で決める（raw_accepts の別の安い accept では並べない。本番 437 件中 18 件で食い違っていた）。`price_amount` が null の v1 行は census に入れない。③ 売り手の単位からポートを落とす（`api.verigrace.com:4449/4450/4451` を 1 売り手に）。④ `censusRemaining` は「未購入の Base ホスト数（選べないものも含む）」と明記。方法論の段落も合わせて直し、検出の床 45 → 46。
+- **コミット**: `adb48715`（本体）・`381c1596`（レビュー修正）。ブランチ `census-lane-0928`・未 push。独立レビューの SHIP の後に push する
 
 ## 2026-09-28 JST — `/rwa`（Open House の会期作業）を main へ入れる
 
