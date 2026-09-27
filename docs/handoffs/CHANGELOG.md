@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-28 JST（1）— L1 に「売り手の census」レーン（未試行の Base の売り手を 1 回ずつ・既定 OFF）
+
+- **何を**: L1 の購入行が 1 件も無い Base のホストを、そのホストのいちばん安い出品（Base の USDC accept・$1 以下・同額なら id の小さい方）で 1 回ずつ、レーン枠の後ろ・主候補の前に置く。1 バッチ最大 40 件（`CENSUS_PER_RUN`）。旗 `OBSERVATORY_L1_CENSUS=on` のときだけ働く（既定 OFF・本番の env は依頼元が設定）。主ネットワークが Solana・Tempo・XRPL の行（購入経路が別）は対象外。
+- **なぜ**: Algorand 側で「全売り手を 1 回ずつ買って公開 → 売り手が自分の行を見に来て自分で直した」が起きた。Base でも全売り手に公開台帳の 1 行を置く。2026-09-28 の実測で未試行の売り手 646・合計約 28 USDC、オーナー承認済み（09-28 05:51）。
+- **影響**: 関門は何も足さず何も外していない（1 回 $1・日次 $25・チェーン別の別枠・初回購入の日次枠 120・`reserveSpend`・停止スイッチ・購入元残高）。census の行は `raw_response_meta.selection = "census"`（予約行から付く・export の列は増やさない）。cron の summary に `censusCandidates`・`censusRemaining` を足した（公開口 demo/verify の白名簿には入れない）。方法論に 1 段落（数字は静的に書かない）、`docs/claims.yaml` に 1 件、methodology の検出の床 43 → 45。`.env.example` に旗の説明。旗が on の間は主候補の処理がレーン＋census のぶん後ろへずれる（cron 1 回 20〜30 件のうち、census が最大 40 件ぶん先に並ぶ）。
+- **コミット**: `adb48715`（ブランチ `census-lane-0928`・未 push。独立レビューの SHIP の後に push する）
+
 ## 2026-09-28 JST — `/rwa`（Open House の会期作業）を main へ入れる
 
 - **何を入れたか**: `vet402 /rwa` 一式。Robinhood Chain（4663）の Stock Token の保有・取引を公開チェーンデータから再構成する読み取り専用の計器。`packages/rwa`・`src/app/rwa/[address]`・`src/app/api/v1/rwa/facts/[address]`・`fixtures/rwa`・`docs/rwa`。最初のコードは 2026-09-17（Open House の会期内）。
