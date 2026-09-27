@@ -1828,7 +1828,21 @@ claims:
     quote: "vet402 sent an empty JSON body on paid POST requests, even when the listing declares a body"
     means: "2026-09-16 23:25:55Z（宣言本文を送る実装の本番反映）より前の有料 POST は、売り手が本文を宣言していても {} を送っていた。その期間に決済されず 400/422 で断られ、今のカタログが本文を宣言している POST の行は vet402 の側（body_not_sent）"
     check: null
-    why_unverifiable: "時刻は過去で固定。境界は fix-modes.ts の DECLARED_BODY_SENT_SINCE と isBodyNotSent（l1-runner の retest の (b) と同じ条件）で、tests/sellers-fix-modes.test.ts が境界の両側を固定する。台帳でも requestBody の記録の有無で誰でも確かめられる"
+    why_unverifiable: "時刻は過去で固定。時刻は src/lib/observatory/request-body.ts の DECLARED_BODY_SENT_SINCE（retest と同じ 1 か所）、条件は fix-modes.ts の isBodyNotSent で、tests/sellers-fix-modes.test.ts が境界の両側を、tests/sellers-reader.pg.test.ts が l1-runner の RETEST_SELLERS_SQL と同じ売り手を選ぶことを固定する。台帳でも requestBody の記録の有無で誰でも確かめられる"
+    verified_at: 2026-09-28
+  - id: sellers_settled_then_rejected
+    surface: src/lib/sellers/fix-modes.ts
+    quote: "the route took the payment before it checked the input, so the buyer paid for a refused request"
+    means: "決済済み（settled＝vet402 がオンチェーンで転送を確認）で有料の要求が 400/404/415/422 の行は、売り手が入力を確かめる前に決済したものとして売り手の側に置く（retest と同じく決済済みの行は vet402 の側に入れない）"
+    check: null
+    why_unverifiable: "行ごとの事実は export.csv の status（settled）と http_status_paid・held_reason（settled_4xx）で確かめられる。分類は fix-modes.ts の paidMode で、tests/sellers-fix-modes.test.ts が固定する"
+    verified_at: 2026-09-28
+  - id: sellers_settled_then_rejected_our_empty_body
+    surface: src/lib/sellers/fix-modes.ts
+    quote: "vet402 itself sent an empty JSON body on paid POST requests, even when the listing declared a body"
+    means: "決済してから入力を断った行でも、2026-09-16 23:25:55Z より前の有料 POST はこちらが {} を送っていた事実を併記する（売り手だけに非があるように読ませない）。行ごとの注記は rowNote"
+    check: null
+    why_unverifiable: "時刻は過去で固定（request-body.ts の DECLARED_BODY_SENT_SINCE）。注記の条件は fix-modes.ts の rowNote で、tests/sellers-fix-modes.test.ts が固定する。export.csv の request_body 列が空の POST 行で確かめられる"
     verified_at: 2026-09-28
   - id: sellers_sends_declared_input
     surface: src/lib/sellers/fix-modes.ts

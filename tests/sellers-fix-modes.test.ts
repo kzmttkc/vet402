@@ -15,8 +15,13 @@ import {
   FIX_MODES,
   fixMode,
   isBodyNotSent,
+  rowNote,
   type SellerRowFacts,
 } from "@/lib/sellers/fix-modes";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { DECLARED_BODY_SENT_SINCE as RUNNER_SINCE } from "@/lib/observatory/l1-runner";
+import { DECLARED_BODY_SENT_SINCE as CANON_SINCE } from "@/lib/observatory/request-body";
 import { buildSellerBoard, buildSellerDetail, exportDaysFor, searchSellers, type LatestRow } from "@/lib/sellers/board";
 import { parseSellerHostParam, sellerHostOf, sellerHostOfResourceKey } from "@/lib/sellers/host";
 import { censusHostOf } from "@/lib/observatory/l1-runner";
@@ -91,12 +96,13 @@ const KNOWN: [string, SellerRowFacts, string | null, string][] = [
     "seller",
   ],
   [
-    "決済された POST 400 は retest と同じく我々の側にしない",
+    "決済された POST 400 は retest と同じく我々の側にしない（決済してから入力を断った）",
     row({ status: "settled", httpStatusPaid: 400, txHash: TX, method: "POST", declaresBody: true, attemptedAt: "2026-09-10T00:00:00Z" }),
-    "input_rejected",
+    "settled_then_rejected",
     "seller",
   ],
-  ["settled 404", row({ status: "settled", httpStatusPaid: 404, txHash: TX }), "input_rejected", "seller"],
+  ["settled 404", row({ status: "settled", httpStatusPaid: 404, txHash: TX }), "settled_then_rejected", "seller"],
+  ["settled 422", row({ status: "settled", httpStatusPaid: 422, txHash: TX }), "settled_then_rejected", "seller"],
   ["settle_failed 415", row({ status: "settle_failed", httpStatusPaid: 415 }), "input_rejected", "seller"],
   ["settle_failed 401", row({ status: "settle_failed", httpStatusPaid: 401 }), "auth", "seller"],
   ["settled 403", row({ status: "settled", httpStatusPaid: 403, txHash: TX }), "auth", "seller"],
@@ -282,4 +288,36 @@ test("検索: URL を貼っても、完全一致を先に・部分一致を後�
   assert.equal(r.exact?.host, "api.example.com");
   assert.deepEqual(r.matches.map((s) => s.host), ["api.example.com.evil"]);
   assert.deepEqual(searchSellers(board.sellers, "   ").matches, []);
+});
+
+test("決済してから入力を断った行: 文面が「決済してから断った」と「こちらが本文を送っていなかった期間」を言う", () => {
+  const m = fixMode("settled_then_rejected");
+  assert.equal(m.side, "seller");
+  assert.match(m.what, /took the payment before it checked the input/);
+  assert.match(m.what, /vet402 itself sent an empty JSON body on paid POST requests/);
+  assert.match(m.fix, /Check the input before you settle/);
+  const before = row({ status: "settled", httpStatusPaid: 400, txHash: TX, method: "POST", declaresBody: true, attemptedAt: "2026-09-10T00:00:00Z" });
+  assert.match(rowNote(before, "settled_then_rejected") ?? "", /this listing declares a body, which vet402 did not send/);
+  assert.match(rowNote({ ...before, declaresBody: false }, "settled_then_rejected") ?? "", /this listing declares no body/);
+  assert.match(rowNote({ ...before, status: "settle_failed", txHash: null }, "input_rejected") ?? "", /empty JSON body/);
+  assert.equal(rowNote({ ...before, attemptedAt: DECLARED_BODY_SENT_SINCE }, "settled_then_rejected"), null, "after the cutover");
+  assert.equal(rowNote({ ...before, bodyRecorded: true }, "settled_then_rejected"), null, "a body was recorded");
+  assert.equal(rowNote({ ...before, method: "GET" }, "settled_then_rejected"), null, "GET sends no body");
+  assert.equal(rowNote(before, "server_error_paid"), null);
+});
+
+test("DECLARED_BODY_SENT_SINCE の値は request-body.ts の 1 か所だけ（retest と /sellers が同じ値を読む）", () => {
+  assert.equal(RUNNER_SINCE, CANON_SINCE);
+  assert.equal(DECLARED_BODY_SENT_SINCE, CANON_SINCE);
+  const files: string[] = [];
+  const walk = (d: string) => {
+    for (const e of readdirSync(d)) {
+      const p = join(d, e);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (/\.(ts|tsx)$/.test(e)) files.push(p);
+    }
+  };
+  walk(join(process.cwd(), "src"));
+  const holders = files.filter((f) => readFileSync(f, "utf8").includes(`"${CANON_SINCE}"`)).map((f) => f.slice(process.cwd().length + 1));
+  assert.deepEqual(holders, ["src/lib/observatory/request-body.ts"]);
 });

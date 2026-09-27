@@ -133,4 +133,57 @@ if (!TEST_DB) {
     const after = await db.execute(sql`SELECT count(*)::int AS n FROM x402_l1_purchases`);
     assert.deepEqual(after, before, "read-only");
   });
+
+  test("vet402 の側（payer_unfunded・body_not_sent）の判定は retest の RETEST_SELLERS_SQL と同じ売り手を選ぶ", async () => {
+    const { getDb } = await import("@/lib/db/client");
+    const schema = await import("@/lib/db/schema");
+    const { sql } = await import("drizzle-orm");
+    const { RETEST_SELLERS_SQL } = await import("@/lib/observatory/l1-runner");
+    const { readSellerBoard } = await import("@/lib/sellers/reader");
+    const db = getDb()!;
+    const rowsOf = (raw: unknown) => (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as Record<string, unknown>[];
+    await db.execute(sql`TRUNCATE x402_endpoints, x402_l0_probes, x402_l1_purchases`);
+    const BODY = { properties: { input: { properties: { body: { type: "object" } } } } };
+    let n = 0;
+    let txSeq = 1000;
+    // 境目の両側を 1 売り手 1 行で置く（各売り手の最新の行＝その行）。
+    const cases: { method: string; body: boolean; status: string; http: number | null; tx?: boolean; at: string; meta?: unknown }[] = [
+      { method: "POST", body: true, status: "settle_failed", http: 400, at: "2026-09-16T23:25:54Z" }, // (b)
+      { method: "POST", body: true, status: "settle_failed", http: 422, at: "2026-09-10T00:00:00Z" }, // (b)
+      { method: "POST", body: true, status: "settle_failed", http: 400, at: "2026-09-16T23:25:55Z" }, // 境界の時刻は含まない
+      { method: "POST", body: true, status: "settle_failed", http: 401, at: "2026-09-10T00:00:00Z" }, // 401 は入らない
+      { method: "POST", body: true, status: "settle_failed", http: 404, at: "2026-09-10T00:00:00Z" }, // 404 は入らない
+      { method: "GET", body: true, status: "settle_failed", http: 400, at: "2026-09-10T00:00:00Z" }, // GET は入らない
+      { method: "POST", body: false, status: "settle_failed", http: 400, at: "2026-09-10T00:00:00Z" }, // 宣言なしは入らない
+      { method: "POST", body: true, status: "settle_failed", http: 400, at: "2026-09-10T00:00:00Z", meta: { requestBody: "empty" } }, // 記録ありは入らない
+      { method: "POST", body: true, status: "settled", http: 400, tx: true, at: "2026-09-10T00:00:00Z" }, // 決済済みは入らない
+      { method: "POST", body: true, status: "settle_failed", http: 400, tx: true, at: "2026-09-10T00:00:00Z" }, // tx ありは入らない
+      { method: "GET", body: false, status: "settle_failed", http: 402, at: "2026-09-14T00:00:00Z" }, // (a) payer_unfunded
+      { method: "GET", body: false, status: "settle_failed", http: 503, at: "2026-09-15T23:48:59Z" }, // (a)
+      { method: "GET", body: false, status: "settle_failed", http: 402, at: "2026-09-15T23:49:00Z" }, // 期間外
+    ];
+    for (const c of cases) {
+      n++;
+      const [ep] = await db
+        .insert(schema.x402Endpoints)
+        .values({ resourceKey: `rt${n}.example/x`, resourceUrl: `https://rt${n}.example/x`, network: "eip155:8453", method: c.method, declaredSchema: c.body ? BODY : null, priceAmount: "1000" })
+        .returning();
+      await db.insert(schema.x402L1Purchases).values({
+        endpointId: ep.id,
+        status: c.status,
+        httpStatusPaid: c.http,
+        txHash: c.tx ? `0x${(++txSeq).toString(16).padStart(64, "0")}` : null,
+        attemptedAt: new Date(c.at),
+        network: "eip155:8453",
+        rawResponseMeta: c.meta ?? null,
+        spentUnits: "0",
+        amountUnits: "1000",
+      });
+    }
+    const retestHosts = rowsOf(await db.execute(RETEST_SELLERS_SQL)).map((r) => String(r.host)).sort();
+    const board = await readSellerBoard(db);
+    const oursHosts = board.sellers.filter((s) => s.retestDue).map((s) => s.host).sort();
+    assert.deepEqual(oursHosts, retestHosts);
+    assert.deepEqual(retestHosts, ["rt1.example", "rt11.example", "rt12.example", "rt2.example"]);
+  });
 }

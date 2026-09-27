@@ -22,6 +22,7 @@
 // 公開面の文言を持つので tests/claims-registry.test.ts の走査対象（publicSurfaces）に入っている。
 // ============================================================
 import { heldReasonOf, isDelivered, type HeldReason } from "@/lib/observatory/delivery";
+import { DECLARED_BODY_SENT_SINCE } from "@/lib/observatory/request-body";
 
 export type FixSide = "seller" | "vet402" | "unsorted";
 export type FixEffort = 1 | 2 | 3;
@@ -37,12 +38,8 @@ export interface FixMode {
   effort: FixEffort;
 }
 
-/**
- * 宣言された本文を有料の POST に載せ始めた時刻（本番デプロイの完了）。これより前の POST は、
- * 売り手が本文を宣言していても `{}` を送っていた。l1-runner の DECLARED_BODY_SENT_SINCE
- * （census-fair-0928 で追加）と同じ値。両方が main に入ったら片方を import に置き換える。
- */
-export const DECLARED_BODY_SENT_SINCE = "2026-09-16T23:25:55Z";
+/** 宣言本文を送り始めた時刻（retest と同じ値・定義は request-body.ts の 1 か所）。 */
+export { DECLARED_BODY_SENT_SINCE };
 
 const NOTHING_FOR_SELLER = "Nothing for the seller to fix.";
 
@@ -100,10 +97,18 @@ export const FIX_MODES: readonly FixMode[] = [
   {
     key: "input_rejected",
     title: "The paid request was refused as invalid",
-    what: "vet402 signed the payment and the paid request got 400, 404, 415 or 422. vet402 sends the body and query the listing declares, and an empty JSON body when it declares none.",
+    what: "vet402 signed the payment and the paid request got 400, 404, 415 or 422; the payment did not settle. vet402 sends the body and query the listing declares, and an empty JSON body when it declares none.",
     fix: "Declare the input in the listing (body or query) with example values that work as written.",
     side: "seller",
     effort: 1,
+  },
+  {
+    key: "settled_then_rejected",
+    title: "Took the payment, then refused the input",
+    what: "The payment settled on-chain, and then the paid request got 400, 404, 415 or 422: the route took the payment before it checked the input, so the buyer paid for a refused request. Before 2026-09-16 23:25 UTC, vet402 itself sent an empty JSON body on paid POST requests, even when the listing declared a body; rows from that period say so.",
+    fix: "Check the input before you settle, so an invalid request is refused without taking the payment; and declare the input in the listing with example values that work as written.",
+    side: "seller",
+    effort: 2,
   },
   {
     key: "wrong_method",
@@ -310,11 +315,11 @@ function unpaidMode(code: number | null): string {
 }
 
 /** 有料の要求（署名した後）の HTTP から。 */
-function paidMode(code: number | null): string {
+function paidMode(code: number | null, settled: boolean): string {
   if (code === null) return "no_response_paid";
   if (inRange(code, 200, 299)) return "no_receipt";
   if (code === 402) return "payment_refused";
-  if (code === 400 || code === 404 || code === 415 || code === 422) return "input_rejected";
+  if (code === 400 || code === 404 || code === 415 || code === 422) return settled ? "settled_then_rejected" : "input_rejected";
   if (code === 401 || code === 403) return "auth";
   if (code === 405) return "wrong_method";
   if (code === 408) return "no_response_paid";
@@ -346,10 +351,24 @@ function modeKeyOf(r: SellerRowFacts, held: HeldReason | null): string {
       return "no_receipt";
     case "settled":
     case "settle_failed":
-      return paidMode(r.httpStatusPaid);
+      return paidMode(r.httpStatusPaid, r.status === "settled");
     default:
       return "other";
   }
+}
+
+/**
+ * 行ごとの注記: 宣言本文を送る前（DECLARED_BODY_SENT_SINCE より前）の有料 POST が入力で断られた行には、
+ * こちらが `{}` を送っていた事実を並べる。側（seller）は変えない——retest と同じく、決済済みの行や本文を
+ * 宣言していない出品の行は vet402 の側に入れないが、売り手だけに非があるようには読ませない。
+ */
+export function rowNote(r: SellerRowFacts, modeKey: string | null): string | null {
+  if (modeKey !== "settled_then_rejected" && modeKey !== "input_rejected") return null;
+  if ((r.method ?? "").toUpperCase() !== "POST" || r.bodyRecorded) return null;
+  if (!(Date.parse(r.attemptedAt) < Date.parse(DECLARED_BODY_SENT_SINCE))) return null;
+  return r.declaresBody
+    ? "This purchase is from before 2026-09-16 23:25 UTC, when vet402 sent an empty JSON body on paid POST requests; this listing declares a body, which vet402 did not send."
+    : "This purchase is from before 2026-09-16 23:25 UTC, when vet402 sent an empty JSON body on paid POST requests; this listing declares no body.";
 }
 
 /** 1 行を分類する（届いた行は mode が null）。決定的・DB 無し。 */

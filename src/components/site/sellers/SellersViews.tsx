@@ -365,6 +365,7 @@ function ListingRows({ l, now }: { l: SellerListing; now: number }) {
                   {r.mode.side === "seller" && <span className="text-brand-lift"> ({EFFORT_LABEL[r.mode.effort]})</span>}
                 </span>
               )}
+              {r.note && <span className="block">{r.note}</span>}
               {r.mode && RETEST_MODE_KEYS.has(r.mode.key) && (
                 <span className="block">
                   <strong>Re-buy:</strong> a failure like this one is what the retest covers: when a seller&apos;s most

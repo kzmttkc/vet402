@@ -5,7 +5,7 @@
 // 数字は頁に書かない。毎回ここを通して DB の行から出す。
 // ============================================================
 import { explorerTxUrl } from "@/lib/observatory/chains";
-import { classifyRow, FIX_MODES, NOT_IN_EXPORT_STATUSES, type Bucket, type FixMode, type SellerRowFacts } from "./fix-modes";
+import { classifyRow, FIX_MODES, NOT_IN_EXPORT_STATUSES, rowNote, type Bucket, type FixMode, type SellerRowFacts } from "./fix-modes";
 
 export type SummaryBucket = Bucket | "not_bought";
 
@@ -169,6 +169,8 @@ export interface ShownRow {
   txUrl: string | null;
   /** export.csv にこの行が載るか（vet402 の側の状態は載らない）。 */
   inExport: boolean;
+  /** 行ごとの注記（fix-modes.ts の rowNote）。 */
+  note: string | null;
 }
 
 export interface SellerListing extends SellerEndpointFacts {
@@ -199,6 +201,7 @@ export function showRow(r: SellerRowFacts): ShownRow {
     held: c.held,
     txUrl: explorerTxUrl(r.network, r.txHash),
     inExport: !NOT_IN_EXPORT_STATUSES.has(r.status),
+    note: rowNote(r, c.mode?.key ?? null),
   };
 }
 

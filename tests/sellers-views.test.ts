@@ -139,3 +139,16 @@ test("FixFirstView: seller の側が先、vet402 の側は「直すものは無�
   assert.match(html, /href="\/sellers\/one\.example"/);
   assert.match(html, /Read from the database 2026-09-28 13:04 UTC/);
 });
+
+test("SellerDetailView: 決済してから断った POST（本文を送る前の期間）には、こちらが本文を送っていなかった事実が並ぶ", () => {
+  const d = buildSellerDetail(
+    "paid.example",
+    [{ endpointId: "p1", resourceKey: "paid.example/q", resourceUrl: "https://paid.example/q", method: "POST", priceAmount: "1000" }],
+    [r({ endpointId: "p1", status: "settled", httpStatusPaid: 422, txHash: TX, method: "POST", declaresBody: true, attemptedAt: "2026-09-09T00:00:00Z" })],
+    FETCHED,
+  );
+  const html = renderToStaticMarkup(createElement(SellerDetailView, { detail: d, page: 1, now: 0, revalidateSec: 300 }));
+  assert.match(html, /Took the payment, then refused the input/);
+  assert.match(html, /seller&#x27;s side/);
+  assert.match(html, /this listing declares a body, which vet402 did not send/);
+});
