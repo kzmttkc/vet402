@@ -13,6 +13,15 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-28 JST — `/rwa`（Open House の会期作業）を main へ入れる
+
+- **何を入れたか**: `vet402 /rwa` 一式。Robinhood Chain（4663）の Stock Token の保有・取引を公開チェーンデータから再構成する読み取り専用の計器。`packages/rwa`・`src/app/rwa/[address]`・`src/app/api/v1/rwa/facts/[address]`・`fixtures/rwa`・`docs/rwa`。最初のコードは 2026-09-17（Open House の会期内）。
+- **本体への影響**: `/score`・重み・x402 observatory・既存の表は import も変更もしない。新しい表・マイグレーション・cron は無し。RPC は Robinhood の公開 RPC だけで、Base の口は使わない。
+- **共有ファイル（`rwa:` のコミット）**: `package.json` に `rwa:test` の1行（依存は変えない。`package-lock.json` は main と同一）、`docs/openapi.yaml` に facts ルートとエラーコード3つ（`feed_unavailable`・`no_stock_token_activity`・`too_busy`）、`.env.example` に `RWA_ANCHOR_KEY` の注記（Vercel には入れない。アンカー用スクリプトだけが読む）。
+- **公開面の歯止め**: キーなし。IP 10回/分（`ip_rate_limits` の `rwa-facts:*`・`rwa-page:*`、インスタンスをまたぐ）。5分キャッシュ・最大200アドレス・同時再構成3本（どれもインスタンスごと）。`maxDuration` 60。
+- **Tokyo の凍結**: `src/app/tokyo/**`・`src/app/api/tokyo/**`・`packages/sdk/**`・`vendor/**`・`examples/tokyo-2026-demo/**`・`docs/tokyo-2026/**`・`AI_USAGE.md`・root `README.md` への差分は 0（push 前に確認）。
+- **そちらに見てほしいこと**: push 直後の `/tokyo` 200 と `/api/tokyo/verify?name=seller-a.eth` の `trace.length` 7。本番の cold 5回と5並列の数字は、測ったら送る。
+
 ## 2026-09-24 JST（1）— index-feedback を 1 日 4 回へ戻す（09-23 の削減が採点の赤を増やしていた）
 
 - **何が起きていたか**: `/api/health` は 7 日で 100/750 回（13%）が `degraded`。理由は全件 `feedback_stats_unavailable(deadline:getLogsChunked)`。採点は「索引済みの行＋索引の先端から今までの差分」を読む作りで、差分が長いほど遅い。09-24 07:0x の実測で索引の先端 51,691,334（09-23 14:00 UTC 更新）に対し鎖の先端 51,705,532、差 14,198 ブロック＝約 8 時間ぶん。公開 RPC は 1 回 2,000 ブロックまで（`-32614`）で 254〜395ms なので、7 回で約 2.4 秒。ライブ読みの上限 2.5 秒とほぼ同じで、たまに超える。
