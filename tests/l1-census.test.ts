@@ -187,3 +187,19 @@ test("retest と census は 1 バッチの上限（40）を分け合う", async 
   assert.equal(asked, 2);
   assert.equal(out.length, 2);
 });
+
+test("retest (b)（レビュー W2）: 失敗した出品そのもの（census_preferred）を、同じ売り手の安い出品より先に取る", () => {
+  const out = pickCensusRows(
+    [
+      row("cheap", "b.example", "500"),
+      row("failed", "b.example", "2000", { census_preferred: true }),
+      row("other", "c.example", "1000"),
+    ],
+    40,
+    new Set(),
+    "retest",
+  );
+  assert.deepEqual(out.map((c) => c.id), ["other", "failed"], "b.example は失敗した出品（2000）。並びは選んだ出品の額の順");
+  const fallback = pickCensusRows([row("cheap", "b.example", "500"), row("failed", "b.example", "2000000", { census_preferred: true })], 40, new Set(), "retest");
+  assert.deepEqual(fallback.map((c) => c.id), ["cheap"], "失敗した出品が $1 超なら最安に落ちる");
+});

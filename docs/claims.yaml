@@ -1046,7 +1046,7 @@ claims:
   - id: method_retest_when_the_failure_was_ours
     surface: src/app/observatory/methodology/page.tsx
     quote: "A second try when the failure was ours: the retest."
-    means: "2026-09-28 から、最新の行がこちらの側の理由（購入元の残高切れ＝payer_unfunded／宣言された本文を送る実装（本番 2026-09-16T23:25:55Z）より前の POST が 400 で決済されず、今の掲載は本文を宣言している）で失敗している Base の売り手を、census と同じ規則・同じ上限の内側で 1 回ずつ買い直す。前の行は消さない"
+    means: "2026-09-28 から、最新の行がこちらの側の理由（購入元の残高切れ＝payer_unfunded／宣言された本文を送る実装（本番 2026-09-16T23:25:55Z）より前の POST が 400 または 422 で決済されず、今の掲載は本文を宣言している）で失敗している Base の売り手を、同じ上限の内側で 1 回ずつ買い直す。本文の失敗は同じ出品がまだ買えればそれを、それ以外は census と同じ規則（最安）で選ぶ。前の行は消さない"
     check: null
     why_unverifiable: "公開 GET は候補の選び方を返さない。条件は l1-runner の RETEST_HOSTS_SQL・DECLARED_BODY_SENT_SINCE が正典で、tests/l1-census.pg.test.ts が選ぶ／選ばないを固定する。旗 OBSERVATORY_L1_CENSUS が on のときだけ働く"
     verified_at: 2026-09-28

@@ -117,8 +117,17 @@ if (!TEST_DB) {
     // (a) payer_unfunded: 最新の行が残高切れ。安い /cheap（1000）が選ばれ、/dear（5000・失敗した出品）は選ばれない。
     add("https://ra.example/dear", "5000", { past: [{ status: "settle_failed", http: 402, at: UNFUNDED_AT }] });
     add("https://ra.example/cheap", "1000");
-    // (b) 宣言本文より前の POST が 400・今の掲載は本文を宣言 → 選ぶ。
+    // (b) 宣言本文より前の POST が 400・今の掲載は本文を宣言 → 選ぶ。同じ売り手のもっと安い GET（500）ではなく、
+    // 失敗した POST そのもの（2000）を買い直す（レビュー W2）。
     add("https://rb.example/post", "2000", { method: "POST", declaresBody: true, past: [{ status: "settle_failed", http: 400, at: BEFORE_BODY }] });
+    add("https://rb.example/cheapget", "500");
+    // (b) を 422 にも広げる（レビュー W1）→ 選ぶ。
+    add("https://rk.example/post", "2500", { method: "POST", declaresBody: true, past: [{ status: "settle_failed", http: 422, at: BEFORE_BODY }] });
+    // 401 は本文の話ではない → 選ばない。
+    add("https://rl.example/post", "1500", { method: "POST", declaresBody: true, past: [{ status: "settle_failed", http: 401, at: BEFORE_BODY }] });
+    // (b) だが失敗した出品がもう買えない（$1 超）→ 同じ売り手の最安（700）に落ちる。
+    add("https://rm.example/post", "2000000", { method: "POST", declaresBody: true, past: [{ status: "settle_failed", http: 400, at: BEFORE_BODY }] });
+    add("https://rm.example/alt", "700");
     // 宣言の無い 400 → 選ばない。
     add("https://rc.example/post", "1500", { method: "POST", declaresBody: false, past: [{ status: "settle_failed", http: 400, at: BEFORE_BODY }] });
     // 実装後の 400（宣言本文を送った）→ 選ばない。
@@ -254,6 +263,24 @@ if (!TEST_DB) {
       }
     });
 
+    await t.test("対象の売り手の一覧（RETEST_SELLERS_SQL を 1 回・W3）: 理由と、(b) で優先する出品", async () => {
+      arm(true);
+      await seed();
+      const { readRetestSellers } = await import("@/lib/observatory/l1-runner");
+      const r = await readRetestSellers(db);
+      assert.ok(r);
+      assert.deepEqual(
+        (JSON.parse(r.hostsJson) as string[]).sort(),
+        ["ra.example", "rb.example", "rh.example", "ri.example", "rk.example", "rm.example"],
+        "rh（先頭が Base 以外）は売り手としては当たるが、出品の条件で外れる",
+      );
+      assert.deepEqual(
+        (JSON.parse(r.preferredIdsJson) as string[]).sort(),
+        [await idOf("https://rb.example/post"), await idOf("https://rk.example/post"), await idOf("https://rm.example/post")].sort(),
+        "優先するのは (b) の失敗した出品だけ（(a) は最安のまま）",
+      );
+    });
+
     await t.test("旗が無い日: retest は動かない（summary 0・印なし・対象の出品は買わない）", async () => {
       arm(false);
       await seed();
@@ -275,20 +302,27 @@ if (!TEST_DB) {
       assert.equal(paid[0], "https://x402.tavily.com/search", `優先ホストが先頭: ${paid.slice(0, 6).join(", ")}`);
       assert.equal(riPaid.length, 1, `ポート違いは 1 売り手: ${riPaid.join(", ")}`);
       assert.deepEqual(
-        paid.slice(1, 5),
-        ["https://ra.example/cheap", "https://rb.example/post", riPaid[0], "https://cz.example/api"],
-        "retest（払う額の安い順 1000 → 2000 → 3000）の後に census（500 でも retest より後ろ）",
+        paid.slice(1, 7),
+        ["https://rm.example/alt", "https://ra.example/cheap", "https://rb.example/post", "https://rk.example/post", riPaid[0], "https://cz.example/api"],
+        "retest（選んだ出品の払う額の安い順 700 → 1000 → 2000 → 2500 → 3000）の後に census（500 でも retest より後ろ）",
       );
-      for (const h of ["rc.example", "rd.example", "rj.example", "re.example", "rf.example", "rg.example", "rh.example"]) {
+      assert.ok(!paid.includes("https://rb.example/cheapget"), "(b) は失敗した出品そのものを買い直す（同じ売り手の安い GET ではない・W2）");
+      assert.ok(!paid.includes("https://rm.example/post"), "$1 超の出品は買わない（最安に落ちる）");
+      for (const h of ["rc.example", "rd.example", "rj.example", "rl.example", "re.example", "rf.example", "rg.example", "rh.example"]) {
         assert.ok(!paid.some((u) => hostOf(u) === h), `${h} は選ばない`);
       }
       assert.ok(!paid.includes("https://ra.example/dear"), "同じ売り手の高い出品は選ばない");
-      assert.equal(summary.retestCandidates, 3);
+      assert.equal(summary.retestCandidates, 5);
       assert.equal(summary.censusCandidates, 1);
-      assert.deepEqual((await bySelection("retest")).sort(), ["https://ra.example/cheap", "https://rb.example/post", riPaid[0]].sort());
+      assert.deepEqual(
+        (await bySelection("retest")).sort(),
+        ["https://rm.example/alt", "https://ra.example/cheap", "https://rb.example/post", "https://rk.example/post", riPaid[0]].sort(),
+      );
       assert.deepEqual(await bySelection("census"), ["https://cz.example/api"]);
       const hosts = paid.map(hostOf);
-      assert.equal(new Set(hosts.filter((h) => /^r[a-i]\.example$|^cz\.example$/.test(h))).size, 4, "同じ売り手が 2 度入らない");
+      const fair = hosts.filter((h) => /^r[a-m]\.example$|^cz\.example$/.test(h));
+      assert.equal(new Set(fair).size, fair.length, "同じ売り手が 2 度入らない");
+      assert.equal(fair.length, 6);
     });
 
     await t.test("2 回目のバッチ: 買い直した売り手は選ばない（最新の行がもう失敗ではない）", async () => {
@@ -296,7 +330,7 @@ if (!TEST_DB) {
       const w = wall();
       const summary = await run(w);
       assert.equal(summary.retestCandidates, 0);
-      assert.equal((await bySelection("retest")).length, 3, "印つきの行は 1 回目の 3 件のまま");
+      assert.equal((await bySelection("retest")).length, 5, "印つきの行は 1 回目の 5 件のまま");
     });
   });
 }

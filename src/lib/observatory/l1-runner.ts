@@ -565,24 +565,34 @@ export const DECLARED_BODY_SENT_SINCE = "2026-09-16T23:25:55Z";
  *
  *  (a) held_reason が payer_unfunded（delivery.ts heldReasonSql と同じ式——こちらの購入元の残高切れの期間に
  *      402 / 5xx で決済されなかった Base の行）;
- *  (b) 支払い付きの POST が HTTP 400 で決済されず（settle_failed・tx なし）、宣言された本文を送る実装より前
+ *  (b) 支払い付きの POST が HTTP 400 または 422 で決済されず（settle_failed・tx なし）、宣言された本文を送る実装より前
  *      （DECLARED_BODY_SENT_SINCE より前で、行に requestBody の記録も無い＝`{}` を送った）で、かつ今のカタログの
  *      そのエンドポイントが本文を宣言している（declared_schema の properties.input.properties.body がある）。
  *      宣言が無いなら、`{}` で断られたのはこちらの落ち度とは言えないので対象にしない。GET は本文を送らない
- *      （今も送らない）ので対象にしない。
+ *      （今も送らない）ので対象にしない。422 は `{}` を検証で弾く実装が多い（レビュー 2026-09-28・本番 26 売り手）。
+ *      401・403 は認可の話で本文とは言えないので入れない。
+ *
+ * 返すのは売り手ごとに host・reason（"unfunded" | "body"）・その最新の行の endpoint_id。(b) では失敗した出品そのものを
+ * 優先して買い直す（runL1Batch の retest の段）。
+ *
+ * これは**単独の問い合わせ**として 1 回だけ流し、結果（ホストと優先する出品の id）を候補の問い合わせへ JSON の
+ * パラメータで渡す（独立レビュー W3・2026-09-28）: 以前は候補の WHERE に `IN (この問い合わせ)` として埋めていて、
+ * プランナーが行数を 49 と見誤り、ネストループの中でホストの正規表現を「ホスト数 × 出品数」回計算していた
+ * （本番の EXPLAIN で 5,041 ms・census は 172 ms）。
  */
-const RETEST_HOSTS_SQL = sql`
-  SELECT lr.host FROM (
+export const RETEST_SELLERS_SQL = sql`
+  SELECT lr.host, CASE WHEN lr.held = 'payer_unfunded' THEN 'unfunded' ELSE 'body' END AS reason, lr.endpoint_id::text AS endpoint_id
+  FROM (
     SELECT DISTINCT ON (${censusHostSql(sql`te.resource_key`)})
            ${censusHostSql(sql`te.resource_key`)} AS host,
            (${sql.raw(heldReasonSql("tp"))}) AS held,
-           tp.status, tp.tx_hash, tp.http_status_paid, tp.attempted_at, tp.raw_response_meta,
+           tp.endpoint_id, tp.status, tp.tx_hash, tp.http_status_paid, tp.attempted_at, tp.raw_response_meta,
            te.method, te.declared_schema
     FROM x402_l1_purchases tp JOIN x402_endpoints te ON te.id = tp.endpoint_id
     ORDER BY ${censusHostSql(sql`te.resource_key`)}, tp.attempted_at DESC, tp.id DESC
   ) lr
   WHERE lr.held = 'payer_unfunded'
-     OR (lr.status = 'settle_failed' AND lr.tx_hash IS NULL AND lr.http_status_paid = 400
+     OR (lr.status = 'settle_failed' AND lr.tx_hash IS NULL AND lr.http_status_paid IN (400, 422)
          AND lr.attempted_at < ${DECLARED_BODY_SENT_SINCE}::timestamptz
          AND upper(coalesce(lr.method, '')) = 'POST'
          AND NOT coalesce(lr.raw_response_meta ? 'requestBody', false)
@@ -1084,7 +1094,12 @@ export async function runL1Batch(
   // 表がまだ無い環境では生行だけの式へ落とす（withDailyFallback）。
   // census（2026-09-28）: 同じ SELECT・同じ WHERE に census の条件だけを足し、並びと LIMIT は
   // censusTargetsSql（下）が包んで決める（1 ホスト 1 件・最安）。ここでは並びも LIMIT も付けない。
-  const targetsSql = (daily: boolean, lane?: { chain: CappedChain; networkLike: string; limit: number }, census?: CensusSelection) => sql`
+  const targetsSql = (
+    daily: boolean,
+    lane?: { chain: CappedChain; networkLike: string; limit: number },
+    census?: CensusSelection,
+    retest?: RetestParams,
+  ) => sql`
     SELECT e.id, e.resource_url, e.method, e.price_amount, e.pay_to, e.network, e.declared_schema,
            (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS is_priority,
            (${settledCountSql(sql`e.id`)} >= ${MATURE_SETTLED_MIN}) AS is_mature,
@@ -1111,7 +1126,16 @@ export async function runL1Batch(
            (SELECT coalesce(jsonb_agg(aa), '[]'::jsonb)
               FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE '[]'::jsonb END) aa
               WHERE aa->>'network' = ${ARC_CAIP2}) AS arc_declared_accepts
-           ${census ? sql`, cp.census_price::text AS census_price, ${CENSUS_HOST_SQL} AS census_host` : sql``}
+           ${
+             census
+               ? sql`, cp.census_price::text AS census_price, ${CENSUS_HOST_SQL} AS census_host,
+           ${
+             census === "retest" && retest
+               ? sql`(e.id::text IN (SELECT jsonb_array_elements_text(${retest.preferredIdsJson}::jsonb)))`
+               : sql`false`
+           } AS census_preferred`
+               : sql``
+           }
     FROM x402_endpoints e
     JOIN LATERAL (
       SELECT verdict FROM x402_l0_probes p
@@ -1178,7 +1202,8 @@ export async function runL1Batch(
         // (2) 主ネットワーク（カタログの accepts[0]）が Base——price_amount はその accept の額なので、Base 以外が
         // 先頭の行（eip155:84532・algorand: など）を Base で買うと、売り手に落ち度が無いのに price_mismatch が
         // 公開台帳に載る（レビュー 2026-09-28）、(3) census: そのホスト名（ポート無視）に L1 の購入行が 1 件も
-        // 無い（status を問わない）／ retest: その売り手の最新の行がこちらの側の理由で失敗（RETEST_HOSTS_SQL）。
+        // 無い（status を問わない）／ retest: その売り手の最新の行がこちらの側の理由で失敗（RETEST_SELLERS_SQL を先に
+        // 1 回流し、ホストの一覧を JSON のパラメータで受け取る）。
         census
           ? sql`AND cp.has_base
       AND cp.census_price IS NOT NULL
@@ -1186,7 +1211,7 @@ export async function runL1Batch(
       AND e.network IN (${BASE_CAIP2}, 'base')
       AND ${
         census === "retest"
-          ? sql`${CENSUS_HOST_SQL} IN (${RETEST_HOSTS_SQL})`
+          ? sql`${CENSUS_HOST_SQL} IN (SELECT jsonb_array_elements_text(${retest?.hostsJson ?? "[]"}::jsonb))`
           : sql`${CENSUS_HOST_SQL} NOT IN (${CENSUS_TRIED_HOSTS_SQL})`
       }`
           : sql``
@@ -1269,11 +1294,12 @@ export async function runL1Batch(
    * census の候補（2026-09-28）: 上の WHERE を通った行から 1 ホスト 1 件（そのホストでいちばん安い行・
    * 同額なら id の小さい方）を選び、安い順（同額ならホスト名順）に censusLimit 件。決定的な並び。
    */
-  const censusTargetsSql = (daily: boolean, censusLimit: number, selection: CensusSelection = "census") => sql`
+  // retest の (b) では、失敗した出品そのもの（census_preferred）がまだ買えるならそれを先に取る（レビュー W2）。
+  const censusTargetsSql = (daily: boolean, censusLimit: number, selection: CensusSelection = "census", retest?: RetestParams) => sql`
     SELECT d.* FROM (
       SELECT DISTINCT ON (c.census_host) c.*
-      FROM (${targetsSql(daily, undefined, selection)}) c
-      ORDER BY c.census_host, c.census_price::numeric ASC, c.id ASC
+      FROM (${targetsSql(daily, undefined, selection, retest)}) c
+      ORDER BY c.census_host, c.census_preferred DESC, c.census_price::numeric ASC, c.id ASC
     ) d
     ORDER BY d.census_price::numeric ASC, d.census_host ASC
     LIMIT ${censusLimit}
@@ -1318,15 +1344,16 @@ export async function runL1Batch(
   //     本来重ならないが、ホスト名でも重複を外す（同じ売り手を 1 回のバッチで 2 度買わない）。
   const censusOn = isCensusEnabled() && !onlyEndpointId;
   const laneIds = new Set(laneHead.head.map((c) => c.id));
+  const retestParams = censusOn ? await readRetestSellers(db) : null;
   const retestHead = await censusCandidates({
-    enabled: censusOn,
+    enabled: censusOn && retestParams !== null && retestParams.hostCount > 0,
     perRun: CENSUS_PER_RUN,
     excludeIds: laneIds,
     selection: "retest",
     fetchCensus: async (limit) =>
       await withDailyFallback(
-        async () => await db.execute(censusTargetsSql(true, limit, "retest")),
-        async () => await db.execute(censusTargetsSql(false, limit, "retest")),
+        async () => await db.execute(censusTargetsSql(true, limit, "retest", retestParams ?? undefined)),
+        async () => await db.execute(censusTargetsSql(false, limit, "retest", retestParams ?? undefined)),
       ),
   });
   const censusHead = await censusCandidates({
@@ -1639,7 +1666,7 @@ export function pickCensusRows(
   selection: CensusSelection = "census",
   excludeHosts: ReadonlySet<string> = new Set(),
 ): Candidate[] {
-  type Row = { row: Record<string, unknown>; id: string; host: string; price: bigint };
+  type Row = { row: Record<string, unknown>; id: string; host: string; price: bigint; preferred: boolean };
   const usable: Row[] = [];
   for (const row of rows) {
     const id = String(row.id);
@@ -1654,9 +1681,12 @@ export function pickCensusRows(
       typeof row.census_host === "string" && row.census_host !== "" ? row.census_host : laneHostOf(String(row.resource_url)),
     );
     if (excludeHosts.has(host)) continue;
-    usable.push({ row, id, host, price });
+    // retest の (b): 失敗した出品そのもの（SQL の census_preferred）を、同じ売り手の安い出品より先に取る。
+    const preferred = row.census_preferred === true || row.census_preferred === "t" || row.census_preferred === "true";
+    usable.push({ row, id, host, price, preferred });
   }
-  const byPriceThenId = (a: Row, b: Row) => (a.price < b.price ? -1 : a.price > b.price ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const byPriceThenId = (a: Row, b: Row) =>
+    a.preferred !== b.preferred ? (a.preferred ? -1 : 1) : a.price < b.price ? -1 : a.price > b.price ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   const cheapestPerHost = new Map<string, Row>();
   for (const r of [...usable].sort(byPriceThenId)) {
     if (!cheapestPerHost.has(r.host)) cheapestPerHost.set(r.host, r);
@@ -1665,6 +1695,25 @@ export function pickCensusRows(
     .sort((a, b) => (a.price < b.price ? -1 : a.price > b.price ? 1 : a.host < b.host ? -1 : a.host > b.host ? 1 : 0))
     .slice(0, Math.max(0, perRun))
     .map((r) => ({ ...rowToCandidate(r.row), selection }));
+}
+
+/** retest の候補の問い合わせへ渡すパラメータ（RETEST_SELLERS_SQL の結果・JSON の文字列 1 つずつ）。 */
+export type RetestParams = { hostsJson: string; preferredIdsJson: string; hostCount: number };
+
+/**
+ * RETEST_SELLERS_SQL を 1 回流し、対象の売り手（ホスト名）と、(b) の売り手で優先して買い直す出品の id を返す。
+ * 読めなければ null（retest はそのバッチでは 0 件——金の関門ではないのでバッチは止めない）。
+ */
+export async function readRetestSellers(db: NonNullable<ReturnType<typeof getDb>>): Promise<RetestParams | null> {
+  try {
+    const rows = rowsOf(await db.execute(RETEST_SELLERS_SQL));
+    const hosts = [...new Set(rows.map((r) => String(r.host)))];
+    const preferred = rows.filter((r) => r.reason === "body" && typeof r.endpoint_id === "string").map((r) => String(r.endpoint_id));
+    return { hostsJson: JSON.stringify(hosts), preferredIdsJson: JSON.stringify(preferred), hostCount: hosts.length };
+  } catch (error) {
+    if (!isMissingSchemaError(error)) logServerError("observatory.l1.retest_sellers", redactedError(error));
+    return null;
+  }
 }
 
 /**

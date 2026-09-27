@@ -544,12 +544,14 @@ export default async function ObservatoryMethodologyPage() {
           seller on Base whose most recent row failed for a reason on our side is bought from once
           more, before any census entry and inside the same limits. Two reasons count as ours: our
           payer wallet had run out of USDC (the rows held as <code>payer_unfunded</code>), or a paid
-          POST was refused with HTTP <code>400</code> before we began sending the request body the
-          seller declares, while the seller&apos;s current listing does declare one. A 400 from a
-          listing that declares no body is not treated as ours, and neither is a settled row or any
-          failure the seller&apos;s own answer explains. The listing is chosen as in the census:
-          one per seller, the lowest catalog price that names Base first, within the per-purchase
-          ceiling, and the census and the retest share the {CENSUS_PER_RUN}-seller limit of a run.
+          POST was refused with HTTP <code>400</code> or <code>422</code> before we began sending
+          the request body the seller declares, while the seller&apos;s current listing does declare
+          one. Such a refusal from a listing that declares no body is not treated as ours, and
+          neither is a settled row or any failure the seller&apos;s own answer explains. When the
+          failure was the missing body, we buy that same listing again, as long as it can still be
+          bought; otherwise, and for an empty wallet, the listing is chosen as in the census: one per
+          seller, the lowest catalog price that names Base first, within the per-purchase
+          ceiling. The census and the retest share the {CENSUS_PER_RUN}-seller limit of a run.
           The aim is that no seller is judged, when this ledger is announced, on a failure it did
           not cause. The earlier row stays published; the new one is added after it.
         </p>
