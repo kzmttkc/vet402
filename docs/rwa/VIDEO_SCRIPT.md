@@ -1,38 +1,43 @@
-# vet402 /rwa — demo video script (Open House Singapore)
+# vet402 /rwa: demo video script (Open House Singapore)
 
-Recorded 2026-09-28 JST, after `/rwa` is live on vet402.com (SPEC §13d).
-Screen: recorded by Claude, silent, one clip per scene. Voice: read by Takeshi
-from the "Read" column only, **one second of silence between scenes** so the
-two tracks can be aligned by the silences. Target length: under 3 minutes.
+Recorded 2026-09-28 JST on production (`vet402.com`). Screen: recorded by
+Claude, silent, one clip per scene. Voice: read by Takeshi from the "Read"
+column only, **one second of silence between scenes** so the two tracks can be
+aligned by the silences. English subtitles are the "Read" column verbatim.
+The subtitles are canonical; the voice is not re-recorded for pronunciation.
+The name is read "vet four-oh-two" (`.company/steering/outward_names.yaml`).
+Target length: under 3 minutes.
 
 Numbers on screen change with every block, so **the voice never says a live
-number**. It points at the screen ("this figure", "these two lines"). The one
-exception is Fixture B's −$9.62, which is frozen in `fixtures/rwa/B.md`.
+number**. The one exception is Fixture B's −$9.62, which is frozen in
+`fixtures/rwa/B.md`.
 
-The first ten seconds carry the three rules the Robinhood Chain reviewers are
-most likely to check (decision 2026-09-24): `balanceOf` is not the displayed
-share count, the multiplier is never applied to the Chainlink price, and a
-stale oracle gets no USD.
+Shape: a 10-second opening with the five things Robinhood Chain reviewers are
+most likely to check (decision 2026-09-28), then 起承転結: the problem, how it
+works, what real data showed us, and why it keeps running.
 
-| # | Screen (what is recorded) | Read (English, as written) |
-|---|---|---|
-| 1 | Facts JSON for the demo address (`/api/v1/rwa/facts/0xE9B0…C25f`): `raw` and `shares_ui` side by side, then `feed_answer` and `stale` (≈10 s) | balanceOf is not the share count. The Chainlink price already includes splits, so we never multiply it again. And a stale oracle gets no dollar value. |
-| 2 | `vet402.com/rwa/0xE9B08727131E34010b34006c660D4c1B436EC25f` — whole page, slow scroll top to bottom; pause on the balance row (shares, USD, feed time, `stale`, `weekend`) | Stock Tokens on Robinhood Chain let anyone hold Nvidia on-chain. When a wallet, or an agent, claims a track record with them, there is no neutral way to check it. vet402 slash R W A rebuilds that record from public chain data alone. |
-| 3 | `events_summary` line and `r1_status: partial` | Every movement of the canonical token is classified. Uniswap v3 swaps, Uniswap v4 swaps, plain transfers. Anything we cannot decode is counted as other unparsed. It is never dropped, and while it exists, the record says partial, not reconstructed. |
-| 4 | The realized PnL section, then `replayed_raw` next to `raw` in the facts JSON (`/api/v1/rwa/facts/…`) | Realized profit and loss uses first in, first out, and nothing else. A lot that arrived by plain transfer has no known cost, so we do not invent one. And one check proves nothing was missed: replaying every event lands exactly on the balance the chain reports. |
-| 5 | `fixtures/rwa/B.md` (the round trip and the −$9.62 line), then terminal: `npx tsx --test packages/rwa/test/fixture-a.test.ts packages/rwa/test/fixture-b.test.ts` green | Two frozen fixtures hold the method in place. Fixture A pins the price formula to a real block. Fixture B is one real round trip, priced by hand at minus nine dollars sixty-two. The code has to agree with it to the cent. |
-| 6 | Terminal: the same test after changing `usd.ts` to multiply `uiMultiplier` into the price — one test turns red | Stock splits are where records usually go wrong. The feed already includes the split, so applying the multiplier again double counts. If anyone makes that mistake, this test fails. |
-| 7 | Robinhood Chain explorer: the `RwaAnchor` contract and the `anchor` transaction; then terminal `npx tsx packages/rwa/scripts/anchor.ts --verify <tx> --mainnet` printing `match: true` | Before submitting, we anchored a hash of this record on Robinhood Chain. The contract has no owner and no upgrade path. Anyone can recompute the hash from the published JSON and compare it with the chain. |
-| 8 | The disclaimer paragraph at the bottom of the page | No custody. No trading. No token. This is a reconstruction of public data, not investment advice. It is a new surface of vet402, built in this Buildathon, and it measures only Robinhood Chain. |
+| # | Part | Screen (what is recorded) | Read (English, as written) |
+|---|---|---|---|
+| 0 | Opening (≈10 s) | Fast cuts, ≈2 s each: facts JSON `raw` vs `shares_ui` → `feed_answer` and `stale` → `fixtures/rwa/B.md` line `realized = … = -962 cents` → Blockscout: the `RwaAnchor` anchor tx on Robinhood Chain | balanceOf isn't shares. Splits live in the Chainlink price, never applied twice. Stale oracle, no dollars. One trade, priced by hand: minus nine sixty-two. Anchored on Robinhood Chain. |
+| 1 | 起: the problem | `vet402.com/rwa/0xE9B08727131E34010b34006c660D4c1B436EC25f`, top of page | Stock Tokens let anyone hold Nvidia on Robinhood Chain. When someone shows you their track record with them, you have to take their word for it. vet four-oh-two slash R W A rebuilds that record from public chain data, so you don't have to. |
+| 2 | 承: what it reads | Slow scroll: the balance row (shares, USD, feed time, `stale`, `weekend`), then `events_summary` | It reads three things only: the canonical token's transfers, Uniswap swaps checked against the official factory, and the Chainlink feed for the token. Every movement is sorted into one of four kinds, and nothing is thrown away. |
+| 3 | 承: how it adds up | The realized PnL section on the page, then the facts JSON with `replayed_raw` next to `raw` | Profit and loss is first in, first out, nothing else. A lot that arrived by plain transfer has no known cost, so we don't make one up. And one check proves nothing was missed: replaying every event lands exactly on the balance the chain reports. |
+| 4 | 承: how it stays honest | Terminal: `npx tsx --test packages/rwa/test/fixture-a.test.ts packages/rwa/test/fixture-b.test.ts` green; then `usd.ts` changed to multiply `uiMultiplier` into the price and the same run turns one test red | Two frozen fixtures hold the method in place. If anyone applies the split twice, this test fails, and the change can't ship. |
+| 5 | 転: what real data showed | The page's `events_summary` with `other_unparsed` highlighted, then Blockscout on one of those swaps showing a pool the official Uniswap factory did not create | Here's what surprised us on a real wallet. Some of its trades went through a pool the official Uniswap factory never created. We can't vouch for that pool, so those trades are counted, shown, and the record says partial. It would have been easy to hide them. |
+| 6 | 結: check it yourself | Blockscout: `RwaAnchor` verified source, then terminal `npx tsx packages/rwa/scripts/anchor.ts --verify <tx> --mainnet` printing `match: true` | We anchored a hash of this record on Robinhood Chain, in a contract with no owner and no upgrade path. Anyone can recompute it from the published JSON and compare. |
+| 7 | 結: why it keeps running | `docs/rwa/OPERATING.md` on GitHub, scrolling past "What stays up" and "What we will build next" | We're keeping it running after the Buildathon, with no end date, and every Stock Token is next. Paste any wallet into vet four-oh-two dot com slash R W A and check it yourself. |
+| 8 | Close | The disclaimer paragraph at the bottom of the page | There's no custody, no trading and no token here. It's a reconstruction of public data, and it isn't investment advice. |
 
 ## Before recording (Claude)
 
 - Production cold request for the demo address returns 200 in under 60s (SPEC §11 patch 011). If not, stop and report; do not raise the route limit.
-- `fixtures/rwa/anchor.json` exists and `--verify` prints `match: true`.
+- `fixtures/rwa/anchor.json` exists, Blockscout shows the source verified, and `--verify` prints `match: true`.
+- Warm the demo address once right before recording so the page is not a 17-second cold load on camera.
 - Browser zoom and window size fixed for all clips; no personal tabs, bookmarks or extensions visible.
+- Scene 5: check on the day that the demo address still has `other_unparsed` > 0 and pick the transaction shown from the live data.
 
 ## Assembly (Claude)
 
-Detect the silences in the voice track, cut the eight clips to the spoken
+Detect the silences in the voice track, cut the nine clips to the spoken
 length of each scene, add English subtitles from the Read column verbatim,
 export mp4, check the length, and hand over the file and the subtitle text.
