@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-29 JST — `/rwa` の facts が cold で全件 503 になっていたのを直した（c46736e9）
+
+- **何が**: 2026-09-29 05:4x JST の点検で、無料の facts が `feed_unavailable`（0.4 秒で 503）。Robinhood Chain の主 RPC が eth_getLogs の範囲を 1,000 万ブロックまでに絞り（`only 10000000 are allowed … narrow the block range`）、こちらの 4,000 万ブロックの一括読みと v4 の Initialize 検索（genesis→latest を 1 回）が弾かれていた。キャッシュ済みのページだけが表示されていた。
+- **直し**: `LOG_CHUNK_BLOCKS` を 1,000 万に。RPC が許す幅を名指ししたらその幅で読み直す。v4 の検索も同じ分割読みに。テスト 86/86。
+- **影響**: 本番の cold は `/rwa/<デモ>` で 19.3 秒（修正前は 9〜15 秒）、warm 0.38 秒。`/score` や他のルートは触っていない。
+
 ## 2026-09-28 JST（10）— 監査の指摘: 通知購読のダブルオプトイン・SSRF の予約帯・runbook・npm moderate の受容
 
 - **何を**: ①記録頁の「Email me on change」（`record_subscriptions` kind=notify）をダブルオプトインに。受付は pending・確認メール 1 通（宛先ごと 3 通/24h）・DB には確認トークンの sha256 だけ。確定は `/observatory/confirm` のボタン → `POST /api/v1/observatory/subscriptions/confirm`、停止は `/observatory/unsubscribe` のボタンか RFC 8058 one-click → `POST /api/v1/observatory/subscriptions/unsubscribe`（どちらも GET なし）。cron `notify-subscribers` は `confirmed_at IS NOT NULL AND unsubscribed_at IS NULL` の行しか読まない。全通知に `List-Unsubscribe` / `List-Unsubscribe-Post`。②`isPublicUnicastIp` に 192.0.0/24・TEST-NET-1/2/3・192.88.99/24・198.18/15・2001:db8::/32・2001::/23・3fff::/20・2000::/3 の外を追加。③`docs/INCIDENT_RUNBOOK.md` §5〜§7（Vercel ロールバック・Neon の分岐と巻き戻し・署名鍵の一覧と退避）。④`docs/audits/2026-09-28-npm-audit-moderate-acceptance.md`。
