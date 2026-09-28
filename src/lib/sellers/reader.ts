@@ -40,6 +40,7 @@ const [BASE_A, BASE_B] = BASE_NETWORKS;
  * 共有の判定（request-body.ts の bodyNotSentOnOurSide・request-query.ts の queryNotSentOnOurSide）が読む
  * 部分だけを DB で間引いて返す。スキーマは body がオブジェクトか（中身は捨てる）と queryParams.required、
  * メタは requestBody の有無と requestQuery の値。売り手の書いたスキーマ全体をキャッシュに載せない。
+ * 宣言の要約（declared_input・2026-09-29）は `{query, body}` の 2 語だけなのでそのまま読む。
  */
 const SCHEMA_MIN = sql.raw(`CASE WHEN jsonb_typeof(e.declared_schema) = 'object' THEN jsonb_build_object('properties', jsonb_build_object('input', jsonb_build_object('properties', jsonb_strip_nulls(jsonb_build_object(
     'body', CASE WHEN jsonb_typeof(e.declared_schema #> '{properties,input,properties,body}') = 'object' THEN '{}'::jsonb END,
@@ -59,6 +60,7 @@ const ROW_COLUMNS = sql`
   pu.network,
   e.method,
   ${SCHEMA_MIN} AS schema_min,
+  e.declared_input AS declared_input,
   ${META_MIN} AS meta_min,
   CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' AND (pu.raw_response_meta->>'status') ~ '^[0-9]{3}$'
        THEN (pu.raw_response_meta->>'status')::int END AS unpaid_status,
@@ -104,6 +106,7 @@ export function toRowFacts(r: Record<string, unknown>): SellerRowFacts {
     method: str(r.method),
     meta: asRecord(r.meta_min),
     schema: asRecord(r.schema_min),
+    declaredInput: asRecord(r.declared_input),
     unpaidStatus: toInt(r.unpaid_status),
     selection: str(r.selection),
     verifyReason: str(r.settlement_verify_reason),

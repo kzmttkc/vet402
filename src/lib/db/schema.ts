@@ -603,6 +603,12 @@ export const x402Endpoints = pgTable(
     payeeId: text("payee_id"),
     /** canonical_url から外した可変クエリ名（§5 undeclared）。 */
     undeclaredQuery: jsonb("undeclared_query"),
+    /**
+     * 送る規則（declared-input-rules.ts）をこの掲載の宣言に当てた要約 `{ query, body }`（2026-09-29・
+     * declared-input-summary.ts）。値・本文は持たない。/sellers と retest の「vet402 が送っていなかった」判定が読む。
+     * catalog-sync が毎日書く。NULL は「まだ読んでいない」（判定はスキーマだけで行う）。
+     */
+    declaredInput: jsonb("declared_input"),
   },
   (t) => [
     uniqueIndex("x402_endpoints_key_source_unique").on(t.resourceKey, t.source),

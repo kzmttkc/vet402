@@ -35,6 +35,7 @@ import {
 import { CENSUS_PER_RUN, DAILY_BUDGET_USD } from "@/lib/observatory/budget";
 import { REQUIRED_CONFIRMATIONS } from "@/lib/observatory/settlement-verify";
 import { LATE_SETTLEMENT_BACKDATE_MINUTES, LATE_SETTLEMENT_WINDOW_MINUTES } from "@/lib/settlements/recover-late";
+import { L1_REQUEST_TIMEOUT_MS } from "@/lib/observatory/l1-timing";
 
 const MAX_PER_PURCHASE_USD = Number(MAX_PER_PURCHASE_UNITS) / 1_000_000;
 
@@ -307,8 +308,9 @@ export default async function ObservatoryMethodologyPage() {
           </Link>
           .
         </p>
-        {/* 2026-09-28: 売り手がドメインで自分の行を探す入口（/sellers）。分類の正典は src/lib/sellers/fix-modes.ts。 */}
-        <p className="doc-p">
+        {/* 2026-09-28: 売り手がドメインで自分の行を探す入口（/sellers）。分類の正典は src/lib/sellers/fix-modes.ts。
+            2026-09-29 敵対的監査: 「どちらの側か」の定義と規則をここに書く（fix-modes.ts の判定の順と同じ）。 */}
+        <p className="doc-p" id="whose-side">
           A seller on Base can look up its own purchase rows by domain at{" "}
           <Link href="/sellers" className="underline">
             /sellers
@@ -318,6 +320,42 @@ export default async function ObservatoryMethodologyPage() {
             /sellers/fix-first
           </Link>{" "}
           groups the failures by kind.
+        </p>
+        <p className="doc-p">
+          <strong>Whose side.</strong> Each L1 purchase that did not deliver is put in one of three
+          places, by rules checked in this order since 2026-09-29. <em>vet402&apos;s side</em>: our
+          payer wallet had run out of USDC (<code>payer_unfunded</code>); a paid POST was refused
+          with <code>400</code>, <code>415</code> or <code>422</code> before 2026-09-16 23:25 UTC,
+          when we sent an empty JSON body although the listing declares one; a paid request on Base
+          was refused with <code>400</code> or <code>422</code> before 2026-09-27 23:27 UTC, when we
+          did not add the query the listing declares; or our own limits and errors. &ldquo;Declares&rdquo;
+          is read from the same place our request is built from: the example values in the
+          listing&apos;s <code>extensions.bazaar.info.input</code>, as well as the names its schema
+          marks required. <em>Not sorted</em>: a held row (a <code>held_reason</code> in the
+          export) or a row awaiting on-chain verification, because we cannot rule out that our
+          request was the problem; and a failure where no payment was taken, meaning no
+          settlement receipt and no transaction on the row, whether the paid request got a{" "}
+          <code>4xx</code> or a <code>2xx</code>. A seller that declares a miss is free is not
+          failing when it does not charge for one. <em>The seller&apos;s side</em>: everything else
+          that the seller&apos;s answer or listing explains, such as no <code>402</code> to an unpaid
+          request, a payment option we cannot pay, a signed payment refused with <code>402</code>, a{" "}
+          <code>5xx</code> or no answer to the paid request, or a receipt that does not match the
+          chain. This last group is the one counted against the seller, on these pages and in the
+          decision rules (the reason codes <code>l1_not_counted_vet402_side</code>,{" "}
+          <code>l1_not_counted_held</code> and <code>l1_not_counted_no_charge</code> name what was
+          left out).
+        </p>
+        <p className="doc-p">
+          <strong>How long we wait for a payment.</strong> The runner waits up to{" "}
+          {(L1_REQUEST_TIMEOUT_MS / 1000).toString()} seconds for each HTTP answer, including the
+          answer to the paid request, and records the purchase from that answer; it does not wait
+          on-chain at that point. A transfer that lands later is found by our index of on-chain
+          settlements if it falls between {LATE_SETTLEMENT_BACKDATE_MINUTES.toString()} minutes
+          before and {LATE_SETTLEMENT_WINDOW_MINUTES.toString()} minutes after the attempt; the index
+          and the re-read of each transaction ({REQUIRED_CONFIRMATIONS.toString()} confirmations on
+          an EVM chain) run later, on their own schedule. Until then a <code>2xx</code> or <code>4xx</code> with no receipt reads as no charge,
+          not as a seller failure; once a transfer is linked, the row awaits verification, and after the
+          re-read it reads as settled.
         </p>
         {/* 2026-09-21: 宣言クエリ（declared-input.ts の declaredRequestUrl・2026-09-20 に main へ）。
             上の宣言本文と同じ粒度・同じ節に置く。**どのチェーンで有効かは手書きしない**——
@@ -556,12 +594,13 @@ export default async function ObservatoryMethodologyPage() {
           seller on Base whose most recent row failed for a reason on our side is bought from once
           more, before any census entry and inside the same limits. Three reasons count as ours:
           our payer wallet had run out of USDC (the rows held as <code>payer_unfunded</code>); a
-          paid POST was refused with HTTP <code>400</code> or <code>422</code> before we began
-          sending the request body the seller declares, while the seller&apos;s current listing
-          does declare one; or, on Base, a paid request was refused the same way during the period
-          before we began adding the query parameters the seller declares there (2026-09-27), while
-          the current listing declares required query parameters. Such a refusal from a listing
-          that declares no body, or no required query parameter, is
+          paid POST was refused with HTTP <code>400</code>, <code>415</code> or <code>422</code>{" "}
+          before we began sending the request body the seller declares, while the seller&apos;s
+          current listing does declare one; or, on Base, a paid request was refused with{" "}
+          <code>400</code> or <code>422</code> during the period before we began adding the query
+          parameters the seller declares there (2026-09-27), while the current listing declares
+          query parameters (example values, or required names). Such a refusal from a listing
+          that declares no body, or no query parameter, is
           not treated as ours, and neither is a settled row or any failure the seller&apos;s own
           answer explains. When the failure was the missing body or query, we buy that same
           listing again, as long as it can still be
@@ -674,7 +713,11 @@ export default async function ObservatoryMethodologyPage() {
           {LATE_SETTLEMENT_BACKDATE_MINUTES.toString()} minutes before the attempt and{" "}
           {LATE_SETTLEMENT_WINDOW_MINUTES.toString()} minutes after it, and not already tied to
           another purchase. Since 2026-09-19 it is attached to a row only when that row is its
-          single candidate, and on XRPL only when it is the hash of the blob we signed. The row
+          single candidate, and on XRPL only when it is the hash of the blob we signed. Since
+          2026-09-29, when two or more of our rows on an EVM chain are candidates for the same
+          transfer (the same payee and price a few seconds apart), we read the transaction&apos;s
+          receipt and attach it to the one row whose signed authorization nonce it consumed, and
+          to none if no single row matches. The row
           then goes through the same re-read as a seller&apos;s claim before it reads{" "}
           <code>settled</code>. The seller did not name that transaction; we did, and the record
           says so: the ledger export carries <code>settlement_source</code> as{" "}

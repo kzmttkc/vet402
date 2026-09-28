@@ -17,6 +17,7 @@ import {
   SellerDetailView,
   SellerOtherChainsView,
   SellersNotice,
+  sellerHeading,
   sellerOtherChainsTitle,
   sellerPageTitle,
   sellerPath,
@@ -67,15 +68,19 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
   // 2026-09-29 敵対的監査: 売り手側とした失敗の一部が実は vet402 側・判定保留・宣言どおりの無料応答
   // だった。帰属の規則を直して再確認するまで、他社名の頁を検索に出さない（頁は売り手が見られるよう残す）。
+  // 2026-09-29: 表題に最新の購入日を入れる（sellerHeading）。一覧（キャッシュ済み）の同じ host の値を使う。
+  const lastAttemptAt = await getSellerBoardCached()
+    .then((b) => b.sellers.find((x) => x.host === host)?.lastAttemptAt ?? null)
+    .catch(() => null);
   const meta = pageMetadata({
-    title: `Is ${host} working? x402 purchase results on Base`,
+    title: sellerHeading(host, lastAttemptAt),
     description: sellerDescription(host),
     path: `/sellers/${host}`,
     noindex: true,
   });
   // 2026-09-28 SEO 監査: layout の template（"%s | vet402"）を通さず、長さを見て接尾辞を
   // 付けるかどうかを sellerPageTitle が決める。OG/Twitter の表題は素のまま（site_name が担う）。
-  return { ...meta, title: { absolute: sellerPageTitle(host) } };
+  return { ...meta, title: { absolute: sellerPageTitle(host, lastAttemptAt) } };
 }
 
 function sellerDescription(host: string): string {
@@ -117,7 +122,7 @@ export default async function SellerPage({ params, searchParams }: Props) {
   const webPage = {
     "@context": "https://schema.org",
     "@type": "WebPage",
-    name: `Is ${detail.host} working? x402 purchase results on Base`,
+    name: sellerHeading(detail.host, detail.summary.lastAttemptAt),
     description: sellerDescription(detail.host),
     url: `${SITE_URL}${path}`,
     inLanguage: "en",

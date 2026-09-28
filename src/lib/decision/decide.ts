@@ -274,7 +274,13 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
       role: "payer",
       subject,
       facts: loaded.facts,
-      options: { callerDialect: req.callerDialect, allowWithoutL1: req.allowWithoutL1, operatorBlacklist: req.operatorBlacklist },
+      options: {
+        callerDialect: req.callerDialect,
+        allowWithoutL1: req.allowWithoutL1,
+        operatorBlacklist: req.operatorBlacklist,
+        // 2026-09-29: /sellers と同じ規則で、売り手の不履行として数えない試行（vet402 の側・保留・課金なし）。
+        l1NotCounted: loaded.l1NotCounted,
+      },
       score,
       registry,
       spendingHalted: halt.halted,

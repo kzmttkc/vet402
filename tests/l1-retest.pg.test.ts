@@ -95,6 +95,12 @@ if (!TEST_DB) {
        * "emptyRequired" = required が空配列、"empty" = queryParams が空のオブジェクト。
        */
       declaresQuery?: boolean | "required" | "optional" | "emptyRequired" | "empty";
+      /**
+       * 2026-09-29: 402（掲載）の info.input.queryParams に見本値を載せるか（既定 true）。送る規則はこの見本値を読むので、
+       * 見本値があれば必須の有無にかかわらず「送っていなかった」はこちらの側（declared_input.query = declared）。
+       * false はスキーマだけの宣言（送る規則では何も足さない）。
+       */
+      infoQuery?: boolean;
       /** カタログの先頭の network（既定 Base）。 */
       primary?: string;
       /** この出品の過去の L1 行（古い順）。 */
@@ -159,10 +165,11 @@ if (!TEST_DB) {
     add("https://qd.example/get", "1200", { declaresQuery: true, past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE, network: "xrpl:0" }] });
     // 宣言クエリを送った行（declared）→ 選ばない。
     add("https://qe.example/get", "1200", { declaresQuery: true, past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE, requestQuery: "declared" }] });
-    // 必須の無いクエリ（properties だけ・required が空・queryParams が空）→ 送らなかったことが原因とは言えない。選ばない。
-    add("https://qg.example/get", "1200", { declaresQuery: "optional", past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE }] });
-    add("https://qh.example/get", "1200", { declaresQuery: "emptyRequired", past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE }] });
-    add("https://qi.example/get", "1200", { declaresQuery: "empty", past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE }] });
+    // 必須の無いクエリ（properties だけ・required が空・queryParams が空）で、見本値も無い（送る規則では何も足さない）
+    // → 送らなかったことが原因とは言えない。選ばない。見本値がある形は tests/sellers-reader.pg.test.ts（rt15）が選ぶことを固定する。
+    add("https://qg.example/get", "1200", { declaresQuery: "optional", infoQuery: false, past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE }] });
+    add("https://qh.example/get", "1200", { declaresQuery: "emptyRequired", infoQuery: false, past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE }] });
+    add("https://qi.example/get", "1200", { declaresQuery: "empty", infoQuery: false, past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE }] });
     // 宣言の無い 400 → 選ばない。
     add("https://rc.example/post", "1500", { method: "POST", declaresBody: false, past: [{ status: "settle_failed", http: 400, at: BEFORE_BODY }] });
     // 実装後の 400（宣言本文を送った）→ 選ばない。
@@ -252,7 +259,7 @@ if (!TEST_DB) {
                 input: {
                   method: l.method,
                   ...(l.declaresBody ? { body: { q: "x" } } : {}),
-                  ...(l.declaresQuery ? { queryParams: { q: "x" } } : {}),
+                  ...(l.declaresQuery && l.infoQuery !== false ? { queryParams: { q: "x" } } : {}),
                 },
               },
               ...(l.declaresBody || l.declaresQuery

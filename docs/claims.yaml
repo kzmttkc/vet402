@@ -1826,18 +1826,32 @@ claims:
     verified_at: 2026-09-28
   - id: sellers_settled_then_rejected
     surface: src/lib/sellers/fix-modes.ts
-    quote: "the route took the payment before it checked the input, so the buyer paid for a refused request"
-    means: "決済済み（settled＝vet402 がオンチェーンで転送を確認）で有料の要求が 400/404/415/422 の行は、売り手が入力を確かめる前に決済したものとして売り手の側に置く（retest と同じく決済済みの行は vet402 の側に入れない）"
+    quote: "vet402 holds this row (held_reason settled_4xx): its own request may have been the problem, so the row is not counted against the seller"
+    means: "決済済み（settled）で有料の要求が 4xx の行は判定保留（held_reason settled_4xx）で、売り手の側に数えない（not sorted (held)）。2026-09-29 敵対的監査: 以前は「Took the payment, then refused the input」として売り手の側に置き、頁の「保留の行は売り手に不利に数えない」と食い違っていた。本文・クエリをこちらが送っていなかった行は vet402 の側が先に当たる"
     check: null
-    why_unverifiable: "行ごとの事実は export.csv の status（settled）と http_status_paid・held_reason（settled_4xx）で確かめられる。分類は fix-modes.ts の paidMode で、tests/sellers-fix-modes.test.ts が固定する"
-    verified_at: 2026-09-28
+    why_unverifiable: "行ごとの事実は export.csv の status（settled）と http_status_paid・held_reason（settled_4xx）で確かめられる。分類は fix-modes.ts の modeKeyOf で、tests/sellers-fix-modes.test.ts と tests/seller-attribution.test.ts（held の行が seller の側にならない全組み合わせ）が固定する"
+    verified_at: 2026-09-29
   - id: sellers_settled_then_rejected_our_empty_body
     surface: src/lib/sellers/fix-modes.ts
-    quote: "When the seller declared a body, or a required query, that vet402 was not yet sending, the row is on vet402's side instead"
-    means: "決済してから入力を断った行でも、出品が宣言した本文（2026-09-16 23:25:55Z より前の POST）やクエリ（2026-09-27 23:27:16Z より前の Base）をこちらが送っていなかった行は vet402 の側（body_not_sent / query_not_sent）。本文を宣言していない出品の境目前の POST には、こちらが {} を送っていた事実を行ごとに併記する（rowNote）"
+    quote: "The seller refused it with 400, 415 or 422, before or after the payment settled"
+    means: "出品が宣言した本文（2026-09-16 23:25:55Z より前の POST）をこちらが送っていなかった行は、決済の前後を問わず vet402 の側（body_not_sent）。415（form-data を宣言する売り手が JSON の {} を型で断る）も入る（2026-09-29 監査: api.neurodynamic.tech）"
     check: null
-    why_unverifiable: "時刻は過去で固定（request-body.ts・request-query.ts）。条件は fix-modes.ts の isBodyNotSent / isQueryNotSent / rowNote で、tests/sellers-fix-modes.test.ts が固定する"
-    verified_at: 2026-09-28
+    why_unverifiable: "時刻は過去で固定（request-body.ts の DECLARED_BODY_SENT_SINCE・BODY_NOT_SENT_REFUSAL_HTTP）。条件は fix-modes.ts の isBodyNotSent で、tests/sellers-fix-modes.test.ts・tests/seller-attribution.test.ts・tests/request-not-sent.pg.test.ts が固定する"
+    verified_at: 2026-09-29
+  - id: sellers_no_charge_refused
+    surface: src/lib/sellers/fix-modes.ts
+    quote: "No money moved, and vet402 cannot rule out that its own request was the problem (held_reason unsettled_4xx), so the row is not counted against the seller"
+    means: "署名したが決済されず（tx なし）402 以外の 4xx で断られた行は課金なし・判定保留で、売り手の側に数えない（not sorted: no charge）。宣言どおり「見つからなければ課金しない」売り手（2026-09-29 監査: rubric-protocol.com の 404）を失敗と書かない"
+    check: null
+    why_unverifiable: "行ごとの事実は export.csv の status（settle_failed）・tx_hash（空）・http_status_paid・held_reason（unsettled_4xx）で確かめられる。tests/seller-attribution.test.ts が固定する"
+    verified_at: 2026-09-29
+  - id: sellers_no_charge_answered
+    surface: src/lib/sellers/fix-modes.ts
+    quote: "Nothing was charged, so the row is not counted against the seller"
+    means: "レシート無しの 2xx（delivered_no_receipt）で、行に tx も無い（遅延回収が窓の中に着金を見つけていない）行は課金なしで、売り手の側に数えない（2026-09-29 監査: 402signal.com の「a miss is free」）。着金が見つかれば遅延回収が tx を貼り、照合待ちを経て settled になる"
+    check: null
+    why_unverifiable: "行ごとの事実は export.csv の status（delivered_no_receipt）と tx_hash（空）。窓は src/lib/settlements/recover-late.ts の LATE_SETTLEMENT_*（fix-modes.ts の LATE_LINK_* と一致を tests/seller-attribution.test.ts が固定）"
+    verified_at: 2026-09-29
   - id: sellers_sends_declared_input
     surface: src/lib/sellers/fix-modes.ts
     quote: "Since 2026-09-16 23:25 UTC vet402 sends the request body the seller's 402 declares (an empty JSON body when it declares none), and since 2026-09-27 23:27 UTC it adds the query parameters the seller's 402 declares on Base"
@@ -1848,7 +1862,7 @@ claims:
   - id: sellers_query_not_sent_before_cutover
     surface: src/lib/sellers/fix-modes.ts
     quote: "Before 2026-09-27 23:27 UTC, vet402 did not add the query parameters the seller's 402 declares to paid requests on Base"
-    means: "Base の有料の要求で、出品が必須のクエリ（queryParams.required が空でない）を宣言しているのにクエリを足していなかった期間の 400/422（requestQuery の記録が無いか empty）は vet402 の側（query_not_sent）。決済済みの行も同じ条件でこちらの側。任意のクエリだけの出品はこちらの落ち度にしない"
+    means: "Base の有料の要求で、出品がクエリを宣言している（2026-09-29 から: 送る規則と同じ情報源＝`bazaar.info.input.queryParams` の見本値を掲載に当てた declared_input.query = declared、またはスキーマの queryParams.required が空でない）のにクエリを足していなかった期間の 400/422（requestQuery の記録が無いか empty）は vet402 の側（query_not_sent）。決済済みの行も同じ条件でこちらの側"
     check: null
     why_unverifiable: "時刻と条件は src/lib/observatory/request-query.ts の BASE_DECLARED_QUERY_SINCE と queryNotSentOnOurSide（retest の (c) と共有）。/sellers は fix-modes.ts の isQueryNotSent でそれを呼ぶだけで、tests/sellers-fix-modes.test.ts が共有の判定と行ごとに同じ答えを出すことを固定する"
     verified_at: 2026-09-28
@@ -1882,8 +1896,8 @@ claims:
     verified_at: 2026-09-28
   - id: sellers_held_rows_not_counted
     surface: src/components/site/sellers/SellersViews.tsx
-    quote: "is not counted against the seller in the"
-    means: "held_reason の付いた行（settled_4xx / unsettled_4xx / payer_unfunded）は、delivered の分母に売り手の不履行として入らない"
+    quote: "is never put on the seller&apos;s side"
+    means: "held_reason の付いた行（settled_4xx / unsettled_4xx / payer_unfunded）は、delivered の分母に売り手の不履行として入らず、「どちらの側か」でも seller の側にしない（2026-09-29）"
     check: null
     why_unverifiable: "件数は 30 日窓で動く。規則は delivery.ts の heldReasonOf / heldReasonSql で、tests/l1-held-rows.pg.test.ts が JS と SQL と公開面の一致を固定する"
     verified_at: 2026-09-28

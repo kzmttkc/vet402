@@ -31,8 +31,8 @@ const SHA = "b".repeat(64);
 test("語彙: declared / empty / refused——組み立て側の 3 つと同じ", () => {
   assert.deepEqual([...REQUEST_QUERY_KINDS], ["declared", "empty", "refused"]);
   // 組み立て側の正典。型では縛ってあるが（request-query.ts の _KindsMatchSource）、
-  // 語そのものが declared-input.ts に在ることを文字列でも見る。
-  const canon = read("src/lib/observatory/declared-input.ts");
+  // 語そのものが組み立て側の規則（2026-09-29 に declared-input-rules.ts へ分けた）に在ることを文字列でも見る。
+  const canon = read("src/lib/observatory/declared-input-rules.ts");
   assert.ok(canon.includes('export type RequestQuerySource = "declared" | "empty" | "refused"'));
 });
 

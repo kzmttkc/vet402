@@ -549,7 +549,8 @@ const DETECTION_FLOOR: Record<string, number> = {
   // 2026-09-21: 42 -> 43. The declared-query paragraphs added one ("a window with no such row at all means it has not run on any network yet").
   // 2026-09-28: 43 -> 45. The census paragraph ("One row for each seller") added two detections ([all] and [daily]) in one sentence, registered as method_census_one_row_per_seller.
   // 2026-09-28 (review W1-W3): 45 -> 46. The rewrap of the census paragraph split "bought from at all" into its own text node ([all], covered by allow_phrase " at all").
-  "src/app/observatory/methodology/page.tsx": 46,
+  // 2026-09-29: retest の段落を 400/415/422・見本値のクエリで書き直し、検出が 1 つ減った（文の削除ではなく言い換え）。
+  "src/app/observatory/methodology/page.tsx": 45,
   "src/app/observatory/page.tsx": 8,
   // 2026-09-28: 14 → 13。meta description を 160 字に詰めた際に "at all"（語 all を拾っていた）を落とした。主張は減っていない。
   "src/app/observatory/state/page.tsx": 13,

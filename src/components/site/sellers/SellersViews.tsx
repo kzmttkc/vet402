@@ -13,7 +13,7 @@ import {
   type SellerSummary,
   type ShownRow,
 } from "@/lib/sellers/board";
-import { EFFORT_LABEL, SIDE_LABEL } from "@/lib/sellers/fix-modes";
+import { EFFORT_LABEL, sideLabelOf } from "@/lib/sellers/fix-modes";
 
 /**
  * /sellers・/sellers/[host]・/sellers/fix-first の描画（純粋なコンポーネント・DB を読まない）。
@@ -55,12 +55,19 @@ function NotifyLink({ endpointId }: { endpointId: string }) {
 export const TITLE_MAX = 60;
 
 /**
- * /sellers/[host] の <title>（2026-09-28 SEO 監査）。売り手が自分のドメインを検索するときの
- * 言い方（"is X working"）に合わせる。" | vet402" を付けて TITLE_MAX を超えるなら付けない
- * —— 検索結果で切られるのはホスト名の側ではなく接尾辞の側にする。
+ * /sellers/[host] の表題（<title>・h1・構造化データの name で同じ語）。
+ *
+ * 2026-09-29 敵対的監査: 以前の "Is X working?" は現在形の問いで、何日も前の購入を「今動いていない」と読ませた。
+ * 最新の購入日（UTC の日付）を入れて、いつの結果かを表題で言う。購入が無ければ日付を付けない。
+ * " | vet402" を付けて TITLE_MAX を超えるなら付けない（2026-09-28 SEO 監査: 切られるのは接尾辞の側にする）。
  */
-export function sellerPageTitle(host: string): string {
-  const bare = `Is ${host} working? x402 purchase results on Base`;
+export function sellerHeading(host: string, lastAttemptAt: string | null): string {
+  const day = lastAttemptAt && /^\d{4}-\d{2}-\d{2}/.test(lastAttemptAt) ? lastAttemptAt.slice(0, 10) : null;
+  return day ? `${host}: x402 purchase results on Base, as of ${day}` : `${host}: x402 purchase results on Base`;
+}
+
+export function sellerPageTitle(host: string, lastAttemptAt: string | null = null): string {
+  const bare = sellerHeading(host, lastAttemptAt);
   const full = `${bare} | vet402`;
   return full.length <= TITLE_MAX ? full : bare;
 }
@@ -116,7 +123,7 @@ function CountsLine({ c }: { c: OutcomeCounts }) {
       {c.unsorted > 0 && (
         <>
           {" "}
-          · <strong>{n(c.unsorted)}</strong> not sorted yet
+          · <strong>{n(c.unsorted)}</strong> not sorted (held, no charge, or not grouped yet)
         </>
       )}{" "}
       · <strong>{n(c.notBought)}</strong> not yet bought
@@ -451,8 +458,8 @@ function ListingRows({ l, now, rebuyEligible }: { l: SellerListing; now: number;
           <span className="block text-xs font-normal text-brand-lift">{l.method ?? "method undeclared"}</span>
         </td>
         <td className="whitespace-nowrap border-b-0 pb-0.5">{r ? fmtUtc(r.facts.attemptedAt) : "not yet bought"}</td>
-        <td className={`border-b-0 pb-0.5 ${r && r.bucket !== "delivered" ? "text-[#9f0712]" : ""}`}>{r ? <ResultWord r={r} /> : "—"}</td>
-        <td className="whitespace-nowrap border-b-0 pb-0.5">{r && r.mode ? SIDE_LABEL[r.mode.side] : "—"}</td>
+        <td className={`border-b-0 pb-0.5 ${r && (r.bucket === "seller" || r.bucket === "vet402") ? "text-[#9f0712]" : ""}`}>{r ? <ResultWord r={r} /> : "—"}</td>
+        <td className="whitespace-nowrap border-b-0 pb-0.5">{r && r.mode ? sideLabelOf(r.mode) : "—"}</td>
       </tr>
       <tr className="fact-subrow">
         <td colSpan={4} className="pt-0 text-[0.8125rem] font-normal">
@@ -484,7 +491,7 @@ function ListingRows({ l, now, rebuyEligible }: { l: SellerListing; now: number;
                 <span className="block">The latest purchase delivered. An earlier purchase listed below did not.</span>
               )}
               <span className="block font-[family-name:var(--font-mono)] text-xs text-brand-lift">
-                Recorded: <RecordedFacts r={r} />
+                Recorded (L1 paid purchase): <RecordedFacts r={r} />
               </span>
               <span className="block text-xs text-brand-lift">
                 <ExportTrace r={r} resourceKey={l.resourceKey} now={now} />
@@ -495,7 +502,7 @@ function ListingRows({ l, now, rebuyEligible }: { l: SellerListing; now: number;
                   {l.earlier.map((e, i) => (
                     <span key={i}>
                       {i > 0 && " · "}
-                      {fmtUtc(e.facts.attemptedAt)} {e.bucket === "delivered" ? "delivered" : `${e.mode?.title} (${e.mode ? SIDE_LABEL[e.mode.side] : ""})`}
+                      {fmtUtc(e.facts.attemptedAt)} {e.bucket === "delivered" ? "delivered" : e.bucket === "pending" ? "awaiting on-chain verification" : `${e.mode?.title} (${e.mode ? sideLabelOf(e.mode) : ""})`}
                       {e.facts.selection ? ` [${e.facts.selection}]` : ""}
                     </span>
                   ))}
@@ -536,11 +543,8 @@ export function SellerDetailView({
   return (
     <article className="sheet">
       <DocHead title="Seller: purchase results on Base" fetched={<FetchedAt at={detail.fetchedAt} revalidateSec={revalidateSec} />} />
-      {/* 2026-09-28 SEO 監査: 売り手が自分のドメインを検索するときの言い方（"is X working"）に合わせる。
-          ホスト名は長いので、その部分だけどこででも折り返せるようにする。 */}
-      <h1 className="doc-title mt-10 break-words">
-        Is <span className="[overflow-wrap:anywhere]">{detail.host}</span> working? What happened when we paid it
-      </h1>
+      {/* 2026-09-29: 表題は最新の購入日つきの事実の言い方（sellerHeading）。ホスト名は長いのでどこででも折り返す。 */}
+      <h1 className="doc-title mt-10 break-words [overflow-wrap:anywhere]">{sellerHeading(detail.host, s.lastAttemptAt)}</h1>
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
       <p className="doc-p">
         {n(s.listings)} Base {s.listings === 1 ? "listing" : "listings"}. By the latest purchase of each: <CountsLine c={s} />.
@@ -579,8 +583,8 @@ export function SellerDetailView({
           <thead>
             <tr>
               <th scope="col">Listing</th>
-              <th scope="col">Latest purchase</th>
-              <th scope="col">Result</th>
+              <th scope="col">Latest L1 purchase</th>
+              <th scope="col">Result (L1)</th>
               <th scope="col">Whose side</th>
             </tr>
           </thead>
@@ -603,10 +607,14 @@ export function SellerDetailView({
         <span>How to read this</span>
       </h2>
       <p className="doc-p">
-        Each listing shows its latest purchase on Base and up to four earlier ones. <strong>Whose side</strong> says
+        Each listing shows its latest purchase on Base and up to four earlier ones. These are{" "}
+        <strong>L1</strong> results: vet402 signed a payment and sent the paid request. The listing&apos;s record page
+        also shows the <strong>L0</strong> state (&ldquo;Published state&rdquo;), which only checks that an unpaid
+        request gets a valid 402, so a listing can pass L0 and still fail here. <strong>Whose side</strong> says
         where the failure came from: the seller&apos;s answer or listing, or vet402 itself. A row{" "}
-        <strong>held</strong> (<code>held_reason</code> in the export) is not counted against the seller in the
-        delivered numbers, because vet402 cannot rule out that its request was the problem. The transaction link opens
+        <strong>held</strong> (<code>held_reason</code> in the export) is never put on the seller&apos;s side, because
+        vet402 cannot rule out that its request was the problem; neither is a failure where no payment was taken
+        (&ldquo;no charge&rdquo;). Those rows are &ldquo;not sorted&rdquo;. The transaction link opens
         the settlement on Basescan. Listings removed from the Bazaar, and listings whose catalog network is not Base,
         are not on this page. The{" "}
         <Link href="/sellers/fix-first" className="underline">
@@ -646,7 +654,7 @@ function OtherChainResult({ l }: { l: SellerOtherChains["listings"][number] }) {
   return (
     <>
       <ResultWord r={r} />
-      {r.mode && <span className="text-brand-lift"> ({SIDE_LABEL[r.mode.side]})</span>}
+      {r.mode && <span className="text-brand-lift"> ({sideLabelOf(r.mode)})</span>}
       <span className="block font-[family-name:var(--font-mono)] text-xs font-normal text-brand-lift">
         <code>{r.facts.status}</code>
         {r.facts.httpStatusPaid !== null && <> · HTTP {r.facts.httpStatusPaid}</>}
@@ -738,7 +746,7 @@ function GroupCard({ g, i }: { g: FixGroup; i: number }) {
       </h3>
       <p className="doc-p mt-1">
         <strong>{n(g.hosts)}</strong> {g.hosts === 1 ? "seller" : "sellers"} · <strong>{n(g.listings)}</strong>{" "}
-        {g.listings === 1 ? "listing" : "listings"} · {SIDE_LABEL[g.side]}
+        {g.listings === 1 ? "listing" : "listings"} · {sideLabelOf(g)}
         {g.side === "seller" && <> · effort {g.effort}: {EFFORT_LABEL[g.effort]}</>}
       </p>
       <p className="doc-p mt-1">
@@ -806,7 +814,7 @@ export function FixFirstView({ board, revalidateSec }: { board: SellerBoard; rev
         <>
           <h2 className="sec-head">
             <span className="sec-no">3.</span>
-            <span>Not grouped yet</span>
+            <span>Not counted against either side</span>
           </h2>
           <ol className="list-none p-0">
             {unsorted.map((g, i) => (

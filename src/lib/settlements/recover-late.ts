@@ -44,6 +44,14 @@
 // settle_claim_refuted にせず、行を lateSettlement.priorStatus / replacedTxHash へ戻し、その tx を
 // lateSettlement.rejectedTxHashes（小文字）に残す（settlement-verifier.ts withdrawLateLink）。ここは
 // その tx を二度と候補にしない——戻した行がまた同じ tx を拾って往復しないため。
+//
+// 2026-09-29（敵対的監査・penny402.fun）: 候補が 2 行以上ある tx は「貼らない」だけだったので、同じ payer から
+// 同じ payTo へ同額の購入を数秒違いで 2 本出すと（tarot と koan・16 秒違い・2500 単位）、着金が 2 本とも実在しても
+// どちらの行にも貼られず、頁は「決済を確認できず」と書いていた。本番では 20 行がこの形で止まっていた。
+// 推定はしない。**EVM では tx のレシートの AuthorizationUsed(authorizer, nonce) を読み、行の auth_nonce（我々が
+// 署名した nonce）と一致する行が 1 つだけのときに貼る**（linkAmbiguousByNonce）。nonce は我々が randomBytes(32)
+// で作った値なので、一致すれば持ち主はその行に決まる。読み手（readNonces）は呼び手が渡す（cron は
+// settlement-verify.ts の readAuthorizationNonces。テストは偽物）。渡さなければ従来どおり貼らない。
 // ============================================================
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
@@ -72,13 +80,21 @@ export const LATE_SETTLEMENT_BACKDATE_MINUTES = 2;
  */
 export const LATE_RECOVERABLE_STATUSES = ["settle_failed", "delivered_no_receipt", "settle_claimed_unverifiable"] as const;
 
+/** 1 回の実行で曖昧さの解消のために読むレシートの上限（RPC の呼び出し回数の上限）。 */
+export const AMBIGUOUS_RECEIPTS_PER_RUN = 60;
+
+/** tx の中で payer が消費した EIP-3009 nonce（小文字）。読めなければ null（＝貼らない）。 */
+export type NonceReader = (input: { network: string; txHash: string; payer: string }) => Promise<string[] | null>;
+
 export type LateSettlementSummary = {
   recovered: number;
+  /** recovered のうち、nonce で持ち主を 1 行に決めて貼った数。 */
+  recoveredByNonce: number;
   /** 結びつけた (purchase_id, tx_hash) の対。cron の応答に出る。 */
   links: { purchaseId: string; txHash: string }[];
 };
 
-export async function recoverLateSettlements(): Promise<LateSettlementSummary> {
+export async function recoverLateSettlements(options: { readNonces?: NonceReader } = {}): Promise<LateSettlementSummary> {
   const db = getDb();
   if (!db) throw new Error("recoverLateSettlements: DATABASE_URL is not configured");
 
@@ -164,6 +180,9 @@ export async function recoverLateSettlements(): Promise<LateSettlementSummary> {
     prior_tx_hash: string | null;
   }[];
 
+  const byNonce = options.readNonces ? await linkAmbiguousByNonce(db, options.readNonces) : [];
+  rows.push(...byNonce);
+
   // §10 / §6.2: 状態が変わったら訂正ログに残す（公開面が「いつ何が変わったか」を言える）。
   for (const row of rows) {
     await recordCorrection({
@@ -182,6 +201,134 @@ export async function recoverLateSettlements(): Promise<LateSettlementSummary> {
 
   return {
     recovered: rows.length,
+    recoveredByNonce: byNonce.length,
     links: rows.map((r) => ({ purchaseId: r.purchase_id, txHash: r.tx_hash })),
   };
+}
+
+type Db = NonNullable<ReturnType<typeof getDb>>;
+type LinkedRow = { purchase_id: string; tx_hash: string; prior_status: string; prior_tx_hash: string | null };
+
+function rowsOfRaw<T>(raw: unknown): T[] {
+  return (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as T[];
+}
+
+/**
+ * 候補が 2 行以上ある EVM の tx を、レシートの nonce で 1 行に決めて貼る（2026-09-29）。
+ *
+ * 候補の条件は上の 1 文と同じ（払い元・宛先・額・窓・未使用の tx・取り消し済みでない）で、それに
+ * 「EVM（eip155: か base）・auth_nonce がある」を足す。tx ごとにレシートを 1 回読み、payer が消費した nonce と
+ * 一致する auth_nonce の候補が**ちょうど 1 行**なら、その行だけを貼る。0 行・2 行以上・読めないなら貼らない。
+ * 貼る UPDATE は条件を読み直す（その間に別の経路が行や tx を動かしていれば何もしない）。部分一意 index
+ * （同じ tx を 2 行が主張しない）も効いているので、競合しても二重には貼らない。
+ */
+async function linkAmbiguousByNonce(db: Db, readNonces: NonceReader): Promise<LinkedRow[]> {
+  const raw = await db.execute(sql`
+    WITH match AS (
+      SELECT pu.id AS purchase_id,
+             lower(btrim(pu.auth_nonce)) AS auth_nonce,
+             pu.payer AS payer,
+             pu.network AS network,
+             s.chain AS chain,
+             s.tx_hash AS tx_hash,
+             s.block_time AS block_time,
+             count(*) OVER (PARTITION BY s.chain, lower(s.tx_hash)) AS tx_candidates
+      FROM x402_l1_purchases pu
+      JOIN settlements s
+        ON s.chain IS NOT DISTINCT FROM pu.network
+       AND lower(s.payer) = lower(pu.payer)
+       AND lower(s.payee) = lower(pu.pay_to)
+       AND s.amount = pu.amount_units
+       AND s.block_time >= pu.attempted_at - make_interval(mins => ${LATE_SETTLEMENT_BACKDATE_MINUTES}::int)
+       AND s.block_time <= pu.attempted_at + make_interval(mins => ${LATE_SETTLEMENT_WINDOW_MINUTES}::int)
+       AND NOT jsonb_exists(
+             coalesce(pu.raw_response_meta->'lateSettlement'->'rejectedTxHashes', '[]'::jsonb),
+             lower(s.tx_hash))
+      WHERE pu.status IN (${sql.join(LATE_RECOVERABLE_STATUSES.map((s) => sql`${s}`), sql`, `)})
+        AND (pu.tx_hash IS NULL OR pu.status = 'settle_claimed_unverifiable')
+        AND pu.payer IS NOT NULL AND pu.pay_to IS NOT NULL AND pu.amount_units IS NOT NULL AND pu.attempted_at IS NOT NULL
+        AND (pu.network LIKE 'eip155:%' OR pu.network = 'base')
+        AND NOT EXISTS (
+          SELECT 1 FROM x402_l1_purchases o
+          WHERE o.tx_hash IS NOT NULL
+            AND o.network IS NOT DISTINCT FROM pu.network
+            AND lower(o.tx_hash) = lower(s.tx_hash)
+        )
+    )
+    SELECT purchase_id::text AS purchase_id, auth_nonce, payer, network, tx_hash
+    FROM match
+    WHERE tx_candidates > 1
+    ORDER BY block_time DESC, tx_hash, purchase_id`);
+  const cands = rowsOfRaw<{ purchase_id: string; auth_nonce: string | null; payer: string; network: string; tx_hash: string }>(raw);
+
+  // tx ごとに候補をまとめる（新しい tx から・上限つき）。
+  const byTx = new Map<string, typeof cands>();
+  for (const c of cands) {
+    const k = `${c.network}|${c.tx_hash.toLowerCase()}`;
+    const list = byTx.get(k) ?? [];
+    list.push(c);
+    byTx.set(k, list);
+  }
+  const chosen = new Map<string, { txHash: string }>();
+  const usedPurchases = new Set<string>();
+  let reads = 0;
+  for (const list of byTx.values()) {
+    if (reads >= AMBIGUOUS_RECEIPTS_PER_RUN) break;
+    const withNonce = list.filter((c) => typeof c.auth_nonce === "string" && /^0x[0-9a-f]{64}$/.test(c.auth_nonce));
+    if (withNonce.length === 0) continue;
+    reads++;
+    const nonces = await readNonces({ network: list[0].network, txHash: list[0].tx_hash, payer: list[0].payer }).catch(() => null);
+    if (!nonces || nonces.length === 0) continue;
+    const set = new Set(nonces.map((n) => n.toLowerCase()));
+    const owners = withNonce.filter((c) => set.has(c.auth_nonce!));
+    if (owners.length !== 1) continue;
+    const owner = owners[0];
+    // 1 行が 2 本の tx の持ち主になることは nonce の一意性から起きないが、起きたら両方とも貼らない。
+    if (usedPurchases.has(owner.purchase_id)) {
+      chosen.delete(owner.purchase_id);
+      continue;
+    }
+    usedPurchases.add(owner.purchase_id);
+    chosen.set(owner.purchase_id, { txHash: owner.tx_hash });
+  }
+
+  const linked: LinkedRow[] = [];
+  for (const [purchaseId, { txHash }] of chosen) {
+    const res = await db.execute(sql`
+      WITH prior AS (
+        SELECT pu.id, pu.status AS prior_status, pu.tx_hash AS prior_tx_hash
+        FROM x402_l1_purchases pu
+        WHERE pu.id = ${purchaseId}::uuid
+          AND pu.status IN (${sql.join(LATE_RECOVERABLE_STATUSES.map((s) => sql`${s}`), sql`, `)})
+          AND (pu.tx_hash IS NULL OR pu.status = 'settle_claimed_unverifiable')
+          AND NOT EXISTS (
+            SELECT 1 FROM x402_l1_purchases o
+            WHERE o.tx_hash IS NOT NULL AND o.network IS NOT DISTINCT FROM pu.network AND lower(o.tx_hash) = lower(${txHash})
+          )
+        FOR UPDATE
+      )
+      UPDATE x402_l1_purchases pu
+      SET status = 'settle_claimed',
+          tx_hash = ${txHash},
+          settlement_verified = NULL,
+          settlement_verified_at = NULL,
+          settlement_verify_reason = NULL,
+          raw_response_meta = coalesce(pu.raw_response_meta, '{}'::jsonb) || jsonb_build_object(
+            'lateSettlement', jsonb_strip_nulls(jsonb_build_object(
+              'source', 'settlements_index',
+              'note', 'the seller settled after we recorded ' || prior.prior_status || '; linked by the authorization nonce in the receipt; the verifier decides whether it is ours',
+              'priorStatus', prior.prior_status,
+              'replacedTxHash', prior.prior_tx_hash,
+              'txHash', ${txHash}::text,
+              'matchedBy', 'authorization_nonce',
+              'rejectedTxHashes', pu.raw_response_meta->'lateSettlement'->'rejectedTxHashes',
+              'linkedAt', to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+            ))
+          )
+      FROM prior
+      WHERE pu.id = prior.id
+      RETURNING pu.id::text AS purchase_id, pu.tx_hash AS tx_hash, prior.prior_status AS prior_status, prior.prior_tx_hash AS prior_tx_hash`);
+    linked.push(...rowsOfRaw<LinkedRow>(res));
+  }
+  return linked;
 }

@@ -25,6 +25,7 @@
 //  4. One purchase per endpoint per sweep window (default 6 days) — the
 //     weekly-sweep cadence emerges from the daily budget, not from a queue.
 // ============================================================
+import { L1_REQUEST_TIMEOUT_MS } from "./l1-timing";
 import { privateKeyToAccount } from "viem/accounts";
 import { eq, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
@@ -848,7 +849,7 @@ export async function runL1Batch(
   const {
     limit = 100,
     fetchImpl = guardedFetch,
-    timeoutMs = 20_000,
+    timeoutMs = L1_REQUEST_TIMEOUT_MS,
     onlyEndpointId,
     batchBudgetMs = L1_BATCH_BUDGET_MS,
   } = options;

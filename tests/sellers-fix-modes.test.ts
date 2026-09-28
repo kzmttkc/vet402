@@ -98,20 +98,20 @@ const KNOWN: [string, SellerRowFacts, string | null, string][] = [
   [
     "本文を送った後の POST 400",
     row({ status: "settle_failed", httpStatusPaid: 400, method: "POST", declaresBody: true, bodyRecorded: true, attemptedAt: "2026-09-20T00:00:00Z" }),
-    "input_rejected",
-    "seller",
+    "refused_no_charge",
+    "unsorted",
   ],
   [
     "本文を宣言していない POST の 400（送る前でも我々の落ち度とは言えない）",
     row({ status: "settle_failed", httpStatusPaid: 400, method: "POST", declaresBody: false, attemptedAt: "2026-09-10T00:00:00Z" }),
-    "input_rejected",
-    "seller",
+    "refused_no_charge",
+    "unsorted",
   ],
   [
     "GET の 422（本文を送らない）",
     row({ status: "settle_failed", httpStatusPaid: 422, method: "GET", declaresBody: true, attemptedAt: "2026-09-10T00:00:00Z" }),
-    "input_rejected",
-    "seller",
+    "refused_no_charge",
+    "unsorted",
   ],
   [
     "決済された POST 400 でも、本文を宣言した出品に {} を送った期間なら vet402 の側（レビュー 2026-09-28）",
@@ -123,7 +123,7 @@ const KNOWN: [string, SellerRowFacts, string | null, string][] = [
     "決済された POST 400・本文を宣言していない出品は seller（決済してから入力を断った）",
     row({ status: "settled", httpStatusPaid: 400, txHash: TX, method: "POST", declaresBody: false, attemptedAt: "2026-09-10T00:00:00Z" }),
     "settled_then_rejected",
-    "seller",
+    "unsorted",
   ],
   // クエリ（Base で宣言クエリを送り始めたのは 2026-09-27T23:27:16Z）
   [
@@ -141,26 +141,26 @@ const KNOWN: [string, SellerRowFacts, string | null, string][] = [
   [
     "Base の GET 400・クエリを宣言・境界の時刻（送った後）",
     row({ status: "settle_failed", httpStatusPaid: 400, declaresQuery: true, attemptedAt: "2026-09-27T23:27:16Z" }),
-    "input_rejected",
-    "seller",
+    "refused_no_charge",
+    "unsorted",
   ],
   [
     "Base の GET 400・クエリの記録あり",
     row({ status: "settle_failed", httpStatusPaid: 400, declaresQuery: true, queryRecorded: true, attemptedAt: "2026-09-20T00:00:00Z" }),
-    "input_rejected",
-    "seller",
+    "refused_no_charge",
+    "unsorted",
   ],
   [
     "Base の GET 400・クエリを宣言していない",
     row({ status: "settle_failed", httpStatusPaid: 400, declaresQuery: false, attemptedAt: "2026-09-20T00:00:00Z" }),
-    "input_rejected",
-    "seller",
+    "refused_no_charge",
+    "unsorted",
   ],
   [
     "Base の GET 400・任意のクエリだけ（required が空）はこちらの落ち度にしない（共有の判定）",
     row({ status: "settle_failed", httpStatusPaid: 400, optionalQueryOnly: true, attemptedAt: "2026-09-20T00:00:00Z" }),
-    "input_rejected",
-    "seller",
+    "refused_no_charge",
+    "unsorted",
   ],
   [
     "Base の GET 400・必須のクエリ・記録が empty（送っていない）は vet402 の側（共有の判定）",
@@ -171,26 +171,27 @@ const KNOWN: [string, SellerRowFacts, string | null, string][] = [
   [
     "Base の GET 401・クエリを宣言（400/422 だけが対象）",
     row({ status: "settle_failed", httpStatusPaid: 401, declaresQuery: true, attemptedAt: "2026-09-20T00:00:00Z" }),
-    "auth",
-    "seller",
+    "refused_no_charge",
+    "unsorted",
   ],
   [
     "Solana の 400・クエリを宣言（Base の境目は Base だけ）",
     row({ status: "settle_failed", httpStatusPaid: 400, declaresQuery: true, network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", attemptedAt: "2026-09-20T00:00:00Z" }),
-    "input_rejected",
-    "seller",
+    "refused_no_charge",
+    "unsorted",
   ],
-  ["settled 404", row({ status: "settled", httpStatusPaid: 404, txHash: TX }), "settled_then_rejected", "seller"],
-  ["settled 422", row({ status: "settled", httpStatusPaid: 422, txHash: TX }), "settled_then_rejected", "seller"],
-  ["settle_failed 415", row({ status: "settle_failed", httpStatusPaid: 415 }), "input_rejected", "seller"],
-  ["settle_failed 401", row({ status: "settle_failed", httpStatusPaid: 401 }), "auth", "seller"],
-  ["settled 403", row({ status: "settled", httpStatusPaid: 403, txHash: TX }), "auth", "seller"],
-  ["settle_failed 405", row({ status: "settle_failed", httpStatusPaid: 405 }), "wrong_method", "seller"],
-  ["settle_failed 429", row({ status: "settle_failed", httpStatusPaid: 429 }), "rate_limited", "seller"],
+  ["settled 404", row({ status: "settled", httpStatusPaid: 404, txHash: TX }), "settled_then_rejected", "unsorted"],
+  ["settled 422", row({ status: "settled", httpStatusPaid: 422, txHash: TX }), "settled_then_rejected", "unsorted"],
+  ["settle_failed 415", row({ status: "settle_failed", httpStatusPaid: 415 }), "refused_no_charge", "unsorted"],
+  ["settle_failed 401", row({ status: "settle_failed", httpStatusPaid: 401 }), "refused_no_charge", "unsorted"],
+  ["settled 403", row({ status: "settled", httpStatusPaid: 403, txHash: TX }), "settled_then_refused", "unsorted"],
+  ["settle_failed 405", row({ status: "settle_failed", httpStatusPaid: 405 }), "refused_no_charge", "unsorted"],
+  ["settle_failed 429", row({ status: "settle_failed", httpStatusPaid: 429 }), "refused_no_charge", "unsorted"],
   ["settle_failed HTTP なし", row({ status: "settle_failed", httpStatusPaid: null }), "no_response_paid", "seller"],
   ["settled HTTP なし（遅延回収）", row({ status: "settled", httpStatusPaid: null, txHash: TX }), "no_response_paid", "seller"],
-  ["settle_failed 201", row({ status: "settle_failed", httpStatusPaid: 201 }), "no_receipt", "seller"],
-  ["delivered_no_receipt", row({ status: "delivered_no_receipt", httpStatusPaid: 200 }), "no_receipt", "seller"],
+  ["settle_failed 201", row({ status: "settle_failed", httpStatusPaid: 201 }), "answered_no_charge", "unsorted"],
+  ["delivered_no_receipt", row({ status: "delivered_no_receipt", httpStatusPaid: 200 }), "answered_no_charge", "unsorted"],
+  ["delivered_no_receipt・tx あり（課金なしではない）", row({ status: "delivered_no_receipt", httpStatusPaid: 200, txHash: TX }), "no_receipt", "seller"],
   ["settle_claim_refuted", row({ status: "settle_claim_refuted", httpStatusPaid: 200, txHash: TX }), "claim_refuted", "seller"],
   ["settle_claimed_unverifiable", row({ status: "settle_claimed_unverifiable", httpStatusPaid: 200, txHash: "nope" }), "claim_malformed", "seller"],
   ["no_402 404", row({ status: "no_402", network: null, unpaidStatus: 404 }), "gone", "seller"],
@@ -205,7 +206,7 @@ const KNOWN: [string, SellerRowFacts, string | null, string][] = [
   ["payto_mismatch", row({ status: "payto_mismatch", network: null }), "payto_mismatch", "seller"],
   // unsorted
   ["settled 307", row({ status: "settled", httpStatusPaid: 307, txHash: TX }), "other", "unsorted"],
-  ["settled 409", row({ status: "settled", httpStatusPaid: 409, txHash: TX }), "other", "unsorted"],
+  ["settled 409", row({ status: "settled", httpStatusPaid: 409, txHash: TX }), "settled_then_refused", "unsorted"],
   ["語彙に無い status", row({ status: "something_new" }), "other", "unsorted"],
 ];
 
@@ -250,7 +251,11 @@ test("分類表: 鍵が重複せず、文言が空でなく、vet402 の側は�
     assert.ok(m.title && m.what && m.fix, m.key);
     if (m.side === "vet402") assert.match(m.fix, /^Nothing for the seller to fix\./, m.key);
   }
-  assert.equal(FIX_MODES.filter((m) => m.side === "unsorted").length, 1);
+  // 2026-09-29: 売り手の側に数えない種類（保留 2・課金なし 2）と未分類 1
+  assert.deepEqual(
+    FIX_MODES.filter((m) => m.side === "unsorted").map((m) => m.key).sort(),
+    ["answered_no_charge", "other", "refused_no_charge", "settled_then_refused", "settled_then_rejected"],
+  );
   assert.equal(fixMode("no-such-key").key, "other");
 });
 
@@ -387,17 +392,21 @@ test("検索: URL を貼っても、完全一致を先に・部分一致を後�
   assert.deepEqual(searchSellers(board.sellers, "   ").matches, []);
 });
 
-test("決済してから入力を断った行: 文面が「決済してから断った」と「こちらが本文を送っていなかった期間」を言う", () => {
+test("決済してから入力を断った行: 事実の言い方で、保留（売り手に数えない）", () => {
   const m = fixMode("settled_then_rejected");
   assert.equal(classifyRow(row({ status: "settled", httpStatusPaid: 400, txHash: TX, method: "POST", declaresBody: true, attemptedAt: "2026-09-10T00:00:00Z" })).bucket, "vet402");
-  assert.equal(m.side, "seller");
-  assert.match(m.what, /took the payment before it checked the input/);
-  assert.match(m.what, /When the seller declared a body, or a required query, that vet402 was not yet sending, the row is on vet402's side instead/);
-  assert.match(m.fix, /Check the input before you settle/);
+  assert.equal(m.side, "unsorted");
+  assert.equal(m.title, "Payment settled, then the input was rejected");
+  assert.equal(m.sideLabel, "not sorted (held)");
+  assert.match(m.what, /held_reason settled_4xx/);
+  assert.match(m.fix, /^Nothing is counted against the seller\./);
+  // 非難の響きの語を使わない（2026-09-29 敵対的監査）
+  const all = FIX_MODES.map((x) => `${x.title} ${x.what} ${x.fix}`).join("\n");
+  assert.doesNotMatch(all, /Took the payment|took the payment before|refused the input/);
   const before = row({ status: "settled", httpStatusPaid: 400, txHash: TX, method: "POST", declaresBody: false, attemptedAt: "2026-09-10T00:00:00Z" });
   assert.equal(classifyRow(before).mode?.key, "settled_then_rejected");
   assert.match(rowNote(before, "settled_then_rejected") ?? "", /when vet402 sent an empty JSON body on paid POST requests; this listing declares no body/);
-  assert.match(rowNote({ ...before, status: "settle_failed", txHash: null }, "input_rejected") ?? "", /empty JSON body/);
+  assert.match(rowNote({ ...before, status: "settle_failed", txHash: null }, "refused_no_charge") ?? "", /empty JSON body/);
   assert.equal(rowNote({ ...before, attemptedAt: DECLARED_BODY_SENT_SINCE }, "settled_then_rejected"), null, "after the cutover");
   assert.equal(rowNote({ ...before, meta: { requestBody: "empty" } }, "settled_then_rejected"), null, "a body was recorded");
   assert.equal(rowNote({ ...before, method: "GET" }, "settled_then_rejected"), null, "GET sends no body");
@@ -441,8 +450,8 @@ test("BASE_DECLARED_QUERY_SINCE の値は request-query.ts の 1 か所だけ（
 test("文面: 本文とクエリの送り始めを分けて書き、「宣言どおり送る」を無条件に言わない", () => {
   const all = FIX_MODES.map((m) => `${m.what} ${m.fix}`).join("\n");
   assert.doesNotMatch(all, /vet402 sends the body and query the listing declares/);
-  assert.match(fixMode("input_rejected").what, /Since 2026-09-16 23:25 UTC vet402 sends the request body the seller's 402 declares/);
-  assert.match(fixMode("input_rejected").what, /since 2026-09-27 23:27 UTC it adds the query parameters the seller's 402 declares on Base/);
+  assert.match(fixMode("refused_no_charge").what, /Since 2026-09-16 23:25 UTC vet402 sends the request body the seller's 402 declares/);
+  assert.match(fixMode("refused_no_charge").what, /since 2026-09-27 23:27 UTC it adds the query parameters the seller's 402 declares on Base/);
   assert.doesNotMatch(all, /query parameters the listing declares|request body the listing declares/);
   assert.match(fixMode("query_not_sent").what, /Before 2026-09-27 23:27 UTC/);
 });
@@ -470,15 +479,16 @@ test("照合待ち（settle_claimed）は分類表に無く、失敗の種類に
   assert.equal(c.mode, null);
 });
 
-test("任意のクエリだけの出品（Base・境目より前）には、こちらがクエリを足していなかった注記が付く（側は seller のまま）", () => {
+test("任意のクエリだけの出品（Base・境目より前）には、こちらがクエリを足していなかった注記が付く（課金なしなので売り手に数えない）", () => {
   const opt = row({ status: "settle_failed", httpStatusPaid: 404, optionalQueryOnly: true, attemptedAt: "2026-09-20T00:00:00Z" });
   const c = classifyRow(opt);
-  assert.equal(c.bucket, "seller");
+  assert.equal(c.bucket, "unsorted");
+  assert.equal(c.mode?.key, "refused_no_charge");
   assert.equal(rowNote(opt, c.mode!.key), "Before 2026-09-27 23:27 UTC, vet402 did not add query parameters to paid requests on Base; this listing declares optional ones.");
-  assert.equal(rowNote({ ...opt, attemptedAt: "2026-09-27T23:27:16Z" }, "input_rejected"), null, "after the Base query cutover");
-  assert.equal(rowNote({ ...opt, network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" }, "input_rejected"), null, "Base only");
-  assert.equal(rowNote({ ...opt, meta: { requestQuery: "declared" } }, "input_rejected"), null, "query was sent");
-  assert.equal(rowNote(row({ status: "settle_failed", httpStatusPaid: 400, attemptedAt: "2026-09-20T00:00:00Z" }), "input_rejected"), null, "no queryParams at all");
+  assert.equal(rowNote({ ...opt, attemptedAt: "2026-09-27T23:27:16Z" }, "refused_no_charge"), null, "after the Base query cutover");
+  assert.equal(rowNote({ ...opt, network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" }, "refused_no_charge"), null, "Base only");
+  assert.equal(rowNote({ ...opt, meta: { requestQuery: "declared" } }, "refused_no_charge"), null, "query was sent");
+  assert.equal(rowNote(row({ status: "settle_failed", httpStatusPaid: 400, attemptedAt: "2026-09-20T00:00:00Z" }), "refused_no_charge"), null, "no queryParams at all");
   // 本文と両方当たれば 2 つ並べる
   const both = row({ status: "settled", httpStatusPaid: 400, txHash: TX, method: "POST", optionalQueryOnly: true, attemptedAt: "2026-09-10T00:00:00Z" });
   assert.match(rowNote(both, "settled_then_rejected") ?? "", /declares no body\. Before 2026-09-27 23:27 UTC/);

@@ -42,6 +42,7 @@
 // ============================================================
 import type { RequestQuerySource } from "./declared-input";
 import { assertSqlExpr, declaredInputProperty, refusedUnsettled, refusedUnsettledSql, type NotSentRowInput } from "./request-body";
+import { declaredInputQuerySql, declaredInputSendsQuery } from "./declared-input-summary";
 
 /**
  * Base で、売り手が 402 で宣言したクエリ（input.queryParams）を支払い付き要求に足し始めた時刻（2026-09-28 実測）。
@@ -159,9 +160,19 @@ function epochMs(v: string | Date | null): number | null {
 }
 
 /**
+ * 今の出品がクエリを宣言している: スキーマが必須のクエリを宣言する（従来）か、送る規則なら宣言のクエリを足す
+ * （declared_input.query = declared・2026-09-29）。後者が**送る規則と同じ情報源**（`bazaar.info.input.queryParams`
+ * の見本値）で、スキーマの queryParams が `properties: {}` でも見本値で宣言している売り手を拾う
+ * （2026-09-29 監査: site.intel.rallylive.ca の `domain`・insider.lonestaroracle.xyz の `ticker`）。
+ */
+export function declaresQueryForSending(row: Pick<NotSentRowInput, "declaredSchema" | "declaredInput">): boolean {
+  return declaresRequiredQuery(row.declaredSchema) || declaredInputSendsQuery(row.declaredInput);
+}
+
+/**
  * こちらがクエリを送っていなかったための失敗（retest の (c)・/sellers の query_not_sent）:
  * Base の行・400/422 で未決済・BASE_DECLARED_QUERY_SINCE より前・行の requestQuery が無いか empty・
- * 今の出品が必須のクエリを宣言している。メソッドは問わない（クエリは GET にも POST にも足す）。
+ * 今の出品がクエリを宣言している（declaresQueryForSending）。メソッドは問わない（クエリは GET にも POST にも足す）。
  * XRPL は 2026-09-21 から送っていたので入らない。
  */
 export function queryNotSentOnOurSide(row: NotSentRowInput): boolean {
@@ -172,17 +183,23 @@ export function queryNotSentOnOurSide(row: NotSentRowInput): boolean {
   const meta = row.rawResponseMeta;
   const kind = typeof meta === "object" && meta !== null && !Array.isArray(meta) ? (meta as Record<string, unknown>).requestQuery : undefined;
   if (!(kind === undefined || kind === null || kind === "empty")) return false;
-  return declaresRequiredQuery(row.declaredSchema);
+  return declaresQueryForSending(row);
 }
 
-/** queryNotSentOnOurSide と同じ規則の SQL。`row` は購入行の別名、`schema` は出品のスキーマの列の式。 */
-export function queryNotSentOnOurSideSql(cols: { row: string; schema: string }): string {
+/**
+ * queryNotSentOnOurSide と同じ規則の SQL。`row` は購入行の別名、`schema`・`input` は出品の列の式
+ * （`input` は declared_input。省略すればスキーマだけで判定する）。
+ */
+export function queryNotSentOnOurSideSql(cols: { row: string; schema: string; input?: string }): string {
   const a = assertSqlExpr("queryNotSentOnOurSideSql", cols.row);
+  const declares = cols.input
+    ? `(${declaresRequiredQuerySql(cols.schema)} OR coalesce(${declaredInputQuerySql(cols.input)}, false))`
+    : declaresRequiredQuerySql(cols.schema);
   return (
     `(${refusedUnsettledSql(a)}` +
     ` AND ${a}.network IN (${BASE_NETWORKS.map((n) => `'${n}'`).join(", ")})` +
     ` AND ${a}.attempted_at < '${BASE_DECLARED_QUERY_SINCE}'::timestamptz` +
     ` AND coalesce(${a}.raw_response_meta->>'requestQuery', 'empty') = 'empty'` +
-    ` AND ${declaresRequiredQuerySql(cols.schema)})`
+    ` AND ${declares})`
   );
 }

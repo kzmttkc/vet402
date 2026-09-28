@@ -18,6 +18,8 @@
 //
 // No scoring/chain imports — the observatory is an independent domain.
 // ============================================================
+import { declaredInputSummary } from "./declared-input-rules";
+import type { DeclaredInputSummary } from "./declared-input-summary";
 
 export const CATALOG_URL =
   "https://api.cdp.coinbase.com/platform/v2/x402/discovery/resources";
@@ -39,6 +41,11 @@ export type ParsedCatalogItem = {
   priceAsset: string | null;
   description: string | null;
   declaredSchema: unknown | null;
+  /**
+   * 送る規則（declared-input.ts）をこの掲載の `extensions.bazaar` に当てた要約（2026-09-29）。
+   * /sellers と retest が「vet402 が宣言を送っていなかった」を、送る規則と同じ情報源で判定するため。
+   */
+  declaredInput?: DeclaredInputSummary | null;
   qualityCalls30d: number | null;
   qualityPayers30d: number | null;
   qualityLastCalledAt: Date | null;
@@ -140,6 +147,7 @@ export function parseCatalogItem(item: unknown): ParsedCatalogItem {
     priceAsset: asString(first?.asset),
     description: asString(rec.description),
     declaredSchema,
+    declaredInput: declaredInputSummary({ resourceUrl, document: rec }),
     qualityCalls30d: asFiniteNumber(quality?.l30DaysTotalCalls),
     qualityPayers30d: asFiniteNumber(quality?.l30DaysUniquePayers),
     qualityLastCalledAt: asDate(quality?.lastCalledAt),

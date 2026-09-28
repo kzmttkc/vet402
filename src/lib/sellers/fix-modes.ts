@@ -10,28 +10,36 @@
 // どの規則にも当たらない行は unsorted（"other"）に落とす。だから種類ごとの件数の合計は、
 // 必ず「届かなかった出品」の数と一致する（tests/sellers-fix-modes.test.ts が固定する）。
 //
-// side は「その失敗は誰の側で起きたか」:
+// side は「その失敗は誰の側で起きたか」（2026-09-29 敵対的監査で規則を締めた・判定の順もこの順）:
 //   vet402   こちらの落ち度・こちらの制限。売り手に直すものは無い。
 //            payer_unfunded（購入元の残高切れ）、body_not_sent（宣言本文を送っていなかった期間の 400/422）、
 //            query_not_sent（Base で宣言クエリを送っていなかった期間の 400/422）。本文とクエリは決済済みの行も
 //            こちらの側に置く（独立レビュー 2026-09-28: 入力を送らなかったのはこちら）。retest の対象
 //            （買い直しの予定）とは別の判定で、頁が「eligible for a re-buy」と書くのは retest の SQL の結果がある時だけ（board.ts）。
-//   seller   売り手の応答・出品の宣言で説明がつく。
-//   unsorted まだ分類していない。
+//            本文・クエリの「宣言」は、送る規則と同じ情報源（x402_endpoints.declared_input＝`bazaar.info.input` の
+//            見本値に送る規則を当てた要約）とスキーマの両方で見る（2026-09-29）。本文は 415 も入る。
+//   unsorted 売り手の側に数えない行（2026-09-29）:
+//            held       判定保留（delivery.ts の held_reason がある: settled_4xx / unsettled_4xx）。頁は「保留の行は
+//                       売り手に不利に数えない」と書くので、seller の側にも置かない。
+//            no charge  課金されていない（決済の申告＝レシートも、着金＝tx も無い）。4xx の拒否（unsettled_4xx）と、
+//                       レシート無しの 2xx（delivered_no_receipt・tx なし）。宣言どおりの無料応答（「外れは無料」）を
+//                       売り手の失敗と書かない。着金があれば遅延回収（recover-late.ts）が tx を貼って settle_claimed に移す。
+//            other      まだ分類していない組み合わせ。
+//   seller   上のどれにも当たらず、売り手の応答・出品の宣言で説明がつく。
 // effort は直す手間: 1 = 出品・設定の変更、2 = サーバーの変更、3 = facilitator 次第。
 //
 // 公開面の文言を持つので tests/claims-registry.test.ts の走査対象（publicSurfaces）に入っている。
 // ============================================================
 import { heldReasonOf, isDelivered, type HeldReason } from "@/lib/observatory/delivery";
 import {
+  BODY_NOT_SENT_REFUSAL_HTTP,
   bodyNotSentOnOurSide,
   DECLARED_BODY_SENT_SINCE,
   declaredInputProperty,
-  declaresRequestBody,
-  NOT_SENT_REFUSAL_HTTP,
+  declaresBodyForSending,
   type NotSentRowInput,
 } from "@/lib/observatory/request-body";
-import { BASE_DECLARED_QUERY_SINCE, BASE_NETWORKS, declaresRequiredQuery, queryNotSentOnOurSide } from "@/lib/observatory/request-query";
+import { BASE_DECLARED_QUERY_SINCE, BASE_NETWORKS, declaresQueryForSending, queryNotSentOnOurSide } from "@/lib/observatory/request-query";
 
 export type FixSide = "seller" | "vet402" | "unsorted";
 export type FixEffort = 1 | 2 | 3;
@@ -45,6 +53,8 @@ export interface FixMode {
   fix: string;
   side: FixSide;
   effort: FixEffort;
+  /** 「どちらの側か」の列の語。無ければ SIDE_LABEL[side]。 */
+  sideLabel?: string;
 }
 
 /** 宣言本文を送り始めた時刻（retest と同じ値・定義は request-body.ts の 1 か所）。 */
@@ -53,6 +63,14 @@ export { DECLARED_BODY_SENT_SINCE };
 export { BASE_DECLARED_QUERY_SINCE };
 
 const NOTHING_FOR_SELLER = "Nothing for the seller to fix.";
+
+/**
+ * 遅延回収（recover-late.ts）が着金を探す窓（試行の何分前から何分後まで）。値は recover-late.ts と同じ
+ * （tests/sellers-fix-modes.test.ts が一致を固定する）。recover-late は DB を import するので、公開頁の分類表は
+ * 数字だけを持つ。
+ */
+export const LATE_LINK_BEFORE_MIN = 2;
+export const LATE_LINK_AFTER_MIN = 30;
 
 /** Order here is the tie-break on /sellers/fix-first after side, sellers and effort. */
 export const FIX_MODES: readonly FixMode[] = [
@@ -106,22 +124,6 @@ export const FIX_MODES: readonly FixMode[] = [
     effort: 1,
   },
   {
-    key: "input_rejected",
-    title: "The paid request was refused as invalid",
-    what: "vet402 signed the payment and the paid request got 400, 404, 415 or 422; the payment did not settle. Since 2026-09-16 23:25 UTC vet402 sends the request body the seller's 402 declares (an empty JSON body when it declares none), and since 2026-09-27 23:27 UTC it adds the query parameters the seller's 402 declares on Base.",
-    fix: "Declare the input in the listing (body or query) with example values that work as written.",
-    side: "seller",
-    effort: 1,
-  },
-  {
-    key: "settled_then_rejected",
-    title: "Took the payment, then refused the input",
-    what: "The payment settled on-chain, and then the paid request got 400, 404, 415 or 422: the route took the payment before it checked the input, so the buyer paid for a refused request. When the seller declared a body, or a required query, that vet402 was not yet sending, the row is on vet402's side instead.",
-    fix: "Check the input before you settle, so an invalid request is refused without taking the payment; and declare the input in the listing with example values that work as written.",
-    side: "seller",
-    effort: 2,
-  },
-  {
     key: "wrong_method",
     title: "The listed method is not accepted",
     what: "The request got 405 to the method the listing declares.",
@@ -173,7 +175,7 @@ export const FIX_MODES: readonly FixMode[] = [
   {
     key: "no_receipt",
     title: "Answered 2xx, but the payment was not confirmed",
-    what: "The paid request got a 2xx, but no settlement receipt came back, so the payment could not be confirmed as settled.",
+    what: "The paid request got a 2xx and no settlement receipt, and the transaction on the row could not be confirmed as this payment.",
     fix: "Settle the payment and return the PAYMENT-RESPONSE header with the 2xx.",
     side: "seller",
     effort: 2,
@@ -215,7 +217,7 @@ export const FIX_MODES: readonly FixMode[] = [
   {
     key: "body_not_sent",
     title: "vet402 did not send the declared request body",
-    what: "Before 2026-09-16 23:25 UTC, vet402 sent an empty JSON body on paid POST requests, even when the listing declares a body. The seller refused it with 400 or 422, before or after the payment settled.",
+    what: "Before 2026-09-16 23:25 UTC, vet402 sent an empty JSON body on paid POST requests, even when the listing declares a body. The seller refused it with 400, 415 or 422, before or after the payment settled.",
     fix: NOTHING_FOR_SELLER,
     side: "vet402",
     effort: 1,
@@ -223,7 +225,7 @@ export const FIX_MODES: readonly FixMode[] = [
   {
     key: "query_not_sent",
     title: "vet402 did not send the declared query",
-    what: "Before 2026-09-27 23:27 UTC, vet402 did not add the query parameters the seller's 402 declares to paid requests on Base, and this listing marks some of them as required. The seller refused the request with 400 or 422.",
+    what: "Before 2026-09-27 23:27 UTC, vet402 did not add the query parameters the seller's 402 declares to paid requests on Base, and this listing declares them (example values, or required names). The seller refused the request with 400 or 422.",
     fix: NOTHING_FOR_SELLER,
     side: "vet402",
     effort: 1,
@@ -243,6 +245,44 @@ export const FIX_MODES: readonly FixMode[] = [
     fix: NOTHING_FOR_SELLER,
     side: "vet402",
     effort: 1,
+  },
+  // ---------- unsorted: held (not counted against the seller) ----------
+  {
+    key: "settled_then_rejected",
+    title: "Payment settled, then the input was rejected",
+    what: "The payment settled on-chain, and then the paid request got 400, 404, 415 or 422. vet402 holds this row (held_reason settled_4xx): its own request may have been the problem, so the row is not counted against the seller.",
+    fix: "Nothing is counted against the seller. Checking the input before settling avoids taking a payment for a refused request, and declaring the input with example values that work as written lets vet402 send a valid one.",
+    side: "unsorted",
+    effort: 2,
+    sideLabel: "not sorted (held)",
+  },
+  {
+    key: "settled_then_refused",
+    title: "Payment settled, then the request was refused",
+    what: "The payment settled on-chain, and then the paid request got another 4xx (for example 401, 403, 405 or 429). vet402 holds this row (held_reason settled_4xx), so it is not counted against the seller.",
+    fix: "Nothing is counted against the seller. If the paid request should have been served, let the x402 payment be enough for it.",
+    side: "unsorted",
+    effort: 2,
+    sideLabel: "not sorted (held)",
+  },
+  // ---------- unsorted: no charge ----------
+  {
+    key: "refused_no_charge",
+    title: "Refused, and no payment was taken",
+    what: "vet402 signed the payment and the paid request got a 4xx other than 402, with no settlement receipt and no transaction on the row. No money moved, and vet402 cannot rule out that its own request was the problem (held_reason unsettled_4xx), so the row is not counted against the seller. Since 2026-09-16 23:25 UTC vet402 sends the request body the seller's 402 declares (an empty JSON body when it declares none), and since 2026-09-27 23:27 UTC it adds the query parameters the seller's 402 declares on Base.",
+    fix: "Nothing is counted against the seller. If the request was meant to succeed, declare the input in the listing (body or query) with example values that work as written.",
+    side: "unsorted",
+    effort: 1,
+    sideLabel: "not sorted: no charge",
+  },
+  {
+    key: "answered_no_charge",
+    title: "Answered without taking payment",
+    what: `The paid request got a 2xx with no settlement receipt, and vet402 has not found a matching transfer on-chain (it links a transfer that lands from ${LATE_LINK_BEFORE_MIN} minutes before to ${LATE_LINK_AFTER_MIN} minutes after the attempt, then verifies it). Nothing was charged, so the row is not counted against the seller.`,
+    fix: "Nothing is counted against the seller. If the route is meant to charge, settle the payment and return the PAYMENT-RESPONSE header with the 2xx.",
+    side: "unsorted",
+    effort: 2,
+    sideLabel: "not sorted: no charge",
   },
   // ---------- unsorted ----------
   {
@@ -282,6 +322,10 @@ export interface SellerRowFacts {
    * （properties.input.properties の body と queryParams.required）。無ければ null。
    */
   schema: unknown;
+  /**
+   * 出品の宣言の要約（x402_endpoints.declared_input・送る規則を掲載に当てた結果・2026-09-29）。無ければ null。
+   */
+  declaredInput?: unknown;
   /** raw_response_meta.status（支払い前の応答の HTTP。no_402 の行で読む）。 */
   unpaidStatus: number | null;
   /** raw_response_meta.selection（census / retest / null）。 */
@@ -324,6 +368,7 @@ export function notSentInput(r: SellerRowFacts): NotSentRowInput {
     network: r.network,
     method: r.method,
     declaredSchema: r.schema,
+    declaredInput: r.declaredInput ?? null,
   };
 }
 
@@ -334,18 +379,28 @@ export function notSentInput(r: SellerRowFacts): NotSentRowInput {
  */
 function asIfUnsettled(r: SellerRowFacts): NotSentRowInput {
   const input = notSentInput(r);
-  const refusal = typeof r.httpStatusPaid === "number" && (NOT_SENT_REFUSAL_HTTP as readonly number[]).includes(r.httpStatusPaid);
+  const refusal = typeof r.httpStatusPaid === "number" && (BODY_NOT_SENT_REFUSAL_HTTP as readonly number[]).includes(r.httpStatusPaid);
   return r.status === "settled" && refusal ? { ...input, status: "settle_failed", txHash: null } : input;
 }
 
-/** 宣言本文を送る前の POST の 400/422（共有の bodyNotSentOnOurSide・決済済みの行を含む）。 */
+/** 宣言本文を送る前の POST の 400/415/422（共有の bodyNotSentOnOurSide・決済済みの行を含む）。 */
 export function isBodyNotSent(r: SellerRowFacts): boolean {
   return bodyNotSentOnOurSide(asIfUnsettled(r));
 }
 
-/** Base で必須の宣言クエリを送る前の 400/422（共有の queryNotSentOnOurSide・決済済みの行を含む）。 */
+/** Base で宣言クエリを送る前の 400/422（共有の queryNotSentOnOurSide・決済済みの行を含む）。 */
 export function isQueryNotSent(r: SellerRowFacts): boolean {
   return queryNotSentOnOurSide(asIfUnsettled(r));
+}
+
+/**
+ * 課金なしの 2xx: レシート無しの 2xx（delivered_no_receipt、または 2xx の settle_failed）で、行に tx も無い。
+ * 着金があれば遅延回収が tx を貼って settle_claimed に移すので、この形のまま残る行は「決済の申告も着金も無い」。
+ */
+export function isAnsweredWithoutCharge(r: Pick<SellerRowFacts, "status" | "txHash" | "httpStatusPaid">): boolean {
+  if (!(r.txHash === null || r.txHash === "")) return false;
+  if (r.status === "delivered_no_receipt") return true;
+  return r.status === "settle_failed" && inRange(r.httpStatusPaid, 200, 299);
 }
 
 /** 支払い前の応答（no_402）の HTTP から。 */
@@ -364,7 +419,7 @@ function paidMode(code: number | null, settled: boolean): string {
   if (code === null) return "no_response_paid";
   if (inRange(code, 200, 299)) return "no_receipt";
   if (code === 402) return "payment_refused";
-  if (code === 400 || code === 404 || code === 415 || code === 422) return settled ? "settled_then_rejected" : "input_rejected";
+  if (code === 400 || code === 404 || code === 415 || code === 422) return settled ? "settled_then_rejected" : "other";
   if (code === 401 || code === 403) return "auth";
   if (code === 405) return "wrong_method";
   if (code === 408) return "no_response_paid";
@@ -373,12 +428,21 @@ function paidMode(code: number | null, settled: boolean): string {
   return "other";
 }
 
+const REJECTED_INPUT_HTTP = new Set([400, 404, 415, 422]);
+
+/**
+ * 判定の順（2026-09-29）: vet402 の側 → 判定保留（held）→ 課金なし → 売り手の側。
+ * 保留と課金なしは seller の側に置かない（件数にも入れない）。
+ */
 function modeKeyOf(r: SellerRowFacts, held: HeldReason | null): string {
   if (held === "payer_unfunded") return "payer_unfunded";
   if (isBodyNotSent(r)) return "body_not_sent";
   if (isQueryNotSent(r)) return "query_not_sent";
   if (VET402_LIMIT_STATUSES.has(r.status)) return "vet402_limit";
   if (VET402_ERROR_STATUSES.has(r.status)) return "vet402_error";
+  if (held === "settled_4xx") return REJECTED_INPUT_HTTP.has(r.httpStatusPaid ?? -1) ? "settled_then_rejected" : "settled_then_refused";
+  if (held === "unsettled_4xx") return "refused_no_charge";
+  if (isAnsweredWithoutCharge(r)) return "answered_no_charge";
   switch (r.status) {
     case "no_402":
       return unpaidMode(r.unpaidStatus);
@@ -408,7 +472,7 @@ function modeKeyOf(r: SellerRowFacts, held: HeldReason | null): string {
  * （vet402 の側）に入るので、ここには来ない。
  */
 export function rowNote(r: SellerRowFacts, modeKey: string | null): string | null {
-  if (modeKey !== "settled_then_rejected" && modeKey !== "input_rejected") return null;
+  if (modeKey !== "settled_then_rejected" && modeKey !== "refused_no_charge") return null;
   const notes = [bodyNote(r), optionalQueryNote(r)].filter((x): x is string => x !== null);
   return notes.length ? notes.join(" ") : null;
 }
@@ -416,7 +480,7 @@ export function rowNote(r: SellerRowFacts, modeKey: string | null): string | nul
 /** 本文: 境目より前の POST・本文の記録なし・出品が本文を宣言していない（宣言していれば body_not_sent に入る）。 */
 function bodyNote(r: SellerRowFacts): string | null {
   if ((r.method ?? "").toUpperCase() !== "POST" || (r.meta !== null && "requestBody" in r.meta)) return null;
-  if (declaresRequestBody(r.schema)) return null;
+  if (declaresBodyForSending({ declaredSchema: r.schema, declaredInput: r.declaredInput ?? null })) return null;
   if (!(Date.parse(r.attemptedAt) < Date.parse(DECLARED_BODY_SENT_SINCE))) return null;
   return "This purchase is from before 2026-09-16 23:25 UTC, when vet402 sent an empty JSON body on paid POST requests; this listing declares no body.";
 }
@@ -431,7 +495,8 @@ function optionalQueryNote(r: SellerRowFacts): string | null {
   const kind = r.meta?.requestQuery;
   if (!(kind === undefined || kind === null || kind === "empty")) return null;
   const qp = declaredInputProperty(r.schema, "queryParams");
-  if (typeof qp !== "object" || qp === null || Array.isArray(qp) || declaresRequiredQuery(r.schema)) return null;
+  if (typeof qp !== "object" || qp === null || Array.isArray(qp)) return null;
+  if (declaresQueryForSending({ declaredSchema: r.schema, declaredInput: r.declaredInput ?? null })) return null;
   return "Before 2026-09-27 23:27 UTC, vet402 did not add query parameters to paid requests on Base; this listing declares optional ones.";
 }
 
@@ -461,3 +526,8 @@ export const SIDE_LABEL: Record<FixSide, string> = {
   vet402: "vet402's side",
   unsorted: "not sorted yet",
 };
+
+/** 行・種類の「どちらの側か」の語（種類ごとの sideLabel があればそれ）。 */
+export function sideLabelOf(m: FixMode): string {
+  return m.sideLabel ?? SIDE_LABEL[m.side];
+}

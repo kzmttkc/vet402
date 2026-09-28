@@ -1,0 +1,22 @@
+-- vet402 2026-09-29 — x402_endpoints に declared_input（掲載の宣言の要約）を足す。
+--
+-- 目的: /sellers の「どちらの側か」と l1-runner の retest (b)(c) が、「vet402 が宣言の本文・クエリを
+-- 送っていなかった」を、**送る規則と同じ情報源**（`extensions.bazaar.info.input` の見本値）で判定する。
+-- それまではスキーマ（declared_schema・`bazaar.schema`）の queryParams.required を見ていて、見本値で
+-- クエリを宣言している売り手（例: site.intel.rallylive.ca・insider.lonestaroracle.xyz）の 400 を
+-- 売り手の側に数えていた（2026-09-29 敵対的監査）。
+--
+-- 値の形: {"query": "declared"|"empty"|"refused", "body": "declared"|"empty"}（src/lib/observatory/declared-input-summary.ts）。
+-- 見本値・本文そのものは持たない。
+--
+-- 書き手: src/lib/observatory/catalog-sync.ts（毎日 01:00 UTC の catalog-sync が全掲載に書く）。
+-- 既存行は次の catalog-sync まで NULL（NULL の間は従来どおりスキーマだけで判定する）。
+--
+-- **順序: この ALTER を本番に適用してから、declared_input を含むコードをデプロイする。**
+-- drizzle の select / insert は schema.ts の全列を列挙するので、列の無い DB へ新しいコードが載ると
+-- x402_endpoints を読む全経路が undefined_column で落ちる。逆順（ALTER が先・旧コードのまま）は無害。
+--
+-- 列は NULL 可・追加のみ。Safe to re-run. 本番 DB は同一 Neon ホストの **vouch** database（neondb ではない）。
+-- Apply with:
+--   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/sql/2026-09-29-endpoint-declared-input.sql
+ALTER TABLE x402_endpoints ADD COLUMN IF NOT EXISTS declared_input jsonb;

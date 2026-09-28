@@ -7,7 +7,10 @@
 //   l1.n_inconclusive= 売り手の不履行として数えない署名済みの試行（delivery.ts の heldReasonOf）:
 //                      settled かつ 4xx／決済レシートなしで 4xx（402 以外）／資金切れ期間の 402・5xx。
 //                      n_attempts に含める（/purchases と同じ集合・2026-09-08／2026-09-17 拡張）。
-//                      判定は rules.ts が conclusive = n_attempts − n_inconclusive で読む
+//                      判定は rules.ts が conclusive = n_attempts − n_inconclusive（と下の l1NotCountedOf）で読む
+//   （2026-09-29）判定には facts と別に l1NotCountedOf の件数を渡す: 売り手の不履行として数えない署名済みの試行
+//                      （/sellers の「どちらの側か」と同じ classifyRow）＝判定保留・vet402 の側（資金切れ・宣言を
+//                      送っていなかった）・課金なし・照合待ち。facts の形（SDK・openapi と対）は変えない
 //   l1.n_delivered   = settled かつ 2xx かつ非空
 //   l2.status        = 宣言が無ければ undeclared。あれば直近の配達の l2_schema:
 //                      match → conform、mismatch → mismatch、それ以外 → undeclared
@@ -20,6 +23,7 @@ import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { isInconclusive } from "@/lib/observatory/delivery";
+import { classifyRow, type SellerRowFacts } from "@/lib/sellers/fix-modes";
 import { publishedVerdict } from "@/lib/observatory/l0-probe";
 import { purchaseId as toPurchaseId } from "@/lib/ids/canonical";
 import { toCaip2 } from "@/lib/observatory/chains";
@@ -49,7 +53,48 @@ export type PurchaseInput = {
   network: string | null;
   /** §6.3: l1-runner が raw_response_meta.l2 に残す判定材料（2026-09-02 以降の行だけ持つ）。 */
   l2Detail?: { missing: string[]; declarationHash: string | null; responseHash: string } | null;
+  /**
+   * 2026-09-29: 帰属の判定（classifyRow）が読む raw_response_meta の部分だけ（requestBody の有無・requestQuery の値）。
+   * 無ければ null（記録なし）。
+   */
+  requestMeta?: Record<string, unknown> | null;
 };
+
+/** 帰属（/sellers と同じ規則）で、売り手の不履行として数えない理由。数える行は null。 */
+export type NotCountedReason = "vet402_side" | "held" | "no_charge";
+
+/**
+ * 1 行の署名済みの試行を、/sellers の classifyRow（fix-modes.ts が正典）に掛けて、売り手の不履行として数えるかを決める。
+ * vet402 の側 → vet402_side、判定保留（settled_4xx）・照合待ち → held、課金なし（レシートも tx も無い 4xx・2xx）
+ * → no_charge。売り手の側と「未分類」は数える（null）。
+ */
+export function notCountedReasonOf(
+  p: PurchaseInput,
+  endpoint: { method: string | null; declaredSchema: unknown; declaredInput?: unknown },
+): NotCountedReason | null {
+  const facts: SellerRowFacts = {
+    endpointId: "",
+    status: p.status,
+    httpStatusPaid: p.httpStatusPaid,
+    txHash: p.txHash,
+    attemptedAt: p.attemptedAt,
+    network: p.network,
+    method: endpoint.method,
+    meta: p.requestMeta ?? null,
+    schema: endpoint.declaredSchema ?? null,
+    declaredInput: endpoint.declaredInput ?? null,
+    unpaidStatus: null,
+    selection: null,
+    verifyReason: null,
+  };
+  const c = classifyRow(facts);
+  if (c.bucket === "pending") return "held";
+  if (!c.mode) return null;
+  if (c.mode.side === "vet402") return "vet402_side";
+  if (c.mode.key === "settled_then_rejected" || c.mode.key === "settled_then_refused") return "held";
+  if (c.mode.key === "refused_no_charge" || c.mode.key === "answered_no_charge") return "no_charge";
+  return null;
+}
 
 export type SellerFactsInput = {
   /** newest first */
@@ -59,6 +104,9 @@ export type SellerFactsInput = {
   settlements30d: { raw: number; real: number; test: number; uniquePayersReal: number };
   payees: string[];
   declaredSchema: unknown | null;
+  /** 2026-09-29: 帰属の判定に使う出品の宣言メソッドと宣言の要約（declared_input）。 */
+  method?: string | null;
+  declaredInput?: unknown;
   /**
    * 全履歴での最終試行時刻（ISO8601 UTC）。`purchases` から導かない——あちらは
    * 直近 30 日 / 200 行の窓なので、窓の外の試行が「一度も無い」に化ける。
@@ -105,6 +153,29 @@ export function offerStabilityOf(probesNewestFirst: readonly ProbeInput[]): Offe
   return "stable";
 }
 
+/** 判定（rules.ts decidePayer）へ渡す、売り手の不履行として数えない署名済みの試行の数と内訳。 */
+export type L1NotCounted = { total: number; by: Record<NotCountedReason, number> };
+
+/**
+ * 署名した試行のうち、売り手の不履行として数えないもの（2026-09-29・/sellers の classifyRow と同じ規則）。
+ * 判定保留（heldReasonOf）の行は全部ここに入る（classifyRow で vet402 の側・保留・課金なしのどれかになる）ので、
+ * total ≥ facts.l1.n_inconclusive。facts には載せない（公開の facts の形は SDK・openapi と対で、変えない）。
+ * 理由は判定の reason_codes（l1_not_counted_*）に出る。
+ */
+export function l1NotCountedOf(input: Pick<SellerFactsInput, "purchases" | "declaredSchema" | "method" | "declaredInput">): L1NotCounted {
+  const endpointDecl = { method: input.method ?? null, declaredSchema: input.declaredSchema, declaredInput: input.declaredInput ?? null };
+  const by: Record<NotCountedReason, number> = { vet402_side: 0, held: 0, no_charge: 0 };
+  let total = 0;
+  for (const p of input.purchases) {
+    if (!SIGNED_STATUSES.has(p.status)) continue;
+    const r = notCountedReasonOf(p, endpointDecl);
+    if (r === null) continue;
+    by[r]++;
+    total++;
+  }
+  return { total, by };
+}
+
 export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
   const { probes, purchases } = input;
   const latestProbe = probes[0] ?? null;
@@ -129,6 +200,7 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
   const signed = purchases.filter((p) => SIGNED_STATUSES.has(p.status));
   const settled = signed.filter((p) => p.status === "settled");
   const inconclusive = signed.filter((p) => isInconclusive(p));
+
   const conclusiveSettled = settled.filter((p) => !isInconclusive(p));
   const delivered = conclusiveSettled.filter(
     (p) => p.httpStatusPaid !== null && p.httpStatusPaid >= 200 && p.httpStatusPaid < 300 && p.payloadNonEmpty === true,
@@ -241,6 +313,8 @@ export type SellerFactsLoaded = {
    * （生の status をそのまま出すと、我々の内部語彙が売り手の記録として読まれる）。
    */
   lastAttempt: { at: string | null; status: string | null };
+  /** 2026-09-29: 判定へ渡す「売り手の不履行として数えない」試行（l1NotCountedOf）。公開の facts には載せない。 */
+  l1NotCounted?: L1NotCounted;
   endpoint: {
     id: string;
     resourceId: string | null;
@@ -279,10 +353,13 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     network: string | null;
     payee_id: string | null;
     declared_schema: unknown | null;
+    raw_method: string | null;
+    declared_input: unknown | null;
   }>(
     await db.execute(sql`
       SELECT id::text AS id, resource_id, endpoint_hash, coalesce(canonical_url, resource_url) AS canonical_url,
-             coalesce(method, 'GET') AS method, pay_to, network, payee_id, declared_schema
+             coalesce(method, 'GET') AS method, pay_to, network, payee_id, declared_schema,
+             method AS raw_method, declared_input
       FROM x402_endpoints WHERE id = ${endpointUuid}::uuid LIMIT 1
     `),
   );
@@ -311,7 +388,10 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
   const purchases = rowsOf<Record<string, unknown>>(
     await db.execute(sql`
       SELECT attempted_at::text AS attempted_at, status, latency_ms, http_status_paid, payload_non_empty, l2_schema, tx_hash, network,
-             raw_response_meta->'l2' AS l2_detail
+             raw_response_meta->'l2' AS l2_detail,
+             CASE WHEN jsonb_typeof(raw_response_meta) = 'object' THEN jsonb_strip_nulls(jsonb_build_object(
+               'requestBody', CASE WHEN raw_response_meta ? 'requestBody' THEN 'true'::jsonb END,
+               'requestQuery', raw_response_meta->'requestQuery')) END AS request_meta
       FROM x402_l1_purchases WHERE endpoint_id = ${endpointUuid}::uuid AND attempted_at > now() - interval '30 days'
       ORDER BY attempted_at DESC LIMIT 200
     `),
@@ -325,6 +405,10 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     txHash: r.tx_hash === null ? null : String(r.tx_hash),
     network: r.network === null ? null : String(r.network),
     l2Detail: parseL2Detail(r.l2_detail),
+    requestMeta:
+      typeof r.request_meta === "object" && r.request_meta !== null && !Array.isArray(r.request_meta)
+        ? (r.request_meta as Record<string, unknown>)
+        : null,
   }));
 
   // 最終試行は 30 日窓の外も見る（窓で切ると 31 日前の試行が「一度も無い」に化ける）。
@@ -345,17 +429,21 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
   };
 
   const settlements30d = await getSettlementCounts({ endpointId: endpointUuid });
-  const facts = assembleSellerFacts({
+  const factsInput = {
     probes,
     purchases,
     settlements30d,
     payees: ep.payee_id ? [ep.payee_id] : [],
     declaredSchema: ep.declared_schema ?? null,
+    method: ep.raw_method,
+    declaredInput: ep.declared_input ?? null,
     lastAttemptAt: lastAttempt.at,
-  });
+  };
+  const facts = assembleSellerFacts(factsInput);
   return {
     facts,
     lastAttempt,
+    l1NotCounted: l1NotCountedOf(factsInput),
     endpoint: {
       id: ep.id,
       resourceId: ep.resource_id,

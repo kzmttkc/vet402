@@ -74,7 +74,13 @@ test("SellerDetailView: 取得時刻・vet402 の側・買い直し・tx・expor
   const html = renderToStaticMarkup(createElement(SellerDetailView, { detail: d, page: 1, now: Date.parse("2026-09-28T13:00:00Z"), revalidateSec: 300 }));
   assert.match(html, /Read from the database 2026-09-28 13:04 UTC/);
   assert.match(html, /reused for up to 5 min/);
-  assert.match(html, /<h1[^>]*>Is <span[^>]*>shop\.example<\/span> working\? What happened when we paid it<\/h1>/);
+  // 2026-09-29: 表題は最新の購入日つきの事実の言い方（現在形の「Is … working?」をやめた）
+  assert.match(html, /<h1[^>]*>shop\.example: x402 purchase results on Base, as of 2026-09-14<\/h1>/);
+  assert.doesNotMatch(html, /working\?/);
+  // 行に層（L1）を書く。記録頁の Published state（L0）と読み違えない
+  assert.match(html, /Recorded \(L1 paid purchase\):/);
+  assert.match(html, /Latest L1 purchase/);
+  assert.match(html, /<strong>L0<\/strong> state/);
   assert.match(html, /vet402&#x27;s side/);
   assert.match(html, /vet402&#x27;s wallet was out of USDC/);
   assert.match(html, /vet402 did not send the declared request body/);
@@ -136,7 +142,7 @@ test("SellersIndexView: 検索で見つからないときはそう言う", () =>
 
 test("FixFirstView: seller の側が先、vet402 の側は「直すものは無い」節、手間の段", () => {
   const latest: LatestRow[] = [
-    { ...r({ endpointId: "a", status: "settle_failed", httpStatusPaid: 400, attemptedAt: "2026-09-20T00:00:00Z" }), host: "one.example" },
+    { ...r({ endpointId: "a", status: "settle_failed", httpStatusPaid: 500, attemptedAt: "2026-09-20T00:00:00Z" }), host: "one.example" },
     { ...r({ endpointId: "b", status: "settle_failed", httpStatusPaid: 402, attemptedAt: "2026-09-14T00:00:00Z" }), host: "two.example" },
     { ...r({ endpointId: "c", status: "settled", httpStatusPaid: 307, txHash: TX }), host: "two.example" },
   ];
@@ -149,18 +155,19 @@ test("FixFirstView: seller の側が先、vet402 の側は「直すものは無�
     FETCHED,
   );
   const html = renderToStaticMarkup(createElement(FixFirstView, { board, revalidateSec: 300 }));
-  const sellerAt = html.indexOf("The paid request was refused as invalid");
+  const sellerAt = html.indexOf("Server error on the paid request");
   const oursAt = html.indexOf("vet402&#x27;s wallet was out of USDC");
   const otherAt = html.indexOf("Not grouped yet");
   assert.ok(sellerAt > 0 && oursAt > sellerAt && otherAt > oursAt, "seller → vet402 → unsorted");
   assert.match(html, /On vet402&#x27;s side: nothing for sellers to fix/);
-  assert.match(html, /effort 1: a listing or config change/);
+  assert.match(html, /effort 2: a server change/);
+  assert.match(html, /Not counted against either side/);
   assert.match(html, /\(3 of 3 bought\)/);
   assert.match(html, /href="\/sellers\/one\.example"/);
   assert.match(html, /Read from the database 2026-09-28 13:04 UTC/);
 });
 
-test("SellerDetailView: 決済してから断った POST（本文を送る前の期間）には、こちらが本文を送っていなかった事実が並ぶ", () => {
+test("SellerDetailView: 決済してから断った POST（本文を送る前の期間）は保留で、こちらが本文を送っていなかった事実が並ぶ", () => {
   const d = buildSellerDetail(
     "paid.example",
     [{ endpointId: "p1", resourceKey: "paid.example/q", resourceUrl: "https://paid.example/q", method: "POST", priceAmount: "1000" }],
@@ -168,8 +175,10 @@ test("SellerDetailView: 決済してから断った POST（本文を送る前の
     FETCHED,
   );
   const html = renderToStaticMarkup(createElement(SellerDetailView, { detail: d, page: 1, now: 0, revalidateSec: 300 }));
-  assert.match(html, /Took the payment, then refused the input/);
-  assert.match(html, /seller&#x27;s side/);
+  assert.match(html, /Payment settled, then the input was rejected/);
+  assert.match(html, /not sorted \(held\)/);
+  assert.doesNotMatch(html, /Took the payment/);
+  assert.equal(d.summary.seller, 0, "a held row is never on the seller's side");
   assert.match(html, /this listing declares no body/);
 });
 
@@ -215,10 +224,13 @@ test("SellerDetailView: 照合待ちの行は失敗と書かず、時刻も書�
   assert.match(ff, /1 more are awaiting on-chain verification and are not counted here/);
 });
 
-test("売り手頁の <title> は検索の言い方で、60 字を超えるなら接尾辞を落とす（2026-09-28）", () => {
-  assert.equal(sellerPageTitle("a.io"), "Is a.io working? x402 purchase results on Base | vet402");
+test("売り手頁の <title> は最新の購入日つきの事実の言い方で、60 字を超えるなら接尾辞を落とす（2026-09-29）", () => {
+  assert.equal(sellerPageTitle("a.io"), "a.io: x402 purchase results on Base | vet402");
   assert.ok(sellerPageTitle("a.io").length <= TITLE_MAX);
-  assert.equal(sellerPageTitle("api.example.com"), "Is api.example.com working? x402 purchase results on Base");
+  assert.equal(sellerPageTitle("a.io", "2026-09-22T00:01:36Z"), "a.io: x402 purchase results on Base, as of 2026-09-22");
+  assert.equal(sellerPageTitle("api.example.com", "2026-09-22T00:01:36Z"), "api.example.com: x402 purchase results on Base, as of 2026-09-22");
+  assert.equal(sellerPageTitle("x.io", "garbage"), "x.io: x402 purchase results on Base | vet402");
+  assert.doesNotMatch(sellerPageTitle("a.io", "2026-09-22T00:01:36Z"), /working/);
 });
 
 test("売り手一覧は 640px 未満でラベル付きのカードになり、表は 640px 以上だけ（2026-09-28）", () => {

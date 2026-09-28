@@ -72,6 +72,17 @@ const CASES: [string, NotSentRowInput, boolean, boolean][] = [
   ["body: GET", { ...base, attemptedAt: "2026-09-15T03:00:00Z", declaredSchema: BODY }, false, false],
   ["body: requestBody recorded", { ...base, method: "POST", attemptedAt: "2026-09-15T03:00:00Z", declaredSchema: BODY, rawResponseMeta: { requestBody: "empty" } }, false, false],
   ["body: no declaration", { ...base, method: "POST", attemptedAt: "2026-09-15T03:00:00Z", declaredSchema: OPT_QUERY }, false, false],
+  // 2026-09-29: 宣言は送る規則と同じ情報源（declared_input）でも見る。本文は 415 も入る。
+  ["query: declared_input example values (schema has none)", { ...base, declaredSchema: EMPTY_QUERY, declaredInput: { query: "declared", body: "empty" } }, true, false],
+  ["query: declared_input refused", { ...base, declaredSchema: EMPTY_QUERY, declaredInput: { query: "refused", body: "empty" } }, false, false],
+  ["query: declared_input empty", { ...base, declaredSchema: OPT_QUERY, declaredInput: { query: "empty", body: "empty" } }, false, false],
+  ["query: declared_input not a string", { ...base, declaredSchema: EMPTY_QUERY, declaredInput: { query: true, body: "empty" } }, false, false],
+  ["query: declared_input after cutoff", { ...base, declaredSchema: EMPTY_QUERY, declaredInput: { query: "declared", body: "empty" }, attemptedAt: BASE_DECLARED_QUERY_SINCE }, false, false],
+  ["query: declared_input 415 is not a query refusal", { ...base, httpStatusPaid: 415, declaredSchema: EMPTY_QUERY, declaredInput: { query: "declared", body: "empty" } }, false, false],
+  ["body: 415 before", { ...base, method: "POST", httpStatusPaid: 415, attemptedAt: "2026-09-10T12:07:00Z", declaredSchema: BODY }, false, true],
+  ["body: declared_input only", { ...base, method: "POST", attemptedAt: "2026-09-15T03:00:00Z", declaredSchema: OPT_QUERY, declaredInput: { query: "empty", body: "declared" } }, false, true],
+  ["body: declared_input empty", { ...base, method: "POST", attemptedAt: "2026-09-15T03:00:00Z", declaredSchema: OPT_QUERY, declaredInput: { query: "empty", body: "empty" } }, false, false],
+  ["body: 415 after cutoff", { ...base, method: "POST", httpStatusPaid: 415, attemptedAt: DECLARED_BODY_SENT_SINCE, declaredSchema: BODY }, false, false],
   ["both: POST before with body and required query", { ...base, method: "POST", attemptedAt: "2026-09-15T03:00:00Z", declaredSchema: schemaWith({ body: { type: "object" }, queryParams: { type: "object", required: ["q"] } }) }, true, true],
 ];
 
@@ -112,14 +123,15 @@ if (!TEST_DB) {
       network: r.network,
       method: r.method,
       declared_schema: r.declaredSchema,
+      declared_input: r.declaredInput ?? null,
     }));
     const raw = await db.execute(sql`
       SELECT lr.name,
-             ${sql.raw(queryNotSentOnOurSideSql({ row: "lr", schema: "lr.declared_schema" }))} AS q,
-             ${sql.raw(bodyNotSentOnOurSideSql({ row: "lr", method: "lr.method", schema: "lr.declared_schema" }))} AS b
+             ${sql.raw(queryNotSentOnOurSideSql({ row: "lr", schema: "lr.declared_schema", input: "lr.declared_input" }))} AS q,
+             ${sql.raw(bodyNotSentOnOurSideSql({ row: "lr", method: "lr.method", schema: "lr.declared_schema", input: "lr.declared_input" }))} AS b
       FROM jsonb_to_recordset(${JSON.stringify(rows)}::jsonb) AS lr(
         name text, status text, tx_hash text, http_status_paid int, attempted_at timestamptz,
-        raw_response_meta jsonb, network text, method text, declared_schema jsonb)
+        raw_response_meta jsonb, network text, method text, declared_schema jsonb, declared_input jsonb)
     `);
     const out = (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as { name: string; q: boolean | null; b: boolean | null }[];
     assert.equal(out.length, CASES.length);

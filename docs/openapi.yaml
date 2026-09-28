@@ -3316,7 +3316,12 @@ components:
             4xx we attribute to our own request shape, or a 402 or 5xx while vet402's
             own payer wallet was unfunded), a gap in our measurement rather
             than evidence against the seller; l1_never_delivered — at least one
-            conclusive paid response and none delivered.
+            conclusive paid response and none delivered. Since 2026-09-29 a paid
+            attempt on vet402's side, held, awaiting verification or taking no
+            payment is not conclusive (the same whose-side rules as the /sellers
+            pages), and when nothing was delivered the reason codes name which:
+            l1_not_counted_vet402_side, l1_not_counted_held,
+            l1_not_counted_no_charge.
         facts:
           description: >-
             L0–L2 measurement records — SellerFacts for role=payer,
@@ -3749,9 +3754,10 @@ components:
                 n_attempts (and in n_settled when settled) — the same set the
                 per-endpoint purchases route reports as inconclusiveCount — and
                 held out of the delivery judgement: the decision rules read
-                conclusive = n_attempts − n_inconclusive, and when conclusive is
-                0 the reason code is l1_inconclusive (a gap in our measurement,
-                not evidence against the seller).
+                conclusive = n_attempts − n_inconclusive (since 2026-09-29 they
+                also leave out the attempts named by the l1_not_counted_* reason
+                codes), and when conclusive is 0 the reason code is l1_inconclusive
+                (a gap in our measurement, not evidence against the seller).
             n_probe_error:
               type: integer
               deprecated: true

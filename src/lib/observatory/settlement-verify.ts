@@ -305,3 +305,47 @@ export async function verifyL1Settlement(
 
   return { ok: true, blockTimestamp, confirmations, blockNumber: receipt.blockNumber };
 }
+
+/**
+ * その tx の中で、payer が authorizer として消費した EIP-3009 nonce（小文字 0x 付き 64 桁）の一覧
+ * （2026-09-29・遅延回収の曖昧さの解消に使う・recover-late.ts linkAmbiguousByNonce）。
+ *
+ * 同じ payer から同じ payTo へ同額の支払いが 30 分の窓に 2 本あると、索引（settlements）には nonce が無いので
+ * どちらの購入の tx か決められず、遅延回収はどちらにも貼らなかった（2026-09-29 監査: penny402.fun の tarot と
+ * koan が 16 秒違いで同額・同宛先。着金は 2 本とも実在し、頁は「決済を確認できず」と書いていた）。
+ * nonce は我々が署名した値なので、レシートの AuthorizationUsed を読めば持ち主の行が 1 つに決まる。
+ *
+ * 読めない（照合器の無いチェーン・RPC の失敗・レシート無し・revert）なら null。null は「貼らない」に倒す。
+ * ここでは確定数を見ない: 貼った行は settle_claimed になり、照合器が確定数・Transfer・nonce を改めて全部見る。
+ */
+export async function readAuthorizationNonces(
+  input: { network: string; txHash: string; payer: string },
+  deps?: { client?: EvmVerifyClient },
+): Promise<string[] | null> {
+  const chain = input.network.startsWith("eip155:") || input.network === "base" ? evmChainFor(input.network) : null;
+  if (!chain) return null;
+  if (!isWellFormedSettlementTx(input.txHash, "evm")) return null;
+  const client: EvmVerifyClient | null = deps?.client ?? clientFor(chain);
+  if (!client) return null;
+  try {
+    const chainId = await client.getChainId();
+    if (chainId !== chain.chainId) return null;
+    const receipt = await client.getTransactionReceipt({ hash: input.txHash as `0x${string}` });
+    if (!receipt || receipt.status !== "success") return null;
+    const usdcLower = chain.usdc.toLowerCase();
+    const payerLower = input.payer.toLowerCase();
+    const out: string[] = [];
+    for (const log of receipt.logs) {
+      if (log.address?.toLowerCase() !== usdcLower) continue;
+      if (log.topics[0]?.toLowerCase() !== AUTHORIZATION_USED_TOPIC) continue;
+      const authorizer = log.topics[1];
+      const nonce = log.topics[2];
+      if (!authorizer || !nonce) continue;
+      if (topicToAddress(authorizer) !== payerLower) continue;
+      out.push(nonce.toLowerCase());
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}

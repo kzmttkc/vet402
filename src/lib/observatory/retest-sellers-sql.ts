@@ -25,9 +25,10 @@ export const censusHostSql = (resourceKey: SQL) => sql`lower(regexp_replace(spli
  *
  *  (a) held_reason が payer_unfunded（delivery.ts heldReasonSql と同じ式——こちらの購入元の残高切れの期間に
  *      402 / 5xx で決済されなかった Base の行）;
- *  (b) 支払い付きの POST が HTTP 400 または 422 で決済されず（settle_failed・tx なし）、宣言された本文を送る実装より前
+ *  (b) 支払い付きの POST が HTTP 400・415 または 422 で決済されず（settle_failed・tx なし）、宣言された本文を送る実装より前
  *      （DECLARED_BODY_SENT_SINCE より前で、行に requestBody の記録も無い＝`{}` を送った）で、かつ今のカタログの
- *      そのエンドポイントが本文を宣言している（declared_schema の properties.input.properties.body がある）。
+ *      そのエンドポイントが本文を宣言している（declared_schema の properties.input.properties.body がある、または
+ *      2026-09-29 から declared_input.body = declared＝送る規則なら宣言の本文を送る）。
  *      宣言が無いなら、`{}` で断られたのはこちらの落ち度とは言えないので対象にしない。GET は本文を送らない
  *      （今も送らない）ので対象にしない。422 は `{}` を検証で弾く実装が多い（レビュー 2026-09-28・本番 26 売り手）。
  *      401・403 は認可の話で本文とは言えないので入れない。
@@ -35,7 +36,8 @@ export const censusHostSql = (resourceKey: SQL) => sql`lower(regexp_replace(spli
  *  (c) Base（eip155:8453 / base）の支払い付き要求が HTTP 400 または 422 で決済されず（settle_failed・tx なし）、
  *      Base で宣言クエリを送り始めた時刻（request-query.ts BASE_DECLARED_QUERY_SINCE）より前で、行に requestQuery の
  *      記録が無い（または empty）、かつ今のカタログのそのエンドポイントが**必須の**クエリを宣言している
- *      （declared_schema の properties.input.properties.queryParams.required が空でない・2026-09-28）。XRPL は 2026-09-21 から
+ *      （declared_schema の properties.input.properties.queryParams.required が空でない・2026-09-28）か、送る規則なら宣言の
+ *      クエリを足す（declared_input.query = declared・2026-09-29。見本値だけで宣言する売り手を拾う）。XRPL は 2026-09-21 から
  *      送っていたので (c) に入らない。メソッドは問わない（クエリは GET にも POST にも足す）。
  *
  * 返すのは売り手ごとに host・reason（"unfunded" | "body" | "query"）・その最新の行の endpoint_id。(b)(c) では失敗した
@@ -47,8 +49,9 @@ export const censusHostSql = (resourceKey: SQL) => sql`lower(regexp_replace(spli
  * （本番の EXPLAIN で 5,041 ms・census は 172 ms）。
  */
 // (b)(c) の判定は request-body.ts / request-query.ts が正典（/sellers と共有・JS の述語と SQL の断片の組）。
-const RETEST_BODY_COND = sql.raw(bodyNotSentOnOurSideSql({ row: "lr", method: "lr.method", schema: "lr.declared_schema" }));
-const RETEST_QUERY_COND = sql.raw(queryNotSentOnOurSideSql({ row: "lr", schema: "lr.declared_schema" }));
+// 2026-09-29: 宣言の有無は送る規則と同じ情報源（declared_input）でも見る。本文は 415 も入る。
+const RETEST_BODY_COND = sql.raw(bodyNotSentOnOurSideSql({ row: "lr", method: "lr.method", schema: "lr.declared_schema", input: "lr.declared_input" }));
+const RETEST_QUERY_COND = sql.raw(queryNotSentOnOurSideSql({ row: "lr", schema: "lr.declared_schema", input: "lr.declared_input" }));
 export const RETEST_SELLERS_SQL = sql`
   SELECT lr.host,
          CASE WHEN lr.held = 'payer_unfunded' THEN 'unfunded' WHEN ${RETEST_BODY_COND} THEN 'body' ELSE 'query' END AS reason,
@@ -58,7 +61,7 @@ export const RETEST_SELLERS_SQL = sql`
            ${censusHostSql(sql`te.resource_key`)} AS host,
            (${sql.raw(heldReasonSql("tp"))}) AS held,
            tp.endpoint_id, tp.network, tp.status, tp.tx_hash, tp.http_status_paid, tp.attempted_at, tp.raw_response_meta,
-           te.method, te.declared_schema
+           te.method, te.declared_schema, te.declared_input
     FROM x402_l1_purchases tp JOIN x402_endpoints te ON te.id = tp.endpoint_id
     ORDER BY ${censusHostSql(sql`te.resource_key`)}, tp.attempted_at DESC, tp.id DESC
   ) lr

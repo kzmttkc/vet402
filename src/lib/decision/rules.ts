@@ -7,6 +7,13 @@
 //                2026-09-17 Issue #29: 決済レシートなしの 4xx（402 以外）と、我々の資金切れ
 //                期間の 402・5xx も含む。規則の正典は delivery.ts の heldReasonOf。式は変えていないが
 //                BLOCK に届く行が変わるので版を上げた）
+//   2026-09-29（開発者の試走・/sellers の帰属と同じ規則）: conclusive = n_attempts − notCounted.total
+//                （seller-facts.ts l1NotCountedOf・facts には載せず options で渡す）。判定保留に加え、vet402 の側（資金切れ・宣言の本文／クエリを送っていなかった）、
+//                課金なし（レシートも着金も無い 2xx・4xx）、照合待ちを含む。stableenrich.dev の people-search は
+//                L1 3 回がすべて「レシート無しの 200・着金なし」で BLOCK だったが、他の買い手の実決済は 30 日で 259 件。
+//                売り手に課金されていない試行・こちらの落ち度の試行だけでは BLOCK にしない（l1_inconclusive＝WARN）。
+//                除いた理由は reason_codes に l1_not_counted_vet402_side / l1_not_counted_held /
+//                l1_not_counted_no_charge として載せる（配達 0 のときだけ）。
 //   BLOCK if l0 ∈ {fail, unverified} ∨ (conclusive ≥ 3 ∧ n_delivered = 0) ∨ l2 = mismatch
 //            ∨ wash_dominated ∨ operator_blacklist
 //   WARN  if L1 未実施（オプトイン無し）∨ 結論なし（l1_inconclusive）∨ 未配達（conclusive ≥ 1）
@@ -35,11 +42,14 @@
 // ============================================================
 import type { BuyerFacts, SellerFacts } from "./types";
 
+/** 売り手の不履行として数えない署名済みの試行（seller-facts.ts の l1NotCountedOf と同じ形）。 */
+export type L1NotCountedInput = { total: number; by: { vet402_side: number; held: number; no_charge: number } };
+
 export type Recommendation = "ALLOW" | "WARN" | "BLOCK";
 export type Decision = { recommendation: Recommendation; reason_codes: string[] };
 
 /** 規則の版。判定の意味が変わる変更は必ず上げる（YYYY-MM-DD.n）。 */
-export const DECISION_RULES_VERSION = "2026-09-17.1";
+export const DECISION_RULES_VERSION = "2026-09-29.1";
 
 export const L1_NEVER_DELIVERED_MIN_ATTEMPTS = 3;
 export const RETRY_BURST_BLOCK = 0.3;
@@ -52,16 +62,32 @@ export type PayerOptions = {
   allowWithoutL1?: boolean;
   operatorBlacklist?: boolean;
   dataDepth?: "thin" | "moderate" | "rich";
+  /**
+   * 2026-09-29: 売り手の不履行として数えない署名済みの試行（seller-facts.ts l1NotCountedOf）。渡さなければ
+   * facts.l1.n_inconclusive（判定保留）だけを除く（従来）。
+   */
+  l1NotCounted?: L1NotCountedInput;
 };
 
-/** 結論の出た試行数。inconclusive（settled だが 4xx・我々の要求の形）を除く。 */
-export function conclusiveAttempts(f: SellerFacts): number {
-  return Math.max(0, f.l1.n_attempts - f.l1.n_inconclusive);
+/**
+ * 結論の出た試行数。売り手の不履行として数えない試行（notCounted・2026-09-29）を除く。
+ * 渡されなければ n_inconclusive（判定保留）だけを除く。保留は必ず除く（max）。
+ */
+export function conclusiveAttempts(f: SellerFacts, notCounted?: L1NotCountedInput): number {
+  const n = Math.max(notCounted?.total ?? 0, f.l1.n_inconclusive);
+  return Math.max(0, f.l1.n_attempts - n);
 }
+
+/** 除いた理由の reason code（配達 0 のときだけ載せる・件数 > 0 の理由だけ）。 */
+export const NOT_COUNTED_REASON_CODES = {
+  vet402_side: "l1_not_counted_vet402_side",
+  held: "l1_not_counted_held",
+  no_charge: "l1_not_counted_no_charge",
+} as const;
 
 export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
   const r: string[] = [];
-  const conclusive = conclusiveAttempts(f);
+  const conclusive = conclusiveAttempts(f, o.l1NotCounted);
   // L1 の証拠が無い（未試行、または結論の出た試行が無い）。オプトインの対象はこの 2 つ。
   const noL1Evidence = f.l1.n_delivered === 0 && conclusive === 0;
   r.push(`l0_${f.l0.status}`);
@@ -69,6 +95,11 @@ export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
   else if (f.l1.n_delivered >= 1) r.push("l1_delivered");
   else if (conclusive === 0) r.push("l1_inconclusive");
   else r.push("l1_never_delivered");
+  if (f.l1.n_delivered === 0 && o.l1NotCounted) {
+    for (const k of ["vet402_side", "held", "no_charge"] as const) {
+      if (o.l1NotCounted.by[k] > 0) r.push(NOT_COUNTED_REASON_CODES[k]);
+    }
+  }
   r.push(`l2_${f.l2.status}`);
   if (f.offer_stability === "drifting") r.push("offer_drifting");
   if (f.wash_dominated) r.push("wash_dominated");

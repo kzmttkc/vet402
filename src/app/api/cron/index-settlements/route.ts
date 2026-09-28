@@ -8,6 +8,7 @@ import { indexEvm } from "@/lib/settlements/index-evm";
 import { indexSolana } from "@/lib/settlements/index-solana";
 import { indexXrpl } from "@/lib/settlements/index-xrpl";
 import { recoverLateSettlements } from "@/lib/settlements/recover-late";
+import { readAuthorizationNonces } from "@/lib/observatory/settlement-verify";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // §7.2 決済索引（日次）。3 経路を順に流す。各段は締切と件数上限を持ち、
@@ -32,7 +33,8 @@ export async function GET(request: NextRequest) {
     const xrpl = await indexXrpl({ budgetMs: 20_000, classifier });
     // 2026-09-04 監査 P2: 索引を更新した**あと**に、遅れて決済された settle_failed を
     // 拾って tx へ結びつける（settled とは名乗らせない——照合器が決める）。
-    const lateSettlements = await recoverLateSettlements();
+    // 2026-09-29: 候補が 2 行以上ある tx は、レシートの nonce で持ち主が 1 行に決まるときだけ貼る。
+    const lateSettlements = await recoverLateSettlements({ readNonces: readAuthorizationNonces });
     return NextResponse.json({ ok: true, testWallets: classifier.testWallets.size, l1, payments, evm, solana, xrpl, lateSettlements });
   } catch (error) {
     logServerErrorSafe("cron.index-settlements", error);

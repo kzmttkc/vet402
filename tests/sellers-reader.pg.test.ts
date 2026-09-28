@@ -31,7 +31,7 @@ if (!TEST_DB) {
 
     await db.execute(sql`TRUNCATE x402_endpoints, x402_l0_probes, x402_l1_purchases`);
     const BODY_SCHEMA = { properties: { input: { properties: { body: { type: "object" } } } } };
-    const mk = async (key: string, o: { network?: string; status?: string; method?: string; declaredSchema?: unknown } = {}) => {
+    const mk = async (key: string, o: { network?: string; status?: string; method?: string; declaredSchema?: unknown; declaredInput?: unknown } = {}) => {
       const [ep] = await db
         .insert(schema.x402Endpoints)
         .values({
@@ -41,6 +41,7 @@ if (!TEST_DB) {
           method: o.method ?? "GET",
           status: o.status ?? "active",
           declaredSchema: o.declaredSchema ?? null,
+          declaredInput: o.declaredInput ?? null,
           priceAmount: "1000",
         })
         .returning();
@@ -76,8 +77,14 @@ if (!TEST_DB) {
     const b1 = await mk("b.example/x");
     // 売り手 C: クエリを宣言した Base の GET が、Base で宣言クエリを送る前に 400（こちらの側）
     const c1 = await mk("c.example/q", { declaredSchema: { properties: { input: { properties: { queryParams: { type: "object", required: ["q"] } } } } } });
-    // 売り手 D: 任意のクエリだけの宣言（required なし）→ こちらの落ち度にしない（seller の側）
+    // 売り手 D: 任意のクエリだけの宣言（required なし）→ こちらの落ち度にしない。ただし課金なしの 400 なので売り手の側にも数えない
     const d1 = await mk("d.example/q", { declaredSchema: { properties: { input: { properties: { queryParams: { type: "object", properties: { q: { type: "string" } } } } } } } });
+    // 売り手 E（2026-09-29 監査の site.intel.rallylive.ca の形）: スキーマの queryParams は properties: {} だが、
+    // 402 の info.input.queryParams に見本値がある（declared_input.query = declared）→ こちらの側
+    const e1 = await mk("e.example/site/uses/mapbox", {
+      declaredSchema: { properties: { input: { properties: { queryParams: { type: "object", properties: {} } } } } },
+      declaredInput: { query: "declared", body: "empty" },
+    });
 
     // a1: 本文を送る前の POST 422（vet402 の側）→ その後、本文を送って届いた（最新）
     await buy(a1, { status: "settle_failed", http: 422, at: "2026-09-10T00:00:00Z", meta: { phase: "paid" } });
@@ -95,11 +102,16 @@ if (!TEST_DB) {
 
     await buy(c1, { status: "settle_failed", http: 400, at: "2026-09-25T00:00:00Z", meta: { phase: "paid", requestBody: "none" } });
     await buy(d1, { status: "settle_failed", http: 400, at: "2026-09-25T00:00:00Z", meta: { phase: "paid", requestBody: "none" } });
+    await buy(e1, { status: "settle_failed", http: 400, at: "2026-09-22T00:01:36Z", meta: { phase: "paid", requestBody: "none" } });
     const before = await db.execute(sql`SELECT count(*)::int AS n FROM x402_l1_purchases`);
     const board = await readSellerBoard(db);
     const hosts = board.sellers.map((s) => s.host).sort();
-    assert.deepEqual(hosts, ["b.example", "c.example", "d.example", "shop.example"], "ports and case fold into one seller");
-    assert.equal(board.sellers.find((s) => s.host === "d.example")?.seller, 1, "optional query only: not our fault");
+    assert.deepEqual(hosts, ["b.example", "c.example", "d.example", "e.example", "shop.example"], "ports and case fold into one seller");
+    assert.equal(board.sellers.find((s) => s.host === "d.example")?.vet402, 0, "optional query only: not our fault");
+    assert.equal(board.sellers.find((s) => s.host === "d.example")?.seller, 0, "an unsettled 400 took no payment: not counted against the seller");
+    assert.equal(board.sellers.find((s) => s.host === "d.example")?.unsorted, 1);
+    assert.equal(board.sellers.find((s) => s.host === "e.example")?.vet402, 1, "query declared by example values (declared_input), not yet sent on Base");
+    assert.equal(board.sellers.find((s) => s.host === "b.example")?.seller, 0);
     assert.equal(board.sellers.find((s) => s.host === "c.example")?.vet402, 1, "query declared, not yet sent on Base");
     const shop = board.sellers.find((s) => s.host === "shop.example")!;
     assert.equal(shop.listings, 4, "non-Base and delisted listings are left out");
@@ -113,7 +125,7 @@ if (!TEST_DB) {
     assert.equal(board.groups.reduce((x, g) => x + g.listings, 0), failed);
     assert.deepEqual(
       board.groups.map((g) => g.key).sort(),
-      ["gone", "input_rejected", "payer_unfunded", "query_not_sent"],
+      ["gone", "payer_unfunded", "query_not_sent", "refused_no_charge"],
     );
 
     const d = await readSellerDetail(db, "shop.example");
@@ -155,7 +167,7 @@ if (!TEST_DB) {
     let n = 0;
     let txSeq = 1000;
     // 境目の両側を 1 売り手 1 行で置く（各売り手の最新の行＝その行）。
-    const cases: { method: string; body: boolean; status: string; http: number | null; tx?: boolean; at: string; meta?: unknown }[] = [
+    const cases: { method: string; body: boolean; status: string; http: number | null; tx?: boolean; at: string; meta?: unknown; di?: unknown }[] = [
       { method: "POST", body: true, status: "settle_failed", http: 400, at: "2026-09-16T23:25:54Z" }, // (b)
       { method: "POST", body: true, status: "settle_failed", http: 422, at: "2026-09-10T00:00:00Z" }, // (b)
       { method: "POST", body: true, status: "settle_failed", http: 400, at: "2026-09-16T23:25:55Z" }, // 境界の時刻は含まない
@@ -169,12 +181,16 @@ if (!TEST_DB) {
       { method: "GET", body: false, status: "settle_failed", http: 402, at: "2026-09-14T00:00:00Z" }, // (a) payer_unfunded
       { method: "GET", body: false, status: "settle_failed", http: 503, at: "2026-09-15T23:48:59Z" }, // (a)
       { method: "GET", body: false, status: "settle_failed", http: 402, at: "2026-09-15T23:49:00Z" }, // 期間外
+      // 2026-09-29: 送る規則と同じ情報源（declared_input）と 415
+      { method: "POST", body: false, di: { query: "empty", body: "declared" }, status: "settle_failed", http: 415, at: "2026-09-10T12:07:00Z" }, // (b) rt14
+      { method: "GET", body: false, di: { query: "declared", body: "empty" }, status: "settle_failed", http: 400, at: "2026-09-22T00:01:36Z" }, // (c) rt15
+      { method: "GET", body: false, di: { query: "refused", body: "empty" }, status: "settle_failed", http: 400, at: "2026-09-22T00:01:36Z" }, // 使わない宣言は入らない
     ];
     for (const c of cases) {
       n++;
       const [ep] = await db
         .insert(schema.x402Endpoints)
-        .values({ resourceKey: `rt${n}.example/x`, resourceUrl: `https://rt${n}.example/x`, network: "eip155:8453", method: c.method, declaredSchema: c.body ? BODY : null, priceAmount: "1000" })
+        .values({ resourceKey: `rt${n}.example/x`, resourceUrl: `https://rt${n}.example/x`, network: "eip155:8453", method: c.method, declaredSchema: c.body ? BODY : null, declaredInput: c.di ?? null, priceAmount: "1000" })
         .returning();
       await db.insert(schema.x402L1Purchases).values({
         endpointId: ep.id,
@@ -204,7 +220,7 @@ if (!TEST_DB) {
     const board = await readSellerBoard(db, true);
     const queuedHosts = board.sellers.filter((s) => s.rebuyEligible).map((s) => s.host).sort();
     assert.deepEqual(queuedHosts, retestHosts, "rebuyEligible = the sellers the retest SQL picks, when the flag is on");
-    assert.deepEqual(retestHosts, ["rt1.example", "rt11.example", "rt12.example", "rt2.example"]);
+    assert.deepEqual(retestHosts, ["rt1.example", "rt11.example", "rt12.example", "rt14.example", "rt15.example", "rt2.example"]);
     // 旗 off: retest の SQL を流さず、誰も rebuyEligible にしない
     const off = await readSellerBoard(db, false);
     assert.equal(off.sellers.filter((s) => s.rebuyEligible).length, 0);
