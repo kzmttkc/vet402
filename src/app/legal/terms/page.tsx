@@ -402,7 +402,7 @@ export default async function TermsPage() {
           <p>
             These terms, and any dispute arising out of them or out of your use of vet402 — including
             non-contractual disputes — are governed by the laws of Japan, without regard to
-            conflict-of-law rules. That is because the operator is an individual proprietor
+            conflict-of-law rules. That is because the operator, KIZUNA Creation, is
             established in Japan; the product being about on-chain payments between parties anywhere
             in the world does not change where its operator sits.
           </p>

@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-28 JST（7）— 規約・プライバシー・Legal Notice の運営者を「KIZUNA Creation」に統一
+
+- **何を**: 「individual proprietor」「individually owned business」の表記を「KIZUNA Creation」に置換（`/legal/terms` §11 の準拠法の理由、`/legal/privacy` の運営者、`/legal/notice`）。
+- **なぜ**: オーナー指示（2026-09-28）「個人事業主が運営も KIZUNA Creation が運営でいい」。
+- **影響**: 公開面で運営者は屋号だけで表す。
+
 ## 2026-09-28 JST（6）— Legal Notice の運営者表示を屋号 KIZUNA Creation のみに
 
 - **何を**: `/legal/notice` の運営者表示から個人名を外し「operated by KIZUNA Creation, an individually owned business」に。個人名・住所・電話は請求があれば遅滞なく開示する旨に改め、Last updated を September 2026 に。

@@ -52,7 +52,7 @@ export default async function PrivacyPage() {
         <section className="space-y-2">
           <h2 className="sec-head">Contact / operator information</h2>
           <p>
-            vet402 is operated by an individual proprietor. See our{" "}
+            vet402 is operated by KIZUNA Creation. See our{" "}
             <a className="doc-link" href="/legal/notice">
               Legal Notice
             </a>{" "}

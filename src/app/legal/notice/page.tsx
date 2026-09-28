@@ -63,8 +63,7 @@ export default async function LegalNoticePage() {
         <section className="space-y-2">
           <h2 className="sec-head">How vet402 is operated</h2>
           <p>
-            vet402 (formerly known as Vouch) is developed and operated by KIZUNA Creation, an
-            individually owned business. The product was renamed in August 2026; the
+            vet402 (formerly known as Vouch) is developed and operated by KIZUNA Creation. The product was renamed in August 2026; the
             operator, the service, and these pages are otherwise unchanged. It is offered as a business-to-business (B2B) API product for agent
             developers who need to verify an x402 endpoint before paying it, and for the service
             operators who accept those payments — it is not marketed or sold as a consumer
