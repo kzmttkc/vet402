@@ -341,14 +341,14 @@ test("8: 売り手の本物の失敗（払った要求への 5xx・署名した�
   assert.equal(refuted.decision.recommendation, "BLOCK");
   // 課金なし 2 回 + 本物の失敗 3 回 → BLOCK
   const mixed = judge([
-    ...[1, 2].map((i) => P({ attemptedAt: `2026-09-1${i}T00:00:00Z`, status: "delivered_no_receipt", httpStatusPaid: 200 })),
+    ...[1, 2].map((i) => P({ attemptedAt: `2026-09-1${i}T00:00:00Z`, status: "delivered_no_receipt", httpStatusPaid: 200, payloadNonEmpty: true })),
     ...[1, 2, 3].map((i) => P({ attemptedAt: `2026-09-2${i}T00:00:00Z`, httpStatusPaid: 503 })),
   ]);
   assert.equal(mixed.notCounted.total, 2);
   assert.equal(mixed.decision.recommendation, "BLOCK");
   // 課金なし 2 回 + 本物の失敗 2 回 → 結論 2 → WARN
   const mixed2 = judge([
-    ...[1, 2].map((i) => P({ attemptedAt: `2026-09-1${i}T00:00:00Z`, status: "delivered_no_receipt", httpStatusPaid: 200 })),
+    ...[1, 2].map((i) => P({ attemptedAt: `2026-09-1${i}T00:00:00Z`, status: "delivered_no_receipt", httpStatusPaid: 200, payloadNonEmpty: true })),
     ...[1, 2].map((i) => P({ attemptedAt: `2026-09-2${i}T00:00:00Z`, httpStatusPaid: 503 })),
   ]);
   assert.equal(mixed2.decision.recommendation, "WARN");
@@ -385,7 +385,20 @@ test("8: 判定の除外は /sellers の分類と同じ（署名した行の全�
           const endpoint = { method: "POST", declaredSchema: null, declaredInput: { query: "declared", body: "declared" } };
           const c = classifyRow(row({ status, httpStatusPaid: http, attemptedAt: at, txHash: tx, method: "POST", declaredInput: endpoint.declaredInput }));
           const counted = notCountedReasonOf(p, endpoint) === null;
-          const sellerOrOther = c.bucket === "seller" || c.mode?.key === "other" || c.bucket === "delivered";
+          // 2026-09-29 独立レビュー: 判定は払う側に慎重。中身の届いていない「課金なし」の 2xx は /sellers では
+          // 未分類（売り手に不利にしない）だが、判定では数える（tx 無しは課金なしの証明ではない）。
+          const sellerOrOther =
+            c.bucket === "seller" || c.mode?.key === "other" || c.bucket === "delivered" ||
+            (c.mode?.key === "answered_no_charge" && p.payloadNonEmpty !== true);
           assert.equal(counted, sellerOrOther, `${status} ${http} ${at} ${tx ? "tx" : "-"}: ${c.bucket}/${c.mode?.key}`);
         }
+});
+
+test("8: 2026-09-29 独立レビュー（BLOCK）: 空の 200・レシート無し・tx 無しは「課金なし」として外さない（裏で決済する売り手が BLOCK を逃れない）", () => {
+  const rows = ["2026-09-20T18:00:39Z", "2026-09-19T12:08:58Z", "2026-09-18T00:01:27Z"].map((at) =>
+    P({ attemptedAt: at, status: "delivered_no_receipt", httpStatusPaid: 200, payloadNonEmpty: false, requestMeta: { requestBody: true } }),
+  );
+  const { notCounted, decision } = judge(rows);
+  assert.equal(notCounted.by.no_charge, 0);
+  assert.equal(decision.recommendation, "BLOCK");
 });

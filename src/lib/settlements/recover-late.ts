@@ -180,24 +180,13 @@ export async function recoverLateSettlements(options: { readNonces?: NonceReader
     prior_tx_hash: string | null;
   }[];
 
-  const byNonce = options.readNonces ? await linkAmbiguousByNonce(db, options.readNonces) : [];
-  rows.push(...byNonce);
-
   // §10 / §6.2: 状態が変わったら訂正ログに残す（公開面が「いつ何が変わったか」を言える）。
-  for (const row of rows) {
-    await recordCorrection({
-      subjectType: "purchase",
-      subjectId: row.purchase_id,
-      level: "l1",
-      before: { status: row.prior_status, txHash: row.prior_tx_hash },
-      after: { status: "settle_claimed", txHash: row.tx_hash },
-      // 既存の語彙を使う（新しい reason は公開 enum・docs/openapi.yaml・
-      // src/app/docs/api/page.tsx へ波及し、このブランチでは触らない約束の
-      // ファイルを含む）。意味も合っている——「主張された決済が後から
-      // オンチェーンで確認/否定された」の入口がここ。
-      reason: "settlement_backfill",
-    }).catch(logAndSwallowSafe("settlements.recover_late.record_correction"));
-  }
+  // 2026-09-29 独立レビュー: レシート読み（最大 60 回）の前に、既に確定した貼り付けの訂正を
+  // 先に書く。cron の 300 秒で途中打ち切りになっても、確定済みの行の訂正ログが欠けない。
+  await recordLateLinks(rows);
+  const byNonce = options.readNonces ? await linkAmbiguousByNonce(db, options.readNonces) : [];
+  await recordLateLinks(byNonce);
+  rows.push(...byNonce);
 
   return {
     recovered: rows.length,
@@ -331,4 +320,21 @@ async function linkAmbiguousByNonce(db: Db, readNonces: NonceReader): Promise<Li
     linked.push(...rowsOfRaw<LinkedRow>(res));
   }
   return linked;
+}
+
+async function recordLateLinks(rows: { purchase_id: string; tx_hash: string; prior_status: string; prior_tx_hash: string | null }[]): Promise<void> {
+  for (const row of rows) {
+    await recordCorrection({
+      subjectType: "purchase",
+      subjectId: row.purchase_id,
+      level: "l1",
+      before: { status: row.prior_status, txHash: row.prior_tx_hash },
+      after: { status: "settle_claimed", txHash: row.tx_hash },
+      // 既存の語彙を使う（新しい reason は公開 enum・docs/openapi.yaml・
+      // src/app/docs/api/page.tsx へ波及し、このブランチでは触らない約束の
+      // ファイルを含む）。意味も合っている——「主張された決済が後から
+      // オンチェーンで確認/否定された」の入口がここ。
+      reason: "settlement_backfill",
+    }).catch(logAndSwallowSafe("settlements.recover_late.record_correction"));
+  }
 }

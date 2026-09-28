@@ -92,7 +92,11 @@ export function notCountedReasonOf(
   if (!c.mode) return null;
   if (c.mode.side === "vet402") return "vet402_side";
   if (c.mode.key === "settled_then_rejected" || c.mode.key === "settled_then_refused") return "held";
-  if (c.mode.key === "refused_no_charge" || c.mode.key === "answered_no_charge") return "no_charge";
+  if (c.mode.key === "refused_no_charge") return "no_charge";
+  // 2026-09-29 独立レビュー（BLOCK）: 「行に tx が無い」は「課金されていない」の証明ではない（遅延回収が
+  // 持ち主を決められない行・Solana・nonce の無い古い行）。空の 2xx を返して裏で決済する売り手が BLOCK を
+  // 逃れないよう、判定から外すのは中身が届いた無料応答だけにする。
+  if (c.mode.key === "answered_no_charge") return p.payloadNonEmpty === true ? "no_charge" : null;
   return null;
 }
 
