@@ -1847,8 +1847,8 @@ claims:
     verified_at: 2026-09-29
   - id: sellers_no_charge_answered
     surface: src/lib/sellers/fix-modes.ts
-    quote: "Nothing was charged, so the row is not counted against the seller"
-    means: "レシート無しの 2xx（delivered_no_receipt）で、行に tx も無い（遅延回収が窓の中に着金を見つけていない）行は課金なしで、売り手の側に数えない（2026-09-29 監査: 402signal.com の「a miss is free」）。着金が見つかれば遅延回収が tx を貼り、照合待ちを経て settled になる"
+    quote: "vet402 has not identified a charge for this call, so the row is not counted against the seller"
+    means: "レシート無しの 2xx（delivered_no_receipt）で、行に tx も無い（遅延回収が窓の中の着金を行に貼れていない）行は、課金を特定できないので売り手の側に数えない（判定 API は中身が届いた行だけを除く）（2026-09-29 監査: 402signal.com の「a miss is free」）。着金が見つかれば遅延回収が tx を貼り、照合待ちを経て settled になる"
     check: null
     why_unverifiable: "行ごとの事実は export.csv の status（delivered_no_receipt）と tx_hash（空）。窓は src/lib/settlements/recover-late.ts の LATE_SETTLEMENT_*（fix-modes.ts の LATE_LINK_* と一致を tests/seller-attribution.test.ts が固定）"
     verified_at: 2026-09-29

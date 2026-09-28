@@ -278,7 +278,7 @@ export const FIX_MODES: readonly FixMode[] = [
   {
     key: "answered_no_charge",
     title: "Answered without taking payment",
-    what: `The paid request got a 2xx with no settlement receipt, and vet402 has not found a matching transfer on-chain (it links a transfer that lands from ${LATE_LINK_BEFORE_MIN} minutes before to ${LATE_LINK_AFTER_MIN} minutes after the attempt, then verifies it). vet402 has not identified a charge for this call, so the row is not counted against the seller; if a matching transfer is found later, the row is re-sorted.`,
+    what: `The paid request got a 2xx with no settlement receipt, and vet402 has not linked a matching transfer on-chain to it (it links a transfer that lands from ${LATE_LINK_BEFORE_MIN} minutes before to ${LATE_LINK_AFTER_MIN} minutes after the attempt, then verifies it). vet402 has not identified a charge for this call, so the row is not counted against the seller; if a matching transfer is found later, the row is re-sorted.`,
     fix: "Nothing is counted against the seller. If the route is meant to charge, settle the payment and return the PAYMENT-RESPONSE header with the 2xx.",
     side: "unsorted",
     effort: 2,
