@@ -21,11 +21,11 @@ Overall Prize and Promising Products Track. /rwa is built only on Robinhood Chai
 ## Link to frontend/UI/website
 
 https://vet402.com/rwa/0xE9B08727131E34010b34006c660D4c1B436EC25f
-Agents can buy the same JSON over x402 for 0.01 USDG: /api/v1/rwa/paid/facts/<address>. First settlement tx 0xeb26d1b5b0b1a12056ec8abd99640fcbb00860552b4c5a44d3e1b67b3da73760.
+Agents can buy the same JSON over x402 for 0.01 USDG: https://vet402.com/api/v1/rwa/paid/facts/<address>. First settlement tx 0xeb26d1b5b0b1a12056ec8abd99640fcbb00860552b4c5a44d3e1b67b3da73760.
 
 ## List your Core Protocol / Smart Contract Addresses
 
-RwaAnchor 0x1955137e7773f2459eb75fb88842026c6517c22d on Robinhood Chain: an ownerless, non-upgradeable contract that records keccak256 commitments to published reconstructions. Anchor tx: 0x9b776d6a4670768e3e85261fcf3a5fc02012668e3323fee7211b07d8deca72d7.
+RwaAnchor 0x1955137e7773f2459eb75fb88842026c6517c22d on Robinhood Chain, with no owner and no upgrade path. It stores the keccak256 hash of a published record. The demo record is anchored in tx 0x9b776d6a4670768e3e85261fcf3a5fc02012668e3323fee7211b07d8deca72d7.
 
 ## List your Factory/Pool Contracts (if applicable)
 
