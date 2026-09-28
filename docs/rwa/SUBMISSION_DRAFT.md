@@ -16,7 +16,7 @@ nothing here mentions other hackathons' prizes.
 
 ## Which Prize Track
 
-Promising Products Track. Overall Prize: decided on submission day (SPEC §13e: its second instalment requires building exclusively on an Arbitrum chain).
+Overall Prize and Promising Products Track. /rwa is built only on Robinhood Chain, an Arbitrum Orbit chain.
 
 ## Link to frontend/UI/website
 
