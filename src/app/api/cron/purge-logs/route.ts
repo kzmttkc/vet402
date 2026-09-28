@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { purgeExpiredLogs } from "@/lib/cron/log-retention";
 
 export const maxDuration = 60;
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const result = await purgeExpiredLogs();
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
-    logServerError("cron.purge-logs", error);
+    logServerErrorSafe("cron.purge-logs", error);
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : String(error) },
       { status: 500 },

@@ -23,7 +23,7 @@ test("全 cron ルートが try/catch と logServerError を持つ", () => {
   for (const name of routes) {
     const src = readFileSync(join(CRON_DIR, name, "route.ts"), "utf8");
     assert.match(src, /try \{/, `${name}: try が無い——lib の throw が理由なしの 500 になる`);
-    assert.match(src, /logServerError\(/, `${name}: logServerError が無い——理由がログに残らない`);
+    assert.match(src, /logServerErrorSafe\(/, `${name}: logServerErrorSafe が無い——理由がログに残らない`);
   }
 });
 

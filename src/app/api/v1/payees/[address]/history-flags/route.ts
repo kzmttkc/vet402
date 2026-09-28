@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeApiRequest, withRateLimitHeaders } from "@/lib/api/guard";
 import { computeHistoryFlags } from "@/lib/scoring/history-flags";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * GET /api/v1/payees/{address}/history-flags — 履歴フラグ v0（キー付き）。
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (!flags) return NextResponse.json({ error: "flags_unavailable" }, { status: 503 });
     return withRateLimitHeaders(NextResponse.json(flags), auth.ctx.rateLimit);
   } catch (error) {
-    logServerError("history_flags", error);
+    logServerErrorSafe("history_flags", error);
     return NextResponse.json({ error: "flags_unavailable" }, { status: 503 });
   }
 }

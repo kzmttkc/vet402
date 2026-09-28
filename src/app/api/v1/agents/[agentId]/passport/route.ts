@@ -7,7 +7,7 @@ import { agentPassports } from "@/lib/db/schema";
 import { parseAgentId } from "@/lib/chain/client";
 import { scoreAgentById } from "@/lib/scoring/engine";
 import { agentPassportMessage, legacyAgentPassportMessage } from "@/lib/verify-message";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { verifyMessage } from "viem";
 import { loadSellerFacts } from "@/lib/decision/seller-facts";
 import { buildFactsSummary, type FactsSummary } from "@/lib/decision/facts-summary";
@@ -168,7 +168,7 @@ export async function GET(
       cacheExpiresAt: result.cacheExpiresAt,
     };
   } catch (error) {
-    logServerError("agent_passport_score", error);
+    logServerErrorSafe("agent_passport_score", error);
     score = null;
   }
 
@@ -182,7 +182,7 @@ export async function GET(
       const eps = await endpointsByPayee(toPartyId("eip155:8453", identity.wallet), 50);
       factsSummary = await buildFactsSummary(eps, loadSellerFacts);
     } catch (error) {
-      logServerError("agent_passport_facts", error);
+      logServerErrorSafe("agent_passport_facts", error);
       factsSummary = null;
     }
   }

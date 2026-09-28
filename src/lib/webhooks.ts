@@ -10,7 +10,7 @@ import {
 import { getDb } from "./db/client";
 import { isMissingSchemaError } from "./db/pg-errors";
 import { webhooks } from "./db/schema";
-import { logServerError } from "./util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // ============================================================
 // Vouch — webhook notifications (2026-08-05 R&D, C-9).
@@ -398,7 +398,7 @@ async function recordDeliveryFailure(id: string): Promise<void> {
       })
       .where(eq(webhooks.id, id));
   } catch (error) {
-    if (!isMissingSchemaError(error)) logServerError("webhook_bookkeeping", error);
+    if (!isMissingSchemaError(error)) logServerErrorSafe("webhook_bookkeeping", error);
   }
 }
 
@@ -434,7 +434,7 @@ async function deliverOne(row: WebhookRow, eventType: WebhookEvent, payload: unk
   try {
     opened = openWebhookSecret(row.secret);
   } catch (error) {
-    logServerError("webhook_secret_open", error);
+    logServerErrorSafe("webhook_secret_open", error);
     await recordDeliveryFailure(row.id);
     return;
   }
@@ -442,7 +442,7 @@ async function deliverOne(row: WebhookRow, eventType: WebhookEvent, payload: unk
     try {
       await db.update(webhooks).set({ secret: opened.reseal }).where(eq(webhooks.id, row.id));
     } catch (error) {
-      if (!isMissingSchemaError(error)) logServerError("webhook_secret_reseal", error);
+      if (!isMissingSchemaError(error)) logServerErrorSafe("webhook_secret_reseal", error);
     }
   }
   const signature = signWebhookPayload(opened.plain, body, Math.floor(Date.now() / 1000));
@@ -465,7 +465,7 @@ async function deliverOne(row: WebhookRow, eventType: WebhookEvent, payload: unk
       return;
     }
   } catch (error) {
-    if (!isMissingSchemaError(error)) logServerError("webhook_bookkeeping", error);
+    if (!isMissingSchemaError(error)) logServerErrorSafe("webhook_bookkeeping", error);
   }
 }
 
@@ -497,7 +497,7 @@ export async function dispatchWebhookEvent(
       active: r.active,
     }));
   } catch (error) {
-    if (!isMissingSchemaError(error)) logServerError("webhook_lookup", error);
+    if (!isMissingSchemaError(error)) logServerErrorSafe("webhook_lookup", error);
     return;
   }
 
@@ -505,7 +505,7 @@ export async function dispatchWebhookEvent(
     rows
       .filter((r) => r.events.includes(eventType))
       .map((r) =>
-        deliverOne(r, eventType, payload).catch((error) => logServerError("webhook_delivery", error)),
+        deliverOne(r, eventType, payload).catch((error) => logServerErrorSafe("webhook_delivery", error)),
       ),
   );
 }

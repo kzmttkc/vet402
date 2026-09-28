@@ -11,7 +11,7 @@ import {
   matchSignatureForm,
   observatoryWatchMessage,
 } from "@/lib/verify-message";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * Observatory watch registration (design §6.1) — the claim join.
@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
         auth.ctx.rateLimit,
       );
     }
-    logServerError("observatory_watch_register", error);
+    logServerErrorSafe("observatory_watch_register", error);
     return withRateLimitHeaders(
       NextResponse.json({ error: "internal_error" }, { status: 500 }),
       auth.ctx.rateLimit,
@@ -228,7 +228,7 @@ export async function DELETE(request: NextRequest) {
     if (isMissingSchemaError(error)) {
       return withRateLimitHeaders(NextResponse.json({ ok: true }), auth.ctx.rateLimit);
     }
-    logServerError("observatory_watch_delete", error);
+    logServerErrorSafe("observatory_watch_delete", error);
     return withRateLimitHeaders(
       NextResponse.json({ error: "internal_error" }, { status: 500 }),
       auth.ctx.rateLimit,

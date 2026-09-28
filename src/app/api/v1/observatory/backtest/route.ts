@@ -6,7 +6,7 @@ import {
   sharedCacheRateLimitHeaders,
 } from "@/lib/api/ip-rate-limit";
 import { computeSpendGuardBacktest } from "@/lib/observatory/backtest";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * GET /api/v1/observatory/backtest — 「シグナルに従っていたら」の両面集計。
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
       { headers: { ...shared, "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=7200" } },
     );
   } catch (error) {
-    logServerError("observatory_backtest", error);
+    logServerErrorSafe("observatory_backtest", error);
     return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
   }
 }

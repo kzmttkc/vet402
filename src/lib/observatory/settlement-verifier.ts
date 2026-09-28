@@ -18,7 +18,7 @@ import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { x402L1Purchases } from "@/lib/db/schema";
 import { recordObservedPurchase } from "@/lib/db/observed-purchases";
-import { logAndSwallow, logServerError } from "@/lib/util/log";
+import { logAndSwallowSafe, logServerErrorSafe } from "@/lib/util/log-safe";
 import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { createDeadline } from "@/lib/util/deadline";
 import { verifyL1Settlement } from "./settlement-verify";
@@ -149,7 +149,7 @@ export async function runSettlementVerification(options?: {
   // failed）。日次上限の判定も、飛んでいる最中の書き込みを数えられない。
   // 待ち時間は増えるが、この経路は既定 OFF で、ON でも日次 200 件が上限。
   const fireHook = (p: Promise<void>): Promise<void> =>
-    p.catch((error) => logServerError("settlement-verifier.registry_hook", error));
+    p.catch((error) => logServerErrorSafe("settlement-verifier.registry_hook", error));
   const summary: VerifySettlementsSummary = {
     scanned: 0,
     verified: 0,
@@ -236,7 +236,7 @@ export async function runSettlementVerification(options?: {
       before: { status: row.status },
       after: { status: "settle_claim_refuted", reason },
       reason: "settlement_backfill",
-    }).catch(logAndSwallow("settlement-verifier.record_correction.refuted"));
+    }).catch(logAndSwallowSafe("settlement-verifier.record_correction.refuted"));
     // 否定もオンチェーンの事実（fail）。L2 は決済が確定していないので書かない。
     await fireHook(
       hooks.l1({ endpointId: row.endpoint_id, payTo: row.pay_to, settled: false, txHash: row.tx_hash, network: row.network }),
@@ -268,7 +268,7 @@ export async function runSettlementVerification(options?: {
     const priorTxHash = typeof late.replacedTxHash === "string" ? late.replacedTxHash : null;
     const rejected = row.tx_hash.toLowerCase();
     if (reason !== "nonce_not_used") {
-      logServerError(
+      logServerErrorSafe(
         "settlement-verifier.late_link_unexpected_refutation",
         `purchase ${row.id} (${row.network}) linked ${row.tx_hash} from the settlements index, but the verifier answered ` +
           `${reason}${detail ? `: ${detail}` : ""} — the index and the verifier read the same chain, payer, payee and amount, ` +
@@ -314,7 +314,7 @@ export async function runSettlementVerification(options?: {
       before: { status: row.status, txHash: row.tx_hash },
       after: { status: priorStatus, txHash: written?.txHash ?? null, lateLinkWithdrawn: reason },
       reason: "settlement_backfill",
-    }).catch(logAndSwallow("settlement-verifier.record_correction.late_link_withdrawn"));
+    }).catch(logAndSwallowSafe("settlement-verifier.record_correction.late_link_withdrawn"));
   }
 
   /**
@@ -381,7 +381,7 @@ export async function runSettlementVerification(options?: {
         before: { status: row.status },
         after: { status: "settled", blockNumber: String(result.blockNumber) },
         reason: "settlement_backfill",
-      }).catch(logAndSwallow("settlement-verifier.record_correction.settled"));
+      }).catch(logAndSwallowSafe("settlement-verifier.record_correction.settled"));
 
       // §7.3（2026-09-02）: 確定した購入は決済索引へ即時に載せ、受取先→Endpoint の
       // 逆引きが cron を待たずに更新される（実装完了の定義「1 分以内」）。
@@ -389,7 +389,7 @@ export async function runSettlementVerification(options?: {
       try {
         await ingestL1({ onlyPurchaseRowId: row.id });
       } catch (error) {
-        logServerError("settlement-verifier.ingest-l1", error);
+        logServerErrorSafe("settlement-verifier.ingest-l1", error);
       }
 
       // ERC-8004 Validation Registry（フラグOFF既定・graceful）。書けるのはここで
@@ -430,7 +430,7 @@ export async function runSettlementVerification(options?: {
       } catch (error) {
         // 証拠が書けなくても照合の結果は正典（x402_l1_purchases）に残る。
         // 黙って消さない。
-        logServerError("observatory.settlement_verify.evidence", error);
+        logServerErrorSafe("observatory.settlement_verify.evidence", error);
       }
       return;
     }
@@ -444,7 +444,7 @@ export async function runSettlementVerification(options?: {
       summary.deferred++;
       // 2026-09-04 監査 P1-3: 我々の側が壊れているときは鳴らす。
       if (INSTRUMENT_FAILURE_REASONS.has(result.reason)) {
-        logServerError(
+        logServerErrorSafe(
           "settlement-verifier.instrument_failure",
           `${result.reason} on purchase ${row.id} (${row.network})${result.detail ? `: ${result.detail}` : ""}`,
         );
@@ -488,7 +488,7 @@ export async function runSettlementVerification(options?: {
       // 落ちた行は触らない（status は倒さず、次回のバッチがまた拾う）。黙って飲み込まず、
       // 件数を summary に出してログに理由を残す（2026-09-19 レビュー 2 巡目）。
       summary.rowErrors++;
-      logServerError(`settlement-verifier.row ${row.id} (${row.network})`, error);
+      logServerErrorSafe(`settlement-verifier.row ${row.id} (${row.network})`, error);
     }
   }
 

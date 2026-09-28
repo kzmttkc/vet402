@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
 import { acquireLease } from "@/lib/cron/lease";
 import { runL1Batch } from "@/lib/observatory/l1-runner";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // vet402 Observatory L1 — daily paid-purchase batch (design §5 W3).
 // The weekly full sweep of the real-demand set emerges from the daily $25
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     const summary = await runL1Batch();
     return NextResponse.json({ ok: true, ...summary });
   } catch (error) {
-    logServerError("cron.l1-purchase", error);
+    logServerErrorSafe("cron.l1-purchase", error);
     return NextResponse.json({ ok: false, error: "l1_failed" }, { status: 500 });
   } finally {
     await lease.release();

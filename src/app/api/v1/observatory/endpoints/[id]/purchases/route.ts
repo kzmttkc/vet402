@@ -6,7 +6,7 @@ import {
   sharedCacheRateLimitHeaders,
 } from "@/lib/api/ip-rate-limit";
 import { getEndpointPurchases } from "@/lib/observatory/reader";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { UUID_RE } from "@/lib/validation/uuid";
 
 /**
@@ -76,7 +76,7 @@ export async function GET(
       },
     );
   } catch (error) {
-    logServerError("observatory_purchases", error);
+    logServerErrorSafe("observatory_purchases", error);
     return NextResponse.json(
       { error: "observatory_unavailable" },
       { status: 503, headers: perCallerHeaders },

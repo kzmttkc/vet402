@@ -15,7 +15,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { getLogScanClient } from "@/lib/chain/client";
 import { ARC_CHAIN_ID, ARC_USDC_ADDRESS, getArcPublicClient } from "@/lib/chain/arc";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { getLogsChunked } from "@/lib/chain/chunked-logs";
 import { getIndexerCheckpoint, setIndexerCheckpoint } from "@/lib/db/owner-index";
 import { payeeId as toPartyId } from "@/lib/ids/canonical";
@@ -309,7 +309,7 @@ export async function indexEvmChain(
       const value = l.args.value ?? l.args.amount;
       if (typeof value !== "bigint") {
         summary.undecodable = (summary.undecodable ?? 0) + 1;
-        logServerError("settlements.index_evm.undecodable_log", new Error(`${chain.caip2} ${l.transactionHash}: transfer log decoded without an amount`));
+        logServerErrorSafe("settlements.index_evm.undecodable_log", new Error(`${chain.caip2} ${l.transactionHash}: transfer log decoded without an amount`));
         continue;
       }
       merged.push({ transactionHash: l.transactionHash, blockNumber: l.blockNumber, args: { from: l.args.from, to: l.args.to, value } });
@@ -386,7 +386,7 @@ export async function indexEvmChain(
     // 1 日 1 回の cron で追いつけていない。partial に乗せて cron の応答に出し、ログでも鳴らす。
     summary.lagBlocks = String(lag);
     summary.partial = true;
-    logServerError("settlements.index_evm.lag", new Error(`${chain.caip2} is ${lag} blocks behind the safe tip (> ${chain.blocksPerDay}/day)`));
+    logServerErrorSafe("settlements.index_evm.lag", new Error(`${chain.caip2} is ${lag} blocks behind the safe tip (> ${chain.blocksPerDay}/day)`));
   }
   return summary;
 }

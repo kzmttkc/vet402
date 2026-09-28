@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeApiRequest, withRateLimitHeaders } from "@/lib/api/guard";
 import { isValidAddress } from "@/lib/chain/client";
 import { peekPayeeScoreCache } from "@/lib/scoring/payee-engine";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * GET /api/v1/payees/{address}/verdict-fast — verify-at-settle 高速面（C6）。
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       auth.ctx.rateLimit,
     );
   } catch (error) {
-    logServerError("verdict_fast", error);
+    logServerErrorSafe("verdict_fast", error);
     return NextResponse.json({ error: "verdict_unavailable" }, { status: 503 });
   }
 }

@@ -488,7 +488,11 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
 
         {/* 段 2「名前を取る」（2026-09-02 敵対的監査 F7）: 価値を受け取った直後＝L1 表
             （無ければ §3 本文）の直下。対価は「この記録の判定が変わったら 1 通」。 */}
-        <RecordSubscribe endpointId={id} kind="notify" />
+        {/* /sellers/[host] の各出品の "Email me when this result changes" がここへ飛ぶ（2026-09-29）。
+            id は SellersViews の RECORD_NOTIFY_ANCHOR と同じ値。 */}
+        <div id="notify" className="scroll-mt-24">
+          <RecordSubscribe endpointId={id} kind="notify" />
+        </div>
 
         <h2 className="sec-head">
           <span className="sec-no">4.</span>

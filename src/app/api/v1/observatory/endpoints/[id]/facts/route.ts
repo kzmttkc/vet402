@@ -5,7 +5,7 @@ import { assertEvidenceContract, vet402Evidence } from "@/lib/decision/evidence"
 import { getEndpoint } from "@/lib/resolve/lookup";
 import { SHA256_HEX_RE } from "@/lib/ids/canonical";
 import { UUID_RE } from "@/lib/validation/uuid";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import type { Evidence, Freshness } from "@/lib/decision/types";
 
 // §9.1: GET /api/v1/observatory/endpoints/{id}/facts — L0–L2 の事実だけ。
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       { headers: gate.cacheHeaders },
     );
   } catch (error) {
-    logServerError("endpoint.facts", error);
+    logServerErrorSafe("endpoint.facts", error);
     return NextResponse.json({ error: "unavailable" }, { status: 503, headers: gate.headers });
   }
 }

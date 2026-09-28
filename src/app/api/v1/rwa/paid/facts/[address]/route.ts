@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAddress } from "viem";
 import { publicRateLimit } from "@/lib/api/public-route";
 import { isValidAddress } from "@/lib/chain/client";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { RWA_CHAIN_ID } from "../../../../../../../../packages/rwa/config";
 import { ReconstructionTimeout, TooBusy, cachedFacts } from "../../../../../../../../packages/rwa/cache";
 import { NoStockTokenActivity, type RwaFacts } from "../../../../../../../../packages/rwa/facts";
@@ -84,7 +84,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const verified = await verifyPayment(payment);
     if (!verified.isValid) return required(resourceUrl, gate.headers, verified.invalidReason ?? "payment_invalid");
   } catch (err) {
-    logServerError("rwa_paid_verify", err);
+    logServerErrorSafe("rwa_paid_verify", err);
     return NextResponse.json({ error: "facilitator_unavailable", charged: false }, { status: 502, headers: gate.headers });
   }
 
@@ -101,7 +101,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (err instanceof NoStockTokenActivity) {
       return NextResponse.json({ error: "no_stock_token_activity", charged: false }, { status: 404, headers: gate.headers });
     }
-    logServerError("rwa_paid_facts", err);
+    logServerErrorSafe("rwa_paid_facts", err);
     return NextResponse.json({ error: "feed_unavailable", charged: false }, { status: 503, headers: gate.headers });
   }
 
@@ -118,7 +118,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
   if (outcome.kind === "unknown") {
     // The money may have moved and the nonce may be spent: give the record, say we do not know.
-    logServerError("rwa_paid_settle_unknown", new Error(outcome.detail));
+    logServerErrorSafe("rwa_paid_settle_unknown", new Error(outcome.detail));
     return NextResponse.json(render(facts), {
       headers: { ...gate.headers, ...EXPOSE, "Cache-Control": "no-store", "X-Payment-Status": "unknown" },
     });

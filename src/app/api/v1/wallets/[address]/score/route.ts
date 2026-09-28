@@ -7,7 +7,7 @@ import {
 } from "@/lib/api/guard";
 import { isValidAddress } from "@/lib/chain/client";
 import { persistScoreResult } from "@/lib/db/persistence";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { scoreWallet } from "@/lib/scoring/engine";
 
 type RouteContext = { params: Promise<{ address: string }> };
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const result = await scoreWallet(address, { apiKeyId: auth.ctx.apiKeyId });
     void persistScoreResult(auth.ctx.apiKeyId, result).catch((error) =>
-      logServerError("persist_score", error),
+      logServerErrorSafe("persist_score", error),
     );
 
     return withRateLimitHeaders(NextResponse.json(result), limited.rateLimit);

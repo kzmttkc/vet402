@@ -29,7 +29,7 @@ import {
 } from "@/lib/db/observed-purchases";
 import { withDeadline } from "@/lib/util/deadline";
 import { LruCache } from "@/lib/util/lru-cache";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { normalizeWalletScore, scoreL1Receiving } from "./helpers";
 import { hasUnavailableInput, toRecommendation } from "./verdict";
 import type { Recommendation } from "./types";
@@ -464,7 +464,7 @@ async function detectDrainPattern(address: Address): Promise<DrainSignal> {
       measured.push(leg.value);
     } else {
       unmeasured.push(name);
-      logServerError(`payee_drain_${name}`, leg.reason);
+      logServerErrorSafe(`payee_drain_${name}`, leg.reason);
     }
   }
 
@@ -662,7 +662,7 @@ export async function scorePayeeWallet(address: string): Promise<PayeeScoreResul
   if (metricsResult.status === "fulfilled") {
     walletMetrics = metricsResult.value;
   } else {
-    logServerError("payee_wallet_metrics", metricsResult.reason);
+    logServerErrorSafe("payee_wallet_metrics", metricsResult.reason);
     flags.push("wallet_metrics_unavailable");
   }
 
@@ -672,7 +672,7 @@ export async function scorePayeeWallet(address: string): Promise<PayeeScoreResul
   const drainSignal: DrainSignal =
     drainResult.status === "fulfilled"
       ? drainResult.value
-      : ((logServerError("payee_drain_check", drainResult.reason),
+      : ((logServerErrorSafe("payee_drain_check", drainResult.reason),
         {
           detected: false,
           drainRatio: null,
@@ -693,7 +693,7 @@ export async function scorePayeeWallet(address: string): Promise<PayeeScoreResul
   if (outcomesResult.status === "fulfilled") {
     outcomes = outcomesResult.value;
   } else {
-    logServerError("payee_outcome_history", outcomesResult.reason);
+    logServerErrorSafe("payee_outcome_history", outcomesResult.reason);
     outcomeHistoryRead = false;
     flags.push("outcome_history_unavailable");
   }
@@ -738,7 +738,7 @@ export async function scorePayeeWallet(address: string): Promise<PayeeScoreResul
   const l1Delivery: ObservedDeliveryStats =
     l1Result.status === "fulfilled"
       ? l1Result.value
-      : ((logServerError("payee_l1_deliveries", l1Result.reason),
+      : ((logServerErrorSafe("payee_l1_deliveries", l1Result.reason),
         { deliveryCount: 0, uniqueDays: 0, distinctBuyers: 0 }) as ObservedDeliveryStats);
 
   // The receiving axis takes the stronger of the x402 settlement record and the
@@ -775,7 +775,7 @@ export async function scorePayeeWallet(address: string): Promise<PayeeScoreResul
     try {
       outcomeTrust = await getNegativeReporterCorroboration(addrLower, reporterKeyIds);
     } catch (error) {
-      logServerError("payee_outcome_corroboration", error);
+      logServerErrorSafe("payee_outcome_corroboration", error);
       flags.push("outcome_corroboration_unavailable");
     }
   }

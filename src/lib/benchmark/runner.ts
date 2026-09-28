@@ -4,7 +4,7 @@ import { getDb } from "@/lib/db/client";
 import { trustEvents, verdictOutcomes } from "@/lib/db/schema";
 import { scoreWallet } from "@/lib/scoring/engine";
 import { withDeadline } from "@/lib/util/deadline";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import {
   BENCHMARK_DATASET,
   BENCHMARK_DATASET_VERSION,
@@ -182,7 +182,7 @@ export async function runBenchmarkScan(options?: {
     } catch (error) {
       // Per-entry isolation: one bad RPC read must not abort the pass.
       result.errors += 1;
-      logServerError("benchmark_scan_entry", error);
+      logServerErrorSafe("benchmark_scan_entry", error);
     }
   }
 
@@ -272,7 +272,7 @@ async function readLastScannedAt(): Promise<Map<string, number>> {
     return toLastScannedMap(result);
   } catch (error) {
     // 未マイグレーションのスキーマはログ1行に落とす（このモジュール群の作法）。
-    logServerError("benchmark_last_scanned", error);
+    logServerErrorSafe("benchmark_last_scanned", error);
     return new Map();
   }
 }
@@ -414,7 +414,7 @@ async function scoreAndRecord(
   } catch (error) {
     // Missing table / not-yet-migrated schema degrades to a log line, never
     // a crash — the doctrine every module touching these tables follows.
-    logServerError("benchmark_record", error);
+    logServerErrorSafe("benchmark_record", error);
     return "failed";
   }
 }

@@ -6,7 +6,7 @@ import {
   sharedCacheRateLimitHeaders,
 } from "@/lib/api/ip-rate-limit";
 import { getAnchors } from "@/lib/observatory/anchors";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * GET /api/v1/observatory/anchors?days=30 — 台帳ハッシュチェーン、データとして。
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
       { headers: { ...shared, "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=7200" } },
     );
   } catch (error) {
-    logServerError("observatory_anchors", error);
+    logServerErrorSafe("observatory_anchors", error);
     return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
   }
 }

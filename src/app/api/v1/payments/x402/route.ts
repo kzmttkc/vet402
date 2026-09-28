@@ -10,7 +10,7 @@ import { verifyX402Ownership, verifyX402PaymentOnChain } from "@/lib/chain/x402-
 import { recordX402Payment } from "@/lib/db/x402-payments";
 import { invalidateScoreCacheForListChange } from "@/lib/scoring/cache-invalidation";
 import { invalidatePayeeScoreCache } from "@/lib/scoring/payee-engine";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 const TX_HASH_RE = /^0x[a-fA-F0-9]{64}$/;
 
@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
 
     if (result.created) {
       void invalidateScoreCacheForListChange(wallet).catch((error) =>
-        logServerError("x402_cache_invalidate", error),
+        logServerErrorSafe("x402_cache_invalidate", error),
       );
       if (verification.payee) {
         invalidatePayeeScoreCache(verification.payee);
@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
       limited.rateLimit,
     );
   } catch (error) {
-    logServerError("x402_payment_ingest", error);
+    logServerErrorSafe("x402_payment_ingest", error);
     return NextResponse.json({ error: "payment_ingest_unavailable" }, { status: 503 });
   }
 }

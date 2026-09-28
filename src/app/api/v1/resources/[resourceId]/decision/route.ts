@@ -10,7 +10,7 @@ import { evaluateCallerPolicy, parseCallerPolicy, type CallerPolicyInput } from 
 import { SHA256_HEX_RE, parsePartyId, payeeId as toPartyId } from "@/lib/ids/canonical";
 import { getResource } from "@/lib/resolve/lookup";
 import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // §9.1: GET /api/v1/resources/{resource_id}/decision?role=payer|payee&caller_dialect=v1|v2
 //   role=payer  「このURLは今、宣言どおり届くか」→ 売り手事実 + 判定
@@ -166,7 +166,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     res.headers.set("Server-Timing", `decision;dur=${(performance.now() - t0).toFixed(1)}`);
     return res;
   } catch (error) {
-    logServerError("decision", error);
+    logServerErrorSafe("decision", error);
     return fail(caller, 503, "decision_unavailable");
   }
 }

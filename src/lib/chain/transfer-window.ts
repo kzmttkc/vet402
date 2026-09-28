@@ -9,7 +9,7 @@ import {
   isAlchemyEnabled,
   type ChainTransfer,
 } from "./alchemy";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * The transfer window the drain check reads, from whichever provider can
@@ -68,7 +68,7 @@ async function withBlockscoutFallback(
       // Named, not swallowed: an operator must be able to see the primary
       // provider handing traffic to the fallback, and `logServerError` is the
       // same channel every other degraded read here reports on.
-      logServerError(`transfer_window_alchemy_${label}`, error);
+      logServerErrorSafe(`transfer_window_alchemy_${label}`, error);
     }
   }
   return blockscout();

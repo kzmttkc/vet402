@@ -13,7 +13,7 @@ import {
   isWebhookEvent,
   listWebhooks,
 } from "@/lib/webhooks";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * GET  /api/v1/webhooks — list this key's endpoints (secrets never returned).
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     const rows = await listWebhooks(auth.ctx.apiKeyId);
     return NextResponse.json({ webhooks: rows, events: WEBHOOK_EVENTS });
   } catch (error) {
-    logServerError("webhooks_list", error);
+    logServerErrorSafe("webhooks_list", error);
     return NextResponse.json({ error: "webhooks_unavailable" }, { status: 503 });
   }
 }
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
       limited.rateLimit,
     );
   } catch (error) {
-    logServerError("webhooks_create", error);
+    logServerErrorSafe("webhooks_create", error);
     return NextResponse.json({ error: "webhooks_unavailable" }, { status: 503 });
   }
 }

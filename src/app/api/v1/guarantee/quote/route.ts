@@ -8,7 +8,7 @@ import { isGuaranteeUnderwritingEnabled } from "@/lib/config/env";
 import { computeAccuracyReport } from "@/lib/scoring/accuracy";
 import { fetchAccuracyRows } from "@/lib/db/outcome-reader";
 import { underwrite } from "@/lib/guarantee/underwriting";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // ============================================================
 // N-20 guarantee underwriting — the API RECEPTACLE, OFF by default.
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
       limited.rateLimit,
     );
   } catch (error) {
-    logServerError("guarantee_quote", error);
+    logServerErrorSafe("guarantee_quote", error);
     return NextResponse.json({ error: "guarantee_unavailable" }, { status: 503 });
   }
 }

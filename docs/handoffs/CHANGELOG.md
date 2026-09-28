@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-29 JST — 監査 第2巡の残り: サーバログの伏せ字・売り手頁の通知リンク・Base 以外の売り手の簡易頁（ブランチ `fix/audit-round2-rest`・未 push）
+
+- **何を**: ①`src/lib/util/log-safe.ts` の `logServerErrorSafe` / `logAndSwallowSafe`（URL を scheme を問わず `<url>` に、`apikey=`・Bearer・`sk_live_`・`re_`・JWT 等を `<redacted>` に伏せてから凍結中の `logServerError` を呼ぶ）。凍結外の呼び手 97 ファイルを機械的に置換し、eslint の no-restricted-imports と `tests/log-safe.test.ts` の走査で直 import を止める（除外は `log.ts`・`log-safe.ts`・`cron/lease.ts`・`app/tokyo/**`・`app/api/tokyo/**`）。②`/sellers/[host]` の各出品に「Email me when this result changes」→ `/observatory/e/<id>#notify`（既存のダブルオプトインの購読・新しい表なし）。③Base の出品が無いが L1 の購入行がある host は 404 にせず、出品ごとの記録頁への簡易頁（チェーン名・最新の日時・平易な結果・noindex）。関門は購入 host の集合 1 本をキャッシュ（`sellers:purchased-hosts:v1`）、でたらめな host は従来どおり host ごとの問い合わせを走らせない。
+- **なぜ**: viem の RPC エラーは本文に鍵入り URL を持ち、`logServerError` は message を素で出す（log.ts は凍結で直せない）／売り手が頁を再訪する理由が無かった／Arc 等で買った売り手（例 edge.goldsky.com）が自分のドメインで探すと 404 だった。
+- **影響**: DDL なし。ソースの文字列を見るテスト（cron-routes-fail-loud・settlement-instrument-failure・settlements-evm-index-arc）は `logServerErrorSafe(` を要求するよう更新。凍結解除後に `log.ts` 自体へ伏せ字を入れれば、この層は薄い包みとして残してよい。
+- **コミット**: ブランチ `fix/audit-round2-rest`（未 push）
+
 ## 2026-09-29 JST — `/rwa` の facts が cold で全件 503 になっていたのを直した（c46736e9）
 
 - **何が**: 2026-09-29 05:4x JST の点検で、無料の facts が `feed_unavailable`（0.4 秒で 503）。Robinhood Chain の主 RPC が eth_getLogs の範囲を 1,000 万ブロックまでに絞り（`only 10000000 are allowed … narrow the block range`）、こちらの 4,000 万ブロックの一括読みと v4 の Initialize 検索（genesis→latest を 1 回）が弾かれていた。キャッシュ済みのページだけが表示されていた。

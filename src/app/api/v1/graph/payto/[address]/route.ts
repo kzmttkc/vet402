@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeApiRequest, withRateLimitHeaders } from "@/lib/api/guard";
 import { computePayToGraph } from "@/lib/scoring/graph";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * GET /api/v1/graph/payto/{address} — payToグラフ v0（キー付き）。
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (!graph) return NextResponse.json({ error: "graph_unavailable" }, { status: 503 });
     return withRateLimitHeaders(NextResponse.json(graph), auth.ctx.rateLimit);
   } catch (error) {
-    logServerError("payto_graph", error);
+    logServerErrorSafe("payto_graph", error);
     return NextResponse.json({ error: "graph_unavailable" }, { status: 503 });
   }
 }

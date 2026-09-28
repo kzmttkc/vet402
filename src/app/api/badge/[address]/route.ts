@@ -7,7 +7,7 @@ import { verifiedPayees } from "@/lib/db/schema";
 import { isValidAddress } from "@/lib/chain/client";
 import { payeeBadgeState, renderBadgeSvg, type PayeeBadgeScoreView } from "@/lib/badge/trust-badge";
 import { scorePayeeWallet } from "@/lib/scoring/payee-engine";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // N-16 — embeddable SVG badge. H-1/H-5 (2026-08-13 R4): the green "Verified
 // payee" is no longer minted by a self-signed claim alone — it is earned only
@@ -80,7 +80,7 @@ export async function GET(
     try {
       score = await scorePayeeWallet(clean);
     } catch (error) {
-      logServerError("badge_payee_score", error);
+      logServerErrorSafe("badge_payee_score", error);
       score = null;
     }
   }

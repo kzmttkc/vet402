@@ -9,6 +9,7 @@ import {
   type SellerBoard,
   type SellerDetail,
   type SellerListing,
+  type SellerOtherChains,
   type SellerSummary,
   type ShownRow,
 } from "@/lib/sellers/board";
@@ -33,6 +34,21 @@ function n(v: number): string {
 
 export function sellerPath(host: string): string {
   return `/sellers/${encodeURIComponent(host)}`;
+}
+
+/** 記録頁の通知登録欄（observatory/e/[id] の RecordSubscribe kind="notify" を包む id）。 */
+export const RECORD_NOTIFY_ANCHOR = "notify";
+
+/**
+ * 売り手が頁を再訪する理由（2026-09-29 監査 第2巡）: 出品ごとに、記録頁の通知登録（ダブルオプトイン済みの
+ * 既存の購読）へ直に飛ぶ。新しい表・新しい購読の種類は作らない。
+ */
+function NotifyLink({ endpointId }: { endpointId: string }) {
+  return (
+    <Link href={`/observatory/e/${endpointId}#${RECORD_NOTIFY_ANCHOR}`} className="underline">
+      Email me when this result changes
+    </Link>
+  );
 }
 
 /** 検索結果の表題が切られずに出る長さの目安（2026-09-28 SEO 監査の基準）。 */
@@ -487,8 +503,11 @@ function ListingRows({ l, now, rebuyEligible }: { l: SellerListing; now: number;
               )}
             </>
           ) : (
-            <span className="text-brand-lift">vet402 has not bought this listing yet.</span>
+            <span className="block text-brand-lift">vet402 has not bought this listing yet.</span>
           )}
+          <span className="block text-xs">
+            <NotifyLink endpointId={l.endpointId} />
+          </span>
         </td>
       </tr>
     </>
@@ -608,6 +627,88 @@ export function SellerDetailView({
         Open the listing&apos;s record (the link in the first column) and use &ldquo;Dispute this record&rdquo; there.
         Say which purchase and what you saw instead. The row is not deleted on dispute; a correction is published
         with the same weight.
+      </p>
+    </article>
+  );
+}
+
+// ------------------------------------------------------------
+// /sellers/[host]（Base の出品が無い売り手・2026-09-29）
+// ------------------------------------------------------------
+
+export function sellerOtherChainsTitle(host: string): string {
+  return `x402 purchase records for ${host}`;
+}
+
+/** 平易な結果（Base の頁の ResultWord と同じ言葉）。台帳の status は括弧で添える。 */
+function OtherChainResult({ l }: { l: SellerOtherChains["listings"][number] }) {
+  const r = l.latest;
+  return (
+    <>
+      <ResultWord r={r} />
+      {r.mode && <span className="text-brand-lift"> ({SIDE_LABEL[r.mode.side]})</span>}
+      <span className="block font-[family-name:var(--font-mono)] text-xs font-normal text-brand-lift">
+        <code>{r.facts.status}</code>
+        {r.facts.httpStatusPaid !== null && <> · HTTP {r.facts.httpStatusPaid}</>}
+      </span>
+    </>
+  );
+}
+
+export function SellerOtherChainsView({ other, revalidateSec }: { other: SellerOtherChains; revalidateSec: number }) {
+  return (
+    <article className="sheet">
+      <DocHead title="Seller: purchase records" fetched={<FetchedAt at={other.fetchedAt} revalidateSec={revalidateSec} />} />
+      <h1 className="doc-title mt-10 break-words">
+        Purchase records for <span className="[overflow-wrap:anywhere]">{other.host}</span>
+      </h1>
+      <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
+      <p className="doc-p">
+        This seller has no active Base listing, so it is not on the{" "}
+        <Link href="/sellers" className="underline">
+          Base seller list
+        </Link>
+        . vet402 did buy from its listings on other chains (or from listings since removed). Each purchase is on the
+        listing&apos;s record page, linked below.
+      </p>
+      <TableScroll label="Listings of this seller that vet402 bought, most recent purchase first">
+        <table className="fact-table">
+          <caption className="sr-only">Listings of this seller that vet402 bought, most recent purchase first</caption>
+          <thead>
+            <tr>
+              <th scope="col">Listing record</th>
+              <th scope="col">Chain</th>
+              <th scope="col">Latest purchase</th>
+              <th scope="col">Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            {other.listings.map((l) => (
+              <tr key={l.endpointId}>
+                <td>
+                  <Link href={`/observatory/e/${l.endpointId}`} className="block max-w-[14rem] break-all underline sm:max-w-[26rem]">
+                    {l.resourceKey}
+                  </Link>
+                  <span className="block text-xs font-normal">
+                    <NotifyLink endpointId={l.endpointId} />
+                  </span>
+                </td>
+                <td className="whitespace-nowrap">{l.chain}</td>
+                <td className="whitespace-nowrap">{fmtUtc(l.latest.facts.attemptedAt)}</td>
+                <td className={l.latest.bucket !== "delivered" ? "text-[#9f0712]" : ""}>
+                  <OtherChainResult l={l} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableScroll>
+      <p className="doc-p">
+        Think a row is wrong? Open the listing&apos;s record and use &ldquo;Dispute this record&rdquo; there (
+        <Link href="/observatory/methodology" className="underline">
+          methodology
+        </Link>
+        ).
       </p>
     </article>
   );

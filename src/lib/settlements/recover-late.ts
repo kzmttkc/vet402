@@ -47,7 +47,7 @@
 // ============================================================
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { logAndSwallow } from "@/lib/util/log";
+import { logAndSwallowSafe } from "@/lib/util/log-safe";
 import { recordCorrection } from "@/lib/observatory/corrections";
 
 /**
@@ -177,7 +177,7 @@ export async function recoverLateSettlements(): Promise<LateSettlementSummary> {
       // ファイルを含む）。意味も合っている——「主張された決済が後から
       // オンチェーンで確認/否定された」の入口がここ。
       reason: "settlement_backfill",
-    }).catch(logAndSwallow("settlements.recover_late.record_correction"));
+    }).catch(logAndSwallowSafe("settlements.recover_late.record_correction"));
   }
 
   return {

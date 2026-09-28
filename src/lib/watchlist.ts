@@ -5,7 +5,7 @@ import { watchlistEntries } from "./db/schema";
 import { scoreAgentById, scoreWallet } from "./scoring/engine";
 import { dispatchWebhookEvent } from "./webhooks";
 import { invalidatePayeeCacheForVerdictChange } from "./payee/cache-guard";
-import { logServerError } from "./util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // ============================================================
 // Vouch — watchlist (N-15, 2026-08-05).
@@ -185,11 +185,11 @@ export async function scanWatchlist(limit = 100): Promise<{
           chainId: row.chainId,
           previous: { score: row.lastScore, recommendation: row.lastRecommendation },
           current: { score: result.trustScore, recommendation: result.recommendation },
-        }).catch((error) => logServerError("watchlist_webhook", error));
+        }).catch((error) => logServerErrorSafe("watchlist_webhook", error));
       }
     } catch (error) {
       errors += 1;
-      logServerError("watchlist_scan_entry", error);
+      logServerErrorSafe("watchlist_scan_entry", error);
     }
   }
   return { scanned, changed, errors };

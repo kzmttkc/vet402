@@ -11,7 +11,7 @@
 // ============================================================
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { logAndSwallow } from "@/lib/util/log";
+import { logAndSwallowSafe } from "@/lib/util/log-safe";
 import { isRegistryWritesEnabled } from "@/lib/chain/registry";
 import type { LruCache } from "@/lib/util/lru-cache";
 import { DECISION_CACHE_TTL_MS, decisionCache } from "./cache";
@@ -218,7 +218,7 @@ export function recordDecisionLookup(observatoryId: string): Promise<void> {
           ON CONFLICT (endpoint_id, day) DO UPDATE SET n = decision_lookups.n + 1`,
     )
     .then(() => undefined)
-    .catch(logAndSwallow("decision.record_lookup"));
+    .catch(logAndSwallowSafe("decision.record_lookup"));
 }
 
 /**

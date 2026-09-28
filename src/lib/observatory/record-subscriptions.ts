@@ -33,7 +33,7 @@ import { recordSubscriptions, x402Endpoints } from "@/lib/db/schema";
 import { sendMail, type MailInput, type SendResult } from "@/lib/mail/send";
 import { SITE_URL } from "@/lib/site-url";
 import { SUPPORT_EMAIL } from "@/lib/support";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { publishedVerdict, MIN_CONSECUTIVE_FAILS_TO_PUBLISH } from "./l0-probe";
 
 export const SUBSCRIBE_RL_LIMIT = 5;
@@ -455,7 +455,7 @@ export async function forwardDispute(input: {
       replyTo: input.email,
     });
   } catch (error) {
-    logServerError("record-subscriptions.forwardDispute", error);
+    logServerErrorSafe("record-subscriptions.forwardDispute", error);
   }
 }
 
@@ -567,13 +567,13 @@ export async function notifySubscribers(
     run.sent++;
   }
   if (keyUnset > 0) {
-    logServerError(
+    logServerErrorSafe(
       "notify-subscribers",
       new Error(`unsubscribe_key_unset: ${keyUnset} verdict change(s) not sent (API_KEY_PEPPER)`),
     );
   }
   if (run.skipped > keyUnset) {
-    logServerError(
+    logServerErrorSafe(
       "notify-subscribers",
       new Error(`mail_unset: ${run.skipped - keyUnset} verdict change(s) not sent (RESEND_API_KEY / MAIL_FROM)`),
     );

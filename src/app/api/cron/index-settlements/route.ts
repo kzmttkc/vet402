@@ -8,7 +8,7 @@ import { indexEvm } from "@/lib/settlements/index-evm";
 import { indexSolana } from "@/lib/settlements/index-solana";
 import { indexXrpl } from "@/lib/settlements/index-xrpl";
 import { recoverLateSettlements } from "@/lib/settlements/recover-late";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // §7.2 決済索引（日次）。3 経路を順に流す。各段は締切と件数上限を持ち、
 // 未読は次回に持ち越す。lease で二重起動を防ぐ（l1-purchase と同じ設計）。
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     const lateSettlements = await recoverLateSettlements();
     return NextResponse.json({ ok: true, testWallets: classifier.testWallets.size, l1, payments, evm, solana, xrpl, lateSettlements });
   } catch (error) {
-    logServerError("cron.index-settlements", error);
+    logServerErrorSafe("cron.index-settlements", error);
     return NextResponse.json({ ok: false, error: "index_failed" }, { status: 500 });
   } finally {
     await lease.release();

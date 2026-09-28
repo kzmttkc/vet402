@@ -27,7 +27,7 @@ import {
   type ParsedCatalogItem,
 } from "./catalog-source";
 import { computeCatalogDiff, type CatalogDiffEvent, type KnownEndpointState } from "./catalog-diff";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 export type SyncSummary = {
   snapshotDate: string;
@@ -191,7 +191,7 @@ export async function syncCatalog(
           await upsertChunk([item]);
         } catch (rowError) {
           skipped++;
-          logServerError(
+          logServerErrorSafe(
             "observatory.catalog-sync.row_skipped",
             new Error(`${item.resourceKey}: ${rowError instanceof Error ? rowError.message : String(rowError)}`),
           );

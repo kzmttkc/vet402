@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { scanWatchlist } from "@/lib/watchlist";
 
 // N-15 — the monitoring heartbeat. Same engine, same fail-closed rules as a
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     const result = await scanWatchlist(Math.min(500, Math.max(1, limit)));
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
-    logServerError("cron.watchlist-scan", error);
+    logServerErrorSafe("cron.watchlist-scan", error);
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : String(error) },
       { status: 500 },

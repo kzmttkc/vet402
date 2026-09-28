@@ -8,7 +8,7 @@ import {
 import { isValidAddress, parseAgentId } from "@/lib/chain/client";
 import { chainBySlug, enabledChainSlugs, isChainEnabled } from "@/lib/chain/chains";
 import { persistScoreResult } from "@/lib/db/persistence";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { scoreAgentById } from "@/lib/scoring/engine";
 
 type RouteContext = { params: Promise<{ agentId: string }> };
@@ -59,12 +59,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
     });
 
     void persistScoreResult(auth.ctx.apiKeyId, result).catch((error) =>
-      logServerError("persist_score", error),
+      logServerErrorSafe("persist_score", error),
     );
 
     return withRateLimitHeaders(NextResponse.json(result), limited.rateLimit);
   } catch (error) {
-    logServerError("score_agent", error);
+    logServerErrorSafe("score_agent", error);
     // 2026-08-15 (audit): the reservation above already spent 1 unit; this
     // request never got an answer, so credit it back rather than charging
     // the caller for an outage on our end.

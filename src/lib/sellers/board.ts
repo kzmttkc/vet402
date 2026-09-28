@@ -4,7 +4,7 @@
 // 1 出品は「最新の購入行」1 つで数える（Base の行と、network の無い行＝支払い前に止まった行）。
 // 数字は頁に書かない。毎回ここを通して DB の行から出す。
 // ============================================================
-import { explorerTxUrl } from "@/lib/observatory/chains";
+import { chainLabel, explorerTxUrl } from "@/lib/observatory/chains";
 import { classifyRow, FIX_MODES, NOT_IN_EXPORT_STATUSES, rowNote, type Bucket, type FixMode, type SellerRowFacts } from "./fix-modes";
 
 export type SummaryBucket = Bucket | "not_bought";
@@ -299,4 +299,83 @@ export function exportDaysFor(attemptedAt: string, now: number): number | null {
   if (!Number.isFinite(ageMs)) return null;
   const days = Math.max(1, Math.ceil(ageMs / 86_400_000) + 1);
   return days > 366 ? null : days;
+}
+
+// ------------------------------------------------------------
+// Base の出品が無い売り手（2026-09-29 監査 第2巡）。
+//
+// /sellers/[host] は Base の出品（active）がある host だけを扱っていたので、Arc や Solana で
+// 買った実績がある host（例: edge.goldsky.com）は 404 だった。売り手が自分のドメインで
+// 探して何も無いのは「測っていない」と読まれる。Base の頁と同じ数え方はせず（Base の一覧と
+// 重複・行の少ない頁になるので noindex）、出品ごとの記録頁へ案内するだけの簡易版を出す。
+// ------------------------------------------------------------
+
+export interface OtherChainListing {
+  endpointId: string;
+  resourceKey: string;
+  /** 最新の購入行の network（支払い前に止まった行は無いので、カタログの代表 network）の表示名。 */
+  chain: string;
+  latest: ShownRow;
+}
+
+export interface SellerOtherChains {
+  fetchedAt: string;
+  host: string;
+  listings: OtherChainListing[];
+}
+
+/**
+ * rows: その host の出品ごとの最新の購入行（1 出品 1 行）。catalogNetwork はカタログ上の代表 network。
+ * 行が無ければ null（＝頁は従来どおり 404）。並びは最新の購入が新しい順。
+ */
+export function buildSellerOtherChains(
+  host: string,
+  rows: ReadonlyArray<{ resourceKey: string; catalogNetwork: string | null; facts: SellerRowFacts }>,
+  fetchedAt: string,
+): SellerOtherChains | null {
+  if (rows.length === 0) return null;
+  const listings = rows
+    .map((r) => ({
+      endpointId: r.facts.endpointId,
+      resourceKey: r.resourceKey,
+      chain: chainLabel(r.facts.network ?? r.catalogNetwork),
+      latest: showRow(r.facts),
+    }))
+    .sort(
+      (a, b) =>
+        b.latest.facts.attemptedAt.localeCompare(a.latest.facts.attemptedAt) || a.resourceKey.localeCompare(b.resourceKey),
+    );
+  return { fetchedAt, host, listings };
+}
+
+export type SellerPageData =
+  | { kind: "base"; detail: SellerDetail }
+  | { kind: "other_chains"; other: SellerOtherChains }
+  | { kind: "none" };
+
+/**
+ * /sellers/[host] が何を出すか（頁から DB を外した判定・tests/sellers-other-chains.test.ts が 3 通りを固定）。
+ *   1. 一覧（Base の出品がある host）に居る → Base の頁
+ *   2. 居ないが、購入行のある host の集合に居る → 他チェーンの簡易頁
+ *   3. どちらでもない → 404
+ * 2 の集合はキャッシュ済みの 1 本（cached.ts）なので、でたらめな host は従来どおり host ごとの問い合わせを走らせない。
+ */
+export async function resolveSellerPage(
+  host: string,
+  load: {
+    board: () => Promise<SellerBoard>;
+    detail: (host: string) => Promise<SellerDetail | null>;
+    purchasedHosts: () => Promise<readonly string[]>;
+    otherChains: (host: string) => Promise<SellerOtherChains | null>;
+  },
+): Promise<SellerPageData> {
+  const board = await load.board();
+  const fromBoard = board.sellers.find((s) => s.host === host);
+  if (fromBoard) {
+    const read = await load.detail(host);
+    return read ? { kind: "base", detail: markRebuyEligible(read, fromBoard) } : { kind: "none" };
+  }
+  if (!(await load.purchasedHosts()).includes(host)) return { kind: "none" };
+  const other = await load.otherChains(host);
+  return other ? { kind: "other_chains", other } : { kind: "none" };
 }

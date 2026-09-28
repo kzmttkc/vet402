@@ -3,7 +3,7 @@ import { authorizeApiRequest, refundRateLimitUnits, withRateLimitHeaders } from 
 import { isValidAddress } from "@/lib/chain/client";
 import { persistPayeeScoreResult } from "@/lib/db/persistence";
 import { scorePayeeWallet } from "@/lib/scoring/payee-engine";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 type RouteContext = { params: Promise<{ address: string }> };
 
@@ -38,11 +38,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
     // queries must land in trust_events so external API-key usage of the
     // buyer-side endpoint stays measurable (it gates feature C's go/no-go).
     void persistPayeeScoreResult(auth.ctx.apiKeyId, result).catch((error) =>
-      logServerError("persist_payee_score", error),
+      logServerErrorSafe("persist_payee_score", error),
     );
     return withRateLimitHeaders(NextResponse.json(result), auth.ctx.rateLimit);
   } catch (error) {
-    logServerError("score_payee", error);
+    logServerErrorSafe("score_payee", error);
     // 2026-08-15 (audit): see agents/[agentId]/score for rationale.
     void refundRateLimitUnits(auth.ctx, 1);
     return NextResponse.json({ error: "scoring_unavailable" }, { status: 503 });

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { applyRateLimit, authenticateApiRequest, withRateLimitHeaders } from "@/lib/api/guard";
 import { isValidAddress, parseAgentId } from "@/lib/chain/client";
 import { MAX_WATCHLIST_PER_KEY, addWatch, listWatchlist } from "@/lib/watchlist";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // N-15 — GET lists this key's watches; POST adds one. Verdict changes arrive
 // via the `watch.verdict_changed` webhook (register one at /api/v1/webhooks).
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   try {
     return NextResponse.json({ watchlist: await listWatchlist(auth.ctx.apiKeyId) });
   } catch (error) {
-    logServerError("watchlist_list", error);
+    logServerErrorSafe("watchlist_list", error);
     return NextResponse.json({ error: "watchlist_unavailable" }, { status: 503 });
   }
 }
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     }
     return withRateLimitHeaders(NextResponse.json({ ok: true, id: result.id }, { status: 201 }), limited.rateLimit);
   } catch (error) {
-    logServerError("watchlist_add", error);
+    logServerErrorSafe("watchlist_add", error);
     return NextResponse.json({ error: "watchlist_unavailable" }, { status: 503 });
   }
 }

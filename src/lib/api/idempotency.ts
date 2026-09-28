@@ -15,7 +15,7 @@
 import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 const memory = new Map<string, { body: unknown; expiresAt: number }>();
 
@@ -53,7 +53,7 @@ export async function getIdempotentResponse(keyHash: string): Promise<unknown | 
     const rows = rowsOf(raw);
     return rows.length > 0 ? rows[0].body : null;
   } catch (error) {
-    logServerError("idempotency.get", error);
+    logServerErrorSafe("idempotency.get", error);
     return null;
   }
 }
@@ -78,6 +78,6 @@ export async function saveIdempotentResponse(keyHash: string, body: unknown, ttl
       ON CONFLICT (key_hash) DO NOTHING
     `);
   } catch (error) {
-    logServerError("idempotency.save", error);
+    logServerErrorSafe("idempotency.save", error);
   }
 }

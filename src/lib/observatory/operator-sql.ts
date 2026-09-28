@@ -12,7 +12,7 @@
 // SQL を作る役だけをこの薄い層へ分ける。
 // ============================================================
 import { sql, type SQL } from "drizzle-orm";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { operatorPayToDenylist } from "./operator";
 
 /** SQL へ素で差し込む別名。呼び手は自分のコードの定数しか渡さないが、形は機械で縛る。 */
@@ -40,7 +40,7 @@ let warnedEmptyDenylist = false;
 function warnIfDenylistEmpty(): void {
   if (warnedEmptyDenylist) return;
   warnedEmptyDenylist = true;
-  logServerError(
+  logServerErrorSafe(
     "observatory.operator_denylist_empty",
     new Error(
       "VET402_OPERATOR_PAYTO is unset or empty, so the public read path excludes no operator endpoint. " +

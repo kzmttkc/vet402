@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
 import { acquireLease } from "@/lib/cron/lease";
 import { runSettlementVerification } from "@/lib/observatory/settlement-verifier";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // vet402 Observatory — 決済主張のオンチェーン照合（2026-08-23 監査 C-4）。
 //
@@ -38,12 +38,12 @@ export async function GET(request: NextRequest) {
     // ここなので、公開台帳が settle_claimed で凍結したまま誰も気づかない。**非 200 で鳴らす。**
     // 件数は本文に入れる（ALERTS の抜粋に数字が乗る）。
     if (summary.rowErrors > 0) {
-      logServerError("cron.verify_settlements", `${summary.rowErrors} row(s) failed; see settlement-verifier.row for each reason`);
+      logServerErrorSafe("cron.verify_settlements", `${summary.rowErrors} row(s) failed; see settlement-verifier.row for each reason`);
       return NextResponse.json({ ok: false, error: "row_errors", ...summary }, { status: 500 });
     }
     return NextResponse.json({ ok: true, ...summary });
   } catch (error) {
-    logServerError("cron.verify_settlements", error);
+    logServerErrorSafe("cron.verify_settlements", error);
     return NextResponse.json({ ok: false, error: "verify_failed" }, { status: 500 });
   } finally {
     await lease.release();

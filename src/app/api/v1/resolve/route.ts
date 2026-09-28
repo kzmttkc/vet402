@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { publicRateLimit } from "@/lib/api/public-route";
 import { resolve } from "@/lib/resolve/lookup";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // §7.3 / §9.1: GET /api/v1/resolve?q={url|domain|address|tx|payee_id}
 // キー不要。ID を持たない呼び手が「この URL / この受取先 / この tx は何か」を
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.json(result, { headers: gate.cacheHeaders });
   } catch (error) {
-    logServerError("resolve", error);
+    logServerErrorSafe("resolve", error);
     return NextResponse.json({ error: "resolve_unavailable" }, { status: 503, headers: gate.headers });
   }
 }

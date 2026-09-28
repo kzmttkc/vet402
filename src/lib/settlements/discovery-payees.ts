@@ -17,7 +17,7 @@ import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { fetchFullCatalog } from "@/lib/observatory/catalog-source";
 import { toCaip2 } from "@/lib/observatory/chains";
 import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 export const PAYAI_DISCOVERY_URL = "https://facilitator.payai.network/discovery/resources";
 export const DISCOVERY_PAYEE_SOURCE_PAYAI = "payai_facilitator";
@@ -123,7 +123,7 @@ export async function refreshSolanaDiscoveryPayees(): Promise<DiscoveryRefreshSu
     if (isMissingSchemaError(error)) {
       return { source: DISCOVERY_PAYEE_SOURCE_PAYAI, payees: 0, complete: false, totalCount: 0, skipped: "table_missing" };
     }
-    logServerError("settlements.discovery-payees", error);
+    logServerErrorSafe("settlements.discovery-payees", error);
     throw error;
   }
 }

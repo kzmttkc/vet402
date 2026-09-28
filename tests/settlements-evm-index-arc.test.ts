@@ -99,7 +99,7 @@ test("indexEvmChain reports lag in the summary (lagBlocks set, partial true) —
   const src = readFileSync(join(process.cwd(), "src", "lib", "settlements", "index-evm.ts"), "utf8");
   assert.match(src, /const lag = evmIndexLag\(chain, safeTip, nextCheckpoint\)/);
   assert.match(src, /summary\.lagBlocks = String\(lag\)/);
-  assert.match(src, /summary\.partial = true;\s*\n\s*logServerError\("settlements\.index_evm\.lag"/);
+  assert.match(src, /summary\.partial = true;\s*\n\s*logServerErrorSafe\("settlements\.index_evm\.lag"/);
 });
 
 test("Arc is indexable only when ARC_RPC_URL is set (unset → skipped quietly, like Polygon)", () => {

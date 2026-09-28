@@ -7,7 +7,7 @@ import {
 } from "@/lib/api/ip-rate-limit";
 import { getCoverageShare, getObservatoryStats, getObservatoryStatsByChain } from "@/lib/observatory/reader";
 import { isSpendingHalted } from "@/lib/observatory/kill-switch";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * GET /api/v1/observatory/state — "State of x402", as data.
@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
       },
     );
   } catch (error) {
-    logServerError("observatory_state", error);
+    logServerErrorSafe("observatory_state", error);
     return NextResponse.json(
       { error: "observatory_unavailable" },
       { status: 503, headers: perCaller },

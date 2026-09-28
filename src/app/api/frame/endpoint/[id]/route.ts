@@ -3,7 +3,7 @@ import { getClientIp } from "@/lib/api/client-ip";
 import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
 import { getEndpointPurchases } from "@/lib/observatory/reader";
 import { SITE_URL } from "@/lib/site-url";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * GET /api/frame/endpoint/{id} — Farcaster Frame（vNext）で1エンドポイントの
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest, ctx: { params: Promise<{ id: str
       },
     });
   } catch (error) {
-    logServerError("frame_endpoint", error);
+    logServerErrorSafe("frame_endpoint", error);
     return NextResponse.json({ error: "frame_unavailable" }, { status: 503 });
   }
 }

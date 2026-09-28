@@ -10,7 +10,7 @@ import {
   getDailyMetricsHistory,
   metricsRollupLookbackDays,
 } from "@/lib/observatory/metrics-rollup";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * GET /api/v1/observatory/history?days=30 — 日次メトリクス履歴、データとして。
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
       },
     );
   } catch (error) {
-    logServerError("observatory_history", error);
+    logServerErrorSafe("observatory_history", error);
     return NextResponse.json(
       { error: "observatory_unavailable" },
       { status: 503, headers: perCaller },

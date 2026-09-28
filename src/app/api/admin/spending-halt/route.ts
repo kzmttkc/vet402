@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { consumeIpRateLimit, getClientIp, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
 import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { readSpendingHaltState, setSpendingHalt } from "@/lib/observatory/kill-switch";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { secureCompare } from "@/lib/util/secure-compare";
 
 /**
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
   try {
     return NextResponse.json(await readSpendingHaltState());
   } catch (error) {
-    logServerError("admin.spending_halt.read", error);
+    logServerErrorSafe("admin.spending_halt.read", error);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (isMissingSchemaError(error)) {
       // 表がまだ無い＝止められない。黙って 200 を返さず、次の 1 手を書いて返す。
-      logServerError("admin.spending_halt.schema_missing", error);
+      logServerErrorSafe("admin.spending_halt.schema_missing", error);
       return NextResponse.json(
         {
           error: "flag_table_absent",
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
         { status: 503 },
       );
     }
-    logServerError("admin.spending_halt.write", error);
+    logServerErrorSafe("admin.spending_halt.write", error);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }

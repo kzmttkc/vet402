@@ -11,7 +11,7 @@ import { fetchAccuracyRows, fetchBenchmarkRows } from "@/lib/db/outcome-reader";
 import { computeL0Accuracy, fetchL0AccuracyInput, fetchSloSnapshot } from "@/lib/scoring/l0-accuracy";
 import { getCoverageWeekly } from "@/lib/observatory/coverage-report";
 import { SITE_URL } from "@/lib/site-url";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * GET /api/v1/accuracy — public, unauthenticated accuracy report.
@@ -180,7 +180,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    logServerError("accuracy_report", error);
+    logServerErrorSafe("accuracy_report", error);
     return NextResponse.json(
       { error: "accuracy_unavailable" },
       // Not CDN-cached, so the per-caller numbers are still the caller's own.

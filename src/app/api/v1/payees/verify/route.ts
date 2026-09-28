@@ -6,7 +6,7 @@ import { getDb } from "@/lib/db/client";
 import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { writePayeeVerification } from "@/lib/db/verify-writers";
 import { isValidAddress } from "@/lib/chain/client";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 // 2026-08-14: isCanonicalName/NAME_MAX_LENGTH moved to @/lib/validation and
 // payeeMessage to @/lib/verify-message so this route file no longer exports a
 // shared helper (Next 16 route-type contract — a route may only export handlers).
@@ -204,7 +204,7 @@ export async function POST(request: NextRequest) {
     if (isMissingSchemaError(error)) {
       return NextResponse.json({ error: "store_unavailable" }, { status: 503 });
     }
-    logServerError("payee_verify", error);
+    logServerErrorSafe("payee_verify", error);
     return NextResponse.json({ error: "store_unavailable" }, { status: 503 });
   }
 }

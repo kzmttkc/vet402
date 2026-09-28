@@ -7,7 +7,7 @@ import {
   utcDayString,
 } from "@/lib/observatory/metrics-rollup";
 import { anchorThrough } from "@/lib/observatory/anchors";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // Phase 1.1 — 日次メトリクスのロールアップ。
 //
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     const anchors = await anchorThrough(shiftDay(today, -1));
     for (const anchor of anchors) {
       if (anchor.status === "conflict_frozen") {
-        logServerError(
+        logServerErrorSafe(
           "cron.metrics-rollup.anchor",
           new Error(`ledger anchor conflict on ${anchor.day}: recomputed root differs from anchored root`),
         );
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
       backfilled: anchors.length - 1,
     });
   } catch (error) {
-    logServerError("cron.metrics-rollup", error);
+    logServerErrorSafe("cron.metrics-rollup", error);
     return NextResponse.json({ ok: false, error: "rollup_failed" }, { status: 500 });
   }
 }

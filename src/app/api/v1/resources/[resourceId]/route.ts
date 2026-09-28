@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { publicRateLimit, PUBLIC_DISCLAIMER } from "@/lib/api/public-route";
 import { SHA256_HEX_RE } from "@/lib/ids/canonical";
 import { getResource, payeesByEndpoint } from "@/lib/resolve/lookup";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // §9.1: GET /api/v1/resources/{resource_id} — Resource（§5 sha256）の参照。
 export const dynamic = "force-dynamic";
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       { headers: gate.cacheHeaders },
     );
   } catch (error) {
-    logServerError("resources.get", error);
+    logServerErrorSafe("resources.get", error);
     return NextResponse.json({ error: "unavailable" }, { status: 503, headers: gate.headers });
   }
 }

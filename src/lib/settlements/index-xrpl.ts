@@ -19,7 +19,7 @@ import { getIndexerCheckpoint, setIndexerCheckpoint } from "@/lib/db/owner-index
 import { payeeId as toPartyId } from "@/lib/ids/canonical";
 import { RLUSD_CURRENCY_HEX, RLUSD_ISSUER, XRPL_MAINNET_CAIP2, createXrplJsonRpc, isRlusdAsset, rlusdToUnitsFloor } from "@/lib/observatory/xrpl402-payer";
 import { rippleTimeToDate } from "@/lib/observatory/settlement-verify-xrpl";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { resolveEndpointForSettlement } from "./ingest-payments";
 import { selectPayeesForRun } from "./index-solana";
 import { loadWashClassifier, type WashClassifier } from "./context";
@@ -198,7 +198,7 @@ export async function runXrplIndex(
         break;
       }
       if (!complete) {
-        logServerError("settlements.index-xrpl.page_cap", new Error(`payee ${payee}: more than ${XRPL_MAX_PAGES_PER_PAYEE * XRPL_PAGE_LIMIT} transactions in one run; the rest continues next run`));
+        logServerErrorSafe("settlements.index-xrpl.page_cap", new Error(`payee ${payee}: more than ${XRPL_MAX_PAGES_PER_PAYEE * XRPL_PAGE_LIMIT} transactions in one run; the rest continues next run`));
       }
       // 完走した受取先はそのまま前進。ページ上限で打ち切った受取先は、最後に見た ledger の **1 つ手前** まで
       // （同じ ledger の残りを次回読み直す。upsert は冪等）。手前がチェックポイント以下なら進めない
@@ -206,7 +206,7 @@ export async function runXrplIndex(
       await deps.setCheckpoint(scope, { lastLedger: checkpointAfterRun({ complete, maxLedger, previous: cp.lastLedger }) });
     } catch (error) {
       summary.errors++;
-      logServerError(`settlements.index-xrpl payee=${payee}`, error);
+      logServerErrorSafe(`settlements.index-xrpl payee=${payee}`, error);
     }
   }
   return summary;

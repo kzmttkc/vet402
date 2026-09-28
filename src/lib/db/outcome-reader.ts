@@ -2,7 +2,7 @@ import { and, desc, eq, gte, ne } from "drizzle-orm";
 import { getDb } from "./client";
 import { isMissingSchemaError } from "./pg-errors";
 import { trustEvents, verdictOutcomes } from "./schema";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import type { AccuracyRow } from "@/lib/scoring/accuracy";
 import type { BenchmarkRow } from "@/lib/scoring/benchmark-report";
 import { OPERATOR_BENCHMARK_SOURCE } from "@/lib/benchmark/dataset";
@@ -59,7 +59,7 @@ export async function fetchAccuracyRows(windowDays = 90): Promise<AccuracyRow[]>
       // Table not migrated yet — the page's empty state covers this.
       return [];
     }
-    logServerError("accuracy_rows_fetch", error);
+    logServerErrorSafe("accuracy_rows_fetch", error);
     return [];
   }
 }
@@ -100,7 +100,7 @@ export async function fetchBenchmarkRows(windowDays = 90): Promise<BenchmarkRow[
     return rows;
   } catch (error) {
     if (isMissingSchemaError(error)) return [];
-    logServerError("benchmark_rows_fetch", error);
+    logServerErrorSafe("benchmark_rows_fetch", error);
     return [];
   }
 }

@@ -29,7 +29,7 @@ import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { disputes, x402Endpoints, x402L0Probes } from "@/lib/db/schema";
 import { isValidIssuedAt, matchSignatureForm, SIGNING_DOMAIN } from "@/lib/verify-message";
-import { logAndSwallow } from "@/lib/util/log";
+import { logAndSwallowSafe } from "@/lib/util/log-safe";
 import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { probeEndpoint, type ProbeOptions } from "./l0-probe";
 import { UUID_RE } from "@/lib/validation/uuid";
@@ -255,7 +255,7 @@ export async function submitDispute(
         after: { publishedVerdict: after, failReason: probe.failReason },
         reason: "dispute_remeasure",
         disputeId: row.id,
-      }).catch(logAndSwallow("disputes.record_correction"));
+      }).catch(logAndSwallowSafe("disputes.record_correction"));
     }
   } catch {
     /* dispute stands; remeasure can be retried by ops */

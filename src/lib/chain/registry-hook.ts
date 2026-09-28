@@ -36,7 +36,7 @@ import {
   type PublishOutcome,
 } from "./registry";
 import { loadCoverageTier, parseRegistryWriteTiers, type CoverageTier } from "@/lib/observatory/coverage";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { payeeId, purchaseId } from "@/lib/ids/canonical";
 
 /** 正典は registry.ts（publishValidation の同一文ゲートが同じ値を読む）。 */
@@ -162,7 +162,7 @@ async function publishOutcome(
   const max = registryDailyMaxWrites();
   const count = await deps.countWritesToday();
   if (count >= max) {
-    logServerError("registry.hook.daily_cap", `writes_today=${count} max=${max} endpoint=${input.endpointId}`);
+    logServerErrorSafe("registry.hook.daily_cap", `writes_today=${count} max=${max} endpoint=${input.endpointId}`);
     return { status: "daily_cap", count, max };
   }
 
@@ -174,7 +174,7 @@ async function publishOutcome(
   const minWei = envBigint("REGISTRY_MIN_BALANCE_WEI", DEFAULT_REGISTRY_MIN_BALANCE_WEI);
   const balanceWei = await deps.chain.getBalance(walletClient.account.address);
   if (balanceWei < minWei) {
-    logServerError(
+    logServerErrorSafe(
       "registry.hook.balance_low",
       `operator=${walletClient.account.address} balance_wei=${balanceWei} min_wei=${minWei} — fund the REGISTRY_OPERATOR key or lower REGISTRY_MIN_BALANCE_WEI`,
     );
@@ -198,10 +198,10 @@ async function publishOutcome(
     waitForReceipt: deps.chain.waitForReceipt,
   });
   if (out.status === "gas_over_cap") {
-    logServerError("registry.hook.gas_over_cap", `max_fee_gwei=${out.maxFeeGwei} endpoint=${input.endpointId}`);
+    logServerErrorSafe("registry.hook.gas_over_cap", `max_fee_gwei=${out.maxFeeGwei} endpoint=${input.endpointId}`);
   }
   if (out.status === "daily_cap") {
-    logServerError("registry.hook.daily_cap", `writes_today=${out.count} max=${out.max} endpoint=${input.endpointId}`);
+    logServerErrorSafe("registry.hook.daily_cap", `writes_today=${out.count} max=${out.max} endpoint=${input.endpointId}`);
   }
   return out;
 }
@@ -238,7 +238,7 @@ export function fireL1RegistryHook(input: L1OutcomeInput): Promise<void> {
   return publishL1OutcomeToRegistry(input).then(
     () => undefined,
     (error) => {
-      logServerError("registry.hook", error);
+      logServerErrorSafe("registry.hook", error);
     },
   );
 }
@@ -267,7 +267,7 @@ export function fireL2RegistryHook(input: L2OutcomeInput): Promise<void> {
   return publishL2OutcomeToRegistry(input).then(
     () => undefined,
     (error) => {
-      logServerError("registry.hook.l2", error);
+      logServerErrorSafe("registry.hook.l2", error);
     },
   );
 }

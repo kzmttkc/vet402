@@ -11,8 +11,8 @@
 import { unstable_cache } from "next/cache";
 import { getDb } from "@/lib/db/client";
 import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
-import type { SellerBoard, SellerDetail } from "./board";
-import { readSellerBoard, readSellerDetail } from "./reader";
+import type { SellerBoard, SellerDetail, SellerOtherChains } from "./board";
+import { readPurchasedHosts, readSellerBoard, readSellerDetail, readSellerOtherChains } from "./reader";
 
 export class SellersUnavailable extends Error {}
 
@@ -33,5 +33,26 @@ export const getSellerDetailCached: (host: string) => Promise<SellerDetail | nul
     return readSellerDetail(db, host);
   },
   ["sellers:detail:v1"],
+  { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
+);
+
+/** 購入行のある host の集合（Base の出品が無い売り手の頁の関門・1 本でキャッシュ）。 */
+export const getPurchasedHostsCached: () => Promise<string[]> = unstable_cache(
+  async () => {
+    const db = getDb();
+    if (!db) throw new SellersUnavailable("database not configured");
+    return readPurchasedHosts(db);
+  },
+  ["sellers:purchased-hosts:v1"],
+  { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
+);
+
+export const getSellerOtherChainsCached: (host: string) => Promise<SellerOtherChains | null> = unstable_cache(
+  async (host: string) => {
+    const db = getDb();
+    if (!db) throw new SellersUnavailable("database not configured");
+    return readSellerOtherChains(db, host);
+  },
+  ["sellers:other-chains:v1"],
   { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
 );

@@ -3,7 +3,7 @@ import { assertProductionConfig } from "@/lib/config/env";
 import { secureCompare } from "@/lib/util/secure-compare";
 import { consumeIpRateLimit, getClientIp } from "@/lib/api/ip-rate-limit";
 import { buildGate2Report, Gate2NotConfiguredError, Gate2SchemaMissingError } from "@/lib/gate2/report";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * Admin-only Gate2 PMF report, computed inside the running production
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     // its own fields, so a stack-printed object can put fragments of the
     // connection string into logs. logServerError prints the message only —
     // the same discipline every sibling route already follows.
-    logServerError("gate2_admin", error);
+    logServerErrorSafe("gate2_admin", error);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }

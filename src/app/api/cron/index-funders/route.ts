@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { indexFunderWallets } from "@/lib/indexer/funder-indexer";
 
 export const maxDuration = 300;
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
-    logServerError("cron.index-funders", error);
+    logServerErrorSafe("cron.index-funders", error);
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : String(error) },
       { status: 500 },

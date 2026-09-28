@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { publicRateLimit } from "@/lib/api/public-route";
 import { getCensusSummary, type CensusWindow } from "@/lib/settlements/census";
 import { toCaip2 } from "@/lib/observatory/chains";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // §9.1: GET /api/v1/census/summary?chain=&window=7d|30d
 // 生値（raw）と実需（real = wash/test 除外）を同じ応答で両方返す。混ぜない（§7.2）。
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     const summary = await getCensusSummary(chain, windowRaw as CensusWindow);
     return NextResponse.json(summary, { headers: { ...gate.cacheHeaders, "Cache-Control": "public, max-age=300, s-maxage=300, stale-while-revalidate=900" } });
   } catch (error) {
-    logServerError("census.summary", error);
+    logServerErrorSafe("census.summary", error);
     return NextResponse.json({ error: "unavailable" }, { status: 503, headers: gate.headers });
   }
 }

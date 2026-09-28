@@ -5,7 +5,7 @@ import { getPublicClient } from "./client";
 import { WALLET_METRICS_CACHE_TTL_MS } from "./config";
 import { fetchAddressTransactionCount, fetchWalletHistoryHead } from "./blockscout";
 import { alchemyBudgetMs, fetchAlchemyHistoryHead, isAlchemyEnabled } from "./alchemy";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 export type WalletMetrics = {
   address: Address;
@@ -218,7 +218,7 @@ async function readHistoryHead(address: Address, chainId?: number): Promise<Hist
         };
       }
     } catch (error) {
-      logServerError("wallet_metrics_alchemy", error);
+      logServerErrorSafe("wallet_metrics_alchemy", error);
     }
   }
   return readBlockscoutHistoryHead(address, chainId);

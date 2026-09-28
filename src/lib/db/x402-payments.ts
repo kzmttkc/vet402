@@ -3,7 +3,7 @@ import { getDb } from "./client";
 import { isMissingSchemaError } from "./pg-errors";
 import { BASE_USDC_ADDRESS } from "@/lib/chain/config";
 import { funderWallets, x402Payments } from "./schema";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * vet402 2026-08-13 (score-manipulation ruling, hole 2). A payer's own
@@ -179,7 +179,7 @@ export async function recordX402Payment(
   } catch (error) {
     if (!isMissingSchemaError(error)) throw error;
 
-    logServerError(
+    logServerErrorSafe(
       "x402_payment_verification_columns_missing",
       new Error(
         "onchain_amount/token/amount_verified not migrated yet; inserted without them",
@@ -194,7 +194,7 @@ export async function recordX402Payment(
     } catch (retryError) {
       if (!isMissingSchemaError(retryError)) throw retryError;
 
-      logServerError(
+      logServerErrorSafe(
         "x402_payment_payee_column_missing",
         new Error("payee column not migrated yet; inserted without it"),
       );
@@ -288,7 +288,7 @@ export async function getX402PaymentStats(wallet: string): Promise<X402PaymentSt
     // migration lag. Degrade to "no eligible history" (a neutral x402 signal)
     // instead, mirroring getPayeeStats and recordX402Payment's own tolerance.
     if (!isMissingSchemaError(error)) throw error;
-    logServerError(
+    logServerErrorSafe(
       "x402_stats_column_missing",
       new Error("block_timestamp/ownership_verified not migrated yet; reading as no eligible history"),
     );
@@ -411,7 +411,7 @@ async function keepIndependentlyFundedRecipients<
     // 既に効いているので読み取り自体は落とさないが、**独立を証明できた行は0**
     // として返し、件数で開示する。
     if (!isMissingSchemaError(error)) {
-      logServerError("x402_independent_recipients", error);
+      logServerErrorSafe("x402_independent_recipients", error);
     }
     // 索引が読めなかった。SQL側の自己送金・ダスト除外は既に効いているので観測は
     // 残すが、独立は1件も証明できていないと開示する。
@@ -510,7 +510,7 @@ export async function getPayeeStats(payee: string): Promise<PayeeStats> {
     };
   } catch (error) {
     if (!isMissingSchemaError(error)) throw error;
-    logServerError(
+    logServerErrorSafe(
       "payee_stats_column_missing",
       new Error("payee column not migrated yet; returning empty stats"),
     );
@@ -576,7 +576,7 @@ async function countDistinctFunders(
     // 独立の証拠ではない。判明0・全員不明として返し、呼び手に開示させる
     // （payee 読み取り自体は落とさない——degrade はするが嘘はつかない）。
     if (!isMissingSchemaError(error)) {
-      logServerError("payee_distinct_funders", error);
+      logServerErrorSafe("payee_distinct_funders", error);
     }
     return { knownFunders: 0, unknownPayers: distinctPayers };
   }

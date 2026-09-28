@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getClientIp } from "@/lib/api/client-ip";
 import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
 import { submitContribution } from "@/lib/observatory/contributions";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * POST /api/v1/observatory/contributions — 外部L0観測の受け取り（Phase 3.3 v0）。
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
       { status: 201, headers: perCaller },
     );
   } catch (error) {
-    logServerError("contributions", error);
+    logServerErrorSafe("contributions", error);
     return NextResponse.json({ error: "contributions_unavailable" }, { status: 503, headers: perCaller });
   }
 }

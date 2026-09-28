@@ -6,7 +6,7 @@ import {
   sharedCacheRateLimitHeaders,
 } from "@/lib/api/ip-rate-limit";
 import { computeConcentration } from "@/lib/observatory/concentration";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * GET /api/v1/observatory/concentration — 受取構造の集計（名指しゼロ）。
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
       { headers: { ...shared, "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=7200" } },
     );
   } catch (error) {
-    logServerError("observatory_concentration", error);
+    logServerErrorSafe("observatory_concentration", error);
     return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
   }
 }

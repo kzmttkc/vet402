@@ -21,7 +21,7 @@ import {
   legacyAgentPassportMessage,
   matchSignatureForm,
 } from "@/lib/verify-message";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // A-10 — agent passport self-verification, the symmetric twin of N-16
 // (verified payees). Where a payee signs with a receiving wallet, an agent
@@ -241,7 +241,7 @@ export async function POST(request: NextRequest) {
     if (isMissingSchemaError(error)) {
       return NextResponse.json({ error: "store_unavailable" }, { status: 503, headers: rlHeaders });
     }
-    logServerError("agent_passport_verify", error);
+    logServerErrorSafe("agent_passport_verify", error);
     return NextResponse.json({ error: "store_unavailable" }, { status: 503, headers: rlHeaders });
   }
 }

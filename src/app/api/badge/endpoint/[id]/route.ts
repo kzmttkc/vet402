@@ -3,7 +3,7 @@ import { getClientIp } from "@/lib/api/client-ip";
 import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
 import { endpointReceiptBadge, renderReceiptBadgeSvg } from "@/lib/badge/receipt-badge";
 import { getEndpointPurchases } from "@/lib/observatory/reader";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { UUID_RE } from "@/lib/validation/uuid";
 
 /**
@@ -101,7 +101,7 @@ export async function GET(
       "public, s-maxage=600, stale-while-revalidate=1200",
     );
   } catch (error) {
-    logServerError("badge_endpoint", error);
+    logServerErrorSafe("badge_endpoint", error);
     const badge = endpointReceiptBadge({ attemptCount: 0, settledCount: 0 });
     return svgResponse(renderReceiptBadgeSvg(badge), "public, max-age=60");
   }

@@ -8,7 +8,7 @@ import { EXPORT_CSV_COLUMNS } from "@/lib/observatory/export-columns";
 import { requestBodySha256Sql, requestBodyKindSql } from "@/lib/observatory/request-body";
 import { requestQuerySha256Sql, requestQueryKindSql } from "@/lib/observatory/request-query";
 import { settlementSourceSql } from "@/lib/observatory/settlement-source";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * GET /api/v1/observatory/export.csv?days=90 — 購入台帳のCSVエクスポート
@@ -125,7 +125,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    logServerError("observatory_export", error);
+    logServerErrorSafe("observatory_export", error);
     return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
   }
 }

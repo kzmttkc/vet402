@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { publicRateLimit, PUBLIC_DISCLAIMER } from "@/lib/api/public-route";
 import { listCorrections } from "@/lib/observatory/corrections";
 import { UUID_RE } from "@/lib/validation/uuid";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // §10: GET /api/v1/observatory/corrections?endpoint=<uuid>&limit=
 // 公開判定が後から変わった記録（before/after）。自社に不利な訂正も同じ表から出す。
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
       { headers: gate.cacheHeaders },
     );
   } catch (error) {
-    logServerError("corrections.list", error);
+    logServerErrorSafe("corrections.list", error);
     return NextResponse.json({ error: "unavailable" }, { status: 503, headers: gate.headers });
   }
 }

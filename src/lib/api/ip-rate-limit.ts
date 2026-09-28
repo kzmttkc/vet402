@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { isProduction } from "@/lib/config/env";
 import { getDb } from "@/lib/db/client";
 import { ipRateLimits } from "@/lib/db/schema";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 type Bucket = { count: number; resetAt: number };
 
@@ -149,7 +149,7 @@ export async function refundIpRateLimit(key: string): Promise<void> {
         WHERE bucket_key = ${key} AND reset_at > ${new Date().toISOString()}
       `);
     } catch (error) {
-      logServerError("ip_rate_limit.refund", error);
+      logServerErrorSafe("ip_rate_limit.refund", error);
     }
     return;
   }

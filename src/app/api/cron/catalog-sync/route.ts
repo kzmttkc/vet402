@@ -4,7 +4,7 @@ import { syncCatalog } from "@/lib/observatory/catalog-sync";
 import { notifyDelistedEvents } from "@/lib/observatory/notify";
 import { syncMppDirectory } from "@/lib/observatory/mpp-directory";
 import { refreshSolanaDiscoveryPayees } from "@/lib/settlements/discovery-payees";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // vet402 Observatory L0 — daily Bazaar catalog ingestion + delisting diff.
 // ~150 paged requests against the public CDP discovery API, then chunked
@@ -25,14 +25,14 @@ export async function GET(request: NextRequest) {
     try {
       notify = await notifyDelistedEvents();
     } catch (error) {
-      logServerError("cron.catalog-sync.notify", error);
+      logServerErrorSafe("cron.catalog-sync.notify", error);
     }
     // 決済索引の受取人（カタログの外・PayAI の公開 discovery）。失敗しても同期は成功のまま返す。
     let discoveryPayees: unknown = null;
     try {
       discoveryPayees = await refreshSolanaDiscoveryPayees();
     } catch (error) {
-      logServerError("cron.catalog-sync.discovery-payees", error);
+      logServerErrorSafe("cron.catalog-sync.discovery-payees", error);
       discoveryPayees = { error: "discovery_payees_failed" };
     }
     // Tempo の MPP directory（source = mpp_directory・2026-09-17）。1 回の fetch・別 snapshot。
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
       const m = await syncMppDirectory();
       mppDirectory = { totalCount: m.totalCount, fetchedCount: m.fetchedCount, complete: m.complete, upserted: m.upserted, skipped: m.skipped, delisted: m.events.filter((e) => e.eventType === "delisted").length };
     } catch (error) {
-      logServerError("cron.catalog-sync.mpp-directory", error);
+      logServerErrorSafe("cron.catalog-sync.mpp-directory", error);
       mppDirectory = { error: "mpp_directory_failed" };
     }
     return NextResponse.json({
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    logServerError("cron.catalog-sync", error);
+    logServerErrorSafe("cron.catalog-sync", error);
     return NextResponse.json({ ok: false, error: "sync_failed" }, { status: 500 });
   }
 }

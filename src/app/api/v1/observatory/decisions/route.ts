@@ -7,7 +7,7 @@ import {
 } from "@/lib/api/ip-rate-limit";
 import { getDecisionFeed } from "@/lib/observatory/decisions";
 import { computeSpendGuardBacktest } from "@/lib/observatory/backtest";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * GET /api/v1/observatory/decisions?days=30 — 実資金の判定フィード。
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
       { headers: { ...shared, "Cache-Control": "public, s-maxage=900, stale-while-revalidate=1800" } },
     );
   } catch (error) {
-    logServerError("observatory_decisions", error);
+    logServerErrorSafe("observatory_decisions", error);
     return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
   }
 }

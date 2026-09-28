@@ -7,7 +7,7 @@ import {
   confirmSubscription,
 } from "@/lib/observatory/record-subscriptions";
 import { readTokenBody } from "@/lib/observatory/subscription-token-body";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * POST /api/v1/observatory/subscriptions/confirm — ダブルオプトインの確定（2026-09-28 監査）。
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ ok: true, status: "confirmed" }, { status: 200, headers: perCaller });
   } catch (error) {
-    logServerError("record-subscription.confirm", error);
+    logServerErrorSafe("record-subscription.confirm", error);
     return NextResponse.json({ error: "subscribe_unavailable" }, { status: 503, headers: perCaller });
   }
 }

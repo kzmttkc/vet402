@@ -4,6 +4,8 @@
 // 1 回の頁の描画で走る問い合わせは軽いものに限る（鍵なしの公開面・Vercel に支出上限を置いていない）:
 //   readSellerBoard   2 本。本番 READ ONLY の EXPLAIN ANALYZE（2026-09-28）で 37 ms と 88 ms。
 //   readSellerDetail  2 本。1 ホストの出品と、その購入行（出品ごとに新しい 5 行まで）。
+//   readPurchasedHosts      1 本。購入行のある host の集合（Base の出品が無い host を 404 にしないための関門）。
+//   readSellerOtherChains   1 本。1 ホストの出品ごとの最新の購入行（チェーンを問わない）。
 // 頁はさらに cached.ts（Data Cache・PUBLIC_READ_REVALIDATE 秒）を通して読む。
 // ============================================================
 import { sql } from "drizzle-orm";
@@ -13,12 +15,14 @@ import { RETEST_SELLERS_SQL } from "@/lib/observatory/retest-sellers-sql";
 import {
   buildSellerBoard,
   buildSellerDetail,
+  buildSellerOtherChains,
   EARLIER_ROWS_SHOWN,
   type LatestRow,
   type RetestQueue,
   type SellerBoard,
   type SellerDetail,
   type SellerEndpointFacts,
+  type SellerOtherChains,
 } from "./board";
 import type { SellerRowFacts } from "./fix-modes";
 import { BASE_NETWORKS, sellerHostSql } from "./host";
@@ -163,4 +167,37 @@ export async function readSellerDetail(db: Db, host: string): Promise<SellerDeta
     ) t
     WHERE t.rn <= ${1 + EARLIER_ROWS_SHOWN}`);
   return buildSellerDetail(host, endpoints, rowsOf(rowsRaw).map(toRowFacts), fetchedAt);
+}
+
+/**
+ * 購入行が 1 つでもある host の集合（チェーン・出品の状態を問わない）。頁はこれをキャッシュして持ち、
+ * ここに無い host は host ごとの問い合わせを走らせずに 404 にする（でたらめな host に DB を読ませない）。
+ */
+export async function readPurchasedHosts(db: Db): Promise<string[]> {
+  const raw = await db.execute(sql`
+    SELECT DISTINCT ${HOST_SQL} AS host
+    FROM x402_endpoints e
+    WHERE EXISTS (SELECT 1 FROM x402_l1_purchases pu WHERE pu.endpoint_id = e.id)`);
+  return rowsOf(raw)
+    .map((r) => String(r.host))
+    .sort();
+}
+
+/**
+ * Base の出品が無い売り手の簡易頁（2026-09-29）。その host の出品ごとに最新の購入行を 1 行（チェーンを問わない）。
+ * 購入行が無ければ null。host は parseSellerHostParam を通した値。
+ */
+export async function readSellerOtherChains(db: Db, host: string): Promise<SellerOtherChains | null> {
+  const fetchedAt = new Date().toISOString();
+  const raw = await db.execute(sql`
+    SELECT DISTINCT ON (pu.endpoint_id) ${ROW_COLUMNS}, e.resource_key, e.network AS catalog_network
+    FROM x402_l1_purchases pu JOIN x402_endpoints e ON e.id = pu.endpoint_id
+    WHERE ${HOST_SQL} = ${host}
+    ORDER BY pu.endpoint_id, pu.attempted_at DESC, pu.id DESC`);
+  const rows = rowsOf(raw).map((r) => ({
+    resourceKey: String(r.resource_key),
+    catalogNetwork: str(r.catalog_network),
+    facts: toRowFacts(r),
+  }));
+  return buildSellerOtherChains(host, rows, fetchedAt);
 }

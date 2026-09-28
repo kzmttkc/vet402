@@ -5,10 +5,22 @@ import { breadcrumbJsonLd, pageMetadata, publisherOrg } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site-url";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
-import { markRebuyEligible, type SellerDetail } from "@/lib/sellers/board";
-import { getSellerBoardCached, getSellerDetailCached } from "@/lib/sellers/cached";
+import { resolveSellerPage, type SellerPageData } from "@/lib/sellers/board";
+import {
+  getPurchasedHostsCached,
+  getSellerBoardCached,
+  getSellerDetailCached,
+  getSellerOtherChainsCached,
+} from "@/lib/sellers/cached";
 import { parseSellerHostParam } from "@/lib/sellers/host";
-import { SellerDetailView, SellersNotice, sellerPageTitle, sellerPath } from "@/components/site/sellers/SellersViews";
+import {
+  SellerDetailView,
+  SellerOtherChainsView,
+  SellersNotice,
+  sellerOtherChainsTitle,
+  sellerPageTitle,
+  sellerPath,
+} from "@/components/site/sellers/SellersViews";
 import TrackView from "@/components/site/TrackView";
 
 /**
@@ -17,7 +29,19 @@ import TrackView from "@/components/site/TrackView";
  *
  * A host that is not on the cached board is a 404 before any per-host query runs, so random
  * hosts cost no database read. The per-host read is cached per host (cached.ts).
+ *
+ * 2026-09-29: a host with no active Base listing but with L1 purchase rows (e.g. bought on Arc)
+ * gets a short page linking each listing's record instead of a 404. The gate is the cached set of
+ * purchased hosts, so random hosts still cost no per-host read. That page is noindex: it repeats
+ * the record pages and is thin on its own.
  */
+
+const LOADERS = {
+  board: getSellerBoardCached,
+  detail: getSellerDetailCached,
+  purchasedHosts: getPurchasedHostsCached,
+  otherChains: getSellerOtherChainsCached,
+};
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +51,20 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { host: raw } = await params;
   const host = parseSellerHostParam(raw);
   if (!host) notFound();
+  // Base の一覧に居ない host は簡易頁（か 404）。一覧はキャッシュ済みなので読み直しは安い。
+  // 読めなければ従来の表題に倒す（頁本体が読み取り失敗を出す）。
+  const onBoard = await getSellerBoardCached()
+    .then((b) => b.sellers.some((x) => x.host === host))
+    .catch(() => true);
+  if (!onBoard) {
+    // Base の一覧と重複し、記録頁へ案内するだけの薄い頁なので noindex（2026-09-29）。
+    return pageMetadata({
+      title: sellerOtherChainsTitle(host),
+      description: `Listings of ${host} that vet402 bought over x402, each linked to its record page.`,
+      path: `/sellers/${host}`,
+      noindex: true,
+    });
+  }
   const meta = pageMetadata({
     title: `Is ${host} working? x402 purchase results on Base`,
     description: sellerDescription(host),
@@ -45,13 +83,9 @@ export default async function SellerPage({ params, searchParams }: Props) {
   const { host: raw } = await params;
   const host = parseSellerHostParam(raw);
   if (!host) notFound();
-  let detail: SellerDetail | null = null;
+  let data: SellerPageData;
   try {
-    const board = await getSellerBoardCached();
-    if (!board.sellers.some((s) => s.host === host)) notFound();
-    const fromBoard = board.sellers.find((s) => s.host === host);
-    const read = await getSellerDetailCached(host);
-    detail = read ? markRebuyEligible(read, fromBoard) : null;
+    data = await resolveSellerPage(host, LOADERS);
   } catch (error) {
     // notFound() は例外で抜けるので、そのまま投げ直す（読み取りの失敗とだけ区別する）。
     if (error && typeof error === "object" && "digest" in error) throw error;
@@ -61,7 +95,16 @@ export default async function SellerPage({ params, searchParams }: Props) {
       </main>
     );
   }
-  if (!detail) notFound();
+  if (data.kind === "none") notFound();
+  if (data.kind === "other_chains") {
+    return (
+      <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
+        <SellerOtherChainsView other={data.other} revalidateSec={PUBLIC_READ_REVALIDATE} />
+        <TrackView event="seller_page_view" props={{ host, kind: "other_chains" }} />
+      </main>
+    );
+  }
+  const detail = data.detail;
   const { page: rawPage } = await searchParams;
   const page = Math.max(1, Math.trunc(Number(rawPage ?? "1")) || 1);
   // 構造化データ（2026-09-28 SEO 監査）: WebPage と BreadcrumbList。出し方は他の公開頁と同じ

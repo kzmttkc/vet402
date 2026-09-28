@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateApiRequest } from "@/lib/api/guard";
 import { deleteWebhook } from "@/lib/webhooks";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /** DELETE /api/v1/webhooks/:id — remove an endpoint this key owns. */
 // 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
@@ -27,7 +27,7 @@ export async function DELETE(
     }
     return NextResponse.json({ ok: true });
   } catch (error) {
-    logServerError("webhooks_delete", error);
+    logServerErrorSafe("webhooks_delete", error);
     return NextResponse.json({ error: "webhooks_unavailable" }, { status: 503 });
   }
 }

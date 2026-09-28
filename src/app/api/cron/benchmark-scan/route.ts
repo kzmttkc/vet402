@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { benchmarkScanFailed, runBenchmarkScan } from "@/lib/benchmark/runner";
 
 /**
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     const failed = benchmarkScanFailed(result);
     return NextResponse.json({ ok: !failed, ...result }, { status: failed ? 500 : 200 });
   } catch (error) {
-    logServerError("cron.benchmark-scan", error);
+    logServerErrorSafe("cron.benchmark-scan", error);
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : String(error) },
       { status: 500 },

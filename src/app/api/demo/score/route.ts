@@ -7,7 +7,7 @@ import {
 } from "@/lib/api/ip-rate-limit";
 import { scoreAgentById } from "@/lib/scoring/engine";
 import { hasUnavailableInput } from "@/lib/scoring/verdict";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * GET /api/demo/score — the one unauthenticated score on the site.
@@ -174,7 +174,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    logServerError("demo_score", error);
+    logServerErrorSafe("demo_score", error);
     return NextResponse.json(
       // A `{ live: false }` body is the absence of a verdict, so it carries no
       // scoredAt/cacheExpiresAt to be stale about — but it still carries the

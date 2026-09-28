@@ -6,7 +6,7 @@ import { runDemoL0 } from "@/lib/demo/verify";
 import { isSpendingHalted } from "@/lib/observatory/kill-switch";
 import { publicL1Summary, runL1Batch } from "@/lib/observatory/l1-runner";
 import { getEndpointPurchases } from "@/lib/observatory/reader";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { UUID_RE } from "@/lib/validation/uuid";
 
 /**
@@ -170,7 +170,7 @@ export async function POST(request: NextRequest) {
         { headers: { ...perCaller, "Cache-Control": "no-store" } },
       );
     } catch (error) {
-      logServerError("demo_verify_l1", error);
+      logServerErrorSafe("demo_verify_l1", error);
       await refundIpRateLimit(demoBudgetKey);
       return NextResponse.json({ error: "demo_unavailable" }, { status: 503, headers: perCaller });
     } finally {
@@ -191,7 +191,7 @@ export async function POST(request: NextRequest) {
       headers: { ...perCaller, "Cache-Control": "no-store" },
     });
   } catch (error) {
-    logServerError("demo_verify", error);
+    logServerErrorSafe("demo_verify", error);
     return NextResponse.json({ error: "demo_unavailable" }, { status: 503, headers: perCaller });
   }
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
 import { runL0ProbeBatch } from "@/lib/observatory/probe-runner";
 import { drainVerificationRequests } from "@/lib/observatory/requests";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // vet402 Observatory L0 — no-purchase probe.
 //
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     const summary = await runL0ProbeBatch({ tier, limit, concurrency: 40 });
     return NextResponse.json({ ok: true, tier, limit, requests, ...summary });
   } catch (error) {
-    logServerError("cron.l0-probe", error);
+    logServerErrorSafe("cron.l0-probe", error);
     return NextResponse.json({ ok: false, error: "probe_failed" }, { status: 500 });
   }
 }

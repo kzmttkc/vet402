@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateApiRequest } from "@/lib/api/guard";
 import { removeWatch } from "@/lib/watchlist";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
 export const dynamic = "force-dynamic";
@@ -22,7 +22,7 @@ export async function DELETE(
       ? NextResponse.json({ ok: true })
       : NextResponse.json({ error: "not_found" }, { status: 404 });
   } catch (error) {
-    logServerError("watchlist_remove", error);
+    logServerErrorSafe("watchlist_remove", error);
     return NextResponse.json({ error: "watchlist_unavailable" }, { status: 503 });
   }
 }

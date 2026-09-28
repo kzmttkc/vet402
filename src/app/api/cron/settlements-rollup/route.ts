@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
 import { acquireLease } from "@/lib/cron/lease";
 import { runRollup } from "@/lib/settlements/rollup";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // 2026-09-04 W15: 生行の保持期間を守る日次処理。7 日より古い UTC 日を
 // settlement_daily へ畳んで消す。index-settlements（13:00 UTC）の後、
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     const result = await runRollup({ apply: true });
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
-    logServerError("cron.settlements-rollup", error);
+    logServerErrorSafe("cron.settlements-rollup", error);
     return NextResponse.json({ ok: false, error: "rollup_failed" }, { status: 500 });
   } finally {
     await lease.release();

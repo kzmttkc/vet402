@@ -56,7 +56,7 @@ import {
   selectAccept,
   signX402Payment,
 } from "./x402-payer";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { isWellFormedSettlementTx } from "@/lib/validation/settlement-tx";
 import { Keypair } from "@solana/web3.js";
 import {
@@ -798,7 +798,7 @@ export async function resolveReservationAsFailed(
     `);
   } catch (writeError) {
     // ここまで失敗したら 30 分後の孤児掃除が拾う。黙って消さない。
-    logServerError("observatory.l1.resolve_reservation_failed", redactedError(writeError));
+    logServerErrorSafe("observatory.l1.resolve_reservation_failed", redactedError(writeError));
   }
 }
 
@@ -811,7 +811,7 @@ export async function resolveReservationAsFailed(
 async function haltGate(db: NonNullable<ReturnType<typeof getDb>>): Promise<HaltVerdict> {
   const verdict = await isSpendingHalted(db);
   if (verdict.halted && verdict.source === "unreachable") {
-    logServerError("observatory.l1.halt_flag_unreadable", new Error(verdict.reason));
+    logServerErrorSafe("observatory.l1.halt_flag_unreadable", new Error(verdict.reason));
   }
   return verdict;
 }
@@ -937,7 +937,7 @@ export async function runL1Batch(
   try {
     summary.orphansResolved = await sweepOrphanedInFlight(db);
   } catch (error) {
-    if (!isMissingSchemaError(error)) logServerError("observatory.l1.orphan_sweep", redactedError(error));
+    if (!isMissingSchemaError(error)) logServerErrorSafe("observatory.l1.orphan_sweep", redactedError(error));
   }
 
   // 2. Today's spend from the ledger (UTC day).
@@ -994,7 +994,7 @@ export async function runL1Batch(
           laneSpent.set(lane.chain, BigInt(spentRaw.split(".")[0]));
         }
       } catch (error) {
-        logServerError(`observatory.l1.${lane.chain}_cap_read`, redactedError(error));
+        logServerErrorSafe(`observatory.l1.${lane.chain}_cap_read`, redactedError(error));
         selectable = false;
       }
     }
@@ -1024,7 +1024,7 @@ export async function runL1Batch(
       firstPurchasesSelectable = false;
     }
   } catch (error) {
-    logServerError("observatory.l1.first_purchase_quota_read", redactedError(error));
+    logServerErrorSafe("observatory.l1.first_purchase_quota_read", redactedError(error));
     firstPurchasesSelectable = false;
   }
 
@@ -1343,7 +1343,7 @@ export async function runL1Batch(
     if (detail.reason === "unreadable" && !summary.payerFundsUnreadable.includes(chain)) summary.payerFundsUnreadable.push(chain);
     if (unfundedLogged.has(chain)) return;
     unfundedLogged.add(chain);
-    logServerError("observatory.l1.payer_unfunded", new Error(`payer_unfunded chain=${chain} ${JSON.stringify(detail)}`));
+    logServerErrorSafe("observatory.l1.payer_unfunded", new Error(`payer_unfunded chain=${chain} ${JSON.stringify(detail)}`));
   };
 
   // XRPL は **1 バッチ 1 件**（2026-09-17 レビュー #2）。署名は account_info の Sequence を使うので、
@@ -1443,7 +1443,7 @@ export async function runL1Batch(
         // 他チェーンの候補は歩き続ける。理由は summary とサーバログに残す。
         summary.xrplFeeOverCap++;
         if (!xrplLaneClosed) {
-          logServerError("observatory.l1.xrpl_fee_over_cap", new Error(`open_ledger_fee above ${1_000} drops; XRPL lane closed for this batch`));
+          logServerErrorSafe("observatory.l1.xrpl_fee_over_cap", new Error(`open_ledger_fee above ${1_000} drops; XRPL lane closed for this batch`));
         }
         xrplLaneClosed = true;
         summary.xrplLaneClosed ??= "fee_over_cap";
@@ -1461,7 +1461,7 @@ export async function runL1Batch(
         summary.skipped++;
       }
     } catch (error) {
-      logServerError("observatory.l1.purchase", error);
+      logServerErrorSafe("observatory.l1.purchase", error);
       summary.skipped++;
     }
   }
@@ -1546,7 +1546,7 @@ export async function laneFloorCandidates(input: {
       const raw = await input.fetchLane(lane.chain, Math.min(input.floor * LANE_FLOOR_OVERSAMPLE, LANE_FLOOR_FETCH_MAX));
       rows = (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as Record<string, unknown>[];
     } catch (error) {
-      if (!isMissingSchemaError(error)) logServerError(`observatory.l1.lane_floor_${lane.chain}`, redactedError(error));
+      if (!isMissingSchemaError(error)) logServerErrorSafe(`observatory.l1.lane_floor_${lane.chain}`, redactedError(error));
       continue;
     }
     const perHost = new Map<string, number>();
@@ -1600,7 +1600,7 @@ export async function censusCandidates(input: {
     // レーン枠と重なった行を除いても perRun 件を埋められるよう、除外ぶんだけ多めに取る。
     rows = rowsOf(await input.fetchCensus(input.perRun + input.excludeIds.size + excludeHosts.size));
   } catch (error) {
-    if (!isMissingSchemaError(error)) logServerError(`observatory.l1.${selection}`, redactedError(error));
+    if (!isMissingSchemaError(error)) logServerErrorSafe(`observatory.l1.${selection}`, redactedError(error));
     return [];
   }
   return pickCensusRows(rows, input.perRun, input.excludeIds, selection, excludeHosts);
@@ -1662,7 +1662,7 @@ export async function readRetestSellers(db: NonNullable<ReturnType<typeof getDb>
       .map((r) => String(r.endpoint_id));
     return { hostsJson: JSON.stringify(hosts), preferredIdsJson: JSON.stringify(preferred), hostCount: hosts.length };
   } catch (error) {
-    if (!isMissingSchemaError(error)) logServerError("observatory.l1.retest_sellers", redactedError(error));
+    if (!isMissingSchemaError(error)) logServerErrorSafe("observatory.l1.retest_sellers", redactedError(error));
     return null;
   }
 }
@@ -1685,7 +1685,7 @@ async function countCensusRemaining(db: NonNullable<ReturnType<typeof getDb>>): 
     if (typeof n !== "string" || !/^\d+$/.test(n)) return null;
     return Number(n);
   } catch (error) {
-    if (!isMissingSchemaError(error)) logServerError("observatory.l1.census_remaining", redactedError(error));
+    if (!isMissingSchemaError(error)) logServerErrorSafe("observatory.l1.census_remaining", redactedError(error));
     return null;
   }
 }
@@ -2020,7 +2020,7 @@ async function purchaseOne(input: {
     } catch (error) {
       // secondary（Base 先頭の行）では行を書かない: 我々の RPC の失敗を Base の売り手の request_error に
       // しない（書くとスイープ窓のあいだ再選択されず、冷却の streak にも数えられる）。
-      logServerError("observatory.l1.xrpl_signing_inputs", redactedError(error));
+      logServerErrorSafe("observatory.l1.xrpl_signing_inputs", redactedError(error));
       if (!isXrplPrimary) {
         return { kind: "xrpl_lane_unavailable", settled: false, spent: 0n };
       }
@@ -2206,7 +2206,7 @@ async function purchaseOne(input: {
         // ——pull の createCredential は署名した封筒を返すだけで送信しない（push は
         // sendTransactionSync でブロードキャストした後に throw しうる＝金が動いている）。
         // ログにも RPC の URL を出さない（レビュー W-1: logServerError は message をそのまま出す）。
-        logServerError("observatory.l1.mpp_credential", redactedError(error));
+        logServerErrorSafe("observatory.l1.mpp_credential", redactedError(error));
         await db
           .update(x402L1Purchases)
           .set({
@@ -2535,7 +2535,7 @@ async function purchaseOne(input: {
       network: accept.network,
     };
   } catch (error) {
-    logServerError("observatory.l1.purchase_after_reservation", redactedError(error));
+    logServerErrorSafe("observatory.l1.purchase_after_reservation", redactedError(error));
     await resolveReservationAsFailed(db, reservation.rowId, error);
     invalidateDecisionCache(candidate.id);
     return { kind: "attempted", settled: false, spent: amount, status: "settle_failed", network: accept.network };

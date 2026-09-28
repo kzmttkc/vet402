@@ -3,7 +3,7 @@ import { z } from "zod";
 import { authorizeApiRequest, withRateLimitHeaders } from "@/lib/api/guard";
 import { isValidAddress } from "@/lib/chain/client";
 import { getTrustEventById, recordPartnerOutcome } from "@/lib/db/outcome-writer";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   try {
     trustEvent = await getTrustEventById(trustEventId, auth.ctx.apiKeyId);
   } catch (error) {
-    logServerError("outcome_report_lookup", error);
+    logServerErrorSafe("outcome_report_lookup", error);
     return NextResponse.json({ error: "outcome_ingest_unavailable" }, { status: 503 });
   }
 
@@ -196,7 +196,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       auth.ctx.rateLimit,
     );
   } catch (error) {
-    logServerError("outcome_report_ingest", error);
+    logServerErrorSafe("outcome_report_ingest", error);
     return NextResponse.json({ error: "outcome_ingest_unavailable" }, { status: 503 });
   }
 }

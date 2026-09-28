@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { isProduction } from "@/lib/config/env";
 import { indexAgentWallets } from "@/lib/indexer/agent-wallet-indexer";
 import { indexOwnerAgents } from "@/lib/indexer/owner-indexer";
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
       walletIndex,
     });
   } catch (error) {
-    logServerError("cron.index-owners", error);
+    logServerErrorSafe("cron.index-owners", error);
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : String(error) },
       { status: 500 },

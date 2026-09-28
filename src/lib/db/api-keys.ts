@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { and, count, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { isProduction } from "@/lib/config/env";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { secureCompare } from "@/lib/util/secure-compare";
 import { getDb } from "./client";
 import { apiKeys } from "./schema";
@@ -75,7 +75,7 @@ export async function verifyApiKey(token: string): Promise<ApiKeyRecord | null> 
       .update(apiKeys)
       .set({ keyHash: hashApiKey(token) })
       .where(eq(apiKeys.id, record.id))
-      .catch((error) => logServerError("api_key_rehash", error));
+      .catch((error) => logServerErrorSafe("api_key_rehash", error));
   }
 
   const expected = record.keyHash;
@@ -87,7 +87,7 @@ export async function verifyApiKey(token: string): Promise<ApiKeyRecord | null> 
 
   if (!candidate) return null;
 
-  void touchApiKeyUsage(record.id).catch((error) => logServerError("api_key_last_used", error));
+  void touchApiKeyUsage(record.id).catch((error) => logServerErrorSafe("api_key_last_used", error));
 
   return {
     id: record.id,

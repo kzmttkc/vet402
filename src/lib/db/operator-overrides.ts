@@ -2,7 +2,7 @@ import { desc } from "drizzle-orm";
 import { getDb } from "./client";
 import { isMissingSchemaError } from "./pg-errors";
 import { operatorOverrides } from "./schema";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * vet402 2026-08-14 — operator override transparency log (append-only, PUBLIC).
@@ -42,7 +42,7 @@ export async function recordOperatorOverride(input: {
     });
   } catch (error) {
     if (!isMissingSchemaError(error)) throw error;
-    logServerError(
+    logServerErrorSafe(
       "operator_override_log_missing",
       new Error("operator_overrides not migrated yet; global override NOT publicly logged"),
     );
@@ -72,7 +72,7 @@ export async function listOperatorOverrides(limit = 200): Promise<OperatorOverri
     }));
   } catch (error) {
     if (!isMissingSchemaError(error)) throw error;
-    logServerError(
+    logServerErrorSafe(
       "operator_override_list_missing",
       new Error("operator_overrides not migrated yet; public log reads as empty"),
     );

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getClientIp } from "@/lib/api/client-ip";
 import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
 import { submitDispute } from "@/lib/observatory/disputes";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * POST /api/v1/observatory/disputes — 売り手の署名付き異議（C8）。
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
       { status: 201, headers: perCaller },
     );
   } catch (error) {
-    logServerError("disputes", error);
+    logServerErrorSafe("disputes", error);
     return NextResponse.json({ error: "disputes_unavailable" }, { status: 503, headers: perCaller });
   }
 }

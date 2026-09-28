@@ -7,7 +7,7 @@ import { agentPassports } from "@/lib/db/schema";
 import { parseAgentId } from "@/lib/chain/client";
 import { agentBadgeState, renderBadgeSvg, type AgentBadgeScoreView } from "@/lib/badge/trust-badge";
 import { scoreAgentById } from "@/lib/scoring/engine";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // A-10 — embeddable SVG badge for an agent passport, the twin of the payee
 // badge (/api/badge/[address]). H-1/H-5 (2026-08-13 R4): the same trust
@@ -70,7 +70,7 @@ export async function GET(
     try {
       score = await scoreAgentById(agentId);
     } catch (error) {
-      logServerError("badge_agent_score", error);
+      logServerErrorSafe("badge_agent_score", error);
       score = null;
     }
   }

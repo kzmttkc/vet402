@@ -8,7 +8,7 @@ import {
 } from "@/lib/api/guard";
 import { isValidAddress, parseAgentId } from "@/lib/chain/client";
 import { persistScoreResult } from "@/lib/db/persistence";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { scoreAgentById } from "@/lib/scoring/engine";
 import { mapWithConcurrency } from "@/lib/util/concurrency";
 
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
         });
 
         void persistScoreResult(auth.ctx.apiKeyId, score).catch((error) =>
-          logServerError("persist_score", error),
+          logServerErrorSafe("persist_score", error),
         );
         return score;
       } catch {

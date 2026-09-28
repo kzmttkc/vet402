@@ -30,7 +30,7 @@ import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { DISCOVERY_PAYEE_FRESH_DAYS } from "./discovery-payees";
 import { payeeId as toPartyId } from "@/lib/ids/canonical";
 import { SOLANA_MAINNET_CAIP2, SOLANA_USDC_MINT } from "@/lib/observatory/sol402-payer";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { resolveEndpointForSettlement } from "./ingest-payments";
 import { loadWashClassifier, type WashClassifier } from "./context";
 import { buildRow, rowsOf, upsertSettlement } from "./upsert";
@@ -172,7 +172,7 @@ export async function runSolanaIndex(
       if (!address) {
         // 導けない受取人は数えて後ろへ回す（先頭に居座って毎回の枠を食わない）
         summary.errors++;
-        logServerError("settlements.index-solana.no_token_account", new Error(`payee ${payee}: cannot derive USDC token account`));
+        logServerErrorSafe("settlements.index-solana.no_token_account", new Error(`payee ${payee}: cannot derive USDC token account`));
         await deps.setCheckpoint(scope, { lastSlot: 0n, lastSignature: null });
         continue;
       }
@@ -214,7 +214,7 @@ export async function runSolanaIndex(
         break;
       }
       if (!complete) {
-        logServerError(
+        logServerErrorSafe(
           "settlements.index-solana.page_cap",
           new Error(`payee ${payee}: more than ${SOLANA_MAX_PAGES_PER_PAYEE * SOLANA_MAX_SIGNATURES_PER_PAYEE} new signatures; older history skipped`),
         );
@@ -252,7 +252,7 @@ export async function runSolanaIndex(
       });
     } catch (error) {
       summary.errors++;
-      logServerError(`settlements.index-solana payee=${payee}`, error);
+      logServerErrorSafe(`settlements.index-solana payee=${payee}`, error);
     }
   }
   return summary;

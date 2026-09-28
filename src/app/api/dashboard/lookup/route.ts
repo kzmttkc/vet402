@@ -3,7 +3,7 @@ import { z } from "zod";
 import { isValidAddress, parseAgentId } from "@/lib/chain/client";
 import { authorizeDashboardRequest } from "@/lib/dashboard/auth";
 import { persistPayeeScoreResult, persistScoreResult } from "@/lib/db/persistence";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { scoreAgentById } from "@/lib/scoring/engine";
 import { scorePayeeWallet } from "@/lib/scoring/payee-engine";
 
@@ -51,14 +51,14 @@ export async function POST(request: NextRequest) {
       const id = parseAgentId(agentId)!;
       const result = await scoreAgentById(id, { ...ctx, verifyWallet: wallet });
       void persistScoreResult(auth.ctx.apiKeyId, result).catch((error) =>
-        logServerError("persist_score", error),
+        logServerErrorSafe("persist_score", error),
       );
       return NextResponse.json(result);
     }
 
     const result = await scorePayeeWallet(wallet!);
     void persistPayeeScoreResult(auth.ctx.apiKeyId, result).catch((error) =>
-      logServerError("persist_score", error),
+      logServerErrorSafe("persist_score", error),
     );
     return NextResponse.json({ kind: "payee", ...result });
   } catch {

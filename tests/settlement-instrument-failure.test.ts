@@ -58,7 +58,7 @@ test("wrong_chain を見たら fail-loud で記録し、そのチェーンだけ
   assert.match(v, /wrongChainNetworks/, "スキップしたチェーンが summary に出ない");
   assert.match(
     v,
-    /logServerError\(\s*"settlement-verifier\.instrument_failure"/,
+    /logServerErrorSafe\(\s*"settlement-verifier\.instrument_failure"/,
     "計器の故障が fail-loud になっていない",
   );
   assert.match(v, /instrumentFailure/, "バッチ中断のフラグが無い");

@@ -20,7 +20,7 @@ import {
 import { getAccountById, setAccountStripeIds, updateAccountPlan } from "@/lib/db/accounts";
 import { ensureOwnerUserId } from "@/lib/db/api-keys";
 import { authorizeDashboardRequest } from "@/lib/dashboard/auth";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 const checkoutSchema = z.object({
   plan: z.enum(["pro", "scale"]),
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
     // no reason to see and an attacker can farm by forcing failures. Log the
     // detail server-side, answer with the same fixed code the sibling handler
     // below already uses.
-    logServerError("billing_checkout", error);
+    logServerErrorSafe("billing_checkout", error);
     return NextResponse.json({ error: "checkout_failed" }, { status: 500 });
   }
 }
@@ -140,7 +140,7 @@ export async function GET(request: NextRequest) {
       }).health;
       canChangePlan = checkoutDisposition(subscription.status) !== "use_portal";
     } catch (error) {
-      logServerError("billing_status", error);
+      logServerErrorSafe("billing_status", error);
       canChangePlan = false;
     }
   }

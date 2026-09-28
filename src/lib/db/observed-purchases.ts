@@ -3,7 +3,7 @@ import { getDb } from "./client";
 import { isMissingSchemaError } from "./pg-errors";
 import { funderWallets, observedPurchases } from "./schema";
 import { keepIndependentByFunder } from "./x402-payments";
-import { logServerError } from "@/lib/util/log";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
  * vet402 2026-08-14 — L1 observed purchases: the PREMIUM economic-activity
@@ -163,7 +163,7 @@ export async function getObservedPurchaseStats(
     return { purchaseCount: independent.length, uniqueDays, distinctCounterparties };
   } catch (error) {
     if (!isMissingSchemaError(error)) throw error;
-    logServerError(
+    logServerErrorSafe(
       "observed_purchase_stats_missing",
       new Error("observed_purchases not migrated yet; reading as no L1 history"),
     );
@@ -218,7 +218,7 @@ export async function getObservedDeliveryStats(
     };
   } catch (error) {
     if (!isMissingSchemaError(error)) throw error;
-    logServerError(
+    logServerErrorSafe(
       "observed_delivery_stats_missing",
       new Error("observed_purchases not migrated yet; reading as no L1 deliveries"),
     );
@@ -274,7 +274,7 @@ async function countDistinctBuyerFunders(
     // gate: if it cannot be read (e.g. funder_wallets not migrated), fall back to
     // the raw buyer count rather than failing the whole delivery read.
     if (!isMissingSchemaError(error)) {
-      logServerError("observed_delivery_distinct_funders", error);
+      logServerErrorSafe("observed_delivery_distinct_funders", error);
     }
     return rawBuyers;
   }
@@ -322,7 +322,7 @@ async function keepIndependentlyFundedSellers<T extends { payee: string | null }
   } catch (error) {
     // 2026-08-23 監査: ここも「索引が読めなければ全行を通す」形だった。
     // 読めなかったことは独立の証拠ではない。
-    if (!isMissingSchemaError(error)) logServerError("observed_independent_sellers", error);
+    if (!isMissingSchemaError(error)) logServerErrorSafe("observed_independent_sellers", error);
     return rows;
   }
 }
