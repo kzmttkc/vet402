@@ -36,7 +36,7 @@ const TRANSIENT_RPC_ERROR = /deadline exceeded|try again|temporarily unavailable
 /** The public RPC rate-limits items inside a batch: one item errors "Too Many Requests" while its
  *  neighbours answer (measured 2026-09-29 reading 195 balances). That is a transport condition,
  *  retried with backoff like an HTTP 429, not a bad call. */
-const RATE_LIMITED_ITEM = /too many requests|rate limit/i;
+const RATE_LIMITED_ITEM = /^too many requests$|rate limit exceeded|exceeded .*rate limit/i;
 const MAX_TRANSIENT_RETRIES = 2;
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));

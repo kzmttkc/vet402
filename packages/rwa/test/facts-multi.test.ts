@@ -105,3 +105,16 @@ test("held tokens are listed by USD mark first, and the record states its scope"
 test("an event on a token whose state was not read is an error, not a silent drop", async () => {
   await assert.rejects(assembleFacts({ ...input(), states: [nvdaState] }), /no on-chain state read/);
 });
+
+test("a token read only for its state is not listed as scanned, and the record says so", async () => {
+  const f = await assembleFacts({ ...input(), historyNotWalked: new Set([AAOI]) });
+  assert.deepEqual(f.scope.scanned, ["NVDA"]);
+  assert.deepEqual(f.scope.history_not_walked, ["AAOI"]);
+  assert.ok(f.gaps.includes("history_not_walked"));
+});
+
+test("a balance the replay cannot explain makes the record unverified, not reconstructed", async () => {
+  const f = await assembleFacts({ ...input(), states: [aaoiState, { ...nvdaState, raw: 7n * ONE }] });
+  assert.ok(f.gaps.includes("balance_mismatch"));
+  assert.equal(f.r1_status, "unverified");
+});

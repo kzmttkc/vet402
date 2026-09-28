@@ -44,6 +44,12 @@ function signedMoney(usd: string): string {
   return `${usd.startsWith("-") ? "\u2212" : "+"}$${money(usd)}`;
 }
 
+/** The realized part of the summary line, never a bare total when part of the sales could not be priced. */
+function realizedLine(realized: string | null, status: string): string {
+  if (realized === null) return status === "partial" ? "sales found, none could be priced" : "nothing realized yet";
+  return status === "partial" ? `realized ${signedMoney(realized)} on the sales that could be priced` : `realized ${signedMoney(realized)}`;
+}
+
 function Busy({ retryAfterSec, reason }: { retryAfterSec: number; reason: "busy" | "timeout" | "limited" }) {
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
@@ -97,9 +103,13 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
         {" · "}
         {facts.unrealized_usd !== null ? `marked $${money(facts.unrealized_usd)}` : "no complete USD mark"}
         {" · "}
-        {facts.realized_usd !== null ? `realized ${signedMoney(facts.realized_usd)}` : "nothing realized yet"}
+        {realizedLine(facts.realized_usd, facts.realized_status)}
         {" · "}
-        {unparsed === 0 ? "every movement decoded" : `${unparsed} movement${unparsed === 1 ? "" : "s"} not decoded`}
+        {!replayOk
+          ? "the replay does not match the chain balance"
+          : unparsed === 0
+            ? "every movement in the scanned tokens decoded"
+            : `${unparsed} movement${unparsed === 1 ? "" : "s"} not decoded`}
       </p>
       <p className="mt-3 text-sm">
         Rebuilt from public Robinhood Chain data, not from anything the wallet owner says: each canonical Stock
@@ -143,8 +153,11 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
         </table>
       </div>
       <p className="mt-2 text-sm">
-        Scanned: {facts.scope.scanned.join(", ")}. Positions in other tokens that were opened and fully closed are not
-        scanned yet (<code>exited_positions_not_scanned</code>).
+        History walked for: {facts.scope.scanned.join(", ")}.
+        {facts.scope.history_not_walked.length > 0 &&
+          ` Seen only inside those transactions, history not walked: ${facts.scope.history_not_walked.join(", ")}.`}{" "}
+        Positions in other tokens that were opened and fully closed are not scanned yet (
+        <code>exited_positions_not_scanned</code>), so &quot;complete&quot; below means complete within these tokens.
       </p>
 
       {facts.realized_usd !== null && (

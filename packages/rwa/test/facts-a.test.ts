@@ -44,6 +44,7 @@ const base = () => ({
   states: [state()],
   resolver: recordedPoolResolver(CHAIN.pools),
   canonical: new Set([NVDA_LC]),
+  scopeRule: "fixture A: NVDA only, recorded 2026-09-17",
 });
 
 test("the recorded chain inputs belong to fixture A", () => {

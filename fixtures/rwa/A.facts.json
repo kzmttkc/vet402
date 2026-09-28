@@ -9,13 +9,14 @@
   "r1_status": "partial",
   "r2": "no_declaration",
   "scope": {
-    "registry_taken_at": "2026-09-28T21:58:40.774Z",
+    "registry_taken_at": "2026-09-28T22:24:32.769Z",
     "registry_tokens": 195,
     "registry_source": "https://docs.robinhood.com/chain/contracts",
     "scanned": [
       "NVDA"
     ],
-    "rule": "held at as_of, plus NVDA, plus canonical tokens moved for the address in those tokens' transactions"
+    "history_not_walked": [],
+    "rule": "fixture A: NVDA only, recorded 2026-09-17"
   },
   "tokens": [
     {

@@ -1208,7 +1208,7 @@ paths:
         a Stock-for-Stock trade is not priced. `usd` is null with `usd_reason`
         `feed_stale` (26h+ or oracle paused) or `no_feed`. Each token's
         `replayed_raw` must equal its `raw`; when it does not, `gaps` carries
-        `balance_mismatch`. There is no opinion field
+        `balance_mismatch` and `r1_status: unverified`. There is no opinion field
         on this path. Key-less; 10/min/IP (counted in the shared store, so it
         holds across instances). One address is cached for 5 minutes and one
         reconstruction runs at a time, both per server instance. A reconstruction
@@ -1277,7 +1277,8 @@ paths:
                       registry_taken_at: { type: string, format: date-time }
                       registry_tokens: { type: integer, example: 195 }
                       registry_source: { type: string }
-                      scanned: { type: array, items: { type: string } }
+                      scanned: { type: array, items: { type: string }, description: tokens whose own transfer history was walked }
+                      history_not_walked: { type: array, items: { type: string }, description: tokens seen only inside walked transactions (gap history_not_walked) }
                       rule: { type: string }
                   realized_usd: { type: string, nullable: true, description: Sum over tokens of FIFO realized; null when no sale could be priced against a known cost }
                   realized_status: { type: string, enum: [complete, partial, none] }

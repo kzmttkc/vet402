@@ -67,18 +67,39 @@ async function main() {
   const onchain = await batch(listed.flatMap(({ address }) => [{ to: address, fn: "symbol" as const }, { to: address, fn: "decimals" as const }]));
   const equityFeeds = feeds.filter((f) => f.docs?.assetClass === "Equity" && f.docs?.quoteAsset === "USD" && f.proxyAddress);
   const feedReads = await batch(equityFeeds.flatMap((f) => [{ to: f.proxyAddress, fn: "description" as const }, { to: f.proxyAddress, fn: "decimals" as const }]));
+  const rejected: string[] = [];
   const feedBySymbol = new Map<string, { proxy: string; description: string; decimals: number; heartbeat: number }>();
+  const ambiguous = new Set<string>();
   equityFeeds.forEach((f, i) => {
     const description = feedReads[2 * i] as string | null;
     const decimals = feedReads[2 * i + 1] as number | null;
-    if (!description || decimals === null) return;
+    if (!description || decimals === null) {
+      rejected.push(`feed ${f.proxyAddress}: description/decimals unreadable`);
+      return;
+    }
     // Two formats on chain (read 2026-09-29): "RHNVDA / USD" and "Robinhood QQQ / USD"
-    // (one feed says "Robinhood DELL-USD"). Only a description that names the token counts.
-    const base = description.split(/\s*\/\s*USD$|-USD$/)[0].trim().replace(/^Robinhood\s+/, "").replace(/^RH(?=[A-Z])/, "");
+    // (one feed says "Robinhood DELL-USD"). Only a description that names the token counts,
+    // and it must agree with the directory's own baseAsset.
+    const head = description.split(/\s*\/\s*USD$|-USD$/)[0].trim();
+    const base = head.startsWith("Robinhood ") ? head.slice("Robinhood ".length).trim() : head.replace(/^RH(?=[A-Z])/, "");
+    const dirBase = (f.docs?.baseAsset ?? "").replace(/^RH(?=[A-Z])/, "");
+    if (dirBase && dirBase !== base) {
+      rejected.push(`feed ${f.proxyAddress}: description "${description}" vs directory baseAsset ${f.docs?.baseAsset}`);
+      return;
+    }
+    if (Number(decimals) !== 8) {
+      rejected.push(`feed ${f.proxyAddress} (${description}): ${decimals} decimals, the USD formula needs 8`);
+      return;
+    }
+    if (feedBySymbol.has(base) || ambiguous.has(base)) {
+      rejected.push(`feed ${f.proxyAddress} (${description}): more than one feed for ${base}; none is paired`);
+      feedBySymbol.delete(base);
+      ambiguous.add(base);
+      return;
+    }
     feedBySymbol.set(base, { proxy: getAddress(f.proxyAddress), description, decimals: Number(decimals), heartbeat: f.heartbeat });
   });
 
-  const rejected: string[] = [];
   const tokens = listed
     .map(({ a, address }, i) => {
       const sym = onchain[2 * i] as string | null;
@@ -93,8 +114,8 @@ async function main() {
         name: a.tokenName.replace(/\s*•\s*Robinhood Token$/, ""),
         isin: a.isin,
         token: getAddress(address),
-        feed: feed && feed.decimals === 8 ? feed.proxy : null,
-        feed_description: feed && feed.decimals === 8 ? feed.description : null,
+        feed: feed ? feed.proxy : null,
+        feed_description: feed ? feed.description : null,
       };
     })
     .filter((t): t is NonNullable<typeof t> => t !== null)

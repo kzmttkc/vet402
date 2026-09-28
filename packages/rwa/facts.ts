@@ -62,7 +62,10 @@ export type RwaFacts = {
     registry_taken_at: string;
     registry_tokens: number;
     registry_source: string;
+    /** tokens whose own transfer history was walked */
     scanned: string[];
+    /** tokens met in the walked transactions whose own history was not walked (state read, events from those receipts only) */
+    history_not_walked: string[];
     rule: string;
   };
   tokens: TokenFacts[];
@@ -100,10 +103,16 @@ export function usdString(cents: bigint): string {
   return `${sign}${abs / 100n}.${(abs % 100n).toString().padStart(2, "0")}`;
 }
 
-/** SPEC §5: reconstructed needs a decodable history AND no cost-unknown lot left. */
-export function r1Status(summary: EventsSummary, unknownCostRaw: bigint): R1Status {
+/**
+ * SPEC §5: reconstructed needs a decodable history AND no cost-unknown lot left.
+ * A balance the replayed events cannot explain is `unverified` (R1: the main
+ * cause of the balance change is not explained); a sale no lot covered is `partial`.
+ */
+export function r1Status(summary: EventsSummary, unknownCostRaw: bigint, flags: { balanceMismatch?: boolean; oversold?: boolean } = {}): R1Status {
+  if (flags.balanceMismatch) return "unverified";
   if (summary.other_unparsed > 0) return "partial";
   if (unknownCostRaw > 0n) return "partial";
+  if (flags.oversold) return "partial";
   return "reconstructed";
 }
 
@@ -155,9 +164,15 @@ export type FactsInputs = {
   fixtureIds?: string[];
   /** limit which canonical tokens are classified (a fixture recorded for one token); default: the whole registry */
   canonical?: ReadonlySet<string>;
+  /** lower-cased tokens read for state but whose own history was not walked */
+  historyNotWalked?: ReadonlySet<string>;
+  /** the scope rule to state in the record (a fixture states its own) */
+  scopeRule?: string;
 };
 
 const SCOPE_RULE = "held at as_of, plus NVDA, plus canonical tokens moved for the address in those tokens' transactions";
+/** Discovery rounds before stopping; tokens still unwalked are listed in scope.history_not_walked. */
+export const MAX_DISCOVERY_ROUNDS = 3;
 
 function aggregateStatus(statuses: RealizedStatus[]): RealizedStatus {
   if (statuses.some((s) => s === "partial")) return "partial";
@@ -243,6 +258,8 @@ export async function assembleFacts(input: FactsInputs): Promise<RwaFacts> {
     });
   }
   gaps.add("exited_positions_not_scanned");
+  const notWalked = [...(input.historyNotWalked ?? [])].filter((t) => states.has(t));
+  if (notWalked.length > 0) gaps.add("history_not_walked");
   gaps.add("mdd_pending"); // MDD needs stored NAV snapshots (SPEC §4); nothing is stored in v0
 
   // Held first, then the largest USD mark (unpriced after priced), then by symbol. NVDA's place is earned like any other.
@@ -263,6 +280,7 @@ export async function assembleFacts(input: FactsInputs): Promise<RwaFacts> {
   const heldParts = perToken.filter((p) => BigInt(p.facts.raw) > 0n);
   const unrealized = heldParts.length > 0 && heldParts.every((p) => p.usdCents !== null) ? heldParts.reduce((s, p) => s + p.usdCents!, 0n) : null;
   const unknownCost = perToken.reduce((s, p) => s + p.fifo.unknown_cost_raw, 0n);
+  const oversold = perToken.some((p) => p.fifo.oversold_raw > 0n);
 
   return {
     address,
@@ -272,14 +290,15 @@ export async function assembleFacts(input: FactsInputs): Promise<RwaFacts> {
     method_version: METHOD_VERSION,
     identity_binding: "unknown",
     r0: "present",
-    r1_status: r1Status(summary, unknownCost),
+    r1_status: r1Status(summary, unknownCost, { balanceMismatch: gaps.has("balance_mismatch"), oversold }),
     r2: "no_declaration",
     scope: {
       registry_taken_at: REGISTRY.taken_at,
       registry_tokens: CANONICAL_TOKENS.length,
       registry_source: REGISTRY.sources.tokens_page,
-      scanned: [...states.values()].map((s) => tokenByAddress(s.token)!.symbol).sort(),
-      rule: SCOPE_RULE,
+      scanned: [...states.keys()].filter((t) => !notWalked.includes(t)).map((t) => tokenByAddress(t)!.symbol).sort(),
+      history_not_walked: notWalked.map((t) => tokenByAddress(t)!.symbol).sort(),
+      rule: input.scopeRule ?? SCOPE_RULE,
     },
     tokens: perToken.map((p) => p.facts),
     events_summary: summary,
@@ -322,8 +341,9 @@ export async function reconstructFacts(address: string, opts: RpcOptions & { blo
   const scanned = new Set<string>();
   const txs = new Set<string>();
   const receiptsByTx = new Map<string, RwaReceipt>();
-  // Two rounds: tokens in scope, then any canonical token their transactions moved for the address.
-  for (let round = 0; round < 2; round++) {
+  // Walk tokens in scope, then any canonical token their transactions moved for the address, until
+  // nothing new turns up or the round cap is reached (each round costs a full history walk per token).
+  for (let round = 0; round < MAX_DISCOVERY_ROUNDS; round++) {
     const toScan = [...scope].filter((t) => !scanned.has(t));
     if (toScan.length === 0) break;
     for (const token of toScan) {
@@ -336,18 +356,18 @@ export async function reconstructFacts(address: string, opts: RpcOptions & { blo
     for (const r of await fetchReceipts(missing, patient, 25)) receiptsByTx.set(r.transactionHash, r);
     for (const t of canonicalTokensMoved([...receiptsByTx.values()], address)) scope.add(t);
   }
-  // A token found only in the last round is read for its state but its own history was not walked;
-  // its events come from the receipts already fetched, and the replay check will say if that was not enough.
-  for (const t of scope) scanned.add(t);
+  // A token still unwalked after the cap is read for its state and named in scope.history_not_walked
+  // (gap `history_not_walked`); its events come only from the receipts already fetched.
+  const notWalked = new Set([...scope].filter((t) => !scanned.has(t)));
 
   const receipts = [...receiptsByTx.values()];
   if (receipts.length === 0 && ![...balances.values()].some((raw) => raw > 0n)) throw new NoStockTokenActivity();
 
   const states: TokenState[] = [];
-  for (const t of scanned) {
+  for (const t of [...scanned, ...notWalked]) {
     const info = tokenByAddress(t)!;
     states.push(await readTokenState(info.token, info.feed, address, block, patient));
   }
   const blockTimestamp = await fetchBlockTimestamp(block, patient);
-  return assembleFacts({ address, block, blockTimestamp, receipts, states, resolver: chainPoolResolver(patient), fixtureIds: ["A", "B"] });
+  return assembleFacts({ address, block, blockTimestamp, receipts, states, resolver: chainPoolResolver(patient), fixtureIds: ["A", "B"], historyNotWalked: notWalked });
 }

@@ -40,6 +40,7 @@ async function main() {
     resolver: recordedPoolResolver(CHAIN.pools),
     // Fixture A was recorded for NVDA only.
     canonical: new Set([(A.token.address as string).toLowerCase()]),
+    scopeRule: "fixture A: NVDA only, recorded 2026-09-17",
   });
   const path = join(process.cwd(), "fixtures/rwa/A.facts.json");
   writeFileSync(path, `${JSON.stringify(facts, null, 2)}\n`);

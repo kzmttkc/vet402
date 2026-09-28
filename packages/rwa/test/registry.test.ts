@@ -37,3 +37,8 @@ test("every feed is named after its token by its own description()", () => {
     assert.equal(base, t.symbol, `${t.symbol}: ${t.feed_description}`);
   }
 });
+
+test("no feed is paired with two tokens", () => {
+  const feeds = CANONICAL_TOKENS.filter((t) => t.feed).map((t) => t.feed!.toLowerCase());
+  assert.equal(new Set(feeds).size, feeds.length);
+});

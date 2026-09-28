@@ -46,7 +46,8 @@ test("the subject is the keccak of the lower-cased address, however it is cased"
 
 test("an unknown method version refuses to be anchored as a number", () => {
   assert.equal(methodVersionNumber("rwa-recon-0.1"), 1);
-  assert.throws(() => methodVersionNumber("rwa-recon-0.2"), /unknown method_version/);
+  assert.equal(methodVersionNumber("rwa-recon-0.2"), 2);
+  assert.throws(() => methodVersionNumber("rwa-recon-0.3"), /unknown method_version/);
 });
 
 test("as_of becomes unix seconds", () => {

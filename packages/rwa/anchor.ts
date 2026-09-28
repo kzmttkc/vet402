@@ -45,9 +45,9 @@ export function subjectHash(address: string): `0x${string}` {
   return keccak256(toHex(address.toLowerCase()));
 }
 
-/** rwa-recon-0.1 → 1. A method version that is not a known one throws rather than anchoring an ambiguous number. */
+/** rwa-recon-0.1 → 1, rwa-recon-0.2 → 2. A method version that is not a known one throws rather than anchoring an ambiguous number. */
 export function methodVersionNumber(methodVersion: string): number {
-  const known: Record<string, number> = { "rwa-recon-0.1": 1 };
+  const known: Record<string, number> = { "rwa-recon-0.1": 1, "rwa-recon-0.2": 2 };
   const n = known[methodVersion];
   if (n === undefined) throw new Error(`unknown method_version ${methodVersion}; add it to anchor.ts before anchoring`);
   return n;
