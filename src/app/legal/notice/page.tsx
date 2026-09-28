@@ -57,14 +57,14 @@ export default async function LegalNoticePage() {
         <div>
           <h1 className="doc-title mt-10">Legal Notice</h1>
           <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-          <p className="doc-note mt-3 text-center">Last updated: August 2026</p>
+          <p className="doc-note mt-3 text-center">Last updated: September 2026</p>
         </div>
 
         <section className="space-y-2">
           <h2 className="sec-head">How vet402 is operated</h2>
           <p>
-            vet402 (formerly known as Vouch) is developed and operated by Takeshi Kazumoto, an
-            individual proprietor trading as KIZUNA Creation. The product was renamed in August 2026; the
+            vet402 (formerly known as Vouch) is developed and operated by KIZUNA Creation, an
+            individually owned business. The product was renamed in August 2026; the
             operator, the service, and these pages are otherwise unchanged. It is offered as a business-to-business (B2B) API product for agent
             developers who need to verify an x402 endpoint before paying it, and for the service
             operators who accept those payments — it is not marketed or sold as a consumer
@@ -75,13 +75,14 @@ export default async function LegalNoticePage() {
         <section className="space-y-2">
           <h2 className="sec-head">Why disclosure is minimal today</h2>
           <p>
-            The operator&apos;s name is disclosed above. Because vet402 is a B2B API — not consumer
+            The operator&apos;s trade name is disclosed above. Because vet402 is a B2B API — not consumer
             mail-order — statutes that require full public disclosure of the operator&apos;s home
             address and phone number (such as Japan&apos;s Act on Specified Commercial Transactions)
             do not currently apply. Paid API subscriptions, when enabled, are billed from the
             dashboard after a key exists; that is not consumer-facing billing. We keep the home
-            address and phone number off this public page for the same reason many independent
-            developers do — but we will disclose them without delay to anyone who requests it in
+            address, phone number and the owner&apos;s personal name off this public page for the same
+            reason many independent developers do — but we will disclose them without delay to anyone
+            who requests it in
             good faith, and we will add a full disclosure block here before any consumer-facing
             billing goes live.
           </p>

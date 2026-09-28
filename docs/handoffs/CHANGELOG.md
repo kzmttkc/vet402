@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-28 JST（6）— Legal Notice の運営者表示を屋号 KIZUNA Creation のみに
+
+- **何を**: `/legal/notice` の運営者表示から個人名を外し「operated by KIZUNA Creation, an individually owned business」に。個人名・住所・電話は請求があれば遅滞なく開示する旨に改め、Last updated を September 2026 に。
+- **なぜ**: オーナー指示（2026-09-28）「KIZUNA Creation のみ。個人名は LP には出さない」。公開面の姓の出現はこの頁だけだった（主要 20 頁を実測）。
+- **影響**: 公開面・申請文書・提出物に運営者の個人名を書かない。屋号 KIZUNA Creation を使う。
+
 ## 2026-09-28 JST（4）— `/rwa` の facts に x402 の有料ルート（無料ルートは変えない）
 
 - **何を**: `GET /api/v1/rwa/paid/facts/:address`（`src/app/api/v1/rwa/paid/facts/[address]/route.ts`）と `packages/rwa/x402.ts`・テスト 7 件・支払いスクリプト `packages/rwa/scripts/pay-facts.ts`。0.01 USDG（4663・`exact`・permit2・Dexter）で無料ルートと同じ JSON を返す。verify → 再構成 → settle の順で、404・503 は決済しない。有料側は 60/分/IP。SPEC patch 017、OPERATING・README・openapi・`/rwa` 入口に1行ずつ。
