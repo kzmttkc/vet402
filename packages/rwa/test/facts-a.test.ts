@@ -14,29 +14,36 @@ import { recordedPoolResolver } from "../pools";
 const A = JSON.parse(readFileSync(join(process.cwd(), "fixtures/rwa/A.json"), "utf8"));
 const CHAIN = JSON.parse(readFileSync(join(process.cwd(), "fixtures/rwa/A.chain.json"), "utf8"));
 
-function read(overrides: Partial<{ updatedAt: number; oraclePaused: boolean }> = {}) {
+const NVDA_LC = A.token.address.toLowerCase();
+
+function state(overrides: Partial<{ updatedAt: number; oraclePaused: boolean; raw: bigint }> = {}) {
   return {
-    raw: BigInt(A.raw),
+    token: NVDA_LC,
+    raw: overrides.raw ?? BigInt(A.raw),
     uiMultiplier: BigInt(A.ui_multiplier),
     oraclePaused: overrides.oraclePaused ?? A.oracle_paused,
-    feedDecimals: A.feed.decimals,
-    round: {
-      roundId: BigInt(A.feed_round.round_id),
-      answer: BigInt(A.feed_round.answer),
-      startedAt: Number(A.feed_round.started_at),
-      updatedAt: overrides.updatedAt ?? Number(A.feed_round.updated_at),
-      answeredInRound: BigInt(A.feed_round.answered_in_round),
+    feed: {
+      decimals: A.feed.decimals,
+      round: {
+        roundId: BigInt(A.feed_round.round_id),
+        answer: BigInt(A.feed_round.answer),
+        startedAt: Number(A.feed_round.started_at),
+        updatedAt: overrides.updatedAt ?? Number(A.feed_round.updated_at),
+        answeredInRound: BigInt(A.feed_round.answered_in_round),
+      },
     },
   };
 }
 
+// Fixture A was recorded for NVDA only, so classification is held to NVDA here.
 const base = () => ({
   address: A.holder.address,
   block: A.block,
   blockTimestamp: A.block_timestamp,
   receipts: CHAIN.receipts,
-  read: read(),
+  states: [state()],
   resolver: recordedPoolResolver(CHAIN.pools),
+  canonical: new Set([NVDA_LC]),
 });
 
 test("the recorded chain inputs belong to fixture A", () => {
@@ -82,7 +89,7 @@ test("the facts document carries no opinion and no realized figure", async () =>
 });
 
 test("a stale feed (26h+) refuses the USD mark but keeps the balance", async () => {
-  const f = await assembleFacts({ ...base(), read: read({ updatedAt: A.block_timestamp - 26 * 3600 - 1 }) });
+  const f = await assembleFacts({ ...base(), states: [state({ updatedAt: A.block_timestamp - 26 * 3600 - 1 })] });
   assert.equal(f.tokens[0].stale, true);
   assert.deepEqual(f.tokens[0].stale_reasons, ["age"]);
   assert.equal(f.tokens[0].usd, null);
@@ -92,7 +99,7 @@ test("a stale feed (26h+) refuses the USD mark but keeps the balance", async () 
 });
 
 test("a paused oracle refuses the USD mark", async () => {
-  const f = await assembleFacts({ ...base(), read: read({ oraclePaused: true }) });
+  const f = await assembleFacts({ ...base(), states: [state({ oraclePaused: true })] });
   assert.equal(f.tokens[0].stale, true);
   assert.equal(f.tokens[0].usd, null);
 });
@@ -117,12 +124,11 @@ test("the current code reproduces fixtures/rwa/A.facts.json exactly (regression 
 
 test("the replayed quantity is published next to the balance, so a dropped leg is visible", async () => {
   const f = await assembleFacts(base());
-  assert.equal(f.replayed_raw, f.tokens[0].raw, "fixture A's legs must replay to its balance");
+  assert.equal(f.tokens[0].replayed_raw, f.tokens[0].raw, "fixture A's legs must replay to its balance");
   assert.equal(f.gaps.includes("balance_mismatch"), false);
 });
 
 test("a balance the replayed events cannot explain is reported as a gap", async () => {
-  const short = { ...read(), raw: BigInt(A.raw) + 10n ** 18n };
-  const f = await assembleFacts({ ...base(), read: short });
+  const f = await assembleFacts({ ...base(), states: [state({ raw: BigInt(A.raw) + 10n ** 18n })] });
   assert.ok(f.gaps.includes("balance_mismatch"));
 });

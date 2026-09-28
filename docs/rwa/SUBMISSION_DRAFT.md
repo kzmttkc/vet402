@@ -33,7 +33,7 @@ Not applicable: /rwa deploys no factory or pool. It reads the Uniswap v3 factory
 
 ## List your Token Contract Address (if applicable)
 
-Not applicable: no token is issued. /rwa reads the canonical NVDA Stock Token 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC and its Chainlink feed 0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15.
+Not applicable: no token is issued. /rwa reads the 195 canonical Stock Tokens in Robinhood's own list (NVDA is 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC) and the 33 Chainlink equity feeds on Robinhood Chain.
 
 ## Which parts of your code have been produced during the Buildathon?
 

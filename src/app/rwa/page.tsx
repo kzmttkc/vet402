@@ -51,7 +51,7 @@ export default async function RwaEntryPage({ searchParams }: { searchParams: Pro
       )}
 
       <p className="mt-6 text-sm">
-        No wallet connection and no sign-in. The page reads the canonical token&apos;s transfers, Uniswap swaps checked
+        No wallet connection and no sign-in. The page reads each canonical Stock Token&apos;s transfers (Robinhood&apos;s own list of 195), Uniswap swaps checked
         against the official factory and the Chainlink feed, and says what it could not parse. A first look at a
         wallet can take up to a minute.
       </p>

@@ -33,6 +33,17 @@ export async function generateMetadata({ params }: { params: Promise<{ address: 
   };
 }
 
+/** "78805.22" → "78,805.22" */
+function money(usd: string): string {
+  const [whole, cents] = usd.replace("-", "").split(".");
+  return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${cents}`;
+}
+
+/** "-284.57" → "−$284.57"; "12.00" → "+$12.00" */
+function signedMoney(usd: string): string {
+  return `${usd.startsWith("-") ? "\u2212" : "+"}$${money(usd)}`;
+}
+
 function Busy({ retryAfterSec, reason }: { retryAfterSec: number; reason: "busy" | "timeout" | "limited" }) {
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
@@ -73,49 +84,77 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
   }
 
   const shown = getAddress(facts.address);
-  const t = facts.tokens[0];
+  const held = facts.tokens.filter((t) => BigInt(t.raw) > 0n);
+  const unparsed = facts.events_summary.other_unparsed;
+  const replayOk = facts.tokens.every((t) => t.replayed_raw === t.raw);
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <h1 className="text-xl font-semibold">vet402 /rwa</h1>
       <p className="mt-2 break-all font-mono text-sm">{shown}</p>
-      <p className="mt-2 text-sm">
-        This Stock Token track record is rebuilt from public Robinhood Chain data: the token&apos;s transfers,
-        Uniswap swaps checked against the official factory, and the Chainlink price feed. Nothing here is self-reported.
+      <p className="mt-4 border-l-2 pl-3 text-base">
+        {held.length} Stock Token{held.length === 1 ? "" : "s"} held
+        {" · "}
+        {facts.unrealized_usd !== null ? `marked $${money(facts.unrealized_usd)}` : "no complete USD mark"}
+        {" · "}
+        {facts.realized_usd !== null ? `realized ${signedMoney(facts.realized_usd)}` : "nothing realized yet"}
+        {" · "}
+        {unparsed === 0 ? "every movement decoded" : `${unparsed} movement${unparsed === 1 ? "" : "s"} not decoded`}
+      </p>
+      <p className="mt-3 text-sm">
+        Rebuilt from public Robinhood Chain data, not from anything the wallet owner says: each canonical Stock
+        Token&apos;s transfers, Uniswap swaps checked against the official factory, and the Chainlink price feed where
+        one exists. Canonical means the address in Robinhood&apos;s own list of {facts.scope.registry_tokens} Stock
+        Tokens; a token with the same ticker at another address is not counted.
       </p>
       <p className="mt-1 text-sm">identity_binding: {facts.identity_binding}</p>
 
-      <h2 className="mt-8 text-lg font-semibold">Canonical balance</h2>
-      <table className="mt-2 w-full text-sm">
-        <thead>
-          <tr className="text-left">
-            <th className="py-1 pr-6">Token</th>
-            <th className="py-1 pr-6">Shares</th>
-            <th className="py-1 pr-6">USD</th>
-            <th className="py-1 pr-6">Feed time (UTC)</th>
-            <th className="py-1 pr-6">stale</th>
-            <th className="py-1 pr-6">weekend</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td className="py-1 pr-6">{t.symbol}</td>
-            <td className="py-1 pr-6 font-mono">{t.shares_ui}</td>
-            <td className="py-1 pr-6 font-mono">{t.usd ?? "not shown: the price feed is stale"}</td>
-            <td className="py-1 pr-6 font-mono">{t.feed_updated_at}</td>
-            <td className="py-1 pr-6">{String(t.stale)}</td>
-            <td className="py-1 pr-6">{String(t.weekend)}</td>
-          </tr>
-        </tbody>
-      </table>
+      <h2 className="mt-8 text-lg font-semibold">Canonical balances</h2>
+      <div className="mt-2 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left">
+              <th className="py-1 pr-6">Token</th>
+              <th className="py-1 pr-6">Shares</th>
+              <th className="py-1 pr-6">USD</th>
+              <th className="py-1 pr-6">Realized (FIFO)</th>
+              <th className="py-1 pr-6">Feed time (UTC)</th>
+              <th className="py-1 pr-6">stale</th>
+            </tr>
+          </thead>
+          <tbody>
+            {facts.tokens.map((t) => (
+              <tr key={t.token}>
+                <td className="py-1 pr-6">
+                  <a className="underline" href={`${EXPLORER}/address/${t.token}`} rel="noreferrer" target="_blank" title={t.name}>
+                    {t.symbol}
+                  </a>
+                </td>
+                <td className="py-1 pr-6 font-mono">{t.shares_ui}</td>
+                <td className="py-1 pr-6 font-mono">
+                  {t.usd ?? (t.usd_reason === "no_feed" ? "not shown: no Chainlink feed" : "not shown: the price feed is stale")}
+                </td>
+                <td className="py-1 pr-6 font-mono">{t.realized_usd === null ? "—" : `${t.realized_usd} (${t.realized_status})`}</td>
+                <td className="py-1 pr-6 font-mono">{t.feed_updated_at ?? "—"}</td>
+                <td className="py-1 pr-6">{t.stale === null ? "—" : String(t.stale)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-sm">
+        Scanned: {facts.scope.scanned.join(", ")}. Positions in other tokens that were opened and fully closed are not
+        scanned yet (<code>exited_positions_not_scanned</code>).
+      </p>
 
       {facts.realized_usd !== null && (
         <>
           <h2 className="mt-8 text-lg font-semibold">Realized PnL</h2>
           <p className="mt-2 font-mono text-sm">{facts.realized_usd} USD</p>
           <p className="mt-1 text-sm">
-            First in, first out: each sale is matched against the oldest purchase still held ({facts.realized_status}).
-            {facts.realized_status === "partial" && " Some tokens arrived without a known cost, so those sales are left out rather than guessed."}
+            First in, first out, per token: each sale is matched against the oldest purchase still held ({facts.realized_status}).
+            {facts.realized_status === "partial" &&
+              " Some tokens arrived without a known cost, or changed hands for another Stock Token, so those sales are left out rather than guessed."}
           </p>
         </>
       )}
@@ -125,6 +164,9 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
       <p className="mt-1 text-sm">
         events_summary: transfer {facts.events_summary.transfer} / univ3 {facts.events_summary.univ3} / univ4{" "}
         {facts.events_summary.univ4} / other_unparsed {facts.events_summary.other_unparsed}
+      </p>
+      <p className="mt-1 text-sm">
+        replayed events land on the balance the chain reports: {replayOk ? "yes, for every token" : "no — see balance_mismatch"}
       </p>
       <p className="mt-1 text-sm">as_of: {facts.as_of} (block {facts.as_of_block}) · method {facts.method_version}</p>
       {facts.gaps.length > 0 && <p className="mt-1 text-sm">gaps: {facts.gaps.join(", ")}</p>}

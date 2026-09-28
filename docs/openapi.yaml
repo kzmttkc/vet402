@@ -1195,14 +1195,20 @@ paths:
       tags: [RWA]
       summary: Stock Token track record of one address on Robinhood Chain — reconstruction only
       description: |
-        docs/rwa/SPEC.md §7. Rebuilds the address's canonical Stock Token
-        history from public chain data: token Transfers, Uniswap v3/v4 swaps
-        verified against the official factory and PoolManager, and the
-        Chainlink feed for the token. Every movement is classified as
-        `transfer`, `univ3`, `univ4` or `other_unparsed`; nothing is dropped.
-        Realized PnL is FIFO only. A stale feed (26h+ or oracle paused)
-        returns `usd: null`. `replayed_raw` must equal `tokens[].raw`; when it
-        does not, `gaps` carries `balance_mismatch`. There is no opinion field
+        docs/rwa/SPEC.md §7 and patch 018 (rwa-recon-0.2). Rebuilds the
+        address's history in the canonical Stock Tokens of Robinhood's own
+        list (195, frozen in packages/rwa/registry.json): token Transfers,
+        Uniswap v3/v4 swaps verified against the official factory and
+        PoolManager, and the Chainlink feed for the tokens that have one (33).
+        Scope, stated in `scope`: tokens held at `as_of`, NVDA, and canonical
+        tokens those tokens' transactions moved; a position opened and closed
+        in another token is not scanned (`exited_positions_not_scanned`).
+        Every movement is classified as `transfer`, `univ3`, `univ4` or
+        `other_unparsed`; nothing is dropped. Realized PnL is FIFO per token;
+        a Stock-for-Stock trade is not priced. `usd` is null with `usd_reason`
+        `feed_stale` (26h+ or oracle paused) or `no_feed`. Each token's
+        `replayed_raw` must equal its `raw`; when it does not, `gaps` carries
+        `balance_mismatch`. There is no opinion field
         on this path. Key-less; 10/min/IP (counted in the shared store, so it
         holds across instances). One address is cached for 5 minutes and one
         reconstruction runs at a time, both per server instance. A reconstruction
@@ -1224,13 +1230,13 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [address, chain_id, as_of, method_version, r1_status, tokens, events_summary, replayed_raw, realized_usd, realized_status, gaps, disclaimer]
+                required: [address, chain_id, as_of, method_version, r1_status, scope, tokens, events_summary, realized_usd, realized_status, gaps, disclaimer]
                 properties:
                   address: { type: string, description: EIP-55 }
                   chain_id: { type: integer, enum: [4663] }
                   as_of: { type: string, format: date-time }
                   as_of_block: { type: integer }
-                  method_version: { type: string, example: rwa-recon-0.1 }
+                  method_version: { type: string, example: rwa-recon-0.2 }
                   identity_binding: { type: string, enum: [unknown, declared, bound] }
                   r0: { type: string, enum: [present] }
                   r1_status: { type: string, enum: [reconstructed, partial, unverified] }
@@ -1241,17 +1247,23 @@ paths:
                       type: object
                       properties:
                         symbol: { type: string }
+                        name: { type: string }
                         token: { type: string }
                         canonical: { type: boolean }
                         raw: { type: string, description: uint256 as a decimal string }
                         shares_ui: { type: string, description: raw × uiMultiplier / 1e18, 8 decimals }
-                        usd: { type: string, nullable: true, description: null while the feed is stale }
-                        feed: { type: string }
-                        feed_answer: { type: string }
-                        feed_updated_at: { type: string, format: date-time }
-                        stale: { type: boolean }
+                        usd: { type: string, nullable: true, description: null while the feed is stale or when the token has no feed }
+                        usd_reason: { type: string, nullable: true, enum: [feed_stale, no_feed] }
+                        feed: { type: string, nullable: true }
+                        feed_answer: { type: string, nullable: true }
+                        feed_updated_at: { type: string, format: date-time, nullable: true }
+                        stale: { type: boolean, nullable: true }
                         stale_reasons: { type: array, items: { type: string, enum: [age, paused] } }
                         weekend: { type: boolean }
+                        replayed_raw: { type: string, description: What replaying this token's classified events leaves the address holding }
+                        realized_usd: { type: string, nullable: true }
+                        realized_status: { type: string, enum: [complete, partial, none] }
+                        events_summary: { type: object }
                   events_summary:
                     type: object
                     properties:
@@ -1259,10 +1271,17 @@ paths:
                       univ3: { type: integer }
                       univ4: { type: integer }
                       other_unparsed: { type: integer }
-                  replayed_raw: { type: string, description: What replaying every classified event leaves the address holding }
-                  realized_usd: { type: string, nullable: true, description: FIFO; null when no sale could be priced against a known cost }
+                  scope:
+                    type: object
+                    properties:
+                      registry_taken_at: { type: string, format: date-time }
+                      registry_tokens: { type: integer, example: 195 }
+                      registry_source: { type: string }
+                      scanned: { type: array, items: { type: string } }
+                      rule: { type: string }
+                  realized_usd: { type: string, nullable: true, description: Sum over tokens of FIFO realized; null when no sale could be priced against a known cost }
                   realized_status: { type: string, enum: [complete, partial, none] }
-                  unrealized_usd: { type: string, nullable: true }
+                  unrealized_usd: { type: string, nullable: true, description: USD mark of everything held; null unless every held token has a fresh feed }
                   mdd_usd: { type: string, nullable: true }
                   gaps: { type: array, items: { type: string } }
                   evidence:

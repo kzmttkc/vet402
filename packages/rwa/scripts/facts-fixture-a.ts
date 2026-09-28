@@ -11,18 +11,21 @@ import { recordedPoolResolver } from "../pools";
 const A = JSON.parse(readFileSync(join(process.cwd(), "fixtures/rwa/A.json"), "utf8"));
 const CHAIN = JSON.parse(readFileSync(join(process.cwd(), "fixtures/rwa/A.chain.json"), "utf8"));
 
-export function readFromFixtureA() {
+export function stateFromFixtureA() {
   return {
+    token: (A.token.address as string).toLowerCase(),
     raw: BigInt(A.raw),
     uiMultiplier: BigInt(A.ui_multiplier),
     oraclePaused: A.oracle_paused as boolean,
-    feedDecimals: A.feed.decimals as number,
-    round: {
-      roundId: BigInt(A.feed_round.round_id),
-      answer: BigInt(A.feed_round.answer),
-      startedAt: Number(A.feed_round.started_at),
-      updatedAt: Number(A.feed_round.updated_at),
-      answeredInRound: BigInt(A.feed_round.answered_in_round),
+    feed: {
+      decimals: A.feed.decimals as number,
+      round: {
+        roundId: BigInt(A.feed_round.round_id),
+        answer: BigInt(A.feed_round.answer),
+        startedAt: Number(A.feed_round.started_at),
+        updatedAt: Number(A.feed_round.updated_at),
+        answeredInRound: BigInt(A.feed_round.answered_in_round),
+      },
     },
   };
 }
@@ -33,8 +36,10 @@ async function main() {
     block: A.block,
     blockTimestamp: A.block_timestamp,
     receipts: CHAIN.receipts,
-    read: readFromFixtureA(),
+    states: [stateFromFixtureA()],
     resolver: recordedPoolResolver(CHAIN.pools),
+    // Fixture A was recorded for NVDA only.
+    canonical: new Set([(A.token.address as string).toLowerCase()]),
   });
   const path = join(process.cwd(), "fixtures/rwa/A.facts.json");
   writeFileSync(path, `${JSON.stringify(facts, null, 2)}\n`);

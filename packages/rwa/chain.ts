@@ -39,6 +39,8 @@ async function getLogsRange(filter: Record<string, unknown>, from: number, to: n
 
 /** Pause between consecutive log requests: the public RPC throttles bursts (measured 2026-09-17/18). */
 const LOG_CHUNK_PACING_MS = 250;
+const LOG_BATCH = 4;
+const LOG_BATCH_PACING_MS = 300;
 
 async function getLogsChunked(filter: Record<string, unknown>, from: number, to: number, opts?: RpcOptions, chunk = LOG_CHUNK_BLOCKS): Promise<RawLog[]> {
   // Genesis-range log queries need an archive node; the fallback RPC refuses them
@@ -48,13 +50,20 @@ async function getLogsChunked(filter: Record<string, unknown>, from: number, to:
   const starts: number[] = [];
   for (let start = from; start <= to; start += chunk) starts.push(start);
 
-  // Fast path: every chunk in one JSON-RPC batch. Measured 2026-09-18: 17 chunks answer in
-  // 0.5s as one POST, while 34 paced single requests drew 429s and took 25s+.
+  // Fast path: the chunks in small JSON-RPC batches. Measured 2026-09-18: 17 chunks answered in
+  // 0.5s as one POST, while 34 paced single requests drew 429s and took 25s+. Measured 2026-09-29:
+  // batches of 8 now draw 429 about half the time, so they go 4 at a time with a short pause.
   try {
-    const results = await rpcBatch<RawLog[]>(
-      starts.map((start) => ({ method: "eth_getLogs", params: [{ ...filter, fromBlock: hex(start), toBlock: hex(Math.min(to, start + chunk - 1)) }] })),
-      logOpts,
-    );
+    const results: RawLog[][] = [];
+    for (let i = 0; i < starts.length; i += LOG_BATCH) {
+      if (i > 0) await pause(LOG_BATCH_PACING_MS);
+      results.push(
+        ...(await rpcBatch<RawLog[]>(
+          starts.slice(i, i + LOG_BATCH).map((start) => ({ method: "eth_getLogs", params: [{ ...filter, fromBlock: hex(start), toBlock: hex(Math.min(to, start + chunk - 1)) }] })),
+          logOpts,
+        )),
+      );
+    }
     return results.flat();
   } catch (err) {
     const allowed = allowedSpan(err);
@@ -108,6 +117,8 @@ export async function fetchReceipts(txs: string[], opts?: RpcOptions, batchSize 
     while (next < batches.length) {
       const idx = next++;
       const slice = batches[idx];
+      // A short pause between batches: back-to-back receipt batches drew 429s (measured 2026-09-29).
+      if (idx > 0) await (opts?.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))))(300);
       const rs = await rpcBatch<RawReceipt | null>(slice.map((tx) => ({ method: "eth_getTransactionReceipt", params: [tx] })), opts);
       results[idx] = rs.map((r, j) => {
         if (!r) throw new Error(`receipt missing for ${slice[j]}`);

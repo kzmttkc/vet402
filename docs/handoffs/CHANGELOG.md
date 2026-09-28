@@ -13,6 +13,10 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-29 JST（2）— `/rwa` を全銘柄に（rwa-recon-0.2、SPEC patch 018）
+
+- **何を**: 正本を Robinhood 公式一覧の 195 銘柄に広げた（`packages/rwa/registry.json`、チェーンで照合済み、Chainlink feed 33 本）。範囲は保有銘柄・NVDA・それらの取引が動かした銘柄で、レコードの `scope` と `gaps: exited_positions_not_scanned` に明記。残高は Multicall3 で 1 回、v4 プールは PositionManager.poolKeys（ハッシュ照合つき）。FIFO は銘柄ごと、株と株の直接交換は値付けしない。
+- **影響**: facts の形が変わる（`method_version: rwa-recon-0.2`、`scope` 追加、`tokens[]` に `usd_reason`・`replayed_raw`・`realized_usd` など、top-level の `replayed_raw` は廃止）。openapi 更新済み。有料ルートは同じ JSON を返す。`/score` は触っていない。デモの財布は NVDA と QQQ の 2 銘柄（cold 約 18 秒・手元の実測）。
 ## 2026-09-29 JST（2）— 週次ベンチマーク 0/42 の修正: eth_getLogs 上限 2,000 への追随・tail の継ぎ足し・走行前の温め・鮮度監視（ブランチ `fix/benchmark-scan`・未 push）
 
 - **何を**: ①`src/lib/chain/chunked-logs.ts`: プロバイダが拒否文で上限を名乗ったら（`eth_getLogs is limited to a 2,000 range`）二分せずその幅で割り直し、同じ endpoint の以後の走査はその幅から始める。②`src/lib/chain/agent-resolver.ts`＋`agent-resolve-window.ts`: wallet→agent 解決の tail スナップショットを、TTL 切れのたびに全区間走査し直すのをやめ、伸びた分だけ継ぎ足す（`planTailSnapshotUse`）。バッチ用に `warmAgentResolveTail(deadlineMs)`。③`src/lib/benchmark/runner.ts`: ループ前に tail を最大60秒で1回温める。応答に `errorReasons`（理由→件数・URL は伏せる）と `agentResolveTail` を追加。④`.github/workflows/benchmark-freshness.yml`: 日次で `/api/v1/accuracy` の `operatorBenchmark.lastScanAt` を読み、8日超で issue（uptime.yml と同じ型・回復で自動クローズ）。

@@ -33,6 +33,10 @@ export type RpcOptions = {
 
 /** JSON-RPC error messages that mean "the node behind the gateway was slow", not "the request is wrong". */
 const TRANSIENT_RPC_ERROR = /deadline exceeded|try again|temporarily unavailable/i;
+/** The public RPC rate-limits items inside a batch: one item errors "Too Many Requests" while its
+ *  neighbours answer (measured 2026-09-29 reading 195 balances). That is a transport condition,
+ *  retried with backoff like an HTTP 429, not a bad call. */
+const RATE_LIMITED_ITEM = /too many requests|rate limit/i;
 const MAX_TRANSIENT_RETRIES = 2;
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -83,7 +87,7 @@ export async function rpcBatch<T = unknown>(calls: JsonRpcCall[], opts: RpcOptio
         });
       } catch (err) {
         lastError = err;
-        if (err instanceof RpcError && err.method !== "batch") {
+        if (err instanceof RpcError && err.method !== "batch" && !RATE_LIMITED_ITEM.test(err.message)) {
           // A JSON-RPC level error (bad params, log cap) is not a transport failure: do not retry or fall back.
           // The exception is the gateway's own upstream timeout ("context deadline exceeded", measured
           // 2026-09-18): the same call succeeds a moment later, so it gets a short, bounded retry.

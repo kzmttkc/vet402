@@ -53,8 +53,11 @@ Chain. Each item names the file or command that shows whether we kept it.
 
 In this order (SPEC §14), each one shipped with its own fixture:
 
-1. Every canonical Stock Token, not only NVDA, read from the official
-   registry rather than a hard-coded list.
+1. Every canonical Stock Token, not only NVDA. Shipped on 2026-09-29 as
+   `rwa-recon-0.2`: the 195 tokens of Robinhood's own list, frozen with the date
+   it was taken and checked on chain, with the 33 Chainlink equity feeds. Still
+   to do here: positions opened and closed in a token the wallet no longer
+   holds, and refreshing the list when Robinhood adds tokens.
 2. An MCP tool, `check_rwa_wallet`, so an agent can read the same facts
    before it relies on someone's claimed record.
 3. Identity binding through ERC-8004, so a record can be tied to an agent

@@ -3,25 +3,45 @@
   "chain_id": 4663,
   "as_of": "2026-09-16T22:02:03.000Z",
   "as_of_block": 64850467,
-  "method_version": "rwa-recon-0.1",
+  "method_version": "rwa-recon-0.2",
   "identity_binding": "unknown",
   "r0": "present",
   "r1_status": "partial",
   "r2": "no_declaration",
+  "scope": {
+    "registry_taken_at": "2026-09-28T21:58:40.774Z",
+    "registry_tokens": 195,
+    "registry_source": "https://docs.robinhood.com/chain/contracts",
+    "scanned": [
+      "NVDA"
+    ],
+    "rule": "held at as_of, plus NVDA, plus canonical tokens moved for the address in those tokens' transactions"
+  },
   "tokens": [
     {
       "symbol": "NVDA",
+      "name": "NVIDIA",
       "token": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
       "canonical": true,
       "raw": "186109735330000000000",
       "shares_ui": "186.25399999",
       "usd": "39859.28",
+      "usd_reason": null,
       "feed": "0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15",
       "feed_answer": "21417088793",
       "feed_updated_at": "2026-09-16T19:41:41.000Z",
       "stale": false,
       "stale_reasons": [],
-      "weekend": false
+      "weekend": false,
+      "replayed_raw": "186109735330000000000",
+      "realized_usd": null,
+      "realized_status": "partial",
+      "events_summary": {
+        "transfer": 955,
+        "univ3": 0,
+        "univ4": 0,
+        "other_unparsed": 0
+      }
     }
   ],
   "events_summary": {
@@ -30,13 +50,13 @@
     "univ4": 0,
     "other_unparsed": 0
   },
-  "replayed_raw": "186109735330000000000",
   "realized_usd": null,
   "realized_status": "partial",
   "unrealized_usd": "39859.28",
   "mdd_usd": null,
   "gaps": [
     "unknown_cost_lots",
+    "exited_positions_not_scanned",
     "mdd_pending"
   ],
   "evidence": {

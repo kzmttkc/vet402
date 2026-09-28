@@ -9,8 +9,8 @@ token, or give advice. Specification: [SPEC.md](SPEC.md). Rules for this code:
 ## 30 seconds
 
 1. Open a real record: <https://vet402.com/rwa/0xE9B08727131E34010b34006c660D4c1B436EC25f>
-   (a public wallet on Robinhood Chain; it is marked `partial` because 12 of its
-   movements are not decoded, and the page says so). Any other wallet:
+   (a public wallet on Robinhood Chain that holds NVDA and QQQ; its record is
+   `partial`, and the page says how many movements were not decoded). Any other wallet:
    <https://vet402.com/rwa>.
 2. One real round trip, priced by hand to the cent: [Fixture B](../../fixtures/rwa/B.md),
    realized **−$9.62**. CI replays it through the FIFO engine.
