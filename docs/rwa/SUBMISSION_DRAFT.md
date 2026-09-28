@@ -36,7 +36,7 @@ Not applicable: no token is issued. /rwa reads the canonical NVDA Stock Token 0x
 
 ## Which parts of your code have been produced during the Buildathon?
 
-All of /rwa, first code commit 2026-09-17: packages/rwa (classifier, FIFO, feed staleness, anchor), src/app/rwa, src/app/api/v1/rwa/facts, fixtures/rwa, RwaAnchor.sol. The parent vet402 product predates the event and is not claimed.
+All of /rwa, first code commit 2026-09-16 22:03 UTC: packages/rwa (classifier, FIFO, feed staleness, anchor), src/app/rwa, src/app/api/v1/rwa/facts, fixtures/rwa, RwaAnchor.sol. The parent vet402 product predates the event and is not claimed.
 
 ## Which sponsor/partner technologies have you used?
 
