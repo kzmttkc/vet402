@@ -90,6 +90,12 @@ function Rate({ value }: { value: number | null }) {
   return <span className="text-brand-deep">{value}%</span>;
 }
 
+// 描画の外で現在時刻を読む（React の規則: 描画中に Date.now() を呼ばない）。頁は revalidate=600 で
+// 作り直されるので、ここでの「今」は最長 10 分古い。遅れの判定（8 日超）には十分。
+function daysSince(iso: string): number {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+}
+
 export default async function AccuracyPage() {
   let report: AccuracyReport;
   try {
@@ -118,9 +124,7 @@ export default async function AccuracyPage() {
 
   // 「Weekly」と書いていたが、実行が止まった週があった（2026-09-16 の後、09-29 まで 0 件）。
   // 予定と実績を分けて出す: 予定は vercel.json の週次 cron、実績は最後の scan の日付。
-  const benchmarkAgeDays = benchmark.lastScanAt
-    ? Math.floor((Date.now() - new Date(benchmark.lastScanAt).getTime()) / 86_400_000)
-    : null;
+  const benchmarkAgeDays = benchmark.lastScanAt ? daysSince(benchmark.lastScanAt) : null;
   const benchmarkOverdue = benchmarkAgeDays !== null && benchmarkAgeDays > 8;
 
   const hasAnyData = report.observedVerdicts > 0;
