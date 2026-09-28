@@ -156,7 +156,10 @@ export function parsePaymentHeader(header: string, nowSec: number = Math.floor(D
   return p;
 }
 
-/** Recover the Permit2 witness signature locally, so a forged header never reaches the facilitator. */
+/**
+ * Recover the Permit2 witness signature locally, so a forged header never reaches the facilitator.
+ * EOA (ECDSA) signatures only: smart-contract wallets (ERC-1271) are refused here with a 402.
+ */
 export async function checkSignature(p: PaymentPayload): Promise<boolean> {
   const pl = p.payload as { signature: Hex; permit2Authorization: Permit2Authorization };
   const auth = pl.permit2Authorization;
@@ -232,8 +235,10 @@ export async function settlePayment(p: PaymentPayload, fetchImpl: typeof fetch =
     return { kind: "unknown", detail: err instanceof Error ? err.name : "error" };
   }
   const b = r.body;
-  if (r.ok && b && b.success === true && typeof b.transaction === "string" && /^0x[0-9a-fA-F]{64}$/.test(b.transaction)) return { kind: "settled", result: b };
-  if (r.ok && b && b.success === false) return { kind: "failed", result: b };
+  const hasTx = !!b && typeof b.transaction === "string" && /^0x[0-9a-fA-F]{64}$/.test(b.transaction);
+  if (r.ok && b && b.success === true && hasTx) return { kind: "settled", result: b };
+  // "failed" only when nothing points at a transaction; a hash next to success:false may mean money moved.
+  if (r.ok && b && b.success === false && !hasTx) return { kind: "failed", result: b };
   return { kind: "unknown", detail: `status ${r.status}` };
 }
 

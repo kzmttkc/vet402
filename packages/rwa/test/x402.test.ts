@@ -227,12 +227,13 @@ test("settle says success:false → 402 (no money moved), with the facilitator's
   }
 });
 
-test("settle outcome unknown (5xx, non-JSON, thrown) → the record still comes back, marked unknown", async () => {
+test("settle outcome unknown (5xx, non-JSON, thrown, success:false with a tx hash) → the record still comes back, marked unknown", async () => {
   const replies: Array<() => Response | Promise<Response>> = [
     () => json({ error: "internal" }, 500),
     () => new Response("<html>oops</html>", { status: 200 }),
     () => json({ success: true, transaction: "not-a-hash" }),
     () => Promise.reject(new Error("socket hang up")),
+    () => json({ success: false, errorReason: "timeout_after_broadcast", transaction: TX }),
   ];
   for (const settle of replies) {
     __resetFactsCacheForTest();

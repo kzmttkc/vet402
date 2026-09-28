@@ -46,7 +46,7 @@ token, or give advice. Specification: [SPEC.md](SPEC.md). Rules for this code:
 |---|---|
 | Page | `https://vet402.com/rwa/<address>` |
 | Facts JSON | `GET https://vet402.com/api/v1/rwa/facts/<address>?chain=4663` (no key; 10/min/IP across instances; 5-minute cache and one reconstruction at a time per instance, 45-second cutoff) |
-| Paid facts JSON | `GET https://vet402.com/api/v1/rwa/paid/facts/<address>` over x402 v2: 0.01 USDG on Robinhood Chain (`exact`, Permit2, facilitator Dexter), same JSON, 60/min/IP (not prioritised over the free route). Verified, then built, then settled: a 404 or 503 is never charged, and once settle is sent the record is returned. The receipt is in `PAYMENT-RESPONSE`; `X-Payment-Status` says `settled` or `unknown`. |
+| Paid facts JSON | `GET https://vet402.com/api/v1/rwa/paid/facts/<address>` over x402 v2: 0.01 USDG on Robinhood Chain (`exact`, Permit2, facilitator Dexter), same JSON, 60/min/IP (not prioritised over the free route). Verified, then built, then settled: a 404 or 503 is never charged, and once settle is sent the record is returned. The receipt is in `PAYMENT-RESPONSE`; `X-Payment-Status` says `settled` or `unknown`. Payers sign with a plain key (EOA); smart-contract wallets are not accepted yet. |
 | Anchor | `RwaAnchor` on Robinhood Chain — see `fixtures/rwa/anchor.json` |
 
 ## Venue scope
