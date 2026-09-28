@@ -13,6 +13,16 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-28 JST（5）— `/sellers`: Base の売り手がドメインで自分の購入結果を探す公開頁（読み取り専用）
+
+- **何を**: 3 頁。`/sellers`（ドメイン検索と Base の売り手の一覧。行ごとに出品数と、各出品の最新の購入での delivered / seller's side / vet402's side / not sorted / not yet bought）、`/sellers/[host]`（出品ごとに最新の購入日時 UTC・結果・What we saw・What to fix・Whose side・Basescan の tx・export.csv の該当行へのたどり方・それ以前の 4 行）、`/sellers/fix-first`（失敗を種類ごとに束ね、seller → vet402 → 未分類、売り手数の多い順・手間 1/2/3）。
+- **分類**: 正典は `src/lib/sellers/fix-modes.ts`（25 種）。本文・クエリを送っていなかった行は main の共有の判定（`request-body.ts` の `bodyNotSentOnOurSide`・`request-query.ts` の `queryNotSentOnOurSide`）をそのまま使い、/sellers は自前の条件・時刻を持たない。/sellers の方針として、決済済みの 400/422 も同じ判定（決済の有無以外）に当たればこちらの側（`body_not_sent` / `query_not_sent`）。当たらない決済済みの 400/404/415/422 は `settled_then_rejected`（売り手が入力を確かめる前に決済した）。当たらない行は `other`（unsorted）へ落ち、種類ごとの合計は届かなかった出品の数と一致する。
+- **買い直しを約束しない**: 「queued for a re-buy」と書くのは、旗 `OBSERVATORY_L1_CENSUS` が on で、`RETEST_SELLERS_SQL` がその売り手を選び、選んだ行（出品と理由）が頁の最新の行と一致するときだけ。それ以外は vet402 側の失敗だとだけ書く。
+- **負荷**: 頁は `src/lib/sellers/cached.ts`（Data Cache・300 秒）から読み、DB を読んだ時刻を出す。行には共有の判定が読む部分だけを SQL で間引いて載せる（売り手のスキーマ全体をキャッシュしない）。IP ごと 30 回/分、超過は `src/proxy.ts` が 429＋Retry-After。一覧に無いホストは per-host の問い合わせの前に 404。本番 READ ONLY の EXPLAIN ANALYZE: 一覧 34 ms・74 ms、最大の売り手（1,182 出品）29 ms・7 ms、retest の SQL（旗 on のときだけ）103 ms。
+- **本番で数えた件数（各出品の最新の行・2026-09-28・READ ONLY）**: seller 側 696・vet402 側 1,931（payer_unfunded 626・body_not_sent 631・query_not_sent 588・settlement_pending 39・vet402_limit 42・vet402_error 5）・未分類 14。旗 on なら queued 349 売り手。
+- **影響**: 方法論の held_reason の段落の直後に 1 段落のリンク、sitemap に 2 行、`docs/claims.yaml` に `sellers_*` 11 件（断定語なしで書いたので検出の床は置かない。`tests/claims-registry.test.ts` の走査に `fix-modes.ts` を追加）。main の共有ファイル（request-body.ts・request-query.ts・l1-runner.ts）への差分は 0。
+- **コミット**: `e55acba0`・`20886a3c`・`097555a4`・`b0cbdde1`（ブランチ `seller-board-0928`・未 push。独立レビューの後に入れる）
+
 ## 2026-09-28 JST（3）— retest に (c)「Base で宣言クエリを送っていなかった期間の 400/422」を足す
 
 - **何を**: `src/lib/observatory/request-query.ts` に `BASE_DECLARED_QUERY_SINCE = "2026-09-27T23:27:16Z"`（/sellers も import する。場所と名前を変えない）。retest の (c): 売り手の最新行が Base（`eip155:8453` / `base`）・`settle_failed`・tx なし・HTTP 400 か 422・この時刻より前・`requestQuery` の記録が無いか `empty`・今の掲載が `queryParams` を宣言（`declared_schema` の `properties.input.properties.queryParams`）。(b) と同じく、失敗した出品そのものがまだ買えればそれを、買えなければ最安。メソッドは問わない。XRPL（9/21 から送っていた）は入らない。
