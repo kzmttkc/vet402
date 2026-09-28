@@ -17,10 +17,8 @@ import { createPublicClient, createWalletClient, http, parseAbi, getAddress, typ
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
 import { randomBytes } from "node:crypto";
 import { RWA_CHAIN_ID, RWA_RPC_URL } from "../config";
-import { PAY_TO, PRICE_ATOMIC, USDG, X402_NETWORK, b64json } from "../x402";
+import { PAY_TO, PERMIT2, PRICE_ATOMIC, USDG, X402_NETWORK, X402_PERMIT2_PROXY, b64json } from "../x402";
 
-const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
-const X402_PERMIT2_PROXY = "0x402085c248EeA27D92E8b30b2C58ed07f9E20001";
 const DEMO = "0xE9B08727131E34010b34006c660D4c1B436EC25f";
 
 const args = process.argv.slice(2);
@@ -51,12 +49,19 @@ async function main() {
   const required = JSON.parse(Buffer.from(reqHeader, "base64").toString("utf8"));
   const accept = required.accepts?.[0];
   const same = (a: string, b: string) => a?.toLowerCase() === b.toLowerCase();
-  if (!accept || accept.scheme !== "exact" || accept.network !== X402_NETWORK || !same(accept.asset, USDG) || !same(accept.payTo, PAY_TO) || BigInt(accept.amount) > BigInt(PRICE_ATOMIC)) {
+  if (
+    !accept || accept.scheme !== "exact" || accept.network !== X402_NETWORK || !same(accept.asset, USDG) || !same(accept.payTo, PAY_TO) ||
+    accept.extra?.assetTransferMethod !== "permit2" || !/^\d+$/.test(String(accept.amount)) || BigInt(accept.amount) <= 0n || BigInt(accept.amount) > BigInt(PRICE_ATOMIC)
+  ) {
     throw new Error(`refusing terms that are not ours: ${JSON.stringify(accept)}`);
   }
   console.log(JSON.stringify({ terms: { network: accept.network, asset: accept.asset, amount: accept.amount, payTo: accept.payTo } }));
 
-  // 2. balance and Permit2 allowance
+  // 2. the contracts the signature names must exist on 4663; then balance and Permit2 allowance
+  for (const [name, addr] of [["Permit2", PERMIT2], ["x402ExactPermit2Proxy", X402_PERMIT2_PROXY]] as const) {
+    const code = await pub.getCode({ address: addr });
+    if (!code || code === "0x") throw new Error(`${name} has no code on 4663; nothing signed`);
+  }
   const [bal, allow] = await Promise.all([
     pub.readContract({ address: USDG, abi: erc20, functionName: "balanceOf", args: [account.address] }),
     pub.readContract({ address: USDG, abi: erc20, functionName: "allowance", args: [account.address, PERMIT2] }),
@@ -129,7 +134,7 @@ async function main() {
   const respHeader = paid.headers.get("PAYMENT-RESPONSE");
   const settlement = respHeader ? JSON.parse(Buffer.from(respHeader, "base64").toString("utf8")) : null;
   const body = await paid.json().catch(() => null);
-  console.log(JSON.stringify({ status: paid.status, ms: Date.now() - t0, settlement, error: body?.error ?? null, r1_status: body?.r1_status ?? null, as_of_block: body?.as_of_block ?? null }));
+  console.log(JSON.stringify({ status: paid.status, ms: Date.now() - t0, payment_status: paid.headers.get("X-Payment-Status"), settlement, error: body?.error ?? null, r1_status: body?.r1_status ?? null, as_of_block: body?.as_of_block ?? null }));
 }
 
 main().catch((e) => {

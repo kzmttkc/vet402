@@ -9,6 +9,7 @@ import { NoStockTokenActivity, type RwaFacts } from "../../../../../../../../pac
 import {
   BadPayment,
   b64json,
+  checkSignature,
   parsePaymentHeader,
   paymentRequired,
   settlePayment,
@@ -22,9 +23,13 @@ import {
  * (SPEC patch 017). The free route is unchanged and stays free.
  *
  * Without PAYMENT-SIGNATURE: 402 with PAYMENT-REQUIRED (base64 JSON) and the
- * same object as the body. With it: verify at the facilitator → build the
- * record → settle → 200 with PAYMENT-RESPONSE. The record is built before the
- * money moves, so a request that ends in 404/503 is not charged.
+ * same object as the body. With it: check the terms and the signature here,
+ * verify at the facilitator, build the record, settle, answer 200 with
+ * PAYMENT-RESPONSE. The record is built before the money moves, so a request
+ * that ends in 404/503 is not charged; and once settle has been sent, the
+ * record is returned whatever settle answered, unless the facilitator said
+ * plainly that no money moved (402). An unknown settlement answers 200 with
+ * the record and `X-Payment-Status: unknown` instead of a receipt.
  */
 
 type RouteContext = { params: Promise<{ address: string }> };
@@ -32,15 +37,15 @@ type RouteContext = { params: Promise<{ address: string }> };
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const EXPOSE = { "Access-Control-Expose-Headers": "PAYMENT-REQUIRED, PAYMENT-RESPONSE" };
+const EXPOSE = { "Access-Control-Expose-Headers": "PAYMENT-REQUIRED, PAYMENT-RESPONSE, X-Payment-Status" };
 /**
  * Latest moment (from the start of the request) at which settle may begin.
- * Settle is given 15 s, so this keeps the whole call inside maxDuration 60:
- * a function cut off mid-settle could charge the payer and return nothing.
- * Past it, answer 503 uncharged; the record is cached for 5 minutes, so the
- * retry is fast.
+ * Settle is given 15 s, so this keeps the whole call inside maxDuration 60
+ * with room for a cold start: a function cut off mid-settle could charge the
+ * payer and return nothing. Past it, answer 503 uncharged; the record is
+ * cached for 5 minutes, so the retry is fast.
  */
-const SETTLE_START_BY_MS = 42_000;
+const SETTLE_START_BY_MS = 38_000;
 
 function required(url: string, headers: Record<string, string>, error?: string, extra?: Record<string, string>) {
   const body = paymentRequired(url, error);
@@ -72,6 +77,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (err instanceof BadPayment) return required(resourceUrl, gate.headers, err.reason);
     throw err;
   }
+
+  if (!(await checkSignature(payment))) return required(resourceUrl, gate.headers, "signature_does_not_match_from");
 
   try {
     const verified = await verifyPayment(payment);
@@ -105,19 +112,20 @@ export async function GET(request: NextRequest, context: RouteContext) {
     );
   }
 
-  try {
-    const settled = await settlePayment(payment);
-    if (!settled.success) {
-      return required(resourceUrl, gate.headers, settled.errorReason ?? "settlement_failed", { "PAYMENT-RESPONSE": b64json(settled) });
-    }
-    return NextResponse.json(render(facts), {
-      headers: { ...gate.headers, ...EXPOSE, "Cache-Control": "no-store", "PAYMENT-RESPONSE": b64json(settled) },
-    });
-  } catch (err) {
-    // A timed-out settle call may still have settled on chain; say so rather than "not charged".
-    logServerError("rwa_paid_settle", err);
-    return NextResponse.json({ error: "settlement_unknown" }, { status: 502, headers: gate.headers });
+  const outcome = await settlePayment(payment);
+  if (outcome.kind === "failed") {
+    return required(resourceUrl, gate.headers, outcome.result.errorReason ?? "settlement_failed", { "PAYMENT-RESPONSE": b64json(outcome.result) });
   }
+  if (outcome.kind === "unknown") {
+    // The money may have moved and the nonce may be spent: give the record, say we do not know.
+    logServerError("rwa_paid_settle_unknown", new Error(outcome.detail));
+    return NextResponse.json(render(facts), {
+      headers: { ...gate.headers, ...EXPOSE, "Cache-Control": "no-store", "X-Payment-Status": "unknown" },
+    });
+  }
+  return NextResponse.json(render(facts), {
+    headers: { ...gate.headers, ...EXPOSE, "Cache-Control": "no-store", "X-Payment-Status": "settled", "PAYMENT-RESPONSE": b64json(outcome.result) },
+  });
 }
 
 /** Addresses are stored lower-cased and shown EIP-55 (SPEC §7). */

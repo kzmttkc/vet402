@@ -1284,15 +1284,22 @@ paths:
       description: |
         docs/rwa/SPEC.md patch 017. Returns exactly what getRwaFacts returns,
         at 60 requests/min/IP instead of 10. The free route is unchanged.
+        Paying does not jump the queue: one reconstruction at a time per
+        instance is shared with the free route and the /rwa page.
         Without a `PAYMENT-SIGNATURE` header the answer is 402 with
         `PAYMENT-REQUIRED` (base64 JSON, also the body): scheme `exact`,
         network `eip155:4663`, asset USDG
         `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168`, amount `10000`
         (0.01 USDG), `assetTransferMethod: permit2`, payTo
         `0x973cD8a91A771C2C04C6036888F8175D6b4F6227`, facilitator Dexter.
-        With the header: the payment is verified, the record is built, and
-        only then settled. 404 and 503 carry `charged: false`. 200 carries
-        the settlement in `PAYMENT-RESPONSE` (base64 JSON with the tx hash).
+        With the header: the terms and the Permit2 signature are checked
+        locally, the payment is verified at the facilitator, the record is
+        built, and only then settled. 404 and 503 carry `charged: false`.
+        Once settle has been sent the record is returned, unless the
+        facilitator answered `success: false` (402, no money moved).
+        `X-Payment-Status: settled` comes with `PAYMENT-RESPONSE` (base64 JSON
+        with the tx hash); `X-Payment-Status: unknown` means the facilitator
+        did not give a clear answer and the payment may or may not have moved.
       security: []
       parameters:
         - in: path
@@ -1305,17 +1312,17 @@ paths:
           schema: { type: string, description: base64 JSON PaymentPayload (x402 v2) }
       responses:
         "200":
-          description: The reconstruction (same body as getRwaFacts); PAYMENT-RESPONSE holds the settlement.
+          description: The reconstruction (same body as getRwaFacts). X-Payment-Status is `settled` (with PAYMENT-RESPONSE) or `unknown`.
         "400":
           description: invalid_address
         "402":
-          description: Payment required, or the payment was refused (the reason is in `error`).
+          description: Payment required, or refused (the reason is in `error`), or settle answered success:false (no money moved; PAYMENT-RESPONSE attached).
         "404":
           description: no_stock_token_activity (not charged)
         "429":
           description: rate_limited
         "502":
-          description: facilitator_unavailable (not charged) or settlement_unknown
+          description: facilitator_unavailable at verify (not charged)
         "503":
           description: too_busy, feed_unavailable or too_slow_retry, with Retry-After (not charged)
 
