@@ -1276,6 +1276,49 @@ paths:
         "429": { description: Rate limited }
         "503": { description: "`feed_unavailable` (chain read failed) or `too_busy` (a reconstruction is already running on this instance; see Retry-After)" }
 
+  /api/v1/rwa/paid/facts/{address}:
+    get:
+      operationId: getRwaFactsPaid
+      tags: [RWA]
+      summary: The same facts JSON, paid per call over x402 v2 in USDG on Robinhood Chain
+      description: |
+        docs/rwa/SPEC.md patch 017. Returns exactly what getRwaFacts returns,
+        at 60 requests/min/IP instead of 10. The free route is unchanged.
+        Without a `PAYMENT-SIGNATURE` header the answer is 402 with
+        `PAYMENT-REQUIRED` (base64 JSON, also the body): scheme `exact`,
+        network `eip155:4663`, asset USDG
+        `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168`, amount `10000`
+        (0.01 USDG), `assetTransferMethod: permit2`, payTo
+        `0x973cD8a91A771C2C04C6036888F8175D6b4F6227`, facilitator Dexter.
+        With the header: the payment is verified, the record is built, and
+        only then settled. 404 and 503 carry `charged: false`. 200 carries
+        the settlement in `PAYMENT-RESPONSE` (base64 JSON with the tx hash).
+      security: []
+      parameters:
+        - in: path
+          name: address
+          required: true
+          schema: { type: string, pattern: "^0x[a-fA-F0-9]{40}$" }
+        - in: header
+          name: PAYMENT-SIGNATURE
+          required: false
+          schema: { type: string, description: base64 JSON PaymentPayload (x402 v2) }
+      responses:
+        "200":
+          description: The reconstruction (same body as getRwaFacts); PAYMENT-RESPONSE holds the settlement.
+        "400":
+          description: invalid_address
+        "402":
+          description: Payment required, or the payment was refused (the reason is in `error`).
+        "404":
+          description: no_stock_token_activity (not charged)
+        "429":
+          description: rate_limited
+        "502":
+          description: facilitator_unavailable (not charged) or settlement_unknown
+        "503":
+          description: too_busy, feed_unavailable or too_slow_retry, with Retry-After (not charged)
+
   /api/v1/observatory/endpoints/{id}/facts:
     get:
       operationId: getEndpointFacts

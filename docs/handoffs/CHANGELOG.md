@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-28 JST（4）— `/rwa` の facts に x402 の有料ルート（無料ルートは変えない）
+
+- **何を**: `GET /api/v1/rwa/paid/facts/:address`（`src/app/api/v1/rwa/paid/facts/[address]/route.ts`）と `packages/rwa/x402.ts`・テスト 7 件・支払いスクリプト `packages/rwa/scripts/pay-facts.ts`。0.01 USDG（4663・`exact`・permit2・Dexter）で無料ルートと同じ JSON を返す。verify → 再構成 → settle の順で、404・503 は決済しない。有料側は 60/分/IP。SPEC patch 017、OPERATING・README・openapi・`/rwa` 入口に1行ずつ。
+- **なぜ**: エージェントが Stock Token のウォレットに触る前に、この記録を USDG で買って読む形を Robinhood Chain のレールに載せる（オーナー承認 2026-09-28）。
+- **影響**: 受取人は RwaAnchor を打った `0x973cD8a9…6227`。新しい DB テーブルなし（レート制限は既存の `ip_rate_limits` を `rwa-paid-facts` のキーで使う）。`/score` と observatory の payer は import しない。
+
 ## 2026-09-28 JST（5）— `/sellers`: Base の売り手がドメインで自分の購入結果を探す公開頁（読み取り専用）
 
 - **何を**: 3 頁。`/sellers`（ドメイン検索と Base の売り手の一覧。行ごとに出品数と、各出品の最新の購入での delivered / seller's side / vet402's side / not sorted / not yet bought）、`/sellers/[host]`（出品ごとに最新の購入日時 UTC・結果・What we saw・What to fix・Whose side・Basescan の tx・export.csv の該当行へのたどり方・それ以前の 4 行）、`/sellers/fix-first`（失敗を種類ごとに束ね、seller → vet402 → 未分類、売り手数の多い順・手間 1/2/3）。

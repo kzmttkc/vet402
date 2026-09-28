@@ -18,6 +18,9 @@ Chain. Each item names the file or command that shows whether we kept it.
   page and anchor a final snapshot before the surfaces go down.
 - The page and the facts JSON need no key, no account and no fee. Limits are
   published in `docs/openapi.yaml` and do not change quietly.
+- Agents that want a looser limit can pay per call: the same JSON at
+  `/api/v1/rwa/paid/facts/<address>` over x402, 0.01 USDG on Robinhood Chain,
+  settled only after the record is built. The free route stays free.
 - You cannot trade, deposit or delegate anything here: no custody, no token,
   no advice. That stays the same as coverage grows.
 

@@ -56,6 +56,12 @@ export default async function RwaEntryPage({ searchParams }: { searchParams: Pro
         wallet can take up to a minute.
       </p>
       <p className="mt-2 text-sm">
+        Agents: read this record before you act on a Stock Token wallet. The same JSON is free at{" "}
+        <code>/api/v1/rwa/facts/&lt;address&gt;</code>, or paid per call over x402 at{" "}
+        <code>/api/v1/rwa/paid/facts/&lt;address&gt;</code> (0.01 USDG on Robinhood Chain, charged only when the record
+        is returned).
+      </p>
+      <p className="mt-2 text-sm">
         How it works and how we keep it running:{" "}
         <a className="underline" href="https://github.com/kzmttkc/vet402/blob/main/docs/rwa/OPERATING.md" rel="noreferrer" target="_blank">
           OPERATING.md
