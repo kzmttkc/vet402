@@ -5,9 +5,17 @@
 // 数字は頁に書かない。毎回ここを通して DB の行から出す。
 // ============================================================
 import { chainLabel, explorerTxUrl } from "@/lib/observatory/chains";
-import { classifyRow, FIX_MODES, NOT_IN_EXPORT_STATUSES, rowNote, type Bucket, type FixMode, type SellerRowFacts } from "./fix-modes";
-
-export type SummaryBucket = Bucket | "not_bought";
+import {
+  classifyRow,
+  FIX_MODES,
+  NOT_IN_EXPORT_STATUSES,
+  observed402Line,
+  rowNote,
+  SIGNED_ROW_STATUSES,
+  type Bucket,
+  type FixMode,
+  type SellerRowFacts,
+} from "./fix-modes";
 
 export interface OutcomeCounts {
   delivered: number;
@@ -16,7 +24,10 @@ export interface OutcomeCounts {
   seller: number;
   vet402: number;
   unsorted: number;
-  notBought: number;
+  /** 試したが vet402 が署名しなかった（L1 の結果ではない・2026-09-29 第2巡）。 */
+  notPaid: number;
+  /** まだ試していない出品（購入行が無い）。 */
+  notTried: number;
 }
 
 export interface SellerSummary extends OutcomeCounts {
@@ -53,7 +64,7 @@ export interface SellerBoard {
   /** DB を読んだ時刻（ISO）。頁はこの時刻を出す。 */
   fetchedAt: string;
   sellers: SellerSummary[];
-  totals: OutcomeCounts & { sellers: number; listings: number; sellersBought: number };
+  totals: OutcomeCounts & { sellers: number; listings: number; sellersTried: number };
   groups: FixGroup[];
 }
 
@@ -76,14 +87,14 @@ export type RetestQueue = ReadonlyMap<string, RetestPick>;
 const RETEST_REASON_MODE: Readonly<Record<string, string>> = { unfunded: "payer_unfunded", body: "body_not_sent", query: "query_not_sent" };
 
 function zero(): OutcomeCounts {
-  return { delivered: 0, pending: 0, seller: 0, vet402: 0, unsorted: 0, notBought: 0 };
+  return { delivered: 0, pending: 0, seller: 0, vet402: 0, unsorted: 0, notPaid: 0, notTried: 0 };
 }
 
-const SIDE_ORDER = { seller: 0, vet402: 1, unsorted: 2 } as const;
+const SIDE_ORDER = { seller: 0, vet402: 1, unsorted: 2, not_bought: 3 } as const;
 const MODE_ORDER = new Map(FIX_MODES.map((m, i) => [m.key, i]));
 
 function bucketKey(b: Bucket): keyof OutcomeCounts {
-  return b;
+  return b === "not_bought" ? "notPaid" : b;
 }
 
 /** 売り手の一覧の並び: 買った売り手を新しい順、まだの売り手はホスト名順。 */
@@ -127,10 +138,10 @@ export function buildSellerBoard(
     }
   }
   const sellers = [...byHost.values()];
-  const totals = { ...zero(), sellers: sellers.length, listings: 0, sellersBought: 0 };
+  const totals = { ...zero(), sellers: sellers.length, listings: 0, sellersTried: 0 };
   for (const s of sellers) {
-    const bought = s.delivered + s.pending + s.seller + s.vet402 + s.unsorted;
-    s.notBought = Math.max(0, s.listings - bought);
+    const tried = s.delivered + s.pending + s.seller + s.vet402 + s.unsorted + s.notPaid;
+    s.notTried = Math.max(0, s.listings - tried);
     const last = newest.get(s.host);
     const pick = retest?.get(s.host);
     s.rebuyEligible =
@@ -146,8 +157,9 @@ export function buildSellerBoard(
     totals.vet402 += s.vet402;
     totals.unsorted += s.unsorted;
     totals.pending += s.pending;
-    totals.notBought += s.notBought;
-    if (s.lastAttemptAt) totals.sellersBought++;
+    totals.notPaid += s.notPaid;
+    totals.notTried += s.notTried;
+    if (s.lastAttemptAt) totals.sellersTried++;
   }
   sellers.sort(compareSellers);
 
@@ -167,6 +179,16 @@ export function buildSellerBoard(
       (MODE_ORDER.get(a.key) ?? 0) - (MODE_ORDER.get(b.key) ?? 0),
   );
   return { fetchedAt, sellers, totals, groups };
+}
+
+/**
+ * 一覧の「いつの結果か」（2026-09-29 第2巡: /sellers と fix-first の表題に日付を入れる）。
+ * 最新の試行（どの売り手でも）の UTC の日付。試行が無ければ null。
+ */
+export function boardAsOfDay(board: Pick<SellerBoard, "sellers">): string | null {
+  let latest: string | null = null;
+  for (const s of board.sellers) if (s.lastAttemptAt && (!latest || s.lastAttemptAt > latest)) latest = s.lastAttemptAt;
+  return latest && /^\d{4}-\d{2}-\d{2}/.test(latest) ? latest.slice(0, 10) : null;
 }
 
 /** 検索: ホスト名の完全一致を先頭に、部分一致を続ける（最大 limit 件）。 */
@@ -200,6 +222,10 @@ export interface ShownRow {
   inExport: boolean;
   /** 行ごとの注記（fix-modes.ts の rowNote）。 */
   note: string | null;
+  /** vet402 が署名した行か（L1 の支払い付き購入か）。署名していない行を「L1 paid purchase」と書かない。 */
+  signed: boolean;
+  /** そのとき vet402 が見た 402 の要点（記録済みの範囲・fix-modes.ts の observed402Line）。 */
+  seen402: string | null;
 }
 
 export interface SellerListing extends SellerEndpointFacts {
@@ -231,6 +257,8 @@ export function showRow(r: SellerRowFacts): ShownRow {
     txUrl: explorerTxUrl(r.network, r.txHash),
     inExport: !NOT_IN_EXPORT_STATUSES.has(r.status),
     note: rowNote(r, c.mode?.key ?? null),
+    signed: SIGNED_ROW_STATUSES.has(r.status),
+    seen402: observed402Line(r),
   };
 }
 

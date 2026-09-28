@@ -53,6 +53,22 @@ function r(p: Partial<SellerRowFacts> & Flags): SellerRowFacts {
   };
 }
 
+/** 2026-09-29 第2巡: seller の側に置く根拠（(b)〜(e)）をそろえた行。 */
+function proven(p: Partial<SellerRowFacts> & Flags): SellerRowFacts {
+  const x = r(p);
+  return {
+    amountUnits: "10000",
+    payTo: `0x${"11".repeat(20)}`,
+    asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    payer: "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+    declaresHeaders: false,
+    pathTemplate: false,
+    listingMaxTimeoutSeconds: 20,
+    ...x,
+    meta: x.meta ?? { requestBody: "none", requestQuery: "empty" },
+  };
+}
+
 const eps = [
   { endpointId: "e1", resourceKey: "shop.example/a", resourceUrl: "https://shop.example/a", method: "POST", priceAmount: "1000" },
   { endpointId: "e2", resourceKey: "shop.example/b", resourceUrl: "https://shop.example/b", method: "GET", priceAmount: "1000" },
@@ -79,7 +95,7 @@ test("SellerDetailView: 取得時刻・vet402 の側・買い直し・tx・expor
   assert.doesNotMatch(html, /working\?/);
   // 行に層（L1）を書く。記録頁の Published state（L0）と読み違えない
   assert.match(html, /Recorded \(L1 paid purchase\):/);
-  assert.match(html, /Latest L1 purchase/);
+  assert.match(html, /Latest attempt/);
   assert.match(html, /<strong>L0<\/strong> state/);
   assert.match(html, /vet402&#x27;s side/);
   assert.match(html, /vet402&#x27;s wallet was out of USDC/);
@@ -92,11 +108,13 @@ test("SellerDetailView: 取得時刻・vet402 の側・買い直し・tx・expor
   assert.match(html, new RegExp(`href="https://basescan.org/tx/${TX}"`));
   assert.match(html, /href="\/api\/v1\/observatory\/export\.csv\?days=\d+"/);
   assert.match(html, /<code>attempted_at<\/code> 2026-09-12T00:00:00Z/);
-  assert.match(html, /The latest purchase delivered\. An earlier purchase listed below did not\./);
+  assert.match(html, /The latest purchase delivered\. An earlier attempt listed below did not\./);
   assert.doesNotMatch(html, /\bfixed\b/i, "never claim a fix");
   assert.match(html, /href="\/observatory\/methodology"/);
   assert.match(html, /href="\/observatory\/e\/e1"/);
-  assert.match(html, /not yet bought/);
+  assert.match(html, /not tried yet/);
+  // 2026-09-29 第2巡: 署名した行には払った条件を出す
+  assert.match(html, /The 402 terms vet402 paid:<\/strong> vet402 signed: exact\./);
   assert.match(html, /bought by the <code>census<\/code>|\[census\]/);
 });
 
@@ -124,7 +142,8 @@ test("SellersIndexView: 検索欄・一覧・内訳・方法論・取得時刻",
   assert.match(html, /name="q"/);
   assert.match(html, /href="\/sellers\/shop\.example"/);
   assert.match(html, /href="\/sellers\/quiet\.example"/);
-  assert.match(html, /2 sellers with 6 Base listings; vet402 has bought from 1 of the sellers/);
+  assert.match(html, /2 sellers with 6 Base listings; vet402 has tried to buy from 1 of\s+the sellers/);
+  assert.match(html, /<h1[^>]*>Find your purchase results \(Base, as of 2026-09-14\)<\/h1>/, "the heading says when");
   assert.match(html, /Read from the database 2026-09-28 13:04 UTC/);
   assert.match(html, /href="\/observatory\/methodology"/);
   assert.match(html, /href="\/sellers\/fix-first"/);
@@ -142,14 +161,16 @@ test("SellersIndexView: 検索で見つからないときはそう言う", () =>
 
 test("FixFirstView: seller の側が先、vet402 の側は「直すものは無い」節、手間の段", () => {
   const latest: LatestRow[] = [
-    { ...r({ endpointId: "a", status: "settle_failed", httpStatusPaid: 500, attemptedAt: "2026-09-20T00:00:00Z" }), host: "one.example" },
+    { ...proven({ endpointId: "a", status: "settle_failed", httpStatusPaid: 500, attemptedAt: "2026-09-20T00:00:00Z" }), host: "one.example" },
     { ...r({ endpointId: "b", status: "settle_failed", httpStatusPaid: 402, attemptedAt: "2026-09-14T00:00:00Z" }), host: "two.example" },
-    { ...r({ endpointId: "c", status: "settled", httpStatusPaid: 307, txHash: TX }), host: "two.example" },
+    { ...proven({ endpointId: "c", status: "settled", httpStatusPaid: 307, txHash: TX }), host: "two.example" },
+    { ...r({ endpointId: "d", status: "no_eligible_accept", network: null }), host: "three.example" },
   ];
   const board = buildSellerBoard(
     [
       { host: "one.example", listings: 1 },
       { host: "two.example", listings: 2 },
+      { host: "three.example", listings: 1 },
     ],
     latest,
     FETCHED,
@@ -158,11 +179,14 @@ test("FixFirstView: seller の側が先、vet402 の側は「直すものは無�
   const sellerAt = html.indexOf("Server error on the paid request");
   const oursAt = html.indexOf("vet402&#x27;s wallet was out of USDC");
   const otherAt = html.indexOf("Not grouped yet");
-  assert.ok(sellerAt > 0 && oursAt > sellerAt && otherAt > oursAt, "seller → vet402 → unsorted");
+  const notPaidAt = html.indexOf("Not bought: no payment option vet402 can sign");
+  assert.ok(sellerAt > 0 && oursAt > sellerAt && otherAt > oursAt && notPaidAt > otherAt, "seller → vet402 → unsorted → not bought");
+  assert.match(html, /Not bought: vet402 did not pay/);
+  assert.match(html, /<h1[^>]*>What to fix first, as of 2026-09-20<\/h1>/);
   assert.match(html, /On vet402&#x27;s side: nothing for sellers to fix/);
   assert.match(html, /effort 2: a server change/);
   assert.match(html, /Not counted against either side/);
-  assert.match(html, /\(3 of 3 bought\)/);
+  assert.match(html, /\(3 of 3 that vet402 paid for\)/);
   assert.match(html, /href="\/sellers\/one\.example"/);
   assert.match(html, /Read from the database 2026-09-28 13:04 UTC/);
 });
@@ -220,7 +244,7 @@ test("SellerDetailView: 照合待ちの行は失敗と書かず、時刻も書�
   assert.doesNotMatch(html, /failed on vet402|vet402&#x27;s side\.<\/strong>|Nothing for the seller to fix/);
   const board = buildSellerBoard([{ host: "wait.example", listings: 1 }], [{ ...d.listings[0].latest!.facts, host: "wait.example" }], FETCHED);
   const ff = renderToStaticMarkup(createElement(FixFirstView, { board, revalidateSec: 300 }));
-  assert.match(ff, /\(0 of 1 bought\)/);
+  assert.match(ff, /\(0 of 1 that vet402 paid for\)/);
   assert.match(ff, /1 more are awaiting on-chain verification and are not counted here/);
 });
 

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/seo";
 import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
-import { searchSellers, type SellerBoard } from "@/lib/sellers/board";
+import { boardAsOfDay, searchSellers, type SellerBoard } from "@/lib/sellers/board";
 import { getSellerBoardCached } from "@/lib/sellers/cached";
 import { SellersIndexView, SellersNotice, sellerPath } from "@/components/site/sellers/SellersViews";
 
@@ -16,14 +16,20 @@ import { SellersIndexView, SellersNotice, sellerPath } from "@/components/site/s
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = pageMetadata({
-  title: "Sellers on Base — find your purchase results",
-  description:
-    "x402 sellers on Base: look up your domain to see what vet402 bought from you, what it saw, what to fix, and whether a failure was on your side or vet402's.",
-  path: "/sellers",
-  // 2026-09-29 敵対的監査: 帰属（どちら側の失敗か）の見直しが済むまで、他社名の並ぶ頁を検索に出さない。
-  noindex: true,
-});
+// 2026-09-29 第2巡: 表題に「いつの結果か」の日付（最新の試行の UTC の日付・一覧のキャッシュから）。
+export async function generateMetadata(): Promise<Metadata> {
+  const day = await getSellerBoardCached()
+    .then((b) => boardAsOfDay(b))
+    .catch(() => null);
+  return pageMetadata({
+    title: day ? `Sellers on Base: purchase results as of ${day}` : "Sellers on Base: purchase results",
+    description:
+      "x402 sellers on Base: look up your domain to see what vet402 tried to buy from you, what it saw, what to fix, and whether a failure was on your side or vet402's.",
+    path: "/sellers",
+    // 2026-09-29 敵対的監査: 帰属（どちら側の失敗か）の見直しが済むまで、他社名の並ぶ頁を検索に出さない。
+    noindex: true,
+  });
+}
 
 export default async function SellersPage({ searchParams }: { searchParams: Promise<{ page?: string; q?: string }> }) {
   const params = await searchParams;

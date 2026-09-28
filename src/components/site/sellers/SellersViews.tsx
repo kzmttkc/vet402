@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { buttonClass } from "@/components/ui/Button";
 import { TableScroll } from "@/components/site/TableScroll";
 import {
+  boardAsOfDay,
   exportDaysFor,
   type FixGroup,
   type OutcomeCounts,
@@ -66,6 +67,16 @@ export function sellerHeading(host: string, lastAttemptAt: string | null): strin
   return day ? `${host}: x402 purchase results on Base, as of ${day}` : `${host}: x402 purchase results on Base`;
 }
 
+/** /sellers の表題（2026-09-29 第2巡: いつの結果かを日付で言う）。day は boardAsOfDay。 */
+export function sellersIndexHeading(day: string | null): string {
+  return day ? `Find your purchase results (Base, as of ${day})` : "Find your purchase results (Base)";
+}
+
+/** /sellers/fix-first の表題（同上）。 */
+export function fixFirstHeading(day: string | null): string {
+  return day ? `What to fix first, as of ${day}` : "What to fix first";
+}
+
 export function sellerPageTitle(host: string, lastAttemptAt: string | null = null): string {
   const bare = sellerHeading(host, lastAttemptAt);
   const full = `${bare} | vet402`;
@@ -123,10 +134,16 @@ function CountsLine({ c }: { c: OutcomeCounts }) {
       {c.unsorted > 0 && (
         <>
           {" "}
-          · <strong>{n(c.unsorted)}</strong> not sorted (held, no charge, or not grouped yet)
+          · <strong>{n(c.unsorted)}</strong> not sorted (vet402 cannot show the failure was not its own)
+        </>
+      )}
+      {c.notPaid > 0 && (
+        <>
+          {" "}
+          · <strong>{n(c.notPaid)}</strong> not bought (vet402 did not pay)
         </>
       )}{" "}
-      · <strong>{n(c.notBought)}</strong> not yet bought
+      · <strong>{n(c.notTried)}</strong> not tried yet
     </>
   );
 }
@@ -160,8 +177,9 @@ function SellersCards({ sellers, label }: { sellers: readonly SellerSummary[]; l
     { label: "vet402's side", value: (s) => n(s.vet402) },
     { label: "Not sorted", value: (s) => n(s.unsorted) },
     { label: "Awaiting verification", value: (s) => n(s.pending) },
-    { label: "Not yet bought", value: (s) => n(s.notBought) },
-    { label: "Latest purchase", value: (s) => fmtUtc(s.lastAttemptAt) },
+    { label: "Not bought (vet402 did not pay)", value: (s) => n(s.notPaid) },
+    { label: "Not tried yet", value: (s) => n(s.notTried) },
+    { label: "Latest attempt", value: (s) => fmtUtc(s.lastAttemptAt) },
   ];
   return (
     <ul aria-label={label} className="mt-4 list-none border-t border-hair p-0 sm:hidden">
@@ -223,9 +241,12 @@ function SellersTableWide({ sellers, label }: { sellers: readonly SellerSummary[
               Awaiting verification
             </th>
             <th scope="col" className="num">
-              Not yet bought
+              Not bought (vet402 did not pay)
             </th>
-            <th scope="col">Latest purchase</th>
+            <th scope="col" className="num">
+              Not tried yet
+            </th>
+            <th scope="col">Latest attempt</th>
           </tr>
         </thead>
         <tbody>
@@ -242,7 +263,8 @@ function SellersTableWide({ sellers, label }: { sellers: readonly SellerSummary[
               <td className="num">{n(s.vet402)}</td>
               <td className="num">{n(s.unsorted)}</td>
               <td className="num">{n(s.pending)}</td>
-              <td className="num">{n(s.notBought)}</td>
+              <td className="num">{n(s.notPaid)}</td>
+              <td className="num">{n(s.notTried)}</td>
               <td className="whitespace-nowrap">{fmtUtc(s.lastAttemptAt)}</td>
             </tr>
           ))}
@@ -297,7 +319,7 @@ export function SellersIndexView({
   return (
     <article className="sheet">
       <DocHead title="Sellers on Base: purchase results" fetched={<FetchedAt at={board.fetchedAt} revalidateSec={revalidateSec} />} />
-      <h1 className="doc-title mt-10">Find your purchase results</h1>
+      <h1 className="doc-title mt-10">{sellersIndexHeading(boardAsOfDay(board))}</h1>
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
       <p className="doc-p">
         vet402 buys x402 listings with real USDC on Base and publishes what happened. Type your domain to see each
@@ -330,8 +352,8 @@ export function SellersIndexView({
         <span>Sellers on Base</span>
       </h2>
       <p className="doc-p">
-        {n(t.sellers)} sellers with {n(t.listings)} Base listings; vet402 has bought from {n(t.sellersBought)} of the
-        sellers. By the latest purchase of each listing: <CountsLine c={t} />.{" "}
+        {n(t.sellers)} sellers with {n(t.listings)} Base listings; vet402 has tried to buy from {n(t.sellersTried)} of
+        the sellers. By the latest attempt at each listing: <CountsLine c={t} />.{" "}
         <Link href="/sellers/fix-first" className="underline">
           What to fix first
         </Link>{" "}
@@ -353,13 +375,19 @@ function ReadingNotes() {
       </h2>
       <p className="doc-p">
         A seller is a host name from the catalog, with the port dropped, as in the census. A listing counts once,
-        by its latest purchase on Base (or its latest attempt that stopped before payment). <strong>Delivered</strong>{" "}
+        by its latest attempt on Base, paid or stopped before payment. <strong>Delivered</strong>{" "}
         means vet402 confirmed the USDC transfer on-chain and the paid request answered 2xx.{" "}
-        <strong>Seller&apos;s side</strong> means the seller&apos;s answer or listing explains the failure.{" "}
-        <strong>vet402&apos;s side</strong> means the cause was ours or a limit of ours: our wallet ran out of USDC,
-        we did not yet send the request body or required query the seller declared, the price was over our
-        per-purchase ceiling, or our run did not finish. <strong>Awaiting on-chain verification</strong> means the seller returned a
-        receipt that vet402 has not re-read on-chain yet; it is neither delivered nor failed. A count is one purchase attempt, not a rating (
+        <strong>Seller&apos;s side</strong> is used for a failed purchase when the row itself shows that vet402 was
+        not at fault: vet402 signed the payment on the terms the listing declares, its wallet held the price, it
+        sent the input the listing declares, and the seller gave an explicit answer (or had its full declared time to
+        give one). A row that cannot show one of these is <strong>not sorted</strong>.{" "}
+        <strong>vet402&apos;s side</strong> means the row shows the cause was ours or a limit of ours: our wallet held
+        less USDC than the price, we did not send the request body or query the seller declared and the input was
+        refused, the price was over our per-purchase ceiling, or our run did not finish.{" "}
+        <strong>Not bought</strong> means vet402 did not sign a payment (for example the 402 offered no option
+        vet402 can sign, or its price differed from the listing); it is not a purchase result.{" "}
+        <strong>Awaiting on-chain verification</strong> means the seller returned a receipt that vet402 has not
+        re-read on-chain yet; it is neither delivered nor failed. A count is one attempt, not a rating (
         <Link href="/observatory/methodology" className="underline">
           methodology
         </Link>
@@ -457,7 +485,7 @@ function ListingRows({ l, now, rebuyEligible }: { l: SellerListing; now: number;
           </Link>
           <span className="block text-xs font-normal text-brand-lift">{l.method ?? "method undeclared"}</span>
         </td>
-        <td className="whitespace-nowrap border-b-0 pb-0.5">{r ? fmtUtc(r.facts.attemptedAt) : "not yet bought"}</td>
+        <td className="whitespace-nowrap border-b-0 pb-0.5">{r ? fmtUtc(r.facts.attemptedAt) : "not tried yet"}</td>
         <td className={`border-b-0 pb-0.5 ${r && (r.bucket === "seller" || r.bucket === "vet402") ? "text-[#9f0712]" : ""}`}>{r ? <ResultWord r={r} /> : "—"}</td>
         <td className="whitespace-nowrap border-b-0 pb-0.5">{r && r.mode ? sideLabelOf(r.mode) : "—"}</td>
       </tr>
@@ -468,6 +496,11 @@ function ListingRows({ l, now, rebuyEligible }: { l: SellerListing; now: number;
               <span className="block">
                 <strong>What we saw:</strong> {seenLine(r)}
               </span>
+              {r.seen402 && (
+                <span className="block">
+                  <strong>{r.signed ? "The 402 terms vet402 paid:" : "The 402 vet402 saw:"}</strong> {r.seen402}
+                </span>
+              )}
               {r.mode && (
                 <span className="block">
                   <strong>What to fix:</strong> {r.mode.fix}
@@ -488,10 +521,11 @@ function ListingRows({ l, now, rebuyEligible }: { l: SellerListing; now: number;
                 </span>
               )}
               {l.deliveredAfterFailure && (
-                <span className="block">The latest purchase delivered. An earlier purchase listed below did not.</span>
+                <span className="block">The latest purchase delivered. An earlier attempt listed below did not.</span>
               )}
               <span className="block font-[family-name:var(--font-mono)] text-xs text-brand-lift">
-                Recorded (L1 paid purchase): <RecordedFacts r={r} />
+                {r.signed ? "Recorded (L1 paid purchase)" : "Recorded (attempt; vet402 did not pay, not an L1 result)"}:{" "}
+                <RecordedFacts r={r} />
               </span>
               <span className="block text-xs text-brand-lift">
                 <ExportTrace r={r} resourceKey={l.resourceKey} now={now} />
@@ -510,7 +544,7 @@ function ListingRows({ l, now, rebuyEligible }: { l: SellerListing; now: number;
               )}
             </>
           ) : (
-            <span className="block text-brand-lift">vet402 has not bought this listing yet.</span>
+            <span className="block text-brand-lift">vet402 has not tried to buy this listing yet.</span>
           )}
           <span className="block text-xs">
             <NotifyLink endpointId={l.endpointId} />
@@ -547,8 +581,8 @@ export function SellerDetailView({
       <h1 className="doc-title mt-10 break-words [overflow-wrap:anywhere]">{sellerHeading(detail.host, s.lastAttemptAt)}</h1>
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
       <p className="doc-p">
-        {n(s.listings)} Base {s.listings === 1 ? "listing" : "listings"}. By the latest purchase of each: <CountsLine c={s} />.
-        {s.lastAttemptAt && <> Latest purchase: {fmtUtc(s.lastAttemptAt)}.</>}
+        {n(s.listings)} Base {s.listings === 1 ? "listing" : "listings"}. By the latest attempt at each: <CountsLine c={s} />.
+        {s.lastAttemptAt && <> Latest attempt: {fmtUtc(s.lastAttemptAt)}.</>}
       </p>
       {s.rebuyEligible ? (
         <p className="doc-p">
@@ -583,8 +617,8 @@ export function SellerDetailView({
           <thead>
             <tr>
               <th scope="col">Listing</th>
-              <th scope="col">Latest L1 purchase</th>
-              <th scope="col">Result (L1)</th>
+              <th scope="col">Latest attempt</th>
+              <th scope="col">Result</th>
               <th scope="col">Whose side</th>
             </tr>
           </thead>
@@ -607,14 +641,17 @@ export function SellerDetailView({
         <span>How to read this</span>
       </h2>
       <p className="doc-p">
-        Each listing shows its latest purchase on Base and up to four earlier ones. These are{" "}
-        <strong>L1</strong> results: vet402 signed a payment and sent the paid request. The listing&apos;s record page
-        also shows the <strong>L0</strong> state (&ldquo;Published state&rdquo;), which only checks that an unpaid
-        request gets a valid 402, so a listing can pass L0 and still fail here. <strong>Whose side</strong> says
-        where the failure came from: the seller&apos;s answer or listing, or vet402 itself. A row{" "}
-        <strong>held</strong> (<code>held_reason</code> in the export) is never put on the seller&apos;s side, because
-        vet402 cannot rule out that its request was the problem; neither is a failure where no payment was taken
-        (&ldquo;no charge&rdquo;). Those rows are &ldquo;not sorted&rdquo;. The transaction link opens
+        Each listing shows its latest attempt on Base and up to four earlier ones. A row where vet402 signed a
+        payment and sent the paid request is an <strong>L1</strong> result (&ldquo;Recorded (L1 paid
+        purchase)&rdquo;); a row where vet402 did not sign is marked &ldquo;not bought&rdquo; and is not an L1
+        result. The listing&apos;s record page also shows the <strong>L0</strong> state (&ldquo;Published
+        state&rdquo;), which checks that an unpaid request gets a valid 402, so a listing can pass L0 and still fail
+        here. <strong>Whose side</strong> puts a failure on the seller&apos;s side when the row shows vet402 was not
+        at fault: it signed on the listing&apos;s terms, its wallet held the price, it sent the declared input, and the
+        seller answered explicitly or had its declared time. A row that cannot show all of that is &ldquo;not
+        sorted&rdquo;, and so is a <strong>held</strong> row (<code>held_reason</code> in the export) and a failure
+        where no payment was taken (&ldquo;no charge&rdquo;). &ldquo;The 402 terms vet402 paid&rdquo; shows what the
+        row recorded; the maxTimeoutSeconds on it is the listing&apos;s value today. The transaction link opens
         the settlement on Basescan. Listings removed from the Bazaar, and listings whose catalog network is not Base,
         are not on this page. The{" "}
         <Link href="/sellers/fix-first" className="underline">
@@ -782,23 +819,31 @@ export function FixFirstView({ board, revalidateSec }: { board: SellerBoard; rev
   const seller = board.groups.filter((g) => g.side === "seller");
   const ours = board.groups.filter((g) => g.side === "vet402");
   const unsorted = board.groups.filter((g) => g.side === "unsorted");
+  const notPaid = board.groups.filter((g) => g.side === "not_bought");
   const failed = board.totals.seller + board.totals.vet402 + board.totals.unsorted;
+  const paid = failed + board.totals.delivered + board.totals.pending;
   return (
     <article className="sheet">
       <DocHead title="What to fix first (Base)" fetched={<FetchedAt at={board.fetchedAt} revalidateSec={revalidateSec} />} />
-      <h1 className="doc-title mt-10">What to fix first</h1>
+      <h1 className="doc-title mt-10">{fixFirstHeading(boardAsOfDay(board))}</h1>
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
       <p className="doc-p">
-        The Base listings whose latest purchase did not deliver ({n(failed)} of{" "}
-        {n(board.totals.listings - board.totals.notBought)} bought), grouped by what went wrong.
+        The Base listings whose latest purchase did not deliver ({n(failed)} of {n(paid)} that vet402 paid for),
+        grouped by what went wrong.
         {board.totals.pending > 0 && (
           <>
             {" "}
             {n(board.totals.pending)} more are awaiting on-chain verification and are not counted here.
           </>
-        )} Seller-side groups
-        come first, the fix that reaches the most sellers at the top; effort is 1 for a listing or config change, 2
-        for a server change, 3 when it depends on the facilitator. Each seller links to its own page.
+        )}{" "}
+        A failure is on the seller&apos;s side when the row shows vet402 was not at fault (
+        <Link href="/observatory/methodology#whose-side" className="underline">
+          the rules
+        </Link>
+        ); a row that cannot show it is not sorted. Seller-side groups come first, the fix that reaches the most
+        sellers at the top; effort is 1 for a listing or config change, 2 for a server change, 3 when it depends on
+        the facilitator. Listings vet402 tried but did not pay for ({n(board.totals.notPaid)}) are listed last and are
+        not purchase results. Each seller links to its own page.
       </p>
       <h2 className="sec-head">
         <span className="sec-no">1.</span>
@@ -819,6 +864,19 @@ export function FixFirstView({ board, revalidateSec }: { board: SellerBoard; rev
           <ol className="list-none p-0">
             {unsorted.map((g, i) => (
               <GroupCard key={g.key} g={g} i={seller.length + ours.length + i} />
+            ))}
+          </ol>
+        </>
+      )}
+      {notPaid.length > 0 && (
+        <>
+          <h2 className="sec-head">
+            <span className="sec-no">{unsorted.length > 0 ? "4." : "3."}</span>
+            <span>Not bought: vet402 did not pay</span>
+          </h2>
+          <ol className="list-none p-0">
+            {notPaid.map((g, i) => (
+              <GroupCard key={g.key} g={g} i={seller.length + ours.length + unsorted.length + i} />
             ))}
           </ol>
         </>

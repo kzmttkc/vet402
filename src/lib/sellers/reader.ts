@@ -24,7 +24,8 @@ import {
   type SellerEndpointFacts,
   type SellerOtherChains,
 } from "./board";
-import type { SellerRowFacts } from "./fix-modes";
+import type { ChallengeAcceptSummary, SellerRowFacts } from "./fix-modes";
+import { PATH_TEMPLATE_PG_REGEX } from "@/lib/observatory/path-template";
 import { BASE_NETWORKS, sellerHostSql } from "./host";
 
 type Db = NonNullable<ReturnType<typeof getDb>>;
@@ -46,9 +47,35 @@ const SCHEMA_MIN = sql.raw(`CASE WHEN jsonb_typeof(e.declared_schema) = 'object'
     'body', CASE WHEN jsonb_typeof(e.declared_schema #> '{properties,input,properties,body}') = 'object' THEN '{}'::jsonb END,
     'queryParams', CASE WHEN jsonb_typeof(e.declared_schema #> '{properties,input,properties,queryParams}') = 'object'
                         THEN jsonb_strip_nulls(jsonb_build_object('required', e.declared_schema #> '{properties,input,properties,queryParams,required}')) END))))) END`);
+// 2026-09-29 第2巡: requestBody は有無だけでなく値（declared / empty / none）も読む（(d) の根拠）。値は runner が書く短い語。
 const META_MIN = sql.raw(`CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN jsonb_strip_nulls(jsonb_build_object(
-    'requestBody', CASE WHEN pu.raw_response_meta ? 'requestBody' THEN 'true'::jsonb END,
-    'requestQuery', pu.raw_response_meta->'requestQuery')) END`);
+    'requestBody', CASE WHEN pu.raw_response_meta ? 'requestBody' THEN
+      CASE WHEN jsonb_typeof(pu.raw_response_meta->'requestBody') = 'string' THEN to_jsonb(left(pu.raw_response_meta->>'requestBody', 16)) ELSE 'true'::jsonb END END,
+    'requestQuery', CASE WHEN jsonb_typeof(pu.raw_response_meta->'requestQuery') = 'string' THEN to_jsonb(left(pu.raw_response_meta->>'requestQuery', 16)) END)) END`);
+
+/**
+ * 2026-09-29 第2巡: 出品の宣言のうち (d)(e) の根拠に要るものだけを DB で間引く。
+ *   listing_max_timeout  raw_accepts のうち行の pay_to と同じ accept の maxTimeoutSeconds の最大値（無ければ null）
+ *   declares_headers     スキーマが要求ヘッダを名前で宣言している（properties か required が空でない）
+ *   path_template        URL に未置換のパスパラメータがある（path-template.ts の PATH_TEMPLATE_PG_REGEX）
+ * 署名前に止まった行（phase select）の 402 の accept は要点だけ（先頭 4 件・文字列は短く切る）。
+ */
+const LISTING_MAX_TIMEOUT = sql.raw(`(SELECT max((a->>'maxTimeoutSeconds')::int)
+      FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE '[]'::jsonb END) a
+      WHERE jsonb_typeof(a) = 'object' AND (a->>'maxTimeoutSeconds') ~ '^[0-9]{1,7}$'
+        AND lower(coalesce(a->>'payTo', '')) = lower(coalesce(pu.pay_to, '')))`);
+const DECLARES_HEADERS = sql.raw(`(coalesce(jsonb_typeof(e.declared_schema #> '{properties,input,properties,headers,properties}') = 'object'
+        AND e.declared_schema #> '{properties,input,properties,headers,properties}' <> '{}'::jsonb, false)
+      OR coalesce(jsonb_typeof(e.declared_schema #> '{properties,input,properties,headers,required}') = 'array'
+        AND jsonb_array_length(e.declared_schema #> '{properties,input,properties,headers,required}') > 0, false))`);
+const PATH_TEMPLATE = sql.raw(`(split_part(e.resource_url, '?', 1) ~* '${PATH_TEMPLATE_PG_REGEX.replace(/'/g, "''")}')`);
+const CHALLENGE_MIN = sql.raw(`CASE WHEN jsonb_typeof(pu.raw_response_meta->'challengeAccepts') = 'array' THEN (
+      SELECT jsonb_agg(jsonb_build_object(
+        'scheme', left(a->>'scheme', 24), 'network', left(a->>'network', 40),
+        'amount', left(coalesce(a->>'amount', a->>'maxAmountRequired'), 30), 'asset', left(a->>'asset', 100),
+        'payTo', left(a->>'payTo', 100),
+        'maxTimeoutSeconds', CASE WHEN (a->>'maxTimeoutSeconds') ~ '^[0-9]{1,7}$' THEN (a->>'maxTimeoutSeconds')::int END))
+      FROM (SELECT a FROM jsonb_array_elements(pu.raw_response_meta->'challengeAccepts') a WHERE jsonb_typeof(a) = 'object' LIMIT 4) x) END`);
 
 /** 列の共通部分: 分類に要る事実だけ（本文・応答の中身は読まない）。 */
 const ROW_COLUMNS = sql`
@@ -65,7 +92,14 @@ const ROW_COLUMNS = sql`
   CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' AND (pu.raw_response_meta->>'status') ~ '^[0-9]{3}$'
        THEN (pu.raw_response_meta->>'status')::int END AS unpaid_status,
   CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN pu.raw_response_meta->>'selection' END AS selection,
-  pu.settlement_verify_reason`;
+  pu.settlement_verify_reason,
+  pu.amount_units, pu.pay_to, pu.asset, pu.payer,
+  ${LISTING_MAX_TIMEOUT} AS listing_max_timeout,
+  ${DECLARES_HEADERS} AS declares_headers,
+  ${PATH_TEMPLATE} AS path_template,
+  ${CHALLENGE_MIN} AS challenge_min,
+  CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN left(pu.raw_response_meta->>'declaredAmount', 30) END AS declared_amount,
+  CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN left(pu.raw_response_meta->>'declaredPayTo', 100) END AS declared_pay_to`;
 
 /** Base の出品（active・代表 network が Base）。 */
 const BASE_LISTING = sql`e.status = 'active' AND e.network IN (${BASE_A}, ${BASE_B})`;
@@ -110,7 +144,33 @@ export function toRowFacts(r: Record<string, unknown>): SellerRowFacts {
     unpaidStatus: toInt(r.unpaid_status),
     selection: str(r.selection),
     verifyReason: str(r.settlement_verify_reason),
+    amountUnits: str(r.amount_units),
+    payTo: str(r.pay_to),
+    asset: str(r.asset),
+    payer: str(r.payer),
+    listingMaxTimeoutSeconds: toInt(r.listing_max_timeout),
+    declaresHeaders: typeof r.declares_headers === "boolean" ? r.declares_headers : null,
+    pathTemplate: typeof r.path_template === "boolean" ? r.path_template : null,
+    challenge: challengeOf(r.challenge_min),
+    declaredAmount: str(r.declared_amount),
+    declaredPayTo: str(r.declared_pay_to),
   };
+}
+
+function challengeOf(v: unknown): ChallengeAcceptSummary[] | null {
+  const x = typeof v === "string" ? safeJson(v) : v;
+  if (!Array.isArray(x)) return null;
+  return x
+    .filter((a): a is Record<string, unknown> => typeof a === "object" && a !== null && !Array.isArray(a))
+    .slice(0, 4)
+    .map((a) => ({
+      scheme: str(a.scheme),
+      network: str(a.network),
+      amount: str(a.amount),
+      asset: str(a.asset),
+      payTo: str(a.payTo),
+      maxTimeoutSeconds: toInt(a.maxTimeoutSeconds),
+    }));
 }
 
 /**
@@ -143,6 +203,19 @@ export async function readSellerBoard(db: Db, retestEnabled: boolean = isCensusE
   const hosts = rowsOf(hostsRaw).map((r) => ({ host: String(r.host), listings: Number(r.listings) }));
   const latest: LatestRow[] = rowsOf(latestRaw).map((r) => ({ ...toRowFacts(r), host: String(r.host) }));
   return buildSellerBoard(hosts, latest, fetchedAt, await readRetestQueue(db, retestEnabled));
+}
+
+/**
+ * Base の出品の購入行を全部（読み取りだけ・件数の見積もりと監査の道具用。公開頁からは呼ばない）。
+ * 列は頁と同じ ROW_COLUMNS なので、分類は頁と同じになる。
+ */
+export async function readAllBaseRows(db: Db): Promise<LatestRow[]> {
+  const raw = await db.execute(sql`
+    SELECT ${HOST_SQL} AS host, ${ROW_COLUMNS}, pu.id::text AS row_id
+    FROM x402_l1_purchases pu JOIN x402_endpoints e ON e.id = pu.endpoint_id
+    WHERE ${BASE_LISTING} AND ${BASE_ROW}
+    ORDER BY pu.endpoint_id, pu.attempted_at DESC, pu.id DESC`);
+  return rowsOf(raw).map((r) => ({ ...toRowFacts(r), host: String(r.host), rowId: String(r.row_id) }) as LatestRow);
 }
 
 /** その売り手の Base の出品が無ければ null。host は parseSellerHostParam を通した値。 */

@@ -117,12 +117,13 @@ if (!TEST_DB) {
     assert.equal(shop.listings, 4, "non-Base and delisted listings are left out");
     assert.equal(shop.delivered, 1);
     assert.equal(shop.vet402, 1, "a2: payer_unfunded");
-    assert.equal(shop.seller, 1, "a3: gone");
-    assert.equal(shop.notBought, 1);
+    assert.equal(shop.seller, 0, "a3: gone is not a purchase (vet402 did not pay)");
+    assert.equal(shop.notPaid, 1, "a3");
+    assert.equal(shop.notTried, 1, "a4");
     assert.equal(shop.lastAttemptAt, "2026-09-28T01:00:00Z");
     assert.equal(shop.rebuyEligible, false, "the flag is off in tests (readSellerBoard reads isCensusEnabled)");
     const failed = board.totals.seller + board.totals.vet402 + board.totals.unsorted;
-    assert.equal(board.groups.reduce((x, g) => x + g.listings, 0), failed);
+    assert.equal(board.groups.reduce((x, g) => x + g.listings, 0), failed + board.totals.notPaid);
     assert.deepEqual(
       board.groups.map((g) => g.key).sort(),
       ["gone", "payer_unfunded", "query_not_sent", "refused_no_charge"],
@@ -133,7 +134,7 @@ if (!TEST_DB) {
     assert.equal(d.listings.length, 4);
     const la1 = d.listings.find((l) => l.endpointId === a1)!;
     assert.equal(la1.latest?.bucket, "delivered");
-    assert.equal(la1.latest?.facts.meta?.requestBody, true, "the record of a body is kept (value reduced to presence)");
+    assert.equal(la1.latest?.facts.meta?.requestBody, "declared", "the kind of body sent is kept (2026-09-29: (d) reads it)");
     assert.equal(la1.latest?.facts.selection, "retest");
     assert.equal(la1.earlier[0].mode?.key, "body_not_sent", "declared body + POST + no record + before the cutover");
     assert.deepEqual(la1.earlier[0].facts.schema, { properties: { input: { properties: { body: {} } } } }, "only what the shared judge reads");
@@ -152,6 +153,103 @@ if (!TEST_DB) {
 
     const after = await db.execute(sql`SELECT count(*)::int AS n FROM x402_l1_purchases`);
     assert.deepEqual(after, before, "read-only");
+  });
+
+  test("2026-09-29 第2巡: seller の側の根拠（(b)〜(e)）と 402 の要点を DB から読む", async () => {
+    const { getDb } = await import("@/lib/db/client");
+    const schema = await import("@/lib/db/schema");
+    const { sql } = await import("drizzle-orm");
+    const { readSellerBoard, readSellerDetail } = await import("@/lib/sellers/reader");
+    const db = getDb()!;
+    await db.execute(sql`TRUNCATE x402_endpoints, x402_l0_probes, x402_l1_purchases`);
+    const PAY = "0x2222222222222222222222222222222222222222";
+    const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+    const PAYER = "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670";
+    const accepts = (mts: number) => [{ scheme: "exact", network: "eip155:8453", amount: "10000", asset: USDC, payTo: PAY, maxTimeoutSeconds: mts }];
+    const mk = async (key: string, o: { url?: string; mts?: number; schema?: unknown } = {}) => {
+      const [ep] = await db
+        .insert(schema.x402Endpoints)
+        .values({
+          resourceKey: key,
+          resourceUrl: o.url ?? `https://${key}`,
+          network: "eip155:8453",
+          method: "GET",
+          status: "active",
+          priceAmount: "10000",
+          payTo: PAY,
+          rawAccepts: accepts(o.mts ?? 20),
+          declaredSchema: o.schema ?? null,
+        })
+        .returning();
+      return ep.id;
+    };
+    const paid = (endpointId: string, at: string, o: { http: number | null; tx?: string | null; meta?: unknown; amount?: string } ) => ({
+      endpointId,
+      status: o.tx ? "settled" : "settle_failed",
+      httpStatusPaid: o.http,
+      txHash: o.tx ?? null,
+      attemptedAt: new Date(at),
+      network: "eip155:8453",
+      asset: USDC,
+      payTo: PAY,
+      payer: PAYER,
+      amountUnits: o.amount ?? "10000",
+      spentUnits: o.amount ?? "10000",
+      rawResponseMeta: o.meta === undefined ? { phase: "paid", requestBody: "none", requestQuery: "empty" } : o.meta,
+    });
+    const s1 = await mk("seller.example/a"); // 根拠がそろった 500 → seller
+    const s2 = await mk("seller.example/b", { mts: 300 }); // 答えが無い・宣言 300 秒 → stopped_waiting
+    const s3 = await mk("seller.example/c", { schema: { properties: { input: { properties: { headers: { type: "object", required: ["X-AGENT-ID"], properties: { "X-AGENT-ID": { type: "string" } } } } } } } }); // ヘッダ → input_not_sent
+    const s4 = await mk("seller.example/d"); // 関門より前・残高 0.18 で 1.0 USDC → payer_short
+    const s5 = await mk("seller.example/e"); // upto だけの 402 → not bought
+    const s6 = await mk("seller.example/f", { schema: { properties: { input: { properties: { headers: { type: "object", additionalProperties: { type: "string" } } } } } } }); // 名前の無いヘッダの型は宣言に数えない
+    await db.insert(schema.x402L1Purchases).values([
+      paid(s1, "2026-09-28T12:00:00Z", { http: 500 }),
+      paid(s2, "2026-09-28T12:00:00Z", { http: null }),
+      paid(s3, "2026-09-28T12:00:00Z", { http: 503 }),
+      paid(s4, "2026-09-12T18:02:18Z", { http: 502, amount: "1000000", meta: { phase: "paid" } }),
+      {
+        endpointId: s5,
+        status: "no_eligible_accept",
+        attemptedAt: new Date("2026-09-28T12:00:00Z"),
+        network: null,
+        spentUnits: "0",
+        rawResponseMeta: {
+          phase: "select",
+          declaredAmount: "10000",
+          declaredPayTo: PAY,
+          challengeAccepts: [{ scheme: "upto", network: "eip155:8453", maxAmountRequired: "1000000", asset: USDC, payTo: PAY, maxTimeoutSeconds: 300, extra: { big: "x".repeat(5000) } }],
+        },
+      },
+      paid(s6, "2026-09-28T12:00:00Z", { http: 500 }),
+    ]);
+    const board = await readSellerBoard(db);
+    const sel = board.sellers.find((s) => s.host === "seller.example")!;
+    assert.equal(sel.seller, 2, "s1 and s6");
+    assert.equal(sel.vet402, 1, "s4 payer_short");
+    assert.equal(sel.unsorted, 2, "s2 stopped_waiting, s3 input_not_sent");
+    assert.equal(sel.notPaid, 1, "s5");
+    const d = (await readSellerDetail(db, "seller.example"))!;
+    const by = (id: string) => d.listings.find((l) => l.endpointId === id)!.latest!;
+    assert.equal(by(s1).mode?.key, "server_error_paid");
+    assert.equal(by(s1).facts.listingMaxTimeoutSeconds, 20);
+    assert.equal(by(s1).facts.declaresHeaders, false);
+    assert.equal(by(s1).facts.pathTemplate, false);
+    assert.equal(by(s1).facts.payer, PAYER);
+    assert.equal(by(s1).signed, true);
+    assert.match(by(s1).seen402 ?? "", /^vet402 signed: exact · 0\.01 USDC · payTo 0x2222…2222\. Input sent: body none, query empty\./);
+    assert.equal(by(s2).mode?.key, "stopped_waiting");
+    assert.equal(by(s2).facts.listingMaxTimeoutSeconds, 300);
+    assert.equal(by(s3).mode?.key, "input_not_sent");
+    assert.equal(by(s3).facts.declaresHeaders, true);
+    assert.equal(by(s4).mode?.key, "payer_short");
+    assert.equal(by(s5).mode?.key, "no_accept");
+    assert.equal(by(s5).signed, false);
+    assert.deepEqual(by(s5).facts.challenge, [
+      { scheme: "upto", network: "eip155:8453", amount: "1000000", asset: USDC, payTo: PAY, maxTimeoutSeconds: 300 },
+    ]);
+    assert.match(by(s5).seen402 ?? "", /^The 402 offered: upto · eip155:8453 · amount 1000000/);
+    assert.equal(by(s6).mode?.key, "server_error_paid", "a schema for any header is not a declared header");
   });
 
   test("vet402 の側（payer_unfunded・body_not_sent）の判定は retest の RETEST_SELLERS_SQL と同じ売り手を選ぶ", async () => {

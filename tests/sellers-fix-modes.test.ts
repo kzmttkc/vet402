@@ -10,14 +10,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  BASE_USDC_ADDRESS,
   classifyRow,
   DECLARED_BODY_SENT_SINCE,
+  evidenceOf,
   FIX_MODES,
   fixMode,
   isBodyNotSent,
+  observed402Line,
   rowNote,
+  SIGNED_ROW_STATUSES,
   type SellerRowFacts,
 } from "@/lib/sellers/fix-modes";
+import { BASE_USDC } from "@/lib/observatory/x402-payer";
+import { SIGNED_STATUSES } from "@/lib/decision/seller-facts";
+import { payerFundsAtSigning, PAYER_FUNDS_GATE_SINCE } from "@/lib/observatory/payer-balance-history";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { DECLARED_BODY_SENT_SINCE as RUNNER_SINCE } from "@/lib/observatory/l1-runner";
@@ -64,6 +71,27 @@ function row(p: Partial<SellerRowFacts> & Flags): SellerRowFacts {
   };
 }
 const TX = `0x${"ab".repeat(32)}`;
+const PAYER = "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670";
+
+/**
+ * 2026-09-29 第2巡: seller の側に置く根拠（(b)〜(e)）を全部そろえた行。署名した条件・支払いウォレット・
+ * 送った入力の記録（本文・クエリ）・ヘッダとパスの宣言なし・出品の maxTimeoutSeconds（待ち時間以下）。
+ * 残高は署名の時刻が関門（PAYER_FUNDS_GATE_SINCE）以降なので funded。
+ */
+function proven(p: Partial<SellerRowFacts> & Flags): SellerRowFacts {
+  const r = row(p);
+  return {
+    amountUnits: "10000",
+    payTo: `0x${"11".repeat(20)}`,
+    asset: BASE_USDC_ADDRESS,
+    payer: PAYER,
+    declaresHeaders: false,
+    pathTemplate: false,
+    listingMaxTimeoutSeconds: 20,
+    ...r,
+    meta: r.meta ?? { requestBody: (r.method ?? "").toUpperCase() === "POST" ? "empty" : "none", requestQuery: "empty" },
+  };
+}
 
 /** [説明, 行, 期待する種類（null = delivered）, 期待する側] */
 const KNOWN: [string, SellerRowFacts, string | null, string][] = [
@@ -91,10 +119,60 @@ const KNOWN: [string, SellerRowFacts, string | null, string][] = [
   ["in_flight", row({ status: "in_flight" }), "vet402_error", "vet402"],
   ["settle_claimed（照合待ち・失敗でも delivered でもない）", row({ status: "settle_claimed", httpStatusPaid: 200, txHash: TX }), null, "pending"],
   // seller の側
-  ["期間外の 402", row({ status: "settle_failed", httpStatusPaid: 402, attemptedAt: "2026-09-20T00:00:00Z" }), "payment_refused", "seller"],
-  ["Solana の期間内 402 は残高切れではない", row({ status: "settle_failed", httpStatusPaid: 402, attemptedAt: "2026-09-14T00:00:00Z", network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" }), "payment_refused", "seller"],
-  ["期間外の 500", row({ status: "settle_failed", httpStatusPaid: 500 }), "server_error_paid", "seller"],
-  ["settled 502", row({ status: "settled", httpStatusPaid: 502, txHash: TX }), "server_error_paid", "seller"],
+  ["期間外の 402（根拠がそろった行）", proven({ status: "settle_failed", httpStatusPaid: 402, attemptedAt: "2026-09-20T00:00:00Z" }), "payment_refused", "seller"],
+  [
+    "Solana の期間内 402 は残高切れではないが、関門より前で残高を示せない（2026-09-29 第2巡）",
+    proven({ status: "settle_failed", httpStatusPaid: 402, attemptedAt: "2026-09-14T00:00:00Z", network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", payer: "34CMQ3HB3aDWPxwAbLSbQPrBtrFhi354zAsfbb3z5v2z" }),
+    "funds_unproven",
+    "unsorted",
+  ],
+  ["期間外の 500（根拠がそろった行）", proven({ status: "settle_failed", httpStatusPaid: 500 }), "server_error_paid", "seller"],
+  ["期間外の 500・送った入力の記録なし（2026-09-29 第2巡）", { ...proven({ status: "settle_failed", httpStatusPaid: 500 }), meta: null }, "input_unrecorded", "unsorted"],
+  ["settled 502", proven({ status: "settled", httpStatusPaid: 502, txHash: TX }), "server_error_paid", "seller"],
+  [
+    "関門より前・残高を組み直して価格未満（agentsonly.vip 2026-09-12 18:02・1.0 USDC・残高約 0.18）",
+    proven({ status: "settle_failed", httpStatusPaid: 502, attemptedAt: "2026-09-12T18:02:18Z", amountUnits: "1000000" }),
+    "payer_short",
+    "vet402",
+  ],
+  [
+    "関門より前・残高を組み直して価格以上（同じ時刻の 0.01 USDC）",
+    proven({ status: "settle_failed", httpStatusPaid: 502, attemptedAt: "2026-09-12T18:02:18Z", amountUnits: "10000" }),
+    "server_error_paid",
+    "seller",
+  ],
+  [
+    "宣言したヘッダを送っていない 5xx（400/422 以外）は not sorted",
+    proven({ status: "settle_failed", httpStatusPaid: 503, declaresHeaders: true }),
+    "input_not_sent",
+    "unsorted",
+  ],
+  [
+    "宣言クエリを使わなかった（refused）402",
+    proven({ status: "settle_failed", httpStatusPaid: 402, meta: { requestBody: "none", requestQuery: "refused" } }),
+    "input_not_sent",
+    "unsorted",
+  ],
+  [
+    "宣言クエリを足した支払い付きの要求に 402（払った条件が支払い付きの要求の条件と同じだと示せない）",
+    proven({ status: "settle_failed", httpStatusPaid: 402, meta: { requestBody: "none", requestQuery: "declared" } }),
+    "refused_changed_request",
+    "unsorted",
+  ],
+  [
+    "宣言本文を足した POST に 402",
+    proven({ status: "settle_failed", httpStatusPaid: 402, method: "POST", meta: { requestBody: "declared", requestQuery: "empty" } }),
+    "refused_changed_request",
+    "unsorted",
+  ],
+  [
+    "宣言クエリを足した支払い付きの要求に 500 は seller（明示の失敗・入力は送った）",
+    proven({ status: "settle_failed", httpStatusPaid: 500, meta: { requestBody: "none", requestQuery: "declared" } }),
+    "server_error_paid",
+    "seller",
+  ],
+  ["署名した条件の記録が無い", proven({ status: "settle_failed", httpStatusPaid: 500, amountUnits: null }), "other", "unsorted"],
+  ["Base で USDC 以外の資産", proven({ status: "settle_failed", httpStatusPaid: 500, asset: "0xdeadbeef" }), "other", "unsorted"],
   [
     "本文を送った後の POST 400",
     row({ status: "settle_failed", httpStatusPaid: 400, method: "POST", declaresBody: true, bodyRecorded: true, attemptedAt: "2026-09-20T00:00:00Z" }),
@@ -187,25 +265,36 @@ const KNOWN: [string, SellerRowFacts, string | null, string][] = [
   ["settled 403", row({ status: "settled", httpStatusPaid: 403, txHash: TX }), "settled_then_refused", "unsorted"],
   ["settle_failed 405", row({ status: "settle_failed", httpStatusPaid: 405 }), "refused_no_charge", "unsorted"],
   ["settle_failed 429", row({ status: "settle_failed", httpStatusPaid: 429 }), "refused_no_charge", "unsorted"],
-  ["settle_failed HTTP なし", row({ status: "settle_failed", httpStatusPaid: null }), "no_response_paid", "seller"],
-  ["settled HTTP なし（遅延回収）", row({ status: "settled", httpStatusPaid: null, txHash: TX }), "no_response_paid", "seller"],
+  ["settle_failed HTTP なし・出品の maxTimeoutSeconds が待ち時間以下", proven({ status: "settle_failed", httpStatusPaid: null }), "no_response_paid", "seller"],
+  [
+    "settle_failed HTTP なし・出品の maxTimeoutSeconds が待ち時間より長い（anansidata.xyz の 300）",
+    proven({ status: "settle_failed", httpStatusPaid: null, listingMaxTimeoutSeconds: 300 }),
+    "stopped_waiting",
+    "unsorted",
+  ],
+  ["settle_failed HTTP なし・出品の maxTimeoutSeconds が読めない", proven({ status: "settle_failed", httpStatusPaid: null, listingMaxTimeoutSeconds: null }), "stopped_waiting", "unsorted"],
+  ["settled HTTP なし（遅延回収・打ち切りの後に着金）", proven({ status: "settled", httpStatusPaid: null, txHash: TX }), "stopped_waiting", "unsorted"],
+  ["settle_failed 408（tx なし）は課金なし", proven({ status: "settle_failed", httpStatusPaid: 408 }), "refused_no_charge", "unsorted"],
   ["settle_failed 201", row({ status: "settle_failed", httpStatusPaid: 201 }), "answered_no_charge", "unsorted"],
   ["delivered_no_receipt", row({ status: "delivered_no_receipt", httpStatusPaid: 200 }), "answered_no_charge", "unsorted"],
-  ["delivered_no_receipt・tx あり（課金なしではない）", row({ status: "delivered_no_receipt", httpStatusPaid: 200, txHash: TX }), "no_receipt", "seller"],
-  ["settle_claim_refuted", row({ status: "settle_claim_refuted", httpStatusPaid: 200, txHash: TX }), "claim_refuted", "seller"],
-  ["settle_claimed_unverifiable", row({ status: "settle_claimed_unverifiable", httpStatusPaid: 200, txHash: "nope" }), "claim_malformed", "seller"],
-  ["no_402 404", row({ status: "no_402", network: null, unpaidStatus: 404 }), "gone", "seller"],
-  ["no_402 410", row({ status: "no_402", network: null, unpaidStatus: 410 }), "gone", "seller"],
-  ["no_402 200", row({ status: "no_402", network: null, unpaidStatus: 200 }), "free_200", "seller"],
-  ["no_402 530", row({ status: "no_402", network: null, unpaidStatus: 530 }), "down", "seller"],
-  ["no_402 403", row({ status: "no_402", network: null, unpaidStatus: 403 }), "auth", "seller"],
-  ["no_402 400", row({ status: "no_402", network: null, unpaidStatus: 400 }), "no_402", "seller"],
-  ["no_402 ステータス不明", row({ status: "no_402", network: null, unpaidStatus: null }), "no_402", "seller"],
-  ["no_eligible_accept", row({ status: "no_eligible_accept", network: null }), "no_accept", "seller"],
-  ["price_mismatch", row({ status: "price_mismatch", network: null }), "price_mismatch", "seller"],
-  ["payto_mismatch", row({ status: "payto_mismatch", network: null }), "payto_mismatch", "seller"],
+  ["delivered_no_receipt・tx あり（課金なしではない）", proven({ status: "delivered_no_receipt", httpStatusPaid: 200, txHash: TX }), "no_receipt", "seller"],
+  ["settle_claim_refuted", proven({ status: "settle_claim_refuted", httpStatusPaid: 200, txHash: TX }), "claim_refuted", "seller"],
+  ["settle_claimed_unverifiable", proven({ status: "settle_claimed_unverifiable", httpStatusPaid: 200, txHash: "nope" }), "claim_malformed", "seller"],
+  // 署名していない（not bought・L1 の結果ではない・2026-09-29 第2巡）
+  ["no_402 404", row({ status: "no_402", network: null, unpaidStatus: 404 }), "gone", "not_bought"],
+  ["no_402 410", row({ status: "no_402", network: null, unpaidStatus: 410 }), "gone", "not_bought"],
+  ["no_402 200", row({ status: "no_402", network: null, unpaidStatus: 200 }), "free_200", "not_bought"],
+  ["no_402 530", row({ status: "no_402", network: null, unpaidStatus: 530 }), "down", "not_bought"],
+  ["no_402 403", row({ status: "no_402", network: null, unpaidStatus: 403 }), "unpaid_auth", "not_bought"],
+  ["no_402 405", row({ status: "no_402", network: null, unpaidStatus: 405 }), "unpaid_wrong_method", "not_bought"],
+  ["no_402 429", row({ status: "no_402", network: null, unpaidStatus: 429 }), "unpaid_rate_limited", "not_bought"],
+  ["no_402 400", row({ status: "no_402", network: null, unpaidStatus: 400 }), "no_402", "not_bought"],
+  ["no_402 ステータス不明", row({ status: "no_402", network: null, unpaidStatus: null }), "no_402", "not_bought"],
+  ["no_eligible_accept（upto だけの 402 など）", row({ status: "no_eligible_accept", network: null }), "no_accept", "not_bought"],
+  ["price_mismatch", row({ status: "price_mismatch", network: null }), "price_mismatch", "not_bought"],
+  ["payto_mismatch", row({ status: "payto_mismatch", network: null }), "payto_mismatch", "not_bought"],
   // unsorted
-  ["settled 307", row({ status: "settled", httpStatusPaid: 307, txHash: TX }), "other", "unsorted"],
+  ["settled 307", proven({ status: "settled", httpStatusPaid: 307, txHash: TX }), "other", "unsorted"],
   ["settled 409", row({ status: "settled", httpStatusPaid: 409, txHash: TX }), "settled_then_refused", "unsorted"],
   ["語彙に無い status", row({ status: "something_new" }), "other", "unsorted"],
 ];
@@ -251,11 +340,28 @@ test("分類表: 鍵が重複せず、文言が空でなく、vet402 の側は�
     assert.ok(m.title && m.what && m.fix, m.key);
     if (m.side === "vet402") assert.match(m.fix, /^Nothing for the seller to fix\./, m.key);
   }
-  // 2026-09-29: 売り手の側に数えない種類（保留 2・課金なし 2）と未分類 1
+  // 2026-09-29: 売り手の側に数えない種類（保留 2・課金なし 2・vet402 に落ち度が無いと示せない 5）と未分類 1
   assert.deepEqual(
     FIX_MODES.filter((m) => m.side === "unsorted").map((m) => m.key).sort(),
-    ["answered_no_charge", "other", "refused_no_charge", "settled_then_refused", "settled_then_rejected"],
+    [
+      "answered_no_charge",
+      "funds_unproven",
+      "input_not_sent",
+      "input_unrecorded",
+      "other",
+      "refused_changed_request",
+      "refused_no_charge",
+      "settled_then_refused",
+      "settled_then_rejected",
+      "stopped_waiting",
+    ],
   );
+  // 署名しなかった行は「vet402 did not pay」とだけ書き、売り手に作り替えを求めない（2026-09-29 第2巡: 「exact を出せ」）
+  for (const m of FIX_MODES.filter((x) => x.side === "not_bought")) {
+    assert.match(m.fix, /^Nothing is counted against the seller: vet402 did not pay/, m.key);
+    assert.match(m.title, /^Not bought: /, m.key);
+  }
+  assert.doesNotMatch(FIX_MODES.map((m) => m.fix).join("\n"), /Offer an exact accept/);
   assert.equal(fixMode("no-such-key").key, "other");
 });
 
@@ -270,17 +376,18 @@ test("集計: 種類ごとの合計 = 届かなかった出品、出品の内訳
   const board = buildSellerBoard(hosts, rows, "2026-09-28T00:00:00.000Z");
   const failed = board.totals.seller + board.totals.vet402 + board.totals.unsorted;
   const grouped = board.groups.reduce((a, g) => a + g.listings, 0);
-  assert.equal(grouped, failed, "groups add up to the failures");
-  // 失敗 + 照合待ち + delivered + 未購入 = 出品数（照合待ちは失敗の合計・種類の束に入らない）
-  assert.equal(board.totals.delivered + board.totals.pending + failed, KNOWN.length);
+  assert.equal(grouped, failed + board.totals.notPaid, "groups add up to the failures and the not-bought rows");
+  // 失敗 + 払わなかった + 照合待ち + delivered = 試した出品（照合待ちは種類の束に入らない）
+  assert.equal(board.totals.delivered + board.totals.pending + failed + board.totals.notPaid, KNOWN.length);
+  assert.equal(board.totals.notPaid, KNOWN.filter(([, , , side]) => side === "not_bought").length);
   assert.equal(board.totals.delivered, KNOWN.filter(([, , , side]) => side === "delivered").length);
   assert.equal(board.totals.pending, KNOWN.filter(([, , , side]) => side === "pending").length);
   assert.ok(board.totals.pending >= 1);
   assert.ok(!board.groups.some((g) => Object.keys(g.statuses).includes("settle_claimed")), "fix-first never groups a pending row");
   assert.equal(board.totals.listings, 7 * 20 + 3);
-  assert.equal(board.totals.notBought, board.totals.listings - KNOWN.length);
+  assert.equal(board.totals.notTried, board.totals.listings - KNOWN.length);
   for (const s of board.sellers) {
-    assert.equal(s.delivered + s.pending + s.seller + s.vet402 + s.unsorted + s.notBought, s.listings, s.host);
+    assert.equal(s.delivered + s.pending + s.seller + s.vet402 + s.unsorted + s.notPaid + s.notTried, s.listings, s.host);
   }
   for (const g of board.groups) {
     assert.equal(g.sellers.reduce((a, s) => a + s.listings, 0), g.listings, g.key);
@@ -288,11 +395,11 @@ test("集計: 種類ごとの合計 = 届かなかった出品、出品の内訳
   }
   // 並び: seller の側 → vet402 → unsorted
   const sides = board.groups.map((g) => g.side);
-  const order = { seller: 0, vet402: 1, unsorted: 2 } as const;
+  const order = { seller: 0, vet402: 1, unsorted: 2, not_bought: 3 } as const;
   for (let i = 1; i < sides.length; i++) assert.ok(order[sides[i - 1]] <= order[sides[i]]);
   // まだ買っていない売り手は一覧の末尾
   assert.equal(board.sellers.at(-1)?.host, "never-bought.example");
-  assert.equal(board.totals.sellersBought, 7);
+  assert.equal(board.totals.sellersTried, 7);
 });
 
 test("集計: カタログに無いホストの行は数えない", () => {
@@ -303,7 +410,7 @@ test("集計: カタログに無いホストの行は数えない", () => {
 
 test("rebuyEligible: retest の SQL がこの売り手のこの行を選び、その行がこちらの側のときだけ（旗 off＝null なら書かない）", () => {
   const unfunded = row({ endpointId: "e1", status: "settle_failed", httpStatusPaid: 402, attemptedAt: "2026-09-14T00:00:00Z" });
-  const laterSeller = row({ endpointId: "e2", status: "settle_failed", httpStatusPaid: 500, attemptedAt: "2026-09-20T00:00:00Z" });
+  const laterSeller = proven({ endpointId: "e2", status: "settle_failed", httpStatusPaid: 500, attemptedAt: "2026-09-20T00:00:00Z" });
   const one = [{ host: "s.example", listings: 2 }];
   // 旗 off（retest の結果なし）: こちらの側の失敗でも rebuyEligible にしない
   assert.equal(buildSellerBoard(one, [latest("s.example", unfunded)], "t", null).sellers[0].rebuyEligible, false);
@@ -339,8 +446,9 @@ test("1 売り手: 最新の行で数え、届いた後の行に「直った」�
   const d = buildSellerDetail("s.example", eps, rows, "2026-09-28T13:00:00.000Z");
   assert.equal(d.summary.listings, 3);
   assert.equal(d.summary.delivered, 1);
-  assert.equal(d.summary.seller, 1);
-  assert.equal(d.summary.notBought, 1);
+  assert.equal(d.summary.seller, 0);
+  assert.equal(d.summary.notPaid, 1, "the no_402 row is not a purchase");
+  assert.equal(d.summary.notTried, 1);
   assert.equal(d.listings[0].endpointId, "e1", "most recent purchase first");
   assert.equal(d.listings[0].deliveredAfterFailure, true);
   assert.equal(d.listings[0].earlier.length, 1);
@@ -503,3 +611,89 @@ test("文面の時刻は共有の境目の定数と同じ（表示用に分ま�
   assert.ok(all.includes(show(Q)), show(Q));
 });
 
+
+// ------------------------------------------------------------
+// 2026-09-29 第2巡: seller の側は「vet402 に落ち度が無いと示せる行」だけ（(a)〜(e)）
+// ------------------------------------------------------------
+
+test("定数の一致: 署名した status の集合は判定 API と同じ・Base の USDC は署名器と同じ", () => {
+  assert.deepEqual([...SIGNED_ROW_STATUSES].sort(), [...SIGNED_STATUSES].sort());
+  assert.equal(BASE_USDC_ADDRESS, BASE_USDC);
+  assert.equal(PAYER_FUNDS_GATE_SINCE, DECLARED_BODY_SENT_SINCE, "the balance gate shipped in the same Production deploy");
+});
+
+test("seller の側の行は (a)〜(e) を全部満たす（KNOWN の全行で evidenceOf を当て直す）", () => {
+  for (const [label, r, , side] of KNOWN) {
+    if (side !== "seller") continue;
+    const ev = evidenceOf(r);
+    assert.equal(ev.signed, true, `${label}: (a)`);
+    assert.equal(ev.terms, true, `${label}: (b)`);
+    assert.equal(ev.funds, "funded", `${label}: (c)`);
+    assert.equal(ev.inputs, "sent", `${label}: (d)`);
+    assert.notEqual(ev.wait, "cut_short", `${label}: (e)`);
+  }
+});
+
+test("(c) 残高: 関門の後は funded、関門の前は組み直した残高で funded / short / unknown", () => {
+  const at = (attemptedAt: string, amountUnits: string, payer = PAYER, network = "eip155:8453") =>
+    payerFundsAtSigning({ network, payer, attemptedAt, amountUnits });
+  assert.equal(at(PAYER_FUNDS_GATE_SINCE, "1000000"), "funded");
+  assert.equal(at("2026-09-12T18:02:18Z", "1000000"), "short", "agentsonly.vip: 1.0 USDC against about 0.18");
+  assert.equal(at("2026-09-12T18:02:18Z", "10000"), "funded");
+  assert.equal(at("2026-09-14T00:00:00Z", "1000"), "short", "0.000275 USDC left during the unfunded window");
+  assert.equal(at("2026-09-10T00:00:00Z", "1000000"), "funded", "at least 1 USDC outside the low periods");
+  assert.equal(at("2026-09-10T00:00:00Z", "1500000"), "unknown", "above the floor the table does not say");
+  assert.equal(at("2026-09-12T18:01:10Z", "990000"), "unknown", "the balance crossed the price inside the window");
+  assert.equal(at("2026-08-20T00:00:00Z", "10000", "0x6777e11fb0a7917b8110b7dab9188aa3f6d23986"), "funded");
+  assert.equal(at("2026-09-10T00:00:00Z", "10000", "0xdead"), "unknown", "a wallet that was not rebuilt");
+  assert.equal(at("2026-09-10T00:00:00Z", "10000", PAYER, "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"), "unknown");
+  assert.equal(at("2026-09-10T00:00:00Z", "abc"), "unknown");
+  assert.equal(at("not a time", "10000"), "unknown");
+});
+
+test("(d) 入力: 本文とクエリの記録・ヘッダ・パスの全部が要る", () => {
+  const ok = proven({ status: "settle_failed", httpStatusPaid: 500 });
+  assert.equal(evidenceOf(ok).inputs, "sent");
+  assert.equal(evidenceOf({ ...ok, meta: { requestBody: "none" } }).inputs, "unrecorded", "no query record");
+  assert.equal(evidenceOf({ ...ok, meta: { requestQuery: "empty" } }).inputs, "unrecorded", "no body record");
+  assert.equal(evidenceOf({ ...ok, meta: { requestBody: true, requestQuery: "empty" } }).inputs, "unrecorded", "a body record of unknown kind");
+  assert.equal(evidenceOf({ ...ok, declaresHeaders: null }).inputs, "unrecorded");
+  assert.deepEqual(evidenceOf({ ...ok, pathTemplate: true }).inputGaps, ["path parameters"]);
+  assert.deepEqual(evidenceOf({ ...ok, declaresHeaders: true, meta: { requestBody: "none", requestQuery: "refused" } }).inputGaps, ["query", "headers"]);
+  const noteRow = { ...ok, declaresHeaders: true };
+  assert.equal(classifyRow(noteRow).mode?.key, "input_not_sent");
+  assert.equal(rowNote(noteRow, "input_not_sent"), "Not shown for this row: vet402 did not send the declared headers.");
+});
+
+test("(e) 待ち時間: 答えが無い行は、出品の maxTimeoutSeconds が待ち時間以下で着金も無い時だけ", () => {
+  const r = proven({ status: "settle_failed", httpStatusPaid: null, listingMaxTimeoutSeconds: 300 });
+  assert.equal(evidenceOf(r).wait, "cut_short");
+  assert.equal(rowNote(r, "stopped_waiting"), "Not shown for this row: vet402 stopped waiting after 20 seconds (the listing's maxTimeoutSeconds is 300).");
+  const landed = proven({ status: "settled", httpStatusPaid: null, txHash: TX, listingMaxTimeoutSeconds: 10 });
+  assert.equal(classifyRow(landed).mode?.key, "stopped_waiting");
+  assert.match(rowNote(landed, "stopped_waiting") ?? "", /the payment landed on-chain afterwards/);
+  // 最初に満たせなかった条件で種類が決まり、注記は満たせなかった条件を全部並べる
+  const many = { ...proven({ status: "settle_failed", httpStatusPaid: null, attemptedAt: "2026-09-10T00:00:00Z", listingMaxTimeoutSeconds: 300 }), meta: null };
+  assert.equal(classifyRow(many).mode?.key, "input_unrecorded");
+  assert.match(rowNote(many, "input_unrecorded") ?? "", /no record of the input it sent; vet402 stopped waiting after 20 seconds/);
+});
+
+test("そのとき見た 402: 署名した行は払った条件、署名前に止まった行は 402 の accept（記録済みの範囲）", () => {
+  const paid = proven({ status: "settle_failed", httpStatusPaid: 500, amountUnits: "50000", listingMaxTimeoutSeconds: 300 });
+  const line = observed402Line(paid) ?? "";
+  assert.match(line, /^vet402 signed: exact · 0\.05 USDC · payTo 0x1111…1111\. Input sent: body none, query empty\./);
+  assert.match(line, /The listing's maxTimeoutSeconds is 300; vet402 waits 20 seconds for the paid answer\./);
+  const upto = row({
+    status: "no_eligible_accept",
+    network: null,
+    challenge: [{ scheme: "upto", network: "eip155:8453", amount: "1000000", asset: BASE_USDC_ADDRESS, payTo: `0x${"22".repeat(20)}`, maxTimeoutSeconds: 300 }],
+    declaredAmount: "10000",
+    declaredPayTo: `0x${"22".repeat(20)}`,
+  });
+  assert.equal(
+    observed402Line(upto),
+    "The 402 offered: upto · eip155:8453 · amount 1000000 · asset 0x8335…2913 · payTo 0x2222…2222 · maxTimeoutSeconds 300. The listing declares price 0.01 · payTo 0x2222…2222.",
+  );
+  assert.equal(observed402Line(row({ status: "no_402", network: null, unpaidStatus: 404 })), "The unpaid request got HTTP 404, not a 402.");
+  assert.equal(observed402Line(row({ status: "over_cap", network: null })), null);
+});

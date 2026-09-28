@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/seo";
 import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
-import type { SellerBoard } from "@/lib/sellers/board";
+import { boardAsOfDay, type SellerBoard } from "@/lib/sellers/board";
 import { getSellerBoardCached } from "@/lib/sellers/cached";
 import { FixFirstView, SellersNotice } from "@/components/site/sellers/SellersViews";
 import TrackView from "@/components/site/TrackView";
@@ -13,14 +13,20 @@ import TrackView from "@/components/site/TrackView";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = pageMetadata({
-  title: "What to fix first — x402 sellers on Base",
-  description:
-    "The x402 listings on Base that vet402 could not buy, grouped by what went wrong, with one fix per group and whether it is the seller's side or vet402's.",
-  path: "/sellers/fix-first",
-  // 2026-09-29 敵対的監査: 帰属の見直しが済むまで noindex。
-  noindex: true,
-});
+// 2026-09-29 第2巡: 表題に「いつの結果か」の日付（最新の試行の UTC の日付・一覧のキャッシュから）。
+export async function generateMetadata(): Promise<Metadata> {
+  const day = await getSellerBoardCached()
+    .then((b) => boardAsOfDay(b))
+    .catch(() => null);
+  return pageMetadata({
+    title: day ? `What to fix first (x402 on Base), as of ${day}` : "What to fix first (x402 on Base)",
+    description:
+      "The x402 listings on Base whose latest purchase by vet402 did not deliver, grouped by what went wrong, with whether it is the seller's side, vet402's, or not sorted.",
+    path: "/sellers/fix-first",
+    // 2026-09-29 敵対的監査: 帰属の見直しが済むまで noindex。
+    noindex: true,
+  });
+}
 
 export default async function FixFirstPage() {
   let board: SellerBoard | null = null;

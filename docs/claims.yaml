@@ -1868,8 +1868,8 @@ claims:
     verified_at: 2026-09-28
   - id: sellers_pays_declared_price
     surface: src/lib/sellers/fix-modes.ts
-    quote: "vet402 pays the declared price, so it did not sign"
-    means: "402 の金額がカタログの宣言額と違えば署名しない（price_mismatch）"
+    quote: "vet402 pays the price the listing declares"
+    means: "402 の金額がカタログの宣言額と違えば署名しない（price_mismatch・2026-09-29 第2巡から not bought: vet402 did not pay と表示）"
     check: null
     why_unverifiable: "拒否は署名の前に起きるので金額の記録しか残らない。export.csv の status 列の price_mismatch（spent_units 0）で確かめられる。関門は l1-runner の選択の段"
     verified_at: 2026-09-28
@@ -1896,8 +1896,8 @@ claims:
     verified_at: 2026-09-28
   - id: sellers_held_rows_not_counted
     surface: src/components/site/sellers/SellersViews.tsx
-    quote: "is never put on the seller&apos;s side"
-    means: "held_reason の付いた行（settled_4xx / unsettled_4xx / payer_unfunded）は、delivered の分母に売り手の不履行として入らず、「どちらの側か」でも seller の側にしない（2026-09-29）"
+    quote: "and so is a <strong>held</strong> row"
+    means: "held_reason の付いた行（settled_4xx / unsettled_4xx / payer_unfunded）は、delivered の分母に売り手の不履行として入らず、「どちらの側か」でも seller の側にしない（2026-09-29。第2巡で文面を「not sorted に置く」へ書き換え）"
     check: null
     why_unverifiable: "件数は 30 日窓で動く。規則は delivery.ts の heldReasonOf / heldReasonSql で、tests/l1-held-rows.pg.test.ts が JS と SQL と公開面の一致を固定する"
     verified_at: 2026-09-28

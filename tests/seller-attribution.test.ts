@@ -45,6 +45,22 @@ function row(p: Partial<SellerRowFacts>): SellerRowFacts {
   };
 }
 
+/** 2026-09-29 第2巡: seller の側に置く根拠（(b)〜(e)）をそろえた行（tests/sellers-fix-modes.test.ts の proven と同じ形）。 */
+function proven(p: Partial<SellerRowFacts>): SellerRowFacts {
+  const r = row(p);
+  return {
+    amountUnits: "10000",
+    payTo: `0x${"11".repeat(20)}`,
+    asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    payer: "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+    declaresHeaders: false,
+    pathTemplate: false,
+    listingMaxTimeoutSeconds: 20,
+    ...r,
+    meta: r.meta ?? { requestBody: r.method === "POST" ? "empty" : "none", requestQuery: "empty" },
+  };
+}
+
 // ---------- 1. 判定保留は seller の側に数えない ----------
 
 test("1: held_reason のある行は、どの status・HTTP でも seller の側にならない（受け入れ: seller の件数 = held_reason 空欄の売り手側の型）", () => {
@@ -58,7 +74,7 @@ test("1: held_reason のある行は、どの status・HTTP でも seller の側
       for (const at of times)
         for (const tx of [null, TX])
           for (const method of ["GET", "POST"]) {
-            const r = row({ status, httpStatusPaid: http, txHash: tx, attemptedAt: at, method, unpaidStatus: http });
+            const r = proven({ status, httpStatusPaid: http, txHash: tx, attemptedAt: at, method, unpaidStatus: http });
             const h = heldReasonOf({ status, httpStatusPaid: http, txHash: tx, attemptedAt: at, network: r.network });
             const c = classifyRow(r);
             if (h !== null) {
@@ -181,12 +197,16 @@ test("5: 402signal（レシート無しの 200・tx なし）と rubric（決済
   assert.equal(rubric.mode?.key, "refused_no_charge");
   assert.equal(rubric.bucket, "unsorted");
   // 着金が結びついた行（tx あり）は課金なしではない
-  assert.equal(classifyRow(row({ status: "delivered_no_receipt", httpStatusPaid: 200, txHash: TX })).bucket, "seller");
-  // 払った後の 5xx・払った要求への 402 は従来どおり売り手の側
-  assert.equal(classifyRow(row({ status: "settle_failed", httpStatusPaid: 500 })).bucket, "seller");
-  assert.equal(classifyRow(row({ status: "settle_failed", httpStatusPaid: 402 })).bucket, "seller");
-  // 支払い前の応答（no_402 の 404 = 掲載の URL が無い）は課金の話ではない
-  assert.equal(classifyRow(row({ status: "no_402", network: null, unpaidStatus: 404 })).mode?.key, "gone");
+  assert.equal(classifyRow(proven({ status: "delivered_no_receipt", httpStatusPaid: 200, txHash: TX })).bucket, "seller");
+  // 払った後の 5xx・払った要求への 402 は、根拠（(b)〜(e)）がそろえば売り手の側
+  assert.equal(classifyRow(proven({ status: "settle_failed", httpStatusPaid: 500 })).bucket, "seller");
+  assert.equal(classifyRow(proven({ status: "settle_failed", httpStatusPaid: 402 })).bucket, "seller");
+  // 2026-09-29 第2巡: 根拠が無ければ not sorted（送った入力の記録が無い）
+  assert.equal(classifyRow({ ...proven({ status: "settle_failed", httpStatusPaid: 500 }), meta: null }).mode?.key, "input_unrecorded");
+  // 支払い前の応答（no_402 の 404 = 掲載の URL が無い）は課金の話ではなく、vet402 が払っていない（not bought）
+  const gone = classifyRow(row({ status: "no_402", network: null, unpaidStatus: 404 }));
+  assert.equal(gone.mode?.key, "gone");
+  assert.equal(gone.bucket, "not_bought");
 });
 
 test("5: 課金なしの文面は遅延回収の窓（recover-late.ts）と同じ数字を言う", () => {
@@ -387,8 +407,10 @@ test("8: 判定の除外は /sellers の分類と同じ（署名した行の全�
           const counted = notCountedReasonOf(p, endpoint) === null;
           // 2026-09-29 独立レビュー: 判定は払う側に慎重。中身の届いていない「課金なし」の 2xx は /sellers では
           // 未分類（売り手に不利にしない）だが、判定では数える（tx 無しは課金なしの証明ではない）。
+          // 2026-09-29 第2巡: /sellers で「vet402 に落ち度が無いと示せない」not sorted は、判定では数える（BLOCK を緩めない）。
+          const unproven = ["other", "funds_unproven", "input_not_sent", "input_unrecorded", "stopped_waiting", "refused_changed_request"];
           const sellerOrOther =
-            c.bucket === "seller" || c.mode?.key === "other" || c.bucket === "delivered" ||
+            c.bucket === "seller" || unproven.includes(c.mode?.key ?? "") || c.bucket === "delivered" ||
             (c.mode?.key === "answered_no_charge" && p.payloadNonEmpty !== true);
           assert.equal(counted, sellerOrOther, `${status} ${http} ${at} ${tx ? "tx" : "-"}: ${c.bucket}/${c.mode?.key}`);
         }

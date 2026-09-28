@@ -321,29 +321,58 @@ export default async function ObservatoryMethodologyPage() {
           </Link>{" "}
           groups the failures by kind.
         </p>
+        {/* 2026-09-29 第2巡の敵対的監査: 原則を逆にした。seller の側は「vet402 に落ち度が無いと行の記録で示せる」行だけ。
+            条件 (a)〜(e) は src/lib/sellers/fix-modes.ts の evidenceOf と同じ順・同じ中身。 */}
         <p className="doc-p">
-          <strong>Whose side.</strong> Each L1 purchase that did not deliver is put in one of three
-          places, by rules checked in this order since 2026-09-29. <em>vet402&apos;s side</em>: our
-          payer wallet had run out of USDC (<code>payer_unfunded</code>); a paid POST was refused
-          with <code>400</code>, <code>415</code> or <code>422</code> before 2026-09-16 23:25 UTC,
-          when we sent an empty JSON body although the listing declares one; a paid request on Base
-          was refused with <code>400</code> or <code>422</code> before 2026-09-27 23:27 UTC, when we
+          <strong>Whose side.</strong> Since 2026-09-29 a failed purchase is put on{" "}
+          <em>the seller&apos;s side</em> when the row itself shows that vet402 was not at fault, and not
+          otherwise. The row has to show each of these, checked in this order: (a) vet402 signed a
+          payment. A row where it did not (no <code>402</code> to the unpaid request, a{" "}
+          <code>402</code> offering no option vet402 can sign such as an <code>upto</code> scheme, or
+          a price or <code>payTo</code> that differs from the listing) is marked{" "}
+          <em>not bought: vet402 did not pay</em> and is not an L1 result. (b) It signed the{" "}
+          <code>exact</code> scheme for USDC at the price and <code>payTo</code> the listing declares;
+          the signed amount, asset and <code>payTo</code> are on the row. (c) Its payer wallet held at
+          least the price when it signed. Since 2026-09-16 23:25 UTC the runner reads the balance before
+          signing and does not sign when it is short; for earlier purchases on Base the balance is rebuilt
+          from the wallet&apos;s own USDC transfers on-chain. (d) It sent the input the listing declares
+          (body, query, headers and path parameters), and the row records what it sent. vet402 sends no
+          request headers of the seller&apos;s and does not fill path parameters, so a listing that
+          declares them is not sorted; a row from before vet402 recorded the query it sent on Base
+          (2026-09-27 23:27 UTC) is not sorted. (e) The seller answered explicitly (an HTTP status, a
+          receipt that does not match the chain, a signed payment refused with <code>402</code>) or had
+          its full declared time: when the paid request got no answer within{" "}
+          {(L1_REQUEST_TIMEOUT_MS / 1000).toString()} seconds, the seller&apos;s side needs the
+          listing&apos;s <code>maxTimeoutSeconds</code> to be no longer than that and no payment to
+          have landed afterwards. A signed payment refused with <code>402</code> on a paid request that
+          carried the declared body or query (which the unpaid request did not) is not sorted either,
+          because the terms for that request may differ from the ones vet402 paid. The seller page shows,
+          for each row, the terms vet402 signed or the options the <code>402</code> offered, the input it
+          sent, and the listing&apos;s <code>maxTimeoutSeconds</code>.
+        </p>
+        <p className="doc-p">
+          <em>vet402&apos;s side</em>: the row shows the cause was ours or a limit of ours. Our payer
+          wallet had run out of USDC (<code>payer_unfunded</code>, 2026-09-13 to 2026-09-15), or held
+          less than the price by the rebuilt balance (for example on 2026-09-12 18:02 UTC); a paid POST
+          was refused with <code>400</code>, <code>415</code> or <code>422</code> before 2026-09-16
+          23:25 UTC, when we sent an empty JSON body although the listing declares one; a paid request on
+          Base was refused with <code>400</code> or <code>422</code> before 2026-09-27 23:27 UTC, when we
           did not add the query the listing declares; or our own limits and errors. &ldquo;Declares&rdquo;
           is read from the same place our request is built from: the example values in the
           listing&apos;s <code>extensions.bazaar.info.input</code>, as well as the names its schema
-          marks required. <em>Not sorted</em>: a held row (a <code>held_reason</code> in the
-          export) or a row awaiting on-chain verification, because we cannot rule out that our
-          request was the problem; and a failure where no payment was taken, meaning no
-          settlement receipt and no transaction on the row, whether the paid request got a{" "}
-          <code>4xx</code> or a <code>2xx</code>. A seller that declares a miss is free is not
-          failing when it does not charge for one. <em>The seller&apos;s side</em>: everything else
-          that the seller&apos;s answer or listing explains, such as no <code>402</code> to an unpaid
-          request, a payment option we cannot pay, a signed payment refused with <code>402</code>, a{" "}
-          <code>5xx</code> or no answer to the paid request, or a receipt that does not match the
-          chain. This last group is the one counted against the seller, on these pages and in the
-          decision rules (the reason codes <code>l1_not_counted_vet402_side</code>,{" "}
-          <code>l1_not_counted_held</code> and <code>l1_not_counted_no_charge</code> name what was
-          left out).
+          marks required. <em>Not sorted</em>: a failed purchase that cannot show (b) to (e); a held row
+          (a <code>held_reason</code> in the export) or a row awaiting on-chain verification; and a
+          failure where no payment was taken, meaning no settlement receipt and no transaction on the
+          row, whether the paid request got a <code>4xx</code> or a <code>2xx</code>. A seller that
+          declares a miss is free is not failing when it does not charge for one.
+        </p>
+        <p className="doc-p">
+          The seller&apos;s side is the group these pages count against the seller. The decision rules
+          are more careful for the payer: they leave out the attempts on vet402&apos;s side, held
+          attempts and attempts with no charge (the reason codes{" "}
+          <code>l1_not_counted_vet402_side</code>, <code>l1_not_counted_held</code> and{" "}
+          <code>l1_not_counted_no_charge</code> name what was left out), and they still count a
+          not-sorted attempt that is not shown to be our fault.
         </p>
         <p className="doc-p">
           <strong>How long we wait for a payment.</strong> The runner waits up to{" "}

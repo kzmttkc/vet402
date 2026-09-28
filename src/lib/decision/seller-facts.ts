@@ -58,6 +58,12 @@ export type PurchaseInput = {
    * 無ければ null（記録なし）。
    */
   requestMeta?: Record<string, unknown> | null;
+  /**
+   * 2026-09-29 第2巡: 署名した額と支払ったウォレット（x402_l1_purchases.amount_units / payer）。帰属の (c)
+   * （署名時点の残高・payer-balance-history.ts）に使う。残高が価格未満だったと示せる行は vet402 の側として除く。
+   */
+  amountUnits?: string | null;
+  payer?: string | null;
 };
 
 /** 帰属（/sellers と同じ規則）で、売り手の不履行として数えない理由。数える行は null。 */
@@ -86,7 +92,12 @@ export function notCountedReasonOf(
     unpaidStatus: null,
     selection: null,
     verifyReason: null,
+    amountUnits: p.amountUnits ?? null,
+    payer: p.payer ?? null,
   };
+  // 判定 API は払う側に慎重（2026-09-29 第2巡）: 除くのは vet402 の側・保留・課金なしだけ。
+  // /sellers で「vet402 に落ち度が無いと示せない」として not sorted に置く行（funds_unproven・input_*・
+  // stopped_waiting・other）は、ここでは数える（null）＝BLOCK を緩めない。
   const c = classifyRow(facts);
   if (c.bucket === "pending") return "held";
   if (!c.mode) return null;
@@ -420,8 +431,10 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
       SELECT attempted_at::text AS attempted_at, status, latency_ms, http_status_paid, payload_non_empty, l2_schema, tx_hash, network,
              raw_response_meta->'l2' AS l2_detail,
              CASE WHEN jsonb_typeof(raw_response_meta) = 'object' THEN jsonb_strip_nulls(jsonb_build_object(
-               'requestBody', CASE WHEN raw_response_meta ? 'requestBody' THEN 'true'::jsonb END,
-               'requestQuery', raw_response_meta->'requestQuery')) END AS request_meta
+               'requestBody', CASE WHEN raw_response_meta ? 'requestBody' THEN
+                 CASE WHEN jsonb_typeof(raw_response_meta->'requestBody') = 'string' THEN to_jsonb(left(raw_response_meta->>'requestBody', 16)) ELSE 'true'::jsonb END END,
+               'requestQuery', raw_response_meta->'requestQuery')) END AS request_meta,
+             amount_units, payer
       FROM x402_l1_purchases WHERE endpoint_id = ${endpointUuid}::uuid AND attempted_at > now() - interval '30 days'
       ORDER BY attempted_at DESC LIMIT 200
     `),
@@ -439,6 +452,8 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
       typeof r.request_meta === "object" && r.request_meta !== null && !Array.isArray(r.request_meta)
         ? (r.request_meta as Record<string, unknown>)
         : null,
+    amountUnits: r.amount_units === null || r.amount_units === undefined ? null : String(r.amount_units),
+    payer: r.payer === null || r.payer === undefined ? null : String(r.payer),
   }));
 
   // 最終試行は 30 日窓の外も見る（窓で切ると 31 日前の試行が「一度も無い」に化ける）。
