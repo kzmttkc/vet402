@@ -26,9 +26,11 @@ import { redactUrls } from "@/lib/observatory/redact";
 const ANY_SCHEME_URL_RE = /\b[a-z][a-z0-9+.-]{1,20}:\/\/[^\s"'<>`]+/gi;
 
 const SECRET_PATTERNS: Array<[RegExp, string]> = [
+  // 空白を含む秘密（mnemonic・seed phrase）は JSON の値の引用符の終わりまで伏せる。
+  [/("(?:mnemonic|seed[_-]?phrase|seed)"\s*:\s*")[^"]*"/gi, "$1<redacted>\""],
   // `apikey=XYZ` / `api_key: "XYZ"` / `dkey=XYZ` / `access_token=XYZ` など（URL の外に出た query 片も含む）
   [
-    /\b(api[_-]?key|apikey|dkey|access[_-]?token|auth[_-]?token|refresh[_-]?token|client[_-]?secret|secret|password|passwd|private[_-]?key|token)(["']?\s*[=:]\s*["']?)[^\s"'&,;)}\]]+/gi,
+    /\b(api[_-]?key|apikey|dkey|access[_-]?token|auth[_-]?token|refresh[_-]?token|client[_-]?secret|secret[_-]?key|secret|password|passwd|private[_-]?key|mnemonic|seed[_-]?phrase|seed|token)(["']?\s*[=:]\s*["']?)(?!0x[0-9a-fA-F]{40}\b)[^\s"'&,;)}\]]+/gi,
     "$1$2<redacted>",
   ],
   [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*/g, "$1 <redacted>"],
@@ -51,7 +53,8 @@ export function redactSecretsForLog(text: string): string {
 }
 
 function describe(error: unknown): string {
-  if (error instanceof Error) return error.message;
+  // message が文字列でない Error もある（2026-09-29 レビュー指摘）: 必ず String に通す。
+  if (error instanceof Error) return String(error.message);
   if (typeof error === "string") return error;
   if (error !== null && typeof error === "object") {
     // 素の logServerError は "[object Object]" しか出さず、中の URL は出ないが理由も消える。
@@ -66,12 +69,40 @@ function describe(error: unknown): string {
 }
 
 /** logServerError の代わりに使う。文脈（tag）と理由の両方を伏せてから出す。 */
+// 伏せる処理そのものが投げても、呼び手の制御（throw しない・握りつぶす）を変えない。
+// 伏せられなかったときは本文を出さず、型名だけを残す（秘密を出すより情報が減る方を選ぶ）。
+function safeMessage(error: unknown): string {
+  try {
+    return redactSecretsForLog(describe(error));
+  } catch {
+    return `<unloggable ${typeof error}>`;
+  }
+}
+
+function safeContext(context: string): string {
+  try {
+    return redactSecretsForLog(String(context));
+  } catch {
+    return "<unloggable context>";
+  }
+}
+
 export function logServerErrorSafe(context: string, error: unknown): void {
-  logServerError(redactSecretsForLog(context), new Error(redactSecretsForLog(describe(error))));
+  try {
+    logServerError(safeContext(context), new Error(safeMessage(error)));
+  } catch {
+    // ログで処理を落とさない。
+  }
 }
 
 /** logAndSwallow の伏字版。`.catch(logAndSwallowSafe("ctx"))`。 */
 export function logAndSwallowSafe(context: string): (error: unknown) => undefined {
-  const swallow = logAndSwallow(redactSecretsForLog(context));
-  return (error) => swallow(new Error(redactSecretsForLog(describe(error))));
+  const swallow = logAndSwallow(safeContext(context));
+  return (error) => {
+    try {
+      return swallow(new Error(safeMessage(error)));
+    } catch {
+      return undefined;
+    }
+  };
 }

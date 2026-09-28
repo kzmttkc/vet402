@@ -100,3 +100,20 @@ test("src の凍結外ファイルは util/log を直接 import しない（esli
     .filter((p) => /from\s+["'](?:@\/lib\/util\/log|(?:\.\.?\/)+(?:[\w-]+\/)*util\/log|\.\/log)["']/.test(readFileSync(p, "utf8")));
   assert.deepEqual(offenders, [], "logServerErrorSafe / logAndSwallowSafe（@/lib/util/log-safe）を使う");
 });
+
+// 2026-09-29 独立レビューの指摘（中 1・低 2・低 3）の回帰。
+test("log-safe: message が文字列でない Error でも呼び手へ投げない", () => {
+  const e = new Error("x");
+  (e as unknown as { message: unknown }).message = { toString: () => "obj" };
+  assert.doesNotThrow(() => logServerErrorSafe("ctx", e));
+  assert.equal(logAndSwallowSafe("ctx")(e), undefined);
+});
+
+test("log-safe: token の契約アドレスは残し、secretKey・mnemonic は伏せる", () => {
+  const out = redactSecretsForLog(
+    JSON.stringify({ secretKey: "LEAK", token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", mnemonic: "a b c" }),
+  );
+  assert.ok(out.includes("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"));
+  assert.ok(!out.includes("LEAK"));
+  assert.ok(!out.includes("a b c"));
+});
