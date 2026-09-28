@@ -77,6 +77,12 @@ function CountsLine({ c }: { c: OutcomeCounts }) {
     <>
       <strong>{n(c.delivered)}</strong> delivered · <strong>{n(c.seller)}</strong> failed on the seller&apos;s side ·{" "}
       <strong>{n(c.vet402)}</strong> on vet402&apos;s side
+      {c.pending > 0 && (
+        <>
+          {" "}
+          · <strong>{n(c.pending)}</strong> awaiting on-chain verification
+        </>
+      )}
       {c.unsorted > 0 && (
         <>
           {" "}
@@ -128,6 +134,9 @@ function SellersTable({ sellers, label }: { sellers: readonly SellerSummary[]; l
               Not sorted
             </th>
             <th scope="col" className="num">
+              Awaiting verification
+            </th>
+            <th scope="col" className="num">
               Not yet bought
             </th>
             <th scope="col">Latest purchase</th>
@@ -146,6 +155,7 @@ function SellersTable({ sellers, label }: { sellers: readonly SellerSummary[]; l
               <td className="num">{n(s.seller)}</td>
               <td className="num">{n(s.vet402)}</td>
               <td className="num">{n(s.unsorted)}</td>
+              <td className="num">{n(s.pending)}</td>
               <td className="num">{n(s.notBought)}</td>
               <td className="whitespace-nowrap">{fmtUtc(s.lastAttemptAt)}</td>
             </tr>
@@ -261,8 +271,9 @@ function ReadingNotes() {
         means vet402 confirmed the USDC transfer on-chain and the paid request answered 2xx.{" "}
         <strong>Seller&apos;s side</strong> means the seller&apos;s answer or listing explains the failure.{" "}
         <strong>vet402&apos;s side</strong> means the cause was ours or a limit of ours: our wallet ran out of USDC,
-        we did not yet send the request body or query the listing declares, the price was over our per-purchase ceiling, our run did not
-        finish, or our on-chain check has not run yet. A count is one purchase attempt, not a rating (
+        we did not yet send the request body or required query the seller declared, the price was over our
+        per-purchase ceiling, or our run did not finish. <strong>Awaiting on-chain verification</strong> means the seller returned a
+        receipt that vet402 has not re-read on-chain yet; it is neither delivered nor failed. A count is one purchase attempt, not a rating (
         <Link href="/observatory/methodology" className="underline">
           methodology
         </Link>
@@ -276,7 +287,19 @@ function ReadingNotes() {
 // /sellers/[host]
 // ------------------------------------------------------------
 
+/**
+ * 照合待ち（settle_claimed）の行。照合の時刻は書かない（照合は Vercel の cron と管理用 Mac の launchd の
+ * 両方から走り、後者は Mac が起きているときしか動かない・独立レビュー 2026-09-28）。
+ */
+function pendingLine(r: ShownRow): string {
+  const base =
+    "The seller returned a settlement receipt, and vet402 has not confirmed that transaction on-chain yet. Until it is confirmed or refuted, this purchase is neither delivered nor failed.";
+  const reason = r.facts.verifyReason;
+  return reason ? `${base} vet402 looked for that transaction on-chain and has not found it yet (${reason}).` : base;
+}
+
 function seenLine(r: ShownRow): string {
+  if (r.bucket === "pending") return pendingLine(r);
   if (r.bucket === "delivered") {
     return `Paid; vet402 confirmed the transfer on-chain and the paid request answered HTTP ${r.facts.httpStatusPaid ?? "—"}.`;
   }
@@ -285,6 +308,7 @@ function seenLine(r: ShownRow): string {
 
 function ResultWord({ r }: { r: ShownRow }) {
   if (r.bucket === "delivered") return <>delivered</>;
+  if (r.bucket === "pending") return <>awaiting on-chain verification</>;
   return <>{r.mode?.title}</>;
 }
 
@@ -336,7 +360,7 @@ function ExportTrace({ r, resourceKey, now }: { r: ShownRow; resourceKey: string
   );
 }
 
-function ListingRows({ l, now, queued }: { l: SellerListing; now: number; queued: boolean }) {
+function ListingRows({ l, now, rebuyEligible }: { l: SellerListing; now: number; rebuyEligible: boolean }) {
   const r = l.latest;
   return (
     <>
@@ -368,9 +392,9 @@ function ListingRows({ l, now, queued }: { l: SellerListing; now: number; queued
               {r.mode?.side === "vet402" && (
                 <span className="block">This failure was on vet402&apos;s side, not the seller&apos;s.</span>
               )}
-              {queued && (
+              {rebuyEligible && (
                 <span className="block">
-                  <strong>Re-buy:</strong> this listing is queued for a re-buy under the rules on the{" "}
+                  <strong>Re-buy:</strong> this listing is eligible for a re-buy under the rules on the{" "}
                   <Link href="/observatory/methodology" className="underline">
                     methodology page
                   </Link>
@@ -436,9 +460,9 @@ export function SellerDetailView({
         {n(s.listings)} Base {s.listings === 1 ? "listing" : "listings"}. By the latest purchase of each: <CountsLine c={s} />.
         {s.lastAttemptAt && <> Latest purchase: {fmtUtc(s.lastAttemptAt)}.</>}
       </p>
-      {s.queued ? (
+      {s.rebuyEligible ? (
         <p className="doc-p">
-          <strong>Your most recent purchase failed on vet402&apos;s side.</strong> This seller is queued for a re-buy
+          <strong>Your most recent purchase failed on vet402&apos;s side.</strong> This seller is eligible for a re-buy
           under the rules on the{" "}
           <Link href="/observatory/methodology" className="underline">
             methodology page
@@ -476,7 +500,7 @@ export function SellerDetailView({
           </thead>
           <tbody>
             {shown.map((l) => (
-              <ListingRows key={l.endpointId} l={l} now={now} queued={s.queued && s.queuedEndpointId === l.endpointId} />
+              <ListingRows key={l.endpointId} l={l} now={now} rebuyEligible={s.rebuyEligible && s.rebuyEndpointId === l.endpointId} />
             ))}
           </tbody>
         </table>
@@ -590,7 +614,13 @@ export function FixFirstView({ board, revalidateSec }: { board: SellerBoard; rev
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
       <p className="doc-p">
         The Base listings whose latest purchase did not deliver ({n(failed)} of{" "}
-        {n(board.totals.listings - board.totals.notBought)} bought), grouped by what went wrong. Seller-side groups
+        {n(board.totals.listings - board.totals.notBought)} bought), grouped by what went wrong.
+        {board.totals.pending > 0 && (
+          <>
+            {" "}
+            {n(board.totals.pending)} more are awaiting on-chain verification and are not counted here.
+          </>
+        )} Seller-side groups
         come first, the fix that reaches the most sellers at the top; effort is 1 for a listing or config change, 2
         for a server change, 3 when it depends on the facilitator. Each seller links to its own page.
       </p>

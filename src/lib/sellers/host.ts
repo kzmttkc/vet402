@@ -5,11 +5,11 @@
 // 正規化済み）の最初の `/` の前を取り、末尾の `:ポート` を落として小文字にする。
 // api.verigrace.com:4449 と :4450 は同じ売り手。
 //
-// l1-runner を頁から import しない理由: 頁のバンドルに支払い経路（署名・鍵の読み込み）を
+// l1-runner を頁から import しない理由（tests/sellers-no-payment-imports.test.ts が検査する）: 頁のバンドルに支払い経路（署名・鍵の読み込み）を
 // 持ち込まないため。規則が 1 つであることは tests/sellers-fix-modes.test.ts が
 // censusHostOf と突き合わせて固定する。
 // ============================================================
-import { sql, type SQL } from "drizzle-orm";
+import { censusHostSql } from "@/lib/observatory/retest-sellers-sql";
 
 /** census の censusHostOf と同じ規則（小文字・末尾の `:ポート` を落とす）。 */
 export function sellerHostOf(host: string): string {
@@ -21,9 +21,8 @@ export function sellerHostOfResourceKey(resourceKey: string): string {
   return sellerHostOf(resourceKey.split("/")[0] ?? "");
 }
 
-/** 同じ規則の SQL 式（l1-runner の censusHostSql と同じ文）。 */
-export const sellerHostSql = (resourceKey: SQL) =>
-  sql`lower(regexp_replace(split_part(${resourceKey}, '/', 1), ':[0-9]+$', ''))`;
+/** 同じ規則の SQL 式（census と同じ関数そのもの・retest-sellers-sql.ts）。 */
+export const sellerHostSql = censusHostSql;
 
 /**
  * URL の [host] として受け付ける形。DB に問い合わせる前に落とす（公開面は鍵なし）。

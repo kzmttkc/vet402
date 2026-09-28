@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { FixFirstView, SellerDetailView, SellersIndexView } from "@/components/site/sellers/SellersViews";
-import { buildSellerBoard, buildSellerDetail, markQueued, searchSellers, type LatestRow } from "@/lib/sellers/board";
+import { buildSellerBoard, buildSellerDetail, markRebuyEligible, searchSellers, type LatestRow } from "@/lib/sellers/board";
 import type { SellerRowFacts } from "@/lib/sellers/fix-modes";
 
 const TX = `0x${"cd".repeat(32)}`;
@@ -48,6 +48,7 @@ function r(p: Partial<SellerRowFacts> & Flags): SellerRowFacts {
     schema: null,
     unpaidStatus: null,
     selection: null,
+    verifyReason: null,
     ...withFlags(p),
   };
 }
@@ -79,7 +80,7 @@ test("SellerDetailView: 取得時刻・vet402 の側・買い直し・tx・expor
   assert.match(html, /vet402 did not send the declared request body/);
   assert.match(html, /Nothing for the seller to fix\./);
   // 旗 off（board に retest の結果なし）: 買い直しを約束しない。こちらの側の失敗だとだけ言う
-  assert.doesNotMatch(html, /Re-buy:|queued|buys from that seller again|will appear/);
+  assert.doesNotMatch(html, /Re-buy:|queued|eligible for a re-buy|buys from that seller again|will appear/);
   assert.match(html, /Your most recent purchase failed on vet402&#x27;s side\.<\/strong> Nothing for you to fix there\./);
   assert.match(html, /This failure was on vet402&#x27;s side, not the seller&#x27;s\./);
   assert.match(html, new RegExp(`href="https://basescan.org/tx/${TX}"`));
@@ -172,16 +173,44 @@ test("SellerDetailView: 決済してから断った POST（本文を送る前の
   assert.match(html, /this listing declares no body/);
 });
 
-test("SellerDetailView: queued は retest がこの売り手のこの行を選んだときだけ（markQueued）", () => {
+test("SellerDetailView: rebuyEligible は retest がこの売り手のこの行を選んだときだけ（markRebuyEligible）", () => {
   const d = buildSellerDetail("shop.example", eps, rows, FETCHED);
   const latest: LatestRow[] = rows.map((x) => ({ ...x, host: "shop.example" }));
   const hosts = [{ host: "shop.example", listings: 4 }];
   const on = buildSellerBoard(hosts, latest, FETCHED, new Map([["shop.example", { endpointId: "e1", reason: "unfunded" }]])).sellers[0];
-  const html = renderToStaticMarkup(createElement(SellerDetailView, { detail: markQueued(d, on), page: 1, now: 0, revalidateSec: 300 }));
-  assert.match(html, /This seller is queued for a re-buy under the rules on the/);
-  assert.match(html, /this listing is queued for a re-buy under the rules on the/);
+  const html = renderToStaticMarkup(createElement(SellerDetailView, { detail: markRebuyEligible(d, on), page: 1, now: 0, revalidateSec: 300 }));
+  assert.match(html, /This seller is eligible for a re-buy\s+under the rules on the/);
+  assert.match(html, /this listing is eligible for a re-buy under the rules on the/);
   assert.doesNotMatch(html, /will appear/);
   const other = buildSellerBoard(hosts, latest, FETCHED, new Map([["shop.example", { endpointId: "e3", reason: "unfunded" }]])).sellers[0];
-  const html2 = renderToStaticMarkup(createElement(SellerDetailView, { detail: markQueued(d, other), page: 1, now: 0, revalidateSec: 300 }));
-  assert.doesNotMatch(html2, /queued/, "retest picked a different row than this page's latest");
+  const html2 = renderToStaticMarkup(createElement(SellerDetailView, { detail: markRebuyEligible(d, other), page: 1, now: 0, revalidateSec: 300 }));
+  assert.doesNotMatch(html2, /eligible for a re-buy/, "retest picked a different row than this page's latest");
+});
+
+test("SellerDetailView: 照合待ちの行は失敗と書かず、時刻も書かず中立に書く（理由があれば添える）", () => {
+  const d = buildSellerDetail(
+    "wait.example",
+    [{ endpointId: "w1", resourceKey: "wait.example/x", resourceUrl: "https://wait.example/x", method: "GET", priceAmount: "1000" }],
+    [r({ endpointId: "w1", status: "settle_claimed", httpStatusPaid: 200, txHash: TX, attemptedAt: "2026-09-28T00:10:00Z" })],
+    FETCHED,
+  );
+  assert.equal(d.summary.pending, 1);
+  assert.equal(d.summary.vet402 + d.summary.seller + d.summary.unsorted, 0);
+  const html = renderToStaticMarkup(createElement(SellerDetailView, { detail: d, page: 1, now: 0, revalidateSec: 300 }));
+  assert.match(html, /awaiting on-chain verification/);
+  assert.ok(html.includes("The seller returned a settlement receipt, and vet402 has not confirmed that transaction on-chain yet. Until it is confirmed or refuted, this purchase is neither delivered nor failed."));
+  assert.doesNotMatch(html, /\d{2}:\d{2} UTC each day|its check runs at|has not found it yet/, "no schedule is promised; no reason, no reason sentence");
+  const withReason = buildSellerDetail(
+    "wait.example",
+    [{ endpointId: "w1", resourceKey: "wait.example/x", resourceUrl: "https://wait.example/x", method: "GET", priceAmount: "1000" }],
+    [r({ endpointId: "w1", status: "settle_claimed", httpStatusPaid: 200, txHash: TX, verifyReason: "tx_not_found", attemptedAt: "2026-09-28T00:10:00Z" })],
+    FETCHED,
+  );
+  const html2 = renderToStaticMarkup(createElement(SellerDetailView, { detail: withReason, page: 1, now: 0, revalidateSec: 300 }));
+  assert.ok(html2.includes("vet402 looked for that transaction on-chain and has not found it yet (tx_not_found)."));
+  assert.doesNotMatch(html, /failed on vet402|vet402&#x27;s side\.<\/strong>|Nothing for the seller to fix/);
+  const board = buildSellerBoard([{ host: "wait.example", listings: 1 }], [{ ...d.listings[0].latest!.facts, host: "wait.example" }], FETCHED);
+  const ff = renderToStaticMarkup(createElement(FixFirstView, { board, revalidateSec: 300 }));
+  assert.match(ff, /\(0 of 1 bought\)/);
+  assert.match(ff, /1 more are awaiting on-chain verification and are not counted here/);
 });

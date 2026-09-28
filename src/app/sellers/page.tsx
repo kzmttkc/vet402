@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/seo";
-import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/cached-reads";
+import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
 import { searchSellers, type SellerBoard } from "@/lib/sellers/board";
 import { getSellerBoardCached } from "@/lib/sellers/cached";
 import { SellersIndexView, SellersNotice, sellerPath } from "@/components/site/sellers/SellersViews";

@@ -59,6 +59,7 @@ function row(p: Partial<SellerRowFacts> & Flags): SellerRowFacts {
     schema: null,
     unpaidStatus: null,
     selection: null,
+    verifyReason: null,
     ...withFlags(p),
   };
 }
@@ -88,7 +89,7 @@ const KNOWN: [string, SellerRowFacts, string | null, string][] = [
   ["halted", row({ status: "halted" }), "vet402_limit", "vet402"],
   ["request_error", row({ status: "request_error", network: null }), "vet402_error", "vet402"],
   ["in_flight", row({ status: "in_flight" }), "vet402_error", "vet402"],
-  ["settle_claimed（照合待ち）", row({ status: "settle_claimed", httpStatusPaid: 200, txHash: TX }), "settlement_pending", "vet402"],
+  ["settle_claimed（照合待ち・失敗でも delivered でもない）", row({ status: "settle_claimed", httpStatusPaid: 200, txHash: TX }), null, "pending"],
   // seller の側
   ["期間外の 402", row({ status: "settle_failed", httpStatusPaid: 402, attemptedAt: "2026-09-20T00:00:00Z" }), "payment_refused", "seller"],
   ["Solana の期間内 402 は残高切れではない", row({ status: "settle_failed", httpStatusPaid: 402, attemptedAt: "2026-09-14T00:00:00Z", network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" }), "payment_refused", "seller"],
@@ -213,7 +214,7 @@ test("既知の失敗は、決まった種類と側に入る", () => {
     const c = classifyRow(r);
     assert.equal(c.mode?.key ?? null, key, `${label}: 種類`);
     assert.equal(c.bucket, side, `${label}: 側`);
-    if (c.mode) assert.equal(c.mode.side, c.bucket, `${label}: bucket は mode.side と同じ`);
+      if (c.mode) assert.equal(c.mode.side, c.bucket, `${label}: bucket は mode.side と同じ`);
   }
 });
 
@@ -265,12 +266,16 @@ test("集計: 種類ごとの合計 = 届かなかった出品、出品の内訳
   const failed = board.totals.seller + board.totals.vet402 + board.totals.unsorted;
   const grouped = board.groups.reduce((a, g) => a + g.listings, 0);
   assert.equal(grouped, failed, "groups add up to the failures");
-  assert.equal(board.totals.delivered + failed, KNOWN.length);
-  assert.equal(board.totals.delivered, KNOWN.filter(([, , k]) => k === null).length);
+  // 失敗 + 照合待ち + delivered + 未購入 = 出品数（照合待ちは失敗の合計・種類の束に入らない）
+  assert.equal(board.totals.delivered + board.totals.pending + failed, KNOWN.length);
+  assert.equal(board.totals.delivered, KNOWN.filter(([, , , side]) => side === "delivered").length);
+  assert.equal(board.totals.pending, KNOWN.filter(([, , , side]) => side === "pending").length);
+  assert.ok(board.totals.pending >= 1);
+  assert.ok(!board.groups.some((g) => Object.keys(g.statuses).includes("settle_claimed")), "fix-first never groups a pending row");
   assert.equal(board.totals.listings, 7 * 20 + 3);
   assert.equal(board.totals.notBought, board.totals.listings - KNOWN.length);
   for (const s of board.sellers) {
-    assert.equal(s.delivered + s.seller + s.vet402 + s.unsorted + s.notBought, s.listings, s.host);
+    assert.equal(s.delivered + s.pending + s.seller + s.vet402 + s.unsorted + s.notBought, s.listings, s.host);
   }
   for (const g of board.groups) {
     assert.equal(g.sellers.reduce((a, s) => a + s.listings, 0), g.listings, g.key);
@@ -291,28 +296,28 @@ test("集計: カタログに無いホストの行は数えない", () => {
   assert.equal(board.groups.length, 0);
 });
 
-test("queued: retest の SQL がこの売り手のこの行を選び、その行がこちらの側のときだけ（旗 off＝null なら書かない）", () => {
+test("rebuyEligible: retest の SQL がこの売り手のこの行を選び、その行がこちらの側のときだけ（旗 off＝null なら書かない）", () => {
   const unfunded = row({ endpointId: "e1", status: "settle_failed", httpStatusPaid: 402, attemptedAt: "2026-09-14T00:00:00Z" });
   const laterSeller = row({ endpointId: "e2", status: "settle_failed", httpStatusPaid: 500, attemptedAt: "2026-09-20T00:00:00Z" });
   const one = [{ host: "s.example", listings: 2 }];
-  // 旗 off（retest の結果なし）: こちらの側の失敗でも queued にしない
-  assert.equal(buildSellerBoard(one, [latest("s.example", unfunded)], "t", null).sellers[0].queued, false);
+  // 旗 off（retest の結果なし）: こちらの側の失敗でも rebuyEligible にしない
+  assert.equal(buildSellerBoard(one, [latest("s.example", unfunded)], "t", null).sellers[0].rebuyEligible, false);
   // retest がこの売り手のこの行を選んだ
   const b1 = buildSellerBoard(one, [latest("s.example", unfunded)], "t", new Map([["s.example", { endpointId: "e1", reason: "unfunded" }]]));
-  assert.equal(b1.sellers[0].queued, true);
-  assert.equal(b1.sellers[0].queuedEndpointId, "e1");
+  assert.equal(b1.sellers[0].rebuyEligible, true);
+  assert.equal(b1.sellers[0].rebuyEndpointId, "e1");
   // retest が別の行を選んだ（全チェーンの最新行が別）: 食い違うので書かない
-  assert.equal(buildSellerBoard(one, [latest("s.example", unfunded)], "t", new Map([["s.example", { endpointId: "other", reason: "unfunded" }]])).sellers[0].queued, false);
+  assert.equal(buildSellerBoard(one, [latest("s.example", unfunded)], "t", new Map([["s.example", { endpointId: "other", reason: "unfunded" }]])).sellers[0].rebuyEligible, false);
   // 同じ行でも理由が違う（retest は別チェーンの行を「本文」で選んだ）: 書かない
-  assert.equal(buildSellerBoard(one, [latest("s.example", unfunded)], "t", new Map([["s.example", { endpointId: "e1", reason: "body" }]])).sellers[0].queued, false);
+  assert.equal(buildSellerBoard(one, [latest("s.example", unfunded)], "t", new Map([["s.example", { endpointId: "e1", reason: "body" }]])).sellers[0].rebuyEligible, false);
   // retest がこの売り手を選んでいない
-  assert.equal(buildSellerBoard(one, [latest("s.example", unfunded)], "t", new Map([["x.example", { endpointId: "e1", reason: "unfunded" }]])).sellers[0].queued, false);
+  assert.equal(buildSellerBoard(one, [latest("s.example", unfunded)], "t", new Map([["x.example", { endpointId: "e1", reason: "unfunded" }]])).sellers[0].rebuyEligible, false);
   // この頁の最新の行が seller の側
   const b2 = buildSellerBoard(one, [latest("s.example", unfunded), latest("s.example", laterSeller)], "t", new Map([["s.example", { endpointId: "e2", reason: "unfunded" }]]));
-  assert.equal(b2.sellers[0].queued, false, "the page's latest row is on the seller's side");
+  assert.equal(b2.sellers[0].rebuyEligible, false, "the page's latest row is on the seller's side");
   // 価格の上限はこちらの側でも買い直しの理由ではない
   const over = row({ endpointId: "e3", status: "over_cap", attemptedAt: "2026-09-21T00:00:00Z" });
-  assert.equal(buildSellerBoard([{ host: "s.example", listings: 1 }], [latest("s.example", over)], "t", new Map([["s.example", { endpointId: "e3", reason: "unfunded" }]])).sellers[0].queued, false);
+  assert.equal(buildSellerBoard([{ host: "s.example", listings: 1 }], [latest("s.example", over)], "t", new Map([["s.example", { endpointId: "e3", reason: "unfunded" }]])).sellers[0].rebuyEligible, false);
 });
 
 test("1 売り手: 最新の行で数え、届いた後の行に「直った」とは書かず事実だけ持つ", () => {
@@ -387,7 +392,7 @@ test("決済してから入力を断った行: 文面が「決済してから断
   assert.equal(classifyRow(row({ status: "settled", httpStatusPaid: 400, txHash: TX, method: "POST", declaresBody: true, attemptedAt: "2026-09-10T00:00:00Z" })).bucket, "vet402");
   assert.equal(m.side, "seller");
   assert.match(m.what, /took the payment before it checked the input/);
-  assert.match(m.what, /When the listing declared a body or query that vet402 was not yet sending, the row is on vet402's side instead/);
+  assert.match(m.what, /When the seller declared a body, or a required query, that vet402 was not yet sending, the row is on vet402's side instead/);
   assert.match(m.fix, /Check the input before you settle/);
   const before = row({ status: "settled", httpStatusPaid: 400, txHash: TX, method: "POST", declaresBody: false, attemptedAt: "2026-09-10T00:00:00Z" });
   assert.equal(classifyRow(before).mode?.key, "settled_then_rejected");
@@ -436,8 +441,9 @@ test("BASE_DECLARED_QUERY_SINCE の値は request-query.ts の 1 か所だけ（
 test("文面: 本文とクエリの送り始めを分けて書き、「宣言どおり送る」を無条件に言わない", () => {
   const all = FIX_MODES.map((m) => `${m.what} ${m.fix}`).join("\n");
   assert.doesNotMatch(all, /vet402 sends the body and query the listing declares/);
-  assert.match(fixMode("input_rejected").what, /Since 2026-09-16 23:25 UTC vet402 sends the request body/);
-  assert.match(fixMode("input_rejected").what, /since 2026-09-27 23:27 UTC it adds the query parameters the listing declares on Base/);
+  assert.match(fixMode("input_rejected").what, /Since 2026-09-16 23:25 UTC vet402 sends the request body the seller's 402 declares/);
+  assert.match(fixMode("input_rejected").what, /since 2026-09-27 23:27 UTC it adds the query parameters the seller's 402 declares on Base/);
+  assert.doesNotMatch(all, /query parameters the listing declares|request body the listing declares/);
   assert.match(fixMode("query_not_sent").what, /Before 2026-09-27 23:27 UTC/);
 });
 
@@ -456,3 +462,34 @@ test("/sellers の本文・クエリの判定は共有の判定（request-body.t
   assert.doesNotMatch(src, /2026-09-16T23:25:55Z|2026-09-27T23:27:16Z/);
   assert.doesNotMatch(src, /=== 400 \|\| r\.httpStatusPaid === 422|\[400, 422\]/);
 });
+
+test("照合待ち（settle_claimed）は分類表に無く、失敗の種類にならない", () => {
+  assert.ok(!FIX_MODES.some((m) => m.key === "settlement_pending"));
+  const c = classifyRow(row({ status: "settle_claimed", httpStatusPaid: 400, txHash: TX }));
+  assert.equal(c.bucket, "pending");
+  assert.equal(c.mode, null);
+});
+
+test("任意のクエリだけの出品（Base・境目より前）には、こちらがクエリを足していなかった注記が付く（側は seller のまま）", () => {
+  const opt = row({ status: "settle_failed", httpStatusPaid: 404, optionalQueryOnly: true, attemptedAt: "2026-09-20T00:00:00Z" });
+  const c = classifyRow(opt);
+  assert.equal(c.bucket, "seller");
+  assert.equal(rowNote(opt, c.mode!.key), "Before 2026-09-27 23:27 UTC, vet402 did not add query parameters to paid requests on Base; this listing declares optional ones.");
+  assert.equal(rowNote({ ...opt, attemptedAt: "2026-09-27T23:27:16Z" }, "input_rejected"), null, "after the Base query cutover");
+  assert.equal(rowNote({ ...opt, network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" }, "input_rejected"), null, "Base only");
+  assert.equal(rowNote({ ...opt, meta: { requestQuery: "declared" } }, "input_rejected"), null, "query was sent");
+  assert.equal(rowNote(row({ status: "settle_failed", httpStatusPaid: 400, attemptedAt: "2026-09-20T00:00:00Z" }), "input_rejected"), null, "no queryParams at all");
+  // 本文と両方当たれば 2 つ並べる
+  const both = row({ status: "settled", httpStatusPaid: 400, txHash: TX, method: "POST", optionalQueryOnly: true, attemptedAt: "2026-09-10T00:00:00Z" });
+  assert.match(rowNote(both, "settled_then_rejected") ?? "", /declares no body\. Before 2026-09-27 23:27 UTC/);
+});
+
+test("文面の時刻は共有の境目の定数と同じ（表示用に分まで）", async () => {
+  const { DECLARED_BODY_SENT_SINCE: B } = await import("@/lib/observatory/request-body");
+  const { BASE_DECLARED_QUERY_SINCE: Q } = await import("@/lib/observatory/request-query");
+  const show = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
+  const all = FIX_MODES.map((m) => m.what).join("\n");
+  assert.ok(all.includes(show(B)), show(B));
+  assert.ok(all.includes(show(Q)), show(Q));
+});
+

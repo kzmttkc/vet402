@@ -11,6 +11,8 @@ export type SummaryBucket = Bucket | "not_bought";
 
 export interface OutcomeCounts {
   delivered: number;
+  /** 照合待ち（settle_claimed）。失敗にも delivered にも数えない。 */
+  pending: number;
   seller: number;
   vet402: number;
   unsorted: number;
@@ -27,9 +29,9 @@ export interface SellerSummary extends OutcomeCounts {
    * （endpoint_id）がこの頁の見ている最新の行と同じで、その行がこちらの側の失敗。1 つでも欠けたら false
    * （頁は Base の掲載中の出品しか見ず、retest は全チェーンの最新行を見るので、食い違う売り手には書かない）。
    */
-  queued: boolean;
-  /** queued のとき、retest が買い直す行の出品（endpoint id）。 */
-  queuedEndpointId: string | null;
+  rebuyEligible: boolean;
+  /** rebuyEligible のとき、retest が買い直す行の出品（endpoint id）。 */
+  rebuyEndpointId: string | null;
 }
 
 export interface FixGroupSeller {
@@ -70,11 +72,11 @@ export const RETEST_MODE_KEYS: ReadonlySet<string> = new Set(["payer_unfunded", 
 export type RetestPick = { endpointId: string; reason: string };
 export type RetestQueue = ReadonlyMap<string, RetestPick>;
 
-/** retest の理由 → この頁の種類。理由と種類が食い違う売り手（retest は全チェーンの最新行を見る）には queued と書かない。 */
+/** retest の理由 → この頁の種類。理由と種類が食い違う売り手（retest は全チェーンの最新行を見る）には rebuyEligible と書かない。 */
 const RETEST_REASON_MODE: Readonly<Record<string, string>> = { unfunded: "payer_unfunded", body: "body_not_sent", query: "query_not_sent" };
 
 function zero(): OutcomeCounts {
-  return { delivered: 0, seller: 0, vet402: 0, unsorted: 0, notBought: 0 };
+  return { delivered: 0, pending: 0, seller: 0, vet402: 0, unsorted: 0, notBought: 0 };
 }
 
 const SIDE_ORDER = { seller: 0, vet402: 1, unsorted: 2 } as const;
@@ -104,7 +106,7 @@ export function buildSellerBoard(
 ): SellerBoard {
   const byHost = new Map<string, SellerSummary>();
   for (const h of hostListings) {
-    byHost.set(h.host, { host: h.host, listings: h.listings, ...zero(), lastAttemptAt: null, queued: false, queuedEndpointId: null });
+    byHost.set(h.host, { host: h.host, listings: h.listings, ...zero(), lastAttemptAt: null, rebuyEligible: false, rebuyEndpointId: null });
   }
   const acc = new Map<string, { hosts: Map<string, number>; statuses: Record<string, number>; listings: number }>();
   const newest = new Map<string, LatestRow & { modeKey: string | null }>();
@@ -127,22 +129,23 @@ export function buildSellerBoard(
   const sellers = [...byHost.values()];
   const totals = { ...zero(), sellers: sellers.length, listings: 0, sellersBought: 0 };
   for (const s of sellers) {
-    const bought = s.delivered + s.seller + s.vet402 + s.unsorted;
+    const bought = s.delivered + s.pending + s.seller + s.vet402 + s.unsorted;
     s.notBought = Math.max(0, s.listings - bought);
     const last = newest.get(s.host);
     const pick = retest?.get(s.host);
-    s.queued =
+    s.rebuyEligible =
       !!last &&
       pick !== undefined &&
       pick.endpointId === last.endpointId &&
       RETEST_MODE_KEYS.has(last.modeKey ?? "") &&
       RETEST_REASON_MODE[pick.reason] === last.modeKey;
-    s.queuedEndpointId = s.queued ? pick!.endpointId : null;
+    s.rebuyEndpointId = s.rebuyEligible ? pick!.endpointId : null;
     totals.listings += s.listings;
     totals.delivered += s.delivered;
     totals.seller += s.seller;
     totals.vet402 += s.vet402;
     totals.unsorted += s.unsorted;
+    totals.pending += s.pending;
     totals.notBought += s.notBought;
     if (s.lastAttemptAt) totals.sellersBought++;
   }
@@ -272,22 +275,22 @@ export function buildSellerDetail(
   listings.sort(compareListings);
   const latestRows: LatestRow[] = listings.filter((l) => l.latest).map((l) => ({ ...l.latest!.facts, host }));
   const board = buildSellerBoard([{ host, listings: endpoints.length }], latestRows, fetchedAt);
-  const summary = board.sellers[0] ?? { host, listings: 0, ...zero(), lastAttemptAt: null, queued: false, queuedEndpointId: null };
+  const summary = board.sellers[0] ?? { host, listings: 0, ...zero(), lastAttemptAt: null, rebuyEligible: false, rebuyEndpointId: null };
   return { fetchedAt, host, summary, listings, selectedBy };
 }
 
 /**
  * 1 売り手の頁に、一覧（board）が持つ retest の判定を移す。board と頁の読み取りは別の時刻なので、
- * 頁の最新の行が board の選んだ行と同じで、なおかつこちらの側の失敗であるときだけ queued にする。
+ * 頁の最新の行が board の選んだ行と同じで、なおかつこちらの側の失敗であるときだけ rebuyEligible にする。
  */
-export function markQueued(d: SellerDetail, fromBoard: SellerSummary | undefined): SellerDetail {
+export function markRebuyEligible(d: SellerDetail, fromBoard: SellerSummary | undefined): SellerDetail {
   const newest = d.listings[0]?.latest ? d.listings[0] : undefined;
-  const queued =
-    !!fromBoard?.queued &&
+  const rebuyEligible =
+    !!fromBoard?.rebuyEligible &&
     !!newest &&
-    fromBoard.queuedEndpointId === newest.endpointId &&
+    fromBoard.rebuyEndpointId === newest.endpointId &&
     RETEST_MODE_KEYS.has(newest.latest?.mode?.key ?? "");
-  return { ...d, summary: { ...d.summary, queued, queuedEndpointId: queued ? newest!.endpointId : null } };
+  return { ...d, summary: { ...d.summary, rebuyEligible, rebuyEndpointId: rebuyEligible ? newest!.endpointId : null } };
 }
 
 /** export.csv の ?days= で、その行が窓に入る最小の日数（1..366）。366 を超えるなら null。 */

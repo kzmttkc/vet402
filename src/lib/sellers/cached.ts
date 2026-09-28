@@ -10,7 +10,7 @@
 // ============================================================
 import { unstable_cache } from "next/cache";
 import { getDb } from "@/lib/db/client";
-import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/cached-reads";
+import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
 import type { SellerBoard, SellerDetail } from "./board";
 import { readSellerBoard, readSellerDetail } from "./reader";
 

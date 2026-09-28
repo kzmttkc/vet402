@@ -1839,21 +1839,21 @@ claims:
     verified_at: 2026-09-28
   - id: sellers_settled_then_rejected_our_empty_body
     surface: src/lib/sellers/fix-modes.ts
-    quote: "When the listing declared a body or query that vet402 was not yet sending, the row is on vet402's side instead"
+    quote: "When the seller declared a body, or a required query, that vet402 was not yet sending, the row is on vet402's side instead"
     means: "決済してから入力を断った行でも、出品が宣言した本文（2026-09-16 23:25:55Z より前の POST）やクエリ（2026-09-27 23:27:16Z より前の Base）をこちらが送っていなかった行は vet402 の側（body_not_sent / query_not_sent）。本文を宣言していない出品の境目前の POST には、こちらが {} を送っていた事実を行ごとに併記する（rowNote）"
     check: null
     why_unverifiable: "時刻は過去で固定（request-body.ts・request-query.ts）。条件は fix-modes.ts の isBodyNotSent / isQueryNotSent / rowNote で、tests/sellers-fix-modes.test.ts が固定する"
     verified_at: 2026-09-28
   - id: sellers_sends_declared_input
     surface: src/lib/sellers/fix-modes.ts
-    quote: "Since 2026-09-16 23:25 UTC vet402 sends the request body the listing declares (an empty JSON body when it declares none), and since 2026-09-27 23:27 UTC it adds the query parameters the listing declares on Base"
+    quote: "Since 2026-09-16 23:25 UTC vet402 sends the request body the seller's 402 declares (an empty JSON body when it declares none), and since 2026-09-27 23:27 UTC it adds the query parameters the seller's 402 declares on Base"
     means: "有料の要求の本文は 2026-09-16 23:25:55Z から出品の宣言どおり（宣言が無ければ {}）。Base のクエリは 2026-09-27 23:27:16Z から宣言どおり足す（それまで Base はクエリ送信の許可リストに入っておらず、本番の台帳で Base の行に requestQuery の記録は 0 件）。旧文「vet402 sends the body and query the listing declares」は Base のクエリについて事実と違っていた（独立レビュー 2026-09-28）"
     check: null
     why_unverifiable: "時刻は src/lib/observatory/request-body.ts の DECLARED_BODY_SENT_SINCE と src/lib/observatory/request-query.ts の BASE_DECLARED_QUERY_SINCE。行ごとには export.csv の request_body / request_query 列で確かめられる。2026-09-28 の実測では Base の行の最新は 2026-09-27T18:02Z で、クエリの境目より後の Base の行はまだ無い（次の L1 の実行から request_query が付く）"
     verified_at: 2026-09-28
   - id: sellers_query_not_sent_before_cutover
     surface: src/lib/sellers/fix-modes.ts
-    quote: "Before 2026-09-27 23:27 UTC, vet402 did not add the query parameters a listing declares to paid requests on Base, including the ones it marks as required"
+    quote: "Before 2026-09-27 23:27 UTC, vet402 did not add the query parameters the seller's 402 declares to paid requests on Base"
     means: "Base の有料の要求で、出品が必須のクエリ（queryParams.required が空でない）を宣言しているのにクエリを足していなかった期間の 400/422（requestQuery の記録が無いか empty）は vet402 の側（query_not_sent）。決済済みの行も同じ条件でこちらの側。任意のクエリだけの出品はこちらの落ち度にしない"
     check: null
     why_unverifiable: "時刻と条件は src/lib/observatory/request-query.ts の BASE_DECLARED_QUERY_SINCE と queryNotSentOnOurSide（retest の (c) と共有）。/sellers は fix-modes.ts の isQueryNotSent でそれを呼ぶだけで、tests/sellers-fix-modes.test.ts が共有の判定と行ごとに同じ答えを出すことを固定する"
@@ -1867,10 +1867,24 @@ claims:
     verified_at: 2026-09-28
   - id: sellers_retest_rebuy
     surface: src/components/site/sellers/SellersViews.tsx
-    quote: "is queued for a re-buy"
-    means: "「queued」と書くのは、旗 OBSERVATORY_L1_CENSUS が on で、retest の SQL（RETEST_SELLERS_SQL）がその売り手を選び、選んだ行（endpoint と理由）がこの頁の最新の行と一致し、その行がこちらの側の失敗のときだけ。それ以外は vet402 の側の失敗であることだけを書き、買い直しを約束しない（独立レビュー 2026-09-28）"
+    quote: "is eligible for a re-buy"
+    means: "「eligible for a re-buy」と書くのは、旗 OBSERVATORY_L1_CENSUS が on で、retest の 1 段目（RETEST_SELLERS_SQL）がその売り手を選び、選んだ行（出品と理由）がこの頁の最新の行と一致し、その行がこちらの側の失敗のときだけ。実際に買うかは 2 段目の関門と 1 回の上限（CENSUS_PER_RUN）でさらに絞られるので「queued」とは書かない（独立レビュー 2026-09-28: 本番 1 段目 459・2 段目 302）。それ以外は vet402 の側の失敗であることだけを書く"
     check: null
-    why_unverifiable: "公開 GET は retest の選び方を返さない。条件は src/lib/sellers/board.ts（buildSellerBoard・markQueued）と src/lib/sellers/reader.ts の readRetestQueue で、tests/sellers-fix-modes.test.ts・tests/sellers-views.test.ts・tests/sellers-reader.pg.test.ts が固定する"
+    why_unverifiable: "公開 GET は retest の選び方を返さない。1 段目は src/lib/observatory/retest-sellers-sql.ts、頁の条件は src/lib/sellers/board.ts（buildSellerBoard・markRebuyEligible）と src/lib/sellers/reader.ts の readRetestQueue で、tests/sellers-fix-modes.test.ts・tests/sellers-views.test.ts・tests/sellers-reader.pg.test.ts が固定する"
+    verified_at: 2026-09-28
+  - id: sellers_pending_verification
+    surface: src/components/site/sellers/SellersViews.tsx
+    quote: "and vet402 has not confirmed that transaction on-chain yet. Until it is confirmed or refuted, this purchase is neither delivered nor failed"
+    means: "照合待ち（settle_claimed）の行は失敗にも delivered にも数えない。照合の時刻は書かない（照合は Vercel の cron と管理用 Mac の launchd の両方から走り、後者は Mac が起きているときしか動かないので、時刻を公開面で約束できない）。settlement_verify_reason がある行には、その理由（例 tx_not_found）を添える"
+    check: null
+    why_unverifiable: "行ごとの照合の結果は export.csv の status（settle_claimed → settled / settle_claim_refuted）で確かめられる。区分は src/lib/sellers/fix-modes.ts の classifyRow（bucket pending）で、tests/sellers-fix-modes.test.ts と tests/sellers-views.test.ts が固定する"
+    verified_at: 2026-09-28
+  - id: sellers_optional_query_note
+    surface: src/lib/sellers/fix-modes.ts
+    quote: "vet402 did not add query parameters to paid requests on Base; this listing declares optional ones"
+    means: "Base のクエリの境目より前で、出品が queryParams を宣言しているが必須が無い行（seller の側のまま）に、こちらがクエリを足していなかった事実を並べる"
+    check: null
+    why_unverifiable: "条件は fix-modes.ts の rowNote（境目は src/lib/observatory/request-query.ts の BASE_DECLARED_QUERY_SINCE・必須の判定は declaresRequiredQuery）。tests/sellers-fix-modes.test.ts が境界を固定する"
     verified_at: 2026-09-28
   - id: sellers_held_rows_not_counted
     surface: src/components/site/sellers/SellersViews.tsx

@@ -9,7 +9,7 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { isCensusEnabled } from "@/lib/observatory/budget";
-import { RETEST_SELLERS_SQL } from "@/lib/observatory/l1-runner";
+import { RETEST_SELLERS_SQL } from "@/lib/observatory/retest-sellers-sql";
 import {
   buildSellerBoard,
   buildSellerDetail,
@@ -58,7 +58,8 @@ const ROW_COLUMNS = sql`
   ${META_MIN} AS meta_min,
   CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' AND (pu.raw_response_meta->>'status') ~ '^[0-9]{3}$'
        THEN (pu.raw_response_meta->>'status')::int END AS unpaid_status,
-  CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN pu.raw_response_meta->>'selection' END AS selection`;
+  CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN pu.raw_response_meta->>'selection' END AS selection,
+  pu.settlement_verify_reason`;
 
 /** Base の出品（active・代表 network が Base）。 */
 const BASE_LISTING = sql`e.status = 'active' AND e.network IN (${BASE_A}, ${BASE_B})`;
@@ -101,12 +102,13 @@ export function toRowFacts(r: Record<string, unknown>): SellerRowFacts {
     schema: asRecord(r.schema_min),
     unpaidStatus: toInt(r.unpaid_status),
     selection: str(r.selection),
+    verifyReason: str(r.settlement_verify_reason),
   };
 }
 
 /**
  * retest が次に買い直す売り手（l1-runner の RETEST_SELLERS_SQL をそのまま流す・ホスト → その最新の行の
- * endpoint_id）。旗 OBSERVATORY_L1_CENSUS が on でなければ問い合わせもせず null（＝頁は「queued」と書かない）。
+ * endpoint_id）。旗 OBSERVATORY_L1_CENSUS が on でなければ問い合わせもせず null（＝頁は「eligible for a re-buy」と書かない）。
  * 読めなければ null（書かない側に倒す）。
  */
 export async function readRetestQueue(db: Db, enabled: boolean = isCensusEnabled()): Promise<RetestQueue | null> {
