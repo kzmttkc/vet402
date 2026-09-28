@@ -20,7 +20,9 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 - **なぜ**: 本文の件と同じく、Base では売り手が宣言したクエリを送っていなかった（こちらの側の失敗）。オーナー承認済み（2026-09-28 08:24・支出上限は合計 約 35 USDC）。
 - **本番の数え直し（READ ONLY・2026-09-28・実際の問い合わせを上限なしで）**: 対象の売り手 523（(a) 171・(b) 166・(c) 186）。今日選べる retest は 346 売り手・15.0120 USDC（(a) 110・4.0218／(b) 111・7.1820／(c) 125・3.8082、うち失敗した出品そのものは (b) 98・(c) 51）。census は 418 売り手・16.5337 USDC。合計 31.5457 USDC（約 35 USDC の内側）。EXPLAIN ANALYZE（3 回）: retest の 1 段目 90〜99 ms・2 段目 319〜323 ms・census 159〜274 ms。
 - **影響**: 関門は変えていない。方法論の retest の段落に (c) を 1 句（件数なし）、`docs/claims.yaml` を合わせた。検出の床は 46 のまま。
-- **コミット**: `9ae3b404`（ブランチ `census-query-0928`・未 push。origin/main `4d210b1c` の上）
+- **レビュー後の修正（旗 ON の前）**: (c) を「必須のクエリがある出品」（`queryParams.required` が空でない配列）に絞った。properties だけ・required が空・queryParams が空の出品は外す（クエリが任意なら、送らなかったことが 400 の原因とは言えない）。判定を 1 か所にまとめた: `request-body.ts` に `DECLARED_BODY_SENT_SINCE`・`NOT_SENT_REFUSAL_HTTP`・`declaresRequestBody` / `declaresRequestBodySql`・`bodyNotSentOnOurSide` / `bodyNotSentOnOurSideSql`、`request-query.ts` に `BASE_DECLARED_QUERY_SINCE`・`BASE_NETWORKS`・`declaresRequiredQuery` / `declaresRequiredQuerySql`・`queryNotSentOnOurSide` / `queryNotSentOnOurSideSql`（JS の述語と SQL の断片の組。/sellers もここから import する）。l1-runner は `DECLARED_BODY_SENT_SINCE` を再公開するだけ。`tests/request-not-sent.pg.test.ts` が同じ 26 行に JS と SQL を当てて一致を固定する。
+- **本番の数え直し（修正後・READ ONLY）**: 対象の売り手 470（(a) 171・(b) 166・(c) 133）。今日選べる retest は 313 売り手・13.7871 USDC（(c) は 92 売り手・2.5833 USDC、うち失敗した出品そのもの 32）。census 418 売り手・16.5337 USDC。合計 30.3208 USDC。EXPLAIN ANALYZE（3 回）: 1 段目 96〜108 ms・2 段目 289〜331 ms・census 158〜160 ms。
+- **コミット**: `9ae3b404`・レビュー修正 `895410b5`（ブランチ `census-query-0928`・未 push。origin/main `4d210b1c` の上）
 
 ## 2026-09-28 JST（4）— LP §5 Chains: Robinhood Chain の行を building から live（公開中の製品・購入レーンではない）へ
 
