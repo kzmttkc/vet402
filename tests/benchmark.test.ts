@@ -25,7 +25,9 @@ import {
   benchmarkScanFailed,
   cooldownWaitMs,
   entryBudgetMs,
+  errorReasonKey,
   orderByStaleness,
+  tallyErrorReason,
   toLastScannedMap,
 } from "@/lib/benchmark/runner";
 
@@ -338,4 +340,24 @@ test("上流に届かず1件も測れなかった run は、静かに成功し�
     benchmarkScanFailed({ scanned: 42, recorded: 0, errors: 0, skipped: 0, unmeasured: 42, datasetVersion: 1 }),
     true,
   );
+});
+
+// ============================================================
+// 2026-09-29: 42/42 が errors の run を手で叩いても応答に理由が無く、
+// Vercel のログを掘るまで原因（agent_resolve の時間切れ）が見えなかった。
+// ============================================================
+test("errorReasons: 例外の1行目を理由にし、URL（鍵を含みうる）は落とす", () => {
+  assert.equal(errorReasonKey(new Error("deadline_exceeded:agent_resolve:3000ms")), "deadline_exceeded:agent_resolve:3000ms");
+  const key = errorReasonKey(new Error("RPC Request failed. https://base-mainnet.example/v2/SECRETKEY123\nRequest body: {...}"));
+  assert.ok(!key.includes("SECRETKEY123"));
+  assert.ok(!key.includes("Request body"));
+});
+
+test("errorReasons: 種類は上限までで、あふれた分は other にまとめる", () => {
+  const reasons: Record<string, number> = {};
+  for (let i = 0; i < 8; i++) tallyErrorReason(reasons, `r${i}`);
+  tallyErrorReason(reasons, "r0");
+  assert.equal(Object.keys(reasons).length, 6);
+  assert.equal(reasons.r0, 2);
+  assert.equal(reasons.other, 3);
 });

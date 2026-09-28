@@ -16,8 +16,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  __resetLearnedRangeCapsForTests,
   getLogsChunked,
   getLogsChunkConcurrency,
+  providerStatedRangeLimit,
 } from "@/lib/chain/chunked-logs";
 
 type Range = { start: bigint; end: bigint };
@@ -320,4 +322,67 @@ test("a provider that really does complain about the range still bisects", async
   const logs = await getLogsChunked(client, { fromBlock: 0n, toBlock: 9n }, 10n, 1);
   assert.ok(calls.length > 1, "should have bisected");
   assert.ok(logs.length >= 1);
+});
+
+// ============================================================
+// 2026-09-29: Base の公開 RPC が eth_getLogs の上限を 10,000 → 2,000 ブロックへ
+// 下げた。8,000 ブロックの chunk は毎回 8000→4000→2000 と二分され、無駄な往復が
+// レート制限を呼び、wallet→agent 解決が 3 秒の予算に収まらなくなった
+// （週次 benchmark-scan が 0/42、未キャッシュの有料スコアが 503）。
+// ============================================================
+test("providerStatedRangeLimit reads the ceiling the provider names", () => {
+  const baseRpc = Object.assign(new Error("RPC Request failed."), {
+    code: -32614,
+    details: "eth_getLogs is limited to a 2,000 range",
+  });
+  assert.equal(providerStatedRangeLimit(baseRpc), 2000n);
+  assert.equal(providerStatedRangeLimit(new Error("query returned more than 10000 results")), null);
+  assert.equal(providerStatedRangeLimit(new Error("rate limit exceeded")), null);
+});
+
+test("a stated ceiling splits at that width directly instead of halving", async () => {
+  __resetLearnedRangeCapsForTests();
+  const complaint = () =>
+    Object.assign(new Error("RPC Request failed."), {
+      code: -32614,
+      details: "eth_getLogs is limited to a 2,000 range",
+    });
+  const { client, calls } = makeClient({
+    onRange: (r) =>
+      r.end - r.start + 1n > 2000n ? complaint() : [{ blockNumber: r.start, id: `${r.start}` }],
+  });
+  const logs = (await getLogsChunked(client, { fromBlock: 0n, toBlock: 7999n }, 8000n, 2)) as unknown as Log[];
+  // 1 rejected 8000-block call + 4 exact 2000-block calls — no 4000-block detour.
+  assert.equal(calls.length, 5);
+  assert.deepEqual(
+    logs.map((l) => l.blockNumber),
+    [0n, 2000n, 4000n, 6000n],
+  );
+
+  // The same endpoint's NEXT scan starts at the learned width: zero rejections.
+  calls.length = 0;
+  await getLogsChunked(client, { fromBlock: 0n, toBlock: 7999n }, 8000n, 2);
+  assert.equal(calls.length, 4);
+  assert.ok(calls.every((c) => c.end - c.start + 1n <= 2000n));
+  __resetLearnedRangeCapsForTests();
+});
+
+test("a stated ceiling that is still too wide falls back to bisection (no loop)", async () => {
+  __resetLearnedRangeCapsForTests();
+  const complaint = Object.assign(new Error("RPC Request failed."), {
+    code: -32614,
+    details: "eth_getLogs is limited to a 8 range",
+  });
+  const { client, calls } = makeClient({
+    onRange: (r) => (r.end - r.start > 2n ? complaint : [{ blockNumber: r.start, id: "x" }]),
+  });
+  const logs = (await getLogsChunked(client, { fromBlock: 0n, toBlock: 15n }, 16n, 1)) as unknown as Log[];
+  assert.ok(calls.length < 40, `bounded call count, got ${calls.length}`);
+  const covered = new Set<bigint>();
+  for (const c of calls) {
+    if (c.end - c.start <= 2n) for (let b = c.start; b <= c.end; b++) covered.add(b);
+  }
+  assert.equal(covered.size, 16);
+  assert.ok(logs.length >= 1);
+  __resetLearnedRangeCapsForTests();
 });

@@ -1,0 +1,103 @@
+name: benchmark-freshness
+
+# 2026-09-29. Alert when the weekly operator benchmark stops recording.
+#
+# WHY. /api/cron/benchmark-scan runs weekly (vercel.json, Wed 09:30 UTC) and
+# already answers HTTP 500 when a run records 0 rows — but nothing watches a
+# Vercel cron's status code. The 2026-09-23 run recorded nothing and the
+# 2026-09-29 manual run returned {"ok":false,"scanned":42,"recorded":0,
+# "errors":42}; both were silent. uptime.yml only probes /api/health.
+#
+# This reads the public /api/v1/accuracy (operatorBenchmark.lastScanAt) once a
+# day and opens a GitHub issue when the last recorded scan is older than 8 days
+# (weekly + 1 day of slack), the same way uptime.yml does. It auto-closes on
+# recovery. Independent of Vercel; no new account or paid service.
+
+on:
+  schedule:
+    - cron: "0 12 * * *" # daily; GitHub best-effort timing is fine at this resolution
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read operatorBenchmark.lastScanAt
+        id: check
+        run: |
+          set +e
+          BODY=$(curl -sSL -m 30 https://vet402.com/api/v1/accuracy)
+          CURL_RC=$?
+          if [ "$CURL_RC" -ne 0 ]; then
+            echo "reason=request failed (curl exit $CURL_RC)" >> "$GITHUB_OUTPUT"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s' "$BODY" | python3 -c '
+          import datetime as dt, json, sys
+          MAX_AGE_H = 8 * 24
+          try:
+              data = json.load(sys.stdin)
+              last = (data.get("operatorBenchmark") or {}).get("lastScanAt")
+          except Exception as exc:
+              print(f"reason=unreadable /api/v1/accuracy ({type(exc).__name__})")
+              print("ok=false")
+              sys.exit(0)
+          if not last:
+              print("reason=operatorBenchmark.lastScanAt is missing")
+              print("ok=false")
+              sys.exit(0)
+          at = dt.datetime.fromisoformat(last.replace("Z", "+00:00"))
+          age_h = (dt.datetime.now(dt.timezone.utc) - at).total_seconds() / 3600
+          print(f"last={last}")
+          if age_h > MAX_AGE_H:
+              print(f"reason=last recorded benchmark scan {last} is {age_h / 24:.1f} days old (limit 8)")
+              print("ok=false")
+          else:
+              print("ok=true")
+          ' >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+      - name: Open or update an alert issue when stale
+        if: steps.check.outputs.ok == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No checkout in this job: gh needs GH_REPO (see uptime.yml).
+          GH_REPO: ${{ github.repository }}
+          REASON: ${{ steps.check.outputs.reason }}
+        run: |
+          set -e
+          TITLE="operator benchmark has stopped recording"
+          EXISTING=$(gh issue list --state open --label benchmark --search "$TITLE" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "Still stale at ${NOW} UTC — ${REASON}."
+          else
+            gh label create benchmark --color b60205 --description "Automated benchmark freshness monitor" 2>/dev/null || true
+            gh issue create \
+              --title "$TITLE" \
+              --label benchmark \
+              --body "Automated monitor (.github/workflows/benchmark-freshness.yml) at ${NOW} UTC.
+
+          Reason: ${REASON}
+
+          The weekly /api/cron/benchmark-scan returns {ok, scanned, recorded, errors, errorReasons, agentResolveTail}; call it once with the cron secret to read why. This issue closes itself once a new scan is recorded."
+          fi
+
+      - name: Auto-close the alert issue on recovery
+        if: steps.check.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -e
+          TITLE="operator benchmark has stopped recording"
+          EXISTING=$(gh issue list --state open --label benchmark --search "$TITLE" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -n "$EXISTING" ]; then
+            NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+            gh issue comment "$EXISTING" --body "Recovered at ${NOW} UTC — a new benchmark scan is recorded. Closing."
+            gh issue close "$EXISTING"
+          fi

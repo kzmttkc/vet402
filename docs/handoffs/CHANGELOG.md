@@ -13,6 +13,14 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-29 JST（2）— 週次ベンチマーク 0/42 の修正: eth_getLogs 上限 2,000 への追随・tail の継ぎ足し・走行前の温め・鮮度監視（ブランチ `fix/benchmark-scan`・未 push）
+
+- **何を**: ①`src/lib/chain/chunked-logs.ts`: プロバイダが拒否文で上限を名乗ったら（`eth_getLogs is limited to a 2,000 range`）二分せずその幅で割り直し、同じ endpoint の以後の走査はその幅から始める。②`src/lib/chain/agent-resolver.ts`＋`agent-resolve-window.ts`: wallet→agent 解決の tail スナップショットを、TTL 切れのたびに全区間走査し直すのをやめ、伸びた分だけ継ぎ足す（`planTailSnapshotUse`）。バッチ用に `warmAgentResolveTail(deadlineMs)`。③`src/lib/benchmark/runner.ts`: ループ前に tail を最大60秒で1回温める。応答に `errorReasons`（理由→件数・URL は伏せる）と `agentResolveTail` を追加。④`.github/workflows/benchmark-freshness.yml`: 日次で `/api/v1/accuracy` の `operatorBenchmark.lastScanAt` を読み、8日超で issue（uptime.yml と同じ型・回復で自動クローズ）。
+- **なぜ**: 本番の記録は 09-16 が最後、09-23 欠落、09-29 手動で `{"ok":false,"scanned":42,"recorded":0,"errors":42}`。Vercel ログの本文は全件 `deadline_exceeded:agent_resolve:3000ms` か `agent_resolve_unavailable`。Base の公開 RPC が eth_getLogs を 2,000 ブロックに絞り（直接叩いて確認: 8,000 ブロックは `-32614 limited to a 2,000 range`）、本番の 8,000 ブロック chunk が毎回 8000→4000→2000 と二分されてレート制限（-32016）も誘発、3 秒の identity 予算に収まらなかった。cron の 500 は誰も見ておらず無音だった。
+- **影響**: 未キャッシュの有料 `/api/v1/wallets/{address}/score` も同じ経路で 503 `scoring_unavailable` になりうる（①②で往復が減る。ライブの予算・fail-closed 規則は不変）。benchmark-freshness は現時点で 12.5 日経過のため、main に載った初回の実行で issue を1件開く。
+
+---
+
 ## 2026-09-29 JST（1）— 売り手頁を一時的に noindex・sitemap から外す（帰属の見直しまで）
 
 - **何を**: `/sellers`・`/sellers/fix-first`・`/sellers/[host]` を noindex にし、robots の Sitemap から `/sitemap-sellers.xml` を、`sitemap.ts` から `/sellers` と `/sellers/fix-first` を外した。売り手頁の冒頭に「どちら側の失敗かを見直し中」の 1 文。

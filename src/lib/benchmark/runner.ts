@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { warmAgentResolveTail } from "@/lib/chain/agent-resolver";
 import { blockscoutCooldownRemainingMs } from "@/lib/chain/blockscout";
 import { getDb } from "@/lib/db/client";
 import { trustEvents, verdictOutcomes } from "@/lib/db/schema";
@@ -48,6 +49,45 @@ export interface BenchmarkScanResult {
    */
   unmeasured: number;
   datasetVersion: number;
+  /**
+   * errors の内訳（理由 → 件数、上位だけ）。2026-09-29: 42/42 が errors の run を
+   * 手で叩いても、応答には件数しか無く、理由は Vercel のログを掘るまで見えなかった。
+   * 監視と人間が最初に見るのはこの応答なので、理由もここに載せる。
+   */
+  errorReasons?: Record<string, number>;
+  /**
+   * 走行前に wallet→agent 解決の未索引 tail を温めた結果。"warmed" / "indexed_only"
+   * 以外なら、各件の agent_resolve は 3 秒の予算で tail を舐めることになる。
+   */
+  agentResolveTail?: string;
+}
+
+/**
+ * tail の温めに使ってよい時間（240秒の総予算のうち）。Base 公開 RPC の
+ * 2,000 ブロック上限で約2日分（〜86k ブロック × 2 フィルタ）を舐めても収まる幅。
+ */
+const TAIL_WARM_MAX_MS = 60_000;
+
+/** errorReasons に載せる理由の種類の上限（応答を膨らませない）。 */
+const MAX_ERROR_REASONS = 5;
+
+/**
+ * 例外を errorReasons のキーにする。URL（鍵を含みうる）は落とし、長さを切る。
+ */
+export function errorReasonKey(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  const firstLine = raw.split("\n")[0] ?? "";
+  const cleaned = firstLine.replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi, "[url]").trim();
+  return (cleaned || "unknown").slice(0, 120);
+}
+
+export function tallyErrorReason(reasons: Record<string, number>, key: string): void {
+  if (key in reasons) {
+    reasons[key] += 1;
+    return;
+  }
+  const bucket = Object.keys(reasons).length < MAX_ERROR_REASONS ? key : "other";
+  reasons[bucket] = (reasons[bucket] ?? 0) + 1;
 }
 
 /**
@@ -131,6 +171,7 @@ export async function runBenchmarkScan(options?: {
   const budget = options?.timeBudgetMs ?? DEFAULT_TIME_BUDGET_MS;
   const limit = Math.min(options?.limit ?? BENCHMARK_DATASET.length, BENCHMARK_DATASET.length);
 
+  const errorReasons: Record<string, number> = {};
   const result: BenchmarkScanResult = {
     scanned: 0,
     recorded: 0,
@@ -138,6 +179,7 @@ export async function runBenchmarkScan(options?: {
     skipped: 0,
     unmeasured: 0,
     datasetVersion: BENCHMARK_DATASET_VERSION,
+    errorReasons,
   };
 
   // No database → nothing can be recorded; scoring anyway would spend RPC
@@ -146,6 +188,22 @@ export async function runBenchmarkScan(options?: {
   if (!db) {
     result.skipped = limit;
     return result;
+  }
+
+  // wallet→agent 解決の未索引 tail を先に1回だけ作る（2026-09-29）。これが無いと
+  // 各件が 3 秒の identity 予算の中で tail 全体を舐め直し、Base 公開 RPC の
+  // 2,000 ブロック上限の下では 42 件すべてが deadline_exceeded:agent_resolve で
+  // errors になった（2026-09-23 欠落・09-29 手動 0/42）。失敗しても走行は続ける——
+  // 各件は従来どおりライブと同じ規則で解決を試み、理由は errorReasons に出る。
+  try {
+    result.agentResolveTail = await withDeadline(
+      warmAgentResolveTail(TAIL_WARM_MAX_MS),
+      TAIL_WARM_MAX_MS + 5_000,
+      "benchmark_tail_warm",
+    );
+  } catch (error) {
+    result.agentResolveTail = `failed:${errorReasonKey(error)}`;
+    logServerErrorSafe("benchmark_tail_warm", error);
   }
 
   // 古い順（未走査が最優先）。1回で全部測れない以上、毎回先頭から始めるのは
@@ -178,10 +236,14 @@ export async function runBenchmarkScan(options?: {
       const outcome = await scoreAndRecord(entry, () => Date.now() - started, budget, Date.now());
       if (outcome === "recorded") result.recorded += 1;
       else if (outcome === "unmeasured") result.unmeasured += 1;
-      else result.errors += 1;
+      else {
+        result.errors += 1;
+        tallyErrorReason(errorReasons, "record_failed");
+      }
     } catch (error) {
       // Per-entry isolation: one bad RPC read must not abort the pass.
       result.errors += 1;
+      tallyErrorReason(errorReasons, errorReasonKey(error));
       logServerErrorSafe("benchmark_scan_entry", error);
     }
   }

@@ -205,6 +205,65 @@ export function isRangeTooWideError(error: unknown): boolean {
   return rangeTooWideReason(error) !== null;
 }
 
+/**
+ * The block-range ceiling the provider STATES in its rejection, if it states one
+ * ("eth_getLogs is limited to a 2,000 range" → 2000n).
+ *
+ * WHY (2026-09-29). Base's public RPC lowered its eth_getLogs ceiling from
+ * 10,000 to 2,000 blocks. Production still asked for 8,000-block chunks, so
+ * every chunk bisected 8000→4000→2000: two doomed round-trips before each
+ * useful one, which also tripped the provider's rate limit (-32016). The
+ * wallet→agent tail scan could no longer finish inside its 3s identity budget,
+ * so the weekly benchmark-scan recorded 0 of 42 (all
+ * `deadline_exceeded:agent_resolve` / `agent_resolve_unavailable`) and uncached
+ * paid wallet scores answered 503. When the provider tells us the number, use
+ * it instead of guessing by halves.
+ */
+export function providerStatedRangeLimit(error: unknown): bigint | null {
+  const err = error as {
+    details?: string;
+    shortMessage?: string;
+    message?: string;
+    cause?: { details?: string; shortMessage?: string; message?: string };
+  };
+  const text = [
+    err?.details,
+    err?.shortMessage,
+    stripRequestEcho(err?.message),
+    err?.cause?.details,
+    err?.cause?.shortMessage,
+    stripRequestEcho(err?.cause?.message),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const match = /limited to an? ([\d,]+) (?:block )?range/i.exec(text);
+  if (!match) return null;
+  try {
+    const limit = BigInt(match[1]!.replace(/,/g, ""));
+    return limit > 0n ? limit : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Per-endpoint ceilings learned from provider rejections, so the NEXT scan
+ * against the same endpoint starts at the stated width instead of paying the
+ * rejection again. In-memory only (a warm instance), keyed by chain + URL; the
+ * URL never leaves this map (not logged).
+ */
+const learnedRangeCaps = new Map<string, bigint>();
+
+function rangeCapKey(client: ChainClient): string {
+  const c = client as { chain?: { id?: number }; transport?: { url?: string } };
+  return `${c?.chain?.id ?? "?"}:${c?.transport?.url ?? ""}`;
+}
+
+/** TEST-ONLY: forget learned ceilings between tests. */
+export function __resetLearnedRangeCapsForTests(): void {
+  learnedRangeCaps.clear();
+}
+
 function isRateLimitError(error: unknown): boolean {
   const err = error as {
     status?: number;
@@ -282,6 +341,25 @@ async function fetchRange(
     }
 
     const span = toBlock - fromBlock;
+
+    // The provider named its ceiling and this range exceeds it: split at that
+    // width directly (no halving). If the stated number turns out to be wrong,
+    // the pieces fail again with a width <= the claim, this branch no longer
+    // applies, and plain bisection below takes over — no loop.
+    const stated = providerStatedRangeLimit(error);
+    if (stated !== null && span + 1n > stated) {
+      learnedRangeCaps.set(rangeCapKey(client), stated);
+      console.log(
+        `[chunked-logs] provider limit ${stated} blocks; splitting ${fromBlock}-${toBlock} at that width`,
+      );
+      const out: ChainLog[] = [];
+      for (let start = fromBlock; start <= toBlock; start += stated) {
+        const end = start + stated - 1n > toBlock ? toBlock : start + stated - 1n;
+        out.push(...(await fetchRange(client, params, start, end, 0, deadline)));
+      }
+      return out;
+    }
+
     if (span <= 0n) {
       console.log(
         `[chunked-logs] giving up on block ${fromBlock}: ${(error as Error)?.constructor?.name} ${redactSecrets((error as Error)?.message).slice(0, 200)}`,
@@ -328,6 +406,10 @@ export async function getLogsChunked(
   void _ignoredTo;
 
   if (fromBlock > toBlock) return [];
+
+  // A ceiling this endpoint already stated wins over the configured width.
+  const learnedCap = learnedRangeCaps.get(rangeCapKey(client));
+  if (learnedCap !== undefined && learnedCap < chunkSize) chunkSize = learnedCap;
 
   // Pre-compute the chunk ranges up front so fetches can fan out while the
   // per-chunk order in the final array stays deterministic (index-aligned).

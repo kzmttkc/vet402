@@ -4,6 +4,7 @@ import { isSkipChainReadsEnabled } from "@/lib/config/env";
 import {
   agentResolveTailMaxBlocks,
   planAgentResolveScan,
+  planTailSnapshotUse,
   type AgentResolvePlan,
 } from "./agent-resolve-window";
 import { readCanonicalAgentWallet } from "./agent-wallet";
@@ -208,12 +209,11 @@ function addCandidate(map: Map<string, bigint[]>, address: Address | undefined, 
   else map.set(key, [agentId]);
 }
 
-async function getTailSnapshot(fromBlock: bigint, toBlock: bigint): Promise<TailSnapshot> {
-  const now = Date.now();
-  if (tailSnapshot && tailSnapshot.expiresAt > now && tailSnapshot.fromBlock <= fromBlock) {
-    return tailSnapshot;
-  }
-
+async function scanTailCandidates(
+  fromBlock: bigint,
+  toBlock: bigint,
+  deadlineMs: number,
+): Promise<Map<string, bigint[]>> {
   // ライブ RPC はこのデプロイでは eth_getLogs を返さない（2026-08-12）。
   // 走査は必ずログ用のエンドポイントへ向ける。
   const client = getLogScanClient();
@@ -230,7 +230,7 @@ async function getTailSnapshot(fromBlock: bigint, toBlock: bigint): Promise<Tail
       },
       chunk,
       TAIL_SCAN_CONCURRENCY,
-      { deadlineMs: TAIL_SCAN_DEADLINE_MS, delayMs: 0 },
+      { deadlineMs, delayMs: 0 },
     ) as Promise<IdentityRegistryLog[]>,
     getLogsChunked(
       client,
@@ -242,7 +242,7 @@ async function getTailSnapshot(fromBlock: bigint, toBlock: bigint): Promise<Tail
       },
       chunk,
       TAIL_SCAN_CONCURRENCY,
-      { deadlineMs: TAIL_SCAN_DEADLINE_MS, delayMs: 0 },
+      { deadlineMs, delayMs: 0 },
     ) as Promise<IdentityRegistryLog[]>,
   ]);
 
@@ -255,9 +255,67 @@ async function getTailSnapshot(fromBlock: bigint, toBlock: bigint): Promise<Tail
     const agentId = agentIdFromLog(log);
     if (agentId !== undefined) addCandidate(byWallet, log.args.owner, agentId);
   }
+  return byWallet;
+}
 
+async function getTailSnapshot(
+  fromBlock: bigint,
+  toBlock: bigint,
+  deadlineMs: number = TAIL_SCAN_DEADLINE_MS,
+): Promise<TailSnapshot> {
+  const blocksPerDay = chainById(DEFAULT_CHAIN_ID)?.blocksPerDay ?? 43_200;
+  const use = planTailSnapshotUse({
+    snapshot: tailSnapshot,
+    fromBlock,
+    toBlock,
+    now: Date.now(),
+    maxTailBlocks: agentResolveTailMaxBlocks(blocksPerDay),
+  });
+
+  if (use.kind === "reuse" && tailSnapshot) return tailSnapshot;
+
+  if (use.kind === "extend" && tailSnapshot) {
+    const base = tailSnapshot;
+    const added = await scanTailCandidates(use.fromBlock, use.toBlock, deadlineMs);
+    const byWallet = new Map<string, bigint[]>();
+    for (const [key, ids] of base.byWallet) byWallet.set(key, [...ids]);
+    for (const [key, ids] of added) {
+      const list = byWallet.get(key);
+      if (list) list.push(...ids);
+      else byWallet.set(key, [...ids]);
+    }
+    tailSnapshot = {
+      fromBlock: base.fromBlock,
+      toBlock: use.toBlock,
+      byWallet,
+      expiresAt: Date.now() + TAIL_SNAPSHOT_TTL_MS,
+    };
+    return tailSnapshot;
+  }
+
+  const byWallet = await scanTailCandidates(fromBlock, toBlock, deadlineMs);
   tailSnapshot = { fromBlock, toBlock, byWallet, expiresAt: Date.now() + TAIL_SNAPSHOT_TTL_MS };
   return tailSnapshot;
+}
+
+/**
+ * バッチ呼び出し（週次ベンチマーク）向け: 未索引 tail のスナップショットを
+ * 長めの予算で先に1回だけ作る（2026-09-29）。
+ *
+ * ライブの1件は 3 秒の identity 予算で tail を舐めきれないことがある（Base の
+ * 公開 RPC が 2,000 ブロック上限になってから）。待っている人間の居ない走行では、
+ * 先に一度だけ時間をかけて作っておけば、以降の各件は reuse / 伸びた分の extend
+ * だけで済む。ライブ経路の予算・fail-closed の規則は何も変えない。
+ */
+export async function warmAgentResolveTail(
+  deadlineMs: number,
+): Promise<"skipped" | "indexed_only" | "warmed" | "unavailable"> {
+  if (isSkipChainReadsEnabled()) return "skipped";
+  const plan = await planTailFromCheckpoints();
+  if (plan.kind === "unavailable") return "unavailable";
+  if (plan.kind === "indexed_only") return "indexed_only";
+  await getTailSnapshot(plan.fromBlock, plan.toBlock, deadlineMs);
+  return "warmed";
 }
 
 /**

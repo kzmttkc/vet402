@@ -66,3 +66,41 @@ export function planAgentResolveScan(input: {
 
   return { kind: "tail_scan", fromBlock: checkpoint + 1n, toBlock: tip };
 }
+
+/**
+ * 手元の tail スナップショットをどう使うか（2026-09-29）。
+ *
+ * WHY. Base の公開 RPC が eth_getLogs を 2,000 ブロックに絞ったので、日次索引の
+ * 直後でも数千〜数万ブロックの tail を 2 フィルタ × 2,000 ブロックずつ舐めることに
+ * なった。それを TTL（60秒）が切れるたびに**全区間**やり直していたため、42件を
+ * 続けて引く週次ベンチマークは毎回 3 秒の identity 予算を超え、0/42 で沈黙した。
+ * 期限が切れても、既に覆っている区間は変わらない——伸びた分（1分で約30ブロック）
+ * だけを継ぎ足せば足りる。
+ *
+ * - reuse:  期限内で、要求の起点を覆っている
+ * - extend: 起点は覆っているが期限切れか tip が伸びた → 伸びた分だけ走査して継ぎ足す
+ * - full:   手元に無い／起点を覆っていない／古い起点を抱えすぎた → 全区間を走査
+ *
+ * 候補は照合（resolveFromCandidates）がオンチェーンで確定するので、区間が要求より
+ * 広い（古い起点を含む）ことは誤りにならない。狭いことだけが取りこぼしになる。
+ */
+export type TailSnapshotUse =
+  | { kind: "reuse" }
+  | { kind: "extend"; fromBlock: bigint; toBlock: bigint }
+  | { kind: "full" };
+
+export function planTailSnapshotUse(input: {
+  snapshot: { fromBlock: bigint; toBlock: bigint; expiresAt: number } | null;
+  fromBlock: bigint;
+  toBlock: bigint;
+  now: number;
+  maxTailBlocks: bigint;
+}): TailSnapshotUse {
+  const { snapshot, fromBlock, toBlock, now, maxTailBlocks } = input;
+  if (!snapshot || snapshot.fromBlock > fromBlock) return { kind: "full" };
+  // 起点が古すぎるものは抱え続けない（ウォームな1インスタンスで際限なく育てない）。
+  if (fromBlock - snapshot.fromBlock > maxTailBlocks) return { kind: "full" };
+  if (snapshot.expiresAt > now) return { kind: "reuse" };
+  if (snapshot.toBlock >= toBlock) return { kind: "reuse" };
+  return { kind: "extend", fromBlock: snapshot.toBlock + 1n, toBlock };
+}

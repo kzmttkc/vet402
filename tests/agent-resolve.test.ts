@@ -19,6 +19,7 @@ import {
   AGENT_RESOLVE_TAIL_MAX_DAYS,
   agentResolveTailMaxBlocks,
   planAgentResolveScan,
+  planTailSnapshotUse,
 } from "@/lib/chain/agent-resolve-window";
 import { resolveFromCandidates } from "@/lib/chain/agent-resolver";
 
@@ -99,4 +100,56 @@ test("候補が空なら照合を1回もせずに null", async () => {
   });
   assert.equal(resolved, null);
   assert.equal(calls, 0);
+});
+
+// ============================================================
+// 2026-09-29: TTL が切れるたびに tail 全区間を走査し直していた。Base 公開 RPC の
+// 2,000 ブロック上限の下では 3 秒に収まらず、週次ベンチマークが 0/42 になった。
+// 期限切れでも覆っている区間は変わらない——伸びた分だけ継ぎ足す。
+// ============================================================
+test("スナップショット: 手元に無ければ全区間を走査する", () => {
+  assert.deepEqual(
+    planTailSnapshotUse({ snapshot: null, fromBlock: 100n, toBlock: 200n, now: 0, maxTailBlocks: 1000n }),
+    { kind: "full" },
+  );
+});
+
+test("スナップショット: 期限内で起点を覆っていれば使い回す", () => {
+  const snapshot = { fromBlock: 100n, toBlock: 200n, expiresAt: 10 };
+  assert.deepEqual(
+    planTailSnapshotUse({ snapshot, fromBlock: 100n, toBlock: 230n, now: 5, maxTailBlocks: 1000n }),
+    { kind: "reuse" },
+  );
+});
+
+test("スナップショット: 期限切れでも起点を覆っていれば、伸びた分だけ走査する", () => {
+  const snapshot = { fromBlock: 100n, toBlock: 200n, expiresAt: 10 };
+  assert.deepEqual(
+    planTailSnapshotUse({ snapshot, fromBlock: 100n, toBlock: 230n, now: 11, maxTailBlocks: 1000n }),
+    { kind: "extend", fromBlock: 201n, toBlock: 230n },
+  );
+});
+
+test("スナップショット: 索引が進んで起点が後ろへ動いても、覆っていれば継ぎ足しで足りる", () => {
+  const snapshot = { fromBlock: 100n, toBlock: 200n, expiresAt: 10 };
+  assert.deepEqual(
+    planTailSnapshotUse({ snapshot, fromBlock: 150n, toBlock: 230n, now: 11, maxTailBlocks: 1000n }),
+    { kind: "extend", fromBlock: 201n, toBlock: 230n },
+  );
+});
+
+test("スナップショット: 起点を覆っていなければ（索引が巻き戻った等）全区間をやり直す", () => {
+  const snapshot = { fromBlock: 100n, toBlock: 200n, expiresAt: 10 };
+  assert.deepEqual(
+    planTailSnapshotUse({ snapshot, fromBlock: 90n, toBlock: 230n, now: 5, maxTailBlocks: 1000n }),
+    { kind: "full" },
+  );
+});
+
+test("スナップショット: 古い起点を抱えすぎたら全区間をやり直す（際限なく育てない）", () => {
+  const snapshot = { fromBlock: 100n, toBlock: 5000n, expiresAt: 10 };
+  assert.deepEqual(
+    planTailSnapshotUse({ snapshot, fromBlock: 2000n, toBlock: 5030n, now: 11, maxTailBlocks: 1000n }),
+    { kind: "full" },
+  );
 });
