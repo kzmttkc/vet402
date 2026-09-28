@@ -844,11 +844,11 @@ export default async function Home() {
         <div className="mt-6 divide-y divide-hair border-t border-brand-deep">
           <ItemRow
             state="building"
-            title="Writing to the empty registry"
+            title="Writing to the Validation Registry"
             body={
               <>
-                Verification records will be written to the ERC-8004 Validation Registry &mdash; the
-                one registry that is still empty.
+                Verification records will be written to the ERC-8004 Validation Registry, which is
+                nearly unused so far and holds nothing from vet402.
                 <span className="mt-3 block text-[0.8125rem] text-brand-lift">
                   {/* 2026-09-03: 8/21 以来 14 件が失敗し続けた理由を、事実として出す。
                       小さく弱みとして書くのではなく、仕様がそうなっているという測定結果として。 */}
@@ -942,7 +942,8 @@ export default async function Home() {
               >
                 archived copy
               </a>
-              ; the live page has returned HTTP 500 since at least 2026-09-02); Artemis Analytics
+              ; the live page returned HTTP 500 for part of September 2026 and answered HTTP 200
+              again when rechecked on 2026-09-29); Artemis Analytics
               on-chain data as of April 21, 2026. The split between
               self-dealing and wash trading inside that excluded share is not published, so this
               page does not state one.

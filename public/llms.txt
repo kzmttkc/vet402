@@ -45,7 +45,7 @@ Public per-subject pages: `https://vet402.com/payee/{address}`, `https://vet402.
 These are open paths, rate-limited per IP. Nothing below needs an account. Every response carries `RateLimit-Limit`, the ceiling for that path. `RateLimit-Remaining` and `RateLimit-Reset` are per-caller, so they are sent only on responses a shared cache does not replay to someone else — chiefly the `429`, which also carries `Retry-After`. A cached `200` deliberately omits them rather than handing you a counter that belongs to whoever populated the cache. A path under `/api/` that matches no route answers `404` as JSON (`{"error":"not_found","path":...}`), never as an HTML page.
 
 - `GET /api/v1/accuracy` — the accuracy ledger as JSON. Aggregate counts, and the same numbers /accuracy renders **with the same caveats attached**: the `interpretation` object carries the notes that qualify each rate — that a benchmark "detection" counts BLOCK *or* WARN and how many known-bad addresses stopped at WARN, that a 0% false-positive rate means "none were blocked" rather than "all were passed" and how many known-good addresses only reached WARN, and that a rate below the minimum sample is `null` rather than a number. Reading the JSON alone is enough; you are not being asked to parse the HTML to learn what a figure means
-- `GET /api/v1/payees/verify?wallet={address}&name={name}` — returns the exact message a payee must sign. Read-only, writes nothing. The message opens with `vet402.com — verified payee registration` and carries a `domain: vet402.com` line, so a signer can tell in the wallet's own signing view which site is asking; it also states the 10-minute validity and that the signature moves no funds. Fetch it rather than constructing it — signatures over the pre-2026-09-05 wording stop verifying on 2026-09-21
+- `GET /api/v1/payees/verify?wallet={address}&name={name}` — returns the exact message a payee must sign. Read-only, writes nothing. The message opens with `vet402.com — verified payee registration` and carries a `domain: vet402.com` line, so a signer can tell in the wallet's own signing view which site is asking; it also states the 10-minute validity and that the signature moves no funds. Fetch it rather than constructing it — signatures over the pre-2026-09-05 wording stopped verifying on 2026-09-21
 - `POST /api/v1/payees/verify` — publish a verified-payee page and badge by posting that signed message. Free, signature required
 - `GET /api/v1/agents/verify` / `POST /api/v1/agents/verify` — the same claim flow for an ERC-8004 agent identity
 - `GET /api/v1/agents/{agentId}/passport` — machine-readable agent passport
@@ -112,7 +112,7 @@ On npm, all from the same repository: `@vet402/sdk` (spend guard), `@vet402/midd
 
 ## Being built (not measurements yet)
 
-- Writing verification records to the ERC-8004 Validation Registry — the registry itself is UNSTABLE upstream as of 2026-08-14 (per 8004scan's best-practices), so vet402 keeps its record format ready without writing to it yet
+- Writing verification records to the ERC-8004 Validation Registry. Not done yet because the registry is written in one direction: an agent's owner names a validator and opens the request, and the validator answers it. A validator cannot open a request about someone else's agent (`validationRequest` reverts with `Not authorized`, which is what vet402's fourteen attempts between 2026-08-21 and 2026-09-03 did). vet402 can answer the first request the day an agent owner sends one; none has named vet402 so far. The same account is §6 of https://vet402.com/#status
 
 ## Use cases
 
@@ -142,7 +142,7 @@ Corrections that are issued are published at https://vet402.com/corrections, and
 - You may cite the content on this site (front page, API docs, FAQ, accuracy ledger, blog) as long as you credit the source with the corresponding vet402.com URL.
 - The same statement is published for human readers in section 4 of https://vet402.com/accuracy — this file is not the only place it exists.
 - Figures on the accuracy ledger are rolling 90-day aggregates; cite them with the retrieval date, or quote the `generatedAt` timestamp from `GET /api/v1/accuracy`.
-- Content current as of 2026-09-05. The measurements it points at are not: read them from the endpoints above, with the schedule in Freshness.
+- Content current as of 2026-09-29. The measurements it points at are not: read them from the endpoints above, with the schedule in Freshness.
 
 ## Freshness
 
@@ -150,7 +150,7 @@ Every number on this site moves, so it is published with the schedule that moves
 
 - Catalog sync (what is listed, what was delisted): daily, 01:00 UTC.
 - L0 probes and the daily metrics rollup: daily, 10:30 UTC.
-- L1 purchases: daily, 12:00 UTC. On-chain settlement re-read: daily, 14:00 UTC, so an attempt made today is normally promoted from `settle_claimed` to `settled` within a day.
+- L1 purchases: several runs a day. The scheduled run is 12:00 UTC; the operator adds runs at 00:00, 06:00 and 18:00 UTC, and, until 2026-10-05, further runs at 03:30, 09:30, 15:30 and 21:30 UTC. Read the time of each attempt from the ledger (`/api/v1/observatory/export.csv`) rather than from this list. On-chain settlement re-read: daily, 14:00 UTC, so an attempt made today is normally promoted from `settle_claimed` to `settled` within a day.
 - The HTML pages read those aggregates through a 5-minute cache, so a page and the JSON API can differ for at most 5 minutes after a run; the JSON API is never cached and its `retrievedAt` is the time you asked.
 - This file and https://vet402.com/llms-full.txt are served with `Cache-Control: public, max-age=3600`.
 

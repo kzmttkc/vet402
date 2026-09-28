@@ -94,7 +94,7 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "settled",
     group: "l1",
     definition:
-      "settled means vet402 re-read the transaction on-chain and found the exact USDC transfer it paid for: from our payer, to the catalog-declared payee, for the declared amount, in the canonical USDC contract. It is a statement about the money, and it is never inferred from the seller's own claim.",
+      "settled means vet402 re-read the transaction on-chain and found the exact transfer it paid for: from our payer, to the catalog-declared payee, for the declared amount, in that chain's canonical settlement asset (USDC on Base, Arc and Solana; USDC.e on Tempo; RLUSD from its fixed issuer on XRPL). It is a statement about the money, and it is never inferred from the seller's own claim.",
   },
   {
     term: "delivered",

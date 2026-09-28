@@ -273,3 +273,19 @@ export type DecisionQuery = {
 };
 export declare function decisionQueryString(query: DecisionQuery): string;
 export declare function fetchDecision(resourceId: string, query?: DecisionQuery): Promise<DecisionResult>;
+/** Mirrors EndpointRef in src/lib/resolve/lookup.ts (the fields this package reads). */
+export type ResolveEndpointRef = {
+    endpoint_id: string;
+    resource_id: string | null;
+    canonical_url: string;
+    method: string;
+};
+export type ResolveResult = {
+    query: {
+        kind: string;
+        value: string;
+    };
+    resource?: ResolveEndpointRef;
+    endpoints?: ResolveEndpointRef[];
+};
+export declare function resolveQuery(q: string): Promise<ResolveResult>;

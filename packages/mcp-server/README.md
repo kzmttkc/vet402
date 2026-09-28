@@ -12,6 +12,12 @@ npm install -g @vet402/mcp-server   # optional — the configs below use npx
 
 ## Tools
 
+Seven tools. Two of them — `check_resource_decision` and `pay_if_trusted` — work
+with no API key (the `/decision` route answers key-less at 10/min per IP). The
+other five (`check_agent_trust`, `check_wallet_trust`, `check_payee_trust`,
+`explain_trust_score`, `attest_x402_payment`) need `VOUCH_API_KEY`; without one
+the API answers `missing_api_key`.
+
 | Tool | Description |
 |---|---|
 | `check_agent_trust` | Score by agent ID (optional wallet verification) |
@@ -20,7 +26,7 @@ npm install -g @vet402/mcp-server   # optional — the configs below use npx
 | `explain_trust_score` | Human-readable score breakdown (includes x402 + dataCoverage) |
 | `attest_x402_payment` | Write settlement attestation after payment verification |
 | `pay_if_trusted` | **ETHOnline 2026 window (2026-09-05)** — the same gate as `check_resource_decision`, but it **holds the signer**. On anything other than `ALLOW` the payment module is never loaded, so **no signature can exist**. Refusals are machine-readable and happen *before* a signature. Delegates the payment itself to `payOrRefuse` in `@vet402/sdk`. Signing requires `VOUCH_PAYER_PRIVATE_KEY` and `viem`; without them the gate still runs and refuses with `payer_not_configured`. Settlement is reported as `settle_claimed` — never `settled`, which only an on-chain re-read may write. Since 2026-09-06 it also takes `policy` (`requireVet402Allow`, `evidence.source` / `minSubgraphReceipts` / `minL1Deliveries`), forwarded to `payOrRefuse` unchanged: `source: "subgraph"` reads The Graph's x402 Base subgraph (key from `GRAPH_API_KEY`) and returns that read on `decision_record.evidence[]`. A seller outside the catalogue (`/decision` 404) is judged too when `resource` is given: the SDK reads the 402's `payTo`, that address's payee score and the caller's floors (`reason_codes` carries `resource_uncatalogued`); without `resource` a 404 refuses with `evidence_unavailable`. Since 2026-09-15 `payee` may be a base58 Solana address: the same gate runs (BLOCK / WARN / degraded refuse before the signer; `payTo` must equal `payee` exactly; the 402 must offer Solana USDC over x402 v2 with a facilitator `extra.feePayer`), and on `ALLOW` the SDK builds the SVM `exact` transaction and signs it with `VOUCH_SOLANA_PAYER_SECRET_KEY`. A Solana seller outside the catalogue refuses with `resource_uncatalogued` / `evidence_unavailable`; `attested` is always `false` on Solana |
-| `check_resource_decision` | 0.2.0 — Product spec §9.1: pre-payment decision for one x402 *resource* (`resourceId` = sha256 hex from `/api/v1/resolve?q=<url>`). Returns `decision` (`ALLOW_PAY` \| `REFUSE`), `safe_to_pay`, `refuse_reasons`, and the full `measurement` body (L0–L2 facts, `reason_codes`, `freshness`, `evidence`, `rules_version`). `role=payee` + `payer` asks the seller-side question instead. Since 2026-09-07 it also takes your own policy — `amountUsd`, `maxPerTxUsd` (default 1), `minL1Deliveries`, `requireVet402Allow` (default true; `false` waives a WARN and needs `minL1Deliveries` ≥ 1) — which the server applies and returns as `measurement.caller_policy` in the SDK's words (`price_above_ceiling`, `evidence_unavailable`, `payee_recommendation_block`, `payee_recommendation_not_allow`, `insufficient_delivery_evidence`); a `caller_policy` REFUSE makes the tool REFUSE with those words in `refuse_reasons`. Since 2026-09-12 the `maxPerTxUsd` you pass is capped by the server's own `VOUCH_MAX_PER_TX_USD` (default 1) so this answer matches what `pay_if_trusted` would do |
+| `check_resource_decision` | 0.2.0 — Product spec §9.1: pre-payment decision for one x402 *resource* (`resourceId` = sha256 hex from `/api/v1/resolve?q=<url>`). **Unreleased (after 0.3.0):** it also takes `url` — the URL that answers 402 — and resolves it itself; a URL or id that is not in vet402's catalog comes back as `decision: REFUSE`, `not_in_catalog: true`, `refuse_reasons: ["resource_uncatalogued"]` with up to 5 catalogued endpoints on the same host, instead of `request_failed`. 0.3.0 on npm takes `resourceId` only. Returns `decision` (`ALLOW_PAY` \| `REFUSE`), `safe_to_pay`, `refuse_reasons`, and the full `measurement` body (L0–L2 facts, `reason_codes`, `freshness`, `evidence`, `rules_version`). `role=payee` + `payer` asks the seller-side question instead. Since 2026-09-07 it also takes your own policy — `amountUsd`, `maxPerTxUsd` (default 1), `minL1Deliveries`, `requireVet402Allow` (default true; `false` waives a WARN and needs `minL1Deliveries` ≥ 1) — which the server applies and returns as `measurement.caller_policy` in the SDK's words (`price_above_ceiling`, `evidence_unavailable`, `payee_recommendation_block`, `payee_recommendation_not_allow`, `insufficient_delivery_evidence`); a `caller_policy` REFUSE makes the tool REFUSE with those words in `refuse_reasons`. Since 2026-09-12 the `maxPerTxUsd` you pass is capped by the server's own `VOUCH_MAX_PER_TX_USD` (default 1) so this answer matches what `pay_if_trusted` would do |
 
 ### Reading a `check_payee_trust` result
 
@@ -39,8 +45,9 @@ answer is not an ALLOW.
 
 ## Setup — Claude Desktop
 
-Get a key at [vet402.com/dashboard/keys](https://vet402.com/dashboard/keys),
-then add this to `~/Library/Application Support/Claude/claude_desktop_config.json`
+A key is optional: without `VOUCH_API_KEY` the two `/decision` tools work and the
+five score / attest tools answer `missing_api_key`. To use all seven, get a key at
+[vet402.com/dashboard/keys](https://vet402.com/dashboard/keys). Add this to `~/Library/Application Support/Claude/claude_desktop_config.json`
 (`%APPDATA%\Claude\claude_desktop_config.json` on Windows) and restart the app:
 
 ```json
@@ -81,7 +88,7 @@ Confirm it starts before wiring it into a client:
 
 ```bash
 echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}' \
-  | VOUCH_API_KEY=vouch_live_your_key_here npx -y @vet402/mcp-server
+  | npx -y @vet402/mcp-server
 ```
 
 A `serverInfo` line comes back on stdout. The package also installs a
@@ -114,7 +121,7 @@ A `serverInfo` line comes back on stdout. The package also installs a
 
 ```bash
 git clone https://github.com/kzmttkc/vet402.git
-cd agent-trust/packages/mcp-server && npm install && npm run build
+cd vet402/packages/mcp-server && npm install && npm run build
 # then point your client at "command": "node", "args": ["<abs>/dist/index.js"]
 ```
 

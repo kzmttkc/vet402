@@ -116,13 +116,6 @@ allow_phrases:
     why: "節の見出し（なぜこれを明記するか）"
 
 claims:
-  - id: accuracy_the_verdict_every_score_vet402
-    surface: src/app/accuracy/page.tsx
-    quote: "the verdict. Every score vet402 issues becomes a"
-    means: "発行したスコアは監視対象イベントになり、その後の実際の挙動でラベルされる"
-    check: null
-    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
-    verified_at: 2026-09-04
   - id: accuracy_benchmark_scans_are_excluded_from
     surface: src/app/accuracy/page.tsx
     quote: "benchmark scans are excluded from every number in this section and reported separately in"
@@ -133,7 +126,7 @@ claims:
     verified_at: 2026-09-04
   - id: accuracy_separately_so_it_can_never
     surface: src/app/accuracy/page.tsx
-    quote: "separately so it can never be mistaken for (or padded into) external usage. Weekly, the"
+    quote: "separately so it can never be mistaken for (or padded into) external usage."
     means: "自社スキャンは外部利用と混ぜない（別立てで公開する）"
     check: null
     why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
@@ -1272,13 +1265,6 @@ claims:
     check:
       url: https://vet402.com/api/v1/observatory/history
       assert: "days.0.day != null"
-    verified_at: 2026-09-05
-  - id: seo_accuracy_dataset_every_verdict_is_watched
-    surface: src/app/accuracy/page.tsx
-    quote: "Every verdict vet402 issues is recorded as a watched event"
-    means: "Dataset の measurementTechnique。発行した判定は監視対象イベントになり、その後の実挙動でラベルされる（頁の散文 §1 と同じ主張を機械可読側にも出したもの）"
-    check: null
-    why_unverifiable: "測り方の説明であって、公開 GET が数値で返す種類の主張ではない。同じ主張の散文側は accuracy_the_verdict_every_score_vet402 に登録済み"
     verified_at: 2026-09-05
   - id: seo_faq_settled_is_never_inferred_from_the_seller
     surface: src/components/site/faq-data.ts

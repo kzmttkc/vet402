@@ -202,7 +202,7 @@ export default async function ImpactPage() {
 
         <h2 className="sec-head">
           <span className="sec-no">4.</span>
-          <span>Integrity: the record cannot be quietly rewritten</span>
+          <span>Integrity: an operator-kept hash chain</span>
         </h2>
         <p className="doc-p">
           {latestAnchor ? (
@@ -212,7 +212,19 @@ export default async function ImpactPage() {
               {latestAnchor.entryCount.toLocaleString()} entries. Rewriting any past row breaks every
               later root, and the projection is open source, so a third party can verify the chain
               from the public API alone. The entry count is the rows that anchor hashed, which is not
-              the attempt count in §2.
+              the attempt count in §2.{" "}
+              {latestAnchor.anchoredTx ? (
+                <>
+                  That root is also fixed outside vet402 in transaction{" "}
+                  <code>{latestAnchor.anchoredTx.slice(0, 16)}…</code>.
+                </>
+              ) : (
+                <>
+                  The chain is kept by the operator and is not yet fixed anywhere outside vet402
+                  (the <code>anchoredTx</code> field is empty), so the operator could still
+                  recompute the whole chain. A reader who saves a root today can detect that later.
+                </>
+              )}
             </>
           ) : (
             "The purchase ledger is a daily hash chain; anchoring begins with the first anchored day."
@@ -233,8 +245,11 @@ export default async function ImpactPage() {
           <a className="underline" href="https://github.com/kzmttkc/vet402">
             source
           </a>{" "}
-          (<code>cli/</code>). SDKs for TypeScript and Python, plus MCP / LangChain / ElizaOS /
-          solana-agent-kit adapters, make &quot;check trust before paying&quot; a one-liner —{" "}
+          (<code>cli/</code>). The TypeScript SDK (<code>@vet402/sdk</code>) and the MCP server
+          (<code>@vet402/mcp-server</code>) are published on npm. A Python SDK exists in the
+          repository but is not yet published to PyPI, and the LangChain, ElizaOS and
+          solana-agent-kit integrations are example code in the repository&apos;s{" "}
+          <code>examples/</code>, not packages —{" "}
           <Link href="/docs/api" className="underline">
             API reference
           </Link>

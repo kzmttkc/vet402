@@ -142,3 +142,8 @@ export async function fetchDecision(resourceId, query = {}) {
         throw new Error("payer_required");
     return vouchFetch(`/resources/${resourceId}/decision?${decisionQueryString(query)}`);
 }
+export async function resolveQuery(q) {
+    if (typeof q !== "string" || q.length === 0 || q.length > 2048)
+        throw new Error("invalid_request");
+    return vouchFetch(`/resolve?q=${encodeURIComponent(q)}`);
+}

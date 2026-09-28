@@ -9,6 +9,7 @@ import { TableScroll } from "@/components/site/TableScroll";
 import { computeAccuracyReport, type AccuracyReport } from "@/lib/scoring/accuracy";
 import { computeBenchmarkReport, type BenchmarkReport } from "@/lib/scoring/benchmark-report";
 import { fetchAccuracyRows, fetchBenchmarkRows } from "@/lib/db/outcome-reader";
+import { computeL0Accuracy, fetchL0AccuracyInput, type L0Accuracy } from "@/lib/scoring/l0-accuracy";
 
 /**
  * /accuracy — the page competitors cannot copy without doing the work.
@@ -108,6 +109,20 @@ export default async function AccuracyPage() {
     benchmark = computeBenchmarkReport([]);
   }
 
+  // 2026-09-29 監査: L0 の誤 fail 率は /api/v1/accuracy の l0 にだけ出ていて、
+  // 目標（3%）を超えている週も HTML には何も出ていなかった。API と同じ関数で数え、
+  // 目標との比較ごと出す（都合の悪い週ほど見える場所に置く）。
+  const l0: L0Accuracy | null = await fetchL0AccuracyInput()
+    .then(computeL0Accuracy)
+    .catch(() => null);
+
+  // 「Weekly」と書いていたが、実行が止まった週があった（2026-09-16 の後、09-29 まで 0 件）。
+  // 予定と実績を分けて出す: 予定は vercel.json の週次 cron、実績は最後の scan の日付。
+  const benchmarkAgeDays = benchmark.lastScanAt
+    ? Math.floor((Date.now() - new Date(benchmark.lastScanAt).getTime()) / 86_400_000)
+    : null;
+  const benchmarkOverdue = benchmarkAgeDays !== null && benchmarkAgeDays > 8;
+
   const hasAnyData = report.observedVerdicts > 0;
   const hasBenchmarkData = benchmark.knownBad.total + benchmark.knownGood.total > 0;
   const scale = !hasAnyData && !hasBenchmarkData ? await fetchObservatoryScale() : null;
@@ -122,7 +137,7 @@ export default async function AccuracyPage() {
     citeUrl: `${SITE_URL}/api/v1/accuracy`,
     temporalCoverage: "R/P90D",
     measurementTechnique:
-      "Every verdict vet402 issues is recorded as a watched event; an on-chain outcome detector and partner-reported outcomes label what the wallet did next, and the labels are aggregated over a rolling 90-day window. Operator benchmark rows are excluded at the SQL layer so they cannot pad the external figures.",
+      "Agent and wallet scores requested with an API key are recorded as watched events (payee scores and key-less reads are not); an on-chain outcome detector and partner-reported outcomes label what the wallet did next, and the labels are aggregated over a rolling 90-day window. Operator benchmark rows are excluded at the SQL layer so they cannot pad the external figures.",
     variableMeasured: [
       "observed verdicts",
       "ALLOW verdicts with adverse outcome",
@@ -183,10 +198,14 @@ export default async function AccuracyPage() {
           <p className="shrink-0 text-brand-deep sm:w-[10ch]">Abstract</p>
           <p className="min-w-0 max-w-[62ch] text-brand">
             Most trust products tell you how many dimensions their score has. The only number that
-            matters is what happened <em>after</em> the verdict. Every score vet402 issues becomes a
-            watched event: an on-chain detector and partner reports label what the wallet actually
-            did next, and the aggregate is published here &mdash;{" "}
-            <strong>including the number that flatters us least.</strong> This ledger is for
+            matters is what happened <em>after</em> the verdict. Agent and wallet scores requested
+            with an API key are recorded as watched events (payee scores and key-less reads are
+            not): an on-chain detector and partner reports label what the wallet actually did next,
+            and the aggregate is published here &mdash;{" "}
+            <strong>including the number that flatters us least.</strong> In the current 90-day
+            window {report.observedVerdicts.toLocaleString("en-US")}{" "}
+            {report.observedVerdicts === 1 ? "verdict has" : "verdicts have"} a recorded outcome
+            (<code>observedVerdicts</code> in the JSON). This ledger is for
             score verdicts (ALLOW / WARN / BLOCK), not observatory L0–L2 facts —{" "}
             <Link href="/observatory" className="doc-link">
               those live on the observatory
@@ -194,6 +213,74 @@ export default async function AccuracyPage() {
             .
           </p>
         </div>
+
+        {l0 ? (
+          <>
+            <p className="doc-caption mt-8">Observatory L0 measurement quality, last {l0.window_days} days</p>
+            <TableScroll label="L0 false-fail and false-pass rates against their targets">
+              <table className="fact-table">
+                <caption className="sr-only">
+                  L0 false-fail and false-pass rates against their targets
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Measurement</th>
+                    <th scope="col" className="num">
+                      Rate
+                    </th>
+                    <th scope="col" className="num">
+                      Target
+                    </th>
+                    <th scope="col" className="num">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="font-[family-name:var(--font-sans)] font-normal whitespace-normal text-brand">
+                      Published L0 fails later reversed to pass within 7 days (false fail;{" "}
+                      {l0.false_fail.toLocaleString("en-US")} of{" "}
+                      {l0.published_fail.toLocaleString("en-US")})
+                    </td>
+                    <td className="num whitespace-nowrap">
+                      <Rate value={l0.false_fail_rate} />
+                    </td>
+                    <td className="num whitespace-nowrap">under {l0.slo.false_fail_target_pct}%</td>
+                    <td className="num whitespace-nowrap">
+                      <SloStatus ok={l0.slo.false_fail_ok} />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="font-[family-name:var(--font-sans)] font-normal whitespace-normal text-brand">
+                      Published L0 passes whose next probe returned no 402 (false pass;{" "}
+                      {l0.false_pass.toLocaleString("en-US")} of{" "}
+                      {l0.published_pass.toLocaleString("en-US")})
+                    </td>
+                    <td className="num whitespace-nowrap">
+                      <Rate value={l0.false_pass_rate} />
+                    </td>
+                    <td className="num whitespace-nowrap">under {l0.slo.false_pass_target_pct}%</td>
+                    <td className="num whitespace-nowrap">
+                      <SloStatus ok={l0.slo.false_pass_ok} />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </TableScroll>
+            <p className="doc-note mt-4 max-w-[70ch]">
+              {l0.slo.false_fail_ok === false || l0.slo.false_pass_ok === false ? (
+                <>
+                  At least one of these rates is above its target this week. We print it here
+                  rather than leave it in the JSON.{" "}
+                </>
+              ) : null}
+              Same figures as <code className="text-brand-deep">l0</code> in{" "}
+              <code className="text-brand-deep">GET /api/v1/accuracy</code>, computed by the same
+              function. These measure the observatory&apos;s probes, not the score verdicts below.
+            </p>
+          </>
+        ) : null}
 
         {scale && (
           <p className="doc-note mt-6 max-w-[70ch]">
@@ -347,12 +434,13 @@ export default async function AccuracyPage() {
         </h2>
         <p className="doc-p">
           These scans are run by us, not by customers &mdash; a controlled test, published
-          separately so it can never be mistaken for (or padded into) external usage. Weekly, the
-          engine scores a fixed, versioned set of addresses whose real-world outcome is already
+          separately so it can never be mistaken for (or padded into) external usage. On a weekly
+          schedule, Wednesdays at 09:30 UTC, the engine scores a fixed, versioned set of addresses whose real-world outcome is already
           public knowledge: &ldquo;known bad&rdquo; addresses from the US OFAC sanctions (SDN) list,
           and &ldquo;known good&rdquo; addresses of long-operating, publicly identified
           organizations and individuals. The engine should refuse the former and pass the latter;
-          each address counts once, using its most recent scan.
+          each address counts once, using its most recent scan. The date of the most recent
+          completed run is printed below the table.
         </p>
 
         {hasBenchmarkData ? (
@@ -444,13 +532,20 @@ export default async function AccuracyPage() {
               {benchmark.lastScanAt
                 ? `, most recent ${new Date(benchmark.lastScanAt).toISOString().slice(0, 10)}`
                 : ""}
-              . Address set and per-address sources are versioned in the codebase (§3).
+              .{" "}
+              {benchmarkOverdue ? (
+                <>
+                  That is {benchmarkAgeDays} days ago: the scheduled weekly pass has not recorded a
+                  scan since, so the figures above are older than the schedule suggests.{" "}
+                </>
+              ) : null}
+              Address set and per-address sources are versioned in the codebase (§3).
             </p>
           </>
         ) : (
           <p className="doc-note mt-5 max-w-[70ch]">
-            No benchmark scans in the current window yet &mdash; the first weekly pass publishes
-            here automatically.
+            No benchmark scans in the current window yet &mdash; the next scheduled weekly pass
+            publishes here automatically.
           </p>
         )}
 
@@ -575,6 +670,15 @@ export default async function AccuracyPage() {
         </div>
       </article>
     </main>
+  );
+}
+
+function SloStatus({ ok }: { ok: boolean | null }) {
+  if (ok === null) return <span className="text-brand-lift">insufficient data</span>;
+  return ok ? (
+    <span className="text-brand-deep">within target</span>
+  ) : (
+    <strong className="text-brand-deep">above target</strong>
   );
 }
 

@@ -8,10 +8,10 @@ import { payIfTrusted, type PayIfTrustedSigner } from "./pay-if-trusted.js";
 import { payerConfiguredFor, resolveSvmPayer, UNCONFIGURED_SVM_SIGNER } from "./payer.js";
 import { resolveMaxPerTxUsd, ceilingNotes, MAX_PER_TX_USD_ENV, DEFAULT_MAX_PER_TX_USD } from "./ceiling.js";
 import { decideFromScore, decideFromFailure, type TrustDecision } from "./decision.js";
+import { resourceDecision } from "./resource-decision.js";
 import {
   attestX402Payment,
   fetchAgentScore,
-  fetchDecision,
   fetchPayeeScore,
   fetchWalletScore,
 } from "./vouch-client.js";
@@ -246,11 +246,15 @@ async function resolvePayer(): Promise<PayIfTrustedSigner | null> {
 async function main() {
   // 製品定義書 §9.1（2026-09-02）: 新規統合は /decision を正規とする。
 // facts（L0–L2 の測定記録）と recommendation が同じ応答にある。
-const RESOURCE_ID = z.string().regex(/^[0-9a-f]{64}$/).describe("resource_id — sha256(method + \" \" + canonical_url). Get it from /api/v1/resolve?q=<url>");
+const RESOURCE_ID = z.string().regex(/^[0-9a-f]{64}$/).describe("resource_id — sha256(method + \" \" + canonical_url), from /api/v1/resolve?q=<url>. check_resource_decision also takes the URL itself as url.");
 server.tool(
   "check_resource_decision",
   [
     "Pre-payment decision for an x402 resource (role=payer) or pre-service decision for a payer (role=payee).",
+    "Name the resource with url (the URL that answers 402; this tool resolves it through /api/v1/resolve)",
+    "or with resourceId (sha256), not both. No API key is needed (key-less at 10/min per IP).",
+    "A URL or id that is not in vet402's catalog returns decision REFUSE with not_in_catalog true and",
+    "refuse_reasons [resource_uncatalogued], plus up to 5 catalogued endpoints on the same host.",
     "Decide on decision (ALLOW_PAY | REFUSE) and safe_to_pay (boolean); pay only on ALLOW_PAY.",
     "WARN and BLOCK are both REFUSE under the default allow-only policy. An error is REFUSE too.",
     "measurement carries the full decision body: facts (L0 liveness, L1 settle-through, L2 conformance),",
@@ -282,7 +286,8 @@ server.tool(
     "answer matches what pay_if_trusted would actually do; tool input can lower that ceiling, never raise it.",
   ].join("\n"),
   {
-    resourceId: RESOURCE_ID,
+    resourceId: RESOURCE_ID.optional(),
+    url: z.string().max(2048).optional().describe("The URL that answers 402. Resolved to its resourceId through /api/v1/resolve. Pass this or resourceId, not both."),
     role: z.enum(["payer", "payee"]).optional().describe("payer (default): should my agent pay this resource? payee: should this seller serve this payer?"),
     payer: z.string().max(120).optional().describe("Required when role=payee: chain:address, or a bare 0x / base58 address"),
     callerDialect: z.enum(["v1", "v2"]).optional().describe("Your x402 client dialect; a mismatch with the seller's wall is a WARN"),
@@ -291,7 +296,7 @@ server.tool(
     minL1Deliveries: z.number().int().nonnegative().optional().describe("Floor on vet402's delivered L1 purchases for this resource"),
     requireVet402Allow: z.boolean().optional().describe("Default true (a WARN refuses with payee_recommendation_not_allow). false waives a WARN and needs minL1Deliveries >= 1"),
   },
-  async ({ resourceId, role, payer, callerDialect, amountUsd, maxPerTxUsd, minL1Deliveries, requireVet402Allow }) => {
+  async ({ resourceId, url, role, payer, callerDialect, amountUsd, maxPerTxUsd, minL1Deliveries, requireVet402Allow }) => {
     try {
       // 2026-09-12 監査 H-1: 天井は運用者のもの。ここは署名器を握らない**助言**のツールだが、
       // 助言が「$500 でも ALLOW_PAY」と言えば呼び手はそれで払う。同じ天井を当てて、
@@ -305,7 +310,12 @@ server.tool(
       //     天井は `not_evaluated` 行きで、意味は増えずに応答の形だけが変わる。
       const asksPolicy = amountUsd !== undefined || maxPerTxUsd !== undefined;
       const ceiling = role === "payee" || !asksPolicy ? null : resolveMaxPerTxUsd(maxPerTxUsd, process.env[MAX_PER_TX_USD_ENV]);
-      const result = await fetchDecision(resourceId, { role, payer, callerDialect, amountUsd, maxPerTxUsd: ceiling ? ceiling.effective : maxPerTxUsd, minL1Deliveries, requireVet402Allow });
+      // 2026-09-29: url でも受ける。カタログに無いものは request_failed ではなく「無い」と言う。
+      const outcome = await resourceDecision({ resourceId, url }, { role, payer, callerDialect, amountUsd, maxPerTxUsd: ceiling ? ceiling.effective : maxPerTxUsd, minL1Deliveries, requireVet402Allow });
+      if (outcome.kind === "uncatalogued") {
+        return { content: [{ type: "text" as const, text: JSON.stringify(outcome.body, null, 2) }] };
+      }
+      const result = outcome.result;
       // 2026-09-07 (§16.3): the caller's own policy, applied by the server, can refuse too — and
       // its words (price_above_ceiling, …) are the ones the A/B showed no tool ever returned.
       const policy = result.caller_policy;
@@ -321,7 +331,8 @@ server.tool(
           ...(ceiling ? ceilingNotes(ceiling) : []),
         ].join(" "),
       };
-      return { content: [{ type: "text" as const, text: JSON.stringify({ ...decision, measurement: result }, null, 2) }] };
+      const resolved = outcome.resolvedFrom ? { resolved: { url: outcome.resolvedFrom, resourceId: outcome.resourceId } } : {};
+      return { content: [{ type: "text" as const, text: JSON.stringify({ ...decision, ...resolved, measurement: result }, null, 2) }] };
     } catch (error) {
       return scoreToolFailure(error);
     }

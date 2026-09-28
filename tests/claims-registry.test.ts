@@ -535,7 +535,9 @@ test("no unregistered assertive claim ships on a public surface", () => {
  * それが狙い（黙って下がらない）。
  */
 const DETECTION_FLOOR: Record<string, number> = {
-  "src/app/accuracy/page.tsx": 16,
+  // 2026-09-29: 16 → 13。「Every score / Every verdict … becomes a watched event」（散文 1・JSON-LD 2 検出）を
+  // 実装どおり「鍵付きの agent / wallet スコアだけが監視対象」に直して断定語が消えた。
+  "src/app/accuracy/page.tsx": 13,
   "src/app/api/v1/accuracy/route.ts": 5,
   "src/app/corrections/page.tsx": 21,
   "src/app/docs/api/page.tsx": 56,

@@ -78,7 +78,7 @@ ${blog}
 - ${SITE_URL}/api/v1/observatory/corrections — correction log as JSON, no key
 - ${SITE_URL}/observatory — L0/L1/L2 register
 
-Cite with the page URL and a retrieval date. Content current as of 2026-09-04.
+Cite with the page URL and a retrieval date. Content current as of 2026-09-29.
 `;
 
   return new Response(body, {

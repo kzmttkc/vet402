@@ -23,6 +23,8 @@ export const KNOWN_ERROR_CODES = new Set([
     "rate_limited",
     "scoring_unavailable",
     "payment_ingest_unavailable",
+    // /resolve が 503 のときの語（src/app/api/v1/resolve/route.ts）。
+    "resolve_unavailable",
 ]);
 /**
  * 呼び出し側の誤りで、**メッセージを我々自身のコードが組み立てる**もの（SDK の
@@ -30,7 +32,12 @@ export const KNOWN_ERROR_CODES = new Set([
  * 含まないので、そのまま通してよい。`request_failed` に潰すと、呼び手（モデル）は
  * 「床を書き忘れた」のか「上流が落ちた」のか区別できず、直す場所が分からない。
  */
-export const CALLER_ERROR_PREFIXES = ["invalid_policy:", "invalid_evidence_policy:"];
+export const CALLER_ERROR_PREFIXES = [
+    "invalid_policy:",
+    "invalid_evidence_policy:",
+    // check_resource_decision の入力（resourceId か url か）。文言は resource-decision.ts が組み立てる。
+    "invalid_target:",
+];
 /** Stable code returned when the trust lookup never answered. */
 export const LOOKUP_TIMEOUT_MESSAGE = "lookup_timeout: the trust lookup did not answer in time — the payee was NOT checked";
 /**

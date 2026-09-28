@@ -372,3 +372,23 @@ export async function fetchDecision(resourceId: string, query: DecisionQuery = {
   if (role === "payee" && !query.payer) throw new Error("payer_required");
   return vouchFetch<DecisionResult>(`/resources/${resourceId}/decision?${decisionQueryString(query)}`);
 }
+
+// ---- /resolve（2026-09-29）: URL しか持たない呼び手のための逆引き。鍵は不要（1 分 60 回 / IP）。 ----
+/** Mirrors EndpointRef in src/lib/resolve/lookup.ts (the fields this package reads). */
+export type ResolveEndpointRef = {
+  endpoint_id: string;
+  resource_id: string | null;
+  canonical_url: string;
+  method: string;
+};
+
+export type ResolveResult = {
+  query: { kind: string; value: string };
+  resource?: ResolveEndpointRef;
+  endpoints?: ResolveEndpointRef[];
+};
+
+export async function resolveQuery(q: string): Promise<ResolveResult> {
+  if (typeof q !== "string" || q.length === 0 || q.length > 2048) throw new Error("invalid_request");
+  return vouchFetch<ResolveResult>(`/resolve?q=${encodeURIComponent(q)}`);
+}

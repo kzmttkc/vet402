@@ -93,7 +93,7 @@ cd packages/mcp-server && npm install && npm run build
   "mcpServers": {
     "vouch-local": {
       "command": "node",
-      "args": ["/absolute/path/to/agent-trust/packages/mcp-server/dist/index.js"],
+      "args": ["/absolute/path/to/vet402/packages/mcp-server/dist/index.js"],
       "env": {
         "VOUCH_API_URL": "http://localhost:3000/api/v1",
         "VOUCH_API_KEY": "vouch_live_..."

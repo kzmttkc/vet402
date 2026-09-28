@@ -12,6 +12,7 @@ import { SITE_URL } from "@/lib/site-url";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { buildMonth } from "@/lib/build-month";
+import { inviteRequired } from "@/lib/dashboard/signup-core";
 
 // 2026-08-13 UX監査2巡目 [m2]: このページには metadata が無く、layout の
 // default（LP と同じ長い表題）をそのまま名乗っていた。template "%s | vet402"
@@ -502,13 +503,42 @@ export default async function ApiDocsPage() {
       <section id="quickstart" className="scroll-mt-32 space-y-3">
         <h2 className="sec-head">Quickstart</h2>
         <p className="text-sm text-brand">
-          The first three need no account, no key and no signature &mdash; paste them into a
-          terminal as they are. The first one returns real on-chain receipts.
+          The first four need no account, no key and no signature &mdash; paste them into a
+          terminal as they are. The first one is the integration itself: a URL in, a decision out.
         </p>
+
+        {/* 2026-09-29 敵対的監査（初見の開発者）: Quickstart の 1 番目が「受領証を読む」で、
+            製品の本題（払う前に聞く）へ鍵なしで届く経路は /llms.txt にしか書いていなかった。
+            resolve → decision の 2 本を先頭に置く。例の URL は 2026-09-29 に本番で
+            resolve → decision（鍵なし・200・RateLimit-Limit: 10）を確認済み。 */}
+        <div>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-brand-lift">
+            1 &mdash; Should my agent pay this URL? Resolve it, then ask (no key)
+          </p>
+          <CodeBlock
+            label="curl: resolve a URL to its resource_id, then read the decision"
+            code={`# 1. the URL that answers 402 -> its resource_id
+curl "${SITE_URL}/api/v1/resolve?q=https://api.exa.ai/search"
+
+# 2. resource_id -> facts + ALLOW / WARN / BLOCK in one document
+curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8af2f92f0313ddef8bdb/decision?role=payer"`}
+          />
+          <p className="mt-1 text-sm text-brand-lift">
+            Copy <code className="text-brand-deep">resource.resource_id</code> from the first
+            answer into the second. The decision carries <code>recommendation</code>,{" "}
+            <code>reason_codes</code> and the L0&ndash;L2 facts behind them. Without a key,{" "}
+            <code className="text-brand-deep">/decision</code> answers 10 requests per minute per IP
+            and <code className="text-brand-deep">/resolve</code> 60; past that you get 429{" "}
+            <code>rate_limited</code> with a <code>Retry-After</code> under 60 seconds. A URL that
+            is not in the catalog comes back from <code>/resolve</code> with no{" "}
+            <code>resource</code>, and an unknown id gets 404 <code>not_found</code> from{" "}
+            <code>/decision</code>.
+          </p>
+        </div>
 
         <div>
           <p className="mb-1 text-xs font-medium uppercase tracking-wide text-brand-lift">
-            1 &mdash; What happened when we actually paid an endpoint (no key)
+            2 &mdash; What happened when we actually paid an endpoint (no key)
           </p>
           <CodeBlock
             label="curl: read an endpoint's real purchase receipts"
@@ -531,7 +561,7 @@ export default async function ApiDocsPage() {
 
         <div>
           <p className="mb-1 text-xs font-medium uppercase tracking-wide text-brand-lift">
-            2 &mdash; The public accuracy ledger (no key)
+            3 &mdash; The public accuracy ledger (no key)
           </p>
           <CodeBlock
             label="curl: read the public accuracy ledger"
@@ -549,7 +579,7 @@ export default async function ApiDocsPage() {
 
         <div>
           <p className="mb-1 text-xs font-medium uppercase tracking-wide text-brand-lift">
-            3 &mdash; The exact message a payee has to sign (no key)
+            4 &mdash; The exact message a payee has to sign (no key)
           </p>
           <CodeBlock
             label="curl: preview the canonical payee-verify message"
@@ -569,7 +599,7 @@ export default async function ApiDocsPage() {
 
         <div>
           <p className="mb-1 text-xs font-medium uppercase tracking-wide text-brand-lift">
-            4 &mdash; Score a payee before paying it (key required)
+            5 &mdash; Score a payee before paying it (key required)
           </p>
           <CodeBlock
             label="curl: score a payee wallet"
@@ -630,7 +660,7 @@ export default async function ApiDocsPage() {
             <Link href="/payee" className="doc-link">
               /payee
             </Link>{" "}
-            or call the payee-score endpoint above (example 4).
+            or call the payee-score endpoint above (example 5).
           </p>
         </div>
       </section>
@@ -698,6 +728,31 @@ console.log(seller.trustScore, seller.recommendation); // 0–100 and ALLOW | WA
 // Buyer side — "should my agent pay this wallet?"
 const payee = await vouch.getPayeeScore("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045");
 console.log(payee.score, payee.recommendation, payee.dataDepth);`}
+        />
+        {/* 2026-09-29 敵対的監査: SDK の README は getDecision について「鍵なしで答える」と
+            「鍵が要る」の両方を書いている（packages/sdk は凍結中で直せない）。実物は
+            createVouchClient の apiKey が任意で、未設定なら Authorization を付けない
+            （packages/sdk/src/index.ts・09-07、npm の 0.6.0 に含まれる）。正しい挙動をここに書く。 */}
+        <h3 className="text-base font-semibold text-brand-deep">SDK: ask before paying, with or without a key</h3>
+        <p className="text-sm text-brand">
+          <code>getDecision</code> and <code>resolve</code> work with no key. Leave{" "}
+          <code>apiKey</code> unset and the client sends no <code>Authorization</code> header:{" "}
+          <code>getDecision</code> is then key-less at 10 requests per minute per IP (429{" "}
+          <code>rate_limited</code> beyond), and <code>resolve</code> at 60. With a key,{" "}
+          <code>getDecision</code> spends 1 unit of your monthly quota per call. The score calls
+          above (<code>getWalletScore</code>, <code>getPayeeScore</code>) do need a key; without one
+          the server answers 401 <code>missing_api_key</code>.
+        </p>
+        <CodeBlock
+          label="TypeScript: resolve a URL and read its decision with @vet402/sdk, no key"
+          code={`import { createVouchClient } from "@vet402/sdk";
+
+const vouch = createVouchClient({}); // no apiKey: key-less, 10/min per IP
+
+const { resource } = await vouch.resolve("https://api.exa.ai/search");
+if (!resource?.resource_id) throw new Error("not in the vet402 catalog");
+const d = await vouch.getDecision(resource.resource_id, { role: "payer" });
+console.log(d.recommendation, d.reason_codes);`}
         />
 
         <h3 className="text-base font-semibold text-brand-deep">SDK: gate a payment</h3>
@@ -784,13 +839,25 @@ app.use("/api/paid", createExpressGate({
   }
 }`}
         />
+        {/* 2026-09-29 敵対的監査: ここは「道具 5 つ・VOUCH_API_KEY 必須」と書いていたが、実物は
+            7 本（check_resource_decision と pay_if_trusted が 09-02 / 09-05 に増えた）で、
+            鍵は 09-07 から任意（/decision は鍵なしで答える）。packages/mcp-server/src/index.ts の
+            server.tool 呼び出しと README の表に合わせる。 */}
         <p className="text-sm text-brand">
-          <code>VOUCH_API_KEY</code> is required (create one at{" "}
-          <code>/dashboard/keys</code>); <code>VOUCH_API_URL</code> is optional and defaults to the
-          hosted API. It registers five tools — <code>check_agent_trust</code>,{" "}
-          <code>check_wallet_trust</code>, <code>check_payee_trust</code>,{" "}
-          <code>explain_trust_score</code>, and <code>attest_x402_payment</code>. Same fail-closed
-          reading as the SDK: treat anything but <code>ALLOW</code> as &ldquo;do not pay yet&rdquo;.
+          <code>VOUCH_API_KEY</code> is optional. Without it the two <code>/decision</code> tools
+          work key-less (10/min per IP) and the five score and attest tools answer{" "}
+          <code>missing_api_key</code>; with one, created at <code>/dashboard/keys</code>, those
+          five work too. <code>VOUCH_API_URL</code> is optional and defaults to the hosted API. The
+          seven tools: <code>check_resource_decision</code> and <code>pay_if_trusted</code> (the{" "}
+          <code>/decision</code> route; <code>pay_if_trusted</code> also holds a signer if you
+          configure one), and <code>check_agent_trust</code>, <code>check_wallet_trust</code>,{" "}
+          <code>check_payee_trust</code>, <code>explain_trust_score</code> and{" "}
+          <code>attest_x402_payment</code> (key required). In 0.3.0 on npm,{" "}
+          <code>check_resource_decision</code> takes the sha256 <code>resourceId</code> from{" "}
+          <code>/api/v1/resolve</code>; taking the URL itself, and answering{" "}
+          <code>not_in_catalog</code> for a URL or id vet402 does not list, is in the repository and
+          ships with the next release. Same fail-closed reading as the SDK: treat anything but{" "}
+          <code>ALLOW</code> as &ldquo;do not pay yet&rdquo;.
         </p>
       </section>
 
@@ -922,6 +989,15 @@ app.use("/api/paid", createExpressGate({
             response carries <code>X-RateLimit-Limit</code>,{" "}
             <code>X-RateLimit-Used</code>, and <code>X-RateLimit-Remaining</code>{" "}
             headers so you can track consumption without a separate call.
+          </li>
+          <li>
+            <strong>What spends the monthly units, and what does not.</strong> Only calls that
+            carry your key spend units: each score call (agent, wallet, payee), each{" "}
+            <code>/decision</code> sent with a key, and the other keyed routes in the reference
+            below are 1 unit per call (a batch of N is N). Key-less calls spend no monthly
+            units: <code>/decision</code> without a key (10/min per IP), <code>/resolve</code>{" "}
+            (60/min per IP), and the observatory and accuracy reads each have their own per-IP
+            window instead.
           </li>
           <li>
             <strong>No per-second burst throttle on authenticated calls today.</strong>{" "}
@@ -1386,10 +1462,24 @@ function verify(secret, rawBody, header, toleranceSec = 300) {
             same honesty discipline as the /accuracy page. Revise the target
             when the operating history and infrastructure justify a commitment. */}
         <h2 className="sec-head">Availability</h2>
+        {/* 2026-09-29 敵対的監査: 「closed beta」と書いていたが、本番は招待コードを求めず
+            （GET /api/signup が inviteRequired:false）、無料キーは誰でも発行できる。
+            招待制に戻したときに文言が嘘にならないよう、同じ関数（BETA_INVITE_CODE）で分ける。 */}
         <p className="text-sm text-brand">
-          vet402 is in closed beta, run by a single operator. We publish our real
-          operating posture rather than a contractual uptime figure we can&apos;t
-          yet stand behind:
+          vet402 is an early-stage service run by a single operator.{" "}
+          {inviteRequired() ? (
+            <>Keys are issued by invite code for now.</>
+          ) : (
+            <>
+              Anyone can create a free key at{" "}
+              <Link href="/signup" className="doc-link">
+                /signup
+              </Link>
+              ; there is no waitlist.
+            </>
+          )}{" "}
+          We publish our real operating posture rather than a contractual uptime figure we
+          can&apos;t yet stand behind:
         </p>
         <ul className="list-disc space-y-2 pl-5 text-sm text-brand">
           <li>

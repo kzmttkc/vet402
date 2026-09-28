@@ -114,6 +114,11 @@ export default async function ObservatoryStatePage() {
   const stats = await getObservatoryStatsCached();
   const chainStats = await getObservatoryStatsByChainCached();
   const history = await getDailyMetricsHistory(60);
+  // 2026-09-29 監査: 注記が history.length（チェーン×日の行数、当時 293）を「日数」と
+  // 書いていた。日数は行の day の異なり数で数え、範囲は実データの最初と最後の日から出す。
+  const historyDays = [...new Set(history.map((r) => r.day))].sort();
+  const historyFirstDay = historyDays[0] ?? "";
+  const historyLastDay = historyDays[historyDays.length - 1] ?? "";
   const coverage = await getCoverageShareCached();
   const [latestAnchor] = await getAnchors(1);
   const denom = stats.totalEndpoints;
@@ -725,7 +730,9 @@ export default async function ObservatoryStatePage() {
           <>
             <p className="doc-p">
               L0 probes per UTC day (upper line) and how many of them measured{" "}
-              <em>pass</em> (lower line), all chains combined, last {history.length} days.
+              <em>pass</em> (lower line), all chains combined, {historyDays.length}{" "}
+              {historyDays.length === 1 ? "day" : "days"} with data ({historyFirstDay} to{" "}
+              {historyLastDay}).
               Machine-readable, per-chain: <code>/api/v1/observatory/history</code>.
             </p>
             <HistoryChart rows={history} />
