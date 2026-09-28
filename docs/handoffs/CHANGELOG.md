@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-29 JST（3）— `/rwa` 監査の指摘を直した（SPEC patch 019）
+
+- **何を**: facts JSON の CDN 置き時間（s-maxage 300・stale-while-revalidate 86400）、記録ページはその JSON を先に読む、`/rwa` 入口に 30 秒の道、`/rwa` 面から `/accuracy` へのリンクを外す、`identity_binding` の表示を外す、アンカーした記録との違いを明記、要約に分母。
+- **影響**: `/accuracy` を含む親の面は触っていない。facts JSON の中身と上限は変えていない（CDN の置き方だけ）。
+
 ## 2026-09-29 JST（2）— `/rwa` を全銘柄に（rwa-recon-0.2、SPEC patch 018）
 
 - **何を**: 正本を Robinhood 公式一覧の 195 銘柄に広げた（`packages/rwa/registry.json`、チェーンで照合済み、Chainlink feed 33 本）。範囲は保有銘柄・NVDA・それらの取引が動かした銘柄で、レコードの `scope` と `gaps: exited_positions_not_scanned` に明記。残高は Multicall3 で 1 回、v4 プールは PositionManager.poolKeys（ハッシュ照合つき）。FIFO は銘柄ごと、株と株の直接交換は値付けしない。

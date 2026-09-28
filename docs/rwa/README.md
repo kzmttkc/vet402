@@ -13,7 +13,10 @@ token, or give advice. Specification: [SPEC.md](SPEC.md). Rules for this code:
    `partial`, and the page says how many movements were not decoded). Any other wallet:
    <https://vet402.com/rwa>.
 2. One real round trip, priced by hand to the cent: [Fixture B](../../fixtures/rwa/B.md),
-   realized **−$9.62**. CI replays it through the FIFO engine.
+   realized **−$9.62**. CI replays it through the FIFO engine. Three numbers,
+   three meanings: −$9.62 is that one hand-priced NVDA round trip; −$113.98 is the
+   demo wallet's realized NVDA; −$284.57 is its realized total across NVDA and QQQ
+   on the sales that could be priced (both as of 2026-09-29).
 3. The anchor: `RwaAnchor`
    [`0x1955137e7773f2459eb75fb88842026c6517c22d`](https://robinhoodchain.blockscout.com/address/0x1955137e7773f2459eb75fb88842026c6517c22d)
    on Robinhood Chain, source verified on Blockscout (exact match). No owner, no

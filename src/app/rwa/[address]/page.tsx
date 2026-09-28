@@ -7,17 +7,44 @@ import { getClientIp } from "@/lib/api/client-ip";
 import { consumeIpRateLimit } from "@/lib/api/ip-rate-limit";
 import { isValidAddress } from "@/lib/chain/client";
 import { ReconstructionTimeout, TooBusy, cachedFacts } from "../../../../packages/rwa/cache";
-import { NoStockTokenActivity, type RwaFacts } from "../../../../packages/rwa/facts";
+import { METHOD_VERSION, NoStockTokenActivity, type RwaFacts } from "../../../../packages/rwa/facts";
+import anchorRecord from "../../../../fixtures/rwa/anchor.json";
 
 /**
  * /rwa/[address] — the one public page of the RWA instrument (docs/rwa/SPEC.md §10).
  *
- * Shows only what §10 lists: address, identity_binding, canonical balance
- * (shares and USD in separate columns), feed time / stale / weekend, r1_status,
- * events_summary, evidence tx links, a link to accuracy and the fixed
- * disclaimer. No ALLOW / WARN / BLOCK, no CTA, no ranking. realized is not
- * rendered until Fixture B passes.
+ * Shows only what §10 lists: address, canonical balances (shares and USD in
+ * separate columns), feed time / stale, r1_status, events_summary, evidence tx
+ * links, the method README and the fixed disclaimer. No ALLOW / WARN / BLOCK, no
+ * CTA, no ranking, and no link into the parent product's pages (2026-09-29 audit).
+ *
+ * The record is taken from the CDN copy of the facts JSON first, so the page and
+ * the JSON a judge opens side by side come from the same cached answer; only if
+ * that fails does this render rebuild it (SPEC patch 019).
  */
+
+const README = "https://github.com/kzmttkc/vet402/blob/main/docs/rwa/README.md";
+const CDN_FETCH_TIMEOUT_MS = 12_000;
+
+/** The facts JSON through the CDN (fast when cached); null on any miss, error or older method. */
+async function factsFromCdn(address: string): Promise<RwaFacts | null> {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  if (!host) return null;
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  try {
+    const res = await fetch(`${proto}://${host}/api/v1/rwa/facts/${address}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(CDN_FETCH_TIMEOUT_MS),
+      headers: { "user-agent": "vet402-rwa-page/1.0" },
+    });
+    if (!res.ok) return null;
+    const facts = (await res.json()) as RwaFacts;
+    return facts?.method_version === METHOD_VERSION && facts.address?.toLowerCase() === address.toLowerCase() ? facts : null;
+  } catch {
+    return null;
+  }
+}
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -76,7 +103,7 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
 
   let facts: RwaFacts;
   try {
-    facts = await cachedFacts(address);
+    facts = (await factsFromCdn(address)) ?? (await cachedFacts(address));
   } catch (err) {
     if (err instanceof NoStockTokenActivity) notFound();
     if (err instanceof TooBusy) return <Busy retryAfterSec={err.retryAfterSec} reason="busy" />;
@@ -92,6 +119,8 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
   const shown = getAddress(facts.address);
   const held = facts.tokens.filter((t) => BigInt(t.raw) > 0n);
   const unparsed = facts.events_summary.other_unparsed;
+  const movements = facts.events_summary.transfer + facts.events_summary.univ3 + facts.events_summary.univ4 + unparsed;
+  const anchoredHere = anchorRecord.facts.address.toLowerCase() === shown.toLowerCase();
   const replayOk = facts.tokens.every((t) => t.replayed_raw === t.raw);
 
   return (
@@ -107,7 +136,7 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
         {" · "}
         {!replayOk
           ? "the replay does not match the chain balance"
-          : `${unparsed} movement${unparsed === 1 ? "" : "s"} not decoded`}
+          : `${unparsed} of ${movements} movement${movements === 1 ? "" : "s"} not decoded`}
       </p>
       <p className="mt-3 text-sm">
         Rebuilt from public Robinhood Chain data, not from anything the wallet owner says: each canonical Stock
@@ -115,7 +144,6 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
         one exists. Canonical means the address in Robinhood&apos;s own list of {facts.scope.registry_tokens} Stock
         Tokens; a token with the same ticker at another address is not counted.
       </p>
-      <p className="mt-1 text-sm">identity_binding: {facts.identity_binding}</p>
 
       <h2 className="mt-8 text-lg font-semibold">Canonical balances</h2>
       <div className="mt-2 overflow-x-auto">
@@ -180,6 +208,20 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
         replayed events land on the balance the chain reports: {replayOk ? `yes (${facts.tokens.length}/${facts.tokens.length} tokens)` : "no — see balance_mismatch"}
       </p>
       <p className="mt-1 text-sm">as_of: {facts.as_of} (block {facts.as_of_block}) · method {facts.method_version}</p>
+      <p className="mt-1 text-sm">
+        This page is recomputed from the chain and is not an anchored snapshot.
+        {anchoredHere && (
+          <>
+            {" "}
+            The anchored snapshot of this wallet is the record at block {anchorRecord.facts.as_of_block} ({anchorRecord.facts.method_version}),
+            committed on Robinhood Chain in{" "}
+            <a className="underline" href={`${EXPLORER}/tx/${anchorRecord.anchor_tx}`} rel="noreferrer" target="_blank">
+              {anchorRecord.anchor_tx.slice(0, 10)}…
+            </a>
+            ; its hash is recomputed from that record, not from this page.
+          </>
+        )}
+      </p>
       {facts.gaps.length > 0 && <p className="mt-1 text-sm">gaps: {facts.gaps.join(", ")}</p>}
 
       <h2 className="mt-8 text-lg font-semibold">Evidence (transactions)</h2>
@@ -197,9 +239,9 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
           facts JSON
         </Link>
         {" · "}
-        <Link className="underline" href="/accuracy">
-          accuracy
-        </Link>
+        <a className="underline" href={README} rel="noreferrer" target="_blank">
+          how this is built, and how to check it
+        </a>
       </p>
 
       <p className="mt-8 text-sm">
