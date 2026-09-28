@@ -219,12 +219,62 @@ export default async function Home() {
       {/* max-sm:py-5 — 紙の天地の余白だけ 32px → 20px。.sheet 自体（全ページ共通）
           は触らず、この1枚にだけ当てている。 */}
       <article className="sheet max-sm:py-5">
+        {/* ================= First screen ================= */}
+        {/* 2026-09-28 監査: 最初の画面が RFC の書誌欄（Network Working Group …）から始まり、
+            初見の読者が「何ができるのか」「どこから触るのか」を得る前に画面を使っていた。
+            表題の直下に平易な 1 文、その下に売り手の検索（/sellers が受ける ?q=）と入口 2 つを
+            置き、書誌欄は入口の下へ下げた（要素は消していない。ETHOnline の導線もそこに残る）。
+            2026-08-23 の「平易な1文」はこの 1 文に置き換えた（同じことを言う 2 文を並べない）。 */}
+        <h1 className="doc-title mt-1 sm:mt-4">
+          vet402 — Independent Verification of the x402 Agent-Payment Economy
+        </h1>
+        <p className="mx-auto mt-2 max-w-[62ch] text-center text-brand max-sm:leading-[1.5] sm:mt-3">
+          See whether an x402 API actually delivers before your agent pays it. We buy it and
+          publish what happened.
+        </p>
+
+        <form method="get" action="/sellers" role="search" className="mx-auto mt-4 max-w-[60ch] sm:mt-6">
+          <label htmlFor="home-seller-q" className="doc-caption block">
+            Seller domain
+          </label>
+          <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:gap-3">
+            {/* text-base（16px）: iOS Safari が 16px 未満の欄で頁を拡大するのを避ける。 */}
+            <input
+              id="home-seller-q"
+              name="q"
+              type="search"
+              placeholder="api.example.com"
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              className="doc-input min-w-0 text-base sm:flex-1"
+            />
+            <button type="submit" className={buttonClass({ size: "md", className: "w-full max-sm:py-2.5 sm:w-auto" })}>
+              Check a seller
+            </button>
+          </div>
+          <p className="mt-3 text-center sm:text-left">
+            <TrackedLink
+              href="/signup"
+              event="lp_cta_click"
+              props={{ position: "hero_signup" }}
+              className={buttonClass({
+                variant: "secondary",
+                size: "md",
+                className: "w-full max-sm:py-2.5 sm:w-auto",
+              })}
+            >
+              Get a free API key
+            </TrackedLink>
+          </p>
+        </form>
+
         {/* ================= RFC first page ================= */}
         {/* 640px 未満ではヘッダの2列が縦に積まれて8行になる（.doc-head の
             media query）。line-height 1.7 のままだと、この1ブロックだけで
             198px — モバイルの fold の約1/4 を、まだ何も言っていない書誌情報が
             占めていた。行間と2列間の空きだけを詰める（文字サイズも行数も同じ）。 */}
-        <div className="doc-head max-sm:gap-2 max-sm:leading-[1.3]">
+        <div className="doc-head mt-8 max-sm:gap-2 max-sm:leading-[1.3] sm:mt-10">
           <div className="doc-head-col">
             {HEAD_LEFT.map((row) => (
               <span key={row.label}>
@@ -267,20 +317,8 @@ export default async function Home() {
           </div>
         </div>
 
-        <h1 className="doc-title mt-2 sm:mt-6">
-          vet402 — Independent Verification of the x402 Agent-Payment Economy
-        </h1>
-        <p className="mx-auto mt-1.5 max-w-[52ch] text-center text-brand-lift max-sm:leading-[1.5] sm:mt-3">
+        <p className="mx-auto mt-4 max-w-[52ch] text-center text-brand-lift max-sm:leading-[1.5] sm:mt-6">
           We buy. We settle. We publish the measurements.
-        </p>
-        {/* 2026-08-23 UX: タグラインは我々の**手順**を3語で言うが、初見の読者が
-            5秒で欲しいのは「これは何をしてくれるのか」。Abstract（§下）は正確な
-            代わりに専門語から入るので、その手前に平易な1文を置く。
-            RFC のトーンを壊さないよう、新しい枠も装飾も足さず、タグラインと同じ
-            中央寄せ・同じ弱いインクで続けるだけ。文は1つに留める。 */}
-        <p className="mx-auto mt-1.5 max-w-[62ch] text-center text-brand-lift max-sm:leading-[1.5] sm:mt-2">
-          Before an agent pays an x402 endpoint, vet402 checks whether that endpoint actually
-          delivers — by buying it.
         </p>
 
         <div className="rule-double mx-auto mt-2 w-full max-w-[34ch] sm:mt-4" />
@@ -335,7 +373,8 @@ export default async function Home() {
             href="/observatory"
             event="lp_cta_click"
             props={{ position: "hero_observatory" }}
-            className={buttonClass({ size: "md", className: "w-full max-sm:py-2.5 sm:w-auto" })}
+            // 2026-09-28: 最初の画面の主 CTA は「Check a seller」1 つ。ここは副の見た目に下げた。
+            className={buttonClass({ variant: "secondary", size: "md", className: "w-full max-sm:py-2.5 sm:w-auto" })}
           >
             Open the observatory
           </TrackedLink>

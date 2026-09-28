@@ -45,7 +45,9 @@ const fragmentMono = localFont({
   src: [{ path: "../fonts/fragment-400.woff2", weight: "400", style: "normal" }],
 });
 
-const SITE_TITLE = "vet402 — Independent Verification of the x402 Agent-Payment Economy";
+// 2026-09-28 SEO 監査: 67 字で検索結果の表題（60 字前後）から切れていた。意味を保って 56 字へ。
+// 頁の H1（src/app/page.tsx）と manifest の name は長い正式名のまま。
+const SITE_TITLE = "vet402 — Independent Verification of x402 Agent Payments";
 const SITE_DESCRIPTION =
   "vet402 buys what x402 endpoints actually sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence.";
 

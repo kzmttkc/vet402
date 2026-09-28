@@ -58,7 +58,7 @@ export const metadata: Metadata = pageMetadata({
   // layout の template "%s | vet402" が接尾辞を付ける。
   title: "payOrRefuse — ETHOnline 2026",
   description:
-    "The judge's page for vet402's ETHOnline 2026 submission: one command that runs the x402 payment gate without a key, the documents in reading order, the pre-existing-work disclosure, and the on-chain proof.",
+    "Judges' page for vet402's ETHOnline 2026 entry: one keyless command for the x402 payment gate, the documents in reading order, the disclosure, on-chain proof.",
   path: "/ethonline",
 });
 

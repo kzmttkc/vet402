@@ -2,6 +2,13 @@ export type BlogPost = {
   slug: string;
   title: string;
   description: string;
+  /**
+   * 検索結果に出す <title> と meta description（2026-09-28 SEO 監査）。表題 60 字・説明 160 字を
+   * 超える記事にだけ持たせる。記事の見出し（H1）と一覧の文は書いたままにする —— 公開済みの記事を
+   * 検索の都合で書き換えない。無ければ title / description をそのまま使う。
+   */
+  seoTitle?: string;
+  seoDescription?: string;
   publishedAt: string; // ISO date
   updatedAt: string; // ISO date
   /**
@@ -19,6 +26,9 @@ export const BLOG_POSTS: BlogPost[] = [
     title: "What is x402? The HTTP status code that waited 28 years for a job",
     description:
       "What is x402? It's the machine-payment protocol that finally gave HTTP 402 Payment Required something to do — letting an AI agent pay for an API call in a single request. Here's how it works, where it stands today, and the one thing it deliberately doesn't tell you.",
+    seoTitle: "What is x402? The HTTP code that waited 28 years",
+    seoDescription:
+      "x402 gives HTTP 402 Payment Required a job: an AI agent pays for an API call in a single request. How it works, where it stands, and what it doesn't tell you.",
     publishedAt: "2026-08-13",
     updatedAt: "2026-08-13",
     body: [
@@ -38,6 +48,8 @@ export const BLOG_POSTS: BlogPost[] = [
     title: "Why agent-to-agent payments need a trust score",
     description:
       "x402 lets an AI agent pay for an API call in one HTTP round trip, but it says nothing about whether the wallet on the other end is worth paying. Here's the gap vet402 fills, and how the score is built.",
+    seoDescription:
+      "x402 lets an AI agent pay for an API call in one HTTP round trip, but says nothing about whether the wallet on the other end is worth paying. What vet402 adds.",
     publishedAt: "2026-07-21",
     updatedAt: "2026-07-21",
     // 2026-08-13 rename: the note is the only rename-era addition. The body

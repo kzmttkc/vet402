@@ -22,8 +22,8 @@ export async function generateMetadata({
   if (!post) return {};
 
   return pageMetadata({
-    title: post.title,
-    description: post.description,
+    title: post.seoTitle ?? post.title,
+    description: post.seoDescription ?? post.description,
     path: `/blog/${post.slug}`,
     ogType: "article",
     publishedTime: post.publishedAt,

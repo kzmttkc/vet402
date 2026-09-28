@@ -23,15 +23,21 @@ import { buttonClass } from "@/components/ui/Button";
 import { Wordmark } from "@/components/site/Wordmark";
 import TrackedLink from "@/components/site/TrackedLink";
 
-type NavItem = { label: string; href: string };
+// wideOnly: 1024px 以上だけヘッダに出す（それ未満の md 幅では入り切らない。抽斗には常に出る）。
+type NavItem = { label: string; href: string; wideOnly?: boolean };
 
 // 5項目まで。ヘッダの内寸は紙面と同じ幅に揃えてあり（下の max-w）、7項目では
 // 収まらない。Accuracy / Leaderboard / Blog はフッタの索引に載っているので、上には
 // 「読む・測る・試す・繋ぐ」の主導線だけを置く。観測所は公開の実測であり、
 // スコア帳 Accuracy より先に辿り着ける必要がある。
+// 2026-09-28 監査: 売り手が自分の購入結果を探す入口 /sellers がナビに無く、トップの本文からしか
+// 辿れなかった。観測所の隣に置く。6 項目は 768px 幅で右端の「Get API key」が 46px はみ出した
+// （実測 scrollWidth 813）ので、Method（トップの節へのアンカー）は 1024px 以上だけに出し、
+// md 幅の間隔を 1 段詰める。
 const NAV_ITEMS: NavItem[] = [
-  { label: "Method", href: "/#methodology" },
+  { label: "Method", href: "/#methodology", wideOnly: true },
   { label: "Observatory", href: "/observatory" },
+  { label: "Sellers", href: "/sellers" },
   { label: "Verify", href: "/payee" },
   { label: "Docs", href: "/docs/api" },
   { label: "FAQ", href: "/faq" },
@@ -86,7 +92,7 @@ export function SiteHeader() {
 
           <nav
             aria-label="Main navigation"
-            className="hidden items-center gap-5 text-[0.8125rem] text-brand-lift md:flex"
+            className="hidden items-center gap-4 text-[0.8125rem] text-brand-lift md:flex lg:gap-5"
           >
             {/* 2026-09-02 敵対的監査 F8: header の主 CTA と nav に計測がなく、LP 側の
                 lp_cta_click{position} だけでは「どの入口が効いたか」の分母が欠けていた。
@@ -97,7 +103,7 @@ export function SiteHeader() {
                 href={item.href}
                 event="nav_click"
                 props={{ label: item.label }}
-                className="hover:text-brand-deep"
+                className={item.wideOnly ? "hidden hover:text-brand-deep lg:inline" : "hover:text-brand-deep"}
               >
                 {item.label}
               </TrackedLink>

@@ -116,6 +116,16 @@ test("robots は静的 sitemap と endpoint sitemap の両方を指す", () => {
   const sitemaps = Array.isArray(r.sitemap) ? r.sitemap : [r.sitemap];
   assert.ok(sitemaps.includes(`${SITE_URL}/sitemap.xml`));
   assert.ok(sitemaps.includes(`${SITE_URL}/sitemap-observatory.xml`));
+  assert.ok(sitemaps.includes(`${SITE_URL}/sitemap-sellers.xml`), "売り手頁の sitemap（2026-09-28）");
+});
+
+test("売り手の sitemap は /sellers の一覧と同じデータ源から、頁が受け付けるホストだけを出す（2026-09-28）", () => {
+  const route = readFileSync(join(ROOT, "src/app/sitemap-sellers.xml/route.ts"), "utf8");
+  assert.ok(route.includes("getSellerBoardCached"), "一覧と別の読みから出すと件数が食い違う");
+  assert.ok(route.includes("parseSellerHostParam"), "404 になるホストを載せない");
+  assert.ok(route.includes("x-vet402-truncated"), "上限で切れたことを黙らせない");
+  assert.ok(route.includes("status: 503"), "読めなかったときに空の urlset を 200 で返さない");
+  assert.ok(sitemap().some((e) => e.url === `${SITE_URL}/rwa`), "/rwa が静的 sitemap に無い");
 });
 
 test("endpoint sitemap は測定済みだけを、規格上限の内側で出す", () => {

@@ -549,7 +549,8 @@ const DETECTION_FLOOR: Record<string, number> = {
   // 2026-09-28 (review W1-W3): 45 -> 46. The rewrap of the census paragraph split "bought from at all" into its own text node ([all], covered by allow_phrase " at all").
   "src/app/observatory/methodology/page.tsx": 46,
   "src/app/observatory/page.tsx": 8,
-  "src/app/observatory/state/page.tsx": 14,
+  // 2026-09-28: 14 → 13。meta description を 160 字に詰めた際に "at all"（語 all を拾っていた）を落とした。主張は減っていない。
+  "src/app/observatory/state/page.tsx": 13,
   "src/app/operator-log/page.tsx": 7,
   // LP は床ちょうど（2026-09-20 実測 10・余白 0）。散文を触るときは、この床の更新差分を同じコミットに出す。
   "src/app/page.tsx": 10,

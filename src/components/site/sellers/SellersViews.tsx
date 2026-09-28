@@ -35,6 +35,20 @@ export function sellerPath(host: string): string {
   return `/sellers/${encodeURIComponent(host)}`;
 }
 
+/** 検索結果の表題が切られずに出る長さの目安（2026-09-28 SEO 監査の基準）。 */
+export const TITLE_MAX = 60;
+
+/**
+ * /sellers/[host] の <title>（2026-09-28 SEO 監査）。売り手が自分のドメインを検索するときの
+ * 言い方（"is X working"）に合わせる。" | vet402" を付けて TITLE_MAX を超えるなら付けない
+ * —— 検索結果で切られるのはホスト名の側ではなく接尾辞の側にする。
+ */
+export function sellerPageTitle(host: string): string {
+  const bare = `Is ${host} working? x402 purchase results on Base`;
+  const full = `${bare} | vet402`;
+  return full.length <= TITLE_MAX ? full : bare;
+}
+
 function FetchedAt({ at, revalidateSec }: { at: string; revalidateSec: number }) {
   return (
     <span>
@@ -100,7 +114,8 @@ function SearchForm({ q }: { q: string }) {
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <label className="block min-w-0 basis-full text-[0.8125rem] sm:basis-auto sm:flex-1">
           <span className="doc-caption block">Your domain</span>
-          <input name="q" type="search" defaultValue={q} placeholder="api.example.com" className="doc-input mt-1" />
+          {/* text-base（16px）: iOS Safari は 16px 未満の入力欄にフォーカスすると頁を拡大する（2026-09-28 監査）。 */}
+          <input name="q" type="search" defaultValue={q} placeholder="api.example.com" className="doc-input mt-1 text-base" />
         </label>
         <button type="submit" className={buttonClass({ size: "sm" })}>
           Find
@@ -110,7 +125,55 @@ function SearchForm({ q }: { q: string }) {
   );
 }
 
+/**
+ * 640px 未満の売り手一覧（2026-09-28 監査）。9 列の表は電話の幅で横スクロールになり、host と
+ * 数字が同じ画面に並ばなかった。行ごとにラベル付きの縦並びへ組み替える。数字は表と同じ props から出す。
+ */
+function SellersCards({ sellers, label }: { sellers: readonly SellerSummary[]; label: string }) {
+  const facts: { label: string; value: (s: SellerSummary) => string }[] = [
+    { label: "Listings", value: (s) => n(s.listings) },
+    { label: "Delivered", value: (s) => n(s.delivered) },
+    { label: "Seller's side", value: (s) => n(s.seller) },
+    { label: "vet402's side", value: (s) => n(s.vet402) },
+    { label: "Not sorted", value: (s) => n(s.unsorted) },
+    { label: "Awaiting verification", value: (s) => n(s.pending) },
+    { label: "Not yet bought", value: (s) => n(s.notBought) },
+    { label: "Latest purchase", value: (s) => fmtUtc(s.lastAttemptAt) },
+  ];
+  return (
+    <ul aria-label={label} className="mt-4 list-none border-t border-hair p-0 sm:hidden">
+      {sellers.map((s) => (
+        <li key={s.host} className="border-b border-hair py-3">
+          <Link href={sellerPath(s.host)} className="block font-semibold underline [overflow-wrap:anywhere]">
+            {s.host}
+          </Link>
+          <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 text-[0.8125rem]">
+            {facts.map((f) => (
+              <div key={f.label} className="contents">
+                <dt className="text-brand-lift">{f.label}</dt>
+                <dd className="m-0 text-right tabular-nums">{f.value(s)}</dd>
+              </div>
+            ))}
+          </dl>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function SellersTable({ sellers, label }: { sellers: readonly SellerSummary[]; label: string }) {
+  return (
+    <>
+      <SellersCards sellers={sellers} label={label} />
+      {/* デスクトップ（640px 以上）は表のまま。 */}
+      <div className="hidden sm:block">
+        <SellersTableWide sellers={sellers} label={label} />
+      </div>
+    </>
+  );
+}
+
+function SellersTableWide({ sellers, label }: { sellers: readonly SellerSummary[]; label: string }) {
   return (
     <TableScroll label={label}>
       <table className="fact-table">
@@ -454,7 +517,11 @@ export function SellerDetailView({
   return (
     <article className="sheet">
       <DocHead title="Seller: purchase results on Base" fetched={<FetchedAt at={detail.fetchedAt} revalidateSec={revalidateSec} />} />
-      <h1 className="doc-title mt-10 break-words [overflow-wrap:anywhere]">{detail.host}</h1>
+      {/* 2026-09-28 SEO 監査: 売り手が自分のドメインを検索するときの言い方（"is X working"）に合わせる。
+          ホスト名は長いので、その部分だけどこででも折り返せるようにする。 */}
+      <h1 className="doc-title mt-10 break-words">
+        Is <span className="[overflow-wrap:anywhere]">{detail.host}</span> working? What happened when we paid it
+      </h1>
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
       <p className="doc-p">
         {n(s.listings)} Base {s.listings === 1 ? "listing" : "listings"}. By the latest purchase of each: <CountsLine c={s} />.

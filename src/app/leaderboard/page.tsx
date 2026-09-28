@@ -14,7 +14,7 @@ import { SITE_URL } from "@/lib/site-url";
 export const metadata: Metadata = pageMetadata({
   title: "Register of recently verified subjects",
   description:
-    "The highest-scoring ERC-8004 agents and wallets vet402 has recently verified: identity, reputation, wallet history and x402 settlement record, summarized as one score.",
+    "The highest-scoring ERC-8004 agents and wallets vet402 recently verified: identity, reputation, wallet history and x402 settlement record, as one score.",
   path: "/leaderboard",
 });
 export const revalidate = 600;

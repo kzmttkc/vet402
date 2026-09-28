@@ -41,7 +41,7 @@ import { getStatusHistory } from "@/lib/health/snapshot";
 export const metadata: Metadata = pageMetadata({
   title: "Status",
   description:
-    "vet402's own uptime, measured the same way everything else on this site is: rows written by requests to /api/health — our own half-hourly check included — published as observed, with no assumed 100% on quiet days.",
+    "vet402's own uptime, measured like everything else here: rows written by requests to /api/health, published as observed, with no assumed 100% on quiet days.",
   path: "/status",
 });
 

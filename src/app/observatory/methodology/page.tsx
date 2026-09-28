@@ -50,7 +50,7 @@ const MAX_PER_PURCHASE_USD = Number(MAX_PER_PURCHASE_UNITS) / 1_000_000;
 export const metadata: Metadata = pageMetadata({
   title: "Observatory methodology",
   description:
-    "Definitions behind the x402 Observatory: L0 liveness probes, L1 real-money settle-through purchases, L2 structural conformance checks, and how delisting is detected.",
+    "Definitions behind the x402 Observatory: L0 liveness probes, L1 real-money settle-through purchases, L2 conformance checks, and how delisting is detected.",
   path: "/observatory/methodology",
 });
 
@@ -82,7 +82,7 @@ export default async function ObservatoryMethodologyPage() {
     "@type": "TechArticle",
     headline: "Observatory methodology",
     description:
-      "Definitions behind the x402 Observatory: L0 liveness probes, L1 real-money settle-through purchases, L2 structural conformance checks, and how delisting is detected.",
+      "Definitions behind the x402 Observatory: L0 liveness probes, L1 real-money settle-through purchases, L2 conformance checks, and how delisting is detected.",
     url: `${SITE_URL}/observatory/methodology`,
     dateModified: "2026-09-04",
     author: { "@type": "Organization", name: "vet402", url: SITE_URL },

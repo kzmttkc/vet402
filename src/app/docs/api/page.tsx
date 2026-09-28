@@ -20,7 +20,7 @@ import { buildMonth } from "@/lib/build-month";
 export const metadata: Metadata = pageMetadata({
   title: "API reference",
   description:
-    "REST v1 reference for vet402: score a payee before paying it, register a verified payee, read the public accuracy ledger. Includes a key-less curl quickstart, rate limits, webhooks and error codes.",
+    "REST v1 reference for vet402: score a payee before paying it, register a verified payee, read the accuracy ledger. Key-less curl quickstart, limits, webhooks.",
   path: "/docs/api",
 });
 
@@ -462,33 +462,12 @@ export default async function ApiDocsPage() {
         </div>
 
         <div className="space-y-3">
+        {/* 2026-09-28 監査: Base URL が break-all で「https://vet」「402.com」と語の途中で
+            折れていた。URL は 1 つの要素のまま折り返さない（375px 幅でも 1 行に収まる長さ）。 */}
         <p className="text-brand">
           Authenticate with <code className="text-brand-deep">Authorization: Bearer</code>{" "}
           API key. Base URL:{" "}
-          <code className="break-all text-brand-deep">{`${SITE_URL}/api/v1`}</code>
-        </p>
-        {/* 2026-08-12 FIX-4: 発行されるキーの形が docs のどこにも書いておらず、
-            LP の MCP 例だけが `vk_...` という実在しない接頭辞を載せていた
-            （実物は src/lib/db/api-keys.ts の `vouch_live_<48hex>`）。
-            例を直すだけでなく、正しい形をここに1行置いて典拠にする。 */}
-        <p className="text-sm text-brand">
-          Keys look like{" "}
-          <code className="text-brand-deep">vouch_live_…</code> — send them
-          as{" "}
-          <code className="text-brand-deep">
-            Authorization: Bearer vouch_live_…
-          </code>
-          .
-        </p>
-        {/* 2026-08-13 監査是正 #3: 散文の旧名（Vouch）は vet402 へ統一したが、
-            発行済みのキー接頭辞と webhook のヘッダ名は動いている連携を壊すので
-            据え置いた。docs で名前が2つ出てくる理由をここで1行明示する。
-            これが無いと「ドキュメントが古い」ようにしか読めない。 */}
-        <p className="text-sm text-brand-lift">
-          API keys and webhook headers retain the{" "}
-          <code className="text-brand-deep">vouch_</code> /{" "}
-          <code className="text-brand-deep">Vouch-</code> prefixes for backward
-          compatibility.
+          <code className="whitespace-nowrap text-brand-deep">{`${SITE_URL}/api/v1`}</code>
         </p>
         <p className="text-sm text-brand-lift">
           Full machine-readable schema:{" "}
@@ -603,6 +582,31 @@ export default async function ApiDocsPage() {
               Get a key
             </Link>{" "}
             &mdash; the free tier is 1,000 lookups a month.
+          </p>
+          {/* 2026-08-12 FIX-4: 発行されるキーの形が docs のどこにも書いておらず、
+              LP の MCP 例だけが `vk_...` という実在しない接頭辞を載せていた
+              （実物は src/lib/db/api-keys.ts の `vouch_live_<48hex>`）。
+              例を直すだけでなく、正しい形をここに1行置いて典拠にする。
+              2026-09-28 監査: 頁の冒頭（最初の画面）に旧名が出ていたので、鍵を初めて使う
+              この例の直後へ移した。事実は変えていない。 */}
+          <p className="mt-1 text-sm text-brand">
+            Keys look like{" "}
+            <code className="text-brand-deep">vouch_live_…</code> — send them
+            as{" "}
+            <code className="text-brand-deep">
+              Authorization: Bearer vouch_live_…
+            </code>
+            .
+          </p>
+          {/* 2026-08-13 監査是正 #3: 散文の旧名（Vouch）は vet402 へ統一したが、
+              発行済みのキー接頭辞と webhook のヘッダ名は動いている連携を壊すので
+              据え置いた。docs で名前が2つ出てくる理由をここで1行明示する。
+              これが無いと「ドキュメントが古い」ようにしか読めない。 */}
+          <p className="mt-1 text-sm text-brand-lift">
+            API keys and webhook headers retain the{" "}
+            <code className="text-brand-deep">vouch_</code> /{" "}
+            <code className="text-brand-deep">Vouch-</code> prefixes for backward
+            compatibility.
           </p>
         </div>
 

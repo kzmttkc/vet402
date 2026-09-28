@@ -11,7 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { FixFirstView, SellerDetailView, SellersIndexView } from "@/components/site/sellers/SellersViews";
+import { FixFirstView, SellerDetailView, SellersIndexView, sellerPageTitle, TITLE_MAX } from "@/components/site/sellers/SellersViews";
 import { buildSellerBoard, buildSellerDetail, markRebuyEligible, searchSellers, type LatestRow } from "@/lib/sellers/board";
 import type { SellerRowFacts } from "@/lib/sellers/fix-modes";
 
@@ -74,7 +74,7 @@ test("SellerDetailView: 取得時刻・vet402 の側・買い直し・tx・expor
   const html = renderToStaticMarkup(createElement(SellerDetailView, { detail: d, page: 1, now: Date.parse("2026-09-28T13:00:00Z"), revalidateSec: 300 }));
   assert.match(html, /Read from the database 2026-09-28 13:04 UTC/);
   assert.match(html, /reused for up to 5 min/);
-  assert.match(html, /<h1[^>]*>shop\.example<\/h1>/);
+  assert.match(html, /<h1[^>]*>Is <span[^>]*>shop\.example<\/span> working\? What happened when we paid it<\/h1>/);
   assert.match(html, /vet402&#x27;s side/);
   assert.match(html, /vet402&#x27;s wallet was out of USDC/);
   assert.match(html, /vet402 did not send the declared request body/);
@@ -213,4 +213,19 @@ test("SellerDetailView: 照合待ちの行は失敗と書かず、時刻も書�
   const ff = renderToStaticMarkup(createElement(FixFirstView, { board, revalidateSec: 300 }));
   assert.match(ff, /\(0 of 1 bought\)/);
   assert.match(ff, /1 more are awaiting on-chain verification and are not counted here/);
+});
+
+test("売り手頁の <title> は検索の言い方で、60 字を超えるなら接尾辞を落とす（2026-09-28）", () => {
+  assert.equal(sellerPageTitle("a.io"), "Is a.io working? x402 purchase results on Base | vet402");
+  assert.ok(sellerPageTitle("a.io").length <= TITLE_MAX);
+  assert.equal(sellerPageTitle("api.example.com"), "Is api.example.com working? x402 purchase results on Base");
+});
+
+test("売り手一覧は 640px 未満でラベル付きのカードになり、表は 640px 以上だけ（2026-09-28）", () => {
+  const board = buildSellerBoard([{ host: "shop.example", listings: 3 }], [], FETCHED);
+  const html = renderToStaticMarkup(createElement(SellersIndexView, { board, page: 1, q: "", search: null, revalidateSec: 300 }));
+  assert.match(html, /<ul[^>]*class="[^"]*sm:hidden/);
+  assert.match(html, /<dt[^>]*>Seller&#x27;s side<\/dt>/);
+  assert.match(html, /<div class="hidden sm:block">/);
+  assert.match(html, /<input[^>]*class="[^"]*text-base[^"]*"[^>]*name="q"/, "iOS の自動拡大を避ける 16px");
 });

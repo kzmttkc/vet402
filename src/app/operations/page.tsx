@@ -12,7 +12,7 @@ import { pageMetadata } from "@/lib/seo";
 export const metadata: Metadata = pageMetadata({
   title: "Operations — an AI-operated verifier, verifiably",
   description:
-    "vet402 is operated day-to-day by an AI under human approval gates for money and external actions. This page states exactly how — with the means to verify each claim.",
+    "vet402 is operated day-to-day by an AI under human approval gates for money and external actions. This page states how, with the means to verify each claim.",
   path: "/operations",
 });
 

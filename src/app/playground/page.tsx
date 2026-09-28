@@ -21,7 +21,7 @@ import PlaygroundClient, { type PlaygroundCandidate } from "./playground-client"
 export const metadata: Metadata = pageMetadata({
   title: "Playground — watch a live verification",
   description:
-    "Pick a listed x402 endpoint and watch vet402 probe its payment wall live: the 402 challenge, the catalog cross-check, and the real-purchase receipt trail behind it.",
+    "Pick a listed x402 endpoint and watch vet402 probe its payment wall live: the 402 challenge, the catalog cross-check, and the purchase receipts behind it.",
   path: "/playground",
 });
 

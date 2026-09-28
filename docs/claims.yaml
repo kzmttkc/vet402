@@ -496,7 +496,8 @@ claims:
     verified_at: 2026-09-05
   - id: impact_and_a_hash_chained_ledger
     surface: src/app/impact/page.tsx
-    quote: "and a hash-chained ledger — every figure links to the API that produces it."
+    # 2026-09-28: メタ説明を 160 字に収めた際に文言を詰めた（意味は同じ）。
+    quote: "a hash-chained ledger; every figure links to its API."
     means: "各数字が、それを出す API へ 1 対 1 でリンクしている（メタ説明）"
     check: null
     why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"

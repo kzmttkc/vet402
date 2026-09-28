@@ -28,7 +28,7 @@ import { safeJsonLd } from "@/lib/util/json-ld";
 export const metadata: Metadata = pageMetadata({
   title: "Operator override log",
   description:
-    "Every global override vet402's operator has applied to a score — the address, the stated reason, and when. Customer-scoped lists are private and never appear here. Empty until the first one.",
+    "Every global override vet402's operator has applied to a score — the address, the stated reason, and when. Customer-scoped lists never appear here.",
   path: "/operator-log",
 });
 

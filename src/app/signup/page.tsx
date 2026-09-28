@@ -289,6 +289,8 @@ export default function SignupPage() {
             2026-08-13 vet402: 紺の階調へ移して brand-lift (#55688c・白地 5.61:1)。
             brand-mist (#8f9cb2) は 2.78:1 なので枠線には使えない。
             tests/contrast-tokens.test.ts が入力欄の弱い枠線を静的に禁じている。 */}
+        {/* 2026-09-28 監査: 入力欄は text-base（16px）。iOS Safari は 16px 未満の欄にフォーカスすると
+            頁を拡大し、送信ボタンが画面の外へ出る。 */}
         <label className="block space-y-2 text-sm">
           <span className="doc-caption block">Email</span>
           {/* autoComplete (WCAG 1.3.5 Identify Input Purpose) — lets the browser
@@ -297,7 +299,7 @@ export default function SignupPage() {
             type="email"
             name="email"
             autoComplete="email"
-            className="doc-input"
+            className="doc-input text-base"
             required
             onInvalid={handleInvalid}
           />
@@ -308,7 +310,7 @@ export default function SignupPage() {
           <input
             name="name"
             autoComplete="name"
-            className="doc-input"
+            className="doc-input text-base"
           />
         </label>
 
@@ -319,7 +321,7 @@ export default function SignupPage() {
               name="inviteCode"
               value={inviteCode}
               onChange={(e) => setInviteCode(e.target.value)}
-              className="doc-input"
+              className="doc-input text-base"
               required
               onInvalid={handleInvalid}
             />

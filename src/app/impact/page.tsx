@@ -23,7 +23,7 @@ import { TableScroll } from "@/components/site/TableScroll";
 export const metadata: Metadata = pageMetadata({
   title: "Impact — a public good, in numbers you can check",
   description:
-    "What vet402 gives the x402 agent economy for free: coverage of listed endpoints, real purchases published with evidence, refusals and losses alike, and a hash-chained ledger — every figure links to the API that produces it.",
+    "What vet402 gives the x402 economy for free: endpoint coverage, real purchases with evidence, and a hash-chained ledger; every figure links to its API.",
   path: "/impact",
 });
 

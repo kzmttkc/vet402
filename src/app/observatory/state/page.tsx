@@ -28,7 +28,7 @@ import { MPP_DIRECTORY_SOURCE } from "@/lib/observatory/mpp-payer";
 export const metadata: Metadata = pageMetadata({
   title: "State of x402",
   description:
-    "Headline measurements over the full public x402 catalog: how many endpoints answer a valid 402 challenge, how many were delisted, and how much of the catalog is machine-verifiable at all.",
+    "Headline numbers over the full public x402 catalog: how many endpoints answer a valid 402 challenge, how many were delisted, how much is machine-verifiable.",
   path: "/observatory/state",
 });
 

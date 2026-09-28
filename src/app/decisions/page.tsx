@@ -16,7 +16,7 @@ import { explorerTxUrl } from "@/lib/observatory/chains";
 export const metadata: Metadata = pageMetadata({
   title: "Decisions — pay or refuse, with real money",
   description:
-    "Every decision the daily verifier actually made with its own funds: refusals before signing (overcharging walls, unpayable walls) and outcomes after paying — settled receipts and losses alike.",
+    "Every decision the daily verifier actually made with its own funds: refusals before signing and outcomes after paying, settled receipts and losses alike.",
   path: "/decisions",
 });
 

@@ -42,7 +42,9 @@ export default function robots(): MetadataRoute.Robots {
     // 測定済み endpoint 頁（/sitemap-observatory.xml — カタログに現在も掲載され、
     // 公開判定が pass で、直近 7 日に実測がある分だけ）。sitemap index を
     // 名乗らず robots に 2 行書くのは、実装も検証も単純で対応が広いから。
-    sitemap: [`${SITE_URL}/sitemap.xml`, `${SITE_URL}/sitemap-observatory.xml`],
+    // 2026-09-28: 3 本目。売り手の個別頁（/sitemap-sellers.xml — /sellers の一覧と同じ
+    // データ源の全ホスト、lastmod は各売り手の最新の購入）。
+    sitemap: [`${SITE_URL}/sitemap.xml`, `${SITE_URL}/sitemap-observatory.xml`, `${SITE_URL}/sitemap-sellers.xml`],
     host: SITE_URL,
   };
 }

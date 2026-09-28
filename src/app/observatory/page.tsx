@@ -39,7 +39,7 @@ import { L1Ratio, VerdictShareBar, VerdictWord } from "@/components/site/Figures
 export const metadata: Metadata = pageMetadata({
   title: "x402 Observatory",
   description:
-    "Daily measurements over the public x402 catalog: does each endpoint's payment wall answer a valid 402 challenge, and is it still listed. Facts with timestamps, no scores.",
+    "Daily measurements over the public x402 catalog: does each endpoint's payment wall answer a valid 402 challenge, and is it still listed. Facts, no scores.",
   path: "/observatory",
 });
 
