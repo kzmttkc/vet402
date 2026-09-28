@@ -4199,6 +4199,8 @@ components:
             - feed_unavailable
             - no_stock_token_activity
             - too_busy
+            - facilitator_unavailable
+            - too_slow_retry
             - invalid_request
             - subscribe_unavailable
             - db_unavailable
