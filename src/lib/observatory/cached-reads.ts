@@ -29,6 +29,7 @@
 // 時刻を主張しない HTML 頁だけに閉じる（tests/public-page-cache.test.ts が固定）。
 // ============================================================
 import { unstable_cache } from "next/cache";
+import { PUBLIC_READ_REVALIDATE } from "./public-read-revalidate";
 import {
   getCoverageShare,
   getObservatoryStats,
@@ -40,16 +41,8 @@ import {
   type UnverifiedBreakdown,
 } from "@/lib/observatory/reader";
 
-/**
- * 秒。**1 つの値しか置かない。**
- *
- * 面ごとに 300 / 600 / 3600 と刻みたくなるが、それをやると
- * 「方法論頁の 5 つの内訳の合計は /api/v1/observatory/state の
- * publishedUnverified と一致する」という頁自身の主張が、cron 直後の
- * 最大 1 時間だけ崩れる。頁と API の食い違いを 5 分に閉じ、
- * その 5 分をここに書いておく方が、鮮度を刻んで得られる速度より価値がある。
- */
-export const PUBLIC_READ_REVALIDATE = 300;
+/** 窓の値と理由は public-read-revalidate.ts（/sellers が reader.ts の依存を読まずに同じ値を使うため・2026-09-28）。 */
+export { PUBLIC_READ_REVALIDATE };
 
 export const getObservatoryStatsCached: () => Promise<ObservatoryStats> = unstable_cache(
   () => getObservatoryStats(),
