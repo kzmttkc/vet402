@@ -6,6 +6,30 @@ and the Chainlink feed for each token. It does not trade, hold funds, issue a
 token, or give advice. Specification: [SPEC.md](SPEC.md). Rules for this code:
 [CLAUDE.md](CLAUDE.md).
 
+## 30 seconds
+
+1. Open a real record: <https://vet402.com/rwa/0xE9B08727131E34010b34006c660D4c1B436EC25f>
+   (a public wallet on Robinhood Chain; it is marked `partial` because 12 of its
+   movements are not decoded, and the page says so). Any other wallet:
+   <https://vet402.com/rwa>.
+2. One real round trip, priced by hand to the cent: [Fixture B](../../fixtures/rwa/B.md),
+   realized **−$9.62**. CI replays it through the FIFO engine.
+3. The anchor: `RwaAnchor`
+   [`0x1955137e7773f2459eb75fb88842026c6517c22d`](https://robinhoodchain.blockscout.com/address/0x1955137e7773f2459eb75fb88842026c6517c22d)
+   on Robinhood Chain, source verified on Blockscout (exact match). No owner, no
+   upgrade path.
+4. Recompute the anchored hash from the published JSON yourself:
+
+   ```bash
+   git clone https://github.com/kzmttkc/vet402 && cd vet402 && npm ci
+   npx tsx packages/rwa/scripts/anchor.ts --verify 0x9b776d6a4670768e3e85261fcf3a5fc02012668e3323fee7211b07d8deca72d7 --mainnet
+   # prints "match": true
+   ```
+
+   The script hashes the record kept in [`fixtures/rwa/anchor.json`](../../fixtures/rwa/anchor.json)
+   (the wallet in step 1, as published at block 74267752) and compares it with
+   the `Anchored` event it reads from the chain.
+
 ## What this Buildathon added, and what it did not
 
 - **Added (first code commit 2026-09-17):** everything under `packages/rwa`,
