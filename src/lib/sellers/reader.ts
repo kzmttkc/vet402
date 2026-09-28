@@ -32,6 +32,19 @@ function rowsOf(raw: unknown): Record<string, unknown>[] {
 const HOST_SQL = sellerHostSql(sql`e.resource_key`);
 const [BASE_A, BASE_B] = BASE_NETWORKS;
 
+/**
+ * 共有の判定（request-body.ts の bodyNotSentOnOurSide・request-query.ts の queryNotSentOnOurSide）が読む
+ * 部分だけを DB で間引いて返す。スキーマは body がオブジェクトか（中身は捨てる）と queryParams.required、
+ * メタは requestBody の有無と requestQuery の値。売り手の書いたスキーマ全体をキャッシュに載せない。
+ */
+const SCHEMA_MIN = sql.raw(`CASE WHEN jsonb_typeof(e.declared_schema) = 'object' THEN jsonb_build_object('properties', jsonb_build_object('input', jsonb_build_object('properties', jsonb_strip_nulls(jsonb_build_object(
+    'body', CASE WHEN jsonb_typeof(e.declared_schema #> '{properties,input,properties,body}') = 'object' THEN '{}'::jsonb END,
+    'queryParams', CASE WHEN jsonb_typeof(e.declared_schema #> '{properties,input,properties,queryParams}') = 'object'
+                        THEN jsonb_strip_nulls(jsonb_build_object('required', e.declared_schema #> '{properties,input,properties,queryParams,required}')) END))))) END`);
+const META_MIN = sql.raw(`CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN jsonb_strip_nulls(jsonb_build_object(
+    'requestBody', CASE WHEN pu.raw_response_meta ? 'requestBody' THEN 'true'::jsonb END,
+    'requestQuery', pu.raw_response_meta->'requestQuery')) END`);
+
 /** 列の共通部分: 分類に要る事実だけ（本文・応答の中身は読まない）。 */
 const ROW_COLUMNS = sql`
   pu.endpoint_id::text AS endpoint_id,
@@ -41,10 +54,8 @@ const ROW_COLUMNS = sql`
   to_char(pu.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS attempted_at,
   pu.network,
   e.method,
-  (jsonb_typeof(e.declared_schema #> '{properties,input,properties,body}') = 'object') AS declares_body,
-  coalesce(jsonb_typeof(pu.raw_response_meta) = 'object' AND pu.raw_response_meta ? 'requestBody', false) AS body_recorded,
-  (jsonb_typeof(e.declared_schema #> '{properties,input,properties,queryParams}') = 'object') AS declares_query,
-  coalesce(jsonb_typeof(pu.raw_response_meta) = 'object' AND pu.raw_response_meta ? 'requestQuery', false) AS query_recorded,
+  ${SCHEMA_MIN} AS schema_min,
+  ${META_MIN} AS meta_min,
   CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' AND (pu.raw_response_meta->>'status') ~ '^[0-9]{3}$'
        THEN (pu.raw_response_meta->>'status')::int END AS unpaid_status,
   CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN pu.raw_response_meta->>'selection' END AS selection`;
@@ -60,6 +71,19 @@ function toInt(v: unknown): number | null {
   return Number.isInteger(n) ? n : null;
 }
 
+function asRecord(v: unknown): Record<string, unknown> | null {
+  const x = typeof v === "string" ? safeJson(v) : v;
+  return typeof x === "object" && x !== null && !Array.isArray(x) ? (x as Record<string, unknown>) : null;
+}
+
+function safeJson(v: string): unknown {
+  try {
+    return JSON.parse(v);
+  } catch {
+    return null;
+  }
+}
+
 function str(v: unknown): string | null {
   return typeof v === "string" && v !== "" ? v : null;
 }
@@ -73,10 +97,8 @@ export function toRowFacts(r: Record<string, unknown>): SellerRowFacts {
     attemptedAt: String(r.attempted_at),
     network: str(r.network),
     method: str(r.method),
-    declaresBody: r.declares_body === true || r.declares_body === "t",
-    bodyRecorded: r.body_recorded === true || r.body_recorded === "t",
-    declaresQuery: r.declares_query === true || r.declares_query === "t",
-    queryRecorded: r.query_recorded === true || r.query_recorded === "t",
+    meta: asRecord(r.meta_min),
+    schema: asRecord(r.schema_min),
     unpaidStatus: toInt(r.unpaid_status),
     selection: str(r.selection),
   };

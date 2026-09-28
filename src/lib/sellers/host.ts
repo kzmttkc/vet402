@@ -43,5 +43,5 @@ export function parseSellerHostParam(raw: string): string | null {
   return s;
 }
 
-/** Base の出品（カタログの代表 network が Base）。census の対象と同じ（e.network）。 */
-export const BASE_NETWORKS = ["eip155:8453", "base"] as const;
+/** Base の出品（カタログの代表 network が Base）。census の対象と同じ（e.network）。表記の正典は request-query.ts。 */
+export { BASE_NETWORKS } from "@/lib/observatory/request-query";

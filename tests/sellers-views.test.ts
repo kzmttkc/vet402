@@ -18,7 +18,24 @@ import type { SellerRowFacts } from "@/lib/sellers/fix-modes";
 const TX = `0x${"cd".repeat(32)}`;
 const FETCHED = "2026-09-28T13:04:05.000Z";
 
-function r(p: Partial<SellerRowFacts>): SellerRowFacts {
+/** テストの書きやすさのための旗 → 共有の判定が読む meta / schema。declaresQuery は「必須のクエリがある」。 */
+type Flags = { declaresBody?: boolean; bodyRecorded?: boolean; declaresQuery?: boolean; optionalQueryOnly?: boolean; queryRecorded?: boolean };
+function withFlags(p: Partial<SellerRowFacts> & Flags): Partial<SellerRowFacts> {
+  const { declaresBody, bodyRecorded, declaresQuery, optionalQueryOnly, queryRecorded, ...rest } = p;
+  const props: Record<string, unknown> = {};
+  if (declaresBody) props.body = {};
+  if (declaresQuery) props.queryParams = { required: ["q"] };
+  else if (optionalQueryOnly) props.queryParams = {};
+  const meta: Record<string, unknown> = {};
+  if (bodyRecorded) meta.requestBody = true;
+  if (queryRecorded) meta.requestQuery = "declared";
+  return {
+    schema: Object.keys(props).length ? { properties: { input: { properties: props } } } : null,
+    meta: Object.keys(meta).length ? meta : null,
+    ...rest,
+  };
+}
+function r(p: Partial<SellerRowFacts> & Flags): SellerRowFacts {
   return {
     endpointId: "e1",
     status: "settle_failed",
@@ -27,13 +44,11 @@ function r(p: Partial<SellerRowFacts>): SellerRowFacts {
     attemptedAt: "2026-09-20T12:00:00Z",
     network: "eip155:8453",
     method: "GET",
-    declaresBody: false,
-    bodyRecorded: false,
-    declaresQuery: false,
-    queryRecorded: false,
+    meta: null,
+    schema: null,
     unpaidStatus: null,
     selection: null,
-    ...p,
+    ...withFlags(p),
   };
 }
 

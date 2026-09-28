@@ -57,17 +57,6 @@ import { assertSqlExpr, declaredInputProperty, refusedUnsettled, refusedUnsettle
  */
 export const BASE_DECLARED_QUERY_SINCE = "2026-09-27T23:27:16Z";
 
-/**
- * Base の有料の要求に、売り手の 402 が宣言したクエリ（queryParams）を足し始めた時刻（本番・オーナー承認済み）。
- * それまで Base は許可リスト（OBSERVATORY_L1_DECLARED_QUERY_NETWORKS）に入っておらず、本番の台帳で Base の
- * 行に requestQuery の記録は 0 件（2026-09-28 実測）。この時刻より前の Base の要求は、宣言クエリを載せていない。
- *
- * 仮置き（2026-09-28・/sellers）: retest の (c)（ブランチ census-query-0928）が同じ名前・同じ場所で定義する。
- * そちらが main に入ったら rebase で一本化する。/sellers（src/lib/sellers/fix-modes.ts の query_not_sent）は
- * ここから import する。
- */
-export const BASE_DECLARED_QUERY_SINCE = "2026-09-27T23:27:16Z";
-
 /** raw_response_meta.requestQuery の語彙＝公開 export の request_query の値。 */
 export const REQUEST_QUERY_KINDS = ["declared", "empty", "refused"] as const;
 export type RequestQueryKind = (typeof REQUEST_QUERY_KINDS)[number];

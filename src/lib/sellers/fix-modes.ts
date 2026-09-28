@@ -23,8 +23,14 @@
 // 公開面の文言を持つので tests/claims-registry.test.ts の走査対象（publicSurfaces）に入っている。
 // ============================================================
 import { heldReasonOf, isDelivered, type HeldReason } from "@/lib/observatory/delivery";
-import { DECLARED_BODY_SENT_SINCE } from "@/lib/observatory/request-body";
-import { BASE_DECLARED_QUERY_SINCE } from "@/lib/observatory/request-query";
+import {
+  bodyNotSentOnOurSide,
+  DECLARED_BODY_SENT_SINCE,
+  declaresRequestBody,
+  NOT_SENT_REFUSAL_HTTP,
+  type NotSentRowInput,
+} from "@/lib/observatory/request-body";
+import { BASE_DECLARED_QUERY_SINCE, queryNotSentOnOurSide } from "@/lib/observatory/request-query";
 
 export type FixSide = "seller" | "vet402" | "unsorted";
 export type FixEffort = 1 | 2 | 3;
@@ -216,7 +222,7 @@ export const FIX_MODES: readonly FixMode[] = [
   {
     key: "query_not_sent",
     title: "vet402 did not send the declared query",
-    what: "Before 2026-09-27 23:27 UTC, vet402 did not add the query parameters a listing declares to paid requests on Base. The seller refused the request with 400 or 422.",
+    what: "Before 2026-09-27 23:27 UTC, vet402 did not add the query parameters a listing declares to paid requests on Base, including the ones it marks as required. The seller refused the request with 400 or 422.",
     fix: NOTHING_FOR_SELLER,
     side: "vet402",
     effort: 1,
@@ -273,14 +279,16 @@ export interface SellerRowFacts {
   network: string | null;
   /** エンドポイントの宣言メソッド（x402_endpoints.method）。 */
   method: string | null;
-  /** 今のカタログのそのエンドポイントが本文を宣言している（declared_schema の properties.input.properties.body）。 */
-  declaresBody: boolean;
-  /** raw_response_meta に requestBody の記録がある（2026-09-17 以降の有料の要求）。 */
-  bodyRecorded: boolean;
-  /** 今のカタログのそのエンドポイントがクエリを宣言している（declared_schema の properties.input.properties.queryParams）。 */
-  declaresQuery: boolean;
-  /** raw_response_meta に requestQuery の記録がある（宣言クエリの規則が効いた有料の要求）。 */
-  queryRecorded: boolean;
+  /**
+   * 行の raw_response_meta のうち、共有の判定（request-body.ts / request-query.ts）が読むキーだけ
+   * （requestBody の有無・requestQuery の値）。読み取り側（reader.ts）が DB で間引く。記録が無ければ null。
+   */
+  meta: Record<string, unknown> | null;
+  /**
+   * 出品の今のカタログのスキーマ（x402_endpoints.declared_schema）のうち、共有の判定が読む部分だけ
+   * （properties.input.properties の body と queryParams.required）。無ければ null。
+   */
+  schema: unknown;
   /** raw_response_meta.status（支払い前の応答の HTTP。no_402 の行で読む）。 */
   unpaidStatus: number | null;
   /** raw_response_meta.selection（census / retest / null）。 */
@@ -306,37 +314,39 @@ function inRange(code: number | null, lo: number, hi: number): code is number {
   return typeof code === "number" && code >= lo && code <= hi;
 }
 
-const BASE_NETWORK_SET: ReadonlySet<string> = new Set(["eip155:8453", "base"]);
-
-/** 有料の要求を出し、入力で断られた行（決済の有無は問わない・tx の無い settle_failed か settled）。 */
-function refusedInputAfterPaying(r: SellerRowFacts): boolean {
-  const paid = r.status === "settled" || (r.status === "settle_failed" && (r.txHash === null || r.txHash === ""));
-  return paid && (r.httpStatusPaid === 400 || r.httpStatusPaid === 422);
+/** 共有の判定（request-body.ts / request-query.ts）へ渡す形。 */
+export function notSentInput(r: SellerRowFacts): NotSentRowInput {
+  return {
+    status: r.status,
+    txHash: r.txHash === "" ? null : r.txHash,
+    httpStatusPaid: r.httpStatusPaid,
+    attemptedAt: r.attemptedAt,
+    rawResponseMeta: r.meta,
+    network: r.network,
+    method: r.method,
+    declaredSchema: r.schema,
+  };
 }
 
 /**
- * 宣言本文を送る前の POST の 400/422（出品が本文を宣言・行に本文の記録なし）。retest の (b) の条件に、
- * 決済済みの行を足したもの（(b) は tx の無い settle_failed だけを買い直す）。
+ * 決済済みの 400/422 を、共有の判定（決済されなかった行だけを見る retest の条件）に掛けるための見方。
+ * /sellers の方針（2026-09-28 独立レビュー）: こちらが宣言の本文・クエリを送っていなかった行は、決済されていても
+ * vet402 の側。決済の有無以外（時刻・400/422・POST・記録・宣言）は共有の判定そのものを使う。
  */
-export function isBodyNotSent(r: SellerRowFacts): boolean {
-  return (
-    refusedInputAfterPaying(r) &&
-    Date.parse(r.attemptedAt) < Date.parse(DECLARED_BODY_SENT_SINCE) &&
-    (r.method ?? "").toUpperCase() === "POST" &&
-    !r.bodyRecorded &&
-    r.declaresBody
-  );
+function asIfUnsettled(r: SellerRowFacts): NotSentRowInput {
+  const input = notSentInput(r);
+  const refusal = typeof r.httpStatusPaid === "number" && (NOT_SENT_REFUSAL_HTTP as readonly number[]).includes(r.httpStatusPaid);
+  return r.status === "settled" && refusal ? { ...input, status: "settle_failed", txHash: null } : input;
 }
 
-/** Base で宣言クエリを送る前の 400/422（出品がクエリを宣言・行にクエリの記録なし）。本文と同じ扱い。 */
+/** 宣言本文を送る前の POST の 400/422（共有の bodyNotSentOnOurSide・決済済みの行を含む）。 */
+export function isBodyNotSent(r: SellerRowFacts): boolean {
+  return bodyNotSentOnOurSide(asIfUnsettled(r));
+}
+
+/** Base で必須の宣言クエリを送る前の 400/422（共有の queryNotSentOnOurSide・決済済みの行を含む）。 */
 export function isQueryNotSent(r: SellerRowFacts): boolean {
-  return (
-    refusedInputAfterPaying(r) &&
-    BASE_NETWORK_SET.has(r.network ?? "") &&
-    Date.parse(r.attemptedAt) < Date.parse(BASE_DECLARED_QUERY_SINCE) &&
-    !r.queryRecorded &&
-    r.declaresQuery
-  );
+  return queryNotSentOnOurSide(asIfUnsettled(r));
 }
 
 /** 支払い前の応答（no_402）の HTTP から。 */
@@ -401,7 +411,8 @@ function modeKeyOf(r: SellerRowFacts, held: HeldReason | null): string {
  */
 export function rowNote(r: SellerRowFacts, modeKey: string | null): string | null {
   if (modeKey !== "settled_then_rejected" && modeKey !== "input_rejected") return null;
-  if ((r.method ?? "").toUpperCase() !== "POST" || r.bodyRecorded) return null;
+  if ((r.method ?? "").toUpperCase() !== "POST" || (r.meta !== null && "requestBody" in r.meta)) return null;
+  if (declaresRequestBody(r.schema)) return null;
   if (!(Date.parse(r.attemptedAt) < Date.parse(DECLARED_BODY_SENT_SINCE))) return null;
   return "This purchase is from before 2026-09-16 23:25 UTC, when vet402 sent an empty JSON body on paid POST requests; this listing declares no body.";
 }

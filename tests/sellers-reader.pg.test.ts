@@ -75,7 +75,9 @@ if (!TEST_DB) {
     // 売り手 B
     const b1 = await mk("b.example/x");
     // 売り手 C: クエリを宣言した Base の GET が、Base で宣言クエリを送る前に 400（こちらの側）
-    const c1 = await mk("c.example/q", { declaredSchema: { properties: { input: { properties: { queryParams: { type: "object" } } } } } });
+    const c1 = await mk("c.example/q", { declaredSchema: { properties: { input: { properties: { queryParams: { type: "object", required: ["q"] } } } } } });
+    // 売り手 D: 任意のクエリだけの宣言（required なし）→ こちらの落ち度にしない（seller の側）
+    const d1 = await mk("d.example/q", { declaredSchema: { properties: { input: { properties: { queryParams: { type: "object", properties: { q: { type: "string" } } } } } } } });
 
     // a1: 本文を送る前の POST 422（vet402 の側）→ その後、本文を送って届いた（最新）
     await buy(a1, { status: "settle_failed", http: 422, at: "2026-09-10T00:00:00Z", meta: { phase: "paid" } });
@@ -92,10 +94,12 @@ if (!TEST_DB) {
     await buy(b1, { status: "settle_failed", http: 400, at: "2026-09-10T00:00:00Z" });
 
     await buy(c1, { status: "settle_failed", http: 400, at: "2026-09-25T00:00:00Z", meta: { phase: "paid", requestBody: "none" } });
+    await buy(d1, { status: "settle_failed", http: 400, at: "2026-09-25T00:00:00Z", meta: { phase: "paid", requestBody: "none" } });
     const before = await db.execute(sql`SELECT count(*)::int AS n FROM x402_l1_purchases`);
     const board = await readSellerBoard(db);
     const hosts = board.sellers.map((s) => s.host).sort();
-    assert.deepEqual(hosts, ["b.example", "c.example", "shop.example"], "ports and case fold into one seller");
+    assert.deepEqual(hosts, ["b.example", "c.example", "d.example", "shop.example"], "ports and case fold into one seller");
+    assert.equal(board.sellers.find((s) => s.host === "d.example")?.seller, 1, "optional query only: not our fault");
     assert.equal(board.sellers.find((s) => s.host === "c.example")?.vet402, 1, "query declared, not yet sent on Base");
     const shop = board.sellers.find((s) => s.host === "shop.example")!;
     assert.equal(shop.listings, 4, "non-Base and delisted listings are left out");
@@ -117,10 +121,10 @@ if (!TEST_DB) {
     assert.equal(d.listings.length, 4);
     const la1 = d.listings.find((l) => l.endpointId === a1)!;
     assert.equal(la1.latest?.bucket, "delivered");
-    assert.equal(la1.latest?.facts.bodyRecorded, true);
+    assert.equal(la1.latest?.facts.meta?.requestBody, true, "the record of a body is kept (value reduced to presence)");
     assert.equal(la1.latest?.facts.selection, "retest");
     assert.equal(la1.earlier[0].mode?.key, "body_not_sent", "declared body + POST + no record + before the cutover");
-    assert.equal(la1.earlier[0].facts.declaresBody, true);
+    assert.deepEqual(la1.earlier[0].facts.schema, { properties: { input: { properties: { body: {} } } } }, "only what the shared judge reads");
     assert.equal(la1.deliveredAfterFailure, true);
     const la2 = d.listings.find((l) => l.endpointId === a2)!;
     assert.equal(la2.latest?.mode?.key, "payer_unfunded");

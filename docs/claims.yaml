@@ -1853,10 +1853,10 @@ claims:
     verified_at: 2026-09-28
   - id: sellers_query_not_sent_before_cutover
     surface: src/lib/sellers/fix-modes.ts
-    quote: "Before 2026-09-27 23:27 UTC, vet402 did not add the query parameters a listing declares to paid requests on Base"
-    means: "Base の有料の要求で、出品が queryParams を宣言しているのにクエリを足していなかった期間の 400/422（決済の有無を問わず・requestQuery の記録なし）は vet402 の側（query_not_sent）"
+    quote: "Before 2026-09-27 23:27 UTC, vet402 did not add the query parameters a listing declares to paid requests on Base, including the ones it marks as required"
+    means: "Base の有料の要求で、出品が必須のクエリ（queryParams.required が空でない）を宣言しているのにクエリを足していなかった期間の 400/422（requestQuery の記録が無いか empty）は vet402 の側（query_not_sent）。決済済みの行も同じ条件でこちらの側。任意のクエリだけの出品はこちらの落ち度にしない"
     check: null
-    why_unverifiable: "時刻は request-query.ts の BASE_DECLARED_QUERY_SINCE（retest の (c) と同じ名前・同じ場所）。条件は fix-modes.ts の isQueryNotSent で、tests/sellers-fix-modes.test.ts が境界の両側を固定する"
+    why_unverifiable: "時刻と条件は src/lib/observatory/request-query.ts の BASE_DECLARED_QUERY_SINCE と queryNotSentOnOurSide（retest の (c) と共有）。/sellers は fix-modes.ts の isQueryNotSent でそれを呼ぶだけで、tests/sellers-fix-modes.test.ts が共有の判定と行ごとに同じ答えを出すことを固定する"
     verified_at: 2026-09-28
   - id: sellers_pays_declared_price
     surface: src/lib/sellers/fix-modes.ts

@@ -28,7 +28,24 @@ import { censusHostOf } from "@/lib/observatory/l1-runner";
 import { heldReasonOf } from "@/lib/observatory/delivery";
 
 let seq = 0;
-function row(p: Partial<SellerRowFacts>): SellerRowFacts {
+/** テストの書きやすさのための旗 → 共有の判定が読む meta / schema。declaresQuery は「必須のクエリがある」。 */
+type Flags = { declaresBody?: boolean; bodyRecorded?: boolean; declaresQuery?: boolean; optionalQueryOnly?: boolean; queryRecorded?: boolean };
+function withFlags(p: Partial<SellerRowFacts> & Flags): Partial<SellerRowFacts> {
+  const { declaresBody, bodyRecorded, declaresQuery, optionalQueryOnly, queryRecorded, ...rest } = p;
+  const props: Record<string, unknown> = {};
+  if (declaresBody) props.body = {};
+  if (declaresQuery) props.queryParams = { required: ["q"] };
+  else if (optionalQueryOnly) props.queryParams = {};
+  const meta: Record<string, unknown> = {};
+  if (bodyRecorded) meta.requestBody = true;
+  if (queryRecorded) meta.requestQuery = "declared";
+  return {
+    schema: Object.keys(props).length ? { properties: { input: { properties: props } } } : null,
+    meta: Object.keys(meta).length ? meta : null,
+    ...rest,
+  };
+}
+function row(p: Partial<SellerRowFacts> & Flags): SellerRowFacts {
   seq++;
   return {
     endpointId: p.endpointId ?? `ep-${seq}`,
@@ -38,13 +55,11 @@ function row(p: Partial<SellerRowFacts>): SellerRowFacts {
     attemptedAt: "2026-09-20T12:00:00Z",
     network: "eip155:8453",
     method: "GET",
-    declaresBody: false,
-    bodyRecorded: false,
-    declaresQuery: false,
-    queryRecorded: false,
+    meta: null,
+    schema: null,
     unpaidStatus: null,
     selection: null,
-    ...p,
+    ...withFlags(p),
   };
 }
 const TX = `0x${"ab".repeat(32)}`;
@@ -141,6 +156,18 @@ const KNOWN: [string, SellerRowFacts, string | null, string][] = [
     "seller",
   ],
   [
+    "Base の GET 400・任意のクエリだけ（required が空）はこちらの落ち度にしない（共有の判定）",
+    row({ status: "settle_failed", httpStatusPaid: 400, optionalQueryOnly: true, attemptedAt: "2026-09-20T00:00:00Z" }),
+    "input_rejected",
+    "seller",
+  ],
+  [
+    "Base の GET 400・必須のクエリ・記録が empty（送っていない）は vet402 の側（共有の判定）",
+    row({ status: "settle_failed", httpStatusPaid: 400, declaresQuery: true, meta: { requestQuery: "empty" }, attemptedAt: "2026-09-21T00:00:00Z" }),
+    "query_not_sent",
+    "vet402",
+  ],
+  [
     "Base の GET 401・クエリを宣言（400/422 だけが対象）",
     row({ status: "settle_failed", httpStatusPaid: 401, declaresQuery: true, attemptedAt: "2026-09-20T00:00:00Z" }),
     "auth",
@@ -206,8 +233,8 @@ test("body_not_sent の境界: 時刻・POST・記録なし・宣言あり・400
   assert.equal(isBodyNotSent(base), true);
   assert.equal(isBodyNotSent({ ...base, attemptedAt: DECLARED_BODY_SENT_SINCE }), false, "境界の時刻は含まない");
   assert.equal(isBodyNotSent({ ...base, method: "GET" }), false);
-  assert.equal(isBodyNotSent({ ...base, bodyRecorded: true }), false);
-  assert.equal(isBodyNotSent({ ...base, declaresBody: false }), false);
+  assert.equal(isBodyNotSent({ ...base, meta: { requestBody: "empty" } }), false);
+  assert.equal(isBodyNotSent({ ...base, schema: null }), false);
   assert.equal(isBodyNotSent({ ...base, txHash: TX }), false);
   assert.equal(isBodyNotSent({ ...base, httpStatusPaid: 401 }), false);
   // retest の (b) は tx の無い settle_failed だけを買い直すが、/sellers は決済済みの行もこちらの側に置く
@@ -367,7 +394,7 @@ test("決済してから入力を断った行: 文面が「決済してから断
   assert.match(rowNote(before, "settled_then_rejected") ?? "", /when vet402 sent an empty JSON body on paid POST requests; this listing declares no body/);
   assert.match(rowNote({ ...before, status: "settle_failed", txHash: null }, "input_rejected") ?? "", /empty JSON body/);
   assert.equal(rowNote({ ...before, attemptedAt: DECLARED_BODY_SENT_SINCE }, "settled_then_rejected"), null, "after the cutover");
-  assert.equal(rowNote({ ...before, bodyRecorded: true }, "settled_then_rejected"), null, "a body was recorded");
+  assert.equal(rowNote({ ...before, meta: { requestBody: "empty" } }, "settled_then_rejected"), null, "a body was recorded");
   assert.equal(rowNote({ ...before, method: "GET" }, "settled_then_rejected"), null, "GET sends no body");
   assert.equal(rowNote(before, "server_error_paid"), null);
 });
@@ -412,4 +439,20 @@ test("文面: 本文とクエリの送り始めを分けて書き、「宣言ど
   assert.match(fixMode("input_rejected").what, /Since 2026-09-16 23:25 UTC vet402 sends the request body/);
   assert.match(fixMode("input_rejected").what, /since 2026-09-27 23:27 UTC it adds the query parameters the listing declares on Base/);
   assert.match(fixMode("query_not_sent").what, /Before 2026-09-27 23:27 UTC/);
+});
+
+test("/sellers の本文・クエリの判定は共有の判定（request-body.ts / request-query.ts）そのもの", async () => {
+  const { bodyNotSentOnOurSide } = await import("@/lib/observatory/request-body");
+  const { queryNotSentOnOurSide } = await import("@/lib/observatory/request-query");
+  const { notSentInput } = await import("@/lib/sellers/fix-modes");
+  // 決済されなかった行では、/sellers の判定と共有の判定が行ごとに同じ答えを出す
+  for (const [label, r] of KNOWN) {
+    if (r.status === "settled") continue;
+    assert.equal(isBodyNotSent(r), bodyNotSentOnOurSide(notSentInput(r)), `${label}: body`);
+    assert.equal(classifyRow(r).mode?.key === "query_not_sent", queryNotSentOnOurSide(notSentInput(r)), `${label}: query`);
+  }
+  // fix-modes.ts は境目の時刻や 400/422 を自分で持たない
+  const src = readFileSync(join(process.cwd(), "src/lib/sellers/fix-modes.ts"), "utf8");
+  assert.doesNotMatch(src, /2026-09-16T23:25:55Z|2026-09-27T23:27:16Z/);
+  assert.doesNotMatch(src, /=== 400 \|\| r\.httpStatusPaid === 422|\[400, 422\]/);
 });
