@@ -41,6 +41,7 @@
 // 「ランナーがこの 2 つのキー名で書いている」を固定する。
 // ============================================================
 import type { RequestQuerySource } from "./declared-input";
+import { assertSqlExpr, declaredInputProperty, refusedUnsettled, refusedUnsettledSql, type NotSentRowInput } from "./request-body";
 
 /**
  * Base で、売り手が 402 で宣言したクエリ（input.queryParams）を支払い付き要求に足し始めた時刻（2026-09-28 実測）。
@@ -120,5 +121,68 @@ export function requestQuerySha256Sql(alias = ""): string {
     ` AND jsonb_typeof(${p}raw_response_meta->'requestQuerySha256') = 'string'` +
     ` AND ${p}raw_response_meta->>'requestQuerySha256' ~ '^[0-9a-f]{64}$'` +
     ` THEN ${p}raw_response_meta->>'requestQuerySha256' END`
+  );
+}
+
+// ============================================================
+// 「こちらがクエリを送っていなかった」失敗の判定（2026-09-28・retest の (c) と /sellers の query_not_sent が共有）。
+// JS の述語と SQL の断片は組（tests/request-not-sent.pg.test.ts が一致を固定する）。
+// ============================================================
+
+/** Base の network の表記（CAIP-2 と v1 の slug）。 */
+export const BASE_NETWORKS = ["eip155:8453", "base"] as const;
+
+/**
+ * 今のカタログの出品が**必須の**クエリを宣言している: スキーマの properties.input.properties.queryParams.required が
+ * 空でない配列（2026-09-28 レビュー）。queryParams が空・properties だけで必須が無い出品は入れない——クエリが任意なら、
+ * 送らなかったことが 400 の原因とは言えない。
+ */
+export function declaresRequiredQuery(declaredSchema: unknown): boolean {
+  const qp = declaredInputProperty(declaredSchema, "queryParams");
+  if (typeof qp !== "object" || qp === null || Array.isArray(qp)) return false;
+  const required = (qp as Record<string, unknown>).required;
+  return Array.isArray(required) && required.length > 0;
+}
+
+/** declaresRequiredQuery と同じ規則の SQL（引数はスキーマの列の式・例 `e.declared_schema`）。 */
+export function declaresRequiredQuerySql(schemaExpr: string): string {
+  const x = assertSqlExpr("declaresRequiredQuerySql", schemaExpr);
+  const req = `${x} #> '{properties,input,properties,queryParams,required}'`;
+  // CASE で型を先に見る（jsonb_array_length は配列以外で落ちる。AND は評価順を保証しない）。
+  return `(CASE WHEN jsonb_typeof(${x} #> '{properties,input,properties,queryParams}') = 'object' AND jsonb_typeof(${req}) = 'array' THEN jsonb_array_length(${req}) > 0 ELSE false END)`;
+}
+
+function epochMs(v: string | Date | null): number | null {
+  if (v === null || v === undefined) return null;
+  const t = v instanceof Date ? v.getTime() : new Date(v).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+/**
+ * こちらがクエリを送っていなかったための失敗（retest の (c)・/sellers の query_not_sent）:
+ * Base の行・400/422 で未決済・BASE_DECLARED_QUERY_SINCE より前・行の requestQuery が無いか empty・
+ * 今の出品が必須のクエリを宣言している。メソッドは問わない（クエリは GET にも POST にも足す）。
+ * XRPL は 2026-09-21 から送っていたので入らない。
+ */
+export function queryNotSentOnOurSide(row: NotSentRowInput): boolean {
+  if (!refusedUnsettled(row)) return false;
+  if (!(BASE_NETWORKS as readonly string[]).includes(row.network ?? "")) return false;
+  const at = epochMs(row.attemptedAt);
+  if (at === null || at >= Date.parse(BASE_DECLARED_QUERY_SINCE)) return false;
+  const meta = row.rawResponseMeta;
+  const kind = typeof meta === "object" && meta !== null && !Array.isArray(meta) ? (meta as Record<string, unknown>).requestQuery : undefined;
+  if (!(kind === undefined || kind === null || kind === "empty")) return false;
+  return declaresRequiredQuery(row.declaredSchema);
+}
+
+/** queryNotSentOnOurSide と同じ規則の SQL。`row` は購入行の別名、`schema` は出品のスキーマの列の式。 */
+export function queryNotSentOnOurSideSql(cols: { row: string; schema: string }): string {
+  const a = assertSqlExpr("queryNotSentOnOurSideSql", cols.row);
+  return (
+    `(${refusedUnsettledSql(a)}` +
+    ` AND ${a}.network IN (${BASE_NETWORKS.map((n) => `'${n}'`).join(", ")})` +
+    ` AND ${a}.attempted_at < '${BASE_DECLARED_QUERY_SINCE}'::timestamptz` +
+    ` AND coalesce(${a}.raw_response_meta->>'requestQuery', 'empty') = 'empty'` +
+    ` AND ${declaresRequiredQuerySql(cols.schema)})`
   );
 }

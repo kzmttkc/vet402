@@ -74,8 +74,8 @@ import { l1TierWhere } from "./coverage";
 import { heldReasonSql } from "./delivery";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
 import { declaredRequestBody, declaredRequestUrl, type RequestBodySource, type RequestQuerySource } from "./declared-input";
-import { requestBodyRecord } from "./request-body";
-import { BASE_DECLARED_QUERY_SINCE } from "./request-query";
+import { bodyNotSentOnOurSideSql, requestBodyRecord } from "./request-body";
+import { queryNotSentOnOurSideSql } from "./request-query";
 import { createPayerFunds, defaultPayerUsdcBalance, type PayerChain, type PayerFunds, type PayerUsdcBalanceReader } from "./payer-funds";
 import { createHash } from "node:crypto";
 // Tempo の MPP 方言（2026-09-17・mpp-payer.ts）。x402 ではなく WWW-Authenticate: Payment の壁。
@@ -549,16 +549,8 @@ export function censusHostOf(host: string): string {
 /** census 系の候補の出どころ（raw_response_meta.selection の値）。 */
 export type CensusSelection = "census" | "retest";
 
-/**
- * 宣言された本文を送る実装（02fc857「POST the input body the seller's 402 declares」）が本番に出た時刻。
- *
- * 実測（2026-09-28）: GitHub の deployments で、02fc857 を含む最初の Production は 2b4a4ee0
- * （created_at / success 2026-09-16T23:25:55Z）。その直前の Production 09cd25de（23:05:58Z）は 02fc857 を
- * 含まない。台帳でも、POST の支払い付き行で raw_response_meta.requestBody を持たない最後の行は
- * 2026-09-16T18:02:09Z、持つ最初の行は 2026-09-17T00:01:01Z で、その間に POST の支払い付き行は 0。
- * この時刻より前の POST は、売り手が本文を宣言していても `{}` を送っていた。
- */
-export const DECLARED_BODY_SENT_SINCE = "2026-09-16T23:25:55Z";
+/** 宣言本文を送り始めた時刻（正典は request-body.ts・既存の呼び手のための再公開）。 */
+export { DECLARED_BODY_SENT_SINCE } from "./request-body";
 
 /**
  * 公平な買い直し（retest・2026-09-28）の対象の売り手（ポートを除いたホスト名）。その売り手の**最新の**
@@ -575,8 +567,8 @@ export const DECLARED_BODY_SENT_SINCE = "2026-09-16T23:25:55Z";
  *
  *  (c) Base（eip155:8453 / base）の支払い付き要求が HTTP 400 または 422 で決済されず（settle_failed・tx なし）、
  *      Base で宣言クエリを送り始めた時刻（request-query.ts BASE_DECLARED_QUERY_SINCE）より前で、行に requestQuery の
- *      記録が無い（または empty）、かつ今のカタログのそのエンドポイントが queryParams を宣言している
- *      （declared_schema の properties.input.properties.queryParams がある・2026-09-28）。XRPL は 2026-09-21 から
+ *      記録が無い（または empty）、かつ今のカタログのそのエンドポイントが**必須の**クエリを宣言している
+ *      （declared_schema の properties.input.properties.queryParams.required が空でない・2026-09-28）。XRPL は 2026-09-21 から
  *      送っていたので (c) に入らない。メソッドは問わない（クエリは GET にも POST にも足す）。
  *
  * 返すのは売り手ごとに host・reason（"unfunded" | "body" | "query"）・その最新の行の endpoint_id。(b)(c) では失敗した
@@ -587,16 +579,9 @@ export const DECLARED_BODY_SENT_SINCE = "2026-09-16T23:25:55Z";
  * プランナーが行数を 49 と見誤り、ネストループの中でホストの正規表現を「ホスト数 × 出品数」回計算していた
  * （本番の EXPLAIN で 5,041 ms・census は 172 ms）。
  */
-const RETEST_BODY_COND = sql`(lr.status = 'settle_failed' AND lr.tx_hash IS NULL AND lr.http_status_paid IN (400, 422)
-         AND lr.attempted_at < ${DECLARED_BODY_SENT_SINCE}::timestamptz
-         AND upper(coalesce(lr.method, '')) = 'POST'
-         AND NOT coalesce(lr.raw_response_meta ? 'requestBody', false)
-         AND jsonb_typeof(lr.declared_schema #> '{properties,input,properties,body}') = 'object')`;
-const RETEST_QUERY_COND = sql`(lr.status = 'settle_failed' AND lr.tx_hash IS NULL AND lr.http_status_paid IN (400, 422)
-         AND lr.network IN (${BASE_CAIP2}, 'base')
-         AND lr.attempted_at < ${BASE_DECLARED_QUERY_SINCE}::timestamptz
-         AND coalesce(lr.raw_response_meta->>'requestQuery', 'empty') = 'empty'
-         AND jsonb_typeof(lr.declared_schema #> '{properties,input,properties,queryParams}') = 'object')`;
+// (b)(c) の判定は request-body.ts / request-query.ts が正典（/sellers と共有・JS の述語と SQL の断片の組）。
+const RETEST_BODY_COND = sql.raw(bodyNotSentOnOurSideSql({ row: "lr", method: "lr.method", schema: "lr.declared_schema" }));
+const RETEST_QUERY_COND = sql.raw(queryNotSentOnOurSideSql({ row: "lr", schema: "lr.declared_schema" }));
 export const RETEST_SELLERS_SQL = sql`
   SELECT lr.host,
          CASE WHEN lr.held = 'payer_unfunded' THEN 'unfunded' WHEN ${RETEST_BODY_COND} THEN 'body' ELSE 'query' END AS reason,

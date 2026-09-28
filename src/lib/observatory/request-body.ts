@@ -104,3 +104,121 @@ export function requestBodySha256Sql(alias = ""): string {
     ` THEN ${p}raw_response_meta->>'requestBodySha256' END`
   );
 }
+
+// ============================================================
+// 「こちらが本文を送っていなかった」失敗の判定（2026-09-28・retest の (b) と /sellers の body_not_sent が共有）。
+//
+// 判定はここ 1 か所に置く。JS の述語と SQL の断片は組で、tests/request-not-sent.pg.test.ts が同じ行の集合に
+// 両方を当てて一致を固定する。SQL の断片は delivery.ts と同じく文字列で返す（drizzle でも生 SQL でも使える）。
+// 別名・式は呼び手のコードが決める識別子だけを受け付ける（利用者入力は通らない）。
+// ============================================================
+
+/**
+ * 宣言された本文を送る実装（02fc857「POST the input body the seller's 402 declares」）が本番に出た時刻。
+ *
+ * 実測（2026-09-28）: GitHub の deployments で、02fc857 を含む最初の Production は 2b4a4ee0
+ * （created_at / success 2026-09-16T23:25:55Z）。その直前の Production 09cd25de（23:05:58Z）は 02fc857 を
+ * 含まない。台帳でも、POST の支払い付き行で raw_response_meta.requestBody を持たない最後の行は
+ * 2026-09-16T18:02:09Z、持つ最初の行は 2026-09-17T00:01:01Z で、その間に POST の支払い付き行は 0。
+ * この時刻より前の POST は、売り手が本文を宣言していても `{}` を送っていた。
+ */
+export const DECLARED_BODY_SENT_SINCE = "2026-09-16T23:25:55Z";
+
+/**
+ * 「送るべきものを送らなかった」失敗として数える、支払い付き要求への応答の HTTP ステータス。400 と 422
+ * （`{}` を検証で 422 にする実装が多い・2026-09-28 レビュー）。401・403 は認可の話なので入れない。
+ */
+export const NOT_SENT_REFUSAL_HTTP = [400, 422] as const;
+
+/** 判定に使う 1 行（x402_l1_purchases の行と、その出品の今のカタログの宣言）。 */
+export type NotSentRowInput = {
+  status: string | null;
+  txHash: string | null;
+  httpStatusPaid: number | null;
+  /** Date、ISO8601、または Postgres の timestamptz::text。読めなければ判定しない（false）。 */
+  attemptedAt: string | Date | null;
+  rawResponseMeta: unknown;
+  /** 行の network（CAIP-2 か v1 の slug）。 */
+  network: string | null;
+  /** 出品の宣言メソッド（x402_endpoints.method）。 */
+  method: string | null;
+  /** 出品の今のカタログのスキーマ（x402_endpoints.declared_schema）。 */
+  declaredSchema: unknown;
+};
+
+const EXPR_RE = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/;
+/** SQL 断片に埋める列の式（`alias.column` か `column`）。それ以外は投げる。 */
+export function assertSqlExpr(fn: string, expr: string): string {
+  if (!EXPR_RE.test(expr)) throw new Error(`${fn}: expected a column reference like alias.column, got ${JSON.stringify(expr)}`);
+  return expr;
+}
+
+function rec(v: unknown): Record<string, unknown> | null {
+  return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
+/** スキーマの properties.input.properties の下の 1 つ（無ければ undefined）。 */
+export function declaredInputProperty(declaredSchema: unknown, name: string): unknown {
+  return rec(rec(rec(rec(declaredSchema)?.properties)?.input)?.properties)?.[name];
+}
+
+function epochMs(v: string | Date | null): number | null {
+  if (v === null || v === undefined) return null;
+  const t = v instanceof Date ? v.getTime() : new Date(v).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+/** 支払い付き要求が HTTP 400 / 422 で断られ、決済されなかった（settle_failed・tx なし）。 */
+export function refusedUnsettled(row: Pick<NotSentRowInput, "status" | "txHash" | "httpStatusPaid">): boolean {
+  return (
+    row.status === "settle_failed" &&
+    (row.txHash === null || row.txHash === undefined) &&
+    typeof row.httpStatusPaid === "number" &&
+    (NOT_SENT_REFUSAL_HTTP as readonly number[]).includes(row.httpStatusPaid)
+  );
+}
+
+/** refusedUnsettled と同じ規則の SQL（別名は行の表）。 */
+export function refusedUnsettledSql(rowAlias: string): string {
+  const a = assertSqlExpr("refusedUnsettledSql", rowAlias);
+  return `(${a}.status = 'settle_failed' AND ${a}.tx_hash IS NULL AND ${a}.http_status_paid IN (${NOT_SENT_REFUSAL_HTTP.join(", ")}))`;
+}
+
+/** 今のカタログの出品が本文を宣言している（スキーマの properties.input.properties.body がオブジェクト）。 */
+export function declaresRequestBody(declaredSchema: unknown): boolean {
+  return rec(declaredInputProperty(declaredSchema, "body")) !== null;
+}
+
+/** declaresRequestBody と同じ規則の SQL（引数はスキーマの列の式・例 `e.declared_schema`）。 */
+export function declaresRequestBodySql(schemaExpr: string): string {
+  const x = assertSqlExpr("declaresRequestBodySql", schemaExpr);
+  return `(jsonb_typeof(${x} #> '{properties,input,properties,body}') = 'object')`;
+}
+
+/**
+ * こちらが本文を送っていなかったための失敗（retest の (b)・/sellers の body_not_sent）:
+ * POST・400/422 で未決済・DECLARED_BODY_SENT_SINCE より前・行に requestBody の記録が無い（`{}` を送った）・
+ * 今の出品が本文を宣言している。
+ */
+export function bodyNotSentOnOurSide(row: NotSentRowInput): boolean {
+  if (!refusedUnsettled(row)) return false;
+  const at = epochMs(row.attemptedAt);
+  if (at === null || at >= Date.parse(DECLARED_BODY_SENT_SINCE)) return false;
+  if ((row.method ?? "").toUpperCase() !== "POST") return false;
+  const meta = rec(row.rawResponseMeta);
+  if (meta !== null && "requestBody" in meta) return false;
+  return declaresRequestBody(row.declaredSchema);
+}
+
+/** bodyNotSentOnOurSide と同じ規則の SQL。`row` は購入行の別名、`method`・`schema` は出品の列の式。 */
+export function bodyNotSentOnOurSideSql(cols: { row: string; method: string; schema: string }): string {
+  const a = assertSqlExpr("bodyNotSentOnOurSideSql", cols.row);
+  const m = assertSqlExpr("bodyNotSentOnOurSideSql", cols.method);
+  return (
+    `(${refusedUnsettledSql(a)}` +
+    ` AND ${a}.attempted_at < '${DECLARED_BODY_SENT_SINCE}'::timestamptz` +
+    ` AND upper(coalesce(${m}, '')) = 'POST'` +
+    ` AND NOT coalesce(${a}.raw_response_meta ? 'requestBody', false)` +
+    ` AND ${declaresRequestBodySql(cols.schema)})`
+  );
+}

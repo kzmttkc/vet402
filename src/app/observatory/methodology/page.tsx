@@ -548,7 +548,8 @@ export default async function ObservatoryMethodologyPage() {
           sending the request body the seller declares, while the seller&apos;s current listing
           does declare one; or, on Base, a paid request was refused the same way during the period
           before we began adding the query parameters the seller declares there (2026-09-27), while
-          the current listing declares them. Such a refusal from a listing that declares neither is
+          the current listing declares required query parameters. Such a refusal from a listing
+          that declares no body, or no required query parameter, is
           not treated as ours, and neither is a settled row or any failure the seller&apos;s own
           answer explains. When the failure was the missing body or query, we buy that same
           listing again, as long as it can still be

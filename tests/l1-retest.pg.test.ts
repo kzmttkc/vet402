@@ -90,8 +90,11 @@ if (!TEST_DB) {
       demand: "high" | "low";
       method: "GET" | "POST";
       declaresBody: boolean;
-      /** 掲載が queryParams を宣言しているか（(c)・2026-09-28）。 */
-      declaresQuery?: boolean;
+      /**
+       * 掲載の queryParams の宣言（(c)・2026-09-28）。true / "required" = 必須あり、"optional" = properties だけ、
+       * "emptyRequired" = required が空配列、"empty" = queryParams が空のオブジェクト。
+       */
+      declaresQuery?: boolean | "required" | "optional" | "emptyRequired" | "empty";
       /** カタログの先頭の network（既定 Base）。 */
       primary?: string;
       /** この出品の過去の L1 行（古い順）。 */
@@ -156,6 +159,10 @@ if (!TEST_DB) {
     add("https://qd.example/get", "1200", { declaresQuery: true, past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE, network: "xrpl:0" }] });
     // 宣言クエリを送った行（declared）→ 選ばない。
     add("https://qe.example/get", "1200", { declaresQuery: true, past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE, requestQuery: "declared" }] });
+    // 必須の無いクエリ（properties だけ・required が空・queryParams が空）→ 送らなかったことが原因とは言えない。選ばない。
+    add("https://qg.example/get", "1200", { declaresQuery: "optional", past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE }] });
+    add("https://qh.example/get", "1200", { declaresQuery: "emptyRequired", past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE }] });
+    add("https://qi.example/get", "1200", { declaresQuery: "empty", past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE }] });
     // 宣言の無い 400 → 選ばない。
     add("https://rc.example/post", "1500", { method: "POST", declaresBody: false, past: [{ status: "settle_failed", http: 400, at: BEFORE_BODY }] });
     // 実装後の 400（宣言本文を送った）→ 選ばない。
@@ -220,6 +227,15 @@ if (!TEST_DB) {
 
     const idOf = async (url: string) => String(rowsOf(await db.execute(sql`SELECT id FROM x402_endpoints WHERE resource_url = ${url}`))[0].id);
 
+    const queryParamsSchema = (kind: NonNullable<Listing["declaresQuery"]>) =>
+      kind === true || kind === "required"
+        ? { type: "object", properties: { q: { type: "string" } }, required: ["q"] }
+        : kind === "optional"
+          ? { type: "object", properties: { q: { type: "string" } } }
+          : kind === "emptyRequired"
+            ? { type: "object", properties: { q: { type: "string" } }, required: [] }
+            : {};
+
     async function seed() {
       await db.execute(
         sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_payee_watchers, x402_l1_purchases, observed_purchases`,
@@ -248,7 +264,7 @@ if (!TEST_DB) {
                           type: "object",
                           properties: {
                             ...(l.declaresBody ? { body: { type: "object", properties: { q: { type: "string" } } } } : {}),
-                            ...(l.declaresQuery ? { queryParams: { type: "object", properties: { q: { type: "string" } } } } : {}),
+                            ...(l.declaresQuery ? { queryParams: queryParamsSchema(l.declaresQuery) } : {}),
                           },
                         },
                       },
@@ -381,8 +397,8 @@ if (!TEST_DB) {
       assert.ok(!paid.includes("https://rb.example/cheapget"), "(b) は失敗した出品そのものを買い直す（同じ売り手の安い GET ではない・W2）");
       assert.ok(!paid.includes("https://rm.example/post"), "$1 超の出品は買わない（最安に落ちる）");
       assert.ok(!paid.includes("https://qa.example/cheap"), "(c) も失敗した出品そのものを買い直す（同じ売り手の安い出品ではない）");
-      for (const h of ["qb.example", "qc.example", "qd.example", "qe.example"]) {
-        assert.ok(!paid.some((u) => hostOf(u) === h), `${h} は (c) に入らない（境目の後・宣言なし・XRPL・送った行）`);
+      for (const h of ["qb.example", "qc.example", "qd.example", "qe.example", "qg.example", "qh.example", "qi.example"]) {
+        assert.ok(!paid.some((u) => hostOf(u) === h), `${h} は (c) に入らない（境目の後・宣言なし・XRPL・送った行・必須なし）`);
       }
       for (const h of ["rc.example", "rd.example", "rj.example", "rl.example", "re.example", "rf.example", "rg.example", "rh.example"]) {
         assert.ok(!paid.some((u) => hostOf(u) === h), `${h} は選ばない`);
@@ -404,7 +420,7 @@ if (!TEST_DB) {
       );
       assert.deepEqual(await bySelection("census"), ["https://cz.example/api"]);
       const hosts = paid.map(hostOf);
-      const fair = hosts.filter((h) => /^r[a-m]\.example$|^q[a-f]\.example$|^cz\.example$/.test(h));
+      const fair = hosts.filter((h) => /^r[a-m]\.example$|^q[a-i]\.example$|^cz\.example$/.test(h));
       assert.equal(new Set(fair).size, fair.length, "同じ売り手が 2 度入らない");
       assert.equal(fair.length, 8);
     });
