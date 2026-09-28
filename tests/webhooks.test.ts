@@ -89,6 +89,51 @@ test("isPublicUnicastIp rejects every non-public IPv4 range", () => {
   for (const ip of priv) assert.equal(isPublicUnicastIp(ip), false, `must reject ${ip}`);
 });
 
+// 2026-09-28 監査: 特殊用途・文書用の帯を公開扱いしていた。境界の内側と外側を両方置く。
+test("isPublicUnicastIp rejects special-purpose / documentation / benchmarking IPv4 ranges", () => {
+  const reserved = [
+    "192.0.0.1", // 192.0.0.0/24 IETF protocol assignments
+    "192.0.0.255",
+    "192.0.2.1", // 192.0.2.0/24 TEST-NET-1
+    "192.0.2.255",
+    "192.88.99.1", // 192.88.99.0/24 6to4 relay anycast
+    "198.18.0.1", // 198.18.0.0/15 benchmarking
+    "198.19.255.255",
+    "198.51.100.1", // 198.51.100.0/24 TEST-NET-2
+    "198.51.100.255",
+    "203.0.113.1", // 203.0.113.0/24 TEST-NET-3
+    "203.0.113.255",
+    "240.0.0.1", // 240.0.0.0/4 reserved
+    "254.255.255.254",
+    "::ffff:198.18.0.1", // mapped benchmarking
+    "::ffff:203.0.113.9", // mapped TEST-NET-3
+  ];
+  for (const ip of reserved) assert.equal(isPublicUnicastIp(ip), false, `must reject ${ip}`);
+  // 帯の外側（隣）は公開のまま。
+  for (const ip of ["192.0.1.1", "192.0.3.1", "198.17.255.255", "198.20.0.1", "198.51.99.1", "198.51.101.1", "203.0.112.1", "203.0.114.1"]) {
+    assert.equal(isPublicUnicastIp(ip), true, `must allow ${ip}`);
+  }
+});
+
+test("isPublicUnicastIp rejects special-purpose / documentation IPv6 ranges", () => {
+  const reserved = [
+    "2001:db8::1", // 2001:db8::/32 documentation
+    "2001:0db8:ffff:ffff:ffff:ffff:ffff:ffff",
+    "2001::1", // 2001::/32 Teredo (inside 2001::/23)
+    "2001:2::1", // 2001:2::/48 benchmarking
+    "2001:1ff:ffff::1", // top of 2001::/23
+    "3fff::1", // 3fff::/20 documentation (RFC 9637)
+    "3fff:fff:ffff::1",
+    "100::1", // 100::/64 discard-only (outside 2000::/3)
+    "5f00::1", // SRv6 SIDs (outside 2000::/3)
+    "4000::1", // unallocated (outside 2000::/3)
+  ];
+  for (const ip of reserved) assert.equal(isPublicUnicastIp(ip), false, `must reject ${ip}`);
+  for (const ip of ["2001:200::1", "2001:4860:4860::8888", "2001:db9::1", "3fff:1000::1", "2a00:1450:4001::1"]) {
+    assert.equal(isPublicUnicastIp(ip), true, `must allow ${ip}`);
+  }
+});
+
 test("isPublicUnicastIp allows genuinely public IPv4", () => {
   for (const ip of ["1.1.1.1", "8.8.8.8", "203.0.200.5", "172.15.0.1", "172.32.0.1"]) {
     assert.equal(isPublicUnicastIp(ip), true, `must allow ${ip}`);

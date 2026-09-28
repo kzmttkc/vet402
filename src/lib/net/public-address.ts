@@ -19,7 +19,9 @@ import { lookup as dnsLookup } from "node:dns/promises";
 /**
  * True only for addresses that are safe to egress to: globally-routable
  * unicast IPv4/IPv6. Everything private, reserved, loopback, link-local,
- * CGNAT, ULA, multicast, or unspecified is rejected. IPv4-mapped/embedded
+ * CGNAT, ULA, multicast, unspecified, documentation (TEST-NET-1/2/3,
+ * 2001:db8::/32, 3fff::/20), benchmarking (198.18/15) or otherwise
+ * special-purpose (192.0.0/24, 240/4, 2001::/23, outside 2000::/3) is rejected. IPv4-mapped/embedded
  * IPv6 forms are unwrapped and judged as the IPv4 they target.
  */
 export function isPublicUnicastIp(ip: string): boolean {
@@ -41,11 +43,18 @@ export function isPublicUnicastIp(ip: string): boolean {
   const embedded = embeddedIPv4(groups);
   if (embedded) return isPublicIPv4(embedded);
 
-  const [g0] = groups;
+  const [g0, g1] = groups;
   if (groups.every((g) => g === 0)) return false; // :: unspecified
   if ((g0 & 0xffc0) === 0xfe80) return false; // fe80::/10 link-local
   if ((g0 & 0xfe00) === 0xfc00) return false; // fc00::/7 ULA
   if ((g0 & 0xff00) === 0xff00) return false; // ff00::/8 multicast
+  // 2026-09-28 監査: 以下は IANA の特殊用途（非公開・文書用・到達不能）の帯。
+  // 2000::/3 の外は global unicast として割り当てられていない（100::/64 discard、
+  // 5f00::/16 SRv6 等を含む）。IPv4 埋め込み形は上で先に判定済み。
+  if ((g0 & 0xe000) !== 0x2000) return false; // outside 2000::/3
+  if (g0 === 0x2001 && g1 === 0x0db8) return false; // 2001:db8::/32 documentation
+  if (g0 === 0x2001 && g1 < 0x0200) return false; // 2001::/23 IETF protocol assignments (Teredo, ORCHID, benchmarking 2001:2::/48 …)
+  if (g0 === 0x3fff && g1 < 0x1000) return false; // 3fff::/20 documentation (RFC 9637)
   return true;
 }
 
@@ -126,7 +135,16 @@ export function isPublicIPv4(ip: string): boolean {
   if (a === 172 && b >= 16 && b <= 31) return false; // private /12
   if (a === 192 && b === 168) return false; // private /16
   if (a === 100 && b >= 64 && b <= 127) return false; // CGNAT 100.64/10
-  if (a >= 224) return false; // multicast + reserved + 255.255.255.255 broadcast
+  // 2026-09-28 監査: IANA の特殊用途の帯（RFC 6890 / 5737 / 2544 / 7526）。
+  // 公開の宛先としては正当でなく、社内網・検証網に割り当てられていることがある。
+  const c = o[2];
+  if (a === 192 && b === 0 && c === 0) return false; // 192.0.0.0/24 IETF protocol assignments
+  if (a === 192 && b === 0 && c === 2) return false; // 192.0.2.0/24 TEST-NET-1
+  if (a === 192 && b === 88 && c === 99) return false; // 192.88.99.0/24 6to4 relay anycast (deprecated)
+  if (a === 198 && (b === 18 || b === 19)) return false; // 198.18.0.0/15 benchmarking
+  if (a === 198 && b === 51 && c === 100) return false; // 198.51.100.0/24 TEST-NET-2
+  if (a === 203 && b === 0 && c === 113) return false; // 203.0.113.0/24 TEST-NET-3
+  if (a >= 224) return false; // 224/4 multicast + 240/4 reserved + 255.255.255.255 broadcast
   return true;
 }
 

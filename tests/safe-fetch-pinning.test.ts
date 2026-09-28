@@ -170,7 +170,7 @@ test("safeFetch pins the address the gate verified, even when DNS flips afterwar
 test("safeFetch pins each redirect hop to that hop's own verified address", async () => {
   const table: Record<string, string> = {
     "api.example.com": "93.184.216.34",
-    "cdn.example.net": "198.51.100.7",
+    "cdn.example.net": "151.101.1.69",
   };
   const pins: Array<PinnedTarget | undefined> = [];
   const res = await safeFetch(
@@ -189,7 +189,7 @@ test("safeFetch pins each redirect hop to that hop's own verified address", asyn
   assert.equal(res.status, 402);
   assert.deepEqual(pins, [
     { hostname: "api.example.com", addresses: [{ address: "93.184.216.34", family: 4 }] },
-    { hostname: "cdn.example.net", addresses: [{ address: "198.51.100.7", family: 4 }] },
+    { hostname: "cdn.example.net", addresses: [{ address: "151.101.1.69", family: 4 }] },
   ]);
 });
 
