@@ -48,10 +48,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     // 2026-08-14: operator-log は公開頁（200）で robots も許可済みだが sitemap に
     // 抜けていた。corrections と同じ「公開していること自体が内容」の帳簿。
     { url: `${SITE_URL}/operator-log`, lastModified: SITE_REVISION, changeFrequency: "weekly", priority: 0.5 },
-    // 2026-09-28: 売り手がドメインで自分の購入結果を探す入口。方法論から内部リンクがある。
+    // 2026-09-28: 売り手がドメインで自分の購入結果を探す入口。2026-09-29 敵対的監査で帰属の誤りが見つかり、
+    // 見直しが済むまで /sellers と /sellers/fix-first を外した（頁は noindex で残す）。
     // 個々の /sellers/:host はここでは列挙しない。/sitemap-sellers.xml（一覧と同じデータ源）が出す。
-    { url: `${SITE_URL}/sellers`, lastModified: "2026-09-28", changeFrequency: "daily", priority: 0.7 },
-    { url: `${SITE_URL}/sellers/fix-first`, lastModified: "2026-09-28", changeFrequency: "daily", priority: 0.6 },
     // 2026-09-28: RWA の公開頁。
     { url: `${SITE_URL}/rwa`, lastModified: "2026-09-28", changeFrequency: "weekly", priority: 0.6 },
     { url: `${SITE_URL}/faq`, lastModified: REV_2026_09_05, changeFrequency: "monthly", priority: 0.7 },

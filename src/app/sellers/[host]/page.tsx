@@ -65,10 +65,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       noindex: true,
     });
   }
+  // 2026-09-29 敵対的監査: 売り手側とした失敗の一部が実は vet402 側・判定保留・宣言どおりの無料応答
+  // だった。帰属の規則を直して再確認するまで、他社名の頁を検索に出さない（頁は売り手が見られるよう残す）。
   const meta = pageMetadata({
     title: `Is ${host} working? x402 purchase results on Base`,
     description: sellerDescription(host),
     path: `/sellers/${host}`,
+    noindex: true,
   });
   // 2026-09-28 SEO 監査: layout の template（"%s | vet402"）を通さず、長さを見て接尾辞を
   // 付けるかどうかを sellerPageTitle が決める。OG/Twitter の表題は素のまま（site_name が担う）。
@@ -142,6 +145,10 @@ export default async function SellerPage({ params, searchParams }: Props) {
         suppressHydrationWarning
         dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
       />
+      <p className="doc-note mx-auto mb-4 max-w-[70ch]">
+        We are re-checking which failures on this page were on our side. Some rows marked
+        seller&apos;s side may move to vet402&apos;s side or to not sorted.
+      </p>
       <SellerDetailView detail={detail} page={page} now={Date.parse(detail.fetchedAt)} revalidateSec={PUBLIC_READ_REVALIDATE} />
       <TrackView event="seller_page_view" props={{ host }} />
     </main>

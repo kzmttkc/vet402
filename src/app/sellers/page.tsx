@@ -21,6 +21,8 @@ export const metadata: Metadata = pageMetadata({
   description:
     "x402 sellers on Base: look up your domain to see what vet402 bought from you, what it saw, what to fix, and whether a failure was on your side or vet402's.",
   path: "/sellers",
+  // 2026-09-29 敵対的監査: 帰属（どちら側の失敗か）の見直しが済むまで、他社名の並ぶ頁を検索に出さない。
+  noindex: true,
 });
 
 export default async function SellersPage({ searchParams }: { searchParams: Promise<{ page?: string; q?: string }> }) {

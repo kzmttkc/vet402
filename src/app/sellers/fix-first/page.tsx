@@ -18,6 +18,8 @@ export const metadata: Metadata = pageMetadata({
   description:
     "The x402 listings on Base that vet402 could not buy, grouped by what went wrong, with one fix per group and whether it is the seller's side or vet402's.",
   path: "/sellers/fix-first",
+  // 2026-09-29 敵対的監査: 帰属の見直しが済むまで noindex。
+  noindex: true,
 });
 
 export default async function FixFirstPage() {

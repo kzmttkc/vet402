@@ -44,7 +44,9 @@ export default function robots(): MetadataRoute.Robots {
     // 名乗らず robots に 2 行書くのは、実装も検証も単純で対応が広いから。
     // 2026-09-28: 3 本目。売り手の個別頁（/sitemap-sellers.xml — /sellers の一覧と同じ
     // データ源の全ホスト、lastmod は各売り手の最新の購入）。
-    sitemap: [`${SITE_URL}/sitemap.xml`, `${SITE_URL}/sitemap-observatory.xml`, `${SITE_URL}/sitemap-sellers.xml`],
+    // 2026-09-29 敵対的監査: 売り手頁の「どちら側の失敗か」に誤りが見つかったため、直すまで
+    // 売り手の sitemap を外す（/sitemap-sellers.xml 自体は残す。戻すときはここに足すだけ）。
+    sitemap: [`${SITE_URL}/sitemap.xml`, `${SITE_URL}/sitemap-observatory.xml`],
     host: SITE_URL,
   };
 }

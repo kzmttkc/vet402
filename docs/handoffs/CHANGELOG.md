@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-29 JST（1）— 売り手頁を一時的に noindex・sitemap から外す（帰属の見直しまで）
+
+- **何を**: `/sellers`・`/sellers/fix-first`・`/sellers/[host]` を noindex にし、robots の Sitemap から `/sitemap-sellers.xml` を、`sitemap.ts` から `/sellers` と `/sellers/fix-first` を外した。売り手頁の冒頭に「どちら側の失敗かを見直し中」の 1 文。
+- **なぜ**: 2026-09-29 の敵対的監査（名指しされた売り手の立場）で、無作為 15 社中 5 社に誤帰属の強い疑い（宣言クエリ未送信の 400・415 の本文未送信・受領証なしだが着金あり・宣言どおりの無料応答・判定保留の行が seller's side に数えられる）。他社名を検索に出したまま誤りを広げない。
+- **影響**: 頁と `/sitemap-sellers.xml` は残る。帰属の規則を直し、同じ監査で再確認してから戻す。
+
 ## 2026-09-29 JST — 監査 第2巡の残り: サーバログの伏せ字・売り手頁の通知リンク・Base 以外の売り手の簡易頁（ブランチ `fix/audit-round2-rest`・未 push）
 
 - **何を**: ①`src/lib/util/log-safe.ts` の `logServerErrorSafe` / `logAndSwallowSafe`（URL を scheme を問わず `<url>` に、`apikey=`・Bearer・`sk_live_`・`re_`・JWT 等を `<redacted>` に伏せてから凍結中の `logServerError` を呼ぶ）。凍結外の呼び手 97 ファイルを機械的に置換し、eslint の no-restricted-imports と `tests/log-safe.test.ts` の走査で直 import を止める（除外は `log.ts`・`log-safe.ts`・`cron/lease.ts`・`app/tokyo/**`・`app/api/tokyo/**`）。②`/sellers/[host]` の各出品に「Email me when this result changes」→ `/observatory/e/<id>#notify`（既存のダブルオプトインの購読・新しい表なし）。③Base の出品が無いが L1 の購入行がある host は 404 にせず、出品ごとの記録頁への簡易頁（チェーン名・最新の日時・平易な結果・noindex）。関門は購入 host の集合 1 本をキャッシュ（`sellers:purchased-hosts:v1`）、でたらめな host は従来どおり host ごとの問い合わせを走らせない。
