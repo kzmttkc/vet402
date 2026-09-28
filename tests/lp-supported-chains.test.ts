@@ -16,7 +16,7 @@ import {
   LANE_STATE_SENTENCE,
   LEDGER_UNREAD_SENTENCE,
   LIVE_MARKER_SENTENCE,
-  RWA_EXAMPLE_PATH,
+  RWA_ENTRY_PATH,
   SUPPORTED_CHAINS,
   chainsLegend,
   effectiveLaneState,
@@ -140,18 +140,18 @@ test("the Robinhood Chain row is a product: live, and no count whatever the ledg
   }
 });
 
-test("the Robinhood Chain row links to the agreed /rwa page from `vet402 /rwa`", () => {
-  assert.equal(
-    new URL(RWA_EXAMPLE_PATH, "https://vet402.com").href,
-    "https://vet402.com/rwa/0xE9B08727131E34010b34006c660D4c1B436EC25f",
-  );
+test("the Robinhood Chain row links to the /rwa entry page from `vet402 /rwa`, never to a wallet", () => {
+  assert.equal(new URL(RWA_ENTRY_PATH, "https://vet402.com").href, "https://vet402.com/rwa");
   const row = SUPPORTED_CHAINS.find((c) => c.kind === "product");
   assert.ok(row && row.kind === "product");
   const linked = row.body.filter((p) => typeof p !== "string" && p.href);
-  assert.deepEqual(linked, [{ code: "vet402 /rwa", href: RWA_EXAMPLE_PATH }]);
+  assert.deepEqual(linked, [{ code: "vet402 /rwa", href: RWA_ENTRY_PATH }]);
   const html = renderToStaticMarkup(createElement(SupportedChains, { settledByChain: null }));
   const tail = html.slice(html.indexOf("Robinhood Chain"));
-  assert.match(tail, new RegExp(`<a [^>]*href="${RWA_EXAMPLE_PATH}"[^>]*><code[^>]*>vet402 /rwa</code></a>`));
+  assert.match(tail, /<a [^>]*href="\/rwa"[^>]*><code[^>]*>vet402 \/rwa<\/code><\/a>/);
+  // 2026-09-28: the first link was a third party's wallet page (no consent, profit and loss shown)
+  assert.ok(!/0xE9B08727131E34010b34006c660D4c1B436EC25f/i.test(html), "the third-party wallet is not on the page");
+  assert.ok(!/0x[0-9a-f]{40}/i.test(html), "no wallet address anywhere in the section");
   assert.equal(html.split("<a ").length - 1, 1, "one link in the section, on the Robinhood row");
 });
 
@@ -255,12 +255,13 @@ test("the Robinhood Chain row carries the agreed sentence and nothing else (2026
   const text = row.body.map((p) => (typeof p === "string" ? p : p.code)).join("");
   assert.equal(
     text,
-    "vet402 /rwa rebuilds a wallet's Stock Token holdings and trade history from public chain data. The purchase lane and the settlement index are not supported.",
+    "vet402 /rwa rebuilds a wallet's Stock Token holdings and trade history from public chain data, and shows what it could not parse. The purchase lane and the settlement index are not supported.",
   );
   // 合意（2026-09-28・RWA）の日本語の原文と、アンカーの一文を保留した旨がファイルに残っていること
   const src = read("src/components/site/supported-chains-data.ts");
-  assert.ok(src.includes("2026-09-28 RWA と合意。アンカーの一文は保留"));
-  assert.ok(src.includes("購入レーンと決済索引は未対応。リンクは /rwa/0xE9B08727131E34010b34006c660D4c1B436EC25f"));
+  assert.ok(src.includes("アンカーの一文は\n  //   保留"), "the anchor sentence is recorded as withheld");
+  assert.ok(src.includes("購入レーンと決済索引は未対応。リンクは入口ページ /rwa」"));
+  assert.ok(src.includes("2026-09-28 RWA と合意・同日改訂。リンク先は特定のウォレットにしない"));
   // アンカーは公開面で確かめられるまで載せない。会場名・受賞も載せない
   const drawn = renderToStaticMarkup(createElement(SupportedChains, { settledByChain: null }));
   const rowHtml = drawn.slice(drawn.indexOf("Robinhood Chain"));
@@ -279,9 +280,9 @@ test("the Robinhood Chain row carries the agreed sentence and nothing else (2026
     assert.ok(!banned.test(`${row.chain} ${text}`), `Robinhood row must not say ${banned}`);
     assert.ok(!banned.test(rowHtml), `Robinhood row HTML must not say ${banned}`);
   }
-  // the one address on the row is the example wallet in the link; no contract address in the prose
+  // no address on the row: no contract address in the prose, no wallet in the link
   assert.ok(!/0x[0-9a-f]{40}/i.test(text), "no address in the row's prose");
-  assert.deepEqual(rowHtml.match(/0x[0-9a-fA-F]{40}/g), ["0xE9B08727131E34010b34006c660D4c1B436EC25f"]);
+  assert.equal(rowHtml.match(/0x[0-9a-fA-F]{40}/g), null, "no address in the row's HTML");
 });
 
 test("no static count in the section copy — counts come from stats.l1.byChain", () => {

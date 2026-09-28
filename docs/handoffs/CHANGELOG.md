@@ -15,11 +15,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ## 2026-09-28 JST（4）— LP §5 Chains: Robinhood Chain の行を building から live（公開中の製品・購入レーンではない）へ
 
-- **何を**: `src/components/site/supported-chains-data.ts` に行の種類 `product` を足し、Robinhood Chain (4663, mainnet) の行を `building` から `product` へ。状態印は静的に `live`（他の実装済みの行と同じ `marker-live` の見た目）、件数は出さない（台帳に 4663 の数があっても出さない）。本文は RWA と合意した英文 `` `vet402 /rwa` rebuilds a wallet's Stock Token holdings and trade history from public chain data. The purchase lane and the settlement index are not supported. `` で、`vet402 /rwa` が `/rwa/0xE9B08727131E34010b34006c660D4c1B436EC25f` へのリンク。凡例（`chainsLegend`）は pending と同じく building も「描かれる行があるときだけ」名指しに変え（今は building の行が無い）、live の行があるときは「live は公開中の製品で、購入レーンではなく件数を持たない」の 1 文を足す。台帳が読めないときの文はそのまま（live の印も「ページに書いた状態」なので嘘にならない）。
-- **なぜ**: `/rwa` が本番で公開済み（`/rwa/0xE9B0...` は 200）になり、「実装中」が古くなった。文言は 2026-09-28 に RWA セッションと合意。
+- **何を**: `src/components/site/supported-chains-data.ts` に行の種類 `product` を足し、Robinhood Chain (4663, mainnet) の行を `building` から `product` へ。状態印は静的に `live`（他の実装済みの行と同じ `marker-live` の見た目）、件数は出さない（台帳に 4663 の数があっても出さない）。本文は RWA と合意した英文 `` `vet402 /rwa` rebuilds a wallet's Stock Token holdings and trade history from public chain data, and shows what it could not parse. The purchase lane and the settlement index are not supported. `` で、`vet402 /rwa` が入口ページ `/rwa`（住所の入力欄だけ・特定のウォレットへのリンク無し）へのリンク。凡例（`chainsLegend`）は pending と同じく building も「描かれる行があるときだけ」名指しに変え（今は building の行が無い）、live の行があるときは「live は公開中の製品で、購入レーンではなく件数を持たない」の 1 文を足す。台帳が読めないときの文はそのまま（live の印も「ページに書いた状態」なので嘘にならない）。
+- **なぜ**: `/rwa` が本番で公開済み（`https://vet402.com/rwa` は 200・0x アドレス 0 件）になり、「実装中」が古くなった。文言は 2026-09-28 に RWA セッションと合意（同日改訂）。
+- **リンク先の差し替え（レビュー SHIP の後）**: 最初の案は第三者のウォレットのページへのリンクだったが、本人の了解がなく損益が見えるため入口ページ `/rwa` に変えた。行の HTML・節全体に 0x アドレスが出ないことをテストで固定。
 - **載せないもの**: アンカー（anchor）の記述・アンカーのコントラクトアドレス・Open House の会場名・ETHOnline の受賞。アンカーの一文は公開面で確かめられる状態になってから RWA が改めて送る（テストが行の HTML にこれらの語が無いことを固定）。
-- **影響**: LP の検出の床は 10 のまま（実測 10）。`docs/claims.yaml` は変えていない（新しい文に断定語が無い）。`claims:canary` 60/60。
-- **コミット**: このエントリと同じコミット（ブランチ `lp-robinhood-live-0928`・未 push・`4030d37b` の上）
+- **影響**: LP の検出の床は 10 のまま（実測 10）。`docs/claims.yaml` は変えていない（新しい文・「shows what it could not parse」に断定語が無い）。
+- **コミット**: ブランチ `lp-robinhood-live-0928` の 2 コミット（本体とリンク先・本文の差し替え）・未 push
 
 ## 2026-09-28 JST（3）— `/rwa` に入口ページ（貼ったアドレスを記録ページへ送るだけ）
 

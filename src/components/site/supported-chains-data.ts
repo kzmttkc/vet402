@@ -77,8 +77,13 @@ export const LANE_STATE_SENTENCE: Record<LaneState, string> = {
     "The purchase lane and settlement reconciliation are implemented. The first real purchase on this chain is still pending.",
 };
 
-/** The agreed link for the Robinhood Chain row: https://vet402.com + this path. */
-export const RWA_EXAMPLE_PATH = "/rwa/0xE9B08727131E34010b34006c660D4c1B436EC25f";
+/**
+ * The agreed link for the Robinhood Chain row: https://vet402.com + this path, the /rwa entry
+ * page (an address field, no link to any particular wallet). 2026-09-28: it first pointed at a
+ * third party's wallet page, which shows that wallet's holdings and profit and loss without the
+ * owner's consent — never link a specific wallet from this row.
+ */
+export const RWA_ENTRY_PATH = "/rwa";
 
 export const SUPPORTED_CHAINS: SupportedChain[] = [
   { kind: "lane", chain: "Base", asset: "USDC", rail: "x402", state: "settled_on_record" },
@@ -100,18 +105,20 @@ export const SUPPORTED_CHAINS: SupportedChain[] = [
   // English only). The agreement as handed over in Japanese (the delegation brief's summary,
   // not a verbatim quote of the RWA session's message):
   //   「Robinhood Chain（4663・本番網）: 公開中の製品。購入レーンではない。状態印は live。
-  //   `vet402 /rwa` は公開チェーンデータからウォレットの Stock Token 保有と取引履歴を再構成する。
-  //   購入レーンと決済索引は未対応。リンクは /rwa/0xE9B08727131E34010b34006c660D4c1B436EC25f」
-  //   （2026-09-28 RWA と合意。アンカーの一文は保留——公開面で確かめられる状態になってから
-  //   RWA が改めて文を送る。それまでアンカーの記述・コントラクトアドレス・会場名・受賞は載せない）
+  //   `vet402 /rwa` は公開チェーンデータからウォレットの Stock Token 保有と取引履歴を再構成し、
+  //   読み解けなかったものも示す。購入レーンと決済索引は未対応。リンクは入口ページ /rwa」
+  //   （2026-09-28 RWA と合意・同日改訂。リンク先は特定のウォレットにしない——最初の案の
+  //   第三者のウォレットは本人の了解がなく損益が見えるため入口へ差し替えた。アンカーの一文は
+  //   保留——公開面で確かめられる状態になってから RWA が改めて文を送る。それまでアンカーの
+  //   記述・コントラクトアドレス・会場名・受賞は載せない）
   // It replaces the 2026-09 "building" sentence (「…を実装中。購入レーンと決済索引は未対応」).
   // The English below is the agreed sentence and carries nothing else.
   {
     kind: "product",
     chain: "Robinhood Chain (4663, mainnet)",
     body: [
-      { code: "vet402 /rwa", href: RWA_EXAMPLE_PATH },
-      " rebuilds a wallet's Stock Token holdings and trade history from public chain data. The purchase lane and the settlement index are not supported.",
+      { code: "vet402 /rwa", href: RWA_ENTRY_PATH },
+      " rebuilds a wallet's Stock Token holdings and trade history from public chain data, and shows what it could not parse. The purchase lane and the settlement index are not supported.",
     ],
   },
 ];
