@@ -118,5 +118,8 @@ test("a balance the replay cannot explain makes the record unverified, not recon
   assert.ok(f.gaps.includes("balance_mismatch"));
   assert.equal(f.r1_status, "unverified");
   assert.equal(f.realized_usd, null, "SPEC §4: no realized figure unless R1 is reconstructed or partial");
-  for (const t of f.tokens) assert.equal(t.realized_usd, null, t.symbol);
+  for (const t of f.tokens) {
+    assert.equal(t.realized_usd, null, t.symbol);
+    assert.equal(t.realized_status, "partial", t.symbol);
+  }
 });

@@ -284,7 +284,11 @@ export async function assembleFacts(input: FactsInputs): Promise<RwaFacts> {
   // the replay cannot explain means a leg was missed, so FIFO may be matching the wrong lots: no
   // realized figure is published for the wallet, per token or in total.
   const unverified = gaps.has("balance_mismatch");
-  if (unverified) for (const p of perToken) p.facts.realized_usd = null;
+  if (unverified)
+    for (const p of perToken) {
+      p.facts.realized_usd = null;
+      p.facts.realized_status = "partial";
+    }
   const oversold = perToken.some((p) => p.fifo.oversold_raw > 0n);
 
   return {

@@ -103,7 +103,7 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
         {" · "}
         {facts.unrealized_usd !== null ? `marked $${money(facts.unrealized_usd)}` : "no complete USD mark"}
         {" · "}
-        {facts.r1_status === "unverified" ? "realized not shown: the replay does not match the chain balance" : realizedLine(facts.realized_usd, facts.realized_status)}
+        {facts.r1_status === "unverified" ? "realized not shown" : realizedLine(facts.realized_usd, facts.realized_status)}
         {" · "}
         {!replayOk
           ? "the replay does not match the chain balance"
