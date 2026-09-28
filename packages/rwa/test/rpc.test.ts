@@ -4,7 +4,7 @@
 // Run from the repo root: npx tsx --test packages/rwa/test/rpc.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { rpcCall } from "../rpc";
+import { rpcBatch, rpcCall } from "../rpc";
 
 function scripted(responses: object[]) {
   let calls = 0;
@@ -53,4 +53,16 @@ test("only head-side methods may fall back to the second RPC", async () => {
   seen.length = 0;
   await rpcCall("eth_blockNumber", [], { fetchImpl, retries: 0, sleep: async () => {} });
   assert.equal(new Set(seen).size, 2, "eth_blockNumber should try the fallback");
+});
+
+test("an item answered 'Too Many Requests' inside a batch is retried, not treated as a bad call", async () => {
+  let calls = 0;
+  const fetchImpl = (async () => {
+    calls++;
+    const item = calls === 1 ? { jsonrpc: "2.0", id: 0, error: { code: 429, message: "Too Many Requests" } } : { jsonrpc: "2.0", id: 0, result: "0x1" };
+    return new Response(JSON.stringify([item, { jsonrpc: "2.0", id: 1, result: "0x2" }]), { status: 200 });
+  }) as unknown as typeof fetch;
+  const out = await rpcBatch<string>([{ method: "eth_call", params: [] }, { method: "eth_call", params: [] }], { fetchImpl, retries: 2, sleep: async () => {}, urls: ["http://rpc.test"] });
+  assert.deepEqual(out, ["0x1", "0x2"]);
+  assert.equal(calls, 2);
 });

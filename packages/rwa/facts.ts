@@ -280,6 +280,11 @@ export async function assembleFacts(input: FactsInputs): Promise<RwaFacts> {
   const heldParts = perToken.filter((p) => BigInt(p.facts.raw) > 0n);
   const unrealized = heldParts.length > 0 && heldParts.every((p) => p.usdCents !== null) ? heldParts.reduce((s, p) => s + p.usdCents!, 0n) : null;
   const unknownCost = perToken.reduce((s, p) => s + p.fifo.unknown_cost_raw, 0n);
+  // SPEC §4 (line "realized_usd を公開してよい条件"): R1 must be reconstructed or partial. A balance
+  // the replay cannot explain means a leg was missed, so FIFO may be matching the wrong lots: no
+  // realized figure is published for the wallet, per token or in total.
+  const unverified = gaps.has("balance_mismatch");
+  if (unverified) for (const p of perToken) p.facts.realized_usd = null;
   const oversold = perToken.some((p) => p.fifo.oversold_raw > 0n);
 
   return {
@@ -302,8 +307,8 @@ export async function assembleFacts(input: FactsInputs): Promise<RwaFacts> {
     },
     tokens: perToken.map((p) => p.facts),
     events_summary: summary,
-    realized_usd: realized === null ? null : usdString(realized),
-    realized_status: aggregateStatus(perToken.map((p) => p.fifo.realized_status)),
+    realized_usd: unverified || realized === null ? null : usdString(realized),
+    realized_status: unverified ? "partial" : aggregateStatus(perToken.map((p) => p.fifo.realized_status)),
     unrealized_usd: unrealized === null ? null : usdString(unrealized),
     mdd_usd: null,
     gaps: [...gaps],
