@@ -591,6 +591,13 @@ claims:
     check: null
     why_unverifiable: "測定値ではなく方針の約束で、外部から機械的に反証できない。委託先の扱いは各社の DPA が根拠"
     verified_at: 2026-09-04
+  - id: privacy_nothing_but_the_confirmation_email
+    surface: src/app/legal/privacy/page.tsx
+    quote: "Nothing but the confirmation email is sent until you confirm, and every notification carries a one-click unsubscribe link"
+    means: "通知購読はダブルオプトイン。確認前は確認メール以外を送らず、全通知に配信停止リンク"
+    check: null
+    why_unverifiable: "公開 GET で数値として返る主張ではない。実装の担保は tests/record-subscriptions-optin.pg.test.ts（未確認の宛先への送信 0・GET で確定しない・配信停止）"
+    verified_at: 2026-09-28
   - id: privacy_request_within_30_days_there
     surface: src/app/legal/privacy/page.tsx
     quote: "request within 30 days. There is no charge. We will say no only where the law lets us —"

@@ -92,11 +92,14 @@ export default async function PrivacyPage() {
               <strong>Record notifications you asked for</strong> (<code>record_subscriptions</code>):
               the email address you entered, which endpoint record it follows, what kind of
               notification it is, the free-text reason you gave if you gave one, the last verdict we
-              notified you about, a one-way hash of the IP address the request came from (used
-              to rate-limit sign-ups, never stored in the clear), a one-way hash of the link we
-              emailed you to confirm or stop the notifications, and when you confirmed or
-              unsubscribed. We send nothing but the confirmation email until you confirm, and every
-              notification carries a one-click unsubscribe link.
+              notified you about, and a one-way hash of the IP address the request came from (used
+              to rate-limit sign-ups, never stored in the clear)
+            </li>
+            <li>
+              <strong>Notification consent</strong> (<code>record_subscriptions</code>): a one-way
+              hash of the link we emailed you to confirm or stop record notifications, and when you
+              confirmed or unsubscribed. Nothing but the confirmation email is sent until you
+              confirm, and every notification carries a one-click unsubscribe link
             </li>
             <li>
               <strong>Waitlist entries</strong> (<code>waitlist_entries</code>): the email address
