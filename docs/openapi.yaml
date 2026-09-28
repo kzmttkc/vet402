@@ -1540,6 +1540,13 @@ paths:
         characters) and forwards it to support. The same email asking the same
         thing about the same record is one row (upsert). Key-less; 5 per hour per IP.
         `website` is a honeypot and must be empty.
+
+        Double opt-in (2026-09-28): a `notify` row starts pending. One confirmation
+        email is sent (at most 3 per address per 24 hours); its link opens
+        `/observatory/confirm`, where a button POSTs to
+        `/api/v1/observatory/subscriptions/confirm`. Opening the link alone changes
+        nothing. No notification is ever sent to a pending or unsubscribed address.
+        The response does not reveal whether the address was already confirmed.
       security: []
       parameters:
         - in: path
@@ -1571,9 +1578,91 @@ paths:
                   receipt: { type: string }
                   kind: { type: string, enum: [notify, dispute] }
                   verdictAtSubmission: { type: string, enum: [pass, fail, unverified] }
+                  confirmation:
+                    type: string
+                    enum: [check_inbox, not_sent]
+                    description: notify only. `not_sent` means the mail path is down right now.
                   note: { type: string }
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { description: Unknown endpoint id }
+        "429": { description: Rate limited }
+        "503": { description: Store unavailable }
+
+  /api/v1/observatory/subscriptions/confirm:
+    post:
+      operationId: confirmRecordSubscription
+      tags: [Observatory]
+      summary: Confirm a pending change-notice subscription (double opt-in)
+      description: |
+        Called by the Confirm button on `/observatory/confirm`, never by the email
+        link itself (there is no GET). The token is single-use and valid for 72
+        hours from when the confirmation email was sent. Key-less; 30 per hour per IP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, description: 43-character base64url token from the confirmation email }
+      responses:
+        "200":
+          description: Confirmed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  status: { type: string, enum: [confirmed] }
+        "400": { description: "`invalid_token` (unknown, used, or expired) or `invalid_request`" }
+        "429": { description: Rate limited }
+        "503": { description: Store unavailable }
+
+  /api/v1/observatory/subscriptions/unsubscribe:
+    post:
+      operationId: unsubscribeRecordSubscription
+      tags: [Observatory]
+      summary: Stop change-notice emails for one subscription (RFC 8058 one-click)
+      description: |
+        Two callers: the Unsubscribe button on `/observatory/unsubscribe` (JSON
+        `{ id, token }`), and mail clients honouring the `List-Unsubscribe` /
+        `List-Unsubscribe-Post: List-Unsubscribe=One-Click` headers every
+        notification carries (form body `List-Unsubscribe=One-Click`, `id` and `t`
+        in the query). There is no GET, so a link scanner cannot unsubscribe
+        anyone. Idempotent; does not reveal whether the subscription exists.
+        Key-less; 30 per hour per IP.
+      security: []
+      parameters:
+        - { in: query, name: id, required: false, schema: { type: string, format: uuid } }
+        - { in: query, name: t, required: false, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id: { type: string, format: uuid }
+                token: { type: string }
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                List-Unsubscribe: { type: string, enum: [One-Click] }
+      responses:
+        "200":
+          description: Unsubscribed (or already was).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  status: { type: string, enum: [unsubscribed] }
+        "400": { description: "`invalid_token` or `invalid_request`" }
         "429": { description: Rate limited }
         "503": { description: Store unavailable }
 
@@ -4298,6 +4387,7 @@ components:
             - verdict_unavailable
             # --- observatory/watch (signed subscriptions) ---
             - invalid_signature
+            - invalid_token
             - service_unavailable
             - watcher_limit_reached
             - internal_error

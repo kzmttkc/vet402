@@ -12,6 +12,7 @@ import { track } from "@/lib/analytics";
  *   dispute — この記録への異議（理由つき）。人が読む
  * RFC の紙の文法（doc-caption / doc-input / buttonClass）。装飾なし、枠なし。
  * 送信は fetch。成功時は受付番号を残す（人が support へ問い合わせる時の鍵）。
+ * 2026-09-28 監査: notify はダブルオプトイン。成功表示は「確認メールを見て」。
  * Plausible: record_subscribe{kind}（送信成功）と dispute_start（異議欄に初めて触れた時・1 回だけ）。
  * email も理由の本文も送らない。
  */
@@ -28,6 +29,7 @@ export default function RecordSubscribe({
   const [state, setState] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [receipt, setReceipt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mailDown, setMailDown] = useState(false);
   const uid = useId();
   const disputeStarted = useRef(false);
   // 2026-09-28 PMF 計測: 異議の「開始」（欄に初めて触れた）を送信成功と分けて数える。
@@ -52,9 +54,10 @@ export default function RecordSubscribe({
         headers: { "content-type": "application/json" },
         body: JSON.stringify(kind === "dispute" ? { email, kind, reason, website } : { email, kind, website }),
       });
-      const json = (await res.json().catch(() => ({}))) as { receipt?: string; error?: string };
+      const json = (await res.json().catch(() => ({}))) as { receipt?: string; error?: string; confirmation?: string };
       if (res.ok && json.receipt) {
         setReceipt(json.receipt);
+        setMailDown(json.confirmation === "not_sent");
         setState("done");
         track("record_subscribe", { kind });
         return;
@@ -73,7 +76,9 @@ export default function RecordSubscribe({
         <strong className="text-brand-deep">Recorded.</strong> Receipt no.{" "}
         <code className="text-brand-deep">{receipt}</code>.{" "}
         {kind === "notify"
-          ? "One email when this record's public verdict changes. Nothing else is sent."
+          ? mailDown
+            ? "The confirmation email could not be sent right now. Nothing is sent to this address until it is confirmed; try again later."
+            : "Check your inbox: one confirmation email. Nothing is sent until you press Confirm on the page it links to; after that, one email per verdict change, each with an unsubscribe link."
           : "A person reads this and replies to the address you gave. The record stays published while it is examined."}
       </p>
     );
@@ -84,7 +89,8 @@ export default function RecordSubscribe({
       {kind === "notify" ? (
         <p className="doc-p max-w-[62ch]">
           Get one email when this record&apos;s verdict changes. No digest, no marketing — one
-          message per change, and only for this endpoint.
+          message per change, and only for this endpoint. We first send one confirmation email;
+          nothing else goes out until you confirm.
         </p>
       ) : null}
       <label htmlFor={`${uid}-email`} className="block text-[0.8125rem]">

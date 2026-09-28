@@ -1167,10 +1167,18 @@ export const recordSubscriptions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     notifiedAt: timestamp("notified_at", { withTimezone: true }),
     ipHash: text("ip_hash"),
+    // 2026-09-28 監査: ダブルオプトイン。confirmed_at が NULL の行は pending で、
+    // 通知は一切送らない（確認メール 1 通だけ）。生トークンは保存しない（sha256 のみ）。
+    confirmTokenHash: text("confirm_token_hash"),
+    /** 確認メールが実際に出た時刻。72 時間の有効期限の起点。NULL は未送信＝確定不能。 */
+    confirmSentAt: timestamp("confirm_sent_at", { withTimezone: true }),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    unsubscribedAt: timestamp("unsubscribed_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("record_subscriptions_endpoint_email_kind_unique").on(t.endpointId, t.email, t.kind),
     index("record_subscriptions_kind_idx").on(t.kind),
+    index("record_subscriptions_confirm_token_hash_idx").on(t.confirmTokenHash),
   ],
 );
 

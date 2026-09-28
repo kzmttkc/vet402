@@ -9,7 +9,14 @@
 // ============================================================
 import { logServerError } from "@/lib/util/log";
 
-export type MailInput = { to: string; subject: string; text: string; replyTo?: string };
+export type MailInput = {
+  to: string;
+  subject: string;
+  text: string;
+  replyTo?: string;
+  /** 追加ヘッダ（List-Unsubscribe 等）。2026-09-28 監査: 通知メールに配信停止ヘッダを付けるため。 */
+  headers?: Record<string, string>;
+};
 export type SendResult = { sent: true; id: string } | { sent: false; error: string } | { skipped: "mail_unset" };
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
@@ -31,6 +38,7 @@ export async function sendMail(input: MailInput): Promise<SendResult> {
         subject: input.subject,
         text: input.text,
         ...(input.replyTo ? { reply_to: input.replyTo } : {}),
+        ...(input.headers && Object.keys(input.headers).length > 0 ? { headers: input.headers } : {}),
       }),
     });
     if (!res.ok) {

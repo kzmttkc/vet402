@@ -22,8 +22,18 @@ import {
   hashIp,
   SUBSCRIBE_RL_LIMIT,
   SUBSCRIBE_RL_WINDOW_MS,
+  CONFIRM_MAIL_LIMIT,
+  CONFIRM_MAIL_WINDOW_MS,
+  confirmMailBucket,
+  confirmationMail,
+  hashConfirmToken,
+  listUnsubscribeHeaders,
+  newConfirmToken,
+  unsubscribeToken,
+  verifyUnsubscribeToken,
 } from "@/lib/observatory/record-subscriptions";
-import { sendMail } from "@/lib/mail/send";
+import { readTokenBody } from "@/lib/observatory/subscription-token-body";
+import { sendMail, type MailInput } from "@/lib/mail/send";
 
 const ROOT = process.cwd();
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
@@ -93,8 +103,22 @@ test("rate limit is 5 per hour per IP", () => {
   assert.equal(SUBSCRIBE_RL_WINDOW_MS, 3_600_000);
 });
 
-function fakeDb(opts: { endpointExists: boolean; verdicts: string[]; inserted: unknown[]; conflict: unknown[] }) {
+function fakeDb(opts: {
+  endpointExists: boolean;
+  verdicts: string[];
+  inserted: unknown[];
+  conflict: unknown[];
+  updated?: unknown[];
+}) {
   return {
+    update() {
+      return {
+        set(v: unknown) {
+          opts.updated?.push(v);
+          return { where: async () => [] };
+        },
+      };
+    },
     select() {
       return {
         from() {
@@ -132,20 +156,130 @@ test("submit: unknown endpoint → endpoint_not_found", async () => {
   assert.deepEqual(r, { ok: false, reason: "endpoint_not_found" });
 });
 
+const allowAll = { consumeLimit: async () => ({ allowed: true }) };
+
 test("submit: upserts on (endpoint, email, kind), stores the hashed ip and the current verdict, returns an 8-char receipt", async () => {
   const inserted: Record<string, unknown>[] = [];
   const conflict: unknown[] = [];
-  __setDbForTests(fakeDb({ endpointExists: true, verdicts: ["fail", "fail"], inserted, conflict }));
+  const mails: MailInput[] = [];
+  __setDbForTests(fakeDb({ endpointExists: true, verdicts: ["fail", "fail"], inserted, conflict, updated: [] }));
   const r = await submitSubscription(
     { endpointId: ENDPOINT_ID, email: "a@b.co", kind: "notify", reason: null },
     "203.0.113.9",
+    { ...allowAll, send: async (m) => (mails.push(m), { sent: true, id: "m1" }) },
   );
-  assert.deepEqual(r, { ok: true, id: "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", receipt: "0a1b2c3d", lastVerdict: "fail" });
+  assert.deepEqual(r, {
+    ok: true,
+    id: "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+    receipt: "0a1b2c3d",
+    lastVerdict: "fail",
+    confirmation: "sent",
+  });
   assert.equal(inserted.length, 1);
   assert.equal(inserted[0]!.ipHash, hashIp("203.0.113.9"));
   assert.equal(inserted[0]!.lastVerdict, "fail");
   assert.equal(inserted[0]!.email, "a@b.co");
   assert.equal(conflict.length, 1, "insert goes through onConflictDoUpdate (upsert)");
+  // 2026-09-28 監査: pending で入り、DB には確認トークンのハッシュだけ。
+  const hash = String(inserted[0]!.confirmTokenHash);
+  assert.match(hash, /^[0-9a-f]{64}$/);
+  assert.equal(inserted[0]!.confirmedAt, undefined, "never inserted as confirmed");
+  assert.equal(mails.length, 1, "exactly one confirmation email");
+  const token = /#t=([A-Za-z0-9_-]{43})/.exec(mails[0]!.text)?.[1];
+  assert.ok(token, "the email carries the raw token after #");
+  assert.equal(hashConfirmToken(token!), hash, "only sha256(token) is stored");
+  assert.ok(!mails[0]!.text.includes(hash));
+});
+
+test("confirmation email: one link to a page (token after #), no third-party text, no List-Unsubscribe needed", () => {
+  const m = confirmationMail("a@b.co", ENDPOINT_ID, "A".repeat(43));
+  assert.equal(m.to, "a@b.co");
+  assert.match(m.text, /\/observatory\/confirm#t=A{43}/);
+  assert.ok(!/\/api\//.test(m.text), "the email never links straight to the state-changing API");
+  assert.match(m.text, /Opening the page changes nothing/);
+  assert.doesNotMatch(m.subject, /:/, "subject carries no endpoint name");
+});
+
+test("tokens: confirmation tokens are 43-char base64url and unique; unsubscribe tokens need the key and verify only for their row", () => {
+  const seen = new Set<string>();
+  for (let i = 0; i < 200; i++) {
+    const t = newConfirmToken();
+    assert.match(t, /^[A-Za-z0-9_-]{43}$/);
+    seen.add(t);
+  }
+  assert.equal(seen.size, 200);
+
+  const id = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
+  const other = "1a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
+  const prev = process.env.API_KEY_PEPPER;
+  delete process.env.API_KEY_PEPPER;
+  try {
+    assert.equal(unsubscribeToken(id), null, "no key → no token → no notification is sent");
+    process.env.API_KEY_PEPPER = "p".repeat(40);
+    const t = unsubscribeToken(id)!;
+    assert.match(t, /^[A-Za-z0-9_-]{43}$/);
+    assert.equal(verifyUnsubscribeToken(id, t), true);
+    assert.equal(verifyUnsubscribeToken(id.toUpperCase(), t), true);
+    assert.equal(verifyUnsubscribeToken(other, t), false);
+    assert.equal(verifyUnsubscribeToken(id, t.slice(0, -1) + (t.endsWith("A") ? "B" : "A")), false);
+    assert.equal(verifyUnsubscribeToken("not-a-uuid", t), false);
+    const h = listUnsubscribeHeaders(id, t);
+    assert.equal(h["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click");
+    assert.match(h["List-Unsubscribe"], /^<https:\/\/[^>]+\/api\/v1\/observatory\/subscriptions\/unsubscribe\?id=[0-9a-f-]{36}&t=[A-Za-z0-9_-]{43}>$/);
+  } finally {
+    if (prev === undefined) delete process.env.API_KEY_PEPPER;
+    else process.env.API_KEY_PEPPER = prev;
+  }
+});
+
+test("submit: when the address bucket is spent, no email and the old token is kept", async () => {
+  const inserted: Record<string, unknown>[] = [];
+  let sends = 0;
+  __setDbForTests(fakeDb({ endpointExists: true, verdicts: [], inserted, conflict: [] }));
+  const r = await submitSubscription(
+    { endpointId: ENDPOINT_ID, email: "a@b.co", kind: "notify", reason: null },
+    "203.0.113.9",
+    { consumeLimit: async () => ({ allowed: false }), send: async () => (sends++, { sent: true, id: "x" }) },
+  );
+  assert.equal(r.ok && r.confirmation, "rate_limited");
+  assert.equal(sends, 0);
+  assert.equal("confirmTokenHash" in inserted[0]!, false, "the token hash is not replaced");
+});
+
+test("confirm-mail bucket is keyed by a hash of the address (never the raw address) and is 3 per 24h", () => {
+  const k = confirmMailBucket("a@b.co");
+  assert.ok(!k.includes("a@b.co"));
+  assert.match(k, /^record-confirm-mail:[0-9a-f]{32}$/);
+  assert.equal(CONFIRM_MAIL_LIMIT, 3);
+  assert.equal(CONFIRM_MAIL_WINDOW_MS, 86_400_000);
+});
+
+test("readTokenBody: JSON, RFC 8058 one-click form, empty body; junk JSON is null", async () => {
+  const req = (body: string, type: string) =>
+    new Request("https://vet402.com/x", { method: "POST", headers: { "content-type": type }, body });
+  assert.deepEqual(await readTokenBody(req('{"token":"abc","id":"i"}', "application/json")), { id: "i", token: "abc" });
+  assert.deepEqual(await readTokenBody(req("List-Unsubscribe=One-Click", "application/x-www-form-urlencoded")), {});
+  assert.deepEqual(await readTokenBody(req("", "application/x-www-form-urlencoded")), {});
+  assert.equal(await readTokenBody(req("{nope", "application/json")), null);
+});
+
+test("confirm / unsubscribe routes have no GET: a link scanner cannot change anything", () => {
+  for (const rel of [
+    "src/app/api/v1/observatory/subscriptions/confirm/route.ts",
+    "src/app/api/v1/observatory/subscriptions/unsubscribe/route.ts",
+  ]) {
+    const src = read(rel);
+    assert.ok(src.includes("export async function POST"), rel);
+    assert.ok(!/export\s+(async\s+)?function\s+GET|export\s+const\s+GET/.test(src), `${rel} must not export GET`);
+  }
+  for (const rel of ["src/app/observatory/confirm/page.tsx", "src/app/observatory/unsubscribe/page.tsx"]) {
+    const src = read(rel);
+    assert.ok(!/getDb|record-subscriptions/.test(src), `${rel} must not touch the store on GET`);
+    assert.ok(src.includes("noindex: true"), `${rel} is noindex`);
+  }
+  const client = read("src/components/site/SubscriptionAction.tsx");
+  assert.ok(client.includes("window.location.hash"), "token is read from the fragment");
+  assert.ok(/onClick=\{submit\}/.test(client), "the POST happens only on the button");
 });
 
 test("submit: a single fail is published as unverified (same gate as the register)", async () => {
@@ -153,6 +287,7 @@ test("submit: a single fail is published as unverified (same gate as the registe
   const r = await submitSubscription(
     { endpointId: ENDPOINT_ID, email: "a@b.co", kind: "notify", reason: null },
     "unknown",
+    { ...allowAll, send: async () => ({ skipped: "mail_unset" }) },
   );
   assert.equal(r.ok && r.lastVerdict, "unverified");
 });
@@ -176,6 +311,23 @@ test("subscriptionsToNotify: only rows whose verdict changed", () => {
 test("sendMail: without RESEND_API_KEY / MAIL_FROM nothing is sent and the caller learns it", async () => {
   const r = await sendMail({ to: "a@b.co", subject: "s", text: "t" });
   assert.deepEqual(r, { skipped: "mail_unset" });
+});
+
+test("sendMail: extra headers (List-Unsubscribe) reach the Resend payload", async () => {
+  process.env.RESEND_API_KEY = "re_test_123";
+  process.env.MAIL_FROM = "vet402 <records@vet402.com>";
+  let body: Record<string, unknown> = {};
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+    body = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ id: "msg_2" }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    await sendMail({ to: "a@b.co", subject: "s", text: "t", headers: { "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } });
+    assert.deepEqual(body.headers, { "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
 
 test("sendMail: posts to the Resend HTTP API with the bearer key", async () => {
