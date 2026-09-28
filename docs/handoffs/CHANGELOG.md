@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-28 JST（10）— 監査の指摘: 通知購読のダブルオプトイン・SSRF の予約帯・runbook・npm moderate の受容
+
+- **何を**: ①記録頁の「Email me on change」（`record_subscriptions` kind=notify）をダブルオプトインに。受付は pending・確認メール 1 通（宛先ごと 3 通/24h）・DB には確認トークンの sha256 だけ。確定は `/observatory/confirm` のボタン → `POST /api/v1/observatory/subscriptions/confirm`、停止は `/observatory/unsubscribe` のボタンか RFC 8058 one-click → `POST /api/v1/observatory/subscriptions/unsubscribe`（どちらも GET なし）。cron `notify-subscribers` は `confirmed_at IS NOT NULL AND unsubscribed_at IS NULL` の行しか読まない。全通知に `List-Unsubscribe` / `List-Unsubscribe-Post`。②`isPublicUnicastIp` に 192.0.0/24・TEST-NET-1/2/3・192.88.99/24・198.18/15・2001:db8::/32・2001::/23・3fff::/20・2000::/3 の外を追加。③`docs/INCIDENT_RUNBOOK.md` §5〜§7（Vercel ロールバック・Neon の分岐と巻き戻し・署名鍵の一覧と退避）。④`docs/audits/2026-09-28-npm-audit-moderate-acceptance.md`。
+- **なぜ**: 他人の宛先を書けばその人に通知が届く形だった／特殊用途の帯を公開扱いしていた（2026-09-28 監査）。
+- **影響**: **出す前に DDL を当てる**（`scripts/sql/2026-09-28-record-subscription-optin.sql`・列追加のみ。当てずにコードを出すと購読の API は 503・cron は 500）。配信停止トークンの鍵は `API_KEY_PEPPER` から HKDF で導出（差し替えると停止リンクも無効）。鍵が無ければ通知は送らない。既存の購読行は全部 pending 扱い（本番 0 件）。`src/app/legal/privacy` の保存項目の列挙に新しい列（確認・停止の時刻）が無い——凍結明けに足す。
+- **コミット**: ブランチ `fix/audit-subs-hardening`（未 push）
+
 ## 2026-09-28 JST（9）— PMF の週次計測: `api_keys.first_used_at`・Plausible 3 イベント・外部の人数の SQL（ブランチ `feat/audit-activation-metrics`・未 push）
 
 - **何を**: ①`api_keys.first_used_at timestamptz`（`scripts/sql/2026-09-28-api-keys-first-used.sql`・列追加のみ・既存行は `last_used_at` で埋める）。書き手は `verifyApiKey` の既存の `last_used_at` 更新を `touchApiKeyUsage` に置き換えた 1 本の UPDATE（`first_used_at = COALESCE(first_used_at, now)`）。ホットパスのクエリ本数は不変。②Plausible `seller_page_view{host}`（`/sellers/[host]`）・`fix_first_open`（`/sellers/fix-first`）・`dispute_start`（記録頁の異議欄に初めて触れた時・1 回）。sellers 頁は TrackView の import と 1 要素だけ。③`docs/metrics/pmf-funnel.sql`（外部アカウント・外部キー・使ったキー・2 週目も使ったキー・有料。自社の除外は実行時の `-v self_emails=`、リポにメールを書かない）。

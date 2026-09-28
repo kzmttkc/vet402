@@ -86,6 +86,12 @@ fail-closed: 表・行が無ければ通す＝未導入は現状維持、DB へ�
 
 **最初の 1 手**: 上の §1 で支出を止める（署名を作る側を先に黙らせる）。
 そのうえで残高を新しいアドレスへ退避し、Vercel env の鍵を差し替えて再デプロイする。
+鍵ごとの一覧と手順は §7。
+
+**順番を守る**（鍵の再発行は、漏れた経路を塞いだ実測の後）: ① §1 で止める →
+② 漏れた経路（ログ・リポ・共有した端末・CI の出力）を特定して塞ぐ → ③ 新しい鍵を
+作る → ④ 残高を新アドレスへ移す → ⑤ Vercel env を差し替えて再デプロイ →
+⑥ 旧アドレスの残高 0 と、新アドレスでの 1 件目の署名を実測 → ⑦ §1 の再開。
 
 ## 3. DB 障害（Neon が応答しない / 台帳が読めない）
 
@@ -106,3 +112,173 @@ fail-closed: 表・行が無ければ通す＝未導入は現状維持、DB へ�
 3. **再発を止めるもの**: 入れた計器・変更した閾値・手番に回した項目の名前。無ければ「無し」。
 
 このコメントが無い issue は閉じない。次回の監査（`docs/audits/`）はこの 3 行を可用性の一次データとして読む。
+
+---
+
+## 5. 本番デプロイを直前の正常版へ戻す（Vercel ロールバック・2026-09-28 監査）
+
+本番は Vercel プロジェクト `agent-trust`（`~/vouch/.vercel/repo.json`）。main への push が
+そのまま本番デプロイになる。**戻すのはコードだけ**——DB・env・runtime_flags は戻らない
+（DB は §6、支出は §1）。
+
+**最初の 1 手**（直前の本番デプロイへ即時に戻す。ビルドは走らない）:
+
+```bash
+cd ~/vouch && npx vercel rollback --yes
+```
+
+特定の版へ戻すときは、正常だった版の URL を選んで渡す:
+
+```bash
+npx vercel ls agent-trust --prod            # 本番デプロイの一覧（新しい順）。Status=Ready と Age を見る
+npx vercel inspect <deployment-url>          # その版の commit を確かめる
+npx vercel rollback <deployment-url> --yes
+```
+
+チーム配下なら全コマンドに `--scope <team>` を付ける【要確認: 付けずに通るか】。
+Hobby プランで戻せるのは直前の本番 1 つだけ【要確認: 現在のプランと制限】。それより前へ
+戻すなら、正常だった状態へ `git revert` して push する（履歴を書き換えない）。
+
+### 戻ったことの確認
+
+```bash
+curl -sSL -o /dev/null -w "%{http_code}\n" https://vet402.com/
+curl -sSL "https://vet402.com/api/health?deep=1" -H "Authorization: Bearer $ADMIN_SECRET"
+npx vercel ls agent-trust --prod | head -5     # 本番の別名が戻した版を指していること
+```
+
+`checks` が全て `ok`、壊れていた症状を 1 つ選び、同じ curl で再現しないことを確かめる。
+
+### 戻したあとに必ずやること
+
+- **ロールバック中は、main への push が本番へ自動で出ない**【要確認: Vercel の
+  Instant Rollback は本番ドメインの自動割り当てを止める】。直した版を出すときは
+  `npx vercel promote <deployment-url> --yes` で明示的に昇格する（またはダッシュボードの
+  「Undo Rollback」）。忘れると、以後の修正が本番に出ないまま「直した」と思い込む。
+- 戻した版が **DB の列を前提にしているか**を確かめる。列追加のマイグレーションは
+  コードより先に当てる（§6）ので、コードだけ古い版に戻しても通常は壊れない。
+  逆（新しいコードが、まだ当てていない列を読む）は 500 になる。
+- cron（`vercel.json`）の定義も版と一緒に戻る。戻した版に無い cron は止まる。
+
+---
+
+## 6. DB 変更の戻し方（Neon・2026-09-28 監査）
+
+本番 DB は Neon 上の `vouch`（以下の例の分岐名 `main` は【要確認: 本番の分岐名】）。マイグレーションは `scripts/sql/YYYY-MM-DD-*.sql` を
+**人が psql で当てる**（冪等・`IF NOT EXISTS`）。自動のマイグレーション実行は無い。
+**列を足す SQL は、その列を読むコードを出す前に当てる。**
+
+### 6.1 列追加マイグレーションを戻す
+
+列追加は破壊的でないので、**まずコードを戻す（§5）だけで足りることが多い**。
+古いコードは新しい列を読まない。列そのものを消すのは、コードを戻したことを確かめた後、
+その列を読む版を二度と出さないと決めたときだけ。
+
+各 SQL ファイルの冒頭コメントに戻し方を書く。例（`scripts/sql/2026-09-28-record-subscription-optin.sql`）:
+
+```bash
+psql "$DATABASE_URL" <<'SQL'
+BEGIN;
+DROP INDEX IF EXISTS record_subscriptions_confirm_token_hash_idx;
+ALTER TABLE record_subscriptions
+  DROP COLUMN IF EXISTS confirm_token_hash,
+  DROP COLUMN IF EXISTS confirm_sent_at,
+  DROP COLUMN IF EXISTS confirmed_at,
+  DROP COLUMN IF EXISTS unsubscribed_at;
+COMMIT;
+SQL
+```
+
+注意: `DROP COLUMN` は列の値ごと消す（戻せない）。消す前に §6.2 の分岐を 1 本作っておく。
+この例では、確定済みの購読の記録（誰がいつ確認したか）が消える。
+
+### 6.2 データが壊れたとき（Neon の分岐と巻き戻し）
+
+**最初の 1 手**: 壊れる前の時点から、調査用の分岐を作る（本番に触らない）。
+
+```bash
+npx neonctl branches create --project-id <project-id> \
+  --name incident-$(date -u +%Y%m%d-%H%M) \
+  --parent "main@2026-09-28T09:00:00Z"   # 壊れる前の UTC 時刻【要確認: 時刻指定の構文は neonctl branches create --help】
+npx neonctl connection-string incident-YYYYMMDD-HHMM --project-id <project-id> --database-name vouch
+```
+
+その分岐に psql でつなぎ、壊れた行を本番と突き合わせる。**部分的な修復**（壊れた
+表・行だけ）は、この分岐から `pg_dump -t <table> --data-only` で取り出し、本番へ
+トランザクションで戻す。L1 台帳（`x402_l1_purchases` 等）は金の記録なので、戻す前に
+§1 で支出を止め、オンチェーンの tx と行を 1 件ずつ照合する。
+
+**全体を巻き戻す**（最後の手段。指定時刻より後の書き込みが全部消える）:
+
+```bash
+npx neonctl branches restore main "^self@2026-09-28T09:00:00Z" \
+  --project-id <project-id> --preserve-under-name main_before_restore_$(date -u +%Y%m%d)
+```
+
+`--preserve-under-name` で巻き戻し前の状態を別名の分岐に残す（後から、失った行を拾える）。
+巻き戻しの前後で §1 の停止・再開を挟む。巻き戻しの間は接続が切れる。
+
+- **巻き戻せる期間（history retention）**: 【要確認】。Neon のプランとプロジェクト設定で
+  決まる。事故に気づくのが保持期間より遅ければ、この手段は無い。
+  確認先: Neon コンソールの Project settings（または `npx neonctl projects get <project-id>`
+  の history retention の値）。
+- 巻き戻しで `DATABASE_URL` の接続先が変わるか【要確認】。変わったら Vercel env を
+  差し替えて再デプロイする。
+- pg テストは `*.neon.tech` を拒否する（`tests/helpers/pg-test-guard.ts`）。調査用の
+  分岐にテストを向けない（テストは TRUNCATE から始まる）。
+
+---
+
+## 7. 署名鍵・秘密の一覧と、漏えい時の退避（2026-09-28 監査）
+
+値はここに書かない。置き場は Vercel env（本番）か、持ち主の端末のシェルだけ。
+「Vercel」列が × のものはアプリが読まない（手元のスクリプト専用）ので、Vercel に置かない。
+
+### 7.1 資金を動かす鍵（漏れたら最優先）
+
+| env 名 | チェーン | 用途（読む場所） | Vercel |
+|---|---|---|---|
+| `OBSERVATORY_WALLET_PRIVATE_KEY` | Base (eip155:8453)・Arc (eip155:5042)・Tempo (MPP) の**同じ EOA** | L1 実購入（`src/lib/observatory/l1-runner.ts`・`mpp-payer.ts`） | ○ |
+| `OBSERVATORY_SOLANA_SECRET_KEY` | Solana | L1 実購入（`l1-runner.ts` の `loadSolanaKeypair`） | ○ |
+| `OBSERVATORY_XRPL_SEED` | XRPL (xrpl:0) | L1 実購入・RLUSD（`src/lib/observatory/xrpl402-payer.ts`） | ○ |
+| `REGISTRY_OPERATOR_PRIVATE_KEY` | Base | ERC-8004 Validation Registry への書き込み（`src/lib/chain/registry-hook.ts`）。購入用とは別鍵 | ○ |
+| `TOKYO_OPERATOR_PRIVATE_KEY` | Sepolia（テストネット） | /tokyo の審査ボタン W_op（`src/app/api/tokyo/_lib/env.ts`） | ○ |
+| `VOUCH_PAYER_PRIVATE_KEY` / `VOUCH_SOLANA_PAYER_SECRET_KEY` | EVM / Solana | MCP `pay_if_trusted`・SDK `payOrRefuse` の支払い側（利用者の端末） | × |
+| `RWA_ANCHOR_KEY` / `PAYER_PRIVATE_KEY` | Robinhood Chain (4663 / 46630) | `/rwa` のアンカー 1 回・手動支払い 1 回（`packages/rwa/scripts/`） | × |
+| `DEMO_PAYER_PRIVATE_KEY` | EVM | `examples/ethonline-2026-demo` | × |
+| `TOKYO_W_PAY_PRIVATE_KEY` / `TOKYO_K_ATST_PRIVATE_KEY` / `W_ENS_PRIVATE_KEY`（名前は `TOKYO_SELLER_OWNER_KEY_ENV` で差し替え可） | Sepolia | `examples/tokyo-2026-demo` | × |
+
+`src/lib/chain/solana-attest.ts`（`SOLANA_ATTEST_ENABLED`）は鍵を env から読まず、
+呼び手から Keypair を受け取る。2026-09-28 時点で呼び手は無い（配線したら表に足す）。
+
+**退避の手順（上の表の ○ の鍵）**
+
+1. §1 で支出を止める（Base・Arc・Tempo・Solana・XRPL の L1 は同じ停止で全部止まる）。
+   Registry 書き込みは Vercel env `REGISTRY_WRITES_ENABLED=false` → 再デプロイ。
+   Tokyo ボタンは DB の `runtime_flags.tokyo_button_halt` を立てる。
+2. 新しい鍵を**持ち主の端末で**作る（エージェントに作らせない・値をチャットや
+   ログに出さない）。EVM は `cast wallet new`、Solana は `solana-keygen new`、
+   XRPL は新しい family seed。
+3. 旧アドレスの残高を新アドレスへ移す。EVM の EOA は Base・Arc・Tempo で**同じ
+   アドレス**なので、3 チェーン全部の USDC / USDC.e / ガス（Arc はガスも USDC）を
+   移す。XRPL は RLUSD を移し、新アカウントに RLUSD のトラストラインを張る
+   （`scripts/xrpl-trustline.ts`）。旧アカウントの準備金は `AccountDelete` まで戻らない。
+4. Vercel env を差し替え（Production・Sensitive）→ 再デプロイ →
+   `api/health?deep=1` で payer 残高が新アドレスの値を指すことを確かめる。
+5. 旧アドレスを前提にした設定（`OBSERVATORY_TEST_WALLETS`、自社 payTo の除外リスト、
+   台帳の `payer` 列を見る集計）を grep し、新アドレスを足す。
+6. §1 の再開。1 件目の署名が新アドレスから出たことを台帳の `payer` で実測する。
+
+### 7.2 資金を直接は動かさない秘密
+
+| env 名 | 漏れたら何ができるか | 差し替えの注意 |
+|---|---|---|
+| `ADMIN_SECRET` | 支出停止の解除・管理 API | 差し替え → 再デプロイ。管理リポ launchd 側の控えも更新 |
+| `CRON_SECRET` | cron の手動起動（L1 購入 cron を含む） | 同上。Vercel cron は env から自動で読む |
+| `API_KEY_PEPPER` | API キーのハッシュの鍵・webhook 秘密の KEK（`WEBHOOK_SECRET_KEK` 未設定時）・通知メールの配信停止トークンの鍵 | **差し替えると既存の API キーと配信停止リンクが全部無効**。先に `WEBHOOK_SECRET_KEK` / `_PREVIOUS` で webhook 秘密を包み直す |
+| `WEBHOOK_SECRET_KEK` / `WEBHOOK_SECRET_KEK_PREVIOUS` | 保存済み webhook 署名秘密の復号 | 新 KEK を `WEBHOOK_SECRET_KEK`、旧を `_PREVIOUS` に置いて再封 → 旧を消す |
+| `DASHBOARD_SESSION_SECRET` | ダッシュボードのセッション偽造 | 差し替えると全員ログアウト |
+| `RESEND_API_KEY` | vet402 名義のメール送信 | Resend で失効 → 再発行 |
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | 課金操作・webhook 偽造 | Stripe ダッシュボードで roll |
+| `GRAPH_API_KEY` / `ALCHEMY_API_KEY` / `BLOCKSCOUT_API_KEY` | 従量課金の消費 | 各サービスで失効 → 再発行 |
+| `DATABASE_URL` | 台帳の読み書き全部 | Neon でロールのパスワードを reset → Vercel env 差し替え → 再デプロイ |
