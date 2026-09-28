@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-28 JST（8）— 監査対応: 売り手の sitemap・売り手頁の題・title/description の字数・トップの最初の画面
+
+- **何を**: `/sitemap-sellers.xml`（/sellers と同じデータ源から全 host、lastmod は最新購入日、落とした数は `x-vet402-skipped`）と robots の Sitemap 行、sitemap に `/rwa`。`/sellers/[host]` の title・H1 を「Is {host} working?」形にし WebPage＋BreadcrumbList。静的頁の title 60 字・description 160 字超過を 0 に（トップ 67→56 字、ブログは SEO 用の題だけ別持ち）。/docs/api の Base URL の改行と旧名の位置。トップの最初の画面に平易な 1 文・売り手検索（`/sellers?q=`）・CTA 2 つ（Check a seller／Get a free API key）、RFC の書誌欄は下へ。ナビに Sellers（Method は 1024px 以上のみ、モバイルのメニューには常に出る）。入力欄 16px。/sellers は 640px 未満でカード表示。
+- **なぜ**: 2026-09-28 の全カテゴリ監査（SEO 62・UI/UX 62）の P1①②と P2。
+- **影響**: `docs/claims.yaml` の引用 1 件とテスト 3 本を合わせて更新。`/ethonline` の description も短縮した（本文は不変）。
+
 ## 2026-09-28 JST（7）— 規約・プライバシー・Legal Notice の運営者を「KIZUNA Creation」に統一
 
 - **何を**: 「individual proprietor」「individually owned business」の表記を「KIZUNA Creation」に置換（`/legal/terms` §11 の準拠法の理由、`/legal/privacy` の運営者、`/legal/notice`）。
