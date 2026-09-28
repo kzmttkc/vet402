@@ -413,6 +413,8 @@ RPC: `https://rpc.mainnet.chain.robinhood.com`。失敗時だけ予備（実装�
 
 改正（patch 015・2026-09-28）: **入口 `/rwa` を足す。** 動画と提出文の結び "Paste any wallet into vet402.com/rwa" が本番で 404 だった（実測 2026-09-28）。`/rwa` は入力欄 1 つの GET フォームだけを持ち、貼られた文字列（アドレス・エクスプローラの URL・/rwa の URL）から最初の 20 バイトのアドレスを取り出して `/rwa/<checksum address>` へ 307 で送る（`packages/rwa/entry.ts`、tx hash はアドレスとして拾わない）。特定のウォレットへのリンク・例示アドレスは置かない。記録の表示と §10 の制限は `/rwa/[address]` のまま。
 
+改正（patch 016・2026-09-28 Takeshi「全て推奨で進めて」）: **デモのアドレス `0xE9B0…EC25f` は第三者のもの（本人の了解なし・`identity_binding: unknown`）だが、動画・提出フォームの frontend 欄・anchor・Fixture B ではそのまま使う。** 公開チェーンの記録であり名前を出さないこと、「誰のウォレットでも読める」ことが製品そのものであることが理由。LP など自社の宣伝面からは特定のウォレットへ直リンクせず `/rwa`（入口）へ向ける。HackQuest のプロジェクトページは同日に書き換え済み（他大会の名前を外し、Fundraising は "No plans." だけ、デモ動画を直接アップロード、MVP リンク `https://vet402.com/rwa`）。提出（Submit Project）は 9/29〜10/1。
+
 ---
 
 ## 11. ゴールデン
