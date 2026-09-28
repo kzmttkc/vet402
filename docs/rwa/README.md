@@ -29,6 +29,10 @@ token, or give advice. Specification: [SPEC.md](SPEC.md). Rules for this code:
    The script hashes the record kept in [`fixtures/rwa/anchor.json`](../../fixtures/rwa/anchor.json)
    (the wallet in step 1, as published at block 74267752) and compares it with
    the `Anchored` event it reads from the chain.
+5. The same record, bought by an agent: 0.01 USDG over x402 on Robinhood Chain,
+   settled through Dexter in tx
+   [`0xeb26d1b5…3760`](https://robinhoodchain.blockscout.com/tx/0xeb26d1b5b0b1a12056ec8abd99640fcbb00860552b4c5a44d3e1b67b3da73760)
+   ([`fixtures/rwa/paid-receipt.json`](../../fixtures/rwa/paid-receipt.json)). The free JSON stays free.
 
 ## What this Buildathon added, and what it did not
 

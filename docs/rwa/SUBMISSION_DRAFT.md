@@ -21,6 +21,7 @@ Overall Prize and Promising Products Track. /rwa is built only on Robinhood Chai
 ## Link to frontend/UI/website
 
 https://vet402.com/rwa/0xE9B08727131E34010b34006c660D4c1B436EC25f
+Agents can buy the same JSON over x402 for 0.01 USDG: /api/v1/rwa/paid/facts/<address>. First settlement tx 0xeb26d1b5b0b1a12056ec8abd99640fcbb00860552b4c5a44d3e1b67b3da73760.
 
 ## List your Core Protocol / Smart Contract Addresses
 
@@ -36,7 +37,7 @@ Not applicable: no token is issued. /rwa reads the canonical NVDA Stock Token 0x
 
 ## Which parts of your code have been produced during the Buildathon?
 
-All of /rwa, first code commit 2026-09-16 22:03 UTC: packages/rwa (classifier, FIFO, feed staleness, anchor), src/app/rwa, src/app/api/v1/rwa/facts, fixtures/rwa, RwaAnchor.sol. The parent vet402 product predates the event and is not claimed.
+All of /rwa, first code commit 2026-09-16 22:03 UTC: packages/rwa (classifier, FIFO, feed staleness, anchor), src/app/rwa, src/app/api/v1/rwa, fixtures/rwa, RwaAnchor.sol. The parent vet402 product predates the event and is not claimed.
 
 ## Which sponsor/partner technologies have you used?
 

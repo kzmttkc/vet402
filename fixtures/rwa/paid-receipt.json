@@ -1,0 +1,19 @@
+{
+  "what": "First paid call of GET /api/v1/rwa/paid/facts/:address (SPEC patch 017), paid by the owner once with packages/rwa/scripts/pay-facts.ts",
+  "network": "eip155:4663",
+  "asset": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+  "amount_atomic": "10000",
+  "amount_usdg": "0.01",
+  "payer": "0x6777E11fB0A7917b8110B7dab9188AA3F6D23986",
+  "pay_to": "0x973cD8a91A771C2C04C6036888F8175D6b4F6227",
+  "resource": "https://vet402.com/api/v1/rwa/paid/facts/0xE9B08727131E34010b34006c660D4c1B436EC25f",
+  "facilitator": "https://x402.dexter.cash",
+  "settle_tx": "0xeb26d1b5b0b1a12056ec8abd99640fcbb00860552b4c5a44d3e1b67b3da73760",
+  "settle_tx_from": "0x402Feee072D655B85e08f1751AF9ddbCd249521f",
+  "settle_tx_to": "0x402085c248EeA27D92E8b30b2C58ed07f9E20001",
+  "block": 74583758,
+  "time_utc": "2026-09-28T06:30:22Z",
+  "status": "success",
+  "explorer": "https://robinhoodchain.blockscout.com/tx/0xeb26d1b5b0b1a12056ec8abd99640fcbb00860552b4c5a44d3e1b67b3da73760",
+  "checked": "2026-09-28T06:30Z: payer USDG 0.982759 -> 0.972759, pay_to USDG 0 -> 0.01, Permit2 allowance 0.99 after one approve(1 USDG)"
+}
