@@ -6,18 +6,25 @@ import { hex, padAddress, rpcBatch, rpcCall, RpcError, type RpcOptions } from ".
 
 type RawLog = { transactionHash: string; blockNumber: string; logIndex: string; topics: string[]; data: string; address: string };
 
-/** Blocks per eth_getLogs range. An address-filtered Transfer query over 40M blocks
- *  answers in ~0.3s (measured 2026-09-28: the demo address, genesis to head in one
- *  call, 19 logs). 4M chunks meant ~38 calls per side and, whenever the batch drew
- *  a 429, the whole batch was retried, which is what pushed a cold reconstruction to
- *  ~190 JSON-RPC calls. Heavy addresses still time out on wide ranges (the Fixture A
- *  holder did on 2026-09-17), so a chunk that times out or exceeds the 10,000-log
- *  cap is split in half, down to MIN_CHUNK_BLOCKS. */
-export const LOG_CHUNK_BLOCKS = 40_000_000;
+/** Blocks per eth_getLogs range. The primary RPC began refusing ranges over
+ *  10,000,000 blocks ("only 10000000 are allowed for this request") on or before
+ *  2026-09-29 05:4x JST; the 40M chunks that answered in ~0.3s on 2026-09-28 then
+ *  failed every cold reconstruction. At head ~75M that is 8 chunks per side, still
+ *  one batch. If the provider names a smaller limit, getLogsChunked re-walks with
+ *  it. Heavy addresses still time out on wide ranges (the Fixture A holder did on
+ *  2026-09-17), so a chunk that times out or exceeds the 10,000-log cap is split in
+ *  half, down to MIN_CHUNK_BLOCKS. */
+export const LOG_CHUNK_BLOCKS = 10_000_000;
 const MIN_CHUNK_BLOCKS = 64;
 
 function isSplittable(err: unknown): boolean {
-  return err instanceof RpcError && /timed out|timeout|deadline exceeded|exceeds limit|too many|response size/i.test(err.message);
+  return err instanceof RpcError && /timed out|timeout|deadline exceeded|exceeds limit|too many|response size|narrow the block range/i.test(err.message);
+}
+
+/** The block span the provider says it allows ("… but only 10000000 are allowed …"), or null. */
+export function allowedSpan(err: unknown): number | null {
+  const m = err instanceof RpcError ? /only (\d+) (?:blocks )?are allowed/i.exec(err.message) : null;
+  return m ? Number(m[1]) : null;
 }
 
 async function getLogsRange(filter: Record<string, unknown>, from: number, to: number, opts?: RpcOptions): Promise<RawLog[]> {
@@ -50,6 +57,8 @@ async function getLogsChunked(filter: Record<string, unknown>, from: number, to:
     );
     return results.flat();
   } catch (err) {
+    const allowed = allowedSpan(err);
+    if (allowed && allowed < chunk && allowed >= MIN_CHUNK_BLOCKS) return getLogsChunked(filter, from, to, opts, allowed);
     if (!isSplittable(err)) throw err;
   }
 
@@ -60,6 +69,12 @@ async function getLogsChunked(filter: Record<string, unknown>, from: number, to:
     out.push(...(await getLogsRange(filter, start, Math.min(to, start + chunk - 1), logOpts)));
   }
   return out;
+}
+
+/** Logs matching `filter` from genesis to head, walked in the same chunks (the provider caps the span per query). */
+export async function getLogsFromGenesis(filter: Record<string, unknown>, opts?: RpcOptions): Promise<RawLog[]> {
+  const head = await fetchHead(opts);
+  return getLogsChunked(filter, 0, head, opts);
 }
 
 /** Transfer logs of `token` where `address` is sender or recipient, up to and including `toBlock`, ordered by block then log index. */

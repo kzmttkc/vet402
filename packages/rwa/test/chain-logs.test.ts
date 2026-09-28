@@ -51,3 +51,24 @@ test("an RPC error that is not about range size is not retried into a split", as
   const fetchImpl = (async () => new Response(JSON.stringify({ id: 0, error: { code: -32602, message: "invalid argument" } }), { status: 200 })) as unknown as typeof fetch;
   await assert.rejects(fetchCanonicalTransfers(TOKEN, ME, 100, { fetchImpl, retries: 0, sleep: async () => {} }, 1000), /invalid argument/);
 });
+
+test("when the RPC names its allowed span, the walk re-chunks to it (2026-09-29: 10M)", async () => {
+  const ranges: [number, number][] = [];
+  const fetchImpl = (async (_url: string, init: { body: string }) => {
+    const req = JSON.parse(init.body);
+    const calls = Array.isArray(req) ? req : [req];
+    const responses = calls.map((c: { id: number; params: [{ fromBlock: string; toBlock: string }] }) => {
+      const from = Number(c.params[0].fromBlock);
+      const to = Number(c.params[0].toBlock);
+      if (to - from + 1 > 500) {
+        return { id: c.id, error: { code: -32602, message: `query spans ${to - from + 1} blocks (${from} to ${to}), but only 500 are allowed for this request; narrow the block range` } };
+      }
+      ranges.push([from, to]);
+      return { id: c.id, result: [] };
+    });
+    return new Response(JSON.stringify(Array.isArray(req) ? responses : responses[0]), { status: 200 });
+  }) as unknown as typeof fetch;
+  await fetchCanonicalTransfers(TOKEN, ME, 1999, { fetchImpl, retries: 0, sleep: async () => {} }, 2000);
+  assert.equal(ranges.length, 8); // two sides × 4 chunks of 500
+  for (const [from, to] of ranges) assert.ok(to - from + 1 <= 500, `${from}-${to}`);
+});

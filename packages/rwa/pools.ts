@@ -7,7 +7,8 @@
 import { TOPICS } from "./events";
 import type { PoolResolver } from "./classify";
 import { UNISWAP } from "./config";
-import { hex, padAddress, rpcBatch, rpcCall, word, type RpcOptions } from "./rpc";
+import { getLogsFromGenesis } from "./chain";
+import { padAddress, rpcBatch, rpcCall, word, type RpcOptions } from "./rpc";
 
 const SEL = { token0: "0x0dfe1681", token1: "0xd21220a7", fee: "0xddca3f43", getPool: "0x1698ee82" } as const;
 
@@ -60,11 +61,8 @@ export function chainPoolResolver(opts?: RpcOptions, memo: PoolFacts = sharedMem
     async isUniswapV4PoolWith(poolId, token) {
       const key = poolId.toLowerCase();
       if (!(key in memo.v4)) {
-        const logs = await rpcCall<{ topics: string[] }[]>(
-          "eth_getLogs",
-          [{ address: UNISWAP.v4PoolManager, topics: [TOPICS.univ4Initialize, key], fromBlock: hex(0), toBlock: "latest" }],
-          opts,
-        );
+        // Walked in chunks: one genesis-to-latest query is refused past the provider's span cap (2026-09-29).
+        const logs = await getLogsFromGenesis({ address: UNISWAP.v4PoolManager, topics: [TOPICS.univ4Initialize, key] }, opts);
         const init = logs[0];
         memo.v4[key] = init ? { currency0: `0x${init.topics[2].slice(-40)}`, currency1: `0x${init.topics[3].slice(-40)}` } : null;
       }
