@@ -38,10 +38,12 @@ export function assertTarget(target) {
         parsed = new URL(target.url);
     }
     catch {
-        throw new Error(`${INVALID_TARGET_PREFIX} url must be an absolute http(s) URL`);
+        throw new Error(`${INVALID_TARGET_PREFIX} url must be an absolute https URL`);
     }
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-        throw new Error(`${INVALID_TARGET_PREFIX} url must be an absolute http(s) URL`);
+    // 2026-09-29: vet402 の resolve は https だけを受け付ける（http は 400）。ここで先に弾き、
+    // 利用者に直し方を同じ語で返す（400 の本文の message は vouchFetch が運ばないため）。
+    if (parsed.protocol !== "https:") {
+        throw new Error(`${INVALID_TARGET_PREFIX} url must be an absolute https URL`);
     }
     return { url: target.url };
 }

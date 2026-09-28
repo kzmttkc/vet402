@@ -50,7 +50,7 @@ export type ResourceDecisionOutcome =
   | { kind: "decision"; resourceId: string; resolvedFrom: string | null; result: DecisionResult }
   | { kind: "uncatalogued"; body: UncataloguedResult };
 
-/** 入力を検査する。どちらか片方だけ。URL は http(s) の絶対 URL に限る。 */
+/** 入力を検査する。どちらか片方だけ。URL は https の絶対 URL に限る（resolve と同じ）。 */
 export function assertTarget(target: ResourceTarget): { resourceId: string } | { url: string } {
   const hasId = typeof target.resourceId === "string" && target.resourceId.length > 0;
   const hasUrl = typeof target.url === "string" && target.url.length > 0;
@@ -70,10 +70,12 @@ export function assertTarget(target: ResourceTarget): { resourceId: string } | {
   try {
     parsed = new URL(target.url!);
   } catch {
-    throw new Error(`${INVALID_TARGET_PREFIX} url must be an absolute http(s) URL`);
+    throw new Error(`${INVALID_TARGET_PREFIX} url must be an absolute https URL`);
   }
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    throw new Error(`${INVALID_TARGET_PREFIX} url must be an absolute http(s) URL`);
+  // 2026-09-29: vet402 の resolve は https だけを受け付ける（http は 400）。ここで先に弾き、
+  // 利用者に直し方を同じ語で返す（400 の本文の message は vouchFetch が運ばないため）。
+  if (parsed.protocol !== "https:") {
+    throw new Error(`${INVALID_TARGET_PREFIX} url must be an absolute https URL`);
   }
   return { url: target.url! };
 }
