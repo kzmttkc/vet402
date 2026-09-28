@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
-import { and, count, desc, eq, isNull, or } from "drizzle-orm";
+import { and, count, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { isProduction } from "@/lib/config/env";
 import { logServerError } from "@/lib/util/log";
 import { secureCompare } from "@/lib/util/secure-compare";
@@ -87,17 +87,28 @@ export async function verifyApiKey(token: string): Promise<ApiKeyRecord | null> 
 
   if (!candidate) return null;
 
-  void db
-    .update(apiKeys)
-    .set({ lastUsedAt: new Date() })
-    .where(eq(apiKeys.id, record.id))
-    .catch((error) => logServerError("api_key_last_used", error));
+  void touchApiKeyUsage(record.id).catch((error) => logServerError("api_key_last_used", error));
 
   return {
     id: record.id,
     plan: normalizePlan(record.plan),
     name: record.name,
   };
+}
+
+/**
+ * 認証が通ったキーの「最後に使った時刻」と「初めて使った時刻」を 1 本の UPDATE で書く
+ * （2026-09-28 PMF 計測: 外部キーが実際に使われ始めたかを数える列）。
+ * first_used_at は NULL のときだけ入る（COALESCE）。ホットパスのクエリ本数は増やさない。
+ * 列は scripts/sql/2026-09-28-api-keys-first-used.sql（デプロイより先に適用する）。
+ */
+export async function touchApiKeyUsage(id: string, now: Date = new Date()): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+  await db
+    .update(apiKeys)
+    .set({ lastUsedAt: now, firstUsedAt: sql`COALESCE(${apiKeys.firstUsedAt}, ${now.toISOString()}::timestamptz)` })
+    .where(eq(apiKeys.id, id));
 }
 
 export async function createApiKey(params: {

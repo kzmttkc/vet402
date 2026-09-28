@@ -106,6 +106,8 @@ export const apiKeys = pgTable(
     plan: text("plan").notNull().default("free"),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    // 2026-09-28: 認証が初めて通った時刻（scripts/sql/2026-09-28-api-keys-first-used.sql）。
+    firstUsedAt: timestamp("first_used_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (t) => [index("api_keys_key_hash_idx").on(t.keyHash)],

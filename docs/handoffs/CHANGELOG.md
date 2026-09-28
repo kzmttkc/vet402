@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-28 JST（9）— PMF の週次計測: `api_keys.first_used_at`・Plausible 3 イベント・外部の人数の SQL（ブランチ `feat/audit-activation-metrics`・未 push）
+
+- **何を**: ①`api_keys.first_used_at timestamptz`（`scripts/sql/2026-09-28-api-keys-first-used.sql`・列追加のみ・既存行は `last_used_at` で埋める）。書き手は `verifyApiKey` の既存の `last_used_at` 更新を `touchApiKeyUsage` に置き換えた 1 本の UPDATE（`first_used_at = COALESCE(first_used_at, now)`）。ホットパスのクエリ本数は不変。②Plausible `seller_page_view{host}`（`/sellers/[host]`）・`fix_first_open`（`/sellers/fix-first`）・`dispute_start`（記録頁の異議欄に初めて触れた時・1 回）。sellers 頁は TrackView の import と 1 要素だけ。③`docs/metrics/pmf-funnel.sql`（外部アカウント・外部キー・使ったキー・2 週目も使ったキー・有料。自社の除外は実行時の `-v self_emails=`、リポにメールを書かない）。
+- **なぜ**: vet402 の PMF を週次で同じ定義で判定するため（管理リポ `scripts/vet402_pmf_weekly.py` がこの定義で本番を読み取り専用で数える）。
+- **影響・順序**: 本番の ALTER は 2026-09-28 20:5x JST に適用済み（6 行中 5 行を last_used_at で埋めた）。**本番に ALTER を適用してからデプロイする。** drizzle の insert は schema.ts の全列を列挙するので、列の無い DB に新コードが載るとサインアップ・キー発行が undefined_column で落ちる（逆順は無害）。テスト: `tests/api-keys-first-used.pg.test.ts`・`tests/pmf-funnel-sql.pg.test.ts`。
+
 ## 2026-09-28 JST（8）— 監査対応: 売り手の sitemap・売り手頁の題・title/description の字数・トップの最初の画面
 
 - **何を**: `/sitemap-sellers.xml`（/sellers と同じデータ源から全 host、lastmod は最新購入日、落とした数は `x-vet402-skipped`）と robots の Sitemap 行、sitemap に `/rwa`。`/sellers/[host]` の title・H1 を「Is {host} working?」形にし WebPage＋BreadcrumbList。静的頁の title 60 字・description 160 字超過を 0 に（トップ 67→56 字、ブログは SEO 用の題だけ別持ち）。/docs/api の Base URL の改行と旧名の位置。トップの最初の画面に平易な 1 文・売り手検索（`/sellers?q=`）・CTA 2 つ（Check a seller／Get a free API key）、RFC の書誌欄は下へ。ナビに Sellers（Method は 1024px 以上のみ、モバイルのメニューには常に出る）。入力欄 16px。/sellers は 640px 未満でカード表示。

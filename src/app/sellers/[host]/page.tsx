@@ -9,6 +9,7 @@ import { markRebuyEligible, type SellerDetail } from "@/lib/sellers/board";
 import { getSellerBoardCached, getSellerDetailCached } from "@/lib/sellers/cached";
 import { parseSellerHostParam } from "@/lib/sellers/host";
 import { SellerDetailView, SellersNotice, sellerPageTitle, sellerPath } from "@/components/site/sellers/SellersViews";
+import TrackView from "@/components/site/TrackView";
 
 /**
  * /sellers/[host] — one seller's Base listings, each with its latest purchase, what vet402 saw,
@@ -99,6 +100,7 @@ export default async function SellerPage({ params, searchParams }: Props) {
         dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
       />
       <SellerDetailView detail={detail} page={page} now={Date.parse(detail.fetchedAt)} revalidateSec={PUBLIC_READ_REVALIDATE} />
+      <TrackView event="seller_page_view" props={{ host }} />
     </main>
   );
 }

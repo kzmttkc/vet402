@@ -4,6 +4,7 @@ import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate
 import type { SellerBoard } from "@/lib/sellers/board";
 import { getSellerBoardCached } from "@/lib/sellers/cached";
 import { FixFirstView, SellersNotice } from "@/components/site/sellers/SellersViews";
+import TrackView from "@/components/site/TrackView";
 
 /**
  * /sellers/fix-first — the Base listings whose latest purchase did not deliver, grouped by kind of
@@ -28,6 +29,7 @@ export default async function FixFirstPage() {
   }
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
+      <TrackView event="fix_first_open" />
       {board ? (
         <FixFirstView board={board} revalidateSec={PUBLIC_READ_REVALIDATE} />
       ) : (

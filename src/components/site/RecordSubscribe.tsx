@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { buttonClass } from "@/components/ui/Button";
 import { track } from "@/lib/analytics";
 
@@ -12,7 +12,8 @@ import { track } from "@/lib/analytics";
  *   dispute — この記録への異議（理由つき）。人が読む
  * RFC の紙の文法（doc-caption / doc-input / buttonClass）。装飾なし、枠なし。
  * 送信は fetch。成功時は受付番号を残す（人が support へ問い合わせる時の鍵）。
- * Plausible: record_subscribe{kind}。email は送らない。
+ * Plausible: record_subscribe{kind}（送信成功）と dispute_start（異議欄に初めて触れた時・1 回だけ）。
+ * email も理由の本文も送らない。
  */
 export default function RecordSubscribe({
   endpointId,
@@ -28,6 +29,13 @@ export default function RecordSubscribe({
   const [receipt, setReceipt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const uid = useId();
+  const disputeStarted = useRef(false);
+  // 2026-09-28 PMF 計測: 異議の「開始」（欄に初めて触れた）を送信成功と分けて数える。
+  function markDisputeStart() {
+    if (kind !== "dispute" || disputeStarted.current) return;
+    disputeStarted.current = true;
+    track("dispute_start");
+  }
 
   const reasonLength = reason.trim().length;
   const canSend =
@@ -72,7 +80,7 @@ export default function RecordSubscribe({
   }
 
   return (
-    <form onSubmit={submit} className="mt-4 flex max-w-[62ch] flex-col gap-3" noValidate>
+    <form onSubmit={submit} onFocus={markDisputeStart} className="mt-4 flex max-w-[62ch] flex-col gap-3" noValidate>
       {kind === "notify" ? (
         <p className="doc-p max-w-[62ch]">
           Get one email when this record&apos;s verdict changes. No digest, no marketing — one
