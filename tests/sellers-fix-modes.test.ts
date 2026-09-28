@@ -697,3 +697,18 @@ test("そのとき見た 402: 署名した行は払った条件、署名前に�
   assert.equal(observed402Line(row({ status: "no_402", network: null, unpaidStatus: 404 })), "The unpaid request got HTTP 404, not a 402.");
   assert.equal(observed402Line(row({ status: "over_cap", network: null })), null);
 });
+
+test("2026-09-29 独立レビュー（BLOCK）: 本文を宣言した出品へ `{}` を送った行・クエリを宣言した出品へクエリ無しの行は seller の側に置かない", () => {
+  const bodyDeclared = {
+    ...proven({ status: "settle_failed", httpStatusPaid: 402, attemptedAt: "2026-09-20T00:00:00Z", method: "POST" }),
+    meta: { requestBody: "empty", requestQuery: "empty" },
+    declaredInput: { query: "empty", body: "declared" },
+  } as SellerRowFacts;
+  assert.notEqual(classifyRow(bodyDeclared).bucket, "seller");
+  const queryDeclared = {
+    ...proven({ status: "settle_failed", httpStatusPaid: 500, attemptedAt: "2026-09-28T00:00:00Z" }),
+    meta: { requestBody: "none", requestQuery: "empty" },
+    declaredInput: { query: "declared", body: "empty" },
+  } as SellerRowFacts;
+  assert.notEqual(classifyRow(queryDeclared).bucket, "seller");
+});

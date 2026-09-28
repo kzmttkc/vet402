@@ -12,6 +12,7 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { BASE_USDC_ADDRESS } from "@/lib/sellers/fix-modes";
 import { classifyRow, FIX_MODES, LATE_LINK_AFTER_MIN, LATE_LINK_BEFORE_MIN, type SellerRowFacts } from "@/lib/sellers/fix-modes";
 import { heldReasonOf } from "@/lib/observatory/delivery";
 import { LATE_SETTLEMENT_BACKDATE_MINUTES, LATE_SETTLEMENT_WINDOW_MINUTES } from "@/lib/settlements/recover-late";
@@ -423,4 +424,12 @@ test("8: 2026-09-29 独立レビュー（BLOCK）: 空の 200・レシート無�
   const { notCounted, decision } = judge(rows);
   assert.equal(notCounted.by.no_charge, 0);
   assert.equal(decision.recommendation, "BLOCK");
+});
+
+test("8: 2026-09-29 独立レビュー（WARN）: 残高不足（payer_short）の期間の空の 200 は判定で数える（除外を広げない）", () => {
+  const base = { method: "POST", declaredSchema: null, declaredInput: { query: "empty", body: "empty" } };
+  const empty200 = P({ attemptedAt: "2026-09-12T18:02:18Z", status: "settle_failed", httpStatusPaid: 200, payloadNonEmpty: false, amountUnits: "1000000", payer: "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670", payTo: `0x${"11".repeat(20)}`, asset: BASE_USDC_ADDRESS } as Partial<PurchaseInput>);
+  assert.equal(notCountedReasonOf(empty200, base), null);
+  // 同じ行が 502 なら残高不足は vet402 の側として除く（本当に payer_short の経路を通っていることの確認）
+  assert.equal(notCountedReasonOf({ ...empty200, httpStatusPaid: 502 }, base), "vet402_side");
 });

@@ -609,9 +609,12 @@ export function inputEvidenceOf(r: SellerRowFacts): { inputs: InputEvidence; gap
   let unrecorded = false;
   const body = requestBodyKindOf(r.meta);
   if (body === null) unrecorded = true;
-  else if (body === "none" && declaresBodyForSending({ declaredSchema: r.schema, declaredInput: r.declaredInput ?? null })) gaps.push("body");
+  // 2026-09-29 独立レビュー（BLOCK）: 本文を宣言している出品へ `{}`（empty）を送った行も「送っていない」。
+  // 宣言の見本が無く空の本文で済ませたのは vet402 の側の不足で、売り手の失敗の根拠にならない。
+  else if ((body === "none" || body === "empty") && declaresBodyForSending({ declaredSchema: r.schema, declaredInput: r.declaredInput ?? null })) gaps.push("body");
   const q = r.meta?.requestQuery;
   if (q === "refused") gaps.push("query");
+  else if (q === "empty" && declaresQueryForSending({ declaredSchema: r.schema, declaredInput: r.declaredInput ?? null })) gaps.push("query");
   else if (q !== "declared" && q !== "empty") unrecorded = true;
   if (r.declaresHeaders === true) gaps.push("headers");
   else if (r.declaresHeaders !== false) unrecorded = true;

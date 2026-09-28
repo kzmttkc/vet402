@@ -101,6 +101,10 @@ export function notCountedReasonOf(
   const c = classifyRow(facts);
   if (c.bucket === "pending") return "held";
   if (!c.mode) return null;
+  // 2026-09-29 独立レビュー（WARN）: 残高不足（payer_short）は /sellers では vet402 の側だが、判定では
+  // 2xx で中身が届かなかった行を外さない（空の 200 を返す売り手が、こちらの残高不足の期間を盾に BLOCK を
+  // 逃れないため。除外の集合を以前より広げない）。
+  if (c.mode.key === "payer_short" && p.httpStatusPaid !== null && p.httpStatusPaid >= 200 && p.httpStatusPaid < 300 && p.payloadNonEmpty !== true) return null;
   if (c.mode.side === "vet402") return "vet402_side";
   if (c.mode.key === "settled_then_rejected" || c.mode.key === "settled_then_refused") return "held";
   if (c.mode.key === "refused_no_charge") return "no_charge";
