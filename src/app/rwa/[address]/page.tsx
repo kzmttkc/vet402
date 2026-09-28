@@ -107,9 +107,7 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
         {" · "}
         {!replayOk
           ? "the replay does not match the chain balance"
-          : unparsed === 0
-            ? "every movement in the scanned tokens decoded"
-            : `${unparsed} movement${unparsed === 1 ? "" : "s"} not decoded`}
+          : `${unparsed} movement${unparsed === 1 ? "" : "s"} not decoded`}
       </p>
       <p className="mt-3 text-sm">
         Rebuilt from public Robinhood Chain data, not from anything the wallet owner says: each canonical Stock
@@ -155,7 +153,7 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
       <p className="mt-2 text-sm">
         History walked for: {facts.scope.scanned.join(", ")}.
         {facts.scope.history_not_walked.length > 0 &&
-          ` Seen only inside those transactions, history not walked: ${facts.scope.history_not_walked.join(", ")}.`}{" "}
+          ` Seen inside those transactions, history not walked: ${facts.scope.history_not_walked.join(", ")}.`}{" "}
         Positions in other tokens that were opened and fully closed are not scanned yet (
         <code>exited_positions_not_scanned</code>), so &quot;complete&quot; below means complete within these tokens.
       </p>
@@ -179,7 +177,7 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
         {facts.events_summary.univ4} / other_unparsed {facts.events_summary.other_unparsed}
       </p>
       <p className="mt-1 text-sm">
-        replayed events land on the balance the chain reports: {replayOk ? "yes, for every token" : "no — see balance_mismatch"}
+        replayed events land on the balance the chain reports: {replayOk ? `yes (${facts.tokens.length}/${facts.tokens.length} tokens)` : "no — see balance_mismatch"}
       </p>
       <p className="mt-1 text-sm">as_of: {facts.as_of} (block {facts.as_of_block}) · method {facts.method_version}</p>
       {facts.gaps.length > 0 && <p className="mt-1 text-sm">gaps: {facts.gaps.join(", ")}</p>}
