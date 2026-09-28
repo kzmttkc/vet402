@@ -14,6 +14,8 @@
 //                売り手に課金されていない試行・こちらの落ち度の試行だけでは BLOCK にしない（l1_inconclusive＝WARN）。
 //                除いた理由は reason_codes に l1_not_counted_vet402_side / l1_not_counted_held /
 //                l1_not_counted_no_charge として載せる（配達 0 のときだけ）。
+//   2026-09-29（再監査）: l0 = unverified の BLOCK は、原因を下位コード l0_unverified_<cause> で添える
+//                （seller-facts.ts l0UnverifiedCauseOf・options で渡す。判定は変えない）。
 //   BLOCK if l0 ∈ {fail, unverified} ∨ (conclusive ≥ 3 ∧ n_delivered = 0) ∨ l2 = mismatch
 //            ∨ wash_dominated ∨ operator_blacklist
 //   WARN  if L1 未実施（オプトイン無し）∨ 結論なし（l1_inconclusive）∨ 未配達（conclusive ≥ 1）
@@ -67,7 +69,15 @@ export type PayerOptions = {
    * facts.l1.n_inconclusive（判定保留）だけを除く（従来）。
    */
   l1NotCounted?: L1NotCountedInput;
+  /**
+   * 2026-09-29: facts.l0.status が unverified のとき、その原因（seller-facts.ts l0UnverifiedCauseOf）。
+   * 渡されれば reason_codes に `l0_unverified_<cause>` を足す。recommendation には効かない。
+   */
+  l0UnverifiedCause?: string | null;
 };
+
+/** l0_unverified の下位コードの接頭辞（例: l0_unverified_tls / l0_unverified_single_fail）。 */
+export const L0_UNVERIFIED_CAUSE_PREFIX = "l0_unverified_";
 
 /**
  * 結論の出た試行数。売り手の不履行として数えない試行（notCounted・2026-09-29）を除く。
@@ -91,6 +101,9 @@ export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
   // L1 の証拠が無い（未試行、または結論の出た試行が無い）。オプトインの対象はこの 2 つ。
   const noL1Evidence = f.l1.n_delivered === 0 && conclusive === 0;
   r.push(`l0_${f.l0.status}`);
+  if (f.l0.status === "unverified" && o.l0UnverifiedCause && /^[a-z0-9_]{1,40}$/.test(o.l0UnverifiedCause)) {
+    r.push(`${L0_UNVERIFIED_CAUSE_PREFIX}${o.l0UnverifiedCause}`);
+  }
   if (f.l1.n_attempts === 0) r.push("l1_not_attempted");
   else if (f.l1.n_delivered >= 1) r.push("l1_delivered");
   else if (conclusive === 0) r.push("l1_inconclusive");

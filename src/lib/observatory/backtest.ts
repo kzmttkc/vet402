@@ -5,7 +5,8 @@
 // 主張の機械定義（この文がAPIにも同梱される・変えたら別指標）:
 //   事前シグナル = 試行時点で (a) 直前2連続の L0 fail（公開failと同じ
 //   閾値）または (b) 同一エンドポイントへの先行 settle_failed が存在。
-//   avoided = シグナル有り × 非settle（従えば失わなかった支出）
+//   avoided = シグナル有り × 非settle（従えば署名しなかった試行。額は署名した額＝賭けた額で、
+//             チェーン上の送金は確認されていないので「失った額」ではない・2026-09-29 再監査）
 //   forgone = シグナル有り × settled（従えば見送っていた成功）
 //
 // forgone を必ず併記する。「回避できた額」だけ出せば宣伝であり、
@@ -24,7 +25,7 @@ import { getDb } from "@/lib/db/client";
 import { notPayerUnfundedPredicate } from "@/lib/observatory/delivery";
 
 export const BACKTEST_DEFINITION =
-  "prior signal = at attempt time, (a) the two most recent L0 probes of the endpoint were both fail (two consecutive fails — the same threshold the public register uses), or (b) an earlier settle_failed purchase existed on the same endpoint. avoided = signalled attempts that did not settle; forgone = signalled attempts that settled anyway. Denominator: signed attempts only (settled / settle_failed / delivered_no_receipt / settle_claimed_unverifiable). payer_unfunded rows (a settle_failed answered 402 or 5xx on Base between 2026-09-13T00:00Z and 2026-09-15T23:49Z, while vet402's own payer wallet was out of USDC) are neither attempts nor prior signals, since 2026-09-17.";
+  "prior signal = at attempt time, (a) the two most recent L0 probes of the endpoint were both fail (two consecutive fails — the same threshold the public register uses), or (b) an earlier settle_failed purchase existed on the same endpoint. avoided = signalled attempts that did not settle; forgone = signalled attempts that settled anyway. Denominator: signed attempts only (settled / settle_failed / delivered_no_receipt / settle_claimed_unverifiable). payer_unfunded rows (a settle_failed answered 402 or 5xx on Base between 2026-09-13T00:00Z and 2026-09-15T23:49Z, while vet402's own payer wallet was out of USDC) are neither attempts nor prior signals, since 2026-09-17. spentUnits is the USDC amount vet402 signed on those attempts (what it put at stake), not money shown to have moved: an avoided attempt has no confirmed on-chain transfer, so its spentUnits is exposure that honoring the signal would not have taken, not a loss.";
 
 export type BacktestResult = {
   attemptsTotal: number;

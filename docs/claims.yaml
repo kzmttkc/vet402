@@ -739,10 +739,10 @@ claims:
       url: https://vet402.com/api/v1/observatory/anchors
       assert: "anchors.0.entryCount >= 1"
     verified_at: 2026-09-04
-  - id: state_every_later_root_recompute_it
+  - id: state_every_later_root_check_links
     surface: src/app/observatory/state/page.tsx
-    quote: "every later root. Recompute it yourself:"
-    means: "過去行を書き換えると以降の全ルートが壊れる（鎖の性質）"
+    quote: "every later root. Check the links yourself from"
+    means: "過去行を書き換えると以降の全ルートが壊れる（鎖の性質）。公開物だけで確かめられるのは前後の root のつながりと日の連続まで。root の再計算は export.csv に無い列（id・payer・asset・秒未満・export が除く status）を要するので公開物だけではできない（2026-09-29 再監査で「anchors + export.csv で再計算できる」を改めた）"
     check:
       url: https://vet402.com/api/v1/observatory/anchors
       assert: "anchors.0.entryCount >= 1"

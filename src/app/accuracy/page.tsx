@@ -9,7 +9,14 @@ import { TableScroll } from "@/components/site/TableScroll";
 import { computeAccuracyReport, type AccuracyReport } from "@/lib/scoring/accuracy";
 import { computeBenchmarkReport, type BenchmarkReport } from "@/lib/scoring/benchmark-report";
 import { fetchAccuracyRows, fetchBenchmarkRows } from "@/lib/db/outcome-reader";
-import { computeL0Accuracy, fetchL0AccuracyInput, type L0Accuracy } from "@/lib/scoring/l0-accuracy";
+import {
+  computeL0Accuracy,
+  fetchL0AccuracyInput,
+  fetchSloSnapshot,
+  sloRows,
+  type L0Accuracy,
+  type SloRow,
+} from "@/lib/scoring/l0-accuracy";
 
 /**
  * /accuracy — the page competitors cannot copy without doing the work.
@@ -121,6 +128,12 @@ export default async function AccuracyPage() {
   const l0: L0Accuracy | null = await fetchL0AccuracyInput()
     .then(computeL0Accuracy)
     .catch(() => null);
+
+  // 2026-09-29 再監査: c1・c2 などの SLO は API の `slo` にだけ出ていて、目標を大きく下回っても
+  // HTML には何も出ていなかった（上の注記は「目標を外したら印字する」と言っている）。同じ関数で読む。
+  const slo = await fetchSloSnapshot().catch(() => null);
+  const sloTable: SloRow[] = slo ? sloRows(slo) : [];
+  const sloMisses = sloTable.filter((row) => row.ok === false);
 
   // 「Weekly」と書いていたが、実行が止まった週があった（2026-09-16 の後、09-29 まで 0 件）。
   // 予定と実績を分けて出す: 予定は vercel.json の週次 cron、実績は最後の scan の日付。
@@ -286,6 +299,70 @@ export default async function AccuracyPage() {
           </>
         ) : null}
 
+        {slo ? (
+          <>
+            <p className="doc-caption mt-8">Observatory operating targets</p>
+            <TableScroll label="Observatory operating targets and current values">
+              <table className="fact-table">
+                <caption className="sr-only">Observatory operating targets and current values</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Measurement</th>
+                    <th scope="col" className="num">
+                      Value
+                    </th>
+                    <th scope="col" className="num">
+                      Target
+                    </th>
+                    <th scope="col" className="num">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sloTable.map((row) => (
+                    <tr key={row.key}>
+                      <td className="font-[family-name:var(--font-sans)] font-normal whitespace-normal text-brand">
+                        {row.label}
+                      </td>
+                      <td className="num whitespace-nowrap">{row.value === null ? "—" : `${row.value}%`}</td>
+                      <td className="num whitespace-nowrap">
+                        {row.direction === "max" ? `under ${row.target}%` : `${row.target}%`}
+                      </td>
+                      <td className="num whitespace-nowrap">
+                        <SloTargetStatus row={row} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableScroll>
+            <p className="doc-note mt-4 max-w-[70ch]">
+              {sloMisses.length > 0 ? (
+                <>
+                  {sloMisses.length} of these {sloMisses.length === 1 ? "misses its" : "miss their"}{" "}
+                  target right now. We print {sloMisses.length === 1 ? "it" : "them"} here rather
+                  than leave {sloMisses.length === 1 ? "it" : "them"} in the JSON.{" "}
+                </>
+              ) : null}
+              Same figures as <code className="text-brand-deep">slo</code> in{" "}
+              <code className="text-brand-deep">GET /api/v1/accuracy</code>, computed by the same
+              function.
+              {slo.unmeasured.length > 0 ? (
+                <>
+                  {" "}Not measured here: {slo.unmeasured.map((k, i) => (
+                    <span key={k}>
+                      {i > 0 ? ", " : ""}
+                      <code>{k}</code>
+                    </span>
+                  ))}{" "}
+                  (listed as <code className="text-brand-deep">slo.unmeasured</code>).
+                </>
+              ) : null}
+            </p>
+          </>
+        ) : null}
+
         {scale && (
           <p className="doc-note mt-6 max-w-[70ch]">
             The three tables below are empty in the current window. The observatory, which this ledger does not
@@ -439,7 +516,8 @@ export default async function AccuracyPage() {
         <p className="doc-p">
           These scans are run by us, not by customers &mdash; a controlled test, published
           separately so it can never be mistaken for (or padded into) external usage. On a weekly
-          schedule, Wednesdays at 09:30 UTC, the engine scores a fixed, versioned set of addresses whose real-world outcome is already
+          schedule &mdash; Wednesdays at 09:30 UTC, and the operator can also run the same pass by
+          hand, so a scan date need not fall on a Wednesday &mdash; the engine scores a fixed, versioned set of addresses whose real-world outcome is already
           public knowledge: &ldquo;known bad&rdquo; addresses from the US OFAC sanctions (SDN) list,
           and &ldquo;known good&rdquo; addresses of long-operating, publicly identified
           organizations and individuals. The engine should refuse the former and pass the latter;
@@ -675,6 +753,12 @@ export default async function AccuracyPage() {
       </article>
     </main>
   );
+}
+
+function SloTargetStatus({ row }: { row: SloRow }) {
+  if (row.ok === null) return <span className="text-brand-lift">not measured</span>;
+  if (row.ok) return <span className="text-brand-deep">meets target</span>;
+  return <strong className="text-brand-deep">{row.direction === "max" ? "above target" : "below target"}</strong>;
 }
 
 function SloStatus({ ok }: { ok: boolean | null }) {

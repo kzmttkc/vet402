@@ -102,3 +102,41 @@ test("語彙の正典（1 文定義）へ機械が辿れる", () => {
   assert.ok(LLMS.includes("/observatory/methodology#vocabulary"));
   assert.ok(LLMS.includes("https://vet402.com/llms-full.txt"));
 });
+
+// 2026-09-29 再監査: Freshness 節は「the JSON API is never cached and its retrievedAt is the
+// time you asked」と書いていたが、本番の /api/v1/observatory/state は x-vercel-cache: HIT/STALE・
+// age 600〜900 秒で返っていた（route が s-maxage=900 を送っている）。引用の手順
+// （retrievedAt を日付に使う）は正しいが、その意味の説明が逆だった。
+// 書いた窓が route の Cache-Control の実物と一致することを固定する。
+test("Freshness 節の API キャッシュ窓は route の Cache-Control と一致する", () => {
+  const section = LLMS.slice(LLMS.indexOf("## Freshness"), LLMS.indexOf("## Legal"));
+  assert.ok(!/never cached/i.test(section), "JSON API がキャッシュされないとは言えない（CDN が s-maxage で持つ）");
+  assert.ok(!/retrievedAt[^.]*\bis the time you asked/.test(section), "retrievedAt を「聞いた時刻」と言っている");
+  const sMaxAge = (rel: string) => {
+    const src = readFileSync(join(ROOT, rel), "utf8");
+    const all = [...src.matchAll(/s-maxage=(\d+), stale-while-revalidate=(\d+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+    assert.ok(all.length > 0, `${rel} に Cache-Control の s-maxage が無い`);
+    for (const [max, swr] of all) {
+      assert.equal(max, all[0][0], `${rel} の s-maxage が route 内で揃っていない`);
+      assert.equal(swr, max * 2, `${rel}: Freshness 節は stale-while-revalidate を窓の 2 倍と書いている`);
+    }
+    return all[0][0];
+  };
+  for (const [path, rel] of [
+    ["/api/v1/observatory/state", "src/app/api/v1/observatory/state/route.ts"],
+    ["/api/v1/observatory/history", "src/app/api/v1/observatory/history/route.ts"],
+    ["/api/v1/observatory/export.csv", "src/app/api/v1/observatory/export.csv/route.ts"],
+    ["/api/v1/observatory/anchors", "src/app/api/v1/observatory/anchors/route.ts"],
+    ["/api/v1/observatory/backtest", "src/app/api/v1/observatory/backtest/route.ts"],
+    ["/api/v1/accuracy", "src/app/api/v1/accuracy/route.ts"],
+  ] as const) {
+    const n = sMaxAge(rel);
+    // 経路名の後ろ、次の「;」までに同じ s-maxage が書かれていること（複数経路を 1 つの窓でまとめた書き方も通る）。
+    const cacheSentence = section.slice(section.indexOf("the CDN in front of the site holds"));
+    const at = cacheSentence.indexOf(`\`${path}\``);
+    assert.ok(at >= 0, `Freshness 節のキャッシュの文に ${path} が無い`);
+    const end = cacheSentence.indexOf(";", at);
+    const tail = cacheSentence.slice(at, end === -1 ? undefined : end);
+    assert.ok(tail.includes(`s-maxage=${n}`), `${path} の実際の s-maxage=${n} が Freshness 節の同じ句に無い`);
+  }
+});

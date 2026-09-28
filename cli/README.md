@@ -22,6 +22,6 @@ npx tsx cli/verify-anchors.ts --days 30
 |---|---|---|
 | An endpoint's live L0 verdict | ✅ fully | `cli/probe.ts` — same code path |
 | What vet402 would/would not sign against a wall | ✅ fully | `cli/purchase-dry-run.ts` (no keys involved) |
-| Anchor chain integrity (nothing rewritten since publication) | ✅ fully | `cli/verify-anchors.ts` over the public API |
-| A specific day's root recomputed from raw rows | ⚠️ self-host | The projection is open source (`src/lib/observatory/anchors.ts`), but it needs the raw purchase rows; run the stack yourself (`docker compose up`) or use per-endpoint receipts at `/api/v1/observatory/endpoints/{id}/purchases` |
+| Anchor chain linking and continuity (each day's `prevRoot` is the previous day's root; no day missing) | ✅ fully | `cli/verify-anchors.ts` over the public API. This shows the published chain is self-consistent; while no root is fixed on-chain (`anchoredTx` empty), it does not rule out the whole chain being recomputed — save a root to detect that later |
+| A specific day's root recomputed from raw rows | ❌ not from published data | The projection is open source (`src/lib/observatory/anchors.ts`), but it hashes fields `export.csv` leaves out (row id, payer, asset, sub-second time, and the statuses the export omits), so vet402's roots cannot be rebuilt from the published files. A self-hosted stack (`docker compose up`) computes the same kind of chain over its own ledger |
 | A real L1 purchase | ⚠️ your own funds | The live purchase path exists only inside the audited daily runner (budget-reserved); the CLI deliberately has no key-reading code |

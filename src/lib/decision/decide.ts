@@ -280,6 +280,8 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
         operatorBlacklist: req.operatorBlacklist,
         // 2026-09-29: /sellers と同じ規則で、売り手の不履行として数えない試行（vet402 の側・保留・課金なし）。
         l1NotCounted: loaded.l1NotCounted,
+        // 2026-09-29 再監査: l0 が unverified の BLOCK に、何が測れなかったかの下位コードを添える（判定は変えない）。
+        l0UnverifiedCause: loaded.l0UnverifiedCause ?? null,
       },
       score,
       registry,

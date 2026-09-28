@@ -108,7 +108,7 @@ export default async function ImpactPage() {
           <strong>{stats.l1.attempts.toLocaleString()}</strong> real purchase attempts across{" "}
           <strong>{stats.l1.endpointsAttempted.toLocaleString()}</strong> endpoints;{" "}
           <strong>{stats.l1.settled.toLocaleString()}</strong> settled with an on-chain receipt.
-          Successes and non-settling losses are published with the same weight — a receipt series
+          Settled attempts and attempts that did not settle are published with the same weight — a receipt series
           per endpoint, transaction hashes included.{" "}
           <Link href="/api/v1/observatory/export.csv" className="underline">
             export.csv
@@ -177,7 +177,7 @@ export default async function ImpactPage() {
           <>
             <h2 className="sec-head">
               <span className="sec-no">3.</span>
-              <span>Losses an agent avoids by reading the signals</span>
+              <span>What an agent skips by reading the signals</span>
             </h2>
             <p className="doc-p">
               In the last 30 days vet402 <strong>refused {decisions.totals.refused}</strong> of{" "}
@@ -186,9 +186,11 @@ export default async function ImpactPage() {
               {backtest && (
                 <>
                   {" "}Across the whole ledger, {backtest.avoided.count} signed attempts carried a
-                  prior public failure signal and <strong>none of them settled</strong> (
-                  {formatUsdcUnits(backtest.avoided.spentUnits)} that an agent honoring the signals would not
-                  have lost), while {backtest.forgone.count} signalled attempts settled anyway (definition:
+                  prior public failure signal and <strong>did not settle</strong> (
+                  {formatUsdcUnits(backtest.avoided.spentUnits)} signed and put at stake with no confirmed
+                  transfer on-chain — exposure an agent honoring the signals would not have taken, not money
+                  lost), while {backtest.forgone.count} signalled attempts settled anyway and would have been
+                  skipped too (definition:
                   signed attempts preceded by a public failure signal, a subset of the attempts in §2, from{" "}
                   <code>/api/v1/observatory/backtest</code>).
                 </>
@@ -210,9 +212,13 @@ export default async function ImpactPage() {
               The purchase ledger is a daily hash chain. Latest root ({latestAnchor.day}):{" "}
               <code>{latestAnchor.rootHash.slice(0, 16)}…</code> over that day&apos;s{" "}
               {latestAnchor.entryCount.toLocaleString()} entries. Rewriting any past row breaks every
-              later root, and the projection is open source, so a third party can verify the chain
-              from the public API alone. The entry count is the rows that anchor hashed, which is not
-              the attempt count in §2.{" "}
+              later root. From the public API alone a third party can check that each day&apos;s root
+              links to the previous day&apos;s and that no day is missing (<code>cli/verify-anchors.ts</code>).
+              Recomputing a root itself needs the raw purchase rows, and those are not published in
+              full: the open-source projection (<code>src/lib/observatory/anchors.ts</code>) hashes
+              fields <code>export.csv</code> leaves out — the row id, the payer, the asset, sub-second
+              times, and the statuses the export omits. The entry count is the rows that anchor
+              hashed, which is not the attempt count in §2.{" "}
               {latestAnchor.anchoredTx ? (
                 <>
                   That root is also fixed outside vet402 in transaction{" "}

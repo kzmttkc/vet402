@@ -1067,10 +1067,14 @@ paths:
         "400":
           description: |
             `invalid_query`. Sent when `q` is missing, empty or over 2048 chars,
-            and also when `q` has a shape the classifier cannot place (`kind:
-            unknown`) — in that second case the body also carries `query`
-            (`{ kind: "unknown", value }`) so the caller can see what was read.
-            `expected: "q"` names the parameter.
+            when `q` has a shape the classifier cannot place (`kind: unknown`),
+            and when `q` is a URL that is not an absolute https URL (an
+            `http://` URL, or a host/path with no scheme). `message` says which,
+            in words (e.g. "url must be an absolute https URL"); `suggestion`,
+            when present, is the corrected `q` to send (e.g. `https://` added);
+            `accepted` lists the forms `q` can take. When `q` was readable the
+            body also carries `query` (`{ kind, value }`) so the caller can see
+            how it was read. `expected: "q"` names the parameter.
           content:
             application/json:
               schema:
@@ -1079,10 +1083,16 @@ paths:
                   - type: object
                     properties:
                       expected: { type: string, enum: [q] }
+                      message: { type: string }
+                      suggestion: { type: string }
+                      accepted:
+                        type: array
+                        items: { type: string }
+                      documentation: { type: string, format: uri }
                       query:
                         type: object
                         properties:
-                          kind: { type: string, enum: [unknown] }
+                          kind: { type: string, enum: [unknown, url] }
                           value: { type: string }
         "429": { description: Rate limited }
         "503": { description: Store unavailable }
@@ -3236,7 +3246,7 @@ components:
         `cache_cold` is the ABSENCE of a verdict, not a permissive one — treat
         it as not-ALLOW, warm asynchronously via the full `/score` endpoint
         (same cache, TTL 5 min), and retry. See docs/verify-at-settle.md; the
-        rule is implemented as `payeeVerdictFastAllows` in @vouchscore/sdk.
+        rule is implemented as `payeeVerdictFastAllows` in @vet402/sdk.
 
         This body deliberately carries no `degraded` / `signalsUnavailable`:
         the engine never pins a degraded or partially-measured reading, so a
@@ -3321,7 +3331,13 @@ components:
             payment is not conclusive (the same whose-side rules as the /sellers
             pages), and when nothing was delivered the reason codes name which:
             l1_not_counted_vet402_side, l1_not_counted_held,
-            l1_not_counted_no_charge.
+            l1_not_counted_no_charge. Since 2026-09-29 an l0_unverified BLOCK
+            also carries l0_unverified_<cause> saying what could not be
+            measured: the latest probe's recorded reason (e.g.
+            l0_unverified_tls, l0_unverified_path_template,
+            l0_unverified_request_shape, l0_unverified_rate_limited),
+            l0_unverified_single_fail (one fail, below the two-fail publication
+            gate) or l0_unverified_not_probed; the recommendation is unchanged.
         facts:
           description: >-
             L0–L2 measurement records — SellerFacts for role=payer,
@@ -3461,10 +3477,12 @@ components:
 
             A client MUST NOT treat a `degraded: true` body as ALLOW, whatever
             `recommendation` and `score` say. The engine already forces
-            BLOCK here and refuses to cache the verdict; @vouchscore/sdk
-            (SpendGuard, `payee_score_degraded`), the Python SDK, and
-            @vouchscore/middleware (`score_degraded`) all deny on this field
-            alone. Always present.
+            BLOCK here and refuses to cache the verdict; @vet402/sdk
+            (SpendGuard, `payee_score_degraded`) and @vet402/middleware
+            (`score_degraded`) both deny on this field alone, and so does the
+            Python client in the repository (`packages/python-sdk`, not
+            published to PyPI). The `@vouchscore/*` packages are the former,
+            deprecated names of the same npm packages. Always present.
         signalsUnavailable:
           type: array
           items: { type: string }
@@ -3997,6 +4015,20 @@ components:
             reason: { type: string, enum: [not_in_raw_window] }
             raw_window_days: { type: integer }
             note: { type: string }
+        not_found:
+          type: object
+          description: >-
+            Present only when `query.kind` is url, domain, address or
+            payee_id and nothing was found; `endpoints` is then an empty
+            array. `reason` is `not_in_catalog`: the catalog is read from
+            public x402 discovery listings, so an endpoint missing from it
+            has not been measured, which is not a finding about it. `next`
+            links to the API reference.
+          required: [reason, note, next]
+          properties:
+            reason: { type: string, enum: [not_in_catalog] }
+            note: { type: string }
+            next: { type: string, format: uri }
         disclaimer: { type: string }
     ResourceResponse:
       type: object

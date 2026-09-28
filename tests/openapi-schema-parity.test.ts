@@ -52,6 +52,12 @@ type Surface = {
   /** [ソースファイル, 型名から辿るプロパティ列] */
   impl: Array<[string, string[]]>;
   fields: string[];
+  /**
+   * 凍結中のパッケージがまだ持っていないフィールド（ソースファイル → フィールド）。理由を必ず書く。
+   * その実装だけ比較から外すが、**本当に無いこと**も検査する——凍結が解けて型に足したら、
+   * ここを消さない限り赤になる（例外が居残らない）。
+   */
+  pendingImpl?: Record<string, { fields: string[]; why: string }>;
 };
 
 const SURFACES: Surface[] = [
@@ -280,7 +286,15 @@ const SURFACES: Surface[] = [
       ["src/lib/resolve/lookup.ts", ["ResolveResult"]],
       ["packages/sdk/src/index.ts", ["ResolveResult"]],
     ],
-    fields: ["query", "resource", "endpoints", "payees", "settlement", "settlement_not_found", "disclaimer"],
+    fields: ["query", "resource", "endpoints", "payees", "settlement", "settlement_not_found", "not_found", "disclaimer"],
+    pendingImpl: {
+      "packages/sdk/src/index.ts": {
+        fields: ["not_found"],
+        why:
+          "2026-09-29 再監査（DX）でサーバに not_found を足したが、packages/sdk は Tokyo の審査中で凍結。" +
+          "SDK の resolve は JSON をそのまま返すので実行時には届く。凍結が解けたら型に足してここを消す",
+      },
+    },
   },
   {
     label: "EndpointRef",
@@ -676,9 +690,17 @@ for (const surface of SURFACES) {
     test(`${rel} の ${path.join(".")} が正典のフィールド一覧と一致する`, () => {
       const members = membersAtPath(rel, path);
       assert.ok(members, `${rel} に型 ${path.join(".")} が見つからない`);
+      const pending = surface.pendingImpl?.[rel];
+      if (pending) {
+        assert.ok(pending.why.length > 0, "pendingImpl には理由が要る");
+        for (const f of pending.fields) {
+          assert.ok(!members.includes(f), `${rel} は ${f} を持った: pendingImpl の例外を消す`);
+        }
+      }
+      const expected = pending ? surface.fields.filter((f) => !pending.fields.includes(f)) : surface.fields;
       assert.deepEqual(
         sorted(members),
-        sorted(surface.fields),
+        sorted(expected),
         `${rel} の ${surface.label} が正典と食い違っている。` +
           "型が API 応答より狭いと、そのフィールドを読む理由が利用者に伝わらない。",
       );

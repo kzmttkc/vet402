@@ -704,9 +704,13 @@ export default async function ObservatoryStatePage() {
               <code>{latestAnchor.rootHash.slice(0, 16)}…</code> over that day&apos;s{" "}
               {latestAnchor.entryCount.toLocaleString()} ledger entries (an anchor counts the rows it hashed, not
               the L1 attempts above). Rewriting any past row breaks
-              every later root. Recompute it yourself:{" "}
-              <code>/api/v1/observatory/anchors</code> + <code>/api/v1/observatory/export.csv</code>{" "}
-              (projection is open source).
+              every later root. Check the links yourself from{" "}
+              <code>/api/v1/observatory/anchors</code> alone: each day&apos;s <code>prevRoot</code> is
+              the previous day&apos;s root (<code>cli/verify-anchors.ts</code> checks that and that no
+              day is missing). Recomputing a root needs the raw purchase rows, which are not published
+              in full — the open-source projection hashes fields <code>export.csv</code> leaves out
+              (row id, payer, asset, sub-second time, and the statuses the export omits), so a root
+              cannot be rebuilt from the published files.
             </>
           ) : (
             <>

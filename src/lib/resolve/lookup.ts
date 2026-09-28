@@ -53,8 +53,41 @@ export type ResolveResult = {
    *（呼び手が「無い＝存在しない」と読むと誤る）。
    */
   settlement_not_found?: { reason: "not_in_raw_window"; raw_window_days: number; note: string };
+  /**
+   * 2026-09-29 再監査（DX）: カタログに無い URL・domain・address・payee_id は、鍵の無い
+   * ほぼ空の本文だけが返り、「無い」のか「壊れている」のか読めなかった。何も見つからなかった
+   * ときだけ載せ、endpoints は空配列で必ず返す。
+   */
+  not_found?: { reason: "not_in_catalog"; note: string; next: string };
   disclaimer: string;
 };
+
+const NOT_FOUND_NEXT = "https://vet402.com/docs/api#endpoints";
+
+/**
+ * url / domain / address / payee_id で何も引けなかった結果に、空の endpoints と not_found を足す。
+ * tx は settlement_not_found が既に同じ役目を持つので触らない。純関数（DB を見ない）。
+ */
+export function withNotFound(out: ResolveResult): ResolveResult {
+  const kind = out.query.kind;
+  if (kind !== "url" && kind !== "domain" && kind !== "address" && kind !== "payee_id") return out;
+  const found = Boolean(out.resource) || (out.endpoints?.length ?? 0) > 0;
+  if (found) return out;
+  const what =
+    kind === "url"
+      ? "this URL or anywhere else on its host"
+      : kind === "domain"
+        ? "this domain"
+        : "an endpoint that declares this address as its payee";
+  const note =
+    `vet402 has no x402 endpoint on record for ${what}. The catalog is read from public x402 discovery listings, ` +
+    `so an endpoint that is not listed there has not been measured — this is not a finding about it.`;
+  return {
+    ...out,
+    endpoints: out.endpoints ?? [],
+    not_found: { reason: "not_in_catalog", note, next: NOT_FOUND_NEXT },
+  };
+}
 
 const DISCLAIMER =
   "Scores are opinions; L0–L2 are measurement records. This is not credit assessment, KYC, sanctions screening, or certification.";
@@ -176,6 +209,10 @@ export async function settlementByTx(txHash: string): Promise<SettlementRef | nu
 }
 
 export async function resolve(q: string): Promise<ResolveResult> {
+  return withNotFound(await resolveRaw(q));
+}
+
+async function resolveRaw(q: string): Promise<ResolveResult> {
   const query = classifyQuery(q);
   const out: ResolveResult = { query, disclaimer: DISCLAIMER };
   switch (query.kind) {

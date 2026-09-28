@@ -226,3 +226,65 @@ export async function fetchSloSnapshot(): Promise<SloSnapshot> {
   unmeasured.push("decision_p95_ms_cache_hit", "decision_availability_monthly_pct");
   return out;
 }
+
+/**
+ * SLO の 1 行（/accuracy の HTML 用・2026-09-29 再監査）。
+ *
+ * /accuracy は「目標を外した週は HTML に印字する」と書きながら、c1・c2 など
+ * /api/v1/accuracy の `slo` にしか出ていない指標が目標を大きく下回っていても
+ * 何も出していなかった。API と同じ SloSnapshot から、目標の向き（上限か下限か）
+ * ごと行にして返す。値が無い（測れていない）指標は ok=null で、unmeasured に残る。
+ */
+export type SloRow = {
+  key: SloMetricKey;
+  label: string;
+  value: number | null;
+  target: number;
+  /** "max": 値は target 未満であるべき / "min": 値は target 以上であるべき */
+  direction: "max" | "min";
+  ok: boolean | null;
+};
+
+export type SloMetricKey =
+  | "l1_probe_error_rate_pct"
+  | "c1_l0_within_36h_pct"
+  | "c2_l1_within_48h_pct"
+  | "reverse_lookup_confirmed_within_60s_pct"
+  | "published_failure_evidence_complete_pct";
+
+const SLO_ROW_SPEC: readonly { key: SloMetricKey; label: string; direction: "max" | "min" }[] = [
+  {
+    key: "c1_l0_within_36h_pct",
+    label: "C1 — active endpoints seen in the catalog in the last 30 days that have an L0 probe from the last 36 hours",
+    direction: "min",
+  },
+  {
+    key: "c2_l1_within_48h_pct",
+    label: "C2 — endpoints with an attributed settlement in the last 30 days that vet402 tried to buy from in the last 48 hours",
+    direction: "min",
+  },
+  {
+    key: "l1_probe_error_rate_pct",
+    label: "L1 attempts in the last 7 days that failed on vet402's side (request error, or interrupted mid-purchase)",
+    direction: "max",
+  },
+  {
+    key: "reverse_lookup_confirmed_within_60s_pct",
+    label: "vet402's own verified settlements in the last 7 days that reached the settlements index within 60 seconds",
+    direction: "min",
+  },
+  {
+    key: "published_failure_evidence_complete_pct",
+    label: "L0 fail probes in the last 7 days whose evidence record is complete (resource id, canonical URL, client)",
+    direction: "min",
+  },
+];
+
+export function sloRows(slo: SloSnapshot): SloRow[] {
+  return SLO_ROW_SPEC.map(({ key, label, direction }) => {
+    const value = slo[key];
+    const target = slo.targets[key];
+    const ok = value === null ? null : direction === "max" ? value < target : value >= target;
+    return { key, label, value, target, direction, ok };
+  });
+}

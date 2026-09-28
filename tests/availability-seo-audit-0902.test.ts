@@ -111,7 +111,12 @@ test("/api/v1/resolve の 400 invalid_query は expected: \"q\" を添える", a
   const { GET } = await import("@/app/api/v1/resolve/route");
   const missing = await GET(new NextRequest("http://localhost/api/v1/resolve"));
   assert.equal(missing.status, 400);
-  assert.deepEqual(await missing.json(), { error: "invalid_query", expected: "q" });
+  const missingBody = await missing.json();
+  assert.equal(missingBody.error, "invalid_query");
+  assert.equal(missingBody.expected, "q");
+  // 2026-09-29 再監査（DX）: 何が悪いかを言葉で添える（error / expected は従来どおり）。
+  assert.match(missingBody.message, /q is required/);
+  assert.ok(Array.isArray(missingBody.accepted) && missingBody.accepted.length > 0);
 
   const unknown = await GET(new NextRequest("http://localhost/api/v1/resolve?q=%3F%3F%3F"));
   assert.equal(unknown.status, 400);
@@ -119,6 +124,20 @@ test("/api/v1/resolve の 400 invalid_query は expected: \"q\" を添える", a
   assert.equal(body.error, "invalid_query");
   assert.equal(body.expected, "q");
   assert.equal(body.query.kind, "unknown");
+
+  // スキームの無い URL: 原因（absolute https URL）と直した q を返す。
+  const bare = await GET(new NextRequest("http://localhost/api/v1/resolve?q=api.exa.ai%2Fsearch"));
+  assert.equal(bare.status, 400);
+  const bareBody = await bare.json();
+  assert.match(bareBody.message, /url must be an absolute https URL/);
+  assert.equal(bareBody.suggestion, "https://api.exa.ai/search");
+
+  // http:// の URL: 以前は何も入っていない 200 だった。
+  const http = await GET(new NextRequest("http://localhost/api/v1/resolve?q=http%3A%2F%2Fapi.exa.ai%2Fsearch"));
+  assert.equal(http.status, 400);
+  const httpBody = await http.json();
+  assert.equal(httpBody.query.kind, "url");
+  assert.equal(httpBody.suggestion, "https://api.exa.ai/search");
 });
 
 test("公開ルート共通の Cache-Control と /census/summary の Cache-Control は max-age を持つ", async () => {

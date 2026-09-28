@@ -10,13 +10,15 @@ import { explorerTxUrl } from "@/lib/observatory/chains";
 /**
  * /decisions — 実資金の判定台帳（次波①・SPEC20 A4の実装形）。
  * 「拒否デモ」を演出でやらない: ここに流れるのは日次L1が実費で下した
- * 判定そのもの。拒否も、支払って決済されなかった損失も、同じ重みで並ぶ。
+ * 判定そのもの。拒否も、署名して決済されなかった試行も、同じ重みで並ぶ。
+ * 2026-09-29 再監査: 決済されなかった試行を「loss / lost」と呼んでいた。チェーン上の送金が無い
+ * （export.csv に tx_hash が無い）ので、額は「賭けた額」であって失った額ではない。
  */
 
 export const metadata: Metadata = pageMetadata({
   title: "Decisions — pay or refuse, with real money",
   description:
-    "Every decision the daily verifier actually made with its own funds: refusals before signing and outcomes after paying, settled receipts and losses alike.",
+    "Every decision the daily verifier actually made with its own funds: refusals before signing and outcomes after paying, settled receipts and attempts that did not settle alike.",
   path: "/decisions",
 });
 
@@ -33,7 +35,7 @@ const DECISION_LABEL: Record<string, string> = {
   paid_settlement_claim_unverifiable: "PAID — settlement claim not verifiable",
   paid_settlement_claim_unverified: "PAID — settlement claim not yet re-read on-chain",
   paid_settlement_claim_refuted: "PAID — settlement claim refuted on-chain",
-  paid_no_settlement: "PAID — no settlement (loss, published)",
+  paid_no_settlement: "PAID — signed, did not settle (no confirmed transfer)",
 };
 
 
@@ -83,14 +85,17 @@ export default async function DecisionsPage() {
             An agent&apos;s hardest question is <em>pay or don&apos;t pay</em>. This register is
             how vet402 answers it every day with its own funds: walls that demanded more than
             they declared were <strong>refused before signing</strong>; walls that passed the
-            gates were paid, and the outcome — settlement receipt or loss — is published with
-            the same weight. Nothing here is simulated.
+            gates were paid, and the outcome — settled on-chain or not — is published with the
+            same weight. An attempt that did not settle has no confirmed transfer on-chain, so its
+            amount is what was put at stake, not money lost. Nothing here is simulated.
             {backtest && (
               <>
                 {" "}Across the whole ledger, {backtest.avoided.count} signed attempts carried a
-                prior published failure signal and none of them settled ({formatUsdcUnits(backtest.avoided.spentUnits)}{" "}
-                lost) — while {backtest.forgone.count} signalled attempts settled anyway. An agent
-                honoring the signals keeps the wins and skips the losses.
+                prior published failure signal and did not settle ({formatUsdcUnits(backtest.avoided.spentUnits)}{" "}
+                signed and put at stake, with no confirmed transfer) — while {backtest.forgone.count}{" "}
+                signalled attempts settled anyway ({formatUsdcUnits(backtest.forgone.spentUnits)}). An
+                agent honoring the signals skips both: the attempts that went nowhere and the ones
+                that would have worked.
               </>
             )}
           </p>

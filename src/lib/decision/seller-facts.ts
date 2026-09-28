@@ -180,6 +180,30 @@ export function l1NotCountedOf(input: Pick<SellerFactsInput, "purchases" | "decl
   return { total, by };
 }
 
+/**
+ * L0 が unverified のとき、なぜ測れていないか（2026-09-29 再監査・判定の理由コード）。
+ *
+ * biosfera …/public-holidays は /decision が BLOCK なのに、reason_codes は `l0_unverified` だけで、
+ * 何が測れなかったのか（直近のプローブが TLS で届かなかった）が本文から読めなかった。/sellers は
+ * 同じ売り手に「Nothing for you to fix」（L1 の vet402 側の失敗について）と出しており、BLOCK の
+ * 理由を探す手掛かりが無かった。判定は変えず、原因を下位コードとして足すための材料を返す。
+ *
+ *   not_probed   まだ 1 度もプローブしていない
+ *   single_fail  直近は fail だが公開ゲート（連続 fail 本数）に届いていない
+ *   <reason>     直近のプローブ自体が unverified で、その記録された理由（tls / unsafe_target /
+ *                path_template / request_shape / rate_limited …）。記録が無ければ unrecorded
+ *
+ * 公開判定が unverified でなければ null。語は [a-z0-9_] に丸める（reason code に混ぜるため）。
+ */
+export function l0UnverifiedCauseOf(probesNewestFirst: readonly ProbeInput[]): string | null {
+  if (publishedVerdict(probesNewestFirst.map((p) => p.verdict)) !== "unverified") return null;
+  const latest = probesNewestFirst[0];
+  if (!latest) return "not_probed";
+  if (latest.verdict === "fail") return "single_fail";
+  const reason = (latest.failReason ?? "").toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+  return reason === "" ? "unrecorded" : reason.slice(0, 40);
+}
+
 export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
   const { probes, purchases } = input;
   const latestProbe = probes[0] ?? null;
@@ -319,6 +343,8 @@ export type SellerFactsLoaded = {
   lastAttempt: { at: string | null; status: string | null };
   /** 2026-09-29: 判定へ渡す「売り手の不履行として数えない」試行（l1NotCountedOf）。公開の facts には載せない。 */
   l1NotCounted?: L1NotCounted;
+  /** 2026-09-29: L0 が unverified の原因（l0UnverifiedCauseOf）。判定の下位コードにだけ使う。 */
+  l0UnverifiedCause?: string | null;
   endpoint: {
     id: string;
     resourceId: string | null;
@@ -448,6 +474,7 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     facts,
     lastAttempt,
     l1NotCounted: l1NotCountedOf(factsInput),
+    l0UnverifiedCause: l0UnverifiedCauseOf(probes),
     endpoint: {
       id: ep.id,
       resourceId: ep.resource_id,
