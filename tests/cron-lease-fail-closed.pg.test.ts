@@ -6,8 +6,8 @@
 // 守ること:
 //  1. 普通に取れる・保持中なら held・解放すれば次が取れる（従来どおり）。
 //  2. 取得の文が例外（表が無い）で acquireLease が「通した」とき、acquired: false / unverified。
-//  3. 他者が保持中のリースがあるのに、取得が例外で「通した」とき（acquire を差し替えて再現）も unverified。
-//  4. 取れた直後の確認が読めなかったら、本当に取れていたリースは解放する（期限まで握らない）。
+//  3. 自分の取得が例外で終わり、別の起動が t0 より後に取った行があっても unverified（独立レビューの警告の再現）。
+//  4. 別の起動が保持中なら held。期限切れの行は取り直せ、release は自分の holder の行だけ消す。
 // Run: TEST_DATABASE_URL=postgres:///vet402_observatory_test_r7d \
 //   npx tsx --test --test-force-exit --test-concurrency=1 tests/cron-lease-fail-closed.pg.test.ts
 // ============================================================
@@ -72,35 +72,39 @@ if (!TEST_DB) {
       }
     });
 
-    await t.test("他者が保持中なのに取得が例外で「通した」とき、走らない（unverified）", async () => {
+    await t.test("自分の取得が例外で終わり、別の起動が t0 より後に取った行があっても、走らない（unverified）", async () => {
+      // 独立レビューの警告の再現: 別の起動の行（acquired_at が今より後・期限内）が在る状態で、自分の upsert が例外になる
+      // （ttl が int に収まらない）。初版は acquireLease の「通した」を受けて表を読み直し、その行を自分のものと数えた。
+      await reset();
+      await db.execute(sql`
+        INSERT INTO job_leases (name, holder, acquired_at, expires_at)
+        VALUES (${NAME}, gen_random_uuid(), now() + interval '1 minute', now() + interval '10 minutes')`);
+      const r = await silence(() => acquireLeaseFailClosed(NAME, 2 ** 40));
+      assert.deepEqual(r, { acquired: false, reason: "unverified" });
+      const raw = await db.execute(sql`SELECT count(*)::int AS n FROM job_leases WHERE name = ${NAME}`);
+      const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as { n: number }[];
+      assert.equal(rows[0].n, 1, "別の起動のリースを消している");
+    });
+
+    await t.test("別の起動が保持中なら held。期限の切れた他者の行は取り直せ、解放は自分の行だけ消す", async () => {
       await reset();
       const other = await acquireLease(NAME, 60);
       assert.equal(other.acquired, true);
-      const r = await silence(() =>
-        acquireLeaseFailClosed(NAME, 60, { acquire: async () => ({ acquired: true, release: async () => {} }) }),
-      );
-      assert.deepEqual(r, { acquired: false, reason: "unverified" });
-      const [row] = (await db.execute(sql`SELECT count(*)::int AS n FROM job_leases WHERE name = ${NAME}`)) as unknown as { n: number }[];
-      assert.equal(row.n, 1, "他者のリースを消している");
+      assert.deepEqual(await acquireLeaseFailClosed(NAME, 60), { acquired: false, reason: "held" });
       if (other.acquired) await other.release();
-    });
 
-    await t.test("確認の読みが落ちたら、本当に取れていたリースは解放して走らない", async () => {
+      await db.execute(sql`
+        INSERT INTO job_leases (name, holder, acquired_at, expires_at)
+        VALUES (${NAME}, gen_random_uuid(), now() - interval '10 minutes', now() - interval '1 minute')`);
+      const mine = await acquireLeaseFailClosed(NAME, 60);
+      assert.equal(mine.acquired, true, "期限の切れた行を取り直せない");
+      // 自分の期限が切れた後に他者が取り直した場面: 自分の release は他者の行を消さない。
+      await db.execute(sql`UPDATE job_leases SET holder = gen_random_uuid() WHERE name = ${NAME}`);
+      if (mine.acquired) await mine.release();
+      const raw = await db.execute(sql`SELECT count(*)::int AS n FROM job_leases WHERE name = ${NAME}`);
+      const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as { n: number }[];
+      assert.equal(rows[0].n, 1, "他者の行を解放している");
       await reset();
-      let released = 0;
-      const r = await silence(() =>
-        acquireLeaseFailClosed(NAME, 60, {
-          acquire: async (n, ttl) => {
-            const real = await acquireLease(n, ttl);
-            assert.equal(real.acquired, true);
-            // 取った直後に行を消し、確認が「無い」と読む形を作る。
-            await db.execute(sql`DELETE FROM job_leases WHERE name = ${NAME}`);
-            return { acquired: true, release: async () => { released++; if (real.acquired) await real.release(); } };
-          },
-        }),
-      );
-      assert.deepEqual(r, { acquired: false, reason: "unverified" });
-      assert.equal(released, 1, "確かめられなかったリースを解放していない");
     });
   });
 }
