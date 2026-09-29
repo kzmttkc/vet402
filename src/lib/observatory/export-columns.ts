@@ -44,8 +44,11 @@ export const EXPORT_CSV_COLUMNS_SINCE_2026_09_21 = ["request_query", "request_qu
  *                    それ以外の行は 0。**spent_units は署名した額（賭けた額）で、動いた額ではない**——tx の無い
  *                    settle_failed にも価格と同じ額が入る。その意味は変えず、動いた額を別の列で出す。
  *                    規則は confirmedUnitsSql（下）。
+ *   purchase_id      その行の購入の id（UUID・監査 5 周目）。/api/v1/observatory/corrections の subject_id
+ *                    （subject_type = purchase）と同じ値で、訂正ログの行と export の行を結ぶ鍵。id は購入ごとに
+ *                    DB が振る乱数で、払い手・売り手・金額を何も含まない（公開してよい値）。
  */
-export const EXPORT_CSV_COLUMNS_SINCE_2026_09_29 = ["confirmed_units"] as const;
+export const EXPORT_CSV_COLUMNS_SINCE_2026_09_29 = ["confirmed_units", "purchase_id"] as const;
 
 /** 列を足したら openapi・methodology・llms.txt の説明にも名前で出す（tests/export-request-body.test.ts）。 */
 export const EXPORT_CSV_COLUMNS_ADDED = [
@@ -72,4 +75,5 @@ export function confirmedUnitsSql(alias: string): string {
 export const EXPORT_CSV_COLUMN_NOTES =
   "spent_units = USDC base units vet402 signed for on the attempt (what it put at stake), not units shown to have moved; " +
   "confirmed_units = units vet402 re-read on-chain as transferred (spent_units on settled rows, 0 on every other row, " +
-  "including settle_claimed rows awaiting re-read). Full column definitions: https://vet402.com/openapi.yaml";
+  "including settle_claimed rows awaiting re-read); " +
+  "purchase_id = the purchase's id, the subject_id of its rows in /api/v1/observatory/corrections. Full column definitions: https://vet402.com/openapi.yaml";

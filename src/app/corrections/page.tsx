@@ -4,7 +4,12 @@ import { headers } from "next/headers";
 import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "@/lib/support";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
-import { countCorrectionsByReason, listCorrections, type CorrectionRow } from "@/lib/observatory/corrections";
+import {
+  CORRECTIONS_PAGE_MAX,
+  countCorrectionsByReason,
+  listCorrections,
+  type CorrectionRow,
+} from "@/lib/observatory/corrections";
 import { getEndpointNames } from "@/lib/observatory/reader";
 
 /**
@@ -248,13 +253,22 @@ function CorrectionTableRow({
       <td className="whitespace-nowrap">
         <code>{before}</code> → <code>{after}</code>
       </td>
-      <td>{row.reason}</td>
+      <td>
+        {row.reason}
+        {/* 2026-09-29 監査 5 周目: settlement_backfill の経路（読み出し時の派生・API の settlement_path と同じ語）。 */}
+        {row.settlement_path ? (
+          <>
+            {" · "}
+            <code>{row.settlement_path}</code>
+          </>
+        ) : null}
+      </td>
     </tr>
   );
 }
 
 /** 表に描くために読み込む行数（listCorrections の上限と同じ）。件数はこの値ではなく count(*) で数える。 */
-const ROWS_FETCHED = 500;
+const ROWS_FETCHED = CORRECTIONS_PAGE_MAX;
 
 /**
  * 2026-09-04 にこの頁が「machine-recorded corrections」と呼んでいた行数。**当時の実数**で、
@@ -334,6 +348,20 @@ export default async function CorrectionsPage() {
           </p>
         </div>
 
+        {/* 2026-09-29 監査 5 周目（データ記者）: 見出しの 2 つの数が何を数えているかを頁に書く。
+            API の total（?reason= で絞る）と同じ定義で、読み手が数え直せる。 */}
+        <p className="doc-note mt-6 max-w-[64ch]">
+          How the two counts in the header are counted: <strong>Corrections</strong> is the
+          hand-written entries in section 1 plus the rows of the correction log whose reason is not{" "}
+          <code>settlement_backfill</code>; <strong>Ledger status changes</strong> is the rows whose
+          reason is <code>settlement_backfill</code>. Both are <code>count(*)</code> over the whole
+          log, not the rows drawn on this page. To recount them, read{" "}
+          <code>/api/v1/observatory/corrections?reason=settlement_backfill</code>: its{" "}
+          <code>total</code> is the second number, and following <code>page.nextCursor</code> back
+          as <code>?cursor=</code> ({ROWS_FETCHED.toLocaleString()} rows a page) pages back to the
+          first row.
+        </p>
+
         {/* ===== 1. The log ===== */}
         <h2 className="sec-head">
           <span className="sec-no">1.</span>
@@ -354,8 +382,8 @@ export default async function CorrectionsPage() {
             {totals.verdictChanges > verdictCorrections.length && (
               <p className="doc-note mt-3">
                 {verdictCorrections.length.toLocaleString()} of them are in the newest{" "}
-                {ROWS_FETCHED.toLocaleString()} log rows and are drawn below. The full set is at{" "}
-                <code>/api/v1/observatory/corrections</code>.
+                {ROWS_FETCHED.toLocaleString()} log rows and are drawn below. The complete log is at{" "}
+                <code>/api/v1/observatory/corrections</code>, paged back with <code>?cursor=</code>.
               </p>
             )}
             <div className="mt-4 overflow-x-auto">
@@ -426,8 +454,10 @@ export default async function CorrectionsPage() {
             <p className="doc-p">
               {totals.settlementBackfill.toLocaleString()} row
               {totals.settlementBackfill === 1 ? "" : "s"} where a purchase moved up or down the
-              ledger on on-chain evidence. Three paths lead here, and the{" "}
-              <strong>Before → after</strong> column says which one a row took.{" "}
+              ledger on on-chain evidence. Several paths lead here; the{" "}
+              <strong>Before → after</strong> column shows the move and the <strong>Reason</strong>{" "}
+              column names the path (<code>settlement_path</code> in the API, worked out from before
+              and after when the row is read).{" "}
               <strong>One:</strong> the seller asserted a settlement we had not re-read, so the row
               waited at <code>settle_claimed</code> until we read the chain — finding the transfer
               moves it to <code>settled</code>, and failing to find it moves it to{" "}
@@ -443,7 +473,16 @@ export default async function CorrectionsPage() {
               <strong>Three:</strong> that verifier could not confirm the linked transfer belonged
               to that purchase, so we take our own guess back — the row returns to the status it
               held before we touched it, the transaction vet402 had attached is removed, and the
-              seller is not refuted for a link vet402 made. The reason the verifier gave is
+              seller is not refuted for a link vet402 made. <strong>Four</strong>{" "}
+              (<code>seller_named_tx_promoted</code>): the seller <em>did</em> name a transaction in
+              its payment response but its receipt did not say success, so the row sat at{" "}
+              <code>delivered_no_receipt</code> or <code>settle_failed</code> with that hash; it is
+              moved to <code>settle_claimed</code> with the seller&apos;s own hash unchanged (before and
+              after carry the same hash) and verified as the seller&apos;s claim, which is why the
+              ledger export keeps <code>settlement_source</code> <code>seller_claim</code> for it. If
+              that hash does not verify, the row goes back to where it was (
+              <code>seller_named_tx_declined</code>) and the seller, who had said it did not settle,
+              is not refuted. The reason the verifier gave is
               published on the row itself, as <code>after.lateLinkWithdrawn</code>; a missing
               signature binding is one of several, and the row names which one rather than this
               paragraph guessing. So this table is not only good news about
@@ -480,8 +519,9 @@ export default async function CorrectionsPage() {
             </div>
             {totals.settlementBackfill > 100 && (
               <p className="doc-note mt-3">
-                Newest 100 of {totals.settlementBackfill.toLocaleString()} shown. The full set is at{" "}
-                <code>/api/v1/observatory/corrections</code>.
+                Newest 100 of {totals.settlementBackfill.toLocaleString()} shown. The complete log is at{" "}
+                <code>/api/v1/observatory/corrections?reason=settlement_backfill</code>, paged back with{" "}
+                <code>?cursor=</code>.
               </p>
             )}
           </>

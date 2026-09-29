@@ -104,6 +104,73 @@ export async function updateWithCorrection<T extends Record<string, unknown>>(
   return rows;
 }
 
+/**
+ * settlement_backfill の行が台帳のどの経路を通ったか（2026-09-29 監査 5 周目・データ記者の立場）。
+ *
+ * 保存されている before / after から**読み出し時に**決める派生の語で、台帳・訂正ログの値は変えない。
+ * 監査で、売り手が PAYMENT-RESPONSE で名指した tx を照合へ回した行（recover-late の promoteNamedTx・
+ * delivered_no_receipt → settle_claimed で tx は売り手の原文のまま）が、vet402 の索引が貼った行と同じ
+ * 形に見え、export の settlement_source=seller_claim と食い違って見えた。どちらの経路かは before.txHash と
+ * after.txHash が同じか（売り手の原文）で分かるので、それを語で出す。
+ *
+ *   verified_settled          settle_claimed → settled（チェーン上で送金を再読した）
+ *   claim_refuted             → settle_claim_refuted（売り手の申告した送金が見つからなかった・売り手に不利な行）
+ *   seller_named_tx_promoted  delivered_no_receipt / settle_failed で、売り手が名指した tx を持っていた行を、売り手の
+ *                             申告として照合へ回した（tx は売り手の原文・export の settlement_source は seller_claim）
+ *   vet402_index_link         売り手は使える tx を名指さず、vet402 の決済索引が見つけた tx を貼った
+ *                             （export の settlement_source は、その tx のまま settled になれば vet402_index）
+ *   late_link_withdrawn       照合器が vet402 の貼った tx を購入に結び付けられず、貼る前の status へ戻した
+ *   seller_named_tx_declined  売り手が success:false のまま名指した tx が照合で合わず、元の status へ戻した
+ *                             （売り手は決済していないと申告していたので、売り手の否定にはしない）
+ *   other                     上のどれにも当たらない形（語を増やすまでの受け皿）
+ * settlement_backfill 以外の行は null。
+ */
+export const SETTLEMENT_PATHS = [
+  "verified_settled",
+  "claim_refuted",
+  "seller_named_tx_promoted",
+  "vet402_index_link",
+  "late_link_withdrawn",
+  "seller_named_tx_declined",
+  "other",
+] as const;
+export type SettlementPath = (typeof SETTLEMENT_PATHS)[number];
+
+function asObject(v: unknown): Record<string, unknown> {
+  let x = v;
+  if (typeof x === "string") {
+    try {
+      x = JSON.parse(x);
+    } catch {
+      return {};
+    }
+  }
+  return typeof x === "object" && x !== null && !Array.isArray(x) ? (x as Record<string, unknown>) : {};
+}
+
+const txOf = (o: Record<string, unknown>): string | null =>
+  typeof o.txHash === "string" && o.txHash !== "" ? o.txHash.toLowerCase() : null;
+
+/** 純関数。保存済みの before / after から経路の語を決める（値は変えない）。 */
+export function settlementPathOf(row: { reason: string; before: unknown; after: unknown }): SettlementPath | null {
+  if (row.reason !== "settlement_backfill") return null;
+  const before = asObject(row.before);
+  const after = asObject(row.after);
+  if (after.lateLinkWithdrawn !== undefined) return "late_link_withdrawn";
+  if (after.sellerDeclaredUnsettled !== undefined) return "seller_named_tx_declined";
+  if (after.status === "settled") return "verified_settled";
+  if (after.status === "settle_claim_refuted") return "claim_refuted";
+  if (after.status === "settle_claimed") {
+    const b = txOf(before);
+    const a = txOf(after);
+    if ((before.status === "delivered_no_receipt" || before.status === "settle_failed") && b !== null && b === a) {
+      return "seller_named_tx_promoted";
+    }
+    if (a !== null && a !== b) return "vet402_index_link";
+  }
+  return "other";
+}
+
 export type CorrectionRow = {
   id: string;
   subject_type: string;
@@ -114,7 +181,48 @@ export type CorrectionRow = {
   reason: string;
   dispute_id: string | null;
   created_at: string;
+  /** settlement_backfill の行の経路（settlementPathOf・読み出し時の派生）。他の reason は null。 */
+  settlement_path: SettlementPath | null;
 };
+
+/** 1 頁の上限（公開 API と /corrections の表の読み込み）。 */
+export const CORRECTIONS_PAGE_MAX = 500;
+
+export const CORRECTION_REASONS: readonly CorrectionReason[] = [
+  "dispute_remeasure",
+  "settlement_backfill",
+  "reverify",
+  "path_template",
+];
+
+/**
+ * 頁送りのカーソル（2026-09-29 監査 5 周目: 最新 500 件より前へ遡れなかった）。
+ * 並びは (created_at DESC, id DESC) で、カーソルは直前の頁の最後の行の組。created_at はマイクロ秒まで
+ * 文字列で持つ（Date に通すとミリ秒に丸まり、同じミリ秒の行を飛ばす）。外には base64url の不透明な文字列で渡す。
+ */
+export type CorrectionCursor = { createdAt: string; id: string };
+
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Postgres の timestamptz の text 表現（例 2026-09-29 02:15:32.820289+00）と ISO 8601 の両方。 */
+const TIMESTAMP_SHAPE = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}(:?\d{2})?)$/;
+
+export function encodeCorrectionCursor(row: { created_at: string; id: string }): string {
+  return Buffer.from(`${row.created_at}|${row.id}`, "utf8").toString("base64url");
+}
+
+/** 形の合わないカーソルは null（呼び手が 400 にする）。 */
+export function decodeCorrectionCursor(raw: string): CorrectionCursor | null {
+  if (raw.length === 0 || raw.length > 200 || !/^[A-Za-z0-9_-]+$/.test(raw)) return null;
+  const text = Buffer.from(raw, "base64url").toString("utf8");
+  const bar = text.lastIndexOf("|");
+  if (bar <= 0) return null;
+  const createdAt = text.slice(0, bar);
+  const id = text.slice(bar + 1);
+  if (!TIMESTAMP_SHAPE.test(createdAt) || !UUID_SHAPE.test(id) || Number.isNaN(Date.parse(createdAt.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00")))) {
+    return null;
+  }
+  return { createdAt, id };
+}
 
 /**
  * 訂正ログの**全件**を reason で数える（2026-09-19 独立レビュー W7）。
@@ -140,19 +248,50 @@ export async function countCorrectionsByReason(): Promise<{ settlementBackfill: 
   };
 }
 
-export async function listCorrections(filter: { endpointId?: string; limit?: number } = {}): Promise<CorrectionRow[]> {
+export type CorrectionFilter = {
+  endpointId?: string;
+  reason?: CorrectionReason;
+  limit?: number;
+  /** この組より古い行だけ（頁送り）。 */
+  before?: CorrectionCursor;
+};
+
+function correctionWhere(filter: CorrectionFilter, withCursor: boolean): SQL {
+  const conds: SQL[] = [];
+  if (filter.endpointId) conds.push(sql`subject_type = 'endpoint' AND subject_id = ${filter.endpointId}`);
+  if (filter.reason) conds.push(sql`reason = ${filter.reason}`);
+  if (withCursor && filter.before) {
+    conds.push(sql`(created_at, id) < (${filter.before.createdAt}::timestamptz, ${filter.before.id}::uuid)`);
+  }
+  return conds.length === 0 ? sql`` : sql`WHERE ${sql.join(conds, sql` AND `)}`;
+}
+
+export async function listCorrections(filter: CorrectionFilter = {}): Promise<CorrectionRow[]> {
   const db = getDb();
   if (!db) return [];
-  const limit = Math.min(Math.max(filter.limit ?? 100, 1), 500);
-  return rowsOf<CorrectionRow>(
+  const limit = Math.min(Math.max(Math.trunc(filter.limit ?? 100) || 1, 1), CORRECTIONS_PAGE_MAX);
+  // 2026-09-29 監査 5 周目: 同じ created_at の行（1 文で書いた訂正は同じ時刻を持つ）を頁の境目で落とさないよう、
+  // id を第 2 キーにして全順序にする。カーソルはこの組で比べる。
+  const rows = rowsOf<Omit<CorrectionRow, "settlement_path">>(
     await db.execute(sql`
       SELECT id::text AS id, subject_type, subject_id, level, before, after, reason,
              dispute_id::text AS dispute_id, created_at::text AS created_at
       FROM correction_log
-      ${filter.endpointId ? sql`WHERE subject_type = 'endpoint' AND subject_id = ${filter.endpointId}` : sql``}
-      ORDER BY created_at DESC LIMIT ${limit}
+      ${correctionWhere(filter, true)}
+      ORDER BY created_at DESC, id DESC LIMIT ${limit}
     `),
   );
+  return rows.map((r) => ({ ...r, settlement_path: settlementPathOf(r) }));
+}
+
+/** フィルタ（endpoint・reason）に合う行の総数。カーソルは数えない（頁の位置によらず同じ値）。 */
+export async function countCorrections(filter: Pick<CorrectionFilter, "endpointId" | "reason"> = {}): Promise<number> {
+  const db = getDb();
+  if (!db) return 0;
+  const rows = rowsOf<{ n: number }>(
+    await db.execute(sql`SELECT count(*)::int AS n FROM correction_log ${correctionWhere(filter, false)}`),
+  );
+  return Number(rows[0]?.n ?? 0);
 }
 
 /** endpoint の直近 7 日の異議 created_at（レート制限用）。 */

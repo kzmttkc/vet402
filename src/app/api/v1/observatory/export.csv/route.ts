@@ -44,6 +44,9 @@ import { logServerErrorSafe } from "@/lib/util/log-safe";
  * 2026-09-29: さらに末尾に 1 列（敵対的監査 4 周目）。既存の 16 列は変えていない。
  *   confirmed_units       vet402 がチェーン上で確かめた送金額。settled の行は spent_units、他は 0。
  *                        spent_units は署名した額（賭けた額）であって動いた額ではない、を列で分ける。
+ *
+ * 2026-09-29（監査 5 周目・データ記者）: さらに末尾に 1 列。既存の 17 列は変えていない。
+ *   purchase_id           購入の id（UUID）。訂正ログ（/api/v1/observatory/corrections）の subject_id と結ぶ鍵。
  */
 
 const RL_LIMIT = 6;
@@ -92,12 +95,13 @@ export async function GET(request: NextRequest) {
              (${sql.raw(settlementSourceSql("pu"))}) AS settlement_source,
              (${sql.raw(requestQueryKindSql("pu"))}) AS request_query,
              (${sql.raw(requestQuerySha256Sql("pu"))}) AS request_query_sha256,
-             (${sql.raw(confirmedUnitsSql("pu"))}) AS confirmed_units
+             (${sql.raw(confirmedUnitsSql("pu"))}) AS confirmed_units,
+             pu.id::text AS purchase_id
       FROM x402_l1_purchases pu
       JOIN x402_endpoints e ON e.id = pu.endpoint_id
       WHERE pu.attempted_at >= now() - make_interval(days => ${days}::int)
         AND pu.status NOT IN ('budget_denied', 'halted', 'request_error', 'in_flight')
-      ORDER BY pu.attempted_at ASC
+      ORDER BY pu.attempted_at ASC, pu.id ASC
       LIMIT ${MAX_ROWS + 1}
     `);
     const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as Record<

@@ -837,7 +837,7 @@ claims:
     verified_at: 2026-09-04
   - id: lp_an_on_chain_receipt_in
     surface: src/app/page.tsx
-    quote: "an on-chain receipt) in separate cells; they are never mixed."
+    quote: "named the transaction) in separate cells; they are never mixed."
     means: "L0 と L1 は別セルで出し、混ぜて1つの数字にしない"
     check: null
     why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
@@ -1570,14 +1570,14 @@ claims:
   # 2 経路あることと、貼った行も同じ照合器を通ることを、頁と API の両方に書いた。
   - id: api_corrections_three_paths_through_the_ledger
     surface: src/app/api/v1/observatory/corrections/route.ts
-    quote: "they say which of three paths a row took"
-    means: "settlement_backfill には 3 経路ある——(1) 売り手の申告を再読して settled か settle_claim_refuted へ、(2) 売り手が取引を名指していない行（settle_failed / delivered_no_receipt / settle_claimed_unverifiable）に vet402 の索引が転送を貼り settle_claimed へ、(3) 照合で署名の束縛が無く vet402 が自分の推定を取り消す（lateLinkWithdrawn）。台帳は上にも下にも動く"
+    quote: "the settlement_path field names the path a row took"
+    means: "（2026-09-29 監査 5 周目で経路の語を settlement_path として行ごとに出すよう改めた。売り手が名指した tx の昇格 seller_named_tx_promoted と、その否定 seller_named_tx_declined を足した）settlement_backfill には複数の経路がある——(1) 売り手の申告を再読して settled か settle_claim_refuted へ、(2) 売り手が取引を名指していない行（settle_failed / delivered_no_receipt / settle_claimed_unverifiable）に vet402 の索引が転送を貼り settle_claimed へ、(3) 照合で署名の束縛が無く vet402 が自分の推定を取り消す（lateLinkWithdrawn）。台帳は上にも下にも動く"
     check: null
     why_unverifiable: "2026-09-19 独立レビュー W5: 以前は corrections.0.reason == \"settlement_backfill\" を当てていたが、最新 1 行の reason を見るだけで、**3 経路あること**を検査していない（最新行が reverify になれば主張と無関係に赤くなる）。公開 API は before/after を返すが、評価器は配列の全走査や件数の条件を書けないので、この主張は式にできない。経路は src/lib/settlements/recover-late.ts（LATE_RECOVERABLE_STATUSES）と src/lib/observatory/settlement-verifier.ts（withdrawLateLink）が持ち、tests/late-settlement-recovery.pg.test.ts が守る"
     verified_at: 2026-09-19
   - id: corrections_page_three_paths_through_the_ledger
     surface: src/app/corrections/page.tsx
-    quote: "ledger on on-chain evidence. Three paths lead here, and the"
+    quote: "ledger on on-chain evidence. Several paths lead here; the"
     means: "/corrections §1b の 3 経路の説明。売り手の申告の再読・vet402 の索引が貼った行・貼った推定の取り消しを、Before → after の列で見分けられると書く"
     check: null
     why_unverifiable: "2026-09-19 独立レビュー W5: 同じ主張を公開 GET の 1 式で検査できない（api_corrections_three_paths_through_the_ledger と同じ理由）"
@@ -1972,4 +1972,26 @@ claims:
     means: "決済索引（index-evm）はその時点のカタログの payTo を前へ読むだけなので、後からカタログに載った payTo 宛ての過去の着金は索引に無い。遅延照合（recover-late.ts の linkFromChain）は索引に候補の無い Base の行について、行の payer から pay_to への USDC Transfer をチェーンから直接読み、額・窓が合えば貼る（照合器が読み直す）。2026-09-29 の実測: Base のレシート無しの 2xx・tx なし 70 行のうち 43 行に価格ちょうどの着金があった"
     check: null
     why_unverifiable: "cron（/api/cron/index-settlements）の内部の手順で公開 GET に出ない。規則は src/lib/settlements/recover-late.ts（chooseLinks・linkFromChain・makeBaseTransferReader）で、tests/sellers-attribution-r4.test.ts と tests/late-settlement-r4.pg.test.ts が固定する。貼った行は raw_response_meta.lateSettlement.source = chain_read"
+    verified_at: 2026-09-29
+  # 2026-09-29 監査 5 周目（データ記者の立場）: 訂正ログの頁送り・総数の定義・mainnet の表の外に出す id。
+  - id: api_corrections_cursor_returns_each_row_once
+    surface: src/app/api/v1/observatory/corrections/route.ts
+    quote: "so paging from one starting point to the end returns each row that existed at that point exactly once"
+    means: "(created_at, id) の組のカーソルで最新から最古まで頁を送ると、始めた時点にあった行を 1 回ずつ返す（後から足された行は先頭に入り、カーソルより下の頁をずらさない）"
+    check: null
+    why_unverifiable: "頁送りの性質で、公開 GET の 1 式では検査できない。規則は src/lib/observatory/corrections.ts の listCorrections（ORDER BY created_at DESC, id DESC と組の比較）で、tests/audit-r5-exports.pg.test.ts が同じ created_at の 3 行を含む 7 行を limit 2 で重複なく読み切ることを固定する"
+    verified_at: 2026-09-29
+  - id: api_corrections_total_counts_matching_rows
+    surface: src/app/api/v1/observatory/corrections/route.ts
+    quote: "total counts the rows of the correction log that match endpoint and reason, regardless of cursor"
+    means: "total は endpoint と reason に合う訂正ログの行の count(*)。カーソルでは変わらない。/corrections の見出しの 2 つの数はこれを reason で分けたもの"
+    check: null
+    why_unverifiable: "件数は日々動き、同じ数を別の公開 GET から取れないので式にできない。規則は src/lib/observatory/corrections.ts の countCorrections と countCorrectionsByReason で、tests/audit-r5-exports.pg.test.ts が固定する"
+    verified_at: 2026-09-29
+  - id: state_page_section1_counts_every_listing
+    surface: src/app/observatory/state/page.tsx
+    quote: "which counts every listing on record including testnets"
+    means: "§1 の分母は testnet を含む記録上の全出品（運営自身の endpoint を除く）。§2 の表は mainnet と分かっている network だけなので分母が狭い"
+    check: null
+    why_unverifiable: "2 つの読み取りは別々にキャッシュされ数分ずれるので、公開 GET の 1 式で差を検査できない。規則は src/lib/observatory/reader.ts の getObservatoryStats（全出品）と getObservatoryStatsByChain（isMainnet で絞る）・getChainScope で、tests/audit-r5-exports.pg.test.ts が和の一致を固定する"
     verified_at: 2026-09-29

@@ -28,7 +28,7 @@ import { publishedVerdict, MIN_CONSECUTIVE_FAILS_TO_PUBLISH } from "./l0-probe";
 import { l0ReasonDetail, type L0ProbeDetail } from "./l0-reasons";
 import { isOperatorPayTo } from "./operator";
 import { isOperatorExclusionConfigured, operatorExclusionPredicate, operatorMatchPredicate } from "./operator-sql";
-import { chainLabel, isTestnet, toCaip2 } from "./chains";
+import { chainLabel, isMainnet, isTestnet, toCaip2 } from "./chains";
 import { deliveredPredicate, heldReasonSql, inconclusivePredicate, inconclusiveSettledPredicate } from "./delivery";
 import {
   settledTier,
@@ -795,6 +795,18 @@ export type ObservatoryStats = {
     endpointsSettledIndexOnly: number;
     endpointsDelivered: number;
     /**
+     * 照合待ち（status = settle_claimed: 売り手が決済を申告し、vet402 がまだチェーンで読み直していない）の件数
+     * （2026-09-29 監査 5 周目）。attempts に入り、delivered にも inconclusive にも入らない。
+     * llms.txt は「通常 1 日以内に settled へ」と書いていたが、17 日照合待ちの行があった。長く待つ行の数を並べて出す。
+     */
+    awaitingReread: number;
+    /** そのうち試行から 1 日（24 時間）より古い行。 */
+    awaitingRereadOlderThan1d: number;
+    /** そのうち試行から 7 日より古い行。 */
+    awaitingRereadOlderThan7d: number;
+    /** 照合待ちのうち一番古い試行の時刻（ISO8601 UTC・無ければ null）。 */
+    awaitingRereadOldestAttemptAt: string | null;
+    /**
      * L1 を最後に試した時刻（ISO8601 UTC・全チェーン横断・一度も無ければ null）。
      * 2026-09-05: 実行時キルスイッチが入り、停止中は下の件数がまったく動かない。
      * この 1 つが無いと、読み手は「静かな日」と「止めている日」を区別できず、
@@ -880,6 +892,10 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       endpointsSettledSellerReceipt: 0,
       endpointsSettledIndexOnly: 0,
       endpointsDelivered: 0,
+      awaitingReread: 0,
+      awaitingRereadOlderThan1d: 0,
+      awaitingRereadOlderThan7d: 0,
+      awaitingRereadOldestAttemptAt: null,
       lastAttemptAt: null,
       byChain: [],
     },
@@ -982,6 +998,10 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       endpointsSettledSellerReceipt: 0,
       endpointsSettledIndexOnly: 0,
       endpointsDelivered: 0,
+      awaitingReread: 0,
+      awaitingRereadOlderThan1d: 0,
+      awaitingRereadOlderThan7d: 0,
+      awaitingRereadOldestAttemptAt: null as string | null,
       lastAttemptAt: null as string | null,
       byChain: [] as L1ChainStats[],
     };
@@ -1009,7 +1029,12 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
                count(DISTINCT endpoint_id) FILTER (
                  WHERE status = 'settled' AND (${sql.raw(settlementSourceSql())}) = 'seller_claim'
                )::int AS endpoints_settled_seller_receipt,
-               count(DISTINCT endpoint_id) FILTER (WHERE ${sql.raw(deliveredPredicate())})::int AS endpoints_delivered
+               count(DISTINCT endpoint_id) FILTER (WHERE ${sql.raw(deliveredPredicate())})::int AS endpoints_delivered,
+               -- 2026-09-29 監査 5 周目: 照合待ち（settle_claimed）の件数と、長く待っている行の数。
+               count(*) FILTER (WHERE status = 'settle_claimed')::int AS awaiting_reread,
+               count(*) FILTER (WHERE status = 'settle_claimed' AND attempted_at < now() - interval '1 day')::int AS awaiting_reread_1d,
+               count(*) FILTER (WHERE status = 'settle_claimed' AND attempted_at < now() - interval '7 days')::int AS awaiting_reread_7d,
+               to_char(min(attempted_at) FILTER (WHERE status = 'settle_claimed') AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS awaiting_reread_oldest
         FROM x402_l1_purchases
         WHERE status IN ('settled', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable', 'settle_claimed', 'settle_claim_refuted')
       `);
@@ -1028,6 +1053,10 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
         endpoints_settled: number;
         endpoints_settled_seller_receipt: number;
         endpoints_delivered: number;
+        awaiting_reread: number;
+        awaiting_reread_1d: number;
+        awaiting_reread_7d: number;
+        awaiting_reread_oldest: string | null;
       }[];
       if (l1List[0]) {
         l1 = {
@@ -1053,6 +1082,10 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
             Number(l1List[0].endpoints_settled ?? 0) - Number(l1List[0].endpoints_settled_seller_receipt ?? 0),
           ),
           endpointsDelivered: Number(l1List[0].endpoints_delivered ?? 0),
+          awaitingReread: Number(l1List[0].awaiting_reread ?? 0),
+          awaitingRereadOlderThan1d: Number(l1List[0].awaiting_reread_1d ?? 0),
+          awaitingRereadOlderThan7d: Number(l1List[0].awaiting_reread_7d ?? 0),
+          awaitingRereadOldestAttemptAt: l1List[0].awaiting_reread_oldest ? String(l1List[0].awaiting_reread_oldest) : null,
         };
       }
 
@@ -1260,7 +1293,10 @@ export async function getObservatoryStatsByChain(
       // 片方だけ寄せると、同じチェーンが L0 と L1 で別のラベルになる。行は endpoint 単位で、
       // 同じラベルに落ちた行は下の ++ で 1 つの entry に合算される。
       const network = toCaip2(row.network);
-      if (!options.includeTestnets && isTestnet(network)) continue;
+      // 2026-09-29 監査 5 周目: 「テストネットでない」ではなく「mainnet と分かっている」だけを数える
+      // （eip155:11142220 = Celo Sepolia が名前を持たないまま mainnet の表に入っていた）。落とした id は
+      // getChainScope の unclassified に出る。
+      if (!options.includeTestnets && !isMainnet(network)) continue;
       const chain = chainLabel(network);
       const entry = byChain.get(chain) ?? {
         chain,
@@ -1282,6 +1318,50 @@ export async function getObservatoryStatsByChain(
     return [...byChain.values()].sort((a, b) => b.totalEndpoints - a.totalEndpoints);
   } catch (error) {
     if (isMissingSchemaError(error)) return [];
+    throw error;
+  }
+}
+
+/**
+ * L0 のチェーン別表（mainnet だけ）の外に出た endpoint の内訳（2026-09-29 監査 5 周目）。
+ * sum(byChain.totalEndpoints) + testnetEndpoints + unclassified の和 = totalEndpoints（運営自身の endpoint を除いた数）。
+ */
+export type ChainScope = {
+  testnetEndpoints: number;
+  /** mainnet ともテストネットとも名前で分からない network id（そのままの表記）と件数。 */
+  unclassified: { network: string; totalEndpoints: number }[];
+};
+
+export async function getChainScope(): Promise<ChainScope> {
+  const db = getDb();
+  if (!db) return { testnetEndpoints: 0, unclassified: [] };
+  try {
+    const raw = await db.execute(sql`
+      SELECT e.network, count(*)::int AS n FROM x402_endpoints e
+      WHERE ${operatorExclusionPredicate("e")}
+      GROUP BY e.network
+    `);
+    const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as { network: string | null; n: number }[];
+    let testnetEndpoints = 0;
+    const unclassified = new Map<string, number>();
+    for (const r of rows) {
+      const network = toCaip2(r.network);
+      if (isMainnet(network)) continue;
+      if (isTestnet(network)) {
+        testnetEndpoints += Number(r.n);
+        continue;
+      }
+      const key = network ?? "unknown";
+      unclassified.set(key, (unclassified.get(key) ?? 0) + Number(r.n));
+    }
+    return {
+      testnetEndpoints,
+      unclassified: [...unclassified.entries()]
+        .map(([network, totalEndpoints]) => ({ network, totalEndpoints }))
+        .sort((a, b) => b.totalEndpoints - a.totalEndpoints || a.network.localeCompare(b.network)),
+    };
+  } catch (error) {
+    if (isMissingSchemaError(error)) return { testnetEndpoints: 0, unclassified: [] };
     throw error;
   }
 }

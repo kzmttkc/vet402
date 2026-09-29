@@ -51,9 +51,14 @@ test("/decisions links each endpoint to its record page and each receipt to its 
   assert.ok(lib.includes("endpointId"), "decision rows carry the endpoint id");
 });
 
-test("/impact lists the latest settled receipts with explorer links", () => {
+test("/impact lists the latest settled transactions with explorer links", () => {
   const page = read("src/app/impact/page.tsx");
-  assert.ok(page.includes("Latest settled receipts"));
+  // 2026-09-29 監査 5 周目: vet402 の索引が見つけた取引を「Receipt」と呼ばない。表の名前は transactions、
+  // 誰が tx を名指したか（settlement_source）を列で出す。
+  assert.ok(page.includes("Latest settled transactions"));
+  assert.ok(!page.includes("Latest settled receipts</p>"), "表題に receipts を戻さない");
+  assert.ok(page.includes("Named by"));
+  assert.ok(page.includes('r.settlementSource === "vet402_index"'));
   assert.ok(page.includes("explorerTxUrl"));
   assert.ok(page.includes("/observatory/e/${"));
 });

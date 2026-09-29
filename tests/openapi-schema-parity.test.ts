@@ -357,7 +357,7 @@ const SURFACES: Surface[] = [
     label: "CorrectionRow",
     spec: ["CorrectionRow", "properties"],
     impl: [["src/lib/observatory/corrections.ts", ["CorrectionRow"]]],
-    fields: ["id", "subject_type", "subject_id", "level", "before", "after", "reason", "dispute_id", "created_at"],
+    fields: ["id", "subject_type", "subject_id", "level", "before", "after", "reason", "dispute_id", "created_at", "settlement_path"],
   },
   {
     label: "L0Accuracy",

@@ -31,10 +31,12 @@
 import { unstable_cache } from "next/cache";
 import { PUBLIC_READ_REVALIDATE } from "./public-read-revalidate";
 import {
+  getChainScope,
   getCoverageShare,
   getObservatoryStats,
   getObservatoryStatsByChain,
   getUnverifiedBreakdown,
+  type ChainScope,
   type ChainStats,
   type CoverageShare,
   type ObservatoryStats,
@@ -59,6 +61,13 @@ export const getCoverageShareCached: () => Promise<CoverageShare> = unstable_cac
 export const getObservatoryStatsByChainCached: () => Promise<ChainStats[]> = unstable_cache(
   () => getObservatoryStatsByChain(),
   ["observatory:stats-by-chain"],
+  { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
+);
+
+/** L0 のチェーン別表（mainnet だけ）の外に出た件数（2026-09-29 監査 5 周目）。 */
+export const getChainScopeCached: () => Promise<ChainScope> = unstable_cache(
+  () => getChainScope(),
+  ["observatory:chain-scope"],
   { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
 );
 

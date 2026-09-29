@@ -135,15 +135,25 @@ export default async function ImpactPage() {
             出所は変えず、直近 5 件を本文に載せる。 */}
         {receipts.length > 0 && (
           <>
-            <p className="doc-caption mt-6">Latest settled receipts</p>
-            <TableScroll label="Latest settled receipts, newest first">
+            {/* 2026-09-29 監査 5 周目: この表は「Latest settled receipts」と呼び、vet402 の索引が見つけた取引
+                （売り手のレシートは返っていない）も「Receipt」と並べていた。表は settled の取引で、誰がその取引を
+                名指したか（export の settlement_source）を列で出す。 */}
+            <p className="doc-caption mt-6">Latest settled transactions</p>
+            <p className="doc-note mt-2 max-w-[62ch]">
+              Transfers vet402 re-read on-chain, not a list of seller receipts. <strong>Named by</strong>{" "}
+              says who pointed at the transaction: the seller&apos;s own settlement receipt, or
+              vet402&apos;s settlements index when the seller returned no receipt (
+              <code>settlement_source</code> in the export).
+            </p>
+            <TableScroll label="Latest settled transactions, newest first">
               <table className="fact-table">
-                <caption className="sr-only">Latest settled receipts, newest first</caption>
+                <caption className="sr-only">Latest settled transactions, newest first</caption>
                 <thead>
                   <tr>
                     <th scope="col">Attempted (UTC)</th>
                     <th scope="col">Endpoint</th>
-                    <th scope="col">Receipt (tx)</th>
+                    <th scope="col">Transaction</th>
+                    <th scope="col">Named by</th>
                     <th scope="col" className="num">
                       Amount
                     </th>
@@ -171,6 +181,9 @@ export default async function ImpactPage() {
                           ) : (
                             <code title={r.txHash}>{short}</code>
                           )}
+                        </td>
+                        <td className="whitespace-nowrap">
+                          {r.settlementSource === "vet402_index" ? "vet402's index (no seller receipt)" : "seller's receipt"}
                         </td>
                         <td className="num">{formatUsdcUnits(r.amountUnits)}</td>
                       </tr>

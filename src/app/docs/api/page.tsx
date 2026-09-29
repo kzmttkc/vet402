@@ -339,13 +339,30 @@ const endpoints: Endpoint[] = [
   },
   {
     method: "GET",
-    path: "/api/v1/observatory/corrections?endpoint=…&limit=100",
-    note: "The correction log as JSON — no key, 60/min. Every published verdict that later changed: dispute_remeasure (a seller's signed dispute triggered a re-measurement that overturned it), settlement_backfill (a claimed settlement was later confirmed or refuted on-chain), reverify. before / after are the published values; corrections unfavourable to vet402 are listed the same way and rows are never deleted. endpoint filters by observatory uuid; limit 1–500.",
+    path: "/api/v1/observatory/corrections?endpoint=…&reason=…&limit=100&cursor=…",
+    note: "The correction log as JSON — no key, 60/min. Every published verdict that later changed: dispute_remeasure (a seller's signed dispute triggered a re-measurement that overturned it), settlement_backfill (a settlement moved up or down the ledger on on-chain evidence), reverify, path_template. before / after are the published values; corrections unfavourable to vet402 are listed the same way and rows are never deleted. endpoint filters by observatory uuid; reason filters by reason; limit 1–500 rows a page. Since 2026-09-29 every row can be read: page.nextCursor, passed back as cursor, returns the next older page (null on the last page), and total counts the rows matching endpoint and reason whatever the cursor — ?reason=settlement_backfill gives the 'Ledger status changes' count on /corrections. For a purchase row, subject_id is the purchase_id column of the ledger export; settlement_path names the path a settlement_backfill row took (verified_settled, claim_refuted, seller_named_tx_promoted, vet402_index_link, late_link_withdrawn, seller_named_tx_declined, other). 400 invalid_reason / invalid_cursor.",
     response: `{
-  "corrections": [ { "id": "…", "subject_type": "endpoint", "subject_id": "521e929e-…", "level": "l0", "before": { "verdict": "fail" }, "after": { "verdict": "pass" }, "reason": "dispute_remeasure", "dispute_id": "…", "created_at": "…" } ],
+  "corrections": [ { "id": "…", "subject_type": "purchase", "subject_id": "c4d4b20f-…", "level": "l1", "before": { "status": "settle_claimed" }, "after": { "status": "settled", "blockNumber": "…" }, "reason": "settlement_backfill", "dispute_id": null, "created_at": "…", "settlement_path": "verified_settled" } ],
+  "total": 312,
+  "page": { "limit": 100, "returned": 100, "nextCursor": "MjAyNi0w…", "order": "created_at DESC, id DESC", "howToPage": "…" },
+  "totalDefinition": "…",
   "definition": "Each row is a public verdict that changed after publication: …",
   "disclaimer": "…"
 }`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/observatory/l0/export.csv",
+    note: "The latest public L0 verdict per endpoint, as CSV — no key, 6/min, cached up to 15 minutes. One row per endpoint on record (listed or not, excluding endpoints paying vet402's own addresses): the data behind the L0 counts of /api/v1/observatory/state. Columns: endpoint_id, resource_key, network, chain, network_class (mainnet | testnet | unclassified), listed, published_verdict (pass | fail | unverified), latest_probe_verdict, last_probed_at, latest_probe_older_than_7d. Counting published_verdict=pass gives publishedPass; network_class=mainnet rows grouped by chain give byChain. Definitions in the x-vet402-column-notes header, retrieval time in x-vet402-retrieved-at. Since 2026-09-29.",
+    response: `endpoint_id,resource_key,network,chain,network_class,listed,published_verdict,latest_probe_verdict,last_probed_at,latest_probe_older_than_7d
+521e929e-…,api.example.com/v1/x,eip155:8453,Base,mainnet,true,pass,pass,2026-09-29T10:31:02Z,false`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/sellers/export.csv",
+    note: "The /sellers classification, as CSV — no key, 6/min, cached up to 15 minutes, served noindex like the page. One row per active Base listing, classified by its latest purchase row with the same function /sellers uses; counting rows by outcome gives the page's totals. Columns: host, endpoint_id, resource_key, outcome (delivered | pending | seller | vet402 | unsorted | not_bought | not_tried), fix_mode, side_label, confirmed_seller, held_reason, latest_attempted_at, latest_status, latest_network, latest_http_status_paid, purchase_id (the ledger export's purchase_id), in_ledger_export. Definitions in the x-vet402-column-notes header, retrieval time in x-vet402-retrieved-at. Since 2026-09-29.",
+    response: `host,endpoint_id,resource_key,outcome,fix_mode,side_label,confirmed_seller,held_reason,latest_attempted_at,latest_status,latest_network,latest_http_status_paid,purchase_id,in_ledger_export
+api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02:29Z,settled,eip155:8453,200,c4d4b20f-…,true`,
   },
 ];
 

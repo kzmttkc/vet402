@@ -52,7 +52,7 @@ test("列: 既存 11 列はそのまま、追加は末尾だけ（2026-09-20 の
   ]);
   assert.deepEqual(EXPORT_CSV_COLUMNS.slice(11, 14), ["request_body", "request_body_sha256", "settlement_source"]);
   assert.deepEqual(EXPORT_CSV_COLUMNS.slice(14, 16), ["request_query", "request_query_sha256"]);
-  assert.deepEqual(EXPORT_CSV_COLUMNS.slice(16), ["confirmed_units"]);
+  assert.deepEqual(EXPORT_CSV_COLUMNS.slice(16), ["confirmed_units", "purchase_id"]);
   assert.deepEqual([...EXPORT_CSV_COLUMNS_SINCE_2026_09_20], EXPORT_CSV_COLUMNS.slice(11, 14));
   assert.deepEqual([...EXPORT_CSV_COLUMNS_SINCE_2026_09_21], EXPORT_CSV_COLUMNS.slice(14, 16));
   assert.deepEqual([...EXPORT_CSV_COLUMNS_SINCE_2026_09_29], EXPORT_CSV_COLUMNS.slice(16));

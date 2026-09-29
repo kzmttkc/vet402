@@ -380,9 +380,11 @@ export default async function ObservatoryPage({
             payment wall answer a valid <code>402</code> challenge when approached with the method
             it declares. The catalog is re-fetched daily; endpoints are probed on a rolling
             schedule, and each row shows when it was last probed. The L0 cell is the payment-wall
-            measurement alone; the L1 cell counts real purchases that returned an on-chain receipt
-            (settled / paid attempts) above the count that also returned a 2xx response
-            (delivered), with every receipt listed on the endpoint&apos;s page. The
+            measurement alone; the L1 cell counts real purchases whose transfer vet402 re-read
+            on-chain (settled / paid attempts; the transaction named by the seller&apos;s receipt or,
+            when the seller returned none, found by vet402&apos;s own index) above the count that
+            also returned a 2xx response (delivered), with every transaction listed on the
+            endpoint&apos;s page. The
             two are never mixed.{" "}
             <strong>pass / fail / unverified</strong> are defined measurements, not opinions —{" "}
             <Link href="/observatory/methodology" className="underline">

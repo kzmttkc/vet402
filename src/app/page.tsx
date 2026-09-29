@@ -738,8 +738,9 @@ export default async function Home() {
                 {coverage && coverage.pct !== null
                   ? ` — ${coverage.pct}% of ${coverage.activeEndpoints.toLocaleString()} active endpoints carry a probe from the last 7 days`
                   : ""}
-                . The table shows L0 (payment-wall check) and L1 (real purchases that returned
-                an on-chain receipt) in separate cells; they are never mixed.
+                . The table shows L0 (payment-wall check) and L1 (real purchases whose transfer
+                vet402 re-read on-chain, whether the seller&apos;s receipt or vet402&apos;s own index
+                named the transaction) in separate cells; they are never mixed.
               </>
             }
             action={{

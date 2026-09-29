@@ -969,7 +969,7 @@ paths:
         (since 2026-09-17), `request_body`, `request_body_sha256`,
         `settlement_source` (since 2026-09-20), `request_query`,
         `request_query_sha256` (since 2026-09-21), `confirmed_units`
-        (since 2026-09-29).
+        (since 2026-09-29), `purchase_id` (since 2026-09-29).
 
         - `amount_units` — the price the seller's 402 asked for, in the
           asset's base units (USDC: 6 decimals).
@@ -1050,6 +1050,12 @@ paths:
           short declared query. Blank otherwise.
         - `confirmed_units` — see above: `spent_units` on `settled` rows,
           `0` otherwise.
+        - `purchase_id` — the purchase's id (a UUID the database assigns to
+          each attempt; it carries no payer, payee or amount). It is the
+          `subject_id` of that purchase's rows in
+          `/api/v1/observatory/corrections` (`subject_type` `purchase`), so a
+          ledger status change can be joined to its export row. The rows
+          within one `attempted_at` second are ordered by it.
 
         `scripts/declared-body-before-after.mjs` recomputes, from this CSV
         alone, the paid 2xx rate of the same endpoints before and after the
@@ -1071,6 +1077,90 @@ paths:
           description: Rate limited
         "503":
           description: Observatory store unavailable
+
+  /api/v1/observatory/l0/export.csv:
+    get:
+      operationId: exportObservatoryL0Latest
+      tags: [Observatory]
+      summary: Latest public L0 verdict per endpoint (CSV)
+      description: |
+        The per-endpoint data behind the L0 counts of
+        `/api/v1/observatory/state` (since 2026-09-29): one row per endpoint
+        on record, listed or not, excluding endpoints that pay vet402's own
+        addresses — the same population and the same rules as the state
+        figures. Counting `published_verdict=pass` gives `publishedPass`;
+        adding `listed=true` gives `publishedPassActive`; adding
+        `latest_probe_older_than_7d=true` gives
+        `publishedPassActiveProbeOlderThan7d`. Grouping `network_class=mainnet`
+        rows by `chain` gives `byChain`; `testnet` rows are
+        `byChainTestnetEndpoints` and `unclassified` rows are
+        `byChainUnclassified`. The two can differ for a while because the CDN
+        holds each response separately; compare the retrieval times.
+
+        Columns: `endpoint_id`, `resource_key`, `network` (as the catalog
+        wrote it), `chain` (vet402's label), `network_class` (`mainnet` |
+        `testnet` | `unclassified`), `listed` (`true` while the catalog lists
+        it), `published_verdict` (`pass` = the latest probe passed; `fail` =
+        the newest 2 probes both failed; `unverified` = anything else,
+        including no probe), `latest_probe_verdict`, `last_probed_at` (UTC),
+        `latest_probe_older_than_7d`. The definitions also travel in the
+        `x-vet402-column-notes` header; the retrieval time in
+        `x-vet402-retrieved-at`. IP-throttled to 6/min; CDN-cached for up to
+        15 minutes.
+      security: []
+      responses:
+        "200":
+          description: CSV, one row per endpoint on record
+          content:
+            text/csv:
+              schema: { type: string }
+        "429":
+          description: Rate limited
+        "503":
+          description: Observatory store unavailable
+
+  /api/v1/sellers/export.csv:
+    get:
+      operationId: exportSellersBase
+      tags: [Observatory]
+      summary: The /sellers classification, one row per active Base listing (CSV)
+      description: |
+        The data behind the counts on `/sellers` (since 2026-09-29): one row
+        per active Base listing, classified by its latest purchase row with
+        the same function the page uses. Counting rows by `outcome` gives the
+        page's totals. The page is not indexed while its attribution is under
+        review, and this file is served with `X-Robots-Tag: noindex` for the
+        same reason.
+
+        Columns: `host`, `endpoint_id`, `resource_key`, `outcome`
+        (`delivered` | `pending` — `settle_claimed`, awaiting the on-chain
+        re-read | `seller` — seller's side | `vet402` — vet402's side |
+        `unsorted` — not sorted yet | `not_bought` — tried, vet402 did not
+        sign | `not_tried` — no purchase row), `fix_mode` (the failure kind;
+        blank for delivered, pending and not_tried), `side_label` (the words
+        of the page's "whose side" column), `confirmed_seller` (`true` when a
+        seller's-side failure was seen on 2 or more UTC days; blank unless
+        `outcome=seller`), `held_reason` (as in the ledger export),
+        `latest_attempted_at`, `latest_status`, `latest_network`,
+        `latest_http_status_paid`, `purchase_id` (the latest row's id — the
+        `purchase_id` column of `/api/v1/observatory/export.csv` and the
+        `subject_id` in `/api/v1/observatory/corrections`),
+        `in_ledger_export` (whether that row appears in the ledger export;
+        rows in vet402-side states such as `halted` or `request_error` do
+        not). The definitions also travel in the `x-vet402-column-notes`
+        header; the retrieval time in `x-vet402-retrieved-at`. IP-throttled to
+        6/min; CDN-cached for up to 15 minutes.
+      security: []
+      responses:
+        "200":
+          description: CSV, one row per active Base listing
+          content:
+            text/csv:
+              schema: { type: string }
+        "429":
+          description: Rate limited
+        "503":
+          description: Store unavailable
 
   /api/v1/graph/payto/{address}:
     get:
@@ -1613,6 +1703,24 @@ paths:
         confirmed or refuted on-chain), `reverify` (a C4 re-verification).
         `before` / `after` are the published values. Corrections unfavourable
         to vet402 are listed the same way; rows are never deleted. Key-less; 60/min.
+
+        Since 2026-09-29 every row can be read: a page holds at most 500
+        rows, `page.nextCursor` pages back to the oldest row (null on the last
+        page), and `total` is the number of rows matching `endpoint` and
+        `reason`, whatever the cursor. The two counts in the header of
+        `/corrections` are `total` split by reason: "Ledger status changes"
+        is `?reason=settlement_backfill`, "Corrections" is the hand-written
+        entries plus every other reason. For a `purchase` row, `subject_id`
+        is the `purchase_id` column of `/api/v1/observatory/export.csv`.
+        `settlement_path` names the path a `settlement_backfill` row took,
+        worked out from `before` / `after` when the row is read (stored values
+        are not changed): `verified_settled`, `claim_refuted`,
+        `seller_named_tx_promoted` (the seller named the transaction in its
+        payment response although its receipt did not say success; `before`
+        and `after` carry the same seller-named hash, and the export keeps
+        `settlement_source=seller_claim`), `vet402_index_link`,
+        `late_link_withdrawn`, `seller_named_tx_declined` or `other`. The
+        `definition` field of the response spells each one out.
       security: []
       parameters:
         - in: query
@@ -1620,12 +1728,25 @@ paths:
           required: false
           schema: { type: string, format: uuid }
         - in: query
+          name: reason
+          required: false
+          description: Only rows with this reason. `total` then counts that reason.
+          schema: { type: string, enum: [dispute_remeasure, settlement_backfill, reverify, path_template] }
+        - in: query
           name: limit
           required: false
           schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+        - in: query
+          name: cursor
+          required: false
+          description: >-
+            `page.nextCursor` from the previous response (with the same endpoint and
+            reason): returns the next older page. Opaque; an unreadable value is 400
+            `invalid_cursor`. Since 2026-09-29.
+          schema: { type: string }
       responses:
         "200":
-          description: The correction log, newest first.
+          description: The correction log, newest first (created_at, then id).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CorrectionsResponse" }
@@ -2257,6 +2378,27 @@ paths:
                           (`settlement_source=vet402_index`): no seller
                           receipt. Since 2026-09-29.
                       endpointsDelivered: { type: integer }
+                      awaitingReread:
+                        type: integer
+                        description: >-
+                          Attempts at `settle_claimed`: the seller asserted a settlement and
+                          vet402 has not yet re-read it on-chain (the daily re-read runs at
+                          14:00 UTC). Counted in attempts, in neither delivered nor
+                          inconclusive. Since 2026-09-29.
+                      awaitingRereadOlderThan1d:
+                        type: integer
+                        description: The part of awaitingReread whose attempt is more than 1 day old. Since 2026-09-29.
+                      awaitingRereadOlderThan7d:
+                        type: integer
+                        description: >-
+                          The part of awaitingReread whose attempt is more than 7 days old.
+                          A row stays at settle_claimed while the chain read cannot settle
+                          it either way, so some rows wait far longer than a day. Since
+                          2026-09-29.
+                      awaitingRereadOldestAttemptAt:
+                        type: string
+                        nullable: true
+                        description: The oldest attempt still awaiting the re-read (ISO 8601 UTC). Since 2026-09-29.
                       lastAttemptAt:
                         type: string
                         format: date-time
@@ -2290,6 +2432,11 @@ paths:
                             settledAmountPayeeOnly: { type: integer }
                   byChain:
                     type: array
+                    description: >-
+                      L0 per chain, mainnets only (byChainScope): a row appears only for a
+                      network id vet402 knows to be a mainnet. Since 2026-09-29 an id
+                      vet402 cannot name is left out and listed in byChainUnclassified
+                      instead of being assumed to be a mainnet.
                     items:
                       type: object
                       properties:
@@ -2299,6 +2446,44 @@ paths:
                         publishedPass: { type: integer }
                         publishedFail: { type: integer }
                         publishedUnverified: { type: integer }
+                  byChainScope: { type: string, enum: [mainnet_only] }
+                  byChainTestnetEndpoints:
+                    type: integer
+                    description: Endpoints on known testnets, left out of byChain. Since 2026-09-29.
+                  byChainUnclassified:
+                    type: array
+                    description: >-
+                      Network ids vet402 cannot name as a mainnet or a testnet, verbatim,
+                      with their endpoint counts; left out of byChain.
+                      sum(byChain.totalEndpoints) + byChainTestnetEndpoints +
+                      sum(byChainUnclassified.totalEndpoints) = totalEndpoints. Since
+                      2026-09-29.
+                    items:
+                      type: object
+                      properties:
+                        network: { type: string }
+                        totalEndpoints: { type: integer }
+                  l1Rates:
+                    type: object
+                    description: >-
+                      l1.delivered over three denominators, side by side (one decimal,
+                      null when the denominator is 0). deliveredOfAttemptsPct divides by
+                      l1.attempts, which includes held attempts (l1.inconclusive) and
+                      attempts awaiting re-read (l1.awaitingReread);
+                      deliveredOfNotHeldPct divides by attempts − inconclusive;
+                      deliveredOfFinalOutcomePct divides by attempts − inconclusive −
+                      awaitingReread. The denominators are in `denominators`. Since
+                      2026-09-29.
+                    properties:
+                      deliveredOfAttemptsPct: { type: number, nullable: true }
+                      deliveredOfNotHeldPct: { type: number, nullable: true }
+                      deliveredOfFinalOutcomePct: { type: number, nullable: true }
+                      denominators:
+                        type: object
+                        properties:
+                          attempts: { type: integer }
+                          notHeld: { type: integer }
+                          finalOutcome: { type: integer }
                   operatorEndpointsExcluded:
                     type: integer
                     description: >-
@@ -4369,16 +4554,36 @@ components:
         level: { type: string, enum: [l0, l1, l2, listing] }
         before: { description: The published value before the correction. }
         after: { description: The published value after the correction. }
-        reason: { type: string, enum: [dispute_remeasure, settlement_backfill, reverify] }
+        reason: { type: string, enum: [dispute_remeasure, settlement_backfill, reverify, path_template] }
         dispute_id: { type: string, nullable: true }
         created_at: { type: string }
+        settlement_path:
+          type: string
+          nullable: true
+          enum: [verified_settled, claim_refuted, seller_named_tx_promoted, vet402_index_link, late_link_withdrawn, seller_named_tx_declined, other, null]
+          description: >-
+            For settlement_backfill rows, the path the row took, derived from
+            before/after when read; null for other reasons. Since 2026-09-29.
     CorrectionsResponse:
       type: object
-      required: [corrections, definition, disclaimer]
+      required: [corrections, total, page, totalDefinition, definition, disclaimer]
       properties:
         corrections:
           type: array
           items: { $ref: "#/components/schemas/CorrectionRow" }
+        total:
+          type: integer
+          description: Rows matching endpoint and reason, regardless of cursor. Since 2026-09-29.
+        page:
+          type: object
+          required: [limit, returned, nextCursor, order, howToPage]
+          properties:
+            limit: { type: integer }
+            returned: { type: integer }
+            nextCursor: { type: string, nullable: true, description: Pass back as ?cursor= for the next older page; null on the last page. }
+            order: { type: string }
+            howToPage: { type: string }
+        totalDefinition: { type: string }
         definition: { type: string }
         disclaimer: { type: string }
     L0Accuracy:
@@ -4643,6 +4848,8 @@ components:
             - resolve_unavailable
             - invalid_resource_id
             - invalid_endpoint_id
+            - invalid_reason
+            - invalid_cursor
             - invalid_payee_id
             - unavailable
             # --- §9.1 /decision ---

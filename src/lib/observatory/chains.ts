@@ -37,6 +37,23 @@ const KNOWN: Record<string, string> = {
   "xrpl:0": "XRPL",
   "xrpl:1": "XRPL Testnet",
   "xrpl:2": "XRPL Devnet",
+  // 2026-09-29 監査 5 周目: 「Mainnets only」の L0 チェーン別表に eip155:11142220（Celo Sepolia・カタログに 1 件）が
+  // 載っていた。未知の id は mainnet と見なされていた（isTestnet は既知のテストネット名だけを落とす）。
+  // よく出る EVM テストネットを名前で持ち、下の isMainnet は「mainnet と分かっている id」だけを通す。
+  "eip155:42220": "Celo",
+  "eip155:11142220": "Celo Sepolia",
+  "eip155:44787": "Celo Alfajores",
+  "eip155:11155111": "Ethereum Sepolia",
+  "eip155:17000": "Ethereum Holesky",
+  "eip155:80002": "Polygon Amoy",
+  "eip155:421614": "Arbitrum Sepolia",
+  "eip155:11155420": "Optimism Sepolia",
+  "eip155:10": "Optimism",
+  "eip155:43114": "Avalanche",
+  "eip155:43113": "Avalanche Fuji",
+  "eip155:97": "BSC Testnet",
+  "eip155:1952": "X Layer Testnet",
+  "eip155:195": "X Layer Testnet",
 };
 
 /** XRPL mainnet の CAIP-2（NetworkID 0）。台帳・別枠・照合はこの完全一致だけを XRPL と扱う（2026-09-17 レビュー #1）。 */
@@ -50,7 +67,32 @@ const SOLANA_DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
  * 2026-09-02 監査 A3: /observatory/state「Mainnets only」に Solana devnet の active 33 件が
  * 混ざっていた（TESTNET_LABELS が Base Sepolia だけ）。devnet はテストネット。
  */
-const TESTNET_LABELS = new Set(["Base Sepolia", "Solana Devnet", "Arc Testnet", "Tempo Moderato", "XRPL Testnet", "XRPL Devnet"]);
+const TESTNET_LABELS = new Set([
+  "Base Sepolia",
+  "Solana Devnet",
+  "Arc Testnet",
+  "Tempo Moderato",
+  "XRPL Testnet",
+  "XRPL Devnet",
+  "Celo Sepolia",
+  "Celo Alfajores",
+  "Ethereum Sepolia",
+  "Ethereum Holesky",
+  "Polygon Amoy",
+  "Arbitrum Sepolia",
+  "Optimism Sepolia",
+  "Avalanche Fuji",
+  "BSC Testnet",
+  "X Layer Testnet",
+  "Algorand Testnet",
+]);
+
+/**
+ * Algorand の genesis hash（CAIP-2 の reference・大文字小文字と記号を区別する）。
+ * ラベルは既存どおり `Algorand (<id>)` のまま（公開面の表記を変えない）で、mainnet かどうかだけをここで決める。
+ */
+const ALGORAND_MAINNET = "algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=";
+const ALGORAND_TESTNET = "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=";
 
 /** Human label for a raw CAIP-2 / legacy network identifier. Never guesses — unknown ids pass through verbatim so nothing is silently mislabeled. */
 export function chainLabel(network: unknown): string {
@@ -60,6 +102,7 @@ export function chainLabel(network: unknown): string {
   const key = network.toLowerCase();
   if (key === "solana-devnet") return "Solana Devnet";
   if (KNOWN[key]) return KNOWN[key];
+  if (network === ALGORAND_TESTNET) return "Algorand Testnet";
   if (key.startsWith("algorand:")) return `Algorand (${network})`;
   return network;
 }
@@ -86,6 +129,24 @@ export function toCaip2(network: unknown): string | null {
 export function isTestnet(network: unknown): boolean {
   return TESTNET_LABELS.has(chainLabel(network));
 }
+
+/**
+ * mainnet と**分かっている** id か（2026-09-29 監査 5 周目）。「Mainnets only」の表（L0 の byChain）はこれで絞る。
+ * isTestnet の否定では足りない: 名前を持たない id（例 eip155:11142220 を名前で持つ前）はテストネットとも
+ * 言えないので mainnet の表に入っていた。ここでは、名前を持つ mainnet（KNOWN の値のうちテストネットでないもの・
+ * Solana mainnet・XRPL mainnet）と Algorand mainnet の genesis だけを mainnet とし、それ以外（未知の id）は落とす。
+ * 落とした件数は state API の byChainUnclassified に出す（黙って消さない）。
+ */
+export function isMainnet(network: unknown): boolean {
+  if (typeof network !== "string" || network === "") return false;
+  if (network === ALGORAND_MAINNET) return true;
+  const label = chainLabel(network);
+  if (TESTNET_LABELS.has(label)) return false;
+  if (label === "Solana") return true;
+  return MAINNET_LABELS.has(label);
+}
+
+const MAINNET_LABELS = new Set(Object.values(KNOWN).filter((l) => !TESTNET_LABELS.has(l)));
 
 // ------------------------------------------------------------
 // 受領証（tx）へのリンク。2026-09-02 敵対的監査: /decisions・/impact に受領証リンクが

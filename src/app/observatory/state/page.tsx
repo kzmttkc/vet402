@@ -4,9 +4,11 @@ import { headers } from "next/headers";
 import { pageMetadata, breadcrumbJsonLd, datasetJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { SITE_URL } from "@/lib/site-url";
+import { deliveredRates } from "@/lib/observatory/delivered-rates";
 import { TableScroll } from "@/components/site/TableScroll";
 import {
   getObservatoryStatsByChainCached,
+  getChainScopeCached,
   getObservatoryStatsCached,
   getCoverageShareCached,
 } from "@/lib/observatory/cached-reads";
@@ -113,6 +115,8 @@ function HistoryChart({ rows }: { rows: DailyMetricsRow[] }) {
 export default async function ObservatoryStatePage() {
   const stats = await getObservatoryStatsCached();
   const chainStats = await getObservatoryStatsByChainCached();
+  // 2026-09-29 監査 5 周目: 表は「mainnet と分かっている」network だけ。外した testnet と、名前で分からない id の件数。
+  const chainScope = await getChainScopeCached().catch(() => null);
   const history = await getDailyMetricsHistory(60);
   // 2026-09-29 監査: 注記が history.length（チェーン×日の行数、当時 293）を「日数」と
   // 書いていた。日数は行の day の異なり数で数え、範囲は実データの最初と最後の日から出す。
@@ -134,6 +138,12 @@ export default async function ObservatoryStatePage() {
   // この 2 つは別々にキャッシュされた読み取り（observatory:stats と stats-by-chain、各 300s）
   // なので、取り込みのズレが「testnet の件数」として断定され、負なら 0 に丸められていた。
   const chainTotal = chainStats.reduce((n, c) => n + c.totalEndpoints, 0);
+  // デプロイ直後の 5 分間は固定キーの unstable_cache が旧い形（照合待ちの数を持たない）を返しうるので 0 に倒す。
+  const awaiting = stats.l1.awaitingReread ?? 0;
+  const awaiting1d = stats.l1.awaitingRereadOlderThan1d ?? 0;
+  const awaiting7d = stats.l1.awaitingRereadOlderThan7d ?? 0;
+  const awaitingOldest = stats.l1.awaitingRereadOldestAttemptAt ?? null;
+  const rates = deliveredRates({ ...stats.l1, awaitingReread: awaiting });
   const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   const dataset = datasetJsonLd({
@@ -339,11 +349,27 @@ export default async function ObservatoryStatePage() {
           L0 observation has always been chain-agnostic and costs nothing to run, so this table
           covers every chain the public catalog lists an endpoint on — a wider set than the chains
           L1 purchasing has reached, which are the rows of the by-chain table in §3. Mainnets
-          only; testnet listings (Base Sepolia, Solana devnet, Arc testnet) are excluded below.
+          only: a row appears only for a network id vet402 knows to be a mainnet. Testnet listings
+          (Base Sepolia, Solana devnet, Arc testnet, Celo Sepolia and the other testnets vet402 names)
+          are excluded below, and so is a network id vet402 cannot name as either
+          {chainScope && chainScope.unclassified.length > 0 ? (
+            <>
+              {" "}(as this page was rendered:{" "}
+              {chainScope.unclassified.map((u, i) => (
+                <span key={u.network}>
+                  {i > 0 ? ", " : ""}
+                  <code>{u.network}</code> × {u.totalEndpoints.toLocaleString()}
+                </span>
+              ))}
+              )
+            </>
+          ) : null}{" "}
+          rather than assumed to be a mainnet.
           That makes this table&apos;s denominator narrower than the one in §1, which counts every
           listing on record including testnets: the rows here sum to{" "}
           {chainTotal.toLocaleString()}, against {denom.toLocaleString()} in §1, and the testnet
-          listings this table drops are the difference. The two figures come from separate reads,
+          {chainScope ? ` (${chainScope.testnetEndpoints.toLocaleString()})` : ""} and unnamed listings
+          this table drops are the difference. The two figures come from separate reads,
           up to a few minutes apart, so read that difference as of those reads rather than as a
           fixed count. The two denominators are otherwise the same set: both apply the
           same exclusion of endpoints paying vet402&apos;s own addresses.{" "}
@@ -502,7 +528,25 @@ export default async function ObservatoryStatePage() {
                     Delivered: settled and the paid request answered <code>2xx</code>
                   </td>
                   <td className="num">{stats.l1.delivered.toLocaleString()}</td>
-                  <td className="num">{pct(stats.l1.delivered, stats.l1.attempts)} of attempts</td>
+                  {/* 2026-09-29 監査 5 周目: 「45.2% of attempts」だけだと、分母に保留（inconclusive）と照合待ちが
+                      入っていることが見えない。率は消さず、分母を変えた率を並べる（delivered-rates.ts・API の l1Rates）。 */}
+                  <td className="num">
+                    {pct(stats.l1.delivered, stats.l1.attempts)} of attempts ·{" "}
+                    {pct(stats.l1.delivered, rates.denominators.notHeld)} of attempts not held ·{" "}
+                    {pct(stats.l1.delivered, rates.denominators.finalOutcome)} of attempts with a final, counted outcome
+                  </td>
+                </tr>
+                <tr>
+                  <td className="text-brand">
+                    Awaiting on-chain re-read (<code>settle_claimed</code>): the seller asserted a settlement
+                    and vet402 has not yet read it on-chain — in attempts, in neither delivered nor held
+                  </td>
+                  <td className="num">{awaiting.toLocaleString()}</td>
+                  <td className="num">
+                    {pct(awaiting, stats.l1.attempts)} of attempts · {awaiting1d.toLocaleString()} waiting more
+                    than 1 day, {awaiting7d.toLocaleString()} more than 7 days
+                    {awaitingOldest ? ` (oldest attempt ${awaitingOldest.slice(0, 10)})` : ""}
+                  </td>
                 </tr>
                 {/* 2026-09-05: 支払い後 4xx を「売り手が納品しなかった」として出していた。
                     4xx は「送られた要求が不正」であり、我々は空のボディ・API キー無しで買う。

@@ -9,6 +9,7 @@
 //   readSellerFailureDays   1 本（2026-09-29 第4巡）。seller の側の候補が最新・表示中にある出品だけ、その出品の
 //                           署名済みの行を全部読み、候補の失敗の UTC の日付を返す（2 回確定の材料）。
 //   readRecordSides         1 本（同）。記録頁とバッジ用。1 出品の購入行を全部読んで同じ語で分類する。
+//   readSellerExport        3 本（2026-09-29 監査 5 周目）。/api/v1/sellers/export.csv 用。board と同じ形の問い合わせ。
 // 頁はさらに cached.ts（Data Cache・PUBLIC_READ_REVALIDATE 秒）を通して読む。
 // ============================================================
 import { sql } from "drizzle-orm";
@@ -31,6 +32,7 @@ import {
 } from "./board";
 import { SIGNED_ROW_STATUSES, sellerCandidateDay, type ChallengeAcceptSummary, type SellerRowFacts } from "./fix-modes";
 import { PATH_TEMPLATE_PG_REGEX } from "@/lib/observatory/path-template";
+import { buildSellerExportRows, type SellerExportRow, type SellerListingRef } from "./export";
 import { BASE_NETWORKS, sellerHostSql } from "./host";
 
 type Db = NonNullable<ReturnType<typeof getDb>>;
@@ -220,6 +222,31 @@ export async function readSellerBoard(db: Db, retestEnabled: boolean = isCensusE
   const latest: LatestRow[] = rowsOf(latestRaw).map((r) => ({ ...toRowFacts(r), host: String(r.host) }));
   const days = await readSellerFailureDays(db, latest.filter((r) => sellerCandidateDay(r) !== null).map((r) => r.endpointId));
   return buildSellerBoard(hosts, latest, fetchedAt, await readRetestQueue(db, retestEnabled), days);
+}
+
+/**
+ * /api/v1/sellers/export.csv（2026-09-29 監査 5 周目）: Base の掲載中の出品すべてと、その最新の購入行（row id 付き）と、
+ * readSellerBoard と同じ「候補の失敗の日付」。分類は export.ts（board と同じ関数）が行う。問い合わせは board と同じ形の 3 本。
+ */
+export async function readSellerExport(db: Db): Promise<{ fetchedAt: string; rows: SellerExportRow[] }> {
+  const fetchedAt = new Date().toISOString();
+  const listingsRaw = await db.execute(sql`
+    SELECT e.id::text AS endpoint_id, e.resource_key, ${HOST_SQL} AS host
+    FROM x402_endpoints e
+    WHERE ${BASE_LISTING}`);
+  const latestRaw = await db.execute(sql`
+    SELECT DISTINCT ON (pu.endpoint_id) ${HOST_SQL} AS host, ${ROW_COLUMNS}, pu.id::text AS row_id
+    FROM x402_l1_purchases pu JOIN x402_endpoints e ON e.id = pu.endpoint_id
+    WHERE ${BASE_LISTING} AND ${BASE_ROW}
+    ORDER BY pu.endpoint_id, pu.attempted_at DESC, pu.id DESC`);
+  const listings: SellerListingRef[] = rowsOf(listingsRaw).map((r) => ({
+    endpointId: String(r.endpoint_id),
+    resourceKey: String(r.resource_key),
+    host: String(r.host),
+  }));
+  const latest = rowsOf(latestRaw).map((r) => ({ ...toRowFacts(r), host: String(r.host), rowId: String(r.row_id) }));
+  const days = await readSellerFailureDays(db, latest.filter((r) => sellerCandidateDay(r) !== null).map((r) => r.endpointId));
+  return { fetchedAt, rows: buildSellerExportRows(listings, latest, days) };
 }
 
 /**

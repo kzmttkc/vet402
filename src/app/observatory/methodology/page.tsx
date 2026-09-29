@@ -855,6 +855,16 @@ export default async function ObservatoryMethodologyPage() {
           there means we hold no confirmed transfer for that row, not that we showed none happened.
           The CSV response carries both definitions in its <code>x-vet402-column-notes</code> header.
         </p>
+        {/* 2026-09-29 監査 5 周目: 訂正ログの subject_id と export の行を結べなかった。 */}
+        <p className="doc-p">
+          <strong>Joining a correction to its row.</strong> The last column of the ledger export,{" "}
+          <code>purchase_id</code> (since 2026-09-29), is the purchase&apos;s id &mdash; a random
+          UUID the database gives each attempt, carrying no payer, payee or amount. A row of the
+          correction log about a purchase (<code>subject_type</code> <code>purchase</code> on{" "}
+          <code>/api/v1/observatory/corrections</code>) carries the same value as its{" "}
+          <code>subject_id</code>, so a ledger status change can be matched to the row it
+          changed.
+        </p>
         <p className="doc-p">
           <strong>settled is not delivered.</strong> <code>settled</code> is a statement about the
           money: we confirmed the transfer on-chain. <code>delivered</code> is a statement about

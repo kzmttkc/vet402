@@ -30,6 +30,7 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { notPayerUnfundedPredicate } from "@/lib/observatory/delivery";
+import { settlementSourceSql, type SettlementSource } from "@/lib/observatory/settlement-source";
 
 export const DECISION_DEFINITION =
   "Each row is a decision the daily L1 runner actually made with real funds at stake, mapped 1:1 from the public ledger: refused_price_mismatch / refused_over_cap (wall demanded more than declared or over the hard cap — nothing signed), refused_payto_mismatch (wall named a payee other than the one the catalog declared — nothing signed), refused_payto_operator_self (wall named vet402's own receiving address — nothing signed), refused_wall_unpayable (no valid 402 / no machine-payable accept), paid_settled, paid_delivered_no_receipt, paid_settlement_claim_unverifiable (the wall claimed a successful settlement but the transaction identifier it returned is not even well-formed for that chain), paid_settlement_claim_unverified (claimed with a well-formed id, not yet re-read on-chain by us), paid_settlement_claim_refuted (we re-read it on-chain and the expected USDC transfer to the declared payee is not there — a finding about the seller, not about us), paid_no_settlement (vet402 signed and sent the payment authorization and no settlement was confirmed on-chain: the amount shown is what was put at stake, not money shown to have left vet402's wallet — money moved only on settled rows, and the settled rows whose paid request did not answer 2xx are counted on /observatory/state). As of 2026-08-23, paid_settled means vet402 confirmed the transfer on-chain (recipient, amount, token, chain, confirmations), not that the seller asserted it. Excluded as non-decisions: budget_denied, halted (the operator's runtime spending halt stopped the batch before signing), request_error, in_flight (vet402-side states), and payer_unfunded rows (a settle_failed answered 402 or 5xx on Base between 2026-09-13T00:00Z and 2026-09-15T23:49Z, when vet402's own payer wallet had run out of USDC, so no funds were at stake; since 2026-09-17 — they stay in export.csv with held_reason payer_unfunded).";
@@ -170,6 +171,12 @@ export type SettledReceipt = {
   network: string | null;
   amountUnits: string | null;
   txHash: string;
+  /**
+   * tx を名指したのは誰か（settlement-source.ts・export の settlement_source と同じ）。2026-09-29 監査 5 周目:
+   * /impact はこの表を「Latest settled receipts」と呼び、vet402 の索引が見つけた取引（売り手のレシートは無い）も
+   * 「Receipt」として並べていた。
+   */
+  settlementSource: SettlementSource;
 };
 
 /**
@@ -184,7 +191,8 @@ export async function getLatestSettledReceipts(limit = 5): Promise<SettledReceip
   const raw = await db.execute(sql`
     SELECT to_char(pu.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS at,
            e.id AS endpoint_id, e.resource_key, coalesce(pu.network, e.network) AS network,
-           pu.amount_units, pu.tx_hash
+           pu.amount_units, pu.tx_hash,
+           (${sql.raw(settlementSourceSql("pu"))}) AS settlement_source
     FROM x402_l1_purchases pu
     JOIN x402_endpoints e ON e.id = pu.endpoint_id
     WHERE pu.status = 'settled' AND pu.tx_hash IS NOT NULL
@@ -202,5 +210,6 @@ export async function getLatestSettledReceipts(limit = 5): Promise<SettledReceip
     network: r.network === null ? null : String(r.network),
     amountUnits: r.amount_units === null ? null : String(r.amount_units),
     txHash: String(r.tx_hash),
+    settlementSource: r.settlement_source === "vet402_index" ? "vet402_index" : "seller_claim",
   }));
 }

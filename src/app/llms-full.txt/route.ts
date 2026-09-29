@@ -75,7 +75,10 @@ ${blog}
 - ${SITE_URL}/api/v1/payees/{address}/endpoints — payee → endpoints[], no key
 - ${SITE_URL}/api/v1/observatory/endpoints/{id}/facts — L0–L2 seller facts, no score, no key
 - ${SITE_URL}/api/v1/census/summary — settlements raw and real side by side, no key
-- ${SITE_URL}/api/v1/observatory/corrections — correction log as JSON, no key
+- ${SITE_URL}/api/v1/observatory/corrections — correction log as JSON, no key; every row readable through page.nextCursor (?cursor=), total counts the rows matching endpoint and reason
+- ${SITE_URL}/api/v1/observatory/export.csv — L1 purchase ledger as CSV, no key; purchase_id joins a row to its correction rows
+- ${SITE_URL}/api/v1/observatory/l0/export.csv — latest public L0 verdict per endpoint as CSV (the data behind the state L0 counts), no key
+- ${SITE_URL}/api/v1/sellers/export.csv — the /sellers classification per active Base listing as CSV (counting by outcome gives the page totals), no key
 - ${SITE_URL}/observatory — L0/L1/L2 register
 
 Cite with the page URL and a retrieval date. Content current as of 2026-09-29.
