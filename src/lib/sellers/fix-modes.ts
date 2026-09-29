@@ -86,9 +86,9 @@ export { BASE_DECLARED_QUERY_SINCE };
 
 const NOTHING_FOR_SELLER = "Nothing for the seller to fix.";
 /** 署名しなかった行（not_bought）の「What to fix」。売り手に作り替えを求めない（2026-09-29 第2巡）。 */
-const NOT_PAID = "Nothing is counted against the seller: vet402 did not pay, so this is not a purchase result.";
+const NOT_PAID = "This page does not count it as the seller's fault: vet402 did not pay, so this is not a purchase result.";
 /** seller の側に置けない行（not sorted の新しい種類）の「What to fix」。 */
-const NOT_COUNTED = "Nothing is counted against the seller.";
+const NOT_COUNTED = "This page does not count it as the seller's fault.";
 /** 待ち時間の秒数（公開の文言に書く数字は定数から作る）。 */
 const WAIT_S = String(L1_REQUEST_TIMEOUT_MS / 1000);
 /** Base の USDC（x402-payer.ts の BASE_USDC と同じ値・tests/sellers-fix-modes.test.ts が一致を固定する）。 */
@@ -102,6 +102,15 @@ export { PAYER_FUNDS_GATE_SINCE };
  */
 export const LATE_LINK_BEFORE_MIN = 2;
 export const LATE_LINK_AFTER_MIN = 30;
+
+/**
+ * 売り手が名指した tx の照合の期限（2026-09-29 第5巡）。照合器（settlement-verifier.ts）は、購入からこの日数たっても
+ * tx がチェーンに見つからない行（tx_not_found）と、受領証の tx がハッシュの形ですらない行（settle_claimed_unverifiable）を
+ * 「売り手の名指した tx が見つからない」として確定する（settle_claim_refuted・理由はこの語で始まる）。照合器も公開頁も
+ * この 1 か所の値を読む（公開頁は照合器を import しない）。
+ */
+export const SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS = 7;
+export const SELLER_NAMED_TX_NOT_FOUND = "seller_named_tx_not_found";
 
 /** Order here is the tie-break on /sellers/fix-first after side, sellers and effort. */
 const BASE_FIX_MODES: readonly FixMode[] = [
@@ -179,6 +188,16 @@ const BASE_FIX_MODES: readonly FixMode[] = [
     side: "seller",
     effort: 3,
   },
+  {
+    // 2026-09-29 第5巡: 売り手が名指した tx が SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS 日たってもチェーンに無い、または
+    // 受領証の tx がハッシュの形ですらない行を、照合器（settlement-verifier.ts）が日付付きで確定した行。
+    key: "claim_not_found",
+    title: "The receipt named a transaction vet402 did not find on-chain",
+    what: `The seller's receipt named a settlement transaction. vet402 looked for it on-chain for ${SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS} days after the purchase and did not find it (or the receipt's id was not a transaction id at all), so it recorded the claim as not found, with the date on the row.`,
+    fix: "Return the settlement transaction hash your facilitator reports in PAYMENT-RESPONSE, and check that it lands on the chain the listing names.",
+    side: "seller",
+    effort: 3,
+  },
   // ---------- vet402 ----------
   {
     key: "payer_unfunded",
@@ -235,8 +254,8 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   {
     key: "charged_unsent_input",
     title: "Charged, then refused an input vet402 had not sent",
-    what: "The payment settled on-chain, and then the paid request got 400, 415 or 422. At the time vet402 did not send the input this listing declares: the request body before 2026-09-16 23:25 UTC, or on Base the query before 2026-09-27 23:27 UTC. Both facts stand: the seller took the payment, and the request lacked the declared input. The row is not counted against either side.",
-    fix: "Nothing is counted against the seller. Checking the input before settling avoids taking a payment for a request you refuse.",
+    what: "The payment settled on-chain, and then the paid request got 400, 415 or 422. At the time vet402 did not send the input this listing declares: the request body before 2026-09-16 23:25 UTC, or on Base the query before 2026-09-27 23:27 UTC. Both facts stand: the seller took the payment, and the request lacked the declared input. This page counts the row against neither side.",
+    fix: "This page does not count it as the seller's fault. Checking the input before settling avoids taking a payment for a request you refuse.",
     side: "unsorted",
     effort: 2,
     sideLabel: "not sorted: charged, then rejected an input vet402 had not sent",
@@ -245,8 +264,8 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   {
     key: "settled_then_rejected",
     title: "Payment settled, then the input was rejected",
-    what: "The payment settled on-chain, and then the paid request got 400, 404, 415 or 422. vet402 holds this row (held_reason settled_4xx): its own request may have been the problem, so the row is not counted against the seller.",
-    fix: "Nothing is counted against the seller. Checking the input before settling avoids taking a payment for a refused request, and declaring the input with example values that work as written lets vet402 send a valid one.",
+    what: "The payment settled on-chain, and then the paid request got 400, 404, 415 or 422. vet402 holds this row (held_reason settled_4xx): its own request may have been the problem, so this page does not count the row as the seller's fault.",
+    fix: "This page does not count it as the seller's fault. Checking the input before settling avoids taking a payment for a refused request, and declaring the input with example values that work as written lets vet402 send a valid one.",
     side: "unsorted",
     effort: 2,
     sideLabel: "not sorted (held)",
@@ -254,8 +273,8 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   {
     key: "settled_then_refused",
     title: "Payment settled, then the request was refused",
-    what: "The payment settled on-chain, and then the paid request got another 4xx (for example 401, 403, 405 or 429). vet402 holds this row (held_reason settled_4xx), so it is not counted against the seller.",
-    fix: "Nothing is counted against the seller. If the paid request should have been served, let the x402 payment be enough for it.",
+    what: "The payment settled on-chain, and then the paid request got another 4xx (for example 401, 403, 405 or 429). vet402 holds this row (held_reason settled_4xx), so this page does not count it as the seller's fault.",
+    fix: "This page does not count it as the seller's fault. If the paid request should have been served, let the x402 payment be enough for it.",
     side: "unsorted",
     effort: 2,
     sideLabel: "not sorted (held)",
@@ -264,8 +283,8 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   {
     key: "refused_no_charge",
     title: "Refused, and no payment was taken",
-    what: "vet402 signed the payment and the paid request got a 4xx other than 402, with no settlement receipt and no transaction on the row. No money moved, and vet402 cannot rule out that its own request was the problem (held_reason unsettled_4xx), so the row is not counted against the seller. Since 2026-09-16 23:25 UTC vet402 sends the request body the seller's 402 declares (an empty JSON body when it declares none), and since 2026-09-27 23:27 UTC it adds the query parameters the seller's 402 declares on Base.",
-    fix: "Nothing is counted against the seller. If the request was meant to succeed, declare the input in the listing (body or query) with example values that work as written.",
+    what: "vet402 signed the payment and the paid request got a 4xx other than 402, with no settlement receipt and no transaction on the row. No money moved, and vet402 cannot rule out that its own request was the problem (held_reason unsettled_4xx), so this page does not count the row as the seller's fault. Since 2026-09-16 23:25 UTC vet402 sends the request body the seller's 402 declares (an empty JSON body when it declares none), and since 2026-09-27 23:27 UTC it adds the query parameters the seller's 402 declares on Base.",
+    fix: "This page does not count it as the seller's fault. If the request was meant to succeed, declare the input in the listing (body or query) with example values that work as written.",
     side: "unsorted",
     effort: 1,
     sideLabel: "not sorted: no charge",
@@ -273,8 +292,8 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   {
     key: "answered_no_charge",
     title: "Answered without taking payment",
-    what: `The paid request got a 2xx with no settlement receipt, and vet402 has not linked a matching transfer on-chain to it (it links a transfer that lands from ${LATE_LINK_BEFORE_MIN} minutes before to ${LATE_LINK_AFTER_MIN} minutes after the attempt, then verifies it). vet402 has not identified a charge for this call, so the row is not counted against the seller; if a matching transfer is found later, the row is re-sorted.`,
-    fix: "Nothing is counted against the seller. If the route is meant to charge, settle the payment and return the PAYMENT-RESPONSE header with the 2xx.",
+    what: `The paid request got a 2xx with no settlement receipt, and vet402 has not linked a matching transfer on-chain to it (it links a transfer that lands from ${LATE_LINK_BEFORE_MIN} minutes before to ${LATE_LINK_AFTER_MIN} minutes after the attempt, then verifies it). vet402 has not identified a charge for this call, so this page does not count the row as the seller's fault; if a matching transfer is found later, the row is re-sorted.`,
+    fix: "This page does not count it as the seller's fault. If the route is meant to charge, settle the payment and return the PAYMENT-RESPONSE header with the 2xx.",
     side: "unsorted",
     effort: 2,
     sideLabel: "not sorted: no charge",
@@ -283,7 +302,7 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   {
     key: "funds_unproven",
     title: "vet402 cannot show its wallet held the price",
-    what: `This purchase is from before vet402 checked its wallet's balance before signing (${PAYER_FUNDS_GATE_SINCE.slice(0, 16).replace("T", " ")} UTC), and the balance rebuilt from the wallet's on-chain transfers does not show that it held the price at the time. The row is not counted against the seller.`,
+    what: `This purchase is from before vet402 checked its wallet's balance before signing (${PAYER_FUNDS_GATE_SINCE.slice(0, 16).replace("T", " ")} UTC), and the balance rebuilt from the wallet's on-chain transfers does not show that it held the price at the time. This page does not count the row as the seller's fault.`,
     fix: NOT_COUNTED,
     side: "unsorted",
     effort: 1,
@@ -292,7 +311,7 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   {
     key: "input_not_sent",
     title: "vet402 did not send the declared input",
-    what: "The listing declares input that vet402 did not send on the paid request (a header, a path parameter, or a declared query it did not use). The answer was not a refusal of the input (400 or 422), so vet402 cannot say whether the missing input caused the failure. The row is not counted against the seller.",
+    what: "The listing declares input that vet402 did not send on the paid request (a header, a path parameter, or a declared query it did not use). The answer was not a refusal of the input (400 or 422), so vet402 cannot say whether the missing input caused the failure. This page does not count the row as the seller's fault.",
     fix: NOT_COUNTED,
     side: "unsorted",
     effort: 1,
@@ -301,7 +320,7 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   {
     key: "input_unrecorded",
     title: "No record of the input vet402 sent",
-    what: `This purchase is from before vet402 recorded the body and the query it sent on each paid request (the query on Base since ${BASE_DECLARED_QUERY_SINCE.slice(0, 16).replace("T", " ")} UTC), so it cannot show that it sent the input the listing declares. The row is not counted against the seller.`,
+    what: `This purchase is from before vet402 recorded the body and the query it sent on each paid request (the query on Base since ${BASE_DECLARED_QUERY_SINCE.slice(0, 16).replace("T", " ")} UTC), so it cannot show that it sent the input the listing declares. This page does not count the row as the seller's fault.`,
     fix: NOT_COUNTED,
     side: "unsorted",
     effort: 1,
@@ -310,7 +329,7 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   {
     key: "stopped_waiting",
     title: "vet402 stopped waiting before the seller's time limit",
-    what: `vet402 waits ${WAIT_S} seconds for the answer to the paid request. The listing allows longer (its maxTimeoutSeconds), or does not say how long, or the payment landed on-chain after vet402 had stopped waiting. The row is not counted against the seller.`,
+    what: `vet402 waits ${WAIT_S} seconds for the answer to the paid request. The listing allows longer (its maxTimeoutSeconds), or does not say how long, or the payment landed on-chain after vet402 had stopped waiting. This page does not count the row as the seller's fault.`,
     fix: NOT_COUNTED,
     side: "unsorted",
     effort: 2,
@@ -319,7 +338,7 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   {
     key: "refused_changed_request",
     title: "A signed payment got 402 again, on a request that differed from the unpaid one",
-    what: "vet402 took the payment terms from the 402 to its unpaid request, then sent the paid request with the body or query the listing declares, which the unpaid request did not carry. The seller answered 402 again (for example \"No matching payment requirements\"). The terms for the paid request may not be the ones vet402 paid, so the row is not counted against the seller.",
+    what: "vet402 took the payment terms from the 402 to its unpaid request, then sent the paid request with the body or query the listing declares, which the unpaid request did not carry. The seller answered 402 again (for example \"No matching payment requirements\"). The terms for the paid request may not be the ones vet402 paid, so this page does not count the row as the seller's fault.",
     fix: NOT_COUNTED,
     side: "unsorted",
     effort: 3,
@@ -430,7 +449,7 @@ export const ONCE_SIDE_LABEL = "not sorted: one failure so far";
 const ONCE_MODES: readonly FixMode[] = BASE_FIX_MODES.filter((m) => m.side === "seller").map((m) => ({
   ...m,
   key: `${m.key}${ONCE_SUFFIX}`,
-  fix: `Nothing is counted against the seller. vet402 puts a failure on the seller's side only after it sees one at this listing on two different days (UTC). If this one is real: ${m.fix}`,
+  fix: `This page does not count it as the seller's fault. vet402 puts a failure on the seller's side only after it sees one at this listing on two different days (UTC). If this one is real: ${m.fix}`,
   side: "unsorted" as const,
   sideLabel: ONCE_SIDE_LABEL,
 }));
@@ -474,6 +493,8 @@ export interface SellerRowFacts {
   selection: string | null;
   /** x402_l1_purchases.settlement_verify_reason（照合が通らなかった理由・例 tx_not_found）。無ければ null。 */
   verifyReason: string | null;
+  /** x402_l1_purchases.settlement_verified_at（照合が確定した時刻・ISO8601 UTC）。無ければ null（2026-09-29 第5巡）。 */
+  verifiedAt?: string | null;
   // ---- 2026-09-29 第2巡: seller の側に置く積極的な根拠（(b)〜(e)）。無い（undefined / null）は「示せない」。 ----
   /** 署名した額（x402_l1_purchases.amount_units・基本単位）。 */
   amountUnits?: string | null;
@@ -762,7 +783,7 @@ function modeKeyOf(r: SellerRowFacts, held: HeldReason | null): string {
     case "payto_mismatch":
       return "payto_mismatch";
     case "settle_claim_refuted":
-      return "claim_refuted";
+      return (r.verifyReason ?? "").startsWith(SELLER_NAMED_TX_NOT_FOUND) ? "claim_not_found" : "claim_refuted";
     case "settle_claimed_unverifiable":
       return "claim_malformed";
     case "delivered_no_receipt":
@@ -802,10 +823,25 @@ function unprovenNote(r: SellerRowFacts): string | null {
 }
 
 export function rowNote(r: SellerRowFacts, modeKey: string | null): string | null {
-  if (modeKey !== null && UNPROVEN_MODES.has(modeKey)) return unprovenNote(r);
-  if (modeKey !== "settled_then_rejected" && modeKey !== "refused_no_charge") return null;
-  const notes = [bodyNote(r), optionalQueryNote(r)].filter((x): x is string => x !== null);
-  return notes.length ? notes.join(" ") : null;
+  // 2026-09-29 第5巡: 売り手の名指した tx が見つからないと確定した行は、どの種類に振り分けられても（(b)〜(e) を示せず
+  // not sorted になった行でも）その事実と日付を添える。
+  const notFound = (r.verifyReason ?? "").startsWith(SELLER_NAMED_TX_NOT_FOUND) ? notFoundNote(r) : null;
+  const join = (...xs: (string | null)[]) => {
+    const notes = xs.filter((x): x is string => x !== null);
+    return notes.length ? notes.join(" ") : null;
+  };
+  if (modeKey !== null && UNPROVEN_MODES.has(modeKey)) return join(unprovenNote(r), notFound);
+  if (modeKey !== "settled_then_rejected" && modeKey !== "refused_no_charge") return join(notFound);
+  return join(bodyNote(r), optionalQueryNote(r), notFound);
+}
+
+/** 売り手の名指した tx が見つからないと確定した日と、照合器の理由（2026-09-29 第5巡）。 */
+function notFoundNote(r: SellerRowFacts): string | null {
+  const day = typeof r.verifiedAt === "string" && /^\d{4}-\d{2}-\d{2}/.test(r.verifiedAt) ? r.verifiedAt.slice(0, 10) : null;
+  // 理由の先頭の語（SELLER_NAMED_TX_NOT_FOUND）は文の側で言うので外し、残り（何が・いつまで）を切らずに出す。
+  const reason = safeCode((r.verifyReason ?? "").replace(new RegExp(`^${SELLER_NAMED_TX_NOT_FOUND}:\\s*`), ""), 320);
+  if (!day && !reason) return null;
+  return `Recorded as "seller-named tx not found"${day ? ` on ${day} (UTC)` : ""}${reason ? `: ${reason}` : ""}.`;
 }
 
 /** 本文: 境目より前の POST・本文の記録なし・出品が本文を宣言していない（宣言していれば body_not_sent に入る）。 */
@@ -938,8 +974,13 @@ export function paidEvidenceLines(r: SellerRowFacts): { signed: string; answer: 
     "validBefore not recorded",
   ].join(" · ");
   const answer: string[] = [];
-  if (r.httpStatusPaid !== null) answer.push(`HTTP ${r.httpStatusPaid}`);
-  else answer.push(`no HTTP answer within ${WAIT_S} seconds`);
+  // 2026-09-29 第5巡: 応答が無かった行（vet402 が待つのをやめた）に PAYMENT-RESPONSE の語を出さない。その行の
+  // raw_settlement は vet402 自身の打ち切りの記録（{"error": "AbortError…"}）で、売り手の申告ではない。
+  if (r.httpStatusPaid === null) {
+    answer.push(`no answer: no HTTP status and no PAYMENT-RESPONSE within ${WAIT_S} seconds, when vet402 stopped waiting`);
+    return { signed: `${signed}.`, answer: `${answer.join(" · ")}.` };
+  }
+  answer.push(`HTTP ${r.httpStatusPaid}`);
   const ct = safeCode(r.paidContentType, 60);
   if (ct) answer.push(`Content-Type ${ct}`);
   if (r.receiptPresent === true) {
@@ -960,7 +1001,7 @@ export const STATUS_GLOSS: Readonly<Record<string, string>> = {
   settle_claimed: "the seller returned a receipt that vet402 has not re-read on-chain yet",
   settle_failed: "vet402 signed a payment and got no settlement receipt back",
   delivered_no_receipt: "the paid request answered 2xx without a settlement receipt",
-  settle_claim_refuted: "the transaction in the receipt did not show this payment on-chain",
+  settle_claim_refuted: `the transaction in the receipt did not show this payment on-chain, or was not found there within ${SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS} days`,
   settle_claimed_unverifiable: "the receipt named a transaction id that is not valid for the chain",
   no_402: "the unpaid request did not get a 402, so nothing was paid",
   no_eligible_accept: "the 402 offered no payment option vet402 can sign, so nothing was paid",

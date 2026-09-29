@@ -73,7 +73,7 @@ test("A1: seller の側は別の日に 2 回以上。1 回だけ・同じ日の 
   assert.equal(once.mode?.key, "server_error_paid_once");
   assert.equal(sideLabelOf(once.mode!), ONCE_SIDE_LABEL);
   assert.equal(once.mode?.title, "Server error on the paid request", "何が起きたかは元の種類のまま");
-  assert.match(once.mode!.fix, /^Nothing is counted against the seller\. .*two different days \(UTC\)\. If this one is real: Check the route's logs/);
+  assert.match(once.mode!.fix, /^This page does not count it as the seller's fault\. .*two different days \(UTC\)\. If this one is real: Check the route's logs/);
   assert.equal(once.confirmedSeller, false);
   const sameDay = classifySellerRow(r1, { sellerFailureDays: ["2026-09-20"] });
   assert.equal(sameDay.bucket, "unsorted", "同じ日の 2 回は確定しない");
@@ -117,7 +117,12 @@ test("A2: 行ごとの証拠は記録済みのものだけ（nonce・validBefore
   assert.match(ev.answer, /^HTTP 500 · Content-Type application\/json; charset=utf-8 · PAYMENT-RESPONSE: success false, errorReason invalid_exact_evm_payload<script>, names no transaction\.$/);
   assert.equal(paidEvidenceLines(row({ status: "no_402", network: null })), null, "署名していない行には無い");
   const noAnswer = paidEvidenceLines(proven({ status: "settle_failed", httpStatusPaid: null, receiptPresent: false }))!;
-  assert.match(noAnswer.answer, /^no HTTP answer within \d+ seconds · no PAYMENT-RESPONSE recorded\.$/);
+  assert.match(noAnswer.answer, /^no answer: no HTTP status and no PAYMENT-RESPONSE within \d+ seconds, when vet402 stopped waiting\.$/);
+  // 2026-09-29 第5巡: 応答が無かった行の raw_settlement は vet402 自身の打ち切りの記録（{"error": "AbortError…"}）。
+  // receiptPresent が true でも PAYMENT-RESPONSE の語（success not stated）を出さない（spark 型）。
+  const aborted = paidEvidenceLines(proven({ status: "settle_failed", httpStatusPaid: null, receiptPresent: true, receiptSuccess: null }))!;
+  assert.doesNotMatch(aborted.answer, /PAYMENT-RESPONSE:|success not stated/);
+  assert.match(aborted.answer, /^no answer: /);
 });
 
 test("A3・C9・C13・C14: 帯の印・カード・行ごとの異議（購入の時刻つき）・タップ領域", () => {

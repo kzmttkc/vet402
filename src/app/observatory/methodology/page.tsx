@@ -39,6 +39,7 @@ import { L1_REQUEST_TIMEOUT_MS } from "@/lib/observatory/l1-timing";
 import { L0_REASON_CODES } from "@/lib/observatory/l0-reasons";
 import { L0_BODY_CAP_BYTES, L0_BODY_CAP_RAISED_ON } from "@/lib/observatory/l0-probe";
 import { TableScroll } from "@/components/site/TableScroll";
+import { SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS } from "@/lib/sellers/fix-modes";
 
 const MAX_PER_PURCHASE_USD = Number(MAX_PER_PURCHASE_UNITS) / 1_000_000;
 
@@ -443,12 +444,29 @@ export default async function ObservatoryMethodologyPage() {
           declares a miss is free is not failing when it does not charge for one.
         </p>
         <p className="doc-p">
-          The seller&apos;s side is the group these pages count against the seller. The decision rules
+          The seller&apos;s side is the group these pages count as the seller&apos;s fault. The decision rules
           are more careful for the payer: they leave out the attempts on vet402&apos;s side, held
           attempts and attempts with no charge (the reason codes{" "}
           <code>l1_not_counted_vet402_side</code>, <code>l1_not_counted_held</code> and{" "}
           <code>l1_not_counted_no_charge</code> name what was left out), and they still count a
-          not-sorted attempt that is not shown to be our fault.
+          not-sorted attempt that is not shown to be our fault. So a listing can read &ldquo;not sorted&rdquo; on its
+          seller page while the decision API answers <code>WARN</code> or <code>BLOCK</code> for it; each listing on
+          the seller page shows the decision API&apos;s answer at the time the page was read, with its main reason
+          codes.
+        </p>
+        {/* 2026-09-29 第5巡: 売り手の名指した tx の期限（settlement-verifier.ts・fix-modes.ts の SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS）と、
+            届かなかった L1 の行を載せる記録頁の noindex。 */}
+        <p className="doc-p">
+          <strong>A transaction the seller named that does not appear.</strong> A receipt&apos;s transaction that is
+          not on-chain yet is re-read on later runs of the verifier and does not count either way. When it is still not found{" "}
+          {SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS.toString()} days after the purchase, or the receipt&apos;s id is not a
+          transaction hash at all, the row is recorded as <em>seller-named tx not found</em>, with the date, and
+          the change is logged on{" "}
+          <Link href="/corrections" className="underline">
+            /corrections
+          </Link>
+          . Until the seller pages leave <code>noindex</code>, the record page of a listing with any purchase that
+          did not deliver is also <code>noindex</code> and is left out of the endpoint sitemap.
         </p>
         <p className="doc-p">
           <strong>How long we wait for a payment.</strong> The runner waits up to{" "}

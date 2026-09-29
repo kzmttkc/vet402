@@ -9,6 +9,7 @@
 // API ルートからは使わない（tests/public-page-cache.test.ts）。
 // 2026-09-29 第4巡: 返す形が変わった（ShownRow の証拠・SellerDetail の hasConfirmedSeller / sellerView）ので
 // 鍵を v2 に上げた。配備の直後に古い形のキャッシュを新しい描画へ渡さない。
+// 2026-09-29 第5巡: 行の事実に照合の確定時刻（verifiedAt）が増えたので v3 に。出品の判定 API の resource id を足した。
 // ============================================================
 import { unstable_cache } from "next/cache";
 import { getDb } from "@/lib/db/client";
@@ -24,7 +25,7 @@ export const getSellerBoardCached: () => Promise<SellerBoard> = unstable_cache(
     if (!db) throw new SellersUnavailable("database not configured");
     return readSellerBoard(db);
   },
-  ["sellers:board:v2"],
+  ["sellers:board:v3"],
   { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
 );
 
@@ -34,7 +35,7 @@ export const getSellerDetailCached: (host: string) => Promise<SellerDetail | nul
     if (!db) throw new SellersUnavailable("database not configured");
     return readSellerDetail(db, host);
   },
-  ["sellers:detail:v2"],
+  ["sellers:detail:v3"],
   { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
 );
 
@@ -55,6 +56,7 @@ export const getSellerOtherChainsCached: (host: string) => Promise<SellerOtherCh
     if (!db) throw new SellersUnavailable("database not configured");
     return readSellerOtherChains(db, host);
   },
-  ["sellers:other-chains:v2"],
+  ["sellers:other-chains:v3"],
   { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
 );
+

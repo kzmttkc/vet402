@@ -15,6 +15,7 @@ import {
   type ShownRow,
 } from "@/lib/sellers/board";
 import { EFFORT_LABEL, HELD_GLOSS, sideLabelOf, STATUS_GLOSS } from "@/lib/sellers/fix-modes";
+import DecisionAnswer from "./DecisionAnswer";
 
 /**
  * /sellers・/sellers/[host]・/sellers/fix-first の描画（純粋なコンポーネント・DB を読まない）。
@@ -61,10 +62,12 @@ export const TITLE_MAX = 60;
  * 2026-09-29 敵対的監査: 以前の "Is X working?" は現在形の問いで、何日も前の購入を「今動いていない」と読ませた。
  * 最新の購入日（UTC の日付）を入れて、いつの結果かを表題で言う。購入が無ければ日付を付けない。
  * " | vet402" を付けて TITLE_MAX を超えるなら付けない（2026-09-28 SEO 監査: 切られるのは接尾辞の側にする）。
+ * 2026-09-29 第5巡: 「as of <日付>」は頁を読み出した時刻と読み違えられた。日付は最新の試行の日だと書く
+ * （読み出した時刻は h1 の下と doc-head に別に出す）。
  */
 export function sellerHeading(host: string, lastAttemptAt: string | null): string {
   const day = lastAttemptAt && /^\d{4}-\d{2}-\d{2}/.test(lastAttemptAt) ? lastAttemptAt.slice(0, 10) : null;
-  return day ? `${host}: x402 purchase results on Base, as of ${day}` : `${host}: x402 purchase results on Base`;
+  return day ? `${host}: x402 purchase results on Base, latest attempt ${day}` : `${host}: x402 purchase results on Base`;
 }
 
 /** /sellers の表題（2026-09-29 第2巡: いつの結果かを日付で言う）。day は boardAsOfDay。 */
@@ -466,6 +469,15 @@ function StatusWord({ status }: { status: string }) {
   );
 }
 
+/**
+ * 署名した条件の見出し（2026-09-29 第5巡）: 決済がチェーンで確かめられた行（settled）だけ「paid」。
+ * tx の無い行・照合待ちの行は「signed」（決済が成立していない行を「払った」と書かない）。
+ */
+export function termsLabel(r: ShownRow): string {
+  if (!r.signed) return "The 402 vet402 saw:";
+  return r.facts.status === "settled" ? "The 402 terms vet402 paid:" : "The 402 terms vet402 signed:";
+}
+
 function RecordedFacts({ r }: { r: ShownRow }) {
   const f = r.facts;
   const short = f.txHash ? `${f.txHash.slice(0, 10)}…${f.txHash.slice(-4)}` : null;
@@ -495,7 +507,8 @@ function RecordedFacts({ r }: { r: ShownRow }) {
       )}
       {f.selection && (
         <>
-          {" · "}bought by the <code>{f.selection}</code>
+          {" · "}
+          {f.status === "settled" ? "bought" : "attempted"} by the <code>{f.selection}</code>
         </>
       )}
     </>
@@ -580,6 +593,12 @@ function SellerSignalLine({ l, rebuyEligible }: { l: SellerListing; rebuyEligibl
   );
 }
 
+/**
+ * 頁の先頭から自動で判定 API に問い合わせる出品の数（2026-09-29 第5巡・DecisionAnswer.tsx）。鍵なしの判定 API は
+ * 同じ IP から 10 回/分なので、閲覧者の枠を使い切らない数にする。残りの出品はボタンで 1 件ずつ。
+ */
+export const DECISION_AUTO_LISTINGS = 5;
+
 function EarlierRow({ e, endpointId }: { e: ShownRow; endpointId: string }) {
   return (
     <li className="border-t border-hair py-1.5 first:border-t-0">
@@ -596,7 +615,7 @@ function EarlierRow({ e, endpointId }: { e: ShownRow; endpointId: string }) {
           <span className="block">{seenLine(e)}</span>
           {e.seen402 && (
             <span className="block">
-              <strong>{e.signed ? "The 402 terms vet402 paid:" : "The 402 vet402 saw:"}</strong> {e.seen402}
+              <strong>{termsLabel(e)}</strong> {e.seen402}
             </span>
           )}
           <Evidence r={e} />
@@ -615,7 +634,18 @@ function EarlierRow({ e, endpointId }: { e: ShownRow; endpointId: string }) {
  * 1 出品を 1 枚のカードに（2026-09-29 第4巡: 4 列の表は電話の幅で横スクロールになり、文が切れていた）。
  * 見出しの事実（最新の試行・結果・どちらの側か）はラベル付きの 2 列、文はその下に表の外で折り返す。
  */
-function ListingCard({ l, now, rebuyEligible }: { l: SellerListing; now: number; rebuyEligible: boolean }) {
+function ListingCard({
+  l,
+  now,
+  rebuyEligible,
+  autoDecision = false,
+}: {
+  l: SellerListing;
+  now: number;
+  rebuyEligible: boolean;
+  /** 判定 API に自動で問い合わせる（頁の先頭の DECISION_AUTO_LISTINGS 件）。 */
+  autoDecision?: boolean;
+}) {
   const r = l.latest;
   const failed = r && (r.bucket === "seller" || r.bucket === "vet402");
   return (
@@ -641,7 +671,7 @@ function ListingCard({ l, now, rebuyEligible }: { l: SellerListing; now: number;
             <SellerSignalLine l={l} rebuyEligible={rebuyEligible} />
             {r.seen402 && (
               <span className="block">
-                <strong>{r.signed ? "The 402 terms vet402 paid:" : "The 402 vet402 saw:"}</strong> {r.seen402}
+                <strong>{termsLabel(r)}</strong> {r.seen402}
               </span>
             )}
             <Evidence r={r} />
@@ -653,6 +683,9 @@ function ListingCard({ l, now, rebuyEligible }: { l: SellerListing; now: number;
             )}
             {r.note && <span className="block">{r.note}</span>}
             {r.exportReason && <span className="block">{r.exportReason}</span>}
+            {l.resourceId && (
+              <DecisionAnswer resourceId={l.resourceId} auto={autoDecision} sellerSide={r.bucket === "seller"} />
+            )}
             {r.mode?.side === "vet402" && (
               <span className="block">This failure was on vet402&apos;s side, not the seller&apos;s.</span>
             )}
@@ -702,20 +735,41 @@ function latestFailedOnOurSide(d: SellerDetail): boolean {
   return d.listings[0]?.latest?.mode?.side === "vet402";
 }
 
-/** 冒頭の要約に添える「売り手について何かを言う最新の行」で数えた数（最新で数えた数と違うときだけ）。 */
-function SellerViewLine({ d }: { d: SellerDetail }) {
+/**
+ * 冒頭の要約（2026-09-29 第5巡）: 主は「売り手について言える直近の結果」（出品ごとに、表示した試行のうち最新の
+ * delivered か seller の側（確定）。最新の試行が vet402 の側の失敗でも、その前に delivered があればそれ）。
+ * 最新の試行で数えた数は補足に回す（以前は先頭が「0 delivered」のままで、補足の行だけが付いていた）。
+ */
+function SellerSummaryLines({ d, revalidateSec }: { d: SellerDetail; revalidateSec: number }) {
   const s = d.summary;
   const v = d.sellerView;
-  if (v.delivered === s.delivered && v.seller === s.seller) return null;
   return (
     <>
-      {" "}
-      Leaving out attempts that failed on vet402&apos;s side, were not bought, or are not sorted, the latest result
-      that says something about the seller is: <strong>{n(v.delivered)}</strong> delivered ·{" "}
-      <strong>{n(v.seller)}</strong> failed on the seller&apos;s side · <strong>{n(v.none)}</strong> with no such
-      result among the attempts shown.
+      <p className="doc-p">
+        {n(s.listings)} Base {s.listings === 1 ? "listing" : "listings"}. <strong>Latest result about the seller</strong>{" "}
+        at each listing: <strong>{n(v.delivered)}</strong> delivered · <strong>{n(v.seller)}</strong> failed on the
+        seller&apos;s side · <strong>{n(v.none)}</strong> with no such result among the attempts shown ·{" "}
+        <strong>{n(s.notTried)}</strong> not tried yet. This counts, for each listing, the newest purchase that
+        delivered or the newest failure on the seller&apos;s side. Attempts on vet402&apos;s side, not bought, not
+        sorted, or awaiting on-chain verification are skipped.
+      </p>
+      <p className="doc-p text-[0.8125rem] text-brand-lift">
+        By the latest attempt at each listing, whatever it was: <CountsLine c={s} />.
+      </p>
+      <p className="doc-p text-[0.8125rem] text-brand-lift">
+        {s.lastAttemptAt ? <>Latest attempt: {fmtUtc(s.lastAttemptAt)}. </> : null}
+        This page read the ledger at {fmtUtc(d.fetchedAt)} and reuses that read for up to{" "}
+        {Math.round(revalidateSec / 60)} min.
+      </p>
     </>
   );
+}
+
+/** 売り手頁のその頁に出す出品（頁番号は 1 から・範囲外は端に寄せる）。 */
+export function sellerListingsOnPage(detail: Pick<SellerDetail, "listings">, page: number): { page: number; totalPages: number; listings: SellerListing[] } {
+  const totalPages = Math.max(1, Math.ceil(detail.listings.length / SELLER_LISTINGS_PAGE_SIZE));
+  const p = Math.min(Math.max(1, page), totalPages);
+  return { page: p, totalPages, listings: detail.listings.slice((p - 1) * SELLER_LISTINGS_PAGE_SIZE, p * SELLER_LISTINGS_PAGE_SIZE) };
 }
 
 export function SellerDetailView({
@@ -730,9 +784,13 @@ export function SellerDetailView({
   revalidateSec: number;
 }) {
   const s = detail.summary;
-  const totalPages = Math.max(1, Math.ceil(detail.listings.length / SELLER_LISTINGS_PAGE_SIZE));
-  const p = Math.min(Math.max(1, page), totalPages);
-  const shown = detail.listings.slice((p - 1) * SELLER_LISTINGS_PAGE_SIZE, p * SELLER_LISTINGS_PAGE_SIZE);
+  const { page: p, totalPages, listings: shown } = sellerListingsOnPage(detail, page);
+  const autoIds = new Set(
+    shown
+      .filter((l) => l.latest && l.resourceId)
+      .slice(0, DECISION_AUTO_LISTINGS)
+      .map((l) => l.endpointId),
+  );
   const newest = detail.listings[0];
   const newestSignal = newest?.lastSellerSignal;
   return (
@@ -741,11 +799,7 @@ export function SellerDetailView({
       {/* 2026-09-29: 表題は最新の購入日つきの事実の言い方（sellerHeading）。ホスト名は長いのでどこででも折り返す。 */}
       <h1 className="doc-title mt-10 break-words [overflow-wrap:anywhere]">{sellerHeading(detail.host, s.lastAttemptAt)}</h1>
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-      <p className="doc-p">
-        {n(s.listings)} Base {s.listings === 1 ? "listing" : "listings"}. By the latest attempt at each: <CountsLine c={s} />.
-        {s.lastAttemptAt && <> Latest attempt: {fmtUtc(s.lastAttemptAt)}.</>}
-        <SellerViewLine d={detail} />
-      </p>
+      <SellerSummaryLines d={detail} revalidateSec={revalidateSec} />
       {s.rebuyEligible ? (
         <p className="doc-p">
           <strong>Your most recent purchase failed on vet402&apos;s side.</strong> This seller is eligible for a re-buy
@@ -779,7 +833,13 @@ export function SellerDetailView({
       </h2>
       <ol aria-label="Base listings of this seller, most recent purchase first" className="mt-4 list-none border-t border-hair p-0">
         {shown.map((l) => (
-          <ListingCard key={l.endpointId} l={l} now={now} rebuyEligible={s.rebuyEligible && s.rebuyEndpointId === l.endpointId} />
+          <ListingCard
+            key={l.endpointId}
+            l={l}
+            now={now}
+            rebuyEligible={s.rebuyEligible && s.rebuyEndpointId === l.endpointId}
+            autoDecision={autoIds.has(l.endpointId)}
+          />
         ))}
       </ol>
       <Pager
@@ -810,8 +870,17 @@ export function SellerDetailView({
         and &ldquo;Answer to the paid request&rdquo; show what the row recorded, and nothing else: the answer&apos;s
         body and header values are not published. The maxTimeoutSeconds on a row is the listing&apos;s value today;
         a declared price or address on a not-bought row is the value recorded at the time of the attempt. The
-        transaction link opens the settlement on Basescan. Listings removed from the Bazaar, and listings whose
-        catalog network is not Base, are not on this page. The{" "}
+        transaction link opens the settlement on Basescan. &ldquo;Decision API now&rdquo; is what the decision API
+        (<code>GET /api/v1/resources/&#123;id&#125;/decision?role=payer</code>, no key) answers for the listing when
+        you open this page; your browser asks it for the first {DECISION_AUTO_LISTINGS} listings, and for the others
+        when you ask. It is cautious for the payer: it leaves out the attempts that show vet402&apos;s fault, are held, or
+        took no payment, and counts the rest, so it can say WARN or BLOCK for a listing whose failures this page
+        leaves not sorted (
+        <Link href="/docs/api#verdicts" className="underline">
+          API reference
+        </Link>
+        ). Listings removed from the Bazaar, and listings whose catalog network is not Base, are not
+        on this page. The{" "}
         <Link href="/sellers/fix-first" className="underline">
           fix-first page
         </Link>{" "}

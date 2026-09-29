@@ -236,6 +236,8 @@ export function searchSellers(sellers: readonly SellerSummary[], q: string, limi
 
 export interface SellerEndpointFacts {
   endpointId: string;
+  /** 判定 API の resource id（x402_endpoints.resource_id・sha256 の 16 進）。無ければ null（2026-09-29 第5巡）。 */
+  resourceId?: string | null;
   resourceKey: string;
   resourceUrl: string;
   method: string | null;
@@ -489,8 +491,14 @@ export interface RecordSides {
   vet402SideHeld: number;
   /** そのうち held_reason が settled_4xx の行（inconclusiveSettled から外す分）。 */
   vet402SideHeldSettled: number;
-  /** seller の側（確定）の L1 の行の数。1 つでもあれば記録頁は noindex（売り手頁の noindex を外すまで）。 */
+  /** seller の側（確定）の L1 の行の数。 */
   confirmedSeller: number;
+  /**
+   * 届かなかった購入行の数（delivered 以外の全部: vet402 の側・not sorted・保留・課金なし・照合待ち・not bought を含む）。
+   * 1 つでもあれば記録頁は noindex で、sitemap-observatory.xml にも載せない（2026-09-29 第5巡・売り手頁の noindex を
+   * 外すまで）。L0 のプローブだけの頁と、全部 delivered の頁は従来どおり。
+   */
+  undelivered: number;
 }
 
 /** 記録頁の行（reader.ts の getEndpointDetail の行）と、ここで分類した行を突き合わせる鍵。 */
@@ -501,12 +509,21 @@ export function recordRowKey(attemptedAt: string | Date | null, status: string, 
 
 export function buildRecordSides(rows: readonly SellerRowFacts[]): RecordSides {
   const days = failureDaysOf(rows);
-  const out: RecordSides = { rows: new Map(), vet402Side: 0, vet402SideSettled: 0, vet402SideHeld: 0, vet402SideHeldSettled: 0, confirmedSeller: 0 };
+  const out: RecordSides = {
+    rows: new Map(),
+    vet402Side: 0,
+    vet402SideSettled: 0,
+    vet402SideHeld: 0,
+    vet402SideHeldSettled: 0,
+    confirmedSeller: 0,
+    undelivered: 0,
+  };
   const map = out.rows as Map<string, ShownRow>;
   for (const r of rows) {
     const shown = showRow(r, days.get(r.endpointId));
     const key = recordRowKey(r.attemptedAt, r.status, r.txHash);
     if (!map.has(key)) map.set(key, shown);
+    if (shown.bucket !== "delivered") out.undelivered++;
     if (!SIGNED_ROW_STATUSES.has(r.status)) continue;
     if (shown.confirmedSeller) out.confirmedSeller++;
     if (shown.bucket !== "vet402") continue;

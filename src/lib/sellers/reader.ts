@@ -34,6 +34,7 @@ import { SIGNED_ROW_STATUSES, sellerCandidateDay, type ChallengeAcceptSummary, t
 import { PATH_TEMPLATE_PG_REGEX } from "@/lib/observatory/path-template";
 import { buildSellerExportRows, type SellerExportRow, type SellerListingRef } from "./export";
 import { BASE_NETWORKS, sellerHostSql } from "./host";
+import { DELIVERED_HTTP_MAX, DELIVERED_HTTP_MIN } from "@/lib/observatory/delivery";
 
 type Db = NonNullable<ReturnType<typeof getDb>>;
 
@@ -100,6 +101,7 @@ const ROW_COLUMNS = sql`
        THEN (pu.raw_response_meta->>'status')::int END AS unpaid_status,
   CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN pu.raw_response_meta->>'selection' END AS selection,
   pu.settlement_verify_reason,
+  to_char(pu.settlement_verified_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS settlement_verified_at,
   pu.amount_units, pu.pay_to, pu.asset, pu.payer,
   ${LISTING_MAX_TIMEOUT} AS listing_max_timeout,
   ${DECLARES_HEADERS} AS declares_headers,
@@ -157,6 +159,7 @@ export function toRowFacts(r: Record<string, unknown>): SellerRowFacts {
     unpaidStatus: toInt(r.unpaid_status),
     selection: str(r.selection),
     verifyReason: str(r.settlement_verify_reason),
+    verifiedAt: str(r.settlement_verified_at),
     amountUnits: str(r.amount_units),
     payTo: str(r.pay_to),
     asset: str(r.asset),
@@ -266,7 +269,8 @@ export async function readAllBaseRows(db: Db): Promise<LatestRow[]> {
 export async function readSellerDetail(db: Db, host: string): Promise<SellerDetail | null> {
   const fetchedAt = new Date().toISOString();
   const epRaw = await db.execute(sql`
-    SELECT e.id::text AS endpoint_id, e.resource_key, e.resource_url, e.method, e.price_amount
+    SELECT e.id::text AS endpoint_id, e.resource_key, e.resource_url, e.method, e.price_amount,
+           CASE WHEN e.resource_id ~ '^[0-9a-f]{64}$' THEN e.resource_id END AS resource_id
     FROM x402_endpoints e
     WHERE ${BASE_LISTING} AND ${HOST_SQL} = ${host}`);
   const endpoints: SellerEndpointFacts[] = rowsOf(epRaw).map((r) => ({
@@ -275,6 +279,7 @@ export async function readSellerDetail(db: Db, host: string): Promise<SellerDeta
     resourceUrl: String(r.resource_url),
     method: str(r.method),
     priceAmount: str(r.price_amount),
+    resourceId: str(r.resource_id),
   }));
   if (endpoints.length === 0) return null;
   const ids = JSON.stringify(endpoints.map((e) => e.endpointId));
@@ -329,6 +334,20 @@ export async function readRecordSides(db: Db, endpointId: string): Promise<Recor
     WHERE pu.endpoint_id = ${endpointId}::uuid
     ORDER BY pu.attempted_at DESC, pu.id DESC`);
   return buildRecordSides(rowsOf(raw).map(toRowFacts));
+}
+
+/**
+ * 届かなかった購入行（delivered 以外）を 1 つでも持つ出品の id（2026-09-29 第5巡）。sitemap-observatory.xml は
+ * これを外す（記録頁の noindex と同じ条件・board.ts の RecordSides.undelivered）。delivered は delivery.ts の isDelivered
+ * （settled かつ HTTP が 2xx）と同じ述語で、HTTP が NULL の行は届かなかった側に入る。本番 2026-09-29: 約 4,100 件・7 ms。
+ */
+export async function readEndpointsWithUndeliveredL1(db: Db): Promise<Set<string>> {
+  const raw = await db.execute(sql`
+    SELECT DISTINCT pu.endpoint_id::text AS endpoint_id
+    FROM x402_l1_purchases pu
+    WHERE NOT (pu.status = 'settled'
+               AND coalesce(pu.http_status_paid BETWEEN ${DELIVERED_HTTP_MIN} AND ${DELIVERED_HTTP_MAX}, false))`);
+  return new Set(rowsOf(raw).map((r) => String(r.endpoint_id)));
 }
 
 /**

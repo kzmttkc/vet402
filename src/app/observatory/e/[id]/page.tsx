@@ -113,14 +113,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   // 見出しが "Endpoint" のまま」というメタデータのズレを避けられる。
   if (!detail) notFound();
   const name = detail.endpoint.resourceKey;
-  // 2026-09-29 第4巡: 表題は中身（L0 のプローブと L1 の購入）に合わせる。seller の側（確定）の L1 の失敗を載せる
-  // 記録頁は、売り手頁（/sellers/[host]・noindex）の noindex を外すまで noindex。読めなければ noindex に倒す。
+  // 2026-09-29 第4巡: 表題は中身（L0 のプローブと L1 の購入）に合わせる。読めなければ noindex に倒す。
+  // 2026-09-29 第5巡: 届かなかった L1 の行（vet402 の側・not sorted・照合待ち・not bought を含む）を載せる記録頁は、
+  // 売り手頁（/sellers/[host]・noindex）の noindex を外すまで noindex（売り手頁と同じ語で L1 の失敗が載るため）。
+  // sitemap-observatory.xml も同じ条件で外す。L0 のプローブだけの頁・全部 delivered の頁は従来どおり。
   const sides = await recordSides(id);
   return pageMetadata({
     title: `${name} — x402 purchase and probe record`,
     description: `Paid purchases and probe history for ${name}: what vet402 paid, what came back, whose side a failure was on, and the 402 measurements with timestamps and reason codes.`,
     path: `/observatory/e/${id}`,
-    ...(sides === null || sides.confirmedSeller > 0 ? { noindex: true } : {}),
+    ...(sides === null || sides.undelivered > 0 ? { noindex: true } : {}),
   });
 }
 
@@ -428,7 +430,7 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
               n={2}
               settled={l1.settled}
               attempts={l1.attempts}
-              caption={<>Settle-through: one cell per paid attempt. Filled = settled with an on-chain receipt, crossed = paid but no receipt.</>}
+              caption={<>Settle-through: one cell per paid attempt. Filled = settled with an on-chain receipt, crossed = signed, and not settled on-chain.</>}
             />
             <TableScroll label="L1 purchase history, newest first">
               <table className="fact-table">

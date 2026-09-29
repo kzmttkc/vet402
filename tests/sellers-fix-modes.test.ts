@@ -363,7 +363,7 @@ test("分類表: 鍵が重複せず、文言が空でなく、vet402 の側は�
   );
   // 署名しなかった行は「vet402 did not pay」とだけ書き、売り手に作り替えを求めない（2026-09-29 第2巡: 「exact を出せ」）
   for (const m of FIX_MODES.filter((x) => x.side === "not_bought")) {
-    assert.match(m.fix, /^Nothing is counted against the seller: vet402 did not pay/, m.key);
+    assert.match(m.fix, /^This page does not count it as the seller's fault: vet402 did not pay/, m.key);
     assert.match(m.title, /^Not bought: /, m.key);
   }
   assert.doesNotMatch(FIX_MODES.map((m) => m.fix).join("\n"), /Offer an exact accept/);
@@ -515,7 +515,7 @@ test("決済してから入力を断った行: 事実の言い方で、保留（
   assert.equal(m.title, "Payment settled, then the input was rejected");
   assert.equal(m.sideLabel, "not sorted (held)");
   assert.match(m.what, /held_reason settled_4xx/);
-  assert.match(m.fix, /^Nothing is counted against the seller\./);
+  assert.match(m.fix, /^This page does not count it as the seller's fault\./);
   // 非難の響きの語を使わない（2026-09-29 敵対的監査）
   const all = FIX_MODES.map((x) => `${x.title} ${x.what} ${x.fix}`).join("\n");
   assert.doesNotMatch(all, /Took the payment|took the payment before|refused the input/);

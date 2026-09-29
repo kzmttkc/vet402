@@ -91,7 +91,7 @@ test("SellerDetailView: 取得時刻・vet402 の側・買い直し・tx・expor
   assert.match(html, /Read from the database 2026-09-28 13:04 UTC/);
   assert.match(html, /reused for up to 5 min/);
   // 2026-09-29: 表題は最新の購入日つきの事実の言い方（現在形の「Is … working?」をやめた）
-  assert.match(html, /<h1[^>]*>shop\.example: x402 purchase results on Base, as of 2026-09-14<\/h1>/);
+  assert.match(html, /<h1[^>]*>shop\.example: x402 purchase results on Base, latest attempt 2026-09-14<\/h1>/);
   assert.doesNotMatch(html, /working\?/);
   // 行に層（L1）を書く。記録頁の Published state（L0）と読み違えない
   assert.match(html, /Recorded \(L1 paid purchase\):/);
@@ -254,8 +254,8 @@ test("SellerDetailView: 照合待ちの行は失敗と書かず、時刻も書�
 test("売り手頁の <title> は最新の購入日つきの事実の言い方で、60 字を超えるなら接尾辞を落とす（2026-09-29）", () => {
   assert.equal(sellerPageTitle("a.io"), "a.io: x402 purchase results on Base | vet402");
   assert.ok(sellerPageTitle("a.io").length <= TITLE_MAX);
-  assert.equal(sellerPageTitle("a.io", "2026-09-22T00:01:36Z"), "a.io: x402 purchase results on Base, as of 2026-09-22");
-  assert.equal(sellerPageTitle("api.example.com", "2026-09-22T00:01:36Z"), "api.example.com: x402 purchase results on Base, as of 2026-09-22");
+  assert.equal(sellerPageTitle("a.io", "2026-09-22T00:01:36Z"), "a.io: x402 purchase results on Base, latest attempt 2026-09-22");
+  assert.equal(sellerPageTitle("api.example.com", "2026-09-22T00:01:36Z"), "api.example.com: x402 purchase results on Base, latest attempt 2026-09-22");
   assert.equal(sellerPageTitle("x.io", "garbage"), "x.io: x402 purchase results on Base | vet402");
   assert.doesNotMatch(sellerPageTitle("a.io", "2026-09-22T00:01:36Z"), /working/);
 });

@@ -15,14 +15,29 @@
 // /sitemap.xml と 2 本立てにして、robots.txt が両方を指す（sitemap index を
 // 名乗るより、robots に 2 行書く方が実装も検証も単純で、対応も広い）。
 // lastmod は最後に測った時刻そのもの —— デプロイ日ではない。
+//
+// 2026-09-29 敵対的監査 5 周目: 届かなかった L1 の購入行（vet402 の側・not sorted を含む）を持つ出品の記録頁は
+// noindex（売り手頁の noindex を外すまで）なので、ここにも載せない（noindex の頁を sitemap で配らない）。条件は
+// 記録頁と同じ（src/lib/sellers/board.ts の RecordSides.undelivered・reader.ts の readEndpointsWithUndeliveredL1）。
+// その集合が読めなければ 503（全部を載せ直さない・空の urlset を 200 で返さない）。
 // ============================================================
 import { getSitemapEndpoints, SITEMAP_ENDPOINT_LIMIT } from "@/lib/observatory/reader";
+import { getDb } from "@/lib/db/client";
+import { readEndpointsWithUndeliveredL1 } from "@/lib/sellers/reader";
 import { SITE_URL } from "@/lib/site-url";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const endpoints = await getSitemapEndpoints();
+  const measured = await getSitemapEndpoints();
+  let undelivered: Set<string>;
+  try {
+    const db = getDb();
+    undelivered = db ? await readEndpointsWithUndeliveredL1(db) : new Set();
+  } catch {
+    return new Response("sitemap temporarily unavailable\n", { status: 503, headers: { "Retry-After": "600" } });
+  }
+  const endpoints = measured.filter((e) => !undelivered.has(e.id));
   const urls = endpoints
     .map(
       (e) =>
@@ -39,7 +54,9 @@ export async function GET() {
       "Cache-Control": "public, max-age=3600",
       // 上限で切れたかどうかを黙らせない（規格上限は 50,000）。
       "x-vet402-rows": String(endpoints.length),
-      "x-vet402-truncated": String(endpoints.length >= SITEMAP_ENDPOINT_LIMIT),
+      // 上限は測定済みの読み（getSitemapEndpoints）に掛かるので、切れたかどうかも外す前の件数で見る。
+      "x-vet402-truncated": String(measured.length >= SITEMAP_ENDPOINT_LIMIT),
+      "x-vet402-noindex-excluded": String(measured.length - endpoints.length),
     },
   });
 }

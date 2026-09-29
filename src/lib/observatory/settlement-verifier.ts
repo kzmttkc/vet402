@@ -27,6 +27,26 @@ import { ingestL1 } from "@/lib/settlements/ingest-l1";
 import { LATE_RECOVERABLE_STATUSES } from "@/lib/settlements/recover-late";
 import { updateWithCorrection } from "./corrections";
 import { fireL1RegistryHook, fireL2RegistryHook } from "@/lib/chain/registry-hook";
+import { SELLER_NAMED_TX_NOT_FOUND, SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS } from "@/lib/sellers/fix-modes";
+
+/**
+ * 売り手が名指した tx の照合の期限（2026-09-29 敵対的監査 5 周目・値の正典は src/lib/sellers/fix-modes.ts）。
+ *
+ * tx_not_found は一時的な理由（まだ見えていないだけ）として status を倒さずに毎日読み直していたので、売り手が名指した
+ * tx がチェーンに無いまま「照合待ち」が続いた（api.wines.bet: 2026-09-12 から 17 日）。購入から
+ * SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS 日たっても見つからない行は、日付付きで「売り手の名指した tx が見つからない」
+ * として確定する（settle_claim_refuted・理由は SELLER_NAMED_TX_NOT_FOUND で始まる）。受領証の tx がハッシュの形ですらない行
+ * （settle_claimed_unverifiable・例 "first-can"）も、同じ日数の後に同じ語で確定する（チェーンは読まない）。
+ * 遅延回収で vet402 が貼った tx（売り手は名指していない）と、売り手が success:false のまま名指した tx には当てない
+ * ——それぞれ従来の取り消し（withdrawLateLink）と申告どおりの失敗への戻し（declineSellerNamedTx）へ回す。
+ */
+export const SELLER_NAMED_TX_EXPIRY_MS = SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS * 86_400_000;
+
+/** 購入から期限の日数がたったか（純関数・読めない時刻は「たっていない」に倒す）。 */
+export function sellerNamedTxExpired(attemptedAt: string | Date | null, now: number = Date.now()): boolean {
+  const t = attemptedAt instanceof Date ? attemptedAt.getTime() : typeof attemptedAt === "string" ? Date.parse(attemptedAt) : NaN;
+  return Number.isFinite(t) && now - t >= SELLER_NAMED_TX_EXPIRY_MS;
+}
 
 /**
  * 一時的な失敗（RPCが答えない・確定数が足りない・まだ見つからない）は
@@ -116,6 +136,11 @@ export type VerifySettlementsSummary = {
    */
   sellerDeclaredUnsettled: number;
   /**
+   * 売り手が名指した tx が期限の日数たっても見つからない（または受領証の tx がハッシュの形でない）として確定した件数
+   * （2026-09-29 第5巡）。refuted には数えない（チェーンで否定を読んだのではなく、期限までに見つからなかった）。
+   */
+  sellerNamedTxExpired: number;
+  /**
    * 1 行の処理が例外で落ちた件数（2026-09-19 レビュー 2 巡目）。落ちた行は触らずに次の行へ進む
    * ——1 件の DB エラーや RPC クライアントの故障で、残りの行の照合まで道連れにしない。
    * 0 が正常。理由はサーバログ（settlement-verifier.row）に出る。
@@ -174,6 +199,7 @@ export async function runSettlementVerification(options?: {
     refuted: 0,
     lateLinksWithdrawn: 0,
     sellerDeclaredUnsettled: 0,
+    sellerNamedTxExpired: 0,
     rowErrors: 0,
     deferred: 0,
     evidenceWritten: 0,
@@ -193,6 +219,7 @@ export async function runSettlementVerification(options?: {
     SELECT pu.id::text AS id, pu.tx_hash, pu.network, pu.pay_to, pu.payer,
            pu.amount_units, pu.http_status_paid, pu.payload_non_empty, pu.l2_schema,
            pu.status, pu.endpoint_id::text AS endpoint_id, pu.auth_nonce, e.resource_url,
+           to_char(pu.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS attempted_at,
            -- 遅延回収の印（recover-late.ts）。あれば tx を結び付けたのは売り手ではなく vet402 自身。
            pu.raw_response_meta->'lateSettlement' AS late_settlement,
            -- 2026-09-29 第4巡: 売り手が success:false のまま名指した tx を recover-late が照合へ回した印（promoteNamedTx）。
@@ -209,7 +236,10 @@ export async function runSettlementVerification(options?: {
     LEFT JOIN x402_endpoints e ON e.id = pu.endpoint_id
     WHERE pu.settlement_verified IS NULL
       AND pu.tx_hash IS NOT NULL
-      AND pu.status IN ('settle_claimed', 'settled')
+      AND (pu.status IN ('settle_claimed', 'settled')
+           -- 2026-09-29 第5巡: 受領証の tx がハッシュの形ですらない行は、期限の日数の後に確定する（チェーンは読まない）。
+           OR (pu.status = 'settle_claimed_unverifiable'
+               AND pu.attempted_at < now() - (${SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS} * interval '1 day')))
     ORDER BY pu.attempted_at ASC
     LIMIT ${limit}
   `);
@@ -227,6 +257,7 @@ export async function runSettlementVerification(options?: {
     endpoint_id: string;
     auth_nonce: string | null;
     resource_url: string | null;
+    attempted_at: string | null;
     late_settlement: unknown;
     named_tx_promotion: unknown;
     tx_claim_count: number | string | null;
@@ -372,6 +403,36 @@ export async function runSettlementVerification(options?: {
   }
 
   /**
+   * 売り手の名指した tx が見つからないとして確定する（2026-09-29 第5巡・SELLER_NAMED_TX_EXPIRY_MS）。売り手の申告
+   * （「この tx で決済した」）の否定なので status を settle_claim_refuted に倒し、理由の先頭に SELLER_NAMED_TX_NOT_FOUND と
+   * 日付を書く。台帳と訂正ログは同じ文（updateWithCorrection）。status が読んだ時から変わっていれば 0 行（訂正も 0 行）。
+   * Registry へは書かない: チェーンで否定を読んだのではなく、期限までに見つからなかったという記録だから。
+   */
+  async function expireSellerNamedTx(row: PurchaseRow, what: string): Promise<void> {
+    const today = new Date().toISOString().slice(0, 10);
+    const attempted = (row.attempted_at ?? "").slice(0, 10);
+    const verifyReason = `${SELLER_NAMED_TX_NOT_FOUND}: ${what}, checked through ${today} (purchase ${attempted}, ${SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS}-day limit)`.slice(0, 500);
+    const note = `The transaction the seller named was not found on-chain within ${SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS} days of the purchase on ${attempted}; recorded as seller-named tx not found on ${today}.`;
+    const changed = await updateWithCorrection(db!, {
+      update: sql`
+        UPDATE x402_l1_purchases
+        SET status = 'settle_claim_refuted',
+            settlement_verified = false,
+            settlement_verified_at = now(),
+            settlement_verify_reason = ${verifyReason}::text
+        WHERE id = ${row.id}::uuid AND status = ${row.status} AND settlement_verified IS NULL
+        RETURNING id::text AS correction_subject_id`,
+      subjectType: "purchase",
+      level: "l1",
+      before: { json: { status: row.status, txHash: row.tx_hash } },
+      after: { json: { status: "settle_claim_refuted", reason: SELLER_NAMED_TX_NOT_FOUND, note } },
+      reason: "settlement_backfill",
+    });
+    summary.sellerNamedTxExpired += changed.length;
+    invalidateDecisionCache(row.endpoint_id);
+  }
+
+  /**
    * 照合の理由（settlement_verify_reason）だけを書く経路（status は変えない）。2026-09-29 監査4周目:
    * この列は売り手の頁（/sellers の reader.ts・verifyReason）に出る公開の状態なので、**値が変わったときだけ**
    * 同じ文で訂正ログに残す。同じ理由の書き直し（毎日の再試行）は UPDATE も訂正も 0 行。
@@ -391,6 +452,11 @@ export async function runSettlementVerification(options?: {
    * 次の行へ進むので、1 件の DB エラー・RPC クライアントの故障が残りの行を道連れにしない。
    */
   async function verifyOneRow(row: PurchaseRow): Promise<void> {
+    // 2026-09-29 第5巡: 受領証の tx がハッシュの形ですらない行（SELECT が期限の日数の後の行だけを拾う）。チェーンは読まない。
+    if (row.status === "settle_claimed_unverifiable") {
+      await expireSellerNamedTx(row, `the receipt's transaction id ${JSON.stringify(row.tx_hash.slice(0, 40))} is not a transaction hash`);
+      return;
+    }
 
     if (!row.pay_to || !row.payer || !row.amount_units) {
       // 期待値が台帳に無い＝我々が何を期待したか言えない。照合できないので
@@ -499,7 +565,10 @@ export async function runSettlementVerification(options?: {
       return;
     }
 
-    if (TRANSIENT_REASONS.has(result.reason)) {
+    // 2026-09-29 第5巡: 期限の日数たっても見つからない tx は「まだ見えていない」ではない。下の確定の経路へ回す
+    // （遅延回収の tx は取り消し、success:false の申告は申告どおりの失敗へ、それ以外は売り手の名指した tx が見つからない）。
+    const expiredNotFound = result.reason === "tx_not_found" && sellerNamedTxExpired(row.attempted_at);
+    if (TRANSIENT_REASONS.has(result.reason) && !expiredNotFound) {
       // 見えなかっただけ。否定ではないので status は倒さない。
       await setVerifyReason(row, result.reason);
       summary.deferred++;
@@ -536,6 +605,11 @@ export async function runSettlementVerification(options?: {
     const promo = namedTxPromotionOf(row);
     if (promo) {
       await declineSellerNamedTx(row, promo, result.reason, result.detail);
+      return;
+    }
+
+    if (expiredNotFound) {
+      await expireSellerNamedTx(row, `transaction ${row.tx_hash.slice(0, 80)} not found on ${row.network}`);
       return;
     }
 

@@ -97,7 +97,7 @@ test("1: 保留の行は「not sorted (held)」、課金なしは「not sorted: 
   const refused = classifyRow(row({ status: "settle_failed", httpStatusPaid: 404 }));
   assert.equal(refused.mode?.sideLabel, "not sorted: no charge");
   for (const m of FIX_MODES.filter((x) => x.side === "unsorted" && x.key !== "other")) {
-    assert.match(m.fix, /^Nothing is counted against the seller\./, m.key);
+    assert.match(m.fix, /^This page does not count it as the seller's fault\./, m.key);
   }
 });
 
