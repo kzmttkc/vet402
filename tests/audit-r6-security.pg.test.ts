@@ -5,11 +5,13 @@
 //  1. サブドメインと payTo を分けても、同じ登録ドメイン（eTLD+1）への当日の支出は DOMAIN_DAILY_CAP_USD（既定 $3）まで。
 //     超える予約はしない・**行を書かない**・支払い付きの要求を出さない。受取先・ホストの $2 はそのまま。
 //  2. 翌バッチ（同じ UTC 日）は上限に届いた登録ドメインの出品に 402 も取りに行かない（候補 SQL）。
-//  3. 共有ドメイン（workers.dev 等）の別の持ち主は別の単位（正直な売り手を巻き込まない）。
+//  3. 共有ドメイン（workers.dev 等）の別の持ち主は別の単位（正直な売り手を巻き込まない）。トンネル・動的 DNS
+//     （trycloudflare.com 等）はサフィックスごとに 1 枠（名前を無料で増やせる・独立レビュー）。
 //  4. JS（registeredDomainOf）と SQL（registeredDomainSql）が同じ単位を返す（候補 SQL と予約が別の単位を数えない）。
 //  5. 環境変数で変えられる（0 で誰にも払わない）。同時の 2 バッチでも超えるのは同時の 1 件ぶんまで。
 // その他:
-//  6. C2 の「問い合わせ多」は別々の鍵 3 以上 かつ 別々の日 2 以上（IP の行は数えない）。
+//  6. C2 の「問い合わせ多」は別々の鍵の持ち主 3 以上 かつ 別々の日 2 以上（IP の行・鍵 id の k1: の行は数えない）。
+//     同じ持ち主の鍵 3 本では上がらない（独立レビュー: 1 人が鍵を 10 本持てる）。
 //  7. export の同時実行の枠（全体で 1 本・期限つき・自分の貸し出しだけ返す）。
 //  8. corrections の暦に無いカーソルは 400（503 にならない）。
 //
@@ -160,6 +162,18 @@ if (!TEST_DB) {
         "abc.elb.amazonaws.com",
         "abc.us-east-1.elb.amazonaws.com",
         "prance-mounting-watch.ngrok-free.dev",
+        "x-y-z.trycloudflare.com",
+        "a.b.trycloudflare.com",
+        "trycloudflare.com",
+        "146-190-76-192.sslip.io",
+        "10.0.0.1.nip.io",
+        "abc.loca.lt",
+        "x.serveo.net",
+        "921273c0412589.lhr.life",
+        "apiwitchcraft.duckdns.org",
+        "a.xtrycloudflare.com",
+        "a.trycloudflare.com.evil.com",
+        "api.evil.com..",
         "93.184.216.34",
         "[2001:db8::1]",
         "localhost",
@@ -186,6 +200,22 @@ if (!TEST_DB) {
       // 断った 1 件の後は、同じ登録ドメインの残りに 402 も取りに行かない。
       assert.equal(w.seen.filter((s) => !s.paid && s.url.includes("evil.com")).length, 4, "無償の要求は買えた 3 件＋断った 1 件だけ");
       assert.ok(w.seen.some((s) => s.paid && s.url === "https://honest.example/api"), "他の売り手は買う");
+    });
+
+    await t.test("トンネル（trycloudflare.com）の別々の名前と payTo の $1 の出品 6 件: サフィックスで 1 枠・$3 で止まる", async () => {
+      const listings: Listing[] = [1, 2, 3, 4, 5, 6].map((n) => ({ url: `https://t${n}-x-y.trycloudflare.com/api`, payTo: payToFor(40 + n), amount: "1000000", calls: 5000 }));
+      listings.push({ url: "https://honest.example/api", payTo: payToFor(201), amount: "3000" });
+      await seed(listings);
+      const w = wall(listings);
+      await run(w);
+      assert.equal(await spentOnDomain("trycloudflare.com"), 3_000_000n, "trycloudflare.com 全体への当日の支出は $3 ちょうど");
+      assert.equal(w.seen.filter((s) => s.paid && s.url.includes("trycloudflare.com")).length, 3, "支払い付きの要求は 3 回だけ");
+      assert.equal(await ledgerCount("https://t%.trycloudflare.com/%"), 3, "上限で断った出品には行を書かない");
+      assert.ok(w.seen.some((s) => s.paid && s.url === "https://honest.example/api"), "他の売り手は買う");
+      // 翌バッチ（同じ UTC 日）: 候補 SQL が同じ 1 枠で外す
+      const w2 = wall(listings.filter((l) => l.url.includes("trycloudflare.com")));
+      await run(w2);
+      assert.equal(w2.seen.length, 0, JSON.stringify(w2.seen));
     });
 
     await t.test("翌バッチ（同じ UTC 日）: 上限に届いた登録ドメインの出品には 1 リクエストも出さない（候補 SQL）", async () => {
@@ -272,7 +302,7 @@ if (!TEST_DB) {
       }
     });
 
-    await t.test("C2（問い合わせ多）: 別々の鍵 3 以上 かつ 別々の日 2 以上。IP の行・1 つの鍵の 5 日・1 日の 10 鍵は上げない", async () => {
+    await t.test("C2（問い合わせ多）: 別々の鍵の持ち主 3 以上 かつ 別々の日 2 以上。IP の行・1 人の 5 日・1 日の 10 人・同じ持ち主の鍵 3 本は上げない", async () => {
       await db.execute(sql`TRUNCATE x402_endpoints, decision_lookups, decision_lookup_callers`);
       const mk = async () => {
         const id = randomUUID();
@@ -295,39 +325,73 @@ if (!TEST_DB) {
         db.execute(sql`INSERT INTO decision_lookup_callers (endpoint_id, day, caller_hash) VALUES (${id}::uuid, ${day(ago)}, ${lookupCallerHash(material, day(ago))}) ON CONFLICT DO NOTHING`);
 
       const promoted = await mk();
-      await put(promoted, "key:a", 0);
-      await put(promoted, "key:b", 0);
-      await put(promoted, "key:c", 1);
+      await put(promoted, "owner:a", 0);
+      await put(promoted, "owner:b", 0);
+      await put(promoted, "owner:c", 1);
       const oneKeyFiveDays = await mk();
-      for (let i = 0; i < 5; i++) await put(oneKeyFiveDays, "key:solo", i);
+      for (let i = 0; i < 5; i++) await put(oneKeyFiveDays, "owner:solo", i);
       const tenKeysOneDay = await mk();
-      for (let i = 0; i < 10; i++) await put(tenKeysOneDay, `key:k${i}`, 0);
+      for (let i = 0; i < 10; i++) await put(tenKeysOneDay, `owner:k${i}`, 0);
       const ipRows = await mk();
       for (let i = 0; i < 6; i++) await put(ipRows, `ip:198.51.100.${i}`, i % 3);
       const stale = await mk();
-      await put(stale, "key:a", 8);
-      await put(stale, "key:b", 9);
-      await put(stale, "key:c", 10);
+      await put(stale, "owner:a", 8);
+      await put(stale, "owner:b", 9);
+      await put(stale, "owner:c", 10);
+      // 初版（鍵 id で数えた k1: の行）は、別々の鍵 3 本 × 2 日でも数えない
+      const legacyKeyRows = await mk();
+      await put(legacyKeyRows, "key:a", 0);
+      await put(legacyKeyRows, "key:b", 0);
+      await put(legacyKeyRows, "key:c", 1);
 
-      const tiers = await loadCoverageTiers([promoted, oneKeyFiveDays, tenKeysOneDay, ipRows, stale]);
+      // 独立レビュー（中）: 実際の鍵の発行と認証（createApiKey → verifyApiKey）を通した持ち主で数える。
+      // 同じ持ち主の鍵 3 本 × 2 日では上がらない。別々の持ち主 3 人 × 2 日なら上がる。
+      const { createApiKey, verifyApiKey } = await import("@/lib/db/api-keys");
+      const ownerOf = async (userId?: string) => {
+        const k = await createApiKey({ name: "r6h", userId });
+        const rec = await verifyApiKey(k.key);
+        assert.ok(rec);
+        return rec;
+      };
+      const soloOwner = randomUUID();
+      const soloKeys = [await ownerOf(soloOwner), await ownerOf(soloOwner), await ownerOf(soloOwner)];
+      assert.equal(new Set(soloKeys.map((r) => r.id)).size, 3, "鍵は 3 本");
+      assert.ok(soloKeys.every((r) => r.ownerId === soloOwner), "持ち主は api_keys.user_id");
+      const sameOwnerThreeKeys = await mk();
+      for (const [i, r] of soloKeys.entries()) {
+        await put(sameOwnerThreeKeys, lookupCallerMaterial({ apiKeyId: r.id, ownerId: r.ownerId })!, i === 2 ? 1 : 0);
+      }
+      const threeOwners = [await ownerOf(randomUUID()), await ownerOf(randomUUID()), await ownerOf()];
+      assert.equal(threeOwners[2].ownerId, threeOwners[2].id, "user_id の無い鍵は鍵 id そのものが持ち主");
+      const threeOwnersTwoDays = await mk();
+      for (const [i, r] of threeOwners.entries()) {
+        await put(threeOwnersTwoDays, lookupCallerMaterial({ apiKeyId: r.id, ownerId: r.ownerId })!, i === 2 ? 1 : 0);
+      }
+
+      const tiers = await loadCoverageTiers([promoted, oneKeyFiveDays, tenKeysOneDay, ipRows, stale, legacyKeyRows, sameOwnerThreeKeys, threeOwnersTwoDays]);
       assert.equal(tiers.get(promoted), "C2");
       assert.equal(tiers.get(oneKeyFiveDays), "C1");
       assert.equal(tiers.get(tenKeysOneDay), "C1");
       assert.equal(tiers.get(ipRows), "C1");
       assert.equal(tiers.get(stale), "C1", "7 日の窓の外は数えない");
+      assert.equal(tiers.get(legacyKeyRows), "C1", "鍵 id で数えた k1: の行は数えない");
+      assert.equal(tiers.get(sameOwnerThreeKeys), "C1", "同じ持ち主の鍵 3 本では上がらない");
+      assert.equal(tiers.get(threeOwnersTwoDays), "C2", "別々の持ち主 3 人なら上がる");
 
       // l0TierWhere("c2")（L1 の候補の条件）も同じ答え
       const { l1TierWhere } = await import("@/lib/observatory/coverage");
       const c2 = rows(await db.execute(sql`SELECT e.id::text AS id FROM x402_endpoints e WHERE ${l1TierWhere(false)}`)).map((r) => r.id);
-      assert.deepEqual(c2, [promoted]);
+      assert.deepEqual([...c2].sort(), [promoted, threeOwnersTwoDays].sort());
 
-      // recordDecisionLookup の経路: 鍵なしは行を書かない・鍵ありは k1: の行
+      // recordDecisionLookup の経路: 鍵なし・持ち主の分からない鍵は行を書かない・持ち主ありは k2: の行
       const viaApi = await mk();
       await recordDecisionLookup(viaApi, lookupCallerMaterial({ ip: "203.0.113.9" }));
-      await recordDecisionLookup(viaApi, lookupCallerMaterial({ apiKeyId: "real-key" }));
+      await recordDecisionLookup(viaApi, lookupCallerMaterial({ apiKeyId: "no-owner-key" }));
+      await recordDecisionLookup(viaApi, lookupCallerMaterial({ apiKeyId: soloKeys[0].id, ownerId: soloKeys[0].ownerId }));
+      await recordDecisionLookup(viaApi, lookupCallerMaterial({ apiKeyId: soloKeys[1].id, ownerId: soloKeys[1].ownerId }));
       const hashes = rows(await db.execute(sql`SELECT caller_hash FROM decision_lookup_callers WHERE endpoint_id = ${viaApi}::uuid`)).map((r) => String(r.caller_hash));
-      assert.equal(hashes.length, 1);
-      assert.ok(hashes[0].startsWith("k1:"));
+      assert.equal(hashes.length, 1, "同じ持ち主の 2 本の鍵は 1 行");
+      assert.ok(hashes[0].startsWith("k2:"));
     });
 
     await t.test("export の枠: 全体で 1 本・返せばまた取れる・期限切れは取り直せる・他人の貸し出しは返さない", async () => {

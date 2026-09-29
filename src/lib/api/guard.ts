@@ -12,12 +12,15 @@ const RATE_LIMIT_UNAVAILABLE_RETRY_AFTER_SEC = 30;
 
 export type AuthorizedContext = {
   apiKeyId: string;
+  /** 鍵の持ち主（api-keys.ts ApiKeyRecord.ownerId）。古い呼び手・テストの形のために省略可。 */
+  ownerId?: string;
   plan: string;
   rateLimit: RateLimitResult;
 };
 
 export type AuthenticatedContext = {
   apiKeyId: string;
+  ownerId?: string;
   plan: string;
 };
 
@@ -31,7 +34,7 @@ export async function authenticateApiRequest(
 
   return {
     ok: true,
-    ctx: { apiKeyId: auth.apiKeyId!, plan: auth.plan! },
+    ctx: { apiKeyId: auth.apiKeyId!, ownerId: auth.ownerId, plan: auth.plan! },
   };
 }
 
@@ -91,6 +94,7 @@ export async function authorizeApiRequest(
     ok: true,
     ctx: {
       apiKeyId: auth.ctx.apiKeyId,
+      ownerId: auth.ctx.ownerId,
       plan: auth.ctx.plan,
       rateLimit: limited.rateLimit,
     },

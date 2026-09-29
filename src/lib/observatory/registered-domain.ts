@@ -14,6 +14,13 @@
 // ts.net 9・duckdns.org 8・netlify.app 6・ondigitalocean.app 6・lhr.life 5・co.uk 5・replit.app 4・
 // azurecontainerapps.io 4・execute-api（amazonaws.com）4・ngrok-free.dev 4。
 //
+// 2026-09-29 独立レビュー（中）: トンネル・動的 DNS（trycloudflare.com・sslip.io・nip.io・loca.lt・serveo.net・
+// lhr.life・ngrok 系・duckdns.org・ts.net）は、無料で・多くはアカウント無しで名前をいくらでも作れる。表に置くと
+// 「1 つ下が別の持ち主」になり、名前を増やすだけで $3 の上限を何枠でも取れた。だから**表から外し、サフィックスごとに
+// 1 枠**にまとめる（x.trycloudflare.com も y.trycloudflare.com も trycloudflare.com）＝締まる側。POOLED_SUFFIXES は
+// その一覧で、読み込み時に「表に無い・2 段」を確かめる（2 段なら既定の 2 段の規則でサフィックスそのものになる。
+// JS も SQL も同じ表から作るので、両方が同じ 1 枠を数える）。
+//
 // 規則（PSL と同じ）: 一致する最も長いサフィックスの 1 つ下のラベルまで。`*` は任意の 1 ラベル
 // （PSL のワイルドカード）。IP リテラルはホストそのもの。JS（registeredDomainOf）と SQL（registeredDomainSql）は
 // 同じ表から作る——片方だけ直すと、候補 SQL と予約で別の単位を数える。
@@ -22,7 +29,8 @@ import { sql, type SQL } from "drizzle-orm";
 
 /**
  * 公開サフィックス（小文字・`*` は任意の 1 ラベル）。「サブドメインが別の持ち主」になる共有ドメインと、
- * 2 段の国別ドメイン。足すときは tests/registered-domain.test.ts の JS/SQL の一致の検査も通す。
+ * 2 段の国別ドメイン。足すときは tests/audit-r6-security.test.ts（JS の単位）と tests/audit-r6-security.pg.test.ts
+ * （JS と SQL の一致）の検査も通す。トンネル・動的 DNS は載せない（POOLED_SUFFIXES）。
  */
 export const PUBLIC_SUFFIXES: readonly string[] = [
   // --- ホスティング・PaaS（PSL の private 節）---
@@ -66,20 +74,7 @@ export const PUBLIC_SUFFIXES: readonly string[] = [
   "koyeb.app",
   "zeabur.app",
   "surge.sh",
-  // --- トンネル・動的 DNS ---
-  "trycloudflare.com",
-  "ngrok.io",
-  "ngrok.app",
-  "ngrok.dev",
-  "ngrok-free.app",
-  "ngrok-free.dev",
-  "loca.lt",
-  "lhr.life",
-  "sslip.io",
-  "nip.io",
-  "duckdns.org",
-  "ts.net",
-  "serveo.net",
+  // --- トンネル・動的 DNS は載せない（POOLED_SUFFIXES・サフィックスごとに 1 枠）---
   // --- 2 段の国別ドメイン ---
   "co.uk",
   "org.uk",
@@ -114,10 +109,38 @@ export const PUBLIC_SUFFIXES: readonly string[] = [
   "co.th",
 ];
 
+/**
+ * サフィックスごとに 1 枠にまとめる共有ドメイン（トンネル・動的 DNS・2026-09-29 独立レビュー）。名前を無料で
+ * いくらでも作れるので、1 つ下を別の持ち主に数えない。PUBLIC_SUFFIXES に載せず、2 段なので既定の規則で
+ * サフィックスそのもの（trycloudflare.com）が単位になる。本番の実測: trycloudflare.com 65・sslip.io 15・ts.net 9・
+ * duckdns.org 8・lhr.life 5・ngrok-free.dev 4（2026-09-29・上の表の件数）。
+ */
+export const POOLED_SUFFIXES: readonly string[] = [
+  "trycloudflare.com",
+  "ngrok.io",
+  "ngrok.app",
+  "ngrok.dev",
+  "ngrok-free.app",
+  "ngrok-free.dev",
+  "loca.lt",
+  "lhr.life",
+  "localhost.run",
+  "sslip.io",
+  "nip.io",
+  "duckdns.org",
+  "ts.net",
+  "serveo.net",
+];
+
 const LABEL = /^(\*|[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)$/;
 for (const s of PUBLIC_SUFFIXES) {
   // SQL へ文字列として埋めるので、形を読み込み時に固定する（引用符・バックスラッシュが入る余地を無くす）。
   if (!s.split(".").every((l) => LABEL.test(l))) throw new Error(`invalid public suffix: ${s}`);
+}
+for (const p of POOLED_SUFFIXES) {
+  // 1 枠にまとめる前提（表に無い・2 段）が崩れたら読み込みで止める——表の 1 つ下の規則が効くと枠が増える。
+  const n = p.split(".").length;
+  if (n !== 2 || PUBLIC_SUFFIXES.some((s) => s === p || s.endsWith(`.${p}`))) throw new Error(`pooled suffix must be 2 labels and absent from PUBLIC_SUFFIXES: ${p}`);
 }
 
 const SUFFIX_LABELS = PUBLIC_SUFFIXES.map((s) => s.split("."));
@@ -131,7 +154,7 @@ function isIpLiteral(host: string): boolean {
  * ホストそのもの。サフィックスそのもの（github.io）はそれ自身。
  */
 export function registeredDomainOf(host: string): string {
-  const h = host.toLowerCase().replace(/:[0-9]+$/, "").replace(/\.$/, "");
+  const h = host.toLowerCase().replace(/:[0-9]+$/, "").replace(/\.+$/, "");
   if (h === "" || isIpLiteral(h)) return h;
   const labels = h.split(".");
   let suffixLen = 1;

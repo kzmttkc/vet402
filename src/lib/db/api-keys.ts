@@ -10,6 +10,11 @@ export type ApiKeyRecord = {
   id: string;
   plan: string;
   name: string | null;
+  /**
+   * 鍵の持ち主（api_keys.user_id・無ければ鍵 id そのもの——ensureOwnerUserId と同じ規則）。1 人が最大
+   * MAX_KEYS_PER_OWNER 本の鍵を持てるので、「別々の呼び手」を数えるのはこの単位（lookup-caller.ts・2026-09-29）。
+   */
+  ownerId: string;
 };
 
 const VALID_PLANS = new Set(["free", "pro", "scale"]);
@@ -52,6 +57,7 @@ export async function verifyApiKey(token: string): Promise<ApiKeyRecord | null> 
       plan: apiKeys.plan,
       name: apiKeys.name,
       keyHash: apiKeys.keyHash,
+      userId: apiKeys.userId,
     })
     .from(apiKeys)
     .where(
@@ -93,6 +99,7 @@ export async function verifyApiKey(token: string): Promise<ApiKeyRecord | null> 
     id: record.id,
     plan: normalizePlan(record.plan),
     name: record.name,
+    ownerId: record.userId ?? record.id,
   };
 }
 

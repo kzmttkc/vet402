@@ -100,7 +100,8 @@ test("safe-fetch: httpsOnly の既定は off（L0 は http の出品も観測す
 });
 
 test("問い合わせの呼び手: 鍵ありは鍵 id、鍵なしは IP。IPv6 は /64 に丸める（下位 64 bit を回しても同じ呼び手）", () => {
-  assert.equal(lookupCallerMaterial({ apiKeyId: "k1", ip: "1.2.3.4" }), "key:k1");
+  // 独立レビュー（2026-09-29）: 鍵ありは鍵の持ち主で数える。
+  assert.equal(lookupCallerMaterial({ apiKeyId: "k1", ownerId: "u1", ip: "1.2.3.4" }), "owner:u1");
   // 2026-09-29 監査 6 周目: 鍵なしは数えない（材料 null）。IPv6 の /64 の丸めは ipCounterKey として残る（IP の枠と共用）。
   assert.equal(lookupCallerMaterial({ apiKeyId: null, ip: "1.2.3.4" }), null);
   assert.equal(lookupCallerMaterial({}), null);

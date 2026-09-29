@@ -58,14 +58,14 @@ if (!TEST_DB) {
 
     await t.test("同じ呼び手（同じ鍵）は何回叩いても 1 日 1 回", async () => {
       const id = await seedEndpoint();
-      const me = lookupCallerMaterial({ apiKeyId: "key-7" });
+      const me = lookupCallerMaterial({ apiKeyId: "key-7", ownerId: "owner-7" });
       for (let i = 0; i < 7; i++) await recordDecisionLookup(id, me);
       assert.equal(await lookups(id), 1);
     });
 
     await t.test("同時の 10 回でも 1（主キーの衝突で片方だけが数える）", async () => {
       const id = await seedEndpoint();
-      const me = lookupCallerMaterial({ apiKeyId: "key-1" });
+      const me = lookupCallerMaterial({ apiKeyId: "key-1", ownerId: "owner-1" });
       await Promise.all(Array.from({ length: 10 }, () => recordDecisionLookup(id, me)));
       assert.equal(await lookups(id), 1);
     });
@@ -77,10 +77,11 @@ if (!TEST_DB) {
       assert.equal(await lookups(id), 0);
     });
 
-    await t.test("鍵が 5 本なら 5（同じ鍵の 2 回目は数えない）", async () => {
+    await t.test("持ち主が 5 人なら 5（同じ持ち主の 2 回目・同じ持ち主の別の鍵は数えない）", async () => {
       const id = await seedEndpoint();
-      for (let i = 1; i <= 5; i++) await recordDecisionLookup(id, lookupCallerMaterial({ apiKeyId: `k${i}` }));
-      await recordDecisionLookup(id, lookupCallerMaterial({ apiKeyId: "k1" }));
+      for (let i = 1; i <= 5; i++) await recordDecisionLookup(id, lookupCallerMaterial({ apiKeyId: `k${i}`, ownerId: `u${i}` }));
+      await recordDecisionLookup(id, lookupCallerMaterial({ apiKeyId: "k1", ownerId: "u1" }));
+      await recordDecisionLookup(id, lookupCallerMaterial({ apiKeyId: "k1b", ownerId: "u1" }));
       assert.equal(await lookups(id), 5);
     });
 

@@ -156,7 +156,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     // 2026-09-29 監査 5 周目: 問い合わせは呼び手 × endpoint × UTC 日で 1 回だけ数える。6 周目: 数えるのは鍵ありの
     // 呼び手だけ・別サイトから（Sec-Fetch-Site: cross-site）と売り手頁の自動の呼び出しは数えない（lookup-caller.ts）。
-    const callerMaterial = lookupCallerMaterial({ apiKeyId, headers: request.headers });
+    // 独立レビュー（中）: 数える単位は鍵ではなく鍵の持ち主（1 人が 10 本まで鍵を持てる）。
+    const ownerId = caller.kind === "keyed" ? caller.ctx.ownerId : undefined;
+    const callerMaterial = lookupCallerMaterial({ apiKeyId, ownerId, headers: request.headers });
     const result =
       roleRaw === "payer"
         ? await decide({ role: "payer", observatoryId: ref.observatory_id, callerDialect: dialectRaw ?? undefined, allowWithoutL1, operatorBlacklist, callerMaterial })

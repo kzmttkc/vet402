@@ -47,6 +47,8 @@ const MISSING_API_KEY_BODY = {
 export async function authenticateRequest(request: Request): Promise<{
   ok: boolean;
   apiKeyId?: string;
+  /** 鍵の持ち主（api-keys.ts ApiKeyRecord.ownerId）。 */
+  ownerId?: string;
   plan?: string;
   error?: NextResponse;
 }> {
@@ -75,7 +77,7 @@ export async function authenticateRequest(request: Request): Promise<{
   }
 
   if (isDevApiKeyEnabled() && process.env.DEV_API_KEY && secureCompare(token, process.env.DEV_API_KEY)) {
-    return { ok: true, apiKeyId: "dev", plan: "free" };
+    return { ok: true, apiKeyId: "dev", ownerId: "dev", plan: "free" };
   }
 
   try {
@@ -89,7 +91,7 @@ export async function authenticateRequest(request: Request): Promise<{
       };
     }
 
-    return { ok: true, apiKeyId: record.id, plan: record.plan };
+    return { ok: true, apiKeyId: record.id, ownerId: record.ownerId, plan: record.plan };
   } catch {
     const limited = await enforceAuthIpLimit(ip);
     if (limited) return { ok: false, error: limited };

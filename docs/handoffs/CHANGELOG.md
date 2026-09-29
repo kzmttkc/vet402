@@ -13,6 +13,14 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-29 JST（7）— 監査 6 周目の独立レビューの指摘: C2 は鍵の持ち主で数える・トンネルはサフィックスで 1 枠（ブランチ `fix/r6-security-followup`・`fix/r6-security` の上・未 push）
+
+- **何を（お金のコード・独立レビュー待ち）**: ①`registered-domain.ts`: トンネル・動的 DNS（trycloudflare.com・ngrok 系・loca.lt・lhr.life・localhost.run・sslip.io・nip.io・duckdns.org・ts.net・serveo.net）を公開サフィックスの表から外し、`POOLED_SUFFIXES` としてサフィックスごとに 1 枠にまとめる（x.trycloudflare.com も y.trycloudflare.com も `trycloudflare.com` の $3）。読み込み時に「表に無い・2 段」を検査。`reserveSpend` と候補 SQL の本文は不変（同じ表から作る CASE の枝が減るだけ）。JS の末尾のドットは何個でも落とす（SQL の `rtrim` と同じ）。
+- **何を（その他）**: ②C2（問い合わせ多）の「別々の呼び手」を鍵 id から**鍵の持ち主**（`api_keys.user_id`・無ければ鍵 id そのもの＝`ensureOwnerUserId` と同じ規則）に変える。`verifyApiKey` が同じ 1 行の SELECT で `ownerId` を返し、`authenticateRequest` → `AuthorizedContext.ownerId` → `/decision` の `lookupCallerMaterial({ apiKeyId, ownerId })`（材料 `owner:<持ち主>`）。持ち主の分からない鍵は数えない。HMAC の先頭は `k2:` で、coverage は `k2:` だけを数える（鍵 id で数えた `k1:` の行は 7 日の窓にあっても数えない）。
+- **なぜ**: 独立レビュー（中×2）。1 人が鍵を `MAX_KEYS_PER_OWNER`=10 本持てるので、3 本発行して 2 日問い合わせれば C2 に届いた。トンネル系は無料で名前をいくらでも作れ、1 つ下を別の持ち主に数えると $3 の枠を何枠でも取れた。
+- **影響（本番 SELECT のみ）**: 直近 30 日、まとめる 14 サフィックスへの 1 日の支出は最大 $1.20（trycloudflare.com・09-02）で、$3 に届いた日は 0。管理リポの `scripts/vet402_l1_canary.py` は export.csv に `&_=<時刻>` を付けており、`fix/r6-security` の配備後は 400 `invalid_query` になる（こちらのリポではないので未修正・執行部へ報告済み）。
+- **順序**: DDL なし。`fix/r6-security` の後に rebase。**お金のコード（`registered-domain.ts`）は独立レビューの SHIP の後に push すること**。
+
 ## 2026-09-29 JST（6）— 登録ドメイン単位の日次上限・C2 昇格は鍵ありだけ・CSV injection・export の負荷・カーソル・IPv6 の枠（監査 6 周目・攻撃者の立場・ブランチ `fix/r6-security`・未 push）
 
 - **何を（お金のコード・独立レビュー待ち）**: ①`reserveSpend`（署名前の原子的な予約）の**同じ 1 文**に、登録ドメイン（eTLD+1）ごとの当日の支出を足し、`DOMAIN_DAILY_CAP_USD`（既定 $3・`L1_DOMAIN_DAILY_CAP_USD`・0〜25）を超える予約はしない。受取先・ホストの $2 は並べてそのまま（どれか 1 つで断る・断った出品に行を書かない）。候補 SQL も当日上限に届いた登録ドメインを外し（本番の EXPLAIN で 25ms）、バッチ内でも断った登録ドメインの残りは 402 も取りに行かない（`sellerCap.scope` に `domain`）。登録ドメインは新しい `registered-domain.ts`: 公開サフィックスリストの実装は依存に無い（tldts は jsdom 経由の dev 依存だけ）ので、本番のカタログに実在する共有ドメイン（workers.dev・vercel.app・up.railway.app・onrender.com・`*.run.app`・trycloudflare.com・fly.dev・ts.net・`*.azurecontainerapps.io`・`execute-api.*.amazonaws.com` ほか）と 2 段の国別ドメイン（co.uk 等）を定数で持ち、1 つ下を持ち主とする。表に無い共有ドメインは 2 段で数える＝締まる側。JS（`registeredDomainOf`）と SQL（`registeredDomainSql`）は同じ表から作り、テストで一致を確かめる。
