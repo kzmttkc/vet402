@@ -42,6 +42,24 @@ export const MPP_ACCEPT_PAYMENT = "tempo/charge";
 /** MPP の壁が「要求の形」を支払いより先に検証したと読む HTTP 状態（実測: 400 が 477 件）。 */
 export const REQUEST_SHAPE_HTTP = new Set([400, 422]);
 
+/**
+ * L0 が 402 の本文を読む上限（バイト）。2026-09-29 監査 5 周目まで 4,000 だった。x402 v1 の封筒は
+ * 本文にしか載らず、`resource`・`description`・`outputSchema` を含めると 4 KB を超える売り手が
+ * いる（api.strale.io の v1 出品は 4,290〜7,451 バイト、api.truthbear.co は 25,189 バイト・実測）。
+ * 4,000 で切ると JSON が閉じず、正しい封筒を accepts_invalid と誤判定していた（計器の誤り）。
+ * 上限そのものは残す（readBodyCapped の目的＝敵対的な巨大本文でメモリを食わせない）。
+ */
+export const L0_BODY_CAP_BYTES = 64 * 1024;
+/** 上限の変更が本番に載った日（UTC）。これより前の accepts_invalid は 4,000 バイトで読んだ行。 */
+export const L0_BODY_CAP_RAISED_ON = "2026-09-29";
+/** 4,000 バイトで読んでいた頃の上限（記録頁が古い行を説明するために使う）。 */
+export const L0_LEGACY_BODY_CAP_BYTES = 4_000;
+/**
+ * 402 の本文が上限を超え、封筒が読み切れなかった。封筒が壊れているのか、我々が読まなかったのかを
+ * 区別できないので unverified（売り手の不備として数えない）。
+ */
+export const BODY_OVER_CAP_REASON = "body_over_cap" as const;
+
 export type ProbeTarget = {
   resourceUrl: string;
   /** Catalog-declared method or null (undeclared → probed with GET, §6.1). */
@@ -178,6 +196,80 @@ function parseEnvelope(
   return { accepts: null, dialect: "unpayable", source: "none" };
 }
 
+/**
+ * 封筒が読めなかった理由を、記録できる範囲で具体にする（2026-09-29 監査 5 周目）。
+ * 以前は accepts_invalid の一語だけで、売り手にも第三者にも「どの項目がどう不正か」が分からなかった。
+ * 判定には使わない（判定は parseEnvelope の結果だけ）。値は公開頁の 1 行説明と方法論の表に出る。
+ *
+ *   header: PAYMENT-REQUIRED ヘッダ（v2）の状態  absent | not_base64_json | no_accepts_array | accepts_empty | accepts_unusable
+ *   body:   本文（v1/v2）の状態                empty | not_json | no_accepts_array | accepts_empty | accepts_unusable
+ *   missing: 本文（無ければヘッダ）の先頭の accept に欠けていた項目（amount|maxAmountRequired・payTo・asset）
+ */
+export type EnvelopeDiagnosis = {
+  header: "absent" | "not_base64_json" | "no_accepts_array" | "accepts_empty" | "accepts_unusable" | "ok";
+  body: "empty" | "not_json" | "no_accepts_array" | "accepts_empty" | "accepts_unusable" | "ok";
+  missing?: string[];
+};
+
+function acceptMissing(raw: unknown): string[] {
+  const rec = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : null;
+  if (!rec) return ["accept is not an object"];
+  const miss: string[] = [];
+  if (typeof rec.amount !== "string" && typeof rec.maxAmountRequired !== "string") miss.push("amount");
+  if (typeof rec.payTo !== "string" && typeof rec.recipient !== "string") miss.push("payTo");
+  if (typeof rec.asset !== "string") miss.push("asset");
+  return miss;
+}
+
+function diagnoseCandidate(value: unknown): { state: "no_accepts_array" | "accepts_empty" | "accepts_unusable" | "ok"; missing?: string[] } {
+  const rec = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+  if (!rec || !Array.isArray(rec.accepts)) return { state: "no_accepts_array" };
+  if (rec.accepts.length === 0) return { state: "accepts_empty" };
+  const missing = acceptMissing(rec.accepts[0]);
+  return missing.length > 0 ? { state: "accepts_unusable", missing } : { state: "ok" };
+}
+
+export function diagnoseEnvelope(headers: Headers, bodyText: string): EnvelopeDiagnosis {
+  let header: EnvelopeDiagnosis["header"] = "absent";
+  let headerMissing: string[] | undefined;
+  const h = headers.get("PAYMENT-REQUIRED");
+  if (h) {
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(Buffer.from(h, "base64").toString("utf8"));
+    } catch {
+      header = "not_base64_json";
+    }
+    if (header !== "not_base64_json") {
+      const d = diagnoseCandidate(decoded);
+      header = d.state;
+      headerMissing = d.missing;
+    }
+  }
+  let body: EnvelopeDiagnosis["body"] = "empty";
+  let bodyMissing: string[] | undefined;
+  if (bodyText.trim() !== "") {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(bodyText);
+    } catch {
+      body = "not_json";
+    }
+    if (body !== "not_json") {
+      const d = diagnoseCandidate(parsed);
+      body = d.state;
+      bodyMissing = d.missing;
+    }
+  }
+  const missing = bodyMissing ?? headerMissing;
+  return { header, body, ...(missing ? { missing } : {}) };
+}
+
+/** 突き合わせに使った 402 側の値（先頭 4 件）。price/metadata の不一致の説明に使う。 */
+function offeredSummary(accepts: readonly EnvelopeAccept[]) {
+  return accepts.slice(0, 4).map((a) => ({ amount: String(a.amount), asset: a.asset, network: toCaip2(a.network) ?? a.network, payTo: a.payTo }));
+}
+
 const lower = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v.toLowerCase() : null);
 
 export async function probeEndpoint(
@@ -272,19 +364,26 @@ export async function probeEndpoint(
   // slice すると上限が何も守らない）。abort タイマーも本文読み取りが
   // 終わるまで張ったままにする——AbortController はヘッダまでしか効かない
   // ので、先に解除すると遅いボディ送出を無制限に待てる（l1-runner と同じ欠陥）。
+  // 上限＋1 バイトまで読み、上限を超えたか（封筒を読み切れなかったか）を知る。UTF-8 の途中で
+  // 切れた末尾は U+FFFD（3 バイト）に置き換わるので、切れたときの byteLength は必ず上限を超える。
   let bodyText = "";
   try {
-    bodyText = await readBodyCapped(response, 4_000);
+    bodyText = await readBodyCapped(response, L0_BODY_CAP_BYTES + 1);
   } catch {
     bodyText = "";
   } finally {
     clearTimeout(timer);
   }
+  const bodyTruncated = Buffer.byteLength(bodyText, "utf8") > L0_BODY_CAP_BYTES;
+  if (bodyTruncated) bodyText = bodyText.slice(0, L0_BODY_CAP_BYTES);
   const meta: Record<string, unknown> = {
     status: response.status,
     contentType: response.headers.get("content-type"),
     server: response.headers.get("server"),
     bodyHead: bodyText.slice(0, 500),
+    // 2026-09-29: 読んだ本文の大きさ（上限で切ったかどうか）。accepts_invalid の説明に使う。
+    bodyBytes: Math.min(Buffer.byteLength(bodyText, "utf8"), L0_BODY_CAP_BYTES),
+    ...(bodyTruncated ? { bodyTruncated: true } : {}),
     client: UA,
     method,
     ...(options.recheck ? { route: "recheck_same_egress" } : {}),
@@ -313,7 +412,22 @@ export async function probeEndpoint(
   // path_template と同じ原則（我々が正しく組めない要求の 4xx は売り手の不履行ではない）。
   // x402 の出どころは従来どおり no_402 の fail。判定はこの関数の中で完結するので、通常測定・
   // 異議の再測定・demo・公開キューのどの経路でも同じ結果になる。
-  if (expectMpp && REQUEST_SHAPE_HTTP.has(response.status) && !response.headers.get("www-authenticate")) {
+  //
+  // 2026-09-29 監査 5 周目: x402 の出どころでも、**未払いの POST**（本文は空の `{}`）への 400/422 は
+  // 同じ扱いにする。L1 は「宣言入力を送らなかった失敗は数えない」（inconclusive）ので、L0 だけが
+  // 同じ事実を売り手の fail にしていた（jpverify・grov.fun 等）。宣言の本文を組んで送る案は採らない:
+  // 2026-09-18 の独立レビューのとおり、ハンドラが受理する本文は、壁が支払いを求めなければ売り手の
+  // 処理（sign-up・SMS など）を実行させうる。L0 は 1 要求・副作用なしのまま測れなかったと書く。
+  // GET への 400/422 は従来どおり no_402 の fail（GET は本文を持たず、壁は問い合わせの前に立つ）。
+  // 支払いの challenge（WWW-Authenticate: Payment / PAYMENT-REQUIRED）を載せた 400 は壁が支払いを
+  // 名乗っているので、この扱いに入れない。
+  const requestShapeCandidate = expectMpp || method === "POST";
+  if (
+    requestShapeCandidate &&
+    REQUEST_SHAPE_HTTP.has(response.status) &&
+    !response.headers.get("www-authenticate") &&
+    !response.headers.get("payment-required")
+  ) {
     return {
       method,
       verdict: "unverified",
@@ -327,7 +441,9 @@ export async function probeEndpoint(
       failReason: REQUEST_SHAPE_REASON,
       rawResponseMeta: {
         ...meta,
-        detail: "the wall validated the shape of the request before asking for payment; vet402 does not guess a request body, so this endpoint has not been measured",
+        detail: expectMpp
+          ? "the wall validated the shape of the request before asking for payment; vet402 does not guess a request body, so this endpoint has not been measured"
+          : "the unpaid POST carried an empty JSON body and the endpoint rejected the input before asking for payment; vet402 does not guess a request body, so this endpoint has not been measured",
       },
     };
   }
@@ -393,6 +509,27 @@ export async function probeEndpoint(
   const accepts = envelope.accepts;
   if (!accepts) {
     const x402Only = "x402Envelope" in envelope && envelope.x402Envelope === true;
+    if (!x402Only && envelope.dialect !== "mpp") meta.envelope = diagnoseEnvelope(response.headers, bodyText);
+    // 2026-09-29: 本文が上限を超えて切れ、封筒がどこからも読めなかった。壊れているのか読み切って
+    // いないのかを区別できないので、売り手の fail にしない。
+    if (bodyTruncated && !x402Only && envelope.dialect !== "mpp") {
+      return {
+        method,
+        verdict: "unverified",
+        dialect: null,
+        httpStatus: 402,
+        has402Challenge: true,
+        acceptsValid: null,
+        priceConsistent: null,
+        metadataConsistent: null,
+        latencyMs,
+        failReason: BODY_OVER_CAP_REASON,
+        rawResponseMeta: {
+          ...meta,
+          detail: `the 402 body is larger than the ${L0_BODY_CAP_BYTES} bytes vet402 reads and no PAYMENT-REQUIRED header was readable, so the envelope was not read in full`,
+        },
+      };
+    }
     return {
       method,
       verdict: "fail",
@@ -442,6 +579,17 @@ export async function probeEndpoint(
           (declaredNetwork === null || toCaip2(a.network) === declaredNetwork),
       )
     : null;
+
+  // 2026-09-29: 不一致のときは、何と何を比べたかを残す（公開頁の 1 行説明に出す）。
+  if (priceConsistent === false || metadataConsistent === false) {
+    meta.declared = {
+      amount: target.priceAmount,
+      asset: target.priceAsset,
+      network: declaredNetwork ?? target.network,
+      payTo: target.payTo,
+    };
+    meta.offered = offeredSummary(accepts);
+  }
 
   if (priceConsistent === false) {
     return {

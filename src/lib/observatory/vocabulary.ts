@@ -64,7 +64,7 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "fail",
     group: "l0",
     definition:
-      `fail means an L0 probe contradicted the catalog declaration: no 402, a DNS/TLS/timeout failure, an unparseable challenge, or a price or receiving address that disagrees with the catalog. It is published only after ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH} consecutive failing probes, because one sample cannot tell a dead endpoint from a transient network condition — including ours.`,
+      `fail means an L0 probe contradicted the catalog declaration: no 402, a DNS, timeout or connection failure, a challenge with no payable accept, or a price or receiving address that disagrees with the catalog. It is published only after ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH} consecutive failing probes, because one sample cannot tell a dead endpoint from a transient network condition — including ours.`,
   },
   {
     term: "unverified",
@@ -82,7 +82,7 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "request_shape",
     group: "l0",
     definition:
-      "request_shape means an MPP endpoint answered 400 or 422 with no payment challenge: the wall validated the shape of the request before asking for payment. vet402 does not guess a request body or query — an L0 probe is one request with an empty JSON body at most — so the endpoint has not been measured and the probe is recorded unverified rather than as a failure.",
+      "request_shape means an MPP endpoint, or any endpoint probed with an unpaid POST, answered 400 or 422 with no payment challenge: the endpoint validated the input before asking for payment. vet402 does not guess a request body or query — an L0 probe is one request with an empty JSON body at most — so the endpoint has not been measured and the probe is recorded unverified rather than as a failure.",
   },
   {
     term: "no_mpp_challenge",

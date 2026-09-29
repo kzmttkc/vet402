@@ -331,7 +331,11 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                     </td>
                     <td className="num">{p.httpStatus ?? "—"}</td>
                     <td className="num">{p.latencyMs === null ? "—" : `${p.latencyMs} ms`}</td>
-                    <td>{p.failReason ?? "—"}</td>
+                    <td>
+                      {p.failReason ?? "—"}
+                      {/* 2026-09-29 監査 5 周目: 何が不正だったか（記録済みの範囲）を 1 行で。定義は方法論の表。 */}
+                      {p.reasonDetail && <span className="block text-xs text-brand-lift">{p.reasonDetail}</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>

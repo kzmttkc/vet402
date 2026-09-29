@@ -13,11 +13,18 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-29 JST（5・L0）— 402 本文の読み取り上限の誤り（strale）・L0 理由コードの定義と記録頁の 1 行・未払い POST の 400/422 は unverified（監査 5 周目・ブランチ `fix/r5-l0`・未 push）
+
+- **何を**: `src/lib/observatory/l0-probe.ts`: ①402 の本文を読む上限を 4,000 → 64 KiB（`L0_BODY_CAP_BYTES`）。上限を超えて封筒が読めないときは fail でなく unverified(`body_over_cap`)。meta に `bodyBytes`（新しい計器の行の印）・`bodyTruncated` ②accepts_invalid のとき meta.envelope（ヘッダ／本文の状態と、先頭の accept に欠けた項目）、price/metadata_mismatch のとき meta.declared と meta.offered を残す ③未払いの POST（本文 `{}`）への 400/422（支払いの challenge 無し）は出どころを問わず unverified(`request_shape`)。GET への 400/422 は従来どおり no_402。新規 `l0-reasons.ts`（理由コードの定義表と 1 行説明）。`reader.ts` の getEndpointDetail が probes に `reasonDetail` を足す（meta の必要な鍵だけを読む）。記録頁（`/observatory/e/*`）の Reason 列に 1 行。方法論 §2 に理由コードの表と request_shape の拡張、語彙の fail / request_shape を修正（TLS を fail と書いていた誤りも）。
+- **なぜ**: api.strale.io の v1 出品 7 件（pep-check 等）が 08-27 以降毎回 accepts_invalid（計 60 行）→ 判定 API で BLOCK。実測（2026-09-29、未払い GET 各 1 回）で本文は 4,290〜7,451 バイト、PAYMENT-REQUIRED ヘッダ無し、全文なら strict でも accept が読める。4,000 バイトで切った JSON が閉じなかった＝計器の誤り（poolproof.ru 4,522 バイト・api.truthbear.co 25,189 バイトも同じ）。POST の件は L1（送らなかった入力の失敗は数えない）と L0 が食い違っていた。宣言の本文を送る案は 2026-09-18 独立レビューの理由（壁が無ければ売り手の処理を実行させうる）で採らない。
+- **影響**: 過去の行は書き換えない。次のプローブが新しい行を足し公開判定が変わる。記録頁は旧計器の accepts_invalid（本文 500 字以上で封筒らしいもの）と POST の 400/422 に「旧計器の行で、今の規則では…」と 1 行で出す。本番（SELECT のみ）: 最新が accepts_invalid の active 176 件のうち切り詰めの疑い（先頭 500 字が埋まり x402Version/accepts を含む）76 件・公開 fail 20 件（strale 7 を含む）→ pass に戻る見込み。最新が POST の 400/422 の no_402 は active 221 件（公開 fail 215）→ unverified(request_shape)。**判定のコードは変えていない**ので、この 215 件は BLOCK のまま理由が `l0_fail` → `l0_unverified`＋`l0_unverified_request_shape` に変わるだけ。直前が pass の 4 件は、今は確かめられた 1 回の fail で WARN だが、次のプローブ後は unverified で BLOCK になる（判定側で request_shape を L1 の inconclusive と同じ扱いにするかは判定の担当の判断）。訂正ログは未記入（書くなら path_template と同じ作法の別スクリプト）。
+
 ## 2026-09-29 JST（5 周目・中程度）— アクセシビリティ（WCAG 2.2）6 件と MCP の語 3 件（ブランチ `fix/r5-a11y-mcp`・未 push）
 
 - **何を**: ①`/docs/api` の「Run this request」を disabled にせず `aria-busy`（フォーカスが body に落ちない）、結果の行を常設の `role="status"` に②結果の `<pre>` に `tabindex=0`・`role=region`・`aria-label`③`/observatory` の表の L1 見出しをセルと同じ順「L1 delivered · settled / attempts」（2 行・列幅は旧見出しより狭い）にし、各セルの意味を sr-only の文で読み上げ（見える数字は aria-hidden）④通知・異議フォームの送信ボタンを常に押せるように。欄を離れたとき・送信時に誤りを欄の下へ出し `aria-invalid`・`aria-describedby` で結ぶ、最初の誤りの欄へフォーカス、文字数カウンタは label の外で textarea の説明に⑤`/sellers` の上限超過を text/plain から HTML の 429 頁に（lang・title・viewport・待ち秒数・戻る導線 3 本・script なしの CSP）。枠の判定不能（DB 不通）は 503 と別の文言⑥モバイルのメニューボタンに `aria-label`（Menu / Close menu）と `aria-controls`（閉じても nav は DOM に残し `hidden`）⑦MCP: `not_found`・`invalid_query`・`invalid_resource_id`・`payer_required` を既知の語にし固定の説明を添える（「not in the catalog」「url must be an absolute https URL」）。失敗の判定は、カタログに無い → `resource_uncatalogued`、入力の誤り → `invalid_input`（どちらも `lookup_failed` を付けない）⑧MCP の `refuse_reasons` から良い側の語（l0_pass・l1_delivered・l2_conform・l2_undeclared・history_ok・erc8004_registered・l1_waived_by_operator・allowed_by_caller_policy）を除く。未知の語は残す。全部の語は `measurement.reason_codes` にそのまま⑨`check_resource_decision` は判定の `verified_terms` があれば summary に 1 文（payTo・amount・asset・network。印字できる短い ASCII と数だけ）。キーが無ければ summary は不変。
 - **なぜ**: 2026-09-29 監査 5 周目の中程度の指摘（WCAG 2.2 と、SDK で組み込む開発者の立場）。
 - **影響**: MCP の dist を再ビルドしてコミット（npm には出していない）。MCP の応答の `refuse_reasons` が短くなる（良い側の語が消える）。`/api/**` の 429 は JSON のまま。`verified_terms` を判定に足す担当は、キーの形が上の鍵名（`pay_to`/`payTo`・`amount`・`amount_usd`・`asset`/`asset_symbol`・`network`）と違えば `packages/mcp-server/src/resource-decision.ts` の `TERM_KEYS` に足す。
+
 
 ## 2026-09-29 JST（4）— 払う前の判定の規則を 2026-09-29.2 に（敵対的監査 4 周目＋独立レビュー BLOCK の修正・ブランチ `fix/r4-decision-rules`・未 push、`e0b40b22`・`664d2a03` と後続 1 コミット）
 

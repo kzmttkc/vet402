@@ -148,10 +148,15 @@ test("MPP 400 / 422 with no Payment challenge → unverified request_shape, exac
   }
 });
 
-test("request_shape is scoped: Bazaar 400 stays no_402 fail; MPP 404 / 401 / 500 stay no_402 fail; a 400 that carries a Payment challenge stays no_402", async () => {
-  const bazaar = await probeEndpoint(target({ resourceUrl: "https://example.com/api/x", network: "eip155:8453", source: "cdp_bazaar" }), { fetchImpl: fake(400, {}, "{}") });
+// 2026-09-29 監査 5 周目: Bazaar の未払い POST（空の本文）への 400 も request_shape（L1 の「送らなかった
+// 入力の失敗は数えない」とそろえた）。GET への 400 は従来どおり no_402（tests/l0-reasons.test.ts も参照）。
+test("request_shape is scoped: Bazaar GET 400 stays no_402 fail (a Bazaar POST 400 is request_shape); MPP 404 / 401 / 500 stay no_402 fail; a 400 that carries a Payment challenge stays no_402", async () => {
+  const bazaar = await probeEndpoint(target({ resourceUrl: "https://example.com/api/x", method: "GET", network: "eip155:8453", source: "cdp_bazaar" }), { fetchImpl: fake(400, {}, "{}") });
   assert.equal(bazaar.verdict, "fail");
   assert.equal(bazaar.failReason, "no_402");
+  const bazaarPost = await probeEndpoint(target({ resourceUrl: "https://example.com/api/x", network: "eip155:8453", source: "cdp_bazaar" }), { fetchImpl: fake(400, {}, "{}") });
+  assert.equal(bazaarPost.verdict, "unverified");
+  assert.equal(bazaarPost.failReason, "request_shape");
   for (const status of [401, 404, 500]) {
     const r = await probeEndpoint(target(), { fetchImpl: fake(status, {}, "{}") });
     assert.equal(r.verdict, "fail", `status ${status}`);

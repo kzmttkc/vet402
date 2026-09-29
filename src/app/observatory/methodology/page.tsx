@@ -36,6 +36,9 @@ import { CENSUS_PER_RUN, DAILY_BUDGET_USD } from "@/lib/observatory/budget";
 import { REQUIRED_CONFIRMATIONS } from "@/lib/observatory/settlement-verify";
 import { LATE_SETTLEMENT_BACKDATE_MINUTES, LATE_SETTLEMENT_WINDOW_MINUTES } from "@/lib/settlements/recover-late";
 import { L1_REQUEST_TIMEOUT_MS } from "@/lib/observatory/l1-timing";
+import { L0_REASON_CODES } from "@/lib/observatory/l0-reasons";
+import { L0_BODY_CAP_BYTES, L0_BODY_CAP_RAISED_ON } from "@/lib/observatory/l0-probe";
+import { TableScroll } from "@/components/site/TableScroll";
 
 const MAX_PER_PURCHASE_USD = Number(MAX_PER_PURCHASE_UNITS) / 1_000_000;
 
@@ -186,9 +189,9 @@ export default async function ObservatoryMethodologyPage() {
         <p className="doc-p">
           <strong>pass</strong> — the probe received 402 and the challenge was consistent with the
           catalog declaration. <strong>fail</strong> — the probe contradicted that: no 402 (any
-          other status), DNS/TLS/timeout failure, an unparseable challenge, or a challenge whose
-          price or receiving address contradicts the catalog; the specific reason code is always
-          recorded. <strong>unverified</strong> — we do not have grounds to publish either of
+          other status), a DNS, timeout or connection failure, a challenge with no payable accept,
+          or a challenge whose price or receiving address contradicts the catalog; the specific
+          reason code is always recorded, and each code is defined in the table below. <strong>unverified</strong> — we do not have grounds to publish either of
           the other two yet. That covers an entry that does not declare enough to measure (no
           declared method: probing with a guessed method reports false deaths), an entry the
           rolling probe schedule has not reached, an entry whose failing probe has not met the
@@ -246,12 +249,57 @@ export default async function ObservatoryMethodologyPage() {
           request before asking for payment. vet402 does not guess a request body or query: an L0
           probe stays one request, with an empty JSON body at most, so the endpoint has not been
           measured and the probe is recorded <code>unverified</code> with this reason — the same
-          principle as <code>path_template</code>. MPP probes send{" "}
+          principle as <code>path_template</code>. Since {L0_BODY_CAP_RAISED_ON} the same applies
+          to any unpaid <code>POST</code>: the probe carries <code>{"{}"}</code>, and a{" "}
+          <code>400</code> or <code>422</code> with no payment challenge says the endpoint
+          checked an input we did not send, which is how paid requests are already treated
+          (section on request bodies below). We chose this over sending the declared body: a body
+          the seller&apos;s handler accepts could make it run (a sign-up, a message) if the wall
+          did not ask for payment first, and an L0 probe must not cause work. Earlier probes
+          recorded those answers as a <code>no_402</code> fail; the rows stay as they were, and
+          the endpoint&apos;s page says so next to each one. MPP probes send{" "}
           <code>Accept-Payment: tempo/charge</code>, the header the reference client sends, because
           some walls answer with plain content without it. An MPP endpoint that answers 402 with an
           x402 envelope and no Payment challenge is a failure with reason{" "}
           <code>no_mpp_challenge</code>: the wall is not one an MPP client can pay.
         </p>
+        <h3 className="doc-p font-semibold" id="l0-reasons">
+          L0 reason codes
+        </h3>
+        <p className="doc-p">
+          A probe that is not a <code>pass</code> records one of these codes. The
+          endpoint&apos;s page prints the code with one line saying what was wrong, from what the
+          probe recorded: which part of the envelope was missing, or the declared and the offered
+          values side by side. Since {L0_BODY_CAP_RAISED_ON} a probe reads up to{" "}
+          {(L0_BODY_CAP_BYTES / 1024).toLocaleString("en-US")}&nbsp;KB of the <code>402</code> body.
+          Before that it read 4,000 bytes, so an x402 v1 envelope longer than that (v1 carries the
+          envelope in the body, not in a header) could not be parsed and was recorded as <code>accepts_invalid</code>: a
+          measuring error on our side, not the seller&apos;s. Those rows are kept and marked on the
+          endpoint&apos;s page; the next probe replaces the published verdict.
+        </p>
+        <TableScroll label="L0 reason codes">
+          <table className="fact-table">
+            <caption className="sr-only">L0 reason codes</caption>
+            <thead>
+              <tr>
+                <th scope="col">Code</th>
+                <th scope="col">Verdict</th>
+                <th scope="col">Meaning</th>
+              </tr>
+            </thead>
+            <tbody>
+              {L0_REASON_CODES.map((r) => (
+                <tr key={r.code}>
+                  <td>
+                    <code>{r.code}</code>
+                  </td>
+                  <td>{r.verdict}</td>
+                  <td>{r.meaning}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
         <p className="doc-p">
           <strong>
             That principle is about the request, not about the URL, so it applies to the body and

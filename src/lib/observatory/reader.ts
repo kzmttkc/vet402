@@ -25,6 +25,7 @@ import {
 } from "@/lib/db/schema";
 import { CATALOG_SOURCE } from "./catalog-source";
 import { publishedVerdict, MIN_CONSECUTIVE_FAILS_TO_PUBLISH } from "./l0-probe";
+import { l0ReasonDetail, type L0ProbeDetail } from "./l0-reasons";
 import { isOperatorPayTo } from "./operator";
 import { isOperatorExclusionConfigured, operatorExclusionPredicate, operatorMatchPredicate } from "./operator-sql";
 import { chainLabel, isTestnet, toCaip2 } from "./chains";
@@ -303,6 +304,8 @@ export type EndpointDetail = {
     httpStatus: number | null;
     latencyMs: number | null;
     failReason: string | null;
+    /** 2026-09-29: 理由の 1 行説明（l0-reasons.ts l0ReasonDetail）。pass・記録なしは null。 */
+    reasonDetail: string | null;
   }[];
   events: {
     eventType: string;
@@ -477,6 +480,12 @@ export async function getEndpointDetail(id: string): Promise<EndpointDetail> {
         httpStatus: x402L0Probes.httpStatus,
         latencyMs: x402L0Probes.latencyMs,
         failReason: x402L0Probes.failReason,
+        // 2026-09-29: 理由の説明に要る記録だけを取り出す（本文の先頭そのものは出さない）。
+        envelope: sql<L0ProbeDetail["envelope"]>`${x402L0Probes.rawResponseMeta}->'envelope'`,
+        declared: sql<L0ProbeDetail["declared"]>`${x402L0Probes.rawResponseMeta}->'declared'`,
+        offered: sql<L0ProbeDetail["offered"]>`${x402L0Probes.rawResponseMeta}->'offered'`,
+        legacyProbe: sql<boolean | null>`NOT (coalesce(${x402L0Probes.rawResponseMeta}, '{}'::jsonb) ? 'bodyBytes')`,
+        legacyLongEnvelope: sql<boolean | null>`(length(${x402L0Probes.rawResponseMeta}->>'bodyHead') >= 500 AND (${x402L0Probes.rawResponseMeta}->>'bodyHead') ~ '"(x402Version|accepts)"')`,
       })
       .from(x402L0Probes)
       .where(eq(x402L0Probes.endpointId, id))
@@ -555,7 +564,11 @@ export async function getEndpointDetail(id: string): Promise<EndpointDetail> {
       // 2026-09-29 敵対的監査 4 周目: 経過 24 時間で丸めていたので、09-28 16:40 UTC の probe を 09-29 00:22 UTC に
       // 「today」と出していた。UTC の暦日の差で数える（09-28 の probe は 09-29 に 1）。
       lastProbedAgeDays: probes[0]?.probedAt ? utcCalendarDaysBetween(probes[0].probedAt, new Date()) : null,
-      probes,
+      // 2026-09-29: 理由の 1 行だけを渡す（取り出した記録そのものは頁に渡さない）。
+      probes: probes.map(({ envelope, declared, offered, legacyProbe, legacyLongEnvelope, ...p }) => ({
+        ...p,
+        reasonDetail: l0ReasonDetail({ ...p, envelope, declared, offered, legacyProbe, legacyLongEnvelope }),
+      })),
       events,
     };
   } catch (error) {
