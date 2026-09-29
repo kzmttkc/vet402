@@ -38,6 +38,7 @@ import { LATE_SETTLEMENT_BACKDATE_MINUTES, LATE_SETTLEMENT_WINDOW_MINUTES } from
 import { L1_REQUEST_TIMEOUT_MS } from "@/lib/observatory/l1-timing";
 import { L0_REASON_CODES } from "@/lib/observatory/l0-reasons";
 import { L0_BODY_CAP_BYTES, L0_BODY_CAP_RAISED_ON } from "@/lib/observatory/l0-probe";
+import { RULE_CHANGE_PRIORITY_PER_HOST } from "@/lib/observatory/l0-rule-change";
 import { TableScroll } from "@/components/site/TableScroll";
 import { SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS, SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS } from "@/lib/sellers/fix-modes";
 
@@ -277,6 +278,30 @@ export default async function ObservatoryMethodologyPage() {
           envelope in the body, not in a header) could not be parsed and was recorded as <code>accepts_invalid</code>: a
           measuring error on our side, not the seller&apos;s. Those rows are kept and marked on the
           endpoint&apos;s page; the next probe replaces the published verdict.
+        </p>
+        {/* 2026-09-29 監査 6 周目: 旧規則の行に乗った公開 fail を、次のプローブ任せにせず先に測り直す（l0-rule-change.ts）。 */}
+        <p className="doc-p" id="l0-rule-change">
+          <strong>Re-measuring what the earlier rules published.</strong> A published fail whose
+          two newest probes include a row recorded under the rules before {L0_BODY_CAP_RAISED_ON}{" "}
+          &mdash; an unpaid <code>POST</code> answered <code>400</code> or <code>422</code> counted
+          as <code>no_402</code>, an <code>accepts_invalid</code> read from a body cut at 4,000
+          bytes, or a <code>price_mismatch</code> or <code>metadata_mismatch</code> recorded
+          without the values compared &mdash; is measured again first. The scheduled C1 probe run
+          puts those endpoints ahead of the rest of its list, up to {RULE_CHANGE_PRIORITY_PER_HOST} per host per
+          run with the hosts taken in turn, and a one-off pass re-probes the rest at no more than
+          one request per second to any one domain. We do not re-label the recorded rows instead:
+          they do not hold what the current rules look at (whether a <code>400</code> carried a
+          payment challenge, how long the body was, the values compared). The old rows stay. When
+          the re-probe changes the published verdict, the change is written to the{" "}
+          <Link href="/corrections" className="underline">
+            correction log
+          </Link>{" "}
+          with the reason <code>reverify</code> (<code>after.trigger</code>{" "}
+          <code>rule_change_reprobe</code>), in the same database statement as the new probe row.
+          The rule for publishing a fail is unchanged &mdash; the two newest probes both failed
+          &mdash; so an endpoint that fails again under the current rules stays a fail, now with
+          the values compared on its page, and keeps that priority until both of its newest probes
+          were recorded under the current rules.
         </p>
         <TableScroll label="L0 reason codes">
           <table className="fact-table">

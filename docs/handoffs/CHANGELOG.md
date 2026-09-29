@@ -13,11 +13,19 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-29 JST（6・L0）— 旧規則の公開 L0 fail を今の計器で測り直す（cron C1 の最優先・一度きりのスクリプト・訂正ログ）（監査 6 周目・ブランチ `fix/r6-l0`・未 push）
+
+- **何を**: 新規 `src/lib/observatory/l0-rule-change.ts`: 見出しの fail（新しい 2 行がどちらも fail）が 09-29 の変更前の規則の行に乗っている出品を見分ける（JS と SQL の同じ表: 未払い POST の 400/422 を no_402 とした行〈meta に bodyBytes 無し〉・比べた値〈meta.declared〉の無い price/metadata_mismatch・4,000 バイトで切った疑いの accepts_invalid）。`coverage.ts` の `l0OrderBy('c1')` はそれを最優先（1 ホスト 1 回 25 件まで・ホストを交互に）、`probe-runner.ts` はどの階層でもそれを測り直して公開判定が変われば**プローブ行と訂正ログを 1 文で**書く（`updateWithCorrection`・reason `reverify`・after.trigger `rule_change_reprobe`・meta.trigger/reprobeBy/supersedes）。summary に `ruleChangeReprobed`・`ruleChangeCorrected`。一度きりの `scripts/reprobe-legacy-l0-fails.ts`（`npx tsx scripts/reprobe-legacy-l0-fails.ts`・既定 dry-run・`--apply`・登録ドメインごとに同時 1 件・開始間隔 1 秒以上・`--limit` 既定 3,000・`--max-minutes` 既定 30・最新プローブが 6 時間以内の出品は飛ばす・Ctrl-C で止める・再実行＝続き）。方法論 §2 に節（`#l0-rule-change`）、訂正ログの reverify の説明に 1 文。
+- **なぜ**: 監査 6 周目（名指しされた売り手の弁護士）: 記録頁は各行に「今の規則では fail でない」と書き、見出しは次のプローブまで fail。記録済みの行の再分類（案 a）は採らない——旧い行は今の規則が見るもの（400 に支払いの challenge が載っていたか・本文の長さ・比べた値）を持たず、再分類を公開判定に入れると判断 API と export の定義が別の答えを出す。
+- **影響（本番 SELECT・2026-09-29 15:30 JST）**: 公開 fail 2,637（掲載中）のうち旧規則の行に乗るもの **2,424**（post_400_422_no_402 216・mismatch_values_unrecorded 2,189・accepts_invalid_body_cut 20、重複あり）。掲載終了は 1,542（対象外）。149 ドメイン、最大は halowerk.com 913・rallylive.ca 820 → スクリプト 1 回の見積もり約 16〜18 分。cron の C1 は 1 回あたり約 900 件をこの組で消費する（日次枠 3,000 は不変）。試し打ち 7 件（書き込みなし）: POST 400 の 3 件 → pass 2・request_shape 1、不一致 2 件 → pass 1・price_mismatch（値つき）1、accepts 切れ 2 件 → pass 2。
+- **本番の順序**: このブランチの配備 → `npx tsx scripts/reprobe-legacy-l0-fails.ts`（dry-run で件数確認）→ `--apply`。今の規則でまた fail の出品は 2 行目が旧規則の行のまま残る（`still_resting_on_a_legacy_row`）ので、6 時間以上あけてもう一度流すか、C1 が拾う。
+
 ## 2026-09-29 JST（6）— 同じ数・同じ語を面の間で揃える（監査 6 周目・整合性の監査人・中・低・ブランチ `fix/r6-consistency`・未 push）
 
 - **何を**: ①% の丸めを `src/lib/util/pct.ts`（`pct1` / `formatPct1`）1 か所に。/observatory の判定バーは丸めの残りを最大の段へ寄せていて pass 61.1%、/state は 61.0%（21,268/34,840）だった。バーも各段を独立に丸める（描画幅は丸める前の比で合計 100）。/state・トップ・/accuracy・reader・coverage-report も同じ関数。②/accuracy の「7 days to <日付> (UTC)」を「past 168 hours to <YYYY-MM-DD HH:MM> UTC」に（SQL は `now() - interval '7 days'` のまま）。③llms.txt の Freshness 節を面ごとの最大の古さの表に（`src/lib/observatory/freshness.ts` が正典。s-maxage＋stale-while-revalidate: state・decisions・l0/sellers export 45 分、accuracy・purchases 30 分、export.csv・history・anchors・backtest・concentration 3 時間、census 20 分、鍵なし object 読み 6 分、HTML の集計と判定 API 5 分、llms 1 時間）。llms-full.txt にも同じ行の Freshness 節。「cached up to 15 minutes」（l0/sellers export）と census の「cached 5 min」を直した。④held の語を分けた: /state は「held（vet402's hold）＝ledger の `held_reason` がある行」と「Awaiting on-chain verification（`settle_claimed`・`held_reason` は空）」。llms.txt は判定の `l1_not_counted_held` が両方を数えることと、export の `held_reason` が照合待ちで空であることを書いた（コード名・計算は不変）。⑤/impact は「signed attempts with a final status」、/state は「attempts counted in the delivery rate」（分母の件数も併記）。⑥/corrections の「12:51 JST」を「03:51 UTC」に。⑦anchors の日境界を `utcDayStartOf(day)`、coverage の 7 日前を `to_char(UTC_TODAY - 7, 'YYYY-MM-DD')`（`UTC_DAY_MINUS_7`）に。history の窓（metrics-rollup）はもとから UTC 明示。
 - **なぜ**: 2026-09-29 監査 6 周目（整合性の監査人）の中・低 7 件。同じ数が頁ごとに違って見える、窓や鮮度の語が計算と合わない、同じ語が別の集合を指す。
 - **影響**: 計算の定義は不変。anchors・coverage は本番（TimeZone=GMT）で旧い式と同じ行・同じ日を返すことを `tests/audit-r6-consistency.pg.test.ts` が固定（Asia/Tokyo 等でも同じ結果・旧い式はずれる＝計器の確認）。`canonicalDayPayload` をテスト用に export。`shareSegments` の `pct` は合計が 99.9〜100.1 になりうる（`widthPct` の合計は 100 のまま）。`tests/llms-txt-current.test.ts` の Freshness の検査は新しい行の形に合わせた。/docs/api の「cached up to 15 minutes」2 か所と、/decisions の「final outcome」（どちらも別担当の面）は残っている。
+
 
 ## 2026-09-29 JST（5）— 売り手頁と判定 API の食い違いの見せ方・記録頁の noindex・売り手の名指した tx の期限（敵対的監査 5 周目・ブランチ `fix/r5-seller-pages`・未 push）
 

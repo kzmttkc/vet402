@@ -17,6 +17,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { SETTLEMENT_DAY, UTC_TODAY, withDailyFallback } from "@/lib/settlements/rollup";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
+import { RULE_CHANGE_PRIORITY_PER_HOST } from "./l0-rule-change";
 
 export type CoverageTier = "C0" | "C1" | "C2" | "C3" | "C4";
 
@@ -123,18 +124,27 @@ export function l0TierWhere(tier: "c1" | "c2", daily = true): SQL {
 }
 
 /**
- * L0 候補の並び（x402_endpoints e + LATERAL lp: last_probed_at / probe_count / last_verdict）。
+ * L0 候補の並び（x402_endpoints e + LATERAL lp: last_probed_at / probe_count / last_verdict /
+ * rule_change_reprobe）。
  *
  * c1（2026-09-02 是正 B）: 「プローブ 1 回で最新が fail」→ 未測定 → 最終プローブが古い順。
  * 本番実測（9/2 19:05 JST）: 最新が fail の 9,769 件のうち 9,713 件はプローブが 1 回だけで、
  * 公開判定（2 回連続 fail・publishedVerdict）が出せなかった。日次枠（3,000）は変えず、
  * 2 回目を先に測って判定を確定させる。同じ組の中は古い順。
+ *
+ * 2026-09-29 監査 6 周目: その前に「見出しの fail が旧規則のプローブ行に乗っている出品」
+ * （l0-rule-change.ts・lp.rule_change_reprobe）を置く。1 回の実行で優先するのは 1 ホスト
+ * RULE_CHANGE_PRIORITY_PER_HOST 件まで（本番では 1 ホストに 820 件ある）、組の中はホストごとの
+ * 順位で並べてホストを交互にする——並行 40 の worker が同じ売り手へ一度に向かわないため。
+ * 上限を超えた分は通常の並びに戻る（一度に掃くのは scripts/reprobe-legacy-l0-fails.ts）。
  * c2 / all: 従来どおり古い順（未測定が先）。
  */
 export function l0OrderBy(tier: "c1" | "c2" | "all"): SQL {
   const oldestFirst = sql`lp.last_probed_at ASC NULLS FIRST, e.first_seen_at ASC`;
   if (tier !== "c1") return oldestFirst;
-  return sql`CASE WHEN lp.probe_count = 1 AND lp.last_verdict = 'fail' THEN 0 WHEN lp.last_probed_at IS NULL THEN 1 ELSE 2 END, ${oldestFirst}`;
+  const host = sql`lower(split_part(split_part(e.resource_url, '://', 2), '/', 1))`;
+  const hostRank = sql`row_number() OVER (PARTITION BY ${host}, lp.rule_change_reprobe ORDER BY ${oldestFirst})`;
+  return sql`CASE WHEN lp.rule_change_reprobe AND ${hostRank} <= ${RULE_CHANGE_PRIORITY_PER_HOST} THEN 0 WHEN lp.probe_count = 1 AND lp.last_verdict = 'fail' THEN 1 WHEN lp.last_probed_at IS NULL THEN 2 ELSE 3 END, CASE WHEN lp.rule_change_reprobe THEN ${hostRank} ELSE 0 END, ${oldestFirst}`;
 }
 
 /**

@@ -16,12 +16,16 @@ import { probeEndpoint, type ProbeResult } from "./l0-probe";
 import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { withDailyFallback } from "@/lib/settlements/rollup";
 import { l0OrderBy, l0TierWhere } from "./coverage";
+import { insertRuleChangeReprobe, needsRuleChangeReprobe, needsRuleChangeReprobeSql, readNewestProbeRows } from "./l0-rule-change";
 
 export type ProbeBatchSummary = {
   probed: number;
   pass: number;
   fail: number;
   unverified: number;
+  /** 旧規則の公開 fail を測り直した件数と、そのうち公開判定が変わって訂正ログに残した件数（2026-09-29）。 */
+  ruleChangeReprobed: number;
+  ruleChangeCorrected: number;
 };
 
 type Candidate = {
@@ -33,6 +37,8 @@ type Candidate = {
   priceAmount: string | null;
   priceAsset: string | null;
   source: string | null;
+  /** 見出しの fail が旧規則のプローブ行に乗っている（l0-rule-change.ts）。測り直しで公開判定が変われば訂正ログへ。 */
+  ruleChangeReprobe: boolean;
 };
 
 export async function runL0ProbeBatch(
@@ -58,19 +64,22 @@ export async function runL0ProbeBatch(
   // Order: see l0OrderBy — c1 puts single-probe fails first (so the published
   // verdict can be settled), then never-probed, then oldest-probed; c2/all are
   // oldest-probed-first (never-probed before that).
+  // 2026-09-29 監査 6 周目: 旧規則の公開 fail（lp.rule_change_reprobe）。c1 はこれを先頭に並べ、
+  // どの階層でも、これを測り直して公開判定が変われば訂正ログに残す（insertRuleChangeReprobe）。
   let candidates: Candidate[];
   try {
     // 候補 SQL は settlement_daily を読む（30 日窓が生行の保持期間へ縮まないため）。
     // 表がまだ無い環境では生行だけの式へ落とす（withDailyFallback）。
     const candidatesSql = (daily: boolean) => sql`
       SELECT e.id, e.resource_url, e.method, e.pay_to, e.network,
-             e.price_amount, e.price_asset, e.source
+             e.price_amount, e.price_asset, e.source, lp.rule_change_reprobe
       FROM x402_endpoints e
       LEFT JOIN LATERAL (
         SELECT max(p.probed_at) AS last_probed_at,
                count(*)::int AS probe_count,
                (SELECT p2.verdict FROM x402_l0_probes p2 WHERE p2.endpoint_id = e.id
-                  ORDER BY p2.probed_at DESC LIMIT 1) AS last_verdict
+                  ORDER BY p2.probed_at DESC LIMIT 1) AS last_verdict,
+               ${needsRuleChangeReprobeSql("e")} AS rule_change_reprobe
         FROM x402_l0_probes p WHERE p.endpoint_id = e.id
       ) lp ON true
       WHERE ${where(daily)}
@@ -92,13 +101,14 @@ export async function runL0ProbeBatch(
       priceAmount: (r.price_amount as string | null) ?? null,
       priceAsset: (r.price_asset as string | null) ?? null,
       source: (r.source as string | null) ?? null,
+      ruleChangeReprobe: r.rule_change_reprobe === true,
     }));
   } catch (error) {
-    if (isMissingSchemaError(error)) return { probed: 0, pass: 0, fail: 0, unverified: 0 };
+    if (isMissingSchemaError(error)) return { probed: 0, pass: 0, fail: 0, unverified: 0, ruleChangeReprobed: 0, ruleChangeCorrected: 0 };
     throw error;
   }
 
-  const summary: ProbeBatchSummary = { probed: 0, pass: 0, fail: 0, unverified: 0 };
+  const summary: ProbeBatchSummary = { probed: 0, pass: 0, fail: 0, unverified: 0, ruleChangeReprobed: 0, ruleChangeCorrected: 0 };
   let cursor = 0;
 
   // Small worker pool — polite to targets, bounded for the function's clock.
@@ -119,20 +129,34 @@ export async function runL0ProbeBatch(
         },
         { fetchImpl, timeoutMs },
       );
-      await db!.insert(x402L0Probes).values({
-        endpointId: c.id,
-        method: result.method,
-        verdict: result.verdict,
-        dialect: result.dialect,
-        httpStatus: result.httpStatus,
-        has402Challenge: result.has402Challenge,
-        acceptsValid: result.acceptsValid,
-        priceConsistent: result.priceConsistent,
-        metadataConsistent: result.metadataConsistent,
-        latencyMs: result.latencyMs,
-        failReason: result.failReason,
-        rawResponseMeta: result.rawResponseMeta,
-      });
+      // 書く直前の新しい行を読み直す（選定から時間が経っている・並行する c2 が書いたかもしれない）。
+      // その間に今の規則の行で片付いていれば、通常の行として書く（訂正ログの対象にしない）。
+      const prior = c.ruleChangeReprobe ? await readNewestProbeRows(db!, c.id) : null;
+      if (prior && needsRuleChangeReprobe(prior)) {
+        const written = await insertRuleChangeReprobe(db!, {
+          endpointId: c.id,
+          priorNewestFirst: prior,
+          result,
+          by: `cron_${tier}`,
+        });
+        summary.ruleChangeReprobed++;
+        if (written.corrected) summary.ruleChangeCorrected++;
+      } else {
+        await db!.insert(x402L0Probes).values({
+          endpointId: c.id,
+          method: result.method,
+          verdict: result.verdict,
+          dialect: result.dialect,
+          httpStatus: result.httpStatus,
+          has402Challenge: result.has402Challenge,
+          acceptsValid: result.acceptsValid,
+          priceConsistent: result.priceConsistent,
+          metadataConsistent: result.metadataConsistent,
+          latencyMs: result.latencyMs,
+          failReason: result.failReason,
+          rawResponseMeta: result.rawResponseMeta,
+        });
+      }
       // MPP（2026-09-17）: directory は受取先を載せない。宣言と一致した壁の受取先を、
       // まだ受取先を知らない行にだけ書く（既にある値は動かさない——「変わった提案」に
       // 見せないため。offer_stability は probe 行の metadata_consistent だけを見るので、
