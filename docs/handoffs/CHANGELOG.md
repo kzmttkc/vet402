@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-29 JST（4）— 払う前の判定の規則を 2026-09-29.2 に（敵対的監査 4 周目・ブランチ `fix/r4-decision-rules`・未 push、`e0b40b22` と後続 1 コミット）
+
+- **何を**: `src/lib/decision/`（rules・seller-facts・decide）。①決済済みで非空の 2xx が届かなかった行（`l1_paid_not_delivered`）を、30 日窓の最後の配達より後に 1 回で WARN・2 回以上で BLOCK ②配達はあるが数えた最新の試行が失敗なら WARN（`l1_latest_failed`）③署名が 30 日窓の外だけなら `l1_stale`（`l1_not_attempted` は一度も署名していないときだけ）④L0 の 1 回の fail は WARN（degraded も立てない）、2 回連続の fail で BLOCK ⑤ALLOW は最新の配達が 30 日以内のときだけ（`L1_FRESH_DAYS` = 30、窓と同じ長さ）⑥応答に `l1_basis`（数えた／数えなかった試行・支払い済み未配達・最終の試行／署名／配達と経過日数）を追加。`/docs/api`・openapi・llms.txt・llms-full・語彙に、判定と `/sellers` の非対称（判定は vet402 の落ち度を示せる行だけ除く、`/sellers` は落ち度が無いと示せる行だけ売り手側）と、固定 User-Agent を方法論の限界として明記。「/sellers と同じ規則」の誤記を削除。
+- **なぜ**: 競合エンジニアの実測で、代金を取って届けない売り手（cnvrt.ing/api/analyze-image、決済済み・HTTP 500 が 2 回）が WARN 止まり、最新が失敗でも ALLOW（spark-solana）、窓の外の試行を「未試行」と表示（api.sirenic.eu）、L0 の 1 回の fail で BLOCK（公開規則は 2 回連続）、`l1_inconclusive` なのに `n_inconclusive` が 0、という食い違いが出た。鮮度の上限は当初 14 日だったが、配達済みの売り手の買い直しの間隔が 30 日なので、14 日だと届けている売り手ほど WARN に落ちる（本番で ALLOW 1,958 件中 634 件）。30 日にした。
+- **影響**: `rules_version` が `2026-09-29.2` に変わる。本番データでの前後（2026-09-29 01:05Z、SELECT のみ）: L1 を 30 日以内に署名した 5,049 件で ALLOW/WARN/BLOCK が 1988/2237/824 → 1970/2360/719。新たに BLOCK になったのは 16 件（全部支払い済み・未配達）。BLOCK → WARN の 1,145 件はほぼ L0 の 1 回の fail。reason_codes に新しい語（`l1_paid_not_delivered`・`l1_latest_failed`・`l1_stale`）。SDK は文字列のまま透過する。SDK（凍結中）と MCP の型にはまだ `l1_basis` が無い（パリティテストでは例外として記録）。MCP ツールの説明文は新しい語をまだ載せていない。語彙の修正は /observatory/methodology にも表示される。
+
 ## 2026-09-29 JST（売り手頁の帰属）— seller's side は別の日に 2 回・行ごとの証拠・売り手に不利な誤りの修正・遅延照合の直読み
 
 - **何を**: `/sellers`・`/sellers/[host]`・記録頁（`/observatory/e/*`）とバッジの「どちらの側か」を `classifySellerRow`（src/lib/sellers/fix-modes.ts）に。seller's side は同じ出品で (a)〜(e) を満たす失敗が別の UTC 日に 2 回以上のときだけ（1 回は「not sorted: one failure so far」）。署名した行ごとに方式・額・payTo・nonce と、支払い付き要求の HTTP・Content-Type・PAYMENT-RESPONSE の success / errorReason を公開（本文・他のヘッダは出さない）。決済済みで入力を送っていなかった 400/415/422 は「charged, then rejected an input vet402 had not sent」、2xx で売り手が tx を名指した行は照合待ち。売り手頁はカード表示・行ごとの異議リンク（購入時刻を事前入力）・24px のタップ領域。記録頁の題を変え、確定行がある記録頁は noindex。バッジは vet402 側の失敗を分母から外す（「vet402 side N」）。`recover-late.ts` に、索引に無い着金の Base 直読み（cron で 1 回 20 行・45 秒・読みごとに残り時間の timeout）、nonce の無い入れ替え可能な組の時刻順の対、売り手が success:false で名指した tx を照合へ回す段を追加（どれも台帳と訂正ログを 1 文で）。照合器は、その tx が合わなければ settle_claim_refuted にせず、申告どおりの失敗（元の status・理由 `seller_declared_unsettled`）へ戻す。

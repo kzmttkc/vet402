@@ -96,12 +96,16 @@ if (!TEST_DB) {
       assert.ok((d.l1_basis?.days_since_last_delivery ?? 0) >= 34.9);
     });
 
-    await t.test("最新の配達が 20 日前 → WARN・l1_stale（配達はある）／3 日前なら ALLOW", async () => {
+    await t.test("最新の配達が 31 日前（窓の外）→ WARN・l1_stale／20 日前・3 日前なら ALLOW（鮮度の上限 30 日）", async () => {
       const old = await mkEndpoint();
-      await buy(old.id, 20, 200, true);
+      await buy(old.id, 31, 200, true);
       const d = await decideFor(old.id);
       assert.equal(d.recommendation, "WARN");
-      assert.ok(d.reason_codes.includes("l1_delivered") && d.reason_codes.includes("l1_stale"));
+      assert.ok(d.reason_codes.includes("l1_stale"));
+      assert.ok((d.l1_basis?.days_since_last_delivery ?? 0) >= 30.9);
+      const mid = await mkEndpoint();
+      await buy(mid.id, 20, 200, true);
+      assert.equal((await decideFor(mid.id)).recommendation, "ALLOW");
       const fresh = await mkEndpoint();
       await buy(fresh.id, 3, 200, true);
       const f = await decideFor(fresh.id);

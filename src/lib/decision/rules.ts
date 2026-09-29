@@ -76,7 +76,10 @@ export const L1_NEVER_DELIVERED_MIN_ATTEMPTS = 3;
 /** 2026-09-29.2: 最後の配達より後の「支払い済み・未配達」がこの回数に届いたら BLOCK（1 回は WARN）。 */
 export const L1_PAID_UNDELIVERED_BLOCK = 2;
 /** 2026-09-29.2: ALLOW に要る最新の配達の新しさ（日）。これより古い配達だけなら WARN・l1_stale。 */
-export const L1_FRESH_DAYS = 14;
+// 2026-09-29: 14 日から 30 日へ。配達済みの売り手の買い直しの間隔は 30 日なので、14 日では
+// 届けている売り手ほど仕組みの上で必ず WARN に落ちる（本番で ALLOW 1,958 件中 634 件）。
+// 経過日数は l1_basis に必ず出し、読み手が自分の基準で判断できるようにする。
+export const L1_FRESH_DAYS = 30;
 /** L1 の事実を数える窓（seller-facts.ts の SQL と同じ 30 日）。 */
 export const L1_WINDOW_DAYS = 30;
 export const RETRY_BURST_BLOCK = 0.3;

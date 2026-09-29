@@ -7,7 +7,8 @@
 //   3. 署名した試行が 30 日の窓の外だけ → l1_stale（api.sirenic.eu …/dirigeants が l1_not_attempted だった）
 //   4. L0 は公開規則（2 回連続の fail で公表）にそろえる: 1 回の fail は WARN、2 回連続で BLOCK（agent402.tools）
 //   5. l1_inconclusive の数は l1_basis.n_not_counted（surf.cascade.fyi: n_inconclusive 0 で l1_inconclusive）
-//   6. 鮮度: ALLOW は最新の配達が 14 日以内のときだけ（それ以外は WARN・l1_stale）
+//   6. 鮮度: ALLOW は最新の配達が 30 日以内のときだけ（それ以外は WARN・l1_stale）。30 日は配達済みの売り手の
+//      買い直しの間隔で、窓（30 日）と同じ長さ——本番では窓から外れた配達は l1_stale（窓の外）として読まれる
 // 除くのは vet402 の落ち度を示せる行（vet402 の側）・保留・課金なしだけ（既存の notCountedReasonOf）。
 // ============================================================
 import { test } from "node:test";
@@ -31,6 +32,7 @@ import {
   DECISION_RULES_VERSION,
   L1_FRESH_DAYS,
   L1_PAID_UNDELIVERED_BLOCK,
+  L1_WINDOW_DAYS,
   type PayerOptions,
 } from "@/lib/decision/rules";
 import { buildDecision, type DecisionSubject } from "@/lib/decision/decide";
@@ -104,7 +106,7 @@ function run(s: Setup, extra: PayerOptions = {}) {
 test("版: 意味が変わったので 2026-09-29.2 に上げた", () => {
   assert.equal(DECISION_RULES_VERSION, "2026-09-29.2");
   assert.equal(L1_PAID_UNDELIVERED_BLOCK, 2);
-  assert.equal(L1_FRESH_DAYS, 14);
+  assert.equal(L1_FRESH_DAYS, 30);
 });
 
 // ------------------------------------------------------------------
@@ -314,20 +316,40 @@ test("不変条件: l1_inconclusive ⇔ n_attempts > 0 ∧ n_not_counted = n_att
 // ------------------------------------------------------------------
 // 6. 鮮度
 // ------------------------------------------------------------------
-test("鮮度: 最新の配達が 14 日ちょうどなら ALLOW、14 日を超えたら WARN・l1_stale", () => {
-  const ok = run({ purchases: [delivered(L1_FRESH_DAYS)] });
+test("鮮度: 最新の配達が 30 日ちょうどなら ALLOW、30 日を超えたら WARN・l1_stale", () => {
+  const ok = run({ purchases: [delivered(30)] });
   assert.equal(ok.d.recommendation, "ALLOW");
-  assert.equal(ok.basis.days_since_last_delivery, 14);
-  const stale = run({ purchases: [delivered(L1_FRESH_DAYS + 0.5)] });
+  assert.equal(ok.basis.days_since_last_delivery, 30);
+  // 窓の中として渡された行でも、30 日を超えていれば ALLOW にしない（呼び手が窓で切らなかった場合の守り）。
+  const stale = run({ purchases: [delivered(30.5)] });
   assert.equal(stale.d.recommendation, "WARN");
   assert.ok(stale.d.reason_codes.includes("l1_stale"));
   assert.ok(stale.d.reason_codes.includes("l1_delivered"));
 });
 
+test("鮮度と窓の関係: 上限（30 日）は窓（30 日）を超えない。窓から外れた配達は l1_stale（窓の外）で WARN", () => {
+  assert.equal(L1_FRESH_DAYS, 30);
+  assert.equal(L1_WINDOW_DAYS, 30);
+  assert.ok(L1_FRESH_DAYS <= L1_WINDOW_DAYS, "鮮度の上限が窓より長いと、窓の外の配達で ALLOW を出す経路ができる");
+  // 本番（loadSellerFacts）は 30 日の窓で行を読むので、30.5 日前の配達は purchases に来ない。全履歴の時刻だけが残る。
+  const at = daysAgo(30.5);
+  const { d, facts, basis } = run({ purchases: [], lastSignedAttemptAt: at, lastDeliveredAt: at });
+  assert.equal(facts.l1.n_attempts, 0);
+  assert.equal(d.recommendation, "WARN");
+  assert.ok(d.reason_codes.includes("l1_stale"));
+  assert.equal(d.reason_codes.includes("l1_not_attempted"), false);
+  assert.equal(basis.last_delivered_at, at);
+  assert.equal(basis.days_since_last_delivery, 30.5);
+});
+
 test("鮮度: allow_without_l1 は古い配達を免除する（l1_waived_by_operator）。失敗は免除しない", () => {
-  const waived = run({ purchases: [delivered(20)] }, { allowWithoutL1: true });
+  const waived = run({ purchases: [delivered(31)] }, { allowWithoutL1: true });
   assert.equal(waived.d.recommendation, "ALLOW");
   assert.ok(waived.d.reason_codes.includes("l1_waived_by_operator"));
+  // 窓の外だけ（本番の読み方）も同じく免除される
+  const outside = run({ purchases: [], lastSignedAttemptAt: daysAgo(31), lastDeliveredAt: daysAgo(31) }, { allowWithoutL1: true });
+  assert.equal(outside.d.recommendation, "ALLOW");
+  assert.ok(outside.d.reason_codes.includes("l1_waived_by_operator"));
   const failed = run({ purchases: [unpaid500(1), delivered(3)] }, { allowWithoutL1: true });
   assert.equal(failed.d.recommendation, "WARN");
   const paid2 = run({ purchases: [paid500(1), paid500(2)] }, { allowWithoutL1: true });
@@ -342,7 +364,7 @@ test("l1_basis は ISO8601 UTC の時刻と経過日数を出す（Postgres の 
   const { basis } = run({ purchases: [delivered(3)] });
   assert.equal(basis.days_since_last_delivery, 3);
   assert.equal(basis.window_days, 30);
-  assert.equal(basis.fresh_days, 14);
+  assert.equal(basis.fresh_days, 30);
 });
 
 test("Postgres の ::text が UTC 以外（+09）でも同じ瞬間として数える（手元の DB で未配達を 0 と数えた不具合）", () => {
@@ -360,8 +382,10 @@ test("Postgres の ::text が UTC 以外（+09）でも同じ瞬間として数�
 });
 
 test("l1Timeline を渡さない呼び手（旧フィクスチャ）は facts から保守的に: 最後に署名した時刻が古ければ ALLOW にしない", () => {
-  const { facts } = run({ purchases: [delivered(20)] });
+  const { facts } = run({ purchases: [delivered(31)] });
   assert.equal(decidePayer(facts, { now: NOW }).recommendation, "WARN");
+  const edge = run({ purchases: [delivered(30)] });
+  assert.equal(decidePayer(edge.facts, { now: NOW }).recommendation, "ALLOW");
   const fresh = run({ purchases: [delivered(2)] });
   assert.equal(decidePayer(fresh.facts, { now: NOW }).recommendation, "ALLOW");
 });

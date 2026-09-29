@@ -3473,7 +3473,9 @@ components:
             l1_not_attempted — vet402 has never signed a paid attempt;
             l1_stale — vet402's signed attempts are all older than the 30-day
             window, or the last delivery in the window is older than
-            l1_basis.fresh_days (14): WARN, never ALLOW; l1_inconclusive —
+            l1_basis.fresh_days (30, the re-buy interval for a seller that
+            has already delivered, the same length as the window): WARN,
+            never ALLOW; l1_inconclusive —
             signed paid attempts exist in the window, but none is counted
             (l1_basis.n_not_counted equals n_attempts), a gap in our
             measurement rather than evidence against the seller;
@@ -3541,7 +3543,7 @@ components:
           required: [window_days, fresh_days, n_counted, n_not_counted, n_paid_undelivered, n_paid_undelivered_since_last_delivery, latest_counted_delivered, last_attempt_at, last_signed_attempt_at, last_delivered_at, days_since_last_attempt, days_since_last_delivery]
           properties:
             window_days: { type: integer, description: "The L1 window (30)." }
-            fresh_days: { type: integer, description: "ALLOW needs the last delivery within this many days (14)." }
+            fresh_days: { type: integer, description: "ALLOW needs the last delivery within this many days (30, the re-buy interval for a seller that has already delivered)." }
             n_counted: { type: integer, description: "Signed attempts counted for or against the seller." }
             n_not_counted:
               type: integer
