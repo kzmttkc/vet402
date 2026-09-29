@@ -3,6 +3,7 @@ import { withDeadline } from "@/lib/util/deadline";
 import { keepAliveUntilSettled } from "@/lib/util/after-response";
 import { describeProbeFailure, describeUnavailable } from "@/lib/health/probe-detail";
 import type { Address } from "viem";
+import { logServerErrorSafe, logServerWarnSafe } from "@/lib/util/log-safe";
 
 /**
  * Does the BUYER side work right now — can an agent get a payee verdict?
@@ -195,14 +196,14 @@ async function measurePayeeProbe(): Promise<PayeeProbe> {
       fromCache: false,
     };
     if (unavailable.length > 0) {
-      console.warn(`[vouch] payee_probe degraded: ${unavailable.join(",")}`);
+      logServerWarnSafe("payee_probe degraded", unavailable.join(","));
     }
   } catch (error) {
     // 2026-09-08: 同じ文字列をログと health_snapshots.detail の両方へ。
     // `deadline_exceeded:payee_probe:24000ms` なら probe が自分の期限で死んだ
     // （= 上流が遅い）、そうでなければ上流が拒否した。足す資源が違う。
     const detail = describeProbeFailure(error);
-    console.error(`[vouch] payee_probe failed: ${detail}`);
+    logServerErrorSafe("payee_probe failed", detail);
     probe = {
       status: "error",
       unavailable: [],

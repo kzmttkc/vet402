@@ -6,7 +6,7 @@ import { getDb } from "@/lib/db/client";
 import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { writePayeeVerification } from "@/lib/db/verify-writers";
 import { isValidAddress } from "@/lib/chain/client";
-import { logServerErrorSafe } from "@/lib/util/log-safe";
+import { logServerErrorSafe, logServerWarnSafe } from "@/lib/util/log-safe";
 // 2026-08-14: isCanonicalName/NAME_MAX_LENGTH moved to @/lib/validation and
 // payeeMessage to @/lib/verify-message so this route file no longer exports a
 // shared helper (Next 16 route-type contract — a route may only export handlers).
@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
   const legacyMessage = matched === "legacy";
   if (legacyMessage) {
     // 移行の実測用。誰かがまだ旧本文で署名しているかは、推測ではなくログで見る。
-    console.warn(`[vouch] payee_verify_legacy_message: wallet=${wallet.toLowerCase()}`);
+    logServerWarnSafe("payee_verify_legacy_message", `wallet=${wallet.toLowerCase()}`);
   }
 
   const db = getDb();

@@ -13,6 +13,7 @@ import {
 } from "@/lib/db/owner-index";
 import { isSpendingHalted } from "@/lib/observatory/kill-switch";
 import { runScoringProbe } from "./scoring-probe";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 export type DeepHealthStatus = "ok" | "degraded";
 
@@ -44,7 +45,7 @@ export async function runDeepHealthChecks(): Promise<DeepHealthResult> {
     checks.env = "error";
     criticalFailure = true;
     for (const message of envErrors) {
-      console.error(`[deep-health] env: ${message}`);
+      logServerErrorSafe("deep-health env", message);
     }
   } else {
     checks.env = "ok";

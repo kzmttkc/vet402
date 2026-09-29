@@ -11,7 +11,7 @@ import {
   matchSignatureForm,
   observatoryWatchMessage,
 } from "@/lib/verify-message";
-import { logServerErrorSafe } from "@/lib/util/log-safe";
+import { logServerErrorSafe, logServerWarnSafe } from "@/lib/util/log-safe";
 
 /**
  * Observatory watch registration (design §6.1) — the claim join.
@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
   }
   const legacyMessage = matched === "legacy";
   if (legacyMessage) {
-    console.warn(`[vouch] observatory_watch_legacy_message: apiKeyId=${auth.ctx.apiKeyId}`);
+    logServerWarnSafe("observatory_watch_legacy_message", `apiKeyId=${auth.ctx.apiKeyId}`);
   }
 
   const db = getDb();

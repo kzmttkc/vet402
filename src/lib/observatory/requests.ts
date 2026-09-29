@@ -17,6 +17,7 @@ import { createDeadline } from "@/lib/util/deadline";
 import { probeEndpoint, type ProbeOptions } from "./l0-probe";
 import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { UUID_RE } from "@/lib/validation/uuid";
+import { logServerWarnSafe } from "@/lib/util/log-safe";
 
 export type EnqueueResult =
   | { ok: true; id: string; deduped: boolean }
@@ -179,8 +180,9 @@ export async function drainVerificationRequests(
 
   if (summary.deferred > 0) {
     // 予算超過は運用事実。黙って落とすとキューが伸び続けても誰も気づかない。
-    console.warn(
-      `[vouch] verification_request_drain_deferred: ${summary.deferred}/${summary.drained} left pending (budget ${budgetMs}ms)`,
+    logServerWarnSafe(
+      "verification_request_drain_deferred",
+      `${summary.deferred}/${summary.drained} left pending (budget ${budgetMs}ms)`,
     );
   }
   return summary;

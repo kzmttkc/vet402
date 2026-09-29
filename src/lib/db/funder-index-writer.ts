@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "./client";
 import { funderIndexSkips, funderWallets } from "./schema";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /** Trusted indexer write path — never called from API scoring. */
 export async function recordFunderWallet(funder: string, wallet: string): Promise<boolean> {
@@ -58,7 +59,7 @@ export async function recordFunderIndexSkip(wallet: string): Promise<void> {
         set: { attempts, lastAttemptAt: now, nextRetryAt },
       });
   } catch (err) {
-    console.error("funder-index-writer: recordFunderIndexSkip failed, skipping cache write", err);
+    logServerErrorSafe("funder-index-writer: recordFunderIndexSkip failed, skipping cache write", err);
   }
 }
 
@@ -70,6 +71,6 @@ export async function clearFunderIndexSkip(wallet: string): Promise<void> {
   try {
     await db.delete(funderIndexSkips).where(eq(funderIndexSkips.wallet, wallet.toLowerCase()));
   } catch (err) {
-    console.error("funder-index-writer: clearFunderIndexSkip failed, skipping cache write", err);
+    logServerErrorSafe("funder-index-writer: clearFunderIndexSkip failed, skipping cache write", err);
   }
 }

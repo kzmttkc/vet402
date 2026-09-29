@@ -9,6 +9,7 @@ import {
   recordFunderWallet,
 } from "@/lib/db/funder-index-writer";
 import { customerLists, funderIndexSkips, funderWallets, trustEvents } from "@/lib/db/schema";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 export type FunderIndexResult = {
   scanned: number;
@@ -51,7 +52,7 @@ export async function collectWalletsToIndex(limit = DEFAULT_BATCH): Promise<stri
       .select({ wallet: funderIndexSkips.wallet, nextRetryAt: funderIndexSkips.nextRetryAt })
       .from(funderIndexSkips);
   } catch (err) {
-    console.error(
+    logServerErrorSafe(
       "funder-indexer: funder_index_skips query failed, degrading to no-cooldown mode",
       err,
     );

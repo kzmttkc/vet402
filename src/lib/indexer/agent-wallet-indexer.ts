@@ -9,6 +9,7 @@ import {
   setIndexerCheckpoint,
 } from "@/lib/db/owner-index";
 import { mapWithConcurrency } from "@/lib/util/concurrency";
+import { logServerInfoSafe } from "@/lib/util/log-safe";
 
 /**
  * WalletSet 索引（2026-08-13）。
@@ -106,7 +107,7 @@ export async function indexAgentWallets(options?: {
     fromBlock,
     toBlock,
   })) as unknown as WalletSetLog[];
-  console.log(`[wallet-indexer] walletSetLogs=${logs.length} in ${Date.now() - t0}ms`);
+  logServerInfoSafe("wallet-indexer", `walletSetLogs=${logs.length} in ${Date.now() - t0}ms`);
 
   const pairs = latestWalletPerAgent(logs);
   await mapWithConcurrency(pairs, WALLET_WRITE_CONCURRENCY, async ({ agentId, wallet }) => {

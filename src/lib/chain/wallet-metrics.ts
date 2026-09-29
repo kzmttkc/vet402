@@ -168,7 +168,7 @@ async function fetchWalletMetricsUncoalesced(
     // payee outage meant re-deriving from outside the process what the process
     // itself already knew. The tag says WHICH read died; this says WHY.
     const detail = error instanceof Error ? error.message : String(error);
-    console.error(`[vouch] wallet_metrics_unavailable ${address}: ${detail.slice(0, 300)}`);
+    logServerErrorSafe(`wallet_metrics_unavailable ${address}`, detail.slice(0, 300));
     throw new Error("wallet_metrics_unavailable", { cause: error });
   }
 }

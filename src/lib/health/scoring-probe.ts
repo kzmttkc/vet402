@@ -1,6 +1,7 @@
 import { scoreAgentById } from "@/lib/scoring/engine";
 import { withDeadline } from "@/lib/util/deadline";
 import { classifyDegradation, describeProbeFailure, describeUnavailable } from "./probe-detail";
+import { logServerErrorSafe, logServerWarnSafe } from "@/lib/util/log-safe";
 
 /**
  * Does the product's core capability — computing a trust score — actually work
@@ -113,7 +114,7 @@ export async function runScoringProbe(): Promise<ScoringProbe> {
       fromCache: false,
     };
     if (unavailable.length > 0) {
-      console.warn(`[vouch] scoring_probe degraded: ${probe.detail}`);
+      logServerWarnSafe("scoring_probe degraded", probe.detail);
     }
   } catch (error) {
     // The engine wraps upstream failures as `new Error(tag, { cause })`. The
@@ -124,7 +125,7 @@ export async function runScoringProbe(): Promise<ScoringProbe> {
     // 返さない。**同じ文字列**を probe.detail に載せて health_snapshots へ運ぶ。
     // ログと列が別々の材料から作られると、どちらが本当かを確かめる作業が増える。
     const detail = describeProbeFailure(error);
-    console.error(`[vouch] scoring_probe failed: ${detail}`);
+    logServerErrorSafe("scoring_probe failed", detail);
     probe = {
       status: "error",
       unavailable: [],

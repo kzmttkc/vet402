@@ -21,7 +21,7 @@ import {
   legacyAgentPassportMessage,
   matchSignatureForm,
 } from "@/lib/verify-message";
-import { logServerErrorSafe } from "@/lib/util/log-safe";
+import { logServerErrorSafe, logServerWarnSafe } from "@/lib/util/log-safe";
 
 // A-10 — agent passport self-verification, the symmetric twin of N-16
 // (verified payees). Where a payee signs with a receiving wallet, an agent
@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
   }
   const legacyMessage = matched === "legacy";
   if (legacyMessage) {
-    console.warn(`[vouch] agent_verify_legacy_message: agentId=${agentId.toString()}`);
+    logServerWarnSafe("agent_verify_legacy_message", `agentId=${agentId.toString()}`);
   }
 
   const db = getDb();

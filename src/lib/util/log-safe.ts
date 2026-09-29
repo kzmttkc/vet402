@@ -106,3 +106,24 @@ export function logAndSwallowSafe(context: string): (error: unknown) => undefine
     }
   };
 }
+
+/**
+ * 警告（console.warn）の伏字版（2026-09-29 監査 5 周目・中）。形は logServerError と同じ
+ * `[vouch] <context>: <detail>`。凍結外の src は console.* を直に呼ばない（tests/log-safe.test.ts が走査する）。
+ */
+export function logServerWarnSafe(context: string, detail: unknown): void {
+  try {
+    console.warn(`[vouch] ${safeContext(context)}: ${safeMessage(detail)}`);
+  } catch {
+    // ログで処理を落とさない。
+  }
+}
+
+/** 経過の記録（console.log）の伏字版。形は logServerWarnSafe と同じ。 */
+export function logServerInfoSafe(context: string, detail: unknown): void {
+  try {
+    console.log(`[vouch] ${safeContext(context)}: ${safeMessage(detail)}`);
+  } catch {
+    // ログで処理を落とさない。
+  }
+}

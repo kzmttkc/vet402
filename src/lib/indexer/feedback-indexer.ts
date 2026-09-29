@@ -15,6 +15,7 @@ import {
   type FeedbackEventRow,
 } from "@/lib/db/feedback-index-writer";
 import { getIndexerCheckpoint, setIndexerCheckpoints } from "@/lib/db/owner-index";
+import { logServerInfoSafe } from "@/lib/util/log-safe";
 
 /**
  * NewFeedback indexer (2026-08-12).
@@ -104,8 +105,8 @@ export async function indexFeedbackEvents(options?: {
     fromBlock,
     toBlock,
   });
-  console.log(
-    `[feedback-indexer] logs=${logs.length} blocks=${fromBlock}-${toBlock} in ${Date.now() - t0}ms`,
+  logServerInfoSafe(
+    "feedback-indexer", `logs=${logs.length} blocks=${fromBlock}-${toBlock} in ${Date.now() - t0}ms`,
   );
 
   const rows: FeedbackEventRow[] = [];

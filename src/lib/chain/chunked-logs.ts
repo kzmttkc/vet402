@@ -2,6 +2,7 @@ import type { BlockTag } from "viem";
 import type { getPublicClient } from "./client";
 import { mapWithConcurrency } from "@/lib/util/concurrency";
 import { type Deadline, DeadlineExceededError, createDeadline } from "@/lib/util/deadline";
+import { logServerInfoSafe } from "@/lib/util/log-safe";
 
 type ChainClient = ReturnType<typeof getPublicClient>;
 export type ChainGetLogsParams = Parameters<ChainClient["getLogs"]>[0];
@@ -319,8 +320,8 @@ async function fetchRange(
       if (deadline && backoff >= deadline.remaining()) {
         throw new DeadlineExceededError("getLogsChunked", backoff);
       }
-      console.log(
-        `[chunked-logs] rate-limited ${fromBlock}-${toBlock}, retry ${rateLimitRetries + 1}/${RATE_LIMIT_MAX_RETRIES}`,
+      logServerInfoSafe(
+        "chunked-logs", `rate-limited ${fromBlock}-${toBlock}, retry ${rateLimitRetries + 1}/${RATE_LIMIT_MAX_RETRIES}`,
       );
       await sleep(backoff);
       return fetchRange(client, params, fromBlock, toBlock, rateLimitRetries + 1, deadline);
@@ -333,8 +334,8 @@ async function fetchRange(
     const rangeReason = rangeTooWideReason(error);
     if (!rangeReason) {
       const err = error as { code?: number; details?: string; shortMessage?: string };
-      console.log(
-        `[chunked-logs] non-range failure on ${fromBlock}-${toBlock}, not bisecting` +
+      logServerInfoSafe(
+        "chunked-logs", `non-range failure on ${fromBlock}-${toBlock}, not bisecting` +
           ` code=${err?.code} details=${JSON.stringify(err?.details ?? err?.shortMessage)?.slice(0, 200)}`,
       );
       throw error;
@@ -349,8 +350,8 @@ async function fetchRange(
     const stated = providerStatedRangeLimit(error);
     if (stated !== null && span + 1n > stated) {
       learnedRangeCaps.set(rangeCapKey(client), stated);
-      console.log(
-        `[chunked-logs] provider limit ${stated} blocks; splitting ${fromBlock}-${toBlock} at that width`,
+      logServerInfoSafe(
+        "chunked-logs", `provider limit ${stated} blocks; splitting ${fromBlock}-${toBlock} at that width`,
       );
       const out: ChainLog[] = [];
       for (let start = fromBlock; start <= toBlock; start += stated) {
@@ -361,13 +362,13 @@ async function fetchRange(
     }
 
     if (span <= 0n) {
-      console.log(
-        `[chunked-logs] giving up on block ${fromBlock}: ${(error as Error)?.constructor?.name} ${redactSecrets((error as Error)?.message).slice(0, 200)}`,
+      logServerInfoSafe(
+        "chunked-logs", `giving up on block ${fromBlock}: ${(error as Error)?.constructor?.name} ${redactSecrets((error as Error)?.message).slice(0, 200)}`,
       );
       throw error;
     }
-    console.log(
-      `[chunked-logs] bisecting ${fromBlock}-${toBlock} matched=${rangeReason} due to: ${redactSecrets((error as Error)?.message).slice(0, 150)}`,
+    logServerInfoSafe(
+      "chunked-logs", `bisecting ${fromBlock}-${toBlock} matched=${rangeReason} due to: ${redactSecrets((error as Error)?.message).slice(0, 150)}`,
     );
 
     const mid = fromBlock + span / 2n;

@@ -10,7 +10,7 @@ import { join, relative } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { HttpRequestError } from "viem";
-import { logAndSwallowSafe, logServerErrorSafe, redactSecretsForLog } from "@/lib/util/log-safe";
+import { logAndSwallowSafe, logServerErrorSafe, logServerInfoSafe, logServerWarnSafe, redactSecretsForLog } from "@/lib/util/log-safe";
 
 function captureConsoleError(fn: () => void | Promise<unknown>): Promise<string[]> {
   const logged: string[] = [];
@@ -99,6 +99,63 @@ test("src の凍結外ファイルは util/log を直接 import しない（esli
     .filter((p) => !FROZEN_OR_SELF.has(p) && !FROZEN_DIRS.some((d) => p.startsWith(d)))
     .filter((p) => /from\s+["'](?:@\/lib\/util\/log|(?:\.\.?\/)+(?:[\w-]+\/)*util\/log|\.\/log)["']/.test(readFileSync(p, "utf8")));
   assert.deepEqual(offenders, [], "logServerErrorSafe / logAndSwallowSafe（@/lib/util/log-safe）を使う");
+});
+
+// 2026-09-29 監査 5 周目（中）: util/log の import だけでなく console.* の直呼びも走査する。
+// wallet-metrics.ts・outcome-detector.ts が console.error へ RPC のエラー本文を素で渡していた（鍵入り URL が出る）。
+// 伏字の入口（logServerErrorSafe / logServerWarnSafe / logServerInfoSafe）を通す。コメントは数えない。
+// 例外は docs/api の頁だけ: 読者向けのコード見本（テンプレート文字列の中）で、サーバでは実行されない。件数で固定する。
+const CONSOLE_CALL_RE = /\bconsole\s*\.\s*(?:error|warn|log|info|debug|trace)\s*\(/g;
+const CONSOLE_SAMPLE_FILES: Record<string, number> = { "src/app/docs/api/page.tsx": 4 };
+
+/** ブロックコメントと行コメント（行頭から）を落とす。文字列の中の `//`（URL）は落とさない。 */
+function stripComments(text: string): string {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .map((line) => (/^\s*\/\//.test(line) ? "" : line.replace(/\s\/\/\s.*$/, "")))
+    .join("\n");
+}
+
+test("src の凍結外ファイルは console.* を直に呼ばない（log-safe の伏字を通す）", () => {
+  const root = process.cwd();
+  const counts = walk(join(root, "src"))
+    .map((p) => relative(root, p))
+    .filter((p) => !FROZEN_OR_SELF.has(p) && !FROZEN_DIRS.some((d) => p.startsWith(d)))
+    .map((p) => [p, (stripComments(readFileSync(p, "utf8")).match(CONSOLE_CALL_RE) ?? []).length] as const)
+    .filter(([, n]) => n > 0);
+  const offenders = counts.filter(([p, n]) => CONSOLE_SAMPLE_FILES[p] !== n).map(([p, n]) => `${p} (${n})`);
+  assert.deepEqual(offenders, [], "logServerErrorSafe / logServerWarnSafe / logServerInfoSafe（@/lib/util/log-safe）を使う");
+  // 見本の頁の件数が減ったら表も直す（古い例外を残さない）。
+  for (const [p, n] of Object.entries(CONSOLE_SAMPLE_FILES)) {
+    assert.ok(counts.some(([q, m]) => q === p && m === n), `${p} の見本の件数が ${n} でない——CONSOLE_SAMPLE_FILES を直す`);
+  }
+});
+
+test("走査そのものが直呼びを見つける（計器の検査）", () => {
+  const src = 'const a = "https://x.example/y"; console.error("boom", e);\n// console.warn("comment")\n/* console.log(1) */\n';
+  assert.equal((stripComments(src).match(CONSOLE_CALL_RE) ?? []).length, 1);
+});
+
+test("logServerWarnSafe / logServerInfoSafe: 鍵入り URL を伏せ、形は [vouch] <ctx>: <detail>", () => {
+  const warned: string[] = [];
+  const infoed: string[] = [];
+  const ow = console.warn;
+  const ol = console.log;
+  console.warn = (...args: unknown[]) => warned.push(args.map(String).join(" "));
+  console.log = (...args: unknown[]) => infoed.push(args.map(String).join(" "));
+  try {
+    logServerWarnSafe("ctx.warn", "rpc https://base-mainnet.g.alchemy.com/v2/ALCHEMYSECRET123 failed");
+    logServerInfoSafe("ctx.info", new Error("apikey=APIKEYQUERY111"));
+  } finally {
+    console.warn = ow;
+    console.log = ol;
+  }
+  assert.equal(warned.length, 1);
+  assert.equal(infoed.length, 1);
+  assert.match(warned[0], /^\[vouch\] ctx\.warn: rpc <url> failed$/);
+  assert.ok(!infoed[0].includes("APIKEYQUERY111"), infoed[0]);
+  assert.match(infoed[0], /^\[vouch\] ctx\.info: /);
 });
 
 // 2026-09-29 独立レビューの指摘（中 1・低 2・低 3）の回帰。

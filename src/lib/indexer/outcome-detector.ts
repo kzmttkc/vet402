@@ -11,6 +11,7 @@ import {
 import { ownerAgents } from "@/lib/db/schema";
 import { desc, eq } from "drizzle-orm";
 import type { TrustSignals } from "@/lib/scoring/types";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 export type OutcomeDetectResult = {
   scanned: number;
@@ -130,7 +131,7 @@ async function classifyWalletActivity(
             : 1;
       }
     } catch (err) {
-      console.error(`outcome-detector: balance lookup failed for ${wallet}`, err);
+      logServerErrorSafe(`outcome-detector: balance lookup failed for ${wallet}`, err);
     }
 
     // 2026-08-23 監査: repeatedWithdrawals に**金額下限が無かった**。
@@ -269,7 +270,7 @@ async function detectForTrustEvent(row: TrustEventRow, now: Date): Promise<numbe
         if (ok) recorded++;
       }
     } catch (err) {
-      console.error(`outcome-detector: activity classification failed for ${row.id}`, err);
+      logServerErrorSafe(`outcome-detector: activity classification failed for ${row.id}`, err);
     }
   }
 
@@ -289,7 +290,7 @@ async function detectForTrustEvent(row: TrustEventRow, now: Date): Promise<numbe
         if (ok) recorded++;
       }
     } catch (err) {
-      console.error(`outcome-detector: ownership check failed for ${row.id}`, err);
+      logServerErrorSafe(`outcome-detector: ownership check failed for ${row.id}`, err);
     }
 
     // Reputation drop (independent side-signal).
@@ -310,7 +311,7 @@ async function detectForTrustEvent(row: TrustEventRow, now: Date): Promise<numbe
         }
       }
     } catch (err) {
-      console.error(`outcome-detector: reputation check failed for ${row.id}`, err);
+      logServerErrorSafe(`outcome-detector: reputation check failed for ${row.id}`, err);
     }
   }
 
@@ -333,7 +334,7 @@ export async function detectOutcomes(options?: {
       result.recorded += await detectForTrustEvent(row, now);
     } catch (err) {
       result.errors++;
-      console.error(`outcome-detector: unexpected failure for trust_event ${row.id}`, err);
+      logServerErrorSafe(`outcome-detector: unexpected failure for trust_event ${row.id}`, err);
     }
     await sleep(delayMs);
   }

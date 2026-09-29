@@ -10,7 +10,7 @@ import { verifyX402Ownership, verifyX402PaymentOnChain } from "@/lib/chain/x402-
 import { recordX402Payment } from "@/lib/db/x402-payments";
 import { invalidateScoreCacheForListChange } from "@/lib/scoring/cache-invalidation";
 import { invalidatePayeeScoreCache } from "@/lib/scoring/payee-engine";
-import { logServerErrorSafe } from "@/lib/util/log-safe";
+import { logServerErrorSafe, logServerWarnSafe } from "@/lib/util/log-safe";
 
 const TX_HASH_RE = /^0x[a-fA-F0-9]{64}$/;
 
@@ -109,10 +109,10 @@ export async function POST(request: NextRequest) {
   const ownership = await verifyX402Ownership(wallet, txHash, signature);
   const ownershipVerified = ownership.verified;
   if (ownership.legacy) {
-    console.warn(`[vouch] x402_attestation_legacy_message: wallet=${wallet.toLowerCase()}`);
+    logServerWarnSafe("x402_attestation_legacy_message", `wallet=${wallet.toLowerCase()}`);
   }
   if (ownership.legacyExpired) {
-    console.warn(`[vouch] x402_attestation_legacy_expired: wallet=${wallet.toLowerCase()}`);
+    logServerWarnSafe("x402_attestation_legacy_expired", `wallet=${wallet.toLowerCase()}`);
   }
 
   try {

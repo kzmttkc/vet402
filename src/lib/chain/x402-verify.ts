@@ -2,6 +2,7 @@ import { isSkipChainReadsEnabled } from "@/lib/config/env";
 import { matchSignatureForm, SIGNING_DOMAIN } from "@/lib/verify-message";
 import { getPublicClient } from "./client";
 import { BASE_USDC_ADDRESS } from "./config";
+import { logServerWarnSafe } from "@/lib/util/log-safe";
 
 /**
  * vet402 2026-08-13 — proof of control for a settlement write-back.
@@ -375,8 +376,9 @@ function okWithPayee(
 ): X402VerifyResult {
   const { payee, confidence, ...settlement } = extractSettlement(receipt, walletLower);
   if (confidence === "ambiguous") {
-    console.warn(
-      `[vouch] x402_payee_ambiguous: tx ${txHash} has multiple payer-originated ` +
+    logServerWarnSafe(
+      "x402_payee_ambiguous",
+      `tx ${txHash} has multiple payer-originated ` +
         `Transfer legs; picked largest-amount leg ${payee ?? "unknown"} as payee`,
     );
   }
@@ -435,8 +437,9 @@ export function checkDeclaredAmount(
   if (matches) return { amountVerified: true };
 
   if (txHash) {
-    console.warn(
-      `[vouch] x402_amount_unverified: tx ${txHash} declared ${declaredAmount} but the ` +
+    logServerWarnSafe(
+      "x402_amount_unverified",
+      `tx ${txHash} declared ${declaredAmount} but the ` +
         `settlement leg moved ${settlement.onChainAmount ?? "nothing readable"} of ` +
         `${settlement.token ?? "no token"}${settlement.isUsdc ? "" : " (not Base USDC)"}`,
     );

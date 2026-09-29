@@ -13,6 +13,7 @@ import {
   upsertOwnerAgent,
 } from "@/lib/db/owner-index-writer";
 import { mapWithConcurrency } from "@/lib/util/concurrency";
+import { logServerInfoSafe } from "@/lib/util/log-safe";
 
 /**
  * Registered-event writes are independent per agentId (each is a brand-new
@@ -154,7 +155,7 @@ export async function indexOwnerAgents(options?: {
     fromBlock,
     toBlock,
   });
-  console.log(`[owner-indexer] registeredLogs=${registeredLogs.length} in ${Date.now() - t0}ms`);
+  logServerInfoSafe("owner-indexer", `registeredLogs=${registeredLogs.length} in ${Date.now() - t0}ms`);
   const t1 = Date.now();
   const transferLogs = await getLogsChunked(client, {
     address: ERC8004_ADDRESSES.identityRegistry,
@@ -162,7 +163,7 @@ export async function indexOwnerAgents(options?: {
     fromBlock,
     toBlock,
   });
-  console.log(`[owner-indexer] transferLogs=${transferLogs.length} in ${Date.now() - t1}ms`);
+  logServerInfoSafe("owner-indexer", `transferLogs=${transferLogs.length} in ${Date.now() - t1}ms`);
 
   let upserted = 0;
   let removed = 0;
@@ -196,7 +197,7 @@ export async function indexOwnerAgents(options?: {
   for (const outcome of registeredOutcomes) {
     if (outcome === "upserted") upserted++;
   }
-  console.log(`[owner-indexer] verified ${registeredPairs.length} registered owners in ${Date.now() - t2}ms`);
+  logServerInfoSafe("owner-indexer", `verified ${registeredPairs.length} registered owners in ${Date.now() - t2}ms`);
 
   const transferOrdered = [...transferLogs].sort((a, b) => {
     const aBlock = a.blockNumber ?? 0n;
@@ -261,8 +262,8 @@ export async function indexOwnerAgents(options?: {
   }
 
   if (verifyUnavailable > 0) {
-    console.log(
-      `[owner-indexer] ${verifyUnavailable} transfer updates used event-based upsert due to ownerOf failures`,
+    logServerInfoSafe(
+      "owner-indexer", `${verifyUnavailable} transfer updates used event-based upsert due to ownerOf failures`,
     );
   }
 

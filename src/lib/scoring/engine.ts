@@ -38,6 +38,7 @@ import { getObservedPurchaseStats } from "@/lib/db/observed-purchases";
 import { getDataCoverage } from "@/lib/health/data-coverage";
 import type { ScoreRequestContext, TrustScoreResult, TrustSignals } from "./types";
 import { createDeadline, withDeadline } from "@/lib/util/deadline";
+import { logServerWarnSafe } from "@/lib/util/log-safe";
 
 const CACHE_MAX_ENTRIES = 10_000;
 
@@ -85,7 +86,7 @@ export function reportSignalDegraded(
   ctx: ScoreRequestContext = {},
 ): void {
   const message = error instanceof Error ? error.message : String(error);
-  console.warn(`[vouch] score_signal_degraded: ${signal}: ${message.slice(0, 200)}`);
+  logServerWarnSafe("score_signal_degraded", `${signal}: ${message.slice(0, 200)}`);
   ctx.onSignalDegraded?.(signal, error);
 }
 

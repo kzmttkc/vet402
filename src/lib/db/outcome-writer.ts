@@ -4,6 +4,7 @@ import { isMissingSchemaError } from "./pg-errors";
 import { apiKeys, trustEvents, verdictOutcomes, x402Payments } from "./schema";
 import { BASE_USDC_ADDRESS } from "@/lib/chain/config";
 import { dispatchWebhookEvent } from "@/lib/webhooks";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 export type AutoOutcomeType =
   | "rug_pull_outflow"
@@ -133,7 +134,7 @@ export async function collectWatchedTrustEvents(
         signals: row.signals,
       }));
   } catch (err) {
-    console.error(
+    logServerErrorSafe(
       "outcome-writer: collectWatchedTrustEvents failed, degrading to no-op (verdict_outcomes likely not migrated yet)",
       err,
     );
@@ -175,7 +176,7 @@ export async function recordAutoOutcome(input: {
 
     return inserted.length > 0;
   } catch (err) {
-    console.error("outcome-writer: recordAutoOutcome failed, skipping write", err);
+    logServerErrorSafe("outcome-writer: recordAutoOutcome failed, skipping write", err);
     return false;
   }
 }
@@ -205,7 +206,7 @@ async function notifyOutcomeRecorded(
       agentId: ev.agentId === null ? null : ev.agentId.toString(),
     });
   } catch (err) {
-    console.error("outcome-writer: webhook notify failed (non-fatal)", err);
+    logServerErrorSafe("outcome-writer: webhook notify failed (non-fatal)", err);
   }
 }
 
@@ -342,7 +343,7 @@ export async function getOutcomesForWallet(
     return rows;
   } catch (err) {
     if (isMissingSchemaError(err)) {
-      console.error(
+      logServerErrorSafe(
         "outcome-writer: getOutcomesForWallet found no verdict_outcomes table; reading as no history",
         err,
       );
@@ -422,7 +423,7 @@ export async function getNegativeReporterCorroboration(
     return { verifiedCounterparties, accountByReporter };
   } catch (err) {
     if (isMissingSchemaError(err)) {
-      console.error(
+      logServerErrorSafe(
         "outcome-writer: getNegativeReporterCorroboration hit a missing table/column; reading as no corroboration",
         err,
       );
@@ -505,7 +506,7 @@ export async function recordPartnerOutcome(
 
     return raced[0] ? { created: false, id: raced[0].id } : null;
   } catch (err) {
-    console.error("outcome-writer: recordPartnerOutcome failed", err);
+    logServerErrorSafe("outcome-writer: recordPartnerOutcome failed", err);
     throw err;
   }
 }
