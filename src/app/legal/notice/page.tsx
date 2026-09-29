@@ -13,10 +13,9 @@
 // proprietorship is flagged for professional review, not settled here.
 //
 // The same audit added "Relationships": vet402 calls itself independent while
-// applying to, and winning prizes from, parties connected to networks it
-// measures. Each row below was taken from the operator's own records
-// (grant and hackathon ledgers), not from memory; a row changes only when
-// the record changes. Personal investments of the operator are out of scope
+// winning prizes from parties connected to networks it measures. Only funding
+// actually received is listed (pending or declined applications are not a
+// funding relationship); each row comes from the operator's own records. Personal investments of the operator are out of scope
 // of this page by owner instruction and are not listed.
 import type { Metadata } from "next";
 import { headers } from "next/headers";
@@ -36,60 +35,16 @@ export const metadata: Metadata = pageMetadata({
 const PLAN_ORDER = ["free", "pro", "scale"] as const;
 
 /**
- * Funding relationships, as of the revision date. Source of each row (operator
- * records, read-only): see the commit that introduced this list.
- * status words: awarded / applied / pending / declined / entered / registered.
+ * Funding received (grants, prizes, investment), as of the revision date. 2026-09-29: pending or
+ * declined applications are not listed — they are not a funding relationship, and listing them
+ * would publish the operator's own application history. A row is added when money or a prize is
+ * actually received, from the operator's records (grant and hackathon ledgers).
  */
 const RELATIONSHIPS: { who: string; what: string; status: string }[] = [
   {
     who: "ETHOnline 2026 (ETHGlobal) — Bazantic prize",
     what: "vet402's pre-payment gate payOrRefuse won the prize “Help an Agent Use Your Hackathon Project” (500 USDC), announced 2026-09-17.",
     status: "Awarded",
-  },
-  {
-    who: "Circle — Circle Developer Grants, Cohort 2",
-    what: "Grant application sent 2026-09-23. Circle issues USDC and runs Arc and Circle Gateway, which vet402 measures.",
-    status: "Applied — pending",
-  },
-  {
-    who: "Base Ecosystem Fund",
-    what: "Application for investment (not a grant) sent 2026-09-16. vet402 measures payments on Base.",
-    status: "Applied — pending",
-  },
-  {
-    who: "Base Builder Grants",
-    what: "Nomination submitted 2026-08-25. The program says it does not reply to all nominations.",
-    status: "Applied — no decision received",
-  },
-  {
-    who: "Ethereum Foundation — Ecosystem Support Program (office hours)",
-    what: "Request sent 2026-09-16; declined by the program on 2026-09-28.",
-    status: "Declined",
-  },
-  {
-    who: "Octant",
-    what: "Project intake form submitted 2026-08-27.",
-    status: "Applied — no decision received",
-  },
-  {
-    who: "IPA (Information-technology Promotion Agency, Japan) — MITOU Advanced",
-    what: "Application for vet402's work sent 2026-09-23. IPA is a Japanese public agency, not a network vet402 measures.",
-    status: "Applied — pending",
-  },
-  {
-    who: "ETHGlobal Tokyo 2026",
-    what: "Hackathon entry, 2026-09-25 to 09-27.",
-    status: "Entered — no prize recorded",
-  },
-  {
-    who: "Algorand Global x402 Challenge",
-    what: "Entered 2026-09-27; submission due 2026-09-30. vet402 buys from x402 sellers on Algorand.",
-    status: "Entered — pending",
-  },
-  {
-    who: "Colosseum — Crypto World’s Fair (Solana)",
-    what: "Registered 2026-09-28; nothing submitted yet. vet402 measures payments on Solana.",
-    status: "Registered",
   },
 ];
 
@@ -264,13 +219,13 @@ export default async function LegalNoticePage() {
 
         {/* 2026-09-29: 独立性の開示。記録で確かめられた事実だけを載せる。 */}
         <section id="relationships" className="scroll-mt-24 space-y-3">
-          <h2 className="sec-head">Relationships: grants, prizes and applications</h2>
+          <h2 className="sec-head">Relationships: grants and prizes received</h2>
           <p>
             vet402 calls itself an independent measurement. So that you can judge that for
-            yourself, these are the grants, prizes and funding applications in our records as of
-            September 29, 2026, including those involving networks or payment companies whose
-            payments we measure. &quot;Applied&quot; means we sent an application and have received
-            no money from it; &quot;pending&quot; means no decision has been announced.
+            yourself, these are the grants, prizes and funding vet402 has received as of September
+            29, 2026, including from parties connected to networks or payment companies whose
+            payments we measure. vet402 also applies to ecosystem grant programs and enters
+            hackathons; a row is added here when money or a prize is received.
           </p>
           <ul className="space-y-3">
             {RELATIONSHIPS.map((r) => (
@@ -294,7 +249,7 @@ export default async function LegalNoticePage() {
               methodology
             </a>{" "}
             and publication gate apply to each endpoint whoever the seller, the network or the
-            funder is. We update this list when an application is decided or a new one is sent.
+            funder is.
           </p>
         </section>
 

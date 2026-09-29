@@ -1930,13 +1930,6 @@ claims:
     check: null
     why_unverifiable: "課金の仕組みの記述で、公開 GET が返す値ではない。根拠は src/lib/billing/stripe.ts（mode: \"subscription\"・proration_behavior: \"create_prorations\"）"
     verified_at: 2026-09-29
-  - id: legal_r4_notice_base_builder_no_reply
-    surface: src/app/legal/notice/page.tsx
-    quote: "The program says it does not reply to all nominations."
-    means: "Base Builder Grants は指名に全件返信しないと自ら書いている（独立性の開示の 1 行）"
-    check: null
-    why_unverifiable: "外部プログラムの告知文の要約。一次の記録は docs/hackathons/GRANTS.md の Base Builder Grants 行（\"we will not be responding to all requests\"）"
-    verified_at: 2026-09-29
   - id: legal_r4_privacy_ip_hash_only
     surface: src/app/legal/privacy/page.tsx
     quote: "the IP address behind a notification sign-up is stored only as a one-way hash"

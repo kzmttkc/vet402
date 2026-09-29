@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-29 JST（法務）— 特商法の表示と最終確認画面・受け取った助成と賞の開示・売り手への通知メールの目的
+
+- **何を**: `/legal/notice` に特商法の表示（販売事業者 KIZUNA Creation、責任者・所在地・電話は請求で遅滞なく提供＝11条ただし書き、価格は `BILLING_PLANS` から描画、支払時期・解約・返金・動作環境）と「Relationships: grants and prizes received」（受領済みのみ。現在は ETHOnline の Bazantic 賞 500 USDC）。Billing の Upgrade は最終確認を開くだけにし、Stripe へ進むボタンは確認の中だけ（12条の6）。プライバシーに売り手への公開前通知の目的・宛先の入手元・止め方、管理者の身元、保存先の国、安全管理措置、Plausible の外部送信。「in good faith」を削除。規約 §6 の手法リンク、§13 の L1 異議の扱い（実装どおり）、§16 の Resend の用途。「verified payee」→「address control verified」。
+- **なぜ**: 2026-09-29 の敵対的監査 4 周目（規制当局・コンプライアンスの立場）の重要度・高 3 件。Stripe の本番の鍵は Vercel に登録済み。申請中・見送りの助成は資金の関係ではなく、運営者の申請歴を公開するので載せない（受け取ったら足す）。
+- **影響**: 要専門家確認（屋号だけの販売事業者欄、消費税、公開前通知と特定電子メール法、GDPR 27 条の代理人）。Arc Microgrants 等を受け取ったらこの一覧に足す。
+
 ## 2026-09-29 JST（3）— `/rwa` 監査の指摘を直した（SPEC patch 019）
 
 - **何を**: facts JSON の CDN 置き時間（s-maxage 300・stale-while-revalidate 86400）、記録ページはその JSON を先に読む、`/rwa` 入口に 30 秒の道、`/rwa` 面から `/accuracy` へのリンクを外す、`identity_binding` の表示を外す、アンカーした記録との違いを明記、要約に分母。

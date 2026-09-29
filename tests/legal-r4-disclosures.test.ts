@@ -71,10 +71,12 @@ test("billing: Upgrade opens a final confirmation; only the confirmation proceed
 test("notice: relationships are disclosed with the neutrality rule", () => {
   const notice = squash(read("src/app/legal/notice/page.tsx"));
   assert.match(notice, /id="relationships"/);
-  assert.match(notice, /Relationships: grants, prizes and applications/);
+  assert.match(notice, /Relationships: grants and prizes received/);
   assert.match(notice, /no grant, prize, application or payment changes how we measure/);
-  for (const who of ["Bazantic", "Circle Developer Grants", "Base Ecosystem Fund", "Algorand"]) {
-    assert.ok(notice.includes(who), `relationship row missing: ${who}`);
+  // 2026-09-29: 載せるのは受け取った助成・賞だけ（申請中・見送りは資金の関係ではなく、運営者の申請歴を公開してしまう）。
+  assert.ok(notice.includes("Bazantic"), "relationship row missing: Bazantic");
+  for (const pending of ["Circle Developer Grants", "Base Ecosystem Fund", "MITOU", "Octant"]) {
+    assert.ok(!notice.includes(pending), `pending application should not be listed: ${pending}`);
   }
 });
 
