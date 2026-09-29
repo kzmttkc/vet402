@@ -22,7 +22,8 @@ import { ARC_CAIP2, ARC_USDC, BASE_CAIP2, BASE_USDC, MAX_PER_PURCHASE_UNITS, sel
 
 const PAYTO = "0xB98eF29eb2be19Ae646A8FC0248255B90A332dbC";
 const BASE = { scheme: "exact", network: BASE_CAIP2, amount: "3000", asset: BASE_USDC, payTo: PAYTO, maxTimeoutSeconds: 300, extra: { name: "USD Coin", version: "2" } };
-const ARC = { scheme: "exact", network: ARC_CAIP2, amount: "4000", asset: ARC_USDC, payTo: PAYTO, maxTimeoutSeconds: 300, extra: { assetTransferMethod: "eip3009", name: "USDC", version: "2", acceptId: "arc-usdc-circle" } };
+// 2026-09-29 監査 5 周目: 免除された別チェーンの accept は宣言額（3000）以下でなければ払わない。Arc は宣言より安い額にする。
+const ARC = { scheme: "exact", network: ARC_CAIP2, amount: "2500", asset: ARC_USDC, payTo: PAYTO, maxTimeoutSeconds: 300, extra: { assetTransferMethod: "eip3009", name: "USDC", version: "2", acceptId: "arc-usdc-circle" } };
 const GATEWAY = { ...ARC, extra: { name: "GatewayWalletBatched", version: "1", verifyingContract: "0x77777777dcc4d5a8b6e418fd04d8997ef11000ee" } };
 
 function withArc<T>(on: boolean, fn: () => T): T {
@@ -53,7 +54,7 @@ test("preferNetworks に Arc: Arc の eip3009 accept が先に選ばれ、宣言
     const chosen = selectAccept(EXA, { ...CATALOG, preferNetworks: [ARC_CAIP2] });
     assert.ok(chosen.accept, `reason=${chosen.reason}`);
     assert.equal(chosen.accept!.network, ARC_CAIP2);
-    assert.equal(chosen.accept!.amount, "4000", "別チェーンの額はカタログの宣言と違ってよい");
+    assert.equal(chosen.accept!.amount, "2500", "別チェーンの額はカタログの宣言と違ってよい（宣言額以下なら）");
     assert.equal(chosen.accept!.extra?.acceptId, "arc-usdc-circle", "Gateway ではなく eip3009");
   });
 });
@@ -67,7 +68,7 @@ test("preferNetworks に Arc でも旗が off なら Arc は eligible になら�
 
 test("宣言額の免除は「宣言 network の accept が壁にある」かつ「preferNetworks の別チェーン accept」にだけ効く（レビュー C1）", () => {
   withArc(true, () => {
-    // 優先されていない Arc は宣言額（3000）と比べられる → 4000 は不一致。Base 9999 も不一致 → price_mismatch。
+    // 優先されていない Arc は宣言額（3000）と比べられる → 2500 は不一致。Base 9999 も不一致 → price_mismatch。
     const noPref = selectAccept([{ ...BASE, amount: "9999" }, ARC], CATALOG);
     assert.equal(noPref.accept, null, "優先していない別チェーンの accept は免除されない");
     assert.equal(noPref.reason, "price_mismatch");
@@ -79,7 +80,7 @@ test("宣言額の免除は「宣言 network の accept が壁にある」かつ
     const baseOnly = selectAccept([{ ...BASE, amount: "9999" }], CATALOG);
     assert.equal(baseOnly.accept, null);
     assert.equal(baseOnly.reason, "price_mismatch");
-    // 揃っていれば免除される: Base が宣言どおり・Arc を優先 → Arc（4000・宣言の 3 倍以内）。
+    // 揃っていれば免除される: Base が宣言どおり・Arc を優先 → Arc（2500・宣言額以下）。
     const ok = selectAccept([BASE, ARC], { ...CATALOG, preferNetworks: [ARC_CAIP2] });
     assert.equal(ok.accept?.network, ARC_CAIP2);
   });
@@ -108,20 +109,26 @@ test("A2: declaredNetwork='base-mainnet'（本番 12 行の生値）・宣言 70
   });
 });
 
-// ---- レビュー C3: 免除された別チェーンの accept にも宣言額との相対上限（3 倍・かつ $1 以下）。 ----
-test("優先された Arc の accept は宣言額の 3 倍まで。超えれば飛ばして Base、Base も無ければ price_mismatch", () => {
+// ---- レビュー C3: 免除された別チェーンの accept にも宣言額との相対上限（$1 以下）。 ----
+// 2026-09-29 監査 5 周目（低）: 上限は宣言額の 3 倍 → **宣言額そのもの**。別チェーンで宣言より高く払わない。
+test("優先された Arc の accept は宣言額まで。超えれば飛ばして Base、Base も無ければ price_mismatch", () => {
   withArc(true, () => {
     const pref = { ...CATALOG, preferNetworks: [ARC_CAIP2] };
-    assert.equal(selectAccept([BASE, { ...ARC, amount: "9000" }], pref).accept?.network, ARC_CAIP2, "3 倍ちょうどは可");
-    assert.equal(selectAccept([BASE, { ...ARC, amount: "9001" }], pref).accept?.network, BASE_CAIP2, "3 倍超は Arc を飛ばして Base");
-    const noBaseOk = selectAccept([{ ...BASE, amount: "9999" }, { ...ARC, amount: "9001" }], pref);
+    assert.equal(selectAccept([BASE, { ...ARC, amount: "3000" }], pref).accept?.network, ARC_CAIP2, "宣言額ちょうどは可");
+    assert.equal(selectAccept([BASE, { ...ARC, amount: "3001" }], pref).accept?.network, BASE_CAIP2, "宣言額超は Arc を飛ばして Base");
+    assert.equal(selectAccept([BASE, { ...ARC, amount: "9000" }], pref).accept?.network, BASE_CAIP2, "以前の上限（3 倍）ちょうども今は飛ばす");
+    const noBaseOk = selectAccept([{ ...BASE, amount: "9999" }, { ...ARC, amount: "3001" }], pref);
     assert.equal(noBaseOk.accept, null);
     assert.equal(noBaseOk.reason, "price_mismatch");
     // 宣言額が大きくても $1（MAX_PER_PURCHASE_UNITS）は越えない。
     // 2026-09-19: pay_to が null の行では免除を開かない（W3）ので、相対上限の確認は pay_to が宣言された行で行う。
     const bigDeclared = { declaredAmount: "500000", declaredPayTo: PAYTO.toLowerCase(), declaredNetwork: BASE_CAIP2, preferNetworks: [ARC_CAIP2] };
-    assert.equal(selectAccept([{ ...BASE, amount: "500000" }, { ...ARC, amount: String(MAX_PER_PURCHASE_UNITS) }], bigDeclared).accept?.network, ARC_CAIP2);
-    assert.equal(selectAccept([{ ...BASE, amount: "500000" }, { ...ARC, amount: String(MAX_PER_PURCHASE_UNITS + 1n) }], bigDeclared).accept?.network, BASE_CAIP2);
+    assert.equal(selectAccept([{ ...BASE, amount: "500000" }, { ...ARC, amount: "500000" }], bigDeclared).accept?.network, ARC_CAIP2);
+    assert.equal(selectAccept([{ ...BASE, amount: "500000" }, { ...ARC, amount: "500001" }], bigDeclared).accept?.network, BASE_CAIP2);
+    const overMax = { declaredAmount: String(MAX_PER_PURCHASE_UNITS * 2n), declaredPayTo: PAYTO.toLowerCase(), declaredNetwork: BASE_CAIP2, preferNetworks: [ARC_CAIP2] };
+    // 宣言額が $1 を超えても（Base は over_cap）、Arc は $1 で頭打ち。
+    assert.equal(selectAccept([{ ...BASE, amount: String(MAX_PER_PURCHASE_UNITS * 2n) }, { ...ARC, amount: String(MAX_PER_PURCHASE_UNITS) }], overMax).accept?.network, ARC_CAIP2);
+    assert.equal(selectAccept([{ ...BASE, amount: String(MAX_PER_PURCHASE_UNITS * 2n) }, { ...ARC, amount: String(MAX_PER_PURCHASE_UNITS + 1n) }], overMax).accept, null);
     // 宣言額が無ければ $1 だけ。
     const noDeclared = { declaredAmount: null, declaredPayTo: null, declaredNetwork: BASE_CAIP2, preferNetworks: [ARC_CAIP2] };
     assert.equal(selectAccept([BASE, { ...ARC, amount: String(MAX_PER_PURCHASE_UNITS) }], noDeclared).accept?.network, ARC_CAIP2);

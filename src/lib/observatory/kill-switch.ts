@@ -16,8 +16,10 @@
 // 止めないための可用性優先）。停止スイッチは逆の倒れ方をしなければならない。
 //
 // fail-closed の定義（decideHalt が唯一の判定・テストは tests/l1-kill-switch.test.ts）:
-//   表が無い / 行が無い   → halted=false。未導入は「現状維持」であって停止指示ではない。
-//                            逆にすると、この表を作る前のデプロイが全部止まる。
+//   行が無い              → halted=false。一度も止めていない（表はある）。
+//   表が無い              → halted=true（2026-09-29 監査 5 周目・低）。本番には 2026-09-05 から表が
+//                            あるので、表が無いのは「別の DB を指している・表が落ちた」のどちらか。
+//                            運用者の停止を読めない状態で署名しない。以前は「未導入は現状維持」で通していた。
 //   DB 到達不能 / 例外    → halted=true。**読めないなら止める側へ倒す。**
 //                            金を動かす関門で「読めなかったので通した」は無い。
 // ============================================================
@@ -70,7 +72,8 @@ export function decideHalt(probe: HaltProbe): HaltVerdict {
     case "absent":
       return { halted: false, reason: "no_flag_row", source: "absent" };
     case "schema_missing":
-      return { halted: false, reason: "flag_table_absent", source: "schema_missing" };
+      // 止める側（2026-09-29 監査 5 周目）。停止の表を読めないのは、停止の指示を読めないのと同じ。
+      return { halted: true, reason: "flag_table_absent", source: "schema_missing" };
     case "unreachable":
       return {
         halted: true,

@@ -52,9 +52,9 @@ test("行があって enabled=false → 通す", () => {
   assert.equal(v.halted, false);
 });
 
-test("fail-closed 分岐 1: 表が無い（未導入）→ 通す", () => {
+test("fail-closed 分岐 1: 表が無い → 止める（2026-09-29 監査 5 周目: 停止の表を読めないまま署名しない）", () => {
   const v = decideHalt({ kind: "schema_missing" });
-  assert.equal(v.halted, false, "runtime_flags を作る前のデプロイを止めてはいけない");
+  assert.equal(v.halted, true, "表が無い＝運用者の停止を読めない。止める側へ倒す");
   assert.match(v.reason, /flag_table_absent/);
 });
 

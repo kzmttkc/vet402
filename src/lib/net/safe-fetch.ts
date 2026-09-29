@@ -265,12 +265,22 @@ export type SafeFetchOptions = {
    * 空で、転送を手で追うこの実装では当てにできない。
    */
   onCredentialsStripped?: (hop: { from: string; to: string }) => void;
+  /**
+   * Refuse any hop — the first request or a redirect's `Location` — that is not `https:`
+   * (UnsafeTargetError "unsafe_scheme"). Default false: L0 still observes http listings.
+   *
+   * 2026-09-29 audit round 5 (medium): the L1 purchase reads the payee and the amount from the 402
+   * it receives. Over plain http anyone on the path can rewrite that 402, and a catalog row with no
+   * declared pay_to had nothing to compare the wall's payTo against. The L1 runner passes this on
+   * both the unpaid request (the 402 it signs from) and the paid retry (the credential it carries).
+   */
+  httpsOnly?: boolean;
 };
 
 /** Per-call options a drop-in fetchImpl accepts as a third argument. */
 export type SafeFetchCallOptions = Pick<
   SafeFetchOptions,
-  "crossOriginBody" | "sensitiveHeaders" | "onCredentialsStripped"
+  "crossOriginBody" | "sensitiveHeaders" | "onCredentialsStripped" | "httpsOnly"
 >;
 
 /**
@@ -288,7 +298,7 @@ export async function safeFetch(
   init: RequestInit = {},
   options: SafeFetchOptions = {},
 ): Promise<Response> {
-  const { fetchImpl = pinnedFetch, resolve = defaultResolver, maxRedirects = 5, crossOriginBody = "follow", sensitiveHeaders = [], onCredentialsStripped } = options;
+  const { fetchImpl = pinnedFetch, resolve = defaultResolver, maxRedirects = 5, crossOriginBody = "follow", sensitiveHeaders = [], onCredentialsStripped, httpsOnly = false } = options;
   // 固定名の表＋この要求ぶんの宣言。Headers は set/delete で正規化するので小文字で持つ。
   const dropOnCrossOrigin = [
     ...CROSS_ORIGIN_SENSITIVE_HEADERS,
@@ -307,6 +317,10 @@ export async function safeFetch(
   let headers = new Headers(init.headers);
 
   for (let hop = 0; ; hop++) {
+    // Checked on every hop, before any socket: an https listing that redirects to http is refused too.
+    if (httpsOnly && current.protocol !== "https:") {
+      throw new UnsafeTargetError("unsafe_scheme", current.toString());
+    }
     const pin = await assertPublicTarget(current, resolve);
 
     const response = await fetchImpl(

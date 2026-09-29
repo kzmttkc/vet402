@@ -81,7 +81,8 @@ if (!TEST_DB) {
     const hi = { quality: { l30DaysTotalCalls: 5000, l30DaysUniquePayers: 500 } };
     const lo = { quality: { l30DaysTotalCalls: 10, l30DaysUniquePayers: 1 } };
     const baseAccept = (n: number) => ({ scheme: "exact", network: "eip155:8453", amount: "3000", asset: BASE_USDC, payTo: payToFor(n), maxTimeoutSeconds: 300, extra: { name: "USD Coin", version: "2" } });
-    const arcAccept = (n: number) => ({ scheme: "exact", network: ARC_CAIP2, amount: "4000", asset: ARC_USDC, payTo: payToFor(n), maxTimeoutSeconds: 300, extra: { assetTransferMethod: "eip3009", name: "USDC", version: "2", acceptId: "arc-usdc-circle" } });
+    // 2026-09-29 監査 5 周目: 免除された Arc の accept は宣言額（Base の 3000）以下（以前は 3 倍まで・4000 だった）。
+    const arcAccept = (n: number) => ({ scheme: "exact", network: ARC_CAIP2, amount: "2500", asset: ARC_USDC, payTo: payToFor(n), maxTimeoutSeconds: 300, extra: { assetTransferMethod: "eip3009", name: "USDC", version: "2", acceptId: "arc-usdc-circle" } });
     const solAccept = (n: number) => ({ scheme: "exact", network: SOL_CAIP2, amount: "4000", asset: SOL_USDC, payTo: solPayTo(n), maxTimeoutSeconds: 60, extra: { feePayer: FEE_PAYER } });
     const ACCEPTS: Record<string, unknown[]> = {
       [URLS.baseNew]: [baseAccept(1)],
@@ -182,14 +183,14 @@ if (!TEST_DB) {
       assert.equal((await rowsFor(URLS.baseRepeat)).length, 2);
     });
 
-    await t.test("レーンの支出は別枠の内側（Arc 8000・Solana 4000）で、日次 $25 の合計にも載る", async () => {
+    await t.test("レーンの支出は別枠の内側（Arc 5000・Solana 4000）で、日次 $25 の合計にも載る", async () => {
       const raw = await db.execute(sql`
         SELECT network, coalesce(sum(spent_units::numeric), 0)::text AS s FROM x402_l1_purchases
         WHERE attempted_at >= (date_trunc('day', now() AT TIME ZONE 'utc') AT TIME ZONE 'utc') GROUP BY network`);
       const by = Object.fromEntries(((Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as { network: string; s: string }[]).map((r) => [r.network, Number(r.s)]));
-      assert.equal(by[ARC_CAIP2], 8000);
+      assert.equal(by[ARC_CAIP2], 5000);
       assert.equal(by[SOL_CAIP2], 4000);
-      assert.equal(summary.spentUnitsTotal, String(8000 + 4000 + 3000));
+      assert.equal(summary.spentUnitsTotal, String(5000 + 4000 + 3000));
     });
   });
 }

@@ -3,7 +3,7 @@
 // Arc の lane accept 優先（レビュー C1/C3/N1）と同じ規律を、DB もネットワークも無しで固定する:
 //   - レーンとして優先された候補だけ / payTo はカタログの raw_accepts が宣言した r アドレスと完全一致
 //   - 宣言額の免除は「宣言 network の accept が壁にあり宣言どおり払える・別チェーン・宣言額が正の整数」のときだけ
-//   - 免除された accept は min(3 × 宣言額, $1) 以下（"0.01" → 10000 units で比較）
+//   - 免除された accept は min(宣言額, $1) 以下（"0.01" → 10000 units で比較。2026-09-29 監査 5 周目までは 3 × 宣言額）
 //   - 免除されない accept は宣言額と units で一致しなければ price_mismatch
 // ============================================================
 import { test } from "node:test";
@@ -52,9 +52,9 @@ test("Base 先頭 + XRPL 2 番目の壁: レーンとして優先された候補
   assert.equal(sel.accept && "amountUnits" in sel ? sel.amountUnits : null, 10_000n);
   // v1 スラグの宣言（base）も同じチェーンとして読む
   assert.equal(selectXrplSecondaryAccept([baseAccept(), xrplAccept()], opts({ declaredNetwork: "base" })).reason, null);
-  // 大文字の "BASE"（カタログの生の表記）も chains.toCaip2 が同じチェーンに寄せる。免除が効くこと（"0.02" は宣言額と
+  // 大文字の "BASE"（カタログの生の表記）も chains.toCaip2 が同じチェーンに寄せる。免除が効くこと（"0.005" は宣言額と
   // 一致しないので、免除が効かなければ price_mismatch になる）を固定する（2026-09-18 レビュー S1）。
-  assert.equal(selectXrplSecondaryAccept([baseAccept(), xrplAccept({ amount: "0.02" })], opts({ declaredNetwork: "BASE" })).reason, null);
+  assert.equal(selectXrplSecondaryAccept([baseAccept(), xrplAccept({ amount: "0.005" })], opts({ declaredNetwork: "BASE" })).reason, null);
 });
 
 test("レーンとして優先されていない候補は XRPL レールへ入れない", () => {
@@ -71,17 +71,21 @@ test("payTo: カタログの raw_accepts が宣言した r アドレスと完全
   assert.equal(selectXrplSecondaryAccept([baseAccept(), xrplAccept()], opts({ declaredXrplPayTos: [OTHER_R, XRPL_PAYTO] })).reason, null);
 });
 
-test("相対上限: 免除された accept は min(3 × 宣言額, $1) 以下", () => {
-  // 宣言 10000 → 上限 30000（"0.03"）
-  assert.equal(selectXrplSecondaryAccept([baseAccept(), xrplAccept({ amount: "0.03" })], opts()).reason, null);
-  assert.equal(selectXrplSecondaryAccept([baseAccept(), xrplAccept({ amount: "0.030001" })], opts()).reason, "over_cap");
-  // 宣言 3000 の行に "0.01"（10000）は 3 倍超
+// 2026-09-29 監査 5 周目（低）: 免除された accept の上限は宣言額の 3 倍 → **宣言額そのもの**（宣言より高く払わない）。
+test("相対上限: 免除された accept は min(宣言額, $1) 以下", () => {
+  // 宣言 10000 → 上限 10000（"0.01"）。安いのは通す。
+  assert.equal(selectXrplSecondaryAccept([baseAccept(), xrplAccept({ amount: "0.01" })], opts()).reason, null);
+  assert.equal(selectXrplSecondaryAccept([baseAccept(), xrplAccept({ amount: "0.009" })], opts()).reason, null);
+  assert.equal(selectXrplSecondaryAccept([baseAccept(), xrplAccept({ amount: "0.010001" })], opts()).reason, "over_cap");
+  assert.equal(selectXrplSecondaryAccept([baseAccept(), xrplAccept({ amount: "0.03" })], opts()).reason, "over_cap", "以前の上限（3 倍）ちょうども今は払わない");
+  // 宣言 3000 の行に "0.01"（10000）は宣言超
   const cheap = selectXrplSecondaryAccept([baseAccept({ amount: "3000" }), xrplAccept()], opts({ declaredAmount: "3000" }));
   assert.equal(cheap.reason, "over_cap");
-  // 絶対上限 $1: 宣言 900000 でも "1.5" は払わない
+  // 絶対上限 $1: 宣言 900000 でも "1.5" は払わない。宣言 900000 に "1"（1000000）は宣言超。"0.9" は宣言どおり。
   const big = selectXrplSecondaryAccept([baseAccept({ amount: "900000" }), xrplAccept({ amount: "1.5" })], opts({ declaredAmount: "900000" }));
   assert.equal(big.reason, "over_cap");
-  assert.equal(selectXrplSecondaryAccept([baseAccept({ amount: "900000" }), xrplAccept({ amount: "1" })], opts({ declaredAmount: "900000" })).reason, null);
+  assert.equal(selectXrplSecondaryAccept([baseAccept({ amount: "900000" }), xrplAccept({ amount: "1" })], opts({ declaredAmount: "900000" })).reason, "over_cap");
+  assert.equal(selectXrplSecondaryAccept([baseAccept({ amount: "900000" }), xrplAccept({ amount: "0.9" })], opts({ declaredAmount: "900000" })).reason, null);
 });
 
 test("宣言額の免除条件: 宣言 network の accept が壁に無い／宣言どおり払えない／宣言額が正の整数でないときは免除しない", () => {

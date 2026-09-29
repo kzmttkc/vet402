@@ -458,7 +458,7 @@ if (!TEST_DB) {
       assert.ok(rows.every((r) => r.spentUnits === "0"), "nothing signed → nothing spent");
     });
 
-    await t.test("a wall naming the operator's own payTo is refused before any reservation", async () => {
+    await t.test("a listing with no declared payTo is never requested, so a wall naming the operator's own payTo is never reached", async () => {
       // 自己取引の防止。候補選択の自己除外は catalog の pay_to にしか掛からない。
       // カタログが payTo を申告していないエンドポイントでは payto_mismatch も
       // 比較対象を持たないので、**壁が返した payTo の運営者チェックだけ**が
@@ -489,20 +489,25 @@ if (!TEST_DB) {
             { scheme: "exact", network: "eip155:8453", amount: "3000", asset: BASE_USDC, payTo: OPERATOR, extra: { name: "USD Coin", version: "2" } },
           ],
         });
+        // 2026-09-29 監査 5 周目: カタログが受取先を申告していない出品は L1 で買わない（候補 SQL と purchaseOne の
+        // isL1PurchasableListing）。以前はここで壁の payTo（運営者）を読み、運営者チェックで payto_operator_self を
+        // 記録していた。今は壁に 1 リクエストも出さないので、運営者を名乗る壁にも届かない（行も書かない）。
+        let requests = 0;
         const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER,
           onlyEndpointId: nullPayToEp.id,
-          fetchImpl: async () =>
-            new Response(wall, { status: 402, headers: { "content-type": "application/json" } }),
+          fetchImpl: async () => {
+            requests++;
+            return new Response(wall, { status: 402, headers: { "content-type": "application/json" } });
+          },
         });
         assert.equal(summary.settled, 0);
         assert.equal(summary.attempted, 0, "署名も予約もしていない");
+        assert.equal(requests, 0, "受取先を申告していない出品には要求を出さない");
         const rows = await db
           .select()
           .from(schema.x402L1Purchases)
           .where(eq(schema.x402L1Purchases.endpointId, nullPayToEp.id));
-        assert.equal(rows.length, 1);
-        assert.equal(rows[0].status, "payto_operator_self");
-        assert.equal(rows[0].spentUnits, "0", "予約前に止まる → 支出0");
+        assert.equal(rows.length, 0, "我々の側の見送りなので行は書かない");
       } finally {
         if (savedOperator === undefined) delete process.env.VET402_OPERATOR_PAYTO;
         else process.env.VET402_OPERATOR_PAYTO = savedOperator;

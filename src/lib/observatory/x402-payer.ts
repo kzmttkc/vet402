@@ -437,7 +437,7 @@ export function selectAccept(
   // The gate stays "never pay an address the catalog did not declare"; it now reads the
   // declaration of the accept actually being paid instead of the first accept's only.
   // 再レビュー N1（2026-09-17）: 宣言額が**正の整数として読めない**（"0" / "0.01" / "1e4" / 負）
-  // ときは免除しない。読めない宣言額では相対上限（3 倍）を組めず、免除だけが残って別チェーンの
+  // ときは免除しない。読めない宣言額では相対上限（2026-09-29 から宣言額そのもの）を組めず、免除だけが残って別チェーンの
   // accept が $1 まで通っていた（C1 と同じ「生の文字列が parse できないと関門が消える」型）。
   const declaredUnits = ((): bigint | null => {
     if (options.declaredAmount === null) return null;
@@ -492,8 +492,8 @@ export function selectAccept(
   //     priced, and every accept is compared, exactly as before 2026-09-17;
   //   - only an accept on ANOTHER network that the caller explicitly preferred
   //     (preferNetworks — the lane the candidate came from) is exempt;
-  //   - an exempt accept still sits under min(3 × declared, MAX_PER_PURCHASE_UNITS)
-  //     (review C3): a lane may cost a little more than the Base listing, not 300×.
+  //   - an exempt accept still sits under min(declared, MAX_PER_PURCHASE_UNITS)
+  //     (review C3; 3 × until the 2026-09-29 audit round 5): a lane may cost less than the listing, never more.
   // Everything else (payTo / domain / asset / ceiling) applies to all accepts unchanged.
   const declaredPresent = declaredNetwork !== null && eligible.some((a) => a.network === declaredNetwork);
   // （declaredUnits は payTo の関門の上で読む——N1: 正の整数として読めない宣言額では免除しない。）
@@ -507,11 +507,15 @@ export function selectAccept(
     a.network !== declaredNetwork &&
     preferred.has(a.network);
   const priceDeclaredFor = (a: ChallengeAccept): boolean => options.declaredAmount !== null && !exemptFromDeclaredPrice(a);
-  /** Ceiling for an exempt (other-chain, preferred) accept: 3 × the declared price, never above the hard cap. */
+  /**
+   * Ceiling for an exempt (other-chain, preferred) accept: the declared price itself, never above the hard cap.
+   * 2026-09-29 audit round 5 (low): this was 3 × the declared price, so a seller could price its Arc accept at
+   * three times what its catalog listing says and be paid that. The lane may be priced LOWER than the listing
+   * (the seller prices each chain), never higher.
+   */
   const relativeCapUnits = ((): bigint => {
     if (declaredUnits === null) return MAX_PER_PURCHASE_UNITS; // 免除自体が効かないので使われない
-    const triple = declaredUnits * 3n;
-    return triple < MAX_PER_PURCHASE_UNITS ? triple : MAX_PER_PURCHASE_UNITS;
+    return declaredUnits < MAX_PER_PURCHASE_UNITS ? declaredUnits : MAX_PER_PURCHASE_UNITS;
   })();
   const overRelativeCap = (a: ChallengeAccept, amount: bigint): boolean =>
     options.declaredAmount !== null && exemptFromDeclaredPrice(a) && amount > relativeCapUnits;

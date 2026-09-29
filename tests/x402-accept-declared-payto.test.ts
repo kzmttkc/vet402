@@ -12,7 +12,7 @@
 //  3. declaredPayTosByNetwork が無い・空なら従来どおり先頭 pay_to と照合（exa では Base）。
 //  4. 優先していない accept（Base）の payTo の関門は変わらない（base-usdc-circle の 0xB98e… は通らない）。
 //  5. GatewayWalletBatched の Arc accept は宣言があっても選ばれない。
-//  6. 相対上限 min(3×宣言額, $1)・宣言額の異形（"0"・"0.01"・"1e4"・負）では免除なし・pay_to null では免除なし。
+//  6. 相対上限 min(宣言額, $1)（2026-09-29 監査 5 周目まで 3×宣言額）・宣言額の異形（"0"・"0.01"・"1e4"・負）では免除なし・pay_to null では免除なし。
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -112,14 +112,16 @@ test("GatewayWalletBatched の Arc accept は宣言があっても選ばれな�
   });
 });
 
-test("相対上限: 宣言の Arc payTo でも min(3×宣言額, $1) を超える Arc は飛ばして Base", () => {
+test("相対上限: 宣言の Arc payTo でも min(宣言額, $1) を超える Arc は飛ばして Base（2026-09-29 まで 3 倍）", () => {
   withArc(true, () => {
-    assert.equal(selectAccept([BASE_LEGACY, { ...ARC, amount: "21000" }], LANE).accept?.network, ARC_CAIP2, "3 倍ちょうどは可");
-    assert.equal(selectAccept([BASE_LEGACY, { ...ARC, amount: "21001" }], LANE).accept?.network, BASE_CAIP2, "3 倍超は Base");
+    assert.equal(selectAccept([BASE_LEGACY, { ...ARC, amount: "7000" }], LANE).accept?.network, ARC_CAIP2, "宣言額ちょうどは可");
+    assert.equal(selectAccept([BASE_LEGACY, { ...ARC, amount: "6000" }], LANE).accept?.network, ARC_CAIP2, "宣言額より安いのは可");
+    assert.equal(selectAccept([BASE_LEGACY, { ...ARC, amount: "7001" }], LANE).accept?.network, BASE_CAIP2, "宣言額超は Base");
+    assert.equal(selectAccept([BASE_LEGACY, { ...ARC, amount: "21000" }], LANE).accept?.network, BASE_CAIP2, "以前の上限（3 倍）ちょうども今は Base");
     const big = { ...LANE, declaredAmount: "500000" };
     const baseBig = { ...BASE_LEGACY, amount: "500000" };
-    assert.equal(selectAccept([baseBig, { ...ARC, amount: String(MAX_PER_PURCHASE_UNITS) }], big).accept?.network, ARC_CAIP2);
-    assert.equal(selectAccept([baseBig, { ...ARC, amount: String(MAX_PER_PURCHASE_UNITS + 1n) }], big).accept?.network, BASE_CAIP2);
+    assert.equal(selectAccept([baseBig, { ...ARC, amount: "500000" }], big).accept?.network, ARC_CAIP2);
+    assert.equal(selectAccept([baseBig, { ...ARC, amount: String(MAX_PER_PURCHASE_UNITS) }], big).accept?.network, BASE_CAIP2);
     // 宣言 network（Base）の accept が壁に無ければ免除しない: Arc 7001 ≠ 宣言 7000 → price_mismatch。
     const arcOnly = selectAccept([{ ...ARC, amount: "7001" }], LANE);
     assert.equal(arcOnly.accept, null);
@@ -146,7 +148,7 @@ test("W3: 先頭 pay_to が null の行では免除を開かない——Arc の�
     const nullHead = { ...LANE, declaredPayTo: null };
     // 額が一致すれば Arc（payTo は Arc の宣言と照合される）。
     assert.equal(selectAccept(EXA, nullHead).accept?.network, ARC_CAIP2);
-    // 額が違えば（3 倍以内でも）Arc は飛ばす。
+    // 額が違えば（宣言額より高くても安くても）Arc は飛ばす——宣言額との一致を要求する。
     const pricier = selectAccept([BASE_LEGACY, { ...ARC, amount: "8000" }], nullHead);
     assert.equal(pricier.accept?.network, BASE_CAIP2);
     // pay_to が null でも、Arc の宣言に無い payTo の Arc accept は通らない。

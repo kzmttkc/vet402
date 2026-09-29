@@ -77,7 +77,8 @@ if (!TEST_DB) {
     const hi = { quality: { l30DaysTotalCalls: 5000, l30DaysUniquePayers: 500 } };
     const lo = { quality: { l30DaysTotalCalls: 10, l30DaysUniquePayers: 1 } };
     const baseAccept = (n: number, amount = "3000") => ({ scheme: "exact", network: BASE, amount, asset: BASE_USDC, payTo: payToFor(n), maxTimeoutSeconds: 300, extra: { name: "USD Coin", version: "2" } });
-    const arcAccept = (n: number, amount = "4000", network = ARC_CAIP2) => ({ scheme: "exact", network, amount, asset: ARC_USDC, payTo: payToFor(n), maxTimeoutSeconds: 300, extra: { assetTransferMethod: "eip3009", name: "USDC", version: "2", acceptId: "arc-usdc-circle" } });
+    // 2026-09-29 監査 5 周目: 免除された Arc の accept は宣言額以下（以前は 3 倍まで・既定 4000 だった）。
+    const arcAccept = (n: number, amount = "2500", network = ARC_CAIP2) => ({ scheme: "exact", network, amount, asset: ARC_USDC, payTo: payToFor(n), maxTimeoutSeconds: 300, extra: { assetTransferMethod: "eip3009", name: "USDC", version: "2", acceptId: "arc-usdc-circle" } });
     const solAccept = (n: number) => ({ scheme: "exact", network: SOL_CAIP2, amount: "4000", asset: SOL_USDC, payTo: solPayTo(n), maxTimeoutSeconds: 60, extra: { feePayer: FEE_PAYER } });
 
     type Item = { url: string; accepts: unknown[]; demand: "hi" | "lo" };
@@ -150,7 +151,7 @@ if (!TEST_DB) {
       try {
         await seed([
           { url: "https://exa1.example/search", accepts: [baseAccept(1), arcAccept(1, "400000")], demand: "lo" },
-          { url: "https://exa2.example/search", accepts: [baseAccept(2, "300000"), arcAccept(2, "400000")], demand: "lo" },
+          { url: "https://exa2.example/search", accepts: [baseAccept(2, "400000"), arcAccept(2, "400000")], demand: "lo" },
         ]);
         const w = wall();
         const summary = await run(w);
@@ -183,7 +184,7 @@ if (!TEST_DB) {
     });
 
     await t.test("W5: raw_accepts が `arc` スラグだけの行は枠に載らず、Base で買う（実行時と同じ完全一致）", async () => {
-      await seed([{ url: "https://slug.example/api", accepts: [baseAccept(1), arcAccept(1, "4000", "arc")], demand: "lo" }]);
+      await seed([{ url: "https://slug.example/api", accepts: [baseAccept(1), arcAccept(1, "2500", "arc")], demand: "lo" }]);
       const w = wall();
       const summary = await run(w);
       assert.equal(summary.laneFloor.arc ?? 0, 0);

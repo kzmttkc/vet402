@@ -65,11 +65,14 @@ if (!TEST_DB) {
     delete process.env.OBSERVATORY_SOLANA_L1_ENABLED;
     delete process.env.L1_LANE_FLOOR_PER_RUN;
 
-    /** exa.ai /search と同じ形: Base 先頭（宣言 3000）・Arc eip3009（4000）・Arc Gateway。 */
+    /**
+     * exa.ai /search と同じ形: Base 先頭（宣言 3000）・Arc eip3009（2500）・Arc Gateway。
+     * 2026-09-29 監査 5 周目: 免除された Arc の accept は宣言額以下でなければ払わない（以前は 3 倍まで・4000 だった）。
+     */
     const EXA_ACCEPTS = [
       { scheme: "exact", network: "eip155:8453", amount: "3000", asset: BASE_USDC, payTo: EXA_PAYTO, maxTimeoutSeconds: 300, extra: { name: "USD Coin", version: "2" } },
-      { scheme: "exact", network: ARC_CAIP2, amount: "4000", asset: ARC_USDC, payTo: EXA_PAYTO, maxTimeoutSeconds: 300, extra: { assetTransferMethod: "eip3009", name: "USDC", version: "2", acceptId: "arc-usdc-circle" } },
-      { scheme: "exact", network: ARC_CAIP2, amount: "4000", asset: ARC_USDC, payTo: EXA_PAYTO, maxTimeoutSeconds: 300, extra: { name: "GatewayWalletBatched", version: "1", verifyingContract: GATEWAY_CONTRACT, acceptId: "arc-usdc-gateway" } },
+      { scheme: "exact", network: ARC_CAIP2, amount: "2500", asset: ARC_USDC, payTo: EXA_PAYTO, maxTimeoutSeconds: 300, extra: { assetTransferMethod: "eip3009", name: "USDC", version: "2", acceptId: "arc-usdc-circle" } },
+      { scheme: "exact", network: ARC_CAIP2, amount: "2500", asset: ARC_USDC, payTo: EXA_PAYTO, maxTimeoutSeconds: 300, extra: { name: "GatewayWalletBatched", version: "1", verifyingContract: GATEWAY_CONTRACT, acceptId: "arc-usdc-gateway" } },
     ];
     const PLAIN_ACCEPTS = [{ scheme: "exact", network: "eip155:8453", amount: "3000", asset: BASE_USDC, payTo: PLAIN_PAYTO, maxTimeoutSeconds: 300, extra: { name: "USD Coin", version: "2" } }];
     const EXA_URL = "https://api.exa.example/search";
@@ -164,8 +167,8 @@ if (!TEST_DB) {
       assert.equal(paid[0]?.network, ARC_CAIP2);
       assert.equal(paid[0]?.asset, ARC_USDC);
       assert.equal((paid[0]?.extra as Record<string, unknown>)?.acceptId, "arc-usdc-circle", "Gateway ではなく eip3009");
-      assert.deepEqual(await rowsFor(EXA_URL), [{ status: "settle_claimed", network: ARC_CAIP2, asset: ARC_USDC, spent_units: "4000" }]);
-      assert.equal(await arcSpentToday(), 4000, "別枠 arc に載る（reserveSpend の cappedChainFor は accept の network）");
+      assert.deepEqual(await rowsFor(EXA_URL), [{ status: "settle_claimed", network: ARC_CAIP2, asset: ARC_USDC, spent_units: "2500" }]);
+      assert.equal(await arcSpentToday(), 2500, "別枠 arc に載る（reserveSpend の cappedChainFor は accept の network）");
       assert.ok(chains.includes("arc"), "残高は arc として読む");
       // plain（Base だけの売り手）は従来どおり Base。
       assert.equal(w.paidTo(PLAIN_URL)[0]?.network, "eip155:8453");

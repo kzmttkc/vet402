@@ -245,7 +245,7 @@ export function selectXrplAccept(
  *       宣言 network の accept が壁にあり、それ自体が宣言どおり払える（EVM の selectAccept が通る）・
  *       カタログの pay_to が宣言されている（null では開かない）・
  *       宣言 network は XRPL ではない・宣言額が正の整数として読める・レーンとして優先された。
- *     免除された accept は min(3 × 宣言額, $1) 以下（"0.01" を 6 桁 units に直して比べる）。
+ *     免除された accept は min(宣言額, $1) 以下（"0.01" を 6 桁 units に直して比べる。2026-09-29 まで 3 × 宣言額）。
  *   - 免除されない accept は宣言額と **units で一致** しなければ price_mismatch（宣言額が読めなければ常に不一致）。
  *   - $1 の絶対上限は常に掛かる。
  * null を返したら呼び手は従来どおり EVM の selectAccept（Base）へ落ちる。
@@ -294,8 +294,10 @@ export function selectXrplSecondaryAccept(
   // カタログの pay_to が null の行では免除を開かない（2026-09-18 レビュー W3）: selectAccept は宣言の無い payTo を
   // 何とも照合しないので、「宣言どおり払える」の証拠が額だけになる。そのときは宣言額と units の一致を要求する。
   const exempt = declaredUnits !== null && options.declaredPayTo !== null && declaredLegOnDeclaredNetwork;
+  // 免除した accept の上限は宣言額そのもの（2026-09-29 監査 5 周目・低。以前は宣言額の 3 倍）。
+  // 別チェーンの額は売り手が付けるので宣言額より安いのは通す。高いのは払わない。
   const relativeCap =
-    declaredUnits === null ? 0n : declaredUnits * 3n < MAX_PER_PURCHASE_UNITS ? declaredUnits * 3n : MAX_PER_PURCHASE_UNITS;
+    declaredUnits === null ? 0n : declaredUnits < MAX_PER_PURCHASE_UNITS ? declaredUnits : MAX_PER_PURCHASE_UNITS;
 
   let sawOverCap = false;
   for (const accept of eligible) {

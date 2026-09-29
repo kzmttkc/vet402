@@ -37,7 +37,7 @@ import { readBodyCapped } from "@/lib/net/read-capped";
 import { UnsafeTargetError, createSafeFetchImpl, type SafeFetchCallOptions } from "@/lib/net/safe-fetch";
 import { redactForLog, redactedError } from "./redact";
 import { createDeadline } from "@/lib/util/deadline";
-import { CENSUS_PER_RUN, CHAIN_DAILY_CAPS, LANE_FLOOR_FETCH_MAX, LANE_FLOOR_MAX_PER_HOST, LANE_FLOOR_OVERSAMPLE, cappedChainFor, chainDailyCapUnits, checkL1Budget, isCensusEnabled, isL1Enabled, laneFloorPerRun, DAILY_BUDGET_USD, type CappedChain } from "./budget";
+import { CENSUS_PER_RUN, CHAIN_DAILY_CAPS, LANE_FLOOR_FETCH_MAX, LANE_FLOOR_MAX_PER_HOST, LANE_FLOOR_OVERSAMPLE, cappedChainFor, chainDailyCapUnits, checkL1Budget, isCensusEnabled, isL1Enabled, laneFloorPerRun, sellerDailyCapUnits, DAILY_BUDGET_USD, type CappedChain } from "./budget";
 import { isSpendingHalted, type HaltVerdict } from "./kill-switch";
 import { addDerivedOperatorAddresses, isOperatorPayTo, operatorPayToDenylist } from "./operator";
 import { operatorExclusionPredicate } from "./operator-sql";
@@ -125,6 +125,11 @@ export type L1BatchSummary = {
    */
   payerUnfunded: number;
   /**
+   * 売り手ごとの日次上限（budget.ts SELLER_DAILY_CAP_USD・2026-09-29 監査 5 周目）で署名しなかった候補の数。
+   * 予約が断った件と、同じバッチで同じ受取先・ホストの残りを飛ばした件の合計（skipped にも含まれる）。行は書かない。
+   */
+  sellerCapped: number;
+  /**
    * 上の payerUnfunded のうち、残高を**読めなかった**チェーンの名前（2026-09-20・Issue #29 レビューの宿題 ⓒ）。
    * 読み取りはチェーンごとに 1 バッチ 1 回で、失敗もそのバッチの間は使い回すので、1 回の RPC 障害で
    * そのチェーンは全件署名しない。payerUnfunded は「足りない」と「読めない」を足した数で、cron は 200 の
@@ -192,7 +197,8 @@ export type L1BatchSummary = {
  */
 // census の 2 つ（2026-09-28）は公開口へ出さない: 公開口は 1 件指定の playground で census を使わないし、
 // 「まだ試していない売り手の数」は内部の進み具合であって、その 1 件の計測の事実ではない。
-export type PublicL1BatchSummary = Omit<L1BatchSummary, "haltReason" | "censusCandidates" | "censusRemaining" | "retestCandidates">;
+// sellerCapped（2026-09-29 監査 5 周目）も出さない: 売り手ごとの上限で見送った件数は運用の内訳で、その 1 件の計測の事実ではない。
+export type PublicL1BatchSummary = Omit<L1BatchSummary, "haltReason" | "censusCandidates" | "censusRemaining" | "retestCandidates" | "sellerCapped">;
 
 export function publicL1Summary(summary: L1BatchSummary): PublicL1BatchSummary {
   return {
@@ -534,6 +540,48 @@ const CENSUS_TRIED_HOSTS_SQL = sql`
   SELECT ${censusHostSql(sql`te.resource_key`)}
   FROM x402_l1_purchases tp JOIN x402_endpoints te ON te.id = tp.endpoint_id`;
 
+/**
+ * 台帳の受取先の正規化（2026-09-29 監査 5 周目）。0x（EVM）は小文字、base58（Solana）と r アドレス（XRPL）は
+ * 原文（小文字化すると別のアドレスになる）。予約は `accept.payTo` を同じ規則で書くので、同じ売り手の行はこの形で揃う。
+ */
+export function normalizedPayTo(payTo: string): string {
+  return /^0x/i.test(payTo) ? payTo.toLowerCase() : payTo;
+}
+
+/** normalizedPayTo の SQL 版。 */
+const payToNormSql = (col: SQL) => sql`(CASE WHEN ${col} ILIKE '0x%' THEN lower(${col}) ELSE ${col} END)`;
+
+/**
+ * L1 で買ってよい出品か（2026-09-29 監査 5 周目・中・お金）: https であり、カタログが受取先（pay_to）を宣言している。
+ * 候補 SQL の同じ条件（`e.pay_to IS NOT NULL` と `resource_url LIKE 'https://%'`）の JS 側。
+ */
+export function isL1PurchasableListing(candidate: { resourceUrl: string; payTo: string | null }): boolean {
+  if (candidate.payTo === null || candidate.payTo.trim() === "") return false;
+  try {
+    return new URL(candidate.resourceUrl).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 候補 SQL の売り手ごとの日次上限（x402_endpoints e に対する AND 句・2026-09-29 監査 5 周目）。当日の支出が
+ * 上限に届いた受取先・ホストの出品を外す。**上限を締めるのは reserveSpend**（ここはバッチ開始時点の値で、
+ * 402 を取りに行く無駄を省くだけ）。サブクエリは相関しないので 1 回だけ評価される。NOT IN の相手に NULL を入れない。
+ */
+function sellerCapExclusionSql(): SQL {
+  const cap = String(sellerDailyCapUnits());
+  const day = utcDayStart();
+  return sql`AND ${payToNormSql(sql`e.pay_to`)} NOT IN (
+        SELECT ${payToNormSql(sql`cp_pu.pay_to`)} FROM x402_l1_purchases cp_pu
+        WHERE cp_pu.attempted_at >= ${day} AND cp_pu.pay_to IS NOT NULL
+        GROUP BY 1 HAVING coalesce(sum(cp_pu.spent_units::numeric), 0) >= ${cap}::numeric)
+      AND ${censusHostSql(sql`e.resource_key`)} NOT IN (
+        SELECT ${censusHostSql(sql`cp_e.resource_key`)} FROM x402_l1_purchases cp_hu JOIN x402_endpoints cp_e ON cp_e.id = cp_hu.endpoint_id
+        WHERE cp_hu.attempted_at >= ${day}
+        GROUP BY 1 HAVING coalesce(sum(cp_hu.spent_units::numeric), 0) >= ${cap}::numeric)`;
+}
+
 /** census の売り手の単位（SQL の censusHostSql と同じ規則: 小文字・末尾の `:ポート` を落とす）。 */
 export function censusHostOf(host: string): string {
   return host.toLowerCase().replace(/:[0-9]+$/, "");
@@ -567,7 +615,13 @@ type Reservation =
         | "already_purchased"
         /** その network の日次別枠（budget.ts CHAIN_DAILY_CAPS: Solana・Arc）に届かなかった。 */
         | "chain_daily_cap"
-        | "first_purchase_quota";
+        | "first_purchase_quota"
+        /**
+         * 売り手ごとの日次上限（budget.ts SELLER_DAILY_CAP_USD・2026-09-29 監査 5 周目）に届かなかった。
+         * `scope` はどちらの単位で届いたか（両方なら payto）。
+         */
+        | "seller_daily_cap";
+      scope?: "payto" | "host";
     };
 
 /**
@@ -612,6 +666,11 @@ async function reserveSpend(input: {
   // 0 だった）。新しいチェーンの掃引は初回購入しか無いので、この枠に当たると永久に始まらない。
   // 支出はそのチェーンの別枠（$2/日）で既に縛られている。Base の初回購入の枠は従来どおり。
   const firstQuotaApplies = capChain === null;
+  // 売り手ごとの日次上限（2026-09-29 監査 5 周目・高）。受取先は台帳と同じ正規化（0x は小文字・base58 / r は原文）、
+  // ホストは census と同じ単位（resource_key の最初の `/` の前・ポート無視・小文字）。status は見ない
+  // （day CTE と同じ——予約した瞬間に数える。署名前に戻した予約は spent_units が 0 なので数に入らない）。
+  const sellerCap = String(sellerDailyCapUnits());
+  const payToKey = normalizedPayTo(payTo);
   const raw = await db.execute(sql`
     WITH day AS (
       SELECT coalesce(sum(spent_units::numeric), 0) AS spent
@@ -637,14 +696,27 @@ async function reserveSpend(input: {
              NOT EXISTS (
                SELECT 1 FROM x402_l1_purchases pu WHERE pu.endpoint_id = ${endpointId}::uuid
              ) AS is_first
+    ), seller_day AS (
+      -- 同じ受取先・同じホストへの当日の支出。同じ 1 文の中で数えるので、読んでから書くまでの間に
+      -- 別のバッチの予約が挟まる窓は day CTE と同じ（互いの INSERT が見えないほぼ同時の 2 文だけ・1 件 ≤ $1 まで）。
+      SELECT
+        coalesce(sum(sp.spent_units::numeric) FILTER (WHERE ${payToNormSql(sql`sp.pay_to`)} = ${payToKey}), 0) AS payto_spent,
+        coalesce(sum(sp.spent_units::numeric) FILTER (
+          WHERE ${censusHostSql(sql`se.resource_key`)} = (
+            SELECT ${censusHostSql(sql`xe.resource_key`)} FROM x402_endpoints xe WHERE xe.id = ${endpointId}::uuid)
+        ), 0) AS host_spent
+      FROM x402_l1_purchases sp JOIN x402_endpoints se ON se.id = sp.endpoint_id
+      WHERE sp.attempted_at >= ${utcDayStart()}
     ), ins AS (
       INSERT INTO x402_l1_purchases
         (endpoint_id, status, payer, network, asset, pay_to, amount_units, spent_units${metaJson === null ? sql`` : sql`, raw_response_meta`})
       SELECT ${endpointId}::uuid, 'in_flight', ${payer}, ${network}, ${asset},
              ${payTo}, ${amountUnits}, ${amountUnits}${metaJson === null ? sql`` : sql`, ${metaJson}::jsonb`}
-      FROM day, chain_day, dup, first_day
+      FROM day, chain_day, dup, first_day, seller_day
       WHERE NOT dup.taken
         AND day.spent + ${amountUnits}::numeric <= ${String(DAILY_BUDGET_UNITS)}::numeric
+        AND seller_day.payto_spent + ${amountUnits}::numeric <= ${sellerCap}::numeric
+        AND seller_day.host_spent + ${amountUnits}::numeric <= ${sellerCap}::numeric
         ${capUnits === null ? sql`` : sql`AND chain_day.spent + ${amountUnits}::numeric <= ${capUnits}::numeric`}
         ${firstQuotaApplies ? sql`AND (NOT first_day.is_first OR first_day.n < ${FIRST_PURCHASE_DAILY_QUOTA})` : sql``}
       RETURNING id
@@ -652,7 +724,9 @@ async function reserveSpend(input: {
     SELECT (SELECT id FROM ins)::text AS row_id, (SELECT taken FROM dup) AS taken,
            (SELECT spent FROM chain_day)::text AS chain_spent,
            (SELECT is_first FROM first_day) AS is_first,
-           (SELECT n FROM first_day)::text AS first_day_count
+           (SELECT n FROM first_day)::text AS first_day_count,
+           (SELECT payto_spent FROM seller_day)::text AS payto_spent,
+           (SELECT host_spent FROM seller_day)::text AS host_spent
   `);
   const row = rowsOf(raw)[0];
   // No row back at all means the statement did not run as written — refuse to
@@ -668,6 +742,19 @@ async function reserveSpend(input: {
     if (firstCount === null || !Number.isFinite(firstCount) || firstCount >= FIRST_PURCHASE_DAILY_QUOTA) {
       return { ok: false, reason: "first_purchase_quota" };
     }
+  }
+  // 売り手ごとの上限。読めなければ上限に届いた側へ倒す（行を書かない——書くと掃引の窓ぶん締め出す）。
+  {
+    const cap = BigInt(sellerCap);
+    const amount = BigInt(amountUnits);
+    const read = (v: unknown): bigint | null => {
+      if (typeof v !== "string" || !/^[0-9]+(\.[0-9]+)?$/.test(v)) return null;
+      return BigInt(v.split(".")[0]);
+    };
+    const paytoSpent = read(row.payto_spent);
+    const hostSpent = read(row.host_spent);
+    if (paytoSpent === null || paytoSpent + amount > cap) return { ok: false, reason: "seller_daily_cap", scope: "payto" };
+    if (hostSpent === null || hostSpent + amount > cap) return { ok: false, reason: "seller_daily_cap", scope: "host" };
   }
   if (capChain !== null) {
     const chainSpent = typeof row.chain_spent === "string" ? BigInt(row.chain_spent.split(".")[0]) : null;
@@ -932,6 +1019,7 @@ export async function runL1Batch(
     haltReason: null,
     disabledReason: null,
     payerUnfunded: 0,
+    sellerCapped: 0,
     payerFundsUnreadable: [],
     laneFloor: {},
     laneFloorHostCapped: {},
@@ -1230,6 +1318,13 @@ export async function runL1Batch(
       -- Tempo（MPP・2026-09-17 レビュー #4）: directory は受取先を載せない。L0 が生きた challenge から
       -- 学習した pay_to を持つ行だけを L1 候補にする（受取先を知らない相手に署名しない）。
       AND (e.source <> 'mpp_directory' OR e.pay_to IS NOT NULL)
+      -- 2026-09-29 監査 5 周目（中）: 全チェーンで、カタログが pay_to を宣言した https の出品だけを買う
+      -- （purchaseOne の isL1PurchasableListing と同じ条件）。平文 http の 402 は経路上で payTo を差し替えられる。
+      AND e.pay_to IS NOT NULL AND e.pay_to <> ''
+      AND lower(e.resource_url) LIKE 'https://%'
+      -- 売り手ごとの日次上限（budget.ts SELLER_DAILY_CAP_USD）に当日もう届いた受取先・ホストは候補にしない。
+      -- 締めるのは reserveSpend の同じ 1 文（ここは 402 を取りに行く無駄を省くだけ・バッチ開始時点の値）。
+      ${sellerCapExclusionSql()}
       ${
         // 初回購入の枠を使い切った日は、購入行がまだ無いエンドポイントを外す
         // （買い直しは続く）。行を書かないので、翌 UTC 日にまた候補へ戻る。
@@ -1419,6 +1514,11 @@ export async function runL1Batch(
   // 主ネットワークが XRPL の行は他に買う経路が無いので飛ばす（同じ RPC を叩き直して request_error を積まない）。
   let xrplLaneUnavailable = false;
 
+  // 売り手ごとの日次上限に届いた受取先・ホスト（2026-09-29 監査 5 周目）。予約が断ったら、このバッチの残りの
+  // 同じ売り手の候補には 402 も取りに行かない（行も書かない）。締めるのは reserveSpend で、ここは無駄を省くだけ。
+  const cappedPayTos = new Set<string>();
+  const cappedHosts = new Set<string>();
+
   for (const [index, candidate] of candidates.entries()) {
     // Start nothing we cannot finish inside maxDuration. Purchases already in
     // flight are never interrupted — the whole point is that a signed
@@ -1453,6 +1553,14 @@ export async function runL1Batch(
     // 署名して予算を燃やす経路は、どの入口からも開かない。
     if (isPathTemplate(candidate.resourceUrl)) {
       summary.skipped++;
+      continue;
+    }
+    if (
+      (candidate.payTo !== null && cappedPayTos.has(normalizedPayTo(candidate.payTo))) ||
+      cappedHosts.has(censusHostOf(laneHostOf(candidate.resourceUrl)))
+    ) {
+      summary.skipped++;
+      summary.sellerCapped++;
       continue;
     }
     try {
@@ -1515,6 +1623,14 @@ export async function runL1Batch(
         xrplLaneUnavailable = true;
         summary.xrplLaneClosed ??= "signing_inputs_unavailable";
         summary.skipped++;
+      } else if (outcome.kind === "seller_capped") {
+        summary.skipped++;
+        summary.sellerCapped++;
+        if (outcome.sellerCap) {
+          // 受取先で届いたなら受取先を、ホストで届いたならホストを閉じる（片方で届いた売り手の別の単位は開けておく）。
+          if (outcome.sellerCap.scope === "payto") cappedPayTos.add(outcome.sellerCap.payTo);
+          else cappedHosts.add(outcome.sellerCap.host);
+        }
       } else if (outcome.kind === "budget_denied") {
         summary.budgetDenied++;
         // Budget exhausted for anything at this price — later candidates may
@@ -1790,7 +1906,9 @@ async function purchaseOne(input: {
   tempoEnabled: boolean;
   mppxCharge?: MppxCharge;
 }): Promise<{
-  kind: "attempted" | "skipped" | "budget_denied" | "halted" | "payer_unfunded" | "xrpl_fee_over_cap" | "xrpl_lane_unavailable";
+  kind: "attempted" | "skipped" | "budget_denied" | "halted" | "payer_unfunded" | "xrpl_fee_over_cap" | "xrpl_lane_unavailable" | "seller_capped";
+  /** kind === "seller_capped" のとき、どちらの単位で届いたかと、その売り手（受取先・ホスト）。 */
+  sellerCap?: { scope: "payto" | "host"; payTo: string; host: string };
   settled: boolean;
   spent: bigint;
   /** 台帳に書いた status（attempted のときのみ）——summary の集計はこれを見る。 */
@@ -1851,6 +1969,13 @@ async function purchaseOne(input: {
   if (isXrpl && (!xrplWallet || !xrplPayer)) {
     return { kind: "skipped", settled: false, spent: 0n };
   }
+  // 2026-09-29 監査 5 周目（中・お金）: 買うのは https の出品だけ、かつカタログが受取先（pay_to）を宣言している
+  // 行だけ。平文 http の 402 は経路上の誰でも書き換えられ、宣言の無い行では壁の payTo を照合する相手が無い
+  // （selectAccept 等は宣言 null を「照合なしで通す」）。候補 SQL が両方を外しているが、ここが署名する唯一の
+  // 入口なので二重に止める。行は書かない——我々の側の見送りで、売り手についての測定ではない。
+  if (!isL1PurchasableListing(candidate)) {
+    return { kind: "skipped", settled: false, spent: 0n };
+  }
 
   // Unpaid request → expect the wall.
   //
@@ -1881,7 +2006,7 @@ async function purchaseOne(input: {
         ...(method === "POST" ? { "content-type": "application/json" } : {}),
       },
       ...(method === "POST" ? { body: "{}" } : {}),
-    });
+    }, { httpsOnly: true });
     firstBody = await readBodyCapped(first, 16_000);
   } catch (error) {
     await record({
@@ -2183,6 +2308,21 @@ async function purchaseOne(input: {
       // あいだ再選択されず、翌日の枠にも戻らない（枠は延期であって除外ではない）。
       return { kind: "skipped", settled: false, spent: 0n };
     }
+    if (reservation.reason === "seller_daily_cap") {
+      // 売り手ごとの日次上限（2026-09-29 監査 5 周目）。行を書かない——書くとこの出品はスイープ窓のあいだ
+      // 再選択されず、正直な売り手の翌日の購入まで止める。翌 UTC 日にまた候補になる。バッチは同じ売り手の
+      // 残りの候補を飛ばす（runL1Batch の sellerCapped）。
+      return {
+        kind: "seller_capped",
+        settled: false,
+        spent: 0n,
+        sellerCap: {
+          scope: reservation.scope ?? "payto",
+          payTo: normalizedPayTo(accept.payTo),
+          host: censusHostOf(laneHostOf(candidate.resourceUrl)),
+        },
+      };
+    }
     if (reservation.reason === "chain_daily_cap") {
       // そのチェーン（Solana・Arc）の別枠に届かなかった。行を書かない——書くとこの売り手は
       // スイープ窓のあいだ再選択されず、掃引が終わらない。翌 UTC 日にまた候補になる。
@@ -2367,6 +2507,8 @@ async function purchaseOne(input: {
           // MPP（Tempo）のヘッダ名は**売り手の challenge** が決める（mppx の `header` パラメータ）
           // ので表に載せようがない。毎回この 1 本を渡し、別オリジンへの転送では必ず落とす。
           sensitiveHeaders: [header.headerName],
+          // 2026-09-29 監査 5 周目: 資格情報を載せた要求を http のホップへ運ばない（転送先も含めて）。
+          httpsOnly: true,
           onCredentialsStripped: (hop) => {
             credentialStripped ??= hop;
           },

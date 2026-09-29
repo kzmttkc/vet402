@@ -34,6 +34,7 @@ const HALTED: L1BatchSummary = {
   haltReason: "halted_by_operator: Base の購入元が枯れた。補充するまで止める（社内連絡先 …）",
   disabledReason: "spending_halted",
   payerUnfunded: 0,
+  sellerCapped: 2,
   payerFundsUnreadable: [],
   laneFloor: {},
   laneFloorHostCapped: {},
@@ -60,6 +61,7 @@ test("publicL1Summary は census の 2 つ（censusCandidates・censusRemaining�
   assert.equal("censusCandidates" in out, false);
   assert.equal("censusRemaining" in out, false);
   assert.equal("retestCandidates" in out, false);
+  assert.equal("sellerCapped" in out, false, "売り手ごとの上限の内訳は公開口へ出さない（2026-09-29）");
 });
 
 test("公開口の応答（L1 OFF の実走）に haltReason の鍵が存在しない", async () => {

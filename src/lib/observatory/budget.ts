@@ -48,6 +48,34 @@ export const TEMPO_DAILY_CAP_USD_DEFAULT = 2;
  */
 export const XRPL_DAILY_CAP_USD_DEFAULT = 2;
 
+/**
+ * 1 人の売り手が 1 UTC 日に受け取れる上限（2026-09-29 監査 5 周目・高・お金）。**受取先（payTo）ごと**と
+ * **ホスト（ポート無視・小文字＝census の売り手の単位）ごと**に、別々に数える。全チェーン共有の $25 の内側。
+ *
+ * 攻撃の形: 同じ payTo で $1 の出品を多数載せ、鍵なしの判定 API を各出品に 5 回叩くと「問い合わせ多」で
+ * 最優先の枠に入る。主候補にも予約にも payTo・ホスト単位の上限が無く、1 人の売り手が日次 $25 を毎日取れた。
+ * 締めるのは reserveSpend の単一 SQL 文（署名前の原子的な予約と同じ文の中で数える）。候補 SQL は当日もう
+ * 届いた相手を外すだけ（402 を取りに行く無駄を省く）。
+ *
+ * 本番の実測（2026-08-30〜09-29 の支出行）: 受取先×日 5,183 組のうち $2 を超えたのは 4 組（超過ぶん計 $1.85）、
+ * ホスト×日 5,563 組のうち 5 組（計 $1.95）。最大は 1 日 $2.70。正直な売り手の定期購入はほぼ当たらない。
+ *
+ * 環境変数 L1_SELLER_DAILY_CAP_USD で変えられる（0 で誰にも払わない・上限は日次 $25）。壊れた値は既定へ倒す。
+ */
+export const SELLER_DAILY_CAP_USD_DEFAULT = 2;
+
+/** 売り手ごと（受取先・ホスト）の日次上限（USDC 基本単位）。壊れた値は既定へ倒し、共有の日次上限で頭打ち。 */
+export function sellerDailyCapUnits(): bigint {
+  const raw = process.env.L1_SELLER_DAILY_CAP_USD;
+  let usd = SELLER_DAILY_CAP_USD_DEFAULT;
+  if (raw !== undefined && raw.trim() !== "") {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 0) usd = n;
+  }
+  usd = Math.min(usd, DAILY_BUDGET_USD);
+  return BigInt(Math.round(usd * 1_000_000));
+}
+
 /** 別枠を持つチェーン。Base は持たない（共有 $25 だけ）。 */
 export type CappedChain = "solana" | "arc" | "tempo" | "xrpl";
 
