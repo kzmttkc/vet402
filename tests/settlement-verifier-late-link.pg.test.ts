@@ -137,6 +137,9 @@ if (!TEST_DB) {
       { prior: "settle_failed", priorTx: null },
       { prior: "delivered_no_receipt", priorTx: null },
       { prior: "settle_claimed_unverifiable", priorTx: "not-a-transaction-id" },
+      // 2026-09-29（会計監査 7 周目）: auth_nonce のある request_error（孤児掃除の旧い行）からの回収。取り消したら
+      // request_error へ戻す（settle_failed へ倒すと、測っていない失敗を売り手の分母に入れる）。
+      { prior: "request_error", priorTx: null },
     ]) {
       await t.test(`${c.prior} から回収した行の nonce 不一致: refuted にせず回収前へ戻し、同じ tx を二度拾わない`, async () => {
         await reset();

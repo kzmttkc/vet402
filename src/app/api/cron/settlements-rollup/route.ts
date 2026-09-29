@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
-import { acquireLease } from "@/lib/cron/lease";
+// 2026-09-29 会計監査 7 周目（低）: acquireLease は取得の例外で「取れた」を返す。取れたと確かめられたときだけ走る。
+import { acquireLeaseFailClosed } from "@/lib/cron/lease-fail-closed";
 import { runRollup } from "@/lib/settlements/rollup";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
@@ -16,7 +17,10 @@ export async function GET(request: NextRequest) {
   if (!authorizeCron(request)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
-  const lease = await acquireLease("settlements-rollup", 330);
+  const lease = await acquireLeaseFailClosed("settlements-rollup", 330);
+  if (!lease.acquired && lease.reason === "unverified") {
+    return NextResponse.json({ ok: false, error: "lease_unverified" }, { status: 503 });
+  }
   if (!lease.acquired) {
     return NextResponse.json({ ok: true, skipped: "lease_held" });
   }

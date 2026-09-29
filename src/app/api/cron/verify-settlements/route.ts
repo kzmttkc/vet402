@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
-import { acquireLease } from "@/lib/cron/lease";
+// 2026-09-29 会計監査 7 周目（低）: acquireLease は取得の例外で「取れた」を返す。取れたと確かめられたときだけ走る。
+import { acquireLeaseFailClosed } from "@/lib/cron/lease-fail-closed";
 import { runSettlementVerification } from "@/lib/observatory/settlement-verifier";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
@@ -21,7 +22,10 @@ export async function GET(request: NextRequest) {
 
   // 2026-08-24 監査: 照合も二重起動すると同じ行を2回見に行き、RPC を無駄に叩き、
   // summary が実態とずれる。購入ほど危険ではないが、排他の理由は同じ。
-  const lease = await acquireLease("verify-settlements", 330);
+  const lease = await acquireLeaseFailClosed("verify-settlements", 330);
+  if (!lease.acquired && lease.reason === "unverified") {
+    return NextResponse.json({ ok: false, error: "lease_unverified" }, { status: 503 });
+  }
   if (!lease.acquired) {
     return NextResponse.json({ ok: true, skipped: "already_running" }, { status: 409 });
   }

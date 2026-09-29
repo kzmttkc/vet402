@@ -19,11 +19,11 @@ const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
 
 test("デモの L1 経路は cron と同じ l1-purchase リースを取る", () => {
   const route = read("src", "app", "api", "v1", "demo", "verify", "route.ts");
-  assert.match(route, /acquireLease\(\s*"l1-purchase"/, "リースを取っていない");
+  assert.match(route, /acquireLeaseFailClosed\(\s*"l1-purchase"/, "リースを取っていない（2026-09-29: 取れたと確かめられる側で取る）");
   // 取れなかったときに購入を始めないこと。
   assert.match(route, /lease\.acquired/, "リースの結果を見ていない");
   assert.match(route, /runL1Batch/);
-  const leaseAt = route.indexOf("acquireLease");
+  const leaseAt = route.indexOf("acquireLeaseFailClosed(");
   const batchAt = route.indexOf("runL1Batch({");
   assert.ok(leaseAt > 0 && batchAt > leaseAt, "購入を始めてからリースを取っている");
 });
@@ -35,8 +35,9 @@ test("リースは必ず解放される（finally）", () => {
 
 test("cron と同じリース名を使う（別名だと排他にならない）", () => {
   const cron = read("src", "app", "api", "cron", "l1-purchase", "route.ts");
-  const cronName = /acquireLease\("([^"]+)"/.exec(cron)?.[1];
+  const cronName = /acquireLeaseFailClosed\("([^"]+)"/.exec(cron)?.[1];
   const route = read("src", "app", "api", "v1", "demo", "verify", "route.ts");
-  const demoName = /acquireLease\(\s*"([^"]+)"/.exec(route)?.[1];
+  const demoName = /acquireLeaseFailClosed\(\s*"([^"]+)"/.exec(route)?.[1];
+  assert.ok(cronName, "cron のリース名が読めない");
   assert.equal(demoName, cronName);
 });

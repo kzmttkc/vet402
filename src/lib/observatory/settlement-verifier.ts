@@ -25,7 +25,7 @@ import { readAuthorizationState, verifyL1Settlement } from "./settlement-verify"
 import { evmChainFor } from "./x402-payer";
 import { isDeliveryVerified } from "./l1-runner";
 import { ingestL1 } from "@/lib/settlements/ingest-l1";
-import { LATE_RECOVERABLE_STATUSES } from "@/lib/settlements/recover-late";
+import { LATE_PRIOR_STATUSES } from "@/lib/settlements/recover-late";
 import { updateWithCorrection } from "./corrections";
 import { fireL1RegistryHook, fireL2RegistryHook } from "@/lib/chain/registry-hook";
 import { SELLER_NAMED_TX_NOT_FOUND, SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS, SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS } from "@/lib/sellers/fix-modes";
@@ -357,7 +357,8 @@ export async function runSettlementVerification(options?: {
    */
   async function withdrawLateLink(row: PurchaseRow, late: Record<string, unknown>, reason: string, detail?: string): Promise<void> {
     const priorStatus =
-      typeof late.priorStatus === "string" && (LATE_RECOVERABLE_STATUSES as readonly string[]).includes(late.priorStatus)
+      // 2026-09-29（会計監査 7 周目）: auth_nonce のある request_error（孤児掃除の旧い行）からの回収も戻し先に含める。
+      typeof late.priorStatus === "string" && (LATE_PRIOR_STATUSES as readonly string[]).includes(late.priorStatus)
         ? late.priorStatus
         : "settle_failed";
     const priorTxHash = typeof late.replacedTxHash === "string" ? late.replacedTxHash : null;

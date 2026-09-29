@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClientIp } from "@/lib/api/client-ip";
-import { acquireLease } from "@/lib/cron/lease";
+// 2026-09-29 会計監査 7 周目（低）: acquireLease は取得の例外で「取れた」を返す。取れたと確かめられたときだけ走る。
+import { acquireLeaseFailClosed } from "@/lib/cron/lease-fail-closed";
 import { consumeIpRateLimit, ipRateLimitHeaders, refundIpRateLimit } from "@/lib/api/ip-rate-limit";
 import { runDemoL0 } from "@/lib/demo/verify";
 import { isSpendingHalted } from "@/lib/observatory/kill-switch";
@@ -149,7 +150,14 @@ export async function POST(request: NextRequest) {
     // ここは API キー不要の公開口。
     // TTL は cron（330s）より短い 60s——デモ 1 件は最悪でも数十秒で終わるので、
     // ここで長く握ると定時バッチを待たせるだけになる。
-    const lease = await acquireLease("l1-purchase", 60);
+    const lease = await acquireLeaseFailClosed("l1-purchase", 60);
+    if (!lease.acquired && lease.reason === "unverified") {
+      // 購入は始めていないので、日次のデモ予算と呼び手の 1 日 1 回を返す（DB 不通なら返せなくても止める側は変わらない）。
+      await refundIpRateLimit(demoBudgetKey).catch(() => {});
+      await refundIpRateLimit(`demo-l1:${ip}`).catch(() => {});
+      // 既存の語彙（demo_unavailable・503）を使う。新しい error コードは openapi の enum へ波及する。
+      return NextResponse.json({ error: "demo_unavailable" }, { status: 503, headers: perCaller });
+    }
     if (!lease.acquired) {
       return NextResponse.json(
         { error: "l1_busy", detail: "a purchase batch is already running; try again shortly" },

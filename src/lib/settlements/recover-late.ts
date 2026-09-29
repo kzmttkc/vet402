@@ -96,9 +96,30 @@ export const LATE_SETTLEMENT_BACKDATE_MINUTES = 2;
 /**
  * 回収の対象にする status。どれも「署名した（spent_units が立っている）のに、決済の tx を名指せていない」行。
  * settled / settle_claimed / settle_claim_refuted（決済の主張を既に持つ・否定済み）と、署名していない行
- * （request_error・budget_denied・price_mismatch …）は入れない。
+ * （budget_denied・price_mismatch …・auth_nonce の無い request_error）は入れない。
+ * auth_nonce のある request_error は LATE_RECOVERABLE_SIGNED_ERROR_STATUS（下）で別に足す。
  */
 export const LATE_RECOVERABLE_STATUSES = ["settle_failed", "delivered_no_receipt", "settle_claimed_unverifiable"] as const;
+
+/**
+ * auth_nonce があるときだけ回収の対象にする status（2026-09-29 会計監査 7 周目・高）。
+ *
+ * 孤児掃除（l1-runner.ts sweepOrphanedInFlight）は、auth_nonce のある in_flight 行を今日から settle_failed へ倒す。
+ * それより前に掃除された行は request_error のまま残り、上の 3 つに入っていないので回収されなかった。本番では
+ * 3 行（09-06・09-17・09-18・reason = orphaned_in_flight）が、チェーン上では 3〜4 秒後に決済済み
+ * （USDC の authorizationState が使用済み）なのに、公開台帳では「払っていない（export に出ない）」行のまま。
+ * auth_nonce は有料の要求を出す直前に書く（l1-runner.ts purchaseOne）ので、nonce のある request_error は
+ * 資格情報が売り手へ届いたかもしれない行——settle_failed と同じく生きた金。nonce の無い request_error は
+ * 資格情報が外へ出ていないので従来どおり外す。照合条件・照合器の関門（nonce の束縛）は status によらず同じ。
+ */
+export const LATE_RECOVERABLE_SIGNED_ERROR_STATUS = "request_error" as const;
+
+/** 照合器が遅延回収を取り消すとき（settlement-verifier.ts withdrawLateLink）に戻してよい status。 */
+export const LATE_PRIOR_STATUSES = [...LATE_RECOVERABLE_STATUSES, LATE_RECOVERABLE_SIGNED_ERROR_STATUS] as const;
+
+/** 回収の対象の行（別名 pu）。全段（索引・nonce・組・チェーン直読み・貼り付けの読み直し）で同じ条件を使う。 */
+const RECOVERABLE_ROW = sql`(pu.status IN (${sql.join(LATE_RECOVERABLE_STATUSES.map((s) => sql`${s}`), sql`, `)})
+  OR (pu.status = ${LATE_RECOVERABLE_SIGNED_ERROR_STATUS} AND pu.auth_nonce IS NOT NULL AND btrim(pu.auth_nonce) <> ''))`;
 
 /** 1 回の実行で曖昧さの解消のために読むレシートの上限（RPC の呼び出し回数の上限）。 */
 export const AMBIGUOUS_RECEIPTS_PER_RUN = 60;
@@ -188,7 +209,7 @@ export async function recoverLateSettlements(
        AND NOT jsonb_exists(
              coalesce(pu.raw_response_meta->'lateSettlement'->'rejectedTxHashes', '[]'::jsonb),
              lower(s.tx_hash))
-      WHERE pu.status IN (${sql.join(LATE_RECOVERABLE_STATUSES.map((s) => sql`${s}`), sql`, `)})
+      WHERE ${RECOVERABLE_ROW}
         -- tx_hash を持ってよいのは settle_claimed_unverifiable だけ（売り手の形式不正な原文。索引の tx に置き換える）。
         AND (pu.tx_hash IS NULL OR pu.status = 'settle_claimed_unverifiable')
         AND pu.payer IS NOT NULL
@@ -309,7 +330,7 @@ async function linkAmbiguousByNonce(db: Db, readNonces: NonceReader): Promise<Li
        AND NOT jsonb_exists(
              coalesce(pu.raw_response_meta->'lateSettlement'->'rejectedTxHashes', '[]'::jsonb),
              lower(s.tx_hash))
-      WHERE pu.status IN (${sql.join(LATE_RECOVERABLE_STATUSES.map((s) => sql`${s}`), sql`, `)})
+      WHERE ${RECOVERABLE_ROW}
         AND (pu.tx_hash IS NULL OR pu.status = 'settle_claimed_unverifiable')
         AND pu.payer IS NOT NULL AND pu.pay_to IS NOT NULL AND pu.amount_units IS NOT NULL AND pu.attempted_at IS NOT NULL
         AND (pu.network LIKE 'eip155:%' OR pu.network = 'base')
@@ -366,7 +387,7 @@ async function linkAmbiguousByNonce(db: Db, readNonces: NonceReader): Promise<Li
         SELECT pu.id, pu.status AS prior_status, pu.tx_hash AS prior_tx_hash
         FROM x402_l1_purchases pu
         WHERE pu.id = ${purchaseId}::uuid
-          AND pu.status IN (${sql.join(LATE_RECOVERABLE_STATUSES.map((s) => sql`${s}`), sql`, `)})
+          AND ${RECOVERABLE_ROW}
           AND (pu.tx_hash IS NULL OR pu.status = 'settle_claimed_unverifiable')
           AND NOT EXISTS (
             SELECT 1 FROM x402_l1_purchases o
@@ -528,7 +549,7 @@ async function linkOne(
       SELECT pu.id, pu.status AS prior_status, pu.tx_hash AS prior_tx_hash
       FROM x402_l1_purchases pu
       WHERE pu.id = ${link.purchaseId}::uuid
-        AND pu.status IN (${sql.join(LATE_RECOVERABLE_STATUSES.map((s) => sql`${s}`), sql`, `)})
+        AND ${RECOVERABLE_ROW}
         AND (pu.tx_hash IS NULL OR pu.status = 'settle_claimed_unverifiable')
         AND NOT jsonb_exists(coalesce(pu.raw_response_meta->'lateSettlement'->'rejectedTxHashes', '[]'::jsonb), lower(${link.txHash}))
         AND NOT EXISTS (
@@ -592,7 +613,7 @@ async function linkInterchangeableSets(db: Db, errors: { count: number }): Promi
        AND NOT jsonb_exists(
              coalesce(pu.raw_response_meta->'lateSettlement'->'rejectedTxHashes', '[]'::jsonb),
              lower(s.tx_hash))
-      WHERE pu.status IN (${sql.join(LATE_RECOVERABLE_STATUSES.map((s) => sql`${s}`), sql`, `)})
+      WHERE ${RECOVERABLE_ROW}
         AND (pu.tx_hash IS NULL OR pu.status = 'settle_claimed_unverifiable')
         AND pu.payer IS NOT NULL AND pu.pay_to IS NOT NULL AND pu.amount_units IS NOT NULL AND pu.attempted_at IS NOT NULL
         AND (pu.network LIKE 'eip155:%' OR pu.network = 'base')
@@ -644,12 +665,11 @@ async function linkFromChain(
   errors: { count: number } = { count: 0 },
 ): Promise<{ linked: LinkedRow[]; read: number }> {
   const startedAt = Date.now();
-  const RECOVERABLE = sql.join(LATE_RECOVERABLE_STATUSES.map((s) => sql`${s}`), sql`, `);
   const batchRaw = await db.execute(sql`
     SELECT pu.id::text AS purchase_id, pu.network, lower(pu.payer) AS payer, lower(pu.pay_to) AS pay_to, pu.amount_units,
            to_char(pu.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS attempted_at
     FROM x402_l1_purchases pu
-    WHERE pu.status IN (${RECOVERABLE})
+    WHERE ${RECOVERABLE_ROW}
       AND (pu.tx_hash IS NULL OR pu.status = 'settle_claimed_unverifiable')
       AND pu.network IN (${sql.join(BASE_NETWORK_KEYS.map((n) => sql`${n}`), sql`, `)})
       AND pu.payer IS NOT NULL AND pu.pay_to IS NOT NULL AND pu.amount_units ~ '^[0-9]{1,30}$' AND pu.attempted_at IS NOT NULL
@@ -698,7 +718,7 @@ async function linkFromChain(
              (pu.auth_nonce IS NOT NULL) AS has_nonce,
              coalesce(pu.raw_response_meta->'lateSettlement'->'rejectedTxHashes', '[]'::jsonb) AS rejected
       FROM x402_l1_purchases pu
-      WHERE pu.status IN (${RECOVERABLE})
+      WHERE ${RECOVERABLE_ROW}
         AND (pu.tx_hash IS NULL OR pu.status = 'settle_claimed_unverifiable')
         AND pu.network = ${g.network} AND lower(pu.payer) = ${g.payer} AND lower(pu.pay_to) = ${g.pay_to}
         AND pu.amount_units = ${g.amount_units}

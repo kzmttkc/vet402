@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
-import { acquireLease } from "@/lib/cron/lease";
+// 2026-09-29 会計監査 7 周目（低）: acquireLease は取得の例外で「取れた」を返す。取れたと確かめられたときだけ走る。
+import { acquireLeaseFailClosed } from "@/lib/cron/lease-fail-closed";
 import { runL1Batch } from "@/lib/observatory/l1-runner";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
@@ -23,7 +24,10 @@ export async function GET(request: NextRequest) {
   // 手動トリガと定時が重なることもある（デモ日に一番困る形）。
   // TTL は maxDuration より少しだけ長く——短いと走行中に奪われ、長いと
   // 殺された後の再開が遅れる。
-  const lease = await acquireLease("l1-purchase", 330);
+  const lease = await acquireLeaseFailClosed("l1-purchase", 330);
+  if (!lease.acquired && lease.reason === "unverified") {
+    return NextResponse.json({ ok: false, error: "lease_unverified" }, { status: 503 });
+  }
   if (!lease.acquired) {
     return NextResponse.json(
       { ok: true, skipped: "already_running" },
