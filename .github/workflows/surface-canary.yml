@@ -1,0 +1,102 @@
+name: surface-canary
+
+# 2026-09-29. 面の間のずれを毎日機械で突き合わせる（scripts/surface-consistency-canary.ts）。
+#
+# WHY. 監査の周回で人が見つけていたのは「同じ出品について、面ごとに言うことが違う」だった
+# （例: /decision は未プローブで BLOCK、売り手頁は not tried・記録頁は「unverified is not a failure」）。
+# claims-canary は登録した 1 文ずつの主張を見るが、面どうしの突き合わせはしない。これは出品を 40〜60 件選び、
+# /decision・MCP の check_resource_decision と同じ呼び出し・/sellers の export と頁・記録頁・L1 台帳 export・
+# L0 export を取り、判定・理由コード・誰の側か・お金が動いたか・数えた失敗・L0/L2 の状態・規則の版を比べる。
+# 理由コードは /docs/api・/openapi.yaml・/llms.txt・/llms-full.txt の一覧とも照らす。実装は import しない（出力だけ）。
+#
+# 通知は uptime.yml・skill-live.yml と同じ: 赤で issue を開く（＝オーナーへメール）、緑で閉じる。ラベルで分ける。
+# 赤の条件: 食い違いが 1 件でもある・取れた面が 0・比べた項目が 0・標本が 40 未満・必須の型／区分が欠ける・
+# 面の取得の失敗が 10% 超（「結果が出ない」も赤）。
+#
+# 負荷: 読み取りのみ・鍵なし・1 秒に 1 回以下・/decision は 6.5 秒に 1 回（鍵なし 10 回/分の内側）。約 15〜20 分。
+# 時刻: 03:15 UTC。L1 の購入（00/06/12/18 時台）と L0 の巡回（毎時 40 分）の間で、面のキャッシュ差による揺れを避ける。
+# VOUCH_API_KEY はこの workflow に渡さない（スクリプトも消してから MCP のクライアントを呼ぶ）。
+
+on:
+  schedule:
+    - cron: "15 3 * * *" # 12:15 JST daily
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+      # tsx だけが要る（root の devDependencies）。packages/mcp-server の依存は要らない:
+      # 使う resource-decision.ts / vouch-client.ts / decision.ts は import を持たない。
+      - run: npm ci
+      - name: Compare what each public surface says about the same listings
+        id: canary
+        run: |
+          set +e
+          npx tsx scripts/surface-consistency-canary.ts --out "$RUNNER_TEMP/surface-canary.json" | tee "$RUNNER_TEMP/surface-canary.log"
+          RC=${PIPESTATUS[0]}
+          SUMMARY=$(grep -E '^(✔|✖) surface-canary:' "$RUNNER_TEMP/surface-canary.log" | tail -1)
+          echo "summary=${SUMMARY:-surface-canary exited $RC without a summary line}" >> "$GITHUB_OUTPUT"
+          # issue に載せる抜粋（食い違いの先頭）。長さは GitHub の本文上限の内側に切る。
+          {
+            echo 'excerpt<<SURFACE_CANARY_EOF'
+            grep -vE '^\s+\[[0-9]+\]' "$RUNNER_TEMP/surface-canary.log" | head -120 | cut -c1-400
+            echo 'SURFACE_CANARY_EOF'
+          } >> "$GITHUB_OUTPUT"
+          exit "$RC"
+
+      - name: Open or update an alert issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SUMMARY: ${{ steps.canary.outputs.summary }}
+          EXCERPT: ${{ steps.canary.outputs.excerpt }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -e
+          TITLE="Public surfaces disagree about the same listing (surface-canary)"
+          EXISTING=$(gh issue list --state open --label surface-canary --search "\"$TITLE\" in:title" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          BODY="Red at ${NOW} UTC — ${SUMMARY}
+
+          Run: ${RUN_URL}
+
+          \`\`\`
+          ${EXCERPT}
+          \`\`\`"
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            gh label create surface-canary --color b60205 --description "Daily cross-surface consistency check (against production)" 2>/dev/null || true
+            gh issue create --title "$TITLE" --label surface-canary --body "The daily cross-surface check (.github/workflows/surface-canary.yml → scripts/surface-consistency-canary.ts) went red.
+          Each ✖ names the listing, the rule, and what every surface said. Fix the surface that is wrong (or the rule, if the surfaces mean different things on purpose), then re-run the workflow by hand; this issue closes itself on the next green run.
+
+          ${BODY}"
+          fi
+
+      - name: Auto-close the alert issue on recovery
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SUMMARY: ${{ steps.canary.outputs.summary }}
+        run: |
+          set -e
+          TITLE="Public surfaces disagree about the same listing (surface-canary)"
+          EXISTING=$(gh issue list --state open --label surface-canary --search "\"$TITLE\" in:title" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -n "$EXISTING" ]; then
+            NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+            gh issue comment "$EXISTING" --body "Green again at ${NOW} UTC — ${SUMMARY}. Closing."
+            gh issue close "$EXISTING"
+          fi
