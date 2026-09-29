@@ -35,7 +35,7 @@ import { PATH_TEMPLATE_PG_REGEX } from "@/lib/observatory/path-template";
 import { COOLDOWN_STATUSES, NON_SETTLING_COOLDOWN_STREAK, type NextBuyFacts } from "./next-buy";
 import { buildSellerExportRows, type SellerExportRow, type SellerListingRef } from "./export";
 import { BASE_NETWORKS, sellerHostSql } from "./host";
-import { DELIVERED_HTTP_MAX, DELIVERED_HTTP_MIN } from "@/lib/observatory/delivery";
+import { ACCEPTED_NOT_DONE_HTTP, DELIVERED_HTTP_MAX, DELIVERED_HTTP_MIN } from "@/lib/observatory/delivery";
 
 type Db = NonNullable<ReturnType<typeof getDb>>;
 
@@ -128,7 +128,11 @@ const ROW_COLUMNS_BASE = sql`
        THEN left(pu.raw_response_meta->>'contentType', 60) END AS paid_content_type,
   coalesce(jsonb_typeof(pu.raw_settlement) = 'object', false) AS receipt_present,
   CASE WHEN jsonb_typeof(pu.raw_settlement->'success') = 'boolean' THEN (pu.raw_settlement->>'success')::boolean END AS receipt_success,
-  CASE WHEN jsonb_typeof(pu.raw_settlement) = 'object' THEN left(pu.raw_settlement->>'errorReason', 60) END AS receipt_error_reason`;
+  CASE WHEN jsonb_typeof(pu.raw_settlement) = 'object' THEN left(pu.raw_settlement->>'errorReason', 60) END AS receipt_error_reason,
+  pu.payload_non_empty,
+  CASE WHEN pu.status = 'settle_failed' AND pu.tx_hash IS NOT NULL THEN
+    (pu.settlement_verified IS TRUE OR EXISTS (SELECT 1 FROM settlements s WHERE s.tx_hash IN (pu.tx_hash, lower(pu.tx_hash))))
+  END AS settlement_confirmed`;
 
 /** 行の列（ROW_COLUMNS_BASE と example_input）。行の少ない問い合わせ用。 */
 const ROW_COLUMNS = sql`${ROW_COLUMNS_BASE},
@@ -198,6 +202,8 @@ export function toRowFacts(r: Record<string, unknown>): SellerRowFacts {
     declaredPayTo: str(r.declared_pay_to),
     authNonce: str(r.auth_nonce),
     paidContentType: str(r.paid_content_type),
+    payloadNonEmpty: typeof r.payload_non_empty === "boolean" ? r.payload_non_empty : null,
+    settlementConfirmed: typeof r.settlement_confirmed === "boolean" ? r.settlement_confirmed : null,
     receiptPresent: typeof r.receipt_present === "boolean" ? r.receipt_present : null,
     receiptSuccess: typeof r.receipt_success === "boolean" ? r.receipt_success : null,
     receiptErrorReason: str(r.receipt_error_reason),
@@ -280,7 +286,7 @@ export async function readSellerExport(db: Db): Promise<{ fetchedAt: string; row
   }));
   const latest = rowsOf(latestRaw).map((r) => ({ ...toRowFacts(r), host: String(r.host), rowId: String(r.row_id) }));
   const days = await readSellerFailureDays(db, latest.filter((r) => sellerCandidateDay(r) !== null).map((r) => r.endpointId));
-  return { fetchedAt, rows: buildSellerExportRows(listings, latest, days) };
+  return { fetchedAt, rows: buildSellerExportRows(listings, latest, days, Date.parse(fetchedAt)) };
 }
 
 /**
@@ -309,7 +315,9 @@ const NEXT_BUY_COLUMNS = sql`
               FROM (SELECT nc.status FROM x402_l1_purchases nc
                     WHERE nc.endpoint_id = e.id AND nc.status IN (${COOLDOWN_LIST})
                     ORDER BY nc.attempted_at DESC LIMIT ${NON_SETTLING_COOLDOWN_STREAK}) rc) AS nb_cooldown,
-           (SELECT lp.verdict FROM x402_l0_probes lp WHERE lp.endpoint_id = e.id ORDER BY lp.probed_at DESC LIMIT 1) AS nb_l0`;
+           (SELECT lp.verdict FROM x402_l0_probes lp WHERE lp.endpoint_id = e.id ORDER BY lp.probed_at DESC LIMIT 1) AS nb_l0,
+           (SELECT to_char(max(lp.probed_at) AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM x402_l0_probes lp WHERE lp.endpoint_id = e.id) AS nb_l0_at,
+           (SELECT left(lp.fail_reason, 60) FROM x402_l0_probes lp WHERE lp.endpoint_id = e.id ORDER BY lp.probed_at DESC LIMIT 1) AS nb_l0_reason`;
 
 function nextBuyFactsOf(r: Record<string, unknown>): NextBuyFacts | null {
   if (typeof r.nb_cooldown !== "boolean") return null;
@@ -318,6 +326,8 @@ function nextBuyFactsOf(r: Record<string, unknown>): NextBuyFacts | null {
     settledCount: toInt(r.nb_settled) ?? 0,
     cooldown: r.nb_cooldown,
     latestL0Verdict: str(r.nb_l0),
+    latestL0At: str(r.nb_l0_at),
+    latestL0Reason: str(r.nb_l0_reason),
   };
 }
 
@@ -398,7 +408,7 @@ export async function readRecordSides(db: Db, endpointId: string): Promise<Recor
 
 /**
  * 届かなかった購入行（delivered 以外）を 1 つでも持つ出品の id（2026-09-29 第5巡）。sitemap-observatory.xml は
- * これを外す（記録頁の noindex と同じ条件・board.ts の RecordSides.undelivered）。delivered は delivery.ts の isDelivered
+ * これを外す（記録頁の noindex と同じ条件・board.ts の RecordSides.undelivered）。delivered は delivery.ts の isDelivered（2026-09-29 監査 7 周目から 202・空の本文を除く）
  * （settled かつ HTTP が 2xx）と同じ述語で、HTTP が NULL の行は届かなかった側に入る。本番 2026-09-29: 約 4,100 件・7 ms。
  */
 export async function readEndpointsWithUndeliveredL1(db: Db): Promise<Set<string>> {
@@ -406,7 +416,8 @@ export async function readEndpointsWithUndeliveredL1(db: Db): Promise<Set<string
     SELECT DISTINCT pu.endpoint_id::text AS endpoint_id
     FROM x402_l1_purchases pu
     WHERE NOT (pu.status = 'settled'
-               AND coalesce(pu.http_status_paid BETWEEN ${DELIVERED_HTTP_MIN} AND ${DELIVERED_HTTP_MAX}, false))`);
+               AND coalesce(pu.http_status_paid BETWEEN ${DELIVERED_HTTP_MIN} AND ${DELIVERED_HTTP_MAX}
+                            AND pu.http_status_paid <> ${ACCEPTED_NOT_DONE_HTTP} AND pu.payload_non_empty IS NOT FALSE, false))`);
   return new Set(rowsOf(raw).map((r) => String(r.endpoint_id)));
 }
 

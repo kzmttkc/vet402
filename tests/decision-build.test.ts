@@ -60,10 +60,10 @@ test("score は deprecated 併記（superseded_by: recommendation・判定には
   assert.equal(none.recommendation, "ALLOW", "スコアが取れなくても判定は落ちない");
 });
 
-test("l0 unverified は degraded かつ BLOCK", () => {
+test("l0 unverified は degraded かつ WARN（2026-09-29.4: unverified is not a failure）", () => {
   const d = buildDecision({ role: "payer", subject, facts: { ...seller, l0: { ...seller.l0, status: "unverified" } }, options: {}, score: null, registry: { status: "off", tx_hash: null } });
   assert.equal(d.degraded, true);
-  assert.equal(d.recommendation, "BLOCK");
+  assert.equal(d.recommendation, "WARN");
 });
 
 test("role=payee: payer が載り、score は無く、degraded は sybil.unavailable から", () => {

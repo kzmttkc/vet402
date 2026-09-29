@@ -51,7 +51,7 @@ const factsOf = (purchases: PurchaseInput[]) =>
   });
 
 test("版: 判定の意味が変わったので DECISION_RULES_VERSION を上げる", () => {
-  assert.equal(DECISION_RULES_VERSION, "2026-09-29.3");
+  assert.equal(DECISION_RULES_VERSION, "2026-09-29.4");
 });
 
 test("再現（exa 型・10 行 settled/4xx）: facts は purchases と同じ集合で数え、n_inconclusive 10 / n_delivered 0", () => {
@@ -82,9 +82,9 @@ test("0x.org 型（1 行 settled/4xx）: l1_inconclusive・WARN", () => {
   assert.ok(d.reason_codes.includes("l1_inconclusive"));
 });
 
-test("結論のある未配達 3 件（settled/5xx）: お金が動いた未配達なので BLOCK・l1_never_delivered・l1_paid_not_delivered", () => {
+test("結論のある未配達 3 件（settled/5xx）: お金が動いた未配達・l1_never_delivered・l1_paid_not_delivered。facts だけでは誰の側か分からないので WARN（2026-09-29.4）", () => {
   const d = decidePayer(factsOf([undeliveredRow(0), undeliveredRow(1), undeliveredRow(2)]));
-  assert.equal(d.recommendation, "BLOCK");
+  assert.equal(d.recommendation, "WARN");
   assert.ok(d.reason_codes.includes("l1_never_delivered"));
   assert.ok(d.reason_codes.includes("l1_paid_not_delivered"));
 });
@@ -100,10 +100,10 @@ test("結論 1 件＋inconclusive 9 件: 我々の 4xx を売り手の未配達�
   assert.equal(d.reason_codes.includes("l1_inconclusive"), false, "結論が 1 件でもあれば inconclusive の語は出さない");
 });
 
-test("結論 2 件（settled/5xx）＋inconclusive 8 件: お金が動いた未配達 2 回なので BLOCK（2026-09-29.2 以降の規則）", () => {
+test("結論 2 件（settled/5xx）＋inconclusive 8 件: お金が動いた未配達 2 回。売り手の側（確定）と示せないので WARN（2026-09-29.4）", () => {
   const rows = [undeliveredRow(0), undeliveredRow(1), ...Array.from({ length: 8 }, (_, i) => inconclusiveRow(i + 2))];
   const d = decidePayer(factsOf(rows));
-  assert.equal(d.recommendation, "BLOCK");
+  assert.equal(d.recommendation, "WARN");
   assert.ok(d.reason_codes.includes("l1_paid_not_delivered"));
 });
 

@@ -19,7 +19,7 @@ const ok: SellerFacts = {
   wash_dominated: false,
 };
 
-test("版が固定されている", () => assert.equal(DECISION_RULES_VERSION, "2026-09-29.3"));
+test("版が固定されている", () => assert.equal(DECISION_RULES_VERSION, "2026-09-29.4"));
 
 /** 鮮度（2026-09-29.2）の基準時刻。フィクスチャの observed_at（09-01）の翌日。 */
 const T = { now: new Date("2026-09-02T00:00:00Z") };
@@ -32,9 +32,9 @@ test("ALLOW: l0 pass ∧ n_delivered ≥ 1 ∧ l2 ≠ mismatch。l2_undeclared �
   assert.ok(d.reason_codes.includes("l2_undeclared"));
 });
 
-test("BLOCK: l0 fail / unverified（fail-closed）", () => {
+test("BLOCK: l0 fail。unverified（未プローブ・測れていない）は WARN（2026-09-29.4: unverified is not a failure）", () => {
   assert.equal(decidePayer({ ...ok, l0: { ...ok.l0, status: "fail" } }).recommendation, "BLOCK");
-  assert.equal(decidePayer({ ...ok, l0: { ...ok.l0, status: "unverified" } }).recommendation, "BLOCK");
+  assert.equal(decidePayer({ ...ok, l0: { ...ok.l0, status: "unverified" } }).recommendation, "WARN");
 });
 
 test("2026-09-29.3: 数えた失敗が何回でも、お金が動いた未配達が無ければ WARN（l1_never_delivered）", () => {

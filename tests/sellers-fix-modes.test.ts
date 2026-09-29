@@ -97,7 +97,10 @@ function proven(p: Partial<SellerRowFacts> & Flags): SellerRowFacts {
 /** [説明, 行, 期待する種類（null = delivered）, 期待する側] */
 const KNOWN: [string, SellerRowFacts, string | null, string][] = [
   ["settled 200", row({ status: "settled", httpStatusPaid: 200, txHash: TX }), null, "delivered"],
-  ["settled 202", row({ status: "settled", httpStatusPaid: 202, txHash: TX }), null, "delivered"],
+  // 2026-09-29 監査 7 周目: 202 Accepted（処理待ち）と空の 2xx は配達に数えない（お金は動いた・not sorted）。
+  ["settled 201", row({ status: "settled", httpStatusPaid: 201, txHash: TX }), null, "delivered"],
+  ["settled 202", row({ status: "settled", httpStatusPaid: 202, txHash: TX }), "accepted_not_delivered", "unsorted"],
+  ["settled 200・空の本文", row({ status: "settled", httpStatusPaid: 200, txHash: TX, payloadNonEmpty: false }), "accepted_not_delivered", "unsorted"],
   // vet402 の側
   ["残高切れ期間の 402", row({ status: "settle_failed", httpStatusPaid: 402, attemptedAt: "2026-09-14T03:00:00Z" }), "payer_unfunded", "vet402"],
   ["残高切れ期間の 500", row({ status: "settle_failed", httpStatusPaid: 500, attemptedAt: "2026-09-13T00:00:00Z" }), "payer_unfunded", "vet402"],
@@ -348,6 +351,7 @@ test("分類表: 鍵が重複せず、文言が空でなく、vet402 の側は�
     FIX_MODES.filter((m) => m.side === "unsorted").map((m) => m.key).sort(),
     [
       ...sellerKeys.map((k) => `${k}_once`),
+      "accepted_not_delivered",
       "answered_no_charge",
       "charged_unsent_input",
       "example_input",

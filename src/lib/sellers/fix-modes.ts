@@ -13,9 +13,9 @@
 // side は「その失敗は誰の側で起きたか」（2026-09-29 敵対的監査で規則を締めた・判定の順もこの順）:
 //   vet402   こちらの落ち度・こちらの制限。売り手に直すものは無い。
 //            payer_unfunded（購入元の残高切れ）、body_not_sent（宣言本文を送っていなかった期間の 400/422）、
-//            query_not_sent（Base で宣言クエリを送っていなかった期間の 400/422）。classifyRow（判定 API と共有）は
-//            決済済みの行もこちらの側に置く（独立レビュー 2026-09-28: 入力を送らなかったのはこちら）。公開の売り手頁
-//            （classifySellerRow・2026-09-29 第4巡）は決済済みの行を charged_unsent_input（両方の事実・not sorted）に分ける。retest の対象
+//            query_not_sent（Base で宣言クエリを送っていなかった期間の 400/422）。classifyRow は
+//            決済済みの行もこちらの側に置く（独立レビュー 2026-09-28: 入力を送らなかったのはこちら）。その上の
+//            classifySellerRow（2026-09-29 第4巡）は決済済みの行を charged_unsent_input（両方の事実・not sorted）に分ける。retest の対象
 //            （買い直しの予定）とは別の判定で、頁が「eligible for a re-buy」と書くのは retest の SQL の結果がある時だけ（board.ts）。
 //            本文・クエリの「宣言」は、送る規則と同じ情報源（x402_endpoints.declared_input＝`bazaar.info.input` の
 //            見本値に送る規則を当てた要約）とスキーマの両方で見る（2026-09-29）。本文は 415 も入る。
@@ -42,8 +42,8 @@
 //   (e) 支払い付きの要求に明示の応答（HTTP の答え・レシート）があった。答えが無かった行は、出品の
 //       maxTimeoutSeconds が vet402 の待ち時間（L1_REQUEST_TIMEOUT_MS）以下で、しかも着金が無い時だけ。
 //       それ以外（宣言の方が長い・宣言が読めない・打ち切りの後に着金した）は not sorted（stopped_waiting）。
-// 判定 API（seller-facts.ts notCountedReasonOf）は払う側に慎重に、除くのは vet402 の側・保留・課金なしだけ
-// （上の not sorted の新しい種類は数える＝BLOCK を緩めない）。
+// 2026-09-29 監査 7 周目: 判定 API・/sellers・export.csv は同じ classifySellerRow の結果を読む。判定が BLOCK に数えるのは
+// seller の側（確定）の「払ったのに届かない」だけで、not sorted の行はお金が動いていれば WARN に留める。
 // effort は直す手間: 1 = 出品・設定の変更、2 = サーバーの変更、3 = facilitator 次第。
 //
 // 公開面の文言を持つので tests/claims-registry.test.ts の走査対象（publicSurfaces）に入っている。
@@ -102,6 +102,13 @@ export { PAYER_FUNDS_GATE_SINCE };
  */
 export const LATE_LINK_BEFORE_MIN = 2;
 export const LATE_LINK_AFTER_MIN = 30;
+/**
+ * 2026-09-29（監査 7 周目・会計の所見）: 遅延回収が決済を結び付けるまでの待ち（分）。バッチの直後、チェーンでは決済済みの行が
+ * delivered_no_receipt / settle_failed のまま 35 分〜1 時間残る（本番の l1.settledLateLinked 474 件・毎バッチ）。
+ * 署名した（auth_nonce のある）失敗の行は、試行からこの時間のうちは「お金が動いたか未確定」（pending）に置き、
+ * 判定・/sellers・export のどれでも売り手の失敗に数えない。台帳の status の値は変えない（表示と数え方だけ）。
+ */
+export const LATE_LINK_PENDING_MINUTES = 90;
 
 /**
  * 売り手が名指した tx の照合の期限（2026-09-29 第5巡）。照合器（settlement-verifier.ts）は、購入からこの日数たっても
@@ -251,8 +258,8 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   },
   // ---------- unsorted: charged, and vet402 had not sent the declared input (2026-09-29 第4巡) ----------
   // 決済済みの 400/415/422 で、こちらが宣言の本文・クエリを送っていなかった行。以前は vet402 の側に吸収していたが、
-  // 売り手が代金を取った事実も消えていた。両方の事実を書き、どちらの側にも数えない（/sellers だけ。判定 API は
-  // classifyRow のまま vet402 の側として除く）。
+  // 売り手が代金を取った事実も消えていた。両方の事実を書き、どちらの側にも数えない（判定 API・/sellers・export.csv は
+  // 同じ分類を読む）。
   {
     key: "charged_unsent_input",
     title: "Charged, then refused an input vet402 had not sent",
@@ -264,7 +271,7 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   },
   // 2026-09-29 監査 6 周目（中）: 宣言の入力に例示用のドメイン（example.com / .org / .net・*.example）がそのまま入った
   // 出品。vet402 は宣言の見本値を送るので、失敗はその見本の値のせいでありうる（入力が妥当だったと示せない）。
-  // 公開の売り手頁・記録頁だけの層（sellerCandidateClass）。判定 API（classifyRow）は変えない。
+  // sellerCandidateClass の層（判定 API も同じ分類を読む）。
   {
     key: "example_input",
     title: "The declared input is an example domain",
@@ -273,6 +280,18 @@ const BASE_FIX_MODES: readonly FixMode[] = [
     side: "unsorted",
     effort: 1,
     sideLabel: "not sorted: example input",
+  },
+  // 2026-09-29 監査 7 周目（高 1）: 決済済みで、支払い付き要求の答えが 202 Accepted（処理待ち・poll_url）か空の 2xx。
+  // お金は動いたが、結果が届いたかは vet402 には分からない（後から取りに行かない）。配達に数えず、売り手の落ち度にも
+  // 数えない。判定は WARN（l1_paid_not_delivered・売り手の側ではないので BLOCK にしない）。
+  {
+    key: "accepted_not_delivered",
+    title: "Paid, and the answer held no result yet",
+    what: "The payment settled on-chain, and the paid request got 202 Accepted (the work was queued, for example with a status such as processing or settlement_pending_reconciliation) or a 2xx with an empty body. vet402 does not fetch a result later, so this is not counted as delivered.",
+    fix: "This page does not count it as the seller's fault. If the result can be ready at once, return it with a 200 to the paid request.",
+    side: "unsorted",
+    effort: 2,
+    sideLabel: "not sorted: paid, no result in the answer",
   },
   // ---------- unsorted: held (not counted against the seller) ----------
   {
@@ -509,6 +528,17 @@ export interface SellerRowFacts {
   verifyReason: string | null;
   /** x402_l1_purchases.settlement_verified_at（照合が確定した時刻・ISO8601 UTC）。無ければ null（2026-09-29 第5巡）。 */
   verifiedAt?: string | null;
+  /**
+   * 2026-09-29 監査 7 周目: 支払い付き要求の本文が空でなかったか（x402_l1_purchases.payload_non_empty）。false の行は
+   * 届いたと数えない（delivery.ts isDelivered）。未記録（undefined / null）は本文の条件を問わない。
+   */
+  payloadNonEmpty?: boolean | null;
+  /**
+   * 2026-09-29 監査 7 周目: tx の付いた settle_failed の支払いが確かめられたか（決済の索引にその tx が在る、または照合で
+   * settlement_verified = true）。true の行だけ「お金が動いた」（moneyOf）。売り手が success:false と一緒に返しただけの
+   * tx は false / null。
+   */
+  settlementConfirmed?: boolean | null;
   // ---- 2026-09-29 第2巡: seller の側に置く積極的な根拠（(b)〜(e)）。無い（undefined / null）は「示せない」。 ----
   /** 署名した額（x402_l1_purchases.amount_units・基本単位）。 */
   amountUnits?: string | null;
@@ -790,6 +820,8 @@ function modeKeyOf(r: SellerRowFacts, held: HeldReason | null): string {
   if (held === "settled_4xx") return REJECTED_INPUT_HTTP.has(r.httpStatusPaid ?? -1) ? "settled_then_rejected" : "settled_then_refused";
   if (held === "unsettled_4xx") return "refused_no_charge";
   if (isAnsweredWithoutCharge(r)) return "answered_no_charge";
+  // 決済済みの 2xx で届いた形でない（202 Accepted・空の本文）: お金は動いたが結果は届いていない（2026-09-29 監査 7 周目）。
+  if (r.status === "settled" && inRange(r.httpStatusPaid, 200, 299)) return "accepted_not_delivered";
   // (a) 署名していない
   if (NOT_PAID_STATUSES.has(r.status)) {
     if (r.status === "no_402") return unpaidMode(r.unpaidStatus);
@@ -910,35 +942,68 @@ export function classifyRow(r: SellerRowFacts): RowClass {
     attemptedAt: r.attemptedAt,
     network: r.network,
   });
-  if (isDelivered({ status: r.status, httpStatusPaid: r.httpStatusPaid })) return { bucket: "delivered", mode: null, held };
+  if (isDelivered({ status: r.status, httpStatusPaid: r.httpStatusPaid, payloadNonEmpty: r.payloadNonEmpty })) return { bucket: "delivered", mode: null, held };
   if (r.status === "settle_claimed") return { bucket: "pending", mode: null, held };
   const mode = fixMode(modeKeyOf(r, held));
   return { bucket: mode.side, mode, held };
 }
 
 // ------------------------------------------------------------
-// /sellers と記録頁の「どちらの側か」（2026-09-29 第4巡）。
+// 1 回の購入の分類（2026-09-29 監査 7 周目で「1 つだけ」にした）。
 //
-// classifyRow は判定 API（src/lib/decision/seller-facts.ts・別の担当）と共有しているので変えない。
-// 公開の売り手頁と記録頁は、その上に次の 3 つを重ねた classifySellerRow を使う:
+// classifySellerRow が、L1 の 1 行を次の 3 つに分ける唯一の関数。判定（src/lib/decision/seller-facts.ts）・
+// /sellers と記録頁（board.ts）・/api/v1/sellers/export.csv（export.ts）・MCP の説明は、この結果を読むだけで、
+// 自分で「誰の側か」「お金が動いたか」「届いたか」を決めない（tests/decision-sellers-agreement.test.ts が固定）。
+//   delivered  届いた（delivery.ts isDelivered: settled・2xx（202 を除く）・本文が空でない）
+//   money      お金が動いたか: moved（settled、または照合で確かめた tx の付いた settle_failed）・
+//              not_moved（署名していない・売り手の名指した tx が無いと確定した）・unknown（それ以外の署名した行）
+//   bucket     誰の側か: seller（売り手の側・確定＝別の UTC 日に 2 回以上）・vet402・unsorted（どちらにも数えない）・
+//              pending（未確定: 照合待ち・売り手が tx を名指した 2xx・遅延回収の待ち）・delivered・not_bought
+// classifyRow（1 行だけで決まる部分）の上に次を重ねる:
 //   1. 支払い付き要求が 2xx で、売り手が決済の tx を名指した行（PAYMENT-RESPONSE の success が false でも）は
-//      照合待ち（pending）。失敗に数えない（wazir 型）。遅延照合（recover-late.ts）が settle_claimed へ移し、
-//      照合器がチェーンで読み直す。
-//   2. 決済済みの 400/415/422 で、こちらが宣言の入力を送っていなかった行は charged_unsent_input（両方の事実）。
-//   3. seller の側は、同じ出品で別の UTC の日に 2 回以上あって初めて確定。1 回だけは once 版。
+//      照合待ち（pending）。失敗に数えない（wazir 型）。
+//   2. 署名した（auth_nonce のある）失敗の行で、試行から LATE_LINK_PENDING_MINUTES 分のうちは pending
+//      （遅延回収が決済を結び付ける前・会計の所見 2026-09-29）。
+//   3. 決済済みの 400/415/422 で、こちらが宣言の入力を送っていなかった行は charged_unsent_input（両方の事実）。
+//   4. seller の側は、同じ出品で別の UTC の日に 2 回以上あって初めて確定。1 回だけは once 版（unsorted）。
 // ------------------------------------------------------------
 
 export interface SellerRowContext {
   /**
-   * 同じ出品で、1〜2 を当てた結果が seller の側（確定前）になった行の UTC の日付（YYYY-MM-DD）。
+   * 同じ出品で、1〜3 を当てた結果が seller の側（確定前）になった行の UTC の日付（YYYY-MM-DD）。
    * この行を含んでいてもいなくてもよい。無ければこの行だけで数える（＝確定しない）。
    */
   sellerFailureDays?: Iterable<string>;
+  /** 読んだ時刻（ミリ秒）。遅延回収の待ち（2）に使う。省略時は今。 */
+  now?: number;
 }
 
+/** お金が動いたか（2026-09-29 監査 7 周目）。 */
+export type MoneyMoved = "moved" | "not_moved" | "unknown";
+
+/**
+ * 区分の説明（英語・公開面の正典・2026-09-29 監査 7 周目）。export.csv の列の説明・判定の規則の文
+ * （src/lib/decision/rules-text.ts）・llms.txt・openapi はここから作る。手で写さない。
+ */
+export const BUCKET_DOCS: Readonly<Record<Bucket, string>> = {
+  delivered: "delivered (settled on-chain, then a 2xx other than 202 Accepted with a non-empty body)",
+  pending: `pending (not yet known whether money moved: a receipt awaiting on-chain verification, a 2xx naming a transaction, or a signed attempt that failed less than ${LATE_LINK_PENDING_MINUTES} minutes ago while vet402 links late settlements; the ledger status is left as recorded)`,
+  seller: `seller (the seller's side: vet402 can show from the row that the failure was not its own, and the same kind of failure was seen at the listing on ${SELLER_CONFIRM_DAYS} or more different UTC days)`,
+  vet402: "vet402 (vet402's side: its wallet was short, it did not send the declared input, or one of its own limits or errors)",
+  unsorted: "unsorted (not sorted: held for vet402's own request shape, no charge taken, a paid answer with no result in it, seen on one UTC day so far, or vet402 cannot show the failure was not its own)",
+  not_bought: "not_bought (vet402 did not sign a payment, so it is not a purchase result)",
+};
+
+/** お金が動いたかの説明（英語・公開面の正典）。 */
+export const MONEY_DOC =
+  "Money moved when the payment settled on-chain, or when a settle_failed row carries a transaction vet402 verified; it did not move when vet402 signed nothing or the transaction the seller named was not found; otherwise it is not yet known.";
+
 export interface SellerRowClass extends RowClass {
-  /** seller の側（確定・別の日に 2 回以上）。 */
+  /** seller の側（確定・別の日に 2 回以上）。bucket === "seller" と同じ。 */
   confirmedSeller: boolean;
+  /** 届いた（delivery.ts isDelivered）。bucket === "delivered" と同じ。 */
+  delivered: boolean;
+  money: MoneyMoved;
 }
 
 /** UTC の日付（attempted_at の先頭 10 文字）。 */
@@ -953,10 +1018,32 @@ export function isAnsweredWithNamedTx(r: Pick<SellerRowFacts, "status" | "txHash
   return inRange(r.httpStatusPaid, 200, 299) && !r.verifyReason;
 }
 
-/** 1〜2 を当てた分類（2 回確定の前）。seller の側の候補かどうかはこれで決まる。 */
-export function sellerCandidateClass(r: SellerRowFacts): RowClass {
+/**
+ * 遅延回収の待ち（2026-09-29 会計の所見）: 署名した（auth_nonce のある）delivered_no_receipt / settle_failed の行で、
+ * 試行から LATE_LINK_PENDING_MINUTES 分たっていない。時刻が読めなければ待ちにしない。
+ */
+export function isAwaitingLateLink(r: Pick<SellerRowFacts, "status" | "attemptedAt" | "authNonce">, now: number = Date.now()): boolean {
+  if (r.status !== "delivered_no_receipt" && r.status !== "settle_failed") return false;
+  if (!r.authNonce) return false;
+  const t = Date.parse(r.attemptedAt);
+  if (!Number.isFinite(t)) return false;
+  return now - t < LATE_LINK_PENDING_MINUTES * 60_000;
+}
+
+/** お金が動いたか（1 行の事実だけで決まる）。 */
+export function moneyOf(r: Pick<SellerRowFacts, "status" | "txHash" | "settlementConfirmed">): MoneyMoved {
+  if (!SIGNED_ROW_STATUSES.has(r.status)) return "not_moved";
+  if (r.status === "settled") return "moved";
+  if (r.status === "settle_failed" && r.txHash !== null && r.txHash !== "" && r.settlementConfirmed === true) return "moved";
+  if (r.status === "settle_claim_refuted") return "not_moved";
+  return "unknown";
+}
+
+/** 1〜3 を当てた分類（2 回確定の前）。seller の側の候補かどうかはこれで決まる。 */
+export function sellerCandidateClass(r: SellerRowFacts, now: number = Date.now()): RowClass {
   const base = classifyRow(r);
   if (isAnsweredWithNamedTx(r)) return { bucket: "pending", mode: null, held: base.held };
+  if (base.bucket !== "delivered" && isAwaitingLateLink(r, now)) return { bucket: "pending", mode: null, held: base.held };
   if ((base.mode?.key === "body_not_sent" || base.mode?.key === "query_not_sent") && r.status === "settled") {
     return { bucket: "unsorted", mode: fixMode("charged_unsent_input"), held: base.held };
   }
@@ -968,19 +1055,22 @@ export function sellerCandidateClass(r: SellerRowFacts): RowClass {
 }
 
 /** 行が seller の側の候補なら、その UTC の日付。そうでなければ null。 */
-export function sellerCandidateDay(r: SellerRowFacts): string | null {
-  return sellerCandidateClass(r).bucket === "seller" ? utcDayOf(r.attemptedAt) : null;
+export function sellerCandidateDay(r: SellerRowFacts, now: number = Date.now()): string | null {
+  return sellerCandidateClass(r, now).bucket === "seller" ? utcDayOf(r.attemptedAt) : null;
 }
 
-/** 公開の売り手頁・記録頁の分類（決定的・DB 無し）。 */
+/** 1 回の購入の分類（唯一の関数・決定的・DB 無し）。判定・/sellers・記録頁・export.csv が読む。 */
 export function classifySellerRow(r: SellerRowFacts, ctx: SellerRowContext = {}): SellerRowClass {
-  const c = sellerCandidateClass(r);
-  if (c.bucket !== "seller" || !c.mode) return { ...c, confirmedSeller: false };
+  const now = ctx.now ?? Date.now();
+  const c = sellerCandidateClass(r, now);
+  const money = moneyOf(r);
+  const out = (x: RowClass, confirmedSeller: boolean): SellerRowClass => ({ ...x, confirmedSeller, delivered: x.bucket === "delivered", money });
+  if (c.bucket !== "seller" || !c.mode) return out(c, false);
   const days = new Set<string>(ctx.sellerFailureDays ?? []);
   days.add(utcDayOf(r.attemptedAt));
-  if (days.size >= SELLER_CONFIRM_DAYS) return { ...c, confirmedSeller: true };
+  if (days.size >= SELLER_CONFIRM_DAYS) return out(c, true);
   const once = fixMode(`${c.mode.key}${ONCE_SUFFIX}`);
-  return { bucket: once.side, mode: once, held: c.held, confirmedSeller: false };
+  return out({ bucket: once.side, mode: once, held: c.held }, false);
 }
 
 // ------------------------------------------------------------

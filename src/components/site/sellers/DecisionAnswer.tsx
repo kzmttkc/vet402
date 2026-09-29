@@ -2,17 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { reasonCodeDocOf } from "@/lib/decision/reason-codes";
+import { blockReasonCodes } from "@/lib/decision/rules";
 
 /**
  * 売り手頁の出品ごとの「判定 API の今の答え」（2026-09-29 敵対的監査 5 周目）。
  *
- * 売り手頁は失敗を「vet402 に落ち度が無いと行の記録で示せる」ときだけ売り手の側に置く。判定 API は払う側に慎重で、
- * 除くのは vet402 の落ち度を示せる行だけ。だから同じ出品で頁は「not sorted」、判定は WARN / BLOCK になりうる
- * （意図どおりの非対称）。頁が黙っていると矛盾に見えるので、出品ごとに判定 API そのものの答えを並べる。
- * 2026-09-29（規則 2026-09-29.3）: 非対称はお金が動いた行だけになった。お金の動いていない失敗は、頁が売り手の側
- * （確定）に置いた行だけを判定も数え、WARN まで。L1 の BLOCK は「払ったのに届かなかった」が最後の配達より後に 2 回以上
- * だけ。l2_mismatch の BLOCK は欠けたキーを記録したときだけ（無ければ l2_mismatch_unexplained・WARN）。
- * 本文を読み切れなかった応答（256 KiB 超・閉じていない JSON）は L2 を判定しない（not_checked）。
+ * 2026-09-29 監査 7 周目: 判定と頁は同じ分類関数（fix-modes.ts classifySellerRow）を読む。判定が BLOCK にするのは頁が
+ * 売り手の側（確定）に置いた「払ったのに届かない」が 2 回以上のときだけで、not sorted の行は WARN まで。ここで出す説明の文は
+ * 理由コードの表（reason-codes.ts）の meaning / forPayer、BLOCK を決めたコードは rules.ts の blockReasonCodes から取り、
+ * 頁に規則の写しを書かない。
  *
  * なぜ閲覧者のブラウザから公開の判定 API を呼ぶか: 判定を組む関数（src/lib/decision/seller-facts.ts）は L0 プローブ
  * （src/lib/observatory/l0-probe.ts）を経て支払いのモジュールを読み込むので、/sellers の頁のサーバ側から呼ぶと
@@ -35,6 +34,8 @@ type Basis = {
   windowDays: number | null;
   nCounted: number | null;
   nPaidUndeliveredSince: number | null;
+  /** そのうち売り手の側（確定）。2 以上で BLOCK（rules.ts blockReasonCodes）。 */
+  nPaidUndeliveredSellerSince: number | null;
   daysSinceLastDelivery: number | null;
   lastDeliveredAt: string | null;
 };
@@ -68,47 +69,22 @@ export function decisionApiHref(resourceId: string): string {
   return `/api/v1/resources/${resourceId}/decision?role=payer`;
 }
 
-/** 否定でない（それだけでは WARN / BLOCK にしない）コード。 */
-const NEUTRAL = new Set(["l0_pass", "l1_delivered", "l2_conform", "l2_undeclared", "l1_waived_by_operator"]);
-const isNeutral = (c: string) => NEUTRAL.has(c) || c.startsWith("l1_not_counted_");
+/**
+ * 否定でない（それだけでは WARN / BLOCK にしない）コード。理由コードの表（reason-codes.ts）の effect が none の語
+ * （2026-09-29 監査 7 周目: 頁に規則の写しを置かない）。表に無い語も否定に数えない。
+ */
+const isNeutral = (c: string) => (reasonCodeDocOf(c)?.effect ?? "none") === "none";
 /** l0_unverified の原因を添える下位コード（l0_unverified_<cause>）。 */
 const isL0Cause = (c: string) => c.startsWith("l0_unverified_");
-/**
- * 数えた試行から出るコード。規則 2026-09-29.3 では、頁が not sorted に置く試行を判定が数えるのはお金が動いた行だけ
- * なので、このコードが答えを決めたときだけ数え方の違い（COUNTING_NOTE）を書く。
- */
+/** 数えた試行から出るコード。頁が売り手の側に置いていない出品で答えを決めたときだけ、数え方（COUNTING_NOTE）を添える。 */
 export const COUNTED_ATTEMPT_CODES: ReadonlySet<string> = new Set(["l1_never_delivered", "l1_paid_not_delivered", "l1_latest_failed"]);
 
-/**
- * そのコードが BLOCK を決めうるか（公開の規則・/docs/api の表と同じ: rules.ts は import しない）。数の要るコードは
- * l1_basis があれば数で決め、無ければ決めうる側に倒す（BLOCK の理由を黙らない）。
- */
-function blockCapable(code: string, codes: readonly string[], basis: Basis | null): boolean {
-  switch (code) {
-    case "l0_fail":
-    case "wash_dominated":
-    case "operator_blacklist":
-      return true;
-    case "l0_unverified":
-      // 確かめられた 1 回の fail（single_fail で unconfirmed が無い）だけ WARN。
-      return !(codes.includes("l0_unverified_single_fail") && !codes.includes("l0_unverified_single_fail_unconfirmed"));
-    case "l1_paid_not_delivered":
-      return basis?.nPaidUndeliveredSince == null || basis.nPaidUndeliveredSince >= 2;
-    case "l2_mismatch":
-      // 規則 2026-09-29.3: 欠けたキーを記録した不一致だけが BLOCK。記録が無ければ l2_mismatch_unexplained・WARN。
-      return !codes.includes("l2_mismatch_unexplained");
-    // l1_never_delivered は規則 2026-09-29.3 から WARN（BLOCK は l1_paid_not_delivered が 2 回以上のときだけ）。
-    default:
-      return false;
-  }
-}
-
-/** 答えを決めた否定のコード（応答の順）。BLOCK で決めうるコードが見つからなければ否定のコード全部。 */
+/** 答えを決めた否定のコード（応答の順）。BLOCK は rules.ts の blockReasonCodes（判定の block 式と 1 対 1）。見つからなければ否定のコード全部。 */
 export function decisiveCodes(recommendation: string, codes: readonly string[], basis: Basis | null = null): string[] {
   if (recommendation === "ALLOW") return [];
   const negatives = codes.filter((c) => !isNeutral(c) && !isL0Cause(c));
   if (recommendation === "WARN") return negatives;
-  const block = negatives.filter((c) => blockCapable(c, codes, basis));
+  const block = blockReasonCodes(negatives, basis ? { n_paid_undelivered_seller_side_since_last_delivery: basis.nPaidUndeliveredSellerSince ?? Number.POSITIVE_INFINITY } : null);
   return block.length > 0 ? block : negatives;
 }
 
@@ -143,6 +119,7 @@ function basisOf(v: unknown): Basis | null {
     windowDays: num(b.window_days),
     nCounted: num(b.n_counted),
     nPaidUndeliveredSince: num(b.n_paid_undelivered_since_last_delivery),
+    nPaidUndeliveredSellerSince: num(b.n_paid_undelivered_seller_side_since_last_delivery),
     daysSinceLastDelivery: num(b.days_since_last_delivery),
     lastDeliveredAt: typeof b.last_delivered_at === "string" ? b.last_delivered_at : null,
   };
@@ -178,77 +155,36 @@ function safe(v: string, n = 40): string {
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /**
- * 答えを決めたコードごとの 1 文（2026-09-29 監査 6 周目・高）。以前は WARN / BLOCK に一律で「頁が not sorted に置く
- * 試行も数えるので」と書いていたが、答えを決めたのが L0 の失敗や古い配達のときは当てはまらなかった
- * （keyring-agent…/swap-token は l0_fail、agentdata…/crypto/scan は l1_stale）。数え方の違いを書くのは
- * COUNTED_ATTEMPT_CODES のときだけ（呼び手が付ける）。知らないコードは null（書かない）。
+ * 答えを決めたコードごとの説明（2026-09-29 監査 7 周目: 文は理由コードの表 reason-codes.ts の meaning そのもの。頁に規則の
+ * 写しを書かない）。頁が足すのは応答の数と時刻（l1_basis・facts）だけ。表で effect が none の語と知らない語は null（書かない）。
  */
 export function codeExplanation(code: string, a: Pick<Answer, "reasonCodes" | "basis" | "l2MissingKeys" | "l0FailReason">): string | null {
+  const doc = reasonCodeDocOf(code);
+  if (!doc || doc.effect === "none") return null;
   const b = a.basis;
-  const fresh = b?.freshDays ?? 30;
-  switch (code) {
-    case "l0_fail": {
-      const reason = a.l0FailReason ? safe(a.l0FailReason) : "";
-      return `The check before payment failed: two L0 probes in a row did not get a valid 402 to an unpaid request${reason ? ` (reason ${reason})` : ""}.`;
-    }
-    case "l0_unverified": {
-      const cause = a.reasonCodes.find((c) => isL0Cause(c) && c !== "l0_unverified_single_fail_unconfirmed")?.slice("l0_unverified_".length) ?? null;
-      if (cause === "single_fail") {
-        return a.reasonCodes.includes("l0_unverified_single_fail_unconfirmed")
-          ? "The latest check before payment (L0) failed once, and no newer probe has confirmed it either way."
-          : "The latest check before payment (L0) failed once; the one before it passed. Two failures in a row publish a fail.";
-      }
-      if (cause === "not_probed") return "The 402 to an unpaid request has not been checked yet (no L0 probe).";
-      return `The check before payment could not confirm a valid 402 to an unpaid request (L0 unverified${cause ? `: ${safe(cause)}` : ""}).`;
-    }
-    case "l1_stale":
-      if (b?.lastDeliveredAt && b.daysSinceLastDelivery !== null && b.daysSinceLastDelivery > fresh) {
-        return `The last delivery was ${Math.floor(b.daysSinceLastDelivery)} days ago, more than ${fresh}.`;
-      }
-      if (b && !b.lastDeliveredAt) return `vet402 has no paid attempt here in the last ${b.windowDays ?? 30} days; its last one is older.`;
-      return `The last delivery, or vet402's last paid attempt, is more than ${fresh} days old.`;
-    case "l1_not_attempted":
-      return "vet402 has not made a paid attempt here yet, so there is no delivery to go on.";
-    case "l1_inconclusive":
-      return "None of the paid attempts in the last 30 days counts either way: each is on vet402's side, held, took no payment, or failed without money moving in a way this page has not put on the seller's side.";
-    case "l1_never_delivered":
-      return b?.nCounted != null
-        ? `None of the ${plural(b.nCounted, "counted paid attempt", "counted paid attempts")} in the last 30 days delivered. On its own this is a WARN.`
-        : "No counted paid attempt in the last 30 days delivered. On its own this is a WARN.";
-    case "l1_paid_not_delivered":
-      return b?.nPaidUndeliveredSince != null
-        ? `${plural(b.nPaidUndeliveredSince, "paid attempt", "paid attempts")} since the last delivery took payment and did not deliver.`
-        : "Paid attempts since the last delivery took payment and did not deliver.";
-    case "l1_latest_failed":
-      return "The latest counted paid attempt did not deliver.";
-    case "l1_empty_2xx_settlement_unknown":
-      return "Since the last delivery, a paid attempt got an empty 2xx and no settlement is linked to it yet, so it is not known whether money moved.";
-    case "l2_mismatch": {
-      const keys = (a.l2MissingKeys ?? []).map((k) => safe(k)).filter((k) => k !== "");
-      if (keys.length === 0) {
-        return "The paid response did not match the output schema the listing declares, but no missing field is on record (the body was not JSON, was JSON that was not closed, was not an object, or was not sent as JSON), so this is a WARN.";
-      }
-      const shown = keys.slice(0, 5).join(", ");
-      return `The paid response lacked fields the listing's output schema declares: ${shown}${keys.length > 5 ? `, +${keys.length - 5} more` : ""}.`;
-    }
-    case "offer_drifting":
-      return "The listing's price or receiving address changed between observations.";
-    case "wash_dominated":
-      return "Almost none of the settlements reported for this listing come from third-party payers.";
-    case "operator_blacklist":
-      return "The operator has blocked this seller.";
-    case "data_thin":
-      return "There is too little recorded about this listing to go on.";
-    case "dialect_mismatch":
-      return "The listing speaks a different x402 version from the caller's.";
-    default:
-      return null;
+  const detail: string[] = [];
+  if (code === "l0_fail" && a.l0FailReason && safe(a.l0FailReason)) detail.push(`reason ${safe(a.l0FailReason)}`);
+  if (code === "l0_unverified") {
+    const cause = a.reasonCodes.find((c) => isL0Cause(c))?.slice("l0_unverified_".length);
+    if (cause) detail.push(`cause ${safe(cause)}`);
   }
+  if (code === "l1_paid_not_delivered" && b?.nPaidUndeliveredSince != null) {
+    detail.push(`${plural(b.nPaidUndeliveredSince, "such attempt", "such attempts")} since the last delivery, ${b.nPaidUndeliveredSellerSince ?? 0} on the seller's side`);
+  }
+  if (code === "l1_never_delivered" && b?.nCounted != null) detail.push(plural(b.nCounted, "counted paid attempt", "counted paid attempts"));
+  if (code === "l1_stale" && b?.daysSinceLastDelivery != null) detail.push(`last delivery ${Math.floor(b.daysSinceLastDelivery)} days ago`);
+  if (code === "l2_mismatch") {
+    const keys = (a.l2MissingKeys ?? []).map((k) => safe(k)).filter((k) => k !== "");
+    if (keys.length > 0) detail.push(`missing: ${keys.slice(0, 5).join(", ")}${keys.length > 5 ? `, +${keys.length - 5} more` : ""}`);
+  }
+  return detail.length > 0 ? `${doc.meaning} (${detail.join("; ")})` : doc.meaning;
 }
 
-/** 数え方の違いの 1 文（COUNTED_ATTEMPT_CODES が答えを決め、頁が売り手の側に置いていないときだけ）。 */
-export const COUNTING_NOTE =
-  "The decision counts a paid attempt that took payment and did not deliver even when this page leaves it not sorted. A failure where no money moved counts only once this page puts it on the seller's side, and then only toward a WARN.";
+/**
+ * 数え方の 1 文（COUNTED_ATTEMPT_CODES が答えを決め、頁が売り手の側に置いていないときだけ）。理由コードの表の
+ * l1_not_counted_unproven の forPayer（not sorted の行は売り手に不利に数えない・お金が動いていれば WARN）をそのまま出す。
+ */
+export const COUNTING_NOTE = reasonCodeDocOf("l1_not_counted_unproven")?.forPayer ?? "";
 
 function fmtUtc(iso: string | null): string | null {
   return iso && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(iso) ? `${iso.slice(0, 16).replace("T", " ")} UTC` : null;

@@ -1,0 +1,1836 @@
+{
+ "fetchedAt": "2026-09-29T11:12:58.311Z",
+ "fixtures": [
+  {
+   "endpoint": {
+    "id": "359afc1f-d606-4431-84e7-430ef0ba10de",
+    "resource_key": "cnvrt.ing/api/analyze-image",
+    "url": "https://cnvrt.ing/api/analyze-image",
+    "method": "POST",
+    "status": "active",
+    "network": "base",
+    "declared": true,
+    "declared_schema": {
+     "type": "object",
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "required": [
+      "input"
+     ],
+     "properties": {
+      "input": {
+       "type": "object",
+       "required": [
+        "type",
+        "method"
+       ],
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "http"
+        },
+        "method": {
+         "enum": [
+          "POST"
+         ],
+         "type": "string"
+        }
+       }
+      },
+      "output": {
+       "type": "object",
+       "required": [
+        "type"
+       ],
+       "properties": {
+        "type": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    "declared_input": {
+     "body": "declared",
+     "query": "empty"
+    }
+   },
+   "probes": [
+    {
+     "probedAt": "2026-09-28T22:40:24Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-28T04:40:25Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-27T13:40:24Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-26T22:40:06Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-26T04:40:05Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-25T13:40:09Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-24T16:40:09Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-23T22:40:11Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-23T04:40:12Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-22T13:40:10Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-21T16:40:10Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-20T22:40:15Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-20T04:40:21Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-19T13:40:22Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-18T22:40:04Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-18T04:40:08Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-17T13:40:18Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-16T16:40:22Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-15T22:40:09Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-15T04:40:21Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-14T16:40:04Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-13T22:40:22Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-13T13:40:10Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-12T16:40:21Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-12T04:40:11Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-11T16:40:08Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-10T23:40:19Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-10T14:40:11Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-09T23:40:05Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-09T05:40:26Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-08T17:40:18Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-08T05:40:12Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-07T17:40:09Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-07T05:40:10Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-06T17:40:11Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-06T05:40:11Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-05T17:40:06Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-05T05:40:11Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-04T17:40:06Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-04T05:40:09Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-03T17:40:08Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-03T05:40:08Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-02T17:40:10Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-02T05:40:15Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-01T23:40:06Z",
+     "verdict": "pass",
+     "dialect": "v1",
+     "failReason": null
+    }
+   ],
+   "rows": [
+    {
+     "facts": {
+      "endpointId": "359afc1f-d606-4431-84e7-430ef0ba10de",
+      "status": "settled",
+      "httpStatusPaid": 500,
+      "txHash": "0x0671fa23135949955ee8599289116f06708ab604bddf9599c285c28da255b4ff",
+      "attemptedAt": "2026-09-16T00:00:10Z",
+      "network": "eip155:8453",
+      "method": "POST",
+      "meta": {},
+      "schema": {
+       "properties": {
+        "input": {
+         "properties": {}
+        }
+       }
+      },
+      "declaredInput": {
+       "body": "declared",
+       "query": "empty"
+      },
+      "unpaidStatus": 500,
+      "selection": null,
+      "verifyReason": null,
+      "verifiedAt": "2026-09-16T06:45:11Z",
+      "amountUnits": "5000",
+      "payTo": "0xfad67ce5a834e68d5533ba7ac08619ff82a42084",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "payer": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+      "listingMaxTimeoutSeconds": 60,
+      "declaresHeaders": false,
+      "pathTemplate": false,
+      "challenge": null,
+      "declaredAmount": null,
+      "declaredPayTo": null,
+      "authNonce": "present",
+      "paidContentType": "application/json; charset=utf-8",
+      "payloadNonEmpty": true,
+      "settlementConfirmed": null,
+      "receiptPresent": true,
+      "receiptSuccess": true,
+      "receiptErrorReason": null,
+      "exampleInput": false
+     },
+     "l2Schema": "not_checked",
+     "latencyMs": 1131,
+     "l2Detail": null,
+     "bodyHead": null,
+     "contentType": "application/json; charset=utf-8"
+    },
+    {
+     "facts": {
+      "endpointId": "359afc1f-d606-4431-84e7-430ef0ba10de",
+      "status": "settled",
+      "httpStatusPaid": 500,
+      "txHash": "0xb026848854131449a1e1d156267e74ba24e73e6faf72da4f3d3ac00ab01fae57",
+      "attemptedAt": "2026-09-01T12:09:41Z",
+      "network": "eip155:8453",
+      "method": "POST",
+      "meta": {},
+      "schema": {
+       "properties": {
+        "input": {
+         "properties": {}
+        }
+       }
+      },
+      "declaredInput": {
+       "body": "declared",
+       "query": "empty"
+      },
+      "unpaidStatus": 500,
+      "selection": null,
+      "verifyReason": null,
+      "verifiedAt": "2026-09-01T14:58:51Z",
+      "amountUnits": "5000",
+      "payTo": "0xfad67ce5a834e68d5533ba7ac08619ff82a42084",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "payer": "0x6777e11fb0a7917b8110b7dab9188aa3f6d23986",
+      "listingMaxTimeoutSeconds": 60,
+      "declaresHeaders": false,
+      "pathTemplate": false,
+      "challenge": null,
+      "declaredAmount": null,
+      "declaredPayTo": null,
+      "authNonce": null,
+      "paidContentType": "application/json; charset=utf-8",
+      "payloadNonEmpty": true,
+      "settlementConfirmed": null,
+      "receiptPresent": true,
+      "receiptSuccess": true,
+      "receiptErrorReason": null,
+      "exampleInput": false
+     },
+     "l2Schema": "not_checked",
+     "latencyMs": 883,
+     "l2Detail": null,
+     "bodyHead": null,
+     "contentType": "application/json; charset=utf-8"
+    },
+    {
+     "facts": {
+      "endpointId": "359afc1f-d606-4431-84e7-430ef0ba10de",
+      "status": "settled",
+      "httpStatusPaid": 500,
+      "txHash": "0xfe8c7c20fbb681dd1d521f6fd39b7224b01ecd6b7dd5e813b3389719b00e50b0",
+      "attemptedAt": "2026-08-25T12:53:06Z",
+      "network": "eip155:8453",
+      "method": "POST",
+      "meta": {},
+      "schema": {
+       "properties": {
+        "input": {
+         "properties": {}
+        }
+       }
+      },
+      "declaredInput": {
+       "body": "declared",
+       "query": "empty"
+      },
+      "unpaidStatus": 500,
+      "selection": null,
+      "verifyReason": null,
+      "verifiedAt": "2026-08-25T14:21:45Z",
+      "amountUnits": "5000",
+      "payTo": "0xfad67ce5a834e68d5533ba7ac08619ff82a42084",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "payer": "0x6777e11fb0a7917b8110b7dab9188aa3f6d23986",
+      "listingMaxTimeoutSeconds": 60,
+      "declaresHeaders": false,
+      "pathTemplate": false,
+      "challenge": null,
+      "declaredAmount": null,
+      "declaredPayTo": null,
+      "authNonce": null,
+      "paidContentType": "application/json; charset=utf-8",
+      "payloadNonEmpty": true,
+      "settlementConfirmed": null,
+      "receiptPresent": true,
+      "receiptSuccess": true,
+      "receiptErrorReason": null,
+      "exampleInput": false
+     },
+     "l2Schema": "not_checked",
+     "latencyMs": 981,
+     "l2Detail": null,
+     "bodyHead": null,
+     "contentType": "application/json; charset=utf-8"
+    },
+    {
+     "facts": {
+      "endpointId": "359afc1f-d606-4431-84e7-430ef0ba10de",
+      "status": "settled",
+      "httpStatusPaid": 500,
+      "txHash": "0x898d83c2c28497c90e874780e993740531c210a96fbe201dbab9c9b6024f99eb",
+      "attemptedAt": "2026-08-19T12:12:22Z",
+      "network": "eip155:8453",
+      "method": "POST",
+      "meta": {},
+      "schema": {
+       "properties": {
+        "input": {
+         "properties": {}
+        }
+       }
+      },
+      "declaredInput": {
+       "body": "declared",
+       "query": "empty"
+      },
+      "unpaidStatus": 500,
+      "selection": null,
+      "verifyReason": null,
+      "verifiedAt": "2026-08-23T12:59:48Z",
+      "amountUnits": "5000",
+      "payTo": "0xfad67ce5a834e68d5533ba7ac08619ff82a42084",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "payer": "0x6777e11fb0a7917b8110b7dab9188aa3f6d23986",
+      "listingMaxTimeoutSeconds": 60,
+      "declaresHeaders": false,
+      "pathTemplate": false,
+      "challenge": null,
+      "declaredAmount": null,
+      "declaredPayTo": null,
+      "authNonce": null,
+      "paidContentType": "application/json; charset=utf-8",
+      "payloadNonEmpty": true,
+      "settlementConfirmed": null,
+      "receiptPresent": true,
+      "receiptSuccess": true,
+      "receiptErrorReason": null,
+      "exampleInput": false
+     },
+     "l2Schema": "not_checked",
+     "latencyMs": 1412,
+     "l2Detail": null,
+     "bodyHead": null,
+     "contentType": "application/json; charset=utf-8"
+    }
+   ]
+  },
+  {
+   "endpoint": {
+    "id": "538aa54a-9eee-4a9a-ad6a-0e22d15db782",
+    "resource_key": "firecrawl.mpp.tempo.xyz/v1/search",
+    "url": "https://firecrawl.mpp.tempo.xyz/v1/search",
+    "method": "POST",
+    "status": "active",
+    "network": "eip155:4217",
+    "declared": false,
+    "declared_schema": null,
+    "declared_input": null
+   },
+   "probes": [
+    {
+     "probedAt": "2026-09-28T22:40:13Z",
+     "verdict": "pass",
+     "dialect": "mpp",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-28T04:40:15Z",
+     "verdict": "pass",
+     "dialect": "mpp",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-27T13:40:15Z",
+     "verdict": "pass",
+     "dialect": "mpp",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-26T16:40:16Z",
+     "verdict": "pass",
+     "dialect": "mpp",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-25T22:40:18Z",
+     "verdict": "pass",
+     "dialect": "mpp",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-25T04:40:19Z",
+     "verdict": "pass",
+     "dialect": "mpp",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-24T13:40:18Z",
+     "verdict": "pass",
+     "dialect": "mpp",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-23T16:40:21Z",
+     "verdict": "pass",
+     "dialect": "mpp",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-22T22:40:25Z",
+     "verdict": "pass",
+     "dialect": "mpp",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-22T04:40:33Z",
+     "verdict": "fail",
+     "dialect": null,
+     "failReason": "timeout"
+    },
+    {
+     "probedAt": "2026-09-21T13:40:28Z",
+     "verdict": "pass",
+     "dialect": "mpp",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-20T22:40:03Z",
+     "verdict": "pass",
+     "dialect": "mpp",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-20T04:40:08Z",
+     "verdict": "pass",
+     "dialect": "mpp",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-19T13:40:09Z",
+     "verdict": "pass",
+     "dialect": "mpp",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-18T16:40:15Z",
+     "verdict": "pass",
+     "dialect": "mpp",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-17T22:40:14Z",
+     "verdict": "pass",
+     "dialect": "mpp",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-17T12:35:27Z",
+     "verdict": "pass",
+     "dialect": "mpp",
+     "failReason": null
+    }
+   ],
+   "rows": [
+    {
+     "facts": {
+      "endpointId": "538aa54a-9eee-4a9a-ad6a-0e22d15db782",
+      "status": "settled",
+      "httpStatusPaid": 500,
+      "txHash": "0x9e961660e8e5ef33a403014b74bfc7519990b3d20b2501e43496e5d62b16d8a7",
+      "attemptedAt": "2026-09-24T12:00:37Z",
+      "network": "eip155:4217",
+      "method": "POST",
+      "meta": {
+       "requestBody": "empty"
+      },
+      "schema": null,
+      "declaredInput": null,
+      "unpaidStatus": 500,
+      "selection": null,
+      "verifyReason": null,
+      "verifiedAt": "2026-09-24T14:00:06Z",
+      "amountUnits": "4000",
+      "payTo": "0xca4e835f803cb0b7c428222b3a3b98518d4779fe",
+      "asset": "0x20c000000000000000000000b9537d11c60e8b50",
+      "payer": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+      "listingMaxTimeoutSeconds": null,
+      "declaresHeaders": false,
+      "pathTemplate": false,
+      "challenge": null,
+      "declaredAmount": null,
+      "declaredPayTo": null,
+      "authNonce": "present",
+      "paidContentType": "application/problem+json",
+      "payloadNonEmpty": true,
+      "settlementConfirmed": null,
+      "receiptPresent": false,
+      "receiptSuccess": null,
+      "receiptErrorReason": null,
+      "exampleInput": false
+     },
+     "l2Schema": "not_checked",
+     "latencyMs": 1714,
+     "l2Detail": null,
+     "bodyHead": null,
+     "contentType": "application/problem+json"
+    },
+    {
+     "facts": {
+      "endpointId": "538aa54a-9eee-4a9a-ad6a-0e22d15db782",
+      "status": "settled",
+      "httpStatusPaid": 500,
+      "txHash": "0xfd007ea8447c0364aca81fd2e6ea91f2e643c0eb060174426cd3330305844aea",
+      "attemptedAt": "2026-09-18T06:00:25Z",
+      "network": "eip155:4217",
+      "method": "POST",
+      "meta": {
+       "requestBody": "empty"
+      },
+      "schema": null,
+      "declaredInput": null,
+      "unpaidStatus": 500,
+      "selection": null,
+      "verifyReason": null,
+      "verifiedAt": "2026-09-19T07:32:21Z",
+      "amountUnits": "4000",
+      "payTo": "0xca4e835f803cb0b7c428222b3a3b98518d4779fe",
+      "asset": "0x20c000000000000000000000b9537d11c60e8b50",
+      "payer": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+      "listingMaxTimeoutSeconds": null,
+      "declaresHeaders": false,
+      "pathTemplate": false,
+      "challenge": null,
+      "declaredAmount": null,
+      "declaredPayTo": null,
+      "authNonce": "present",
+      "paidContentType": "application/problem+json",
+      "payloadNonEmpty": true,
+      "settlementConfirmed": null,
+      "receiptPresent": false,
+      "receiptSuccess": null,
+      "receiptErrorReason": null,
+      "exampleInput": false
+     },
+     "l2Schema": "not_checked",
+     "latencyMs": 1257,
+     "l2Detail": null,
+     "bodyHead": null,
+     "contentType": "application/problem+json"
+    }
+   ]
+  },
+  {
+   "endpoint": {
+    "id": "53cdedfb-cd7b-4252-a15c-5c757c2fa950",
+    "resource_key": "api.x402-engine.com/v1/intelligence",
+    "url": "https://api.x402-engine.com/v1/intelligence",
+    "method": "POST",
+    "status": "active",
+    "network": "eip155:8453",
+    "declared": true,
+    "declared_schema": {
+     "type": "object",
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "required": [
+      "input",
+      "output"
+     ],
+     "properties": {
+      "input": {
+       "type": "object",
+       "required": [
+        "type",
+        "method",
+        "bodyType",
+        "body"
+       ],
+       "properties": {
+        "body": {
+         "type": "object",
+         "title": "IntelligenceRequest",
+         "required": [
+          "question"
+         ],
+         "properties": {
+          "depth": {
+           "type": "string",
+           "const": "standard",
+           "default": "standard"
+          },
+          "output": {
+           "type": "string",
+           "const": "json",
+           "default": "json"
+          },
+          "product": {
+           "type": "string",
+           "const": "transaction_authority_check",
+           "default": "transaction_authority_check"
+          },
+          "question": {
+           "type": "string",
+           "title": "Question",
+           "maxLength": 4000,
+           "minLength": 3,
+           "description": "The exact decision the buying agent needs before spending."
+          },
+          "transaction": {
+           "type": [
+            "object",
+            "null"
+           ],
+           "required": [
+            "resource_url",
+            "network",
+            "asset",
+            "pay_to",
+            "amount_atomic",
+            "max_amount_atomic",
+            "purpose"
+           ],
+           "properties": {
+            "asset": {
+             "type": "string",
+             "maxLength": 128,
+             "minLength": 3
+            },
+            "method": {
+             "type": "string",
+             "const": "POST",
+             "default": "POST"
+            },
+            "pay_to": {
+             "type": "string",
+             "maxLength": 128,
+             "minLength": 3
+            },
+            "network": {
+             "type": "string",
+             "maxLength": 128,
+             "minLength": 3
+            },
+            "purpose": {
+             "type": "string",
+             "maxLength": 500,
+             "minLength": 3
+            },
+            "resource_url": {
+             "type": "string",
+             "maxLength": 2048,
+             "minLength": 8
+            },
+            "amount_atomic": {
+             "type": "integer",
+             "exclusiveMinimum": 0
+            },
+            "max_amount_atomic": {
+             "type": "integer",
+             "exclusiveMinimum": 0
+            }
+           },
+           "additionalProperties": false
+          },
+          "freshness_days": {
+           "type": "integer",
+           "default": 30,
+           "maximum": 3650,
+           "minimum": 1
+          }
+         },
+         "additionalProperties": false
+        },
+        "type": {
+         "type": "string",
+         "const": "http"
+        },
+        "method": {
+         "type": "string",
+         "const": "POST"
+        },
+        "bodyType": {
+         "type": "string",
+         "const": "json"
+        }
+       },
+       "additionalProperties": false
+      },
+      "output": {
+       "type": "object",
+       "required": [
+        "type",
+        "example"
+       ],
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "json"
+        },
+        "example": {
+         "type": "object",
+         "title": "AgentPayJobAdmission",
+         "required": [
+          "job_id",
+          "access_token",
+          "status",
+          "status_url",
+          "receipt_url"
+         ],
+         "properties": {
+          "job_id": {
+           "type": "string"
+          },
+          "status": {
+           "type": "string",
+           "examples": [
+            "queued"
+           ]
+          },
+          "status_url": {
+           "type": "string"
+          },
+          "receipt_url": {
+           "type": "string"
+          },
+          "access_token": {
+           "type": "string",
+           "description": "Secret capability for job and receipt reads."
+          }
+         }
+        },
+        "description": {
+         "type": "string"
+        }
+       }
+      },
+      "finalResult": {
+       "type": "object",
+       "title": "AgentPayTransactionAuthorityDecision",
+       "$schema": "https://json-schema.org/draft/2020-12/schema",
+       "required": [
+        "mode",
+        "status",
+        "question",
+        "answer",
+        "key_findings",
+        "conflicts",
+        "sources",
+        "freshness",
+        "validation",
+        "authority_decision"
+       ],
+       "properties": {
+        "mode": {
+         "type": "string",
+         "const": "evidence-intelligence-v1"
+        },
+        "answer": {
+         "type": "string",
+         "description": "Source-bound answer or INSUFFICIENT_EVIDENCE."
+        },
+        "status": {
+         "enum": [
+          "OK",
+          "INSUFFICIENT_EVIDENCE"
+         ],
+         "type": "string"
+        },
+        "sources": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "required": [
+           "id",
+           "url",
+           "title",
+           "relevance"
+          ],
+          "properties": {
+           "id": {
+            "type": "string"
+           },
+           "url": {
+            "type": "string",
+            "format": "uri"
+           },
+           "title": {
+            "type": "string"
+           },
+           "relevance": {
+            "type": "number",
+            "maximum": 1,
+            "minimum": 0
+           }
+          }
+         }
+        },
+        "question": {
+         "type": "string"
+        },
+        "conflicts": {
+         "type": "array",
+         "items": {
+          "type": "object"
+         }
+        },
+        "freshness": {
+         "type": "object"
+        },
+        "validation": {
+         "type": "object"
+        },
+        "key_findings": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "required": [
+           "claim",
+           "confidence",
+           "source_ids"
+          ],
+          "properties": {
+           "claim": {
+            "type": "string"
+           },
+           "confidence": {
+            "enum": [
+             "low",
+             "medium",
+             "high"
+            ],
+            "type": "string"
+           },
+           "source_ids": {
+            "type": "array",
+            "items": {
+             "type": "string"
+            }
+           }
+          }
+         }
+        },
+        "provider_cost_usd": {
+         "type": "number",
+         "minimum": 0
+        },
+        "authority_decision": {
+         "type": "object",
+         "required": [
+          "verdict",
+          "reasons",
+          "policy_checks",
+          "boundary"
+         ],
+         "properties": {
+          "reasons": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          },
+          "verdict": {
+           "enum": [
+            "ALLOW",
+            "HOLD",
+            "DENY"
+           ],
+           "type": "string"
+          },
+          "boundary": {
+           "type": "string"
+          },
+          "policy_checks": {
+           "type": "object"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "declared_input": {
+     "body": "declared",
+     "query": "empty"
+    }
+   },
+   "probes": [
+    {
+     "probedAt": "2026-09-29T04:40:24Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-28T13:40:24Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-27T16:40:23Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-27T04:40:05Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-25T10:30:40Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    }
+   ],
+   "rows": [
+    {
+     "facts": {
+      "endpointId": "53cdedfb-cd7b-4252-a15c-5c757c2fa950",
+      "status": "settled",
+      "httpStatusPaid": 202,
+      "txHash": "0xea926e6414435007df9a374f8128a645a32d1ddcf50661134d72779d7cf6314f",
+      "attemptedAt": "2026-09-27T06:00:54Z",
+      "network": "eip155:8453",
+      "method": "POST",
+      "meta": {
+       "requestBody": "declared"
+      },
+      "schema": {
+       "properties": {
+        "input": {
+         "properties": {
+          "body": {}
+         }
+        }
+       }
+      },
+      "declaredInput": {
+       "body": "declared",
+       "query": "empty"
+      },
+      "unpaidStatus": 202,
+      "selection": null,
+      "verifyReason": null,
+      "verifiedAt": "2026-09-27T06:45:09Z",
+      "amountUnits": "100000",
+      "payTo": "0xc3b8ddada48c034541f8e7bffc7da93df17d3aed",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "payer": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+      "listingMaxTimeoutSeconds": 120,
+      "declaresHeaders": false,
+      "pathTemplate": false,
+      "challenge": null,
+      "declaredAmount": null,
+      "declaredPayTo": null,
+      "authNonce": "present",
+      "paidContentType": "application/json",
+      "payloadNonEmpty": true,
+      "settlementConfirmed": null,
+      "receiptPresent": true,
+      "receiptSuccess": true,
+      "receiptErrorReason": null,
+      "exampleInput": false
+     },
+     "l2Schema": "not_checked",
+     "latencyMs": 1686,
+     "l2Detail": null,
+     "bodyHead": null,
+     "contentType": "application/json"
+    }
+   ]
+  },
+  {
+   "endpoint": {
+    "id": "3eefe242-217e-4f7f-91d1-4d2660e8c4e6",
+    "resource_key": "api.onesource.io/api/chain/ens/:input",
+    "url": "https://api.onesource.io/api/chain/ens/:input",
+    "method": "GET",
+    "status": "active",
+    "network": "eip155:8453",
+    "declared": true,
+    "declared_schema": {
+     "type": "object",
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "required": [
+      "input"
+     ],
+     "properties": {
+      "input": {
+       "type": "object",
+       "required": [
+        "type",
+        "method"
+       ],
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "http"
+        },
+        "method": {
+         "enum": [
+          "GET",
+          "HEAD",
+          "DELETE"
+         ],
+         "type": "string"
+        },
+        "pathParams": {
+         "type": "object",
+         "required": [
+          "input"
+         ],
+         "properties": {
+          "input": {
+           "oneOf": [
+            {
+             "type": "string",
+             "pattern": "^0x[a-fA-F0-9]{40}$"
+            },
+            {
+             "type": "string",
+             "pattern": "^[^./\\s]+(?:\\.[^./\\s]+)+$"
+            }
+           ]
+          }
+         }
+        },
+        "queryParams": {
+         "type": "object",
+         "properties": {
+          "network": {
+           "enum": [
+            "ethereum",
+            "sepolia",
+            "robinhood"
+           ],
+           "type": "string",
+           "default": "ethereum"
+          }
+         }
+        }
+       },
+       "additionalProperties": false
+      },
+      "output": {
+       "type": "object",
+       "required": [
+        "type"
+       ],
+       "properties": {
+        "type": {
+         "type": "string"
+        },
+        "example": {
+         "type": "object",
+         "required": [
+          "data",
+          "meta"
+         ],
+         "properties": {
+          "data": {
+           "type": "object",
+           "properties": {
+            "name": {
+             "type": "string"
+            },
+            "address": {
+             "type": "string"
+            },
+            "resolver": {
+             "type": "string"
+            },
+            "is_forward": {
+             "type": "boolean"
+            },
+            "is_reverse": {
+             "type": "boolean"
+            }
+           },
+           "description": "Endpoint-specific response payload"
+          },
+          "meta": {
+           "type": "object",
+           "required": [
+            "endpoint",
+            "request_id"
+           ],
+           "properties": {
+            "endpoint": {
+             "type": "string"
+            },
+            "cost_usdc": {
+             "type": "string"
+            },
+            "request_id": {
+             "type": "string"
+            },
+            "payment_chain": {
+             "type": "string"
+            },
+            "payment_token": {
+             "type": "string"
+            }
+           }
+          },
+          "error": {
+           "type": [
+            "object",
+            "null"
+           ],
+           "properties": {
+            "code": {
+             "type": "integer"
+            },
+            "message": {
+             "type": "string"
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "declared_input": {
+     "body": "empty",
+     "query": "declared"
+    }
+   },
+   "probes": [],
+   "rows": []
+  },
+  {
+   "endpoint": {
+    "id": "1b02823d-218f-4983-839a-0fe81044cd3b",
+    "resource_key": "api.m2msentinel.com/v1/dex/metrics",
+    "url": "https://api.m2msentinel.com/v1/dex/metrics",
+    "method": "GET",
+    "status": "active",
+    "network": "eip155:8453",
+    "declared": true,
+    "declared_schema": {
+     "type": "object",
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "required": [
+      "input"
+     ],
+     "properties": {
+      "input": {
+       "type": "object",
+       "required": [
+        "type",
+        "method"
+       ],
+       "properties": {
+        "type": {
+         "type": "string",
+         "const": "http"
+        },
+        "method": {
+         "enum": [
+          "GET"
+         ],
+         "type": "string"
+        },
+        "queryParams": {
+         "type": "object",
+         "properties": {}
+        }
+       },
+       "additionalProperties": false
+      },
+      "output": {
+       "type": "object",
+       "required": [
+        "type"
+       ],
+       "properties": {
+        "type": {
+         "type": "string"
+        },
+        "example": {
+         "type": "object",
+         "required": [
+          "status"
+         ],
+         "properties": {
+          "status": {
+           "type": "string",
+           "const": "SUCCESS"
+          },
+          "metrics": {
+           "type": [
+            "array",
+            "object"
+           ]
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "declared_input": {
+     "body": "empty",
+     "query": "empty"
+    }
+   },
+   "probes": [
+    {
+     "probedAt": "2026-09-29T04:40:21Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-28T13:40:20Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-27T16:40:20Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-26T22:40:23Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-26T04:40:23Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-25T16:40:04Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-24T22:40:05Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-24T04:40:08Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-23T13:40:05Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-22T16:40:08Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-21T22:40:15Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-21T04:40:14Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-20T13:40:13Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-19T16:40:14Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-18T22:40:22Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-18T13:40:04Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-17T16:40:09Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-16T22:40:16Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-16T13:40:04Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-15T13:40:16Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-14T16:40:22Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-14T04:40:11Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-13T13:40:25Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-12T22:40:13Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-12T13:40:04Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-11T16:40:21Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-11T04:40:14Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-10T17:40:04Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-09T23:40:20Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-09T14:40:23Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-08T23:40:14Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-08T14:40:04Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-07T17:40:19Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-07T05:40:20Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-06T17:40:22Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-06T05:40:23Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-05T17:40:16Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-05T05:40:23Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-04T17:40:16Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-04T05:40:19Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-03T17:40:17Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-03T05:40:21Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-02T23:40:09Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    },
+    {
+     "probedAt": "2026-09-02T14:40:04Z",
+     "verdict": "pass",
+     "dialect": "v2",
+     "failReason": null
+    }
+   ],
+   "rows": [
+    {
+     "facts": {
+      "endpointId": "1b02823d-218f-4983-839a-0fe81044cd3b",
+      "status": "settled",
+      "httpStatusPaid": 200,
+      "txHash": "0x54fb204d0b999d81c5837d9e3a6cbdf8a70d3b0b155d5419c14868578abaa223",
+      "attemptedAt": "2026-09-22T18:01:12Z",
+      "network": "eip155:8453",
+      "method": "GET",
+      "meta": {
+       "requestBody": "none"
+      },
+      "schema": {
+       "properties": {
+        "input": {
+         "properties": {
+          "queryParams": {}
+         }
+        }
+       }
+      },
+      "declaredInput": {
+       "body": "empty",
+       "query": "empty"
+      },
+      "unpaidStatus": 200,
+      "selection": null,
+      "verifyReason": null,
+      "verifiedAt": "2026-09-22T18:45:09Z",
+      "amountUnits": "10000",
+      "payTo": "0x6d6c398390cfb88f1cd42715b84906a0bd6652aa",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "payer": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+      "listingMaxTimeoutSeconds": 120,
+      "declaresHeaders": false,
+      "pathTemplate": false,
+      "challenge": null,
+      "declaredAmount": null,
+      "declaredPayTo": null,
+      "authNonce": "present",
+      "paidContentType": "application/json; charset=utf-8",
+      "payloadNonEmpty": true,
+      "settlementConfirmed": null,
+      "receiptPresent": true,
+      "receiptSuccess": true,
+      "receiptErrorReason": null,
+      "exampleInput": false
+     },
+     "l2Schema": "match",
+     "latencyMs": 1419,
+     "l2Detail": {
+      "missing": [],
+      "responseHash": "0823c0b9427ba68a39cb99c0f33beb0d86f2f4752ed1d453a557e1eb0d36f8a3",
+      "declarationHash": "26738d90839dd94986b51cf85c8f3a6f67101af2d4147cdeac64fab47bdbcd7d"
+     },
+     "bodyHead": null,
+     "contentType": "application/json; charset=utf-8"
+    },
+    {
+     "facts": {
+      "endpointId": "1b02823d-218f-4983-839a-0fe81044cd3b",
+      "status": "settled",
+      "httpStatusPaid": 200,
+      "txHash": "0xbe32214c99930f8118e2e97bf1f0a071ab7918af777ea68ff8e0d2312871ada8",
+      "attemptedAt": "2026-09-12T00:00:59Z",
+      "network": "eip155:8453",
+      "method": "GET",
+      "meta": {},
+      "schema": {
+       "properties": {
+        "input": {
+         "properties": {
+          "queryParams": {}
+         }
+        }
+       }
+      },
+      "declaredInput": {
+       "body": "empty",
+       "query": "empty"
+      },
+      "unpaidStatus": 200,
+      "selection": null,
+      "verifyReason": null,
+      "verifiedAt": "2026-09-12T00:45:05Z",
+      "amountUnits": "10000",
+      "payTo": "0x6d6c398390cfb88f1cd42715b84906a0bd6652aa",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "payer": "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670",
+      "listingMaxTimeoutSeconds": 120,
+      "declaresHeaders": false,
+      "pathTemplate": false,
+      "challenge": null,
+      "declaredAmount": null,
+      "declaredPayTo": null,
+      "authNonce": "present",
+      "paidContentType": "application/json; charset=utf-8",
+      "payloadNonEmpty": true,
+      "settlementConfirmed": null,
+      "receiptPresent": true,
+      "receiptSuccess": true,
+      "receiptErrorReason": null,
+      "exampleInput": false
+     },
+     "l2Schema": "match",
+     "latencyMs": 1527,
+     "l2Detail": {
+      "missing": [],
+      "responseHash": "3d712a081d1232260997ca47176ba6baae160da24d3431e1c17c1a284e0ee794",
+      "declarationHash": "26738d90839dd94986b51cf85c8f3a6f67101af2d4147cdeac64fab47bdbcd7d"
+     },
+     "bodyHead": null,
+     "contentType": "application/json; charset=utf-8"
+    },
+    {
+     "facts": {
+      "endpointId": "1b02823d-218f-4983-839a-0fe81044cd3b",
+      "status": "settled",
+      "httpStatusPaid": 200,
+      "txHash": "0x986077d73003b110303fc0a876f6dd55ae99c074964cfa07d1c072bc10b1d71c",
+      "attemptedAt": "2026-09-03T07:02:01Z",
+      "network": "eip155:8453",
+      "method": "GET",
+      "meta": {},
+      "schema": {
+       "properties": {
+        "input": {
+         "properties": {
+          "queryParams": {}
+         }
+        }
+       }
+      },
+      "declaredInput": {
+       "body": "empty",
+       "query": "empty"
+      },
+      "unpaidStatus": 200,
+      "selection": null,
+      "verifyReason": null,
+      "verifiedAt": "2026-09-03T07:45:15Z",
+      "amountUnits": "10000",
+      "payTo": "0x6d6c398390cfb88f1cd42715b84906a0bd6652aa",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "payer": "0x6777e11fb0a7917b8110b7dab9188aa3f6d23986",
+      "listingMaxTimeoutSeconds": 120,
+      "declaresHeaders": false,
+      "pathTemplate": false,
+      "challenge": null,
+      "declaredAmount": null,
+      "declaredPayTo": null,
+      "authNonce": null,
+      "paidContentType": "application/json; charset=utf-8",
+      "payloadNonEmpty": true,
+      "settlementConfirmed": null,
+      "receiptPresent": true,
+      "receiptSuccess": true,
+      "receiptErrorReason": null,
+      "exampleInput": false
+     },
+     "l2Schema": "match",
+     "latencyMs": 1274,
+     "l2Detail": {
+      "missing": [],
+      "responseHash": "9773cf7f144330abb6face56303f9dd99a8a895c38b87690860ecb66c1e510bb",
+      "declarationHash": "26738d90839dd94986b51cf85c8f3a6f67101af2d4147cdeac64fab47bdbcd7d"
+     },
+     "bodyHead": null,
+     "contentType": "application/json; charset=utf-8"
+    }
+   ]
+  }
+ ]
+}

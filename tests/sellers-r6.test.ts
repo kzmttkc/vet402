@@ -10,6 +10,7 @@
 //   7 「After a fix」: 次に買う目安（掃引の窓・冷却・L0）・通知・異議
 //   8 /sellers の区分の絞り込み（GET ?side=）
 // ============================================================
+import { reasonCodeDocOf } from "@/lib/decision/reason-codes";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -116,7 +117,8 @@ const ep = (id: string, over: Partial<SellerEndpointFacts> = {}): SellerEndpoint
 
 // ---------------------------------------------------------------- 1
 
-test("1: 説明文は答えを決めたコード別。l0_fail・l1_stale に「not sorted も数える」の文を付けない", () => {
+test("1: 説明文は答えを決めたコード別で、理由コードの表（reason-codes.ts）の meaning そのもの。l0_fail・l1_stale に数え方の文を付けない", () => {
+  const meaning = (c: string) => reasonCodeDocOf(c)!.meaning;
   const l0 = answerOf({
     recommendation: "BLOCK",
     reason_codes: ["l0_fail", "l1_delivered", "l2_undeclared"],
@@ -124,7 +126,7 @@ test("1: 説明文は答えを決めたコード別。l0_fail・l1_stale に「n
   })!;
   assert.deepEqual(l0.decisive, ["l0_fail"]);
   const whyL0 = decisionWhy(l0, false);
-  assert.match(whyL0.join(" "), /The check before payment failed: two L0 probes in a row did not get a valid 402 to an unpaid request \(reason no_402\)\./);
+  assert.deepEqual(whyL0, [`${meaning("l0_fail")} (reason no_402)`]);
   assert.ok(!whyL0.includes(COUNTING_NOTE), "l0_fail には数え方の違いを書かない（keyring-agent…/swap-token 型）");
 
   const stale = answerOf({
@@ -133,52 +135,46 @@ test("1: 説明文は答えを決めたコード別。l0_fail・l1_stale に「n
     l1_basis: { fresh_days: 30, window_days: 30, days_since_last_delivery: 44.6, last_delivered_at: "2026-08-15T00:00:00Z", n_counted: 1, n_paid_undelivered_since_last_delivery: 0 },
   })!;
   assert.deepEqual(stale.reasonCodes.slice(0, 1), ["l1_stale"], "答えを決めた否定のコードが先頭（l0_pass・l1_delivered より前）");
-  const whyStale = decisionWhy(stale, false);
-  assert.deepEqual(whyStale, ["The last delivery was 44 days ago, more than 30."], "agentdata…/crypto/scan 型");
+  assert.deepEqual(decisionWhy(stale, false), [`${meaning("l1_stale")} (last delivery 44 days ago)`], "agentdata…/crypto/scan 型");
 
-  // 規則 2026-09-29.3: l1_never_delivered は WARN。BLOCK を決めるのは l1_paid_not_delivered（2 回以上）だけ。
   const never = answerOf({
     recommendation: "WARN",
     reason_codes: ["l0_pass", "l1_never_delivered", "l2_undeclared"],
     l1_basis: { n_counted: 3, n_paid_undelivered_since_last_delivery: 0 },
   })!;
-  const neverLine = "None of the 3 counted paid attempts in the last 30 days delivered. On its own this is a WARN.";
+  const neverLine = `${meaning("l1_never_delivered")} (3 counted paid attempts)`;
   assert.deepEqual(decisionWhy(never, false), [neverLine, COUNTING_NOTE]);
   assert.deepEqual(decisionWhy(never, true), [neverLine], "売り手の側に置いた出品には数え方の違いを書かない");
-  assert.doesNotMatch(COUNTING_NOTE, /counts the rest/, "旧規則の「残りを全部数える」を書かない");
-  assert.match(COUNTING_NOTE, /no money moved/);
+  assert.equal(COUNTING_NOTE, reasonCodeDocOf("l1_not_counted_unproven")!.forPayer, "数え方の文も表から");
+  // 2026-09-29.4: BLOCK を決めるのは売り手の側（確定）の l1_paid_not_delivered 2 回以上（rules.ts blockReasonCodes）。
   const paidTwice = answerOf({
     recommendation: "BLOCK",
     reason_codes: ["l0_pass", "l1_never_delivered", "l1_paid_not_delivered", "l2_undeclared"],
-    l1_basis: { n_counted: 3, n_paid_undelivered_since_last_delivery: 2 },
+    l1_basis: { n_counted: 3, n_paid_undelivered_since_last_delivery: 2, n_paid_undelivered_seller_side_since_last_delivery: 2 },
   })!;
   assert.deepEqual(paidTwice.decisive, ["l1_paid_not_delivered"], "l1_never_delivered は BLOCK を決めない");
-  // 欠けたキーの記録が無い不一致は BLOCK を決めない（l2_mismatch_unexplained・WARN）
   assert.deepEqual(decisiveCodes("BLOCK", ["l0_fail", "l1_delivered", "l2_mismatch", "l2_mismatch_unexplained"]), ["l0_fail"]);
   const unexplained = answerOf({ recommendation: "WARN", reason_codes: ["l0_pass", "l1_delivered", "l2_mismatch", "l2_mismatch_unexplained"], facts: { l2: { missing_keys: [] } } })!;
-  assert.match(decisionWhy(unexplained, false)[0], /no missing field is on record.*WARN/);
+  assert.deepEqual(decisionWhy(unexplained, false), [meaning("l2_mismatch"), meaning("l2_mismatch_unexplained")]);
 
   const l2 = answerOf({ recommendation: "BLOCK", reason_codes: ["l0_pass", "l1_delivered", "l2_mismatch"], facts: { l2: { missing_keys: ["price", "sku"] } } })!;
-  assert.deepEqual(decisionWhy(l2, false), ["The paid response lacked fields the listing's output schema declares: price, sku."]);
+  assert.deepEqual(decisionWhy(l2, false), [`${meaning("l2_mismatch")} (missing: price, sku)`]);
   assert.deepEqual(decisionWhy(answerOf({ recommendation: "ALLOW", reason_codes: ["l0_pass", "l1_delivered"] })!, false), []);
 });
 
-test("1: BLOCK を決めたコードと WARN だけのコードを分ける（l1_paid_not_delivered は 2 回で BLOCK・1 回は WARN の事由）", () => {
+test("1: BLOCK を決めたコードと WARN だけのコードを分ける（l1_paid_not_delivered は売り手の側 2 回で BLOCK・それ以外は WARN の事由）", () => {
   const codes = ["l0_pass", "l1_delivered", "l1_paid_not_delivered", "l1_latest_failed", "l2_mismatch", "l2_undeclared"];
-  assert.deepEqual(decisiveCodes("BLOCK", codes, { freshDays: 30, windowDays: 30, nCounted: 4, nPaidUndeliveredSince: 1, daysSinceLastDelivery: 2, lastDeliveredAt: "x" }), ["l2_mismatch"]);
-  assert.deepEqual(orderCodes("BLOCK", codes, { freshDays: 30, windowDays: 30, nCounted: 4, nPaidUndeliveredSince: 1, daysSinceLastDelivery: 2, lastDeliveredAt: "x" }), [
-    "l2_mismatch",
-    "l1_paid_not_delivered",
-    "l1_latest_failed",
-    "l0_pass",
-    "l1_delivered",
-    "l2_undeclared",
-  ]);
-  // 確かめられた 1 回の L0 fail は WARN（BLOCK を決めない）。原因のコードは l0_unverified の直後。
+  const basis = { freshDays: 30, windowDays: 30, nCounted: 4, nPaidUndeliveredSince: 3, nPaidUndeliveredSellerSince: 1, daysSinceLastDelivery: 2, lastDeliveredAt: "x" };
+  assert.deepEqual(decisiveCodes("BLOCK", codes, basis), ["l2_mismatch"]);
+  assert.deepEqual(orderCodes("BLOCK", codes, basis), ["l2_mismatch", "l1_paid_not_delivered", "l1_latest_failed", "l0_pass", "l1_delivered", "l2_undeclared"]);
+  // L0 の unverified は WARN（BLOCK を決めない）。原因のコードは l0_unverified の直後。
   const single = ["l0_unverified", "l0_unverified_single_fail", "l1_delivered", "l2_undeclared"];
   assert.deepEqual(orderCodes("WARN", single), single);
-  assert.match(codeExplanation("l0_unverified", { reasonCodes: single, basis: null, l2MissingKeys: null, l0FailReason: null }) ?? "", /failed once; the one before it passed/);
-  assert.equal(codeExplanation("l1_waived_by_operator", { reasonCodes: [], basis: null, l2MissingKeys: null, l0FailReason: null }), null, "知らないコードは書かない");
+  assert.equal(
+    codeExplanation("l0_unverified", { reasonCodes: single, basis: null, l2MissingKeys: null, l0FailReason: null }),
+    `${reasonCodeDocOf("l0_unverified")!.meaning} (cause single_fail)`,
+  );
+  assert.equal(codeExplanation("l1_waived_by_operator", { reasonCodes: [], basis: null, l2MissingKeys: null, l0FailReason: null }), null, "判定を動かさない語は書かない");
 });
 
 test("1: 判定の答えはカードの先頭近く（What we saw より前）で、理由コードの説明へリンクする", () => {
@@ -191,7 +187,10 @@ test("1: 判定の答えはカードの先頭近く（What we saw より前）�
   assert.equal(REASON_CODES_HREF, "/docs/api#reason-codes");
   assert.match(html, /href="\/docs\/api#reason-codes"/);
   const src = read("src/components/site/sellers/DecisionAnswer.tsx");
-  assert.doesNotMatch(src, /from "@\/lib\/decision/, "判定のコードを import しない");
+  // 2026-09-29 監査 7 周目: 説明と BLOCK の語は正典（純関数の reason-codes.ts・rules.ts）から読む。支払いに届く
+  // seller-facts.ts・decide.ts は import しない（tests/sellers-no-payment-imports.test.ts が頁のバンドルを見る）。
+  assert.doesNotMatch(src, /from "@\/lib\/decision\/(seller-facts|decide)"/, "判定の組み立て（DB・支払い）を import しない");
+  assert.match(src, /from "@\/lib\/decision\/reason-codes"/);
 });
 
 // ---------------------------------------------------------------- 2

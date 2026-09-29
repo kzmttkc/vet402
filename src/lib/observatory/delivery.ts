@@ -16,13 +16,27 @@
 
 export const DELIVERED_HTTP_MIN = 200;
 export const DELIVERED_HTTP_MAX = 299;
+/**
+ * 2026-09-29（監査 7 周目・高 1）: 202 Accepted は「受け付けた・まだ処理中」（本番の本文は
+ * `settlement_pending_reconciliation`・`processing`・`queued` と poll_url）。vet402 は後から結果を取りに行かないので、
+ * 支払い後の 202 は配達に数えない（お金は動いた・届いたかは未確定＝判定は WARN）。
+ */
+export const ACCEPTED_NOT_DONE_HTTP = 202;
 
-/** 有料リクエストの応答が「届いた」と数えられる形か。 */
-export function isDelivered(row: { status: string; httpStatusPaid: number | null }): boolean {
+/** 有料の応答の HTTP が「届いた」形か（2xx・202 を除く）。L2 を判定する条件もこれ（l1-runner）。 */
+export function isDeliveryHttp(code: number | null | undefined): code is number {
+  return typeof code === "number" && code >= DELIVERED_HTTP_MIN && code <= DELIVERED_HTTP_MAX && code !== ACCEPTED_NOT_DONE_HTTP;
+}
+
+/**
+ * 有料リクエストの応答が「届いた」と数えられる形か: settled かつ 2xx（202 を除く）かつ本文が空でない。
+ * payloadNonEmpty を持たない呼び手（未記録）は本文の条件を問わない（false と記録された行だけ外す）。
+ * 判定（seller-facts）・/sellers・export.csv は fix-modes.ts の classifySellerRow を通してこの 1 つを読む。
+ */
+export function isDelivered(row: { status: string; httpStatusPaid: number | null; payloadNonEmpty?: boolean | null }): boolean {
   if (row.status !== "settled") return false;
-  const code = row.httpStatusPaid;
-  if (code === null || code === undefined) return false;
-  return code >= DELIVERED_HTTP_MIN && code <= DELIVERED_HTTP_MAX;
+  if (row.payloadNonEmpty === false) return false;
+  return isDeliveryHttp(row.httpStatusPaid);
 }
 
 // ------------------------------------------------------------

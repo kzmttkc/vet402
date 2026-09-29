@@ -12,7 +12,7 @@
 // 純関数（DB 無し）。DB から読むのは reader.ts の readSellerExport。
 // ============================================================
 import { failureDaysOf, type FailureDays, type LatestRow } from "./board";
-import { classifySellerRow, NOT_IN_EXPORT_STATUSES, sideLabelOf } from "./fix-modes";
+import { BUCKET_DOCS, classifySellerRow, NOT_IN_EXPORT_STATUSES, sideLabelOf } from "./fix-modes";
 
 export const SELLER_EXPORT_COLUMNS = [
   "host",
@@ -55,11 +55,12 @@ export function buildSellerExportRows(
   listings: readonly SellerListingRef[],
   latest: readonly (LatestRow & { rowId?: string })[],
   days?: FailureDays,
+  now: number = Date.now(),
 ): SellerExportRow[] {
   // board.ts の mergeDays と同じ: reader の読んだ日付と手元の行の日付の和。
   const allDays = new Map<string, Set<string>>();
   if (days) for (const [k, v] of days) allDays.set(k, new Set(v));
-  failureDaysOf(latest, allDays);
+  failureDaysOf(latest, allDays, now);
 
   const byEndpoint = new Map<string, LatestRow & { rowId?: string }>();
   for (const r of latest) byEndpoint.set(r.endpointId, r);
@@ -86,7 +87,7 @@ export function buildSellerExportRows(
       });
       continue;
     }
-    const c = classifySellerRow(r, { sellerFailureDays: allDays.get(r.endpointId) });
+    const c = classifySellerRow(r, { sellerFailureDays: allDays.get(r.endpointId), now });
     const inExport = !NOT_IN_EXPORT_STATUSES.has(r.status);
     out.push({
       host: l.host,
@@ -126,8 +127,7 @@ export function countSellerExportOutcomes(rows: readonly SellerExportRow[]): Rec
  */
 export const SELLER_EXPORT_COLUMN_NOTES =
   "One row per active Base listing (the rows /sellers counts), classified by its latest purchase row with the same function /sellers uses. " +
-  "outcome = delivered | pending (settle_claimed, awaiting on-chain re-read) | seller (seller's side) | vet402 (vet402's side) | unsorted (not sorted yet) | " +
-  "not_bought (tried, vet402 did not sign) | not_tried (no purchase row); counting rows by outcome gives the /sellers totals. " +
+  `outcome = ${SELLER_EXPORT_OUTCOMES.filter((o) => o !== "not_tried").map((o) => BUCKET_DOCS[o as keyof typeof BUCKET_DOCS]).join(" | ")} | not_tried (no purchase row); counting rows by outcome gives the /sellers totals; the decision API blocks on L1 only for seller rows. ` +
   "fix_mode = the failure kind key (blank for delivered, pending, not_tried); side_label = the words of the /sellers 'whose side' column; " +
   "confirmed_seller = true when a seller's-side failure was seen on 2 or more UTC days (blank unless outcome=seller); " +
   "held_reason = as in /api/v1/observatory/export.csv; purchase_id = the latest row's id (the purchase_id column of the ledger export and the subject_id in /api/v1/observatory/corrections); " +

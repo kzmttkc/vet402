@@ -186,7 +186,7 @@ test("A: Douglas 型（settle_failed・400・tx なし）3 件は BLOCK にな�
   assert.ok(d.reason_codes.includes("l1_inconclusive"));
 });
 
-test("A: 決済前 4xx 2 件＋5xx 3 件: 5xx は数える（救わない）が、お金が動いていなければ WARN。settled の 5xx 2 件で BLOCK", () => {
+test("A: 決済前 4xx 2 件＋5xx 3 件: お金が動いていなければ WARN。facts だけでは誰の側か分からないので settled の 5xx 2 件も WARN（2026-09-29.4）", () => {
   const f = facts([
     ...[0, 1].map((i) => p(i, { httpStatusPaid: 422, attemptedAt: `2026-09-0${i + 1}T06:00:00Z` })),
     ...[2, 3, 4].map((i) => p(i, { httpStatusPaid: 500, attemptedAt: `2026-09-0${i + 1}T06:00:00Z` })),
@@ -199,7 +199,8 @@ test("A: 決済前 4xx 2 件＋5xx 3 件: 5xx は数える（救わない）が�
   const paid = facts([
     ...[2, 3].map((i) => p(i, { status: "settled", txHash: `0x${i}`, httpStatusPaid: 500, payloadNonEmpty: false, attemptedAt: `2026-09-0${i + 1}T06:00:00Z` })),
   ]);
-  assert.equal(decidePayer(paid).recommendation, "BLOCK");
+  // 2026-09-29.4: L1 の BLOCK は /sellers が売り手の側（確定）に置いた行だけ。facts だけの呼び手は WARN まで。
+  assert.equal(decidePayer(paid).recommendation, "WARN");
   assert.ok(decidePayer(paid).reason_codes.includes("l1_paid_not_delivered"));
 });
 

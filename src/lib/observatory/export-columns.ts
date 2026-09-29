@@ -50,11 +50,20 @@ export const EXPORT_CSV_COLUMNS_SINCE_2026_09_21 = ["request_query", "request_qu
  */
 export const EXPORT_CSV_COLUMNS_SINCE_2026_09_29 = ["confirmed_units", "purchase_id"] as const;
 
+/**
+ * 2026-09-29 の追加（監査 7 周目）。
+ *   l2_reading  l2_schema を今の読み方で読み直した値（l2-check.ts l2ReadingOf・記録頁と判定の facts.l2 と同じ関数）。
+ *               古い行の 16,000 バイトで切れた本文は not_checked、閉じていない JSON は mismatch のまま等。l2_schema
+ *               （記録したときの値）は台帳の互換のため変えない。
+ */
+export const EXPORT_CSV_COLUMNS_SINCE_2026_09_29_B = ["l2_reading"] as const;
+
 /** 列を足したら openapi・methodology・llms.txt の説明にも名前で出す（tests/export-request-body.test.ts）。 */
 export const EXPORT_CSV_COLUMNS_ADDED = [
   ...EXPORT_CSV_COLUMNS_SINCE_2026_09_20,
   ...EXPORT_CSV_COLUMNS_SINCE_2026_09_21,
   ...EXPORT_CSV_COLUMNS_SINCE_2026_09_29,
+  ...EXPORT_CSV_COLUMNS_SINCE_2026_09_29_B,
 ] as const;
 
 export const EXPORT_CSV_COLUMNS = [...COLUMNS_UNTIL_2026_09_17, ...EXPORT_CSV_COLUMNS_ADDED] as const;
@@ -76,4 +85,5 @@ export const EXPORT_CSV_COLUMN_NOTES =
   "spent_units = USDC base units vet402 signed for on the attempt (what it put at stake), not units shown to have moved; " +
   "confirmed_units = units vet402 re-read on-chain as transferred (spent_units on settled rows, 0 on every other row, " +
   "including settle_claimed rows awaiting re-read); " +
-  "purchase_id = the purchase's id, the subject_id of its rows in /api/v1/observatory/corrections. Full column definitions: https://vet402.com/openapi.yaml";
+  "purchase_id = the purchase's id, the subject_id of its rows in /api/v1/observatory/corrections; " +
+  "l2_reading = l2_schema read again with today's rules (the value the record page and the decision use; l2_schema keeps the value recorded at the time). Full column definitions: https://vet402.com/openapi.yaml";

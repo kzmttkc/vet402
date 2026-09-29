@@ -5,7 +5,12 @@
 
 export type L0Status = "pass" | "fail" | "unverified";
 export type Dialect = "v1" | "v2" | "both" | "unpayable" | "mpp";
-export type L2Status = "conform" | "mismatch" | "undeclared";
+/**
+ * not_checked（2026-09-29 監査 7 周目）: 出品は出力の宣言を持つが、直近の配達を宣言と照合できていない（配達が無い・本文を
+ * 読み切れなかった・照合の前の行）。判定は WARN（l2_not_checked）。宣言の無い出品だけが undeclared。
+ */
+export const L2_STATUSES = ["conform", "mismatch", "undeclared", "not_checked"] as const;
+export type L2Status = (typeof L2_STATUSES)[number];
 export type OfferStability = "stable" | "drifting" | "unknown";
 
 /**

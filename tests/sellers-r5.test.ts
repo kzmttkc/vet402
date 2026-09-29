@@ -91,9 +91,10 @@ test("1: 出品ごとに判定 API の答えの欄（公開 API へのリンク�
   const d = buildSellerDetail("s.example", [...eps, ep("never", { resourceId: null })], rows, FETCHED);
   const html = renderToStaticMarkup(createElement(SellerDetailView, { detail: d, page: 1, now: Date.parse(FETCHED), revalidateSec: 300 }));
   const links = html.match(new RegExp(`href="${decisionApiHref(RID).replace(/[?]/g, "\\?")}"`, "g")) ?? [];
-  assert.equal(links.length, eps.length, "試行のある出品ごとに判定 API の答えへのリンク（JS が無くても開ける）");
+  assert.equal(links.length, eps.length, "resource id のある出品ごとに判定 API の答えへのリンク（JS が無くても開ける）");
   assert.match(html, /Decision API now:/);
-  assert.match(html, /cautious for the payer/);
+  // 2026-09-29 監査 7 周目: 判定の読み方の文は rules-text.ts の SELLERS_PAGE_DECISION_TEXT（手で書かない）。
+  assert.ok(html.includes("It reads the same sorting as this page"), "判定の読み方の 1 文");
   // 2026-09-29 第6巡: 理由コードの説明（別の担当が /docs/api に作る節）へ。
   assert.match(html, /href="\/docs\/api#reason-codes"/);
   assert.equal(decisionApiHref(RID), `/api/v1/resources/${RID}/decision?role=payer`);
@@ -114,10 +115,16 @@ test("1: 判定 API の応答から頁に出す部分だけを取り出す（形
   assert.equal(answerOf(null), null);
 });
 
-test("1: 判定の欄は頁から判定のコードを import しない（ブラウザが公開 API を呼ぶ・関門は sellers-no-payment-imports）", () => {
+test("1: 判定の欄は頁から判定の組み立てを import しない（ブラウザが公開 API を呼ぶ・関門は sellers-no-payment-imports）", () => {
   const src = readFileSync(join(ROOT, "src/components/site/sellers/DecisionAnswer.tsx"), "utf8");
   assert.match(src, /^"use client";/);
-  assert.doesNotMatch(src, /from "@\/lib\/decision/);
+  // 2026-09-29 監査 7 周目: 読むのは純関数の正典（reason-codes.ts・rules.ts）だけ。DB・支払いに届く組み立ては読まない。
+  const imports = [...src.matchAll(/from "(@\/lib\/decision\/[^"]+)"/g)].map((m) => m[1]).sort();
+  assert.deepEqual(imports, ["@/lib/decision/reason-codes", "@/lib/decision/rules"]);
+  for (const f of ["src/lib/decision/reason-codes.ts", "src/lib/decision/rules.ts"]) {
+    const dep = readFileSync(join(ROOT, f), "utf8");
+    assert.doesNotMatch(dep, /^import (?!type )/m, `${f} は型以外を import しない（頁のバンドルに何も持ち込まない）`);
+  }
 });
 
 test("2: 記録頁の noindex と sitemap の除外は、届かなかった購入行が 1 つでもあること（vet402 の側・not sorted・照合待ちを含む）", () => {
@@ -136,7 +143,8 @@ test("2: 記録頁の noindex と sitemap の除外は、届かなかった購�
   assert.match(route, /status: 503/);
   const reader = readFileSync(join(ROOT, "src/lib/sellers/reader.ts"), "utf8");
   const fn = reader.slice(reader.indexOf("export async function readEndpointsWithUndeliveredL1"));
-  assert.match(fn, /coalesce\(pu\.http_status_paid BETWEEN \$\{DELIVERED_HTTP_MIN\} AND \$\{DELIVERED_HTTP_MAX\}, false\)/, "HTTP が NULL の行を届いた側に落とさない");
+  // 2026-09-29 監査 7 周目: 届いたの述語は delivery.ts isDelivered と同じ（202・空の本文を除く）。HTTP が NULL の行は届いていない側。
+  assert.match(fn, /coalesce\(pu\.http_status_paid BETWEEN \$\{DELIVERED_HTTP_MIN\} AND \$\{DELIVERED_HTTP_MAX\}\s+AND pu\.http_status_paid <> \$\{ACCEPTED_NOT_DONE_HTTP\} AND pu\.payload_non_empty IS NOT FALSE, false\)/, "HTTP が NULL の行を届いた側に落とさない");
 });
 
 test("3: 冒頭の要約は売り手について言える直近の結果が主（最新が vet402 の側でも、その前の delivered を数える）", () => {

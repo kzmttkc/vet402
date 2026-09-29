@@ -69,7 +69,6 @@ if (!TEST_DB) {
         options: {
           l1NotCounted: loaded.l1NotCounted,
           l0UnverifiedCause: loaded.l0UnverifiedCause ?? null,
-          l0SingleFailContext: loaded.l0SingleFailContext ?? null,
           l1Timeline: loaded.l1Timeline,
         },
         score: null,
@@ -78,14 +77,16 @@ if (!TEST_DB) {
       });
     };
 
-    await t.test("支払い済み・HTTP 500 が 2 回（cnvrt.ing 型）→ BLOCK・l1_paid_not_delivered", async () => {
+    await t.test("支払い済み・HTTP 500 が 2 回（cnvrt.ing 型）で /sellers が not sorted（署名した条件の記録なし）→ WARN・l1_paid_not_delivered（2026-09-29.4）", async () => {
       const ep = await mkEndpoint();
       await buy(ep.id, 3, 500, true);
       await buy(ep.id, 10, 500, true);
       const d = await decideFor(ep.id);
-      assert.equal(d.recommendation, "BLOCK");
+      assert.equal(d.recommendation, "WARN");
       assert.ok(d.reason_codes.includes("l1_paid_not_delivered"));
+      assert.ok(d.reason_codes.includes("l1_not_counted_unproven"));
       assert.equal(d.l1_basis?.n_paid_undelivered_since_last_delivery, 2);
+      assert.equal(d.l1_basis?.n_paid_undelivered_seller_side_since_last_delivery, 0);
     });
 
     await t.test("署名した試行が 30 日の窓の外だけ → l1_stale（l1_not_attempted ではない）・時刻は ISO8601", async () => {
@@ -143,10 +144,12 @@ if (!TEST_DB) {
       await failedWithTx(confirmed.id, 4, true);
       const c = await decideFor(confirmed.id);
       assert.equal(c.l1_basis?.n_paid_undelivered, 2);
-      assert.equal(c.recommendation, "BLOCK");
+      // 2026-09-29.4: お金は動いたが、署名した条件の記録が無い行は /sellers で not sorted → BLOCK にしない（WARN）
+      assert.equal(c.recommendation, "WARN");
+      assert.ok(c.reason_codes.includes("l1_paid_not_delivered"));
     });
 
-    await t.test("L0 の 1 回の fail: 掲載中なら WARN（degraded false）、delisted なら BLOCK・_unconfirmed（degraded true）", async () => {
+    await t.test("L0 の 1 回の fail: 掲載中でも delisted でも WARN・degraded true（2026-09-29.4: unverified は BLOCK にしない）", async () => {
       const withProbes = async (status: string) => {
         n++;
         const [ep] = await db
@@ -160,10 +163,10 @@ if (!TEST_DB) {
       };
       const active = await decideFor((await withProbes("active")).id);
       assert.equal(active.recommendation, "WARN");
-      assert.equal(active.degraded, false);
+      assert.equal(active.degraded, true);
       const delisted = await decideFor((await withProbes("delisted")).id);
-      assert.equal(delisted.recommendation, "BLOCK");
-      assert.ok(delisted.reason_codes.includes("l0_unverified_single_fail_unconfirmed"));
+      assert.equal(delisted.recommendation, "WARN");
+      assert.ok(!delisted.reason_codes.includes("l0_unverified_single_fail_unconfirmed"));
       assert.equal(delisted.degraded, true);
     });
 
@@ -190,7 +193,8 @@ if (!TEST_DB) {
       await buy(paid.id, 1, 500, false);
       const dp = await decideFor(paid.id);
       assert.equal(dp.recommendation, "WARN");
-      assert.ok(dp.reason_codes.includes("l1_latest_failed"));
+      // 2026-09-29.4: not sorted の行は数えない（l1_latest_failed は数えた最新の試行だけ）が、払ったのに届かないので WARN
+      assert.ok(!dp.reason_codes.includes("l1_latest_failed"));
       assert.ok(dp.reason_codes.includes("l1_paid_not_delivered"));
     });
 

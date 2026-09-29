@@ -49,6 +49,36 @@ export interface NextBuyFacts {
   cooldown: boolean;
   /** 最新の L0 プローブの判定（無ければ null）。 */
   latestL0Verdict: string | null;
+  /** 最新の L0 プローブの時刻（ISO8601 UTC・無ければ null）と記録した理由（2026-09-29 監査 7 周目）。 */
+  latestL0At?: string | null;
+  latestL0Reason?: string | null;
+}
+
+/**
+ * 次の L0 プローブの目安（2026-09-29 監査 7 周目）。プローブは古い順に回るので予約は無い。本番 2026-09-29 の実測
+ * （掲載中・直近 14 日の再プローブ間隔）で p50 18h・p95 117h・p99 120h。
+ */
+export const L0_REPROBE_WITHIN_HOURS = 120;
+
+/**
+ * 購入の有無を問わず出品に出す L0 の 1〜2 文（最新の判定・理由・次のプローブの目安）。未プローブは先頭近くに並ぶ。
+ */
+export function l0ProbeLine(f: NextBuyFacts | null | undefined, nowMs: number = Date.now()): string | null {
+  if (!f) return null;
+  if (!f.latestL0Verdict || !f.latestL0At) {
+    return "Latest L0 check (the 402 to an unpaid request): none yet. Listings never probed go near the front of the daily L0 run. Not probed is not a failure.";
+  }
+  const t = Date.parse(f.latestL0At);
+  if (!Number.isFinite(t)) return null;
+  const at = new Date(t).toISOString().slice(0, 16).replace("T", " ");
+  const reason = f.latestL0Reason ? ` (${f.latestL0Reason.replace(/[^\x20-\x7e]/g, "").slice(0, 60)})` : "";
+  const due = t + L0_REPROBE_WITHIN_HOURS * 3_600_000;
+  const next =
+    due <= nowMs
+      ? "The next probe is due; probes run oldest first, so there is no booked time."
+      : `Probes run oldest first, so there is no booked time; the next one usually comes by ${new Date(due).toISOString().slice(0, 16).replace("T", " ")} UTC (within ${L0_REPROBE_WITHIN_HOURS} hours of the last).`;
+  const unverified = f.latestL0Verdict === "unverified" ? " Unverified is not a failure." : "";
+  return `Latest L0 check (the 402 to an unpaid request): ${f.latestL0Verdict}${reason} at ${at} UTC.${unverified} ${next}`;
 }
 
 export type NextBuy =

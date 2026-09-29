@@ -17,6 +17,7 @@ import {
   SIGNED_ROW_STATUSES,
   type Bucket,
   type FixMode,
+  type MoneyMoved,
   type SellerRowFacts,
 } from "./fix-modes";
 import { nextBuyOf, type NextBuy, type NextBuyFacts } from "./next-buy";
@@ -28,9 +29,13 @@ import { nextBuyOf, type NextBuy, type NextBuyFacts } from "./next-buy";
 export type FailureDays = ReadonlyMap<string, ReadonlySet<string>>;
 
 /** 手元の行から、出品ごとの候補の日付を集める（reader が読まなかった出品・テスト用）。 */
-export function failureDaysOf(rows: readonly SellerRowFacts[], into: Map<string, Set<string>> = new Map()): Map<string, Set<string>> {
+export function failureDaysOf(
+  rows: readonly SellerRowFacts[],
+  into: Map<string, Set<string>> = new Map(),
+  now: number = Date.now(),
+): Map<string, Set<string>> {
   for (const r of rows) {
-    const day = sellerCandidateDay(r);
+    const day = sellerCandidateDay(r, now);
     if (day === null) continue;
     const set = into.get(r.endpointId) ?? new Set<string>();
     set.add(day);
@@ -40,10 +45,16 @@ export function failureDaysOf(rows: readonly SellerRowFacts[], into: Map<string,
 }
 
 /** reader の読んだ日付と手元の行の日付を合わせる（どちらかにあれば数える）。 */
-function mergeDays(rows: readonly SellerRowFacts[], days: FailureDays | undefined): Map<string, Set<string>> {
+function mergeDays(rows: readonly SellerRowFacts[], days: FailureDays | undefined, now: number): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>();
   if (days) for (const [k, v] of days) out.set(k, new Set(v));
-  return failureDaysOf(rows, out);
+  return failureDaysOf(rows, out, now);
+}
+
+/** 読んだ時刻（fetchedAt）をミリ秒へ。読めなければ今（遅延回収の待ちの基準・classifySellerRow の ctx.now）。 */
+export function nowOf(fetchedAt: string | null | undefined): number {
+  const t = fetchedAt ? Date.parse(fetchedAt) : Number.NaN;
+  return Number.isFinite(t) ? t : Date.now();
 }
 
 export interface OutcomeCounts {
@@ -145,7 +156,8 @@ export function buildSellerBoard(
   retest: RetestQueue | null = null,
   days?: FailureDays,
 ): SellerBoard {
-  const allDays = mergeDays(latest, days);
+  const now = nowOf(fetchedAt);
+  const allDays = mergeDays(latest, days, now);
   const byHost = new Map<string, SellerSummary>();
   for (const h of hostListings) {
     byHost.set(h.host, { host: h.host, listings: h.listings, ...zero(), lastAttemptAt: null, rebuyEligible: false, rebuyEndpointId: null });
@@ -155,7 +167,7 @@ export function buildSellerBoard(
   for (const r of latest) {
     const s = byHost.get(r.host);
     if (!s) continue;
-    const c = classifySellerRow(r, { sellerFailureDays: allDays.get(r.endpointId) });
+    const c = classifySellerRow(r, { sellerFailureDays: allDays.get(r.endpointId), now });
     s[bucketKey(c.bucket)]++;
     if (!s.lastAttemptAt || r.attemptedAt > s.lastAttemptAt) s.lastAttemptAt = r.attemptedAt;
     const prev = newest.get(r.host);
@@ -266,6 +278,8 @@ export interface SellerEndpointFacts {
 export interface ShownRow {
   facts: SellerRowFacts;
   bucket: Bucket;
+  /** お金が動いたか（classifySellerRow・2026-09-29 監査 7 周目）。判定（seller-facts.ts）もこの値を読む。 */
+  money: MoneyMoved;
   mode: FixMode | null;
   held: string | null;
   txUrl: string | null;
@@ -318,11 +332,12 @@ export interface SellerDetail {
 
 export const EARLIER_ROWS_SHOWN = 4;
 
-export function showRow(r: SellerRowFacts, days?: Iterable<string>): ShownRow {
-  const c = classifySellerRow(r, { sellerFailureDays: days });
+export function showRow(r: SellerRowFacts, days?: Iterable<string>, now: number = Date.now()): ShownRow {
+  const c = classifySellerRow(r, { sellerFailureDays: days, now });
   return {
     facts: r,
     bucket: c.bucket,
+    money: c.money,
     mode: c.mode,
     held: c.held,
     txUrl: explorerTxUrl(r.network, r.txHash),
@@ -356,7 +371,8 @@ export function buildSellerDetail(
   fetchedAt: string,
   days?: FailureDays,
 ): SellerDetail {
-  const allDays = mergeDays(rows, days);
+  const now = nowOf(fetchedAt);
+  const allDays = mergeDays(rows, days, now);
   const byEndpoint = new Map<string, SellerRowFacts[]>();
   for (const r of rows) {
     const list = byEndpoint.get(r.endpointId) ?? [];
@@ -366,7 +382,7 @@ export function buildSellerDetail(
   const selectedBy = { census: 0, retest: 0 };
   const listings: SellerListing[] = endpoints.map((e) => {
     const own = (byEndpoint.get(e.endpointId) ?? []).slice().sort((a, b) => b.attemptedAt.localeCompare(a.attemptedAt));
-    const shown = own.slice(0, 1 + EARLIER_ROWS_SHOWN).map((r) => showRow(r, allDays.get(e.endpointId)));
+    const shown = own.slice(0, 1 + EARLIER_ROWS_SHOWN).map((r) => showRow(r, allDays.get(e.endpointId), now));
     for (const s of shown) {
       if (s.facts.selection === "census") selectedBy.census++;
       if (s.facts.selection === "retest") selectedBy.retest++;
@@ -452,7 +468,7 @@ export function buildSellerOtherChains(
       endpointId: r.facts.endpointId,
       resourceKey: r.resourceKey,
       chain: chainLabel(r.facts.network ?? r.catalogNetwork),
-      latest: showRow(r.facts),
+      latest: showRow(r.facts, undefined, nowOf(fetchedAt)),
     }))
     .sort(
       (a, b) =>
@@ -539,8 +555,8 @@ export function recordPageNoindex(publishedVerdict: string | null | undefined, s
   return sides === null || sides.undelivered > 0 || publishedVerdict !== "pass";
 }
 
-export function buildRecordSides(rows: readonly SellerRowFacts[]): RecordSides {
-  const days = failureDaysOf(rows);
+export function buildRecordSides(rows: readonly SellerRowFacts[], now: number = Date.now()): RecordSides {
+  const days = failureDaysOf(rows, new Map(), now);
   const out: RecordSides = {
     rows: new Map(),
     vet402Side: 0,
@@ -552,7 +568,7 @@ export function buildRecordSides(rows: readonly SellerRowFacts[]): RecordSides {
   };
   const map = out.rows as Map<string, ShownRow>;
   for (const r of rows) {
-    const shown = showRow(r, days.get(r.endpointId));
+    const shown = showRow(r, days.get(r.endpointId), now);
     const key = recordRowKey(r.attemptedAt, r.status, r.txHash);
     if (!map.has(key)) map.set(key, shown);
     if (shown.bucket !== "delivered") out.undelivered++;

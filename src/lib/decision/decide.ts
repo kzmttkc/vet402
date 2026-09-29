@@ -24,7 +24,7 @@ import { lookupCallerHash } from "./lookup-caller";
 import { rowsOf } from "@/lib/settlements/upsert";
 import { l2EvidenceOf, loadSellerFacts, type SellerFactsLoaded } from "./seller-facts";
 import { loadBuyerFacts } from "./buyer-facts";
-import { decidePayer, decidePayee, l1BasisOf, l0SingleFailConfirmed, DECISION_RULES_VERSION, type L1Basis, type Recommendation, type PayerOptions } from "./rules";
+import { decidePayer, decidePayee, l1BasisOf, DECISION_RULES_VERSION, type L1Basis, type Recommendation, type PayerOptions } from "./rules";
 import { isSpendingHalted } from "@/lib/observatory/kill-switch";
 import { assertEvidenceContract, vet402Evidence } from "./evidence";
 import type { BuyerFacts, Evidence, Freshness, NotAttemptedReason, SellerFacts, VerifiedTerms } from "./types";
@@ -211,9 +211,9 @@ export function buildDecision(input: BuildInput): DecisionResult {
       verified_terms: input.verifiedTerms ?? null,
       evidence,
       score: input.score ? { ...input.score, deprecated: true, superseded_by: "recommendation", note: DECISION_SCORE_NOTE } : null,
-      // 2026-09-29.2: 確かめられた 1 回の fail（掲載中・最新プローブ 120h 以内・直前 pass）は測れている——WARN であって
-      // degraded ではない。確かめられていない 1 回の fail は degraded のまま（require_vet402_allow=false の呼び手も払わない）。
-      degraded: f.l0.status === "unverified" && !l0SingleFailConfirmed(f, options),
+      // 2026-09-29 監査 7 周目: L0 が unverified（未プローブ・測れていない）は WARN。測れていない入力なので degraded は立てる
+      // （require_vet402_allow=false の呼び手も払わない）。売り手への判定ではない。
+      degraded: f.l0.status === "unverified",
     };
   }
   const d = decidePayee(input.facts, { now, operatorBlacklist: input.operatorBlacklist });
@@ -358,10 +358,8 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
         operatorBlacklist: req.operatorBlacklist,
         // 2026-09-29: /sellers と同じ規則で、売り手の不履行として数えない試行（vet402 の側・保留・課金なし）。
         l1NotCounted: loaded.l1NotCounted,
-        // 2026-09-29 再監査: l0 が unverified の BLOCK に、何が測れなかったかの下位コードを添える（判定は変えない）。
+        // 2026-09-29 再監査: l0 が unverified のとき、何が測れなかったかの下位コードを添える（判定は変えない）。
         l0UnverifiedCause: loaded.l0UnverifiedCause ?? null,
-        // 2026-09-29.2（独立レビュー）: 1 回の fail を WARN に緩める条件の材料（掲載中・最新プローブの時刻・直前の判定）。
-        l0SingleFailContext: loaded.l0SingleFailContext ?? null,
         // 2026-09-29.2: 支払い済み未配達・最新の試行・鮮度の材料。渡さないと facts から保守的に作る（本番は必ず渡す）。
         l1Timeline: loaded.l1Timeline,
       },

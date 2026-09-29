@@ -60,11 +60,25 @@
 //         期間の空の 200・照合待ち）は、お金が動いたかどうか未確定。失敗には数えないが、最後の配達より後に 1 行でも
 //         あれば WARN（l1_empty_2xx_settlement_unknown）。確定するまで ALLOW に戻さない（allow_without_l1 でも免除
 //         しない）。BLOCK にするのは、遅延回収で決済が結び付いて l1_paid_not_delivered になったときだけ。
-//   BLOCK if l0 = fail ∨ (l0 = unverified ∧ ¬確かめられた single_fail) ∨ paid_undelivered_since_delivery ≥ 2
+//   2026-09-29.4（監査 7 周目・状態と理由を減らす方向で直した）: 版を上げた。意味が変わる点:
+//     (1) 1 行の分類は fix-modes.ts classifySellerRow の 1 本だけ（/sellers・記録頁・export.csv と同じ）。「数える」＝
+//         届いた、または /sellers が売り手の側（確定）に置いた。L1 の BLOCK は、売り手の側（確定）の「払ったのに届かない」が
+//         最後の配達より後に 2 回以上のときだけ。not sorted（input_unrecorded・funds_unproven 等）のお金の動いた未配達は
+//         WARN（l1_paid_not_delivered ＋ l1_not_counted_unproven）。cnvrt.ing/api/analyze-image・firecrawl.mpp.tempo.xyz/v1/search は
+//         判定が BLOCK、/sellers は not sorted で食い違っていた。
+//     (2) L0 の unverified（未プローブ・path_template・測れていない・1 回の fail）は WARN（degraded は立てる）。BLOCK は
+//         l0_fail（2 回連続で測って食い違った）だけ。方法論の "unverified is not a failure" にそろえた。1 回の fail の
+//         「確かめられたか」の区別（l0_unverified_single_fail_unconfirmed）は要らなくなったので消した。
+//     (3) 配達は delivery.ts isDelivered（settled・2xx（202 Accepted を除く）・本文が空でない）。202 は処理待ちの本文
+//         （settlement_pending_reconciliation 等）なので配達に数えない（お金は動いた・WARN）。
+//     (4) L2: 宣言があるのに照合できていない（配達が無い・本文を読み切れなかった・照合の前の行）は l2 = not_checked で WARN
+//         （l2_not_checked）。以前は undeclared と書いて ALLOW を妨げなかった。
+//     (5) 署名した失敗の行で試行から 90 分のうち（遅延回収の待ち）は未確定（l1_empty_2xx_settlement_unknown・WARN）。
+//   BLOCK if l0 = fail ∨ paid_undelivered_seller_side_since_delivery ≥ 2
 //            ∨ (l2 = mismatch ∧ missing_keys ≠ ∅) ∨ wash_dominated ∨ operator_blacklist
-//   WARN  if 確かめられた L0 の 1 回 fail（掲載中・120h 以内・直前 pass）∨ L1 の証拠なし／古い（オプトイン無し）∨ 結論なし（l1_inconclusive）
-//            ∨ 未配達（conclusive ≥ 1）∨ paid_undelivered_since_delivery = 1 ∨ 最新の数えた試行が失敗
-//            ∨ settlement_unknown_since_delivery ≥ 1（空の 2xx・決済が未確定）
+//   WARN  if l0 = unverified ∨ L1 の証拠なし／古い（オプトイン無し）∨ 結論なし（l1_inconclusive）
+//            ∨ 未配達（conclusive ≥ 1）∨ paid_undelivered_since_delivery ≥ 1 ∨ 最新の数えた試行が失敗
+//            ∨ settlement_unknown_since_delivery ≥ 1（決済が未確定）∨ l2 = not_checked
 //            ∨ (l2 = mismatch ∧ missing_keys = ∅) ∨ drifting ∨ thin ∨ 呼び手方言と不一致
 //   ALLOW if l0 = pass ∧ (n_delivered ≥ 1 ∨ L1 なし ALLOW をオプトイン) ∧ l2 ≠ mismatch ∧ ¬BLOCK ∧ ¬WARN
 //
@@ -74,7 +88,7 @@
 //     l1_inconclusive    n_attempts > 0 ∧ conclusive = 0 ∧ n_delivered = 0
 //                        （金は動いたが、結論の出た応答が 1 件も無い。我々の測定の穴であって
 //                          売り手への反証ではない——中立・WARN）
-//     l1_never_delivered conclusive ≥ 1 ∧ n_delivered = 0（2026-09-29.3 から WARN。BLOCK は l1_paid_not_delivered ≥ 2 だけ）
+//     l1_never_delivered conclusive ≥ 1 ∧ n_delivered = 0（2026-09-29.3 から WARN。BLOCK は売り手の側（確定）の l1_paid_not_delivered ≥ 2 だけ）
 //     l1_delivered       n_delivered ≥ 1
 //   添える語（主語に加えて）: l1_paid_not_delivered（最後の配達より後の支払い済み・未配達 ≥ 1）、
 //     l1_latest_failed（配達はあるが、数えた最新の試行が失敗）、l1_stale（配達はあるが最新の配達が古い）、
@@ -114,7 +128,7 @@ export type Recommendation = "ALLOW" | "WARN" | "BLOCK";
 export type Decision = { recommendation: Recommendation; reason_codes: string[] };
 
 /** 規則の版。判定の意味が変わる変更は必ず上げる（YYYY-MM-DD.n）。 */
-export const DECISION_RULES_VERSION = "2026-09-29.3";
+export const DECISION_RULES_VERSION = "2026-09-29.4";
 
 /** 2026-09-29.2: 最後の配達より後の「支払い済み・未配達」がこの回数に届いたら BLOCK（1 回は WARN）。 */
 export const L1_PAID_UNDELIVERED_BLOCK = 2;
@@ -123,13 +137,6 @@ export const L1_PAID_UNDELIVERED_BLOCK = 2;
 // 届けている売り手ほど仕組みの上で必ず WARN に落ちる（本番で ALLOW 1,958 件中 634 件）。
 // 経過日数は l1_basis に必ず出し、読み手が自分の基準で判断できるようにする。
 export const L1_FRESH_DAYS = 30;
-/**
- * 2026-09-29.2（独立レビュー）: L0 の 1 回の fail を WARN に緩めてよい最新プローブの新しさ（時間）。
- * active のプローブ間隔は p50 18h・p95 119h なので、これを超えたら次のプローブが来ていない＝確かめられていない。
- */
-export const L0_SINGLE_FAIL_MAX_AGE_HOURS = 120;
-/** 確かめられていない 1 回の fail に添える語（BLOCK のまま）。 */
-export const L0_SINGLE_FAIL_UNCONFIRMED = "l0_unverified_single_fail_unconfirmed";
 /** L1 の事実を数える窓（seller-facts.ts の SQL と同じ 30 日）。 */
 export const L1_WINDOW_DAYS = 30;
 export const RETRY_BURST_BLOCK = 0.3;
@@ -149,7 +156,7 @@ export type PayerOptions = {
   l1NotCounted?: L1NotCountedInput;
   /**
    * 2026-09-29: facts.l0.status が unverified のとき、その原因（seller-facts.ts l0UnverifiedCauseOf）。
-   * 渡されれば reason_codes に `l0_unverified_<cause>` を足す。recommendation には効かない。
+   * 渡されれば reason_codes に `l0_unverified_<cause>` を足す。recommendation には効かない（unverified は WARN）。
    */
   l0UnverifiedCause?: string | null;
   /**
@@ -158,38 +165,9 @@ export type PayerOptions = {
    * facts.l1.observed_at＝最後に署名した時刻で上から抑える）。
    */
   l1Timeline?: L1Timeline;
-  /**
-   * 2026-09-29.2（独立レビュー）: l0UnverifiedCause が single_fail のときの材料（seller-facts.ts l0SingleFailContextOf）。
-   * 無ければ 1 回の fail は確かめられていないとして BLOCK のまま（fail-closed）。
-   */
-  l0SingleFailContext?: L0SingleFailContext | null;
   /** 鮮度の基準時刻。省略時は今。 */
   now?: Date;
 };
-
-/** L0 の 1 回の fail を WARN に緩めてよいかの材料。 */
-export type L0SingleFailContext = {
-  /** 出品が掲載中（x402_endpoints.status = active）。 */
-  listing_active: boolean;
-  /** 最新プローブ（fail）の時刻。 */
-  latest_probe_at: string | null;
-  /** 最新の 1 つ前のプローブの判定（無ければ null）。pass でなければ連続が切れている／初回の fail。 */
-  previous_verdict: string | null;
-};
-
-/**
- * L0 の 1 回の fail を WARN に緩めてよいか（2026-09-29.2・独立レビュー）: 原因が single_fail で、掲載中で、
- * 最新プローブが 120h 以内で、直前のプローブが pass。どれか欠ければ false（BLOCK のまま・degraded）。
- */
-export function l0SingleFailConfirmed(f: SellerFacts, o: PayerOptions): boolean {
-  if (f.l0.status !== "unverified" || o.l0UnverifiedCause !== "single_fail") return false;
-  const c = o.l0SingleFailContext;
-  if (!c || !c.listing_active || c.previous_verdict !== "pass" || !c.latest_probe_at) return false;
-  const t = new Date(c.latest_probe_at).getTime();
-  if (!Number.isFinite(t)) return false;
-  const ageHours = ((o.now ?? new Date()).getTime() - t) / 3_600_000;
-  return ageHours <= L0_SINGLE_FAIL_MAX_AGE_HOURS;
-}
 
 /**
  * 2026-09-29.2: 判定の L1 が読む「並び」。facts（公開の形・SDK と対）には載せず、応答の l1_basis に出す。
@@ -204,6 +182,11 @@ export type L1Timeline = {
   n_counted: number;
   n_paid_undelivered: number;
   n_paid_undelivered_since_delivery: number;
+  /**
+   * 2026-09-29 監査 7 周目: そのうち /sellers が売り手の側（確定）に置いた行。L1 の BLOCK の根拠はこれだけ
+   * （L1_PAID_UNDELIVERED_BLOCK 回以上）。省略時は 0（facts だけの呼び手は L1 で BLOCK にしない）。
+   */
+  n_paid_undelivered_seller_side_since_delivery?: number;
   latest_counted: { at: string; delivered: boolean } | null;
   last_delivered_at: string | null;
   last_signed_attempt_at: string | null;
@@ -223,6 +206,8 @@ export type L1Basis = {
   n_not_counted: number;
   n_paid_undelivered: number;
   n_paid_undelivered_since_last_delivery: number;
+  /** 2026-09-29 監査 7 周目: そのうち売り手の側（確定）。2 以上で BLOCK。 */
+  n_paid_undelivered_seller_side_since_last_delivery: number;
   latest_counted_delivered: boolean | null;
   last_attempt_at: string | null;
   last_signed_attempt_at: string | null;
@@ -279,6 +264,8 @@ function timelineFromFacts(f: SellerFacts, conclusive: number, notCounted?: L1No
     n_counted: conclusive,
     n_paid_undelivered: paidLowerBound,
     n_paid_undelivered_since_delivery: f.l1.n_delivered === 0 ? paidLowerBound : 0,
+    // facts だけでは誰の側か分からない（売り手の側に数えない＝L1 で BLOCK にしない）。
+    n_paid_undelivered_seller_side_since_delivery: 0,
     latest_counted: null,
     // 最後の配達は最後に署名した時刻より新しくはない（上から抑える）。
     last_delivered_at: f.l1.n_delivered >= 1 ? f.l1.observed_at : null,
@@ -333,6 +320,7 @@ export function l1BasisOf(f: SellerFacts, o: PayerOptions = {}): L1Basis {
     n_not_counted: Math.max(0, f.l1.n_attempts - v.conclusive),
     n_paid_undelivered: v.timeline.n_paid_undelivered,
     n_paid_undelivered_since_last_delivery: v.timeline.n_paid_undelivered_since_delivery,
+    n_paid_undelivered_seller_side_since_last_delivery: v.timeline.n_paid_undelivered_seller_side_since_delivery ?? 0,
     latest_counted_delivered: v.timeline.latest_counted ? v.timeline.latest_counted.delivered : null,
     last_attempt_at: f.l1.last_attempt_at,
     last_signed_attempt_at: v.timeline.last_signed_attempt_at,
@@ -346,14 +334,11 @@ export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
   const r: string[] = [];
   const v = l1ViewOf(f, o);
   const { conclusive, timeline: t } = v;
-  // L1 の証拠が無い（未試行・窓の外だけ、または結論の出た試行が無い）。オプトインの対象はこの 2 つと、古い配達。
+  // L1 の証拠が無い（未試行・窓の外だけ、または数えた試行が無い）。オプトインの対象はこの 2 つと、古い配達。
   const noL1Evidence = f.l1.n_delivered === 0 && conclusive === 0;
-  // L0: 公開規則（2 回連続の fail で公表）にそろえる。確かめられた 1 回の fail だけ WARN の理由（2026-09-29.2）。
-  const l0SingleFail = l0SingleFailConfirmed(f, o);
   r.push(`l0_${f.l0.status}`);
   if (f.l0.status === "unverified" && o.l0UnverifiedCause && /^[a-z0-9_]{1,40}$/.test(o.l0UnverifiedCause)) {
     r.push(`${L0_UNVERIFIED_CAUSE_PREFIX}${o.l0UnverifiedCause}`);
-    if (o.l0UnverifiedCause === "single_fail" && !l0SingleFail) r.push(L0_SINGLE_FAIL_UNCONFIRMED);
   }
   if (f.l1.n_attempts === 0) r.push(v.staleOutsideWindow ? "l1_stale" : "l1_not_attempted");
   else if (f.l1.n_delivered >= 1) r.push("l1_delivered");
@@ -365,6 +350,7 @@ export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
     }
   }
   const paidUndelivered = t.n_paid_undelivered_since_delivery;
+  const paidUndeliveredSeller = t.n_paid_undelivered_seller_side_since_delivery ?? 0;
   if (paidUndelivered >= 1) r.push("l1_paid_not_delivered");
   const settlementUnknown = t.n_settlement_unknown_since_delivery ?? o.l1NotCounted?.by.settlement_unknown ?? 0;
   if (settlementUnknown >= 1) r.push(L1_EMPTY_2XX_SETTLEMENT_UNKNOWN);
@@ -388,29 +374,31 @@ export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
   if (dialectMismatch) r.push("dialect_mismatch");
   // 2026-09-29.3（判定のレビュー）: オプトインが免除するのは「L1 の証拠が無い／古い」だけ。免除できない L1 の理由
   // （未確定の空の 2xx・払ったのに届かない・数えた失敗・最新の失敗）が答えを WARN / BLOCK に留めているときは、
-  // l1_waived_by_operator を付けない（「免除した」と「L1 で WARN」が同じ応答に並んで食い違って読めた）。
+  // l1_waived_by_operator を付けない。
   const l1Unwaivable = settlementUnknown >= 1 || paidUndelivered >= 1 || latestFailed || (conclusive > 0 && f.l1.n_delivered === 0);
   if ((noL1Evidence || v.staleDelivery) && o.allowWithoutL1 && !l1Unwaivable) r.push("l1_waived_by_operator");
 
+  // 2026-09-29 監査 7 周目: BLOCK は「測って食い違った」ものだけ。unverified（未プローブ・測れていない）は WARN、
+  // L1 は /sellers が売り手の側（確定）に置いた「払ったのに届かない」が最後の配達より後に 2 回以上のときだけ。
   const block =
     f.l0.status === "fail" ||
-    (f.l0.status === "unverified" && !l0SingleFail) ||
-    // 2026-09-29.3: L1 で BLOCK の根拠はお金が動いた未配達だけ（数えた失敗が何回でも、お金が動いていなければ WARN）。
-    paidUndelivered >= L1_PAID_UNDELIVERED_BLOCK ||
+    paidUndeliveredSeller >= L1_PAID_UNDELIVERED_BLOCK ||
     l2Explained ||
     f.wash_dominated ||
     !!o.operatorBlacklist;
   if (block) return { recommendation: "BLOCK", reason_codes: r };
 
   const warn =
-    l0SingleFail ||
+    f.l0.status === "unverified" ||
     (noL1Evidence && !o.allowWithoutL1) ||
     (conclusive > 0 && f.l1.n_delivered === 0) ||
     paidUndelivered >= 1 ||
-    // 2026-09-29.3（独立レビュー 警告 2）: 決済が未確定の空の 2xx。allow_without_l1 でも免除しない。
+    // 決済が未確定（照合待ち・遅延回収の待ち・空の 2xx）。allow_without_l1 でも免除しない。
     settlementUnknown >= 1 ||
     latestFailed ||
     l2Unexplained ||
+    // 2026-09-29 監査 7 周目: 宣言はあるが直近の配達を照合できていない（上限超え・切れた本文・配達なし）。
+    f.l2.status === "not_checked" ||
     (v.staleDelivery && !o.allowWithoutL1) ||
     f.offer_stability === "drifting" ||
     o.dataDepth === "thin" ||
@@ -419,6 +407,31 @@ export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
 
   const allow = f.l0.status === "pass" && (f.l1.n_delivered >= 1 || !!o.allowWithoutL1) && f.l2.status !== "mismatch";
   return { recommendation: allow ? "ALLOW" : "WARN", reason_codes: r };
+}
+
+/**
+ * 応答の reason_codes のうち BLOCK を決めうるもの（decidePayer の block 式と 1 対 1・2026-09-29 監査 7 周目）。
+ * 表示面（売り手頁の DecisionAnswer）はこれを読み、自分で規則を書かない。basis が無ければ l1_paid_not_delivered は
+ * 決めうる側に倒す（BLOCK の理由を黙らない）。
+ */
+export function blockReasonCodes(
+  codes: readonly string[],
+  basis: Pick<L1Basis, "n_paid_undelivered_seller_side_since_last_delivery"> | null,
+): string[] {
+  return codes.filter((c) => {
+    switch (c) {
+      case "l0_fail":
+      case "wash_dominated":
+      case "operator_blacklist":
+        return true;
+      case "l1_paid_not_delivered":
+        return basis === null || basis.n_paid_undelivered_seller_side_since_last_delivery >= L1_PAID_UNDELIVERED_BLOCK;
+      case "l2_mismatch":
+        return !codes.includes(L2_MISMATCH_UNEXPLAINED);
+      default:
+        return false;
+    }
+  });
 }
 
 export type PayeeOptions = { now: Date; operatorBlacklist?: boolean };

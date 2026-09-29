@@ -1,3 +1,4 @@
+import { DECISION_RULES_TEXT } from "@/lib/decision/rules-text";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
@@ -482,17 +483,11 @@ export default async function ObservatoryMethodologyPage() {
           declares a miss is free is not failing when it does not charge for one.
         </p>
         <p className="doc-p">
-          The seller&apos;s side is the group these pages count as the seller&apos;s fault. The decision rules
-          are more careful for the payer: they leave out the attempts on vet402&apos;s side, held
-          attempts and attempts with no charge (the reason codes{" "}
-          <code>l1_not_counted_vet402_side</code>, <code>l1_not_counted_held</code> and{" "}
-          <code>l1_not_counted_no_charge</code> name what was left out), and they still count a
-          not-sorted attempt that is not shown to be our fault. So a listing can read &ldquo;not sorted&rdquo; on its
-          seller page while the decision API answers <code>WARN</code> or <code>BLOCK</code> for it; each listing on
-          the seller page shows the decision API&apos;s answer at the time the page was read, with the codes that
-          decided it first and one sentence for each (for example, a failed check before payment, or a last delivery
-          more than 30 days ago). The note that the decision counts not-sorted attempts is added only when a code
-          counted from the attempts decided the answer.
+          {/* 2026-09-29 監査 7 周目: 規則の文は rules-text.ts の正典から（手で書かない）。 */}
+          The seller&apos;s side is the group these pages count as the seller&apos;s fault, and the decision API reads
+          the same sorting. {DECISION_RULES_TEXT} Each listing on the seller page shows the decision API&apos;s answer at
+          the time the page was read, with the codes that decided it first and the meaning of each from the reason-code
+          table.
         </p>
         {/* 2026-09-29 第5巡: 売り手の名指した tx の期限（settlement-verifier.ts・fix-modes.ts の SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS）と、
             届かなかった L1 の行を載せる記録頁の noindex。 */}
@@ -919,6 +914,9 @@ export default async function ObservatoryMethodologyPage() {
           including a <code>settle_claimed</code> row still waiting for the re-read. A <code>0</code>{" "}
           there means we hold no confirmed transfer for that row, not that we showed none happened.
           The CSV response carries both definitions in its <code>x-vet402-column-notes</code> header.
+          The column <code>l2_reading</code> (since 2026-09-29) is <code>l2_schema</code> read again with
+          today&apos;s rules, the value the record page and the decision use; <code>l2_schema</code> keeps
+          the value recorded at the time.
         </p>
         {/* 2026-09-29 監査 5 周目: 訂正ログの subject_id と export の行を結べなかった。 */}
         <p className="doc-p">

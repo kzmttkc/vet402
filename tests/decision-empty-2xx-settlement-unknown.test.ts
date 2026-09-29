@@ -16,10 +16,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   assembleSellerFacts,
-  isEmpty2xxUnsettled,
   l1NotCountedOf,
   l1TimelineOf,
   notCountedReasonOf,
+  rowViewOf,
   type PurchaseInput,
   type SellerFactsInput,
   type SellerRowView,
@@ -49,11 +49,21 @@ const row = (d: number, over: Partial<PurchaseInput>): PurchaseInput => ({
   ...over,
 });
 
-/** /sellers が置く分類（board.ts の classifySellerRow）。 */
-const NO_CHARGE_VIEW: SellerRowView = { bucket: "unsorted", modeKey: "answered_no_charge", confirmedSeller: false };
-const PAYER_SHORT_VIEW: SellerRowView = { bucket: "vet402", modeKey: "payer_short", confirmedSeller: false };
-const PENDING_VIEW: SellerRowView = { bucket: "pending", modeKey: null, confirmedSeller: false };
-const CONFIRMED: SellerRowView = { bucket: "seller", modeKey: "no_receipt", confirmedSeller: true };
+/** /sellers が置く分類（fix-modes.ts classifySellerRow の結果）。 */
+const view = (bucket: SellerRowView["bucket"], modeKey: string | null, money: SellerRowView["money"] = "unknown"): SellerRowView => ({
+  bucket,
+  modeKey,
+  held: null,
+  money,
+  delivered: false,
+});
+const NO_CHARGE_VIEW = view("unsorted", "answered_no_charge");
+const PAYER_SHORT_VIEW = view("vet402", "payer_short");
+const PENDING_VIEW = view("pending", null);
+const CONFIRMED = view("seller", "no_receipt");
+/** 行 1 つの除外理由（本番と同じく sellerView があればそれ、無ければ同じ分類関数を行の事実に当てる）。 */
+const nr = (p: PurchaseInput, decl: { method: string | null; declaredSchema: unknown; declaredInput?: unknown }) =>
+  notCountedReasonOf(rowViewOf(p, decl, NOW.getTime()), p);
 
 /** 空の 2xx・レシートなし・tx なし（遅延回収がまだ決済を結び付けていない）。 */
 const empty200 = (d: number, view: SellerRowView | null = NO_CHARGE_VIEW, over: Partial<PurchaseInput> = {}) =>
@@ -85,7 +95,7 @@ function inputOf(purchases: PurchaseInput[], decl: { method: string; declaredSch
 function run(purchases: PurchaseInput[], extra: Partial<PayerOptions> = {}, decl?: Parameters<typeof inputOf>[1]) {
   const input = inputOf(purchases, decl);
   const facts = assembleSellerFacts(input);
-  const options: PayerOptions = { l1NotCounted: l1NotCountedOf(input), l1Timeline: l1TimelineOf(input), now: NOW, ...extra };
+  const options: PayerOptions = { l1NotCounted: l1NotCountedOf(input, NOW.getTime()), l1Timeline: l1TimelineOf(input, NOW.getTime()), now: NOW, ...extra };
   return { input, facts, d: decidePayer(facts, options), timeline: options.l1Timeline! };
 }
 
@@ -101,7 +111,7 @@ test("空の 2xx・レシートなしの行だけの売り手は ALLOW になら
   assert.ok(d.reason_codes.includes(L1_EMPTY_2XX_SETTLEMENT_UNKNOWN), d.reason_codes.join(","));
   assert.ok(d.reason_codes.includes("l1_inconclusive"), "失敗としては数えない");
   assert.ok(!d.reason_codes.includes("l1_not_counted_unproven"), "お金が動いていないとは言わない");
-  assert.equal(l1NotCountedOf(input).by.settlement_unknown, 3);
+  assert.equal(l1NotCountedOf(input, NOW.getTime()).by.settlement_unknown, 3);
   // 呼び手が L1 の証拠なしで ALLOW をオプトインしても、未確定の空の 2xx は免除しない
   const optIn = run(rows, { allowWithoutL1: true }).d;
   assert.equal(optIn.recommendation, "WARN");
@@ -121,12 +131,12 @@ test("配達の後に空の 2xx・レシートなしが続けば WARN（ALLOW �
 
 test("払う側の残高不足（payer_short）の期間の空の 200 も settlement_unknown（WARN）。502 なら従来どおり vet402 の側", () => {
   const p = shortEmpty200();
-  assert.equal(notCountedReasonOf(p, SHORT_DECL), "settlement_unknown");
+  assert.equal(nr(p, SHORT_DECL), "settlement_unknown");
   const { d } = run([row(20, {}), p], { allowWithoutL1: true }, SHORT_DECL);
   assert.equal(d.recommendation, "WARN");
   assert.ok(d.reason_codes.includes(L1_EMPTY_2XX_SETTLEMENT_UNKNOWN));
   // 空の 2xx でなければ、残高不足は vet402 の側のまま（お金の動いていない 502）
-  assert.equal(notCountedReasonOf({ ...p, httpStatusPaid: 502 }, SHORT_DECL), "vet402_side");
+  assert.equal(nr({ ...p, httpStatusPaid: 502 }, SHORT_DECL), "vet402_side");
 });
 
 test("決済が結び付けば l1_paid_not_delivered として数える（照合待ちの間も ALLOW に戻さない）", () => {
@@ -136,47 +146,47 @@ test("決済が結び付けば l1_paid_not_delivered として数える（照合
   assert.equal(s1.recommendation, "WARN");
   assert.ok(s1.reason_codes.includes(L1_EMPTY_2XX_SETTLEMENT_UNKNOWN));
   assert.ok(!s1.reason_codes.includes("l1_paid_not_delivered"));
-  // 2) 遅延回収が tx を結び付け、照合待ち（settle_claimed）→ 除外の理由は held のまま、判定は WARN のまま
+  // 2) 遅延回収が tx を結び付け、照合待ち（settle_claimed）→ お金が動いたか未確定のまま、判定は WARN のまま
   const claimed = (d: number) => empty200(d, PENDING_VIEW, { status: "settle_claimed", txHash: tx() });
   const s2run = run([delivered, claimed(2), claimed(3)]);
   assert.equal(s2run.d.recommendation, "WARN");
   assert.ok(s2run.d.reason_codes.includes(L1_EMPTY_2XX_SETTLEMENT_UNKNOWN));
-  assert.equal(l1NotCountedOf(s2run.input).by.held, 2);
+  assert.equal(l1NotCountedOf(s2run.input, NOW.getTime()).by.settlement_unknown, 2);
   // 3) 照合器がチェーンで確かめて settled → お金が動いた未配達。2 回で BLOCK、未確定の語は消える
-  const settled = (d: number) => empty200(d, { bucket: "seller", modeKey: "no_receipt", confirmedSeller: false }, { status: "settled", txHash: tx() });
+  const settled = (d: number) => empty200(d, view("seller", "no_receipt", "moved"), { status: "settled", txHash: tx() });
   const s3 = run([delivered, settled(2), settled(3)]).d;
   assert.equal(s3.recommendation, "BLOCK");
   assert.ok(s3.reason_codes.includes("l1_paid_not_delivered"));
   assert.ok(!s3.reason_codes.includes(L1_EMPTY_2XX_SETTLEMENT_UNKNOWN));
   // tx の付いた settle_failed も、照合で確かめられれば同じ（settlementConfirmed）
-  const confirmedFailed = (d: number) => empty200(d, PENDING_VIEW, { status: "settle_failed", txHash: tx(), settlementConfirmed: true });
+  const confirmedFailed = (d: number) => empty200(d, view("pending", null, "moved"), { status: "settle_failed", txHash: tx(), settlementConfirmed: true });
   const s3b = run([delivered, confirmedFailed(2)]).d;
   assert.equal(s3b.recommendation, "WARN");
   assert.ok(s3b.reason_codes.includes("l1_paid_not_delivered"));
   assert.ok(!s3b.reason_codes.includes(L1_EMPTY_2XX_SETTLEMENT_UNKNOWN));
   // 売り手が名指した tx がまだ確かめられていない（照合待ち）空の 2xx も未確定
   const named = empty200(2, PENDING_VIEW, { status: "settle_failed", txHash: tx(), settlementConfirmed: false });
-  assert.equal(notCountedReasonOf(named, { method: "GET", declaredSchema: null }), "settlement_unknown");
+  assert.equal(nr(named, { method: "GET", declaredSchema: null }), "settlement_unknown");
 });
 
 test("未確定に入れない行: 中身の届いた 2xx・照合で反証された主張・/sellers で売り手の側（確定）・分類が読めない", () => {
   const decl = { method: "GET", declaredSchema: null };
   // 中身の届いた無料応答は従来どおり課金なし
-  assert.equal(notCountedReasonOf(empty200(2, NO_CHARGE_VIEW, { payloadNonEmpty: true }), decl), "no_charge");
+  assert.equal(nr(empty200(2, NO_CHARGE_VIEW, { payloadNonEmpty: true }), decl), "no_charge");
   // 反証された主張（売り手の名指した tx はチェーンに無かった）はお金が動いていないと確かめた行
-  const refuted = empty200(2, { bucket: "unsorted", modeKey: "other", confirmedSeller: false }, { status: "settle_claim_refuted", txHash: tx() });
-  assert.equal(isEmpty2xxUnsettled(refuted), false);
-  assert.equal(notCountedReasonOf(refuted, decl), "unproven");
-  // 売り手の側（確定）と、分類が読めない行は従来どおり数える（失敗・WARN まで）
-  assert.equal(notCountedReasonOf(empty200(2, CONFIRMED), decl), null);
-  assert.equal(notCountedReasonOf(empty200(2, null), decl), null);
-  // お金の動いていない 502 は従来どおり unproven（空の 2xx ではない）
-  assert.equal(notCountedReasonOf(row(2, { status: "settle_failed", httpStatusPaid: 502, txHash: null, sellerView: NO_CHARGE_VIEW }), decl), "unproven");
+  const refuted = empty200(2, view("unsorted", "other", "not_moved"), { status: "settle_claim_refuted", txHash: tx() });
+  assert.equal(nr(refuted, decl), "unproven");
+  // 売り手の側（確定）は数える（失敗・WARN まで）
+  assert.equal(nr(empty200(2, CONFIRMED), decl), null);
+  // 2026-09-29.4: 分類が読めない行も同じ分類関数を行の事実に当てる（空の 2xx・tx なし＝未確定）
+  assert.equal(nr(empty200(2, null), decl), "settlement_unknown");
+  // お金の動いていない 502 は unproven（空の 2xx ではない）
+  assert.equal(nr(row(2, { status: "settle_failed", httpStatusPaid: 502, txHash: null, sellerView: view("unsorted", "other") }), decl), "unproven");
 });
 
 test("並びを渡さない呼び手（facts と除外の数だけ）でも、未確定の空の 2xx は ALLOW にしない", () => {
   const { facts, input } = run([row(10, {}), empty200(1)]);
-  const d = decidePayer(facts, { l1NotCounted: l1NotCountedOf(input), now: NOW });
+  const d = decidePayer(facts, { l1NotCounted: l1NotCountedOf(input, NOW.getTime()), now: NOW });
   assert.equal(d.recommendation, "WARN");
   assert.ok(d.reason_codes.includes(L1_EMPTY_2XX_SETTLEMENT_UNKNOWN));
 });
@@ -186,7 +196,7 @@ test("最後の配達と同じ時刻の行は「配達より後」に数えな�
   const at = daysAgo(3);
   const delivered = { ...row(3, {}), attemptedAt: at };
   const sameEmpty = { ...empty200(3), attemptedAt: at };
-  const samePaid = { ...row(3, { httpStatusPaid: 500, payloadNonEmpty: false, sellerView: CONFIRMED }), attemptedAt: at };
+  const samePaid = { ...row(3, { httpStatusPaid: 500, payloadNonEmpty: false, sellerView: view("seller", "server_error_paid", "moved") }), attemptedAt: at };
   const same = run([delivered, sameEmpty, samePaid]);
   assert.equal(same.timeline.n_settlement_unknown_since_delivery, 0);
   assert.equal(same.timeline.n_paid_undelivered_since_delivery, 0);

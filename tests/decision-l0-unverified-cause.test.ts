@@ -61,10 +61,10 @@ test("原因: 公開判定が pass / fail なら null（下位コードを作ら
   assert.equal(l0UnverifiedCauseOf([probe("fail", "no_402"), probe("fail", "no_402")]), null);
 });
 
-test("判定は変わらず、BLOCK に l0_unverified_<cause> が添えられる", () => {
+test("判定は変わらず（2026-09-29.4 から WARN）、l0_unverified_<cause> が添えられる", () => {
   const without = decidePayer(unverified);
   const withCause = decidePayer(unverified, { l0UnverifiedCause: "tls" });
-  assert.equal(without.recommendation, "BLOCK");
+  assert.equal(without.recommendation, "WARN");
   assert.equal(withCause.recommendation, without.recommendation, "下位コードは判定に効かない");
   assert.deepEqual(withCause.reason_codes, ["l0_unverified", `${L0_UNVERIFIED_CAUSE_PREFIX}tls`, "l1_not_attempted", "l2_undeclared"]);
   assert.deepEqual(without.reason_codes, ["l0_unverified", "l1_not_attempted", "l2_undeclared"]);
@@ -87,7 +87,7 @@ test("buildDecision は options の原因を reason_codes まで運び、degrade
     registry: { status: "off", tx_hash: null },
     spendingHalted: false,
   } as Parameters<typeof buildDecision>[0]);
-  assert.equal(d.recommendation, "BLOCK");
+  assert.equal(d.recommendation, "WARN");
   assert.ok(d.reason_codes.includes("l0_unverified_tls"));
   assert.equal(d.degraded, true);
 });

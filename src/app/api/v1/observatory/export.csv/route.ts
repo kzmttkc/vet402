@@ -1,3 +1,4 @@
+import { l2ReadingColumnsSql, l2ReadingOf } from "@/lib/observatory/l2-check";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { getClientIp } from "@/lib/api/client-ip";
@@ -105,7 +106,9 @@ export async function GET(request: NextRequest) {
              (${sql.raw(requestQueryKindSql("pu"))}) AS request_query,
              (${sql.raw(requestQuerySha256Sql("pu"))}) AS request_query_sha256,
              (${sql.raw(confirmedUnitsSql("pu"))}) AS confirmed_units,
-             pu.id::text AS purchase_id
+             pu.id::text AS purchase_id,
+             ${sql.raw(l2ReadingColumnsSql("pu"))},
+             CASE WHEN pu.l2_schema = 'mismatch' THEN e.declared_schema END AS l2_declared_schema
       FROM x402_l1_purchases pu
       JOIN x402_endpoints e ON e.id = pu.endpoint_id
       WHERE pu.attempted_at >= now() - make_interval(days => ${days}::int)
@@ -122,7 +125,16 @@ export async function GET(request: NextRequest) {
 
     const lines = [CSV_COLUMNS.join(",")];
     for (const r of emit) {
-      lines.push(CSV_COLUMNS.map((c) => csvCell(r[c])).join(","));
+      // 2026-09-29 監査 7 周目: l2_reading は記録頁・判定と同じ読み直し（l2-check.ts l2ReadingOf）。l2_schema は記録の値のまま。
+      const l2Schema = typeof r.l2_schema === "string" ? r.l2_schema : null;
+      const out: Record<string, unknown> = {
+        ...r,
+        l2_reading: l2Schema === null ? null : l2ReadingOf(
+          { l2Schema, l2Detail: r.l2_detail, bodyHead: typeof r.l2_body_head === "string" ? r.l2_body_head : null, contentType: typeof r.l2_content_type === "string" ? r.l2_content_type : null },
+          r.l2_declared_schema ?? null,
+        ),
+      };
+      lines.push(CSV_COLUMNS.map((c) => csvCell(out[c])).join(","));
     }
     return new NextResponse(lines.join("\n") + "\n", {
       headers: {

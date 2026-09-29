@@ -32,14 +32,20 @@ test("L1: n_attempts は署名した試行のみ（over_cap は数えない）�
   assert.equal(f.l1.p50_ms, 300);
 });
 
-test("L2: 宣言あり＋直近配達が match → conform、mismatch → mismatch、宣言なし → undeclared、未検査 → undeclared", () => {
+test("L2: 宣言あり＋直近配達が match → conform、mismatch → mismatch、宣言なし → undeclared、未検査 → not_checked（2026-09-29.4）", () => {
   assert.equal(assembleSellerFacts(base).l2.status, "conform");
   assert.match(assembleSellerFacts(base).l2.declaration_hash!, /^[0-9a-f]{64}$/);
   const mis = assembleSellerFacts({ ...base, purchases: [{ ...purchases[0], l2Schema: "mismatch" }] });
   assert.equal(mis.l2.status, "mismatch");
   assert.equal(assembleSellerFacts({ ...base, declaredSchema: null }).l2.status, "undeclared");
   const unchecked = assembleSellerFacts({ ...base, purchases: [{ ...purchases[0], l2Schema: "not_checked" }] });
-  assert.equal(unchecked.l2.status, "undeclared", "未検査を mismatch と書かない");
+  // base の宣言（{ type: "object" }）は出力を宣言していない → 未検査でも undeclared（照合するものが無い）
+  assert.equal(unchecked.l2.status, "undeclared", "出力の宣言が無ければ undeclared");
+  const OUT = { properties: { output: { properties: { example: { required: ["a"], properties: { a: {} } } } } } };
+  const uncheckedOut = assembleSellerFacts({ ...base, declaredSchema: OUT, purchases: [{ ...purchases[0], l2Schema: "not_checked" }] });
+  assert.equal(uncheckedOut.l2.status, "not_checked", "出力を宣言していて未検査なら not_checked（mismatch とも undeclared とも書かない）");
+  assert.equal(assembleSellerFacts({ ...base, declaredSchema: OUT, purchases: [] }).l2.status, "not_checked", "出力の宣言があって配達が無い");
+  assert.equal(assembleSellerFacts({ ...base, declaredSchema: OUT, purchases: [{ ...purchases[0], l2Schema: "no_declaration" }] }).l2.status, "not_checked", "記録のときに宣言が無かった行");
 });
 
 test("availability: pass 率、probes 0 は null", () => {

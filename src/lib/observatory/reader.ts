@@ -30,6 +30,7 @@ import { isOperatorPayTo } from "./operator";
 import { isOperatorExclusionConfigured, operatorExclusionPredicate, operatorMatchPredicate } from "./operator-sql";
 import { chainLabel, isMainnet, isTestnet, toCaip2 } from "./chains";
 import { deliveredPredicate, heldReasonSql, inconclusivePredicate, inconclusiveSettledPredicate } from "./delivery";
+import { l2ReadingOf } from "./l2-check";
 import {
   settledTier,
   settledTierPredicate,
@@ -325,6 +326,8 @@ export type EndpointDetail = {
     httpStatusPaid: number | null;
     latencyMs: number | null;
     l2Schema: string | null;
+    /** 2026-09-29 監査 7 周目: l2Schema を今の読み方で読み直した値（l2-check.ts l2ReadingOf・判定と export.csv の l2_reading と同じ）。 */
+    l2Reading: string | null;
     /**
      * settled 行の証拠強度（2026-09-05 監査 S-4 / S-17）。settled 以外は null。
      * 分類は settled-tier.ts が単独で持ち、描画は純粋に保つ。
@@ -343,17 +346,31 @@ export type EndpointDetail = {
  * 公開面へは出さない——出すのは「その tx がこの購入のものと言えるか」という結論だけ。
  */
 function withSettledTier<
-  T extends { status: string; txHash: string | null; authNonce: string | null; settlementVerified: boolean | null; lateSettlement: unknown },
+  T extends {
+    status: string;
+    txHash: string | null;
+    authNonce: string | null;
+    settlementVerified: boolean | null;
+    lateSettlement: unknown;
+    l2Schema: string | null;
+    l2Detail: unknown;
+    l2BodyHead: string | null;
+    l2ContentType: string | null;
+  },
 >(
   rows: T[],
-): (Omit<T, "authNonce" | "settlementVerified" | "lateSettlement"> & {
+  declaredSchema: unknown,
+): (Omit<T, "authNonce" | "settlementVerified" | "lateSettlement" | "l2Detail" | "l2BodyHead" | "l2ContentType"> & {
   settledTier: SettledTier | null;
   settlementSource: SettlementSource | null;
+  l2Reading: string | null;
 })[] {
-  return rows.map(({ authNonce, settlementVerified, lateSettlement, ...rest }) => ({
+  return rows.map(({ authNonce, settlementVerified, lateSettlement, l2Detail, l2BodyHead, l2ContentType, ...rest }) => ({
     ...rest,
     settledTier: settledTier({ status: rest.status, authNonce, settlementVerified }),
     settlementSource: settlementSourceOf({ txHash: rest.txHash, lateSettlement }),
+    // 2026-09-29 監査 7 周目: 判定・export.csv の l2_reading と同じ読み直し（l2Schema は記録した値のまま）。本文の先頭は出さない。
+    l2Reading: rest.l2Schema === null ? null : l2ReadingOf({ l2Schema: rest.l2Schema, l2Detail, bodyHead: l2BodyHead, contentType: l2ContentType }, declaredSchema),
   }));
 }
 
@@ -523,6 +540,9 @@ export async function getEndpointDetail(id: string): Promise<EndpointDetail> {
           authNonce: x402L1Purchases.authNonce,
           settlementVerified: x402L1Purchases.settlementVerified,
           lateSettlement: sql<unknown>`${x402L1Purchases.rawResponseMeta}->'lateSettlement'`,
+          l2Detail: sql<unknown>`CASE WHEN jsonb_typeof(${x402L1Purchases.rawResponseMeta}) = 'object' THEN ${x402L1Purchases.rawResponseMeta}->'l2' END`,
+          l2BodyHead: sql<string | null>`CASE WHEN ${x402L1Purchases.l2Schema} = 'mismatch' AND jsonb_typeof(${x402L1Purchases.rawResponseMeta}) = 'object' THEN left(${x402L1Purchases.rawResponseMeta}->>'bodyHead', 500) END`,
+          l2ContentType: sql<string | null>`CASE WHEN jsonb_typeof(${x402L1Purchases.rawResponseMeta}) = 'object' THEN left(${x402L1Purchases.rawResponseMeta}->>'contentType', 60) END`,
         })
         .from(x402L1Purchases)
         .where(
@@ -533,6 +553,7 @@ export async function getEndpointDetail(id: string): Promise<EndpointDetail> {
         )
         .orderBy(desc(x402L1Purchases.attemptedAt))
         .limit(20),
+        e.declaredSchema,
       );
       l1Totals = await countPaidAttempts(db, id);
     } catch (error) {
@@ -634,6 +655,7 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
         resourceUrl: x402Endpoints.resourceUrl,
         network: x402Endpoints.network,
         status: x402Endpoints.status,
+        declaredSchema: x402Endpoints.declaredSchema,
       })
       .from(x402Endpoints)
       .where(eq(x402Endpoints.id, id))
@@ -656,6 +678,9 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
           authNonce: x402L1Purchases.authNonce,
           settlementVerified: x402L1Purchases.settlementVerified,
           lateSettlement: sql<unknown>`${x402L1Purchases.rawResponseMeta}->'lateSettlement'`,
+          l2Detail: sql<unknown>`CASE WHEN jsonb_typeof(${x402L1Purchases.rawResponseMeta}) = 'object' THEN ${x402L1Purchases.rawResponseMeta}->'l2' END`,
+          l2BodyHead: sql<string | null>`CASE WHEN ${x402L1Purchases.l2Schema} = 'mismatch' AND jsonb_typeof(${x402L1Purchases.rawResponseMeta}) = 'object' THEN left(${x402L1Purchases.rawResponseMeta}->>'bodyHead', 500) END`,
+          l2ContentType: sql<string | null>`CASE WHEN jsonb_typeof(${x402L1Purchases.rawResponseMeta}) = 'object' THEN left(${x402L1Purchases.rawResponseMeta}->>'contentType', 60) END`,
         })
         .from(x402L1Purchases)
         .where(
@@ -666,6 +691,7 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
         )
         .orderBy(desc(x402L1Purchases.attemptedAt))
         .limit(100),
+        e.declaredSchema,
       );
       totals = await countPaidAttempts(db, id);
     } catch (error) {

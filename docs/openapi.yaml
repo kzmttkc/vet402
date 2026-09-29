@@ -979,7 +979,8 @@ paths:
         (since 2026-09-17), `request_body`, `request_body_sha256`,
         `settlement_source` (since 2026-09-20), `request_query`,
         `request_query_sha256` (since 2026-09-21), `confirmed_units`
-        (since 2026-09-29), `purchase_id` (since 2026-09-29).
+        (since 2026-09-29), `purchase_id` (since 2026-09-29), `l2_reading`
+        (since 2026-09-29).
 
         - `amount_units` — the price the seller's 402 asked for, in the
           asset's base units (USDC: 6 decimals).
@@ -1066,6 +1067,11 @@ paths:
           `/api/v1/observatory/corrections` (`subject_type` `purchase`), so a
           ledger status change can be joined to its export row. The rows
           within one `attempted_at` second are ordered by it.
+        - `l2_reading` — `l2_schema` read again with today's rules: the value
+          the record page and the decision's `facts.l2` use. An older row
+          whose body was cut at 16,000 bytes reads `not_checked`; a complete
+          body that is not valid JSON stays `mismatch`. `l2_schema` keeps the
+          value recorded at the time.
 
         `scripts/declared-body-before-after.mjs` recomputes, from this CSV
         alone, the paid 2xx rate of the same endpoints before and after the
@@ -1549,7 +1555,7 @@ paths:
       description: |
         Product spec §8.1 / §9.1. `facts.l0` (published verdict, dialect),
         `facts.l1` (n_delivered / n_settled / n_attempts, p50/p95, last
-        purchase_id), `facts.l2` (conform | mismatch | undeclared with the
+        purchase_id), `facts.l2` (conform | mismatch | undeclared | not_checked with the
         declaration hash), availability, offer_stability, payees, and the 30-day
         settlement counts raw and real side by side. `freshness` carries the
         observation times; `evidence` links the public receipts. Contains no
@@ -3659,12 +3665,12 @@ components:
     DecisionReasonCode:
       type: string
       description: >-
-        Since 2026-09-29.3. The reason codes of `DecisionResult.reason_codes`:
+        Since 2026-09-29.4. The reason codes of `DecisionResult.reason_codes`:
         the fixed words in `enum`, plus the families in `x-vet402-patterns`
         (l0_unverified_<cause>, <input>_unavailable). Meaning, effect on the
         verdict, what it means for the payer and whether the seller can fix
         it: /docs/api#reason-codes (same source, src/lib/decision/reason-codes.ts).
-      enum: [l0_pass, l0_fail, l0_unverified, l0_unverified_single_fail, l0_unverified_single_fail_unconfirmed, l1_delivered, l1_not_attempted, l1_stale, l1_inconclusive, l1_never_delivered, l1_paid_not_delivered, l1_latest_failed, l1_empty_2xx_settlement_unknown, l1_not_counted_vet402_side, l1_not_counted_held, l1_not_counted_no_charge, l1_not_counted_unproven, l1_not_counted_unconfirmed, l1_waived_by_operator, l2_conform, l2_undeclared, l2_mismatch, l2_mismatch_unexplained, offer_drifting, wash_dominated, dialect_mismatch, data_thin, operator_blacklist, sybil_high, retry_burst, thin_history, shared_funder, new_payer, erc8004_registered, history_ok]
+      enum: [l0_pass, l0_fail, l0_unverified, l0_unverified_single_fail, l1_delivered, l1_not_attempted, l1_stale, l1_inconclusive, l1_never_delivered, l1_paid_not_delivered, l1_latest_failed, l1_empty_2xx_settlement_unknown, l1_not_counted_vet402_side, l1_not_counted_held, l1_not_counted_no_charge, l1_not_counted_unproven, l1_not_counted_unconfirmed, l1_waived_by_operator, l2_conform, l2_undeclared, l2_not_checked, l2_mismatch, l2_mismatch_unexplained, offer_drifting, wash_dominated, dialect_mismatch, data_thin, operator_blacklist, sybil_high, retry_burst, thin_history, shared_funder, new_payer, erc8004_registered, history_ok]
       x-vet402-patterns: ["^l0_unverified_[a-z0-9_]{1,40}$", "^(settlements|funder_index|erc8004)_unavailable$"]
 
     DecisionResult:
@@ -3697,57 +3703,67 @@ components:
             Machine-readable reasons. Every code, with its meaning, what it
             means for the payer and whether the seller can fix it, is in
             `DecisionReasonCode` and in the table at /docs/api#reason-codes.
-            Rules 2026-09-29.3. An L1 BLOCK needs money to have moved:
-            l1_paid_not_delivered — a payment that settled on-chain (or a
-            settle_failed row whose tx was verified) with no non-empty 2xx
-            back, after the last delivery in the window: once is WARN, twice
-            or more is BLOCK. A failed attempt where no money moved counts
-            when /sellers puts it on the seller's side (the same failure on
-            two different UTC days), and then it is a WARN at most; the others
-            are left out with l1_not_counted_unproven (vet402 cannot show the
-            failure was not its own; not sorted on /sellers) or
-            l1_not_counted_unconfirmed (seller-side failure seen on one day so
-            far). A paid attempt that got an empty 2xx and has no settlement
-            linked yet (no receipt, or a transfer awaiting on-chain
-            verification) is not known to have moved money: it is not counted
-            as a failure, but after the last delivery it adds
-            l1_empty_2xx_settlement_unknown and is a WARN, never an ALLOW, until
-            it settles (allow_without_l1 does not waive it); once a settlement
-            is linked it counts as l1_paid_not_delivered.
-            l1_never_delivered — counted failures in the window and no
-            delivery — is a WARN. The other L1 words: l1_not_attempted
-            (vet402 has never signed a paid attempt); l1_stale (signed
-            attempts all older than the 30-day window, or the last delivery
-            older than l1_basis.fresh_days, 30): WARN, never ALLOW;
-            l1_inconclusive (signed attempts in the window, none counted:
-            l1_basis.n_not_counted equals n_attempts), a gap in our
-            measurement; l1_latest_failed (delivered in the window but the
-            latest counted attempt failed): WARN. Attempts that move money
-            are left out when the row shows vet402's side of the fault
-            (l1_not_counted_vet402_side), when held for our own request shape
-            or awaiting on-chain verification (l1_not_counted_held), or when
-            the seller took no payment (l1_not_counted_no_charge); these codes
-            appear when nothing was delivered. l2_mismatch is a BLOCK when the
-            L2 evidence row names missing keys (mismatch_kind missing_keys);
-            with no missing key on record it adds l2_mismatch_unexplained and
-            is a WARN. A body vet402 could not read to the end is not a
-            mismatch: since 2026-09-29 vet402 reads up to 256 KiB of a paid
-            body and records a longer body, or one cut off after some bytes
-            arrived, as not checked; an older row cut at 16,000 bytes is not
-            counted as a mismatch when a key recorded as missing shows at the
-            top level of the stored start of the body. A complete body that
-            is not valid JSON is still a mismatch.
-            L0 follows the published
-            two-fail rule: one failed probe is l0_unverified with
-            l0_unverified_single_fail and a WARN (degraded stays false) when the
-            listing is active, the probe before it passed and the failed probe
-            is at most 120 hours old; otherwise it stays a BLOCK with
-            l0_unverified_single_fail_unconfirmed (degraded true). Two
-            consecutive fails are l0_fail and a BLOCK. Other l0_unverified
-            causes stay a BLOCK and carry l0_unverified_<cause> (e.g.
-            l0_unverified_tls, l0_unverified_not_probed). Limit of the method:
-            vet402 buys with a fixed, published User-Agent, so a seller could
-            answer vet402 differently from other buyers; other buyers'
+            Rules 2026-09-29.4 (rules_version). Each paid attempt (one L1
+            purchase row) is sorted by one function, the same one /sellers,
+            /api/v1/sellers/export.csv and this decision read: whether money
+            moved, whether it delivered, and whose side a failure is on.
+            Money moved when the payment settled on-chain, or when a
+            settle_failed row carries a transaction vet402 verified; it did
+            not move when vet402 signed nothing or the transaction the
+            seller named was not found; otherwise it is not yet known. The
+            outcome is one of: delivered (settled on-chain, then a 2xx other
+            than 202 Accepted with a non-empty body); pending (not yet known
+            whether money moved: a receipt awaiting on-chain verification, a
+            2xx naming a transaction, or a signed attempt that failed less
+            than 90 minutes ago while vet402 links late settlements; the
+            ledger status is left as recorded); seller (the seller's side:
+            vet402 can show from the row that the failure was not its own,
+            and the same kind of failure was seen at the listing on 2 or
+            more different UTC days); vet402 (vet402's side: its wallet was
+            short, it did not send the declared input, or one of its own
+            limits or errors); unsorted (not sorted: held for vet402's own
+            request shape, no charge taken, a paid answer with no result in
+            it, seen on one UTC day so far, or vet402 cannot show the
+            failure was not its own); not_bought (vet402 did not sign a
+            payment, so it is not a purchase result). An attempt counts for
+            or against the seller only when it delivered or is on the
+            seller's side; every other signed attempt is left out with an
+            l1_not_counted_* code (l1_not_counted_held counts both kinds
+            together: held, a row with a held_reason in the ledger export,
+            and a receipt awaiting on-chain verification that brought a
+            result, whose held_reason is empty). L1: after the last delivery
+            in the 30-day window, an attempt that moved money and did not
+            deliver adds l1_paid_not_delivered; it is a BLOCK only when two
+            or more of them are on the seller's side (seen on 2 different
+            UTC days), and a WARN otherwise, including when /sellers leaves
+            them not sorted. A failure where no money moved is at most a
+            WARN (l1_never_delivered when nothing was delivered). When no
+            result came back and it is not yet known whether money moved (an
+            empty 2xx with no settlement linked, a receipt still awaiting
+            on-chain verification, or a signed attempt that failed less than
+            90 minutes ago), l1_empty_2xx_settlement_unknown makes it a
+            WARN, never an ALLOW, until it settles. l1_latest_failed
+            (something delivered, but the latest counted attempt did not) is
+            a WARN. ALLOW needs a delivery within 30 days
+            (l1_basis.fresh_days); otherwise l1_stale and a WARN, also the
+            word when every signed attempt is older than the window
+            (l1_not_attempted means none was ever signed). l1_basis carries
+            the counts, the last attempt, signed attempt and delivery, and
+            the days since each. L0: l0_fail (two measured failures in a
+            row) is a BLOCK. l0_unverified (not probed yet, a URL with a
+            path parameter vet402 cannot fill, a probe that could not
+            complete, or one failure so far) is a WARN with degraded: true,
+            next to l0_unverified_<cause>; unverified is not a failure. L2:
+            l2_mismatch is a BLOCK when the evidence names missing keys
+            (mismatch_kind missing_keys), otherwise l2_mismatch_unexplained
+            and a WARN. A listing that declares an output schema but whose
+            latest delivery vet402 has not checked against it (no delivery,
+            a body over 256 KiB or cut off) is l2_not_checked, a WARN;
+            l2_undeclared means the listing declares no output schema. Every
+            code, its effect and whether the seller can fix it:
+            https://vet402.com/docs/api#reason-codes. Limit of the method:
+            vet402 buys with a fixed, published User-Agent, so a seller
+            could answer vet402 differently from other buyers; other buyers'
             settlements show that they paid, not that they received, so the
             decision cannot detect this.
         facts:
@@ -3788,20 +3804,22 @@ components:
             What the L1 part of the recommendation read (rules 2026-09-29.2).
             Null for role=payee. Counts are over the 30-day window; times are
             ISO 8601 UTC. ALLOW needs a delivery within fresh_days.
-          required: [window_days, fresh_days, n_counted, n_not_counted, n_paid_undelivered, n_paid_undelivered_since_last_delivery, latest_counted_delivered, last_attempt_at, last_signed_attempt_at, last_delivered_at, days_since_last_attempt, days_since_last_delivery]
+          required: [window_days, fresh_days, n_counted, n_not_counted, n_paid_undelivered, n_paid_undelivered_since_last_delivery, n_paid_undelivered_seller_side_since_last_delivery, latest_counted_delivered, last_attempt_at, last_signed_attempt_at, last_delivered_at, days_since_last_attempt, days_since_last_delivery]
           properties:
             window_days: { type: integer, description: "The L1 window (30)." }
             fresh_days: { type: integer, description: "ALLOW needs the last delivery within this many days (30, the re-buy interval for a seller that has already delivered)." }
-            n_counted: { type: integer, description: "Signed attempts counted for or against the seller." }
+            n_counted: { type: integer, description: "Signed attempts counted for or against the seller: those that delivered or that /sellers puts on the seller's side." }
             n_not_counted:
               type: integer
               description: >-
-                n_attempts − n_counted: attempts on vet402's side, held, awaiting
-                verification or taking no payment. Includes facts.l1.n_inconclusive
+                n_attempts − n_counted: attempts on vet402's side, held, not yet
+                known to have moved money, taking no payment, or not sorted to a
+                side on /sellers. Includes facts.l1.n_inconclusive
                 (the held subset the purchases route reports). l1_inconclusive is
                 the case n_not_counted = n_attempts > 0.
-            n_paid_undelivered: { type: integer, description: "Counted attempts that settled on-chain with no non-empty 2xx." }
-            n_paid_undelivered_since_last_delivery: { type: integer, description: "Of those, the ones after the last delivery in the window (all of them when nothing was delivered). 1 is WARN, 2 or more is BLOCK." }
+            n_paid_undelivered: { type: integer, description: "Signed attempts that moved money (settled on-chain, or a settle_failed row whose transaction vet402 verified) and did not deliver, leaving out vet402's side and held attempts." }
+            n_paid_undelivered_since_last_delivery: { type: integer, description: "Of those, the ones after the last delivery in the window (all of them when nothing was delivered). 1 or more is at least a WARN." }
+            n_paid_undelivered_seller_side_since_last_delivery: { type: integer, description: "Of those, the ones /sellers puts on the seller's side (seen on two different UTC days). 2 or more is a BLOCK. Since 2026-09-29.4." }
             latest_counted_delivered: { type: boolean, nullable: true, description: "Whether the latest counted attempt delivered; null when none is counted." }
             last_attempt_at: { type: string, format: date-time, nullable: true, description: "Same as facts.l1.last_attempt_at (any outcome, full history)." }
             last_signed_attempt_at: { type: string, format: date-time, nullable: true, description: "Last signed paid attempt over the full history." }
@@ -4206,7 +4224,7 @@ components:
       enum: [v1, v2, both, unpayable, mpp]
     L2Status:
       type: string
-      enum: [conform, mismatch, undeclared]
+      enum: [conform, mismatch, undeclared, not_checked]
     OfferStability:
       type: string
       enum: [stable, drifting, unknown]

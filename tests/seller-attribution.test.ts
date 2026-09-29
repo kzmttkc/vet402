@@ -19,7 +19,7 @@ import { LATE_SETTLEMENT_BACKDATE_MINUTES, LATE_SETTLEMENT_WINDOW_MINUTES } from
 import { declaredInputSummary } from "@/lib/observatory/declared-input-rules";
 import { declaredRequestBody, declaredRequestUrl } from "@/lib/observatory/declared-input";
 import { parseCatalogItem } from "@/lib/observatory/catalog-source";
-import { assembleSellerFacts, l1NotCountedOf, notCountedReasonOf, type PurchaseInput } from "@/lib/decision/seller-facts";
+import { assembleSellerFacts, l1NotCountedOf, l1TimelineOf, notCountedReasonOf, rowViewOf, type PurchaseInput } from "@/lib/decision/seller-facts";
 import { conclusiveAttempts, decidePayer } from "@/lib/decision/rules";
 import type { SellerFacts } from "@/lib/decision/types";
 import { AUTHORIZATION_USED_TOPIC, readAuthorizationNonces, type EvmVerifyClient } from "@/lib/observatory/settlement-verify";
@@ -270,12 +270,12 @@ const okFacts: SellerFacts = {
 const withL1 = (l1: Partial<SellerFacts["l1"]>): SellerFacts => ({ ...okFacts, l1: { ...okFacts.l1, ...l1 } });
 const nc = (vet402_side: number, held: number, no_charge: number) => ({ l1NotCounted: { total: vet402_side + held + no_charge, by: { vet402_side, held, no_charge } } });
 
-test("8: 境界（2026-09-29.3）— 数えた失敗が何回でも、お金が動いていなければ WARN。settled の未配達 2 回で BLOCK", () => {
+test("8: 境界（2026-09-29.3・.4）— 数えた失敗が何回でも、お金が動いていなければ WARN。settled の未配達も売り手の側（確定）でなければ WARN", () => {
   // お金が動いていない（n_settled 0）数えた失敗 3 回・配達 0 → WARN（旧規則は BLOCK）
   assert.equal(decidePayer(withL1({ n_attempts: 3 }), nc(0, 0, 0)).recommendation, "WARN");
   assert.equal(decidePayer(withL1({ n_attempts: 3 })).recommendation, "WARN", "no l1NotCounted");
-  // settled の未配達が 2 回（下限）→ BLOCK
-  assert.equal(decidePayer(withL1({ n_attempts: 3, n_settled: 2 })).recommendation, "BLOCK");
+  // settled の未配達が 2 回（下限）でも、facts だけでは売り手の側（確定）と示せない → WARN（2026-09-29.4）
+  assert.equal(decidePayer(withL1({ n_attempts: 3, n_settled: 2 })).recommendation, "WARN");
   assert.equal(decidePayer(withL1({ n_attempts: 3, n_settled: 1 })).recommendation, "WARN");
   // 3 回とも課金なし → BLOCK にしない（WARN・l1_inconclusive・理由コードに明記）
   const noCharge = decidePayer(withL1({ n_attempts: 3 }), nc(0, 0, 3));
@@ -296,8 +296,8 @@ test("8: 境界（2026-09-29.3）— 数えた失敗が何回でも、お金が�
   // 渡さなければ n_inconclusive で読む
   assert.equal(conclusiveAttempts(withL1({ n_attempts: 5, n_inconclusive: 2 })), 3);
   assert.equal(decidePayer(withL1({ n_attempts: 5, n_inconclusive: 2 })).recommendation, "WARN");
-  // settled 4・保留 2 → 保留が全部 settled でも未配達は 2 回残る → BLOCK
-  assert.equal(decidePayer(withL1({ n_attempts: 5, n_settled: 4, n_inconclusive: 2 })).recommendation, "BLOCK");
+  // settled 4・保留 2 → 保留が全部 settled でも未配達は 2 回残る。facts だけでは誰の側か分からない → WARN（2026-09-29.4）
+  assert.equal(decidePayer(withL1({ n_attempts: 5, n_settled: 4, n_inconclusive: 2 })).recommendation, "WARN");
   // 除く数が n_inconclusive より小さく来ても、保留は必ず除く
   assert.equal(conclusiveAttempts(withL1({ n_attempts: 5, n_inconclusive: 3 }), nc(1, 0, 0).l1NotCounted), 2);
   // 配達があれば除いた理由は載せない（判定に効いていない）
@@ -336,7 +336,8 @@ const judge = (purchases: PurchaseInput[], extra: { method?: string; declaredSch
   const input = inputOf(purchases, extra);
   const facts = assembleSellerFacts(input);
   const notCounted = l1NotCountedOf(input);
-  return { facts, notCounted, decision: decidePayer(facts, { l1NotCounted: notCounted }) };
+  // 本番（decide.ts）と同じく並び（l1TimelineOf）も渡す。
+  return { facts, notCounted, decision: decidePayer(facts, { l1NotCounted: notCounted, l1Timeline: l1TimelineOf(input) }) };
 };
 
 test("8: stableenrich の people-search 型（L1 3 回とも「レシート無しの 200・着金なし」）は BLOCK にしない", () => {
@@ -356,24 +357,26 @@ test("8: stableenrich の people-search 型（L1 3 回とも「レシート無�
   );
 });
 
-test("8: 売り手の失敗（払った要求への 5xx・署名した支払いへの 402）: お金が動いていなければ数えて WARN、settled なら BLOCK（2026-09-29.3）", () => {
+test("8: 売り手の失敗（払った要求への 5xx・署名した支払いへの 402）: 誰の側か示せなければ WARN（2026-09-29.4）", () => {
+  // 2026-09-29.4: 分類（classifySellerRow）が not sorted に置く行（ここは署名した条件の記録が無い）は数えない → WARN
   const five = judge([1, 2, 3].map((i) => P({ attemptedAt: `2026-09-2${i}T00:00:00Z`, httpStatusPaid: 500 })));
-  assert.equal(five.notCounted.total, 0);
+  assert.equal(five.notCounted.by.unproven, 3);
   assert.equal(five.decision.recommendation, "WARN");
-  assert.ok(five.decision.reason_codes.includes("l1_never_delivered"));
+  assert.ok(five.decision.reason_codes.includes("l1_inconclusive"));
   const refused = judge([1, 2, 3].map((i) => P({ attemptedAt: `2026-09-2${i}T00:00:00Z`, httpStatusPaid: 402 })));
   assert.equal(refused.decision.recommendation, "WARN");
   const refuted = judge([1, 2, 3].map((i) => P({ attemptedAt: `2026-09-2${i}T00:00:00Z`, status: "settle_claim_refuted", httpStatusPaid: 200, txHash: TX })));
   assert.equal(refuted.decision.recommendation, "WARN", "照合で反証された主張はお金が動いていない");
   const paid500 = judge([1, 2].map((i) => P({ attemptedAt: `2026-09-2${i}T00:00:00Z`, status: "settled", httpStatusPaid: 500, payloadNonEmpty: false, txHash: TX })));
-  assert.equal(paid500.decision.recommendation, "BLOCK");
+  // お金が動いた未配達でも、売り手の側（確定）でなければ WARN（2026-09-29.4）
+  assert.equal(paid500.decision.recommendation, "WARN");
   assert.ok(paid500.decision.reason_codes.includes("l1_paid_not_delivered"));
   // 課金なし 2 回 + 失敗 3 回（お金は動いていない）→ WARN
   const mixed = judge([
     ...[1, 2].map((i) => P({ attemptedAt: `2026-09-1${i}T00:00:00Z`, status: "delivered_no_receipt", httpStatusPaid: 200, payloadNonEmpty: true })),
     ...[1, 2, 3].map((i) => P({ attemptedAt: `2026-09-2${i}T00:00:00Z`, httpStatusPaid: 503 })),
   ]);
-  assert.equal(mixed.notCounted.total, 2);
+  assert.equal(mixed.notCounted.total, 5);
   assert.equal(mixed.decision.recommendation, "WARN");
   // 課金なし 2 回 + 本物の失敗 2 回 → 結論 2 → WARN
   const mixed2 = judge([
@@ -397,31 +400,27 @@ test("8: vet402 の側（宣言の本文を送る前の 400・資金切れの 40
   const unfunded = judge(["2026-09-13T01:00:00Z", "2026-09-14T01:00:00Z", "2026-09-15T01:00:00Z"].map((at) => P({ attemptedAt: at, httpStatusPaid: 402 })));
   assert.equal(unfunded.decision.recommendation, "WARN");
   const pending = judge([1, 2, 3].map((i) => P({ attemptedAt: `2026-09-2${i}T00:00:00Z`, status: "settle_claimed", httpStatusPaid: 200, txHash: TX })));
-  assert.deepEqual(pending.notCounted.by, { vet402_side: 0, held: 3, no_charge: 0, unproven: 0, unconfirmed: 0, settlement_unknown: 0 });
+  // 2026-09-29.4: 照合待ちで中身の記録が無い行は「お金が動いたか未確定」（WARN）。
+  assert.deepEqual(pending.notCounted.by, { vet402_side: 0, held: 0, no_charge: 0, unproven: 0, unconfirmed: 0, settlement_unknown: 3 });
   assert.equal(pending.decision.recommendation, "WARN");
   // 署名していない行（over_cap 等）は数にも除外にも入らない
   const unsigned = judge([1, 2, 3].map((i) => P({ attemptedAt: `2026-09-2${i}T00:00:00Z`, status: "over_cap" })));
   assert.deepEqual(unsigned.notCounted, { total: 0, by: { vet402_side: 0, held: 0, no_charge: 0, unproven: 0, unconfirmed: 0, settlement_unknown: 0 } });
 });
 
-test("8: 判定の除外は /sellers の分類と同じ（署名した行の全組み合わせで、seller の側・未分類だけが数えられる）", () => {
+test("8: 判定の除外は /sellers の分類と同じ（2026-09-29.4: 同じ classifySellerRow・数えるのは届いた行と売り手の側（確定）だけ）", () => {
   const statuses = ["settled", "settle_failed", "delivered_no_receipt", "settle_claimed", "settle_claim_refuted", "settle_claimed_unverifiable"];
   for (const status of statuses)
-    for (const http of [null, 200, 400, 401, 402, 404, 415, 422, 429, 500])
+    for (const http of [null, 200, 202, 400, 401, 402, 404, 415, 422, 429, 500])
       for (const at of ["2026-09-10T00:00:00Z", "2026-09-14T00:00:00Z", "2026-09-25T00:00:00Z"])
         for (const tx of [null, TX]) {
           const p = P({ status, httpStatusPaid: http, attemptedAt: at, txHash: tx });
           const endpoint = { method: "POST", declaredSchema: null, declaredInput: { query: "declared", body: "declared" } };
+          const v = rowViewOf(p, endpoint);
           const c = classifyRow(row({ status, httpStatusPaid: http, attemptedAt: at, txHash: tx, method: "POST", declaredInput: endpoint.declaredInput }));
-          const counted = notCountedReasonOf(p, endpoint) === null;
-          // 2026-09-29 独立レビュー: 判定は払う側に慎重。中身の届いていない「課金なし」の 2xx は /sellers では
-          // 未分類（売り手に不利にしない）だが、判定では数える（tx 無しは課金なしの証明ではない）。
-          // 2026-09-29 第2巡: /sellers で「vet402 に落ち度が無いと示せない」not sorted は、判定では数える（BLOCK を緩めない）。
-          const unproven = ["other", "funds_unproven", "input_not_sent", "input_unrecorded", "stopped_waiting", "refused_changed_request"];
-          const sellerOrOther =
-            c.bucket === "seller" || unproven.includes(c.mode?.key ?? "") || c.bucket === "delivered" ||
-            (c.mode?.key === "answered_no_charge" && p.payloadNonEmpty !== true);
-          assert.equal(counted, sellerOrOther, `${status} ${http} ${at} ${tx ? "tx" : "-"}: ${c.bucket}/${c.mode?.key}`);
+          const counted = notCountedReasonOf(v, p) === null;
+          assert.equal(counted, v.bucket === "seller" || v.delivered, `${status} ${http} ${at} ${tx ? "tx" : "-"}: ${v.bucket}/${v.modeKey}`);
+          void c;
         }
 });
 
@@ -431,15 +430,17 @@ test("8: 2026-09-29 独立レビュー（BLOCK）: 空の 200・レシート無�
   );
   const { notCounted, decision } = judge(rows);
   assert.equal(notCounted.by.no_charge, 0);
-  // 数える（外さない）。お金が動いていないので単独では WARN（2026-09-29.3）。
+  // 課金なしとして外さない: お金が動いたか未確定（2026-09-29.3 独立レビュー 警告 2・2026-09-29.4 で分類を 1 本にした）。WARN。
+  assert.equal(notCounted.by.settlement_unknown, 3);
   assert.equal(decision.recommendation, "WARN");
-  assert.ok(decision.reason_codes.includes("l1_never_delivered"));
+  assert.ok(decision.reason_codes.includes("l1_empty_2xx_settlement_unknown"));
 });
 
 test("8: 2026-09-29 独立レビュー（WARN）: 残高不足（payer_short）の期間の空の 200 は判定で数える（除外を広げない）", () => {
   const base = { method: "POST", declaredSchema: null, declaredInput: { query: "empty", body: "empty" } };
   const empty200 = P({ attemptedAt: "2026-09-12T18:02:18Z", status: "settle_failed", httpStatusPaid: 200, payloadNonEmpty: false, amountUnits: "1000000", payer: "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670", payTo: `0x${"11".repeat(20)}`, asset: BASE_USDC_ADDRESS } as Partial<PurchaseInput>);
-  assert.equal(notCountedReasonOf(empty200, base), null);
+  assert.equal(notCountedReasonOf(rowViewOf(empty200, base), empty200), "settlement_unknown");
   // 同じ行が 502 なら残高不足は vet402 の側として除く（本当に payer_short の経路を通っていることの確認）
-  assert.equal(notCountedReasonOf({ ...empty200, httpStatusPaid: 502 }, base), "vet402_side");
+  const e502 = { ...empty200, httpStatusPaid: 502 };
+  assert.equal(notCountedReasonOf(rowViewOf(e502, base), e502), "vet402_side");
 });

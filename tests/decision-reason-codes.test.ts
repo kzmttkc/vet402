@@ -19,7 +19,7 @@ import {
   l2EvidenceOf,
   l2ContentTypeOf,
   notCountedReasonOf,
-  unpaidNotCountedReasonOf,
+  rowViewOf,
   type PurchaseInput,
   type SellerFactsInput,
   type SellerRowView,
@@ -47,13 +47,20 @@ const row = (d: number, over: Partial<PurchaseInput>): PurchaseInput => ({
   requestMeta: { requestBody: "none" },
   ...over,
 });
-const UNPROVEN: SellerRowView = { bucket: "unsorted", modeKey: "funds_unproven", confirmedSeller: false };
-const ONCE: SellerRowView = { bucket: "unsorted", modeKey: "server_error_paid_once", confirmedSeller: false };
-const CONFIRMED: SellerRowView = { bucket: "seller", modeKey: "server_error_paid", confirmedSeller: true };
+const view = (bucket: SellerRowView["bucket"], modeKey: string | null, money: SellerRowView["money"] = "unknown"): SellerRowView => ({
+  bucket,
+  modeKey,
+  held: null,
+  money,
+  delivered: false,
+});
+const UNPROVEN = view("unsorted", "funds_unproven");
+const ONCE = view("unsorted", "server_error_paid_once");
+const CONFIRMED = view("seller", "server_error_paid");
 /** weather.cyberwarex.com 型: settle_failed・502・tx なし（お金が動いていない）。 */
 const unpaid502 = (d: number, view: SellerRowView | null) => row(d, { status: "settle_failed", httpStatusPaid: 502, txHash: null, sellerView: view });
 /** cnvrt.ing 型: settled・500（お金が動いた未配達）。/sellers の分類が unproven でも数える。 */
-const paid500 = (d: number, view: SellerRowView | null = UNPROVEN) => row(d, { httpStatusPaid: 500, sellerView: view });
+const paid500 = (d: number, v: SellerRowView | null = { ...UNPROVEN, money: "moved" }) => row(d, { httpStatusPaid: 500, sellerView: v });
 
 function inputOf(purchases: PurchaseInput[], declaredSchema: unknown = null): SellerFactsInput {
   const sorted = [...purchases].sort((a, b) => (a.attemptedAt < b.attemptedAt ? 1 : -1));
@@ -71,11 +78,11 @@ function inputOf(purchases: PurchaseInput[], declaredSchema: unknown = null): Se
 function run(purchases: PurchaseInput[], declaredSchema: unknown = null) {
   const input = inputOf(purchases, declaredSchema);
   const facts = assembleSellerFacts(input);
-  const options: PayerOptions = { l1NotCounted: l1NotCountedOf(input), l1Timeline: l1TimelineOf(input), now: NOW };
+  const options: PayerOptions = { l1NotCounted: l1NotCountedOf(input, NOW.getTime()), l1Timeline: l1TimelineOf(input, NOW.getTime()), now: NOW };
   return { input, facts, d: decidePayer(facts, options) };
 }
 
-test("版: 2026-09-29.3", () => assert.equal(DECISION_RULES_VERSION, "2026-09-29.3"));
+test("版: 2026-09-29.4", () => assert.equal(DECISION_RULES_VERSION, "2026-09-29.4"));
 
 // ------------------------------------------------------------------
 // 1. お金が動いていない失敗
@@ -86,7 +93,7 @@ test("weather.cyberwarex.com 型: お金の動いていない 502 ×3（/sellers
   assert.ok(d.reason_codes.includes("l1_inconclusive"), d.reason_codes.join(","));
   assert.ok(d.reason_codes.includes("l1_not_counted_unproven"));
   assert.ok(!d.reason_codes.includes("l1_never_delivered"));
-  assert.deepEqual(l1NotCountedOf(input).by, { vet402_side: 0, held: 0, no_charge: 0, unproven: 3, unconfirmed: 0, settlement_unknown: 0 });
+  assert.deepEqual(l1NotCountedOf(input, NOW.getTime()).by, { vet402_side: 0, held: 0, no_charge: 0, unproven: 3, unconfirmed: 0, settlement_unknown: 0 });
 });
 
 test("お金の動いていない失敗が /sellers で売り手の側（確定）でも、単独では BLOCK にしない（WARN・l1_never_delivered）", () => {
@@ -103,16 +110,20 @@ test("売り手の側だが 1 日だけ（once）は数えない → l1_not_coun
   assert.ok(d.reason_codes.includes("l1_inconclusive"));
 });
 
-test("分類が読めない（sellerView なし）お金の動いていない失敗は数える側に倒すが、WARN まで", () => {
+test("分類が読めない（sellerView なし）行は同じ分類関数を行の事実に当てる: 条件の記録が無ければ not sorted（WARN まで）", () => {
   const { d } = run([unpaid502(2, null), unpaid502(9, null), unpaid502(17, null)]);
   assert.equal(d.recommendation, "WARN");
-  assert.ok(d.reason_codes.includes("l1_never_delivered"));
+  assert.ok(d.reason_codes.includes("l1_inconclusive"));
+  assert.ok(d.reason_codes.includes("l1_not_counted_unproven"));
 });
 
-test("cnvrt.ing 型: お金が動いた未配達 2 回は /sellers の分類が unproven でも BLOCK のまま", () => {
+test("2026-09-29.4 cnvrt.ing 型: お金が動いた未配達 2 回でも /sellers の分類が unproven なら WARN（売り手の側（確定）だけ BLOCK）", () => {
   const { d } = run([paid500(13), paid500(28)]);
-  assert.equal(d.recommendation, "BLOCK");
+  assert.equal(d.recommendation, "WARN");
   assert.ok(d.reason_codes.includes("l1_paid_not_delivered"));
+  assert.ok(d.reason_codes.includes("l1_not_counted_unproven"));
+  const confirmed = run([paid500(13, { ...CONFIRMED, money: "moved" }), paid500(28, { ...CONFIRMED, money: "moved" })]).d;
+  assert.equal(confirmed.recommendation, "BLOCK");
 });
 
 test("配達の後にお金の動いていない失敗（unproven）が最新でも l1_latest_failed にしない（数えない）", () => {
@@ -124,17 +135,21 @@ test("配達の後にお金の動いていない失敗（unproven）が最新で
   assert.ok(confirmed.reason_codes.includes("l1_latest_failed"));
 });
 
-test("unpaidNotCountedReasonOf: /sellers の分類 → 判定の除外理由", () => {
-  assert.equal(unpaidNotCountedReasonOf(null), null);
-  assert.equal(unpaidNotCountedReasonOf(CONFIRMED), null);
-  assert.equal(unpaidNotCountedReasonOf(ONCE), "unconfirmed");
-  assert.equal(unpaidNotCountedReasonOf(UNPROVEN), "unproven");
-  assert.equal(unpaidNotCountedReasonOf({ bucket: "unsorted", modeKey: "stopped_waiting", confirmedSeller: false }), "unproven");
-  assert.equal(unpaidNotCountedReasonOf({ bucket: "unsorted", modeKey: "other", confirmedSeller: false }), "unproven");
-  assert.equal(unpaidNotCountedReasonOf({ bucket: "vet402", modeKey: "payer_unfunded", confirmedSeller: false }), "vet402_side");
-  assert.equal(unpaidNotCountedReasonOf({ bucket: "pending", modeKey: null, confirmedSeller: false }), "held");
-  // お金が動いた行には当てない（paid の扱いは変えない）
-  assert.equal(notCountedReasonOf(paid500(1, UNPROVEN), { method: "GET", declaredSchema: null }), null);
+test("notCountedReasonOf: 分類（classifySellerRow の結果）→ 判定の除外理由。「数える」＝届いた・売り手の側（確定）", () => {
+  const p = unpaid502(1, null);
+  assert.equal(notCountedReasonOf(CONFIRMED, p), null);
+  assert.equal(notCountedReasonOf({ ...CONFIRMED, bucket: "delivered", modeKey: null, delivered: true, money: "moved" }, p), null);
+  assert.equal(notCountedReasonOf(ONCE, p), "unconfirmed");
+  assert.equal(notCountedReasonOf(UNPROVEN, p), "unproven");
+  assert.equal(notCountedReasonOf(view("unsorted", "stopped_waiting"), p), "unproven");
+  assert.equal(notCountedReasonOf(view("unsorted", "other"), p), "unproven");
+  assert.equal(notCountedReasonOf(view("vet402", "payer_unfunded"), p), "vet402_side");
+  assert.equal(notCountedReasonOf(view("pending", null), p), "settlement_unknown");
+  assert.equal(notCountedReasonOf(view("unsorted", "refused_no_charge"), p), "no_charge");
+  assert.equal(notCountedReasonOf({ ...view("unsorted", "settled_then_rejected", "moved"), held: "settled_4xx" }, p), "held");
+  // お金が動いた not sorted の行も数えない（l1_paid_not_delivered で WARN にする）
+  assert.equal(notCountedReasonOf({ ...UNPROVEN, money: "moved" }, paid500(1)), "unproven");
+  assert.equal(rowViewOf(paid500(1), { method: "GET", declaredSchema: null }).money, "moved");
 });
 
 // ------------------------------------------------------------------
@@ -195,14 +210,16 @@ const SCHEMA_TWO = { properties: { output: { properties: { example: { required: 
 const legacyRow = (missing: string[], bodyHead: string) =>
   row(1, { l2Schema: "mismatch", l2Detail: { missing, declarationHash: "d", responseHash: "r" }, bodyHead, contentType: "application/json" });
 
-test("古い行: 500 文字を超える JSON の頭で全キー欠落 → BLOCK にしない（L2 は undeclared と同じ扱い）", () => {
+test("古い行: 500 文字を超える JSON の頭で全キー欠落 → BLOCK にしない（2026-09-29.4 から L2 は not_checked・WARN。undeclared と書かない）", () => {
   assert.equal(LONG_HEAD.length, 500);
   assert.ok(LONG_HEAD.includes('"count"'), "欠けたはずのキーが先頭に見えている（本番の 34 出品の形）");
   const { d, facts } = run([legacyRow(["count", "assets"], LONG_HEAD)], SCHEMA_TWO);
-  assert.equal(facts.l2.status, "undeclared");
+  assert.equal(facts.l2.status, "not_checked");
   assert.equal(facts.l2.missing_keys, null);
-  assert.equal(d.recommendation, "ALLOW");
+  assert.equal(d.recommendation, "WARN");
+  assert.ok(d.reason_codes.includes("l2_not_checked"));
   assert.ok(!d.reason_codes.includes("l2_mismatch"));
+  assert.ok(!d.reason_codes.includes("l2_undeclared"), "宣言があるのに undeclared と書かない");
 });
 
 test("古い行: 欠けたキーが頭の最上位に見えない・本文の全部が手元にあって読めた行は、従来どおり BLOCK", () => {
@@ -299,6 +316,7 @@ test("rules.ts（payer）が出しうる語は全部、表にある", () => {
     { ...SELLER_BASE.l2, status: "conform" },
     { ...SELLER_BASE.l2, status: "mismatch", missing_keys: [] },
     { ...SELLER_BASE.l2, status: "mismatch", missing_keys: ["a"] },
+    { ...SELLER_BASE.l2, status: "not_checked" },
   ];
   const nc = [undefined, { total: 3, by: { vet402_side: 1, held: 1, no_charge: 1, unproven: 1, unconfirmed: 1, settlement_unknown: 1 } }];
   for (const l0 of l0s)
@@ -308,9 +326,9 @@ test("rules.ts（payer）が出しうる語は全部、表にある", () => {
           for (const notCounted of nc)
             for (const extra of [
               {},
-              { l0SingleFailContext: null },
               { allowWithoutL1: true, operatorBlacklist: true, dataDepth: "thin" as const, callerDialect: "v1" as const },
               { l1Timeline: { n_counted: 2, n_paid_undelivered: 1, n_paid_undelivered_since_delivery: 1, latest_counted: { at: daysAgo(1), delivered: false }, last_delivered_at: daysAgo(40), last_signed_attempt_at: daysAgo(40) } },
+              { l1Timeline: { n_counted: 2, n_paid_undelivered: 2, n_paid_undelivered_since_delivery: 2, n_paid_undelivered_seller_side_since_delivery: 2, latest_counted: { at: daysAgo(1), delivered: false }, last_delivered_at: null, last_signed_attempt_at: daysAgo(1) } },
             ]) {
               const f: SellerFacts = {
                 ...SELLER_BASE,
@@ -322,7 +340,6 @@ test("rules.ts（payer）が出しうる語は全部、表にある", () => {
               };
               const d = decidePayer(f, {
                 l0UnverifiedCause: cause,
-                l0SingleFailContext: { listing_active: true, latest_probe_at: daysAgo(0.1), previous_verdict: "pass" },
                 l1NotCounted: notCounted,
                 now: NOW,
                 ...extra,

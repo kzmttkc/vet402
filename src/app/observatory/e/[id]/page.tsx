@@ -521,7 +521,9 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                           {p.amountUnits
                             ? `${p.amountUnits} units${usd(p.amountUnits) ? ` (≈ ${usd(p.amountUnits)} USDC)` : ""}`
                             : "amount —"}
-                          {" · "}L2 {p.l2Schema ?? "—"}
+                          {/* 2026-09-29 監査 7 周目: 判定・export.csv の l2_reading と同じ読み直しの値。記録した値が違えば添える。 */}
+                          {" · "}L2 {p.l2Reading ?? p.l2Schema ?? "—"}
+                          {p.l2Reading && p.l2Schema && p.l2Reading !== p.l2Schema ? ` (recorded ${p.l2Schema})` : ""}
                           {/* 2026-09-29 第4巡: 売り手頁と同じ語で「どちらの側か」。 */}
                           {shownSides[i] && (
                             <span className="block font-[family-name:var(--font-sans)] text-[0.8125rem] text-brand-ink">
@@ -659,7 +661,7 @@ function RecordTerms({
   purchases,
   held,
 }: {
-  purchases: readonly { status: string; settledTier?: string | null; l2Schema: string | null }[];
+  purchases: readonly { status: string; settledTier?: string | null; l2Schema: string | null; l2Reading?: string | null }[];
   held: readonly (string | null)[];
 }) {
   const items: { term: string; gloss: string }[] = [];
@@ -675,7 +677,10 @@ function RecordTerms({
     else add(p.status, STATUS_GLOSS[p.status]);
   }
   for (const h of held) if (h) add(h, (HELD_GLOSS as Readonly<Record<string, string>>)[h] ? `held_reason in the export: ${(HELD_GLOSS as Readonly<Record<string, string>>)[h]}` : undefined);
-  for (const p of purchases) if (p.l2Schema) add(`L2 ${p.l2Schema}`, L2_GLOSS[p.l2Schema]);
+  for (const p of purchases) {
+    const l2 = p.l2Reading ?? p.l2Schema;
+    if (l2) add(`L2 ${l2}`, L2_GLOSS[l2]);
+  }
   if (items.length === 0) return null;
   return (
     <div className="mt-4 text-[0.8125rem]">

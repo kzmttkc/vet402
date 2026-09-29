@@ -242,3 +242,35 @@ export function legacyL2SchemaOf(input: {
   if (missing.some((k) => top.has(k))) return { l2Schema: "not_checked", missing: null, reason: "legacy_body_cut" };
   return keep;
 }
+
+/**
+ * 2026-09-29 監査 7 周目: 1 行の L2 の「読み直した値」（記録頁・export.csv の l2_reading・判定の facts.l2 が同じ関数を通す）。
+ * 台帳の l2_schema は変えない（互換）。読み直しの材料は raw_response_meta の l2（reason・missing）・bodyHead（mismatch の行だけ）・
+ * contentType と、出品の今の宣言。SQL は l2ReadingColumnsSql が同じ材料を取り出す。
+ */
+export function l2ReadingOf(
+  row: { l2Schema: string | null; l2Detail?: unknown; bodyHead?: string | null; contentType?: string | null },
+  declaredSchema: unknown,
+): string | null {
+  const d = row.l2Detail && typeof row.l2Detail === "object" ? (row.l2Detail as Record<string, unknown>) : null;
+  const missing = d && Array.isArray(d.missing) ? d.missing.filter((k): k is string => typeof k === "string") : null;
+  return legacyL2SchemaOf({
+    l2Schema: row.l2Schema,
+    l2Reason: d && typeof d.reason === "string" ? d.reason : null,
+    missing,
+    bodyHead: row.bodyHead ?? null,
+    contentType: row.contentType ?? null,
+    declaredSchema,
+  }).l2Schema;
+}
+
+/** l2ReadingOf の材料を取り出す SQL の列（alias は購入行の表の別名）。本文の先頭は mismatch の行だけ読む。 */
+export function l2ReadingColumnsSql(alias: string): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(alias)) throw new Error(`l2ReadingColumnsSql: bad alias ${JSON.stringify(alias)}`);
+  const m = `${alias}.raw_response_meta`;
+  return [
+    `CASE WHEN jsonb_typeof(${m}) = 'object' THEN ${m}->'l2' END AS l2_detail`,
+    `CASE WHEN ${alias}.l2_schema = 'mismatch' AND jsonb_typeof(${m}) = 'object' THEN left(${m}->>'bodyHead', 500) END AS l2_body_head`,
+    `CASE WHEN jsonb_typeof(${m}) = 'object' THEN left(${m}->>'contentType', 60) END AS l2_content_type`,
+  ].join(", ");
+}

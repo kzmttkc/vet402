@@ -118,6 +118,9 @@ if (!TEST_DB) {
       settledCount: 3,
       cooldown: false,
       latestL0Verdict: "fail",
+      // 2026-09-29 監査 7 周目: 購入していない出品にも L0 の最新と次のプローブの目安を出す材料
+      latestL0At: "2026-09-26T00:00:00Z",
+      latestL0Reason: null,
     });
     assert.equal(nb(inSchema)?.cooldown, true);
     assert.equal(nb(inAccepts)?.cooldown, false, "署名後の行が 1 件だけなら冷却しない");

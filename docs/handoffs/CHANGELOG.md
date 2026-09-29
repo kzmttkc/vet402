@@ -13,6 +13,10 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-29 — decision rules 2026-09-29.4: one row classifier for every surface (audit r7)
+- **何を**: 判定・/sellers・export.csv・記録頁・MCP・docs・llms.txt が同じ分類（お金が動いたか・届いたか・誰の側か）と同じ規則文（`src/lib/decision/rules-text.ts`、MCP へは `scripts/gen-rules-text.ts` で生成・`tests/rules-text-canon.test.ts` で一致を固定）を読む。L0 unverified（未プローブ・path_template）は WARN、BLOCK は l0_fail と売り手の側（確定）の払ったのに届かない ≥2 だけ。202 は配達に数えない。L2 は 2xx で判定し、宣言があって照合できない行は not_checked＝WARN。署名した失敗の行は 90 分のあいだ未確定。export.csv の末尾に `l2_reading`（判定と同じ L2 の読み直し）。売り手頁は購入していない出品にも判定を出す。
+- **なぜ**: 7 周目の監査で、未プローブ 868 件の BLOCK・判定と /sellers の食い違い（cnvrt.ing 等）・L2 の素通り（201/202・上限超え）が見つかった。面ごとに規則を書いていたのが原因。面のずれは surface canary（毎日）が見張る。
+
 ## 2026-09-29 JST（9）— 面の間のずれを毎日突き合わせる計器（surface-consistency canary・ブランチ `feat/surface-consistency-canary`・未 push）
 
 - **何を**: `scripts/surface-consistency-canary.ts`（本体は `src/lib/surface-canary/`・`npx tsx scripts/surface-consistency-canary.ts [--out report.json]`）と `.github/workflows/surface-canary.yml`（毎日 03:15 UTC・手動実行可）。本番の公開 export（/sellers の区分・L1 台帳・L0）から出品を 40〜60 件選び（型ごと: L1 の失敗・L2 mismatch・L2 not_checked・未プローブ・path_template・delivered・l0_fail・not_bought・pending。足りない ALLOW/WARN/BLOCK は足す。seed は UTC の日付）、1 件ごとに `/api/v1/resources/{id}/decision`・MCP の `check_resource_decision` と同じ呼び出し（`packages/mcp-server` の `resourceDecision` をそのまま使う: url → /resolve → /decision）・`/api/v1/sellers/export.csv` の行・`/sellers/{host}` の出品の塊・`/observatory/e/{id}`・`/api/v1/observatory/export.csv` の行・`/api/v1/observatory/l0/export.csv` の行を取り、判定・理由コード・誰の側か・お金が動いたか・数えた失敗・L0/L2 の状態・規則の版を比べる。理由コードは `/docs/api#reason-codes`・`/openapi.yaml`（enum と x-vet402-patterns）・`/llms.txt`・`/llms-full.txt` とも照らす。**実装（src/lib/decision・src/lib/sellers）は import しない**ので、`fix/r7-decision` の前後どちらでも動く。読み取りのみ・鍵なし・1 秒 1 回以下・/decision は 6.5 秒に 1 回。約 15 分。

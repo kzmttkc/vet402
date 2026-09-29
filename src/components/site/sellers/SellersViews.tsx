@@ -16,9 +16,10 @@ import {
   type SellerSummary,
   type ShownRow,
 } from "@/lib/sellers/board";
-import { EFFORT_LABEL, HELD_GLOSS, sideLabelOf, STATUS_GLOSS } from "@/lib/sellers/fix-modes";
+import { EFFORT_LABEL, HELD_GLOSS, isAnsweredWithNamedTx, LATE_LINK_PENDING_MINUTES, sideLabelOf, STATUS_GLOSS } from "@/lib/sellers/fix-modes";
 import DecisionAnswer, { REASON_CODES_HREF } from "./DecisionAnswer";
-import { nextBuyLine } from "@/lib/sellers/next-buy";
+import { SELLERS_PAGE_DECISION_TEXT } from "@/lib/decision/rules-text";
+import { l0ProbeLine, nextBuyLine } from "@/lib/sellers/next-buy";
 
 /**
  * /sellers・/sellers/[host]・/sellers/fix-first の描画（純粋なコンポーネント・DB を読まない）。
@@ -488,7 +489,9 @@ function pendingLine(r: ShownRow): string {
   const base =
     r.facts.status === "settle_claimed"
       ? "The seller returned a settlement receipt, and vet402 has not confirmed that transaction on-chain yet. Until it is confirmed or refuted, this purchase is neither delivered nor failed."
-      : `The paid request answered HTTP ${r.facts.httpStatusPaid ?? "—"} and the seller named a settlement transaction, although its receipt did not say success. vet402 has not confirmed that transaction on-chain yet. Until it is confirmed or refuted, this purchase is neither delivered nor failed.`;
+      : isAnsweredWithNamedTx(r.facts)
+        ? `The paid request answered HTTP ${r.facts.httpStatusPaid ?? "—"} and the seller named a settlement transaction, although its receipt did not say success. vet402 has not confirmed that transaction on-chain yet. Until it is confirmed or refuted, this purchase is neither delivered nor failed.`
+        : `vet402 signed this payment less than ${LATE_LINK_PENDING_MINUTES} minutes before this read and is still looking for the transfer on-chain (late linking). Until then it is not known whether money moved, and this purchase is neither delivered nor failed.`;
   const reason = r.facts.verifyReason;
   return reason ? `${base} vet402 looked for that transaction on-chain and has not found it yet (${reason}).` : base;
 }
@@ -627,7 +630,7 @@ export function disputeHref(endpointId: string, attemptedAt: string | null): str
 function DisputeLink({ endpointId, attemptedAt }: { endpointId: string; attemptedAt: string | null }) {
   return (
     <Link href={disputeHref(endpointId, attemptedAt)} className={TAP}>
-      Dispute this purchase
+      {attemptedAt ? "Dispute this purchase" : "Dispute this record"}
     </Link>
   );
 }
@@ -744,7 +747,7 @@ function AfterFix({ l, rebuyEligible }: { l: SellerListing; rebuyEligible: boole
       )}
       <span className="flex flex-wrap gap-x-4">
         <NotifyLink endpointId={l.endpointId} />
-        {r && <DisputeLink endpointId={l.endpointId} attemptedAt={r.facts.attemptedAt} />}
+        <DisputeLink endpointId={l.endpointId} attemptedAt={r ? r.facts.attemptedAt : null} />
       </span>
     </div>
   );
@@ -768,6 +771,7 @@ function ListingCard({
 }) {
   const r = l.latest;
   const failed = r && (r.bucket === "seller" || r.bucket === "vet402");
+  const l0Line = l0ProbeLine(l.nextBuyFacts, now);
   return (
     <li className="border-b border-hair py-4" id={`listing-${l.endpointId}`}>
       <Link href={`/observatory/e/${l.endpointId}`} className={`${TAP} font-semibold [overflow-wrap:anywhere]`} title={l.resourceUrl}>
@@ -783,11 +787,13 @@ function ListingCard({
         <dd className="m-0">{r ? <WhoseSide r={r} /> : "—"}</dd>
       </dl>
       {/* 2026-09-29 第6巡: 判定 API の答えはカードの先頭近く（以前は 375px で 2 画面以上下）。 */}
-      {r && l.resourceId && (
+      {/* 2026-09-29 監査 7 周目: 購入していない出品にも判定 API の答えを出す（未プローブ・unverified の BLOCK が見えなかった）。 */}
+      {l.resourceId && (
         <div className="mt-2 text-[0.8125rem]">
-          <DecisionAnswer resourceId={l.resourceId} auto={autoDecision} sellerSide={r.bucket === "seller"} />
+          <DecisionAnswer resourceId={l.resourceId} auto={autoDecision} sellerSide={r?.bucket === "seller"} />
         </div>
       )}
+      {l0Line && <span className="mt-1 block text-[0.8125rem]">{l0Line}</span>}
       <div className="mt-2 space-y-1 text-[0.8125rem]">
         {r ? (
           <>
@@ -898,7 +904,7 @@ export function SellerDetailView({
   const { page: p, totalPages, listings: shown } = sellerListingsOnPage(detail, page);
   const autoIds = new Set(
     shown
-      .filter((l) => l.latest && l.resourceId)
+      .filter((l) => l.resourceId)
       .slice(0, DECISION_AUTO_LISTINGS)
       .map((l) => l.endpointId),
   );
@@ -984,12 +990,8 @@ export function SellerDetailView({
         transaction link opens the settlement on Basescan. &ldquo;Decision API now&rdquo; is what the decision API
         (<code>GET /api/v1/resources/&#123;id&#125;/decision?role=payer</code>, no key) answers for the listing when
         you open this page; your browser asks it for the first {DECISION_AUTO_LISTINGS} listings, and for the others
-        when you ask. Where no money moved, it counts a failure only when this page puts it on the seller&apos;s side,
-        and then only toward a WARN. Where money moved, it is cautious for the payer: a paid attempt that took payment
-        and did not deliver counts even when this page leaves it not sorted, and two of them since the last delivery
-        are the only way a failed purchase makes it BLOCK. So it can say WARN or BLOCK for a listing whose failures
-        this page leaves not sorted. The codes that decided the answer come first, each with one sentence on what it means
-        for that listing (
+        when you ask. {SELLERS_PAGE_DECISION_TEXT} The codes that decided the answer come first, each with the meaning
+        from the reason-code table (
         <Link href={REASON_CODES_HREF} className="underline">
           reason codes
         </Link>

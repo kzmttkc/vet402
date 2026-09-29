@@ -79,6 +79,7 @@ import { registeredDomainOf, registeredDomainSql } from "./registered-domain";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
 import { declaredRequestBody, declaredRequestUrl, type RequestBodySource, type RequestQuerySource } from "./declared-input";
 import { requestBodyRecord } from "./request-body";
+import { isDeliveryHttp } from "./delivery";
 import { createPayerFunds, defaultPayerUsdcBalance, type PayerChain, type PayerFunds, type PayerUsdcBalanceReader } from "./payer-funds";
 import { createHash } from "node:crypto";
 // Tempo の MPP 方言（2026-09-17・mpp-payer.ts）。x402 ではなく WWW-Authenticate: Payment の壁。
@@ -804,7 +805,7 @@ async function reserveSpend(input: {
  * この列は**書き手側の保証**で、読み手（observed-purchases.ts）は導出できず
  * フラグを信じるしかない。だから true にする条件は「品が実際に届いたと
  * 我々が観測した」ことに限る:
- *   - 有料リトライが HTTP 200 を返し、
+ *   - 有料リトライが HTTP 2xx（202 Accepted を除く・delivery.ts isDeliveryHttp）を返し、
  *   - 本文が空でなく（空ボディの200は「届いた」と言えない）、
  *   - 宣言スキーマに対して mismatch でない（宣言があるのに違う形の応答は、
  *     配送の確認になっていない。宣言が無い no_declaration は減点しない）。
@@ -818,7 +819,7 @@ export function isDeliveryVerified(input: {
   payloadNonEmpty: boolean;
   l2Schema: string;
 }): boolean {
-  return input.httpStatusPaid === 200 && input.payloadNonEmpty && input.l2Schema !== "mismatch";
+  return isDeliveryHttp(input.httpStatusPaid) && input.payloadNonEmpty && input.l2Schema !== "mismatch";
 }
 
 /**
@@ -2707,7 +2708,9 @@ async function purchaseOne(input: {
     paidBody = paidBodyRead.body;
     let l2Schema: string = "not_checked";
     let l2Detail: L2Detail | null = null;
-    if (paid && paid.status === 200) {
+    // 2026-09-29 監査 7 周目（高 1）: 判定する条件は配達と同じ（delivery.ts isDeliveryHttp: 2xx・202 を除く）。以前は 200 だけで、
+    // 201 等の配達は not_checked のまま判定の L2 を素通りしていた。
+    if (paid && isDeliveryHttp(paid.status)) {
       const d = checkL2Detailed(candidate.declaredSchema, paidBody, contentType, paidBodyRead.incomplete);
       l2Schema = d.status;
       l2Detail = { missing: d.missing, declarationHash: d.declarationHash, responseHash: d.responseHash, reason: d.reason };

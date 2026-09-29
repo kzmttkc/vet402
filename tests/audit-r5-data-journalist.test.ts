@@ -110,8 +110,9 @@ test("settlement_path: 他の経路と、settlement_backfill 以外の行", () =
   }
 });
 
-test("export: purchase_id を末尾に足した（既存の列は動かない）", () => {
-  assert.equal(EXPORT_CSV_COLUMNS[EXPORT_CSV_COLUMNS.length - 1], "purchase_id");
+test("export: purchase_id の後ろに l2_reading を足した（既存の列は動かない）", () => {
+  assert.equal(EXPORT_CSV_COLUMNS[EXPORT_CSV_COLUMNS.length - 2], "purchase_id");
+  assert.equal(EXPORT_CSV_COLUMNS[EXPORT_CSV_COLUMNS.length - 1], "l2_reading");
   assert.equal(EXPORT_CSV_COLUMNS[0], "attempted_at");
   const route = read("src/app/api/v1/observatory/export.csv/route.ts");
   assert.match(route, /pu\.id::text AS purchase_id/);

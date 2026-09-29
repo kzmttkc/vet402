@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { DECISION_RULES_TEXT } from "./rules-text.generated.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -221,22 +222,8 @@ async function main() {
         "refuse_reasons [invalid_input] and the error names the fix; it is not an outage.",
         "measurement carries the full decision body: facts (L0 liveness, L1 settle-through, L2 conformance),",
         "reason_codes, freshness, evidence, and the rules_version that produced the recommendation.",
-        "The L1 reason codes name whose gap it is: l1_not_attempted (vet402 signed no paid attempt),",
-        "l1_inconclusive (signed paid attempts exist, but each one is held: a 4xx vet402 attributes to its",
-        "own request shape, or a 402 or 5xx while vet402's own payer wallet was unfunded - a gap in vet402's measurement,",
-        "not evidence against the seller; facts.l1.n_inconclusive",
-        "carries the count and those rows do not count toward a BLOCK), l1_never_delivered (a counted",
-        "paid attempt existed and nothing was delivered: a WARN), l1_delivered.",
-        "Under rules 2026-09-29.3 the only L1 reason for a BLOCK is l1_paid_not_delivered with two or more",
-        "attempts since the last delivery that took payment (settled on-chain) and did not deliver. A failure",
-        "where no money moved counts only when /sellers puts it on the seller's side (two different UTC days),",
-        "and then only toward a WARN; otherwise it is left out as l1_not_counted_unproven or",
-        "l1_not_counted_unconfirmed (next to l1_not_counted_vet402_side, _held and _no_charge).",
-        "L2: l2_mismatch with facts.l2.missing_keys is a BLOCK; without recorded missing keys it adds",
-        "l2_mismatch_unexplained and is a WARN (a complete body that is not valid JSON is one). A body vet402",
-        "could not read to the end (over 256 KiB, or cut off after some bytes arrived) is not checked rather than",
-        "a mismatch; an older row cut at 16,000 bytes is not counted when a key recorded as missing shows at the",
-        "top level of the stored start of the body.",
+        // 2026-09-29 監査 7 周目: 規則の文は正典（src/lib/decision/rules-text.ts）から生成した 1 文（手で書かない）。
+        DECISION_RULES_TEXT,
         "",
         "Each row of evidence[] names its own source: vet402 for a row from vet402's own L0-L2 record,",
         "subgraph for a row read from The Graph's x402 subgraph with the caller's own Graph key (that row",
