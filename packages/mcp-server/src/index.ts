@@ -7,8 +7,8 @@ import { sanitizeToolError } from "./tool-errors.js";
 import { payIfTrusted, type PayIfTrustedSigner } from "./pay-if-trusted.js";
 import { payerConfiguredFor, resolveSvmPayer, UNCONFIGURED_SVM_SIGNER } from "./payer.js";
 import { resolveMaxPerTxUsd, ceilingNotes, MAX_PER_TX_USD_ENV, DEFAULT_MAX_PER_TX_USD } from "./ceiling.js";
-import { decideFromScore, decideFromFailure, type TrustDecision } from "./decision.js";
-import { resourceDecision } from "./resource-decision.js";
+import { decideFromScore, decideFromFailure, refusalReasonCodes, type TrustDecision } from "./decision.js";
+import { resourceDecision, verifiedTermsNote } from "./resource-decision.js";
 import {
   attestX402Payment,
   fetchAgentScore,
@@ -257,6 +257,9 @@ server.tool(
     "refuse_reasons [resource_uncatalogued], plus up to 5 catalogued endpoints on the same host.",
     "Decide on decision (ALLOW_PAY | REFUSE) and safe_to_pay (boolean); pay only on ALLOW_PAY.",
     "WARN and BLOCK are both REFUSE under the default allow-only policy. An error is REFUSE too.",
+    "refuse_reasons lists only what refused (never l0_pass, l1_delivered or other passing codes); the",
+    "full reason_codes stay in measurement. A bad input (url not https, malformed id) is REFUSE with",
+    "refuse_reasons [invalid_input] and the error names the fix; it is not an outage.",
     "measurement carries the full decision body: facts (L0 liveness, L1 settle-through, L2 conformance),",
     "reason_codes, freshness, evidence, and the rules_version that produced the recommendation.",
     "The L1 reason codes name whose gap it is: l1_not_attempted (vet402 signed no paid attempt),",
@@ -322,12 +325,19 @@ server.tool(
       const policyRefused = policy?.verdict === "REFUSE";
       const allow = result.recommendation === "ALLOW" && !result.degraded && !policyRefused;
       const policyWords = policyRefused ? policy.reason_codes : [];
+      // 2026-09-29 監査 5 周目: refuse_reasons は拒否の理由だけ（l0_pass・l1_delivered などの良い側の語は
+      // measurement.reason_codes にだけ残す）。語が 1 つも残らない REFUSE は、何が止めたかを名指す語を足す。
+      const refusal = allow ? [] : refusalReasonCodes([...result.reason_codes, ...policyWords]);
+      if (!allow && result.degraded && !refusal.includes("degraded_measurement")) refusal.push("degraded_measurement");
+      if (!allow && refusal.length === 0) refusal.push("recommendation_not_allow");
+      const termsNote = verifiedTermsNote((result as { verified_terms?: unknown }).verified_terms);
       const decision = {
         decision: allow ? "ALLOW_PAY" : "REFUSE",
         safe_to_pay: allow,
-        refuse_reasons: allow ? [] : [...new Set([...result.reason_codes, ...policyWords])],
+        refuse_reasons: refusal,
         summary: [
           `${result.recommendation} (${result.rules_version}) — ${result.reason_codes.join(", ")}${policy ? ` · caller_policy ${policy.verdict}${policyWords.length ? ` (${policyWords.join(", ")})` : ""}` : ""}`,
+          ...(termsNote ? [termsNote] : []),
           ...(ceiling ? ceilingNotes(ceiling) : []),
         ].join(" "),
       };

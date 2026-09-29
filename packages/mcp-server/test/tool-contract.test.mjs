@@ -22,6 +22,7 @@ import { dirname, join } from "node:path";
 import ts from "typescript";
 import {
   KNOWN_ERROR_CODES,
+  KNOWN_ERROR_EXPLANATIONS,
   LOOKUP_TIMEOUT_MESSAGE,
   sanitizeToolError,
 } from "../dist/tool-errors.js";
@@ -39,9 +40,10 @@ test("rate_limited (the server's key-less window word) passes the allow-list", (
   assert.equal(sanitizeToolError(new VouchApiError("rate_limited")), "rate_limited");
 });
 
-test("a known API code passes through unchanged", () => {
+test("a known API code passes through unchanged (with its fixed explanation, if it has one)", () => {
   for (const code of KNOWN_ERROR_CODES) {
-    assert.equal(sanitizeToolError(new Error(code)), code);
+    const explanation = KNOWN_ERROR_EXPLANATIONS[code];
+    assert.equal(sanitizeToolError(new Error(code)), explanation ? `${code}: ${explanation}` : code);
   }
 });
 

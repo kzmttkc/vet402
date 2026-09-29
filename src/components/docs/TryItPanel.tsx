@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 
 /**
  * TryItPanel — an executable counterpart to a curl example (B4, 2026-08-15).
@@ -20,7 +20,13 @@ export function TryItPanel({ path, label }: { path: string; label: string }) {
     | { status: "error"; message: string }
   >({ status: "idle" });
 
+  const resultId = useId();
+  const loading = state.status === "loading";
+
   async function run() {
+    // 2026-09-29 監査 5 周目（WCAG 2.2）: disabled にするとフォーカスが body に落ちるので、
+    // 押せる見た目のまま aria-busy にし、実行中の再クリックはここで無視する。
+    if (loading) return;
     setState({ status: "loading" });
     const startedAt = performance.now();
     try {
@@ -50,27 +56,42 @@ export function TryItPanel({ path, label }: { path: string; label: string }) {
         <button
           type="button"
           onClick={run}
-          disabled={state.status === "loading"}
-          className="border border-brand-deep px-3 py-1 text-[0.75rem] font-semibold uppercase tracking-wide text-brand-deep hover:bg-white disabled:opacity-50"
+          aria-busy={loading}
+          aria-controls={resultId}
+          className="border border-brand-deep px-3 py-1 text-[0.75rem] font-semibold uppercase tracking-wide text-brand-deep hover:bg-white aria-busy:opacity-50"
         >
-          {state.status === "loading" ? "Running…" : "Run this request"}
+          {loading ? "Running…" : "Run this request"}
         </button>
       </div>
-      {state.status === "done" && (
-        <div className="border-t border-hair p-3">
-          <p className="font-mono text-xs text-brand-lift">
-            {state.httpStatus} &middot; {state.latencyMs}ms &middot; {label}
-          </p>
-          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-xs text-brand-deep">
-            {state.body}
-          </pre>
-        </div>
-      )}
-      {state.status === "error" && (
-        <p role="alert" className="border-t border-hair p-3 text-xs text-block-ink">
-          {state.message}
+      {/* 結果の行は常に DOM にある role="status" の中（出てから live 領域になるのでは読まれない）。 */}
+      <div id={resultId}>
+        <p role="status" className={state.status === "idle" ? "sr-only" : "border-t border-hair px-3 pt-3 font-mono text-xs text-brand-lift"}>
+          {state.status === "loading" && <span className="sr-only">Running {label}…</span>}
+          {state.status === "done" && (
+            <>
+              {state.httpStatus} &middot; {state.latencyMs}ms &middot; {label}
+            </>
+          )}
         </p>
-      )}
+        {state.status === "done" && (
+          <div className="px-3 pb-3">
+            {/* はみ出してスクロールする領域はキーボードで届くように tabindex=0・名前付きの region。 */}
+            <pre
+              tabIndex={0}
+              role="region"
+              aria-label={`Response body of ${label}`}
+              className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-xs text-brand-deep focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-deep"
+            >
+              {state.body}
+            </pre>
+          </div>
+        )}
+        {state.status === "error" && (
+          <p role="alert" className="border-t border-hair p-3 text-xs text-block-ink">
+            {state.message}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

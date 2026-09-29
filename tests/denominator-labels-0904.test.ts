@@ -76,6 +76,15 @@ test("L1Ratio: with delivered it renders 'delivered · settled / attempts'", () 
   assert.match(html, /·/);
   assert.match(html, /3\/5/);
   assert.match(html, /title="[^"]*delivered[^"]*"/, "the cell explains its three numbers");
+  // 2026-09-29 監査 5 周目: 意味は title だけでなく読み上げにも（見える数字は aria-hidden）。
+  assert.match(html, /<span class="sr-only">4 delivered[^<]*3 settled[^<]*5 paid attempts<\/span>/);
+  assert.match(html, /<span aria-hidden="true">/);
+});
+
+test("observatory: L1 の列見出しはセルと同じ順（delivered · settled / attempts）", () => {
+  const page = read("src/app/observatory/page.tsx");
+  assert.match(page, /L1 delivered ·<br \/> settled \/ attempts/);
+  assert.doesNotMatch(page, /L1 settled \/ delivered/);
 });
 
 test("L1Ratio: no attempts is a dash, never 0/0", () => {

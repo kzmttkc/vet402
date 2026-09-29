@@ -550,6 +550,35 @@ test("K5 実プロセス: 鍵なし枠の 429 は REFUSE・isError・理由コ�
   assert.equal(text.refuse_reasons.includes("rate_limited"), true, text.refuse_reasons.join(","));
 });
 
+// 2026-09-29 監査 5 周目: check_resource_decision の refuse_reasons は拒否の理由だけ・verified_terms の 1 文・
+// /resolve の 400 invalid_query は request_failed / lookup_failed ではなく invalid_input。
+test("K5b 実プロセス: WARN の refuse_reasons に l0_pass / l1_delivered が混ざらない（measurement には残る）", async () => {
+  const body = { recommendation: "WARN", reason_codes: ["l0_pass", "l1_delivered", "l1_latest_failed", "l2_conform"], facts: {}, evidence: [], rules_version: "t", degraded: false };
+  const { text } = await callToolKeyless(() => ({ status: 200, body }), "check_resource_decision", { resourceId: "a".repeat(64) });
+  assert.equal(text.decision, "REFUSE");
+  assert.deepEqual(text.refuse_reasons, ["l1_latest_failed"]);
+  assert.deepEqual(text.measurement.reason_codes, body.reason_codes);
+  assert.doesNotMatch(text.summary, /Terms vet402 verified/, "verified_terms が無ければ summary に足さない");
+});
+
+test("K5c 実プロセス: verified_terms があれば summary に 1 文", async () => {
+  const body = { recommendation: "ALLOW", reason_codes: ["l0_pass", "l1_delivered"], facts: {}, evidence: [], rules_version: "t", degraded: false,
+    verified_terms: { pay_to: "0x1111111111111111111111111111111111111111", amount: "10000", asset: "USDC", network: "eip155:8453" } };
+  const { text } = await callToolKeyless(() => ({ status: 200, body }), "check_resource_decision", { resourceId: "a".repeat(64) });
+  assert.equal(text.decision, "ALLOW_PAY");
+  assert.deepEqual(text.refuse_reasons, []);
+  assert.match(text.summary, /Terms vet402 verified: payTo 0x1{40}, amount 10000, asset USDC, network eip155:8453\./);
+});
+
+test("K5d 実プロセス: /resolve の 400 invalid_query は invalid_input（lookup_failed / request_failed ではない）", async () => {
+  const { result, text } = await callToolKeyless(() => ({ status: 400, body: { error: "invalid_query", expected: "q" } }), "check_resource_decision", { url: "https://seller.example/x" });
+  assert.equal(result.isError, true);
+  assert.equal(text.decision, "REFUSE");
+  assert.deepEqual(text.refuse_reasons, ["invalid_input"]);
+  assert.match(text.summary, /url must be an absolute https URL/);
+  assert.doesNotMatch(text.summary, /request_failed/);
+});
+
 test("K6 実プロセス: 鍵なしの pay_if_trusted も missing_api_key で止まらず /decision を読む", async () => {
   const body = { recommendation: "WARN", reason_codes: ["l1_not_attempted"], facts: {}, evidence: [], rules_version: "t", degraded: false };
   const { result, seen, text } = await callToolKeyless(() => ({ status: 200, body }), "pay_if_trusted", { resourceId: "a".repeat(64) });
@@ -585,7 +614,10 @@ test("P2 サーバの caller_policy は measurement にそのまま載り、REFU
   assert.equal(r.decision, "REFUSE");
   assert.deepEqual(r.measurement.caller_policy, callerPolicy, "組み替えずに透過する");
   assert.ok(r.refuse_reasons.includes("price_above_ceiling"), "サーバの policy 語がそのまま理由になる");
-  assert.ok(r.refuse_reasons.includes("l1_delivered"), "サーバの reason_codes も従来どおり残る");
+  // 2026-09-29 監査 5 周目: 良い側の語（l1_delivered・l0_pass）は拒否の理由に混ぜない。measurement には残る。
+  assert.equal(r.refuse_reasons.includes("l1_delivered"), false, "良い側の語は refuse_reasons に入らない");
+  assert.equal(r.refuse_reasons.includes("l0_pass"), false);
+  assert.deepEqual(r.measurement.reason_codes, ["l0_pass", "l1_delivered"], "サーバの reason_codes は measurement にそのまま残る");
   assert.deepEqual(w.signAccesses(), []);
 });
 

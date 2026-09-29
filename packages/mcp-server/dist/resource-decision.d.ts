@@ -34,7 +34,7 @@ export type ResourceDecisionOutcome = {
     kind: "uncatalogued";
     body: UncataloguedResult;
 };
-/** 入力を検査する。どちらか片方だけ。URL は http(s) の絶対 URL に限る。 */
+/** 入力を検査する。どちらか片方だけ。URL は https の絶対 URL に限る（resolve と同じ）。 */
 export declare function assertTarget(target: ResourceTarget): {
     resourceId: string;
 } | {
@@ -50,3 +50,8 @@ export declare function uncatalogued(lookup: {
  * それ以外の失敗は throw のまま（呼び手の scoreToolFailure が REFUSE に写す）。
  */
 export declare function resourceDecision(target: ResourceTarget, query: DecisionQuery): Promise<ResourceDecisionOutcome>;
+/**
+ * 判定の `verified_terms` を summary に添える 1 文。読める条件が 1 つも無ければ null（何も足さない）。
+ * 配列なら先頭 3 件まで。
+ */
+export declare function verifiedTermsNote(v: unknown): string | null;

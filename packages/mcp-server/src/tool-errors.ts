@@ -26,7 +26,26 @@ export const KNOWN_ERROR_CODES = new Set([
   "payment_ingest_unavailable",
   // /resolve が 503 のときの語（src/app/api/v1/resolve/route.ts）。
   "resolve_unavailable",
+  // 2026-09-29 監査 5 周目（SDK で組み込む開発者）: カタログに無い id（404）と /resolve が受けない q（400）。
+  // request_failed に潰すと障害に見える。下の KNOWN_ERROR_EXPLANATIONS の固定文を添えて返す。
+  "not_found",
+  "invalid_query",
+  // fetchDecision が通信の前に投げる呼び手の誤り（vouch-client.ts）。
+  "invalid_resource_id",
+  "payer_required",
 ]);
+
+/**
+ * 既知の語に添える固定の説明（上流の文字列は使わない）。サーバが `reason` を返したときはそちらを優先する。
+ * 語は変えない（先頭の語で分岐する呼び手がいる）——`<code>: <説明>` の形。
+ */
+export const KNOWN_ERROR_EXPLANATIONS: Readonly<Record<string, string>> = {
+  not_found: "not in the catalog — vet402 has no record for this resource id (not in the catalog is not an ALLOW)",
+  invalid_query:
+    "url must be an absolute https URL — vet402's /resolve did not accept the query (a domain, address, payee_id or tx hash also works)",
+  invalid_resource_id: "resourceId must be 64 lowercase hex characters — or pass the URL that answers 402 as url",
+  payer_required: "role=payee needs payer (chain:address, or a bare 0x / base58 address)",
+};
 
 /**
  * 呼び出し側の誤りで、**メッセージを我々自身のコードが組み立てる**もの（SDK の
@@ -66,6 +85,6 @@ export function sanitizeToolError(error: unknown): string {
   if (CALLER_ERROR_PREFIXES.some((prefix) => error.message.startsWith(prefix))) return error.message;
   if (!KNOWN_ERROR_CODES.has(error.message)) return "request_failed";
 
-  const reason = error instanceof VouchApiError ? error.reason : undefined;
+  const reason = (error instanceof VouchApiError ? error.reason : undefined) ?? KNOWN_ERROR_EXPLANATIONS[error.message];
   return reason ? `${error.message}: ${reason}` : error.message;
 }

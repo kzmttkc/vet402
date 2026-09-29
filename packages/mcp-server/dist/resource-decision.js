@@ -17,7 +17,7 @@ import { fetchDecision, resolveQuery, VouchApiError, } from "./vouch-client.js";
 const SHA256_RE = /^[0-9a-f]{64}$/;
 /** 呼び手の誤り。メッセージは我々が組み立てる（上流の文字列を含まない）ので tool-errors がそのまま通す。 */
 export const INVALID_TARGET_PREFIX = "invalid_target:";
-/** 入力を検査する。どちらか片方だけ。URL は http(s) の絶対 URL に限る。 */
+/** 入力を検査する。どちらか片方だけ。URL は https の絶対 URL に限る（resolve と同じ）。 */
 export function assertTarget(target) {
     const hasId = typeof target.resourceId === "string" && target.resourceId.length > 0;
     const hasUrl = typeof target.url === "string" && target.url.length > 0;
@@ -107,4 +107,50 @@ export async function resourceDecision(target, query) {
         }
         throw error;
     }
+}
+// ---- verified_terms（2026-09-29 監査 5 周目・受け口の準備）----
+// 判定の応答に、vet402 が確かめた支払い条件（payTo・金額・資産）が `verified_terms` として載る予定
+// （別の担当が /decision に追加する）。形はまだ確定していないので、読める鍵だけを拾い、
+// 読めなければ何も言わない。キーが無ければ summary は今までと 1 文字も変わらない。
+// 値は上流の文字列なので、印字できる ASCII の短い値と有限の数だけを通す（モデルの文脈へ任意の文を流さない）。
+const TERM_KEYS = [
+    ["payTo", ["pay_to", "payTo"]],
+    ["amount", ["amount", "max_amount_required", "maxAmountRequired", "amount_atomic"]],
+    ["amount_usd", ["amount_usd", "amountUsd"]],
+    ["asset", ["asset_symbol", "asset"]],
+    ["network", ["network", "chain"]],
+];
+function safeTermValue(v) {
+    if (typeof v === "number")
+        return Number.isFinite(v) ? String(v) : null;
+    if (typeof v === "string" && /^[\x20-\x7E]{1,128}$/.test(v))
+        return v;
+    return null;
+}
+function oneTermsLine(t) {
+    if (t === null || typeof t !== "object" || Array.isArray(t))
+        return null;
+    const o = t;
+    const parts = [];
+    for (const [label, keys] of TERM_KEYS) {
+        for (const k of keys) {
+            const v = safeTermValue(o[k]);
+            if (v !== null) {
+                parts.push(`${label} ${v}`);
+                break;
+            }
+        }
+    }
+    return parts.length > 0 ? parts.join(", ") : null;
+}
+/**
+ * 判定の `verified_terms` を summary に添える 1 文。読める条件が 1 つも無ければ null（何も足さない）。
+ * 配列なら先頭 3 件まで。
+ */
+export function verifiedTermsNote(v) {
+    const items = Array.isArray(v) ? v.slice(0, 3) : [v];
+    const lines = items.map(oneTermsLine).filter((l) => l !== null);
+    if (lines.length === 0)
+        return null;
+    return `Terms vet402 verified: ${lines.join("; ")}.`;
 }

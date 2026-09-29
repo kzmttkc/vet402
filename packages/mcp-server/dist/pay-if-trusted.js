@@ -70,6 +70,7 @@
  * 2回引く。GET は副作用を持たない。
  */
 import { DEFAULT_API_URL, decisionQueryString } from "./vouch-client.js";
+import { refusalReasonCodes } from "./decision.js";
 /** Solana の base58 アドレス。SDK の `payOrRefuse` がレールを決めるのと同じ形（0x でなければこれ）。 */
 export const SOLANA_PAYEE_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 /**
@@ -175,7 +176,9 @@ export async function payIfTrusted(input) {
     }
     const m = measure(body);
     // サーバの判定本文の語。この先の refuse には**この配列**を通す（`m.reason_codes` の裸の string[] は受けない）。
-    const serverWords = serverReasonCodes(m.reason_codes);
+    // 2026-09-29 監査 5 周目: 拒否の理由にならない語（l0_pass・l1_delivered …）は refuse_reasons に混ぜない。
+    // 全部の語は measurement.reason_codes にそのまま残る。
+    const serverWords = serverReasonCodes(refusalReasonCodes(m.reason_codes));
     // --- 3. degraded / ALLOW でない ---
     // カタログ外には判定本文が無い。この段の検査は判定本文に対するものなので飛ばし、
     // 受取人スコアの degraded / BLOCK / 非 ALLOW は SDK の 3' 段がそのまま持つ（H10）。
@@ -238,7 +241,7 @@ export async function payIfTrusted(input) {
     // SDK の決定行はサーバの reason_codes を既に含む。橋の測定と連結すると同じ語が2回並ぶので、
     // 順序を保ったまま重複だけ落とす（語を消したり並べ替えたりはしない）。
     const reasons = Array.isArray(paid.decision?.reason_codes) ? paid.decision.reason_codes : [];
-    const merged = serverReasonCodes([...new Set([...m.reason_codes, ...reasons])]);
+    const merged = serverReasonCodes(refusalReasonCodes([...m.reason_codes, ...reasons]));
     if (paid.status === "refused") {
         return {
             ...refuse(m, merged, `Do not pay: ${reasons.join(", ") || "the payment gate refused"}.`),

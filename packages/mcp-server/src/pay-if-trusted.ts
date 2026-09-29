@@ -70,6 +70,7 @@
  * 2回引く。GET は副作用を持たない。
  */
 import { DEFAULT_API_URL, decisionQueryString, type CallerPolicy } from "./vouch-client.js";
+import { refusalReasonCodes } from "./decision.js";
 // 型だけ。値の import は ALLOW ブランチ内の動的 import に限る（第3層）。`import type` は
 // tsc が消すので、dist の拒否経路に `@vet402/sdk` への静的な参照は残らない。
 import type { PayDecisionRecord, PayEvidencePolicy, PayPolicy, PayRefuseReason, SvmPayerAccount } from "@vet402/sdk";
@@ -331,7 +332,9 @@ export async function payIfTrusted(input: PayIfTrustedInput): Promise<PayIfTrust
 
   const m = measure(body);
   // サーバの判定本文の語。この先の refuse には**この配列**を通す（`m.reason_codes` の裸の string[] は受けない）。
-  const serverWords = serverReasonCodes(m.reason_codes);
+  // 2026-09-29 監査 5 周目: 拒否の理由にならない語（l0_pass・l1_delivered …）は refuse_reasons に混ぜない。
+  // 全部の語は measurement.reason_codes にそのまま残る。
+  const serverWords = serverReasonCodes(refusalReasonCodes(m.reason_codes));
 
   // --- 3. degraded / ALLOW でない ---
   // カタログ外には判定本文が無い。この段の検査は判定本文に対するものなので飛ばし、
@@ -407,7 +410,7 @@ export async function payIfTrusted(input: PayIfTrustedInput): Promise<PayIfTrust
   // SDK の決定行はサーバの reason_codes を既に含む。橋の測定と連結すると同じ語が2回並ぶので、
   // 順序を保ったまま重複だけ落とす（語を消したり並べ替えたりはしない）。
   const reasons = Array.isArray(paid.decision?.reason_codes) ? paid.decision.reason_codes : [];
-  const merged = serverReasonCodes([...new Set([...m.reason_codes, ...reasons])]);
+  const merged = serverReasonCodes(refusalReasonCodes([...m.reason_codes, ...reasons]));
   if (paid.status === "refused") {
     return {
       ...refuse(m, merged, `Do not pay: ${reasons.join(", ") || "the payment gate refused"}.`),

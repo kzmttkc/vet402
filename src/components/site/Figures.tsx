@@ -187,15 +187,20 @@ export function L1Ratio({ settled, attempts, delivered }: { settled: number; att
     delivered === undefined
       ? `${settled} settled with a receipt of ${attempts} paid attempts`
       : `${delivered} delivered (paid retry answered 2xx) · ${settled} settled with a receipt of ${attempts} paid attempts`;
+  // 2026-09-29 監査 5 周目（WCAG 2.2・1.3.1）: 3 つの数の意味が title にしか無かった。見える数字は
+  // 列見出しと同じ順（delivered · settled/attempts）のまま aria-hidden にし、読み上げには意味付きの文を渡す。
   return (
     <span className={`tabular-nums ${color}`} title={title}>
-      {delivered !== undefined && (
-        <>
-          <span className="text-brand">{delivered}</span>
-          <span className="text-brand-lift"> · </span>
-        </>
-      )}
-      {settled}/{attempts}
+      <span aria-hidden="true">
+        {delivered !== undefined && (
+          <>
+            <span className="text-brand">{delivered}</span>
+            <span className="text-brand-lift"> · </span>
+          </>
+        )}
+        {settled}/{attempts}
+      </span>
+      <span className="sr-only">{title}</span>
     </span>
   );
 }

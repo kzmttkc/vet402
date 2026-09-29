@@ -55,8 +55,37 @@ export function decideFromScore(score, now = Date.now()) {
         summary: "Fully measured, current, and ALLOW. Nothing in this result blocks payment.",
     };
 }
+/**
+ * 呼び手の入力の誤りを表す語（tool-errors の sanitizeToolError が返す文字列の先頭の語）。
+ * これらは上流の障害ではないので `lookup_failed` ではなく `invalid_input` にする。
+ */
+export const CALLER_INPUT_ERROR_CODES = new Set([
+    "invalid_query",
+    "invalid_target",
+    "invalid_request",
+    "invalid_agent_id",
+    "invalid_wallet_address",
+    "invalid_tx_hash",
+    "invalid_resource_id",
+    "payer_required",
+    "invalid_policy",
+    "invalid_evidence_policy",
+]);
+/** `code: detail` の先頭の語。 */
+function leadingCode(detail) {
+    const i = detail.indexOf(":");
+    return (i === -1 ? detail : detail.slice(0, i)).trim();
+}
 /** 答えが返らなかったとき。**沈黙は ALLOW ではない。** */
 export function decideFromFailure(detail) {
+    const code = leadingCode(detail);
+    // 2026-09-29 監査 5 周目: カタログに無い・入力が誤り は「答えが無い」ではない。障害に見せない。
+    if (code === "not_found") {
+        return refuse(["resource_uncatalogued"], `Not in the catalog (${detail}): vet402 has no record to decide from. Not in the catalog is not an ALLOW — do not pay.`);
+    }
+    if (CALLER_INPUT_ERROR_CODES.has(code)) {
+        return refuse(["invalid_input"], `The input was not accepted (${detail}). Fix the input and call again; nothing was checked, so do not pay.`);
+    }
     const reasons = ["lookup_failed"];
     // The sanitizer passes the server's `rate_limited` through verbatim; keep it
     // as a reason too. Everything else stays lookup_failed alone.
@@ -80,4 +109,26 @@ function refuseSummary(reasons, unavailable) {
     if (reasons.includes("recommendation_not_allow"))
         parts.push("the recommendation is not ALLOW");
     return `Do not pay: ${parts.join("; ")}.`;
+}
+/**
+ * サーバの reason_codes のうち、**拒否の理由にならない**語（2026-09-29 監査 5 周目）。
+ * reason_codes は判定の根拠を良い側も悪い側も並べる（l0_pass・l1_delivered …）。REFUSE の
+ * `refuse_reasons` にそれを混ぜると「l0_pass だから拒否した」と読める。ここに無い語（未知の語を含む）は
+ * そのまま残す——知らない語を落として理由を隠すより、多めに見せる側に倒す。
+ * 全部の語は measurement.reason_codes に変えずに残る。
+ */
+export const NON_REFUSAL_REASON_CODES = new Set([
+    "l0_pass",
+    "l1_delivered",
+    "l2_conform",
+    // 宣言が無いだけでは WARN にも BLOCK にもならない（src/lib/decision/rules.ts の decidePayer）。
+    "l2_undeclared",
+    "history_ok",
+    "erc8004_registered",
+    "l1_waived_by_operator",
+    "allowed_by_caller_policy",
+]);
+/** reason_codes から拒否の理由だけを残す（順序は保つ・重複は落とす）。 */
+export function refusalReasonCodes(codes) {
+    return [...new Set(codes.filter((c) => !NON_REFUSAL_REASON_CODES.has(c)))];
 }

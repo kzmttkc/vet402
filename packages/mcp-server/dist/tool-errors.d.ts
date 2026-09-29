@@ -1,5 +1,10 @@
 export declare const KNOWN_ERROR_CODES: Set<string>;
 /**
+ * 既知の語に添える固定の説明（上流の文字列は使わない）。サーバが `reason` を返したときはそちらを優先する。
+ * 語は変えない（先頭の語で分岐する呼び手がいる）——`<code>: <説明>` の形。
+ */
+export declare const KNOWN_ERROR_EXPLANATIONS: Readonly<Record<string, string>>;
+/**
  * 呼び出し側の誤りで、**メッセージを我々自身のコードが組み立てる**もの（SDK の
  * `assertEvidencePolicy` / `assertOverridePolicy` と MCP の `assertPolicy`）。上流の文字列を
  * 含まないので、そのまま通してよい。`request_failed` に潰すと、呼び手（モデル）は

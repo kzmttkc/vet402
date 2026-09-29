@@ -287,8 +287,16 @@ export default async function ObservatoryPage({
                 <tr>
                   <th scope="col">Endpoint</th>
                   <th scope="col">L0</th>
+                  {/* 2026-09-29 監査 5 周目: 見出しが「settled / delivered」、セルが「delivered · settled/attempts」で
+                      順が逆だった。セルと同じ順・同じ語にし、見出しの短い語の意味は読み上げにも渡す。 */}
                   <th scope="col" className="num">
-                    L1 settled / delivered
+                    {/* th は nowrap。2 行に割って列幅を旧見出し（22 字）より広げない。 */}
+                    L1 delivered ·<br /> settled / attempts
+                    <span className="sr-only">
+                      {" "}
+                      (delivered: a settled purchase whose paid request answered 2xx; settled: the transfer re-read
+                      on-chain; attempts: paid attempts)
+                    </span>
                   </th>
                   <th scope="col">Last probed</th>
                   <th scope="col">Network</th>

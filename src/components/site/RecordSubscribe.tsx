@@ -35,6 +35,10 @@ export default function RecordSubscribe({
   const [mailDown, setMailDown] = useState(false);
   const uid = useId();
   const disputeStarted = useRef(false);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
+  // 2026-09-29 監査 5 周目（WCAG 2.2・3.3.1）: 誤りは欄を離れたとき・送信を押したときに、その欄の下へ出す。
+  const [touched, setTouched] = useState<{ email?: boolean; reason?: boolean }>({});
   // 2026-09-28 PMF 計測: 異議の「開始」（欄に初めて触れた）を送信成功と分けて数える。
   function markDisputeStart() {
     if (kind !== "dispute" || disputeStarted.current) return;
@@ -46,12 +50,24 @@ export default function RecordSubscribe({
   // 書き出し（initialReason）だけでは送れない: 最低 20 字は書き出しの後に本人が書いた分で数える。
   const prefill = kind === "dispute" && initialReason && reason.startsWith(initialReason) ? initialReason.trim().length : 0;
   const ownLength = Math.max(0, reasonLength - prefill);
-  const canSend =
-    state !== "sending" && email.trim() !== "" && (kind === "notify" || (ownLength >= 20 && reasonLength <= 2000));
+  const emailError = emailProblem(email);
+  const reasonError = kind === "dispute" ? reasonProblem(ownLength, reasonLength, prefill > 0) : null;
+  const showEmailError = touched.email ? emailError : null;
+  const showReasonError = touched.reason ? reasonError : null;
+  const emailErrorId = `${uid}-email-error`;
+  const reasonErrorId = `${uid}-reason-error`;
+  const reasonCountId = `${uid}-reason-count`;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!canSend) return;
+    if (state === "sending") return;
+    // 2026-09-29 監査 5 周目: 送信ボタンは理由なく disabled にしない。押されたら誤りを出して最初の誤りの欄へ。
+    if (emailError || reasonError) {
+      setTouched({ email: true, reason: true });
+      if (emailError) emailRef.current?.focus();
+      else reasonRef.current?.focus();
+      return;
+    }
     setState("sending");
     setError(null);
     try {
@@ -99,39 +115,62 @@ export default function RecordSubscribe({
           nothing else goes out until you confirm.
         </p>
       ) : null}
-      <label htmlFor={`${uid}-email`} className="block text-[0.8125rem]">
-        <span className="doc-caption block">Email</span>
+      <div className="text-[0.8125rem]">
+        <label htmlFor={`${uid}-email`} className="block">
+          <span className="doc-caption block">Email</span>
+        </label>
         <input
+          ref={emailRef}
           id={`${uid}-email`}
           type="email"
           name="email"
           autoComplete="email"
           required
+          aria-invalid={showEmailError ? true : undefined}
+          aria-describedby={showEmailError ? emailErrorId : undefined}
           className="doc-input mt-1"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          onBlur={() => email.trim() !== "" && setTouched((t) => ({ ...t, email: true }))}
           placeholder="you@project.xyz"
         />
-      </label>
+        {showEmailError ? (
+          <span id={emailErrorId} className="mt-1 block font-semibold text-block-ink">
+            {showEmailError}
+          </span>
+        ) : null}
+      </div>
       {kind === "dispute" ? (
-        <label htmlFor={`${uid}-reason`} className="block text-[0.8125rem]">
-          <span className="doc-caption block">What is wrong with this record</span>
+        <div className="text-[0.8125rem]">
+          <label htmlFor={`${uid}-reason`} className="block">
+            <span className="doc-caption block">What is wrong with this record</span>
+          </label>
           <textarea
+            ref={reasonRef}
             id={`${uid}-reason`}
             name="reason"
             required
             minLength={20}
             maxLength={2000}
             rows={5}
+            aria-invalid={showReasonError ? true : undefined}
+            aria-describedby={showReasonError ? `${reasonErrorId} ${reasonCountId}` : reasonCountId}
             className="doc-input mt-1 resize-y"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
+            onBlur={() => ownLength > 0 && setTouched((t) => ({ ...t, reason: true }))}
             placeholder="Which probe or purchase, what you observed instead, and when (UTC)."
           />
-          <span className="doc-note mt-1 block">
+          {showReasonError ? (
+            <span id={reasonErrorId} className="mt-1 block font-semibold text-block-ink">
+              {showReasonError}
+            </span>
+          ) : null}
+          {/* 文字数カウンタは label の外（名前に数が混ざらないように）。欄の説明として aria-describedby で結ぶ。 */}
+          <span id={reasonCountId} className="doc-note mt-1 block">
             20–2,000 characters · {reasonLength.toLocaleString()} so far
           </span>
-        </label>
+        </div>
       ) : null}
       {/* honeypot: 人には見えない。埋まっていれば bot。 */}
       <div hidden aria-hidden="true">
@@ -150,7 +189,7 @@ export default function RecordSubscribe({
       <div>
         <button
           type="submit"
-          disabled={!canSend}
+          aria-busy={state === "sending" || undefined}
           className={buttonClass({ variant: "secondary", size: "sm", className: "min-h-11" })}
         >
           {state === "sending"
@@ -160,13 +199,30 @@ export default function RecordSubscribe({
               : "Submit the dispute"}
         </button>
       </div>
-      {state === "error" && error ? (
-        <p className="text-[0.8125rem] font-semibold text-brand-deep" aria-live="polite">
-          {error}
-        </p>
-      ) : null}
+      {/* live 領域は常に置き、中身だけ替える（出てから live になるのでは読まれない）。 */}
+      <p className="text-[0.8125rem] font-semibold text-brand-deep empty:sr-only" role="status">
+        {state === "error" && error ? error : null}
+      </p>
     </form>
   );
+}
+
+/** email 欄の誤り（無ければ null）。サーバと同じく形だけを見る。 */
+export function emailProblem(email: string): string | null {
+  const v = email.trim();
+  if (v === "") return "Enter an email address.";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return "That does not look like an email address, for example you@project.xyz.";
+  return null;
+}
+
+/** 異議の理由の誤り（無ければ null）。最低 20 字は書き出しの後に本人が書いた分で数える。 */
+export function reasonProblem(ownLength: number, totalLength: number, hasPrefill: boolean): string | null {
+  if (totalLength > 2000) return `The reason is ${totalLength.toLocaleString()} characters; the limit is 2,000.`;
+  if (ownLength < 20)
+    return hasPrefill
+      ? `Add at least 20 characters of your own after the prefilled line (${ownLength} so far).`
+      : `Write at least 20 characters (${ownLength} so far).`;
+  return null;
 }
 
 function explain(status: number, code: string | undefined): string {

@@ -17,7 +17,7 @@
  * localization or language switcher is needed here.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { buttonClass } from "@/components/ui/Button";
 import { Wordmark } from "@/components/site/Wordmark";
@@ -59,6 +59,7 @@ const NAV_SECONDARY: NavItem[] = [
 export function SiteHeader() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
+  const mobileNavId = useId();
 
   // 2026-08-06 a11y (keyboard persona audit): the mobile panel could be opened
   // but Escape did nothing, so a keyboard user had to tab back through the
@@ -133,15 +134,21 @@ export function SiteHeader() {
             ref={toggleRef}
             type="button"
             aria-expanded={mobileOpen}
+            // 2026-09-29 監査 5 周目（WCAG 2.2）: 読み上げ名が「[menu]」「[close]」の括弧付きだったので
+            // 名前を付け、開閉する nav を aria-controls で結ぶ（見える語は名前の先頭に含まれる＝2.5.3）。
+            aria-label={mobileOpen ? "Close menu" : "Menu"}
+            aria-controls={mobileNavId}
             className="-mr-2 flex h-11 w-16 items-center justify-end text-[0.8125rem] text-brand-deep md:hidden"
             onClick={() => setMobileOpen((v) => !v)}
           >
-            {mobileOpen ? "[close]" : "[menu]"}
+            <span aria-hidden="true">{mobileOpen ? "[close]" : "[menu]"}</span>
           </button>
         </div>
       </div>
 
-      {mobileOpen ? (
+      {/* aria-controls の先が常に DOM にあるよう、閉じているときも描いて hidden で隠す
+          （Tailwind v4 の preflight は [hidden] を display:none !important にするので flex に負けない）。 */}
+      {
         // 2026-08-06 (landscape persona audit A-2): the open drawer made this
         // sticky header 422px tall. A sticky element taller than the viewport
         // does not move when you scroll, so on any phone in landscape (320-430px
@@ -150,6 +157,8 @@ export function SiteHeader() {
         // Capping the drawer at the space below the bar and letting it scroll
         // internally makes every item reachable at any viewport height.
         <nav
+          id={mobileNavId}
+          hidden={!mobileOpen}
           aria-label="Mobile navigation"
           className="flex max-h-[calc(100dvh-3.5rem)] flex-col overflow-y-auto overscroll-contain border-t border-hair bg-paper px-5 py-3 md:hidden"
         >
@@ -184,7 +193,7 @@ export function SiteHeader() {
             Get API key
           </TrackedLink>
         </nav>
-      ) : null}
+      }
     </header>
   );
 }
