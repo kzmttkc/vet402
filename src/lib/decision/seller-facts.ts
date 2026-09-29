@@ -33,7 +33,7 @@ import { getSettlementCounts } from "@/lib/settlements/census";
 import { rowsOf } from "@/lib/settlements/upsert";
 import { toIsoUtc } from "@/lib/util/iso-utc";
 import type { Dialect, Evidence, L2Status, OfferStability, SellerFacts } from "./types";
-import type { L1Timeline } from "./rules";
+import type { L0SingleFailContext, L1Timeline } from "./rules";
 
 export type ProbeInput = {
   probedAt: string;
@@ -67,6 +67,12 @@ export type PurchaseInput = {
    */
   amountUnits?: string | null;
   payer?: string | null;
+  /**
+   * 2026-09-29.2（独立レビュー）: tx の付いた settle_failed の支払いが確かめられたか。決済の索引（settlements）に
+   * その tx が在る、または照合で settlement_verified = true になった行だけ true。売り手が success:false と一緒に
+   * 返しただけの tx は false／null（支払い済みに数えない）。
+   */
+  settlementConfirmed?: boolean | null;
 };
 
 /** 帰属（/sellers と同じ規則）で、売り手の不履行として数えない理由。数える行は null。 */
@@ -213,12 +219,15 @@ export function isDeliveredPurchase(p: PurchaseInput): boolean {
 }
 
 /**
- * 支払い済み（2026-09-29.2）: 決済がチェーンで確認できた行（settled）、または署名した支払いが後から
- * チェーンに載った行（tx の付いた settle_failed）。レシートの無い 200・照合待ち・反証された主張は入れない。
+ * 支払い済み（2026-09-29.2）: 決済がチェーンで確認できた行（settled＝照合 cron が確認済み）、または
+ * tx の付いた settle_failed のうち、その tx が決済の索引（settlements）に在るか照合で settled になったもの
+ * （settlementConfirmed）。売り手が応答ヘッダで success:false と一緒に返しただけの tx は数えない
+ * （2026-09-29 独立レビュー: 本番に 2 行、うち Solana の 1 行は索引に無い）。
+ * レシートの無い 200・照合待ち・反証された主張は入れない。
  */
 export function isPaidPurchase(p: PurchaseInput): boolean {
   if (p.status === "settled") return true;
-  return p.status === "settle_failed" && typeof p.txHash === "string" && p.txHash !== "";
+  return p.status === "settle_failed" && typeof p.txHash === "string" && p.txHash !== "" && p.settlementConfirmed === true;
 }
 
 /**
@@ -301,6 +310,19 @@ export function l0UnverifiedCauseOf(probesNewestFirst: readonly ProbeInput[]): s
   if (latest.verdict === "fail") return "single_fail";
   const reason = (latest.failReason ?? "").toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
   return reason === "" ? "unrecorded" : reason.slice(0, 40);
+}
+
+/**
+ * 2026-09-29.2（独立レビュー）: L0 の 1 回の fail を WARN に緩めてよいかの材料（rules.ts l0SingleFailConfirmed が読む）。
+ * 原因が single_fail でなければ null。listingStatus は x402_endpoints.status（active | delisted）。
+ */
+export function l0SingleFailContextOf(probesNewestFirst: readonly ProbeInput[], listingStatus: string | null): L0SingleFailContext | null {
+  if (l0UnverifiedCauseOf(probesNewestFirst) !== "single_fail") return null;
+  return {
+    listing_active: listingStatus === "active",
+    latest_probe_at: toIsoUtc(probesNewestFirst[0]?.probedAt ?? null),
+    previous_verdict: probesNewestFirst[1]?.verdict ?? null,
+  };
 }
 
 export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
@@ -449,6 +471,8 @@ export type SellerFactsLoaded = {
   l0UnverifiedCause?: string | null;
   /** 2026-09-29.2: 判定へ渡す窓の中の並び（l1TimelineOf）。応答の l1_basis の材料。 */
   l1Timeline?: L1Timeline;
+  /** 2026-09-29.2（独立レビュー）: L0 の 1 回の fail を WARN に緩める条件の材料（l0SingleFailContextOf）。 */
+  l0SingleFailContext?: L0SingleFailContext | null;
   endpoint: {
     id: string;
     resourceId: string | null;
@@ -489,11 +513,12 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     declared_schema: unknown | null;
     raw_method: string | null;
     declared_input: unknown | null;
+    listing_status: string | null;
   }>(
     await db.execute(sql`
       SELECT id::text AS id, resource_id, endpoint_hash, coalesce(canonical_url, resource_url) AS canonical_url,
              coalesce(method, 'GET') AS method, pay_to, network, payee_id, declared_schema,
-             method AS raw_method, declared_input
+             method AS raw_method, declared_input, status AS listing_status
       FROM x402_endpoints WHERE id = ${endpointUuid}::uuid LIMIT 1
     `),
   );
@@ -527,8 +552,11 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
                'requestBody', CASE WHEN raw_response_meta ? 'requestBody' THEN
                  CASE WHEN jsonb_typeof(raw_response_meta->'requestBody') = 'string' THEN to_jsonb(left(raw_response_meta->>'requestBody', 16)) ELSE 'true'::jsonb END END,
                'requestQuery', raw_response_meta->'requestQuery')) END AS request_meta,
-             amount_units, payer
-      FROM x402_l1_purchases WHERE endpoint_id = ${endpointUuid}::uuid AND attempted_at > now() - interval '30 days'
+             amount_units, payer,
+             CASE WHEN status = 'settle_failed' AND tx_hash IS NOT NULL THEN
+               (settlement_verified IS TRUE OR EXISTS (SELECT 1 FROM settlements s WHERE s.tx_hash IN (p.tx_hash, lower(p.tx_hash))))
+             END AS settlement_confirmed
+      FROM x402_l1_purchases p WHERE endpoint_id = ${endpointUuid}::uuid AND attempted_at > now() - interval '30 days'
       ORDER BY attempted_at DESC LIMIT 200
     `),
   ).map<PurchaseInput>((r) => ({
@@ -547,6 +575,7 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
         : null,
     amountUnits: r.amount_units === null || r.amount_units === undefined ? null : String(r.amount_units),
     payer: r.payer === null || r.payer === undefined ? null : String(r.payer),
+    settlementConfirmed: r.settlement_confirmed === null || r.settlement_confirmed === undefined ? null : Boolean(r.settlement_confirmed),
   }));
 
   // 最終試行は 30 日窓の外も見る（窓で切ると 31 日前の試行が「一度も無い」に化ける）。
@@ -596,6 +625,7 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     l1NotCounted: l1NotCountedOf(factsInput),
     l0UnverifiedCause: l0UnverifiedCauseOf(probes),
     l1Timeline: l1TimelineOf(factsInput),
+    l0SingleFailContext: l0SingleFailContextOf(probes, ep.listing_status),
     endpoint: {
       id: ep.id,
       resourceId: ep.resource_id,

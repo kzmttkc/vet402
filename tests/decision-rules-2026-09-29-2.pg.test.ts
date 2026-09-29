@@ -66,7 +66,12 @@ if (!TEST_DB) {
         role: "payer",
         subject: { type: "resource", id: null, endpoint_id: id, observatory_id: id, canonical_url: loaded.endpoint.canonicalUrl, method: "GET" },
         facts: loaded.facts,
-        options: { l1NotCounted: loaded.l1NotCounted, l0UnverifiedCause: loaded.l0UnverifiedCause ?? null, l1Timeline: loaded.l1Timeline },
+        options: {
+          l1NotCounted: loaded.l1NotCounted,
+          l0UnverifiedCause: loaded.l0UnverifiedCause ?? null,
+          l0SingleFailContext: loaded.l0SingleFailContext ?? null,
+          l1Timeline: loaded.l1Timeline,
+        },
         score: null,
         registry: { status: "off", tx_hash: null },
         spendingHalted: false,
@@ -111,6 +116,55 @@ if (!TEST_DB) {
       const f = await decideFor(fresh.id);
       assert.equal(f.recommendation, "ALLOW");
       assert.equal(f.l1_basis?.latest_counted_delivered, true);
+    });
+
+    await t.test("tx の付いた settle_failed: 照合で settled（settlement_verified）なら支払い済み、未照合で索引に無ければ数えない", async () => {
+      const failedWithTx = async (endpointId: string, d: number, verified: boolean | null) =>
+        db.insert(schema.x402L1Purchases).values({
+          endpointId,
+          status: "settle_failed",
+          httpStatusPaid: 500,
+          payloadNonEmpty: false,
+          txHash: `0x${(++txSeq).toString(16).padStart(64, "0")}`,
+          settlementVerified: verified,
+          attemptedAt: daysAgo(d),
+          network: "eip155:8453",
+          spentUnits: "1000",
+          amountUnits: "1000",
+        });
+      const unconfirmed = await mkEndpoint();
+      await failedWithTx(unconfirmed.id, 2, null);
+      await failedWithTx(unconfirmed.id, 4, null);
+      const u = await decideFor(unconfirmed.id);
+      assert.equal(u.l1_basis?.n_paid_undelivered, 0, "success:false と一緒に返っただけの tx は支払い済みに数えない");
+      assert.notEqual(u.recommendation, "BLOCK");
+      const confirmed = await mkEndpoint();
+      await failedWithTx(confirmed.id, 2, true);
+      await failedWithTx(confirmed.id, 4, true);
+      const c = await decideFor(confirmed.id);
+      assert.equal(c.l1_basis?.n_paid_undelivered, 2);
+      assert.equal(c.recommendation, "BLOCK");
+    });
+
+    await t.test("L0 の 1 回の fail: 掲載中なら WARN（degraded false）、delisted なら BLOCK・_unconfirmed（degraded true）", async () => {
+      const withProbes = async (status: string) => {
+        n++;
+        const [ep] = await db
+          .insert(schema.x402Endpoints)
+          .values({ resourceKey: `${tag}-${n}.example/api`, resourceUrl: `https://${tag}-${n}.example/api`, network: "eip155:8453", method: "GET", payTo: `0x${String(n).repeat(40).slice(0, 40)}`, status })
+          .returning();
+        await db.insert(schema.x402L0Probes).values({ endpointId: ep.id, method: "GET", verdict: "fail", probedAt: new Date(Date.now() - 6 * 3600_000) });
+        await db.insert(schema.x402L0Probes).values({ endpointId: ep.id, method: "GET", verdict: "pass", probedAt: new Date(Date.now() - 30 * 3600_000) });
+        await buy(ep.id, 3, 200, true);
+        return ep;
+      };
+      const active = await decideFor((await withProbes("active")).id);
+      assert.equal(active.recommendation, "WARN");
+      assert.equal(active.degraded, false);
+      const delisted = await decideFor((await withProbes("delisted")).id);
+      assert.equal(delisted.recommendation, "BLOCK");
+      assert.ok(delisted.reason_codes.includes("l0_unverified_single_fail_unconfirmed"));
+      assert.equal(delisted.degraded, true);
     });
 
     await t.test("配達の後の最新が失敗（決済なし）→ WARN・l1_latest_failed", async () => {

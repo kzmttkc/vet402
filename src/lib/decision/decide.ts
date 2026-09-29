@@ -18,7 +18,7 @@ import { DECISION_CACHE_TTL_MS, decisionCache } from "./cache";
 import { rowsOf } from "@/lib/settlements/upsert";
 import { l2EvidenceOf, loadSellerFacts, type SellerFactsLoaded } from "./seller-facts";
 import { loadBuyerFacts } from "./buyer-facts";
-import { decidePayer, decidePayee, l1BasisOf, DECISION_RULES_VERSION, type L1Basis, type Recommendation, type PayerOptions } from "./rules";
+import { decidePayer, decidePayee, l1BasisOf, l0SingleFailConfirmed, DECISION_RULES_VERSION, type L1Basis, type Recommendation, type PayerOptions } from "./rules";
 import { isSpendingHalted } from "@/lib/observatory/kill-switch";
 import { assertEvidenceContract, vet402Evidence } from "./evidence";
 import type { BuyerFacts, Evidence, Freshness, NotAttemptedReason, SellerFacts } from "./types";
@@ -167,8 +167,9 @@ export function buildDecision(input: BuildInput): DecisionResult {
       l1_basis: l1BasisOf(f, options),
       evidence,
       score: input.score ? { ...input.score, deprecated: true } : null,
-      // 2026-09-29.2: 1 回の fail（公開ゲート未満）は測れている——WARN であって degraded ではない。
-      degraded: f.l0.status === "unverified" && options.l0UnverifiedCause !== "single_fail",
+      // 2026-09-29.2: 確かめられた 1 回の fail（掲載中・最新プローブ 120h 以内・直前 pass）は測れている——WARN であって
+      // degraded ではない。確かめられていない 1 回の fail は degraded のまま（require_vet402_allow=false の呼び手も払わない）。
+      degraded: f.l0.status === "unverified" && !l0SingleFailConfirmed(f, options),
     };
   }
   const d = decidePayee(input.facts, { now, operatorBlacklist: input.operatorBlacklist });
@@ -294,6 +295,8 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
         l1NotCounted: loaded.l1NotCounted,
         // 2026-09-29 再監査: l0 が unverified の BLOCK に、何が測れなかったかの下位コードを添える（判定は変えない）。
         l0UnverifiedCause: loaded.l0UnverifiedCause ?? null,
+        // 2026-09-29.2（独立レビュー）: 1 回の fail を WARN に緩める条件の材料（掲載中・最新プローブの時刻・直前の判定）。
+        l0SingleFailContext: loaded.l0SingleFailContext ?? null,
         // 2026-09-29.2: 支払い済み未配達・最新の試行・鮮度の材料。渡さないと facts から保守的に作る（本番は必ず渡す）。
         l1Timeline: loaded.l1Timeline,
       },

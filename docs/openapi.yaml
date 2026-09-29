@@ -3494,7 +3494,10 @@ components:
             when the row shows vet402 was not at fault. Rows in between are
             counted here and shown as not sorted there. L0 follows the published
             two-fail rule: one failed probe is l0_unverified with
-            l0_unverified_single_fail and a WARN (degraded stays false); two
+            l0_unverified_single_fail and a WARN (degraded stays false) when the
+            listing is active, the probe before it passed and the failed probe
+            is at most 120 hours old; otherwise it stays a BLOCK with
+            l0_unverified_single_fail_unconfirmed (degraded true). Two
             consecutive fails are l0_fail and a BLOCK. Other l0_unverified
             causes stay a BLOCK and carry l0_unverified_<cause> (e.g.
             l0_unverified_tls, l0_unverified_not_probed). Limit of the method:

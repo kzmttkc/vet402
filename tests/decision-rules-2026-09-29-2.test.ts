@@ -18,6 +18,7 @@ import { join } from "node:path";
 import {
   assembleSellerFacts,
   isPaidPurchase,
+  l0SingleFailContextOf,
   l0UnverifiedCauseOf,
   l1NotCountedOf,
   l1TimelineOf,
@@ -33,6 +34,8 @@ import {
   L1_FRESH_DAYS,
   L1_PAID_UNDELIVERED_BLOCK,
   L1_WINDOW_DAYS,
+  L0_SINGLE_FAIL_MAX_AGE_HOURS,
+  l0SingleFailConfirmed,
   type PayerOptions,
 } from "@/lib/decision/rules";
 import { buildDecision, type DecisionSubject } from "@/lib/decision/decide";
@@ -71,7 +74,14 @@ const held400 = (d: number) => row(d, { httpStatusPaid: 400 });
 /** 課金なしで中身が届いた（delivered_no_receipt・tx なし・非空）＝ surf.cascade.fyi 型。 */
 const noCharge = (d: number) => row(d, { status: "delivered_no_receipt", txHash: null });
 
-type Setup = { probes?: ProbeInput[]; purchases: PurchaseInput[]; lastSignedAttemptAt?: string | null; lastDeliveredAt?: string | null };
+type Setup = {
+  probes?: ProbeInput[];
+  purchases: PurchaseInput[];
+  lastSignedAttemptAt?: string | null;
+  lastDeliveredAt?: string | null;
+  /** x402_endpoints.status（既定 active）。 */
+  listing?: string;
+};
 
 function inputOf(s: Setup): SellerFactsInput {
   const purchases = [...s.purchases].sort((a, b) => (a.attemptedAt < b.attemptedAt ? 1 : -1));
@@ -97,6 +107,7 @@ function run(s: Setup, extra: PayerOptions = {}) {
     l1NotCounted: l1NotCountedOf(input),
     l0UnverifiedCause: l0UnverifiedCauseOf(input.probes),
     l1Timeline: l1TimelineOf(input),
+    l0SingleFailContext: l0SingleFailContextOf(input.probes, s.listing ?? "active"),
     now: NOW,
     ...extra,
   };
@@ -132,9 +143,14 @@ test("空の 200（settled・非空でない）も支払い済み・未配達と
   assert.equal(run({ purchases: [paidEmpty200(2), paidEmpty200(9)] }).d.recommendation, "BLOCK");
 });
 
-test("tx の付いた settle_failed（署名した支払いが後からチェーンに載った）も支払い済み", () => {
-  const late = row(2, { status: "settle_failed", httpStatusPaid: 504, payloadNonEmpty: false });
+test("tx の付いた settle_failed は、決済の索引に在るか照合で settled になったときだけ支払い済み", () => {
+  const late = row(2, { status: "settle_failed", httpStatusPaid: 504, payloadNonEmpty: false, settlementConfirmed: true });
   assert.equal(isPaidPurchase(late), true);
+  // 売り手が success:false と一緒に返しただけの tx（索引に無い・未照合）は数えない
+  assert.equal(isPaidPurchase({ ...late, settlementConfirmed: false }), false);
+  assert.equal(isPaidPurchase({ ...late, settlementConfirmed: null }), false);
+  assert.equal(isPaidPurchase({ ...late, settlementConfirmed: undefined }), false);
+  assert.equal(run({ purchases: [{ ...late, settlementConfirmed: false }, paid500(5)] }).d.recommendation, "WARN");
   assert.equal(isPaidPurchase(unpaid500(2)), false);
   assert.equal(run({ purchases: [late, paid500(5)] }).d.recommendation, "BLOCK");
 });
@@ -178,7 +194,7 @@ test("除くのは vet402 の落ち度を示せる行・保留・課金なしだ
 test("vet402 の落ち度を示せる行（残高不足の期間の 502・後から tx が載った）は支払い済みでも数えない", () => {
   // seller-attribution.test.ts の payer_short の行に tx を付けたもの（支払いはチェーンに載った）。
   const short = {
-    ...row(17, { status: "settle_failed", httpStatusPaid: 502, payloadNonEmpty: false }),
+    ...row(17, { status: "settle_failed", httpStatusPaid: 502, payloadNonEmpty: false, settlementConfirmed: true }),
     attemptedAt: "2026-09-12T18:02:18Z",
     requestMeta: { requestBody: true },
     amountUnits: "1000000",
@@ -250,15 +266,56 @@ test("窓の外だけ + L0 unverified（not_probed）は従来どおり BLOCK（
 // ------------------------------------------------------------------
 // 4. L0 を公開規則にそろえる
 // ------------------------------------------------------------------
-test("L0 1 回の fail（公開ゲート未満）→ WARN（BLOCK ではない）・degraded は false", () => {
-  const r = run({ probes: [fail(0.1), pass(1)], purchases: [delivered(1)] });
+const SUBJECT: DecisionSubject = { type: "resource", id: null, endpoint_id: "e", observatory_id: "00000000-0000-0000-0000-000000000001", canonical_url: "https://e.com/x", method: "GET" };
+const build = (r: ReturnType<typeof run>) =>
+  buildDecision({ role: "payer", subject: SUBJECT, facts: r.facts, options: r.options, score: null, registry: { status: "off", tx_hash: null }, now: NOW });
+const hours = (h: number) => h / 24;
+
+test("L0 1 回の fail: 掲載中・最新プローブ 120h 以内・直前 pass → WARN・degraded false", () => {
+  const r = run({ probes: [fail(hours(18)), pass(hours(36))], purchases: [delivered(1)] });
   assert.equal(r.facts.l0.status, "unverified");
   assert.ok(r.d.reason_codes.includes("l0_unverified_single_fail"));
+  assert.equal(r.d.reason_codes.includes("l0_unverified_single_fail_unconfirmed"), false);
   assert.equal(r.d.recommendation, "WARN");
-  const subject: DecisionSubject = { type: "resource", id: null, endpoint_id: "e", observatory_id: "00000000-0000-0000-0000-000000000001", canonical_url: "https://e.com/x", method: "GET" };
-  const b = buildDecision({ role: "payer", subject, facts: r.facts, options: r.options, score: null, registry: { status: "off", tx_hash: null }, now: NOW });
+  const b = build(r);
   assert.equal(b.degraded, false);
   assert.equal(b.recommendation, "WARN");
+});
+
+test("L0 1 回の fail: delisted（掲載外）は BLOCK のまま・_unconfirmed・degraded true", () => {
+  const r = run({ probes: [fail(hours(18)), pass(hours(36))], purchases: [delivered(1)], listing: "delisted" });
+  assert.equal(r.d.recommendation, "BLOCK");
+  assert.ok(r.d.reason_codes.includes("l0_unverified_single_fail_unconfirmed"));
+  assert.equal(build(r).degraded, true);
+});
+
+test("L0 1 回の fail: 最新プローブが 120h ちょうどなら WARN、120h を超えたら BLOCK・_unconfirmed・degraded", () => {
+  assert.equal(L0_SINGLE_FAIL_MAX_AGE_HOURS, 120);
+  const edge = run({ probes: [fail(hours(120)), pass(hours(140))], purchases: [delivered(1)] });
+  assert.equal(edge.d.recommendation, "WARN");
+  assert.equal(build(edge).degraded, false);
+  const old = run({ probes: [fail(hours(120.1)), pass(hours(140))], purchases: [delivered(1)] });
+  assert.equal(old.d.recommendation, "BLOCK");
+  assert.ok(old.d.reason_codes.includes("l0_unverified_single_fail_unconfirmed"));
+  assert.equal(build(old).degraded, true);
+});
+
+test("L0: 連続が切れた fail → unverified(rate_limited) → fail は 1 回の fail として緩めない（BLOCK・_unconfirmed）", () => {
+  const rl: ProbeInput = { ...pass(hours(30)), verdict: "unverified", failReason: "rate_limited" };
+  const r = run({ probes: [fail(hours(6)), rl, fail(hours(54))], purchases: [delivered(1)] });
+  assert.equal(r.facts.l0.status, "unverified");
+  assert.ok(r.d.reason_codes.includes("l0_unverified_single_fail"));
+  assert.ok(r.d.reason_codes.includes("l0_unverified_single_fail_unconfirmed"));
+  assert.equal(r.d.recommendation, "BLOCK");
+  assert.equal(build(r).degraded, true);
+});
+
+test("L0: 初めてのプローブが fail（直前が無い）・材料が無い呼び手は BLOCK（fail-closed）", () => {
+  const first = run({ probes: [fail(hours(6))], purchases: [delivered(1)] });
+  assert.equal(first.d.recommendation, "BLOCK");
+  const ok = run({ probes: [fail(hours(6)), pass(hours(30))], purchases: [delivered(1)] });
+  assert.equal(decidePayer(ok.facts, { ...ok.options, l0SingleFailContext: undefined }).recommendation, "BLOCK");
+  assert.equal(l0SingleFailConfirmed(ok.facts, { ...ok.options, l0SingleFailContext: null }), false);
 });
 
 test("L0 2 回連続の fail → l0_fail・BLOCK", () => {
@@ -271,7 +328,7 @@ test("1 回の fail でも、支払い済み・未配達 2 回があれば BLOCK
   assert.equal(run({ probes: [fail(0.1), pass(1)], purchases: [paid500(1), paid500(4)] }).d.recommendation, "BLOCK");
 });
 
-test("1 回の fail + 支払い済み・未配達 1 回 → WARN（agent402.tools の現状）", () => {
+test("確かめられた 1 回の fail + 支払い済み・未配達 1 回 → WARN（agent402.tools 型・掲載中で直前 pass のとき）", () => {
   const { d } = run({ probes: [fail(0.1), pass(1)], purchases: [paid500(5)] });
   assert.equal(d.recommendation, "WARN");
   assert.ok(d.reason_codes.includes("l1_paid_not_delivered"));

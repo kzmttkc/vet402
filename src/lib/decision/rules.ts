@@ -27,13 +27,18 @@
 //         （api.sirenic.eu …/dirigeants は 08-24 に 2 回払っていたのに「一度も試していない」と読めた）。
 //     (4) L0 を公開規則にそろえる: 1 回の fail（l0_unverified_single_fail）は WARN、2 回連続の fail
 //         （l0_fail）が BLOCK。degraded も立てない（測れている）。その他の unverified は従来どおり BLOCK。
+//         独立レビュー（BLOCK・Critical）で範囲を絞った: WARN に緩めるのは、出品が掲載中（active）で、
+//         最新プローブが L0_SINGLE_FAIL_MAX_AGE_HOURS（120h）以内で、直前のプローブが pass のときだけ
+//         （active のプローブ間隔は p50 18h・p95 119h）。delisted・最新プローブが古い・連続が切れた
+//         （fail → unverified → fail）等は BLOCK のまま l0_unverified_single_fail_unconfirmed を添え、degraded も立てる
+//         （require_vet402_allow=false の呼び手が払わないように）。
 //     (5) 鮮度: ALLOW は最新の配達が L1_FRESH_DAYS 日以内のときだけ。古ければ WARN・l1_stale。
 //         allow_without_l1 のオプトインは「L1 の証拠が無い／古い」だけを免除する（失敗は免除しない）。
 //     (6) l1_inconclusive の数は応答の l1_basis.n_not_counted（= n_attempts − 数えた試行）。
 //         facts.l1.n_inconclusive は /purchases と同じ「判定保留」の部分集合のまま（facts の意味は変えない）。
-//   BLOCK if l0 = fail ∨ (l0 = unverified ∧ 原因 ≠ single_fail) ∨ paid_undelivered_since_delivery ≥ 2
+//   BLOCK if l0 = fail ∨ (l0 = unverified ∧ ¬確かめられた single_fail) ∨ paid_undelivered_since_delivery ≥ 2
 //            ∨ (conclusive ≥ 3 ∧ n_delivered = 0) ∨ l2 = mismatch ∨ wash_dominated ∨ operator_blacklist
-//   WARN  if l0 の 1 回 fail ∨ L1 の証拠なし／古い（オプトイン無し）∨ 結論なし（l1_inconclusive）
+//   WARN  if 確かめられた L0 の 1 回 fail（掲載中・120h 以内・直前 pass）∨ L1 の証拠なし／古い（オプトイン無し）∨ 結論なし（l1_inconclusive）
 //            ∨ 未配達（conclusive ≥ 1）∨ paid_undelivered_since_delivery = 1 ∨ 最新の数えた試行が失敗
 //            ∨ drifting ∨ thin ∨ 呼び手方言と不一致
 //   ALLOW if l0 = pass ∧ (n_delivered ≥ 1 ∨ L1 なし ALLOW をオプトイン) ∧ l2 ≠ mismatch ∧ ¬BLOCK ∧ ¬WARN
@@ -80,6 +85,13 @@ export const L1_PAID_UNDELIVERED_BLOCK = 2;
 // 届けている売り手ほど仕組みの上で必ず WARN に落ちる（本番で ALLOW 1,958 件中 634 件）。
 // 経過日数は l1_basis に必ず出し、読み手が自分の基準で判断できるようにする。
 export const L1_FRESH_DAYS = 30;
+/**
+ * 2026-09-29.2（独立レビュー）: L0 の 1 回の fail を WARN に緩めてよい最新プローブの新しさ（時間）。
+ * active のプローブ間隔は p50 18h・p95 119h なので、これを超えたら次のプローブが来ていない＝確かめられていない。
+ */
+export const L0_SINGLE_FAIL_MAX_AGE_HOURS = 120;
+/** 確かめられていない 1 回の fail に添える語（BLOCK のまま）。 */
+export const L0_SINGLE_FAIL_UNCONFIRMED = "l0_unverified_single_fail_unconfirmed";
 /** L1 の事実を数える窓（seller-facts.ts の SQL と同じ 30 日）。 */
 export const L1_WINDOW_DAYS = 30;
 export const RETRY_BURST_BLOCK = 0.3;
@@ -108,9 +120,38 @@ export type PayerOptions = {
    * facts.l1.observed_at＝最後に署名した時刻で上から抑える）。
    */
   l1Timeline?: L1Timeline;
+  /**
+   * 2026-09-29.2（独立レビュー）: l0UnverifiedCause が single_fail のときの材料（seller-facts.ts l0SingleFailContextOf）。
+   * 無ければ 1 回の fail は確かめられていないとして BLOCK のまま（fail-closed）。
+   */
+  l0SingleFailContext?: L0SingleFailContext | null;
   /** 鮮度の基準時刻。省略時は今。 */
   now?: Date;
 };
+
+/** L0 の 1 回の fail を WARN に緩めてよいかの材料。 */
+export type L0SingleFailContext = {
+  /** 出品が掲載中（x402_endpoints.status = active）。 */
+  listing_active: boolean;
+  /** 最新プローブ（fail）の時刻。 */
+  latest_probe_at: string | null;
+  /** 最新の 1 つ前のプローブの判定（無ければ null）。pass でなければ連続が切れている／初回の fail。 */
+  previous_verdict: string | null;
+};
+
+/**
+ * L0 の 1 回の fail を WARN に緩めてよいか（2026-09-29.2・独立レビュー）: 原因が single_fail で、掲載中で、
+ * 最新プローブが 120h 以内で、直前のプローブが pass。どれか欠ければ false（BLOCK のまま・degraded）。
+ */
+export function l0SingleFailConfirmed(f: SellerFacts, o: PayerOptions): boolean {
+  if (f.l0.status !== "unverified" || o.l0UnverifiedCause !== "single_fail") return false;
+  const c = o.l0SingleFailContext;
+  if (!c || !c.listing_active || c.previous_verdict !== "pass" || !c.latest_probe_at) return false;
+  const t = new Date(c.latest_probe_at).getTime();
+  if (!Number.isFinite(t)) return false;
+  const ageHours = ((o.now ?? new Date()).getTime() - t) / 3_600_000;
+  return ageHours <= L0_SINGLE_FAIL_MAX_AGE_HOURS;
+}
 
 /**
  * 2026-09-29.2: 判定の L1 が読む「並び」。facts（公開の形・SDK と対）には載せず、応答の l1_basis に出す。
@@ -239,11 +280,12 @@ export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
   const { conclusive, timeline: t } = v;
   // L1 の証拠が無い（未試行・窓の外だけ、または結論の出た試行が無い）。オプトインの対象はこの 2 つと、古い配達。
   const noL1Evidence = f.l1.n_delivered === 0 && conclusive === 0;
-  // L0: 公開規則（2 回連続の fail で公表）にそろえる。1 回の fail は WARN の理由（2026-09-29.2）。
-  const l0SingleFail = f.l0.status === "unverified" && o.l0UnverifiedCause === "single_fail";
+  // L0: 公開規則（2 回連続の fail で公表）にそろえる。確かめられた 1 回の fail だけ WARN の理由（2026-09-29.2）。
+  const l0SingleFail = l0SingleFailConfirmed(f, o);
   r.push(`l0_${f.l0.status}`);
   if (f.l0.status === "unverified" && o.l0UnverifiedCause && /^[a-z0-9_]{1,40}$/.test(o.l0UnverifiedCause)) {
     r.push(`${L0_UNVERIFIED_CAUSE_PREFIX}${o.l0UnverifiedCause}`);
+    if (o.l0UnverifiedCause === "single_fail" && !l0SingleFail) r.push(L0_SINGLE_FAIL_UNCONFIRMED);
   }
   if (f.l1.n_attempts === 0) r.push(v.staleOutsideWindow ? "l1_stale" : "l1_not_attempted");
   else if (f.l1.n_delivered >= 1) r.push("l1_delivered");
