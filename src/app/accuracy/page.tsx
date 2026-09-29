@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { pageMetadata, breadcrumbJsonLd, datasetJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { SITE_URL } from "@/lib/site-url";
+import { formatPct1 } from "@/lib/util/pct";
 import { VerdictBadge } from "@/components/site/VerdictBadge";
 import { TableScroll } from "@/components/site/TableScroll";
 import { computeAccuracyReport, type AccuracyReport } from "@/lib/scoring/accuracy";
@@ -113,6 +114,12 @@ function generatedOnUtc(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// 2026-09-29 監査 6 周目: 「the 7 days to 2026-09-29 (UTC)」は暦の 7 日に読めるが、SQL は
+// `now() - interval '7 days'`（頁を作った時刻から遡る 168 時間）。語を計算に合わせ、終わりを分まで書く。
+function generatedAtUtc(): string {
+  return `${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+
 export default async function AccuracyPage() {
   let report: AccuracyReport;
   try {
@@ -150,6 +157,7 @@ export default async function AccuracyPage() {
   const benchmarkAgeDays = benchmark.lastScanAt ? daysSince(benchmark.lastScanAt) : null;
   const benchmarkOverdue = benchmarkAgeDays !== null && benchmarkAgeDays > 8;
   const generatedOn = generatedOnUtc();
+  const generatedAt = generatedAtUtc();
 
   const hasAnyData = report.observedVerdicts > 0;
   const hasBenchmarkData = benchmark.knownBad.total + benchmark.knownGood.total > 0;
@@ -302,7 +310,7 @@ export default async function AccuracyPage() {
             <p className="doc-note mt-4 max-w-[70ch]">
               {l0.slo.false_fail_ok === false || l0.slo.false_pass_ok === false ? (
                 <>
-                  At least one of these rates is above its target in the 7 days to {generatedOn} (UTC).
+                  At least one of these rates is above its target in the past 168 hours to {generatedAt}.
                   We print it here rather than leave it in the JSON.{" "}
                 </>
               ) : null}
@@ -364,7 +372,7 @@ export default async function AccuracyPage() {
               ) : null}
               Same figures as <code className="text-brand-deep">slo</code> in{" "}
               <code className="text-brand-deep">GET /api/v1/accuracy</code>, computed by the same
-              function, as of {generatedOn} (UTC).
+              function, as of {generatedAt}.
               {slo.unmeasured.length > 0 ? (
                 <>
                   {" "}Not measured here: {slo.unmeasured.map((k, i) => (
@@ -386,12 +394,12 @@ export default async function AccuracyPage() {
           <p className="doc-note mt-4 max-w-[70ch]">
             Three L1 figures that sound alike count different things. (1) The row above:{" "}
             {slo.l1_7d.request_errors.toLocaleString("en-US")} of{" "}
-            {slo.l1_7d.attempts.toLocaleString("en-US")} L1 attempts in the 7 days to {generatedOn} (UTC), any
+            {slo.l1_7d.attempts.toLocaleString("en-US")} L1 attempts in the past 168 hours to {generatedAt}, any
             status, ended with vet402&apos;s own purchase run not completing (<code>request_error</code> or an
             unfinished <code>in_flight</code>); those rows are not in the ledger export. (2) Held rows: of the{" "}
-            {slo.l1_7d.signed.toLocaleString("en-US")} attempts in the same 7 days where vet402 signed a payment,{" "}
+            {slo.l1_7d.signed.toLocaleString("en-US")} attempts in the same 168 hours where vet402 signed a payment,{" "}
             {slo.l1_7d.held.toLocaleString("en-US")} (
-            {((slo.l1_7d.held / Math.max(1, slo.l1_7d.signed)) * 100).toFixed(1)}%) carry a{" "}
+            {formatPct1(slo.l1_7d.held, slo.l1_7d.signed)}) carry a{" "}
             <code>held_reason</code> in <code>/api/v1/observatory/export.csv</code> &mdash; a 4xx that the request
             vet402 formed could explain, or a window when its payer wallet was short &mdash; and are not counted
             against the seller. (3) The &ldquo;vet402&apos;s side&rdquo; column on{" "}

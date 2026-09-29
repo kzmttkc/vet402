@@ -5,6 +5,7 @@ import {
   VOCABULARY_GROUP_LABELS,
 } from "@/lib/observatory/vocabulary";
 import { SITE_URL } from "@/lib/site-url";
+import { FRESHNESS_LEAD, freshnessLines } from "@/lib/observatory/freshness";
 
 export const dynamic = "force-static";
 
@@ -80,6 +81,13 @@ ${blog}
 - ${SITE_URL}/api/v1/observatory/l0/export.csv — latest public L0 verdict per endpoint as CSV (the data behind the state L0 counts), no key
 - ${SITE_URL}/api/v1/sellers/export.csv — the /sellers classification per active Base listing as CSV (counting by outcome gives the page totals), no key
 - ${SITE_URL}/observatory — L0/L1/L2 register
+
+## Freshness
+
+The measurement schedule is in the Freshness section of ${SITE_URL}/llms.txt. How old a copy of each surface can be:
+
+- ${FRESHNESS_LEAD}
+${freshnessLines().map((l) => `  ${l}`).join("\n")}
 
 Cite with the page URL and a retrieval date. Content current as of 2026-09-29.
 `;

@@ -87,7 +87,9 @@ export function VerdictShareBar({
   const order: L0Verdict[] = ["pass", "fail", "unverified"];
   const segs = shareSegments(order.map((k) => ({ key: k, n: counts[k] })));
   const offsets = segs.reduce<number[]>((acc, s, i) => [...acc, (acc[i - 1] ?? 0) + (i > 0 ? segs[i - 1].widthPct : 0)], []);
-  const inflated = segs.some((s) => s.n > 0 && s.widthPct > s.pct);
+  // 最小幅で膨らんだ段があるか。pct は表示用に丸めた値なので、丸める前の比で比べる（2026-09-29）。
+  const total = segs.reduce((a, s) => a + s.n, 0);
+  const inflated = segs.some((s) => s.n > 0 && (s.n / total) * 100 < 1.5);
   const hatchId = `fig${n}-fail-hatch`;
   return (
     <Figure
@@ -133,7 +135,7 @@ export function VerdictShareBar({
             >
               <VerdictMark verdict={s.key} />
               {s.key} {s.n.toLocaleString()}
-              <span className="text-brand-lift">({s.pct}%)</span>
+              <span className="text-brand-lift">({s.pct.toFixed(1)}%)</span>
             </a>
           );
         })}

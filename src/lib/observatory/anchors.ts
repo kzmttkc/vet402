@@ -16,6 +16,7 @@
 import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
+import { utcDayStartOf } from "@/lib/db/utc-day";
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -25,15 +26,18 @@ export function isAnchorWritesEnabled(): boolean {
 
 type Db = NonNullable<ReturnType<typeof getDb>>;
 
-/** その日の正規化ペイロード（決定的・主キー昇順）。 */
-async function canonicalDayPayload(db: Db, day: string): Promise<{ payload: string; count: number }> {
+// 日の境界は UTC で明示する（2026-09-29 監査 6 周目）。`${day}::date` は timestamptz と比べる瞬間に
+// 接続の TimeZone で解釈される——本番（GMT）では UTC 日と同じだが、接続設定が変わると root が別の行の集合を
+// 指す。utcDayStartOf は TimeZone に依らず同じ瞬間（tests/audit-r6-consistency.pg.test.ts）。
+/** その日の正規化ペイロード（決定的・主キー昇順）。export はテスト用（TimeZone を変えた接続で同じ行を返すか）。 */
+export async function canonicalDayPayload(db: Pick<Db, "execute">, day: string): Promise<{ payload: string; count: number }> {
   const raw = await db.execute(sql`
     SELECT pu.id::text AS id, pu.endpoint_id::text AS endpoint_id,
            to_char(pu.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS attempted_at,
            pu.status, pu.network, pu.asset, pu.pay_to, pu.amount_units, pu.spent_units,
            pu.payer, pu.tx_hash, pu.http_status_paid, pu.latency_ms, pu.l2_schema
     FROM x402_l1_purchases pu
-    WHERE pu.attempted_at >= ${day}::date AND pu.attempted_at < ${day}::date + interval '1 day'
+    WHERE pu.attempted_at >= ${utcDayStartOf(day)} AND pu.attempted_at < ${utcDayStartOf(day)} + interval '1 day'
     ORDER BY pu.id ASC
   `);
   const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as Record<

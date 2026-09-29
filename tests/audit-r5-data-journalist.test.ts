@@ -291,5 +291,6 @@ test("面: 新しい export と訂正ログの頁送りが openapi・llms.txt・
   // state の頁は保留を除いた率を並べる
   const state = read("src/app/observatory/state/page.tsx");
   assert.ok(state.includes("of attempts not held"));
-  assert.ok(state.includes("Awaiting on-chain re-read"));
+  // 2026-09-29 監査 6 周目: 公開面の語は「awaiting on-chain verification（照合待ち）」と「held（vet402 の保留）」に分けた。
+  assert.ok(state.includes("Awaiting on-chain verification"));
 });

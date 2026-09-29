@@ -112,16 +112,10 @@ test("Freshness 節の API キャッシュ窓は route の Cache-Control と一�
   const section = LLMS.slice(LLMS.indexOf("## Freshness"), LLMS.indexOf("## Legal"));
   assert.ok(!/never cached/i.test(section), "JSON API がキャッシュされないとは言えない（CDN が s-maxage で持つ）");
   assert.ok(!/retrievedAt[^.]*\bis the time you asked/.test(section), "retrievedAt を「聞いた時刻」と言っている");
-  const sMaxAge = (rel: string) => {
-    const src = readFileSync(join(ROOT, rel), "utf8");
-    const all = [...src.matchAll(/s-maxage=(\d+), stale-while-revalidate=(\d+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
-    assert.ok(all.length > 0, `${rel} に Cache-Control の s-maxage が無い`);
-    for (const [max, swr] of all) {
-      assert.equal(max, all[0][0], `${rel} の s-maxage が route 内で揃っていない`);
-      assert.equal(swr, max * 2, `${rel}: Freshness 節は stale-while-revalidate を窓の 2 倍と書いている`);
-    }
-    return all[0][0];
-  };
+  // 2026-09-29 監査 6 周目: 「up to 15 minutes (s-maxage=900)」は stale-while-revalidate の 30 分を
+  // 落としていた（最大 45 分）。節は面ごとの行（src/lib/observatory/freshness.ts）を載せる形に変えた。
+  // 行と route の Cache-Control の一致は tests/audit-r6-consistency.test.ts が見る。ここでは各 route の
+  // Cache-Control がそのまま節の行に書かれていることを見る。
   for (const [path, rel] of [
     ["/api/v1/observatory/state", "src/app/api/v1/observatory/state/route.ts"],
     ["/api/v1/observatory/history", "src/app/api/v1/observatory/history/route.ts"],
@@ -130,13 +124,13 @@ test("Freshness 節の API キャッシュ窓は route の Cache-Control と一�
     ["/api/v1/observatory/backtest", "src/app/api/v1/observatory/backtest/route.ts"],
     ["/api/v1/accuracy", "src/app/api/v1/accuracy/route.ts"],
   ] as const) {
-    const n = sMaxAge(rel);
-    // 経路名の後ろ、次の「;」までに同じ s-maxage が書かれていること（複数経路を 1 つの窓でまとめた書き方も通る）。
-    const cacheSentence = section.slice(section.indexOf("the CDN in front of the site holds"));
-    const at = cacheSentence.indexOf(`\`${path}\``);
-    assert.ok(at >= 0, `Freshness 節のキャッシュの文に ${path} が無い`);
-    const end = cacheSentence.indexOf(";", at);
-    const tail = cacheSentence.slice(at, end === -1 ? undefined : end);
-    assert.ok(tail.includes(`s-maxage=${n}`), `${path} の実際の s-maxage=${n} が Freshness 節の同じ句に無い`);
+    const src = readFileSync(join(ROOT, rel), "utf8");
+    const cc = /"Cache-Control":\s*"([^"]+)"/.exec(src)?.[1];
+    assert.ok(cc, `${rel} に Cache-Control が無い`);
+    const short = `/${path.split("/").pop()}`;
+    const line = section
+      .split("\n")
+      .find((l) => l.includes(`Cache-Control: ${cc}`) && (l.includes(path) || l.includes(`\`${short}\``)));
+    assert.ok(line, `Freshness 節に ${path} の行（Cache-Control: ${cc}）が無い`);
   }
 });

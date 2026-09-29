@@ -3,11 +3,16 @@
 // RFC の紙の世界に「装飾」は持ち込まないが、「データの図」は持ち込む。
 // ここは純関数だけ——描画は src/components/site/Figures.tsx。
 // ============================================================
+import { pct1 } from "@/lib/util/pct";
 
 export type ShareSegment<K extends string = string> = {
   key: K;
   n: number;
-  /** 0–100。合計は 100 になる（丸めの残りは最大の段へ）。 */
+  /**
+   * 0–100・小数 1 桁。各段を pct1（src/lib/util/pct.ts）で独立に丸める——/observatory/state と同じ値。
+   * 2026-09-29 監査 6 周目: 丸めの残りを最大の段へ寄せていたので pass が 61.1%、/state は 61.0% だった。
+   * 合計は 99.9〜100.1 になりうる（1 段だけ動かして 100 に揃えない）。
+   */
   pct: number;
   /** 描画幅（%）。n>0 の段は最小幅を保証し、見えない段を作らない。 */
   widthPct: number;
@@ -24,17 +29,16 @@ export function shareSegments<K extends string>(
 ): ShareSegment<K>[] {
   const total = counts.reduce((a, c) => a + Math.max(0, c.n), 0);
   if (total === 0) return counts.map((c) => ({ key: c.key, n: 0, pct: 0, widthPct: 0 }));
-  const raw = counts.map((c) => ({ key: c.key, n: Math.max(0, c.n), pct: (Math.max(0, c.n) / total) * 100 }));
-  // pct: 小数 1 桁へ丸め、残りは最大の段へ
-  const rounded = raw.map((r) => ({ ...r, pct: Math.round(r.pct * 10) / 10 }));
-  const largest = rounded.reduce((best, r, i) => (r.n > rounded[best].n ? i : best), 0);
-  const drift = Math.round((100 - rounded.reduce((a, r) => a + r.pct, 0)) * 10) / 10;
-  rounded[largest].pct = Math.round((rounded[largest].pct + drift) * 10) / 10;
-  // widthPct: 最小幅の保証
-  const widths = rounded.map((r) => (r.n > 0 ? Math.max(r.pct, minWidthPct) : 0));
-  const overflow = widths.reduce((a, w) => a + w, 0) - 100;
-  if (overflow > 0) widths[largest] = Math.max(0, widths[largest] - overflow);
-  return rounded.map((r, i) => ({ ...r, widthPct: Math.round(widths[i] * 100) / 100 }));
+  const raw = counts.map((c) => ({ key: c.key, n: Math.max(0, c.n), exact: (Math.max(0, c.n) / total) * 100 }));
+  // pct: 表示の値。段ごとに同じ丸め（pct1）で独立に丸める。
+  const rounded = raw.map((r) => ({ key: r.key, n: r.n, pct: pct1(r.n, total) ?? 0 }));
+  const largest = raw.reduce((best, r, i) => (r.n > raw[best].n ? i : best), 0);
+  // widthPct: 描画幅は丸める前の比から作る（合計 100）。最小幅で膨らんだ分は最大の段から差し引く。
+  const round2 = (x: number) => Math.round(x * 100) / 100;
+  const widths = raw.map((r) => (r.n > 0 ? round2(Math.max(r.exact, minWidthPct)) : 0));
+  const others = widths.reduce((a, w, i) => (i === largest ? a : a + w), 0);
+  widths[largest] = Math.max(0, round2(100 - others));
+  return rounded.map((r, i) => ({ ...r, widthPct: widths[i] }));
 }
 
 export type GaugeCell = "settled" | "failed";

@@ -203,7 +203,7 @@ const CORRECTIONS: Correction[] = [
       "2026-09-01 only 2,750 of 14,662 active endpoints (18.8%) carried a probe from the previous 7 days. " +
       "The claim and our own published counter contradicted each other on the same page.",
     action:
-      "Found in our own adversarial audit and changed the same day (commit a62072c, 2026-09-02 12:51 JST). " +
+      "Found in our own adversarial audit and changed the same day (commit a62072c, 2026-09-02 03:51 UTC). " +
       "The wording now states the mechanism and prints the measured share: the catalog is re-fetched daily, " +
       "endpoints are probed on a rolling schedule, and the page carries the current percentage of active " +
       "endpoints with a probe in the last 7 days. We also raised the cadence: that share was 68.8% of 15,312 " +

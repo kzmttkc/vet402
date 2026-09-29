@@ -5,6 +5,7 @@ import { pageMetadata, breadcrumbJsonLd, datasetJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { SITE_URL } from "@/lib/site-url";
 import { deliveredRates } from "@/lib/observatory/delivered-rates";
+import { formatPct1 } from "@/lib/util/pct";
 import { TableScroll } from "@/components/site/TableScroll";
 import {
   getObservatoryStatsByChainCached,
@@ -36,10 +37,8 @@ export const metadata: Metadata = pageMetadata({
 
 export const revalidate = 600;
 
-function pct(n: number, denom: number): string {
-  if (denom === 0) return "—";
-  return `${((n / denom) * 100).toFixed(1)}%`;
-}
+/** 丸めは公開面で 1 つ（src/lib/util/pct.ts・/observatory の判定バーと同じ値。2026-09-29 監査 6 周目）。 */
+const pct = formatPct1;
 
 /**
  * カタログ source の見出し。取得時点と取得健全性は source ごとに別の事実なので、
@@ -532,14 +531,16 @@ export default async function ObservatoryStatePage() {
                       入っていることが見えない。率は消さず、分母を変えた率を並べる（delivered-rates.ts・API の l1Rates）。 */}
                   <td className="num">
                     {pct(stats.l1.delivered, stats.l1.attempts)} of attempts ·{" "}
-                    {pct(stats.l1.delivered, rates.denominators.notHeld)} of attempts not held ·{" "}
-                    {pct(stats.l1.delivered, rates.denominators.finalOutcome)} of attempts with a final, counted outcome
+                    {pct(stats.l1.delivered, rates.denominators.notHeld)} of attempts not held (vet402&apos;s hold) ·{" "}
+                    {pct(stats.l1.delivered, rates.denominators.finalOutcome)} of attempts counted in the delivery rate
+                    ({rates.denominators.finalOutcome.toLocaleString()}: attempts, less held and awaiting on-chain verification)
                   </td>
                 </tr>
                 <tr>
                   <td className="text-brand">
-                    Awaiting on-chain re-read (<code>settle_claimed</code>): the seller asserted a settlement
-                    and vet402 has not yet read it on-chain — in attempts, in neither delivered nor held
+                    Awaiting on-chain verification (<code>settle_claimed</code>): the seller asserted a settlement
+                    and vet402 has not yet read it on-chain — in attempts, in neither delivered nor held (vet402&apos;s
+                    hold below); its ledger <code>held_reason</code> is empty
                   </td>
                   <td className="num">{awaiting.toLocaleString()}</td>
                   <td className="num">
@@ -557,7 +558,10 @@ export default async function ObservatoryStatePage() {
                 <tr>
                   <td className="text-brand">
                     Inconclusive: held, not counted against the seller — the paid request answered{" "}
-                    <code>4xx</code>, or it ran while our own payer wallet was unfunded
+                    <code>4xx</code>, or it ran while our own payer wallet was unfunded. &ldquo;Held&rdquo; on this
+                    page means vet402&apos;s hold (the rows with a ledger <code>held_reason</code>); attempts awaiting
+                    on-chain verification are the row above. The decision API&apos;s reason code{" "}
+                    <code>l1_not_counted_held</code> covers both
                   </td>
                   <td className="num">{stats.l1.inconclusive.toLocaleString()}</td>
                   <td className="num">{pct(stats.l1.inconclusive, stats.l1.attempts)} of attempts</td>

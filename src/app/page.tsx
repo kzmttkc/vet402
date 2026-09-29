@@ -11,6 +11,7 @@ import { buttonClass } from "@/components/ui/Button";
 import { SITE_URL } from "@/lib/site-url";
 import { organizationJsonLd, publisherOrg } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
+import { formatPct1 } from "@/lib/util/pct";
 import { buildMonth } from "@/lib/build-month";
 import {
   getCoverageShareCached,
@@ -717,9 +718,7 @@ export default async function Home() {
                     L1 が買いに行けたのは endpointsAttempted 件で、その率をここに書く。 */}{" "}
                 Their own denominator is the {stats.l1.endpointsAttempted.toLocaleString()} endpoints L1 has
                 attempted a paid purchase against, not the first row — read as a share of those, the two L1 rows together are{" "}
-                {stats.l1.endpointsAttempted > 0
-                  ? `${((stats.l1.endpointsSettled / stats.l1.endpointsAttempted) * 100).toFixed(1)}%`
-                  : "—"}
+                {formatPct1(stats.l1.endpointsSettled, stats.l1.endpointsAttempted)}
                 .
               </>
             }

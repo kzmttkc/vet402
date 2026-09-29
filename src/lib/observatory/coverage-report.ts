@@ -6,6 +6,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { rowsOf } from "@/lib/settlements/upsert";
 import { operatorExclusionPredicate } from "./operator-sql";
+import { pct1 } from "@/lib/util/pct";
 
 export type CoverageWeekly = {
   window_days: 7;
@@ -52,7 +53,7 @@ export async function getCoverageWeekly(): Promise<CoverageWeekly> {
   const listed = Number(r.listed ?? 0);
   const l0 = Number(r.l0 ?? 0);
   const l1 = Number(r.l1 ?? 0);
-  const pct = (n: number) => (listed === 0 ? null : Math.round((n / listed) * 1000) / 10);
+  const pct = (n: number) => pct1(n, listed);
   return {
     ...empty,
     listed,

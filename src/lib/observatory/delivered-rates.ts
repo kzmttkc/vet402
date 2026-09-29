@@ -6,6 +6,7 @@
 // 「半分以上が届かなかった」と読まれる。率は消さず、分母を変えた率を並べ、それぞれの分母を名前で書く。
 // 純関数（state API と頁が同じ値を出す）。
 // ============================================================
+import { pct1 } from "@/lib/util/pct";
 
 export type DeliveredRates = {
   /** l1.delivered / l1.attempts（保留も照合待ちも分母に入る）。 */
@@ -17,11 +18,8 @@ export type DeliveredRates = {
   denominators: { attempts: number; notHeld: number; finalOutcome: number };
 };
 
-/** 小数 1 桁の %（分母 0 は null）。 */
-export function pct1(n: number, d: number): number | null {
-  if (!Number.isFinite(n) || !Number.isFinite(d) || d <= 0) return null;
-  return Math.round((n / d) * 1000) / 10;
-}
+/** 小数 1 桁の %（分母 0 は null）。丸めの正典は src/lib/util/pct.ts（公開面すべてで同じ丸め）。 */
+export { pct1 };
 
 export function deliveredRates(l1: { attempts: number; delivered: number; inconclusive: number; awaitingReread: number }): DeliveredRates {
   const attempts = Math.max(0, l1.attempts);

@@ -208,16 +208,21 @@ export default async function ImpactPage() {
               {backtest && (
                 <>
                   {" "}Across the whole ledger, {backtest.avoided.count} of{" "}
-                  {backtest.attemptsTotal.toLocaleString()} signed attempts with a final outcome carried a
+                  {backtest.attemptsTotal.toLocaleString()} signed attempts with a final status carried a
                   prior public failure signal and <strong>did not settle</strong> (
                   {formatUsdcUnits(backtest.avoided.spentUnits)} signed and put at stake with no confirmed
                   transfer on-chain — exposure an agent honoring the signals would not have taken, not money
                   lost), while {backtest.forgone.count} signalled attempts settled anyway and would have been
                   skipped too (definition:
                   signed attempts preceded by a public failure signal, a subset of the attempts in §2 that leaves
-                  out rows still awaiting on-chain re-read (<code>settle_claimed</code>) and rows from the window when
+                  out rows still awaiting on-chain verification (<code>settle_claimed</code>) and rows from the window when
                   vet402&apos;s own payer wallet was out of USDC (<code>payer_unfunded</code>), from{" "}
-                  <code>/api/v1/observatory/backtest</code>).
+                  <code>/api/v1/observatory/backtest</code>; &ldquo;attempts with a final status&rdquo; here is not
+                  the denominator of the delivery rate on{" "}
+                  <Link href="/observatory/state" className="underline">
+                    /observatory/state
+                  </Link>
+                  , which also leaves out the attempts held by vet402).
                 </>
               )}{" "}
               <Link href="/api/v1/observatory/decisions" className="underline">

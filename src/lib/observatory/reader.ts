@@ -44,6 +44,7 @@ import {
 } from "./settlement-source";
 import type { ObservatoryQuery, ObservatoryVerdict } from "./query";
 import { UUID_RE } from "@/lib/validation/uuid";
+import { pct1 } from "@/lib/util/pct";
 
 export type ObservatoryListRow = {
   id: string;
@@ -697,8 +698,8 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
       inconclusiveSettledCount,
       inconclusiveByReason,
       settleRatePct:
-        attemptCount === 0 ? null : Math.round((settledCount / attemptCount) * 1000) / 10,
-      deliveryRatePct: judged === 0 ? null : Math.round((deliveredCount / judged) * 1000) / 10,
+        pct1(settledCount, attemptCount),
+      deliveryRatePct: pct1(deliveredCount, judged),
     };
   } catch (error) {
     if (isMissingSchemaError(error)) return null;
@@ -1407,7 +1408,7 @@ export async function getCoverageShare(): Promise<CoverageShare> {
     return {
       activeEndpoints: active,
       measuredLast7d: measured,
-      pct: active === 0 ? null : Math.round((measured / active) * 1000) / 10,
+      pct: pct1(measured, active),
     };
   } catch (error) {
     if (isMissingSchemaError(error)) return { activeEndpoints: 0, measuredLast7d: 0, pct: null };

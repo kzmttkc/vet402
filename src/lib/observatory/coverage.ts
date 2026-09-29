@@ -36,6 +36,13 @@ export type TierSignals = {
 
 export const LOOKUPS_C2_THRESHOLD = 5;
 
+/**
+ * decision_lookups.day（UTC の 'YYYY-MM-DD'・decide.ts が JS の UTC 日で書く）と比べる「7 日前の UTC 日」。
+ * 2026-09-29 監査 6 周目: `(current_date - 7)::text` は接続の TimeZone（と DateStyle）で決まっていた。
+ * 本番は GMT なので値は同じ。UTC を明示し、書式も固定する（tests/audit-r6-consistency.pg.test.ts）。
+ */
+export const UTC_DAY_MINUS_7: SQL = sql`to_char(${UTC_TODAY} - 7, 'YYYY-MM-DD')`;
+
 /** 純関数。上位の階層ほど優先（C4 > C3 > C2 > C1 > C0）。 */
 export function tierOf(s: TierSignals): CoverageTier {
   if (s.reverifyRequested) return "C4";
@@ -111,7 +118,7 @@ export function l0TierWhere(tier: "c1" | "c2", daily = true): SQL {
     return sql`e.status = 'active' AND ${notPathTemplateSql()} AND (e.last_seen_at > now() - interval '30 days' OR ${settledWithinWindowSql(daily)})`;
   }
   const lookups = sql`coalesce((
-    SELECT sum(n) FROM decision_lookups d WHERE d.endpoint_id = e.id AND d.day > (current_date - 7)::text), 0) >= ${LOOKUPS_C2_THRESHOLD}`;
+    SELECT sum(n) FROM decision_lookups d WHERE d.endpoint_id = e.id AND d.day > ${UTC_DAY_MINUS_7}), 0) >= ${LOOKUPS_C2_THRESHOLD}`;
   return sql`e.status = 'active' AND ${notPathTemplateSql()} AND (${attributedWithinWindowSql(daily)} OR ${lookups})`;
 }
 
@@ -194,7 +201,7 @@ export async function loadCoverageTiers(endpointIds: readonly string[]): Promise
            ${settledWithinWindowSql(daily)} AS settled_30d,
            ${attributedCount(daily)} AS attributed,
            coalesce((SELECT sum(n)::int FROM decision_lookups d
-               WHERE d.endpoint_id = e.id AND d.day > (current_date - 7)::text), 0) AS lookups7d,
+               WHERE d.endpoint_id = e.id AND d.day > ${UTC_DAY_MINUS_7}), 0) AS lookups7d,
            (e.declared_schema IS NOT NULL) AS has_declaration,
            EXISTS (SELECT 1 FROM disputes d WHERE d.endpoint_id = e.id AND d.status = 'open') AS reverify_requested
     FROM x402_endpoints e
