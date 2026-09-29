@@ -17,6 +17,8 @@
 //   l2.status        = 宣言が無ければ undeclared。あれば直近の配達の l2_schema:
 //                      match → conform、mismatch → mismatch、それ以外 → undeclared
 //                      （未検査を mismatch と書かない）
+//                      2026-09-29: 印（l2.reason）の無い古い mismatch は legacyL2SchemaOf で読み直す。16,000 バイトで
+//                      切った JSON が読めずに「全部欠けた」と記録された行を、売り手の不一致として数えない（l2-check.ts）
 //   offer_stability  = 24h 窓で (amount, asset, payTo) の実質変更 ≥ 3 → drifting
 //   wash_dominated   = raw ≥ 10 かつ real ≤ raw × 10%
 // trustScore はここに入れない（§8.3）。
@@ -29,6 +31,7 @@ import { classifyRow, ONCE_SUFFIX, type SellerRowFacts } from "@/lib/sellers/fix
 import { recordRowKey } from "@/lib/sellers/board";
 import { readRecordSides } from "@/lib/sellers/reader";
 import { publishedVerdict } from "@/lib/observatory/l0-probe";
+import { legacyL2SchemaOf } from "@/lib/observatory/l2-check";
 import { purchaseId as toPurchaseId } from "@/lib/ids/canonical";
 import { toCaip2 } from "@/lib/observatory/chains";
 import { getSettlementCounts } from "@/lib/settlements/census";
@@ -58,7 +61,12 @@ export type PurchaseInput = {
   txHash: string | null;
   network: string | null;
   /** §6.3: l1-runner が raw_response_meta.l2 に残す判定材料（2026-09-02 以降の行だけ持つ）。 */
-  l2Detail?: { missing: string[]; declarationHash: string | null; responseHash: string } | null;
+  l2Detail?: { missing: string[]; declarationHash: string | null; responseHash: string; reason?: string | null } | null;
+  /**
+   * 2026-09-29: 支払い付き応答の本文の先頭 500 文字（raw_response_meta.bodyHead）。L2 = mismatch の行だけ読む。
+   * 印の無い古い mismatch を読み直す材料（legacyL2SchemaOf）。公開面には出さない。
+   */
+  bodyHead?: string | null;
   /**
    * 2026-09-29: 帰属の判定（classifyRow）が読む raw_response_meta の部分だけ（requestBody の有無・requestQuery の値）。
    * 無ければ null（記録なし）。
@@ -450,9 +458,18 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
     const lastDelivered = delivered[0] ?? null;
     if (lastDelivered) {
       l2ObservedAt = lastDelivered.attemptedAt;
-      if (lastDelivered.l2Schema === "match") l2Status = "conform";
-      else if (lastDelivered.l2Schema === "mismatch") l2Status = "mismatch";
-      l2Detail = lastDelivered.l2Detail ?? null;
+      // 2026-09-29: 印の無い古い mismatch を読み直す（読めなかった本文は not_checked → undeclared と同じ扱い）。
+      const l2 = legacyL2SchemaOf({
+        l2Schema: lastDelivered.l2Schema,
+        l2Reason: lastDelivered.l2Detail?.reason,
+        missing: lastDelivered.l2Detail?.missing,
+        bodyHead: lastDelivered.bodyHead,
+        contentType: lastDelivered.contentType,
+        declaredSchema: input.declaredSchema,
+      });
+      if (l2.l2Schema === "match") l2Status = "conform";
+      else if (l2.l2Schema === "mismatch") l2Status = "mismatch";
+      l2Detail = lastDelivered.l2Detail ? { ...lastDelivered.l2Detail, missing: l2.missing ?? lastDelivered.l2Detail.missing } : null;
     }
   }
   const sha256 = (v: string) => createHash("sha256").update(v, "utf8").digest("hex");
@@ -600,6 +617,7 @@ function parseL2Detail(v: unknown): PurchaseInput["l2Detail"] {
     missing: Array.isArray(o.missing) ? o.missing.filter((k): k is string => typeof k === "string") : [],
     declarationHash: typeof o.declarationHash === "string" ? o.declarationHash : null,
     responseHash: o.responseHash,
+    reason: typeof o.reason === "string" ? o.reason : null,
   };
 }
 
@@ -689,6 +707,7 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
              to_char(attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS attempted_at_utc,
              CASE WHEN jsonb_typeof(raw_response_meta) = 'object' THEN left(raw_response_meta->>'contentType', 60) END AS content_type,
              raw_response_meta->'l2' AS l2_detail,
+             CASE WHEN l2_schema = 'mismatch' AND jsonb_typeof(raw_response_meta) = 'object' THEN left(raw_response_meta->>'bodyHead', 500) END AS body_head,
              CASE WHEN jsonb_typeof(raw_response_meta) = 'object' THEN jsonb_strip_nulls(jsonb_build_object(
                'requestBody', CASE WHEN raw_response_meta ? 'requestBody' THEN
                  CASE WHEN jsonb_typeof(raw_response_meta->'requestBody') = 'string' THEN to_jsonb(left(raw_response_meta->>'requestBody', 16)) ELSE 'true'::jsonb END END,
@@ -724,6 +743,7 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     txHash: r.tx_hash === null ? null : String(r.tx_hash),
     network: r.network === null ? null : String(r.network),
     l2Detail: parseL2Detail(r.l2_detail),
+    bodyHead: typeof r.body_head === "string" ? r.body_head : null,
     requestMeta:
       typeof r.request_meta === "object" && r.request_meta !== null && !Array.isArray(r.request_meta)
         ? (r.request_meta as Record<string, unknown>)

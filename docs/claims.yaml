@@ -1325,6 +1325,13 @@ claims:
     check: null
     why_unverifiable: "集計規則であって、公開 GET が数値で返す種類の主張ではない。方法論 §7 が同じ定義を散文で公開している"
     verified_at: 2026-09-05
+  - id: seo_vocab_l2_not_checked_is_never_a_failure
+    surface: src/lib/observatory/vocabulary.ts
+    quote: "so it is never counted as a failure"
+    means: "L2 の not_checked（200 でない・本文が 256 KiB 超・読み取りの途中の失敗・閉じていない JSON）は判定できなかっただけで、売り手の不一致として数えない"
+    check: null
+    why_unverifiable: "判定規則であって、公開 GET が数値で返す種類の主張ではない。実装は src/lib/observatory/l2-check.ts、tests/l1-paid-body-cap.test.ts と tests/l1-paid-body-cap.pg.test.ts が固定する"
+    verified_at: 2026-09-29
   # ---- 2026-09-05 セキュリティ監査 S-4 / S-17: settled の証拠強度を 2 層で公開する ----
   - id: s4_settled_tiers_sum_to_settled
     surface: src/app/observatory/state/page.tsx

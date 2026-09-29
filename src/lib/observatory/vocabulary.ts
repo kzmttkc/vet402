@@ -155,7 +155,7 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "l1_inconclusive",
     group: "l1",
     definition:
-      "l1_inconclusive means vet402 has signed paid attempts against this resource, but each one is held as inconclusive, so there is no paid response to judge; this is a gap in our measurement, not evidence against the seller. The held attempts are a 4xx we attribute to our own request shape (no API key, or {} as the POST body where the seller declares none) or a 402 or 5xx while our own payer wallet was unfunded. It sits between l1_not_attempted (no paid attempt was signed) and l1_never_delivered (a conclusive paid response existed and nothing was delivered): facts.l1.n_inconclusive carries the count of held attempts. The decision also leaves out attempts where the row shows vet402's side of the fault, attempts awaiting on-chain verification and attempts that took no payment, so l1_inconclusive can appear with n_inconclusive 0; the decision document's l1_basis.n_not_counted carries the full count, and when nothing was delivered the reason codes l1_not_counted_vet402_side, l1_not_counted_held and l1_not_counted_no_charge say which were left out. This is not the /sellers rule: the decision leaves out only what shows vet402's fault, while /sellers puts a failure on the seller's side only when the row shows vet402 was not at fault, so rows in between are counted by the decision and shown as not sorted on /sellers.",
+      "l1_inconclusive means vet402 has signed paid attempts against this resource, but none of them counts either way, so there is no paid response to judge; this is a gap in our measurement, not evidence against the seller. Held attempts are a 4xx we attribute to our own request shape (no API key, or {} as the POST body where the seller declares none) or a 402 or 5xx while our own payer wallet was unfunded. It sits between l1_not_attempted (no paid attempt was signed) and l1_never_delivered (a counted paid attempt existed and nothing was delivered; a WARN, since rules 2026-09-29.3): facts.l1.n_inconclusive carries the count of held attempts. The decision also leaves out attempts where the row shows vet402's side of the fault, attempts awaiting on-chain verification and attempts that took no payment, and, since rules 2026-09-29.3, a failure where no money moved unless /sellers puts it on the seller's side (confirmed on two different UTC days). So l1_inconclusive can appear with n_inconclusive 0; the decision document's l1_basis.n_not_counted carries the full count, and when nothing was delivered the reason codes l1_not_counted_vet402_side, l1_not_counted_held, l1_not_counted_no_charge, l1_not_counted_unproven (no money moved and the row cannot show vet402 was not at fault) and l1_not_counted_unconfirmed (no money moved, on the seller's side on one day only) say which were left out. Where no money moved, the decision counts only what /sellers puts on the seller's side, and then only toward a WARN. Where money moved, it is cautious for the payer: a paid attempt that took payment and did not deliver counts even when /sellers leaves it not sorted, and two of them since the last delivery (l1_paid_not_delivered) are the only L1 reason for a BLOCK.",
   },
   {
     term: "match",
@@ -167,19 +167,19 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "mismatch",
     group: "l2",
     definition:
-      "mismatch means the paid response does not parse as JSON, a declared required key is missing, or the content type is not JSON despite a declaration.",
+      "mismatch means the paid response is not JSON at all, is JSON but not an object, lacks a key the seller's declared output schema marks as required, or has a non-JSON content type despite a declaration. Since 2026-09-29 the row's raw_response_meta.l2.reason says which (not_json_body, not_object, missing_keys or not_json_content_type), and missing keys are listed only when the body was read as JSON. Until 2026-09-29 vet402 read only the first 16,000 bytes of a paid response, so a longer JSON response could not be parsed and was recorded as a mismatch listing every declared required key as missing; the decision reads those older rows again and does not count one as a mismatch unless the record shows the JSON was read. In the decision, a mismatch with recorded missing keys is a BLOCK, and one without is a WARN (l2_mismatch_unexplained).",
   },
   {
     term: "no_declaration",
     group: "l2",
     definition:
-      "no_declaration means the catalog entry declares no output schema, so there is nothing to check against. It is never counted as a failure.",
+      "no_declaration means the catalog entry declares no output schema, or one with no required keys and no example properties, so there is nothing to check against. It is never counted as a failure.",
   },
   {
     term: "not_checked",
     group: "l2",
     definition:
-      "not_checked means the paid request did not return 200, so there was no response body to check.",
+      "not_checked means there was no complete response body to check, so it is never counted as a failure. The paid request did not return 200, or (since 2026-09-29) the body was longer than the 256 KiB vet402 reads (raw_response_meta.l2.reason body_over_cap, with bodyTruncated true), stopped partway (body_read_error), or began as JSON but could not be read as JSON, for example because it never closed (unparseable).",
   },
   {
     term: "delisted",

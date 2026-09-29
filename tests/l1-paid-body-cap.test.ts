@@ -1,0 +1,181 @@
+// ============================================================
+// L2 の計器: 支払い付き応答の本文の読み取り上限（2026-09-29・監査 6 周目）。
+//
+// 守ること:
+//  1. 上限（L1_PAID_BODY_CAP_BYTES = 256 KiB）以内の長い JSON は読み切って判定する
+//     （16,000 バイトで切っていた頃は、閉じない JSON が「宣言と不一致」に見えていた）。
+//  2. 上限を超えた本文は L2 を判定しない: not_checked・reason body_over_cap。欠落キーを並べない。
+//  3. 本文の読み取りが途中で失敗した応答も not_checked（body_read_error）。
+//  4. 出力の宣言が無い（必須キーも例のプロパティも無い）schema は、本文が読めなくても no_declaration。
+//  5. JSON として読めない本文からは欠けたキーを作らない。JSON の頭で始まって読めない本文は not_checked（unparseable）。
+//  6. Content-Type が JSON でない mismatch は本文の長さに依らない。
+//  7. 印の無い古い行の読み直し（legacyL2SchemaOf・判定の読み手が使う）。
+// Run: npx tsx --test tests/l1-paid-body-cap.test.ts
+// ============================================================
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  L1_PAID_BODY_CAP_BYTES,
+  L1_LEGACY_PAID_BODY_CAP_BYTES,
+  checkL2Detailed,
+  legacyL2SchemaOf,
+  paidBodyReadOf,
+} from "@/lib/observatory/l2-check";
+import { checkL2Detailed as runnerCheckL2Detailed } from "@/lib/observatory/l1-runner";
+import { readBodyCapped } from "@/lib/net/read-capped";
+
+/** カタログの宣言の形（extensions.bazaar.schema）。 */
+const schemaWith = (required: string[] | null, properties: Record<string, unknown> | null = { a: { type: "string" } }) => ({
+  properties: {
+    input: { type: "object" },
+    output: {
+      properties: {
+        example: { ...(required ? { required } : {}), ...(properties ? { properties } : {}) },
+      },
+    },
+  },
+});
+
+/** 指定バイト数前後の JSON（{"count":n,"items":[...],"assets":...}）。 */
+function longJson(minBytes: number): string {
+  // 1 件 約 70 バイト。足りなければ倍にして作り直す（毎回 stringify し直さない）。
+  for (let n = Math.ceil(minBytes / 70); ; n *= 2) {
+    const items = Array.from({ length: n }, (_, i) => ({ id: i, name: `asset-${i}-${"x".repeat(40)}` }));
+    const s = JSON.stringify({ count: n, items, assets: "tail" });
+    if (Buffer.byteLength(s, "utf8") >= minBytes) return s;
+  }
+}
+
+test("上限は 16,000 バイトより十分大きい（L0 と同じく、上限そのものは残す）", () => {
+  assert.equal(L1_PAID_BODY_CAP_BYTES, 256 * 1024);
+  assert.ok(L1_PAID_BODY_CAP_BYTES > L1_LEGACY_PAID_BODY_CAP_BYTES * 10);
+});
+
+test("l1-runner の checkL2Detailed は l2-check と同じ関数", () => {
+  assert.equal(runnerCheckL2Detailed, checkL2Detailed);
+});
+
+test("16,000 バイトを超える長い JSON: 旧上限で切った本文は not_checked（欠けたキーを作らない）、新上限では match", async () => {
+  const body = longJson(40_000);
+  const schema = schemaWith(["count", "items"]);
+  // 旧計器の再現: 16,000 バイトで切った本文は閉じない。以前はこれが mismatch・全キー欠落だった（本番の 70 出品の形）。
+  const legacy = await readBodyCapped(new Response(body), L1_LEGACY_PAID_BODY_CAP_BYTES);
+  const old = checkL2Detailed(schema, legacy, "application/json");
+  assert.equal(old.status, "not_checked");
+  assert.deepEqual(old.missing, []);
+  assert.equal(old.reason, "unparseable");
+  // 新計器: 読み切って判定する。
+  const raw = await readBodyCapped(new Response(body), L1_PAID_BODY_CAP_BYTES + 1);
+  const read = paidBodyReadOf(raw, false);
+  assert.equal(read.incomplete, null);
+  assert.equal(read.bytes, Buffer.byteLength(body, "utf8"));
+  const now = checkL2Detailed(schema, read.body, "application/json", read.incomplete);
+  assert.equal(now.status, "match");
+  assert.equal(now.reason, null);
+});
+
+test("上限を超えた本文: not_checked（body_over_cap）。欠落キーを並べない・バイト数は上限で頭打ち", async () => {
+  const body = longJson(L1_PAID_BODY_CAP_BYTES + 5_000);
+  const raw = await readBodyCapped(new Response(body), L1_PAID_BODY_CAP_BYTES + 1);
+  const read = paidBodyReadOf(raw, false);
+  assert.equal(read.incomplete, "body_over_cap");
+  assert.equal(read.bytes, L1_PAID_BODY_CAP_BYTES);
+  assert.ok(Buffer.byteLength(read.body, "utf8") <= L1_PAID_BODY_CAP_BYTES);
+  const d = checkL2Detailed(schemaWith(["count", "items"]), read.body, "application/json", read.incomplete);
+  assert.equal(d.status, "not_checked");
+  assert.equal(d.reason, "body_over_cap");
+  assert.deepEqual(d.missing, []);
+});
+
+test("ちょうど上限のバイト数は読み切った扱い、1 バイト超えたら body_over_cap", () => {
+  const exact = "a".repeat(L1_PAID_BODY_CAP_BYTES);
+  assert.equal(paidBodyReadOf(exact, false).incomplete, null);
+  assert.equal(paidBodyReadOf(exact + "b", false).incomplete, "body_over_cap");
+});
+
+test("本文の読み取りが途中で失敗した応答: not_checked（body_read_error）", () => {
+  const read = paidBodyReadOf("", true);
+  assert.equal(read.incomplete, "body_read_error");
+  const d = checkL2Detailed(schemaWith(["count"]), read.body, "application/json", read.incomplete);
+  assert.equal(d.status, "not_checked");
+  assert.equal(d.reason, "body_read_error");
+});
+
+test("出力の宣言が無い schema: 本文が JSON として読めなくても no_declaration（失敗にしない）", () => {
+  // 本番: L2 = mismatch 711 行のうち 437 行は必須キーも例のプロパティも無い宣言だった（読めない本文で mismatch）。
+  const d = checkL2Detailed(schemaWith(null, null), '{"truncated": [1, 2', "application/json");
+  assert.equal(d.status, "no_declaration");
+  assert.equal(d.reason, null);
+  assert.equal(checkL2Detailed({ properties: { input: {} } }, "{", "application/json").status, "no_declaration");
+});
+
+test("reason: 読めない JSON は not_checked、JSON でない本文・オブジェクトでない・キーが欠けた・Content-Type は mismatch", () => {
+  const schema = schemaWith(["a", "b"]);
+  const unclosed = checkL2Detailed(schema, '{"a": 1, "b": [1, 2', "application/json");
+  assert.deepEqual([unclosed.status, unclosed.reason, unclosed.missing], ["not_checked", "unparseable", []]);
+  const brokenArray = checkL2Detailed(schema, "[1, 2", "application/json");
+  assert.deepEqual([brokenArray.status, brokenArray.reason], ["not_checked", "unparseable"]);
+  const notJson = checkL2Detailed(schema, "<html>oops</html>", "application/json");
+  assert.deepEqual([notJson.status, notJson.reason, notJson.missing], ["mismatch", "not_json_body", []], "欠けたキーを作らない");
+  const notObject = checkL2Detailed(schema, "42", "application/json");
+  assert.deepEqual([notObject.status, notObject.reason, notObject.missing], ["mismatch", "not_object", []]);
+  const missing = checkL2Detailed(schema, '{"a":1}', "application/json");
+  assert.deepEqual([missing.status, missing.reason, missing.missing], ["mismatch", "missing_keys", ["b"]]);
+  const html = checkL2Detailed(schema, "<html>", "text/html");
+  assert.deepEqual([html.status, html.reason, html.missing], ["mismatch", "not_json_content_type", []]);
+  // Content-Type を取り違えた JSON は、読めたキーで欠けを数える。
+  const mislabeled = checkL2Detailed(schema, '{"a":1}', "text/plain");
+  assert.deepEqual([mislabeled.status, mislabeled.reason, mislabeled.missing], ["mismatch", "not_json_content_type", ["b"]]);
+  // Content-Type が JSON でない判定は本文を読み切れたかに依らない（欠けたキーは作らない）。
+  const over = checkL2Detailed(schema, '{"a":1}', "text/html", "body_over_cap");
+  assert.deepEqual([over.status, over.missing], ["mismatch", []]);
+  const ok = checkL2Detailed(schema, '{"a":1,"b":2}', "application/json");
+  assert.deepEqual([ok.status, ok.reason, ok.missing], ["match", null, []]);
+});
+
+test("配列の本文は従来どおり（必須キーが無ければ match、あれば missing_keys）", () => {
+  assert.equal(checkL2Detailed(schemaWith([]), "[1,2]", "application/json").status, "match");
+  const d = checkL2Detailed(schemaWith(["a"]), "[1,2]", "application/json");
+  assert.deepEqual([d.status, d.reason], ["mismatch", "missing_keys"]);
+});
+
+test("宣言なし（schema 自体が無い）は従来どおり no_declaration・ハッシュは本文のもの", () => {
+  const d = checkL2Detailed(null, "{}", "application/json");
+  assert.equal(d.status, "no_declaration");
+  assert.equal(d.declarationHash, null);
+  assert.match(d.responseHash, /^[0-9a-f]{64}$/);
+});
+
+// ------------------------------------------------------------------
+// 印（l2.reason）の無い古い行の読み直し
+// ------------------------------------------------------------------
+const REQ = schemaWith(["count", "items"]);
+const legacy = (over: Partial<Parameters<typeof legacyL2SchemaOf>[0]>) =>
+  legacyL2SchemaOf({ l2Schema: "mismatch", l2Reason: null, missing: ["count", "items"], bodyHead: null, contentType: "application/json", declaredSchema: REQ, ...over });
+
+test("古い行: 500 文字を超える JSON の頭で全キー欠落 → not_checked（本番の 70 出品の形）", () => {
+  const head = longJson(40_000).slice(0, 500);
+  assert.deepEqual(legacy({ bodyHead: head }), { l2Schema: "not_checked", missing: null, reason: "unparseable" });
+  // 記録の無い行（2026-09-02 より前）・配列の頭も同じ
+  assert.equal(legacy({ bodyHead: head, missing: null }).l2Schema, "not_checked");
+  assert.equal(legacy({ bodyHead: `[${head.slice(1)}`, missing: [] }).l2Schema, "not_checked");
+});
+
+test("古い行: 欠けたキーが必須キーの一部だけ → そのまま mismatch（JSON として読めていた）", () => {
+  const head = longJson(40_000).slice(0, 500);
+  assert.deepEqual(legacy({ bodyHead: head, missing: ["items"] }), { l2Schema: "mismatch", missing: ["items"], reason: null });
+});
+
+test("古い行: bodyHead が本文の全部（500 文字未満）なら今の規則で判定し直す", () => {
+  assert.deepEqual(legacy({ bodyHead: '{"count": 1}', missing: ["items"] }), { l2Schema: "mismatch", missing: ["items"], reason: "missing_keys" });
+  assert.deepEqual(legacy({ bodyHead: '{"error":"x"}' }), { l2Schema: "mismatch", missing: ["count", "items"], reason: "missing_keys" });
+  assert.equal(legacy({ bodyHead: '{"count": 1, "items": [' }).l2Schema, "not_checked");
+});
+
+test("古い行: 出力の宣言が無い → no_declaration。Content-Type が JSON でない・JSON の頭でない・印のある行はそのまま", () => {
+  assert.equal(legacy({ declaredSchema: schemaWith(null, null), bodyHead: "{" }).l2Schema, "no_declaration");
+  assert.equal(legacy({ contentType: "text/html", bodyHead: "<html>" }).l2Schema, "mismatch");
+  assert.equal(legacy({ bodyHead: "<html>" + "x".repeat(600) }).l2Schema, "mismatch");
+  assert.equal(legacy({ l2Reason: "missing_keys", bodyHead: longJson(40_000).slice(0, 500) }).l2Schema, "mismatch");
+  assert.equal(legacy({ l2Schema: "match" }).l2Schema, "match");
+});

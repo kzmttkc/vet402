@@ -984,9 +984,11 @@ export function SellerDetailView({
         transaction link opens the settlement on Basescan. &ldquo;Decision API now&rdquo; is what the decision API
         (<code>GET /api/v1/resources/&#123;id&#125;/decision?role=payer</code>, no key) answers for the listing when
         you open this page; your browser asks it for the first {DECISION_AUTO_LISTINGS} listings, and for the others
-        when you ask. It is cautious for the payer: it leaves out the attempts that show vet402&apos;s fault, are held, or
-        took no payment, and counts the rest, so it can say WARN or BLOCK for a listing whose failures this page
-        leaves not sorted. The codes that decided the answer come first, each with one sentence on what it means
+        when you ask. Where no money moved, it counts a failure only when this page puts it on the seller&apos;s side,
+        and then only toward a WARN. Where money moved, it is cautious for the payer: a paid attempt that took payment
+        and did not deliver counts even when this page leaves it not sorted, and two of them since the last delivery
+        are the only way a failed purchase makes it BLOCK. So it can say WARN or BLOCK for a listing whose failures
+        this page leaves not sorted. The codes that decided the answer come first, each with one sentence on what it means
         for that listing (
         <Link href={REASON_CODES_HREF} className="underline">
           reason codes

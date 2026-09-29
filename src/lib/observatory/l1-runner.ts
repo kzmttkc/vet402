@@ -92,6 +92,8 @@ import {
   selectMppChallenge,
   type MppxCharge,
 } from "./mpp-payer";
+// L2（宣言との一致）の判定と、支払い付き応答の本文の読み取り上限（2026-09-29・l2-check.ts）。
+import { L1_BODY_OVER_CAP_REASON, L1_PAID_BODY_CAP_BYTES, checkL2Detailed as checkL2DetailedImpl, paidBodyReadOf, type L2Detail } from "./l2-check";
 
 export type L1BatchSummary = {
   attempted: number;
@@ -2668,7 +2670,9 @@ async function purchaseOne(input: {
           ...(paidRequestBody?.source === "declared" ? { crossOriginBody: "refuse" as const } : {}),
         },
       );
-      paidBody = await readBodyCapped(paid, 16_000);
+      // 2026-09-29（監査 6 周目・計器）: 上限を 16,000 バイトから L1_PAID_BODY_CAP_BYTES へ上げた。1 バイト余分に
+      // 読み、上限を超えたかを下の paidBodyRead で判定する（L0 の L0_BODY_CAP_BYTES と同じ考え方）。
+      paidBody = await readBodyCapped(paid, L1_PAID_BODY_CAP_BYTES + 1);
     } catch (error) {
       paidError = String(error).slice(0, 300);
       paidErrorRaw = error;
@@ -2685,12 +2689,15 @@ async function purchaseOne(input: {
     const contentTypeMatch = contentType === null ? null : contentType.includes("json");
 
     // L2 — minimal structural check against the catalog-declared schema.
+    // 2026-09-29: 本文を読み切れなかった応答（上限超え・読み取りの途中の失敗）は判定しない（not_checked）。
+    const paidBodyRead = paidBodyReadOf(paidBody, paid !== null && paidError !== null);
+    paidBody = paidBodyRead.body;
     let l2Schema: string = "not_checked";
-    let l2Detail: { missing: string[]; declarationHash: string | null; responseHash: string } | null = null;
+    let l2Detail: L2Detail | null = null;
     if (paid && paid.status === 200) {
-      const d = checkL2Detailed(candidate.declaredSchema, paidBody, contentType);
+      const d = checkL2Detailed(candidate.declaredSchema, paidBody, contentType, paidBodyRead.incomplete);
       l2Schema = d.status;
-      l2Detail = { missing: d.missing, declarationHash: d.declarationHash, responseHash: d.responseHash };
+      l2Detail = { missing: d.missing, declarationHash: d.declarationHash, responseHash: d.responseHash, reason: d.reason };
     }
 
     // 2026-08-23 監査: ここまで `transaction` は「空でない文字列」以外を何も見ていなかった。
@@ -2785,7 +2792,11 @@ async function purchaseOne(input: {
       // when one exists), so it is kept here rather than silently lost.
       ...(paid && paidError ? { bodyError: paidError } : {}),
       // §6.3: L2 の判定材料。mismatch の公開に要る宣言ハッシュ・応答ハッシュ・欠落キー。
+      // 2026-09-29: reason（何で決まったか）を足した。body_over_cap の行の responseHash は読んだ分だけのハッシュ。
       ...(l2Detail ? { l2: l2Detail } : {}),
+      // 読んだ本文のバイト数（上限で頭打ち）と、上限を超えて切ったか（2026-09-29）。
+      ...(paid ? { bodyBytes: paidBodyRead.bytes, bodyCapBytes: L1_PAID_BODY_CAP_BYTES } : {}),
+      ...(paidBodyRead.incomplete === L1_BODY_OVER_CAP_REASON ? { bodyTruncated: true } : {}),
       // どの URL で払ったか（2026-09-20）。"declared" は売り手の 402 が宣言した input.queryParams を
       // 足した URL。"empty"（売り手が宣言していない）と "refused"（宣言は在ったが我々の規則で使わなかった）は
       // カタログの URL のまま。許可リストに無い network の行には付けない。
@@ -3091,67 +3102,6 @@ export function dbErrorCause(error: unknown): { code: string | null; message: st
 /**
  * §6.3 / §14 P2（2026-09-02）: mismatch の公開には宣言のハッシュ・実レスポンスのハッシュ・
  * 差分の機械可読リストを付ける（生の有料コンテンツ全文は公開しない）。
+ * 2026-09-29: 実装は l2-check.ts へ移した（判定の読み手が支払いのモジュールを読み込まずに使えるように）。
  */
-export function checkL2Detailed(
-  declaredSchema: unknown,
-  bodyText: string,
-  contentType: string | null,
-): { status: string; missing: string[]; declarationHash: string | null; responseHash: string } {
-  const status = checkL2(declaredSchema, bodyText, contentType);
-  const missing: string[] = [];
-  const schema = typeof declaredSchema === "object" && declaredSchema !== null ? (declaredSchema as Record<string, unknown>) : null;
-  if (status === "mismatch" && schema) {
-    const props = (schema.properties ?? null) as Record<string, unknown> | null;
-    const output = (props?.output ?? null) as Record<string, unknown> | null;
-    const outputProps = (output?.properties ?? null) as Record<string, unknown> | null;
-    const example = (outputProps?.example ?? null) as Record<string, unknown> | null;
-    const requiredKeys = Array.isArray(example?.required) ? (example!.required as string[]) : [];
-    let rec: Record<string, unknown> | null = null;
-    try {
-      const parsed = JSON.parse(bodyText);
-      rec = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
-    } catch {
-      rec = null;
-    }
-    for (const key of requiredKeys) if (!rec || !(key in rec)) missing.push(key);
-  }
-  const sha = (v: string) => createHash("sha256").update(v, "utf8").digest("hex");
-  return {
-    status,
-    missing,
-    declarationHash: schema ? sha(JSON.stringify(schema)) : null,
-    responseHash: sha(bodyText),
-  };
-}
-
-function checkL2(declaredSchema: unknown, bodyText: string, contentType: string | null): string {
-  const schema = typeof declaredSchema === "object" && declaredSchema !== null
-    ? (declaredSchema as Record<string, unknown>)
-    : null;
-  if (!schema) return "no_declaration";
-
-  // The catalog schema wraps input/output; the OUTPUT declaration is what the
-  // response must honor.
-  const props = (schema.properties ?? null) as Record<string, unknown> | null;
-  const output = (props?.output ?? null) as Record<string, unknown> | null;
-  const outputProps = (output?.properties ?? null) as Record<string, unknown> | null;
-  const example = (outputProps?.example ?? null) as Record<string, unknown> | null;
-  const exampleProps = (example?.properties ?? null) as Record<string, unknown> | null;
-  const requiredKeys = Array.isArray(example?.required) ? (example!.required as string[]) : [];
-
-  if (!contentType?.includes("json")) return requiredKeys.length > 0 ? "mismatch" : "no_declaration";
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(bodyText);
-  } catch {
-    return "mismatch";
-  }
-  if (requiredKeys.length === 0 && !exampleProps) return "no_declaration";
-  const rec = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
-  if (!rec) return "mismatch";
-  for (const key of requiredKeys) {
-    if (!(key in rec)) return "mismatch";
-  }
-  return "match";
-}
+export const checkL2Detailed = checkL2DetailedImpl;

@@ -3730,8 +3730,11 @@ components:
             appear when nothing was delivered. l2_mismatch is a BLOCK when the
             L2 evidence row names missing keys (mismatch_kind missing_keys);
             with no missing key on record it adds l2_mismatch_unexplained and
-            is a WARN (vet402 reads the first 16,000 bytes of a paid body, so a
-            longer JSON body cannot be parsed). L0 follows the published
+            is a WARN. A body vet402 could not read to the end is not a
+            mismatch: since 2026-09-29 vet402 reads up to 256 KiB of a paid
+            body and records a longer or unclosed JSON body as not checked
+            (older rows cut at 16,000 bytes are read again the same way).
+            L0 follows the published
             two-fail rule: one failed probe is l0_unverified with
             l0_unverified_single_fail and a WARN (degraded stays false) when the
             listing is active, the probe before it passed and the failed probe

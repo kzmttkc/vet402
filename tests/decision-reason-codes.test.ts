@@ -179,11 +179,39 @@ test("l2 が conform / undeclared の evidence には mismatch_kind・content_ty
   assert.equal(ev && "content_type" in ev, false);
 });
 
-test("16,000 バイトの読み取り上限（docs と表の文）は l1-runner の実物と一致する", () => {
+test("読み取り上限（docs と表の文）は l1-runner・l2-check の実物と一致する", () => {
   const src = readFileSync("src/lib/observatory/l1-runner.ts", "utf8");
-  assert.match(src, /paidBody = await readBodyCapped\(paid, 16_000\)/);
+  assert.match(src, /paidBody = await readBodyCapped\(paid, L1_PAID_BODY_CAP_BYTES \+ 1\)/);
+  const cap = readFileSync("src/lib/observatory/l2-check.ts", "utf8");
+  assert.match(cap, /export const L1_PAID_BODY_CAP_BYTES = 256 \* 1024;/);
   const doc = REASON_CODES.find((r) => r.code === L2_MISMATCH_UNEXPLAINED)!;
+  assert.match(doc.meaning, /256 KiB/);
   assert.match(doc.meaning, /16,000 bytes/);
+});
+
+// 2026-09-29: 印の無い古い行（16,000 バイトで切って「全部欠けた」と記録した行）は、売り手の不一致として数えない。
+const LONG_HEAD = `{"count":232,"assets":[${Array.from({ length: 40 }, (_, i) => `{"name":"A${i}","sz":5}`).join(",")}`.slice(0, 500);
+const SCHEMA_TWO = { properties: { output: { properties: { example: { required: ["count", "assets"], properties: { count: {}, assets: {} } } } } } };
+const legacyRow = (missing: string[], bodyHead: string) =>
+  row(1, { l2Schema: "mismatch", l2Detail: { missing, declarationHash: "d", responseHash: "r" }, bodyHead, contentType: "application/json" });
+
+test("古い行: 500 文字を超える JSON の頭で全キー欠落 → BLOCK にしない（L2 は undeclared と同じ扱い）", () => {
+  assert.equal(LONG_HEAD.length, 500);
+  assert.ok(LONG_HEAD.includes('"count"'), "欠けたはずのキーが先頭に見えている（本番の 34 出品の形）");
+  const { d, facts } = run([legacyRow(["count", "assets"], LONG_HEAD)], SCHEMA_TWO);
+  assert.equal(facts.l2.status, "undeclared");
+  assert.equal(facts.l2.missing_keys, null);
+  assert.equal(d.recommendation, "ALLOW");
+  assert.ok(!d.reason_codes.includes("l2_mismatch"));
+});
+
+test("古い行: 欠けたキーが一部だけ・本文の全部が手元にあって読めた行は、従来どおり BLOCK", () => {
+  const partial = run([legacyRow(["assets"], LONG_HEAD)], SCHEMA_TWO);
+  assert.equal(partial.d.recommendation, "BLOCK");
+  assert.deepEqual(partial.facts.l2.missing_keys, ["assets"]);
+  const short = run([legacyRow(["assets"], '{"count":1}')], SCHEMA_TWO);
+  assert.equal(short.d.recommendation, "BLOCK");
+  assert.deepEqual(short.facts.l2.missing_keys, ["assets"]);
 });
 
 // ------------------------------------------------------------------
