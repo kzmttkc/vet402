@@ -9,10 +9,12 @@
 // 本番（SELECT のみ）: L2 = mismatch の 711 行のうち、先頭 500 文字が `{` で始まり 500 文字を超える行が 660 行。
 // 欠けたキーを記録した 77 出品（公開の判定で BLOCK）のうち 70 出品はこの形で、うち 34 出品は「欠けた」はずの
 // キーが先頭 500 文字に実際に入っていた（売り手への冤罪）。直したこと:
-//   1. 読む上限を 256 KiB に上げ、超えた本文は判定しない（not_checked・body_over_cap）。
-//   2. JSON として読めない本文からは欠けたキーを作らない。JSON の頭で始まって読めない本文（閉じていない等）は
-//      not_checked（unparseable）。JSON の頭ですらない本文は mismatch（not_json_body）だが欠けたキーは空。
-//   3. 印（reason）の無い古い行は legacyL2SchemaOf で読み直す（seller-facts が使う）。
+//   1. 読む上限を 256 KiB に上げ、超えた本文は判定しない（not_checked・body_over_cap）。本文の読み取りが途中で
+//      落ちた応答も、1 バイト以上受け取っていれば判定しない（body_timeout / body_read_error）。数えるのは生のバイト。
+//   2. JSON として読めない本文からは欠けたキーを作らない。最後まで読めた本文が JSON として読めない（閉じていない等）
+//      のは売り手の不具合なので mismatch（unparseable・欠けたキーは空＝判定は l2_mismatch_unexplained の WARN）。
+//   3. 印（reason）の無い古い行は legacyL2SchemaOf で読み直す（seller-facts が使う）。not_checked にするのは
+//      切れた証拠（記録した欠けたキーが、保存した本文の頭の最上位に見える）がある行だけ（独立レビュー BLOCK 2026-09-29）。
 // ============================================================
 import { createHash } from "node:crypto";
 
@@ -31,15 +33,17 @@ export const L1_BODY_OVER_CAP_REASON = "body_over_cap" as const;
 export const BODY_HEAD_CHARS = 500;
 
 /** L2 を判定しなかった理由（本文を読み切れなかった）。 */
-export type L2NotCheckedReason = typeof L1_BODY_OVER_CAP_REASON | "body_read_error";
+export type L2NotCheckedReason = typeof L1_BODY_OVER_CAP_REASON | "body_timeout" | "body_read_error" | "legacy_body_cut";
 /**
  * L2 の判定が何で決まったか（raw_response_meta.l2.reason・2026-09-29 から）。これより前の行には無い。
  *   not_json_content_type  必須キーを宣言しているのに Content-Type が JSON でない（mismatch）
  *   not_json_body          Content-Type は JSON だが、本文が JSON の頭（{ か [）ですらない（mismatch）
+ *   unparseable            最後まで読めた本文が JSON の頭で始まるが JSON として読めない（閉じていない等。mismatch）
  *   not_object             JSON だがオブジェクトでも配列でもない（数値・文字列・null。mismatch）
  *   missing_keys           JSON として読め、宣言した必須キーが欠けている（mismatch・欠けたキーを記録）
- *   unparseable            JSON の頭で始まるが JSON として読めない（閉じていない等。not_checked）
- *   body_over_cap / body_read_error  本文を読み切れなかった（not_checked）
+ *   body_over_cap          本文が上限を超えた（not_checked）
+ *   body_timeout / body_read_error  本文を 1 バイト以上受け取った後で時間切れ・切断（not_checked）
+ *   legacy_body_cut        古い行の読み直しで、切れた証拠がある（not_checked・legacyL2SchemaOf だけが返す）
  */
 export type L2Reason =
   | "not_json_content_type"
@@ -52,19 +56,29 @@ export type L2Reason =
 /** raw_response_meta.l2 の形（seller-facts.ts の parseL2Detail が読む。reason は 2026-09-29 から）。 */
 export type L2Detail = { missing: string[]; declarationHash: string | null; responseHash: string; reason: L2Reason | null };
 
+/** 本文の読み取りの失敗が時間切れ（AbortController の abort・タイムアウト）か。 */
+export function isTimeoutError(error: unknown): boolean {
+  const name = (error as { name?: unknown } | null)?.name;
+  return name === "AbortError" || name === "TimeoutError";
+}
+
 /**
- * 読んだ本文（上限 + 1 バイトまで）から、L2 に渡す本文・バイト数・読み切れたかを出す。純関数。
- * `bodyReadFailed` は応答のヘッダは届いたが本文の読み取りが途中で失敗した（中断・切断）とき。
+ * 読んだ本文（上限 + 1 バイトまで）から、L2 に渡す本文・記録するバイト数・読み切れたかを出す。純関数。
+ * `rawBytes` は受け取った生のバイト数（readBodyCappedDetailed の bytes）。`failure` は本文の読み取りの失敗（無ければ null）。
+ * 失敗しても 0 バイトなら従来どおり空の本文として扱う（incomplete は null）。
  */
 export function paidBodyReadOf(
-  raw: string,
-  bodyReadFailed: boolean,
+  text: string,
+  rawBytes: number,
+  failure: unknown | null,
 ): { body: string; bytes: number; incomplete: L2NotCheckedReason | null } {
-  const bytes = Buffer.byteLength(raw, "utf8");
-  if (bytes > L1_PAID_BODY_CAP_BYTES) {
-    return { body: raw.slice(0, L1_PAID_BODY_CAP_BYTES), bytes: L1_PAID_BODY_CAP_BYTES, incomplete: L1_BODY_OVER_CAP_REASON };
+  if (rawBytes > L1_PAID_BODY_CAP_BYTES) {
+    return { body: text, bytes: L1_PAID_BODY_CAP_BYTES, incomplete: L1_BODY_OVER_CAP_REASON };
   }
-  return { body: raw, bytes, incomplete: bodyReadFailed ? "body_read_error" : null };
+  if (failure !== null && failure !== undefined && rawBytes > 0) {
+    return { body: text, bytes: rawBytes, incomplete: isTimeoutError(failure) ? "body_timeout" : "body_read_error" };
+  }
+  return { body: text, bytes: rawBytes, incomplete: null };
 }
 
 /** 宣言（カタログの schema）の output から、必須キーと例のプロパティを取り出す。 */
@@ -134,10 +148,55 @@ export function checkL2Detailed(
   if (bodyIncomplete) return out("not_checked", bodyIncomplete);
 
   const p = parsedRecord(bodyText);
-  if (!p.ok) return looksLikeJson(bodyText) ? out("not_checked", "unparseable") : out("mismatch", "not_json_body");
+  // 最後まで読めた本文が JSON として読めないのは売り手の不具合（mismatch）。欠けたキーは作らない。
+  if (!p.ok) return looksLikeJson(bodyText) ? out("mismatch", "unparseable") : out("mismatch", "not_json_body");
   if (!p.rec) return out("mismatch", "not_object");
   const missing = missingIn(p.rec);
   return missing.length > 0 ? out("mismatch", "missing_keys", missing) : out("match", null);
+}
+
+/**
+ * JSON の頭（途中で切れていてよい）から、根のオブジェクトの最上位のキーを拾う。根がオブジェクトでなければ空。
+ * 文字列の中の括弧・エスケープは数えない。深さ 1 で「文字列の直後に : が来る」ものだけをキーとする。
+ */
+export function topLevelKeysOfJsonHead(head: string): Set<string> {
+  const keys = new Set<string>();
+  const t = head.trimStart();
+  if (t.charAt(0) !== "{") return keys;
+  let depth = 0;
+  let i = 0;
+  while (i < t.length) {
+    const c = t[i];
+    if (c === '"') {
+      let j = i + 1;
+      let raw = "";
+      while (j < t.length && t[j] !== '"') {
+        if (t[j] === "\\") {
+          raw += t.slice(j, j + 2);
+          j += 2;
+        } else {
+          raw += t[j];
+          j += 1;
+        }
+      }
+      if (j >= t.length) break; // 文字列の途中で切れた
+      let k = j + 1;
+      while (k < t.length && /\s/.test(t[k])) k++;
+      if (depth === 1 && t[k] === ":") {
+        try {
+          keys.add(JSON.parse(`"${raw}"`) as string);
+        } catch {
+          keys.add(raw);
+        }
+      }
+      i = j + 1;
+      continue;
+    }
+    if (c === "{" || c === "[") depth++;
+    else if (c === "}" || c === "]") depth--;
+    i++;
+  }
+  return keys;
 }
 
 /**
@@ -146,11 +205,11 @@ export function checkL2Detailed(
  * 古い行は 16,000 バイトで切った本文を判定し、読めない本文でも mismatch・欠けたキー＝宣言した必須キー全部と
  * 記録していた。本文は残っていない（先頭 500 文字の bodyHead だけ）ので、次の順で読み直す:
  *   - mismatch 以外・印のある行・Content-Type が JSON でない行 → そのまま（Content-Type の判定は本文に依らない）
- *   - 出力に必須キーも例のプロパティも無い宣言 → no_declaration（読めない本文でしか mismatch にならない）
- *   - bodyHead が JSON の頭で始まらない → そのまま（HTML 等。読めても読めなくても宣言と違う）
- *   - bodyHead が本文の全部（500 文字未満）→ 今の規則で判定し直す（本文が手元に全部ある）
- *   - それより長い本文: 欠けたキーが必須キーの一部だけ → そのまま（JSON として読めていた証拠）。
- *     全部欠け・記録なし → JSON として閉じていたかを示せないので not_checked（売り手の不一致として数えない）
+ *   - 出力に必須キーも例のプロパティも無い宣言 → no_declaration（今の規則でも本文に依らず no_declaration）
+ *   - bodyHead が本文の全部（500 文字未満）→ 今の規則で判定し直す（閉じていない JSON は mismatch・欠けたキーは空）
+ *   - それより長い本文: 記録した欠けたキーのどれかが bodyHead の最上位に見える → 切れた証拠（キーはあるのに
+ *     読めなかった）なので not_checked（legacy_body_cut）。それ以外はそのまま mismatch（例: 必須キーが output の
+ *     下にある本物の不一致・api.agentsouk.dev）。欠けたキーの記録が無い行もそのまま（判定は l2_mismatch_unexplained）。
  */
 export function legacyL2SchemaOf(input: {
   l2Schema: string | null;
@@ -166,13 +225,13 @@ export function legacyL2SchemaOf(input: {
   const { requiredKeys, exampleProps } = declaredOutputOf(input.declaredSchema);
   if (requiredKeys.length === 0 && !exampleProps) return { l2Schema: "no_declaration", missing: null, reason: null };
   const head = input.bodyHead ?? "";
-  if (!looksLikeJson(head)) return keep;
-  if (head.length < BODY_HEAD_CHARS) {
+  if (head !== "" && head.length < BODY_HEAD_CHARS) {
     const d = checkL2Detailed(input.declaredSchema, head, input.contentType);
     return { l2Schema: d.status, missing: d.status === "mismatch" ? d.missing : null, reason: d.reason };
   }
   const missing = input.missing ?? [];
-  const partial = missing.length > 0 && missing.length < requiredKeys.length;
-  if (partial) return keep;
-  return { l2Schema: "not_checked", missing: null, reason: "unparseable" };
+  if (missing.length === 0) return keep;
+  const top = topLevelKeysOfJsonHead(head);
+  if (missing.some((k) => top.has(k))) return { l2Schema: "not_checked", missing: null, reason: "legacy_body_cut" };
+  return keep;
 }

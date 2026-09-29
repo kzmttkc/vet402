@@ -1328,7 +1328,7 @@ claims:
   - id: seo_vocab_l2_not_checked_is_never_a_failure
     surface: src/lib/observatory/vocabulary.ts
     quote: "so it is never counted as a failure"
-    means: "L2 の not_checked（200 でない・本文が 256 KiB 超・読み取りの途中の失敗・閉じていない JSON）は判定できなかっただけで、売り手の不一致として数えない"
+    means: "L2 の not_checked（200 でない・本文が 256 KiB 超・1 バイト以上受け取った後の時間切れや切断・古い行で切れた証拠がある）は判定できなかっただけで、売り手の不一致として数えない。最後まで読めて閉じていない JSON は mismatch"
     check: null
     why_unverifiable: "判定規則であって、公開 GET が数値で返す種類の主張ではない。実装は src/lib/observatory/l2-check.ts、tests/l1-paid-body-cap.test.ts と tests/l1-paid-body-cap.pg.test.ts が固定する"
     verified_at: 2026-09-29

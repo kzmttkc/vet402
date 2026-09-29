@@ -167,7 +167,7 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "mismatch",
     group: "l2",
     definition:
-      "mismatch means the paid response is not JSON at all, is JSON but not an object, lacks a key the seller's declared output schema marks as required, or has a non-JSON content type despite a declaration. Since 2026-09-29 the row's raw_response_meta.l2.reason says which (not_json_body, not_object, missing_keys or not_json_content_type), and missing keys are listed only when the body was read as JSON. Until 2026-09-29 vet402 read only the first 16,000 bytes of a paid response, so a longer JSON response could not be parsed and was recorded as a mismatch listing every declared required key as missing; the decision reads those older rows again and does not count one as a mismatch unless the record shows the JSON was read. In the decision, a mismatch with recorded missing keys is a BLOCK, and one without is a WARN (l2_mismatch_unexplained).",
+      "mismatch means the complete paid response is not JSON at all, is JSON that is not closed, is JSON but not an object, lacks a key the seller's declared output schema marks as required, or has a non-JSON content type despite a declaration. Since 2026-09-29 the row's raw_response_meta.l2.reason says which (not_json_body, unparseable, not_object, missing_keys or not_json_content_type), and missing keys are listed only when the body was read as JSON. Until 2026-09-29 vet402 read only the first 16,000 bytes of a paid response, so a longer JSON response could not be parsed and was recorded as a mismatch listing every declared required key as missing; the decision does not count such an older row as a mismatch when a key recorded as missing shows at the top level of the stored start of the body. In the decision, a mismatch with recorded missing keys is a BLOCK, and one without is a WARN (l2_mismatch_unexplained).",
   },
   {
     term: "no_declaration",
@@ -179,7 +179,7 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "not_checked",
     group: "l2",
     definition:
-      "not_checked means there was no complete response body to check, so it is never counted as a failure. The paid request did not return 200, or (since 2026-09-29) the body was longer than the 256 KiB vet402 reads (raw_response_meta.l2.reason body_over_cap, with bodyTruncated true), stopped partway (body_read_error), or began as JSON but could not be read as JSON, for example because it never closed (unparseable).",
+      "not_checked means there was no complete response body to check, so it is never counted as a failure. The paid request did not return 200, or (since 2026-09-29) the body was longer than the 256 KiB vet402 reads (raw_response_meta.l2.reason body_over_cap, with bodyTruncated true), or it stopped after some bytes arrived (body_timeout or body_read_error). For an older row read at 16,000 bytes, the decision treats a mismatch as not checked only when there is evidence the body was cut: a key recorded as missing shows at the top level of the stored start of the body. A complete body that is not valid JSON is a mismatch, not not_checked.",
   },
   {
     term: "delisted",

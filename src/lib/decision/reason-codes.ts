@@ -223,7 +223,7 @@ export const REASON_CODES: readonly ReasonCodeDoc[] = [
     code: "l2_mismatch_unexplained",
     role: "payer",
     effect: "WARN",
-    meaning: "A mismatch with no missing key on record: the body was not JSON or not an object, or the content type was not JSON. A body vet402 could not read to the end is not a mismatch: since 2026-09-29 vet402 reads up to 256 KiB of a paid body and records a longer or unclosed JSON body as not checked, and older rows it cut at 16,000 bytes are read again the same way.",
+    meaning: "A mismatch with no missing key on record: the complete body was not JSON, was JSON that was not closed, or was not an object, or the content type was not JSON. A body vet402 could not read to the end is not a mismatch: since 2026-09-29 vet402 reads up to 256 KiB of a paid body and records a longer body, or one cut off after some bytes arrived, as not checked; an older row cut at 16,000 bytes is not counted as a mismatch when a key recorded as missing shows at the top level of the stored start of the body.",
     forPayer: "Not a BLOCK: vet402 cannot say what differed. Check the body yourself.",
     sellerCanFix: "partly",
   },

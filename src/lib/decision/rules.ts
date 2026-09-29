@@ -53,8 +53,9 @@
 //         添えて WARN（BLOCK にしない）。x402.twit.sh/users/following は missing_keys: [] で BLOCK だった。vet402 は
 //         支払い付き応答の先頭 16,000 バイトしか読まなかったので、それより長い JSON は解析できず「不一致」に見えた
 //         （l1-runner の readBodyCapped）。欠けたキーを記録した不一致だけが BLOCK の根拠。2026-09-29 から上限は 256 KiB、
-//         読み切れない・閉じていない JSON は not_checked で欠けたキーを作らない。印の無い古い行は seller-facts が
-//         legacyL2SchemaOf（l2-check.ts）で読み直す（全部欠けに見えた 70 出品は売り手の不一致として数えない）。
+//         上限を超えた・途中で切れた本文は not_checked。最後まで読めて閉じていない JSON は mismatch（欠けたキーは作らない
+//         ＝unexplained の WARN）。印の無い古い行は seller-facts が legacyL2SchemaOf（l2-check.ts）で読み直し、記録した
+//         欠けたキーが保存した頭の最上位に見える（切れた証拠がある）行だけ売り手の不一致として数えない。
 //     (5) 独立レビュー 警告 2: 空の 2xx で決済がまだ結び付いていない行（レシートの無い 200・払う側の残高不足の
 //         期間の空の 200・照合待ち）は、お金が動いたかどうか未確定。失敗には数えないが、最後の配達より後に 1 行でも
 //         あれば WARN（l1_empty_2xx_settlement_unknown）。確定するまで ALLOW に戻さない（allow_without_l1 でも免除

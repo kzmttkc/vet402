@@ -3732,8 +3732,11 @@ components:
             with no missing key on record it adds l2_mismatch_unexplained and
             is a WARN. A body vet402 could not read to the end is not a
             mismatch: since 2026-09-29 vet402 reads up to 256 KiB of a paid
-            body and records a longer or unclosed JSON body as not checked
-            (older rows cut at 16,000 bytes are read again the same way).
+            body and records a longer body, or one cut off after some bytes
+            arrived, as not checked; an older row cut at 16,000 bytes is not
+            counted as a mismatch when a key recorded as missing shows at the
+            top level of the stored start of the body. A complete body that
+            is not valid JSON is still a mismatch.
             L0 follows the published
             two-fail rule: one failed probe is l0_unverified with
             l0_unverified_single_fail and a WARN (degraded stays false) when the

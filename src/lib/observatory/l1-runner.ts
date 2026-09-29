@@ -33,7 +33,7 @@ import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { utcDayStart } from "@/lib/db/utc-day";
 import { x402L1Purchases } from "@/lib/db/schema";
 import { invalidateDecisionCache } from "@/lib/decision/cache";
-import { readBodyCapped } from "@/lib/net/read-capped";
+import { readBodyCapped, readBodyCappedDetailed } from "@/lib/net/read-capped";
 import { UnsafeTargetError, createSafeFetchImpl, type SafeFetchCallOptions } from "@/lib/net/safe-fetch";
 import { redactForLog, redactedError } from "./redact";
 import { createDeadline } from "@/lib/util/deadline";
@@ -2631,6 +2631,9 @@ async function purchaseOne(input: {
     let paidBody = "";
     let paidError: string | null = null;
     let paidErrorRaw: unknown = null;
+    // 2026-09-29: 受け取った本文の生のバイト数と、本文の読み取りの失敗（途中まで受け取っていても例外にしない）。
+    let paidBodyBytes = 0;
+    let paidBodyFailure: unknown | null = null;
     // Same 2026-08-22 fix as the unpaid leg: the timer covers the body read too.
     // On the PAID leg an aborted body is not a lost measurement — the settlement
     // receipt lives in the HEADERS, which we already hold — so the outcome is
@@ -2671,8 +2674,16 @@ async function purchaseOne(input: {
         },
       );
       // 2026-09-29（監査 6 周目・計器）: 上限を 16,000 バイトから L1_PAID_BODY_CAP_BYTES へ上げた。1 バイト余分に
-      // 読み、上限を超えたかを下の paidBodyRead で判定する（L0 の L0_BODY_CAP_BYTES と同じ考え方）。
-      paidBody = await readBodyCapped(paid, L1_PAID_BODY_CAP_BYTES + 1);
+      // 読み、上限を超えたかを下の paidBodyRead で**生のバイト数**で判定する（L0 の L0_BODY_CAP_BYTES と同じ考え方）。
+      // 本文の読み取りが途中で落ちても（時間切れ・切断）受け取った分は捨てない。失敗は従来どおり paidError に残す。
+      const read = await readBodyCappedDetailed(paid, L1_PAID_BODY_CAP_BYTES + 1);
+      paidBody = read.text;
+      paidBodyBytes = read.bytes;
+      if (read.error !== null) {
+        paidBodyFailure = read.error;
+        paidError = String(read.error).slice(0, 300);
+        paidErrorRaw = read.error;
+      }
     } catch (error) {
       paidError = String(error).slice(0, 300);
       paidErrorRaw = error;
@@ -2684,13 +2695,15 @@ async function purchaseOne(input: {
     // MPP の受領証は Payment-Receipt（base64url JSON・reference = tx hash）。x402 と同じ形へ写してある。
     const mppReceipt = paid && isTempo ? parseMppReceipt(paid.headers) : null;
     const settlement = paid ? (isTempo ? mppReceipt : parseSettlementResponse(paid.headers)) : null;
-    const payloadNonEmpty = paidBody.trim().length > 0;
+    // 「中身が届いたか」は従来どおり: 本文の読み取りが落ちた応答は空として扱う（2026-09-29 に途中まで受け取った分を
+    // 残すようにしたが、「払ったのに届かない」に数える条件は変えない）。
+    const payloadNonEmpty = paidBodyFailure === null && paidBody.trim().length > 0;
     const contentType = paid?.headers.get("content-type") ?? null;
     const contentTypeMatch = contentType === null ? null : contentType.includes("json");
 
     // L2 — minimal structural check against the catalog-declared schema.
     // 2026-09-29: 本文を読み切れなかった応答（上限超え・読み取りの途中の失敗）は判定しない（not_checked）。
-    const paidBodyRead = paidBodyReadOf(paidBody, paid !== null && paidError !== null);
+    const paidBodyRead = paidBodyReadOf(paidBody, paidBodyBytes, paidBodyFailure);
     paidBody = paidBodyRead.body;
     let l2Schema: string = "not_checked";
     let l2Detail: L2Detail | null = null;
@@ -2779,6 +2792,7 @@ async function purchaseOne(input: {
       // request_error になった行の理由はこれ。
       ...(credentialStripped ? { credentialStripped } : {}),
       bodyHead: paidBody.slice(0, 500),
+      // 2026-09-29: 本文の読み取りが落ちた行の bodyHead は、落ちる前に受け取った分（L2 は not_checked）。
       // 応答が無かった行だけ: どちら側の失敗か（2026-09-29）。status はどちらも settle_failed
       // （資格情報は送った後なので遅延回収の対象に残す）。"vet402" は我々の機械の中の失敗の印。
       ...(transportSide ? { transportFailure: { side: transportSide, code: transportErrorCode(paidErrorRaw) } } : {}),
@@ -2903,6 +2917,9 @@ async function purchaseOne(input: {
               ...(transportSide ? { transportFailure: { side: transportSide, code: transportErrorCode(paidErrorRaw) } } : {}),
               // L2 の証拠（宣言と応答のハッシュ・欠落キー）は小さいので残す（独立レビュー W1）。
               ...(l2Detail ? { l2: l2Detail } : {}),
+              // 本文の読んだバイト数と切った印も L2 の証拠（2026-09-29・小さいので残す）。
+              ...(paid ? { bodyBytes: paidBodyRead.bytes, bodyCapBytes: L1_PAID_BODY_CAP_BYTES } : {}),
+              ...(paidBodyRead.incomplete === L1_BODY_OVER_CAP_REASON ? { bodyTruncated: true } : {}),
               ...requestBodyRecord(paidRequestBody),
               ...(selectionMeta ?? {}),
               outcomeWriteFailed: { cause: dbErrorCause(error), error: redactForLog(error).slice(0, 200) },

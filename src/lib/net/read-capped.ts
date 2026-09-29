@@ -61,3 +61,58 @@ export async function readBodyCapped(response: Response, maxBytes: number): Prom
   }
   return new TextDecoder("utf-8").decode(merged);
 }
+
+/**
+ * readBodyCapped と同じ上限で読み、途中で失敗しても例外にせず、受け取った分と失敗を返す（2026-09-29・L1 の L2）。
+ *
+ * - `bytes` は**受け取った生のバイト数**（UTF-8 に直す前。上限で抜けたときは最後のチャンクの分だけ maxBytes を超えうる）。
+ *   上限を超えたかは `bytes > 上限` で判定する（直した後の文字列の長さは、不正なバイトが U+FFFD になると変わる）;
+ * - `text` は先頭 `maxBytes` バイトを UTF-8 に直したもの;
+ * - `error` は本文の読み取りの失敗（中断・切断）。無ければ null。失敗の前に受け取った分は `text`・`bytes` に残る。
+ */
+export async function readBodyCappedDetailed(
+  response: Response,
+  maxBytes: number,
+): Promise<{ text: string; bytes: number; error: unknown | null }> {
+  if (maxBytes <= 0) return { text: "", bytes: 0, error: null };
+  const body = response.body as ReadableStream<Uint8Array> | null | undefined;
+  if (!body || typeof body.getReader !== "function") {
+    try {
+      const whole = new Uint8Array(await response.arrayBuffer());
+      return { text: new TextDecoder("utf-8").decode(whole.subarray(0, maxBytes)), bytes: whole.byteLength, error: null };
+    } catch (error) {
+      return { text: "", bytes: 0, error };
+    }
+  }
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  let error: unknown | null = null;
+  try {
+    while (total < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      chunks.push(value);
+      total += value.byteLength;
+    }
+  } catch (e) {
+    error = e;
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      /* already errored/closed */
+    }
+  }
+  const size = Math.min(total, maxBytes);
+  const merged = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    if (offset >= size) break;
+    const take = Math.min(chunk.byteLength, size - offset);
+    merged.set(chunk.subarray(0, take), offset);
+    offset += take;
+  }
+  return { text: new TextDecoder("utf-8").decode(merged), bytes: total, error };
+}

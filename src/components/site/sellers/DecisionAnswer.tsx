@@ -226,7 +226,7 @@ export function codeExplanation(code: string, a: Pick<Answer, "reasonCodes" | "b
     case "l2_mismatch": {
       const keys = (a.l2MissingKeys ?? []).map((k) => safe(k)).filter((k) => k !== "");
       if (keys.length === 0) {
-        return "The paid response did not match the output schema the listing declares, but no missing field is on record (the body was not JSON, not an object, or not sent as JSON), so this is a WARN.";
+        return "The paid response did not match the output schema the listing declares, but no missing field is on record (the body was not JSON, was JSON that was not closed, was not an object, or was not sent as JSON), so this is a WARN.";
       }
       const shown = keys.slice(0, 5).join(", ");
       return `The paid response lacked fields the listing's output schema declares: ${shown}${keys.length > 5 ? `, +${keys.length - 5} more` : ""}.`;

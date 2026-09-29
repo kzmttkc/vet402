@@ -181,7 +181,7 @@ test("l2 が conform / undeclared の evidence には mismatch_kind・content_ty
 
 test("読み取り上限（docs と表の文）は l1-runner・l2-check の実物と一致する", () => {
   const src = readFileSync("src/lib/observatory/l1-runner.ts", "utf8");
-  assert.match(src, /paidBody = await readBodyCapped\(paid, L1_PAID_BODY_CAP_BYTES \+ 1\)/);
+  assert.match(src, /readBodyCappedDetailed\(paid, L1_PAID_BODY_CAP_BYTES \+ 1\)/);
   const cap = readFileSync("src/lib/observatory/l2-check.ts", "utf8");
   assert.match(cap, /export const L1_PAID_BODY_CAP_BYTES = 256 \* 1024;/);
   const doc = REASON_CODES.find((r) => r.code === L2_MISMATCH_UNEXPLAINED)!;
@@ -205,13 +205,24 @@ test("古い行: 500 文字を超える JSON の頭で全キー欠落 → BLOCK 
   assert.ok(!d.reason_codes.includes("l2_mismatch"));
 });
 
-test("古い行: 欠けたキーが一部だけ・本文の全部が手元にあって読めた行は、従来どおり BLOCK", () => {
-  const partial = run([legacyRow(["assets"], LONG_HEAD)], SCHEMA_TWO);
-  assert.equal(partial.d.recommendation, "BLOCK");
-  assert.deepEqual(partial.facts.l2.missing_keys, ["assets"]);
+test("古い行: 欠けたキーが頭の最上位に見えない・本文の全部が手元にあって読めた行は、従来どおり BLOCK", () => {
+  // agentsouk 型: 必須キーが output の下にある本物の不一致。ALLOW に落とさない。
+  const SCHEMA_OUT = { properties: { output: { properties: { example: { required: ["summary", "language"], properties: { summary: {}, language: {} } } } } } };
+  const nested = `{"object":"x402_result","job_id":"job_01","output":{"summary":"${"x".repeat(480)}`.slice(0, 500);
+  const souk = run([legacyRow(["summary", "language"], nested)], SCHEMA_OUT);
+  assert.equal(souk.d.recommendation, "BLOCK");
+  assert.deepEqual(souk.facts.l2.missing_keys, ["language", "summary"]);
   const short = run([legacyRow(["assets"], '{"count":1}')], SCHEMA_TWO);
   assert.equal(short.d.recommendation, "BLOCK");
   assert.deepEqual(short.facts.l2.missing_keys, ["assets"]);
+});
+
+test("古い行: 本文の全部が手元にあって閉じていない JSON は mismatch・欠けたキーなし → WARN（l2_mismatch_unexplained）", () => {
+  const { d, facts } = run([legacyRow(["count", "assets"], '{"count":1,"assets":[')], SCHEMA_TWO);
+  assert.equal(facts.l2.status, "mismatch");
+  assert.deepEqual(facts.l2.missing_keys, []);
+  assert.equal(d.recommendation, "WARN");
+  assert.ok(d.reason_codes.includes(L2_MISMATCH_UNEXPLAINED));
 });
 
 // ------------------------------------------------------------------

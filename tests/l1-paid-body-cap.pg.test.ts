@@ -5,7 +5,9 @@
 //  1. 16,000 バイトを超え上限（256 KiB）以内の JSON は読み切って L2 = match。bodyBytes に読んだバイト数。
 //  2. 上限を超えた JSON は L2 = not_checked、l2.reason = body_over_cap、bodyTruncated = true、欠落キーは空。
 //     支払いの記録（status・spent_units）は本文の長さで変わらない。
-//  3. 上限の内側でも閉じていない JSON は not_checked（reason unparseable）。欠けたキーを作らない。
+//  3. 最後まで読めて閉じていない JSON は売り手の不具合: mismatch（reason unparseable）。欠けたキーを作らない。
+//  4. 本文を途中まで受け取って読み取りが落ちた応答は not_checked（body_read_error）。0 バイトなら従来どおり。
+//     どちらも payload_non_empty は false のまま（「払ったのに届かない」に数える条件を変えない）。
 //
 // Run: TEST_DATABASE_URL=postgres://localhost/vet402_observatory_test_r6g \
 //   npx tsx --test --test-force-exit --test-concurrency=1 tests/l1-paid-body-cap.pg.test.ts
@@ -83,6 +85,20 @@ if (!TEST_DB) {
       "2": longJson(L1_PAID_BODY_CAP_BYTES + 10_000),
       "3": '{"count": 3, "items": [1, 2',
     };
+    /** seller4 = 途中まで送って切れる本文、seller5 = 1 バイトも送らずに切れる本文。 */
+    const failingStream = (chunk: string) => {
+      let sent = false;
+      return new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (!sent && chunk !== "") {
+            sent = true;
+            controller.enqueue(new TextEncoder().encode(chunk));
+            return;
+          }
+          controller.error(new Error("socket hang up"));
+        },
+      });
+    };
     let paidCount = 0;
     const fetchImpl = async (url: string, init?: RequestInit) => {
       const n = /seller(\d)/.exec(url)?.[1] ?? "1";
@@ -90,7 +106,8 @@ if (!TEST_DB) {
       const sig = headers.get("PAYMENT-SIGNATURE") ?? headers.get("X-PAYMENT");
       if (!sig) return wall402(n);
       paidCount++;
-      return new Response(BODIES[n], {
+      const body = n === "4" ? failingStream('{"count": 1, "items": [') : n === "5" ? failingStream("") : BODIES[n];
+      return new Response(body, {
         status: 200,
         headers: {
           "content-type": "application/json",
@@ -101,7 +118,7 @@ if (!TEST_DB) {
       });
     };
 
-    const items = [item(1), item(2), item(3)];
+    const items = [item(1), item(2), item(3), item(4), item(5)];
     await db.execute(
       sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_payee_watchers, x402_l1_purchases, observed_purchases`,
     );
@@ -144,13 +161,31 @@ if (!TEST_DB) {
       assert.equal((r.meta.bodyHead as string).length, 500);
     });
 
-    await t.test("上限の内側でも閉じない JSON は not_checked（unparseable）。欠けたキーを作らない", async () => {
+    await t.test("最後まで読めて閉じていない JSON は mismatch（unparseable）。欠けたキーを作らない", async () => {
       const r = await rowFor(3);
-      assert.equal(r.l2_schema, "not_checked");
+      assert.equal(r.l2_schema, "mismatch");
       const l2 = r.meta.l2 as { reason: string; missing: string[] };
       assert.equal(l2.reason, "unparseable");
       assert.deepEqual(l2.missing, []);
       assert.equal("bodyTruncated" in r.meta, false);
+    });
+
+    await t.test("途中まで受け取って切れた本文は not_checked（body_read_error）。0 バイトなら従来どおり。中身は届いていない扱いのまま", async () => {
+      const partial = await rowFor(4);
+      assert.equal(partial.status, "settle_claimed", "決済の記録は本文の読み取りで変わらない");
+      assert.equal(partial.l2_schema, "not_checked");
+      assert.equal((partial.meta.l2 as { reason: string }).reason, "body_read_error");
+      assert.equal(partial.meta.bodyBytes, Buffer.byteLength('{"count": 1, "items": [', "utf8"));
+      assert.equal(typeof partial.meta.bodyError, "string");
+      const empty = await rowFor(5);
+      assert.equal(empty.l2_schema, "mismatch", "0 バイトは従来どおり空の本文として判定");
+      assert.equal(empty.meta.bodyBytes, 0);
+      const raw = await db.execute(sql`
+        SELECT e.resource_url, pu.payload_non_empty FROM x402_l1_purchases pu JOIN x402_endpoints e ON e.id = pu.endpoint_id
+        WHERE e.resource_url IN ('https://seller4.example/api', 'https://seller5.example/api')`);
+      const rows = (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as { payload_non_empty: boolean }[];
+      assert.equal(rows.length, 2);
+      assert.ok(rows.every((x) => x.payload_non_empty === false), "読み取りが落ちた本文は届いていない扱い（従来どおり）");
     });
   });
 }
