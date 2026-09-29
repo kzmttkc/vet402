@@ -81,7 +81,7 @@ export function VerdictShareBar({
   hrefs: Record<L0Verdict, string>;
   active: L0Verdict | null;
   caption: ReactNode;
-  /** 凡例の行の末尾に置く追加のリンク（/observatory の [receipts N]）。 */
+  /** 凡例の行の末尾に置く追加のリンク（/observatory の [settled on-chain N]）。 */
   legendExtra?: ReactNode;
 }) {
   const order: L0Verdict[] = ["pass", "fail", "unverified"];
@@ -187,8 +187,8 @@ export function L1Ratio({ settled, attempts, delivered }: { settled: number; att
   const color = settled > 0 ? "text-brand-deep" : "text-[#9f0712]";
   const title =
     delivered === undefined
-      ? `${settled} settled with a receipt of ${attempts} paid attempts`
-      : `${delivered} delivered (paid retry answered 2xx) · ${settled} settled with a receipt of ${attempts} paid attempts`;
+      ? `${settled} settled on-chain of ${attempts} paid attempts`
+      : `${delivered} delivered (paid retry answered 2xx) · ${settled} settled on-chain of ${attempts} paid attempts`;
   // 2026-09-29 監査 5 周目（WCAG 2.2・1.3.1）: 3 つの数の意味が title にしか無かった。見える数字は
   // 列見出しと同じ順（delivered · settled/attempts）のまま aria-hidden にし、読み上げには意味付きの文を渡す。
   return (

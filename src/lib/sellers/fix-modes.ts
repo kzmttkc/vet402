@@ -262,6 +262,18 @@ const BASE_FIX_MODES: readonly FixMode[] = [
     effort: 2,
     sideLabel: "not sorted: charged, then rejected an input vet402 had not sent",
   },
+  // 2026-09-29 監査 6 周目（中）: 宣言の入力に例示用のドメイン（example.com / .org / .net・*.example）がそのまま入った
+  // 出品。vet402 は宣言の見本値を送るので、失敗はその見本の値のせいでありうる（入力が妥当だったと示せない）。
+  // 公開の売り手頁・記録頁だけの層（sellerCandidateClass）。判定 API（classifyRow）は変えない。
+  {
+    key: "example_input",
+    title: "The declared input is an example domain",
+    what: "The input this listing declares holds an example domain (example.com, example.org, example.net, or a name under .example), and vet402 sends the values the listing declares. A request built from a placeholder can fail for that reason alone, so vet402 cannot show its input was a valid one. This page does not count the row as the seller's fault.",
+    fix: "This page does not count it as the seller's fault. If the example is meant to be sent as it is, nothing to fix; otherwise, declare an example value your endpoint accepts.",
+    side: "unsorted",
+    effort: 1,
+    sideLabel: "not sorted: example input",
+  },
   // ---------- unsorted: held (not counted against the seller) ----------
   {
     key: "settled_then_rejected",
@@ -531,6 +543,26 @@ export interface SellerRowFacts {
   receiptSuccess?: boolean | null;
   /** その申告の errorReason（facilitator の短い理由コード。短く切る）。 */
   receiptErrorReason?: string | null;
+  /**
+   * 2026-09-29 監査 6 周目: 出品の宣言の入力（カタログのスキーマの input・raw_accepts の input・URL）に、値の全体が
+   * 例示用のドメイン（EXAMPLE_DOMAIN_PATTERN）の文字列がある。reader.ts が DB で同じ式を当てる。無い・読めないは null。
+   */
+  exampleInput?: boolean | null;
+}
+
+/**
+ * 例示用のドメイン（RFC 2606 / 6761: example.com・example.org・example.net と .example の下の名前）を、値の全体として持つ文字列。
+ * URL（パス・クエリ付き）・ホスト名・メールアドレスの形。説明文の中の言及（"for example https://example.com"）は当てない
+ * （値の全体に当てるので）。JS の RegExp と Postgres の `~*`（ARE）で同じ文字列を使う（reader.ts・tests が固定する）。
+ */
+export const EXAMPLE_DOMAIN_PATTERN =
+  "^\\s*(?:(?:https?://)?(?:[a-z0-9-]+[.])*example[.](?:com|org|net)(?::[0-9]+)?(?:[/?#]\\S*)?|[^\\s@]+@(?:[a-z0-9-]+[.])*example[.](?:com|org|net)|(?:https?://)?(?:[a-z0-9-]+[.])+example(?::[0-9]+)?(?:[/?#]\\S*)?)\\s*$";
+
+const EXAMPLE_DOMAIN_RE = new RegExp(EXAMPLE_DOMAIN_PATTERN, "i");
+
+/** 値の全体が例示用のドメイン（URL・ホスト・メール）か。 */
+export function isExampleDomainValue(v: unknown): boolean {
+  return typeof v === "string" && v.length <= 2048 && EXAMPLE_DOMAIN_RE.test(v);
 }
 
 /** 402 の accept の要点（表示用・売り手の書いた文字列は短く切って持つ）。 */
@@ -928,6 +960,10 @@ export function sellerCandidateClass(r: SellerRowFacts): RowClass {
   if ((base.mode?.key === "body_not_sent" || base.mode?.key === "query_not_sent") && r.status === "settled") {
     return { bucket: "unsorted", mode: fixMode("charged_unsent_input"), held: base.held };
   }
+  // 2026-09-29 監査 6 周目: 宣言の入力が例示用のドメインなら、入力が妥当だったと示せない（seller の側に置かない）。
+  if (base.bucket === "seller" && r.exampleInput === true) {
+    return { bucket: "unsorted", mode: fixMode("example_input"), held: base.held };
+  }
   return base;
 }
 
@@ -1116,7 +1152,8 @@ export function observed402Line(r: SellerRowFacts): string | null {
       typeof r.listingMaxTimeoutSeconds === "number"
         ? `The listing's maxTimeoutSeconds is ${r.listingMaxTimeoutSeconds}; vet402 waits ${WAIT_S} seconds for the paid answer.`
         : `The listing states no maxTimeoutSeconds vet402 could match; vet402 waits ${WAIT_S} seconds for the paid answer.`;
-    return `vet402 signed: ${terms.join(" · ")}. Input sent: ${sent.join(", ")}. ${mts}`;
+    // 2026-09-29 監査 6 周目: 頁の見出し（termsLabel「The 402 terms vet402 signed:」）が同じ語を言うので、ここでは繰り返さない。
+    return `${terms.join(" · ")}. Input sent: ${sent.join(", ")}. ${mts}`;
   }
   const accepts = r.challenge ?? [];
   const declared = [

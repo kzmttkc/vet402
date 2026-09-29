@@ -350,6 +350,7 @@ test("分類表: 鍵が重複せず、文言が空でなく、vet402 の側は�
       ...sellerKeys.map((k) => `${k}_once`),
       "answered_no_charge",
       "charged_unsent_input",
+      "example_input",
       "funds_unproven",
       "input_not_sent",
       "input_unrecorded",
@@ -689,7 +690,8 @@ test("(e) 待ち時間: 答えが無い行は、出品の maxTimeoutSeconds が�
 test("そのとき見た 402: 署名した行は払った条件、署名前に止まった行は 402 の accept（記録済みの範囲）", () => {
   const paid = proven({ status: "settle_failed", httpStatusPaid: 500, amountUnits: "50000", listingMaxTimeoutSeconds: 300 });
   const line = observed402Line(paid) ?? "";
-  assert.match(line, /^vet402 signed: exact · 0\.05 USDC · payTo 0x1111…1111\. Input sent: body none, query empty\./);
+  // 2026-09-29 監査 6 周目: 見出し（termsLabel「The 402 terms vet402 signed:」）と重ねないので「vet402 signed:」で始めない。
+  assert.match(line, /^exact · 0\.05 USDC · payTo 0x1111…1111\. Input sent: body none, query empty\./);
   assert.match(line, /The listing's maxTimeoutSeconds is 300; vet402 waits 20 seconds for the paid answer\./);
   const upto = row({
     status: "no_eligible_accept",

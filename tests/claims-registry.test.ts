@@ -551,7 +551,9 @@ const DETECTION_FLOOR: Record<string, number> = {
   // 2026-09-28 (review W1-W3): 45 -> 46. The rewrap of the census paragraph split "bought from at all" into its own text node ([all], covered by allow_phrase " at all").
   // 2026-09-29: retest の段落を 400/415/422・見本値のクエリで書き直し、検出が 1 つ減った（文の削除ではなく言い換え）。
   "src/app/observatory/methodology/page.tsx": 45,
-  "src/app/observatory/page.tsx": 8,
+  // 2026-09-29 監査 6 周目: 8 → 7。「[receipts] … keeps only rows with a receipt」を「[settled on-chain] … lists the endpoints …」に
+  // 言い換え（receipt を売り手の受領証の意味だけにした）。主張は減っていない。
+  "src/app/observatory/page.tsx": 7,
   // 2026-09-28: 14 → 13。meta description を 160 字に詰めた際に "at all"（語 all を拾っていた）を落とした。主張は減っていない。
   "src/app/observatory/state/page.tsx": 12, // 2026-09-29: 同上（every later root）
   "src/app/operator-log/page.tsx": 7,

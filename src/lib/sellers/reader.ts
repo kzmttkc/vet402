@@ -30,8 +30,9 @@ import {
   buildRecordSides,
   type RecordSides,
 } from "./board";
-import { SIGNED_ROW_STATUSES, sellerCandidateDay, type ChallengeAcceptSummary, type SellerRowFacts } from "./fix-modes";
+import { EXAMPLE_DOMAIN_PATTERN, SIGNED_ROW_STATUSES, sellerCandidateDay, type ChallengeAcceptSummary, type SellerRowFacts } from "./fix-modes";
 import { PATH_TEMPLATE_PG_REGEX } from "@/lib/observatory/path-template";
+import { COOLDOWN_STATUSES, NON_SETTLING_COOLDOWN_STREAK, type NextBuyFacts } from "./next-buy";
 import { buildSellerExportRows, type SellerExportRow, type SellerListingRef } from "./export";
 import { BASE_NETWORKS, sellerHostSql } from "./host";
 import { DELIVERED_HTTP_MAX, DELIVERED_HTTP_MIN } from "@/lib/observatory/delivery";
@@ -85,8 +86,21 @@ const CHALLENGE_MIN = sql.raw(`CASE WHEN jsonb_typeof(pu.raw_response_meta->'cha
         'maxTimeoutSeconds', CASE WHEN (a->>'maxTimeoutSeconds') ~ '^[0-9]{1,7}$' THEN (a->>'maxTimeoutSeconds')::int END))
       FROM (SELECT a FROM jsonb_array_elements(pu.raw_response_meta->'challengeAccepts') a WHERE jsonb_typeof(a) = 'object' LIMIT 4) x) END`);
 
-/** 列の共通部分: 分類に要る事実だけ（本文・応答の中身は読まない）。 */
-const ROW_COLUMNS = sql`
+/**
+ * 2026-09-29 監査 6 周目（中）: 出品の宣言の入力に、値の全体が例示用のドメインの文字列があるか（fix-modes.ts の
+ * EXAMPLE_DOMAIN_PATTERN・JS と同じ文字列を Postgres の ~* に渡す）。見るのはカタログのスキーマの input の下
+ * （見本値・既定値）と、raw_accepts の input の下（v1 の outputSchema.input の見本値）と、出品の URL。値そのものは返さない。
+ */
+const EXAMPLE_INPUT = sql`(
+    EXISTS (SELECT 1 FROM jsonb_path_query(coalesce(e.declared_schema #> '{properties,input}', 'null'::jsonb), 'strict $.**') v
+            WHERE jsonb_typeof(v) = 'string' AND length(v #>> '{}') <= 2048 AND (v #>> '{}') ~* ${EXAMPLE_DOMAIN_PATTERN})
+    OR EXISTS (SELECT 1 FROM jsonb_path_query(CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE 'null'::jsonb END, 'strict $.**.input.**') v
+            WHERE jsonb_typeof(v) = 'string' AND length(v #>> '{}') <= 2048 AND (v #>> '{}') ~* ${EXAMPLE_DOMAIN_PATTERN})
+    OR EXISTS (SELECT 1 FROM regexp_split_to_table(coalesce(substring(e.resource_url from '[?]([^#]*)'), ''), '&') q
+            WHERE (split_part(q, '=', 2)) ~* ${EXAMPLE_DOMAIN_PATTERN}))`;
+
+/** 列の共通部分: 分類に要る事実だけ（本文・応答の中身は読まない）。example_input を除く（下の ROW_COLUMNS が足す）。 */
+const ROW_COLUMNS_BASE = sql`
   pu.endpoint_id::text AS endpoint_id,
   pu.status,
   pu.http_status_paid,
@@ -115,6 +129,18 @@ const ROW_COLUMNS = sql`
   coalesce(jsonb_typeof(pu.raw_settlement) = 'object', false) AS receipt_present,
   CASE WHEN jsonb_typeof(pu.raw_settlement->'success') = 'boolean' THEN (pu.raw_settlement->>'success')::boolean END AS receipt_success,
   CASE WHEN jsonb_typeof(pu.raw_settlement) = 'object' THEN left(pu.raw_settlement->>'errorReason', 60) END AS receipt_error_reason`;
+
+/** 行の列（ROW_COLUMNS_BASE と example_input）。行の少ない問い合わせ用。 */
+const ROW_COLUMNS = sql`${ROW_COLUMNS_BASE},
+  ${EXAMPLE_INPUT} AS example_input`;
+
+/**
+ * 出品ごとに 1 行を選ぶ問い合わせ（DISTINCT ON）の外側で example_input を足す。DISTINCT ON の中で当てると全部の行に
+ * jsonpath が走る（本番 2026-09-29 の EXPLAIN ANALYZE: 38 ms → 745 ms）。外側なら選んだ行（出品の数）だけ。
+ */
+function withExampleInput(inner: ReturnType<typeof sql>) {
+  return sql`SELECT x.*, (SELECT ${EXAMPLE_INPUT} FROM x402_endpoints e WHERE e.id = x.endpoint_id::uuid) AS example_input FROM (${inner}) x`;
+}
 
 /** Base の出品（active・代表 network が Base）。 */
 const BASE_LISTING = sql`e.status = 'active' AND e.network IN (${BASE_A}, ${BASE_B})`;
@@ -175,6 +201,7 @@ export function toRowFacts(r: Record<string, unknown>): SellerRowFacts {
     receiptPresent: typeof r.receipt_present === "boolean" ? r.receipt_present : null,
     receiptSuccess: typeof r.receipt_success === "boolean" ? r.receipt_success : null,
     receiptErrorReason: str(r.receipt_error_reason),
+    exampleInput: typeof r.example_input === "boolean" ? r.example_input : null,
   };
 }
 
@@ -216,11 +243,13 @@ export async function readSellerBoard(db: Db, retestEnabled: boolean = isCensusE
     FROM x402_endpoints e
     WHERE ${BASE_LISTING}
     GROUP BY 1`);
-  const latestRaw = await db.execute(sql`
-    SELECT DISTINCT ON (pu.endpoint_id) ${HOST_SQL} AS host, ${ROW_COLUMNS}
+  const latestRaw = await db.execute(
+    withExampleInput(sql`
+    SELECT DISTINCT ON (pu.endpoint_id) ${HOST_SQL} AS host, ${ROW_COLUMNS_BASE}
     FROM x402_l1_purchases pu JOIN x402_endpoints e ON e.id = pu.endpoint_id
     WHERE ${BASE_LISTING} AND ${BASE_ROW}
-    ORDER BY pu.endpoint_id, pu.attempted_at DESC, pu.id DESC`);
+    ORDER BY pu.endpoint_id, pu.attempted_at DESC, pu.id DESC`),
+  );
   const hosts = rowsOf(hostsRaw).map((r) => ({ host: String(r.host), listings: Number(r.listings) }));
   const latest: LatestRow[] = rowsOf(latestRaw).map((r) => ({ ...toRowFacts(r), host: String(r.host) }));
   const days = await readSellerFailureDays(db, latest.filter((r) => sellerCandidateDay(r) !== null).map((r) => r.endpointId));
@@ -237,11 +266,13 @@ export async function readSellerExport(db: Db): Promise<{ fetchedAt: string; row
     SELECT e.id::text AS endpoint_id, e.resource_key, ${HOST_SQL} AS host
     FROM x402_endpoints e
     WHERE ${BASE_LISTING}`);
-  const latestRaw = await db.execute(sql`
-    SELECT DISTINCT ON (pu.endpoint_id) ${HOST_SQL} AS host, ${ROW_COLUMNS}, pu.id::text AS row_id
+  const latestRaw = await db.execute(
+    withExampleInput(sql`
+    SELECT DISTINCT ON (pu.endpoint_id) ${HOST_SQL} AS host, ${ROW_COLUMNS_BASE}, pu.id::text AS row_id
     FROM x402_l1_purchases pu JOIN x402_endpoints e ON e.id = pu.endpoint_id
     WHERE ${BASE_LISTING} AND ${BASE_ROW}
-    ORDER BY pu.endpoint_id, pu.attempted_at DESC, pu.id DESC`);
+    ORDER BY pu.endpoint_id, pu.attempted_at DESC, pu.id DESC`),
+  );
   const listings: SellerListingRef[] = rowsOf(listingsRaw).map((r) => ({
     endpointId: String(r.endpoint_id),
     resourceKey: String(r.resource_key),
@@ -265,12 +296,38 @@ export async function readAllBaseRows(db: Db): Promise<LatestRow[]> {
   return rowsOf(raw).map((r) => ({ ...toRowFacts(r), host: String(r.host), rowId: String(r.row_id) }) as LatestRow);
 }
 
+/**
+ * 次に買う目安の材料（next-buy.ts・2026-09-29 第6巡）。l1-runner の候補 SQL と同じ読み方: 窓は status・チェーンを問わない
+ * 最新の購入行、成熟は settled の数、冷却は署名後の status（COOLDOWN_STATUSES）の新しい 3 件、L0 は最新のプローブ。
+ */
+const COOLDOWN_LIST = sql.join(COOLDOWN_STATUSES.map((st) => sql`${st}`), sql`, `);
+const NEXT_BUY_COLUMNS = sql`
+           (SELECT to_char(max(np.attempted_at) AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+              FROM x402_l1_purchases np WHERE np.endpoint_id = e.id) AS nb_last_attempt,
+           (SELECT count(*)::int FROM x402_l1_purchases ns WHERE ns.endpoint_id = e.id AND ns.status = 'settled') AS nb_settled,
+           (SELECT count(*) = ${NON_SETTLING_COOLDOWN_STREAK} AND count(*) FILTER (WHERE rc.status IN ('settled', 'settle_claimed')) = 0
+              FROM (SELECT nc.status FROM x402_l1_purchases nc
+                    WHERE nc.endpoint_id = e.id AND nc.status IN (${COOLDOWN_LIST})
+                    ORDER BY nc.attempted_at DESC LIMIT ${NON_SETTLING_COOLDOWN_STREAK}) rc) AS nb_cooldown,
+           (SELECT lp.verdict FROM x402_l0_probes lp WHERE lp.endpoint_id = e.id ORDER BY lp.probed_at DESC LIMIT 1) AS nb_l0`;
+
+function nextBuyFactsOf(r: Record<string, unknown>): NextBuyFacts | null {
+  if (typeof r.nb_cooldown !== "boolean") return null;
+  return {
+    lastAttemptAnyAt: str(r.nb_last_attempt),
+    settledCount: toInt(r.nb_settled) ?? 0,
+    cooldown: r.nb_cooldown,
+    latestL0Verdict: str(r.nb_l0),
+  };
+}
+
 /** その売り手の Base の出品が無ければ null。host は parseSellerHostParam を通した値。 */
 export async function readSellerDetail(db: Db, host: string): Promise<SellerDetail | null> {
   const fetchedAt = new Date().toISOString();
   const epRaw = await db.execute(sql`
     SELECT e.id::text AS endpoint_id, e.resource_key, e.resource_url, e.method, e.price_amount,
-           CASE WHEN e.resource_id ~ '^[0-9a-f]{64}$' THEN e.resource_id END AS resource_id
+           CASE WHEN e.resource_id ~ '^[0-9a-f]{64}$' THEN e.resource_id END AS resource_id,
+           ${NEXT_BUY_COLUMNS}
     FROM x402_endpoints e
     WHERE ${BASE_LISTING} AND ${HOST_SQL} = ${host}`);
   const endpoints: SellerEndpointFacts[] = rowsOf(epRaw).map((r) => ({
@@ -280,17 +337,20 @@ export async function readSellerDetail(db: Db, host: string): Promise<SellerDeta
     method: str(r.method),
     priceAmount: str(r.price_amount),
     resourceId: str(r.resource_id),
+    nextBuyFacts: nextBuyFactsOf(r),
   }));
   if (endpoints.length === 0) return null;
   const ids = JSON.stringify(endpoints.map((e) => e.endpointId));
-  const rowsRaw = await db.execute(sql`
+  const rowsRaw = await db.execute(
+    withExampleInput(sql`
     SELECT * FROM (
-      SELECT ${ROW_COLUMNS},
+      SELECT ${ROW_COLUMNS_BASE},
              row_number() OVER (PARTITION BY pu.endpoint_id ORDER BY pu.attempted_at DESC, pu.id DESC) AS rn
       FROM x402_l1_purchases pu JOIN x402_endpoints e ON e.id = pu.endpoint_id
       WHERE pu.endpoint_id IN (SELECT (jsonb_array_elements_text(${ids}::jsonb))::uuid) AND ${BASE_ROW}
     ) t
-    WHERE t.rn <= ${1 + EARLIER_ROWS_SHOWN}`);
+    WHERE t.rn <= ${1 + EARLIER_ROWS_SHOWN}`),
+  );
   const rows = rowsOf(rowsRaw).map(toRowFacts);
   const days = await readSellerFailureDays(db, rows.filter((r) => sellerCandidateDay(r) !== null).map((r) => r.endpointId));
   return buildSellerDetail(host, endpoints, rows, fetchedAt, days);
@@ -370,11 +430,13 @@ export async function readPurchasedHosts(db: Db): Promise<string[]> {
  */
 export async function readSellerOtherChains(db: Db, host: string): Promise<SellerOtherChains | null> {
   const fetchedAt = new Date().toISOString();
-  const raw = await db.execute(sql`
-    SELECT DISTINCT ON (pu.endpoint_id) ${ROW_COLUMNS}, e.resource_key, e.network AS catalog_network
+  const raw = await db.execute(
+    withExampleInput(sql`
+    SELECT DISTINCT ON (pu.endpoint_id) ${ROW_COLUMNS_BASE}, e.resource_key, e.network AS catalog_network
     FROM x402_l1_purchases pu JOIN x402_endpoints e ON e.id = pu.endpoint_id
     WHERE ${HOST_SQL} = ${host}
-    ORDER BY pu.endpoint_id, pu.attempted_at DESC, pu.id DESC`);
+    ORDER BY pu.endpoint_id, pu.attempted_at DESC, pu.id DESC`),
+  );
   const rows = rowsOf(raw).map((r) => ({
     resourceKey: String(r.resource_key),
     catalogNetwork: str(r.catalog_network),

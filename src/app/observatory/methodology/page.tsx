@@ -41,6 +41,7 @@ import { L0_BODY_CAP_BYTES, L0_BODY_CAP_RAISED_ON } from "@/lib/observatory/l0-p
 import { RULE_CHANGE_PRIORITY_PER_HOST } from "@/lib/observatory/l0-rule-change";
 import { TableScroll } from "@/components/site/TableScroll";
 import { SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS, SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS } from "@/lib/sellers/fix-modes";
+import { BASE_PAYER_PERIODS, shortPayer } from "@/lib/sellers/payers";
 
 const MAX_PER_PURCHASE_USD = Number(MAX_PER_PURCHASE_UNITS) / 1_000_000;
 
@@ -409,7 +410,15 @@ export default async function ObservatoryMethodologyPage() {
           the signed amount, asset and <code>payTo</code> are on the row. (c) Its payer wallet held at
           least the price when it signed. Since 2026-09-16 23:25 UTC the runner reads the balance before
           signing and does not sign when it is short; for earlier purchases on Base the balance is rebuilt
-          from the wallet&apos;s own USDC transfers on-chain. (d) It sent the input the listing declares
+          from the wallet&apos;s own USDC transfers on-chain. The payer on Base has been{" "}
+          {BASE_PAYER_PERIODS.map((p, i) => (
+            <span key={p.address}>
+              {i > 0 ? (i === BASE_PAYER_PERIODS.length - 1 ? ", and " : ", ") : ""}
+              <code>{shortPayer(p.address)}</code>{" "}
+              {p.until ? `for the purchases from ${p.from} to ${p.until}` : `since ${p.from}`}
+            </span>
+          ))}
+          ; a transaction from August 2026 shows the first of these as the sender. (d) It sent the input the listing declares
           (body, query, headers and path parameters), and the row records what it sent. vet402 sends no
           request headers of the seller&apos;s and does not fill path parameters, so a listing that
           declares them is not sorted; a row from before vet402 recorded the query it sent on Base
@@ -462,7 +471,11 @@ export default async function ObservatoryMethodologyPage() {
           did not add the query the listing declares; or our own limits and errors. &ldquo;Declares&rdquo;
           is read from the same place our request is built from: the example values in the
           listing&apos;s <code>extensions.bazaar.info.input</code>, as well as the names its schema
-          marks required. <em>Not sorted</em>: a failed purchase that cannot show (b) to (e); a held row
+          marks required. <em>Not sorted</em>: a failed purchase that cannot show (b) to (e); a failure at a
+          listing whose declared input is an example domain (<code>example.com</code>, <code>.org</code>,{" "}
+          <code>.net</code>, or a name under <code>.example</code>, in the listing&apos;s input schema, its declared
+          input, or its URL), because vet402 sends the values the listing declares and cannot show a placeholder was a
+          valid input; a held row
           (a <code>held_reason</code> in the export) or a row awaiting on-chain verification; and a
           failure where no payment was taken, meaning no settlement receipt and no transaction on the
           row, whether the paid request got a <code>4xx</code> or a <code>2xx</code>. A seller that
@@ -476,8 +489,10 @@ export default async function ObservatoryMethodologyPage() {
           <code>l1_not_counted_no_charge</code> name what was left out), and they still count a
           not-sorted attempt that is not shown to be our fault. So a listing can read &ldquo;not sorted&rdquo; on its
           seller page while the decision API answers <code>WARN</code> or <code>BLOCK</code> for it; each listing on
-          the seller page shows the decision API&apos;s answer at the time the page was read, with its main reason
-          codes.
+          the seller page shows the decision API&apos;s answer at the time the page was read, with the codes that
+          decided it first and one sentence for each (for example, a failed check before payment, or a last delivery
+          more than 30 days ago). The note that the decision counts not-sorted attempts is added only when a code
+          counted from the attempts decided the answer.
         </p>
         {/* 2026-09-29 第5巡: 売り手の名指した tx の期限（settlement-verifier.ts・fix-modes.ts の SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS）と、
             届かなかった L1 の行を載せる記録頁の noindex。 */}
@@ -497,7 +512,8 @@ export default async function ObservatoryMethodologyPage() {
             /corrections
           </Link>
           . Until the seller pages leave <code>noindex</code>, the record page of a listing with any purchase that
-          did not deliver is also <code>noindex</code> and is left out of the endpoint sitemap.
+          did not deliver is also <code>noindex</code> and is left out of the endpoint sitemap, and so is the record
+          page of a listing whose latest published L0 verdict is not <code>pass</code>.
         </p>
         <p className="doc-p">
           <strong>How long we wait for a payment.</strong> The runner waits up to{" "}

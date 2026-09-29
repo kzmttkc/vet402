@@ -20,6 +20,9 @@
 // noindex（売り手頁の noindex を外すまで）なので、ここにも載せない（noindex の頁を sitemap で配らない）。条件は
 // 記録頁と同じ（src/lib/sellers/board.ts の RecordSides.undelivered・reader.ts の readEndpointsWithUndeliveredL1）。
 // その集合が読めなければ 503（全部を載せ直さない・空の urlset を 200 で返さない）。
+// 2026-09-29 第6巡（弁護士の条件 2）: 記録頁は最新の公開 L0 判定が pass でなければ noindex（board.ts の recordPageNoindex）。
+// ここは getSitemapEndpoints が「最新のプローブが pass」の出品だけを返す（publishedVerdict の pass と同じ: 最新が pass）ので、
+// fail・unverified・未プローブの頁は元から載らない（tests/sellers-r6.test.ts が SQL の条件を固定する）。
 // ============================================================
 import { getSitemapEndpoints, SITEMAP_ENDPOINT_LIMIT } from "@/lib/observatory/reader";
 import { getDb } from "@/lib/db/client";

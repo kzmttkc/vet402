@@ -19,6 +19,7 @@ import {
   type FixMode,
   type SellerRowFacts,
 } from "./fix-modes";
+import { nextBuyOf, type NextBuy, type NextBuyFacts } from "./next-buy";
 
 /**
  * 出品（endpoint id）→ seller の側の候補になった失敗の UTC の日付（2026-09-29 第4巡・reader.ts の
@@ -221,6 +222,22 @@ export function boardAsOfDay(board: Pick<SellerBoard, "sellers">): string | null
   return latest && /^\d{4}-\d{2}-\d{2}/.test(latest) ? latest.slice(0, 10) : null;
 }
 
+/**
+ * /sellers の区分の絞り込み（GET ?side=・2026-09-29 第6巡）。各出品の最新の試行で数えた区分の件数が 1 以上の売り手だけ。
+ * 値の語は頁の列の見出しと同じ区分（seller's side・vet402's side・not sorted・delivered）。
+ */
+export const SELLER_SIDE_FILTERS = ["seller", "vet402", "unsorted", "delivered"] as const;
+export type SellerSideFilter = (typeof SELLER_SIDE_FILTERS)[number];
+
+export function parseSellerSideFilter(v: unknown): SellerSideFilter | null {
+  const x = Array.isArray(v) ? v[0] : v;
+  return typeof x === "string" && (SELLER_SIDE_FILTERS as readonly string[]).includes(x) ? (x as SellerSideFilter) : null;
+}
+
+export function filterSellersBySide(sellers: readonly SellerSummary[], side: SellerSideFilter | null): SellerSummary[] {
+  return side ? sellers.filter((s) => s[side] > 0) : [...sellers];
+}
+
 /** 検索: ホスト名の完全一致を先頭に、部分一致を続ける（最大 limit 件）。 */
 export function searchSellers(sellers: readonly SellerSummary[], q: string, limit = 50): { exact: SellerSummary | null; matches: SellerSummary[] } {
   const needle = q.trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0].replace(/:[0-9]+$/, "");
@@ -242,6 +259,8 @@ export interface SellerEndpointFacts {
   resourceUrl: string;
   method: string | null;
   priceAmount: string | null;
+  /** 次に買う目安の材料（reader.ts・2026-09-29 第6巡）。無ければ目安を書かない。 */
+  nextBuyFacts?: NextBuyFacts | null;
 }
 
 export interface ShownRow {
@@ -277,6 +296,8 @@ export interface SellerListing extends SellerEndpointFacts {
    * not bought・照合待ちのとき、頁は「最新は 0 delivered」ではなくこちらを添える（2026-09-29 第4巡）。
    */
   lastSellerSignal: { at: string; bucket: "delivered" | "seller" } | null;
+  /** 次に vet402 がこの出品を買う目安（next-buy.ts・計算できなければ null・2026-09-29 第6巡）。 */
+  nextBuy: NextBuy | null;
 }
 
 export interface SellerDetail {
@@ -355,7 +376,7 @@ export function buildSellerDetail(
     const deliveredAfterFailure = latest?.bucket === "delivered" && shown.slice(1).some((r) => r.bucket !== "delivered");
     const signal = shown.find((r) => r.bucket === "delivered" || r.bucket === "seller");
     const lastSellerSignal = signal ? { at: signal.facts.attemptedAt, bucket: signal.bucket as "delivered" | "seller" } : null;
-    return { ...e, latest, earlier, deliveredAfterFailure, lastSellerSignal };
+    return { ...e, latest, earlier, deliveredAfterFailure, lastSellerSignal, nextBuy: nextBuyOf(e, e.nextBuyFacts, Date.parse(fetchedAt)) };
   });
   listings.sort(compareListings);
   const latestRows: LatestRow[] = listings.filter((l) => l.latest).map((l) => ({ ...l.latest!.facts, host }));
@@ -505,6 +526,17 @@ export interface RecordSides {
 export function recordRowKey(attemptedAt: string | Date | null, status: string, txHash: string | null): string {
   const iso = attemptedAt instanceof Date ? attemptedAt.toISOString() : (attemptedAt ?? "");
   return `${iso.slice(0, 19)}|${status}|${(txHash ?? "").toLowerCase()}`;
+}
+
+/**
+ * 記録頁（/observatory/e/[id]）を noindex にするか（2026-09-29 第6巡・弁護士の条件 2）。
+ *   1. 行の分類が読めない（sides が null）
+ *   2. 届かなかった L1 の購入行が 1 つでもある（第5巡）
+ *   3. 最新の公開 L0 判定が pass でない（fail・unverified・プローブ無し）: 個人名入りのホストの fail の頁を検索に出さない
+ * sitemap-observatory.xml は 2 と 3 を SQL で同じく外す（getSitemapEndpoints は最新のプローブが pass の出品だけ）。
+ */
+export function recordPageNoindex(publishedVerdict: string | null | undefined, sides: Pick<RecordSides, "undelivered"> | null): boolean {
+  return sides === null || sides.undelivered > 0 || publishedVerdict !== "pass";
 }
 
 export function buildRecordSides(rows: readonly SellerRowFacts[]): RecordSides {

@@ -135,5 +135,6 @@ test("endpoint purchase table leads with Attempted / Result / HTTP, receipt four
   const page = read("src/app/observatory/e/[id]/page.tsx");
   const table = page.slice(page.indexOf("L1 purchase history, newest first"), page.indexOf("</thead>", page.indexOf("L1 purchase history, newest first")));
   const order = [...table.matchAll(/<th scope="col"[^>]*>\s*([^<]+?)\s*<\/th>/g)].map((m) => m[1].trim());
-  assert.deepEqual(order.slice(0, 4), ["Attempted at", "Result", "HTTP", "Receipt (tx)"]);
+  // 2026-09-29 監査 6 周目: 「receipt」は売り手の受領証の意味だけ（索引で見つけた tx の行もある）ので列名は On-chain tx。
+  assert.deepEqual(order.slice(0, 4), ["Attempted at", "Result", "HTTP", "On-chain tx"]);
 });

@@ -94,16 +94,17 @@ test("1: 出品ごとに判定 API の答えの欄（公開 API へのリンク�
   assert.equal(links.length, eps.length, "試行のある出品ごとに判定 API の答えへのリンク（JS が無くても開ける）");
   assert.match(html, /Decision API now:/);
   assert.match(html, /cautious for the payer/);
-  assert.match(html, /href="\/docs\/api#verdicts"/);
+  // 2026-09-29 第6巡: 理由コードの説明（別の担当が /docs/api に作る節）へ。
+  assert.match(html, /href="\/docs\/api#reason-codes"/);
   assert.equal(decisionApiHref(RID), `/api/v1/resources/${RID}/decision?role=payer`);
 });
 
 test("1: 判定 API の応答から頁に出す部分だけを取り出す（形が違えば null）", () => {
-  assert.deepEqual(answerOf({ recommendation: "BLOCK", reason_codes: ["l1_paid_not_delivered", 3], scoredAt: "2026-09-29T04:00:00.000Z" }), {
-    recommendation: "BLOCK",
-    reasonCodes: ["l1_paid_not_delivered"],
-    scoredAt: "2026-09-29T04:00:00.000Z",
-  });
+  const a = answerOf({ recommendation: "BLOCK", reason_codes: ["l1_paid_not_delivered", 3], scoredAt: "2026-09-29T04:00:00.000Z" });
+  assert.equal(a?.recommendation, "BLOCK");
+  assert.deepEqual(a?.reasonCodes, ["l1_paid_not_delivered"]);
+  assert.deepEqual(a?.decisive, ["l1_paid_not_delivered"]);
+  assert.equal(a?.scoredAt, "2026-09-29T04:00:00.000Z");
   assert.deepEqual(
     answerOf({ recommendation: "BLOCK", reason_codes: ["l0_pass", "l1_never_delivered", "l2_undeclared", "l0_unverified_tls"] })?.reasonCodes,
     ["l1_never_delivered", "l0_unverified_tls", "l0_pass", "l2_undeclared"],
@@ -128,7 +129,8 @@ test("2: 記録頁の noindex と sitemap の除外は、届かなかった購�
   const pending = row({ status: "settle_claimed", httpStatusPaid: 200, txHash: TX, attemptedAt: "2026-09-21T12:00:00Z" });
   assert.equal(buildRecordSides([pending]).undelivered, 1);
   const page = readFileSync(join(ROOT, "src/app/observatory/e/[id]/page.tsx"), "utf8");
-  assert.match(page, /sides === null \|\| sides\.undelivered > 0 \? \{ noindex: true \}/);
+  // 2026-09-29 第6巡: 条件は board.ts の recordPageNoindex に移した（L0 が pass でない頁も noindex）。
+  assert.match(page, /recordPageNoindex\(detail\.publishedVerdict, sides\) \? \{ noindex: true \}/);
   const route = readFileSync(join(ROOT, "src/app/sitemap-observatory.xml/route.ts"), "utf8");
   assert.match(route, /readEndpointsWithUndeliveredL1/);
   assert.match(route, /status: 503/);

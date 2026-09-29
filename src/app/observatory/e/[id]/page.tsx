@@ -19,7 +19,7 @@ import RecordSubscribe from "@/components/site/RecordSubscribe";
 import { VerdictWord, ProbeTimeline, SettleGauge, type L0Verdict } from "@/components/site/Figures";
 import { getDb } from "@/lib/db/client";
 import { readRecordSides } from "@/lib/sellers/reader";
-import { recordRowKey, type RecordSides } from "@/lib/sellers/board";
+import { recordPageNoindex, recordRowKey, type RecordSides } from "@/lib/sellers/board";
 import { HELD_GLOSS, STATUS_GLOSS } from "@/lib/sellers/fix-modes";
 import { RECORD_DISPUTE_ANCHOR, UNDER_RECHECK, WhoseSide } from "@/components/site/sellers/SellersViews";
 
@@ -117,12 +117,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   // 2026-09-29 第5巡: 届かなかった L1 の行（vet402 の側・not sorted・照合待ち・not bought を含む）を載せる記録頁は、
   // 売り手頁（/sellers/[host]・noindex）の noindex を外すまで noindex（売り手頁と同じ語で L1 の失敗が載るため）。
   // sitemap-observatory.xml も同じ条件で外す。L0 のプローブだけの頁・全部 delivered の頁は従来どおり。
+  // 2026-09-29 第6巡（弁護士の条件 2）: 最新の公開 L0 判定が pass でない頁も noindex（個人名入りのホストの fail の
+  // 記録頁を検索に出さない）。規則は board.ts の recordPageNoindex（sitemap は最新のプローブが pass の出品だけを載せる）。
   const sides = await recordSides(id);
   return pageMetadata({
     title: `${name} — x402 purchase and probe record`,
     description: `Paid purchases and probe history for ${name}: what vet402 paid, what came back, whose side a failure was on, and the 402 measurements with timestamps and reason codes.`,
     path: `/observatory/e/${id}`,
-    ...(sides === null || sides.undelivered > 0 ? { noindex: true } : {}),
+    ...(recordPageNoindex(detail.publishedVerdict, sides) ? { noindex: true } : {}),
   });
 }
 
@@ -360,9 +362,13 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                 settled は転送の確認、delivered は応答の到着で、別の事実である。
                 api.exa.ai/search は settled 10 件のうち 2xx が 0 件だった。 */}
             <p className="doc-p">
-              {l1.settled} of {l1.attempts} paid attempts settled with a receipt, and{" "}
+              {/* 2026-09-29 第6巡: 「receipt」は売り手の受領証（PAYMENT-RESPONSE）の意味だけにする。settled の行には
+                  売り手が受領証を返さず vet402 の索引で見つけた tx の行もあるので「settled on-chain」と書く。 */}
+              {l1.settled} of {l1.attempts} paid attempts settled on-chain, and{" "}
               {l1.delivered} of those also returned a 2xx response (delivered). Each settled row
-              carries its on-chain transaction hash — the receipt is the evidence.{" "}A settled
+              carries its on-chain transaction hash, and that transaction is the evidence. On this page a{" "}
+              <em>receipt</em> means the seller&apos;s own settlement receipt (<code>PAYMENT-RESPONSE</code>); a
+              settled row can have none (see &ldquo;tx from our index&rdquo;).{" "}A settled
               row reads as <strong>nonce-bound</strong> when the on-chain re-read also matched the
               one-time signature nonce we generated for that purchase, and{" "}
               <strong>amount + payee</strong> when it matched amount, payee, asset and chain with no
@@ -430,7 +436,7 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
               n={2}
               settled={l1.settled}
               attempts={l1.attempts}
-              caption={<>Settle-through: one cell per paid attempt. Filled = settled with an on-chain receipt, crossed = signed, and not settled on-chain.</>}
+              caption={<>Settle-through: one cell per paid attempt. Filled = settled on-chain, crossed = signed, and not settled on-chain.</>}
             />
             <TableScroll label="L1 purchase history, newest first">
               <table className="fact-table">
@@ -445,7 +451,7 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                     <th scope="col" className="num">
                       HTTP
                     </th>
-                    <th scope="col">Receipt (tx)</th>
+                    <th scope="col">On-chain tx</th>
                     <th scope="col" className="num">
                       Latency
                     </th>

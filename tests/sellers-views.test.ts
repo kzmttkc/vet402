@@ -114,7 +114,7 @@ test("SellerDetailView: 取得時刻・vet402 の側・買い直し・tx・expor
   assert.match(html, /href="\/observatory\/e\/e1"/);
   assert.match(html, /not tried yet/);
   // 2026-09-29 第2巡: 署名した行には払った条件を出す
-  assert.match(html, /The 402 terms vet402 paid:<\/strong> vet402 signed: exact\./);
+  assert.match(html, /The 402 terms vet402 paid:<\/strong> exact\./);
   assert.match(html, /bought by the <code>census<\/code>|\[census\]/);
 });
 

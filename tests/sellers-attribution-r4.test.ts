@@ -245,8 +245,8 @@ test("C11: 最新の行が vet402 の側で、以前に届いていれば、売�
   assert.deepEqual(d.listings[0].lastSellerSignal, { at: "2026-09-04T00:00:00Z", bucket: "delivered" });
   assert.deepEqual(d.sellerView, { delivered: 1, seller: 0, none: 0 });
   const html = renderToStaticMarkup(createElement(SellerDetailView, { detail: d, page: 1, now: 0, revalidateSec: 300 }));
-  assert.match(html, /Last result about the seller:<\/strong> delivered on 2026-09-04 00:00 UTC\. The latest attempt failed on vet402&#x27;s side; vet402 has not bought this listing again since\./);
-  assert.match(html, /Before that, this listing delivered on 2026-09-04 00:00 UTC; vet402 has not bought it again since\./);
+  assert.match(html, /Last result about the seller:<\/strong> delivered on 2026-09-04 00:00 UTC\. The latest attempt failed on vet402&#x27;s side; there has been no attempt since\./);
+  assert.match(html, /Before that, this listing delivered on 2026-09-04 00:00 UTC\./);
   assert.match(html, /<strong>1<\/strong> delivered · <strong>0<\/strong> failed on the seller&#x27;s side · <strong>0<\/strong> with no such/);
 });
 

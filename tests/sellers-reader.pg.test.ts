@@ -240,7 +240,7 @@ if (!TEST_DB) {
     assert.equal(by(s1).facts.pathTemplate, false);
     assert.equal(by(s1).facts.payer, PAYER);
     assert.equal(by(s1).signed, true);
-    assert.match(by(s1).seen402 ?? "", /^vet402 signed: exact · 0\.01 USDC · payTo 0x2222…2222\. Input sent: body none, query empty\./);
+    assert.match(by(s1).seen402 ?? "", /^exact · 0\.01 USDC · payTo 0x2222…2222\. Input sent: body none, query empty\./);
     assert.equal(by(s2).mode?.key, "stopped_waiting");
     assert.equal(by(s2).facts.listingMaxTimeoutSeconds, 300);
     assert.equal(by(s3).mode?.key, "input_not_sent");

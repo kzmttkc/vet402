@@ -5,6 +5,8 @@ import { TableScroll } from "@/components/site/TableScroll";
 import {
   boardAsOfDay,
   exportDaysFor,
+  filterSellersBySide,
+  type SellerSideFilter,
   type FixGroup,
   type OutcomeCounts,
   type SellerBoard,
@@ -15,7 +17,8 @@ import {
   type ShownRow,
 } from "@/lib/sellers/board";
 import { EFFORT_LABEL, HELD_GLOSS, sideLabelOf, STATUS_GLOSS } from "@/lib/sellers/fix-modes";
-import DecisionAnswer from "./DecisionAnswer";
+import DecisionAnswer, { REASON_CODES_HREF } from "./DecisionAnswer";
+import { nextBuyLine } from "@/lib/sellers/next-buy";
 
 /**
  * /sellers・/sellers/[host]・/sellers/fix-first の描画（純粋なコンポーネント・DB を読まない）。
@@ -302,22 +305,77 @@ function Pager({ page, totalPages, href, label }: { page: number; totalPages: nu
 // /sellers
 // ------------------------------------------------------------
 
+/** 区分の絞り込みの語（2026-09-29 第6巡・列の見出しと同じ語）。 */
+export const SIDE_FILTER_LABEL: Readonly<Record<SellerSideFilter, string>> = {
+  seller: "Seller's side",
+  vet402: "vet402's side",
+  unsorted: "Not sorted",
+  delivered: "Delivered",
+};
+
+/** 文の中の言い方（「latest attempt is …」）。 */
+const SIDE_FILTER_PHRASE: Readonly<Record<SellerSideFilter, string>> = {
+  seller: "on the seller's side",
+  vet402: "on vet402's side",
+  unsorted: "not sorted",
+  delivered: "delivered",
+};
+
+/** /sellers の頁の URL（区分と頁番号・既定の値はクエリに書かない）。 */
+export function sellersIndexHref(side: SellerSideFilter | null, page = 1): string {
+  const qs = new URLSearchParams();
+  if (side) qs.set("side", side);
+  if (page > 1) qs.set("page", String(page));
+  const q = qs.toString();
+  return q ? `/sellers?${q}` : "/sellers";
+}
+
+function SideFilter({ board, side }: { board: SellerBoard; side: SellerSideFilter | null }) {
+  const items: { key: SellerSideFilter | null; label: string; count: number }[] = [
+    { key: null, label: "All", count: board.sellers.length },
+    ...(Object.keys(SIDE_FILTER_LABEL) as SellerSideFilter[]).map((k) => ({
+      key: k,
+      label: SIDE_FILTER_LABEL[k],
+      count: filterSellersBySide(board.sellers, k).length,
+    })),
+  ];
+  return (
+    <nav aria-label="Show sellers by result" className="doc-p mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[0.8125rem]">
+      <span className="text-brand-lift">Show sellers with at least one listing whose latest attempt is:</span>
+      {items.map((it) => (
+        <Link
+          key={it.key ?? "all"}
+          href={sellersIndexHref(it.key)}
+          aria-current={it.key === side ? "page" : undefined}
+          className={`${TAP} ${it.key === side ? "font-semibold decoration-2" : ""}`}
+        >
+          {it.label} ({n(it.count)})
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
 export function SellersIndexView({
   board,
   page,
   q,
   search,
   revalidateSec,
+  side = null,
 }: {
   board: SellerBoard;
   page: number;
   q: string;
   search: { exact: SellerSummary | null; matches: SellerSummary[] } | null;
   revalidateSec: number;
+  /** 区分の絞り込み（GET ?side=・2026-09-29 第6巡）。null は全部。 */
+  side?: SellerSideFilter | null;
 }) {
-  const totalPages = Math.max(1, Math.ceil(board.sellers.length / SELLERS_PAGE_SIZE));
+  const listed = filterSellersBySide(board.sellers, side);
+  const totalPages = Math.max(1, Math.ceil(listed.length / SELLERS_PAGE_SIZE));
   const p = Math.min(Math.max(1, page), totalPages);
-  const shown = board.sellers.slice((p - 1) * SELLERS_PAGE_SIZE, p * SELLERS_PAGE_SIZE);
+  const shown = listed.slice((p - 1) * SELLERS_PAGE_SIZE, p * SELLERS_PAGE_SIZE);
   const t = board.totals;
   return (
     <article className="sheet">
@@ -362,8 +420,25 @@ export function SellersIndexView({
         </Link>{" "}
         groups the failures by kind.
       </p>
-      <SellersTable sellers={shown} label="Sellers on Base, most recent purchase first" />
-      <Pager page={p} totalPages={totalPages} href={(x) => `/sellers?page=${x}`} label="Seller pages" />
+      <SideFilter board={board} side={side} />
+      {side && (
+        <p className="doc-p text-[0.8125rem]">
+          Showing {n(listed.length)} of {n(board.sellers.length)} sellers: those with at least one Base listing whose
+          latest attempt is <strong>{SIDE_FILTER_PHRASE[side]}</strong>.{" "}
+          <Link href={sellersIndexHref(null)} className={TAP}>
+            Show all
+          </Link>
+        </p>
+      )}
+      {shown.length === 0 ? (
+        <p className="doc-p text-brand-lift">No seller has a listing in this group.</p>
+      ) : (
+        <SellersTable
+          sellers={shown}
+          label={side ? `Sellers on Base with a listing whose latest attempt is ${SIDE_FILTER_PHRASE[side]}, most recent purchase first` : "Sellers on Base, most recent purchase first"}
+        />
+      )}
+      <Pager page={p} totalPages={totalPages} href={(x) => sellersIndexHref(side, x)} label="Seller pages" />
       <ReadingNotes />
     </article>
   );
@@ -478,6 +553,17 @@ export function termsLabel(r: ShownRow): string {
   return r.facts.status === "settled" ? "The 402 terms vet402 paid:" : "The 402 terms vet402 signed:";
 }
 
+/**
+ * 最新の行の記録の見出し（2026-09-29 第6巡）: 決済がチェーンで確かめられた行（settled）だけ「paid purchase」。
+ * 署名したが決済が成立していない行（tx の無い行・照合待ち・反証された行）は「signed」、署名していない行は「attempt」。
+ */
+export function recordedLabel(r: ShownRow): string {
+  if (!r.signed) return "Recorded (attempt; vet402 did not pay, not an L1 result)";
+  return r.facts.status === "settled"
+    ? "Recorded (L1 paid purchase)"
+    : "Recorded (L1 attempt; vet402 signed a payment, not settled on-chain)";
+}
+
 function RecordedFacts({ r }: { r: ShownRow }) {
   const f = r.facts;
   const short = f.txHash ? `${f.txHash.slice(0, 10)}…${f.txHash.slice(-4)}` : null;
@@ -574,7 +660,8 @@ function SellerSignalLine({ l, rebuyEligible }: { l: SellerListing; rebuyEligibl
         : r.bucket === "pending"
           ? "The latest purchase is awaiting on-chain verification"
           : "The latest attempt is not sorted";
-  const after = rebuyEligible ? "; this listing is eligible for a re-buy." : "; vet402 has not bought this listing again since.";
+  // 2026-09-29 第6巡: 最新の試行は購入とは限らない（tx の無い行・vet402 が払っていない行）。「bought again」と書かない。
+  const after = rebuyEligible ? "; this listing is eligible for a re-buy." : "; there has been no attempt since.";
   return (
     <span className="block">
       <strong>Last result about the seller:</strong>{" "}
@@ -632,6 +719,38 @@ function EarlierRow({ e, endpointId }: { e: ShownRow; endpointId: string }) {
 }
 
 /**
+ * 「直した後にやること」（2026-09-29 第6巡）: 次に vet402 が買う目安（next-buy.ts・計算できなければ書かない）、
+ * 買い直しの予定、結果が変わったときの通知の登録、異議の導線を 1 つのブロックに。
+ */
+function AfterFix({ l, rebuyEligible }: { l: SellerListing; rebuyEligible: boolean }) {
+  const next = nextBuyLine(l.nextBuy);
+  const r = l.latest;
+  return (
+    <div className="mt-2 border-l-2 border-hair pl-3 text-xs" aria-label="After a fix">
+      <span className="block font-semibold text-brand-lift">After a fix</span>
+      {next && (
+        <span className="block">
+          <strong>Next purchase by vet402:</strong> {next}
+        </span>
+      )}
+      {rebuyEligible && (
+        <span className="block">
+          <strong>Re-buy:</strong> this listing is eligible for a re-buy under the rules on the{" "}
+          <Link href="/observatory/methodology" className={TAP}>
+            methodology page
+          </Link>
+          .
+        </span>
+      )}
+      <span className="flex flex-wrap gap-x-4">
+        <NotifyLink endpointId={l.endpointId} />
+        {r && <DisputeLink endpointId={l.endpointId} attemptedAt={r.facts.attemptedAt} />}
+      </span>
+    </div>
+  );
+}
+
+/**
  * 1 出品を 1 枚のカードに（2026-09-29 第4巡: 4 列の表は電話の幅で横スクロールになり、文が切れていた）。
  * 見出しの事実（最新の試行・結果・どちらの側か）はラベル付きの 2 列、文はその下に表の外で折り返す。
  */
@@ -663,6 +782,12 @@ function ListingCard({
         <dt className="text-brand-lift">Whose side</dt>
         <dd className="m-0">{r ? <WhoseSide r={r} /> : "—"}</dd>
       </dl>
+      {/* 2026-09-29 第6巡: 判定 API の答えはカードの先頭近く（以前は 375px で 2 画面以上下）。 */}
+      {r && l.resourceId && (
+        <div className="mt-2 text-[0.8125rem]">
+          <DecisionAnswer resourceId={l.resourceId} auto={autoDecision} sellerSide={r.bucket === "seller"} />
+        </div>
+      )}
       <div className="mt-2 space-y-1 text-[0.8125rem]">
         {r ? (
           <>
@@ -684,26 +809,14 @@ function ListingCard({
             )}
             {r.note && <span className="block">{r.note}</span>}
             {r.exportReason && <span className="block">{r.exportReason}</span>}
-            {l.resourceId && (
-              <DecisionAnswer resourceId={l.resourceId} auto={autoDecision} sellerSide={r.bucket === "seller"} />
-            )}
             {r.mode?.side === "vet402" && (
               <span className="block">This failure was on vet402&apos;s side, not the seller&apos;s.</span>
-            )}
-            {rebuyEligible && (
-              <span className="block">
-                <strong>Re-buy:</strong> this listing is eligible for a re-buy under the rules on the{" "}
-                <Link href="/observatory/methodology" className="underline">
-                  methodology page
-                </Link>
-                .
-              </span>
             )}
             {l.deliveredAfterFailure && (
               <span className="block">The latest purchase delivered. An earlier attempt listed below did not.</span>
             )}
             <span className="block break-words font-[family-name:var(--font-mono)] text-xs text-brand-lift">
-              {r.signed ? "Recorded (L1 paid purchase)" : "Recorded (attempt; vet402 did not pay, not an L1 result)"}:{" "}
+              {recordedLabel(r)}:{" "}
               <RecordedFacts r={r} />
             </span>
             <span className="block break-words text-xs text-brand-lift">
@@ -713,10 +826,7 @@ function ListingCard({
         ) : (
           <span className="block text-brand-lift">vet402 has not tried to buy this listing yet.</span>
         )}
-        <span className="flex flex-wrap gap-x-4 text-xs">
-          {r && <DisputeLink endpointId={l.endpointId} attemptedAt={r.facts.attemptedAt} />}
-          <NotifyLink endpointId={l.endpointId} />
-        </span>
+        <AfterFix l={l} rebuyEligible={rebuyEligible} />
         {l.earlier.length > 0 && (
           <div className="mt-2 text-xs">
             <span className="block font-semibold text-brand-lift">Earlier attempts</span>
@@ -816,7 +926,7 @@ export function SellerDetailView({
           <p className="doc-p">
             <strong>Your most recent purchase failed on vet402&apos;s side.</strong> Nothing for you to fix there.
             {newestSignal?.bucket === "delivered" && (
-              <> Before that, this listing delivered on {fmtUtc(newestSignal.at)}; vet402 has not bought it again since.</>
+              <> Before that, this listing delivered on {fmtUtc(newestSignal.at)}.</>
             )}
           </p>
         )
@@ -856,9 +966,9 @@ export function SellerDetailView({
       </h2>
       <p className="doc-p">
         Each listing shows its latest attempt on Base and up to four earlier ones. A row where vet402 signed a
-        payment and sent the paid request is an <strong>L1</strong> result (&ldquo;Recorded (L1 paid
-        purchase)&rdquo;); a row where vet402 did not sign is marked &ldquo;not bought&rdquo; and is not an L1
-        result. The listing&apos;s record page also shows the <strong>L0</strong> state (&ldquo;Published
+        payment and sent the paid request is an <strong>L1</strong> result: &ldquo;Recorded (L1 paid
+        purchase)&rdquo; when the payment settled on-chain, and &ldquo;signed, not settled on-chain&rdquo; when it
+        did not. A row where vet402 did not sign is marked &ldquo;not bought&rdquo; and is not an L1 result. The listing&apos;s record page also shows the <strong>L0</strong> state (&ldquo;Published
         state&rdquo;), which checks that an unpaid request gets a valid 402, so a listing can pass L0 and still fail
         here. <strong>Whose side</strong> puts a failure on the seller&apos;s side when the row shows vet402 was not
         at fault: it signed on the listing&apos;s terms, its wallet held the price, it sent the declared input, and the
@@ -876,11 +986,13 @@ export function SellerDetailView({
         you open this page; your browser asks it for the first {DECISION_AUTO_LISTINGS} listings, and for the others
         when you ask. It is cautious for the payer: it leaves out the attempts that show vet402&apos;s fault, are held, or
         took no payment, and counts the rest, so it can say WARN or BLOCK for a listing whose failures this page
-        leaves not sorted (
-        <Link href="/docs/api#verdicts" className="underline">
-          API reference
+        leaves not sorted. The codes that decided the answer come first, each with one sentence on what it means
+        for that listing (
+        <Link href={REASON_CODES_HREF} className="underline">
+          reason codes
         </Link>
-        ). Listings removed from the Bazaar, and listings whose catalog network is not Base, are not
+        ). &ldquo;After a fix&rdquo; gives the earliest date vet402&apos;s regular sweep can buy the listing again,
+        where the rules let it be worked out, and the links to be told of a change or to dispute a row. Listings removed from the Bazaar, and listings whose catalog network is not Base, are not
         on this page. The{" "}
         <Link href="/sellers/fix-first" className="underline">
           fix-first page

@@ -149,7 +149,7 @@ export default async function ObservatoryPage({
                 Methodology
               </Link>
             </span>
-            <span>Table: L0 and L1 receipts</span>
+            <span>Table: L0 verdicts and L1 purchases</span>
           </div>
         </div>
 
@@ -237,7 +237,7 @@ export default async function ObservatoryPage({
                   aria-current={query.l1 ? "true" : undefined}
                   className={`whitespace-nowrap tabular-nums underline ${query.l1 ? "text-brand-deep decoration-2" : "text-brand hover:text-brand-deep hover:decoration-2"}`}
                 >
-                  [receipts {stats.l1.endpointsSettled.toLocaleString()}]
+                  [settled on-chain {stats.l1.endpointsSettled.toLocaleString()}]
                 </a>
               ) : null
             }
@@ -245,8 +245,8 @@ export default async function ObservatoryPage({
               <>
                 Published L0 verdict, {stats.totalEndpoints.toLocaleString()} endpoints on record (includes
                 delisted; {stats.activeEndpoints.toLocaleString()} active; {stats.publishedPassActive.toLocaleString()}{" "}
-                of the passes are currently listed). Receipts count endpoints with at least one settled purchase,
-                listed or not: {stats.l1.endpointsSettledSellerReceipt.toLocaleString()} with a transaction the
+                of the passes are currently listed). Settled on-chain counts endpoints with at least one purchase
+                vet402 re-read on-chain, listed or not: {stats.l1.endpointsSettledSellerReceipt.toLocaleString()} with a transaction the
                 seller named in its own settlement receipt and {stats.l1.endpointsSettledIndexOnly.toLocaleString()}{" "}
                 where the seller returned no receipt and vet402&apos;s own settlements index found the settled
                 transfers, as reported by <code>/api/v1/observatory/state</code>. Select a legend entry to filter the
@@ -420,7 +420,9 @@ export default async function ObservatoryPage({
           </Link>
           ). Per-endpoint counts use the
           same paid-attempt denominator as the totals reported by <code>/api/v1/observatory/state</code>.
-          The <em>[receipts]</em> entry under Figure 1 keeps only rows with a receipt.
+          The <em>[settled on-chain]</em> entry under Figure 1 lists the endpoints with at least one purchase settled
+          on-chain, whether the transaction came from the seller&apos;s receipt or from vet402&apos;s own index. A{" "}
+          <em>receipt</em> on these pages is the seller&apos;s own settlement receipt.
         </p>
         <p className="doc-p">
           <strong>Snapshot line.</strong> <em>fetched</em> is the number of raw catalog items received across
