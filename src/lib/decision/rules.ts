@@ -36,11 +36,28 @@
 //         allow_without_l1 のオプトインは「L1 の証拠が無い／古い」だけを免除する（失敗は免除しない）。
 //     (6) l1_inconclusive の数は応答の l1_basis.n_not_counted（= n_attempts − 数えた試行）。
 //         facts.l1.n_inconclusive は /purchases と同じ「判定保留」の部分集合のまま（facts の意味は変えない）。
+//   2026-09-29.3（監査 6 周目・お金が動いていない失敗で BLOCK にしていた）: 版を上げた。意味が変わる点:
+//     (1) L1 で BLOCK の根拠になるのは「お金が動いた（settled、または照合で確かめた tx の付いた settle_failed）のに
+//         届かなかった」行だけ（l1_paid_not_delivered: 最後の配達より後に 2 回以上）。旧来の
+//         「conclusive ≥ 3 ∧ n_delivered = 0 → BLOCK」は消した。weather.cyberwarex.com/forecast は
+//         お金の動いていない 502 が 3 回（/sellers は 3 行とも not sorted: vet402 unproven）で BLOCK
+//         （l1_never_delivered）だった。同じ 30 日に他の買い手の実決済 46 件。
+//     (2) お金が動いていない失敗は、/sellers の売り手の側（確定・別の UTC 日に 2 回以上）の行だけ数える（WARN の
+//         理由にはなるが、単独で BLOCK にしない）。vet402 に落ち度が無いと示せない行（not sorted: vet402 unproven・
+//         stopped waiting・未分類）は l1_not_counted_unproven、売り手の側だが 1 日だけの行（not sorted: one failure
+//         so far）は l1_not_counted_unconfirmed として数えない（seller-facts.ts notCountedReasonOf・/sellers の
+//         classifySellerRow が正典）。お金が動いた行の扱いは変えない（払う側に慎重）。
+//     (3) l1_never_delivered の意味: 窓の中に数えた失敗があり、配達が 0（WARN）。BLOCK になるのは同時に
+//         l1_paid_not_delivered が 2 回以上のときだけ。
+//     (4) l2 = mismatch で、記録に欠けたキーが無い（missing_keys が空・記録なし）ものは l2_mismatch_unexplained を
+//         添えて WARN（BLOCK にしない）。x402.twit.sh/users/following は missing_keys: [] で BLOCK だった。vet402 は
+//         支払い付き応答の先頭 16,000 バイトしか読まないので、それより長い JSON は解析できず「不一致」に見える
+//         （l1-runner の readBodyCapped）。欠けたキーを記録した不一致だけが BLOCK の根拠。
 //   BLOCK if l0 = fail ∨ (l0 = unverified ∧ ¬確かめられた single_fail) ∨ paid_undelivered_since_delivery ≥ 2
-//            ∨ (conclusive ≥ 3 ∧ n_delivered = 0) ∨ l2 = mismatch ∨ wash_dominated ∨ operator_blacklist
+//            ∨ (l2 = mismatch ∧ missing_keys ≠ ∅) ∨ wash_dominated ∨ operator_blacklist
 //   WARN  if 確かめられた L0 の 1 回 fail（掲載中・120h 以内・直前 pass）∨ L1 の証拠なし／古い（オプトイン無し）∨ 結論なし（l1_inconclusive）
 //            ∨ 未配達（conclusive ≥ 1）∨ paid_undelivered_since_delivery = 1 ∨ 最新の数えた試行が失敗
-//            ∨ drifting ∨ thin ∨ 呼び手方言と不一致
+//            ∨ (l2 = mismatch ∧ missing_keys = ∅) ∨ drifting ∨ thin ∨ 呼び手方言と不一致
 //   ALLOW if l0 = pass ∧ (n_delivered ≥ 1 ∨ L1 なし ALLOW をオプトイン) ∧ l2 ≠ mismatch ∧ ¬BLOCK ∧ ¬WARN
 //
 //   L1 の主語は 5 つで排他（2026-09-29.2 で l1_stale を足した）:
@@ -49,7 +66,7 @@
 //     l1_inconclusive    n_attempts > 0 ∧ conclusive = 0 ∧ n_delivered = 0
 //                        （金は動いたが、結論の出た応答が 1 件も無い。我々の測定の穴であって
 //                          売り手への反証ではない——中立・WARN）
-//     l1_never_delivered conclusive ≥ 1 ∧ n_delivered = 0
+//     l1_never_delivered conclusive ≥ 1 ∧ n_delivered = 0（2026-09-29.3 から WARN。BLOCK は l1_paid_not_delivered ≥ 2 だけ）
 //     l1_delivered       n_delivered ≥ 1
 //   添える語（主語に加えて）: l1_paid_not_delivered（最後の配達より後の支払い済み・未配達 ≥ 1）、
 //     l1_latest_failed（配達はあるが、数えた最新の試行が失敗）、l1_stale（配達はあるが最新の配達が古い）
@@ -69,15 +86,25 @@
 import type { BuyerFacts, SellerFacts } from "./types";
 
 /** 売り手の不履行として数えない署名済みの試行（seller-facts.ts の l1NotCountedOf と同じ形）。 */
-export type L1NotCountedInput = { total: number; by: { vet402_side: number; held: number; no_charge: number } };
+export type L1NotCountedInput = {
+  total: number;
+  by: {
+    vet402_side: number;
+    held: number;
+    no_charge: number;
+    /** 2026-09-29.3: お金が動いていない失敗で、vet402 に落ち度が無いと示せない行（/sellers の not sorted: vet402 unproven 等）。 */
+    unproven?: number;
+    /** 2026-09-29.3: お金が動いていない失敗で、売り手の側だが 1 日だけの行（/sellers の not sorted: one failure so far）。 */
+    unconfirmed?: number;
+  };
+};
 
 export type Recommendation = "ALLOW" | "WARN" | "BLOCK";
 export type Decision = { recommendation: Recommendation; reason_codes: string[] };
 
 /** 規則の版。判定の意味が変わる変更は必ず上げる（YYYY-MM-DD.n）。 */
-export const DECISION_RULES_VERSION = "2026-09-29.2";
+export const DECISION_RULES_VERSION = "2026-09-29.3";
 
-export const L1_NEVER_DELIVERED_MIN_ATTEMPTS = 3;
 /** 2026-09-29.2: 最後の配達より後の「支払い済み・未配達」がこの回数に届いたら BLOCK（1 回は WARN）。 */
 export const L1_PAID_UNDELIVERED_BLOCK = 2;
 /** 2026-09-29.2: ALLOW に要る最新の配達の新しさ（日）。これより古い配達だけなら WARN・l1_stale。 */
@@ -205,14 +232,31 @@ export const NOT_COUNTED_REASON_CODES = {
   vet402_side: "l1_not_counted_vet402_side",
   held: "l1_not_counted_held",
   no_charge: "l1_not_counted_no_charge",
+  unproven: "l1_not_counted_unproven",
+  unconfirmed: "l1_not_counted_unconfirmed",
 } as const;
 
-/** facts だけから作る保守的な並び（l1Timeline を渡さない呼び手・旧フィクスチャ用）。 */
-function timelineFromFacts(f: SellerFacts, conclusive: number): L1Timeline {
+/** 2026-09-29.3: l2 = mismatch だが、記録に欠けたキーが無い（何が違ったかを示せない）。WARN・BLOCK にしない。 */
+export const L2_MISMATCH_UNEXPLAINED = "l2_mismatch_unexplained";
+
+/** l2 = mismatch で、欠けたキーを記録している（BLOCK の根拠になる不一致）。 */
+export function l2MismatchExplained(f: SellerFacts): boolean {
+  return f.l2.status === "mismatch" && Array.isArray(f.l2.missing_keys) && f.l2.missing_keys.length > 0;
+}
+
+/**
+ * facts だけから作る保守的な並び（l1Timeline を渡さない呼び手・旧フィクスチャ用）。
+ * 2026-09-29.3: L1 の BLOCK はお金が動いた未配達だけになったので、配達が 0 のときは settled の未配達の下限
+ * （n_settled − n_delivered − 数えない試行。数えない試行が全部 settled でも残る数）を支払い済み・未配達に数える。
+ * 配達があるときは「最後の配達より後か」が facts から分からないので 0（従来どおり）。
+ */
+function timelineFromFacts(f: SellerFacts, conclusive: number, notCounted?: L1NotCountedInput): L1Timeline {
+  const excluded = Math.max(notCounted?.total ?? 0, f.l1.n_inconclusive);
+  const paidLowerBound = Math.min(conclusive, Math.max(0, f.l1.n_settled - f.l1.n_delivered - excluded));
   return {
     n_counted: conclusive,
-    n_paid_undelivered: 0,
-    n_paid_undelivered_since_delivery: 0,
+    n_paid_undelivered: paidLowerBound,
+    n_paid_undelivered_since_delivery: f.l1.n_delivered === 0 ? paidLowerBound : 0,
     latest_counted: null,
     // 最後の配達は最後に署名した時刻より新しくはない（上から抑える）。
     last_delivered_at: f.l1.n_delivered >= 1 ? f.l1.observed_at : null,
@@ -243,7 +287,7 @@ type L1View = {
 function l1ViewOf(f: SellerFacts, o: PayerOptions): L1View {
   const conclusive = conclusiveAttempts(f, o.l1NotCounted);
   const now = o.now ?? new Date();
-  const timeline = o.l1Timeline ?? timelineFromFacts(f, conclusive);
+  const timeline = o.l1Timeline ?? timelineFromFacts(f, conclusive, o.l1NotCounted);
   const deliveryAge = daysSince(timeline.last_delivered_at, now);
   return {
     conclusive,
@@ -292,8 +336,8 @@ export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
   else if (conclusive === 0) r.push("l1_inconclusive");
   else r.push("l1_never_delivered");
   if (f.l1.n_delivered === 0 && o.l1NotCounted) {
-    for (const k of ["vet402_side", "held", "no_charge"] as const) {
-      if (o.l1NotCounted.by[k] > 0) r.push(NOT_COUNTED_REASON_CODES[k]);
+    for (const k of ["vet402_side", "held", "no_charge", "unproven", "unconfirmed"] as const) {
+      if ((o.l1NotCounted.by[k] ?? 0) > 0) r.push(NOT_COUNTED_REASON_CODES[k]);
     }
   }
   const paidUndelivered = t.n_paid_undelivered_since_delivery;
@@ -302,6 +346,9 @@ export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
   if (latestFailed) r.push("l1_latest_failed");
   if (v.staleDelivery) r.push("l1_stale");
   r.push(`l2_${f.l2.status}`);
+  const l2Explained = l2MismatchExplained(f);
+  const l2Unexplained = f.l2.status === "mismatch" && !l2Explained;
+  if (l2Unexplained) r.push(L2_MISMATCH_UNEXPLAINED);
   if (f.offer_stability === "drifting") r.push("offer_drifting");
   if (f.wash_dominated) r.push("wash_dominated");
   if (o.operatorBlacklist) r.push("operator_blacklist");
@@ -318,9 +365,9 @@ export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
   const block =
     f.l0.status === "fail" ||
     (f.l0.status === "unverified" && !l0SingleFail) ||
+    // 2026-09-29.3: L1 で BLOCK の根拠はお金が動いた未配達だけ（数えた失敗が何回でも、お金が動いていなければ WARN）。
     paidUndelivered >= L1_PAID_UNDELIVERED_BLOCK ||
-    (conclusive >= L1_NEVER_DELIVERED_MIN_ATTEMPTS && f.l1.n_delivered === 0) ||
-    f.l2.status === "mismatch" ||
+    l2Explained ||
     f.wash_dominated ||
     !!o.operatorBlacklist;
   if (block) return { recommendation: "BLOCK", reason_codes: r };
@@ -331,6 +378,7 @@ export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
     (conclusive > 0 && f.l1.n_delivered === 0) ||
     paidUndelivered >= 1 ||
     latestFailed ||
+    l2Unexplained ||
     (v.staleDelivery && !o.allowWithoutL1) ||
     f.offer_stability === "drifting" ||
     o.dataDepth === "thin" ||

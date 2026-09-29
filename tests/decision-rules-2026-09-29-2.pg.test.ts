@@ -167,7 +167,7 @@ if (!TEST_DB) {
       assert.equal(delisted.degraded, true);
     });
 
-    await t.test("配達の後の最新が失敗（決済なし）→ WARN・l1_latest_failed", async () => {
+    await t.test("配達の後の最新が失敗（決済なし・/sellers で not sorted）→ 数えない（2026-09-29.3）。決済ありなら WARN・l1_latest_failed", async () => {
       const ep = await mkEndpoint();
       await buy(ep.id, 5, 200, true);
       await db.insert(schema.x402L1Purchases).values({
@@ -181,9 +181,17 @@ if (!TEST_DB) {
         spentUnits: "1000",
         amountUnits: "1000",
       });
+      // 署名した条件（pay_to・asset）の記録が無い行は /sellers で not sorted（vet402 unproven）＝お金も動いていないので数えない
       const d = await decideFor(ep.id);
-      assert.equal(d.recommendation, "WARN");
-      assert.ok(d.reason_codes.includes("l1_latest_failed"));
+      assert.equal(d.recommendation, "ALLOW", d.reason_codes.join(","));
+      assert.ok(!d.reason_codes.includes("l1_latest_failed"));
+      const paid = await mkEndpoint();
+      await buy(paid.id, 5, 200, true);
+      await buy(paid.id, 1, 500, false);
+      const dp = await decideFor(paid.id);
+      assert.equal(dp.recommendation, "WARN");
+      assert.ok(dp.reason_codes.includes("l1_latest_failed"));
+      assert.ok(dp.reason_codes.includes("l1_paid_not_delivered"));
     });
   });
 }

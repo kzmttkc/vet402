@@ -225,6 +225,9 @@ const SURFACES: Surface[] = [
       "response_hash",
       "diff_hash",
       "missing_keys",
+      // 2026-09-29.3（監査 6 周目）: L2 の不一致の中身（記録してあるもの）。missing_keys が空の不一致は unexplained。
+      "mismatch_kind",
+      "content_type",
       // --- source: "subgraph" の行だけが持つ、live を読んだことの証跡（§15）---
       "subgraphId",
       "block",
@@ -233,6 +236,16 @@ const SURFACES: Surface[] = [
       // その源が知っている件数。**源をまたいで足さない**（D16）。
       "receipts",
     ],
+    pendingImpl: {
+      "packages/sdk/src/index.ts": {
+        fields: ["mismatch_kind", "content_type"],
+        why: "SDK は凍結中（2026-09-29）。L2 の evidence 行は応答をそのまま透過する（型に無いだけ）。凍結が解けたら型に足してこの例外を消す。",
+      },
+      "packages/mcp-server/src/vouch-client.ts": {
+        fields: ["mismatch_kind", "content_type"],
+        why: "2026-09-29.3 の判定の変更は src/lib/decision の担当範囲で、MCP の型は別担当。実行時は応答をそのまま受ける。型に足したらこの例外を消す。",
+      },
+    },
   },
   {
     label: "BuyerFacts",

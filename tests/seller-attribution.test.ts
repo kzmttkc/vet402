@@ -270,19 +270,22 @@ const okFacts: SellerFacts = {
 const withL1 = (l1: Partial<SellerFacts["l1"]>): SellerFacts => ({ ...okFacts, l1: { ...okFacts.l1, ...l1 } });
 const nc = (vet402_side: number, held: number, no_charge: number) => ({ l1NotCounted: { total: vet402_side + held + no_charge, by: { vet402_side, held, no_charge } } });
 
-test("8: 境界 — 除く試行を引いた結論の数が 3 に届くかで BLOCK と WARN が分かれる", () => {
-  // 従来どおり: 売り手の側の失敗 3 回・配達 0 → BLOCK
-  assert.equal(decidePayer(withL1({ n_attempts: 3 }), nc(0, 0, 0)).recommendation, "BLOCK");
-  assert.equal(decidePayer(withL1({ n_attempts: 3 })).recommendation, "BLOCK", "no l1NotCounted: the old rule");
+test("8: 境界（2026-09-29.3）— 数えた失敗が何回でも、お金が動いていなければ WARN。settled の未配達 2 回で BLOCK", () => {
+  // お金が動いていない（n_settled 0）数えた失敗 3 回・配達 0 → WARN（旧規則は BLOCK）
+  assert.equal(decidePayer(withL1({ n_attempts: 3 }), nc(0, 0, 0)).recommendation, "WARN");
+  assert.equal(decidePayer(withL1({ n_attempts: 3 })).recommendation, "WARN", "no l1NotCounted");
+  // settled の未配達が 2 回（下限）→ BLOCK
+  assert.equal(decidePayer(withL1({ n_attempts: 3, n_settled: 2 })).recommendation, "BLOCK");
+  assert.equal(decidePayer(withL1({ n_attempts: 3, n_settled: 1 })).recommendation, "WARN");
   // 3 回とも課金なし → BLOCK にしない（WARN・l1_inconclusive・理由コードに明記）
   const noCharge = decidePayer(withL1({ n_attempts: 3 }), nc(0, 0, 3));
   assert.equal(noCharge.recommendation, "WARN");
   assert.ok(noCharge.reason_codes.includes("l1_inconclusive"));
   assert.ok(noCharge.reason_codes.includes("l1_not_counted_no_charge"));
   assert.ok(!noCharge.reason_codes.includes("l1_never_delivered"));
-  // 4 回・1 回除く → 結論 3 → BLOCK（売り手の本物の失敗が 3 回ある）
+  // 4 回・1 回除く → 結論 3 → お金が動いていないので WARN
   const b = decidePayer(withL1({ n_attempts: 4 }), nc(1, 0, 0));
-  assert.equal(b.recommendation, "BLOCK");
+  assert.equal(b.recommendation, "WARN");
   assert.ok(b.reason_codes.includes("l1_never_delivered"));
   assert.ok(b.reason_codes.includes("l1_not_counted_vet402_side"));
   // 4 回・2 回除く → 結論 2 → WARN（l1_never_delivered だが BLOCK には届かない）
@@ -292,7 +295,9 @@ test("8: 境界 — 除く試行を引いた結論の数が 3 に届くかで BL
   assert.ok(w.reason_codes.includes("l1_not_counted_held"));
   // 渡さなければ n_inconclusive で読む
   assert.equal(conclusiveAttempts(withL1({ n_attempts: 5, n_inconclusive: 2 })), 3);
-  assert.equal(decidePayer(withL1({ n_attempts: 5, n_inconclusive: 2 })).recommendation, "BLOCK");
+  assert.equal(decidePayer(withL1({ n_attempts: 5, n_inconclusive: 2 })).recommendation, "WARN");
+  // settled 4・保留 2 → 保留が全部 settled でも未配達は 2 回残る → BLOCK
+  assert.equal(decidePayer(withL1({ n_attempts: 5, n_settled: 4, n_inconclusive: 2 })).recommendation, "BLOCK");
   // 除く数が n_inconclusive より小さく来ても、保留は必ず除く
   assert.equal(conclusiveAttempts(withL1({ n_attempts: 5, n_inconclusive: 3 }), nc(1, 0, 0).l1NotCounted), 2);
   // 配達があれば除いた理由は載せない（判定に効いていない）
@@ -341,9 +346,9 @@ test("8: stableenrich の people-search 型（L1 3 回とも「レシート無�
   const { facts, notCounted, decision } = judge(rows);
   assert.equal(facts.l1.n_attempts, 3);
   assert.equal(facts.l1.n_inconclusive, 0, "held_reason is unchanged (the public export column)");
-  assert.deepEqual(notCounted, { total: 3, by: { vet402_side: 0, held: 0, no_charge: 3 } });
-  // 修正前の判定（除く数を渡さない）は BLOCK だった
-  assert.equal(decidePayer(facts).recommendation, "BLOCK");
+  assert.deepEqual(notCounted, { total: 3, by: { vet402_side: 0, held: 0, no_charge: 3, unproven: 0, unconfirmed: 0 } });
+  // 除く数を渡さない判定は 2026-09-29.1 まで BLOCK だった（2026-09-29.3 からはお金が動いていないので WARN）
+  assert.equal(decidePayer(facts).recommendation, "WARN");
   assert.equal(decision.recommendation, "WARN");
   assert.deepEqual(
     decision.reason_codes.filter((c) => c.startsWith("l1_")),
@@ -351,22 +356,25 @@ test("8: stableenrich の people-search 型（L1 3 回とも「レシート無�
   );
 });
 
-test("8: 売り手の本物の失敗（払った要求への 5xx・署名した支払いへの 402）は従来どおり BLOCK", () => {
+test("8: 売り手の失敗（払った要求への 5xx・署名した支払いへの 402）: お金が動いていなければ数えて WARN、settled なら BLOCK（2026-09-29.3）", () => {
   const five = judge([1, 2, 3].map((i) => P({ attemptedAt: `2026-09-2${i}T00:00:00Z`, httpStatusPaid: 500 })));
   assert.equal(five.notCounted.total, 0);
-  assert.equal(five.decision.recommendation, "BLOCK");
+  assert.equal(five.decision.recommendation, "WARN");
   assert.ok(five.decision.reason_codes.includes("l1_never_delivered"));
   const refused = judge([1, 2, 3].map((i) => P({ attemptedAt: `2026-09-2${i}T00:00:00Z`, httpStatusPaid: 402 })));
-  assert.equal(refused.decision.recommendation, "BLOCK");
+  assert.equal(refused.decision.recommendation, "WARN");
   const refuted = judge([1, 2, 3].map((i) => P({ attemptedAt: `2026-09-2${i}T00:00:00Z`, status: "settle_claim_refuted", httpStatusPaid: 200, txHash: TX })));
-  assert.equal(refuted.decision.recommendation, "BLOCK");
-  // 課金なし 2 回 + 本物の失敗 3 回 → BLOCK
+  assert.equal(refuted.decision.recommendation, "WARN", "照合で反証された主張はお金が動いていない");
+  const paid500 = judge([1, 2].map((i) => P({ attemptedAt: `2026-09-2${i}T00:00:00Z`, status: "settled", httpStatusPaid: 500, payloadNonEmpty: false, txHash: TX })));
+  assert.equal(paid500.decision.recommendation, "BLOCK");
+  assert.ok(paid500.decision.reason_codes.includes("l1_paid_not_delivered"));
+  // 課金なし 2 回 + 失敗 3 回（お金は動いていない）→ WARN
   const mixed = judge([
     ...[1, 2].map((i) => P({ attemptedAt: `2026-09-1${i}T00:00:00Z`, status: "delivered_no_receipt", httpStatusPaid: 200, payloadNonEmpty: true })),
     ...[1, 2, 3].map((i) => P({ attemptedAt: `2026-09-2${i}T00:00:00Z`, httpStatusPaid: 503 })),
   ]);
   assert.equal(mixed.notCounted.total, 2);
-  assert.equal(mixed.decision.recommendation, "BLOCK");
+  assert.equal(mixed.decision.recommendation, "WARN");
   // 課金なし 2 回 + 本物の失敗 2 回 → 結論 2 → WARN
   const mixed2 = judge([
     ...[1, 2].map((i) => P({ attemptedAt: `2026-09-1${i}T00:00:00Z`, status: "delivered_no_receipt", httpStatusPaid: 200, payloadNonEmpty: true })),
@@ -383,17 +391,17 @@ test("8: vet402 の側（宣言の本文を送る前の 400・資金切れの 40
     [1, 2, 3].map((i) => P({ attemptedAt: `2026-09-1${i}T00:00:00Z`, httpStatusPaid: 400 })),
     { method: "POST", declaredInput: { query: "empty", body: "declared" } },
   );
-  assert.deepEqual(body.notCounted.by, { vet402_side: 3, held: 0, no_charge: 0 });
+  assert.deepEqual(body.notCounted.by, { vet402_side: 3, held: 0, no_charge: 0, unproven: 0, unconfirmed: 0 });
   assert.equal(body.decision.recommendation, "WARN");
   assert.ok(body.decision.reason_codes.includes("l1_not_counted_vet402_side"));
   const unfunded = judge(["2026-09-13T01:00:00Z", "2026-09-14T01:00:00Z", "2026-09-15T01:00:00Z"].map((at) => P({ attemptedAt: at, httpStatusPaid: 402 })));
   assert.equal(unfunded.decision.recommendation, "WARN");
   const pending = judge([1, 2, 3].map((i) => P({ attemptedAt: `2026-09-2${i}T00:00:00Z`, status: "settle_claimed", httpStatusPaid: 200, txHash: TX })));
-  assert.deepEqual(pending.notCounted.by, { vet402_side: 0, held: 3, no_charge: 0 });
+  assert.deepEqual(pending.notCounted.by, { vet402_side: 0, held: 3, no_charge: 0, unproven: 0, unconfirmed: 0 });
   assert.equal(pending.decision.recommendation, "WARN");
   // 署名していない行（over_cap 等）は数にも除外にも入らない
   const unsigned = judge([1, 2, 3].map((i) => P({ attemptedAt: `2026-09-2${i}T00:00:00Z`, status: "over_cap" })));
-  assert.deepEqual(unsigned.notCounted, { total: 0, by: { vet402_side: 0, held: 0, no_charge: 0 } });
+  assert.deepEqual(unsigned.notCounted, { total: 0, by: { vet402_side: 0, held: 0, no_charge: 0, unproven: 0, unconfirmed: 0 } });
 });
 
 test("8: 判定の除外は /sellers の分類と同じ（署名した行の全組み合わせで、seller の側・未分類だけが数えられる）", () => {
@@ -423,7 +431,9 @@ test("8: 2026-09-29 独立レビュー（BLOCK）: 空の 200・レシート無�
   );
   const { notCounted, decision } = judge(rows);
   assert.equal(notCounted.by.no_charge, 0);
-  assert.equal(decision.recommendation, "BLOCK");
+  // 数える（外さない）。お金が動いていないので単独では WARN（2026-09-29.3）。
+  assert.equal(decision.recommendation, "WARN");
+  assert.ok(decision.reason_codes.includes("l1_never_delivered"));
 });
 
 test("8: 2026-09-29 独立レビュー（WARN）: 残高不足（payer_short）の期間の空の 200 は判定で数える（除外を広げない）", () => {

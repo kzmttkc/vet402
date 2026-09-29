@@ -486,6 +486,8 @@ function publicSurfaces(): string[] {
   out.push(relative(ROOT, join(ROOT, "src/lib/observatory/vocabulary.ts")));
   // 2026-09-28: /sellers の失敗の分類表。各種類の「What we saw」「What to fix」を頁にそのまま出す。
   out.push(relative(ROOT, join(ROOT, "src/lib/sellers/fix-modes.ts")));
+  // 2026-09-29.3: 判定の理由コードの表。/docs/api#reason-codes にそのまま出す。
+  out.push(relative(ROOT, join(ROOT, "src/lib/decision/reason-codes.ts")));
   return out.sort();
 }
 

@@ -7,6 +7,11 @@
 //
 // score ブロックは移行期間の併記（deprecated: true）。役割 payer で payTo が EVM の
 // ときだけ既存の payee エンジン（キャッシュ 5 分）から取り、失敗しても判定は落とさない。
+// 2026-09-29.3（監査 6 周目）: 同じ応答に recommendation と score.recommendation が並び、BLOCK と ALLOW で
+// 食い違って読めた。SDK（packages/sdk の payOrRefuse）と MCP（pay_if_trusted・check_resource_decision）は
+// 判定の score を読まない（recommendation・reason_codes・degraded だけ）ので、既定の応答から外し、
+// `?include_score=1` のときだけ返す（presentDecision）。返すときも superseded_by: "recommendation" と
+// 「判定には使わない」旨を載せる。
 // registry ブロックは §11 の書き込み状態（anchored | pending | off）。
 // ============================================================
 import { sql } from "drizzle-orm";
@@ -74,7 +79,11 @@ export type DecisionResult = {
    */
   verified_terms: VerifiedTerms | null;
   evidence: Evidence[];
-  score: { trustScore: number | null; recommendation: Recommendation | null; deprecated: true } | null;
+  /**
+   * 2026-09-29.3: `?include_score=1` のときだけ応答に載る（キーごと無いのが既定）。移行期の 0–100 の受取人スコアで、
+   * 判定（recommendation）の根拠ではない。superseded_by は常に "recommendation"。
+   */
+  score?: DecisionScore | null;
   degraded: boolean;
   policy: "allow_only";
   /**
@@ -90,6 +99,29 @@ export type DecisionResult = {
   cacheExpiresAt: string;
   disclaimer: string;
 };
+
+/** 移行期の受取人スコア（判定には使わない）。 */
+export type DecisionScore = {
+  trustScore: number | null;
+  recommendation: Recommendation | null;
+  deprecated: true;
+  superseded_by: "recommendation";
+  note: string;
+};
+
+export const DECISION_SCORE_NOTE =
+  "Not used for the decision. This is the transitional 0-100 payee score; the decision is the top-level recommendation and reason_codes.";
+
+/**
+ * 応答の形（2026-09-29.3）: 既定は score をキーごと外す。`include_score=1` のときだけ残す。
+ * キャッシュと冪等の保存は score 付きの全体で持ち、配る直前にここを通す。
+ */
+export function presentDecision<T extends DecisionResult>(result: T, opts: { includeScore: boolean }): T {
+  if (opts.includeScore) return result;
+  const { score: _omit, ...rest } = result;
+  void _omit;
+  return rest as T;
+}
 
 export type BuildInput =
   | {
@@ -109,6 +141,8 @@ export type BuildInput =
       notAttemptedReason?: NotAttemptedReason | null;
       /** 最後に配達を確かめた購入の条件（seller-facts verifiedTermsOf）。省略は null。 */
       verifiedTerms?: VerifiedTerms | null;
+      /** 2026-09-29.3: L2 を決めた応答の Content-Type（seller-facts l2ContentTypeOf）。省略時は evidence に載せない。 */
+      l2ContentType?: string | null;
       now?: Date;
     }
   | {
@@ -156,7 +190,7 @@ export function buildDecision(input: BuildInput): DecisionResult {
         }),
       );
     }
-    const l2Evidence = l2EvidenceOf(f, input.subject.observatory_id);
+    const l2Evidence = l2EvidenceOf(f, input.subject.observatory_id, input.l2ContentType);
     if (l2Evidence) evidence.push(l2Evidence);
     // 配る直前に 1 回だけ検査する（源を名乗らない行・合算した行を外へ出さない）。
     assertEvidenceContract(evidence);
@@ -176,7 +210,7 @@ export function buildDecision(input: BuildInput): DecisionResult {
       l1_basis: l1BasisOf(f, options),
       verified_terms: input.verifiedTerms ?? null,
       evidence,
-      score: input.score ? { ...input.score, deprecated: true } : null,
+      score: input.score ? { ...input.score, deprecated: true, superseded_by: "recommendation", note: DECISION_SCORE_NOTE } : null,
       // 2026-09-29.2: 確かめられた 1 回の fail（掲載中・最新プローブ 120h 以内・直前 pass）は測れている——WARN であって
       // degraded ではない。確かめられていない 1 回の fail は degraded のまま（require_vet402_allow=false の呼び手も払わない）。
       degraded: f.l0.status === "unverified" && !l0SingleFailConfirmed(f, options),
@@ -335,6 +369,7 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
       registry,
       notAttemptedReason: notAttemptedReasonOf(halt.halted, loaded.lastAttempt.status),
       verifiedTerms: loaded.verifiedTerms ?? null,
+      l2ContentType: loaded.l2ContentType,
     });
   } else {
     const facts = await loadBuyerFacts(req.payerId);

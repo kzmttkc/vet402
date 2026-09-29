@@ -5,7 +5,7 @@ import { refundIpRateLimit } from "@/lib/api/ip-rate-limit";
 import { isDecisionKeylessReadEnabled } from "@/lib/config/env";
 import { getIdempotentResponse, idempotencyKeyHash, saveIdempotentResponse } from "@/lib/api/idempotency";
 import { lookupManualList } from "@/lib/db/customer-lists";
-import { decide, type DecisionResult } from "@/lib/decision/decide";
+import { decide, presentDecision, type DecisionResult } from "@/lib/decision/decide";
 import { evaluateCallerPolicy, parseCallerPolicy, type CallerPolicyInput } from "@/lib/decision/caller-policy";
 import { SHA256_HEX_RE, parsePartyId, payeeId as toPartyId } from "@/lib/ids/canonical";
 import { getResource } from "@/lib/resolve/lookup";
@@ -40,6 +40,9 @@ import { lookupCallerMaterial } from "@/lib/decision/lookup-caller";
 // Idempotency-Key の材料にも policy を含める——同じキーで違う policy を送った再送に、
 // 別の policy で保存した応答を返さない。保存するのは判定本体だけで、policy は取り出すたびに当てる
 // （純関数なので同じ材料には同じ答えが出る）。
+// 移行期の score（2026-09-29.3・監査 6 周目）: 既定の応答には載せない。`include_score=1` のときだけ
+// `score`（superseded_by: "recommendation"・判定には使わない）を返す。SDK と MCP は判定の score を読まない。
+// 保存（冪等）とキャッシュは score 付きの全体で持ち、配る直前に presentDecision を通す。
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
@@ -116,13 +119,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (!payerId) return fail(caller, 400, "payer_required");
   }
   const allowWithoutL1 = params.get("allow_without_l1") === "true";
+  const includeScoreRaw = params.get("include_score");
+  if (includeScoreRaw !== null && includeScoreRaw !== "0" && includeScoreRaw !== "1") return fail(caller, 400, "invalid_include_score");
+  const includeScore = includeScoreRaw === "1";
   const parsedPolicy = parseCallerPolicy(params);
   if (!parsedPolicy.ok) return fail(caller, 400, parsedPolicy.error);
   const callerPolicy: CallerPolicyInput | null = parsedPolicy.input;
   if (callerPolicy && roleRaw !== "payer") return fail(caller, 400, "invalid_policy");
   /** policy を頼まれたときだけ足す。頼まれていなければ判定本体をそのまま返す（キーも足さない）。 */
   const withCallerPolicy = (result: DecisionResult): DecisionResult =>
-    callerPolicy ? { ...result, caller_policy: evaluateCallerPolicy(result, callerPolicy) } : result;
+    presentDecision(callerPolicy ? { ...result, caller_policy: evaluateCallerPolicy(result, callerPolicy) } : result, { includeScore });
 
   const idemKey = request.headers.get("idempotency-key");
   const idemHash =

@@ -1,7 +1,7 @@
 // §9.1 /decision の応答規範（純関数 buildDecision）
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildDecision, DECISION_DISCLAIMER, type DecisionSubject } from "@/lib/decision/decide";
+import { buildDecision, DECISION_DISCLAIMER, DECISION_SCORE_NOTE, presentDecision, type DecisionSubject } from "@/lib/decision/decide";
 import { DECISION_RULES_VERSION } from "@/lib/decision/rules";
 import type { SellerFacts, BuyerFacts } from "@/lib/decision/types";
 
@@ -51,9 +51,9 @@ test("role=payer: facts と recommendation が同居し、freshness / evidence /
   assert.equal(d.registry.status, "off");
 });
 
-test("score は deprecated 併記。facts の中には入らない", () => {
+test("score は deprecated 併記（superseded_by: recommendation・判定には使わない）。facts の中には入らない", () => {
   const d = buildDecision({ role: "payer", subject, facts: seller, options: {}, score: { trustScore: 78, recommendation: "WARN" }, registry: { status: "off", tx_hash: null }, now: NOW });
-  assert.deepEqual(d.score, { trustScore: 78, recommendation: "WARN", deprecated: true });
+  assert.deepEqual(d.score, { trustScore: 78, recommendation: "WARN", deprecated: true, superseded_by: "recommendation", note: DECISION_SCORE_NOTE });
   assert.equal("trustScore" in (d.facts as object), false);
   const none = buildDecision({ role: "payer", subject, facts: seller, options: {}, score: null, registry: { status: "off", tx_hash: null }, now: NOW });
   assert.equal(none.score, null);
@@ -83,4 +83,29 @@ test("cacheExpiresAt は scoredAt + 5 分", () => {
   const d = buildDecision({ role: "payer", subject, facts: seller, options: {}, score: null, registry: { status: "off", tx_hash: null }, now });
   assert.equal(d.scoredAt, now.toISOString());
   assert.equal(Date.parse(d.cacheExpiresAt) - Date.parse(d.scoredAt), 5 * 60_000);
+});
+
+test("2026-09-29.3: 既定の応答は score をキーごと外す。include_score=1 のときだけ残す（判定は変えない）", () => {
+  const d = buildDecision({ role: "payer", subject, facts: seller, options: {}, score: { trustScore: 20, recommendation: "BLOCK" }, registry: { status: "off", tx_hash: null }, now: NOW });
+  const plain = presentDecision(d, { includeScore: false });
+  assert.equal("score" in plain, false, "既定では score のキー自体が無い（BLOCK と ALLOW が並んで読めない）");
+  assert.equal(plain.recommendation, d.recommendation);
+  assert.equal("score" in d, true, "元の文書（キャッシュ・冪等の保存）は変えない");
+  const withScore = presentDecision(d, { includeScore: true });
+  assert.equal(withScore.score?.superseded_by, "recommendation");
+  assert.equal(withScore.score?.note, DECISION_SCORE_NOTE);
+});
+
+test("2026-09-29.3: route は include_score を 0/1 だけ受け、presentDecision を必ず通す", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync("src/app/api/v1/resources/[resourceId]/decision/route.ts", "utf8");
+  assert.match(src, /params\.get\("include_score"\)/);
+  assert.match(src, /invalid_include_score/);
+  assert.match(src, /presentDecision\(/);
+  // NextResponse.json に渡すのは withCallerPolicy（= presentDecision を通した文書）だけ
+  for (const m of src.matchAll(/NextResponse\.json\(([^)]*)\)/g)) {
+    const arg = m[1];
+    if (arg.includes("error")) continue;
+    assert.ok(arg.includes("withCallerPolicy("), `presentDecision を通さずに配っている: ${arg}`);
+  }
 });

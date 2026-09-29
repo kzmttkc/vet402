@@ -202,7 +202,10 @@ if (!TEST_DB) {
 
       const loadedOutside = await loadSellerFacts(outside.id);
       assert.deepEqual([loadedOutside!.facts.l1.n_attempts, loadedOutside!.facts.l1.n_inconclusive], [3, 0]);
-      assert.equal(decidePayer(loadedOutside!.facts).recommendation, "BLOCK", "期間外の 402 は売り手の記録として数える");
+      // 期間外の 402 は売り手の記録として数える（l1_never_delivered）が、お金が動いていないので WARN まで（2026-09-29.3）
+      const outsideDecision = decidePayer(loadedOutside!.facts);
+      assert.equal(outsideDecision.recommendation, "WARN");
+      assert.ok(outsideDecision.reason_codes.includes("l1_never_delivered"));
 
       const rows = rowsOf<{ status: string; http_status_paid: number; tx_hash: string | null; attempted_at: string; network: string }>(
         await db.execute(sql`SELECT status, http_status_paid, tx_hash, attempted_at::text AS attempted_at, network

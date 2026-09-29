@@ -114,8 +114,8 @@ function run(s: Setup, extra: PayerOptions = {}) {
   return { facts, options, d: decidePayer(facts, options), basis: l1BasisOf(facts, options) };
 }
 
-test("版: 意味が変わったので 2026-09-29.2 に上げた", () => {
-  assert.equal(DECISION_RULES_VERSION, "2026-09-29.2");
+test("版: 2026-09-29.2 で上げ、2026-09-29.3（お金が動いていない失敗で BLOCK にしない）でも上げた", () => {
+  assert.equal(DECISION_RULES_VERSION, "2026-09-29.3");
   assert.equal(L1_PAID_UNDELIVERED_BLOCK, 2);
   assert.equal(L1_FRESH_DAYS, 30);
 });

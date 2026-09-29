@@ -31,7 +31,7 @@ import type { Evidence, EvidenceSource } from "./types";
 export const EVIDENCE_SOURCES = ["vet402", "subgraph"] as const;
 
 /** vet402 の台帳だけが持てる材料（購入 id・観測 id・L2 の根拠ハッシュ）。 */
-const VET402_ONLY = ["purchase_id", "observation_id", "declaration_hash", "response_hash", "diff_hash", "missing_keys"] as const;
+const VET402_ONLY = ["purchase_id", "observation_id", "declaration_hash", "response_hash", "diff_hash", "missing_keys", "mismatch_kind", "content_type"] as const;
 /** subgraph の行だけが持てる材料（live の証跡と、その源が知っている件数）。 */
 const SUBGRAPH_ONLY = ["subgraphId", "block", "deployment", "queriedAt", "receipts"] as const;
 

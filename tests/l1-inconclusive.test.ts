@@ -51,7 +51,7 @@ const factsOf = (purchases: PurchaseInput[]) =>
   });
 
 test("版: 判定の意味が変わったので DECISION_RULES_VERSION を上げる", () => {
-  assert.equal(DECISION_RULES_VERSION, "2026-09-29.2");
+  assert.equal(DECISION_RULES_VERSION, "2026-09-29.3");
 });
 
 test("再現（exa 型・10 行 settled/4xx）: facts は purchases と同じ集合で数え、n_inconclusive 10 / n_delivered 0", () => {
@@ -82,21 +82,29 @@ test("0x.org 型（1 行 settled/4xx）: l1_inconclusive・WARN", () => {
   assert.ok(d.reason_codes.includes("l1_inconclusive"));
 });
 
-test("結論のある未配達 3 件（settled/5xx）: 従来どおり BLOCK・l1_never_delivered", () => {
+test("結論のある未配達 3 件（settled/5xx）: お金が動いた未配達なので BLOCK・l1_never_delivered・l1_paid_not_delivered", () => {
   const d = decidePayer(factsOf([undeliveredRow(0), undeliveredRow(1), undeliveredRow(2)]));
   assert.equal(d.recommendation, "BLOCK");
   assert.ok(d.reason_codes.includes("l1_never_delivered"));
+  assert.ok(d.reason_codes.includes("l1_paid_not_delivered"));
 });
 
-test("結論 2 件＋inconclusive 8 件: conclusive は 2 なので BLOCK にならない（WARN・l1_never_delivered）", () => {
-  const rows = [undeliveredRow(0), undeliveredRow(1), ...Array.from({ length: 8 }, (_, i) => inconclusiveRow(i + 2))];
+test("結論 1 件＋inconclusive 9 件: 我々の 4xx を売り手の未配達に足さない（WARN・l1_never_delivered）", () => {
+  const rows = [undeliveredRow(0), ...Array.from({ length: 9 }, (_, i) => inconclusiveRow(i + 1))];
   const f = factsOf(rows);
   assert.equal(f.l1.n_attempts, 10);
-  assert.equal(f.l1.n_inconclusive, 8);
+  assert.equal(f.l1.n_inconclusive, 9);
   const d = decidePayer(f);
   assert.equal(d.recommendation, "WARN", "我々の 4xx を売り手の未配達に足さない");
   assert.ok(d.reason_codes.includes("l1_never_delivered"));
   assert.equal(d.reason_codes.includes("l1_inconclusive"), false, "結論が 1 件でもあれば inconclusive の語は出さない");
+});
+
+test("結論 2 件（settled/5xx）＋inconclusive 8 件: お金が動いた未配達 2 回なので BLOCK（2026-09-29.2 以降の規則）", () => {
+  const rows = [undeliveredRow(0), undeliveredRow(1), ...Array.from({ length: 8 }, (_, i) => inconclusiveRow(i + 2))];
+  const d = decidePayer(factsOf(rows));
+  assert.equal(d.recommendation, "BLOCK");
+  assert.ok(d.reason_codes.includes("l1_paid_not_delivered"));
 });
 
 test("配達 1 件＋inconclusive 9 件: ALLOW・l1_delivered（inconclusive は配達の反証ではない）", () => {

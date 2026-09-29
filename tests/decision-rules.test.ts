@@ -19,7 +19,7 @@ const ok: SellerFacts = {
   wash_dominated: false,
 };
 
-test("版が固定されている", () => assert.equal(DECISION_RULES_VERSION, "2026-09-29.2"));
+test("版が固定されている", () => assert.equal(DECISION_RULES_VERSION, "2026-09-29.3"));
 
 /** 鮮度（2026-09-29.2）の基準時刻。フィクスチャの observed_at（09-01）の翌日。 */
 const T = { now: new Date("2026-09-02T00:00:00Z") };
@@ -37,15 +37,18 @@ test("BLOCK: l0 fail / unverified（fail-closed）", () => {
   assert.equal(decidePayer({ ...ok, l0: { ...ok.l0, status: "unverified" } }).recommendation, "BLOCK");
 });
 
-test("BLOCK: 3 回以上試して 1 件も届かない。2 回なら WARN", () => {
-  assert.equal(decidePayer({ ...ok, l1: { ...ok.l1, n_delivered: 0, n_settled: 0, n_attempts: 3 } }).recommendation, "BLOCK");
-  const two = decidePayer({ ...ok, l1: { ...ok.l1, n_delivered: 0, n_settled: 0, n_attempts: 2 } });
-  assert.equal(two.recommendation, "WARN");
-  assert.ok(two.reason_codes.includes("l1_never_delivered"));
+test("2026-09-29.3: 数えた失敗が何回でも、お金が動いた未配達が無ければ WARN（l1_never_delivered）", () => {
+  for (const n of [2, 3, 10]) {
+    const d = decidePayer({ ...ok, l1: { ...ok.l1, n_delivered: 0, n_settled: 0, n_attempts: n } });
+    assert.equal(d.recommendation, "WARN", `n_attempts=${n}`);
+    assert.ok(d.reason_codes.includes("l1_never_delivered"));
+  }
 });
 
-test("BLOCK: l2 mismatch / wash_dominated / operator_blacklist", () => {
-  assert.equal(decidePayer({ ...ok, l2: { ...ok.l2, status: "mismatch" } }).recommendation, "BLOCK");
+const mismatchKeys = { ...ok.l2, status: "mismatch" as const, missing_keys: ["price"] };
+
+test("BLOCK: l2 mismatch（欠けたキーを記録）/ wash_dominated / operator_blacklist", () => {
+  assert.equal(decidePayer({ ...ok, l2: mismatchKeys }).recommendation, "BLOCK");
   assert.equal(decidePayer({ ...ok, wash_dominated: true }).recommendation, "BLOCK");
   assert.equal(decidePayer(ok, { operatorBlacklist: true }).recommendation, "BLOCK");
 });
@@ -69,7 +72,7 @@ test("WARN: drifting / thin / 方言不一致。both・unpayable は不一致に
 });
 
 test("順序: BLOCK 条件は WARN/ALLOW 条件に勝つ", () => {
-  assert.equal(decidePayer({ ...ok, offer_stability: "drifting", l2: { ...ok.l2, status: "mismatch" } }).recommendation, "BLOCK");
+  assert.equal(decidePayer({ ...ok, offer_stability: "drifting", l2: mismatchKeys }).recommendation, "BLOCK");
 });
 
 test("L3（quality）を混ぜても判定は変わらない（型に無い入力は無視される）", () => {

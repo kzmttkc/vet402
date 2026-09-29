@@ -13,6 +13,10 @@ import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { buildMonth } from "@/lib/build-month";
 import { inviteRequired } from "@/lib/dashboard/signup-core";
+import { REASON_CODES, EFFECT_LABEL, type SellerCanFix } from "@/lib/decision/reason-codes";
+
+// 2026-09-29.3（監査 6 周目）: 売り手の側で直せるかの語（表の列）。
+const SELLER_FIX_LABEL: Record<SellerCanFix, string> = { yes: "Yes", partly: "Partly", no: "No", "n/a": "—" };
 
 // 2026-08-13 UX監査2巡目 [m2]: このページには metadata が無く、layout の
 // default（LP と同じ長い表題）をそのまま名乗っていた。template "%s | vet402"
@@ -234,7 +238,7 @@ const endpoints: Endpoint[] = [
     path: "/api/v1/resources/:resourceId/decision?role=payer|payee&payer=…&caller_dialect=v1|v2&allow_without_l1=false&amount_usd=…&max_per_tx_usd=1&min_l1_deliveries=0&require_vet402_allow=true",
     note: (
       <>
-        {"The canonical integration since 2026-09-02 (spec §8.3 / §9.1) — 1 unit per call with a key, or key-less at 10/min per IP with the same body (since 2026-09-07; 429 rate_limited when the window is spent; Idempotency-Key and customer allow/block lists apply to keyed calls only). role=payer (default) answers \"does this URL deliver as declared, right now?\" from L0 liveness, L1 settle-through and L2 conformance; role=payee answers \"should this seller serve this payer?\" and requires payer. facts and recommendation always arrive in the same document; the transitional score is marked deprecated and is not the basis of the recommendation. facts.l1.last_attempt_at is when we last attempted an L1 purchase against this resource (ISO 8601 UTC, null before the first attempt) — distinct from observed_at, which is when we last paid. spending_halted is vet402's own spending halt: a fact about the measurer, not the seller, and while it is true the L1 facts here are not today's observation. not_attempted_reason (spending_halted | no_eligible_accept) qualifies the reason code l1_not_attempted; it is null for the other ways an attempt ends before the signature, which are published per attempt in the decision ledger rather than summarised here. l1_inconclusive (since 2026-09-08) is the neighbouring case: signed paid attempts exist, but each one is held — a 4xx we attribute to our own request shape, settled or refused with no settlement receipt, or a 402 or 5xx while vet402's own payer wallet was unfunded (2026-09-13T00:00Z–2026-09-15T23:49Z) — so facts.l1.n_inconclusive is counted in n_attempts and held out of the delivery judgement — a gap in our measurement, not evidence against the seller. The decision is cautious for the payer: it leaves out only attempts where the row shows vet402's side of the fault, attempts held for our own request shape or awaiting on-chain verification, and attempts that took no payment; when nothing was delivered, the reason codes l1_not_counted_vet402_side, l1_not_counted_held and l1_not_counted_no_charge say which were left out, and l1_basis.n_not_counted carries the count (l1_inconclusive means it equals n_attempts, so it can appear while facts.l1.n_inconclusive, the held subset, is 0). The /sellers pages are the other way round: a failure goes on the seller's side only when the row shows vet402 was not at fault. Rows in between are counted here and shown as not sorted there. Rules 2026-09-29.2: a payment that settled on-chain with no non-empty 2xx back is l1_paid_not_delivered — after the last delivery in the 30-day window, once is WARN and twice or more is BLOCK; when something was delivered but the latest counted attempt was not, l1_latest_failed is a WARN; ALLOW needs a delivery within 30 days, the re-buy interval for a seller that has already delivered (l1_basis.fresh_days), otherwise WARN with l1_stale, which is also the L1 word when every signed attempt is older than the 30-day window (l1_not_attempted now means none was ever signed). l1_basis gives the counts and last_attempt_at, last_signed_attempt_at, last_delivered_at with days since each. L0 follows the published two-fail rule: one failed probe is l0_unverified with l0_unverified_single_fail and a WARN (degraded false) when the listing is active, the probe before it passed and the failed probe is at most 120 hours old, otherwise a BLOCK with l0_unverified_single_fail_unconfirmed (degraded true); two consecutive fails are l0_fail and a BLOCK; other l0_unverified causes stay a BLOCK and carry l0_unverified_<cause> (for example l0_unverified_tls or l0_unverified_not_probed). Limit of the method: vet402 buys with a fixed, published User-Agent, so a seller could answer vet402 differently from other buyers; other buyers' settlements show that they paid, not that they received, so the decision cannot detect this. verified_terms (since 2026-09-29, role=payer) carries the terms vet402 actually paid on the last purchase whose delivery it confirmed: pay_to, asset, amount (base units, 6 decimals), network, scheme, protocol and verified_at, or null when nothing was ever delivered, and null on XRPL until the issuer is recorded (a currency code alone cannot tell RLUSD from a look-alike). 0x addresses are lowercase. Compare it with the 402 you received before you pay: if the 402's payTo, asset, network or scheme differ from verified_terms, or its amount is higher, do not pay. An ALLOW is the fact that these terms delivered; it is not a guarantee for a different recipient or a higher price. Each row of evidence[] names the ledger it was observed in: evidence[].source is vet402 for our own L0\u2013L2 record (the row carries purchase_id and a public receipt URL), and subgraph for a row read from The Graph's x402 subgraph. This route emits vet402 rows; "}
+        {"The canonical integration since 2026-09-02 (spec §8.3 / §9.1) — 1 unit per call with a key, or key-less at 10/min per IP with the same body (since 2026-09-07; 429 rate_limited when the window is spent; Idempotency-Key and customer allow/block lists apply to keyed calls only). role=payer (default) answers \"does this URL deliver as declared, right now?\" from L0 liveness, L1 settle-through and L2 conformance; role=payee answers \"should this seller serve this payer?\" and requires payer. facts and recommendation always arrive in the same document; the transitional score is left out of the body unless you pass include_score=1 (0 or 1; anything else is 400 invalid_include_score), and then it carries superseded_by: \"recommendation\" and is not the basis of the recommendation. facts.l1.last_attempt_at is when we last attempted an L1 purchase against this resource (ISO 8601 UTC, null before the first attempt) — distinct from observed_at, which is when we last paid. spending_halted is vet402's own spending halt: a fact about the measurer, not the seller, and while it is true the L1 facts here are not today's observation. not_attempted_reason (spending_halted | no_eligible_accept) qualifies the reason code l1_not_attempted; it is null for the other ways an attempt ends before the signature, which are published per attempt in the decision ledger rather than summarised here. l1_inconclusive (since 2026-09-08) is the neighbouring case: signed paid attempts exist, but each one is held — a 4xx we attribute to our own request shape, settled or refused with no settlement receipt, or a 402 or 5xx while vet402's own payer wallet was unfunded (2026-09-13T00:00Z–2026-09-15T23:49Z) — so facts.l1.n_inconclusive is counted in n_attempts and held out of the delivery judgement — a gap in our measurement, not evidence against the seller. Rules 2026-09-29.3: an L1 BLOCK needs money to have moved — a payment that settled on-chain (or a settle_failed row whose tx was verified) with no non-empty 2xx back, twice after the last delivery (l1_paid_not_delivered). A failed attempt where no money moved counts here when /sellers puts it on the seller's side (the same failure on two different UTC days), and then it is a WARN at most; the others are left out: l1_not_counted_unproven when vet402 cannot show the failure was not its own (not sorted on /sellers) and l1_not_counted_unconfirmed when the seller-side failure was seen on one day so far. Attempts that move money are left out when the row shows vet402's side of the fault (l1_not_counted_vet402_side), when held for our own request shape or awaiting on-chain verification (l1_not_counted_held) or when the seller took no payment (l1_not_counted_no_charge). These codes appear when nothing was delivered, and l1_basis.n_not_counted carries the count (l1_inconclusive means it equals n_attempts, so it can appear while facts.l1.n_inconclusive, the held subset, is 0). l1_never_delivered (counted failures, nothing delivered) is a WARN. l2_mismatch is a BLOCK when the L2 evidence row names missing keys (mismatch_kind missing_keys); with none on record it is l2_mismatch_unexplained and a WARN — vet402 reads the first 16,000 bytes of a paid body, so a longer JSON body cannot be parsed. Each code is explained in the reason-code table on this page (#reason-codes). From rules 2026-09-29.2: a payment that settled on-chain with no non-empty 2xx back is l1_paid_not_delivered — after the last delivery in the 30-day window, once is WARN and twice or more is BLOCK; when something was delivered but the latest counted attempt was not, l1_latest_failed is a WARN; ALLOW needs a delivery within 30 days, the re-buy interval for a seller that has already delivered (l1_basis.fresh_days), otherwise WARN with l1_stale, which is also the L1 word when every signed attempt is older than the 30-day window (l1_not_attempted now means none was ever signed). l1_basis gives the counts and last_attempt_at, last_signed_attempt_at, last_delivered_at with days since each. L0 follows the published two-fail rule: one failed probe is l0_unverified with l0_unverified_single_fail and a WARN (degraded false) when the listing is active, the probe before it passed and the failed probe is at most 120 hours old, otherwise a BLOCK with l0_unverified_single_fail_unconfirmed (degraded true); two consecutive fails are l0_fail and a BLOCK; other l0_unverified causes stay a BLOCK and carry l0_unverified_<cause> (for example l0_unverified_tls or l0_unverified_not_probed). Limit of the method: vet402 buys with a fixed, published User-Agent, so a seller could answer vet402 differently from other buyers; other buyers' settlements show that they paid, not that they received, so the decision cannot detect this. verified_terms (since 2026-09-29, role=payer) carries the terms vet402 actually paid on the last purchase whose delivery it confirmed: pay_to, asset, amount (base units, 6 decimals), network, scheme, protocol and verified_at, or null when nothing was ever delivered, and null on XRPL until the issuer is recorded (a currency code alone cannot tell RLUSD from a look-alike). 0x addresses are lowercase. Compare it with the 402 you received before you pay: if the 402's payTo, asset, network or scheme differ from verified_terms, or its amount is higher, do not pay. An ALLOW is the fact that these terms delivered; it is not a guarantee for a different recipient or a higher price. Each row of evidence[] names the ledger it was observed in: evidence[].source is vet402 for our own L0\u2013L2 record (the row carries purchase_id and a public receipt URL), and subgraph for a row read from The Graph's x402 subgraph. This route emits vet402 rows; "}
         the subgraph rows are added to the same array by the{" "}
         <a
           href="https://github.com/kzmttkc/vet402/blob/main/SKILL.md"
@@ -381,7 +385,8 @@ function endpointId(ep: Endpoint): string {
 const TOC: TocItem[] = [
   { href: "#quickstart", label: "Quickstart" },
   { href: "#packages", label: "Packages" },
-  { href: "#verdicts", label: "Verdicts & thresholds" },
+  { href: "#verdicts", label: "Decision verdicts & reason codes" },
+  { href: "#score-bands", label: "Score bands" },
   { href: "#rate-limits", label: "Rate limits" },
   {
     href: "#endpoints",
@@ -466,8 +471,8 @@ export default async function ApiDocsPage() {
               <span>Independent Measurement</span>
               <span>Interface: REST v1</span>
               <span>
-                {/* この頁のシアン1点。認証の形という事実。 */}
-                Auth: <span className="text-signal">Bearer API key</span>
+                {/* この頁のシアン1点。認証の形という事実。2026-09-29.3（監査 6 周目）: 判定と resolve は鍵不要。 */}
+                Auth: <span className="text-signal">none for decision &amp; resolve</span>
               </span>
             </div>
             <div className="doc-head-col">
@@ -484,9 +489,12 @@ export default async function ApiDocsPage() {
         <div className="space-y-3">
         {/* 2026-09-28 監査: Base URL が break-all で「https://vet」「402.com」と語の途中で
             折れていた。URL は 1 つの要素のまま折り返さない（375px 幅でも 1 行に収まる長さ）。 */}
+        {/* 2026-09-29.3（監査 6 周目）: 冒頭が「Bearer API key」で、鍵なしで答える判定と resolve が鍵必須に読めた。 */}
         <p className="text-brand">
-          Authenticate with <code className="text-brand-deep">Authorization: Bearer</code>{" "}
-          API key. Base URL:{" "}
+          <code className="text-brand-deep">/decision</code> and{" "}
+          <code className="text-brand-deep">/resolve</code> need no key (10 and 60 requests a minute per
+          IP). The score, webhook and attest endpoints take an API key in{" "}
+          <code className="text-brand-deep">Authorization: Bearer</code>. Base URL:{" "}
           <code className="whitespace-nowrap text-brand-deep">{`${SITE_URL}/api/v1`}</code>
         </p>
         <p className="text-sm text-brand-lift">
@@ -542,10 +550,20 @@ curl "${SITE_URL}/api/v1/resolve?q=https://api.exa.ai/search"
 # 2. resource_id -> facts + ALLOW / WARN / BLOCK in one document
 curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8af2f92f0313ddef8bdb/decision?role=payer"`}
           />
+          {/* 2026-09-29.3（監査 6 周目）: 1 番目にも Try it（鍵なし・GET）。判定は /sellers の頁も閲覧者のブラウザから呼んでいる。 */}
+          <TryItPanel path="/api/v1/resolve?q=https://api.exa.ai/search" label="GET /api/v1/resolve" />
+          <TryItPanel
+            path="/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8af2f92f0313ddef8bdb/decision?role=payer"
+            label="GET /api/v1/resources/{resource_id}/decision"
+          />
           <p className="mt-1 text-sm text-brand-lift">
             Copy <code className="text-brand-deep">resource.resource_id</code> from the first
             answer into the second. The decision carries <code>recommendation</code>,{" "}
-            <code>reason_codes</code> and the L0&ndash;L2 facts behind them. Without a key,{" "}
+            <code>reason_codes</code> (each one is in{" "}
+            <a href="#reason-codes" className="doc-link">
+              the reason-code table
+            </a>
+            ) and the L0&ndash;L2 facts behind them. Without a key,{" "}
             <code className="text-brand-deep">/decision</code> answers 10 requests per minute per IP
             and <code className="text-brand-deep">/resolve</code> 60; past that you get 429{" "}
             <code>rate_limited</code> with a <code>Retry-After</code> under 60 seconds. A URL that
@@ -830,7 +848,7 @@ app.use("/api/paid", createExpressGate({
           and a partially measured one are all denied unless the caller explicitly opts out. That
           default is fail-closed on purpose &mdash; see{" "}
           <a href="#verdicts" className="doc-link">
-            Verdicts &amp; thresholds
+            Decision verdicts &amp; reason codes
           </a>{" "}
           for what to do about a WARN.
         </p>
@@ -883,14 +901,82 @@ app.use("/api/paid", createExpressGate({
         </p>
       </section>
 
+      {/* 2026-09-29.3（監査 6 周目・重要度 高）: 売り手頁の「how the decision counts」は /docs/api#verdicts に飛ぶが、
+          そこは旧スコア帯（0–100）の説明で、判定の理由コードの意味が HTML のどこにも無かった。#verdicts を判定の
+          説明と理由コードの表に置き換え、スコア帯は #score-bands へ移した。表は src/lib/decision/reason-codes.ts が
+          正典で、docs/openapi.yaml の DecisionReasonCode と tests/decision-reason-codes.test.ts が一致を固定する。 */}
+      <section id="verdicts" className="scroll-mt-32 space-y-3">
+        <h2 className="sec-head">Decision verdicts &amp; reason codes</h2>
+        <p className="text-sm text-brand">
+          <code className="text-brand-deep">GET /api/v1/resources/&#123;id&#125;/decision</code> answers{" "}
+          <code>ALLOW</code>, <code>WARN</code> or <code>BLOCK</code> from vet402&rsquo;s own L0&ndash;L2
+          records, and lists the reasons in <code>reason_codes</code>. There is no score behind it: the
+          transitional 0&ndash;100 payee score is left out of the response unless you ask for it with{" "}
+          <code>include_score=1</code>, and even then it is marked{" "}
+          <code>superseded_by: &quot;recommendation&quot;</code> and is not used for the decision.
+        </p>
+        <ul className="list-disc space-y-2 pl-5 text-sm text-brand">
+          <li>
+            <strong>BLOCK</strong> means the record shows a reason not to pay: the URL is down or not
+            measured (L0), money moved without delivery twice (<code>l1_paid_not_delivered</code>), the
+            body lacks declared keys, wash volume, or your own block list.
+          </li>
+          <li>
+            <strong>WARN</strong> means not cleared: evidence is missing, old or mixed. Failures where no
+            money moved are a WARN at most. The SDK and the middleware refuse a WARN unless you opt out.
+          </li>
+          <li>
+            <strong>ALLOW</strong> needs a live 402, a delivery within 30 days, and no BLOCK or WARN reason.
+            Compare the 402 you get with <code>verified_terms</code> before you pay.
+          </li>
+        </ul>
+        <h3 id="reason-codes" className="scroll-mt-32 text-base font-semibold text-brand-deep">
+          Reason codes (rules {"2026-09-29.3"})
+        </h3>
+        <p className="text-sm text-brand-lift">
+          &ldquo;Verdict&rdquo; is what the code causes on its own; &mdash; means it explains without
+          changing the verdict. Codes in angle brackets stand for a family.
+        </p>
+        <TableScroll label="Decision reason codes">
+          <table className="fact-table">
+            <caption className="sr-only">
+              Decision reason codes: meaning, what it means for the payer, and whether the seller can fix it
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Code</th>
+                <th scope="col">Verdict</th>
+                <th scope="col">What it means</th>
+                <th scope="col">For the payer</th>
+                <th scope="col">Seller can fix</th>
+              </tr>
+            </thead>
+            <tbody>
+              {REASON_CODES.map((r) => (
+                <tr key={r.code} id={`reason-${r.code.replace(/[^a-z0-9_]/g, "")}`}>
+                  <td className="whitespace-nowrap text-brand-deep">
+                    <code>{r.code}</code>
+                    {r.role === "payee" ? <span className="block text-xs text-brand-lift">role=payee</span> : null}
+                  </td>
+                  <td className="whitespace-nowrap text-brand-deep">{EFFECT_LABEL[r.effect]}</td>
+                  <td className="font-[family-name:var(--font-sans)] font-normal whitespace-normal text-brand">{r.meaning}</td>
+                  <td className="font-[family-name:var(--font-sans)] font-normal whitespace-normal text-brand">{r.forPayer}</td>
+                  <td className="whitespace-nowrap text-brand">{SELLER_FIX_LABEL[r.sellerCanFix]}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
+      </section>
+
       {/* 2026-08-13 UX監査R1 [C6]: ALLOW/WARN/BLOCK は全ページに出ているのに、
           境界値がサイトのどこにも書いていなかった。運用者ペルソナは
           「WARN が来たらどうすればいいのか」が決められず統合コードを書けずに
           離脱している。閾値は src/lib/chain/config.ts の SCORE_THRESHOLDS を
           そのまま写す（記憶で書かない）。SDK 既定の fail-closed も、閾値と
           同じ場所で言わないと「WARN は通るのだろう」と読まれる。 */}
-      <section id="verdicts" className="scroll-mt-32 space-y-3">
-        <h2 className="sec-head">Verdicts &amp; thresholds</h2>
+      <section id="score-bands" className="scroll-mt-32 space-y-3">
+        <h2 className="sec-head">Score bands (agent, wallet and payee scores)</h2>
         <p className="text-sm text-brand">
           Every scored response carries a numeric score and a{" "}
           <code className="text-brand-deep">recommendation</code>. The bands are fixed and the same

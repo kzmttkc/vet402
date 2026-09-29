@@ -25,13 +25,16 @@ import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { isInconclusive } from "@/lib/observatory/delivery";
-import { classifyRow, type SellerRowFacts } from "@/lib/sellers/fix-modes";
+import { classifyRow, ONCE_SUFFIX, type SellerRowFacts } from "@/lib/sellers/fix-modes";
+import { recordRowKey } from "@/lib/sellers/board";
+import { readRecordSides } from "@/lib/sellers/reader";
 import { publishedVerdict } from "@/lib/observatory/l0-probe";
 import { purchaseId as toPurchaseId } from "@/lib/ids/canonical";
 import { toCaip2 } from "@/lib/observatory/chains";
 import { getSettlementCounts } from "@/lib/settlements/census";
 import { rowsOf } from "@/lib/settlements/upsert";
 import { toIsoUtc } from "@/lib/util/iso-utc";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import type { Dialect, Evidence, L2Status, OfferStability, SellerFacts, VerifiedTerms } from "./types";
 import type { L0SingleFailContext, L1Timeline } from "./rules";
 
@@ -73,10 +76,24 @@ export type PurchaseInput = {
    * 返しただけの tx は false／null（支払い済みに数えない）。
    */
   settlementConfirmed?: boolean | null;
+  /**
+   * 2026-09-29.3: 同じ行を /sellers と記録頁がどちらの側に置いたか（src/lib/sellers/board.ts の showRow・
+   * classifySellerRow が正典）。お金が動いていない失敗を数えるかどうかにだけ使う。読めなければ null（数える側）。
+   */
+  sellerView?: SellerRowView | null;
+  /** 2026-09-29.3: 支払い付き応答の Content-Type（raw_response_meta.contentType・60 文字まで）。L2 の evidence に使う。 */
+  contentType?: string | null;
 };
 
-/** 帰属（/sellers と同じ規則）で、売り手の不履行として数えない理由。数える行は null。 */
-export type NotCountedReason = "vet402_side" | "held" | "no_charge";
+/** /sellers と記録頁の分類の要点（board.ts の ShownRow から）。 */
+export type SellerRowView = { bucket: string; modeKey: string | null; confirmedSeller: boolean };
+
+/**
+ * 帰属（/sellers と同じ規則）で、売り手の不履行として数えない理由。数える行は null。
+ * 2026-09-29.3: unproven（お金が動いていない失敗で、vet402 に落ち度が無いと示せない）と unconfirmed（お金が動いて
+ * いない失敗で、売り手の側だが 1 日だけ）を足した。
+ */
+export type NotCountedReason = "vet402_side" | "held" | "no_charge" | "unproven" | "unconfirmed";
 
 /**
  * 1 行の署名済みの試行を、/sellers の classifyRow（fix-modes.ts が正典）に掛けて、売り手の不履行として数えるかを決める。
@@ -84,6 +101,34 @@ export type NotCountedReason = "vet402_side" | "held" | "no_charge";
  * → no_charge。売り手の側と「未分類」は数える（null）。
  */
 export function notCountedReasonOf(
+  p: PurchaseInput,
+  endpoint: { method: string | null; declaredSchema: unknown; declaredInput?: unknown },
+): NotCountedReason | null {
+  const base = baseNotCountedReasonOf(p, endpoint);
+  if (base !== null) return base;
+  // 2026-09-29.3（監査 6 周目）: お金が動いた行（isPaidPurchase）の扱いは変えない（払う側に慎重）。
+  if (isPaidPurchase(p)) return null;
+  return unpaidNotCountedReasonOf(p.sellerView);
+}
+
+/**
+ * お金が動いていない失敗を数えるか（2026-09-29.3）。/sellers の売り手の側（確定・別の UTC 日に 2 回以上）だけ数える。
+ * 分類が読めなければ数える（null）——お金が動いていない行は単独で BLOCK にならないので、倒れても WARN まで。
+ *   vet402 の側 → vet402_side、照合待ち → held、売り手の側だが 1 日だけ（once）→ unconfirmed、
+ *   それ以外（not sorted: vet402 unproven・stopped waiting・課金なし・未分類）→ unproven
+ */
+export function unpaidNotCountedReasonOf(view: SellerRowView | null | undefined): NotCountedReason | null {
+  if (!view) return null;
+  if (view.bucket === "seller" && view.confirmedSeller) return null;
+  if (view.bucket === "vet402") return "vet402_side";
+  if (view.bucket === "pending") return "held";
+  if (view.bucket === "delivered") return null;
+  if (view.modeKey !== null && view.modeKey.endsWith(ONCE_SUFFIX)) return "unconfirmed";
+  return "unproven";
+}
+
+/** 2026-09-29 までの除外（vet402 の側・保留・課金なし）。classifyRow を行の事実だけで当てる。 */
+function baseNotCountedReasonOf(
   p: PurchaseInput,
   endpoint: { method: string | null; declaredSchema: unknown; declaredInput?: unknown },
 ): NotCountedReason | null {
@@ -201,7 +246,7 @@ export type L1NotCounted = { total: number; by: Record<NotCountedReason, number>
  */
 export function l1NotCountedOf(input: Pick<SellerFactsInput, "purchases" | "declaredSchema" | "method" | "declaredInput">): L1NotCounted {
   const endpointDecl = { method: input.method ?? null, declaredSchema: input.declaredSchema, declaredInput: input.declaredInput ?? null };
-  const by: Record<NotCountedReason, number> = { vet402_side: 0, held: 0, no_charge: 0 };
+  const by: Record<NotCountedReason, number> = { vet402_side: 0, held: 0, no_charge: 0, unproven: 0, unconfirmed: 0 };
   let total = 0;
   for (const p of input.purchases) {
     if (!SIGNED_STATUSES.has(p.status)) continue;
@@ -440,8 +485,19 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
  * L2 の evidence（§6.3 / 2026-09-02 監査 P1-11）。conform / mismatch のときだけ。
  * 宣言・応答・差分のハッシュを載せる——第三者が同じ宣言・同じ本文から再計算できる。
  */
-export function l2EvidenceOf(facts: SellerFacts, observatoryId: string): Evidence | null {
+export function l2EvidenceOf(facts: SellerFacts, observatoryId: string, l2ContentType?: string | null): Evidence | null {
   if (facts.l2.status === "undeclared") return null;
+  // 2026-09-29.3（監査 6 周目）: mismatch のときは、記録してある不一致の中身を出す。欠けたキーの名前があれば
+  // missing_keys、無ければ unexplained（何が違ったかを示せない＝判定は WARN・l2_mismatch_unexplained）。
+  const mismatch =
+    facts.l2.status === "mismatch"
+      ? {
+          mismatch_kind: (Array.isArray(facts.l2.missing_keys) && facts.l2.missing_keys.length > 0 ? "missing_keys" : "unexplained") as
+            | "missing_keys"
+            | "unexplained",
+          ...(l2ContentType !== undefined ? { content_type: l2ContentType } : {}),
+        }
+      : {};
   return {
     level: "L2",
     source: "vet402",
@@ -451,7 +507,18 @@ export function l2EvidenceOf(facts: SellerFacts, observatoryId: string): Evidenc
     response_hash: facts.l2.response_hash,
     diff_hash: facts.l2.diff_hash,
     missing_keys: facts.l2.missing_keys,
+    ...mismatch,
   };
+}
+
+/**
+ * 2026-09-29.3: facts.l2 を決めた応答（窓の中の最新の配達）の Content-Type。L2 が undeclared なら undefined
+ * （evidence に載せない）、記録が無ければ null。assembleSellerFacts と同じ「配達」の述語で選ぶ。
+ */
+export function l2ContentTypeOf(purchases: readonly PurchaseInput[], facts: SellerFacts): string | null | undefined {
+  if (facts.l2.status === "undeclared") return undefined;
+  const d = purchases.find((p) => isDeliveredPurchase(p) && !isInconclusive(p));
+  return d?.contentType ?? null;
 }
 
 export type SellerFactsLoaded = {
@@ -475,6 +542,8 @@ export type SellerFactsLoaded = {
   verifiedTerms?: VerifiedTerms | null;
   /** 2026-09-29.2（独立レビュー）: L0 の 1 回の fail を WARN に緩める条件の材料（l0SingleFailContextOf）。 */
   l0SingleFailContext?: L0SingleFailContext | null;
+  /** 2026-09-29.3: L2 を決めた応答の Content-Type（l2ContentTypeOf）。L2 の evidence の content_type。 */
+  l2ContentType?: string | null;
   endpoint: {
     id: string;
     resourceId: string | null;
@@ -579,9 +648,11 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     payTo: r.metadata_consistent === false ? "changed" : "declared",
   }));
 
-  const purchases = rowsOf<Record<string, unknown>>(
+  const purchaseRows = rowsOf<Record<string, unknown>>(
     await db.execute(sql`
       SELECT attempted_at::text AS attempted_at, status, latency_ms, http_status_paid, payload_non_empty, l2_schema, tx_hash, network,
+             to_char(attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS attempted_at_utc,
+             CASE WHEN jsonb_typeof(raw_response_meta) = 'object' THEN left(raw_response_meta->>'contentType', 60) END AS content_type,
              raw_response_meta->'l2' AS l2_detail,
              CASE WHEN jsonb_typeof(raw_response_meta) = 'object' THEN jsonb_strip_nulls(jsonb_build_object(
                'requestBody', CASE WHEN raw_response_meta ? 'requestBody' THEN
@@ -594,7 +665,21 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
       FROM x402_l1_purchases p WHERE endpoint_id = ${endpointUuid}::uuid AND attempted_at > now() - interval '30 days'
       ORDER BY attempted_at DESC LIMIT 200
     `),
-  ).map<PurchaseInput>((r) => ({
+  );
+  // 2026-09-29.3: 同じ行を /sellers と記録頁がどちらの側に置いたか（readRecordSides・記録頁と同じ 1 本）。
+  // 読めなければ分類なし（お金が動いていない失敗を数える側＝WARN まで）で続ける。理由はログに残す。
+  let sides: Awaited<ReturnType<typeof readRecordSides>> | null = null;
+  try {
+    sides = await readRecordSides(db, endpointUuid);
+  } catch (error) {
+    logServerErrorSafe("decision.seller_view", error);
+  }
+  const viewOf = (r: Record<string, unknown>): SellerRowView | null => {
+    if (!sides || typeof r.attempted_at_utc !== "string") return null;
+    const shown = sides.rows.get(recordRowKey(r.attempted_at_utc, String(r.status), r.tx_hash === null ? null : String(r.tx_hash)));
+    return shown ? { bucket: shown.bucket, modeKey: shown.mode?.key ?? null, confirmedSeller: shown.confirmedSeller } : null;
+  };
+  const purchases = purchaseRows.map<PurchaseInput>((r) => ({
     attemptedAt: String(r.attempted_at),
     status: String(r.status),
     latencyMs: r.latency_ms === null ? null : Number(r.latency_ms),
@@ -611,6 +696,8 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     amountUnits: r.amount_units === null || r.amount_units === undefined ? null : String(r.amount_units),
     payer: r.payer === null || r.payer === undefined ? null : String(r.payer),
     settlementConfirmed: r.settlement_confirmed === null || r.settlement_confirmed === undefined ? null : Boolean(r.settlement_confirmed),
+    sellerView: viewOf(r),
+    contentType: typeof r.content_type === "string" && r.content_type !== "" ? r.content_type : null,
   }));
 
   // 最終試行は 30 日窓の外も見る（窓で切ると 31 日前の試行が「一度も無い」に化ける）。
@@ -676,6 +763,7 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     l1Timeline: l1TimelineOf(factsInput),
     verifiedTerms,
     l0SingleFailContext: l0SingleFailContextOf(probes, ep.listing_status),
+    l2ContentType: l2ContentTypeOf(purchases, facts),
     endpoint: {
       id: ep.id,
       resourceId: ep.resource_id,

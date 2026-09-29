@@ -166,7 +166,7 @@ test("C: 資金切れ期間の 402 だけで『納品 0・署名 3』になっ�
   assert.ok(d.reason_codes.includes("l1_inconclusive"), d.reason_codes.join(","));
 });
 
-test("C: 期間の外の 402 が 3 件なら従来どおり BLOCK・l1_never_delivered", () => {
+test("C: 期間の外の 402 が 3 件は数えるが、お金が動いていないので WARN・l1_never_delivered（2026-09-29.3）", () => {
   const f = facts([
     p(0, { attemptedAt: "2026-09-16T06:00:00Z" }),
     p(0, { attemptedAt: "2026-09-10T06:00:00Z" }),
@@ -174,7 +174,7 @@ test("C: 期間の外の 402 が 3 件なら従来どおり BLOCK・l1_never_del
   ]);
   assert.deepEqual([f.l1.n_attempts, f.l1.n_inconclusive], [3, 0]);
   const d = decidePayer(f);
-  assert.equal(d.recommendation, "BLOCK");
+  assert.equal(d.recommendation, "WARN");
   assert.ok(d.reason_codes.includes("l1_never_delivered"));
 });
 
@@ -186,13 +186,21 @@ test("A: Douglas 型（settle_failed・400・tx なし）3 件は BLOCK にな�
   assert.ok(d.reason_codes.includes("l1_inconclusive"));
 });
 
-test("A: 決済前 4xx 2 件＋5xx 3 件は、5xx 3 件で BLOCK（5xx は救わない）", () => {
+test("A: 決済前 4xx 2 件＋5xx 3 件: 5xx は数える（救わない）が、お金が動いていなければ WARN。settled の 5xx 2 件で BLOCK", () => {
   const f = facts([
     ...[0, 1].map((i) => p(i, { httpStatusPaid: 422, attemptedAt: `2026-09-0${i + 1}T06:00:00Z` })),
     ...[2, 3, 4].map((i) => p(i, { httpStatusPaid: 500, attemptedAt: `2026-09-0${i + 1}T06:00:00Z` })),
   ]);
   assert.deepEqual([f.l1.n_attempts, f.l1.n_inconclusive], [5, 2]);
-  assert.equal(decidePayer(f).recommendation, "BLOCK");
+  const d = decidePayer(f);
+  assert.equal(d.recommendation, "WARN");
+  assert.ok(d.reason_codes.includes("l1_never_delivered"));
+  // facts だけの判定（l1Timeline なし）は settled の未配達を下限でしか数えない（保留が settled かは facts から分からない）
+  const paid = facts([
+    ...[2, 3].map((i) => p(i, { status: "settled", txHash: `0x${i}`, httpStatusPaid: 500, payloadNonEmpty: false, attemptedAt: `2026-09-0${i + 1}T06:00:00Z` })),
+  ]);
+  assert.equal(decidePayer(paid).recommendation, "BLOCK");
+  assert.ok(decidePayer(paid).reason_codes.includes("l1_paid_not_delivered"));
 });
 
 test("/decision の facts.l1 のキーの形は変えない", () => {

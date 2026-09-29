@@ -1582,8 +1582,11 @@ paths:
         URL deliver as declared, right now?" from L0 liveness, L1
         settle-through and L2 conformance. `role=payee` answers "should this
         seller serve this payer?" and requires `payer`. The response carries
-        `facts` and `recommendation` together; the transitional `score` is
-        marked deprecated and is not the basis of the recommendation.
+        `facts` and `recommendation` together. The transitional 0–100 `score`
+        is left out unless `include_score=1` (since 2026-09-29.3); when
+        returned it carries `superseded_by: "recommendation"` and is not the
+        basis of the recommendation. Every reason code is listed in
+        `DecisionReasonCode` and in the table at /docs/api#reason-codes.
         `caller_dialect` (v1|v2) lets the engine WARN on a wall that speaks a
         different x402 dialect than your client. `allow_without_l1=true` is
         the operator's explicit opt-in to ALLOW a resource vet402 has not yet
@@ -1638,6 +1641,15 @@ paths:
           name: allow_without_l1
           required: false
           schema: { type: boolean, default: false }
+        - in: query
+          name: include_score
+          required: false
+          schema: { type: string, enum: ["0", "1"], default: "0" }
+          description: >-
+            Since 2026-09-29.3. `1` adds the transitional payee `score` (marked
+            `deprecated` and `superseded_by: "recommendation"`, not used for the
+            decision). Without it the key is absent. Any other value is 400
+            `invalid_include_score`.
         - in: query
           name: amount_usd
           required: false
@@ -3644,15 +3656,26 @@ components:
         note: { type: string }
         handlerMicros: { type: number }
 
+    DecisionReasonCode:
+      type: string
+      description: >-
+        Since 2026-09-29.3. The reason codes of `DecisionResult.reason_codes`:
+        the fixed words in `enum`, plus the families in `x-vet402-patterns`
+        (l0_unverified_<cause>, <input>_unavailable). Meaning, effect on the
+        verdict, what it means for the payer and whether the seller can fix
+        it: /docs/api#reason-codes (same source, src/lib/decision/reason-codes.ts).
+      enum: [l0_pass, l0_fail, l0_unverified, l0_unverified_single_fail, l0_unverified_single_fail_unconfirmed, l1_delivered, l1_not_attempted, l1_stale, l1_inconclusive, l1_never_delivered, l1_paid_not_delivered, l1_latest_failed, l1_not_counted_vet402_side, l1_not_counted_held, l1_not_counted_no_charge, l1_not_counted_unproven, l1_not_counted_unconfirmed, l1_waived_by_operator, l2_conform, l2_undeclared, l2_mismatch, l2_mismatch_unexplained, offer_drifting, wash_dominated, dialect_mismatch, data_thin, operator_blacklist, sybil_high, retry_burst, thin_history, shared_funder, new_payer, erc8004_registered, history_ok]
+      x-vet402-patterns: ["^l0_unverified_[a-z0-9_]{1,40}$", "^(settlements|funder_index|erc8004)_unavailable$"]
+
     DecisionResult:
       type: object
       description: >-
         Product spec §9.1. A pre-payment (role=payer) or pre-service
         (role=payee) decision. `facts` and `recommendation` always travel in
         the same document; there is no facts-less mode. `score` is the
-        transitional 0–100 opinion, marked deprecated, and is never the basis
-        of `recommendation`.
-      required: [subject, role, payer, recommendation, reason_codes, facts, spending_halted, not_attempted_reason, freshness, l1_basis, verified_terms, evidence, score, degraded, policy, rules_version, registry, scoredAt, cacheExpiresAt, disclaimer]
+        transitional 0–100 opinion, present only with `include_score=1`
+        (since 2026-09-29.3), and is never the basis of `recommendation`.
+      required: [subject, role, payer, recommendation, reason_codes, facts, spending_halted, not_attempted_reason, freshness, l1_basis, verified_terms, evidence, degraded, policy, rules_version, registry, scoredAt, cacheExpiresAt, disclaimer]
       properties:
         subject:
           type: object
@@ -3671,33 +3694,37 @@ components:
           type: array
           items: { type: string }
           description: >-
-            Machine-readable reasons (l0_pass, l1_delivered, l1_not_attempted,
-            l1_stale, l1_inconclusive, l1_never_delivered, l1_paid_not_delivered,
-            l1_latest_failed, l2_undeclared, offer_drifting, wash_dominated, …).
-            Rules 2026-09-29.2. The L1 words name whose gap it is:
-            l1_not_attempted — vet402 has never signed a paid attempt;
-            l1_stale — vet402's signed attempts are all older than the 30-day
-            window, or the last delivery in the window is older than
-            l1_basis.fresh_days (30, the re-buy interval for a seller that
-            has already delivered, the same length as the window): WARN,
-            never ALLOW; l1_inconclusive —
-            signed paid attempts exist in the window, but none is counted
-            (l1_basis.n_not_counted equals n_attempts), a gap in our
-            measurement rather than evidence against the seller;
-            l1_never_delivered — at least one counted paid response and none
-            delivered. l1_paid_not_delivered — the payment settled on-chain and
-            no non-empty 2xx came back, after the last delivery in the window:
-            once is WARN, twice or more is BLOCK. l1_latest_failed — something
-            was delivered in the window but the latest counted attempt was not:
-            WARN. The decision is cautious for the payer: it leaves out only
-            attempts where the row shows vet402's side of the fault, attempts
-            held for our own request shape or awaiting on-chain verification,
-            and attempts that took no payment; when nothing was delivered the
-            reason codes name which (l1_not_counted_vet402_side,
-            l1_not_counted_held, l1_not_counted_no_charge). The /sellers pages
-            are the other way round: a failure goes on the seller's side only
-            when the row shows vet402 was not at fault. Rows in between are
-            counted here and shown as not sorted there. L0 follows the published
+            Machine-readable reasons. Every code, with its meaning, what it
+            means for the payer and whether the seller can fix it, is in
+            `DecisionReasonCode` and in the table at /docs/api#reason-codes.
+            Rules 2026-09-29.3. An L1 BLOCK needs money to have moved:
+            l1_paid_not_delivered — a payment that settled on-chain (or a
+            settle_failed row whose tx was verified) with no non-empty 2xx
+            back, after the last delivery in the window: once is WARN, twice
+            or more is BLOCK. A failed attempt where no money moved counts
+            when /sellers puts it on the seller's side (the same failure on
+            two different UTC days), and then it is a WARN at most; the others
+            are left out with l1_not_counted_unproven (vet402 cannot show the
+            failure was not its own; not sorted on /sellers) or
+            l1_not_counted_unconfirmed (seller-side failure seen on one day so
+            far). l1_never_delivered — counted failures in the window and no
+            delivery — is a WARN. The other L1 words: l1_not_attempted
+            (vet402 has never signed a paid attempt); l1_stale (signed
+            attempts all older than the 30-day window, or the last delivery
+            older than l1_basis.fresh_days, 30): WARN, never ALLOW;
+            l1_inconclusive (signed attempts in the window, none counted:
+            l1_basis.n_not_counted equals n_attempts), a gap in our
+            measurement; l1_latest_failed (delivered in the window but the
+            latest counted attempt failed): WARN. Attempts that move money
+            are left out when the row shows vet402's side of the fault
+            (l1_not_counted_vet402_side), when held for our own request shape
+            or awaiting on-chain verification (l1_not_counted_held), or when
+            the seller took no payment (l1_not_counted_no_charge); these codes
+            appear when nothing was delivered. l2_mismatch is a BLOCK when the
+            L2 evidence row names missing keys (mismatch_kind missing_keys);
+            with no missing key on record it adds l2_mismatch_unexplained and
+            is a WARN (vet402 reads the first 16,000 bytes of a paid body, so a
+            longer JSON body cannot be parsed). L0 follows the published
             two-fail rule: one failed probe is l0_unverified with
             l0_unverified_single_fail and a WARN (degraded stays false) when the
             listing is active, the probe before it passed and the failed probe
@@ -3801,7 +3828,18 @@ components:
         score:
           type: object
           nullable: true
-          description: "Transitional 0–100 score with `deprecated: true`. May be null."
+          description: >-
+            Present only with `include_score=1` (since 2026-09-29.3; the key is
+            absent otherwise). The transitional 0–100 payee score with
+            `deprecated: true`, `superseded_by: "recommendation"` and a `note`;
+            not used for the decision. May be null (no EVM payTo, or the score
+            could not be read).
+          properties:
+            trustScore: { type: number, nullable: true }
+            recommendation: { type: string, nullable: true, enum: [ALLOW, WARN, BLOCK] }
+            deprecated: { type: boolean, enum: [true] }
+            superseded_by: { type: string, enum: [recommendation] }
+            note: { type: string }
         degraded:
           type: boolean
           description: True when an input could not be measured; the recommendation is then fail-closed.
@@ -4321,6 +4359,19 @@ components:
         response_hash: { type: string, nullable: true, description: L2 only (§6.3). }
         diff_hash: { type: string, nullable: true, description: L2 mismatch only (§6.3). }
         missing_keys: { type: array, nullable: true, items: { type: string }, description: L2 mismatch only (§6.3). }
+        mismatch_kind:
+          type: string
+          nullable: true
+          enum: [missing_keys, unexplained]
+          description: >-
+            Since 2026-09-29.3, L2 mismatch rows only. missing_keys — the
+            declared required keys named in missing_keys were absent (a
+            BLOCK). unexplained — no missing key on record, so vet402 cannot say
+            what differed (reason code l2_mismatch_unexplained, a WARN).
+        content_type:
+          type: string
+          nullable: true
+          description: Since 2026-09-29.3, L2 mismatch rows only. The Content-Type of that response, when recorded (60 characters at most).
         subgraphId:
           type: string
           description: "source: subgraph only - the subgraph that was queried on The Graph's decentralised network."

@@ -171,6 +171,14 @@ export type Evidence = {
   response_hash?: string | null;
   diff_hash?: string | null;
   missing_keys?: string[] | null;
+  /**
+   * 2026-09-29.3（L2・mismatch のときだけ）: 不一致の中身として記録してあるもの。
+   *   missing_keys  宣言の必須キーが応答に無かった（missing_keys に名前がある）。BLOCK の根拠になる
+   *   unexplained   記録に欠けたキーが無い（何が違ったかを示せない）。判定は WARN（l2_mismatch_unexplained）
+   */
+  mismatch_kind?: "missing_keys" | "unexplained" | null;
+  /** 2026-09-29.3（L2・mismatch のときだけ）: その応答の Content-Type（記録があれば・短く切る）。 */
+  content_type?: string | null;
   // --- ここから下は source: "subgraph" の行だけが持つ（§15）---
   /** 引いた subgraph（分散ネットワークの ID）。 */
   subgraphId?: string;
