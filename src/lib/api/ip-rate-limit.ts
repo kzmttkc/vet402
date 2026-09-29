@@ -25,7 +25,28 @@ export type IpRateLimitResult = {
   resetAt: number;
   /** Seconds until reset — only meaningful (and set) when throttled. */
   retryAfter?: number;
+  /**
+   * 2026-09-29 監査4周目（障害対応）: 共有の枠ストア（DB）に届かず、判定できなかったので
+   * 拒否した。呼び手は「使いすぎ」（429）ではなく「いま答えられない」（503）として返せる。
+   * 立っていなくても `allowed:false` なので、見ない呼び手も fail-closed のまま。
+   */
+  unavailable?: true;
 };
+
+/** DB 不通で fail-closed にしたときの Retry-After。窓の長さ（日次なら 1 日）ではなく短く——直ればすぐ戻れる。 */
+export const IP_RATE_LIMIT_UNAVAILABLE_RETRY_AFTER_SEC = 30;
+
+function unavailableResult(limit: number): IpRateLimitResult {
+  const retryAfter = IP_RATE_LIMIT_UNAVAILABLE_RETRY_AFTER_SEC;
+  return {
+    allowed: false,
+    limit,
+    remaining: 0,
+    resetAt: Math.ceil(Date.now() / 1000) + retryAfter,
+    retryAfter,
+    unavailable: true,
+  };
+}
 
 export async function consumeIpRateLimit(
   key: string,
@@ -34,7 +55,18 @@ export async function consumeIpRateLimit(
 ): Promise<IpRateLimitResult> {
   const db = getDb();
   if (db) {
-    return consumeDbIpRateLimit(db, key, limit, windowMs);
+    // 2026-09-29 監査4周目（重要度・高）: `getDb()` は DATABASE_URL があれば常に値を返す。
+    // 下の fail-closed 分岐は「DB が設定されていない」ときにしか通らず、DB が**不通**の
+    // ときは例外がそのまま投げられて、全ての鍵なし経路（health・resolve・decision・/rwa）が
+    // 500 で終わっていた。例外を捕まえて fail-closed（拒否＋短い Retry-After＋unavailable）にする。
+    // メモリ経路へは落とさない——インスタンスごとの枠は共有の上限にならない（資金ガードの
+    // 日次予算もこの関数を通る）。
+    try {
+      return await consumeDbIpRateLimit(db, key, limit, windowMs);
+    } catch (error) {
+      logServerErrorSafe("ip_rate_limit.consume_unavailable", error);
+      return unavailableResult(limit);
+    }
   }
 
   if (isProduction()) {

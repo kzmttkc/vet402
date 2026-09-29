@@ -30,6 +30,11 @@ export async function publicRateLimit(
   const limited = await consumeIpRateLimit(bucketKey, limit, windowMs);
   const headers = ipRateLimitHeaders(limited);
   if (!limited.allowed) {
+    // 2026-09-29 監査4周目: 枠ストア（DB）不通の拒否は「使いすぎ」ではない。503＋Retry-After で返し、
+    // 呼び手のリトライ規則（429 は窓明けまで待つ）に乗せない。
+    if (limited.unavailable) {
+      return { ok: false, response: NextResponse.json({ error: "temporarily_unavailable" }, { status: 503, headers }) };
+    }
     return { ok: false, response: NextResponse.json({ error: "rate_limited" }, { status: 429, headers }) };
   }
   return {

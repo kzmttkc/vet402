@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db/client";
 import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { healthSnapshots } from "@/lib/db/schema";
 import { instanceId } from "./instance-id";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 export type HealthStatus = "ok" | "degraded" | "error";
 
@@ -173,7 +174,38 @@ export type StatusHistory = {
   days: DaySummary[];
   /** Earliest row in the whole table (not just the queried window) — grounds "monitoring since". */
   monitoringSince: Date | null;
+  /**
+   * 2026-09-29 監査4周目: 表を読めなかった（DB 不通など）。以前はここで投げていたため、
+   * ISR（revalidate=300）の再生成が失敗し、**直前に生成した ok の頁**が出続けた。
+   * 投げずに「読めない」を返し、頁が「読めない」と書けるようにする。
+   */
+  unreadable?: true;
 };
+
+/**
+ * 最後の行からこれ以上空いたら、その行の status を「今」の status として言わない。
+ * 平常時の書き手は自前の死活監視（毎時 0 分・30 分に /api/health を叩く）なので、行の間隔は
+ * 最大でおよそ 30 分。15 分の余裕を足して 45 分。DB 不通のあいだ /api/health は 503 を返すが
+ * 行は書けない——「最後の行が古い」ことが障害の唯一の痕跡になる。
+ */
+export const STATUS_STALE_AFTER_MS = 45 * 60 * 1000;
+
+export type CurrentVerdict =
+  | { kind: "fresh"; status: HealthStatus; checkedAt: Date; ageMs: number }
+  | { kind: "stale"; lastStatus: HealthStatus; checkedAt: Date; ageMs: number }
+  | { kind: "unreadable" }
+  | { kind: "none" };
+
+/** /status の「現在」を決める純関数。古い ok を ok と言わない。 */
+export function currentVerdict(history: StatusHistory, now: Date): CurrentVerdict {
+  if (history.unreadable) return { kind: "unreadable" };
+  if (!history.current) return { kind: "none" };
+  const ageMs = Math.max(0, now.getTime() - history.current.checkedAt.getTime());
+  if (ageMs > STATUS_STALE_AFTER_MS) {
+    return { kind: "stale", lastStatus: history.current.status, checkedAt: history.current.checkedAt, ageMs };
+  }
+  return { kind: "fresh", status: history.current.status, checkedAt: history.current.checkedAt, ageMs };
+}
 
 export async function getStatusHistory(windowDays = 30): Promise<StatusHistory> {
   const db = getDb();
@@ -190,6 +222,7 @@ export async function getStatusHistory(windowDays = 30): Promise<StatusHistory> 
     return { current, days: summarizeByDay(inWindow), monitoringSince };
   } catch (error) {
     if (isMissingSchemaError(error)) return { current: null, days: [], monitoringSince: null };
-    throw error;
+    logServerErrorSafe("status.history_unreadable", error);
+    return { current: null, days: [], monitoringSince: null, unreadable: true };
   }
 }

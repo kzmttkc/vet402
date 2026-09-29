@@ -37,6 +37,15 @@ export async function GET(request: NextRequest) {
     HEALTH_RATE_LIMIT,
     HEALTH_RATE_WINDOW_MS,
   );
+  if (limited.unavailable) {
+    // 2026-09-29 監査4周目（重要度・高）: DB 不通のとき、ここは例外で 500 を返していた（本文なし・
+    // health_snapshots にも書かれない）。枠ストアに届かない＝DB に届かない、なので「使いすぎ」
+    // ではなく down として答える。公開本文は従来どおり 1 ビット（status）だけ。
+    return NextResponse.json(
+      { status: "error" },
+      { status: 503, headers: ipRateLimitHeaders(limited) },
+    );
+  }
   if (!limited.allowed) {
     // Same one-bit-of-information rule as the liveness body below: a throttled
     // caller learns it was throttled, not anything about the service.

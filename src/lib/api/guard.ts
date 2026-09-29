@@ -6,6 +6,9 @@ import {
   refundRateLimit,
   type RateLimitResult,
 } from "./rate-limit";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
+
+const RATE_LIMIT_UNAVAILABLE_RETRY_AFTER_SEC = 30;
 
 export type AuthorizedContext = {
   apiKeyId: string;
@@ -36,7 +39,21 @@ export async function applyRateLimit(
   ctx: AuthenticatedContext,
   units = 1,
 ): Promise<{ ok: true; rateLimit: RateLimitResult } | { ok: false; error: NextResponse }> {
-  const rateLimit = await consumeRateLimit(ctx.apiKeyId, ctx.plan, units);
+  let rateLimit: RateLimitResult;
+  try {
+    rateLimit = await consumeRateLimit(ctx.apiKeyId, ctx.plan, units);
+  } catch (error) {
+    // 2026-09-29 監査4周目: 月次枠の DB が不通のとき、例外がそのまま鍵ありの全経路を 500 にしていた。
+    // 枠を数えられないなら答えない（fail-closed）——ただし「使いすぎ」の 429 ではなく 503。
+    logServerErrorSafe("rate_limit.consume_unavailable", error);
+    return {
+      ok: false,
+      error: NextResponse.json(
+        { error: "rate_limit_unavailable", retryAfter: RATE_LIMIT_UNAVAILABLE_RETRY_AFTER_SEC },
+        { status: 503, headers: { "Retry-After": String(RATE_LIMIT_UNAVAILABLE_RETRY_AFTER_SEC) } },
+      ),
+    };
+  }
   if (!rateLimit.allowed) {
     const headers = rateLimitHeaders(rateLimit);
     if (rateLimit.retryAfter) {

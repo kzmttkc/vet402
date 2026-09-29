@@ -20,6 +20,14 @@ async function enforceAuthIpLimit(ip: string): Promise<NextResponse | null> {
     AUTH_FAIL_WINDOW_MS,
   );
   if (!limited.allowed) {
+    // 2026-09-29 監査4周目: 枠ストア（DB）不通の拒否は 503。鍵の検証も同じ DB を読むので、
+    // この時点で「鍵が違う」とも「使いすぎ」とも言えない。
+    if (limited.unavailable) {
+      return NextResponse.json(
+        { error: "auth_unavailable", retryAfter: limited.retryAfter },
+        { status: 503, headers: { "Retry-After": String(limited.retryAfter ?? 30) } },
+      );
+    }
     return NextResponse.json(
       { error: "rate_limit_exceeded", retryAfter: limited.retryAfter },
       { status: 429 },

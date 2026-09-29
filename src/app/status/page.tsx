@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { TableScroll } from "@/components/site/TableScroll";
-import { getStatusHistory } from "@/lib/health/snapshot";
+import { currentVerdict, getStatusHistory, STATUS_STALE_AFTER_MS, type CurrentVerdict } from "@/lib/health/snapshot";
 
 /**
  * /status — B5, 2026-08-15. The record of vet402's own uptime, published the
@@ -54,6 +54,26 @@ function VerdictWord({ ok, degraded, error }: { ok: number; degraded: number; er
   return <span className="text-brand-lift">no observations</span>;
 }
 
+function fmtAge(ms: number): string {
+  const min = Math.floor(ms / 60_000);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 48) return `${h} h ${min % 60} min`;
+  return `${Math.floor(h / 24)} days`;
+}
+
+/**
+ * 2026-09-29 監査4周目: 見出しの「Current」は最後の行の status をそのまま出していた。
+ * DB 不通のあいだ /api/health は行を書けず（503 で終わる）、この頁は ISR で直前の ok を
+ * 出し続けた。古い行は「今」ではない——45 分を超えたら ok と言わず stale と書く。
+ */
+function headWord(v: CurrentVerdict): string {
+  if (v.kind === "fresh") return v.status;
+  if (v.kind === "stale") return "stale";
+  if (v.kind === "unreadable") return "unknown";
+  return "not yet observed";
+}
+
 function fmtDay(date: string): string {
   return date;
 }
@@ -64,6 +84,8 @@ function fmtDateTime(d: Date): string {
 
 export default async function StatusPage() {
   const history = await getStatusHistory(30);
+  const renderedAt = new Date();
+  const verdict = currentVerdict(history, renderedAt);
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   const breadcrumb = breadcrumbJsonLd([
     { name: "Home", path: "/" },
@@ -89,7 +111,7 @@ export default async function StatusPage() {
             <span>Instrument: own uptime</span>
             <span>
               Current:{" "}
-              <span className="text-signal">{history.current?.status ?? "not yet observed"}</span>
+              <span className="text-signal">{headWord(verdict)}</span>
             </span>
           </div>
           <div className="doc-head-col">
@@ -125,14 +147,29 @@ export default async function StatusPage() {
           <span>Current status</span>
         </h2>
         <p className="doc-p">
-          {history.current ? (
+          {verdict.kind === "fresh" ? (
             <>
-              <strong>{history.current.status}</strong>, last sampled{" "}
-              {fmtDateTime(history.current.checkedAt)}.
+              <strong>{verdict.status}</strong>, last sampled {fmtDateTime(verdict.checkedAt)}.
+            </>
+          ) : verdict.kind === "stale" ? (
+            <>
+              <strong className="text-warn-ink">stale</strong> &mdash; no sample for{" "}
+              {fmtAge(verdict.ageMs)} (last: {verdict.lastStatus} at {fmtDateTime(verdict.checkedAt)}).
+              Our own check samples every 30 minutes, so a gap over{" "}
+              {Math.round(STATUS_STALE_AFTER_MS / 60_000)} minutes means samples are not being written
+              &mdash; which is what a database outage looks like from here. We do not report the old
+              value as current.
+            </>
+          ) : verdict.kind === "unreadable" ? (
+            <>
+              <strong className="text-block-ink">unknown</strong> &mdash; the status record could not be
+              read when this page was built. That usually means our database is unreachable; it is
+              not reported as &quot;ok.&quot;
             </>
           ) : (
             <>No sample has been recorded yet.</>
-          )}
+          )}{" "}
+          <span className="text-brand-lift">Page built {fmtDateTime(renderedAt)}.</span>
         </p>
 
         <h2 className="sec-head">
@@ -149,7 +186,12 @@ export default async function StatusPage() {
           &quot;ok.&quot;
         </p>
 
-        {daysNewestFirst.length === 0 ? (
+        {history.unreadable ? (
+          <p className="doc-p text-brand-lift">
+            The history could not be read when this page was built. It will reappear once the
+            database answers again; nothing here is assumed in the meantime.
+          </p>
+        ) : daysNewestFirst.length === 0 ? (
           <p className="doc-p text-brand-lift">
             No samples in the last 30 days. Traffic drives the sampling, so a quiet window can be
             empty here even when nothing is wrong &mdash; see{" "}
