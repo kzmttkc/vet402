@@ -205,7 +205,10 @@ export function topLevelKeysOfJsonHead(head: string): Set<string> {
  * 古い行は 16,000 バイトで切った本文を判定し、読めない本文でも mismatch・欠けたキー＝宣言した必須キー全部と
  * 記録していた。本文は残っていない（先頭 500 文字の bodyHead だけ）ので、次の順で読み直す:
  *   - mismatch 以外・印のある行・Content-Type が JSON でない行 → そのまま（Content-Type の判定は本文に依らない）
- *   - 出力に必須キーも例のプロパティも無い宣言 → no_declaration（今の規則でも本文に依らず no_declaration）
+ *   - 出力に必須キーも例のプロパティも無い宣言: 本文が 500 文字未満で全部そろっていて JSON として閉じていれば
+ *     no_declaration。それ以外は mismatch・欠けたキーなし（判定は l2_mismatch_unexplained の WARN）。元の本文の長さの
+ *     記録が無く、16,000 バイトで切れたのか売り手の本文が壊れていたのかを区別できない。欠けたキーという切れた証拠を
+ *     探す材料も無いので、払う側に慎重な方へ倒す（2026-09-29 執行部の判断。新しい行は checkL2Detailed の規則のまま）
  *   - bodyHead が本文の全部（500 文字未満）→ 今の規則で判定し直す（閉じていない JSON は mismatch・欠けたキーは空）
  *   - それより長い本文: 記録した欠けたキーのどれかが bodyHead の最上位に見える → 切れた証拠（キーはあるのに
  *     読めなかった）なので not_checked（legacy_body_cut）。それ以外はそのまま mismatch（例: 必須キーが output の
@@ -223,8 +226,12 @@ export function legacyL2SchemaOf(input: {
   if (input.l2Schema !== "mismatch" || input.l2Reason) return keep;
   if (!input.contentType?.includes("json")) return keep;
   const { requiredKeys, exampleProps } = declaredOutputOf(input.declaredSchema);
-  if (requiredKeys.length === 0 && !exampleProps) return { l2Schema: "no_declaration", missing: null, reason: null };
   const head = input.bodyHead ?? "";
+  if (requiredKeys.length === 0 && !exampleProps) {
+    const whole = head !== "" && head.length < BODY_HEAD_CHARS;
+    if (whole && parsedRecord(head).ok) return { l2Schema: "no_declaration", missing: null, reason: null };
+    return { l2Schema: "mismatch", missing: [], reason: null };
+  }
   if (head !== "" && head.length < BODY_HEAD_CHARS) {
     const d = checkL2Detailed(input.declaredSchema, head, input.contentType);
     return { l2Schema: d.status, missing: d.status === "mismatch" ? d.missing : null, reason: d.reason };

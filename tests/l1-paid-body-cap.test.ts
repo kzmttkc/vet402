@@ -220,8 +220,17 @@ test("古い行: bodyHead が本文の全部（500 文字未満）なら今の�
   assert.deepEqual(legacy({ bodyHead: '{"count": 1, "items": [' }), { l2Schema: "mismatch", missing: [], reason: "unparseable" });
 });
 
-test("古い行: 出力の宣言が無い → no_declaration。Content-Type が JSON でない・JSON の頭でない・印のある行はそのまま", () => {
-  assert.equal(legacy({ declaredSchema: schemaWith(null, null), bodyHead: "{" }).l2Schema, "no_declaration");
+test("古い行: 出力の宣言が無く JSON として閉じていない（または閉じたか分からない）→ mismatch・欠けたキーなし（WARN）", () => {
+  const none = schemaWith(null, null);
+  const longHead = longJson(40_000).slice(0, 500);
+  assert.deepEqual(legacy({ declaredSchema: none, missing: [], bodyHead: longHead }), { l2Schema: "mismatch", missing: [], reason: null });
+  assert.deepEqual(legacy({ declaredSchema: none, missing: null, bodyHead: '{"a": [1, 2' }), { l2Schema: "mismatch", missing: [], reason: null });
+  assert.deepEqual(legacy({ declaredSchema: none, missing: [], bodyHead: null }), { l2Schema: "mismatch", missing: [], reason: null });
+  // 本文が 500 文字未満で全部そろっていて閉じていれば、今の規則と同じ no_declaration
+  assert.equal(legacy({ declaredSchema: none, missing: [], bodyHead: '{"a": 1}' }).l2Schema, "no_declaration");
+});
+
+test("古い行: Content-Type が JSON でない・JSON の頭でない・印のある行はそのまま", () => {
   assert.equal(legacy({ contentType: "text/html", bodyHead: "<html>" }).l2Schema, "mismatch");
   assert.equal(legacy({ bodyHead: "<html>" + "x".repeat(600) }).l2Schema, "mismatch");
   assert.equal(legacy({ l2Reason: "missing_keys", bodyHead: longJson(40_000).slice(0, 500) }).l2Schema, "mismatch");

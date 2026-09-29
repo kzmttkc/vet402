@@ -217,6 +217,15 @@ test("古い行: 欠けたキーが頭の最上位に見えない・本文の全
   assert.deepEqual(short.facts.l2.missing_keys, ["assets"]);
 });
 
+test("古い行: 出力の宣言が無く、JSON として閉じていない長い本文 → WARN（l2_mismatch_unexplained）。ALLOW にしない", () => {
+  const SCHEMA_NONE = { properties: { input: { type: "http" }, output: { type: "object" } } };
+  const { d, facts } = run([legacyRow([], LONG_HEAD)], SCHEMA_NONE);
+  assert.equal(facts.l2.status, "mismatch");
+  assert.deepEqual(facts.l2.missing_keys, []);
+  assert.equal(d.recommendation, "WARN");
+  assert.ok(d.reason_codes.includes(L2_MISMATCH_UNEXPLAINED));
+});
+
 test("古い行: 本文の全部が手元にあって閉じていない JSON は mismatch・欠けたキーなし → WARN（l2_mismatch_unexplained）", () => {
   const { d, facts } = run([legacyRow(["count", "assets"], '{"count":1,"assets":[')], SCHEMA_TWO);
   assert.equal(facts.l2.status, "mismatch");
