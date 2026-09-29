@@ -307,8 +307,8 @@ if (!TEST_DB) {
     });
 
     // 2026-09-29 監査4周目: 有料の要求が応答を 1 つも得られなかった行の帰属（l1-runner の
-    // paidTransportFailureSide）。こちらの機械の中にしか原因が無い errno は request_error、
-    // 売り手が起こせる形は従来どおり settle_failed。どちらも署名済みなので spent_units は残す。
+    // paidTransportFailureSide）。資格情報を送った後なので status はどれも settle_failed のまま
+    // （遅延回収の対象に残す・2026-09-29 独立レビュー）。こちらの機械の中の失敗は transportFailure.side の印だけ。
     const throwingPaidWall = (code: string) => {
       const base = wall();
       const fetchImpl = async (url: string, init?: RequestInit) => {
@@ -321,7 +321,7 @@ if (!TEST_DB) {
       return fetchImpl;
     };
     for (const [code, expected] of [
-      ["EMFILE", "request_error"],
+      ["EMFILE", "settle_failed"],
       ["ECONNRESET", "settle_failed"],
       ["EAI_AGAIN", "settle_failed"],
     ] as const) {
@@ -337,7 +337,7 @@ if (!TEST_DB) {
           (await db.execute(sql`SELECT raw_response_meta AS m FROM x402_l1_purchases`)) as unknown as { m: Record<string, unknown> }[]
         )[0].m;
         assert.deepEqual(meta.transportFailure, {
-          side: expected === "request_error" ? "vet402" : "seller_or_path",
+          side: code === "EMFILE" ? "vet402" : "seller_or_path",
           code,
         });
       });

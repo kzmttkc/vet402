@@ -323,25 +323,14 @@ export async function runSettlementVerification(options?: {
    * この列は売り手の頁（/sellers の reader.ts・verifyReason）に出る公開の状態なので、**値が変わったときだけ**
    * 同じ文で訂正ログに残す。同じ理由の書き直し（毎日の再試行）は UPDATE も訂正も 0 行。
    */
+  // 2026-09-29 独立レビュー（WARNING）: 照合の理由だけの書き換え（status は変わらない）は公開の
+  // 訂正ログに載せない。tx_not_found・rpc_unavailable 等の一時的な理由が入れ替わるたびに /corrections が
+  // 1 行ずつ増え、本物の訂正が埋もれる。公開の状態（status・tx）が変わる書き込みだけを訂正として残す。
   async function setVerifyReason(row: PurchaseRow, verifyReason: string): Promise<void> {
-    await updateWithCorrection(db!, {
-      update: sql`
-        WITH prior AS (
-          SELECT id, settlement_verify_reason AS prior_reason FROM x402_l1_purchases
-          WHERE id = ${row.id}::uuid AND settlement_verify_reason IS DISTINCT FROM ${verifyReason}::text
-          FOR UPDATE
-        )
-        UPDATE x402_l1_purchases pu
-        SET settlement_verify_reason = ${verifyReason}::text
-        FROM prior
-        WHERE pu.id = prior.id
-        RETURNING pu.id::text AS correction_subject_id, prior.prior_reason`,
-      subjectType: "purchase",
-      level: "l1",
-      before: { expr: sql`jsonb_build_object('status', ${row.status}::text, 'verifyReason', changed.prior_reason)` },
-      after: { expr: sql`jsonb_build_object('status', ${row.status}::text, 'verifyReason', ${verifyReason}::text)` },
-      reason: "settlement_backfill",
-    });
+    await db!.execute(sql`
+      UPDATE x402_l1_purchases
+      SET settlement_verify_reason = ${verifyReason}::text
+      WHERE id = ${row.id}::uuid AND settlement_verify_reason IS DISTINCT FROM ${verifyReason}::text`);
   }
 
   /**

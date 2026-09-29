@@ -19,13 +19,13 @@ test("transportErrorCode: undici の cause の中まで見る", () => {
 });
 
 test("paidTransportFailureSide: 機械の中にしか原因が無い errno だけが vet402 側", () => {
-  for (const code of ["EMFILE", "ENFILE", "ENOBUFS", "ENOMEM", "ENETDOWN", "EADDRNOTAVAIL"]) {
+  for (const code of ["EMFILE", "ENFILE", "ENOBUFS", "ENOMEM"]) {
     assert.equal(paidTransportFailureSide(wrapped(code)), "vet402", code);
   }
 });
 
 test("paidTransportFailureSide: 売り手が起こせる形は seller_or_path（W-4: 観測を台帳から消せる道を作らない）", () => {
-  for (const code of ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EAI_AGAIN", "ENOTFOUND", "ENETUNREACH", "EHOSTUNREACH", "UND_ERR_SOCKET", "CERT_HAS_EXPIRED"]) {
+  for (const code of ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EAI_AGAIN", "ENOTFOUND", "ENETUNREACH", "EHOSTUNREACH", "UND_ERR_SOCKET", "CERT_HAS_EXPIRED", "ENETDOWN", "EADDRNOTAVAIL"]) {
     assert.equal(paidTransportFailureSide(wrapped(code)), "seller_or_path", code);
   }
   assert.equal(paidTransportFailureSide(new DOMException("aborted", "AbortError")), "seller_or_path", "タイムアウトは売り手の遅さ");

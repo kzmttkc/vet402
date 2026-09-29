@@ -4,7 +4,7 @@
 // ここで固定すること:
 //   1. 訂正ログが書けないなら、台帳も変わらない（同じ文・fail-loud・次回のバッチで再試行）
 //   2. 照合の成否（settled / refuted）には必ず訂正が 1 行ある
-//   3. 照合の理由だけの書き込み（公開の verifyReason）は、**値が変わったときだけ**訂正を残す
+//   3. 照合の理由だけの書き込み（status 不変）は訂正ログに載せない（一時的な理由で /corrections を埋めない）
 //
 // Run: TEST_DATABASE_URL=postgres://localhost/vet402_observatory_test \
 //   npx tsx --test --test-force-exit --test-concurrency=1 tests/correction-log-atomic.pg.test.ts
@@ -120,19 +120,15 @@ if (!TEST_DB) {
       assert.equal((await corrections(id)).length, 1);
     });
 
-    await t.test("照合の理由だけの書き込み: 変わったときだけ訂正を 1 行、同じ理由の再試行では 0 行", async () => {
+    await t.test("照合の理由だけの書き込み（status 不変）は公開の訂正ログに載せない（2026-09-29 独立レビュー）", async () => {
       await reset();
       const id = await seed("d1");
       const transient = async () => ({ ok: false, reason: "rpc_unavailable" }) as never;
       await run(transient);
       assert.equal((await statusOf(id)).settlementVerifyReason, "rpc_unavailable");
-      let c = await corrections(id);
-      assert.equal(c.length, 1);
-      assert.deepEqual(c[0].before, { status: "settle_claimed", verifyReason: null });
-      assert.deepEqual(c[0].after, { status: "settle_claimed", verifyReason: "rpc_unavailable" });
+      assert.equal((await corrections(id)).length, 0, "一時的な理由の入れ替わりで /corrections を埋めない");
       await run(transient);
-      c = await corrections(id);
-      assert.equal(c.length, 1, "同じ理由の書き直しは訂正にしない");
+      assert.equal((await corrections(id)).length, 0);
     });
 
     await t.test("recoverLateSettlements: 貼り付けと訂正が同じ文（訂正が書けなければ貼らない）", async () => {

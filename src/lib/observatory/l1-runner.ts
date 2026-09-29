@@ -2450,11 +2450,13 @@ async function purchaseOne(input: {
     // ネットワーク I/F の枯渇）は我々側の request_error で記録する。売り手が起こせる形（接続拒否・
     // タイムアウト・DNS・TLS・転送先での失敗）は上の W-4 と同じ理由で settle_failed のまま——
     // 資格情報を受け取った売り手が観測を公開台帳から消せる道を作らない。spent_units はどちらも残す。
+    // 2026-09-29 独立レビュー（BLOCK）: ここは資格情報（署名した支払い）を送った後の段。status を
+    // request_error にすると遅延回収（recover-late.ts は request_error を「署名していない行」として外す）
+    // から外れ、売り手が後で決済した tx が台帳に結び付かない。status は常に settle_failed のままにし、
+    // 我々の機械の中の失敗だったことは transportFailure.side の印だけで残す（/sellers の帰属はこの印を読む）。
     const transportSide = !paid ? paidTransportFailureSide(paidErrorRaw) : null;
     const status = !paid
-      ? transportSide === "vet402"
-        ? "request_error"
-        : "settle_failed"
+      ? "settle_failed"
       : claimedAndWellFormed
         ? "settle_claimed"
         : claimedSettlement
@@ -2480,8 +2482,8 @@ async function purchaseOne(input: {
       // request_error になった行の理由はこれ。
       ...(credentialStripped ? { credentialStripped } : {}),
       bodyHead: paidBody.slice(0, 500),
-      // 応答が無かった行だけ: どちら側の失敗か（2026-09-29）。"vet402" は request_error に、
-      // "seller_or_path" は従来どおり settle_failed に載る。
+      // 応答が無かった行だけ: どちら側の失敗か（2026-09-29）。status はどちらも settle_failed
+      // （資格情報は送った後なので遅延回収の対象に残す）。"vet402" は我々の機械の中の失敗の印。
       ...(transportSide ? { transportFailure: { side: transportSide, code: transportErrorCode(paidErrorRaw) } } : {}),
       // どの本文で有料の要求を出したか（2026-09-17 Issue #29）。"declared" は売り手の 402 が宣言した
       // input.body、"empty" は `{}`。2026-09-20: POST 以外にも "none" を残し（行はメソッドを持たないので、
@@ -2629,7 +2631,7 @@ export function transportErrorCode(error: unknown): string | null {
 
 /**
  * 原因がこの機械の中にしか無い errno（2026-09-29 監査4周目）。売り手はどれも起こせない:
- * 記述子・バッファ・メモリの枯渇と、自分のネットワーク I/F が落ちている／送信元アドレスが無い。
+ * 記述子・バッファ・メモリの枯渇。
  * DNS（EAI_AGAIN 等）・ENETUNREACH・タイムアウトは入れない——売り手が転送先を選べば起こせる。
  */
 const VET402_SIDE_TRANSPORT_CODES: ReadonlySet<string> = new Set([
@@ -2637,8 +2639,8 @@ const VET402_SIDE_TRANSPORT_CODES: ReadonlySet<string> = new Set([
   "ENFILE",
   "ENOBUFS",
   "ENOMEM",
-  "ENETDOWN",
-  "EADDRNOTAVAIL",
+  // ENETDOWN・EADDRNOTAVAIL は外した（2026-09-29 独立レビュー）: 売り手が AAAA だけを返す等で
+  // 起こせる可能性があり、「売り手はどれも起こせない」を満たさない。
 ]);
 
 /** 有料の要求が応答を 1 つも得られなかったときの帰属。 */
