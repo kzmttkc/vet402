@@ -1,9 +1,9 @@
 // §7.4 カバレッジ階層（純関数）
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { tierOf, LOOKUPS_C2_THRESHOLD, L0_INTERVAL_HOURS } from "@/lib/observatory/coverage";
+import { tierOf, LOOKUP_CALLERS_C2_THRESHOLD, LOOKUP_DAYS_C2_THRESHOLD, L0_INTERVAL_HOURS } from "@/lib/observatory/coverage";
 
-const base = { listedWithin30d: false, settledWithin30d: false, attributedSettlements: 0, lookups7d: 0, hasDeclaration: false, reverifyRequested: false };
+const base = { listedWithin30d: false, settledWithin30d: false, attributedSettlements: 0, lookupCallers7d: 0, lookupDays7d: 0, hasDeclaration: false, reverifyRequested: false };
 
 test("C0: カタログにあるが 30 日以内の listed も決済も無い", () => assert.equal(tierOf(base), "C0"));
 test("C1: 30 日以内に listed、または決済があった", () => {
@@ -12,8 +12,17 @@ test("C1: 30 日以内に listed、または決済があった", () => {
 });
 test("C2: 決済帰属あり、または問い合わせが閾値以上", () => {
   assert.equal(tierOf({ ...base, listedWithin30d: true, attributedSettlements: 1 }), "C2");
-  assert.equal(tierOf({ ...base, listedWithin30d: true, lookups7d: LOOKUPS_C2_THRESHOLD }), "C2");
-  assert.equal(tierOf({ ...base, listedWithin30d: true, lookups7d: LOOKUPS_C2_THRESHOLD - 1 }), "C1");
+  assert.equal(tierOf({ ...base, listedWithin30d: true, lookupCallers7d: LOOKUP_CALLERS_C2_THRESHOLD, lookupDays7d: LOOKUP_DAYS_C2_THRESHOLD }), "C2");
+});
+test("C2 の問い合わせ条件（2026-09-29 監査 6 周目）: 別々の鍵 3 以上 かつ 別々の日 2 以上の両方", () => {
+  assert.equal(LOOKUP_CALLERS_C2_THRESHOLD, 3);
+  assert.equal(LOOKUP_DAYS_C2_THRESHOLD, 2);
+  // 1 つの呼び手が 5 日（呼び手 1・日 5）→ 上がらない
+  assert.equal(tierOf({ ...base, listedWithin30d: true, lookupCallers7d: 1, lookupDays7d: 5 }), "C1");
+  // 同じ日に鍵 10 本（呼び手 10・日 1）→ 上がらない
+  assert.equal(tierOf({ ...base, listedWithin30d: true, lookupCallers7d: 10, lookupDays7d: 1 }), "C1");
+  assert.equal(tierOf({ ...base, listedWithin30d: true, lookupCallers7d: 2, lookupDays7d: 7 }), "C1");
+  assert.equal(tierOf({ ...base, listedWithin30d: true, lookupCallers7d: 3, lookupDays7d: 2 }), "C2");
 });
 test("C3: 宣言のある C2", () => assert.equal(tierOf({ ...base, attributedSettlements: 1, hasDeclaration: true }), "C3"));
 test("宣言があっても C2 条件が無ければ C3 にならない", () => assert.equal(tierOf({ ...base, listedWithin30d: true, hasDeclaration: true }), "C1"));

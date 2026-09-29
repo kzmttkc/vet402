@@ -5,7 +5,7 @@
 //  1. 同じ呼び手が同じ endpoint を同じ UTC 日に何回叩いても decision_lookups.n は 1。
 //     （以前は 5 回で「問い合わせ多」＝L1 の最優先枠に入った）
 //  2. 呼び手が 5 人なら 5（正直な需要は従来どおり昇格させる）。同時の 10 回でも 1。
-//  3. 呼び手の材料が無い呼び出しは数えない。
+//  3. 呼び手の材料が無い呼び出しは数えない。2026-09-29 監査 6 周目: 鍵なし（IP）の呼び出しは材料 null＝数えない。
 //  4. loadSellerFacts は最後に配達を確かめた購入の条件（verified_terms）を返す。配達していない行は使わない。
 //  5. purge は 8 日より古い重複除去の行を消す。
 //
@@ -56,9 +56,9 @@ if (!TEST_DB) {
     const lookups = async (id: string) =>
       Number(rows(await db.execute(sql`SELECT coalesce(sum(n), 0)::int AS n FROM decision_lookups WHERE endpoint_id = ${id}::uuid`))[0].n);
 
-    await t.test("同じ呼び手（鍵なしの同じ IP）は何回叩いても 1 日 1 回", async () => {
+    await t.test("同じ呼び手（同じ鍵）は何回叩いても 1 日 1 回", async () => {
       const id = await seedEndpoint();
-      const me = lookupCallerMaterial({ ip: "203.0.113.7" });
+      const me = lookupCallerMaterial({ apiKeyId: "key-7" });
       for (let i = 0; i < 7; i++) await recordDecisionLookup(id, me);
       assert.equal(await lookups(id), 1);
     });
@@ -70,18 +70,18 @@ if (!TEST_DB) {
       assert.equal(await lookups(id), 1);
     });
 
-    await t.test("IPv6 の下位 64 bit を回しても同じ呼び手", async () => {
+    await t.test("鍵なし（IP）の呼び出しは数えない（監査 6 周目: 1 つの IP から日をまたいで・別サイトの閲覧者の IP で数を作れた）", async () => {
       const id = await seedEndpoint();
-      for (let i = 1; i <= 6; i++) await recordDecisionLookup(id, lookupCallerMaterial({ ip: `2001:db8:1:2::${i}` }));
-      assert.equal(await lookups(id), 1);
+      for (let i = 1; i <= 6; i++) await recordDecisionLookup(id, lookupCallerMaterial({ ip: `2001:db8:1:${i}::1` }));
+      for (let i = 1; i <= 5; i++) await recordDecisionLookup(id, lookupCallerMaterial({ ip: `198.51.100.${i}` }));
+      assert.equal(await lookups(id), 0);
     });
 
-    await t.test("呼び手が 5 人なら 5（正直な需要は従来どおり昇格の材料になる）", async () => {
+    await t.test("鍵が 5 本なら 5（同じ鍵の 2 回目は数えない）", async () => {
       const id = await seedEndpoint();
-      for (let i = 1; i <= 5; i++) await recordDecisionLookup(id, lookupCallerMaterial({ ip: `198.51.100.${i}` }));
-      await recordDecisionLookup(id, lookupCallerMaterial({ apiKeyId: "k" }));
-      await recordDecisionLookup(id, lookupCallerMaterial({ apiKeyId: "k" }));
-      assert.equal(await lookups(id), 6);
+      for (let i = 1; i <= 5; i++) await recordDecisionLookup(id, lookupCallerMaterial({ apiKeyId: `k${i}` }));
+      await recordDecisionLookup(id, lookupCallerMaterial({ apiKeyId: "k1" }));
+      assert.equal(await lookups(id), 5);
     });
 
     await t.test("呼び手の材料が無い呼び出しは数えない", async () => {

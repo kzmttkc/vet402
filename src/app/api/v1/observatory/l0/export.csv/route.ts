@@ -4,6 +4,7 @@ import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit"
 import { L0_EXPORT_COLUMN_NOTES, L0_EXPORT_COLUMNS, readL0Export } from "@/lib/observatory/l0-export";
 import { csvLines } from "@/lib/util/csv-write";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
+import { acquireExportSlot, exportBusyResponse, rejectUnknownQuery } from "@/lib/api/export-guard";
 
 /**
  * GET /api/v1/observatory/l0/export.csv — 出品ごとの最新の L0 公開判定（2026-09-29 監査 5 周目・データ記者の立場）。
@@ -26,6 +27,11 @@ export async function GET(request: NextRequest) {
     const status = limited.unavailable ? 503 : 429;
     return NextResponse.json({ error: limited.unavailable ? "temporarily_unavailable" : "rate_limited" }, { status, headers: perCaller });
   }
+  // 2026-09-29 監査 6 周目: クエリは受け取らない（`?cb=<乱数>` で CDN を迂回させない）。DB を読むのは export 全体で 1 本。
+  const badQuery = rejectUnknownQuery(request.nextUrl.searchParams, [], perCaller);
+  if (badQuery) return badQuery;
+  const slot = await acquireExportSlot();
+  if (!slot.ok) return exportBusyResponse(slot, perCaller);
   try {
     const read = await readL0Export();
     if (!read) return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
@@ -47,5 +53,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     logServerErrorSafe("observatory_l0_export", error);
     return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
+  } finally {
+    await slot.release();
   }
 }

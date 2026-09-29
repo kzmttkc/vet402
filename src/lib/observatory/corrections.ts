@@ -218,10 +218,39 @@ export function decodeCorrectionCursor(raw: string): CorrectionCursor | null {
   if (bar <= 0) return null;
   const createdAt = text.slice(0, bar);
   const id = text.slice(bar + 1);
-  if (!TIMESTAMP_SHAPE.test(createdAt) || !UUID_SHAPE.test(id) || Number.isNaN(Date.parse(createdAt.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00")))) {
+  if (!TIMESTAMP_SHAPE.test(createdAt) || !UUID_SHAPE.test(id) || !isRealTimestamp(createdAt)) {
     return null;
   }
   return { createdAt, id };
+}
+
+/**
+ * 暦に実在する時刻か（2026-09-29 監査 6 周目・低）。形だけ見ると `2026-02-30` や `24:00:00` が通り、Postgres の
+ * `::timestamptz` が例外を投げて 503 になっていた（Date.parse は 2 月 30 日を 3 月 2 日に繰り上げて通す）。
+ * 各欄を UTC の Date に組み立てて、読み戻した値が同じか（往復）で比べる。オフセットは Postgres が受ける ±15:59 まで。
+ */
+function isRealTimestamp(text: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?(?:Z|([+-])(\d{2})(?::?(\d{2}))?)$/.exec(text);
+  if (!m) return false;
+  const [y, mo, d, h, mi, sec] = [m[1], m[2], m[3], m[4], m[5], m[6]].map(Number);
+  const back = new Date(Date.UTC(y, mo - 1, d, h, mi, sec));
+  if (
+    y < 1 ||
+    back.getUTCFullYear() !== y ||
+    back.getUTCMonth() !== mo - 1 ||
+    back.getUTCDate() !== d ||
+    back.getUTCHours() !== h ||
+    back.getUTCMinutes() !== mi ||
+    back.getUTCSeconds() !== sec
+  ) {
+    return false;
+  }
+  if (m[7] !== undefined) {
+    const oh = Number(m[8]);
+    const om = m[9] === undefined ? 0 : Number(m[9]);
+    if (oh > 15 || om > 59) return false;
+  }
+  return true;
 }
 
 /**

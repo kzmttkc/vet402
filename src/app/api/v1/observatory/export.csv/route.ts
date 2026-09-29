@@ -9,6 +9,8 @@ import { requestBodySha256Sql, requestBodyKindSql } from "@/lib/observatory/requ
 import { requestQuerySha256Sql, requestQueryKindSql } from "@/lib/observatory/request-query";
 import { settlementSourceSql } from "@/lib/observatory/settlement-source";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
+import { csvCell } from "@/lib/util/csv-write";
+import { acquireExportSlot, exportBusyResponse, rejectUnknownQuery } from "@/lib/api/export-guard";
 
 /**
  * GET /api/v1/observatory/export.csv?days=90 — 購入台帳のCSVエクスポート
@@ -47,6 +49,11 @@ import { logServerErrorSafe } from "@/lib/util/log-safe";
  *
  * 2026-09-29（監査 5 周目・データ記者）: さらに末尾に 1 列。既存の 17 列は変えていない。
  *   purchase_id           購入の id（UUID）。訂正ログ（/api/v1/observatory/corrections）の subject_id と結ぶ鍵。
+ *
+ * 2026-09-29（監査 6 周目）: クエリは `days` だけ（知らない名前・重複は 400——`?cb=<乱数>` で CDN を迂回させない）。
+ * days は 10 進の整数だけ（`90.5`・`1e2` は 400）。1..366 の外と先頭の 0 は正規の値へ 308 で送る（キャッシュのキーを
+ * 正規の 366 通り＋無指定に絞る）。DB を読むのは export 全体で同時に 1 本（export-guard.ts）。セルは csv-write.ts の
+ * csvCell（`=` `+` `-` `@`・タブ・CR で始まる値に `'` を付ける）。
  */
 
 const RL_LIMIT = 6;
@@ -54,12 +61,6 @@ const RL_WINDOW_MS = 60_000;
 const MAX_ROWS = 50_000;
 
 const CSV_COLUMNS = EXPORT_CSV_COLUMNS;
-
-function csvCell(v: unknown): string {
-  if (v === null || v === undefined) return "";
-  const s = String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
 
 // 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
 export const dynamic = "force-dynamic";
@@ -72,18 +73,26 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: perCaller });
   }
 
+  const badQuery = rejectUnknownQuery(request.nextUrl.searchParams, ["days"], perCaller);
+  if (badQuery) return badQuery;
   const daysParam = request.nextUrl.searchParams.get("days");
-  const daysRaw = daysParam === null ? 90 : Number(daysParam);
-  if (!Number.isFinite(daysRaw)) {
+  if (daysParam !== null && !/^[0-9]{1,9}$/.test(daysParam)) {
     return NextResponse.json({ error: "invalid_days" }, { status: 400, headers: perCaller });
   }
-  const days = Math.min(Math.max(Math.trunc(daysRaw), 1), 366);
+  const days = daysParam === null ? 90 : Math.min(Math.max(Number(daysParam), 1), 366);
+  if (daysParam !== null && daysParam !== String(days)) {
+    const canonical = new URL(request.nextUrl.toString());
+    canonical.search = `?days=${days}`;
+    return NextResponse.redirect(canonical, { status: 308, headers: perCaller });
+  }
 
   const db = getDb();
   if (!db) {
     return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
   }
 
+  const slot = await acquireExportSlot();
+  if (!slot.ok) return exportBusyResponse(slot, perCaller);
   try {
     const raw = await db.execute(sql`
       SELECT to_char(pu.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS attempted_at,
@@ -138,5 +147,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     logServerErrorSafe("observatory_export", error);
     return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
+  } finally {
+    await slot.release();
   }
 }

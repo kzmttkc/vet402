@@ -18,6 +18,7 @@ import { getDb } from "@/lib/db/client";
 import { SETTLEMENT_DAY, UTC_TODAY, withDailyFallback } from "@/lib/settlements/rollup";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
 import { RULE_CHANGE_PRIORITY_PER_HOST } from "./l0-rule-change";
+import { KEYED_CALLER_HASH_PREFIX } from "@/lib/decision/lookup-caller";
 
 export type CoverageTier = "C0" | "C1" | "C2" | "C3" | "C4";
 
@@ -25,7 +26,10 @@ export type TierSignals = {
   listedWithin30d: boolean;
   settledWithin30d: boolean;
   attributedSettlements: number;
-  lookups7d: number;
+  /** 直近 7 日に問い合わせた別々の鍵の数（鍵なしは数えない・lookup-caller.ts）。 */
+  lookupCallers7d: number;
+  /** 直近 7 日のうち、鍵ありの問い合わせがあった別々の UTC 日の数。 */
+  lookupDays7d: number;
   hasDeclaration: boolean;
   reverifyRequested: boolean;
   /**
@@ -35,7 +39,13 @@ export type TierSignals = {
   pathTemplate?: boolean;
 };
 
-export const LOOKUPS_C2_THRESHOLD = 5;
+/**
+ * 「問い合わせ多」で C2 に上げる条件（2026-09-29 監査 6 周目・中）: 直近 7 日に**別々の鍵 3 以上** かつ
+ * **別々の UTC 日 2 以上**。以前は呼び手 × 日の行が 5（1 つの IP から 5 日で届き、鍵なしは別サイトの `<img>` で
+ * 閲覧者の IP を借りられた）。鍵なしの問い合わせは数えない（lookup-caller.ts lookupCallerMaterial）。
+ */
+export const LOOKUP_CALLERS_C2_THRESHOLD = 3;
+export const LOOKUP_DAYS_C2_THRESHOLD = 2;
 
 /**
  * decision_lookups.day（UTC の 'YYYY-MM-DD'・decide.ts が JS の UTC 日で書く）と比べる「7 日前の UTC 日」。
@@ -48,7 +58,9 @@ export const UTC_DAY_MINUS_7: SQL = sql`to_char(${UTC_TODAY} - 7, 'YYYY-MM-DD')`
 export function tierOf(s: TierSignals): CoverageTier {
   if (s.reverifyRequested) return "C4";
   if (s.pathTemplate) return "C0";
-  const c2 = s.attributedSettlements > 0 || s.lookups7d >= LOOKUPS_C2_THRESHOLD;
+  const c2 =
+    s.attributedSettlements > 0 ||
+    (s.lookupCallers7d >= LOOKUP_CALLERS_C2_THRESHOLD && s.lookupDays7d >= LOOKUP_DAYS_C2_THRESHOLD);
   if (c2 && s.hasDeclaration) return "C3";
   if (c2) return "C2";
   if (s.listedWithin30d || s.settledWithin30d) return "C1";
@@ -108,9 +120,19 @@ export function attributedWithinWindowSql(daily = true): SQL {
 }
 
 /**
+ * endpoint e の直近 7 日の鍵ありの問い合わせ（decision_lookup_callers の `k1:` の行）: 別々の鍵の数 callers と
+ * 別々の日の数 days の 1 行（副問い合わせ・FROM に置く）。IP の行（鍵なし・監査 5 周目の形）は数えない。
+ */
+function lookupCallersSql(): SQL {
+  return sql`(SELECT count(DISTINCT lk.caller_hash) AS callers, count(DISTINCT lk.day) AS days
+    FROM decision_lookup_callers lk
+    WHERE lk.endpoint_id = e.id AND lk.day > (current_date - 7)::text AND lk.caller_hash LIKE ${`${KEYED_CALLER_HASH_PREFIX}%`})`;
+}
+
+/**
  * L0 候補の WHERE 句（x402_endpoints e）。
  *   c1: active かつ（30 日以内に listed ∨ 30 日以内に決済あり）
- *   c2: 決済帰属（confirmed/probable）あり ∨ 7 日で lookup ≥ 閾値
+ *   c2: 決済帰属（confirmed/probable）あり ∨ 7 日で別々の鍵 ≥ 3 かつ別々の日 ≥ 2（lookupCallersSql）
  * どちらもパステンプレート URL（path-template.ts）を除く——tierOf の pathTemplate と同じ。
  * 直近の probe が古い順に並べるのは呼び手（probe-runner）。
  */
@@ -118,8 +140,9 @@ export function l0TierWhere(tier: "c1" | "c2", daily = true): SQL {
   if (tier === "c1") {
     return sql`e.status = 'active' AND ${notPathTemplateSql()} AND (e.last_seen_at > now() - interval '30 days' OR ${settledWithinWindowSql(daily)})`;
   }
-  const lookups = sql`coalesce((
-    SELECT sum(n) FROM decision_lookups d WHERE d.endpoint_id = e.id AND d.day > ${UTC_DAY_MINUS_7}), 0) >= ${LOOKUPS_C2_THRESHOLD}`;
+  const lookups = sql`EXISTS (
+    SELECT 1 FROM ${lookupCallersSql()} lc
+    WHERE lc.callers >= ${LOOKUP_CALLERS_C2_THRESHOLD} AND lc.days >= ${LOOKUP_DAYS_C2_THRESHOLD})`;
   return sql`e.status = 'active' AND ${notPathTemplateSql()} AND (${attributedWithinWindowSql(daily)} OR ${lookups})`;
 }
 
@@ -181,7 +204,8 @@ type TierSignalRow = {
   listed_30d: boolean;
   settled_30d: boolean;
   attributed: number | string;
-  lookups7d: number | string;
+  lookup_callers7d: number | string;
+  lookup_days7d: number | string;
   has_declaration: boolean;
   reverify_requested: boolean;
 };
@@ -210,8 +234,8 @@ export async function loadCoverageTiers(endpointIds: readonly string[]): Promise
            (e.last_seen_at > now() - interval '30 days') AS listed_30d,
            ${settledWithinWindowSql(daily)} AS settled_30d,
            ${attributedCount(daily)} AS attributed,
-           coalesce((SELECT sum(n)::int FROM decision_lookups d
-               WHERE d.endpoint_id = e.id AND d.day > ${UTC_DAY_MINUS_7}), 0) AS lookups7d,
+           (SELECT lc.callers::int FROM ${lookupCallersSql()} lc) AS lookup_callers7d,
+           (SELECT lc.days::int FROM ${lookupCallersSql()} lc) AS lookup_days7d,
            (e.declared_schema IS NOT NULL) AS has_declaration,
            EXISTS (SELECT 1 FROM disputes d WHERE d.endpoint_id = e.id AND d.status = 'open') AS reverify_requested
     FROM x402_endpoints e
@@ -229,7 +253,8 @@ export async function loadCoverageTiers(endpointIds: readonly string[]): Promise
         listedWithin30d: r.listed_30d === true,
         settledWithin30d: r.settled_30d === true,
         attributedSettlements: Number(r.attributed ?? 0),
-        lookups7d: Number(r.lookups7d ?? 0),
+        lookupCallers7d: Number(r.lookup_callers7d ?? 0),
+        lookupDays7d: Number(r.lookup_days7d ?? 0),
         hasDeclaration: r.has_declaration === true,
         reverifyRequested: r.reverify_requested === true,
         pathTemplate: isPathTemplate(String(r.resource_url ?? "")),

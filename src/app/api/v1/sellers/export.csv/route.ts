@@ -6,6 +6,7 @@ import { SELLER_EXPORT_COLUMN_NOTES, SELLER_EXPORT_COLUMNS } from "@/lib/sellers
 import { readSellerExport } from "@/lib/sellers/reader";
 import { csvLines } from "@/lib/util/csv-write";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
+import { acquireExportSlot, exportBusyResponse, rejectUnknownQuery } from "@/lib/api/export-guard";
 
 /**
  * GET /api/v1/sellers/export.csv — /sellers の区分の元データ（2026-09-29 監査 5 周目・データ記者の立場）。
@@ -32,8 +33,13 @@ export async function GET(request: NextRequest) {
     const status = limited.unavailable ? 503 : 429;
     return NextResponse.json({ error: limited.unavailable ? "temporarily_unavailable" : "rate_limited" }, { status, headers: perCaller });
   }
+  // 2026-09-29 監査 6 周目: クエリは受け取らない（`?cb=<乱数>` で CDN を迂回させない）。DB を読むのは export 全体で 1 本。
+  const badQuery = rejectUnknownQuery(request.nextUrl.searchParams, [], perCaller);
+  if (badQuery) return badQuery;
   const db = getDb();
   if (!db) return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
+  const slot = await acquireExportSlot();
+  if (!slot.ok) return exportBusyResponse(slot, perCaller);
   try {
     const { fetchedAt, rows } = await readSellerExport(db);
     return new NextResponse(csvLines(SELLER_EXPORT_COLUMNS, rows), {
@@ -55,5 +61,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     logServerErrorSafe("sellers_export", error);
     return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
+  } finally {
+    await slot.release();
   }
 }

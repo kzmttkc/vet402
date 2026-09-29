@@ -11,7 +11,6 @@ import { SHA256_HEX_RE, parsePartyId, payeeId as toPartyId } from "@/lib/ids/can
 import { getResource } from "@/lib/resolve/lookup";
 import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
-import { getClientIp } from "@/lib/api/client-ip";
 import { lookupCallerMaterial } from "@/lib/decision/lookup-caller";
 
 // §9.1: GET /api/v1/resources/{resource_id}/decision?role=payer|payee&caller_dialect=v1|v2
@@ -155,8 +154,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const list = await lookupManualList(apiKeyId, listSubject && listSubject.startsWith("0x") ? listSubject : null);
     const operatorBlacklist = list === "blacklist";
 
-    // 2026-09-29 監査 5 周目: 問い合わせは呼び手（鍵 id・鍵なしは IP の /64）× endpoint × UTC 日で 1 回だけ数える。
-    const callerMaterial = lookupCallerMaterial({ apiKeyId, ip: caller.kind === "keyless" ? getClientIp(request) : null });
+    // 2026-09-29 監査 5 周目: 問い合わせは呼び手 × endpoint × UTC 日で 1 回だけ数える。6 周目: 数えるのは鍵ありの
+    // 呼び手だけ・別サイトから（Sec-Fetch-Site: cross-site）と売り手頁の自動の呼び出しは数えない（lookup-caller.ts）。
+    const callerMaterial = lookupCallerMaterial({ apiKeyId, headers: request.headers });
     const result =
       roleRaw === "payer"
         ? await decide({ role: "payer", observatoryId: ref.observatory_id, callerDialect: dialectRaw ?? undefined, allowWithoutL1, operatorBlacklist, callerMaterial })

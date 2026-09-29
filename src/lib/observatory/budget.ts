@@ -76,6 +76,30 @@ export function sellerDailyCapUnits(): bigint {
   return BigInt(Math.round(usd * 1_000_000));
 }
 
+/**
+ * 登録ドメイン（eTLD+1・registered-domain.ts）ごとの日次上限（2026-09-29 監査 6 周目・高・お金）。受取先・ホストの
+ * $2 と**並べて**（どれか 1 つでも届けば断る）reserveSpend の同じ 1 文で数える。
+ *
+ * 攻撃の形: 受取先ごと・ホストごとの $2 は、サブドメインを増やし payTo を分ければ回避できた
+ * （a1.evil.com・a2.evil.com … に別々の payTo で $1 の出品を載せる）。共有ドメイン（workers.dev・vercel.app …）は
+ * 1 つ下（kadopi.workers.dev）が持ち主の単位。
+ *
+ * 環境変数 L1_DOMAIN_DAILY_CAP_USD で変えられる（0 で誰にも払わない・上限は日次 $25）。壊れた値は既定へ倒す。
+ */
+export const DOMAIN_DAILY_CAP_USD_DEFAULT = 3;
+
+/** 登録ドメインごとの日次上限（USDC 基本単位）。壊れた値は既定へ倒し、共有の日次上限で頭打ち。 */
+export function domainDailyCapUnits(): bigint {
+  const raw = process.env.L1_DOMAIN_DAILY_CAP_USD;
+  let usd = DOMAIN_DAILY_CAP_USD_DEFAULT;
+  if (raw !== undefined && raw.trim() !== "") {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 0) usd = n;
+  }
+  usd = Math.min(usd, DAILY_BUDGET_USD);
+  return BigInt(Math.round(usd * 1_000_000));
+}
+
 /** 別枠を持つチェーン。Base は持たない（共有 $25 だけ）。 */
 export type CappedChain = "solana" | "arc" | "tempo" | "xrpl";
 

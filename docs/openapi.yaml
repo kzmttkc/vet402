@@ -959,8 +959,18 @@ paths:
         rows are the ledger facts (attempted_at, resource_key, network,
         status, amounts, tx_hash, delivery figures). Excludes vet402-side
         non-events (budget_denied / halted / request_error / in_flight). `days`
-        saturates to 1..366; output truncates at 50,000 rows and says so in
-        the `x-vet402-truncated` header. IP-throttled to 6/min.
+        is a decimal integer; a value outside 1..366 or with leading zeros is
+        answered with a 308 to the canonical `?days=` (since 2026-09-29;
+        `90.5` or `1e2` are 400 `invalid_days`). Any other query parameter,
+        or `days` given twice, is 400 `invalid_query` (since 2026-09-29).
+        Output truncates at 50,000 rows and says so in
+        the `x-vet402-truncated` header. IP-throttled to 6/min. The three CSV
+        exports read the store one at a time across all callers; a request
+        that finds another export running gets 503 `export_busy` with
+        `Retry-After` (since 2026-09-29). A cell whose text starts with `=`,
+        `+`, `-`, `@`, a tab or a carriage return is written with a leading
+        `'` so a spreadsheet reads it as text (numbers are left as they are;
+        since 2026-09-29; the same holds for the other two exports).
 
         Columns, in order (columns are only ever appended; existing names,
         order and meaning do not change): `attempted_at`, `resource_key`,
@@ -1071,12 +1081,14 @@ paths:
           description: CSV, oldest attempt first
           content:
             text/csv: {}
+        "308":
+          description: Redirect to the canonical `?days=` (out of 1..366 or leading zeros)
         "400":
           $ref: "#/components/responses/BadRequest"
         "429":
           description: Rate limited
         "503":
-          description: Observatory store unavailable
+          description: Observatory store unavailable, or another export is running (`export_busy`, with `Retry-After`)
 
   /api/v1/observatory/l0/export.csv:
     get:
@@ -1106,7 +1118,9 @@ paths:
         `latest_probe_older_than_7d`. The definitions also travel in the
         `x-vet402-column-notes` header; the retrieval time in
         `x-vet402-retrieved-at`. IP-throttled to 6/min; CDN-cached for up to
-        15 minutes.
+        15 minutes. Takes no query parameters: any is 400 `invalid_query`
+        (since 2026-09-29). Reads the store one export at a time across all
+        callers (503 `export_busy` with `Retry-After`).
       security: []
       responses:
         "200":
@@ -1114,10 +1128,12 @@ paths:
           content:
             text/csv:
               schema: { type: string }
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "429":
           description: Rate limited
         "503":
-          description: Observatory store unavailable
+          description: Observatory store unavailable, or another export is running (`export_busy`, with `Retry-After`)
 
   /api/v1/sellers/export.csv:
     get:
@@ -1149,7 +1165,9 @@ paths:
         rows in vet402-side states such as `halted` or `request_error` do
         not). The definitions also travel in the `x-vet402-column-notes`
         header; the retrieval time in `x-vet402-retrieved-at`. IP-throttled to
-        6/min; CDN-cached for up to 15 minutes.
+        6/min; CDN-cached for up to 15 minutes. Takes no query parameters: any
+        is 400 `invalid_query` (since 2026-09-29). Reads the store one export
+        at a time across all callers (503 `export_busy` with `Retry-After`).
       security: []
       responses:
         "200":
@@ -1157,10 +1175,12 @@ paths:
           content:
             text/csv:
               schema: { type: string }
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "429":
           description: Rate limited
         "503":
-          description: Store unavailable
+          description: Store unavailable, or another export is running (`export_busy`, with `Retry-After`)
 
   /api/v1/graph/payto/{address}:
     get:
@@ -4895,6 +4915,8 @@ components:
             - waitlist_unavailable
             # --- observatory reads ---
             - invalid_days
+            # 2026-09-29 監査 6 周目: CSV export は全体で同時に 1 本（503・Retry-After）。
+            - export_busy
             - observatory_unavailable
             - endpoint_not_found
             - frame_unavailable

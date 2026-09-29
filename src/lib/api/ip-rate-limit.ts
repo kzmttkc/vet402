@@ -3,6 +3,7 @@ import { isProduction } from "@/lib/config/env";
 import { getDb } from "@/lib/db/client";
 import { ipRateLimits } from "@/lib/db/schema";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
+import { ipCounterKey } from "@/lib/decision/lookup-caller";
 
 type Bucket = { count: number; resetAt: number };
 
@@ -48,11 +49,28 @@ function unavailableResult(limit: number): IpRateLimitResult {
   };
 }
 
+/**
+ * 枠の鍵の IP 部分を数える単位に丸める（2026-09-29 監査 6 周目・低）。鍵は呼び手が `用途:${ip}` で作る。
+ * IPv6 は /64（1 回線に /64 が配られ、下位 64 bit は利用者が自由に回せる——丸めないと 1 人が無数の枠を持つ）、
+ * IPv4 射影（::ffff:1.2.3.4）は IPv4。規則は /decision の問い合わせの数え方（lookup-caller.ts ipCounterKey）と共用。
+ * IP でない部分（日付・ウォレット・agent id）と `:` の無い鍵はそのまま。
+ */
+export function ipBucketKey(key: string): string {
+  const i = key.indexOf(":");
+  if (i <= 0) return key;
+  const rest = key.slice(i + 1);
+  if (!rest.includes(":")) return key;
+  const rounded = ipCounterKey(rest);
+  if (rounded.endsWith("::/64") || /^\d{1,3}(\.\d{1,3}){3}$/.test(rounded)) return `${key.slice(0, i)}:${rounded}`;
+  return key;
+}
+
 export async function consumeIpRateLimit(
-  key: string,
+  rawKey: string,
   limit: number,
   windowMs: number,
 ): Promise<IpRateLimitResult> {
+  const key = ipBucketKey(rawKey);
   const db = getDb();
   if (db) {
     // 2026-09-29 監査4周目（重要度・高）: `getDb()` は DATABASE_URL があれば常に値を返す。
@@ -171,7 +189,8 @@ function consumeMemoryIpRateLimit(
  * 返金、で「実購入が成立した時だけ計上」にする。窓が既に切り替わっていれば触らない
  * （新しい窓の他人の分を減らさない）。best-effort: 失敗しても投げない。
  */
-export async function refundIpRateLimit(key: string): Promise<void> {
+export async function refundIpRateLimit(rawKey: string): Promise<void> {
+  const key = ipBucketKey(rawKey);
   const db = getDb();
   if (db) {
     try {

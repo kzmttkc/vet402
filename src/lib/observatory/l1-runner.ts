@@ -37,7 +37,7 @@ import { readBodyCapped } from "@/lib/net/read-capped";
 import { UnsafeTargetError, createSafeFetchImpl, type SafeFetchCallOptions } from "@/lib/net/safe-fetch";
 import { redactForLog, redactedError } from "./redact";
 import { createDeadline } from "@/lib/util/deadline";
-import { CENSUS_PER_RUN, CHAIN_DAILY_CAPS, LANE_FLOOR_FETCH_MAX, LANE_FLOOR_MAX_PER_HOST, LANE_FLOOR_OVERSAMPLE, cappedChainFor, chainDailyCapUnits, checkL1Budget, isCensusEnabled, isL1Enabled, laneFloorPerRun, sellerDailyCapUnits, DAILY_BUDGET_USD, type CappedChain } from "./budget";
+import { CENSUS_PER_RUN, CHAIN_DAILY_CAPS, LANE_FLOOR_FETCH_MAX, LANE_FLOOR_MAX_PER_HOST, LANE_FLOOR_OVERSAMPLE, cappedChainFor, chainDailyCapUnits, checkL1Budget, domainDailyCapUnits, isCensusEnabled, isL1Enabled, laneFloorPerRun, sellerDailyCapUnits, DAILY_BUDGET_USD, type CappedChain } from "./budget";
 import { isSpendingHalted, type HaltVerdict } from "./kill-switch";
 import { addDerivedOperatorAddresses, isOperatorPayTo, operatorPayToDenylist } from "./operator";
 import { operatorExclusionPredicate } from "./operator-sql";
@@ -73,6 +73,7 @@ import { RLUSD_CURRENCY_HEX, RLUSD_ISSUER } from "./xrpl-constants";
 import { withDailyFallback } from "@/lib/settlements/rollup";
 import { l1TierWhere } from "./coverage";
 import { censusHostSql, RETEST_SELLERS_SQL } from "./retest-sellers-sql";
+import { registeredDomainOf, registeredDomainSql } from "./registered-domain";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
 import { declaredRequestBody, declaredRequestUrl, type RequestBodySource, type RequestQuerySource } from "./declared-input";
 import { requestBodyRecord } from "./request-body";
@@ -571,6 +572,7 @@ export function isL1PurchasableListing(candidate: { resourceUrl: string; payTo: 
  */
 function sellerCapExclusionSql(): SQL {
   const cap = String(sellerDailyCapUnits());
+  const domainCap = String(domainDailyCapUnits());
   const day = utcDayStart();
   return sql`AND ${payToNormSql(sql`e.pay_to`)} NOT IN (
         SELECT ${payToNormSql(sql`cp_pu.pay_to`)} FROM x402_l1_purchases cp_pu
@@ -579,12 +581,21 @@ function sellerCapExclusionSql(): SQL {
       AND ${censusHostSql(sql`e.resource_key`)} NOT IN (
         SELECT ${censusHostSql(sql`cp_e.resource_key`)} FROM x402_l1_purchases cp_hu JOIN x402_endpoints cp_e ON cp_e.id = cp_hu.endpoint_id
         WHERE cp_hu.attempted_at >= ${day}
-        GROUP BY 1 HAVING coalesce(sum(cp_hu.spent_units::numeric), 0) >= ${cap}::numeric)`;
+        GROUP BY 1 HAVING coalesce(sum(cp_hu.spent_units::numeric), 0) >= ${cap}::numeric)
+      AND ${registeredDomainSql(censusHostSql(sql`e.resource_key`))} NOT IN (
+        SELECT ${registeredDomainSql(censusHostSql(sql`cp_d.resource_key`))} FROM x402_l1_purchases cp_du JOIN x402_endpoints cp_d ON cp_d.id = cp_du.endpoint_id
+        WHERE cp_du.attempted_at >= ${day}
+        GROUP BY 1 HAVING coalesce(sum(cp_du.spent_units::numeric), 0) >= ${domainCap}::numeric)`;
 }
 
 /** census の売り手の単位（SQL の censusHostSql と同じ規則: 小文字・末尾の `:ポート` を落とす）。 */
 export function censusHostOf(host: string): string {
   return host.toLowerCase().replace(/:[0-9]+$/, "");
+}
+
+/** 売り手の登録ドメイン（registered-domain.ts・SQL の registeredDomainSql(censusHostSql(...)) と同じ規則）。 */
+export function sellerDomainOf(resourceUrl: string): string {
+  return registeredDomainOf(censusHostOf(laneHostOf(resourceUrl)));
 }
 
 /** census 系の候補の出どころ（raw_response_meta.selection の値）。 */
@@ -618,10 +629,11 @@ type Reservation =
         | "first_purchase_quota"
         /**
          * 売り手ごとの日次上限（budget.ts SELLER_DAILY_CAP_USD・2026-09-29 監査 5 周目）に届かなかった。
-         * `scope` はどちらの単位で届いたか（両方なら payto）。
+         * `scope` はどの単位で届いたか（複数なら payto → host → domain の順で先のもの）。
+         * domain は登録ドメイン（eTLD+1）ごとの上限（DOMAIN_DAILY_CAP_USD・2026-09-29 監査 6 周目）。
          */
         | "seller_daily_cap";
-      scope?: "payto" | "host";
+      scope?: "payto" | "host" | "domain";
     };
 
 /**
@@ -670,6 +682,9 @@ async function reserveSpend(input: {
   // ホストは census と同じ単位（resource_key の最初の `/` の前・ポート無視・小文字）。status は見ない
   // （day CTE と同じ——予約した瞬間に数える。署名前に戻した予約は spent_units が 0 なので数に入らない）。
   const sellerCap = String(sellerDailyCapUnits());
+  // 登録ドメイン（eTLD+1）ごとの上限（2026-09-29 監査 6 周目・高）: サブドメインと payTo を分けて受取先・ホストの
+  // 上限を回避する形を、持ち主の単位で締める。単位は registered-domain.ts（候補 SQL と同じ式）。
+  const domainCap = String(domainDailyCapUnits());
   const payToKey = normalizedPayTo(payTo);
   const raw = await db.execute(sql`
     WITH day AS (
@@ -704,7 +719,11 @@ async function reserveSpend(input: {
         coalesce(sum(sp.spent_units::numeric) FILTER (
           WHERE ${censusHostSql(sql`se.resource_key`)} = (
             SELECT ${censusHostSql(sql`xe.resource_key`)} FROM x402_endpoints xe WHERE xe.id = ${endpointId}::uuid)
-        ), 0) AS host_spent
+        ), 0) AS host_spent,
+        coalesce(sum(sp.spent_units::numeric) FILTER (
+          WHERE ${registeredDomainSql(censusHostSql(sql`se.resource_key`))} = (
+            SELECT ${registeredDomainSql(censusHostSql(sql`xd.resource_key`))} FROM x402_endpoints xd WHERE xd.id = ${endpointId}::uuid)
+        ), 0) AS domain_spent
       FROM x402_l1_purchases sp JOIN x402_endpoints se ON se.id = sp.endpoint_id
       WHERE sp.attempted_at >= ${utcDayStart()}
     ), ins AS (
@@ -717,6 +736,7 @@ async function reserveSpend(input: {
         AND day.spent + ${amountUnits}::numeric <= ${String(DAILY_BUDGET_UNITS)}::numeric
         AND seller_day.payto_spent + ${amountUnits}::numeric <= ${sellerCap}::numeric
         AND seller_day.host_spent + ${amountUnits}::numeric <= ${sellerCap}::numeric
+        AND seller_day.domain_spent + ${amountUnits}::numeric <= ${domainCap}::numeric
         ${capUnits === null ? sql`` : sql`AND chain_day.spent + ${amountUnits}::numeric <= ${capUnits}::numeric`}
         ${firstQuotaApplies ? sql`AND (NOT first_day.is_first OR first_day.n < ${FIRST_PURCHASE_DAILY_QUOTA})` : sql``}
       RETURNING id
@@ -726,7 +746,8 @@ async function reserveSpend(input: {
            (SELECT is_first FROM first_day) AS is_first,
            (SELECT n FROM first_day)::text AS first_day_count,
            (SELECT payto_spent FROM seller_day)::text AS payto_spent,
-           (SELECT host_spent FROM seller_day)::text AS host_spent
+           (SELECT host_spent FROM seller_day)::text AS host_spent,
+           (SELECT domain_spent FROM seller_day)::text AS domain_spent
   `);
   const row = rowsOf(raw)[0];
   // No row back at all means the statement did not run as written — refuse to
@@ -755,6 +776,10 @@ async function reserveSpend(input: {
     const hostSpent = read(row.host_spent);
     if (paytoSpent === null || paytoSpent + amount > cap) return { ok: false, reason: "seller_daily_cap", scope: "payto" };
     if (hostSpent === null || hostSpent + amount > cap) return { ok: false, reason: "seller_daily_cap", scope: "host" };
+    const domainSpent = read(row.domain_spent);
+    if (domainSpent === null || domainSpent + amount > BigInt(domainCap)) {
+      return { ok: false, reason: "seller_daily_cap", scope: "domain" };
+    }
   }
   if (capChain !== null) {
     const chainSpent = typeof row.chain_spent === "string" ? BigInt(row.chain_spent.split(".")[0]) : null;
@@ -1518,6 +1543,7 @@ export async function runL1Batch(
   // 同じ売り手の候補には 402 も取りに行かない（行も書かない）。締めるのは reserveSpend で、ここは無駄を省くだけ。
   const cappedPayTos = new Set<string>();
   const cappedHosts = new Set<string>();
+  const cappedDomains = new Set<string>();
 
   for (const [index, candidate] of candidates.entries()) {
     // Start nothing we cannot finish inside maxDuration. Purchases already in
@@ -1557,7 +1583,8 @@ export async function runL1Batch(
     }
     if (
       (candidate.payTo !== null && cappedPayTos.has(normalizedPayTo(candidate.payTo))) ||
-      cappedHosts.has(censusHostOf(laneHostOf(candidate.resourceUrl)))
+      cappedHosts.has(censusHostOf(laneHostOf(candidate.resourceUrl))) ||
+      cappedDomains.has(sellerDomainOf(candidate.resourceUrl))
     ) {
       summary.skipped++;
       summary.sellerCapped++;
@@ -1629,7 +1656,8 @@ export async function runL1Batch(
         if (outcome.sellerCap) {
           // 受取先で届いたなら受取先を、ホストで届いたならホストを閉じる（片方で届いた売り手の別の単位は開けておく）。
           if (outcome.sellerCap.scope === "payto") cappedPayTos.add(outcome.sellerCap.payTo);
-          else cappedHosts.add(outcome.sellerCap.host);
+          else if (outcome.sellerCap.scope === "host") cappedHosts.add(outcome.sellerCap.host);
+          else cappedDomains.add(outcome.sellerCap.domain);
         }
       } else if (outcome.kind === "budget_denied") {
         summary.budgetDenied++;
@@ -1908,7 +1936,7 @@ async function purchaseOne(input: {
 }): Promise<{
   kind: "attempted" | "skipped" | "budget_denied" | "halted" | "payer_unfunded" | "xrpl_fee_over_cap" | "xrpl_lane_unavailable" | "seller_capped";
   /** kind === "seller_capped" のとき、どちらの単位で届いたかと、その売り手（受取先・ホスト）。 */
-  sellerCap?: { scope: "payto" | "host"; payTo: string; host: string };
+  sellerCap?: { scope: "payto" | "host" | "domain"; payTo: string; host: string; domain: string };
   settled: boolean;
   spent: bigint;
   /** 台帳に書いた status（attempted のときのみ）——summary の集計はこれを見る。 */
@@ -2320,6 +2348,7 @@ async function purchaseOne(input: {
           scope: reservation.scope ?? "payto",
           payTo: normalizedPayTo(accept.payTo),
           host: censusHostOf(laneHostOf(candidate.resourceUrl)),
+          domain: sellerDomainOf(candidate.resourceUrl),
         },
       };
     }

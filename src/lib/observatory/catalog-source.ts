@@ -75,6 +75,23 @@ export function normalizeResourceKey(raw: string): string {
 }
 
 /**
+ * カタログの取り込みで残してよい resource か（2026-09-29 監査 6 周目・中・CSV injection）。http(s) の URL として
+ * 読め、ホストがあり、空白・制御文字を含まないものだけ。`=HYPERLINK(...)` のような値は売り手が書いた文字列の
+ * まま export に出ていた（既存の行は export の csvCell が無害化する）。URL の構文で弾くので、先頭の `=` `+` `-` `@` は
+ * ここを通らない（URL は英字の scheme で始まる）。
+ */
+export function isImportableResourceUrl(raw: string): boolean {
+  if (raw === "" || /[\u0000-\u0020\u007f]/.test(raw)) return false;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return false;
+  }
+  return (url.protocol === "https:" || url.protocol === "http:") && url.hostname !== "";
+}
+
+/**
  * Strip NUL (U+0000) from every string in an arbitrary structure. Found live
  * 2026-08-14: one catalog item carried a NUL inside its declared schema;
  * Postgres rejects NUL in text/jsonb ("invalid byte sequence for encoding
@@ -252,6 +269,9 @@ export async function fetchFullCatalog(
     for (const raw of items) {
       const parsed = parseCatalogItem(raw);
       if (!parsed.resourceKey) continue;
+      // URL として読めない resource は取り込まない（監査 6 周目）。fetchedCount には数えたまま（complete の判定は
+      // 「API が返した件数を全部受け取ったか」で、残した件数ではない）。
+      if (!isImportableResourceUrl(parsed.resourceUrl)) continue;
       if (!byKey.has(parsed.resourceKey)) byKey.set(parsed.resourceKey, parsed);
     }
 
