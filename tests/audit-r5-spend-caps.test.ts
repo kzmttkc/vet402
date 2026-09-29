@@ -138,7 +138,7 @@ test("verified_terms: 配達を確かめた行 → 払った条件。EVM は小�
   assert.deepEqual(t, {
     purchase_id: "eip155:8453:0xabcd",
     pay_to: "0xabcd000000000000000000000000000000000001",
-    asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    asset: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
     amount: "10000",
     decimals: 6,
     network: "eip155:8453",
@@ -197,4 +197,11 @@ test("buildDecision: role=payer は verified_terms を載せ（省略は null）
     now,
   });
   assert.equal(payee.verified_terms, null);
+});
+
+test("verified_terms: XRPL は発行者が無いので返さない・0x の資産は小文字（2026-09-29 独立レビュー）", () => {
+  const base = { pay_to: "0xAbC0000000000000000000000000000000000001", amount_units: "1000", attempted_at: "2026-09-28T00:00:00Z", tx_hash: null };
+  assert.equal(verifiedTermsOf({ ...base, asset: "RLUSD", network: "xrpl:0", pay_to: "rXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" }), null);
+  const t = verifiedTermsOf({ ...base, asset: "0x20C0000000000000000000000000000000000000", network: "eip155:4217" });
+  assert.equal(t?.asset, "0x20c0000000000000000000000000000000000000");
 });

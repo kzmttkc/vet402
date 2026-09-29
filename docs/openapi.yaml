@@ -3570,7 +3570,8 @@ components:
             Since 2026-09-29. The terms vet402 actually paid on the last purchase
             whose delivery it confirmed (settled, 2xx, non-empty body — the
             facts.l1.n_delivered predicate), over the full history. Null for
-            role=payee and when nothing was ever delivered. Compare it with the
+            role=payee, when nothing was ever delivered, and on XRPL until the
+            issuer is recorded. 0x addresses are lowercase. Compare it with the
             402 you received before you pay: if the 402's payTo, asset, network
             or scheme differ from these, or its amount is higher than `amount`,
             do not pay — an ALLOW is the fact that these terms delivered, not a

@@ -513,12 +513,16 @@ export function verifiedTermsOf(r: Record<string, unknown> | null): VerifiedTerm
   const network = str(r.network);
   const at = toIsoUtc(str(r.attempted_at));
   if (!payTo || !asset || !amount || !/^[0-9]+$/.test(amount) || !network || !at) return null;
+  // 2026-09-29 独立レビュー: XRPL の資産は台帳に通貨コードしか無く発行者が入らないので、偽の RLUSD と
+  // 区別できない条件を「確かめた条件」として返さない（発行者を記録するまで null）。
+  if (/^xrpl:/i.test(toCaip2(network) ?? network)) return null;
   const mpp = r.is_mpp === true || r.is_mpp === "t" || r.is_mpp === "true";
   return {
     // facts.l1.last_purchase_id と同じ形（CAIP-2:tx）。tx の無い行は null。
     purchase_id: tx ? toPurchaseId(toCaip2(network) ?? network, tx) : null,
     pay_to: /^0x/i.test(payTo) ? payTo.toLowerCase() : payTo,
-    asset,
+    // Tempo 等の台帳は 0x の資産アドレスに大文字小文字が混じる。受取先と同じく小文字にそろえる。
+    asset: /^0x/i.test(asset) ? asset.toLowerCase() : asset,
     amount,
     decimals: 6,
     network: toCaip2(network) ?? network,
