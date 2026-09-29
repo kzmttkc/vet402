@@ -3664,7 +3664,7 @@ components:
         (l0_unverified_<cause>, <input>_unavailable). Meaning, effect on the
         verdict, what it means for the payer and whether the seller can fix
         it: /docs/api#reason-codes (same source, src/lib/decision/reason-codes.ts).
-      enum: [l0_pass, l0_fail, l0_unverified, l0_unverified_single_fail, l0_unverified_single_fail_unconfirmed, l1_delivered, l1_not_attempted, l1_stale, l1_inconclusive, l1_never_delivered, l1_paid_not_delivered, l1_latest_failed, l1_not_counted_vet402_side, l1_not_counted_held, l1_not_counted_no_charge, l1_not_counted_unproven, l1_not_counted_unconfirmed, l1_waived_by_operator, l2_conform, l2_undeclared, l2_mismatch, l2_mismatch_unexplained, offer_drifting, wash_dominated, dialect_mismatch, data_thin, operator_blacklist, sybil_high, retry_burst, thin_history, shared_funder, new_payer, erc8004_registered, history_ok]
+      enum: [l0_pass, l0_fail, l0_unverified, l0_unverified_single_fail, l0_unverified_single_fail_unconfirmed, l1_delivered, l1_not_attempted, l1_stale, l1_inconclusive, l1_never_delivered, l1_paid_not_delivered, l1_latest_failed, l1_empty_2xx_settlement_unknown, l1_not_counted_vet402_side, l1_not_counted_held, l1_not_counted_no_charge, l1_not_counted_unproven, l1_not_counted_unconfirmed, l1_waived_by_operator, l2_conform, l2_undeclared, l2_mismatch, l2_mismatch_unexplained, offer_drifting, wash_dominated, dialect_mismatch, data_thin, operator_blacklist, sybil_high, retry_burst, thin_history, shared_funder, new_payer, erc8004_registered, history_ok]
       x-vet402-patterns: ["^l0_unverified_[a-z0-9_]{1,40}$", "^(settlements|funder_index|erc8004)_unavailable$"]
 
     DecisionResult:
@@ -3707,7 +3707,14 @@ components:
             are left out with l1_not_counted_unproven (vet402 cannot show the
             failure was not its own; not sorted on /sellers) or
             l1_not_counted_unconfirmed (seller-side failure seen on one day so
-            far). l1_never_delivered — counted failures in the window and no
+            far). A paid attempt that got an empty 2xx and has no settlement
+            linked yet (no receipt, or a transfer awaiting on-chain
+            verification) is not known to have moved money: it is not counted
+            as a failure, but after the last delivery it adds
+            l1_empty_2xx_settlement_unknown and is a WARN, never an ALLOW, until
+            it settles (allow_without_l1 does not waive it); once a settlement
+            is linked it counts as l1_paid_not_delivered.
+            l1_never_delivered — counted failures in the window and no
             delivery — is a WARN. The other L1 words: l1_not_attempted
             (vet402 has never signed a paid attempt); l1_stale (signed
             attempts all older than the 30-day window, or the last delivery

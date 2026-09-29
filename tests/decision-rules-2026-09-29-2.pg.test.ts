@@ -193,5 +193,40 @@ if (!TEST_DB) {
       assert.ok(dp.reason_codes.includes("l1_latest_failed"));
       assert.ok(dp.reason_codes.includes("l1_paid_not_delivered"));
     });
+
+    await t.test("2026-09-29.3 独立レビュー 警告 2: 配達の後の空の 200・レシートなし → WARN・l1_empty_2xx_settlement_unknown。決済が結び付けば l1_paid_not_delivered", async () => {
+      const ep = await mkEndpoint();
+      await buy(ep.id, 5, 200, true);
+      const [emptyRow] = await db
+        .insert(schema.x402L1Purchases)
+        .values({
+          endpointId: ep.id,
+          status: "delivered_no_receipt",
+          httpStatusPaid: 200,
+          payloadNonEmpty: false,
+          txHash: null,
+          attemptedAt: daysAgo(1),
+          network: "eip155:8453",
+          spentUnits: "1000",
+          amountUnits: "1000",
+        })
+        .returning();
+      // /sellers（readRecordSides）はこの行を not sorted: no charge に置く。2026-09-29.3 のままでは落ちて ALLOW だった
+      const d = await decideFor(ep.id);
+      assert.equal(d.recommendation, "WARN", d.reason_codes.join(","));
+      assert.ok(d.reason_codes.includes("l1_empty_2xx_settlement_unknown"));
+      assert.ok(!d.reason_codes.includes("l1_paid_not_delivered"));
+      // 遅延回収と照合で決済が確かめられた（settled・tx あり）→ お金が動いた未配達として数え、未確定の語は消える
+      const { eq } = await import("drizzle-orm");
+      await db
+        .update(schema.x402L1Purchases)
+        .set({ status: "settled", txHash: `0x${(++txSeq).toString(16).padStart(64, "0")}` })
+        .where(eq(schema.x402L1Purchases.id, emptyRow.id));
+      const linked = await decideFor(ep.id);
+      assert.equal(linked.recommendation, "WARN");
+      assert.ok(linked.reason_codes.includes("l1_paid_not_delivered"));
+      assert.ok(!linked.reason_codes.includes("l1_empty_2xx_settlement_unknown"));
+      assert.equal(linked.l1_basis?.n_paid_undelivered_since_last_delivery, 1);
+    });
   });
 }

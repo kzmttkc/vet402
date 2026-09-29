@@ -86,7 +86,7 @@ test("weather.cyberwarex.com 型: お金の動いていない 502 ×3（/sellers
   assert.ok(d.reason_codes.includes("l1_inconclusive"), d.reason_codes.join(","));
   assert.ok(d.reason_codes.includes("l1_not_counted_unproven"));
   assert.ok(!d.reason_codes.includes("l1_never_delivered"));
-  assert.deepEqual(l1NotCountedOf(input).by, { vet402_side: 0, held: 0, no_charge: 0, unproven: 3, unconfirmed: 0 });
+  assert.deepEqual(l1NotCountedOf(input).by, { vet402_side: 0, held: 0, no_charge: 0, unproven: 3, unconfirmed: 0, settlement_unknown: 0 });
 });
 
 test("お金の動いていない失敗が /sellers で売り手の側（確定）でも、単独では BLOCK にしない（WARN・l1_never_delivered）", () => {
@@ -252,7 +252,7 @@ test("rules.ts（payer）が出しうる語は全部、表にある", () => {
     { ...SELLER_BASE.l2, status: "mismatch", missing_keys: [] },
     { ...SELLER_BASE.l2, status: "mismatch", missing_keys: ["a"] },
   ];
-  const nc = [undefined, { total: 3, by: { vet402_side: 1, held: 1, no_charge: 1, unproven: 1, unconfirmed: 1 } }];
+  const nc = [undefined, { total: 3, by: { vet402_side: 1, held: 1, no_charge: 1, unproven: 1, unconfirmed: 1, settlement_unknown: 1 } }];
   for (const l0 of l0s)
     for (const cause of causes)
       for (const l1 of l1s)

@@ -138,6 +138,15 @@ export const REASON_CODES: readonly ReasonCodeDoc[] = [
     sellerCanFix: "yes",
   },
   {
+    code: "l1_empty_2xx_settlement_unknown",
+    role: "payer",
+    effect: "WARN",
+    meaning:
+      "After the last delivery in the window, a paid attempt got a 2xx with an empty body and vet402 has not yet linked a settlement to it (no receipt, or a transfer awaiting on-chain verification), so it is not known whether money moved.",
+    forPayer: "Not counted as a failure yet, and not an ALLOW until it is settled. If a settlement is linked, the attempt counts as l1_paid_not_delivered.",
+    sellerCanFix: "yes",
+  },
+  {
     code: "l1_not_counted_vet402_side",
     role: "payer",
     effect: "none",

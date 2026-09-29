@@ -53,10 +53,15 @@
 //         添えて WARN（BLOCK にしない）。x402.twit.sh/users/following は missing_keys: [] で BLOCK だった。vet402 は
 //         支払い付き応答の先頭 16,000 バイトしか読まないので、それより長い JSON は解析できず「不一致」に見える
 //         （l1-runner の readBodyCapped）。欠けたキーを記録した不一致だけが BLOCK の根拠。
+//     (5) 独立レビュー 警告 2: 空の 2xx で決済がまだ結び付いていない行（レシートの無い 200・払う側の残高不足の
+//         期間の空の 200・照合待ち）は、お金が動いたかどうか未確定。失敗には数えないが、最後の配達より後に 1 行でも
+//         あれば WARN（l1_empty_2xx_settlement_unknown）。確定するまで ALLOW に戻さない（allow_without_l1 でも免除
+//         しない）。BLOCK にするのは、遅延回収で決済が結び付いて l1_paid_not_delivered になったときだけ。
 //   BLOCK if l0 = fail ∨ (l0 = unverified ∧ ¬確かめられた single_fail) ∨ paid_undelivered_since_delivery ≥ 2
 //            ∨ (l2 = mismatch ∧ missing_keys ≠ ∅) ∨ wash_dominated ∨ operator_blacklist
 //   WARN  if 確かめられた L0 の 1 回 fail（掲載中・120h 以内・直前 pass）∨ L1 の証拠なし／古い（オプトイン無し）∨ 結論なし（l1_inconclusive）
 //            ∨ 未配達（conclusive ≥ 1）∨ paid_undelivered_since_delivery = 1 ∨ 最新の数えた試行が失敗
+//            ∨ settlement_unknown_since_delivery ≥ 1（空の 2xx・決済が未確定）
 //            ∨ (l2 = mismatch ∧ missing_keys = ∅) ∨ drifting ∨ thin ∨ 呼び手方言と不一致
 //   ALLOW if l0 = pass ∧ (n_delivered ≥ 1 ∨ L1 なし ALLOW をオプトイン) ∧ l2 ≠ mismatch ∧ ¬BLOCK ∧ ¬WARN
 //
@@ -69,7 +74,8 @@
 //     l1_never_delivered conclusive ≥ 1 ∧ n_delivered = 0（2026-09-29.3 から WARN。BLOCK は l1_paid_not_delivered ≥ 2 だけ）
 //     l1_delivered       n_delivered ≥ 1
 //   添える語（主語に加えて）: l1_paid_not_delivered（最後の配達より後の支払い済み・未配達 ≥ 1）、
-//     l1_latest_failed（配達はあるが、数えた最新の試行が失敗）、l1_stale（配達はあるが最新の配達が古い）
+//     l1_latest_failed（配達はあるが、数えた最新の試行が失敗）、l1_stale（配達はあるが最新の配達が古い）、
+//     l1_empty_2xx_settlement_unknown（最後の配達より後の、決済が未確定の空の 2xx ≥ 1）
 //
 // 仕様解釈（開示）: §8.3 は「WARN if l2 == undeclared」と「ALLOW if … l2 != mismatch」を
 // 同時に書く。宣言の無い店が本番の大多数であり、§9.1 の例は reason_codes に
@@ -96,6 +102,8 @@ export type L1NotCountedInput = {
     unproven?: number;
     /** 2026-09-29.3: お金が動いていない失敗で、売り手の側だが 1 日だけの行（/sellers の not sorted: one failure so far）。 */
     unconfirmed?: number;
+    /** 2026-09-29.3（独立レビュー 警告 2）: 空の 2xx で、お金が動いたかどうか未確定の行。 */
+    settlement_unknown?: number;
   };
 };
 
@@ -196,6 +204,11 @@ export type L1Timeline = {
   latest_counted: { at: string; delivered: boolean } | null;
   last_delivered_at: string | null;
   last_signed_attempt_at: string | null;
+  /**
+   * 2026-09-29.3（独立レビュー 警告 2）: 最後の配達より後（配達が無ければ窓の中の全部）の、空の 2xx で決済が
+   * 未確定の行（seller-facts.ts isSettlementUnknownRow）。1 以上なら WARN。省略時は l1NotCounted.by.settlement_unknown。
+   */
+  n_settlement_unknown_since_delivery?: number;
 };
 
 /** 応答の l1_basis（role=payer）。判定が L1 について何を読んだかを、そのまま数と時刻で出す。 */
@@ -236,6 +249,12 @@ export const NOT_COUNTED_REASON_CODES = {
   unconfirmed: "l1_not_counted_unconfirmed",
 } as const;
 
+/**
+ * 2026-09-29.3（独立レビュー 警告 2）: 空の 2xx で、お金が動いたかどうか未確定（レシートが無い・照合待ち）。
+ * 失敗には数えないが WARN（ALLOW に戻さない）。決済が結び付けば l1_paid_not_delivered として数える。
+ */
+export const L1_EMPTY_2XX_SETTLEMENT_UNKNOWN = "l1_empty_2xx_settlement_unknown";
+
 /** 2026-09-29.3: l2 = mismatch だが、記録に欠けたキーが無い（何が違ったかを示せない）。WARN・BLOCK にしない。 */
 export const L2_MISMATCH_UNEXPLAINED = "l2_mismatch_unexplained";
 
@@ -261,6 +280,8 @@ function timelineFromFacts(f: SellerFacts, conclusive: number, notCounted?: L1No
     // 最後の配達は最後に署名した時刻より新しくはない（上から抑える）。
     last_delivered_at: f.l1.n_delivered >= 1 ? f.l1.observed_at : null,
     last_signed_attempt_at: f.l1.n_attempts >= 1 ? f.l1.observed_at : null,
+    // 並びが無いので「最後の配達より後か」は分からない。WARN にしかならない語なので、全部を後として数える（慎重側）。
+    n_settlement_unknown_since_delivery: notCounted?.by.settlement_unknown ?? 0,
   };
 }
 
@@ -342,6 +363,8 @@ export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
   }
   const paidUndelivered = t.n_paid_undelivered_since_delivery;
   if (paidUndelivered >= 1) r.push("l1_paid_not_delivered");
+  const settlementUnknown = t.n_settlement_unknown_since_delivery ?? o.l1NotCounted?.by.settlement_unknown ?? 0;
+  if (settlementUnknown >= 1) r.push(L1_EMPTY_2XX_SETTLEMENT_UNKNOWN);
   const latestFailed = f.l1.n_delivered >= 1 && t.latest_counted !== null && !t.latest_counted.delivered;
   if (latestFailed) r.push("l1_latest_failed");
   if (v.staleDelivery) r.push("l1_stale");
@@ -377,6 +400,8 @@ export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
     (noL1Evidence && !o.allowWithoutL1) ||
     (conclusive > 0 && f.l1.n_delivered === 0) ||
     paidUndelivered >= 1 ||
+    // 2026-09-29.3（独立レビュー 警告 2）: 決済が未確定の空の 2xx。allow_without_l1 でも免除しない。
+    settlementUnknown >= 1 ||
     latestFailed ||
     l2Unexplained ||
     (v.staleDelivery && !o.allowWithoutL1) ||

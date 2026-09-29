@@ -346,7 +346,7 @@ test("8: stableenrich の people-search 型（L1 3 回とも「レシート無�
   const { facts, notCounted, decision } = judge(rows);
   assert.equal(facts.l1.n_attempts, 3);
   assert.equal(facts.l1.n_inconclusive, 0, "held_reason is unchanged (the public export column)");
-  assert.deepEqual(notCounted, { total: 3, by: { vet402_side: 0, held: 0, no_charge: 3, unproven: 0, unconfirmed: 0 } });
+  assert.deepEqual(notCounted, { total: 3, by: { vet402_side: 0, held: 0, no_charge: 3, unproven: 0, unconfirmed: 0, settlement_unknown: 0 } });
   // 除く数を渡さない判定は 2026-09-29.1 まで BLOCK だった（2026-09-29.3 からはお金が動いていないので WARN）
   assert.equal(decidePayer(facts).recommendation, "WARN");
   assert.equal(decision.recommendation, "WARN");
@@ -391,17 +391,17 @@ test("8: vet402 の側（宣言の本文を送る前の 400・資金切れの 40
     [1, 2, 3].map((i) => P({ attemptedAt: `2026-09-1${i}T00:00:00Z`, httpStatusPaid: 400 })),
     { method: "POST", declaredInput: { query: "empty", body: "declared" } },
   );
-  assert.deepEqual(body.notCounted.by, { vet402_side: 3, held: 0, no_charge: 0, unproven: 0, unconfirmed: 0 });
+  assert.deepEqual(body.notCounted.by, { vet402_side: 3, held: 0, no_charge: 0, unproven: 0, unconfirmed: 0, settlement_unknown: 0 });
   assert.equal(body.decision.recommendation, "WARN");
   assert.ok(body.decision.reason_codes.includes("l1_not_counted_vet402_side"));
   const unfunded = judge(["2026-09-13T01:00:00Z", "2026-09-14T01:00:00Z", "2026-09-15T01:00:00Z"].map((at) => P({ attemptedAt: at, httpStatusPaid: 402 })));
   assert.equal(unfunded.decision.recommendation, "WARN");
   const pending = judge([1, 2, 3].map((i) => P({ attemptedAt: `2026-09-2${i}T00:00:00Z`, status: "settle_claimed", httpStatusPaid: 200, txHash: TX })));
-  assert.deepEqual(pending.notCounted.by, { vet402_side: 0, held: 3, no_charge: 0, unproven: 0, unconfirmed: 0 });
+  assert.deepEqual(pending.notCounted.by, { vet402_side: 0, held: 3, no_charge: 0, unproven: 0, unconfirmed: 0, settlement_unknown: 0 });
   assert.equal(pending.decision.recommendation, "WARN");
   // 署名していない行（over_cap 等）は数にも除外にも入らない
   const unsigned = judge([1, 2, 3].map((i) => P({ attemptedAt: `2026-09-2${i}T00:00:00Z`, status: "over_cap" })));
-  assert.deepEqual(unsigned.notCounted, { total: 0, by: { vet402_side: 0, held: 0, no_charge: 0, unproven: 0, unconfirmed: 0 } });
+  assert.deepEqual(unsigned.notCounted, { total: 0, by: { vet402_side: 0, held: 0, no_charge: 0, unproven: 0, unconfirmed: 0, settlement_unknown: 0 } });
 });
 
 test("8: 判定の除外は /sellers の分類と同じ（署名した行の全組み合わせで、seller の側・未分類だけが数えられる）", () => {

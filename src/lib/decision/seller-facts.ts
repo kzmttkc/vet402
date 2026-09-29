@@ -92,8 +92,10 @@ export type SellerRowView = { bucket: string; modeKey: string | null; confirmedS
  * 帰属（/sellers と同じ規則）で、売り手の不履行として数えない理由。数える行は null。
  * 2026-09-29.3: unproven（お金が動いていない失敗で、vet402 に落ち度が無いと示せない）と unconfirmed（お金が動いて
  * いない失敗で、売り手の側だが 1 日だけ）を足した。
+ * 2026-09-29.3（独立レビュー 警告 2）: settlement_unknown（空の 2xx で、お金が動いたかどうかがまだ確定していない行）。
+ * 失敗としては数えないが、判定は WARN（l1_empty_2xx_settlement_unknown）で、確定するまで ALLOW に戻さない。
  */
-export type NotCountedReason = "vet402_side" | "held" | "no_charge" | "unproven" | "unconfirmed";
+export type NotCountedReason = "vet402_side" | "held" | "no_charge" | "unproven" | "unconfirmed" | "settlement_unknown";
 
 /**
  * 1 行の署名済みの試行を、/sellers の classifyRow（fix-modes.ts が正典）に掛けて、売り手の不履行として数えるかを決める。
@@ -108,7 +110,34 @@ export function notCountedReasonOf(
   if (base !== null) return base;
   // 2026-09-29.3（監査 6 周目）: お金が動いた行（isPaidPurchase）の扱いは変えない（払う側に慎重）。
   if (isPaidPurchase(p)) return null;
-  return unpaidNotCountedReasonOf(p.sellerView);
+  const unpaid = unpaidNotCountedReasonOf(p.sellerView);
+  // 2026-09-29.3（独立レビュー 警告 2）: 空の 2xx で、決済がまだ結び付いていない行（レシートの無い 200・
+  // 払う側の残高不足の期間の空の 200・売り手が名指した tx の照合待ち）は、「お金が動いていない」とは言えない。
+  // /sellers の分類で落とす代わりに settlement_unknown とし、判定は WARN にする（ALLOW に戻さない）。
+  // 遅延回収で決済が結び付けば settled（isPaidPurchase）になり、l1_paid_not_delivered として数える。
+  if (unpaid !== null && isEmpty2xxUnsettled(p)) return "settlement_unknown";
+  return unpaid;
+}
+
+/**
+ * 空の 2xx（中身が届いたと記録されていない 2xx）で、決済が確定していない行（2026-09-29.3・独立レビュー 警告 2）。
+ * 照合で反証された主張（settle_claim_refuted＝売り手の名指した tx はチェーンに無かった）は「動いていない」と
+ * 確かめた行なので入れない。お金が動いた行（isPaidPurchase）も入れない（そちらは l1_paid_not_delivered）。
+ */
+export function isEmpty2xxUnsettled(p: PurchaseInput): boolean {
+  if (!SIGNED_STATUSES.has(p.status) || p.status === "settle_claim_refuted") return false;
+  if (p.httpStatusPaid === null || p.httpStatusPaid < 200 || p.httpStatusPaid >= 300 || p.payloadNonEmpty === true) return false;
+  return !isPaidPurchase(p);
+}
+
+/**
+ * 判定を WARN に留める「お金が動いたかどうか未確定の空の 2xx」か（l1TimelineOf が数える）。settlement_unknown の行と、
+ * 照合待ち（settle_claimed＝売り手のレシートか遅延回収が tx を結び付け、チェーンでの確認を待つ）の空の 2xx。
+ * 後者は除外の理由は held のまま（照合待ち）だが、確認までの間に ALLOW へ戻さない。
+ */
+export function isSettlementUnknownRow(p: PurchaseInput, reason: NotCountedReason | null): boolean {
+  if (reason === "settlement_unknown") return true;
+  return reason === "held" && p.status === "settle_claimed" && isEmpty2xxUnsettled(p);
 }
 
 /**
@@ -149,22 +178,23 @@ function baseNotCountedReasonOf(
     amountUnits: p.amountUnits ?? null,
     payer: p.payer ?? null,
   };
-  // 判定 API は払う側に慎重（2026-09-29 第2巡）: 除くのは vet402 の側・保留・課金なしだけ。
-  // /sellers で「vet402 に落ち度が無いと示せない」として not sorted に置く行（funds_unproven・input_*・
-  // stopped_waiting・other）は、ここでは数える（null）＝BLOCK を緩めない。
+  // ここで除くのは、行の事実だけで決まる vet402 の側・保留・課金なし。null の行は notCountedReasonOf が続けて
+  // 読む: お金が動いた行は数え、お金が動いていない行は /sellers の分類（sellerView）で数えるかを決め（2026-09-29.3）、
+  // 空の 2xx で決済が未確定の行は settlement_unknown にする（WARN・ALLOW に戻さない）。
   const c = classifyRow(facts);
   if (c.bucket === "pending") return "held";
   if (!c.mode) return null;
-  // 2026-09-29 独立レビュー（WARN）: 残高不足（payer_short）は /sellers では vet402 の側だが、判定では
-  // 2xx で中身が届かなかった行を外さない（空の 200 を返す売り手が、こちらの残高不足の期間を盾に BLOCK を
-  // 逃れないため。除外の集合を以前より広げない）。
+  // 残高不足（payer_short）は /sellers では vet402 の側。ただし 2xx で中身が届かなかった行はここでは外さず、
+  // 上の settlement_unknown に回す（2026-09-29 独立レビュー WARN: 空の 200 を返す売り手が、こちらの残高不足の
+  // 期間を盾に判定を逃れない。2026-09-29.3 から BLOCK にするのはお金が動いたと確定した行だけなので、
+  // 決済が結び付くまでは WARN）。
   if (c.mode.key === "payer_short" && p.httpStatusPaid !== null && p.httpStatusPaid >= 200 && p.httpStatusPaid < 300 && p.payloadNonEmpty !== true) return null;
   if (c.mode.side === "vet402") return "vet402_side";
   if (c.mode.key === "settled_then_rejected" || c.mode.key === "settled_then_refused") return "held";
   if (c.mode.key === "refused_no_charge") return "no_charge";
-  // 2026-09-29 独立レビュー（BLOCK）: 「行に tx が無い」は「課金されていない」の証明ではない（遅延回収が
-  // 持ち主を決められない行・Solana・nonce の無い古い行）。空の 2xx を返して裏で決済する売り手が BLOCK を
-  // 逃れないよう、判定から外すのは中身が届いた無料応答だけにする。
+  // 「行に tx が無い」は「課金されていない」の証明ではない（2026-09-29 独立レビュー BLOCK: 遅延回収が持ち主を
+  // 決められない行・Solana・nonce の無い古い行）。課金なしとして外すのは中身が届いた無料応答だけ。空の 2xx は
+  // 上の settlement_unknown に回す（決済が結び付けば l1_paid_not_delivered）。
   if (c.mode.key === "answered_no_charge") return p.payloadNonEmpty === true ? "no_charge" : null;
   return null;
 }
@@ -246,7 +276,7 @@ export type L1NotCounted = { total: number; by: Record<NotCountedReason, number>
  */
 export function l1NotCountedOf(input: Pick<SellerFactsInput, "purchases" | "declaredSchema" | "method" | "declaredInput">): L1NotCounted {
   const endpointDecl = { method: input.method ?? null, declaredSchema: input.declaredSchema, declaredInput: input.declaredInput ?? null };
-  const by: Record<NotCountedReason, number> = { vet402_side: 0, held: 0, no_charge: 0, unproven: 0, unconfirmed: 0 };
+  const by: Record<NotCountedReason, number> = { vet402_side: 0, held: 0, no_charge: 0, unproven: 0, unconfirmed: 0, settlement_unknown: 0 };
   let total = 0;
   for (const p of input.purchases) {
     if (!SIGNED_STATUSES.has(p.status)) continue;
@@ -305,11 +335,18 @@ export function l1TimelineOf(
     .map((p, i) => ({ p, i, t: epoch(p.attemptedAt) }))
     .sort((a, b) => (Number.isFinite(b.t) && Number.isFinite(a.t) && b.t !== a.t ? b.t - a.t : a.i - b.i))
     .map((x) => x.p);
-  const counted = signed.filter((p) => notCountedReasonOf(p, endpointDecl) === null);
+  const reasons = new Map(signed.map((p) => [p, notCountedReasonOf(p, endpointDecl)] as const));
+  const counted = signed.filter((p) => reasons.get(p) === null);
   const lastDeliveredInWindow = signed.find(isDeliveredPurchase) ?? null;
   const cut = lastDeliveredInWindow ? epoch(lastDeliveredInWindow.attemptedAt) : Number.NEGATIVE_INFINITY;
   const paidUndelivered = counted.filter((p) => isPaidPurchase(p) && !isDeliveredPurchase(p));
   const latest = counted[0] ?? null;
+  // 最後の配達より**後**（同時刻は後に数えない）。配達が無ければ窓の中の全部。
+  // 時刻が読めない行は数える（払う側に慎重: 読めないことを理由に BLOCK・WARN を逃さない）。
+  const afterCut = (p: PurchaseInput): boolean => {
+    const t = epoch(p.attemptedAt);
+    return !Number.isFinite(t) || t > cut;
+  };
   const newer = (a: string | null | undefined, b: string | null | undefined): string | null => {
     const ta = epoch(a);
     const tb = epoch(b);
@@ -320,12 +357,10 @@ export function l1TimelineOf(
   return {
     n_counted: counted.length,
     n_paid_undelivered: paidUndelivered.length,
-    // 最後の配達より**後**（同時刻は後に数えない）。配達が無ければ窓の中の全部。
-    // 時刻が読めない行は数える（払う側に慎重: 読めないことを理由に BLOCK を逃さない）。
-    n_paid_undelivered_since_delivery: paidUndelivered.filter((p) => {
-      const t = epoch(p.attemptedAt);
-      return !Number.isFinite(t) || t > cut;
-    }).length,
+    n_paid_undelivered_since_delivery: paidUndelivered.filter(afterCut).length,
+    // 2026-09-29.3（独立レビュー 警告 2）: 最後の配達より後の、お金が動いたかどうか未確定の空の 2xx（WARN）。
+    // 最後の配達より前の行は、決済が結び付いても l1_paid_not_delivered に数えないので、ここでも数えない。
+    n_settlement_unknown_since_delivery: signed.filter((p) => isSettlementUnknownRow(p, reasons.get(p) ?? null) && afterCut(p)).length,
     // 公開面は ISO8601 UTC（::text の "2026-09-16 00:00:10.94+00" をそのまま出さない）。
     latest_counted: latest ? { at: toIsoUtc(latest.attemptedAt) ?? latest.attemptedAt, delivered: isDeliveredPurchase(latest) } : null,
     last_delivered_at: toIsoUtc(newer(lastDeliveredInWindow?.attemptedAt ?? null, input.lastDeliveredAt ?? null)),
