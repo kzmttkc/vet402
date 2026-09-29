@@ -136,13 +136,27 @@ test("1: 説明文は答えを決めたコード別。l0_fail・l1_stale に「n
   const whyStale = decisionWhy(stale, false);
   assert.deepEqual(whyStale, ["The last delivery was 44 days ago, more than 30."], "agentdata…/crypto/scan 型");
 
+  // 規則 2026-09-29.3: l1_never_delivered は WARN。BLOCK を決めるのは l1_paid_not_delivered（2 回以上）だけ。
   const never = answerOf({
-    recommendation: "BLOCK",
+    recommendation: "WARN",
     reason_codes: ["l0_pass", "l1_never_delivered", "l2_undeclared"],
-    l1_basis: { n_counted: 3, n_paid_undelivered_since_last_delivery: 3 },
+    l1_basis: { n_counted: 3, n_paid_undelivered_since_last_delivery: 0 },
   })!;
-  assert.deepEqual(decisionWhy(never, false), ["None of the 3 counted paid attempts in the last 30 days delivered.", COUNTING_NOTE]);
-  assert.deepEqual(decisionWhy(never, true), ["None of the 3 counted paid attempts in the last 30 days delivered."], "売り手の側に置いた出品には数え方の違いを書かない");
+  const neverLine = "None of the 3 counted paid attempts in the last 30 days delivered. On its own this is a WARN.";
+  assert.deepEqual(decisionWhy(never, false), [neverLine, COUNTING_NOTE]);
+  assert.deepEqual(decisionWhy(never, true), [neverLine], "売り手の側に置いた出品には数え方の違いを書かない");
+  assert.doesNotMatch(COUNTING_NOTE, /counts the rest/, "旧規則の「残りを全部数える」を書かない");
+  assert.match(COUNTING_NOTE, /no money moved/);
+  const paidTwice = answerOf({
+    recommendation: "BLOCK",
+    reason_codes: ["l0_pass", "l1_never_delivered", "l1_paid_not_delivered", "l2_undeclared"],
+    l1_basis: { n_counted: 3, n_paid_undelivered_since_last_delivery: 2 },
+  })!;
+  assert.deepEqual(paidTwice.decisive, ["l1_paid_not_delivered"], "l1_never_delivered は BLOCK を決めない");
+  // 欠けたキーの記録が無い不一致は BLOCK を決めない（l2_mismatch_unexplained・WARN）
+  assert.deepEqual(decisiveCodes("BLOCK", ["l0_fail", "l1_delivered", "l2_mismatch", "l2_mismatch_unexplained"]), ["l0_fail"]);
+  const unexplained = answerOf({ recommendation: "WARN", reason_codes: ["l0_pass", "l1_delivered", "l2_mismatch", "l2_mismatch_unexplained"], facts: { l2: { missing_keys: [] } } })!;
+  assert.match(decisionWhy(unexplained, false)[0], /no missing field is on record.*WARN/);
 
   const l2 = answerOf({ recommendation: "BLOCK", reason_codes: ["l0_pass", "l1_delivered", "l2_mismatch"], facts: { l2: { missing_keys: ["price", "sku"] } } })!;
   assert.deepEqual(decisionWhy(l2, false), ["The paid response lacked fields the listing's output schema declares: price, sku."]);

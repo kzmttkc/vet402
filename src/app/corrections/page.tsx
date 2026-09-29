@@ -116,7 +116,7 @@ const CORRECTIONS: Correction[] = [
       "answered the same unfunded payments with a 5xx instead, and those were recorded the same way: 60 rows across " +
       "60 endpoints (500 x50, 503 x8, 502 x2), 17, 27 and 17 on those three days against 0 to 11 on the days " +
       "around them. 57 endpoints " +
-      "reached zero deliveries on three or more signed attempts in that state, which is the condition for a BLOCK. " +
+      "reached zero deliveries on three or more signed attempts in that state, which was then the condition for a BLOCK (since rules 2026-09-29.3 an L1 BLOCK needs a payment that settled without delivery, twice). " +
       "Nothing checked the balance before signing, and nothing alerted on the change.",
     action:
       "Changed on 2026-09-17. A 402 or 5xx with no transaction on Base from 2026-09-13T00:00Z to 2026-09-15T23:49Z " +

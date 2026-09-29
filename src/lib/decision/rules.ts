@@ -385,7 +385,11 @@ export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
     f.l0.dialect !== "unpayable" &&
     f.l0.dialect !== o.callerDialect;
   if (dialectMismatch) r.push("dialect_mismatch");
-  if ((noL1Evidence || v.staleDelivery) && o.allowWithoutL1) r.push("l1_waived_by_operator");
+  // 2026-09-29.3（判定のレビュー）: オプトインが免除するのは「L1 の証拠が無い／古い」だけ。免除できない L1 の理由
+  // （未確定の空の 2xx・払ったのに届かない・数えた失敗・最新の失敗）が答えを WARN / BLOCK に留めているときは、
+  // l1_waived_by_operator を付けない（「免除した」と「L1 で WARN」が同じ応答に並んで食い違って読めた）。
+  const l1Unwaivable = settlementUnknown >= 1 || paidUndelivered >= 1 || latestFailed || (conclusive > 0 && f.l1.n_delivered === 0);
+  if ((noL1Evidence || v.staleDelivery) && o.allowWithoutL1 && !l1Unwaivable) r.push("l1_waived_by_operator");
 
   const block =
     f.l0.status === "fail" ||

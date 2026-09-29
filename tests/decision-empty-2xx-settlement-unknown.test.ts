@@ -180,3 +180,33 @@ test("並びを渡さない呼び手（facts と除外の数だけ）でも、�
   assert.equal(d.recommendation, "WARN");
   assert.ok(d.reason_codes.includes(L1_EMPTY_2XX_SETTLEMENT_UNKNOWN));
 });
+
+// 2026-09-29 判定のレビュー: 同時刻の行と、オプトインの語の食い違い。
+test("最後の配達と同じ時刻の行は「配達より後」に数えない（空の 2xx も、払ったのに届かなかった行も）", () => {
+  const at = daysAgo(3);
+  const delivered = { ...row(3, {}), attemptedAt: at };
+  const sameEmpty = { ...empty200(3), attemptedAt: at };
+  const samePaid = { ...row(3, { httpStatusPaid: 500, payloadNonEmpty: false, sellerView: CONFIRMED }), attemptedAt: at };
+  const same = run([delivered, sameEmpty, samePaid]);
+  assert.equal(same.timeline.n_settlement_unknown_since_delivery, 0);
+  assert.equal(same.timeline.n_paid_undelivered_since_delivery, 0);
+  assert.ok(!same.d.reason_codes.includes(L1_EMPTY_2XX_SETTLEMENT_UNKNOWN));
+  assert.ok(!same.d.reason_codes.includes("l1_paid_not_delivered"));
+  // 1 ミリ秒でも後なら数える
+  const later = new Date(Date.parse(at) + 1).toISOString();
+  const after = run([delivered, { ...sameEmpty, attemptedAt: later }, { ...samePaid, attemptedAt: later }]);
+  assert.equal(after.timeline.n_settlement_unknown_since_delivery, 1);
+  assert.equal(after.timeline.n_paid_undelivered_since_delivery, 1);
+  assert.equal(after.d.recommendation, "WARN");
+});
+
+test("allow_without_l1 と未確定の空の 2xx が重なったら l1_waived_by_operator を付けない（WARN と食い違わない）", () => {
+  const held = run([empty200(2), empty200(9)], { allowWithoutL1: true }).d;
+  assert.equal(held.recommendation, "WARN");
+  assert.ok(held.reason_codes.includes(L1_EMPTY_2XX_SETTLEMENT_UNKNOWN));
+  assert.ok(!held.reason_codes.includes("l1_waived_by_operator"), held.reason_codes.join(","));
+  // 免除できる理由（L1 の証拠なし）だけなら従来どおり付いて ALLOW
+  const none = run([], { allowWithoutL1: true }).d;
+  assert.equal(none.recommendation, "ALLOW");
+  assert.ok(none.reason_codes.includes("l1_waived_by_operator"));
+});

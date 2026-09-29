@@ -190,7 +190,7 @@ export const REASON_CODES: readonly ReasonCodeDoc[] = [
     code: "l1_waived_by_operator",
     role: "payer",
     effect: "none",
-    meaning: "You passed allow_without_l1=true, so missing or old L1 evidence does not hold back an ALLOW.",
+    meaning: "You passed allow_without_l1=true, so missing or old L1 evidence does not hold back an ALLOW. It is left out when an L1 failure or an unsettled empty 2xx holds the answer back, since those are not waived.",
     forPayer: "Your own opt-in; failures are not waived.",
     sellerCanFix: "n/a",
   },
