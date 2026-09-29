@@ -116,5 +116,13 @@ if (!TEST_DB) {
       assert.equal((await purchases())[0].spent_units, "25000");
     });
 
+    await t.test("resolveReservationAsFailed: 既に決着した行（in_flight でない）は上書きしない（2026-09-29 独立レビュー 提案1）", async () => {
+      const rowId = await seedReservation({ status: "settle_claimed", txHash: "0x" + "ef".repeat(32) });
+      await resolveReservationAsFailed(db, rowId, RPC_ERROR);
+      const after = await purchases();
+      assert.equal(after[0].status, "settle_claimed");
+      assert.equal(after[0].raw_response_meta, null, "理由も書き足さない");
+    });
+
   });
 }

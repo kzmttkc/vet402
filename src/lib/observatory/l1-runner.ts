@@ -869,6 +869,13 @@ export const ORPHAN_IN_FLIGHT_MINUTES = 30;
  * 署名直前の停止判定のあと DB 不通で予約を戻せなかった行（:2153 付近）がこれに当たり、
  * 従来はここで spent_units を残したため、日次予算がその日のうちに戻らなかった。
  * auth_nonce が入っている行は従来どおり 1 単位も動かさない。
+ *
+ * 2026-09-29 独立レビュー（提案2）: **auth_nonce が入っている行の解決先は `settle_failed`**（以前は request_error）。
+ * nonce は有料の要求を出す直前に書くので、その行の資格情報は売り手へ届いたかもしれない——売り手は後から決済できる。
+ * request_error のままだと遅延回収（recover-late.ts は request_error を「署名していない行」として外す）の対象から外れ、
+ * チェーンに着金があっても台帳に結び付かなかった。上の「測っていない失敗を売り手の分母に入れる」懸念は残るが、
+ * 払ったかもしれない金を台帳から見失う方を重く見た。行は reason = orphaned_in_flight・credentialSent = true で区別できる。
+ * auth_nonce が NULL の行は従来どおり request_error（予約を解放）。
  */
 export async function sweepOrphanedInFlight(
   db: NonNullable<ReturnType<typeof getDb>>,
@@ -876,7 +883,7 @@ export async function sweepOrphanedInFlight(
 ): Promise<number> {
   const raw = await db.execute(sql`
     UPDATE x402_l1_purchases
-    SET status = 'request_error',
+    SET status = CASE WHEN auth_nonce IS NULL THEN 'request_error' ELSE 'settle_failed' END,
         spent_units = CASE WHEN auth_nonce IS NULL THEN '0' ELSE spent_units END,
         raw_response_meta = coalesce(raw_response_meta, '{}'::jsonb) || jsonb_build_object(
           'phase', 'sweep',
@@ -935,10 +942,12 @@ export async function resolveReservationAsFailed(
             -- 原因（SQLSTATE と本文・2026-09-29）。error は drizzle の包みの先頭 300 文字で、原因は途中で切れていた。
             'cause', ${JSON.stringify(dbErrorCause(error))}::jsonb
           )
-      WHERE id = ${rowId}::uuid
+      -- 2026-09-29 独立レビュー（提案1）: 既に決着した行（結果の書き込みが済んだ後に落ちた等）を上書きしない。
+      WHERE id = ${rowId}::uuid AND status = 'in_flight'
       RETURNING status
     `);
     const written = rowsOf(raw)[0]?.status;
+    // 0 行（既に決着していた）なら、その行の status は書いた側が決めたもの。呼び手の集計は従来どおり settle_failed に数える。
     return written === "request_error" ? "request_error" : "settle_failed";
   } catch (writeError) {
     // ここまで失敗したら 30 分後の孤児掃除が拾う。黙って消さない。
@@ -1495,10 +1504,17 @@ export async function runL1Batch(
       async () => await db.execute(censusTargetsSql(true, censusLimit)),
       async () => await db.execute(censusTargetsSql(false, censusLimit)),
     );
-  const retestParams = censusOn ? await readRetestSellers(db) : null;
+  // 2026-09-29 独立レビュー W2: 日次 $25 がバッチ開始時点で尽きている日は census / retest の候補を取りに行かない。
+  // 両者は予算の否認で行を書かない（下の purchaseOne）ので、取りに行くと実行のたびに同じホストへ支払いなしの要求を
+  // 出し直すだけになる。残りの予算より高い候補も入れない（pickCensusRows の maxPriceUnits）。金の関門（checkL1Budget・
+  // reserveSpend の 1 文）は変えない——ここは候補の並びだけ。
+  const fairBudgetUnits = DAILY_BUDGET_UNITS - spentToday;
+  const fairOn = censusOn && fairBudgetUnits > 0n;
+  const retestParams = fairOn ? await readRetestSellers(db) : null;
   const plan = await planCensusAndRetest({
-    censusOn,
-    retestOn: censusOn && retestParams !== null && retestParams.hostCount > 0,
+    censusOn: fairOn,
+    maxPriceUnits: fairBudgetUnits,
+    retestOn: fairOn && retestParams !== null && retestParams.hostCount > 0,
     perRun: CENSUS_PER_RUN,
     censusMin: censusOn ? censusMinPerRun() : 0,
     excludeIds: laneIds,
@@ -1810,6 +1826,8 @@ export async function censusCandidates(input: {
   excludeHosts?: ReadonlySet<string>;
   /** 行に残す selection（既定 "census"）。 */
   selection?: CensusSelection;
+  /** これより高い候補は入れない（2026-09-29 W2）。省略なら MAX_PER_PURCHASE_UNITS だけ。 */
+  maxPriceUnits?: bigint;
   fetchCensus: (limit: number) => Promise<unknown>;
 }): Promise<Candidate[]> {
   if (!input.enabled || input.perRun <= 0) return [];
@@ -1823,7 +1841,7 @@ export async function censusCandidates(input: {
     if (!isMissingSchemaError(error)) logServerErrorSafe(`observatory.l1.${selection}`, redactedError(error));
     return [];
   }
-  return pickCensusRows(rows, input.perRun, input.excludeIds, selection, excludeHosts);
+  return pickCensusRows(rows, input.perRun, input.excludeIds, selection, excludeHosts, input.maxPriceUnits);
 }
 
 /**
@@ -1845,6 +1863,8 @@ export async function planCensusAndRetest(input: {
   excludeIds: ReadonlySet<string>;
   fetchCensus: (limit: number) => Promise<unknown>;
   fetchRetest: (limit: number) => Promise<unknown>;
+  /** これより高い候補は入れない（バッチ開始時点の日次の残り・2026-09-29 W2）。省略なら MAX_PER_PURCHASE_UNITS だけ。 */
+  maxPriceUnits?: bigint;
 }): Promise<{ head: Candidate[]; censusCount: number; retestCount: number }> {
   const perRun = Math.max(0, input.perRun);
   const censusMin = input.censusOn ? Math.min(Math.max(0, input.censusMin), perRun) : 0;
@@ -1858,7 +1878,14 @@ export async function planCensusAndRetest(input: {
     return list;
   };
   const reserved = take(
-    await censusCandidates({ enabled: input.censusOn && censusMin > 0, perRun: censusMin, excludeIds: new Set(ids), excludeHosts: new Set(hosts), fetchCensus: input.fetchCensus }),
+    await censusCandidates({
+      enabled: input.censusOn && censusMin > 0,
+      perRun: censusMin,
+      excludeIds: new Set(ids),
+      excludeHosts: new Set(hosts),
+      maxPriceUnits: input.maxPriceUnits,
+      fetchCensus: input.fetchCensus,
+    }),
   );
   const retest = take(
     await censusCandidates({
@@ -1867,6 +1894,7 @@ export async function planCensusAndRetest(input: {
       excludeIds: new Set(ids),
       excludeHosts: new Set(hosts),
       selection: "retest",
+      maxPriceUnits: input.maxPriceUnits,
       fetchCensus: input.fetchRetest,
     }),
   );
@@ -1876,6 +1904,7 @@ export async function planCensusAndRetest(input: {
       perRun: perRun - reserved.length - retest.length,
       excludeIds: new Set(ids),
       excludeHosts: new Set(hosts),
+      maxPriceUnits: input.maxPriceUnits,
       fetchCensus: input.fetchCensus,
     }),
   );
@@ -1889,6 +1918,7 @@ export function pickCensusRows(
   excludeIds: ReadonlySet<string> = new Set(),
   selection: CensusSelection = "census",
   excludeHosts: ReadonlySet<string> = new Set(),
+  maxPriceUnits?: bigint,
 ): Candidate[] {
   type Row = { row: Record<string, unknown>; id: string; host: string; price: bigint; preferred: boolean };
   const usable: Row[] = [];
@@ -1901,6 +1931,7 @@ export function pickCensusRows(
     if (!m) continue;
     const price = BigInt(m[1]);
     if (price <= 0n || price > MAX_PER_PURCHASE_UNITS) continue;
+    if (maxPriceUnits !== undefined && price > maxPriceUnits) continue;
     const host = censusHostOf(
       typeof row.census_host === "string" && row.census_host !== "" ? row.census_host : laneHostOf(String(row.resource_url)),
     );
@@ -2046,13 +2077,21 @@ async function purchaseOne(input: {
 
   const record = async (row: Partial<typeof x402L1Purchases.$inferInsert>) => {
     const meta = selectionMeta ? tagMeta(row.rawResponseMeta ?? null) : row.rawResponseMeta;
+    // 売り手の応答から来た文字列（本文の先頭・誤りの文）に U+0000 等が残ると行ごと落ちる（pgSafeJson・2026-09-29）。
+    // 変えたら印を残す（pgSanitizedMark）。
+    const safe = meta === undefined ? null : pgSafeJsonChanged(meta);
+    const safeMeta =
+      safe === null
+        ? undefined
+        : safe.changed && typeof safe.value === "object" && safe.value !== null && !Array.isArray(safe.value)
+          ? { ...(safe.value as Record<string, unknown>), ...pgSanitizedMark(["rawResponseMeta"]) }
+          : safe.value;
     await db.insert(x402L1Purchases).values({
       endpointId: candidate.id,
       status: "request_error",
       payer: payerLabel,
       ...row,
-      // 売り手の応答から来た文字列（本文の先頭・誤りの文）に U+0000 等が残ると行ごと落ちる（pgSafeJson・2026-09-29）。
-      ...(meta !== undefined ? { rawResponseMeta: pgSafeJson(meta) } : {}),
+      ...(safeMeta !== undefined ? { rawResponseMeta: safeMeta } : {}),
     });
     invalidateDecisionCache(candidate.id); // 購入結果は判定材料（このインスタンスのみ・cache.ts 参照）
   };
@@ -2435,6 +2474,9 @@ async function purchaseOne(input: {
     }
     // census / retest の候補（2026-09-29）: 日次 $25 に届いたら行を書かない。書くとそのホストに行ができ、census は
     // 「一巡済み」、retest は「最新の行がこちらの落ち度ではない」と読んで、翌日以降に二度と選ばない（買っていないのに）。
+    // この扱いは新しい env（OBSERVATORY_L1_CENSUS_MIN_PER_RUN・_FIRST_PURCHASE_QUOTA）に関係なく、census / retest の候補
+    // （OBSERVATORY_L1_CENSUS=on の日）すべてに効く。同じホストへ無償の要求を出し直さないよう、日次の残りが無い日・残りより
+    // 高い候補は runL1Batch が census / retest の候補の取得の段で外す（金の関門は変えない）。
     if (candidate.selection) return { kind: "budget_denied", settled: false, spent: 0n };
     await record({
       status: "budget_denied",
@@ -2760,7 +2802,25 @@ async function purchaseOne(input: {
     };
     // 売り手から来た文字列（本文の先頭・受領証・tx）は pgSafeJson / pgSafeText を通す（2026-09-29）。通さないと
     // バイナリの本文の U+0000 で UPDATE ごと落ち、払った後の行が tx も HTTP status も無い settle_failed になった。
-    const claimedTx = settlement?.transaction ? pgSafeText(settlement.transaction) : null;
+    // 変えた列は raw_response_meta.pgSanitized に名前を残す（2026-09-29 独立レビュー）。
+    const sanitizedFields: string[] = [];
+    const safe = <T,>(field: string, value: T): T => {
+      const r = pgSafeJsonChanged(value);
+      if (r.changed) sanitizedFields.push(field);
+      return r.value;
+    };
+    const claimedTx = settlement?.transaction ? safe("txHash", settlement.transaction) : null;
+    const safeSettlement = safe(
+      "rawSettlement",
+      settlement
+        ? isTempo && mppReceipt
+          ? { ...settlement, receipt: mppReceipt.receipt, header: paid?.headers.get("payment-receipt") ?? null }
+          : settlement
+        : paidError
+          ? { error: paidError }
+          : null,
+    );
+    const safeMeta = safe("rawResponseMeta", rawResponseMeta);
     const outcomeRow = {
       status,
       txHash: claimedTx,
@@ -2769,16 +2829,8 @@ async function purchaseOne(input: {
       payloadNonEmpty: paid ? payloadNonEmpty : null,
       contentTypeMatch,
       l2Schema,
-      rawSettlement: pgSafeJson(
-        settlement
-          ? isTempo && mppReceipt
-            ? { ...settlement, receipt: mppReceipt.receipt, header: paid?.headers.get("payment-receipt") ?? null }
-            : settlement
-          : paidError
-            ? { error: paidError }
-            : null,
-      ),
-      rawResponseMeta: pgSafeJson(rawResponseMeta),
+      rawSettlement: safeSettlement,
+      rawResponseMeta: { ...safeMeta, ...pgSanitizedMark(sanitizedFields) },
     };
     let recordedStatus = status;
     // 2026-09-04 監査 P1-1: 売り手が**別の購入で既に使われた tx**をレシートとして
@@ -2812,19 +2864,40 @@ async function purchaseOne(input: {
         // 書き直す。これも落ちたら外側の catch（resolveReservationAsFailed）が settle_failed に倒す——そのときも
         // auth_nonce は残っているので、遅延回収（recover-late: 索引とチェーン直読み）が着金を結び付ける。
         logServerErrorSafe("observatory.l1.outcome_write_failed", new Error(`cause=${JSON.stringify(dbErrorCause(error))} ${redactedError(error).message}`));
+        // 受領証は形を保つ（独立レビュー W1）: /sellers は raw_settlement が object かで「PAYMENT-RESPONSE があったか」を、
+        // success の型で「記載なし」を読む。null にすると「no PAYMENT-RESPONSE recorded」と誤って出る。落とすのは
+        // MPP の receipt・header（長い原文）だけで、success は元の値のまま、文字列は無害化して短くする。
+        const short = (v: unknown, n: number) => (typeof v === "string" ? pgSafeText(v).slice(0, n) : v ?? null);
+        const minimalSettlement = settlement
+          ? {
+              success: settlement.success,
+              transaction: claimedTx,
+              network: short(settlement.network, 100),
+              payer: short(settlement.payer, 100),
+              errorReason: short(settlement.errorReason, 200),
+            }
+          : paidError
+            ? { error: short(paidError, 300) }
+            : null;
         const minimal = {
           ...outcomeRow,
-          rawSettlement: claimedTx ? { success: settlement?.success === true, transaction: claimedTx } : null,
-          rawResponseMeta: pgSafeJson({
-            phase: "paid",
-            status: paid?.status ?? null,
-            contentType,
-            ...(isTempo ? { protocol: "mpp" } : {}),
-            ...(credentialStripped ? { credentialStripped } : {}),
-            ...(transportSide ? { transportFailure: { side: transportSide, code: transportErrorCode(paidErrorRaw) } } : {}),
-            ...(selectionMeta ?? {}),
-            outcomeWriteFailed: { cause: dbErrorCause(error), error: redactForLog(error).slice(0, 200) },
-          }),
+          rawSettlement: minimalSettlement,
+          rawResponseMeta: {
+            ...pgSafeJson({
+              phase: "paid",
+              status: paid?.status ?? null,
+              contentType,
+              ...(isTempo ? { protocol: "mpp" } : {}),
+              ...(credentialStripped ? { credentialStripped } : {}),
+              ...(transportSide ? { transportFailure: { side: transportSide, code: transportErrorCode(paidErrorRaw) } } : {}),
+              // L2 の証拠（宣言と応答のハッシュ・欠落キー）は小さいので残す（独立レビュー W1）。
+              ...(l2Detail ? { l2: l2Detail } : {}),
+              ...requestBodyRecord(paidRequestBody),
+              ...(selectionMeta ?? {}),
+              outcomeWriteFailed: { cause: dbErrorCause(error), error: redactForLog(error).slice(0, 200) },
+            }),
+            ...pgSanitizedMark(sanitizedFields),
+          },
         };
         try {
           await db.update(x402L1Purchases).set(minimal).where(eq(x402L1Purchases.id, reservation.rowId));
@@ -2971,6 +3044,22 @@ export function pgSafeJson<T>(value: T): T {
     return out as T;
   }
   return value;
+}
+
+/**
+ * pgSafeJson を掛け、値が変わったか（何かを落とした・置き換えた）も返す（2026-09-29 独立レビュー）。変わった行には
+ * raw_response_meta.pgSanitized に印を残す——台帳の文字列が売り手の原文そのものではないことを後から言えるように。
+ */
+export function pgSafeJsonChanged<T>(value: T): { value: T; changed: boolean } {
+  const out = pgSafeJson(value);
+  return { value: out, changed: JSON.stringify(out) !== JSON.stringify(value) };
+}
+
+/** pgSanitized の印（変わった列の名前）。変わっていなければ空。 */
+export function pgSanitizedMark(fields: readonly string[]): Record<string, unknown> {
+  return fields.length > 0
+    ? { pgSanitized: { fields: [...fields], note: "U+0000 removed and lone UTF-16 surrogates replaced with U+FFFD before writing (Postgres text/jsonb refuse them)" } }
+    : {};
 }
 
 /**

@@ -119,15 +119,24 @@ if (!TEST_DB) {
     let txSeq = 0;
     const receipt = (tx: string) =>
       Buffer.from(JSON.stringify({ success: true, transaction: tx, network: "eip155:8453", payer: "0x0000000000000000000000000000000000000001" })).toString("base64");
-    const wall = (opts: { binReceipt?: boolean } = {}) => {
+    const wall = (opts: { binReceipt?: boolean; census0FailedReceipt?: boolean } = {}) => {
       const paid: string[] = [];
+      const unpaid: string[] = [];
       const fetchImpl = async (url: string, init?: RequestInit) => {
         const headers = new Headers(init?.headers);
         const isPaid = headers.has("PAYMENT-SIGNATURE") || headers.has("X-PAYMENT");
-        if (!isPaid) return new Response(challengeFor(url), { status: 402, headers: { "content-type": "application/json" } });
+        if (!isPaid) {
+          unpaid.push(url);
+          return new Response(challengeFor(url), { status: 402, headers: { "content-type": "application/json" } });
+        }
         paid.push(url);
         txSeq++;
         const tx = `0x${txSeq.toString(16).padStart(64, "0")}`;
+        if (opts.census0FailedReceipt && url.includes("census0.example")) {
+          // success:false・tx なし・errorReason に U+0000（受領証はあるが決済を名指さない）。
+          const failed = Buffer.from(JSON.stringify({ success: false, errorReason: "bad\u0000pay", network: "eip155:8453" })).toString("base64");
+          return new Response(JSON.stringify({ data: "goods" }), { status: 200, headers: { "content-type": "application/json", "PAYMENT-RESPONSE": failed } });
+        }
         if (url.includes("bin.example")) {
           return new Response(GZIP, {
             status: 200,
@@ -136,7 +145,7 @@ if (!TEST_DB) {
         }
         return new Response(JSON.stringify({ data: "goods" }), { status: 200, headers: { "content-type": "application/json", "PAYMENT-RESPONSE": receipt(tx) } });
       };
-      return { paid, fetchImpl };
+      return { paid, unpaid, fetchImpl };
     };
     const idOf = async (url: string) => String(rowsOf(await db.execute(sql`SELECT id FROM x402_endpoints WHERE resource_url = ${url}`))[0].id);
 
@@ -248,6 +257,9 @@ if (!TEST_DB) {
       assert.equal(meta.selection, "census");
       assert.ok(typeof meta.bodyHead === "string" && !(meta.bodyHead as string).includes("\u0000"));
       assert.ok(!("reason" in meta), "threw_after_reservation ではない");
+      assert.deepEqual((meta.pgSanitized as { fields: string[] }).fields, ["rawResponseMeta"], "無害化した列の印が残る");
+      const [clean] = await rowFor("https://census1.example/api");
+      assert.ok(!("pgSanitized" in (clean.raw_response_meta as Record<string, unknown>)), "何も変えていない行には印を付けない");
     });
 
     await t.test("A1b: gzip の本文・受領証なし → delivered_no_receipt（HTTP 200 が残る・settle_failed にしない）", async () => {
@@ -280,7 +292,36 @@ if (!TEST_DB) {
       const failed = meta.outcomeWriteFailed as { cause: { code: string; message: string } | null };
       assert.equal(failed.cause?.code, "22P05");
       assert.match(String(failed.cause?.message), /unsupported Unicode escape sequence/);
-      assert.equal((row.raw_settlement as Record<string, unknown>).transaction, row.tx_hash);
+      // 独立レビュー W1: 受領証の形（success の元の値・network・payer）と L2 の証拠・本文の記録を残す。
+      assert.deepEqual(row.raw_settlement, {
+        success: true,
+        transaction: row.tx_hash,
+        network: "eip155:8453",
+        payer: "0x0000000000000000000000000000000000000001",
+        errorReason: null,
+      });
+      assert.ok(meta.l2 && typeof (meta.l2 as { responseHash?: unknown }).responseHash === "string", "L2 の証拠が残る");
+      assert.ok("requestBody" in meta, "本文の記録が残る");
+      assert.ok(!("bodyHead" in meta), "売り手の本文は外す");
+    });
+
+    await t.test("A2b: 受領証が success:false・tx なしでも、小さな行の raw_settlement は object のまま（/sellers が「PAYMENT-RESPONSE なし」と誤らない）", async () => {
+      arm({ min: "10" });
+      await seed();
+      await failOutcomeWrites("full");
+      try {
+        await run(wall({ census0FailedReceipt: true }));
+      } finally {
+        await dropTrigger();
+      }
+      const [row] = await rowFor("https://census0.example/api");
+      assert.equal(row.status, "delivered_no_receipt");
+      assert.equal(row.http_status_paid, 200);
+      assert.equal(row.tx_hash, null);
+      assert.deepEqual(row.raw_settlement, { success: false, transaction: null, network: "eip155:8453", payer: null, errorReason: "badpay" });
+      const meta = row.raw_response_meta as Record<string, unknown>;
+      assert.ok((meta.pgSanitized as { fields: string[] }).fields.includes("rawSettlement"), "無害化の印は小さな行にも残る");
+      assert.equal((meta.outcomeWriteFailed as { cause: { code: string } }).cause.code, "22P05");
     });
 
     await t.test("A3: 小さな行も落ちたら settle_failed。spent_units と auth_nonce は残り、原因が残る（遅延回収の対象）", async () => {
@@ -383,6 +424,46 @@ if (!TEST_DB) {
       for (const u of census) assert.equal(((await rowFor(u))[0].raw_response_meta as Record<string, unknown>).selection, "census");
       assert.equal(await selectionCount("census"), 3);
       assert.equal(await selectionCount("retest"), 37);
+    });
+
+    const spendToday = async (units: string) => {
+      const main = byUrl.get("https://main.example/old")!;
+      await db.insert(schema.x402L1Purchases).values({
+        endpointId: await idOf(main.url),
+        status: "settled",
+        payer: "0x0000000000000000000000000000000000000001",
+        network: "eip155:8453",
+        asset: BASE_USDC,
+        payTo: "0x00000000000000000000000000000000000000ee",
+        amountUnits: units,
+        spentUnits: units,
+      });
+    };
+
+    await t.test("W2: 日次 $25 が尽きた日は census / retest の候補を取らず、そのホストへ無償の要求も出さない", async () => {
+      arm({ quota: "200", min: "10" });
+      await seed();
+      await spendToday("25000000");
+      const w = wall();
+      // 主候補（LIMIT 0）を外し、census / retest の段だけを見る（主候補の budget_denied は従来どおりの別の経路）。
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER, limit: 0, fetchImpl: w.fetchImpl });
+      assert.equal(summary.censusCandidates, 0);
+      assert.equal(summary.retestCandidates, 0);
+      assert.equal(w.paid.length, 0, "支払いは 1 本も無い（金の関門は同じ）");
+      assert.ok(!w.unpaid.some((u) => isCensus(u) || isRetest(u)), `census / retest のホストへ無償の要求を出さない: ${w.unpaid.join(", ")}`);
+      assert.equal(await selectionCount("census") + (await selectionCount("retest")), 0, "印の行も無い");
+    });
+
+    await t.test("W2: 日次の残りより高い census / retest の候補は入れない（残り 1200 単位: census ≤1100 は入り、retest 2000 は入らない）", async () => {
+      arm({ quota: "200", min: "10" });
+      await seed();
+      await spendToday(String(25_000_000 - 1_200));
+      const w = wall();
+      const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER, limit: 0, fetchImpl: w.fetchImpl });
+      assert.equal(summary.retestCandidates, 0, "2000 単位の retest は残り 1200 を超える");
+      assert.equal(summary.censusCandidates, CENSUS_HOSTS + 1);
+      assert.ok(!w.unpaid.some(isRetest), "retest のホストへ無償の要求を出さない");
+      assert.equal(w.paid[0], "https://census0.example/api", "予算の範囲の census は買う");
     });
   });
 }

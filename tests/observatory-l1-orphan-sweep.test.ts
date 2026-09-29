@@ -6,7 +6,7 @@
 // エンドポイントを窓の間ずっと購入対象から外し続ける。
 //
 // 固定する性質:
-//  - しきい値より古い in_flight だけが request_error へ解決される;
+//  - しきい値より古い in_flight だけが解決される（nonce あり＝settle_failed・nonce なし＝request_error・2026-09-29）;
 //  - **spent_units は1単位も動かない**（署名したら計上する＝予算の不変条件。
 //    ここを戻すと当日の予算が二重に空く);
 //  - 進行中（しきい値より新しい）の行と、他 status の行には触らない。
@@ -90,8 +90,10 @@ if (!TEST_DB) {
       .from(schema.x402L1Purchases);
     const byEndpoint = new Map(rows.map((r) => [r.endpointId, r]));
 
-    // 古い孤児だけが解決され、我々側の状態（request_error）になる。
-    assert.equal(byEndpoint.get(endpointA)!.status, "request_error");
+    // 古い孤児だけが解決される。nonce のある行（資格情報が売り手へ届いたかもしれない）は settle_failed
+    // （2026-09-29 独立レビュー 提案2: 遅延回収 recover-late の対象に残す。以前は request_error で対象外だった）。
+    assert.equal(byEndpoint.get(endpointA)!.status, "settle_failed");
+    assert.equal((byEndpoint.get(endpointA)!.meta as Record<string, unknown>).credentialSent, true);
     assert.equal(
       (byEndpoint.get(endpointA)!.meta as Record<string, unknown>).reason,
       "orphaned_in_flight",

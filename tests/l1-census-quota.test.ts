@@ -249,3 +249,22 @@ test("dbErrorCause: drizzle の包みの cause から SQLSTATE と本文。原�
   const withUrl = Object.assign(new Error("outer"), { cause: new Error("fetch https://rpc.example/v2/SECRETKEY failed") });
   assert.ok(!dbErrorCause(withUrl)!.message.includes("SECRETKEY"));
 });
+
+test("planCensusAndRetest: maxPriceUnits（日次の残り）より高い候補は census にも retest にも入れない（2026-09-29 W2）", async () => {
+  const plan = await planCensusAndRetest({
+    censusOn: true,
+    retestOn: true,
+    perRun: 40,
+    censusMin: 3,
+    excludeIds: new Set(),
+    maxPriceUnits: 1002n,
+    fetchCensus: source(censusRows(10)).fetch,
+    fetchRetest: source(retestRows(10)).fetch,
+  });
+  assert.deepEqual(
+    plan.head.map((x) => x.id),
+    ["c000", "c001", "c002", "r000", "r001", "r002"],
+    "1002 単位以下だけ（census 1000〜1002・retest 1000〜1002）",
+  );
+  assert.ok(plan.head.every((x) => BigInt(x.priceAmount!) <= 1002n));
+});
