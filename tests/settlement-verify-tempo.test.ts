@@ -8,6 +8,7 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { TransactionReceiptNotFoundError } from "viem";
 import { encodeMppAttributionMemo, MPP_CLIENT_ID, TEMPO_USDC_E } from "@/lib/observatory/mpp-payer";
 import { TEMPO_TRANSFER_TOPIC, TEMPO_TRANSFER_WITH_MEMO_TOPIC, verifyTempoSettlement } from "@/lib/observatory/settlement-verify-tempo";
 import { verifyL1Settlement, type EvmVerifyClient } from "@/lib/observatory/settlement-verify";
@@ -43,12 +44,13 @@ function memoLogInData(value: bigint, memo: string) {
   };
 }
 
-function fakeClient(over: { chainId?: number; tip?: bigint; receipt?: unknown; throwReceipt?: boolean } = {}): EvmVerifyClient {
+function fakeClient(over: { chainId?: number; tip?: bigint; receipt?: unknown; throwReceipt?: boolean; receiptRpcError?: boolean } = {}): EvmVerifyClient {
   return {
     getChainId: async () => over.chainId ?? 4217,
     getBlockNumber: async () => over.tip ?? 40_000_000n,
     getTransactionReceipt: async () => {
-      if (over.throwReceipt) throw new Error("not found");
+      if (over.throwReceipt) throw new TransactionReceiptNotFoundError({ hash: TX as `0x${string}` });
+      if (over.receiptRpcError) throw new Error("HTTP request failed. Status: 429");
       return (over.receipt ?? { status: "success", blockNumber: 39_999_000n, logs: [transferLog(25_000n), memoLog(25_000n, MEMO)] }) as never;
     },
     getBlock: async () => ({ timestamp: 1_789_000_000n }) as never,
@@ -96,6 +98,9 @@ test("wrong chain / reverted / not found / too few confirmations", async () => {
   assert.equal(!reverted.ok && reverted.reason, "tx_reverted");
   const missing = await verifyTempoSettlement(input, { client: fakeClient({ throwReceipt: true }) });
   assert.equal(!missing.ok && missing.reason, "tx_not_found");
+  // 2026-09-29 独立レビュー: 「レシートが無い」以外の失敗（429・タイムアウト）は tx_not_found にしない。
+  const rpc = await verifyTempoSettlement(input, { client: fakeClient({ receiptRpcError: true }) });
+  assert.equal(!rpc.ok && rpc.reason, "rpc_unavailable");
   const shallow = await verifyTempoSettlement(input, { client: fakeClient({ tip: 39_999_010n }) });
   assert.equal(!shallow.ok && shallow.reason, "insufficient_confirmations");
   const malformed = await verifyTempoSettlement({ ...input, txHash: "nope" }, { client: fakeClient() });

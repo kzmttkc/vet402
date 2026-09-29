@@ -110,6 +110,8 @@ export const LATE_LINK_AFTER_MIN = 30;
  * この 1 か所の値を読む（公開頁は照合器を import しない）。
  */
 export const SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS = 7;
+/** 「見つからない」を数える別々の UTC 日の数（照合器が確定する条件・2026-09-29 独立レビュー）。 */
+export const SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS = 3;
 export const SELLER_NAMED_TX_NOT_FOUND = "seller_named_tx_not_found";
 
 /** Order here is the tie-break on /sellers/fix-first after side, sellers and effort. */
@@ -193,7 +195,7 @@ const BASE_FIX_MODES: readonly FixMode[] = [
     // 受領証の tx がハッシュの形ですらない行を、照合器（settlement-verifier.ts）が日付付きで確定した行。
     key: "claim_not_found",
     title: "The receipt named a transaction vet402 did not find on-chain",
-    what: `The seller's receipt named a settlement transaction. vet402 looked for it on-chain for ${SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS} days after the purchase and did not find it (or the receipt's id was not a transaction id at all), so it recorded the claim as not found, with the date on the row.`,
+    what: `The seller's receipt named a settlement transaction. vet402 looked for it on-chain on several different days for ${SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS} days after the purchase and did not find it (or the receipt's id was not a transaction id at all), and the chain shows that the payment authorization vet402 signed was never used, so it recorded the claim as not found, with the date on the row.`,
     fix: "Return the settlement transaction hash your facilitator reports in PAYMENT-RESPONSE, and check that it lands on the chain the listing names.",
     side: "seller",
     effort: 3,

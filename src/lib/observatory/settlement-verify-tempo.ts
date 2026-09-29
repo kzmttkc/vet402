@@ -23,7 +23,7 @@ import { isWellFormedSettlementTx } from "@/lib/validation/settlement-tx";
 // 2026-09-19（横断監査 W4）: detail は DB に残る。RPC の URL（鍵入りの形がある）を伏せてから書く。
 import { redactForLog } from "./redact";
 import { TEMPO_CHAIN_ID, TEMPO_USDC_E, tempoRpcUrl } from "./mpp-payer";
-import type { EvmVerifyClient, SettlementVerifyResult } from "./settlement-verify";
+import { receiptMissing, type EvmVerifyClient, type SettlementVerifyResult } from "./settlement-verify";
 
 /** ERC-20 Transfer(address,address,uint256) */
 export const TEMPO_TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
@@ -85,8 +85,11 @@ export async function verifyTempoSettlement(
   let receipt: Awaited<ReturnType<typeof client.getTransactionReceipt>>;
   try {
     receipt = await client.getTransactionReceipt({ hash: txHash as `0x${string}` });
-  } catch {
-    return { ok: false, reason: "tx_not_found" };
+  } catch (error) {
+    // 2026-09-29 独立レビュー: 「レシートが無い」と答えたときだけ tx_not_found。それ以外の失敗は rpc_unavailable。
+    return receiptMissing(error)
+      ? { ok: false, reason: "tx_not_found" }
+      : { ok: false, reason: "rpc_unavailable", detail: redactForLog(error).slice(0, 200) };
   }
   if (!receipt || receipt.status !== "success") return { ok: false, reason: "tx_reverted" };
 

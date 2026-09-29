@@ -210,3 +210,61 @@ test("5: 見出しの日付は最新の試行の日で、読み出した時刻�
   assert.match(html, /Latest attempt: 2026-09-20 12:00 UTC\. This page read the ledger at 2026-09-29 04:10 UTC/);
   assert.doesNotMatch(html, /as of 2026-09-20/);
 });
+
+// ---------- 2026-09-29 独立レビュー（BLOCK）の修正 ----------
+
+test("レビュー CRITICAL: EVM の照合は「レシートが無い」ときだけ tx_not_found、429・タイムアウトは rpc_unavailable", async () => {
+  const { verifyL1Settlement, receiptMissing } = await import("@/lib/observatory/settlement-verify");
+  const { TransactionReceiptNotFoundError } = await import("viem");
+  const client = (err: unknown) =>
+    ({
+      getChainId: async () => 8453,
+      getBlockNumber: async () => 40_000_000n,
+      getTransactionReceipt: async () => {
+        throw err;
+      },
+      getBlock: async () => ({ timestamp: 1n }),
+    }) as never;
+  const input = { txHash: TX, network: "eip155:8453", expectedPayTo: `0x${"11".repeat(20)}`, expectedPayer: `0x${"22".repeat(20)}`, expectedAmountUnits: "1000" };
+  const missing = await verifyL1Settlement(input, { client: client(new TransactionReceiptNotFoundError({ hash: TX as `0x${string}` })) });
+  assert.equal(!missing.ok && missing.reason, "tx_not_found");
+  for (const err of [new Error("HTTP request failed. Status: 429"), new Error("The request took too long to respond.")]) {
+    const r = await verifyL1Settlement(input, { client: client(err) });
+    assert.equal(!r.ok && r.reason, "rpc_unavailable", String(err));
+  }
+  assert.equal(receiptMissing({ name: "TransactionReceiptNotFoundError" }), true);
+  assert.equal(receiptMissing(new Error("not found")), false);
+});
+
+test("レビュー CRITICAL: authorizationState は Base / Arc だけ・読めなければ null（確定しない側）", async () => {
+  const { readAuthorizationState } = await import("@/lib/observatory/settlement-verify");
+  const payer = `0x${"22".repeat(20)}`;
+  const nonce = `0x${"ab".repeat(32)}`;
+  const fake = (over: { chainId?: number; value?: unknown; throws?: boolean }) =>
+    ({
+      getChainId: async () => over.chainId ?? 8453,
+      readContract: async (args: { functionName: string; args: unknown[] }) => {
+        assert.equal(args.functionName, "authorizationState");
+        assert.deepEqual(args.args, [payer, nonce]);
+        if (over.throws) throw new Error("429");
+        return over.value;
+      },
+    }) as never;
+  assert.equal(await readAuthorizationState({ network: "eip155:8453", payer, nonce }, { client: fake({ value: false }) }), false);
+  assert.equal(await readAuthorizationState({ network: "eip155:8453", payer, nonce }, { client: fake({ value: true }) }), true);
+  assert.equal(await readAuthorizationState({ network: "eip155:8453", payer, nonce }, { client: fake({ throws: true }) }), null);
+  assert.equal(await readAuthorizationState({ network: "eip155:8453", payer, nonce }, { client: fake({ chainId: 1, value: false }) }), null);
+  assert.equal(await readAuthorizationState({ network: "eip155:4217", payer, nonce }, { client: fake({ value: false }) }), null, "Tempo は対象外");
+  assert.equal(await readAuthorizationState({ network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", payer, nonce }, { client: fake({ value: false }) }), null);
+});
+
+test("レビュー CRITICAL: 期限の対象は Base / Arc だけ（Solana・XRPL・Tempo は外す）・日付の記録の読み方", async () => {
+  const { sellerNamedTxExpiryChain, notFoundDaysOf } = await import("@/lib/observatory/settlement-verifier");
+  assert.equal(sellerNamedTxExpiryChain("eip155:8453"), true);
+  assert.equal(sellerNamedTxExpiryChain("eip155:5042"), true);
+  assert.equal(sellerNamedTxExpiryChain("eip155:4217"), false);
+  assert.equal(sellerNamedTxExpiryChain("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"), false);
+  assert.equal(sellerNamedTxExpiryChain("xrpl:0"), false);
+  assert.deepEqual(notFoundDaysOf({ days: ["2026-09-27", "2026-09-27", "2026-09-28", "x"] }), ["2026-09-27", "2026-09-28"]);
+  assert.deepEqual(notFoundDaysOf(null), []);
+});

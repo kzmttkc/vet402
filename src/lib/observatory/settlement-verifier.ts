@@ -21,13 +21,14 @@ import { recordObservedPurchase } from "@/lib/db/observed-purchases";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { createDeadline } from "@/lib/util/deadline";
-import { verifyL1Settlement } from "./settlement-verify";
+import { readAuthorizationState, verifyL1Settlement } from "./settlement-verify";
+import { evmChainFor } from "./x402-payer";
 import { isDeliveryVerified } from "./l1-runner";
 import { ingestL1 } from "@/lib/settlements/ingest-l1";
 import { LATE_RECOVERABLE_STATUSES } from "@/lib/settlements/recover-late";
 import { updateWithCorrection } from "./corrections";
 import { fireL1RegistryHook, fireL2RegistryHook } from "@/lib/chain/registry-hook";
-import { SELLER_NAMED_TX_NOT_FOUND, SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS } from "@/lib/sellers/fix-modes";
+import { SELLER_NAMED_TX_NOT_FOUND, SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS, SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS } from "@/lib/sellers/fix-modes";
 
 /**
  * 売り手が名指した tx の照合の期限（2026-09-29 敵対的監査 5 周目・値の正典は src/lib/sellers/fix-modes.ts）。
@@ -38,9 +39,43 @@ import { SELLER_NAMED_TX_NOT_FOUND, SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS } from 
  * として確定する（settle_claim_refuted・理由は SELLER_NAMED_TX_NOT_FOUND で始まる）。受領証の tx がハッシュの形ですらない行
  * （settle_claimed_unverifiable・例 "first-can"）も、同じ日数の後に同じ語で確定する（チェーンは読まない）。
  * 遅延回収で vet402 が貼った tx（売り手は名指していない）と、売り手が success:false のまま名指した tx には当てない
- * ——それぞれ従来の取り消し（withdrawLateLink）と申告どおりの失敗への戻し（declineSellerNamedTx）へ回す。
+ * ——tx_not_found のまま deferred に置く（2026-09-29 独立レビュー HIGH: 期限で取り消し・申告の戻しへ進めると、RPC の
+ * 失敗で実在する決済を rejectedTxHashes に永久に入れうる）。
+ *
+ * 2026-09-29 独立レビュー（CRITICAL）: RPC の失敗 1 回で確定しないよう、確定には次の全部を要る（sellerNamedTxExpiryReady）:
+ *   - Base / Arc（x402-payer の EVM_PAY_CHAINS）の行。Solana（履歴を持たない RPC）・XRPL（searched_all を見ていない）・
+ *     Tempo は当面対象外（tx_not_found のまま deferred）
+ *   - 購入から SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS 日
+ *   - 別々の UTC 日に SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS 回以上「見つからない」（raw_response_meta.txNotFound に日付を記録）
+ *   - auth_nonce のある行は USDC の authorizationState(payer, nonce) が false（チェーンで、お金が動いていない）
+ *   - 確定の直前にもう一度読んで、また tx_not_found
+ * 「見つからない」は RPC が「そのレシートは無い」と答えたときだけ（settlement-verify.ts の receiptMissing）。
  */
 export const SELLER_NAMED_TX_EXPIRY_MS = SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS * 86_400_000;
+export { SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS };
+
+/** 期限の対象になるチェーンの CAIP-2（SELECT で settle_claimed_unverifiable を拾う範囲）。 */
+const EXPIRY_NETWORKS: readonly string[] = ["eip155:8453", "base", "eip155:5042"];
+
+/** 期限の対象になるチェーンか（Base / Arc だけ・Tempo・Solana・XRPL は当面外す）。 */
+export function sellerNamedTxExpiryChain(network: string | null): boolean {
+  return typeof network === "string" && network.startsWith("eip155:") && evmChainFor(network) !== null;
+}
+
+/** raw_response_meta.txNotFound.days（UTC の日付の配列）から、別々の日の数。形が違えば 0。 */
+export function notFoundDaysOf(v: unknown): string[] {
+  let x = v;
+  if (typeof x === "string") {
+    try {
+      x = JSON.parse(x);
+    } catch {
+      return [];
+    }
+  }
+  const days = typeof x === "object" && x !== null && !Array.isArray(x) ? (x as { days?: unknown }).days : null;
+  if (!Array.isArray(days)) return [];
+  return [...new Set(days.filter((d): d is string => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)))];
+}
 
 /** 購入から期限の日数がたったか（純関数・読めない時刻は「たっていない」に倒す）。 */
 export function sellerNamedTxExpired(attemptedAt: string | Date | null, now: number = Date.now()): boolean {
@@ -164,6 +199,8 @@ export type VerifySettlementsSummary = {
  */
 export type SettlementVerifierDeps = {
   verify?: typeof verifyL1Settlement;
+  /** USDC の authorizationState(payer, nonce) を読む（2026-09-29・売り手の名指した tx の期限の条件）。 */
+  authorizationState?: typeof readAuthorizationState;
   registryHooks?: {
     l1: typeof fireL1RegistryHook;
     l2: typeof fireL2RegistryHook;
@@ -178,6 +215,7 @@ export async function runSettlementVerification(options?: {
   const limit = options?.limit ?? 200;
   const deadline = createDeadline(options?.budgetMs ?? 240_000);
   const verify = options?.deps?.verify ?? verifyL1Settlement;
+  const authorizationState = options?.deps?.authorizationState ?? readAuthorizationState;
   const hooks = options?.deps?.registryHooks ?? { l1: fireL1RegistryHook, l2: fireL2RegistryHook };
   // 2026-09-02 監査 P1-7: ERC-8004 Validation Registry の発火点はここ——
   // オンチェーンで settled / refuted が**確定した後**だけ。以前は l1-runner が
@@ -224,6 +262,8 @@ export async function runSettlementVerification(options?: {
            pu.raw_response_meta->'lateSettlement' AS late_settlement,
            -- 2026-09-29 第4巡: 売り手が success:false のまま名指した tx を recover-late が照合へ回した印（promoteNamedTx）。
            pu.raw_response_meta->'namedTxPromotion' AS named_tx_promotion,
+           -- 2026-09-29 独立レビュー: 「見つからない」だった UTC の日付（売り手の名指した tx の期限の条件）。
+           pu.raw_response_meta->'txNotFound' AS tx_not_found_log,
            -- 2026-09-04 監査 P1-1: 同じ (network, lower(tx_hash)) を主張している
            -- 他の購入行が居るか。決済 tx は 1 購入にしか属せないので、2 行以上が
            -- 同じ tx を指していたら**どちらも** settled にできない（どちらが
@@ -239,6 +279,7 @@ export async function runSettlementVerification(options?: {
       AND (pu.status IN ('settle_claimed', 'settled')
            -- 2026-09-29 第5巡: 受領証の tx がハッシュの形ですらない行は、期限の日数の後に確定する（チェーンは読まない）。
            OR (pu.status = 'settle_claimed_unverifiable'
+               AND pu.network IN (${sql.join(EXPIRY_NETWORKS.map((n) => sql`${n}`), sql`, `)})
                AND pu.attempted_at < now() - (${SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS} * interval '1 day')))
     ORDER BY pu.attempted_at ASC
     LIMIT ${limit}
@@ -260,6 +301,7 @@ export async function runSettlementVerification(options?: {
     attempted_at: string | null;
     late_settlement: unknown;
     named_tx_promotion: unknown;
+    tx_not_found_log: unknown;
     tx_claim_count: number | string | null;
   }[];
 
@@ -433,6 +475,55 @@ export async function runSettlementVerification(options?: {
   }
 
   /**
+   * 「見つからない」だった UTC の日付を raw_response_meta.txNotFound に足し、別々の日付の一覧を返す（2026-09-29 独立レビュー）。
+   * 読んでから書かず SQL の中で継ぎ足す（その間の別の書き込みを潰さない）。公開の状態ではないので訂正ログには載せない。
+   */
+  async function recordNotFoundDay(row: PurchaseRow): Promise<string[]> {
+    const today = new Date().toISOString().slice(0, 10);
+    const known = notFoundDaysOf(row.tx_not_found_log);
+    if (known.includes(today)) return known;
+    const raw = await db!.execute(sql`
+      UPDATE x402_l1_purchases
+      SET raw_response_meta = jsonb_set(
+            CASE WHEN jsonb_typeof(raw_response_meta) = 'object' THEN raw_response_meta ELSE '{}'::jsonb END,
+            '{txNotFound}',
+            jsonb_build_object(
+              'days', (SELECT coalesce(jsonb_agg(DISTINCT d ORDER BY d), '[]'::jsonb) FROM (
+                        SELECT jsonb_array_elements_text(CASE WHEN jsonb_typeof(raw_response_meta->'txNotFound'->'days') = 'array'
+                                                              THEN raw_response_meta->'txNotFound'->'days' ELSE '[]'::jsonb END) AS d
+                        UNION SELECT ${today}::text) x),
+              'last', to_jsonb(now())))
+      WHERE id = ${row.id}::uuid
+      RETURNING raw_response_meta->'txNotFound' AS tx_not_found_log`);
+    const rows = (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as { tx_not_found_log: unknown }[];
+    return rows[0] ? notFoundDaysOf(rows[0].tx_not_found_log) : [...known, today];
+  }
+
+  /**
+   * 売り手の名指した tx を「見つからない」と確定してよいか（2026-09-29 独立レビュー CRITICAL・条件は冒頭の
+   * SELLER_NAMED_TX_EXPIRY_MS の注記）。認可の読み取り・読み直しが失敗したら確定しない（false）。
+   */
+  async function sellerNamedTxExpiryReady(row: PurchaseRow, days: readonly string[]): Promise<boolean> {
+    if (!sellerNamedTxExpiryChain(row.network)) return false;
+    if (!sellerNamedTxExpired(row.attempted_at)) return false;
+    if (days.length < SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS) return false;
+    if (row.auth_nonce) {
+      if (!row.payer) return false;
+      const used = await authorizationState({ network: row.network, payer: row.payer, nonce: row.auth_nonce });
+      if (used !== false) return false;
+    }
+    const again = await verify({
+      txHash: row.tx_hash,
+      network: row.network,
+      expectedPayTo: row.pay_to!,
+      expectedPayer: row.payer!,
+      expectedAmountUnits: row.amount_units!,
+      expectedAuthNonce: row.auth_nonce,
+    });
+    return !again.ok && again.reason === "tx_not_found";
+  }
+
+  /**
    * 照合の理由（settlement_verify_reason）だけを書く経路（status は変えない）。2026-09-29 監査4周目:
    * この列は売り手の頁（/sellers の reader.ts・verifyReason）に出る公開の状態なので、**値が変わったときだけ**
    * 同じ文で訂正ログに残す。同じ理由の書き直し（毎日の再試行）は UPDATE も訂正も 0 行。
@@ -452,8 +543,17 @@ export async function runSettlementVerification(options?: {
    * 次の行へ進むので、1 件の DB エラー・RPC クライアントの故障が残りの行を道連れにしない。
    */
   async function verifyOneRow(row: PurchaseRow): Promise<void> {
-    // 2026-09-29 第5巡: 受領証の tx がハッシュの形ですらない行（SELECT が期限の日数の後の行だけを拾う）。チェーンは読まない。
+    // 2026-09-29 第5巡: 受領証の tx がハッシュの形ですらない行（SELECT が Base / Arc の、期限の日数の後の行だけを拾う）。
+    // tx は読めないので、nonce のある行は認可が使われていない（お金が動いていない）とチェーンで確かめてから確定する。
+    // 使われていた・読めなかったときは触らない（決済はどこかで起きている＝遅延回収の対象）。
     if (row.status === "settle_claimed_unverifiable") {
+      if (row.auth_nonce && row.payer) {
+        const used = await authorizationState({ network: row.network, payer: row.payer, nonce: row.auth_nonce });
+        if (used !== false) {
+          summary.deferred++;
+          return;
+        }
+      }
       await expireSellerNamedTx(row, `the receipt's transaction id ${JSON.stringify(row.tx_hash.slice(0, 40))} is not a transaction hash`);
       return;
     }
@@ -565,10 +665,21 @@ export async function runSettlementVerification(options?: {
       return;
     }
 
-    // 2026-09-29 第5巡: 期限の日数たっても見つからない tx は「まだ見えていない」ではない。下の確定の経路へ回す
-    // （遅延回収の tx は取り消し、success:false の申告は申告どおりの失敗へ、それ以外は売り手の名指した tx が見つからない）。
-    const expiredNotFound = result.reason === "tx_not_found" && sellerNamedTxExpired(row.attempted_at);
-    if (TRANSIENT_REASONS.has(result.reason) && !expiredNotFound) {
+    // 遅延回収の tx・success:false の申告は、ここで先に見分ける（下の確定の経路と、期限の確定の両方で使う）。
+    const late = lateLinkOf(row);
+    const promo = namedTxPromotionOf(row);
+
+    // 2026-09-29 第5巡（独立レビューの修正込み）: 売り手が名指した tx の「見つからない」を日付で数え、条件が揃えば確定する。
+    // 遅延回収の tx と success:false の申告は対象外（tx_not_found のまま下の deferred へ）。
+    if (result.reason === "tx_not_found" && !late && !promo) {
+      const days = await recordNotFoundDay(row);
+      if (await sellerNamedTxExpiryReady(row, days)) {
+        await expireSellerNamedTx(row, `transaction ${row.tx_hash.slice(0, 80)} not found on ${row.network} on ${days.length} different days`);
+        return;
+      }
+    }
+
+    if (TRANSIENT_REASONS.has(result.reason)) {
       // 見えなかっただけ。否定ではないので status は倒さない。
       await setVerifyReason(row, result.reason);
       summary.deferred++;
@@ -595,21 +706,14 @@ export async function runSettlementVerification(options?: {
     // 遅延回収で vet402 が貼った tx が確定的に否定された。売り手は tx を名指していないので、否定の理由が
     // 何であれ refute しない（2 巡目レビュー 1）。nonce の束縛で落ちるのは正常な結果、それ以外は計器の
     // 故障か reorg——withdrawLateLink がその区別を鳴らす。
-    const late = lateLinkOf(row);
     if (late) {
       await withdrawLateLink(row, late, result.reason, result.detail);
       return;
     }
 
     // 売り手が success:false と申告したまま名指した tx（2026-09-29 第4巡）: 申告どおりの失敗に戻す。
-    const promo = namedTxPromotionOf(row);
     if (promo) {
       await declineSellerNamedTx(row, promo, result.reason, result.detail);
-      return;
-    }
-
-    if (expiredNotFound) {
-      await expireSellerNamedTx(row, `transaction ${row.tx_hash.slice(0, 80)} not found on ${row.network}`);
       return;
     }
 

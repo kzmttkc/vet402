@@ -595,9 +595,10 @@ function SellerSignalLine({ l, rebuyEligible }: { l: SellerListing; rebuyEligibl
 
 /**
  * 頁の先頭から自動で判定 API に問い合わせる出品の数（2026-09-29 第5巡・DecisionAnswer.tsx）。鍵なしの判定 API は
- * 同じ IP から 10 回/分なので、閲覧者の枠を使い切らない数にする。残りの出品はボタンで 1 件ずつ。
+ * 同じ IP から 10 回/分で、同じ IP の鍵なしの利用者（エージェント）と枠を分け合うので、頁の閲覧で使う分は小さくする
+ * （独立レビュー WARNING: 5 件は枠の半分）。残りの出品はボタンで 1 件ずつ。
  */
-export const DECISION_AUTO_LISTINGS = 5;
+export const DECISION_AUTO_LISTINGS = 2;
 
 function EarlierRow({ e, endpointId }: { e: ShownRow; endpointId: string }) {
   return (

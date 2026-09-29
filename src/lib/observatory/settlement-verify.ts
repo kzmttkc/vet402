@@ -29,7 +29,7 @@
 //     ものだけを採る。同額の無関係な transfer や、別トークンの同名イベントを
 //     決済と読まない。
 // ============================================================
-import { keccak256, toBytes } from "viem";
+import { keccak256, parseAbi, toBytes, TransactionReceiptNotFoundError } from "viem";
 import { getPublicClient } from "@/lib/chain/client";
 import { getArcPublicClient } from "@/lib/chain/arc";
 import { evmChainFor, type EvmPayChain } from "./x402-payer";
@@ -127,6 +127,53 @@ export type SettlementVerifyResult =
       detail?: string;
     };
 
+/**
+ * RPC が「そのレシートは無い」と答えた例外か（viem の TransactionReceiptNotFoundError）。それ以外（タイムアウト・429・
+ * 接続の失敗・JSON-RPC のエラー）は「読めなかった」であって「無い」ではない。Tempo の照合器も同じ判定を使う。
+ */
+export function receiptMissing(error: unknown): boolean {
+  if (error instanceof TransactionReceiptNotFoundError) return true;
+  return typeof error === "object" && error !== null && (error as { name?: unknown }).name === "TransactionReceiptNotFoundError";
+}
+
+const AUTHORIZATION_STATE_ABI = parseAbi(["function authorizationState(address authorizer, bytes32 nonce) view returns (bool)"]);
+
+/** authorizationState を読む面（テストでは偽物を注入する）。 */
+export type AuthorizationStateClient = Pick<ReturnType<typeof getPublicClient>, "getChainId" | "readContract">;
+
+/**
+ * 我々が署名した EIP-3009 の認可が、チェーンで使われたか（USDC の authorizationState(payer, nonce)）。
+ * 2026-09-29 独立レビュー（CRITICAL）: 売り手の名指した tx を「見つからない」と確定する前に、お金が動いていないことを
+ * チェーンで確かめる材料。true＝使われた（どこかの tx で決済された）、false＝使われていない、null＝読めない・対象外
+ * （Base / Arc 以外・nonce や payer の形が違う・RPC の失敗・チェーン ID の食い違い）。null は「確かめられない」なので、
+ * 呼び手は確定しない側に倒す。
+ */
+export async function readAuthorizationState(
+  input: { network: string; payer: string; nonce: string },
+  deps?: { client?: AuthorizationStateClient },
+): Promise<boolean | null> {
+  const chain = input.network.startsWith("eip155:") ? evmChainFor(input.network) : null;
+  if (!chain) return null;
+  if (!/^0x[0-9a-fA-F]{40}$/.test(input.payer) || !/^0x[0-9a-fA-F]{64}$/.test(input.nonce)) return null;
+  let client: AuthorizationStateClient | null;
+  if (deps?.client) client = deps.client;
+  else if (chain.chainId === 5042) client = process.env.ARC_RPC_URL?.trim() ? getArcPublicClient("live") : null;
+  else client = getPublicClient();
+  if (!client) return null;
+  try {
+    if ((await client.getChainId()) !== chain.chainId) return null;
+    const used = await client.readContract({
+      address: chain.usdc as `0x${string}`,
+      abi: AUTHORIZATION_STATE_ABI,
+      functionName: "authorizationState",
+      args: [input.payer as `0x${string}`, input.nonce as `0x${string}`],
+    });
+    return used === true ? true : used === false ? false : null;
+  } catch {
+    return null;
+  }
+}
+
 function topicToAddress(topic: string): string {
   return `0x${topic.slice(-40)}`.toLowerCase();
 }
@@ -210,11 +257,14 @@ export async function verifyL1Settlement(
   let receipt: Awaited<ReturnType<typeof client.getTransactionReceipt>>;
   try {
     receipt = await client.getTransactionReceipt({ hash: txHash as `0x${string}` });
-  } catch {
-    // 「存在しない」と「RPCが答えられなかった」をここでは区別できない。
-    // どちらも確認できていないので確認済みにはしないが、tx_not_found として
-    // 記録し、cron の再走で回復できるようにする（恒久の否定にしない）。
-    return { ok: false, reason: "tx_not_found" };
+  } catch (error) {
+    // 2026-09-29 独立レビュー（CRITICAL）: 以前は例外を全部 tx_not_found にしていた（「存在しない」と「RPC が
+    // 答えられなかった」を区別していなかった）。tx_not_found は売り手の名指した tx の期限（settlement-verifier.ts）の
+    // 材料になるので、RPC が「その tx のレシートは無い」と答えたときだけにする。タイムアウト・429・接続の失敗は
+    // rpc_unavailable（どちらも一時的な理由で、status は倒さない）。
+    return receiptMissing(error)
+      ? { ok: false, reason: "tx_not_found" }
+      : { ok: false, reason: "rpc_unavailable", detail: redactForLog(error).slice(0, 200) };
   }
   if (!receipt || receipt.status !== "success") {
     return { ok: false, reason: "tx_reverted" };

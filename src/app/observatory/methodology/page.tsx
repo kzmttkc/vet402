@@ -39,7 +39,7 @@ import { L1_REQUEST_TIMEOUT_MS } from "@/lib/observatory/l1-timing";
 import { L0_REASON_CODES } from "@/lib/observatory/l0-reasons";
 import { L0_BODY_CAP_BYTES, L0_BODY_CAP_RAISED_ON } from "@/lib/observatory/l0-probe";
 import { TableScroll } from "@/components/site/TableScroll";
-import { SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS } from "@/lib/sellers/fix-modes";
+import { SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS, SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS } from "@/lib/sellers/fix-modes";
 
 const MAX_PER_PURCHASE_USD = Number(MAX_PER_PURCHASE_UNITS) / 1_000_000;
 
@@ -458,10 +458,16 @@ export default async function ObservatoryMethodologyPage() {
             届かなかった L1 の行を載せる記録頁の noindex。 */}
         <p className="doc-p">
           <strong>A transaction the seller named that does not appear.</strong> A receipt&apos;s transaction that is
-          not on-chain yet is re-read on later runs of the verifier and does not count either way. When it is still not found{" "}
-          {SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS.toString()} days after the purchase, or the receipt&apos;s id is not a
-          transaction hash at all, the row is recorded as <em>seller-named tx not found</em>, with the date, and
-          the change is logged on{" "}
+          not on-chain yet is re-read on later runs of the verifier and does not count either way; a read that
+          fails (a timeout or a rate limit) is not counted as &ldquo;not found&rdquo;. On Base and Arc, when the chain
+          has answered that the transaction does not exist on at least{" "}
+          {SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS.toString()} different days (UTC), it is{" "}
+          {SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS.toString()} days after the purchase, the payment authorization vet402
+          signed shows as unused on-chain, and one more read still finds nothing, the row is recorded as{" "}
+          <em>seller-named tx not found</em>, with the date. A receipt&apos;s id that is not a transaction hash at
+          all is recorded the same way after the same number of days, once the authorization shows as unused. A
+          transfer vet402 linked itself, and a receipt that did not say success, are not closed this way. The change
+          is logged on{" "}
           <Link href="/corrections" className="underline">
             /corrections
           </Link>
