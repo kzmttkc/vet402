@@ -1,6 +1,6 @@
 {
   "name": "@vet402/mcp-server",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "bin": {
     "vet402-mcp": "./dist/index.js",

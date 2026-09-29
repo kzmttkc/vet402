@@ -28,6 +28,7 @@ import {
 } from "./catalog-source";
 import { computeCatalogDiff, type CatalogDiffEvent, type KnownEndpointState } from "./catalog-diff";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
+import { ALIAS_SYNC_MAX_RESOURCES, backfillResourceAliases } from "@/lib/resolve/aliases";
 
 export type SyncSummary = {
   snapshotDate: string;
@@ -250,6 +251,16 @@ export async function syncCatalog(
         resourceKeys: [...currentKeys],
       },
     });
+
+  // ---- resource_id の別名（2026-09-29 監査 7 周目・高）----
+  // 生の URL から id を作る SDK が、表記の揺れで BLOCK をカタログ外と読まないように。まだ別名の無い出品だけ・
+  // 1 回あたり上限つき（全件は scripts/backfill-resource-aliases.ts）。別名は補助の索引なので、失敗しても
+  // 同期そのものは止めない（表の無い DB では missingTable が返るだけ）。
+  try {
+    await backfillResourceAliases(db, ALIAS_SYNC_MAX_RESOURCES);
+  } catch (aliasError) {
+    logServerErrorSafe("observatory.catalog-sync.aliases", aliasError);
+  }
 
   return {
     snapshotDate: today,

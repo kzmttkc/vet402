@@ -12,11 +12,15 @@
  * The order of judgement. It stops at the first failure:
  *   1. Caller errors (a resourceId that is not 64 hex characters, no injected fetch) throw. No
  *      decision is fetched.
- *   2. `GET /resources/{id}/decision?role=payer`. Unreadable refuses — silence is not ALLOW.
+ *   1.8 With a resource URL, canonicalize it on the server first (`GET /resolve?q=<url>&method=`,
+ *      2026-09-29 audit round 7): a listed URL's own resource_id replaces the one passed in; a URL
+ *      that resolves to no listing on a host that has listings refuses
+ *      (`resource_unresolved_host_known`); an unreadable /resolve refuses.
+ *   2. `GET /resources/{id}/decision?role=payer&url=<resource>`. Unreadable refuses — silence is not ALLOW.
  *      A 404 not-found (not in the catalogue, §3.1) is the exception: if a resource URL that
- *      returns a 402 was supplied, pass it through to step 5 and let the SDK judge on the 402's
- *      payTo, the payee score and the declared floors (I23, 2026-09-06). A 404 with no resource
- *      URL has nothing to judge on, so it refuses as before.
+ *      returns a 402 was supplied, /resolve found no listing on its host and the 404 says
+ *      `host_known: false`, pass it through to step 5 and let the SDK judge on the 402's
+ *      payTo, the payee score and the declared floors (I23, 2026-09-06). Any other 404 refuses.
  *   3. Degraded refuses. A recommendation other than ALLOW refuses. **The server's own reason
  *      codes are passed straight through.** (An uncatalogued resource has no decision body, so
  *      this step is skipped; a BLOCK or degraded payee score is held by step 3' of the SDK.)
@@ -48,10 +52,12 @@
  *
  * 判定の流れ（5行）:
  *   1. 呼び出し側の誤り（64桁hex でない resourceId、fetch 未注入）は throw。判定も引かない
- *   2. `GET /resources/{id}/decision?role=payer` を引く。読めない → 拒否（沈黙は ALLOW ではない）
- *      **404 not_found（カタログ外・§3.1）は例外**: `resource`（402 を返す URL）が与えられていれば
- *      止めずに 5 へ通し、SDK が 402 の payTo ＋ 受取人スコア ＋ 宣言された床で判定する（I23・2026-09-06）。
- *      `resource` が無い 404 は判定材料が存在しないので従来どおり `evidence_unavailable`
+ *   1.8 `resource` があれば先に `/resolve?q=<url>&method=` でサーバの正規化を通す（2026-09-29 監査 7 周目）。
+ *      掲載に結べればその resource_id を使う。結べないのにホストに掲載があれば `resource_unresolved_host_known` で拒否
+ *   2. `GET /resources/{id}/decision?role=payer&url=<resource>` を引く。読めない → 拒否（沈黙は ALLOW ではない）
+ *      **404 not_found（カタログ外・§3.1）は例外**: `resource` があり、/resolve がホストにも掲載が無いと言い、
+ *      404 が `host_known: false` と言ったときだけ 5 へ通し、SDK が 402 の payTo ＋ 受取人スコア ＋ 宣言された床で
+ *      判定する（I23・2026-09-06）。それ以外の 404 は拒否
  *   3. `degraded` → 拒否。`recommendation !== "ALLOW"` → 拒否。**理由はサーバの reason_codes をそのまま通す**
  *      （カタログ外は判定本文が無いのでこの段を飛ばす。受取人スコアの BLOCK / degraded は SDK の 3' 段が持つ）
  *   4. ALLOW でも支払い先（payee / resource / amountUsd）が無ければ拒否（`payment_target_unknown`）
@@ -80,10 +86,13 @@ export declare const SOLANA_PAYEE_RE: RegExp;
  * SDK と共有する 3 語は綴りも同じ（下の型検査が保証する）。残り 2 語はこの橋にしか無い:
  *  - `graph_key_not_configured` … The Graph を読むと宣言したのに GRAPH_API_KEY が無い（§1.5）
  *  - `payment_target_unknown` … ALLOW だが resource / payee / amountUsd が無いので払えない（§4）
+ *  - `resource_unresolved_host_known` … 払う URL がサーバの正規化で掲載に結べないのに、そのホストには掲載がある
+ *    （表記違いの掲載かもしれない。カタログ外の売り手として払わない・2026-09-29 監査 7 周目）
+ *  - `resource_id_mismatch` … 払う URL は掲載に無いのに、渡された resourceId は別の掲載の判定を返した
  * サーバ由来の語（decision の `reason_codes`・`rate_limited` 等のエラー語・`caller_policy` の語）は
  * この配列に**載せない**。狭めれば語が落ちるので {@link ServerReasonCode} として透過する。
  */
-export declare const REFUSE_REASONS: readonly ["evidence_unavailable", "subgraph_evidence_unavailable", "graph_key_not_configured", "payee_recommendation_not_allow", "payment_target_unknown"];
+export declare const REFUSE_REASONS: readonly ["evidence_unavailable", "subgraph_evidence_unavailable", "graph_key_not_configured", "payee_recommendation_not_allow", "payment_target_unknown", "resource_unresolved_host_known", "resource_id_mismatch"];
 export type RefuseReason = (typeof REFUSE_REASONS)[number];
 /**
  * 署名者。**ALLOW ブランチに入るまで、この値のプロパティには一度も触らない。**

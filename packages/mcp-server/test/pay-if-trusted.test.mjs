@@ -5,6 +5,7 @@
 // あちらは判定を返し、呼び手が自分で決める。こちらは signer を握り、通らなければ到達させない。
 import test from "node:test";
 import assert from "node:assert/strict";
+import { resolveReply, resolveBody } from "./helpers/resolve.mjs";
 
 // 2026-09-05 訂正（SDK の pay-or-refuse.test.mjs が 09-05 に受けたのと同じ是正）:
 // Day 0 は `../src/pay-if-trusted.js` から import していたが、このパッケージは
@@ -85,6 +86,8 @@ test("G21b pay_if_trusted は ALLOW で signer を1回だけ呼び attest する
     method: "POST",
     fetch: async (u, init) => {
       calls.push(String(u));
+      const resolved = resolveReply(u);
+      if (resolved) return resolved;
       if (String(u).includes("decision")) {
         // `degraded: false` はサーバが必ず出す欄（decide.ts）。2026-09-07 から SDK は boolean でない
         // degraded を「測れたと言えない」として止めるので、実形どおりに持たせる（追加1）。
@@ -165,6 +168,8 @@ function harness({ decision, receipts, graphStatus = 200 }) {
   const fetch = async (u, init) => {
     const url = String(u);
     calls.push({ url, body: String(init?.body ?? "") });
+    const resolved = resolveReply(url);
+    if (resolved) return resolved;
     if (url.includes("/decision")) {
       return { ok: true, status: 200, json: async () => decision, headers: new Map() };
     }
@@ -325,7 +330,7 @@ test("H7 tools/list の inputSchema に policy が載る。Graph の鍵はツー
 // （SKILL.md「The uncatalogued-seller path in MCP: Not exposed」）。つまり **MCP から The Graph に
 // 払う道は無かった**。ここでは「`resource`（402 を返す URL）が与えられているときだけ」
 // 404 を SDK へ通し、境界（payTo 照合・BLOCK・床）は SDK が持つものを橋越しに固定する。
-const NOT_FOUND = { error: "not_found" };
+const NOT_FOUND = { error: "not_found", host_known: false };
 /** 2026-09-04 実測の受取人スコア応答（SDK の I23 と同じ形。recommendation / score だけ差し替える）。 */
 const payeeScore = (over = {}) => ({
   payee: GRAPH_PAYEE.toLowerCase(),
@@ -348,6 +353,9 @@ function uncataloguedHarness({ score, receipts, accept = ACCEPT }) {
   const fetch = async (u, init) => {
     const url = String(u);
     calls.push({ url, body: String(init?.body ?? "") });
+    // カタログ外: /resolve は掲載に結べずホストにも無い、/decision の 404 は host_known: false（2026-09-29 監査 7 周目）
+    const resolved = resolveReply(url, { listed: false, hostListings: 0 });
+    if (resolved) return resolved;
     if (url.includes("/decision")) {
       return { ok: false, status: 404, json: async () => NOT_FOUND, headers: new Map() };
     }

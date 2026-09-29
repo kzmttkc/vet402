@@ -7,6 +7,7 @@
 //   M4 スキーマ: 44 字の base58 と 0x は通り、45 字は落ちる（実プロセス・stdio）
 import test from "node:test";
 import assert from "node:assert/strict";
+import { resolveReply, resolveBody } from "./helpers/resolve.mjs";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { dirname, join } from "node:path";
@@ -45,6 +46,8 @@ function harness(body = decision()) {
   let rpc = 0;
   const fetch = async (url, init) => {
     const u = String(url);
+    const resolved = resolveReply(u);
+    if (resolved) return resolved;
     if (u.includes("/decision")) return { ok: true, status: 200, json: async () => body, headers: new Map() };
     if (u === RPC_URL) {
       rpc++;
@@ -120,6 +123,8 @@ test("M2b 0x の payee は従来どおり EVM の署名者で払い、Solana の
   const accept = { scheme: "exact", network: "eip155:8453", amount: "10000", asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", payTo: evmPayee, extra: { assetTransferMethod: "eip3009" } };
   const fetch = async (url, init) => {
     const u = String(url);
+    const resolved = resolveReply(u);
+    if (resolved) return resolved;
     if (u.includes("/decision")) return { ok: true, status: 200, json: async () => decision(), headers: new Map() };
     if (u.startsWith(RESOURCE)) {
       if (!(init?.headers ?? {})["PAYMENT-SIGNATURE"]) return { ok: false, status: 402, json: async () => ({}), headers: new Map([["payment-required", b64({ x402Version: 2, accepts: [accept] })]]) };
@@ -163,6 +168,11 @@ async function callTool(args, extraEnv = {}, decisionBody = decision()) {
   const seen = [];
   const server = createServer((req, res) => {
     seen.push(req.url);
+    if (req.url.includes("/resolve?")) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(resolveBody()));
+      return;
+    }
     if (req.url.includes("/decision")) {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify(decisionBody));

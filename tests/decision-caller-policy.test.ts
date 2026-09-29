@@ -288,7 +288,12 @@ test("P9 不正値は 400・語は SDK の呼び出し側エラーと同じ", as
 test("P10 カタログ外は policy があっても 404 not_found のまま（評価しない・I23 は SDK が受取人スコアで判定する）", async () => {
   const res = await call("amount_usd=5&max_per_tx_usd=1", { rid: UNKNOWN_RID });
   assert.equal(res.status, 404);
-  assert.deepEqual(await res.json(), { error: "not_found" });
+  // 2026-09-29 監査 7 周目: 404 に host_known（url= が無いので null）と案内が足された。error の語は not_found のまま、
+  // caller_policy は載せない。
+  const body = await res.json();
+  assert.equal(body.error, "not_found");
+  assert.equal(body.host_known, null);
+  assert.equal("caller_policy" in body, false);
 });
 
 test("P11 鍵の有無で caller_policy を含む本文が変わらない", async () => {

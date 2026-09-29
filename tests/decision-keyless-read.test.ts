@@ -186,7 +186,9 @@ test("(f) カタログ外は鍵なしでも 404 not_found——鍵の有無で�
   const anon = await call(UNKNOWN_RID);
   assert.equal(anon.status, 404);
   const anonBody = await anon.json();
-  assert.deepEqual(anonBody, { error: "not_found" });
+  // 2026-09-29 監査 7 周目: host_known（url= が無いので null）と案内が足された。error の語は not_found のまま。
+  assert.equal(anonBody.error, "not_found");
+  assert.equal(anonBody.host_known, null);
   const keyed = await call(UNKNOWN_RID, { key: DEV_KEY });
   assert.equal(keyed.status, 404);
   assert.deepEqual(await keyed.json(), anonBody);

@@ -11,6 +11,7 @@
 // inert 欄: 払ってよいが、署名に載るのは正規の額・宛先のまま。
 // ============================================================
 import test from "node:test";
+import { resolveReply } from "./helpers/resolve.mjs";
 import assert from "node:assert/strict";
 import { payIfTrusted, REFUSE_REASONS } from "../dist/pay-if-trusted.js";
 import { PAY_REFUSE_REASONS } from "@vet402/sdk";
@@ -51,6 +52,8 @@ function watched() {
 function harness({ decision = allowDecision() } = {}) {
   const fetch = async (url, init) => {
     const u = String(url);
+    const resolved = resolveReply(u);
+    if (resolved) return resolved;
     if (u.includes("/decision")) return { ok: true, status: 200, json: async () => decision, headers: new Map() };
     if (u.includes("/payees/")) return { ok: true, status: 200, json: async () => ({ recommendation: "ALLOW", score: 90, degraded: false, signalsUnavailable: [] }), headers: new Map() };
     if (u.includes("subgraphs/id/")) {

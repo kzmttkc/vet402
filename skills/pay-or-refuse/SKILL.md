@@ -168,6 +168,8 @@ fails if this table and those constants drift apart. Server `reason_codes` (for 
 | `insufficient_ens_attestations` | the name's valid attestations are below your `minEnsAttestations` floor | same as the other floors: lower it only if the user accepts the risk |
 | `resource_uncatalogued` | `/decision` answered 404; judgement came from the 402's `payTo` and that address's payee score | informational; it always sits next to the decisive code |
 | `payment_target_unknown` | MCP only: `resource`/`payee`/`amountUsd` were not all given | expected on the dry-run; otherwise pass all three |
+| `resource_unresolved_host_known` | MCP only: `resource` matches no listing, but vet402 has listings on its host — it may be another spelling of a listed (possibly BLOCKed) URL | stop; resolve the URL with `/api/v1/resolve?q=<url>&method=<METHOD>` and pay the listed URL, never the unlisted spelling |
+| `resource_id_mismatch` | MCP only: `resource` is not a listed URL, but `resourceId` names a different listing | stop; pass the `resource_id` that `/api/v1/resolve` returns for the URL you pay |
 | `payer_not_configured` | MCP only: the server has no `VOUCH_PAYER_PRIVATE_KEY` (and `viem`) | the decision was still measured; to pay, configure the server (see Setup) |
 | `settle_failed` | on `FAILED`: signed, the seller did not settle | see "If it FAILED" |
 | `allowed_by_caller_policy` | not a refusal: your floors, not vet402, allowed it | appears on ALLOW records with `verdict_source: "caller_policy"`; report that to the user |

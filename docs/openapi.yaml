@@ -1249,6 +1249,15 @@ paths:
           name: q
           required: true
           schema: { type: string, maxLength: 2048 }
+        - in: query
+          name: method
+          required: false
+          schema: { type: string, pattern: "^[A-Za-z]{1,10}$" }
+          description: |
+            Since 2026-09-29. For a URL `q`, look the Resource up under this HTTP
+            method only (case-insensitive) instead of GET then POST. A caller that
+            is about to pay uses it to get the canonical `resource_id` of the
+            method it will pay with. Anything but 1–10 letters is 400 `invalid_method`.
       responses:
         "200":
           description: Canonical objects for the query. Which keys are present depends on `query.kind`.
@@ -1266,6 +1275,8 @@ paths:
             `accepted` lists the forms `q` can take. When `q` was readable the
             body also carries `query` (`{ kind, value }`) so the caller can see
             how it was read. `expected: "q"` names the parameter.
+            `invalid_method` (since 2026-09-29, `expected: "method"`) when
+            `method` is not 1–10 letters.
           content:
             application/json:
               schema:
@@ -1273,7 +1284,7 @@ paths:
                   - $ref: "#/components/schemas/ErrorResponse"
                   - type: object
                     properties:
-                      expected: { type: string, enum: [q] }
+                      expected: { type: string, enum: [q, method] }
                       message: { type: string }
                       suggestion: { type: string }
                       accepted:
@@ -1676,6 +1687,14 @@ paths:
           required: false
           schema: { type: boolean, default: true }
           description: Mirror of the SDK's `policy.requireVet402Allow`. `true` (default) refuses any recommendation other than ALLOW with `payee_recommendation_not_allow`; `false` waives a WARN and requires `min_l1_deliveries` ≥ 1 (400 `invalid_policy` otherwise). Only the literal strings `true` / `false` are accepted.
+        - in: query
+          name: url
+          required: false
+          schema: { type: string, maxLength: 2048 }
+          description: |
+            Since 2026-09-29. The URL you are about to pay. Used only when no
+            listing matches `resourceId`: the 404 body then says in `host_known`
+            whether vet402 has listings on that URL's host.
         - in: header
           name: Idempotency-Key
           required: false
@@ -1688,7 +1707,28 @@ paths:
               schema: { $ref: "#/components/schemas/DecisionResult" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { description: Unknown resource_id }
+        "404":
+          description: |
+            Unknown resource_id. `resourceId` is matched exactly and, since
+            2026-09-29, also as a common other spelling of a listed URL — a
+            trailing slash, an upper-case host, an explicit `:443` or a different
+            query order hashed as sha256("<METHOD> <url>") — which answers for
+            the listed URL. `error` stays `not_found`. `host_known` is `true` when
+            `url` was given and vet402 has listings on its host (the id may be
+            another spelling of a listed URL: resolve the URL with
+            `/api/v1/resolve?q=<url>&method=<METHOD>` before paying, and do not
+            treat the seller as unlisted), `false` when it has none, and `null`
+            when `url` was not given or is not an https URL.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, host_known, message, next]
+                properties:
+                  error: { type: string, enum: [not_found] }
+                  host_known: { type: boolean, nullable: true }
+                  message: { type: string }
+                  next: { type: string, format: uri }
         "429": { $ref: "#/components/responses/RateLimited" }
         "503": { description: Decision unavailable }
 
@@ -4682,7 +4722,7 @@ components:
           properties:
             limit: { type: integer }
             returned: { type: integer }
-            nextCursor: { type: string, nullable: true, description: Pass back as ?cursor= for the next older page; null on the last page. }
+            nextCursor: { type: string, nullable: true, description: "Pass back as ?cursor= for the next older page; null on the last page." }
             order: { type: string }
             howToPage: { type: string }
         totalDefinition: { type: string }
@@ -4947,6 +4987,7 @@ components:
             # error リテラル ⊆ この enum」を機械検査する。
             # --- §7.3 / §9.1 resolve / resources / endpoints / payees / facts ---
             - invalid_query
+            - invalid_method
             - resolve_unavailable
             - invalid_resource_id
             - invalid_endpoint_id

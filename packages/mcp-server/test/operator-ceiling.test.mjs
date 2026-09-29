@@ -16,6 +16,7 @@
 // （test/tool-contract.test.mjs 冒頭と同じ事情）、TypeScript の AST で見る。
 import test from "node:test";
 import assert from "node:assert/strict";
+import { resolveReply, resolveBody } from "./helpers/resolve.mjs";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
@@ -130,6 +131,8 @@ function harness() {
   const paid = [];
   const fetchFn = async (u, init) => {
     const url = String(u);
+    const resolved = resolveReply(url);
+    if (resolved) return resolved;
     if (url.includes("/decision")) {
       return {
         ok: true,

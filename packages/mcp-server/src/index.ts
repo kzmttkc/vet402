@@ -19,7 +19,7 @@ import {
 
 const server = new McpServer({
   name: "vouch-trust",
-  version: "0.3.0",
+  version: "0.3.1",
 });
 
 
@@ -359,7 +359,8 @@ server.tool(
     "",
     "REFUSE means it stopped BEFORE a signature existed; refuse_reasons carries the server's own",
     "reason_codes unchanged, plus one of evidence_unavailable, payee_recommendation_not_allow,",
-    "payment_target_unknown, payer_not_configured, payee_mismatch, chain_or_asset_mismatch,",
+    "payment_target_unknown, resource_unresolved_host_known, resource_id_mismatch, payer_not_configured,",
+    "payee_mismatch, chain_or_asset_mismatch,",
     "price_above_ceiling (the 402 asks more than maxPerTxUsd), price_above_declared (the 402 asks",
     "more than the amountUsd you named). FAILED means it signed and the seller did not settle — signed and nonce",
     "are returned, not hidden, because the authorization stays live until validBefore.",
@@ -370,7 +371,13 @@ server.tool(
     "subgraph row also carries subgraphId, block.number, deployment and queriedAt - the proof it was",
     "read from a live index. Counts on rows from different sources are not added together.",
     "",
-    "A seller outside vet402's catalogue (/decision answers 404) is not a dead end: when resource is",
+    "With resource, the URL is first canonicalized by vet402 (/resolve with your method): a listed URL is",
+    "judged and paid under its own resource_id even if resourceId was spelled differently (summary says",
+    "so); a URL that matches no listing on a host vet402 has listings for refuses with",
+    "resource_unresolved_host_known (it may be another spelling of a listed, possibly BLOCKed, URL); a",
+    "resourceId that names a different listing than resource refuses with resource_id_mismatch.",
+    "",
+    "A seller outside vet402's catalogue (/decision answers 404 with host_known false) is not a dead end: when resource is",
     "given, the 404 is handed to the SDK, which judges from the 402's payTo, the payee score for that",
     "address and your evidence floors (decision_record.verdict_source payee_score or caller_policy,",
     "reason_codes resource_uncatalogued). The same boundary holds there: payTo must equal payee, a",

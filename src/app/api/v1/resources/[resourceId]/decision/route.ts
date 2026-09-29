@@ -8,7 +8,7 @@ import { lookupManualList } from "@/lib/db/customer-lists";
 import { decide, presentDecision, type DecisionResult } from "@/lib/decision/decide";
 import { evaluateCallerPolicy, parseCallerPolicy, type CallerPolicyInput } from "@/lib/decision/caller-policy";
 import { SHA256_HEX_RE, parsePartyId, payeeId as toPartyId } from "@/lib/ids/canonical";
-import { getResource } from "@/lib/resolve/lookup";
+import { getResource, hostHasListings } from "@/lib/resolve/lookup";
 import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { lookupCallerMaterial } from "@/lib/decision/lookup-caller";
@@ -43,6 +43,9 @@ import { lookupCallerMaterial } from "@/lib/decision/lookup-caller";
 // 移行期の score（2026-09-29.3・監査 6 周目）: 既定の応答には載せない。`include_score=1` のときだけ
 // `score`（superseded_by: "recommendation"・判定には使わない）を返す。SDK と MCP は判定の score を読まない。
 // 保存（冪等）とキャッシュは score 付きの全体で持ち、配る直前に presentDecision を通す。
+// 表記の揺れ（2026-09-29 監査 7 周目・高）: resource_id の完全一致が無ければ別名の表で正規の id に直す
+// （getResource・src/lib/resolve/aliases.ts）。それでも無い 404 は、`url=` があればそのホストに掲載があるかを
+// `host_known` で返す（notFoundBody）。`error` の語は `not_found` のまま。
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
@@ -88,6 +91,33 @@ function finish(caller: Caller, res: NextResponse): NextResponse {
 function fail(caller: Caller, status: number, error: string): NextResponse {
   refund(caller);
   return finish(caller, NextResponse.json({ error }, { status }));
+}
+
+/**
+ * 404 の本文（2026-09-29 監査 7 周目・高）。`error: "not_found"` は従来どおり（凍結中の SDK はこの語だけを読む）。
+ * `url=` を受けたら、その URL のホストに掲載があるかを `host_known` で返す。true は「別の書き方の掲載かもしれない」
+ * ——カタログ外の売り手として払ってはいけない合図。url が無い・正規形にならないときは null（分からない）。
+ */
+async function notFoundBody(rawUrl: string | null): Promise<Record<string, unknown>> {
+  let hostKnown: boolean | null = null;
+  if (rawUrl && rawUrl.length <= 2048) {
+    try {
+      hostKnown = await hostHasListings(rawUrl);
+    } catch (error) {
+      logServerErrorSafe("decision.host_known", error);
+      hostKnown = null;
+    }
+  }
+  const resolveUrl = `https://vet402.com/api/v1/resolve?q=${encodeURIComponent(rawUrl && hostKnown !== null ? rawUrl : "<url>")}`;
+  const message =
+    hostKnown === true
+      ? "No listing has this resource_id, but vet402 has listings on this URL's host, so the id may be another spelling of a listed URL. " +
+        "Resolve the URL with /api/v1/resolve (add &method=<METHOD>) and read that listing's decision before you pay. Do not treat this seller as unlisted."
+      : hostKnown === false
+        ? "No listing has this resource_id and vet402 has no listing on this URL's host: the seller is not in vet402's catalog."
+        : 'No listing has this resource_id. resource_id is sha256("<METHOD> <canonical url>"): resolve the URL with /api/v1/resolve before you pay. ' +
+          "Pass url=<the URL> here to learn whether vet402 has listings on its host (host_known).";
+  return { error: "not_found", host_known: hostKnown, message, next: resolveUrl };
 }
 
 function normalizePayer(raw: string): string | null {
@@ -154,7 +184,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   try {
     const ref = await getResource(resourceId);
-    if (!ref) return fail(caller, 404, "not_found");
+    if (!ref) {
+      const errorBody = await notFoundBody(params.get("url"));
+      refund(caller);
+      return finish(caller, NextResponse.json(errorBody, { status: 404 }));
+    }
     // 顧客の WL/BL は私的ポリシー（§13）。判定に効かせるが facts には混ぜない。
     const listSubject = roleRaw === "payer" ? ref.payee_id ? parsePartyId(ref.payee_id)?.address ?? null : null : parsePartyId(payerId!)?.address ?? null;
     const list = await lookupManualList(apiKeyId, listSubject && listSubject.startsWith("0x") ? listSubject : null);

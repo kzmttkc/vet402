@@ -274,7 +274,6 @@ const endpoints: Endpoint[] = [
   "l1_basis": { "window_days": 30, "fresh_days": 30, "n_counted": 3, "n_not_counted": 0, "n_paid_undelivered": 0, "n_paid_undelivered_since_last_delivery": 0, "latest_counted_delivered": true, "last_attempt_at": "2026-09-27T12:00:41.102Z", "last_signed_attempt_at": "2026-09-27T12:00:41.102Z", "last_delivered_at": "2026-09-27T12:00:41.102Z", "days_since_last_attempt": 1.5, "days_since_last_delivery": 1.5 },
   "verified_terms": { "purchase_id": "eip155:8453:0x…", "pay_to": "0x…", "asset": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", "amount": "10000", "decimals": 6, "network": "eip155:8453", "scheme": "exact", "protocol": "x402", "verified_at": "2026-09-27T12:00:41.102Z" },
   "evidence": [ { "level": "L0", "url": "https://vet402.com/observatory/e/521e929e-…" }, { "level": "L1", "purchase_id": "…", "url": "https://vet402.com/api/v1/observatory/endpoints/521e929e-…/purchases" } ],
-  "score": { "trustScore": 74, "recommendation": "ALLOW", "deprecated": true },
   "degraded": false,
   "policy": "allow_only",
   "caller_policy": { "applied": { "amount_usd": 1.5, "max_per_tx_usd": 1, "min_l1_deliveries": 0, "require_vet402_allow": true }, "verdict": "REFUSE", "reason_codes": ["price_above_ceiling"], "not_evaluated": ["min_subgraph_receipts"] },

@@ -12,6 +12,7 @@ import { rowsOf } from "@/lib/settlements/upsert";
 import { escapeLike } from "@/lib/util/like";
 import { classifyQuery, type QueryKind } from "./classify";
 import { UUID_RE } from "@/lib/validation/uuid";
+import { canonicalIdForAlias } from "./aliases";
 
 export type EndpointRef = {
   endpoint_id: string;
@@ -139,11 +140,38 @@ export async function getEndpoint(ref: string): Promise<EndpointRef | null> {
   return rows[0] ? toRef(rows[0]) : null;
 }
 
+/**
+ * resource_id で 1 件引く。完全一致が無ければ別名の表（x402_resource_aliases）で正規の id に直して引き直す
+ * （2026-09-29 監査 7 周目・高: 生の URL から id を作る SDK の表記の揺れを、正しい出品へ届ける）。
+ * 返る resource_id は常に正規のもの。
+ */
 export async function getResource(resourceIdHex: string): Promise<EndpointRef | null> {
   const db = getDb();
   if (!db || !SHA256_HEX_RE.test(resourceIdHex)) return null;
-  const rows = rowsOf<EndpointRow>(await db.execute(sql`${ENDPOINT_SELECT} WHERE resource_id = ${resourceIdHex} ORDER BY status = 'active' DESC LIMIT 1`));
-  return rows[0] ? toRef(rows[0]) : null;
+  const byId = async (id: string) =>
+    rowsOf<EndpointRow>(await db.execute(sql`${ENDPOINT_SELECT} WHERE resource_id = ${id} ORDER BY status = 'active' DESC LIMIT 1`))[0] ?? null;
+  const exact = await byId(resourceIdHex);
+  if (exact) return toRef(exact);
+  const canonicalId = await canonicalIdForAlias(db, resourceIdHex);
+  if (!canonicalId || canonicalId === resourceIdHex) return null;
+  const viaAlias = await byId(canonicalId);
+  return viaAlias ? toRef(viaAlias) : null;
+}
+
+/**
+ * この URL のホスト（正規形の host。既定でないポートを含む）に掲載が 1 件でもあるか。
+ * 正規形にならない URL は null（分からない）。/decision の 404 の `host_known` が使う。
+ */
+export async function hostHasListings(rawUrl: string): Promise<boolean | null> {
+  const c = canonicalUrl(rawUrl);
+  if (!c) return null;
+  const db = getDb();
+  if (!db) return null;
+  const host = new URL(c.url).host;
+  const rows = rowsOf<{ one: number }>(
+    await db.execute(sql`SELECT 1 AS one FROM x402_endpoints WHERE resource_key = ${host} OR resource_key LIKE ${`${escapeLike(host)}/%`} LIMIT 1`),
+  );
+  return rows.length > 0;
 }
 
 export async function endpointsByPayee(payeeIdStr: string, limit = 200): Promise<EndpointRef[]> {
@@ -208,20 +236,25 @@ export async function settlementByTx(txHash: string): Promise<SettlementRef | nu
   return rows[0] ?? null;
 }
 
-export async function resolve(q: string): Promise<ResolveResult> {
-  return withNotFound(await resolveRaw(q));
+/**
+ * `method`（任意・大文字）: URL の問いを 1 つの method に絞る（2026-09-29 監査 7 周目）。無ければ従来どおり
+ * GET → POST の順。支払う側（MCP の pay_if_trusted）は払う method の正規の resource_id を要る。
+ */
+export async function resolve(q: string, opts: { method?: string } = {}): Promise<ResolveResult> {
+  return withNotFound(await resolveRaw(q, opts));
 }
 
-async function resolveRaw(q: string): Promise<ResolveResult> {
+async function resolveRaw(q: string, opts: { method?: string }): Promise<ResolveResult> {
   const query = classifyQuery(q);
   const out: ResolveResult = { query, disclaimer: DISCLAIMER };
   switch (query.kind) {
     case "url": {
       const c = canonicalUrl(query.value);
       if (!c) return out;
-      // method は不明なので GET → POST の順に引く（§6.1 の既定に合わせる）
-      const byGet = await getResource(toResourceId("GET", c.url));
-      const hit = byGet ?? (await getResource(toResourceId("POST", c.url)));
+      // method が無ければ GET → POST の順に引く（§6.1 の既定に合わせる）。あればその method だけ。
+      const hit = opts.method
+        ? await getResource(toResourceId(opts.method, c.url))
+        : ((await getResource(toResourceId("GET", c.url))) ?? (await getResource(toResourceId("POST", c.url))));
       if (hit) out.resource = hit;
       const host = new URL(c.url).hostname;
       out.endpoints = await endpointsByDomain(host, 50);

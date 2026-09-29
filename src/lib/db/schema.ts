@@ -621,6 +621,24 @@ export const x402Endpoints = pgTable(
 );
 
 /**
+ * resource_id の別名（2026-09-29 監査 7 周目・高）。SDK（凍結中）は生の URL から resource_id を作るので、
+ * 末尾スラッシュ・ホストの大文字・:443・クエリの並びが違うと /decision が 404 になり、カタログ外として
+ * 受取人スコアで払えてしまった。別名 → 正規の resource_id を引く表。算出は src/lib/ids/canonical.ts の
+ * resourceIdAliases の 1 箇所、書き手は src/lib/resolve/aliases.ts（catalog-sync と backfill）。
+ * 別名は「正規形が完全に同じになる生の書き方」のハッシュなので、1 つの正規形にしか写らない
+ * （同じ別名が別の resource_id を指すことはない）。行は不変——書き直さない。
+ */
+export const x402ResourceAliases = pgTable(
+  "x402_resource_aliases",
+  {
+    aliasId: text("alias_id").primaryKey(),
+    resourceId: text("resource_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [index("x402_resource_aliases_resource_id_idx").on(t.resourceId)],
+);
+
+/**
  * Daily catalog snapshot — the raw material the diff is computed FROM, kept
  * so a disputed delisting can be re-derived. fetchedCount < totalCount marks
  * an incomplete fetch: delisting judgement is WITHHELD that day (a fetch gap
