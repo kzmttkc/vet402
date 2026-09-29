@@ -93,8 +93,10 @@ test("LP §2 uses the methodology's L2 vocabulary", () => {
   assert.ok(!home.includes('"conform / mismatch / undeclared"'));
 });
 
-test("RFC header says Updates: trust scores, not Obsoletes", () => {
+test("RFC header points to how the older score relates to L0–L2 (no bare 'trust scores', not Obsoletes)", () => {
   const home = read("src/app/page.tsx");
-  assert.ok(home.includes('value: "Updates: trust scores"'));
+  // 2026-09-29 ペルソナ監査: 先頭画面の「Updates: trust scores」は score を信頼の保証と読ませた
+  assert.ok(home.includes('value: "How the older score relates to L0–L2"'));
+  assert.ok(!home.includes('value: "Updates: trust scores"'));
   assert.ok(!home.includes('value: "Obsoletes: trust scores"'));
 });

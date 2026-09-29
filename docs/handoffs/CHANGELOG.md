@@ -13,6 +13,10 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-29 — persona audit: the first screen, the no-key entry, and the Terms say what vet402 is
+- **何を**: LP の先頭に「Try one check, no account」（/playground）と 3 行（What this is / What you give us / What we do not do）。書誌欄の「Updates: trust scores」→「How the older score relates to L0–L2」、「safe answer」と「Address control verified」を言い換え。売り手検索は空欄を送らせず、一致しないときは次の一手（自分のホスト・他チェーンは observatory）。/signup にキー紛失の一行。Terms §0・§1 のサービス定義を LP と同じ「測定の記録（L0–L2）＋移行期の意見としての score」に。docs に `vouch_` 接頭辞の由来。decision の 400 に `message`（resolve で id を得る）。
+- **なぜ**: 19 人のペルソナ監査（自前と Grok の 2 本）で、先頭画面の言い切り・/playground 未リンク・Terms と LP の食い違い・売り手検索の行き止まり・キー紛失の導線が重なって指摘された。日本語化は現段階ではしない（オーナー判断）。
+
 ## 2026-09-29 — surface canary reads l2_reading and wildcard code mentions
 - **何を**: 台帳の L2 は `l2_reading`（判定・記録頁と同じ読み直し）と比べる（`l2_schema` は記録の値のまま）。判定の `not_checked` を語彙に足した。llms.txt の `l1_not_counted_`* のような語頭の書き方は、その語頭で始まるコードがあれば定義済み。
 - **なぜ**: 2026-09-29.4 の配備後の本番の 1 回目で、残った 6 件のずれはどれも計器の読み違いだった。直した計器で本番 43 出品・173 面・837 項目、ずれ 0。

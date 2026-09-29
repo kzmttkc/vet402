@@ -404,7 +404,14 @@ export default function SignupPage() {
         </button>
       </form>
 
-      <p className="mt-8 text-center text-[0.8125rem] text-brand">
+      {/* 2026-09-29 ペルソナ監査: キーは一度しか出ない。失くしたときの次の一手を発行の画面にも置く。 */}
+      <p className="mt-6 text-center text-[0.8125rem] text-brand">
+        The key is shown once. Lost it?{" "}
+        <Link href="/faq" className="doc-link">
+          FAQ: I lost my API key
+        </Link>
+      </p>
+      <p className="mt-3 text-center text-[0.8125rem] text-brand">
           Already have a key?{" "}
           <Link href="/dashboard/login" className="doc-link">
             Sign in

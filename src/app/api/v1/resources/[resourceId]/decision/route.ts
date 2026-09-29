@@ -88,9 +88,17 @@ function finish(caller: Caller, res: NextResponse): NextResponse {
 }
 
 /** 早期 return の唯一の形: 枠を戻し、枠のヘッダを付けて、エラー語を返す（A7）。`finish` を通らない return を書かない。 */
+// 2026-09-29 ペルソナ監査: エラーの語だけでは次に何をすればよいか分からない。`error` の語は変えず（SDK が読む）、
+// 何が起きたかと次の一手を `message` に足す。
+const FAIL_MESSAGES: Record<string, string> = {
+  invalid_resource_id:
+    "resource_id must be 64 lowercase hex characters (sha256). Get it from a URL with GET /api/v1/resolve?q=<the URL that answers 402>, then call this path again.",
+};
+
 function fail(caller: Caller, status: number, error: string): NextResponse {
   refund(caller);
-  return finish(caller, NextResponse.json({ error }, { status }));
+  const message = FAIL_MESSAGES[error];
+  return finish(caller, NextResponse.json(message ? { error, message } : { error }, { status }));
 }
 
 /**

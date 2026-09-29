@@ -401,8 +401,9 @@ export function SellersIndexView({
             </p>
           ) : search.matches.length === 0 ? (
             <p className="doc-p">
-              No seller on Base matches <code>{q}</code>. The list below holds hosts with an active listing whose
-              catalog network is Base; a listing that names another chain first is not in it.
+              No seller on Base matches <code>{q}</code>. Enter the host of the seller you care about (for example{" "}
+              <code>api.yourcompany.com</code>). This page holds Base purchase results; for other chains, search the{" "}
+              <Link href={`/observatory?q=${encodeURIComponent(q)}`} className="doc-link">observatory</Link>.
             </p>
           ) : null}
           {search.matches.length > 0 && <SellersTable sellers={search.matches} label="Sellers whose host contains the search" />}

@@ -87,7 +87,7 @@ export default async function TermsPage() {
           </h2>
           <p>
             vet402 (formerly Vouch) is offered for business-to-business (B2B) use by agent and service operators
-            integrating trust scores into their own products. It is not marketed or sold to
+            integrating its measurements and scores into their own products. It is not marketed or sold to
             consumers for personal use. See our{" "}
             <a className="doc-link" href="/legal/notice">
               Legal Notice
@@ -102,9 +102,11 @@ export default async function TermsPage() {
             <span>Service</span>
           </h2>
           <p>
-            vet402 provides agent trust scores and recommendations for informational purposes only.
-            Scores do not constitute a guarantee, credit assessment, investment advice, or legal
-            certification.
+            vet402 buys from x402 endpoints with its own funds and publishes what happened, as
+            measurement records (L0–L2) with their evidence. Through its API it also returns a 0–100
+            score and an ALLOW / WARN / BLOCK recommendation, an older opinion signal kept during the
+            transition. Both are for informational purposes only. Neither is a guarantee, credit
+            assessment, investment advice, or legal certification.
           </p>
         </section>
 

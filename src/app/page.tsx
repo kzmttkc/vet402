@@ -55,9 +55,10 @@ const HEAD_RIGHT: { value: string; href?: string; title?: string }[] = [
   { value: "x402 Economy" },
   { value: buildMonth() },
   {
-    value: "Updates: trust scores",
+    // 2026-09-29 ペルソナ監査: 「Updates: trust scores」は先頭画面で score を信頼の保証と読ませた。
+    value: "How the older score relates to L0–L2",
     href: "#methodology",
-    title: "What replaces the trust score, and what is still returned today — see section 2.1",
+    title: "The 0–100 score is an older opinion signal, not a measurement or a guarantee — see section 2.1",
   },
 ];
 
@@ -245,6 +246,7 @@ export default async function Home() {
               name="q"
               type="search"
               placeholder="api.example.com"
+              required
               autoComplete="off"
               autoCapitalize="none"
               spellCheck={false}
@@ -266,9 +268,33 @@ export default async function Home() {
               })}
             >
               Get a free API key
+            </TrackedLink>{" "}
+            {/* 2026-09-29 ペルソナ監査: キー無しで 1 回測れる /playground が、どの頁からも辿れなかった。 */}
+            <TrackedLink
+              href="/playground"
+              event="lp_cta_click"
+              props={{ position: "hero_playground" }}
+              className={buttonClass({
+                variant: "secondary",
+                size: "md",
+                className: "mt-2 w-full max-sm:py-2.5 sm:mt-0 sm:w-auto",
+              })}
+            >
+              Try one check, no account
             </TrackedLink>
           </p>
         </form>
+
+        {/* 2026-09-29 ペルソナ監査: 初見が 15 秒で掴む 3 点。x402 と vet402 の違い、出さなくてよいもの、
+            保証しないもの。書誌欄（RFC 風）はこの下に下がる。 */}
+        <dl className="mx-auto mt-5 grid max-w-[62ch] gap-1 text-sm text-brand sm:grid-cols-[max-content_1fr] sm:gap-x-3">
+          <dt className="font-semibold">What this is</dt>
+          <dd>x402 is how an agent pays an API. vet402 buys from those APIs itself and publishes whether what was paid for arrived.</dd>
+          <dt className="font-semibold">What you give us</dt>
+          <dd>Nothing to look: no wallet, no account, no card. A free key only for API calls.</dd>
+          <dt className="font-semibold">What we do not do</dt>
+          <dd>Guarantee a seller, refund, handle chargebacks, check identity (KYC), approve payments, or cap your spending.</dd>
+        </dl>
 
         {/* ================= RFC first page ================= */}
         {/* 640px 未満ではヘッダの2列が縦に積まれて8行になる（.doc-head の
@@ -643,7 +669,7 @@ export default async function Home() {
                 この頁だけ半分しか言っていなかった。残りの半分を1行で足す。 */}
             <p className="min-w-0 max-w-[64ch] text-brand">
               Unverifiable is not a verdict. We say <strong>&quot;unverified&quot;</strong>, never
-              &quot;bad&quot;. A caller about to move money gets the safe answer instead: a check
+              &quot;bad&quot;. For a caller about to move money, a check
               that could not be completed returns a fail-closed{" "}
               <span className="whitespace-nowrap">BLOCK</span> to the API and the SDK, while the
               public page prints &ldquo;not verifiable right now&rdquo; and no number.{" "}
@@ -751,7 +777,7 @@ export default async function Home() {
           />
           <ItemRow
             state="live"
-            title="Address control verified"
+            title="Wallet control, proved by signature"
             body={
               <>
                 Prove control of a wallet by signature, get a public verification page and an SVG

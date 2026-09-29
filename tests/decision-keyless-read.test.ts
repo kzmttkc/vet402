@@ -223,7 +223,9 @@ test("(h) 鍵なしの 400 invalid_resource_id にも RateLimit-* ヘッダが�
   for (let i = 1; i <= 10; i++) {
     const res = await call("not-a-resource-id");
     assert.equal(res.status, 400, `${i} 回目が ${res.status}`);
-    assert.deepEqual(await res.json(), { error: "invalid_resource_id" });
+    const body = (await res.json()) as { error: string; message?: string };
+    assert.equal(body.error, "invalid_resource_id");
+    assert.match(body.message ?? "", /\/api\/v1\/resolve/, "次の一手（resolve）を本文に出す");
     assert.equal(res.headers.get("RateLimit-Limit"), "10", `${i} 回目の 400 に枠の天井が無い`);
   }
   const real = await call(RID);

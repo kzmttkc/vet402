@@ -822,7 +822,7 @@ claims:
     verified_at: 2026-09-04
   - id: lp_bad_a_caller_about_to
     surface: src/app/page.tsx
-    quote: "&quot;bad&quot;. A caller about to move money gets the safe answer instead: a check"
+    quote: "&quot;bad&quot;. For a caller about to move money, a check"
     means: "測れなかったものを bad と言わず unverified と言う、という判定語の規約"
     check: null
     why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
