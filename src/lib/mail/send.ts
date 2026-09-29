@@ -21,7 +21,15 @@ export type SendResult = { sent: true; id: string } | { sent: false; error: stri
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
-export async function sendMail(input: MailInput): Promise<SendResult> {
+/**
+ * 2026-09-29 監査4周目: Resend への fetch に期限が無く、Resend が応答を返さないと呼び手
+ * （購読の確認・通知の cron）が関数の maxDuration まで止まり、後続の処理ごと落ちていた。
+ * 10 秒で打ち切り、{ sent:false, error:"mail_timeout" } を返す（送れたかは不明なので
+ * 「送った」とは扱わない）。
+ */
+export const MAIL_SEND_TIMEOUT_MS = 10_000;
+
+export async function sendMail(input: MailInput, opts: { timeoutMs?: number } = {}): Promise<SendResult> {
   const key = process.env.RESEND_API_KEY?.trim();
   const from = process.env.MAIL_FROM?.trim();
   if (!key || !from) {
@@ -31,6 +39,7 @@ export async function sendMail(input: MailInput): Promise<SendResult> {
   try {
     const res = await fetch(RESEND_ENDPOINT, {
       method: "POST",
+      signal: AbortSignal.timeout(opts.timeoutMs ?? MAIL_SEND_TIMEOUT_MS),
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         from,
@@ -49,7 +58,8 @@ export async function sendMail(input: MailInput): Promise<SendResult> {
     const json = (await res.json().catch(() => ({}))) as { id?: unknown };
     return { sent: true, id: typeof json.id === "string" ? json.id : "" };
   } catch (error) {
-    logServerErrorSafe("mail", error);
-    return { sent: false, error: error instanceof Error ? error.message : String(error) };
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    logServerErrorSafe("mail", timedOut ? new Error("mail_timeout") : error);
+    return { sent: false, error: timedOut ? "mail_timeout" : error instanceof Error ? error.message : String(error) };
   }
 }

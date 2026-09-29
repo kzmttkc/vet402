@@ -276,3 +276,19 @@ test("the public health route reports the worse of the two probes", async () => 
   const body = (await response.json()) as { status: string };
   assert.notEqual(body.status, "ok", "the route stayed green while the payee side was down");
 });
+
+test("2026-09-29: TTL を過ぎた測定（SWR）は stale と明示して返す——古い ok を今の ok と言わない", async () => {
+  process.env.HEALTH_PAYEE_PROBE_TTL_MS = "0";
+  try {
+    upstream({});
+    const first = await runPayeeProbe();
+    assert.equal(first.stale, undefined, "今測った値は stale ではない");
+    await new Promise((r) => setTimeout(r, 5));
+    const second = await runPayeeProbe();
+    assert.equal(second.fromCache, true);
+    assert.equal(second.stale, true);
+    assert.ok((second.ageMs ?? -1) >= 0);
+  } finally {
+    delete process.env.HEALTH_PAYEE_PROBE_TTL_MS;
+  }
+});

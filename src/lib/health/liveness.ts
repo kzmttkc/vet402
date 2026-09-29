@@ -39,6 +39,8 @@ export type LivenessProbeResult = {
   status: HealthStatus;
   detail?: string | null;
   fromCache?: boolean;
+  /** TTL を過ぎた測定を出した（payee の SWR）。detail に "stale" と書く。 */
+  stale?: boolean;
 };
 
 export type LivenessProbes = {
@@ -83,7 +85,7 @@ export async function evaluateLiveness(probes: LivenessProbes): Promise<Liveness
   const status = worstStatus([scoring.status, payee.status]);
   const detail = composeDetail([
     probeSegment("scoring", scoring.status, scoring.fromCache === true, scoring.detail ?? null),
-    probeSegment("payee", payee.status, payee.fromCache === true, payee.detail ?? null),
+    probeSegment("payee", payee.status, payee.fromCache === true, payee.detail ?? null, payee.stale === true),
   ]);
   return {
     status,

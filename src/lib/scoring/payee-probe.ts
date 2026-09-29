@@ -89,6 +89,15 @@ export type PayeeProbe = {
    * 残さないと、表は健全性ではなくポーリング間隔を記録することになる。
    */
   fromCache: boolean;
+  /**
+   * 2026-09-29 監査4周目: TTL を過ぎた測定を stale-while-revalidate で出したとき true。
+   * 「cached」は TTL 内の memo と区別がつかず、裏の再測定が失敗し続けても最大 10 分間
+   * 古い ok が ok として health_snapshots に残った。古い値は古いと書く（status は変えない——
+   * 実際に測った値であることは変わらないが、「今」の値ではない）。
+   */
+  stale?: boolean;
+  /** stale のとき、その測定からの経過ミリ秒（admin の deep health にだけ載る）。 */
+  ageMs?: number;
 };
 
 let cached: { probe: PayeeProbe; expiresAt: number; measuredAt: number } | null = null;
@@ -152,7 +161,7 @@ export async function runPayeeProbe(): Promise<PayeeProbe> {
       // invocation の生存期間だけ。
       keepAliveUntilSettled(inFlight);
     }
-    return { ...cached.probe, fromCache: true };
+    return { ...cached.probe, fromCache: true, stale: true, ageMs: now - cached.measuredAt };
   }
 
   // Nothing measured yet, or the last reading is too old to stand behind.

@@ -133,8 +133,10 @@ export function probeSegment(
   status: "ok" | "degraded" | "error",
   fromCache: boolean,
   reason: string | null,
+  /** 2026-09-29: TTL を過ぎた測定（SWR）なら "stale"。数字は入れない（低カーディナリティ）。 */
+  stale = false,
 ): string {
-  const head = `${name}=${status} ${fromCache ? "cached" : "fresh"}`;
+  const head = `${name}=${status} ${stale ? "stale" : fromCache ? "cached" : "fresh"}`;
   return reason ? `${head}: ${reason}` : head;
 }
 

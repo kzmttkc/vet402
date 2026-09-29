@@ -156,7 +156,7 @@ export async function GET(request: NextRequest) {
     recordHealthSnapshotIfDue(snapshotStatus, {
       detail: composeDetail([
         "deep=1",
-        probeSegment("payee", payee.status, payee.fromCache, payee.detail),
+        probeSegment("payee", payee.status, payee.fromCache, payee.detail, payee.stale === true),
         `checks: ${Object.entries(deepResult.checks)
           .filter(([key]) => !key.endsWith("_latency_ms"))
           .map(([key, value]) => `${key}=${value}`)
