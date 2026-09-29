@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-29 JST（障害への強さ）— DB 不通で 500 を返さない・/status の stale・未署名予約の解放・訂正ログを台帳と同じ文で
+
+- **何を**: `ip-rate-limit`・`auth`・`guard`・health が DB 例外で 503＋Retry-After（fail-closed）。/status は最後の行から 45 分超で stale、読めなければ unknown。L1 の署名直前の停止判定で DB 不通なら、`auth_nonce` が NULL の予約だけ解放して予算を戻す（資格情報を送った後の失敗は常に settle_failed＝遅延回収の対象に残し、機械の中の原因は `transportFailure.side` の印だけ）。Resend の送信に 10 秒の期限。payee probe の古い値に stale。台帳の status/tx を変える UPDATE と訂正ログを 1 文（CTE）で（照合理由だけの書き込みは訂正に載せない）。/impact・/observatory/state・llms.txt・openapi の「書き換えられない」「export.csv から再計算できる」を実態に。
+- **なぜ**: 2026-09-29 の敵対的監査 4 周目（障害対応の立場）。独立レビューの BLOCK（送った後の request_error で遅延回収から外れる）を直して SHIP。
+- **影響**: 台帳のスナップショット（管理リポ・vet402-ops）は連鎖の検証・行ハッシュの差分・correction_log を含むよう別途更新済み。
+
 ## 2026-09-29 JST（数字の定義）— L0 pass は掲載中の数・with receipt の内訳・spent_units の定義と confirmed_units・日数は UTC の暦日
 
 - **何を**: トップ等の L0 の段を掲載中の数に（掲載落ちを含む総数は説明に）。「with receipt」を売り手のレシートあり／vet402 の索引だけに分割。export.csv に `confirmed_units`（settled の行の額、他は 0）を末尾に追加し、`spent_units` は署名した額だと定義。/accuracy の指標名と分子・分母、似た 3 つの率の違いを段落で。経過日数は UTC の暦日で。backtest は settle_claimed を除く定義と SQL を一致。非推奨スコアの応答に deprecated と Deprecation/Link ヘッダ。

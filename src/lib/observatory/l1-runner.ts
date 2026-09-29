@@ -2445,15 +2445,13 @@ async function purchaseOne(input: {
     // 数えられるようにだけしておく: 境界は下の `rawResponseMeta.credentialStripped` に
     // 残るので、`raw_response_meta ? 'credentialStripped'` で件数を数えられる。
     // 実在するほど多いと分かってから分母の扱いを決める。
-    // 2026-09-29 監査4周目: 応答を 1 つも得られなかった失敗（!paid）を一律に売り手の settle_failed に
-    // していた。原因が**こちらの機械の中にしか無い**もの（ファイル記述子・バッファ・メモリ・自分の
-    // ネットワーク I/F の枯渇）は我々側の request_error で記録する。売り手が起こせる形（接続拒否・
-    // タイムアウト・DNS・TLS・転送先での失敗）は上の W-4 と同じ理由で settle_failed のまま——
-    // 資格情報を受け取った売り手が観測を公開台帳から消せる道を作らない。spent_units はどちらも残す。
+    // 2026-09-29 監査4周目: 応答を 1 つも得られなかった失敗（!paid）の原因が、こちらの機械の中にしか
+    // 無いもの（ファイル記述子・バッファ・メモリの枯渇）か、売り手が起こせる形かを transportFailure.side
+    // に残す。status はどちらも settle_failed（下の独立レビューの節）。spent_units はどちらも残す。
     // 2026-09-29 独立レビュー（BLOCK）: ここは資格情報（署名した支払い）を送った後の段。status を
     // request_error にすると遅延回収（recover-late.ts は request_error を「署名していない行」として外す）
     // から外れ、売り手が後で決済した tx が台帳に結び付かない。status は常に settle_failed のままにし、
-    // 我々の機械の中の失敗だったことは transportFailure.side の印だけで残す（/sellers の帰属はこの印を読む）。
+    // 我々の機械の中の失敗だったことは transportFailure.side の印だけで残す（今は印を残すだけで、読む側はまだ無い）。
     const transportSide = !paid ? paidTransportFailureSide(paidErrorRaw) : null;
     const status = !paid
       ? "settle_failed"
