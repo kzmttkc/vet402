@@ -359,7 +359,7 @@ server.tool(
     "",
     "REFUSE means it stopped BEFORE a signature existed; refuse_reasons carries the server's own",
     "reason_codes unchanged, plus one of evidence_unavailable, payee_recommendation_not_allow,",
-    "payment_target_unknown, resource_unresolved_host_known, resource_id_mismatch, payer_not_configured,",
+    "payment_target_unknown, resource_unresolved_host_known, resource_unresolved, resource_id_mismatch, payer_not_configured,",
     "payee_mismatch, chain_or_asset_mismatch,",
     "price_above_ceiling (the 402 asks more than maxPerTxUsd), price_above_declared (the 402 asks",
     "more than the amountUsd you named). FAILED means it signed and the seller did not settle — signed and nonce",
@@ -373,9 +373,12 @@ server.tool(
     "",
     "With resource, the URL is first canonicalized by vet402 (/resolve with your method): a listed URL is",
     "judged and paid under its own resource_id even if resourceId was spelled differently (summary says",
-    "so); a URL that matches no listing on a host vet402 has listings for refuses with",
-    "resource_unresolved_host_known (it may be another spelling of a listed, possibly BLOCKed, URL); a",
-    "resourceId that names a different listing than resource refuses with resource_id_mismatch.",
+    "so); a URL that matches no listing refuses with",
+    "resource_unresolved_host_known when one seller has live listings on that exact host (it may be another",
+    "spelling of a listed, possibly BLOCKed, URL). On a shared host (live listings from two or more sellers)",
+    "an unlisted URL is resource_unresolved: judged like an uncatalogued seller by default (summary says so),",
+    "or refused with resource_unresolved when onUnresolved is \"refuse\". A resourceId that names a different",
+    "listing than resource refuses with resource_id_mismatch.",
     "",
     "A seller outside vet402's catalogue (/decision answers 404 with host_known false) is not a dead end: when resource is",
     "given, the 404 is handed to the SDK, which judges from the 402's payTo, the payee score for that",
@@ -422,6 +425,10 @@ server.tool(
     payee: PAYEE.optional().describe("Address you already expect to be paid (0x for Base, base58 for Solana); the 402's payTo must match it"),
     amountUsd: z.number().nonnegative().optional().describe("What you believe this costs, in USD"),
     method: z.string().max(10).optional().describe("HTTP method of the resource (default GET; The Graph's x402 endpoint is POST)"),
+    onUnresolved: z
+      .enum(["uncatalogued", "refuse"])
+      .optional()
+      .describe("An unlisted URL on a shared host (live listings from 2+ sellers): uncatalogued (default, judged like any seller outside the catalogue) or refuse"),
     maxPerTxUsd: z.number().positive().optional().describe(`Per-payment ceiling in USD (default 1). CANNOT raise this server's ceiling: the effective limit is min(this value, ${MAX_PER_TX_USD_ENV} in the server env, default 1), and a value above it is lowered to it — summary says so when that happens.`),
     policy: z
       .object({
@@ -443,7 +450,7 @@ server.tool(
       .optional()
       .describe("Caller's own rule; forwarded to payOrRefuse unchanged. The Graph key is NOT an input - set GRAPH_API_KEY in the server env."),
   },
-  async ({ resourceId, resource, payee, amountUsd, method, maxPerTxUsd, policy }) => {
+  async ({ resourceId, resource, payee, amountUsd, method, maxPerTxUsd, policy, onUnresolved }) => {
     try {
       // 2026-09-07: VOUCH_API_KEY is optional — /decision answers key-less
       // (10/min per IP). Unset or blank → no Authorization header; the server's
@@ -478,6 +485,7 @@ server.tool(
         apiKey,
         // 呼び手の規則はそのまま通す。鍵は env からで、ツール入力には存在しない。
         policy,
+        onUnresolved,
         graphApiKey: process.env.GRAPH_API_KEY,
         // payer が無いなら支払い先を**渡さない**。渡さなければ ALLOW でも第5段へ進めない。
         // `ceiling.effective` は常に数（省略しない）。省略すると SDK 側が

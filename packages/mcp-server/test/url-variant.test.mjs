@@ -32,7 +32,9 @@ function world({ listings, hostKnownOn404 = "compute" } = {}) {
     { address: "0xDB62BD202914609830fA656F87996b91be3Aa673", signTypedData: async () => `0x${"ab".repeat(32)}1b` },
     { get: (t, p) => (accessed.push(String(p)), Reflect.get(t, p)) },
   );
-  const hostListed = (raw) => listings.some((l) => new URL(canonical(l.url)).host === new URL(canonical(raw)).host);
+  // サーバと同じ: 同じホスト（サブドメインを含めない）の掲載中（active）の出品だけ。受取人の人数も返す。
+  const live = (raw) => listings.filter((l) => (l.status ?? "active") === "active" && new URL(canonical(l.url)).host === new URL(canonical(raw)).host);
+  const hostListed = (raw) => live(raw).length > 0;
   const json = (status, body, headers = new Map()) => ({ ok: status < 400, status, json: async () => body, headers });
   const fetch = async (u, init) => {
     const url = new URL(String(u));
@@ -51,7 +53,8 @@ function world({ listings, hostKnownOn404 = "compute" } = {}) {
       if (!l) {
         const raw = url.searchParams.get("url");
         const hk = hostKnownOn404 === "compute" ? (raw ? hostListed(raw) : null) : hostKnownOn404;
-        return json(404, hk === "absent" ? { error: "not_found" } : { error: "not_found", host_known: hk });
+        const sellers = hostKnownOn404 === "compute" && raw ? new Set(live(raw).map((l) => l.payee ?? PAYEE)).size : undefined;
+        return json(404, hk === "absent" ? { error: "not_found" } : { error: "not_found", host_known: hk, ...(sellers === undefined ? {} : { host_sellers: sellers }) });
       }
       return json(200, { recommendation: l.recommendation, reason_codes: l.recommendation === "BLOCK" ? ["l0_fail"] : ["l0_pass", "l1_delivered"], facts: {}, evidence: [], degraded: false });
     }
@@ -103,7 +106,7 @@ test("対照: 正規の書き方の ALLOW の隣は払える（直しが「常�
   assert.ok(decisionIds.every((id) => id === sha(`POST ${canonical(NEIGHBOUR.url)}`)));
 });
 
-test("掲載に結べないのにホストに掲載がある URL は払わない（resource_unresolved_host_known）", async () => {
+test("掲載に結べないのに、同じホストに 1 人の売り手の掲載中の出品がある URL は払わない（resource_unresolved_host_known）", async () => {
   const w = world({ listings: [BLOCKED] });
   const url = "https://api.exa.ai/search/v2"; // 同じホストの、掲載に無い書き方
   const r = await payIfTrusted({ resourceId: sha(`POST ${url}`), resource: url, method: "POST", payee: PAYEE, amountUsd: 0.01, maxPerTxUsd: 1, signer: w.signer, fetch: w.fetch });
@@ -152,4 +155,41 @@ test("/resolve が読めない → 払わない（evidence_unavailable）・判�
   assert.equal(r.decision, "REFUSE");
   assert.deepEqual(r.refuse_reasons, ["evidence_unavailable"]);
   assert.deepEqual(w.signs(), []);
+});
+
+const SHARED = [
+  { url: "https://x402.shared.example/a", method: "GET", recommendation: "BLOCK", payee: "0x" + "01".repeat(20) },
+  { url: "https://x402.shared.example/b", method: "GET", recommendation: "ALLOW", payee: "0x" + "02".repeat(20) },
+];
+
+test("共有ホスト（受取人 2 人以上）の未掲載の売り手は止めない: 既定はカタログ外と同じで払い、summary に resource_unresolved", async () => {
+  const w = world({ listings: SHARED });
+  const url = "https://x402.shared.example/new-seller";
+  const r = await payIfTrusted({ resourceId: sha(`GET ${url}`), resource: url, payee: PAYEE, amountUsd: 0.01, maxPerTxUsd: 1, signer: w.signer, fetch: w.fetch });
+  assert.equal(r.decision, "PAID", JSON.stringify(r.refuse_reasons));
+  assert.match(r.summary, /resource_unresolved/);
+  assert.ok(w.calls.some((c) => c.includes("/payees/")), "カタログ外と同じく受取人スコアで判定した");
+});
+
+test("共有ホストの未掲載の売り手は onUnresolved: refuse なら払わない（resource_unresolved）", async () => {
+  const w = world({ listings: SHARED });
+  const url = "https://x402.shared.example/new-seller";
+  const r = await payIfTrusted({ resourceId: sha(`GET ${url}`), resource: url, payee: PAYEE, amountUsd: 0.01, maxPerTxUsd: 1, signer: w.signer, fetch: w.fetch, onUnresolved: "refuse" });
+  assert.equal(r.decision, "REFUSE");
+  assert.ok(r.refuse_reasons.includes("resource_unresolved"), String(r.refuse_reasons));
+  assert.deepEqual(w.signs(), []);
+});
+
+test("取り下げ済みの出品しか無いホストでは止めない（host_known: false・カタログ外として判定）", async () => {
+  const w = world({ listings: [{ ...BLOCKED, url: "https://gone.example/search", status: "delisted" }] });
+  const url = "https://gone.example/other";
+  const r = await payIfTrusted({ resourceId: sha(`POST ${url}`), resource: url, method: "POST", payee: PAYEE, amountUsd: 0.01, maxPerTxUsd: 1, signer: w.signer, fetch: w.fetch });
+  assert.equal(r.decision, "PAID", JSON.stringify(r.refuse_reasons));
+});
+
+test("サブドメインの掲載は同じホストに数えない（host_known: false）", async () => {
+  const w = world({ listings: [{ ...BLOCKED, url: "https://api.sub.example/search" }] });
+  const url = "https://sub.example/other";
+  const r = await payIfTrusted({ resourceId: sha(`POST ${url}`), resource: url, method: "POST", payee: PAYEE, amountUsd: 0.01, maxPerTxUsd: 1, signer: w.signer, fetch: w.fetch });
+  assert.equal(r.decision, "PAID", JSON.stringify(r.refuse_reasons));
 });

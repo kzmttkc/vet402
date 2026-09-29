@@ -8,7 +8,7 @@
 //
 // ここは 2 つだけ持つ:
 //   - 引く: 別名 → 正規の resource_id（getResource の完全一致が外れたときだけ）
-//   - 書く: まだ別名の無い出品の別名を作って入れる（catalog-sync が毎回上限つきで・backfill は全部）
+//   - 書く: 出品の別名を全部作り、足りない行だけを入れる（catalog-sync は新規・URL が変わった掲載、backfill は全部）
 // 別名の作り方は canonical.ts の resourceIdAliases の 1 箇所。表が無い DB（DDL 前）では
 // 引く側は「別名なし」、書く側は missingTable を返す——どちらも従来の挙動に落ちるだけで止まらない。
 // ============================================================
@@ -20,10 +20,6 @@ import { resourceId as toResourceId, resourceIdAliases, SHA256_HEX_RE } from "@/
 import { rowsOf } from "@/lib/settlements/upsert";
 
 type Db = NonNullable<ReturnType<typeof getDb>>;
-
-/** catalog-sync 1 回で別名を作る出品の上限（残りは次の回か backfill）。 */
-export const ALIAS_SYNC_MAX_RESOURCES = 3000;
-const INSERT_CHUNK = 1000;
 
 /** 別名から正規の resource_id を引く。無ければ null。表が無い DB でも null（throw しない）。 */
 export async function canonicalIdForAlias(db: Db, aliasId: string): Promise<string | null> {
@@ -59,34 +55,72 @@ export function aliasRowsFor(rows: AliasSource[]): { rows: { aliasId: string; re
   return { rows: [...out].map(([aliasId, resourceId]) => ({ aliasId, resourceId })), skipped };
 }
 
-export type AliasBackfillResult = { resources: number; aliases: number; skipped: number; missingTable: boolean };
+export type AliasWriteResult = { resources: number; aliases: number; inserted: number; skipped: number; missingTable: boolean };
+
+/** 1 文に入れる別名の行の目安。出品の別名は必ず同じ文に入れる（出品の途中で文を切らない）。 */
+const ROWS_PER_STATEMENT = 2000;
 
 /**
- * まだ別名が 1 行も無い resource_id の出品について別名を作って入れる（最大 maxResources 行の出品）。
- * 別名の行は不変なので ON CONFLICT DO NOTHING。
+ * 出品の別名を**全部**作って入れる（足りない行だけが入る・ON CONFLICT DO NOTHING）。
+ * 1 文 = 1 トランザクションで、1 つの出品の別名は必ず 1 つの文に収める——途中で落ちても、その出品は
+ * 全部入ったか全く入っていないかのどちらか。既にある出品を飛ばさないので、何度流しても欠けが埋まり、
+ * 揺れの規則を変えたあとも再実行すれば追いつく。書き手は catalog-sync（新規・URL が変わった掲載）と backfill。
  */
-export async function backfillResourceAliases(db: Db, maxResources: number): Promise<AliasBackfillResult> {
-  const result: AliasBackfillResult = { resources: 0, aliases: 0, skipped: 0, missingTable: false };
+export async function writeResourceAliases(db: Db, sources: AliasSource[]): Promise<AliasWriteResult> {
+  const result: AliasWriteResult = { resources: sources.length, aliases: 0, inserted: 0, skipped: 0, missingTable: false };
+  let batch: { aliasId: string; resourceId: string }[] = [];
+  const flush = async () => {
+    if (batch.length === 0) return;
+    const rows = batch;
+    batch = [];
+    const ins = await db.insert(x402ResourceAliases).values(rows).onConflictDoNothing().returning();
+    result.inserted += ins.length;
+  };
   try {
-    const sources = rowsOf<AliasSource>(
-      await db.execute(sql`
-        SELECT e.resource_id, e.method, e.resource_url FROM x402_endpoints e
-        WHERE e.resource_id IS NOT NULL AND e.canonical_url IS NOT NULL
-          AND NOT EXISTS (SELECT 1 FROM x402_resource_aliases a WHERE a.resource_id = e.resource_id)
-        ORDER BY e.resource_id
-        LIMIT ${Math.max(1, Math.floor(maxResources))}
-      `),
-    );
-    const { rows, skipped } = aliasRowsFor(sources);
-    result.resources = sources.length;
-    result.skipped = skipped;
-    for (let i = 0; i < rows.length; i += INSERT_CHUNK) {
-      await db.insert(x402ResourceAliases).values(rows.slice(i, i + INSERT_CHUNK)).onConflictDoNothing();
+    for (const src of sources) {
+      const { rows, skipped } = aliasRowsFor([src]);
+      result.skipped += skipped;
+      result.aliases += rows.length;
+      if (batch.length > 0 && batch.length + rows.length > ROWS_PER_STATEMENT) await flush();
+      batch.push(...rows);
     }
-    result.aliases = rows.length;
+    await flush();
     return result;
   } catch (error) {
     if (isMissingSchemaError(error)) return { ...result, missingTable: true };
     throw error;
+  }
+}
+
+/**
+ * 全出品を id 順に `batchSize` 件ずつ読み、writeResourceAliases に渡す（backfill）。出品を飛ばさない。
+ * `onBatch` は進み具合の表示用。
+ */
+export async function backfillResourceAliases(
+  db: Db,
+  batchSize: number,
+  onBatch?: (r: AliasWriteResult, lastId: string) => void,
+): Promise<AliasWriteResult> {
+  const total: AliasWriteResult = { resources: 0, aliases: 0, inserted: 0, skipped: 0, missingTable: false };
+  let after = "00000000-0000-0000-0000-000000000000";
+  const limit = Math.max(1, Math.floor(batchSize));
+  for (;;) {
+    const rows = rowsOf<AliasSource & { id: string }>(
+      await db.execute(sql`
+        SELECT id::text AS id, resource_id, method, resource_url FROM x402_endpoints
+        WHERE resource_id IS NOT NULL AND canonical_url IS NOT NULL AND id > ${after}::uuid
+        ORDER BY id LIMIT ${limit}
+      `),
+    );
+    if (rows.length === 0) return total;
+    const r = await writeResourceAliases(db, rows);
+    if (r.missingTable) return { ...total, missingTable: true };
+    total.resources += r.resources;
+    total.aliases += r.aliases;
+    total.inserted += r.inserted;
+    total.skipped += r.skipped;
+    after = rows[rows.length - 1].id;
+    onBatch?.(r, after);
+    if (rows.length < limit) return total;
   }
 }

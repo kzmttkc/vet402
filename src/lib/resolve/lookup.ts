@@ -159,19 +159,24 @@ export async function getResource(resourceIdHex: string): Promise<EndpointRef | 
 }
 
 /**
- * この URL のホスト（正規形の host。既定でないポートを含む）に掲載が 1 件でもあるか。
- * 正規形にならない URL は null（分からない）。/decision の 404 の `host_known` が使う。
+ * この URL のホスト（正規形の host。既定でないポートを含む・サブドメインは含めない）に**掲載中（active）**の
+ * 出品があるか、あれば受取人（payee_id）が何人か。取り下げ済みの出品だけのホストは known: false。
+ * 正規形にならない URL は null（分からない）。/decision の 404 の `host_known` / `host_sellers` が使う
+ * （2026-09-29 独立レビュー: 取り下げ済みだけのホスト・共有ホストの未掲載の売り手を止めすぎない）。
  */
-export async function hostHasListings(rawUrl: string): Promise<boolean | null> {
+export async function hostListingSummary(rawUrl: string): Promise<{ known: boolean; sellers: number } | null> {
   const c = canonicalUrl(rawUrl);
   if (!c) return null;
   const db = getDb();
   if (!db) return null;
   const host = new URL(c.url).host;
-  const rows = rowsOf<{ one: number }>(
-    await db.execute(sql`SELECT 1 AS one FROM x402_endpoints WHERE resource_key = ${host} OR resource_key LIKE ${`${escapeLike(host)}/%`} LIMIT 1`),
+  const rows = rowsOf<{ n: number; sellers: number }>(
+    await db.execute(sql`
+      SELECT count(*)::int AS n, count(DISTINCT payee_id)::int AS sellers FROM x402_endpoints
+      WHERE status = 'active' AND (resource_key = ${host} OR resource_key LIKE ${`${escapeLike(host)}/%`})`),
   );
-  return rows.length > 0;
+  const n = Number(rows[0]?.n ?? 0);
+  return { known: n > 0, sellers: n > 0 ? Number(rows[0]?.sellers ?? 0) : 0 };
 }
 
 export async function endpointsByPayee(payeeIdStr: string, limit = 200): Promise<EndpointRef[]> {

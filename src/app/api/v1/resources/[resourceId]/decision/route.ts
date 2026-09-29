@@ -8,7 +8,7 @@ import { lookupManualList } from "@/lib/db/customer-lists";
 import { decide, presentDecision, type DecisionResult } from "@/lib/decision/decide";
 import { evaluateCallerPolicy, parseCallerPolicy, type CallerPolicyInput } from "@/lib/decision/caller-policy";
 import { SHA256_HEX_RE, parsePartyId, payeeId as toPartyId } from "@/lib/ids/canonical";
-import { getResource, hostHasListings } from "@/lib/resolve/lookup";
+import { getResource, hostListingSummary } from "@/lib/resolve/lookup";
 import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { lookupCallerMaterial } from "@/lib/decision/lookup-caller";
@@ -95,29 +95,35 @@ function fail(caller: Caller, status: number, error: string): NextResponse {
 
 /**
  * 404 の本文（2026-09-29 監査 7 周目・高）。`error: "not_found"` は従来どおり（凍結中の SDK はこの語だけを読む）。
- * `url=` を受けたら、その URL のホストに掲載があるかを `host_known` で返す。true は「別の書き方の掲載かもしれない」
- * ——カタログ外の売り手として払ってはいけない合図。url が無い・正規形にならないときは null（分からない）。
+ * `url=` を受けたら、その URL と同じホスト（サブドメインは含めない）に**掲載中**の出品があるかを `host_known`、
+ * その受取人の人数を `host_sellers` で返す。取り下げ済みだけのホストは false。url が無い・正規形にならないときは null。
+ * 受取人が 1 人のホストの未掲載の URL は、その売り手の掲載の別の書き方かもしれない（MCP は払わない）。
+ * 共有ホスト（受取人 2 人以上）の未掲載の売り手は、判定なし（MCP の resource_unresolved）。
  */
 async function notFoundBody(rawUrl: string | null): Promise<Record<string, unknown>> {
-  let hostKnown: boolean | null = null;
+  let summary: { known: boolean; sellers: number } | null = null;
   if (rawUrl && rawUrl.length <= 2048) {
     try {
-      hostKnown = await hostHasListings(rawUrl);
+      summary = await hostListingSummary(rawUrl);
     } catch (error) {
       logServerErrorSafe("decision.host_known", error);
-      hostKnown = null;
+      summary = null;
     }
   }
-  const resolveUrl = `https://vet402.com/api/v1/resolve?q=${encodeURIComponent(rawUrl && hostKnown !== null ? rawUrl : "<url>")}`;
+  const hostKnown = summary ? summary.known : null;
+  const resolveUrl = `https://vet402.com/api/v1/resolve?q=${encodeURIComponent(rawUrl && summary ? rawUrl : "<url>")}`;
   const message =
-    hostKnown === true
-      ? "No listing has this resource_id, but vet402 has listings on this URL's host, so the id may be another spelling of a listed URL. " +
-        "Resolve the URL with /api/v1/resolve (add &method=<METHOD>) and read that listing's decision before you pay. Do not treat this seller as unlisted."
-      : hostKnown === false
-        ? "No listing has this resource_id and vet402 has no listing on this URL's host: the seller is not in vet402's catalog."
+    summary?.known === true
+      ? summary.sellers > 1
+        ? `No listing has this resource_id. vet402 has listings from ${summary.sellers} sellers on this URL's host, so an unlisted URL there is judged by nothing here; ` +
+          "resolve the URL with /api/v1/resolve (add &method=<METHOD>) before you pay."
+        : "No listing has this resource_id, but vet402 has a live listing on this URL's host, so the id may be another spelling of a listed URL. " +
+          "Resolve the URL with /api/v1/resolve (add &method=<METHOD>) and read that listing's decision before you pay. Do not treat this seller as unlisted."
+      : summary?.known === false
+        ? "No listing has this resource_id and vet402 has no live listing on this URL's host: the seller is not in vet402's catalog."
         : 'No listing has this resource_id. resource_id is sha256("<METHOD> <canonical url>"): resolve the URL with /api/v1/resolve before you pay. ' +
-          "Pass url=<the URL> here to learn whether vet402 has listings on its host (host_known).";
-  return { error: "not_found", host_known: hostKnown, message, next: resolveUrl };
+          "Pass url=<the URL> here to learn whether vet402 has live listings on its host (host_known).";
+  return { error: "not_found", host_known: hostKnown, host_sellers: summary ? summary.sellers : null, message, next: resolveUrl };
 }
 
 function normalizePayer(raw: string): string | null {

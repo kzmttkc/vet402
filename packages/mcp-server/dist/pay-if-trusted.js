@@ -13,14 +13,16 @@
  *   1. Caller errors (a resourceId that is not 64 hex characters, no injected fetch) throw. No
  *      decision is fetched.
  *   1.8 With a resource URL, canonicalize it on the server first (`GET /resolve?q=<url>&method=`,
- *      2026-09-29 audit round 7): a listed URL's own resource_id replaces the one passed in; a URL
- *      that resolves to no listing on a host that has listings refuses
- *      (`resource_unresolved_host_known`); an unreadable /resolve refuses.
+ *      2026-09-29 audit round 7): a listed URL's own resource_id replaces the one passed in; an
+ *      unreadable /resolve refuses.
  *   2. `GET /resources/{id}/decision?role=payer&url=<resource>`. Unreadable refuses — silence is not ALLOW.
  *      A 404 not-found (not in the catalogue, §3.1) is the exception: if a resource URL that
- *      returns a 402 was supplied, /resolve found no listing on its host and the 404 says
- *      `host_known: false`, pass it through to step 5 and let the SDK judge on the 402's
- *      payTo, the payee score and the declared floors (I23, 2026-09-06). Any other 404 refuses.
+ *      returns a 402 was supplied, /resolve found no listing for it and the 404 says
+ *      `host_known: false` (no live listing on that exact host), pass it through to step 5 and let
+ *      the SDK judge on the 402's payTo, the payee score and the declared floors (I23, 2026-09-06).
+ *      `host_known: true` with one seller refuses (`resource_unresolved_host_known`); with two or
+ *      more sellers it is `resource_unresolved` and goes the same way as uncatalogued unless
+ *      `onUnresolved: "refuse"`. Any other 404 refuses.
  *   3. Degraded refuses. A recommendation other than ALLOW refuses. **The server's own reason
  *      codes are passed straight through.** (An uncatalogued resource has no decision body, so
  *      this step is skipped; a BLOCK or degraded payee score is held by step 3' of the SDK.)
@@ -53,11 +55,13 @@
  * 判定の流れ（5行）:
  *   1. 呼び出し側の誤り（64桁hex でない resourceId、fetch 未注入）は throw。判定も引かない
  *   1.8 `resource` があれば先に `/resolve?q=<url>&method=` でサーバの正規化を通す（2026-09-29 監査 7 周目）。
- *      掲載に結べればその resource_id を使う。結べないのにホストに掲載があれば `resource_unresolved_host_known` で拒否
+ *      掲載に結べればその resource_id を使う。/resolve が読めなければ拒否
  *   2. `GET /resources/{id}/decision?role=payer&url=<resource>` を引く。読めない → 拒否（沈黙は ALLOW ではない）
- *      **404 not_found（カタログ外・§3.1）は例外**: `resource` があり、/resolve がホストにも掲載が無いと言い、
- *      404 が `host_known: false` と言ったときだけ 5 へ通し、SDK が 402 の payTo ＋ 受取人スコア ＋ 宣言された床で
- *      判定する（I23・2026-09-06）。それ以外の 404 は拒否
+ *      **404 not_found（カタログ外・§3.1）は例外**: `resource` があり、/resolve が掲載に結べず、404 が
+ *      `host_known: false`（同じホストに掲載中の出品なし）と言ったときは 5 へ通し、SDK が 402 の payTo ＋
+ *      受取人スコア ＋ 宣言された床で判定する（I23・2026-09-06）。`host_known: true` で受取人 1 人は拒否
+ *      （resource_unresolved_host_known）、2 人以上（共有ホスト）は resource_unresolved＝既定はカタログ外と同じ
+ *      （`onUnresolved: "refuse"` なら拒否）。それ以外の 404 は拒否
  *   3. `degraded` → 拒否。`recommendation !== "ALLOW"` → 拒否。**理由はサーバの reason_codes をそのまま通す**
  *      （カタログ外は判定本文が無いのでこの段を飛ばす。受取人スコアの BLOCK / degraded は SDK の 3' 段が持つ）
  *   4. ALLOW でも支払い先（payee / resource / amountUsd）が無ければ拒否（`payment_target_unknown`）
@@ -88,6 +92,7 @@ export const SOLANA_PAYEE_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
  *  - `payment_target_unknown` … ALLOW だが resource / payee / amountUsd が無いので払えない（§4）
  *  - `resource_unresolved_host_known` … 払う URL がサーバの正規化で掲載に結べないのに、そのホストには掲載がある
  *    （表記違いの掲載かもしれない。カタログ外の売り手として払わない・2026-09-29 監査 7 周目）
+ *  - `resource_unresolved` … 共有ホスト（受取人 2 人以上）の未掲載の URL で、呼び手が `onUnresolved: "refuse"` を選んだ
  *  - `resource_id_mismatch` … 払う URL は掲載に無いのに、渡された resourceId は別の掲載の判定を返した
  * サーバ由来の語（decision の `reason_codes`・`rate_limited` 等のエラー語・`caller_policy` の語）は
  * この配列に**載せない**。狭めれば語が落ちるので {@link ServerReasonCode} として透過する。
@@ -99,6 +104,7 @@ export const REFUSE_REASONS = [
     "payee_recommendation_not_allow",
     "payment_target_unknown",
     "resource_unresolved_host_known",
+    "resource_unresolved",
     "resource_id_mismatch",
 ];
 /** サーバの語に「透過してよい」印を付ける唯一の場所。語は 1 つも変えない・落とさない。 */
@@ -148,7 +154,7 @@ async function payIfTrustedCore(input, notes) {
     // 並び）と /decision は 404 になり、「カタログ外」として受取人スコアで払えてしまう——BLOCK の資源にも。
     // だから払う前に /resolve で「この method のこの URL の正規の resource_id」を引き、判定も SDK もその id で引く。
     //   - 掲載に結べた → その id を使う（渡された resourceId と違えば summary に書く）
-    //   - 結べないのにホストに掲載がある → 払わない（resource_unresolved_host_known）
+    //   - 結べない → /decision の 404 に url= を付けて host_known / host_sellers を聞く（下の 2）
     //   - 結べずホストにも無い → 本当にカタログ外の候補。/decision の 404 が host_known: false と言ったときだけ SDK へ
     //   - /resolve が読めない → 払わない（evidence_unavailable）
     let resourceId = input.resourceId;
@@ -175,7 +181,6 @@ async function payIfTrustedCore(input, notes) {
             return refuse(measure(null), ["evidence_unavailable"], "vet402 could not canonicalize the resource URL (/resolve did not answer), so it cannot tell which listing this URL is — no answer is not an ALLOW.");
         }
         const hit = resolved.resource;
-        const endpoints = resolved.endpoints;
         if (hit && typeof hit.resource_id === "string" && RESOURCE_ID_RE.test(hit.resource_id)) {
             if (hit.resource_id !== resourceId) {
                 notes.push(`The resourceId you passed (${resourceId}) is not the id vet402 gives ${method} ${input.resource}; ` +
@@ -183,15 +188,10 @@ async function payIfTrustedCore(input, notes) {
             }
             resourceId = hit.resource_id;
         }
-        else if (Array.isArray(endpoints) && endpoints.length > 0) {
-            return refuse(measure(null), ["resource_unresolved_host_known", "evidence_unavailable"], `vet402 has listings on this URL's host, but ${method} ${input.resource} does not resolve to any of them. It may be another ` +
-                "spelling of a listed URL, so it is not treated as an unlisted seller. Resolve the URL with /api/v1/resolve and pay the listed URL.");
-        }
-        else if (Array.isArray(endpoints)) {
-            resourceUnlisted = true;
-        }
         else {
-            return refuse(measure(null), ["evidence_unavailable"], "vet402's /resolve answer did not say whether this URL's host has listings, so an unlisted seller cannot be told from another spelling of a listed one.");
+            // 掲載に結べない。ホストに掲載があるかは /resolve の endpoints（サブドメイン・取り下げ済みを含む）では
+            // 決めない——/decision の 404 の host_known（同じホストの掲載中の出品だけ）で決める（2026-09-29 独立レビュー）。
+            resourceUnlisted = true;
         }
     }
     // --- 2. 判定 ---
@@ -235,18 +235,34 @@ async function payIfTrustedCore(input, notes) {
                     "no 402 challenge to judge from. Pass resource (the URL that answers 402), payee and amountUsd to let " +
                     "payOrRefuse judge from the 402's payTo, the payee score and your evidence floors.");
             }
-            // 2026-09-29 監査 7 周目: カタログ外として SDK へ渡すのは、/resolve が「掲載に結べずホストにも無い」と言い、
-            // かつこの 404 が host_known: false と言ったときだけ。ホストに掲載がある・理由の分からない 404 は払わない。
+            // 2026-09-29 監査 7 周目＋独立レビュー: 404 の host_known は「同じホスト（サブドメインを含めない）に掲載中の
+            // 出品がある」、host_sellers はその受取人の人数。
+            //   - host_known: true・受取人 1 人以下 → その売り手の掲載の別の書き方かもしれない。払わない
+            //   - host_known: true・受取人 2 人以上（共有ホスト）→ resource_unresolved（判定なし）。既定はカタログ外と同じ
+            //   - host_known: false → カタログ外（取り下げ済みの出品だけのホストもここ）
+            //   - それ以外（理由の分からない 404・URL が掲載に結べたのに 404）→ 払わない
             const hostKnown = body?.host_known;
-            if (hostKnown === true) {
-                return refuse(measure(body), ["resource_unresolved_host_known", "evidence_unavailable"], "The decision answered 404, but vet402 has listings on this URL's host, so it may be another spelling of a listed URL. " +
+            const hostSellers = body?.host_sellers;
+            if (hostKnown === true && resourceUnlisted && typeof hostSellers === "number" && hostSellers > 1) {
+                if (input.onUnresolved === "refuse") {
+                    return refuse(measure(body), ["resource_unresolved", "evidence_unavailable"], `vet402 has live listings from ${hostSellers} sellers on this URL's host, but not this URL, so there is no vet402 judgement for it; ` +
+                        "onUnresolved is \"refuse\".");
+                }
+                notes.push(`resource_unresolved: this URL is not listed, and vet402 has live listings from ${hostSellers} other sellers on its host; ` +
+                    "it was judged as an uncatalogued seller (the 402's payTo and the payee score). Pass onUnresolved: \"refuse\" to refuse these instead.");
+                uncatalogued = true;
+            }
+            else if (hostKnown === true) {
+                return refuse(measure(body), ["resource_unresolved_host_known", "evidence_unavailable"], "The decision answered 404, but vet402 has a live listing from one seller on this URL's host, so it may be another spelling of a listed URL. " +
                     "Not treated as an unlisted seller. Resolve the URL with /api/v1/resolve and pay the listed URL.");
             }
-            if (hostKnown !== false || !resourceUnlisted) {
+            else if (hostKnown !== false || !resourceUnlisted) {
                 return refuse(measure(body), ["evidence_unavailable"], "The decision answered 404 without saying why (host_known was not false, or the URL resolved to a listing), " +
                     "so this cannot be told apart from a listed resource under another id — no answer is not an ALLOW.");
             }
-            uncatalogued = true;
+            else {
+                uncatalogued = true;
+            }
         }
         else if (!response.ok) {
             // Carry the server's own error word (e.g. `rate_limited` for the key-less

@@ -86,6 +86,9 @@ export function resourceId(method: string, rawUrl: string): string {
 //   - 既定ポート :443 の有無（https の既定。:80 は http の既定で、http は正規形を持たない＝掲載にならない）
 //   - クエリの並び（保つ名前が ALIAS_MAX_PERMUTED_QUERY_KEYS 個以下なら全順列、超えたら正規の順と掲載の順）
 //   - 掲載の生 URL そのもの（利用者が一番写しやすい書き方）
+//   - 書き方の癖を 1 つ: スキームの大文字 `HTTPS://`・末尾の `?`・`#`・`//`（writingQuirks）
+// 持たないもの（方法論の「知られた制限」）: ホストの大文字小文字の混在（掲載の書き方以外）と、可変のクエリ（sig 等）の値。
+// これらは生の URL から id を作る SDK では 404 になる。MCP の pay_if_trusted は /resolve で正規化するので防げる。
 // 規則: 別名にするのは canonicalUrl(v) が正規形と**完全に同じ**になる v だけ。だから別名は
 // 1 つの正規形（＝1 つの資源）にしか写らず、別の出品の resource_id とは衝突しない（method もハッシュに入る）。
 
@@ -98,6 +101,17 @@ function permutations<T>(xs: T[]): T[][] {
   xs.forEach((x, i) => {
     for (const rest of permutations([...xs.slice(0, i), ...xs.slice(i + 1)])) out.push([x, ...rest]);
   });
+  return out;
+}
+
+/** 1 つの書き方に癖を 1 つだけ重ねた書き方（スキームの大文字・末尾の `?`・`#`・`//`）。 */
+function writingQuirks(v: string): string[] {
+  const out = [v.replace(/^https:\/\//i, "HTTPS://"), `${v}#`];
+  const qi = v.indexOf("?");
+  const path = qi < 0 ? v : v.slice(0, qi);
+  const query = qi < 0 ? "" : v.slice(qi);
+  if (qi < 0) out.push(`${v}?`);
+  out.push(`${path.endsWith("/") ? `${path}/` : `${path}//`}${query}`);
   return out;
 }
 
@@ -134,6 +148,12 @@ export function resourceUrlVariants(listedUrl: string): string[] {
   const out = new Set<string>();
   for (const h of hosts) for (const p of ports) for (const pa of paths) for (const q of queries) out.add(`https://${h}${p}${pa}${q}`);
   out.add(listedUrl.trim());
+  // 書き方の癖（2026-09-29 独立レビュー）: スキームの大文字 `HTTPS://`・末尾の `?`（空のクエリ）・`#`（空の断片）・
+  // `//`（パスの末尾の二重スラッシュ）。行数を抑えるため、1 つずつ・ホスト小文字で既定ポート無しの書き方と掲載の
+  // 生 URL にだけ重ねる（大文字のホスト × 癖、:443 × 癖は持たない）。
+  const plain = [listedUrl.trim()];
+  for (const pa of paths) for (const q of queries) plain.push(`https://${host}${u.port ? `:${u.port}` : ""}${pa}${q}`);
+  for (const v of plain) for (const x of writingQuirks(v)) out.add(x);
   out.delete(c.url);
   // 規則の関門: 正規形が完全に同じものだけを残す（別の資源へ写る別名を作らない）。
   return [...out].filter((v) => canonicalUrl(v)?.url === c.url).sort();

@@ -13,14 +13,16 @@
  *   1. Caller errors (a resourceId that is not 64 hex characters, no injected fetch) throw. No
  *      decision is fetched.
  *   1.8 With a resource URL, canonicalize it on the server first (`GET /resolve?q=<url>&method=`,
- *      2026-09-29 audit round 7): a listed URL's own resource_id replaces the one passed in; a URL
- *      that resolves to no listing on a host that has listings refuses
- *      (`resource_unresolved_host_known`); an unreadable /resolve refuses.
+ *      2026-09-29 audit round 7): a listed URL's own resource_id replaces the one passed in; an
+ *      unreadable /resolve refuses.
  *   2. `GET /resources/{id}/decision?role=payer&url=<resource>`. Unreadable refuses — silence is not ALLOW.
  *      A 404 not-found (not in the catalogue, §3.1) is the exception: if a resource URL that
- *      returns a 402 was supplied, /resolve found no listing on its host and the 404 says
- *      `host_known: false`, pass it through to step 5 and let the SDK judge on the 402's
- *      payTo, the payee score and the declared floors (I23, 2026-09-06). Any other 404 refuses.
+ *      returns a 402 was supplied, /resolve found no listing for it and the 404 says
+ *      `host_known: false` (no live listing on that exact host), pass it through to step 5 and let
+ *      the SDK judge on the 402's payTo, the payee score and the declared floors (I23, 2026-09-06).
+ *      `host_known: true` with one seller refuses (`resource_unresolved_host_known`); with two or
+ *      more sellers it is `resource_unresolved` and goes the same way as uncatalogued unless
+ *      `onUnresolved: "refuse"`. Any other 404 refuses.
  *   3. Degraded refuses. A recommendation other than ALLOW refuses. **The server's own reason
  *      codes are passed straight through.** (An uncatalogued resource has no decision body, so
  *      this step is skipped; a BLOCK or degraded payee score is held by step 3' of the SDK.)
@@ -53,11 +55,13 @@
  * 判定の流れ（5行）:
  *   1. 呼び出し側の誤り（64桁hex でない resourceId、fetch 未注入）は throw。判定も引かない
  *   1.8 `resource` があれば先に `/resolve?q=<url>&method=` でサーバの正規化を通す（2026-09-29 監査 7 周目）。
- *      掲載に結べればその resource_id を使う。結べないのにホストに掲載があれば `resource_unresolved_host_known` で拒否
+ *      掲載に結べればその resource_id を使う。/resolve が読めなければ拒否
  *   2. `GET /resources/{id}/decision?role=payer&url=<resource>` を引く。読めない → 拒否（沈黙は ALLOW ではない）
- *      **404 not_found（カタログ外・§3.1）は例外**: `resource` があり、/resolve がホストにも掲載が無いと言い、
- *      404 が `host_known: false` と言ったときだけ 5 へ通し、SDK が 402 の payTo ＋ 受取人スコア ＋ 宣言された床で
- *      判定する（I23・2026-09-06）。それ以外の 404 は拒否
+ *      **404 not_found（カタログ外・§3.1）は例外**: `resource` があり、/resolve が掲載に結べず、404 が
+ *      `host_known: false`（同じホストに掲載中の出品なし）と言ったときは 5 へ通し、SDK が 402 の payTo ＋
+ *      受取人スコア ＋ 宣言された床で判定する（I23・2026-09-06）。`host_known: true` で受取人 1 人は拒否
+ *      （resource_unresolved_host_known）、2 人以上（共有ホスト）は resource_unresolved＝既定はカタログ外と同じ
+ *      （`onUnresolved: "refuse"` なら拒否）。それ以外の 404 は拒否
  *   3. `degraded` → 拒否。`recommendation !== "ALLOW"` → 拒否。**理由はサーバの reason_codes をそのまま通す**
  *      （カタログ外は判定本文が無いのでこの段を飛ばす。受取人スコアの BLOCK / degraded は SDK の 3' 段が持つ）
  *   4. ALLOW でも支払い先（payee / resource / amountUsd）が無ければ拒否（`payment_target_unknown`）
@@ -88,11 +92,12 @@ export declare const SOLANA_PAYEE_RE: RegExp;
  *  - `payment_target_unknown` … ALLOW だが resource / payee / amountUsd が無いので払えない（§4）
  *  - `resource_unresolved_host_known` … 払う URL がサーバの正規化で掲載に結べないのに、そのホストには掲載がある
  *    （表記違いの掲載かもしれない。カタログ外の売り手として払わない・2026-09-29 監査 7 周目）
+ *  - `resource_unresolved` … 共有ホスト（受取人 2 人以上）の未掲載の URL で、呼び手が `onUnresolved: "refuse"` を選んだ
  *  - `resource_id_mismatch` … 払う URL は掲載に無いのに、渡された resourceId は別の掲載の判定を返した
  * サーバ由来の語（decision の `reason_codes`・`rate_limited` 等のエラー語・`caller_policy` の語）は
  * この配列に**載せない**。狭めれば語が落ちるので {@link ServerReasonCode} として透過する。
  */
-export declare const REFUSE_REASONS: readonly ["evidence_unavailable", "subgraph_evidence_unavailable", "graph_key_not_configured", "payee_recommendation_not_allow", "payment_target_unknown", "resource_unresolved_host_known", "resource_id_mismatch"];
+export declare const REFUSE_REASONS: readonly ["evidence_unavailable", "subgraph_evidence_unavailable", "graph_key_not_configured", "payee_recommendation_not_allow", "payment_target_unknown", "resource_unresolved_host_known", "resource_unresolved", "resource_id_mismatch"];
 export type RefuseReason = (typeof REFUSE_REASONS)[number];
 /**
  * 署名者。**ALLOW ブランチに入るまで、この値のプロパティには一度も触らない。**
@@ -157,6 +162,11 @@ export type PayIfTrustedInput = {
     apiKey?: string;
     /** 決定行の出所。既定 "mcp"（L1 台帳と混ぜない・F19/F20）。 */
     source?: string;
+    /**
+     * 共有ホスト（掲載中の受取人が 2 人以上）の未掲載の URL（resource_unresolved・判定なし）をどう扱うか。
+     * 既定 "uncatalogued" = カタログ外と同じ（SDK が 402 の payTo と受取人スコアで判定）。"refuse" で払わない。
+     */
+    onUnresolved?: "uncatalogued" | "refuse";
 };
 /** ツール入力に載せる policy。SDK の `PayPolicy` から **鍵だけを除いた**形。 */
 export type PayIfTrustedPolicy = Omit<PayPolicy, "evidence"> & {

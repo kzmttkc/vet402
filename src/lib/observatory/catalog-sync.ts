@@ -28,7 +28,7 @@ import {
 } from "./catalog-source";
 import { computeCatalogDiff, type CatalogDiffEvent, type KnownEndpointState } from "./catalog-diff";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
-import { ALIAS_SYNC_MAX_RESOURCES, backfillResourceAliases } from "@/lib/resolve/aliases";
+import { writeResourceAliases } from "@/lib/resolve/aliases";
 
 export type SyncSummary = {
   snapshotDate: string;
@@ -79,6 +79,8 @@ export async function syncCatalog(
       resourceKey: x402Endpoints.resourceKey,
       status: x402Endpoints.status,
       qualityCalls30d: x402Endpoints.qualityCalls30d,
+      resourceUrl: x402Endpoints.resourceUrl,
+      resourceId: x402Endpoints.resourceId,
     })
     .from(x402Endpoints)
     .where(eq(x402Endpoints.source, source));
@@ -253,11 +255,20 @@ export async function syncCatalog(
     });
 
   // ---- resource_id の別名（2026-09-29 監査 7 周目・高）----
-  // 生の URL から id を作る SDK が、表記の揺れで BLOCK をカタログ外と読まないように。まだ別名の無い出品だけ・
-  // 1 回あたり上限つき（全件は scripts/backfill-resource-aliases.ts）。別名は補助の索引なので、失敗しても
+  // 生の URL から id を作る SDK が、表記の揺れで BLOCK をカタログ外と読まないように。新規の掲載と、URL か
+  // resource_id が変わった掲載の別名をここで作る（backfill と同じ writeResourceAliases）。既存の掲載の欠けと
+  // 揺れの規則の変更は scripts/backfill-resource-aliases.ts の再実行で埋まる。別名は補助の索引なので、失敗しても
   // 同期そのものは止めない（表の無い DB では missingTable が返るだけ）。
   try {
-    await backfillResourceAliases(db, ALIAS_SYNC_MAX_RESOURCES);
+    const prevByKey = new Map(knownRows.map((r) => [r.resourceKey, r]));
+    const aliasSources = result.items.flatMap((item) => {
+      const ids = idsOf(item);
+      if (!ids.canonicalUrl) return [];
+      const prev = prevByKey.get(item.resourceKey);
+      if (prev && prev.resourceUrl === item.resourceUrl && prev.resourceId === ids.resourceId) return [];
+      return [{ resource_id: ids.resourceId, method: item.method ?? "GET", resource_url: item.resourceUrl }];
+    });
+    await writeResourceAliases(db, aliasSources);
   } catch (aliasError) {
     logServerErrorSafe("observatory.catalog-sync.aliases", aliasError);
   }

@@ -27,8 +27,16 @@ const VARIANT_TABLE: Row[] = [
       "https://API.EXA.AI/search", // ホストの大文字
       "https://api.exa.ai:443/search", // 既定ポート
       "https://API.EXA.AI:443/search/", // 全部の組み合わせ
+      "HTTPS://api.exa.ai/search", // スキームの大文字
+      "https://api.exa.ai/search?", // 末尾の ?（空のクエリ）
+      "https://api.exa.ai/search#", // 末尾の #（空の断片）
+      "https://api.exa.ai/search//", // 末尾の //
+      "https://api.exa.ai/search/?", // 末尾スラッシュ＋?
+      "HTTPS://api.exa.ai/search/", // 末尾スラッシュ＋スキームの大文字
     ],
     notAliases: [
+      // 持たない（方法論の「知られた制限」）: 掲載の書き方以外の大文字小文字の混在。MCP は /resolve で防ぐ
+      "https://Api.Exa.ai/search",
       "https://api.exa.ai/SEARCH", // パスの大文字小文字は別の資源
       "http://api.exa.ai:80/search", // :80 は http の既定。http は正規形を持たない（掲載にならない）
       "https://api.exa.ai:8443/search", // 既定でないポートは別の資源
@@ -111,6 +119,17 @@ test("クエリの名前が上限を超えたら全順列にしない（正規�
   assert.ok(vs.length < 40, `順列で膨らんでいる: ${vs.length}`);
   assert.ok(vs.includes(listed), "掲載の生 URL そのものは持つ");
   assert.ok(vs.includes("https://q.example/x/?e=5&d=4&c=3&b=2&a=1"));
+});
+
+test("癖はクエリのある URL にも 1 つずつ重なる（// はクエリの前・? は重ねない）", () => {
+  const listed = "https://e.example/x?a=1&b=2";
+  const aliases = new Set(resourceIdAliases("GET", listed));
+  for (const s of ["HTTPS://e.example/x?b=2&a=1", "https://e.example/x//?a=1&b=2", "https://e.example/x?a=1&b=2#"]) assert.ok(aliases.has(sdkId("GET", s)), s);
+});
+
+test("可変のクエリの値は別名にしない（掲載に書かれた値そのもの以外）——知られた制限", () => {
+  const listed = "https://s.example/x?sig=abc&q=1";
+  assert.equal(resourceIdAliases("GET", listed).includes(sdkId("GET", "https://s.example/x?sig=zzz&q=1")), false);
 });
 
 test("掲載の生 URL の可変クエリ（sig 等）はそのまま別名になる（正規形では外れる）", () => {
