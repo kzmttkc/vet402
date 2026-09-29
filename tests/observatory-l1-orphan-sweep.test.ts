@@ -47,6 +47,8 @@ if (!TEST_DB) {
         status: "in_flight",
         spentUnits: "3000",
         amountUnits: "3000",
+        // 署名して nonce を書いた後に落ちた行（資格情報は外へ出た可能性がある）。
+        authNonce: "0x" + "cd".repeat(32),
         attemptedAt: minutesAgo(ORPHAN_IN_FLIGHT_MINUTES + 5),
       },
       {
@@ -107,6 +109,30 @@ if (!TEST_DB) {
 
     // 冪等: 2回目は何も掴まない。
     assert.equal(await sweepOrphanedInFlight(db), 0);
+
+    // 2026-09-29 監査4周目: auth_nonce が NULL の孤児（署名直前の停止判定のあと DB 不通で
+    // 予約を戻せなかった行）は、資格情報が外へ出ていないので spent_units を 0 に戻す。
+    const endpointD = "44444444-4444-4444-4444-444444444444";
+    await db.insert(schema.x402L1Purchases).values({
+      endpointId: endpointD,
+      status: "in_flight",
+      spentUnits: "5000",
+      amountUnits: "5000",
+      attemptedAt: minutesAgo(ORPHAN_IN_FLIGHT_MINUTES + 5),
+    });
+    assert.equal(await sweepOrphanedInFlight(db), 1);
+    const d = (
+      await db
+        .select({ status: schema.x402L1Purchases.status, spentUnits: schema.x402L1Purchases.spentUnits, meta: schema.x402L1Purchases.rawResponseMeta })
+        .from(schema.x402L1Purchases)
+    ).find((r) => (r.meta as Record<string, unknown> | null)?.credentialSent === false)!;
+    assert.equal(d.status, "request_error");
+    assert.equal(d.spentUnits, "0", "未送信の予約は日次予算へ戻る");
+    // 署名済みの行（A）は 1 単位も動いていない。
+    assert.equal(
+      (await db.select({ s: schema.x402L1Purchases.spentUnits, e: schema.x402L1Purchases.endpointId }).from(schema.x402L1Purchases)).find((r) => r.e === endpointA)!.s,
+      "3000",
+    );
 
     await db.execute(sql`TRUNCATE x402_l1_purchases`);
   });

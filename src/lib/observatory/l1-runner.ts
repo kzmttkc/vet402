@@ -27,7 +27,7 @@
 // ============================================================
 import { L1_REQUEST_TIMEOUT_MS } from "./l1-timing";
 import { privateKeyToAccount } from "viem/accounts";
-import { eq, sql, type SQL } from "drizzle-orm";
+import { and, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { utcDayStart } from "@/lib/db/utc-day";
@@ -744,6 +744,14 @@ export const ORPHAN_IN_FLIGHT_MINUTES = 30;
  * 測っていない失敗を売り手の決済率の分母（PAID_ATTEMPT_STATUSES）に入れて
  * しまう。request_error は公開面（decisions / export.csv / backtest /
  * reader）のどの分母からも既に外れている。
+ *
+ * 2026-09-29 監査4周目（例外）: **auth_nonce が NULL の行だけは spent_units を 0 に戻す。**
+ * purchaseOne は署名の直後、有料の要求を出す**前**に auth_nonce を書く（4 チェーンとも。
+ * それより前に外へ出るのは Tempo の読み取り RPC だけで、資格情報は載らない）。だから
+ * auth_nonce が NULL の行の資格情報は、このプロセスの外へ一度も出ていない——動きうる金が無い。
+ * 署名直前の停止判定のあと DB 不通で予約を戻せなかった行（:2153 付近）がこれに当たり、
+ * 従来はここで spent_units を残したため、日次予算がその日のうちに戻らなかった。
+ * auth_nonce が入っている行は従来どおり 1 単位も動かさない。
  */
 export async function sweepOrphanedInFlight(
   db: NonNullable<ReturnType<typeof getDb>>,
@@ -752,10 +760,14 @@ export async function sweepOrphanedInFlight(
   const raw = await db.execute(sql`
     UPDATE x402_l1_purchases
     SET status = 'request_error',
+        spent_units = CASE WHEN auth_nonce IS NULL THEN '0' ELSE spent_units END,
         raw_response_meta = coalesce(raw_response_meta, '{}'::jsonb) || jsonb_build_object(
           'phase', 'sweep',
           'reason', 'orphaned_in_flight',
-          'note', 'reserved and possibly signed; the runner died before the outcome was written',
+          'note', CASE WHEN auth_nonce IS NULL
+            THEN 'reserved; no payment credential left vet402 (auth_nonce never written), so the reservation was released'
+            ELSE 'reserved and possibly signed; the runner died before the outcome was written' END,
+          'credentialSent', auth_nonce IS NOT NULL,
           'sweptAt', to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
         )
     WHERE status = 'in_flight'
@@ -780,27 +792,76 @@ export async function sweepOrphanedInFlight(
  * `jsonb_build_object('error', $1)` の型を決められず（could not determine data type of
  * parameter $1）、この UPDATE は**毎回落ちていた**。行は in_flight のまま残り、30 分後の
  * 孤児掃除が request_error として拾っていたので、誰も気づかなかった。
+ *
+ * 2026-09-29 監査4周目: auth_nonce が NULL の行（資格情報を有料の要求に載せる前に落ちた——
+ * nonce の書き込みは有料の要求より前）は `settle_failed` にしない。settle_failed は公開の定義で
+ * 「署名して**送った**のに決済が確認できない」で、売り手の分母に入る。送っていない失敗は
+ * 我々側の事実なので `request_error`、動きうる金が無いので spent_units も 0 に戻す。
+ * auth_nonce が入っている行は従来どおり（settle_failed・spent_units は残す）。
+ * 戻り値は実際に書いた status（書けなかったら従来の想定どおり settle_failed）。
  */
 export async function resolveReservationAsFailed(
   db: NonNullable<ReturnType<typeof getDb>>,
   rowId: string,
   error: unknown,
-): Promise<void> {
+): Promise<"settle_failed" | "request_error"> {
   try {
-    await db.execute(sql`
+    const raw = await db.execute(sql`
       UPDATE x402_l1_purchases
-      SET status = 'settle_failed',
+      SET status = CASE WHEN auth_nonce IS NULL THEN 'request_error' ELSE 'settle_failed' END,
+          spent_units = CASE WHEN auth_nonce IS NULL THEN '0' ELSE spent_units END,
           raw_response_meta = coalesce(raw_response_meta, '{}'::jsonb) || jsonb_build_object(
             'phase', 'post_reservation',
             'reason', 'threw_after_reservation',
+            'credentialSent', auth_nonce IS NOT NULL,
             'error', ${redactForLog(error)}::text
           )
       WHERE id = ${rowId}::uuid
+      RETURNING status
     `);
+    const written = rowsOf(raw)[0]?.status;
+    return written === "request_error" ? "request_error" : "settle_failed";
   } catch (writeError) {
     // ここまで失敗したら 30 分後の孤児掃除が拾う。黙って消さない。
     logServerErrorSafe("observatory.l1.resolve_reservation_failed", redactedError(writeError));
+    return "settle_failed";
   }
+}
+
+/**
+ * 署名していない予約を戻す（spent_units を 0 に）。2026-09-29 監査4周目。
+ *
+ * 署名直前の停止判定（haltGate）は DB が読めないと fail-closed で「止める」を返す——つまり
+ * 「DB 不通で止めた」直後に、同じ DB へ予約を戻す UPDATE を打つことになる。従来はこの UPDATE が
+ * 投げて purchaseOne ごと落ち、未署名の予約が in_flight のまま日次予算を占有した。
+ * ここでは短く数回だけ試し、それでも書けなければ fail-loud のログを残して**投げない**。
+ * 残った行は auth_nonce が NULL なので、孤児掃除（sweepOrphanedInFlight）が spent_units を戻す。
+ * `WHERE status = 'in_flight'` で、既に決着した行を上書きしない。
+ */
+export async function releaseUnsignedReservation(
+  db: NonNullable<ReturnType<typeof getDb>>,
+  rowId: string,
+  outcome: { status: "halted" | "request_error"; rawResponseMeta: unknown },
+  retryDelaysMs: readonly number[] = [0, 200, 1_000],
+): Promise<boolean> {
+  let lastError: unknown = null;
+  for (const delay of retryDelaysMs) {
+    if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+    try {
+      await db
+        .update(x402L1Purchases)
+        .set({ status: outcome.status, spentUnits: "0", rawResponseMeta: outcome.rawResponseMeta })
+        .where(and(eq(x402L1Purchases.id, rowId), eq(x402L1Purchases.status, "in_flight"), isNull(x402L1Purchases.authNonce)));
+      return true;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  logServerErrorSafe(
+    "observatory.l1.unsigned_reservation_not_released",
+    new Error(`row ${rowId} stays in_flight until the orphan sweep releases it: ${redactForLog(lastError)}`),
+  );
+  return false;
 }
 
 /**
@@ -2152,14 +2213,12 @@ async function purchaseOne(input: {
   // （何が起きたかを台帳が答えられる状態を崩さない）。
   const preSignHalt = await haltGate(db);
   if (preSignHalt.halted) {
-    await db
-      .update(x402L1Purchases)
-      .set({
-        status: "halted",
-        spentUnits: "0",
-        rawResponseMeta: tagMeta({ phase: "pre_sign", reason: preSignHalt.reason }),
-      })
-      .where(eq(x402L1Purchases.id, reservation.rowId));
+    // 2026-09-29 監査4周目: 停止の理由が「DB が読めない」なら、この UPDATE も同じ DB へ行く。
+    // 投げて予約を in_flight のまま残さない（releaseUnsignedReservation の節）。
+    await releaseUnsignedReservation(db, reservation.rowId, {
+      status: "halted",
+      rawResponseMeta: tagMeta({ phase: "pre_sign", reason: preSignHalt.reason }),
+    });
     invalidateDecisionCache(candidate.id);
     return { kind: "halted", settled: false, spent: 0n, haltReason: preSignHalt.reason };
   }
@@ -2279,6 +2338,7 @@ async function purchaseOne(input: {
     let paid: Response | null = null;
     let paidBody = "";
     let paidError: string | null = null;
+    let paidErrorRaw: unknown = null;
     // Same 2026-08-22 fix as the unpaid leg: the timer covers the body read too.
     // On the PAID leg an aborted body is not a lost measurement — the settlement
     // receipt lives in the HEADERS, which we already hold — so the outcome is
@@ -2319,6 +2379,7 @@ async function purchaseOne(input: {
       paidBody = await readBodyCapped(paid, 16_000);
     } catch (error) {
       paidError = String(error).slice(0, 300);
+      paidErrorRaw = error;
     } finally {
       clearTimeout(paidTimer);
     }
@@ -2384,8 +2445,16 @@ async function purchaseOne(input: {
     // 数えられるようにだけしておく: 境界は下の `rawResponseMeta.credentialStripped` に
     // 残るので、`raw_response_meta ? 'credentialStripped'` で件数を数えられる。
     // 実在するほど多いと分かってから分母の扱いを決める。
+    // 2026-09-29 監査4周目: 応答を 1 つも得られなかった失敗（!paid）を一律に売り手の settle_failed に
+    // していた。原因が**こちらの機械の中にしか無い**もの（ファイル記述子・バッファ・メモリ・自分の
+    // ネットワーク I/F の枯渇）は我々側の request_error で記録する。売り手が起こせる形（接続拒否・
+    // タイムアウト・DNS・TLS・転送先での失敗）は上の W-4 と同じ理由で settle_failed のまま——
+    // 資格情報を受け取った売り手が観測を公開台帳から消せる道を作らない。spent_units はどちらも残す。
+    const transportSide = !paid ? paidTransportFailureSide(paidErrorRaw) : null;
     const status = !paid
-      ? "settle_failed"
+      ? transportSide === "vet402"
+        ? "request_error"
+        : "settle_failed"
       : claimedAndWellFormed
         ? "settle_claimed"
         : claimedSettlement
@@ -2411,6 +2480,9 @@ async function purchaseOne(input: {
       // request_error になった行の理由はこれ。
       ...(credentialStripped ? { credentialStripped } : {}),
       bodyHead: paidBody.slice(0, 500),
+      // 応答が無かった行だけ: どちら側の失敗か（2026-09-29）。"vet402" は request_error に、
+      // "seller_or_path" は従来どおり settle_failed に載る。
+      ...(transportSide ? { transportFailure: { side: transportSide, code: transportErrorCode(paidErrorRaw) } } : {}),
       // どの本文で有料の要求を出したか（2026-09-17 Issue #29）。"declared" は売り手の 402 が宣言した
       // input.body、"empty" は `{}`。2026-09-20: POST 以外にも "none" を残し（行はメソッドを持たないので、
       // 記録が無いと「本文なし」と「記録なし」を後から分けられない）、宣言本文には送ったバイト列の
@@ -2537,10 +2609,42 @@ async function purchaseOne(input: {
     };
   } catch (error) {
     logServerErrorSafe("observatory.l1.purchase_after_reservation", redactedError(error));
-    await resolveReservationAsFailed(db, reservation.rowId, error);
+    const writtenStatus = await resolveReservationAsFailed(db, reservation.rowId, error);
     invalidateDecisionCache(candidate.id);
-    return { kind: "attempted", settled: false, spent: amount, status: "settle_failed", network: accept.network };
+    // spent はこのバッチの見積もり（spentToday）用で、過大側に倒したまま（予約を戻したかは DB が正）。
+    return { kind: "attempted", settled: false, spent: amount, status: writtenStatus, network: accept.network };
   }
+}
+
+/** 例外（undici は cause に包む）から errno 風のコードを取り出す。無ければ null。 */
+export function transportErrorCode(error: unknown): string | null {
+  let e: unknown = error;
+  for (let depth = 0; depth < 4 && e && typeof e === "object"; depth++) {
+    const code = (e as { code?: unknown }).code;
+    if (typeof code === "string" && code.length > 0) return code.slice(0, 40);
+    e = (e as { cause?: unknown }).cause;
+  }
+  return null;
+}
+
+/**
+ * 原因がこの機械の中にしか無い errno（2026-09-29 監査4周目）。売り手はどれも起こせない:
+ * 記述子・バッファ・メモリの枯渇と、自分のネットワーク I/F が落ちている／送信元アドレスが無い。
+ * DNS（EAI_AGAIN 等）・ENETUNREACH・タイムアウトは入れない——売り手が転送先を選べば起こせる。
+ */
+const VET402_SIDE_TRANSPORT_CODES: ReadonlySet<string> = new Set([
+  "EMFILE",
+  "ENFILE",
+  "ENOBUFS",
+  "ENOMEM",
+  "ENETDOWN",
+  "EADDRNOTAVAIL",
+]);
+
+/** 有料の要求が応答を 1 つも得られなかったときの帰属。 */
+export function paidTransportFailureSide(error: unknown): "vet402" | "seller_or_path" {
+  const code = transportErrorCode(error);
+  return code !== null && VET402_SIDE_TRANSPORT_CODES.has(code) ? "vet402" : "seller_or_path";
 }
 
 /**

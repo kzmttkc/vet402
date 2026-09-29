@@ -36,7 +36,7 @@ if (!TEST_DB) {
     const db = getDb()!;
     const rows = <T,>(raw: unknown) => [...((Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as T[])];
 
-    async function seedReservation(over: { status?: string; txHash?: string } = {}): Promise<string> {
+    async function seedReservation(over: { status?: string; txHash?: string; authNonce?: string | null } = {}): Promise<string> {
       await db.execute(sql`TRUNCATE x402_endpoints, x402_l1_purchases, observed_purchases`);
       const ep = rows<{ id: string }>(
         await db.execute(sql`
@@ -57,6 +57,8 @@ if (!TEST_DB) {
           amountUnits: "25000",
           spentUnits: "25000",
           ...(over.txHash ? { txHash: over.txHash } : {}),
+          // 既定は「署名して nonce を書いた後」の行。未送信の行は authNonce: null で作る。
+          ...(over.authNonce === null ? {} : { authNonce: over.authNonce ?? "0x" + "ab".repeat(32) }),
         })
         .returning();
       return inserted[0].id;
@@ -69,7 +71,7 @@ if (!TEST_DB) {
 
     await t.test("resolveReservationAsFailed: 行は settle_failed になり、spent_units は残り、URL は伏字", async () => {
       const rowId = await seedReservation();
-      await resolveReservationAsFailed(db, rowId, RPC_ERROR);
+      assert.equal(await resolveReservationAsFailed(db, rowId, RPC_ERROR), "settle_failed");
       const after = await purchases();
       assert.equal(after.length, 1);
       assert.equal(after[0].status, "settle_failed", "UPDATE が実際に走っている（型未確定で落ちていない）");
@@ -79,6 +81,39 @@ if (!TEST_DB) {
       assert.equal(meta.reason, "threw_after_reservation");
       assert.equal(String(meta.error).includes("SECRETKEY"), false, `鍵が残っている: ${String(meta.error)}`);
       assert.ok(String(meta.error).includes("<url>"), `伏字が入っていない: ${String(meta.error)}`);
+      assert.equal(meta.credentialSent, true);
+    });
+
+    // 2026-09-29 監査4周目: auth_nonce は有料の要求より前に書く。NULL の行の資格情報は外へ出ていない。
+    await t.test("resolveReservationAsFailed: auth_nonce が NULL（未送信）なら request_error・spent_units=0", async () => {
+      const rowId = await seedReservation({ authNonce: null });
+      assert.equal(await resolveReservationAsFailed(db, rowId, RPC_ERROR), "request_error");
+      const after = await purchases();
+      assert.equal(after[0].status, "request_error", "送っていない失敗を売り手の settle_failed にしない");
+      assert.equal(after[0].spent_units, "0", "動きうる金が無いので日次予算を戻す");
+      assert.equal((after[0].raw_response_meta ?? {}).credentialSent, false);
+    });
+
+    await t.test("releaseUnsignedReservation: in_flight・未署名の予約を halted・0 に戻す", async () => {
+      const { releaseUnsignedReservation } = await import("@/lib/observatory/l1-runner");
+      const rowId = await seedReservation({ authNonce: null });
+      const ok = await releaseUnsignedReservation(db, rowId, { status: "halted", rawResponseMeta: { phase: "pre_sign" } });
+      assert.equal(ok, true);
+      const after = await purchases();
+      assert.equal(after[0].status, "halted");
+      assert.equal(after[0].spent_units, "0");
+    });
+
+    await t.test("releaseUnsignedReservation: 決着済み・nonce 付きの行には触らない", async () => {
+      const { releaseUnsignedReservation } = await import("@/lib/observatory/l1-runner");
+      const settled = await seedReservation({ status: "settle_claimed", authNonce: null });
+      await releaseUnsignedReservation(db, settled, { status: "halted", rawResponseMeta: {} });
+      assert.equal((await purchases())[0].status, "settle_claimed");
+      assert.equal((await purchases())[0].spent_units, "25000");
+      const signed = await seedReservation();
+      await releaseUnsignedReservation(db, signed, { status: "halted", rawResponseMeta: {} });
+      assert.equal((await purchases())[0].status, "in_flight", "nonce を書いた（署名した）行の予算は戻さない");
+      assert.equal((await purchases())[0].spent_units, "25000");
     });
 
   });

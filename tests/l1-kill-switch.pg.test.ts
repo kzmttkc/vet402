@@ -242,5 +242,105 @@ if (!TEST_DB) {
         await db.execute(sql`DROP TRIGGER IF EXISTS ks_flip_halt_trg ON x402_l1_purchases`);
       }
     });
+
+    // 2026-09-29 監査4周目: 署名直前の停止判定で **DB が読めない**。haltGate は fail-closed で
+    // 「止める」を返すが、続く「予約を 0 に戻す」UPDATE も同じ DB へ行って投げ、未署名の予約が
+    // in_flight のまま日次予算を占有していた。ここでは予約の INSERT の直後に
+    //   (1) runtime_flags の読み取りを例外にする（表を、読むと RAISE するビューに差し替える）
+    //   (2) x402_l1_purchases を halted へ倒す UPDATE を例外にする
+    // の両方を仕掛ける。期待: 署名しない・runL1Batch は投げない・行は in_flight（auth_nonce NULL）で
+    // 残り、孤児掃除が spent_units を 0 に戻す。
+    await t.test("署名直前に DB 不通: 署名せず・投げず・残った予約は孤児掃除で 0 に戻る", async () => {
+      const { sweepOrphanedInFlight } = await import("@/lib/observatory/l1-runner");
+      await clearLedger();
+      await setSpendingHalt({ enabled: false, reason: "resumed", updatedBy: "test" });
+      await db.execute(
+        sql.raw(`
+        CREATE OR REPLACE FUNCTION ks_boom() RETURNS boolean AS $b$
+        BEGIN RAISE EXCEPTION 'simulated outage: connection terminated'; END $b$ LANGUAGE plpgsql VOLATILE;
+        CREATE OR REPLACE FUNCTION ks_break_db() RETURNS trigger AS $ks$
+        BEGIN
+          IF to_regclass('runtime_flags_real') IS NULL THEN
+            ALTER TABLE runtime_flags RENAME TO runtime_flags_real;
+            CREATE VIEW runtime_flags AS SELECT * FROM runtime_flags_real WHERE ks_boom();
+          END IF;
+          RETURN NULL;
+        END $ks$ LANGUAGE plpgsql;
+        CREATE OR REPLACE FUNCTION ks_refuse_release() RETURNS trigger AS $r$
+        BEGIN
+          IF NEW.status <> OLD.status THEN RAISE EXCEPTION 'simulated outage: write refused'; END IF;
+          RETURN NEW;
+        END $r$ LANGUAGE plpgsql;
+      `),
+      );
+      await db.execute(sql`CREATE TRIGGER ks_break_db_trg AFTER INSERT ON x402_l1_purchases FOR EACH ROW EXECUTE FUNCTION ks_break_db()`);
+      await db.execute(sql`CREATE TRIGGER ks_refuse_release_trg BEFORE UPDATE ON x402_l1_purchases FOR EACH ROW EXECUTE FUNCTION ks_refuse_release()`);
+      try {
+        const { seen, fetchImpl } = wall();
+        const summary = await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER, fetchImpl, limit: 1 });
+        assert.equal(seen.filter((s) => s.paid).length, 0, "DB が読めないなら署名済みリクエストを出さない");
+        assert.equal(summary.halted, true);
+        assert.match(String(summary.haltReason), /halt_flag_unreadable/);
+        const rows = await ledger();
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0].status, "in_flight", "DB 不通の間は戻せない（投げずに残す）");
+      } finally {
+        await db.execute(sql`DROP TRIGGER IF EXISTS ks_break_db_trg ON x402_l1_purchases`);
+        await db.execute(sql`DROP TRIGGER IF EXISTS ks_refuse_release_trg ON x402_l1_purchases`);
+        await db.execute(
+          sql.raw(`
+          DO $$ BEGIN
+            IF to_regclass('runtime_flags_real') IS NOT NULL THEN
+              DROP VIEW IF EXISTS runtime_flags;
+              ALTER TABLE runtime_flags_real RENAME TO runtime_flags;
+            END IF;
+          END $$;
+        `),
+        );
+      }
+      // DB が戻った後: 孤児掃除（しきい値 0 分）が未署名の予約を解放する。
+      await new Promise((r) => setTimeout(r, 20));
+      assert.equal(await sweepOrphanedInFlight(db, 0), 1);
+      const after = await ledger();
+      assert.equal(after[0].status, "request_error");
+      assert.equal(after[0].spent, "0", "署名していない予約は日次予算を食わない");
+    });
+
+    // 2026-09-29 監査4周目: 有料の要求が応答を 1 つも得られなかった行の帰属（l1-runner の
+    // paidTransportFailureSide）。こちらの機械の中にしか原因が無い errno は request_error、
+    // 売り手が起こせる形は従来どおり settle_failed。どちらも署名済みなので spent_units は残す。
+    const throwingPaidWall = (code: string) => {
+      const base = wall();
+      const fetchImpl = async (url: string, init?: RequestInit) => {
+        const headers = new Headers(init?.headers);
+        if (headers.has("PAYMENT-SIGNATURE") || headers.has("X-PAYMENT")) {
+          throw Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error(code), { code }) });
+        }
+        return base.fetchImpl(url, init);
+      };
+      return fetchImpl;
+    };
+    for (const [code, expected] of [
+      ["EMFILE", "request_error"],
+      ["ECONNRESET", "settle_failed"],
+      ["EAI_AGAIN", "settle_failed"],
+    ] as const) {
+      await t.test(`有料の要求が ${code} で落ちた → ${expected}（spent_units は残す）`, async () => {
+        await clearLedger();
+        await setSpendingHalt({ enabled: false, reason: "resumed", updatedBy: "test" });
+        await runL1Batch({ getPayerUsdcBalance: FUNDED_PAYER, fetchImpl: throwingPaidWall(code), limit: 1 });
+        const rows = await ledger();
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0].status, expected);
+        assert.equal(rows[0].spent, "3000", "署名して送った（かもしれない）ので計上は残す");
+        const meta = (
+          (await db.execute(sql`SELECT raw_response_meta AS m FROM x402_l1_purchases`)) as unknown as { m: Record<string, unknown> }[]
+        )[0].m;
+        assert.deepEqual(meta.transportFailure, {
+          side: expected === "request_error" ? "vet402" : "seller_or_path",
+          code,
+        });
+      });
+    }
   });
 }
