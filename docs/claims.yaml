@@ -1915,3 +1915,46 @@ claims:
     check: null
     why_unverifiable: "HTML 頁で JSON を返さない。読み取りは src/lib/sellers/cached.ts（unstable_cache・PUBLIC_READ_REVALIDATE）と reader.ts で、tests/sellers-views.test.ts が取得時刻の表示を、tests/sellers-reader.pg.test.ts が読み取りを固定する"
     verified_at: 2026-09-28
+  # --- 2026-09-29 敵対的監査 4 周目（規制当局・コンプライアンス）: 法務面と最終確認画面 ---
+  - id: legal_r4_billing_auto_renews_monthly
+    surface: src/app/dashboard/billing/page.tsx
+    quote: "The subscription renews automatically every month until you cancel."
+    means: "有料プランは月額の自動更新（特商法 12 条の 6 の最終確認画面で示す）。Checkout は mode: subscription、価格は月額"
+    check: null
+    why_unverifiable: "課金の仕組みの記述で、公開 GET が返す値ではない。根拠は src/lib/billing/stripe.ts の createCheckoutSession（mode: \"subscription\"）と plans.ts の月額表示"
+    verified_at: 2026-09-29
+  - id: legal_r4_notice_auto_renews_monthly
+    surface: src/app/legal/notice/page.tsx
+    quote: "The subscription then renews automatically every month and is charged in advance at the start of each monthly period until you cancel."
+    means: "特商法の表示の「支払時期」。初月は Checkout 完了時、以後は各期の頭に前払いで自動更新"
+    check: null
+    why_unverifiable: "課金の仕組みの記述で、公開 GET が返す値ではない。根拠は src/lib/billing/stripe.ts（mode: \"subscription\"・proration_behavior: \"create_prorations\"）"
+    verified_at: 2026-09-29
+  - id: legal_r4_notice_base_builder_no_reply
+    surface: src/app/legal/notice/page.tsx
+    quote: "The program says it does not reply to all nominations."
+    means: "Base Builder Grants は指名に全件返信しないと自ら書いている（独立性の開示の 1 行）"
+    check: null
+    why_unverifiable: "外部プログラムの告知文の要約。一次の記録は docs/hackathons/GRANTS.md の Base Builder Grants 行（\"we will not be responding to all requests\"）"
+    verified_at: 2026-09-29
+  - id: legal_r4_privacy_ip_hash_only
+    surface: src/app/legal/privacy/page.tsx
+    quote: "the IP address behind a notification sign-up is stored only as a one-way hash"
+    means: "通知購読の送信元 IP は平文で保存せず一方向ハッシュだけ（安全管理措置の要点）"
+    check: null
+    why_unverifiable: "保存形式の記述で、公開 GET が返す値ではない。record_subscriptions の ip_hash 列（src/lib/db/schema.ts）が根拠"
+    verified_at: 2026-09-29
+  - id: legal_r4_privacy_plausible_only_third_party
+    surface: src/app/legal/privacy/page.tsx
+    quote: "This is the only third party our pages send information to from your browser"
+    means: "ブラウザから第三者へ送る先は Plausible だけ（電気通信事業法の外部送信の表示）"
+    check: null
+    why_unverifiable: "ブラウザの挙動の記述。根拠は src/proxy.ts の CSP（connect-src 'self' https://plausible.io、img-src / font-src は 'self' data: のみ）。第三者の送信先を足すなら CSP とこの文を同時に直す"
+    verified_at: 2026-09-29
+  - id: legal_r4_terms_l1_dispute_l0_only
+    surface: src/app/legal/terms/page.tsx
+    quote: "the signed route re-runs the L0 probe only"
+    means: "L1 の結果への異議でも、署名付き異議が起こすのは L0 プローブ 1 回で、購入はしない。記録頁に disputed の印は付かない"
+    check: null
+    why_unverifiable: "実装の記述で、公開 GET が返す値ではない。根拠は src/lib/observatory/disputes.ts の submitDispute（probeEndpoint を 1 回・購入の呼び出しなし）"
+    verified_at: 2026-09-29

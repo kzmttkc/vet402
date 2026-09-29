@@ -738,7 +738,7 @@ export default async function Home() {
           />
           <ItemRow
             state="live"
-            title="Verified Payee"
+            title="Address control verified"
             body={
               <>
                 Prove control of a wallet by signature, get a public verification page and an SVG

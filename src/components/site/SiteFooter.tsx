@@ -13,9 +13,9 @@
  * which postdates legal_requirements.md), every product carries KIZUNA Creation
  * as the maker. Vouch has no locale switching — it is English throughout — so
  * it follows Banto's English-locale page, which renders the credit in ASCII
- * parens. Contact remains email-only. B2B API billing, when enabled, lives on
- * the dashboard; consumer mail-order billing is not live. /legal/notice
- * explains the disclosure scope.
+ * parens. Contact remains email-only. Paid plans are billed from the
+ * dashboard; since 2026-09-29 /legal/notice carries the Specified Commercial
+ * Transactions disclosure (personal identifiers on request, Art. 11 proviso).
  */
 
 import Link from "next/link";
@@ -74,6 +74,9 @@ const SMALL_PRINT_LINKS = [
   { label: "Terms", href: "/legal/terms" },
   { label: "Privacy", href: "/legal/privacy" },
   { label: "Legal notice", href: "/legal/notice" },
+  // 2026-09-29: 特商法の表示と独立性の開示（どちらも /legal/notice の節）。
+  { label: "Commercial disclosure", href: "/legal/notice#commercial-transactions" },
+  { label: "Relationships", href: "/legal/notice#relationships" },
   { label: "Contact", href: "/legal/notice#contact" },
   { label: "RSS", href: "/blog/rss.xml" },
   { label: "llms.txt", href: "/llms.txt" },

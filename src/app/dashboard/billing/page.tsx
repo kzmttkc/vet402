@@ -13,8 +13,13 @@ type BillingInfo = {
   stripeConfigured: boolean;
   billingHealth: "ok" | "past_due" | "canceled" | null;
   canChangePlan: boolean;
-  plans: Record<string, { name: string; monthlyLimit: number; priceLabel: string }>;
+  plans: Record<
+    string,
+    { name: string; monthlyLimit: number; monthlyUsd: number; priceLabel: string }
+  >;
 };
+
+type PaidPlanId = "pro" | "scale";
 
 export default function DashboardBillingPage() {
   const [info, setInfo] = useState<BillingInfo | null>(null);
@@ -25,6 +30,9 @@ export default function DashboardBillingPage() {
     return new URLSearchParams(window.location.search).get("checkout");
   });
   const [planChanged, setPlanChanged] = useState(false);
+  // 2026-09-29 (特商法 12 条の 6): 申込みの最終確認。Upgrade はこの確認を開くだけで、
+  // Stripe へ進む（または既存の契約を変える）のは確認の中のボタンだけ。
+  const [confirming, setConfirming] = useState<PaidPlanId | null>(null);
 
   useEffect(() => {
     track("billing_view");
@@ -33,7 +41,7 @@ export default function DashboardBillingPage() {
       .catch((err) => setError(err instanceof Error ? err.message : "load_failed"));
   }, []);
 
-  async function upgrade(plan: "pro" | "scale") {
+  async function upgrade(plan: PaidPlanId) {
     setLoading(plan);
     setError(null);
     setPlanChanged(false);
@@ -54,6 +62,7 @@ export default function DashboardBillingPage() {
 
       // Existing subscription was changed in place (no redirect needed).
       setPlanChanged(true);
+      setConfirming(null);
       setLoading(null);
       dashboardFetch<BillingInfo>("/api/billing/checkout").then(setInfo).catch(() => {});
     } catch (err) {
@@ -166,10 +175,15 @@ export default function DashboardBillingPage() {
                 <button
                   type="button"
                   disabled={loading !== null}
-                  onClick={() => upgrade(planId)}
+                  aria-expanded={confirming === planId}
+                  aria-controls="order-confirmation"
+                  onClick={() => {
+                    setError(null);
+                    setConfirming(planId);
+                  }}
                   className={buttonClass({ className: "mt-4 w-full" })}
                 >
-                  {loading === planId ? "Redirecting..." : `Upgrade to ${plan.name}`}
+                  {`Upgrade to ${plan.name}`}
                 </button>
               )}
               {isCurrent && (
@@ -181,6 +195,18 @@ export default function DashboardBillingPage() {
           );
         })}
       </div>
+
+      {confirming && info.stripeConfigured && info.canChangePlan && (
+        <OrderConfirmation
+          plan={info.plans[confirming]}
+          planId={confirming}
+          changeInPlace={info.plan !== "free"}
+          busy={loading !== null}
+          loadingThis={loading === confirming}
+          onConfirm={() => upgrade(confirming)}
+          onBack={() => setConfirming(null)}
+        />
+      )}
 
       {(info.stripeConfigured && (info.plan !== "free" || !info.canChangePlan)) && (
         <div className="space-y-2">
@@ -205,5 +231,109 @@ export default function DashboardBillingPage() {
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * 最終確認画面（特定商取引法 12 条の 6）。申込みを確定するボタンの直前に、
+ * プラン・価格・課金周期・自動更新・支払時期・提供時期・解約方法を並べる。
+ * 値は src/lib/billing/*（Checkout は mode: "subscription"・税の自動計算なし、
+ * プラン変更は proration_behavior: "create_prorations"）の実装に合わせてある。
+ */
+function OrderConfirmation({
+  plan,
+  planId,
+  changeInPlace,
+  busy,
+  loadingThis,
+  onConfirm,
+  onBack,
+}: {
+  plan: { name: string; monthlyLimit: number; monthlyUsd: number };
+  planId: PaidPlanId;
+  changeInPlace: boolean;
+  busy: boolean;
+  loadingThis: boolean;
+  onConfirm: () => void;
+  onBack: () => void;
+}) {
+  const price = `US$${plan.monthlyUsd} per month`;
+  return (
+    <section
+      id="order-confirmation"
+      aria-labelledby="order-confirmation-title"
+      className="dash-card space-y-4"
+      data-plan={planId}
+    >
+      <h3 id="order-confirmation-title" className="font-semibold text-zinc-900">
+        Confirm your order: {plan.name}
+      </h3>
+      <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-[max-content_1fr]">
+        <dt className="text-zinc-600">Plan</dt>
+        <dd className="text-zinc-900">
+          {plan.name} — {plan.monthlyLimit.toLocaleString("en-US")} lookups a month, shared across
+          the keys on this account
+        </dd>
+        <dt className="text-zinc-600">Price</dt>
+        <dd className="text-zinc-900">
+          {price}. Prices are in US dollars; no tax is added at checkout.
+        </dd>
+        <dt className="text-zinc-600">Billing cycle</dt>
+        <dd className="text-zinc-900">
+          Monthly. The subscription renews automatically every month until you cancel.
+        </dd>
+        <dt className="text-zinc-600">When you pay</dt>
+        <dd className="text-zinc-900">
+          {changeInPlace
+            ? `Your current subscription is changed in place. Stripe prorates the difference for the rest of this period on your next invoice (a charge for an upgrade, a credit for a downgrade); after that, ${price} is charged in advance at the start of each period.`
+            : `The first month is charged when you complete payment on the next page (Stripe Checkout). After that, ${price} is charged in advance at the start of each monthly period.`}
+        </dd>
+        <dt className="text-zinc-600">When it starts</dt>
+        <dd className="text-zinc-900">
+          The {plan.name} quota applies as soon as Stripe tells us the payment succeeded.
+        </dd>
+        <dt className="text-zinc-600">How to cancel</dt>
+        <dd className="text-zinc-900">
+          Any time from this page with &quot;Manage subscription&quot; (Stripe customer portal). The
+          paid quota continues until the end of the current period, then the account returns to
+          Free. No refunds for unused lookups or unused time.
+        </dd>
+      </dl>
+      <p className="text-sm text-zinc-600">
+        By continuing you agree to the{" "}
+        <a className="underline" href="/legal/terms#paid-subscriptions">
+          Terms of Service
+        </a>{" "}
+        (section 16). Seller and legal disclosure:{" "}
+        <a className="underline" href="/legal/notice#commercial-transactions">
+          Legal notice
+        </a>
+        .
+      </p>
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onConfirm}
+          className={buttonClass({ className: "px-4 py-2" })}
+        >
+          {loadingThis
+            ? changeInPlace
+              ? "Changing plan..."
+              : "Redirecting..."
+            : changeInPlace
+              ? `Change plan to ${plan.name} (${price})`
+              : `Continue to payment (${price})`}
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onBack}
+          className={buttonClass({ variant: "secondary", className: "px-4 py-2" })}
+        >
+          Back
+        </button>
+      </div>
+    </section>
   );
 }

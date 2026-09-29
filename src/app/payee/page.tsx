@@ -128,7 +128,7 @@ export default async function PayeeIndexPage({
       <article className="sheet">
         <div className="doc-head">
           <div className="doc-head-col">
-            <span>Verified Payee</span>
+            <span>Address control verified</span>
             {/* 2026-08-13 [M5]: "Level: L0 identity claim" をやめた。LP §2 の
                 L0 は Liveness で、同じ記号が別の意味で2箇所にあった。 */}
             <span>Claim: wallet control by signature</span>

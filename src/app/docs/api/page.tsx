@@ -21,7 +21,7 @@ import { inviteRequired } from "@/lib/dashboard/signup-core";
 export const metadata: Metadata = pageMetadata({
   title: "API reference",
   description:
-    "REST v1 reference for vet402: score a payee before paying it, register a verified payee, read the accuracy ledger. Key-less curl quickstart, limits, webhooks.",
+    "REST v1 reference for vet402: score a payee before paying it, prove control of a payee address, read the accuracy ledger. Key-less curl quickstart, limits, webhooks.",
   path: "/docs/api",
 });
 
@@ -180,7 +180,7 @@ const endpoints: Endpoint[] = [
   {
     method: "POST",
     path: "/api/v1/payees/verify",
-    note: "Verified payee registration — free, no API key. Sign the canonical message above (fetch it via GET on this same path, including url= when you will send one) with the payee wallet; a valid signature proves control and publishes /payee/:address plus an embeddable badge at /api/badge/:address. Verification proves wallet control only; scores stay independent.",
+    note: "Address control verification — free, no API key. Sign the canonical message above (fetch it via GET on this same path, including url= when you will send one) with the payee wallet; a valid signature proves control and publishes /payee/:address plus an embeddable badge at /api/badge/:address. Verification proves wallet control only; scores stay independent.",
     request: `{ "wallet": "0x…", "name": "Acme API", "url": "https://…", "issued": "2026-09-05T12:00:00.000Z", "signature": "0x…" }`,
     response: `{ "ok": true, "profile": "/payee/0x…", "badge": "/api/badge/0x…" }`,
   },
@@ -400,7 +400,7 @@ export default async function ApiDocsPage() {
     "@type": "TechArticle",
     headline: "API reference",
     description:
-      "REST v1 reference for vet402: score a payee before paying it, register a verified payee, read the public accuracy ledger.",
+      "REST v1 reference for vet402: score a payee before paying it, prove control of a payee address, read the public accuracy ledger.",
     url: `${SITE_URL}/docs/api`,
     author: { "@type": "Organization", name: "vet402", url: SITE_URL },
     publisher: { "@type": "Organization", name: "vet402", url: SITE_URL },

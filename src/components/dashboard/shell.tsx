@@ -168,10 +168,12 @@ const footerLinks = [
   { label: "Terms", href: "/legal/terms" },
   { label: "Privacy", href: "/legal/privacy" },
   { label: "Legal notice", href: "/legal/notice" },
+  { label: "Commercial disclosure", href: "/legal/notice#commercial-transactions" },
+  { label: "Relationships", href: "/legal/notice#relationships" },
   { label: "Contact", href: "/legal/notice#contact" },
 ];
 
-/** zinc の 1 行フッタ。リンク先は SiteFooter の法務 4 本と同じ（正典は /legal）。 */
+/** zinc の 1 行フッタ。リンク先は SiteFooter の法務リンクと同じ（正典は /legal）。 */
 function DashboardFooter() {
   return (
     <footer className="border-t border-zinc-200 bg-white">

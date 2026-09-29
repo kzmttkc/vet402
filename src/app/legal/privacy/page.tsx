@@ -36,21 +36,32 @@ export default async function PrivacyPage() {
             <span>Instrument: privacy policy</span>
             <span>
               {/* この頁のシアン1点。改訂日という事実。 */}
-              Revision: <span className="text-signal">August 14, 2026</span>
+              Revision: <span className="text-signal">September 29, 2026</span>
             </span>
           </div>
           <div className="doc-head-col">
             <span>vet402</span>
             <span>x402 Economy</span>
-            <span>August 2026</span>
+            <span>September 2026</span>
           </div>
         </div>
         <h1 className="doc-title mt-10">Privacy Policy</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-        <p className="doc-note text-center">Last updated: August 14, 2026</p>
+        <p className="doc-note text-center">Last updated: September 29, 2026</p>
 
+        {/* 2026-09-29 監査 4 周目: GDPR 13 条 1 項 (a) の管理者の身元と連絡先を明記。 */}
         <section className="space-y-2">
-          <h2 className="sec-head">Contact / operator information</h2>
+          <h2 className="sec-head">Who is responsible for your data</h2>
+          <p>
+            The controller of the personal data described here — the business that decides why and
+            how it is processed — is KIZUNA Creation, a sole proprietorship established in Japan,
+            which operates vet402. Contact the controller at{" "}
+            <a className="doc-link" href={SUPPORT_MAILTO}>
+              {SUPPORT_EMAIL}
+            </a>
+            . In Japan, KIZUNA Creation is the business handling personal information under the Act
+            on the Protection of Personal Information (APPI).
+          </p>
           <p>
             vet402 is operated by KIZUNA Creation. See our{" "}
             <a className="doc-link" href="/legal/notice">
@@ -107,6 +118,15 @@ export default async function PrivacyPage() {
               added if you added one
             </li>
             <li>
+              <strong>Pre-publication notices to sellers</strong>: the business contact email
+              address we wrote to, the seller&apos;s name and endpoints, the measurement facts in the
+              message, and any reply. See{" "}
+              <a className="doc-link" href="#seller-notices">
+                emails we send to sellers before we publish
+              </a>{" "}
+              below
+            </li>
+            <li>
               <strong>Disputes</strong> (<code>disputes</code>): the endpoint the dispute is about,
               the subject and reason you wrote, and the wallet address plus the signed message and
               signature that prove control of it. This table holds no email address; if you write to
@@ -149,7 +169,9 @@ export default async function PrivacyPage() {
               with securing the service and preventing abuse. The interest is providing an
               independent fraud-risk signal for on-chain payments; the data is already public
               on-chain; and anyone scored has a free route to object and to have factual errors
-              corrected (see below). You can ask us for our balancing assessment.
+              corrected (see below). The same basis covers the pre-publication notices we email to
+              sellers, whose interest is to hear about a result before it is published. You can ask
+              us for our balancing assessment.
             </li>
             <li>
               <strong>Legal obligation</strong> (Art. 6(1)(c)) — keeping billing and tax records for
@@ -163,7 +185,42 @@ export default async function PrivacyPage() {
           </ul>
         </section>
 
-        <section className="space-y-2">
+        {/* 2026-09-29 監査 4 周目: 2026-09-28 に records@vet402.com から売り手 5 社へ公開前の
+            結果通知を Resend で送った。ポリシーは「Resend は購読通知と異議の返信だけ」と
+            書いていて、実態と食い違っていた。目的・宛先の入手元・停止の方法を書く。 */}
+        <section id="seller-notices" className="scroll-mt-24 space-y-2">
+          <h2 className="sec-head">Emails we send to sellers before we publish</h2>
+          <p>
+            Before we publish results that name a seller, we may email that seller to tell them what
+            we measured — for example that paid calls to their endpoint were not delivered — and when
+            we plan to publish, so they can correct us or fix the problem first. These notices come
+            from <code>records@vet402.com</code> and replies go to{" "}
+            <a className="doc-link" href={SUPPORT_MAILTO}>
+              {SUPPORT_EMAIL}
+            </a>
+            . They report measurement facts; they are not advertising and we do not use them to
+            sell anything.
+          </p>
+          <p>
+            <strong>Where the address comes from.</strong> We write to a business contact the
+            seller has published: the contact in its public listing in an x402 discovery catalog,
+            or the support or contact address published on the seller&apos;s own website or domain.
+            We do not buy address lists and do not guess personal addresses.
+          </p>
+          <p>
+            <strong>How to stop them.</strong> Reply to a notice, or write to{" "}
+            <a className="doc-link" href={SUPPORT_MAILTO}>
+              {SUPPORT_EMAIL}
+            </a>
+            , and say you do not want these notices; one person reads that inbox and we will not
+            send further pre-publication notices to that address. Stopping notices does not stop
+            the measurement or its publication, which follow our published methodology either way.
+            We keep the message and any reply in the support inbox and in Resend&apos;s sending log;
+            we do not add these addresses to any mailing list.
+          </p>
+        </section>
+
+        <section id="retention" className="scroll-mt-24 space-y-2">
           <h2 className="sec-head">Retention</h2>
           <p>
             Query logs are retained per your plan (90 days Free, 1 year Pro+). You may request
@@ -210,12 +267,12 @@ export default async function PrivacyPage() {
           </p>
           <ul className="list-disc space-y-1 pl-5">
             <li>
-              <strong>Vercel</strong> (US) — application hosting and edge delivery; sees request
-              metadata including IP addresses.
+              <strong>Vercel</strong> (United States) — application hosting and edge delivery; sees
+              request metadata including IP addresses.
             </li>
             <li>
-              <strong>Neon</strong> (US) — the PostgreSQL database that stores accounts, API keys,
-              usage logs, and scores.
+              <strong>Neon</strong> (United States) — the PostgreSQL database that stores accounts,
+              API key hashes, usage logs, and scores.
             </li>
             <li>
               <strong>Stripe</strong> (US) — billing and payment processing for paid plans; holds
@@ -235,14 +292,28 @@ export default async function PrivacyPage() {
               wallet addresses, all of which are already public on that chain.
             </li>
             <li>
-              <strong>Resend</strong> (US) — email delivery for the record-change notifications you
-              asked for and for replies about a dispute; receives the recipient email address and
-              the body of that message. It is not used for marketing, and there is no newsletter.
+              <strong>Resend</strong> (United States) — email delivery for the record-change
+              notifications you asked for, for replies about a dispute, and for the pre-publication
+              notices we send to sellers (see{" "}
+              <a className="doc-link" href="#seller-notices">
+                above
+              </a>
+              ); receives the recipient email address and the body of that message. We do not use it
+              for marketing email and we send no newsletter.
             </li>
             <li>
-              <strong>Plausible Analytics</strong> (EU) — aggregate traffic statistics. Plausible is
-              cookieless, sets no persistent identifier, and does not collect personal data or track
-              visitors across sites.
+              <strong>Plausible Analytics</strong> (European Union) — aggregate traffic statistics.
+              Plausible is cookieless and sets no persistent identifier; what your browser sends it
+              is described under{" "}
+              <a className="doc-link" href="#external-transmission">
+                information your browser sends to a third party
+              </a>{" "}
+              below.
+            </li>
+            <li>
+              <strong>GitHub</strong> (United States) — hosts vet402&apos;s public source code and
+              issue tracker. If you open an issue or pull request there, it is published under your
+              GitHub account and GitHub&apos;s own terms apply.
             </li>
           </ul>
           <p>
@@ -272,26 +343,88 @@ export default async function PrivacyPage() {
           </p>
         </section>
 
-        {/* 2026-08-06 (L4 legal review): the policy named deletion as the only
-            right and said nothing about where data physically sits. Both are
-            baseline expectations under GDPR/APPI-style regimes, and the storage
-            question is the first one a procurement reviewer asks. The hosting
-            region is deliberately not asserted here — the operator has not
-            measured which region the Vercel/Neon projects are pinned to, and a
-            privacy policy is the wrong place to guess. Naming the providers and
-            offering the exact region on request is accurate today; replace this
-            with the measured region once it is confirmed. */}
-        <section className="space-y-2">
+        {/* 2026-08-06 (L4 legal review) で「保存先の地域は実測していないので書かない」とした節。
+            2026-09-29 監査 4 周目: 実測が揃ったので地域を書く。Neon は aws-us-east-2
+            （docs/audits/2026-09-05-cia-availability-audit.md の実測）、Vercel の関数は
+            iad1（本番ログの instance 表記）。Resend・Plausible・GitHub・Stripe は各社の公開情報。
+            APPI の安全管理措置（外的環境の把握）として国名を示す。 */}
+        <section id="where-stored" className="scroll-mt-24 space-y-2">
           <h2 className="sec-head">Where your data is stored</h2>
           <p>
-            vet402 is hosted on Vercel, with its database on Neon — both are US-headquartered
-            providers — and the operator administers the service from Japan. Your data is therefore
-            stored and accessed outside your own country in most cases, and personal data
-            originating in the EEA or UK may be transferred to and processed in third countries. We
-            rely on our providers&apos; standard data-processing terms, including standard
-            contractual clauses where they apply, for those transfers. If you need the specific
-            hosting region confirmed in writing before approving vet402 internally, ask us by email
-            and we will tell you.
+            The operator administers the service from Japan. The data itself is stored and
+            processed by the providers above, in these countries:
+          </p>
+          <ul className="list-disc space-y-1 pl-5">
+            <li>
+              <strong>United States</strong> — the database (Neon, on AWS in the US East (Ohio)
+              region), the application servers (Vercel, Washington, D.C. region; pages are also
+              cached on Vercel&apos;s worldwide edge network), email delivery (Resend), billing
+              (Stripe), and source code hosting (GitHub).
+            </li>
+            <li>
+              <strong>European Union (Germany)</strong> — traffic statistics (Plausible).
+            </li>
+            <li>
+              <strong>Japan</strong> — the support inbox is read, and the service is operated, from
+              Japan.
+            </li>
+          </ul>
+          <p>
+            Personal data originating in the EEA or UK is therefore transferred to and processed in
+            third countries, including the United States and Japan. We rely on our providers&apos;
+            standard data-processing terms, including standard contractual clauses where they apply,
+            for those transfers. Each of these countries has its own data-protection law, and the
+            protection there may differ from the protection where you live.
+          </p>
+        </section>
+
+        {/* 2026-09-29 監査 4 周目: APPI 23 条の安全管理措置のうち公表する要点。書くのは実装にあるものだけ。 */}
+        <section id="security" className="scroll-mt-24 space-y-2">
+          <h2 className="sec-head">How we protect your data</h2>
+          <ul className="list-disc space-y-1 pl-5">
+            <li>
+              <strong>Responsibility.</strong> KIZUNA Creation is responsible for handling personal
+              data in vet402, and access to the production database and hosting accounts is limited
+              to the operator&apos;s accounts.
+            </li>
+            <li>
+              <strong>In transit.</strong> The site and API are served over HTTPS.
+            </li>
+            <li>
+              <strong>Stored secrets.</strong> API keys are stored as keyed hashes, not in the
+              clear; the IP address behind a notification sign-up is stored only as a one-way hash;
+              and secrets are redacted from server logs.
+            </li>
+            <li>
+              <strong>Retention.</strong> Query logs are deleted on the schedule in{" "}
+              <a className="doc-link" href="#retention">
+                Retention
+              </a>{" "}
+              by a scheduled job.
+            </li>
+            <li>
+              <strong>Facilities.</strong> We run no servers of our own; the data sits with the
+              providers named above, in the countries named above.
+            </li>
+          </ul>
+        </section>
+
+        {/* 2026-09-29 監査 4 周目: 電気通信事業法 27 条の 12（外部送信規律）。CSP の connect-src は
+            'self' と plausible.io だけ（src/proxy.ts）なので、ブラウザから第三者へ送る先は Plausible 1 つ。 */}
+        <section id="external-transmission" className="scroll-mt-24 space-y-2">
+          <h2 className="sec-head">Information your browser sends to a third party</h2>
+          <p>
+            When you open a page on vet402.com, your browser loads a script from{" "}
+            <code>plausible.io</code> and sends Plausible Analytics (Plausible Insights OÜ) the
+            address of the page you are on (including any campaign parameters in it), the referring
+            page, your screen width, and the names of a few events we define, such as a button
+            click, with non-identifying details about them. Plausible also receives your IP address
+            and browser user-agent with the request. According to Plausible&apos;s published data
+            policy, it uses them only to count unique visitors with a daily-changing hash and to
+            derive the country, browser and device type, and does not store the IP address. We use
+            the result for aggregate traffic statistics only. Plausible sets no cookie. This is the
+            only third party our pages send information to from your browser; Stripe receives your
+            details only on its own checkout and portal pages.
           </p>
         </section>
 

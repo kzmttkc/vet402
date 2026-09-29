@@ -236,7 +236,7 @@ export default async function PayeePage({
 
         <div className="doc-head">
           <div className="doc-head-col">
-            <span>Verified Payee</span>
+            <span>Address control verified</span>
             <span>Subject: Base wallet</span>
             <span>
               {/* この頁のシアン1点。識別が済んでいるかどうかという事実。 */}
@@ -500,7 +500,7 @@ export default async function PayeePage({
             className="mt-3"
             label="Badge embed snippet for this payee"
             code={`<a href="${SITE_URL}/payee/${wallet}">
-  <img src="${SITE_URL}/api/badge/${wallet}.svg" alt="vet402 verified payee" height="24">
+  <img src="${SITE_URL}/api/badge/${wallet}.svg" alt="vet402 payee status" height="24">
 </a>`}
           />
         </div>

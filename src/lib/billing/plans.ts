@@ -2,18 +2,22 @@ export const BILLING_PLANS = {
   free: {
     name: "Free",
     monthlyLimit: 1_000,
+    // 2026-09-29: 特商法の表示と最終確認画面が同じ数字を引くための数値。priceLabel と一致させる。
+    monthlyUsd: 0,
     priceLabel: "$0",
     stripePriceId: null,
   },
   pro: {
     name: "Pro",
     monthlyLimit: 50_000,
+    monthlyUsd: 49,
     priceLabel: "$49/mo",
     stripePriceId: () => process.env.STRIPE_PRICE_PRO ?? null,
   },
   scale: {
     name: "Scale",
     monthlyLimit: 500_000,
+    monthlyUsd: 199,
     priceLabel: "$199/mo",
     stripePriceId: () => process.env.STRIPE_PRICE_SCALE ?? null,
   },

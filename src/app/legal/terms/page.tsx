@@ -67,18 +67,18 @@ export default async function TermsPage() {
             <span>Instrument: terms of service</span>
             <span>
               {/* この頁のシアン1点。改訂日という事実。 */}
-              Revision: <span className="text-signal">August 15, 2026</span>
+              Revision: <span className="text-signal">September 29, 2026</span>
             </span>
           </div>
           <div className="doc-head-col">
             <span>vet402</span>
             <span>x402 Economy</span>
-            <span>August 2026</span>
+            <span>September 2026</span>
           </div>
         </div>
         <h1 className="doc-title mt-10">Terms of Service</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-        <p className="doc-note text-center">Last updated: August 15, 2026</p>
+        <p className="doc-note text-center">Last updated: September 29, 2026</p>
 
         <section className="space-y-2">
           <h2 className="sec-head">
@@ -186,8 +186,8 @@ export default async function TermsPage() {
             The opinion is not free-floating: every verdict rests on <strong>verifiable factual
             grounds</strong> — the on-chain record we read, which anyone can re-read, and the
             methodology we publish at{" "}
-            <a className="doc-link" href="/accuracy">
-              /accuracy
+            <a className="doc-link" href="/observatory/methodology">
+              /observatory/methodology
             </a>
             . Our policy is to state the underlying facts as facts, the assessment as an
             assessment, and never to assert an evaluative label — &quot;fraud,&quot;
@@ -233,8 +233,12 @@ export default async function TermsPage() {
             agreed to these terms.
           </p>
           <p>
-            Our methodology, and our own measured error rates including the false positives that
-            make us look bad, are published at{" "}
+            Our methodology is published at{" "}
+            <a className="doc-link" href="/observatory/methodology">
+              /observatory/methodology
+            </a>
+            , and our own measured error rates, including the false positives that make us look
+            bad, at{" "}
             <a className="doc-link" href="/accuracy">
               /accuracy
             </a>
@@ -290,8 +294,9 @@ export default async function TermsPage() {
               <strong>Prove control of the address.</strong> Sign our canonical message with the
               wallet in question and{" "}
               <code className="text-brand-deep">POST /api/v1/payees/verify</code>. A valid
-              signature is the proof — no key required, no charge. That registers you as a verified
-              payee, publishes a profile at{" "}
+              signature is the proof — no key required, no charge. That marks the address as
+              &quot;address control verified&quot; — it proves you control the wallet, nothing more —
+              publishes a profile at{" "}
               <code className="text-brand-deep">/payee/&lt;address&gt;</code>, and feeds
               back into how the address is scored.{" "}
               <a className="doc-link" href="/docs/api">
@@ -525,6 +530,25 @@ export default async function TermsPage() {
             publish corrections openly and record them in a corrections log. We do not promise a
             re-test deadline here, because no scheduler enforces one.
           </p>
+          {/* 2026-09-29 監査 4 周目: L1（購入）の結果への異議の扱い。実装にあることだけを書く——
+              異議は L0 を 1 回測り直すだけで購入はしない（src/lib/observatory/disputes.ts）。
+              記録頁に「disputed」の印を付ける実装は無いので、付けるとは書かない。 */}
+          <p id="l1-disputes" className="scroll-mt-24">
+            <strong>Disputing a purchase (L1) result.</strong> If you think a purchase record is
+            wrong — for example that we paid and your endpoint did deliver, or that a failure was
+            on our side rather than yours — use the same routes. While we look at it, the record
+            stays as it was recorded; we do not delete or edit it because a dispute was filed. The
+            record page does not currently carry a &quot;disputed&quot; marker while a dispute is
+            open, and a dispute does not start a new purchase: the signed route re-runs the L0
+            probe only. One person compares the record with the on-chain transfer and the response
+            we stored, and tells you what we concluded. If our measurement or our attribution was
+            wrong, we publish a correction on{" "}
+            <a className="doc-link" href="/corrections">
+              /corrections
+            </a>{" "}
+            with the same weight as the record. A later purchase made under the normal schedule
+            is added as a new record next to the old one, not in place of it.
+          </p>
         </section>
 
         <section className="space-y-2">
@@ -626,7 +650,13 @@ export default async function TermsPage() {
           </p>
           <p>
             <strong>What you buy.</strong> A month of the stated lookup quota for that plan, shared
-            across every key on the account. Unused lookups do not roll over. Changing plan in the
+            across every key on the account. The subscription renews automatically each month and is
+            charged in advance at the start of each period until you cancel. The seller disclosure
+            required by Japan&apos;s Act on Specified Commercial Transactions is on the{" "}
+            <a className="doc-link" href="/legal/notice#commercial-transactions">
+              Legal Notice
+            </a>
+            . Unused lookups do not roll over. Changing plan in the
             middle of a period is handled by Stripe; the next invoice may include a prorated
             difference. The current plan names and prices are the ones shown on Billing at the
             moment you pay, not a price quoted elsewhere.
@@ -643,8 +673,8 @@ export default async function TermsPage() {
             subscription ends and the account returns to Free. Card, invoices, and tax details are
             managed in the portal by Stripe, not by us. Billing itself sends you nothing from
             vet402. The service does send email in other places — record-change notifications you
-            asked for, and replies about a dispute — which is why Resend is named as a
-            subprocessor in{" "}
+            asked for, replies about a dispute, and notices to a seller before we publish results
+            that name it — which is why Resend is named as a subprocessor in{" "}
             <a className="doc-link" href="/legal/privacy">
               the privacy policy
             </a>
