@@ -51,7 +51,7 @@ const factsOf = (purchases: PurchaseInput[]) =>
   });
 
 test("版: 判定の意味が変わったので DECISION_RULES_VERSION を上げる", () => {
-  assert.equal(DECISION_RULES_VERSION, "2026-09-29.1");
+  assert.equal(DECISION_RULES_VERSION, "2026-09-29.2");
 });
 
 test("再現（exa 型・10 行 settled/4xx）: facts は purchases と同じ集合で数え、n_inconclusive 10 / n_delivered 0", () => {
@@ -100,7 +100,7 @@ test("結論 2 件＋inconclusive 8 件: conclusive は 2 なので BLOCK にな
 });
 
 test("配達 1 件＋inconclusive 9 件: ALLOW・l1_delivered（inconclusive は配達の反証ではない）", () => {
-  const d = decidePayer(factsOf([deliveredRow(0), ...Array.from({ length: 9 }, (_, i) => inconclusiveRow(i + 1))]));
+  const d = decidePayer(factsOf([deliveredRow(0), ...Array.from({ length: 9 }, (_, i) => inconclusiveRow(i + 1))]), { now: new Date("2026-08-21T00:00:00Z") });
   assert.equal(d.recommendation, "ALLOW");
   assert.ok(d.reason_codes.includes("l1_delivered"));
 });

@@ -98,7 +98,20 @@ const SURFACES: Surface[] = [
       // min_l1_deliveries）を受けたときだけ付く。語は SDK の PayRefuseReason と同じ。
       // クエリが無い応答には**存在しない**（従来と完全一致）ので openapi でも required にしない。
       "caller_policy",
+      // 2026-09-29.2: 判定が L1 について読んだ数と時刻（数えた／数えなかった試行・支払い済み未配達・
+      // 最後の試行／署名／配達と経過日数）。role=payee では null。
+      "l1_basis",
     ],
+    pendingImpl: {
+      "packages/sdk/src/index.ts": {
+        fields: ["l1_basis"],
+        why: "SDK は凍結中（2026-09-29）。応答の未知のキーは型に無いだけで実行時はそのまま透過する（reason_codes も文字列のまま通す）。凍結が解けたら型に足してこの例外を消す。",
+      },
+      "packages/mcp-server/src/vouch-client.ts": {
+        fields: ["l1_basis"],
+        why: "2026-09-29.2 の判定規則の変更は src/lib/decision の担当範囲で、MCP の型は別担当。実行時は応答をそのまま受ける。型に足したらこの例外を消す。",
+      },
+    },
   },
   {
     // 呼び手の policy をサーバが当てた結果。`applied` は何を当てたか、`verdict` と `reason_codes` は

@@ -3447,7 +3447,7 @@ components:
         the same document; there is no facts-less mode. `score` is the
         transitional 0–100 opinion, marked deprecated, and is never the basis
         of `recommendation`.
-      required: [subject, role, payer, recommendation, reason_codes, facts, spending_halted, not_attempted_reason, freshness, evidence, score, degraded, policy, rules_version, registry, scoredAt, cacheExpiresAt, disclaimer]
+      required: [subject, role, payer, recommendation, reason_codes, facts, spending_halted, not_attempted_reason, freshness, l1_basis, evidence, score, degraded, policy, rules_version, registry, scoredAt, cacheExpiresAt, disclaimer]
       properties:
         subject:
           type: object
@@ -3467,25 +3467,39 @@ components:
           items: { type: string }
           description: >-
             Machine-readable reasons (l0_pass, l1_delivered, l1_not_attempted,
-            l1_inconclusive, l1_never_delivered, l2_undeclared, offer_drifting,
-            wash_dominated, …). The L1 words name whose gap it is:
-            l1_not_attempted — no paid attempt was signed; l1_inconclusive —
-            signed paid attempts exist, but each one is held as inconclusive (a
-            4xx we attribute to our own request shape, or a 402 or 5xx while vet402's
-            own payer wallet was unfunded), a gap in our measurement rather
-            than evidence against the seller; l1_never_delivered — at least one
-            conclusive paid response and none delivered. Since 2026-09-29 a paid
-            attempt on vet402's side, held, awaiting verification or taking no
-            payment is not conclusive (the same whose-side rules as the /sellers
-            pages), and when nothing was delivered the reason codes name which:
-            l1_not_counted_vet402_side, l1_not_counted_held,
-            l1_not_counted_no_charge. Since 2026-09-29 an l0_unverified BLOCK
-            also carries l0_unverified_<cause> saying what could not be
-            measured: the latest probe's recorded reason (e.g.
-            l0_unverified_tls, l0_unverified_path_template,
-            l0_unverified_request_shape, l0_unverified_rate_limited),
-            l0_unverified_single_fail (one fail, below the two-fail publication
-            gate) or l0_unverified_not_probed; the recommendation is unchanged.
+            l1_stale, l1_inconclusive, l1_never_delivered, l1_paid_not_delivered,
+            l1_latest_failed, l2_undeclared, offer_drifting, wash_dominated, …).
+            Rules 2026-09-29.2. The L1 words name whose gap it is:
+            l1_not_attempted — vet402 has never signed a paid attempt;
+            l1_stale — vet402's signed attempts are all older than the 30-day
+            window, or the last delivery in the window is older than
+            l1_basis.fresh_days (14): WARN, never ALLOW; l1_inconclusive —
+            signed paid attempts exist in the window, but none is counted
+            (l1_basis.n_not_counted equals n_attempts), a gap in our
+            measurement rather than evidence against the seller;
+            l1_never_delivered — at least one counted paid response and none
+            delivered. l1_paid_not_delivered — the payment settled on-chain and
+            no non-empty 2xx came back, after the last delivery in the window:
+            once is WARN, twice or more is BLOCK. l1_latest_failed — something
+            was delivered in the window but the latest counted attempt was not:
+            WARN. The decision is cautious for the payer: it leaves out only
+            attempts where the row shows vet402's side of the fault, attempts
+            held for our own request shape or awaiting on-chain verification,
+            and attempts that took no payment; when nothing was delivered the
+            reason codes name which (l1_not_counted_vet402_side,
+            l1_not_counted_held, l1_not_counted_no_charge). The /sellers pages
+            are the other way round: a failure goes on the seller's side only
+            when the row shows vet402 was not at fault. Rows in between are
+            counted here and shown as not sorted there. L0 follows the published
+            two-fail rule: one failed probe is l0_unverified with
+            l0_unverified_single_fail and a WARN (degraded stays false); two
+            consecutive fails are l0_fail and a BLOCK. Other l0_unverified
+            causes stay a BLOCK and carry l0_unverified_<cause> (e.g.
+            l0_unverified_tls, l0_unverified_not_probed). Limit of the method:
+            vet402 buys with a fixed, published User-Agent, so a seller could
+            answer vet402 differently from other buyers; other buyers'
+            settlements show that they paid, not that they received, so the
+            decision cannot detect this.
         facts:
           description: >-
             L0–L2 measurement records — SellerFacts for role=payer,
@@ -3517,6 +3531,33 @@ components:
         freshness:
           type: object
           description: Observation times of l0 / l1 / l2 (ISO 8601 or null).
+        l1_basis:
+          type: object
+          nullable: true
+          description: >-
+            What the L1 part of the recommendation read (rules 2026-09-29.2).
+            Null for role=payee. Counts are over the 30-day window; times are
+            ISO 8601 UTC. ALLOW needs a delivery within fresh_days.
+          required: [window_days, fresh_days, n_counted, n_not_counted, n_paid_undelivered, n_paid_undelivered_since_last_delivery, latest_counted_delivered, last_attempt_at, last_signed_attempt_at, last_delivered_at, days_since_last_attempt, days_since_last_delivery]
+          properties:
+            window_days: { type: integer, description: "The L1 window (30)." }
+            fresh_days: { type: integer, description: "ALLOW needs the last delivery within this many days (14)." }
+            n_counted: { type: integer, description: "Signed attempts counted for or against the seller." }
+            n_not_counted:
+              type: integer
+              description: >-
+                n_attempts − n_counted: attempts on vet402's side, held, awaiting
+                verification or taking no payment. Includes facts.l1.n_inconclusive
+                (the held subset the purchases route reports). l1_inconclusive is
+                the case n_not_counted = n_attempts > 0.
+            n_paid_undelivered: { type: integer, description: "Counted attempts that settled on-chain with no non-empty 2xx." }
+            n_paid_undelivered_since_last_delivery: { type: integer, description: "Of those, the ones after the last delivery in the window (all of them when nothing was delivered). 1 is WARN, 2 or more is BLOCK." }
+            latest_counted_delivered: { type: boolean, nullable: true, description: "Whether the latest counted attempt delivered; null when none is counted." }
+            last_attempt_at: { type: string, format: date-time, nullable: true, description: "Same as facts.l1.last_attempt_at (any outcome, full history)." }
+            last_signed_attempt_at: { type: string, format: date-time, nullable: true, description: "Last signed paid attempt over the full history." }
+            last_delivered_at: { type: string, format: date-time, nullable: true, description: "Last delivery over the full history." }
+            days_since_last_attempt: { type: number, nullable: true }
+            days_since_last_delivery: { type: number, nullable: true }
         evidence:
           type: array
           items: { $ref: "#/components/schemas/Evidence" }
@@ -3919,11 +3960,12 @@ components:
                 payer wallet was out of USDC (both since 2026-09-17). Counted in
                 n_attempts (and in n_settled when settled) — the same set the
                 per-endpoint purchases route reports as inconclusiveCount — and
-                held out of the delivery judgement: the decision rules read
-                conclusive = n_attempts − n_inconclusive (since 2026-09-29 they
-                also leave out the attempts named by the l1_not_counted_* reason
-                codes), and when conclusive is 0 the reason code is l1_inconclusive
-                (a gap in our measurement, not evidence against the seller).
+                held out of the delivery judgement. The decision counts
+                n_attempts − l1_basis.n_not_counted (n_not_counted includes these
+                rows and, since 2026-09-29, the attempts named by the
+                l1_not_counted_* reason codes); when that is 0 the reason code is
+                l1_inconclusive (a gap in our measurement, not evidence against
+                the seller), so l1_inconclusive can appear with n_inconclusive 0.
             n_probe_error:
               type: integer
               deprecated: true

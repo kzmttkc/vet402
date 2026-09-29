@@ -27,6 +27,8 @@ const seller: SellerFacts = {
   unique_payers_30d_real: 1,
   wash_dominated: false,
 };
+/** 鮮度（2026-09-29.2）の基準時刻。フィクスチャの observed_at（09-01）の翌日。 */
+const NOW = new Date("2026-09-02T00:00:00Z");
 const buyer: BuyerFacts = {
   settled_count_30d: 5,
   unique_payees_30d: 2,
@@ -38,7 +40,7 @@ const buyer: BuyerFacts = {
 };
 
 test("role=payer: facts と recommendation が同居し、freshness / evidence / 版 / disclaimer が付く", () => {
-  const d = buildDecision({ role: "payer", subject, facts: seller, options: {}, score: { trustScore: 78, recommendation: "WARN" }, registry: { status: "off", tx_hash: null } });
+  const d = buildDecision({ role: "payer", subject, facts: seller, options: {}, score: { trustScore: 78, recommendation: "WARN" }, registry: { status: "off", tx_hash: null }, now: NOW });
   assert.equal(d.recommendation, "ALLOW");
   assert.ok("facts" in d && d.facts);
   assert.deepEqual(d.freshness, { l0: seller.l0.observed_at, l1: seller.l1.observed_at, l2: seller.l2.observed_at });
@@ -50,10 +52,10 @@ test("role=payer: facts と recommendation が同居し、freshness / evidence /
 });
 
 test("score は deprecated 併記。facts の中には入らない", () => {
-  const d = buildDecision({ role: "payer", subject, facts: seller, options: {}, score: { trustScore: 78, recommendation: "WARN" }, registry: { status: "off", tx_hash: null } });
+  const d = buildDecision({ role: "payer", subject, facts: seller, options: {}, score: { trustScore: 78, recommendation: "WARN" }, registry: { status: "off", tx_hash: null }, now: NOW });
   assert.deepEqual(d.score, { trustScore: 78, recommendation: "WARN", deprecated: true });
   assert.equal("trustScore" in (d.facts as object), false);
-  const none = buildDecision({ role: "payer", subject, facts: seller, options: {}, score: null, registry: { status: "off", tx_hash: null } });
+  const none = buildDecision({ role: "payer", subject, facts: seller, options: {}, score: null, registry: { status: "off", tx_hash: null }, now: NOW });
   assert.equal(none.score, null);
   assert.equal(none.recommendation, "ALLOW", "スコアが取れなくても判定は落ちない");
 });

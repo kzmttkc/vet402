@@ -19,10 +19,13 @@ const ok: SellerFacts = {
   wash_dominated: false,
 };
 
-test("版が固定されている", () => assert.equal(DECISION_RULES_VERSION, "2026-09-29.1"));
+test("版が固定されている", () => assert.equal(DECISION_RULES_VERSION, "2026-09-29.2"));
+
+/** 鮮度（2026-09-29.2）の基準時刻。フィクスチャの observed_at（09-01）の翌日。 */
+const T = { now: new Date("2026-09-02T00:00:00Z") };
 
 test("ALLOW: l0 pass ∧ n_delivered ≥ 1 ∧ l2 ≠ mismatch。l2_undeclared は reason に載るが ALLOW を妨げない", () => {
-  const d = decidePayer(ok);
+  const d = decidePayer(ok, T);
   assert.equal(d.recommendation, "ALLOW");
   assert.ok(d.reason_codes.includes("l0_pass"));
   assert.ok(d.reason_codes.includes("l1_delivered"));
@@ -61,8 +64,8 @@ test("WARN: drifting / thin / 方言不一致。both・unpayable は不一致に
   assert.equal(decidePayer({ ...ok, offer_stability: "drifting" }).recommendation, "WARN");
   assert.equal(decidePayer(ok, { dataDepth: "thin" }).recommendation, "WARN");
   assert.equal(decidePayer({ ...ok, l0: { ...ok.l0, dialect: "v2" } }, { callerDialect: "v1" }).recommendation, "WARN");
-  assert.equal(decidePayer({ ...ok, l0: { ...ok.l0, dialect: "both" } }, { callerDialect: "v1" }).recommendation, "ALLOW");
-  assert.equal(decidePayer({ ...ok, l0: { ...ok.l0, dialect: "v1" } }, { callerDialect: "v1" }).recommendation, "ALLOW");
+  assert.equal(decidePayer({ ...ok, l0: { ...ok.l0, dialect: "both" } }, { ...T, callerDialect: "v1" }).recommendation, "ALLOW");
+  assert.equal(decidePayer({ ...ok, l0: { ...ok.l0, dialect: "v1" } }, { ...T, callerDialect: "v1" }).recommendation, "ALLOW");
 });
 
 test("順序: BLOCK 条件は WARN/ALLOW 条件に勝つ", () => {
@@ -71,7 +74,7 @@ test("順序: BLOCK 条件は WARN/ALLOW 条件に勝つ", () => {
 
 test("L3（quality）を混ぜても判定は変わらない（型に無い入力は無視される）", () => {
   const withL3 = { ...ok, quality: { score: 0 } } as unknown as SellerFacts;
-  assert.equal(decidePayer(withL3).recommendation, decidePayer(ok).recommendation);
+  assert.equal(decidePayer(withL3, T).recommendation, decidePayer(ok, T).recommendation);
   const withL3b = { ...ok, l0: { ...ok.l0, status: "fail" }, quality: { score: 100 } } as unknown as SellerFacts;
   assert.equal(decidePayer(withL3b).recommendation, "BLOCK");
 });

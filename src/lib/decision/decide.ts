@@ -18,7 +18,7 @@ import { DECISION_CACHE_TTL_MS, decisionCache } from "./cache";
 import { rowsOf } from "@/lib/settlements/upsert";
 import { l2EvidenceOf, loadSellerFacts, type SellerFactsLoaded } from "./seller-facts";
 import { loadBuyerFacts } from "./buyer-facts";
-import { decidePayer, decidePayee, DECISION_RULES_VERSION, type Recommendation, type PayerOptions } from "./rules";
+import { decidePayer, decidePayee, l1BasisOf, DECISION_RULES_VERSION, type L1Basis, type Recommendation, type PayerOptions } from "./rules";
 import { isSpendingHalted } from "@/lib/observatory/kill-switch";
 import { assertEvidenceContract, vet402Evidence } from "./evidence";
 import type { BuyerFacts, Evidence, Freshness, NotAttemptedReason, SellerFacts } from "./types";
@@ -60,6 +60,12 @@ export type DecisionResult = {
    */
   not_attempted_reason: NotAttemptedReason | null;
   freshness: Freshness;
+  /**
+   * 2026-09-29.2: 判定が L1 について読んだ数と時刻（role=payer のとき。payee は null）。
+   * 数えた試行・数えなかった試行（l1_inconclusive はこれが n_attempts に等しいとき）・支払い済み未配達・
+   * 最後の試行／署名／配達の時刻と経過日数・鮮度の上限（fresh_days）。facts の形は変えずに外へ置く。
+   */
+  l1_basis: L1Basis | null;
   evidence: Evidence[];
   score: { trustScore: number | null; recommendation: Recommendation | null; deprecated: true } | null;
   degraded: boolean;
@@ -121,7 +127,9 @@ export function buildDecision(input: BuildInput): DecisionResult {
     disclaimer: DECISION_DISCLAIMER,
   };
   if (input.role === "payer") {
-    const d = decidePayer(input.facts, input.options);
+    // 鮮度の基準時刻は文書の scoredAt と同じ（呼び手が now を渡していなければ）。
+    const options: PayerOptions = { ...input.options, now: input.options.now ?? now };
+    const d = decidePayer(input.facts, options);
     const f = input.facts;
     // 行はすべて **我々自身の台帳の観測**なので source: "vet402" を刻む。
     // このサーバは The Graph を引かない（呼び手が自分の鍵で引き、payOrRefuse が
@@ -156,9 +164,11 @@ export function buildDecision(input: BuildInput): DecisionResult {
         ? input.notAttemptedReason ?? null
         : null,
       freshness: { l0: f.l0.observed_at, l1: f.l1.observed_at, l2: f.l2.observed_at },
+      l1_basis: l1BasisOf(f, options),
       evidence,
       score: input.score ? { ...input.score, deprecated: true } : null,
-      degraded: f.l0.status === "unverified",
+      // 2026-09-29.2: 1 回の fail（公開ゲート未満）は測れている——WARN であって degraded ではない。
+      degraded: f.l0.status === "unverified" && options.l0UnverifiedCause !== "single_fail",
     };
   }
   const d = decidePayee(input.facts, { now, operatorBlacklist: input.operatorBlacklist });
@@ -172,6 +182,7 @@ export function buildDecision(input: BuildInput): DecisionResult {
     // role=payee の facts は買い手の記録なので、L1 未実施の概念が無い。
     not_attempted_reason: null,
     freshness: { l0: null, l1: input.facts.last_seen, l2: null },
+    l1_basis: null,
     evidence: [],
     score: null,
     degraded: input.facts.sybil.unavailable.length > 0,
@@ -273,6 +284,7 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
     result = buildDecision({
       role: "payer",
       subject,
+      spendingHalted: halt.halted,
       facts: loaded.facts,
       options: {
         callerDialect: req.callerDialect,
@@ -282,10 +294,11 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
         l1NotCounted: loaded.l1NotCounted,
         // 2026-09-29 再監査: l0 が unverified の BLOCK に、何が測れなかったかの下位コードを添える（判定は変えない）。
         l0UnverifiedCause: loaded.l0UnverifiedCause ?? null,
+        // 2026-09-29.2: 支払い済み未配達・最新の試行・鮮度の材料。渡さないと facts から保守的に作る（本番は必ず渡す）。
+        l1Timeline: loaded.l1Timeline,
       },
       score,
       registry,
-      spendingHalted: halt.halted,
       notAttemptedReason: notAttemptedReasonOf(halt.halted, loaded.lastAttempt.status),
     });
   } else {
