@@ -95,7 +95,7 @@ if (!TEST_DB) {
     // export に出ない行（我々の都合）
     await db.insert(schema.x402L1Purchases).values({ endpointId: ep.id, status: "budget_denied", attemptedAt: recent(1), network: "eip155:8453" });
 
-    await t.test("export.csv: 既存 11 列はそのまま・末尾 5 列・記録の無い行は空", async () => {
+    await t.test("export.csv: 既存 11 列はそのまま・末尾 6 列・記録の無い行は空", async () => {
       const { GET } = await import("@/app/api/v1/observatory/export.csv/route");
       const { NextRequest } = await import("next/server");
       const res = await GET(new NextRequest("https://vet402.com/api/v1/observatory/export.csv?days=30", { headers: { "x-forwarded-for": "203.0.113.41" } }));
@@ -104,15 +104,20 @@ if (!TEST_DB) {
       assert.equal(
         lines[0],
         "attempted_at,resource_key,network,status,amount_units,spent_units,tx_hash,http_status_paid,latency_ms,l2_schema,held_reason," +
-          "request_body,request_body_sha256,settlement_source,request_query,request_query_sha256",
+          "request_body,request_body_sha256,settlement_source,request_query,request_query_sha256,confirmed_units",
       );
+      // 2026-09-29: 取り違えやすい spent_units / confirmed_units の意味をヘッダで運ぶ。
+      assert.match(res.headers.get("x-vet402-column-notes") ?? "", /not units shown to have moved/);
       assert.equal(lines.length - 1, seeds.length, "budget_denied は出ない");
       for (const [i, s] of seeds.entries()) {
         const cells = lines[i + 1].split(",");
-        assert.equal(cells.length, 16, s.label);
+        assert.equal(cells.length, 17, s.label);
         assert.equal(cells[3], s.status, `${s.label}: 既存列の位置は動いていない`);
+        assert.equal(cells[5], "1000", `${s.label}: spent_units は署名額のまま（意味を変えない）`);
         assert.equal(cells[6], s.txHash ?? "", s.label);
-        assert.deepEqual(cells.slice(11), s.want, s.label);
+        assert.deepEqual(cells.slice(11, 16), s.want, s.label);
+        // confirmed_units: settled の行だけが署名額を持つ。settle_claimed（照合待ち）も 0。
+        assert.equal(cells[16], s.status === "settled" ? "1000" : "0", `${s.label}: confirmed_units`);
       }
       // 本文そのものはどの列にも出ない（出すのは分類と hash だけ）。
       assert.ok(!lines.slice(1).some((l) => l.includes("{")));

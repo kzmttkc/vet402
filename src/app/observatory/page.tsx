@@ -244,9 +244,13 @@ export default async function ObservatoryPage({
             caption={
               <>
                 Published L0 verdict, {stats.totalEndpoints.toLocaleString()} endpoints on record (includes
-                delisted; {stats.activeEndpoints.toLocaleString()} active). Receipts count endpoints with at
-                least one settled purchase, as reported by <code>/api/v1/observatory/state</code>. Select a
-                legend entry to filter the table.
+                delisted; {stats.activeEndpoints.toLocaleString()} active; {stats.publishedPassActive.toLocaleString()}{" "}
+                of the passes are currently listed). Receipts count endpoints with at least one settled purchase,
+                listed or not: {stats.l1.endpointsSettledSellerReceipt.toLocaleString()} with a transaction the
+                seller named in its own settlement receipt and {stats.l1.endpointsSettledIndexOnly.toLocaleString()}{" "}
+                where the seller returned no receipt and vet402&apos;s own settlements index found the settled
+                transfers, as reported by <code>/api/v1/observatory/state</code>. Select a legend entry to filter the
+                table.
               </>
             }
           />

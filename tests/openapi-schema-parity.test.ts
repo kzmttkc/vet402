@@ -365,6 +365,8 @@ const SURFACES: Surface[] = [
     impl: [["src/lib/scoring/l0-accuracy.ts", ["SloSnapshot"]]],
     fields: [
       "l1_probe_error_rate_pct",
+      // 2026-09-29: 率の分子・分母と同じ 7 日の保留件数（/accuracy が 3 つの似た数を区別して書くため）。
+      "l1_7d",
       "c1_l0_within_36h_pct",
       "c2_l1_within_48h_pct",
       "reverse_lookup_confirmed_within_60s_pct",

@@ -25,6 +25,9 @@ import {
   EXPORT_CSV_COLUMNS_ADDED,
   EXPORT_CSV_COLUMNS_SINCE_2026_09_20,
   EXPORT_CSV_COLUMNS_SINCE_2026_09_21,
+  EXPORT_CSV_COLUMNS_SINCE_2026_09_29,
+  EXPORT_CSV_COLUMN_NOTES,
+  confirmedUnitsSql,
 } from "@/lib/observatory/export-columns";
 import { requestBodyKindOf, requestBodySha256Of, requestBodyRecord, REQUEST_BODY_KINDS } from "@/lib/observatory/request-body";
 import { settlementSourceOf, SETTLEMENT_SOURCES } from "@/lib/observatory/settlement-source";
@@ -48,9 +51,11 @@ test("列: 既存 11 列はそのまま、追加は末尾だけ（2026-09-20 の
     "held_reason",
   ]);
   assert.deepEqual(EXPORT_CSV_COLUMNS.slice(11, 14), ["request_body", "request_body_sha256", "settlement_source"]);
-  assert.deepEqual(EXPORT_CSV_COLUMNS.slice(14), ["request_query", "request_query_sha256"]);
+  assert.deepEqual(EXPORT_CSV_COLUMNS.slice(14, 16), ["request_query", "request_query_sha256"]);
+  assert.deepEqual(EXPORT_CSV_COLUMNS.slice(16), ["confirmed_units"]);
   assert.deepEqual([...EXPORT_CSV_COLUMNS_SINCE_2026_09_20], EXPORT_CSV_COLUMNS.slice(11, 14));
-  assert.deepEqual([...EXPORT_CSV_COLUMNS_SINCE_2026_09_21], EXPORT_CSV_COLUMNS.slice(14));
+  assert.deepEqual([...EXPORT_CSV_COLUMNS_SINCE_2026_09_21], EXPORT_CSV_COLUMNS.slice(14, 16));
+  assert.deepEqual([...EXPORT_CSV_COLUMNS_SINCE_2026_09_29], EXPORT_CSV_COLUMNS.slice(16));
   assert.deepEqual([...EXPORT_CSV_COLUMNS_ADDED], EXPORT_CSV_COLUMNS.slice(11), "追加列の一覧が本体とずれていない");
 });
 
@@ -352,4 +357,21 @@ test("B: 引用符つきのセル（resource_key にカンマ）を 1 セルと�
 test("B: スクリプトは DB もリポの内部も読まない（読者と同じ材料）", () => {
   const src = readFileSync(SCRIPT, "utf8");
   assert.ok(!/DATABASE_URL|from\s+["']pg["']|drizzle|@\/lib|\.\.\/src/.test(src));
+});
+
+// 2026-09-29 敵対的監査 4 周目: spent_units は署名した額（tx の無い settle_failed にも価格が入る）。
+// 動いた額は別の列 confirmed_units で出し、spent_units の意味は変えない。
+test("confirmed_units: settled の行だけが spent_units を持ち、他は 0", () => {
+  const expr = confirmedUnitsSql("pu");
+  assert.match(expr, /WHEN pu\.status = 'settled' THEN coalesce\(pu\.spent_units::text, '0'\) ELSE '0' END/);
+  assert.throws(() => confirmedUnitsSql("pu; drop"));
+  const route = read("src/app/api/v1/observatory/export.csv/route.ts");
+  assert.ok(route.includes('confirmedUnitsSql("pu"))}) AS confirmed_units'), "route は同じ式から列を出す");
+  assert.ok(route.includes('"x-vet402-column-notes": EXPORT_CSV_COLUMN_NOTES'), "列の注記をヘッダで運ぶ");
+  assert.ok(/^[\x20-\x7e]+$/.test(EXPORT_CSV_COLUMN_NOTES), "ヘッダ値は ASCII のみ");
+  for (const file of ["docs/openapi.yaml", "public/llms.txt", "src/app/observatory/methodology/page.tsx"]) {
+    const text = read(file).replace(/\s+/g, " ");
+    assert.ok(text.includes("spent_units"), `${file} が spent_units を説明していない`);
+    assert.match(text, /not (an amount|units)? ?shown to have moved|not that we showed none happened/, `${file} が「署名額であって動いた額ではない」を書いていない`);
+  }
 });

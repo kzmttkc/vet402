@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { SETTLEMENT_DAY, UTC_TODAY, withDailyFallback } from "@/lib/settlements/rollup";
 import { rowsOf } from "@/lib/settlements/upsert";
+import { heldReasonSql } from "@/lib/observatory/delivery";
 
 /** c2_l1_within_48h_pct の分母の窓（UTC の丸ごと日数）。coverage.ts と同じ 30 日。 */
 const C2_WINDOW_DAYS = 30;
@@ -120,8 +121,27 @@ export async function fetchL0AccuracyInput(): Promise<L0AccuracyInput> {
   };
 }
 
+/**
+ * 直近 7 日の L1 の件数（2026-09-29 敵対的監査 4 周目）。
+ * 「vet402 側の失敗 0.2%」と export.csv の保留率（約 24%）と /sellers の「vet402's side」が
+ * 同じ名前で別の数に見えていた。分子と分母を出して、どれが何を数えているかを書けるようにする。
+ *   attempts        x402_l1_purchases の全行（status を問わない）＝ l1_probe_error_rate_pct の分母
+ *   request_errors  そのうち request_error / in_flight（vet402 の購入処理が完了しなかった）＝ 分子
+ *   signed          そのうち署名した行（settled / settle_failed / delivered_no_receipt /
+ *                   settle_claimed_unverifiable / settle_claimed / settle_claim_refuted）
+ *   held            signed のうち held_reason が付いた行（export.csv の held_reason。売り手の失敗に数えない）
+ */
+export type L1WeekCounts = {
+  attempts: number;
+  request_errors: number;
+  signed: number;
+  held: number;
+};
+
 export type SloSnapshot = {
   l1_probe_error_rate_pct: number | null;
+  /** l1_probe_error_rate_pct の分子・分母と、同じ 7 日の保留件数。DB が無ければ null。 */
+  l1_7d: L1WeekCounts | null;
   c1_l0_within_36h_pct: number | null;
   c2_l1_within_48h_pct: number | null;
   reverse_lookup_confirmed_within_60s_pct: number | null;
@@ -138,6 +158,10 @@ export type SloSnapshot = {
   };
 };
 
+/** 署名した行の status（state の l1.attempts と同じ 6 つ）。 */
+const SIGNED_STATUSES_SQL =
+  "'settled', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable', 'settle_claimed', 'settle_claim_refuted'";
+
 export async function fetchSloSnapshot(): Promise<SloSnapshot> {
   const targets = {
     l1_probe_error_rate_pct: 5,
@@ -153,6 +177,7 @@ export async function fetchSloSnapshot(): Promise<SloSnapshot> {
   if (!db) {
     return {
       l1_probe_error_rate_pct: null,
+      l1_7d: null,
       c1_l0_within_36h_pct: null,
       c2_l1_within_48h_pct: null,
       reverse_lookup_confirmed_within_60s_pct: null,
@@ -171,6 +196,15 @@ export async function fetchSloSnapshot(): Promise<SloSnapshot> {
         (SELECT CASE WHEN count(*) < 10 THEN NULL ELSE
            round(100.0 * count(*) FILTER (WHERE status IN ('request_error', 'in_flight')) / count(*), 1) END
          FROM x402_l1_purchases WHERE attempted_at > now() - interval '7 days') AS l1_err,
+        -- 2026-09-29: 上の率の分子・分母と、同じ 7 日の署名行・保留行（export.csv の held_reason）。
+        (SELECT count(*)::int FROM x402_l1_purchases WHERE attempted_at > now() - interval '7 days') AS l1_attempts_7d,
+        (SELECT count(*)::int FROM x402_l1_purchases
+          WHERE attempted_at > now() - interval '7 days' AND status IN ('request_error', 'in_flight')) AS l1_errors_7d,
+        (SELECT count(*)::int FROM x402_l1_purchases
+          WHERE attempted_at > now() - interval '7 days' AND status IN (${sql.raw(SIGNED_STATUSES_SQL)})) AS l1_signed_7d,
+        (SELECT count(*)::int FROM x402_l1_purchases
+          WHERE attempted_at > now() - interval '7 days' AND status IN (${sql.raw(SIGNED_STATUSES_SQL)})
+            AND (${sql.raw(heldReasonSql())}) IS NOT NULL) AS l1_held_7d,
         -- C1 の L0 鮮度: 30 日以内に listed/決済のある active のうち 36h 以内に測った割合
         (SELECT CASE WHEN count(*) = 0 THEN NULL ELSE
            round(100.0 * count(*) FILTER (WHERE EXISTS (
@@ -210,8 +244,18 @@ export async function fetchSloSnapshot(): Promise<SloSnapshot> {
       )
     )[0] ?? {};
   const num = (k: string) => (r[k] === null || r[k] === undefined ? null : Number(r[k]));
+  const a7 = num("l1_attempts_7d");
   const out: SloSnapshot = {
     l1_probe_error_rate_pct: num("l1_err"),
+    l1_7d:
+      a7 === null
+        ? null
+        : {
+            attempts: a7,
+            request_errors: num("l1_errors_7d") ?? 0,
+            signed: num("l1_signed_7d") ?? 0,
+            held: num("l1_held_7d") ?? 0,
+          },
     c1_l0_within_36h_pct: num("c1_fresh"),
     c2_l1_within_48h_pct: num("c2_fresh"),
     reverse_lookup_confirmed_within_60s_pct: num("rl_fast"),
@@ -265,7 +309,10 @@ const SLO_ROW_SPEC: readonly { key: SloMetricKey; label: string; direction: "max
   },
   {
     key: "l1_probe_error_rate_pct",
-    label: "L1 attempts in the last 7 days that failed on vet402's side (request error, or interrupted mid-purchase)",
+    // 2026-09-29 敵対的監査 4 周目: 「failed on vet402's side」は /sellers の「vet402's side」列（最新の試行・全期間・
+    // 要求の形や残高不足も含む）と同じ名前で別の数だった。何を数えるかを名前にする。
+    label:
+      "L1 attempts in the last 7 days whose purchase run did not complete inside vet402 (status request_error, or in_flight left unfinished), out of every L1 attempt in those 7 days",
     direction: "max",
   },
   {

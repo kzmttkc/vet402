@@ -763,6 +763,17 @@ export default async function ObservatoryMethodologyPage() {
           it was before, and the seller is not marked <code>settle_claim_refuted</code> for a
           match that was ours.
         </p>
+        {/* 2026-09-29 敵対的監査 4 周目: spent_units は tx の無い行にも価格と同じ額が入り、「動いた額」と読まれていた。 */}
+        <p className="doc-p">
+          <strong>Signed is not moved.</strong> In the ledger export, <code>spent_units</code> is the
+          amount we signed for on an attempt &mdash; what we put at stake &mdash; and a{" "}
+          <code>settle_failed</code> row with no transaction carries the price there too. The amount
+          we confirmed on-chain is the column <code>confirmed_units</code> (since 2026-09-29):{" "}
+          <code>spent_units</code> on a <code>settled</code> row, <code>0</code> on any other row,
+          including a <code>settle_claimed</code> row still waiting for the re-read. A <code>0</code>{" "}
+          there means we hold no confirmed transfer for that row, not that we showed none happened.
+          The CSV response carries both definitions in its <code>x-vet402-column-notes</code> header.
+        </p>
         <p className="doc-p">
           <strong>settled is not delivered.</strong> <code>settled</code> is a statement about the
           money: we confirmed the transfer on-chain. <code>delivered</code> is a statement about

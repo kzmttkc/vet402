@@ -11,8 +11,12 @@
 //
 // forgone を必ず併記する。「回避できた額」だけ出せば宣伝であり、
 // 両面出せば測定になる——このプロダクトの語法は後者しかない。
-// 対象は署名済み試行（settled / settle_failed / delivered_no_receipt /
-// settle_claimed_unverifiable）。
+// 対象は結果の確定した署名済み試行（BACKTEST_STATUSES）。
+// 2026-09-29 敵対的監査 4 周目: 定義文は 4 つの status を挙げながら、SQL は settle_claimed と
+// settle_claim_refuted も数えていた（9,067 に settle_claimed 37 件）。settle_claimed は売り手が名指した tx の
+// 照合待ちで、結果がまだ無い——avoided（決済しなかった）に数えると照合前の行を「避けられた支出」にしてしまう。
+// 計算から外し、settle_claim_refuted（照合で否定された＝決済しなかった）は定義文に書き足す。定義文と SQL は
+// 同じ配列から作る。
 // budget_denied / halted / request_error / in_flight は我々側の都合なので母数外。
 // 2026-09-17（Issue #29 独立検証）: payer_unfunded（delivery.ts）も母数外で、事前シグナル
 // （先行 settle_failed）にも数えない。我々の購入元の USDC が尽きていた期間の行は売り手に
@@ -24,8 +28,19 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { notPayerUnfundedPredicate } from "@/lib/observatory/delivery";
 
+/** バックテストが数える status（結果の確定した署名済み試行）。定義文と SQL の両方がここから作られる。 */
+export const BACKTEST_STATUSES = [
+  "settled",
+  "settle_failed",
+  "delivered_no_receipt",
+  "settle_claimed_unverifiable",
+  "settle_claim_refuted",
+] as const;
+
 export const BACKTEST_DEFINITION =
-  "prior signal = at attempt time, (a) the two most recent L0 probes of the endpoint were both fail (two consecutive fails — the same threshold the public register uses), or (b) an earlier settle_failed purchase existed on the same endpoint. avoided = signalled attempts that did not settle; forgone = signalled attempts that settled anyway. Denominator: signed attempts only (settled / settle_failed / delivered_no_receipt / settle_claimed_unverifiable). payer_unfunded rows (a settle_failed answered 402 or 5xx on Base between 2026-09-13T00:00Z and 2026-09-15T23:49Z, while vet402's own payer wallet was out of USDC) are neither attempts nor prior signals, since 2026-09-17. spentUnits is the USDC amount vet402 signed on those attempts (what it put at stake), not money shown to have moved: an avoided attempt has no confirmed on-chain transfer, so its spentUnits is exposure that honoring the signal would not have taken, not a loss.";
+  "prior signal = at attempt time, (a) the two most recent L0 probes of the endpoint were both fail (two consecutive fails — the same threshold the public register uses), or (b) an earlier settle_failed purchase existed on the same endpoint. avoided = signalled attempts that did not settle; forgone = signalled attempts that settled anyway. Denominator: signed attempts whose outcome is settled in the ledger (" +
+  BACKTEST_STATUSES.join(" / ") +
+  "). settle_claimed rows (the seller named a transaction that vet402 has not yet re-read on-chain) are left out until the re-read turns them into settled or settle_claim_refuted, so a pending row is never counted as avoided. payer_unfunded rows (a settle_failed answered 402 or 5xx on Base between 2026-09-13T00:00Z and 2026-09-15T23:49Z, while vet402's own payer wallet was out of USDC) are neither attempts nor prior signals, since 2026-09-17. spentUnits is the USDC amount vet402 signed on those attempts (what it put at stake), not money shown to have moved: an avoided attempt has no confirmed on-chain transfer, so its spentUnits is exposure that honoring the signal would not have taken, not a loss.";
 
 export type BacktestResult = {
   attemptsTotal: number;
@@ -58,7 +73,7 @@ export async function computeSpendGuardBacktest(): Promise<BacktestResult> {
                ) t
              ) AS two_consecutive_l0_fails
       FROM x402_l1_purchases pu
-      WHERE pu.status IN ('settled', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable', 'settle_claimed', 'settle_claim_refuted')
+      WHERE pu.status IN (${sql.raw(BACKTEST_STATUSES.map((st) => `'${st}'`).join(", "))})
         AND ${sql.raw(notPayerUnfundedPredicate("pu"))}
     )
     SELECT

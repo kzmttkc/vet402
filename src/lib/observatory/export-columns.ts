@@ -38,10 +38,38 @@ export const EXPORT_CSV_COLUMNS_SINCE_2026_09_20 = ["request_body", "request_bod
  */
 export const EXPORT_CSV_COLUMNS_SINCE_2026_09_21 = ["request_query", "request_query_sha256"] as const;
 
+/**
+ * 2026-09-29 の追加（敵対的監査 4 周目）。
+ *   confirmed_units  vet402 がチェーン上で送金を確かめた額（USDC の最小単位）。settled の行は spent_units と同じ、
+ *                    それ以外の行は 0。**spent_units は署名した額（賭けた額）で、動いた額ではない**——tx の無い
+ *                    settle_failed にも価格と同じ額が入る。その意味は変えず、動いた額を別の列で出す。
+ *                    規則は confirmedUnitsSql（下）。
+ */
+export const EXPORT_CSV_COLUMNS_SINCE_2026_09_29 = ["confirmed_units"] as const;
+
 /** 列を足したら openapi・methodology・llms.txt の説明にも名前で出す（tests/export-request-body.test.ts）。 */
 export const EXPORT_CSV_COLUMNS_ADDED = [
   ...EXPORT_CSV_COLUMNS_SINCE_2026_09_20,
   ...EXPORT_CSV_COLUMNS_SINCE_2026_09_21,
+  ...EXPORT_CSV_COLUMNS_SINCE_2026_09_29,
 ] as const;
 
 export const EXPORT_CSV_COLUMNS = [...COLUMNS_UNTIL_2026_09_17, ...EXPORT_CSV_COLUMNS_ADDED] as const;
+
+/**
+ * `confirmed_units` の SQL 式。settled（vet402 が送金をチェーン上で再読した）行だけが spent_units を持ち、
+ * それ以外は '0'——settle_claimed（照合待ち）も 0 で、照合が済んで settled になった時点で額が入る。
+ * 0 は「確かめた送金が無い」であって「送金が無かったと確かめた」ではない。
+ */
+export function confirmedUnitsSql(alias: string): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(alias)) throw new Error(`confirmedUnitsSql: bad alias ${JSON.stringify(alias)}`);
+  return `CASE WHEN ${alias}.status = 'settled' THEN coalesce(${alias}.spent_units::text, '0') ELSE '0' END`;
+}
+
+/**
+ * CSV はコメント行を持てないので、取り違えやすい 2 列の意味をレスポンスヘッダで運ぶ（ASCII のみ）。
+ */
+export const EXPORT_CSV_COLUMN_NOTES =
+  "spent_units = USDC base units vet402 signed for on the attempt (what it put at stake), not units shown to have moved; " +
+  "confirmed_units = units vet402 re-read on-chain as transferred (spent_units on settled rows, 0 on every other row, " +
+  "including settle_claimed rows awaiting re-read). Full column definitions: https://vet402.com/openapi.yaml";

@@ -4,6 +4,7 @@ import { isValidAddress } from "@/lib/chain/client";
 import { persistPayeeScoreResult } from "@/lib/db/persistence";
 import { scorePayeeWallet } from "@/lib/scoring/payee-engine";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
+import { withScoreDeprecationBody, withScoreDeprecationHeaders } from "@/lib/api/score-deprecation";
 
 type RouteContext = { params: Promise<{ address: string }> };
 
@@ -40,7 +41,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
     void persistPayeeScoreResult(auth.ctx.apiKeyId, result).catch((error) =>
       logServerErrorSafe("persist_payee_score", error),
     );
-    return withRateLimitHeaders(NextResponse.json(result), auth.ctx.rateLimit);
+    // 2026-09-29: 非推奨を応答そのものに載せる（値は変えない・score-deprecation.ts）。
+    return withScoreDeprecationHeaders(
+      withRateLimitHeaders(NextResponse.json(withScoreDeprecationBody(result)), auth.ctx.rateLimit),
+    );
   } catch (error) {
     logServerErrorSafe("score_payee", error);
     // 2026-08-15 (audit): see agents/[agentId]/score for rationale.

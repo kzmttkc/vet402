@@ -115,19 +115,32 @@ paths:
       operationId: getAgentScore
       tags: [Scores]
       summary: Get trust score by ERC-8004 agent ID
+      deprecated: true
       description: |
         Returns trust score for a registered ERC-8004 agent.
         Pass `wallet` query param to verify the agent's registered wallet matches.
+
+        Deprecated since 2026-09-02: use
+        `GET /api/v1/resources/{resourceId}/decision`. The score's value is
+        unchanged; since 2026-09-29 the response says so itself
+        (`deprecated`, `deprecation`, and the `Deprecation` / `Link` headers).
       parameters:
         - $ref: "#/components/parameters/AgentId"
         - $ref: "#/components/parameters/VerifyWallet"
       responses:
         "200":
           description: Trust score result
+          headers:
+            Deprecation:
+              $ref: "#/components/headers/ScoreDeprecation"
+            Link:
+              $ref: "#/components/headers/ScoreDeprecationLink"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TrustScoreResult"
+                allOf:
+                  - $ref: "#/components/schemas/ScoreDeprecationNotice"
+                  - $ref: "#/components/schemas/TrustScoreResult"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -140,18 +153,30 @@ paths:
       operationId: getWalletScore
       tags: [Scores]
       summary: Get trust score by wallet address
+      deprecated: true
       description: |
-        Primary integration path for x402 API middleware.
         Resolves wallet to agent when indexed; otherwise returns wallet heuristics.
+
+        Deprecated since 2026-09-02: use
+        `GET /api/v1/resources/{resourceId}/decision?role=payee&payer={address}`.
+        The score's value is unchanged; since 2026-09-29 the response says so
+        itself (`deprecated`, `deprecation`, and the `Deprecation` / `Link` headers).
       parameters:
         - $ref: "#/components/parameters/WalletAddress"
       responses:
         "200":
           description: Trust score result
+          headers:
+            Deprecation:
+              $ref: "#/components/headers/ScoreDeprecation"
+            Link:
+              $ref: "#/components/headers/ScoreDeprecationLink"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TrustScoreResult"
+                allOf:
+                  - $ref: "#/components/schemas/ScoreDeprecationNotice"
+                  - $ref: "#/components/schemas/TrustScoreResult"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -164,7 +189,16 @@ paths:
       operationId: getPayeeScore
       tags: [Payees]
       summary: Get trust score for a payee (payment-receiving wallet)
+      deprecated: true
       description: |
+        Deprecated since 2026-09-02: use
+        `GET /api/v1/resources/{resourceId}/decision?role=payer` for the
+        endpoint you are about to pay (`GET /api/v1/resolve?q={url}` finds its
+        `resourceId`). This score rates the wallet as a whole, not that
+        endpoint, and can say ALLOW where the decision says WARN or BLOCK.
+        Its value is unchanged; since 2026-09-29 the response says so itself
+        (`deprecated`, `deprecation`, and the `Deprecation` / `Link` headers).
+
         Buyer-side counterpart to `/api/v1/agents/{agentId}/score` and
         `/api/v1/wallets/{address}/score`,
         which screen the caller of an x402 route. This endpoint screens the *recipient*:
@@ -183,10 +217,17 @@ paths:
       responses:
         "200":
           description: Payee score result
+          headers:
+            Deprecation:
+              $ref: "#/components/headers/ScoreDeprecation"
+            Link:
+              $ref: "#/components/headers/ScoreDeprecationLink"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PayeeScoreResult"
+                allOf:
+                  - $ref: "#/components/schemas/ScoreDeprecationNotice"
+                  - $ref: "#/components/schemas/PayeeScoreResult"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -322,7 +363,11 @@ paths:
       operationId: batchScore
       tags: [Scores]
       summary: Batch trust score lookup
-      description: Score up to 25 agents in a single request.
+      deprecated: true
+      description: |
+        Score up to 25 agents in a single request. Deprecated since
+        2026-09-02 like the single score routes; since 2026-09-29 the response
+        carries `deprecated`, `deprecation` and the `Deprecation` / `Link` headers.
       requestBody:
         required: true
         content:
@@ -332,10 +377,17 @@ paths:
       responses:
         "200":
           description: Batch results
+          headers:
+            Deprecation:
+              $ref: "#/components/headers/ScoreDeprecation"
+            Link:
+              $ref: "#/components/headers/ScoreDeprecationLink"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BatchScoreResponse"
+                allOf:
+                  - $ref: "#/components/schemas/ScoreDeprecationNotice"
+                  - $ref: "#/components/schemas/BatchScoreResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -916,7 +968,24 @@ paths:
         `http_status_paid`, `latency_ms`, `l2_schema`, `held_reason`
         (since 2026-09-17), `request_body`, `request_body_sha256`,
         `settlement_source` (since 2026-09-20), `request_query`,
-        `request_query_sha256` (since 2026-09-21).
+        `request_query_sha256` (since 2026-09-21), `confirmed_units`
+        (since 2026-09-29).
+
+        - `amount_units` — the price the seller's 402 asked for, in the
+          asset's base units (USDC: 6 decimals).
+        - `spent_units` — the amount vet402 signed for on this attempt: what
+          it put at stake, not an amount shown to have moved. A
+          `settle_failed` row with no `tx_hash` still carries the price here.
+          Read `confirmed_units` for money that moved. The meaning of this
+          column has not changed; the note is new.
+        - `confirmed_units` — the amount vet402 re-read on-chain as
+          transferred: equal to `spent_units` on `settled` rows and `0` on
+          every other row, including `settle_claimed` rows that are still
+          awaiting the re-read (they take the amount once they turn
+          `settled`). `0` means no transfer vet402 has confirmed, not a
+          transfer shown not to have happened. The response also carries
+          both definitions in the `x-vet402-column-notes` header, because a
+          CSV has nowhere to put a comment.
 
         - `held_reason` — why the row is held rather than counted against the
           seller: `settled_4xx`, `unsettled_4xx`, `payer_unfunded`; blank when
@@ -979,6 +1048,8 @@ paths:
           which endpoint was bought, so it matches two rows on the same
           endpoint, or a row against a fresh 402; it is not a way of hiding a
           short declared query. Blank otherwise.
+        - `confirmed_units` — see above: `spent_units` on `settled` rows,
+          `0` otherwise.
 
         `scripts/declared-body-before-after.mjs` recomputes, from this CSV
         alone, the paid 2xx rate of the same endpoints before and after the
@@ -1854,7 +1925,12 @@ paths:
       operationId: getPayeeVerdictFast
       tags: [Scores]
       summary: verify-at-settle — cached verdict, never computes
+      deprecated: true
       description: |
+        Deprecated since 2026-09-02 with the payee score it caches; since
+        2026-09-29 the response carries `deprecated`, `deprecation` and the
+        `Deprecation` / `Link` headers.
+
         Returns the engine's cached, confident verdict or an honest
         `cache_cold` (treat as not-ALLOW; warm via the full /score endpoint).
         In-handler p95 is pinned under 1ms by the test suite. API key
@@ -1862,9 +1938,17 @@ paths:
       responses:
         "200":
           description: A pinned verdict (`hit`) or an honest `cache_cold`
+          headers:
+            Deprecation:
+              $ref: "#/components/headers/ScoreDeprecation"
+            Link:
+              $ref: "#/components/headers/ScoreDeprecationLink"
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/PayeeVerdictFast" }
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ScoreDeprecationNotice"
+                  - $ref: "#/components/schemas/PayeeVerdictFast"
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "503": { description: Verdict surface unavailable }
@@ -2046,7 +2130,23 @@ paths:
                   totalEndpoints: { type: integer }
                   activeEndpoints: { type: integer }
                   delistedEndpoints: { type: integer }
-                  publishedPass: { type: integer }
+                  publishedPass:
+                    type: integer
+                    description: |
+                      Endpoints on record whose latest L0 probe passed,
+                      including endpoints no longer listed — it can exceed
+                      `activeEndpoints`.
+                  publishedPassActive:
+                    type: integer
+                    description: |
+                      The part of `publishedPass` still listed in the catalog.
+                      Since 2026-09-29.
+                  publishedPassActiveProbeOlderThan7d:
+                    type: integer
+                    description: |
+                      The part of `publishedPassActive` whose latest probe is
+                      more than 7 days old (a pass stands until the next
+                      probe). Since 2026-09-29.
                   publishedFail: { type: integer }
                   publishedUnverified: { type: integer }
                   methodUndeclared: { type: integer }
@@ -2132,7 +2232,26 @@ paths:
                           their sum. The ledger export marks these rows
                           `settlement_source=vet402_index`. Since 2026-09-20.
                       endpointsAttempted: { type: integer }
-                      endpointsSettled: { type: integer }
+                      endpointsSettled:
+                        type: integer
+                        description: |
+                          Endpoints, listed or not, with at least one settled
+                          row. Equals `endpointsSettledSellerReceipt` +
+                          `endpointsSettledIndexOnly`.
+                      endpointsSettledSellerReceipt:
+                        type: integer
+                        description: |
+                          Endpoints with at least one settled row whose
+                          transaction the seller named in its settlement
+                          receipt (`settlement_source=seller_claim`). Since
+                          2026-09-29.
+                      endpointsSettledIndexOnly:
+                        type: integer
+                        description: |
+                          Endpoints whose settled rows all carry a transaction
+                          found by vet402's own settlements index
+                          (`settlement_source=vet402_index`): no seller
+                          receipt. Since 2026-09-29.
                       endpointsDelivered: { type: integer }
                       lastAttemptAt:
                         type: string
@@ -2859,6 +2978,13 @@ paths:
                   status: { type: string, enum: [degraded, error] }
 
 components:
+  headers:
+    ScoreDeprecation:
+      description: RFC 9745 deprecation date of the 0–100 score (2026-09-02T00:00:00Z).
+      schema: { type: string, example: "@1788307200" }
+    ScoreDeprecationLink:
+      description: Where the deprecation is explained (`rel="deprecation"`).
+      schema: { type: string, example: '<https://vet402.com/docs/api#endpoints>; rel="deprecation"; type="text/html"' }
   securitySchemes:
     bearerAuth:
       type: http
@@ -2893,6 +3019,24 @@ components:
         pattern: "^0x[a-fA-F0-9]{40}$"
 
   schemas:
+    ScoreDeprecationNotice:
+      type: object
+      description: |
+        Carried by every 0–100 score response since 2026-09-29. The score
+        itself is unchanged; this says it is deprecated and what to call instead.
+      required: [deprecated, deprecation]
+      properties:
+        deprecated:
+          type: boolean
+          enum: [true]
+        deprecation:
+          type: object
+          required: [since, use_instead, find_resource_id, message]
+          properties:
+            since: { type: string, format: date, example: "2026-09-02" }
+            use_instead: { type: string }
+            find_resource_id: { type: string }
+            message: { type: string }
     Recommendation:
       type: string
       enum: [ALLOW, WARN, BLOCK]
@@ -4188,7 +4332,34 @@ components:
       description: §14 operator SLOs. A metric that could not be measured is null and is named in `unmeasured`.
       required: [l1_probe_error_rate_pct, c1_l0_within_36h_pct, c2_l1_within_48h_pct, reverse_lookup_confirmed_within_60s_pct, published_failure_evidence_complete_pct, unmeasured, targets]
       properties:
-        l1_probe_error_rate_pct: { type: number, nullable: true }
+        l1_probe_error_rate_pct:
+          type: number
+          nullable: true
+          description: |
+            `l1_7d.request_errors` / `l1_7d.attempts`, in percent: L1 attempts
+            in the last 7 days whose purchase run did not complete inside
+            vet402 (status `request_error`, or `in_flight` left unfinished).
+            Not the held share of the ledger export and not the "vet402's
+            side" column of /sellers, which count different things.
+        l1_7d:
+          type: object
+          nullable: true
+          description: |
+            Counts behind `l1_probe_error_rate_pct`, and the held rows of the
+            same 7 days, so the three similar-sounding figures can be told
+            apart. `attempts`: every L1 row attempted in the last 7 days, any
+            status. `request_errors`: of those, `request_error` or
+            `in_flight`. `signed`: of those, rows where vet402 signed a payment
+            (settled, settle_failed, delivered_no_receipt,
+            settle_claimed_unverifiable, settle_claimed, settle_claim_refuted).
+            `held`: of the signed rows, those with a `held_reason` in the
+            ledger export. Since 2026-09-29.
+          required: [attempts, request_errors, signed, held]
+          properties:
+            attempts: { type: integer }
+            request_errors: { type: integer }
+            signed: { type: integer }
+            held: { type: integer }
         c1_l0_within_36h_pct: { type: number, nullable: true }
         c2_l1_within_48h_pct: { type: number, nullable: true }
         reverse_lookup_confirmed_within_60s_pct: { type: number, nullable: true }

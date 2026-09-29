@@ -90,7 +90,8 @@ export default async function DecisionsPage() {
             amount is what was put at stake, not money lost. Nothing here is simulated.
             {backtest && (
               <>
-                {" "}Across the whole ledger, {backtest.avoided.count} signed attempts carried a
+                {" "}Across the whole ledger, {backtest.avoided.count} of{" "}
+                {backtest.attemptsTotal.toLocaleString()} signed attempts with a final outcome carried a
                 prior published failure signal and did not settle ({formatUsdcUnits(backtest.avoided.spentUnits)}{" "}
                 signed and put at stake, with no confirmed transfer) — while {backtest.forgone.count}{" "}
                 signalled attempts settled anyway ({formatUsdcUnits(backtest.forgone.spentUnits)}). An
@@ -188,6 +189,12 @@ export default async function DecisionsPage() {
           <span>Definitions</span>
         </h2>
         <p className="doc-p">{feed.definition}</p>
+        {/* 2026-09-29 敵対的監査 4 周目: 本文の avoided / forgone の定義（分母の status）を頁に出す。 */}
+        {backtest && (
+          <p className="doc-p">
+            Signal backtest (<code>/api/v1/observatory/backtest</code>): {backtest.definition}
+          </p>
+        )}
       </article>
     </main>
   );

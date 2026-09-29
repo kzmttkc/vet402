@@ -689,21 +689,34 @@ export default async function Home() {
               // 2026-09-04 監査 E: 「Catalog endpoints」は delisted を含む totalEndpoints を指していた。
               // 分母の名を State of x402 と同じ「Endpoints on record」に揃え、active を併記する。
               { label: "Endpoints on record", n: stats.totalEndpoints, href: "/observatory" },
-              { label: "L0 pass (402 wall answers)", n: stats.publishedPass, href: "/observatory?verdict=pass" },
-              { label: "L1 settled with receipt", n: stats.l1.endpointsSettled, href: "/impact" },
+              // 2026-09-29 敵対的監査 4 周目: 「L0 pass 21,229」は掲載落ちを含み、掲載中 20,086 を上回っていた。
+              // 段を「掲載中 → 掲載中の L0 pass」にし、L1 は売り手のレシートと vet402 の索引の紐付けを分ける。
+              { label: "Currently listed", n: stats.activeEndpoints, href: "/observatory/state" },
+              { label: "L0 pass, currently listed", n: stats.publishedPassActive, href: "/observatory?verdict=pass" },
+              { label: "L1 settled, seller's receipt", n: stats.l1.endpointsSettledSellerReceipt, href: "/impact" },
+              { label: "L1 settled, no seller receipt", n: stats.l1.endpointsSettledIndexOnly, href: "/impact" },
             ]}
             caption={
               <>
                 Endpoints at each level of evidence
-                {stats.latestSnapshot ? ` as of the ${stats.latestSnapshot.snapshotDate} catalog snapshot` : ""}. Bars are
+                {stats.latestSnapshot ? ` as of the ${stats.latestSnapshot.snapshotDate} (UTC) catalog snapshot` : ""}. Bars are
                 proportional to the first row. The first row is every endpoint on record, including the{" "}
-                {stats.delistedEndpoints.toLocaleString()} no longer listed in the catalog;{" "}
-                {stats.activeEndpoints.toLocaleString()} are active. L1 counts endpoints where at least one paid
-                attempt returned an on-chain receipt, as reported by <code>/api/v1/observatory/state</code>.
+                {stats.delistedEndpoints.toLocaleString()} no longer listed in the catalog. The L0 row counts listed
+                endpoints whose latest probe returned a valid 402 (<code>publishedPassActive</code>);{" "}
+                {stats.publishedPassActiveProbeOlderThan7d.toLocaleString()} of them were last probed more than 7 days
+                ago, and a further {(stats.publishedPass - stats.publishedPassActive).toLocaleString()} endpoints whose
+                latest probe passed are no longer listed and are not in this row (<code>publishedPass</code> ={" "}
+                {stats.publishedPass.toLocaleString()} includes them). The two L1 rows count endpoints, listed or not, with
+                at least one paid attempt settled on-chain: first those where the seller named the transaction in its
+                own settlement receipt, then those with no seller receipt, where none of the settled transfers was named
+                by the seller and vet402&apos;s own settlements index found them (<code>settlement_source</code> in the
+                ledger export). Together
+                they are the {stats.l1.endpointsSettled.toLocaleString()} endpoints of <code>l1.endpointsSettled</code> in{" "}
+                <code>/api/v1/observatory/state</code>.
                 {/* 2026-09-19 監査 C1: 棒は先頭行に比例するが、L1 行の分母は先頭行ではない。
                     L1 が買いに行けたのは endpointsAttempted 件で、その率をここに書く。 */}{" "}
-                Its own denominator is the {stats.l1.endpointsAttempted.toLocaleString()} endpoints L1 has
-                attempted a paid purchase against, not the first row — read as a share of those, the L1 row is{" "}
+                Their own denominator is the {stats.l1.endpointsAttempted.toLocaleString()} endpoints L1 has
+                attempted a paid purchase against, not the first row — read as a share of those, the two L1 rows together are{" "}
                 {stats.l1.endpointsAttempted > 0
                   ? `${((stats.l1.endpointsSettled / stats.l1.endpointsAttempted) * 100).toFixed(1)}%`
                   : "—"}

@@ -4,7 +4,7 @@ import { getClientIp } from "@/lib/api/client-ip";
 import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
 import { getDb } from "@/lib/db/client";
 import { heldReasonSql } from "@/lib/observatory/delivery";
-import { EXPORT_CSV_COLUMNS } from "@/lib/observatory/export-columns";
+import { confirmedUnitsSql, EXPORT_CSV_COLUMN_NOTES, EXPORT_CSV_COLUMNS } from "@/lib/observatory/export-columns";
 import { requestBodySha256Sql, requestBodyKindSql } from "@/lib/observatory/request-body";
 import { requestQuerySha256Sql, requestQueryKindSql } from "@/lib/observatory/request-query";
 import { settlementSourceSql } from "@/lib/observatory/settlement-source";
@@ -40,6 +40,10 @@ import { logServerErrorSafe } from "@/lib/util/log-safe";
  *                        2026-09-20 より前の行）。**空をこの 4 つに分ける材料は列に無い。**
  *   request_query_sha256  declared の行の、足した対だけの form-urlencoded 文字列の SHA-256。
  *                        **クエリ文字列そのものは出さない**。規則は request-query.ts。
+ *
+ * 2026-09-29: さらに末尾に 1 列（敵対的監査 4 周目）。既存の 16 列は変えていない。
+ *   confirmed_units       vet402 がチェーン上で確かめた送金額。settled の行は spent_units、他は 0。
+ *                        spent_units は署名した額（賭けた額）であって動いた額ではない、を列で分ける。
  */
 
 const RL_LIMIT = 6;
@@ -87,7 +91,8 @@ export async function GET(request: NextRequest) {
              (${sql.raw(requestBodySha256Sql("pu"))}) AS request_body_sha256,
              (${sql.raw(settlementSourceSql("pu"))}) AS settlement_source,
              (${sql.raw(requestQueryKindSql("pu"))}) AS request_query,
-             (${sql.raw(requestQuerySha256Sql("pu"))}) AS request_query_sha256
+             (${sql.raw(requestQuerySha256Sql("pu"))}) AS request_query_sha256,
+             (${sql.raw(confirmedUnitsSql("pu"))}) AS confirmed_units
       FROM x402_l1_purchases pu
       JOIN x402_endpoints e ON e.id = pu.endpoint_id
       WHERE pu.attempted_at >= now() - make_interval(days => ${days}::int)
@@ -118,6 +123,8 @@ export async function GET(request: NextRequest) {
         "x-vet402-retrieved-at": new Date().toISOString(),
         "x-vet402-rows": String(emit.length),
         "x-vet402-window-days": String(days),
+        // 2026-09-29 敵対的監査 4 周目: spent_units は署名額で、tx の無い行にも入る。取り違えない説明をヘッダで運ぶ。
+        "x-vet402-column-notes": EXPORT_CSV_COLUMN_NOTES,
         Link:
           '<https://creativecommons.org/licenses/by/4.0/>; rel="license", ' +
           '<https://vet402.com/observatory/methodology>; rel="describedby"',

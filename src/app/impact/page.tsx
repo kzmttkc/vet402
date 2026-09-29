@@ -107,7 +107,14 @@ export default async function ImpactPage() {
         <p className="doc-p">
           <strong>{stats.l1.attempts.toLocaleString()}</strong> real purchase attempts across{" "}
           <strong>{stats.l1.endpointsAttempted.toLocaleString()}</strong> endpoints;{" "}
-          <strong>{stats.l1.settled.toLocaleString()}</strong> settled with an on-chain receipt.
+          <strong>{stats.l1.settled.toLocaleString()}</strong> settled on-chain. Of those settled attempts,{" "}
+          {(stats.l1.settled - stats.l1.settledLateLinked).toLocaleString()} carry a transaction the seller named
+          in its own settlement receipt and {stats.l1.settledLateLinked.toLocaleString()} a transaction the seller
+          did not name, which vet402&apos;s own settlements index found afterwards (<code>settlement_source</code>{" "}
+          <code>vet402_index</code> in the export). By endpoint:{" "}
+          {stats.l1.endpointsSettledSellerReceipt.toLocaleString()} endpoints have at least one seller-named
+          receipt and {stats.l1.endpointsSettledIndexOnly.toLocaleString()} have index-found transfers and no
+          seller-named receipt.
           Settled attempts and attempts that did not settle are published with the same weight — a receipt series
           per endpoint, transaction hashes included.{" "}
           <Link href="/api/v1/observatory/export.csv" className="underline">
@@ -118,8 +125,9 @@ export default async function ImpactPage() {
             state API の l1.attempts / l1.settled だけを引く。出所と定義を数字の隣に書く。 */}
         <p className="doc-note mt-3 max-w-[62ch]">
           Attempts and settled as reported by <code>/api/v1/observatory/state</code> (<code>l1.attempts</code>: paid
-          requests whose payment was signed and sent; <code>l1.settled</code>: receipt received). The CSV export
-          applies its own row definition and can count differently.
+          requests whose payment was signed and sent; <code>l1.settled</code>: transfer re-read on-chain;{" "}
+          <code>l1.settledLateLinked</code>: the index-found part of it). The CSV export applies its own row
+          definition and can count differently.
         </p>
         {/* 2026-09-02 監査 F4: このページに tx ハッシュが 0 本だった。「受領証がある」が
             主張なら、受領証そのものへ 1 クリックで着けなければならない。既存の数字の
@@ -185,13 +193,16 @@ export default async function ImpactPage() {
               unpayable walls) and published every one of them.
               {backtest && (
                 <>
-                  {" "}Across the whole ledger, {backtest.avoided.count} signed attempts carried a
+                  {" "}Across the whole ledger, {backtest.avoided.count} of{" "}
+                  {backtest.attemptsTotal.toLocaleString()} signed attempts with a final outcome carried a
                   prior public failure signal and <strong>did not settle</strong> (
                   {formatUsdcUnits(backtest.avoided.spentUnits)} signed and put at stake with no confirmed
                   transfer on-chain — exposure an agent honoring the signals would not have taken, not money
                   lost), while {backtest.forgone.count} signalled attempts settled anyway and would have been
                   skipped too (definition:
-                  signed attempts preceded by a public failure signal, a subset of the attempts in §2, from{" "}
+                  signed attempts preceded by a public failure signal, a subset of the attempts in §2 that leaves
+                  out rows still awaiting on-chain re-read (<code>settle_claimed</code>) and rows from the window when
+                  vet402&apos;s own payer wallet was out of USDC (<code>payer_unfunded</code>), from{" "}
                   <code>/api/v1/observatory/backtest</code>).
                 </>
               )}{" "}

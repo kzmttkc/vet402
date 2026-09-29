@@ -57,6 +57,8 @@ type ObservatoryScale = {
   totalEndpoints: number;
   activeEndpoints: number;
   publishedPass: number;
+  /** 掲載中の pass（2026-09-29 に state API へ足した）。古い応答で無ければ null。 */
+  publishedPassActive: number | null;
   l1: { attempts: number; settled: number };
 };
 
@@ -71,6 +73,7 @@ async function fetchObservatoryScale(): Promise<ObservatoryScale | null> {
       totalEndpoints?: unknown;
       activeEndpoints?: unknown;
       publishedPass?: unknown;
+      publishedPassActive?: unknown;
       l1?: { attempts?: unknown; settled?: unknown };
       latestSnapshot?: { snapshotDate?: unknown } | null;
     };
@@ -82,6 +85,8 @@ async function fetchObservatoryScale(): Promise<ObservatoryScale | null> {
       totalEndpoints,
       activeEndpoints: n(j.activeEndpoints),
       publishedPass: n(j.publishedPass),
+      publishedPassActive:
+        typeof j.publishedPassActive === "number" && Number.isFinite(j.publishedPassActive) ? j.publishedPassActive : null,
       l1: { attempts: n(j.l1?.attempts), settled: n(j.l1?.settled) },
     };
   } catch {
@@ -101,6 +106,11 @@ function Rate({ value }: { value: number | null }) {
 // 作り直されるので、ここでの「今」は最長 10 分古い。遅れの判定（8 日超）には十分。
 function daysSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+}
+
+// 2026-09-29 敵対的監査 4 周目: 「this week」「N days ago」は読まれた日で意味が変わる。頁を作った UTC の日付で書く。
+function generatedOnUtc(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 export default async function AccuracyPage() {
@@ -139,6 +149,7 @@ export default async function AccuracyPage() {
   // 予定と実績を分けて出す: 予定は vercel.json の週次 cron、実績は最後の scan の日付。
   const benchmarkAgeDays = benchmark.lastScanAt ? daysSince(benchmark.lastScanAt) : null;
   const benchmarkOverdue = benchmarkAgeDays !== null && benchmarkAgeDays > 8;
+  const generatedOn = generatedOnUtc();
 
   const hasAnyData = report.observedVerdicts > 0;
   const hasBenchmarkData = benchmark.knownBad.total + benchmark.knownGood.total > 0;
@@ -256,9 +267,10 @@ export default async function AccuracyPage() {
                 <tbody>
                   <tr>
                     <td className="font-[family-name:var(--font-sans)] font-normal whitespace-normal text-brand">
-                      Published L0 fails later reversed to pass within 7 days (false fail;{" "}
+                      Probes in the last 7 days that made a fail publishable (an endpoint&apos;s second
+                      consecutive fail) and were reversed by a pass within 7 days (false fail;{" "}
                       {l0.false_fail.toLocaleString("en-US")} of{" "}
-                      {l0.published_fail.toLocaleString("en-US")})
+                      {l0.published_fail.toLocaleString("en-US")} probes)
                     </td>
                     <td className="num whitespace-nowrap">
                       <Rate value={l0.false_fail_rate} />
@@ -270,9 +282,11 @@ export default async function AccuracyPage() {
                   </tr>
                   <tr>
                     <td className="font-[family-name:var(--font-sans)] font-normal whitespace-normal text-brand">
-                      Published L0 passes whose next probe returned no 402 (false pass;{" "}
+                      Pass probes in the last 7 days whose next probe of the same endpoint returned no
+                      402 (false pass;{" "}
                       {l0.false_pass.toLocaleString("en-US")} of{" "}
-                      {l0.published_pass.toLocaleString("en-US")})
+                      {l0.published_pass.toLocaleString("en-US")} pass probes — a count of probes, not of
+                      endpoints, so it is not the published-pass endpoint count on the home page)
                     </td>
                     <td className="num whitespace-nowrap">
                       <Rate value={l0.false_pass_rate} />
@@ -288,8 +302,8 @@ export default async function AccuracyPage() {
             <p className="doc-note mt-4 max-w-[70ch]">
               {l0.slo.false_fail_ok === false || l0.slo.false_pass_ok === false ? (
                 <>
-                  At least one of these rates is above its target this week. We print it here
-                  rather than leave it in the JSON.{" "}
+                  At least one of these rates is above its target in the 7 days to {generatedOn} (UTC).
+                  We print it here rather than leave it in the JSON.{" "}
                 </>
               ) : null}
               Same figures as <code className="text-brand-deep">l0</code> in{" "}
@@ -324,6 +338,9 @@ export default async function AccuracyPage() {
                     <tr key={row.key}>
                       <td className="font-[family-name:var(--font-sans)] font-normal whitespace-normal text-brand">
                         {row.label}
+                        {row.key === "l1_probe_error_rate_pct" && slo.l1_7d
+                          ? ` (${slo.l1_7d.request_errors.toLocaleString("en-US")} of ${slo.l1_7d.attempts.toLocaleString("en-US")})`
+                          : null}
                       </td>
                       <td className="num whitespace-nowrap">{row.value === null ? "—" : `${row.value}%`}</td>
                       <td className="num whitespace-nowrap">
@@ -347,7 +364,7 @@ export default async function AccuracyPage() {
               ) : null}
               Same figures as <code className="text-brand-deep">slo</code> in{" "}
               <code className="text-brand-deep">GET /api/v1/accuracy</code>, computed by the same
-              function.
+              function, as of {generatedOn} (UTC).
               {slo.unmeasured.length > 0 ? (
                 <>
                   {" "}Not measured here: {slo.unmeasured.map((k, i) => (
@@ -363,12 +380,40 @@ export default async function AccuracyPage() {
           </>
         ) : null}
 
+        {/* 2026-09-29 敵対的監査 4 周目: 「vet402 側の失敗 0.2%」・export.csv の保留（約 24%）・/sellers の
+            「vet402's side」が同じ名前で別の数に見えていた。分母・期間・何を数えるかを 1 段落で並べる。 */}
+        {slo?.l1_7d && slo.l1_7d.attempts > 0 ? (
+          <p className="doc-note mt-4 max-w-[70ch]">
+            Three L1 figures that sound alike count different things. (1) The row above:{" "}
+            {slo.l1_7d.request_errors.toLocaleString("en-US")} of{" "}
+            {slo.l1_7d.attempts.toLocaleString("en-US")} L1 attempts in the 7 days to {generatedOn} (UTC), any
+            status, ended with vet402&apos;s own purchase run not completing (<code>request_error</code> or an
+            unfinished <code>in_flight</code>); those rows are not in the ledger export. (2) Held rows: of the{" "}
+            {slo.l1_7d.signed.toLocaleString("en-US")} attempts in the same 7 days where vet402 signed a payment,{" "}
+            {slo.l1_7d.held.toLocaleString("en-US")} (
+            {((slo.l1_7d.held / Math.max(1, slo.l1_7d.signed)) * 100).toFixed(1)}%) carry a{" "}
+            <code>held_reason</code> in <code>/api/v1/observatory/export.csv</code> &mdash; a 4xx that the request
+            vet402 formed could explain, or a window when its payer wallet was short &mdash; and are not counted
+            against the seller. (3) The &ldquo;vet402&apos;s side&rdquo; column on{" "}
+            <Link href="/sellers" className="doc-link">
+              /sellers
+            </Link>{" "}
+            counts listings, not attempts: currently listed Base listings whose latest attempt, of any date, is
+            sorted as vet402&apos;s doing (a paid request sent without the declared body or query, the payer
+            wallet short or empty, one of vet402&apos;s own spending limits, or a vet402 run that did not
+            finish).
+          </p>
+        ) : null}
+
         {scale && (
           <p className="doc-note mt-6 max-w-[70ch]">
             The three tables below are empty in the current window. The observatory, which this ledger does not
             cover, is not: {scale.totalEndpoints.toLocaleString("en-US")} endpoints on record (
-            {scale.activeEndpoints.toLocaleString("en-US")} active), {scale.publishedPass.toLocaleString("en-US")}{" "}
-            with a published L0 pass, {scale.l1.attempts.toLocaleString("en-US")} paid purchase attempts of which{" "}
+            {scale.activeEndpoints.toLocaleString("en-US")} active),{" "}
+            {scale.publishedPassActive !== null
+              ? `${scale.publishedPassActive.toLocaleString("en-US")} of the active ones with a published L0 pass`
+              : `${scale.publishedPass.toLocaleString("en-US")} with a published L0 pass (including delisted endpoints)`}
+            , {scale.l1.attempts.toLocaleString("en-US")} paid purchase attempts of which{" "}
             {scale.l1.settled.toLocaleString("en-US")} settled with an on-chain receipt
             {scale.snapshotDate ? `, as of the ${scale.snapshotDate} catalog snapshot` : ""}. Counts as reported by{" "}
             <code className="text-brand-deep">GET /api/v1/observatory/state</code> (<code>l1.attempts</code>,{" "}
@@ -617,8 +662,9 @@ export default async function AccuracyPage() {
               .{" "}
               {benchmarkOverdue ? (
                 <>
-                  That is {benchmarkAgeDays} days ago: the scheduled weekly pass has not recorded a
-                  scan since, so the figures above are older than the schedule suggests.{" "}
+                  That is {benchmarkAgeDays} days before this page was generated on {generatedOn} (UTC):
+                  the scheduled weekly pass has not recorded a scan since, so the figures above are older
+                  than the schedule suggests.{" "}
                 </>
               ) : null}
               Address set and per-address sources are versioned in the codebase (§3).

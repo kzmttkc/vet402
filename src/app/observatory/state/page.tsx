@@ -294,6 +294,20 @@ export default async function ObservatoryStatePage() {
                 <td className="num">{stats.publishedPass.toLocaleString()}</td>
                 <td className="num">{pct(stats.publishedPass, denom)}</td>
               </tr>
+              {/* 2026-09-29 敵対的監査 4 周目: 上の pass は掲載落ちを含み、掲載中の件数を上回り得る。
+                  掲載中の分と、その中で最新の probe が 7 日より前のものを内訳で出す。 */}
+              <tr>
+                <td className="text-brand">
+                  of which currently listed (the rest are delisted endpoints whose latest probe passed)
+                </td>
+                <td className="num">{stats.publishedPassActive.toLocaleString()}</td>
+                <td className="num">{pct(stats.publishedPassActive, stats.activeEndpoints)} of listed</td>
+              </tr>
+              <tr>
+                <td className="text-brand">of those listed, latest probe more than 7 days old</td>
+                <td className="num">{stats.publishedPassActiveProbeOlderThan7d.toLocaleString()}</td>
+                <td className="num">{pct(stats.publishedPassActiveProbeOlderThan7d, stats.publishedPassActive)}</td>
+              </tr>
               <tr>
                 <td className="text-brand">
                   Payment wall failing on ≥2 consecutive probes (published fail)
@@ -559,6 +573,26 @@ export default async function ObservatoryStatePage() {
                   <td className="num">{stats.l1.endpointsSettled.toLocaleString()}</td>
                   <td className="num">
                     {pct(stats.l1.endpointsSettled, stats.l1.endpointsAttempted)} of endpoints purchased from
+                  </td>
+                </tr>
+                {/* 2026-09-29 敵対的監査 4 周目: 上の行は、売り手がレシートで名指した tx と、売り手が
+                    レシートを返さず vet402 の索引が見つけた tx を同じ顔で数えていた。 */}
+                <tr>
+                  <td className="text-brand">
+                    of which at least one transaction named by the seller&apos;s own settlement receipt
+                  </td>
+                  <td className="num">{stats.l1.endpointsSettledSellerReceipt.toLocaleString()}</td>
+                  <td className="num">
+                    {pct(stats.l1.endpointsSettledSellerReceipt, stats.l1.endpointsAttempted)} of endpoints purchased from
+                  </td>
+                </tr>
+                <tr>
+                  <td className="text-brand">
+                    of which no seller receipt: the settled transfers were found by vet402&apos;s own settlements index
+                  </td>
+                  <td className="num">{stats.l1.endpointsSettledIndexOnly.toLocaleString()}</td>
+                  <td className="num">
+                    {pct(stats.l1.endpointsSettledIndexOnly, stats.l1.endpointsAttempted)} of endpoints purchased from
                   </td>
                 </tr>
                 <tr>

@@ -35,7 +35,12 @@ import {
   settlementTimeWindowPredicate,
   type SettledTier,
 } from "./settled-tier";
-import { settledLateLinkedPredicate, settlementSourceOf, type SettlementSource } from "./settlement-source";
+import {
+  settledLateLinkedPredicate,
+  settlementSourceOf,
+  settlementSourceSql,
+  type SettlementSource,
+} from "./settlement-source";
 import type { ObservatoryQuery, ObservatoryVerdict } from "./query";
 import { UUID_RE } from "@/lib/validation/uuid";
 
@@ -547,7 +552,9 @@ export async function getEndpointDetail(id: string): Promise<EndpointDetail> {
         isOperatorEndpoint: isOperatorPayTo(e.payTo),
       },
       publishedVerdict: publishedVerdict(probes.map((p) => p.verdict)),
-      lastProbedAgeDays: probes[0]?.probedAt ? Math.max(0, Math.floor((Date.now() - probes[0].probedAt.getTime()) / 86_400_000)) : null,
+      // 2026-09-29 敵対的監査 4 周目: 経過 24 時間で丸めていたので、09-28 16:40 UTC の probe を 09-29 00:22 UTC に
+      // 「today」と出していた。UTC の暦日の差で数える（09-28 の probe は 09-29 に 1）。
+      lastProbedAgeDays: probes[0]?.probedAt ? utcCalendarDaysBetween(probes[0].probedAt, new Date()) : null,
       probes,
       events,
     };
@@ -686,13 +693,34 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
   }
 }
 
+/**
+ * a から b までの UTC 暦日の差（同じ UTC 日なら 0、a が前日なら 1）。負にはしない。
+ * 経過時間を 24 時間で割ると、前日の夕方の測定が翌日の未明に「0 日前」になる（2026-09-29 監査）。
+ */
+export function utcCalendarDaysBetween(a: Date, b: Date): number {
+  const day = (d: Date) => Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 86_400_000);
+  return Math.max(0, day(b) - day(a));
+}
+
 export type ObservatoryStats = {
   totalEndpoints: number;
   activeEndpoints: number;
   delistedEndpoints: number;
   /** Endpoints whose PUBLISHED verdict is fail (≥2 consecutive fails). */
   publishedFail: number;
+  /**
+   * 最新の probe が pass の endpoint。**掲載落ち（delisted）を含む**——分母は totalEndpoints。
+   * 2026-09-29 敵対的監査 4 周目: トップが「L0 pass 21,229」を掲載中 20,086 より大きい数として
+   * 出していた。掲載中だけの数は publishedPassActive。
+   */
   publishedPass: number;
+  /** publishedPass のうち、いまカタログに掲載中（status = 'active'）の endpoint。 */
+  publishedPassActive: number;
+  /**
+   * publishedPassActive のうち、最新の probe（= pass）が 7 日より前の endpoint。
+   * pass は次の probe まで据え置かれるので、古い pass を新しい pass と同じ顔で出さないための内訳。
+   */
+  publishedPassActiveProbeOlderThan7d: number;
   /** No declared method / no probe yet / gate not met. */
   publishedUnverified: number;
   methodUndeclared: number;
@@ -740,7 +768,18 @@ export type ObservatoryStats = {
     /** 決済ブロック時刻を我々が持っていない settled 件数（ok とも outside とも言えない）。 */
     settledTimeWindowUnknown: number;
     endpointsAttempted: number;
+    /** settled の行を 1 つ以上持つ endpoint（掲載落ちを含む）。下の 2 つの和。 */
     endpointsSettled: number;
+    /**
+     * endpointsSettled のうち、売り手が有料応答のレシートで名指した tx（settlement_source = seller_claim）の
+     * settled 行を 1 つ以上持つ endpoint（2026-09-29 敵対的監査 4 周目）。
+     */
+    endpointsSettledSellerReceipt: number;
+    /**
+     * endpointsSettled のうち、settled の行が**すべて** vet402 の決済索引が貼った tx
+     * （settlement_source = vet402_index）の endpoint。売り手の受取証明は 1 本も無い。
+     */
+    endpointsSettledIndexOnly: number;
     endpointsDelivered: number;
     /**
      * L1 を最後に試した時刻（ISO8601 UTC・全チェーン横断・一度も無ければ null）。
@@ -806,6 +845,8 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
     delistedEndpoints: 0,
     publishedFail: 0,
     publishedPass: 0,
+    publishedPassActive: 0,
+    publishedPassActiveProbeOlderThan7d: 0,
     publishedUnverified: 0,
     methodUndeclared: 0,
     eventCounts: { delisted: 0, relisted: 0, settleDrop: 0 },
@@ -823,6 +864,8 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       settledTimeWindowUnknown: 0,
       endpointsAttempted: 0,
       endpointsSettled: 0,
+      endpointsSettledSellerReceipt: 0,
+      endpointsSettledIndexOnly: 0,
       endpointsDelivered: 0,
       lastAttemptAt: null,
       byChain: [],
@@ -846,12 +889,12 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
     const raw = await db.execute(sql`
       WITH latest AS (
         SELECT e.id, e.status, e.method,
-               lp.verdicts AS verdicts
+               lp.verdicts AS verdicts, lp.last_probed_at
         FROM x402_endpoints e
         LEFT JOIN LATERAL (
-          SELECT array_agg(v.verdict) AS verdicts
+          SELECT array_agg(v.verdict ORDER BY v.probed_at DESC) AS verdicts, max(v.probed_at) AS last_probed_at
           FROM (
-            SELECT verdict FROM x402_l0_probes p
+            SELECT verdict, probed_at FROM x402_l0_probes p
             WHERE p.endpoint_id = e.id
             ORDER BY probed_at DESC
             LIMIT ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH}
@@ -865,6 +908,11 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
         count(*) FILTER (WHERE status = 'delisted')::int AS delisted,
         count(*) FILTER (WHERE method IS NULL)::int AS method_undeclared,
         count(*) FILTER (WHERE verdicts[1] = 'pass')::int AS published_pass,
+        count(*) FILTER (WHERE verdicts[1] = 'pass' AND status = 'active')::int AS published_pass_active,
+        count(*) FILTER (
+          WHERE verdicts[1] = 'pass' AND status = 'active'
+            AND last_probed_at <= now() - interval '7 days'
+        )::int AS published_pass_active_stale,
         count(*) FILTER (
           WHERE verdicts[1] = 'fail'
             AND cardinality(verdicts) >= ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH}
@@ -918,6 +966,8 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       settledTimeWindowUnknown: 0,
       endpointsAttempted: 0,
       endpointsSettled: 0,
+      endpointsSettledSellerReceipt: 0,
+      endpointsSettledIndexOnly: 0,
       endpointsDelivered: 0,
       lastAttemptAt: null as string | null,
       byChain: [] as L1ChainStats[],
@@ -941,6 +991,11 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
                count(*) FILTER (WHERE ${sql.raw(settledLateLinkedPredicate())})::int AS settled_late_linked,
                count(DISTINCT endpoint_id)::int AS endpoints,
                count(DISTINCT endpoint_id) FILTER (WHERE status = 'settled')::int AS endpoints_settled,
+               -- 2026-09-29 敵対的監査 4 周目: 「settled with receipt」の endpoint 数を、売り手のレシートで
+               -- 名指された tx を 1 本でも持つものと、vet402 の索引が貼った tx しか無いものに分ける。
+               count(DISTINCT endpoint_id) FILTER (
+                 WHERE status = 'settled' AND (${sql.raw(settlementSourceSql())}) = 'seller_claim'
+               )::int AS endpoints_settled_seller_receipt,
                count(DISTINCT endpoint_id) FILTER (WHERE ${sql.raw(deliveredPredicate())})::int AS endpoints_delivered
         FROM x402_l1_purchases
         WHERE status IN ('settled', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable', 'settle_claimed', 'settle_claim_refuted')
@@ -958,6 +1013,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
         settled_late_linked: number;
         endpoints: number;
         endpoints_settled: number;
+        endpoints_settled_seller_receipt: number;
         endpoints_delivered: number;
       }[];
       if (l1List[0]) {
@@ -978,6 +1034,11 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
           settledLateLinked: Number(l1List[0].settled_late_linked ?? 0),
           endpointsAttempted: Number(l1List[0].endpoints),
           endpointsSettled: Number(l1List[0].endpoints_settled ?? 0),
+          endpointsSettledSellerReceipt: Number(l1List[0].endpoints_settled_seller_receipt ?? 0),
+          endpointsSettledIndexOnly: Math.max(
+            0,
+            Number(l1List[0].endpoints_settled ?? 0) - Number(l1List[0].endpoints_settled_seller_receipt ?? 0),
+          ),
           endpointsDelivered: Number(l1List[0].endpoints_delivered ?? 0),
         };
       }
@@ -1106,6 +1167,8 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       delistedEndpoints: Number(agg.delisted ?? 0),
       publishedFail,
       publishedPass,
+      publishedPassActive: Number(agg.published_pass_active ?? 0),
+      publishedPassActiveProbeOlderThan7d: Number(agg.published_pass_active_stale ?? 0),
       publishedUnverified: Math.max(0, total - publishedPass - publishedFail),
       methodUndeclared: Number(agg.method_undeclared ?? 0),
       eventCounts: {

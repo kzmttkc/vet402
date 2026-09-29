@@ -9,6 +9,7 @@ import { isValidAddress } from "@/lib/chain/client";
 import { persistScoreResult } from "@/lib/db/persistence";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { scoreWallet } from "@/lib/scoring/engine";
+import { withScoreDeprecationBody, withScoreDeprecationHeaders } from "@/lib/api/score-deprecation";
 
 type RouteContext = { params: Promise<{ address: string }> };
 
@@ -33,7 +34,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
       logServerErrorSafe("persist_score", error),
     );
 
-    return withRateLimitHeaders(NextResponse.json(result), limited.rateLimit);
+    // 2026-09-29: 非推奨を応答そのものに載せる（値は変えない・score-deprecation.ts）。
+    return withScoreDeprecationHeaders(
+      withRateLimitHeaders(NextResponse.json(withScoreDeprecationBody(result)), limited.rateLimit),
+    );
   } catch {
     // 2026-08-15 (audit): see agents/[agentId]/score for rationale.
     void refundRateLimitUnits(auth.ctx, 1);

@@ -3,6 +3,7 @@ import { authorizeApiRequest, withRateLimitHeaders } from "@/lib/api/guard";
 import { isValidAddress } from "@/lib/chain/client";
 import { peekPayeeScoreCache } from "@/lib/scoring/payee-engine";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
+import { withScoreDeprecationBody, withScoreDeprecationHeaders } from "@/lib/api/score-deprecation";
 
 /**
  * GET /api/v1/payees/{address}/verdict-fast — verify-at-settle 高速面（C6）。
@@ -41,33 +42,33 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const handlerMicros = Number(process.hrtime.bigint() - started) / 1000;
 
     if (!cached) {
-      return withRateLimitHeaders(
+      return withScoreDeprecationHeaders(withRateLimitHeaders(
         NextResponse.json(
-          {
+          withScoreDeprecationBody({
             status: "cache_cold",
             recommendation: null,
             warmVia: `/api/v1/payees/${address}/score`,
             note: "This surface never computes. Treat cache_cold as not-ALLOW (fail closed) and warm asynchronously.",
             handlerMicros,
-          },
+          }),
           { headers: { "Cache-Control": "no-store" } },
         ),
         auth.ctx.rateLimit,
-      );
+      ));
     }
-    return withRateLimitHeaders(
+    return withScoreDeprecationHeaders(withRateLimitHeaders(
       NextResponse.json(
-        {
+        withScoreDeprecationBody({
           status: "hit",
           recommendation: cached.recommendation,
           score: cached.score,
           cacheExpiresAt: cached.cacheExpiresAt,
           handlerMicros,
-        },
+        }),
         { headers: { "Cache-Control": "no-store" } },
       ),
       auth.ctx.rateLimit,
-    );
+    ));
   } catch (error) {
     logServerErrorSafe("verdict_fast", error);
     return NextResponse.json({ error: "verdict_unavailable" }, { status: 503 });

@@ -11,6 +11,7 @@ import { persistScoreResult } from "@/lib/db/persistence";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { scoreAgentById } from "@/lib/scoring/engine";
 import { mapWithConcurrency } from "@/lib/util/concurrency";
+import { withScoreDeprecationBody, withScoreDeprecationHeaders } from "@/lib/api/score-deprecation";
 
 const BATCH_CONCURRENCY = 3;
 
@@ -95,8 +96,11 @@ export async function POST(request: NextRequest) {
     void refundRateLimitUnits(auth.ctx, failedCount);
   }
 
-  return withRateLimitHeaders(
-    NextResponse.json({ results: [...invalidResults, ...scored] }),
-    limited.rateLimit,
+  // 2026-09-29: 非推奨を応答そのものに載せる（値は変えない・score-deprecation.ts）。
+  return withScoreDeprecationHeaders(
+    withRateLimitHeaders(
+      NextResponse.json(withScoreDeprecationBody({ results: [...invalidResults, ...scored] })),
+      limited.rateLimit,
+    ),
   );
 }

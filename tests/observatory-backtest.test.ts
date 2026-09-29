@@ -59,9 +59,15 @@ if (!TEST_DB) {
     await buy(d, "settle_failed", "500", "2026-08-09T01:00:00Z");
     await buy(d, "settle_failed", "1000", "2026-08-10T01:00:00Z");
 
+    // E: 2連続fail後の settle_claimed（照合待ち＝結果が無い → 分母にも avoided にも入らない・2026-09-29）
+    const e = await mkEp("e.example/api");
+    await probe(e, "fail", "2026-08-10T01:00:00Z");
+    await probe(e, "fail", "2026-08-10T02:00:00Z");
+    await buy(e, "settle_claimed", "7000", "2026-08-10T03:00:00Z");
+
     await t.test("両面が機械定義どおりに数えられる", async () => {
       const r = await computeSpendGuardBacktest();
-      assert.equal(r.attemptsTotal, 5);
+      assert.equal(r.attemptsTotal, 5, "settle_claimed（E）は数えない");
       assert.equal(r.avoided.count, 2, "A + Dの再試行");
       assert.equal(r.avoided.spentUnits, "4000");
       assert.equal(r.forgone.count, 1, "B");

@@ -10,6 +10,7 @@ import { chainBySlug, enabledChainSlugs, isChainEnabled } from "@/lib/chain/chai
 import { persistScoreResult } from "@/lib/db/persistence";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { scoreAgentById } from "@/lib/scoring/engine";
+import { withScoreDeprecationBody, withScoreDeprecationHeaders } from "@/lib/api/score-deprecation";
 
 type RouteContext = { params: Promise<{ agentId: string }> };
 
@@ -62,7 +63,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
       logServerErrorSafe("persist_score", error),
     );
 
-    return withRateLimitHeaders(NextResponse.json(result), limited.rateLimit);
+    // 2026-09-29: 非推奨を応答そのものに載せる（値は変えない・score-deprecation.ts）。
+    return withScoreDeprecationHeaders(
+      withRateLimitHeaders(NextResponse.json(withScoreDeprecationBody(result)), limited.rateLimit),
+    );
   } catch (error) {
     logServerErrorSafe("score_agent", error);
     // 2026-08-15 (audit): the reservation above already spent 1 unit; this

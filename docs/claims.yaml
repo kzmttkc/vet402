@@ -1219,6 +1219,22 @@ claims:
       url: https://vet402.com/api/v1/observatory/state
       assert: "totalEndpoints >= 23049"
     verified_at: 2026-09-04
+  - id: r4_lp_fig1_l0_row_is_listed_endpoints
+    surface: src/app/page.tsx
+    quote: "L0 pass, currently listed"
+    means: "Fig.1 の L0 の段は掲載中の endpoint のうち最新の probe が pass のもの（publishedPassActive）。掲載落ちを含む publishedPass（2026-09-29 に 21,229 で掲載中 20,086 を上回っていた）ではない"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "publishedPassActive >= 1"
+    verified_at: 2026-09-29
+  - id: r4_lp_fig1_l1_rows_split_by_settlement_source
+    surface: src/app/page.tsx
+    quote: "L1 settled, no seller receipt"
+    means: "Fig.1 の L1 は、売り手のレシートで名指された tx を持つ endpoint と、売り手のレシートが無く vet402 の索引が見つけた tx しか無い endpoint に分けて出す（和は l1.endpointsSettled）"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "l1.endpointsSettledIndexOnly >= 0"
+    verified_at: 2026-09-29
   - id: audit_e_snapshot_shows_both_denominators
     surface: src/app/observatory/page.tsx
     quote: "entries fetched by vet402 from the CDP x402 Bazaar out of the"

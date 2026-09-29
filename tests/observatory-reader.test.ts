@@ -135,6 +135,10 @@ if (!TEST_DB) {
       assert.equal(stats.l1.attempts, 2);
       assert.equal(stats.l1.settled, 1);
       assert.equal(stats.l1.endpointsAttempted, 1);
+      // 2026-09-29: settled endpoint の内訳（売り手のレシート / vet402 の索引のみ）。0xfeed は売り手の名指し。
+      assert.equal(stats.l1.endpointsSettledSellerReceipt, 1);
+      assert.equal(stats.l1.endpointsSettledIndexOnly, 0);
+      assert.ok(stats.publishedPassActive <= stats.publishedPass);
     });
 
     // 2026-09-02 導線監査 F2: 受領証つき 520 本がどれか、一覧から分からなかった。
