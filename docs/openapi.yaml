@@ -4540,6 +4540,11 @@ components:
             - invalid_api_key
             - auth_unavailable
             - rate_limit_exceeded
+            # 2026-09-29: the rate-limit store (the database) could not be reached, so
+            # the request was refused rather than counted. 503 with Retry-After — retry
+            # then, not at the end of the window.
+            - rate_limit_unavailable
+            - temporarily_unavailable
             - plan_upgrade_required
             - scoring_unavailable
             - payment_ingest_unavailable
