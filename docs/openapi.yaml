@@ -3447,7 +3447,7 @@ components:
         the same document; there is no facts-less mode. `score` is the
         transitional 0–100 opinion, marked deprecated, and is never the basis
         of `recommendation`.
-      required: [subject, role, payer, recommendation, reason_codes, facts, spending_halted, not_attempted_reason, freshness, l1_basis, evidence, score, degraded, policy, rules_version, registry, scoredAt, cacheExpiresAt, disclaimer]
+      required: [subject, role, payer, recommendation, reason_codes, facts, spending_halted, not_attempted_reason, freshness, l1_basis, verified_terms, evidence, score, degraded, policy, rules_version, registry, scoredAt, cacheExpiresAt, disclaimer]
       properties:
         subject:
           type: object
@@ -3563,6 +3563,29 @@ components:
             last_delivered_at: { type: string, format: date-time, nullable: true, description: "Last delivery over the full history." }
             days_since_last_attempt: { type: number, nullable: true }
             days_since_last_delivery: { type: number, nullable: true }
+        verified_terms:
+          type: object
+          nullable: true
+          description: >-
+            Since 2026-09-29. The terms vet402 actually paid on the last purchase
+            whose delivery it confirmed (settled, 2xx, non-empty body — the
+            facts.l1.n_delivered predicate), over the full history. Null for
+            role=payee and when nothing was ever delivered. Compare it with the
+            402 you received before you pay: if the 402's payTo, asset, network
+            or scheme differ from these, or its amount is higher than `amount`,
+            do not pay — an ALLOW is the fact that these terms delivered, not a
+            guarantee for a different recipient or a higher price.
+          required: [purchase_id, pay_to, asset, amount, decimals, network, scheme, protocol, verified_at]
+          properties:
+            purchase_id: { type: string, nullable: true, description: "Same form as facts.l1.last_purchase_id (`<CAIP-2>:<tx>`); null when the row has no tx." }
+            pay_to: { type: string, description: "The recipient paid. EVM addresses lowercase; Solana base58 and XRPL r-addresses as written." }
+            asset: { type: string, description: "The asset paid (EVM token contract, Solana mint, XRPL RLUSD currency code in hex)." }
+            amount: { type: string, description: "Amount paid in base units (integer string, 6 decimals). An XRPL 402 writes the amount as a decimal such as \"0.01\" — scale it by 10^6 before comparing." }
+            decimals: { type: integer, enum: [6] }
+            network: { type: string, description: "CAIP-2, e.g. eip155:8453." }
+            scheme: { type: string, enum: [exact, charge], description: "exact for x402, charge for MPP (Tempo)." }
+            protocol: { type: string, enum: [x402, mpp] }
+            verified_at: { type: string, format: date-time, description: "When that purchase was made (ISO 8601 UTC)." }
         evidence:
           type: array
           items: { $ref: "#/components/schemas/Evidence" }

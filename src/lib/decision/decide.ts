@@ -15,13 +15,14 @@ import { logAndSwallowSafe } from "@/lib/util/log-safe";
 import { isRegistryWritesEnabled } from "@/lib/chain/registry";
 import type { LruCache } from "@/lib/util/lru-cache";
 import { DECISION_CACHE_TTL_MS, decisionCache } from "./cache";
+import { lookupCallerHash } from "./lookup-caller";
 import { rowsOf } from "@/lib/settlements/upsert";
 import { l2EvidenceOf, loadSellerFacts, type SellerFactsLoaded } from "./seller-facts";
 import { loadBuyerFacts } from "./buyer-facts";
 import { decidePayer, decidePayee, l1BasisOf, l0SingleFailConfirmed, DECISION_RULES_VERSION, type L1Basis, type Recommendation, type PayerOptions } from "./rules";
 import { isSpendingHalted } from "@/lib/observatory/kill-switch";
 import { assertEvidenceContract, vet402Evidence } from "./evidence";
-import type { BuyerFacts, Evidence, Freshness, NotAttemptedReason, SellerFacts } from "./types";
+import type { BuyerFacts, Evidence, Freshness, NotAttemptedReason, SellerFacts, VerifiedTerms } from "./types";
 import type { CallerPolicy } from "./caller-policy";
 
 export const DECISION_DISCLAIMER =
@@ -66,6 +67,12 @@ export type DecisionResult = {
    * 最後の試行／署名／配達の時刻と経過日数・鮮度の上限（fresh_days）。facts の形は変えずに外へ置く。
    */
   l1_basis: L1Basis | null;
+  /**
+   * 2026-09-29 監査 5 周目（高）: vet402 が最後に配達を確かめた購入で払った条件（role=payer・無ければ null。payee は null）。
+   * 呼び手は受け取った 402 の payTo・asset・network・scheme がこれと違う、または額がこれを超えるなら払わない。
+   * ALLOW は「この条件で届いた」事実で、別の受取先・別の額への支払いを保証しない。
+   */
+  verified_terms: VerifiedTerms | null;
   evidence: Evidence[];
   score: { trustScore: number | null; recommendation: Recommendation | null; deprecated: true } | null;
   degraded: boolean;
@@ -100,6 +107,8 @@ export type BuildInput =
       spendingHalted?: boolean;
       /** 判別できたときだけ渡す。渡さなければ null のまま（理由を作らない）。 */
       notAttemptedReason?: NotAttemptedReason | null;
+      /** 最後に配達を確かめた購入の条件（seller-facts verifiedTermsOf）。省略は null。 */
+      verifiedTerms?: VerifiedTerms | null;
       now?: Date;
     }
   | {
@@ -165,6 +174,7 @@ export function buildDecision(input: BuildInput): DecisionResult {
         : null,
       freshness: { l0: f.l0.observed_at, l1: f.l1.observed_at, l2: f.l2.observed_at },
       l1_basis: l1BasisOf(f, options),
+      verified_terms: input.verifiedTerms ?? null,
       evidence,
       score: input.score ? { ...input.score, deprecated: true } : null,
       // 2026-09-29.2: 確かめられた 1 回の fail（掲載中・最新プローブ 120h 以内・直前 pass）は測れている——WARN であって
@@ -184,6 +194,7 @@ export function buildDecision(input: BuildInput): DecisionResult {
     not_attempted_reason: null,
     freshness: { l0: null, l1: input.facts.last_seen, l2: null },
     l1_basis: null,
+    verified_terms: null,
     evidence: [],
     score: null,
     degraded: input.facts.sybil.unavailable.length > 0,
@@ -219,14 +230,30 @@ function subjectOf(loaded: SellerFactsLoaded): DecisionSubject {
   };
 }
 
-/** §7.4: 問い合わせ回数を endpoint × UTC 日で加算（単文 upsert・失敗しても判定は落とさないが、理由はログに出す）。 */
-export function recordDecisionLookup(observatoryId: string): Promise<void> {
+/**
+ * §7.4: 問い合わせ回数を endpoint × UTC 日で加算（単文・失敗しても判定は落とさないが、理由はログに出す）。
+ *
+ * 2026-09-29 監査 5 周目（高）: **同じ呼び手は endpoint × UTC 日で 1 回だけ**数える。以前は呼び出しごとに 1 を
+ * 足していて、鍵なしの 10 回/分/IP の枠で同じ出品を 5 回叩けば「問い合わせ多」（C2・L1 の最優先枠）に入れた。
+ * decision_lookup_callers へ (endpoint, day, 呼び手の HMAC) を ON CONFLICT DO NOTHING で入れ、入ったときだけ
+ * decision_lookups.n を 1 増やす——同じ 1 文なので、同時の 2 回が両方数えられることは無い（主キーの衝突で片方が待つ）。
+ * 呼び手の材料は lookup-caller.ts（鍵 id か IP の /64）。材料が無い呼び出しは数えない（昇格させない側に倒す）。
+ */
+export function recordDecisionLookup(observatoryId: string, callerMaterial: string | null | undefined): Promise<void> {
   const db = getDb();
-  if (!db) return Promise.resolve();
+  if (!db || !callerMaterial) return Promise.resolve();
   const day = new Date().toISOString().slice(0, 10);
+  const callerHash = lookupCallerHash(callerMaterial, day);
   return db
     .execute(
-      sql`INSERT INTO decision_lookups (endpoint_id, day, n) VALUES (${observatoryId}::uuid, ${day}, 1)
+      sql`WITH seen AS (
+            INSERT INTO decision_lookup_callers (endpoint_id, day, caller_hash)
+            VALUES (${observatoryId}::uuid, ${day}, ${callerHash})
+            ON CONFLICT (endpoint_id, day, caller_hash) DO NOTHING
+            RETURNING endpoint_id, day
+          )
+          INSERT INTO decision_lookups (endpoint_id, day, n)
+          SELECT endpoint_id, day, 1 FROM seen
           ON CONFLICT (endpoint_id, day) DO UPDATE SET n = decision_lookups.n + 1`,
     )
     .then(() => undefined)
@@ -246,12 +273,16 @@ function notAttemptedReasonOf(halted: boolean, lastAttemptStatus: string | null)
   return null;
 }
 
-export type DecideRequest =
+export type DecideRequest = (
   | { role: "payer"; observatoryId: string; callerDialect?: "v1" | "v2"; allowWithoutL1?: boolean; operatorBlacklist: boolean }
-  | { role: "payee"; observatoryId: string; payerId: string; operatorBlacklist: boolean };
+  | { role: "payee"; observatoryId: string; payerId: string; operatorBlacklist: boolean }
+) & {
+  /** 問い合わせを数える単位（lookup-caller.ts lookupCallerMaterial）。無ければ数えない。判定とキャッシュには使わない。 */
+  callerMaterial?: string | null;
+};
 
 export async function decide(req: DecideRequest): Promise<DecisionResult | null> {
-  void recordDecisionLookup(req.observatoryId);
+  void recordDecisionLookup(req.observatoryId, req.callerMaterial);
   const baseKey =
     req.role === "payer"
       ? `${req.observatoryId}|payer|${req.callerDialect ?? "-"}|${req.allowWithoutL1 ? 1 : 0}|${req.operatorBlacklist ? 1 : 0}`
@@ -303,6 +334,7 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
       score,
       registry,
       notAttemptedReason: notAttemptedReasonOf(halt.halted, loaded.lastAttempt.status),
+      verifiedTerms: loaded.verifiedTerms ?? null,
     });
   } else {
     const facts = await loadBuyerFacts(req.payerId);

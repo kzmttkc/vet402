@@ -943,6 +943,27 @@ export const decisionLookups = pgTable(
 );
 
 /**
+ * 2026-09-29 監査 5 周目（高）: /decision の問い合わせを「呼び手 × endpoint × UTC 日」で 1 回に数えるための
+ * 重複除去の表。decision_lookups.n はこの表へ初めて入った行の数だけ増える（decide.ts recordDecisionLookup の単一文）。
+ * 以前は同じ呼び手の 5 回で「問い合わせ多」（C2・L1 の最優先枠）に昇格できた。
+ * caller_hash は鍵 id か IP（IPv6 は /64）の HMAC（API_KEY_PEPPER 由来・日ごとに違う値）。生の IP・鍵は持たない。
+ * 保持は 8 日（log-retention の purge が消す。C2 の窓は 7 日）。
+ */
+export const decisionLookupCallers = pgTable(
+  "decision_lookup_callers",
+  {
+    endpointId: uuid("endpoint_id").notNull(),
+    /** UTC day, YYYY-MM-DD */
+    day: text("day").notNull(),
+    callerHash: text("caller_hash").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.endpointId, t.day, t.callerHash] }),
+    index("decision_lookup_callers_day_idx").on(t.day),
+  ],
+);
+
+/**
  * 製品定義書 §10（2026-09-02）: 訂正ログ。公開判定が後から変わったとき before/after を残す。
  *   dispute_remeasure   売り手異議の再測定で公開判定が覆った
  *   settlement_backfill 照合バックフィルで L1 の状態が確定した（settled / refuted）

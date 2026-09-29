@@ -38,7 +38,7 @@ test("recordDecisionLookup: DB の失敗は判定を落とさず、理由がロ�
   const { recordDecisionLookup } = await import("@/lib/decision/decide");
   __setDbForTests({ execute: async () => Promise.reject(new Error("ECONNREFUSED decision_lookups")) });
   try {
-    const { logged } = await captureConsoleError(() => recordDecisionLookup("11111111-1111-4111-8111-111111111111"));
+    const { logged } = await captureConsoleError(() => recordDecisionLookup("11111111-1111-4111-8111-111111111111", "key:test"));
     assert.ok(logged.some((l) => l.includes("ECONNREFUSED decision_lookups")), `理由が出る: ${logged.join(" | ")}`);
   } finally {
     __setDbForTests(null);

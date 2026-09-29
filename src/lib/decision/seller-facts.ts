@@ -32,7 +32,7 @@ import { toCaip2 } from "@/lib/observatory/chains";
 import { getSettlementCounts } from "@/lib/settlements/census";
 import { rowsOf } from "@/lib/settlements/upsert";
 import { toIsoUtc } from "@/lib/util/iso-utc";
-import type { Dialect, Evidence, L2Status, OfferStability, SellerFacts } from "./types";
+import type { Dialect, Evidence, L2Status, OfferStability, SellerFacts, VerifiedTerms } from "./types";
 import type { L0SingleFailContext, L1Timeline } from "./rules";
 
 export type ProbeInput = {
@@ -471,6 +471,8 @@ export type SellerFactsLoaded = {
   l0UnverifiedCause?: string | null;
   /** 2026-09-29.2: 判定へ渡す窓の中の並び（l1TimelineOf）。応答の l1_basis の材料。 */
   l1Timeline?: L1Timeline;
+  /** 2026-09-29 監査 5 周目: 最後に配達を確かめた購入の条件（応答の verified_terms）。無ければ null。 */
+  verifiedTerms?: VerifiedTerms | null;
   /** 2026-09-29.2（独立レビュー）: L0 の 1 回の fail を WARN に緩める条件の材料（l0SingleFailContextOf）。 */
   l0SingleFailContext?: L0SingleFailContext | null;
   endpoint: {
@@ -494,6 +496,35 @@ function parseL2Detail(v: unknown): PurchaseInput["l2Detail"] {
     missing: Array.isArray(o.missing) ? o.missing.filter((k): k is string => typeof k === "string") : [],
     declarationHash: typeof o.declarationHash === "string" ? o.declarationHash : null,
     responseHash: o.responseHash,
+  };
+}
+
+/** Tempo（MPP）の CAIP-2。mpp-payer（支払いの依存）を判定の読み手へ持ち込まないため、値だけ置く。 */
+const TEMPO_MAINNET_NETWORK = "eip155:4217";
+
+/** 台帳の 1 行 → VerifiedTerms。欠けた列・読めない額は null（照合の材料を作らない）。純関数。 */
+export function verifiedTermsOf(r: Record<string, unknown> | null): VerifiedTerms | null {
+  if (!r) return null;
+  const str = (v: unknown): string | null => (typeof v === "string" && v.trim() !== "" ? v : null);
+  const tx = str(r.tx_hash);
+  const payTo = str(r.pay_to);
+  const asset = str(r.asset);
+  const amount = str(r.amount_units);
+  const network = str(r.network);
+  const at = toIsoUtc(str(r.attempted_at));
+  if (!payTo || !asset || !amount || !/^[0-9]+$/.test(amount) || !network || !at) return null;
+  const mpp = r.is_mpp === true || r.is_mpp === "t" || r.is_mpp === "true";
+  return {
+    // facts.l1.last_purchase_id と同じ形（CAIP-2:tx）。tx の無い行は null。
+    purchase_id: tx ? toPurchaseId(toCaip2(network) ?? network, tx) : null,
+    pay_to: /^0x/i.test(payTo) ? payTo.toLowerCase() : payTo,
+    asset,
+    amount,
+    decimals: 6,
+    network: toCaip2(network) ?? network,
+    scheme: mpp ? "charge" : "exact",
+    protocol: mpp ? "mpp" : "x402",
+    verified_at: at,
   };
 }
 
@@ -605,6 +636,20 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     `),
   );
 
+  // 2026-09-29 監査 5 周目: 最後に配達を確かめた購入で払った条件（全履歴・配達の述語は上と同じ）。
+  const verifiedTermsRows = rowsOf<Record<string, unknown>>(
+    await db.execute(sql`
+      SELECT tx_hash, pay_to, asset, amount_units, network, attempted_at::text AS attempted_at,
+             (raw_response_meta->>'protocol' = 'mpp' OR network = ${TEMPO_MAINNET_NETWORK}) AS is_mpp
+      FROM x402_l1_purchases
+      WHERE endpoint_id = ${endpointUuid}::uuid
+        AND status = 'settled' AND http_status_paid BETWEEN 200 AND 299 AND payload_non_empty IS TRUE
+        AND pay_to IS NOT NULL AND asset IS NOT NULL AND amount_units IS NOT NULL AND network IS NOT NULL
+      ORDER BY attempted_at DESC LIMIT 1
+    `),
+  );
+  const verifiedTerms = verifiedTermsOf(verifiedTermsRows[0] ?? null);
+
   const settlements30d = await getSettlementCounts({ endpointId: endpointUuid });
   const factsInput = {
     probes,
@@ -625,6 +670,7 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     l1NotCounted: l1NotCountedOf(factsInput),
     l0UnverifiedCause: l0UnverifiedCauseOf(probes),
     l1Timeline: l1TimelineOf(factsInput),
+    verifiedTerms,
     l0SingleFailContext: l0SingleFailContextOf(probes, ep.listing_status),
     endpoint: {
       id: ep.id,

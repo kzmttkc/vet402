@@ -101,14 +101,17 @@ const SURFACES: Surface[] = [
       // 2026-09-29.2: 判定が L1 について読んだ数と時刻（数えた／数えなかった試行・支払い済み未配達・
       // 最後の試行／署名／配達と経過日数）。role=payee では null。
       "l1_basis",
+      // 2026-09-29 監査 5 周目（高）: vet402 が最後に配達を確かめた購入で払った条件（payTo・asset・額・network・
+      // scheme・時刻）。呼び手が受け取った 402 と照合する材料。role=payee と未配達では null。
+      "verified_terms",
     ],
     pendingImpl: {
       "packages/sdk/src/index.ts": {
-        fields: ["l1_basis"],
+        fields: ["l1_basis", "verified_terms"],
         why: "SDK は凍結中（2026-09-29）。応答の未知のキーは型に無いだけで実行時はそのまま透過する（reason_codes も文字列のまま通す）。凍結が解けたら型に足してこの例外を消す。",
       },
       "packages/mcp-server/src/vouch-client.ts": {
-        fields: ["l1_basis"],
+        fields: ["l1_basis", "verified_terms"],
         why: "2026-09-29.2 の判定規則の変更は src/lib/decision の担当範囲で、MCP の型は別担当。実行時は応答をそのまま受ける。型に足したらこの例外を消す。",
       },
     },

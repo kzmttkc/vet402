@@ -1,6 +1,7 @@
 import { lt, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { dashboardSessions, ipRateLimits } from "@/lib/db/schema";
+import { isMissingSchemaError } from "@/lib/db/pg-errors";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -16,7 +17,15 @@ export type PurgeLogsResult = {
   rateLimitsDeleted: number;
   /** verification_requests rows whose raw requester IP was cleared. */
   requesterIpsScrubbed: number;
+  /**
+   * decision_lookup_callers rows older than LOOKUP_CALLER_RETENTION_DAYS (2026-09-29 audit round 5).
+   * null when the table does not exist yet (DDL not applied) — not the same as 0 deleted.
+   */
+  lookupCallersDeleted: number | null;
 };
+
+/** decision_lookup_callers の保持日数。C2 の昇格は直近 7 日の問い合わせを見るので、それより 1 日長く持つ。 */
+export const LOOKUP_CALLER_RETENTION_DAYS = 8;
 
 function cutoffDate(days: number): Date {
   return new Date(Date.now() - days * MS_PER_DAY);
@@ -72,7 +81,20 @@ export async function purgeExpiredLogs(): Promise<PurgeLogsResult> {
       `),
     ]);
 
+  // 2026-09-29 監査 5 周目: 問い合わせの重複除去の表（呼び手の HMAC）も 8 日で消す。表がまだ無い環境
+  // （DDL 未適用）では他の掃除を落とさない——null で返す。
+  let lookupCallersDeleted: number | null = null;
+  try {
+    const lookupCutoff = new Date(Date.now() - LOOKUP_CALLER_RETENTION_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
+    lookupCallersDeleted = sqlDeleteCount(
+      await db.execute(sql`DELETE FROM decision_lookup_callers WHERE day < ${lookupCutoff}`),
+    );
+  } catch (error) {
+    if (!isMissingSchemaError(error)) throw error;
+  }
+
   return {
+    lookupCallersDeleted,
     trustEventsDeleted: sqlDeleteCount(freeDeleted) + sqlDeleteCount(paidDeleted),
     sessionsDeleted: sessionsDeleted.length,
     rateLimitsDeleted: rateLimitsDeleted.length,

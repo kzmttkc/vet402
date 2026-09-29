@@ -113,6 +113,32 @@ export type BuyerFacts = {
 export type Freshness = { l0: string | null; l1: string | null; l2: string | null };
 
 /**
+ * 2026-09-29 監査 5 周目（高）: vet402 が**最後に配達を確かめた購入**で実際に払った条件（role=payer）。
+ * 配達 = facts.l1.n_delivered と同じ述語（settled・2xx・非空）。呼び手はこれと自分が受け取った 402 を照合し、
+ * payTo・asset・network・scheme が違う、または額がこれを超えるなら払わない——ALLOW は「この条件で届いた」
+ * 事実であって、別の受取先・別の額への支払いを保証しない（判定の持ち越し・偽装の対策）。
+ */
+export type VerifiedTerms = {
+  /** 公開台帳の購入 id（facts.l1.last_purchase_id と同じ形 `<CAIP-2>:<tx>`）。tx の無い行は null。 */
+  purchase_id: string | null;
+  /** 払った受取先。EVM は小文字、Solana の base58・XRPL の r アドレスは原文。 */
+  pay_to: string;
+  /** 払った資産（EVM・Solana は契約／mint、XRPL は RLUSD の通貨コード hex）。 */
+  asset: string;
+  /** 払った額（基本単位の整数文字列・小数 6 桁の目盛り）。XRPL の 402 は "0.01" のような 10 進で書く——6 桁に直して比べる。 */
+  amount: string;
+  /** amount の小数桁（台帳は全チェーンで 6）。 */
+  decimals: 6;
+  /** CAIP-2（例: eip155:8453）。 */
+  network: string;
+  /** x402 は "exact"、MPP（Tempo）は "charge"。 */
+  scheme: "exact" | "charge";
+  protocol: "x402" | "mpp";
+  /** その購入の時刻（配達を確かめた試行・ISO 8601 UTC）。 */
+  verified_at: string;
+};
+
+/**
  * 証拠 1 行の**出どころ**（2026-09-05・WINDOW_PLAN §2 #3）。
  *
  *   vet402    我々自身の L0–L2 台帳。実際に払って測った記録

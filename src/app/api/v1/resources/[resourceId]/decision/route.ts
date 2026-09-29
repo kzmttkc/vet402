@@ -11,6 +11,8 @@ import { SHA256_HEX_RE, parsePartyId, payeeId as toPartyId } from "@/lib/ids/can
 import { getResource } from "@/lib/resolve/lookup";
 import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
+import { getClientIp } from "@/lib/api/client-ip";
+import { lookupCallerMaterial } from "@/lib/decision/lookup-caller";
 
 // §9.1: GET /api/v1/resources/{resource_id}/decision?role=payer|payee&caller_dialect=v1|v2
 //   role=payer  「このURLは今、宣言どおり届くか」→ 売り手事実 + 判定
@@ -153,10 +155,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const list = await lookupManualList(apiKeyId, listSubject && listSubject.startsWith("0x") ? listSubject : null);
     const operatorBlacklist = list === "blacklist";
 
+    // 2026-09-29 監査 5 周目: 問い合わせは呼び手（鍵 id・鍵なしは IP の /64）× endpoint × UTC 日で 1 回だけ数える。
+    const callerMaterial = lookupCallerMaterial({ apiKeyId, ip: caller.kind === "keyless" ? getClientIp(request) : null });
     const result =
       roleRaw === "payer"
-        ? await decide({ role: "payer", observatoryId: ref.observatory_id, callerDialect: dialectRaw ?? undefined, allowWithoutL1, operatorBlacklist })
-        : await decide({ role: "payee", observatoryId: ref.observatory_id, payerId: payerId!, operatorBlacklist });
+        ? await decide({ role: "payer", observatoryId: ref.observatory_id, callerDialect: dialectRaw ?? undefined, allowWithoutL1, operatorBlacklist, callerMaterial })
+        : await decide({ role: "payee", observatoryId: ref.observatory_id, payerId: payerId!, operatorBlacklist, callerMaterial });
     if (!result) return fail(caller, 404, "not_found");
     // 2026-09-02: §12 の SLO（p95 < 200ms・キャッシュヒット）はサーバ内時間で測る。東京からの
     // 壁時計（0.44–0.77s）では往復が混ざるので、計算時間を Server-Timing で返す。
