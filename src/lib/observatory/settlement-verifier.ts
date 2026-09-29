@@ -37,7 +37,7 @@ import { SELLER_NAMED_TX_NOT_FOUND, SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS, SELLER
  * tx がチェーンに無いまま「照合待ち」が続いた（api.wines.bet: 2026-09-12 から 17 日）。購入から
  * SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS 日たっても見つからない行は、日付付きで「売り手の名指した tx が見つからない」
  * として確定する（settle_claim_refuted・理由は SELLER_NAMED_TX_NOT_FOUND で始まる）。受領証の tx がハッシュの形ですらない行
- * （settle_claimed_unverifiable・例 "first-can"）も、同じ日数の後に同じ語で確定する（チェーンは読まない）。
+ * （settle_claimed_unverifiable・例 "first-can"）も、同じ日数の後、nonce の認可が未使用とチェーンで読めたときだけ同じ語で確定する。
  * 遅延回収で vet402 が貼った tx（売り手は名指していない）と、売り手が success:false のまま名指した tx には当てない
  * ——tx_not_found のまま deferred に置く（2026-09-29 独立レビュー HIGH: 期限で取り消し・申告の戻しへ進めると、RPC の
  * 失敗で実在する決済を rejectedTxHashes に永久に入れうる）。
@@ -547,12 +547,15 @@ export async function runSettlementVerification(options?: {
     // tx は読めないので、nonce のある行は認可が使われていない（お金が動いていない）とチェーンで確かめてから確定する。
     // 使われていた・読めなかったときは触らない（決済はどこかで起きている＝遅延回収の対象）。
     if (row.status === "settle_claimed_unverifiable") {
-      if (row.auth_nonce && row.payer) {
-        const used = await authorizationState({ network: row.network, payer: row.payer, nonce: row.auth_nonce });
-        if (used !== false) {
-          summary.deferred++;
-          return;
-        }
+      // 2026-09-29 独立レビュー: nonce の無い行はチェーンで確かめられないので確定しない（照合待ちのまま）。
+      if (!row.auth_nonce || !row.payer) {
+        summary.deferred++;
+        return;
+      }
+      const used = await authorizationState({ network: row.network, payer: row.payer, nonce: row.auth_nonce });
+      if (used !== false) {
+        summary.deferred++;
+        return;
       }
       await expireSellerNamedTx(row, `the receipt's transaction id ${JSON.stringify(row.tx_hash.slice(0, 40))} is not a transaction hash`);
       return;
