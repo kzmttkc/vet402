@@ -222,12 +222,15 @@ if (!TEST_DB) {
         },
       },
       paid(s6, "2026-09-28T12:00:00Z", { http: 500 }),
+      // 2026-09-29 第4巡: seller の側は別の日に 2 回以上。s1 は 09-26 にも同じ形の失敗がある（一覧は最新の行しか
+      // 読まないので、この行は readSellerFailureDays が読む）。s6 は 1 回だけ → not sorted: one failure so far。
+      paid(s1, "2026-09-26T12:00:00Z", { http: 502 }),
     ]);
     const board = await readSellerBoard(db);
     const sel = board.sellers.find((s) => s.host === "seller.example")!;
-    assert.equal(sel.seller, 2, "s1 and s6");
+    assert.equal(sel.seller, 1, "s1 (two days)");
     assert.equal(sel.vet402, 1, "s4 payer_short");
-    assert.equal(sel.unsorted, 2, "s2 stopped_waiting, s3 input_not_sent");
+    assert.equal(sel.unsorted, 3, "s2 stopped_waiting, s3 input_not_sent, s6 one failure so far");
     assert.equal(sel.notPaid, 1, "s5");
     const d = (await readSellerDetail(db, "seller.example"))!;
     const by = (id: string) => d.listings.find((l) => l.endpointId === id)!.latest!;
@@ -249,7 +252,9 @@ if (!TEST_DB) {
       { scheme: "upto", network: "eip155:8453", amount: "1000000", asset: USDC, payTo: PAY, maxTimeoutSeconds: 300 },
     ]);
     assert.match(by(s5).seen402 ?? "", /^The 402 offered: upto · eip155:8453 · amount 1000000/);
-    assert.equal(by(s6).mode?.key, "server_error_paid", "a schema for any header is not a declared header");
+    assert.equal(by(s6).mode?.key, "server_error_paid_once", "a schema for any header is not a declared header; one failure so far");
+    assert.equal(by(s1).confirmedSeller, true);
+    assert.equal(d.hasConfirmedSeller, true);
   });
 
   test("vet402 の側（payer_unfunded・body_not_sent）の判定は retest の RETEST_SELLERS_SQL と同じ売り手を選ぶ", async () => {
@@ -322,11 +327,14 @@ if (!TEST_DB) {
     // 旗 off: retest の SQL を流さず、誰も rebuyEligible にしない
     const off = await readSellerBoard(db, false);
     assert.equal(off.sellers.filter((s) => s.rebuyEligible).length, 0);
-    // retest が選ぶ売り手は、この頁でもこちらの側（rt9 の決済済み POST 400 は頁ではこちらの側だが retest は買い直さない）
+    // retest が選ぶ売り手は、この頁でもこちらの側（rt9 の決済済み POST 400 は retest が買い直さない。頁では下の charged_unsent_input）
     assert.equal(board.sellers.find((s) => s.host === "mix.example")?.rebuyEligible, false, "retest and this page disagree on the row");
     assert.equal(board.sellers.find((s) => s.host === "mix.example")?.vet402, 1);
     for (const h of retestHosts) assert.equal(board.sellers.find((s) => s.host === h)?.vet402, 1, h);
-    assert.equal(board.sellers.find((s) => s.host === "rt9.example")?.vet402, 1, "settled POST 400 before the cutover, body declared");
+    // 2026-09-29 第4巡: 決済済みの POST 400（本文を送る前・本文の宣言あり）は頁では両方の事実（charged_unsent_input・not sorted）
+    assert.equal(board.sellers.find((s) => s.host === "rt9.example")?.vet402, 0, "settled POST 400 before the cutover, body declared");
+    assert.equal(board.sellers.find((s) => s.host === "rt9.example")?.unsorted, 1);
+    assert.ok(board.groups.some((g) => g.key === "charged_unsent_input" && g.sellers.some((x) => x.host === "rt9.example")));
     assert.equal(board.sellers.find((s) => s.host === "rt9.example")?.rebuyEligible, false);
   });
 }

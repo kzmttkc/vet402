@@ -6,16 +6,44 @@
 // ============================================================
 import { chainLabel, explorerTxUrl } from "@/lib/observatory/chains";
 import {
-  classifyRow,
+  classifySellerRow,
+  exportReasonLine,
   FIX_MODES,
   NOT_IN_EXPORT_STATUSES,
   observed402Line,
+  paidEvidenceLines,
   rowNote,
+  sellerCandidateDay,
   SIGNED_ROW_STATUSES,
   type Bucket,
   type FixMode,
   type SellerRowFacts,
 } from "./fix-modes";
+
+/**
+ * 出品（endpoint id）→ seller の側の候補になった失敗の UTC の日付（2026-09-29 第4巡・reader.ts の
+ * readSellerFailureDays）。無い出品は、手元の行だけで数える。
+ */
+export type FailureDays = ReadonlyMap<string, ReadonlySet<string>>;
+
+/** 手元の行から、出品ごとの候補の日付を集める（reader が読まなかった出品・テスト用）。 */
+export function failureDaysOf(rows: readonly SellerRowFacts[], into: Map<string, Set<string>> = new Map()): Map<string, Set<string>> {
+  for (const r of rows) {
+    const day = sellerCandidateDay(r);
+    if (day === null) continue;
+    const set = into.get(r.endpointId) ?? new Set<string>();
+    set.add(day);
+    into.set(r.endpointId, set);
+  }
+  return into;
+}
+
+/** reader の読んだ日付と手元の行の日付を合わせる（どちらかにあれば数える）。 */
+function mergeDays(rows: readonly SellerRowFacts[], days: FailureDays | undefined): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
+  if (days) for (const [k, v] of days) out.set(k, new Set(v));
+  return failureDaysOf(rows, out);
+}
 
 export interface OutcomeCounts {
   delivered: number;
@@ -114,24 +142,26 @@ export function buildSellerBoard(
   latest: readonly LatestRow[],
   fetchedAt: string,
   retest: RetestQueue | null = null,
+  days?: FailureDays,
 ): SellerBoard {
+  const allDays = mergeDays(latest, days);
   const byHost = new Map<string, SellerSummary>();
   for (const h of hostListings) {
     byHost.set(h.host, { host: h.host, listings: h.listings, ...zero(), lastAttemptAt: null, rebuyEligible: false, rebuyEndpointId: null });
   }
-  const acc = new Map<string, { hosts: Map<string, number>; statuses: Record<string, number>; listings: number }>();
+  const acc = new Map<string, { mode: FixMode; hosts: Map<string, number>; statuses: Record<string, number>; listings: number }>();
   const newest = new Map<string, LatestRow & { modeKey: string | null }>();
   for (const r of latest) {
     const s = byHost.get(r.host);
     if (!s) continue;
-    const c = classifyRow(r);
+    const c = classifySellerRow(r, { sellerFailureDays: allDays.get(r.endpointId) });
     s[bucketKey(c.bucket)]++;
     if (!s.lastAttemptAt || r.attemptedAt > s.lastAttemptAt) s.lastAttemptAt = r.attemptedAt;
     const prev = newest.get(r.host);
     if (!prev || r.attemptedAt > prev.attemptedAt) newest.set(r.host, { ...r, modeKey: c.mode?.key ?? null });
     if (c.mode) {
       let a = acc.get(c.mode.key);
-      if (!a) acc.set(c.mode.key, (a = { hosts: new Map(), statuses: {}, listings: 0 }));
+      if (!a) acc.set(c.mode.key, (a = { mode: c.mode, hosts: new Map(), statuses: {}, listings: 0 }));
       a.listings++;
       a.hosts.set(r.host, (a.hosts.get(r.host) ?? 0) + 1);
       a.statuses[r.status] = (a.statuses[r.status] ?? 0) + 1;
@@ -163,8 +193,8 @@ export function buildSellerBoard(
   }
   sellers.sort(compareSellers);
 
-  const groups: FixGroup[] = [...acc.entries()].map(([key, a]) => {
-    const mode = FIX_MODES.find((m) => m.key === key)!;
+  const groups: FixGroup[] = [...acc.values()].map((a) => {
+    const mode = a.mode;
     const groupSellers = [...a.hosts.entries()]
       .sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]))
       .map(([host, listings]) => ({ host, listings }));
@@ -226,6 +256,12 @@ export interface ShownRow {
   signed: boolean;
   /** そのとき vet402 が見た 402 の要点（記録済みの範囲・fix-modes.ts の observed402Line）。 */
   seen402: string | null;
+  /** seller の側（確定・別の日に 2 回以上・2026-09-29 第4巡）。頁はこの行に印を付ける。 */
+  confirmedSeller: boolean;
+  /** 署名した支払いの要点と、支払い付き要求への応答の要点（fix-modes.ts の paidEvidenceLines）。 */
+  evidence: { signed: string; answer: string } | null;
+  /** export.csv の held_reason と頁の原因が違うときの説明（fix-modes.ts の exportReasonLine）。 */
+  exportReason: string | null;
 }
 
 export interface SellerListing extends SellerEndpointFacts {
@@ -234,6 +270,11 @@ export interface SellerListing extends SellerEndpointFacts {
   earlier: ShownRow[];
   /** 最新の行が届いていて、その前に届かなかった行がある（「直った」とは書かない。事実だけを出す）。 */
   deliveredAfterFailure: boolean;
+  /**
+   * 売り手について何かを言う最新の行（delivered か seller の側（確定））。最新の行が vet402 の側・not sorted・
+   * not bought・照合待ちのとき、頁は「最新は 0 delivered」ではなくこちらを添える（2026-09-29 第4巡）。
+   */
+  lastSellerSignal: { at: string; bucket: "delivered" | "seller" } | null;
 }
 
 export interface SellerDetail {
@@ -243,12 +284,19 @@ export interface SellerDetail {
   listings: SellerListing[];
   /** 表示した行の中で census / retest で選ばれた行の数。 */
   selectedBy: { census: number; retest: number };
+  /** 表示した行に seller の側（確定）がある（頁の冒頭の「見直し中」の帯はこの時だけ）。 */
+  hasConfirmedSeller: boolean;
+  /**
+   * 出品ごとに、売り手について何かを言う最新の行で数えた数（lastSellerSignal）。none は試したが
+   * delivered も seller の側も無い出品（vet402 の側・not sorted・not bought・照合待ちだけ）。
+   */
+  sellerView: { delivered: number; seller: number; none: number };
 }
 
 export const EARLIER_ROWS_SHOWN = 4;
 
-export function showRow(r: SellerRowFacts): ShownRow {
-  const c = classifyRow(r);
+export function showRow(r: SellerRowFacts, days?: Iterable<string>): ShownRow {
+  const c = classifySellerRow(r, { sellerFailureDays: days });
   return {
     facts: r,
     bucket: c.bucket,
@@ -259,6 +307,9 @@ export function showRow(r: SellerRowFacts): ShownRow {
     note: rowNote(r, c.mode?.key ?? null),
     signed: SIGNED_ROW_STATUSES.has(r.status),
     seen402: observed402Line(r),
+    confirmedSeller: c.confirmedSeller,
+    evidence: paidEvidenceLines(r),
+    exportReason: exportReasonLine(c.held, c.mode),
   };
 }
 
@@ -280,7 +331,9 @@ export function buildSellerDetail(
   endpoints: readonly SellerEndpointFacts[],
   rows: readonly SellerRowFacts[],
   fetchedAt: string,
+  days?: FailureDays,
 ): SellerDetail {
+  const allDays = mergeDays(rows, days);
   const byEndpoint = new Map<string, SellerRowFacts[]>();
   for (const r of rows) {
     const list = byEndpoint.get(r.endpointId) ?? [];
@@ -290,21 +343,30 @@ export function buildSellerDetail(
   const selectedBy = { census: 0, retest: 0 };
   const listings: SellerListing[] = endpoints.map((e) => {
     const own = (byEndpoint.get(e.endpointId) ?? []).slice().sort((a, b) => b.attemptedAt.localeCompare(a.attemptedAt));
-    const shown = own.slice(0, 1 + EARLIER_ROWS_SHOWN).map(showRow);
+    const shown = own.slice(0, 1 + EARLIER_ROWS_SHOWN).map((r) => showRow(r, allDays.get(e.endpointId)));
     for (const s of shown) {
       if (s.facts.selection === "census") selectedBy.census++;
       if (s.facts.selection === "retest") selectedBy.retest++;
     }
     const latest = shown[0] ?? null;
     const earlier = shown.slice(1);
-    const deliveredAfterFailure = latest?.bucket === "delivered" && own.slice(1).some((r) => classifyRow(r).bucket !== "delivered");
-    return { ...e, latest, earlier, deliveredAfterFailure };
+    const deliveredAfterFailure = latest?.bucket === "delivered" && shown.slice(1).some((r) => r.bucket !== "delivered");
+    const signal = shown.find((r) => r.bucket === "delivered" || r.bucket === "seller");
+    const lastSellerSignal = signal ? { at: signal.facts.attemptedAt, bucket: signal.bucket as "delivered" | "seller" } : null;
+    return { ...e, latest, earlier, deliveredAfterFailure, lastSellerSignal };
   });
   listings.sort(compareListings);
   const latestRows: LatestRow[] = listings.filter((l) => l.latest).map((l) => ({ ...l.latest!.facts, host }));
-  const board = buildSellerBoard([{ host, listings: endpoints.length }], latestRows, fetchedAt);
+  const board = buildSellerBoard([{ host, listings: endpoints.length }], latestRows, fetchedAt, null, allDays);
   const summary = board.sellers[0] ?? { host, listings: 0, ...zero(), lastAttemptAt: null, rebuyEligible: false, rebuyEndpointId: null };
-  return { fetchedAt, host, summary, listings, selectedBy };
+  const hasConfirmedSeller = listings.some((l) => [l.latest, ...l.earlier].some((r) => r?.confirmedSeller));
+  const sellerView = { delivered: 0, seller: 0, none: 0 };
+  for (const l of listings) {
+    if (!l.latest) continue;
+    if (l.lastSellerSignal) sellerView[l.lastSellerSignal.bucket]++;
+    else sellerView.none++;
+  }
+  return { fetchedAt, host, summary, listings, selectedBy, hasConfirmedSeller, sellerView };
 }
 
 /**
@@ -406,4 +468,52 @@ export async function resolveSellerPage(
   if (!(await load.purchasedHosts()).includes(host)) return { kind: "none" };
   const other = await load.otherChains(host);
   return other ? { kind: "other_chains", other } : { kind: "none" };
+}
+
+// ------------------------------------------------------------
+// 記録頁（/observatory/e/[id]）とそのバッジ（2026-09-29 第4巡）。
+//
+// 記録頁の L1 表の各行に、売り手頁と同じ語で「どちらの側か」を書く。バッジは vet402 の側の失敗を分母から外し、
+// 「vet402 side N」と書き分ける（thevaultreport.com 型: 以前は資金切れの 402 を inconclusive として分母に入れ
+// 「2/3 settled · 1 inconclusive」と配っていた）。
+// ------------------------------------------------------------
+
+export interface RecordSides {
+  /** 行の鍵（recordRowKey）→ 分類。新しい順。 */
+  rows: ReadonlyMap<string, ShownRow>;
+  /** 署名した行のうち vet402 の側。 */
+  vet402Side: number;
+  /** そのうち settled（分母の settled から外す分）。 */
+  vet402SideSettled: number;
+  /** そのうち held_reason のある行（inconclusive から外す分）。 */
+  vet402SideHeld: number;
+  /** そのうち held_reason が settled_4xx の行（inconclusiveSettled から外す分）。 */
+  vet402SideHeldSettled: number;
+  /** seller の側（確定）の L1 の行の数。1 つでもあれば記録頁は noindex（売り手頁の noindex を外すまで）。 */
+  confirmedSeller: number;
+}
+
+/** 記録頁の行（reader.ts の getEndpointDetail の行）と、ここで分類した行を突き合わせる鍵。 */
+export function recordRowKey(attemptedAt: string | Date | null, status: string, txHash: string | null): string {
+  const iso = attemptedAt instanceof Date ? attemptedAt.toISOString() : (attemptedAt ?? "");
+  return `${iso.slice(0, 19)}|${status}|${(txHash ?? "").toLowerCase()}`;
+}
+
+export function buildRecordSides(rows: readonly SellerRowFacts[]): RecordSides {
+  const days = failureDaysOf(rows);
+  const out: RecordSides = { rows: new Map(), vet402Side: 0, vet402SideSettled: 0, vet402SideHeld: 0, vet402SideHeldSettled: 0, confirmedSeller: 0 };
+  const map = out.rows as Map<string, ShownRow>;
+  for (const r of rows) {
+    const shown = showRow(r, days.get(r.endpointId));
+    const key = recordRowKey(r.attemptedAt, r.status, r.txHash);
+    if (!map.has(key)) map.set(key, shown);
+    if (!SIGNED_ROW_STATUSES.has(r.status)) continue;
+    if (shown.confirmedSeller) out.confirmedSeller++;
+    if (shown.bucket !== "vet402") continue;
+    out.vet402Side++;
+    if (r.status === "settled") out.vet402SideSettled++;
+    if (shown.held) out.vet402SideHeld++;
+    if (shown.held === "settled_4xx") out.vet402SideHeldSettled++;
+  }
+  return out;
 }

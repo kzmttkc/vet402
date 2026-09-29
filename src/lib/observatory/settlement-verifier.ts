@@ -73,6 +73,19 @@ export const INSTRUMENT_FAILURE_REASONS = new Set(["wrong_chain", "malformed_tx"
  * 印は raw_response_meta.lateSettlement。2026-09-19 以降の回収は貼った tx を lateSettlement.txHash に残すので、
  * あればいまの tx_hash と一致することも要求する（旧い行には無い——印だけで判定する）。
  */
+/** recover-late の promoteNamedTx の印（raw_response_meta.namedTxPromotion）。無ければ null。純関数。 */
+export function namedTxPromotionOf(row: { named_tx_promotion: unknown }): Record<string, unknown> | null {
+  let v = row.named_tx_promotion;
+  if (typeof v === "string") {
+    try {
+      v = JSON.parse(v);
+    } catch {
+      return null;
+    }
+  }
+  return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
 export function lateLinkOf(row: { tx_hash: string; late_settlement: unknown }): Record<string, unknown> | null {
   let late = row.late_settlement;
   if (typeof late === "string") {
@@ -97,6 +110,11 @@ export type VerifySettlementsSummary = {
    * （2026-09-19 レビュー C1）。refuted には数えない——売り手の所見ではなく、我々の推定の取り消し。
    */
   lateLinksWithdrawn: number;
+  /**
+   * 売り手が success:false と申告したまま名指した tx が照合で合わず、申告どおりの失敗へ戻した件数（2026-09-29 第4巡）。
+   * refuted には数えない。
+   */
+  sellerDeclaredUnsettled: number;
   /**
    * 1 行の処理が例外で落ちた件数（2026-09-19 レビュー 2 巡目）。落ちた行は触らずに次の行へ進む
    * ——1 件の DB エラーや RPC クライアントの故障で、残りの行の照合まで道連れにしない。
@@ -155,6 +173,7 @@ export async function runSettlementVerification(options?: {
     verified: 0,
     refuted: 0,
     lateLinksWithdrawn: 0,
+    sellerDeclaredUnsettled: 0,
     rowErrors: 0,
     deferred: 0,
     evidenceWritten: 0,
@@ -176,6 +195,8 @@ export async function runSettlementVerification(options?: {
            pu.status, pu.endpoint_id::text AS endpoint_id, pu.auth_nonce, e.resource_url,
            -- 遅延回収の印（recover-late.ts）。あれば tx を結び付けたのは売り手ではなく vet402 自身。
            pu.raw_response_meta->'lateSettlement' AS late_settlement,
+           -- 2026-09-29 第4巡: 売り手が success:false のまま名指した tx を recover-late が照合へ回した印（promoteNamedTx）。
+           pu.raw_response_meta->'namedTxPromotion' AS named_tx_promotion,
            -- 2026-09-04 監査 P1-1: 同じ (network, lower(tx_hash)) を主張している
            -- 他の購入行が居るか。決済 tx は 1 購入にしか属せないので、2 行以上が
            -- 同じ tx を指していたら**どちらも** settled にできない（どちらが
@@ -207,6 +228,7 @@ export async function runSettlementVerification(options?: {
     auth_nonce: string | null;
     resource_url: string | null;
     late_settlement: unknown;
+    named_tx_promotion: unknown;
     tx_claim_count: number | string | null;
   }[];
 
@@ -315,6 +337,37 @@ export async function runSettlementVerification(options?: {
       reason: "settlement_backfill",
     });
     summary.lateLinksWithdrawn++;
+    invalidateDecisionCache(row.endpoint_id);
+  }
+
+  /**
+   * 売り手が PAYMENT-RESPONSE で success:false と申告したまま名指した tx が、照合で合わなかった（2026-09-29 第4巡・
+   * 独立レビュー WARNING 3）。売り手は「決済していない」と正直に言っていたので、その tx の否定を売り手の申告の否定
+   * （settle_claim_refuted）にしない。申告どおりの失敗として、recover-late が移す前の status（delivered_no_receipt /
+   * settle_failed）へ戻し、照合の結果（settlement_verified = false と理由）を残す。tx はそのまま（売り手の原文）。
+   * Registry へは書かない（元の status のときも書いていない）。台帳と訂正ログは同じ文。settlement_verified が
+   * NULL でなくなるので recover-late は二度と移さない。
+   */
+  async function declineSellerNamedTx(row: PurchaseRow, promo: Record<string, unknown>, reason: string, detail?: string): Promise<void> {
+    const priorStatus =
+      promo.priorStatus === "delivered_no_receipt" || promo.priorStatus === "settle_failed" ? promo.priorStatus : "delivered_no_receipt";
+    const verifyReason = `seller_declared_unsettled: ${reason}${detail ? `: ${detail}` : ""}`.slice(0, 500);
+    await updateWithCorrection(db!, {
+      update: sql`
+        UPDATE x402_l1_purchases
+        SET status = ${priorStatus},
+            settlement_verified = false,
+            settlement_verified_at = now(),
+            settlement_verify_reason = ${verifyReason}::text
+        WHERE id = ${row.id}::uuid
+        RETURNING id::text AS correction_subject_id`,
+      subjectType: "purchase",
+      level: "l1",
+      before: { json: { status: row.status, txHash: row.tx_hash } },
+      after: { json: { status: priorStatus, txHash: row.tx_hash, sellerDeclaredUnsettled: reason } },
+      reason: "settlement_backfill",
+    });
+    summary.sellerDeclaredUnsettled++;
     invalidateDecisionCache(row.endpoint_id);
   }
 
@@ -476,6 +529,13 @@ export async function runSettlementVerification(options?: {
     const late = lateLinkOf(row);
     if (late) {
       await withdrawLateLink(row, late, result.reason, result.detail);
+      return;
+    }
+
+    // 売り手が success:false と申告したまま名指した tx（2026-09-29 第4巡）: 申告どおりの失敗に戻す。
+    const promo = namedTxPromotionOf(row);
+    if (promo) {
+      await declineSellerNamedTx(row, promo, result.reason, result.detail);
       return;
     }
 

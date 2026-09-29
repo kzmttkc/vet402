@@ -7,6 +7,8 @@
 // 頁はその時刻を出す——キャッシュから返した値に「今」の時刻を付けない。
 //
 // API ルートからは使わない（tests/public-page-cache.test.ts）。
+// 2026-09-29 第4巡: 返す形が変わった（ShownRow の証拠・SellerDetail の hasConfirmedSeller / sellerView）ので
+// 鍵を v2 に上げた。配備の直後に古い形のキャッシュを新しい描画へ渡さない。
 // ============================================================
 import { unstable_cache } from "next/cache";
 import { getDb } from "@/lib/db/client";
@@ -22,7 +24,7 @@ export const getSellerBoardCached: () => Promise<SellerBoard> = unstable_cache(
     if (!db) throw new SellersUnavailable("database not configured");
     return readSellerBoard(db);
   },
-  ["sellers:board:v1"],
+  ["sellers:board:v2"],
   { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
 );
 
@@ -32,7 +34,7 @@ export const getSellerDetailCached: (host: string) => Promise<SellerDetail | nul
     if (!db) throw new SellersUnavailable("database not configured");
     return readSellerDetail(db, host);
   },
-  ["sellers:detail:v1"],
+  ["sellers:detail:v2"],
   { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
 );
 
@@ -53,6 +55,6 @@ export const getSellerOtherChainsCached: (host: string) => Promise<SellerOtherCh
     if (!db) throw new SellersUnavailable("database not configured");
     return readSellerOtherChains(db, host);
   },
-  ["sellers:other-chains:v1"],
+  ["sellers:other-chains:v2"],
   { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
 );

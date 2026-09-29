@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import {
   BASE_USDC_ADDRESS,
   classifyRow,
+  classifySellerRow,
   DECLARED_BODY_SENT_SINCE,
   evidenceOf,
   FIX_MODES,
@@ -340,11 +341,15 @@ test("分類表: 鍵が重複せず、文言が空でなく、vet402 の側は�
     assert.ok(m.title && m.what && m.fix, m.key);
     if (m.side === "vet402") assert.match(m.fix, /^Nothing for the seller to fix\./, m.key);
   }
-  // 2026-09-29: 売り手の側に数えない種類（保留 2・課金なし 2・vet402 に落ち度が無いと示せない 5）と未分類 1
+  // 2026-09-29: 売り手の側に数えない種類（保留 2・課金なし 2・vet402 に落ち度が無いと示せない 5）と未分類 1。
+  // 第4巡: 決済済みで入力を送っていなかった 1 と、seller の各種類の「1 回だけ」版（once）。
+  const sellerKeys = FIX_MODES.filter((m) => m.side === "seller").map((m) => m.key);
   assert.deepEqual(
     FIX_MODES.filter((m) => m.side === "unsorted").map((m) => m.key).sort(),
     [
+      ...sellerKeys.map((k) => `${k}_once`),
       "answered_no_charge",
+      "charged_unsent_input",
       "funds_unproven",
       "input_not_sent",
       "input_unrecorded",
@@ -354,7 +359,7 @@ test("分類表: 鍵が重複せず、文言が空でなく、vet402 の側は�
       "settled_then_refused",
       "settled_then_rejected",
       "stopped_waiting",
-    ],
+    ].sort(),
   );
   // 署名しなかった行は「vet402 did not pay」とだけ書き、売り手に作り替えを求めない（2026-09-29 第2巡: 「exact を出せ」）
   for (const m of FIX_MODES.filter((x) => x.side === "not_bought")) {
@@ -379,9 +384,12 @@ test("集計: 種類ごとの合計 = 届かなかった出品、出品の内訳
   assert.equal(grouped, failed + board.totals.notPaid, "groups add up to the failures and the not-bought rows");
   // 失敗 + 払わなかった + 照合待ち + delivered = 試した出品（照合待ちは種類の束に入らない）
   assert.equal(board.totals.delivered + board.totals.pending + failed + board.totals.notPaid, KNOWN.length);
-  assert.equal(board.totals.notPaid, KNOWN.filter(([, , , side]) => side === "not_bought").length);
-  assert.equal(board.totals.delivered, KNOWN.filter(([, , , side]) => side === "delivered").length);
-  assert.equal(board.totals.pending, KNOWN.filter(([, , , side]) => side === "pending").length);
+  // 一覧は売り手頁の分類（classifySellerRow・2026-09-29 第4巡）で数える。
+  const boardSide = (r: SellerRowFacts) => classifySellerRow(r).bucket;
+  assert.equal(board.totals.notPaid, KNOWN.filter(([, r]) => boardSide(r) === "not_bought").length);
+  assert.equal(board.totals.delivered, KNOWN.filter(([, r]) => boardSide(r) === "delivered").length);
+  assert.equal(board.totals.pending, KNOWN.filter(([, r]) => boardSide(r) === "pending").length);
+  assert.equal(board.totals.seller, 0, "each seller-side row in KNOWN is its listing's only failure: one failure so far");
   assert.ok(board.totals.pending >= 1);
   assert.ok(!board.groups.some((g) => Object.keys(g.statuses).includes("settle_claimed")), "fix-first never groups a pending row");
   assert.equal(board.totals.listings, 7 * 20 + 3);
@@ -692,7 +700,7 @@ test("そのとき見た 402: 署名した行は払った条件、署名前に�
   });
   assert.equal(
     observed402Line(upto),
-    "The 402 offered: upto · eip155:8453 · amount 1000000 · asset 0x8335…2913 · payTo 0x2222…2222 · maxTimeoutSeconds 300. The listing declares price 0.01 · payTo 0x2222…2222.",
+    "The 402 offered: upto · eip155:8453 · amount 1000000 · asset 0x8335…2913 · payTo 0x2222…2222 · maxTimeoutSeconds 300. At the time, the listing declared price 0.01 · payTo 0x2222…2222.",
   );
   assert.equal(observed402Line(row({ status: "no_402", network: null, unpaidStatus: 404 })), "The unpaid request got HTTP 404, not a 402.");
   assert.equal(observed402Line(row({ status: "over_cap", network: null })), null);

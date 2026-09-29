@@ -6,6 +6,9 @@
 //   readSellerDetail  2 本。1 ホストの出品と、その購入行（出品ごとに新しい 5 行まで）。
 //   readPurchasedHosts      1 本。購入行のある host の集合（Base の出品が無い host を 404 にしないための関門）。
 //   readSellerOtherChains   1 本。1 ホストの出品ごとの最新の購入行（チェーンを問わない）。
+//   readSellerFailureDays   1 本（2026-09-29 第4巡）。seller の側の候補が最新・表示中にある出品だけ、その出品の
+//                           署名済みの行を全部読み、候補の失敗の UTC の日付を返す（2 回確定の材料）。
+//   readRecordSides         1 本（同）。記録頁とバッジ用。1 出品の購入行を全部読んで同じ語で分類する。
 // 頁はさらに cached.ts（Data Cache・PUBLIC_READ_REVALIDATE 秒）を通して読む。
 // ============================================================
 import { sql } from "drizzle-orm";
@@ -23,8 +26,10 @@ import {
   type SellerDetail,
   type SellerEndpointFacts,
   type SellerOtherChains,
+  buildRecordSides,
+  type RecordSides,
 } from "./board";
-import type { ChallengeAcceptSummary, SellerRowFacts } from "./fix-modes";
+import { SIGNED_ROW_STATUSES, sellerCandidateDay, type ChallengeAcceptSummary, type SellerRowFacts } from "./fix-modes";
 import { PATH_TEMPLATE_PG_REGEX } from "@/lib/observatory/path-template";
 import { BASE_NETWORKS, sellerHostSql } from "./host";
 
@@ -99,7 +104,13 @@ const ROW_COLUMNS = sql`
   ${PATH_TEMPLATE} AS path_template,
   ${CHALLENGE_MIN} AS challenge_min,
   CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN left(pu.raw_response_meta->>'declaredAmount', 30) END AS declared_amount,
-  CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN left(pu.raw_response_meta->>'declaredPayTo', 100) END AS declared_pay_to`;
+  CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN left(pu.raw_response_meta->>'declaredPayTo', 100) END AS declared_pay_to,
+  left(pu.auth_nonce, 80) AS auth_nonce,
+  CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' AND pu.raw_response_meta->>'phase' = 'paid'
+       THEN left(pu.raw_response_meta->>'contentType', 60) END AS paid_content_type,
+  coalesce(jsonb_typeof(pu.raw_settlement) = 'object', false) AS receipt_present,
+  CASE WHEN jsonb_typeof(pu.raw_settlement->'success') = 'boolean' THEN (pu.raw_settlement->>'success')::boolean END AS receipt_success,
+  CASE WHEN jsonb_typeof(pu.raw_settlement) = 'object' THEN left(pu.raw_settlement->>'errorReason', 60) END AS receipt_error_reason`;
 
 /** Base の出品（active・代表 network が Base）。 */
 const BASE_LISTING = sql`e.status = 'active' AND e.network IN (${BASE_A}, ${BASE_B})`;
@@ -154,6 +165,11 @@ export function toRowFacts(r: Record<string, unknown>): SellerRowFacts {
     challenge: challengeOf(r.challenge_min),
     declaredAmount: str(r.declared_amount),
     declaredPayTo: str(r.declared_pay_to),
+    authNonce: str(r.auth_nonce),
+    paidContentType: str(r.paid_content_type),
+    receiptPresent: typeof r.receipt_present === "boolean" ? r.receipt_present : null,
+    receiptSuccess: typeof r.receipt_success === "boolean" ? r.receipt_success : null,
+    receiptErrorReason: str(r.receipt_error_reason),
   };
 }
 
@@ -202,7 +218,8 @@ export async function readSellerBoard(db: Db, retestEnabled: boolean = isCensusE
     ORDER BY pu.endpoint_id, pu.attempted_at DESC, pu.id DESC`);
   const hosts = rowsOf(hostsRaw).map((r) => ({ host: String(r.host), listings: Number(r.listings) }));
   const latest: LatestRow[] = rowsOf(latestRaw).map((r) => ({ ...toRowFacts(r), host: String(r.host) }));
-  return buildSellerBoard(hosts, latest, fetchedAt, await readRetestQueue(db, retestEnabled));
+  const days = await readSellerFailureDays(db, latest.filter((r) => sellerCandidateDay(r) !== null).map((r) => r.endpointId));
+  return buildSellerBoard(hosts, latest, fetchedAt, await readRetestQueue(db, retestEnabled), days);
 }
 
 /**
@@ -242,7 +259,49 @@ export async function readSellerDetail(db: Db, host: string): Promise<SellerDeta
       WHERE pu.endpoint_id IN (SELECT (jsonb_array_elements_text(${ids}::jsonb))::uuid) AND ${BASE_ROW}
     ) t
     WHERE t.rn <= ${1 + EARLIER_ROWS_SHOWN}`);
-  return buildSellerDetail(host, endpoints, rowsOf(rowsRaw).map(toRowFacts), fetchedAt);
+  const rows = rowsOf(rowsRaw).map(toRowFacts);
+  const days = await readSellerFailureDays(db, rows.filter((r) => sellerCandidateDay(r) !== null).map((r) => r.endpointId));
+  return buildSellerDetail(host, endpoints, rows, fetchedAt, days);
+}
+
+const SIGNED_LIST = [...SIGNED_ROW_STATUSES];
+
+/**
+ * 出品ごとの、seller の側の候補になった失敗の UTC の日付（2026-09-29 第4巡・2 回確定の材料）。
+ * 候補が 1 つも無い出品は問い合わせない（呼び手が候補のある出品だけを渡す）。Base の出品の Base の行だけを見る
+ * （頁の数え方と同じ）。署名していない行は候補にならないので読まない。
+ */
+export async function readSellerFailureDays(db: Db, endpointIds: readonly string[]): Promise<Map<string, Set<string>>> {
+  const out = new Map<string, Set<string>>();
+  const unique = [...new Set(endpointIds)];
+  if (unique.length === 0) return out;
+  const ids = JSON.stringify(unique);
+  const raw = await db.execute(sql`
+    SELECT ${ROW_COLUMNS}
+    FROM x402_l1_purchases pu JOIN x402_endpoints e ON e.id = pu.endpoint_id
+    WHERE pu.endpoint_id IN (SELECT (jsonb_array_elements_text(${ids}::jsonb))::uuid) AND ${BASE_ROW}
+      AND pu.status IN (${sql.join(SIGNED_LIST.map((st) => sql`${st}`), sql`, `)})`);
+  for (const r of rowsOf(raw).map(toRowFacts)) {
+    const day = sellerCandidateDay(r);
+    if (day === null) continue;
+    const set = out.get(r.endpointId) ?? new Set<string>();
+    set.add(day);
+    out.set(r.endpointId, set);
+  }
+  return out;
+}
+
+/**
+ * 記録頁（/observatory/e/[id]）とそのバッジ用: 1 出品の購入行を全部（チェーンを問わない）読み、売り手頁と同じ語で
+ * 分類する（board.ts の buildRecordSides）。行が無ければ空。
+ */
+export async function readRecordSides(db: Db, endpointId: string): Promise<RecordSides> {
+  const raw = await db.execute(sql`
+    SELECT ${ROW_COLUMNS}, pu.id::text AS row_id
+    FROM x402_l1_purchases pu JOIN x402_endpoints e ON e.id = pu.endpoint_id
+    WHERE pu.endpoint_id = ${endpointId}::uuid
+    ORDER BY pu.attempted_at DESC, pu.id DESC`);
+  return buildRecordSides(rowsOf(raw).map(toRowFacts));
 }
 
 /**

@@ -1833,8 +1833,8 @@ claims:
     verified_at: 2026-09-29
   - id: sellers_settled_then_rejected_our_empty_body
     surface: src/lib/sellers/fix-modes.ts
-    quote: "The seller refused it with 400, 415 or 422, before or after the payment settled"
-    means: "出品が宣言した本文（2026-09-16 23:25:55Z より前の POST）をこちらが送っていなかった行は、決済の前後を問わず vet402 の側（body_not_sent）。415（form-data を宣言する売り手が JSON の {} を型で断る）も入る（2026-09-29 監査: api.neurodynamic.tech）"
+    quote: "The seller refused it with 400, 415 or 422, and the payment did not settle"
+    means: "出品が宣言した本文（2026-09-16 23:25:55Z より前の POST）をこちらが送っていなかった行のうち、決済されなかった行は vet402 の側（body_not_sent）。415（form-data を宣言する売り手が JSON の {} を型で断る）も入る（2026-09-29 監査: api.neurodynamic.tech）。2026-09-29 第4巡: 決済済みの行は公開の売り手頁では charged_unsent_input（売り手が代金を取った事実と、こちらが入力を送っていなかった事実の両方・どちらの側にも数えない）。判定 API は従来どおり vet402 の側として除く"
     check: null
     why_unverifiable: "時刻は過去で固定（request-body.ts の DECLARED_BODY_SENT_SINCE・BODY_NOT_SENT_REFUSAL_HTTP）。条件は fix-modes.ts の isBodyNotSent で、tests/sellers-fix-modes.test.ts・tests/seller-attribution.test.ts・tests/request-not-sent.pg.test.ts が固定する"
     verified_at: 2026-09-29
@@ -1950,4 +1950,26 @@ claims:
     means: "L1 の結果への異議でも、署名付き異議が起こすのは L0 プローブ 1 回で、購入はしない。記録頁に disputed の印は付かない"
     check: null
     why_unverifiable: "実装の記述で、公開 GET が返す値ではない。根拠は src/lib/observatory/disputes.ts の submitDispute（probeEndpoint を 1 回・購入の呼び出しなし）"
+    verified_at: 2026-09-29
+  # 2026-09-29 第4巡の敵対的監査（名指しされた売り手の弁護士・逆方向の誤り）。分類の正典は fix-modes.ts の classifySellerRow。
+  - id: sellers_seller_side_needs_two_days
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "It goes there only when the same listing has such a failure on at least two"
+    means: "(a)〜(e) を満たす失敗でも、同じ出品で別の UTC の日に 2 回以上なければ seller の側にしない（not sorted: one failure so far）。seller の側の行には under re-check の印を付け、そういう行がある売り手頁だけに見直し中の帯を出す"
+    check: null
+    why_unverifiable: "件数は台帳で日々動く。規則は src/lib/sellers/fix-modes.ts の classifySellerRow（SELLER_CONFIRM_DAYS）と reader.ts の readSellerFailureDays で、tests/sellers-attribution-r4.test.ts と tests/late-settlement-r4.pg.test.ts が固定する"
+    verified_at: 2026-09-29
+  - id: sellers_charged_unsent_input
+    surface: src/lib/sellers/fix-modes.ts
+    quote: "Both facts stand: the seller took the payment, and the request lacked the declared input"
+    means: "決済済み（settled）で 400/415/422、しかもこちらが宣言の本文（2026-09-16 23:25 UTC より前）か Base のクエリ（2026-09-27 23:27 UTC より前）を送っていなかった行は、売り手頁で charged_unsent_input（not sorted: charged, then rejected an input vet402 had not sent）。2026-09-29 の本番の読み取りで一覧の最新の行 44 件"
+    check: null
+    why_unverifiable: "行ごとの事実は export.csv の status（settled）・http_status_paid・request_body / request_query で確かめられる。分類は fix-modes.ts の sellerCandidateClass で、tests/sellers-attribution-r4.test.ts が固定する"
+    verified_at: 2026-09-29
+  - id: sellers_late_link_reads_chain
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "for such a row we read that payer&apos;s transfers to that address on-chain directly"
+    means: "決済索引（index-evm）はその時点のカタログの payTo を前へ読むだけなので、後からカタログに載った payTo 宛ての過去の着金は索引に無い。遅延照合（recover-late.ts の linkFromChain）は索引に候補の無い Base の行について、行の payer から pay_to への USDC Transfer をチェーンから直接読み、額・窓が合えば貼る（照合器が読み直す）。2026-09-29 の実測: Base のレシート無しの 2xx・tx なし 70 行のうち 43 行に価格ちょうどの着金があった"
+    check: null
+    why_unverifiable: "cron（/api/cron/index-settlements）の内部の手順で公開 GET に出ない。規則は src/lib/settlements/recover-late.ts（chooseLinks・linkFromChain・makeBaseTransferReader）で、tests/sellers-attribution-r4.test.ts と tests/late-settlement-r4.pg.test.ts が固定する。貼った行は raw_response_meta.lateSettlement.source = chain_read"
     verified_at: 2026-09-29

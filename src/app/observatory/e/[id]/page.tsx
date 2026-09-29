@@ -17,6 +17,11 @@ import { getEndpointDetail } from "@/lib/observatory/reader";
 import { explorerTxUrl } from "@/lib/observatory/chains";
 import RecordSubscribe from "@/components/site/RecordSubscribe";
 import { VerdictWord, ProbeTimeline, SettleGauge, type L0Verdict } from "@/components/site/Figures";
+import { getDb } from "@/lib/db/client";
+import { readRecordSides } from "@/lib/sellers/reader";
+import { recordRowKey, type RecordSides } from "@/lib/sellers/board";
+import { HELD_GLOSS, STATUS_GLOSS } from "@/lib/sellers/fix-modes";
+import { RECORD_DISPUTE_ANCHOR, UNDER_RECHECK, WhoseSide } from "@/components/site/sellers/SellersViews";
 
 /**
  * /observatory/e/[id] — one endpoint's full fact history (design §5).
@@ -62,7 +67,39 @@ import { VerdictWord, ProbeTimeline, SettleGauge, type L0Verdict } from "@/compo
 // generateMetadata for that.
 export const dynamic = "force-dynamic";
 
-type Props = { params: Promise<{ id: string }> };
+type Props = { params: Promise<{ id: string }>; searchParams?: Promise<{ purchase?: string | string[] }> };
+
+/**
+ * 2026-09-29 第4巡: 行ごとの「どちらの側か」（売り手頁と同じ語・src/lib/sellers）。読めなければ null（表は側を書かず、
+ * バッジは従来の数え方・頁は index のまま）。
+ */
+async function recordSides(id: string): Promise<RecordSides | null> {
+  const db = getDb();
+  if (!db) return null;
+  try {
+    return await readRecordSides(db, id);
+  } catch {
+    return null;
+  }
+}
+
+/** 売り手頁の「Dispute this purchase」が渡す購入の時刻（?purchase=ISO8601 UTC 秒まで）。形が違えば null。 */
+function purchaseParam(v: string | string[] | undefined): string | null {
+  const x = Array.isArray(v) ? v[0] : v;
+  return typeof x === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(x) ? x : null;
+}
+
+/** 表の用語の 1 文の説明（その場で読めるように・2026-09-29 第4巡）。 */
+const TIER_GLOSS = {
+  nonce: "the on-chain re-read also matched the one-time nonce vet402 signed for that purchase",
+  amountPayee: "the on-chain re-read matched amount, payee, asset and chain; no nonce was on record (rows before 2026-09-04)",
+} as const;
+const L2_GLOSS: Readonly<Record<string, string>> = {
+  not_checked: "not checked: the paid request did not answer 200, so there was no response to check against the listing's output schema",
+  no_declaration: "the listing declares no output schema to check the response against",
+  match: "the response had the fields the listing's output schema declares",
+  mismatch: "the response lacked fields the listing's output schema declares",
+};
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
@@ -76,10 +113,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   // 見出しが "Endpoint" のまま」というメタデータのズレを避けられる。
   if (!detail) notFound();
   const name = detail.endpoint.resourceKey;
+  // 2026-09-29 第4巡: 表題は中身（L0 のプローブと L1 の購入）に合わせる。seller の側（確定）の L1 の失敗を載せる
+  // 記録頁は、売り手頁（/sellers/[host]・noindex）の noindex を外すまで noindex。読めなければ noindex に倒す。
+  const sides = await recordSides(id);
   return pageMetadata({
-    title: `${name} — L0 observations`,
-    description: `Probe history and catalog listing history for ${name}: 402 challenge measurements with timestamps and reason codes.`,
+    title: `${name} — x402 purchase and probe record`,
+    description: `Paid purchases and probe history for ${name}: what vet402 paid, what came back, whose side a failure was on, and the 402 measurements with timestamps and reason codes.`,
     path: `/observatory/e/${id}`,
+    ...(sides === null || sides.confirmedSeller > 0 ? { noindex: true } : {}),
   });
 }
 
@@ -87,12 +128,15 @@ function fmt(d: Date | null): string {
   return d ? d.toISOString().slice(0, 16).replace("T", " ") + " UTC" : "—";
 }
 
-export default async function ObservatoryEndpointPage({ params }: Props) {
+export default async function ObservatoryEndpointPage({ params, searchParams }: Props) {
   const { id } = await params;
   const detail = await getEndpointDetail(id);
   if (!detail) notFound();
 
   const { endpoint, probes, events, publishedVerdict, l1, purchases } = detail;
+  const sides = await recordSides(id);
+  const disputePurchase = purchaseParam((await searchParams)?.purchase);
+  const shownSides = purchases.map((p) => sides?.rows.get(recordRowKey(p.attemptedAt, p.status, p.txHash)) ?? null);
   // バッジの文言は 1 箇所（receipt-badge.ts）から出す。ここで組み直すと、
   // 埋め込まれる SVG と、その隣で「バッジはこう読める」と説明する散文がずれる。
   const badge = endpointReceiptBadge({
@@ -101,6 +145,10 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
     deliveredCount: l1.delivered,
     inconclusiveCount: l1.inconclusive,
     inconclusiveSettledCount: l1.inconclusiveSettled,
+    // 2026-09-29 第4巡: vet402 の側の失敗は分母から外し「vet402 side N」と書き分ける（src/lib/sellers の分類）。
+    vet402Side: sides
+      ? { count: sides.vet402Side, settled: sides.vet402SideSettled, held: sides.vet402SideHeld, heldSettled: sides.vet402SideHeldSettled }
+      : undefined,
     subject: (() => {
       try {
         return new URL(endpoint.resourceUrl).host;
@@ -360,6 +408,18 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
                 ).
               </p>
             )}
+            {sides && sides.vet402Side > 0 && (
+              <p className="doc-p">
+                {sides.vet402Side} of the paid attempts failed on vet402&apos;s side (for example our wallet was out of
+                USDC, or we did not send the input the listing declares). The rows stay in the table
+                {l1.settled > 0 ? (
+                  <>; the embeddable badge below leaves them out of its count and names them as &ldquo;vet402 side&rdquo;.</>
+                ) : (
+                  "."
+                )}
+              </p>
+            )}
+            <RecordTerms purchases={purchases} held={shownSides.map((x) => x?.held ?? null)} />
             <SettleGauge
               n={2}
               settled={l1.settled}
@@ -450,6 +510,12 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
                             ? `${p.amountUnits} units${usd(p.amountUnits) ? ` (≈ ${usd(p.amountUnits)} USDC)` : ""}`
                             : "amount —"}
                           {" · "}L2 {p.l2Schema ?? "—"}
+                          {/* 2026-09-29 第4巡: 売り手頁と同じ語で「どちらの側か」。 */}
+                          {shownSides[i] && (
+                            <span className="block font-[family-name:var(--font-sans)] text-[0.8125rem] text-brand-ink">
+                              Whose side: <WhoseSide r={shownSides[i]!} />
+                            </span>
+                          )}
                         </td>
                       </tr>
                     </Fragment>
@@ -540,7 +606,9 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
         </p>
 
         {/* 2026-09-02 敵対的監査 F6: 記録頁に異議の入口がなかった（署名付きの API 経路のみ）。 */}
-        <h2 className="sec-head">
+        {/* 2026-09-29 第4巡: 売り手頁の各行の「Dispute this purchase」がここへ飛ぶ（?purchase= で購入の時刻を渡す）。
+            id は SellersViews の RECORD_DISPUTE_ANCHOR と同じ値。 */}
+        <h2 className="sec-head scroll-mt-24" id={RECORD_DISPUTE_ANCHOR}>
           <span className="sec-no">5.</span>
           <span>Dispute this record</span>
         </h2>
@@ -555,8 +623,72 @@ export default async function ObservatoryEndpointPage({ params }: Props) {
           </Link>
           ), which re-measures through the normal publication gate.
         </p>
-        <RecordSubscribe endpointId={id} kind="dispute" />
+        {disputePurchase && (
+          <p className="doc-p">
+            About the purchase at <code>{disputePurchase}</code> (UTC). The form starts with that time; add what you
+            saw instead.
+          </p>
+        )}
+        <RecordSubscribe
+          endpointId={id}
+          kind="dispute"
+          initialReason={disputePurchase ? `Purchase at ${disputePurchase} (UTC). What I saw instead: ` : undefined}
+        />
       </article>
     </main>
+  );
+}
+
+/**
+ * 表の用語の説明（2026-09-29 第4巡: settle_failed・unsettled_4xx・L2 not_checked・nonce-bound などを、その場で 1 文で）。
+ * 表に出ている語だけを並べる。
+ */
+function RecordTerms({
+  purchases,
+  held,
+}: {
+  purchases: readonly { status: string; settledTier?: string | null; l2Schema: string | null }[];
+  held: readonly (string | null)[];
+}) {
+  const items: { term: string; gloss: string }[] = [];
+  const seen = new Set<string>();
+  const add = (term: string, gloss: string | undefined) => {
+    if (!gloss || seen.has(term)) return;
+    seen.add(term);
+    items.push({ term, gloss });
+  };
+  for (const p of purchases) {
+    if (p.settledTier === "nonce_bound") add("settled (nonce-bound)", `${STATUS_GLOSS.settled}, and ${TIER_GLOSS.nonce}`);
+    else if (p.settledTier === "amount_payee_only") add("settled (amount + payee)", `${STATUS_GLOSS.settled}; ${TIER_GLOSS.amountPayee}`);
+    else add(p.status, STATUS_GLOSS[p.status]);
+  }
+  for (const h of held) if (h) add(h, (HELD_GLOSS as Readonly<Record<string, string>>)[h] ? `held_reason in the export: ${(HELD_GLOSS as Readonly<Record<string, string>>)[h]}` : undefined);
+  for (const p of purchases) if (p.l2Schema) add(`L2 ${p.l2Schema}`, L2_GLOSS[p.l2Schema]);
+  if (items.length === 0) return null;
+  return (
+    <div className="mt-4 text-[0.8125rem]">
+      <p className="doc-caption">Terms in this table</p>
+      <dl className="mt-1 grid grid-cols-1 gap-y-0.5 sm:grid-cols-[minmax(10rem,auto)_1fr] sm:gap-x-4">
+        {items.map((x) => (
+          <Fragment key={x.term}>
+            <dt>
+              <code>{x.term}</code>
+            </dt>
+            <dd className="m-0 mb-1 text-brand-lift sm:mb-0">{x.gloss}.</dd>
+          </Fragment>
+        ))}
+        <dt>
+          <code>Whose side</code>
+        </dt>
+        <dd className="m-0 text-brand-lift">
+          the same words as the seller page: seller&apos;s side only after failures on two different days (UTC),
+          marked &ldquo;{UNDER_RECHECK}&rdquo;; vet402&apos;s side; or not sorted (
+          <Link href="/observatory/methodology#whose-side" className="underline">
+            the rules
+          </Link>
+          ).
+        </dd>
+      </dl>
+    </div>
   );
 }

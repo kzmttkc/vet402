@@ -350,6 +350,34 @@ export default async function ObservatoryMethodologyPage() {
           for each row, the terms vet402 signed or the options the <code>402</code> offered, the input it
           sent, and the listing&apos;s <code>maxTimeoutSeconds</code>.
         </p>
+        {/* 2026-09-29 第4巡（名指しされた売り手の弁護士の立場）: 1 回の失敗では確定しない・行ごとの証拠を公開・
+            逆方向の誤り（売り手に不利）の区分。規則は src/lib/sellers/fix-modes.ts の classifySellerRow。 */}
+        <p className="doc-p">
+          <strong>Two days before the seller&apos;s side.</strong> A row that shows all of (a) to (e) is not yet on the
+          seller&apos;s side on its own. It goes there only when the same listing has such a failure on at least two
+          different days (UTC); until then it reads <em>not sorted: one failure so far</em>, with what happened and the
+          fix shown as they are. The rows on the seller&apos;s side are marked &ldquo;under re-check&rdquo; while we
+          re-check them, and a seller page carries the re-check notice when it has such a row. For each signed row
+          the seller page publishes what the row recorded about the payment and the answer: the scheme, amount,{" "}
+          <code>payTo</code> and one-time nonce vet402 signed (<code>validBefore</code> is not recorded, and the page
+          says so), and the paid request&apos;s HTTP status, <code>Content-Type</code>, and whether a{" "}
+          <code>PAYMENT-RESPONSE</code> came back, with its <code>success</code> and <code>errorReason</code>. The
+          answer&apos;s body and other header values are not published. Each row links to the dispute form on the
+          listing&apos;s record page, with the purchase time filled in.
+        </p>
+        <p className="doc-p">
+          <strong>Errors against the seller.</strong> Three kinds of row used to read worse for the seller than the
+          record allows, and are sorted as follows. A payment that settled before the seller refused an input we had
+          not sent (the body or query periods below) reads <em>not sorted: charged, then rejected an input vet402 had
+          not sent</em>: both facts stand, and it is counted against neither side. A paid request that answered{" "}
+          <code>2xx</code> while the seller named a settlement transaction, although its receipt did not say success,
+          awaits on-chain verification like any other receipt instead of reading as a failure. A <code>2xx</code> or{" "}
+          <code>4xx</code> with no receipt, for which our payer&apos;s transfer of exactly the price to the listing&apos;s
+          address landed in the window, is linked to that transfer even when our index did not hold it (see below).
+          When the export&apos;s <code>held_reason</code> and the page name different causes for the same row (for
+          example <code>unsettled_4xx</code> in the export, our wallet holding less than the price on the page), the
+          row says both.
+        </p>
         <p className="doc-p">
           <em>vet402&apos;s side</em>: the row shows the cause was ours or a limit of ours. Our payer
           wallet had run out of USDC (<code>payer_unfunded</code>, 2026-09-13 to 2026-09-15), or held
@@ -380,7 +408,12 @@ export default async function ObservatoryMethodologyPage() {
           answer to the paid request, and records the purchase from that answer; it does not wait
           on-chain at that point. A transfer that lands later is found by our index of on-chain
           settlements if it falls between {LATE_SETTLEMENT_BACKDATE_MINUTES.toString()} minutes
-          before and {LATE_SETTLEMENT_WINDOW_MINUTES.toString()} minutes after the attempt; the index
+          before and {LATE_SETTLEMENT_WINDOW_MINUTES.toString()} minutes after the attempt. The index reads transfers
+          to the receiving addresses in the catalog as it goes, so a transfer to an address that joined the catalog
+          later is not in it; for such a row we read that payer&apos;s transfers to that address on-chain directly.
+          When several purchases with the same payer, address and price have the same number of matching transfers
+          in their windows, and no nonce was recorded (before 2026-09-04), each is linked to one of them in time
+          order: every one of them was charged, and the re-read can check amount and payee, not which is which. The index
           and the re-read of each transaction ({REQUIRED_CONFIRMATIONS.toString()} confirmations on
           an EVM chain) run later, on their own schedule. Until then a <code>2xx</code> or <code>4xx</code> with no receipt reads as no charge,
           not as a seller failure; once a transfer is linked, the row awaits verification, and after the

@@ -174,6 +174,9 @@ test("FixFirstView: seller の側が先、vet402 の側は「直すものは無�
     ],
     latest,
     FETCHED,
+    null,
+    // 2026-09-29 第4巡: seller の側は別の日に 2 回以上で確定（出品 a は 09-19 にも同じ形の失敗がある）。
+    new Map([["a", new Set(["2026-09-19"])]]),
   );
   const html = renderToStaticMarkup(createElement(FixFirstView, { board, revalidateSec: 300 }));
   const sellerAt = html.indexOf("Server error on the paid request");

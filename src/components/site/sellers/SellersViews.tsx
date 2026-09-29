@@ -14,7 +14,7 @@ import {
   type SellerSummary,
   type ShownRow,
 } from "@/lib/sellers/board";
-import { EFFORT_LABEL, sideLabelOf } from "@/lib/sellers/fix-modes";
+import { EFFORT_LABEL, HELD_GLOSS, sideLabelOf, STATUS_GLOSS } from "@/lib/sellers/fix-modes";
 
 /**
  * /sellers・/sellers/[host]・/sellers/fix-first の描画（純粋なコンポーネント・DB を読まない）。
@@ -46,7 +46,7 @@ export const RECORD_NOTIFY_ANCHOR = "notify";
  */
 function NotifyLink({ endpointId }: { endpointId: string }) {
   return (
-    <Link href={`/observatory/e/${endpointId}#${RECORD_NOTIFY_ANCHOR}`} className="underline">
+    <Link href={`/observatory/e/${endpointId}#${RECORD_NOTIFY_ANCHOR}`} className={TAP}>
       Email me when this result changes
     </Link>
   );
@@ -102,16 +102,16 @@ function DocHead({ title, fetched }: { title: string; fetched: ReactNode }) {
       <div className="doc-head-col">
         <span>vet402</span>
         <span>
-          <Link href="/sellers" className="underline">
+          <Link href="/sellers" className={TAP}>
             Sellers
           </Link>
           {" · "}
-          <Link href="/sellers/fix-first" className="underline">
+          <Link href="/sellers/fix-first" className={TAP}>
             What to fix first
           </Link>
         </span>
         <span>
-          <Link href="/observatory/methodology" className="underline">
+          <Link href="/observatory/methodology" className={TAP}>
             Methodology
           </Link>
         </span>
@@ -404,10 +404,13 @@ function ReadingNotes() {
 /**
  * 照合待ち（settle_claimed）の行。照合の時刻は書かない（照合は Vercel の cron と管理用 Mac の launchd の
  * 両方から走り、後者は Mac が起きているときしか動かない・独立レビュー 2026-09-28）。
+ * 2026-09-29 第4巡: 2xx で売り手が tx を名指したが、決済の申告が success:false だった行（wazir 型）も照合待ち。
  */
 function pendingLine(r: ShownRow): string {
   const base =
-    "The seller returned a settlement receipt, and vet402 has not confirmed that transaction on-chain yet. Until it is confirmed or refuted, this purchase is neither delivered nor failed.";
+    r.facts.status === "settle_claimed"
+      ? "The seller returned a settlement receipt, and vet402 has not confirmed that transaction on-chain yet. Until it is confirmed or refuted, this purchase is neither delivered nor failed."
+      : `The paid request answered HTTP ${r.facts.httpStatusPaid ?? "—"} and the seller named a settlement transaction, although its receipt did not say success. vet402 has not confirmed that transaction on-chain yet. Until it is confirmed or refuted, this purchase is neither delivered nor failed.`;
   const reason = r.facts.verifyReason;
   return reason ? `${base} vet402 looked for that transaction on-chain and has not found it yet (${reason}).` : base;
 }
@@ -426,17 +429,54 @@ function ResultWord({ r }: { r: ShownRow }) {
   return <>{r.mode?.title}</>;
 }
 
+/** 「どちらの側か」の語（delivered・照合待ちは側を持たない）。 */
+function sideWord(r: ShownRow): string {
+  if (r.bucket === "delivered") return "no failure (delivered)";
+  if (r.bucket === "pending") return "not sorted: awaiting on-chain verification";
+  return r.mode ? sideLabelOf(r.mode) : "—";
+}
+
+/** seller の側（確定）の行の印。頁の冒頭の帯と同じ語。 */
+export const UNDER_RECHECK = "under re-check";
+
+export function WhoseSide({ r }: { r: ShownRow }) {
+  return (
+    <>
+      {sideWord(r)}
+      {r.confirmedSeller && (
+        <>
+          {" "}
+          <span className="whitespace-nowrap border border-[#9f0712] px-1 text-xs font-semibold text-[#9f0712]">{UNDER_RECHECK}</span>
+        </>
+      )}
+    </>
+  );
+}
+
+/** 行内のリンク: タップ領域を 24px 以上にする（2026-09-29 第4巡・WCAG 2.5.8）。 */
+const TAP = "inline-flex min-h-6 items-center underline";
+
+function StatusWord({ status }: { status: string }) {
+  const gloss = STATUS_GLOSS[status];
+  return (
+    <>
+      <code>{status}</code>
+      {gloss && <span className="font-[family-name:var(--font-sans)]"> ({gloss})</span>}
+    </>
+  );
+}
+
 function RecordedFacts({ r }: { r: ShownRow }) {
   const f = r.facts;
   const short = f.txHash ? `${f.txHash.slice(0, 10)}…${f.txHash.slice(-4)}` : null;
   return (
     <>
-      <code>{f.status}</code> · HTTP {f.httpStatusPaid ?? "—"}
+      <StatusWord status={f.status} /> · HTTP {f.httpStatusPaid ?? "—"}
       {f.status === "no_402" && f.unpaidStatus !== null && <> (unpaid answer {f.unpaidStatus})</>}
       {" · "}
       {short ? (
         r.txUrl ? (
-          <a href={r.txUrl} className="underline" rel="noopener noreferrer">
+          <a href={r.txUrl} className={TAP} rel="noopener noreferrer">
             tx {short}
           </a>
         ) : (
@@ -448,6 +488,9 @@ function RecordedFacts({ r }: { r: ShownRow }) {
       {r.held && (
         <>
           {" · "}held as <code>{r.held}</code>
+          {(HELD_GLOSS as Readonly<Record<string, string>>)[r.held] && (
+            <span className="font-[family-name:var(--font-sans)]"> ({(HELD_GLOSS as Readonly<Record<string, string>>)[r.held]})</span>
+          )}
         </>
       )}
       {f.selection && (
@@ -466,7 +509,7 @@ function ExportTrace({ r, resourceKey, now }: { r: ShownRow; resourceKey: string
   return (
     <>
       In{" "}
-      <a href={`/api/v1/observatory/export.csv?days=${days}`} className="underline">
+      <a href={`/api/v1/observatory/export.csv?days=${days}`} className={TAP}>
         export.csv?days={days}
       </a>
       : the row with <code>attempted_at</code> {r.facts.attemptedAt} and <code>resource_key</code> {resourceKey}.
@@ -474,89 +517,205 @@ function ExportTrace({ r, resourceKey, now }: { r: ShownRow; resourceKey: string
   );
 }
 
-function ListingRows({ l, now, rebuyEligible }: { l: SellerListing; now: number; rebuyEligible: boolean }) {
-  const r = l.latest;
+/** 記録頁の異議欄（observatory/e/[id] の id="dispute"）。購入の時刻を ?purchase= で渡し、欄に書き込ませる。 */
+export const RECORD_DISPUTE_ANCHOR = "dispute";
+
+export function disputeHref(endpointId: string, attemptedAt: string | null): string {
+  const q = attemptedAt && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(attemptedAt) ? `?purchase=${encodeURIComponent(attemptedAt)}` : "";
+  return `/observatory/e/${endpointId}${q}#${RECORD_DISPUTE_ANCHOR}`;
+}
+
+function DisputeLink({ endpointId, attemptedAt }: { endpointId: string; attemptedAt: string | null }) {
+  return (
+    <Link href={disputeHref(endpointId, attemptedAt)} className={TAP}>
+      Dispute this purchase
+    </Link>
+  );
+}
+
+/** 署名した支払いと、支払い付き要求への応答の要点（記録済みのものだけ）。 */
+function Evidence({ r }: { r: ShownRow }) {
+  if (!r.evidence) return null;
   return (
     <>
-      <tr>
-        <td className="border-b-0 pb-0.5">
-          <Link href={`/observatory/e/${l.endpointId}`} className="block max-w-[14rem] break-all underline sm:max-w-[26rem]" title={l.resourceUrl}>
-            {l.resourceKey}
-          </Link>
-          <span className="block text-xs font-normal text-brand-lift">{l.method ?? "method undeclared"}</span>
-        </td>
-        <td className="whitespace-nowrap border-b-0 pb-0.5">{r ? fmtUtc(r.facts.attemptedAt) : "not tried yet"}</td>
-        <td className={`border-b-0 pb-0.5 ${r && (r.bucket === "seller" || r.bucket === "vet402") ? "text-[#9f0712]" : ""}`}>{r ? <ResultWord r={r} /> : "—"}</td>
-        <td className="whitespace-nowrap border-b-0 pb-0.5">{r && r.mode ? sideLabelOf(r.mode) : "—"}</td>
-      </tr>
-      <tr className="fact-subrow">
-        <td colSpan={4} className="pt-0 text-[0.8125rem] font-normal">
-          {r ? (
-            <>
-              <span className="block">
-                <strong>What we saw:</strong> {seenLine(r)}
-              </span>
-              {r.seen402 && (
-                <span className="block">
-                  <strong>{r.signed ? "The 402 terms vet402 paid:" : "The 402 vet402 saw:"}</strong> {r.seen402}
-                </span>
-              )}
-              {r.mode && (
-                <span className="block">
-                  <strong>What to fix:</strong> {r.mode.fix}
-                  {r.mode.side === "seller" && <span className="text-brand-lift"> ({EFFORT_LABEL[r.mode.effort]})</span>}
-                </span>
-              )}
-              {r.note && <span className="block">{r.note}</span>}
-              {r.mode?.side === "vet402" && (
-                <span className="block">This failure was on vet402&apos;s side, not the seller&apos;s.</span>
-              )}
-              {rebuyEligible && (
-                <span className="block">
-                  <strong>Re-buy:</strong> this listing is eligible for a re-buy under the rules on the{" "}
-                  <Link href="/observatory/methodology" className="underline">
-                    methodology page
-                  </Link>
-                  .
-                </span>
-              )}
-              {l.deliveredAfterFailure && (
-                <span className="block">The latest purchase delivered. An earlier attempt listed below did not.</span>
-              )}
-              <span className="block font-[family-name:var(--font-mono)] text-xs text-brand-lift">
-                {r.signed ? "Recorded (L1 paid purchase)" : "Recorded (attempt; vet402 did not pay, not an L1 result)"}:{" "}
-                <RecordedFacts r={r} />
-              </span>
-              <span className="block text-xs text-brand-lift">
-                <ExportTrace r={r} resourceKey={l.resourceKey} now={now} />
-              </span>
-              {l.earlier.length > 0 && (
-                <span className="block text-xs text-brand-lift">
-                  Earlier:{" "}
-                  {l.earlier.map((e, i) => (
-                    <span key={i}>
-                      {i > 0 && " · "}
-                      {fmtUtc(e.facts.attemptedAt)} {e.bucket === "delivered" ? "delivered" : e.bucket === "pending" ? "awaiting on-chain verification" : `${e.mode?.title} (${e.mode ? sideLabelOf(e.mode) : ""})`}
-                      {e.facts.selection ? ` [${e.facts.selection}]` : ""}
-                    </span>
-                  ))}
-                </span>
-              )}
-            </>
-          ) : (
-            <span className="block text-brand-lift">vet402 has not tried to buy this listing yet.</span>
-          )}
-          <span className="block text-xs">
-            <NotifyLink endpointId={l.endpointId} />
-          </span>
-        </td>
-      </tr>
+      <span className="block">
+        <strong>Signed payment:</strong> {r.evidence.signed}
+      </span>
+      <span className="block">
+        <strong>Answer to the paid request:</strong> {r.evidence.answer}
+      </span>
     </>
+  );
+}
+
+/** 売り手について何かを言う最新の行（最新の行が vet402 の側などのとき・2026-09-29 第4巡）。 */
+function SellerSignalLine({ l, rebuyEligible }: { l: SellerListing; rebuyEligible: boolean }) {
+  const r = l.latest;
+  if (!r || r.bucket === "delivered" || r.bucket === "seller") return null;
+  const sig = l.lastSellerSignal;
+  const latestPhrase =
+    r.bucket === "vet402"
+      ? "The latest attempt failed on vet402's side"
+      : r.bucket === "not_bought"
+        ? "The latest attempt was not a purchase (vet402 did not pay)"
+        : r.bucket === "pending"
+          ? "The latest purchase is awaiting on-chain verification"
+          : "The latest attempt is not sorted";
+  const after = rebuyEligible ? "; this listing is eligible for a re-buy." : "; vet402 has not bought this listing again since.";
+  return (
+    <span className="block">
+      <strong>Last result about the seller:</strong>{" "}
+      {sig ? (
+        <>
+          {sig.bucket === "delivered" ? "delivered" : "failed on the seller's side"} on {fmtUtc(sig.at)}. {latestPhrase}
+          {after}
+        </>
+      ) : (
+        <>
+          none among the attempts shown. {latestPhrase}
+          {after}
+        </>
+      )}
+    </span>
+  );
+}
+
+function EarlierRow({ e, endpointId }: { e: ShownRow; endpointId: string }) {
+  return (
+    <li className="border-t border-hair py-1.5 first:border-t-0">
+      <span className="block">
+        {fmtUtc(e.facts.attemptedAt)} · <ResultWord r={e} /> · <WhoseSide r={e} />
+        {e.facts.selection ? ` [${e.facts.selection}]` : ""}
+      </span>
+      <span className="block font-[family-name:var(--font-mono)] text-brand-lift">
+        <RecordedFacts r={e} />
+      </span>
+      {(e.evidence || e.seen402 || e.note || e.exportReason) && (
+        <details className="mt-0.5">
+          <summary className="inline-flex min-h-6 cursor-pointer items-center text-brand-lift">What vet402 recorded</summary>
+          <span className="block">{seenLine(e)}</span>
+          {e.seen402 && (
+            <span className="block">
+              <strong>{e.signed ? "The 402 terms vet402 paid:" : "The 402 vet402 saw:"}</strong> {e.seen402}
+            </span>
+          )}
+          <Evidence r={e} />
+          {e.note && <span className="block">{e.note}</span>}
+          {e.exportReason && <span className="block">{e.exportReason}</span>}
+        </details>
+      )}
+      <span className="block">
+        <DisputeLink endpointId={endpointId} attemptedAt={e.facts.attemptedAt} />
+      </span>
+    </li>
+  );
+}
+
+/**
+ * 1 出品を 1 枚のカードに（2026-09-29 第4巡: 4 列の表は電話の幅で横スクロールになり、文が切れていた）。
+ * 見出しの事実（最新の試行・結果・どちらの側か）はラベル付きの 2 列、文はその下に表の外で折り返す。
+ */
+function ListingCard({ l, now, rebuyEligible }: { l: SellerListing; now: number; rebuyEligible: boolean }) {
+  const r = l.latest;
+  const failed = r && (r.bucket === "seller" || r.bucket === "vet402");
+  return (
+    <li className="border-b border-hair py-4" id={`listing-${l.endpointId}`}>
+      <Link href={`/observatory/e/${l.endpointId}`} className={`${TAP} font-semibold [overflow-wrap:anywhere]`} title={l.resourceUrl}>
+        {l.resourceKey}
+      </Link>
+      <span className="block text-xs font-normal text-brand-lift">{l.method ?? "method undeclared"}</span>
+      <dl className="mt-2 grid grid-cols-[minmax(7rem,auto)_1fr] gap-x-4 gap-y-0.5 text-[0.8125rem]">
+        <dt className="text-brand-lift">Latest attempt</dt>
+        <dd className="m-0">{r ? fmtUtc(r.facts.attemptedAt) : "not tried yet"}</dd>
+        <dt className="text-brand-lift">Result</dt>
+        <dd className={`m-0 ${failed ? "text-[#9f0712]" : ""}`}>{r ? <ResultWord r={r} /> : "—"}</dd>
+        <dt className="text-brand-lift">Whose side</dt>
+        <dd className="m-0">{r ? <WhoseSide r={r} /> : "—"}</dd>
+      </dl>
+      <div className="mt-2 space-y-1 text-[0.8125rem]">
+        {r ? (
+          <>
+            <span className="block">
+              <strong>What we saw:</strong> {seenLine(r)}
+            </span>
+            <SellerSignalLine l={l} rebuyEligible={rebuyEligible} />
+            {r.seen402 && (
+              <span className="block">
+                <strong>{r.signed ? "The 402 terms vet402 paid:" : "The 402 vet402 saw:"}</strong> {r.seen402}
+              </span>
+            )}
+            <Evidence r={r} />
+            {r.mode && (
+              <span className="block">
+                <strong>What to fix:</strong> {r.mode.fix}
+                {r.mode.side === "seller" && <span className="text-brand-lift"> ({EFFORT_LABEL[r.mode.effort]})</span>}
+              </span>
+            )}
+            {r.note && <span className="block">{r.note}</span>}
+            {r.exportReason && <span className="block">{r.exportReason}</span>}
+            {r.mode?.side === "vet402" && (
+              <span className="block">This failure was on vet402&apos;s side, not the seller&apos;s.</span>
+            )}
+            {rebuyEligible && (
+              <span className="block">
+                <strong>Re-buy:</strong> this listing is eligible for a re-buy under the rules on the{" "}
+                <Link href="/observatory/methodology" className="underline">
+                  methodology page
+                </Link>
+                .
+              </span>
+            )}
+            {l.deliveredAfterFailure && (
+              <span className="block">The latest purchase delivered. An earlier attempt listed below did not.</span>
+            )}
+            <span className="block break-words font-[family-name:var(--font-mono)] text-xs text-brand-lift">
+              {r.signed ? "Recorded (L1 paid purchase)" : "Recorded (attempt; vet402 did not pay, not an L1 result)"}:{" "}
+              <RecordedFacts r={r} />
+            </span>
+            <span className="block break-words text-xs text-brand-lift">
+              <ExportTrace r={r} resourceKey={l.resourceKey} now={now} />
+            </span>
+          </>
+        ) : (
+          <span className="block text-brand-lift">vet402 has not tried to buy this listing yet.</span>
+        )}
+        <span className="flex flex-wrap gap-x-4 text-xs">
+          {r && <DisputeLink endpointId={l.endpointId} attemptedAt={r.facts.attemptedAt} />}
+          <NotifyLink endpointId={l.endpointId} />
+        </span>
+        {l.earlier.length > 0 && (
+          <div className="mt-2 text-xs">
+            <span className="block font-semibold text-brand-lift">Earlier attempts</span>
+            <ol className="m-0 list-none p-0">
+              {l.earlier.map((e, i) => (
+                <EarlierRow key={i} e={e} endpointId={l.endpointId} />
+              ))}
+            </ol>
+          </div>
+        )}
+      </div>
+    </li>
   );
 }
 
 function latestFailedOnOurSide(d: SellerDetail): boolean {
   return d.listings[0]?.latest?.mode?.side === "vet402";
+}
+
+/** 冒頭の要約に添える「売り手について何かを言う最新の行」で数えた数（最新で数えた数と違うときだけ）。 */
+function SellerViewLine({ d }: { d: SellerDetail }) {
+  const s = d.summary;
+  const v = d.sellerView;
+  if (v.delivered === s.delivered && v.seller === s.seller) return null;
+  return (
+    <>
+      {" "}
+      Leaving out attempts that failed on vet402&apos;s side, were not bought, or are not sorted, the latest result
+      that says something about the seller is: <strong>{n(v.delivered)}</strong> delivered ·{" "}
+      <strong>{n(v.seller)}</strong> failed on the seller&apos;s side · <strong>{n(v.none)}</strong> with no such
+      result among the attempts shown.
+    </>
+  );
 }
 
 export function SellerDetailView({
@@ -574,6 +733,8 @@ export function SellerDetailView({
   const totalPages = Math.max(1, Math.ceil(detail.listings.length / SELLER_LISTINGS_PAGE_SIZE));
   const p = Math.min(Math.max(1, page), totalPages);
   const shown = detail.listings.slice((p - 1) * SELLER_LISTINGS_PAGE_SIZE, p * SELLER_LISTINGS_PAGE_SIZE);
+  const newest = detail.listings[0];
+  const newestSignal = newest?.lastSellerSignal;
   return (
     <article className="sheet">
       <DocHead title="Seller: purchase results on Base" fetched={<FetchedAt at={detail.fetchedAt} revalidateSec={revalidateSec} />} />
@@ -583,6 +744,7 @@ export function SellerDetailView({
       <p className="doc-p">
         {n(s.listings)} Base {s.listings === 1 ? "listing" : "listings"}. By the latest attempt at each: <CountsLine c={s} />.
         {s.lastAttemptAt && <> Latest attempt: {fmtUtc(s.lastAttemptAt)}.</>}
+        <SellerViewLine d={detail} />
       </p>
       {s.rebuyEligible ? (
         <p className="doc-p">
@@ -592,11 +754,15 @@ export function SellerDetailView({
             methodology page
           </Link>
           .
+          {newestSignal?.bucket === "delivered" && <> Before that, this listing delivered on {fmtUtc(newestSignal.at)}.</>}
         </p>
       ) : (
         latestFailedOnOurSide(detail) && (
           <p className="doc-p">
             <strong>Your most recent purchase failed on vet402&apos;s side.</strong> Nothing for you to fix there.
+            {newestSignal?.bucket === "delivered" && (
+              <> Before that, this listing delivered on {fmtUtc(newestSignal.at)}; vet402 has not bought it again since.</>
+            )}
           </p>
         )
       )}
@@ -611,24 +777,11 @@ export function SellerDetailView({
         <span className="sec-no">1.</span>
         <span>Your listings</span>
       </h2>
-      <TableScroll label="Base listings of this seller, most recent purchase first">
-        <table className="fact-table">
-          <caption className="sr-only">Base listings of this seller, most recent purchase first</caption>
-          <thead>
-            <tr>
-              <th scope="col">Listing</th>
-              <th scope="col">Latest attempt</th>
-              <th scope="col">Result</th>
-              <th scope="col">Whose side</th>
-            </tr>
-          </thead>
-          <tbody>
-            {shown.map((l) => (
-              <ListingRows key={l.endpointId} l={l} now={now} rebuyEligible={s.rebuyEligible && s.rebuyEndpointId === l.endpointId} />
-            ))}
-          </tbody>
-        </table>
-      </TableScroll>
+      <ol aria-label="Base listings of this seller, most recent purchase first" className="mt-4 list-none border-t border-hair p-0">
+        {shown.map((l) => (
+          <ListingCard key={l.endpointId} l={l} now={now} rebuyEligible={s.rebuyEligible && s.rebuyEndpointId === l.endpointId} />
+        ))}
+      </ol>
       <Pager
         page={p}
         totalPages={totalPages}
@@ -648,17 +801,22 @@ export function SellerDetailView({
         state&rdquo;), which checks that an unpaid request gets a valid 402, so a listing can pass L0 and still fail
         here. <strong>Whose side</strong> puts a failure on the seller&apos;s side when the row shows vet402 was not
         at fault: it signed on the listing&apos;s terms, its wallet held the price, it sent the declared input, and the
-        seller answered explicitly or had its declared time. A row that cannot show all of that is &ldquo;not
-        sorted&rdquo;, and so is a <strong>held</strong> row (<code>held_reason</code> in the export) and a failure
-        where no payment was taken (&ldquo;no charge&rdquo;). &ldquo;The 402 terms vet402 paid&rdquo; shows what the
-        row recorded; the maxTimeoutSeconds on it is the listing&apos;s value today. The transaction link opens
-        the settlement on Basescan. Listings removed from the Bazaar, and listings whose catalog network is not Base,
-        are not on this page. The{" "}
+        seller answered explicitly or had its declared time. Even then, one such failure is &ldquo;not sorted: one
+        failure so far&rdquo;: a failure goes on the seller&apos;s side only when the same listing has one on two
+        different days (UTC), and those rows are marked &ldquo;{UNDER_RECHECK}&rdquo; while we re-check them. A row
+        that cannot show all of that is &ldquo;not sorted&rdquo;, and so is a <strong>held</strong> row (
+        <code>held_reason</code> in the export), a failure where no payment was taken (&ldquo;no charge&rdquo;), and a
+        payment that settled before the seller refused an input vet402 had not sent. &ldquo;Signed payment&rdquo;
+        and &ldquo;Answer to the paid request&rdquo; show what the row recorded, and nothing else: the answer&apos;s
+        body and header values are not published. The maxTimeoutSeconds on a row is the listing&apos;s value today;
+        a declared price or address on a not-bought row is the value recorded at the time of the attempt. The
+        transaction link opens the settlement on Basescan. Listings removed from the Bazaar, and listings whose
+        catalog network is not Base, are not on this page. The{" "}
         <Link href="/sellers/fix-first" className="underline">
           fix-first page
         </Link>{" "}
         groups the same results across sellers (
-        <Link href="/observatory/methodology" className="underline">
+        <Link href="/observatory/methodology#whose-side" className="underline">
           methodology
         </Link>
         ).
@@ -669,9 +827,16 @@ export function SellerDetailView({
         <span>Think a row is wrong?</span>
       </h2>
       <p className="doc-p">
-        Open the listing&apos;s record (the link in the first column) and use &ldquo;Dispute this record&rdquo; there.
-        Say which purchase and what you saw instead. The row is not deleted on dispute; a correction is published
-        with the same weight.
+        Use &ldquo;Dispute this purchase&rdquo; on the row: it opens{" "}
+        {newest ? (
+          <Link href={disputeHref(newest.endpointId, newest.latest?.facts.attemptedAt ?? null)} className="underline">
+            Dispute this record
+          </Link>
+        ) : (
+          <>&ldquo;Dispute this record&rdquo;</>
+        )}{" "}
+        on the listing&apos;s record page with the purchase time filled in. Say what you saw instead. The row is not
+        deleted on dispute; a correction is published with the same weight.
       </p>
     </article>
   );

@@ -7,7 +7,7 @@ import { ingestPayments } from "@/lib/settlements/ingest-payments";
 import { indexEvm } from "@/lib/settlements/index-evm";
 import { indexSolana } from "@/lib/settlements/index-solana";
 import { indexXrpl } from "@/lib/settlements/index-xrpl";
-import { recoverLateSettlements } from "@/lib/settlements/recover-late";
+import { makeBaseTransferReader, recoverLateSettlements } from "@/lib/settlements/recover-late";
 import { readAuthorizationNonces } from "@/lib/observatory/settlement-verify";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
@@ -34,7 +34,13 @@ export async function GET(request: NextRequest) {
     // 2026-09-04 監査 P2: 索引を更新した**あと**に、遅れて決済された settle_failed を
     // 拾って tx へ結びつける（settled とは名乗らせない——照合器が決める）。
     // 2026-09-29: 候補が 2 行以上ある tx は、レシートの nonce で持ち主が 1 行に決まるときだけ貼る。
-    const lateSettlements = await recoverLateSettlements({ readNonces: readAuthorizationNonces });
+    // 2026-09-29 第4巡: 索引に無い着金（後からカタログに載った payTo 宛て）は Base のチェーンを直接読む。1 回 20 行まで
+    // （読んだ行には印を付け、次からは読まない。溜まった分は一度きりの再照合で流す）。
+    const lateSettlements = await recoverLateSettlements({
+      readNonces: readAuthorizationNonces,
+      readTransfers: makeBaseTransferReader(),
+      chainReadLimit: 20,
+    });
     return NextResponse.json({ ok: true, testWallets: classifier.testWallets.size, l1, payments, evm, solana, xrpl, lateSettlements });
   } catch (error) {
     logServerErrorSafe("cron.index-settlements", error);

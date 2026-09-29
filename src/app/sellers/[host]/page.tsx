@@ -21,6 +21,7 @@ import {
   sellerOtherChainsTitle,
   sellerPageTitle,
   sellerPath,
+  UNDER_RECHECK,
 } from "@/components/site/sellers/SellersViews";
 import TrackView from "@/components/site/TrackView";
 
@@ -150,10 +151,13 @@ export default async function SellerPage({ params, searchParams }: Props) {
         suppressHydrationWarning
         dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
       />
-      <p className="doc-note mx-auto mb-4 max-w-[70ch]">
-        We are re-checking which failures on this page were on our side. Some rows marked
-        seller&apos;s side may move to vet402&apos;s side or to not sorted.
-      </p>
+      {/* 2026-09-29 第4巡: 帯は seller の側（確定）の行がある頁だけ。該当の行には同じ語（UNDER_RECHECK）の印が付く。 */}
+      {detail.hasConfirmedSeller && (
+        <p className="doc-note mx-auto mb-4 max-w-[70ch]">
+          We are re-checking the failures this page puts on the seller&apos;s side (marked &ldquo;{UNDER_RECHECK}&rdquo;
+          below). Some may move to vet402&apos;s side or to not sorted.
+        </p>
+      )}
       <SellerDetailView detail={detail} page={page} now={Date.parse(detail.fetchedAt)} revalidateSec={PUBLIC_READ_REVALIDATE} />
       <TrackView event="seller_page_view" props={{ host }} />
     </main>

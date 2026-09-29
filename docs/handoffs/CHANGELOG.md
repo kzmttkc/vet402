@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-29 JST（売り手頁の帰属）— seller's side は別の日に 2 回・行ごとの証拠・売り手に不利な誤りの修正・遅延照合の直読み
+
+- **何を**: `/sellers`・`/sellers/[host]`・記録頁（`/observatory/e/*`）とバッジの「どちらの側か」を `classifySellerRow`（src/lib/sellers/fix-modes.ts）に。seller's side は同じ出品で (a)〜(e) を満たす失敗が別の UTC 日に 2 回以上のときだけ（1 回は「not sorted: one failure so far」）。署名した行ごとに方式・額・payTo・nonce と、支払い付き要求の HTTP・Content-Type・PAYMENT-RESPONSE の success / errorReason を公開（本文・他のヘッダは出さない）。決済済みで入力を送っていなかった 400/415/422 は「charged, then rejected an input vet402 had not sent」、2xx で売り手が tx を名指した行は照合待ち。売り手頁はカード表示・行ごとの異議リンク（購入時刻を事前入力）・24px のタップ領域。記録頁の題を変え、確定行がある記録頁は noindex。バッジは vet402 側の失敗を分母から外す（「vet402 side N」）。`recover-late.ts` に、索引に無い着金の Base 直読み（cron で 1 回 20 行・45 秒・読みごとに残り時間の timeout）、nonce の無い入れ替え可能な組の時刻順の対、売り手が success:false で名指した tx を照合へ回す段を追加（どれも台帳と訂正ログを 1 文で）。照合器は、その tx が合わなければ settle_claim_refuted にせず、申告どおりの失敗（元の status・理由 `seller_declared_unsettled`）へ戻す。
+- **なぜ**: 2026-09-29 の敵対的監査 4 周目（名指しされた売り手の弁護士・逆方向の誤り・初めて来た売り手）。Base のレシート無しの 2xx・tx なし 70 行のうち 43 行に、支払元から価格ちょうどの着金がチェーンにあった（索引は後からカタログに載った payTo の過去を読まない）。独立レビューの BLOCK（訂正ログを段の最後にまとめて書き、欠けうる）と WARNING 3 件を直した。
+- **影響**: 判定 API の `classifyRow` は不変（公開頁だけの分類）。本番の最新行の件数は seller 14→0・vet402 1,828→1,784・not sorted 543→600。`/sellers` のキャッシュ鍵を v2 に。配備後、溜まった Base の tx 無し行（約 4,800）を `recoverLateSettlements({ readTransfers: makeBaseTransferReader(), chainReadLimit: 200, chainReadBudgetMs: 240000 })` で `chainRowsRead` が 0 になるまで流し、続けて `/api/cron/verify-settlements` を回す。
+
 ## 2026-09-29 JST（障害への強さ）— DB 不通で 500 を返さない・/status の stale・未署名予約の解放・訂正ログを台帳と同じ文で
 
 - **何を**: `ip-rate-limit`・`auth`・`guard`・health が DB 例外で 503＋Retry-After（fail-closed）。/status は最後の行から 45 分超で stale、読めなければ unknown。L1 の署名直前の停止判定で DB 不通なら、`auth_nonce` が NULL の予約だけ解放して予算を戻す（資格情報を送った後の失敗は常に settle_failed＝遅延回収の対象に残し、機械の中の原因は `transportFailure.side` の印だけ）。Resend の送信に 10 秒の期限。payee probe の古い値に stale。台帳の status/tx を変える UPDATE と訂正ログを 1 文（CTE）で（照合理由だけの書き込みは訂正に載せない）。/impact・/observatory/state・llms.txt・openapi の「書き換えられない」「export.csv から再計算できる」を実態に。

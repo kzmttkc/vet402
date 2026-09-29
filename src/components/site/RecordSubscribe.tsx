@@ -19,12 +19,15 @@ import { track } from "@/lib/analytics";
 export default function RecordSubscribe({
   endpointId,
   kind,
+  initialReason,
 }: {
   endpointId: string;
   kind: "notify" | "dispute";
+  /** 異議欄の書き出し（2026-09-29 第4巡: 売り手頁の行の「Dispute this purchase」が購入の時刻を渡す）。 */
+  initialReason?: string;
 }) {
   const [email, setEmail] = useState("");
-  const [reason, setReason] = useState("");
+  const [reason, setReason] = useState(kind === "dispute" ? (initialReason ?? "") : "");
   const [website, setWebsite] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [receipt, setReceipt] = useState<string | null>(null);
@@ -40,8 +43,11 @@ export default function RecordSubscribe({
   }
 
   const reasonLength = reason.trim().length;
+  // 書き出し（initialReason）だけでは送れない: 最低 20 字は書き出しの後に本人が書いた分で数える。
+  const prefill = kind === "dispute" && initialReason && reason.startsWith(initialReason) ? initialReason.trim().length : 0;
+  const ownLength = Math.max(0, reasonLength - prefill);
   const canSend =
-    state !== "sending" && email.trim() !== "" && (kind === "notify" || (reasonLength >= 20 && reasonLength <= 2000));
+    state !== "sending" && email.trim() !== "" && (kind === "notify" || (ownLength >= 20 && reasonLength <= 2000));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();

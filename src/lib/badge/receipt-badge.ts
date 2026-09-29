@@ -42,6 +42,12 @@ export type ReceiptBadgeInput = {
    * のはこの分だけ。省略時は min(inconclusiveCount, settledCount)（従来の呼び手と同じ）。
    */
   inconclusiveSettledCount?: number;
+  /**
+   * vet402 の側の失敗（2026-09-29 第4巡・src/lib/sellers の分類）。分母（attempts）から外し、「vet402 side N」と
+   * 書き分ける。held（inconclusive に数えていた分）と settled の分もそれぞれから外す。thevaultreport.com は
+   * 資金切れの 402 を分母に入れて「2/3 settled · 1 inconclusive」と配られていた。省略時は従来どおり。
+   */
+  vet402Side?: { count: number; settled?: number; held?: number; heldSettled?: number };
   /** 測った相手のホスト名（バッジの中に焼き込む。無ければ endpoint ID の先頭）。 */
   subject?: string | null;
   /** 最後に測った日（UTC, YYYY-MM-DD）。無ければ第二行は主体だけになる。 */
@@ -76,9 +82,28 @@ function provenanceLine(subject?: string | null, measuredOn?: string | null): st
 }
 
 export function endpointReceiptBadge(input: ReceiptBadgeInput): ReceiptBadge {
-  const attempts = Math.max(0, Math.trunc(input.attemptCount));
-  const settled = Math.max(0, Math.min(attempts, Math.trunc(input.settledCount)));
+  const rawAttempts = Math.max(0, Math.trunc(input.attemptCount));
+  const ours = Math.max(0, Math.min(rawAttempts, Math.trunc(input.vet402Side?.count ?? 0)));
+  const oursSettled = Math.max(0, Math.min(ours, Math.trunc(input.vet402Side?.settled ?? 0)));
+  const oursHeld = Math.max(0, Math.min(ours, Math.trunc(input.vet402Side?.held ?? 0)));
+  const oursHeldSettled = Math.max(0, Math.min(oursHeld, oursSettled, Math.trunc(input.vet402Side?.heldSettled ?? 0)));
+  const attempts = rawAttempts - ours;
+  const settled = Math.max(0, Math.min(attempts, Math.trunc(input.settledCount) - oursSettled));
   const sublabel = provenanceLine(input.subject, input.measuredOn);
+  const oursLabel = ours > 0 ? ` · vet402 side ${ours}` : "";
+  const oursAria =
+    ours > 0
+      ? ` ${ours} further paid attempt${ours === 1 ? "" : "s"} failed on vet402's side (for example its wallet was out of USDC, or it did not send the input the listing declares) and ${ours === 1 ? "is" : "are"} left out of these counts.`
+      : "";
+
+  if (attempts === 0 && ours > 0) {
+    return {
+      label: `no result yet${oursLabel}`,
+      sublabel,
+      color: GREY,
+      aria: `vet402: every paid attempt at this endpoint so far failed on vet402's side, so there is no result about the endpoint yet.${oursAria}${sublabel ? ` (${sublabel})` : ""}`,
+    };
+  }
 
   if (attempts === 0) {
     return {
@@ -89,19 +114,24 @@ export function endpointReceiptBadge(input: ReceiptBadgeInput): ReceiptBadge {
     };
   }
 
-  const inconclusive = Math.max(0, Math.min(attempts, Math.trunc(input.inconclusiveCount ?? 0)));
+  const inconclusive = Math.max(0, Math.min(attempts, Math.trunc(input.inconclusiveCount ?? 0) - oursHeld));
   const inconclusiveSettled = Math.max(
     0,
-    Math.min(settled, inconclusive, Math.trunc(input.inconclusiveSettledCount ?? Math.min(inconclusive, settled))),
+    Math.min(
+      settled,
+      inconclusive,
+      Math.trunc(input.inconclusiveSettledCount ?? Math.min(inconclusive + oursHeld, settled + oursSettled)) - oursHeldSettled,
+    ),
   );
   const delivered = Math.max(
     0,
     Math.min(settled - inconclusiveSettled, Math.trunc(input.deliveredCount ?? 0)),
   );
 
-  const label = inconclusive > 0
-    ? `${settled}/${attempts} settled · ${delivered} delivered · ${inconclusive} inconclusive`
-    : `${settled}/${attempts} settled · ${delivered} delivered`;
+  const label =
+    (inconclusive > 0
+      ? `${settled}/${attempts} settled · ${delivered} delivered · ${inconclusive} inconclusive`
+      : `${settled}/${attempts} settled · ${delivered} delivered`) + oursLabel;
 
   const aria =
     `vet402: ${settled} of ${attempts} paid attempts settled with an on-chain receipt, and ` +
@@ -114,6 +144,7 @@ export function endpointReceiptBadge(input: ReceiptBadgeInput): ReceiptBadge {
         `request body only when the seller declares one; and a 402 or 5xx from 2026-09-13 to 2026-09-15 ` +
         `came while vet402's own payer wallet was out of USDC.`
       : "") +
+    oursAria +
     ` A measurement of what happened when vet402 paid this endpoint, not a recommendation.` +
     (sublabel ? ` (${sublabel})` : "");
 

@@ -3,6 +3,8 @@ import { getClientIp } from "@/lib/api/client-ip";
 import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
 import { endpointReceiptBadge, renderReceiptBadgeSvg } from "@/lib/badge/receipt-badge";
 import { getEndpointPurchases } from "@/lib/observatory/reader";
+import { getDb } from "@/lib/db/client";
+import { readRecordSides } from "@/lib/sellers/reader";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { UUID_RE } from "@/lib/validation/uuid";
 
@@ -81,7 +83,13 @@ export async function GET(
       const badge = endpointReceiptBadge({ attemptCount: 0, settledCount: 0 });
       return svgResponse(renderReceiptBadgeSvg(badge), "public, max-age=60");
     }
+    // 2026-09-29 第4巡: vet402 の側の失敗を分母から外す（記録頁と同じ分類・src/lib/sellers）。読めなければ従来どおり。
+    const db = getDb();
+    const sides = db ? await readRecordSides(db, clean).catch(() => null) : null;
     const badge = endpointReceiptBadge({
+      vet402Side: sides
+        ? { count: sides.vet402Side, settled: sides.vet402SideSettled, held: sides.vet402SideHeld, heldSettled: sides.vet402SideHeldSettled }
+        : undefined,
       attemptCount: record.attemptCount,
       settledCount: record.settledCount,
       // 2026-09-04 監査 E・P0-3: settled だけを描くと「金は動いたが品は来ていない」
