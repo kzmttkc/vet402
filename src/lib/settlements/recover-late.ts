@@ -55,8 +55,7 @@
 // ============================================================
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { logAndSwallowSafe } from "@/lib/util/log-safe";
-import { recordCorrection } from "@/lib/observatory/corrections";
+import { updateWithCorrection } from "@/lib/observatory/corrections";
 
 /**
  * 試行時刻からどれだけ後までを「この購入の決済」と見るか。
@@ -103,7 +102,9 @@ export async function recoverLateSettlements(options: { readNonces?: NonceReader
   // 最初から 1 つに決める方がよい）。
   //   match  … 条件を満たす (purchase, settlement) の全対。tx_candidates = その tx の候補になった購入の行数
   //   chosen … 購入ごとに 1 本。候補の購入が 1 行に決まる tx だけ残す（2 行以上なら誰にも貼らない）
-  const raw = await db.execute(sql`
+  const raw = await updateWithCorrection(db, {
+    ...LATE_LINK_CORRECTION,
+    update: sql`
     WITH match AS (
       SELECT pu.id AS purchase_id,
              pu.status AS prior_status,
@@ -170,22 +171,18 @@ export async function recoverLateSettlements(options: { readNonces?: NonceReader
     FROM chosen
     WHERE pu.id = chosen.purchase_id
     RETURNING pu.id::text AS purchase_id, pu.tx_hash AS tx_hash,
-              chosen.prior_status AS prior_status, chosen.prior_tx_hash AS prior_tx_hash
-  `);
+              chosen.prior_status AS prior_status, chosen.prior_tx_hash AS prior_tx_hash,
+              pu.id::text AS correction_subject_id
+  `,
+  });
 
-  const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as {
-    purchase_id: string;
-    tx_hash: string;
-    prior_status: string;
-    prior_tx_hash: string | null;
-  }[];
+  const rows: LinkedRow[] = raw.map(toLinkedRow);
 
   // §10 / §6.2: 状態が変わったら訂正ログに残す（公開面が「いつ何が変わったか」を言える）。
-  // 2026-09-29 独立レビュー: レシート読み（最大 60 回）の前に、既に確定した貼り付けの訂正を
-  // 先に書く。cron の 300 秒で途中打ち切りになっても、確定済みの行の訂正ログが欠けない。
-  await recordLateLinks(rows);
+  // 2026-09-29 監査4周目: 貼り付けの UPDATE と訂正ログは同じ文（updateWithCorrection）。以前は別の文で、
+  // 訂正ログの失敗を握りつぶしていた——貼ったのに記録が無い行が作れた。cron の途中打ち切りでも、
+  // 貼った行には必ず訂正がある（同じ文なので片方だけにはならない）。
   const byNonce = options.readNonces ? await linkAmbiguousByNonce(db, options.readNonces) : [];
-  await recordLateLinks(byNonce);
   rows.push(...byNonce);
 
   return {
@@ -283,7 +280,9 @@ async function linkAmbiguousByNonce(db: Db, readNonces: NonceReader): Promise<Li
 
   const linked: LinkedRow[] = [];
   for (const [purchaseId, { txHash }] of chosen) {
-    const res = await db.execute(sql`
+    const res = await updateWithCorrection(db, {
+      ...LATE_LINK_CORRECTION,
+      update: sql`
       WITH prior AS (
         SELECT pu.id, pu.status AS prior_status, pu.tx_hash AS prior_tx_hash
         FROM x402_l1_purchases pu
@@ -316,25 +315,32 @@ async function linkAmbiguousByNonce(db: Db, readNonces: NonceReader): Promise<Li
           )
       FROM prior
       WHERE pu.id = prior.id
-      RETURNING pu.id::text AS purchase_id, pu.tx_hash AS tx_hash, prior.prior_status AS prior_status, prior.prior_tx_hash AS prior_tx_hash`);
-    linked.push(...rowsOfRaw<LinkedRow>(res));
+      RETURNING pu.id::text AS purchase_id, pu.tx_hash AS tx_hash, prior.prior_status AS prior_status, prior.prior_tx_hash AS prior_tx_hash,
+                pu.id::text AS correction_subject_id`,
+    });
+    linked.push(...res.map(toLinkedRow));
   }
   return linked;
 }
 
-async function recordLateLinks(rows: { purchase_id: string; tx_hash: string; prior_status: string; prior_tx_hash: string | null }[]): Promise<void> {
-  for (const row of rows) {
-    await recordCorrection({
-      subjectType: "purchase",
-      subjectId: row.purchase_id,
-      level: "l1",
-      before: { status: row.prior_status, txHash: row.prior_tx_hash },
-      after: { status: "settle_claimed", txHash: row.tx_hash },
-      // 既存の語彙を使う（新しい reason は公開 enum・docs/openapi.yaml・
-      // src/app/docs/api/page.tsx へ波及し、このブランチでは触らない約束の
-      // ファイルを含む）。意味も合っている——「主張された決済が後から
-      // オンチェーンで確認/否定された」の入口がここ。
-      reason: "settlement_backfill",
-    }).catch(logAndSwallowSafe("settlements.recover_late.record_correction"));
-  }
+function toLinkedRow(r: Record<string, unknown>): LinkedRow {
+  return {
+    purchase_id: String(r.purchase_id),
+    tx_hash: String(r.tx_hash),
+    prior_status: String(r.prior_status),
+    prior_tx_hash: r.prior_tx_hash == null ? null : String(r.prior_tx_hash),
+  };
 }
+
+/**
+ * 遅延回収の貼り付けの訂正（2 経路で同じ）。before / after は更新された行（changed）から組む。
+ * 既存の語彙を使う（新しい reason は公開 enum・docs/openapi.yaml・src/app/docs/api/page.tsx へ波及する）。
+ * 意味も合っている——「主張された決済が後からオンチェーンで確認/否定された」の入口がここ。
+ */
+const LATE_LINK_CORRECTION = {
+  subjectType: "purchase" as const,
+  level: "l1" as const,
+  reason: "settlement_backfill" as const,
+  before: { expr: sql`jsonb_build_object('status', changed.prior_status, 'txHash', changed.prior_tx_hash)` },
+  after: { expr: sql`jsonb_build_object('status', 'settle_claimed', 'txHash', changed.tx_hash)` },
+};

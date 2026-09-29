@@ -18,14 +18,14 @@ import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { x402L1Purchases } from "@/lib/db/schema";
 import { recordObservedPurchase } from "@/lib/db/observed-purchases";
-import { logAndSwallowSafe, logServerErrorSafe } from "@/lib/util/log-safe";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { createDeadline } from "@/lib/util/deadline";
 import { verifyL1Settlement } from "./settlement-verify";
 import { isDeliveryVerified } from "./l1-runner";
 import { ingestL1 } from "@/lib/settlements/ingest-l1";
 import { LATE_RECOVERABLE_STATUSES } from "@/lib/settlements/recover-late";
-import { recordCorrection } from "./corrections";
+import { updateWithCorrection } from "./corrections";
 import { fireL1RegistryHook, fireL2RegistryHook } from "@/lib/chain/registry-hook";
 
 /**
@@ -218,25 +218,25 @@ export async function runSettlementVerification(options?: {
    * 「同じ tx を別の購入が主張している」ときの 2 経路。
    */
   async function refute(row: PurchaseRow, reason: string, detail?: string): Promise<void> {
-    await db!
-      .update(x402L1Purchases)
-      .set({
-        status: "settle_claim_refuted",
-        settlementVerified: false,
-        settlementVerifiedAt: new Date(),
-        settlementVerifyReason: `${reason}${detail ? `: ${detail}` : ""}`.slice(0, 500),
-      })
-      .where(eq(x402L1Purchases.id, row.id));
+    // 2026-09-29 監査4周目: 台帳の UPDATE と訂正ログを 1 文で（updateWithCorrection の節）。
+    // 訂正ログが書けないなら status も倒さない——例外は行単位の catch が rowErrors に数え、次回に再試行。
+    await updateWithCorrection(db!, {
+      update: sql`
+        UPDATE x402_l1_purchases
+        SET status = 'settle_claim_refuted',
+            settlement_verified = false,
+            settlement_verified_at = now(),
+            settlement_verify_reason = ${`${reason}${detail ? `: ${detail}` : ""}`.slice(0, 500)}::text
+        WHERE id = ${row.id}::uuid
+        RETURNING id::text AS correction_subject_id`,
+      subjectType: "purchase",
+      level: "l1",
+      before: { json: { status: row.status } },
+      after: { json: { status: "settle_claim_refuted", reason } },
+      reason: "settlement_backfill",
+    });
     summary.refuted++;
     invalidateDecisionCache(row.endpoint_id);
-    await recordCorrection({
-      subjectType: "purchase",
-      subjectId: row.id,
-      level: "l1",
-      before: { status: row.status },
-      after: { status: "settle_claim_refuted", reason },
-      reason: "settlement_backfill",
-    }).catch(logAndSwallowSafe("settlement-verifier.record_correction.refuted"));
     // 否定もオンチェーンの事実（fail）。L2 は決済が確定していないので書かない。
     await fireHook(
       hooks.l1({ endpointId: row.endpoint_id, payTo: row.pay_to, settled: false, txHash: row.tx_hash, network: row.network }),
@@ -279,7 +279,10 @@ export async function runSettlementVerification(options?: {
     // tx_hash の戻し先は SQL の中で決める（2 巡目レビュー 2）。売り手の原文を別の行が既に持っていると
     // 部分一意 index（x402_l1_purchases_tx_unique）で throw し、このバッチの残りの行が照合されない。
     // 衝突するなら NULL で戻す——主張された原文は raw_settlement と lateSettlement.replacedTxHash に残る。
-    await db!.execute(sql`
+    // 2026-09-29 監査4周目: 書き戻しと訂正ログを 1 文で。訂正ログの after.txHash は RETURNING の
+    // 実際に書いた値（衝突で NULL になった場合も含めて行と食い違わない）。
+    await updateWithCorrection(db!, {
+      update: sql`
       UPDATE x402_l1_purchases pu
       SET status = ${priorStatus},
           tx_hash = CASE
@@ -302,19 +305,43 @@ export async function runSettlementVerification(options?: {
             coalesce(raw_response_meta->'lateSettlement'->'rejectedTxHashes', '[]'::jsonb) || to_jsonb(${rejected}::text)
           )
       WHERE pu.id = ${row.id}::uuid
-    `);
+      RETURNING pu.id::text AS correction_subject_id, pu.tx_hash AS written_tx_hash`,
+      subjectType: "purchase",
+      level: "l1",
+      before: { json: { status: row.status, txHash: row.tx_hash } },
+      after: {
+        expr: sql`jsonb_build_object('status', ${priorStatus}::text, 'txHash', changed.written_tx_hash, 'lateLinkWithdrawn', ${reason}::text)`,
+      },
+      reason: "settlement_backfill",
+    });
     summary.lateLinksWithdrawn++;
     invalidateDecisionCache(row.endpoint_id);
-    // 訂正ログは**実際に書き戻した値**を載せる（衝突で NULL になった場合も含めて、行と食い違わないように）。
-    const [written] = await db!.select({ txHash: x402L1Purchases.txHash }).from(x402L1Purchases).where(eq(x402L1Purchases.id, row.id));
-    await recordCorrection({
+  }
+
+  /**
+   * 照合の理由（settlement_verify_reason）だけを書く経路（status は変えない）。2026-09-29 監査4周目:
+   * この列は売り手の頁（/sellers の reader.ts・verifyReason）に出る公開の状態なので、**値が変わったときだけ**
+   * 同じ文で訂正ログに残す。同じ理由の書き直し（毎日の再試行）は UPDATE も訂正も 0 行。
+   */
+  async function setVerifyReason(row: PurchaseRow, verifyReason: string): Promise<void> {
+    await updateWithCorrection(db!, {
+      update: sql`
+        WITH prior AS (
+          SELECT id, settlement_verify_reason AS prior_reason FROM x402_l1_purchases
+          WHERE id = ${row.id}::uuid AND settlement_verify_reason IS DISTINCT FROM ${verifyReason}::text
+          FOR UPDATE
+        )
+        UPDATE x402_l1_purchases pu
+        SET settlement_verify_reason = ${verifyReason}::text
+        FROM prior
+        WHERE pu.id = prior.id
+        RETURNING pu.id::text AS correction_subject_id, prior.prior_reason`,
       subjectType: "purchase",
-      subjectId: row.id,
       level: "l1",
-      before: { status: row.status, txHash: row.tx_hash },
-      after: { status: priorStatus, txHash: written?.txHash ?? null, lateLinkWithdrawn: reason },
+      before: { expr: sql`jsonb_build_object('status', ${row.status}::text, 'verifyReason', changed.prior_reason)` },
+      after: { expr: sql`jsonb_build_object('status', ${row.status}::text, 'verifyReason', ${verifyReason}::text)` },
       reason: "settlement_backfill",
-    }).catch(logAndSwallowSafe("settlement-verifier.record_correction.late_link_withdrawn"));
+    });
   }
 
   /**
@@ -326,10 +353,7 @@ export async function runSettlementVerification(options?: {
     if (!row.pay_to || !row.payer || !row.amount_units) {
       // 期待値が台帳に無い＝我々が何を期待したか言えない。照合できないので
       // 触らず、理由だけ残す（推測で期待値を作らない）。
-      await db!
-        .update(x402L1Purchases)
-        .set({ settlementVerifyReason: "expected_values_missing" })
-        .where(eq(x402L1Purchases.id, row.id));
+      await setVerifyReason(row, "expected_values_missing");
       summary.deferred++;
       return;
     }
@@ -346,7 +370,7 @@ export async function runSettlementVerification(options?: {
     // このバッチで既に「RPC が別のチェーンを指している」と分かったチェーンの行は、
     // 読みに行かない（結果は同じ）。他のチェーンの行は続ける。
     if (wrongChain.has(row.network)) {
-      await db!.update(x402L1Purchases).set({ settlementVerifyReason: "wrong_chain" }).where(eq(x402L1Purchases.id, row.id));
+      await setVerifyReason(row, "wrong_chain");
       summary.deferred++;
       return;
     }
@@ -361,27 +385,25 @@ export async function runSettlementVerification(options?: {
     });
 
     if (result.ok) {
-      await db!
-        .update(x402L1Purchases)
-        .set({
-          status: "settled",
-          settlementVerified: true,
-          settlementVerifiedAt: new Date(),
-          settlementVerifyReason: null,
-          settlementBlockNumber: result.blockNumber,
-        })
-        .where(eq(x402L1Purchases.id, row.id));
+      // §10 / §6.2: バックフィルで確定した状態変化は訂正ログに残す——2026-09-29 から同じ文で。
+      await updateWithCorrection(db!, {
+        update: sql`
+          UPDATE x402_l1_purchases
+          SET status = 'settled',
+              settlement_verified = true,
+              settlement_verified_at = now(),
+              settlement_verify_reason = NULL,
+              settlement_block_number = ${String(result.blockNumber)}::bigint
+          WHERE id = ${row.id}::uuid
+          RETURNING id::text AS correction_subject_id`,
+        subjectType: "purchase",
+        level: "l1",
+        before: { json: { status: row.status } },
+        after: { json: { status: "settled", blockNumber: String(result.blockNumber) } },
+        reason: "settlement_backfill",
+      });
       summary.verified++;
       invalidateDecisionCache(row.endpoint_id); // settled は判定材料（このインスタンスのみ・cache.ts 参照）
-      // §10 / §6.2: バックフィルで確定した状態変化は訂正ログに残す。
-      await recordCorrection({
-        subjectType: "purchase",
-        subjectId: row.id,
-        level: "l1",
-        before: { status: row.status },
-        after: { status: "settled", blockNumber: String(result.blockNumber) },
-        reason: "settlement_backfill",
-      }).catch(logAndSwallowSafe("settlement-verifier.record_correction.settled"));
 
       // §7.3（2026-09-02）: 確定した購入は決済索引へ即時に載せ、受取先→Endpoint の
       // 逆引きが cron を待たずに更新される（実装完了の定義「1 分以内」）。
@@ -437,10 +459,7 @@ export async function runSettlementVerification(options?: {
 
     if (TRANSIENT_REASONS.has(result.reason)) {
       // 見えなかっただけ。否定ではないので status は倒さない。
-      await db!
-        .update(x402L1Purchases)
-        .set({ settlementVerifyReason: result.reason })
-        .where(eq(x402L1Purchases.id, row.id));
+      await setVerifyReason(row, result.reason);
       summary.deferred++;
       // 2026-09-04 監査 P1-3: 我々の側が壊れているときは鳴らす。
       if (INSTRUMENT_FAILURE_REASONS.has(result.reason)) {

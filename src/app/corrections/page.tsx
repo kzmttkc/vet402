@@ -215,8 +215,11 @@ const CORRECTIONS: Correction[] = [
  * ので、昇格 472 行が `— → —` と描かれていた（2026-09-04 外部監査 E・P1-11）。
  */
 function stateOf(side: unknown): string {
-  const v = side as { publishedVerdict?: string; status?: string } | null;
-  return v?.publishedVerdict ?? v?.status ?? "—";
+  const v = side as { publishedVerdict?: string; status?: string; verifyReason?: string | null } | null;
+  const head = v?.publishedVerdict ?? v?.status ?? "—";
+  // 2026-09-29: 照合の理由だけが変わった行（status は同じ）。理由を添えないと「x → x」に見える。
+  if (v && "verifyReason" in v) return `${head} (${v.verifyReason ?? "no reason"})`;
+  return head;
 }
 
 function CorrectionTableRow({

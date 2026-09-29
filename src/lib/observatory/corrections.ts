@@ -7,7 +7,7 @@
 //
 // 自社に不利な数字を隠すことは仕様違反（§10）。訂正は消さない。
 // ============================================================
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { rowsOf } from "@/lib/settlements/upsert";
 
@@ -46,6 +46,62 @@ export async function recordCorrection(input: {
     `),
   );
   return rows[0]?.id ?? null;
+}
+
+/** 訂正ログの before / after: JS の値（JSON にして入れる）か、`changed`（更新された行）を参照する jsonb 式。 */
+export type CorrectionValue = { json: unknown } | { expr: SQL };
+
+type Executor = { execute: (query: SQL) => Promise<unknown> };
+
+/**
+ * 台帳の UPDATE と訂正ログの INSERT を**1 つの文**で書く（2026-09-29 敵対的監査 4 周目）。
+ *
+ * 以前は UPDATE の後に recordCorrection を別の文で呼び、失敗は `.catch(logAndSwallow…)` で
+ * 握りつぶしていた。公開の状態（status / tx_hash / 照合の理由）は変わったのに、「いつ何が
+ * 変わったか」の記録だけが欠ける——訂正ログの存在理由（§10: 消さない・隠さない）と逆になる。
+ * neon-http は複数文のトランザクションを持たないので、データ変更 CTE で 1 文にまとめる:
+ *
+ *   WITH changed AS (<UPDATE … RETURNING …, <subject id> AS correction_subject_id>),
+ *        logged  AS (INSERT INTO correction_log … SELECT … FROM changed RETURNING 1)
+ *   SELECT changed.*, (SELECT count(*) FROM logged) AS correction_logged FROM changed
+ *
+ * どちらかが落ちれば両方とも書かれず、例外は呼び手へ上がる（fail-loud。照合器は行単位で
+ * 捕まえて rowErrors に数え、次回のバッチが同じ行を拾い直す＝再試行）。
+ * `update` は `correction_subject_id` を RETURNING に含めること。更新 0 行なら訂正も 0 行。
+ */
+export async function updateWithCorrection<T extends Record<string, unknown>>(
+  db: Executor,
+  input: {
+    update: SQL;
+    subjectType: "endpoint" | "purchase";
+    level: CorrectionLevel;
+    reason: CorrectionReason;
+    before: CorrectionValue;
+    after: CorrectionValue;
+    disputeId?: string | null;
+  },
+): Promise<(T & { correction_subject_id: string; correction_logged: number })[]> {
+  const value = (v: CorrectionValue): SQL => ("expr" in v ? v.expr : sql`${JSON.stringify(v.json)}::jsonb`);
+  const rows = rowsOf<T & { correction_subject_id: string; correction_logged: number }>(
+    await db.execute(sql`
+      WITH changed AS (${input.update}),
+      logged AS (
+        INSERT INTO correction_log (subject_type, subject_id, level, before, after, reason, dispute_id)
+        SELECT ${input.subjectType}, changed.correction_subject_id::text, ${input.level},
+               ${value(input.before)}, ${value(input.after)}, ${input.reason}, ${input.disputeId ?? null}::uuid
+        FROM changed
+        RETURNING 1
+      )
+      SELECT changed.*, (SELECT count(*) FROM logged)::int AS correction_logged FROM changed
+    `),
+  );
+  for (const r of rows) {
+    if (Number(r.correction_logged) !== rows.length) {
+      // 同じ文なので起きないはずだが、起きたら黙らない（計器の故障）。
+      throw new Error(`correction_log count mismatch: changed=${rows.length} logged=${r.correction_logged}`);
+    }
+  }
+  return rows;
 }
 
 export type CorrectionRow = {
