@@ -13,6 +13,10 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-29 — surface canary reads l2_reading and wildcard code mentions
+- **何を**: 台帳の L2 は `l2_reading`（判定・記録頁と同じ読み直し）と比べる（`l2_schema` は記録の値のまま）。判定の `not_checked` を語彙に足した。llms.txt の `l1_not_counted_`* のような語頭の書き方は、その語頭で始まるコードがあれば定義済み。
+- **なぜ**: 2026-09-29.4 の配備後の本番の 1 回目で、残った 6 件のずれはどれも計器の読み違いだった。直した計器で本番 43 出品・173 面・837 項目、ずれ 0。
+
 ## 2026-09-29 JST（9）— URL の書き方しだいで BLOCK を素通りする穴を塞ぐ: resource_id の別名の表・/decision の 404 に host_known・MCP の pay_if_trusted が払う前に /resolve（監査 7 周目・高・ブランチ `fix/r7-url-variant`・未 push）
 
 - **何を**: ①`x402_resource_aliases`（別名 → 正規の resource_id）。別名は `canonical.ts` の `resourceUrlVariants` / `resourceIdAliases` の 1 箇所で作る: 末尾スラッシュの有無・ホストの大文字（全部小文字・全部大文字・掲載の生の書き方）・既定ポート `:443` の有無・クエリの並び（保つ名前 4 個以下は全順列、超えたら正規の順と掲載の順）・掲載の生 URL そのもの。規則の関門は「正規形が完全に同じになる書き方だけ」（別の資源へ写らない）。`:80` は http の既定で、http は正規形を持たない（掲載にならない）ので別名にしない。`getResource` は完全一致が外れたときだけ表を引く（表の無い DB では「別名なし」で従来の 404）。書き手は `src/lib/resolve/aliases.ts`: catalog-sync が毎回 3,000 出品まで（失敗しても同期は止めない）、全件は `scripts/backfill-resource-aliases.ts --apply`。②`/decision` の 404 本文に `host_known`（`url=` を受けたとき、そのホストに掲載があるか。url 無しは null）・`message`・`next`。`error` は `not_found` のまま（凍結中の SDK が読む語）。③`/resolve` に `method=`（その method だけで引く・不正は 400 `invalid_method`）。④MCP `pay_if_trusted`: `resource` があれば先に `/resolve?q=&method=` で正規の id を引き、判定も `payOrRefuse` もその id で呼ぶ（渡された id と違えば summary に書く）。掲載に結べないのにホストに掲載がある → `resource_unresolved_host_known`、URL は掲載に無いのに id が別の掲載を指す → `resource_id_mismatch`、/resolve が読めない・404 が `host_known: false` 以外 → `evidence_unavailable` で払わない。カタログ外として SDK へ渡すのは「/resolve がホストにも無い」かつ「404 が host_known: false」のときだけ。⑤ついで: 配信中の openapi.yaml が PyYAML で読めなかった（`nextCursor` の description を引用符で囲んだ）・PyYAML で読む検査を `tests/openapi-yaml-strict-parse.test.ts` に（python3/PyYAML が無ければ skip）。/docs/api の /decision の応答例から `score` を消した（既定では返さない）。MCP の版を 0.3.1 へ（npm の 0.3.0 は `@vet402/sdk ^0.6.0`、リポのコードは Solana の payer に SDK 0.7.0 が要るので `^0.7.0` が正しい。**SDK 0.7.0 を npm に出すまで MCP 0.3.1 は出さない**）。

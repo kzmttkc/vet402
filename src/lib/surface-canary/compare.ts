@@ -107,7 +107,9 @@ const NOT_COUNTED_SIDE: Record<string, Side[]> = {
 const L2_EQUIV: Record<string, string[]> = {
   mismatch: ["mismatch"],
   conform: ["match"],
-  undeclared: ["no_declaration", "not_checked", ""],
+  undeclared: ["no_declaration", ""],
+  // 2026-09-29.4: 宣言があって照合できない L2 は not_checked（WARN）。宣言の無い出品だけが undeclared
+  not_checked: ["not_checked"],
 };
 
 const is2xx = (h: string | number | null | undefined) => {
@@ -351,7 +353,9 @@ export function compareListing(x: ListingInput, reg: Registry): { checks: Check[
       joined++;
       const rs = statusWord(row.result);
       if ((rs === "settled") !== moneyMoved(lr)) bad.push(`${row.attemptedMinute}: record ${row.result} / ledger ${lr.status} confirmed_units=${lr.confirmed_units}`);
-      if (row.l2 !== null && lr.l2_schema !== "" && row.l2 !== lr.l2_schema) bad.push(`${row.attemptedMinute}: record L2 ${row.l2} / ledger l2_schema ${lr.l2_schema}`);
+      // 台帳の l2_schema は記録の値のまま（互換）。判定・記録頁と同じ読み直しは l2_reading（2026-09-29.4）。あればそちらと比べる
+      const lrL2 = (lr as Record<string, string | undefined>).l2_reading || lr.l2_schema;
+      if (row.l2 !== null && lrL2 !== "" && row.l2 !== lrL2) bad.push(`${row.attemptedMinute}: record L2 ${row.l2} / ledger l2 ${lrL2}`);
     }
     if (joined > 0) push("money_moved", "record_rows_vs_ledger", bad.length === 0, [
       { surface: "record", value: `${rec.rows.length} rows (${joined} joined to the ledger)` },
@@ -513,12 +517,13 @@ export function compareListing(x: ListingInput, reg: Registry): { checks: Check[
         ]);
       else skip("l2_state", "l2_same_row", "no delivered row in the window");
     } else {
+      const tL2 = (target as Record<string, string | undefined>).l2_reading || target.l2_schema;
       const recRow = rec?.rows.find((r) => (r.txHash && target.tx_hash && r.txHash.toLowerCase() === target.tx_hash.toLowerCase()) || r.attemptedMinute === minuteOf(target.attempted_at));
       const vals: SurfaceValue[] = [
         { surface: "decision", value: `${decL2}${d.facts?.l2?.missing_keys?.length ? ` missing ${d.facts.l2.missing_keys.join(",")}` : ""}` },
-        { surface: "ledger", value: `${target.l2_schema || "(blank)"} @ ${target.attempted_at}` },
+        { surface: "ledger", value: `${tL2 || "(blank)"} @ ${target.attempted_at}` },
       ];
-      let ok = L2_EQUIV[decL2]!.includes(target.l2_schema);
+      let ok = (L2_EQUIV[decL2] ?? []).includes(tL2);
       if (recRow?.l2) {
         vals.push({ surface: "record", value: recRow.l2 });
         ok = ok && L2_EQUIV[decL2]!.includes(recRow.l2);
@@ -585,7 +590,9 @@ export function compareRegistry(reg: Registry, decisionRulesVersions: string[]):
     for (const l of reg.llms) {
       // llms に出る l0_/l1_/l2_ の語は、理由コード（enum・パターン）か、openapi が鍵・列として定義する語のどれか
       const undefinedWords = [...l.tokens].filter(
-        (t) => !o.enum.includes(t) && !o.patterns.some((p) => p.test(t)) && !o.yamlKeys.has(t) && !o.backticked.has(t),
+        (t) => !o.enum.includes(t) && !o.patterns.some((p) => p.test(t)) && !o.yamlKeys.has(t) && !o.backticked.has(t)
+          // `l1_not_counted_`* のようにまとめて指す書き方（語頭）は、その語頭で始まるコードがあれば定義済み
+          && !o.enum.some((c) => c.startsWith(`${t}_`)),
       );
       push("reason_codes", "llms_codes_defined", undefinedWords.length === 0, [
         { surface: l.name, value: `${l.tokens.size} l0_/l1_/l2_ words` },
