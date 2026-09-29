@@ -217,6 +217,42 @@ if (!TEST_DB) {
       assert.equal(m, 0);
     });
 
+    await t.test("2b（2026-09-29）: 払った後に結果を書けなかった行（threw_after_reservation・HTTP なし）は、古い 4xx より先に読む", async () => {
+      // 本番: cloud.trycorpus.ai の 0.50 USDC は結果の UPDATE が落ち、http_status_paid が NULL の settle_failed になった。
+      // 以前の並び（2xx DESC NULLS LAST）は NULL を「2xx でない」群のさらに後ろ（数千行の古い残りの後ろ）へ回していた。
+      await reset();
+      const payA = "0x00000000000000000000000000000000000000a1";
+      const payB = "0x00000000000000000000000000000000000000b2";
+      const payC = "0x00000000000000000000000000000000000000c3";
+      const eA = await seedEndpoint(payA);
+      const eB = await seedEndpoint(payB);
+      const eC = await seedEndpoint(payC);
+      // 新しい 400 の行（従来はこちらが先）と、それより古い threw の行・古い transport 失敗（HTTP なし）の行。
+      const four = await seedRow(eA, { status: "settle_failed", attemptedAt: new Date("2026-09-29T06:02:00Z"), http: 400, payTo: payA, nonce: tx("aa") });
+      const threw = await seedRow(eB, { status: "settle_failed", attemptedAt: new Date("2026-09-29T06:00:21Z"), http: null, payTo: payB, nonce: tx("bb") });
+      await db.execute(sql`
+        UPDATE x402_l1_purchases SET raw_response_meta = '{"phase":"post_reservation","reason":"threw_after_reservation","credentialSent":true}'::jsonb
+        WHERE id = ${threw}::uuid`);
+      const transport = await seedRow(eC, { status: "settle_failed", attemptedAt: new Date("2026-09-29T06:01:00Z"), http: null, payTo: payC, nonce: tx("cc") });
+      // 本番の行は必ず raw_response_meta を持つ（NULL だと先頭の並びキーが NULL になり、比べたい並びが見えない）。
+      await db.execute(sql`UPDATE x402_l1_purchases SET raw_response_meta = '{"phase":"paid","status":400}'::jsonb WHERE id = ${four}::uuid`);
+      await db.execute(sql`
+        UPDATE x402_l1_purchases SET raw_response_meta = '{"phase":"paid","status":null,"transportFailure":{"side":"seller_or_path","code":null}}'::jsonb
+        WHERE id = ${transport}::uuid`);
+      const order: string[] = [];
+      const reader: import("@/lib/settlements/recover-late").TransferReader = async (q) => {
+        order.push(q.payTo);
+        return [];
+      };
+      await late.recoverLateSettlements({ readTransfers: reader, chainReadLimit: 1 });
+      assert.deepEqual(order, [payB], "1 行だけ読める回では、結果を失った行を先に読む");
+      await late.recoverLateSettlements({ readTransfers: reader, chainReadLimit: 1 });
+      assert.deepEqual(order, [payB, payA], "次は新しい 4xx");
+      await late.recoverLateSettlements({ readTransfers: reader, chainReadLimit: 1 });
+      assert.deepEqual(order, [payB, payA, payC], "HTTP の無い行も 4xx の群の中で時刻順に読まれる（最後尾に沈まない）");
+      for (const id of [four, threw, transport]) assert.ok((await get(id)).rawResponseMeta && "lateChainRead" in ((await get(id)).rawResponseMeta as object));
+    });
+
     await t.test("3: 2xx で売り手が名指した tx は売り手の申告として照合へ（lateSettlement を付けない）。4xx は触らない", async () => {
       await reset();
       const e = await seedEndpoint();

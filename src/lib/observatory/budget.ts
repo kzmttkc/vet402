@@ -200,6 +200,51 @@ export function isCensusEnabled(): boolean {
   return process.env.OBSERVATORY_L1_CENSUS === "on";
 }
 
+/**
+ * census の最低枠（2026-09-29）。CENSUS_PER_RUN（40）のうち、census のために先に取っておく件数。
+ *
+ * 本番の実測（2026-09-28〜29 の 6 回）: retest が毎回 35〜40 件を先に取り、census は 0 件だった
+ * （census の枠は CENSUS_PER_RUN − retest の件数）。未購入の Base の売り手 629 ホスト（うち今買える 425）を
+ * 10/6 の告知までに一巡させるため、retest が残っていても 1 回にこの件数は census に回す。census がこの件数に
+ * 満たないときは、余りを retest に戻す（枠を捨てない）。
+ *
+ * 環境変数 OBSERVATORY_L1_CENSUS_MIN_PER_RUN（非負の整数の十進表記・CENSUS_PER_RUN で頭打ち）。
+ * 未設定・壊れた値は 0＝従来どおり（retest が先に全部取れる）。上限は何も変えない（1 件 $1・日次 $25・
+ * チェーン別・受取先／ホスト別・原子的予約はそのまま）。
+ */
+export function censusMinPerRun(): number {
+  const raw = process.env.OBSERVATORY_L1_CENSUS_MIN_PER_RUN;
+  if (raw === undefined) return 0;
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return 0;
+  return Math.min(Number(trimmed), CENSUS_PER_RUN);
+}
+
+/** census の初回購入の日次枠の上限（env の打ち間違いで枠を開けすぎない。支出は日次 $25 が別に縛る）。 */
+export const CENSUS_FIRST_PURCHASE_QUOTA_MAX = 500;
+
+/**
+ * census（selection = "census"）の初回購入にだけ掛ける、初回購入の日次枠（2026-09-29）。
+ *
+ * 初回購入の日次枠（l1-runner FIRST_PURCHASE_DAILY_QUOTA = 120）は、その UTC 日に「購入行の無かった
+ * エンドポイント」を買った件数の上限で、census の買いは定義上すべて初回購入（ホストに行が 1 件も無い）。
+ * 120 のままだと未購入 630 ホストに 5 日以上かかり、しかも主候補・レーンの初回購入と同じ 120 を取り合う。
+ *
+ * 数え方は変えない（当日の初回購入の総数・census か否かを問わない）。census の候補だけ、その総数が
+ * この値に届くまで買える。census でない初回購入は従来どおり 120 で止まる。
+ * 環境変数 OBSERVATORY_L1_CENSUS_FIRST_PURCHASE_QUOTA（非負の整数の十進表記）。未設定・壊れた値・
+ * `defaultQuota` 未満は `defaultQuota`（＝従来どおり・広げるだけで狭めない）。上限は CENSUS_FIRST_PURCHASE_QUOTA_MAX。
+ */
+export function censusFirstPurchaseQuota(defaultQuota: number): number {
+  const raw = process.env.OBSERVATORY_L1_CENSUS_FIRST_PURCHASE_QUOTA;
+  if (raw === undefined) return defaultQuota;
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return defaultQuota;
+  const n = Number(trimmed);
+  if (n <= defaultQuota) return defaultQuota;
+  return Math.min(n, Math.max(defaultQuota, CENSUS_FIRST_PURCHASE_QUOTA_MAX));
+}
+
 /** 表の tempo 行の別名（mpp-payer のテストと同じ名前）。 */
 export function tempoDailyCapUnits(): bigint {
   return chainDailyCapUnits("tempo");

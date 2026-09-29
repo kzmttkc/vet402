@@ -38,6 +38,8 @@ import { UnsafeTargetError, createSafeFetchImpl, type SafeFetchCallOptions } fro
 import { redactForLog, redactedError } from "./redact";
 import { createDeadline } from "@/lib/util/deadline";
 import { CENSUS_PER_RUN, CHAIN_DAILY_CAPS, LANE_FLOOR_FETCH_MAX, LANE_FLOOR_MAX_PER_HOST, LANE_FLOOR_OVERSAMPLE, cappedChainFor, chainDailyCapUnits, checkL1Budget, domainDailyCapUnits, isCensusEnabled, isL1Enabled, laneFloorPerRun, sellerDailyCapUnits, DAILY_BUDGET_USD, type CappedChain } from "./budget";
+// census の枠（2026-09-29）。別の import 行に分けてある（同じ行を触る並行ブランチとの衝突を避ける）。
+import { censusFirstPurchaseQuota, censusMinPerRun } from "./budget";
 import { isSpendingHalted, type HaltVerdict } from "./kill-switch";
 import { addDerivedOperatorAddresses, isOperatorPayTo, operatorPayToDenylist } from "./operator";
 import { operatorExclusionPredicate } from "./operator-sql";
@@ -665,6 +667,8 @@ async function reserveSpend(input: {
    * raw_response_meta へ継ぎ足すので、ここで置いた印は消えない。金の条件には関わらない。
    */
   meta?: Record<string, unknown> | null;
+  /** 初回購入の日次枠（既定 FIRST_PURCHASE_DAILY_QUOTA）。census の候補だけ censusFirstPurchaseQuota（2026-09-29）。 */
+  firstPurchaseQuota?: number;
 }): Promise<Reservation> {
   const { db, endpointId, payer, network, asset, payTo, amountUnits, windowDays } = input;
   const metaJson = input.meta ? JSON.stringify(input.meta) : null;
@@ -678,6 +682,7 @@ async function reserveSpend(input: {
   // 0 だった）。新しいチェーンの掃引は初回購入しか無いので、この枠に当たると永久に始まらない。
   // 支出はそのチェーンの別枠（$2/日）で既に縛られている。Base の初回購入の枠は従来どおり。
   const firstQuotaApplies = capChain === null;
+  const firstQuota = input.firstPurchaseQuota ?? FIRST_PURCHASE_DAILY_QUOTA;
   // 売り手ごとの日次上限（2026-09-29 監査 5 周目・高）。受取先は台帳と同じ正規化（0x は小文字・base58 / r は原文）、
   // ホストは census と同じ単位（resource_key の最初の `/` の前・ポート無視・小文字）。status は見ない
   // （day CTE と同じ——予約した瞬間に数える。署名前に戻した予約は spent_units が 0 なので数に入らない）。
@@ -738,7 +743,7 @@ async function reserveSpend(input: {
         AND seller_day.host_spent + ${amountUnits}::numeric <= ${sellerCap}::numeric
         AND seller_day.domain_spent + ${amountUnits}::numeric <= ${domainCap}::numeric
         ${capUnits === null ? sql`` : sql`AND chain_day.spent + ${amountUnits}::numeric <= ${capUnits}::numeric`}
-        ${firstQuotaApplies ? sql`AND (NOT first_day.is_first OR first_day.n < ${FIRST_PURCHASE_DAILY_QUOTA})` : sql``}
+        ${firstQuotaApplies ? sql`AND (NOT first_day.is_first OR first_day.n < ${firstQuota})` : sql``}
       RETURNING id
     )
     SELECT (SELECT id FROM ins)::text AS row_id, (SELECT taken FROM dup) AS taken,
@@ -760,7 +765,7 @@ async function reserveSpend(input: {
     const firstCount =
       typeof row.first_day_count === "string" ? Number(row.first_day_count.split(".")[0]) : null;
     // 読めなければ枠が尽きた側へ倒す（行を書かない——書くと掃引の窓ぶん締め出す）。
-    if (firstCount === null || !Number.isFinite(firstCount) || firstCount >= FIRST_PURCHASE_DAILY_QUOTA) {
+    if (firstCount === null || !Number.isFinite(firstCount) || firstCount >= firstQuota) {
       return { ok: false, reason: "first_purchase_quota" };
     }
   }
@@ -926,7 +931,9 @@ export async function resolveReservationAsFailed(
             'phase', 'post_reservation',
             'reason', 'threw_after_reservation',
             'credentialSent', auth_nonce IS NOT NULL,
-            'error', ${redactForLog(error)}::text
+            'error', ${pgSafeText(redactForLog(error))}::text,
+            -- 原因（SQLSTATE と本文・2026-09-29）。error は drizzle の包みの先頭 300 文字で、原因は途中で切れていた。
+            'cause', ${JSON.stringify(dbErrorCause(error))}::jsonb
           )
       WHERE id = ${rowId}::uuid
       RETURNING status
@@ -1189,6 +1196,10 @@ export async function runL1Batch(
   //     外す側へ倒す——初回購入を 1 日見送っても翌日また候補になるが、枠を数えられない
   //     まま走ると、カタログが跳ねた日に初回購入だけで日次予算を使い切る。
   let firstPurchasesSelectable = true;
+  // census の候補（selection = "census"）だけは censusFirstPurchaseQuota（2026-09-29・既定は同じ 120）まで。
+  // 数え方は同じ（当日の初回購入の総数）。読めなければ census も外す側へ倒す。
+  const censusFirstQuota = censusFirstPurchaseQuota(FIRST_PURCHASE_DAILY_QUOTA);
+  let censusFirstSelectable = true;
   try {
     const rawFirst = await db.execute(sql`SELECT ${firstPurchasesTodayCountSql()}::text AS n`);
     const firstRows = (Array.isArray(rawFirst)
@@ -1198,9 +1209,13 @@ export async function runL1Batch(
     if (typeof firstRaw !== "string" || Number(firstRaw) >= FIRST_PURCHASE_DAILY_QUOTA) {
       firstPurchasesSelectable = false;
     }
+    if (typeof firstRaw !== "string" || !Number.isFinite(Number(firstRaw)) || Number(firstRaw) >= censusFirstQuota) {
+      censusFirstSelectable = false;
+    }
   } catch (error) {
     logServerErrorSafe("observatory.l1.first_purchase_quota_read", redactedError(error));
     firstPurchasesSelectable = false;
+    censusFirstSelectable = false;
   }
 
   // 3. Targets: L0-passing active endpoints. Priority sellers (verified
@@ -1356,7 +1371,8 @@ export async function runL1Batch(
         // レーン枠（lane 付き）の問い合わせには掛けない（2026-09-17）: 別枠を持つチェーンの
         // 掃引は初回購入しか無く、この枠で除外すると新しいチェーンが永久に始まらない。
         // 支出はそのチェーンの別枠で縛られる（reserveSpend の firstQuotaApplies と同じ判断）。
-        firstPurchasesSelectable || lane
+        // census の候補（census === "census"）は census の枠（censusFirstSelectable・2026-09-29）で判定する。
+        (census === "census" ? censusFirstSelectable : firstPurchasesSelectable) || lane
           ? sql``
           : sql`AND EXISTS (SELECT 1 FROM x402_l1_purchases fp WHERE fp.endpoint_id = e.id)`
       }
@@ -1474,36 +1490,34 @@ export async function runL1Batch(
   //     本来重ならないが、ホスト名でも重複を外す（同じ売り手を 1 回のバッチで 2 度買わない）。
   const censusOn = isCensusEnabled() && !onlyEndpointId;
   const laneIds = new Set(laneHead.head.map((c) => c.id));
+  const fetchCensusRows = async (censusLimit: number) =>
+    await withDailyFallback(
+      async () => await db.execute(censusTargetsSql(true, censusLimit)),
+      async () => await db.execute(censusTargetsSql(false, censusLimit)),
+    );
   const retestParams = censusOn ? await readRetestSellers(db) : null;
-  const retestHead = await censusCandidates({
-    enabled: censusOn && retestParams !== null && retestParams.hostCount > 0,
+  const plan = await planCensusAndRetest({
+    censusOn,
+    retestOn: censusOn && retestParams !== null && retestParams.hostCount > 0,
     perRun: CENSUS_PER_RUN,
+    censusMin: censusOn ? censusMinPerRun() : 0,
     excludeIds: laneIds,
-    selection: "retest",
-    fetchCensus: async (limit) =>
+    fetchCensus: fetchCensusRows,
+    fetchRetest: async (limit) =>
       await withDailyFallback(
         async () => await db.execute(censusTargetsSql(true, limit, "retest", retestParams ?? undefined)),
         async () => await db.execute(censusTargetsSql(false, limit, "retest", retestParams ?? undefined)),
       ),
   });
-  const censusHead = await censusCandidates({
-    enabled: censusOn,
-    perRun: CENSUS_PER_RUN - retestHead.length,
-    excludeIds: new Set([...laneIds, ...retestHead.map((c) => c.id)]),
-    excludeHosts: new Set(retestHead.map((c) => censusHostOf(laneHostOf(c.resourceUrl)))),
-    fetchCensus: async (censusLimit) =>
-      await withDailyFallback(
-        async () => await db.execute(censusTargetsSql(true, censusLimit)),
-        async () => await db.execute(censusTargetsSql(false, censusLimit)),
-      ),
-  });
-  summary.retestCandidates = retestHead.length;
-  summary.censusCandidates = censusHead.length;
+  summary.retestCandidates = plan.retestCount;
+  summary.censusCandidates = plan.censusCount;
   if (censusOn) summary.censusRemaining = await countCensusRemaining(db);
   // 並びは「レーン枠 → 優先ホスト → retest → census → 主候補の残り」（独立レビュー W1・2026-09-28）。方法論は
   // 優先ホスト（PRIORITY_SELLER_HOSTS）を「候補選択の先頭に固定」と書いているので、retest / census の最大 40 件を
   // その前に置かない。retest も census も 0 件の日（旗 OFF を含む）は従来の並びのまま（何も動かさない）。
-  const fairHead = [...retestHead, ...censusHead];
+  // census の最低枠（OBSERVATORY_L1_CENSUS_MIN_PER_RUN・2026-09-29）があれば、その分の census は retest より前
+  // （planCensusAndRetest）。1 回のバッチが実際に回せるのは 50〜70 件なので、後ろに置くと枠があっても買われない。
+  const fairHead = plan.head;
   const priorityHead =
     fairHead.length > 0
       ? candidates.filter((c) => c.isPriority && !laneIds.has(c.id))
@@ -1812,6 +1826,62 @@ export async function censusCandidates(input: {
   return pickCensusRows(rows, input.perRun, input.excludeIds, selection, excludeHosts);
 }
 
+/**
+ * census と retest の枠の配分（2026-09-29）。CENSUS_PER_RUN を分け合う。
+ *
+ *  - censusMin = 0（既定・OBSERVATORY_L1_CENSUS_MIN_PER_RUN 未設定）: 従来どおり。retest が先に perRun 件まで取り、
+ *    census は残り（perRun − retest）。並びは retest → census。
+ *  - censusMin > 0: census を先に censusMin 件まで取り（候補が足りなければ取れた件数だけ）、retest は
+ *    perRun − その件数まで、census の残りの枠があればその後にもう一度 census を取る。並びは
+ *    census（最低枠）→ retest → census（残り）。同じ売り手（ホスト）・同じ出品を 2 度入れない。
+ *
+ * どの候補も同じ経路（上限・別枠・残高・原子的予約）で買う。ここは並びと件数を決めるだけ。
+ */
+export async function planCensusAndRetest(input: {
+  censusOn: boolean;
+  retestOn: boolean;
+  perRun: number;
+  censusMin: number;
+  excludeIds: ReadonlySet<string>;
+  fetchCensus: (limit: number) => Promise<unknown>;
+  fetchRetest: (limit: number) => Promise<unknown>;
+}): Promise<{ head: Candidate[]; censusCount: number; retestCount: number }> {
+  const perRun = Math.max(0, input.perRun);
+  const censusMin = input.censusOn ? Math.min(Math.max(0, input.censusMin), perRun) : 0;
+  const ids = new Set(input.excludeIds);
+  const hosts = new Set<string>();
+  const take = (list: Candidate[]) => {
+    for (const c of list) {
+      ids.add(c.id);
+      hosts.add(censusHostOf(laneHostOf(c.resourceUrl)));
+    }
+    return list;
+  };
+  const reserved = take(
+    await censusCandidates({ enabled: input.censusOn && censusMin > 0, perRun: censusMin, excludeIds: new Set(ids), excludeHosts: new Set(hosts), fetchCensus: input.fetchCensus }),
+  );
+  const retest = take(
+    await censusCandidates({
+      enabled: input.retestOn,
+      perRun: perRun - reserved.length,
+      excludeIds: new Set(ids),
+      excludeHosts: new Set(hosts),
+      selection: "retest",
+      fetchCensus: input.fetchRetest,
+    }),
+  );
+  const rest = take(
+    await censusCandidates({
+      enabled: input.censusOn,
+      perRun: perRun - reserved.length - retest.length,
+      excludeIds: new Set(ids),
+      excludeHosts: new Set(hosts),
+      fetchCensus: input.fetchCensus,
+    }),
+  );
+  return { head: [...reserved, ...retest, ...rest], censusCount: reserved.length + rest.length, retestCount: retest.length };
+}
+
 /** censusCandidates の選び方（純関数・DB 無しで固定するため公開）。 */
 export function pickCensusRows(
   rows: readonly Record<string, unknown>[],
@@ -1975,12 +2045,14 @@ async function purchaseOne(input: {
       : meta;
 
   const record = async (row: Partial<typeof x402L1Purchases.$inferInsert>) => {
+    const meta = selectionMeta ? tagMeta(row.rawResponseMeta ?? null) : row.rawResponseMeta;
     await db.insert(x402L1Purchases).values({
       endpointId: candidate.id,
       status: "request_error",
       payer: payerLabel,
       ...row,
-      ...(selectionMeta ? { rawResponseMeta: tagMeta(row.rawResponseMeta ?? null) } : {}),
+      // 売り手の応答から来た文字列（本文の先頭・誤りの文）に U+0000 等が残ると行ごと落ちる（pgSafeJson・2026-09-29）。
+      ...(meta !== undefined ? { rawResponseMeta: pgSafeJson(meta) } : {}),
     });
     invalidateDecisionCache(candidate.id); // 購入結果は判定材料（このインスタンスのみ・cache.ts 参照）
   };
@@ -2204,6 +2276,8 @@ async function purchaseOne(input: {
     requestUsd: unitsToUsd(amount),
   });
   if (!budget.allowed) {
+    // census / retest の候補は行を書かない（下の予約の daily_budget_exceeded と同じ理由・2026-09-29）。
+    if (candidate.selection && budget.reason === "daily_budget_exceeded") return { kind: "budget_denied", settled: false, spent: 0n };
     await record({
       status: "budget_denied",
       amountUnits: amountUnitsText,
@@ -2325,6 +2399,8 @@ async function purchaseOne(input: {
       isMature: candidate.isMature,
     }),
     meta: selectionMeta,
+    // census の初回購入だけ census の枠（2026-09-29・既定は同じ 120）。retest・主候補・レーンは従来の枠。
+    ...(candidate.selection === "census" ? { firstPurchaseQuota: censusFirstPurchaseQuota(FIRST_PURCHASE_DAILY_QUOTA) } : {}),
   });
   if (!reservation.ok) {
     if (reservation.reason === "already_purchased") {
@@ -2357,6 +2433,9 @@ async function purchaseOne(input: {
       // スイープ窓のあいだ再選択されず、掃引が終わらない。翌 UTC 日にまた候補になる。
       return { kind: "skipped", settled: false, spent: 0n };
     }
+    // census / retest の候補（2026-09-29）: 日次 $25 に届いたら行を書かない。書くとそのホストに行ができ、census は
+    // 「一巡済み」、retest は「最新の行がこちらの落ち度ではない」と読んで、翌日以降に二度と選ばない（買っていないのに）。
+    if (candidate.selection) return { kind: "budget_denied", settled: false, spent: 0n };
     await record({
       status: "budget_denied",
       amountUnits: amountUnitsText,
@@ -2679,46 +2758,81 @@ async function purchaseOne(input: {
       // census / retest の候補から来た行（2026-09-28）。どちらでもなければ鍵ごと無い。
       ...(selectionMeta ?? {}),
     };
+    // 売り手から来た文字列（本文の先頭・受領証・tx）は pgSafeJson / pgSafeText を通す（2026-09-29）。通さないと
+    // バイナリの本文の U+0000 で UPDATE ごと落ち、払った後の行が tx も HTTP status も無い settle_failed になった。
+    const claimedTx = settlement?.transaction ? pgSafeText(settlement.transaction) : null;
     const outcomeRow = {
       status,
-      txHash: settlement?.transaction ?? null,
+      txHash: claimedTx,
       httpStatusPaid: paid?.status ?? null,
       latencyMs,
       payloadNonEmpty: paid ? payloadNonEmpty : null,
       contentTypeMatch,
       l2Schema,
-      rawSettlement: settlement
-        ? isTempo && mppReceipt
-          ? { ...settlement, receipt: mppReceipt.receipt, header: paid?.headers.get("payment-receipt") ?? null }
-          : settlement
-        : paidError
-          ? { error: paidError }
-          : null,
-      rawResponseMeta,
+      rawSettlement: pgSafeJson(
+        settlement
+          ? isTempo && mppReceipt
+            ? { ...settlement, receipt: mppReceipt.receipt, header: paid?.headers.get("payment-receipt") ?? null }
+            : settlement
+          : paidError
+            ? { error: paidError }
+            : null,
+      ),
+      rawResponseMeta: pgSafeJson(rawResponseMeta),
     };
     let recordedStatus = status;
-    try {
-      await db.update(x402L1Purchases).set(outcomeRow).where(eq(x402L1Purchases.id, reservation.rowId));
-    } catch (error) {
-      if (!isDuplicateTxHashError(error)) throw error;
-      // 2026-09-04 監査 P1-1: 売り手が**別の購入で既に使われた tx**をレシートとして
-      // 返した。部分一意 index（x402_l1_purchases_tx_unique）が書き込みを弾いた
-      // ——それ自体が売り手についての所見なので、行を in_flight のまま残さず
-      // その場で確定させる。tx_hash は null で入れる（一意 index を再び踏まないため。
-      // 主張された値は raw_response_meta に残るので消えていない）。
+    // 2026-09-04 監査 P1-1: 売り手が**別の購入で既に使われた tx**をレシートとして
+    // 返した。部分一意 index（x402_l1_purchases_tx_unique）が書き込みを弾いた
+    // ——それ自体が売り手についての所見なので、行を in_flight のまま残さず
+    // その場で確定させる。tx_hash は null で入れる（一意 index を再び踏まないため。
+    // 主張された値は raw_response_meta に残るので消えていない）。
+    const writeRefuted = async (base: Omit<typeof outcomeRow, "rawSettlement" | "rawResponseMeta"> & { rawSettlement: unknown; rawResponseMeta: unknown }) => {
       recordedStatus = "settle_claim_refuted";
       await db
         .update(x402L1Purchases)
         .set({
-          ...outcomeRow,
+          ...base,
           status: recordedStatus,
           txHash: null,
           settlementVerified: false,
           settlementVerifiedAt: new Date(),
-          settlementVerifyReason: `tx_hash_reused: ${settlement?.transaction ?? ""}`.slice(0, 500),
-          rawResponseMeta: { ...rawResponseMeta, reusedTxHash: settlement?.transaction ?? null },
+          settlementVerifyReason: `tx_hash_reused: ${claimedTx ?? ""}`.slice(0, 500),
+          rawResponseMeta: { ...(base.rawResponseMeta as Record<string, unknown>), reusedTxHash: claimedTx },
         })
         .where(eq(x402L1Purchases.id, reservation.rowId));
+    };
+    try {
+      await db.update(x402L1Purchases).set(outcomeRow).where(eq(x402L1Purchases.id, reservation.rowId));
+    } catch (error) {
+      if (isDuplicateTxHashError(error)) {
+        await writeRefuted(outcomeRow);
+      } else {
+        // 2026-09-29: 結果の UPDATE が未知の理由で落ちても、**払った事実の芯**（status・売り手が名指した tx・
+        // HTTP status・nonce は署名の直後に書き済み）は失わない。売り手の本文・受領証の中身を外した小さな行で
+        // 書き直す。これも落ちたら外側の catch（resolveReservationAsFailed）が settle_failed に倒す——そのときも
+        // auth_nonce は残っているので、遅延回収（recover-late: 索引とチェーン直読み）が着金を結び付ける。
+        logServerErrorSafe("observatory.l1.outcome_write_failed", new Error(`cause=${JSON.stringify(dbErrorCause(error))} ${redactedError(error).message}`));
+        const minimal = {
+          ...outcomeRow,
+          rawSettlement: claimedTx ? { success: settlement?.success === true, transaction: claimedTx } : null,
+          rawResponseMeta: pgSafeJson({
+            phase: "paid",
+            status: paid?.status ?? null,
+            contentType,
+            ...(isTempo ? { protocol: "mpp" } : {}),
+            ...(credentialStripped ? { credentialStripped } : {}),
+            ...(transportSide ? { transportFailure: { side: transportSide, code: transportErrorCode(paidErrorRaw) } } : {}),
+            ...(selectionMeta ?? {}),
+            outcomeWriteFailed: { cause: dbErrorCause(error), error: redactForLog(error).slice(0, 200) },
+          }),
+        };
+        try {
+          await db.update(x402L1Purchases).set(minimal).where(eq(x402L1Purchases.id, reservation.rowId));
+        } catch (secondError) {
+          if (!isDuplicateTxHashError(secondError)) throw secondError;
+          await writeRefuted(minimal);
+        }
+      }
     }
     invalidateDecisionCache(candidate.id);
 
@@ -2829,6 +2943,54 @@ function isDuplicateTxHashError(error: unknown): boolean {
   const code = (error as { code?: unknown })?.code;
   const text = `${(error as { constraint_name?: string })?.constraint_name ?? ""} ${String(error)}`;
   return (code === "23505" || /23505|duplicate key/i.test(text)) && /x402_l1_purchases_tx_unique/.test(text);
+}
+
+/**
+ * Postgres の text / jsonb が受け付けない文字を落とす（2026-09-29・支払った後の台帳の更新が落ちた件）。
+ *
+ * 本番の実測: 2026-09-21〜29 の 6 行（agents.dexl.io の音声・api.x-402.online のスクリーンショット・
+ * cloud.trycorpus.ai の gzip TSV など、**本文がバイナリの出品だけ**）で、支払い付き要求の結果の UPDATE が落ち、
+ * 行は `threw_after_reservation` の settle_failed になった——売り手が返した tx（settle_claimed）も、HTTP 200 も失った。
+ * 原因は bodyHead（本文の先頭 500 文字）: バイナリを文字列にすると U+0000 が残り、jsonb は `\u0000` を受け付けない
+ * （22P05 unsupported Unicode escape sequence）。gzip は 4 バイト目で必ず 0x00。slice の切れ目の孤立サロゲートも
+ * jsonb は受け付けない（22P02）。U+0000 は落とし、孤立サロゲートは U+FFFD に置き換える（キーも同じ）。
+ */
+export function pgSafeText(value: string): string {
+  return value
+    .replaceAll("\u0000", "")
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "\uFFFD");
+}
+
+/** pgSafeText を JSON の値の全ての文字列（キーを含む）に掛ける。文字列以外の葉はそのまま。 */
+export function pgSafeJson<T>(value: T): T {
+  if (typeof value === "string") return pgSafeText(value) as T;
+  if (Array.isArray(value)) return value.map((v) => pgSafeJson(v)) as T;
+  if (value !== null && typeof value === "object" && !(value instanceof Date)) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[pgSafeText(k)] = pgSafeJson(v);
+    return out as T;
+  }
+  return value;
+}
+
+/**
+ * DB の例外の原因（SQLSTATE と本文）を短く取り出す（2026-09-29）。drizzle は「Failed query: <文> params: <値>」で
+ * 包み、原因（postgres の誤り）を cause に置く。従来は包みの先頭 300 文字だけを残していたので、原因は params の
+ * 途中で切れて一度も台帳に残らなかった。URL は伏字（redactForLog）。
+ */
+export function dbErrorCause(error: unknown): { code: string | null; message: string } | null {
+  let e: unknown = error;
+  for (let depth = 0; depth < 4 && e && typeof e === "object"; depth++) {
+    const next = (e as { cause?: unknown }).cause;
+    if (!next || typeof next !== "object") break;
+    e = next;
+  }
+  if (!e || typeof e !== "object" || e === error) return null;
+  const code = (e as { code?: unknown }).code;
+  return {
+    code: typeof code === "string" && code.length > 0 ? code.slice(0, 10) : null,
+    message: pgSafeText(redactForLog(e)).slice(0, 200),
+  };
 }
 
 /**

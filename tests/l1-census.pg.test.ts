@@ -341,9 +341,15 @@ if (!TEST_DB) {
       assert.equal(w.paidUrls().length, 0, "支払い付きの要求は 1 本も出ない");
       assert.equal(summary.censusCandidates, 4, "候補には入る（並びの補助）が、予算の関門で止まる");
       assert.ok(summary.budgetDenied >= 4);
+      // 2026-09-29: census の候補は予算の否認で行を書かない。書くとホストに行ができ、翌日から「一巡済み」として
+      // 二度と選ばれない（買っていないのに）。主候補は従来どおり budget_denied を記帳する。
       const census = (await selectionRows()).filter((r) => r.selection === "census");
-      assert.equal(census.length, 4);
-      assert.ok(census.every((r) => r.status === "budget_denied"), "記帳は従来どおり budget_denied（印つき）");
+      assert.equal(census.length, 0, "census の行は書かない");
+      const denied = (await selectionRows()).filter((r) => r.status === "budget_denied");
+      assert.ok(denied.length > 0 && denied.every((r) => r.selection === null), "主候補の budget_denied は従来どおり");
+      const again = await run(wall());
+      assert.equal(again.censusRemaining, 7, "未購入のホストの数は減らない（翌日また census の候補になる）");
+      assert.equal(again.censusCandidates, 4);
     });
 
     await t.test("既存の関門はそのまま: 購入元の残高が無ければ census も署名しない", async () => {

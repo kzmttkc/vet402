@@ -21,8 +21,15 @@ test("reserveSpend: 初回購入の枠の条件は firstQuotaApplies（= 別枠�
   assert.match(src, /const firstQuotaApplies = capChain === null;/, "判断の変数が無い");
   assert.match(
     src,
-    /\$\{firstQuotaApplies \? sql`AND \(NOT first_day\.is_first OR first_day\.n < \$\{FIRST_PURCHASE_DAILY_QUOTA\}\)` : sql``\}/,
+    /\$\{firstQuotaApplies \? sql`AND \(NOT first_day\.is_first OR first_day\.n < \$\{firstQuota\}\)` : sql``\}/,
     "INSERT の WHERE で枠の条件が無条件に付いている（別枠チェーンの初回購入が予約で止まる）",
+  );
+  // 枠の値（2026-09-29）: 既定は FIRST_PURCHASE_DAILY_QUOTA。census の候補だけが censusFirstPurchaseQuota を渡す。
+  assert.match(src, /const firstQuota = input\.firstPurchaseQuota \?\? FIRST_PURCHASE_DAILY_QUOTA;/);
+  assert.match(
+    src,
+    /\.\.\.\(candidate\.selection === "census" \? \{ firstPurchaseQuota: censusFirstPurchaseQuota\(FIRST_PURCHASE_DAILY_QUOTA\) \} : \{\}\)/,
+    "census 以外の候補に広げた枠を渡している",
   );
   assert.match(src, /if \(firstQuotaApplies && row\.is_first === true\) \{/, "first_purchase_quota の判定が別枠チェーンにも掛かる");
   // 枠を外しても、日次 $25・別枠・dup（掃引窓）の条件は同じ 1 文に残っている。
@@ -33,7 +40,7 @@ test("reserveSpend: 初回購入の枠の条件は firstQuotaApplies（= 別枠�
 test("候補 SQL: レーン枠（lane 付き）の問い合わせには未購入の除外を付けない。主候補（Base）は従来どおり", () => {
   assert.match(
     src,
-    /firstPurchasesSelectable \|\| lane\s*\n\s*\? sql``\s*\n\s*: sql`AND EXISTS \(SELECT 1 FROM x402_l1_purchases fp WHERE fp\.endpoint_id = e\.id\)`/,
+    /\(census === "census" \? censusFirstSelectable : firstPurchasesSelectable\) \|\| lane\s*\n\s*\? sql``\s*\n\s*: sql`AND EXISTS \(SELECT 1 FROM x402_l1_purchases fp WHERE fp\.endpoint_id = e\.id\)`/,
     "レーン枠の問い合わせでも未購入を除外している（新しいチェーンの掃引が始まらない）",
   );
 });

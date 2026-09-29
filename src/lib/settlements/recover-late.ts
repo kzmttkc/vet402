@@ -658,7 +658,15 @@ async function linkFromChain(
       -- CHAIN_READ_MAX_TRIES 回まで読み直す（2026-09-29 独立レビュー WARNING 2）。まだ読んでいない行が先。
       AND NOT (coalesce(pu.raw_response_meta->'lateChainRead'->>'decided', 'false') = 'true')
       AND coalesce((pu.raw_response_meta->'lateChainRead'->>'tries')::int, 0) < ${CHAIN_READ_MAX_TRIES}::int
-    ORDER BY (pu.raw_response_meta ? 'lateChainRead') ASC, (pu.http_status_paid BETWEEN 200 AND 299) DESC NULLS LAST, pu.attempted_at DESC
+    -- 2026-09-29: 払った後に結果の書き込みが落ちた行（threw_after_reservation・outcomeWriteFailed）を 2xx と同じ先頭の群に
+    -- 置く。資格情報を送ったのに結果を失った行で、http_status_paid が NULL のまま残る——以前の DESC NULLS LAST は NULL を
+    -- 「2xx でない」群のさらに後ろ（数千行の古い残りの後ろ）へ回し、索引に着金が無ければ一度も読まれなかった。
+    -- http_status_paid が NULL の行は「2xx でない」群の中で時刻順に並ぶ（coalesce）。raw_response_meta が NULL の行も「未読」の群に入れる。
+    ORDER BY coalesce(pu.raw_response_meta ? 'lateChainRead', false) ASC,
+             (coalesce(pu.http_status_paid BETWEEN 200 AND 299, false)
+               OR coalesce(pu.raw_response_meta->>'reason', '') = 'threw_after_reservation'
+               OR coalesce(pu.raw_response_meta ? 'outcomeWriteFailed', false)) DESC,
+             pu.attempted_at DESC
     LIMIT ${Math.max(0, Math.trunc(limit))}`);
   type B = { purchase_id: string; network: string; payer: string; pay_to: string; amount_units: string; attempted_at: string };
   const batch = rowsOfRaw<B>(batchRaw);
