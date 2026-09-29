@@ -541,7 +541,7 @@ const DETECTION_FLOOR: Record<string, number> = {
   "src/app/api/v1/accuracy/route.ts": 5,
   "src/app/corrections/page.tsx": 21,
   "src/app/docs/api/page.tsx": 56,
-  "src/app/impact/page.tsx": 9,
+  "src/app/impact/page.tsx": 8, // 2026-09-29: 「Rewriting any past row breaks every later root」を実装に合わせて外した
   "src/app/leaderboard/page.tsx": 5,
   "src/app/legal/privacy/page.tsx": 8,
   "src/app/legal/terms/page.tsx": 14,
@@ -553,7 +553,7 @@ const DETECTION_FLOOR: Record<string, number> = {
   "src/app/observatory/methodology/page.tsx": 45,
   "src/app/observatory/page.tsx": 8,
   // 2026-09-28: 14 → 13。meta description を 160 字に詰めた際に "at all"（語 all を拾っていた）を落とした。主張は減っていない。
-  "src/app/observatory/state/page.tsx": 13,
+  "src/app/observatory/state/page.tsx": 12, // 2026-09-29: 同上（every later root）
   "src/app/operator-log/page.tsx": 7,
   // LP は床ちょうど（2026-09-20 実測 10・余白 0）。散文を触るときは、この床の更新差分を同じコミットに出す。
   "src/app/page.tsx": 10,

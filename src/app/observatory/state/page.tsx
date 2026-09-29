@@ -737,8 +737,12 @@ export default async function ObservatoryStatePage() {
               daily hash chain over the full purchase ledger, latest root ({latestAnchor.day}):{" "}
               <code>{latestAnchor.rootHash.slice(0, 16)}…</code> over that day&apos;s{" "}
               {latestAnchor.entryCount.toLocaleString()} ledger entries (an anchor counts the rows it hashed, not
-              the L1 attempts above). Rewriting any past row breaks
-              every later root. Check the links yourself from{" "}
+              the L1 attempts above). A root covers that day&apos;s rows as they stood when it was
+              computed; rows are still updated afterwards by design (a settlement verified on-chain, a
+              correction), so an older root describes the ledger as it was then, not as it is. The
+              chain is kept by vet402 and not yet fixed anywhere outside it, so it shows whether a
+              root you saved was later changed &mdash; it does not by itself stop vet402 from editing
+              rows. Check the links yourself from{" "}
               <code>/api/v1/observatory/anchors</code> alone: each day&apos;s <code>prevRoot</code> is
               the previous day&apos;s root (<code>cli/verify-anchors.ts</code> checks that and that no
               day is missing). Recomputing a root needs the raw purchase rows, which are not published

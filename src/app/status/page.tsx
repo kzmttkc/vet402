@@ -155,10 +155,10 @@ export default async function StatusPage() {
             <>
               <strong className="text-warn-ink">stale</strong> &mdash; no sample for{" "}
               {fmtAge(verdict.ageMs)} (last: {verdict.lastStatus} at {fmtDateTime(verdict.checkedAt)}).
-              Our own check samples every 30 minutes, so a gap over{" "}
-              {Math.round(STATUS_STALE_AFTER_MS / 60_000)} minutes means samples are not being written
-              &mdash; which is what a database outage looks like from here. We do not report the old
-              value as current.
+              Our own check calls <code>/api/health</code> on the hour and the half hour, so a gap
+              over {Math.round(STATUS_STALE_AFTER_MS / 60_000)} minutes means samples are not being
+              written &mdash; which is what a database outage looks like from here. The old value is
+              not reported as current.
             </>
           ) : verdict.kind === "unreadable" ? (
             <>

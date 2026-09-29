@@ -504,8 +504,8 @@ claims:
     verified_at: 2026-09-04
   - id: impact_hash_anchored_a_daily_prev
     surface: src/app/impact/page.tsx
-    quote: "hash-anchored (a daily prev-hash chain; on-chain anchoring is not yet enabled — see"
-    means: "台帳は日次 prev-hash 鎖でハッシュ固定。オンチェーンのアンカーはまだ無効（本文がそう明記している）"
+    quote: "ledger gets a daily prev-hash chain root, kept by vet402 itself (on-chain anchoring is"
+    means: "購入台帳に日次 prev-hash 鎖の root がある。鎖は vet402 自身が持ち、オンチェーンのアンカーはまだ無効。保存した root が後で変わったかは分かるが、行の書き換えそのものは止めない（2026-09-29 監査4周目で「nobody can quietly rewrite it」を改めた）"
     check:
       url: https://vet402.com/api/v1/observatory/anchors
       assert: "anchors.0.rootHash != null"
@@ -522,14 +522,6 @@ claims:
     surface: src/app/impact/page.tsx
     quote: "The purchase ledger is a daily hash chain. Latest root ("
     means: "購入台帳の日次ハッシュ鎖と最新ルート"
-    check:
-      url: https://vet402.com/api/v1/observatory/anchors
-      assert: "anchors.0.entryCount >= 1"
-    verified_at: 2026-09-04
-  - id: impact_entries_rewriting_any_past_row
-    surface: src/app/impact/page.tsx
-    quote: "entries. Rewriting any past row breaks every"
-    means: "過去行の書き換えは以降の全ルートを壊す"
     check:
       url: https://vet402.com/api/v1/observatory/anchors
       assert: "anchors.0.entryCount >= 1"
@@ -735,14 +727,6 @@ claims:
     surface: src/app/observatory/state/page.tsx
     quote: "daily hash chain over the full purchase ledger, latest root ("
     means: "購入台帳の日次ハッシュ鎖。最新ルートに紐づくエントリが実在すること"
-    check:
-      url: https://vet402.com/api/v1/observatory/anchors
-      assert: "anchors.0.entryCount >= 1"
-    verified_at: 2026-09-04
-  - id: state_every_later_root_check_links
-    surface: src/app/observatory/state/page.tsx
-    quote: "every later root. Check the links yourself from"
-    means: "過去行を書き換えると以降の全ルートが壊れる（鎖の性質）。公開物だけで確かめられるのは前後の root のつながりと日の連続まで。root の再計算は export.csv に無い列（id・payer・asset・秒未満・export が除く status）を要するので公開物だけではできない（2026-09-29 再監査で「anchors + export.csv で再計算できる」を改めた）"
     check:
       url: https://vet402.com/api/v1/observatory/anchors
       assert: "anchors.0.entryCount >= 1"

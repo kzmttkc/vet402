@@ -1094,10 +1094,14 @@ paths:
       summary: Daily hash chain over the purchase ledger
       description: |
         One root per UTC day: sha256((prevRoot ?? 'genesis') + newline +
-        canonical JSON of that day's L1 rows, pk-ascending). Rewriting any past
-        row breaks every later root; the projection is open source, so third
-        parties can recompute from export.csv. anchoredTx, when present, is the
-        on-chain anchor (staged rollout, off by default). Key-less; 30/min.
+        canonical JSON of that day's L1 rows, pk-ascending). A root covers the
+        day's rows as they stood when it was computed; rows are still updated
+        afterwards (settlement verification, corrections), so an older root
+        describes the ledger as it was then. Third parties can check that each
+        prevRoot links to the previous day's root and that no day is missing; a
+        root cannot be recomputed from export.csv, which omits hashed fields.
+        The chain is kept by vet402; anchoredTx, when present, is the on-chain
+        anchor (staged rollout, off by default). Key-less; 30/min.
       security: []
       parameters:
         - in: query

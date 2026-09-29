@@ -71,9 +71,10 @@ export default async function ImpactPage() {
           <p className="shrink-0 text-brand-deep sm:w-[10ch]">Abstract</p>
           <p className="min-w-0 max-w-[62ch] text-brand">
             vet402 measures the x402 agent-payment economy by <strong>actually using it</strong>,
-            and gives the results away: the data is public, the code is MIT, the ledger is
-            hash-anchored (a daily prev-hash chain; on-chain anchoring is not yet enabled — see
-            §4) so nobody can quietly rewrite it. This page states the contribution as
+            and gives the results away: the data is public, the code is MIT, and the purchase
+            ledger gets a daily prev-hash chain root, kept by vet402 itself (on-chain anchoring is
+            not yet enabled — see §4). A reader who saves a root can later tell whether the
+            published one changed; the chain does not stop vet402 from editing rows. This page states the contribution as
             numbers — and every number below links to the endpoint that produces it, so you can
             check it rather than trust it.
           </p>
@@ -222,8 +223,12 @@ export default async function ImpactPage() {
             <>
               The purchase ledger is a daily hash chain. Latest root ({latestAnchor.day}):{" "}
               <code>{latestAnchor.rootHash.slice(0, 16)}…</code> over that day&apos;s{" "}
-              {latestAnchor.entryCount.toLocaleString()} entries. Rewriting any past row breaks every
-              later root. From the public API alone a third party can check that each day&apos;s root
+              {latestAnchor.entryCount.toLocaleString()} entries. A root covers that day&apos;s rows as
+              they stood when it was computed (the latest day is recomputed while late rows arrive).
+              Rows are still updated after that by design &mdash; a claimed settlement verified
+              on-chain, a correction &mdash; so an older root describes the ledger as it was then, and
+              today&apos;s rows are not expected to reproduce it; published status changes are listed
+              in <Link href="/corrections" className="underline">/corrections</Link>. From the public API alone a third party can check that each day&apos;s root
               links to the previous day&apos;s and that no day is missing (<code>cli/verify-anchors.ts</code>).
               Recomputing a root itself needs the raw purchase rows, and those are not published in
               full: the open-source projection (<code>src/lib/observatory/anchors.ts</code>) hashes
