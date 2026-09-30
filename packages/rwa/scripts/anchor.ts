@@ -2,7 +2,7 @@
 //
 // Add a record to the existing contract (the normal case; nothing is deployed):
 //   npx tsx packages/rwa/scripts/anchor.ts --dry-run --mainnet --contract 0x1955137e7773f2459eb75fb88842026c6517c22d
-//   RWA_ANCHOR_KEY=… npx tsx packages/rwa/scripts/anchor.ts --mainnet --contract 0x1955137e7773f2459eb75fb88842026c6517c22d
+//   RWA_ANCHOR_KEY=… npx tsx packages/rwa/scripts/anchor.ts --mainnet --from-api --contract 0x1955137e7773f2459eb75fb88842026c6517c22d
 //
 // Check an anchor (anyone, no key; reads the chain named in the record):
 //   npx tsx packages/rwa/scripts/anchor.ts --verify <txHash> [--record fixtures/rwa/anchors/<file>.json]
@@ -46,7 +46,7 @@ import {
   RWA_ANCHOR_CHAIN_ID,
   subjectHash,
 } from "../anchor";
-import { reconstructFacts, type RwaFacts } from "../facts";
+import { METHOD_VERSION, reconstructFacts, type RwaFacts } from "../facts";
 
 const DEMO_ADDRESS = "0xE9B08727131E34010b34006c660D4c1B436EC25f"; // SPEC §11 patch 011
 /** The key that wrote the 0.1 anchor; the default `from` for a dry-run gas estimate. */
@@ -148,8 +148,38 @@ async function estimate(client: PublicClient, contract: Hex, from: Hex, p: Plan)
   return { gas, gasLimit, gasPrice, maxCostWei: gasLimit * gasPrice };
 }
 
+/**
+ * --from-api [base]: anchor the record the site publishes, byte for byte, instead of
+ * rebuilding it here. The site may read through a provider this machine has no key
+ * for, so a local rebuild can differ from what readers see. The published hash
+ * (X-Facts-Hash) must equal the hash computed here, or nothing is sent.
+ */
+async function fetchPublished(wallet: string): Promise<RwaFacts> {
+  const given = opt("--from-api");
+  const base = (given && !given.startsWith("--") ? given : "https://vet402.com").replace(/\/+$/, "");
+  if (!/^https:\/\//.test(base)) throw new Error(`--from-api needs an https base URL, got ${base}`);
+  const url = `${base}/api/v1/rwa/facts/${wallet}`;
+  console.log(`fetching the published record ${url} …`);
+  const res = await fetch(url, { headers: { accept: "application/json" } });
+  if (res.status !== 200) throw new Error(`${url} answered ${res.status}; anchor only a 200 record`);
+  const facts = (await res.json()) as RwaFacts;
+  if (facts.address?.toLowerCase() !== wallet) throw new Error(`published record is for ${facts.address}, not ${wallet}`);
+  if (facts.method_version !== METHOD_VERSION) {
+    throw new Error(`published method_version ${facts.method_version} is not this checkout's ${METHOD_VERSION}; pull first`);
+  }
+  const published = res.headers.get("x-facts-hash");
+  const local = factsHash(facts);
+  if (!published) throw new Error("the site sent no X-Facts-Hash; refusing to anchor a record it did not hash");
+  if (published.toLowerCase() !== local.toLowerCase()) {
+    throw new Error(`X-Facts-Hash ${published} differs from the hash computed here ${local}; refusing`);
+  }
+  console.log(`published X-Facts-Hash matches the local hash ${local}`);
+  return facts;
+}
+
 async function reconstruct(): Promise<RwaFacts> {
   const wallet = (opt("--address") ?? DEMO_ADDRESS).toLowerCase();
+  if (flag("--from-api")) return fetchPublished(wallet);
   console.log(`reconstructing ${wallet} from Robinhood Chain 4663 (tens of seconds)…`);
   return reconstructFacts(wallet, { retries: 6 });
 }

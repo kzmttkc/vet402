@@ -74,9 +74,14 @@ I run it by hand, once per method version, from a Terminal on my own machine.
    (about a minute), then prints what it would anchor and what it would cost.
 
    ```bash
-   npx tsx packages/rwa/scripts/anchor.ts --dry-run --mainnet \
+   npx tsx packages/rwa/scripts/anchor.ts --dry-run --mainnet --from-api \
      --contract 0x1955137e7773f2459eb75fb88842026c6517c22d
    ```
+
+   `--from-api` anchors the record https://vet402.com publishes, byte for byte.
+   The site reads through a provider this machine has no key for, so a local
+   rebuild can differ from what readers see. The script refuses unless the
+   site's `X-Facts-Hash` equals the hash it computes.
 
    Check three things in the output. `method_version` is the version you mean
    to anchor. `hash_material` is `2` for `rwa-recon-0.3` and later. `max_cost_eth`
@@ -98,7 +103,7 @@ I run it by hand, once per method version, from a Terminal on my own machine.
 4. Send one anchor.
 
    ```bash
-   npx tsx packages/rwa/scripts/anchor.ts --mainnet \
+   npx tsx packages/rwa/scripts/anchor.ts --mainnet --from-api \
      --contract 0x1955137e7773f2459eb75fb88842026c6517c22d
    ```
 
