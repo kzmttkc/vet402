@@ -158,6 +158,12 @@ export type TooLargeAnswer = {
 export const MAX_TOKENS_PUBLIC = 6;
 /** Transactions an Alchemy-backed request replays at most (receipts, 25 per batch). */
 export const MAX_TXS_ALCHEMY = 600;
+/**
+ * Tokens an Alchemy-backed request reads state for at most (one batch per token, one after another,
+ * plus one multiplier tail read each). Measured 2026-09-30 on the public RPC: 20 serial state reads
+ * took 3.9 s (median 194 ms), so 30 tokens cost about 6 s and all 195 would cost about 39 s.
+ */
+export const MAX_TOKENS_ALCHEMY = 30;
 
 export class WalletTooLarge extends Error {
   constructor(readonly answer: TooLargeAnswer) {
@@ -166,12 +172,14 @@ export class WalletTooLarge extends Error {
   }
 }
 
-function tooLarge(address: string, block: number, held: string[], limit: TooLargeAnswer["limit"]): WalletTooLarge {
+function tooLarge(address: string, block: number, held: string[], limit: TooLargeAnswer["limit"], alchemy = false): WalletTooLarge {
   const symbols = held.map((t) => tokenByAddress(t)!.symbol).sort();
   const why =
-    limit.kind === "tokens"
-      ? `Rebuilding it means walking the history of ${limit.found} tokens, and one request can walk ${limit.max}.`
-      : `Rebuilding it means replaying ${limit.found} transactions, and one request can replay ${limit.max}.`;
+    limit.kind === "transactions"
+      ? `Rebuilding it means replaying ${limit.found} transactions, and one request can replay ${limit.max}.`
+      : alchemy
+        ? `Rebuilding it means reading ${limit.found} tokens it held or moved, and one request can read ${limit.max}.`
+        : `Rebuilding it means walking the history of ${limit.found} tokens, and one request can walk ${limit.max}.`;
   return new WalletTooLarge({
     error: "wallet_too_large",
     address,
@@ -576,7 +584,11 @@ export async function reconstructFacts(address: string, opts: ReconstructOptions
   if (found) {
     if (held.length === 0 && found.txs.size === 0) throw await empty("every_canonical_token");
     if (found.txs.size > MAX_TXS_ALCHEMY) throw tooLarge(me, block, held, { kind: "transactions", max: MAX_TXS_ALCHEMY, found: found.txs.size });
-    for (const t of [...found.tokens, ...held]) scanned.add(t);
+    // Each token costs a state read and a multiplier read, one after another. Many tokens held or sold
+    // out would hold the one reconstruction slot up to its hard cap, so they get the stable answer now.
+    const inScope = new Set([...found.tokens, ...held]);
+    if (inScope.size > MAX_TOKENS_ALCHEMY) throw tooLarge(me, block, held, { kind: "tokens", max: MAX_TOKENS_ALCHEMY, found: inScope.size }, true);
+    for (const t of inScope) scanned.add(t);
     for (const r of await fetchReceipts([...found.txs], patient, 25)) receiptsByTx.set(r.transactionHash, r);
   } else {
     const nvda = NVDA.token.toLowerCase();

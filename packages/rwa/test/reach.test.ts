@@ -23,7 +23,7 @@ import { MAX_LOG_RANGES, fetchMultiplierLogs, fetchTransfersIn } from "../chain"
 import { NVDA, RWA_PUBLIC_RPC_URL, RWA_RPC_FALLBACK_URL, rwaAlchemyUrl, rwaRpcSource, rwaRpcUrl } from "../config";
 import { TOPICS } from "../events";
 import { MULTICALL3 } from "../feed";
-import { MAX_TOKENS_PUBLIC, MAX_TXS_ALCHEMY, NoStockTokenActivity, SCOPE_RULE_ALL, WalletTooLarge, noActivityAnswer, reconstructFacts, type RwaFacts } from "../facts";
+import { MAX_TOKENS_ALCHEMY, MAX_TOKENS_PUBLIC, MAX_TXS_ALCHEMY, NoStockTokenActivity, SCOPE_RULE_ALL, WalletTooLarge, noActivityAnswer, reconstructFacts, type RwaFacts } from "../facts";
 import { CANONICAL_TOKENS, tokenByAddress } from "../registry";
 import { __resetRefusedUrlsForTest, noteRefused, rpcCall } from "../rpc";
 import { GET } from "../../../src/app/api/v1/rwa/facts/[address]/route";
@@ -688,6 +688,54 @@ test("paid lane: a slow verify leaves the look-alike search less time, so the fi
     assert.equal(body.lookalikes_scope.complete, false);
   } finally {
     Date.now = realNow;
+    f.mock.restore();
+  }
+});
+
+// ---------------------------------------------------------------- Alchemy path: too many tokens to read
+
+test("with Alchemy, a wallet that moved more tokens than one request can read: 422 at once, no state or receipt read", async () => {
+  const many = CANONICAL_TOKENS.slice(0, MAX_TOKENS_ALCHEMY + 1).map((t) => t.token.toLowerCase());
+  const c = fakeChain({
+    alchemy: () => ({ transfers: many.map((token, i) => ({ hash: `0x${(i + 1).toString(16).padStart(64, "0")}`, uniqueId: `${i}:log:0`, rawContract: { address: token } })) }),
+  });
+  const e = await reconstructFacts(ME, { ...c.opts, alchemyUrl: ALCHEMY }).catch((x) => x);
+  assert.ok(e instanceof WalletTooLarge, String(e));
+  assert.deepEqual(e.answer.limit, { kind: "tokens", max: MAX_TOKENS_ALCHEMY, found: MAX_TOKENS_ALCHEMY + 1 });
+  assert.match(e.answer.detail, new RegExp(`reading ${MAX_TOKENS_ALCHEMY + 1} tokens it held or moved, and one request can read ${MAX_TOKENS_ALCHEMY}\\.`));
+  assert.equal(c.count("eth_getTransactionReceipt"), 0);
+  assert.equal(c.count("eth_call"), 1, "only the one Multicall3 balance read");
+  assert.equal(c.count("eth_getLogs"), 0);
+});
+
+test("paid lane: a wallet too large to rebuild is 503 charged:false and never settled", async () => {
+  const tooBig = new WalletTooLarge({
+    error: "wallet_too_large",
+    address: ME,
+    chain_id: 4663,
+    as_of_block: HEAD,
+    method_version: "rwa-recon-0.3",
+    held_tokens: 0,
+    held: [],
+    limit: { kind: "tokens", max: MAX_TOKENS_ALCHEMY, found: MAX_TOKENS_ALCHEMY + 1 },
+    detail: "",
+  });
+  await cachedFactsWith(ME, async () => {
+    throw tooBig;
+  }).catch(() => {});
+  const paths: string[] = [];
+  const f = mock.method(globalThis, "fetch", async (url: string) => {
+    paths.push(new URL(String(url)).pathname);
+    return new Response(JSON.stringify({ isValid: true, payer: payer.address }), { status: 200 });
+  });
+  try {
+    const res = await PAID_GET(new NextRequest(`http://localhost/api/v1/rwa/paid/facts/${ME}`, { headers: { "PAYMENT-SIGNATURE": await paymentHeader() } }), {
+      params: Promise.resolve({ address: ME }),
+    });
+    assert.equal(res.status, 503);
+    assert.deepEqual(await res.json(), { error: "feed_unavailable", charged: false });
+    assert.deepEqual(paths, ["/verify"]);
+  } finally {
     f.mock.restore();
   }
 });
