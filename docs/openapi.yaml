@@ -1412,12 +1412,12 @@ paths:
         list (195, frozen in packages/rwa/registry.json): token Transfers,
         Uniswap v3/v4 swaps verified against the official factory and
         PoolManager, and the Chainlink feed for the tokens that have one (33).
-        Scope, stated in `scope`: tokens held at `as_of`, NVDA, and canonical
-        tokens those tokens' transactions moved; a position opened and closed
-        in another token is not scanned (`exited_positions_not_scanned`).
-        When the deployment has an Alchemy endpoint (patch 020), the scope is
-        every canonical token that ever moved to or from the address, and
-        that gap is not listed.
+        Scope, stated in `scope`: with an Alchemy endpoint (patch 020, live in
+        production since 2026-09-30), every canonical token that ever moved to
+        or from the address, including positions it sold out of. Without one,
+        tokens held at `as_of`, NVDA, and canonical tokens those tokens'
+        transactions moved. A position opened and closed in another token is
+        then not scanned, and `gaps` says so (`exited_positions_not_scanned`).
         `lookalikes` (patch 021) lists tokens the wallet met that copy a Stock
         Token or USDG. They are never counted: not in `tokens`, not in any USD
         figure, not in `evidence`. `lookalikes_scope` says how far that search
@@ -1434,8 +1434,10 @@ paths:
         `balance_mismatch` and `r1_status: unverified`. There is no opinion field
         on this path. Key-less; 10/min/IP (counted in the shared store, so it
         holds across instances). One address is cached for 5 minutes and one
-        reconstruction runs at a time, both per server instance. A reconstruction
-        still running after 45 seconds is abandoned with 503 + Retry-After.
+        reconstruction runs at a time, both per server instance. The route
+        answers within 20 seconds (patch 020). A read still running then keeps
+        going, the answer is 503 `still_reading` with Retry-After, and the retry
+        joins that read.
       security: []
       parameters:
         - in: path
@@ -1610,8 +1612,9 @@ paths:
           description: |
             `no_stock_token_activity`: the address holds none of the canonical
             Stock Tokens and no history in scope was found (SPEC patch 020).
-            The body states what was checked. It is cached for 5 minutes and
-            served stale for 60 s at most (`stale-while-revalidate=60`).
+            The body states what was checked. `Cache-Control: public,
+            max-age=60, s-maxage=300, stale-while-revalidate=60` (patch 024):
+            the CDN keeps it 5 minutes and serves it stale for 60 s at most.
             `history_checked` is `every_canonical_token` when the transfers of
             every canonical token were read, or `nvda_only` when only today's
             balances and NVDA's incoming transfers were (gap
