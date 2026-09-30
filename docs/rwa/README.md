@@ -4,8 +4,7 @@
 (4663) from public chain data: canonical token transfers, Uniswap v3/v4 swaps,
 and the Chainlink feed for each token. The record also names the look-alike
 tokens the wallet met (never counted) and the corporate actions of each token it
-held. It does not trade, hold funds, issue a token, or give advice. Specification: [SPEC.md](SPEC.md). Rules for this code:
-[CLAUDE.md](CLAUDE.md).
+held. It does not trade, hold funds, issue a token, or give advice. Specification: [SPEC.md](SPEC.md).
 
 ## 30 seconds
 
