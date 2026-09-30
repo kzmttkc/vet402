@@ -1,7 +1,6 @@
 // Chain reads that feed the reconstruction (SPEC §9: on-demand, address-scoped).
 import type { RwaReceipt } from "./classify";
 import { TOPICS } from "./events";
-import { rwaRpcUrl } from "./config";
 import { hex, padAddress, rpcBatch, rpcCall, RpcError, type RpcOptions } from "./rpc";
 
 export type RawLog = { transactionHash: string; blockNumber: string; logIndex: string; topics: string[]; data: string; address: string };
@@ -49,7 +48,10 @@ const LOG_BATCH_PACING_MS = 300;
 async function getLogsChunked(filter: Record<string, unknown>, from: number, to: number, opts?: RpcOptions, chunk = LOG_CHUNK_BLOCKS): Promise<RawLog[]> {
   // Genesis-range log queries need an archive node; the fallback RPC refuses them
   // without a token, so log reads stay on the primary and retry longer instead.
-  const logOpts: RpcOptions = { retries: 5, ...opts, urls: opts?.urls ?? [rwaRpcUrl()] };
+  // No URL list is fixed here: rpc.ts picks the primary per batch and never adds the
+  // fallback for eth_getLogs, so a refused Alchemy key moves the walk to the
+  // non-Alchemy primary like every other read.
+  const logOpts: RpcOptions = { retries: 5, ...opts };
   const pause = opts?.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const starts: number[] = [];
   for (let start = from; start <= to; start += chunk) starts.push(start);
@@ -133,7 +135,7 @@ export async function fetchTransfersIn(token: string, address: string, toBlock: 
  * walked one by one on the chunked path, which knows how to split and narrow.
  */
 export async function fetchMultiplierLogs(ranges: { token: string; from: number }[], toBlock: number, opts?: RpcOptions): Promise<RawLog[]> {
-  const logOpts: RpcOptions = { retries: 5, ...opts, urls: opts?.urls ?? [rwaRpcUrl()] };
+  const logOpts: RpcOptions = { retries: 5, ...opts };
   const pause = opts?.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const calls: { method: string; params: unknown[] }[] = [];
   for (const { token, from } of ranges)

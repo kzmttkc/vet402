@@ -18,13 +18,13 @@ import { NextRequest } from "next/server";
 import { AlchemyNotConfigured, getAddressTransfers, getAssetTransfers, getTokenBalances } from "../alchemy";
 import { failureAnswer } from "../answers";
 import { ReconstructionTimeout, TooBusy, __resetFactsCacheForTest, cachedFactsWith } from "../cache";
-import { MAX_LOG_RANGES, fetchTransfersIn } from "../chain";
+import { MAX_LOG_RANGES, fetchMultiplierLogs, fetchTransfersIn } from "../chain";
 import { NVDA, RWA_PUBLIC_RPC_URL, RWA_RPC_FALLBACK_URL, rwaAlchemyUrl, rwaRpcSource, rwaRpcUrl } from "../config";
 import { TOPICS } from "../events";
 import { MULTICALL3 } from "../feed";
 import { MAX_TOKENS_PUBLIC, MAX_TXS_ALCHEMY, NoStockTokenActivity, SCOPE_RULE_ALL, WalletTooLarge, noActivityAnswer, reconstructFacts, type RwaFacts } from "../facts";
 import { CANONICAL_TOKENS, tokenByAddress } from "../registry";
-import { __resetRefusedUrlsForTest, rpcCall } from "../rpc";
+import { __resetRefusedUrlsForTest, noteRefused, rpcCall } from "../rpc";
 import { GET } from "../../../src/app/api/v1/rwa/facts/[address]/route";
 
 const ME = "0x1111111111111111111111111111111111111111";
@@ -513,3 +513,63 @@ for (const [name, refusal] of [
     assert.equal(r.alchemyCalls(), 1);
   });
 }
+
+// ---------------------------------------------------------------- RWA_ALCHEMY_URL refused: log reads follow the refusal
+
+for (const status of [401, 403]) {
+  test(`RWA_ALCHEMY_URL refused (${status}): the log walk and the multiplier reads move to the public RPC and stay there`, async () => {
+    process.env.RWA_ALCHEMY_URL = ALCHEMY;
+    const nvda = NVDA.token.toLowerCase();
+    const hash = "0x" + "d".repeat(64);
+    const c = fakeChain({
+      balances: { [nvda]: 2n * 10n ** 18n },
+      logs: (f) => ((f.topics as (string | null)[])[2] === pad(ME) && f.fromBlock === "0x0" && f.address === nvda ? [{ transactionHash: hash, blockNumber: "0x10", logIndex: "0x0", topics: [], data: "0x", address: nvda }] : []),
+      receipts: { [hash]: receipt(hash, OTHER, nvda, nvda, OTHER, ME, 2n * 10n ** 18n, 16) },
+    });
+    let alchemyCalls = 0;
+    const fetchImpl = (async (url: string, init: { body: string }) => {
+      if (url.startsWith("https://alchemy.test/")) {
+        alchemyCalls++;
+        return new Response("Forbidden", { status });
+      }
+      return (c.fetchImpl as unknown as (u: string, i: { body: string }) => Promise<Response>)(url, init);
+    }) as unknown as typeof fetch;
+    const opts = { fetchImpl, sleep: async () => {} };
+
+    const f = await reconstructFacts(ME, opts);
+    assert.equal(alchemyCalls, 1, "refused once, then never asked again");
+    assert.deepEqual(f.scope.scanned, ["NVDA"]);
+    assert.equal(f.tokens[0].raw, (2n * 10n ** 18n).toString());
+    assert.ok(!f.gaps.includes("corporate_actions_not_read"), f.gaps.join(","));
+    const logs = c.calls.filter((x) => x.method === "eth_getLogs");
+    assert.ok(logs.length > 0 && logs.every((x) => x.url === RWA_PUBLIC_RPC_URL));
+    assert.ok(!JSON.stringify(f).includes("SECRETKEY"));
+
+    // The multiplier walk on its own, while the refusal stands: straight to the public RPC.
+    const before = c.calls.length;
+    await fetchMultiplierLogs([{ token: nvda, from: HEAD - 5 }], HEAD, opts);
+    assert.equal(alchemyCalls, 1);
+    assert.ok(c.calls.slice(before).every((x) => x.url === RWA_PUBLIC_RPC_URL));
+  });
+}
+
+test("RWA_ALCHEMY_URL refused in the middle of a log walk: the same walk finishes on the public RPC", async () => {
+  process.env.RWA_ALCHEMY_URL = ALCHEMY;
+  const nvda = NVDA.token.toLowerCase();
+  const c = fakeChain({ logs: () => [{ transactionHash: "0x" + "e".repeat(64), blockNumber: "0x10", logIndex: "0x0", topics: [], data: "0x", address: nvda }] });
+  let alchemyCalls = 0;
+  const fetchImpl = (async (url: string, init: { body: string }) => {
+    if (url.startsWith("https://alchemy.test/")) {
+      alchemyCalls++;
+      return new Response(JSON.stringify({ error: "Must be authenticated!" }), { status: 401 });
+    }
+    return (c.fetchImpl as unknown as (u: string, i: { body: string }) => Promise<Response>)(url, init);
+  }) as unknown as typeof fetch;
+  const logs = await fetchTransfersIn(nvda, ME, HEAD, { fetchImpl, sleep: async () => {} });
+  assert.ok(logs.length > 0);
+  assert.equal(alchemyCalls, 1);
+  // Remembered: a later walk does not ask Alchemy.
+  noteRefused(ALCHEMY);
+  await fetchTransfersIn(nvda, ME, HEAD, { fetchImpl, sleep: async () => {} });
+  assert.equal(alchemyCalls, 1);
+});

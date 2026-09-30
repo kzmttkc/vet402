@@ -43,7 +43,8 @@ export function __resetRefusedUrlsForTest(): void {
   refusedUrls.clear();
 }
 
-/** The default URLs: the primary unless refused lately, then the non-Alchemy primary, then the fallback for head reads. */
+/** The default URLs: the primary unless refused lately, then the non-Alchemy primary, then the fallback for head reads.
+ *  Worked out again for every call, so a walk of many batches leaves a refused key after the first refusal. */
 function defaultUrls(calls: JsonRpcCall[]): string[] {
   const primary = rwaRpcUrl();
   const plain = rwaNonAlchemyRpcUrl();
