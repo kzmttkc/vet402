@@ -20,7 +20,7 @@ Base is **not** an ETHOnline 2026 partner (`../ethonline-2026/PRIZES.md`, measur
 | # | Field | Answer |
 |---|---|---|
 | 1 | Email * | the owner's contact address (known internally; not written into this public repo) |
-| 2 | Nominator Name * | `Kazumoto Takeshi` — the owner, self-nominating (`steering/business-facts.md`: sole proprietor, trading as KIZUNA Creation) |
+| 2 | Nominator Name * | the owner's legal name (kept outside this repo), self-nominating (`steering/business-facts.md`: sole proprietor, trading as KIZUNA Creation) |
 | 3 | Project Name * | `vet402` |
 | 4 | Project URL * | `https://vet402.com` |
 | 5 | Project Twitter * | `@vet_402` |

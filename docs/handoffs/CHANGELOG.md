@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-30: personal name removed from repo docs (branch `rwa-name-scrub`)
+
+- The owner's full name no longer appears in the repo: AI_USAGE.md, docs/applications/base-batches-004-video.md, docs/applications/base-builder-grant-nomination.md, docs/ethonline-2026/DISCLOSURE_2026-09-05.md and docs/ethonline-2026/RELEASE_NOTES_SUBMISSION.md now say "Takeshi". The nomination draft points to the legal name kept outside the repo.
+- Left as is on purpose: the operator name "KIZUNA Creation" on LICENSE, LICENSE-DATA, CLA.md, the site's legal pages, footer and package.json authors (legal disclosure), identifiers such as the launchd label, and git history.
+
 ## 2026-09-30: /rwa pre-submission audit fixes (branch `rwa-audit-fix`, not pushed)
 - **What**: record page says "Holds no canonical Stock Token at block N" and "nothing held now, so nothing to mark" instead of an empty list or "0 held · no complete USD mark", has its own line when no token ever changed its multiplier, titles the section "Look-alikes in this wallet's transfers", and claims no block range for an Alchemy search that stopped at its page cap. `/rwa/<not an address>` stays 404 and now says why (0x + 40 hex, no ENS) with a link back. Only 4663 anchors can be the latest anchored snapshot. `/rwa` and the README call the first paid settlement a test I paid myself. Docs: OPERATING (exited positions shipped in 0.3), README (first code commit 2026-09-16 22:03 UTC, spec started 2026-09-09 before the event, `count()` 2), openapi (20 s `still_reading`, Alchemy scope, 404 Cache-Control), SPEC (020-023 shipped, 021 hash note superseded, error table per 024), SUBMISSION_DRAFT (Grants, Alchemy, real demo address), `.env.example`.
 - **Money code**: `be2c04fa` changes the paid route only. A wallet too large to rebuild is now 422 `wallet_too_large` with the free body plus `charged: false`, verified and never settled, no error log (was 503 `feed_unavailable`). x402.ts, the settle order and limits are unchanged. `6c7ca60e` documents it in SPEC and README. Ship both only after an independent SHIP review, and drop both together if refused.

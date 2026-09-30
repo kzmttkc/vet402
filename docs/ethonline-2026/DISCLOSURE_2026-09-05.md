@@ -6,7 +6,7 @@ A copy of the message I sent to ETHGlobal before judging, so the disclosure that
 | | |
 |---|---|
 | Sent | **2026-09-04 23:49 UTC** = 2026-09-05 08:49 JST (Gmail, label `SENT`) |
-| From | Takeshi Kazumoto (`kazumototakeshi@gmail.com`) |
+| From | Takeshi (email withheld in the repo copy) |
 | To | `hello@ethglobal.com` |
 | Subject | `Continuity disclosure — vet402 (ETHOnline 2026)` |
 
@@ -23,7 +23,7 @@ We tagged the boundary in the public repo as pre-ethonline-2026 (commit c42daca,
 
 Please tell us if you would like this in a different form, or anything else on the record.
 
-Takeshi Kazumoto — vet402
+Takeshi, vet402
 ```
 
 ## Why the numbers above differ from `README.md` today

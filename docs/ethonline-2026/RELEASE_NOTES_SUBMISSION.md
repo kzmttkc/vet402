@@ -98,4 +98,4 @@ runs on every push. As of this release: `✔ 12 number(s) consistent across 8 do
 
 `COMMITS_EN.md` inside the tree lists the commits up to the one that regenerated it, so its own header reads one commit (and one claimed commit) fewer than this table; the table counts the release commit itself.
 
-Team: Takeshi Kazumoto (Discord `Sen_web3`). Prizes applied for: The Graph (Continuity), Bazantic.
+Team: Takeshi (Discord `Sen_web3`). Prizes applied for: The Graph (Continuity), Bazantic.

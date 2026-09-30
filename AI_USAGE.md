@@ -11,7 +11,7 @@ This file answers both, with numbers anyone can re-derive from the public histor
 **I built the foundation and direct the work. AI writes most of the code under that direction.**
 
 The project did not start from an AI prompt. It started on **2026-07-13** with a commit authored by
-**Takeshi Kazumoto** — `Initial commit: Vouch agent-trust MVP (M0–M5)`, **130 files, +19,245 lines** —
+**Takeshi** — `Initial commit: Vouch agent-trust MVP (M0–M5)`, **130 files, +19,245 lines** —
 written before any AI-assisted commit exists in this repository. I handed that codebase over along
 with the architecture and the milestones it was to grow into, and have directed the build ever since.
 

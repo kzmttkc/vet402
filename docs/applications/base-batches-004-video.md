@@ -59,7 +59,7 @@ python3 ~/Takeshi_Automation/scripts/vet402_video_numbers.py
 
 ### ショット1 — 名乗り（0:00–0:20）｜画面: vet402.com トップ（顔出しなら自分）
 
-> **EN:** "I'm Takeshi Kazumoto, founder of KIZUNA Creation. We build vet402 — an independent verifier for x402 agent payments.
+> **EN:** "I'm Takeshi, the builder of vet402. We build vet402 — an independent verifier for x402 agent payments.
 > I'm the only human here. An AI runs the company day to day; I hold the approvals for money and anything that leaves the building.
 > You don't have to take my word for any of this. Everything I show next is on a public page you can open yourself."
 
@@ -167,7 +167,7 @@ zsh scripts/video_check.sh <撮ったファイル>
 
 ## 7. 連続版の台本（読み上げ用・数字は当日の出力で置換）
 
-> I'm Takeshi Kazumoto, founder of KIZUNA Creation. We build vet402 — an independent verifier for x402 agent payments.
+> I'm Takeshi, the builder of vet402. We build vet402 — an independent verifier for x402 agent payments.
 > I'm the only human here. An AI runs the company day to day; I hold the approvals for money and anything that leaves the building.
 > You don't have to take my word for any of this. Everything I show next is on a public page you can open yourself.
 >
