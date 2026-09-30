@@ -13,8 +13,8 @@
 // look-alikes the wallet met (`lookalikes`, never counted) and the corporate
 // actions of each token (`corporate_actions`); the anchor hash binds the whole
 // record (hash material v2).
-import { AlchemyError, alchemyRefused, getAddressTransferPages, getAddressTransfers, type AlchemyPrefetch, type AssetTransfer } from "./alchemy";
-import { fetchBlockTimestamp, fetchCanonicalTransfers, fetchHead, fetchReceipts, fetchTransfersIn, fetchTransfersOut, readAccount } from "./chain";
+import { AlchemyError, alchemyRefused, getAddressTransferPages, type AlchemyPrefetch, type AssetTransfer } from "./alchemy";
+import { fetchBlockTimestamp, fetchCanonicalTransfers, fetchHead, fetchReceipts, fetchTransfersIn, fetchTransfersOut, readAccount, TooManyTransactions, TxBudget } from "./chain";
 import { classifyReceipt, summarize, type EventsSummary, type PoolResolver, type RwaEvent, type RwaReceipt } from "./classify";
 import { NVDA, RWA_CHAIN_ID, rwaAlchemyUrl } from "./config";
 import { corporateActionsFor, expectedMultiplier, readMultiplierUpdates, type CorporateAction, type TimedMultiplierUpdate } from "./corporate";
@@ -149,8 +149,12 @@ export type TooLargeAnswer = {
   method_version: string;
   held_tokens: number;
   held: string[];
-  /** what exceeded the budget: tokens to walk on the public RPC, or transactions to replay */
-  limit: { kind: "tokens"; max: number; found: number } | { kind: "transactions"; max: number; found: number };
+  /**
+   * what exceeded the budget: tokens to walk on the public RPC or to read with Alchemy, transactions to
+   * replay, or (with Alchemy) canonical transfers to read. A read that stops at the limit reports the
+   * count it had reached, so `found` is then a lower bound and `detail` says "more than".
+   */
+  limit: { kind: "tokens"; max: number; found: number } | { kind: "transactions"; max: number; found: number } | { kind: "transfers"; max: number; found: number };
   detail: string;
 };
 
@@ -158,6 +162,14 @@ export type TooLargeAnswer = {
 export const MAX_TOKENS_PUBLIC = 6;
 /** Transactions an Alchemy-backed request replays at most (receipts, 25 per batch). */
 export const MAX_TXS_ALCHEMY = 600;
+/**
+ * Transactions a public-RPC request collects at most before it stops walking logs (2026-09-30 audit).
+ * The same replay budget as the Alchemy path. Without it, a contract with tens of thousands of NVDA
+ * transfers split log ranges for over 40 s (measured 2026-09-30 on 0x6aa8…326e) and held the slot.
+ */
+export const MAX_TXS_PUBLIC = MAX_TXS_ALCHEMY;
+/** Canonical transfers the Alchemy discovery reads at most (20 pages of 1,000), whatever the transaction count. */
+export const MAX_TRANSFERS_ALCHEMY = 20_000;
 /**
  * Tokens an Alchemy-backed request reads state for at most (one batch per token, one after another,
  * plus one multiplier tail read each). Measured 2026-09-30 on the public RPC: 20 serial state reads
@@ -172,14 +184,33 @@ export class WalletTooLarge extends Error {
   }
 }
 
-function tooLarge(address: string, block: number, held: string[], limit: TooLargeAnswer["limit"], alchemy = false): WalletTooLarge {
+type TooLargeHow = {
+  /** the tokens were counted from Alchemy's transfer list, not walked on the public RPC */
+  alchemy?: boolean;
+  /** the read stopped as soon as it passed the limit, so `found` is where it stopped */
+  stopped?: boolean;
+  /** the public walk adds NVDA to the tokens held (SCOPE_RULE), and the wallet does not hold it */
+  plusNvda?: boolean;
+  /** Alchemy is configured but its read failed, so the public path gave this answer */
+  alchemyUnavailable?: boolean;
+};
+
+function tooLarge(address: string, block: number, held: string[], limit: TooLargeAnswer["limit"], how: TooLargeHow = {}): WalletTooLarge {
   const symbols = held.map((t) => tokenByAddress(t)!.symbol).sort();
+  const n = symbols.length;
   const why =
     limit.kind === "transactions"
-      ? `Rebuilding it means replaying ${limit.found} transactions, and one request can replay ${limit.max}.`
-      : alchemy
-        ? `Rebuilding it means reading ${limit.found} tokens it held or moved, and one request can read ${limit.max}.`
-        : `Rebuilding it means walking the history of ${limit.found} tokens, and one request can walk ${limit.max}.`;
+      ? how.stopped
+        ? `Rebuilding it means replaying more than ${limit.max} transactions (the read stopped at ${limit.found}), and one request can replay ${limit.max}.`
+        : `Rebuilding it means replaying ${limit.found} transactions, and one request can replay ${limit.max}.`
+      : limit.kind === "transfers"
+        ? `Rebuilding it means reading more than ${limit.max} Stock Token transfers (the read stopped at ${limit.found}), and one request can read ${limit.max}.`
+        : how.alchemy
+          ? `Rebuilding it means reading ${limit.found} tokens it held or moved, and one request can read ${limit.max}.`
+          : how.plusNvda
+            ? `Rebuilding it means walking the history of ${limit.found} tokens (the ${n} it holds, plus NVDA, which this path always walks), and one request can walk ${limit.max}.`
+            : `Rebuilding it means walking the history of ${limit.found} tokens, and one request can walk ${limit.max}.`;
+  const path = how.alchemyUnavailable ? " The Alchemy read was not available, so this answer comes from the public RPC path." : "";
   return new WalletTooLarge({
     error: "wallet_too_large",
     address,
@@ -189,7 +220,7 @@ function tooLarge(address: string, block: number, held: string[], limit: TooLarg
     held_tokens: symbols.length,
     held: symbols,
     limit,
-    detail: `Holds ${symbols.length} of the ${CANONICAL_TOKENS.length} canonical Stock Tokens at block ${block}. ${why} It is not rebuilt.`,
+    detail: `Holds ${n} of the ${CANONICAL_TOKENS.length} canonical Stock Tokens at block ${block}. ${why}${path} It is not rebuilt.`,
   });
 }
 
@@ -200,9 +231,12 @@ export function noActivityAnswer(input: {
   historyChecked: NoActivityAnswer["history_checked"];
   sentTxCount: number;
   isContract: boolean;
+  /** Alchemy is configured but its read failed, so only the public path's check ran (gap `alchemy_unavailable`) */
+  alchemyUnavailable?: boolean;
 }): NoActivityAnswer {
   const n = CANONICAL_TOKENS.length;
   const full = input.historyChecked === "every_canonical_token";
+  const fallback = !full && input.alchemyUnavailable;
   return {
     error: "no_stock_token_activity",
     address: input.address.toLowerCase(),
@@ -215,11 +249,12 @@ export function noActivityAnswer(input: {
     history_checked: input.historyChecked,
     sent_tx_count: input.isContract ? null : input.sentTxCount,
     is_contract: input.isContract,
-    gaps: full ? [] : ["exited_positions_not_scanned"],
+    gaps: full ? [] : fallback ? ["exited_positions_not_scanned", "alchemy_unavailable"] : ["exited_positions_not_scanned"],
     detail: full
       ? `Holds none of the ${n} canonical Stock Tokens at block ${input.block}. None of them moved to or from this address up to that block.`
       : `Holds none of the ${n} canonical Stock Tokens at block ${input.block}. NVDA was never transferred to this address. ` +
-        `Positions in the other tokens that were opened and fully closed are not scanned.`,
+        `Positions in the other tokens that were opened and fully closed are not scanned.` +
+        (fallback ? " The Alchemy read was not available, so only this narrower check ran." : ""),
   };
 }
 
@@ -310,6 +345,8 @@ export type FactsInputs = {
   multiplierUpdatesFailed?: boolean;
   /** the look-alike search (packages/rwa/lookalike-scan.ts); default: none ran */
   lookalikes?: Lookalikes;
+  /** Alchemy is configured but its read failed, so the record took the public walk (gap `alchemy_unavailable`) */
+  alchemyUnavailable?: boolean;
 };
 
 /** What an offline replay says about look-alikes: nothing was searched. */
@@ -419,6 +456,7 @@ export async function assembleFacts(input: FactsInputs): Promise<RwaFacts> {
   }
   if (!input.exitedScanned) gaps.add("exited_positions_not_scanned");
   if (input.multiplierUpdatesFailed) gaps.add("corporate_actions_not_read");
+  if (input.alchemyUnavailable) gaps.add("alchemy_unavailable");
   const notWalked = [...(input.historyNotWalked ?? [])].filter((t) => states.has(t));
   if (notWalked.length > 0) gaps.add("history_not_walked");
   gaps.add("mdd_pending"); // MDD needs stored NAV snapshots (SPEC §4); nothing is stored in v0
@@ -509,10 +547,49 @@ export type ReconstructOptions = RpcOptions & {
 
 type Discovery = { txs: Set<string>; tokens: Set<string> };
 
-/** Patch 020: every canonical token that moved to or from `address` up to `block`, and the transactions that moved it. */
-async function discoverWithAlchemy(address: string, block: number, url: string, opts: RpcOptions): Promise<Discovery> {
-  const transfers = await getAddressTransfers(address, { contractAddresses: CANONICAL_TOKENS.map((t) => t.token), toBlock: block, category: ["erc20"] }, { ...opts, url });
-  return discoveryFrom(transfers);
+/** Pages per contract chunk and side: one more than MAX_TRANSFERS_ALCHEMY needs, so the transfer count stops the read first. */
+const DISCOVERY_MAX_PAGES = MAX_TRANSFERS_ALCHEMY / 1_000 + 1;
+
+/**
+ * Counts the canonical transfers and transactions of an Alchemy read page by page, so the read can stop
+ * at the first page that proves the wallet too large (2026-09-30 audit: a contract with tens of
+ * thousands of transfers read every page, then fell back to the slow public walk).
+ */
+function sizeCounter() {
+  const txs = new Set<string>();
+  const transfers = new Set<string>();
+  return {
+    stopAfterPage: (page: AssetTransfer[]) => {
+      for (const t of page) {
+        const token = t.rawContract?.address?.toLowerCase();
+        if (!token || !CANONICAL_SET.has(token) || !t.hash) continue;
+        txs.add(t.hash.toLowerCase());
+        transfers.add(t.uniqueId ?? `${t.hash}:${t.from}:${t.to}:${token}`);
+      }
+      return txs.size > MAX_TXS_ALCHEMY || transfers.size > MAX_TRANSFERS_ALCHEMY;
+    },
+    /** The 422 for a read that stopped. */
+    tooLarge: (address: string, block: number, held: string[]) =>
+      txs.size > MAX_TXS_ALCHEMY
+        ? tooLarge(address, block, held, { kind: "transactions", max: MAX_TXS_ALCHEMY, found: txs.size }, { stopped: true })
+        : tooLarge(address, block, held, { kind: "transfers", max: MAX_TRANSFERS_ALCHEMY, found: transfers.size }, { stopped: true }),
+  };
+}
+
+/**
+ * Patch 020: every canonical token that moved to or from `address` up to `block`, and the transactions
+ * that moved it, with the canonical contracts as a filter. The read stops at the first page that takes
+ * it past MAX_TXS_ALCHEMY transactions or MAX_TRANSFERS_ALCHEMY transfers, and the wallet gets its 422.
+ */
+async function discoverWithAlchemy(address: string, block: number, held: string[], url: string, opts: RpcOptions): Promise<Discovery> {
+  const size = sizeCounter();
+  const r = await getAddressTransferPages(
+    address,
+    { contractAddresses: CANONICAL_TOKENS.map((t) => t.token), toBlock: block, category: ["erc20"], maxPages: DISCOVERY_MAX_PAGES, stopAfterPage: size.stopAfterPage },
+    { ...opts, url },
+  );
+  if (!r.complete) throw size.tooLarge(address, block, held);
+  return discoveryFrom(r.transfers);
 }
 
 /** The canonical tokens in `transfers` and the transactions that moved them. */
@@ -552,31 +629,40 @@ export async function reconstructFacts(address: string, opts: ReconstructOptions
   const balances = await readBalances(CANONICAL_TOKENS.map((t) => t.token), me, block, patient);
   const held = [...balances].filter(([, raw]) => raw > 0n).map(([t]) => t);
 
-  const empty = async (historyChecked: NoActivityAnswer["history_checked"]) => {
-    const acct = await readAccount(me, block, patient);
-    return new NoStockTokenActivity(
-      noActivityAnswer({ address: me, block, blockTimestamp: acct.blockTimestamp, historyChecked, sentTxCount: acct.sentTxCount, isContract: acct.isContract }),
-    );
-  };
-
+  // Alchemy is in use unless the caller forced the public path. A refusal remembered from an earlier
+  // record, or a failed read below, sends this record down the public walk, and it says so.
+  const alchemyConfigured = opts.alchemyUrl === undefined ? rwaAlchemyUrl() !== null : opts.alchemyUrl !== null;
   const alchemyUrl = opts.alchemyUrl === undefined ? (alchemyRefused() ? null : rwaAlchemyUrl()) : opts.alchemyUrl;
   let found: Discovery | null = null;
   let shared: AlchemyPrefetch | null = null;
   if (alchemyUrl) {
     try {
-      // One read of every ERC-20 transfer to and from the address serves both the discovery here
-      // and the look-alike search at the end. Past its page cap, discovery asks again with the
-      // canonical contracts as a filter.
-      const all = await getAddressTransferPages(me, { toBlock: block, category: ["erc20"] }, { ...opts, url: alchemyUrl });
+      // One read of every ERC-20 transfer to and from the address serves both the discovery here and
+      // the look-alike search at the end. It stops at the first page whose canonical transfers already
+      // make the wallet too large. Past its page cap, discovery asks again with the canonical contracts
+      // as a filter, and that read stops the same way.
+      const size = sizeCounter();
+      const all = await getAddressTransferPages(me, { toBlock: block, category: ["erc20"], stopAfterPage: size.stopAfterPage }, { ...opts, url: alchemyUrl });
+      if (all.stopped) throw size.tooLarge(me, block, held);
       shared = { transfers: all.transfers, complete: all.complete };
-      found = all.complete ? discoveryFrom(all.transfers) : await discoverWithAlchemy(me, block, alchemyUrl, opts);
+      found = all.complete ? discoveryFrom(all.transfers) : await discoverWithAlchemy(me, block, held, alchemyUrl, opts);
     } catch (err) {
-      // The log walk below still answers, and the record states its narrower scope and the gap.
+      // Too large is an answer. It must not fall back to the public walk, which would read the same
+      // history far more slowly while holding the one reconstruction slot.
+      if (err instanceof WalletTooLarge) throw err;
+      // The log walk below still answers, and the record states its narrower scope and the gaps.
       // A refused key (401/403, network not enabled) is remembered, so the next records skip Alchemy.
       if (shared === null) shared = { failed: err instanceof AlchemyError ? err.message : "alchemy error" };
       found = null;
     }
   }
+  const alchemyUnavailable = alchemyConfigured && found === null;
+  const empty = async (historyChecked: NoActivityAnswer["history_checked"]) => {
+    const acct = await readAccount(me, block, patient);
+    return new NoStockTokenActivity(
+      noActivityAnswer({ address: me, block, blockTimestamp: acct.blockTimestamp, historyChecked, sentTxCount: acct.sentTxCount, isContract: acct.isContract, alchemyUnavailable }),
+    );
+  };
 
   const scanned = new Set<string>();
   const receiptsByTx = new Map<string, RwaReceipt>();
@@ -587,42 +673,51 @@ export async function reconstructFacts(address: string, opts: ReconstructOptions
     // Each token costs a state read and a multiplier read, one after another. Many tokens held or sold
     // out would hold the one reconstruction slot up to its hard cap, so they get the stable answer now.
     const inScope = new Set([...found.tokens, ...held]);
-    if (inScope.size > MAX_TOKENS_ALCHEMY) throw tooLarge(me, block, held, { kind: "tokens", max: MAX_TOKENS_ALCHEMY, found: inScope.size }, true);
+    if (inScope.size > MAX_TOKENS_ALCHEMY) throw tooLarge(me, block, held, { kind: "tokens", max: MAX_TOKENS_ALCHEMY, found: inScope.size }, { alchemy: true });
     for (const t of inScope) scanned.add(t);
     for (const r of await fetchReceipts([...found.txs], patient, 25)) receiptsByTx.set(r.transactionHash, r);
   } else {
     const nvda = NVDA.token.toLowerCase();
-    // Holding none of them: first ask only whether NVDA was ever paid to this address (8 log ranges, not 16).
-    let nvdaIn: { transactionHash: string }[] | null = null;
-    if (held.length === 0) {
-      nvdaIn = await fetchTransfersIn(nvda, me, block, patient);
-      if (nvdaIn.length === 0) throw await empty("nvda_only");
-    }
-    const scope = new Set<string>([nvda, ...held]);
-    if (scope.size > MAX_TOKENS_PUBLIC) throw tooLarge(me, block, held, { kind: "tokens", max: MAX_TOKENS_PUBLIC, found: scope.size });
-    const txs = new Set<string>();
-    // Walk tokens in scope, then any canonical token their transactions moved for the address, until
-    // nothing new turns up or the round cap is reached (each round costs a full history walk per token).
-    for (let round = 0; round < MAX_DISCOVERY_ROUNDS; round++) {
-      const toScan = [...scope].filter((t) => !scanned.has(t));
-      if (toScan.length === 0) break;
-      for (const token of toScan) {
-        // One token at a time with a pause: bursts of log batches drew 429s and ~48 s of backoff (measured 2026-09-29).
-        if (scanned.size > 0) await pause(1_000);
-        scanned.add(token);
-        const logs =
-          token === nvda && nvdaIn
-            ? [...nvdaIn, ...(await fetchTransfersOut(token, me, block, patient))]
-            : await fetchCanonicalTransfers(token, me, block, patient);
-        for (const l of logs) txs.add(l.transactionHash);
+    // Every log walk of this record counts the transactions it has seen, and stops past MAX_TXS_PUBLIC.
+    const budget = new TxBudget(MAX_TXS_PUBLIC);
+    try {
+      // Holding none of them: first ask only whether NVDA was ever paid to this address (8 log ranges, not 16).
+      let nvdaIn: { transactionHash: string }[] | null = null;
+      if (held.length === 0) {
+        nvdaIn = await fetchTransfersIn(nvda, me, block, patient, budget);
+        if (nvdaIn.length === 0) throw await empty("nvda_only");
       }
-      const missing = [...txs].filter((h) => !receiptsByTx.has(h));
-      for (const r of await fetchReceipts(missing, patient, 25)) receiptsByTx.set(r.transactionHash, r);
-      for (const t of canonicalTokensMoved([...receiptsByTx.values()], me)) scope.add(t);
+      const scope = new Set<string>([nvda, ...held]);
+      if (scope.size > MAX_TOKENS_PUBLIC)
+        throw tooLarge(me, block, held, { kind: "tokens", max: MAX_TOKENS_PUBLIC, found: scope.size }, { plusNvda: !held.includes(nvda), alchemyUnavailable });
+      const txs = new Set<string>();
+      // Walk tokens in scope, then any canonical token their transactions moved for the address, until
+      // nothing new turns up or the round cap is reached (each round costs a full history walk per token).
+      for (let round = 0; round < MAX_DISCOVERY_ROUNDS; round++) {
+        const toScan = [...scope].filter((t) => !scanned.has(t));
+        if (toScan.length === 0) break;
+        for (const token of toScan) {
+          // One token at a time with a pause: bursts of log batches drew 429s and ~48 s of backoff (measured 2026-09-29).
+          if (scanned.size > 0) await pause(1_000);
+          scanned.add(token);
+          const logs =
+            token === nvda && nvdaIn
+              ? [...nvdaIn, ...(await fetchTransfersOut(token, me, block, patient, budget))]
+              : await fetchCanonicalTransfers(token, me, block, patient, undefined, budget);
+          for (const l of logs) txs.add(l.transactionHash);
+        }
+        const missing = [...txs].filter((h) => !receiptsByTx.has(h));
+        for (const r of await fetchReceipts(missing, patient, 25)) receiptsByTx.set(r.transactionHash, r);
+        for (const t of canonicalTokensMoved([...receiptsByTx.values()], me)) scope.add(t);
+      }
+      // A token still unwalked after the cap is read for its state and named in scope.history_not_walked
+      // (gap `history_not_walked`); its events come only from the receipts already fetched.
+      notWalked = new Set([...scope].filter((t) => !scanned.has(t)));
+    } catch (err) {
+      if (err instanceof TooManyTransactions)
+        throw tooLarge(me, block, held, { kind: "transactions", max: MAX_TXS_PUBLIC, found: err.found }, { stopped: true, alchemyUnavailable });
+      throw err;
     }
-    // A token still unwalked after the cap is read for its state and named in scope.history_not_walked
-    // (gap `history_not_walked`); its events come only from the receipts already fetched.
-    notWalked = new Set([...scope].filter((t) => !scanned.has(t)));
   }
 
   const receipts = [...receiptsByTx.values()];
@@ -655,6 +750,7 @@ export async function reconstructFacts(address: string, opts: ReconstructOptions
     exitedScanned: !!found,
     multiplierUpdates,
     multiplierUpdatesFailed: multiplierUpdates === undefined,
+    alchemyUnavailable,
   });
   // The look-alike search runs last, after every read the record needs (pool lookups included), so it
   // never competes with them for the public RPC's rate limit. Its budget shrinks when those reads were

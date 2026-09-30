@@ -1534,6 +1534,7 @@ paths:
                     items:
                       type: string
                       enum:
+                        - alchemy_unavailable
                         - balance_mismatch
                         - corporate_actions_not_read
                         - exited_positions_not_scanned
@@ -1640,10 +1641,13 @@ paths:
         "422":
           description: |
             `wallet_too_large` (SPEC patch 020): the wallet needs more than one
-            request can do (more than 6 tokens to walk on the public RPC, or
-            with Alchemy more than 600 transactions to replay or more than 30
-            tokens held or moved). The body lists `held` (symbols),
-            `held_tokens`, `limit` and `detail`. Cached like the 404. Not rebuilt.
+            request can do (more than 6 tokens to walk on the public RPC, more
+            than 600 transactions to replay on either path, or with Alchemy more
+            than 30 tokens held or moved or more than 20,000 Stock Token
+            transfers). A read stops as soon as it passes a limit, so `found`
+            is then the count it stopped at and `detail` says "more than". The
+            body lists `held` (symbols), `held_tokens`, `limit` and `detail`.
+            Held by this server for 5 minutes. Not rebuilt.
           content:
             application/json:
               schema:
@@ -1659,7 +1663,7 @@ paths:
                   limit:
                     type: object
                     properties:
-                      kind: { type: string, enum: [tokens, transactions] }
+                      kind: { type: string, enum: [tokens, transactions, transfers] }
                       max: { type: integer }
                       found: { type: integer }
                   detail: { type: string }

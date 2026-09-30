@@ -23,7 +23,7 @@ import { MAX_LOG_RANGES, fetchMultiplierLogs, fetchTransfersIn } from "../chain"
 import { NVDA, RWA_PUBLIC_RPC_URL, RWA_RPC_FALLBACK_URL, rwaAlchemyUrl, rwaRpcSource, rwaRpcUrl } from "../config";
 import { TOPICS } from "../events";
 import { MULTICALL3 } from "../feed";
-import { MAX_TOKENS_ALCHEMY, MAX_TOKENS_PUBLIC, MAX_TXS_ALCHEMY, NoStockTokenActivity, SCOPE_RULE_ALL, WalletTooLarge, noActivityAnswer, reconstructFacts, type RwaFacts } from "../facts";
+import { MAX_TOKENS_ALCHEMY, MAX_TOKENS_PUBLIC, MAX_TXS_ALCHEMY, MAX_TXS_PUBLIC, NoStockTokenActivity, SCOPE_RULE_ALL, WalletTooLarge, noActivityAnswer, reconstructFacts, type RwaFacts } from "../facts";
 import { CANONICAL_TOKENS, tokenByAddress } from "../registry";
 import { __resetRefusedUrlsForTest, noteRefused, rpcCall } from "../rpc";
 import { GET, RWA_ANSWER_CACHE_CONTROL, RWA_FACTS_CACHE_CONTROL } from "../../../src/app/api/v1/rwa/facts/[address]/route";
@@ -357,7 +357,9 @@ test("Alchemy failing falls back to the log walk, and the record says so with th
   const e = await reconstructFacts(ME, { ...c.opts, alchemyUrl: ALCHEMY }).catch((x) => x);
   assert.ok(e instanceof NoStockTokenActivity);
   assert.equal(e.answer.history_checked, "nvda_only");
-  assert.deepEqual(e.answer.gaps, ["exited_positions_not_scanned"]);
+  // M2 (2026-09-30 audit): the answer names the fallback, not only the narrower scope.
+  assert.deepEqual(e.answer.gaps, ["exited_positions_not_scanned", "alchemy_unavailable"]);
+  assert.match(e.answer.detail, /The Alchemy read was not available, so only this narrower check ran\.$/);
 });
 
 // ---------------------------------------------------------------- the free route
@@ -768,4 +770,159 @@ test("free route cache: 404 and 422 go stale for 60 s at most, a 200 record keep
   const ok = await route(OTHER);
   assert.equal(ok.status, 200);
   assert.equal(ok.headers.get("Cache-Control"), RWA_FACTS_CACHE_CONTROL);
+});
+
+// ---------------------------------------------------------------- 2026-09-30 audit round 2: huge wallets give the slot back
+
+const BIG = "0x6aa80dbbed9ae5ab45fbf61f9644fada3b29326e";
+const hashN = (n: number) => `0x${n.toString(16).padStart(64, "0")}`;
+
+/** Alchemy pages that never end: 1,000 new transactions a page, moving NVDA (or, with `spam`, another token outside the filter). */
+function endlessAlchemy(spam: boolean) {
+  const nvda = NVDA.token.toLowerCase();
+  let page = 0;
+  return (p: Record<string, unknown>) => {
+    page++;
+    const canonical = !!p.contractAddresses || !spam;
+    const transfers = Array.from({ length: 1000 }, (_, i) => ({
+      hash: hashN(page * 1000 + i),
+      uniqueId: `${hashN(page * 1000 + i)}:log:0`,
+      from: p.fromAddress ?? OTHER,
+      to: p.toAddress ?? OTHER,
+      rawContract: { address: canonical ? nvda : "0x" + "9".repeat(40), value: "0x1" },
+    }));
+    return { transfers, pageKey: `k${page}` };
+  };
+}
+
+test("with Alchemy, a contract with endless Stock Token transfers: 422 from the first page, no public walk", async () => {
+  const c = fakeChain({ alchemy: endlessAlchemy(false) });
+  const e = await reconstructFacts(BIG, { ...c.opts, alchemyUrl: ALCHEMY }).catch((x) => x);
+  assert.ok(e instanceof WalletTooLarge, String(e));
+  assert.deepEqual(e.answer.limit, { kind: "transactions", max: MAX_TXS_ALCHEMY, found: 1000 });
+  assert.match(e.answer.detail, /replaying more than 600 transactions \(the read stopped at 1000\), and one request can replay 600\. It is not rebuilt\.$/);
+  assert.equal(c.count("alchemy_getAssetTransfers"), 1, "the first page already passes 600 transactions");
+  assert.equal(c.count("eth_getLogs"), 0, "no fallback to the public log walk");
+  assert.equal(c.count("eth_getTransactionReceipt"), 0);
+});
+
+test("with Alchemy, endless transfers of other tokens: the canonical read stops at its first page past 600, no public walk", async () => {
+  const c = fakeChain({ alchemy: endlessAlchemy(true) });
+  const e = await reconstructFacts(BIG, { ...c.opts, alchemyUrl: ALCHEMY }).catch((x) => x);
+  assert.ok(e instanceof WalletTooLarge, String(e));
+  assert.equal(e.answer.limit.kind, "transactions");
+  const canonicalPages = c.calls.filter((x) => x.method === "alchemy_getAssetTransfers" && (x.params[0] as Record<string, unknown>).contractAddresses).length;
+  assert.equal(canonicalPages, 1);
+  assert.equal(c.count("alchemy_getAssetTransfers"), 41, "20 pages each way of every ERC-20 (the cap as before), then one canonical page");
+  assert.equal(c.count("eth_getLogs"), 0);
+});
+
+test("the huge wallet frees the one slot: the next wallet is rebuilt, not too_busy, and the second ask is answered from memory", async () => {
+  const nvda = NVDA.token.toLowerCase();
+  const c = fakeChain({
+    alchemy: (p) => ({
+      transfers: Array.from({ length: 1000 }, (_, i) => ({ hash: hashN(i + 1), uniqueId: `${i}:log:0`, rawContract: { address: p.contractAddresses ? nvda : "0x" + "9".repeat(40) } })),
+      pageKey: "more",
+    }),
+  });
+  const load = (a: string) => reconstructFacts(a, { ...c.opts, alchemyUrl: ALCHEMY });
+  const first = await cachedFactsWith(BIG, load).catch((x) => x);
+  assert.ok(first instanceof WalletTooLarge);
+  const calls = c.calls.length;
+  // The slot is free again: another wallet starts at once.
+  const other = await cachedFactsWith(OTHER, async () => "rebuilt" as unknown as RwaFacts).catch((x) => x);
+  assert.equal(other, "rebuilt");
+  // The same huge wallet again: the remembered 422, no new read.
+  const again = await cachedFactsWith(BIG, load).catch((x) => x);
+  assert.ok(again instanceof WalletTooLarge);
+  assert.deepEqual(again.answer, first.answer);
+  assert.equal(c.calls.length, calls, "the second ask reads nothing");
+  const res = await route(BIG);
+  assert.equal(res.status, 422);
+  assert.equal((await res.json()).limit.kind, "transactions");
+});
+
+test("with Alchemy, more than 20,000 canonical transfers inside 600 transactions: 422 transfers, stated as a lower bound", async () => {
+  const nvda = NVDA.token.toLowerCase();
+  let n = 0;
+  const c = fakeChain({
+    alchemy: (p) => ({
+      transfers: Array.from({ length: 1000 }, (_, i) => ({ hash: hashN((n % 50) + 1), uniqueId: `u${n++}:${i}`, rawContract: { address: p.contractAddresses ? nvda : "0x" + "9".repeat(40) } })),
+      pageKey: "more",
+    }),
+  });
+  const e = await reconstructFacts(BIG, { ...c.opts, alchemyUrl: ALCHEMY }).catch((x) => x);
+  assert.ok(e instanceof WalletTooLarge, String(e));
+  assert.equal(e.answer.limit.kind, "transfers");
+  assert.equal(e.answer.limit.max, 20_000);
+  assert.ok(e.answer.limit.found > 20_000);
+  assert.match(e.answer.detail, /more than 20000 Stock Token transfers \(the read stopped at \d+\)/);
+  assert.equal(c.count("eth_getLogs"), 0);
+});
+
+test("public RPC, a contract paid NVDA in thousands of transactions: the walk stops past 600 and answers 422, no receipt read", async () => {
+  const nvda = NVDA.token.toLowerCase();
+  const c = fakeChain({
+    // 200 NVDA transfers to BIG in every 10M-block range, each in its own transaction.
+    logs: (f) =>
+      f.address === nvda && (f.topics as (string | null)[])[2] === pad(BIG)
+        ? Array.from({ length: 200 }, (_, i) => ({ transactionHash: hashN(Number(BigInt(f.fromBlock as string)) + i + 1), blockNumber: f.fromBlock, logIndex: "0x0", topics: [], data: "0x", address: nvda }))
+        : [],
+  });
+  const e = await reconstructFacts(BIG, { ...c.opts, alchemyUrl: null }).catch((x) => x);
+  assert.ok(e instanceof WalletTooLarge, String(e));
+  assert.equal(e.answer.limit.kind, "transactions");
+  assert.equal(e.answer.limit.max, MAX_TXS_PUBLIC);
+  assert.ok(e.answer.limit.found > MAX_TXS_PUBLIC);
+  assert.match(e.answer.detail, /replaying more than 600 transactions/);
+  assert.doesNotMatch(e.answer.detail, /Alchemy/, "Alchemy was not configured, so the answer does not mention it");
+  assert.equal(c.count("eth_getLogs"), 4, "one batch of four ranges was enough to pass 600");
+  assert.equal(c.count("eth_getTransactionReceipt"), 0);
+});
+
+test("Alchemy failing on a huge wallet: the public walk is bounded too, and the 422 says Alchemy was not available", async () => {
+  const nvda = NVDA.token.toLowerCase();
+  const c = fakeChain({
+    alchemy: () => ({ nope: true }),
+    logs: (f) =>
+      f.address === nvda && (f.topics as (string | null)[])[2] === pad(BIG)
+        ? Array.from({ length: 700 }, (_, i) => ({ transactionHash: hashN(Number(BigInt(f.fromBlock as string)) + i + 1), blockNumber: f.fromBlock, logIndex: "0x0", topics: [], data: "0x", address: nvda }))
+        : [],
+  });
+  const e = await reconstructFacts(BIG, { ...c.opts, alchemyUrl: ALCHEMY }).catch((x) => x);
+  assert.ok(e instanceof WalletTooLarge, String(e));
+  assert.match(e.answer.detail, /The Alchemy read was not available, so this answer comes from the public RPC path\. It is not rebuilt\.$/);
+});
+
+test("public RPC, 6 tokens held and NVDA not among them: the 422 counts the 6 held plus NVDA in words", async () => {
+  const nvda = NVDA.token.toLowerCase();
+  const six = CANONICAL_TOKENS.filter((t) => t.token.toLowerCase() !== nvda).slice(0, MAX_TOKENS_PUBLIC);
+  const c = fakeChain({ balances: Object.fromEntries(six.map((t) => [t.token.toLowerCase(), 1n])) });
+  const e = await reconstructFacts(ME, { ...c.opts, alchemyUrl: null }).catch((x) => x);
+  assert.ok(e instanceof WalletTooLarge, String(e));
+  assert.equal(e.answer.held_tokens, 6);
+  assert.deepEqual(e.answer.limit, { kind: "tokens", max: 6, found: 7 });
+  assert.match(e.answer.detail, /^Holds 6 of the 195 canonical Stock Tokens at block \d+\. Rebuilding it means walking the history of 7 tokens \(the 6 it holds, plus NVDA, which this path always walks\), and one request can walk 6\. It is not rebuilt\.$/);
+  assert.equal(c.count("eth_getLogs"), 0);
+});
+
+test("Alchemy failing on a wallet with a record: the record carries alchemy_unavailable; the forced public path does not", async () => {
+  const nvda = NVDA.token.toLowerCase();
+  const hash = "0x" + "d".repeat(64);
+  const chain = {
+    balances: { [nvda]: 2n * 10n ** 18n },
+    logs: (f: Record<string, unknown>) =>
+      (f.topics as (string | null)[])[2] === pad(ME) && f.fromBlock === "0x0" && f.address === nvda
+        ? [{ transactionHash: hash, blockNumber: "0x10", logIndex: "0x0", topics: [], data: "0x", address: nvda }]
+        : [],
+    receipts: { [hash]: receipt(hash, OTHER, nvda, nvda, OTHER, ME, 2n * 10n ** 18n, 16) },
+  };
+  const failing = fakeChain({ ...chain, alchemy: () => ({ nope: true }) });
+  const f = await reconstructFacts(ME, { ...failing.opts, alchemyUrl: ALCHEMY });
+  assert.ok(f.gaps.includes("alchemy_unavailable"), f.gaps.join(","));
+  assert.ok(f.gaps.includes("exited_positions_not_scanned"));
+  assert.notEqual(f.scope.rule, SCOPE_RULE_ALL);
+  const plain = fakeChain(chain);
+  const g = await reconstructFacts(ME, { ...plain.opts, alchemyUrl: null });
+  assert.ok(!g.gaps.includes("alchemy_unavailable"), g.gaps.join(","));
 });

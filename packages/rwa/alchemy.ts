@@ -92,6 +92,8 @@ export type AssetTransfersOptions = {
   order?: "asc" | "desc";
   /** pages followed per contract chunk (1,000 transfers a page) */
   maxPages?: number;
+  /** called with each page as it arrives; true stops the read there (`complete: false, stopped: true`) */
+  stopAfterPage?: (page: AssetTransfer[]) => boolean;
 };
 
 export type AlchemyOptions = RpcOptions & { url?: string };
@@ -135,12 +137,13 @@ function chunks<T>(list: readonly T[] | undefined, size: number): (T[] | undefin
 
 /**
  * Every transfer matching `q`, following pages up to `maxPages` per contract chunk.
- * `complete` is false when a chunk still had pages left at the cap.
+ * `complete` is false when a chunk still had pages left at the cap, or when
+ * `q.stopAfterPage` stopped the read (then `stopped` is true and no further page is asked for).
  */
 export async function getAssetTransferPages(
   q: AssetTransfersOptions,
   opts: AlchemyOptions = {},
-): Promise<{ transfers: AssetTransfer[]; pages: number; complete: boolean }> {
+): Promise<{ transfers: AssetTransfer[]; pages: number; complete: boolean; stopped?: true }> {
   const rpc = endpoint(opts);
   const maxPages = q.maxPages ?? DEFAULT_MAX_PAGES;
   const transfers: AssetTransfer[] = [];
@@ -171,6 +174,7 @@ export async function getAssetTransferPages(
       if (!Array.isArray(res.transfers)) throw new AlchemyError("alchemy_getAssetTransfers: unreadable answer");
       transfers.push(...res.transfers);
       pages++;
+      if (q.stopAfterPage?.(res.transfers)) return { transfers, pages, complete: false, stopped: true };
       if (!res.pageKey) break;
       pageKey = res.pageKey;
     }
@@ -237,10 +241,12 @@ export async function getAddressTransferPages(
   address: string,
   q: Omit<AssetTransfersOptions, "fromAddress" | "toAddress"> = {},
   opts: AlchemyOptions = {},
-): Promise<{ transfers: AssetTransfer[]; complete: boolean }> {
+): Promise<{ transfers: AssetTransfer[]; complete: boolean; stopped?: true }> {
   const sent = await getAssetTransferPages({ ...q, fromAddress: address }, opts);
+  if (sent.stopped) return { transfers: dedupe(sent.transfers), complete: false, stopped: true };
   const received = await getAssetTransferPages({ ...q, toAddress: address }, opts);
-  return { transfers: dedupe([...sent.transfers, ...received.transfers]), complete: sent.complete && received.complete };
+  const transfers = dedupe([...sent.transfers, ...received.transfers]);
+  return received.stopped ? { transfers, complete: false, stopped: true } : { transfers, complete: sent.complete && received.complete };
 }
 
 /** Transfers to or from `address`, all pages. Past the page cap: TooManyTransfers. */

@@ -20,6 +20,29 @@ const MIN_CHUNK_BLOCKS = 64;
  *  would hold the one reconstruction slot for minutes and then time out anyway. */
 export const MAX_LOG_RANGES = 64;
 
+/** More distinct transactions than one request replays: the walk stops there (2026-09-30 audit). */
+export class TooManyTransactions extends Error {
+  constructor(readonly found: number, readonly max: number) {
+    super(`too_many_transactions: more than ${max}`);
+    this.name = "TooManyTransactions";
+  }
+}
+
+/**
+ * A cap on the distinct transactions a log walk may collect, shared by every walk of one record.
+ * A contract that moved tens of thousands of Stock Token transfers made the walk split range after
+ * range for minutes while it held the one reconstruction slot. With a budget, the walk stops as
+ * soon as it has seen more transactions than the record could replay.
+ */
+export class TxBudget {
+  readonly txs = new Set<string>();
+  constructor(readonly max: number) {}
+  add(logs: readonly { transactionHash: string }[]): void {
+    for (const l of logs) this.txs.add(l.transactionHash.toLowerCase());
+    if (this.txs.size > this.max) throw new TooManyTransactions(this.txs.size, this.max);
+  }
+}
+
 function isSplittable(err: unknown): boolean {
   return err instanceof RpcError && /timed out|timeout|deadline exceeded|exceeds limit|too many|response size|narrow the block range/i.test(err.message);
 }
@@ -30,14 +53,17 @@ export function allowedSpan(err: unknown): number | null {
   return m ? Number(m[1]) : null;
 }
 
-async function getLogsRange(filter: Record<string, unknown>, from: number, to: number, opts?: RpcOptions): Promise<RawLog[]> {
+async function getLogsRange(filter: Record<string, unknown>, from: number, to: number, opts?: RpcOptions, budget?: TxBudget): Promise<RawLog[]> {
+  let logs: RawLog[];
   try {
-    return await rpcCall<RawLog[]>("eth_getLogs", [{ ...filter, fromBlock: hex(from), toBlock: hex(to) }], opts);
+    logs = await rpcCall<RawLog[]>("eth_getLogs", [{ ...filter, fromBlock: hex(from), toBlock: hex(to) }], opts);
   } catch (err) {
     if (!isSplittable(err) || to - from < MIN_CHUNK_BLOCKS) throw err;
     const mid = from + Math.floor((to - from) / 2);
-    return [...(await getLogsRange(filter, from, mid, opts)), ...(await getLogsRange(filter, mid + 1, to, opts))];
+    return [...(await getLogsRange(filter, from, mid, opts, budget)), ...(await getLogsRange(filter, mid + 1, to, opts, budget))];
   }
+  budget?.add(logs);
+  return logs;
 }
 
 /** Pause between consecutive log requests: the public RPC throttles bursts (measured 2026-09-17/18). */
@@ -45,7 +71,7 @@ const LOG_CHUNK_PACING_MS = 250;
 const LOG_BATCH = 4;
 const LOG_BATCH_PACING_MS = 300;
 
-async function getLogsChunked(filter: Record<string, unknown>, from: number, to: number, opts?: RpcOptions, chunk = LOG_CHUNK_BLOCKS): Promise<RawLog[]> {
+async function getLogsChunked(filter: Record<string, unknown>, from: number, to: number, opts?: RpcOptions, chunk = LOG_CHUNK_BLOCKS, budget?: TxBudget): Promise<RawLog[]> {
   // Genesis-range log queries need an archive node; the fallback RPC refuses them
   // without a token, so log reads stay on the primary and retry longer instead.
   // No URL list is fixed here: rpc.ts picks the primary per batch and never adds the
@@ -63,19 +89,19 @@ async function getLogsChunked(filter: Record<string, unknown>, from: number, to:
     const results: RawLog[][] = [];
     for (let i = 0; i < starts.length; i += LOG_BATCH) {
       if (i > 0) await pause(LOG_BATCH_PACING_MS);
-      results.push(
-        ...(await rpcBatch<RawLog[]>(
-          starts.slice(i, i + LOG_BATCH).map((start) => ({ method: "eth_getLogs", params: [{ ...filter, fromBlock: hex(start), toBlock: hex(Math.min(to, start + chunk - 1)) }] })),
-          logOpts,
-        )),
+      const batch = await rpcBatch<RawLog[]>(
+        starts.slice(i, i + LOG_BATCH).map((start) => ({ method: "eth_getLogs", params: [{ ...filter, fromBlock: hex(start), toBlock: hex(Math.min(to, start + chunk - 1)) }] })),
+        logOpts,
       );
+      for (const logs of batch) budget?.add(logs);
+      results.push(...batch);
     }
     return results.flat();
   } catch (err) {
     const allowed = allowedSpan(err);
     if (allowed && allowed < chunk && allowed >= MIN_CHUNK_BLOCKS) {
       if (Math.ceil((to - from + 1) / allowed) > MAX_LOG_RANGES) throw new RpcError(`log span limit too small: ${allowed} blocks per query`, "eth_getLogs");
-      return getLogsChunked(filter, from, to, opts, allowed);
+      return getLogsChunked(filter, from, to, opts, allowed, budget);
     }
     if (!isSplittable(err)) throw err;
   }
@@ -84,7 +110,7 @@ async function getLogsChunked(filter: Record<string, unknown>, from: number, to:
   const out: RawLog[] = [];
   for (const start of starts) {
     if (start > from) await pause(LOG_CHUNK_PACING_MS);
-    out.push(...(await getLogsRange(filter, start, Math.min(to, start + chunk - 1), logOpts)));
+    out.push(...(await getLogsRange(filter, start, Math.min(to, start + chunk - 1), logOpts, budget)));
   }
   return out;
 }
@@ -95,13 +121,14 @@ export async function getLogsFromGenesis(filter: Record<string, unknown>, opts?:
   return getLogsChunked(filter, 0, head, opts);
 }
 
-/** Transfer logs of `token` where `address` is sender or recipient, up to and including `toBlock`, ordered by block then log index. */
-export async function fetchCanonicalTransfers(token: string, address: string, toBlock: number, opts?: RpcOptions, chunk = LOG_CHUNK_BLOCKS): Promise<RawLog[]> {
+/** Transfer logs of `token` where `address` is sender or recipient, up to and including `toBlock`, ordered by block then log index.
+ *  With `budget`, the walk throws TooManyTransactions as soon as the logs name more transactions than it allows. */
+export async function fetchCanonicalTransfers(token: string, address: string, toBlock: number, opts?: RpcOptions, chunk = LOG_CHUNK_BLOCKS, budget?: TxBudget): Promise<RawLog[]> {
   const me = padAddress(address);
   // The two sides run one after the other: two parallel walks doubled the burst and drew 429s.
-  const out = await getLogsChunked({ address: token, topics: [TOPICS.transfer, me] }, 0, toBlock, opts, chunk);
+  const out = await getLogsChunked({ address: token, topics: [TOPICS.transfer, me] }, 0, toBlock, opts, chunk, budget);
   await (opts?.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))))(1_000);
-  const inn = await getLogsChunked({ address: token, topics: [TOPICS.transfer, null, me] }, 0, toBlock, opts, chunk);
+  const inn = await getLogsChunked({ address: token, topics: [TOPICS.transfer, null, me] }, 0, toBlock, opts, chunk, budget);
   const seen = new Set<string>();
   const all: RawLog[] = [];
   for (const l of [...out, ...inn]) {
@@ -115,15 +142,15 @@ export async function fetchCanonicalTransfers(token: string, address: string, to
 }
 
 /** Transfer logs of `token` sent by `address` (the sending side only), up to `toBlock`. */
-export async function fetchTransfersOut(token: string, address: string, toBlock: number, opts?: RpcOptions): Promise<RawLog[]> {
-  return getLogsChunked({ address: token, topics: [TOPICS.transfer, padAddress(address)] }, 0, toBlock, opts);
+export async function fetchTransfersOut(token: string, address: string, toBlock: number, opts?: RpcOptions, budget?: TxBudget): Promise<RawLog[]> {
+  return getLogsChunked({ address: token, topics: [TOPICS.transfer, padAddress(address)] }, 0, toBlock, opts, LOG_CHUNK_BLOCKS, budget);
 }
 
 /** Transfer logs of `token` that paid `address` (the receiving side only), up to `toBlock`.
  *  Every way of holding a token starts with one of these (a mint is a Transfer from 0x0), so an
  *  empty answer means the address never held it; half the cost of fetchCanonicalTransfers. */
-export async function fetchTransfersIn(token: string, address: string, toBlock: number, opts?: RpcOptions): Promise<RawLog[]> {
-  return getLogsChunked({ address: token, topics: [TOPICS.transfer, null, padAddress(address)] }, 0, toBlock, opts);
+export async function fetchTransfersIn(token: string, address: string, toBlock: number, opts?: RpcOptions, budget?: TxBudget): Promise<RawLog[]> {
+  return getLogsChunked({ address: token, topics: [TOPICS.transfer, null, padAddress(address)] }, 0, toBlock, opts, LOG_CHUNK_BLOCKS, budget);
 }
 
 /**
