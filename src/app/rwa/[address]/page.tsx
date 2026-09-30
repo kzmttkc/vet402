@@ -11,6 +11,7 @@ import { FREE_DEADLINE_MS, cachedFacts } from "../../../../packages/rwa/cache";
 import { EXAMPLE_WALLETS } from "../../../../packages/rwa/examples";
 import { METHOD_VERSION, NoStockTokenActivity, WalletTooLarge, type NoActivityAnswer, type RwaFacts, type TooLargeAnswer } from "../../../../packages/rwa/facts";
 import { AnchorNote } from "./anchor-note";
+import { heldAtBlockLine, holdingsLine, noHeldActionsLine } from "./lines";
 import { LookalikesSection } from "./lookalikes";
 
 /**
@@ -173,7 +174,7 @@ function TooLarge({ address, answer }: { address: string; answer: TooLargeAnswer
       <p className="mt-2 break-all font-mono text-sm">{address}</p>
       <p className="mt-4 border-l-2 pl-3 text-base">Too large to rebuild in one request.</p>
       <p className="mt-3 text-sm">{answer.detail}</p>
-      <p className="mt-1 text-sm">Held at block {answer.as_of_block}: {answer.held.join(", ")}.</p>
+      <p className="mt-1 text-sm">{heldAtBlockLine(answer.held, answer.as_of_block)}</p>
       <p className="mt-3 text-sm">
         <Link className="underline" href={`/api/v1/rwa/facts/${address}`}>
           facts JSON
@@ -257,9 +258,7 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
       <h1 className="text-xl font-semibold">vet402 /rwa</h1>
       <p className="mt-2 break-all font-mono text-sm">{shown}</p>
       <p className="mt-4 border-l-2 pl-3 text-base">
-        {held.length} Stock Token{held.length === 1 ? "" : "s"} held
-        {" · "}
-        {facts.unrealized_usd !== null ? `marked $${money(facts.unrealized_usd)}` : "no complete USD mark"}
+        {holdingsLine(held.length, facts.unrealized_usd, money)}
         {" · "}
         {facts.r1_status === "unverified" ? "realized not shown" : realizedLine(facts.realized_usd, facts.realized_status)}
         {" · "}
@@ -330,7 +329,7 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
             Shares are raw × multiplier. Realized PnL is computed on raw amounts and USD, so it does not move.
           </p>
           {actionsHeld.length === 0 ? (
-            <p className="mt-2 text-sm">None of these updates happened while this wallet held the token.</p>
+            <p className="mt-2 text-sm">{noHeldActionsLine(actions.length)}</p>
           ) : (
             <div className="mt-2 overflow-x-auto">
               <table className="w-full text-sm">
