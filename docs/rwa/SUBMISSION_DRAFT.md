@@ -8,8 +8,7 @@ chain filled 2026-09-28. The anchor tx was updated on 2026-09-30 to the
 under the 300-character limit; the counts are checked by
 `packages/rwa/test/submission-draft.test.ts`.
 
-Claim scope (memory `openhouse-claim-only-rwa-parent-stays-multichain`): only
-`/rwa` is claimed. The parent vet402 is not presented as Buildathon work, and
+Claim scope: only `/rwa` is claimed. The parent vet402 is not presented as Buildathon work, and
 nothing here mentions other hackathons' prizes.
 
 ## What is your contract address?
@@ -18,16 +17,16 @@ nothing here mentions other hackathons' prizes.
 
 ## Which Prize Track
 
-Overall Prize and Promising Products Track. /rwa is built only on Robinhood Chain, an Arbitrum Orbit chain.
+Overall Prize, Promising Products Track and Grants. /rwa is built only on Robinhood Chain, an Arbitrum Orbit chain.
 
 ## Link to frontend/UI/website
 
 https://vet402.com/rwa/0xE9B08727131E34010b34006c660D4c1B436EC25f
-Agents can buy the same JSON over x402 for 0.01 USDG: https://vet402.com/api/v1/rwa/paid/facts/<address>. First settlement tx 0xeb26d1b5b0b1a12056ec8abd99640fcbb00860552b4c5a44d3e1b67b3da73760.
+Paid JSON for agents (x402, 0.01 USDG): https://vet402.com/api/v1/rwa/paid/facts/0xE9B08727131E34010b34006c660D4c1B436EC25f. First settlement, a test I paid myself: 0xeb26d1b5b0b1a12056ec8abd99640fcbb00860552b4c5a44d3e1b67b3da73760.
 
 ## List your Core Protocol / Smart Contract Addresses
 
-RwaAnchor 0x1955137e7773f2459eb75fb88842026c6517c22d on Robinhood Chain, no owner, no upgrade path. It stores the hash of a whole published record. The demo record (rwa-recon-0.3, realized −$273.01 on priced sales) is anchored in tx 0x15f9ed8ae5dd466c2f35021c9f1291e7a624abbb52c8ac26b54d47442f585c7f.
+RwaAnchor 0x1955137e7773f2459eb75fb88842026c6517c22d on Robinhood Chain, no owner, no upgrade path. It stores the hash of a whole record. Demo record (rwa-recon-0.3, realized −$273.01 on priced sales) anchored in tx 0x15f9ed8ae5dd466c2f35021c9f1291e7a624abbb52c8ac26b54d47442f585c7f.
 
 ## List your Factory/Pool Contracts (if applicable)
 
@@ -43,4 +42,4 @@ All of /rwa, first code commit 2026-09-16 22:03 UTC: packages/rwa (classifier, F
 
 ## Which sponsor/partner technologies have you used?
 
-Robinhood Chain, Paxos/USDG
+Robinhood Chain, Paxos/USDG, Alchemy

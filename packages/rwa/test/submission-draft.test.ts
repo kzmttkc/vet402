@@ -14,10 +14,17 @@ const LONGEST = {
   "<ANCHOR_TX>": "0x" + "b".repeat(64),
   "<CHAIN_ID>": "46630",
 };
-const answers = [...draft.matchAll(/^## (.+?)\n\n([\s\S]+?)(?=\n\n## |\s*$)/gm)].map((m) => ({ field: m[1], body: m[2].trim() }));
+// The whole answer up to the next heading. `$` here would be the end of a line under /m and
+// cut a two-line answer at its first line, so the end of the file is matched as (?![\s\S]).
+const answers = [...draft.matchAll(/^## (.+?)\n\n([\s\S]+?)(?=\n\n## |\s*(?![\s\S]))/gm)].map((m) => ({ field: m[1], body: m[2].trim() }));
 
 test("every form answer is present", () => {
   assert.equal(answers.length, 8);
+});
+
+test("a two-line answer is measured whole", () => {
+  const frontend = answers.find((a) => a.field === "Link to frontend/UI/website")!;
+  assert.match(frontend.body, /First settlement, a test I paid myself/);
 });
 
 test("every answer fits the 300-character field with placeholders at their longest", () => {
