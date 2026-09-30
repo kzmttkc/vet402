@@ -1,6 +1,6 @@
 # Patch 021: the chain confirms the list, and a record names the fakes a wallet met
 
-Status: proposed on branch `rwa-w2-lookalike` (2026-09-30). The integrator merges it into SPEC.md and bumps `METHOD_VERSION` once for the sprint. This patch does not bump it.
+Status: shipped on 2026-09-30 in `rwa-recon-0.3` (main `b9d9269c`), from branch `rwa-w2-lookalike`. Merged into SPEC.md. `METHOD_VERSION` was bumped once for the sprint, not by this patch.
 
 ## Why
 

@@ -1,6 +1,6 @@
 # SPEC patch 020: any wallet gets a fast, stable, honest answer
 
-Status: proposed on branch `rwa-w1-reach`. Merges into SPEC §5, §7, §9 and §10.
+Status: shipped on 2026-09-30 in `rwa-recon-0.3` (main `b9d9269c`), from branch `rwa-w1-reach`. Merged into SPEC §5, §7, §9 and §10.
 Method version: the integrator bumps it once to `rwa-recon-0.3`. This patch
 changes scope only when `RWA_ALCHEMY_URL` is set.
 

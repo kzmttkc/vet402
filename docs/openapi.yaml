@@ -1645,9 +1645,12 @@ paths:
             than 600 transactions to replay on either path, or with Alchemy more
             than 30 tokens held or moved or more than 20,000 Stock Token
             transfers). A read stops as soon as it passes a limit, so `found`
-            is then the count it stopped at and `detail` says "more than". The
-            body lists `held` (symbols), `held_tokens`, `limit` and `detail`.
-            Held by this server for 5 minutes. Not rebuilt.
+            is then the count it stopped at and `detail` says "more than". With
+            Alchemy, more than 30 tokens held is answered before any transfer
+            read, and `found` is the count held (SPEC patch 026). The body lists
+            `held` (symbols), `held_tokens`, `limit` and `detail`. Vercel's CDN
+            does not keep a 422. This server keeps it 5 minutes per instance.
+            Not rebuilt.
           content:
             application/json:
               schema:

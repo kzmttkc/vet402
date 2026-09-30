@@ -1,7 +1,8 @@
 # SPEC patch 025: a huge wallet gives the slot back in seconds
 
-Status: proposed on branch `rwa-r2-fix`, 2026-09-30. Merge into SPEC §7 (the
-table of answers) and §9 (reads and limits). METHOD_VERSION stays
+Status: shipped on 2026-09-30 (main `d96660f5` to `067d0dc9`), from branch
+`rwa-r2-fix`. Merged into SPEC §7 (the table of answers) and §9 (reads and
+limits). METHOD_VERSION stays
 rwa-recon-0.3. The limits (10/min free, 60/min paid, one reconstruction at a
 time) do not change.
 
@@ -52,10 +53,10 @@ the 422 already says why this one is not rebuilt.
   includes NVDA and `detail` says so: "7 tokens (the 6 it holds, plus NVDA,
   which this path always walks)". It used to say only "7 tokens" next to
   "Holds 6".
-- The CDN does not keep a 422. Measured 2026-09-30 on
-  `/api/v1/rwa/facts/0x44df…b3f4`: two requests both `x-vercel-cache: MISS`,
-  10.85 s then 0.33 s. The second was answered from the server's own 5 minute
-  memory. Tests in `packages/rwa/test/reach.test.ts` check that a second ask
+- The 422 header carries `s-maxage=300`, but Vercel's CDN does not keep a 422.
+  Measured 2026-09-30 on `/api/v1/rwa/facts/0x44df…b3f4`: two requests both
+  `x-vercel-cache: MISS`, 10.85 s then 0.33 s. The second was answered from the
+  server's in-memory cache, which each instance keeps for 5 minutes. Tests in `packages/rwa/test/reach.test.ts` check that a second ask
   for the same huge wallet reads nothing.
 
 ## §5 a public-path answer says Alchemy was not available

@@ -1,7 +1,8 @@
 # SPEC patch 024: four fixes from the rwa-recon-0.3 review
 
-Status: proposed on branch `rwa-fix1`, 2026-09-30. Merge into SPEC §7 (facts
-routes, the table of answers) and §9 (reads and limits). METHOD_VERSION stays
+Status: shipped on 2026-09-30 (main `df6d1393` to `7ea94342`), from branch
+`rwa-fix1`. Merged into SPEC §7 (facts routes, the table of answers) and §9
+(reads and limits). METHOD_VERSION stays
 rwa-recon-0.3. The record's fields and the realized figures do not change.
 
 ## §9 A refused Alchemy URL also moves the log reads

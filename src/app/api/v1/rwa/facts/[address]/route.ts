@@ -44,9 +44,11 @@ type RouteContext = { params: Promise<{ address: string }> };
  */
 export const RWA_FACTS_CACHE_CONTROL = "public, max-age=60, s-maxage=300, stale-while-revalidate=86400";
 /**
- * For the 404 (no Stock Token) and 422 (too large) answers. The CDN holds them as
- * long as this server remembers them (5 minutes), then serves stale for 60 s at
- * most. A wallet that buys its first Stock Token must not read "none" for a day.
+ * For the 404 (no Stock Token) and 422 (too large) answers. The header carries
+ * s-maxage=300 and at most 60 s of stale, so no copy says "none" for a day after
+ * a wallet buys its first Stock Token. Vercel's CDN does not keep a 422 (measured
+ * 2026-09-30: every request a MISS). A repeat 422 within 5 minutes comes from this
+ * server's in-memory cache (packages/rwa/cache.ts), which each instance keeps.
  */
 export const RWA_ANSWER_CACHE_CONTROL = "public, max-age=60, s-maxage=300, stale-while-revalidate=60";
 

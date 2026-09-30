@@ -1,6 +1,6 @@
 # Patch 022: corporate actions in the record
 
-Status: branch `rwa-w3-corpact`, for the integrator to merge into docs/rwa/SPEC.md. Method version is not raised here (the integrator raises it once to `rwa-recon-0.3`).
+Status: shipped on 2026-09-30 in `rwa-recon-0.3` (main `b9d9269c`), from branch `rwa-w3-corpact`. Merged into docs/rwa/SPEC.md. The method version was raised once to `rwa-recon-0.3`, not by this patch.
 
 ## What changes
 

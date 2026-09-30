@@ -13,13 +13,21 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
-## 2026-09-30: /rwa second audit fixes, huge wallets and the record summary (branch `rwa-r2-fix`, not pushed)
+## 2026-09-30: /rwa third audit fixes, held tokens counted first (branch `rwa-r3-fix`, not pushed)
+
+- **What**: with Alchemy, a wallet holding more than 30 canonical tokens gets its 422 from the balance read, before `alchemy_getAssetTransfers` (`limit.kind` `tokens`, `found` = tokens held). The too-large page no longer says "holds none" twice. The Realized PnL line and the per-token Realized cell read "−$273.01" like the summary. The route comment, SPEC and patch 025 say the 422 header carries `s-maxage` but Vercel's CDN does not keep a 422, and a repeat comes from the server's 5 minute in-memory cache per instance. Patches 020 to 025 say shipped. SPEC patch 026.
+- **Why**: third audit, 2026-09-30. Wallets holding 192 tokens kept the one reconstruction slot about 11 s before the 422.
+- **Money code**: `c6205fba` changes the 422 body the paid route returns for a wallet holding more than 30 tokens (limit and detail). x402.ts, the paid route file and limits are unchanged. Needs an independent SHIP before push.
+- **Measured**: `reconstructFacts` on the public RPC with an Alchemy URL that fails on any call: 0x92d4…f765, 0x2f45…4a07, 0x8f10…f996 held 142, 45 and 192 tokens, each 422 in 0.45 to 0.57 s with no Alchemy call.
+- **Commits**: c6205fba (money), 512abd5a (page), plus this docs commit.
+
+## 2026-09-30: /rwa second audit fixes, huge wallets and the record summary (branch `rwa-r2-fix`, on main)
 
 - **What**: a wallet too large to rebuild now gets its 422 from the first page or log range that proves it, and never falls back from Alchemy to the public walk. The public walk also stops past 600 transactions. `limit.kind` gains `transfers`. The public-path 422 says the token count includes NVDA. A record, 404 or 422 built on the public path while Alchemy is configured says so (gap `alchemy_unavailable`). The record page says "no sales yet" for a wallet with no swap. SPEC patch 025.
 - **Why**: in production 0x6aa8...326e answered `still_reading` after 20.5 s and the next three wallets got `too_busy`. 0x7f61...4c9d (15 transfers, 0 swaps) read "sales found, none could be priced". 0x44df...b3f4 said "7 tokens" next to "Holds 6".
-- **Money code**: `d96660f5` changes the bodies the paid route returns (422 detail and limit, gaps). x402.ts and the paid route file are unchanged. Needs an independent SHIP before push.
+- **Money code**: `d96660f5` changes the bodies the paid route returns (422 detail and limit, gaps). x402.ts and the paid route file are unchanged. An independent review said SHIP at 2026-09-30 21:16 JST for the three commits: the paid route is unchanged, and a 422, 404 or 503 never reaches settle.
 - **Measured**: locally on the public RPC, 0x6aa8...326e went from HTTP 429 after 49.5 s to 422 after 10.3 s. The live 422 for 0x44df...b3f4 was `x-vercel-cache: MISS` twice (10.85 s, then 0.33 s from server memory), so the CDN does not keep a 422. The Alchemy path is tested with a scripted endpoint only (no key outside Vercel).
-- **Commits**: d96660f5 (money), c6c47e01, plus the docs commit on top.
+- **Commits**: d96660f5 (money), c6c47e01, 067d0dc9 (docs). On main, CI `ci` success on 067d0dc9 (run created 2026-09-30 21:22 JST).
 
 ## 2026-09-30: personal name removed from repo docs (branch `rwa-name-scrub`)
 
@@ -27,20 +35,20 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 - Left as is on purpose: the operator name "KIZUNA Creation" on LICENSE, LICENSE-DATA, CLA.md, the site's legal pages, footer and package.json authors (legal disclosure), identifiers such as the launchd label, and git history.
 - docs/rwa/README.md links the spec only. The CLAUDE.md link (agent rules, not reader documentation) is gone from the reader page.
 
-## 2026-09-30: /rwa pre-submission audit fixes (branch `rwa-audit-fix`, not pushed)
+## 2026-09-30: /rwa pre-submission audit fixes (branch `rwa-audit-fix`, on main)
 - **What**: record page says "Holds no canonical Stock Token at block N" and "nothing held now, so nothing to mark" instead of an empty list or "0 held · no complete USD mark", has its own line when no token ever changed its multiplier, titles the section "Look-alikes in this wallet's transfers", and claims no block range for an Alchemy search that stopped at its page cap. `/rwa/<not an address>` stays 404 and now says why (0x + 40 hex, no ENS) with a link back. Only 4663 anchors can be the latest anchored snapshot. `/rwa` and the README call the first paid settlement a test I paid myself. Docs: OPERATING (exited positions shipped in 0.3), README (first code commit 2026-09-16 22:03 UTC, spec started 2026-09-09 before the event, `count()` 2), openapi (20 s `still_reading`, Alchemy scope, 404 Cache-Control), SPEC (020-023 shipped, 021 hash note superseded, error table per 024), SUBMISSION_DRAFT (Grants, Alchemy, real demo address), `.env.example`.
 - **Money code**: `be2c04fa` changes the paid route only. A wallet too large to rebuild is now 422 `wallet_too_large` with the free body plus `charged: false`, verified and never settled, no error log (was 503 `feed_unavailable`). x402.ts, the settle order and limits are unchanged. `6c7ca60e` documents it in SPEC and README. Ship both only after an independent SHIP review, and drop both together if refused.
 - **Measured**: `count()` on RwaAnchor returned 2 on both public RPCs (2026-09-30), the two anchor receipts are status 1 in blocks 74268019 and 76177721. Live `/api/v1/rwa/facts/<demo>` showed an `alchemy` search source and scope NVDA, QQQ, SPY. `/rwa/abc` and `/rwa/vitalik.eth` answered 404 with the new text on a local dev server. `submission-draft.test.ts` now measures two-line answers whole (it read only the first line before).
-- **Commits**: 71c46ad8, 494ed777, 51d177f2, 8f928725, be2c04fa (money), 3f6fb6f2, 865aed76, aec92fa6, 69609469, cb8c22ed, 6c7ca60e.
+- **Commits**: 71c46ad8, 494ed777, 51d177f2, 8f928725, be2c04fa (money), 3f6fb6f2, 865aed76, aec92fa6, 69609469, cb8c22ed, 6c7ca60e. All on main, with this entry in d810636a. CI `ci` success on d810636a (run created 2026-09-30 20:19 JST).
 
-## 2026-09-30: /rwa anchored rwa-recon-0.3, and every surface reads it (branch `rwa-anchor-url`, not pushed)
+## 2026-09-30: /rwa anchored rwa-recon-0.3, and every surface reads it (branch `rwa-anchor-url`, on main)
 - **What**: the demo record under `rwa-recon-0.3` is anchored in tx `0x15f9ed8ae5dd466c2f35021c9f1291e7a624abbb52c8ac26b54d47442f585c7f` (block 76177721) and committed as `fixtures/rwa/anchors/rwa-recon-0.3-76177721.json`. The record page reads the latest anchor through `packages/rwa/anchors.ts` (0.1 stays as one history line) and says when the live page is newer. `/rwa` 30 seconds, `docs/rwa/README.md`, `SUBMISSION_DRAFT.md`, `OPERATING.md` and SPEC patch 025 carry the anchored numbers: realized −$273.01 on priced sales (NVDA −113.98, QQQ −170.59, SPY +11.56), look-alikes named and not counted, corporate actions (share multiplier changes) on NVDA, SPY and QQQ while held.
 - **Why**: the public text still named the 0.1 anchor as the latest and a realized total of −284.57 that no anchor holds.
 - **Impact**: no money code touched (no change to `packages/rwa/x402.ts`, the paid route or the JSON). A new anchor file must be added to `packages/rwa/anchors.ts`, or `npm run rwa:test` fails.
 - **Measured**: `node packages/rwa/scripts/verify-record.mjs --record fixtures/rwa/anchors/rwa-recon-0.3-76177721.json --tx 0x15f9…5c7f` printed nine OK lines and `RESULT: MATCH`. The 0.1 command also ends in `RESULT: MATCH`.
-- **Commits**: 9506ffb1 (anchor record), b4ad54db (record page), 36c5105a (/rwa entry), plus the docs commit on top.
+- **Commits**: 9506ffb1 (anchor record), b4ad54db (record page), 36c5105a (/rwa entry), 0aa0ce70 (docs). On main, CI `ci` success on 41ede404 just after them (run created 2026-09-30 12:28 JST).
 
-## 2026-09-30: /rwa rwa-recon-0.3: any wallet, look-alikes, corporate actions, verify without a key (branch `rwa-integrate`, not pushed)
+## 2026-09-30: /rwa rwa-recon-0.3: any wallet, look-alikes, corporate actions, verify without a key (branch `rwa-integrate`, on main as b9d9269c)
 - **What**: four sprint branches merged, then one method bump.
   - Reach (patch 020): a wallet with no Stock Token gets a cached 404 that says what was checked. A failure is a 503 named `too_busy`, `still_reading` or `chain_unavailable` with Retry-After, and the free route answers within 20 s. A wallet too large for one request gets 422 `wallet_too_large`. With Alchemy, every canonical token the wallet ever moved is in scope. The entry page lists three example wallets.
   - Look-alikes (patch 021): the registry carries each token's code hash, beacon and factory event (195/195). The record lists tokens that copy a Stock Token or USDG (`lookalikes`, `counted: false`) and says how far the search went (`lookalikes_scope`).
@@ -50,7 +58,7 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 - **Why**: the Open House judging weighs contract quality, real problems and PMF. A judge's own wallet usually holds no Stock Token, fake tokens reach real wallets, and multiplier updates change share counts.
 - **Impact**: the facts JSON changes shape (new keys `lookalikes`, `lookalikes_scope`, `corporate_actions`, new 404/422/503 bodies), documented in `docs/openapi.yaml`. Anchors of 0.3 records use hash material v2. The 0.1 anchor still verifies. The paid route adds only the `X-Facts-Hash` header (money code, independent review before push).
 - **Measured**: live `reconstructFacts` on the demo wallet at block 76155345 on the public RPC: `realized_usd` −284.57, two look-alikes (fake NVDA, fake USDG), corporate actions NVDA 2026-09-10 and QQQ 2026-09-22 while held.
-- **Commits**: merges 07b5e383 (w4), 5148b8cc (w1), b45d38fc (w3), e47ff710 (w2), bump 6d6abb84.
+- **Commits**: merges 07b5e383 (w4), 5148b8cc (w1), b45d38fc (w3), e47ff710 (w2), bump 6d6abb84 on the branch. They reached main as the one commit b9d9269c, CI `ci` success (run created 2026-09-30 11:41 JST).
 
 ## 2026-09-29 — persona audit: the first screen, the no-key entry, and the Terms say what vet402 is
 - **何を**: LP の先頭に「Try one check, no account」（/playground）と 3 行（What this is / What you give us / What we do not do）。書誌欄の「Updates: trust scores」→「How the older score relates to L0–L2」、「safe answer」と「Address control verified」を言い換え。売り手検索は空欄を送らせず、一致しないときは次の一手（自分のホスト・他チェーンは observatory）。/signup にキー紛失の一行。Terms §0・§1 のサービス定義を LP と同じ「測定の記録（L0–L2）＋移行期の意見としての score」に。docs に `vouch_` 接頭辞の由来。decision の 400 に `message`（resolve で id を得る）。

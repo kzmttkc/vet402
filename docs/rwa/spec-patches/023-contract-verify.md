@@ -1,7 +1,7 @@
 # SPEC patch 023: contract tests, hash material v2, key-less verification
 
-Status: proposed on branch `rwa-w4-contract`, 2026-09-30. Merge into SPEC §9
-(anchor) and §7 (facts routes).
+Status: shipped on 2026-09-30 in `rwa-recon-0.3` (main `b9d9269c`), from branch
+`rwa-w4-contract`. Merged into SPEC §9 (anchor) and §7 (facts routes).
 
 ## §9 Anchor: what changes
 
