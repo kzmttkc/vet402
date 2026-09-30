@@ -43,6 +43,12 @@ type RouteContext = { params: Promise<{ address: string }> };
  * record carries `as_of`, so a stale copy says how old it is.
  */
 export const RWA_FACTS_CACHE_CONTROL = "public, max-age=60, s-maxage=300, stale-while-revalidate=86400";
+/**
+ * For the 404 (no Stock Token) and 422 (too large) answers. The CDN holds them as
+ * long as this server remembers them (5 minutes), then serves stale for 60 s at
+ * most. A wallet that buys its first Stock Token must not read "none" for a day.
+ */
+export const RWA_ANSWER_CACHE_CONTROL = "public, max-age=60, s-maxage=300, stale-while-revalidate=60";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -72,11 +78,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
     });
   } catch (err) {
     if (err instanceof NoStockTokenActivity) {
-      // The same answer for the same wallet until it changes: cached at the CDN like a record.
-      return NextResponse.json(emptyAnswer(err), { status: 404, headers: { ...gate.cacheHeaders, "Cache-Control": RWA_FACTS_CACHE_CONTROL } });
+      // The same answer for the same wallet until it changes: cached at the CDN, with a short stale window.
+      return NextResponse.json(emptyAnswer(err), { status: 404, headers: { ...gate.cacheHeaders, "Cache-Control": RWA_ANSWER_CACHE_CONTROL } });
     }
     if (err instanceof WalletTooLarge) {
-      return NextResponse.json(tooLargeAnswer(err), { status: 422, headers: { ...gate.cacheHeaders, "Cache-Control": RWA_FACTS_CACHE_CONTROL } });
+      return NextResponse.json(tooLargeAnswer(err), { status: 422, headers: { ...gate.cacheHeaders, "Cache-Control": RWA_ANSWER_CACHE_CONTROL } });
     }
     if (err instanceof ReconstructionTimeout) keepReading(address);
     else if (!(err instanceof TooBusy)) logServerErrorSafe("rwa_facts", err);

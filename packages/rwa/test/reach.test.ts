@@ -26,7 +26,7 @@ import { MULTICALL3 } from "../feed";
 import { MAX_TOKENS_ALCHEMY, MAX_TOKENS_PUBLIC, MAX_TXS_ALCHEMY, NoStockTokenActivity, SCOPE_RULE_ALL, WalletTooLarge, noActivityAnswer, reconstructFacts, type RwaFacts } from "../facts";
 import { CANONICAL_TOKENS, tokenByAddress } from "../registry";
 import { __resetRefusedUrlsForTest, noteRefused, rpcCall } from "../rpc";
-import { GET } from "../../../src/app/api/v1/rwa/facts/[address]/route";
+import { GET, RWA_ANSWER_CACHE_CONTROL, RWA_FACTS_CACHE_CONTROL } from "../../../src/app/api/v1/rwa/facts/[address]/route";
 import { GET as PAID_GET, LOOKALIKE_END_BY_MS } from "../../../src/app/api/v1/rwa/paid/facts/[address]/route";
 import { FACILITATOR_URL, PAY_TO, PERMIT2, PRICE_ATOMIC, USDG, X402_PERMIT2_PROXY, b64json, paymentRequirements } from "../x402";
 
@@ -379,7 +379,7 @@ test("free route, empty wallet: 404 with the stated answer, cacheable, identical
   const body = await a.json();
   assert.deepEqual(body, { ...answer, address: "0x1111111111111111111111111111111111111111" });
   assert.deepEqual(await b.json(), body);
-  assert.match(a.headers.get("Cache-Control") ?? "", /s-maxage=300/);
+  assert.equal(a.headers.get("Cache-Control"), RWA_ANSWER_CACHE_CONTROL);
 });
 
 test("free route, no slot: 503 too_busy with the reason and Retry-After; failures each have one body", async () => {
@@ -432,7 +432,7 @@ test("public RPC, a wallet holding more tokens than one request can walk: a fast
   const body = await res.json();
   assert.equal(body.error, "wallet_too_large");
   assert.deepEqual(body.held, e.answer.held);
-  assert.match(res.headers.get("Cache-Control") ?? "", /s-maxage=300/);
+  assert.equal(res.headers.get("Cache-Control"), RWA_ANSWER_CACHE_CONTROL);
 });
 
 test("with Alchemy, a wallet with more transactions than one request can replay: 422, no receipts fetched", async () => {
@@ -738,4 +738,28 @@ test("paid lane: a wallet too large to rebuild is 503 charged:false and never se
   } finally {
     f.mock.restore();
   }
+});
+
+// ---------------------------------------------------------------- free route cache headers
+
+test("free route cache: 404 and 422 go stale for 60 s at most, a 200 record keeps its day of stale-while-revalidate", async () => {
+  const swr = (h: string | null) => Number(/stale-while-revalidate=(\d+)/.exec(h ?? "")?.[1]);
+  const maxAge = (h: string | null) => Number(/(?:^|[ ,])max-age=(\d+)/.exec(h ?? "")?.[1]);
+  assert.equal(swr(RWA_ANSWER_CACHE_CONTROL), 60);
+  assert.equal(maxAge(RWA_ANSWER_CACHE_CONTROL), 60);
+  assert.equal(RWA_FACTS_CACHE_CONTROL, "public, max-age=60, s-maxage=300, stale-while-revalidate=86400");
+
+  const answer = noActivityAnswer({ address: ME, block: HEAD, blockTimestamp: TS, historyChecked: "nvda_only", sentTxCount: 0, isContract: false });
+  await cachedFactsWith(ME, async () => {
+    throw new NoStockTokenActivity(answer);
+  }).catch(() => {});
+  const empty = await route(ME);
+  assert.equal(empty.status, 404);
+  assert.equal(swr(empty.headers.get("Cache-Control")), 60);
+
+  const fakeRecord = { address: OTHER, chain_id: 4663, method_version: "rwa-recon-0.3", r1_status: "partial" };
+  await cachedFactsWith(OTHER, async () => fakeRecord as never);
+  const ok = await route(OTHER);
+  assert.equal(ok.status, 200);
+  assert.equal(ok.headers.get("Cache-Control"), RWA_FACTS_CACHE_CONTROL);
 });
