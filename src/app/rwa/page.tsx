@@ -17,6 +17,8 @@ const EXPLORER = "https://robinhoodchain.blockscout.com";
 const DEMO = "0xE9B08727131E34010b34006c660D4c1B436EC25f";
 const ANCHOR = "0x1955137e7773f2459eb75fb88842026c6517c22d";
 const PAID_TX = "0xeb26d1b5b0b1a12056ec8abd99640fcbb00860552b4c5a44d3e1b67b3da73760";
+/** The latest anchor of the demo record: rwa-recon-0.3 (fixtures/rwa/anchors/rwa-recon-0.3-76177721.json). */
+const ANCHOR_TX = "0x15f9ed8ae5dd466c2f35021c9f1291e7a624abbb52c8ac26b54d47442f585c7f";
 
 export const metadata: Metadata = {
   title: "vet402 /rwa — check a Stock Token track record",
@@ -84,8 +86,17 @@ export default async function RwaEntryPage({ searchParams }: { searchParams: Pro
           <Link className="underline" href={`/rwa/${DEMO}`}>
             {DEMO.slice(0, 10)}…{DEMO.slice(-4)}
           </Link>
-          , a public wallet that holds NVDA and QQQ. It is marked <code>partial</code> and says how many of its movements
-          were not decoded.
+          , a public wallet that holds NVDA and QQQ and sold out of SPY. It is marked <code>partial</code> and says how
+          many of its movements were not decoded.
+        </li>
+        <li>
+          Look-alikes: the demo wallet was sent a fake NVDA (&quot;NVIDIA Robinhood Coin&quot;). A fake USDG transfer
+          was also logged from it to a copy of a real counterparty&apos;s address. The page names both and does not
+          count them.
+        </li>
+        <li>
+          Corporate actions (share multiplier changes): NVDA, SPY and QQQ each changed their multiplier while the
+          wallet held them. The page lists each change with its tx.
         </li>
         <li>
           Coverage: the 195 canonical Stock Tokens in{" "}
@@ -95,20 +106,25 @@ export default async function RwaEntryPage({ searchParams }: { searchParams: Pro
           , with a Chainlink price for the 33 that have a feed.
         </li>
         <li>
-          Three numbers, three meanings: <b>−$9.62</b> is one NVDA round trip priced by hand (
+          Three numbers, three meanings. <b>−$9.62</b> is one NVDA round trip priced by hand (
           <a className="underline" href={`${REPO}/fixtures/rwa/B.md`} rel="noreferrer" target="_blank">
             Fixture B
           </a>
-          , replayed in CI); <b>−$113.98</b> is that wallet&apos;s realized NVDA; <b>−$284.57</b> is its realized total
-          across NVDA and QQQ on the sales that could be priced (both as of 2026-09-29).
+          , replayed in CI). <b>−$113.98</b> is the demo wallet&apos;s realized NVDA. <b>−$273.01</b> is its realized
+          total on the sales that could be priced: NVDA −$113.98, QQQ −$170.59, SPY +$11.56. The last two are from the
+          anchored rwa-recon-0.3 record, as of 2026-09-30 03:00 UTC.
         </li>
         <li>
           Anchor: RwaAnchor{" "}
           <a className="underline" href={`${EXPLORER}/address/${ANCHOR}`} rel="noreferrer" target="_blank">
             {ANCHOR.slice(0, 10)}…
           </a>{" "}
-          on Robinhood Chain, source verified, no owner and no upgrade path. It holds the hash of that wallet&apos;s record
-          at block 74267752; the{" "}
+          on Robinhood Chain, source verified, no owner and no upgrade path. It holds the hash of that wallet&apos;s
+          rwa-recon-0.3 record at block 76177362, committed in tx{" "}
+          <a className="underline" href={`${EXPLORER}/tx/${ANCHOR_TX}`} rel="noreferrer" target="_blank">
+            {ANCHOR_TX.slice(0, 6)}…{ANCHOR_TX.slice(-4)}
+          </a>
+          . The{" "}
           <a className="underline" href={`${REPO}/docs/rwa/README.md`} rel="noreferrer" target="_blank">
             README
           </a>{" "}

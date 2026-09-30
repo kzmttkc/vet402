@@ -84,3 +84,14 @@ test("a wallet with no anchor gets the plain line and no anchor link", async () 
   assert.ok(html.includes("is not an anchored snapshot"));
   assert.ok(!html.includes("/tx/"));
 });
+
+test("the /rwa entry page names the latest anchor tx and its realized numbers", () => {
+  const page = readFileSync(join(root, "src/app/rwa/page.tsx"), "utf8");
+  const [latest] = anchorsFor(DEMO);
+  const rec = JSON.parse(readFileSync(join(root, latest.file), "utf8"));
+  assert.ok(page.includes(`const ANCHOR_TX = "${latest.anchor_tx}"`), "ANCHOR_TX is the latest anchor");
+  assert.ok(page.includes(`block ${latest.as_of.block_on_4663}`));
+  const usd = (v: string) => `${v.startsWith("-") ? "−" : "+"}$${v.replace("-", "")}`;
+  assert.ok(page.includes(`<b>${usd(rec.facts.realized_usd)}</b>`), `realized total ${rec.facts.realized_usd}`);
+  for (const t of rec.facts.tokens) assert.ok(page.includes(`${t.symbol} ${usd(t.realized_usd)}`), `${t.symbol} ${t.realized_usd}`);
+});
