@@ -7,13 +7,16 @@
 // fixtures/rwa/anchors/ is missing from it, so a new anchor cannot be left out.
 //
 // The record page shows the latest anchor of the wallet it renders: the highest
-// method_version number, then the highest anchor block.
+// method_version number, then the highest anchor block. Only anchors on Robinhood
+// Chain mainnet (4663) count, so a testnet anchor added here cannot become the latest.
+import { RWA_CHAIN_ID } from "./config";
 import anchor01 from "../../fixtures/rwa/anchor.json";
 import anchor03 from "../../fixtures/rwa/anchors/rwa-recon-0.3-76177721.json";
 
 export type AnchorEntry = {
   /** Path from the repo root. */
   file: string;
+  chain_id: number;
   anchor_tx: string;
   anchor_block: number;
   method_version: { string: string; number: number };
@@ -26,11 +29,11 @@ export const ANCHOR_RECORDS: readonly AnchorEntry[] = [
   { file: "fixtures/rwa/anchors/rwa-recon-0.3-76177721.json", ...anchor03 },
 ];
 
-/** The anchors of one wallet, newest first (method_version number, then anchor block). */
+/** The mainnet (4663) anchors of one wallet, newest first (method_version number, then anchor block). */
 export function anchorsFor(address: string, records: readonly AnchorEntry[] = ANCHOR_RECORDS): AnchorEntry[] {
   const a = address.toLowerCase();
   return records
-    .filter((r) => r.facts.address.toLowerCase() === a)
+    .filter((r) => r.chain_id === RWA_CHAIN_ID && r.facts.address.toLowerCase() === a)
     .sort((x, y) => y.method_version.number - x.method_version.number || y.anchor_block - x.anchor_block);
 }
 

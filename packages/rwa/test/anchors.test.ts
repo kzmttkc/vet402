@@ -46,6 +46,14 @@ test("newest first: method_version number, then anchor block", () => {
   assert.deepEqual(order, ["0xlater", base.anchor_tx, "0xolder"]);
 });
 
+test("an anchor on another chain is never the latest, however new", () => {
+  const base = ANCHOR_RECORDS[1];
+  const testnet = { ...base, chain_id: 46630, anchor_tx: "0xtestnet", anchor_block: base.anchor_block + 1, method_version: { string: "rwa-recon-0.9", number: 9 } };
+  const order = anchorsFor(DEMO, [testnet, base]).map((a) => a.anchor_tx);
+  assert.deepEqual(order, [base.anchor_tx]);
+  for (const r of ANCHOR_RECORDS) assert.equal(r.chain_id, 4663, `${r.file} is a 4663 anchor`);
+});
+
 test("a wallet with no anchor has none", () => {
   assert.deepEqual(anchorsFor("0x0000000000000000000000000000000000000001"), []);
 });
