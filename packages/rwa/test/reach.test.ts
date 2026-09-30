@@ -710,6 +710,37 @@ test("with Alchemy, a wallet that moved more tokens than one request can read: 4
   assert.equal(c.count("eth_getLogs"), 0);
 });
 
+test("with Alchemy, a wallet holding more tokens than one request can read: 422 from the balance read alone, no transfer read", async () => {
+  // Third audit, 2026-09-30: wallets holding 192 of the 195 held the one slot about 11 s in the transfer read.
+  const held = (n: number) => Object.fromEntries(CANONICAL_TOKENS.slice(0, n).map((t) => [t.token.toLowerCase(), 1n]));
+  for (const n of [MAX_TOKENS_ALCHEMY + 1, 192]) {
+    const c = fakeChain({ balances: held(n) });
+    const e = await reconstructFacts(ME, { ...c.opts, alchemyUrl: ALCHEMY }).catch((x) => x);
+    assert.ok(e instanceof WalletTooLarge, String(e));
+    assert.deepEqual(e.answer.limit, { kind: "tokens", max: MAX_TOKENS_ALCHEMY, found: n });
+    assert.equal(e.answer.held_tokens, n);
+    assert.match(e.answer.detail, new RegExp(`^Holds ${n} of the ${CANONICAL_TOKENS.length} canonical Stock Tokens at block ${HEAD}\\. Rebuilding it means reading at least the ${n} tokens it holds, and one request can read ${MAX_TOKENS_ALCHEMY}\\. It is not rebuilt\\.$`));
+    assert.equal(c.count("alchemy_getAssetTransfers"), 0, "no transfer read");
+    assert.equal(c.count("eth_call"), 1, "only the one Multicall3 balance read");
+    assert.equal(c.count("eth_getLogs"), 0);
+    assert.equal(c.count("eth_getTransactionReceipt"), 0);
+  }
+
+  // At the budget, nothing changes: the transfer read runs and no 422 comes from the balance read.
+  const c = fakeChain({ balances: held(MAX_TOKENS_ALCHEMY) });
+  const r = await reconstructFacts(ME, { ...c.opts, alchemyUrl: ALCHEMY }).catch((x) => x);
+  assert.ok(!(r instanceof WalletTooLarge), String(r?.answer?.detail));
+  assert.equal(c.count("alchemy_getAssetTransfers"), 2, "both sides read as before");
+
+  // The public path keeps its own, lower budget (MAX_TOKENS_PUBLIC, NVDA counted) for the same wallet.
+  const p = fakeChain({ balances: held(MAX_TOKENS_ALCHEMY + 1) });
+  const pe = await reconstructFacts(ME, { ...p.opts, alchemyUrl: null }).catch((x) => x);
+  assert.ok(pe instanceof WalletTooLarge);
+  assert.equal(pe.answer.limit.kind, "tokens");
+  assert.equal(pe.answer.limit.max, MAX_TOKENS_PUBLIC);
+  assert.ok(MAX_TOKENS_PUBLIC < MAX_TOKENS_ALCHEMY, "the public walk never accepts a wallet the Alchemy path refuses");
+});
+
 test("paid lane: a wallet too large to rebuild is 422 wallet_too_large charged:false, never settled, not logged as an error", async () => {
   const tooBig = new WalletTooLarge({
     error: "wallet_too_large",

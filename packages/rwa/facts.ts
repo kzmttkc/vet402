@@ -193,6 +193,8 @@ type TooLargeHow = {
   plusNvda?: boolean;
   /** Alchemy is configured but its read failed, so the public path gave this answer */
   alchemyUnavailable?: boolean;
+  /** counted from the balance read alone, before any transfer read: tokens held, a lower bound of the tokens in scope */
+  heldOnly?: boolean;
 };
 
 function tooLarge(address: string, block: number, held: string[], limit: TooLargeAnswer["limit"], how: TooLargeHow = {}): WalletTooLarge {
@@ -205,7 +207,9 @@ function tooLarge(address: string, block: number, held: string[], limit: TooLarg
         : `Rebuilding it means replaying ${limit.found} transactions, and one request can replay ${limit.max}.`
       : limit.kind === "transfers"
         ? `Rebuilding it means reading more than ${limit.max} Stock Token transfers (the read stopped at ${limit.found}), and one request can read ${limit.max}.`
-        : how.alchemy
+        : how.heldOnly
+          ? `Rebuilding it means reading at least the ${limit.found} tokens it holds, and one request can read ${limit.max}.`
+          : how.alchemy
           ? `Rebuilding it means reading ${limit.found} tokens it held or moved, and one request can read ${limit.max}.`
           : how.plusNvda
             ? `Rebuilding it means walking the history of ${limit.found} tokens (the ${n} it holds, plus NVDA, which this path always walks), and one request can walk ${limit.max}.`
@@ -636,6 +640,11 @@ export async function reconstructFacts(address: string, opts: ReconstructOptions
   let found: Discovery | null = null;
   let shared: AlchemyPrefetch | null = null;
   if (alchemyUrl) {
+    // The tokens held already pass the budget: the answer is known from the one balance read above.
+    // Reading the transfers first cost about 11 s of the one reconstruction slot for a wallet holding
+    // 192 of them (third audit, 2026-09-30). Tokens in scope include every token held, so a wallet
+    // stopped here would be too large after the transfer read as well.
+    if (held.length > MAX_TOKENS_ALCHEMY) throw tooLarge(me, block, held, { kind: "tokens", max: MAX_TOKENS_ALCHEMY, found: held.length }, { heldOnly: true });
     try {
       // One read of every ERC-20 transfer to and from the address serves both the discovery here and
       // the look-alike search at the end. It stops at the first page whose canonical transfers already
