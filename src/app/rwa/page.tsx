@@ -134,7 +134,7 @@ export default async function RwaEntryPage({ searchParams }: { searchParams: Pro
           Agents: read this record before acting on a Stock Token wallet. The same JSON is free at{" "}
           <code>/api/v1/rwa/facts/&lt;address&gt;</code>, or paid over x402 at{" "}
           <code>/api/v1/rwa/paid/facts/&lt;address&gt;</code> for 0.01 USDG on Robinhood Chain, charged only when the
-          record is returned. First settlement:{" "}
+          record is returned. First settlement, a test I paid myself:{" "}
           <a className="underline" href={`${EXPLORER}/tx/${PAID_TX}`} rel="noreferrer" target="_blank">
             {PAID_TX.slice(0, 10)}…
           </a>
