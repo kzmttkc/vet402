@@ -24,7 +24,9 @@ export function scopeLine(scope: LookalikesScope): string {
         ? `recent blocks ${s.from_block}-${s.to_block}`
         : s.source === "fixture"
           ? `blocks ${s.from_block}-${s.to_block} (a full search done ahead of time)`
-          : `blocks ${s.from_block}-${s.to_block} (indexed transfers)`,
+          : s.detail.includes("page cap")
+            ? "Alchemy's transfer index up to its page cap, no block range claimed"
+            : `blocks ${s.from_block}-${s.to_block} (indexed transfers)`,
   );
   const searched = parts.length > 0 ? `Searched: ${parts.join(", ")}.` : "";
   const notSearched =
@@ -97,7 +99,7 @@ export function LookalikesSection({
   return (
     <>
       <h2 className="mt-8 text-lg font-semibold">
-        Look-alikes this wallet received (not counted)
+        Look-alikes in this wallet&apos;s transfers (not counted)
       </h2>
       <p className="mt-2 text-sm">
         Tokens that copy a Stock Token&apos;s ticker or name, or USDG, at an

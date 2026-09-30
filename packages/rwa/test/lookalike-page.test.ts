@@ -33,7 +33,7 @@ const partial: LookalikesScope = {
 
 test("the demo wallet's look-alikes: hidden characters shown, poisoning in plain words, Blockscout links, not counted", async () => {
   const html = await render({ lookalikes, lookalikes_scope: partial });
-  assert.match(html, /Look-alikes this wallet received \(not counted\)/);
+  assert.match(html, /Look-alikes in this wallet&#x27;s transfers \(not counted\)/);
   assert.ok(html.includes("U⟨U+17B5⟩S⟨U+17B5⟩DG"));
   assert.ok(!html.includes("឵"), "no raw invisible character reaches the page");
   assert.match(html, /A fake USDG transfer made to look like a payment to a real counterparty/);
@@ -51,6 +51,35 @@ test("nothing found and a complete search say so", async () => {
   const html = await render({ lookalikes: [], lookalikes_scope: { ...partial, complete: true, not_scanned: [] } });
   assert.match(html, /None found in the part searched/);
   assert.match(html, /Every block up to this record was searched/);
+});
+
+test("an Alchemy search that stopped at its page cap claims no block range", async () => {
+  const { scopeLine } = await import("../../../src/app/rwa/[address]/lookalikes");
+  const line = scopeLine({
+    complete: false,
+    searched: [
+      { source: "alchemy", from_block: 0, to_block: 1_000_000, detail: "alchemy_getAssetTransfers stopped at its page cap" },
+      { source: "receipts", from_block: null, to_block: 1_000_000, detail: "the 3 transactions this record read" },
+    ],
+    not_scanned: ["transfers past Alchemy's page cap"],
+    tokens_judged: 0,
+    tokens_not_judged: 0,
+  });
+  assert.match(line, /Alchemy's transfer index up to its page cap, no block range claimed/);
+  assert.ok(!line.includes("blocks 0-1000000"), line);
+  assert.match(line, /Not scanned: Transfers past Alchemy's page cap/);
+});
+
+test("a complete Alchemy search still names its whole range", async () => {
+  const { scopeLine } = await import("../../../src/app/rwa/[address]/lookalikes");
+  const line = scopeLine({
+    complete: false,
+    searched: [{ source: "alchemy", from_block: 0, to_block: 900, detail: "every ERC-20 transfer to and from the wallet (alchemy_getAssetTransfers)" }],
+    not_scanned: ["2 tokens met but not judged"],
+    tokens_judged: 1,
+    tokens_not_judged: 2,
+  });
+  assert.match(line, /blocks 0-900 \(indexed transfers\)/);
 });
 
 test("a record from before the search renders nothing", async () => {
