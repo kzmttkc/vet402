@@ -431,9 +431,9 @@ Integration notes (2026-09-30):
 
 ### SPEC patch 020: any wallet gets a fast, stable, honest answer
 
-Status: proposed on branch `rwa-w1-reach`. Merges into SPEC §5, §7, §9 and §10.
-Method version: the integrator bumps it once to `rwa-recon-0.3`. This patch
-changes scope only when `RWA_ALCHEMY_URL` is set.
+Status: shipped on 2026-09-30 in `rwa-recon-0.3` (main `b9d9269c`). It changes SPEC §5, §7, §9 and §10.
+Method version: `rwa-recon-0.3`. This patch changes scope only when
+`RWA_ALCHEMY_URL` is set.
 
 #### Why
 
@@ -476,8 +476,8 @@ Without `RWA_ALCHEMY_URL` nothing about scope changes.
 
 | code | when |
 |---|---|
-| 404 `no_stock_token_activity` | holds none of the canonical tokens and no history in scope. The body states what was checked (below). Cached like a record: `s-maxage=300, stale-while-revalidate=86400` |
-| 422 `wallet_too_large` | one request cannot rebuild it: more than 6 tokens to walk on the public RPC (16 log queries each), or more than 600 transactions to replay with Alchemy. The body lists the held symbols and the limit hit. Cached like a record |
+| 404 `no_stock_token_activity` | holds none of the canonical tokens and no history in scope. The body states what was checked (below). Cached: `s-maxage=300, stale-while-revalidate=60` (patch 024) |
+| 422 `wallet_too_large` | one request cannot rebuild it: more than 6 tokens to walk on the public RPC (16 log queries each), or with Alchemy more than 600 transactions to replay or more than 30 tokens held or moved. The body lists the held symbols and the limit hit. Cached like the 404 (patch 024) |
 | 503 `too_busy` | another wallet is being rebuilt on this instance. `Retry-After: 30` |
 | 503 `still_reading` | the read took longer than the free deadline (20 s). It keeps its slot and runs on, and a retry joins it. `Retry-After: 30` |
 | 503 `chain_unavailable` | the chain RPC failed. `Retry-After: 60` |
@@ -567,7 +567,7 @@ slot kept past the deadline.
 
 ### Patch 021: the chain confirms the list, and a record names the fakes a wallet met
 
-Status: proposed on branch `rwa-w2-lookalike` (2026-09-30). The integrator merges it into SPEC.md and bumps `METHOD_VERSION` once for the sprint. This patch does not bump it.
+Status: shipped on 2026-09-30 in `rwa-recon-0.3` (main `b9d9269c`).
 
 #### Why
 
@@ -631,6 +631,8 @@ Look-alikes are never counted. The classifier reads canonical addresses only. `p
 
 `anchorPreimage` is unchanged. The anchored hash does not cover these fields.
 
+Superseded by patch 023: from rwa-recon-0.3 the v2 hash binds the whole JSON, lookalikes included. Alchemy has been live in production since 2026-09-30.
+
 ##### How the search works
 
 Measured on 2026-09-30: a Transfer log query without an address filter is capped at 30,000 blocks on the public RPC. A full-history search for one wallet, run on 2026-09-30 for the demo wallet, took 5,081 such queries (about 55 minutes) with no error left. About 1,000,000 blocks pass every 27.9 hours (block 76056458 minus 1,000,000 blocks = 100,569 seconds). So a live record cannot search the whole chain on the public RPC.
@@ -667,7 +669,7 @@ The paid route returns the same JSON, so it now carries `lookalikes` and `lookal
 
 ### Patch 022: corporate actions in the record
 
-Status: branch `rwa-w3-corpact`, for the integrator to merge into docs/rwa/SPEC.md. Method version is not raised here (the integrator raises it once to `rwa-recon-0.3`).
+Status: shipped on 2026-09-30 in `rwa-recon-0.3` (main `b9d9269c`).
 
 #### What changes
 
@@ -719,7 +721,7 @@ New gap: `multiplier_history_mismatch`, when the logs do not explain the multipl
 
 #### Measured on the demo wallet
 
-Live reconstruction of `0xE9B08727131E34010b34006c660D4c1B436EC25f` on 2026-09-30 at block 76,085,543 (`reconstructFacts` with a counting fetch, one run): 25.3 s, 58 `eth_getLogs` of which 2 were the corporate-action tail (one POST). `realized_usd` -284.57, the same as before this patch.
+Live reconstruction of `0xE9B08727131E34010b34006c660D4c1B436EC25f` on 2026-09-30 at block 76,085,543 (`reconstructFacts` with a counting fetch, one run): 25.3 s, 58 `eth_getLogs` of which 2 were the corporate-action tail (one POST). `realized_usd` -284.57 (rwa-recon-0.2 scope, before sold-out positions were scanned), the same as before this patch.
 
 | effective (UTC) | token | multiplier | wallet raw at the update | shares before → after | tx |
 |---|---|---|---|---|---|
@@ -746,8 +748,8 @@ Both holdings agree with a plain sum of the wallet's recorded Transfer logs up t
 
 ### SPEC patch 023: contract tests, hash material v2, key-less verification
 
-Status: proposed on branch `rwa-w4-contract`, 2026-09-30. Merge into SPEC §9
-(anchor) and §7 (facts routes).
+Status: shipped on 2026-09-30 in `rwa-recon-0.3` (main `b9d9269c`). It changes
+SPEC §9 (anchor) and §7 (facts routes).
 
 #### §9 Anchor: what changes
 
