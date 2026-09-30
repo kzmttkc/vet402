@@ -8,10 +8,24 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { keccak256, toHex } from "viem";
-import { anchorPreimage, asOfSeconds, factsHash, methodVersionNumber, preimageString, subjectHash } from "../anchor";
+import {
+  anchorPreimage,
+  asOfSeconds,
+  canonicalFactsJson,
+  canonicalJson,
+  factsHash,
+  factsHashV2,
+  hashMaterial,
+  methodVersionNumber,
+  preimageString,
+  subjectHash,
+} from "../anchor";
 import type { RwaFacts } from "../facts";
 
-const facts = JSON.parse(readFileSync(join(process.cwd(), "fixtures/rwa/A.facts.json"), "utf8")) as RwaFacts;
+// Fixture A read as a v1 record (rwa-recon-0.2), whatever version the fixture file carries later.
+const facts = { ...JSON.parse(readFileSync(join(process.cwd(), "fixtures/rwa/A.facts.json"), "utf8")), method_version: "rwa-recon-0.2" } as RwaFacts;
+/** factsHash of fixtures/rwa/anchor.json's facts with method_version set to rwa-recon-0.3. Computed once on 2026-09-30; a change here changes every v2 anchor. */
+const V2_PINNED = "0xa52de757b0aa60e19fb5810af2e1e829e8a447971cd1850fe53990924f75bc8f";
 
 test("the preimage is the five fields SPEC §9 names, verbatim from the JSON", () => {
   const p = anchorPreimage(facts);
@@ -47,7 +61,50 @@ test("the subject is the keccak of the lower-cased address, however it is cased"
 test("an unknown method version refuses to be anchored as a number", () => {
   assert.equal(methodVersionNumber("rwa-recon-0.1"), 1);
   assert.equal(methodVersionNumber("rwa-recon-0.2"), 2);
-  assert.throws(() => methodVersionNumber("rwa-recon-0.3"), /unknown method_version/);
+  assert.equal(methodVersionNumber("rwa-recon-0.3"), 3);
+  assert.throws(() => methodVersionNumber("rwa-recon-0.4"), /unknown method_version/);
+});
+
+test("the hash material follows method_version: 0.1 and 0.2 are v1, 0.3 is v2", () => {
+  assert.equal(hashMaterial("rwa-recon-0.1"), 1);
+  assert.equal(hashMaterial("rwa-recon-0.2"), 1);
+  assert.equal(hashMaterial("rwa-recon-0.3"), 2);
+  assert.throws(() => hashMaterial("rwa-recon-9"), /unknown method_version/);
+});
+
+// The record anchored on Robinhood Chain on 2026-09-27 (tx 0x9b776d6a…72d7). Its
+// hash is on chain, so it can never change: v1 must keep producing it.
+const anchored = JSON.parse(readFileSync(join(process.cwd(), "fixtures/rwa/anchor.json"), "utf8"));
+
+test("v1 is pinned: the live 0.1 record still hashes to the value in the Anchored event", () => {
+  assert.equal(anchored.facts.method_version, "rwa-recon-0.1");
+  assert.equal(factsHash(anchored.facts), "0xd155c8b1b71125aa922fcb517f047e1a42a0aaf6d028f2cf3470ad1372c8f579");
+  assert.equal(factsHash(anchored.facts), anchored.facts_hash);
+  assert.equal(preimageString(anchorPreimage(anchored.facts)), anchored.preimage);
+  assert.equal(subjectHash(anchored.facts.address), anchored.subject.keccak);
+});
+
+test("v2 is pinned: six fields, the sixth is keccak of the canonical record", () => {
+  const f = { ...anchored.facts, method_version: "rwa-recon-0.3" } as RwaFacts;
+  const p = anchorPreimage(f);
+  assert.equal(p.facts_json_keccak, keccak256(toHex(canonicalFactsJson(f))));
+  const s = preimageString(p);
+  assert.equal(s.split("\n").length, 6);
+  assert.equal(s.split("\n")[5], p.facts_json_keccak);
+  assert.equal(factsHash(f), keccak256(toHex(s)));
+  assert.equal(factsHash(f), factsHashV2(f));
+  assert.equal(factsHash(f), V2_PINNED);
+  // v2 of a 0.2 record is what X-Facts-Hash sends before the version bump; it is not the v1 hash.
+  assert.notEqual(factsHashV2(anchored.facts), factsHash(anchored.facts));
+});
+
+test("canonical JSON: sorted keys at every depth, no whitespace, lower-cased top-level address only", () => {
+  assert.equal(canonicalJson({ b: 1, a: [{ d: "x", c: null }], e: undefined }), '{"a":[{"c":null,"d":"x"}],"b":1}');
+  assert.equal(canonicalJson([undefined, true]), "[null,true]");
+  assert.throws(() => canonicalJson({ n: Number.NaN }), /non-finite/);
+  assert.throws(() => canonicalJson({ n: 1n }), /cannot encode/);
+  const c = canonicalFactsJson({ address: "0xAbC", tokens: [{ token: "0xDeF" }] });
+  assert.equal(c, '{"address":"0xabc","tokens":[{"token":"0xDeF"}]}');
 });
 
 test("as_of becomes unix seconds", () => {

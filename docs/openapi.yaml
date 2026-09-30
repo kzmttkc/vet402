@@ -1407,7 +1407,7 @@ paths:
       tags: [RWA]
       summary: Stock Token track record of one address on Robinhood Chain — reconstruction only
       description: |
-        docs/rwa/SPEC.md §7 and patch 018 (rwa-recon-0.2). Rebuilds the
+        docs/rwa/SPEC.md §7 and patches 018 to 023 (rwa-recon-0.3). Rebuilds the
         address's history in the canonical Stock Tokens of Robinhood's own
         list (195, frozen in packages/rwa/registry.json): token Transfers,
         Uniswap v3/v4 swaps verified against the official factory and
@@ -1415,6 +1415,17 @@ paths:
         Scope, stated in `scope`: tokens held at `as_of`, NVDA, and canonical
         tokens those tokens' transactions moved; a position opened and closed
         in another token is not scanned (`exited_positions_not_scanned`).
+        When the deployment has an Alchemy endpoint (patch 020), the scope is
+        every canonical token that ever moved to or from the address, and
+        that gap is not listed.
+        `lookalikes` (patch 021) lists tokens the wallet met that copy a Stock
+        Token or USDG. They are never counted: not in `tokens`, not in any USD
+        figure, not in `evidence`. `lookalikes_scope` says how far that search
+        went. Each token carries `corporate_actions` (patch 022): every
+        UIMultiplierUpdated of the token since genesis, with the wallet's
+        shares before and after. The response header `X-Facts-Hash` is the
+        anchor hash of this body (patch 023, hash material v2 from
+        rwa-recon-0.3), so a reader can compare it with an Anchored event.
         Every movement is classified as `transfer`, `univ3`, `univ4` or
         `other_unparsed`; nothing is dropped. Realized PnL is FIFO per token;
         a Stock-for-Stock trade is not priced. `usd` is null with `usd_reason`
@@ -1448,7 +1459,7 @@ paths:
                   chain_id: { type: integer, enum: [4663] }
                   as_of: { type: string, format: date-time }
                   as_of_block: { type: integer }
-                  method_version: { type: string, example: rwa-recon-0.2 }
+                  method_version: { type: string, example: rwa-recon-0.3 }
                   identity_binding: { type: string, enum: [unknown, declared, bound] }
                   r0: { type: string, enum: [present] }
                   r1_status: { type: string, enum: [reconstructed, partial, unverified] }
@@ -1476,6 +1487,26 @@ paths:
                         realized_usd: { type: string, nullable: true }
                         realized_status: { type: string, enum: [complete, partial, none] }
                         events_summary: { type: object }
+                        corporate_actions:
+                          type: array
+                          description: |
+                            SPEC patch 022. Every UIMultiplierUpdated of this token from genesis to
+                            `as_of_block`, oldest first. Absent when the read failed (gap
+                            `corporate_actions_not_read`). Realized PnL is on raw amounts, so it does not move.
+                          items:
+                            type: object
+                            properties:
+                              block: { type: integer }
+                              time: { type: string, format: date-time }
+                              effective_at: { type: string, format: date-time }
+                              tx: { type: string }
+                              multiplier_before: { type: string, description: uiMultiplier, 18 decimals, integer string }
+                              multiplier_after: { type: string }
+                              ratio: { type: string, description: multiplier_after / multiplier_before, a number and never a label }
+                              held: { type: boolean, nullable: true, description: the wallet held the token right after the update; null when its history was not walked }
+                              wallet_raw_at: { type: string, nullable: true }
+                              wallet_shares_before: { type: string, nullable: true }
+                              wallet_shares_after: { type: string, nullable: true }
                   events_summary:
                     type: object
                     properties:
@@ -1496,17 +1527,154 @@ paths:
                   realized_status: { type: string, enum: [complete, partial, none] }
                   unrealized_usd: { type: string, nullable: true, description: USD mark of everything held; null unless every held token has a fresh feed }
                   mdd_usd: { type: string, nullable: true }
-                  gaps: { type: array, items: { type: string } }
+                  gaps:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - balance_mismatch
+                        - corporate_actions_not_read
+                        - exited_positions_not_scanned
+                        - feed_stale
+                        - history_not_walked
+                        - incomplete_history
+                        - mdd_pending
+                        - multiplier_history_mismatch
+                        - no_feed
+                        - other_unparsed
+                        - unknown_cost_lots
+                  lookalikes:
+                    type: array
+                    description: SPEC patch 021. Tokens that copy a Stock Token or USDG, met in the wallet's transfers. Never counted.
+                    items:
+                      type: object
+                      properties:
+                        token: { type: string, description: EIP-55 }
+                        symbol_raw: { type: string, description: "on-chain symbol, non-ASCII shown as ⟨U+XXXX⟩" }
+                        name_raw: { type: string }
+                        imitates: { type: string, nullable: true, description: the canonical ticker or USDG it copies }
+                        reasons:
+                          type: array
+                          items:
+                            type: string
+                            enum:
+                              - symbol_copies_stock_token
+                              - symbol_disguises_stock_token
+                              - name_copies_stock_token
+                              - name_claims_robinhood_stock_token
+                              - imitates_usdg
+                              - hidden_characters
+                              - confusable_characters
+                              - code_hash_differs
+                              - reference_code_not_listed
+                              - mimics_counterparty
+                              - not_canonical_address
+                        needs_review: { type: boolean, description: Stock Token proxy code outside Robinhood's list, left for a human }
+                        direction: { type: string, enum: [received, sent] }
+                        counterparty: { type: string }
+                        mimics: { type: string, nullable: true }
+                        first_seen_block: { type: integer }
+                        tx: { type: string }
+                        amount_raw: { type: string }
+                        transfers_seen: { type: integer }
+                        counted: { type: boolean, enum: [false] }
+                        found_by: { type: string, enum: [alchemy, receipts, recent_logs, fixture] }
+                  lookalikes_scope:
+                    type: object
+                    properties:
+                      complete: { type: boolean, description: true only when every ERC-20 transfer to and from the wallet up to as_of_block was read }
+                      searched:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            source: { type: string, enum: [alchemy, receipts, recent_logs, fixture] }
+                            from_block: { type: integer, nullable: true }
+                            to_block: { type: integer, nullable: true }
+                            detail: { type: string }
+                      not_scanned: { type: array, items: { type: string } }
+                      tokens_judged: { type: integer }
+                      tokens_not_judged: { type: integer }
                   evidence:
                     type: object
                     properties:
                       txs: { type: array, items: { type: string } }
                       fixture_ids: { type: array, items: { type: string } }
                   disclaimer: { type: string }
+          headers:
+            X-Facts-Hash:
+              description: Anchor hash of the body (SPEC patch 023). Hash material v2 for rwa-recon-0.3 and later.
+              schema: { type: string, pattern: "^0x[0-9a-f]{64}$" }
         "400": { description: "`invalid_address` — not 20-byte hex, or chain other than 4663" }
-        "404": { description: "`no_stock_token_activity` — no canonical Transfer touches this address" }
+        "404":
+          description: |
+            `no_stock_token_activity`: the address holds none of the canonical
+            Stock Tokens and no history in scope was found (SPEC patch 020).
+            The body states what was checked and is cached like a record.
+            `history_checked` is `every_canonical_token` when the transfers of
+            every canonical token were read, or `nvda_only` when only today's
+            balances and NVDA's incoming transfers were (gap
+            `exited_positions_not_scanned`).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, enum: [no_stock_token_activity] }
+                  address: { type: string }
+                  chain_id: { type: integer, example: 4663 }
+                  as_of: { type: string, format: date-time }
+                  as_of_block: { type: integer }
+                  method_version: { type: string }
+                  registry_tokens: { type: integer, example: 195 }
+                  held_tokens: { type: integer, example: 0 }
+                  history_checked: { type: string, enum: [every_canonical_token, nvda_only] }
+                  sent_tx_count: { type: integer, nullable: true, description: transactions the address has sent (its nonce), null for a contract }
+                  is_contract: { type: boolean }
+                  gaps: { type: array, items: { type: string } }
+                  detail: { type: string }
+        "422":
+          description: |
+            `wallet_too_large` (SPEC patch 020): the wallet needs more than one
+            request can do (more than 6 tokens to walk on the public RPC, or
+            more than 600 transactions to replay with Alchemy). The body lists
+            `held` (symbols), `held_tokens`, `limit` and `detail`, and is
+            cached like a record. Not rebuilt.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, enum: [wallet_too_large] }
+                  address: { type: string }
+                  chain_id: { type: integer, example: 4663 }
+                  as_of_block: { type: integer }
+                  method_version: { type: string }
+                  held: { type: array, items: { type: string } }
+                  held_tokens: { type: integer }
+                  limit:
+                    type: object
+                    properties:
+                      kind: { type: string, enum: [tokens, transactions] }
+                      max: { type: integer }
+                      found: { type: integer }
+                  detail: { type: string }
         "429": { description: Rate limited }
-        "503": { description: "`feed_unavailable` (chain read failed) or `too_busy` (a reconstruction is already running on this instance; see Retry-After)" }
+        "503":
+          description: |
+            SPEC patch 020. Always with Retry-After and a body
+            `{ error, retry_after_sec, detail }`. `too_busy`: another wallet is
+            being rebuilt on this instance. `still_reading`: the read took
+            longer than this request waits (20 s). It keeps running and the
+            retry joins it. `chain_unavailable`: the chain RPC failed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, enum: [too_busy, still_reading, chain_unavailable] }
+                  retry_after_sec: { type: integer }
+                  detail: { type: string }
 
   /api/v1/rwa/paid/facts/{address}:
     get:

@@ -1,0 +1,17 @@
+{
+  "contract": "RwaAnchor",
+  "chain_id": 4663,
+  "address": "0x1955137e7773f2459eb75fb88842026c6517c22d",
+  "deploy_tx": "0x79987c7917c6053d76b1920c74c5888b207eaf38bca76b968a2719296def7148",
+  "deploy_block": 74267997,
+  "deployer": "0x973cD8a91A771C2C04C6036888F8175D6b4F6227",
+  "runtime_bytes": 548,
+  "runtime_keccak256": "0x9032fa493b888a32b4773a18ae74814d4f492d136c4cd55ade593eb783f9b5b0",
+  "metadata_ipfs_multihash": "1220acc181bf895a4095ac15784b71c5b8c901e851e5e8dc296ea52c334f95601c49",
+  "function_selectors": {
+    "0x06661abd": "count()",
+    "0xea77b5a7": "anchor(bytes32,bytes32,uint32,uint64)"
+  },
+  "match_rule": "full: keccak256 of eth_getCode equals keccak256 of the runtime bytecode forge builds from RwaAnchor.sol with foundry.toml, including the CBOR metadata tail. The metadata tail holds an IPFS hash of the compiler metadata, which covers the source text, the source path RwaAnchor.sol and the settings, so a full match pins the exact source file. stripped: the same comparison after removing the metadata tail (length in the last 2 bytes). A stripped match with a full mismatch means the same code from a different source text, path or setting.",
+  "measured": "2026-09-30: eth_getCode at latest on https://rpc.mainnet.chain.robinhood.com and https://robinhood-rpc.publicnode.com, keccak with cast keccak; deploy_block and deployer from cast receipt of deploy_tx"
+}

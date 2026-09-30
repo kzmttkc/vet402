@@ -1,0 +1,28 @@
+# Foundry project for RwaAnchor. Only tests and a bytecode check live here.
+# The deployed contract is RwaAnchor.sol in this folder, unchanged.
+#
+# Compiler settings match what Blockscout verified for
+# 0x1955137e7773f2459eb75fb88842026c6517c22d on Robinhood Chain (4663):
+# solc 0.8.26, optimizer on, 200 runs, default EVM version of 0.8.26 (cancun).
+[profile.default]
+src = "."
+test = "test"
+script = "script"
+out = "out"
+cache_path = "cache"
+libs = []
+solc_version = "0.8.26"
+optimizer = true
+optimizer_runs = 200
+evm_version = "cancun"
+bytecode_hash = "ipfs"
+cbor_metadata = true
+fs_permissions = [{ access = "read", path = "./" }]
+
+[fuzz]
+runs = 1024
+
+[invariant]
+runs = 256
+depth = 64
+fail_on_revert = false

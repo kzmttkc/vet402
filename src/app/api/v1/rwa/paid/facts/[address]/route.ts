@@ -6,6 +6,7 @@ import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { RWA_CHAIN_ID } from "../../../../../../../../packages/rwa/config";
 import { ReconstructionTimeout, TooBusy, cachedFacts } from "../../../../../../../../packages/rwa/cache";
 import { NoStockTokenActivity, type RwaFacts } from "../../../../../../../../packages/rwa/facts";
+import { factsHashHeader } from "../../../../../../../../packages/rwa/anchor";
 import {
   BadPayment,
   b64json,
@@ -37,7 +38,7 @@ type RouteContext = { params: Promise<{ address: string }> };
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const EXPOSE = { "Access-Control-Expose-Headers": "PAYMENT-REQUIRED, PAYMENT-RESPONSE, X-Payment-Status" };
+const EXPOSE = { "Access-Control-Expose-Headers": "PAYMENT-REQUIRED, PAYMENT-RESPONSE, X-Payment-Status, X-Facts-Hash" };
 /**
  * Latest moment (from the start of the request) at which settle may begin.
  * Settle is given 15 s, so this keeps the whole call inside maxDuration 60
@@ -105,6 +106,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "feed_unavailable", charged: false }, { status: 503, headers: gate.headers });
   }
 
+  // The v2 anchor hash of the body (SPEC patch 023), computed before any money
+  // moves. factsHashHeader never throws; the body is unchanged.
+  const hashHeader = factsHashHeader(facts);
+
   if (Date.now() - started > SETTLE_START_BY_MS) {
     return NextResponse.json(
       { error: "too_slow_retry", charged: false },
@@ -120,11 +125,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
     // The money may have moved and the nonce may be spent: give the record, say we do not know.
     logServerErrorSafe("rwa_paid_settle_unknown", new Error(outcome.detail));
     return NextResponse.json(render(facts), {
-      headers: { ...gate.headers, ...EXPOSE, "Cache-Control": "no-store", "X-Payment-Status": "unknown" },
+      headers: { ...gate.headers, ...EXPOSE, ...hashHeader, "Cache-Control": "no-store", "X-Payment-Status": "unknown" },
     });
   }
   return NextResponse.json(render(facts), {
-    headers: { ...gate.headers, ...EXPOSE, "Cache-Control": "no-store", "X-Payment-Status": "settled", "PAYMENT-RESPONSE": b64json(outcome.result) },
+    headers: { ...gate.headers, ...EXPOSE, ...hashHeader, "Cache-Control": "no-store", "X-Payment-Status": "settled", "PAYMENT-RESPONSE": b64json(outcome.result) },
   });
 }
 

@@ -6,7 +6,7 @@
 // Run from the repo root: npx tsx --test packages/rwa/test/facts-multi.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { assembleFacts, priceEvents } from "../facts";
+import { METHOD_VERSION, assembleFacts, priceEvents } from "../facts";
 import { classifyReceipt, type PoolResolver, type RwaReceipt } from "../classify";
 import { TOPICS } from "../events";
 import { USDG, UNISWAP } from "../config";
@@ -71,7 +71,7 @@ test("a Stock-for-Stock transaction is left unpriced on both sides", async () =>
 
 test("each token is replayed and realized on its own; totals add up", async () => {
   const f = await assembleFacts(input());
-  assert.equal(f.method_version, "rwa-recon-0.2");
+  assert.equal(f.method_version, METHOD_VERSION);
   const bySym = Object.fromEntries(f.tokens.map((t) => [t.symbol, t]));
   assert.equal(bySym.NVDA.replayed_raw, bySym.NVDA.raw);
   assert.equal(bySym.AAOI.replayed_raw, bySym.AAOI.raw);

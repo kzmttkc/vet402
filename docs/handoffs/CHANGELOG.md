@@ -13,6 +13,18 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-30: /rwa rwa-recon-0.3: any wallet, look-alikes, corporate actions, verify without a key (branch `rwa-integrate`, not pushed)
+- **What**: four sprint branches merged, then one method bump.
+  - Reach (patch 020): a wallet with no Stock Token gets a cached 404 that says what was checked. A failure is a 503 named `too_busy`, `still_reading` or `chain_unavailable` with Retry-After, and the free route answers within 20 s. A wallet too large for one request gets 422 `wallet_too_large`. With Alchemy, every canonical token the wallet ever moved is in scope. The entry page lists three example wallets.
+  - Look-alikes (patch 021): the registry carries each token's code hash, beacon and factory event (195/195). The record lists tokens that copy a Stock Token or USDG (`lookalikes`, `counted: false`) and says how far the search went (`lookalikes_scope`).
+  - Corporate actions (patch 022): each token lists its UIMultiplierUpdated history with the wallet's shares before and after. New gaps `corporate_actions_not_read` and `multiplier_history_mismatch`.
+  - Contract and verification (patch 023): 21 Foundry tests and a CI job, hash material v2 from 0.3 (binds the whole record), a key-less `verify-record.mjs`, and `X-Facts-Hash` on the free and the paid facts routes.
+  - `METHOD_VERSION` is `rwa-recon-0.3`. Alchemy endpoint: `RWA_ALCHEMY_URL`, else `ALCHEMY_API_KEY` on robinhood-mainnet.g.alchemy.com. A refused key (401, 403, network not enabled) falls back to the public path for 10 minutes and the record keeps its gap.
+- **Why**: the Open House judging weighs contract quality, real problems and PMF. A judge's own wallet usually holds no Stock Token, fake tokens reach real wallets, and multiplier updates change share counts.
+- **Impact**: the facts JSON changes shape (new keys `lookalikes`, `lookalikes_scope`, `corporate_actions`, new 404/422/503 bodies), documented in `docs/openapi.yaml`. Anchors of 0.3 records use hash material v2. The 0.1 anchor still verifies. The paid route adds only the `X-Facts-Hash` header (money code, independent review before push).
+- **Measured**: live `reconstructFacts` on the demo wallet at block 76155345 on the public RPC: `realized_usd` −284.57, two look-alikes (fake NVDA, fake USDG), corporate actions NVDA 2026-09-10 and QQQ 2026-09-22 while held.
+- **Commits**: merges 07b5e383 (w4), 5148b8cc (w1), b45d38fc (w3), e47ff710 (w2), bump 6d6abb84.
+
 ## 2026-09-29 — persona audit: the first screen, the no-key entry, and the Terms say what vet402 is
 - **何を**: LP の先頭に「Try one check, no account」（/playground）と 3 行（What this is / What you give us / What we do not do）。書誌欄の「Updates: trust scores」→「How the older score relates to L0–L2」、「safe answer」と「Address control verified」を言い換え。売り手検索は空欄を送らせず、一致しないときは次の一手（自分のホスト・他チェーンは observatory）。/signup にキー紛失の一行。Terms §0・§1 のサービス定義を LP と同じ「測定の記録（L0–L2）＋移行期の意見としての score」に。docs に `vouch_` 接頭辞の由来。decision の 400 に `message`（resolve で id を得る）。
 - **なぜ**: 19 人のペルソナ監査（自前と Grok の 2 本）で、先頭画面の言い切り・/playground 未リンク・Terms と LP の食い違い・売り手検索の行き止まり・キー紛失の導線が重なって指摘された。日本語化は現段階ではしない（オーナー判断）。

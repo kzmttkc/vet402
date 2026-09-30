@@ -231,12 +231,35 @@ jobs:
       - name: bash scripts/judge-check.sh (from the repo root, nothing installed beforehand)
         run: bash scripts/judge-check.sh
 
+  # 2026-09-30. RwaAnchor (packages/rwa/contracts) had no Solidity test. This job runs the
+  # Foundry suite: every revert, every event field, count, fuzz, invariants, the fixed
+  # selector list, an opcode walk (no CALL, DELEGATECALL, CREATE or SELFDESTRUCT), and a
+  # full bytecode match of the build against the runtime pinned in onchain.json
+  # (the code at 0x1955137e7773f2459eb75fb88842026c6517c22d on Robinhood Chain).
+  # No RPC and no key: the chain code is pinned by hash; scripts/check-bytecode.mjs re-reads it by hand.
+  contracts:
+    name: RwaAnchor (forge test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: packages/rwa/contracts
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with:
+          version: v1.8.3
+      - name: forge build (solc 0.8.26, optimizer 200 runs, evm cancun)
+        run: forge build --sizes
+      - name: forge test
+        run: forge test -vv
+
   # 2026-09-05 セキュリティ監査 S-5: main は無審査 push で本番へ出る。せめて「赤い main」は
   # 10 分以内に人へ届くようにする（uptime.yml と同じ手: issue は無料でメールが飛ぶ）。
   notify-red-main:
     name: red main -> issue
     if: failure() && github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: [test, build, python-sdk, db-tests, examples, sdk-mutations, judge-check]
+    needs: [test, build, python-sdk, db-tests, examples, sdk-mutations, judge-check, contracts]
     runs-on: ubuntu-latest
     permissions:
       issues: write

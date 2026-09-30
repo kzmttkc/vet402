@@ -3,7 +3,7 @@
   "chain_id": 4663,
   "as_of": "2026-09-16T22:02:03.000Z",
   "as_of_block": 64850467,
-  "method_version": "rwa-recon-0.2",
+  "method_version": "rwa-recon-0.3",
   "identity_binding": "unknown",
   "r0": "present",
   "r1_status": "partial",
@@ -60,6 +60,16 @@
     "exited_positions_not_scanned",
     "mdd_pending"
   ],
+  "lookalikes": [],
+  "lookalikes_scope": {
+    "complete": false,
+    "searched": [],
+    "not_scanned": [
+      "no look-alike search ran for this record (offline replay)"
+    ],
+    "tokens_judged": 0,
+    "tokens_not_judged": 0
+  },
   "evidence": {
     "txs": [
       "0xee7ad7191c56896b0c60cc74001027d94b2c629ae6f535912069dba3c757ee24",

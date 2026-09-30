@@ -10,7 +10,7 @@
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { NVDA, RWA_CHAIN_ID, RWA_RPC_URL } from "../config";
+import { NVDA, RWA_CHAIN_ID, RWA_PUBLIC_RPC_URL } from "../config";
 
 const SEL = {
   symbol: "0x95d89b41", // symbol()
@@ -25,7 +25,7 @@ const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a
 const ONE = 10n ** 18n;
 
 async function rpc<T>(method: string, params: unknown[]): Promise<T> {
-  const res = await fetch(RWA_RPC_URL, {
+  const res = await fetch(RWA_PUBLIC_RPC_URL, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
@@ -87,7 +87,7 @@ async function main() {
     spec: "docs/rwa/SPEC.md §2, §11",
     method_version: "rwa-recon-0.1",
     chain_id: chainId,
-    rpc: RWA_RPC_URL,
+    rpc: RWA_PUBLIC_RPC_URL,
     frozen_at: new Date().toISOString(),
     head_at_freeze: head,
     block: N,

@@ -11,7 +11,10 @@
     "listed": 195,
     "written": 195,
     "with_feed": 33,
-    "rejected": 0
+    "rejected": 0,
+    "code_hash_matches": 195,
+    "factory_deployed": 195,
+    "needs_review": 0
   },
   "rejected": [],
   "tokens": [
@@ -21,7 +24,15 @@
       "isin": "US03823U1025",
       "token": "0x521Cf887E6531c6F667b5BC4D896E5d9bfE8EB2E",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48233,
+        "tx": "0xe4e166627498abf0df66cc933a96e6e75f1d197aa278d3c5b03240c129abce24",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "AAPL",
@@ -29,7 +40,15 @@
       "isin": "US0378331005",
       "token": "0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9",
       "feed": "0x6B22A786bAa607d76728168703a39Ea9C99f2cD0",
-      "feed_description": "Robinhood AAPL / USD"
+      "feed_description": "Robinhood AAPL / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48276,
+        "tx": "0x5ddd494c3217a5e3ef5b8f32471669c4d09d544354d790e744cd9c39ded5901b",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "ABCL",
@@ -37,7 +56,15 @@
       "isin": "CA00288U1066",
       "token": "0x3139D77Ace0cbAA5bDfD38bD1F1911a794AF0B0e",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947402,
+        "tx": "0x40381a8a5701f353d24e095ba7320473ce4bf66726498cc9792eaab0bb9364ee",
+        "log_index": 56
+      },
+      "needs_review": []
     },
     {
       "symbol": "ADBE",
@@ -45,7 +72,15 @@
       "isin": "US00724F1012",
       "token": "0x232B8ed6377BE97813853B0Ac104c4Cda8378d1B",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948654,
+        "tx": "0x2c2aae663fcec370f6e5fce8ee9d013d417589cc81d7cada4beec22443f2b2c7",
+        "log_index": 8
+      },
+      "needs_review": []
     },
     {
       "symbol": "AEHR",
@@ -53,7 +88,15 @@
       "isin": "US00760J1088",
       "token": "0x5F604fBA1162193A4388A5DFa56F556f3E133cC2",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948804,
+        "tx": "0x9b09da9e4b7fafb819509cb3b7dc5e348813985ee714ccc1ed3bd62e82ddb3b2",
+        "log_index": 36
+      },
+      "needs_review": []
     },
     {
       "symbol": "AEIS",
@@ -61,7 +104,15 @@
       "isin": "US0079731008",
       "token": "0xfAf9cb261B5FCC1f404Bb10CD39C5c6C1974E612",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948623,
+        "tx": "0xb66e1cae6fb5eb1116c6a7085cbda1e2f5459ff4aee90ce7d9108d5302ada800",
+        "log_index": 44
+      },
+      "needs_review": []
     },
     {
       "symbol": "ALAB",
@@ -69,7 +120,15 @@
       "isin": "US04626A1034",
       "token": "0x748c32c3ca24eDf31ea597Db1F3d330a7a6DA3Dc",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20950021,
+        "tx": "0xfe1de5e4a4bfb12cd15052aec765faacef169051ee0777bbd429d1f1bd0fdccf",
+        "log_index": 53
+      },
+      "needs_review": []
     },
     {
       "symbol": "AMAT",
@@ -77,7 +136,15 @@
       "isin": "US0382221051",
       "token": "0x36046893810a7E7fCE501229d57dc3FC8c8716d0",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48252,
+        "tx": "0x54c7185ad73fca65724a36551e6d13f5bc9c2c27e3cb60bfe7e77f976c298f37",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "AMBA",
@@ -85,7 +152,15 @@
       "isin": "KYG037AX1015",
       "token": "0x99D9D8663545151603863C5AcbD6FC3218899009",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949048,
+        "tx": "0x3ba9db861be5165ef396f79374847bb51bf15fd69f87f3fb0ec06f77fe4e565a",
+        "log_index": 22
+      },
+      "needs_review": []
     },
     {
       "symbol": "AMC",
@@ -93,7 +168,15 @@
       "isin": "US00165C3025",
       "token": "0x05a3d1Cd21d0C88145E82600E62e7E496e0F222B",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948513,
+        "tx": "0x3843bb4b8a424cb3c8a9dca15fae71f7594905e12a19ceed7f3fd0c124cb5afa",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "AMD",
@@ -101,7 +184,15 @@
       "isin": "US0079031078",
       "token": "0x86923f96303D656E4aa86D9d42D1e57ad2023fdC",
       "feed": "0x943A29E7ae51A4798823ca9eEd2ed533B2A22C72",
-      "feed_description": "RHAMD / USD"
+      "feed_description": "RHAMD / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48278,
+        "tx": "0x2c3cc72a4447b3da794de13759173ec2f1943667a8a84f6e629791fb890afc86",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "AMKR",
@@ -109,7 +200,15 @@
       "isin": "US0316521006",
       "token": "0xDd356AA38F40A7b7076755aC854B6FBb1F0D305B",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949804,
+        "tx": "0xf53599db91d197d7d02c1cdfc88526ef432d8213756c2f29e3963c8b5502ae97",
+        "log_index": 3
+      },
+      "needs_review": []
     },
     {
       "symbol": "AMZN",
@@ -117,7 +216,15 @@
       "isin": "US0231351067",
       "token": "0x12f190a9F9d7D37a250758b26824B97CE941bF54",
       "feed": "0xD5a1508ceD74c084eBf3cBe853e2C968fB2a651C",
-      "feed_description": "Robinhood AMZN / USD"
+      "feed_description": "Robinhood AMZN / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48288,
+        "tx": "0x821303e5c5d2c274e32dad35d6c5ee8ba138b9b5861bcf4d5d5fb6d5e5cc91ff",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "ANET",
@@ -125,7 +232,15 @@
       "isin": "US0404132054",
       "token": "0x28bABD556b60E53663B8615036479a29c2CDd1Bf",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947367,
+        "tx": "0xc7b5589d0de482111a7058159058d77fe48331e10b18fc9871566edd08e6cd12",
+        "log_index": 2
+      },
+      "needs_review": []
     },
     {
       "symbol": "APLD",
@@ -133,7 +248,15 @@
       "isin": "US0381692070",
       "token": "0xb8DBf92F9741c9ac1c32115E78581f23509916FD",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 46136,
+        "tx": "0x55be53923015d83863b5048ef4331ea47704bf3c292896c6b46ce7c02e5c2e1f",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "APP",
@@ -141,7 +264,15 @@
       "isin": "US03831W1080",
       "token": "0xA249BAF1063Af884807C1E1400AEf7784836917E",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947577,
+        "tx": "0x588d97cb970642882ad19b25c5e79fa6671286f7f1e83524d401934065230084",
+        "log_index": 25
+      },
+      "needs_review": []
     },
     {
       "symbol": "ASML",
@@ -149,7 +280,15 @@
       "isin": "USN070592100",
       "token": "0x47F93d52cBeC7C6D2CfC080e154002370a60dAEA",
       "feed": "0xB4106147E8cce40b7d46124090d373A71b70f87D",
-      "feed_description": "Robinhood ASML / USD"
+      "feed_description": "Robinhood ASML / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 46137,
+        "tx": "0x0497336f2eae9e06c1c1d1caa344bf6d08a29517ad8ece2a4490327efd28db8b",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "ASTS",
@@ -157,7 +296,15 @@
       "isin": "US00217D1000",
       "token": "0x1AF6446f07eb1d97c546AFC8c9544cBDF3AD5137",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 46128,
+        "tx": "0x636056e0dc410706d46b6c826ad37f55a8efbc5cb113e562e3cd93801749bb64",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "AUR",
@@ -165,7 +312,15 @@
       "isin": "US0517741072",
       "token": "0x373C06c4f7BDe527D7Dae4BA169E42b55E393CeD",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949237,
+        "tx": "0xbeef59b3836b5dd55be730470fe5fa252d1cbb5ef46f06739ecd7057c8eda17c",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "AVAV",
@@ -173,7 +328,15 @@
       "isin": "US0080731088",
       "token": "0xF6290b5e7C26502e2dA514C31509849718EA76A5",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20950365,
+        "tx": "0xea279756fafbe5663cdb16f0a3b815b574d22bd1107a6d6f5d9fbabde2e4503a",
+        "log_index": 5
+      },
+      "needs_review": []
     },
     {
       "symbol": "AVGO",
@@ -181,7 +344,15 @@
       "isin": "US11135F1012",
       "token": "0x156E175DD063a8cE274C50654eF40e0032b3fbcF",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48318,
+        "tx": "0x2f0fa08ef9d56949b7a22f81c0edc5b60b85036495a34d051412f1ad9f748a71",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "AXON",
@@ -189,7 +360,15 @@
       "isin": "US05464C1018",
       "token": "0xC27dBD474aF5181c5A8777903690D8D262D12648",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947880,
+        "tx": "0x114a3112dc256c85067d88c385d6cc98360e91fe556f51fc6efd45b0ad07b522",
+        "log_index": 11
+      },
+      "needs_review": []
     },
     {
       "symbol": "AXTI",
@@ -197,7 +376,15 @@
       "isin": "US00246W1036",
       "token": "0x141eEa040c2250eEc0314e336975e81f85f6585e",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949311,
+        "tx": "0x88773fb235ec66649d322cdb8b978954a7e7b9347a9b3dde9b8f3ee2cd13dc6f",
+        "log_index": 81
+      },
+      "needs_review": []
     },
     {
       "symbol": "BA",
@@ -205,7 +392,15 @@
       "isin": "US0970231058",
       "token": "0x4D21483a44Bf67a86b77E3dA301411880797D452",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 46114,
+        "tx": "0xa6166a82dc109adade0af08cdb2565b5e513fe26c7def55d23431183c747a5e5",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "BABA",
@@ -213,7 +408,15 @@
       "isin": "US01609W1027",
       "token": "0xad25Ac6C84D497db898fa1E8387bf6Af3532a1c4",
       "feed": "0x62Cc8F9b5f56a33c9C8A60c8B92779f523c4E984",
-      "feed_description": "Robinhood BABA / USD"
+      "feed_description": "Robinhood BABA / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48262,
+        "tx": "0x88a34ee9d451ac54e9618ef1a8a047838b6f872b52618646d79c35c64da689f7",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "BB",
@@ -221,7 +424,15 @@
       "isin": "CA09228F1036",
       "token": "0x48E39E56aCdbA37b09020C0b734A613C9a2f100A",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20950571,
+        "tx": "0xe3c1b1597d6996f619c1b6bedaa16c0b6cee1dc2d65e002ded4e0431f51ed752",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "BE",
@@ -229,7 +440,15 @@
       "isin": "US0937121079",
       "token": "0x822CC93fFD030293E9842c30BBD678F530701867",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48283,
+        "tx": "0xe43e5d43554551f8c875fa1e5ab6954891e452e7e677864caa3dff83cdd20b56",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "BND",
@@ -237,7 +456,15 @@
       "isin": "US9219378356",
       "token": "0x2F62fC9fAbb470C690f141c28340eD832bB27020",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 21689593,
+        "tx": "0xe9c20281b870dad5cb51c06b52f4f29fffb8faf51211c3ebced43cb8e42004bd",
+        "log_index": 14
+      },
+      "needs_review": []
     },
     {
       "symbol": "BULL",
@@ -245,7 +472,15 @@
       "isin": "KYG9572D1034",
       "token": "0xceF9027c7d6985b85f0BA431125073529A947A68",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948552,
+        "tx": "0xac698774db8a344f901b843def075a89fd27c7cb6d7ef5409621dc2a8b8d68c8",
+        "log_index": 3
+      },
+      "needs_review": []
     },
     {
       "symbol": "CBRS",
@@ -253,7 +488,15 @@
       "isin": "US15675D1037",
       "token": "0x5c90450Bbb4273D7b2f17CF6917AEB237A569679",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48216,
+        "tx": "0x7e8aaa8015e9cbd95b23d33a2c7aaf50ace8c5a8033a0548f615f1376a8c4261",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "CCL",
@@ -261,7 +504,15 @@
       "isin": "BMG2004J1036",
       "token": "0x9651342CeA770aE9a2969Ba2A52611523146aef9",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48217,
+        "tx": "0x4af74332d0644534c04131c617f49b1e168edac5af6ff125d636f5550b0bc304",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "CEG",
@@ -269,7 +520,15 @@
       "isin": "US21037T1097",
       "token": "0xaE517A2903E68bd929Dfd15be875F8369D53e94a",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947610,
+        "tx": "0x2da9625a247c1e6318bef2a6515818c12661bd46e1ff26dbd48fafca1935f6f5",
+        "log_index": 23
+      },
+      "needs_review": []
     },
     {
       "symbol": "CELH",
@@ -277,7 +536,15 @@
       "isin": "US15118V2079",
       "token": "0x8cF07C5A878945185d327aAa6e33FAa95F95e7bF",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 46134,
+        "tx": "0x9e7252943cf64cca1152cb25ab7612257bacd764cecae6127372f6b5c253642f",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "CIEN",
@@ -285,7 +552,15 @@
       "isin": "US1717793095",
       "token": "0x44f6D488021f8233B9416294d1FE9b1fEe28382d",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948118,
+        "tx": "0xc07233153a63c48cf1e0e018fc0535dc703904da2db75bb37f4bd2548979edf8",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "CLOV",
@@ -293,7 +568,15 @@
       "isin": "US18914F1030",
       "token": "0x62200915e7DEab1eC7f79fb246daDbB80eACdDd0",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949691,
+        "tx": "0x37f873dee7c4e4c96340cf4a6648bd8e6df3f21872076dc3f37e7c111b90900b",
+        "log_index": 5
+      },
+      "needs_review": []
     },
     {
       "symbol": "CLS",
@@ -301,7 +584,15 @@
       "isin": "CA15101Q2071",
       "token": "0xBf449977089c718C004a66C554B26B94ef3Ad4De",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948260,
+        "tx": "0xf8cb33e64ec6aafa02ab6a39ced24ad3e931e1827a90d54556d309f9df1087d1",
+        "log_index": 57
+      },
+      "needs_review": []
     },
     {
       "symbol": "CLSK",
@@ -309,7 +600,15 @@
       "isin": "US18452B2097",
       "token": "0xcBB95BBF36099d34dA091dc6Fa6F49EfA257Cee3",
       "feed": "0x810c12D3a554Bc47fd39597Fe3b3AAC4941F50eF",
-      "feed_description": "Robinhood CLSK / USD"
+      "feed_description": "Robinhood CLSK / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 46127,
+        "tx": "0x8cb245c32489930171f2f36d9e7b3121fb0d3d28e5f20eb968f9f904e62188bb",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "COHR",
@@ -317,7 +616,15 @@
       "isin": "US19247G1076",
       "token": "0x92F9F459F1a9a5AD266b182BE7Bffd1C6c666894",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947170,
+        "tx": "0x5c23318766d925389ce627b67936277e6fd740de148873ab6f7740f9381247dc",
+        "log_index": 6
+      },
+      "needs_review": []
     },
     {
       "symbol": "COIN",
@@ -325,7 +632,15 @@
       "isin": "US19260Q1076",
       "token": "0x6330D8C3178a418788dF01a47479c0ce7CCF450b",
       "feed": "0xA3a468A452940B7D6b69991207B508c609a98Ef2",
-      "feed_description": "Robinhood COIN / USD"
+      "feed_description": "Robinhood COIN / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48319,
+        "tx": "0xb87d94fad3d5a2bd8f4df3da5f89c5e1dab22dc12c13752a5ea00d397d079ecf",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "COST",
@@ -333,7 +648,15 @@
       "isin": "US22160K1051",
       "token": "0x4EA005168D7F09a7A0Ba9D1DEf21a479950E44C2",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48316,
+        "tx": "0x4399da645053772f5c937e006efabf6819bb7da2bbeb2b75c8f96f2187f1f116",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "CRCL",
@@ -341,7 +664,15 @@
       "isin": "US1725731079",
       "token": "0xdF0992E440dD0be65BD8439b609d6D4366bf1CB5",
       "feed": "0x6652eDf64bA3731C4F2D3ce821A0Fb1f1f6b482a",
-      "feed_description": "Robinhood CRCL / USD"
+      "feed_description": "Robinhood CRCL / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48280,
+        "tx": "0xca96a047ec257cb74d9e65126691b5ca0fb74a6cabf6546ec03b8ad0c5ec9211",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "CRDO",
@@ -349,7 +680,15 @@
       "isin": "KYG254571055",
       "token": "0x4D67253bc223e6b0e104F1084c1fb2b669dDC41b",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948873,
+        "tx": "0x118411911fd5893077e5ad859f47614d88e72fb746a55cfc4d80fc5ae2662340",
+        "log_index": 33
+      },
+      "needs_review": []
     },
     {
       "symbol": "CRM",
@@ -357,7 +696,15 @@
       "isin": "US79466L3024",
       "token": "0xd95B44124e475743a7589e68F3D74008A5536D44",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20946974,
+        "tx": "0x08aa58b5dc8ccc30687d8ec68777b44f2050932f8ed13741df55965399405640",
+        "log_index": 35
+      },
+      "needs_review": []
     },
     {
       "symbol": "CRWD",
@@ -365,7 +712,15 @@
       "isin": "US22788C1053",
       "token": "0xea72Ecca2d0f6bFA1394DBBCff85b52CD4233931",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48228,
+        "tx": "0x9c01c7c92ce4a70145d57713b57da38f6905cd81204d4926069e59455d486b93",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "CRWV",
@@ -373,7 +728,15 @@
       "isin": "US21873S1087",
       "token": "0x5f10A1C971B69e47e059e1dC91901B59b3fB49C3",
       "feed": "0xe1b3aABCAFAd1c94708dc1367dcfF8Aa4407487C",
-      "feed_description": "Robinhood CRWV / USD"
+      "feed_description": "Robinhood CRWV / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48282,
+        "tx": "0x9c22f178cf2c318d0f264c4dbdaad90a4082fc53257f527aa9afce3eaf0dcabc",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "CSCO",
@@ -381,7 +744,15 @@
       "isin": "US17275R1023",
       "token": "0xF543967EEBB6f1917992eF0E68De63ab07a5a0dA",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948587,
+        "tx": "0x96d1a2ab8df78736084f6b33b683a202beba4172fd4e6e1c89b0e0e272848b7d",
+        "log_index": 94
+      },
+      "needs_review": []
     },
     {
       "symbol": "CTSH",
@@ -389,7 +760,15 @@
       "isin": "US1924461023",
       "token": "0x63D5a3b6939a33f1e75d8Bcd85759858239600DB",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948942,
+        "tx": "0x9bb001cb6bc309a17b4116de598a5e46a5f0495aaf734acf69eb4167643a3907",
+        "log_index": 33
+      },
+      "needs_review": []
     },
     {
       "symbol": "CVNA",
@@ -397,7 +776,15 @@
       "isin": "US1468691027",
       "token": "0xa4f319104089FE321dc8093C6E707d4fE190A988",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949656,
+        "tx": "0xdf3eba87dcdfcdf69c76d16b88abac9c82e3cae2f8fe64b850cfb5f39fb6a091",
+        "log_index": 42
+      },
+      "needs_review": []
     },
     {
       "symbol": "DDOG",
@@ -405,7 +792,15 @@
       "isin": "US23804L1035",
       "token": "0x27c99fBde9D0d2AA4f4Bfb4943f237843DdF6958",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48230,
+        "tx": "0x4773886d9f7d467c5c9e1eaf0879d4eca152d04c5152740f6edf63859a552a68",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "DELL",
@@ -413,7 +808,15 @@
       "isin": "US24703L2025",
       "token": "0x941AE714EC6D8130c7B75d67160Ca08f1e7d11Dd",
       "feed": "0x1C6c8cADBe02E19129c39dDB92281cE4c0bf206b",
-      "feed_description": "Robinhood DELL-USD"
+      "feed_description": "Robinhood DELL-USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48222,
+        "tx": "0x19354710ea7ac8d6ea57143fcaf492eba50b7e1a962648126f3cb88610dd347c",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "DJT",
@@ -421,7 +824,15 @@
       "isin": "US25400Q1058",
       "token": "0x1D11f0496982706C5e14A514D4E79F2e6BdE4516",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20946859,
+        "tx": "0x8608bf0433e080759482e49a892695170e0a85fbadff56cab12aa9dbfd16d531",
+        "log_index": 117
+      },
+      "needs_review": []
     },
     {
       "symbol": "DOCN",
@@ -429,7 +840,15 @@
       "isin": "US25402D1028",
       "token": "0xc02f12B9fe9E707079EC0d546f3050d3F6C1F8bD",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948981,
+        "tx": "0xde15803430d8ed1014aa07833254226c79b63e3305977148a6484fb4e9bf422b",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "ELF",
@@ -437,7 +856,15 @@
       "isin": "US26856L1035",
       "token": "0x39EC44Bee4F6A116c6F9B8De566848a985C53C60",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48255,
+        "tx": "0xf683098e0d81030ff675a164ae0f096f15d6ff81770baecbf0ad4a18560f0ad5",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "EWT",
@@ -445,7 +872,15 @@
       "isin": "US46434G7723",
       "token": "0x1c690498150252222C275A5CEd69d3A6b1f52D5E",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947973,
+        "tx": "0xa97869bd1a47c56f3d8c6b68b08e4c31e979f65b5b1f5622a4cb2823a6ce1eb4",
+        "log_index": 7
+      },
+      "needs_review": []
     },
     {
       "symbol": "EWY",
@@ -453,7 +888,15 @@
       "isin": "US4642867729",
       "token": "0x7f0aBeF0C07280F82c6a08ead09dEd6BAE2C13Fc",
       "feed": "0xEFdf54610B62A7753Ec30bDc380847c12D32e1D1",
-      "feed_description": "Robinhood EWY / USD"
+      "feed_description": "Robinhood EWY / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48265,
+        "tx": "0xfe92bec627abdd1cdbfc20e3bdf6152d14e4981def9d71b6ab9ebfb86eb2f705",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "F",
@@ -461,7 +904,15 @@
       "isin": "US3453708600",
       "token": "0x25C288E6D899b9BC30160965aD9644c67e73bE0C",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48267,
+        "tx": "0x10f66754816e0dfcfc9b539550e7d3be80e9269321af2f81deda9de4184a3a13",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "FICO",
@@ -469,7 +920,15 @@
       "isin": "US3032501047",
       "token": "0xa48F22A46C0F1C46CA7D111CB6c137c271987180",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20950535,
+        "tx": "0x4f45361f84b9062935f644de76243486a3a3b2de9cf3e3e304ebe25eb4cd51b5",
+        "log_index": 37
+      },
+      "needs_review": []
     },
     {
       "symbol": "FIG",
@@ -477,7 +936,15 @@
       "isin": "US3168411052",
       "token": "0x41F4267525a8AFf329540eF24fD83d9044758B33",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947845,
+        "tx": "0x69238dde5f2c1f49795c2357e5863c5db05d86edc3e64a104882b843ecdfe7cd",
+        "log_index": 35
+      },
+      "needs_review": []
     },
     {
       "symbol": "FISV",
@@ -485,7 +952,15 @@
       "isin": "US3377381088",
       "token": "0x9ECe29A4A2397C0a35fb5fA8EE2b9509130a98cc",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947012,
+        "tx": "0x8fef52b9765dd0b346aac6a3868fcd97fd3f76a319bdb0b6453e1ae73265d696",
+        "log_index": 66
+      },
+      "needs_review": []
     },
     {
       "symbol": "FIX",
@@ -493,7 +968,15 @@
       "isin": "US1999081045",
       "token": "0x93Dbb1d2Dc5D63F4abACFF30485273f538Df68Ac",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949620,
+        "tx": "0x51288e994b70b8182d7fc5050b4870d26057ec5c340e5f2947e75f47b7ce5fd9",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "FLNC",
@@ -501,7 +984,15 @@
       "isin": "US34379V1035",
       "token": "0x282e87451E10fA6679BC7D76C69BE44cD3fC777C",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 46115,
+        "tx": "0x567faeb7d51f0b811aacf67d335eb7073efa67ad20c0769ed9ddb8fda3d2fed9",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "FLY",
@@ -509,7 +1000,15 @@
       "isin": "US31816X1063",
       "token": "0x03BC731Ffb162cdd7B98D3C6542bFC291126075d",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947507,
+        "tx": "0xabe8c7a2f9d544048c5f1aaed0aaef7394904301ec1cb0156e4236573c1b8b86",
+        "log_index": 37
+      },
+      "needs_review": []
     },
     {
       "symbol": "FTNT",
@@ -517,7 +1016,15 @@
       "isin": "US34959E1091",
       "token": "0x3FB8976980d486084b2eb4a404BD12e72823958f",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949910,
+        "tx": "0x5390a8c384156ff483ae48e4efd39ce32b5b766b16a42a27f71547b5064bcd2c",
+        "log_index": 24
+      },
+      "needs_review": []
     },
     {
       "symbol": "FUTU",
@@ -525,7 +1032,15 @@
       "isin": "US36118L1061",
       "token": "0xeB30663bDFf0622Ef4e4E5cBb4E975F19f33f51D",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 46130,
+        "tx": "0xb9a3db401f060b631e29941ea6afc07d35986a723514c01f03af8a886711cec2",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "GE",
@@ -533,7 +1048,15 @@
       "isin": "US3696043013",
       "token": "0x63b814DDBd6BF339f25Fed8c36158a008D5B373e",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949159,
+        "tx": "0x8e6f59c85ccbbf77eb310ab67a699a6a5f81e292ad85c314a6cfaa7b4f2a7bef",
+        "log_index": 7
+      },
+      "needs_review": []
     },
     {
       "symbol": "GEV",
@@ -541,7 +1064,15 @@
       "isin": "US36828A1016",
       "token": "0x94B8AAE43A1cCc08Aa64B7D1F29b4D920aF4a0C9",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947047,
+        "tx": "0x1bef10de0005ae1d09acda97d7fd10dc0c315971a4c6abae85bcf10b04c61284",
+        "log_index": 5
+      },
+      "needs_review": []
     },
     {
       "symbol": "GLD",
@@ -549,7 +1080,15 @@
       "isin": "US78463V1070",
       "token": "0xC9a981FEE1F9DEc688bb123ccDeCc63D0deBFC4e",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947470,
+        "tx": "0xdf751e8a4525f75031900c69e0491cfa10bc0feacae41e5a9224531697ac980a",
+        "log_index": 68
+      },
+      "needs_review": []
     },
     {
       "symbol": "GLW",
@@ -557,7 +1096,15 @@
       "isin": "US2193501051",
       "token": "0x7c04E6A3368F2A1DE3874f0e80d2e0A1a9915da6",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48314,
+        "tx": "0xe6ec55d8b691a3681e1cb86c9c6eedfaf9fb68cb854f88973a62595e476a16d2",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "GLXY",
@@ -565,7 +1112,15 @@
       "isin": "US36317J2096",
       "token": "0x2D427692E928fa156ec22acfaBaFA0447C5805B7",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947542,
+        "tx": "0x9e6204fb1b882207afa5225d04b0494233e54fd2d906d6bb3bea52d4e31b7c57",
+        "log_index": 50
+      },
+      "needs_review": []
     },
     {
       "symbol": "GME",
@@ -573,7 +1128,15 @@
       "isin": "US36467W1099",
       "token": "0x1b0E319c6A659F002271B69dB8A7df2F911c153E",
       "feed": "0x27C71df6A64fB476468EdF256CF72c038baB5B67",
-      "feed_description": "Robinhood GME / USD"
+      "feed_description": "Robinhood GME / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48258,
+        "tx": "0xea9c4f734d4ead19b047ecedc50e19b9b6f46f0404ca11517f04614f7e037eed",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "GOOGL",
@@ -581,7 +1144,15 @@
       "isin": "US02079K3059",
       "token": "0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3",
       "feed": "0xF6f373a037c30F0e5010d854385cA89185AE638b",
-      "feed_description": "Robinhood GOOGL / USD"
+      "feed_description": "Robinhood GOOGL / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48284,
+        "tx": "0xab0abdd10d4a76ce910148b7fbc8b20bdd12778ab3b521ad760473371ec362b2",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "HII",
@@ -589,7 +1160,15 @@
       "isin": "US4464131063",
       "token": "0xEB61c0Ed490A367d4E3631cCf8a74B3bfc7E775D",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947933,
+        "tx": "0x0e0d59d952715442a22f932f88d088b704240ac506b31e4a2615000ed3cdce09",
+        "log_index": 25
+      },
+      "needs_review": []
     },
     {
       "symbol": "HIMS",
@@ -597,7 +1176,15 @@
       "isin": "US4330001060",
       "token": "0xCceE82fE024c36fA15E1005edE3E9e4787e23D09",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20950062,
+        "tx": "0x54a124f46db63cef7d1ecbdf8daf9ddc1ff16864b5b7a7453c29fefeb03b98e3",
+        "log_index": 2
+      },
+      "needs_review": []
     },
     {
       "symbol": "HPE",
@@ -605,7 +1192,15 @@
       "isin": "US42824C1099",
       "token": "0x59dd09d4900C2E4B5F75b7c0d4E6796fcc234Cb1",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947327,
+        "tx": "0x6fc7a652b3c313846cfd05caa7108676e2d5a3318ff1e66f92fffa3aff0369e2",
+        "log_index": 34
+      },
+      "needs_review": []
     },
     {
       "symbol": "HWM",
@@ -613,7 +1208,15 @@
       "isin": "US4432011082",
       "token": "0xAEa445c5F3DB1a462998ccC422A875A361ee5d99",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947652,
+        "tx": "0xd0f9bb1fed4ad3ea99bb20cbfabf6be57898bdd7ef1558b4baab19ee27b7f59c",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "IBM",
@@ -621,7 +1224,15 @@
       "isin": "US4592001014",
       "token": "0x980dcf6766FA79f5Cf0c4AAdb3ab477ff15a9619",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949463,
+        "tx": "0xf6fa4d4a2df66d951ac494a408e7395ddb75d5c60bdc66874734f72d755a6178",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "IBRX",
@@ -629,7 +1240,15 @@
       "isin": "US45256X1037",
       "token": "0x7c148F74ac7445D1F28366b7FcDC6792a9Fcd0Cf",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948909,
+        "tx": "0x6aa123439c6de6ec879298795e7dbd8fa3668c537efa070226f1672312820cbc",
+        "log_index": 29
+      },
+      "needs_review": []
     },
     {
       "symbol": "INDA",
@@ -637,7 +1256,15 @@
       "isin": "US46429B5984",
       "token": "0xACEF2e09adb47aD6aBeBAD9fF06689E60615C2B6",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20950291,
+        "tx": "0x4c4adf39a042370e9902465274723937c43fcc68ee4371f4cc6f4bcc8582f556",
+        "log_index": 17
+      },
+      "needs_review": []
     },
     {
       "symbol": "INFQ",
@@ -645,7 +1272,15 @@
       "isin": "US45676K1034",
       "token": "0xB853bC83a753342a4f8320ea680b4B1E84118D21",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20950504,
+        "tx": "0x9f66430ab36995a48ce039412ef5e617cfe2bf839e91196dbead4e0456c21364",
+        "log_index": 193
+      },
+      "needs_review": []
     },
     {
       "symbol": "INOD",
@@ -653,7 +1288,15 @@
       "isin": "US4576422053",
       "token": "0xf1953DAB6FaD537488d5A022361FfAa8B4c95eC6",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 46125,
+        "tx": "0xdd4376df91ef30a0ae35d5f3b3cd2c56967c389b9258ac7d8a9e0533ecbae5ce",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "INTC",
@@ -661,7 +1304,15 @@
       "isin": "US4581401001",
       "token": "0xc72b96e0E48ecd4DC75E1e45396e26300BC39681",
       "feed": "0x3f390C5C24628Ac7C489515402235FeAD71D1913",
-      "feed_description": "RHINTC / USD"
+      "feed_description": "RHINTC / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48286,
+        "tx": "0xba27995b574590bdcc4142519ef3db12336ac0ebfd7e27699f6b39e4a155d561",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "INTU",
@@ -669,7 +1320,15 @@
       "isin": "US4612021034",
       "token": "0x56d23beE5f41A7120170b0c603Dae30128e460e9",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48272,
+        "tx": "0x0e17f676017cb4657e236366125d2fc5c9d636b03f9841ddb1abd65c98c0f065",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "IONQ",
@@ -677,7 +1336,15 @@
       "isin": "US46222L1089",
       "token": "0x558378E000D634A36593E338eBacdd6207640EfE",
       "feed": "0x22EfeC4919baf55F360E0EDee4AbEB26DE4971eb",
-      "feed_description": "Robinhood IONQ / USD"
+      "feed_description": "Robinhood IONQ / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 46133,
+        "tx": "0x24c9ae852e9d1383585de01dfdeccf5b3ddfde0df883e9c11810e15fb1c44fed",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "IREN",
@@ -685,7 +1352,15 @@
       "isin": "AU0000185993",
       "token": "0xF0AB0c93bE6F41369d302e55db1A96b3c430212D",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48250,
+        "tx": "0xbc6b4724c1adcac1050534438baf272a5738192a09ce5a1d57ebc5bcdd503289",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "JBL",
@@ -693,7 +1368,15 @@
       "isin": "US4663131039",
       "token": "0xEAf2512dFC1bEAc608F8794B3793CD4E02894Aa6",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20950328,
+        "tx": "0x72be3ca031830b801c1110cc25c61be5498026603214082f8c9568a4c1f7b047",
+        "log_index": 7
+      },
+      "needs_review": []
     },
     {
       "symbol": "JNJ",
@@ -701,7 +1384,15 @@
       "isin": "US4781601046",
       "token": "0x03DfbBE0AC4E7bCDaFd08eD41A400326B77D8c80",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949982,
+        "tx": "0xbec91ac2edb25c706eb70801b9137b3a48b866b207d9b318b49b6fc9c3d1882d",
+        "log_index": 33
+      },
+      "needs_review": []
     },
     {
       "symbol": "JOBY",
@@ -709,7 +1400,15 @@
       "isin": "KYG651631007",
       "token": "0xb334C5cE741B80B5B671F47F5C269Cb193fe8E24",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948072,
+        "tx": "0xf6ebdf42b77dec0212ba42a4227d82b82bdc9da6b8620ff800c0e9257e2d9821",
+        "log_index": 5
+      },
+      "needs_review": []
     },
     {
       "symbol": "KLAC",
@@ -717,7 +1416,15 @@
       "isin": "US4824801009",
       "token": "0x96b933C74eCB4A0926b9210cef7b743EF46be2E9",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948694,
+        "tx": "0x9129420dfd37ce8a434418996c0f6587c8e1590c26dbbb952bc62d7a659de841",
+        "log_index": 7
+      },
+      "needs_review": []
     },
     {
       "symbol": "KSS",
@@ -725,7 +1432,15 @@
       "isin": "US5002551043",
       "token": "0x12e3c047bf9AeCAF9dDC98c05C31BFD1dd043993",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949425,
+        "tx": "0x4159bbb3f4b48019f3fe6448e158c9fbfe415950d92f651b66af3aabd35b5770",
+        "log_index": 34
+      },
+      "needs_review": []
     },
     {
       "symbol": "KTOS",
@@ -733,7 +1448,15 @@
       "isin": "US50077B2079",
       "token": "0x7FD06a4d81cCfA3F351394E144d5191874C31313",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949729,
+        "tx": "0x26142b2863ed82f891675feb25d27ffa5853879dc736f778b21803354fce678c",
+        "log_index": 2
+      },
+      "needs_review": []
     },
     {
       "symbol": "LHX",
@@ -741,7 +1464,15 @@
       "isin": "US5024311095",
       "token": "0x48d60243c66437c6ac3c2495Be94747aEd5Dfe25",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948335,
+        "tx": "0x09c81c855ea57d4eae5326d0027f1c52d701b2b4740cec7ed89ed625dc5f9929",
+        "log_index": 25
+      },
+      "needs_review": []
     },
     {
       "symbol": "LITE",
@@ -749,7 +1480,15 @@
       "isin": "US55024U1097",
       "token": "0x8eF20885F94e3D9bc7eB3080279188Bd5ED7c08C",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 46129,
+        "tx": "0xa825fd592c83ef826880f4a0d1bd5a312a672551f1da9fa69a503e768d2d9b04",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "LLY",
@@ -757,7 +1496,15 @@
       "isin": "US5324571083",
       "token": "0x8005d266423c7ea827372c9c864491e5786600ea",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48260,
+        "tx": "0x2c620cb609bf395396c32dc4420e2b79b345bdae605bbb10a4836eb25706cbca",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "LMT",
@@ -765,7 +1512,15 @@
       "isin": "US5398301094",
       "token": "0x329fcACEb9AD6F9580DD5F643fed0646900D043c",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949538,
+        "tx": "0xb8ed70331eb82a368e64abc59a6b8ca73e9dbc41ee0462626d759116b05b6ca5",
+        "log_index": 6
+      },
+      "needs_review": []
     },
     {
       "symbol": "LRCX",
@@ -773,7 +1528,15 @@
       "isin": "US5128073062",
       "token": "0x57b0030166DB0C31690d1A5aA167e2e26e2C29a4",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20946935,
+        "tx": "0x63c6b81786771ac9fe7df05e24eb9ebf35e65bdb203f6f3485462b2350f501ca",
+        "log_index": 10
+      },
+      "needs_review": []
     },
     {
       "symbol": "LULU",
@@ -781,7 +1544,15 @@
       "isin": "US5500211090",
       "token": "0x4e62068525Ab11FE768e29dfD00ef909B9803016",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 46124,
+        "tx": "0xd17d5ebb1c5357aa6c059c7d2a62a07d665f4d81231c0636593970958eab3746",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "LUNR",
@@ -789,7 +1560,15 @@
       "isin": "US46125A1007",
       "token": "0xa5D4968421bA94814Be3B136b15cf422101aC1a3",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48219,
+        "tx": "0x44f264dd87e54c028beae52a759088076f6ee5b17c0a328cd3e4d7424b1aeb0c",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "MDB",
@@ -797,7 +1576,15 @@
       "isin": "US60937P1066",
       "token": "0xDdf2266b79abf0B48898959B0ed6E6adf512be74",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48220,
+        "tx": "0xc258525a34ad55f2f030165a1f9dc58f49ca97f9034b6899074cf57486538c88",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "META",
@@ -805,7 +1592,15 @@
       "isin": "US30303M1027",
       "token": "0xc0D6457C16Cc70d6790Dd43521C899C87ce02f35",
       "feed": "0x7C38C00C30BEe9378381E7B6135d7283356D71b1",
-      "feed_description": "Robinhood META / USD"
+      "feed_description": "Robinhood META / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48281,
+        "tx": "0x1bb867f8a7af03bb4a88d55b6e2c9804dcd59c78b4d022bce4fc4cae473cad80",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "MOD",
@@ -813,7 +1608,15 @@
       "isin": "US6078281002",
       "token": "0xc6Cbad1016b38B797610c25E1dc7D95988B1f362",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948005,
+        "tx": "0x6c2678f2d233b79c73b10fe3913d70653460df2ece1cfd45727c97fbcb11627b",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "MPWR",
@@ -821,7 +1624,15 @@
       "isin": "US6098391054",
       "token": "0x52D50D0280AD1054b43f052bD70a49a212A1b128",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947284,
+        "tx": "0x997114c61661484e640ca5180308594a0b1ba11ff715b2031ef394c65df4da6f",
+        "log_index": 100
+      },
+      "needs_review": []
     },
     {
       "symbol": "MRNA",
@@ -829,7 +1640,15 @@
       "isin": "US60770K1079",
       "token": "0x43B07D15cE533bEc5476d70C22a78a1B2B662155",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20946697,
+        "tx": "0x7bdd59f42509e55e55d6c4756223bc129f176428e4b2c404472bed0e089ea8cb",
+        "log_index": 28
+      },
+      "needs_review": []
     },
     {
       "symbol": "MRVL",
@@ -837,7 +1656,15 @@
       "isin": "US5738741041",
       "token": "0x62fd0668e10D8B72339BE2DCF7643001688ff13B",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48320,
+        "tx": "0xeb3d284a5f5759cb21a859bed0ff9e70f21f743f7fb7f1f6297a00632cfd37fe",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "MSFT",
@@ -845,7 +1672,15 @@
       "isin": "US5949181045",
       "token": "0xe93237C50D904957Cf27E7B1133b510C669c2e74",
       "feed": "0x45C3C877C15E6BA2EBB19eA114Ea508d14C1Af2E",
-      "feed_description": "RHMSFT / USD"
+      "feed_description": "RHMSFT / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48275,
+        "tx": "0xf295721b9ed2f53d0fac44bbeebae8a94275bb7eeb45c801cc6c2a5d2dc09f7e",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "MSTR",
@@ -853,7 +1688,15 @@
       "isin": "US5949724083",
       "token": "0xec262a75e413fAfD0dF80480274532C79D42da09",
       "feed": "0x396118bdFB181e6240E74D243F266B061c0edc3D",
-      "feed_description": "Robinhood MSTR / USD"
+      "feed_description": "Robinhood MSTR / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48238,
+        "tx": "0xa704b03d58cb994a0df5f7448343be0f32994642de8b780b0b7e4998d56d6d5b",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "MTSI",
@@ -861,7 +1704,15 @@
       "isin": "US55405Y1001",
       "token": "0xC93f4d80e268AB922e871bd169156C3CC41894e6",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949272,
+        "tx": "0xb93c14aab03ed31bf46f9a16aeead919d108badeb0c208513beb75bbbb37c4e8",
+        "log_index": 16
+      },
+      "needs_review": []
     },
     {
       "symbol": "MU",
@@ -869,7 +1720,15 @@
       "isin": "US5951121038",
       "token": "0xfF080c8ce2E5feadaCa0Da81314Ae59D232d4afD",
       "feed": "0x425EEFdCf05ed6526C3cE61Af99429A228a6d596",
-      "feed_description": "RHMU / USD"
+      "feed_description": "RHMU / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48292,
+        "tx": "0x6d6035b4c364f52ba394c7bc6ea38c5724d13c67e4cf148543fdc875fb4c19dc",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "MXL",
@@ -877,7 +1736,15 @@
       "isin": "US57776J1007",
       "token": "0x48961813349333209994750ffA89b3c5C22eC969",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48213,
+        "tx": "0x35291ed58c0f482da18593d63bab9264b6b42f539a259d9bcfedd11022d218af",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "NAVN",
@@ -885,7 +1752,15 @@
       "isin": "US6391931010",
       "token": "0xf7181b63Fdb858558A74ba96BC42732684cd7965",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948295,
+        "tx": "0x4e9caee6bd3ba23fef8b99129431f4117ada4f64973a98eaaa892d90a9e5fb52",
+        "log_index": 27
+      },
+      "needs_review": []
     },
     {
       "symbol": "NBIS",
@@ -893,7 +1768,15 @@
       "isin": "NL0009805522",
       "token": "0x9D9c6684F596F66a64C030B93A886D51Fd4D7931",
       "feed": "0xE1D87B116Ba0fe898998f1D140339D1fA1E09705",
-      "feed_description": "Robinhood NBIS / USD"
+      "feed_description": "Robinhood NBIS / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48266,
+        "tx": "0x3493a58c1eda709dc210c04a0c6878b758fc8dcf598d0a1a574d60ca7badb6ee",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "NET",
@@ -901,7 +1784,15 @@
       "isin": "US18915M1071",
       "token": "0x116F00968269B7bfbaD4109cE591d6E74c0601d4",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20946819,
+        "tx": "0x292ef2fc6a9c9227c0a223f0d66cb281201862e581bf64ea54accf60bbc1f780",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "NFLX",
@@ -909,7 +1800,15 @@
       "isin": "US64110L1061",
       "token": "0xE0444EF8BF4eD74f74FD73686e2ddF4C1c5591E8",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48218,
+        "tx": "0xebd6f2dceee43589809e3646f447366a892c18ac45862e3b22fedff927996ddb",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "NNE",
@@ -917,7 +1816,15 @@
       "isin": "US63010H1086",
       "token": "0xBEF75684C43c4ea7BD18Dd532a2244674Ee8b926",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 46121,
+        "tx": "0xd50808a7bdebb4102568e1ccf1930382ca000d77c1177303f32689824602ad44",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "NOW",
@@ -925,7 +1832,15 @@
       "isin": "US81762P1021",
       "token": "0x0C3260aF4B8f13a69c4c2dFb84fD667890CDFa14",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48244,
+        "tx": "0x9b4e0d331d17aa7b4e756098651581efc4ec7a47d2c139327a2baa75db842ca1",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "NU",
@@ -933,7 +1848,15 @@
       "isin": "KYG6683N1034",
       "token": "0x408c14038a04f7bD235329E26d2bf569ee20e250",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48251,
+        "tx": "0xabe8fd765a56d606f655be3afc95a9933b984ab0d5c4a7aceafae269301c9185",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "NVDA",
@@ -941,7 +1864,15 @@
       "isin": "US67066G1040",
       "token": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
       "feed": "0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15",
-      "feed_description": "RHNVDA / USD"
+      "feed_description": "RHNVDA / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 45898,
+        "tx": "0xcdb797c54ff55ef4008f254c486cc52d7393a65a6e6fb622c44b0260eecb755f",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "NVTS",
@@ -949,7 +1880,15 @@
       "isin": "US63942X1063",
       "token": "0xbE6702d7b70315376dC48a3293f24f0982F86386",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48317,
+        "tx": "0xd62a7c1951e5fd37d1b1a4c4c62ce09a7cf4221d82fb0f159036c8d9c87e62f9",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "OKLO",
@@ -957,7 +1896,15 @@
       "isin": "US02156V1098",
       "token": "0x8B2f88497f15A18E9D4FFa1a8fFB8538399aE774",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949123,
+        "tx": "0xa85238be1e8f9da8fef624a1cdc4ee6307408664ee20532ae17c62abbad76e5b",
+        "log_index": 4
+      },
+      "needs_review": []
     },
     {
       "symbol": "ON",
@@ -965,7 +1912,15 @@
       "isin": "US6821891057",
       "token": "0xbBD09F72b025360FeE5C928053Dca6248d35be54",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947244,
+        "tx": "0x32f591878799ec2d52a76809c6608d94e7a75d10e3f4435a2901b3271752ef01",
+        "log_index": 22
+      },
+      "needs_review": []
     },
     {
       "symbol": "ONTO",
@@ -973,7 +1928,15 @@
       "isin": "US6833441057",
       "token": "0x8ff63eAeEe3fE54Ba450c4F5538064Ec5A893Aef",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949945,
+        "tx": "0xdfaa4f4454319187cf73621d0e76a733e26cababaa1cd27a2865c8ed32cbea09",
+        "log_index": 30
+      },
+      "needs_review": []
     },
     {
       "symbol": "ORCL",
@@ -981,7 +1944,15 @@
       "isin": "US68389X1054",
       "token": "0xb0992820E760d836549ba69BC7598b4af75dEE03",
       "feed": "0x0e6a64a2B58A6693a531E6c555f3A5d042eEA844",
-      "feed_description": "Robinhood ORCL / USD"
+      "feed_description": "Robinhood ORCL / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48289,
+        "tx": "0xbc126ebcd570d11d1dfd69a9d6fe450cabf4f64fc5ff8b3aeb405fdb09804efb",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "OUST",
@@ -989,7 +1960,15 @@
       "isin": "US68989M2026",
       "token": "0x40E7a279850e443f582059ae5dC1c3b6563E6395",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949763,
+        "tx": "0xbe369c2963e209d5a856cf0163160d3b19d2f56b324f0f042e80ee11ca30c674",
+        "log_index": 5
+      },
+      "needs_review": []
     },
     {
       "symbol": "P",
@@ -997,7 +1976,15 @@
       "isin": "US74624M1027",
       "token": "0x1Cdad396DB64BDa184d5182A97Dd9B3C62100b7D",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48227,
+        "tx": "0x6a064a091fe5b250ef56d55bcdf8ffdf373b95eef92c3c145ca876673f24f027",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "PANW",
@@ -1005,7 +1992,15 @@
       "isin": "US6974351057",
       "token": "0xB039597eD45CBa7B6E2fb9E8BE51802969CEe5Be",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949196,
+        "tx": "0xcb915df9399c71e7cdd8073cf8786d856f89d86ab0642b493fc2bedd59242096",
+        "log_index": 6
+      },
+      "needs_review": []
     },
     {
       "symbol": "PATH",
@@ -1013,7 +2008,15 @@
       "isin": "US90364P1057",
       "token": "0xfb2664f07B6Aadd29ea7a59D8859b1AeB8645cDa",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20946654,
+        "tx": "0xc06282a078f6f88e48700ac5ff36ccb736d17a87e3eed1cb1662828d7eb79e04",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "PENG",
@@ -1021,7 +2024,15 @@
       "isin": "US7069151055",
       "token": "0x9b23573b156B52565012F5cE02CDF60AFBaa70Be",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 46126,
+        "tx": "0x9c8ad1d736bf0a0f39fa03ef60ffe298b816199199198bd8e2ba2fc92f5d4e6c",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "PFE",
@@ -1029,7 +2040,15 @@
       "isin": "US7170811035",
       "token": "0x7066A64c24e4206CD62E83bf198c1E7EB361F51e",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20946617,
+        "tx": "0x0d61ba88bb0244b9484f28026ce3cbd7e6c2d3e5e921b9d0ed7373bc15dca795",
+        "log_index": 40
+      },
+      "needs_review": []
     },
     {
       "symbol": "PL",
@@ -1037,7 +2056,15 @@
       "isin": "US72703X1063",
       "token": "0xAA4d64474c172010aB57719cb9951E6142a100d3",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948729,
+        "tx": "0x4d83a27c8283026021d3917b383934b3b5828a49c0248f3a8ecc61ec0689f79e",
+        "log_index": 97
+      },
+      "needs_review": []
     },
     {
       "symbol": "PLTR",
@@ -1045,7 +2072,15 @@
       "isin": "US69608A1088",
       "token": "0x894E1EC2D74FFE5AEF8Dc8A9e84686acCB964F2A",
       "feed": "0x820ABedFF239034956B7A9d2F0a331f9F075eB4c",
-      "feed_description": "Robinhood PLTR / USD"
+      "feed_description": "Robinhood PLTR / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48285,
+        "tx": "0x70077c1e6a9d529f5a6762a87c5bd56d09e6460a22df16ffadd21700535f817f",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "POET",
@@ -1053,7 +2088,15 @@
       "isin": "CA73044W3021",
       "token": "0xcf6B2D875361be807EAfa57458c80f28521F9333",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48235,
+        "tx": "0x874e1d7ae2cba87d650bd8162065c6a839cd104bdf7d94bb9499fd978951ba35",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "POWL",
@@ -1061,7 +2104,15 @@
       "isin": "US7391281067",
       "token": "0x237c16D66590F67B886d978ACD362EAeaD8B18c7",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948039,
+        "tx": "0x631db3ddc8204dcacc44408199362e8b53d6e8252cb4e59d7dff9d1ad06d6e05",
+        "log_index": 48
+      },
+      "needs_review": []
     },
     {
       "symbol": "PR",
@@ -1069,7 +2120,15 @@
       "isin": "US71424F1057",
       "token": "0x4189F0c66EBBB0bfeF1C31f763131361EF32f77C",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48214,
+        "tx": "0x41968d0430ce45268a5c689328b1c44f5aa5e97001e4929758fa4b6b6477a639",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "PWR",
@@ -1077,7 +2136,15 @@
       "isin": "US74762E1029",
       "token": "0x9Ab02Ead789b6903c3c44d0ED32F9c707CDF12FD",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947762,
+        "tx": "0xe2d0ec4bccf6f4e3a7b9dfb940f4f17875b4eb191784b8a1ac6d09684c3f6667",
+        "log_index": 36
+      },
+      "needs_review": []
     },
     {
       "symbol": "QBTS",
@@ -1085,7 +2152,15 @@
       "isin": "US26740W1099",
       "token": "0xC583c60aeF9Dc401Da72cEC1B404743a93cea1Cc",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 46113,
+        "tx": "0x43b281ceead452e8c0b04cc8854676fe61bc86ebc1e06c0dd0d0eac76450e455",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "QCOM",
@@ -1093,7 +2168,15 @@
       "isin": "US7475251036",
       "token": "0x0f17206447090e464C277571124dD2688E48AEA9",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48263,
+        "tx": "0x62c4ab79e0fd3ce79978cc6e185abcf9f818953e2ae63f038247b4f86c297154",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "QNT",
@@ -1101,7 +2184,15 @@
       "isin": "US74768A1043",
       "token": "0xB7EDfE2F33C1aC06830a971dFb559bDe8A2a3d76",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947723,
+        "tx": "0x5984fb56e122ea4ac75e0e8afedd95884f6962d7f868162e12ce312a46f8a4bc",
+        "log_index": 6
+      },
+      "needs_review": []
     },
     {
       "symbol": "QQQ",
@@ -1109,7 +2200,15 @@
       "isin": "US46090E1038",
       "token": "0xD5f3879160bc7c32ebb4dC785F8a4F505888de68",
       "feed": "0x80901d846d5D7B030F26B480776EE3b29374C2ae",
-      "feed_description": "Robinhood QQQ / USD"
+      "feed_description": "Robinhood QQQ / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48287,
+        "tx": "0x0f4f2e42afe85a268b5a8ee13f55b3efa38ef71225ee3ab5d1fcdeee88db9a8c",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "QUBT",
@@ -1117,7 +2216,15 @@
       "isin": "US74766W1080",
       "token": "0x59818904ab4cE163b3cE4FfB64f2D6Ca02c434B4",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48256,
+        "tx": "0x30fd13256b30c02f2c7c36fd552ac245f3bbc992b0389520c4b95771acde23f2",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "RBLX",
@@ -1125,7 +2232,15 @@
       "isin": "US7710491033",
       "token": "0xF0C4BF4C582cb3836e98394b1d4e7B7281101bE8",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48271,
+        "tx": "0x611d4a37487644d0256d3945eb15c05f7c6b047e48530a721e9011c7a0194e7e",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "RCAT",
@@ -1133,7 +2248,15 @@
       "isin": "US75644T1007",
       "token": "0xFDE6b5d9BB419B10C23268c74e369AbFF39C0460",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947204,
+        "tx": "0x5e29f8a5622aa297d29a7d686ed88cc86a18a6471f8784253943a36c8fa928e7",
+        "log_index": 6
+      },
+      "needs_review": []
     },
     {
       "symbol": "RDDT",
@@ -1141,7 +2264,15 @@
       "isin": "US75734B1008",
       "token": "0x05b37Fb53A299a1b874A619e1c4C404D52C36F4C",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 46131,
+        "tx": "0x247f3a20b1c5fa7517e635276ae321ba9b61ef123d5033281a2f3eaccae84390",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "RDW",
@@ -1149,7 +2280,15 @@
       "isin": "US75776W1036",
       "token": "0x92Ef19E82bD8fF36661DE838D5eaE7e5CEF0EfFE",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48253,
+        "tx": "0x786085dfc50db0361928d61d3fdd72df105fb46a6d5d06d82cc5974d84d4d23d",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "RGTI",
@@ -1157,7 +2296,15 @@
       "isin": "US76655K1034",
       "token": "0x284358abc07F9359f19f4b5b4aC91901Be2597Ba",
       "feed": "0x2A045cF1C49c61c166C036d2f06FA2D2d984f765",
-      "feed_description": "Robinhood RGTI / USD"
+      "feed_description": "Robinhood RGTI / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48231,
+        "tx": "0x641712081c63352983446443565743b6d381cf70944582da84d9ebcb9f0821af",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "RIVN",
@@ -1165,7 +2312,15 @@
       "isin": "US76954A1034",
       "token": "0xB1BF26c1D20ff267A4f93550d1E0d06ac40a114B",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48224,
+        "tx": "0xfe49ad5bdab2e2200b501d93abb5f783c9a0c50cd0b4b6ff47bbdb64b85db4de",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "RKLB",
@@ -1173,7 +2328,15 @@
       "isin": "US7731211089",
       "token": "0x3b14C39E89D60D627b42a1A4CA45b5bb45Fc12e2",
       "feed": "0x045477BF65Aef6f4F2386ad0164579e48381CC74",
-      "feed_description": "Robinhood RKLB / USD"
+      "feed_description": "Robinhood RKLB / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48234,
+        "tx": "0x7016a5fbcb83b20816b14e68c274213a3982c1e7558b27d999152ecc7f3e60f0",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "RUN",
@@ -1181,7 +2344,15 @@
       "isin": "US86771W1053",
       "token": "0x756Bc80af765C82da966a788858d65aDF14f3793",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20950216,
+        "tx": "0xda9c2b18665b19fdd08300ea10df65f5e114bb1572c22c249f09209e783b3d45",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "SATS",
@@ -1189,7 +2360,15 @@
       "isin": "US2787681061",
       "token": "0x95052ddcd5DC25641657424A8Cf04834997E1730",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48254,
+        "tx": "0x58d684654ced0d7a61c83dcd421f7ca8b3d05e965c8e7c2a18e777030183fb5d",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "SCHD",
@@ -1197,7 +2376,15 @@
       "isin": "US8085247976",
       "token": "0xd63ABB2C13d7a8421a8017a712802053568e3C1D",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948840,
+        "tx": "0xee5a5b2304ddd169d20c3d25c2cf5759f62bece99e21725cd856e1c27d5bbfdf",
+        "log_index": 7
+      },
+      "needs_review": []
     },
     {
       "symbol": "SGOV",
@@ -1205,7 +2392,15 @@
       "isin": "US46436E7186",
       "token": "0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48290,
+        "tx": "0x413765bb3a05d9de2fbf4786104e7489d9ba198531ca1b5be580300530b423e4",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "SHOP",
@@ -1213,7 +2408,15 @@
       "isin": "CA82509L1076",
       "token": "0xF53F66751B1Eff985311b693531E3290F600c410",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48273,
+        "tx": "0xd26f84c775e646572818a24f3cb6a36c666bee1bf87c5bdbc628eb3e69753185",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "SHY",
@@ -1221,7 +2424,15 @@
       "isin": "US4642874576",
       "token": "0xBE274710Bf3d9567e1B290eF6a5F9f90ca016FD8",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947135,
+        "tx": "0x2cd216f35053dce36feb1081f7bd38ca8a26e33bb17fc0d3b94821df9f6c7dd4",
+        "log_index": 10
+      },
+      "needs_review": []
     },
     {
       "symbol": "SIMO",
@@ -1229,7 +2440,15 @@
       "isin": "US82706C1080",
       "token": "0x77E655E37F4d913fB9540e0d541D824171a60e81",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948370,
+        "tx": "0x42cd7264197cc02232ceabf0df0d98d7a7e3352fe1fc3e158060dfa0ad224628",
+        "log_index": 301
+      },
+      "needs_review": []
     },
     {
       "symbol": "SKHY",
@@ -1237,7 +2456,15 @@
       "isin": "US78392B2060",
       "token": "0x84CAb63bc87912E71ad199ff14A0bA45de68FeF8",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 8691227,
+        "tx": "0x4cb43f6446a179f15350078677ee3c6c2ef762ba0f42707475fb625f165c98d9",
+        "log_index": 14
+      },
+      "needs_review": []
     },
     {
       "symbol": "SLS",
@@ -1245,7 +2472,15 @@
       "isin": "US81642T2096",
       "token": "0x285b231728c7E4333799183DF1094d775246a535",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949350,
+        "tx": "0x41a1e8084cdc529bae8666694afe298f8d29379a118e91d2357c8498eeda1be3",
+        "log_index": 30
+      },
+      "needs_review": []
     },
     {
       "symbol": "SLV",
@@ -1253,7 +2488,15 @@
       "isin": "US46428Q1094",
       "token": "0x411eFb0E7f985935DAec3D4C3ebaEa0d0AD7D89f",
       "feed": "0x209b73908e92Ae021826eD79609845451Ecba2ce",
-      "feed_description": "Robinhood SLV / USD"
+      "feed_description": "Robinhood SLV / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48279,
+        "tx": "0x0dd6b844b00d758bb8d263394e92707f0d5a2d042d0aea7261b9029e43ad8a54",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "SMCI",
@@ -1261,7 +2504,15 @@
       "isin": "US86800U3023",
       "token": "0xc01aA1fECeC0605b13bc84874ff7256C0f5F562a",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48242,
+        "tx": "0x5b26dbe8e5bdc7afe647e3526e5d2d13bebdb931ffc71a959041530052801e5b",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "SMH",
@@ -1269,7 +2520,15 @@
       "isin": "US92189F6768",
       "token": "0x072f979c2CAc8e1391B0162a87Fee094bF8744a0",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947096,
+        "tx": "0x12f51913ba3ad3422ddfce314ba648aabb4c2c67e1f44e9fdf8fd5b1ce045207",
+        "log_index": 4
+      },
+      "needs_review": []
     },
     {
       "symbol": "SMR",
@@ -1277,7 +2536,15 @@
       "isin": "US67079K1007",
       "token": "0x1Eebee7F74517e0279dFb09d25B0407bEEc3FDd6",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20946898,
+        "tx": "0x7f37bf31de781454d1b8c1ee71c87bafa0941e0536a82f101c8e6b2bec294fdb",
+        "log_index": 25
+      },
+      "needs_review": []
     },
     {
       "symbol": "SNAP",
@@ -1285,7 +2552,15 @@
       "isin": "US83304A1060",
       "token": "0xF6589F11Bc40b669e584073F428B05562F568733",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949500,
+        "tx": "0x5e51531eafd8fdb2684ad48e783f1c473bd5a4db4ed44053c2a5d209c976e70a",
+        "log_index": 16
+      },
+      "needs_review": []
     },
     {
       "symbol": "SNDK",
@@ -1293,7 +2568,15 @@
       "isin": "US80004C2008",
       "token": "0xB90A19fF0Af67f7779afF50A882A9CfF42446400",
       "feed": "0xfb133Fa4B7b385802B693a293606682Df47109A3",
-      "feed_description": "RHSNDK / USD"
+      "feed_description": "RHSNDK / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48293,
+        "tx": "0xe7e6be70fd28fc92dc962ff734e0082c31b87bb122d0be3eedb3f1409d5debb6",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "SNOW",
@@ -1301,7 +2584,15 @@
       "isin": "US8334451098",
       "token": "0xBa0CAB75495255d0cB58E22B648bFED4ECD1F47E",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949878,
+        "tx": "0x4869a6b9f00e5359017ede22756317dcc9a5ed895f313374b33ac8b34a5bb769",
+        "log_index": 3
+      },
+      "needs_review": []
     },
     {
       "symbol": "SOFI",
@@ -1309,7 +2600,15 @@
       "isin": "US83406F1021",
       "token": "0x98E75885157C80992A8D41b696D8c9C6Fb30A926",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48223,
+        "tx": "0x7f76fa50232b6b9270b77cc61691872626bb7e3042e8540fec3e0d00b1b64ce5",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "SOUN",
@@ -1317,7 +2616,15 @@
       "isin": "US8361001071",
       "token": "0x6E3Dfd9f7e1649BaA14D25cac18C94d62dB10A54",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20950099,
+        "tx": "0x2b83939d4f653a18b89ec7008ed26b9334dd1bdc6c7e5c27875792e4d14aed5d",
+        "log_index": 6
+      },
+      "needs_review": []
     },
     {
       "symbol": "SOXX",
@@ -1325,7 +2632,15 @@
       "isin": "US4642875235",
       "token": "0x75742c18BC1f1C5c5f448f4C9D9C6F66dafAAa38",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48241,
+        "tx": "0xcf0bffa225746422e849c5c32d62f2aab98ce2a124ea403361a041c4cb5ac984",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "SPCX",
@@ -1333,7 +2648,15 @@
       "isin": "US84615Q1031",
       "token": "0x4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa",
       "feed": "0xB265810950ba6c5C0Ff821c9963014a56fD8Bffb",
-      "feed_description": "Robinhood SPCX / USD"
+      "feed_description": "Robinhood SPCX / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 58487,
+        "tx": "0x89276c749bc5f49f41775d5e80d833f07918f64d9b111cf0f6f553a75ac24d19",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "SPMO",
@@ -1341,7 +2664,15 @@
       "isin": "US46138E3392",
       "token": "0xAd622320e520de39e72d41EF07438C3Fd3354875",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48261,
+        "tx": "0xf2f0ee2da13869ade72aa223b12f389abda92db416fee7b446107329e2259e2e",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "SPY",
@@ -1349,7 +2680,15 @@
       "isin": "US78462F1030",
       "token": "0x117cc2133c37B721F49dE2A7a74833232B3B4C0C",
       "feed": "0x319724394D3A0e3669269846abE664Cd621f9f6A",
-      "feed_description": "RHSPY / USD"
+      "feed_description": "RHSPY / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48294,
+        "tx": "0x68b343238e46406e466aba0fa206cdcad84f27ba610dbfb2bd48fba8e0d52842",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "TE",
@@ -1357,7 +2696,15 @@
       "isin": "US35834F1049",
       "token": "0xb1969f6604CA1AE7a2cD3F1827876e914594CA2D",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20950404,
+        "tx": "0x7ac90ff1f756c5dd3e1bf73eb1276f00c7d9f1925aa99c2deb9a200d735480bd",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "TEAM",
@@ -1365,7 +2712,15 @@
       "isin": "US0494681010",
       "token": "0x5B97476b922F3305131B8f0B9D333172E87f4aaE",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20950133,
+        "tx": "0xe7a43018e0542aec15714416c57b5e3ba73b99bcf9df34e627e612c61bf06955",
+        "log_index": 50
+      },
+      "needs_review": []
     },
     {
       "symbol": "TEM",
@@ -1373,7 +2728,15 @@
       "isin": "US88023B1035",
       "token": "0xB1CC0EC7Db69Cf43539119814df40071b9d61793",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20950437,
+        "tx": "0xe6802c4a5c9db39d382342241c55b3af753fdf01b986556dbe284fc16e7e52cd",
+        "log_index": 42
+      },
+      "needs_review": []
     },
     {
       "symbol": "TER",
@@ -1381,7 +2744,15 @@
       "isin": "US8807701029",
       "token": "0x2778C5024D5cA2CdB0f8eAD671ffc69963AdCD9C",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948475,
+        "tx": "0x1aba26958376e12584c1a7a4ae16ce57a6dd0976e640e989b8ff27a92315db28",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "TSEM",
@@ -1389,7 +2760,15 @@
       "isin": "IL0010823792",
       "token": "0x89776d4Cd68193597A2fC132cfaC1fDe36CCeA8a",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48245,
+        "tx": "0xe88bd08f265862f8a29b8c480fb2f7960b78bc387c8e6bee16370668fb936fce",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "TSLA",
@@ -1397,7 +2776,15 @@
       "isin": "US88160R1014",
       "token": "0x322F0929c4625eD5bAd873c95208D54E1c003b2d",
       "feed": "0x4A1166a659A55625345e9515b32adECea5547C38",
-      "feed_description": "RHTSLA / USD"
+      "feed_description": "RHTSLA / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 34767,
+        "tx": "0xc4c1c585493272cb137f1039546033e9200c249e82579f77eed26041929e80a8",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "TSM",
@@ -1405,7 +2792,15 @@
       "isin": "US8740391003",
       "token": "0x58FfE4a942d3885bAa22D7520691F611EF09e7AA",
       "feed": "0x874cF94aa8eC88Fd9560094dD065f2fB3E41Fc2F",
-      "feed_description": "Robinhood TSM / USD"
+      "feed_description": "Robinhood TSM / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48257,
+        "tx": "0x6e3449f096d61c5dd74573160f1e83e447c655958b0f42b074c2e5a382b80277",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "TTD",
@@ -1413,7 +2808,15 @@
       "isin": "US88339J1051",
       "token": "0x0b5fb4031cae9163db10B169Ee72685F0EdC8545",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948763,
+        "tx": "0x3398d990c426a9f2fcc9232bbdd04207eb9234727498ce00583beaa66faeaff0",
+        "log_index": 38
+      },
+      "needs_review": []
     },
     {
       "symbol": "TTWO",
@@ -1421,7 +2824,15 @@
       "isin": "US8740541094",
       "token": "0x5e81213613b6B86EaB4c6c50d718d34359459786",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 46123,
+        "tx": "0x2c6948c516a827816b9e91ec53461abb67292f1a6196bedd0d489de3e1d80026",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "UMC",
@@ -1429,7 +2840,15 @@
       "isin": "US9108734057",
       "token": "0x0E6e67Ba88e7b5d9B67636A215c76779B948dE79",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48240,
+        "tx": "0x0eb4316d0812eb4c7e5f2b0d31d903f0f2c023ff5d62716c33b3939d4918fb3c",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "UNH",
@@ -1437,7 +2856,15 @@
       "isin": "US91324P1021",
       "token": "0xcF364ea52787e289De6F32077834056E3E70D6A8",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949016,
+        "tx": "0x4da698358ec426c45559061bd52a6560c1b5e5fc5b0ae7e77aa2abd793a35682",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "UPS",
@@ -1445,7 +2872,15 @@
       "isin": "US9113121068",
       "token": "0xf23250dac154D05Bb671CB0d0eBEf3c635c79CE2",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48225,
+        "tx": "0x3b7999299af3b94b714985b47c6b248bf47c6e820b4577f9cec75efa380fc7e2",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "USAR",
@@ -1453,7 +2888,15 @@
       "isin": "US91733P1075",
       "token": "0xd917B029C761D264c6A312BBbcDA868658eF86a6",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48291,
+        "tx": "0x5d5b69d8d03b7da72ba332cb8eb59f2c111f6213c57c8c4072ca520c59b5dad0",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "USO",
@@ -1461,7 +2904,15 @@
       "isin": "US91232N2071",
       "token": "0xa30FA36Db767ad9eD3f7a60fC79526fB4d56D344",
       "feed": "0x75a9c76Ef439e2C7c2E5a34Ab105EcFe3766431c",
-      "feed_description": "RHUSO / USD"
+      "feed_description": "RHUSO / USD",
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48277,
+        "tx": "0x278e112b7d91cc7e732e4ea4c3d7ba67d6f49ea2eb485434e4cfb97bc9da886e",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "VICR",
@@ -1469,7 +2920,15 @@
       "isin": "US9258151029",
       "token": "0x6006ed4B2F94110851ff7509D97D034f0EeD9226",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20947687,
+        "tx": "0xd7982d3ea96410a8537ecdef96773cbf3ca2d1e1e9418636597c81306782c1b9",
+        "log_index": 19
+      },
+      "needs_review": []
     },
     {
       "symbol": "VRT",
@@ -1477,7 +2936,15 @@
       "isin": "US92537N1081",
       "token": "0xFA78C12E6488814A0262E4e802749a4a737d5fB7",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949841,
+        "tx": "0x0c61f9425cfb8379bd2ddf3d02c2b5dec0e2d276b415be78b5a70c50805d4b66",
+        "log_index": 53
+      },
+      "needs_review": []
     },
     {
       "symbol": "VSAT",
@@ -1485,7 +2952,15 @@
       "isin": "US92552V1008",
       "token": "0x26dCbfb34FC83CAbD6990f449674efDc6097fF85",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20946783,
+        "tx": "0x5b962f5f9da4f76043853c0dcf872af7e61ceb6b73ffd6502801ec6ea2e68fe4",
+        "log_index": 40
+      },
+      "needs_review": []
     },
     {
       "symbol": "VST",
@@ -1493,7 +2968,15 @@
       "isin": "US92840M1027",
       "token": "0x561e2a49212b7cCF47f2744Ccb83e200722fADBc",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949579,
+        "tx": "0x141b338922c145626999f983c210f86f53b7109b6a837ef37afefb1963d0bdf5",
+        "log_index": 27
+      },
+      "needs_review": []
     },
     {
       "symbol": "VTI",
@@ -1501,7 +2984,15 @@
       "isin": "US9229087690",
       "token": "0x0594134DF3f171a354D9C85eBD65b7A6148F6D09",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20950257,
+        "tx": "0xf7b4f489e6cb5ed99366f65c3b8fbc000f507b2b14cb3db2e2f78ecdf8b6c1b8",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "WDAY",
@@ -1509,7 +3000,15 @@
       "isin": "US98138H1014",
       "token": "0x82DA4646242e1D962e96e932269Dc644c94a9CaA",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 46112,
+        "tx": "0xc4b86c7467cc39bdbbf3093aea042225bada07d9ec4c92beae3d0b764e062454",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "WDC",
@@ -1517,7 +3016,15 @@
       "isin": "US9581021055",
       "token": "0xF52597345A8Edf418bc4071b4a35112472277D3e",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20948407,
+        "tx": "0xc8e5e63ac8b4bf816dc191dfd50b071328aad9673c2dd27b8de2101873f49a8d",
+        "log_index": 10
+      },
+      "needs_review": []
     },
     {
       "symbol": "WULF",
@@ -1525,7 +3032,15 @@
       "isin": "US88080T1043",
       "token": "0x348Be1A8663f15edDe5CDf8A96BB69078f7aB6Fd",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20949088,
+        "tx": "0x52dea228ba405ec2dbd7827996a4c797bc114475d7c4c816096419e98f362a23",
+        "log_index": 72
+      },
+      "needs_review": []
     },
     {
       "symbol": "WYFI",
@@ -1533,7 +3048,15 @@
       "isin": "KYG961151035",
       "token": "0x9e7ABD3C9139D14E4c86DcE0e455AAB7A0C2FB3E",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 20950470,
+        "tx": "0x8f11122fb9c1d8074f75f63ae6c8629ff11db1e1b3dee1771264284dbb4707eb",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "XLK",
@@ -1541,7 +3064,15 @@
       "isin": "US81369Y8030",
       "token": "0x15Cd20759CE7F3285c29A319dE2D1A2e098c6f43",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48264,
+        "tx": "0x8d84f56be149405de15d7345a0b21fcc206bacba3917eaa9d70547c43e0b18a5",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "XNDU",
@@ -1549,7 +3080,15 @@
       "isin": "CA98390R1029",
       "token": "0xA8eB3BCcbf2017eE7CBfb652eB51CF2E1B153289",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 46135,
+        "tx": "0xa170fe89365b79f70de296be8f31c14f503ad51bd3f026e89f6bebf6db6303e2",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "XOM",
@@ -1557,7 +3096,15 @@
       "isin": "US30233Q1085",
       "token": "0xf9B46d3D1B22199D4D1025a9cEDB540A33F1a2d5",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48259,
+        "tx": "0x43fd88ff3a7e9b8f4c6a20af82bf25d622c6b111c73c66b4f3eb4d84ce5689d8",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "ZM",
@@ -1565,7 +3112,15 @@
       "isin": "US98980L1017",
       "token": "0x44c4F142009036cF477eD2d09932051843137CF1",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48221,
+        "tx": "0xaacf4e60f8c76a5d1702dcfd7f8f868649f6b1ca8fb0a270aeda4c975660dbb6",
+        "log_index": 1
+      },
+      "needs_review": []
     },
     {
       "symbol": "ZS",
@@ -1573,7 +3128,25 @@
       "isin": "US98980G1022",
       "token": "0x7dc013eB55e436f30d7ED1AFE4E36d6e45e3c3f7",
       "feed": null,
-      "feed_description": null
+      "feed_description": null,
+      "code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+      "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+      "factory_log": {
+        "block": 48232,
+        "tx": "0x325890181ae6241246738766c372ed6a93d42e3e2f6d3fd0a2ee6f6cfc1139e0",
+        "log_index": 1
+      },
+      "needs_review": []
     }
-  ]
+  ],
+  "identity": {
+    "read_at_block": 76057945,
+    "reference_code_hash": "0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630",
+    "beacon": "0xe10b6f6B275de231345c20D14Ab812db62151b00",
+    "beacon_implementation": "0xb35490d6f9163DE4F80d88dc75c3516eb64C5aE2",
+    "factory": "0x4783C67b63dE2B358Ac5951a7D41F47A38F3C046",
+    "factory_event_topic0": "0xd9b0c6a1c0de228715ad0fa09f3259686ee84f8cc675e03ef7e47a9cdafa76d6",
+    "factory_events": 204,
+    "method": "keccak256(eth_getCode) and the EIP-1967 beacon slot of every token, and the beacon's implementation(), at read_at_block; the factory's deployment events (data: token, name, symbol) over blocks 0..read_at_block, via https://rpc.mainnet.chain.robinhood.com"
+  }
 }

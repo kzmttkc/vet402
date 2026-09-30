@@ -1,0 +1,91 @@
+{
+  "address": "0xe9b08727131e34010b34006c660d4c1b436ec25f",
+  "source": "full-history search, blocks 0-76081226: eth_getLogs with topics [Transfer, wallet] and [Transfer, null, wallet], no address filter, 30000-block spans, via https://rpc.mainnet.chain.robinhood.com (blocks 0-76012674 on 2026-09-30, the rest by packages/rwa/scripts/lookalikes-fixture.ts)",
+  "scanned_from_block": 0,
+  "scanned_to_block": 76081226,
+  "metadata_read_at_block": 76066051,
+  "tokens_seen": [
+    "0x020bfc650a365f8bb26819deaabf3e21291018b4",
+    "0x0779369854d3ecdea927206718ffd7730c67b71f",
+    "0x0d22e7541d02779c648be139797d32c46dfda870",
+    "0x0d61432bbf1d1a5827d648baa81b9b424dc63a93",
+    "0x20fca261f23b8376db40c3fdda05b8e2aecc5889",
+    "0x290a52380a88f743813b8c3e9f6b0e61db5fdf73",
+    "0x2ab58fcec93354bee42abfe8d6a012f206cb880c",
+    "0x2fd13b49f970e8c6d89283056c1c6281214b7eb6",
+    "0x355bb7f0f6c730e4460d620420a300fa08ff82f3",
+    "0x366efff7918807c144700cfc4b69bd21e42537f8",
+    "0x39dbed3a2bd333467115de45665cc57f813c4571",
+    "0x3cae51882495b2a2dce68b062e5143245d2b7f5d",
+    "0x4190ee598c2a69d35bef53c83d152ae0f25ea416",
+    "0x4d3f37a965b21ab4122e92dd41d2693e742c883b",
+    "0x4d6e66c687ea3e134401bc498c9dde4517983124",
+    "0x52d5d35423fe1c43e7c0b46b087ff7da074606d7",
+    "0x534a5b083ee6de25840077b6934880e9c4c4a919",
+    "0x56910d4409f3a0c78c64dd8d0545ff0705389870",
+    "0x59dd61695ec7a5b11945dec2096be1f616200c4c",
+    "0x5dd716fe12275b69f04b26beeca343843c8e3539",
+    "0x62229f3ca0a51d2396dedb6b54ea6789cbbc02b0",
+    "0x7859f341c798189a1da859947a6eec82d414cdaa",
+    "0x7ec1ffe06c5fe6145035af1fdbc1b186792a22e0",
+    "0x831a3962e31037cf4eb8847cb7ea05aac1db35b6",
+    "0x8b2571037b7bac11bac3a5059d1055d5c2a5ad82",
+    "0x91da2b31cc53c829b7bf1907bddd385e261c6a28",
+    "0x91edc83b9650ff586b1e0e519eb7e77d7fb7dfb7",
+    "0x95afb21e90e60237883ef92eee8099abe55e7fd8",
+    "0xa998181416ada11815cb2d0daf8a68eb10b5c0fd",
+    "0xb0711574537f61298d43be9cebc05d8c5e6101e9",
+    "0xc2525b7c68b6d66de5aabfedc7b13314f389d5c4",
+    "0xc82fb80ab69f68ca9f885f43f2b0cde0b499102c",
+    "0xc9ec05ed00de82629cdb1d6c3ea5d34f383a5396",
+    "0xdebf427d12b5dafc8dd7ecfa869e62c6840119d3"
+  ],
+  "counterparties": [
+    "0x0980b34ade9476dba81bcdb0f865a333793ad1c2",
+    "0x09e99d23bf226a6c6b4c2126239a3df3ca1b89b6",
+    "0x18a5af4e442f8be68968cc1f00d537f8af2d12cd",
+    "0x1eb96a9cec4ca4a2a945a99478b52bc49a6d77c3",
+    "0x204faca1764b154221e35c0d20abb3c525710498",
+    "0x2fd13b49f970e8c6d89283056c1c6281214b7eb6",
+    "0x52e65b17fb6e5ba00ed806f37afcd2daa50271ca",
+    "0x7a192e71564ec66ee0763e328a3ac274942de4e1",
+    "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+    "0x94bab9693ba2f6358507effcbd372b0660afff9d",
+    "0xa43b424bc609495aed4bcd88d654934b510b0ad9",
+    "0xa7bb1ac63bbab0c44316e6c8c455213441689167",
+    "0xd4eb21209c4d6093f80b5b84f5c45cc093ea14a3",
+    "0xd60a5d14db690b7afad71f76b108071d7175597d"
+  ],
+  "tokens": {
+    "0x4190ee598c2a69d35bef53c83d152ae0f25ea416": {
+      "codeHash": "0x2660e228c7f7438865de8d7b3f2de706fc94ccaf9403f9167a24fad8345843ab",
+      "symbol": "U឵S឵DG",
+      "name": "U឵S឵DG"
+    },
+    "0x5dd716fe12275b69f04b26beeca343843c8e3539": {
+      "codeHash": "0x7c5618d027ce9612d14efed8ae82aedfeb94c947e8879f47cfc89487e4cc8877",
+      "symbol": "NVDA",
+      "name": "NVIDIA Robinhood Coin"
+    }
+  },
+  "transfers": [
+    {
+      "token": "0x4190ee598c2a69d35bef53c83d152ae0f25ea416",
+      "from": "0xe9b08727131e34010b34006c660d4c1b436ec25f",
+      "to": "0x1eb99afad224b2523a6d6aa88b36da33b8b177c3",
+      "block": 63379129,
+      "tx": "0x63c6fdd0814316fae3144bf2452bff291e573936fa242104ef32fab5667fa01e",
+      "log_index": 5,
+      "amount_raw": "10000000"
+    },
+    {
+      "token": "0x5dd716fe12275b69f04b26beeca343843c8e3539",
+      "from": "0x3433e16efacb71e0e2cd605489514b648b30abd0",
+      "to": "0xe9b08727131e34010b34006c660d4c1b436ec25f",
+      "block": 73953009,
+      "tx": "0x1b838f40a43d54b7ce3364f08f723516170be2d03fdbcd6ab801c79f7f77b51b",
+      "log_index": 107,
+      "amount_raw": "25000000000000000000"
+    }
+  ]
+}

@@ -3,10 +3,56 @@
 // Only addresses checked against the chain are listed here.
 
 export const RWA_CHAIN_ID = 4663;
-export const RWA_RPC_URL = "https://rpc.mainnet.chain.robinhood.com";
+/** Robinhood's own public RPC. The default read path, and the only one the scripts use (they write the URL into fixtures). */
+export const RWA_PUBLIC_RPC_URL = "https://rpc.mainnet.chain.robinhood.com";
 /** SPEC §9: one fallback, used only when the primary fails. Chosen 2026-09-17 from chainlist (chain 4663 confirmed by eth_chainId).
  *  Measured the same day: it refuses archive reads and genesis-range log queries without a token, so it only covers head-side reads. */
 export const RWA_RPC_FALLBACK_URL = "https://robinhood-rpc.publicnode.com";
+
+type Env = Record<string, string | undefined>;
+
+/** An env value used only when it is an https URL. Anything else is ignored, so a typo falls back to the public path instead of taking /rwa down. */
+function httpsUrl(v: string | undefined): string | null {
+  const t = v?.trim();
+  return t && /^https:\/\/[^\s]+$/.test(t) ? t : null;
+}
+
+/** Alchemy's Robinhood Chain mainnet host. The key is appended at call time and never stored elsewhere. */
+export const ALCHEMY_ROBINHOOD_BASE = "https://robinhood-mainnet.g.alchemy.com/v2/";
+
+/**
+ * The Alchemy endpoint for Robinhood Chain (SPEC patch 020), the full URL with
+ * its key: RWA_ALCHEMY_URL, else ALCHEMY_API_KEY on ALCHEMY_ROBINHOOD_BASE, else
+ * none. Set only in Vercel. It is never logged, echoed or written to a file.
+ */
+export function rwaAlchemyUrl(env: Env = process.env): string | null {
+  const explicit = httpsUrl(env.RWA_ALCHEMY_URL);
+  if (explicit) return explicit;
+  const key = env.ALCHEMY_API_KEY?.trim();
+  return key && /^[A-Za-z0-9_-]+$/.test(key) ? `${ALCHEMY_ROBINHOOD_BASE}${key}` : null;
+}
+
+/** The primary read RPC when Alchemy is not in use: RWA_RPC_URL, else the public RPC. */
+export function rwaNonAlchemyRpcUrl(env: Env = process.env): string {
+  return httpsUrl(env.RWA_RPC_URL) ?? RWA_PUBLIC_RPC_URL;
+}
+
+/**
+ * The primary read RPC for every /rwa reconstruction, free and paid alike
+ * (SPEC patch 020): RWA_ALCHEMY_URL, else RWA_RPC_URL, else the public RPC.
+ * ALCHEMY_API_KEY alone does not move the plain reads: it serves only the two
+ * enhanced calls in alchemy.ts. Read at call time, so a test or a redeploy can
+ * change it without a rebuild.
+ */
+export function rwaRpcUrl(env: Env = process.env): string {
+  return httpsUrl(env.RWA_ALCHEMY_URL) ?? rwaNonAlchemyRpcUrl(env);
+}
+
+/** Which kind of primary is in use, for the record and the logs (never the URL itself). */
+export function rwaRpcSource(env: Env = process.env): "alchemy" | "custom" | "public" {
+  if (httpsUrl(env.RWA_ALCHEMY_URL)) return "alchemy";
+  return httpsUrl(env.RWA_RPC_URL) ? "custom" : "public";
+}
 
 // Golden token for Fixture A (SPEC §11). Checked on 2026-09-17 via eth_call:
 // symbol() = "NVDA", decimals() = 18; feed description() = "RHNVDA / USD", decimals() = 8.

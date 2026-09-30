@@ -11,6 +11,7 @@ import { NextRequest } from "next/server";
 import { privateKeyToAccount } from "viem/accounts";
 import { GET } from "../../../src/app/api/v1/rwa/paid/facts/[address]/route";
 import { __resetFactsCacheForTest, cachedFactsWith } from "../cache";
+import { factsHashV2 } from "../anchor";
 import {
   BadPayment,
   PAY_TO,
@@ -255,4 +256,37 @@ test("settle outcome unknown (5xx, non-JSON, thrown, success:false with a tx has
 test("invalid address never asks for money", async () => {
   const res = await call({}, "vitalik.eth");
   assert.equal(res.status, 400);
+});
+
+test("X-Facts-Hash (SPEC patch 023): the v2 hash of the body on 200, the body itself unchanged, absent on 402", async () => {
+  await prefill();
+  const fx = facilitator(() => json({ isValid: true, payer: payer.address }), () => json({ success: true, transaction: TX, network: "eip155:4663", payer: payer.address }));
+  try {
+    const res = await call({ "PAYMENT-SIGNATURE": b64json(await signed()) });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.deepEqual(body, { ...FAKE_FACTS, address: ADDR }, "body is the record, nothing added");
+    assert.equal(res.headers.get("X-Facts-Hash"), factsHashV2(body as never));
+    assert.equal(res.headers.get("X-Facts-Hash"), factsHashV2(FAKE_FACTS as never), "EIP-55 or lower-case, one hash");
+    assert.match(res.headers.get("Access-Control-Expose-Headers") ?? "", /X-Facts-Hash/);
+  } finally {
+    fx.restore();
+  }
+  const unpaid = await call();
+  assert.equal(unpaid.status, 402);
+  assert.equal(unpaid.headers.get("X-Facts-Hash"), null);
+});
+
+test("a record that cannot be hashed still settles and returns 200, only without X-Facts-Hash", async () => {
+  await cachedFactsWith(ADDR, async () => ({ ...FAKE_FACTS, weird: Number.NaN }) as never);
+  const fx = facilitator(() => json({ isValid: true }), () => json({ success: true, transaction: TX, network: "eip155:4663", payer: payer.address }));
+  try {
+    const res = await call({ "PAYMENT-SIGNATURE": b64json(await signed()) });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("X-Payment-Status"), "settled");
+    assert.equal(res.headers.get("X-Facts-Hash"), null);
+    assert.deepEqual(fx.calls, ["/verify", "/settle"]);
+  } finally {
+    fx.restore();
+  }
 });

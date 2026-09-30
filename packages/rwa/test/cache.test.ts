@@ -17,7 +17,10 @@ import {
   ReconstructionTimeout,
   __resetFactsCacheForTest,
   cachedFactsWith,
+  FREE_DEADLINE_MS,
+  RECONSTRUCTION_HARD_CAP_MS,
 } from "../cache";
+import { NoStockTokenActivity } from "../facts";
 
 const addr = (n: number) => `0x${n.toString(16).padStart(40, "0")}`;
 const deferred = () => {
@@ -102,14 +105,53 @@ test("a cache hit is served even while the in-flight cap is full", async () => {
   await Promise.all(busy);
 });
 
-test("a reconstruction that outlives the deadline is abandoned with a clean error, and its slot is released", async () => {
-  const never = new Promise<never>(() => {});
+test("a caller stops waiting at the deadline, but the read keeps its slot and the retry joins it (patch 020)", async () => {
+  const slow = deferred();
+  let loads = 0;
   await assert.rejects(
-    cachedFactsWith(addr(500), async () => never, Date.now, 20),
+    cachedFactsWith(addr(500), async () => { loads++; return (await slow.promise) as never; }, Date.now, 20),
     (e: unknown) => e instanceof ReconstructionTimeout,
   );
+  // The read is still running: a second address is refused rather than started beside it.
+  await assert.rejects(cachedFactsWith(addr(501), async () => ({}) as never), (e: unknown) => e instanceof TooBusy);
+  // The retry for the same address joins the running read instead of starting another.
+  const retry = cachedFactsWith(addr(500), async () => { loads++; return {} as never; });
+  slow.resolve({ done: true });
+  assert.deepEqual(await retry, { done: true });
+  assert.equal(loads, 1);
+  // The slot is free once the read has ended.
   let calls = 0;
-  await cachedFactsWith(addr(501), async () => { calls++; return {} as never; });
-  assert.equal(calls, 1, "the slot must be free again after a timeout");
-  assert.ok(RECONSTRUCTION_DEADLINE_MS <= 45_000, "the deadline must leave room under the route's 60s maxDuration");
+  await cachedFactsWith(addr(502), async () => { calls++; return {} as never; });
+  assert.equal(calls, 1);
+  assert.ok(RECONSTRUCTION_DEADLINE_MS <= 45_000, "the paid deadline must leave room under the route's 60s maxDuration");
+  assert.ok(FREE_DEADLINE_MS < RECONSTRUCTION_DEADLINE_MS, "the free surfaces answer sooner than the paid lane");
+  assert.ok(RECONSTRUCTION_HARD_CAP_MS < 60_000, "a hung read gives its slot up inside maxDuration");
+});
+
+test("a read that hangs past the hard cap gives its slot and its entry up", async () => {
+  const never = new Promise<never>(() => {});
+  await assert.rejects(
+    cachedFactsWith(addr(510), async () => never, Date.now, 10, 30),
+    (e: unknown) => e instanceof ReconstructionTimeout,
+  );
+  await new Promise((r) => setTimeout(r, 40));
+  let calls = 0;
+  await cachedFactsWith(addr(511), async () => { calls++; return {} as never; });
+  assert.equal(calls, 1, "the slot must be free after the hard cap");
+  await cachedFactsWith(addr(510), async () => { calls++; return {} as never; });
+  assert.equal(calls, 2, "the hung entry must be forgotten after the hard cap");
+});
+
+test("an address with no Stock Token is remembered: one read, the same answer twice (patch 020)", async () => {
+  let loads = 0;
+  const answer = { error: "no_stock_token_activity", as_of_block: 1 } as never;
+  const load = async () => {
+    loads++;
+    throw new NoStockTokenActivity(answer);
+  };
+  const first = await cachedFactsWith(addr(600), load).catch((e) => e);
+  const second = await cachedFactsWith(addr(600), load).catch((e) => e);
+  assert.ok(first instanceof NoStockTokenActivity && second instanceof NoStockTokenActivity);
+  assert.equal(loads, 1);
+  assert.deepEqual(second.answer, first.answer);
 });

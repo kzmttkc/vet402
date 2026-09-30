@@ -21,6 +21,13 @@ Chain. Each item names the file or command that shows whether we kept it.
 - Agents that want a looser limit can pay per call: the same JSON at
   `/api/v1/rwa/paid/facts/<address>` over x402, 0.01 USDG on Robinhood Chain,
   settled only after the record is built. The free route stays free.
+- Reads go to `RWA_ALCHEMY_URL`, else `RWA_RPC_URL`, else Robinhood Chain's
+  public RPC. The paid lane reads through that third-party RPC whenever one is
+  set. With Alchemy set, every canonical token a wallet ever moved is in scope.
+- Alchemy discovery uses `RWA_ALCHEMY_URL`, else `ALCHEMY_API_KEY` on
+  `https://robinhood-mainnet.g.alchemy.com/v2/`, else nothing. The key alone does
+  not move the plain reads. A refused key (401, 403, network not enabled) sends
+  /rwa back to the public path for 10 minutes, and the record keeps its gap.
 - You cannot trade, deposit or delegate anything here: no custody, no token,
   no advice. That stays the same as coverage grows.
 
@@ -42,12 +49,83 @@ Chain. Each item names the file or command that shows whether we kept it.
   (`npm run rwa:test`), so a change that breaks them cannot ship.
 - A hash of a published record is written to `RwaAnchor`, which
   has no owner and no upgrade path. Recompute it from the JSON with
-  `npx tsx packages/rwa/scripts/anchor.ts --verify <tx> --mainnet`. We anchor
+  `node packages/rwa/scripts/verify-record.mjs --record <file> --tx <tx>` (no
+  install) or `npx tsx packages/rwa/scripts/anchor.ts --verify <tx>`. We anchor
   again whenever the method version changes, so each version has a checkable
   reference point.
 - When we get a number wrong, we fix it, raise the method
   version if the method was at fault, and say what changed in this file's
   history. We do not edit old anchors; they stay as they were.
+
+## Anchoring a new record (operator runbook)
+
+This adds one record to the existing `RwaAnchor`
+`0x1955137e7773f2459eb75fb88842026c6517c22d`. It never deploys a contract on
+mainnet and never touches `fixtures/rwa/anchor.json`, which stays the 0.1 anchor.
+I run it by hand, once per method version, from a Terminal on my own machine.
+
+1. Get the code and dependencies.
+
+   ```bash
+   git pull && npm ci
+   ```
+
+2. Dry run. No key. It rebuilds the demo wallet's record from chain data
+   (about a minute), then prints what it would anchor and what it would cost.
+
+   ```bash
+   npx tsx packages/rwa/scripts/anchor.ts --dry-run --mainnet \
+     --contract 0x1955137e7773f2459eb75fb88842026c6517c22d
+   ```
+
+   Check three things in the output. `method_version` is the version you mean
+   to anchor. `hash_material` is `2` for `rwa-recon-0.3` and later. `max_cost_eth`
+   is small. On 2026-09-30 (still `rwa-recon-0.2`, material 1) it estimated
+   30,677 gas, a limit of 39,880 with headroom, gas price 44,434,000 wei, and a
+   maximum of 0.00000177 ETH.
+
+3. Put the key in the environment without writing it to shell history. Paste the
+   key and press Enter. Nothing is echoed.
+
+   ```bash
+   read -rs RWA_ANCHOR_KEY && export RWA_ANCHOR_KEY
+   ```
+
+   Use the key that sent the 0.1 anchor (`0x973cD8a91A771C2C04C6036888F8175D6b4F6227`)
+   so every anchor shows one operator. The script never prints, logs or writes
+   the key.
+
+4. Send one anchor.
+
+   ```bash
+   npx tsx packages/rwa/scripts/anchor.ts --mainnet \
+     --contract 0x1955137e7773f2459eb75fb88842026c6517c22d
+   ```
+
+   It rebuilds the record, shows the sender, its balance, the hash and the gas
+   estimate, then asks you to type `anchor`. Anything else stops without sending.
+   After the receipt it checks the log against the record and writes
+   `fixtures/rwa/anchors/<method_version>-<block>.json`. It refuses to overwrite
+   an existing file.
+
+5. Remove the key from the shell.
+
+   ```bash
+   unset RWA_ANCHOR_KEY
+   ```
+
+6. Check the new record like any reader would, then commit that one file.
+
+   ```bash
+   node packages/rwa/scripts/verify-record.mjs --record fixtures/rwa/anchors/<file>.json
+   git add fixtures/rwa/anchors/<file>.json
+   ```
+
+What the script refuses, so a slip cannot split the record: a mainnet run
+without `--contract`, any mainnet address other than `0x1955…c22d`, a contract
+whose runtime keccak256 is not the pinned `RwaAnchor` build, a sender balance
+below the maximum cost, and writing to `fixtures/rwa/anchor.json`. `--deploy` works
+on testnet (46630) only, for rehearsal.
 
 ## What we will build next on Robinhood Chain
 

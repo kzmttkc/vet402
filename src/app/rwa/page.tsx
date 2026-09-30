@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { entryTarget } from "../../../packages/rwa/entry";
+import { EXAMPLE_WALLETS } from "../../../packages/rwa/examples";
 
 /**
  * /rwa — where "paste any wallet" lands. One field, no wallet connection, no
@@ -60,9 +61,22 @@ export default async function RwaEntryPage({ searchParams }: { searchParams: Pro
 
       <p className="mt-6 text-sm">
         No wallet connection and no sign-in. The page reads each canonical Stock Token&apos;s transfers (Robinhood&apos;s own list of 195), Uniswap swaps checked
-        against the official factory and the Chainlink feed, and says what it could not parse. A first look at a
-        wallet can take up to a minute.
+        against the official factory and the Chainlink feed, and says what it could not parse. A wallet that holds
+        none of them gets that answer in seconds. A first look at an active wallet can take up to a minute. The page
+        says so and reloads itself.
       </p>
+      <h2 className="mt-8 text-lg font-semibold">Try these wallets</h2>
+      <p className="mt-2 text-sm">No Stock Token wallet of your own? These traded through the official Uniswap pools.</p>
+      <ul className="mt-2 space-y-1 text-sm">
+        {EXAMPLE_WALLETS.map((w) => (
+          <li key={w.address}>
+            <Link className="font-mono underline" href={`/rwa/${w.address}`}>
+              {w.address.slice(0, 10)}…{w.address.slice(-4)}
+            </Link>{" "}
+            {w.note}
+          </li>
+        ))}
+      </ul>
       <h2 className="mt-8 text-lg font-semibold">30 seconds</h2>
       <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm">
         <li>

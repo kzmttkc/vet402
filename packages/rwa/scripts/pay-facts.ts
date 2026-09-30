@@ -16,7 +16,7 @@
 import { createPublicClient, createWalletClient, http, parseAbi, getAddress, type Hex } from "viem";
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
 import { randomBytes } from "node:crypto";
-import { RWA_CHAIN_ID, RWA_RPC_URL } from "../config";
+import { RWA_CHAIN_ID, RWA_PUBLIC_RPC_URL } from "../config";
 import { PAY_TO, PERMIT2, PRICE_ATOMIC, USDG, X402_NETWORK, X402_PERMIT2_PROXY, b64json } from "../x402";
 
 const DEMO = "0xE9B08727131E34010b34006c660D4c1B436EC25f";
@@ -28,7 +28,7 @@ const target = args.find((a) => a.startsWith("0x")) ?? DEMO;
 const base = process.env.RWA_PAID_BASE ?? "https://vet402.com";
 const url = `${base}/api/v1/rwa/paid/facts/${target}`;
 
-const chain = { id: RWA_CHAIN_ID, name: "Robinhood Chain", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [RWA_RPC_URL] } } } as const;
+const chain = { id: RWA_CHAIN_ID, name: "Robinhood Chain", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [RWA_PUBLIC_RPC_URL] } } } as const;
 const erc20 = parseAbi([
   "function balanceOf(address) view returns (uint256)",
   "function allowance(address,address) view returns (uint256)",
@@ -39,7 +39,7 @@ async function main() {
   const key = dryRun ? generatePrivateKey() : (process.env.PAYER_PRIVATE_KEY as Hex | undefined);
   if (!key) throw new Error("set PAYER_PRIVATE_KEY, or pass --dry-run");
   const account = privateKeyToAccount(key);
-  const pub = createPublicClient({ chain, transport: http(RWA_RPC_URL) });
+  const pub = createPublicClient({ chain, transport: http(RWA_PUBLIC_RPC_URL) });
   console.log(JSON.stringify({ mode: dryRun ? "dry-run (throwaway key, holds nothing)" : "pay", payer: account.address, url }));
 
   // 1. the terms
@@ -71,7 +71,7 @@ async function main() {
     if (bal < BigInt(accept.amount)) throw new Error("USDG balance is below the price; nothing sent");
     if (allow < BigInt(accept.amount)) {
       if (!approve) throw new Error("Permit2 allowance is short; rerun with --approve (needs a little ETH on 4663)");
-      const wallet = createWalletClient({ account, chain, transport: http(RWA_RPC_URL) });
+      const wallet = createWalletClient({ account, chain, transport: http(RWA_PUBLIC_RPC_URL) });
       const hash = await wallet.writeContract({ address: USDG, abi: erc20, functionName: "approve", args: [PERMIT2, 1_000_000n] });
       await pub.waitForTransactionReceipt({ hash });
       console.log(JSON.stringify({ approve_tx: hash, approved_atomic: "1000000" }));

@@ -421,6 +421,424 @@ RPC: `https://rpc.mainnet.chain.robinhood.com`。失敗時だけ予備（実装�
 
 改正（patch 019・2026-09-29 監査 rwa-audit-2026-09-29.md、Takeshi「指摘の部分だけ完璧に修正」）: **審査員の最初のクリックで落ちないための直し。機能は足さない。** ① facts JSON は CDN に 5 分置き、以降は 1 日まで古い版を返しながら裏で作り直す（`RWA_FACTS_CACHE_CONTROL`、エラーは置かない）。記録ページはまずその CDN の JSON を読み（12 秒で見切り）、取れない時だけ自分で作り直す。同時に開いたページと JSON が同じ答えを返す。上限（同時 1 本・10/分/IP）は上げない。② `/rwa` 入口に README と同じ「30 秒の道」（デモの記録へのリンク・195 銘柄・3 つの損益の意味・アンカー・x402 の初回決済 tx）を置く。patch 015 の「入口に例示アドレスを置かない」はこれで改める（デモの財布は提出物ですでに公開しており、patch 016 のとおり第三者の財布だが名前は出ない）。③ `/rwa` 面から親の `/accuracy`（ALLOW/WARN/BLOCK の率）へのリンクを外し、README へ向ける。④ 記録ページの `identity_binding` 表示を外す（JSON の項目は残す）。⑤ 記録ページに「このページはチェーンからの再計算で、アンカーした記録ではない」と書き、デモの財布ではアンカーした記録（block 74267752・rwa-recon-0.1・tx）を示す。⑥ 要約は「31 of 85 movements not decoded」のように分母つきで出す。⑦ 損益の 3 つの数字（−9.62・−113.98・−284.57）の意味を入口・README・提出文で 1 文にする。
 
+Amendment (patches 020 to 023, 2026-09-30): **`rwa-recon-0.3`.** Four changes built in parallel and merged on branch `rwa-integrate`. Any wallet gets a stated answer (020). The record names the look-alike tokens a wallet met and never counts them (021). Each token lists its corporate actions (022). The anchor hash binds the whole record from 0.3 on, and anyone can check it without a key (023). The patch texts follow as written, headings moved down two levels. The files stay in `docs/rwa/spec-patches/`.
+
+Integration notes (2026-09-30):
+
+- The Alchemy endpoint is `RWA_ALCHEMY_URL`, else `ALCHEMY_API_KEY` on `https://robinhood-mainnet.g.alchemy.com/v2/`, else none. The key alone serves only `alchemy_getAssetTransfers` and `alchemy_getTokenBalances`. The plain reads stay on `RWA_RPC_URL` or the public RPC. Where 020 says "with `RWA_ALCHEMY_URL`", read "with an Alchemy endpoint".
+- A 401, a 403 or a "network not enabled" answer is a refusal. It is not retried, the endpoint is left out for 10 minutes, and the record takes the public path with its gap (`exited_positions_not_scanned`). No error, log line or record carries the URL or the key.
+- Patches 020 and 021 share one Alchemy read: every ERC-20 transfer to and from the wallet, both sides, two calls. Discovery keeps the canonical tokens from it and the look-alike search judges the rest. Past the page cap, discovery asks again with the canonical contracts as a filter.
+
+### SPEC patch 020: any wallet gets a fast, stable, honest answer
+
+Status: proposed on branch `rwa-w1-reach`. Merges into SPEC §5, §7, §9 and §10.
+Method version: the integrator bumps it once to `rwa-recon-0.3`. This patch
+changes scope only when `RWA_ALCHEMY_URL` is set.
+
+#### Why
+
+Measured on 2026-09-30 in production by the sprint audit. The operator wallet
+`0x973cD8a91A771C2C04C6036888F8175D6b4F6227` holds no Stock Token and got three
+different answers in a row: 503 `too_busy`, then 404 after 6 s, then 503
+`feed_unavailable` after 35 s. `/rwa/0x…dEaD` waited 45 s and said "Reading the
+chain failed". A judge who pastes their own wallet most likely holds no Stock
+Token, so this is the first answer most of them see.
+
+Causes found in the code:
+
+1. The empty answer (404) was not cached, in memory or at the CDN. Every paste
+   walked NVDA's full history again: 16 `eth_getLogs` on the public RPC, which
+   answers item-level 429 to bursts.
+2. The page asked the facts route first. On a 404 or 503 it then rebuilt the
+   record itself, so one page view could cost two walks.
+3. A timed-out reconstruction released its in-flight slot while its reads kept
+   running. The next request started another walk beside it, drawing more 429s.
+4. Any failure, including an RPC timeout, was reported as `feed_unavailable`.
+
+#### §5 scope (only with `RWA_ALCHEMY_URL`)
+
+With `RWA_ALCHEMY_URL` set, the transactions to replay come from
+`alchemy_getAssetTransfers` (category `erc20`, `excludeZeroValue: false`, the
+195 canonical addresses as `contractAddresses`, split 100 per request, one query
+for `fromAddress` and one for `toAddress`, every `pageKey` followed, `toBlock` =
+`as_of_block`). Scope becomes every canonical token that ever moved to or from
+the address, plus tokens held at `as_of`. `scope.rule` says so, NVDA gets no
+special case, and `exited_positions_not_scanned` is not listed.
+
+Receipts, balances, feeds and the replay invariant are unchanged: every event
+still comes from the receipt, and `replayed_raw` must equal the chain balance.
+If the Alchemy call fails, the reconstruction falls back to the log walk and
+the record carries the old rule and the gap.
+
+Without `RWA_ALCHEMY_URL` nothing about scope changes.
+
+#### §7 errors
+
+| code | when |
+|---|---|
+| 404 `no_stock_token_activity` | holds none of the canonical tokens and no history in scope. The body states what was checked (below). Cached like a record: `s-maxage=300, stale-while-revalidate=86400` |
+| 422 `wallet_too_large` | one request cannot rebuild it: more than 6 tokens to walk on the public RPC (16 log queries each), or more than 600 transactions to replay with Alchemy. The body lists the held symbols and the limit hit. Cached like a record |
+| 503 `too_busy` | another wallet is being rebuilt on this instance. `Retry-After: 30` |
+| 503 `still_reading` | the read took longer than the free deadline (20 s). It keeps its slot and runs on, and a retry joins it. `Retry-After: 30` |
+| 503 `chain_unavailable` | the chain RPC failed. `Retry-After: 60` |
+
+Every 503 body is `{ error, retry_after_sec, detail }`. The paid lane keeps its
+own codes and its 45 s deadline (money code, not changed here).
+
+404 body:
+
+```json
+{
+  "error": "no_stock_token_activity",
+  "address": "0x…",
+  "chain_id": 4663,
+  "as_of": "…",
+  "as_of_block": 0,
+  "method_version": "…",
+  "registry_tokens": 195,
+  "held_tokens": 0,
+  "history_checked": "every_canonical_token | nvda_only",
+  "sent_tx_count": 0,
+  "is_contract": false,
+  "gaps": ["exited_positions_not_scanned"],
+  "detail": "Holds none of the 195 canonical Stock Tokens at block N. …"
+}
+```
+
+`nvda_only` means the 195 balances at `as_of_block` (one Multicall3 call) and
+NVDA's incoming transfers were read. Every way of holding a token starts with a
+Transfer to the address (a mint is a Transfer from 0x0), so the receiving side
+alone decides whether NVDA was ever held: 8 log ranges instead of 16. When it
+finds something, the full walk runs as before. `sent_tx_count` is the nonce at
+`as_of_block`, null for a contract.
+
+`0x…dEaD` holds 74 of the 195 tokens (measured 2026-09-30, one Multicall3
+call). On the public RPC that is 74 × 16 = 1,184 log queries, which no request
+under Vercel's 60 s can finish. Measured locally with the old code it failed
+with 429 after 91 s, and after 178 s with the reach code before this limit.
+It now gets `wallet_too_large` at once. The limit of 6 comes from the same day:
+2 tokens took ~40 s cold and 8 tokens ~140 s on the public RPC.
+
+A cheaper test for "any past Stock Token activity" on the public RPC was checked
+and is not available: an `eth_getLogs` without an address filter is capped at
+30,000 blocks per query (measured 2026-09-30, head ~76.06M), so one side for all
+tokens would take ~2,500 queries. The 404 says what it did not scan instead.
+
+#### §9 jobs and RPC
+
+- Read RPC, chosen at call time: `RWA_ALCHEMY_URL`, else `RWA_RPC_URL`, else
+  `https://rpc.mainnet.chain.robinhood.com`. The paid lane uses the same
+  choice, so it reads through the third-party RPC whenever one is set. The
+  public fallback stays for head reads only. An env value that is not an
+  `https://` URL is ignored. Scripts that write the RPC into fixtures keep the
+  public URL.
+- A transport error carries only its error name, never the URL (it may hold a key).
+- A provider whose log span limit would need more than 64 ranges for a genesis
+  walk is refused at once (`log span limit too small`).
+- Cache: the empty answer is cached like a record. A caller stops waiting at its
+  deadline (free 20 s, paid 45 s). The reconstruction keeps its slot until it
+  ends, or until 55 s, whichever is first. The free route keeps the function
+  alive with `after()` so the retry finds the result. Rate limits and the
+  one-at-a-time cap are unchanged.
+
+#### §10 UI
+
+- `/rwa/<address>` with no Stock Token renders the stated answer with status
+  200 and links to example wallets. It no longer shows Next.js's 404 page.
+- Every failure renders one view: the reason, the wait, and a
+  `<meta http-equiv="refresh">` with that wait.
+- The page uses the route's own 404 and 503 answers as final. It reads the chain
+  itself only on a transport miss or a 429 from the shared bucket.
+- `/rwa` lists "Try these wallets": EOAs picked from chain data that traded
+  canonical tokens through the official Uniswap pools and rebuild as
+  `reconstructed` or `partial` with the replay on the chain balance
+  (`packages/rwa/examples.ts`). The note says what the record shows, never who
+  owns the wallet.
+
+#### Tests
+
+`packages/rwa/test/reach.test.ts` and `packages/rwa/test/cache.test.ts`: RPC
+precedence and call-time choice, no URL in transport errors, the span guard,
+the Alchemy client (params, chunks, pages, both sides, balances), the empty
+answer on both paths and its stability, a sold-out position found through
+Alchemy with the gap dropped, the unchanged path without Alchemy, the fallback
+when Alchemy fails, the route's 404 and 503 bodies, the negative cache, and the
+slot kept past the deadline.
+
+### Patch 021: the chain confirms the list, and a record names the fakes a wallet met
+
+Status: proposed on branch `rwa-w2-lookalike` (2026-09-30). The integrator merges it into SPEC.md and bumps `METHOD_VERSION` once for the sprint. This patch does not bump it.
+
+#### Why
+
+Robinhood's own page says a token with a matching name or ticker at another address is not a Stock Token. /rwa already counted only the 195 addresses in Robinhood's list. Two things were missing.
+
+1. The list was the only root. Nothing in the record showed that those addresses are what Robinhood Chain itself says Stock Tokens are.
+2. A wallet that received a fake saw nothing about it. The fake was silently left out of the PnL, which is right, but the reader was never told it was there.
+
+#### 1. Second root for the registry
+
+`packages/rwa/registry.json` now carries, for each of the 195 tokens:
+
+- `code_hash`: keccak256 of `eth_getCode`
+- `beacon`: the EIP-1967 beacon slot (the runtime code embeds the same address)
+- `factory_log`: the Stock Token factory's deployment event that names the token (block, tx, log index)
+- `needs_review`: why the on-chain identity disagrees, empty when it agrees
+
+and a top-level `identity` block with the reference values (`packages/rwa/identity.ts`): code hash `0x6c1fdd40002dcb440c7fff6a84171404d279ccb057803b65826f7546acd65630`, beacon `0xe10b6f6B275de231345c20D14Ab812db62151b00`, factory `0x4783C67b63dE2B358Ac5951a7D41F47A38F3C046`, deployment event topic0 `0xd9b0c6a1…a76d6`, and the beacon's current implementation.
+
+Measured at block 76057945 with `npx tsx packages/rwa/scripts/snapshot-registry.ts --identity-only`:
+
+- 195 of 195 tokens have the reference code hash
+- 195 of 195 have the reference beacon in the EIP-1967 slot
+- 195 of 195 are named by a factory deployment event (the factory emitted 204 such events in total)
+- 0 need review
+
+`--identity-only` adds these fields to the existing snapshot. It does not fetch Robinhood's list again, so the token set and every count stay as they were (`taken_at` is unchanged). A full rebuild runs the same identity step. A token whose code hash or beacon differs, or that no factory event names, is written with `needs_review` and a reason. It is never silently dropped and never silently trusted. `packages/rwa/test/registry.test.ts` pins 195/195/195 and 0 needs review.
+
+A code hash alone is not proof. Anyone can deploy the same proxy bytecode pointing at the same beacon. The factory event is the second root. Membership still comes from Robinhood's list.
+
+#### 2. Look-alike judgement (`packages/rwa/lookalike.ts`, pure)
+
+Input: a token's address, symbol, name and code hash. Output: `lookalike`, `needs_review`, `imitates` (a canonical ticker or `USDG`), and reason codes.
+
+A token at a canonical address, or the real USDG, is never a look-alike. Any other token is a look-alike when it does at least one of these:
+
+| reason | meaning |
+|---|---|
+| `symbol_copies_stock_token` | the symbol is a Stock Token ticker as written |
+| `symbol_disguises_stock_token` | the symbol becomes a ticker after NFKC, removing invisible characters (Unicode default-ignorable, format controls, braille blank, combining marks), folding digit 0 to O and Cyrillic/Greek homoglyphs to Latin, and upper-casing |
+| `name_copies_stock_token` | the name, without a Robinhood ending, is a Stock Token's company name |
+| `name_claims_robinhood_stock_token` | the name ends in "Robinhood Token", "Robinhood Coin", "Robinhood Stock", "Robinhood Share(s)" or "Robinhood Stock Token", with or without a separator |
+| `imitates_usdg` | the symbol or name becomes USDG or "Global Dollar" after the same normalisation |
+
+Extra reasons explain how: `hidden_characters`, `confusable_characters`, `code_hash_differs` (not the Stock Token code), `mimics_counterparty` (address poisoning, below), and `not_canonical_address`, which every look-alike carries.
+
+A non-canonical token that carries the Stock Token code is `needs_review` with `reference_code_not_listed`. It is not called a fake, because it may be a delisted token or a proxy pointed at the issuer's beacon. It is not counted either way.
+
+Address poisoning: a transfer whose other side shares the first four and last four hex digits of an address the wallet really exchanged USDG with, without being it.
+
+A check that starts from tokens named "... Robinhood Token" never sees the "NVIDIA Robinhood Coin" NVDA that reached the demo wallet. Here it is caught by ticker, by company name and by the "Coin" ending.
+
+#### 3. In the record
+
+Two new top-level fields in the facts JSON:
+
+- `lookalikes`: one entry per look-alike token met, with `token`, `symbol_raw` and `name_raw` (every code point outside printable ASCII shown as ⟨U+XXXX⟩, the bullet excepted), `imitates`, `reasons`, `needs_review`, `direction` (`received`, or `sent` when a log names the wallet as sender), `counterparty`, `mimics`, `first_seen_block`, `tx`, `amount_raw`, `transfers_seen`, `counted: false`, `found_by`.
+- `lookalikes_scope`: `complete`, `searched` (each source with its block range and a plain description), `not_scanned` (plain words for every part not searched), `tokens_judged`, `tokens_not_judged`.
+
+Look-alikes are never counted. The classifier reads canonical addresses only. `packages/rwa/test/lookalike-scan.test.ts` adds a fake NVDA transfer to Fixture A's own receipts and checks that `tokens`, `events_summary`, `realized_usd`, `unrealized_usd`, `r1_status`, `gaps` and `evidence` are identical with and without it, and that the fake is listed with `counted: false`.
+
+`anchorPreimage` is unchanged. The anchored hash does not cover these fields.
+
+##### How the search works
+
+Measured on 2026-09-30: a Transfer log query without an address filter is capped at 30,000 blocks on the public RPC. A full-history search for one wallet, run on 2026-09-30 for the demo wallet, took 5,081 such queries (about 55 minutes) with no error left. About 1,000,000 blocks pass every 27.9 hours (block 76056458 minus 1,000,000 blocks = 100,569 seconds). So a live record cannot search the whole chain on the public RPC.
+
+In order of preference:
+
+1. `RWA_ALCHEMY_URL` set: `alchemy_getAssetTransfers` with `toAddress` and again with `fromAddress`, category `erc20`, no contract filter, every page up to `as_of_block`. Scope `complete` when both finish. The client is `packages/rwa/alchemy.ts`. The key in the URL is never logged, never in an error message and never in the record (tested with mocked responses shaped like Alchemy's published examples. No key exists yet).
+2. Otherwise, three partial sources, each named in `searched`:
+   - `receipts`: non-canonical Transfer logs naming the wallet in the transactions the record already read
+   - `recent_logs`: Transfer logs naming the wallet as sender or recipient, no address filter, over the last 4 x 30,000 blocks (about 3.3 hours), newest span first, one query at a time. The public RPC refused a batch of these queries as a whole but answered single ones spaced a few hundred milliseconds apart (2026-09-30: 7 of 8 single queries answered at 0.3 s spacing, 2 of 4 batches of two). The window counts only the spans read without a break from the head down and says where it stopped.
+   - `fixture`: a full-history search done ahead of time, `fixtures/rwa/lookalikes-demo.json` for the demo wallet, with its source and last block
+   Anything outside those ranges is listed in `not_scanned`. When the fixture reaches from block 0 to the start of the recent window, the scope is `complete`.
+
+The search runs after every read the record needs, pool lookups included, so it never competes with them for the RPC's rate limit and cannot make them fail. It has an 8-second budget, shrunk so that it ends by 38 seconds after the reconstruction started (the record's deadline is 45 s). A record whose own reads took 38 s or more gets no live search, only the fixture, and says so. The search never fails the record. A refused or slow RPC is written into `not_scanned`. Measured on the demo wallet on 2026-09-30 with `scanLookalikes` alone: 1.4 s, 3.2 s and 2.5 s in three runs, each `complete: true` with both look-alikes below. Whole reconstructions of the demo wallet on 2026-09-30, alternating the code before this patch and after it, three runs each: before 31.0 to 81.7 s with one HTTP 429 failure, after 32.7 to 61.1 s with one HTTP 429 failure. Other jobs were sharing the public RPC at the time, so these runs cannot isolate the search's own cost. By construction it adds at most 8 s, and nothing once 38 s have passed.
+
+Before a demo, walk the fixture forward: `npx tsx packages/rwa/scripts/lookalikes-fixture.ts --extend fixtures/rwa/lookalikes-demo.json`.
+
+##### The demo wallet (0xE9B08727131E34010b34006c660D4c1B436EC25f)
+
+Full search, blocks 0 to 76081226, 315 Transfer logs, 34 non-canonical tokens met, 2 look-alikes. Each kept log was checked against its transaction receipt.
+
+- `0x5DD716Fe12275B69f04b26bEeca343843C8e3539`, symbol `NVDA`, name "NVIDIA Robinhood Coin". 25 tokens (raw 25000000000000000000, `decimals()` 18) sent to the wallet at block 73953009 (2026-09-27 12:52 UTC) in `0x1b838f40…77b51b`, signed by `0x3433e16e…abd0`. Reasons: ticker, company name, "Coin" ending, code hash differs.
+- `0x4190Ee598c2a69D35Bef53c83d152Ae0f25EA416`, symbol and name `U⟨U+17B5⟩S⟨U+17B5⟩DG` (Khmer inherent vowel, invisible). A log at block 63379129 in `0x63c6fdd0…a01e`, signed by `0x3ea4ee9d…c286`, not by the wallet, shows the wallet sending 10 (raw 10000000, `decimals()` 6) to `0x1eb99afa…77c3`. That address copies the start and end of `0x1eb96a9c…77c3`, which the wallet really paid 10 USDG (raw 10000000, USDG has 6 decimals) at block 62621590. Reasons: imitates USDG, hidden characters, mimics a counterparty.
+
+The other 32 tokens (PONS, `P0NS`, `PO⟨U+200B⟩NS` and similar spam) copy nothing canonical and are not listed.
+
+#### 4. On the page
+
+`/rwa/[address]` gets a short section "Look-alikes this wallet received (not counted)". Each entry shows the escaped symbol and name, what it pretends to be, the reasons in plain words, the first transaction, and links to Blockscout. Address poisoning reads "A fake USDG transfer made to look like a payment to a real counterparty", then names both addresses. The section ends with what was searched and what was not. A record made before this patch renders no section.
+
+#### Money code
+
+The paid route returns the same JSON, so it now carries `lookalikes` and `lookalikes_scope`. `packages/rwa/x402.ts` and the paid route's code are not changed. It ships after an independent review says SHIP.
+
+### Patch 022: corporate actions in the record
+
+Status: branch `rwa-w3-corpact`, for the integrator to merge into docs/rwa/SPEC.md. Method version is not raised here (the integrator raises it once to `rwa-recon-0.3`).
+
+#### What changes
+
+Each token in the facts JSON gains `corporate_actions[]`: every `UIMultiplierUpdated` the token emitted from genesis up to `as_of_block`, with what this wallet held at that moment. The record page gains a short section, "Corporate actions while this wallet held the token".
+
+Nothing else in the record moves. FIFO still runs on raw quantities and USD, the Chainlink price still carries the multiplier, and `realized_usd` is the same with or without this patch (pinned by a test on recorded chain data, see below).
+
+#### The event
+
+A Stock Token records a split or a reinvested dividend by changing its UI multiplier, not the raw balances. Shares shown to a person are `raw × uiMultiplier / 1e18`.
+
+- Signature: `UIMultiplierUpdated(uint256 oldMultiplier, uint256 newMultiplier, uint256 effectiveAt)`, no indexed fields.
+- topic0: `0x2205df4534432b2f60654a3fdb48737ffdaf3e9edb1a498bd985bc026b15b055` (viem `toEventSelector`, checked 2026-09-30).
+- How the field order was checked: the NVDA update in tx `0x4ac23f2e58e2c4962dcd701c2beff581e87f3995152a29d527c07a3afd67d956` (block 58,952,659) carries the words `1e18, 1000775159164630595, 1788998430`. The same transaction calls `updateMultiplier(uint256,uint256)` (selector `0xbad60f18`) with `(1000775159164630595, 1788998430)`. So word 0 is the multiplier before, word 1 the multiplier after, word 2 the unix time it takes effect (2026-09-10T00:00:30Z, about 10 minutes after the block at 2026-09-09T23:50:42Z). The QQQ update in tx `0x6331915e6ddac124b1ea59b0db720892615fbd8ffbbea59cc9772147e326bba6` has the same shape.
+
+#### Where the history comes from
+
+The public RPC cannot answer `eth_call` at an old block, so past multipliers exist only in these logs. It also refuses a log query without an address over more than 30,000 blocks (measured 2026-09-30: "only 30000 are allowed for this request; narrow the block range, or add an address filter"), so each token is its own filter, in the same 10,000,000-block chunks as the Transfer walk.
+
+Logs never change once written, so /rwa keeps them in two layers:
+
+1. `packages/rwa/corporate-actions.json`: a frozen walk of all 195 canonical tokens from genesis to block 76,083,561 (taken 2026-09-30T00:23:57Z), rebuilt by `packages/rwa/scripts/snapshot-corporate-actions.ts`. The script refuses to write if, for any token, the multiplier the logs predict (1e18 before any update, else the last `after` once in effect) differs from `uiMultiplier()` read at that block. Result on 2026-09-30: 46 updates on 43 of the 195 tokens, 0 still scheduled, 0 mismatches. An earlier independent walk of all 204 factory tokens (same day, to block 75,997,569) found 50: the same 45 on canonical tokens plus 5 on WEEK, which is not in Robinhood's list. The one update it did not have is MPWR at block 76,070,684, emitted after it ran.
+2. A per-instance memo of the tail. A reconstruction asks the chain only for `to_block + 1 .. as_of_block`, one range per token in scope, batched four per JSON-RPC call. For the demo wallet (NVDA and QQQ) that is one extra POST. A token missing from the frozen walk is read from genesis.
+
+#### Fields (per token, `corporate_actions[]`, chain order)
+
+| field | meaning |
+|---|---|
+| `block`, `tx` | where the update was emitted |
+| `time` | ISO time of that block |
+| `effective_at` | ISO time from which the token applies the new multiplier, as emitted |
+| `multiplier_before`, `multiplier_after` | 18-decimal integers as strings |
+| `ratio` | `after / before`, 18 places, trailing zeros cut. A number only. /rwa does not name it "split" or "dividend", because the event does not say which |
+| `held` | the wallet held the token right after the update transaction. `null` when the token's history was not walked (`scope.history_not_walked`) |
+| `wallet_raw_at` | raw balance from replaying the wallet's own classified events up to the update's position (block, then log index). The same replay FIFO uses |
+| `wallet_shares_before`, `wallet_shares_after` | `wallet_raw_at × multiplier / 1e18`, 8 decimals |
+
+Updates while the wallet held nothing stay in the list with `held: false`. The list is the token's history, not a filtered view.
+
+`wallet_raw_at` is the holding at the update transaction, not at `effective_at`. A trade inside that window (588 s for NVDA, 584 s for QQQ) would be counted on the before side. For the demo wallet there is none: its next NVDA transaction after the update is 2,850,388 blocks later, and it has no QQQ transaction after the QQQ update.
+
+If the live tail read fails, the record is still built. It carries no `corporate_actions` and names the gap `corporate_actions_not_read`. The section is display only, so it should not cost the whole record.
+
+New gap: `multiplier_history_mismatch`, when the logs do not explain the multiplier the token reports at `as_of_block` (an update was missed). It is skipped while the last update is still scheduled, because /rwa has not measured what `uiMultiplier()` returns before `effectiveAt`.
+
+#### Record page
+
+"Corporate actions while this wallet held the token": effective date, token, multiplier before and after, shares held before and after, tx link. Updates while the wallet held none are folded into one line with a count and open on click.
+
+#### Measured on the demo wallet
+
+Live reconstruction of `0xE9B08727131E34010b34006c660D4c1B436EC25f` on 2026-09-30 at block 76,085,543 (`reconstructFacts` with a counting fetch, one run): 25.3 s, 58 `eth_getLogs` of which 2 were the corporate-action tail (one POST). `realized_usd` -284.57, the same as before this patch.
+
+| effective (UTC) | token | multiplier | wallet raw at the update | shares before → after | tx |
+|---|---|---|---|---|---|
+| 2026-09-10 00:00:30 | NVDA | 1 → 1.000775159164630595 | 82049332007476505675 | 82.04933200 → 82.11293329 | `0x4ac23f2e…` |
+| 2026-09-22 00:10:34 | QQQ | 1 → 1.000700791241405425 | 94180700533589531354 | 94.18070053 → 94.24670154 | `0x6331915e…` |
+
+Both holdings agree with a plain sum of the wallet's recorded Transfer logs up to each update (a test does this without the classifier). A copy of Gapwatch's public API response saved on 2026-09-30 lists 20 events (`total: 20`). NVDA is among them. The QQQ update of 2026-09-22 is not.
+
+#### Tests
+
+`packages/rwa/test/corporate.test.ts`, no RPC:
+
+- topic and decoding against the real NVDA log
+- the holding is the replay up to the update's log, same-block order is respected, and `held:false` entries are kept
+- a token whose history was not walked keeps its updates with `held: null`
+- the frozen walk covers exactly the 195 canonical tokens and contains the QQQ update of 2026-09-22 (block 69,210,998)
+- a live read sends one tail range per token after the frozen walk, and nothing on a repeat
+- Fixture C (`fixtures/rwa/C.corpact.json`, recorded by `packages/rwa/scripts/record-fixture-corpact.ts`): the demo wallet's NVDA and QQQ history. It checks the updates read from the chain match the frozen walk, the NVDA 2026-09-10 and QQQ 2026-09-22 rows, that the record with and without corporate actions is identical apart from `corporate_actions` (so `realized_usd` does not move), and that dropping the QQQ update raises `multiplier_history_mismatch`.
+
+#### Not changed
+
+- Per-trade share counts: the record has no per-trade list today, so there is no historical share display to correct. The corporate-action rows carry shares before and after each update instead.
+- The paid route returns the same JSON as the free route, so its body gains `corporate_actions[]` too. That makes this money code: it ships after an independent review says SHIP.
+
+### SPEC patch 023: contract tests, hash material v2, key-less verification
+
+Status: proposed on branch `rwa-w4-contract`, 2026-09-30. Merge into SPEC §9
+(anchor) and §7 (facts routes).
+
+#### §9 Anchor: what changes
+
+The contract does not change. `RwaAnchor` stays at
+`0x1955137e7773f2459eb75fb88842026c6517c22d` on Robinhood Chain (4663), with no
+owner, no upgrade path, one write function `anchor(bytes32,bytes32,uint32,uint64)`
+and one counter `count()`. No read or view function is added (Decision 010).
+
+##### 9.x Hash material
+
+The material is selected by the record's own `method_version`.
+
+| method_version | methodVersion on chain | material |
+|---|---|---|
+| rwa-recon-0.1 | 1 | v1 |
+| rwa-recon-0.2 | 2 | v1 |
+| rwa-recon-0.3 | 3 | v2 |
+
+v1: `keccak256(method_version \n address_lowercase \n as_of \n r1_status \n realized_usd_or_null)`.
+
+v2: `keccak256(method_version \n address_lowercase \n as_of \n r1_status \n realized_usd_or_null \n facts_json_keccak)`,
+where `facts_json_keccak` is `keccak256` of the UTF-8 bytes of the canonical
+JSON of the whole facts record, written as a lower-case `0x` hex string.
+
+Canonical JSON: object keys sorted by code unit at every depth, no whitespace,
+arrays in order, strings, numbers and booleans as ECMAScript `JSON.stringify`
+writes them, members whose value is `undefined` left out, the top-level `address`
+lower-cased and nothing else changed. A non-finite number or a bigint is an error.
+
+A method version missing from the table cannot be anchored
+(`methodVersionNumber` throws). Adding a version means adding a row.
+
+Why: v1 does not bind `tokens` or `evidence`, so two records with different
+holdings or evidence could share one anchor. v2 binds every field. The 0.1 anchor
+(tx `0x9b776d6a…72d7`) stays v1 and still verifies.
+
+##### 9.y Anchoring procedure
+
+- New records are added to the existing contract with
+  `packages/rwa/scripts/anchor.ts --mainnet --contract 0x1955…c22d`. A mainnet
+  run without `--contract`, or with any other address, is refused. So is a
+  contract whose runtime keccak256 differs from the pinned build.
+- The script prints the plan and the gas estimate and sends only after the
+  operator types `anchor`.
+- Output: a new file `fixtures/rwa/anchors/<method_version>-<block>.json`, opened
+  exclusively. `fixtures/rwa/anchor.json` is never written again.
+- The operator runbook is in `docs/rwa/OPERATING.md`.
+
+##### 9.z Verification
+
+A verifier accepts an anchor only if all of these hold:
+
+1. The tx receipt has status success.
+2. The `Anchored` log was emitted by `0x1955…c22d`. Logs from other addresses
+   are ignored.
+3. The runtime at that address hashes to
+   `0x9032fa493b888a32b4773a18ae74814d4f492d136c4cd55ade593eb783f9b5b0`.
+4. `anchoredBy` equals the operator the record names, or the one the reader requires.
+5. `subject`, `factsHash`, `methodVersion` and `asOf` are recomputed from the JSON.
+
+Two implementations exist and tests hold them to the same answers:
+`packages/rwa/scripts/verify-record.mjs` (no dependencies, own keccak, Node 18+)
+and `packages/rwa/scripts/anchor.ts --verify` (product code and viem).
+
+##### 9.w Contract tests
+
+`packages/rwa/contracts` is a Foundry project (`foundry.toml`: solc 0.8.26,
+optimizer 200 runs, EVM cancun, IPFS metadata). `forge test` covers reverts,
+event fields, `count`, fuzz, invariants, the fixed selector list, the absence of
+external-call, create and self-destruct opcodes, and a full bytecode match
+(metadata tail included) against `packages/rwa/contracts/onchain.json`. CI runs it
+in the `contracts` job.
+
+Bytecode match, defined: "full" means keccak256 of `eth_getCode` equals keccak256
+of the Foundry runtime including the CBOR metadata tail. "stripped" means the same
+after removing the tail (its length is the last 2 bytes). Only a full match pins
+the source text. On 2026-09-30 the match was full.
+
+#### §7 Facts routes: X-Facts-Hash
+
+`GET /api/v1/rwa/facts/<address>` and `GET /api/v1/rwa/paid/facts/<address>`
+send `X-Facts-Hash` on 200: the v2 hash of the returned record, whatever its
+`method_version`. For `rwa-recon-0.3` and later it equals the value a v2 anchor
+of that record carries. The JSON body is unchanged. Error responses and 402 carry
+no such header. If the record cannot be hashed the header is left out and the
+response is otherwise unchanged. On the paid route it is computed after the record
+is built and before settle, and it never throws.
+
+The header comes from vet402's server. It helps match a response to a log. It is
+not a proof on its own.
+
 ---
 
 ## 11. ゴールデン

@@ -6,6 +6,10 @@
 
 *vet402 buys. It settles. It publishes the measurements.*
 
+## Arbitrum Open House Singapore (vet402 /rwa)
+
+Paste a Robinhood Chain wallet and see its Stock Token track record rebuilt from public chain data, including look-alike tokens it was sent and the corporate actions (share multiplier changes) it held through. Live at https://vet402.com/rwa . Start with [docs/rwa/README.md](docs/rwa/README.md) (30-second path, verify-it-yourself, what is not trustless).
+
 ## ETHGlobal Tokyo 2026 (ENS and Intercepta partner prizes)
 
 For Tokyo, an agent pays an x402 seller only while vet402's draft ENSIP-29 attestation in the seller's ENSv2 name still matches the seller's offer. Check it with one line (Node 22.18 or later, no key):

@@ -4,13 +4,23 @@
 // asset list (packages/rwa/registry.ts), not only NVDA. Scope, stated in the
 // record itself: the tokens the address holds at `as_of`, NVDA, and any
 // canonical token those tokens' transactions moved for the address. A position
-// opened and fully closed in some other token is not scanned yet, and the
-// record says so (`exited_positions_not_scanned`) instead of implying it was.
-import { fetchBlockTimestamp, fetchCanonicalTransfers, fetchHead, fetchReceipts } from "./chain";
+// opened and fully closed in some other token is not scanned on the public
+// path, and the record says so (`exited_positions_not_scanned`) instead of
+// implying it was.
+//
+// rwa-recon-0.3 (SPEC patches 020 to 023): with Alchemy, every canonical token
+// the address ever moved is in scope and that gap drops; the record lists the
+// look-alikes the wallet met (`lookalikes`, never counted) and the corporate
+// actions of each token (`corporate_actions`); the anchor hash binds the whole
+// record (hash material v2).
+import { AlchemyError, alchemyRefused, getAddressTransferPages, getAddressTransfers, type AlchemyPrefetch, type AssetTransfer } from "./alchemy";
+import { fetchBlockTimestamp, fetchCanonicalTransfers, fetchHead, fetchReceipts, fetchTransfersIn, fetchTransfersOut, readAccount } from "./chain";
 import { classifyReceipt, summarize, type EventsSummary, type PoolResolver, type RwaEvent, type RwaReceipt } from "./classify";
-import { NVDA, RWA_CHAIN_ID } from "./config";
+import { NVDA, RWA_CHAIN_ID, rwaAlchemyUrl } from "./config";
+import { corporateActionsFor, expectedMultiplier, readMultiplierUpdates, type CorporateAction, type TimedMultiplierUpdate } from "./corporate";
 import { TOPICS, topicToAddress } from "./events";
 import { feedStatus, isWeekendUtc, readBalances, readTokenState, type TokenState } from "./feed";
+import { fixtureFor, LOOKALIKE_BUDGET_MS, notScanned, scanLookalikes, type LookalikeFact, type Lookalikes, type LookalikesScope } from "./lookalike-scan";
 import { runFifo, type FifoResult, type PricedEvent, type RealizedStatus } from "./fifo";
 import { chainPoolResolver } from "./pools";
 import { quoteForSwap } from "./quote";
@@ -18,7 +28,7 @@ import { CANONICAL_SET, CANONICAL_TOKENS, REGISTRY, tokenByAddress } from "./reg
 import type { RpcOptions } from "./rpc";
 import { markUsdCents } from "./usd";
 
-export const METHOD_VERSION = "rwa-recon-0.2";
+export const METHOD_VERSION = "rwa-recon-0.3";
 export const DISCLAIMER = "Reconstruction of public chain data. Not investment advice. Not an offer of Stock Tokens.";
 
 export type R1Status = "reconstructed" | "partial" | "unverified";
@@ -45,6 +55,12 @@ export type TokenFacts = {
   realized_usd: string | null;
   realized_status: RealizedStatus;
   events_summary: EventsSummary;
+  /**
+   * SPEC patch 022: every UIMultiplierUpdated the token emitted up to as_of_block,
+   * read from genesis, with what this wallet held at each one (held:false kept).
+   * Absent only in a record assembled without multiplier logs (the frozen fixture A).
+   */
+  corporate_actions?: CorporateAction[];
 };
 
 export type RwaFacts = {
@@ -78,15 +94,125 @@ export type RwaFacts = {
   /** null in v0: MDD needs stored NAV snapshots, and nothing is stored yet (SPEC §4) */
   mdd_usd: null;
   gaps: string[];
+  /**
+   * Tokens that copy a Stock Token or USDG, met in the wallet's transfers (SPEC patch 021).
+   * Never counted: not in `tokens`, not in any USD figure, not in `evidence`.
+   */
+  lookalikes: LookalikeFact[];
+  /** how far the look-alike search went, and what it did not search */
+  lookalikes_scope: LookalikesScope;
   evidence: { txs: string[]; fixture_ids: string[] };
   disclaimer: string;
 };
 
+/**
+ * What /rwa says about an address that holds no canonical Stock Token (SPEC patch 020).
+ * Same shape and wording every time for the same block, so a judge who pastes a
+ * fresh wallet twice reads the same answer. It states what was checked and what was not.
+ */
+export type NoActivityAnswer = {
+  error: "no_stock_token_activity";
+  address: string;
+  chain_id: number;
+  as_of: string;
+  as_of_block: number;
+  method_version: string;
+  registry_tokens: number;
+  held_tokens: 0;
+  /** "every_canonical_token": every canonical token's transfers to and from the address were read
+   *  (alchemy_getAssetTransfers). "nvda_only": today's balances of all of them, and NVDA's transfers in. */
+  history_checked: "every_canonical_token" | "nvda_only";
+  /** transactions this address has sent on Robinhood Chain (its nonce), null for a contract */
+  sent_tx_count: number | null;
+  is_contract: boolean;
+  gaps: string[];
+  detail: string;
+};
+
 export class NoStockTokenActivity extends Error {
-  constructor() {
+  constructor(readonly answer?: NoActivityAnswer) {
     super("no_stock_token_activity");
     this.name = "NoStockTokenActivity";
   }
+}
+
+/**
+ * A wallet too large for one request to rebuild (SPEC patch 020). The public RPC needs
+ * 16 log queries per token, and a request has under a minute, so a wallet holding many
+ * tokens would only ever time out. It gets this stable answer instead, with its holdings.
+ */
+export type TooLargeAnswer = {
+  error: "wallet_too_large";
+  address: string;
+  chain_id: number;
+  as_of_block: number;
+  method_version: string;
+  held_tokens: number;
+  held: string[];
+  /** what exceeded the budget: tokens to walk on the public RPC, or transactions to replay */
+  limit: { kind: "tokens"; max: number; found: number } | { kind: "transactions"; max: number; found: number };
+  detail: string;
+};
+
+/** Tokens a public-RPC request walks at most (16 log queries each); measured 2026-09-30: 2 tokens ~40 s, 8 tokens ~140 s. */
+export const MAX_TOKENS_PUBLIC = 6;
+/** Transactions an Alchemy-backed request replays at most (receipts, 25 per batch). */
+export const MAX_TXS_ALCHEMY = 600;
+
+export class WalletTooLarge extends Error {
+  constructor(readonly answer: TooLargeAnswer) {
+    super("wallet_too_large");
+    this.name = "WalletTooLarge";
+  }
+}
+
+function tooLarge(address: string, block: number, held: string[], limit: TooLargeAnswer["limit"]): WalletTooLarge {
+  const symbols = held.map((t) => tokenByAddress(t)!.symbol).sort();
+  const why =
+    limit.kind === "tokens"
+      ? `Rebuilding it means walking the history of ${limit.found} tokens, and one request can walk ${limit.max}.`
+      : `Rebuilding it means replaying ${limit.found} transactions, and one request can replay ${limit.max}.`;
+  return new WalletTooLarge({
+    error: "wallet_too_large",
+    address,
+    chain_id: RWA_CHAIN_ID,
+    as_of_block: block,
+    method_version: METHOD_VERSION,
+    held_tokens: symbols.length,
+    held: symbols,
+    limit,
+    detail: `Holds ${symbols.length} of the ${CANONICAL_TOKENS.length} canonical Stock Tokens at block ${block}. ${why} It is not rebuilt.`,
+  });
+}
+
+export function noActivityAnswer(input: {
+  address: string;
+  block: number;
+  blockTimestamp: number;
+  historyChecked: NoActivityAnswer["history_checked"];
+  sentTxCount: number;
+  isContract: boolean;
+}): NoActivityAnswer {
+  const n = CANONICAL_TOKENS.length;
+  const full = input.historyChecked === "every_canonical_token";
+  return {
+    error: "no_stock_token_activity",
+    address: input.address.toLowerCase(),
+    chain_id: RWA_CHAIN_ID,
+    as_of: new Date(input.blockTimestamp * 1000).toISOString(),
+    as_of_block: input.block,
+    method_version: METHOD_VERSION,
+    registry_tokens: n,
+    held_tokens: 0,
+    history_checked: input.historyChecked,
+    sent_tx_count: input.isContract ? null : input.sentTxCount,
+    is_contract: input.isContract,
+    gaps: full ? [] : ["exited_positions_not_scanned"],
+    detail: full
+      ? `Holds none of the ${n} canonical Stock Tokens at block ${input.block}. None of them moved to or from this address up to that block.`
+      : `Holds none of the ${n} canonical Stock Tokens at block ${input.block}. NVDA was never transferred to this address. ` +
+        `Positions in the other tokens that were opened and fully closed are not scanned.`,
+  };
 }
 
 /** `raw * multiplier / 1e18` as a decimal string with 8 places (SPEC §2). */
@@ -168,9 +294,24 @@ export type FactsInputs = {
   historyNotWalked?: ReadonlySet<string>;
   /** the scope rule to state in the record (a fixture states its own) */
   scopeRule?: string;
+  /** true when every canonical token that ever moved for the address was found (patch 020), so no exited position is left out */
+  exitedScanned?: boolean;
+  /** UIMultiplierUpdated logs of the tokens in scope, from genesis to `block`. Omitted: no corporate_actions field */
+  multiplierUpdates?: TimedMultiplierUpdate[];
+  /** the live read of those logs failed: the record carries no corporate_actions and says so in gaps */
+  multiplierUpdatesFailed?: boolean;
+  /** the look-alike search (packages/rwa/lookalike-scan.ts); default: none ran */
+  lookalikes?: Lookalikes;
 };
 
+/** What an offline replay says about look-alikes: nothing was searched. */
+export const NO_LOOKALIKE_SEARCH = "no look-alike search ran for this record (offline replay)";
+
 const SCOPE_RULE = "held at as_of, plus NVDA, plus canonical tokens moved for the address in those tokens' transactions";
+/** Patch 020: with RWA_ALCHEMY_URL set, the scope is every canonical token that ever moved for the address. */
+export const SCOPE_RULE_ALL = "every canonical token moved to or from the address up to as_of (alchemy_getAssetTransfers), plus tokens held at as_of";
+/** The look-alike search ends by this long after a live reconstruction starts, inside the 45 s deadline in cache.ts. */
+export const LOOKALIKE_DEADLINE_MS = 38_000;
 /** Discovery rounds before stopping; tokens still unwalked are listed in scope.history_not_walked. */
 export const MAX_DISCOVERY_ROUNDS = 3;
 
@@ -232,6 +373,16 @@ export async function assembleFacts(input: FactsInputs): Promise<RwaFacts> {
     // decoder missed a movement, so it is published rather than smoothed over.
     if (fifo.remaining_raw !== state.raw) gaps.add("balance_mismatch");
 
+    // SPEC patch 022. Display only: FIFO above ran on raw and USD and never sees these.
+    let corporateActions: CorporateAction[] | undefined;
+    if (input.multiplierUpdates) {
+      const mine = input.multiplierUpdates.filter((u) => u.token === t);
+      corporateActions = corporateActionsFor(mine, tokenEvents, !(input.historyNotWalked ?? new Set()).has(t));
+      // The logs must explain the multiplier the token reports now; if not, an update was missed.
+      const expected = expectedMultiplier(mine, input.blockTimestamp);
+      if (expected !== null && expected !== state.uiMultiplier) gaps.add("multiplier_history_mismatch");
+    }
+
     perToken.push({
       fifo,
       usdCents,
@@ -254,10 +405,12 @@ export async function assembleFacts(input: FactsInputs): Promise<RwaFacts> {
         realized_usd: fifo.realized_usd_cents === null ? null : usdString(fifo.realized_usd_cents),
         realized_status: fifo.realized_status,
         events_summary: summary,
+        ...(corporateActions ? { corporate_actions: corporateActions } : {}),
       },
     });
   }
-  gaps.add("exited_positions_not_scanned");
+  if (!input.exitedScanned) gaps.add("exited_positions_not_scanned");
+  if (input.multiplierUpdatesFailed) gaps.add("corporate_actions_not_read");
   const notWalked = [...(input.historyNotWalked ?? [])].filter((t) => states.has(t));
   if (notWalked.length > 0) gaps.add("history_not_walked");
   gaps.add("mdd_pending"); // MDD needs stored NAV snapshots (SPEC §4); nothing is stored in v0
@@ -316,6 +469,8 @@ export async function assembleFacts(input: FactsInputs): Promise<RwaFacts> {
     unrealized_usd: unrealized === null ? null : usdString(unrealized),
     mdd_usd: null,
     gaps: [...gaps],
+    lookalikes: (input.lookalikes ?? notScanned(NO_LOOKALIKE_SEARCH)).lookalikes,
+    lookalikes_scope: (input.lookalikes ?? notScanned(NO_LOOKALIKE_SEARCH)).lookalikes_scope,
     evidence: { txs: [...new Set(events.map((e) => e.tx))], fixture_ids: input.fixtureIds ?? ["A"] },
     disclaimer: DISCLAIMER,
   };
@@ -335,48 +490,168 @@ function canonicalTokensMoved(receipts: RwaReceipt[], address: string): Set<stri
   return out;
 }
 
+export type ReconstructOptions = RpcOptions & {
+  block?: number;
+  /** test seam: the Alchemy URL. Default rwaAlchemyUrl(); null forces the public-RPC path. */
+  alchemyUrl?: string | null;
+};
+
+type Discovery = { txs: Set<string>; tokens: Set<string> };
+
+/** Patch 020: every canonical token that moved to or from `address` up to `block`, and the transactions that moved it. */
+async function discoverWithAlchemy(address: string, block: number, url: string, opts: RpcOptions): Promise<Discovery> {
+  const transfers = await getAddressTransfers(address, { contractAddresses: CANONICAL_TOKENS.map((t) => t.token), toBlock: block, category: ["erc20"] }, { ...opts, url });
+  return discoveryFrom(transfers);
+}
+
+/** The canonical tokens in `transfers` and the transactions that moved them. */
+function discoveryFrom(transfers: AssetTransfer[]): Discovery {
+  const txs = new Set<string>();
+  const tokens = new Set<string>();
+  for (const t of transfers) {
+    const token = t.rawContract?.address?.toLowerCase();
+    if (!token || !CANONICAL_SET.has(token) || !t.hash) continue;
+    txs.add(t.hash.toLowerCase());
+    tokens.add(token);
+  }
+  return { txs, tokens };
+}
+
+const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 /**
- * Live reconstruction at `block` (default head). Reads every canonical balance,
- * then walks the history of each token in scope, one token after another (the
- * public RPC refuses multi-address log filters and throttles bursts).
+ * Live reconstruction at `block` (default head). Reads every canonical balance in
+ * one Multicall3 call, then finds the transactions to replay:
+ *
+ * - with RWA_ALCHEMY_URL (patch 020): alchemy_getAssetTransfers over all canonical
+ *   tokens, both sides, so tokens the address sold out of are in scope too;
+ * - without it: the history of each token in scope, one token after another (the
+ *   public RPC refuses multi-address log filters and throttles bursts).
+ *
+ * An address that holds none of them gets NoStockTokenActivity with an answer that
+ * says what was checked. On the public path that costs NVDA's receiving side only.
  */
-export async function reconstructFacts(address: string, opts: RpcOptions & { block?: number } = {}): Promise<RwaFacts> {
+export async function reconstructFacts(address: string, opts: ReconstructOptions = {}): Promise<RwaFacts> {
+  const started = Date.now();
+  const me = address.toLowerCase();
   const block = opts.block ?? (await fetchHead(opts));
   // One read at a time, with longer retries: the public RPC answers 429 to bursts (measured 2026-09-18).
   const patient: RpcOptions = { retries: 5, ...opts };
-  const balances = await readBalances(CANONICAL_TOKENS.map((t) => t.token), address, block, patient);
-  const scope = new Set<string>([NVDA.token.toLowerCase(), ...[...balances].filter(([, raw]) => raw > 0n).map(([t]) => t)]);
+  const pause = opts.sleep ?? defaultSleep;
+  const balances = await readBalances(CANONICAL_TOKENS.map((t) => t.token), me, block, patient);
+  const held = [...balances].filter(([, raw]) => raw > 0n).map(([t]) => t);
+
+  const empty = async (historyChecked: NoActivityAnswer["history_checked"]) => {
+    const acct = await readAccount(me, block, patient);
+    return new NoStockTokenActivity(
+      noActivityAnswer({ address: me, block, blockTimestamp: acct.blockTimestamp, historyChecked, sentTxCount: acct.sentTxCount, isContract: acct.isContract }),
+    );
+  };
+
+  const alchemyUrl = opts.alchemyUrl === undefined ? (alchemyRefused() ? null : rwaAlchemyUrl()) : opts.alchemyUrl;
+  let found: Discovery | null = null;
+  let shared: AlchemyPrefetch | null = null;
+  if (alchemyUrl) {
+    try {
+      // One read of every ERC-20 transfer to and from the address serves both the discovery here
+      // and the look-alike search at the end. Past its page cap, discovery asks again with the
+      // canonical contracts as a filter.
+      const all = await getAddressTransferPages(me, { toBlock: block, category: ["erc20"] }, { ...opts, url: alchemyUrl });
+      shared = { transfers: all.transfers, complete: all.complete };
+      found = all.complete ? discoveryFrom(all.transfers) : await discoverWithAlchemy(me, block, alchemyUrl, opts);
+    } catch (err) {
+      // The log walk below still answers, and the record states its narrower scope and the gap.
+      // A refused key (401/403, network not enabled) is remembered, so the next records skip Alchemy.
+      if (shared === null) shared = { failed: err instanceof AlchemyError ? err.message : "alchemy error" };
+      found = null;
+    }
+  }
 
   const scanned = new Set<string>();
-  const txs = new Set<string>();
   const receiptsByTx = new Map<string, RwaReceipt>();
-  // Walk tokens in scope, then any canonical token their transactions moved for the address, until
-  // nothing new turns up or the round cap is reached (each round costs a full history walk per token).
-  for (let round = 0; round < MAX_DISCOVERY_ROUNDS; round++) {
-    const toScan = [...scope].filter((t) => !scanned.has(t));
-    if (toScan.length === 0) break;
-    for (const token of toScan) {
-      // One token at a time with a pause: bursts of log batches drew 429s and ~48 s of backoff (measured 2026-09-29).
-      if (scanned.size > 0) await (opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))))(1_000);
-      scanned.add(token);
-      for (const l of await fetchCanonicalTransfers(token, address, block, patient)) txs.add(l.transactionHash);
+  let notWalked = new Set<string>();
+  if (found) {
+    if (held.length === 0 && found.txs.size === 0) throw await empty("every_canonical_token");
+    if (found.txs.size > MAX_TXS_ALCHEMY) throw tooLarge(me, block, held, { kind: "transactions", max: MAX_TXS_ALCHEMY, found: found.txs.size });
+    for (const t of [...found.tokens, ...held]) scanned.add(t);
+    for (const r of await fetchReceipts([...found.txs], patient, 25)) receiptsByTx.set(r.transactionHash, r);
+  } else {
+    const nvda = NVDA.token.toLowerCase();
+    // Holding none of them: first ask only whether NVDA was ever paid to this address (8 log ranges, not 16).
+    let nvdaIn: { transactionHash: string }[] | null = null;
+    if (held.length === 0) {
+      nvdaIn = await fetchTransfersIn(nvda, me, block, patient);
+      if (nvdaIn.length === 0) throw await empty("nvda_only");
     }
-    const missing = [...txs].filter((h) => !receiptsByTx.has(h));
-    for (const r of await fetchReceipts(missing, patient, 25)) receiptsByTx.set(r.transactionHash, r);
-    for (const t of canonicalTokensMoved([...receiptsByTx.values()], address)) scope.add(t);
+    const scope = new Set<string>([nvda, ...held]);
+    if (scope.size > MAX_TOKENS_PUBLIC) throw tooLarge(me, block, held, { kind: "tokens", max: MAX_TOKENS_PUBLIC, found: scope.size });
+    const txs = new Set<string>();
+    // Walk tokens in scope, then any canonical token their transactions moved for the address, until
+    // nothing new turns up or the round cap is reached (each round costs a full history walk per token).
+    for (let round = 0; round < MAX_DISCOVERY_ROUNDS; round++) {
+      const toScan = [...scope].filter((t) => !scanned.has(t));
+      if (toScan.length === 0) break;
+      for (const token of toScan) {
+        // One token at a time with a pause: bursts of log batches drew 429s and ~48 s of backoff (measured 2026-09-29).
+        if (scanned.size > 0) await pause(1_000);
+        scanned.add(token);
+        const logs =
+          token === nvda && nvdaIn
+            ? [...nvdaIn, ...(await fetchTransfersOut(token, me, block, patient))]
+            : await fetchCanonicalTransfers(token, me, block, patient);
+        for (const l of logs) txs.add(l.transactionHash);
+      }
+      const missing = [...txs].filter((h) => !receiptsByTx.has(h));
+      for (const r of await fetchReceipts(missing, patient, 25)) receiptsByTx.set(r.transactionHash, r);
+      for (const t of canonicalTokensMoved([...receiptsByTx.values()], me)) scope.add(t);
+    }
+    // A token still unwalked after the cap is read for its state and named in scope.history_not_walked
+    // (gap `history_not_walked`); its events come only from the receipts already fetched.
+    notWalked = new Set([...scope].filter((t) => !scanned.has(t)));
   }
-  // A token still unwalked after the cap is read for its state and named in scope.history_not_walked
-  // (gap `history_not_walked`); its events come only from the receipts already fetched.
-  const notWalked = new Set([...scope].filter((t) => !scanned.has(t)));
 
   const receipts = [...receiptsByTx.values()];
-  if (receipts.length === 0 && ![...balances.values()].some((raw) => raw > 0n)) throw new NoStockTokenActivity();
+  if (receipts.length === 0 && held.length === 0) throw await empty(found ? "every_canonical_token" : "nvda_only");
 
   const states: TokenState[] = [];
   for (const t of [...scanned, ...notWalked]) {
     const info = tokenByAddress(t)!;
-    states.push(await readTokenState(info.token, info.feed, address, block, patient));
+    states.push(await readTokenState(info.token, info.feed, me, block, patient));
   }
   const blockTimestamp = await fetchBlockTimestamp(block, patient);
-  return assembleFacts({ address, block, blockTimestamp, receipts, states, resolver: chainPoolResolver(patient), fixtureIds: ["A", "B"], historyNotWalked: notWalked });
+  // Corporate actions of every token in the record (SPEC patch 022): the frozen walk plus one tail read per token.
+  // They are display only, so a failed read costs the section, not the record: it is named in gaps instead.
+  let multiplierUpdates: TimedMultiplierUpdate[] | undefined;
+  try {
+    multiplierUpdates = await readMultiplierUpdates([...scanned, ...notWalked], block, patient);
+  } catch {
+    multiplierUpdates = undefined;
+  }
+  const facts = await assembleFacts({
+    address: me,
+    block,
+    blockTimestamp,
+    receipts,
+    states,
+    resolver: chainPoolResolver(patient),
+    fixtureIds: ["A", "B"],
+    historyNotWalked: notWalked,
+    scopeRule: found ? SCOPE_RULE_ALL : undefined,
+    exitedScanned: !!found,
+    multiplierUpdates,
+    multiplierUpdatesFailed: multiplierUpdates === undefined,
+  });
+  // The look-alike search runs last, after every read the record needs (pool lookups included), so it
+  // never competes with them for the public RPC's rate limit. Its budget shrinks when those reads were
+  // slow, so it ends by LOOKALIKE_DEADLINE_MS after the start. It never fails the record.
+  // With Alchemy it reuses the transfer list the discovery above already read (one pair of calls, not two).
+  const budgetMs = Math.max(0, Math.min(LOOKALIKE_BUDGET_MS, LOOKALIKE_DEADLINE_MS - (Date.now() - started)));
+  const lookalikes = await scanLookalikes(me, block, receipts, {
+    ...opts,
+    fixture: fixtureFor(me),
+    budgetMs,
+    alchemy: alchemyUrl ? { url: alchemyUrl, fetchImpl: opts.fetchImpl, prefetched: shared ?? undefined } : null,
+  }).catch(() => notScanned("the look-alike search failed, so nothing was searched"));
+  // Overwriting the two keys keeps their place in the document (before `evidence`).
+  return { ...facts, lookalikes: lookalikes.lookalikes, lookalikes_scope: lookalikes.lookalikes_scope };
 }
