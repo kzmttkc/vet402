@@ -494,6 +494,9 @@ export type ReconstructOptions = RpcOptions & {
   block?: number;
   /** test seam: the Alchemy URL. Default rwaAlchemyUrl(); null forces the public-RPC path. */
   alchemyUrl?: string | null;
+  /** Epoch ms by which the look-alike search must end, on top of LOOKALIKE_DEADLINE_MS. The paid
+   *  lane counts it from the request's start, so a slow search cannot push settle past its own limit. */
+  lookalikeEndBy?: number;
 };
 
 type Discovery = { txs: Set<string>; tokens: Set<string> };
@@ -643,9 +646,11 @@ export async function reconstructFacts(address: string, opts: ReconstructOptions
   });
   // The look-alike search runs last, after every read the record needs (pool lookups included), so it
   // never competes with them for the public RPC's rate limit. Its budget shrinks when those reads were
-  // slow, so it ends by LOOKALIKE_DEADLINE_MS after the start. It never fails the record.
+  // slow, so it ends by LOOKALIKE_DEADLINE_MS after the start, or by opts.lookalikeEndBy if that is sooner.
+  // It never fails the record. A search cut short says so in lookalikes_scope.not_scanned.
   // With Alchemy it reuses the transfer list the discovery above already read (one pair of calls, not two).
-  const budgetMs = Math.max(0, Math.min(LOOKALIKE_BUDGET_MS, LOOKALIKE_DEADLINE_MS - (Date.now() - started)));
+  const now = Date.now();
+  const budgetMs = Math.max(0, Math.min(LOOKALIKE_BUDGET_MS, LOOKALIKE_DEADLINE_MS - (now - started), (opts.lookalikeEndBy ?? Infinity) - now));
   const lookalikes = await scanLookalikes(me, block, receipts, {
     ...opts,
     fixture: fixtureFor(me),

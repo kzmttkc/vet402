@@ -47,6 +47,14 @@ const EXPOSE = { "Access-Control-Expose-Headers": "PAYMENT-REQUIRED, PAYMENT-RES
  * cached for 5 minutes, so the retry is fast.
  */
 const SETTLE_START_BY_MS = 38_000;
+/**
+ * Latest moment (from the start of the request) at which the look-alike search
+ * may still run. It is the last step of a fresh record, and its own limit is
+ * counted from when the record started, later than this request. Ending it here
+ * leaves 8 s before SETTLE_START_BY_MS, so a slow search does not turn a paid
+ * first call into too_slow_retry. A search cut short says so in lookalikes_scope.
+ */
+export const LOOKALIKE_END_BY_MS = 30_000;
 
 function required(url: string, headers: Record<string, string>, error?: string, extra?: Record<string, string>) {
   const body = paymentRequired(url, error);
@@ -91,7 +99,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   let facts: RwaFacts;
   try {
-    facts = await cachedFacts(address);
+    facts = await cachedFacts(address, { lookalikeEndBy: started + LOOKALIKE_END_BY_MS });
   } catch (err) {
     if (err instanceof TooBusy || err instanceof ReconstructionTimeout) {
       return NextResponse.json(

@@ -11,10 +11,11 @@
 // public docs for alchemy_getAssetTransfers / alchemy_getTokenBalances.
 //
 // Run from the repo root: npx tsx --test packages/rwa/test/reach.test.ts
-import { test, beforeEach, afterEach } from "node:test";
+import { test, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { encodeAbiParameters, encodeFunctionResult, parseAbi } from "viem";
 import { NextRequest } from "next/server";
+import { privateKeyToAccount } from "viem/accounts";
 import { AlchemyNotConfigured, getAddressTransfers, getAssetTransfers, getTokenBalances } from "../alchemy";
 import { failureAnswer } from "../answers";
 import { ReconstructionTimeout, TooBusy, __resetFactsCacheForTest, cachedFactsWith } from "../cache";
@@ -26,6 +27,8 @@ import { MAX_TOKENS_PUBLIC, MAX_TXS_ALCHEMY, NoStockTokenActivity, SCOPE_RULE_AL
 import { CANONICAL_TOKENS, tokenByAddress } from "../registry";
 import { __resetRefusedUrlsForTest, noteRefused, rpcCall } from "../rpc";
 import { GET } from "../../../src/app/api/v1/rwa/facts/[address]/route";
+import { GET as PAID_GET, LOOKALIKE_END_BY_MS } from "../../../src/app/api/v1/rwa/paid/facts/[address]/route";
+import { FACILITATOR_URL, PAY_TO, PERMIT2, PRICE_ATOMIC, USDG, X402_PERMIT2_PROXY, b64json, paymentRequirements } from "../x402";
 
 const ME = "0x1111111111111111111111111111111111111111";
 const OTHER = "0x2222222222222222222222222222222222222222";
@@ -572,4 +575,119 @@ test("RWA_ALCHEMY_URL refused in the middle of a log walk: the same walk finishe
   noteRefused(ALCHEMY);
   await fetchTransfersIn(nvda, ME, HEAD, { fetchImpl, sleep: async () => {} });
   assert.equal(alchemyCalls, 1);
+});
+
+// ---------------------------------------------------------------- the paid lane's look-alike deadline
+
+const NO_TIME = /no time was left inside the record's deadline/;
+
+/** A holder of NVDA with one transfer in, on the public path. */
+function nvdaHolder() {
+  const nvda = NVDA.token.toLowerCase();
+  const hash = "0x" + "f".repeat(64);
+  return fakeChain({
+    balances: { [nvda]: 2n * 10n ** 18n },
+    logs: (f) => ((f.topics as (string | null)[])[2] === pad(ME) && f.fromBlock === "0x0" && f.address === nvda ? [{ transactionHash: hash, blockNumber: "0x10", logIndex: "0x0", topics: [], data: "0x", address: nvda }] : []),
+    receipts: { [hash]: receipt(hash, OTHER, nvda, nvda, OTHER, ME, 2n * 10n ** 18n, 16) },
+  });
+}
+
+test("lookalikeEndBy: a search with no time left is cut and says so; without it the same record searches", async () => {
+  const cut = await reconstructFacts(ME, { ...nvdaHolder().opts, lookalikeEndBy: Date.now() - 1 });
+  assert.ok(cut.lookalikes_scope.not_scanned.some((n) => NO_TIME.test(n)), cut.lookalikes_scope.not_scanned.join(" | "));
+  assert.ok(!cut.lookalikes_scope.searched.some((x) => x.source === "recent_logs"));
+  assert.equal(cut.lookalikes_scope.complete, false);
+
+  __resetFactsCacheForTest();
+  const full = await reconstructFacts(ME, nvdaHolder().opts);
+  assert.ok(!full.lookalikes_scope.not_scanned.some((n) => NO_TIME.test(n)), full.lookalikes_scope.not_scanned.join(" | "));
+  assert.ok(full.lookalikes_scope.searched.some((x) => x.source === "recent_logs"));
+  // The record itself is the same apart from the look-alike keys.
+  const strip = (f: RwaFacts) => ({ ...f, lookalikes: null, lookalikes_scope: null });
+  assert.deepEqual(strip(cut), strip(full));
+});
+
+// A fixed test key (well known, never funded). Only used to sign in this test.
+const payer = privateKeyToAccount("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");
+
+async function paymentHeader(): Promise<string> {
+  const now = BigInt(Math.floor(Date.now() / 1000));
+  const m = {
+    permitted: { token: USDG as `0x${string}`, amount: BigInt(PRICE_ATOMIC) },
+    spender: X402_PERMIT2_PROXY as `0x${string}`,
+    nonce: 777n,
+    deadline: now + 120n,
+    witness: { to: PAY_TO as `0x${string}`, validAfter: now - 60n },
+  };
+  const signature = await payer.signTypedData({
+    domain: { name: "Permit2", chainId: 4663, verifyingContract: PERMIT2 },
+    types: {
+      PermitWitnessTransferFrom: [
+        { name: "permitted", type: "TokenPermissions" },
+        { name: "spender", type: "address" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" },
+        { name: "witness", type: "Witness" },
+      ],
+      TokenPermissions: [
+        { name: "token", type: "address" },
+        { name: "amount", type: "uint256" },
+      ],
+      Witness: [
+        { name: "to", type: "address" },
+        { name: "validAfter", type: "uint256" },
+      ],
+    },
+    primaryType: "PermitWitnessTransferFrom",
+    message: m,
+  });
+  return b64json({
+    x402Version: 2,
+    accepted: paymentRequirements(),
+    payload: {
+      signature,
+      permit2Authorization: {
+        permitted: { token: m.permitted.token, amount: m.permitted.amount.toString() },
+        from: payer.address,
+        spender: m.spender,
+        nonce: m.nonce.toString(),
+        deadline: m.deadline.toString(),
+        witness: { to: m.witness.to, validAfter: m.witness.validAfter.toString() },
+      },
+    },
+  });
+}
+
+test("paid lane: a slow verify leaves the look-alike search less time, so the first paid call still settles", async () => {
+  const c = nvdaHolder();
+  const realNow = Date.now;
+  let skew = 0;
+  const TX = "0x" + "ab".repeat(32);
+  const f = mock.method(globalThis, "fetch", async (url: string, init: { body: string }) => {
+    const u = String(url);
+    if (u.startsWith(FACILITATOR_URL)) {
+      const path = new URL(u).pathname;
+      // The facilitator took 31 s to verify: the record starts 31 s after the request did.
+      if (path === "/verify") {
+        skew = LOOKALIKE_END_BY_MS + 1_000;
+        return new Response(JSON.stringify({ isValid: true, payer: payer.address }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ success: true, transaction: TX, network: "eip155:4663", payer: payer.address }), { status: 200 });
+    }
+    return (c.fetchImpl as unknown as (u: string, i: { body: string }) => Promise<Response>)(u, init);
+  });
+  Date.now = () => realNow() + skew;
+  try {
+    const res = await PAID_GET(new NextRequest(`http://localhost/api/v1/rwa/paid/facts/${ME}`, { headers: { "PAYMENT-SIGNATURE": await paymentHeader() } }), {
+      params: Promise.resolve({ address: ME }),
+    });
+    const body = await res.json();
+    assert.equal(res.status, 200, JSON.stringify(body));
+    assert.equal(res.headers.get("X-Payment-Status"), "settled");
+    assert.ok(body.lookalikes_scope.not_scanned.some((n: string) => NO_TIME.test(n)), body.lookalikes_scope.not_scanned.join(" | "));
+    assert.equal(body.lookalikes_scope.complete, false);
+  } finally {
+    Date.now = realNow;
+    f.mock.restore();
+  }
 });

@@ -146,7 +146,12 @@ export function pendingFacts(address: string): Promise<unknown> | null {
   return hit ? hit.promise.catch(() => {}) : null;
 }
 
-/** Facts for `address`, under the limits above. The paid lane uses the default deadline. */
-export function cachedFacts(address: string, opts: { deadlineMs?: number } = {}): Promise<RwaFacts> {
-  return cachedFactsWith(address, reconstructFacts, Date.now, opts.deadlineMs ?? RECONSTRUCTION_DEADLINE_MS);
+/**
+ * Facts for `address`, under the limits above. The paid lane uses the default deadline.
+ * `lookalikeEndBy` (epoch ms) reaches a reconstruction this call starts. A call that joins
+ * one already running gets that one's record as it is.
+ */
+export function cachedFacts(address: string, opts: { deadlineMs?: number; lookalikeEndBy?: number } = {}): Promise<RwaFacts> {
+  const load = (a: string) => reconstructFacts(a, opts.lookalikeEndBy === undefined ? {} : { lookalikeEndBy: opts.lookalikeEndBy });
+  return cachedFactsWith(address, load, Date.now, opts.deadlineMs ?? RECONSTRUCTION_DEADLINE_MS);
 }
