@@ -29,7 +29,8 @@ With Alchemy, each token the wallet held or moved costs one state read and one
 multiplier read, one after another. Past 30 such tokens the request answers 422
 `wallet_too_large` at once, with `limit: { kind: "tokens", max: 30, found: N }`
 and a detail that says "reading N tokens it held or moved". No state or receipt
-is read. The paid lane answers 503 `charged: false` for this case, as before.
+is read. The paid lane answered 503 `charged: false` for this case. Since the 2026-09-30
+audit fix it answers 422 `wallet_too_large` with `charged: false` (SPEC §7 errors).
 
 Basis: on 2026-09-30, 20 serial `readTokenState` calls against the public RPC
 for the demo wallet took 3.9 s in total (median 194 ms). How: a scratch script,

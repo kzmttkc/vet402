@@ -83,7 +83,7 @@ held. It does not trade, hold funds, issue a token, or give advice. Specificatio
 |---|---|
 | Page | `https://vet402.com/rwa/<address>` |
 | Facts JSON | `GET https://vet402.com/api/v1/rwa/facts/<address>?chain=4663` (no key; 10/min/IP across instances; 5-minute cache and one reconstruction at a time per instance). It answers within 20 seconds. A slower read keeps running and the retry joins it. |
-| Paid facts JSON | `GET https://vet402.com/api/v1/rwa/paid/facts/<address>` over x402 v2: 0.01 USDG on Robinhood Chain (`exact`, Permit2, facilitator Dexter), same JSON, 60/min/IP (not prioritised over the free route). Verified, then built, then settled: a 404 or 503 is never charged, and once settle is sent the record is returned. The receipt is in `PAYMENT-RESPONSE`; `X-Payment-Status` says `settled` or `unknown`. Payers sign with a plain key (EOA); smart-contract wallets are not accepted yet. |
+| Paid facts JSON | `GET https://vet402.com/api/v1/rwa/paid/facts/<address>` over x402 v2: 0.01 USDG on Robinhood Chain (`exact`, Permit2, facilitator Dexter), same JSON, 60/min/IP (not prioritised over the free route). Verified, then built, then settled: a 404, 422 or 503 is never charged, and once settle is sent the record is returned. The receipt is in `PAYMENT-RESPONSE`; `X-Payment-Status` says `settled` or `unknown`. Payers sign with a plain key (EOA); smart-contract wallets are not accepted yet. |
 | Anchor | `RwaAnchor` `0x1955137e7773f2459eb75fb88842026c6517c22d` on Robinhood Chain. The 0.1 record is `fixtures/rwa/anchor.json`, later records are `fixtures/rwa/anchors/<method_version>-<block>.json` |
 | Hash header | Both facts routes send `X-Facts-Hash`: the v2 anchor hash of the JSON body. The body is unchanged |
 

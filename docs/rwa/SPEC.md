@@ -485,6 +485,11 @@ Without `RWA_ALCHEMY_URL` nothing about scope changes.
 Every 503 body is `{ error, retry_after_sec, detail }`. The paid lane keeps its
 own codes and its 45 s deadline (money code, not changed here).
 
+Paid lane, from the 2026-09-30 audit fix: a wallet too large to rebuild answers
+422 `wallet_too_large` with the free route's body plus `charged: false`. It is
+verified, never settled, and not logged as a server error. Patch 024's "503
+`charged: false`" for this case no longer holds.
+
 404 body:
 
 ```json
