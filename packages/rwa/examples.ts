@@ -8,7 +8,7 @@ export type ExampleWallet = { address: string; note: string };
 
 /** Picked and measured on 2026-09-30 (docs/rwa/spec-patches/020-reach.md). Notes are as of that day. */
 export const EXAMPLE_WALLETS: readonly ExampleWallet[] = [
-  { address: "0xE9B08727131E34010b34006c660D4c1B436EC25f", note: "the demo wallet: holds NVDA and QQQ, 54 Uniswap swaps decoded, partial (as of 2026-09-30)" },
+  { address: "0xE9B08727131E34010b34006c660D4c1B436EC25f", note: "the demo wallet: holds NVDA and QQQ, sold out of SPY, 68 Uniswap swaps decoded, partial (as of 2026-09-30)" },
   { address: "0x6d3C1187A60B672C1AECB43a5aAEA9Abeec2b298", note: "a small one: holds SPY, QQQ back to zero, 3 transactions, 2 decoded as Uniswap v4 swaps, partial (as of 2026-09-30)" },
   { address: "0xace64DBF9B86975756A79a28A8614e9E97c707a6", note: "holds NET, which has no Chainlink feed, so no USD mark is shown, partial (as of 2026-09-30)" },
 ];

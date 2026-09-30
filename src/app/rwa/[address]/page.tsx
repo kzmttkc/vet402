@@ -10,8 +10,8 @@ import { FAILURE_CODES, emptyAnswer, failureAnswer, tooLargeAnswer, type Failure
 import { FREE_DEADLINE_MS, cachedFacts } from "../../../../packages/rwa/cache";
 import { EXAMPLE_WALLETS } from "../../../../packages/rwa/examples";
 import { METHOD_VERSION, NoStockTokenActivity, WalletTooLarge, type NoActivityAnswer, type RwaFacts, type TooLargeAnswer } from "../../../../packages/rwa/facts";
+import { AnchorNote } from "./anchor-note";
 import { LookalikesSection } from "./lookalikes";
-import anchorRecord from "../../../../fixtures/rwa/anchor.json";
 
 /**
  * /rwa/[address] — the one public page of the RWA instrument (docs/rwa/SPEC.md §10).
@@ -109,7 +109,7 @@ function money(usd: string): string {
   return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${cents}`;
 }
 
-/** "-284.57" → "−$284.57"; "12.00" → "+$12.00" */
+/** "-273.01" → "−$273.01"; "12.00" → "+$12.00" */
 function signedMoney(usd: string): string {
   return `${usd.startsWith("-") ? "\u2212" : "+"}$${money(usd)}`;
 }
@@ -245,7 +245,6 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
   const held = facts.tokens.filter((t) => BigInt(t.raw) > 0n);
   const unparsed = facts.events_summary.other_unparsed;
   const movements = facts.events_summary.transfer + facts.events_summary.univ3 + facts.events_summary.univ4 + unparsed;
-  const anchoredHere = anchorRecord.facts.address.toLowerCase() === shown.toLowerCase();
   const replayOk = facts.tokens.every((t) => t.replayed_raw === t.raw);
   // SPEC patch 022: corporate actions of the tokens in this record, split by whether the wallet held the token then.
   const actions = facts.tokens.flatMap((t) => (t.corporate_actions ?? []).map((a) => ({ ...a, symbol: t.symbol })));
@@ -312,8 +311,14 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
         History walked for: {facts.scope.scanned.join(", ")}.
         {facts.scope.history_not_walked.length > 0 &&
           ` Seen inside those transactions, history not walked: ${facts.scope.history_not_walked.join(", ")}.`}{" "}
-        Positions in other tokens that were opened and fully closed are not scanned yet (
-        <code>exited_positions_not_scanned</code>), so &quot;complete&quot; below means complete within these tokens.
+        {facts.gaps.includes("exited_positions_not_scanned") ? (
+          <>
+            Positions in other tokens that were opened and fully closed are not scanned yet (
+            <code>exited_positions_not_scanned</code>), so &quot;complete&quot; below means complete within these tokens.
+          </>
+        ) : (
+          "It covers every canonical token moved to or from this wallet, including the ones it sold out of."
+        )}
       </p>
 
       {actionsRead && (
@@ -406,20 +411,7 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
         replayed events land on the balance the chain reports: {replayOk ? `yes (${facts.tokens.length}/${facts.tokens.length} tokens)` : "no — see balance_mismatch"}
       </p>
       <p className="mt-1 text-sm">as_of: {facts.as_of} (block {facts.as_of_block}) · method {facts.method_version}</p>
-      <p className="mt-1 text-sm">
-        This page is recomputed from the chain and is not an anchored snapshot.
-        {anchoredHere && (
-          <>
-            {" "}
-            The anchored snapshot of this wallet is the record at block {anchorRecord.facts.as_of_block} ({anchorRecord.facts.method_version}),
-            committed on Robinhood Chain in{" "}
-            <a className="underline" href={`${EXPLORER}/tx/${anchorRecord.anchor_tx}`} rel="noreferrer" target="_blank">
-              {anchorRecord.anchor_tx.slice(0, 10)}…
-            </a>
-            ; its hash is recomputed from that record, not from this page.
-          </>
-        )}
-      </p>
+      <AnchorNote address={shown} liveBlock={facts.as_of_block} />
       {facts.gaps.length > 0 && <p className="mt-1 text-sm">gaps: {facts.gaps.join(", ")}</p>}
 
       <h2 className="mt-8 text-lg font-semibold">Evidence (transactions)</h2>
