@@ -1610,7 +1610,8 @@ paths:
           description: |
             `no_stock_token_activity`: the address holds none of the canonical
             Stock Tokens and no history in scope was found (SPEC patch 020).
-            The body states what was checked and is cached like a record.
+            The body states what was checked. It is cached for 5 minutes and
+            served stale for 60 s at most (`stale-while-revalidate=60`).
             `history_checked` is `every_canonical_token` when the transfers of
             every canonical token were read, or `nvda_only` when only today's
             balances and NVDA's incoming transfers were (gap
@@ -1637,9 +1638,9 @@ paths:
           description: |
             `wallet_too_large` (SPEC patch 020): the wallet needs more than one
             request can do (more than 6 tokens to walk on the public RPC, or
-            more than 600 transactions to replay with Alchemy). The body lists
-            `held` (symbols), `held_tokens`, `limit` and `detail`, and is
-            cached like a record. Not rebuilt.
+            with Alchemy more than 600 transactions to replay or more than 30
+            tokens held or moved). The body lists `held` (symbols),
+            `held_tokens`, `limit` and `detail`. Cached like the 404. Not rebuilt.
           content:
             application/json:
               schema:
