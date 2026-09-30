@@ -13,6 +13,14 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-30: /rwa second audit fixes, huge wallets and the record summary (branch `rwa-r2-fix`, not pushed)
+
+- **What**: a wallet too large to rebuild now gets its 422 from the first page or log range that proves it, and never falls back from Alchemy to the public walk. The public walk also stops past 600 transactions. `limit.kind` gains `transfers`. The public-path 422 says the token count includes NVDA. A record, 404 or 422 built on the public path while Alchemy is configured says so (gap `alchemy_unavailable`). The record page says "no sales yet" for a wallet with no swap. SPEC patch 025.
+- **Why**: in production 0x6aa8...326e answered `still_reading` after 20.5 s and the next three wallets got `too_busy`. 0x7f61...4c9d (15 transfers, 0 swaps) read "sales found, none could be priced". 0x44df...b3f4 said "7 tokens" next to "Holds 6".
+- **Money code**: `d96660f5` changes the bodies the paid route returns (422 detail and limit, gaps). x402.ts and the paid route file are unchanged. Needs an independent SHIP before push.
+- **Measured**: locally on the public RPC, 0x6aa8...326e went from HTTP 429 after 49.5 s to 422 after 10.3 s. The live 422 for 0x44df...b3f4 was `x-vercel-cache: MISS` twice (10.85 s, then 0.33 s from server memory), so the CDN does not keep a 422. The Alchemy path is tested with a scripted endpoint only (no key outside Vercel).
+- **Commits**: d96660f5 (money), c6c47e01, plus the docs commit on top.
+
 ## 2026-09-30: personal name removed from repo docs (branch `rwa-name-scrub`)
 
 - The owner's full name no longer appears in the repo: AI_USAGE.md, docs/applications/base-batches-004-video.md, docs/applications/base-builder-grant-nomination.md, docs/ethonline-2026/DISCLOSURE_2026-09-05.md and docs/ethonline-2026/RELEASE_NOTES_SUBMISSION.md now say "Takeshi". The nomination draft points to the legal name kept outside the repo.

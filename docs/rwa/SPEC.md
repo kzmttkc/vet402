@@ -428,6 +428,7 @@ Integration notes (2026-09-30):
 - The Alchemy endpoint is `RWA_ALCHEMY_URL`, else `ALCHEMY_API_KEY` on `https://robinhood-mainnet.g.alchemy.com/v2/`, else none. The key alone serves only `alchemy_getAssetTransfers` and `alchemy_getTokenBalances`. The plain reads stay on `RWA_RPC_URL` or the public RPC. Where 020 says "with `RWA_ALCHEMY_URL`", read "with an Alchemy endpoint".
 - A 401, a 403 or a "network not enabled" answer is a refusal. It is not retried, the endpoint is left out for 10 minutes, and the record takes the public path with its gap (`exited_positions_not_scanned`). No error, log line or record carries the URL or the key.
 - Patches 020 and 021 share one Alchemy read: every ERC-20 transfer to and from the wallet, both sides, two calls. Discovery keeps the canonical tokens from it and the look-alike search judges the rest. Past the page cap, discovery asks again with the canonical contracts as a filter.
+- Patch 025 (2026-09-30, second audit): both Alchemy reads stop at the first page that proves the wallet too large, and a too-large wallet never falls back to the public walk. The public walk stops past 600 transactions too. A record, 404 or 422 built on the public path while an Alchemy endpoint is configured names it (gap `alchemy_unavailable`, or one sentence in `detail`). Text in `docs/rwa/spec-patches/025-huge-wallets.md`.
 
 ### SPEC patch 020: any wallet gets a fast, stable, honest answer
 
@@ -477,7 +478,7 @@ Without `RWA_ALCHEMY_URL` nothing about scope changes.
 | code | when |
 |---|---|
 | 404 `no_stock_token_activity` | holds none of the canonical tokens and no history in scope. The body states what was checked (below). Cached: `s-maxage=300, stale-while-revalidate=60` (patch 024) |
-| 422 `wallet_too_large` | one request cannot rebuild it: more than 6 tokens to walk on the public RPC (16 log queries each), or with Alchemy more than 600 transactions to replay or more than 30 tokens held or moved. The body lists the held symbols and the limit hit. Cached like the 404 (patch 024) |
+| 422 `wallet_too_large` | one request cannot rebuild it: more than 6 tokens to walk on the public RPC (16 log queries each), more than 600 transactions to replay on either path, or with Alchemy more than 30 tokens held or moved or more than 20,000 Stock Token transfers. A read stops at the first page or log range that passes a limit, and then `found` is where it stopped (patch 025). The body lists the held symbols and the limit hit. Held by the server for 5 minutes (patch 025: the CDN does not keep a 422) |
 | 503 `too_busy` | another wallet is being rebuilt on this instance. `Retry-After: 30` |
 | 503 `still_reading` | the read took longer than the free deadline (20 s). It keeps its slot and runs on, and a retry joins it. `Retry-After: 30` |
 | 503 `chain_unavailable` | the chain RPC failed. `Retry-After: 60` |
