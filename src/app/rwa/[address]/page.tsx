@@ -317,7 +317,7 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
             <code>exited_positions_not_scanned</code>), so &quot;complete&quot; below means complete within these tokens.
           </>
         ) : (
-          "It covers every canonical token moved to or from this wallet, including the ones it sold out of."
+          "It also covers canonical tokens this wallet sold out of, found through its transfer history."
         )}
       </p>
 
