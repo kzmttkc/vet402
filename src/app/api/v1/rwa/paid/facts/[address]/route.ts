@@ -5,7 +5,8 @@ import { isValidAddress } from "@/lib/chain/client";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { RWA_CHAIN_ID } from "../../../../../../../../packages/rwa/config";
 import { ReconstructionTimeout, TooBusy, cachedFacts } from "../../../../../../../../packages/rwa/cache";
-import { NoStockTokenActivity, type RwaFacts } from "../../../../../../../../packages/rwa/facts";
+import { tooLargeAnswer } from "../../../../../../../../packages/rwa/answers";
+import { NoStockTokenActivity, WalletTooLarge, type RwaFacts } from "../../../../../../../../packages/rwa/facts";
 import { factsHashHeader } from "../../../../../../../../packages/rwa/anchor";
 import {
   BadPayment,
@@ -31,6 +32,10 @@ import {
  * record is returned whatever settle answered, unless the facilitator said
  * plainly that no money moved (402). An unknown settlement answers 200 with
  * the record and `X-Payment-Status: unknown` instead of a receipt.
+ *
+ * A wallet too large to rebuild in one request is an answer, not a failure: 422
+ * wallet_too_large with the same body as the free route plus charged:false,
+ * never settled and not logged as an error.
  */
 
 type RouteContext = { params: Promise<{ address: string }> };
@@ -109,6 +114,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
     if (err instanceof NoStockTokenActivity) {
       return NextResponse.json({ error: "no_stock_token_activity", charged: false }, { status: 404, headers: gate.headers });
+    }
+    if (err instanceof WalletTooLarge) {
+      return NextResponse.json({ ...tooLargeAnswer(err), charged: false }, { status: 422, headers: gate.headers });
     }
     logServerErrorSafe("rwa_paid_facts", err);
     return NextResponse.json({ error: "feed_unavailable", charged: false }, { status: 503, headers: gate.headers });

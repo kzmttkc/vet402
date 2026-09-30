@@ -1695,7 +1695,7 @@ paths:
         `0x973cD8a91A771C2C04C6036888F8175D6b4F6227`, facilitator Dexter.
         With the header: the terms and the Permit2 signature are checked
         locally, the payment is verified at the facilitator, the record is
-        built, and only then settled. 404 and 503 carry `charged: false`.
+        built, and only then settled. 404, 422 and 503 carry `charged: false`.
         Once settle has been sent the record is returned, unless the
         facilitator answered `success: false` (402, no money moved).
         `X-Payment-Status: settled` comes with `PAYMENT-RESPONSE` (base64 JSON
@@ -1720,6 +1720,11 @@ paths:
           description: Payment required, or refused (the reason is in `error`), or settle answered success:false (no money moved; PAYMENT-RESPONSE attached).
         "404":
           description: no_stock_token_activity (not charged)
+        "422":
+          description: |
+            `wallet_too_large` (not charged, never settled): the same body as
+            getRwaFacts's 422 (`held`, `held_tokens`, `limit`, `detail`) plus
+            `charged: false`. Not rebuilt.
         "429":
           description: rate_limited
         "502":

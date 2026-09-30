@@ -13,7 +13,7 @@
 // Run from the repo root: npx tsx --test packages/rwa/test/reach.test.ts
 import { test, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
-import { encodeAbiParameters, encodeFunctionResult, parseAbi } from "viem";
+import { encodeAbiParameters, encodeFunctionResult, getAddress, parseAbi } from "viem";
 import { NextRequest } from "next/server";
 import { privateKeyToAccount } from "viem/accounts";
 import { AlchemyNotConfigured, getAddressTransfers, getAssetTransfers, getTokenBalances } from "../alchemy";
@@ -708,7 +708,7 @@ test("with Alchemy, a wallet that moved more tokens than one request can read: 4
   assert.equal(c.count("eth_getLogs"), 0);
 });
 
-test("paid lane: a wallet too large to rebuild is 503 charged:false and never settled", async () => {
+test("paid lane: a wallet too large to rebuild is 422 wallet_too_large charged:false, never settled, not logged as an error", async () => {
   const tooBig = new WalletTooLarge({
     error: "wallet_too_large",
     address: ME,
@@ -728,14 +728,20 @@ test("paid lane: a wallet too large to rebuild is 503 charged:false and never se
     paths.push(new URL(String(url)).pathname);
     return new Response(JSON.stringify({ isValid: true, payer: payer.address }), { status: 200 });
   });
+  const errors = mock.method(console, "error", () => {});
   try {
     const res = await PAID_GET(new NextRequest(`http://localhost/api/v1/rwa/paid/facts/${ME}`, { headers: { "PAYMENT-SIGNATURE": await paymentHeader() } }), {
       params: Promise.resolve({ address: ME }),
     });
-    assert.equal(res.status, 503);
-    assert.deepEqual(await res.json(), { error: "feed_unavailable", charged: false });
-    assert.deepEqual(paths, ["/verify"]);
+    assert.equal(res.status, 422);
+    const body = await res.json();
+    // The free route's body, plus charged:false.
+    assert.deepEqual(body, { ...tooBig.answer, address: getAddress(ME), charged: false });
+    assert.equal(res.headers.get("PAYMENT-RESPONSE"), null);
+    assert.deepEqual(paths, ["/verify"], "verified, never settled");
+    assert.equal(errors.mock.callCount(), 0, "not logged as a server error");
   } finally {
+    errors.mock.restore();
     f.mock.restore();
   }
 });
