@@ -60,16 +60,18 @@ held. It does not trade, hold funds, issue a token, or give advice. Specificatio
    [`fixtures/rwa/anchors/rwa-recon-0.3-76177721.json`](../../fixtures/rwa/anchors/rwa-recon-0.3-76177721.json)
    (the wallet in step 1, as of block 76177362). Details in
    [Verify it yourself in five minutes](#verify-it-yourself-in-five-minutes).
-6. The same record, bought by an agent: 0.01 USDG over x402 on Robinhood Chain,
-   settled through Dexter in tx
+6. The same record, bought by an agent: 0.01 USDG over x402 on Robinhood Chain.
+   The first settlement was a test I paid myself, settled through Dexter in tx
    [`0xeb26d1b5…3760`](https://robinhoodchain.blockscout.com/tx/0xeb26d1b5b0b1a12056ec8abd99640fcbb00860552b4c5a44d3e1b67b3da73760)
    ([`fixtures/rwa/paid-receipt.json`](../../fixtures/rwa/paid-receipt.json)). The free JSON stays free.
 
 ## What this Buildathon added, and what it did not
 
-- **Added (first code commit 2026-09-17):** everything under `packages/rwa`,
-  `src/app/rwa`, `src/app/api/v1/rwa`, `fixtures/rwa` and `docs/rwa`, plus the
-  `rwa:test` line in `package.json`. `git log -- <those paths>` is the diff.
+- **Added (first code commit 2026-09-16 22:03 UTC):** everything under
+  `packages/rwa`, `src/app/rwa`, `src/app/api/v1/rwa` and `fixtures/rwa`, plus
+  the `rwa:test` line in `package.json`. `git log -- <those paths>` is the diff.
+- **Written before the event:** the spec in `docs/rwa`. I started it on
+  2026-09-09, before the event, and added its patches during the event.
 - **Not changed:** vet402's existing `/score` path, its weights, the x402
   observatory, and every existing database table. `/rwa` imports none of them
   and writes no database row.
@@ -89,7 +91,7 @@ held. It does not trade, hold funds, issue a token, or give advice. Specificatio
 
 Robinhood Chain only. Classified venues: canonical token transfers and Uniswap
 v3/v4 pools verified against the official factory and PoolManager. Everything
-else — other DEX forks, RFQ, lending — is counted as `other_unparsed` and keeps
+else (other DEX forks, RFQ, lending) is counted as `other_unparsed` and keeps
 the record `partial`; it is never dropped.
 
 ## Verify it yourself in five minutes
@@ -190,7 +192,8 @@ On 2026-09-30 both public RPCs returned 548 bytes of runtime with keccak256
 `0x9032fa493b888a32b4773a18ae74814d4f492d136c4cd55ade593eb783f9b5b0`, equal to the
 Foundry build byte for byte, including the metadata tail. That tail holds an IPFS
 hash of the compiler metadata, which includes a hash of the source file, so a
-full match pins the source text and not only the logic. `count()` returned 1.
+full match pins the source text and not only the logic. `count()` returns 2 (the
+0.1 and 0.3 anchors), read with `eth_call` on both public RPCs on 2026-09-30.
 
 ## What is not trustless
 
