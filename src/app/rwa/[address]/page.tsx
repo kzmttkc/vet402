@@ -11,7 +11,7 @@ import { FREE_DEADLINE_MS, cachedFacts } from "../../../../packages/rwa/cache";
 import { EXAMPLE_WALLETS } from "../../../../packages/rwa/examples";
 import { METHOD_VERSION, NoStockTokenActivity, WalletTooLarge, type NoActivityAnswer, type RwaFacts, type TooLargeAnswer } from "../../../../packages/rwa/facts";
 import { AnchorNote } from "./anchor-note";
-import { heldAtBlockLine, holdingsLine, noHeldActionsLine, realizedLine } from "./lines";
+import { holdingsLine, money, noHeldActionsLine, realizedLine, signedMoney, tooLargeLines } from "./lines";
 import { LookalikesSection } from "./lookalikes";
 
 /**
@@ -104,17 +104,6 @@ export async function generateMetadata({ params }: { params: Promise<{ address: 
   };
 }
 
-/** "78805.22" → "78,805.22" */
-function money(usd: string): string {
-  const [whole, cents] = usd.replace("-", "").split(".");
-  return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${cents}`;
-}
-
-/** "-273.01" → "−$273.01"; "12.00" → "+$12.00" */
-function signedMoney(usd: string): string {
-  return `${usd.startsWith("-") ? "\u2212" : "+"}$${money(usd)}`;
-}
-
 /** "1000775159164630595" → "1.000775159" (9 places, enough to see a 0.08% change) */
 function multiplier(raw: string): string {
   const n = BigInt(raw);
@@ -167,8 +156,11 @@ function TooLarge({ address, answer }: { address: string; answer: TooLargeAnswer
       <h1 className="text-xl font-semibold">vet402 /rwa</h1>
       <p className="mt-2 break-all font-mono text-sm">{address}</p>
       <p className="mt-4 border-l-2 pl-3 text-base">Too large to rebuild in one request.</p>
-      <p className="mt-3 text-sm">{answer.detail}</p>
-      <p className="mt-1 text-sm">{heldAtBlockLine(answer.held, answer.as_of_block)}</p>
+      {tooLargeLines(answer.detail, answer.held, answer.as_of_block).map((line, i) => (
+        <p key={i} className={i === 0 ? "mt-3 text-sm" : "mt-1 text-sm"}>
+          {line}
+        </p>
+      ))}
       <p className="mt-3 text-sm">
         <Link className="underline" href={`/api/v1/rwa/facts/${address}`}>
           facts JSON
@@ -292,7 +284,7 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
                 <td className="py-1 pr-6 font-mono">
                   {t.usd ?? (t.usd_reason === "no_feed" ? "not shown: no Chainlink feed" : "not shown: the price feed is stale")}
                 </td>
-                <td className="py-1 pr-6 font-mono">{t.realized_usd === null ? "—" : `${t.realized_usd} (${t.realized_status})`}</td>
+                <td className="py-1 pr-6 font-mono">{t.realized_usd === null ? "—" : `${signedMoney(t.realized_usd)} (${t.realized_status})`}</td>
                 <td className="py-1 pr-6 font-mono">{t.feed_updated_at ?? "—"}</td>
                 <td className="py-1 pr-6">{t.stale === null ? "—" : String(t.stale)}</td>
               </tr>
@@ -385,7 +377,7 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
       {facts.realized_usd !== null && (
         <>
           <h2 className="mt-8 text-lg font-semibold">Realized PnL</h2>
-          <p className="mt-2 font-mono text-sm">{facts.realized_usd} USD</p>
+          <p className="mt-2 font-mono text-sm">{signedMoney(facts.realized_usd)}</p>
           <p className="mt-1 text-sm">
             First in, first out, per token: each sale is matched against the oldest purchase still held ({facts.realized_status}).
             {facts.realized_status === "partial" &&

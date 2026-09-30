@@ -3,9 +3,11 @@
 // Run from the repo root: npx tsx --test packages/rwa/test/record-lines.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { heldAtBlockLine, holdingsLine, noHeldActionsLine, realizedLine } from "../../../src/app/rwa/[address]/lines";
+import { heldAtBlockLine, holdingsLine, noHeldActionsLine, realizedLine, signedMoney, tooLargeLines } from "../../../src/app/rwa/[address]/lines";
 
 (globalThis as unknown as { React: typeof React }).React = React;
 
@@ -14,6 +16,24 @@ const money = (usd: string) => usd;
 test("a too-large wallet that holds nothing says so instead of an empty list", () => {
   assert.equal(heldAtBlockLine([], 76177362), "Holds no canonical Stock Token at block 76177362.");
   assert.equal(heldAtBlockLine(["NVDA", "QQQ"], 5), "Held at block 5: NVDA, QQQ.");
+});
+
+test("a too-large wallet that holds nothing says it once: the detail alone, no second 'holds no' line", () => {
+  // Third audit, 2026-09-30: "Holds 0 of the 195 ..." was followed by "Holds no canonical Stock Token ...".
+  const detail = "Holds 0 of the 195 canonical Stock Tokens at block 9. Rebuilding it means replaying more than 600 transactions (the read stopped at 601), and one request can replay 600. It is not rebuilt.";
+  assert.deepEqual(tooLargeLines(detail, [], 9), [detail]);
+  const some = "Holds 2 of the 195 canonical Stock Tokens at block 9. It is not rebuilt.";
+  assert.deepEqual(tooLargeLines(some, ["NVDA", "QQQ"], 9), [some, "Held at block 9: NVDA, QQQ."]);
+});
+
+test("every realized figure on the record page is written one way: −$273.01, +$11.56", () => {
+  // Third audit, 2026-09-30: the summary said "−$273.01" and the Realized PnL line "-273.01 USD".
+  assert.equal(signedMoney("-273.01"), "\u2212$273.01");
+  assert.equal(signedMoney("11.56"), "+$11.56");
+  assert.equal(signedMoney("-1234567.89"), "\u2212$1,234,567.89");
+  const page = readFileSync(join(process.cwd(), "src/app/rwa/[address]/page.tsx"), "utf8");
+  assert.ok(!/realized_usd\}\s*USD/.test(page), "no bare realized_usd followed by USD");
+  assert.ok(!/`\$\{t\.realized_usd\} \(/.test(page), "the per-token realized cell uses signedMoney");
 });
 
 test("a wallet that sold out of everything reads as holding nothing now", () => {

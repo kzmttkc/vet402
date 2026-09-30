@@ -9,6 +9,30 @@ export function heldAtBlockLine(held: readonly string[], block: number): string 
   return held.length === 0 ? `Holds no canonical Stock Token at block ${block}.` : `Held at block ${block}: ${held.join(", ")}.`;
 }
 
+/**
+ * The lines of the too-large page: the 422 detail, then the symbols held. A wallet that holds none gets the
+ * detail alone, which already opens with "Holds 0 of the 195 ..." (third audit, 2026-09-30: the two lines
+ * said the same thing one after the other).
+ */
+export function tooLargeLines(detail: string, held: readonly string[], block: number): string[] {
+  return held.length === 0 ? [detail] : [detail, heldAtBlockLine(held, block)];
+}
+
+/** "78805.22" → "78,805.22" */
+export function money(usd: string): string {
+  const [whole, cents] = usd.replace("-", "").split(".");
+  return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${cents}`;
+}
+
+/**
+ * "-273.01" → "−$273.01", "12.00" → "+$12.00". Every realized figure on the record page is written this
+ * way (third audit, 2026-09-30: the summary said "−$273.01" and the Realized PnL line "-273.01 USD").
+ * The JSON keeps its plain decimal string.
+ */
+export function signedMoney(usd: string): string {
+  return `${usd.startsWith("-") ? "\u2212" : "+"}$${money(usd)}`;
+}
+
 /** The first part of the summary line. A wallet that holds nothing now has nothing to mark. */
 export function holdingsLine(heldCount: number, markedUsd: string | null, money: (usd: string) => string): string {
   if (heldCount === 0) return "nothing held now, so nothing to mark";
