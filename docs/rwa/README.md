@@ -10,43 +10,55 @@ held. It does not trade, hold funds, issue a token, or give advice. Specificatio
 ## 30 seconds
 
 1. Open a real record: <https://vet402.com/rwa/0xE9B08727131E34010b34006c660D4c1B436EC25f>
-   (a public wallet on Robinhood Chain that holds NVDA and QQQ). Its record is
-   `partial`, and the page says how many movements were not decoded. It also shows:
-   - **Look-alikes.** Two tokens this wallet met copy real ones: a fake NVDA it
-     received and a fake USDG whose symbol hides invisible characters. Both are
-     listed with the reasons and `counted: false`. They are in no balance and no
-     USD figure.
-   - **Corporate actions.** NVDA changed its share multiplier on 2026-09-10 and
-     QQQ on 2026-09-22 while the wallet held them. The page shows the wallet's
-     shares before and after. Realized PnL is on raw amounts, so it does not move.
+   (a public wallet on Robinhood Chain that holds NVDA and QQQ and sold out of
+   SPY). Its record is `partial`, and the page says how many movements were not
+   decoded (42 of 110 in the anchored record). It also shows:
+   - **Look-alikes.** Two tokens this wallet met copy real ones. One is a fake
+     NVDA named "NVIDIA Robinhood Coin" that it received (25 tokens on
+     2026-09-27). The other is a fake USDG whose symbol hides invisible
+     characters, in a log that fakes a payment to a copy of a real
+     counterparty's address. Both are listed with the reasons and
+     `counted: false`. They are in no balance and no USD figure.
+   - **Corporate actions (share multiplier changes).** NVDA (2026-09-10), SPY
+     (2026-09-18) and QQQ (2026-09-22) each changed their multiplier while the
+     wallet held them, for example NVDA from 1 to 1.000775159. These are small
+     multiplier changes, not stock splits. The page shows the wallet's shares
+     before and after. Realized PnL is on raw amounts, so it does not move.
 
-   Measured on 2026-09-30 with `rwa-recon-0.3` at block 76155345.
+   These are from the anchored `rwa-recon-0.3` record, as of 2026-09-30 03:00 UTC
+   (block 76177362). The live page is recomputed and can be newer.
 2. Paste any wallet at <https://vet402.com/rwa>. The entry page lists three example
    wallets. Every wallet gets a stated answer: the record, or a 404 that says what
    was checked when it holds no Stock Token, or a 422 when it is too large for one
    request, or a 503 that names its reason with `Retry-After`.
 3. One real round trip, priced by hand to the cent: [Fixture B](../../fixtures/rwa/B.md),
    realized **−$9.62**. CI replays it through the FIFO engine. Three numbers,
-   three meanings: −$9.62 is that one hand-priced NVDA round trip; −$113.98 is the
-   demo wallet's realized NVDA; −$284.57 is its realized total across NVDA and QQQ
-   on the sales that could be priced (both as of 2026-09-29).
+   three meanings. −$9.62 is that one hand-priced NVDA round trip. −$113.98 is the
+   demo wallet's realized NVDA. −$273.01 is its realized total on the sales that
+   could be priced: NVDA −$113.98, QQQ −$170.59, SPY +$11.56. SPY is a position
+   the wallet sold out of. It is found because `rwa-recon-0.3` scans exited
+   positions through Alchemy's transfer index. The last two numbers are from the anchored
+   `rwa-recon-0.3` record, as of 2026-09-30 03:00 UTC.
 4. The anchor: `RwaAnchor`
    [`0x1955137e7773f2459eb75fb88842026c6517c22d`](https://robinhoodchain.blockscout.com/address/0x1955137e7773f2459eb75fb88842026c6517c22d)
    on Robinhood Chain, source verified on Blockscout (exact match). No owner, no
-   upgrade path.
+   upgrade path. The demo record is anchored in tx
+   [`0x15f9ed8a…585c7f`](https://robinhoodchain.blockscout.com/tx/0x15f9ed8ae5dd466c2f35021c9f1291e7a624abbb52c8ac26b54d47442f585c7f)
+   (block 76177721), under `rwa-recon-0.3`, with a hash that binds the whole JSON.
 5. Check the anchor yourself. No key, no account, no `npm ci`, only Node 18 or later:
 
    ```bash
    git clone https://github.com/kzmttkc/vet402 && cd vet402
-   node packages/rwa/scripts/verify-record.mjs --record fixtures/rwa/anchor.json \
-     --tx 0x9b776d6a4670768e3e85261fcf3a5fc02012668e3323fee7211b07d8deca72d7
+   node packages/rwa/scripts/verify-record.mjs \
+     --record fixtures/rwa/anchors/rwa-recon-0.3-76177721.json \
+     --tx 0x15f9ed8ae5dd466c2f35021c9f1291e7a624abbb52c8ac26b54d47442f585c7f
    # every line says OK, the last one says "RESULT: MATCH"
    ```
 
    It reads the receipt from a public RPC, checks that the log came from
    `RwaAnchor`, and recomputes the hash from the record kept in
-   [`fixtures/rwa/anchor.json`](../../fixtures/rwa/anchor.json) (the wallet in
-   step 1, as published at block 74267752 under `rwa-recon-0.1`). Details in
+   [`fixtures/rwa/anchors/rwa-recon-0.3-76177721.json`](../../fixtures/rwa/anchors/rwa-recon-0.3-76177721.json)
+   (the wallet in step 1, as of block 76177362). Details in
    [Verify it yourself in five minutes](#verify-it-yourself-in-five-minutes).
 6. The same record, bought by an agent: 0.01 USDG over x402 on Robinhood Chain,
    settled through Dexter in tx
@@ -90,8 +102,9 @@ From a clone:
 
 ```bash
 git clone https://github.com/kzmttkc/vet402 && cd vet402
-node packages/rwa/scripts/verify-record.mjs --record fixtures/rwa/anchor.json \
-  --tx 0x9b776d6a4670768e3e85261fcf3a5fc02012668e3323fee7211b07d8deca72d7
+node packages/rwa/scripts/verify-record.mjs \
+  --record fixtures/rwa/anchors/rwa-recon-0.3-76177721.json \
+  --tx 0x15f9ed8ae5dd466c2f35021c9f1291e7a624abbb52c8ac26b54d47442f585c7f
 ```
 
 Without a clone, two files over HTTPS:
@@ -99,7 +112,16 @@ Without a clone, two files over HTTPS:
 ```bash
 curl -LO https://raw.githubusercontent.com/kzmttkc/vet402/main/packages/rwa/scripts/verify-record.mjs
 node verify-record.mjs \
-  --record https://raw.githubusercontent.com/kzmttkc/vet402/main/fixtures/rwa/anchor.json \
+  --record https://raw.githubusercontent.com/kzmttkc/vet402/main/fixtures/rwa/anchors/rwa-recon-0.3-76177721.json \
+  --tx 0x15f9ed8ae5dd466c2f35021c9f1291e7a624abbb52c8ac26b54d47442f585c7f
+```
+
+The earlier anchor still verifies. It is the `rwa-recon-0.1` record of the same
+wallet as of block 74267752 (2026-09-27, realized −$113.98 on NVDA only), with
+the v1 hash material:
+
+```bash
+node packages/rwa/scripts/verify-record.mjs --record fixtures/rwa/anchor.json \
   --tx 0x9b776d6a4670768e3e85261fcf3a5fc02012668e3323fee7211b07d8deca72d7
 ```
 
@@ -115,8 +137,8 @@ What each line checks. The run exits 0 only when all of them say OK.
 | `factsHash` | Recomputed from the JSON with the hash material its `method_version` selects. |
 | `methodVersion`, `asOf` | Recomputed from the JSON. |
 
-On 2026-09-30 this run printed nine OK lines and `RESULT: MATCH` in under a
-second. The same command with the deploy tx (which has no `Anchored` log) prints
+On 2026-09-30 the 0.3 run printed nine OK lines and `RESULT: MATCH` in under a
+second, and the 0.1 run also ended in `RESULT: MATCH`. The same command with the deploy tx (which has no `Anchored` log) prints
 `FAIL contract` and exits 1.
 
 `npx tsx packages/rwa/scripts/anchor.ts --verify <tx> [--record <file>]` does the
@@ -179,7 +201,7 @@ and how to narrow each one.
 - **One operator key writes the anchors.** There is no multisig and no second
   signer. The contract accepts `anchor()` from anyone and records the sender as
   `anchoredBy`, so you see who wrote each log and decide whom to believe. The 0.1
-  anchor was sent by `0x973cD8a91A771C2C04C6036888F8175D6b4F6227`.
+  and 0.3 anchors were both sent by `0x973cD8a91A771C2C04C6036888F8175D6b4F6227`.
 - **The reconstruction runs on my server.** The anchor fixes its output. It does
   not recheck it. You can rerun the method from this repo against the same block.
 - **The token list is a dated snapshot.** [`packages/rwa/registry.json`](../../packages/rwa/registry.json)
@@ -202,9 +224,9 @@ and how to narrow each one.
   at verify, the paid route returns 502 and charges nothing. The free route does
   not use it.
 - **What the decoder does not understand is counted, not dropped.** It appears as
-  `other_unparsed` and keeps the record `partial`. On 2026-09-30 the demo wallet's
-  live record (as_of 2026-09-29T23:48:19Z) had 31 `other_unparsed` events next to
-  30 Uniswap v3 and 24 Uniswap v4 swaps.
+  `other_unparsed` and keeps the record `partial`. The demo wallet's anchored
+  0.3 record (as_of 2026-09-30T03:00:07Z) has 42 `other_unparsed` events next to
+  30 Uniswap v3 and 38 Uniswap v4 swaps, 110 movements in all.
 - **The look-alike search is only as wide as it says.** Without Alchemy it reads
   the record's own transactions and a recent window of blocks, and
   `lookalikes_scope` names what it did not search. For the demo wallet a

@@ -1,8 +1,10 @@
 # Open House Singapore — submission form draft (vet402 /rwa)
 
-Fields as measured on the HackQuest form (SPEC §13b patch 012). Contract,
-anchor tx and chain filled 2026-09-28 from `fixtures/rwa/anchor.json`
-(source verified on Blockscout, `--verify` printed `match: true`). Every answer is
+Fields as measured on the HackQuest form (SPEC §13b patch 012). Contract and
+chain filled 2026-09-28. The anchor tx was updated on 2026-09-30 to the
+`rwa-recon-0.3` anchor in `fixtures/rwa/anchors/rwa-recon-0.3-76177721.json`
+(`verify-record.mjs` printed `RESULT: MATCH`). The 0.1 anchor
+(`fixtures/rwa/anchor.json`) still verifies and is kept as history. Every answer is
 under the 300-character limit; the counts are checked by
 `packages/rwa/test/submission-draft.test.ts`.
 
@@ -25,7 +27,7 @@ Agents can buy the same JSON over x402 for 0.01 USDG: https://vet402.com/api/v1/
 
 ## List your Core Protocol / Smart Contract Addresses
 
-RwaAnchor 0x1955137e7773f2459eb75fb88842026c6517c22d on Robinhood Chain, with no owner and no upgrade path. It stores the keccak256 hash of a published record. The demo record is anchored in tx 0x9b776d6a4670768e3e85261fcf3a5fc02012668e3323fee7211b07d8deca72d7.
+RwaAnchor 0x1955137e7773f2459eb75fb88842026c6517c22d on Robinhood Chain, no owner, no upgrade path. It stores the hash of a whole published record. The demo record (rwa-recon-0.3, realized −$273.01 on priced sales) is anchored in tx 0x15f9ed8ae5dd466c2f35021c9f1291e7a624abbb52c8ac26b54d47442f585c7f.
 
 ## List your Factory/Pool Contracts (if applicable)
 

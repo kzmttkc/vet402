@@ -839,6 +839,10 @@ is built and before settle, and it never throws.
 The header comes from vet402's server. It helps match a response to a log. It is
 not a proof on its own.
 
+### SPEC patch 025: the rwa-recon-0.3 anchor
+
+On 2026-09-30 the demo wallet `0xE9B08727131E34010b34006c660D4c1B436EC25f` was anchored under `rwa-recon-0.3` in tx `0x15f9ed8ae5dd466c2f35021c9f1291e7a624abbb52c8ac26b54d47442f585c7f` (block 76177721, `RwaAnchor` `0x1955…c22d`, `anchoredBy` `0x973cD8a91A771C2C04C6036888F8175D6b4F6227`), following 9.y with `--from-api`. The record is `fixtures/rwa/anchors/rwa-recon-0.3-76177721.json`: as_of 2026-09-30T03:00:07Z (block 76177362), `r1_status` partial, hash material v2, `facts_hash` `0x9d0e83d968786570beebf0d322b36e0836dc81ebe896bd186304405ba8f721ee`. It holds realized −273.01 on the sales that could be priced (NVDA −113.98, QQQ −170.59, SPY +11.56, SPY being a position the wallet sold out of), a mark of 79,091.00, 110 movements of which 42 are `other_unparsed`, three corporate actions (share multiplier changes) while held, and two look-alikes that are not counted. `node packages/rwa/scripts/verify-record.mjs --record fixtures/rwa/anchors/rwa-recon-0.3-76177721.json --tx 0x15f9…5c7f` printed nine OK lines and `RESULT: MATCH` on 2026-09-30. The 0.1 anchor (tx `0x9b776d6a…72d7`, block 74268019) stays v1, still verifies and is kept as history. The record page (§10) reads every anchored record through `packages/rwa/anchors.ts` and shows the latest for the wallet, highest `method_version` first, then highest anchor block. It says when the live page is newer and lists earlier anchors one line each. A test fails when a file in `fixtures/rwa/anchors/` is missing from that list.
+
 ---
 
 ## 11. ゴールデン

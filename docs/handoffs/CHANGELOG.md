@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-09-30: /rwa anchored rwa-recon-0.3, and every surface reads it (branch `rwa-anchor-url`, not pushed)
+- **What**: the demo record under `rwa-recon-0.3` is anchored in tx `0x15f9ed8ae5dd466c2f35021c9f1291e7a624abbb52c8ac26b54d47442f585c7f` (block 76177721) and committed as `fixtures/rwa/anchors/rwa-recon-0.3-76177721.json`. The record page reads the latest anchor through `packages/rwa/anchors.ts` (0.1 stays as one history line) and says when the live page is newer. `/rwa` 30 seconds, `docs/rwa/README.md`, `SUBMISSION_DRAFT.md`, `OPERATING.md` and SPEC patch 025 carry the anchored numbers: realized −$273.01 on priced sales (NVDA −113.98, QQQ −170.59, SPY +11.56), look-alikes named and not counted, corporate actions (share multiplier changes) on NVDA, SPY and QQQ while held.
+- **Why**: the public text still named the 0.1 anchor as the latest and a realized total of −284.57 that no anchor holds.
+- **Impact**: no money code touched (no change to `packages/rwa/x402.ts`, the paid route or the JSON). A new anchor file must be added to `packages/rwa/anchors.ts`, or `npm run rwa:test` fails.
+- **Measured**: `node packages/rwa/scripts/verify-record.mjs --record fixtures/rwa/anchors/rwa-recon-0.3-76177721.json --tx 0x15f9…5c7f` printed nine OK lines and `RESULT: MATCH`. The 0.1 command also ends in `RESULT: MATCH`.
+- **Commits**: 9506ffb1 (anchor record), b4ad54db (record page), 36c5105a (/rwa entry), plus the docs commit on top.
+
 ## 2026-09-30: /rwa rwa-recon-0.3: any wallet, look-alikes, corporate actions, verify without a key (branch `rwa-integrate`, not pushed)
 - **What**: four sprint branches merged, then one method bump.
   - Reach (patch 020): a wallet with no Stock Token gets a cached 404 that says what was checked. A failure is a 503 named `too_busy`, `still_reading` or `chain_unavailable` with Retry-After, and the free route answers within 20 s. A wallet too large for one request gets 422 `wallet_too_large`. With Alchemy, every canonical token the wallet ever moved is in scope. The entry page lists three example wallets.

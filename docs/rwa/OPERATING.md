@@ -126,6 +126,14 @@ I run it by hand, once per method version, from a Terminal on my own machine.
    git add fixtures/rwa/anchors/<file>.json
    ```
 
+   Then add the file to `packages/rwa/anchors.ts`. The record page shows the
+   newest anchor from that list, and `npm run rwa:test` fails until the file is in it.
+
+Anchors sent so far:
+
+- 2026-09-27 anchored `rwa-recon-0.1` in tx `0x9b776d6a4670768e3e85261fcf3a5fc02012668e3323fee7211b07d8deca72d7` (block 74268019, `fixtures/rwa/anchor.json`).
+- 2026-09-30 anchored `rwa-recon-0.3` in tx `0x15f9ed8ae5dd466c2f35021c9f1291e7a624abbb52c8ac26b54d47442f585c7f` (block 76177721, `fixtures/rwa/anchors/rwa-recon-0.3-76177721.json`).
+
 What the script refuses, so a slip cannot split the record: a mainnet run
 without `--contract`, any mainnet address other than `0x1955…c22d`, a contract
 whose runtime keccak256 is not the pinned `RwaAnchor` build, a sender balance
