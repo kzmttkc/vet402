@@ -1,0 +1,344 @@
+{
+  "chain_id": 4663,
+  "contract": "0x1955137e7773f2459eb75fb88842026c6517c22d",
+  "anchor_tx": "0x15f9ed8ae5dd466c2f35021c9f1291e7a624abbb52c8ac26b54d47442f585c7f",
+  "anchor_block": 76177721,
+  "anchored_by": "0x973cD8a91A771C2C04C6036888F8175D6b4F6227",
+  "explorer": "https://robinhoodchain.blockscout.com/tx/0x15f9ed8ae5dd466c2f35021c9f1291e7a624abbb52c8ac26b54d47442f585c7f",
+  "subject": {
+    "address": "0xE9B08727131E34010b34006c660D4c1B436EC25f",
+    "keccak": "0xa158baaf573f2b072b47acaa019ef60de680571a8a2a6ad234faf0e8a3d3bfc5"
+  },
+  "facts_hash": "0x9d0e83d968786570beebf0d322b36e0836dc81ebe896bd186304405ba8f721ee",
+  "hash_material": 2,
+  "facts_json_keccak": "0x1e73eb7212981188a8ed3b66ef6416d9d7b81c83a3ee936b7b58ececbf67b067",
+  "preimage": "rwa-recon-0.3\n0xe9b08727131e34010b34006c660d4c1b436ec25f\n2026-09-30T03:00:07.000Z\npartial\n-273.01\n0x1e73eb7212981188a8ed3b66ef6416d9d7b81c83a3ee936b7b58ececbf67b067",
+  "method_version": {
+    "string": "rwa-recon-0.3",
+    "number": 3
+  },
+  "as_of": {
+    "iso": "2026-09-30T03:00:07.000Z",
+    "unix": "1790737207",
+    "block_on_4663": 76177362
+  },
+  "facts": {
+    "address": "0xE9B08727131E34010b34006c660D4c1B436EC25f",
+    "chain_id": 4663,
+    "as_of": "2026-09-30T03:00:07.000Z",
+    "as_of_block": 76177362,
+    "method_version": "rwa-recon-0.3",
+    "identity_binding": "unknown",
+    "r0": "present",
+    "r1_status": "partial",
+    "r2": "no_declaration",
+    "scope": {
+      "registry_taken_at": "2026-09-28T22:24:32.769Z",
+      "registry_tokens": 195,
+      "registry_source": "https://docs.robinhood.com/chain/contracts",
+      "scanned": [
+        "NVDA",
+        "QQQ",
+        "SPY"
+      ],
+      "history_not_walked": [],
+      "rule": "every canonical token moved to or from the address up to as_of (alchemy_getAssetTransfers), plus tokens held at as_of"
+    },
+    "tokens": [
+      {
+        "symbol": "QQQ",
+        "name": "Invesco QQQ",
+        "token": "0xD5f3879160bc7c32ebb4dC785F8a4F505888de68",
+        "canonical": true,
+        "raw": "94180700533589531354",
+        "shares_ui": "94.24670154",
+        "usd": "69732.85",
+        "usd_reason": null,
+        "feed": "0x80901d846d5D7B030F26B480776EE3b29374C2ae",
+        "feed_answer": "74041551333",
+        "feed_updated_at": "2026-09-29T22:06:27.000Z",
+        "stale": false,
+        "stale_reasons": [],
+        "weekend": false,
+        "replayed_raw": "94180700533589531354",
+        "realized_usd": "-170.59",
+        "realized_status": "partial",
+        "events_summary": {
+          "transfer": 0,
+          "univ3": 20,
+          "univ4": 3,
+          "other_unparsed": 19
+        },
+        "corporate_actions": [
+          {
+            "block": 69210998,
+            "time": "2026-09-22T00:00:50.000Z",
+            "effective_at": "2026-09-22T00:10:34.000Z",
+            "tx": "0x6331915e6ddac124b1ea59b0db720892615fbd8ffbbea59cc9772147e326bba6",
+            "multiplier_before": "1000000000000000000",
+            "multiplier_after": "1000700791241405425",
+            "ratio": "1.000700791241405425",
+            "held": true,
+            "wallet_raw_at": "94180700533589531354",
+            "wallet_shares_before": "94.18070053",
+            "wallet_shares_after": "94.24670154"
+          }
+        ]
+      },
+      {
+        "symbol": "NVDA",
+        "name": "NVIDIA",
+        "token": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
+        "canonical": true,
+        "raw": "41012742373747910457",
+        "shares_ui": "41.04453377",
+        "usd": "9358.15",
+        "usd_reason": null,
+        "feed": "0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15",
+        "feed_answer": "22817673628",
+        "feed_updated_at": "2026-09-29T17:56:39.000Z",
+        "stale": false,
+        "stale_reasons": [],
+        "weekend": false,
+        "replayed_raw": "41012742373747910457",
+        "realized_usd": "-113.98",
+        "realized_status": "partial",
+        "events_summary": {
+          "transfer": 0,
+          "univ3": 10,
+          "univ4": 21,
+          "other_unparsed": 12
+        },
+        "corporate_actions": [
+          {
+            "block": 58952659,
+            "time": "2026-09-09T23:50:42.000Z",
+            "effective_at": "2026-09-10T00:00:30.000Z",
+            "tx": "0x4ac23f2e58e2c4962dcd701c2beff581e87f3995152a29d527c07a3afd67d956",
+            "multiplier_before": "1000000000000000000",
+            "multiplier_after": "1000775159164630595",
+            "ratio": "1.000775159164630595",
+            "held": true,
+            "wallet_raw_at": "82049332007476505675",
+            "wallet_shares_before": "82.04933200",
+            "wallet_shares_after": "82.11293329"
+          }
+        ]
+      },
+      {
+        "symbol": "SPY",
+        "name": "SPDR S&P 500 ETF Trust",
+        "token": "0x117cc2133c37B721F49dE2A7a74833232B3B4C0C",
+        "canonical": true,
+        "raw": "0",
+        "shares_ui": "0.00000000",
+        "usd": "0.00",
+        "usd_reason": null,
+        "feed": "0x319724394D3A0e3669269846abE664Cd621f9f6A",
+        "feed_answer": "76640942646",
+        "feed_updated_at": "2026-09-29T14:44:52.000Z",
+        "stale": false,
+        "stale_reasons": [],
+        "weekend": false,
+        "replayed_raw": "0",
+        "realized_usd": "11.56",
+        "realized_status": "partial",
+        "events_summary": {
+          "transfer": 0,
+          "univ3": 0,
+          "univ4": 14,
+          "other_unparsed": 11
+        },
+        "corporate_actions": [
+          {
+            "block": 65779981,
+            "time": "2026-09-18T00:00:49.000Z",
+            "effective_at": "2026-09-18T00:10:33.000Z",
+            "tx": "0x2fe45ab24d1b3fa87883f8b08daf29dae969c5b43d0afe9ccca299c11a641025",
+            "multiplier_before": "1000000000000000000",
+            "multiplier_after": "1001717991187472003",
+            "ratio": "1.001717991187472003",
+            "held": true,
+            "wallet_raw_at": "67292051613698071700",
+            "wallet_shares_before": "67.29205161",
+            "wallet_shares_after": "67.40765876"
+          }
+        ]
+      }
+    ],
+    "events_summary": {
+      "transfer": 0,
+      "univ3": 30,
+      "univ4": 38,
+      "other_unparsed": 42
+    },
+    "realized_usd": "-273.01",
+    "realized_status": "partial",
+    "unrealized_usd": "79091.00",
+    "mdd_usd": null,
+    "gaps": [
+      "other_unparsed",
+      "unknown_cost_lots",
+      "mdd_pending"
+    ],
+    "lookalikes": [
+      {
+        "token": "0x4190Ee598c2a69D35Bef53c83d152Ae0f25EA416",
+        "symbol_raw": "U⟨U+17B5⟩S⟨U+17B5⟩DG",
+        "name_raw": "U⟨U+17B5⟩S⟨U+17B5⟩DG",
+        "imitates": "USDG",
+        "reasons": [
+          "imitates_usdg",
+          "hidden_characters",
+          "mimics_counterparty",
+          "not_canonical_address"
+        ],
+        "needs_review": false,
+        "direction": "sent",
+        "counterparty": "0x1eb99afad224b2523a6d6aa88b36da33b8b177c3",
+        "mimics": "0x1eb96a9cec4ca4a2a945a99478b52bc49a6d77c3",
+        "first_seen_block": 63379129,
+        "tx": "0x63c6fdd0814316fae3144bf2452bff291e573936fa242104ef32fab5667fa01e",
+        "amount_raw": "10000000",
+        "transfers_seen": 1,
+        "counted": false,
+        "found_by": "alchemy"
+      },
+      {
+        "token": "0x5DD716Fe12275B69f04b26bEeca343843C8e3539",
+        "symbol_raw": "NVDA",
+        "name_raw": "NVIDIA Robinhood Coin",
+        "imitates": "NVDA",
+        "reasons": [
+          "symbol_copies_stock_token",
+          "name_copies_stock_token",
+          "name_claims_robinhood_stock_token",
+          "code_hash_differs",
+          "not_canonical_address"
+        ],
+        "needs_review": false,
+        "direction": "received",
+        "counterparty": "0x3433e16efacb71e0e2cd605489514b648b30abd0",
+        "mimics": null,
+        "first_seen_block": 73953009,
+        "tx": "0x1b838f40a43d54b7ce3364f08f723516170be2d03fdbcd6ab801c79f7f77b51b",
+        "amount_raw": "25000000000000000000",
+        "transfers_seen": 1,
+        "counted": false,
+        "found_by": "alchemy"
+      }
+    ],
+    "lookalikes_scope": {
+      "complete": false,
+      "searched": [
+        {
+          "source": "alchemy",
+          "from_block": 0,
+          "to_block": 76177362,
+          "detail": "every ERC-20 transfer to and from the wallet (alchemy_getAssetTransfers)"
+        }
+      ],
+      "not_scanned": [
+        "2 tokens met but not judged"
+      ],
+      "tokens_judged": 32,
+      "tokens_not_judged": 2
+    },
+    "evidence": {
+      "txs": [
+        "0xa8431b2093a5d821b816500ba9a43727c60fd00569e06cde0956f56465de1045",
+        "0x428d3cdd1f44448dd8bcee53701784a40817aa5b61bd7ba52b30d46764e5d402",
+        "0x1e9a0d3ad59fe99d9daecadf7da4ae6c0b32f0e5720b18ca9ce44dcfdf6c60ad",
+        "0x3e31174872c1282dfaac6f3ce14606ff782afa25b06ed67cb4e0db1dccd09511",
+        "0xaab42295e3e6c4a1a6691b72e099890ce9ed8915cbd8801a5e0a32e5bf79b3b5",
+        "0x9596f50acca76a31f343023639055a082ae05a8faa2d40c5e9a968b607c77ba5",
+        "0x70cfd9128aff5c7206b548e8ef2ad891cbf8926ccaf621dc1d8834a5895b51ee",
+        "0x06f3a45d1bf37bbc977d3d8858ab8eb9a493b285c101d648cccea318715b151f",
+        "0x23c15dc698c84dc859a9ee7e25364e9bbcf7cc4dd341235a85c2b5e73f829f94",
+        "0x5178c61eeae57bb98ddb4e93a118867dc5cefb2beef7565e6c795a030420acda",
+        "0x5f35e085fb1b7a3a30300604cf8c7c518227090f2f2b32fd27ff8d4539386c1a",
+        "0xce0f646f9c28cc66605aa29eb4381029a9d5f956b2473f7a33e0d71ffb0eef26",
+        "0x27077cb73402e79881bb406fa0c9c9a15c255617afe6cdec75bb53ab162e1cd8",
+        "0xb57b9aa3788ecbc1d125d3321ddb4fa72a69787539b1b9a39afa6ca428cfec79",
+        "0x3f7ff22d32364f46af3b69984e4a8b7c49d28cf3add6405c53b8b589159b78b0",
+        "0x78eff768d0626ce1db7ecf14a7da8ba6e91e6161902351e5f00c78e8907fb823",
+        "0xb4615c6e1d857e583b8adf022b0d0c256ee31eba486d4cc1a9be8acfe6556303",
+        "0x1682fd9f4c98fc3a96a9f73fbc32a461b476cb5f059101345d595a2d0ae2f0b3",
+        "0xc8213d1120bd20af0eb92faeed16c0cbead4a53f05dd48ab31bc8c540d8d482c",
+        "0x6f8bbccb2400b0ae9b2bee9e8af69b7b6b0a8c81edb22059649f1e56216d0e1e",
+        "0x013340ab31f47c39831eff108ef82aa954a7eab532cd24e8b9d55f24f4de2667",
+        "0x006483a51136e557026cc562c97a4a45235b3b7ae8306cea3dac69b301f0526f",
+        "0x76f24e6ec64153186f5e36e143e7b309d85b4bd7786112f5bfee21203357ed41",
+        "0xd1f6b20eadd61d840ef3ac29ef51786e8f7b69425b19b1548869bfa01537bb9e",
+        "0xbb1801cba7479b8e475b3157c338550f3e35135cfc2820d3a2f4b152e649602e",
+        "0x65612fcdba95eb1c26961ef4d879a6fc9421d6f0ef0d1495ad808f403237cb0a",
+        "0xddd5e3bbd6e7f7a23f3e2f9e9774e023fc906f56e99cb458ab5f12dc5fff7149",
+        "0xe72ccff13afa8d6fdfe2ec04aca101fbc91dcfecc6b5c116a924210fa49dfbb8",
+        "0x2fe7647121097db07e084b8340aa2dff0cd96d136acd881847bc758e00c6b520",
+        "0xb1a60001590c3cf9c9406e5f76fb5a6448fa4bf04797b994553f29aa8c8683e6",
+        "0x952fe842d73a6612a640f902261588497e5f02f6a7e7718567a81f54d257465b",
+        "0x7380c7cecd07a403e8b34c70ab81fdaad38102c7efb698a56eb0699542ec0e7d",
+        "0x4e4449f8d3b628e99e70779fbeab93a6ab33fa12e9b7367175d57187c3b6f5a7",
+        "0xed8928140d68a59a15274054e0ccb32cae7c7a6390d97a4421a1160436b413f9",
+        "0x31d3fb3ffb1a9e010bad48c5b725e94088fdd1562388e048bdc08021618e2d4a",
+        "0xf6690ee138a39e36de1aa40b9ae4173bdb9ba978eaf26552f6af4dbf8911471e",
+        "0x80496efa40e03c7502fb1c594215755262cb3b1d709dfa8f6ca4f8b033f88e2b",
+        "0x639f53128231b5d99d36e5afde6ff66b051202a3b24be743f61e28353243a328",
+        "0x3acf21c0b97cd14a2c31323f1d7179e698bd8238b6d4ffddf2f4a5e00ab5475a",
+        "0x71955a085d8e902447abd16d9a70190d47e6b4d4c40d0e9f74c8edb209b14c67",
+        "0x8525d103232967a40b5db15fecb6e7ac9dd011f672b76770df435b07021d8634",
+        "0xea623d4f26e81f6e176a304ae610624e31f4baa56574c166f2c9935c14350725",
+        "0x39f0cc9b02d9e24338645ebbae3a17f8fc640b4573bffb5060c07bb9f1455f22",
+        "0x968a1bd920e45c1a75df8e796425b82da2ce418f0d6a68efa8d5a67b673fd4dc",
+        "0x6bb2c6e78826487e164201fd5f187810f3844abdd2ca4957570bfcf4d53273c8",
+        "0x3c0f3736a4920f99847201b6244c1594129148229773999d07e0c52899f3806c",
+        "0x13a760b700183f3d6d84ff3399298a0581d97753bd58ee082b33592d947f6128",
+        "0x9255af2563f46860ee31f093b6aea37dcb6c21a91f667c15220c3d60f36cf03f",
+        "0x439c98ff2fe5c76e5f2267ccb5ff0d057c944f57babadebe49c58a5077961bae",
+        "0x0b0232a9d60a020b689afd63b4a2c8387a01e368c7c41cea7e3febd2031c9ad1",
+        "0x577ba8a372e7697da23f2d86a6b68b585e33abf3d174742e83435c0d04febd25",
+        "0x712d757a7050d93fcdf61c46bbfebbd180846a4619d7f6438a7415adf0e2d573",
+        "0x46b89ef5ecc0226bab8ef80c3e85be16531e5aae4fc640cb10323f16a2486852",
+        "0x70cbe0a65f1915579d2b8147a7b205e72464b86c0b4a1aa13b4eb06dcd4eff7b",
+        "0x86eb1a311844f85f71f0fadb959bb4ded1bc876563e6172683a5bbe9832c0c1c",
+        "0xb3c3c4fb47912f7cc930009c351f3468b8bcba331470ede25d21d2c8db63c956",
+        "0xc688f1948f9db9417623cb879d9d89e98ebae571da393d7768251d37a9a12330",
+        "0xb549fc4d0d5f5b05be457b9357c7ec22b07cc5c5ece60b27a30e6078c16dfb0d",
+        "0x6529edd0d240dbef484315698af5ec25d6ac4e9ac30647a738a646a560b6b605",
+        "0x88d10c9ae17470fbe62a01812c774558bbcd606fb8259afa15133d8cc819945e",
+        "0x9d72b52d31ae5e337314d4575392580461ef8763625fcc1d86303b241b5ae5f2",
+        "0xff03b06fc8d2cdc66068b20b5300e49e41551a86d72f3d8e6a2fe0bec8cce44e",
+        "0xba4e666a0a912a1d9f9529bebb3d3b934a775c54324060ad5072d3c3693db75b",
+        "0x66c3795aaa1423b8f90956c86056158de72226da3498aa2b93a6319b2e5243e1",
+        "0x502b2aa0bae0115b24bbf699829c43e6717f139f09a5b6b79dfea6da4ca9d06f",
+        "0x19f704ccbfccc5e4ed9e3adb6d509d575691c4a0cabda614f2a277ecf6209c63",
+        "0x3eca8108be5737321cac987fa36a79836e0b2ad4ec746249f43bd06d5aebbb9b",
+        "0xb64d2f3d4f016fd9bcd14dd649bdf9425f279b6720743f252d09d35399b98e06",
+        "0xc849f8738a2fd65d3941c536d4fb63c25ecfb058ecc17c8bb707903fcf7b7909",
+        "0xd39c060cfe9e48404ffd8b8f457e4060194716d4502336188733ebf2b57d2e36",
+        "0xfe2df027090e6cb38c69c1ec73eb10436640a636b9c65c72442d0a68b798a629",
+        "0x0571e20ae52111a8df16c8c43e20654ce1c0529aa854753c8364a441f6fd7f0e",
+        "0x1a2c17a91a314dd073ae70d76d3c1ed069386b64bf888a23f06105bf31e5d50f",
+        "0xf4a2b80ecad826ef4d994af30823a301f33ee76d6ca3f04a3178bfaa28ad9474",
+        "0x92c80c4fb3c8d13557c39e78202ab5440aeb1f692ffb3ff6315f14b0d6a78fa9",
+        "0x75038e4d13d52874885aa2a6fd4a4a5aaec36f095bf85670eff7330ea67ac12a",
+        "0x7ac2d2abf7c8ccbda6279d125f8e786a2f57636393dbdbedc6bf41ab5b0af0d7",
+        "0x4412c98180d286080ab076639f41e8d2b51ad1e26bddc35e5fee6181ff3d322d",
+        "0xa8e8b1676cb8b825dc2ca55a7ec5537007d7db00692eb96094c3f381d86ad83a",
+        "0x7b3b904413f73003327d53ab6e3f6ee6d05b5ea834beef328a2afbdebc94486d",
+        "0x1baa941f3ad636a7179d9c2a8f39433ffee92ebe4dcb7f14422728f6e9c25ba1",
+        "0x9acfd8800ad970d3ee39d9f33fc310b7a1f55ca2bb07fe19b6152dc404cca1a7",
+        "0x96bf65202a2a26fb77c114203f97ea08fe4366ee2837a148345c8de76b1b1138",
+        "0xa98636c03616a0c08a3002625a4753dc4e41da644a0ee17357bdb8191bb7aa74",
+        "0x20be78de0468cc5d41087069e8e2c64c5f05d5ca924676e373c5ec4acb917ea6",
+        "0x2f9e29f14aa1a15a68b24e6e438c9784f30e58d5845637b82751f1320dd6f71c",
+        "0x0eac7685c6c57c3929d053bea9b5fa4b9879e2afc798848ee2b8ccf0e56a13f8"
+      ],
+      "fixture_ids": [
+        "A",
+        "B"
+      ]
+    },
+    "disclaimer": "Reconstruction of public chain data. Not investment advice. Not an offer of Stock Tokens."
+  }
+}
