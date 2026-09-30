@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { heldAtBlockLine, holdingsLine, noHeldActionsLine } from "../../../src/app/rwa/[address]/lines";
+import { heldAtBlockLine, holdingsLine, noHeldActionsLine, realizedLine } from "../../../src/app/rwa/[address]/lines";
 
 (globalThis as unknown as { React: typeof React }).React = React;
 
@@ -27,8 +27,35 @@ test("no multiplier update at all has its own sentence", () => {
   assert.equal(noHeldActionsLine(3), "None of these updates happened while this wallet held the token.");
 });
 
+const signed = (usd: string) => (usd.startsWith("-") ? `-$${usd.slice(1)}` : `+$${usd}`);
+const summary = (transfer: number, univ3: number, univ4: number, other_unparsed: number) => ({ transfer, univ3, univ4, other_unparsed });
+
+test("a wallet that only received Stock Tokens by transfer has no sales, and the line says so", () => {
+  // 2026-09-30 audit, 0x7f61…4c9d: 15 transfers, 0 swaps, realized null, partial. It read "sales found, none could be priced".
+  assert.equal(realizedLine(null, "partial", summary(15, 0, 0, 0), signed), "no sales yet");
+  assert.equal(realizedLine(null, "none", summary(3, 0, 0, 0), signed), "nothing realized yet");
+});
+
+test("with swaps or undecoded movements and nothing priced, the line claims no sale either way", () => {
+  assert.equal(realizedLine(null, "partial", summary(2, 1, 0, 0), signed), "no priced sale yet");
+  assert.equal(realizedLine(null, "partial", summary(2, 0, 3, 0), signed), "no priced sale yet");
+  assert.equal(realizedLine(null, "partial", summary(0, 0, 0, 1), signed), "no priced sale yet");
+});
+
+test("a priced sale keeps its figure, and partial says only part was priced", () => {
+  assert.equal(realizedLine("12.00", "complete", summary(0, 2, 0, 0), signed), "realized +$12.00");
+  assert.equal(realizedLine("-3.50", "partial", summary(1, 2, 0, 0), signed), "realized -$3.50 on the sales that could be priced");
+});
+
 test("no em dash and no semicolon in these sentences", () => {
-  for (const s of [heldAtBlockLine([], 1), holdingsLine(0, null, money), noHeldActionsLine(0), noHeldActionsLine(1)])
+  for (const s of [
+    heldAtBlockLine([], 1),
+    holdingsLine(0, null, money),
+    noHeldActionsLine(0),
+    noHeldActionsLine(1),
+    realizedLine(null, "partial", summary(1, 0, 0, 0), signed),
+    realizedLine(null, "partial", summary(1, 1, 0, 0), signed),
+  ])
     assert.ok(!/—|;/.test(s), s);
 });
 

@@ -11,7 +11,7 @@ import { FREE_DEADLINE_MS, cachedFacts } from "../../../../packages/rwa/cache";
 import { EXAMPLE_WALLETS } from "../../../../packages/rwa/examples";
 import { METHOD_VERSION, NoStockTokenActivity, WalletTooLarge, type NoActivityAnswer, type RwaFacts, type TooLargeAnswer } from "../../../../packages/rwa/facts";
 import { AnchorNote } from "./anchor-note";
-import { heldAtBlockLine, holdingsLine, noHeldActionsLine } from "./lines";
+import { heldAtBlockLine, holdingsLine, noHeldActionsLine, realizedLine } from "./lines";
 import { LookalikesSection } from "./lookalikes";
 
 /**
@@ -120,12 +120,6 @@ function multiplier(raw: string): string {
   const n = BigInt(raw);
   const whole = n / 10n ** 18n;
   return `${whole}.${((n % 10n ** 18n) / 10n ** 9n).toString().padStart(9, "0")}`;
-}
-
-/** The realized part of the summary line, never a bare total when part of the sales could not be priced. */
-function realizedLine(realized: string | null, status: string): string {
-  if (realized === null) return status === "partial" ? "sales found, none could be priced" : "nothing realized yet";
-  return status === "partial" ? `realized ${signedMoney(realized)} on the sales that could be priced` : `realized ${signedMoney(realized)}`;
 }
 
 function TryThese() {
@@ -260,7 +254,7 @@ export default async function RwaAddressPage({ params }: { params: Promise<{ add
       <p className="mt-4 border-l-2 pl-3 text-base">
         {holdingsLine(held.length, facts.unrealized_usd, money)}
         {" · "}
-        {facts.r1_status === "unverified" ? "realized not shown" : realizedLine(facts.realized_usd, facts.realized_status)}
+        {facts.r1_status === "unverified" ? "realized not shown" : realizedLine(facts.realized_usd, facts.realized_status, facts.events_summary, signedMoney)}
         {" · "}
         {!replayOk
           ? "the replay does not match the chain balance"
