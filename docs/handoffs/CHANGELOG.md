@@ -13,6 +13,10 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-01 — footer drops the operator name
+- **何を**: SiteFooter の「© {year} vet402 (KIZUNA Creation).」を「© {year} vet402.」に。運営者の情報は /legal/notice のまま。
+- **なぜ**: オーナー指示（将来戻す可能性あり）。
+
 ## 2026-09-30: /rwa third audit fixes, held tokens counted first (branch `rwa-r3-fix`, not pushed)
 
 - **What**: with Alchemy, a wallet holding more than 30 canonical tokens gets its 422 from the balance read, before `alchemy_getAssetTransfers` (`limit.kind` `tokens`, `found` = tokens held). The too-large page no longer says "holds none" twice. The Realized PnL line and the per-token Realized cell read "−$273.01" like the summary. The route comment, SPEC and patch 025 say the 422 header carries `s-maxage` but Vercel's CDN does not keep a 422, and a repeat comes from the server's 5 minute in-memory cache per instance. Patches 020 to 025 say shipped. SPEC patch 026.

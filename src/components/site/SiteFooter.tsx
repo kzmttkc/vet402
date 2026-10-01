@@ -130,9 +130,10 @@ export function SiteFooter() {
           </ul>
         </nav>
 
-        {/* 免責は 1 文。奥付の責任主体（KIZUNA Creation）だけ本文色で読み取りやすく。 */}
+        {/* 免責は 1 文。2026-10-01 オーナー指示で運営者名（KIZUNA Creation）をフッタから外した（将来戻す可能性あり）。
+            運営者の情報は /legal/notice に残る。 */}
         <p className="mt-5 max-w-[72ch] text-[0.8125rem] leading-relaxed text-brand-lift">
-          © {year} vet402 (<span className="text-brand">KIZUNA Creation</span>). Results are
+          © {year} vet402. Results are
           measurements offered for B2B API use — not a guarantee, credit assessment, or legal
           certification.
         </p>
