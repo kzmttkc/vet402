@@ -99,6 +99,10 @@ const RANGE_TOO_WIDE_PATTERNS = [
   "query timeout", // provider gave up on a wide scan; a narrower one may land
   "took too long",
   "range limit",
+  // viem's HTTP transport refuses a reply over 10 MiB before parsing it: "HTTP response body exceeded the size
+  // limit. Max: 10485760 bytes". A busy Base range hit this from 2026-10-01 23:06 JST and the index stalled until
+  // a narrower range was asked for.
+  "body exceeded the size limit",
 ];
 
 /**

@@ -225,6 +225,7 @@ test("range-shaped errors still bisect (regression guard)", async () => {
     "eth_getLogs is limited to a 10,000 range",
     "block range is too wide",
     "response size exceeded",
+    "HTTP response body exceeded the size limit.\n\nMax: 10485760 bytes\nReceived: 10502144 bytes",
   ]) {
     const { client, calls } = makeClient({
       onRange: (r) => (r.end - r.start > 4n ? new Error(message) : [{ blockNumber: r.start, id: "x" }]),

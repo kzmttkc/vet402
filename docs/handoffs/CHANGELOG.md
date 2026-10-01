@@ -13,6 +13,10 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-02 — settlement index: a getLogs reply over 10 MiB narrows the range instead of failing
+- **何を**: `src/lib/chain/chunked-logs.ts` の「範囲を狭めれば直る」エラーに viem の "HTTP response body exceeded the size limit" を足した（tests/chunked-logs.test.ts に回帰テスト）。
+- **なぜ**: 2026-10-01 23:06 JST から Base の索引が 2 時間ごとに失敗していた（10,502,144 バイトの返答が上限 10,485,760 を超えた）。決済の索引が止まると遅延回収と台帳の照合が遅れる。
+
 ## 2026-10-01 — footer drops the operator name
 - **何を**: SiteFooter の「© {year} vet402 (KIZUNA Creation).」を「© {year} vet402.」に。運営者の情報は /legal/notice のまま。
 - **なぜ**: オーナー指示（将来戻す可能性あり）。
