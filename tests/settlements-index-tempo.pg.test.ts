@@ -126,16 +126,21 @@ if (!TEST_DB) {
       INSERT INTO x402_endpoints (resource_key, resource_url, source, method, network, pay_to, price_amount, price_asset, status, resource_id)
       VALUES ('seller.example/api', 'https://seller.example/api', 'cdp_bazaar', 'GET', 'eip155:8453', ${PAYEE}, '25000', ${base.usdc.toLowerCase()}, 'active', 'res-base-1')
     `);
+    // Base は 4,000 ブロックずつ区切って読む（2026-10-02）。偽の RPC も本物と同じく範囲内のログだけを返す。
+    const baseFirstFrom = 40_000_100n - base.confirmations - base.initialLookbackBlocks;
+    const BASE_BLOCK = baseFirstFrom + 10n;
     const baseCalls: string[] = [];
-    const baseGetLogs = (async (_c: unknown, params: { event: { name: string } }) => {
+    const baseGetLogs = (async (_c: unknown, params: { event: { name: string }; fromBlock: bigint; toBlock: bigint }) => {
       baseCalls.push(params.event.name);
+      if (BASE_BLOCK < params.fromBlock || BASE_BLOCK > params.toBlock) return [];
       return [
-        { transactionHash: `0x${"b1".repeat(32)}`, blockNumber: 40_000_000n, args: { from: PAYER, to: PAYEE, value: 25_000n } },
-        { transactionHash: `0x${"b1".repeat(32)}`, blockNumber: 40_000_000n, args: { from: PAYER, to: PAYEE, value: 25_000n } },
+        { transactionHash: `0x${"b1".repeat(32)}`, blockNumber: BASE_BLOCK, args: { from: PAYER, to: PAYEE, value: 25_000n } },
+        { transactionHash: `0x${"b1".repeat(32)}`, blockNumber: BASE_BLOCK, args: { from: PAYER, to: PAYEE, value: 25_000n } },
       ];
     }) as never;
     const baseSummary = await indexEvmChain(base, { client: client as never, getLogs: baseGetLogs, classifier, budgetMs: 30_000 });
-    assert.deepEqual(baseCalls, [TRANSFER_EVENT.name], "Base asks for Transfer only (no TransferWithMemo)");
+    assert.equal(baseCalls.length, Number(base.maxBlocksPerRun / base.subWindowBlocks!), "one Transfer query per 4,000-block window");
+    assert.ok(baseCalls.every((n) => n === TRANSFER_EVENT.name), "Base asks for Transfer only (no TransferWithMemo)");
     assert.equal(baseSummary.logs, 2);
     assert.equal(baseSummary.inserted, 1);
     assert.equal(baseSummary.updated, 0, "Base: same-tx logs reach the existing batch upsert, which keeps the first by purchase_id (unchanged behaviour); the memo fold never runs here");

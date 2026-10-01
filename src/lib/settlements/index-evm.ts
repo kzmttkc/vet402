@@ -17,6 +17,7 @@ import { getLogScanClient } from "@/lib/chain/client";
 import { ARC_CHAIN_ID, ARC_USDC_ADDRESS, getArcPublicClient } from "@/lib/chain/arc";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { getLogsChunked } from "@/lib/chain/chunked-logs";
+import { DeadlineExceededError } from "@/lib/util/deadline";
 import { getIndexerCheckpoint, setIndexerCheckpoint } from "@/lib/db/owner-index";
 import { payeeId as toPartyId } from "@/lib/ids/canonical";
 import { loadWashClassifier, type WashClassifier } from "./context";
@@ -43,6 +44,11 @@ export type EvmIndexChain = {
   initialLookbackBlocks: bigint;
   /** 1 回の走査で読む最大ブロック数。 */
   maxBlocksPerRun: bigint;
+  /**
+   * 走査を区切る幅（ブロック）。区切りを 1 つ読み切るたびにチェックポイントを保存する。
+   * 省略時は maxBlocksPerRun（区切りなし・従来どおり）。
+   */
+  subWindowBlocks?: bigint;
   /** 確定待ち（reorg 余裕）。 */
   confirmations: bigint;
   /** 1 日のブロック数（遅れの判定 evmIndexLag に使う）。 */
@@ -61,6 +67,10 @@ export const EVM_INDEX_CHAINS: EvmIndexChain[] = [
     rpcEnv: "BASE_RPC_URL",
     initialLookbackBlocks: 43_200n * 7n,
     maxBlocksPerRun: 40_000n,
+    // 2026-10-02: Base は受取先 1,864 件（500 件ずつ 4 スライス）× 40,000 ブロックを全部読み切らないと
+    // チェックポイントが進まない作りで、10/1 23:06 JST の混んだ区間から毎回予算切れ（deadline_exceeded）→
+    // 何も保存されず同じ区間をやり直していた。4,000 ブロック（≈ 2.2 時間）ずつ読み切って保存する。
+    subWindowBlocks: 4_000n,
     confirmations: 32n,
     blocksPerDay: 43_200n,
   },
@@ -253,7 +263,6 @@ export async function indexEvmChain(
   const blockTimeOf = (n: bigint) => new Date(t0 + ((Number(n - fromBlock) / span) * (t1 - t0)));
 
   let cutOff = false;
-  const sliceProgress: bigint[] = [];
   const pending: SettlementRow[] = [];
   const flush = async () => {
     if (pending.length === 0) return;
@@ -262,122 +271,146 @@ export async function indexEvmChain(
     summary.updated += r.updated;
   };
 
-  // topics[2]（to）は最大 500 件ずつ OR で問う。
-  for (let i = 0; i < payees.length; i += 500) {
-    if (now() - startedAt > budgetMs) {
-      cutOff = true;
-      break;
-    }
-    const slice = payees.slice(i, i + 500);
-    const getLogs = options.getLogs ?? getLogsChunked;
-    const logs = await getLogs(
-      client,
-      { address: chain.usdc, event: TRANSFER_EVENT, args: { to: slice }, fromBlock, toBlock } as never,
-      undefined,
-      undefined,
-      { deadlineMs: Math.max(5_000, budgetMs - (now() - startedAt)) },
-    );
-    // TIP-20（Tempo）: transferWithMemo は Transfer と TransferWithMemo の両方を出す（2026-09-17 実測）。
-    // 同じ tx の 2 つのログは purchase_id（chain:tx）で 1 行に畳まれる。memo は MPP 帰属の材料。
-    type Raw = { transactionHash: string; blockNumber: bigint; args: { from: Address; to: Address; value?: bigint; amount?: bigint; memo?: string } };
-    const memoLogs = chain.memoTransfers
-      ? ((await getLogs(
+  // 往復（circular）の材料: この走査で読んだ (from,to) 対をメモリに持つ（区切りをまたいで貯める）
+  const pairs = new Set<string>();
+  const subWindow = chain.subWindowBlocks ?? chain.maxBlocksPerRun;
+  const expectedSlices = Math.ceil(payees.length / 500);
+  // 区切り（wFrom..wTo）ごとに全スライスを読み切ったらチェックポイントを保存する。予算切れ・getLogs の
+  // deadline_exceeded は「この区切りは未完」として止まり、読み切った区切りまでの進捗は残る。
+  let nextCheckpoint = fromBlock - 1n;
+  for (let wFrom = fromBlock; wFrom <= toBlock; wFrom += subWindow) {
+    const wTo = wFrom + subWindow - 1n < toBlock ? wFrom + subWindow - 1n : toBlock;
+    const sliceProgress: bigint[] = [];
+    // topics[2]（to）は最大 500 件ずつ OR で問う。
+    for (let i = 0; i < payees.length; i += 500) {
+      if (now() - startedAt > budgetMs) {
+        cutOff = true;
+        break;
+      }
+      const slice = payees.slice(i, i + 500);
+      const getLogs = options.getLogs ?? getLogsChunked;
+      type Raw = { transactionHash: string; blockNumber: bigint; args: { from: Address; to: Address; value?: bigint; amount?: bigint; memo?: string } };
+      let logs: unknown[];
+      let memoLogs: Raw[];
+      try {
+        logs = await getLogs(
           client,
-          { address: chain.usdc, event: TRANSFER_WITH_MEMO_EVENT, args: { to: slice }, fromBlock, toBlock } as never,
+          { address: chain.usdc, event: TRANSFER_EVENT, args: { to: slice }, fromBlock: wFrom, toBlock: wTo } as never,
           undefined,
           undefined,
           { deadlineMs: Math.max(5_000, budgetMs - (now() - startedAt)) },
-        )) as unknown as Raw[])
-      : [];
-    const memoByTx = new Map<string, string>();
-    for (const m of memoLogs) if (typeof m.args.memo === "string") memoByTx.set(m.transactionHash.toLowerCase(), m.args.memo);
-    summary.logs += logs.length + memoLogs.length;
-    // 同じ tx の畳み込みは memoTransfers のチェーン（Tempo）だけ——Transfer と TransferWithMemo が
-    // 同じ tx から 2 本出るため。Base / Polygon / Arc の既存挙動（ログ 1 本 = 1 行の upsert）は変えない
-    // （2026-09-17 レビュー #10）。
-    const seenTx = new Set<string>();
-    const merged: { transactionHash: string; blockNumber: bigint; args: { from: Address; to: Address; value: bigint } }[] = [];
-    for (const l of [...(logs as unknown as Raw[]), ...memoLogs]) {
-      if (chain.memoTransfers) {
-        const key = l.transactionHash.toLowerCase();
-        if (seenTx.has(key)) continue;
-        seenTx.add(key);
-      }
-      // 額を decode できなかった log は行にしない（fail-loud）。2026-09-18: event の宣言が実物とずれると
-      // viem は例外を出さず args から amount を落とすだけで、ここが `?? 0n` のままだと **額 0 の決済行**が
-      // 黙って書かれる（memo を非 indexed と決めつけていた 2026-09-17 の宣言がまさにその形だった）。
-      const value = l.args.value ?? l.args.amount;
-      if (typeof value !== "bigint") {
-        summary.undecodable = (summary.undecodable ?? 0) + 1;
-        logServerErrorSafe("settlements.index_evm.undecodable_log", new Error(`${chain.caip2} ${l.transactionHash}: transfer log decoded without an amount`));
-        continue;
-      }
-      merged.push({ transactionHash: l.transactionHash, blockNumber: l.blockNumber, args: { from: l.args.from, to: l.args.to, value } });
-    }
-    const sorted = merged.sort((a, b) =>
-      a.blockNumber < b.blockNumber ? -1 : a.blockNumber > b.blockNumber ? 1 : 0,
-    );
-    let sliceLast: bigint = fromBlock - 1n;
-    let sliceDone = true;
-    const known = await knownPurchaseIds(sorted.map((l) => toPurchaseId(chain.caip2, l.transactionHash)));
-    summary.skippedKnown = (summary.skippedKnown ?? 0) + known.size;
-    // 往復（circular）の材料: 同じ窓の (from,to) 対をメモリに持つ
-    const pairs = new Set(sorted.map((l) => `${l.args.from.toLowerCase()}>${l.args.to.toLowerCase()}`));
-    for (const log of sorted) {
-      if (now() - startedAt > budgetMs) {
+        );
+        // TIP-20（Tempo）: transferWithMemo は Transfer と TransferWithMemo の両方を出す（2026-09-17 実測）。
+        // 同じ tx の 2 つのログは purchase_id（chain:tx）で 1 行に畳まれる。memo は MPP 帰属の材料。
+        memoLogs = chain.memoTransfers
+          ? ((await getLogs(
+              client,
+              { address: chain.usdc, event: TRANSFER_WITH_MEMO_EVENT, args: { to: slice }, fromBlock: wFrom, toBlock: wTo } as never,
+              undefined,
+              undefined,
+              { deadlineMs: Math.max(5_000, budgetMs - (now() - startedAt)) },
+            )) as unknown as Raw[])
+          : [];
+      } catch (error) {
+        // 予算切れは失敗ではなく「ここまで」。この区切りは未完として扱い、前の区切りまでを保存する。
+        if (!(error instanceof DeadlineExceededError)) throw error;
         cutOff = true;
-        sliceDone = false;
         break;
       }
-      if (known.has(toPurchaseId(chain.caip2, log.transactionHash))) {
-        if (log.blockNumber > sliceLast) sliceLast = log.blockNumber;
-        continue;
+      const memoByTx = new Map<string, string>();
+      for (const m of memoLogs) if (typeof m.args.memo === "string") memoByTx.set(m.transactionHash.toLowerCase(), m.args.memo);
+      summary.logs += logs.length + memoLogs.length;
+      // 同じ tx の畳み込みは memoTransfers のチェーン（Tempo）だけ——Transfer と TransferWithMemo が
+      // 同じ tx から 2 本出るため。Base / Polygon / Arc の既存挙動（ログ 1 本 = 1 行の upsert）は変えない
+      // （2026-09-17 レビュー #10）。
+      const seenTx = new Set<string>();
+      const merged: { transactionHash: string; blockNumber: bigint; args: { from: Address; to: Address; value: bigint } }[] = [];
+      for (const l of [...(logs as unknown as Raw[]), ...memoLogs]) {
+        if (chain.memoTransfers) {
+          const key = l.transactionHash.toLowerCase();
+          if (seenTx.has(key)) continue;
+          seenTx.add(key);
+        }
+        // 額を decode できなかった log は行にしない（fail-loud）。2026-09-18: event の宣言が実物とずれると
+        // viem は例外を出さず args から amount を落とすだけで、ここが `?? 0n` のままだと **額 0 の決済行**が
+        // 黙って書かれる（memo を非 indexed と決めつけていた 2026-09-17 の宣言がまさにその形だった）。
+        const value = l.args.value ?? l.args.amount;
+        if (typeof value !== "bigint") {
+          summary.undecodable = (summary.undecodable ?? 0) + 1;
+          logServerErrorSafe("settlements.index_evm.undecodable_log", new Error(`${chain.caip2} ${l.transactionHash}: transfer log decoded without an amount`));
+          continue;
+        }
+        merged.push({ transactionHash: l.transactionHash, blockNumber: l.blockNumber, args: { from: l.args.from, to: l.args.to, value } });
       }
-      const blockTime = blockTimeOf(log.blockNumber);
-      const payee = log.args.to.toLowerCase();
-      const payer = log.args.from.toLowerCase();
-      const amount = log.args.value.toString();
-      const resolved = resolveLocal(payee, amount, blockTime);
-      const payerId = toPartyId(chain.caip2, payer);
-      const payeeId = toPartyId(chain.caip2, payee);
-      const reverseInWindow = pairs.has(`${payee}>${payer}`);
-      const washFlag = classifyWash(
-        { payerId, payeeId, blockTime },
-        { testWallets: classifier.testWallets, sameCluster: classifier.sameCluster, reverseWithinHours: () => reverseInWindow },
+      const sorted = merged.sort((a, b) =>
+        a.blockNumber < b.blockNumber ? -1 : a.blockNumber > b.blockNumber ? 1 : 0,
       );
-      const memo = memoByTx.get(log.transactionHash.toLowerCase()) ?? null;
-      pending.push(
-        buildRow(
-          {
-            chain: chain.caip2,
-            txHash: log.transactionHash,
-            asset: chain.usdc,
-            amount,
-            payer,
-            payee,
-            blockTime,
-            source: "chain_index",
-            raw: {
-              blockNumber: String(log.blockNumber),
-              blockTimeSource: "interpolated",
-              // MPP の帰属 memo（keccak256("mpp")[0..3] + 0x01）を持つ転送は MPP 由来と記録する。
-              // 素の Transfer は unmatched のまま（Resource への帰属は payTo × amount の規則だけ）。
-              ...(memo !== null ? { memo, mppAttributed: isMppAttributionMemo(memo) } : {}),
+      let sliceLast: bigint = wFrom - 1n;
+      let sliceDone = true;
+      const known = await knownPurchaseIds(sorted.map((l) => toPurchaseId(chain.caip2, l.transactionHash)));
+      summary.skippedKnown = (summary.skippedKnown ?? 0) + known.size;
+      for (const l of sorted) pairs.add(`${l.args.from.toLowerCase()}>${l.args.to.toLowerCase()}`);
+      for (const log of sorted) {
+        if (now() - startedAt > budgetMs) {
+          cutOff = true;
+          sliceDone = false;
+          break;
+        }
+        if (known.has(toPurchaseId(chain.caip2, log.transactionHash))) {
+          if (log.blockNumber > sliceLast) sliceLast = log.blockNumber;
+          continue;
+        }
+        const blockTime = blockTimeOf(log.blockNumber);
+        const payee = log.args.to.toLowerCase();
+        const payer = log.args.from.toLowerCase();
+        const amount = log.args.value.toString();
+        const resolved = resolveLocal(payee, amount, blockTime);
+        const payerId = toPartyId(chain.caip2, payer);
+        const payeeId = toPartyId(chain.caip2, payee);
+        const reverseInWindow = pairs.has(`${payee}>${payer}`);
+        const washFlag = classifyWash(
+          { payerId, payeeId, blockTime },
+          { testWallets: classifier.testWallets, sameCluster: classifier.sameCluster, reverseWithinHours: () => reverseInWindow },
+        );
+        const memo = memoByTx.get(log.transactionHash.toLowerCase()) ?? null;
+        pending.push(
+          buildRow(
+            {
+              chain: chain.caip2,
+              txHash: log.transactionHash,
+              asset: chain.usdc,
+              amount,
+              payer,
+              payee,
+              blockTime,
+              source: "chain_index",
+              raw: {
+                blockNumber: String(log.blockNumber),
+                blockTimeSource: "interpolated",
+                // MPP の帰属 memo（keccak256("mpp")[0..3] + 0x01）を持つ転送は MPP 由来と記録する。
+                // 素の Transfer は unmatched のまま（Resource への帰属は payTo × amount の規則だけ）。
+                ...(memo !== null ? { memo, mppAttributed: isMppAttributionMemo(memo) } : {}),
+              },
             },
-          },
-          { attribution: resolved.attribution, washFlag, resourceId: resolved.resourceId, endpointId: resolved.endpointId },
-        ),
-      );
-      if (pending.length >= 200) await flush();
-      if (log.blockNumber > sliceLast) sliceLast = log.blockNumber;
+            { attribution: resolved.attribution, washFlag, resourceId: resolved.resourceId, endpointId: resolved.endpointId },
+          ),
+        );
+        if (pending.length >= 200) await flush();
+        if (log.blockNumber > sliceLast) sliceLast = log.blockNumber;
+      }
+      await flush();
+      sliceProgress.push(sliceDone ? wTo : sliceLast > wFrom ? sliceLast - 1n : wFrom - 1n);
+      if (cutOff) break;
     }
-    await flush();
-    sliceProgress.push(sliceDone ? toBlock : sliceLast > fromBlock ? sliceLast - 1n : fromBlock - 1n);
-    if (cutOff) break;
+    while (sliceProgress.length < expectedSlices) sliceProgress.push(wFrom - 1n);
+    const windowDone = sliceProgress.reduce((m, v) => (v < m ? v : m), wTo);
+    if (windowDone > nextCheckpoint) {
+      nextCheckpoint = windowDone;
+      await setIndexerCheckpoint(scope, nextCheckpoint, latest);
+    }
+    if (cutOff || windowDone < wTo) break;
   }
-  const expectedSlices = Math.ceil(payees.length / 500);
-  while (sliceProgress.length < expectedSlices) sliceProgress.push(fromBlock - 1n);
-  const nextCheckpoint = sliceProgress.reduce((m, v) => (v < m ? v : m), toBlock);
+  // 初回（checkpoint 無し）で 1 区切りも読めなかった時も始点を固定する（次回 safeTip が進んで始点がずれ、穴が空かないように）。
   await setIndexerCheckpoint(scope, nextCheckpoint, latest);
   summary.partial = cutOff;
   summary.checkpoint = String(nextCheckpoint);

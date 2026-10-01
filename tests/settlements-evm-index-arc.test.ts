@@ -46,6 +46,8 @@ test("Base's row is unchanged", () => {
       rpcEnv: "BASE_RPC_URL",
       initialLookbackBlocks: 43_200n * 7n,
       maxBlocksPerRun: 40_000n,
+      // 2026-10-02: 4,000 ブロックずつ読み切って保存する（tests/settlements-evm-subwindow.pg.test.ts）
+      subWindowBlocks: 4_000n,
       confirmations: 32n,
       blocksPerDay: 43_200n,
       makeClient: undefined,

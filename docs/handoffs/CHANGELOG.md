@@ -13,6 +13,10 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-02 — settlement index: Base saves progress every 4,000 blocks
+- **何を**: `src/lib/settlements/index-evm.ts` の EVM 索引を区切り（`subWindowBlocks`・Base は 4,000 ブロック）ごとに全スライスを読み切ってチェックポイントを保存する形にした。getLogs の `deadline_exceeded` はチェーンごとの失敗にせず partial で返す。それ以外の RPC の失敗は従来どおり投げるが、読み切った区切りの進捗は残る（tests/settlements-evm-subwindow.pg.test.ts）。Arc・Tempo・Polygon は区切りなし（従来どおり）。
+- **なぜ**: 10 MiB の修正後も Base は受取先 1,864 件 × 40,000 ブロックを 1 回で読み切れず毎回予算切れ（`deadline_exceeded:getLogsChunked`）→ 何も保存されず、10/1 23:06 JST から同じ区間をやり直していた。
+
 ## 2026-10-02 — settlement index: a getLogs reply over 10 MiB narrows the range instead of failing
 - **何を**: `src/lib/chain/chunked-logs.ts` の「範囲を狭めれば直る」エラーに viem の "HTTP response body exceeded the size limit" を足した（tests/chunked-logs.test.ts に回帰テスト）。
 - **なぜ**: 2026-10-01 23:06 JST から Base の索引が 2 時間ごとに失敗していた（10,502,144 バイトの返答が上限 10,485,760 を超えた）。決済の索引が止まると遅延回収と台帳の照合が遅れる。
