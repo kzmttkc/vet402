@@ -74,7 +74,7 @@ import { XRPL_MAINNET_CAIP2 } from "./chains";
 import { RLUSD_CURRENCY_HEX, RLUSD_ISSUER } from "./xrpl-constants";
 import { withDailyFallback } from "@/lib/settlements/rollup";
 import { l1TierWhere } from "./coverage";
-import { censusHostSql, RETEST_SELLERS_SQL } from "./retest-sellers-sql";
+import { censusHostSql, RETEST_LISTINGS_SQL, RETEST_SELLERS_SQL } from "./retest-sellers-sql";
 import { registeredDomainOf, registeredDomainSql } from "./registered-domain";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
 import { declaredRequestBody, declaredRequestUrl, type RequestBodySource, type RequestQuerySource } from "./declared-input";
@@ -1962,14 +1962,27 @@ export type RetestParams = { hostsJson: string; preferredIdsJson: string; hostCo
  * RETEST_SELLERS_SQL を 1 回流し、対象の売り手（ホスト名）と、(b) の売り手で優先して買い直す出品の id を返す。
  * 読めなければ null（retest はそのバッチでは 0 件——金の関門ではないのでバッチは止めない）。
  */
+/** 出品単位の買い直し（2026-10-03）の旗。既定 OFF。 */
+export function retestListingsEnabled(): boolean {
+  return process.env.OBSERVATORY_L1_RETEST_LISTINGS?.trim().toLowerCase() === "on";
+}
+
 export async function readRetestSellers(db: NonNullable<ReturnType<typeof getDb>>): Promise<RetestParams | null> {
   try {
     const rows = rowsOf(await db.execute(RETEST_SELLERS_SQL));
-    const hosts = [...new Set(rows.map((r) => String(r.host)))];
+    // 出品単位（2026-10-03・旗 OBSERVATORY_L1_RETEST_LISTINGS=on）: 売り手の最新の行が届いていても、こちらの落ち度で
+    // 失敗したままの出品があれば、その売り手を候補に入れ、失敗した出品そのものを優先する（財布切れの行も含む）。
+    const listingRows = retestListingsEnabled() ? rowsOf(await db.execute(RETEST_LISTINGS_SQL)) : [];
+    const hosts = [...new Set([...rows, ...listingRows].map((r) => String(r.host)))];
     // (b)(c) は失敗した出品そのものを優先する。(a)（財布切れ）はどの出品でもこちらの落ち度なので最安のまま。
-    const preferred = rows
-      .filter((r) => (r.reason === "body" || r.reason === "query") && typeof r.endpoint_id === "string")
-      .map((r) => String(r.endpoint_id));
+    const preferred = [
+      ...new Set([
+        ...rows
+          .filter((r) => (r.reason === "body" || r.reason === "query") && typeof r.endpoint_id === "string")
+          .map((r) => String(r.endpoint_id)),
+        ...listingRows.filter((r) => typeof r.endpoint_id === "string").map((r) => String(r.endpoint_id)),
+      ]),
+    ];
     return { hostsJson: JSON.stringify(hosts), preferredIdsJson: JSON.stringify(preferred), hostCount: hosts.length };
   } catch (error) {
     if (!isMissingSchemaError(error)) logServerErrorSafe("observatory.l1.retest_sellers", redactedError(error));

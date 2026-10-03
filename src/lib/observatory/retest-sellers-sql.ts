@@ -66,3 +66,25 @@ export const RETEST_SELLERS_SQL = sql`
     ORDER BY ${censusHostSql(sql`te.resource_key`)}, tp.attempted_at DESC, tp.id DESC
   ) lr
   WHERE lr.held = 'payer_unfunded' OR ${RETEST_BODY_COND} OR ${RETEST_QUERY_COND}`;
+
+/**
+ * 出品単位の買い直し（2026-10-03・Takeshi 承認「すべてOK」・約 60〜70 USDC）。RETEST_SELLERS_SQL は売り手の**最新の**
+ * 1 行だけを見るので、売り手の別の出品が後で届いていると、こちらの落ち度で失敗した出品が残っていても選ばれない
+ * （10/03 の /sellers: vet402 側 1,384 出品・retestCandidates は 1 回 0〜3 件）。ここでは**出品ごとの**最新の行を見て、
+ * 同じ (a)(b)(c) の条件でこちらの側の理由で失敗している出品を返す。旗 OBSERVATORY_L1_RETEST_LISTINGS=on のときだけ
+ * readRetestSellers が足す。選び方の残り（Base・$1 以下・1 ホスト 1 件・日次上限）は retest と同じ。
+ */
+export const RETEST_LISTINGS_SQL = sql`
+  SELECT lr.host,
+         CASE WHEN lr.held = 'payer_unfunded' THEN 'unfunded' WHEN ${RETEST_BODY_COND} THEN 'body' ELSE 'query' END AS reason,
+         lr.endpoint_id::text AS endpoint_id
+  FROM (
+    SELECT DISTINCT ON (tp.endpoint_id)
+           ${censusHostSql(sql`te.resource_key`)} AS host,
+           (${sql.raw(heldReasonSql("tp"))}) AS held,
+           tp.endpoint_id, tp.network, tp.status, tp.tx_hash, tp.http_status_paid, tp.attempted_at, tp.raw_response_meta,
+           te.method, te.declared_schema, te.declared_input
+    FROM x402_l1_purchases tp JOIN x402_endpoints te ON te.id = tp.endpoint_id
+    ORDER BY tp.endpoint_id, tp.attempted_at DESC, tp.id DESC
+  ) lr
+  WHERE lr.held = 'payer_unfunded' OR ${RETEST_BODY_COND} OR ${RETEST_QUERY_COND}`;

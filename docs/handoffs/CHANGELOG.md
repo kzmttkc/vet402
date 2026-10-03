@@ -13,6 +13,10 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-03 — retest: re-buy listings that failed on vet402's side even when the seller's newest row delivered
+- **何を**: `src/lib/observatory/retest-sellers-sql.ts` に出品単位の `RETEST_LISTINGS_SQL`（出品ごとの最新の行が (a)財布切れ (b)本文を送らなかった (c)宣言クエリを送らなかった で失敗）を足し、`readRetestSellers` が旗 `OBSERVATORY_L1_RETEST_LISTINGS=on` のときだけ売り手単位の一覧に足す。失敗した出品そのものを優先。Base・$1 以下・1 ホスト 1 件・日次上限は従来の retest と同じ（tests/l1-retest-listings.pg.test.ts）。
+- **なぜ**: 売り手単位の retest は売り手の最新の 1 行しか見ないので、同じ売り手の別の出品が後で届くと、こちらの落ち度で失敗した出品が残ったままになる（10/03 /sellers: vet402 側 1,384 出品・retestCandidates は 1 回 0〜3 件）。Takeshi 承認 10/03 20:22（約 60〜70 USDC）。
+
 ## 2026-10-02 — settlement index: Base saves progress every 4,000 blocks
 - **何を**: `src/lib/settlements/index-evm.ts` の EVM 索引を区切り（`subWindowBlocks`・Base は 4,000 ブロック）ごとに全スライスを読み切ってチェックポイントを保存する形にした。getLogs の `deadline_exceeded` はチェーンごとの失敗にせず partial で返す。それ以外の RPC の失敗は従来どおり投げるが、読み切った区切りの進捗は残る（tests/settlements-evm-subwindow.pg.test.ts）。Arc・Tempo・Polygon は区切りなし（従来どおり）。
 - **なぜ**: 10 MiB の修正後も Base は受取先 1,864 件 × 40,000 ブロックを 1 回で読み切れず毎回予算切れ（`deadline_exceeded:getLogsChunked`）→ 何も保存されず、10/1 23:06 JST から同じ区間をやり直していた。
