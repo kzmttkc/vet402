@@ -48,7 +48,10 @@ test("L2: 宣言あり＋直近配達が match → conform、mismatch → mismat
   assert.equal(assembleSellerFacts({ ...base, declaredSchema: OUT, purchases: [{ ...purchases[0], l2Schema: "no_declaration" }] }).l2.status, "not_checked", "記録のときに宣言が無かった行");
 });
 
-test("availability: pass 率、probes 0 は null", () => {
+test("availability: pass 率、probes 0 は null", (t) => {
+  // 2026-10-03: 見本の probe は 2026-09-01〜02。availability_30d は Date.now() からの 30 日なので、10/2 を過ぎると
+  // 窓の外に出て null になり、全員の push-main が止まった。時刻を見本の直後に固定する。
+  t.mock.method(Date, "now", () => Date.parse("2026-09-05T00:00:00Z"));
   const f = assembleSellerFacts(base);
   assert.equal(f.availability_30d, 1);
   assert.equal(assembleSellerFacts({ ...base, probes: [] }).availability_30d, null);
