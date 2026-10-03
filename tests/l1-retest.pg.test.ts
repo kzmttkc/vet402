@@ -54,6 +54,7 @@ if (!TEST_DB) {
       "OBSERVATORY_TEMPO_L1_ENABLED",
       "L1_LANE_FLOOR_PER_RUN",
       "OBSERVATORY_L1_CENSUS",
+      "OBSERVATORY_L1_RETEST_LISTINGS",
     ] as const;
     const saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
     t.after(() => {
@@ -72,6 +73,7 @@ if (!TEST_DB) {
       delete process.env.L1_LANE_FLOOR_PER_RUN;
       if (on) process.env.OBSERVATORY_L1_CENSUS = "on";
       else delete process.env.OBSERVATORY_L1_CENSUS;
+      delete process.env.OBSERVATORY_L1_RETEST_LISTINGS; // 出品単位（2026-10-03）は最後の段だけ on
     };
 
     type Past = {
@@ -198,6 +200,17 @@ if (!TEST_DB) {
     add("https://ri.example:4451/api", "3000");
     // census の相手（購入行の無い売り手）。retest の後ろに並ぶ。
     add("https://cz.example/api", "500");
+    // 出品単位の買い直し（2026-10-03・旗 OBSERVATORY_L1_RETEST_LISTINGS）: 売り手の最新の行は届いているが、別の出品の
+    // 最新の行がこちらの落ち度で失敗したまま。売り手単位の retest は選ばない（最新が成功）。旗 on で失敗した出品だけを買う。
+    const LATER_OK = "2026-09-30T03:00:00Z";
+    add("https://lx.example/fail", "2000", { past: [{ status: "settle_failed", http: 402, at: UNFUNDED_AT }] });
+    add("https://lx.example/ok", "1000", { past: [{ status: "settled", http: 200, at: LATER_OK }] });
+    // 失敗した出品がもう買えない（$1 超）: 同じ売り手の別の出品にも落ちない（何も買わない・独立レビュー BLOCK）。
+    add("https://ly.example/fail", "2000000", { past: [{ status: "settle_failed", http: 402, at: UNFUNDED_AT }] });
+    add("https://ly.example/ok", "1000", { past: [{ status: "settled", http: 200, at: LATER_OK }] });
+    // (b) 本文を送らなかった POST の 400。同じ売り手の安い出品は後で届いている。
+    add("https://lz.example/post", "1600", { method: "POST", declaresBody: true, past: [{ status: "settle_failed", http: 400, at: BEFORE_BODY }] });
+    add("https://lz.example/ok", "900", { past: [{ status: "settled", http: 200, at: LATER_OK }] });
 
     const byUrl = new Map(listings.map((l) => [l.url, l]));
     const challengeFor = (url: string) => {
@@ -438,6 +451,36 @@ if (!TEST_DB) {
       const summary = await run(w);
       assert.equal(summary.retestCandidates, 0);
       assert.equal((await bySelection("retest")).length, 7, "印つきの行は 1 回目の 7 件のまま");
+    });
+
+    await t.test("出品単位の旗が on（2026-10-03）: 売り手の最新が届いていても、こちらの落ち度で失敗したままの出品だけを買い直す", async () => {
+      arm(true);
+      process.env.OBSERVATORY_L1_RETEST_LISTINGS = "on";
+      const before = new Set(await bySelection("retest"));
+      const w = wall();
+      const summary = await run(w);
+      const fresh = (await bySelection("retest")).filter((u) => !before.has(u));
+      // ra/dear と ri:4449/old は、1 回目に売り手単位の retest が同じ売り手の最安の出品で買い直したため、失敗したまま
+      // 残っていた出品（財布切れ）。出品単位ではこれらも拾う。
+      assert.deepEqual(
+        fresh.sort(),
+        ["https://lx.example/fail", "https://lz.example/post", "https://ra.example/dear", "https://ri.example:4449/old"],
+        `買い直したのは失敗した出品だけ: ${fresh.join(", ")}`,
+      );
+      const paid = w.paidUrls();
+      for (const u of ["https://lx.example/ok", "https://lz.example/ok", "https://ly.example/ok", "https://ly.example/fail"]) {
+        assert.ok(!paid.includes(u), `${u} は買わない（失敗した出品ではない／$1 超）`);
+      }
+      assert.equal(summary.retestCandidates, 4, "候補は lx・lz・ra・ri の 4 件（ly は失敗した出品が買えないので 0 件）");
+    });
+
+    await t.test("出品単位の 2 回目: 買い直して届いた出品はもう選ばない", async () => {
+      arm(true);
+      process.env.OBSERVATORY_L1_RETEST_LISTINGS = "on";
+      const w = wall();
+      const summary = await run(w);
+      assert.equal(summary.retestCandidates, 0);
+      for (const h of ["lx.example", "ly.example", "lz.example"]) assert.ok(!w.paidUrls().some((u) => hostOf(u) === h), h);
     });
   });
 }

@@ -1361,7 +1361,11 @@ export async function runL1Batch(
       AND e.network IN (${BASE_CAIP2}, 'base')
       AND ${
         census === "retest"
-          ? sql`${CENSUS_HOST_SQL} IN (SELECT jsonb_array_elements_text(${retest?.hostsJson ?? "[]"}::jsonb))`
+          ? retest?.sellerHostsJson !== undefined
+            ? // 出品単位（旗 on）: 売り手単位のホストは従来どおり全出品から、出品単位でだけ入ったホストは失敗した出品だけ。
+              sql`(${CENSUS_HOST_SQL} IN (SELECT jsonb_array_elements_text(${retest.sellerHostsJson}::jsonb))
+                   OR e.id::text IN (SELECT jsonb_array_elements_text(${retest.preferredIdsJson}::jsonb)))`
+            : sql`${CENSUS_HOST_SQL} IN (SELECT jsonb_array_elements_text(${retest?.hostsJson ?? "[]"}::jsonb))`
           : sql`${CENSUS_HOST_SQL} NOT IN (${CENSUS_TRIED_HOSTS_SQL})`
       }`
           : sql``
@@ -1956,17 +1960,27 @@ export function pickCensusRows(
 }
 
 /** retest の候補の問い合わせへ渡すパラメータ（RETEST_SELLERS_SQL の結果・JSON の文字列 1 つずつ）。 */
-export type RetestParams = { hostsJson: string; preferredIdsJson: string; hostCount: number };
+export type RetestParams = {
+  hostsJson: string;
+  preferredIdsJson: string;
+  hostCount: number;
+  /**
+   * 出品単位の旗が on のときだけ: 売り手単位で選ばれたホスト（RETEST_SELLERS_SQL）。出品単位でだけ入ったホストは
+   * 失敗した出品そのもの（preferredIds）に限り、同じ売り手の別の出品は買わない（独立レビュー 2026-10-03 BLOCK:
+   * 失敗した出品が WHERE で落ちると、届いている別の出品を毎バッチ買い直し続ける）。
+   */
+  sellerHostsJson?: string;
+};
 
-/**
- * RETEST_SELLERS_SQL を 1 回流し、対象の売り手（ホスト名）と、(b) の売り手で優先して買い直す出品の id を返す。
- * 読めなければ null（retest はそのバッチでは 0 件——金の関門ではないのでバッチは止めない）。
- */
 /** 出品単位の買い直し（2026-10-03）の旗。既定 OFF。 */
 export function retestListingsEnabled(): boolean {
   return process.env.OBSERVATORY_L1_RETEST_LISTINGS?.trim().toLowerCase() === "on";
 }
 
+/**
+ * RETEST_SELLERS_SQL を 1 回流し、対象の売り手（ホスト名）と、(b) の売り手で優先して買い直す出品の id を返す。
+ * 読めなければ null（retest はそのバッチでは 0 件——金の関門ではないのでバッチは止めない）。
+ */
 export async function readRetestSellers(db: NonNullable<ReturnType<typeof getDb>>): Promise<RetestParams | null> {
   try {
     const rows = rowsOf(await db.execute(RETEST_SELLERS_SQL));
@@ -1983,7 +1997,13 @@ export async function readRetestSellers(db: NonNullable<ReturnType<typeof getDb>
         ...listingRows.filter((r) => typeof r.endpoint_id === "string").map((r) => String(r.endpoint_id)),
       ]),
     ];
-    return { hostsJson: JSON.stringify(hosts), preferredIdsJson: JSON.stringify(preferred), hostCount: hosts.length };
+    const sellerHosts = [...new Set(rows.map((r) => String(r.host)))];
+    return {
+      hostsJson: JSON.stringify(hosts),
+      preferredIdsJson: JSON.stringify(preferred),
+      hostCount: hosts.length,
+      ...(listingRows.length > 0 || retestListingsEnabled() ? { sellerHostsJson: JSON.stringify(sellerHosts) } : {}),
+    };
   } catch (error) {
     if (!isMissingSchemaError(error)) logServerErrorSafe("observatory.l1.retest_sellers", redactedError(error));
     return null;
