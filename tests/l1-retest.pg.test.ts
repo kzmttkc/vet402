@@ -460,18 +460,18 @@ if (!TEST_DB) {
       const w = wall();
       const summary = await run(w);
       const fresh = (await bySelection("retest")).filter((u) => !before.has(u));
-      // ra/dear と ri:4449/old は、1 回目に売り手単位の retest が同じ売り手の最安の出品で買い直したため、失敗したまま
-      // 残っていた出品（財布切れ）。出品単位ではこれらも拾う。
-      assert.deepEqual(
-        fresh.sort(),
-        ["https://lx.example/fail", "https://lz.example/post", "https://ra.example/dear", "https://ri.example:4449/old"],
-        `買い直したのは失敗した出品だけ: ${fresh.join(", ")}`,
-      );
+      // ra/dear と ri:4449/old は、1 回目に売り手単位の retest が同じ売り手の別の出品で買い直したため、失敗したまま
+      // 残っていた出品（財布切れ）。出品単位ではこれらも拾う。ri は同額 3 件のどれを 1 回目に買ったかが id（UUID）で
+      // 決まるので、1 回目に 4449/old そのものを買っていればもう失敗ではなく、ここでは選ばれない（独立レビュー 2026-10-03）。
+      const riOldAlreadyRebought = before.has("https://ri.example:4449/old");
+      const expected = ["https://lx.example/fail", "https://lz.example/post", "https://ra.example/dear"];
+      if (!riOldAlreadyRebought) expected.push("https://ri.example:4449/old");
+      assert.deepEqual(fresh.sort(), expected.sort(), `買い直したのは失敗した出品だけ: ${fresh.join(", ")}`);
       const paid = w.paidUrls();
       for (const u of ["https://lx.example/ok", "https://lz.example/ok", "https://ly.example/ok", "https://ly.example/fail"]) {
         assert.ok(!paid.includes(u), `${u} は買わない（失敗した出品ではない／$1 超）`);
       }
-      assert.equal(summary.retestCandidates, 4, "候補は lx・lz・ra・ri の 4 件（ly は失敗した出品が買えないので 0 件）");
+      assert.equal(summary.retestCandidates, expected.length, "候補は失敗した出品の数（ly は失敗した出品が買えないので 0 件）");
     });
 
     await t.test("出品単位の 2 回目: 買い直して届いた出品はもう選ばない", async () => {
