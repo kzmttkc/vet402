@@ -49,14 +49,20 @@ const UPSERT_CHUNK = 500;
  * reached 35k rows (350 pages) on 2026-10-04, so the old sequential fetch (~410s) timed out the
  * 300s cron on 10/4 and 10/5. The writes are cheap (10/3: 22.8k rows upserted in 9s).
  */
-const FETCH_CONCURRENCY = 6;
+const FETCH_CONCURRENCY = 3;
 /**
  * Stop fetching after this long and sync what we have as complete=false (no delisting that day).
- * Plus one in-flight request (25s) and the later stages (upsert ~15s, notify, PayAI ~60s, MPP) must fit the route's 300s.
+ * Plus one in-flight request (25s), the upsert (~15s) and notify must fit the route's 300s. Since 2026-10-07 the PayAI
+ * payees and the MPP directory run in their own cron (/api/cron/catalog-sync-aux), which is what frees the extra 70s.
  */
-const FETCH_DEADLINE_MS = 150_000;
+const FETCH_DEADLINE_MS = 220_000;
 /** Backoff 0.5+1+2+4+8s: a throttled page gets ~15s to recover before the day is called incomplete (10/6: two manual re-runs died at 3 retries). */
 const FETCH_PAGE_RETRIES = 5;
+/**
+ * 429s get their own budget (fetchFullCatalog pauses every worker on one). 10/6: six pages in flight hit 429 at ~205 of
+ * 350 pages on every run. Three in flight plus a shared pause keeps the whole fetch near 140s when the API does not throttle.
+ */
+const FETCH_THROTTLE_RETRIES = 12;
 
 function todayUtc(): string {
   return new Date().toISOString().slice(0, 10);
@@ -84,7 +90,7 @@ export async function syncCatalog(
   const today = options.today ?? todayUtc();
   const result =
     options.fetchResult ??
-    (await fetchFullCatalog({ concurrency: FETCH_CONCURRENCY, deadlineMs: FETCH_DEADLINE_MS, maxRetriesPerPage: FETCH_PAGE_RETRIES }));
+    (await fetchFullCatalog({ concurrency: FETCH_CONCURRENCY, deadlineMs: FETCH_DEADLINE_MS, maxRetriesPerPage: FETCH_PAGE_RETRIES, maxThrottleRetries: FETCH_THROTTLE_RETRIES }));
 
   if (!result.complete) {
     // A partial day is safe (delisting is withheld) but a repeat means the fetch no longer fits its budget.

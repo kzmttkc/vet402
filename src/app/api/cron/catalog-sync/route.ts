@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
 import { syncCatalog } from "@/lib/observatory/catalog-sync";
 import { notifyDelistedEvents } from "@/lib/observatory/notify";
-import { syncMppDirectory } from "@/lib/observatory/mpp-directory";
-import { refreshSolanaDiscoveryPayees } from "@/lib/settlements/discovery-payees";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // vet402 Observatory L0 — daily Bazaar catalog ingestion + delisting diff.
@@ -27,28 +25,10 @@ export async function GET(request: NextRequest) {
     } catch (error) {
       logServerErrorSafe("cron.catalog-sync.notify", error);
     }
-    // 決済索引の受取人（カタログの外・PayAI の公開 discovery）。失敗しても同期は成功のまま返す。
-    let discoveryPayees: unknown = null;
-    try {
-      discoveryPayees = await refreshSolanaDiscoveryPayees();
-    } catch (error) {
-      logServerErrorSafe("cron.catalog-sync.discovery-payees", error);
-      discoveryPayees = { error: "discovery_payees_failed" };
-    }
-    // Tempo の MPP directory（source = mpp_directory・2026-09-17）。1 回の fetch・別 snapshot。
-    // 失敗しても Bazaar の同期は成功のまま返す（原因はログへ）。
-    let mppDirectory: unknown = null;
-    try {
-      const m = await syncMppDirectory();
-      mppDirectory = { totalCount: m.totalCount, fetchedCount: m.fetchedCount, complete: m.complete, upserted: m.upserted, skipped: m.skipped, delisted: m.events.filter((e) => e.eventType === "delisted").length };
-    } catch (error) {
-      logServerErrorSafe("cron.catalog-sync.mpp-directory", error);
-      mppDirectory = { error: "mpp_directory_failed" };
-    }
+    // PayAI の受取人と Tempo の MPP directory は 2026-10-07 から /api/cron/catalog-sync-aux（別の関数・別の 300 秒）。
+    // ここに残すと Bazaar の取得に使える時間が 150 秒に縮み、429 で止まる日に後半が読めなかった。
     return NextResponse.json({
       notify,
-      discoveryPayees,
-      mppDirectory,
       ok: true,
       snapshotDate: summary.snapshotDate,
       totalCount: summary.totalCount,

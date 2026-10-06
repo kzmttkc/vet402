@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-07 — catalog-sync: a 429 pauses every worker and gets its own retry budget; PayAI/MPP move to /api/cron/catalog-sync-aux; a second daily run at 13:00 UTC
+- **何を**: `fetchFullCatalog` に `maxThrottleRetries`（既定 0 = 従来どおり 429 も普通の失敗）と、全ワーカー共通の一時停止（429 を受けたら `Retry-After`、無ければ 2・4・8・16・32 秒、1 回最大 30 秒、締切が上限）を足した。`retryAfterMs`（秒数と HTTP 日付を読む）を export。Bazaar の同期は 3 並列・429 の別枠 12 回・締切 150 → 220 秒。PayAI の受取人（`refreshSolanaDiscoveryPayees`）と Tempo の MPP directory（`syncMppDirectory`）は新しい cron ルート `/api/cron/catalog-sync-aux`（01:30 UTC）へ移し、`/api/cron/catalog-sync` の応答から `discoveryPayees`・`mppDirectory` を外した。`/api/cron/catalog-sync` を 13:00 UTC にも足した（同じ日の不完全な回は完全な snapshot を上書きしない既存の規則のまま）。tests/observatory-catalog.test.ts に 5 件。
+- **なぜ**: 10/6 は 01:00 以後の再実行がすべて 34,944 件中 2〜2.6 万件で `page_failed`（最後のページの答え `http_429`）。6 並列で 1 ページが 5 回の再試行を使い切る間も他のワーカーが API を叩き続けていた。後段（PayAI 約 60 秒）を同じ関数に置くと取得の締切を延ばせなかった。
+- **影響**: 削除の判定は従来どおり全ページを読めた回だけ。応答の形が変わるので、catalog-sync の JSON の `mppDirectory`・`discoveryPayees` を読む監視があれば aux 側を見ること。
+
 ## 2026-10-06 — catalog-sync: the Bazaar fetch runs 6 pages at a time and stops at 150s (cron timed out 10/4 and 10/5)
 - **何を**: `fetchFullCatalog`（`src/lib/observatory/catalog-source.ts`）に `concurrency`（既定 1 = 従来どおり）と `deadlineMs` を足し、`syncCatalog` の Bazaar 取得は 6 並列・150 秒で打ち切り。1 ページ目だけ単独で取り（total と実ページ幅を得る）、残りは offset 順に取り出して、結合は offset 順（キー衝突は若い offset が勝つ・従来と同じ）。`complete` は「全ページ番号を読んだ」ときだけ true（件数の合計では判定しない・最後以外のページが step 件でなければ打ち切り）。ページが取れない・期限切れ・ページ幅の不一致は `complete=false`（取れた分は upsert・削除判定は出さない・`observatory.catalog-sync.incomplete` をログ）。既定の fetch は 1 ページ 25 秒でタイムアウト。route・後段（notify・discovery payees・MPP directory）・env・vercel.json は変更なし（tests/observatory-catalog.test.ts）。
 - **なぜ**: Bazaar が 24,331 件（10/3）→ 35,013 件（10/6）に増え、1 ページ約 1.2 秒の直列取得（約 350 ページ ≒ 410 秒）が cron の 300 秒を超え、10/4・10/5 の 01:00 UTC が `Task timed out after 300 seconds` で失敗（snapshot・last_seen_at は 10/3 のまま）。10/3 の実測では upsert は 22.8k 行で約 9 秒、MPP は 0.3 秒で、遅いのは取得だけ。

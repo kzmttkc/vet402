@@ -14,6 +14,7 @@ import {
   normalizeResourceKey,
   parseCatalogItem,
   fetchFullCatalog,
+  retryAfterMs,
 } from "@/lib/observatory/catalog-source";
 
 // ---- normalizeResourceKey --------------------------------------------------
@@ -428,4 +429,81 @@ test("parseCatalogItem preserves base58 case for non-EVM payTo (Solana) — lowe
     ],
   });
   assert.equal(sol.payTo, "GqSs5L9aPWGJwyRQe35YKQaWMDPh3R1dMqfSEPhSgkM");
+});
+
+// ---- 429 handling (2026-10-07: every run of 10/6 stopped at ~205 of 350 pages on http_429) ----
+
+function throttlingFetch(total: number, step: number, throttlesPerPage: Record<number, number>, headers?: Record<string, string>) {
+  const left = new Map(Object.entries(throttlesPerPage).map(([k, v]) => [Number(k), v]));
+  const calls: number[] = [];
+  const fetchImpl = async (url: string) => {
+    const offset = Number(new URL(url).searchParams.get("offset") ?? "0");
+    calls.push(offset);
+    const n = left.get(offset) ?? 0;
+    if (n > 0) {
+      left.set(offset, n - 1);
+      return { ok: false, status: 429, headers: new Headers(headers ?? {}), json: async () => ({}) } as unknown as Response;
+    }
+    const items = Array.from({ length: Math.min(step, total - offset) }, (_, i) => fakeItem(offset + i));
+    return { ok: true, status: 200, headers: new Headers(), json: async () => page(items, total) } as unknown as Response;
+  };
+  return { fetchImpl, calls };
+}
+
+test("fetchFullCatalog: 429s spend their own budget, not the page's ordinary tries, and the day still completes", async () => {
+  // offset 4 is throttled 6 times; with maxRetriesPerPage 1 the old code gave up after the 2nd try
+  const { fetchImpl, calls } = throttlingFetch(10, 2, { 4: 6 });
+  const result = await fetchFullCatalog({ fetchImpl, pageLimit: 2, sleepMs: 0, concurrency: 3, maxRetriesPerPage: 1, maxThrottleRetries: 8 });
+  assert.equal(result.complete, true);
+  assert.equal(result.fetchedCount, 10);
+  assert.equal(calls.filter((o) => o === 4).length, 7);
+});
+
+test("fetchFullCatalog: without a throttle budget a 429 still counts as an ordinary failure (default unchanged)", async () => {
+  const { fetchImpl } = throttlingFetch(10, 2, { 4: 6 });
+  const result = await fetchFullCatalog({ fetchImpl, pageLimit: 2, sleepMs: 0, concurrency: 3, maxRetriesPerPage: 1 });
+  assert.equal(result.complete, false);
+  assert.equal(result.stoppedBecause, "page_failed");
+  assert.equal(result.lastPageError, "http_429");
+});
+
+test("fetchFullCatalog: a page that stays throttled past its budget ends the day INCOMPLETE (no delisting), never loops", async () => {
+  const { fetchImpl, calls } = throttlingFetch(10, 2, { 4: 1000 });
+  const result = await fetchFullCatalog({ fetchImpl, pageLimit: 2, sleepMs: 0, concurrency: 3, maxRetriesPerPage: 2, maxThrottleRetries: 5 });
+  assert.equal(result.complete, false);
+  assert.equal(result.lastPageError, "http_429");
+  // 5 throttle tries + 3 ordinary tries (attempt 0..2) at most
+  assert.ok(calls.filter((o) => o === 4).length <= 8, `offset 4 asked ${calls.filter((o) => o === 4).length} times`);
+});
+
+test("fetchFullCatalog: one 429 pauses every worker until Retry-After has passed", async () => {
+  const sent: { offset: number; at: number }[] = [];
+  let throttledAt = 0;
+  const fetchImpl = async (url: string) => {
+    const offset = Number(new URL(url).searchParams.get("offset") ?? "0");
+    const at = Date.now();
+    sent.push({ offset, at });
+    if (offset === 2 && throttledAt === 0) {
+      throttledAt = at;
+      return { ok: false, status: 429, headers: new Headers({ "retry-after": "1" }), json: async () => ({}) } as unknown as Response;
+    }
+    const items = Array.from({ length: Math.min(2, 12 - offset) }, (_, i) => fakeItem(offset + i));
+    return { ok: true, status: 200, headers: new Headers(), json: async () => page(items, 12) } as unknown as Response;
+  };
+  const result = await fetchFullCatalog({ fetchImpl, pageLimit: 2, sleepMs: 1, concurrency: 3, maxRetriesPerPage: 1, maxThrottleRetries: 3 });
+  assert.equal(result.complete, true);
+  // every request sent after the 429 (by any worker) waited out the 1s Retry-After, give or take timer slack
+  const after = sent.filter((s) => s.at > throttledAt + 5);
+  assert.ok(after.length > 0);
+  for (const s of after) assert.ok(s.at - throttledAt >= 950, `offset ${s.offset} went out ${s.at - throttledAt}ms after the 429`);
+});
+
+test("retryAfterMs reads delta-seconds and HTTP dates, and ignores junk", () => {
+  const r = (v: string | null) => ({ headers: new Headers(v === null ? {} : { "retry-after": v }) }) as unknown as Response;
+  assert.equal(retryAfterMs(r("3")), 3000);
+  assert.equal(retryAfterMs(r(null)), null);
+  assert.equal(retryAfterMs(r("soon")), null);
+  const now = Date.parse("2026-10-07T00:00:00Z");
+  assert.equal(retryAfterMs(r("Wed, 07 Oct 2026 00:00:05 GMT"), now), 5000);
+  assert.equal(retryAfterMs(null), null);
 });

@@ -41,6 +41,14 @@
       "schedule": "0 1 * * *"
     },
     {
+      "path": "/api/cron/catalog-sync",
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/catalog-sync-aux",
+      "schedule": "30 1 * * *"
+    },
+    {
       "path": "/api/cron/metrics-rollup",
       "schedule": "30 10 * * *"
     },

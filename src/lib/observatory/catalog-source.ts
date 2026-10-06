@@ -212,7 +212,28 @@ export type FetchFullCatalogOptions = {
    * maxDuration instead of being killed with nothing written.
    */
   deadlineMs?: number;
+  /**
+   * Extra tries a page gets when the API answers 429, on top of maxRetriesPerPage (default 0 =
+   * a 429 counts like any other failure). 2026-10-06: every run died at ~205 of 350 pages on
+   * http_429 with 6 pages in flight, because one page used up its 5 tries while the other workers
+   * kept hitting the API. A 429 now pauses every worker (see pauseUntil) and is retried on its own
+   * budget, still bounded by the deadline.
+   */
+  maxThrottleRetries?: number;
 };
+
+/** Longest a single 429 pause may last, whatever Retry-After says (the deadline still bounds the total). */
+const MAX_THROTTLE_PAUSE_MS = 30_000;
+
+/** Retry-After as milliseconds (delta-seconds or an HTTP date), or null when absent or unreadable. */
+export function retryAfterMs(res: Response | null, now = Date.now()): number | null {
+  const raw = res?.headers?.get?.("retry-after");
+  if (!raw) return null;
+  const secs = Number(raw);
+  if (Number.isFinite(secs) && secs >= 0) return secs * 1000;
+  const at = Date.parse(raw);
+  return Number.isFinite(at) ? Math.max(0, at - now) : null;
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -237,6 +258,7 @@ export async function fetchFullCatalog(
     baseUrl = CATALOG_URL,
     concurrency = 1,
     deadlineMs,
+    maxThrottleRetries = 0,
   } = options;
   const deadlineAt = deadlineMs === undefined ? Infinity : Date.now() + deadlineMs;
 
@@ -251,11 +273,21 @@ export async function fetchFullCatalog(
   let stoppedBecause: CatalogFetchResult["stoppedBecause"];
   /** What the API answered on the page that exhausted its retries (the first such page). */
   let giveUpError: string | undefined;
+  /** Shared by all workers: after a 429 nobody sends the next request before this time. */
+  let pauseUntil = 0;
+  const waitForPause = async () => {
+    for (let wait = pauseUntil - Date.now(); wait > 0 && sleepMs > 0; wait = pauseUntil - Date.now()) {
+      await sleep(Math.min(wait, Math.max(0, deadlineAt - Date.now())));
+      if (Date.now() >= deadlineAt) return;
+    }
+  };
 
   /** One page with retries. null = gave up (retries exhausted). */
   const fetchPage = async (offset: number): Promise<{ items: unknown[]; total: number | null } | null> => {
     const url = `${baseUrl}?limit=${pageLimit}&offset=${offset}`;
+    let throttled = 0;
     for (let attempt = 0; ; attempt++) {
+      await waitForPause();
       let res: Response | null = null;
       try {
         res = await fetchImpl(url);
@@ -276,6 +308,14 @@ export async function fetchFullCatalog(
             total: asFiniteNumber(asRecord(rec?.pagination)?.total),
           };
         }
+      }
+      if (res?.status === 429 && throttled < maxThrottleRetries && Date.now() < deadlineAt) {
+        // Throttled: pause every worker, then retry this page without spending its ordinary tries.
+        throttled++;
+        attempt--;
+        const pause = Math.min(MAX_THROTTLE_PAUSE_MS, retryAfterMs(res) ?? 2_000 * 2 ** Math.min(throttled - 1, 4));
+        pauseUntil = Math.max(pauseUntil, Date.now() + pause);
+        continue;
       }
       if (attempt >= maxRetriesPerPage || Date.now() >= deadlineAt) {
         giveUpError ??= res ? (res.ok ? "unreadable_body" : `http_${res.status}`) : "network_or_timeout";
