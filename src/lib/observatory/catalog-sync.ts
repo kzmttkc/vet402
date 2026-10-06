@@ -276,10 +276,12 @@ export async function syncCatalog(
       },
       // A partial re-run must not replace a full snapshot of the same day (2026-10-06: a manual re-run
       // fetched 25,000 of 35,028 and overwrote the complete 01:00 snapshot — tomorrow's diff base).
-      // A complete run always writes; a partial one writes only over an earlier partial one.
+      // A complete run always writes; a partial one writes only over an earlier partial (or empty) one that read fewer rows.
       ...(result.complete
         ? {}
-        : { setWhere: sql`${x402CatalogSnapshots.fetchedCount} < ${x402CatalogSnapshots.totalCount}` }),
+        : {
+            setWhere: sql`(${x402CatalogSnapshots.fetchedCount} < ${x402CatalogSnapshots.totalCount} or ${x402CatalogSnapshots.totalCount} = 0) and excluded.fetched_count > ${x402CatalogSnapshots.fetchedCount}`,
+          }),
     });
 
   // ---- resource_id の別名（2026-09-29 監査 7 周目・高）----

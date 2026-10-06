@@ -164,6 +164,13 @@ if (!TEST_DB) {
       assert.equal((await keysOf("2026-08-20")).n, 2);
       await syncCatalog({ fetchResult: fetchResultOf([item(1), item(2), item(3)]), today: "2026-08-20" });
       assert.deepEqual(await keysOf("2026-08-20"), { n: 3, fetched: 3, total: 3 });
+      // an empty day (first page never answered: 0 of 0) is replaced by a later partial run; a later empty run never wipes rows
+      await syncCatalog({ fetchResult: fetchResultOf([], { complete: false, total: 0 }), today: "2026-08-21" });
+      assert.deepEqual(await keysOf("2026-08-21"), { n: 0, fetched: 0, total: 0 });
+      await syncCatalog({ fetchResult: fetchResultOf([item(1), item(2)], { complete: false, total: 3 }), today: "2026-08-21" });
+      assert.equal((await keysOf("2026-08-21")).n, 2);
+      await syncCatalog({ fetchResult: fetchResultOf([], { complete: false, total: 0 }), today: "2026-08-21" });
+      assert.equal((await keysOf("2026-08-21")).n, 2, "an empty re-run does not wipe a partial snapshot");
     });
   });
 }
