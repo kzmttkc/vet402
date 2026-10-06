@@ -144,5 +144,26 @@ if (!TEST_DB) {
       });
       assert.equal(again.events.length, 0);
     });
+
+    await t.test("day 6: a partial re-run never replaces the day's complete snapshot (but may replace an earlier partial one)", async () => {
+      const keysOf = async (day: string) => {
+        const rows = await db
+          .select()
+          .from(schema.x402CatalogSnapshots)
+          .where(sql`${schema.x402CatalogSnapshots.snapshotDate} = ${day} and ${schema.x402CatalogSnapshots.source} = 'cdp_bazaar'`);
+        return { n: (rows[0].resourceKeys as string[]).length, fetched: rows[0].fetchedCount, total: rows[0].totalCount };
+      };
+      const db = getDb()!;
+      await syncCatalog({ fetchResult: fetchResultOf([item(1), item(2), item(3)]), today: "2026-08-19" });
+      await syncCatalog({ fetchResult: fetchResultOf([item(1)], { complete: false, total: 3 }), today: "2026-08-19" });
+      assert.deepEqual(await keysOf("2026-08-19"), { n: 3, fetched: 3, total: 3 }, "the full snapshot survives the partial re-run");
+      // a partial first run of a day is written; a later partial re-run (more rows) replaces it; a complete one replaces both
+      await syncCatalog({ fetchResult: fetchResultOf([item(1)], { complete: false, total: 3 }), today: "2026-08-20" });
+      assert.equal((await keysOf("2026-08-20")).n, 1);
+      await syncCatalog({ fetchResult: fetchResultOf([item(1), item(2)], { complete: false, total: 3 }), today: "2026-08-20" });
+      assert.equal((await keysOf("2026-08-20")).n, 2);
+      await syncCatalog({ fetchResult: fetchResultOf([item(1), item(2), item(3)]), today: "2026-08-20" });
+      assert.deepEqual(await keysOf("2026-08-20"), { n: 3, fetched: 3, total: 3 });
+    });
   });
 }

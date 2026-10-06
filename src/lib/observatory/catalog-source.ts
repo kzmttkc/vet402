@@ -181,6 +181,8 @@ export type CatalogFetchResult = {
   fetchedCount: number;
   /** true only when fetchedCount >= totalCount. Callers withhold delisting judgement when false. */
   complete: boolean;
+  /** Why an incomplete fetch stopped early (absent when it ran to the end). For the log, never for logic. */
+  stoppedBecause?: "page_failed" | "page_shape" | "deadline";
 };
 
 export type FetchFullCatalogOptions = {
@@ -244,6 +246,7 @@ export async function fetchFullCatalog(
   let maxTotal = 0;
   let step = 0;
   let aborted = false;
+  let stoppedBecause: CatalogFetchResult["stoppedBecause"];
 
   /** One page with retries. null = gave up (retries exhausted). */
   const fetchPage = async (offset: number): Promise<{ items: unknown[]; total: number | null } | null> => {
@@ -304,6 +307,7 @@ export async function fetchFullCatalog(
       totalCount,
       fetchedCount,
       complete: !aborted && totalCount > 0 && fetchedCount >= totalCount && (maxTotal === 0 || allPages),
+      ...(stoppedBecause ? { stoppedBecause } : {}),
     };
   };
 
@@ -311,6 +315,7 @@ export async function fetchFullCatalog(
   const first = await fetchPage(0);
   if (first === null) {
     aborted = true;
+    stoppedBecause = "page_failed";
     return finish();
   }
   totalCount = first.total ?? first.items.length;
@@ -325,6 +330,7 @@ export async function fetchFullCatalog(
       if (aborted) return;
       if (Date.now() >= deadlineAt) {
         aborted = true; // out of time: stop honestly, never read the gap as "delisted"
+        stoppedBecause ??= "deadline";
         return;
       }
       const index = nextIndex++;
@@ -333,6 +339,7 @@ export async function fetchFullCatalog(
       const got = await fetchPage(offset);
       if (got === null) {
         aborted = true;
+        stoppedBecause ??= Date.now() >= deadlineAt ? "deadline" : "page_failed";
         return;
       }
       if (got.total !== null) {
@@ -346,6 +353,7 @@ export async function fetchFullCatalog(
       const isTail = offset + got.items.length >= maxTotal;
       if (got.items.length !== step && !isTail) {
         aborted = true;
+        stoppedBecause ??= "page_shape";
         return;
       }
       if (got.items.length === 0) return;

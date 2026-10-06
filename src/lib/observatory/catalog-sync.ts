@@ -88,7 +88,7 @@ export async function syncCatalog(
     // A partial day is safe (delisting is withheld) but a repeat means the fetch no longer fits its budget.
     logServerErrorSafe(
       "observatory.catalog-sync.incomplete",
-      new Error(`fetched ${result.fetchedCount} of ${result.totalCount}; delisting withheld today`),
+      new Error(`fetched ${result.fetchedCount} of ${result.totalCount} (${result.stoppedBecause ?? "short count"}); delisting withheld today`),
     );
   }
 
@@ -274,6 +274,12 @@ export async function syncCatalog(
         fetchedCount: result.fetchedCount,
         resourceKeys: [...currentKeys],
       },
+      // A partial re-run must not replace a full snapshot of the same day (2026-10-06: a manual re-run
+      // fetched 25,000 of 35,028 and overwrote the complete 01:00 snapshot — tomorrow's diff base).
+      // A complete run always writes; a partial one writes only over an earlier partial one.
+      ...(result.complete
+        ? {}
+        : { setWhere: sql`${x402CatalogSnapshots.fetchedCount} < ${x402CatalogSnapshots.totalCount}` }),
     });
 
   // ---- resource_id の別名（2026-09-29 監査 7 周目・高）----
