@@ -55,6 +55,8 @@ const FETCH_CONCURRENCY = 6;
  * Plus one in-flight request (25s) and the later stages (upsert ~15s, notify, PayAI ~60s, MPP) must fit the route's 300s.
  */
 const FETCH_DEADLINE_MS = 150_000;
+/** Backoff 0.5+1+2+4+8s: a throttled page gets ~15s to recover before the day is called incomplete (10/6: two manual re-runs died at 3 retries). */
+const FETCH_PAGE_RETRIES = 5;
 
 function todayUtc(): string {
   return new Date().toISOString().slice(0, 10);
@@ -82,13 +84,13 @@ export async function syncCatalog(
   const today = options.today ?? todayUtc();
   const result =
     options.fetchResult ??
-    (await fetchFullCatalog({ concurrency: FETCH_CONCURRENCY, deadlineMs: FETCH_DEADLINE_MS }));
+    (await fetchFullCatalog({ concurrency: FETCH_CONCURRENCY, deadlineMs: FETCH_DEADLINE_MS, maxRetriesPerPage: FETCH_PAGE_RETRIES }));
 
   if (!result.complete) {
     // A partial day is safe (delisting is withheld) but a repeat means the fetch no longer fits its budget.
     logServerErrorSafe(
       "observatory.catalog-sync.incomplete",
-      new Error(`fetched ${result.fetchedCount} of ${result.totalCount} (${result.stoppedBecause ?? "short count"}); delisting withheld today`),
+      new Error(`fetched ${result.fetchedCount} of ${result.totalCount} (${result.stoppedBecause ?? "short count"}${result.lastPageError ? `, last page error ${result.lastPageError}` : ""}); delisting withheld today`),
     );
   }
 

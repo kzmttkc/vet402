@@ -324,6 +324,8 @@ test("fetchFullCatalog with concurrency: a page that never answers makes the day
   assert.equal(result.complete, false);
   assert.ok(result.fetchedCount < result.totalCount);
   assert.equal(result.totalCount, 10);
+  assert.equal(result.stoppedBecause, "page_failed");
+  assert.equal(result.lastPageError, "http_500", "the log can say what the API answered");
 });
 
 test("fetchFullCatalog stops at the deadline and reports INCOMPLETE with what it has, instead of running into the function timeout", async () => {
