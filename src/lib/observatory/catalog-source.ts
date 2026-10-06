@@ -183,7 +183,7 @@ export type CatalogFetchResult = {
   complete: boolean;
   /** Why an incomplete fetch stopped early (absent when it ran to the end). For the log, never for logic. */
   stoppedBecause?: "page_failed" | "page_shape" | "deadline";
-  /** The last failing page's HTTP status or "network_or_timeout" / "unreadable_body" (for the log only). */
+  /** What the page that ran out of retries last answered: its HTTP status or "network_or_timeout" / "unreadable_body" (for the log only). */
   lastPageError?: string;
 };
 
@@ -249,7 +249,8 @@ export async function fetchFullCatalog(
   let step = 0;
   let aborted = false;
   let stoppedBecause: CatalogFetchResult["stoppedBecause"];
-  let lastPageError: string | undefined;
+  /** What the API answered on the page that exhausted its retries (the first such page). */
+  let giveUpError: string | undefined;
 
   /** One page with retries. null = gave up (retries exhausted). */
   const fetchPage = async (offset: number): Promise<{ items: unknown[]; total: number | null } | null> => {
@@ -276,8 +277,10 @@ export async function fetchFullCatalog(
           };
         }
       }
-      lastPageError = res ? (res.ok ? "unreadable_body" : `http_${res.status}`) : "network_or_timeout";
-      if (attempt >= maxRetriesPerPage || Date.now() >= deadlineAt) return null;
+      if (attempt >= maxRetriesPerPage || Date.now() >= deadlineAt) {
+        giveUpError ??= res ? (res.ok ? "unreadable_body" : `http_${res.status}`) : "network_or_timeout";
+        return null;
+      }
       await sleep(Math.min(10_000, 500 * 2 ** attempt) * (sleepMs === 0 ? 0 : 1));
     }
   };
@@ -312,7 +315,7 @@ export async function fetchFullCatalog(
       fetchedCount,
       complete: !aborted && totalCount > 0 && fetchedCount >= totalCount && (maxTotal === 0 || allPages),
       ...(stoppedBecause ? { stoppedBecause } : {}),
-      ...(stoppedBecause && lastPageError ? { lastPageError } : {}),
+      ...(stoppedBecause === "page_failed" && giveUpError ? { lastPageError: giveUpError } : {}),
     };
   };
 

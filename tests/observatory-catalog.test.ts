@@ -328,6 +328,27 @@ test("fetchFullCatalog with concurrency: a page that never answers makes the day
   assert.equal(result.lastPageError, "http_500", "the log can say what the API answered");
 });
 
+test("fetchFullCatalog: the reported page error is the one that ended the day, not a later page's passing hiccup", async () => {
+  // offset 1 answers 429 until its retries run out; offset 2 fails once with a network error but then succeeds
+  let two = 0;
+  const fetchImpl = async (url: string) => {
+    const offset = Number(new URL(url).searchParams.get("offset") ?? "0");
+    if (offset === 1) {
+      await new Promise((r) => setTimeout(r, 5));
+      return { ok: false, status: 429, json: async () => ({}) } as Response;
+    }
+    if (offset === 2 && two++ === 0) {
+      await new Promise((r) => setTimeout(r, 30));
+      throw new Error("socket hang up");
+    }
+    return { ok: true, status: 200, json: async () => page([fakeItem(offset)], 4) } as unknown as Response;
+  };
+  const result = await fetchFullCatalog({ fetchImpl, pageLimit: 1, sleepMs: 0, concurrency: 3, maxRetriesPerPage: 2 });
+  assert.equal(result.complete, false);
+  assert.equal(result.stoppedBecause, "page_failed");
+  assert.equal(result.lastPageError, "http_429");
+});
+
 test("fetchFullCatalog stops at the deadline and reports INCOMPLETE with what it has, instead of running into the function timeout", async () => {
   const { fetchImpl, offsets } = makeSlowPages(200, () => 10);
   const started = Date.now();
