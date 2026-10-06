@@ -294,6 +294,19 @@ test("fetchFullCatalog with concurrency: a short page in the middle is incomplet
   assert.equal(tail.items.length, 95);
 });
 
+test("fetchFullCatalog with concurrency: a wobbling total cannot turn a short page and a long page into 'last pages' that balance out (reviewer, 2026-10-06)", async () => {
+  // Page at offset 30 holds 5 items and says total 35; page at offset 50 holds 15 and says total 65. Each looks like
+  // the tail by its OWN total, the counts sum to exactly 100, yet keys 35..39 were never read. Tail = reaches the LARGEST total seen.
+  const result = await fetchFullCatalog({
+    fetchImpl: makeNumberedPages(100, 10, { 30: 5, 50: 15 }, { 30: 35, 50: 65 }),
+    pageLimit: 10,
+    sleepMs: 0,
+    concurrency: 10,
+  });
+  assert.equal(result.fetchedCount, 100, "the counts do balance — only the page-shape check can catch this");
+  assert.equal(result.complete, false);
+});
+
 test("fetchFullCatalog with concurrency: a total that wobbles down mid-fetch cannot end the day complete with pages unread", async () => {
   // page at offset 20 claims total 25, so workers stop claiming; later pages (30..90) were never read.
   const result = await fetchFullCatalog({

@@ -343,7 +343,7 @@ export async function fetchFullCatalog(
       // Offsets are index * step, so every page but the last must hold exactly `step` items. A short
       // (or long) page in the middle means a gap or an overlap: stop and say so — never let the
       // item count balance it out.
-      const isTail = offset + got.items.length >= totalCount;
+      const isTail = offset + got.items.length >= maxTotal;
       if (got.items.length !== step && !isTail) {
         aborted = true;
         return;
