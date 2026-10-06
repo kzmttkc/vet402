@@ -188,103 +188,151 @@ export type FetchFullCatalogOptions = {
   /** Page size (API max 100). Tests shrink it. */
   pageLimit?: number;
   /**
-   * Politeness delay between pages. No documented rate limit; a live full
+   * Politeness delay between one worker's pages. No documented rate limit; a live full
    * fetch (2026-08-14, 150 pages at 150ms) completed in 127s with zero 429s.
-   * The default keeps the whole sync comfortably inside the cron's 300s.
    */
   sleepMs?: number;
   /** Retries per failing page with exponential backoff before giving up on the day. */
   maxRetriesPerPage?: number;
   baseUrl?: string;
+  /**
+   * Pages in flight at once (default 1 = sequential, the old behaviour). The Bazaar sync passes
+   * more: a page takes ~1.2s from Vercel and the catalog passed 35k rows (350 pages, ~410s
+   * sequential) on 2026-10-04, past the cron's 300s — 10/4 and 10/5 both timed out. The first
+   * page is always fetched alone (it carries `total`); the rest are claimed in offset order.
+   */
+  concurrency?: number;
+  /**
+   * Stop claiming new pages after this many ms (default: none) and report complete=false, so the
+   * caller upserts what it has, withholds delisting, and the function still finishes inside its
+   * maxDuration instead of being killed with nothing written.
+   */
+  deadlineMs?: number;
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** A hung request must not eat the whole function budget; the default fetch gives up per page. */
+const PAGE_TIMEOUT_MS = 25_000;
+const defaultFetch = (url: string) => fetch(url, { signal: AbortSignal.timeout(PAGE_TIMEOUT_MS) });
+
 /**
  * Fetch the whole catalog, paging by offset until `pagination.total`.
- * A page that keeps failing ends the fetch early with complete=false rather
- * than looping forever or silently skipping a window of the keyspace.
+ * A page that keeps failing (or the deadline) ends the fetch early with complete=false rather
+ * than looping forever or silently skipping a window of the keyspace: a skipped window would
+ * make every endpoint in it look delisted.
  */
 export async function fetchFullCatalog(
   options: FetchFullCatalogOptions = {},
 ): Promise<CatalogFetchResult> {
   const {
-    fetchImpl = fetch,
+    fetchImpl = defaultFetch,
     pageLimit = 100,
     sleepMs = 150,
     maxRetriesPerPage = 3,
     baseUrl = CATALOG_URL,
+    concurrency = 1,
+    deadlineMs,
   } = options;
+  const deadlineAt = deadlineMs === undefined ? Infinity : Date.now() + deadlineMs;
 
-  const byKey = new Map<string, ParsedCatalogItem>();
+  /** Parsed, importable items per page, keyed by page index so the merge below is in offset order. */
+  const pages = new Map<number, ParsedCatalogItem[]>();
   let totalCount = 0;
   let fetchedCount = 0;
-  let offset = 0;
-  let firstPage = true;
+  let aborted = false;
 
-  for (;;) {
+  /** One page with retries. null = gave up (retries exhausted). */
+  const fetchPage = async (offset: number): Promise<{ items: unknown[]; total: number | null } | null> => {
     const url = `${baseUrl}?limit=${pageLimit}&offset=${offset}`;
-
-    let body: unknown = null;
     for (let attempt = 0; ; attempt++) {
       let res: Response | null = null;
       try {
         res = await fetchImpl(url);
       } catch {
-        res = null; // network error — retry like a 5xx
+        res = null; // network error or timeout — retry like a 5xx
       }
+      let body: unknown = null;
       if (res?.ok) {
         try {
           body = await res.json();
         } catch {
           body = null;
         }
-        if (body !== null) break;
+        if (body !== null) {
+          const rec = asRecord(body);
+          return {
+            items: Array.isArray(rec?.items) ? rec.items : [],
+            total: asFiniteNumber(asRecord(rec?.pagination)?.total),
+          };
+        }
       }
-      if (attempt >= maxRetriesPerPage) {
-        // Give up on the DAY, not just the page: a skipped window would make
-        // every endpoint in it look delisted. complete=false says so.
-        return {
-          items: [...byKey.values()],
-          totalCount,
-          fetchedCount,
-          complete: totalCount > 0 && fetchedCount >= totalCount,
-        };
-      }
+      if (attempt >= maxRetriesPerPage || Date.now() >= deadlineAt) return null;
       await sleep(Math.min(10_000, 500 * 2 ** attempt) * (sleepMs === 0 ? 0 : 1));
     }
+  };
 
-    const rec = asRecord(body);
-    const items = Array.isArray(rec?.items) ? rec.items : [];
-    const pagination = asRecord(rec?.pagination);
-    const total = asFiniteNumber(pagination?.total);
-    if (firstPage) {
-      totalCount = total ?? items.length;
-      firstPage = false;
-    } else if (total !== null) {
-      totalCount = total; // the catalog can grow/shrink mid-fetch; trust the latest
-    }
-
-    fetchedCount += items.length;
-    for (const raw of items) {
+  const take = (index: number, got: { items: unknown[]; total: number | null }) => {
+    fetchedCount += got.items.length;
+    const parsedItems: ParsedCatalogItem[] = [];
+    for (const raw of got.items) {
       const parsed = parseCatalogItem(raw);
       if (!parsed.resourceKey) continue;
       // URL として読めない resource は取り込まない（監査 6 周目）。fetchedCount には数えたまま（complete の判定は
       // 「API が返した件数を全部受け取ったか」で、残した件数ではない）。
       if (!isImportableResourceUrl(parsed.resourceUrl)) continue;
-      if (!byKey.has(parsed.resourceKey)) byKey.set(parsed.resourceKey, parsed);
+      parsedItems.push(parsed);
     }
+    pages.set(index, parsedItems);
+  };
 
-    if (items.length === 0 || fetchedCount >= totalCount) {
-      return {
-        items: [...byKey.values()],
-        totalCount,
-        fetchedCount,
-        complete: fetchedCount >= totalCount,
-      };
+  const finish = (): CatalogFetchResult => {
+    const byKey = new Map<string, ParsedCatalogItem>();
+    for (const index of [...pages.keys()].sort((a, b) => a - b)) {
+      // first occurrence (lowest offset) wins
+      for (const parsed of pages.get(index)!) if (!byKey.has(parsed.resourceKey)) byKey.set(parsed.resourceKey, parsed);
     }
+    return {
+      items: [...byKey.values()],
+      totalCount,
+      fetchedCount,
+      complete: !aborted && totalCount > 0 && fetchedCount >= totalCount,
+    };
+  };
 
-    offset += items.length;
-    if (sleepMs > 0) await sleep(sleepMs);
+  // The first page alone: it says how many pages there are and how many items a page really holds.
+  const first = await fetchPage(0);
+  if (first === null) {
+    aborted = true;
+    return finish();
   }
+  totalCount = first.total ?? first.items.length;
+  take(0, first);
+  if (first.items.length === 0 || fetchedCount >= totalCount) return finish();
+  const step = first.items.length; // what the API actually returned (it may cap below pageLimit)
+
+  let nextIndex = 1;
+  const worker = async () => {
+    for (;;) {
+      if (aborted) return;
+      if (Date.now() >= deadlineAt) {
+        aborted = true; // out of time: stop honestly, never read the gap as "delisted"
+        return;
+      }
+      const index = nextIndex++;
+      const offset = index * step;
+      if (offset >= totalCount) return; // the catalog can grow/shrink mid-fetch; trust the latest total
+      const got = await fetchPage(offset);
+      if (got === null) {
+        aborted = true;
+        return;
+      }
+      if (got.total !== null) totalCount = got.total;
+      take(index, got);
+      if (got.items.length === 0) return;
+      if (sleepMs > 0) await sleep(sleepMs);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.floor(concurrency)) }, worker));
+  return finish();
 }

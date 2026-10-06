@@ -44,6 +44,18 @@ export type SyncSummary = {
 /** Keep each INSERT under Postgres' 65535-parameter ceiling (~20 cols × 500 rows ≈ 10k). */
 const UPSERT_CHUNK = 500;
 
+/**
+ * Pages in flight against the CDP discovery API. One page takes ~1.2s from Vercel; the catalog
+ * reached 35k rows (350 pages) on 2026-10-04, so the old sequential fetch (~410s) timed out the
+ * 300s cron on 10/4 and 10/5. The writes are cheap (10/3: 22.8k rows upserted in 9s).
+ */
+const FETCH_CONCURRENCY = 6;
+/**
+ * Stop fetching after this long and sync what we have as complete=false (no delisting that day).
+ * Leaves ~80s of the route's 300s for the upsert, notify, discovery payees and the MPP directory.
+ */
+const FETCH_DEADLINE_MS = 200_000;
+
 function todayUtc(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -68,7 +80,17 @@ export async function syncCatalog(
 
   const source = options.source ?? CATALOG_SOURCE;
   const today = options.today ?? todayUtc();
-  const result = options.fetchResult ?? (await fetchFullCatalog());
+  const result =
+    options.fetchResult ??
+    (await fetchFullCatalog({ concurrency: FETCH_CONCURRENCY, deadlineMs: FETCH_DEADLINE_MS }));
+
+  if (!result.complete) {
+    // A partial day is safe (delisting is withheld) but a repeat means the fetch no longer fits its budget.
+    logServerErrorSafe(
+      "observatory.catalog-sync.incomplete",
+      new Error(`fetched ${result.fetchedCount} of ${result.totalCount}; delisting withheld today`),
+    );
+  }
 
   const currentKeys = new Set(result.items.map((i) => i.resourceKey));
 

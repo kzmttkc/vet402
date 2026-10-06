@@ -208,6 +208,85 @@ test("fetchFullCatalog reports an INCOMPLETE fetch instead of pretending", async
   assert.equal(result.totalCount, 4);
 });
 
+// ---- concurrent paging (2026-10-06: the sequential fetch passed the 300s cron at 35k rows) ----
+
+/** `n` one-item pages (pageLimit 1) so offset = page index; each response is delayed `delayMs`, optionally per offset. */
+function makeSlowPages(n: number, delayMs: (offset: number) => number, failForever: number[] = []) {
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const offsets: number[] = [];
+  const fetchImpl = async (url: string) => {
+    const offset = Number(new URL(url).searchParams.get("offset") ?? "0");
+    offsets.push(offset);
+    inFlight++;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    try {
+      await new Promise((r) => setTimeout(r, delayMs(offset)));
+    } finally {
+      inFlight--;
+    }
+    if (failForever.includes(offset) || offset >= n) return { ok: false, status: 500, json: async () => ({}) } as Response;
+    return { ok: true, status: 200, json: async () => page([fakeItem(offset)], n) } as unknown as Response;
+  };
+  return { fetchImpl, offsets, maxInFlight: () => maxInFlight };
+}
+
+test("fetchFullCatalog with concurrency: every page once, complete, bounded in-flight, items in offset order", async () => {
+  // later offsets answer FIRST — the merge must still follow offset order, not arrival order
+  const { fetchImpl, offsets, maxInFlight } = makeSlowPages(12, (o) => (12 - o) * 3);
+  const result = await fetchFullCatalog({ fetchImpl, pageLimit: 1, sleepMs: 0, concurrency: 4 });
+  assert.equal(result.complete, true);
+  assert.equal(result.fetchedCount, 12);
+  assert.equal(result.totalCount, 12);
+  assert.deepEqual([...offsets].sort((a, b) => a - b), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+  assert.ok(maxInFlight() > 1 && maxInFlight() <= 4, `in flight ${maxInFlight()}`);
+  assert.deepEqual(result.items.map((i) => i.resourceUrl), Array.from({ length: 12 }, (_, i) => `https://svc${i}.example/api`));
+});
+
+test("fetchFullCatalog with concurrency: on a key collision the lowest offset wins, whichever page arrives first", async () => {
+  const fetchImpl = async (url: string) => {
+    const offset = Number(new URL(url).searchParams.get("offset") ?? "0");
+    await new Promise((r) => setTimeout(r, offset === 0 ? 0 : offset === 1 ? 40 : 5));
+    const description = `from-${offset}`;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => page([{ resource: "https://same.example/api", description, accepts: [], extensions: {} }], 3),
+    } as unknown as Response;
+  };
+  const result = await fetchFullCatalog({ fetchImpl, pageLimit: 1, sleepMs: 0, concurrency: 3 });
+  assert.equal(result.items.length, 1);
+  assert.equal(result.items[0].description, "from-0");
+  assert.equal(result.fetchedCount, 3);
+  assert.equal(result.complete, true);
+});
+
+test("fetchFullCatalog with concurrency: a page that never answers makes the day INCOMPLETE (no delisting judgement)", async () => {
+  const { fetchImpl } = makeSlowPages(10, () => 1, [4]);
+  const result = await fetchFullCatalog({ fetchImpl, pageLimit: 1, sleepMs: 0, concurrency: 3, maxRetriesPerPage: 1 });
+  assert.equal(result.complete, false);
+  assert.ok(result.fetchedCount < result.totalCount);
+  assert.equal(result.totalCount, 10);
+});
+
+test("fetchFullCatalog stops at the deadline and reports INCOMPLETE with what it has, instead of running into the function timeout", async () => {
+  const { fetchImpl, offsets } = makeSlowPages(200, () => 10);
+  const started = Date.now();
+  const result = await fetchFullCatalog({ fetchImpl, pageLimit: 1, sleepMs: 0, concurrency: 2, deadlineMs: 60 });
+  assert.ok(Date.now() - started < 1500, "returned promptly after the deadline");
+  assert.equal(result.complete, false);
+  assert.ok(result.fetchedCount > 0 && result.fetchedCount < 200);
+  assert.equal(result.items.length, result.fetchedCount);
+  assert.ok(offsets.length < 200);
+});
+
+test("fetchFullCatalog default (concurrency 1) stays sequential", async () => {
+  const { fetchImpl, maxInFlight } = makeSlowPages(5, () => 2);
+  const result = await fetchFullCatalog({ fetchImpl, pageLimit: 1, sleepMs: 0 });
+  assert.equal(result.complete, true);
+  assert.equal(maxInFlight(), 1);
+});
+
 // ---- NUL sanitation (live-catalog poison, found 2026-08-14) ----------------
 // One real catalog item carried a NUL (U+0000) inside its declared schema;
 // Postgres rejects NUL in text/jsonb ("invalid byte sequence for encoding

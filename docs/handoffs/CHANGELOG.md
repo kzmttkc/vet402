@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-06 — catalog-sync: the Bazaar fetch runs 6 pages at a time and stops at 200s (cron timed out 10/4 and 10/5)
+- **何を**: `fetchFullCatalog`（`src/lib/observatory/catalog-source.ts`）に `concurrency`（既定 1 = 従来どおり）と `deadlineMs` を足し、`syncCatalog` の Bazaar 取得は 6 並列・200 秒で打ち切り。1 ページ目だけ単独で取り（total と実ページ幅を得る）、残りは offset 順に取り出して、結合は offset 順（キー衝突は若い offset が勝つ・従来と同じ）。ページが取れない・期限切れは `complete=false`（取れた分は upsert・削除判定は出さない・`observatory.catalog-sync.incomplete` をログ）。既定の fetch は 1 ページ 25 秒でタイムアウト。route・後段（notify・discovery payees・MPP directory）・env・vercel.json は変更なし（tests/observatory-catalog.test.ts）。
+- **なぜ**: Bazaar が 24,331 件（10/3）→ 35,013 件（10/6）に増え、1 ページ約 1.2 秒の直列取得（約 350 ページ ≒ 410 秒）が cron の 300 秒を超え、10/4・10/5 の 01:00 UTC が `Task timed out after 300 seconds` で失敗（snapshot・last_seen_at は 10/3 のまま）。10/3 の実測では upsert は 22.8k 行で約 9 秒、MPP は 0.3 秒で、遅いのは取得だけ。
+- **影響**: 売り手への「削除された」通知は、全ページを取り終えた回（`complete=true`）だけ出る（従来の規則のまま）。期限切れの日は snapshot も部分になるので、その日に消えたものの検出は見送り（誤検出ではなく見逃し側）。
+
 ## 2026-10-03 — retest: re-buy listings that failed on vet402's side even when the seller's newest row delivered
 - **何を**: `src/lib/observatory/retest-sellers-sql.ts` に出品単位の `RETEST_LISTINGS_SQL`（出品ごとの最新の行が (a)財布切れ (b)本文を送らなかった (c)宣言クエリを送らなかった で失敗）を足し、`readRetestSellers` が旗 `OBSERVATORY_L1_RETEST_LISTINGS=on` のときだけ売り手単位の一覧に足す。失敗した出品そのものを優先。Base・$1 以下・1 ホスト 1 件・日次上限は従来の retest と同じ（tests/l1-retest-listings.pg.test.ts）。
 - **なぜ**: 売り手単位の retest は売り手の最新の 1 行しか見ないので、同じ売り手の別の出品が後で届くと、こちらの落ち度で失敗した出品が残ったままになる（10/03 /sellers: vet402 側 1,384 出品・retestCandidates は 1 回 0〜3 件）。Takeshi 承認 10/03 20:22（約 60〜70 USDC）。
