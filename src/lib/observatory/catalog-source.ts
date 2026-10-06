@@ -240,6 +240,9 @@ export async function fetchFullCatalog(
   const pages = new Map<number, ParsedCatalogItem[]>();
   let totalCount = 0;
   let fetchedCount = 0;
+  /** The largest total any page reported: every page up to it must have been read, whatever a later page said. */
+  let maxTotal = 0;
+  let step = 0;
   let aborted = false;
 
   /** One page with retries. null = gave up (retries exhausted). */
@@ -292,11 +295,15 @@ export async function fetchFullCatalog(
       // first occurrence (lowest offset) wins
       for (const parsed of pages.get(index)!) if (!byKey.has(parsed.resourceKey)) byKey.set(parsed.resourceKey, parsed);
     }
+    // complete means "every page of the keyspace was read", not just "enough items were counted":
+    // an overlap in one place must never cancel out a gap in another (that would read as delisted).
+    let allPages = step > 0;
+    for (let i = 0; allPages && i < Math.ceil(maxTotal / step); i++) allPages = pages.has(i);
     return {
       items: [...byKey.values()],
       totalCount,
       fetchedCount,
-      complete: !aborted && totalCount > 0 && fetchedCount >= totalCount,
+      complete: !aborted && totalCount > 0 && fetchedCount >= totalCount && (maxTotal === 0 || allPages),
     };
   };
 
@@ -307,9 +314,10 @@ export async function fetchFullCatalog(
     return finish();
   }
   totalCount = first.total ?? first.items.length;
+  maxTotal = totalCount;
   take(0, first);
-  if (first.items.length === 0 || fetchedCount >= totalCount) return finish();
-  const step = first.items.length; // what the API actually returned (it may cap below pageLimit)
+  step = first.items.length; // what the API actually returned (it may cap below pageLimit)
+  if (step === 0 || fetchedCount >= totalCount) return finish();
 
   let nextIndex = 1;
   const worker = async () => {
@@ -321,14 +329,25 @@ export async function fetchFullCatalog(
       }
       const index = nextIndex++;
       const offset = index * step;
-      if (offset >= totalCount) return; // the catalog can grow/shrink mid-fetch; trust the latest total
+      if (offset >= totalCount) return;
       const got = await fetchPage(offset);
       if (got === null) {
         aborted = true;
         return;
       }
-      if (got.total !== null) totalCount = got.total;
+      if (got.total !== null) {
+        totalCount = got.total; // the catalog can grow/shrink mid-fetch; trust the latest
+        maxTotal = Math.max(maxTotal, totalCount);
+      }
       take(index, got);
+      // Offsets are index * step, so every page but the last must hold exactly `step` items. A short
+      // (or long) page in the middle means a gap or an overlap: stop and say so — never let the
+      // item count balance it out.
+      const isTail = offset + got.items.length >= totalCount;
+      if (got.items.length !== step && !isTail) {
+        aborted = true;
+        return;
+      }
       if (got.items.length === 0) return;
       if (sleepMs > 0) await sleep(sleepMs);
     }

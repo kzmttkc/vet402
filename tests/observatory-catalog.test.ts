@@ -244,21 +244,65 @@ test("fetchFullCatalog with concurrency: every page once, complete, bounded in-f
 });
 
 test("fetchFullCatalog with concurrency: on a key collision the lowest offset wins, whichever page arrives first", async () => {
+  // offset 0 is its own key (the first page is always read alone); offsets 1 and 2 collide and 2 answers FIRST
   const fetchImpl = async (url: string) => {
     const offset = Number(new URL(url).searchParams.get("offset") ?? "0");
-    await new Promise((r) => setTimeout(r, offset === 0 ? 0 : offset === 1 ? 40 : 5));
-    const description = `from-${offset}`;
+    await new Promise((r) => setTimeout(r, offset === 1 ? 40 : 0));
+    const resource = offset === 0 ? "https://first.example/api" : "https://same.example/api";
     return {
       ok: true,
       status: 200,
-      json: async () => page([{ resource: "https://same.example/api", description, accepts: [], extensions: {} }], 3),
+      json: async () => page([{ resource, description: `from-${offset}`, accepts: [], extensions: {} }], 3),
     } as unknown as Response;
   };
-  const result = await fetchFullCatalog({ fetchImpl, pageLimit: 1, sleepMs: 0, concurrency: 3 });
-  assert.equal(result.items.length, 1);
-  assert.equal(result.items[0].description, "from-0");
+  const result = await fetchFullCatalog({ fetchImpl, pageLimit: 1, sleepMs: 0, concurrency: 2 });
+  assert.equal(result.items.length, 2);
+  assert.equal(result.items.find((i) => i.resourceUrl === "https://same.example/api")?.description, "from-1");
   assert.equal(result.fetchedCount, 3);
   assert.equal(result.complete, true);
+});
+
+/** Pages of `size` items numbered by position (so a gap is visible by number); `sizes[offset]` overrides a page's length. */
+function makeNumberedPages(total: number, size: number, sizes: Record<number, number> = {}, totals: Record<number, number> = {}) {
+  return async (url: string) => {
+    const u = new URL(url);
+    const offset = Number(u.searchParams.get("offset") ?? "0");
+    const len = Math.max(0, Math.min(sizes[offset] ?? size, total - offset));
+    const items = Array.from({ length: len }, (_, i) => fakeItem(offset + i));
+    return { ok: true, status: 200, json: async () => page(items, totals[offset] ?? total) } as unknown as Response;
+  };
+}
+
+test("fetchFullCatalog with concurrency: a short first page plus a short middle page cannot balance out into complete=true (reviewer BLOCK, 2026-10-06)", async () => {
+  // 100 items, page size 10, first page returns 9 (step 9, so later pages overlap), the page at offset 18 returns 5 (a gap).
+  // The overcount used to cancel the gap: fetched >= total while real keys 23..26 were never read -> false delisting.
+  const result = await fetchFullCatalog({
+    fetchImpl: makeNumberedPages(100, 10, { 0: 9, 18: 5 }),
+    pageLimit: 10,
+    sleepMs: 0,
+    concurrency: 3,
+  });
+  assert.equal(result.complete, false);
+});
+
+test("fetchFullCatalog with concurrency: a short page in the middle is incomplete, a short last page is not", async () => {
+  const mid = await fetchFullCatalog({ fetchImpl: makeNumberedPages(100, 10, { 30: 4 }), pageLimit: 10, sleepMs: 0, concurrency: 3 });
+  assert.equal(mid.complete, false);
+  const tail = await fetchFullCatalog({ fetchImpl: makeNumberedPages(95, 10), pageLimit: 10, sleepMs: 0, concurrency: 3 });
+  assert.equal(tail.complete, true);
+  assert.equal(tail.fetchedCount, 95);
+  assert.equal(tail.items.length, 95);
+});
+
+test("fetchFullCatalog with concurrency: a total that wobbles down mid-fetch cannot end the day complete with pages unread", async () => {
+  // page at offset 20 claims total 25, so workers stop claiming; later pages (30..90) were never read.
+  const result = await fetchFullCatalog({
+    fetchImpl: makeNumberedPages(100, 10, {}, { 20: 25 }),
+    pageLimit: 10,
+    sleepMs: 0,
+    concurrency: 1,
+  });
+  assert.equal(result.complete, false);
 });
 
 test("fetchFullCatalog with concurrency: a page that never answers makes the day INCOMPLETE (no delisting judgement)", async () => {

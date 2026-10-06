@@ -52,9 +52,9 @@ const UPSERT_CHUNK = 500;
 const FETCH_CONCURRENCY = 6;
 /**
  * Stop fetching after this long and sync what we have as complete=false (no delisting that day).
- * Leaves ~80s of the route's 300s for the upsert, notify, discovery payees and the MPP directory.
+ * Plus one in-flight request (25s) and the later stages (upsert ~15s, notify, PayAI ~60s, MPP) must fit the route's 300s.
  */
-const FETCH_DEADLINE_MS = 200_000;
+const FETCH_DEADLINE_MS = 150_000;
 
 function todayUtc(): string {
   return new Date().toISOString().slice(0, 10);
