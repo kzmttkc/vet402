@@ -95,7 +95,7 @@ test("privacy: seller notices, controller identity, storage countries, security 
   assert.match(privacy, /id="security"/);
   assert.match(privacy, /id="external-transmission"/);
   assert.match(privacy, /plausible\.io/);
-  assert.match(privacy, /Revision: <span className="text-signal">September 29, 2026/);
+  assert.match(privacy, /Revision: <span className="text-signal">October 7, 2026/);
 });
 
 test("terms: methodology link, no 'verified payee' registration, L1 disputes, seller notices", () => {

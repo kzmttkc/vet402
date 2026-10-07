@@ -36,18 +36,18 @@ export default async function PrivacyPage() {
             <span>Instrument: privacy policy</span>
             <span>
               {/* この頁のシアン1点。改訂日という事実。 */}
-              Revision: <span className="text-signal">September 29, 2026</span>
+              Revision: <span className="text-signal">October 7, 2026</span>
             </span>
           </div>
           <div className="doc-head-col">
             <span>vet402</span>
             <span>x402 Economy</span>
-            <span>September 2026</span>
+            <span>October 2026</span>
           </div>
         </div>
         <h1 className="doc-title mt-10">Privacy Policy</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-        <p className="doc-note text-center">Last updated: September 29, 2026</p>
+        <p className="doc-note text-center">Last updated: October 7, 2026</p>
 
         {/* 2026-09-29 監査 4 周目: GDPR 13 条 1 項 (a) の管理者の身元と連絡先を明記。 */}
         <section className="space-y-2">
@@ -125,6 +125,13 @@ export default async function PrivacyPage() {
                 emails we send to sellers before we publish
               </a>{" "}
               below
+            </li>
+            {/* 2026-10-07: Hermes プラグインの呼び出しを UA で数える表。保存する列は day / client / route / count だけ。 */}
+            <li>
+              <strong>Hermes plugin call counts</strong> (<code>client_usage_daily</code>): for
+              requests to the public resolve and decision APIs whose User-Agent starts with{" "}
+              <code>vet402-hermes/</code>, a count per UTC day, plugin version and API route. We do not
+              store the IP address, the URL or query being looked up, or any API key with these counts
             </li>
             <li>
               <strong>Disputes</strong> (<code>disputes</code>): the endpoint the dispute is about,
@@ -246,6 +253,10 @@ export default async function PrivacyPage() {
               people we score who are not our customers
             </a>{" "}
             below.
+          </p>
+          <p>
+            Hermes plugin call counts are kept without an expiry date. Each row is a count for one
+            day, plugin version and API route, and holds nothing that identifies who made the calls.
           </p>
         </section>
 

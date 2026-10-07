@@ -12,6 +12,7 @@ import { getResource, hostListingSummary } from "@/lib/resolve/lookup";
 import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { lookupCallerMaterial } from "@/lib/decision/lookup-caller";
+import { recordClientUsage } from "@/lib/api/client-usage";
 
 // §9.1: GET /api/v1/resources/{resource_id}/decision?role=payer|payee&caller_dialect=v1|v2
 //   role=payer  「このURLは今、宣言どおり届くか」→ 売り手事実 + 判定
@@ -222,6 +223,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
     // 壁時計（0.44–0.77s）では往復が混ざるので、計算時間を Server-Timing で返す。
     // 成功応答だけ保存する（404/503 は再送で再計算してよい——直った可能性がある）。
     if (idemHash) await saveIdempotentResponse(idemHash, result, IDEMPOTENCY_TTL_MS);
+    // 2026-10-07: UA が vet402-hermes/ の呼び出しだけを日別の件数で数える（応答の後・失敗しても応答は変わらない）。
+    // 枠を戻す早期 return（400/404/503・replay）では数えない——戻した枠の分だけ書き込みを増やせるため（独立レビュー・高）。
+    recordClientUsage(request.headers, "decision");
     const res = finish(caller, NextResponse.json(withCallerPolicy(result)));
     res.headers.set("Server-Timing", `decision;dur=${(performance.now() - t0).toFixed(1)}`);
     return res;

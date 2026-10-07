@@ -3,6 +3,7 @@ import { publicRateLimit } from "@/lib/api/public-route";
 import { resolve } from "@/lib/resolve/lookup";
 import { ACCEPTED_QUERY_FORMS, classifyQuery, explainInvalidQuery } from "@/lib/resolve/classify";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
+import { recordClientUsage } from "@/lib/api/client-usage";
 
 // §7.3 / §9.1: GET /api/v1/resolve?q={url|domain|address|tx|payee_id}[&method=GET|POST|…]
 // キー不要。ID を持たない呼び手が「この URL / この受取先 / この tx は何か」を
@@ -13,6 +14,8 @@ export const maxDuration = 30;
 export async function GET(request: NextRequest) {
   const gate = await publicRateLimit(request, "resolve", 60);
   if (!gate.ok) return gate.response;
+  // 2026-10-07: UA が vet402-hermes/ の呼び出しだけを日別の件数で数える（応答の後・失敗しても応答は変わらない）。
+  recordClientUsage(request.headers, "resolve");
   const q = request.nextUrl.searchParams.get("q");
   // 2026-09-29 再監査（DX）: 400 の本文に原因（message）と直した q（suggestion）を載せる。
   // error / expected / query は従来どおり（既存の呼び手が見ている鍵を変えない）。
