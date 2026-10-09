@@ -120,6 +120,19 @@ test("robots は静的 sitemap と endpoint sitemap の両方を指す", () => {
   assert.ok(!sitemaps.includes(`${SITE_URL}/sitemap-sellers.xml`), "売り手頁の sitemap は見直し中は出さない（2026-09-29）");
 });
 
+test("probe402 だけに key なしの台帳 2 口を開け、/api/ のほかと /dashboard/ は閉じたまま（2026-10-09）", () => {
+  const rules = robots().rules;
+  const list = Array.isArray(rules) ? rules : [rules];
+  const p = list.find((r) => r.userAgent === "probe402");
+  assert.ok(p, "probe402 の行が無い");
+  const allow = Array.isArray(p.allow) ? p.allow : [p.allow];
+  assert.ok(allow.includes("/api/v1/observatory/") && allow.includes("/api/v1/census/"));
+  assert.deepEqual(p.disallow, ["/api/", "/dashboard/"]);
+  const star = list.find((r) => r.userAgent === "*");
+  const starAllow = Array.isArray(star?.allow) ? star.allow : [star?.allow];
+  assert.ok(!starAllow.some((a) => a?.startsWith("/api/")), "全員向けの行で /api/ を開けない");
+});
+
 test("売り手の sitemap は /sellers の一覧と同じデータ源から、頁が受け付けるホストだけを出す（2026-09-28）", () => {
   const route = readFileSync(join(ROOT, "src/app/sitemap-sellers.xml/route.ts"), "utf8");
   assert.ok(route.includes("getSellerBoardCached"), "一覧と別の読みから出すと件数が食い違う");

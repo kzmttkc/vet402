@@ -31,12 +31,18 @@ const AI_CRAWLERS = [
   "DuckAssistBot", // DuckDuckGo AI
 ];
 
+// 2026-10-09: 外部の観測所 probe402 は robots.txt を招待メールより優先して守る（2026-09-08 の依頼）。
+// key なしで公開している台帳の読み取り口 2 つだけを名指しで開ける。/api/ のほかの口と /dashboard/ は閉じたまま。
+// 最長一致の規則で Allow /api/v1/observatory/ が Disallow /api/ に勝つ。
+const PROBE402_ALLOW = ["/", "/api/v1/observatory/", "/api/v1/census/"];
+
 export default function robots(): MetadataRoute.Robots {
   const disallow = ["/api/", "/dashboard/"];
   return {
     rules: [
       { userAgent: "*", allow: "/", disallow },
       ...AI_CRAWLERS.map((userAgent) => ({ userAgent, allow: "/", disallow })),
+      { userAgent: "probe402", allow: PROBE402_ALLOW, disallow },
     ],
     // 2026-09-05 SEO: sitemap は 2 本。静的な公開頁（/sitemap.xml）と、
     // 測定済み endpoint 頁（/sitemap-observatory.xml — カタログに現在も掲載され、

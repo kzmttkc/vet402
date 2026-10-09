@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-09 — robots.txt: a probe402 group that allows /api/v1/observatory/ and /api/v1/census/
+- **何を**: `src/app/robots.ts` に `User-agent: probe402` の行を足した。Allow は `/`・`/api/v1/observatory/`・`/api/v1/census/`、Disallow は他の行と同じ `/api/`・`/dashboard/`（最長一致で 2 口だけが開く）。全員向けの行と AI クローラの行は変更なし。tests/seo-technical-gaps.test.ts に 1 件。
+- **なぜ**: 外部の観測所 probe402（Zach）が 9/8 に「robots.txt を招待メールより優先して守るので、読ませたいなら UA 名指しで開けてほしい」と依頼していた（9/3 のメールで vet402 側から読み取りを頼んでいた）。1 か月放置していた。10/9 に MCRI-002 が公開され、vet402 は Finding 2・3 に載った。
+- **影響**: 両方とも鍵なしで公開済みの読み取り口（CDN キャッシュあり）。開けるのは probe402 の UA だけで、/api/ のほかの口（resolve・decision・鍵つきの口）と /dashboard/ は閉じたまま。robots は守る側の自己申告なので、アクセス制御ではない（従来どおりレート枠が守る）。
+
 ## 2026-10-07 — client_usage_daily: count calls whose User-Agent is vet402-hermes/ (per UTC day, version, route)
 - **何を**: 新しい表 `client_usage_daily`（day date・client text・route text・count bigint・主キー (day, client, route)）を `src/lib/db/schema.ts` と `scripts/sql/2026-10-07-client-usage-daily.sql` に足した。`src/lib/api/client-usage.ts` の `recordClientUsage` を `/api/v1/resolve`（レート枠を通った後）と `/api/v1/resources/{id}/decision`（判定を返す 200 の直前。枠を戻す 400/404/503 では数えない）から呼ぶ。User-Agent が `vet402-hermes/` で始まるときだけ、応答の後（`runAfterResponse` = `after()`）に (今日の UTC 日, `vet402-hermes/<版>`, `resolve`|`decision`) を +1 で upsert。版は数字 3 組の semver（各 1〜3 桁）だけで、それ以外は `vet402-hermes/other`。1 日の client の種類は 16 まで（超えた新しい版はその日 other へ寄せる）。他の UA は何も書かない。失敗はログ（`client_usage.record`）へ出して捨てる。プライバシーポリシーの「Data we collect」に 1 項目、「Retention」に保持（期限なし・誰の呼び出しかを結び付ける値を持たない）を 1 段落足し、改訂日を October 7, 2026 に（tests/legal-r4-disclosures.test.ts の日付も）。テスト: tests/client-usage.test.ts・tests/client-usage.pg.test.ts。
 - **なぜ**: Hermes プラグイン（github.com/kzmttkc/vet402-hermes・NousResearch の公式カタログに 10/3 掲載・UA `vet402-hermes/0.1.0`）は鍵なしで resolve と decision を呼ぶ。鍵なしの呼び出しは api_usage に残らず、Vercel のログにも UA が出ないため、使われているかを週 1 回数える場所が無かった。
