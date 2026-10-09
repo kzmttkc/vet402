@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-09 — L1 per-purchase ceiling lowered from $1.00 to $0.25 (env OBSERVATORY_L1_MAX_PURCHASE_UNITS=250000)
+- **何を**: Vercel の本番 env に `OBSERVATORY_L1_MAX_PURCHASE_UNITS=250000` を入れて再デプロイした（コードは変えていない。既定の 1,000,000 は残る）。全チェーンの 1 件上限が $0.25 になる。/observatory/methodology の「hard per-purchase ceiling」は定数から出るので $0.25 と表示される（本番で確認済み）。
+- **なぜ**: Base の購入元の残高が残り 9.9 日（10/9 の vet402-ops の警告・$7.49/日）。10/2〜10/8 の Base 支出 $63.75 のうち、1 件 $0.25 以上の 65 件で $33.93（53%）を使っていた。買い直しへの支出は $1.45 だけで、費用のほとんどは初めての出品を 1 回ずつ買う分。Takeshi が 10/9 に $0.25 を選んだ。
+- **影響**: $0.25 を超える出品は候補選びの段階で外れる（pickCensusRows・census の SQL）。ほかの経路で届いた分は over_cap で署名前に断る。売り手に不利な記録は付かない。戻すときは env を消すか 1000000 にしてから再デプロイする。
+
 ## 2026-10-09 — robots.txt: a probe402 group that allows /api/v1/observatory/ and /api/v1/census/
 - **何を**: `src/app/robots.ts` に `User-agent: probe402` の行を足した。Allow は `/`・`/api/v1/observatory/`・`/api/v1/census/`、Disallow は他の行と同じ `/api/`・`/dashboard/`（最長一致で 2 口だけが開く）。全員向けの行と AI クローラの行は変更なし。tests/seo-technical-gaps.test.ts に 1 件。
 - **なぜ**: 外部の観測所 probe402（Zach）が 9/8 に「robots.txt を招待メールより優先して守るので、読ませたいなら UA 名指しで開けてほしい」と依頼していた（9/3 のメールで vet402 側から読み取りを頼んでいた）。1 か月放置していた。10/9 に MCRI-002 が公開され、vet402 は Finding 2・3 に載った。
