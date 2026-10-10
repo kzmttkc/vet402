@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-11 — the public site links X @vet402_com (the renamed Sen account) instead of the suspended handle
+- **何を**: 10/10 に外した X のリンク（385c2c05）を戻し、ハンドルを @vet402_com に替えた。LP の「Progress is posted as it lands」の段落、フッタ、`ORG_SAME_AS`、`twitter:site`、`public/llms.txt`。tests/seo-surface.test.ts は新しいハンドルを期待し、旧ハンドルが公開面に戻らないことを固定する1件を足した。
+- **なぜ**: 旧アカウントは 10/10 に X に凍結された（異議申し立て中）。Takeshi の 10/11 の決定で、Sen の X アカウント（旧 @sen_buidl）を @vet402_com に改名し、vet402 のアカウントとして本人が手で運用する。Colosseum のプロジェクトの X の欄も同じハンドルに替わっている。
+- **影響**: 運用は Takeshi 本人で、セッションからは投稿しない（state/x_ceo_sen_queue.json と x_ceo_vouch_queue.json は停止中）。旧アカウントが復旧しても、どちらを載せるかは Takeshi が決める。
+
 ## 2026-10-10 — Public site: the X account link and handle are off while the account is suspended (temporary)
 - **何を**: 公開サイトから X アカウント @vet_402 へのリンクと表記を外した（commit `385c2c05`）。外した箇所（行番号は外す前の origin/main `cf6dd605`）: (1) `src/app/page.tsx:914-934` LP §6 を閉じる 1 文。「Progress is posted as it lands, on X @vet_402 and GitHub.」を「Progress is posted as it lands on GitHub.」にした。GitHub 側の `follow_click`（channel `github`）はそのまま。(2) `src/components/site/SiteFooter.tsx:66` フッタ About 列の「X @vet_402」。(3) `src/lib/seo.ts:27` の定数 `TWITTER_SITE`、`:35` の `ORG_SAME_AS` の X の 1 本（Organization と WebSite の JSON-LD の sameAs に出ていた）、`:132` の `twitter.site`。(4) `src/app/layout.tsx:115` の `twitter.site`。(5) `public/llms.txt:184` の「- X: …」の行。テストは `tests/seo-surface.test.ts` の 2 件（twitter:site がハンドルであること・sameAs に X があること）の期待を外し、「src/ と public/ のどこにも `vet_402` が出ない」「twitter:site が出力されない」「sameAs が X を指さない」を固定する 1 件と、「twitter:site が無くてもカードの種類と画像は残る」1 件を足した。
 - **なぜ**: @vet_402 が 2026-10-10 に X に凍結され、リンクを開くと「アカウントは凍結されています」と出る。グラントとハッカソンの審査員が今週サイトを見る。異議申し立て中。

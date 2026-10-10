@@ -112,6 +112,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
+    site: "@vet402_com",
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
   },

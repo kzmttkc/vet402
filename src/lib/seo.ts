@@ -24,9 +24,7 @@ import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/site-url";
 import { SUPPORT_EMAIL } from "@/lib/support";
 
-// 2026-10-10: X の公式アカウントが凍結されたので、twitter:site（TWITTER_SITE）と sameAs の
-// X の 1 本を一時的に外した。twitter:site は任意のメタで、無くてもカード（summary_large_image）は出る。
-// 復旧したらこの変更の commit を revert して戻す（docs/handoffs/CHANGELOG.md 2026-10-10）。
+export const TWITTER_SITE = "@vet402_com";
 
 /** src/app/opengraph-image.png（1200×630）。alt は opengraph-image.alt.txt と同文。 */
 export const OG_IMAGE_PATH = "/opengraph-image.png";
@@ -34,6 +32,7 @@ export const OG_IMAGE_ALT =
   "vet402 — Independent Verification of the x402 Agent-Payment Economy. We buy. We settle. We publish the measurements.";
 
 export const ORG_SAME_AS = [
+  "https://x.com/vet402_com",
   "https://github.com/kzmttkc/vet402",
   "https://www.npmjs.com/package/@vet402/sdk",
 ] as const;
@@ -130,6 +129,7 @@ export function pageMetadata({
       card: "summary_large_image",
       title,
       description,
+      site: TWITTER_SITE,
       images: [`${SITE_URL}${OG_IMAGE_PATH}`],
     },
   };
