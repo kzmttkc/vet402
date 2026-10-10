@@ -11,6 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   ARC_DAILY_CAP_USD_DEFAULT,
+  CELO_DAILY_CAP_USD_DEFAULT,
   CHAIN_DAILY_CAPS,
   DAILY_BUDGET_USD,
   SOLANA_DAILY_CAP_USD_DEFAULT,
@@ -72,5 +73,41 @@ test("Arc と Solana の別枠は独立に読む（片方の環境変数はも�
       assert.equal(chainDailyCapUnits("solana"), 2_000_000n);
       assert.equal(solanaDailyCapUnits(), chainDailyCapUnits("solana"), "solanaDailyCapUnits は表の solana 行の別名のまま");
     });
+  });
+});
+
+// ---- Celo（2026-10-10・Celo レーン）----
+test("Celo: eip155:42220 だけが celo の別枠。テストネット・スラグ・前後に文字の付いた id は持たない", () => {
+  assert.equal(cappedChainFor("eip155:42220"), "celo");
+  assert.equal(cappedChainFor("eip155:11142220"), null, "Celo Sepolia は購入対象ではない");
+  assert.equal(cappedChainFor("eip155:44787"), null, "Alfajores は購入対象ではない");
+  assert.equal(cappedChainFor("celo"), null);
+  assert.equal(cappedChainFor("eip155:422200"), null);
+  assert.equal(cappedChainFor("eip155:4222"), null);
+  assert.equal(CHAIN_DAILY_CAPS.celo.env, "L1_CELO_DAILY_CAP_USD");
+  assert.equal(CHAIN_DAILY_CAPS.celo.networkLike, "eip155:42220", "ワイルドカード無し＝完全一致");
+  assert.ok(!/[%_]/.test(CHAIN_DAILY_CAPS.celo.networkLike), "LIKE のワイルドカードを含まない");
+});
+
+test("Celo の既定は Arc と同じ $2。0 は Celo を止める。壊れた値・負の値は既定へ倒す。共有上限で頭打ち", () => {
+  assert.equal(CELO_DAILY_CAP_USD_DEFAULT, ARC_DAILY_CAP_USD_DEFAULT);
+  withEnv("L1_CELO_DAILY_CAP_USD", undefined, () => assert.equal(chainDailyCapUnits("celo"), 2_000_000n));
+  withEnv("L1_CELO_DAILY_CAP_USD", "0.5", () => assert.equal(chainDailyCapUnits("celo"), 500_000n));
+  withEnv("L1_CELO_DAILY_CAP_USD", "0", () => assert.equal(chainDailyCapUnits("celo"), 0n, "0 は 1 件も払わない"));
+  for (const v of ["", "abc", "-1", "NaN", "Infinity"]) {
+    withEnv("L1_CELO_DAILY_CAP_USD", v, () => assert.equal(chainDailyCapUnits("celo"), 2_000_000n, `value ${JSON.stringify(v)}`));
+  }
+  withEnv("L1_CELO_DAILY_CAP_USD", "100", () => assert.equal(chainDailyCapUnits("celo"), BigInt(DAILY_BUDGET_USD) * 1_000_000n));
+});
+
+test("Celo の別枠は他のチェーンの環境変数に動かされず、他のチェーンの別枠も動かさない", () => {
+  withEnv("L1_CELO_DAILY_CAP_USD", "0", () => {
+    withEnv("L1_ARC_DAILY_CAP_USD", undefined, () => {
+      assert.equal(chainDailyCapUnits("celo"), 0n);
+      assert.equal(chainDailyCapUnits("arc"), 2_000_000n);
+    });
+  });
+  withEnv("L1_ARC_DAILY_CAP_USD", "0", () => {
+    withEnv("L1_CELO_DAILY_CAP_USD", undefined, () => assert.equal(chainDailyCapUnits("celo"), 2_000_000n));
   });
 });

@@ -20,10 +20,12 @@
 //     サーバログ（observatory.l1.payer_unfunded）に出す。
 //   - チェーンごとに別の残高（2026-09-17 Arc レーン）。Arc は Base と同じ EOA だが、
 //     Arc の USDC は Base の USDC ではない。同じ鍵でも残高は chain で分けて読む。
+//     Celo（2026-10-10）も同じ: 同じ EOA・Celo の USDC（0xcebA…118C）を Celo の RPC で読む。
 // ============================================================
 import { SOLANA_USDC_MINT } from "./sol402-payer";
-import { ARC_USDC, BASE_USDC } from "./x402-payer";
+import { ARC_USDC, BASE_USDC, CELO_USDC } from "./x402-payer";
 import { getArcPublicClient } from "@/lib/chain/arc";
+import { getCeloPublicClient } from "@/lib/chain/celo";
 import { readTempoUsdcBalance } from "./mpp-payer";
 import { redactForLog } from "./redact";
 
@@ -33,7 +35,7 @@ import { redactForLog } from "./redact";
  * 我々が XRP で払うので、準備金を引いた XRP が手数料に足りなければ **読めなかった扱いで throw**
  * ——署名しない側へ倒れ、行を書かず、ログに理由（xrpl_fee_unfunded）が残る。
  */
-export type PayerChain = "base" | "solana" | "arc" | "tempo" | "xrpl";
+export type PayerChain = "base" | "solana" | "arc" | "tempo" | "xrpl" | "celo";
 
 /** 購入元（owner）の USDC 残高を基本単位（6 桁）で返す。読めなければ throw する。 */
 export type PayerUsdcBalanceReader = (input: { chain: PayerChain; owner: string }) => Promise<bigint>;
@@ -106,6 +108,7 @@ const ERC20_BALANCE_OF_ABI = [
 /**
  * 本番の読み手。Base は BASE_RPC_URL、Solana は SOLANA_RPC_URL。未設定は throw（公開 RPC へ無言で倒れない）。
  * Arc は ARC_RPC_URL、未設定なら公開 RPC https://rpc.mainnet.arc.io（オーナー指定 2026-09-17・chain/arc.ts）。
+ * Celo は CELO_RPC_URL、未設定なら公開 RPC https://forno.celo.org（2026-10-10・chain/celo.ts・Arc と同じ扱い）。
  * どのチェーンも、読めなければ throw → 呼び手は署名しない側へ倒す。
  */
 export const defaultPayerUsdcBalance: PayerUsdcBalanceReader = async ({ chain, owner }) => {
@@ -124,6 +127,15 @@ export const defaultPayerUsdcBalance: PayerUsdcBalanceReader = async ({ chain, o
     const client = getArcPublicClient("live");
     return await client.readContract({
       address: ARC_USDC as `0x${string}`,
+      abi: ERC20_BALANCE_OF_ABI,
+      functionName: "balanceOf",
+      args: [owner as `0x${string}`],
+    });
+  }
+  if (chain === "celo") {
+    const client = getCeloPublicClient("live");
+    return await client.readContract({
+      address: CELO_USDC as `0x${string}`,
       abi: ERC20_BALANCE_OF_ABI,
       functionName: "balanceOf",
       args: [owner as `0x${string}`],

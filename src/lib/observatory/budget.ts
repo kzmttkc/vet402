@@ -49,6 +49,14 @@ export const TEMPO_DAILY_CAP_USD_DEFAULT = 2;
 export const XRPL_DAILY_CAP_USD_DEFAULT = 2;
 
 /**
+ * Celo の別枠（2026-10-10・Celo レーン）。Solana / Arc / Tempo / XRPL と同じ理由・同じ $2（全チェーン共有の
+ * $25 の内側）。環境変数 L1_CELO_DAILY_CAP_USD で変えられる（0 で Celo を止める）。レーンそのものは
+ * OBSERVATORY_CELO_L1_ENABLED が正確に "true" のときだけ動く——別枠は「動いているレーンが 1 日に
+ * 使える上限」であって、レーンを開けるスイッチではない。
+ */
+export const CELO_DAILY_CAP_USD_DEFAULT = 2;
+
+/**
  * 1 人の売り手が 1 UTC 日に受け取れる上限（2026-09-29 監査 5 周目・高・お金）。**受取先（payTo）ごと**と
  * **ホスト（ポート無視・小文字＝census の売り手の単位）ごと**に、別々に数える。全チェーン共有の $25 の内側。
  *
@@ -101,7 +109,7 @@ export function domainDailyCapUnits(): bigint {
 }
 
 /** 別枠を持つチェーン。Base は持たない（共有 $25 だけ）。 */
-export type CappedChain = "solana" | "arc" | "tempo" | "xrpl";
+export type CappedChain = "solana" | "arc" | "tempo" | "xrpl" | "celo";
 
 /**
  * チェーン別の別枠の表。`networkLike` は x402_l1_purchases.network に対する SQL の LIKE
@@ -115,6 +123,8 @@ export const CHAIN_DAILY_CAPS: Record<CappedChain, { env: string; defaultUsd: nu
   tempo: { env: "L1_TEMPO_DAILY_CAP_USD", defaultUsd: TEMPO_DAILY_CAP_USD_DEFAULT, networkLike: "eip155:4217" },
   // 完全一致（ワイルドカード無し）。testnet（xrpl:1 / xrpl:2）と非標準表記を巻き込まない。
   xrpl: { env: "L1_XRPL_DAILY_CAP_USD", defaultUsd: XRPL_DAILY_CAP_USD_DEFAULT, networkLike: "xrpl:0" },
+  // 完全一致（ワイルドカード無し）。テストネット（Celo Sepolia eip155:11142220・Alfajores eip155:44787）を巻き込まない。
+  celo: { env: "L1_CELO_DAILY_CAP_USD", defaultUsd: CELO_DAILY_CAP_USD_DEFAULT, networkLike: "eip155:42220" },
 };
 
 /** その network が別枠を持つチェーンなら、その名前。持たなければ null。 */
@@ -123,6 +133,7 @@ export function cappedChainFor(network: string): CappedChain | null {
   if (network === "eip155:5042") return "arc";
   if (network === "eip155:4217") return "tempo";
   if (network === "xrpl:0") return "xrpl";
+  if (network === "eip155:42220") return "celo";
   return null;
 }
 

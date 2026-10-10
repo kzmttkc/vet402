@@ -32,6 +32,7 @@
 import { keccak256, parseAbi, toBytes, TransactionReceiptNotFoundError } from "viem";
 import { getPublicClient } from "@/lib/chain/client";
 import { getArcPublicClient } from "@/lib/chain/arc";
+import { getCeloPublicClient } from "@/lib/chain/celo";
 import { evmChainFor, type EvmPayChain } from "./x402-payer";
 import { isWellFormedSettlementTx } from "@/lib/validation/settlement-tx";
 // 2026-09-19（横断監査 W4）: detail は DB に残る。RPC の URL（鍵入りの形がある）を伏せてから書く。
@@ -67,6 +68,8 @@ export const AUTHORIZATION_USED_TOPIC = keccak256(toBytes("AuthorizationUsed(add
  * 呼び手は chain_not_yet_verifiable で未確認のまま置く（索引の `ARC_RPC_URL_unset` と
  * 同じ作法。公開 RPC へ黙って倒れて「確認済み」を刻まない。残高読みの公開 RPC
  * フォールバックは署名を止める側に倒れるので別扱い）。
+ * Celo（2026-10-10）も Arc と同じ: **CELO_RPC_URL 必須**。無ければ null（未確認のまま置く）。Base の client へ
+ * 落とさない——落とすと Celo の行をいつも wrong_chain（計器の故障）として鳴らし、そのバッチの Celo の行を全部飛ばす。
  * 表に無い EVM は照合器が無い＝ chain_not_yet_verifiable のまま置く。
  */
 function clientFor(chain: EvmPayChain): EvmVerifyClient | null {
@@ -74,7 +77,16 @@ function clientFor(chain: EvmPayChain): EvmVerifyClient | null {
     if (!process.env.ARC_RPC_URL?.trim()) return null;
     return getArcPublicClient("live");
   }
+  if (chain.chainId === 42220) {
+    if (!process.env.CELO_RPC_URL?.trim()) return null;
+    return getCeloPublicClient("live");
+  }
   return getPublicClient();
+}
+
+/** clientFor が null を返したチェーンの、未設定の env の名前（照合の detail に残す）。 */
+function rpcEnvOf(chain: EvmPayChain): string {
+  return chain.chainId === 42220 ? "CELO_RPC_URL" : "ARC_RPC_URL";
 }
 
 /**
@@ -145,7 +157,7 @@ export type AuthorizationStateClient = Pick<ReturnType<typeof getPublicClient>, 
  * 我々が署名した EIP-3009 の認可が、チェーンで使われたか（USDC の authorizationState(payer, nonce)）。
  * 2026-09-29 独立レビュー（CRITICAL）: 売り手の名指した tx を「見つからない」と確定する前に、お金が動いていないことを
  * チェーンで確かめる材料。true＝使われた（どこかの tx で決済された）、false＝使われていない、null＝読めない・対象外
- * （Base / Arc 以外・nonce や payer の形が違う・RPC の失敗・チェーン ID の食い違い）。null は「確かめられない」なので、
+ * （Base / Arc / Celo 以外・nonce や payer の形が違う・RPC の失敗・チェーン ID の食い違い）。null は「確かめられない」なので、
  * 呼び手は確定しない側に倒す。
  */
 export async function readAuthorizationState(
@@ -158,6 +170,8 @@ export async function readAuthorizationState(
   let client: AuthorizationStateClient | null;
   if (deps?.client) client = deps.client;
   else if (chain.chainId === 5042) client = process.env.ARC_RPC_URL?.trim() ? getArcPublicClient("live") : null;
+  // Celo（2026-10-10）: Arc と同じく env 必須。無ければ null＝「確かめられない」（呼び手は確定しない側に倒す）。
+  else if (chain.chainId === 42220) client = process.env.CELO_RPC_URL?.trim() ? getCeloPublicClient("live") : null;
   else client = getPublicClient();
   if (!client) return null;
   try {
@@ -238,10 +252,10 @@ export async function verifyL1Settlement(
 
   const client: EvmVerifyClient | null = deps?.client ?? clientFor(chain);
   if (!client) {
-    return { ok: false, reason: "chain_not_yet_verifiable", detail: `${network}: ARC_RPC_URL_unset` };
+    return { ok: false, reason: "chain_not_yet_verifiable", detail: `${network}: ${rpcEnvOf(chain)}_unset` };
   }
 
-  // 1. まず「いま読んでいるのは本当にその購入のチェーンか」（Base 8453 / Arc 5042）。
+  // 1. まず「いま読んでいるのは本当にその購入のチェーンか」（Base 8453 / Arc 5042 / Celo 42220）。
   let chainId: number;
   let tip: bigint;
   try {

@@ -8,6 +8,7 @@
 // チェーンは表で足す。Polygon（eip155:137）は POLYGON_RPC_URL が入れば有効。
 // Arc（eip155:5042・2026-09-17）は ARC_RPC_URL が入れば有効。scoring の CHAINS 登録簿には
 // 載せない（chain/arc.ts 参照）ので、クライアントは行の makeClient で組む。
+// Celo（eip155:42220・2026-10-10）は CELO_RPC_URL が入れば有効（Arc と同じ作り・chain/celo.ts）。
 // ============================================================
 import { createPublicClient, http, parseAbiItem, type Address } from "viem";
 import { tempo as tempoChain } from "viem/chains";
@@ -15,6 +16,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { getLogScanClient } from "@/lib/chain/client";
 import { ARC_CHAIN_ID, ARC_USDC_ADDRESS, getArcPublicClient } from "@/lib/chain/arc";
+import { CELO_CAIP2, CELO_CHAIN_ID, CELO_USDC_ADDRESS, getCeloPublicClient } from "@/lib/chain/celo";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { getLogsChunked } from "@/lib/chain/chunked-logs";
 import { DeadlineExceededError } from "@/lib/util/deadline";
@@ -109,6 +111,24 @@ export const EVM_INDEX_CHAINS: EvmIndexChain[] = [
     confirmations: 64n,
     blocksPerDay: 86_400n,
     makeClient: () => getArcPublicClient("batch"),
+  },
+  // Celo mainnet（2026-10-10 Celo レーン）。数字は Arc と同じ理由で同じ値:
+  //  - ブロックは 1 秒（2026-10-10 実測: forno の直近 86,400 ブロックの時刻差がちょうど 86,400 秒）。
+  //  - 1 回の走査は 2 日ぶん（172,800 ブロック）。日次 cron が 1 日 86,400 ブロックに追いつき、遅れた日も翌日に回収できる。
+  //    eth_getLogs は既定の 2,000 ブロックずつ（forno は 2,000 ブロックの問い合わせに答え、2 日ぶんを 1 回で問うと断る——実測）。
+  //  - 確定待ち 64 ブロック（≈ 64 秒）。Celo の確定の仕様は実測していないので、1 秒ブロックに対して Arc / Tempo と同じ余裕を取る。
+  //  - CELO_RPC_URL が無ければ skipped（`CELO_RPC_URL_unset`）——公開 RPC へ無言で倒れない（Arc と同じ）。
+  //  - 受取先は Celo を主ネットワークにする出品の pay_to だけ（下の SELECT・他のチェーンの行と同じ規則）。
+  {
+    caip2: CELO_CAIP2,
+    chainId: CELO_CHAIN_ID,
+    usdc: CELO_USDC_ADDRESS,
+    rpcEnv: "CELO_RPC_URL",
+    initialLookbackBlocks: 86_400n * 7n,
+    maxBlocksPerRun: 86_400n * 2n,
+    confirmations: 64n,
+    blocksPerDay: 86_400n,
+    makeClient: () => getCeloPublicClient("batch"),
   },
   // Tempo（MPP・2026-09-17 Tempo レーン）。~1 秒/ブロック = 86,400/日（blocksPerDay）。
   //   initialLookbackBlocks 259,200 = 3 日（Base の 7 日は 302,400 ブロックで、同じ桁に収める）。

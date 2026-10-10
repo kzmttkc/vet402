@@ -107,3 +107,68 @@ test("残高が読めなかったときの verdict.error に RPC の URL が残�
   assert.ok(!err.includes("topsecret") && !err.includes("rpc.example"), err);
   assert.match(err, /<url>/);
 });
+
+// ---- Celo（2026-10-10 Celo レーン）----
+test("celo は base・arc と別のチェーンとして数える（Base の残高で Celo の署名を通さない）", async () => {
+  const f = createPayerFunds(async ({ chain }) => (chain === "celo" ? 0n : 60_000_000n));
+  assert.equal((await f.check("base", "0x1", 1000n)).ok, true);
+  assert.equal((await f.check("arc", "0x1", 1000n)).ok, true);
+  const v = await f.check("celo", "0x1", 1000n);
+  assert.equal(v.ok, false, "同じ EOA でも Celo の USDC は別の残高");
+  assert.equal(v.ok === false && v.reason, "insufficient");
+  const g = createPayerFunds(async ({ chain }) => (chain === "celo" ? 3000n : 0n));
+  assert.equal((await g.check("celo", "0x1", 3000n)).ok, true);
+  g.commit("celo", "0x1", 3000n);
+  assert.equal((await g.check("celo", "0x1", 1n)).ok, false, "このバッチで署名した額を差し引く");
+});
+
+test("既定の読み手: chain \"celo\" は CELO_RPC_URL の RPC に、Celo の USDC の balanceOf(owner) を問う", async () => {
+  const { createServer } = await import("node:http");
+  const { CELO_USDC } = await import("@/lib/observatory/x402-payer");
+  const OWNER = "0xc9c7b38C0942914fC8EA12063BC92dcd3b581670";
+  const calls: { method: string; to?: string; data?: string }[] = [];
+  const server = createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      const rpc = JSON.parse(body) as { id: number; method: string; params: [{ to?: string; data?: string }] };
+      calls.push({ method: rpc.method, to: rpc.params?.[0]?.to, data: rpc.params?.[0]?.data });
+      res.setHeader("content-type", "application/json");
+      // 123456 units（0.123456 USDC）
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: rpc.id, result: `0x${(123_456).toString(16).padStart(64, "0")}` }));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as { port: number }).port;
+  const saved = process.env.CELO_RPC_URL;
+  try {
+    process.env.CELO_RPC_URL = `http://127.0.0.1:${port}`;
+    const balance = await defaultPayerUsdcBalance({ chain: "celo", owner: OWNER });
+    assert.equal(balance, 123_456n);
+    const ethCalls = calls.filter((c) => c.method === "eth_call");
+    assert.equal(ethCalls.length, 1);
+    assert.equal(ethCalls[0].to?.toLowerCase(), CELO_USDC.toLowerCase(), "Celo の USDC（Base や Arc の USDC ではない）");
+    assert.equal(ethCalls[0].data?.toLowerCase(), `0x70a08231${OWNER.slice(2).toLowerCase().padStart(64, "0")}`, "balanceOf(owner)");
+  } finally {
+    if (saved === undefined) delete process.env.CELO_RPC_URL;
+    else process.env.CELO_RPC_URL = saved;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("既定の読み手: Celo の RPC が答えなければ throw（読めない＝署名しない側へ倒れる）", async () => {
+  const saved = process.env.CELO_RPC_URL;
+  try {
+    // 何も待ち受けていないポート。公開 RPC へは出ない。
+    process.env.CELO_RPC_URL = "http://127.0.0.1:9";
+    const f = createPayerFunds(defaultPayerUsdcBalance);
+    const v = await f.check("celo", "0xc9c7b38C0942914fC8EA12063BC92dcd3b581670", 1n);
+    assert.equal(v.ok, false);
+    assert.equal(v.ok === false && v.reason, "unreadable");
+    const err = v.ok === false && v.reason === "unreadable" ? v.error : "";
+    assert.ok(!err.includes("127.0.0.1"), `RPC の URL を残さない: ${err}`);
+  } finally {
+    if (saved === undefined) delete process.env.CELO_RPC_URL;
+    else process.env.CELO_RPC_URL = saved;
+  }
+});

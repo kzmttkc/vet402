@@ -48,12 +48,15 @@ import {
   ARC_CHAIN,
   BASE_CAIP2,
   BASE_USDC,
+  CELO_CAIP2,
+  CELO_CHAIN,
   MAX_PER_PURCHASE_UNITS,
   buildAuthorization,
   declaredPayTosFor,
   encodePaymentHeader,
   evmChainFor,
   isArcL1Enabled,
+  isCeloL1Enabled,
   parseChallenge,
   parseSettlementResponse,
   selectAccept,
@@ -266,6 +269,12 @@ type Candidate = {
    * accept の payTo は、この宣言の集合と照合する（selectAccept の declaredPayTosByNetwork）。
    */
   arcDeclaredPayTos: string[];
+  /**
+   * Celo（2026-10-10）で同じもの: カタログの raw_accepts が宣言した Celo の accept のうち、署名の関門と同じ述語
+   * （declaredPayTosFor(CELO_CHAIN, …)）を通ったものの payTo。10/10 の実測: api.blockscout.com は Celo の accept と
+   * Base の accept を**別の payTo** で出している。レーンとして優先された Celo の accept の payTo は、この集合と照合する。
+   */
+  celoDeclaredPayTos: string[];
 };
 
 /**
@@ -282,6 +291,8 @@ type Candidate = {
 const LANE_NETWORK: Partial<Record<CappedChain, string>> = {
   solana: SOLANA_MAINNET_CAIP2,
   arc: ARC_CAIP2,
+  // Celo（2026-10-10）: Arc と同じ EVM の署名経路（selectAccept の preferNetworks）。
+  celo: CELO_CAIP2,
   // tempo は入れない（2026-09-17）: Tempo は MPP 方言で accept 選択の経路（mpp-payer）が別。
   // x402 の challenge に Tempo の accept が混ざることも無いので、preferNetworks の対象外。
   // xrpl も入れない（2026-09-17）: 署名器が別（xrpl402-payer・selectXrplAccept）で、EVM の
@@ -297,7 +308,10 @@ const LANE_NETWORK: Partial<Record<CappedChain, string>> = {
 // XRPL（2026-09-18）: 本番の実測で、XRPL を主ネットワークにする稼働中の行は 1 件（x402.greenhead.io・unbuildable）。
 // 約 1,600 件は Base が先頭で、XRPL の RLUSD accept は 2 番目以降。purchaseOne がレーン由来の候補に限って
 // XRPL レールを選べるようにした（selectXrplSecondaryAccept）ので、Arc と同じく secondary を枠に入れる。
-const LANE_SECONDARY_ACCEPTS: Record<CappedChain, boolean> = { solana: false, arc: true, tempo: false, xrpl: true };
+// Celo（2026-10-10）: Arc と同じ EVM の署名経路・同じ EOA。10/10 の実測で、Celo を 2 番目以降の accept に置く売り手
+// （agent402.tools は 9 番目・api.describe.net は 6 番目・どちらも先頭は Base）と、先頭に置く売り手（api.blockscout.com）の
+// 両方が居る。Arc と同じく secondary を枠に入れる。
+const LANE_SECONDARY_ACCEPTS: Record<CappedChain, boolean> = { solana: false, arc: true, tempo: false, xrpl: true, celo: true };
 
 /**
  * secondary の枝で raw_accepts の accept（SQL の別名 `a`）に足す条件。XRPL は RLUSD（hex か literal）かつ
@@ -1166,6 +1180,9 @@ export async function runL1Batch(
     { chain: "tempo", ready: isTempoL1Enabled() },
     // XRPL（2026-09-17）: 独立フラグ + 独立 seed。どちらか欠ければ候補から外れる。
     { chain: "xrpl", ready: xrplReady },
+    // Celo（2026-10-10）: Base と同じ鍵で署名する EVM レーン。有効条件はフラグだけ（Arc と同じ）。
+    // フラグが無ければ候補 SQL が Celo を主ネットワークにする行を外し、レーン枠も問い合わせない。
+    { chain: "celo", ready: isCeloL1Enabled() },
   ];
   const laneExclusions: SQL[] = [];
   const laneSelectable = new Map<CappedChain, boolean>();
@@ -1275,7 +1292,11 @@ export async function runL1Batch(
            -- SELECT リストの相関サブクエリ＝Sort/Limit 後の行だけで走る。
            (SELECT coalesce(jsonb_agg(aa), '[]'::jsonb)
               FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE '[]'::jsonb END) aa
-              WHERE aa->>'network' = ${ARC_CAIP2}) AS arc_declared_accepts
+              WHERE aa->>'network' = ${ARC_CAIP2}) AS arc_declared_accepts,
+           -- Celo の lane accept（2026-10-10）: Arc と同じ取り方（生の JSON・network は完全一致・述語は TS の declaredPayTosFor）。
+           (SELECT coalesce(jsonb_agg(ca), '[]'::jsonb)
+              FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE '[]'::jsonb END) ca
+              WHERE ca->>'network' = ${CELO_CAIP2}) AS celo_declared_accepts
            ${
              census
                ? sql`, cp.census_price::text AS census_price, ${CENSUS_HOST_SQL} AS census_host,
@@ -1327,7 +1348,7 @@ export async function runL1Batch(
       ${sql.join(laneExclusions, sql` `)}
       ${
         // レーン枠（2026-09-17・laneFloorCandidates）。主ネットワークが一致する行（従来どおり・
-        // 全レーン）に加え、LANE_SECONDARY_ACCEPTS のレーン（Arc）だけは raw_accepts のいずれかの
+        // 全レーン）に加え、LANE_SECONDARY_ACCEPTS のレーン（Arc・XRPL・Celo）だけは raw_accepts のいずれかの
         // accept が一致する行（exa.ai: Base 先頭・Arc 2 番目）も入れる。この secondary の枝にだけ
         // 「そのチェーンで settled / settle_claimed の行がまだ無い・非決済が 1 度も出ていない」を
         // 掛ける（レビュー W1・C4: Solana/Tempo/XRPL の枠の意味は従来のまま）。
@@ -1728,6 +1749,7 @@ function rowToCandidate(r: Record<string, unknown>): Candidate {
     failedNetworks: parseTextArray(r.failed_networks),
     xrplDeclaredPayTos: parseTextArray(r.xrpl_declared_pay_tos),
     arcDeclaredPayTos: declaredPayTosFor(ARC_CHAIN, r.arc_declared_accepts),
+    celoDeclaredPayTos: declaredPayTosFor(CELO_CHAIN, r.celo_declared_accepts),
     laneChain: null,
     selection: null,
   };
@@ -2277,9 +2299,9 @@ async function purchaseOne(input: {
           // 宣言額はカタログの先頭 accept（e.network）の値。別チェーンの accept とは比べない。
           declaredNetwork: candidate.network,
           preferNetworks,
-          // 優先された別チェーン（Arc）の accept の payTo は、カタログがそのチェーンについて宣言した集合と照合する
+          // 優先された別チェーン（Arc・Celo）の accept の payTo は、カタログがそのチェーンについて宣言した集合と照合する
           // （2026-09-19）。優先していない accept（Base）の照合先は従来どおり candidate.payTo。
-          declaredPayTosByNetwork: { [ARC_CAIP2]: candidate.arcDeclaredPayTos },
+          declaredPayTosByNetwork: { [ARC_CAIP2]: candidate.arcDeclaredPayTos, [CELO_CAIP2]: candidate.celoDeclaredPayTos },
         });
   // ここから先の台帳の network・別枠（reserveSpend の cappedChainFor）・残高の chain（payerChain）は
   // すべて「選んだ accept の network」で決まる——Base 先頭の exa の行を Arc の accept で買えば、
@@ -2331,7 +2353,14 @@ async function purchaseOne(input: {
   // 台帳・照合・索引（index-xrpl.ts）が同じ 1 つの表記を読む。封筒の accepted には壁の原文をそのまま返す。
   // Arc も定数で書く（2026-09-19 レビュー N3）: selectAccept は固定 USDC と大小無視で一致した accept しか通さないので
   // 同じアドレスだが、台帳の表記を壁の書き方に依存させない。Base は従来どおり壁の原文。
-  const ledgerAsset = isXrpl ? RLUSD_CURRENCY_HEX : accept.network === ARC_CAIP2 ? ARC_CHAIN.usdc : accept.asset;
+  // Celo も定数で書く（2026-10-10・Arc と同じ理由）。
+  const ledgerAsset = isXrpl
+    ? RLUSD_CURRENCY_HEX
+    : accept.network === ARC_CAIP2
+      ? ARC_CHAIN.usdc
+      : accept.network === CELO_CAIP2
+        ? CELO_CHAIN.usdc
+        : accept.asset;
   // 支払い付き POST の本文（2026-09-17 Issue #29）。売り手が 402 で宣言した input.body を
   // そのまま送り、無ければ従来どおり `{}`。規則は declared-input.ts。
   const paidRequestBody: { body: string; source: RequestBodySource } | null =
@@ -2448,7 +2477,10 @@ async function purchaseOne(input: {
   // 行は書かない（chain_daily_cap と同じ: 書くとスイープ窓のあいだ再選択されない）。
   // 2026-09-17 Arc レーン: 残高はチェーンごと。Arc は Base と同じ EOA だが Arc の USDC は別。
   // XRPL（2026-09-17）は独立の seed。残高は RLUSD + 手数料ぶんの XRP（payer-funds.ts）。
-  const payerChain: PayerChain = isTempo ? "tempo" : isSolana ? "solana" : isXrpl ? "xrpl" : evmChainFor(accept.network)?.chainId === 5042 ? "arc" : "base";
+  // Celo（2026-10-10）も同じ: 同じ EOA だが Celo の USDC は別。ここで "celo" に分けないと、Celo の accept に署名する前に
+  // **Base の残高**を見てしまう（Celo が空でも署名し、売り手の 402 を settle_failed として記録する——Issue #29 と同じ事故）。
+  const evmPayChainId = evmChainFor(accept.network)?.chainId;
+  const payerChain: PayerChain = isTempo ? "tempo" : isSolana ? "solana" : isXrpl ? "xrpl" : evmPayChainId === 5042 ? "arc" : evmPayChainId === 42220 ? "celo" : "base";
   const payerOwner = isSolana ? solanaKeypair!.publicKey.toBase58() : isXrpl ? xrplWallet!.classicAddress : account.address;
   const funds = await payerFunds.check(payerChain, payerOwner, amount);
   if (!funds.ok) {

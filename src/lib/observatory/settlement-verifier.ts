@@ -55,9 +55,12 @@ export const SELLER_NAMED_TX_EXPIRY_MS = SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS * 
 export { SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS };
 
 /** 期限の対象になるチェーンの CAIP-2（SELECT で settle_claimed_unverifiable を拾う範囲）。 */
-const EXPIRY_NETWORKS: readonly string[] = ["eip155:8453", "base", "eip155:5042"];
+// Celo（eip155:42220・2026-10-10）: 下の sellerNamedTxExpiryChain は払い手の表（EVM_PAY_CHAINS）から決まるので、
+// Celo の行は表に足した時点で期限の対象になる。この SELECT の範囲も同じ集合に揃える（Base / Arc と同じ条件:
+// 別々の日に「無い」・nonce の認可が未使用・確定の直前の読み直し。Celo の USDC にも authorizationState がある）。
+const EXPIRY_NETWORKS: readonly string[] = ["eip155:8453", "base", "eip155:5042", "eip155:42220"];
 
-/** 期限の対象になるチェーンか（Base / Arc だけ・Tempo・Solana・XRPL は当面外す）。 */
+/** 期限の対象になるチェーンか（Base / Arc / Celo＝払い手の表の EVM だけ・Tempo・Solana・XRPL は当面外す）。 */
 export function sellerNamedTxExpiryChain(network: string | null): boolean {
   return typeof network === "string" && network.startsWith("eip155:") && evmChainFor(network) !== null;
 }

@@ -166,6 +166,9 @@ const EVM_EXPLORERS: Record<string, string> = {
   // 2026-09-17 Arc レーン。testnet の explorer は確かめていないので載せない（壊れたリンクより「—」）。
   Arc: "https://explorer.arc.io/tx/",
   Tempo: "https://explore.tempo.xyz/tx/",
+  // 2026-10-10 Celo レーン。mainnet（eip155:42220）だけ——ラベル "Celo Sepolia" / "Celo Alfajores" はここに無いので
+  // テストネットの tx にはリンクを作らない（Arc と同じ: 壊れたリンクより「—」）。
+  Celo: "https://celoscan.io/tx/",
 };
 
 /** Block-explorer URL for a settlement tx on the given network, or null when the chain has no explorer here or the tx is not well-formed for it. */

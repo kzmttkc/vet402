@@ -124,6 +124,15 @@ flowchart LR
   candidates are excluded in SQL and no row is written. Its own $2/day cap
   (`L1_ARC_DAILY_CAP_USD`) inside the shared $25, like Solana's. Circle Gateway's
   `GatewayWalletBatched` accepts are refused (different signing domain).
+- **Celo (EVM)**: a third row of the same pinned table (chain id 42220, USDC
+  `0xcebA…118C`, EIP-712 domain "USDC"/"2" — measured by RPC on 2026-10-10 and
+  checked against the token's own `DOMAIN_SEPARATOR()`). Same EOA as Base,
+  funded with Celo USDC separately; no CELO is needed. Off by default
+  (`OBSERVATORY_CELO_L1_ENABLED`); while off, Celo candidates are excluded in
+  SQL and no row is written. Its own $2/day cap (`L1_CELO_DAILY_CAP_USD`)
+  inside the shared $25. Only USDC is pinned: the other assets Celo's
+  facilitator lists (USDT and others) are never signed for. The on-chain
+  re-read and the settlement index need `CELO_RPC_URL`.
 - **Solana**: `sol402-payer.ts` — the `exact` scheme per
   `scheme_exact_svm.md`: a partially-signed versioned transaction
   (ComputeBudget → TransferChecked → Memo) with the facilitator as sponsored

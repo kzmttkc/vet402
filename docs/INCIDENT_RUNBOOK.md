@@ -238,7 +238,7 @@ npx neonctl branches restore main "^self@2026-09-28T09:00:00Z" \
 
 | env 名 | チェーン | 用途（読む場所） | Vercel |
 |---|---|---|---|
-| `OBSERVATORY_WALLET_PRIVATE_KEY` | Base (eip155:8453)・Arc (eip155:5042)・Tempo (MPP) の**同じ EOA** | L1 実購入（`src/lib/observatory/l1-runner.ts`・`mpp-payer.ts`） | ○ |
+| `OBSERVATORY_WALLET_PRIVATE_KEY` | Base (eip155:8453)・Arc (eip155:5042)・Celo (eip155:42220)・Tempo (MPP) の**同じ EOA** | L1 実購入（`src/lib/observatory/l1-runner.ts`・`mpp-payer.ts`） | ○ |
 | `OBSERVATORY_SOLANA_SECRET_KEY` | Solana | L1 実購入（`l1-runner.ts` の `loadSolanaKeypair`） | ○ |
 | `OBSERVATORY_XRPL_SEED` | XRPL (xrpl:0) | L1 実購入・RLUSD（`src/lib/observatory/xrpl402-payer.ts`） | ○ |
 | `REGISTRY_OPERATOR_PRIVATE_KEY` | Base | ERC-8004 Validation Registry への書き込み（`src/lib/chain/registry-hook.ts`）。購入用とは別鍵 | ○ |
@@ -253,15 +253,15 @@ npx neonctl branches restore main "^self@2026-09-28T09:00:00Z" \
 
 **退避の手順（上の表の ○ の鍵）**
 
-1. §1 で支出を止める（Base・Arc・Tempo・Solana・XRPL の L1 は同じ停止で全部止まる）。
+1. §1 で支出を止める（Base・Arc・Celo・Tempo・Solana・XRPL の L1 は同じ停止で全部止まる）。
    Registry 書き込みは Vercel env `REGISTRY_WRITES_ENABLED=false` → 再デプロイ。
    Tokyo ボタンは DB の `runtime_flags.tokyo_button_halt` を立てる。
 2. 新しい鍵を**持ち主の端末で**作る（エージェントに作らせない・値をチャットや
    ログに出さない）。EVM は `cast wallet new`、Solana は `solana-keygen new`、
    XRPL は新しい family seed。
-3. 旧アドレスの残高を新アドレスへ移す。EVM の EOA は Base・Arc・Tempo で**同じ
-   アドレス**なので、3 チェーン全部の USDC / USDC.e / ガス（Arc はガスも USDC）を
-   移す。XRPL は RLUSD を移し、新アカウントに RLUSD のトラストラインを張る
+3. 旧アドレスの残高を新アドレスへ移す。EVM の EOA は Base・Arc・Celo・Tempo で**同じ
+   アドレス**なので、4 チェーン全部の USDC / USDC.e / ガス（Arc はガスも USDC。Celo は
+   購入にガスが要らないので CELO を置いていない。移すときはガスを先に用意する）を移す。XRPL は RLUSD を移し、新アカウントに RLUSD のトラストラインを張る
    （`scripts/xrpl-trustline.ts`）。旧アカウントの準備金は `AccountDelete` まで戻らない。
 4. Vercel env を差し替え（Production・Sensitive）→ 再デプロイ →
    `api/health?deep=1` で payer 残高が新アドレスの値を指すことを確かめる。
