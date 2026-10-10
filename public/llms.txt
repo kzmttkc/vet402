@@ -181,5 +181,4 @@ A measurement quoted without its retrieval date is not a measurement. Take the d
 ## Contact
 
 - Site: https://vet402.com
-- X: https://x.com/vet_402
 - GitHub: https://github.com/kzmttkc/vet402

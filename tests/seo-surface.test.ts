@@ -14,10 +14,10 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import sitemap from "@/app/sitemap";
-import { pageMetadata } from "@/lib/seo";
+import { pageMetadata, organizationJsonLd } from "@/lib/seo";
 import { SUPPORT_EMAIL } from "@/lib/support";
 import { SITE_URL } from "@/lib/site-url";
 
@@ -62,11 +62,47 @@ test("dashboard is noindex", () => {
   assert.ok(/index:\s*false/.test(dash), "dashboard layout must set robots.index false");
 });
 
-test("twitter:site is the live handle on every card path", () => {
-  const seo = read("src/lib/seo.ts");
-  const layout = read("src/app/layout.tsx");
-  assert.ok(seo.includes("@vet_402"), "pageMetadata must set twitter.site");
-  assert.ok(layout.includes("@vet_402"), "root layout must set twitter.site");
+// 2026-10-10 凍結・復旧したら戻す: X の公式アカウントが 2026-10-10 に凍結され、リンクを開くと
+// 「アカウントは凍結されています」と出る。異議申し立てが通るまで、公開面（src/ と public/）から
+// X のリンク・ハンドル・twitter:site・sameAs の 1 本を外している。復旧したら、これらを外した
+// commit を revert する（このテストと下の 2 件の期待も一緒に元へ戻る）。
+// 手順と参照箇所の一覧は docs/handoffs/CHANGELOG.md の 2026-10-10 のエントリ。
+test("the suspended X account is not linked or named anywhere on the public surface (2026-10-10)", () => {
+  const TEXT = /\.(?:tsx?|jsx?|mjs|cjs|css|mdx?|txt|json|xml|html|svg|ya?ml|webmanifest)$/;
+  const HANDLE = /vet_402/i; // x.com/… と twitter.com/… の URL も「@…」の表記もこの 1 語を含む
+  const hits: string[] = [];
+  const walk = (rel: string) => {
+    for (const entry of readdirSync(join(ROOT, rel), { withFileTypes: true })) {
+      const child = `${rel}/${entry.name}`;
+      if (entry.isDirectory()) walk(child);
+      else if (TEXT.test(entry.name)) {
+        read(child)
+          .split("\n")
+          .forEach((line, i) => {
+            if (HANDLE.test(line)) hits.push(`${child}:${i + 1}`);
+          });
+      }
+    }
+  };
+  walk("src");
+  walk("public");
+  assert.deepEqual(hits, [], "the X handle must not appear in src/ or public/ while the account is suspended");
+
+  // 出力でも確かめる（定数が残っていても、メタと JSON-LD に出なければよい、ではなく両方を固定する）。
+  const meta = pageMetadata({ title: "T", description: "D", path: "/x" });
+  assert.equal((meta.twitter as { site?: string }).site, undefined, "twitter:site must be unset");
+  assert.ok(
+    !organizationJsonLd("d").sameAs.some((u) => /(?:^|\/\/)(?:www\.)?(?:x|twitter)\.com\//i.test(u)),
+    "Organization sameAs must not point at X",
+  );
+});
+
+test("twitter cards still render without twitter:site (card type and image stay set)", () => {
+  const meta = pageMetadata({ title: "T", description: "D", path: "/x" });
+  const twitter = meta.twitter as { card?: string; images?: unknown };
+  assert.equal(twitter.card, "summary_large_image");
+  assert.ok(Array.isArray(twitter.images) && twitter.images.length === 1);
+  assert.ok(read("src/app/layout.tsx").includes('card: "summary_large_image"'), "root layout must keep the card type");
 });
 
 test("Organization sameAs includes the other public identities", () => {
@@ -75,7 +111,6 @@ test("Organization sameAs includes the other public identities", () => {
   const blob = home + seo;
   assert.ok(blob.includes("https://github.com/kzmttkc/vet402"));
   assert.ok(blob.includes("https://www.npmjs.com/package/@vet402/sdk"));
-  assert.ok(blob.includes("https://x.com/vet_402"));
 });
 
 test("pageMetadata noindex sets robots index:false, and defaults to indexable", () => {

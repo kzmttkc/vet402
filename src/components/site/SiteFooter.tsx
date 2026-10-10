@@ -63,7 +63,7 @@ const COLUMNS: { caption: string; label: string; links: { label: string; href: s
       { label: "Operator log", href: "/operator-log" },
       // 2026-09-02: LP §5 末尾の「Follow the build」箱を段落へ畳んだぶん、外部の 2 本は
       // サイト全頁から辿れる奥付にも置く。
-      { label: "X @vet_402", href: "https://x.com/vet_402" },
+      // 2026-10-10: X の公式アカウントが凍結されたので X の 1 本を一時的に外した。復旧したら戻す。
       { label: "GitHub", href: "https://github.com/kzmttkc/vet402" },
     ],
   },

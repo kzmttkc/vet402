@@ -910,18 +910,11 @@ export default async function Home() {
         {/* 2026-09-02 Takeshi「ここだけ浮いている」: 破線の囲み（dashbox）は §5（2026-09-19 から §6）の
             登録簿の直後に唯一の「箱」として置かれ、紙面の文法（罫と段落）から外れていた。
             RFC の back matter に倣い、§5 を閉じる 1 文として同じ段落文法で置く。
-            イベント名 follow_click と channel は据え置き。フッタの About 列にも同じ 2 本を置く。 */}
+            イベント名 follow_click と channel は据え置き。フッタの About 列にも同じ 2 本を置く。
+            2026-10-10: X の公式アカウントが凍結されたので、X 側のリンク（channel "x"）を一時的に外した。
+            復旧したらこの変更の commit を revert して 2 本に戻す（docs/handoffs/CHANGELOG.md 2026-10-10）。 */}
         <p className="doc-p">
-          Progress is posted as it lands, on{" "}
-          <TrackedLink
-            href="https://x.com/vet_402"
-            event="follow_click"
-            props={{ channel: "x" }}
-            className="doc-link"
-          >
-            X @vet_402
-          </TrackedLink>{" "}
-          and{" "}
+          Progress is posted as it lands on{" "}
           <TrackedLink
             href="https://github.com/kzmttkc/vet402"
             event="follow_click"
