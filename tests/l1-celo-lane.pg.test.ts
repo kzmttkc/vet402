@@ -13,6 +13,8 @@
 //  4. Celo の購入元残高が足りない／読めないなら署名せず、行も書かない。Base はそのまま買う。
 //  5. 壁が Celo の accept に、カタログが宣言していない payTo・宣言と違う額・USDC 以外の資産を出したら Celo では払わない。
 //  6. 売り手ごとの日次上限（L1_SELLER_DAILY_CAP_USD）は Celo の購入にも同じ 1 文で掛かる。
+//  7. Celo の残高が足りない／読めないと分かったら、そのバッチの Celo レーンの優先を閉じる。Base が先頭で Celo の accept も
+//     持つ出品は、その出品を含めて Base の通常経路で買う（Celo に入金するまで Base でも買えない、を起こさない）。
 //
 // 壁の形は 2026-10-10 に払わずに読んだ実物:
 //   api.blockscout.com/42220/api/v2/addresses  Celo が先頭・Base が 2 番目・**payTo はチェーンごとに別**
@@ -52,6 +54,7 @@ if (!TEST_DB) {
   const SCOUT_URL = "https://scout.example/42220/api/v2/addresses";
   const SCOUT2_URL = "https://scout.example/42220/api/v2/blocks";
   const TOOLS_URL = "https://tools.example/api/hash";
+  const TOOLS2_URL = "https://tools.example/api/uuid";
   const BASE_URL = "https://baseonly.example/api";
   const OPS_URL = "https://ops.example/api";
 
@@ -108,6 +111,7 @@ if (!TEST_DB) {
       [SCOUT2_URL]: [celoUsdc(SCOUT_CELO_PAYTO, "2000"), baseUsdc(SCOUT_BASE_PAYTO, "2000")],
       // Celo の USDT を USDC より前に置く——選ばれてはいけない資産が先にあっても USDC を選ぶこと。
       [TOOLS_URL]: [baseUsdc(TOOLS_PAYTO, "1000"), celoUsdt(TOOLS_PAYTO, "1000"), celoUsdc(TOOLS_PAYTO, "1000")],
+      [TOOLS2_URL]: [baseUsdc(TOOLS_PAYTO, "1000"), celoUsdc(TOOLS_PAYTO, "1000")],
       [BASE_URL]: [baseUsdc(BASE_ONLY_PAYTO, "3000")],
       [OPS_URL]: [baseUsdc(OPS_BASE_PAYTO, "1000"), celoUsdc(OPS_CELO_PAYTO, "1000")],
     };
@@ -399,6 +403,81 @@ if (!TEST_DB) {
       assert.deepEqual(summary.payerFundsUnreadable, ["celo"]);
       assert.deepEqual(await ledgerFor(SCOUT_URL), []);
       assert.ok(w.paid(BASE_URL).length === 1, "Base は買う");
+    });
+
+    await t.test("Celo の残高 0・フラグ on: Base が先頭で Celo の accept も持つ出品は Base で買われる（行は Base の 1 行だけ）", async () => {
+      await seed([TOOLS_URL]);
+      process.env.OBSERVATORY_CELO_L1_ENABLED = "true";
+      const w = wall();
+      const chains: string[] = [];
+      const summary = await runL1Batch({
+        limit: 10,
+        fetchImpl: w.fetchImpl,
+        getPayerUsdcBalance: async ({ chain }) => {
+          chains.push(chain);
+          return chain === "celo" ? 0n : 60_000_000n;
+        },
+      });
+      assert.equal(summary.laneFloor.celo, 1, "レーン枠には載る");
+      assert.equal(summary.payerUnfunded, 1, "Celo の資金切れは 1 回だけ数える");
+      const paid = w.paid(TOOLS_URL);
+      assert.equal(paid.length, 1, "Base で 1 回買う");
+      assert.equal(paid[0].accepted?.network, BASE_CAIP2);
+      assert.equal(paid[0].accepted?.payTo, TOOLS_PAYTO);
+      assert.equal(paid[0].authorization?.value, "1000");
+      assert.equal(w.paidOn(CELO_CAIP2).length, 0, "Celo の accept には署名しない");
+      assert.deepEqual(await ledgerFor(TOOLS_URL), [
+        { status: "settle_claimed", network: BASE_CAIP2, asset: BASE_USDC, pay_to: TOOLS_PAYTO.toLowerCase(), spent_units: "1000" },
+      ]);
+      assert.equal(await celoSpent(), 0);
+      assert.deepEqual([...new Set(chains)].sort(), ["base", "celo"], "Celo を読んで足りず、Base を読んで買った");
+      assert.equal(w.requests(TOOLS_URL).filter((r) => !r.paid).length, 2, "無払いの要求は Celo の試行とやり直しの 2 回まで");
+    });
+
+    await t.test("Celo の優先はバッチの残りでも閉じたまま: 2 件目の出品は最初から Base で買う（Celo の資金切れを数え直さない）", async () => {
+      await seed([TOOLS_URL, TOOLS2_URL]);
+      process.env.OBSERVATORY_CELO_L1_ENABLED = "true";
+      const w = wall();
+      const summary = await runL1Batch({
+        limit: 10,
+        fetchImpl: w.fetchImpl,
+        getPayerUsdcBalance: async ({ chain }) => (chain === "celo" ? 0n : 60_000_000n),
+      });
+      assert.equal(summary.laneFloor.celo, 2);
+      assert.equal(summary.payerUnfunded, 1, "2 件目は Celo を試さない");
+      assert.equal(w.paidOn(CELO_CAIP2).length, 0);
+      assert.equal(w.paidOn(BASE_CAIP2).length, 2, "2 件とも Base で買う");
+      const unpaid = [TOOLS_URL, TOOLS2_URL].map((u) => w.requests(u).filter((r) => !r.paid).length).sort();
+      assert.deepEqual(unpaid, [1, 2], "やり直しの無払いは最初の 1 件だけ");
+      assert.equal(await celoSpent(), 0);
+    });
+
+    await t.test("Celo の残高が読めないときも同じ: Base が先頭の出品は Base で買われる", async () => {
+      await seed([TOOLS_URL]);
+      process.env.OBSERVATORY_CELO_L1_ENABLED = "true";
+      const w = wall();
+      const summary = await runL1Batch({
+        limit: 10,
+        fetchImpl: w.fetchImpl,
+        getPayerUsdcBalance: async ({ chain }) => {
+          if (chain === "celo") throw new Error("celo rpc down");
+          return 60_000_000n;
+        },
+      });
+      assert.deepEqual(summary.payerFundsUnreadable, ["celo"]);
+      assert.equal(w.paid(TOOLS_URL)[0]?.accepted?.network, BASE_CAIP2);
+      assert.equal(w.paidOn(CELO_CAIP2).length, 0);
+      assert.equal(await celoSpent(), 0);
+    });
+
+    await t.test("Celo の残高が 0 で Base の残高も 0 なら、どちらでも署名せず行も書かない", async () => {
+      await seed([TOOLS_URL]);
+      process.env.OBSERVATORY_CELO_L1_ENABLED = "true";
+      const w = wall();
+      const summary = await runL1Batch({ limit: 10, fetchImpl: w.fetchImpl, getPayerUsdcBalance: async () => 0n });
+      assert.equal(w.paid().length, 0);
+      assert.equal(summary.payerUnfunded, 2, "Celo と Base で 1 回ずつ");
+      assert.deepEqual(await ledgerFor(TOOLS_URL), [], "売り手の失敗として記録しない");
     });
 
     await t.test("壁が Celo の accept に別の payTo を出したら払わない（Celo が主: payto_mismatch・支出 0）", async () => {

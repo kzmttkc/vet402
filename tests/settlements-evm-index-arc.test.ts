@@ -9,7 +9,7 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { EVM_INDEX_CHAINS, TRANSFER_WITH_MEMO_EVENT, evmIndexLag, isEvmChainIndexable, perChainBudgetMs } from "@/lib/settlements/index-evm";
+import { EVM_INDEX_CHAINS, TRANSFER_WITH_MEMO_EVENT, evmIndexLag, indexErrorSkipped, isEvmChainIndexable, perChainBudgetMs } from "@/lib/settlements/index-evm";
 import { decodeEventLog } from "viem";
 import { readFileSync } from "node:fs";
 import { ARC_CHAIN_ID, ARC_USDC_ADDRESS } from "@/lib/chain/arc";
@@ -161,3 +161,20 @@ test("a transfer log decoded without an amount is not written as a zero-amount r
   assert.match(src, /undecodable_log/);
 });
 
+
+
+// ---- 2026-10-10 点検の所見: 走査の失敗の文字列は cron の応答に載る。RPC の URL（鍵入りの形がある）を伏せる ----
+test("indexErrorSkipped: keeps the error: prefix and the cause, and never carries an RPC url (all chains share this path)", () => {
+  const viemLike = new Error(
+    "HTTP request failed.\n\nURL: https://celo-mainnet.g.alchemy.com/v2/SECRETKEY123\nRequest body: {\"method\":\"eth_getLogs\"}\n\nDetails: fetch failed",
+  );
+  const out = indexErrorSkipped(viemLike);
+  assert.ok(out.startsWith("error:"), "callers count a chain as failed by this prefix");
+  assert.ok(!out.includes("SECRETKEY123") && !out.includes("alchemy.com"), out);
+  assert.match(out, /URL: <url>/);
+  assert.match(out, /eth_getLogs/, "the cause stays readable");
+  assert.match(out, /Details: fetch failed/, "not truncated");
+  // Non-Error values and other schemes (wss from a Solana-style client, a postgres DSN) are covered too.
+  assert.equal(indexErrorSkipped("boom at wss://rpc.example/v2/key and postgres://u:pw@db.example/x"), "error:boom at <url> and <url>");
+  assert.equal(indexErrorSkipped(new Error("TEMPO_RPC_URL_unset")), "error:TEMPO_RPC_URL_unset", "a message without a url is unchanged");
+});

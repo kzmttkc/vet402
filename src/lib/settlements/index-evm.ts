@@ -29,6 +29,7 @@ import { attribute } from "./attribution";
 import { classifyWash } from "./wash";
 import { purchaseId as toPurchaseId } from "@/lib/ids/canonical";
 import { TEMPO_CHAIN_ID, TEMPO_USDC_E, isMppAttributionMemo, tempoRpcUrl } from "@/lib/observatory/mpp-payer";
+import { redactUrls } from "@/lib/observatory/redact";
 
 export const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 /** TIP-20（Tempo）の memo 付き転送。MPP の client は transferWithMemo を呼ぶ（2026-09-17）。 */
@@ -444,6 +445,16 @@ export async function indexEvmChain(
   return summary;
 }
 
+/**
+ * 1 チェーンの走査が投げたときの `skipped` の文字列（`error:` で始まる——呼び手はこの接頭辞で失敗と数える）。
+ * 2026-10-10（点検の所見）: viem の transport の誤りは本文に RPC の URL を含み、URL には鍵が入る形
+ * （…/v2/<key>）がある。この文字列は cron の応答（JSON）にそのまま載るので、URL を伏せてから返す。
+ * 切らない（2026-09-04: 120 字で切って原因が読めなかった）。全チェーン共通（Base・Polygon・Arc・Tempo・Celo）。
+ */
+export function indexErrorSkipped(error: unknown): string {
+  return `error:${redactUrls(error instanceof Error ? error.message : String(error))}`;
+}
+
 export async function indexEvm(options: { budgetMs?: number; classifier?: WashClassifier } = {}): Promise<EvmIndexSummary[]> {
   const out: EvmIndexSummary[] = [];
   const perChain = perChainBudgetMs(options.budgetMs ?? 120_000);
@@ -453,7 +464,7 @@ export async function indexEvm(options: { budgetMs?: number; classifier?: WashCl
     } catch (error) {
       // 2026-09-04: 原因文字列を切らない（120 字で切って原因が読めなかった）。呼び手は
       // `skipped` が error: で始まる chain を「失敗」と数えて ok:false にする。
-      out.push({ chain: chain.caip2, skipped: `error:${error instanceof Error ? error.message : String(error)}`, payees: 0, logs: 0, inserted: 0, updated: 0 });
+      out.push({ chain: chain.caip2, skipped: indexErrorSkipped(error), payees: 0, logs: 0, inserted: 0, updated: 0 });
     }
   }
   return out;

@@ -1596,6 +1596,11 @@ export async function runL1Batch(
   // （行を書かずに飛ばし続けると、RPC が直るまでその売り手を誰の経路でも測れない）。
   // 主ネットワークが XRPL の行は他に買う経路が無いので飛ばす（同じ RPC を叩き直して request_error を積まない）。
   let xrplLaneUnavailable = false;
+  // Celo（2026-10-10・点検の所見）: Celo の購入元残高が足りない／読めないと分かったら、そのバッチの Celo レーンの
+  // **優先**を閉じる（XRPL の xrplLaneUnavailable と同じ型）。閉じないと、Base が先頭で Celo の accept も持つ出品は
+  // レーン枠から Celo で買おうとして毎回 payer_unfunded（行なし）になり、Celo に入金するまで Base でも買えない。
+  // 閉じた後のレーン候補は Base の通常経路（preferNetworks 無し）で買う。金の関門は何も変えない。
+  let celoLaneUnavailable = false;
 
   // 売り手ごとの日次上限に届いた受取先・ホスト（2026-09-29 監査 5 周目）。予約が断ったら、このバッチの残りの
   // 同じ売り手の候補には 402 も取りに行かない（行も書かない）。締めるのは reserveSpend で、ここは無駄を省くだけ。
@@ -1657,11 +1662,21 @@ export async function runL1Batch(
         candidate.laneChain !== null &&
         laneNetwork !== undefined &&
         laneOpen(candidate.laneChain) &&
+        !(candidate.laneChain === "celo" && celoLaneUnavailable) &&
         !candidate.settledNetworks.includes(laneNetwork) &&
         !candidate.failedNetworks.includes(laneNetwork)
           ? [laneNetwork]
           : [];
-      const outcome = await purchaseOne({ candidate, preferNetworks, xrplLanePreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge });
+      const purchaseInput = { candidate, xrplLanePreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge };
+      let outcome = await purchaseOne({ ...purchaseInput, preferNetworks });
+      // Celo の残高が足りない／読めない（署名していない・行も予約も無い）。以後の Celo レーンの優先を閉じる。
+      // いまの候補が「Celo を優先された Base 先頭の出品」なら、優先なしでもう 1 回だけ通す——壁の並びどおり Base の
+      // accept が選ばれ、Base の残高・Base の関門で買う。Celo が主ネットワークの候補はやり直さない（優先を外しても
+      // 選ばれるのは Celo の accept で、結果は同じ）。残高の読み取りはバッチ内でキャッシュ済みなので RPC は増えない。
+      if (outcome.kind === "payer_unfunded" && outcome.payerChain === "celo") {
+        celoLaneUnavailable = true;
+        if (preferNetworks.includes(CELO_CAIP2)) outcome = await purchaseOne({ ...purchaseInput, preferNetworks: [] });
+      }
       spentToday += outcome.spent;
       // バッチ内のレーン支出を加算する（署名した額。決済は非同期なので使ったとみなす）。
       const outcomeLane = outcome.network ? cappedChainFor(outcome.network) : null;

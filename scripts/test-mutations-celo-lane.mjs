@@ -129,6 +129,15 @@ const MUTATIONS = [
     find: '  if (chain === "celo") {',
     replace: '  if (/* MUTANT */ false && chain === "celo") {',
   },
+  {
+    id: "C13",
+    what: "Celo の残高不足でもレーンの優先を閉じない（Base へ落とさない）",
+    rule: "Celo が資金切れでも Base 先頭の出品は Base で買える",
+    file: RUNNER,
+    needsDb: true,
+    find: '      if (outcome.kind === "payer_unfunded" && outcome.payerChain === "celo") {',
+    replace: '      if (/* MUTANT */ false && outcome.kind === "payer_unfunded" && outcome.payerChain === "celo") {',
+  },
   // ---- 決済の再読 ----
   {
     id: "C10",
