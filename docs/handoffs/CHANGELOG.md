@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-10 — SKILL.md: the /decision live block no longer pins the example seller's verdict to ALLOW (issue #58)
+- **何を**: SKILL.md「Your own policy on `/decision`」の `# live:` の期待を、`.[0] == "ALLOW"` から `(.[0] | IN("ALLOW", "WARN", "BLOCK"))` に変えた。`caller_policy` の期待（REFUSE・`price_above_ceiling`・無指定なら鍵なし）はそのまま。
+- **なぜ**: skill-live が 10/9 02:40 UTC から赤（Issue #58）。例に使っている kronossignals.com/api/v1/price/btc の判定が ALLOW から WARN に変わったため（最後の購入は 9/15 で、30 日の窓の中に届いた購入が無くなった）。本番は説明どおりに答えている。この節が示したいのは caller_policy で、外部の売り手の判定を固定する理由が無い。
+- **影響**: 手元の `node scripts/skill-live-check.mjs` は 4 ok・0 fail・8 skip。次の緑の回で Issue #58 は自動で閉じる。
+
 ## 2026-10-10 — tests/l1-retest.pg.test.ts: the two listing-level subtests assert on the retest lane only (CI flake since 10-06)
 - **何を**: `tests/l1-retest.pg.test.ts` の最後の 2 段（「出品単位の旗が on」「出品単位の 2 回目」）の主張を変えた。`lx/ly/lz.example/ok` を「どの経路でも払っていない」と見ていた 2 行をやめ、retest の印（`raw_response_meta.selection = "retest"`）がついた行で見る（1 段目は既存の `fresh`、2 段目は「印つきの行が増えない」を追加）。どの経路でも払わないと言えるものだけ `paid` で見る（`ly/fail` は $1 超、`lx/fail`・`lz/post` は直前に買い直した＝掃引窓の内側）。変えたのはテストだけで、本番コード・seed は同じ。
 - **なぜ**: CI の「db-backed integration tests」が 10/6 21:31Z・10/8・10/10 に同じ段で落ちた（この 2 段が入った 10/3 から 10/6 03:00Z までの 4 run は通っている）。原因は 2 つの重なり。(1) seed の `/ok` の行は `LATER_OK = 2026-09-30T03:00Z` の固定日付で、`SWEEP_WINDOW_DAYS = 6` を 10/6 03:00Z に抜け、通常の掃引の候補に戻った。(2) 通常の候補の `ORDER BY`（階層 → 未購入 → 優先 → `quality_payers_30d` → `quality_calls_30d`）は全順序ではなく、需要の低い 20 行が同点。`LIMIT 10` がどの 10 行を取るかは実行計画しだいで、統計の無い DB では回ごとに変わり（id 順でも物理順でもない）、自動 ANALYZE の後は物理順で固定になる。ローカル実測: 修正前は統計なしの新しい DB で 10/10 失敗・ANALYZE 済みの DB で 12/12 成功。CI は毎回新しい Postgres なので、自動 ANALYZE（1 分間隔）がこのファイルより先に走ったかどうかで合否が分かれていた。`ri` の同額 3 件（id 順）は直接の原因ではない。

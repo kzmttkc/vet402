@@ -526,7 +526,7 @@ The response gains one block and changes nothing else (without these queries the
 Two `curl`s tell the whole story (run them against production; the first was measured there on 2026-09-07):
 
 ```bash
-# live: expect .[0] == "ALLOW" and .[1].verdict == "REFUSE" and .[1].reason_codes == ["price_above_ceiling"] and .[2] == false
+# live: expect (.[0] | IN("ALLOW", "WARN", "BLOCK")) and .[1].verdict == "REFUSE" and .[1].reason_codes == ["price_above_ceiling"] and .[2] == false
 RID=$(curl -sL "https://vet402.com/api/v1/resolve?q=https://kronossignals.com/api/v1/price/btc" | jq -r '.resource.resource_id')
 # over your ceiling → caller_policy.verdict REFUSE, reason_codes ["price_above_ceiling"]
 curl -sL "https://vet402.com/api/v1/resources/$RID/decision?role=payer&amount_usd=1.5&max_per_tx_usd=1" | jq '.recommendation, .caller_policy'
