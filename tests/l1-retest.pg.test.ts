@@ -467,20 +467,27 @@ if (!TEST_DB) {
       const expected = ["https://lx.example/fail", "https://lz.example/post", "https://ra.example/dear"];
       if (!riOldAlreadyRebought) expected.push("https://ri.example:4449/old");
       assert.deepEqual(fresh.sort(), expected.sort(), `買い直したのは失敗した出品だけ: ${fresh.join(", ")}`);
-      const paid = w.paidUrls();
-      for (const u of ["https://lx.example/ok", "https://lz.example/ok", "https://ly.example/ok", "https://ly.example/fail"]) {
-        assert.ok(!paid.includes(u), `${u} は買わない（失敗した出品ではない／$1 超）`);
-      }
+      // 届いている /ok の 3 件を retest が買わないこと（ly は同じ売り手の別の出品へ落ちない）は、上の fresh（retest の印が
+      // ついた行）が固定する。「どの経路でも払っていない」では見ない（2026-10-10）: /ok の最新の行（LATER_OK）は
+      // 2026-10-06T03:00Z に掃引窓（SWEEP_WINDOW_DAYS = 6 日）を抜け、通常の掃引の候補に戻った。通常の候補の並び
+      // （需要順）は需要の低い行が同点で、LIMIT がどの行を取るかは決まっていない（統計の無い DB では回ごとに変わる）
+      // ので、/ok を通常の掃引が買う回と買わない回がある。どちらも正しい。$1 超の出品だけは、どの経路でも払わない。
+      assert.ok(!w.paidUrls().includes("https://ly.example/fail"), "https://ly.example/fail は買わない（$1 超）");
       assert.equal(summary.retestCandidates, expected.length, "候補は失敗した出品の数（ly は失敗した出品が買えないので 0 件）");
     });
 
     await t.test("出品単位の 2 回目: 買い直して届いた出品はもう選ばない", async () => {
       arm(true);
       process.env.OBSERVATORY_L1_RETEST_LISTINGS = "on";
+      const before = (await bySelection("retest")).sort();
       const w = wall();
       const summary = await run(w);
       assert.equal(summary.retestCandidates, 0);
-      for (const h of ["lx.example", "ly.example", "lz.example"]) assert.ok(!w.paidUrls().some((u) => hostOf(u) === h), h);
+      assert.deepEqual((await bySelection("retest")).sort(), before, "retest の印がついた行は増えない");
+      // 失敗していた出品そのものは、どの経路でも払わない: lx/fail と lz/post は直前のバッチで買い直した（掃引窓の内側）、
+      // ly/fail は $1 超。同じ売り手の /ok は見ない——通常の掃引が買う回がある（上の段のコメント・2026-10-10）。
+      const paid = w.paidUrls();
+      for (const u of ["https://lx.example/fail", "https://lz.example/post", "https://ly.example/fail"]) assert.ok(!paid.includes(u), u);
     });
   });
 }
