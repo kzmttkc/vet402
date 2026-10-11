@@ -494,7 +494,7 @@ export default async function ObservatoryMethodologyPage() {
         <p className="doc-p">
           <strong>A transaction the seller named that does not appear.</strong> A receipt&apos;s transaction that is
           not on-chain yet is re-read on later runs of the verifier and does not count either way; a read that
-          fails (a timeout or a rate limit) is not counted as &ldquo;not found&rdquo;. On Base and Arc, when the chain
+          fails (a timeout or a rate limit) is not counted as &ldquo;not found&rdquo;. On Base, Arc and Celo, when the chain
           has answered that the transaction does not exist on at least{" "}
           {SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS.toString()} different days (UTC), it is{" "}
           {SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS.toString()} days after the purchase, the payment authorization vet402
@@ -838,7 +838,7 @@ export default async function ObservatoryMethodologyPage() {
         <p className="doc-p">
           <strong>settled comes at two evidence strengths, and both counts are published.</strong>{" "}
           Since 2026-09-04 12:00 UTC each purchase carries a one-time value we generate
-          ourselves — the EIP-3009 authorization nonce on Base and Arc, our own memo on Solana,
+          ourselves — the EIP-3009 authorization nonce on Base, Arc and Celo, our own memo on Solana,
           the memo of a TIP-20 transfer on Tempo, the hash of the signed blob on XRPL — and
           the re-read binds the transaction to that value. We publish those rows as{" "}
           <strong>nonce-bound</strong>: the transaction is the one that paid for this purchase.
@@ -952,7 +952,7 @@ export default async function ObservatoryMethodologyPage() {
           Solana-specific verifier, and a Solana purchase is promoted to <code>settled</code> only
           on the same evidence Base requires. What remains open is narrower and still worth naming:
           the re-read is chain-specific, because what binds a transfer to the signature we hold
-          differs by chain — on Base and Arc the EIP-3009 authorization nonce, on Solana a memo we
+          differs by chain — on Base, Arc and Celo the EIP-3009 authorization nonce, on Solana a memo we
           wrote ourselves, on Tempo the indexed memo of a TIP-20{" "}
           <code>TransferWithMemo</code>, on XRPL the hash of the blob we signed (which is the
           transaction hash itself). A purchase on a chain we have built no re-reader for stays at{" "}
