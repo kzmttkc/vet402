@@ -8,7 +8,7 @@ import { ingestPayments } from "@/lib/settlements/ingest-payments";
 import { indexEvm } from "@/lib/settlements/index-evm";
 import { indexSolana } from "@/lib/settlements/index-solana";
 import { indexXrpl } from "@/lib/settlements/index-xrpl";
-import { makeBaseTransferReader, recoverLateSettlements } from "@/lib/settlements/recover-late";
+import { makeChainTransferReader, recoverLateSettlements } from "@/lib/settlements/recover-late";
 import { readAuthorizationNonces } from "@/lib/observatory/settlement-verify";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
@@ -40,9 +40,11 @@ export async function GET(request: NextRequest) {
     // 2026-09-29: 候補が 2 行以上ある tx は、レシートの nonce で持ち主が 1 行に決まるときだけ貼る。
     // 2026-09-29 第4巡: 索引に無い着金（後からカタログに載った payTo 宛て）は Base のチェーンを直接読む。1 回 20 行まで
     // （読んだ行には印を付け、次からは読まない。溜まった分は一度きりの再照合で流す）。
+    // 2026-10-11: Celo の行（応答なしで settle_failed になったが、売り手は決済していた）も Celo のチェーンを直接読む。
+    // Base とは別枠で 1 回 20 行まで・CELO_RPC_URL が無ければ読まない・貼るのはレシートの nonce が行の nonce と合う tx だけ。
     const lateSettlements = await recoverLateSettlements({
       readNonces: readAuthorizationNonces,
-      readTransfers: makeBaseTransferReader(),
+      readTransfers: makeChainTransferReader(),
       chainReadLimit: 20,
     });
     return NextResponse.json({ ok: true, testWallets: classifier.testWallets.size, l1, payments, evm, solana, xrpl, lateSettlements });

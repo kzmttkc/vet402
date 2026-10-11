@@ -120,6 +120,8 @@ export const EVM_INDEX_CHAINS: EvmIndexChain[] = [
   //  - 確定待ち 64 ブロック（≈ 64 秒）。Celo の確定の仕様は実測していないので、1 秒ブロックに対して Arc / Tempo と同じ余裕を取る。
   //  - CELO_RPC_URL が無ければ skipped（`CELO_RPC_URL_unset`）——公開 RPC へ無言で倒れない（Arc と同じ）。
   //  - 受取先は Celo を主ネットワークにする出品の pay_to だけ（下の SELECT・他のチェーンの行と同じ規則）。
+  //    2026-10-11: つまり Base が先頭の出品の Celo の accept（我々が実際に Celo で買う相手）の受取先は、この索引に入らない。
+  //    その購入が遅れて決済されたときの回収は、索引ではなく recover-late.ts の Celo のチェーン直読み（nonce で決める）が持つ。
   {
     caip2: CELO_CAIP2,
     chainId: CELO_CHAIN_ID,

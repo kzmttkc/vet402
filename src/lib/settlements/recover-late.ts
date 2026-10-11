@@ -69,12 +69,32 @@
 //   3. 売り手が名指した tx（promoteNamedTx）。PAYMENT-RESPONSE の success が false でも transaction を返した 2xx の行は
 //      delivered_no_receipt のまま tx を持ち、照合器（settle_claimed と settled だけを読む）に回らなかった（wazir: 200 と
 //      tx があるのに失敗の群）。売り手の申告として settle_claimed へ移し、照合器に読ませる（lateSettlement は付けない）。
+//
+// 2026-10-11（Celo レーン・本番で起きた取りこぼし）: チェーンの直読み（linkFromChain）を Celo（eip155:42220）にも通す。
+//   何が起きたか: 10/11 02:30:53 UTC の agent402.tools/api/skill/ssl-audit（0.006 USDC）は、支払い付きの要求が 20 秒の
+//   上限（L1_REQUEST_TIMEOUT_MS）で切れて応答なし＝ settle_failed・tx なしになった。売り手は 17 秒後（02:31:10 UTC・
+//   Celo の tx 0x23421d63…2cd07a）に決済していた。お金は動いたのに、台帳は「決済に失敗」のまま直らなかった。
+//   なぜ拾えなかったか: (a) 索引（index-evm）の受取先は「その chain を主ネットワークにする出品の pay_to」だけ。実際に
+//   Celo で買うのは Base が先頭の出品の Celo の accept なので、その受取先への Celo の着金は索引に 1 本も入らない。
+//   (b) 直読みは Base の行だけを選び（BASE_NETWORK_KEYS）、読み手（makeBaseTransferReader）も Base 以外に null を返す。
+//   直し方: 直読みをレーンの表（CHAIN_READ_LANES）にし、Celo のレーンを足す。Base のレーンの選び方・貼り方・印は変えない。
+//   Celo のレーンは **nonce で決める**: 対象は auth_nonce（我々が署名した EIP-3009 の nonce）が形の正しい行だけ。
+//   購入元 → その行の pay_to への、額ちょうどの Celo USDC の Transfer を窓の内側で読み、候補の tx のレシートの
+//   AuthorizationUsed(購入元, nonce) にその行の nonce があるときだけ貼る（額・宛先・時刻が合っても nonce が無ければ貼らない）。
+//   Celo では索引の段（上の 1 文と linkAmbiguousByNonce）が働かないので、nonce の束縛をこの段が自分で持つ。貼った行は
+//   Base と同じく settle_claimed（照合前）で、settled にするのは照合器（確定数・Transfer・nonce を読み直す）だけ。
+//   Celo の RPC は CELO_RPC_URL 必須（無ければ読まない＝何も変えない。公開 RPC へ黙って倒れない）。Base の行
+//   （2026-10-11 の公開台帳で tx の無い回収対象が 5,339 行・直読みは 1 回 20 行で新しい順）に Celo の行が埋もれない
+//   よう、行の上限と持ち時間はレーンごとに持つ。
+//   Arc（eip155:5042）は足していない: 同じ形の穴はあるが、Arc の Transfer の読み方（ブロック間隔・RPC の範囲の上限）を
+//   実測していない。足すときは CHAIN_READ_LANES に 1 行と、その chain の読み手。
 // ============================================================
 import { createPublicClient, http, parseAbiItem, type Address } from "viem";
-import { base } from "viem/chains";
+import { base, celo } from "viem/chains";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { getLogScanClient } from "@/lib/chain/client";
+import { CELO_CAIP2, CELO_CHAIN_ID, CELO_USDC_ADDRESS } from "@/lib/chain/celo";
 import { updateWithCorrection } from "@/lib/observatory/corrections";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
@@ -150,6 +170,11 @@ export const CHAIN_READ_MIN_REMAINING_MS = 3_000;
 export const CHAIN_READ_MAX_TRIES = 3;
 /** 窓が閉じてから読む（試行の LATE_SETTLEMENT_WINDOW_MINUTES 分後 + 余裕）。 */
 export const CHAIN_READ_AFTER_MINUTES = LATE_SETTLEMENT_WINDOW_MINUTES + 5;
+/**
+ * Celo のレーンの持ち時間（2026-10-11）。Base の段（CHAIN_READ_BUDGET_MS）とは別に持つ——Base が持ち時間を使い切っても
+ * Celo の行が読まれ、Celo の RPC が遅くても Base の段の時間を削らない。cron（index-settlements・300 秒）の中の最後の段。
+ */
+export const CELO_CHAIN_READ_BUDGET_MS = 15_000;
 
 export type LateSettlementSummary = {
   recovered: number;
@@ -163,6 +188,10 @@ export type LateSettlementSummary = {
   promotedNamedTx?: number;
   /** チェーンを直接読んだ行の数（貼った行と印を付けた行・0 なら読み残しは無い）。 */
   chainRowsRead?: number;
+  /** recoveredFromChain のうち Celo のレーンで貼った数（2026-10-11・nonce で持ち主を決めた行だけ）。 */
+  recoveredFromChainCelo?: number;
+  /** chainRowsRead のうち Celo のレーンで読んだ行の数。 */
+  chainRowsReadCelo?: number;
   /** 1 本の貼り付けの文が落ちた数（その 1 本は台帳も訂正ログも書かれていない・次回に再試行）。 */
   linkErrors?: number;
   /** 結びつけた (purchase_id, tx_hash) の対。cron の応答に出る。 */
@@ -170,7 +199,16 @@ export type LateSettlementSummary = {
 };
 
 export async function recoverLateSettlements(
-  options: { readNonces?: NonceReader; readTransfers?: TransferReader; chainReadLimit?: number; chainReadBudgetMs?: number } = {},
+  options: {
+    readNonces?: NonceReader;
+    readTransfers?: TransferReader;
+    /** チェーンを直接読む行の上限。**レーンごと**（Base と Celo がそれぞれこの数まで）。 */
+    chainReadLimit?: number;
+    /** Base のレーンの持ち時間（ms）。 */
+    chainReadBudgetMs?: number;
+    /** Celo のレーンの持ち時間（ms）。 */
+    celoChainReadBudgetMs?: number;
+  } = {},
 ): Promise<LateSettlementSummary> {
   const db = getDb();
   if (!db) throw new Error("recoverLateSettlements: DATABASE_URL is not configured");
@@ -270,13 +308,28 @@ export async function recoverLateSettlements(
   const chain = options.readTransfers
     ? await linkFromChain(
         db,
+        BASE_CHAIN_READ_LANE,
         options.readTransfers,
         options.chainReadLimit ?? CHAIN_READ_ROWS_PER_RUN,
         options.chainReadBudgetMs ?? CHAIN_READ_BUDGET_MS,
         errors,
       )
     : { linked: [], read: 0 };
-  const fromChain = chain.linked;
+  // 2026-10-11: Celo のレーン。nonce で決めるので、Transfer の読み手と nonce の読み手の両方が渡されたときだけ走る
+  // （片方でも無ければ Celo の行は選びもしない＝印も付けない）。行の上限は Base と同じ数を**別枠で**持つ。
+  const celoChain =
+    options.readTransfers && options.readNonces
+      ? await linkFromChain(
+          db,
+          CELO_CHAIN_READ_LANE,
+          options.readTransfers,
+          options.chainReadLimit ?? CHAIN_READ_ROWS_PER_RUN,
+          options.celoChainReadBudgetMs ?? CELO_CHAIN_READ_BUDGET_MS,
+          errors,
+          options.readNonces,
+        )
+      : { linked: [], read: 0 };
+  const fromChain = [...chain.linked, ...celoChain.linked];
   rows.push(...fromChain);
   const promoted = await promoteNamedTx(db);
 
@@ -286,7 +339,9 @@ export async function recoverLateSettlements(
     recoveredBySet: bySet.length,
     recoveredFromChain: fromChain.length,
     promotedNamedTx: promoted.length,
-    chainRowsRead: chain.read,
+    chainRowsRead: chain.read + celoChain.read,
+    recoveredFromChainCelo: celoChain.linked.length,
+    chainRowsReadCelo: celoChain.read,
     linkErrors: errors.count,
     links: rows.map((r) => ({ purchaseId: r.purchase_id, txHash: r.tx_hash })),
   };
@@ -651,19 +706,42 @@ async function linkInterchangeableSets(db: Db, errors: { count: number }): Promi
 
 const BASE_NETWORK_KEYS = ["eip155:8453", "base"];
 
+/** 我々が署名した EIP-3009 の nonce の形（0x + 64 桁の 16 進）。Celo のレーンはこの形の auth_nonce を持つ行だけを扱う。 */
+const EVM_AUTH_NONCE_RE = /^0x[0-9a-f]{64}$/;
+
+/**
+ * チェーンを直接読む段のレーン（2026-10-11）。行の上限と持ち時間はレーンごと（呼び手が渡す）。
+ *   networks   このレーンが選ぶ購入行の network。
+ *   nonceBound true なら、形の正しい auth_nonce を持つ行だけを選び、候補の tx のレシートの AuthorizationUsed に
+ *              その行の nonce があるときだけ貼る（chooseLinks の「候補が 1 本なら貼る」を使わない）。
+ * Base は従来どおり（nonceBound: false）: 2026-09-04 より前の nonce の無い行も対象で、nonce の束縛は照合器が見る。
+ * Celo は nonceBound: true: レーンの開始（2026-10-10）から全行が nonce を持ち、索引の段（nonce で曖昧さを解く
+ * linkAmbiguousByNonce）が Celo の受取先を持たないので、この段が nonce で決める。
+ */
+type ChainReadLane = { key: "base" | "celo"; networks: readonly string[]; nonceBound: boolean };
+const BASE_CHAIN_READ_LANE: ChainReadLane = { key: "base", networks: BASE_NETWORK_KEYS, nonceBound: false };
+const CELO_CHAIN_READ_LANE: ChainReadLane = { key: "celo", networks: [CELO_CAIP2], nonceBound: true };
+/** 直読みのレーンの表（テストと点検が読む）。Arc は載せていない（ファイル冒頭の 2026-10-11 の節）。 */
+export const CHAIN_READ_LANES: readonly ChainReadLane[] = [BASE_CHAIN_READ_LANE, CELO_CHAIN_READ_LANE];
+
 /**
  * 索引に候補の無い行について、チェーンの Transfer（from = 行の payer・to = 行の pay_to）を直接読んで貼る。
- * Base の行・窓が閉じた行・まだ読んでいない行（raw_response_meta.lateChainRead が無い）だけ。2xx の行を先に、
- * 新しい順に limit 行。同じ payer・payTo・額の近くの行（窓が重なる行）も同じ組として読み、chooseLinks で決める。
+ * レーンの network の行・窓が閉じた行・まだ読んでいない行（raw_response_meta.lateChainRead が無い）だけ。2xx の行を先に、
+ * 新しい順に limit 行。同じ payer・payTo・額の近くの行（窓が重なる行）も同じ組として読み、chooseLinks で決める
+ * （nonceBound のレーンは chooseLinks ではなく nonce で決める・linksByNonce）。
  * 読めた行には lateChainRead（読んだ時刻と見つけた本数）を付け、次からは読まない。読めなければ印を付けない。
  */
 async function linkFromChain(
   db: Db,
+  lane: ChainReadLane,
   readTransfers: TransferReader,
   limit: number,
   budgetMs: number,
   errors: { count: number } = { count: 0 },
+  readNonces?: NonceReader,
 ): Promise<{ linked: LinkedRow[]; read: number }> {
+  // nonce で決めるレーンは、nonce の読み手が無ければ何もしない（行を選ばない＝印も付けない）。
+  if (lane.nonceBound && !readNonces) return { linked: [], read: 0 };
   const startedAt = Date.now();
   const batchRaw = await db.execute(sql`
     SELECT pu.id::text AS purchase_id, pu.network, lower(pu.payer) AS payer, lower(pu.pay_to) AS pay_to, pu.amount_units,
@@ -671,7 +749,9 @@ async function linkFromChain(
     FROM x402_l1_purchases pu
     WHERE ${RECOVERABLE_ROW}
       AND (pu.tx_hash IS NULL OR pu.status = 'settle_claimed_unverifiable')
-      AND pu.network IN (${sql.join(BASE_NETWORK_KEYS.map((n) => sql`${n}`), sql`, `)})
+      AND pu.network IN (${sql.join(lane.networks.map((n) => sql`${n}`), sql`, `)})
+      -- nonce で決めるレーン（Celo）: 何に署名したかが行に残っている購入だけ（形の正しい EIP-3009 の nonce）。
+      AND (${lane.nonceBound}::boolean IS NOT TRUE OR lower(btrim(coalesce(pu.auth_nonce, ''))) ~ '^0x[0-9a-f]{64}$')
       AND pu.payer IS NOT NULL AND pu.pay_to IS NOT NULL AND pu.amount_units ~ '^[0-9]{1,30}$' AND pu.attempted_at IS NOT NULL
       AND pu.attempted_at < now() - make_interval(mins => ${CHAIN_READ_AFTER_MINUTES}::int)
       -- 読んで決まった行（着金が窓に無かった）は二度と読まない。決まらなかった行（着金はあったが貼れなかった）は
@@ -716,6 +796,7 @@ async function linkFromChain(
       SELECT pu.id::text AS purchase_id,
              to_char(pu.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS attempted_at,
              (pu.auth_nonce IS NOT NULL) AS has_nonce,
+             lower(btrim(pu.auth_nonce)) AS auth_nonce,
              coalesce(pu.raw_response_meta->'lateSettlement'->'rejectedTxHashes', '[]'::jsonb) AS rejected
       FROM x402_l1_purchases pu
       WHERE ${RECOVERABLE_ROW}
@@ -723,7 +804,7 @@ async function linkFromChain(
         AND pu.network = ${g.network} AND lower(pu.payer) = ${g.payer} AND lower(pu.pay_to) = ${g.pay_to}
         AND pu.amount_units = ${g.amount_units}
         AND pu.attempted_at BETWEEN ${lo.toISOString()}::timestamptz AND ${hi.toISOString()}::timestamptz`);
-    const near = rowsOfRaw<{ purchase_id: string; attempted_at: string; has_nonce: boolean; rejected: unknown }>(nearRaw);
+    const near = rowsOfRaw<{ purchase_id: string; attempted_at: string; has_nonce: boolean; auth_nonce: string | null; rejected: unknown }>(nearRaw);
     const nearTimes = near.map((r) => Date.parse(r.attempted_at));
     const from = new Date(Math.min(...times, ...nearTimes) - backMs);
     const to = new Date(Math.max(...times, ...nearTimes) + winMs);
@@ -732,7 +813,6 @@ async function linkFromChain(
       remaining,
     ).catch(() => null);
     if (transfers === null) continue;
-    read += list.length;
     const exact = transfers.filter(
       (t) => t.from.toLowerCase() === g.payer && t.to.toLowerCase() === g.pay_to && t.value === g.amount_units && Number.isFinite(Date.parse(t.blockTime)),
     );
@@ -758,18 +838,38 @@ async function linkFromChain(
         pairs.push({ purchaseId: r.purchase_id, attemptedAt: r.attempted_at, txHash: t.txHash, blockTime: t.blockTime, hasNonce: r.has_nonce === true });
       }
     }
-    const linkedIds = new Set<string>();
-    for (const c of chooseLinks(pairs)) {
-      const done = await linkOne(db, {
+    // 貼る (行, tx) を決める。nonce で決めるレーン（Celo）は、候補の tx のレシートを読めなければこの組を丸ごと
+    // 次回へ回す（貼らない・印も付けない＝何も変えない）。
+    let links: { purchaseId: string; txHash: string; matchedBy: string; how: string }[];
+    if (lane.nonceBound) {
+      const byNonce = await linksByNonce(
+        pairs,
+        new Map(near.map((r) => [r.purchase_id, r.auth_nonce])),
+        { network: g.network, payer: g.payer },
+        readNonces!,
+        () => budgetMs - (Date.now() - startedAt),
+      );
+      if (byNonce === null) continue;
+      links = byNonce.map((l) => ({
+        ...l,
+        matchedBy: "authorization_nonce",
+        how: "read from the chain (the transfer was not in our index); linked by the authorization nonce in the receipt",
+      }));
+    } else {
+      links = chooseLinks(pairs).map((c) => ({
         purchaseId: c.purchaseId,
         txHash: c.txHash,
-        source: "chain_read",
         matchedBy: c.matchedBy,
         how:
           c.matchedBy === "interchangeable_set"
             ? "read from the chain (the transfer was not in our index); one of an equal number of purchases and transfers with the same payer, payee and amount, paired in time order"
             : "read from the chain (the transfer was not in our index)",
-      }, errors);
+      }));
+    }
+    read += list.length;
+    const linkedIds = new Set<string>();
+    for (const c of links) {
+      const done = await linkOne(db, { purchaseId: c.purchaseId, txHash: c.txHash, source: "chain_read", matchedBy: c.matchedBy, how: c.how }, errors);
       for (const d of done) linkedIds.add(d.purchase_id);
       linked.push(...done);
     }
@@ -798,6 +898,51 @@ async function linkFromChain(
     }
   }
   return { linked, read };
+}
+
+/**
+ * nonce で決めるレーン（Celo）の貼り先（2026-10-11）。候補の対（払い元・宛先・額・窓が合い、まだ誰も主張していない tx）の
+ * それぞれの tx について、レシートの AuthorizationUsed(払い元, nonce) を読み、**その行の auth_nonce がその tx で
+ * 消費されているときだけ**貼る。額・宛先・時刻が合うだけの tx（nonce が別・未使用）は貼らない。
+ *   - 読めない tx が 1 本でもあれば null（呼び手はこの組を次回へ回す。貼らない・印も付けない）。持ち時間切れも同じ。
+ *   - nonce は 1 回しか消費できないので、1 行の持ち主の tx は高々 1 本。2 本以上に見えたら（RPC の誤り）貼らない。
+ *   - 同じ tx を 2 行が持ち主だと言うなら（auth_nonce の重複）どちらにも貼らない。
+ */
+async function linksByNonce(
+  pairs: readonly LinkCandidate[],
+  nonceOf: ReadonlyMap<string, string | null>,
+  group: { network: string; payer: string },
+  readNonces: NonceReader,
+  remainingMs: () => number,
+): Promise<{ purchaseId: string; txHash: string }[] | null> {
+  const consumed = new Map<string, Set<string>>();
+  for (const p of pairs) {
+    const tx = p.txHash.toLowerCase();
+    if (consumed.has(tx)) continue;
+    const remaining = remainingMs();
+    if (remaining < CHAIN_READ_MIN_REMAINING_MS) return null;
+    const nonces = await withTimeout(readNonces({ network: group.network, txHash: p.txHash, payer: group.payer }), remaining).catch(() => null);
+    if (nonces === null) return null;
+    consumed.set(tx, new Set(nonces.map((n) => n.toLowerCase())));
+  }
+  const ownersOfTx = new Map<string, Set<string>>();
+  const txsOfRow = new Map<string, Map<string, string>>();
+  for (const p of pairs) {
+    const nonce = nonceOf.get(p.purchaseId);
+    if (typeof nonce !== "string" || !EVM_AUTH_NONCE_RE.test(nonce)) continue;
+    const tx = p.txHash.toLowerCase();
+    if (!consumed.get(tx)?.has(nonce)) continue;
+    ownersOfTx.set(tx, (ownersOfTx.get(tx) ?? new Set<string>()).add(p.purchaseId));
+    txsOfRow.set(p.purchaseId, (txsOfRow.get(p.purchaseId) ?? new Map<string, string>()).set(tx, p.txHash));
+  }
+  const out: { purchaseId: string; txHash: string }[] = [];
+  for (const [purchaseId, txs] of txsOfRow) {
+    if (txs.size !== 1) continue;
+    const [tx, txHash] = [...txs.entries()][0];
+    if (ownersOfTx.get(tx)?.size !== 1) continue;
+    out.push({ purchaseId, txHash });
+  }
+  return out;
 }
 
 /** Promise に上限時間を付ける（読み手が timeout を守らなくても、この段の持ち時間を超えない）。 */
@@ -922,4 +1067,114 @@ function boundedBaseClient(timeoutMs: number): TransferClient {
     chain: base,
     transport: http(url, { timeout: Math.max(1_000, Math.trunc(timeoutMs)), retryCount: 0 }),
   }) as unknown as TransferClient;
+}
+
+/** Celo のブロック間隔（秒）。2026-10-10 実測（chain/celo.ts）: forno の直近 86,400 ブロックの時刻差がちょうど 86,400 秒。 */
+const CELO_BLOCK_SECONDS = 1;
+/**
+ * Celo の eth_getLogs を 1 回で問うブロック数。索引の既定（GET_LOGS_CHUNK_BLOCKS 2,000）と同じ。2026-10-11 実測: forno は
+ * 5,000 ブロックまで答え、10,000 は断る（max block range 5000）。1 行の窓（2 分前〜30 分後 ≈ 1,920 ブロック + 余裕）は 2 回で読める。
+ */
+export const CELO_TRANSFER_READ_CHUNK_BLOCKS = 2_000n;
+/** 時刻からブロック番号を見積もったあと、そのブロックの実際の時刻とのずれをここまで許す（秒）。超えたら見積もり直す。 */
+const CELO_BLOCK_LOCATE_TOLERANCE_SECONDS = 30;
+/** 窓の両端に足す余裕（ブロック）。CELO_BLOCK_LOCATE_TOLERANCE_SECONDS より広く取る。 */
+const CELO_TRANSFER_READ_MARGIN_BLOCKS = 60n;
+
+type CeloTransferClient = Pick<ReturnType<typeof getLogScanClient>, "getBlock" | "getLogs" | "getChainId">;
+
+/**
+ * Celo の USDC（0xcebA…118C）の Transfer（from → to）を時刻の窓で読む読み手（2026-10-11・linkFromChain の Celo のレーン）。
+ * Celo 以外の network は null。**読めたと言えないときは必ず null か例外**（呼び手は貼らず、印も付けない）:
+ *   - CELO_RPC_URL が無い（公開 RPC へ黙って倒れない。決済の再読・索引と同じ規律）
+ *   - RPC が chainId 42220 を名乗らない（別のチェーンの空の結果を「着金なし」と読まない）
+ *   - RPC の先端が窓の終わりに届いていない（遅れているノードの空の結果を「着金なし」と読まない）
+ *   - 時刻 → ブロック番号の見積もりが、ブロックの実際の時刻と合わない（読む範囲が窓を外している）
+ * 空の配列（[]）を返すのは、窓を読み切って Transfer が無かったときだけ——呼び手はそれを「決まった」と印す。
+ * トークンは固定（CELO_USDC_ADDRESS）。別のトークンの同名のイベントは読まない。
+ */
+export function makeCeloTransferReader(client?: CeloTransferClient): TransferReader {
+  return async ({ network, payer, payTo, from, to, timeoutMs }) => {
+    if (network !== CELO_CAIP2) return null;
+    const c = client ?? boundedCeloClient(timeoutMs);
+    if (!c) return null;
+    const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
+    const expired = () => {
+      if (Date.now() > deadline) throw new Error("transfer read ran past its time limit");
+    };
+    if ((await c.getChainId()) !== CELO_CHAIN_ID) return null;
+    const head = await c.getBlock({ blockTag: "latest" });
+    const headMs = Number(head.timestamp) * 1000;
+    if (headMs < to.getTime()) return null;
+    // 時刻 → ブロック番号。1 秒/ブロックで見積もり、そのブロックの実際の時刻で確かめて直す（最大 3 回）。
+    const locate = async (t: Date): Promise<bigint> => {
+      let n = head.number - BigInt(Math.max(0, Math.ceil((headMs - t.getTime()) / (CELO_BLOCK_SECONDS * 1000))));
+      for (let i = 0; i < 3; i++) {
+        expired();
+        if (n < 0n) n = 0n;
+        if (n > head.number) n = head.number;
+        const block = await c.getBlock({ blockNumber: n });
+        const driftSeconds = Math.round((Number(block.timestamp) * 1000 - t.getTime()) / 1000);
+        if (Math.abs(driftSeconds) <= CELO_BLOCK_LOCATE_TOLERANCE_SECONDS) return n;
+        // 先端・起点に張り付いたまま合わないなら、これ以上は直せない。
+        if ((n === 0n && driftSeconds > 0) || (n === head.number && driftSeconds < 0)) break;
+        n -= BigInt(Math.trunc(driftSeconds / CELO_BLOCK_SECONDS));
+      }
+      throw new Error("could not locate the Celo block for the window");
+    };
+    const first = (await locate(from)) - CELO_TRANSFER_READ_MARGIN_BLOCKS;
+    const last = (await locate(to)) + CELO_TRANSFER_READ_MARGIN_BLOCKS;
+    const fromBlock = first < 0n ? 0n : first;
+    const toBlock = last > head.number ? head.number : last;
+    if (fromBlock > toBlock) throw new Error("empty Celo block range for the window");
+    const times = new Map<bigint, number>();
+    const out: ChainTransfer[] = [];
+    for (let lo = fromBlock; lo <= toBlock; lo += CELO_TRANSFER_READ_CHUNK_BLOCKS) {
+      expired();
+      const hi = lo + CELO_TRANSFER_READ_CHUNK_BLOCKS - 1n < toBlock ? lo + CELO_TRANSFER_READ_CHUNK_BLOCKS - 1n : toBlock;
+      const logs = await c.getLogs({
+        address: CELO_USDC_ADDRESS,
+        event: TRANSFER_LOG,
+        args: { from: payer as Address, to: payTo as Address },
+        fromBlock: lo,
+        toBlock: hi,
+      });
+      for (const l of logs) {
+        // 形の欠けた log を黙って捨てると「着金なし」と読める。読めなかったことにする。
+        if (l.blockNumber === null || !l.transactionHash || typeof l.args.value !== "bigint") {
+          throw new Error("a Celo transfer log came back without a block, a hash or a value");
+        }
+        expired();
+        if (!times.has(l.blockNumber)) times.set(l.blockNumber, Number((await c.getBlock({ blockNumber: l.blockNumber })).timestamp) * 1000);
+        out.push({
+          txHash: l.transactionHash,
+          from: String(l.args.from),
+          to: String(l.args.to),
+          value: l.args.value.toString(),
+          blockTime: new Date(times.get(l.blockNumber)!).toISOString(),
+        });
+      }
+    }
+    return out;
+  };
+}
+
+/** CELO_RPC_URL を、呼び手の時間で切り・再試行しないクライアント。CELO_RPC_URL が無ければ null（公開 RPC を使わない）。 */
+function boundedCeloClient(timeoutMs: number | undefined): CeloTransferClient | null {
+  const url = process.env.CELO_RPC_URL?.trim();
+  if (!url) return null;
+  return createPublicClient({
+    chain: celo as unknown as typeof base,
+    transport: http(url, { timeout: Math.max(1_000, Math.trunc(timeoutMs ?? 20_000)), retryCount: 0 }),
+  }) as unknown as CeloTransferClient;
+}
+
+/**
+ * cron が linkFromChain に渡す読み手（2026-10-11）: Celo の行は Celo の読み手、それ以外は Base の読み手
+ * （Base の読み手は Base 以外の network に null を返す＝従来どおり読まない）。
+ */
+export function makeChainTransferReader(readers: { base?: TransferReader; celo?: TransferReader } = {}): TransferReader {
+  const baseReader = readers.base ?? makeBaseTransferReader();
+  const celoReader = readers.celo ?? makeCeloTransferReader();
+  return (q) => (q.network === CELO_CAIP2 ? celoReader(q) : baseReader(q));
 }

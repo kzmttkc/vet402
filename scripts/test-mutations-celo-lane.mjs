@@ -22,6 +22,9 @@
  * （Neon のホストは tests/helpers/pg-test-guard.ts が拒否する）。
  *
  * 各変異は `/* MUTANT *\/` を含む文字列に置き換えるので、復元漏れは `grep -rn MUTANT src` で機械的に見つかる。
+ *
+ * 2026-10-11: 遅れて決済された Celo の購入の回収（src/lib/settlements/recover-late.ts の Celo のレーンと読み手）の関門
+ * C14〜C23 を足した。DB のテストは tests/late-settlement-celo.pg.test.ts、DB なしは tests/late-settlement-celo-reader.test.ts。
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
@@ -34,7 +37,8 @@ const BUDGET = "src/lib/observatory/budget.ts";
 const RUNNER = "src/lib/observatory/l1-runner.ts";
 const VERIFY = "src/lib/observatory/settlement-verify.ts";
 const FUNDS = "src/lib/observatory/payer-funds.ts";
-const SOURCES = [PAYER, BUDGET, RUNNER, VERIFY, FUNDS];
+const RECOVER = "src/lib/settlements/recover-late.ts";
+const SOURCES = [PAYER, BUDGET, RUNNER, VERIFY, FUNDS, RECOVER];
 
 /** DB なしで走る Celo のテスト。 */
 const UNIT_TESTS = [
@@ -42,9 +46,10 @@ const UNIT_TESTS = [
   "tests/settlement-verify-celo.test.ts",
   "tests/l1-chain-daily-cap.test.ts",
   "tests/payer-funds.test.ts",
+  "tests/late-settlement-celo-reader.test.ts",
 ];
 /** DB を通す Celo のテスト（TEST_DATABASE_URL があるときだけ）。 */
-const DB_TESTS = ["tests/l1-celo-lane.pg.test.ts"];
+const DB_TESTS = ["tests/l1-celo-lane.pg.test.ts", "tests/late-settlement-celo.pg.test.ts"];
 
 /**
  * `find` は**ちょうど 1 回**出現する文字列でなければならない（0 回は stale、2 回以上は意図しない場所を壊す）。
@@ -162,6 +167,93 @@ const MUTATIONS = [
     file: VERIFY,
     find: "    return value === expectedValue;",
     replace: "    return /* MUTANT */ value >= 0n || value === expectedValue;",
+  },
+  // ---- 遅れて決済された購入の回収（2026-10-11・recover-late.ts の Celo のレーン） ----
+  {
+    id: "C14",
+    what: "回収が、その行の nonce が tx で消費されたかを見ない",
+    rule: "額・宛先が合っても nonce の無い tx は貼らない",
+    file: RECOVER,
+    needsDb: true,
+    find: "    if (!consumed.get(tx)?.has(nonce)) continue;",
+    replace: "    if (/* MUTANT */ false && !consumed.get(tx)?.has(nonce)) continue;",
+  },
+  {
+    id: "C15",
+    what: "レシートが読めない tx を「nonce なし」として先へ進む",
+    rule: "RPC が読めない回は行を変えない（印も付けない）",
+    file: RECOVER,
+    needsDb: true,
+    find: "    if (nonces === null) return null;",
+    replace: "    if (nonces === null) /* MUTANT */ continue;",
+  },
+  {
+    id: "C16",
+    what: "Celo のレーンが auth_nonce の無い行も選ぶ",
+    rule: "回収するのは署名して送った行（nonce あり）だけ",
+    file: RECOVER,
+    needsDb: true,
+    find: "      AND (${lane.nonceBound}::boolean IS NOT TRUE OR lower(btrim(coalesce(pu.auth_nonce, ''))) ~ '^0x[0-9a-f]{64}$')",
+    replace: "      AND (/* MUTANT */ TRUE OR lower(btrim(coalesce(pu.auth_nonce, ''))) ~ '^0x[0-9a-f]{64}$')",
+  },
+  {
+    id: "C17",
+    what: "回収が着金の額を見ない",
+    rule: "署名した額ちょうどの着金だけが候補",
+    file: RECOVER,
+    needsDb: true,
+    find: "t.to.toLowerCase() === g.pay_to && t.value === g.amount_units && Number.isFinite",
+    replace: "t.to.toLowerCase() === g.pay_to && /* MUTANT */ true && Number.isFinite",
+  },
+  {
+    id: "C18",
+    what: "回収が着金の宛先を見ない",
+    rule: "その購入で署名した payTo への着金だけが候補",
+    file: RECOVER,
+    needsDb: true,
+    find: "t.from.toLowerCase() === g.payer && t.to.toLowerCase() === g.pay_to && t.value",
+    replace: "t.from.toLowerCase() === g.payer && /* MUTANT */ true && t.value",
+  },
+  {
+    id: "C19",
+    what: "回収が着金の時刻の窓を見ない",
+    rule: "試行の 2 分前〜30 分後の着金だけが候補",
+    file: RECOVER,
+    needsDb: true,
+    find: "        if (bt < at - backMs || bt > at + winMs) continue;",
+    replace: "        if (/* MUTANT */ false && (bt < at - backMs || bt > at + winMs)) continue;",
+  },
+  {
+    id: "C20",
+    what: "Celo の読み手が Base の USDC の住所で Transfer を読む",
+    rule: "読むのは Celo の USDC 0xcebA…118C の Transfer だけ",
+    file: RECOVER,
+    find: "        address: CELO_USDC_ADDRESS,",
+    replace: "        address: /* MUTANT */ BASE_USDC,",
+  },
+  {
+    id: "C21",
+    what: "Celo の読み手が RPC の chainId を確かめない",
+    rule: "別のチェーンの空の結果を「着金なし」と読まない",
+    file: RECOVER,
+    find: "    if ((await c.getChainId()) !== CELO_CHAIN_ID) return null;",
+    replace: "    if (/* MUTANT */ false && (await c.getChainId()) !== CELO_CHAIN_ID) return null;",
+  },
+  {
+    id: "C22",
+    what: "CELO_RPC_URL が無いとき公開 RPC で読む",
+    rule: "CELO_RPC_URL が無ければ読まない（何も変えない）",
+    file: RECOVER,
+    find: "  const url = process.env.CELO_RPC_URL?.trim();\n  if (!url) return null;",
+    replace: '  const url = process.env.CELO_RPC_URL?.trim() || /* MUTANT */ "https://forno.celo.org";\n  if (!url) return null;',
+  },
+  {
+    id: "C23",
+    what: "Celo の読み手が、先端が窓に届いていない RPC の結果を使う",
+    rule: "遅れているノードの空の結果を「着金なし」と読まない",
+    file: RECOVER,
+    find: "    if (headMs < to.getTime()) return null;",
+    replace: "    if (/* MUTANT */ false && headMs < to.getTime()) return null;",
   },
 ];
 
