@@ -14,7 +14,8 @@ export const maxDuration = 30;
 export async function GET(request: NextRequest) {
   const gate = await publicRateLimit(request, "resolve", 60);
   if (!gate.ok) return gate.response;
-  // 2026-10-07: UA が vet402-hermes/ の呼び出しだけを日別の件数で数える（応答の後・失敗しても応答は変わらない）。
+  // 2026-10-07 / 10-11: 枠を通った呼び出しを、決まった client の名前に寄せて日別の件数で数える（応答の後・失敗しても
+  // 応答は変わらない）。このルートに鍵の経路は無い（Authorization を読まない）ので、全部が鍵なしの呼び出し。
   recordClientUsage(request.headers, "resolve");
   const q = request.nextUrl.searchParams.get("q");
   // 2026-09-29 再監査（DX）: 400 の本文に原因（message）と直した q（suggestion）を載せる。

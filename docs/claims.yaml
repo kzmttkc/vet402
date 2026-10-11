@@ -2002,3 +2002,10 @@ claims:
     check: null
     why_unverifiable: "2 つの読み取りは別々にキャッシュされ数分ずれるので、公開 GET の 1 式で差を検査できない。規則は src/lib/observatory/reader.ts の getObservatoryStats（全出品）と getObservatoryStatsByChain（isMainnet で絞る）・getChainScope で、tests/audit-r5-exports.pg.test.ts が和の一致を固定する"
     verified_at: 2026-09-29
+  - id: privacy_keyless_call_counts_header_use
+    surface: src/app/legal/privacy/page.tsx
+    quote: "We read the User-Agent header, and for browsers whether the request came from a vet402.com page, only to pick that name"
+    means: "鍵なしの呼び出しの件数（client_usage_daily）で、User-Agent と自サイトの頁からの要求かどうかは client の名前を選ぶためだけに読み、文字列は保存しない"
+    check: null
+    why_unverifiable: "サーバの中の処理の記述で、公開 GET が返す値ではない。根拠は src/lib/api/client-usage.ts の clientUsageLabel と isOwnPageRequest（返すのは決まった名前だけ）で、tests/client-usage.test.ts と tests/client-usage.pg.test.ts が表に UA の文字列・Referer・IP が入らないことを固定する"
+    verified_at: 2026-10-11

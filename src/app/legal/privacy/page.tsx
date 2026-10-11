@@ -36,7 +36,7 @@ export default async function PrivacyPage() {
             <span>Instrument: privacy policy</span>
             <span>
               {/* この頁のシアン1点。改訂日という事実。 */}
-              Revision: <span className="text-signal">October 7, 2026</span>
+              Revision: <span className="text-signal">October 11, 2026</span>
             </span>
           </div>
           <div className="doc-head-col">
@@ -47,7 +47,7 @@ export default async function PrivacyPage() {
         </div>
         <h1 className="doc-title mt-10">Privacy Policy</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-        <p className="doc-note text-center">Last updated: October 7, 2026</p>
+        <p className="doc-note text-center">Last updated: October 11, 2026</p>
 
         {/* 2026-09-29 監査 4 周目: GDPR 13 条 1 項 (a) の管理者の身元と連絡先を明記。 */}
         <section className="space-y-2">
@@ -126,12 +126,18 @@ export default async function PrivacyPage() {
               </a>{" "}
               below
             </li>
-            {/* 2026-10-07: Hermes プラグインの呼び出しを UA で数える表。保存する列は day / client / route / count だけ。 */}
+            {/* 2026-10-07: Hermes プラグインの呼び出しを UA で数える表。2026-10-11: 鍵なしの呼び出しの全部を、決まった名前に
+                寄せて数える（src/lib/api/client-usage.ts）。保存する列は day / client / route / count だけ。 */}
             <li>
-              <strong>Hermes plugin call counts</strong> (<code>client_usage_daily</code>): for
-              requests to the public resolve and decision APIs whose User-Agent starts with{" "}
-              <code>vet402-hermes/</code>, a count per UTC day, plugin version and API route. We do not
-              store the IP address, the URL or query being looked up, or any API key with these counts
+              <strong>Key-less API call counts</strong> (<code>client_usage_daily</code>): for
+              requests to the public resolve and decision APIs made without an API key, a count per
+              UTC day, client name and API route. The client name is one of a short fixed list:{" "}
+              <code>vet402-hermes/</code> followed by the plugin version for the Hermes plugin,{" "}
+              <code>self-monitor</code> for our own monitoring, <code>crawler</code>,{" "}
+              <code>site</code> for calls made by pages on vet402.com, <code>browser</code>, or{" "}
+              <code>other</code>. We read the User-Agent header, and for browsers whether the request
+              came from a vet402.com page, only to pick that name. We do not store the User-Agent
+              text, the IP address, the URL or query being looked up, or any API key with these counts
             </li>
             <li>
               <strong>Disputes</strong> (<code>disputes</code>): the endpoint the dispute is about,
@@ -255,8 +261,8 @@ export default async function PrivacyPage() {
             below.
           </p>
           <p>
-            Hermes plugin call counts are kept without an expiry date. Each row is a count for one
-            day, plugin version and API route, and holds nothing that identifies who made the calls.
+            Key-less API call counts are kept without an expiry date. Each row is a count for one
+            day, client name and API route, and holds nothing that identifies who made the calls.
           </p>
         </section>
 

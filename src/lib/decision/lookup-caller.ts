@@ -41,8 +41,8 @@ export function ipCounterKey(ip: string): string {
   return `${full.slice(0, 4).map((p) => p.replace(/^0+(?=.)/, "")).join(":")}::/64`;
 }
 
-/** vet402 自身の公開面の origin（売り手頁の自動の呼び出しを見分ける）。 */
-const OWN_ORIGINS = new Set(["https://vet402.com", "https://www.vet402.com"]);
+/** vet402 自身の公開面の origin（売り手頁の自動の呼び出しを見分ける。client-usage.ts も同じ値で自サイトの頁を見分ける）。 */
+export const OWN_ORIGINS: ReadonlySet<string> = new Set(["https://vet402.com", "https://www.vet402.com"]);
 
 /**
  * 問い合わせを数えない要求か（2026-09-29 監査 6 周目）: ブラウザが別サイトから送った（`Sec-Fetch-Site: cross-site`）、

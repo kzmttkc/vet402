@@ -1381,13 +1381,14 @@ export const tokyoMutationLog = pgTable("tokyo_mutation_log", {
 });
 
 /**
- * client_usage_daily（2026-10-07）— vet402 を呼ぶ既知の公開クライアントの日別の呼び出し件数だけを数える表。
- * 今は User-Agent が `vet402-hermes/` で始まる呼び出し（NousResearch の Hermes カタログに載ったプラグイン）だけを、
+ * client_usage_daily（2026-10-07・2026-10-11 に範囲を広げた）— 鍵なしの公開 API の呼び出し件数だけを、日・client・ルートごとに数える表。
  * 鍵なしの /api/v1/resolve と /api/v1/resources/{id}/decision で数える（src/lib/api/client-usage.ts）。
+ * 10-07 は User-Agent が `vet402-hermes/` で始まる呼び出しだけ、10-11 からは鍵なしの呼び出しの全部
+ * （client は少数の決まった名前: `vet402-hermes/<版>`・self-monitor・crawler・site・browser・other）。
  * 鍵なしの呼び出しは api_usage に残らず、Vercel のログにも User-Agent が出ないため、他に数える場所が無い。
  *
- * 持つのは (UTC 日, クライアント名/版, ルート名, 件数) だけ。IP・URL・クエリ・鍵・resource_id は持たない
- * （client は正規表現で `vet402-hermes/<版>` に切り詰めた値で、UA の残りは捨てる）。
+ * 持つのは (UTC 日, client, ルート名, 件数) だけ。IP・URL・クエリ・鍵・resource_id・UA の生の文字列は持たない
+ * （client は clientUsageLabel が選んだ名前で、UA の文字列は捨てる）。
  * 誰の呼び出しかを結び付ける材料が無いので保持期限は置かない。
  * SQL: scripts/sql/2026-10-07-client-usage-daily.sql
  */
@@ -1396,7 +1397,7 @@ export const clientUsageDaily = pgTable(
   {
     /** UTC 日 */
     day: date("day", { mode: "string" }).notNull(),
-    /** `vet402-hermes/0.1.0` のような既知クライアントの名前と版（src/lib/api/client-usage.ts clientUsageLabel） */
+    /** `vet402-hermes/0.1.0`・`self-monitor`・`browser` のような決まった名前（src/lib/api/client-usage.ts clientUsageLabel） */
     client: text("client").notNull(),
     /** resolve | decision */
     route: text("route").notNull(),
