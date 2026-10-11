@@ -3,9 +3,11 @@
 //
 //  1. どの UA も、少数の決まった名前（配布物の `<名前>/<版>`・`<名前>/other`・self-monitor・crawler・site・browser・other）
 //     のどれかに寄る。UA の文字列そのものは値にならない
-//  2. 自社の監視（`vet402-` / `kizuna-` で始まり配布物でない UA）は self-monitor。リポにある自社の UA を全部当てる
+//  2. 自社の監視（先頭の名前が SELF_MONITOR_NAMES にある UA・`kizuna-` で始まる UA）は self-monitor。表に無い
+//     `vet402-<何か>` は other。vet402 リポが名乗る `vet402-` の UA は全部、表か配布物にある（リポを走査して固定）
 //  3. 書く値は日・client・route と 1 だけ（UA の残り・Referer・IP・鍵は渡らない）
-//  4. DB が投げても（同期でも非同期でも）記帳は外へ投げない
+//  4. Authorization ヘッダが付いた呼び出しは予約しない（鍵なしの数に入れない）
+//  5. DB が投げても（同期でも非同期でも）記帳は外へ投げない
 // 本物の DB とルートを通す検査は tests/client-usage.pg.test.ts。
 // ============================================================
 import { test, afterEach } from "node:test";
@@ -20,9 +22,11 @@ import {
   HERMES_OTHER_VERSION,
   OTHER_CLIENT,
   SELF_MONITOR_CLIENT,
+  SELF_MONITOR_NAMES,
   SITE_CLIENT,
   clientUsageLabel,
   clientUsageOverflowLabel,
+  isKeylessRequest,
   isOwnPageRequest,
   recordClientUsage,
   upsertClientUsage,
@@ -50,7 +54,20 @@ test("clientUsageLabel: vet402-hermes/ は版だけを残す（配布物）", ()
   // 配布物の名前は先頭に完全一致するときだけ（大文字・途中・別名は配布物にしない）
   assert.equal(clientUsageLabel("VET402-HERMES/0.1.0"), OTHER_CLIENT);
   assert.equal(clientUsageLabel("Mozilla/5.0 vet402-hermes/0.1.0"), BROWSER_CLIENT);
-  assert.equal(clientUsageLabel("vet402-hermes-fork/0.1.0"), SELF_MONITOR_CLIENT);
+  assert.equal(clientUsageLabel("vet402-hermes-fork/0.1.0"), OTHER_CLIENT);
+});
+
+test("clientUsageLabel: vet402-sdk/ と vet402-mcp/ も配布物（パッケージが名乗り始めた版からここに入る）", () => {
+  assert.deepEqual([...DISTRIBUTED_CLIENTS], ["vet402-hermes", "vet402-sdk", "vet402-mcp"]);
+  assert.equal(clientUsageLabel("vet402-sdk/0.5.0 (+https://vet402.com)"), "vet402-sdk/0.5.0");
+  assert.equal(clientUsageLabel("vet402-sdk/0.6.0"), "vet402-sdk/0.6.0");
+  assert.equal(clientUsageLabel("vet402-mcp/0.9.0"), "vet402-mcp/0.9.0");
+  assert.equal(clientUsageLabel("vet402-mcp/0.9.0; node"), "vet402-mcp/0.9.0");
+  assert.equal(clientUsageLabel("vet402-sdk/next"), "vet402-sdk/other");
+  assert.equal(clientUsageLabel("vet402-mcp/1.0.0-beta.1"), "vet402-mcp/other");
+  // 名前の途中までの一致は配布物にしない
+  assert.equal(clientUsageLabel("vet402-sdk-python/0.1.0"), OTHER_CLIENT);
+  assert.equal(clientUsageLabel("vet402-mcp-server/0.9.0"), OTHER_CLIENT);
 });
 
 test("clientUsageLabel: 自社の監視は self-monitor（リポにある自社の UA を全部当てる）", () => {
@@ -73,12 +90,67 @@ test("clientUsageLabel: 自社の監視は self-monitor（リポにある自社�
   ]) {
     assert.equal(clientUsageLabel(ua), SELF_MONITOR_CLIENT, ua);
   }
-  // UA を名乗っていない配布物の名前は、足すまで self-monitor（少なく数える側）。足したら配布物になる
-  assert.equal(clientUsageLabel("vet402-sdk/0.5.0 (+https://vet402.com)"), SELF_MONITOR_CLIENT);
-  assert.equal(clientUsageLabel("vet402-mcp/0.9.0"), SELF_MONITOR_CLIENT);
-  assert.deepEqual([...DISTRIBUTED_CLIENTS], ["vet402-hermes"]);
+  // 先頭の名前の完全一致だけ（版や括弧が続いてもよい。名前が長い・短いものは自社にしない）
+  assert.equal(clientUsageLabel("vet402-claims-canary/2.0 (ci)"), SELF_MONITOR_CLIENT);
+  assert.equal(clientUsageLabel("vet402-claims-canary;x"), SELF_MONITOR_CLIENT);
+  assert.equal(clientUsageLabel("vet402-claims-canary-x"), OTHER_CLIENT);
+  assert.equal(clientUsageLabel("vet402-claims"), OTHER_CLIENT);
+  assert.equal(clientUsageLabel("vet402-observatory-l2/1.0"), OTHER_CLIENT);
+  // 表に無い `vet402-<何か>` は自社とは限らない（第三者が vet402 を使う道具にそう名付け得る）ので other
+  assert.equal(clientUsageLabel("vet402-langchain/0.1.0"), OTHER_CLIENT);
+  assert.equal(clientUsageLabel("vet402-"), OTHER_CLIENT);
+  assert.equal(clientUsageLabel("vet402"), OTHER_CLIENT);
   // 先頭でなければ自社にしない
   assert.equal(clientUsageLabel("curl/8.7.1 vet402-claims-canary"), OTHER_CLIENT);
+  assert.equal(clientUsageLabel("curl/8.7.1 kizuna-grant-figures/1"), OTHER_CLIENT);
+});
+
+test("vet402 リポが名乗る `vet402-` の UA は全部、self-monitor か配布物に寄る（足し忘れを落とす）", async () => {
+  const { readdirSync, readFileSync, statSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const roots = ["scripts", "src", ".github", "packages/sdk/src", "packages/mcp-server/src", "packages/middleware/src", "packages/rwa/src", "packages/rwa/scripts"];
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e === "node_modules" || e === "dist" || e === ".next") continue;
+      const p = join(dir, e);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (/\.(ts|tsx|mjs|js|py|sh|yml|yaml)$/.test(e)) files.push(p);
+    }
+  };
+  for (const r of roots) walk(r);
+  assert.ok(files.length > 100, `走査が空に近い: ${files.length}`);
+  // UA として書かれた `vet402-<名前>`: 引用符の直後で、版（/数字）が続くか、user-agent / UA の行にあるもの
+  const found = new Map<string, string>();
+  for (const f of files) {
+    if (f === join("src", "lib", "api", "client-usage.ts")) continue; // 表そのもの
+    const lines = readFileSync(f, "utf8").split("\n");
+    lines.forEach((line, i) => {
+      for (const m of line.matchAll(/["'`](vet402-[a-z0-9-]*[a-z0-9])(\/\d)?/g)) {
+        if (!m[2] && !/user-agent|\bUA\b|USER_AGENT/i.test(line)) continue;
+        if (!found.has(m[1])) found.set(m[1], `${f}:${i + 1}`);
+      }
+    });
+  }
+  // 計器が見えていること: 毎日この 2 つの口を呼ぶカナリアと、公開している測定の UA を拾えている
+  for (const must of ["vet402-surface-consistency-canary", "vet402-claims-canary", "vet402-observatory-l0", "vet402-observatory-l1", "vet402-sdk"]) {
+    assert.ok(found.has(must), `走査が ${must} を拾えていない`);
+  }
+  const distributed = DISTRIBUTED_CLIENTS as readonly string[];
+  const unregistered = [...found].filter(([name]) => !distributed.includes(name) && !SELF_MONITOR_NAMES.includes(name));
+  assert.deepEqual(unregistered, [], "src/lib/api/client-usage.ts の SELF_MONITOR_NAMES か DISTRIBUTED_CLIENTS に足す");
+  for (const [name] of found) {
+    const label = clientUsageLabel(`${name}/1.0.0 (+https://vet402.com)`);
+    assert.ok(label === SELF_MONITOR_CLIENT || distributed.some((d) => label === `${d}/1.0.0`), `${name} → ${label}`);
+  }
+  // 表の名前は互いに重ならない（配布物と自社の両方に同じ名前を置かない）
+  for (const name of SELF_MONITOR_NAMES) assert.ok(!distributed.includes(name), name);
 });
 
 test("clientUsageLabel: crawler・site・browser・other", () => {
@@ -107,8 +179,10 @@ test("clientUsageLabel: crawler・site・browser・other", () => {
 });
 
 test("clientUsageLabel: 返る値は決まった名前だけ（UA の文字列そのものは値にならない）", () => {
-  const allowed = (v: string) => FIXED_CLIENTS.includes(v) || /^vet402-hermes\/(\d{1,3}\.\d{1,3}\.\d{1,3}|other)$/.test(v);
+  const allowed = (v: string) => FIXED_CLIENTS.includes(v) || /^vet402-(hermes|sdk|mcp)\/(\d{1,3}\.\d{1,3}\.\d{1,3}|other)$/.test(v);
   const samples = [
+    "vet402-sdk/" + "9".repeat(400),
+    "vet402-mcp/1.2.3/../../etc",
     "x".repeat(10_000),
     "secret-internal-agent/9.9.9 (token=abc123; user=alice@example.com)",
     "https://example.com/?q=private",
@@ -138,6 +212,9 @@ test("clientUsageLabel: 返る値は決まった名前だけ（UA の文字列�
 test("clientUsageOverflowLabel: 配布物の版は <名前>/other、決まった名前は自分自身", () => {
   assert.equal(clientUsageOverflowLabel("vet402-hermes/0.1.0"), HERMES_OTHER_VERSION);
   assert.equal(clientUsageOverflowLabel(HERMES_OTHER_VERSION), HERMES_OTHER_VERSION);
+  assert.equal(clientUsageOverflowLabel("vet402-sdk/0.6.0"), "vet402-sdk/other");
+  assert.equal(clientUsageOverflowLabel("vet402-mcp/0.9.0"), "vet402-mcp/other");
+  assert.equal(clientUsageOverflowLabel("vet402-mcp/other"), "vet402-mcp/other");
   for (const fixed of FIXED_CLIENTS) assert.equal(clientUsageOverflowLabel(fixed), fixed);
   // 表に無い名前が渡っても、その文字列を寄せ先にしない
   assert.equal(clientUsageOverflowLabel("anything/1.0.0"), OTHER_CLIENT);
@@ -167,6 +244,23 @@ test("recordClientUsage: どの UA でも応答後の処理を 1 つ予約する
   assert.equal(tasks.length, 3);
 });
 
+test("recordClientUsage: Authorization ヘッダが付いた呼び出しは予約しない（鍵なしの数に入れない）", () => {
+  const tasks: Array<() => Promise<void>> = [];
+  setAfterResponseSchedulerForTest((task) => tasks.push(task));
+  // 鍵が正しいかは見ない（resolve は鍵を検証しない）。付いていれば鍵なしではない
+  recordClientUsage(new Headers({ "user-agent": "node", authorization: "Bearer vk_live_secret" }), "resolve");
+  recordClientUsage(new Headers({ "user-agent": "vet402-hermes/0.1.0", authorization: "Bearer x" }), "decision");
+  recordClientUsage(new Headers({ "user-agent": "curl/8.7.1", authorization: "Basic abc" }), "resolve");
+  assert.equal(tasks.length, 0);
+  assert.equal(isKeylessRequest(new Headers({ authorization: "Bearer x" })), false);
+  // 空・空白だけの Authorization は鍵なし（decision ルートの admit と同じ見方）
+  assert.equal(isKeylessRequest(new Headers()), true);
+  assert.equal(isKeylessRequest(new Headers({ authorization: "" })), true);
+  assert.equal(isKeylessRequest(new Headers({ authorization: "   " })), true);
+  recordClientUsage(new Headers({ "user-agent": "node", authorization: "  " }), "resolve");
+  assert.equal(tasks.length, 1);
+});
+
 test("recordClientUsage: 書く値は日・client・route と 1 だけ（URL や IP は渡らない）", async () => {
   const tasks: Array<() => Promise<void>> = [];
   setAfterResponseSchedulerForTest((task) => tasks.push(task));
@@ -178,7 +272,7 @@ test("recordClientUsage: 書く値は日・client・route と 1 だけ（URL や
     },
   });
   recordClientUsage(
-    new Headers({ "user-agent": "vet402-hermes/0.1.0", "x-forwarded-for": "203.0.113.7", authorization: "Bearer vk_live_secret" }),
+    new Headers({ "user-agent": "vet402-hermes/0.1.0", "x-forwarded-for": "203.0.113.7", cookie: "session=vk_live_secret" }),
     "decision",
   );
   assert.equal(tasks.length, 1);
@@ -249,6 +343,7 @@ test("プライバシーポリシーがこの表と保存しない値を書い�
   // 頁が挙げる名前は、実装が返す名前の全部（配布物の先頭と FIXED_CLIENTS）
   for (const name of DISTRIBUTED_CLIENTS) assert.ok(page.includes(`<code>${name}/</code>`), name);
   for (const name of FIXED_CLIENTS) assert.ok(page.includes(`<code>${name}</code>`), name);
+  assert.match(page, /<code>self-monitor<\/code> for the monitoring tools we run ourselves/);
   assert.match(page, /We do not store the User-Agent text, the IP address, the URL or query being looked up, or any API key/);
   assert.match(page, /Key-less API call counts are kept without an expiry date/);
   assert.doesNotMatch(page, /Hermes plugin call counts/);

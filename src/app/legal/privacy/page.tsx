@@ -132,12 +132,13 @@ export default async function PrivacyPage() {
               <strong>Key-less API call counts</strong> (<code>client_usage_daily</code>): for
               requests to the public resolve and decision APIs made without an API key, a count per
               UTC day, client name and API route. The client name is one of a short fixed list:{" "}
-              <code>vet402-hermes/</code> followed by the plugin version for the Hermes plugin,{" "}
-              <code>self-monitor</code> for our own monitoring, <code>crawler</code>,{" "}
-              <code>site</code> for calls made by pages on vet402.com, <code>browser</code>, or{" "}
-              <code>other</code>. We read the User-Agent header, and for browsers whether the request
-              came from a vet402.com page, only to pick that name. We do not store the User-Agent
-              text, the IP address, the URL or query being looked up, or any API key with these counts
+              <code>vet402-hermes/</code>, <code>vet402-sdk/</code> or <code>vet402-mcp/</code>{" "}
+              followed by a version number for the tools we publish, <code>self-monitor</code> for
+              the monitoring tools we run ourselves, <code>crawler</code>, <code>site</code> for
+              calls made by pages on vet402.com, <code>browser</code>, or <code>other</code>. We read
+              the User-Agent header, and for browsers whether the request came from a vet402.com
+              page, only to pick that name. We do not store the User-Agent text, the IP address, the
+              URL or query being looked up, or any API key with these counts
             </li>
             <li>
               <strong>Disputes</strong> (<code>disputes</code>): the endpoint the dispute is about,

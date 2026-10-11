@@ -1384,7 +1384,8 @@ export const tokyoMutationLog = pgTable("tokyo_mutation_log", {
  * client_usage_daily（2026-10-07・2026-10-11 に範囲を広げた）— 鍵なしの公開 API の呼び出し件数だけを、日・client・ルートごとに数える表。
  * 鍵なしの /api/v1/resolve と /api/v1/resources/{id}/decision で数える（src/lib/api/client-usage.ts）。
  * 10-07 は User-Agent が `vet402-hermes/` で始まる呼び出しだけ、10-11 からは鍵なしの呼び出しの全部
- * （client は少数の決まった名前: `vet402-hermes/<版>`・self-monitor・crawler・site・browser・other）。
+ * （client は少数の決まった名前: `vet402-hermes/<版>`・`vet402-sdk/<版>`・`vet402-mcp/<版>`・self-monitor・crawler・site・browser・other。
+ * 数えるのは Authorization ヘッダが空で、200 を返した呼び出しだけ）。
  * 鍵なしの呼び出しは api_usage に残らず、Vercel のログにも User-Agent が出ないため、他に数える場所が無い。
  *
  * 持つのは (UTC 日, client, ルート名, 件数) だけ。IP・URL・クエリ・鍵・resource_id・UA の生の文字列は持たない

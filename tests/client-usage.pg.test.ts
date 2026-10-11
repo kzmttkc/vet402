@@ -2,13 +2,14 @@
 // client_usage_daily（2026-10-07・2026-10-11 に鍵なしの全部へ）— 本物の DB で、ルートまで通す。
 //
 //  1. scripts/sql/2026-10-07-client-usage-daily.sql は再実行してよい
-//  2. 鍵なしの /resolve と /decision（判定を返した 200）は (UTC 日, client, ルート) を 1 ずつ増やす。
-//     client は決まった名前（vet402-hermes/<版>・self-monitor・crawler・site・browser・other）のどれか
+//  2. 鍵なしで 200 を返した /resolve と /decision は (UTC 日, client, ルート) を 1 ずつ増やす。
+//     client は決まった名前（vet402-hermes|sdk|mcp/<版>・self-monitor・crawler・site・browser・other）のどれか
 //  3. 自社の監視（self-monitor）は別の行になり、利用の数字から除ける
 //  4. 表の中に UA の生の文字列・URL・クエリ・IP・resource_id は入らない
-//  5. 鍵つきの decision は数えない（api_usage が数える）
-//  6. UA を名乗るだけでは書き込みを増やせない: 枠で断った呼び出し・枠を戻す decision の 400/404 は数えない。
-//     版を変えながら叩いても、1 日の client の種類は MAX_CLIENTS_PER_DAY（＋ other ＋ 決まった名前）で止まる
+//  5. 鍵つき（Authorization ヘッダが付いた）呼び出しは、resolve も decision も数えない
+//  6. UA を名乗るだけでは書き込みを増やせない: 枠で断った呼び出し・resolve の 400・枠を戻す decision の 400/404 は
+//     数えない。版を変えながら叩いても、1 日の版つきの client の種類は MAX_CLIENTS_PER_DAY で止まる
+//     （決まった名前と <名前>/other はその数に入らない）
 //  7. 表が無い（書き込みが失敗する）ときも、応答の status・本文・ヘッダは書き込めたときと同じ
 //
 // Run: TEST_DATABASE_URL=postgres://localhost/vet402_observatory_test \
@@ -31,7 +32,7 @@ if (!TEST_DB) {
     const { join } = await import("node:path");
     const { getDb } = await import("@/lib/db/client");
     const { setAfterResponseSchedulerForTest } = await import("@/lib/util/after-response");
-    const { MAX_CLIENTS_PER_DAY, HERMES_OTHER_VERSION, FIXED_CLIENTS } = await import("@/lib/api/client-usage");
+    const { MAX_CLIENTS_PER_DAY, HERMES_OTHER_VERSION, FIXED_CLIENTS, DISTRIBUTED_CLIENTS } = await import("@/lib/api/client-usage");
     const { createApiKey } = await import("@/lib/db/api-keys");
     const { syncCatalog } = await import("@/lib/observatory/catalog-sync");
     const { parseCatalogItem } = await import("@/lib/observatory/catalog-source");
@@ -84,8 +85,8 @@ if (!TEST_DB) {
       if (ua) h["user-agent"] = ua;
       return h;
     };
-    const resolve = async (ua: string | null, ip = nextIp(), extra: Record<string, string> = {}) => {
-      const res = await resolveGET(new NextRequest(`http://localhost/api/v1/resolve?q=${encodeURIComponent(TARGET)}`, { headers: headersFor(ua, ip, extra) }));
+    const resolve = async (ua: string | null, ip = nextIp(), extra: Record<string, string> = {}, query = `q=${encodeURIComponent(TARGET)}`) => {
+      const res = await resolveGET(new NextRequest(`http://localhost/api/v1/resolve?${query}`, { headers: headersFor(ua, ip, extra) }));
       return { status: res.status, body: await res.json(), headers: res.headers };
     };
     const decision = async (ua: string | null, rid = RID, ip = nextIp(), extra: Record<string, string> = {}) => {
@@ -162,7 +163,7 @@ if (!TEST_DB) {
         const dump = JSON.stringify(all);
         assert.doesNotMatch(dump, /zensched|https?:|198\.51\.100\.|Mozilla|Chrome|Googlebot|curl|kizuna|canary|grant-figures|"node"/);
         assert.ok(!dump.includes(RID));
-        const allowed = (v: string) => FIXED_CLIENTS.includes(v) || /^vet402-hermes\/(\d{1,3}\.\d{1,3}\.\d{1,3}|other)$/.test(v);
+        const allowed = (v: string) => FIXED_CLIENTS.includes(v) || /^vet402-(hermes|sdk|mcp)\/(\d{1,3}\.\d{1,3}\.\d{1,3}|other)$/.test(v);
         for (const r of all) assert.ok(allowed(String(r.client)), String(r.client));
         const cols = rows(
           await db.execute(sql`SELECT column_name FROM information_schema.columns WHERE table_name = 'client_usage_daily' ORDER BY ordinal_position`),
@@ -187,6 +188,55 @@ if (!TEST_DB) {
         assert.deepEqual(await table(), [{ day: today, client: "vet402-hermes/0.1.0", route: "decision", count: 1 }]);
         await db.execute(sql`DELETE FROM api_usage WHERE api_key_id = ${issued.id}`);
         await db.execute(sql`DELETE FROM api_keys WHERE id = ${issued.id}`);
+      });
+
+      await t.test("鍵つきの resolve は数えない（SDK と MCP サーバは鍵があれば resolve にも Authorization を付ける）", async () => {
+        await reset();
+        const issued = await createApiKey({ name: "client-usage-test-resolve" });
+        // 有効な鍵・誤った鍵・Bearer でない Authorization のどれも、答えは同じ 200 で、鍵なしの数には入らない
+        for (const auth of [`Bearer ${issued.key}`, "Bearer vk_live_not_a_key", "Basic abc"]) {
+          for (const ua of ["node", "vet402-sdk/0.6.0", "vet402-hermes/0.1.0", CHROME, null]) {
+            assert.equal((await resolve(ua, nextIp(), { authorization: auth })).status, 200);
+          }
+        }
+        await drain();
+        assert.deepEqual(await table(), []);
+        // 同じ UA の鍵なしは数える。空白だけの Authorization も鍵なし
+        assert.equal((await resolve("node")).status, 200);
+        assert.equal((await resolve("node", nextIp(), { authorization: "  " })).status, 200);
+        assert.equal((await resolve("vet402-sdk/0.6.0")).status, 200);
+        await drain();
+        assert.deepEqual(await table(), [
+          { day: today, client: "other", route: "resolve", count: 2 },
+          { day: today, client: "vet402-sdk/0.6.0", route: "resolve", count: 1 },
+        ]);
+        await db.execute(sql`DELETE FROM api_usage WHERE api_key_id = ${issued.id}`);
+        await db.execute(sql`DELETE FROM api_keys WHERE id = ${issued.id}`);
+      });
+
+      await t.test("resolve の 400 は数えない（枠は消費したまま。数えるのは 200 だけ）", async () => {
+        await reset();
+        const ip = "203.0.113.70";
+        const bad = [
+          await resolve("curl/8.7.1", ip, {}, ""),
+          await resolve("curl/8.7.1", ip, {}, "q="),
+          await resolve("vet402-hermes/0.1.0", ip, {}, `q=${encodeURIComponent(TARGET)}&method=NOT-A-METHOD`),
+          await resolve(CHROME, ip, {}, `q=${encodeURIComponent("x".repeat(3000))}`),
+        ];
+        assert.deepEqual(bad.map((r) => r.status), [400, 400, 400, 400]);
+        await drain();
+        assert.deepEqual(await table(), []);
+        // 400 は枠を戻さない: 同じ IP で 400 を重ねると 429 になる。その間も 1 件も数えない
+        const statuses: number[] = [];
+        for (let i = 0; i < 62; i++) statuses.push((await resolve("curl/8.7.1", ip, {}, "")).status);
+        await drain();
+        assert.ok(statuses.includes(429));
+        assert.equal(statuses.filter((x) => x === 400).length, 60 - bad.length);
+        assert.deepEqual(await table(), []);
+        // 別の IP の 200 は数える
+        assert.equal((await resolve("curl/8.7.1")).status, 200);
+        await drain();
+        assert.deepEqual(await table(), [{ day: today, client: "other", route: "resolve", count: 1 }]);
       });
 
       await t.test("decision の 400/404（枠を戻す）は数えない・同じ IP の繰り返しは枠の数で止まる", async () => {
@@ -260,8 +310,46 @@ if (!TEST_DB) {
         for (let i = 0; i < 6; i++) await resolve(`vet402-made-up-${i}/1.0.${i}`);
         await drain();
         const kinds = rows(await db.execute(sql`SELECT DISTINCT client FROM client_usage_daily WHERE day = ${today}::date`)).map((r) => String(r.client));
-        assert.ok(kinds.length <= MAX_CLIENTS_PER_DAY + 1 + FIXED_CLIENTS.length, String(kinds.length));
+        assert.ok(kinds.length <= MAX_CLIENTS_PER_DAY + DISTRIBUTED_CLIENTS.length + FIXED_CLIENTS.length, String(kinds.length));
         assert.ok(!kinds.some((k) => k.includes("made-up") || k.startsWith("vet402-hermes/9.9.")));
+      });
+
+      await t.test("上限に数えるのは版つきの client だけ（決まった名前と <名前>/other が先に並んでも、版の枠は減らない）", async () => {
+        await reset();
+        // 日付が変わった直後に、決まった名前の全部と、版の形でない配布物の UA が先に来る
+        await resolve("curl/8.7.1");
+        await resolve(CHROME);
+        await resolve(CHROME, nextIp(), { "sec-fetch-site": "same-origin" });
+        await resolve("Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)");
+        await resolve(CANARY);
+        await resolve("vet402-hermes/not-a-version");
+        await resolve("vet402-sdk/next");
+        await resolve("vet402-mcp/");
+        await drain();
+        const kindsOf = async () =>
+          rows(await db.execute(sql`SELECT DISTINCT client FROM client_usage_daily WHERE day = ${today}::date`)).map((r) => String(r.client)).sort();
+        assert.deepEqual(await kindsOf(), ["browser", "crawler", "other", "self-monitor", "site", "vet402-hermes/other", "vet402-mcp/other", "vet402-sdk/other"]);
+        // それでも版つきの client は上限の数だけ、自分の行を持てる（配布物の名前をまたいで合わせて上限）
+        const versioned: string[] = [];
+        for (let i = 0; i < MAX_CLIENTS_PER_DAY; i++) versioned.push(`${DISTRIBUTED_CLIENTS[i % DISTRIBUTED_CLIENTS.length]}/1.0.${i}`);
+        for (const v of versioned) await resolve(v);
+        await drain();
+        const kinds = await kindsOf();
+        for (const v of versioned) assert.ok(kinds.includes(v), v);
+        assert.equal(kinds.length, 8 + MAX_CLIENTS_PER_DAY);
+        // 上限の次の版は、その配布物の other へ（ほかの配布物の other や決まった名前には混ざらない）
+        const before = Object.fromEntries(rows(await db.execute(sql`SELECT client, count::int AS n FROM client_usage_daily WHERE route = 'resolve'`)).map((r) => [String(r.client), Number(r.n)]));
+        await resolve("vet402-sdk/7.7.7");
+        await resolve("vet402-mcp/7.7.7");
+        await resolve("vet402-mcp/7.7.8");
+        await drain();
+        const after = Object.fromEntries(rows(await db.execute(sql`SELECT client, count::int AS n FROM client_usage_daily WHERE route = 'resolve'`)).map((r) => [String(r.client), Number(r.n)]));
+        assert.equal(after["vet402-sdk/other"], before["vet402-sdk/other"] + 1);
+        assert.equal(after["vet402-mcp/other"], before["vet402-mcp/other"] + 2);
+        assert.equal(after["vet402-hermes/other"], before["vet402-hermes/other"]);
+        assert.equal(after["other"], before["other"]);
+        assert.equal((await kindsOf()).length, 8 + MAX_CLIENTS_PER_DAY);
+        assert.equal(await total("resolve"), 8 + MAX_CLIENTS_PER_DAY + 3);
       });
 
       await t.test("書き込みが失敗しても応答は書き込めたときと同じ", async () => {

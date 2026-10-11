@@ -6,29 +6,35 @@
 // 呼び出しだけを数えた。10-11 から、鍵なしの呼び出しを全部、少数の決まった名前（client）に寄せて数える。
 //
 // client の値（clientUsageLabel。上から順に当てる）:
-//   vet402-hermes/<版> … 配布物（利用者の手元で動く）。DISTRIBUTED_CLIENTS にある名前だけ。版は数字 3 組の semver、
+//   vet402-hermes/<版>・vet402-sdk/<版>・vet402-mcp/<版>
+//                      … 配布物（利用者の手元で動く）。DISTRIBUTED_CLIENTS にある名前だけ。版は数字 3 組の semver、
 //                         それ以外は `<名前>/other`
-//   self-monitor       … 自社のカナリアと監視。UA が `vet402-` か `kizuna-` で始まり、配布物の名前でないもの
-//                         （scripts/surface-consistency-canary.ts の `vet402-surface-consistency-canary` など）。
-//                         利用の数字から除くために分ける
+//   self-monitor       … 自社のカナリアと監視。UA の先頭の名前が SELF_MONITOR_NAMES にあるもの
+//                         （scripts/surface-consistency-canary.ts の `vet402-surface-consistency-canary` など）か、
+//                         `kizuna-` で始まるもの。利用の数字から除くために分ける。表に無い `vet402-<何か>` は
+//                         自社のものとは限らない（第三者が vet402 を使う道具にそう名付け得る）ので other
 //   crawler            … UA に bot / crawl / spider / slurp を含む
 //   site               … ブラウザの UA（`Mozilla/` で始まる）で、vet402.com 自身の頁が呼んだもの
 //                         （`Sec-Fetch-Site: same-origin`、または Referer が自サイト。売り手頁は判定を自動で引く）
 //   browser            … それ以外のブラウザの UA
-//   other              … 上のどれでもない（UA 無し・curl・node・python など。SDK と MCP サーバは UA を名乗らないのでここ）
+//   other              … 上のどれでもない（UA 無し・curl・node・python など）。SDK と MCP サーバは今の版では UA を
+//                         名乗らない（Node の fetch の既定 `node`）のでここ。自社の skill-live（.github/workflows/
+//                         skill-live.yml・SKILL.md の curl をそのまま打つ・1 日数本）もここに混ざる
 // 保存するのは client_usage_daily の (UTC 日, client, ルート名, 件数) だけで、IP・URL・クエリ・鍵・resource_id・
 // UA の生の文字列・Referer は保存しない。ヘッダは名前を選ぶためだけに読む。
 // 名前はどれも呼び手の自己申告（UA は偽れる）。数は「誰が」ではなく「どの入口が何回」を読む。
 //
-// 鍵つきの呼び出しは数えない（decision は api_usage が鍵ごとに数えている。ルートの側で鍵なしのときだけ呼ぶ）。
-// resolve には鍵の経路が無い（Authorization を読まず、いつも IP 枠）ので、全部を数える。
+// 数えるのは鍵なしの呼び出しだけ（Authorization ヘッダが空。ルートの側で確かめてから呼ぶ）。decision の鍵つきは
+// api_usage が鍵ごとに数えている。resolve は Authorization を読まない（いつも IP 枠）が、SDK と MCP サーバは鍵が
+// 設定されていれば resolve にも Authorization を付けるので、付いている呼び出しは「鍵なし」の数に入れない。
 //
 // 応答を遅らせない: 書き込みは応答の後（runAfterResponse = next/server の after()）。
 // 失敗しても応答は変わらない: 例外はログへ出して捨てる。
-// 数えるのはレート枠を消費したまま返る呼び出しだけ（枠で断った 429/503、枠を戻す早期 return は数えない）。
-// UA を名乗るだけで書き込みを無制限に増やせないようにするため。resolve は枠を通った後、decision は判定を
-// 返す 200 の直前で呼ぶ（decision の 400/404/503 は枠を戻すので数えない）。版は semver だけを残し、1 日の
-// client の種類は MAX_CLIENTS_PER_DAY で止める（決まった名前は数が固定なので上限の外）。
+// 数えるのは、レート枠を消費したまま成功の応答（200）を返す呼び出しだけ。枠で断った 429/503 も、検証で落ちた
+// 400 も、404/503 も数えない（resolve の 400/503 は枠を消費するが数えない。decision の 400/404/503 は枠を戻す）。
+// 書き込みは枠の内側に収まる（UA を名乗るだけで書き込みを無制限に増やせない）。どちらのルートも 200 を返す直前で呼ぶ。
+// 版は semver だけを残し、1 日の版つきの client の種類は MAX_CLIENTS_PER_DAY で止める（決まった名前と
+// `<名前>/other` は呼び手が増やせないので、その数に入れない）。
 // resolve は CDN が 60 秒キャッシュする（public-route.ts）ので、キャッシュから返った呼び出しは関数に届かず
 // 数えられない。件数は「少なくともこれだけ」の下限として読む。
 // ============================================================
@@ -42,14 +48,37 @@ export type ClientUsageRoute = "resolve" | "decision";
 
 /**
  * 配布物（利用者の手元で動き、vet402 の API を呼ぶときにこの名前を UA に名乗るもの）。
- * 名乗っているのは今は Hermes プラグイン（github.com/kzmttkc/vet402-hermes・`vet402-hermes/0.1.0`）だけ。
- * @vet402/sdk と @vet402/mcp-server は UA を付けない（Node の fetch の既定 `node`）ので other に入る。
- * 新しい配布物に UA を付けるときは、出す前にここへ名前を足す——足さないと `vet402-` の規則で self-monitor に入り、
- * 利用の数字から除かれる（多く数える側ではなく、少なく数える側に倒してある）。
+ * - `vet402-hermes`: Hermes プラグイン（github.com/kzmttkc/vet402-hermes・`vet402-hermes/0.1.0`）。今も名乗っている
+ * - `vet402-sdk`・`vet402-mcp`: @vet402/sdk と @vet402/mcp-server の受け皿。今の版は vet402 の API へ UA を付けない
+ *   （Node の fetch の既定 `node` → other）。パッケージの側が名乗り始めた版から、ここに入る
+ * 新しい配布物に UA を付けるときは、出す前にここへ名前を足す（足さないと other に入る）。
  */
-export const DISTRIBUTED_CLIENTS = ["vet402-hermes"] as const;
-/** 自社の道具が名乗る UA の先頭（vet402 リポの scripts/ と Takeshi_Automation の scripts/ の監視はどれもこの形）。 */
-const SELF_PREFIXES = ["vet402-", "kizuna-"] as const;
+export const DISTRIBUTED_CLIENTS = ["vet402-hermes", "vet402-sdk", "vet402-mcp"] as const;
+/**
+ * 自社の道具が名乗る UA の先頭の名前（`/`・空白・`(`・`;` の前まで）。完全一致だけ。
+ * vet402 リポ: scripts/ のカナリア 2 本と、アプリが外へ出すときの名前（L0・L1 の測定、カタログ、照合、/rwa の頁）。
+ * Takeshi_Automation の scripts/: `vet402-<名前>/<版>` の 4 本。`kizuna-<名前>/<版>` は SELF_MONITOR_PREFIX で受ける。
+ * この 2 つの口を鍵なしで毎日呼ぶのは今は `vet402-surface-consistency-canary` だけ。ほかは呼んだときに混ざらないための登録。
+ * vet402 リポに `vet402-` の UA を足したら、ここにも足す（tests/client-usage.test.ts がリポを走査して落とす）。
+ */
+export const SELF_MONITOR_NAMES: readonly string[] = [
+  "vet402-surface-consistency-canary",
+  "vet402-claims-canary",
+  "vet402-observatory-l0",
+  "vet402-observatory-l0-recheck",
+  "vet402-observatory-l1",
+  "vet402-observatory-catalog",
+  "vet402-verifier",
+  "vet402-rwa-page",
+  "vet402-state-snapshot",
+  "vet402-weekly-facts",
+  "vet402-gtm-weekly",
+  "vet402-payer-balance",
+];
+/** Takeshi_Automation の監視が名乗る先頭（`kizuna-grant-figures/1` など）。社内の接頭辞で、配布物には使わない。 */
+const SELF_MONITOR_PREFIX = "kizuna-";
+/** UA の先頭の名前（product token）。`/`・空白・`(`・`;` の前まで。 */
+const UA_NAME_RE = /^[^/\s(;]+/;
 
 export const SELF_MONITOR_CLIENT = "self-monitor";
 export const CRAWLER_CLIENT = "crawler";
@@ -65,12 +94,16 @@ const CRAWLER_RE = /bot|crawl|spider|slurp/i;
 /** UA のうち名前を選ぶために読む長さ。それより後ろは見ない（長い UA で正規表現を回さない）。 */
 const UA_READ_CHARS = 512;
 /**
- * 1 日に持つ client の種類の上限。版は呼び手が名乗るので、上限を超えた新しい版はその日 `<名前>/other` に寄せる
- * （UA を変えながら叩いても、1 日の行数は (上限 + 配布物の other + 決まった名前) × ルート数で止まる）。
+ * 1 日に持つ**版つきの** client（`<配布物の名前>/<semver>`）の種類の上限。版は呼び手が名乗るので、上限を超えた
+ * 新しい版はその日 `<名前>/other` に寄せる。決まった名前と `<名前>/other` は呼び手が増やせないので数に入れない
+ * （決まった名前が先に並んでも、本物の版の枠は減らない）。UA を変えながら叩いても、1 日の行数は
+ * (上限 + 配布物の数の other + 決まった名前) × ルート数で止まる。
  */
 export const MAX_CLIENTS_PER_DAY = 16;
-/** `vet402-hermes/` で始まるが版が上の形でないもの。版の文字列は保存しない。 */
-export const HERMES_OTHER_VERSION = "vet402-hermes/other";
+/** 配布物の名前で始まるが版が上の形でないもの・上限を超えた版の寄せ先の末尾。版の文字列は保存しない。 */
+const OTHER_VERSION = "other";
+/** `vet402-hermes/` で始まるが版が上の形でないもの。 */
+export const HERMES_OTHER_VERSION = `vet402-hermes/${OTHER_VERSION}`;
 
 /**
  * vet402.com 自身の頁がブラウザから呼んだ要求か。`Sec-Fetch-Site: same-origin`（ブラウザが付け、頁の script は
@@ -98,9 +131,9 @@ export function clientUsageLabel(userAgent: string | null | undefined, ownPage =
   for (const name of DISTRIBUTED_CLIENTS) {
     if (!ua.startsWith(`${name}/`)) continue;
     const m = VERSION_RE.exec(ua.slice(name.length + 1));
-    return m ? `${name}/${m[1]}` : `${name}/other`;
+    return m ? `${name}/${m[1]}` : `${name}/${OTHER_VERSION}`;
   }
-  if (SELF_PREFIXES.some((p) => ua.startsWith(p))) return SELF_MONITOR_CLIENT;
+  if (ua.startsWith(SELF_MONITOR_PREFIX) || SELF_MONITOR_NAMES.includes(UA_NAME_RE.exec(ua)?.[0] ?? "")) return SELF_MONITOR_CLIENT;
   if (CRAWLER_RE.test(ua)) return CRAWLER_CLIENT;
   if (ua.startsWith("Mozilla/")) return ownPage ? SITE_CLIENT : BROWSER_CLIENT;
   return OTHER_CLIENT;
@@ -114,7 +147,7 @@ export function clientUsageOverflowLabel(client: string): string {
   if (FIXED_CLIENTS.includes(client)) return client;
   const slash = client.indexOf("/");
   const name = slash > 0 ? client.slice(0, slash) : "";
-  return (DISTRIBUTED_CLIENTS as readonly string[]).includes(name) ? `${name}/other` : OTHER_CLIENT;
+  return (DISTRIBUTED_CLIENTS as readonly string[]).includes(name) ? `${name}/${OTHER_VERSION}` : OTHER_CLIENT;
 }
 
 /** 1 件を加算する単文 upsert。失敗はログへ出して捨てる（呼び手へ投げない）。 */
@@ -131,13 +164,15 @@ export function upsertClientUsage(client: string, route: ClientUsageRoute, now: 
   const overflow = clientUsageOverflowLabel(client);
   let pending: PromiseLike<unknown>;
   try {
-    // その日に既にある client はそのまま、新しい client は種類が上限未満のときだけ。それ以外は overflow へ寄せる
-    // （決まった名前は overflow が自分自身なので、どちらの枝でも自分の行に足される）。
+    // その日に既にある client はそのまま、新しい client は版つきの種類が上限未満のときだけ。それ以外は overflow へ寄せる
+    // （決まった名前と `<名前>/other` は overflow が自分自身なので、どちらの枝でも自分の行に足される）。
+    // 上限に数えるのは版つきの client だけ（`/` を含み、末尾が `/other` でないもの）。
     pending = db.execute(
       sql`INSERT INTO client_usage_daily (day, client, route, count)
           SELECT ${day}::date,
                  CASE WHEN EXISTS (SELECT 1 FROM client_usage_daily WHERE day = ${day}::date AND client = ${client})
-                        OR (SELECT count(DISTINCT client) FROM client_usage_daily WHERE day = ${day}::date) < ${MAX_CLIENTS_PER_DAY}
+                        OR (SELECT count(DISTINCT client) FROM client_usage_daily
+                             WHERE day = ${day}::date AND position('/' in client) > 0 AND client NOT LIKE '%/other') < ${MAX_CLIENTS_PER_DAY}
                       THEN ${client} ELSE ${overflow} END,
                  ${route}, 1
           ON CONFLICT (day, client, route) DO UPDATE SET count = client_usage_daily.count + 1`,
@@ -151,12 +186,19 @@ export function upsertClientUsage(client: string, route: ClientUsageRoute, now: 
     .catch(logAndSwallowSafe("client_usage.record"));
 }
 
+/** Authorization ヘッダが空か（鍵なしの呼び出しか）。decision ルートの admit と同じ見方（空白だけは空）。 */
+export function isKeylessRequest(headers: Pick<Headers, "get">): boolean {
+  return (headers.get("authorization") ?? "").trim() === "";
+}
+
 /**
- * ルートから呼ぶ入口。鍵なしで、枠を消費したまま返る呼び出しのときだけ呼ぶ（呼ぶ場所はルートが決める）。
+ * ルートから呼ぶ入口。鍵なしで、枠を消費したまま成功の応答（200）を返す呼び出しのときだけ呼ぶ（呼ぶ場所はルートが決める）。
+ * Authorization ヘッダが付いた呼び出しは、ここでも数えない（ルートの確かめ漏れに備えた二重の関門）。
  * 応答の後に 1 件を加算する。同期的に返り、例外を外へ出さない。
  */
 export function recordClientUsage(headers: Headers, route: ClientUsageRoute): void {
   try {
+    if (!isKeylessRequest(headers)) return;
     const client = clientUsageLabel(headers.get("user-agent"), isOwnPageRequest(headers));
     const now = new Date();
     runAfterResponse(() => upsertClientUsage(client, route, now));

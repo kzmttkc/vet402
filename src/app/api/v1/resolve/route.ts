@@ -3,7 +3,7 @@ import { publicRateLimit } from "@/lib/api/public-route";
 import { resolve } from "@/lib/resolve/lookup";
 import { ACCEPTED_QUERY_FORMS, classifyQuery, explainInvalidQuery } from "@/lib/resolve/classify";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
-import { recordClientUsage } from "@/lib/api/client-usage";
+import { isKeylessRequest, recordClientUsage } from "@/lib/api/client-usage";
 
 // §7.3 / §9.1: GET /api/v1/resolve?q={url|domain|address|tx|payee_id}[&method=GET|POST|…]
 // キー不要。ID を持たない呼び手が「この URL / この受取先 / この tx は何か」を
@@ -14,9 +14,6 @@ export const maxDuration = 30;
 export async function GET(request: NextRequest) {
   const gate = await publicRateLimit(request, "resolve", 60);
   if (!gate.ok) return gate.response;
-  // 2026-10-07 / 10-11: 枠を通った呼び出しを、決まった client の名前に寄せて日別の件数で数える（応答の後・失敗しても
-  // 応答は変わらない）。このルートに鍵の経路は無い（Authorization を読まない）ので、全部が鍵なしの呼び出し。
-  recordClientUsage(request.headers, "resolve");
   const q = request.nextUrl.searchParams.get("q");
   // 2026-09-29 再監査（DX）: 400 の本文に原因（message）と直した q（suggestion）を載せる。
   // error / expected / query は従来どおり（既存の呼び手が見ている鍵を変えない）。
@@ -44,6 +41,11 @@ export async function GET(request: NextRequest) {
   }
   try {
     const result = await resolve(q, methodRaw ? { method: methodRaw.toUpperCase() } : {});
+    // 2026-10-07 / 10-11: 鍵なしの呼び出しを、決まった client の名前に寄せて日別の件数で数える（応答の後・失敗しても
+    // 応答は変わらない）。数えるのは 200 を返すときだけ（decision と同じ。400 と 503 は枠を消費するが数えない）。
+    // このルートは Authorization を読まない（鍵つきでも同じ IP 枠・同じ答え）が、SDK と MCP サーバは鍵が設定されて
+    // いれば resolve にも Authorization を付ける。付いている呼び出しは「鍵なし」の数に入れない（独立した点検・高）。
+    if (isKeylessRequest(request.headers)) recordClientUsage(request.headers, "resolve");
     return NextResponse.json(result, { headers: gate.cacheHeaders });
   } catch (error) {
     logServerErrorSafe("resolve", error);
