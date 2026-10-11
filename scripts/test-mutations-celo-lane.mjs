@@ -24,7 +24,7 @@
  * 各変異は `/* MUTANT *\/` を含む文字列に置き換えるので、復元漏れは `grep -rn MUTANT src` で機械的に見つかる。
  *
  * 2026-10-11: 遅れて決済された Celo の購入の回収（src/lib/settlements/recover-late.ts の Celo のレーンと読み手）の関門
- * C14〜C23 を足した。DB のテストは tests/late-settlement-celo.pg.test.ts、DB なしは tests/late-settlement-celo-reader.test.ts。
+ * C14〜C23 を足した。同日の点検（中 2 件）で C24〜C28（読む順・行ごとの窓・読めなかった組のログ・締切）を足した。DB のテストは tests/late-settlement-celo.pg.test.ts、DB なしは tests/late-settlement-celo-reader.test.ts。
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
@@ -184,7 +184,7 @@ const MUTATIONS = [
     rule: "RPC が読めない回は行を変えない（印も付けない）",
     file: RECOVER,
     needsDb: true,
-    find: "    if (nonces === null) return null;",
+    find: '    if (nonces === null) return { unreadable: "a candidate transaction\'s receipt could not be read" };',
     replace: "    if (nonces === null) /* MUTANT */ continue;",
   },
   {
@@ -236,8 +236,8 @@ const MUTATIONS = [
     what: "Celo の読み手が RPC の chainId を確かめない",
     rule: "別のチェーンの空の結果を「着金なし」と読まない",
     file: RECOVER,
-    find: "    if ((await c.getChainId()) !== CELO_CHAIN_ID) return null;",
-    replace: "    if (/* MUTANT */ false && (await c.getChainId()) !== CELO_CHAIN_ID) return null;",
+    find: "    if (chainId !== CELO_CHAIN_ID) return null;",
+    replace: "    if (/* MUTANT */ false && chainId !== CELO_CHAIN_ID) return null;",
   },
   {
     id: "C22",
@@ -254,6 +254,52 @@ const MUTATIONS = [
     file: RECOVER,
     find: "    if (headMs < to.getTime()) return null;",
     replace: "    if (/* MUTANT */ false && headMs < to.getTime()) return null;",
+  },
+  // ---- 2026-10-11 点検（中 2 件）: 読む順と、読む範囲 ----
+  {
+    id: "C24",
+    what: "Celo のレーンが応答なしの行を先頭に置かない",
+    rule: "応答なしの行は、新しい 402 の行より先に読む",
+    file: RECOVER,
+    needsDb: true,
+    find: "(CASE WHEN pu.http_status_paid IS NULL THEN 0 WHEN pu.http_status_paid = 402 THEN 2 ELSE 1 END) ASC,",
+    replace: "(CASE WHEN /* MUTANT */ FALSE THEN 0 WHEN pu.http_status_paid = 402 THEN 2 ELSE 1 END) ASC,",
+  },
+  {
+    id: "C25",
+    what: "Celo のレーンが 402 の行を最後に回さない",
+    rule: "402 の行は、ほかの応答の行の後に読む",
+    file: RECOVER,
+    needsDb: true,
+    find: "(CASE WHEN pu.http_status_paid IS NULL THEN 0 WHEN pu.http_status_paid = 402 THEN 2 ELSE 1 END) ASC,",
+    replace: "(CASE WHEN pu.http_status_paid IS NULL THEN 0 WHEN /* MUTANT */ FALSE THEN 2 ELSE 1 END) ASC,",
+  },
+  {
+    id: "C26",
+    what: "離れた行を 1 つの組として端から端まで読む",
+    rule: "窓が重ならない行は、行ごとの窓で読む",
+    file: RECOVER,
+    needsDb: true,
+    find: "        if (prev !== null && t - prev > winMs + backMs) idx++;",
+    replace: "        if (/* MUTANT */ false && prev !== null && t - prev > winMs + backMs) idx++;",
+  },
+  {
+    id: "C27",
+    what: "読めなかった組をログに出さない",
+    rule: "読めなかった組は 1 行ログに残す",
+    file: RECOVER,
+    needsDb: true,
+    find: "    if (!lane.rowWindows) continue;",
+    replace: "    if (/* MUTANT */ true || !lane.rowWindows) continue;",
+  },
+  {
+    id: "C28",
+    what: "呼び手の締切を Celo のレーンの持ち時間に掛けない",
+    rule: "締切を過ぎた回は Celo の行を読まない",
+    file: RECOVER,
+    needsDb: true,
+    find: '            typeof options.deadlineAt === "number" ? options.deadlineAt - Date.now() : Infinity,',
+    replace: '            /* MUTANT */ false && typeof options.deadlineAt === "number" ? options.deadlineAt - Date.now() : Infinity,',
   },
 ];
 

@@ -173,8 +173,14 @@ export const CHAIN_READ_AFTER_MINUTES = LATE_SETTLEMENT_WINDOW_MINUTES + 5;
 /**
  * Celo のレーンの持ち時間（2026-10-11）。Base の段（CHAIN_READ_BUDGET_MS）とは別に持つ——Base が持ち時間を使い切っても
  * Celo の行が読まれ、Celo の RPC が遅くても Base の段の時間を削らない。cron（index-settlements・300 秒）の中の最後の段。
+ *
+ * 2026-10-11 点検（中）: 15 秒では足りなかった。公開台帳のその日の Celo の未回収 6 行を forno 経由で読むと、5 行で
+ * 12.8 秒かかり 6 行目に届かなかった。30 秒にする。cron の各段の持ち時間の合計は
+ *   EVM の索引 120 + Solana の索引 60 + XRPL の索引 20 + Base の直読み 45 + Celo の直読み 30 = 275 秒（上限 300 秒）。
+ * 持ち時間の無い段（取り込み・貼り付けの SQL・曖昧な tx のレシート読み）が先に時間を使った回でも 300 秒を越えないよう、
+ * cron は締切（deadlineAt）を渡し、Celo の段はその手前で止まる（recoverLateSettlements の deadlineAt）。
  */
-export const CELO_CHAIN_READ_BUDGET_MS = 15_000;
+export const CELO_CHAIN_READ_BUDGET_MS = 30_000;
 
 export type LateSettlementSummary = {
   recovered: number;
@@ -192,6 +198,8 @@ export type LateSettlementSummary = {
   recoveredFromChainCelo?: number;
   /** chainRowsRead のうち Celo のレーンで読んだ行の数。 */
   chainRowsReadCelo?: number;
+  /** Celo のレーンで、この回は読めなかった行の数（RPC の失敗・時間切れ。行は変えていない・次回また選ばれる）。 */
+  chainRowsUnreadCelo?: number;
   /** 1 本の貼り付けの文が落ちた数（その 1 本は台帳も訂正ログも書かれていない・次回に再試行）。 */
   linkErrors?: number;
   /** 結びつけた (purchase_id, tx_hash) の対。cron の応答に出る。 */
@@ -208,6 +216,11 @@ export async function recoverLateSettlements(
     chainReadBudgetMs?: number;
     /** Celo のレーンの持ち時間（ms）。 */
     celoChainReadBudgetMs?: number;
+    /**
+     * 呼び手の締切（epoch ms）。Celo のレーンの持ち時間を「締切までの残り」で頭打ちにする（cron が 300 秒を越えない）。
+     * Base のレーンには掛けない（従来どおり）。
+     */
+    deadlineAt?: number;
   } = {},
 ): Promise<LateSettlementSummary> {
   const db = getDb();
@@ -314,7 +327,7 @@ export async function recoverLateSettlements(
         options.chainReadBudgetMs ?? CHAIN_READ_BUDGET_MS,
         errors,
       )
-    : { linked: [], read: 0 };
+    : { linked: [], read: 0, unread: 0 };
   // 2026-10-11: Celo のレーン。nonce で決めるので、Transfer の読み手と nonce の読み手の両方が渡されたときだけ走る
   // （片方でも無ければ Celo の行は選びもしない＝印も付けない）。行の上限は Base と同じ数を**別枠で**持つ。
   const celoChain =
@@ -324,11 +337,14 @@ export async function recoverLateSettlements(
           CELO_CHAIN_READ_LANE,
           options.readTransfers,
           options.chainReadLimit ?? CHAIN_READ_ROWS_PER_RUN,
-          options.celoChainReadBudgetMs ?? CELO_CHAIN_READ_BUDGET_MS,
+          Math.min(
+            options.celoChainReadBudgetMs ?? CELO_CHAIN_READ_BUDGET_MS,
+            typeof options.deadlineAt === "number" ? options.deadlineAt - Date.now() : Infinity,
+          ),
           errors,
           options.readNonces,
         )
-      : { linked: [], read: 0 };
+      : { linked: [], read: 0, unread: 0 };
   const fromChain = [...chain.linked, ...celoChain.linked];
   rows.push(...fromChain);
   const promoted = await promoteNamedTx(db);
@@ -342,6 +358,7 @@ export async function recoverLateSettlements(
     chainRowsRead: chain.read + celoChain.read,
     recoveredFromChainCelo: celoChain.linked.length,
     chainRowsReadCelo: celoChain.read,
+    chainRowsUnreadCelo: celoChain.unread,
     linkErrors: errors.count,
     links: rows.map((r) => ({ purchaseId: r.purchase_id, txHash: r.tx_hash })),
   };
@@ -714,13 +731,24 @@ const EVM_AUTH_NONCE_RE = /^0x[0-9a-f]{64}$/;
  *   networks   このレーンが選ぶ購入行の network。
  *   nonceBound true なら、形の正しい auth_nonce を持つ行だけを選び、候補の tx のレシートの AuthorizationUsed に
  *              その行の nonce があるときだけ貼る（chooseLinks の「候補が 1 本なら貼る」を使わない）。
+ *   noAnswerFirst true なら、未読の行の中で「支払いを送って応答が無かった行」（http_status_paid が NULL）を先頭に、
+ *              402 が返った行（売り手が受け取っていない見込みが高い）を最後に読む。
+ *   rowWindows true なら、同じ払い元・宛先・額の行でも、窓（2 分前〜30 分後）が重ならない行は別の組として読む。
+ *              読めなかった組はログに 1 行残す（Base は従来どおり 1 つの組として端から端まで読み、ログは出さない）。
+ * 2026-10-11 点検（中 2 件）: noAnswerFirst と rowWindows は Celo だけ true。Base の並び・読む範囲・持ち時間は変えていない。
  * Base は従来どおり（nonceBound: false）: 2026-09-04 より前の nonce の無い行も対象で、nonce の束縛は照合器が見る。
  * Celo は nonceBound: true: レーンの開始（2026-10-10）から全行が nonce を持ち、索引の段（nonce で曖昧さを解く
  * linkAmbiguousByNonce）が Celo の受取先を持たないので、この段が nonce で決める。
  */
-type ChainReadLane = { key: "base" | "celo"; networks: readonly string[]; nonceBound: boolean };
-const BASE_CHAIN_READ_LANE: ChainReadLane = { key: "base", networks: BASE_NETWORK_KEYS, nonceBound: false };
-const CELO_CHAIN_READ_LANE: ChainReadLane = { key: "celo", networks: [CELO_CAIP2], nonceBound: true };
+type ChainReadLane = {
+  key: "base" | "celo";
+  networks: readonly string[];
+  nonceBound: boolean;
+  noAnswerFirst: boolean;
+  rowWindows: boolean;
+};
+const BASE_CHAIN_READ_LANE: ChainReadLane = { key: "base", networks: BASE_NETWORK_KEYS, nonceBound: false, noAnswerFirst: false, rowWindows: false };
+const CELO_CHAIN_READ_LANE: ChainReadLane = { key: "celo", networks: [CELO_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true };
 /** 直読みのレーンの表（テストと点検が読む）。Arc は載せていない（ファイル冒頭の 2026-10-11 の節）。 */
 export const CHAIN_READ_LANES: readonly ChainReadLane[] = [BASE_CHAIN_READ_LANE, CELO_CHAIN_READ_LANE];
 
@@ -739,10 +767,15 @@ async function linkFromChain(
   budgetMs: number,
   errors: { count: number } = { count: 0 },
   readNonces?: NonceReader,
-): Promise<{ linked: LinkedRow[]; read: number }> {
+): Promise<{ linked: LinkedRow[]; read: number; unread: number }> {
   // nonce で決めるレーンは、nonce の読み手が無ければ何もしない（行を選ばない＝印も付けない）。
-  if (lane.nonceBound && !readNonces) return { linked: [], read: 0 };
+  if (lane.nonceBound && !readNonces) return { linked: [], read: 0, unread: 0 };
   const startedAt = Date.now();
+  // 2026-10-11 点検（中 1）: Celo のレーンの並び。応答なしの行（支払いは送った・答えを受け取っていない＝売り手が後で
+  // 決済していれば台帳だけが食い違う行）が、新しい 402 の行の後ろに並んで持ち時間の外へ押し出されていた。
+  const laneOrder = lane.noAnswerFirst
+    ? sql`(CASE WHEN pu.http_status_paid IS NULL THEN 0 WHEN pu.http_status_paid = 402 THEN 2 ELSE 1 END) ASC,`
+    : sql``;
   const batchRaw = await db.execute(sql`
     SELECT pu.id::text AS purchase_id, pu.network, lower(pu.payer) AS payer, lower(pu.pay_to) AS pay_to, pu.amount_units,
            to_char(pu.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS attempted_at
@@ -763,6 +796,7 @@ async function linkFromChain(
     -- 「2xx でない」群のさらに後ろ（数千行の古い残りの後ろ）へ回し、索引に着金が無ければ一度も読まれなかった。
     -- http_status_paid が NULL の行は「2xx でない」群の中で時刻順に並ぶ（coalesce）。raw_response_meta が NULL の行も「未読」の群に入れる。
     ORDER BY coalesce(pu.raw_response_meta ? 'lateChainRead', false) ASC,
+             ${laneOrder}
              (coalesce(pu.http_status_paid BETWEEN 200 AND 299, false)
                OR coalesce(pu.raw_response_meta->>'reason', '') IN ('threw_after_reservation', 'orphaned_in_flight')
                OR coalesce(pu.raw_response_meta ? 'outcomeWriteFailed', false)) DESC,
@@ -770,17 +804,43 @@ async function linkFromChain(
     LIMIT ${Math.max(0, Math.trunc(limit))}`);
   type B = { purchase_id: string; network: string; payer: string; pay_to: string; amount_units: string; attempted_at: string };
   const batch = rowsOfRaw<B>(batchRaw);
+  const winMs = LATE_SETTLEMENT_WINDOW_MINUTES * 60_000;
+  const backMs = LATE_SETTLEMENT_BACKDATE_MINUTES * 60_000;
+  const keyOf = (b: B) => `${b.network}|${b.payer}|${b.pay_to}|${b.amount_units}`;
+  // 2026-10-11 点検（中 2）: 同じ払い元・宛先・額の未読の行が 1 日以上離れていると、1 つの組として端から端まで
+  // （24 時間ぶんのブロック）を読みに行き、持ち時間で切れて、次回も同じ組から始まっていた。rowWindows のレーンでは、
+  // 窓が重ならない行（試行の間隔が 窓 + 遡り より長い）を別の組に分ける——着金が両方の行の候補になることは無い。
+  // 組を読むたびに印か貼り付けが残るので、途中で時間が切れても、読めた組のぶんは次回やり直さない。
+  const windowIndex = new Map<string, number>();
+  if (lane.rowWindows) {
+    const byKey = new Map<string, B[]>();
+    for (const b of batch) byKey.set(keyOf(b), [...(byKey.get(keyOf(b)) ?? []), b]);
+    for (const rows of byKey.values()) {
+      let idx = 0;
+      let prev: number | null = null;
+      for (const r of [...rows].sort((a, b) => Date.parse(a.attempted_at) - Date.parse(b.attempted_at))) {
+        const t = Date.parse(r.attempted_at);
+        if (prev !== null && t - prev > winMs + backMs) idx++;
+        windowIndex.set(r.purchase_id, idx);
+        prev = t;
+      }
+    }
+  }
   const groups = new Map<string, B[]>();
   for (const b of batch) {
-    const k = `${b.network}|${b.payer}|${b.pay_to}|${b.amount_units}`;
+    const k = lane.rowWindows ? `${keyOf(b)}|${windowIndex.get(b.purchase_id) ?? 0}` : keyOf(b);
     const list = groups.get(k) ?? [];
     list.push(b);
     groups.set(k, list);
   }
   const linked: LinkedRow[] = [];
   let read = 0;
-  const winMs = LATE_SETTLEMENT_WINDOW_MINUTES * 60_000;
-  const backMs = LATE_SETTLEMENT_BACKDATE_MINUTES * 60_000;
+  // 読めなかった組（理由ごとに組と行を数える）。rowWindows のレーンだけ、最後に理由ごとに 1 行ログに出す。
+  const unread = new Map<string, { groups: number; rows: number; error: unknown }>();
+  const noteUnread = (reason: string, rows: number, error?: unknown) => {
+    const u = unread.get(reason) ?? { groups: 0, rows: 0, error };
+    unread.set(reason, { groups: u.groups + 1, rows: u.rows + rows, error: u.error ?? error });
+  };
   for (const list of groups.values()) {
     // 持ち時間を過ぎたら残りは次回（読んでいない行には印を付けないので、次の実行でまた選ばれる）。
     // RPC の読みには残り時間を timeout として渡す（2026-09-29 独立レビュー WARNING 1: 以前は組と組の間でしか
@@ -808,11 +868,20 @@ async function linkFromChain(
     const nearTimes = near.map((r) => Date.parse(r.attempted_at));
     const from = new Date(Math.min(...times, ...nearTimes) - backMs);
     const to = new Date(Math.max(...times, ...nearTimes) + winMs);
+    let readFailure: unknown = null;
     const transfers = await withTimeout(
       readTransfers({ network: g.network, payer: g.payer, payTo: g.pay_to, from, to, timeoutMs: remaining }),
       remaining,
-    ).catch(() => null);
-    if (transfers === null) continue;
+    ).catch((error: unknown) => {
+      readFailure = error ?? new Error("the transfer read failed");
+      return null;
+    });
+    if (transfers === null) {
+      if (readFailure === null) noteUnread("the transfer reader could not read (no RPC url set, an RPC on another chain id, or a node behind the window)", list.length);
+      else if (isTimeout(readFailure)) noteUnread("the transfer read ran out of time", list.length);
+      else noteUnread("the transfer read failed", list.length, readFailure);
+      continue;
+    }
     const exact = transfers.filter(
       (t) => t.from.toLowerCase() === g.payer && t.to.toLowerCase() === g.pay_to && t.value === g.amount_units && Number.isFinite(Date.parse(t.blockTime)),
     );
@@ -849,8 +918,11 @@ async function linkFromChain(
         readNonces!,
         () => budgetMs - (Date.now() - startedAt),
       );
-      if (byNonce === null) continue;
-      links = byNonce.map((l) => ({
+      if ("unreadable" in byNonce) {
+        noteUnread(byNonce.unreadable, list.length);
+        continue;
+      }
+      links = byNonce.links.map((l) => ({
         ...l,
         matchedBy: "authorization_nonce",
         how: "read from the chain (the transfer was not in our index); linked by the authorization nonce in the receipt",
@@ -897,14 +969,31 @@ async function linkFromChain(
         WHERE id IN (SELECT (jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))::uuid)`);
     }
   }
-  return { linked, read };
+  // 読めなかった組は何も変えていない（次回また選ばれる）。黙って持ち越さず、理由ごとに 1 行残す。URL は
+  // logServerErrorSafe が伏せる（RPC の誤りの本文には鍵入りの URL が入る）。
+  let unreadRows = 0;
+  for (const [reason, u] of unread) {
+    unreadRows += u.rows;
+    if (!lane.rowWindows) continue;
+    const cause = u.error instanceof Error ? `: ${u.error.message}` : u.error != null ? `: ${String(u.error)}` : "";
+    logServerErrorSafe(
+      `settlements.recover_late.chain_read_unread ${lane.key}`,
+      new Error(`${u.groups} group(s), ${u.rows} row(s) left unchanged for the next run — ${reason}${cause}`),
+    );
+  }
+  return { linked, read, unread: unreadRows };
+}
+
+/** withTimeout が切った読みか（理由をログで「時間切れ」と分ける）。 */
+function isTimeout(error: unknown): boolean {
+  return error instanceof Error && /^timed out after /.test(error.message);
 }
 
 /**
  * nonce で決めるレーン（Celo）の貼り先（2026-10-11）。候補の対（払い元・宛先・額・窓が合い、まだ誰も主張していない tx）の
  * それぞれの tx について、レシートの AuthorizationUsed(払い元, nonce) を読み、**その行の auth_nonce がその tx で
  * 消費されているときだけ**貼る。額・宛先・時刻が合うだけの tx（nonce が別・未使用）は貼らない。
- *   - 読めない tx が 1 本でもあれば null（呼び手はこの組を次回へ回す。貼らない・印も付けない）。持ち時間切れも同じ。
+ *   - 読めない tx が 1 本でもあれば unreadable（呼び手はこの組を次回へ回す。貼らない・印も付けない）。持ち時間切れも同じ。
  *   - nonce は 1 回しか消費できないので、1 行の持ち主の tx は高々 1 本。2 本以上に見えたら（RPC の誤り）貼らない。
  *   - 同じ tx を 2 行が持ち主だと言うなら（auth_nonce の重複）どちらにも貼らない。
  */
@@ -914,15 +1003,15 @@ async function linksByNonce(
   group: { network: string; payer: string },
   readNonces: NonceReader,
   remainingMs: () => number,
-): Promise<{ purchaseId: string; txHash: string }[] | null> {
+): Promise<{ links: { purchaseId: string; txHash: string }[] } | { unreadable: string }> {
   const consumed = new Map<string, Set<string>>();
   for (const p of pairs) {
     const tx = p.txHash.toLowerCase();
     if (consumed.has(tx)) continue;
     const remaining = remainingMs();
-    if (remaining < CHAIN_READ_MIN_REMAINING_MS) return null;
+    if (remaining < CHAIN_READ_MIN_REMAINING_MS) return { unreadable: "out of time before the receipts were read" };
     const nonces = await withTimeout(readNonces({ network: group.network, txHash: p.txHash, payer: group.payer }), remaining).catch(() => null);
-    if (nonces === null) return null;
+    if (nonces === null) return { unreadable: "a candidate transaction's receipt could not be read" };
     consumed.set(tx, new Set(nonces.map((n) => n.toLowerCase())));
   }
   const ownersOfTx = new Map<string, Set<string>>();
@@ -942,7 +1031,7 @@ async function linksByNonce(
     if (ownersOfTx.get(tx)?.size !== 1) continue;
     out.push({ purchaseId, txHash });
   }
-  return out;
+  return { links: out };
 }
 
 /** Promise に上限時間を付ける（読み手が timeout を守らなくても、この段の持ち時間を超えない）。 */
@@ -1073,13 +1162,16 @@ function boundedBaseClient(timeoutMs: number): TransferClient {
 const CELO_BLOCK_SECONDS = 1;
 /**
  * Celo の eth_getLogs を 1 回で問うブロック数。索引の既定（GET_LOGS_CHUNK_BLOCKS 2,000）と同じ。2026-10-11 実測: forno は
- * 5,000 ブロックまで答え、10,000 は断る（max block range 5000）。1 行の窓（2 分前〜30 分後 ≈ 1,920 ブロック + 余裕）は 2 回で読める。
+ * 5,000 ブロックまで答え、10,000 は断る（max block range 5000）。1 行の窓（2 分前〜30 分後 ≈ 1,920 ブロック + 余裕）は 1 回で読める。
  */
 export const CELO_TRANSFER_READ_CHUNK_BLOCKS = 2_000n;
 /** 時刻からブロック番号を見積もったあと、そのブロックの実際の時刻とのずれをここまで許す（秒）。超えたら見積もり直す。 */
 const CELO_BLOCK_LOCATE_TOLERANCE_SECONDS = 30;
-/** 窓の両端に足す余裕（ブロック）。CELO_BLOCK_LOCATE_TOLERANCE_SECONDS より広く取る。 */
-const CELO_TRANSFER_READ_MARGIN_BLOCKS = 60n;
+/**
+ * 窓の両端に足す余裕（ブロック）。CELO_BLOCK_LOCATE_TOLERANCE_SECONDS（30）より広く取る。35 にしてあるのは、1 行の窓
+ * （2 分前〜30 分後 = 1,920 ブロック）+ 両端の余裕 70 + 1 = 1,991 ブロックが 1 回の問い（2,000）に収まるから（60 だと 2 回）。
+ */
+const CELO_TRANSFER_READ_MARGIN_BLOCKS = 35n;
 
 type CeloTransferClient = Pick<ReturnType<typeof getLogScanClient>, "getBlock" | "getLogs" | "getChainId">;
 
@@ -1102,8 +1194,9 @@ export function makeCeloTransferReader(client?: CeloTransferClient): TransferRea
     const expired = () => {
       if (Date.now() > deadline) throw new Error("transfer read ran past its time limit");
     };
-    if ((await c.getChainId()) !== CELO_CHAIN_ID) return null;
-    const head = await c.getBlock({ blockTag: "latest" });
+    // chainId と先端は同時に問う（1 行あたりの往復を減らす。2026-10-11 点検: 1 行 2.5 秒かかっていた）。
+    const [chainId, head] = await Promise.all([c.getChainId(), c.getBlock({ blockTag: "latest" })]);
+    if (chainId !== CELO_CHAIN_ID) return null;
     const headMs = Number(head.timestamp) * 1000;
     if (headMs < to.getTime()) return null;
     // 時刻 → ブロック番号。1 秒/ブロックで見積もり、そのブロックの実際の時刻で確かめて直す（最大 3 回）。
@@ -1122,8 +1215,9 @@ export function makeCeloTransferReader(client?: CeloTransferClient): TransferRea
       }
       throw new Error("could not locate the Celo block for the window");
     };
-    const first = (await locate(from)) - CELO_TRANSFER_READ_MARGIN_BLOCKS;
-    const last = (await locate(to)) + CELO_TRANSFER_READ_MARGIN_BLOCKS;
+    const [fromAt, toAt] = await Promise.all([locate(from), locate(to)]);
+    const first = fromAt - CELO_TRANSFER_READ_MARGIN_BLOCKS;
+    const last = toAt + CELO_TRANSFER_READ_MARGIN_BLOCKS;
     const fromBlock = first < 0n ? 0n : first;
     const toBlock = last > head.number ? head.number : last;
     if (fromBlock > toBlock) throw new Error("empty Celo block range for the window");

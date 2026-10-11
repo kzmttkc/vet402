@@ -70,7 +70,8 @@ test("Celo reader: reads the Celo USDC Transfer from the payer to the payee insi
   const rpc = fakeCelo({ logs: [settled] });
   const out = await makeCeloTransferReader(rpc.client)(query);
   assert.deepEqual(out, [{ txHash: TX, from: PAYER, to: PAY_TO, value: "6000", blockTime: "2026-10-11T02:31:10.000Z" }] satisfies ChainTransfer[]);
-  assert.ok(rpc.getLogsCalls.length >= 1);
+  // One row's window (2 min before .. 30 min after = 1,920 blocks, plus the margin) fits one eth_getLogs call.
+  assert.equal(rpc.getLogsCalls.length, 1);
   for (const c of rpc.getLogsCalls) {
     assert.equal(c.address, CELO_USDC_ADDRESS, "only Celo USDC — never another token's Transfer");
     assert.deepEqual(c.args, { from: PAYER, to: PAY_TO });
@@ -83,6 +84,17 @@ test("Celo reader: reads the Celo USDC Transfer from the payer to the payee insi
   const blockAt = (t: Date) => ANCHOR_BLOCK + BigInt((t.getTime() - ANCHOR_MS) / 1000);
   assert.ok(sorted[0].fromBlock <= blockAt(FROM));
   assert.ok(sorted[sorted.length - 1].toBlock >= blockAt(TO));
+});
+
+test("Celo reader: a longer range is split into contiguous chunks of at most 2,000 blocks", async () => {
+  const lateLog: Log = { blockNumber: ANCHOR_BLOCK + 5_000n, transactionHash: `0x${"7a".repeat(32)}`, args: { from: PAYER, to: PAY_TO, value: 6000n } };
+  const rpc = fakeCelo({ logs: [settled, lateLog] });
+  const out = await makeCeloTransferReader(rpc.client)({ ...query, to: new Date(TO.getTime() + 60 * 60_000) });
+  assert.equal(out?.length, 2);
+  assert.ok(rpc.getLogsCalls.length >= 3);
+  const sorted = [...rpc.getLogsCalls].sort((a, b) => (a.fromBlock < b.fromBlock ? -1 : 1));
+  for (const c of sorted) assert.ok(c.toBlock - c.fromBlock + 1n <= 2_000n);
+  for (let i = 1; i < sorted.length; i++) assert.equal(sorted[i].fromBlock, sorted[i - 1].toBlock + 1n);
 });
 
 test("Celo reader: an empty window is [] (read and found nothing) — and only then", async () => {

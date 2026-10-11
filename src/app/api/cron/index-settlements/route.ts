@@ -27,6 +27,8 @@ export async function GET(request: NextRequest) {
   if (!lease.acquired) {
     return NextResponse.json({ ok: true, skipped: "lease_held" });
   }
+  // 2026-10-11: 最後の段（Celo の直読み）に渡す締切。maxDuration（300 秒）の 15 秒手前——残りは最後の SQL と応答のぶん。
+  const deadlineAt = Date.now() + (maxDuration - 15) * 1000;
   try {
     const classifier = await loadWashClassifier();
     const l1 = await ingestL1();
@@ -42,10 +44,13 @@ export async function GET(request: NextRequest) {
     // （読んだ行には印を付け、次からは読まない。溜まった分は一度きりの再照合で流す）。
     // 2026-10-11: Celo の行（応答なしで settle_failed になったが、売り手は決済していた）も Celo のチェーンを直接読む。
     // Base とは別枠で 1 回 20 行まで・CELO_RPC_URL が無ければ読まない・貼るのはレシートの nonce が行の nonce と合う tx だけ。
+    // 各段の持ち時間の合計: EVM の索引 120 + Solana 60 + XRPL 20 + Base の直読み 45 + Celo の直読み 30 = 275 秒。
+    // 持ち時間の無い段が長引いた回は、Celo の段が deadlineAt の手前で止まる（読まなかった行は次回）。
     const lateSettlements = await recoverLateSettlements({
       readNonces: readAuthorizationNonces,
       readTransfers: makeChainTransferReader(),
       chainReadLimit: 20,
+      deadlineAt,
     });
     return NextResponse.json({ ok: true, testWallets: classifier.testWallets.size, l1, payments, evm, solana, xrpl, lateSettlements });
   } catch (error) {
