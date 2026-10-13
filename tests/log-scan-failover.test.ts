@@ -25,6 +25,7 @@ import {
   __resetLogScanFailoverForTests,
   getLogsWithFailover,
   invalidLogScanFallbackEntries,
+  isAcceptableLogScanUrl,
   LOG_SCAN_ENDPOINT_COOLDOWN_MS,
   logScanFallbackRpcUrls,
   type LogScanEndpoint,
@@ -292,6 +293,7 @@ test("LOG_SCAN_FALLBACK_RPC_URLS: unset/none/off/empty = no fallback (no third p
   const env = {
     LOG_SCAN_FALLBACK_RPC_URLS: " https://a.example/v2/key , not-a-url, ftp://c.example, https://b.example ,https://a.example/v2/key",
   };
+  assert.equal(isAcceptableLogScanUrl("https://a.example/v2/key"), true);
   assert.deepEqual(logScanFallbackRpcUrls(env), ["https://a.example/v2/key", "https://b.example"]);
   // 捨てた項目は数だけ分かる（値は鍵を含みうるので返さない）。
   assert.equal(invalidLogScanFallbackEntries(env), 2);
@@ -355,5 +357,41 @@ test("production config names a malformed fallback entry as a warning (never an 
     else process.env.LOG_SCAN_FALLBACK_RPC_URLS = saved;
     if (savedAppEnv === undefined) delete process.env.APP_ENV;
     else process.env.APP_ENV = savedAppEnv;
+  }
+});
+
+test("fallback URLs are https only (plain http only for loopback), and a URL with credentials never reaches the log", async () => {
+  // 平文の http は捨てる: filter の中身（agent の ID・売り手の受取アドレス）と URL の鍵が平文で流れる。
+  const env = {
+    LOG_SCAN_FALLBACK_RPC_URLS:
+      "http://plain.example/v2/KEY,https://ok.example/v2/KEY,http://localhost:8545,http://127.0.0.1:8545,http://[::1]:8545,http://localhost.evil.example",
+  };
+  assert.deepEqual(logScanFallbackRpcUrls(env), [
+    "https://ok.example/v2/KEY",
+    "http://localhost:8545",
+    "http://127.0.0.1:8545",
+    "http://[::1]:8545",
+  ]);
+  assert.equal(invalidLogScanFallbackEntries(env), 2);
+
+  // 鍵や user:pass の入った URL は cooldown の鍵にだけ使い、ログには順番の名前しか出さない。
+  __resetLogScanFailoverForTests();
+  const secretUrl = "https://user:PASSWORD@rpc.example/v2/SECRETKEY";
+  const refusing = endpoint(secretUrl, makeBaseRefusal);
+  refusing.label = "primary";
+  const ok = endpoint("https://ok.example/v2/OTHERKEY", oneLogFrom("fallback"));
+  ok.label = "fallback-1";
+  const lines: string[] = [];
+  const original = console.log;
+  console.log = (...args: unknown[]) => void lines.push(args.map(String).join(" "));
+  try {
+    await getLogsWithFailover([refusing, ok], { fromBlock: 1n, toBlock: 1n });
+  } finally {
+    console.log = original;
+  }
+  const logged = lines.join("\n");
+  assert.match(logged, /log-scan-failover: primary refused eth_getLogs/);
+  for (const secret of ["PASSWORD", "SECRETKEY", "OTHERKEY", "rpc.example", "ok.example"]) {
+    assert.ok(!logged.includes(secret), `the log carries ${secret}`);
   }
 });

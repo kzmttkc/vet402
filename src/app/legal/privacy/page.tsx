@@ -36,7 +36,7 @@ export default async function PrivacyPage() {
             <span>Instrument: privacy policy</span>
             <span>
               {/* この頁のシアン1点。改訂日という事実。 */}
-              Revision: <span className="text-signal">October 11, 2026</span>
+              Revision: <span className="text-signal">October 14, 2026</span>
             </span>
           </div>
           <div className="doc-head-col">
@@ -47,7 +47,7 @@ export default async function PrivacyPage() {
         </div>
         <h1 className="doc-title mt-10">Privacy Policy</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-        <p className="doc-note text-center">Last updated: October 11, 2026</p>
+        <p className="doc-note text-center">Last updated: October 14, 2026</p>
 
         {/* 2026-09-29 監査 4 周目: GDPR 13 条 1 項 (a) の管理者の身元と連絡先を明記。 */}
         <section className="space-y-2">
@@ -303,6 +303,16 @@ export default async function PrivacyPage() {
             <li>
               <strong>Blockscout</strong> — block-explorer API used to read public on-chain data;
               receives the public wallet addresses we query.
+            </li>
+            {/* 2026-10-14: eth_getLogs の予備の読み先（LOG_SCAN_FALLBACK_RPC_URLS）。Base の公開 RPC が
+                10/8 に getLogs を断り始め、索引が 5 日止まったため。渡るのはサーバーからの読み取りで、
+                filter に入るのは照会された agent の ID（feedback の tail 走査）と売り手の受取アドレス
+                （決済の索引）。照会した人の IP は渡らない。 */}
+            <li>
+              <strong>Tenderly</strong> public Base RPC gateway (<code>base.gateway.tenderly.co</code>).
+              A fallback for reading public event logs on Base when our main RPC does not answer. It
+              receives the read requests our servers send to the chain, which can include the ID of the
+              agent being looked up and the payout addresses of sellers. Both are already public on that chain.
             </li>
             <li>
               <strong>Solana Labs public mainnet RPC</strong> (<code>api.mainnet-beta.solana.com</code>)

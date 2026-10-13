@@ -83,6 +83,22 @@
     {
       "path": "/api/cron/index-feedback",
       "schedule": "0 20 * * *"
+    },
+    {
+      "path": "/api/cron/index-feedback",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/index-feedback",
+      "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/cron/index-feedback",
+      "schedule": "0 17 * * *"
+    },
+    {
+      "path": "/api/cron/index-feedback",
+      "schedule": "0 23 * * *"
     }
   ]
 }

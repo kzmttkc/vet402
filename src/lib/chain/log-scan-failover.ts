@@ -104,10 +104,15 @@ export async function getLogsWithFailover<A, R>(
  * getLogs の予備の読み先（Base）。`LOG_SCAN_FALLBACK_RPC_URLS`（カンマ区切り・先頭から順に試す）。
  * 未設定・空文字・`none`・`off` は「予備なし」（10/13 より前の挙動そのまま）。
  *
- * 既定の予備をコードに置かない理由: getLogs の filter には、照会された wallet の
- * アドレスや agentId が入る（agent-resolver・feedback の tail 走査）。読み先を足すことは
+ * 既定の予備をコードに置かない理由: getLogs の filter には、照会された agent の ID
+ * （feedback の tail 走査）と、売り手の受取アドレス（決済の索引）が入る。読み先を足すことは
  * その受け取り手を足すことで、プライバシーポリシーの委託先の一覧（/legal/privacy）と
  * 一緒に決める事柄である。コードの既定で黙って増やさない。
+ * （/legal/privacy には Tenderly の公開 gateway を 2026-10-14 の改訂で載せた。別の相手を
+ * 入れるときは、先に一覧へ足す。）
+ *
+ * `https:` だけを通す（2026-10-13 点検）。filter の中身と、URL に入る鍵を平文で流さないため。
+ * `http:` は手元の試験用に localhost・127.0.0.1・[::1] だけ。
  *
  * 10/13 に実測した、鍵なしで getLogs に答える Base の読み先（値の案。採否は運用者）:
  *   https://base.gateway.tenderly.co — 1 回 1,000 ブロックまで（超えると -32602 の data に
@@ -125,16 +130,20 @@ export function logScanFallbackRpcUrls(env: Record<string, string | undefined> =
   const out: string[] = [];
   for (const part of trimmed.split(",")) {
     const url = part.trim();
-    if (!isHttpUrl(url)) continue;
+    if (!isAcceptableLogScanUrl(url)) continue;
     if (!out.includes(url)) out.push(url);
   }
   return out;
 }
 
-function isHttpUrl(value: string): boolean {
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** 予備の読み先として受け付ける URL か。production-env.ts が同じ規則で warn を数える。 */
+export function isAcceptableLogScanUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
+    if (url.protocol === "https:") return true;
+    return url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname);
   } catch {
     return false;
   }
@@ -144,5 +153,5 @@ function isHttpUrl(value: string): boolean {
 export function invalidLogScanFallbackEntries(env: Record<string, string | undefined> = process.env): number {
   const trimmed = (env.LOG_SCAN_FALLBACK_RPC_URLS ?? "").trim();
   if (trimmed === "" || /^(none|off)$/i.test(trimmed)) return 0;
-  return trimmed.split(",").map((part) => part.trim()).filter((part) => !isHttpUrl(part)).length;
+  return trimmed.split(",").map((part) => part.trim()).filter((part) => !isAcceptableLogScanUrl(part)).length;
 }

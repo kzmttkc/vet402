@@ -95,7 +95,10 @@ test("privacy: seller notices, controller identity, storage countries, security 
   assert.match(privacy, /id="security"/);
   assert.match(privacy, /id="external-transmission"/);
   assert.match(privacy, /plausible\.io/);
-  assert.match(privacy, /Revision: <span className="text-signal">October 11, 2026/);
+  assert.match(privacy, /Revision: <span className="text-signal">October 14, 2026/);
+  // 2026-10-14: getLogs の予備の読み先を委託先に載せる（何が渡るかを事実どおりに）。
+  assert.match(privacy, /<strong>Tenderly<\/strong> public Base RPC gateway/);
+  assert.match(privacy, /the ID of the agent being looked up and the payout addresses of sellers/);
 });
 
 test("terms: methodology link, no 'verified payee' registration, L1 disputes, seller notices", () => {

@@ -1167,6 +1167,13 @@ claims:
     check: null
     why_unverifiable: "委託先の開示であって、公開 GET が数値で返す種類の主張ではない"
     verified_at: 2026-09-04
+  - id: privacy_tenderly_log_fallback_is_a_subprocessor
+    surface: src/app/legal/privacy/page.tsx
+    quote: "receives the read requests our servers send to the chain, which can include the ID of the agent being looked up and the payout addresses of sellers"
+    means: "eth_getLogs の予備の読み先（Tenderly の公開 Base gateway）を委託先として開示する。渡るのはサーバーからの公開チェーンの読み取りで、filter に入るのは照会された agent の ID と売り手の受取アドレス"
+    check: null
+    why_unverifiable: "委託先の開示であって、公開 GET が数値で返す種類の主張ではない。根拠は src/lib/chain/client.ts の getIndexerPublicClient（getLogs だけを予備へ回す）と、filter を組む src/lib/chain/erc8004.ts の scanFeedbackLogs（args.agentId）・src/lib/settlements/index-evm.ts（args.to に受取先）"
+    verified_at: 2026-10-13
   - id: audit_e_deletion_has_a_named_route
     surface: src/app/legal/privacy/page.tsx
     quote: "of the three expires automatically — no scheduler deletes them — so the route is a"

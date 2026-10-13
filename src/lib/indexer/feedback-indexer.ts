@@ -15,6 +15,7 @@ import {
   type FeedbackEventRow,
 } from "@/lib/db/feedback-index-writer";
 import { getIndexerCheckpoint, setIndexerCheckpoints } from "@/lib/db/owner-index";
+import { DeadlineExceededError, withDeadline } from "@/lib/util/deadline";
 import { logServerInfoSafe, logServerWarnSafe, redactSecretsForLog } from "@/lib/util/log-safe";
 
 /**
@@ -45,7 +46,7 @@ export type FeedbackIndexResult = {
    * `toBlock` は実際に読み終えた最後のブロック。次の回はその次から始まる。
    */
   partial: boolean;
-  /** partial のときだけ: なぜ止まったか（`time_budget` か `rpc:<読み先の言い分>`）。 */
+  /** partial のときだけ: なぜ止まったか（`time_budget`・`hard_stop`・`rpc:<読み先の言い分>`）。 */
   stoppedBy?: string;
 };
 
@@ -65,19 +66,27 @@ const DEFAULT_MAX_BLOCKS = 400_000n;
  * 読む量が増え、どこかで落ちる見込みも増えるので、遅れた索引ほど追いつけない形だった。
  * 区切りごとに「読む → 書く → checkpoint を進める」にすると、落ちた回も手前までは残る。
  *
- * 20,000 ブロック ≈ Base の 11 時間。平常（6 時間ごとの cron で 10,800 ブロック）は
+ * 20,000 ブロック ≈ Base の 11 時間。平常（3 時間ごとの cron で 5,400 ブロック）は
  * 1 区切りで終わるので、平常時の書き込みの回数は変わらない。
  */
 const DEFAULT_SEGMENT_BLOCKS = 20_000n;
 
 /**
- * 新しい区切りを始めてよい経過時間の上限。cron の maxDuration は 300 秒
- * （src/app/api/cron/index-feedback/route.ts）。関数ごと殺されると最後の区切りの
- * 途中経過が消えるだけでなく応答も返らないので、手前で自分から止まる。
- * 残りの 60 秒は、最後に始めた 1 区切り（実測: 20,000 ブロックで 2〜4 秒）と
- * 最後の checkpoint・prune のぶん。
+ * 時間の上限 2 つ。cron の maxDuration は 300 秒（src/app/api/cron/index-feedback/route.ts）。
+ * 関数ごと殺されると応答が返らず、最後の checkpoint と prune も走らないので、手前で自分から止まる。
+ *
+ *  - DEFAULT_TIME_BUDGET_MS（200 秒）: これを過ぎたら新しい区切りを始めない。
+ *  - DEFAULT_HARD_STOP_MS（250 秒）: 読んでいる途中の区切りも、ここで待つのをやめる。
+ *    getLogsChunked に渡す期限は「次の要求を出さない」だけで、出してしまった 1 要求は
+ *    transport の timeout 20 秒 × 最大 4 回（retryCount 3）＝約 81 秒、読み先が 2 つなら
+ *    その 2 倍まで返ってこないことがある。だから壁時計でも切る（withDeadline）。
+ *    切られた区切りは書かれず、checkpoint も進まない（次の回が同じ所から読む）。
+ *
+ * 250 秒の後に残るのは DB の 3 文（最後に読み終えた区切りの行の insert・checkpoint・prune）で、
+ * 300 秒までに 50 秒ある。平常の 1 回は 1 区切り・数秒（実測: 218,297 ブロック＝11 区切りで 25.3 秒）。
  */
-const DEFAULT_TIME_BUDGET_MS = 240_000;
+const DEFAULT_TIME_BUDGET_MS = 200_000;
+const DEFAULT_HARD_STOP_MS = 250_000;
 
 /** テストの差し替え口。本番は全部既定（実 RPC・実 DB）。 */
 export type FeedbackIndexDeps = {
@@ -85,6 +94,9 @@ export type FeedbackIndexDeps = {
   getLogs: (
     client: never,
     params: { address: Address; event: typeof NEW_FEEDBACK_EVENT; fromBlock: bigint; toBlock: bigint },
+    chunkSize?: undefined,
+    concurrency?: undefined,
+    options?: { deadlineMs?: number },
   ) => Promise<readonly unknown[]>;
   getCheckpoint: typeof getIndexerCheckpoint;
   setCheckpoints: typeof setIndexerCheckpoints;
@@ -94,6 +106,7 @@ export type FeedbackIndexDeps = {
 };
 
 function stopReason(error: unknown): string {
+  if (error instanceof DeadlineExceededError) return "hard_stop";
   const err = error as { details?: string; shortMessage?: string; message?: string };
   const text = err?.details ?? err?.shortMessage ?? err?.message ?? String(error);
   // 1 行・短く・URL と鍵は伏せる（cron の応答とログに出る）。
@@ -115,6 +128,8 @@ export async function indexFeedbackEvents(options?: {
   segmentBlocks?: bigint;
   /** 新しい区切りを始めてよい経過時間（ms）。既定 DEFAULT_TIME_BUDGET_MS。 */
   timeBudgetMs?: number;
+  /** 読んでいる途中の区切りを待つのをやめる経過時間（ms）。既定 DEFAULT_HARD_STOP_MS。 */
+  hardStopMs?: number;
   deps?: Partial<FeedbackIndexDeps>;
 }): Promise<FeedbackIndexResult> {
   const deps = options?.deps;
@@ -168,9 +183,19 @@ export async function indexFeedbackEvents(options?: {
       ? options.segmentBlocks
       : DEFAULT_SEGMENT_BLOCKS;
   const timeBudgetMs = options?.timeBudgetMs ?? DEFAULT_TIME_BUDGET_MS;
+  const hardStopMs = options?.hardStopMs ?? DEFAULT_HARD_STOP_MS;
 
   const t0 = now();
-  let cursor = fromBlock; // 次に読むブロック。ここより手前は書き終えている。
+  // 次に読むブロック。ここより手前は書き終えている。
+  //
+  // checkpoint に書くのは cursor ではなく **cursor - 1n（最後に読み終えたブロック）**。
+  // 読み手（erc8004.ts の fetchRecentFeedbackStats）は `checkpoint + 1n` から tail を読むので、
+  // 「次に読むブロック」を書くと、そのブロックが索引にも tail にも入らない
+  // （2026-10-13 の点検で再現: 3 区切り目で落とすと checkpoint=980000・書いた最大=979999・
+  // tail の開始=980001 で、980000 が次の cron まで数えられない）。追いついた回が chainTip
+  // （＝最後に読んだブロック）を書くのと同じ意味にそろえる。次の回は checkpoint のブロックを
+  // もう 1 度読むが、行は (chain, tx, logIndex) の一意索引で重複しない。
+  let cursor = fromBlock;
   let events = 0;
   let inserted = 0;
   let stoppedBy: string | undefined;
@@ -185,12 +210,23 @@ export async function indexFeedbackEvents(options?: {
 
     let logs: readonly unknown[];
     try {
-      logs = await getLogs(client, {
-        address: ERC8004_ADDRESSES.reputationRegistry,
-        event: NEW_FEEDBACK_EVENT,
-        fromBlock: cursor,
-        toBlock: segmentEnd,
-      });
+      const remainingMs = Math.max(0, hardStopMs - (now() - t0));
+      logs = await withDeadline(
+        getLogs(
+          client,
+          {
+            address: ERC8004_ADDRESSES.reputationRegistry,
+            event: NEW_FEEDBACK_EVENT,
+            fromBlock: cursor,
+            toBlock: segmentEnd,
+          },
+          undefined,
+          undefined,
+          { deadlineMs: remainingMs },
+        ),
+        remainingMs,
+        "feedback-indexer.segment",
+      );
     } catch (error) {
       // 1 区切りも読めなかった回は、以前と同じく throw（cron は 500・checkpoint は動かない）。
       // 「読めていないのに成功」を返すと、止まった索引が緑に見える。
@@ -241,7 +277,7 @@ export async function indexFeedbackEvents(options?: {
     // 「floor と一緒の 1 文」に任せる（prune の前に floor を動かす順序を保つため）。
     if (cursor <= toBlock) {
       await setCheckpoints([
-        { scope: FEEDBACK_INDEX_CHECKPOINT, lastBlock: cursor, chainTipAtRun: chainTip },
+        { scope: FEEDBACK_INDEX_CHECKPOINT, lastBlock: cursor - 1n, chainTipAtRun: chainTip },
         { scope: FEEDBACK_COVERAGE_CHECKPOINT, lastBlock: coverageStart, chainTipAtRun: chainTip },
       ]);
     }
@@ -266,8 +302,7 @@ export async function indexFeedbackEvents(options?: {
     ? chainTip - retentionBlocks(blocksPerDay)
     : 0n;
   const nextCoverageStart = pruneBefore > coverageStart ? pruneBefore : coverageStart;
-  const nextBlock = cursor;
-  const caughtUp = nextBlock > chainTip;
+  const caughtUp = cursor > chainTip;
 
   // 2026-08-18 (audit residual): advance the retention floor BEFORE pruning,
   // and write both checkpoints in one statement. Two failure modes closed:
@@ -278,7 +313,9 @@ export async function indexFeedbackEvents(options?: {
   //    crash can never leave the floor lagging the deleted boundary while the
   //    cursor has advanced past it.
   await setCheckpoints([
-    { scope: FEEDBACK_INDEX_CHECKPOINT, lastBlock: caughtUp ? chainTip : nextBlock, chainTipAtRun: chainTip },
+    // 最後に読み終えたブロック。追いついた回は chainTip と同じ値（以前のまま）。追いついていない回
+    // （maxBlocks で切れた・途中で止まった）は、以前は「次に読むブロック」を書いていたのを改めた。
+    { scope: FEEDBACK_INDEX_CHECKPOINT, lastBlock: scannedTo, chainTipAtRun: chainTip },
     { scope: FEEDBACK_COVERAGE_CHECKPOINT, lastBlock: nextCoverageStart, chainTipAtRun: chainTip },
   ]);
   const pruned = pruneBefore > 0n ? await prune(chainId, pruneBefore) : 0;

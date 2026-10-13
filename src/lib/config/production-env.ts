@@ -207,7 +207,9 @@ export function collectProductionEnvIssues(): ProductionEnvIssue[] {
       : rawFallbacks.split(",").filter((part) => {
           try {
             const url = new URL(part.trim());
-            return url.protocol !== "http:" && url.protocol !== "https:";
+            if (url.protocol === "https:") return false;
+            // http: は手元の試験用の loopback だけ（log-scan-failover.ts の isAcceptableLogScanUrl と同じ）。
+            return !(url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname));
           } catch {
             return true;
           }
@@ -215,7 +217,7 @@ export function collectProductionEnvIssues(): ProductionEnvIssue[] {
   if (badFallbacks > 0) {
     issues.push({
       level: "warn",
-      message: `LOG_SCAN_FALLBACK_RPC_URLS has ${badFallbacks} entr${badFallbacks === 1 ? "y" : "ies"} that are not http(s) URLs; they are ignored`,
+      message: `LOG_SCAN_FALLBACK_RPC_URLS has ${badFallbacks} entr${badFallbacks === 1 ? "y" : "ies"} that are not https URLs; they are ignored`,
     });
   }
 

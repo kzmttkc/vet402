@@ -10,7 +10,9 @@
 //   3. 最初の区切りで落ちたら throw。何も書かず、checkpoint も動かさない
 //   4. 行を書けなかった区切りの先へ checkpoint は進まない（その範囲が二度と読まれなくなる）
 //   5. 持ち時間を超えたら新しい区切りを始めずに止まる
-//   6. 次の回は、止まった所の次のブロックから始まる
+//   6. checkpoint は「最後に読み終えたブロック」。読み手は checkpoint + 1 から tail を読むので、
+//      途中で止まった回の後も、索引と tail の間に数えられないブロックが無い
+//   7. 読んでいる途中の区切りが返ってこなくても、壁時計で待つのをやめる
 // DB も RPC も使わない（差し替え口 deps）。
 // ============================================================
 import { test } from "node:test";
@@ -18,6 +20,7 @@ import assert from "node:assert/strict";
 import { indexFeedbackEvents, type FeedbackIndexDeps } from "@/lib/indexer/feedback-indexer";
 import { FEEDBACK_COVERAGE_CHECKPOINT, FEEDBACK_INDEX_CHECKPOINT } from "@/lib/db/feedback-index";
 import type { FeedbackEventRow } from "@/lib/db/feedback-index-writer";
+import { DeadlineExceededError } from "@/lib/util/deadline";
 
 const TIP = 52_556_796n;
 const START = 52_339_334n; // 10/8 から本番の checkpoint が止まっていたブロック
@@ -36,6 +39,8 @@ function makeWorld(over?: {
   failAtSegment?: number;
   failWith?: Error;
   recordFailsAtSegment?: number;
+  /** この番号の区切りの読み取りが、いつまでも返ってこない。 */
+  hangAtSegment?: number;
   msPerSegment?: number;
   checkpoint?: bigint | null;
 }): { world: World; deps: FeedbackIndexDeps } {
@@ -56,6 +61,7 @@ function makeWorld(over?: {
       const index = world.segments.length;
       world.segments.push({ from: params.fromBlock, to: params.toBlock });
       world.clock += over?.msPerSegment ?? 10;
+      if (over?.hangAtSegment === index) return new Promise<never>(() => {});
       if (over?.failAtSegment === index) {
         throw (
           over.failWith ??
@@ -121,8 +127,9 @@ test("every segment readable: the whole backlog is read once, gap-free, and the 
   assert.equal(world.rows.length, 22);
   // 追いついた回の checkpoint は tip（以前と同じ値）。
   assert.equal(indexCheckpoint(world), TIP);
-  // 途中の checkpoint は、その区切りの行を書いた後の「次に読むブロック」。
-  assert.equal(world.checkpointWrites[0]![0]!.lastBlock, START + 20_000n);
+  // 途中の checkpoint は、その区切りで最後に読み終えたブロック（行を書いた後に進む）。
+  assert.equal(world.checkpointWrites[0]![0]!.lastBlock, START + 20_000n - 1n);
+  assert.equal(world.checkpointWrites[0]![0]!.lastBlock, world.segments[0]!.to);
   // floor は最後の 1 文でだけ動く（途中は元の値のまま書く）。
   for (const write of world.checkpointWrites.slice(0, -1)) {
     assert.equal(write.find((e) => e.scope === FEEDBACK_COVERAGE_CHECKPOINT)!.lastBlock, COVERAGE);
@@ -143,28 +150,53 @@ test("the endpoint dies on the third segment: the first two are kept and the che
   assert.equal(result.stoppedBy, "rpc:request limit reached");
   assert.ok(!JSON.stringify(result).includes("SECRETKEY"));
 
-  // 進んだのは読めた 2 区切りぶんだけ。3 つ目の区切りの先頭で止まる。
-  assert.equal(indexCheckpoint(world), START + 40_000n);
+  // 進んだのは読めた 2 区切りぶんだけ: checkpoint は 2 つ目の区切りの最後のブロック。
+  assert.equal(indexCheckpoint(world), START + 40_000n - 1n);
   assert.equal(world.rows.length, 4);
   assert.ok(world.rows.every((r) => r.blockNumber < START + 40_000n));
   // 4 つ目以降は読みに行っていない。
   assert.equal(world.segments.length, 3);
 });
 
-test("the next run resumes at the block after the last one written", async () => {
+test("after a run that stopped midway, no block is left between the index and the reader's tail", async () => {
+  const { world, deps } = makeWorld({ failAtSegment: 2 });
+  await indexFeedbackEvents({ maxBlocks: 400_000n, segmentBlocks: 20_000n, deps });
+  const checkpoint = indexCheckpoint(world)!;
+
+  // 読み手（erc8004.ts の fetchRecentFeedbackStats）は checkpoint + 1n から tail を読む。
+  const tailStart = checkpoint + 1n;
+  // 索引に入った最後のブロック = checkpoint（差し替えの読み先は区切りの両端に 1 件ずつ返す）。
+  const maxWritten = world.rows.reduce((m, r) => (r.blockNumber > m ? r.blockNumber : m), 0n);
+  assert.equal(maxWritten, checkpoint);
+  // 読めた区切りは START から checkpoint までを穴なく覆う。
+  const read = world.segments.slice(0, 2);
+  assert.equal(read[0]!.from, START);
+  assert.equal(read[1]!.from, read[0]!.to + 1n);
+  assert.equal(read[1]!.to, checkpoint);
+  // tail の最初のブロックは、読めなかった区切りの最初のブロック。間に 1 ブロックも無い。
+  assert.equal(tailStart, world.segments[2]!.from);
+  assert.equal(tailStart - maxWritten, 1n);
+});
+
+test("the next run resumes at the checkpoint block (one block re-read, none skipped)", async () => {
   const first = makeWorld({ failAtSegment: 2 });
   await indexFeedbackEvents({ maxBlocks: 400_000n, segmentBlocks: 20_000n, deps: first.deps });
   const resumeAt = indexCheckpoint(first.world)!;
+  assert.equal(resumeAt, START + 40_000n - 1n);
 
   const second = makeWorld({ checkpoint: resumeAt });
   const result = await indexFeedbackEvents({ maxBlocks: 400_000n, segmentBlocks: 20_000n, deps: second.deps });
-  assert.equal(second.world.segments[0]!.from, START + 40_000n);
+  assert.equal(second.world.segments[0]!.from, resumeAt);
   assert.equal(result.caughtUp, true);
-  // 2 回を合わせて、START..TIP を 1 回ずつ。
+  assert.equal(indexCheckpoint(second.world), TIP);
+  // 2 回を合わせて、START..TIP に読まれないブロックが無い（回の境目は 1 ブロックだけ重なる）。
   const all = [...first.world.segments.slice(0, 2), ...second.world.segments];
   assert.equal(all[0]!.from, START);
   assert.equal(all.at(-1)!.to, TIP);
-  for (let i = 1; i < all.length; i++) assert.equal(all[i]!.from, all[i - 1]!.to + 1n);
+  for (let i = 1; i < all.length; i++) {
+    assert.ok(all[i]!.from <= all[i - 1]!.to + 1n, `gap before ${all[i]!.from}`);
+    assert.ok(all[i]!.from >= all[i - 1]!.to, `more than one block re-read at ${all[i]!.from}`);
+  }
 });
 
 test("the endpoint dies on the first segment: it throws, writes nothing and moves no checkpoint", async () => {
@@ -186,20 +218,43 @@ test("rows that could not be written stop the run before the checkpoint passes t
     /db write failed/,
   );
   // 1 つ目の区切りは書けたので、そこまでは進む。書けなかった 2 つ目の先へは進まない。
-  assert.equal(indexCheckpoint(world), START + 20_000n);
+  assert.equal(indexCheckpoint(world), START + 20_000n - 1n);
   assert.ok(world.rows.every((r) => r.blockNumber < START + 20_000n));
 });
 
 test("past the time budget no new segment starts; what was read is kept", async () => {
-  // 1 区切り 100 秒かかる読み先。持ち時間 240 秒 → 3 区切り目を読み終えた所（300 秒）で止まる。
+  // 1 区切り 100 秒かかる読み先。新しい区切りを始めてよいのは 200 秒まで → 2 区切りで止まる。
   const { world, deps } = makeWorld({ msPerSegment: 100_000 });
   const result = await indexFeedbackEvents({ maxBlocks: 400_000n, segmentBlocks: 20_000n, deps });
-  assert.equal(world.segments.length, 3);
+  assert.equal(world.segments.length, 2);
   assert.equal(result.partial, true);
   assert.equal(result.stoppedBy, "time_budget");
   assert.equal(result.caughtUp, false);
-  assert.equal(indexCheckpoint(world), START + 60_000n);
-  assert.equal(world.rows.length, 6);
+  assert.equal(indexCheckpoint(world), START + 40_000n - 1n);
+  assert.equal(world.rows.length, 4);
+});
+
+test("a segment read that never comes back is abandoned at the hard stop; earlier segments are kept", async () => {
+  const { world, deps } = makeWorld({ hangAtSegment: 1 });
+  const started = Date.now();
+  const result = await indexFeedbackEvents({ maxBlocks: 400_000n, segmentBlocks: 20_000n, hardStopMs: 80, deps });
+  assert.ok(Date.now() - started < 5_000, "the run waited for a read that never returns");
+  assert.equal(result.partial, true);
+  assert.equal(result.stoppedBy, "hard_stop");
+  assert.equal(indexCheckpoint(world), START + 20_000n - 1n);
+  assert.equal(world.rows.length, 2);
+  // 最後の checkpoint と prune まで走る（関数ごと殺されると、ここに来ない）。
+  assert.equal(world.pruneCalls.length, 1);
+});
+
+test("the first segment never comes back: it throws at the hard stop and moves nothing", async () => {
+  const { world, deps } = makeWorld({ hangAtSegment: 0 });
+  await assert.rejects(
+    indexFeedbackEvents({ maxBlocks: 400_000n, segmentBlocks: 20_000n, hardStopMs: 50, deps }),
+    DeadlineExceededError,
+  );
+  assert.equal(world.checkpointWrites.length, 0);
+  assert.equal(world.rows.length, 0);
 });
 
 test("a zero budget still tries the first segment (never 'succeeds' without reading)", async () => {
@@ -207,7 +262,7 @@ test("a zero budget still tries the first segment (never 'succeeds' without read
   const result = await indexFeedbackEvents({ maxBlocks: 400_000n, segmentBlocks: 20_000n, timeBudgetMs: 0, deps });
   assert.equal(world.segments.length, 1);
   assert.equal(result.partial, true);
-  assert.equal(indexCheckpoint(world), START + 20_000n);
+  assert.equal(indexCheckpoint(world), START + 20_000n - 1n);
 });
 
 test("maxBlocks still caps one run, and a capped run is not called partial", async () => {
@@ -217,7 +272,8 @@ test("maxBlocks still caps one run, and a capped run is not called partial", asy
   assert.equal(result.toBlock, (START + 50_000n).toString());
   assert.equal(result.caughtUp, false);
   assert.equal(result.partial, false);
-  assert.equal(indexCheckpoint(world), START + 50_001n);
+  // checkpoint は最後に読んだブロック（以前は +1 を書いていて、tail がそのブロックを飛ばした）。
+  assert.equal(indexCheckpoint(world), START + 50_000n);
   assert.equal(world.segments.length, 3);
 });
 
