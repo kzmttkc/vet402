@@ -489,6 +489,8 @@ export type PayReceipt = {
         /**
          * Solana で署名した取引の `memo`（結果の `nonce` と同じ）・取引に入れた `recentBlockhash`・売り手へ送った取引
          * （base64・結果の `svmTransaction` と同じ。送っていなければ null）。blockhash が失効するまで、その取引は載り得る。
+         * **この取引には払い手の署名が入っている**（fee payer の署名欄は空）。載せられるのは 402 が指名した fee payer で、
+         * blockhash が有効な間だけ（同じ取引がチェーンに載るのは 1 回だけ）。他人が読めるログへ書かない。
          * Solana 以外・未署名は null。
          */
         svm: {

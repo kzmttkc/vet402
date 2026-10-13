@@ -243,7 +243,11 @@ so a retry cannot pay twice.
 `r.receipt` also carries the endpoint and method, the terms selected from the 402 (`network`, `asset`,
 `payTo`, `amount`), the ceiling applied (`maxPerTxUsd`), the `payer` address once something was signed,
 the `reason_codes`, and the seller's `PAYMENT-RESPONSE` as `settlement` with the HTTP `responseStatus`.
-`settlement` is the seller's claim, not an on-chain confirmation. The signature itself is never included.
+`settlement` is the seller's claim, not an on-chain confirmation. The EVM signature is never included.
+On Solana, `retry.svm.transaction` is the transaction that was sent to the seller, with the payer's
+signature in it (the same value as `r.svmTransaction`). The fee payer's signature is still missing, so the
+fee payer named in the 402 is the one who can submit it, while its blockhash is valid, and the chain accepts
+it once. Keep it out of logs that others can read.
 
 ## Changes
 
