@@ -186,8 +186,8 @@
           "pattern": "§5 のコマンド（\\d{2}-\\d{2}: \\d+ / \\d+ / (?<v>\\d+)）"
         }
       ],
-      "value": "184",
-      "updatedAt": "2026-09-13T09:35:47.829Z"
+      "value": "189",
+      "updatedAt": "2026-10-13T23:41:48.591Z"
     },
     {
       "id": "ab_mutations",
@@ -210,8 +210,8 @@
         "command": "grep -cE '^ +id: \"' packages/sdk/test-mutations.mjs | tr -d ' '",
         "why": "harness が印字する N は `rows.length` = 変異定義の数。2026-09-09 14:21 の `4b281ab` が M45 を足したのに記録値は 44 のままで、--check は 09-10 まで緑を出し続けた"
       },
-      "value": "45",
-      "updatedAt": "2026-09-13T09:35:47.829Z",
+      "value": "50",
+      "updatedAt": "2026-10-13T23:38:37.989Z",
       "literal": [
         {
           "doc": "docs/ethonline-2026/SUBMISSION_DRAFT.md",

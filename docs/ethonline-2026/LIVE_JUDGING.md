@@ -143,8 +143,8 @@ A: *You get a refusal, not an allow. The demo records `/decision` as status null
 証拠: `examples/ethonline-2026-demo/src/assess.ts:64`（`status: null`）／`packages/sdk/src/pay-or-refuse.ts:571,577`（`evidence_unavailable`）／`SKILL.md` §2・§4／`docs/audits/2026-09-05-cia-availability-audit.md` §0。
 
 **Q12. Mutation testing — what did it find?**
-A: *It found that green tests were lying. Tests that only looked at `status` and signer calls stayed green when the whole ALLOW gate was removed — the run refused for a different reason. Switching the payment module to a static import turned no test red until I added the `dist` module-graph test. The mutation script breaks one gate at a time — BLOCK waiver, floor comparison, `payTo` check, ceiling, nonce retention, `_meta.block` — rebuilds, and requires red. In the submitted SDK, <!-- n:sdk_mutations -->45<!-- /n --> mutations, all killed. Four survived on September 6 and became tests.*
-要旨: 「緑のテストが嘘」を検出。<!-- n:sdk_mutations -->45<!-- /n --> 変異全部赤。9/6 に 4 つ生き残り→テスト追加。
+A: *It found that green tests were lying. Tests that only looked at `status` and signer calls stayed green when the whole ALLOW gate was removed — the run refused for a different reason. Switching the payment module to a static import turned no test red until I added the `dist` module-graph test. The mutation script breaks one gate at a time — BLOCK waiver, floor comparison, `payTo` check, ceiling, nonce retention, `_meta.block` — rebuilds, and requires red. In the submitted SDK, <!-- n:sdk_mutations -->50<!-- /n --> mutations, all killed. Four survived on September 6 and became tests.*
+要旨: 「緑のテストが嘘」を検出。<!-- n:sdk_mutations -->50<!-- /n --> 変異全部赤。9/6 に 4 つ生き残り→テスト追加。
 証拠: `WINDOW_PLAN.md` §4（A1/B5–B7 の偽の緑）・§14.3・§17（SURVIVED 4）／`packages/sdk/test-mutations.mjs`（id は **M01 から 0 埋め 2 桁の連番**——本数は印が出す。手で終端を書かない）／印 `n:sdk_mutations`。
 **言うのは「all killed」まで。** 本数は印が出す——`cd packages/sdk && node test-mutations.mjs 2>&1 | tail -1` が `all N mutations killed in …`（**09-08 実走 53.8 秒・clean checkout**。09-07 の 42 本は `beac4f9` が pin の変異 2 本を足して増えた）。1 つでも生き残ると harness はこの行を印字しないので、`--refresh` が空出力で落ちる。
 （`judge-check` が回すのは **A/B 側**の別の集合で **27 本**・id は `M1`・`M1b`・`M1c`・`M2`〜`M25`。`n:ab_mutations`。混ぜない）
@@ -352,11 +352,11 @@ A: *Eligibility was never the reason. On September 7 I asked ETHGlobal directly 
 
 | 印 | 値【実測 09-08】 | それを出すコマンド（リポ root から） | どこで使う |
 |---|---|---|---|
-| `n:sdk_mutations` | <!-- n:sdk_mutations -->45<!-- /n --> | `cd packages/sdk && node test-mutations.mjs 2>&1 \| tail -1` の `all N mutations killed`（09-10 実走 44.3s） | Q12（"all killed"） |
+| `n:sdk_mutations` | <!-- n:sdk_mutations -->50<!-- /n --> | `cd packages/sdk && node test-mutations.mjs 2>&1 \| tail -1` の `all N mutations killed`（09-10 実走 44.3s） | Q12（"all killed"） |
 | `n:ab_mutations` | <!-- n:ab_mutations -->27<!-- /n --> | `cd examples/ethonline-2026-ab && node test-mutations.mjs 2>&1 \| tail -1`（13.2s・`judge-check` が回す方） | 混同したときの訂正用（口では言わない） |
 | `n:sdk_tests` | <!-- n:sdk_tests -->1679<!-- /n --> | `npm test --prefix packages/sdk 2>&1 \| sed -n 's/^ℹ tests //p'` | 画面のみ（言わない） |
 | `n:mcp_tests` | <!-- n:mcp_tests -->797<!-- /n --> | `npm run build --prefix packages/mcp-server && npm test --prefix packages/mcp-server 2>&1 \| sed -n 's/^ℹ tests //p'` | 画面のみ（言わない） |
-| `n:demo_tests` | <!-- n:demo_tests -->184<!-- /n --> | `npm test --prefix examples/ethonline-2026-demo 2>&1 \| sed -n 's/^ℹ tests //p'`（鍵不要・0.5s） | 画面のみ（言わない） |
+| `n:demo_tests` | <!-- n:demo_tests -->189<!-- /n --> | `npm test --prefix examples/ethonline-2026-demo 2>&1 \| sed -n 's/^ℹ tests //p'`（鍵不要・0.5s） | 画面のみ（言わない） |
 | `n:total_commits` | <!-- n:total_commits -->927<!-- /n --> | `git rev-list --count --until='{{AS_OF_END}}' HEAD` | Q7（言うのは「大半」。値は `AI_USAGE.md` を指す） |
 | `n:ai_trailer_commits` | <!-- n:ai_trailer_commits -->785<!-- /n --> | `git log --grep='Co-Authored-By: Claude' --until='{{AS_OF_END}}' --oneline \| wc -l` | 同上 |
 | `n:merge_commits` / `n:no_trailer_commits` | <!-- n:merge_commits -->34<!-- /n --> / <!-- n:no_trailer_commits -->142<!-- /n --> | `git rev-list --count --merges --until='{{AS_OF_END}}' HEAD`／`n:total_commits` − `n:ai_trailer_commits` | 同上（trailer 無し＝「不明」であって「人間」ではない） |
