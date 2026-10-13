@@ -164,6 +164,22 @@ function unfixableByBisectionReason(text: string): string | null {
   return NEVER_RANGE_PATTERNS.find((candidate) => text.includes(candidate)) ?? null;
 }
 
+/**
+ * JSON-RPC の error.data が文字列のときだけ、その文を返す（2026-10-13）。
+ *
+ * 範囲の上限を message ではなく data に書く読み先がある。実測（10/13）:
+ * `{"code":-32602,"message":"invalid params","data":"Block range too large for public
+ * access: maximum 1000 blocks. …"}`。viem は data を message に写さないので、ここで読まないと
+ * 「範囲が広すぎる」と言われているのに non-range failure として走査ごと落ちる。
+ * 文字列以外（revert の data など）は読まない。
+ */
+function providerDataText(err: { data?: unknown; cause?: { data?: unknown } } | undefined): string[] {
+  const out: string[] = [];
+  if (typeof err?.data === "string") out.push(err.data);
+  if (typeof err?.cause?.data === "string") out.push(err.cause.data);
+  return out;
+}
+
 export function rangeTooWideReason(error: unknown): string | null {
   const err = error as {
     code?: number;
@@ -171,7 +187,8 @@ export function rangeTooWideReason(error: unknown): string | null {
     details?: string;
     shortMessage?: string;
     message?: string;
-    cause?: { code?: number; details?: string; shortMessage?: string; message?: string };
+    data?: unknown;
+    cause?: { code?: number; details?: string; shortMessage?: string; message?: string; data?: unknown };
   };
 
   // Checked before ANYTHING else, including the numeric codes: a provider that
@@ -184,6 +201,7 @@ export function rangeTooWideReason(error: unknown): string | null {
     err?.cause?.details,
     err?.cause?.shortMessage,
     stripRequestEcho(err?.cause?.message),
+    ...providerDataText(err),
   ]
     .filter(Boolean)
     .join(" ")
@@ -229,7 +247,8 @@ export function providerStatedRangeLimit(error: unknown): bigint | null {
     details?: string;
     shortMessage?: string;
     message?: string;
-    cause?: { details?: string; shortMessage?: string; message?: string };
+    data?: unknown;
+    cause?: { details?: string; shortMessage?: string; message?: string; data?: unknown };
   };
   const text = [
     err?.details,
@@ -238,10 +257,19 @@ export function providerStatedRangeLimit(error: unknown): bigint | null {
     err?.cause?.details,
     err?.cause?.shortMessage,
     stripRequestEcho(err?.cause?.message),
+    ...providerDataText(err),
   ]
     .filter(Boolean)
     .join(" ");
-  const match = /limited to an? ([\d,]+) (?:block )?range/i.exec(text);
+  // 2026-10-13: 言い方が読み先ごとに違う。どれも 10/13 に実際に返ってきた文:
+  //   "eth_getLogs is limited to a 2,000 range"                    （Base の公開 RPC・9/29）
+  //   "Block range too large for public access: maximum 1000 blocks" （Tenderly の公開 gateway）
+  //   "Block range too large: maximum allowed is 50 blocks"          （nodies）
+  //   "eth_getLogs requests with up to a 10 block range"             （Blast）
+  const match =
+    /limited to an? ([\d,]+) (?:block )?range/i.exec(text) ??
+    /maximum (?:allowed is )?([\d,]+) blocks/i.exec(text) ??
+    /up to an? ([\d,]+) block range/i.exec(text);
   if (!match) return null;
   try {
     const limit = BigInt(match[1]!.replace(/,/g, ""));
@@ -269,7 +297,7 @@ export function __resetLearnedRangeCapsForTests(): void {
   learnedRangeCaps.clear();
 }
 
-function isRateLimitError(error: unknown): boolean {
+export function isRateLimitError(error: unknown): boolean {
   const err = error as {
     status?: number;
     code?: number;

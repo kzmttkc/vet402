@@ -2,6 +2,7 @@ import { createPublicClient, http, type Address } from "viem";
 import { base } from "viem/chains";
 import { BASE_CHAIN_ID } from "./config";
 import { DEFAULT_CHAIN_ID, chainById, rpcUrlFor } from "./chains";
+import { getLogsWithFailover, logScanFallbackRpcUrls, type LogScanEndpoint } from "./log-scan-failover";
 
 /**
  * Explicit transport timeouts and retry counts (2026-08-22 audit).
@@ -91,7 +92,17 @@ export function getLogScanClient(chainId: number = DEFAULT_CHAIN_ID) {
   return getPublicClient(chainId);
 }
 
-/** Separate RPC endpoint for the batch indexers so they don't compete with live API traffic for the same app's CU/s budget. */
+/**
+ * Separate RPC endpoint for the batch indexers so they don't compete with live API traffic for the same app's CU/s budget.
+ *
+ * 2026-10-13: eth_getLogs だけは、主の読み先が答えないときに予備の読み先へ回す
+ * （log-scan-failover.ts。Base の公開 RPC が 10/8 に getLogs を閉じ、読み先が 1 つしか
+ * 無かったので 3 つの索引が 5 日止まった）。ほかの読み取り（getBlockNumber・
+ * readContract・getBlock）は主の読み先のまま: 断られたのは getLogs だけで、
+ * 予備の公開の読み先へ流す量は、要る分だけにする。
+ * 返す client の `transport.url` は主の読み先のまま（chunked-logs が学んだ範囲の上限の
+ * 鍵に使う。予備が言った上限もこの鍵に入るので、次の走査は最初からその幅で始まる）。
+ */
 export function getIndexerPublicClient() {
   const indexer = process.env.INDEXER_RPC_URL?.trim();
   const baseRpc = process.env.BASE_RPC_URL?.trim();
@@ -99,13 +110,34 @@ export function getIndexerPublicClient() {
     (indexer && indexer.length > 0 ? indexer : null) ??
     (baseRpc && baseRpc.length > 0 ? baseRpc : null) ??
     "https://mainnet.base.org";
-  return createPublicClient({
-    chain: base,
-    transport: http(rpcUrl, {
-      timeout: BATCH_RPC_TIMEOUT_MS,
-      retryCount: BATCH_RPC_RETRIES,
+  const make = (url: string) =>
+    createPublicClient({
+      chain: base,
+      transport: http(url, {
+        timeout: BATCH_RPC_TIMEOUT_MS,
+        retryCount: BATCH_RPC_RETRIES,
+      }),
+    });
+  const primary = make(rpcUrl);
+  const fallbackUrls = logScanFallbackRpcUrls().filter((url) => url !== rpcUrl);
+  if (fallbackUrls.length === 0) return primary;
+
+  type GetLogs = typeof primary.getLogs;
+  type Args = Parameters<GetLogs>[0];
+  type Result = Awaited<ReturnType<GetLogs>>;
+  const endpoints: LogScanEndpoint<Args, Result>[] = [
+    { key: rpcUrl, label: "primary", getLogs: (args) => primary.getLogs(args) },
+    ...fallbackUrls.map((url, i) => {
+      const client = make(url);
+      return {
+        key: url,
+        label: `fallback-${i + 1}`,
+        getLogs: (args: Args) => client.getLogs(args),
+      };
     }),
-  });
+  ];
+  const getLogs = ((args: Args) => getLogsWithFailover(endpoints, args)) as GetLogs;
+  return { ...primary, getLogs } as typeof primary;
 }
 
 export function isValidAddress(value: string): value is Address {

@@ -197,6 +197,28 @@ export function collectProductionEnvIssues(): ProductionEnvIssue[] {
     }
   }
 
+  // 2026-10-13: 予備の読み先の書き損じは error にしない（予備のせいで本番を止めない）。
+  // ただし黙って捨てると「予備があるつもり」で 10/8 と同じ止まり方をするので、warn で名指しする。
+  // （chain/ を config から import しない。同じ規則を 5 行で持つ: tests/log-scan-failover.test.ts が両方を突き合わせる）
+  const rawFallbacks = (process.env.LOG_SCAN_FALLBACK_RPC_URLS ?? "").trim();
+  const badFallbacks =
+    rawFallbacks === "" || /^(none|off)$/i.test(rawFallbacks)
+      ? 0
+      : rawFallbacks.split(",").filter((part) => {
+          try {
+            const url = new URL(part.trim());
+            return url.protocol !== "http:" && url.protocol !== "https:";
+          } catch {
+            return true;
+          }
+        }).length;
+  if (badFallbacks > 0) {
+    issues.push({
+      level: "warn",
+      message: `LOG_SCAN_FALLBACK_RPC_URLS has ${badFallbacks} entr${badFallbacks === 1 ? "y" : "ies"} that are not http(s) URLs; they are ignored`,
+    });
+  }
+
   if (!process.env.BLOCKSCOUT_API_URL?.trim()) {
     issues.push({
       level: "warn",
