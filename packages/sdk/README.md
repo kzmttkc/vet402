@@ -154,6 +154,125 @@ const r = await payOrRefuse({
 - `evidence.source: "subgraph" | "both"` is a caller error for a Solana payee (The Graph's x402 Base subgraph
   does not index Solana). `@solana/web3.js` is never imported on a refusal, so EVM-only users need not install it.
 
+### Testnet: `network: "base-sepolia"`
+
+A `0x` payee is paid on Base mainnet unless another chain is named. `network: "base-sepolia"` pays with
+Base Sepolia USDC (`0x036CbD53842c5426634e7929541eC2318f3dCF7e`, chain id 84532) and never attests the
+payment to the production ledger, so `attested` stays `false`. Any other value throws `invalid_network`
+before a request is made, so a typo cannot fall back to mainnet. Leave `network` out for a base58 payee.
+
+```ts
+const r = await payOrRefuse({ payee, resource, amountUsd: 0.01, fetch, account, network: "base-sepolia" })
+```
+
+### Receipts on the payment chain: `minChainReceipts`
+
+`policy.evidence.minChainReceipts` is a floor on the USDC transfers the payee has received on the
+payment chain. Pass two independent readers, `chainReader` and `chainReaderCrossCheck` (a viem
+`PublicClient` fits each). The SDK reads the `Transfer` logs through both and counts them only when the
+two sets are identical.
+
+- `network: "base-sepolia"` only. On mainnet it throws `invalid_evidence_policy`, because a payee can
+  create its own receipts.
+- An integer `>= 0`. Zero-value transfers are not counted.
+- The default window is the last 10,000 blocks. `evidence.chainFromBlock` sets the first block. A window
+  above 100,000 blocks is not read.
+- Refusals: `insufficient_chain_evidence` (read, below the floor), or `evidence_unavailable` with
+  `chain_evidence_unavailable` (a reader failed, answered for another chain, or the two disagreed).
+- A floor of 1 or more counts as an evidence floor for `requireVet402Allow: false`.
+
+### Paying by ENS name: `payeeName`
+
+Pass `payeeName` and `ens` in place of `payee`. Before vet402 is asked anything, the SDK reads the
+seller's `x402-offer` text record on Sepolia ENS and the ENSIP-29 attestations over it, through two
+independent Sepolia RPC clients. The payee is the `payTo` of the attested offer.
+
+```ts
+const r = await payOrRefuse({
+  payeeName: "seller.eth",
+  ens: {
+    clients: { primary: sepoliaClientA, secondary: sepoliaClientB }, // two different RPCs (viem PublicClient)
+    policy: { trustedAttesters: [{ name: "atst.example.eth", address: "0x...", recordKeys: ["x402-offer"] }] },
+  },
+  network: "base-sepolia",
+  resource: "https://seller.example/api/paid",
+  amountUsd: 0.01,
+  fetch,
+  account,
+})
+```
+
+- Testnet only. Any `network` other than `"base-sepolia"` throws `invalid_ens_chain`, so Base mainnet
+  cannot be paid by name.
+- Needs `viem` (an optional peer dependency). It is loaded only when `payeeName` is passed.
+- The 402 is compared with the attested offer: same `payTo`, same network and asset, and an amount no
+  higher than the offer. A difference refuses with `ens_offer_mismatch`. The record is read a second time
+  right before signing.
+- If `payee` is passed as well, it must equal the offer's `payTo` (`payee_mismatch` otherwise).
+- `policy.evidence.minEnsAttestations` is a floor on valid attestations. The refusal words start with
+  `ens_` and are exported as `ENS_ATTESTATION_REASONS` from `@vet402/sdk/ens`.
+- `r.decision.ens` records both reads.
+
+### The `./ens` subpath
+
+`@vet402/sdk/ens` exports the ENSIP-29 gate on its own: `checkEnsOffer`, `assertEnsAttestationPolicy`,
+`compareOfferToAccept`, the attestation codec and the ENS readers. It is the only entry that imports
+`viem`, so install `viem` to use it. The package root never loads it.
+
+```ts
+import { checkEnsOffer } from "@vet402/sdk/ens"
+```
+
+## Before retrying a `failed` payment
+
+`status` reports what the seller answered. `"failed"` with `signed: true` means a signed payment exists
+and the seller did not confirm it. That payment can still settle on chain, or may have settled already.
+Calling `payOrRefuse` again signs a second payment, so check the first one before retrying. The SDK does
+not retry and does not read the chain.
+
+`r.receipt.retry` (0.7.1) holds what to check.
+
+| Rail | Did it settle? | Can it still settle? |
+|---|---|---|
+| Base, `retry.authorization` | USDC `authorizationState(from, nonce)` returns `true`. | Only until `validBefore` (unix seconds, at most 120 seconds after signing). |
+| Solana, `retry.svm` | `getSignaturesForAddress` for `receipt.payer` lists an entry with `err: null` whose `memo` contains `retry.svm.memo`. | Only while `isBlockhashValid` answers `true` for `retry.svm.recentBlockhash`. |
+
+Retry once the payment has not settled and no longer can. `retry.signed: false` means nothing was signed,
+so a retry cannot pay twice.
+
+`r.receipt` also carries the endpoint and method, the terms selected from the 402 (`network`, `asset`,
+`payTo`, `amount`), the ceiling applied (`maxPerTxUsd`), the `payer` address once something was signed,
+the `reason_codes`, and the seller's `PAYMENT-RESPONSE` as `settlement` with the HTTP `responseStatus`.
+`settlement` is the seller's claim, not an on-chain confirmation. The signature itself is never included.
+
+## Changes
+
+### 0.7.1
+
+- `requireVet402Allow: false` no longer pays when the verdict word is missing or is not `ALLOW`, `WARN`
+  or `BLOCK`. The call refuses with `evidence_unavailable` on every path (a `0x` payee, a resource outside
+  the catalogue, a Solana payee). In 0.7.0 only the `payeeName` path checked the word, and the other paths
+  paid on the caller's floors alone. Callers on the default (`requireVet402Allow` unset or `true`) get the
+  same refusals as before.
+- `PayOrRefuseResult.receipt` is new (see the section above). It is additive, and no existing field
+  changed meaning.
+- On Solana, `svmTransaction` is kept when the seller's response cannot be read after the transaction was
+  sent. In 0.7.0 it could come back `null` for a transaction that had been sent.
+- Requests to vet402's API carry `User-Agent: vet402-sdk/<version>`, so vet402 can count calls per client
+  version. It is not set in a browser. Requests to sellers, Solana RPCs and The Graph are unchanged,
+  and a seller is not told which SDK is paying.
+
+### 0.7.0: type changes that can break a build
+
+These were not listed when 0.7.0 shipped. They are compile-time changes for TypeScript callers upgrading
+from 0.6.0.
+
+- `PayOrRefuseResult` gained two required fields, `rail` and `svmTransaction`. Code that builds a
+  `PayOrRefuseResult` by hand (a mock or a test double) must add them.
+- `PayRefuseReason` gained members: `insufficient_chain_evidence`, `chain_evidence_unavailable`,
+  `insufficient_ens_attestations`, `vet402_unreachable` and the 13 `ens_*` words. An exhaustive `switch`
+  over it needs a `default` branch or the new cases.
+
 ## Errors
 
 A non-2xx answer throws a `VouchApiError` carrying the API's machine-readable
@@ -266,7 +385,8 @@ npm run mutations
   `MUTANT` marker, so `grep -rn MUTANT src` must print nothing afterwards,
   and the run ends by re-checking that the tree is green (`restored: green`).
 
-~20 s for 27 mutations on a laptop (tsc + `node --test` per mutation).
+About two minutes for 50 mutations on a laptop (tsc + `node --test` per mutation). `npm run mutations:svm`
+runs 21 more against the Solana path.
 
 ## Links
 

@@ -1,4 +1,5 @@
 import { SpendGuard } from "./spend-guard.js";
+import { clientIdentityHeaders } from "./user-agent.js";
 export { SpendGuard, DEFAULT_MAX_SCORE_AGE_MS, } from "./spend-guard.js";
 // ETHOnline 2026（会期中の新規・WINDOW_PLAN §2）。判定のあと、条件を全部通したときだけ払う。
 // テストは dist から読む（rootDir: src / outDir: dist）ので、ここから re-export する。
@@ -233,6 +234,9 @@ export class VouchClient {
             ...init,
             signal: init?.signal ?? AbortSignal.timeout(this.timeoutMs),
             headers: {
+                // Names this SDK to vet402's API (`vet402-sdk/<version>`). Nothing in a
+                // browser. Every request made here goes to vet402, never to a seller.
+                ...clientIdentityHeaders(),
                 // No key → no header. Key-less /decision reads are a server feature
                 // (2026-09-07); a key-requiring route answers 401 missing_api_key,
                 // which is passed through below as the server's own word.

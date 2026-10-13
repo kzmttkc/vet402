@@ -107,6 +107,8 @@ export type SvmPayResult = {
 /**
  * 組んで、署名させて、売り手へ再送する。判定はしない——ここへ来た時点で通っている、が
  * `payOrRefuse` との契約。`onSigned` は署名者が返した直後に同期で呼ぶ（ここから先で落ちても memo が残る）。
+ * `onSending` は売り手へ送る直前に同期で呼ぶ（0.7.1）。送った後で応答が壊れていて例外になっても、
+ * 呼び手は送った取引を失わない。
  */
 export declare function executeSvmPayment(args: {
     account: SvmPayerAccount;
@@ -117,5 +119,10 @@ export declare function executeSvmPayment(args: {
     fetch: typeof fetch;
     onSigned?: (info: {
         memo: string;
+        recentBlockhash: string;
+        payer: string;
+    }) => void;
+    onSending?: (info: {
+        transactionB64: string;
     }) => void;
 }): Promise<SvmPayResult>;

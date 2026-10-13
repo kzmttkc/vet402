@@ -53,9 +53,12 @@ import { DEFAULT_API_URL } from "./index.js";
 // `x402-pay.js` にだけ掛かる。`test/no-static-payment-import.test.mjs`）。
 import { readSubgraphReceipts, X402_BASE_SUBGRAPH_ID } from "./subgraph-evidence.js";
 // 判定語と「測れたか」の欄の読み方。2つの金の経路で1つの規則を共有する（`./verdict-shape.js`）。
-import { isBlockVerdict, isDecimalUnits, isPlainObject, scoreQualityDefect } from "./verdict-shape.js";
+import { isBlockVerdict, isDecimalUnits, isPlainObject, isUnknownVerdict, scoreQualityDefect } from "./verdict-shape.js";
 // 支払いチェーンの定数表（Tokyo B3）。import を持たない定数だけのモジュールなので静的 import でよい。
 import { CHAIN_PROFILES, profileFor } from "./chain-profile.js";
+// vet402 の API へ名乗る User-Agent（0.7.1）。import を持たない定数だけのモジュールなので静的 import でよい。
+// **売り手への要求には使わない**（402 の取得と支払いつきの再送は今までの形のまま）。
+import { clientIdentityHeaders } from "./user-agent.js";
 // ENSIP-29 の拒否語（Tokyo B6）。`ens-reasons.ts` は何も import しない語彙だけのモジュールなので静的 import でよい。
 // **段 2.5 の本体（`ens-attestation.js`・`ens-read.js`・viem）は `payeeName` を渡した呼び手のときだけ動的 import する**
 // ——名前を使わない呼び手の静的グラフに viem を入れない（`test/tokyo/regression.test.mjs` の T30・T30b）。
@@ -188,8 +191,6 @@ export const CHAIN_LOGS_SPAN = 1000n;
 /** 1回の評価で読む上限。これを超える範囲は読まずに `chain_evidence_unavailable`。 */
 export const MAX_CHAIN_SCAN_BLOCKS = 100000n;
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
-/** `/decision` の判定語（G5b ④ で名前経路が読む）。 */
-const KNOWN_VERDICTS = new Set(["ALLOW", "WARN", "BLOCK"]);
 /** Solana の base58 アドレス（32〜44 文字・0 O I l を含まない）。 */
 const SOLANA_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const USDC_DECIMALS = 6;
@@ -368,7 +369,12 @@ function decodeChallenge(raw, rail = "evm", profile = CHAIN_PROFILES.base) {
 export async function payOrRefuse(input) {
     // 0x の経路の署名者欄は、内部では常に値を持つ（Solana の呼び手には触れたら throw する番兵を置く）。
     // 判定の中で `account` を「無いかもしれない値」として扱わないため——型の上でも EVM の経路は 1 行も変えない。
-    const result = await decideAndPay({ ...input, account: input.account ?? NO_EVM_ACCOUNT });
+    const facts = {
+        method: "GET", maxPerTxUsd: DEFAULT_MAX_PER_TX_USD, payer: null, authorization: null, svmBlockhash: null, settlement: null, responseStatus: null,
+    };
+    const decided = await decideAndPay({ ...input, account: input.account ?? NO_EVM_ACCOUNT }, facts);
+    // 控えは結果そのものから組む（理由・402 の値・nonce・送った取引を写し間違えない）。決定行の JSONL には足さない。
+    const result = { ...decided, receipt: receiptOf(input.resource, decided, facts) };
     if (input.decisionStore === undefined)
         return result;
     try {
@@ -398,7 +404,30 @@ const NO_EVM_ACCOUNT = {
         throw new Error("invalid_payer: no EIP-3009 account was given — a 0x payee needs account to pay on Base");
     },
 };
-async function decideAndPay(input) {
+/** 結果と、ALLOW ブランチで控えた値から {@link PayReceipt} を組む。判定はしない（値を並べるだけ）。 */
+function receiptOf(endpoint, result, facts) {
+    return {
+        endpoint,
+        method: facts.method,
+        network: result.challenge?.network ?? null,
+        asset: result.challenge?.asset ?? null,
+        payTo: result.challenge?.payTo ?? null,
+        amount: result.challenge?.amount ?? null,
+        maxPerTxUsd: facts.maxPerTxUsd,
+        payer: facts.payer,
+        reason_codes: [...result.decision.reason_codes],
+        settlement: facts.settlement,
+        responseStatus: facts.responseStatus,
+        retry: {
+            signed: result.signed,
+            authorization: facts.authorization,
+            svm: result.nonce !== null && facts.svmBlockhash !== null
+                ? { memo: result.nonce, recentBlockhash: facts.svmBlockhash, transaction: result.svmTransaction }
+                : null,
+        },
+    };
+}
+async function decideAndPay(input, facts) {
     const fetchFn = input.fetch;
     if (typeof fetchFn !== "function") {
         throw new Error("invalid_fetch: pass the fetch implementation payOrRefuse should use");
@@ -493,7 +522,14 @@ async function decideAndPay(input) {
     const apiUrl = (input.apiUrl ?? DEFAULT_API_URL).replace(/\/$/, "");
     const maxPerTxUsd = input.policy?.maxPerTxUsd ?? DEFAULT_MAX_PER_TX_USD;
     const source = input.source ?? "sdk";
-    const headers = input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {};
+    // vet402 の API（/decision・受取人スコア・attest）へ出す要求のヘッダ。0.7.1 から `vet402-sdk/<版>` を名乗る
+    // （ブラウザでは付けない）。売り手・RPC・The Graph への要求はこのヘッダを使わない。
+    const headers = {
+        ...clientIdentityHeaders(),
+        ...(input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {}),
+    };
+    facts.method = method;
+    facts.maxPerTxUsd = maxPerTxUsd;
     const requireVet402Allow = input.policy?.requireVet402Allow !== false;
     const evidence = [];
     /**
@@ -731,12 +767,12 @@ async function decideAndPay(input) {
         if (scoreQualityDefect(decision) !== null) {
             return refuse([...serverReasons, "evidence_unavailable"], "decision", decision);
         }
-        // G5b ④（名前経路だけ）: 200 で読めても、判定語が ALLOW・WARN・BLOCK のどれでもなければ判定になっていない。
-        // 免除（`requireVet402Allow: false`）の下で「知らない語」を WARN と同じに読んで払わない。
-        // **名前を使わない呼び手の挙動は変えない**（既定経路は ETHOnline 提出時のまま）。名前なし＋免除＋判定語なしで
-        // 払ってしまう穴は既知（2026-09-25 発見）。ETHOnline デモの予告（gate-parity の A）も同じ前提なので、
-        // 賞の扱いが確定した後に SDK とデモを一緒に直す。
-        if (ensGate !== null && !KNOWN_VERDICTS.has(String(decision.recommendation ?? "").trim().toUpperCase())) {
+        // G5b ④: 200 で読めても、判定語が ALLOW・WARN・BLOCK のどれでもなければ判定になっていない。
+        // 免除（`requireVet402Allow: false`）が外すのは**読めた判定の中身**で、欠けた語・知らない語を WARN と同じに
+        // 読んで床だけで払わない。0.7.0 までは名前経路だけが見ていて、名前なし＋免除＋判定語なしで払っていた
+        // （2026-09-25 発見の既知の穴）。0.7.1 から、免除を宣言した呼び手は経路を問わずここで止まる。
+        // 既定（免除なし）で名前を使わない呼び手は、下の ALLOW 検査が今までと同じ語（`payee_recommendation_not_allow`）で拒む。
+        if ((ensGate !== null || !requireVet402Allow) && isUnknownVerdict(decision.recommendation)) {
             return refuse([...serverReasons, "evidence_unavailable"], "decision", decision);
         }
         // A1: ALLOW 以外。理由はサーバの reason_codes をそのまま通す（我々の語で上書きしない）。
@@ -861,6 +897,11 @@ async function decideAndPay(input) {
         if (scoreQualityDefect(payeeScore) !== null) {
             return refuse([...pathReasons, "evidence_unavailable"], "payee_score", null, payeeScore, accept);
         }
+        // 判定語の検査は受取人スコアにも当てる（0.7.1）。免除の下で、語の無い・知らない語のスコアを WARN と同じに
+        // 読んで払わない。既定（免除なし）の呼び手は、下の ALLOW 検査が今までと同じ語で拒む。
+        if (!requireVet402Allow && isUnknownVerdict(payeeScore?.recommendation)) {
+            return refuse([...pathReasons, "evidence_unavailable"], "payee_score", null, payeeScore, accept);
+        }
         // **BLOCK は免除の対象外**（WINDOW_PLAN §3.2.1）。上の decision 経路と同じ規則。
         if (isBlockVerdict(payeeScore?.recommendation)) {
             return refuse([...pathReasons, "payee_recommendation_block"], "payee_score", null, payeeScore, accept);
@@ -917,6 +958,9 @@ async function decideAndPay(input) {
         // 取引は SDK が組み、呼び手の署名者は署名するだけ。attest は POST しない（attest API は 0x の txHash しか受けない）。
         const { executeSvmPayment } = await import("./svm-pay.js");
         let svmMemo = null;
+        // 売り手へ渡した取引。**送る直前に控える**——送った後で応答が壊れていて例外になっても、送った取引は結果に残す
+        // （0.7.0 は、fetch が undefined を返すと `.headers` の TypeError で svmPaid が null になり、取引が結果から消えた）。
+        let svmSentTransaction = null;
         const svmPaid = await executeSvmPayment({
             account: svm.account,
             rpcUrl: svm.rpcUrl,
@@ -924,8 +968,13 @@ async function decideAndPay(input) {
             resource: input.resource,
             method,
             fetch: fetchFn,
-            onSigned: ({ memo }) => {
+            onSigned: ({ memo, recentBlockhash, payer }) => {
                 svmMemo = memo;
+                facts.svmBlockhash = recentBlockhash;
+                facts.payer = payer;
+            },
+            onSending: ({ transactionB64 }) => {
+                svmSentTransaction = transactionB64;
             },
         }).catch((error) => {
             // 署名の**前**に落ちた（web3.js が無い・RPC が blockhash を返さない等）なら金は動いていない。そのまま投げる。
@@ -938,6 +987,8 @@ async function decideAndPay(input) {
             return refuse([svmPaid.refused], verdictSource, decision, payeeScore, accept);
         }
         const svmSettled = svmPaid !== null && svmPaid.settled;
+        facts.settlement = svmPaid?.settlement ?? null;
+        facts.responseStatus = svmPaid?.responseStatus ?? null;
         return {
             status: svmSettled ? "paid" : "failed",
             decision: record("ALLOW", svmSettled ? allowReasons : [...allowReasons, "settle_failed"], verdictSource, decision, payeeScore, policyOverride),
@@ -950,7 +1001,7 @@ async function decideAndPay(input) {
             stored: false,
             storeError: null,
             rail,
-            svmTransaction: svmPaid?.transactionB64 ?? null,
+            svmTransaction: svmPaid?.transactionB64 ?? svmSentTransaction,
         };
     }
     const { executeX402Payment } = await import("./x402-pay.js");
@@ -965,8 +1016,11 @@ async function decideAndPay(input) {
         profile,
         x402Version,
         fetch: fetchFn,
-        onSigned: ({ nonce }) => {
+        onSigned: ({ nonce, authorization }) => {
             signedNonce = nonce;
+            // 何に署名したか（validBefore を含む認可の全体）を控える。署名そのものは控えない。
+            facts.authorization = { ...authorization };
+            facts.payer = authorization.from;
         },
     }).catch((error) => {
         // 署名の**前**に落ちたなら金は動いていない。呼び出し側の誤りとしてそのまま投げる。
@@ -993,6 +1047,8 @@ async function decideAndPay(input) {
             svmTransaction: null,
         };
     }
+    facts.settlement = paid.settlement;
+    facts.responseStatus = paid.responseStatus;
     if (!paid.settled) {
         // E18: 署名は実在する。隠さない。nonce も返す——署名した認可は validBefore まで
         // 生きた金で、後から遅れて決済され得る。何に署名したかが残らないと照合できない。

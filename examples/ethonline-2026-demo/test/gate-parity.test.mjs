@@ -287,6 +287,11 @@ export const CASES = [
   ["decision body", "signalsUnavailable:null", { decision: D({ signalsUnavailable: null }) }],
   ["decision body", "signalsUnavailable:{} (object)", { decision: D({ signalsUnavailable: {} }) }],
   ["decision body", "signalsUnavailable 欄が無い", { decision: D() }],
+  // 判定語が ALLOW・WARN・BLOCK のどれでもない 200（SDK 0.7.1）。`PAY_POLICY` は免除（requireVet402Allow:false）なので、
+  // 0.7.0 までは C が床だけで署名していた（上の「recommendation 欄が無い」も同じ穴の世界）。
+  ["decision body", 'recommendation "MAYBE"（知らない語）', { decision: D({ recommendation: "MAYBE" }) }],
+  ["decision body", "recommendation null", { decision: D({ recommendation: null }) }],
+  ["decision body", 'recommendation ""（空文字）', { decision: D({ recommendation: "" }) }],
 
   // ---- 面: `facts.l1.n_delivered` の形（床 1 を置いて、初めて関門になる） ----
   // 床を 0 のままにすると「どの形でも通る」ので、この面だけ第4要素で 1 に上げる。
@@ -324,6 +329,9 @@ export const CASES = [
   ["payee score", "500", { score: { status: 500, body: {} } }],
   ["payee score", "fetch throws", { score: { throw: true } }],
   ["payee score", "200 + 壊れた JSON", { score: { status: 200, badJson: true } }],
+  // 受取人スコアの判定語が読めない（SDK 0.7.1・カタログ外の経路でも同じ検査）。
+  ["payee score", "recommendation 欄が無い", { score: { status: 200, body: { payee: PAYEE, degraded: false, signalsUnavailable: [], score: 90 } } }],
+  ["payee score", 'recommendation "MAYBE"（知らない語）', { score: S({ recommendation: "MAYBE" }) }],
 
   // ---- 面: The Graph subgraph ----
   ["subgraph", "正常 253 件", {}],

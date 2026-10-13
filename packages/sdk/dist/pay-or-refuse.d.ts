@@ -1,5 +1,5 @@
 import type { DecisionResult, PayeeScoreResult } from "./index.js";
-import type { PayerAccount, X402Accept } from "./x402-pay.js";
+import type { Eip3009Authorization, PayerAccount, X402Accept, X402Settlement } from "./x402-pay.js";
 import { type ChainProfileName } from "./chain-profile.js";
 import type { EnsAttestationPolicy, EnsOfferCheck } from "./ens-attestation.js";
 import type { EnsReadClients } from "./ens-read.js";
@@ -442,6 +442,61 @@ export type PayOrRefuseResult = {
     rail: PayRail;
     /** Solana で売り手へ送った署名済み取引（base64）。送っていなければ・EVM では null。 */
     svmTransaction: string | null;
+    /**
+     * 0.7.1 で足した。`payOrRefuse` が返す結果には必ずある（型の上で任意なのは、0.7.0 の形の値を自分で組む
+     * 呼び手のコードを壊さないため）。再試行の前に確かめる値をまとめたもの。{@link PayReceipt}。
+     */
+    receipt?: PayReceipt;
+};
+/**
+ * **再試行の前に確かめるための控え。** SDK が既に持っていた値を載せるだけで、ここで新しい判定はしない。
+ *
+ * `status` は**売り手の申告**（PAYMENT-RESPONSE）で決まる。売り手が失敗と返した・応答が読めなかったときでも、
+ * 署名済みの支払いがチェーンに載っている・これから載ることがある。`retry.signed` が true の結果を再試行する
+ * 前に、同じ支払いが載っていないかを `retry` の値でチェーンに確かめる（確かめ方は README）。
+ * **SDK は自動で再試行しない。チェーンも読みに行かない。**
+ */
+export type PayReceipt = {
+    /** 払おうとした資源の URL（呼び手が渡した `resource`）と HTTP メソッド。 */
+    endpoint: string;
+    method: string;
+    /** 402 から選んだ accept の値。402 を読む前に止まったときは null。`amount` は最小単位の文字列（署名した額）。 */
+    network: string | null;
+    asset: string | null;
+    payTo: string | null;
+    amount: string | null;
+    /** この呼び出しに当てた1件あたりの上限（USD）。 */
+    maxPerTxUsd: number;
+    /** 署名したアドレス。**署名していなければ null**（拒否経路では署名者の `address` も読まない）。 */
+    payer: string | null;
+    /** 決定行の `reason_codes` と同じ語（拒否の理由・`settle_failed`・経路の印）。 */
+    reason_codes: string[];
+    /**
+     * 売り手が PAYMENT-RESPONSE ヘッダで返した内容そのまま（`success`・`transaction`・`network`・`payer`・`errorReason`）。
+     * **売り手（とその facilitator）の申告であって、チェーンで確かめた値ではない。** ヘッダが無い・応答が読めないときは null。
+     */
+    settlement: X402Settlement | null;
+    /** 支払いつきの再送に売り手が返した HTTP ステータス。応答が無い・読めないときは null。 */
+    responseStatus: number | null;
+    retry: {
+        /** 署名が実在するか（結果の `signed` と同じ）。false なら再試行しても二重払いにならない。 */
+        signed: boolean;
+        /**
+         * EVM で署名した EIP-3009 の認可（署名そのものは含まない）。`validBefore`（unix 秒）を過ぎるまで、この認可は
+         * いつでも決済され得る。USDC の `authorizationState(from, nonce)` が true なら既に使われている。EVM 以外・未署名は null。
+         */
+        authorization: Eip3009Authorization | null;
+        /**
+         * Solana で署名した取引の `memo`（結果の `nonce` と同じ）・取引に入れた `recentBlockhash`・売り手へ送った取引
+         * （base64・結果の `svmTransaction` と同じ。送っていなければ null）。blockhash が失効するまで、その取引は載り得る。
+         * Solana 以外・未署名は null。
+         */
+        svm: {
+            memo: string;
+            recentBlockhash: string;
+            transaction: string | null;
+        } | null;
+    };
 };
 /**
  * 判定を引き、全部の条件を通ったときにだけ払う。結果は `decisionStore` を渡したときだけ

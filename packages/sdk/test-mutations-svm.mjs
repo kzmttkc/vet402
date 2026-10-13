@@ -174,6 +174,31 @@ const MUTATIONS = [
     find: "  if (units < 0n || units > U64_MAX) {",
     replace: "  if (/* MUTANT */ false) {",
   },
+  // ---- 0.7.1: 送った取引は、応答が壊れていても結果に残す ----
+  {
+    id: "V19",
+    what: "送る直前に控えた取引を結果に使わない（応答が壊れると svmTransaction が null になる・0.7.0 の挙動）",
+    rule: "送った取引は必ず結果に残す（R6 / R7）",
+    file: PAY,
+    find: "      svmTransaction: svmPaid?.transactionB64 ?? svmSentTransaction,",
+    replace: "      svmTransaction: svmPaid?.transactionB64 ?? null, /* MUTANT */",
+  },
+  {
+    id: "V20",
+    what: "svm-pay が送る直前に取引を外へ出さない（onSending を呼ばない）",
+    rule: "送った取引は必ず結果に残す（R6 / R7）",
+    file: SVM,
+    find: "  args.onSending?.({ transactionB64 });",
+    replace: "  /* MUTANT: onSending not called */",
+  },
+  {
+    id: "V21",
+    what: "Solana の取引に入れた blockhash を結果に控えない",
+    rule: "再試行の前に失効を確かめる値が receipt に残る（R5）",
+    file: PAY,
+    find: "        facts.svmBlockhash = recentBlockhash;",
+    replace: "        /* MUTANT: blockhash not kept */",
+  },
 ];
 
 // ---------- 実行器（test-mutations.mjs の写し）----------

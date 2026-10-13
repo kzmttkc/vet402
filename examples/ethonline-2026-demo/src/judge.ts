@@ -13,7 +13,7 @@
  */
 import { DEFAULT_MAX_PER_TX_USD } from "../../../packages/sdk/dist/index.js";
 // 判定語と「測れたか」の欄の読み方。`assess.ts` の関門表・`pay-or-refuse.ts`・`spend-guard.ts` と同じ 1 本。
-import { decisionResponseDefect, isBlockVerdict, isDecimalUnits, scoreQualityDefect } from "../../../packages/sdk/dist/verdict-shape.js";
+import { decisionResponseDefect, isBlockVerdict, isDecimalUnits, isUnknownVerdict, scoreQualityDefect } from "../../../packages/sdk/dist/verdict-shape.js";
 import type { PayRefuseReason } from "../../../packages/sdk/src/pay-or-refuse.ts";
 import { assess, l1Delivered, type AssessPolicy, type DecisionBody, type EvidenceSource, type Reads } from "./assess.ts";
 import type { Emitter } from "./emit.ts";
@@ -274,6 +274,11 @@ export function dryRunVerdict(
   if (decision) {
     // 「測れたか」と「BLOCK か」は SDK の `verdict-shape` に訊く（写さない・`assess.ts` と同じ 1 本）。
     if (scoreQualityDefect(decision) !== null) return refuse([...serverReasons, "evidence_unavailable"], "decision");
+    // 免除が外すのは読めた判定だけ（SDK 0.7.1）。ALLOW・WARN・BLOCK のどれでもない語・欠けた語は、免除の下でも判定に
+    // なっていない。SDK `pay-or-refuse.ts` と同じ位置・同じ語。
+    if (!policy.requireVet402Allow && isUnknownVerdict(decision.recommendation)) {
+      return refuse([...serverReasons, "evidence_unavailable"], "decision");
+    }
     // BLOCK は免除の対象外（WINDOW_PLAN §3.2.1）。WARN は意見、BLOCK は遮断。
     if (isBlockVerdict(decision.recommendation)) return refuse([...serverReasons, "payee_recommendation_block"], "decision");
     // ALLOW は正規化しないで比べる（正規化は片道。SDK `pay-or-refuse.ts` と同じ厳密比較）。
@@ -309,6 +314,10 @@ export function dryRunVerdict(
     // 測れなかったことは、ALLOW でないことと別（J7）。免除しない。
     // `degraded` と `signalsUnavailable` の読み方は SDK の `verdict-shape` が 1 本で持つ。
     if (scoreQualityDefect(body) !== null) return refuse([...pathReasons, "evidence_unavailable"], "payee_score");
+    // 受取人スコアにも同じ検査（SDK 0.7.1）。
+    if (!policy.requireVet402Allow && isUnknownVerdict(body.recommendation)) {
+      return refuse([...pathReasons, "evidence_unavailable"], "payee_score");
+    }
     if (isBlockVerdict(body.recommendation)) return refuse([...pathReasons, "payee_recommendation_block"], "payee_score");
     if (body.recommendation !== "ALLOW") {
       if (policy.requireVet402Allow) return refuse([...pathReasons, "payee_recommendation_not_allow"], "payee_score");

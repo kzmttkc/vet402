@@ -345,8 +345,9 @@ const MUTATIONS = [
     what: "onSigned で nonce を控えない",
     rule: "署名の直後に nonce を確定させる（settle が throw しても残す）",
     file: PAY,
-    find: "    onSigned: ({ nonce }) => {\n      signedNonce = nonce;\n    },",
-    replace: "    onSigned: () => { /* MUTANT */ },",
+    // 0.7.1: onSigned が認可（receipt 用）も控えるようになったので、nonce を控える1行だけを壊す（壊す規則は同じ）。
+    find: "    onSigned: ({ nonce, authorization }) => {\n      signedNonce = nonce;\n",
+    replace: "    onSigned: ({ nonce, authorization }) => {\n      /* MUTANT: nonce not kept */\n",
   },
   {
     id: "M18",
@@ -429,6 +430,49 @@ const MUTATIONS = [
     file: SUB,
     find: '    const seenDeployment = typeof returnedDeployment === "string" ? returnedDeployment.trim() : "";',
     replace: '    const seenDeployment = typeof returnedDeployment === "string" ? returnedDeployment.trim() : pinnedDeployment; /* MUTANT */',
+  },
+
+  // ---- 0.7.1: 判定語が読めないときは免除の下でも払わない（全経路）----
+  {
+    id: "M46",
+    what: "判定語の検査を名前（ENS）経路だけに戻す（0.7.0 の穴: 名前なし＋免除＋判定語なしで払う）",
+    rule: "K1/K7 免除が外すのは読めた判定だけ（/decision）",
+    file: PAY,
+    find: "    if ((ensGate !== null || !requireVet402Allow) && isUnknownVerdict(decision.recommendation)) {",
+    replace: "    if (/* MUTANT */ ensGate !== null && isUnknownVerdict(decision.recommendation)) {",
+  },
+  {
+    id: "M47",
+    what: "受取人スコアの判定語の検査を外す（カタログ外＋免除＋判定語なしで払う）",
+    rule: "K4 免除が外すのは読めた判定だけ（404 経路）",
+    file: PAY,
+    find: "    if (!requireVet402Allow && isUnknownVerdict(payeeScore?.recommendation)) {",
+    replace: "    if (/* MUTANT */ false) {",
+  },
+  {
+    id: "M48",
+    what: "知らない語を既知の語として読む（欠けた語だけを止め、\"MAYBE\" は WARN と同じに通す）",
+    rule: "K1/K8 既知の語は ALLOW・WARN・BLOCK だけ",
+    file: VERDICT,
+    find: '  return typeof value !== "string" || !KNOWN_VERDICTS.has(value.trim().toUpperCase());',
+    replace: '  return typeof value !== "string"; /* MUTANT */',
+  },
+  // ---- 0.7.1: 再試行の前に確かめる値・名乗り ----
+  {
+    id: "M49",
+    what: "署名した EIP-3009 の認可（validBefore を含む）を結果に控えない",
+    rule: "R1/R2 署名した以上、何に署名したかは receipt に残る",
+    file: PAY,
+    find: "      facts.authorization = { ...authorization };",
+    replace: "      /* MUTANT: authorization not kept */",
+  },
+  {
+    id: "M50",
+    what: "vet402 の API 用のヘッダ（User-Agent・Authorization）を売り手への 402 の取得にも付ける",
+    rule: "U5 売り手への要求は 0.7.0 の形のまま（名乗らない・鍵を渡さない）",
+    file: PAY,
+    find: "    const response = await fetchFn(input.resource, { method });",
+    replace: "    const response = await fetchFn(input.resource, { method, headers }); /* MUTANT */",
   },
 ];
 

@@ -15,7 +15,7 @@ import { readSubgraphReceipts, X402_BASE_SUBGRAPH_ID } from "../../../packages/s
 // 「署名する」と予告して金の経路が拒否した欠陥は、それが原因だった。
 // `dist/index.js`（公開面）には無いので、金の経路が読むのと同じ実装ファイルを直接引く。
 // SDK の公開 API を会期中に広げないための選択でもある（`judge.ts` 冒頭「`packages/**` を触らない」）。
-import { decisionResponseDefect, isBlockVerdict, isDecimalUnits, scoreQualityDefect } from "../../../packages/sdk/dist/verdict-shape.js";
+import { decisionResponseDefect, isBlockVerdict, isDecimalUnits, isUnknownVerdict, scoreQualityDefect } from "../../../packages/sdk/dist/verdict-shape.js";
 import type { PayView } from "./render.ts";
 import {
   VET402_API,
@@ -347,7 +347,9 @@ export async function assess(options: AssessOptions): Promise<{ view: PayView; r
             // 許可と読むのは緩める方向）。SDK の `recommendation !== "ALLOW"` と同じ厳密比較。
             verdictSource.recommendation === "ALLOW"
             ? "pass"
-            : policy.requireVet402Allow
+            : // 免除が外すのは**読めた判定**だけ（SDK 0.7.1）。ALLOW・WARN・BLOCK のどれでもない語・欠けた語は、
+              // 免除の下でも通さない。語の読み方は SDK の `verdict-shape` に訊く（写さない）。
+              policy.requireVet402Allow || isUnknownVerdict(verdictSource.recommendation)
               ? "fail"
               : "waived"
         : "unknown",
@@ -359,7 +361,9 @@ export async function assess(options: AssessOptions): Promise<{ view: PayView; r
               ? " — BLOCK is never waived"
               : verdictSource.recommendation === "ALLOW" || policy.requireVet402Allow
                 ? ""
-                : " — not required by policy") +
+                : isUnknownVerdict(verdictSource.recommendation)
+                  ? " — not a verdict word, never waived"
+                  : " — not required by policy") +
           ` [${verdictSource.label}]`
         : "verdict not read",
     ),

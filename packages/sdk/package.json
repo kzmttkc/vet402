@@ -1,6 +1,6 @@
 {
   "name": "@vet402/sdk",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -40,7 +40,7 @@
     "typescript": "^5",
     "viem": "^2.55.1"
   },
-  "description": "Trust scores for AI agents and x402 payees on Base. Read a score, or gate a payment with SpendGuard before it settles.",
+  "description": "Trust scores for AI agents and x402 payees. Read a score, gate a payment with SpendGuard, or let payOrRefuse pay on Base or Solana only after every check passes.",
   "license": "MIT",
   "author": "KIZUNA Creation",
   "homepage": "https://vet402.com",
@@ -57,6 +57,7 @@
     "agent-payments",
     "trust-score",
     "base",
+    "solana",
     "onchain",
     "sdk"
   ],

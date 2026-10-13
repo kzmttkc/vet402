@@ -1,3 +1,4 @@
+import { MCP_USER_AGENT } from "./version.js";
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
 const TX_HASH_RE = /^0x[a-fA-F0-9]{64}$/;
 const AGENT_ID_RE = /^\d+$/;
@@ -80,6 +81,8 @@ async function vouchFetch(path, init) {
         // cannot be failed closed by the model.
         signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
         headers: {
+            // Names this server to vet402's API. Every request made here goes to vet402.
+            "User-Agent": MCP_USER_AGENT,
             ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
             ...(init?.body ? { "Content-Type": "application/json" } : {}),
             ...init?.headers,

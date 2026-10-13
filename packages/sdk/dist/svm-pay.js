@@ -144,6 +144,8 @@ export async function fetchLatestBlockhash(fetchFn, rpcUrl) {
 /**
  * 組んで、署名させて、売り手へ再送する。判定はしない——ここへ来た時点で通っている、が
  * `payOrRefuse` との契約。`onSigned` は署名者が返した直後に同期で呼ぶ（ここから先で落ちても memo が残る）。
+ * `onSending` は売り手へ送る直前に同期で呼ぶ（0.7.1）。送った後で応答が壊れていて例外になっても、
+ * 呼び手は送った取引を失わない。
  */
 export async function executeSvmPayment(args) {
     const { account, accept } = args;
@@ -157,7 +159,7 @@ export async function executeSvmPayment(args) {
     const { transaction, messageBytes } = buildSvmPaymentTransaction(web3, { accept, payerAddress, recentBlockhash, memo });
     // ここが「署名が存在する」唯一の行。プロパティ参照は 1 回だけに保つ（テストの Proxy は参照を数える）。
     const returned = await account.signTransaction(transaction);
-    args.onSigned?.({ memo });
+    args.onSigned?.({ memo, recentBlockhash, payer: payerAddress });
     const notSent = {
         refused: null,
         signed: true,
@@ -183,6 +185,8 @@ export async function executeSvmPayment(args) {
     }
     const transactionB64 = toBase64(wire);
     const header = encodeSvmPaymentHeader({ accept, transactionB64, resourceUrl: args.resource });
+    // ここから先は取引が売り手の手に渡る。送る取引を先に外へ出す。
+    args.onSending?.({ transactionB64 });
     let response;
     try {
         response = await args.fetch(args.resource, {

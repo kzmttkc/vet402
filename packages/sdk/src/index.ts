@@ -1,4 +1,5 @@
 import { SpendGuard, type SpendGuardPolicy } from "./spend-guard.js";
+import { clientIdentityHeaders } from "./user-agent.js";
 
 export {
   SpendGuard,
@@ -40,6 +41,8 @@ export {
   type EnsGateInput,
   type PayEnsEvidence,
   type PayOrRefuseResult,
+  // 0.7.1: 再試行の前に確かめるための控え（結果の `receipt`）。
+  type PayReceipt,
   type PayDecisionRecord,
   type PayPolicy,
   type PayEvidencePolicy,
@@ -800,6 +803,9 @@ export class VouchClient {
       ...init,
       signal: init?.signal ?? AbortSignal.timeout(this.timeoutMs),
       headers: {
+        // Names this SDK to vet402's API (`vet402-sdk/<version>`). Nothing in a
+        // browser. Every request made here goes to vet402, never to a seller.
+        ...clientIdentityHeaders(),
         // No key → no header. Key-less /decision reads are a server feature
         // (2026-09-07); a key-requiring route answers 401 missing_api_key,
         // which is passed through below as the server's own word.

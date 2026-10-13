@@ -81,6 +81,7 @@
  */
 import { DEFAULT_API_URL, decisionQueryString, type CallerPolicy } from "./vouch-client.js";
 import { refusalReasonCodes } from "./decision.js";
+import { MCP_USER_AGENT } from "./version.js";
 // 型だけ。値の import は ALLOW ブランチ内の動的 import に限る（第3層）。`import type` は
 // tsc が消すので、dist の拒否経路に `@vet402/sdk` への静的な参照は残らない。
 import type { PayDecisionRecord, PayEvidencePolicy, PayPolicy, PayRefuseReason, SvmPayerAccount } from "@vet402/sdk";
@@ -301,7 +302,12 @@ async function payIfTrustedCore(input: PayIfTrustedInput, notes: string[]): Prom
         "in the MCP server's env block (it is never taken from tool input). Nothing was read and nothing was signed.",
     );
   }
-  const headers: Record<string, string> = input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {};
+  // vet402 の API（/resolve・/decision）へ出す要求のヘッダ。`vet402-mcp/<版>` を名乗る。売り手への要求には使わない
+  // （支払いは SDK の `payOrRefuse` が出し、SDK は売り手に名乗らない）。
+  const headers: Record<string, string> = {
+    "User-Agent": MCP_USER_AGENT,
+    ...(input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {}),
+  };
 
   // --- 1.8 払う URL をサーバの正規化に通す（2026-09-29 監査 7 周目・高）---
   // 凍結中の SDK は resource_id を生の URL から作る。表記が違う（末尾スラッシュ・ホストの大文字・:443・クエリの

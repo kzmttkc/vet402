@@ -1,3 +1,5 @@
+import { MCP_USER_AGENT } from "./version.js";
+
 export type TrustScoreResult = {
   agentId: string;
   wallet: string | null;
@@ -296,6 +298,8 @@ async function vouchFetch<T>(path: string, init?: RequestInit): Promise<T> {
     // cannot be failed closed by the model.
     signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
     headers: {
+      // Names this server to vet402's API. Every request made here goes to vet402.
+      "User-Agent": MCP_USER_AGENT,
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
       ...init?.headers,

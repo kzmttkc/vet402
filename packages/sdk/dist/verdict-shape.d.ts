@@ -32,6 +32,21 @@
  */
 export declare function isBlockVerdict(value: unknown): boolean;
 /**
+ * Is this value none of ALLOW, WARN or BLOCK? Read the way {@link isBlockVerdict}
+ * reads a word (trimmed, upper-cased), so `" warn "` is a known word. A missing
+ * word, an empty one, a word the SDK has never seen and any non-string are all
+ * unknown.
+ *
+ * `payOrRefuse` asks this before a caller's `requireVet402Allow: false` can
+ * waive a verdict. A waiver is a decision about a verdict that was read. Until
+ * 0.7.1 only the ENS name path asked; every other path read a 200 without a
+ * verdict word as if it were a WARN and paid on the caller's floors alone.
+ *
+ * This never reads anything as ALLOW: a `false` here only means "a word we
+ * know", and the ALLOW comparison stays a strict `=== "ALLOW"`.
+ */
+export declare function isUnknownVerdict(value: unknown): boolean;
+/**
  * What is wrong with this score's data-quality fields, if anything?
  *
  * Returns a reason to refuse, or `null` when this particular question found

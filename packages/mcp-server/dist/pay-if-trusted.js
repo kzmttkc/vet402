@@ -81,6 +81,7 @@
  */
 import { DEFAULT_API_URL, decisionQueryString } from "./vouch-client.js";
 import { refusalReasonCodes } from "./decision.js";
+import { MCP_USER_AGENT } from "./version.js";
 /** Solana の base58 アドレス。SDK の `payOrRefuse` がレールを決めるのと同じ形（0x でなければこれ）。 */
 export const SOLANA_PAYEE_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 /**
@@ -148,7 +149,12 @@ async function payIfTrustedCore(input, notes) {
         return refuse(measure(null), ["evidence_unavailable", "subgraph_evidence_unavailable", "graph_key_not_configured"], "policy.evidence.source asks for The Graph, but this server has no Graph Gateway key: set GRAPH_API_KEY " +
             "in the MCP server's env block (it is never taken from tool input). Nothing was read and nothing was signed.");
     }
-    const headers = input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {};
+    // vet402 の API（/resolve・/decision）へ出す要求のヘッダ。`vet402-mcp/<版>` を名乗る。売り手への要求には使わない
+    // （支払いは SDK の `payOrRefuse` が出し、SDK は売り手に名乗らない）。
+    const headers = {
+        "User-Agent": MCP_USER_AGENT,
+        ...(input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {}),
+    };
     // --- 1.8 払う URL をサーバの正規化に通す（2026-09-29 監査 7 周目・高）---
     // 凍結中の SDK は resource_id を生の URL から作る。表記が違う（末尾スラッシュ・ホストの大文字・:443・クエリの
     // 並び）と /decision は 404 になり、「カタログ外」として受取人スコアで払えてしまう——BLOCK の資源にも。

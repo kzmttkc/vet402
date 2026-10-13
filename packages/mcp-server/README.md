@@ -105,6 +105,9 @@ A `serverInfo` line comes back on stdout. The package also installs a
 | `GRAPH_API_KEY` | — | Graph Gateway key for `pay_if_trusted` when `policy.evidence.source` is `"subgraph"` or `"both"`. Read from env only — never from tool input, so it never enters the model's context. Without it such a call refuses with `graph_key_not_configured` before reading anything (2026-09-06). |
 | `VOUCH_TIMEOUT_MS` | `10000` | Per-request timeout. Cannot be disabled — a lookup that never returns cannot be failed closed on. A malformed value falls back to the default rather than breaking every tool call. |
 
+Requests to the vet402 API carry `User-Agent: vet402-mcp/<version>` (unreleased, lands with 0.3.1), so
+vet402 can count calls per client version. Sellers are not sent it.
+
 > **0.1.0 defaults `VOUCH_API_URL` to `http://localhost:3000/api/v1`** — a
 > development default that shipped by accident. The configs above set it
 > explicitly, so they are correct on every version; 0.1.1 and later default to
