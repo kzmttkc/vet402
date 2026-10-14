@@ -1,0 +1,31 @@
+{
+  "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+  "name": "vet402",
+  "description": "vet402 buys from x402 endpoints with real USDC, checks each paid response against the seller's declared output schema where one exists, and publishes the results with evidence.",
+  "image": "https://vet402.com/brand/icon-512.png",
+  "services": [
+    {
+      "name": "web",
+      "endpoint": "https://vet402.com/"
+    },
+    {
+      "name": "wallet",
+      "endpoint": "eip155:42220:0xc9c7b38C0942914fC8EA12063BC92dcd3b581670"
+    }
+  ],
+  "x402Support": false,
+  "active": true,
+  "registrations": [
+    {
+      "agentId": 9907,
+      "agentRegistry": "eip155:42220:0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
+    },
+    {
+      "agentId": 194,
+      "agentRegistry": "eip155:42220:0xaC3DF9ABf80d0F5c020C06B04Cced27763355944"
+    }
+  ],
+  "supportedTrust": [
+    "reputation"
+  ]
+}

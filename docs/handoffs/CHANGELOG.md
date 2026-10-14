@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-14 — /.well-known/agent-registration.json: vet402's ERC-8004 (9907) and Self Agent ID (194) identities on Celo
+- **何を**: `public/.well-known/agent-registration.json` を新設（ERC-8004 の registration-v1 形式）。registrations に Celo の ERC-8004 Identity Registry の agentId 9907 と Self Agent ID registry の agentId 194。services に web と、Celo で売り手へ払っている番地（eip155:42220:0xc9c7…1670・自己申告の紐づけ）。x402Support は false（vet402 は買い手で、自分の API を x402 で売っていない）。
+- **なぜ**: Celo の助成（Prezenti Frontier）の申請フォームが ERC-8004 と Self Agent ID を求める。ERC-8004 の tokenURI(9907) はすでにこの URL を指している（10/14 登録 tx 0x3b3503961a86b28c73d319246dbe0bd4c0db3de3aad731f1fa6be0d4bfa450ce・登録者 0x970b…0435 は Claude が 10/14 に作った身元専用の鍵。購入用の鍵は使っていない）。
+- **影響**: 静的ファイル 1 本。コードと金の経路は変えていない。第三者点検 92→直して公開（description を「宣言された出力の形がある場合に照合」までに弱めた）。
+
 ## 2026-10-14 — @vet402/sdk 0.7.1: no payment on an unreadable verdict word under a waiver, a retry receipt, the sent Solana transaction is kept, and the SDK and MCP server name themselves to vet402's API (branch `sdk-071`, not pushed, not published)
 - **何を**（`packages/sdk` 0.7.0 → 0.7.1。`packages/mcp-server` は未公開の 0.3.1 のまま）:
   1. **判定語が読めないときは、免除の下でも払わない**（`packages/sdk/src/pay-or-refuse.ts`・`verdict-shape.ts`）。0.7.0 までは、名前（ENS）経路だけが「判定語が ALLOW・WARN・BLOCK のどれかか」を見ていた。名前を使わない呼び手が `requireVet402Allow:false` と床を宣言していると、`recommendation` が欠けている・知らない語（`"MAYBE"`・`null`・`""`・数・object）の 200 を WARN と同じに読み、床だけで署名していた（コメントが 2026-09-25 に既知の穴として書いていたもの。手元で再現: 判定語なし＋床 3 件で `status: "paid"`・`signTypedData` 1 回）。直し: 語の読み方を `verdict-shape.ts` の `isUnknownVerdict` に 1 本で置き、`/decision` の経路（0x・Solana）と、404 → 受取人スコアの経路の両方で、免除を宣言した呼び手に当てる。拒否の語は名前経路と同じ既存の **`evidence_unavailable`**（新しい語は作っていない）。文字列でない値（配列など）は「知らない語」と読む。**既定（`requireVet402Allow` を書かない・`true`）の拒否理由は変えていない**（判定語なしは今までどおり `payee_recommendation_not_allow`。テスト K3・K6 が固定）。`"warn"`・`" ALLOW "` のような綴り違いの既知の語の扱いも 0.7.0 と同じ（ALLOW とは読まず、免除があれば通す）。
