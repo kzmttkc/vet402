@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-15 — L1: record when a paid 2xx answer is not shaped like an answer (shadow only: answerShape)
+- **何を**: `src/lib/observatory/answer-shape.ts`（新規・純関数）と `l1-runner.ts` の有料の記録（`raw_response_meta.answerShape`）。2xx で最後まで読めた空でない本文が、答えの形をしていないときに型を残す: `error_object`（最上位がエラーの鍵とその添え物だけ）・`error_flag`（ok:false／success:false／status:"error"|"fail"|"failed"）・`html_page`・`empty_structure`（{}・[]・{"data":[]} 等）。文の中の言葉だけで決める規則は入れない。`tests/answer-shape.test.ts`（実際の台帳に出た形と、誤って拾わない例）。
+- **なぜ**: 「届いた」（決済済み・2xx・空でない）の中に 200 の中のエラー等が混ざる。10/15 に直近 30 日の 5,729 行を保存済みの本文の頭で数えると約 1.2%（この 4 型で 68 行・延べ 24 ホスト。Takeshi_Automation/output/1015/junk_census_result.txt）。外の作り手も「一番よく見るのは 200 の中のエラー文」と言った（X・@ziggydakid・10/15）。
+- **影響**: 記録の欄が 1 つ増えるだけ。status・L2・公開の判定（BLOCK 等）・export・数え方は変えない。200 の中のエラーの多くは vet402 が宣言された入力を送らなかったせいで起きる（missing agentId 等）ので、誰の側の失敗かの切り分けを独立レビューに通すまで公開には使わない。
+- **公開に使う前に直すこと（独立レビュー 10/15・中）**: 正当な答えを error_* と記録する型がある。`{"status":"error"|"failed"}` を返す監視・ジョブの API、`{"ok":false,"available":false}` のような業務上の否の答え（台帳の 21millionpixels の ok:false,changed:false も同型）、`{"errors":0}`・リンターの `{"errors":[...]}`、`{"results":[]}` のような「該当なし」の正当な答え。
+
 ## 2026-10-14 — /.well-known/agent-registration.json: vet402's ERC-8004 (9907) and Self Agent ID (194) identities on Celo
 - **何を**: `public/.well-known/agent-registration.json` を新設（ERC-8004 の registration-v1 形式）。registrations に Celo の ERC-8004 Identity Registry の agentId 9907 と Self Agent ID registry の agentId 194。services に web と、Celo で売り手へ払っている番地（eip155:42220:0xc9c7…1670・自己申告の紐づけ）。x402Support は false（vet402 は買い手で、自分の API を x402 で売っていない）。
 - **なぜ**: Celo の助成（Prezenti Frontier）の申請フォームが ERC-8004 と Self Agent ID を求める。ERC-8004 の tokenURI(9907) はすでにこの URL を指している（10/14 登録 tx 0x3b3503961a86b28c73d319246dbe0bd4c0db3de3aad731f1fa6be0d4bfa450ce・登録者 0x970b…0435 は Claude が 10/14 に作った身元専用の鍵。購入用の鍵は使っていない）。

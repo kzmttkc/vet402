@@ -26,6 +26,7 @@
 //     weekly-sweep cadence emerges from the daily budget, not from a queue.
 // ============================================================
 import { L1_REQUEST_TIMEOUT_MS } from "./l1-timing";
+import { answerShapeOf } from "./answer-shape";
 import { privateKeyToAccount } from "viem/accounts";
 import { and, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
@@ -2795,6 +2796,12 @@ async function purchaseOne(input: {
       l2Schema = d.status;
       l2Detail = { missing: d.missing, declarationHash: d.declarationHash, responseHash: d.responseHash, reason: d.reason };
     }
+    // 2026-10-15: 2xx で返った本文が答えの形をしていないか（200 の中のエラー・HTML・空の箱）。影の記録だけで、
+    // status・L2・公開の判定は変えない（answer-shape.ts の冒頭）。最後まで読めた空でない本文だけを見る。
+    const answerShape =
+      paid && isDeliveryHttp(paid.status) && payloadNonEmpty && !paidBodyRead.incomplete
+        ? answerShapeOf(paidBody, contentType)
+        : null;
 
     // 2026-08-23 監査: ここまで `transaction` は「空でない文字列」以外を何も見ていなかった。
     // 値は売り手の PAYMENT-RESPONSE ヘッダそのままで、決済せずに success:true と
@@ -2891,6 +2898,8 @@ async function purchaseOne(input: {
       // §6.3: L2 の判定材料。mismatch の公開に要る宣言ハッシュ・応答ハッシュ・欠落キー。
       // 2026-09-29: reason（何で決まったか）を足した。body_over_cap の行の responseHash は読んだ分だけのハッシュ。
       ...(l2Detail ? { l2: l2Detail } : {}),
+      // 答えの形をしていない本文の型（2026-10-15・影の記録・小さいので縮めた記録にも残す）。
+      ...(answerShape ? { answerShape } : {}),
       // 読んだ本文のバイト数（上限で頭打ち）と、上限を超えて切ったか（2026-09-29）。
       ...(paid ? { bodyBytes: paidBodyRead.bytes, bodyCapBytes: L1_PAID_BODY_CAP_BYTES } : {}),
       ...(paidBodyRead.incomplete === L1_BODY_OVER_CAP_REASON ? { bodyTruncated: true } : {}),
@@ -3000,6 +3009,8 @@ async function purchaseOne(input: {
               ...(transportSide ? { transportFailure: { side: transportSide, code: transportErrorCode(paidErrorRaw) } } : {}),
               // L2 の証拠（宣言と応答のハッシュ・欠落キー）は小さいので残す（独立レビュー W1）。
               ...(l2Detail ? { l2: l2Detail } : {}),
+              // 答えの形をしていない本文の型（2026-10-15・影の記録・小さいので縮めた記録にも残す）。
+              ...(answerShape ? { answerShape } : {}),
               // 本文の読んだバイト数と切った印も L2 の証拠（2026-09-29・小さいので残す）。
               ...(paid ? { bodyBytes: paidBodyRead.bytes, bodyCapBytes: L1_PAID_BODY_CAP_BYTES } : {}),
               ...(paidBodyRead.incomplete === L1_BODY_OVER_CAP_REASON ? { bodyTruncated: true } : {}),
