@@ -101,6 +101,10 @@ export const SUPPORTED_CHAINS: SupportedChain[] = [
   // `state: "pending_first_purchase"` to `state: "settled_on_record"`. The tx is in
   // docs/handoffs/CHANGELOG.md; the count on the page still comes from the ledger.
   { kind: "lane", chain: "Arc", asset: "USDC", rail: "x402", state: "settled_on_record" },
+  // 2026-10-15: the Celo lane (eip155:42220, Celo USDC, OBSERVATORY_CELO_L1_ENABLED) has been
+  // buying since 2026-10-11 and /api/v1/observatory/state already counts it (42 settled on
+  // 10-15), but this list was hand-written and never got the row. The count comes from the ledger.
+  { kind: "lane", chain: "Celo", asset: "USDC", rail: "x402", state: "settled_on_record" },
   // Robinhood Chain: the wording is fixed by agreement with the RWA session (2026-09-28,
   // English only). The agreement as handed over in Japanese (the delegation brief's summary,
   // not a verbatim quote of the RWA session's message):

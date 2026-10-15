@@ -20,7 +20,7 @@ import { pageMetadata } from "@/lib/seo";
  *
  * In sitemap.ts since 2026-09-09: the site's rule (sitemap.ts, 2026-09-02) is that a page with
  * zero internal links is not listed, and this page had none on 2026-09-09 morning. The home
- * page's doc-head now links here ("ETHOnline 2026 judges →"), so the rule says list it.
+ * page's doc-head now links here ("ETHOnline 2026: payOrRefuse won Bazantic →"), so the rule says list it.
  */
 
 const REPO = "https://github.com/kzmttkc/vet402";

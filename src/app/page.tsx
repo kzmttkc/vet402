@@ -323,9 +323,10 @@ export default async function Home() {
               <Link
                 href="/ethonline"
                 className="doc-link"
-                title="The page for ETHOnline 2026 judges: one command, the documents in reading order, the disclosure"
+                title="payOrRefuse, built on vet402, won the Bazantic prize at ETHOnline 2026. The submission page: one command, the documents in reading order, the disclosure"
               >
-                ETHOnline 2026 judges →
+                {/* 2026-10-15: judging is over and the prize is paid. The link stays (sitemap rule), the label says the result. */}
+                ETHOnline 2026: payOrRefuse won Bazantic →
               </Link>
             </span>
           </div>
@@ -785,6 +786,25 @@ export default async function Home() {
               </>
             }
             action={{ label: "Verify a payee", href: "/payee", event: "lp_cta_click", position: "s4_payee" }}
+          />
+          {/* 2026-10-14: vet402's own identity on Celo mainnet (ERC-8004 Identity Registry agentId 9907,
+              Self Agent ID 194). The registration file is public/.well-known/agent-registration.json. */}
+          <ItemRow
+            state="live"
+            title="vet402's own agent identity"
+            body={
+              <>
+                Registered on Celo mainnet as ERC-8004 agent #9907 and as agent #194 in the Self
+                Agent ID registry, so an agent can look up who publishes these reports before it
+                relies on them.
+              </>
+            }
+            action={{
+              label: "Read the registration file",
+              href: "/.well-known/agent-registration.json",
+              event: "lp_cta_click",
+              position: "s4_identity",
+            }}
           />
           {/* 2026-08-13 UX監査R1 [C4]: 3つのパッケージは npm に公開済み
               （いずれも 0.1.0）なのに、サイト全体で "npm" の文字が0件で、

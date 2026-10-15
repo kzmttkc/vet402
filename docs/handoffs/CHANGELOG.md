@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-15 — LP: Celo lane row, ETHOnline result label, vet402's own Celo identity in §4
+- **何を**: `supported-chains-data.ts` に Celo のレーン行（USDC over x402・件数は台帳から）。冒頭の /ethonline への導線の文字を「ETHOnline 2026 judges →」から「ETHOnline 2026: payOrRefuse won Bazantic →」へ（リンク先はそのまま）。§4 に「vet402's own agent identity」の行（Celo の ERC-8004 #9907・Self Agent ID registry の #194、/.well-known/agent-registration.json へのリンク）。`tests/lp-supported-chains.test.ts` を 7 行に。
+- **なぜ**: Celo は 10/11 から買っていて /api/v1/observatory/state は数えている（10/15 に settled 42）のに、§5 の一覧が手書きで行が無かった。ETHOnline は審査が終わり賞金も入金済みなのに、審査中の言い方のままだった。10/14 の身元がサイトのどこにも無かった。
+- **影響**: 表示だけ。金の経路・数え方は変えていない。第三者点検 88→直して 96 SHIP。/ethonline の本文「For judges.」が審査中の言い方のまま（範囲外・未修正）。
+
 ## 2026-10-15 — L1: record when a paid 2xx answer is not shaped like an answer (shadow only: answerShape)
 - **何を**: `src/lib/observatory/answer-shape.ts`（新規・純関数）と `l1-runner.ts` の有料の記録（`raw_response_meta.answerShape`）。2xx で最後まで読めた空でない本文が、答えの形をしていないときに型を残す: `error_object`（最上位がエラーの鍵とその添え物だけ）・`error_flag`（ok:false／success:false／status:"error"|"fail"|"failed"）・`html_page`・`empty_structure`（{}・[]・{"data":[]} 等）。文の中の言葉だけで決める規則は入れない。`tests/answer-shape.test.ts`（実際の台帳に出た形と、誤って拾わない例）。
 - **なぜ**: 「届いた」（決済済み・2xx・空でない）の中に 200 の中のエラー等が混ざる。10/15 に直近 30 日の 5,729 行を保存済みの本文の頭で数えると約 1.2%（この 4 型で 68 行・延べ 24 ホスト。Takeshi_Automation/output/1015/junk_census_result.txt）。外の作り手も「一番よく見るのは 200 の中のエラー文」と言った（X・@ziggydakid・10/15）。
