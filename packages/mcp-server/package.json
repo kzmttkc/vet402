@@ -18,7 +18,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@solana/web3.js": "^1.99.0",
+    "@solana/web3.js": "^3.0.2",
     "@types/node": "^20",
     "tsx": "^4.20.3",
     "typescript": "^5",
