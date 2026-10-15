@@ -15,7 +15,7 @@
  * statically without pulling anything into the refuse path.
  */
 /** Kept equal to `package.json`'s `version` by `test/user-agent.test.mjs`. */
-export const SDK_VERSION = "0.7.1";
+export const SDK_VERSION = "0.7.2";
 export const SDK_USER_AGENT = `vet402-sdk/${SDK_VERSION}`;
 /**
  * True where `fetch` belongs to a browser (a page, a worker, a webview).

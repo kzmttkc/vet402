@@ -370,6 +370,29 @@ function meetsEvidenceFloors(
   });
 }
 
+// 2026-10-16 (0.7.2): the day's total is counted in integer micro-dollars (1e-6 USD,
+// the precision of a 6-decimal stablecoin). Adding dollar floats drifted: 99 payments
+// of 0.01 summed to 0.99000000000000007, so a 1.00 budget refused the 100th payment
+// it should allow (reported by the RWA team's BLI agent). Amounts round UP and limits
+// round DOWN, so a value finer than one micro-dollar can only make the guard stricter.
+// A product within a few ulps of a whole micro-dollar is that whole number (the
+// float noise of usd * 1e6 grows with the amount, so the tolerance is relative).
+const MICROS_PER_USD = 1_000_000;
+function toMicros(usd: number, direction: "up" | "down"): number {
+  const x = usd * MICROS_PER_USD;
+  const r = Math.round(x);
+  if (Math.abs(x - r) <= Math.abs(x) * 4 * Number.EPSILON) return r;
+  return direction === "up" ? Math.ceil(x) : Math.floor(x);
+}
+/** A policy limit in micro-dollars, rounded down (0 stays 0). */
+function limitMicros(usd: number): number {
+  return toMicros(usd, "down");
+}
+/** A payment amount in micro-dollars, rounded up. A positive amount is at least 1. */
+function amountMicros(usd: number): number {
+  return Math.max(1, toMicros(usd, "up"));
+}
+
 /**
  * Non-custodial spend-policy layer: answers "may my agent send this payment?"
  * and nothing else. It never touches keys, funds, signing, or transaction
@@ -401,7 +424,7 @@ export class SpendGuard {
   private readonly policy: SpendGuardPolicy;
   private readonly fetchPayeeScore: (payee: string) => Promise<PayeeScoreResult>;
   private readonly now: () => Date;
-  private spentTodayUsd = 0;
+  private spentTodayMicros = 0;
   private currentDay: string;
 
   constructor(
@@ -437,12 +460,13 @@ export class SpendGuard {
     const { maxPerTxUsd, dailyBudgetUsd, minPayeeScore, blockOnRecommendation } = this.policy;
     const trustPolicy = this.policy.trustPolicy ?? "allow-only";
 
-    if (maxPerTxUsd !== undefined && input.amountUsd > maxPerTxUsd) {
+    const amount = amountMicros(input.amountUsd);
+    if (maxPerTxUsd !== undefined && amount > limitMicros(maxPerTxUsd)) {
       reasons.push("max_per_tx_exceeded");
     }
     if (
       dailyBudgetUsd !== undefined &&
-      this.spentTodayUsd + input.amountUsd > dailyBudgetUsd
+      this.spentTodayMicros + amount > limitMicros(dailyBudgetUsd)
     ) {
       reasons.push("daily_budget_exceeded");
     }
@@ -454,7 +478,7 @@ export class SpendGuard {
     // overshoot the budget (TOCTOU). A trust-rule deny returns it below.
     let reserved = false;
     if (reasons.length === 0) {
-      this.spentTodayUsd += input.amountUsd;
+      this.spentTodayMicros += amount;
       reserved = true;
     }
 
@@ -556,7 +580,7 @@ export class SpendGuard {
       // flight, the counter was already reset and the release must clamp at 0
       // instead of dragging the fresh day's counter negative.
       this.rollDayIfNeeded();
-      this.spentTodayUsd = Math.max(0, this.spentTodayUsd - input.amountUsd);
+      this.spentTodayMicros = Math.max(0, this.spentTodayMicros - amount);
     }
 
     return {
@@ -564,10 +588,10 @@ export class SpendGuard {
       reasons,
       payee: input.payee,
       amountUsd: input.amountUsd,
-      spentTodayUsd: this.spentTodayUsd,
+      spentTodayUsd: this.spentTodayMicros / MICROS_PER_USD,
       remainingDailyBudgetUsd:
         dailyBudgetUsd !== undefined
-          ? Math.max(0, dailyBudgetUsd - this.spentTodayUsd)
+          ? Math.max(0, limitMicros(dailyBudgetUsd) - this.spentTodayMicros) / MICROS_PER_USD
           : null,
       payeeScore,
     };
@@ -582,20 +606,20 @@ export class SpendGuard {
       throw new Error("invalid_amount_usd");
     }
     this.rollDayIfNeeded();
-    this.spentTodayUsd = Math.max(0, this.spentTodayUsd - amountUsd);
+    this.spentTodayMicros = Math.max(0, this.spentTodayMicros - amountMicros(amountUsd));
   }
 
   /** Current in-memory budget state (UTC day + reserved USD). */
   state(): { day: string; spentTodayUsd: number } {
     this.rollDayIfNeeded();
-    return { day: this.currentDay, spentTodayUsd: this.spentTodayUsd };
+    return { day: this.currentDay, spentTodayUsd: this.spentTodayMicros / MICROS_PER_USD };
   }
 
   private rollDayIfNeeded(): void {
     const day = this.utcDay();
     if (day !== this.currentDay) {
       this.currentDay = day;
-      this.spentTodayUsd = 0;
+      this.spentTodayMicros = 0;
     }
   }
 

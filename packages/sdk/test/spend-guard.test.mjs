@@ -475,3 +475,62 @@ test("H-2: maxScoreAgeMs must be a positive number", () => {
     message: "invalid_policy_maxScoreAgeMs",
   });
 });
+
+// 2026-10-16: the day's total is counted in integer micro-dollars. With dollar floats,
+// 99 payments of 0.01 summed to 0.99000000000000007 and a 1.00 budget refused the 100th.
+test("a 1.00 daily budget allows exactly 100 payments of 0.01 and refuses the 101st", async () => {
+  const guard = new SpendGuard(
+    { dailyBudgetUsd: 1, trustPolicy: "custom" },
+    async () => { throw new Error("no lookup expected"); },
+    () => new Date("2026-10-16T00:00:00Z"),
+  );
+  const payee = "0x" + "1".repeat(40);
+  for (let i = 1; i <= 100; i++) {
+    const d = await guard.evaluate({ payee, amountUsd: 0.01 });
+    assert.equal(d.allow, true, `payment ${i} should be allowed`);
+  }
+  const over = await guard.evaluate({ payee, amountUsd: 0.01 });
+  assert.equal(over.allow, false);
+  assert.deepEqual(over.reasons, ["daily_budget_exceeded"]);
+  assert.equal(guard.state().spentTodayUsd, 1);
+});
+
+test("micro-dollar counting: 0.1 + 0.2 fits a 0.3 budget, a dust payment still counts, release gives back exactly", async () => {
+  const payee = "0x" + "2".repeat(40);
+  const g = new SpendGuard(
+    { dailyBudgetUsd: 0.3, maxPerTxUsd: 0.2, trustPolicy: "custom" },
+    async () => { throw new Error("no lookup expected"); },
+    () => new Date("2026-10-16T00:00:00Z"),
+  );
+  assert.equal((await g.evaluate({ payee, amountUsd: 0.1 })).allow, true);
+  assert.equal((await g.evaluate({ payee, amountUsd: 0.2 })).allow, true);
+  const dust = await g.evaluate({ payee, amountUsd: 0.0000001 });
+  assert.equal(dust.allow, false, "a positive amount below one micro-dollar still counts as one");
+  assert.deepEqual(dust.reasons, ["daily_budget_exceeded"]);
+  g.release(0.2);
+  assert.equal(g.state().spentTodayUsd, 0.1);
+  const d = await g.evaluate({ payee, amountUsd: 0.2 });
+  assert.equal(d.allow, true);
+  assert.equal(d.remainingDailyBudgetUsd, 0);
+  assert.equal((await g.evaluate({ payee, amountUsd: 0.200001 })).reasons.includes("max_per_tx_exceeded"), true);
+});
+
+test("values finer than a micro-dollar only make the guard stricter (amounts round up, limits round down)", async () => {
+  const payee = "0x" + "3".repeat(40);
+  const mk = (policy) => new SpendGuard({ ...policy, trustPolicy: "custom" }, async () => { throw new Error("no lookup expected"); }, () => new Date("2026-10-16T00:00:00Z"));
+  assert.equal((await mk({ maxPerTxUsd: 0.01 }).evaluate({ payee, amountUsd: 0.0100004 })).allow, false);
+  assert.equal((await mk({ dailyBudgetUsd: 1 }).evaluate({ payee, amountUsd: 1.0000004 })).allow, false);
+  assert.equal((await mk({ maxPerTxUsd: 0.0000006 }).evaluate({ payee, amountUsd: 0.0000014 })).allow, false);
+  const g = mk({ dailyBudgetUsd: 0.0001 });
+  let n = 0;
+  while ((await g.evaluate({ payee, amountUsd: 0.0000014 })).allow) n++;
+  assert.equal(n, 50, "1.4e-6 counts as 2 micro-dollars, so 50 fit in 100");
+});
+
+test("large exact amounts are not refused by float noise (66367.290827 at a limit of the same value)", async () => {
+  const payee = "0x" + "4".repeat(40);
+  const v = 66367.290827;
+  const g = new SpendGuard({ maxPerTxUsd: v, dailyBudgetUsd: v, trustPolicy: "custom" }, async () => { throw new Error("no lookup expected"); }, () => new Date("2026-10-16T00:00:00Z"));
+  const d = await g.evaluate({ payee, amountUsd: v });
+  assert.equal(d.allow, true, JSON.stringify(d.reasons));
+});

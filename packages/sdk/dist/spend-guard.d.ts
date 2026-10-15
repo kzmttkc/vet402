@@ -199,7 +199,7 @@ export declare class SpendGuard {
     private readonly policy;
     private readonly fetchPayeeScore;
     private readonly now;
-    private spentTodayUsd;
+    private spentTodayMicros;
     private currentDay;
     constructor(policy: SpendGuardPolicy, fetchPayeeScore: (payee: string) => Promise<PayeeScoreResult>, now?: () => Date);
     evaluate(input: SpendEvaluateInput): Promise<SpendDecision>;

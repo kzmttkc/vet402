@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-16 — sdk 0.7.2: SpendGuard counts the day's total in whole micro-dollars
+- **何を**: `packages/sdk/src/spend-guard.ts` の1日の合計を、ドルの浮動小数の足し算から整数のマイクロドル（1e-6 USD）に変えた。金額は切り上げ、上限は切り捨て（整数との差が浮動小数の誤差 4ulp 以内ならその整数）。テスト4件（1.00 の予算に 0.01 がちょうど100回、0.1+0.2 が 0.3 に入る、1マイクロドル未満の値は厳しくなる側だけ、66367.290827 の同額が通る）。README の 0.7.2。版 0.7.2（package.json・lock・SDK_VERSION）。
+- **なぜ**: 0.01 を99回足すと 0.99000000000000007 になり、1.00 の予算で100回目を断っていた（RWA の BLI のエージェントが実測で報告）。断る側の誤りで、余分なお金は通っていない。
+- **影響**: 公開 API の型と意味は同じ（spentTodayUsd・remainingDailyBudgetUsd は number）。独立レビュー 93→88（直した版が $32,768 以上の同額を断る回帰）→誤差を金額比例に直して 95 SHIP。6桁の乱択と、セント単位 $10k〜$1M の全件で通しすぎ・断りすぎ 0。
+
 ## 2026-10-15 — LP: Celo lane row, ETHOnline result label, vet402's own Celo identity in §4
 - **何を**: `supported-chains-data.ts` に Celo のレーン行（USDC over x402・件数は台帳から）。冒頭の /ethonline への導線の文字を「ETHOnline 2026 judges →」から「ETHOnline 2026: payOrRefuse won Bazantic →」へ（リンク先はそのまま）。§4 に「vet402's own agent identity」の行（Celo の ERC-8004 #9907・Self Agent ID registry の #194、/.well-known/agent-registration.json へのリンク）。`tests/lp-supported-chains.test.ts` を 7 行に。
 - **なぜ**: Celo は 10/11 から買っていて /api/v1/observatory/state は数えている（10/15 に settled 42）のに、§5 の一覧が手書きで行が無かった。ETHOnline は審査が終わり賞金も入金済みなのに、審査中の言い方のままだった。10/14 の身元がサイトのどこにも無かった。

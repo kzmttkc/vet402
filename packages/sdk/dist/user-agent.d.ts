@@ -15,8 +15,8 @@
  * statically without pulling anything into the refuse path.
  */
 /** Kept equal to `package.json`'s `version` by `test/user-agent.test.mjs`. */
-export declare const SDK_VERSION = "0.7.1";
-export declare const SDK_USER_AGENT = "vet402-sdk/0.7.1";
+export declare const SDK_VERSION = "0.7.2";
+export declare const SDK_USER_AGENT = "vet402-sdk/0.7.2";
 /**
  * The headers that name this SDK, for a request to vet402's API. Empty in a
  * browser. Read at call time, not at import time.
