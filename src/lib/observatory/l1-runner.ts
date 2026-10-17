@@ -1470,7 +1470,14 @@ export async function runL1Batch(
         : sql`ORDER BY (${l1TierWhere(daily)}) DESC,
              (NOT EXISTS (SELECT 1 FROM x402_l1_purchases np WHERE np.endpoint_id = e.id)) DESC,
              (e.resource_key ILIKE ANY(${prioritySqlArray()})) DESC,
-             e.quality_payers_30d DESC NULLS LAST, e.quality_calls_30d DESC NULLS LAST
+             e.quality_payers_30d DESC NULLS LAST, e.quality_calls_30d DESC NULLS LAST,
+             -- 2026-10-17: 需要の値が同じ行の決め手。ここで並びのキーが尽きていたので、同点のどれを買うかは実行計画
+             -- しだいだった（本番 10/17: 18〜53 位が同点 36 件・1 回の実行の通常候補は中央値 33 件）。待った時間が長い
+             -- 順に買う: 買い直しは最後に試した日時が古い順（未購入は上のキーで別の組なので全部 NULL）、未購入は
+             -- カタログに最初に載った日時が古い順、最後に id。索引 x402_l1_purchases_endpoint_idx (endpoint_id, attempted_at)。
+             (SELECT max(lt.attempted_at) FROM x402_l1_purchases lt WHERE lt.endpoint_id = e.id) ASC NULLS FIRST,
+             e.first_seen_at ASC NULLS LAST,
+             e.id ASC
     LIMIT ${lane?.limit ?? limit}`
     }
   `;

@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-17 — L1 ordinary candidates: equal demand goes to the endpoint that has waited longest, then id
+- **何を**: `src/lib/observatory/l1-runner.ts` の `targetsSql`（通常候補とチェーンのレーン枠が使う方）の `ORDER BY` の末尾に、決め手を 3 つ足した。その出品の購入行の `max(attempted_at)` ASC NULLS FIRST → `e.first_seen_at` ASC NULLS LAST → `e.id` ASC。並びの頭（C2 階層 → 購入行の無い出品が先 → 優先ホスト → 需要 `quality_payers_30d`・`quality_calls_30d`）は変えていない。WHERE（候補になれる行）・census / retest の並び（`censusTargetsSql`）・上限・予約も変えていない。/observatory/methodology §6 に同点の扱いを 1 文足した。テスト: `tests/l1-ordinary-tiebreak.pg.test.ts`（DB）。
+- **なぜ**: 10/10 の l1-retest のフレーク調査の所見。それまで並びは需要の値で尽きていて、同点のどれを買うかは実行計画しだいだった。本番の実測（10/17・読み取りのみ）: 候補になれる出品は約 39,000 件。通常候補の 18〜53 位が需要の値（payers 4・calls 4）の同じ 36 件だった。直近 7 日の 35 回の実行で、通常候補の購入は 1 回あたり中央値 33 件（最小 17・最大 64）。ほぼ毎回、同点の途中で止まっていた。
+- **影響**: 1 回の実行で買う相手の順番だけが変わる（同じ需要の中では、未購入はカタログに早く載った出品から、買い直しは最後に試してから長い出品から）。払う額・件数・関門は同じ。本番の候補 SQL の近似で比べると、上位 100 件を取る時間は約 1.19 秒 → 約 1.25 秒（+5% 前後）で、相関サブクエリは索引 `x402_l1_purchases_endpoint_idx` で引かれる。テストは修正前に 4/4 落ち（並びの不一致）、修正後は統計なしの新しい DB で 20/20、`npm run test:db` 全体 708 件 fail 0。独立レビューは BLOCK なし。WARN 2 件（方法論の文が組をまたいで比べられるように読める・「bought from」は言い過ぎで、支払いの無い行も数える）は文面を直して取り込んだ。同じ同期で入った出品は `first_seen_at` が同じなので、その中は id の順になる。
+
 ## 2026-10-16 — sdk 0.7.2: SpendGuard counts the day's total in whole micro-dollars
 - **何を**: `packages/sdk/src/spend-guard.ts` の1日の合計を、ドルの浮動小数の足し算から整数のマイクロドル（1e-6 USD）に変えた。金額は切り上げ、上限は切り捨て（整数との差が浮動小数の誤差 4ulp 以内ならその整数）。テスト4件（1.00 の予算に 0.01 がちょうど100回、0.1+0.2 が 0.3 に入る、1マイクロドル未満の値は厳しくなる側だけ、66367.290827 の同額が通る）。README の 0.7.2。版 0.7.2（package.json・lock・SDK_VERSION）。
 - **なぜ**: 0.01 を99回足すと 0.99000000000000007 になり、1.00 の予算で100回目を断っていた（RWA の BLI のエージェントが実測で報告）。断る側の誤りで、余分なお金は通っていない。

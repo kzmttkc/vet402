@@ -646,7 +646,11 @@ export default async function ObservatoryMethodologyPage() {
           the {PRIORITY_SELLER_HOSTS.length} hosts bought from more often, and the paragraph after
           it for endpoints we have already settled with {MATURE_SETTLED_MIN} times — targeting endpoints
           whose most recent L0 verdict is <code>pass</code>, prioritised by real observed demand
-          (30-day payer and call counts reported by the catalog). We request unpaid first to read the <code>402</code> challenge,
+          (30-day payer and call counts reported by the catalog). Endpoints with no purchase row of any
+          status go before endpoints we have attempted before; within each group, ties on demand go to
+          the one that has waited longest (no row yet: earliest in the catalog; attempted before: longest
+          since our last attempt of any status), then the lower internal id. We request unpaid first to
+          read the <code>402</code> challenge,
           then select a payment option and refuse to proceed unless every one of these holds:
           scheme <code>exact</code>, a network whose payer lane is switched on for that run (Base
           is on by default; each other lane sits behind its own flag, and the chains L1 has
