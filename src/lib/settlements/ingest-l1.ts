@@ -8,6 +8,7 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { toCaip2 } from "@/lib/observatory/chains";
+import { RAW_RETENTION_DAYS } from "./rollup";
 import { buildRow, rowsOf, upsertSettlement } from "./upsert";
 
 type L1Row = {
@@ -38,7 +39,11 @@ export function chainBlockTime(value: string | null | undefined): Date | null {
 export async function ingestL1(options: { onlyPurchaseRowId?: string; limit?: number; sinceDays?: number } = {}) {
   const db = getDb();
   if (!db) throw new Error("ingestL1: DATABASE_URL is not configured");
-  const { onlyPurchaseRowId, limit = 2000, sinceDays = 45 } = options;
+  // 2026-10-19: 窓は生行の保持（RAW_RETENTION_DAYS）の内側に収める。45 日だと、畳んで消した日の行を
+  // 毎日入れ直し、rollup の加算（ON CONFLICT … n + excluded.n）でもう一度数える芽になる。
+  // 並びは「settlements にまだ無い行」を先に。2,000 件の上限で新しい行だけを毎日なめ直し、
+  // 古い行が永久に入らない取りこぼし（10/19 実測: 30 日で 6,393 件のうち 2,000 件）を数日で埋める。
+  const { onlyPurchaseRowId, limit = 2000, sinceDays = Math.max(1, RAW_RETENTION_DAYS - 1) } = options;
   const rows = rowsOf<L1Row>(
     await db.execute(sql`
       SELECT pu.id::text AS id, pu.tx_hash, pu.network, pu.asset, pu.amount_units, pu.payer, pu.pay_to,
@@ -60,7 +65,8 @@ export async function ingestL1(options: { onlyPurchaseRowId?: string; limit?: nu
       ) op ON true
       WHERE pu.status = 'settled' AND pu.tx_hash IS NOT NULL AND pu.network IS NOT NULL
         ${onlyPurchaseRowId ? sql`AND pu.id = ${onlyPurchaseRowId}::uuid` : sql`AND pu.attempted_at > now() - make_interval(days => ${sinceDays})`}
-      ORDER BY pu.attempted_at DESC
+      ORDER BY (EXISTS (SELECT 1 FROM settlements s WHERE s.purchase_id = pu.network || ':' || pu.tx_hash)) ASC,
+               pu.attempted_at DESC
       LIMIT ${limit}
     `),
   );
