@@ -1372,7 +1372,7 @@ if (!TEST_DB) {
           new Map(),
           async (challengeForUrl) => {
             const paidNetworks: string[] = [];
-            await runL1Batch({
+            const summary = await runL1Batch({
               limit: 10,
               getPayerUsdcBalance: FUNDED_PAYER,
               createStellarPayment: async () => {
@@ -1402,8 +1402,11 @@ if (!TEST_DB) {
             assert.equal(rows.length, 1);
             assert.equal(rows[0].status, "request_error");
             assert.equal(rows[0].network, STELLAR_PUBNET_CAIP2);
-            assert.equal(rows[0].spentUnits, "0");
+            // 署名後に releaseUnsignedReservation を呼ぶと spent_units が 0 になる。予約の額を残す。
+            assert.equal(rows[0].spentUnits, "10000");
+            assert.equal(rows[0].amountUnits, "10000");
             assert.equal(rows[0].authNonce, null);
+            assert.equal(summary.spentUnitsTotal, "10000", "署名したら使ったと数える");
             const dumped = JSON.stringify(rows) + cap.logs.join("\n");
             assert.equal(dumped.includes(payer.secret()), false);
             assert.equal(dumped.includes("rpc.example"), false);

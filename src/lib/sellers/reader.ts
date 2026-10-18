@@ -57,10 +57,12 @@ const SCHEMA_MIN = sql.raw(`CASE WHEN jsonb_typeof(e.declared_schema) = 'object'
     'queryParams', CASE WHEN jsonb_typeof(e.declared_schema #> '{properties,input,properties,queryParams}') = 'object'
                         THEN jsonb_strip_nulls(jsonb_build_object('required', e.declared_schema #> '{properties,input,properties,queryParams,required}')) END))))) END`);
 // 2026-09-29 第2巡: requestBody は有無だけでなく値（declared / empty / none）も読む（(d) の根拠）。値は runner が書く短い語。
+// 2026-10-19: paidTimeoutMs は支払い付き要求で張った待ち（ミリ秒）。無い行は分類が 20 秒とみなす。
 const META_MIN = sql.raw(`CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN jsonb_strip_nulls(jsonb_build_object(
     'requestBody', CASE WHEN pu.raw_response_meta ? 'requestBody' THEN
       CASE WHEN jsonb_typeof(pu.raw_response_meta->'requestBody') = 'string' THEN to_jsonb(left(pu.raw_response_meta->>'requestBody', 16)) ELSE 'true'::jsonb END END,
-    'requestQuery', CASE WHEN jsonb_typeof(pu.raw_response_meta->'requestQuery') = 'string' THEN to_jsonb(left(pu.raw_response_meta->>'requestQuery', 16)) END)) END`);
+    'requestQuery', CASE WHEN jsonb_typeof(pu.raw_response_meta->'requestQuery') = 'string' THEN to_jsonb(left(pu.raw_response_meta->>'requestQuery', 16)) END,
+    'paidTimeoutMs', CASE WHEN (pu.raw_response_meta->>'paidTimeoutMs') ~ '^[0-9]{1,7}$' THEN to_jsonb((pu.raw_response_meta->>'paidTimeoutMs')::int) END)) END`);
 
 /**
  * 2026-09-29 第2巡: 出品の宣言のうち (d)(e) の根拠に要るものだけを DB で間引く。

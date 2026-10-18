@@ -36,7 +36,7 @@ import {
 import { CENSUS_PER_RUN, DAILY_BUDGET_USD } from "@/lib/observatory/budget";
 import { REQUIRED_CONFIRMATIONS } from "@/lib/observatory/settlement-verify";
 import { LATE_SETTLEMENT_BACKDATE_MINUTES, LATE_SETTLEMENT_WINDOW_MINUTES } from "@/lib/settlements/recover-late";
-import { L1_CELO_PAID_TIMEOUT_MS, L1_REQUEST_TIMEOUT_MS } from "@/lib/observatory/l1-timing";
+import { L1_CELO_PAID_TIMEOUT_MS, L1_CELO_PAID_TIMEOUT_SINCE, L1_REQUEST_TIMEOUT_MS } from "@/lib/observatory/l1-timing";
 import { L0_REASON_CODES } from "@/lib/observatory/l0-reasons";
 import { L0_BODY_CAP_BYTES, L0_BODY_CAP_RAISED_ON } from "@/lib/observatory/l0-probe";
 import { RULE_CHANGE_PRIORITY_PER_HOST } from "@/lib/observatory/l0-rule-change";
@@ -429,7 +429,7 @@ export default async function ObservatoryMethodologyPage() {
           {(L1_REQUEST_TIMEOUT_MS / 1000).toString()} seconds, the seller&apos;s side needs the
           listing&apos;s <code>maxTimeoutSeconds</code> to be no longer than that and no payment to
           have landed afterwards. A paid request on Celo waits{" "}
-          {(L1_CELO_PAID_TIMEOUT_MS / 1000).toString()} seconds, since 2026-10-18, because some Celo facilitators answer only after the on-chain receipt. A signed payment refused with <code>402</code> on a paid request that
+          {(L1_CELO_PAID_TIMEOUT_MS / 1000).toString()} seconds, since {L1_CELO_PAID_TIMEOUT_SINCE}, because some Celo facilitators answer only after the on-chain receipt. A signed payment refused with <code>402</code> on a paid request that
           carried the declared body or query (which the unpaid request did not) is not sorted either,
           because the terms for that request may differ from the ones vet402 paid. The seller page shows,
           for each row, the terms vet402 signed or the options the <code>402</code> offered, the input it
@@ -516,7 +516,7 @@ export default async function ObservatoryMethodologyPage() {
           {(L1_REQUEST_TIMEOUT_MS / 1000).toString()} seconds for each HTTP answer, including the
           answer to the paid request, and records the purchase from that answer; it does not wait
           on-chain at that point. A paid request on Celo waits{" "}
-          {(L1_CELO_PAID_TIMEOUT_MS / 1000).toString()} seconds, since 2026-10-18, because some Celo facilitators answer only after the on-chain receipt. A transfer that lands later is found by our index of on-chain
+          {(L1_CELO_PAID_TIMEOUT_MS / 1000).toString()} seconds, since {L1_CELO_PAID_TIMEOUT_SINCE}, because some Celo facilitators answer only after the on-chain receipt. A transfer that lands later is found by our index of on-chain
           settlements if it falls between {LATE_SETTLEMENT_BACKDATE_MINUTES.toString()} minutes
           before and {LATE_SETTLEMENT_WINDOW_MINUTES.toString()} minutes after the attempt. The index reads transfers
           to the receiving addresses in the catalog as it goes, so a transfer to an address that joined the catalog

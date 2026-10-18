@@ -5,10 +5,13 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { CELO_CAIP2 } from "@/lib/observatory/x402-payer";
 import {
   L1_CELO_NETWORK,
   L1_CELO_PAID_TIMEOUT_MS,
+  L1_CELO_PAID_TIMEOUT_SINCE,
   L1_REQUEST_TIMEOUT_MS,
   l1PaidTimeoutMs,
 } from "@/lib/observatory/l1-timing";
@@ -54,4 +57,14 @@ test("予算: Celo レーンは支払い付き 45 秒を見込み、バッチ予
   // 無払い 20 秒のままなので 45 秒を 2 本にはしない。210 + 85 = 295 <= 300。
   assert.ok(L1_BATCH_BUDGET_MS + celoWorst <= 300_000);
   assert.ok(L1_BATCH_BUDGET_MS + baseWorst <= 300_000);
+});
+
+test("方法論の since は l1-timing の定数。頁に日付のリテラルを書かない", () => {
+  assert.equal(L1_CELO_PAID_TIMEOUT_SINCE, "2026-10-19");
+  const page = readFileSync(join(process.cwd(), "src/app/observatory/methodology/page.tsx"), "utf8");
+  assert.match(page, /L1_CELO_PAID_TIMEOUT_SINCE/);
+  assert.equal(page.includes("since 2026-10-18"), false);
+  assert.equal(page.includes("2026-10-19"), false);
+  const timing = readFileSync(join(process.cwd(), "src/lib/observatory/l1-timing.ts"), "utf8");
+  assert.match(timing, /L1_CELO_PAID_TIMEOUT_SINCE = "2026-10-19"/);
 });

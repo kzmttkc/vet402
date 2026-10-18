@@ -337,4 +337,88 @@ if (!TEST_DB) {
     assert.ok(board.groups.some((g) => g.key === "charged_unsent_input" && g.sellers.some((x) => x.host === "rt9.example")));
     assert.equal(board.sellers.find((s) => s.host === "rt9.example")?.rebuyEligible, false);
   });
+
+  test("Celo の応答なし: paidTimeoutMs が無い行は 3 日でも stopped_waiting。45000 なら売り手側", async () => {
+    const { getDb } = await import("@/lib/db/client");
+    const schema = await import("@/lib/db/schema");
+    const { sql } = await import("drizzle-orm");
+    const { readRecordSides } = await import("@/lib/sellers/reader");
+    const db = getDb()!;
+    await db.execute(sql`TRUNCATE x402_endpoints, x402_l0_probes, x402_l1_purchases`);
+    const CELO = "eip155:42220";
+    const USDC = "0xcebA9300f2b948710d2653dD7B07f33A8B32118C";
+    const PAY = "0x242ba6d68ffeb4a098b591b32d370f973ff882b7";
+    const PAYER = "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670";
+    const days = ["2026-10-15", "2026-10-16", "2026-10-17"];
+    const mk = async (key: string) => {
+      const [ep] = await db
+        .insert(schema.x402Endpoints)
+        .values({
+          resourceKey: key,
+          resourceUrl: `https://${key}/api`,
+          network: CELO,
+          method: "GET",
+          status: "active",
+          priceAmount: "10000",
+          payTo: PAY,
+          rawAccepts: [{ scheme: "exact", network: CELO, amount: "10000", asset: USDC, payTo: PAY, maxTimeoutSeconds: 30 }],
+        })
+        .returning();
+      return ep.id;
+    };
+    const buy = (endpointId: string, at: string, paidTimeoutMs?: number) =>
+      db.insert(schema.x402L1Purchases).values({
+        endpointId,
+        status: "settle_failed",
+        httpStatusPaid: null,
+        txHash: null,
+        attemptedAt: new Date(`${at}T12:00:00Z`),
+        network: CELO,
+        asset: USDC,
+        payTo: PAY,
+        payer: PAYER,
+        amountUnits: "10000",
+        spentUnits: "10000",
+        authNonce: "abcdef0123456789",
+        rawResponseMeta: {
+          phase: "paid",
+          requestBody: "none",
+          requestQuery: "empty",
+          ...(paidTimeoutMs === undefined ? {} : { paidTimeoutMs }),
+        },
+      });
+    const pastId = await mk("celo-past.example/a");
+    const nowId = await mk("celo-wait.example/a");
+    for (const day of days) {
+      await buy(pastId, day);
+      await buy(nowId, day, 45_000);
+    }
+    const past = await readRecordSides(db, pastId);
+    assert.equal(past.confirmedSeller, 0);
+    const pastRows = [...past.rows.values()];
+    assert.equal(pastRows.length, 3);
+    for (const shown of pastRows) {
+      assert.equal(shown.mode?.key, "stopped_waiting");
+      assert.equal(shown.bucket, "unsorted");
+      assert.equal(shown.confirmedSeller, false);
+      assert.equal(shown.facts.listingMaxTimeoutSeconds, 30);
+      assert.equal(shown.facts.meta?.paidTimeoutMs, undefined);
+      assert.match(shown.note ?? "", /20 seconds/);
+      assert.doesNotMatch(shown.note ?? "", /45 seconds/);
+      assert.match(shown.seen402 ?? "", /vet402 waits 20 seconds for the paid answer/);
+      assert.match(shown.evidence?.answer ?? "", /within 20 seconds/);
+    }
+    const recorded = await readRecordSides(db, nowId);
+    assert.equal(recorded.confirmedSeller, 3);
+    const recordedRows = [...recorded.rows.values()];
+    assert.equal(recordedRows.length, 3);
+    for (const shown of recordedRows) {
+      assert.equal(shown.mode?.key, "no_response_paid");
+      assert.equal(shown.bucket, "seller");
+      assert.equal(shown.confirmedSeller, true);
+      assert.equal(shown.facts.meta?.paidTimeoutMs, 45000);
+      assert.match(shown.seen402 ?? "", /vet402 waits 45 seconds for the paid answer/);
+      assert.match(shown.evidence?.answer ?? "", /within 45 seconds/);
+    }
+  });
 }

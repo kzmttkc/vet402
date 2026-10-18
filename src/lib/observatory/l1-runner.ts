@@ -1863,8 +1863,8 @@ export async function runL1Batch(
         // 返したときのために印を残す。secondary の Base 買い直しが通ったあとはここへ来ない。
         if (outcome.payerChain === "stellar") stellarLaneUnavailable = true;
       } else if (outcome.kind === "stellar_signing_unavailable") {
-        // 署名後の故障、または主ネットワークが pubnet の行。予約は request_error・spent 0 のまま。
-        // secondary でも Base では買い直さない（署名が外に出ているかもしれない）。summary の列は足さない。
+        // 署名後は spent を残した request_error（outcome.spent は予約額。上で日次に足してある）。
+        // 署名前の主ネットワークは spent 0 の request_error。どちらも Base では買い直さない。
         stellarLaneUnavailable = true;
         summary.skipped++;
       } else if (outcome.kind === "xrpl_fee_over_cap") {
@@ -2912,8 +2912,9 @@ async function purchaseOne(input: {
       });
     } else if (isStellar) {
       // 予約の後・有料の要求の前。署名前に落ちたら署名は売り手に届いていないので、secondary は予約を消して
-      // Base を買い直す。署名後（auth entry のあと）は spent_units を 0 に戻して request_error を残し、
-      // Base では買わない。どちらの故障でもレーンの残りは閉じる（同じ RPC へ署名を積み直さない）。
+      // Base を買い直す。署名後（auth entry のあと）は releaseUnsignedReservation を呼ばない。
+      // spent_units は予約のまま（署名したら使ったと数える）。request_error を残し、Base では買わない。
+      // どちらの故障でもレーンの残りは閉じる（同じ RPC へ署名を積み直さない）。
       let payload: { transaction: string };
       try {
         // accept が非 null のときだけ stellarUnits は bigint、signingAsset は SAC。
@@ -2927,11 +2928,27 @@ async function purchaseOne(input: {
         });
       } catch (error) {
         logServerErrorSafe("observatory.l1.stellar_sign", redactedError(error));
+        // 署名後（stellar_sign_failed_post と、印の無い誤り）。auth entry に署名したあとは
+        // releaseUnsignedReservation を呼ばない（それは spent_units を 0 に戻す）。予約の額を残す。
+        if (!stellarSignFailedPre(error)) {
+          try {
+            await db
+              .update(x402L1Purchases)
+              .set({
+                status: "request_error",
+                rawResponseMeta: tagMeta({ phase: "stellar_sign", error: redactForLog(error) }),
+              })
+              .where(and(eq(x402L1Purchases.id, reservation.rowId), eq(x402L1Purchases.status, "in_flight")));
+          } catch (writeError) {
+            logServerErrorSafe("observatory.l1.stellar_sign_keep_spend", redactedError(writeError));
+          }
+          invalidateDecisionCache(candidate.id);
+          return { kind: "stellar_signing_unavailable", settled: false, spent: amount };
+        }
         // 署名前（stellar_sign_failed_pre）かつ secondary だけ、未署名の予約を消す。
         // 行が残ると掃引窓の dup が、同じ候補の Base の買い直しを拒む。
-        // 署名後（再シミュレーション・空の payload）は消さない。request_error を残し、Base では買わない。
         // 主ネットワークが pubnet の行は署名前でも request_error を残す（買い直す経路が無い）。
-        if (!isStellarPrimary && stellarSignFailedPre(error)) {
+        if (!isStellarPrimary) {
           try {
             await db.delete(x402L1Purchases).where(
               and(eq(x402L1Purchases.id, reservation.rowId), eq(x402L1Purchases.status, "in_flight"), isNull(x402L1Purchases.authNonce)),
@@ -3145,6 +3162,8 @@ async function purchaseOne(input: {
     // reserved (signed = counted, success or not); only the outcome is filled in.
     const rawResponseMeta = {
       phase: "paid",
+      // 支払い付き要求で張った待ち（ミリ秒）。分類はこれを読む。無い行は 20 秒とみなす。
+      paidTimeoutMs,
       status: paid?.status ?? null,
       contentType,
       // Tempo は MPP（WWW-Authenticate: Payment / Authorization: Payment / Payment-Receipt）。
@@ -3277,6 +3296,7 @@ async function purchaseOne(input: {
           rawResponseMeta: {
             ...pgSafeJson({
               phase: "paid",
+              paidTimeoutMs,
               status: paid?.status ?? null,
               contentType,
               ...(isTempo ? { protocol: "mpp" } : {}),

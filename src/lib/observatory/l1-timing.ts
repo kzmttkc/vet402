@@ -21,6 +21,13 @@ export const L1_CELO_PAID_TIMEOUT_MS = 45_000;
 export const L1_CELO_NETWORK = "eip155:42220";
 
 /**
+ * 方法論の頁が「Celo の支払い付きは 45 秒」と書く開始日。
+ * 45 秒の待ち自体は 2026-10-18 からランナーにある。行に `paidTimeoutMs` を残し始めたのはこの日で、
+ * それより前の行（記録が無い行）は分類でも公開文でも 20 秒として扱う。
+ */
+export const L1_CELO_PAID_TIMEOUT_SINCE = "2026-10-19";
+
+/**
  * 支払い付きの要求を待つミリ秒。network が Celo のときだけ L1_CELO_PAID_TIMEOUT_MS。
  * timeoutMs / celoPaidTimeoutMs はテストの差し込み（本番は定数）。
  */

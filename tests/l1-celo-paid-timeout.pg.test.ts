@@ -166,6 +166,15 @@ if (!TEST_DB) {
         assert.equal(one(CELO_URL, false)[0].armedMs, L1_REQUEST_TIMEOUT_MS);
         assert.equal(one(CELO_URL, true)[0].armedMs, L1_CELO_PAID_TIMEOUT_MS);
         assert.equal(summary.attempted, 2);
+        const schema = await import("@/lib/db/schema");
+        const bought = await db.select({ network: schema.x402L1Purchases.network, meta: schema.x402L1Purchases.rawResponseMeta }).from(schema.x402L1Purchases);
+        const msOf = (network: string) => {
+          const row = bought.find((r) => r.network === network);
+          const meta = row?.meta as { paidTimeoutMs?: number } | null;
+          return meta?.paidTimeoutMs;
+        };
+        assert.equal(msOf(BASE), L1_REQUEST_TIMEOUT_MS);
+        assert.equal(msOf(CELO), L1_CELO_PAID_TIMEOUT_MS);
       } finally {
         spy.restore();
       }
@@ -218,6 +227,66 @@ if (!TEST_DB) {
       assert.equal(at(CELO_URL).length, 1, `celo abort ${JSON.stringify(elapsed)}`);
       assert.ok(at(BASE_URL)[0].ms >= 30 && at(BASE_URL)[0].ms < 80, `base aborted at ${at(BASE_URL)[0].ms}ms`);
       assert.ok(at(CELO_URL)[0].ms >= 75 && at(CELO_URL)[0].ms < 160, `celo aborted at ${at(CELO_URL)[0].ms}ms`);
+      const schema = await import("@/lib/db/schema");
+      const bought = await db.select({ network: schema.x402L1Purchases.network, meta: schema.x402L1Purchases.rawResponseMeta }).from(schema.x402L1Purchases);
+      const msOf = (network: string) => ((bought.find((r) => r.network === network)?.meta ?? {}) as { paidTimeoutMs?: number }).paidTimeoutMs;
+      assert.equal(msOf(BASE), 40);
+      assert.equal(msOf(CELO), 90);
+    });
+
+    await t.test("締切の近くでは Celo を始めない。予算から Celo を外すと始める", async () => {
+      const timeoutMs = 100;
+      const celoPaidTimeoutMs = 60_000;
+      const { L1_PURCHASE_SLACK_MS } = await import("@/lib/observatory/l1-runner");
+      const baseWorst = timeoutMs + timeoutMs + L1_PURCHASE_SLACK_MS;
+      const celoWorst = timeoutMs + celoPaidTimeoutMs + L1_PURCHASE_SLACK_MS;
+      const batchBudgetMs = 40_000;
+      assert.ok(batchBudgetMs > baseWorst && batchBudgetMs < celoWorst);
+
+      async function one(url: string, accept: Record<string, unknown>) {
+        await db.execute(
+          sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_payee_watchers, x402_l1_purchases, observed_purchases`,
+        );
+        const items = [
+          parseCatalogItem({
+            resource: url,
+            accepts: [accept],
+            extensions: { bazaar: { info: { input: { method: "GET" } } } },
+            quality: { l30DaysTotalCalls: 100, l30DaysUniquePayers: 10 },
+          }),
+        ];
+        await syncCatalog({
+          fetchResult: { items, totalCount: items.length, fetchedCount: items.length, complete: true },
+          today: "2026-10-19",
+        });
+        const challenge = JSON.stringify({ x402Version: 2, accepts: [accept] });
+        await runL0ProbeBatch({
+          limit: 5,
+          concurrency: 1,
+          fetchImpl: async () => new Response(challenge, { status: 402, headers: { "content-type": "application/json" } }),
+        });
+        let fetches = 0;
+        const summary = await runL1Batch({
+          limit: 5,
+          timeoutMs,
+          celoPaidTimeoutMs,
+          batchBudgetMs,
+          getPayerUsdcBalance: async () => 1_000_000_000n,
+          fetchImpl: async () => {
+            fetches++;
+            return new Response(challenge, { status: 402, headers: { "content-type": "application/json" } });
+          },
+        });
+        return { fetches, summary };
+      }
+
+      const celo = await one(CELO_URL, celoAccept);
+      assert.equal(celo.summary.stoppedForDeadline, true, JSON.stringify(celo.summary));
+      assert.equal(celo.summary.attempted, 0);
+      assert.equal(celo.fetches, 0, "Celo を始めない。l1-runner の予算から Celo を外すと fetch が走る");
+      const base = await one(BASE_URL, baseAccept);
+      assert.ok(base.fetches >= 1, `同じ予算で Base は始める ${JSON.stringify(base.summary)}`);
+      assert.equal(base.summary.stoppedForDeadline, false);
     });
   });
 }
