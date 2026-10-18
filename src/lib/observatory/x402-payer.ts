@@ -3,7 +3,7 @@
 //
 // This module SIGNS MONEY, so its shape is a funnel of refusals: everything
 // is a skip unless it is exactly scheme `exact`, EIP-3009, one of the PINNED
-// EVM chains (EVM_PAY_CHAINS: Base always; Arc and Celo each behind its own flag), that chain's
+// EVM chains (EVM_PAY_CHAINS: Base always; Arc, Celo and BNB each behind its own flag), that chain's
 // canonical USDC, at a price that matches what the catalog advertised when we
 // chose the target, under a hard per-purchase ceiling. The facilitator/seller
 // can choose to not deliver after settlement — that is a FINDING we publish —
@@ -15,6 +15,10 @@
 // 2026-09-16) is the second row, off by default (OBSERVATORY_ARC_L1_ENABLED).
 // 2026-10-10 (Celo lane): Celo mainnet (eip155:42220) is the third row, off by
 // default (OBSERVATORY_CELO_L1_ENABLED). Nothing about the Base or Arc rows changed.
+// 2026-10-19 (BNB lane, stage B1): BNB Chain mainnet (eip155:56) is the fourth row,
+// off by default (OBSERVATORY_BNB_L1_ENABLED). The token is USD1 (18 decimals), not
+// USDC. Nothing about the Base, Arc or Celo rows changed. The runner does not
+// prefer this row yet (stage B2).
 //
 // Spec grounding (fetched 2026-08-14, coinbase/x402):
 //  - specs/schemes/exact/scheme_exact_evm.md — EIP-3009 payload:
@@ -102,6 +106,48 @@ export const CELO_USDC_EIP712_VERSION = "2";
 export const CELO_USDC_DOMAIN_SEPARATOR = "0xb2ce31d2838445fa765a491f550e7c78ac7280ab0f3bc9d6063a86df9c3fb578";
 
 /**
+ * BNB Chain mainnet. Measured 2026-10-19 by RPC against
+ * https://bsc-dataseed.bnbchain.org — not re-derived here:
+ *   chain id 56 / CAIP-2 eip155:56
+ *   USD1 0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d / decimals 18
+ *   EIP-712 name "World Liberty Financial USD" / version "1"
+ *   EIP-3009 (authorizationState is readable). accept extra assetTransferMethod "eip3009".
+ * Only that USD1 eip3009 accept is pinned. permit2, permit2-exact, BSC USDC, USDT and
+ * United Stables are not in the table, so none can be signed for.
+ * The payer is the same EOA as Base. USD1 is 18 decimals and the ledger is 6, so
+ * amounts move by BNB_LEDGER_SCALE (10^12): the per-purchase ceiling is scaled up
+ * before compare, a declared price must match the 18-digit amount exactly, an amount
+ * not divisible by the scale is unbuildable before any reservation, and the ledger
+ * stores the exact quotient (no rounding). The buyer needs no BNB for gas: the
+ * facilitator submits the transfer. Duplicated in src/lib/chain/bnb.ts on purpose
+ * (same reason as BASE_USDC). The field below is named `usdc` because that is the
+ * pinned-token slot of EvmPayChain; on this row the token is USD1.
+ */
+export const BNB_CAIP2 = "eip155:56";
+export const BNB_CHAIN_ID = 56;
+export const BNB_USD1 = "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d";
+export const BNB_USD1_EIP712_NAME = "World Liberty Financial USD";
+export const BNB_USD1_EIP712_VERSION = "1";
+/** 18-digit USD1 → 6-digit ledger. 10^(18-6). */
+export const BNB_LEDGER_SCALE = 10n ** 12n;
+
+/**
+ * 18-digit USD1 base units → ledger units (6 digits), or null when the amount
+ * cannot be booked exactly (not positive, or not divisible by {@link BNB_LEDGER_SCALE}).
+ * Null is unbuildable: the caller refuses before a reservation. No rounding.
+ */
+export function bnbLedgerUnits(assetUnits: bigint): bigint | null {
+  if (assetUnits <= 0n) return null;
+  if (assetUnits % BNB_LEDGER_SCALE !== 0n) return null;
+  return assetUnits / BNB_LEDGER_SCALE;
+}
+
+/** 6-digit ledger units → 18-digit USD1. The inverse of a successful {@link bnbLedgerUnits}. */
+export function ledgerUnitsToBnbAssetUnits(ledgerUnits: bigint): bigint {
+  return ledgerUnits * BNB_LEDGER_SCALE;
+}
+
+/**
  * One row per EVM chain we can sign EIP-3009 on. Everything the seller could
  * otherwise choose — chain id, token, EIP-712 domain — is pinned here.
  */
@@ -157,8 +203,21 @@ export const CELO_CHAIN: EvmPayChain = {
   flagEnv: "OBSERVATORY_CELO_L1_ENABLED",
 };
 
+export const BNB_CHAIN: EvmPayChain = {
+  caip2: BNB_CAIP2,
+  chainId: BNB_CHAIN_ID,
+  usdc: BNB_USD1,
+  eip712Name: BNB_USD1_EIP712_NAME,
+  eip712Version: BNB_USD1_EIP712_VERSION,
+  label: "BNB Chain",
+  // No v1 slug in the money path. A v1 accept that names the chain "bnb" or "bsc" is not
+  // resolved by evmChainFor. A v1 header echoes the CAIP-2 id the seller's challenge used.
+  v1Slug: null,
+  flagEnv: "OBSERVATORY_BNB_L1_ENABLED",
+};
+
 /** The whole pinned table. Order is irrelevant; nothing outside it can be signed on. */
-export const EVM_PAY_CHAINS: readonly EvmPayChain[] = [BASE_CHAIN, ARC_CHAIN, CELO_CHAIN];
+export const EVM_PAY_CHAINS: readonly EvmPayChain[] = [BASE_CHAIN, ARC_CHAIN, CELO_CHAIN, BNB_CHAIN];
 
 export function isArcL1Enabled(): boolean {
   return process.env.OBSERVATORY_ARC_L1_ENABLED === "true";
@@ -167,6 +226,11 @@ export function isArcL1Enabled(): boolean {
 /** Celo lane switch (2026-10-10). Off unless the env is exactly "true" — same discipline as Arc. */
 export function isCeloL1Enabled(): boolean {
   return process.env.OBSERVATORY_CELO_L1_ENABLED === "true";
+}
+
+/** BNB lane switch (2026-10-19). Off unless the env is exactly "true" — same discipline as Celo. */
+export function isBnbL1Enabled(): boolean {
+  return process.env.OBSERVATORY_BNB_L1_ENABLED === "true";
 }
 
 /** Base is always on; a flagged chain only when its env is exactly "true" (same discipline as OBSERVATORY_L1_ENABLED). */
@@ -401,11 +465,48 @@ export function declaredPayTosFor(chain: EvmPayChain, rawAccepts: unknown): stri
 }
 
 export type AcceptSelection =
-  | { accept: ChallengeAccept; reason: null }
+  | {
+      accept: ChallengeAccept;
+      reason: null;
+      /**
+       * Ledger units (6 digits) when the pinned token is not 6 decimals.
+       * Set only for BNB USD1. Absent on Base / Arc / Celo, so the runner keeps
+       * using `accept.amount` for those rows (flag off ⇒ this key never appears).
+       */
+      amountUnits?: bigint;
+    }
   | {
       accept: null;
       reason: "no_eligible_accept" | "price_mismatch" | "payto_mismatch" | "over_cap";
+      /** Set only when every eligible accept was a non-bookable BNB amount. */
+      detail?: "unbuildable";
     };
+
+/** True when this accept is on the pinned BNB row (flag-agnostic). */
+function isBnbAccept(accept: ChallengeAccept): boolean {
+  return evmChainFor(accept.network)?.caip2 === BNB_CAIP2;
+}
+
+/**
+ * Units the per-purchase ceiling and the secondary relative cap compare.
+ * Base / Arc / Celo: the accept amount itself (6 decimals). BNB: the 6-digit
+ * ledger quotient, or 0 when the 18-digit amount is unbuildable (that is not
+ * "over the ceiling"). A non-integer string throws, as `BigInt` did inline.
+ */
+function capUnits(accept: ChallengeAccept): bigint {
+  const raw = BigInt(accept.amount);
+  if (!isBnbAccept(accept)) return raw;
+  return bnbLedgerUnits(raw) ?? 0n;
+}
+
+function bnbAcceptUnbuildable(accept: ChallengeAccept): boolean {
+  if (!isBnbAccept(accept)) return false;
+  try {
+    return bnbLedgerUnits(BigInt(accept.amount)) === null;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * The money gate. Only scheme `exact` + (eip3009 | unspecified) on an ENABLED
@@ -573,23 +674,40 @@ export function selectAccept(
       continue;
     }
     if (amount <= 0n) continue;
+    // BNB USD1 is 18 digits. Compare the ceiling in ledger units (×10^12).
+    // An amount the ledger cannot store exactly is unbuildable — before any
+    // reservation, and before the price string is treated as a seller finding.
+    // Other chains keep `amount` itself (6 decimals). Flag off: a BNB accept
+    // is not in `ordered`, so this branch does not run.
+    let ledger = amount;
+    if (isBnbAccept(accept)) {
+      const converted = bnbLedgerUnits(amount);
+      if (converted === null) continue;
+      ledger = converted;
+    }
+    // Declared price is an exact string match in the asset's own units
+    // (BNB: 18-digit to 18-digit, not the 6-digit quotient).
     if (priceDeclaredFor(accept) && accept.amount !== options.declaredAmount) continue;
-    if (overRelativeCap(accept, amount)) continue;
-    if (amount > MAX_PER_PURCHASE_UNITS) continue;
-    return { accept, reason: null };
+    if (overRelativeCap(accept, ledger)) continue;
+    if (ledger > MAX_PER_PURCHASE_UNITS) continue;
+    return isBnbAccept(accept) ? { accept, reason: null, amountUnits: ledger } : { accept, reason: null };
   }
 
   // Eligible accepts existed but none matched the price gates — classify.
+  // Every remaining BNB accept was unbuildable: not a price finding.
+  if (eligible.length > 0 && eligible.every((a) => bnbAcceptUnbuildable(a))) {
+    return { accept: null, reason: "no_eligible_accept", detail: "unbuildable" };
+  }
   const anyOverCap = eligible.some((a) => {
     try {
-      return BigInt(a.amount) > MAX_PER_PURCHASE_UNITS;
+      return capUnits(a) > MAX_PER_PURCHASE_UNITS;
     } catch {
       return false;
     }
   });
   const relativeOver = eligible.some((a) => {
     try {
-      return overRelativeCap(a, BigInt(a.amount));
+      return overRelativeCap(a, capUnits(a));
     } catch {
       return false;
     }
@@ -599,7 +717,7 @@ export function selectAccept(
     // unless everything was simply over the ceiling.
     const allOverCap = eligible.every((a) => {
       try {
-        return BigInt(a.amount) > MAX_PER_PURCHASE_UNITS;
+        return capUnits(a) > MAX_PER_PURCHASE_UNITS;
       } catch {
         return true;
       }
@@ -689,7 +807,8 @@ function isSignableEvmAccept(accept: ChallengeAccept): boolean {
  * of the accept's chain (EVM_PAY_CHAINS). The domain is never taken from the
  * seller: chainId and verifyingContract were always pinned, and since
  * 2026-08-22 name/version are too (measured on-chain, not assumed — Base
- * "USD Coin"/"2", Arc "USDC"/"2", Celo "USDC"/"2").
+ * "USD Coin"/"2", Arc "USDC"/"2", Celo "USDC"/"2",
+ * BNB USD1 "World Liberty Financial USD"/"1").
  *
  * selectAccept already refuses any accept whose chain is unknown or disabled or
  * whose `extra` contradicts the pin, so the guards below are belt-and-braces for

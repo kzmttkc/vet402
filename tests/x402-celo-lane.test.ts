@@ -31,6 +31,7 @@ import {
   BASE_CAIP2,
   BASE_CHAIN,
   BASE_USDC,
+  BNB_CAIP2,
   CELO_CAIP2,
   CELO_CHAIN,
   CELO_USDC,
@@ -150,8 +151,8 @@ const withCeloFlag = <T>(value: string | undefined, fn: () => T): T => withEnv("
 test("the table pins Celo as measured on-chain 2026-10-10, next to Base and Arc and nothing else", () => {
   assert.deepEqual(
     EVM_PAY_CHAINS.map((c) => c.caip2),
-    [BASE_CAIP2, ARC_CAIP2, CELO_CAIP2],
-    "Base, Arc, Celo — nothing else can be signed on",
+    [BASE_CAIP2, ARC_CAIP2, CELO_CAIP2, BNB_CAIP2],
+    "Base, Arc, Celo, BNB — nothing else can be signed on",
   );
   assert.equal(CELO_CAIP2, "eip155:42220");
   assert.equal(CELO_CHAIN.caip2, CELO_CAIP2);

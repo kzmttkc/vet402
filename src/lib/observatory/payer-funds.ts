@@ -21,10 +21,13 @@
 //   - チェーンごとに別の残高（2026-09-17 Arc レーン）。Arc は Base と同じ EOA だが、
 //     Arc の USDC は Base の USDC ではない。同じ鍵でも残高は chain で分けて読む。
 //     Celo（2026-10-10）も同じ: 同じ EOA・Celo の USDC（0xcebA…118C）を Celo の RPC で読む。
+//     BNB Chain（2026-10-19）も同じ EOA。読むのは USD1（18 桁）。返すのは台帳の 6 桁へ切り捨てた額。
+//     ガスの BNB は見ない（EIP-3009 は facilitator が出す）。
 // ============================================================
 import { SOLANA_USDC_MINT } from "./sol402-payer";
-import { ARC_USDC, BASE_USDC, CELO_USDC } from "./x402-payer";
+import { ARC_USDC, BASE_USDC, BNB_LEDGER_SCALE, BNB_USD1, CELO_USDC } from "./x402-payer";
 import { getArcPublicClient } from "@/lib/chain/arc";
+import { getBnbPublicClient } from "@/lib/chain/bnb";
 import { getCeloPublicClient } from "@/lib/chain/celo";
 import { readTempoUsdcBalance } from "./mpp-payer";
 import { redactForLog } from "./redact";
@@ -36,8 +39,9 @@ import { redactForLog } from "./redact";
  * ——署名しない側へ倒れ、行を書かず、ログに理由（xrpl_fee_unfunded）が残る。
  * "stellar"（2026-10-18）: classic USDC の trustline を Horizon で読む。7 桁 stroops を 6 桁 units に
  * 切り捨てる。trustline が無い・未承認・読めないは throw（署名しない側）。公開 Horizon へは倒れない。
+ * "bnb"（2026-10-19）: 同じ EOA の USD1（18 桁）を 6 桁へ切り捨てる。読めなければ throw（署名しない側）。
  */
-export type PayerChain = "base" | "solana" | "arc" | "tempo" | "xrpl" | "celo" | "stellar";
+export type PayerChain = "base" | "solana" | "arc" | "tempo" | "xrpl" | "celo" | "stellar" | "bnb";
 
 /** 購入元（owner）の USDC 残高を基本単位（6 桁）で返す。読めなければ throw する。 */
 export type PayerUsdcBalanceReader = (input: { chain: PayerChain; owner: string }) => Promise<bigint>;
@@ -111,6 +115,8 @@ const ERC20_BALANCE_OF_ABI = [
  * 本番の読み手。Base は BASE_RPC_URL、Solana は SOLANA_RPC_URL。未設定は throw（公開 RPC へ無言で倒れない）。
  * Arc は ARC_RPC_URL、未設定なら公開 RPC https://rpc.mainnet.arc.io（オーナー指定 2026-09-17・chain/arc.ts）。
  * Celo は CELO_RPC_URL、未設定なら公開 RPC https://forno.celo.org（2026-10-10・chain/celo.ts・Arc と同じ扱い）。
+ * BNB は BNB_RPC_URL、未設定なら公開 RPC https://bsc-dataseed.bnbchain.org（2026-10-19・chain/bnb.ts）。
+ * 読むのは USD1 の balanceOf だけ。18 桁を 6 桁へ切り捨てて返す。ネイティブの BNB は読まない。
  * Stellar は STELLAR_HORIZON_URL。未設定は throw（公開 Horizon へ無言で倒れない）。
  * どのチェーンも、読めなければ throw → 呼び手は署名しない側へ倒す。
  */
@@ -147,6 +153,17 @@ export const defaultPayerUsdcBalance: PayerUsdcBalanceReader = async ({ chain, o
       functionName: "balanceOf",
       args: [owner as `0x${string}`],
     });
+  }
+  if (chain === "bnb") {
+    const client = getBnbPublicClient("live");
+    const raw = await client.readContract({
+      address: BNB_USD1 as `0x${string}`,
+      abi: ERC20_BALANCE_OF_ABI,
+      functionName: "balanceOf",
+      args: [owner as `0x${string}`],
+    });
+    // 18 桁 → 台帳の 6 桁。余りは切り捨て（署名できる額に数えない）。0 も 0。
+    return raw / BNB_LEDGER_SCALE;
   }
   if (chain === "base") {
     const rpc = process.env.BASE_RPC_URL?.trim();

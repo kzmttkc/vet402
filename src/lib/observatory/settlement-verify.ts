@@ -32,8 +32,9 @@
 import { keccak256, parseAbi, toBytes, TransactionReceiptNotFoundError } from "viem";
 import { getPublicClient } from "@/lib/chain/client";
 import { getArcPublicClient } from "@/lib/chain/arc";
+import { getBnbPublicClient } from "@/lib/chain/bnb";
 import { getCeloPublicClient } from "@/lib/chain/celo";
-import { evmChainFor, type EvmPayChain } from "./x402-payer";
+import { BNB_CHAIN_ID, BNB_LEDGER_SCALE, evmChainFor, type EvmPayChain } from "./x402-payer";
 import { isWellFormedSettlementTx } from "@/lib/validation/settlement-tx";
 // 2026-09-19（横断監査 W4）: detail は DB に残る。RPC の URL（鍵入りの形がある）を伏せてから書く。
 import { redactForLog } from "./redact";
@@ -70,6 +71,7 @@ export const AUTHORIZATION_USED_TOPIC = keccak256(toBytes("AuthorizationUsed(add
  * フォールバックは署名を止める側に倒れるので別扱い）。
  * Celo（2026-10-10）も Arc と同じ: **CELO_RPC_URL 必須**。無ければ null（未確認のまま置く）。Base の client へ
  * 落とさない——落とすと Celo の行をいつも wrong_chain（計器の故障）として鳴らし、そのバッチの Celo の行を全部飛ばす。
+ * BNB Chain（2026-10-19）も同じ: **BNB_RPC_URL 必須**。公開 RPC へ黙って倒さない。Base の client へ落とさない。
  * 表に無い EVM は照合器が無い＝ chain_not_yet_verifiable のまま置く。
  */
 function clientFor(chain: EvmPayChain): EvmVerifyClient | null {
@@ -81,12 +83,18 @@ function clientFor(chain: EvmPayChain): EvmVerifyClient | null {
     if (!process.env.CELO_RPC_URL?.trim()) return null;
     return getCeloPublicClient("live");
   }
+  if (chain.chainId === BNB_CHAIN_ID) {
+    if (!process.env.BNB_RPC_URL?.trim()) return null;
+    return getBnbPublicClient("live");
+  }
   return getPublicClient();
 }
 
 /** clientFor が null を返したチェーンの、未設定の env の名前（照合の detail に残す）。 */
 function rpcEnvOf(chain: EvmPayChain): string {
-  return chain.chainId === 42220 ? "CELO_RPC_URL" : "ARC_RPC_URL";
+  if (chain.chainId === 42220) return "CELO_RPC_URL";
+  if (chain.chainId === BNB_CHAIN_ID) return "BNB_RPC_URL";
+  return "ARC_RPC_URL";
 }
 
 /**
@@ -157,7 +165,7 @@ export type AuthorizationStateClient = Pick<ReturnType<typeof getPublicClient>, 
  * 我々が署名した EIP-3009 の認可が、チェーンで使われたか（USDC の authorizationState(payer, nonce)）。
  * 2026-09-29 独立レビュー（CRITICAL）: 売り手の名指した tx を「見つからない」と確定する前に、お金が動いていないことを
  * チェーンで確かめる材料。true＝使われた（どこかの tx で決済された）、false＝使われていない、null＝読めない・対象外
- * （Base / Arc / Celo 以外・nonce や payer の形が違う・RPC の失敗・チェーン ID の食い違い）。null は「確かめられない」なので、
+ * （Base / Arc / Celo / BNB 以外・nonce や payer の形が違う・RPC の失敗・チェーン ID の食い違い）。null は「確かめられない」なので、
  * 呼び手は確定しない側に倒す。
  */
 export async function readAuthorizationState(
@@ -172,6 +180,8 @@ export async function readAuthorizationState(
   else if (chain.chainId === 5042) client = process.env.ARC_RPC_URL?.trim() ? getArcPublicClient("live") : null;
   // Celo（2026-10-10）: Arc と同じく env 必須。無ければ null＝「確かめられない」（呼び手は確定しない側に倒す）。
   else if (chain.chainId === 42220) client = process.env.CELO_RPC_URL?.trim() ? getCeloPublicClient("live") : null;
+  // BNB（2026-10-19）: Celo と同じく env 必須。無ければ null＝「確かめられない」。
+  else if (chain.chainId === BNB_CHAIN_ID) client = process.env.BNB_RPC_URL?.trim() ? getBnbPublicClient("live") : null;
   else client = getPublicClient();
   if (!client) return null;
   try {
@@ -261,7 +271,7 @@ export async function verifyL1Settlement(
     return { ok: false, reason: "chain_not_yet_verifiable", detail: `${network}: ${rpcEnvOf(chain)}_unset` };
   }
 
-  // 1. まず「いま読んでいるのは本当にその購入のチェーンか」（Base 8453 / Arc 5042 / Celo 42220）。
+  // 1. まず「いま読んでいるのは本当にその購入のチェーンか」（Base 8453 / Arc 5042 / Celo 42220 / BNB 56）。
   let chainId: number;
   let tip: bigint;
   try {
@@ -310,6 +320,9 @@ export async function verifyL1Settlement(
   } catch {
     return { ok: false, reason: "no_matching_transfer", detail: "unparseable expected amount" };
   }
+  // BNB の USD1 は 18 桁。台帳の expectedAmountUnits は 6 桁。チェーン上の額は
+  // 台帳 × 10^12 と完全一致のときだけ（1 単位の過不足も不一致）。他チェーンは 6 桁のまま。
+  if (chain.chainId === BNB_CHAIN_ID) expectedValue *= BNB_LEDGER_SCALE;
 
   const matched = receipt.logs.some((log) => {
     if (log.address?.toLowerCase() !== usdcLower) return false;

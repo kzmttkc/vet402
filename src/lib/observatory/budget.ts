@@ -65,6 +65,16 @@ export const CELO_DAILY_CAP_USD_DEFAULT = 2;
 export const STELLAR_DAILY_CAP_USD_DEFAULT = 0.5;
 
 /**
+ * BNB Chain の別枠（2026-10-19・BNB レーン・段B1）。共有 $25 の内側。既定は $0.5
+ * （Stellar と同じ既定。USD1 は 18 桁だが台帳は 6 桁なので、この上限も USDC と同じ目盛り）。
+ * 環境変数 L1_BNB_DAILY_CAP_USD で変えられる（0 で BNB を止める）。レーンそのものは
+ * OBSERVATORY_BNB_L1_ENABLED が正確に "true" のときだけ動く。別枠はスイッチではない。
+ * 段B1はランナーの `lanes` に BNB を足さない。この別枠は、network が eip155:56 の予約が
+ * reserveSpend に届いたときに効く。
+ */
+export const BNB_DAILY_CAP_USD_DEFAULT = 0.5;
+
+/**
  * 1 人の売り手が 1 UTC 日に受け取れる上限（2026-09-29 監査 5 周目・高・お金）。**受取先（payTo）ごと**と
  * **ホスト（ポート無視・小文字＝census の売り手の単位）ごと**に、別々に数える。全チェーン共有の $25 の内側。
  *
@@ -117,7 +127,7 @@ export function domainDailyCapUnits(): bigint {
 }
 
 /** 別枠を持つチェーン。Base は持たない（共有 $25 だけ）。 */
-export type CappedChain = "solana" | "arc" | "tempo" | "xrpl" | "celo" | "stellar";
+export type CappedChain = "solana" | "arc" | "tempo" | "xrpl" | "celo" | "stellar" | "bnb";
 
 /**
  * チェーン別の別枠の表。`networkLike` は x402_l1_purchases.network に対する SQL の LIKE
@@ -135,6 +145,8 @@ export const CHAIN_DAILY_CAPS: Record<CappedChain, { env: string; defaultUsd: nu
   celo: { env: "L1_CELO_DAILY_CAP_USD", defaultUsd: CELO_DAILY_CAP_USD_DEFAULT, networkLike: "eip155:42220" },
   // 完全一致（ワイルドカード無し）。testnet や `stellar` / `stellar:mainnet` を巻き込まない。
   stellar: { env: "L1_STELLAR_DAILY_CAP_USD", defaultUsd: STELLAR_DAILY_CAP_USD_DEFAULT, networkLike: "stellar:pubnet" },
+  // 完全一致（ワイルドカード無し）。BSC testnet（eip155:97）や opBNB（eip155:204）を巻き込まない。
+  bnb: { env: "L1_BNB_DAILY_CAP_USD", defaultUsd: BNB_DAILY_CAP_USD_DEFAULT, networkLike: "eip155:56" },
 };
 
 /** その network が別枠を持つチェーンなら、その名前。持たなければ null。 */
@@ -145,6 +157,7 @@ export function cappedChainFor(network: string): CappedChain | null {
   if (network === "xrpl:0") return "xrpl";
   if (network === "eip155:42220") return "celo";
   if (network === "stellar:pubnet") return "stellar";
+  if (network === "eip155:56") return "bnb";
   return null;
 }
 

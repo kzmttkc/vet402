@@ -345,7 +345,9 @@ const LANE_NETWORK: Partial<Record<CappedChain, string>> = {
 // 692 件は Base（eip155:8453）が先頭で、stellar:pubnet の USDC accept は 2 番目以降。
 // レーン由来の候補に限って selectStellarAccept で選ぶ（stellarLanePreferred。宣言した payTo と
 // 完全一致のときだけ）。選べなければ Base の通常経路へ落とす。XRPL と同じく secondary を枠に入れる。
-const LANE_SECONDARY_ACCEPTS: Record<CappedChain, boolean> = { solana: false, arc: true, tempo: false, xrpl: true, celo: true, stellar: true };
+// bnb（2026-10-19・段B1）: CappedChain に足したので鍵が要る。`lanes` にはまだ無い（段B2）。
+// この値は読まれない。secondary で買う予定なので true。
+const LANE_SECONDARY_ACCEPTS: Record<CappedChain, boolean> = { solana: false, arc: true, tempo: false, xrpl: true, celo: true, stellar: true, bnb: true };
 
 /**
  * secondary の枝で raw_accepts の accept（SQL の別名 `a`）に足す条件。XRPL は RLUSD（hex か literal）かつ

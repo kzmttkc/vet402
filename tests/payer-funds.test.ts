@@ -156,6 +156,82 @@ test("既定の読み手: chain \"celo\" は CELO_RPC_URL の RPC に、Celo の
   }
 });
 
+test("bnb は base と別の残高。USD1 が無ければ insufficient（署名しない側）", async () => {
+  const empty = createPayerFunds(async ({ chain }) => (chain === "bnb" ? 0n : 60_000_000n));
+  assert.equal((await empty.check("base", "0x1", 100_000n)).ok, true);
+  const denied = await empty.check("bnb", "0x1", 100_000n);
+  assert.equal(denied.ok, false);
+  assert.equal(denied.ok === false && denied.reason, "insufficient");
+  const funded = createPayerFunds(async ({ chain }) => (chain === "bnb" ? 100_000n : 0n));
+  assert.equal((await funded.check("bnb", "0x1", 100_000n)).ok, true);
+  funded.commit("bnb", "0x1", 100_000n);
+  assert.equal((await funded.check("bnb", "0x1", 1n)).ok, false);
+  const unreadable = createPayerFunds(async () => {
+    throw new Error("rpc down");
+  });
+  const v = await unreadable.check("bnb", "0x1", 1n);
+  assert.equal(v.ok, false);
+  assert.equal(v.ok === false && v.reason, "unreadable");
+});
+
+test("既定の読み手: chain \"bnb\" は USD1 の balanceOf を 18 桁から 6 桁へ切り捨てる。BNB の残高は問わない", async () => {
+  const { createServer } = await import("node:http");
+  const { BNB_USD1, BNB_LEDGER_SCALE } = await import("@/lib/observatory/x402-payer");
+  const OWNER = "0xc9c7b38C0942914fC8EA12063BC92dcd3b581670";
+  // 1e17 + 1e12 - 1。切り捨ては 100000。切り上げると 100001。
+  const raw = 10n ** 17n + BNB_LEDGER_SCALE - 1n;
+  const dust = BNB_LEDGER_SCALE - 1n;
+  const calls: { method?: string; to?: string; data?: string }[] = [];
+  let which: "raw" | "dust" = "raw";
+  const server = createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      const rpc = JSON.parse(body) as { id: number; method: string; params: [{ to?: string; data?: string }] };
+      calls.push({ method: rpc.method, to: rpc.params?.[0]?.to, data: rpc.params?.[0]?.data });
+      const value = which === "raw" ? raw : dust;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: rpc.id, result: `0x${value.toString(16).padStart(64, "0")}` }));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as { port: number }).port;
+  const saved = process.env.BNB_RPC_URL;
+  try {
+    process.env.BNB_RPC_URL = `http://127.0.0.1:${port}`;
+    const balance = await defaultPayerUsdcBalance({ chain: "bnb", owner: OWNER });
+    assert.equal(balance, 100_000n);
+    which = "dust";
+    const floored = await defaultPayerUsdcBalance({ chain: "bnb", owner: OWNER });
+    assert.equal(floored, 0n, "10^12 未満は 0。切り上げない");
+    const ethCalls = calls.filter((c) => c.method === "eth_call");
+    assert.ok(ethCalls.length >= 1);
+    assert.equal(ethCalls[0].to?.toLowerCase(), BNB_USD1.toLowerCase());
+    assert.equal(ethCalls[0].data?.toLowerCase(), `0x70a08231${OWNER.slice(2).toLowerCase().padStart(64, "0")}`);
+    assert.equal(calls.some((c) => c.method === "eth_getBalance"), false, "ネイティブの BNB は読まない");
+  } finally {
+    if (saved === undefined) delete process.env.BNB_RPC_URL;
+    else process.env.BNB_RPC_URL = saved;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("既定の読み手: BNB の RPC が答えなければ throw（読めない＝署名しない側）", async () => {
+  const saved = process.env.BNB_RPC_URL;
+  try {
+    process.env.BNB_RPC_URL = "http://127.0.0.1:9";
+    const f = createPayerFunds(defaultPayerUsdcBalance);
+    const v = await f.check("bnb", "0xc9c7b38C0942914fC8EA12063BC92dcd3b581670", 1n);
+    assert.equal(v.ok, false);
+    assert.equal(v.ok === false && v.reason, "unreadable");
+    const err = v.ok === false && v.reason === "unreadable" ? v.error : "";
+    assert.ok(!err.includes("127.0.0.1"), `RPC の URL を残さない: ${err}`);
+  } finally {
+    if (saved === undefined) delete process.env.BNB_RPC_URL;
+    else process.env.BNB_RPC_URL = saved;
+  }
+});
+
 test("既定の読み手: Celo の RPC が答えなければ throw（読めない＝署名しない側へ倒れる）", async () => {
   const saved = process.env.CELO_RPC_URL;
   try {

@@ -11,6 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   ARC_DAILY_CAP_USD_DEFAULT,
+  BNB_DAILY_CAP_USD_DEFAULT,
   CELO_DAILY_CAP_USD_DEFAULT,
   CHAIN_DAILY_CAPS,
   DAILY_BUDGET_USD,
@@ -108,6 +109,36 @@ test("Stellar: stellar:pubnet だけが stellar の別枠。testnet・スラグ�
   assert.equal(CHAIN_DAILY_CAPS.stellar.env, "L1_STELLAR_DAILY_CAP_USD");
   assert.equal(CHAIN_DAILY_CAPS.stellar.networkLike, "stellar:pubnet", "ワイルドカード無し＝完全一致");
   assert.ok(!/[%_]/.test(CHAIN_DAILY_CAPS.stellar.networkLike));
+});
+
+test("BNB: eip155:56 だけが bnb の別枠。テストネットと前後に文字の付いた id は持たない", () => {
+  assert.equal(cappedChainFor("eip155:56"), "bnb");
+  assert.equal(cappedChainFor("eip155:97"), null, "BSC testnet");
+  assert.equal(cappedChainFor("eip155:204"), null, "opBNB");
+  assert.equal(cappedChainFor("eip155:560"), null);
+  assert.equal(cappedChainFor("eip155:5"), null);
+  assert.equal(cappedChainFor("bnb"), null);
+  assert.equal(cappedChainFor("bsc"), null);
+  assert.equal(CHAIN_DAILY_CAPS.bnb.env, "L1_BNB_DAILY_CAP_USD");
+  assert.equal(CHAIN_DAILY_CAPS.bnb.networkLike, "eip155:56", "ワイルドカード無し＝完全一致");
+  assert.ok(!/[%_]/.test(CHAIN_DAILY_CAPS.bnb.networkLike));
+  assert.equal(BNB_DAILY_CAP_USD_DEFAULT, 0.5);
+});
+
+test("BNB の既定は $0.5。0 は BNB を止める。壊れた値は既定へ倒す。共有上限で頭打ち。他チェーンに効かない", () => {
+  withEnv("L1_BNB_DAILY_CAP_USD", undefined, () => assert.equal(chainDailyCapUnits("bnb"), 500_000n));
+  withEnv("L1_BNB_DAILY_CAP_USD", "0", () => assert.equal(chainDailyCapUnits("bnb"), 0n));
+  withEnv("L1_BNB_DAILY_CAP_USD", "0.1", () => assert.equal(chainDailyCapUnits("bnb"), 100_000n));
+  for (const v of ["", "abc", "-1", "NaN", "Infinity"]) {
+    withEnv("L1_BNB_DAILY_CAP_USD", v, () => assert.equal(chainDailyCapUnits("bnb"), 500_000n, `value ${JSON.stringify(v)}`));
+  }
+  withEnv("L1_BNB_DAILY_CAP_USD", "100", () => assert.equal(chainDailyCapUnits("bnb"), BigInt(DAILY_BUDGET_USD) * 1_000_000n));
+  withEnv("L1_BNB_DAILY_CAP_USD", "0", () => {
+    withEnv("L1_CELO_DAILY_CAP_USD", undefined, () => {
+      assert.equal(chainDailyCapUnits("bnb"), 0n);
+      assert.equal(chainDailyCapUnits("celo"), 2_000_000n);
+    });
+  });
 });
 
 test("Celo の別枠は他のチェーンの環境変数に動かされず、他のチェーンの別枠も動かさない", () => {
