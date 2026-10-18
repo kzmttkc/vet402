@@ -19,6 +19,7 @@ import {
   fixMode,
   isBodyNotSent,
   observed402Line,
+  paidEvidenceLines,
   rowNote,
   SIGNED_ROW_STATUSES,
   type SellerRowFacts,
@@ -689,6 +690,27 @@ test("(e) 待ち時間: 答えが無い行は、出品の maxTimeoutSeconds が�
   const many = { ...proven({ status: "settle_failed", httpStatusPaid: null, attemptedAt: "2026-09-10T00:00:00Z", listingMaxTimeoutSeconds: 300 }), meta: null };
   assert.equal(classifyRow(many).mode?.key, "input_unrecorded");
   assert.match(rowNote(many, "input_unrecorded") ?? "", /no record of the input it sent; vet402 stopped waiting after 20 seconds/);
+});
+
+test("(e) Celo の行は待ち時間 45 秒と比べる。Base は 20 秒のまま", () => {
+  const celo = (listingMaxTimeoutSeconds: number) =>
+    proven({ status: "settle_failed", httpStatusPaid: null, network: "eip155:42220", listingMaxTimeoutSeconds, asset: "0xcebA9300f2b948710d2653dD7B07f33A8B32118C" });
+  const base = (listingMaxTimeoutSeconds: number) =>
+    proven({ status: "settle_failed", httpStatusPaid: null, network: "eip155:8453", listingMaxTimeoutSeconds });
+  // 30 秒の宣言は、20 秒待ちの Base では待ち足りず、45 秒待ちの Celo では待ち足りる。
+  assert.equal(evidenceOf(base(30)).wait, "cut_short");
+  assert.equal(evidenceOf(celo(30)).wait, "waited_enough");
+  assert.equal(evidenceOf(base(20)).wait, "waited_enough");
+  assert.equal(evidenceOf(base(21)).wait, "cut_short");
+  assert.equal(evidenceOf(celo(45)).wait, "waited_enough");
+  assert.equal(evidenceOf(celo(46)).wait, "cut_short");
+  // 比較を 20 秒のままに戻すと celo(30) が cut_short になり、45 秒に広げると base(30) が waited_enough になる。
+  assert.match(rowNote(celo(46), "stopped_waiting") ?? "", /vet402 stopped waiting after 45 seconds \(the listing's maxTimeoutSeconds is 46\)/);
+  assert.match(rowNote(base(30), "stopped_waiting") ?? "", /vet402 stopped waiting after 20 seconds \(the listing's maxTimeoutSeconds is 30\)/);
+  assert.match(observed402Line(celo(46)) ?? "", /vet402 waits 45 seconds for the paid answer/);
+  assert.match(observed402Line(base(30)) ?? "", /vet402 waits 20 seconds for the paid answer/);
+  assert.match(paidEvidenceLines(celo(46))?.answer ?? "", /within 45 seconds/);
+  assert.match(paidEvidenceLines(base(30))?.answer ?? "", /within 20 seconds/);
 });
 
 test("そのとき見た 402: 署名した行は払った条件、署名前に止まった行は 402 の accept（記録済みの範囲）", () => {

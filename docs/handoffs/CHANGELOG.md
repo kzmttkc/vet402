@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-18 — L1: Celo の支払い付き要求の待ちを 45 秒に（作業ツリー・未 commit）
+- **何を**: 段 6。`L1_CELO_PAID_TIMEOUT_MS = 45_000`（`l1-timing.ts`）。Celo（`eip155:42220`）の支払い付きの要求だけ 45 秒待つ。無払いの要求と、ほかのチェーンの支払い付き要求は `L1_REQUEST_TIMEOUT_MS`（20 秒）のまま。テストの差し込みは `options.timeoutMs` に加えて `options.celoPaidTimeoutMs`。予算は Celo レーンの候補（`laneChain === "celo"` か主ネットワークが Celo）だけ、無払い 20 秒 + 支払い付き 45 秒 + 余裕 20 秒 = 85 秒を見込む。`L1_BATCH_BUDGET_MS` 210 秒との和は 295 秒で、`/api/cron/l1-purchase` の `maxDuration` 300 秒の内側。`vercel.json` はこの cron の maxDuration を持たない。`fix-modes` の (e) は、Celo の行では出品の `maxTimeoutSeconds` を 45 秒と比べる。方法論の頁にその 1 文を 2 か所足した。`recover-late.ts` の 20 秒で切れた事実のコメントはそのまま。
+- **なぜ**: 本番の Celo 5 件は、送金が要求から 16〜24 秒でブロックに入っていた。x402-rs の facilitator は receipt の後に成功を返すので、20 秒で切ると届いた呼び出しが応答なしになる。公開 export では Celo の `settled` かつ `http_status_paid` 空が 5 行（zachsplat の分析、x402-rs issue 136 のコメント。本文は検索していない）。
+- **影響**: Base・Solana・Arc・Tempo・XRPL・Stellar の支払い付きの待ちと、Celo の無払いの待ちは 20 秒のまま。Celo の 1 件が最悪 85 秒になり、同じバッチで始められる件数が減ることがある。公開 export の列に新しい値は足していない。新しい外部の読み先は無い（プライバシーポリシーの委託先の追記は要らない）。
+- **実測（10/18・手元。本番の RPC には出していない）**: `npx tsc --noEmit -p .` exit 0。`npx tsx --test --test-force-exit tests/l1-celo-paid-timeout.test.ts tests/observatory-l1-deadline.test.ts tests/sellers-fix-modes.test.ts tests/claims-registry.test.ts` は `ℹ tests 71` / `ℹ pass 71` / `ℹ fail 0`。`TEST_DATABASE_URL=postgres://localhost/vet402_observatory_test npx tsx --test --test-force-exit --test-concurrency=1 tests/l1-celo-paid-timeout.pg.test.ts` は `ℹ tests 3` / `ℹ pass 3` / `ℹ fail 0`。`npx tsx --test tests/claims-registry.test.ts` は `ℹ tests 37` / `ℹ pass 37` / `ℹ fail 0`。全体の `npm test` はこの段では回していない。
+
 ## 2026-10-18 — L1 Stellar: 署名後の故障では Base を買い直さない（作業ツリー・未 commit）
 - **何を**: 段 5。`createStellarPaymentPayload` の誤りに `stellar_sign_failed_pre:`（auth entry に署名が返る前）と `stellar_sign_failed_post:`（署名が返ったあとの再シミュレーション・空の payload）を付ける。秘密と URL は今までどおり伏せる。ランナーは secondary で **署名前**に落ちたときだけ未署名の予約を消して Base で 1 回買い直す。**署名後**は予約を消さず `request_error`（spent 0）を残し、Base では買わない。主ネットワークが pubnet の行は署名前でも `request_error` のまま（買い直す経路が無い）。別枠が尽きた日の `laneOpen("stellar")`、免除が壁の宣言と合うときだけであること、免除が無いときの 6 桁の完全一致、宣言額が 1 件の上限を超える secondary は払わない、をテストで固定した。
 - **なぜ**: 署名後も予約を消して Base で買い直すと、auth entry に署名した支払いと Base の支払いが重なる。独立点検で残った変異（免除の緩め・6 桁の一致・secondary の 1 件上限・予約の削除・Base の買い直し・`laneOpen("stellar")`）が緑のままだった。

@@ -25,7 +25,7 @@
 //  4. One purchase per endpoint per sweep window (default 6 days) — the
 //     weekly-sweep cadence emerges from the daily budget, not from a queue.
 // ============================================================
-import { L1_REQUEST_TIMEOUT_MS } from "./l1-timing";
+import { L1_CELO_PAID_TIMEOUT_MS, L1_REQUEST_TIMEOUT_MS, l1PaidTimeoutMs } from "./l1-timing";
 import { answerShapeOf } from "./answer-shape";
 import { privateKeyToAccount } from "viem/accounts";
 import { and, eq, isNull, sql, type SQL } from "drizzle-orm";
@@ -454,25 +454,46 @@ const DAILY_BUDGET_UNITS = BigInt(DAILY_BUDGET_USD) * BigInt(USDC_PER_USD);
  * 対策は「走っている購入を殺す」ではなく「**新しい購入を始めない**」。
  * 1件の最悪ケースは HTTP 2本（各 timeoutMs・本文読み取り込み）＋ 署名・
  * 予約・記帳・Solana の blockhash RPC で、後者を L1_PURCHASE_SLACK_MS で
- * 見積もる。既定では 210s + (20s*2 + 20s) = 270s < 300s なので、
+ * 見積もる。既定では 210s + (20s + 20s + 20s) = 270s < 300s なので、
  * デッドライン直前に始めた1件が最悪でも maxDuration の内側で終わる。
+ * Celo の候補は支払い付きだけ 45s（無払いは 20s のまま）なので
+ * 210s + (20s + 45s + 20s) = 295s。ルートの maxDuration 300s の内側。
+ * 45s を 2 本分見込むと 210s + 110s で 300s を超えるので、見込まない。
  */
 export const L1_BATCH_BUDGET_MS = 210_000;
 
 /** 1購入あたり、2本の HTTP 以外（署名・DB・blockhash RPC）に見込む余裕。 */
 export const L1_PURCHASE_SLACK_MS = 20_000;
 
-/** 1件の購入の最悪所要時間。 */
-export function worstCasePurchaseMs(timeoutMs: number): number {
-  return timeoutMs * 2 + L1_PURCHASE_SLACK_MS;
+/**
+ * 1件の購入の最悪所要時間。無払いは timeoutMs、支払い付きは paidTimeoutMs。
+ * paidTimeoutMs を省くと両方 timeoutMs（従来の timeoutMs * 2 + slack と同じ）。
+ */
+export function worstCasePurchaseMs(timeoutMs: number, paidTimeoutMs: number = timeoutMs): number {
+  return timeoutMs + paidTimeoutMs + L1_PURCHASE_SLACK_MS;
 }
 
 /**
  * 残り時間で「もう1件」始めてよいか。純関数（DB なしでテストするため公開）。
  * 判定は最悪ケース基準——平均で判断すると、遅い1件が maxDuration を跨ぐ。
+ * paidTimeoutMs は Celo の候補だけ大きい方を渡す（paidTimeoutForBudget）。
  */
-export function canStartAnotherPurchase(remainingMs: number, timeoutMs: number): boolean {
-  return remainingMs >= worstCasePurchaseMs(timeoutMs);
+export function canStartAnotherPurchase(remainingMs: number, timeoutMs: number, paidTimeoutMs: number = timeoutMs): boolean {
+  return remainingMs >= worstCasePurchaseMs(timeoutMs, paidTimeoutMs);
+}
+
+/**
+ * 予算が見込む支払い付きの待ち。候補が Celo レーン（laneChain か主ネットワーク）なら、
+ * 無払いの timeoutMs と Celo の支払い付きの待ちの大きい方。ほかの候補は timeoutMs のまま。
+ */
+export function paidTimeoutForBudget(
+  candidate: { network: string | null; laneChain: string | null },
+  timeoutMs: number,
+  celoPaidTimeoutMs: number = L1_CELO_PAID_TIMEOUT_MS,
+): number {
+  const celoLane = candidate.laneChain === "celo" || candidate.network === CELO_CAIP2;
+  if (!celoLane) return timeoutMs;
+  return Math.max(timeoutMs, l1PaidTimeoutMs(CELO_CAIP2, { timeoutMs, celoPaidTimeoutMs }));
 }
 
 /** Endpoints purchased within this window are not re-purchased (1判定1購買). */
@@ -1091,6 +1112,11 @@ export async function runL1Batch(
     fetchImpl?: (url: string, init?: RequestInit, call?: SafeFetchCallOptions) => Promise<Response>;
     timeoutMs?: number;
     /**
+     * Test seam: Celo の支払い付き要求の待ち。既定は L1_CELO_PAID_TIMEOUT_MS。
+     * 無払いの要求と、Celo 以外の支払い付き要求は timeoutMs のまま。
+     */
+    celoPaidTimeoutMs?: number;
+    /**
      * Playground demo path: narrow candidate selection to this one endpoint.
      * Everything else — L0-pass requirement, self-exclusion, sweep-window
      * dedup, the atomic budget reservation — applies unchanged, so a demo
@@ -1120,6 +1146,7 @@ export async function runL1Batch(
     limit = 100,
     fetchImpl = guardedFetch,
     timeoutMs = L1_REQUEST_TIMEOUT_MS,
+    celoPaidTimeoutMs = L1_CELO_PAID_TIMEOUT_MS,
     onlyEndpointId,
     batchBudgetMs = L1_BATCH_BUDGET_MS,
   } = options;
@@ -1709,7 +1736,9 @@ export async function runL1Batch(
     // Start nothing we cannot finish inside maxDuration. Purchases already in
     // flight are never interrupted — the whole point is that a signed
     // authorization must always reach its ledger row.
-    if (!canStartAnotherPurchase(deadline.remaining(), timeoutMs)) {
+    // Celo レーンの候補は支払い付きを 45 秒として見込む（無払いは timeoutMs のまま）。ほかは従来どおり。
+    const paidBudgetMs = paidTimeoutForBudget(candidate, timeoutMs, celoPaidTimeoutMs);
+    if (!canStartAnotherPurchase(deadline.remaining(), timeoutMs, paidBudgetMs)) {
       summary.stoppedForDeadline = true;
       summary.notAttempted = candidates.length - index;
       break;
@@ -1778,7 +1807,7 @@ export async function runL1Batch(
         !candidate.failedNetworks.includes(laneNetwork)
           ? [laneNetwork]
           : [];
-      const purchaseInput = { candidate, xrplLanePreferred, stellarLanePreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress: stellarAccount?.address ?? null, createStellarPayment, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge };
+      const purchaseInput = { candidate, xrplLanePreferred, stellarLanePreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress: stellarAccount?.address ?? null, createStellarPayment, fetchImpl, timeoutMs, celoPaidTimeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge };
       let outcome = await purchaseOne({ ...purchaseInput, preferNetworks });
       // Celo の残高が足りない／読めない（署名していない・行も予約も無い）。以後の Celo レーンの優先を閉じる。
       // いまの候補が「Celo を優先された Base 先頭の出品」なら、優先なしでもう 1 回だけ通す——壁の並びどおり Base の
@@ -2236,6 +2265,8 @@ async function purchaseOne(input: {
   createStellarPayment: (input: StellarPaymentInput) => Promise<{ transaction: string }>;
   fetchImpl: (url: string, init?: RequestInit, call?: SafeFetchCallOptions) => Promise<Response>;
   timeoutMs: number;
+  /** Celo の支払い付き要求の待ち。ほかの要求は timeoutMs。 */
+  celoPaidTimeoutMs: number;
   db: NonNullable<ReturnType<typeof getDb>>;
   spentToday: bigint;
   payerFunds: PayerFunds;
@@ -2263,7 +2294,7 @@ async function purchaseOne(input: {
    */
   retryBase?: boolean;
 }> {
-  const { candidate, preferNetworks, xrplLanePreferred, stellarLanePreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress, createStellarPayment, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge } = input;
+  const { candidate, preferNetworks, xrplLanePreferred, stellarLanePreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress, createStellarPayment, fetchImpl, timeoutMs, celoPaidTimeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge } = input;
   const method = (candidate.method ?? "GET").toUpperCase();
   const startedAt = Date.now();
   const isSolana = candidate.network === SOLANA_MAINNET_CAIP2;
@@ -2961,7 +2992,9 @@ async function purchaseOne(input: {
     // receipt lives in the HEADERS, which we already hold — so the outcome is
     // still recorded, with the body error kept in rawResponseMeta.bodyError.
     const paidController = new AbortController();
-    const paidTimer = setTimeout(() => paidController.abort(), timeoutMs);
+    // Celo の支払い付き要求だけ 45 秒（2026-10-18）。無払いの firstTimer と、ほかのチェーンは timeoutMs。
+    const paidTimeoutMs = l1PaidTimeoutMs(accept.network, { timeoutMs, celoPaidTimeoutMs });
+    const paidTimer = setTimeout(() => paidController.abort(), paidTimeoutMs);
     // 2026-09-19（独立レビュー W-4）: safe-fetch が別オリジンの境界で資格情報を落としたら、
     // その事実をここで受け取る（最初の 1 回だけ）。下の status の判定で使う。
     let credentialStripped: { from: string; to: string } | null = null;
