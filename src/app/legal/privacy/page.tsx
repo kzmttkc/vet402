@@ -36,7 +36,7 @@ export default async function PrivacyPage() {
             <span>Instrument: privacy policy</span>
             <span>
               {/* この頁のシアン1点。改訂日という事実。 */}
-              Revision: <span className="text-signal">October 14, 2026</span>
+              Revision: <span className="text-signal">October 18, 2026</span>
             </span>
           </div>
           <div className="doc-head-col">
@@ -47,7 +47,7 @@ export default async function PrivacyPage() {
         </div>
         <h1 className="doc-title mt-10">Privacy Policy</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-        <p className="doc-note text-center">Last updated: October 14, 2026</p>
+        <p className="doc-note text-center">Last updated: October 18, 2026</p>
 
         {/* 2026-09-29 監査 4 周目: GDPR 13 条 1 項 (a) の管理者の身元と連絡先を明記。 */}
         <section className="space-y-2">
@@ -318,6 +318,15 @@ export default async function PrivacyPage() {
               <strong>Solana Labs public mainnet RPC</strong> (<code>api.mainnet-beta.solana.com</code>)
               — used to re-read Solana settlements on-chain; receives transaction signatures and
               wallet addresses, all of which are already public on that chain.
+            </li>
+            {/* 2026-10-18: Stellar の購入レーン（既定 OFF）。署名のとき、改造していない @x402/stellar が
+                SDF の公開 Horizon を固定で読む（台帳の間隔の見積もり）。渡るのはサーバーからの読み取りだけで、
+                閲覧者のデータは渡らない。Soroban RPC（STELLAR_RPC_URL）と STELLAR_HORIZON_URL の事業者を決めたら、ON にする前にここへ足す（どちらも支払い元のアドレスや tx を受け取る）。 */}
+            <li>
+              <strong>Stellar Development Foundation</strong> public Horizon API{" "}
+              (<code>horizon.stellar.org</code>). Read by vet402&apos;s servers when vet402 signs a
+              payment to a seller on Stellar. It receives only requests for recent ledger close times,
+              which contain no account address. No visitor data is sent to it.
             </li>
             <li>
               <strong>Resend</strong> (United States) — email delivery for the record-change

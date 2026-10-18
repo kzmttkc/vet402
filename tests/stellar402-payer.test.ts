@@ -2,7 +2,9 @@
 // Stellar-402 payer（stellar:pubnet）——旗・上限・未入金・資産・秘密。
 // ネットワークには出ない（RPC / Horizon / facilitator は全部差し替え）。
 // ============================================================
-import { test } from "node:test";
+import { createRequire } from "node:module";
+import { mock, test } from "node:test";
+import { ExactStellarScheme } from "@x402/stellar";
 import assert from "node:assert/strict";
 import { Keypair } from "@stellar/stellar-sdk";
 import {
@@ -12,6 +14,7 @@ import {
   STELLAR_USDC_ISSUER,
   STELLAR_USDC_SAC,
   STELLAR_LEDGER_SCALE,
+  createStellarPaymentPayload,
   isStellarL1Enabled,
   isStellarUsdcAsset,
   ledgerUnitsToStellarUnits,
@@ -282,4 +285,36 @@ test("maxTimeoutSeconds の 0・負・非整数は予約の前に unbuildable。
     assert.equal(stellarAuthorizationWindow(undefined), 60);
     assert.equal(stellarAuthorizationWindow(0), 60);
   });
+});
+
+test("署名器に渡す有効期限は頭打ちした値。売り手の 10 億秒は 120 秒、30 秒は 60 秒で渡る", async () => {
+  const seen: unknown[] = [];
+  const fake = async (_v: number, req: { maxTimeoutSeconds?: unknown }) => {
+    seen.push(req.maxTimeoutSeconds);
+    return { x402Version: 2, payload: { transaction: "AAAA" } } as never;
+  };
+  // 署名器は動的 import で読む。ESM と CJS のどちらに解決されても同じ偽物が呼ばれるよう、両方の prototype を差し替える。
+  const dyn = (await import("@x402/stellar")) as { ExactStellarScheme: typeof ExactStellarScheme };
+  const cjs = createRequire(import.meta.url)("@x402/stellar") as { ExactStellarScheme: typeof ExactStellarScheme };
+  const protos = [...new Set([ExactStellarScheme.prototype, dyn.ExactStellarScheme.prototype, cjs.ExactStellarScheme.prototype])];
+  const stubs = protos.map((p) => mock.method(p, "createPaymentPayload", fake));
+  const stub = { mock: { restore: () => stubs.forEach((x) => x.mock.restore()) } };
+  const saved = { s: process.env.STELLAR_PAYER_SECRET, r: process.env.STELLAR_RPC_URL };
+  process.env.STELLAR_PAYER_SECRET = Keypair.random().secret();
+  process.env.STELLAR_RPC_URL = "https://rpc.invalid";
+  try {
+    for (const requested of [1_000_000_000, 30]) {
+      const out = await createStellarPaymentPayload({
+        accept: { ...SAC_ACCEPT, maxTimeoutSeconds: requested },
+        signingAsset: STELLAR_USDC_SAC,
+        stellarUnits: 1_000_000n,
+      });
+      assert.equal(out.transaction, "AAAA");
+    }
+    assert.deepEqual(seen, [120, 60]);
+  } finally {
+    stub.mock.restore();
+    if (saved.s === undefined) delete process.env.STELLAR_PAYER_SECRET; else process.env.STELLAR_PAYER_SECRET = saved.s;
+    if (saved.r === undefined) delete process.env.STELLAR_RPC_URL; else process.env.STELLAR_RPC_URL = saved.r;
+  }
 });
