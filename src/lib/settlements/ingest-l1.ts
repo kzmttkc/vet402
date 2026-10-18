@@ -58,15 +58,17 @@ export async function ingestL1(options: { onlyPurchaseRowId?: string; limit?: nu
       -- tx_hash は一意索引（observed_purchases_tx_hash_idx）なので、それで結ぶ（observed_by には索引が無い。
       -- 2026-10-19 点検: 行ごとの全件読みで窓 6 千行×4 万行が約 16 秒、tx_hash で結ぶと約 0.2 秒）。
       LEFT JOIN observed_purchases op
-        ON op.tx_hash IN (pu.tx_hash, lower(pu.tx_hash))
+        ON op.tx_hash = lower(pu.tx_hash)
        AND op.observed_by = 'observatory-l1-verified:' || pu.id::text
       WHERE pu.status = 'settled' AND pu.tx_hash IS NOT NULL AND pu.network IS NOT NULL
         ${onlyPurchaseRowId ? sql`AND pu.id = ${onlyPurchaseRowId}::uuid` : sql`AND pu.attempted_at > now() - make_interval(days => ${sinceDays})`}
       -- 並び: まだ settlements に無い行 → 入っているが台帳時刻（chain）になっていない行 → 新しい順。
       -- tx_hash で引く（purchase_id は正規化した表記なので、v1 の base・solana などの表記と合わない）。
       ORDER BY (EXISTS (SELECT 1 FROM settlements s WHERE s.tx_hash IN (pu.tx_hash, lower(pu.tx_hash)))) ASC,
-               (EXISTS (SELECT 1 FROM settlements s WHERE s.tx_hash IN (pu.tx_hash, lower(pu.tx_hash))
-                          AND s.raw->>'blockTimeSource' = 'chain')) ASC,
+               -- 2 段目は「まだ chain でなく、しかも台帳時刻が手に入る行」だけ。手に入らない行が直せる行の前を塞がない。
+               (NOT EXISTS (SELECT 1 FROM settlements s WHERE s.tx_hash IN (pu.tx_hash, lower(pu.tx_hash))
+                              AND s.raw->>'blockTimeSource' = 'chain')
+                AND (pu.raw_response_meta ? 'settlementBlockTime' OR op.block_timestamp IS NOT NULL)) DESC,
                pu.attempted_at DESC
       LIMIT ${limit}
     `),

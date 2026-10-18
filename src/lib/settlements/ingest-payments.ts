@@ -84,6 +84,7 @@ export async function ingestPayments(options: { limit?: number; sinceDays?: numb
   const db = getDb();
   if (!db) throw new Error("ingestPayments: DATABASE_URL is not configured");
   // 2026-10-19: 窓は生行の保持の内側（ingest-l1 と同じ理由。畳んだ日を入れ直すと rollup の加算で二重に数える）。
+  // 代わりに、block_timestamp が 29 日より前で申告が最近の支払いは入らない（畳んだ日に後から足せないため）。
   const { limit = 2000, sinceDays = Math.max(1, RAW_RETENTION_DAYS - 1) } = options;
   const classifier = options.classifier ?? (await loadWashClassifier());
   const rows = rowsOf<PaymentRow>(
