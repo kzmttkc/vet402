@@ -325,8 +325,8 @@ export default async function PrivacyPage() {
             <li>
               <strong>Stellar Development Foundation</strong> public Horizon API{" "}
               (<code>horizon.stellar.org</code>). Read by vet402&apos;s servers when vet402 signs a
-              payment to a seller on Stellar. It receives only requests for recent ledger close times,
-              which contain no account address. No visitor data is sent to it.
+              payment to a seller on Stellar. It receives requests for recent ledger close times, which
+              contain no account address. No visitor data is sent to it.
             </li>
             <li>
               <strong>Resend</strong> (United States) — email delivery for the record-change
