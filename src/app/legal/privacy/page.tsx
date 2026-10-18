@@ -321,12 +321,23 @@ export default async function PrivacyPage() {
             </li>
             {/* 2026-10-18: Stellar の購入レーン（既定 OFF）。署名のとき、改造していない @x402/stellar が
                 SDF の公開 Horizon を固定で読む（台帳の間隔の見積もり）。渡るのはサーバーからの読み取りだけで、
-                閲覧者のデータは渡らない。Soroban RPC（STELLAR_RPC_URL）と STELLAR_HORIZON_URL の事業者を決めたら、ON にする前にここへ足す（どちらも支払い元のアドレスや tx を受け取る）。 */}
+                閲覧者のデータは渡らない。10/18: STELLAR_RPC_URL は Ankr の公開 RPC（署名前の simulate と最新の台帳の読み取りだけ。送信は売り手の facilitator）、STELLAR_HORIZON_URL は SDF の公開 Horizon（残高・照合）に決めた。 */}
             <li>
               <strong>Stellar Development Foundation</strong> public Horizon API{" "}
-              (<code>horizon.stellar.org</code>). Read by vet402&apos;s servers when vet402 signs a
-              payment to a seller on Stellar. It receives requests for recent ledger close times, which
-              contain no account address. No visitor data is sent to it.
+              (<code>horizon.stellar.org</code>). Read by vet402&apos;s servers for vet402&apos;s own
+              purchases on Stellar: recent ledger close times when vet402 signs a payment, and
+              vet402&apos;s payer balance and the payment transactions it checks. Those reads carry
+              vet402&apos;s payer address and the hashes of those transactions. Its responses include the
+              seller payout addresses on them. These are already public on Stellar. No visitor
+              data is sent to it.
+            </li>
+            <li>
+              <strong>Ankr</strong> public Stellar RPC (<code>rpc.ankr.com</code>). Used by
+              vet402&apos;s servers to read the latest ledger and simulate vet402&apos;s own payments to
+              sellers on Stellar before signing them. Those requests carry vet402&apos;s payer address,
+              the seller payout address, and the amount. The signed payment is sent to the seller, and
+              the seller&apos;s payment service submits it to Stellar, not Ankr. No visitor data is sent
+              to it.
             </li>
             <li>
               <strong>Resend</strong> (United States) — email delivery for the record-change
