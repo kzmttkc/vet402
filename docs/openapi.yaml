@@ -4701,12 +4701,15 @@ components:
         block_time_source:
           type: string
           nullable: true
-          enum: [chain, attempted_at, verified_at]
+          enum: [chain, attempted_at, verified_at, null]
           description: >-
             Clock behind block_time. chain is the ledger time stored at
-            verification. attempted_at is the purchase attempt time, used when
-            the ledger time was not stored. verified_at marks an older row
-            whose block_time is the time verification finished.
+            verification, or the block time on the observed purchase recorded
+            for that verification when the purchase row did not store one.
+            attempted_at is the purchase attempt time, used when no ledger
+            time was stored. verified_at marks an older row whose block_time
+            is the time verification finished. null when the row names none
+            of these clocks.
         attribution: { type: string, description: confirmed | probable | unmatched }
         wash_flag: { type: string, description: none | self_deal | circular | test }
         resource_id: { type: string, nullable: true }

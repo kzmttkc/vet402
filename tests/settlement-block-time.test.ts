@@ -258,5 +258,152 @@ if (!TEST_DB) {
       assert.equal(asObject(payRaw[0].raw).paymentRowId, "old");
       assert.equal(asObject(payRaw[0].raw).keep, true);
     });
+
+    await t.test("a verified row without settlementBlockTime becomes chain from observed_purchases", async () => {
+      await reset();
+      const url = "https://seller.example/api/observed-block-time";
+      const rid = resourceId("GET", url);
+      const inserted = rowsOf<{ id: string }>(
+        await db.execute(sql`
+          INSERT INTO x402_endpoints (resource_key, resource_url, method, network, pay_to, price_amount, price_asset,
+                                      canonical_url, resource_id, endpoint_hash, payee_id)
+          VALUES ('seller.example/api/observed-block-time', ${url}, 'GET', 'eip155:8453', ${PAY_TO}, '3000', '0xusdc',
+                  ${url}, ${rid}, ${endpointHash(url)}, ${payeeId("eip155:8453", PAY_TO)})
+          RETURNING id::text AS id
+        `),
+      );
+      const endpointId = inserted[0].id;
+      const observedTx = `0x${"a1".repeat(32)}`;
+      const bothTx = `0x${"a2".repeat(32)}`;
+      const garbageObservedTx = `0x${"a3".repeat(32)}`;
+      const observedIso = "2026-10-11T08:15:09.000Z";
+      const storedIso = "2026-10-11T02:30:47.000Z";
+      const laterIso = "2026-10-11T09:00:00.000Z";
+      const attemptIso = "2026-10-11T01:00:00.000Z";
+
+      const purchases = rowsOf<{ id: string; tx_hash: string }>(
+        await db.execute(sql`
+          INSERT INTO x402_l1_purchases
+            (endpoint_id, status, network, asset, pay_to, amount_units, spent_units, payer, tx_hash,
+             attempted_at, raw_response_meta)
+          VALUES
+            (${endpointId}::uuid, 'settled', 'eip155:8453', '0xusdc', ${PAY_TO}, '3000', '3000', ${PAYER}, ${observedTx},
+             ${attemptIso}::timestamptz, ${JSON.stringify({ kept: "observed" })}::jsonb),
+            (${endpointId}::uuid, 'settled', 'eip155:8453', '0xusdc', ${PAY_TO}, '3000', '3000', ${PAYER}, ${bothTx},
+             ${attemptIso}::timestamptz, ${JSON.stringify({ settlementBlockTime: storedIso })}::jsonb),
+            (${endpointId}::uuid, 'settled', 'eip155:8453', '0xusdc', ${PAY_TO}, '3000', '3000', ${PAYER}, ${garbageObservedTx},
+             ${attemptIso}::timestamptz, ${JSON.stringify({ settlementBlockTime: "not-a-time" })}::jsonb)
+          RETURNING id::text AS id, tx_hash
+        `),
+      );
+      const idOf = (tx: string) => purchases.find((row) => row.tx_hash === tx)!.id;
+      await db.execute(sql`
+        INSERT INTO observed_purchases (wallet, tx_hash, block_timestamp, observed_by)
+        VALUES
+          (${PAYER}, ${observedTx}, ${observedIso}::timestamptz, ${"observatory-l1-verified:" + idOf(observedTx)}),
+          (${PAYER}, ${bothTx}, ${laterIso}::timestamptz, ${"observatory-l1-verified:" + idOf(bothTx)}),
+          (${PAYER}, ${garbageObservedTx}, ${observedIso}::timestamptz, ${"observatory-l1-verified:" + idOf(garbageObservedTx)})
+      `);
+
+      const outcome = await ingestL1();
+      assert.equal(outcome.scanned, 3);
+
+      const observed = await resolve(observedTx);
+      assert.equal(observed.settlement?.block_time_source, "chain");
+      assert.equal(new Date(observed.settlement?.block_time ?? "").toISOString(), observedIso);
+
+      const both = await resolve(bothTx);
+      assert.equal(both.settlement?.block_time_source, "chain");
+      assert.equal(new Date(both.settlement?.block_time ?? "").toISOString(), storedIso);
+
+      const garbage = await resolve(garbageObservedTx);
+      assert.equal(garbage.settlement?.block_time_source, "chain");
+      assert.equal(new Date(garbage.settlement?.block_time ?? "").toISOString(), observedIso);
+    });
+
+    function settled(tx: string, when: string, source: "l1_purchase" | "chain_index" | "payments_api", raw: unknown) {
+      return buildRow(
+        {
+          chain: "eip155:8453",
+          txHash: tx,
+          asset: "0xusdc",
+          amount: "1",
+          payer: PAYER,
+          payee: PAY_TO,
+          blockTime: new Date(when),
+          source,
+          raw,
+        },
+        { attribution: "confirmed", washFlag: "test", resourceId: null, endpointId: null },
+      );
+    }
+
+    await t.test("l1 attempted_at does not overwrite another source's block_time", async () => {
+      await reset();
+      const tx = `0x${"b1".repeat(32)}`;
+      const chainIso = "2026-10-11T02:30:47.000Z";
+      const attemptIso = "2026-10-11T01:00:00.000Z";
+      await upsertSettlement(
+        settled(tx, chainIso, "chain_index", { blockNumber: "79785089", blockTimeSource: "interpolated", kept: "idx" }),
+      );
+      await upsertSettlement(
+        settled(tx, attemptIso, "l1_purchase", { purchaseRowId: "p-fallback", blockTimeSource: "attempted_at" }),
+      );
+
+      const row = rowsOf<{ block_time: string; raw: unknown }>(
+        await db.execute(sql`SELECT block_time::text AS block_time, raw FROM settlements WHERE tx_hash = ${tx}`),
+      );
+      assert.equal(new Date(row[0].block_time).toISOString(), chainIso);
+      assert.equal(asObject(row[0].raw).blockTimeSource, "interpolated");
+      assert.equal(asObject(row[0].raw).kept, "idx");
+      assert.equal(Object.hasOwn(asObject(row[0].raw), "purchaseRowId"), false);
+      const published = await settlementByTx(tx);
+      assert.equal(published?.block_time_source, null);
+      assert.equal(new Date(published?.block_time ?? "").toISOString(), chainIso);
+    });
+
+    await t.test("another source that rewrites an l1 block_time updates raw.blockTimeSource", async () => {
+      await reset();
+      const indexedTx = `0x${"c1".repeat(32)}`;
+      const paidTx = `0x${"c2".repeat(32)}`;
+      const l1Iso = "2026-10-11T01:00:00.000Z";
+      const indexedIso = "2026-10-11T02:30:47.000Z";
+      const paidIso = "2026-10-11T03:04:05.000Z";
+      const laterAttempt = "2026-10-11T04:00:00.000Z";
+
+      await upsertSettlement(
+        settled(indexedTx, l1Iso, "l1_purchase", { purchaseRowId: "p-l1", blockTimeSource: "attempted_at", kept: "row" }),
+      );
+      await upsertSettlement(
+        settled(indexedTx, indexedIso, "chain_index", { blockNumber: "9", blockTimeSource: "interpolated" }),
+      );
+      await upsertSettlement(
+        settled(indexedTx, laterAttempt, "l1_purchase", { purchaseRowId: "p-later", blockTimeSource: "attempted_at" }),
+      );
+
+      const indexed = rowsOf<{ block_time: string; raw: unknown }>(
+        await db.execute(sql`SELECT block_time::text AS block_time, raw FROM settlements WHERE tx_hash = ${indexedTx}`),
+      );
+      assert.equal(new Date(indexed[0].block_time).toISOString(), indexedIso);
+      assert.equal(asObject(indexed[0].raw).blockTimeSource, "interpolated");
+      assert.equal(asObject(indexed[0].raw).purchaseRowId, "p-l1");
+      assert.equal(asObject(indexed[0].raw).kept, "row");
+      assert.equal((await settlementByTx(indexedTx))?.block_time_source, null);
+
+      await upsertSettlement(
+        settled(paidTx, l1Iso, "l1_purchase", { purchaseRowId: "p-pay", blockTimeSource: "chain" }),
+      );
+      await upsertSettlement(settled(paidTx, paidIso, "payments_api", { paymentRowId: "pay-1" }));
+      await upsertSettlement(
+        settled(paidTx, laterAttempt, "l1_purchase", { purchaseRowId: "p-pay-later", blockTimeSource: "attempted_at" }),
+      );
+      const paid = rowsOf<{ block_time: string; raw: unknown }>(
+        await db.execute(sql`SELECT block_time::text AS block_time, raw FROM settlements WHERE tx_hash = ${paidTx}`),
+      );
+      assert.equal(new Date(paid[0].block_time).toISOString(), paidIso);
+      assert.equal(asObject(paid[0].raw).blockTimeSource, "payments_api");
+      assert.equal(asObject(paid[0].raw).purchaseRowId, "p-pay");
+      assert.equal((await settlementByTx(paidTx))?.block_time_source, null);
+    });
   });
 }

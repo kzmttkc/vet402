@@ -47,15 +47,59 @@ export async function upsertSettlement(row: SettlementRow): Promise<"inserted" |
       payee = COALESCE(EXCLUDED.payee, settlements.payee),
       payer_id = COALESCE(EXCLUDED.payer_id, settlements.payer_id),
       payee_id = COALESCE(EXCLUDED.payee_id, settlements.payee_id),
-      block_time = COALESCE(EXCLUDED.block_time, settlements.block_time),
+      -- 時刻を採る条件は block_time と raw で同じ（この述語を片方だけ変えない）。
+      -- l1 の予備値（blockTimeSource = attempted_at）は、正確な時刻を上書きしない。
+      -- 正確な時刻とは、他 source が置いた非 NULL、または l1 行に既にある chain / interpolated /
+      -- その他の予備値でない印。古い照合完了時刻（settlement_verified_at）と、印の無い l1 行は上書きする。
+      block_time = CASE
+        WHEN EXCLUDED.block_time IS NULL OR (
+          EXCLUDED.source = 'l1_purchase'
+          AND coalesce(EXCLUDED.raw->>'blockTimeSource', '') = 'attempted_at'
+          AND settlements.block_time IS NOT NULL
+          AND (
+            settlements.source IS DISTINCT FROM 'l1_purchase'
+            OR coalesce(settlements.raw->>'blockTimeSource', '') NOT IN (
+              '', 'attempted_at', 'settlement_verified_at', 'verified_at'
+            )
+          )
+        ) THEN settlements.block_time
+        ELSE EXCLUDED.block_time
+      END,
       resource_id = COALESCE(EXCLUDED.resource_id, settlements.resource_id),
       endpoint_id = COALESCE(EXCLUDED.endpoint_id, settlements.endpoint_id),
-      -- l1 の再取込だけ raw を結合する。block_time は上の COALESCE で新しい非 NULL が勝つが、
-      -- raw を置いたままだと blockTimeSource が古い「照合時刻」のまま残る。他の source は触らない。
+      -- raw は、上で新しい block_time を採ったときだけ触る。
+      -- l1 が採るときは既存の鍵を残して結合する（blockTimeSource が古い照合時刻のまま残らない）。
+      -- 他 source が l1 の行の時刻を書き換えたときは blockTimeSource だけ合わせる。
+      -- incoming に印が無ければ source 名を置く。印が空だと、次の l1 予備値がその時刻を上書きする。
+      -- 公開の block_time_source は chain / attempted_at / settlement_verified_at 以外を null にする。
+      -- l1 以外の行の raw は、時刻が変わっても触らない。
       raw = CASE
+        WHEN EXCLUDED.block_time IS NULL OR (
+          EXCLUDED.source = 'l1_purchase'
+          AND coalesce(EXCLUDED.raw->>'blockTimeSource', '') = 'attempted_at'
+          AND settlements.block_time IS NOT NULL
+          AND (
+            settlements.source IS DISTINCT FROM 'l1_purchase'
+            OR coalesce(settlements.raw->>'blockTimeSource', '') NOT IN (
+              '', 'attempted_at', 'settlement_verified_at', 'verified_at'
+            )
+          )
+        ) THEN settlements.raw
         WHEN EXCLUDED.source = 'l1_purchase' THEN
           coalesce(CASE WHEN jsonb_typeof(settlements.raw) = 'object' THEN settlements.raw ELSE '{}'::jsonb END, '{}'::jsonb)
           || coalesce(EXCLUDED.raw, '{}'::jsonb)
+        WHEN settlements.source = 'l1_purchase' THEN
+          coalesce(CASE WHEN jsonb_typeof(settlements.raw) = 'object' THEN settlements.raw ELSE '{}'::jsonb END, '{}'::jsonb)
+          || jsonb_build_object(
+            'blockTimeSource',
+            CASE
+              WHEN jsonb_typeof(EXCLUDED.raw) = 'object'
+                   AND jsonb_typeof(EXCLUDED.raw->'blockTimeSource') = 'string'
+                   AND length(EXCLUDED.raw->>'blockTimeSource') > 0
+                THEN to_jsonb(EXCLUDED.raw->>'blockTimeSource')
+              ELSE to_jsonb(EXCLUDED.source)
+            END
+          )
         ELSE settlements.raw
       END
     RETURNING (xmax = 0) AS inserted

@@ -20,11 +20,15 @@ type L1Row = {
   pay_to: string | null;
   attempted_at: string;
   settlement_block_time: string | null;
+  observed_block_time: string | null;
   resource_id: string | null;
   endpoint_id: string;
 };
 
-/** 照合器が raw_response_meta.settlementBlockTime に残した台帳時刻。読めなければ null。 */
+/**
+ * 台帳時刻の文字列。ISO でも、Postgres の timestamptz の文字でも、読めるものだけ返す。
+ * 読めない値（空・壊れた文字）は無いものとして扱う。
+ */
 export function chainBlockTime(value: string | null | undefined): Date | null {
   if (!value) return null;
   const parsed = new Date(value);
@@ -40,9 +44,20 @@ export async function ingestL1(options: { onlyPurchaseRowId?: string; limit?: nu
       SELECT pu.id::text AS id, pu.tx_hash, pu.network, pu.asset, pu.amount_units, pu.payer, pu.pay_to,
              pu.attempted_at::text AS attempted_at,
              pu.raw_response_meta->>'settlementBlockTime' AS settlement_block_time,
+             op.block_timestamp::text AS observed_block_time,
              e.resource_id, e.id::text AS endpoint_id
       FROM x402_l1_purchases pu
       JOIN x402_endpoints e ON e.id = pu.endpoint_id
+      -- 照合済みの行は settlementBlockTime を後から書かない。台帳時刻は照合のたびに
+      -- observed_purchases.block_timestamp へ残っている（observed_by は購入 id）。
+      -- observed_by に一意制約は無いので、あるときは block_timestamp の新しい 1 件だけ採る。
+      LEFT JOIN LATERAL (
+        SELECT block_timestamp
+        FROM observed_purchases
+        WHERE observed_by = 'observatory-l1-verified:' || pu.id::text
+        ORDER BY block_timestamp DESC NULLS LAST
+        LIMIT 1
+      ) op ON true
       WHERE pu.status = 'settled' AND pu.tx_hash IS NOT NULL AND pu.network IS NOT NULL
         ${onlyPurchaseRowId ? sql`AND pu.id = ${onlyPurchaseRowId}::uuid` : sql`AND pu.attempted_at > now() - make_interval(days => ${sinceDays})`}
       ORDER BY pu.attempted_at DESC
@@ -53,8 +68,10 @@ export async function ingestL1(options: { onlyPurchaseRowId?: string; limit?: nu
   let updated = 0;
   for (const r of rows) {
     const chain = toCaip2(r.network) ?? r.network!;
-    // 台帳時刻が残っていればそれを使う。無ければ試行時刻。照合が終わった時刻は使わない。
-    const chainTime = chainBlockTime(r.settlement_block_time);
+    // 台帳時刻。読める settlementBlockTime を先に、無ければ observed_purchases の
+    // block_timestamp。どちらから採っても blockTimeSource は chain。両方無ければ試行時刻。
+    // 照合が終わった時刻（settlement_verified_at）は使わない。
+    const chainTime = chainBlockTime(r.settlement_block_time) ?? chainBlockTime(r.observed_block_time);
     const row = buildRow(
       {
         chain,
