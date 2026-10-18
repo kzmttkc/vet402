@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 /**
- * **偽の緑を作らない。変異で確かめる。**（Stellar レーン・2026-10-18）
+ * **偽の緑を作らない。変異で確かめる。**（Stellar レーン・2026-10-18、点検の直し）
  *
  * Stellar の購入レーン（stellar:pubnet）の金の関門を 1 つずつわざと壊してから、
- * tests/stellar402-payer.test.ts が赤くなるかを見る。赤くならない変異（SURVIVED）があれば
- * その関門は検査されていない。生き残りは「発見」として報告し、この表から消さない。
+ * テストが赤くなるかを見る。赤くならない変異（SURVIVED）があれば、その関門は検査されていない。
+ * 生き残りは「発見」として報告し、この表から消さない。
  *
  *   node scripts/test-mutations-stellar-lane.mjs
+ *   TEST_DATABASE_URL=postgres://localhost/<自分用のテスト DB> node scripts/test-mutations-stellar-lane.mjs
  *
- * 構造は `scripts/test-mutations-celo-lane.mjs` と同じ。DB は要らない。
+ * 構造は `scripts/test-mutations-celo-lane.mjs` と同じ。
+ * S06・S07 と、v1 の壁・RPC の準備完了はランナー（l1-runner.ts）の経路なので DB が要る。
+ * `needsDb: true` は TEST_DATABASE_URL があるときだけ走らせ、無ければ NOT RUN で exit 1
+ * （走らせていないものは緑ではない）。DB のテストは TRUNCATE から始まる。
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
@@ -17,14 +21,29 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PAYER = "src/lib/observatory/stellar402-payer.ts";
-const SOURCES = [PAYER];
-const UNIT_TESTS = ["tests/stellar402-payer.test.ts"];
+const BUDGET = "src/lib/observatory/budget.ts";
+const RUNNER = "src/lib/observatory/l1-runner.ts";
+const SOURCES = [PAYER, BUDGET, RUNNER];
 
+const UNIT_TESTS = [
+  "tests/stellar402-payer.test.ts",
+  "tests/l1-chain-daily-cap.test.ts",
+  "tests/stellar-ledger-network.test.ts",
+];
+/** ランナーの関門。1 ファイルの中で直列（共有 DB）。 */
+const DB_TESTS = ["tests/observatory-l1-runner.test.ts"];
+
+/**
+ * `find` は対象ファイルにちょうど 1 回。`replace` は必ず MUTANT を含む。
+ * S06 は payerFunds.check、S07 は reserveSpend の cappedChainFor。
+ * 使っていない stellarFundsVerdict / wouldExceedStellarDailyCap は壊さない。
+ */
 const MUTATIONS = [
   {
     id: "S01",
     what: "旗を常に ON にする（env が無くても署名できる）",
     rule: "OBSERVATORY_STELLAR_L1_ENABLED が \"true\" のときだけ",
+    file: PAYER,
     find: '  return process.env.OBSERVATORY_STELLAR_L1_ENABLED === "true";',
     replace: "  return /* MUTANT */ true;",
   },
@@ -32,6 +51,7 @@ const MUTATIONS = [
     id: "S02",
     what: "select が旗を見ない",
     rule: "旗 OFF なら accept があっても選ばない",
+    file: PAYER,
     find: "  if (!isStellarL1Enabled()) {",
     replace: "  if (/* MUTANT */ false && !isStellarL1Enabled()) {",
   },
@@ -39,6 +59,7 @@ const MUTATIONS = [
     id: "S03",
     what: "1 件の上限を見ない",
     rule: "MAX_PER_PURCHASE_UNITS を 7 桁に直した額を超えたら署名しない",
+    file: PAYER,
     find: "    if (stellarUnits > maxStellarUnits) continue;",
     replace: "    if (/* MUTANT */ false && stellarUnits > maxStellarUnits) continue;",
   },
@@ -46,6 +67,7 @@ const MUTATIONS = [
     id: "S04",
     what: "7 桁→6 桁の倍率を 1 にする（上限が 10 倍緩くなる）",
     rule: "Stellar USDC は 7 桁、台帳は 6 桁",
+    file: PAYER,
     find: "export const STELLAR_LEDGER_SCALE = 10n;",
     replace: "export const STELLAR_LEDGER_SCALE = /* MUTANT */ 1n;",
   },
@@ -53,32 +75,89 @@ const MUTATIONS = [
     id: "S05",
     what: "資産の固定を外す（任意の asset を USDC とみなす）",
     rule: "払うのは classic USDC:GA5Z… とその SAC だけ",
+    file: PAYER,
     find: "  return asset === STELLAR_USDC_SAC || asset === STELLAR_USDC_CLASSIC;",
     replace: "  return /* MUTANT */ true;",
   },
   {
     id: "S06",
-    what: "残高 0 でも通す",
-    rule: "USDC 残高も trustline も無ければ payer_unfunded",
-    find: "  if (snapshot.sacBalance !== null && snapshot.sacBalance >= neededStellarUnits) return { ok: true, reason: null };",
-    replace: "  if (/* MUTANT */ true) return { ok: true, reason: null };",
+    what: "ランナーの残高確認を Stellar だけ通す",
+    rule: "USDC が無ければ payerFunds.check が署名の前に止める",
+    file: RUNNER,
+    needsDb: true,
+    find: "  const funds = await payerFunds.check(payerChain, payerOwner, amount);",
+    replace: "  const funds = isStellar ? { ok: /* MUTANT */ true as const } : await payerFunds.check(payerChain, payerOwner, amount);",
   },
   {
     id: "S07",
-    what: "1 日の上限を見ない",
+    what: "reserveSpend が stellar:pubnet の別枠を外す",
     rule: "L1_STELLAR_DAILY_CAP_USD を超えたら署名しない",
-    find: "  return spentLedgerUnits + requestLedgerUnits > stellarDailyCapUnits();",
-    replace: "  return /* MUTANT */ false;",
+    file: RUNNER,
+    needsDb: true,
+    find: "  const capChain = cappedChainFor(network);",
+    replace: '  const capChain = network === "stellar:pubnet" ? /* MUTANT */ null : cappedChainFor(network);',
   },
   {
     id: "S08",
     what: "秘密の伏字を外す",
     rule: "STELLAR_PAYER_SECRET はログに出さない",
+    file: PAYER,
     find: '  return text.replace(STELLAR_SECRET_RE, "<stellar-secret>");',
     replace: "  return /* MUTANT */ text;",
   },
+  {
+    id: "S09",
+    what: "cappedChainFor から stellar:pubnet を外す",
+    rule: "stellar:pubnet だけが stellar の別枠",
+    file: BUDGET,
+    find: '  if (network === "stellar:pubnet") return "stellar";',
+    replace: '  if (/* MUTANT */ false && network === "stellar:pubnet") return "stellar";',
+  },
+  {
+    id: "S10",
+    what: "宣言した payTo との照合を外す",
+    rule: "カタログの payTo と違う壁には署名しない",
+    file: PAYER,
+    find: "    declaredPayTo === null ? protocolEligible : protocolEligible.filter((a) => a.payTo === declaredPayTo);",
+    replace: "    /* MUTANT */ protocolEligible;",
+  },
+  {
+    id: "S11",
+    what: "申告額と壁の額の照合を外す",
+    rule: "7 桁どうしが一致しない額には署名しない",
+    file: PAYER,
+    find: "    if (!declaredMatches(options.declaredAmount, stellarUnits)) continue;",
+    replace: "    if (/* MUTANT */ false && !declaredMatches(options.declaredAmount, stellarUnits)) continue;",
+  },
+  {
+    id: "S12",
+    what: "v1 の壁の拒否を外す",
+    rule: "x402 v1 の壁には署名しない",
+    file: RUNNER,
+    needsDb: true,
+    find: "  const stellarV1Wall = isStellar && selection.accept !== null && challenge.x402Version !== 2;",
+    replace: "  const stellarV1Wall = /* MUTANT */ false;",
+  },
+  {
+    id: "S13",
+    what: "行の network に壁の文字列を書く",
+    rule: "台帳の network は stellar:pubnet に固定する",
+    file: RUNNER,
+    find: "  if (input.isStellar) return STELLAR_PUBNET_CAIP2;",
+    replace: "  if (input.isStellar) return /* MUTANT */ input.acceptNetwork;",
+  },
+  {
+    id: "S14",
+    what: "準備完了の判定から RPC を外す",
+    rule: "STELLAR_RPC_URL が無ければ候補に触れない",
+    file: RUNNER,
+    needsDb: true,
+    find: "    stellarAccount !== null && !!process.env.STELLAR_HORIZON_URL?.trim() && !!process.env.STELLAR_RPC_URL?.trim();",
+    replace: "    stellarAccount !== null && !!process.env.STELLAR_HORIZON_URL?.trim() /* MUTANT */;",
+  },
 ];
 
+const HAS_DB = Boolean(process.env.TEST_DATABASE_URL);
 const TSX = join(ROOT, "node_modules", ".bin", "tsx");
 
 function run(cmd, args, env) {
@@ -92,8 +171,9 @@ function run(cmd, args, env) {
 }
 
 function summarize(t) {
-  const fail = /^ℹ fail (\d+)$/m.exec(t.out)?.[1] ?? "?";
-  const failed = [...t.out.matchAll(/^ {0,4}✖ (.+?) \(/gm)].map((m) => m[1]);
+  const plain = t.out.replace(/\u001b\[[0-9;]*m/g, "");
+  const fail = /^ℹ fail (\d+)$/m.exec(plain)?.[1] ?? "?";
+  const failed = [...plain.matchAll(/^ {0,4}✖ (.+?) \(/gm)].map((m) => m[1]);
   return { code: t.code, fail, failed: [...new Set(failed)] };
 }
 
@@ -101,6 +181,17 @@ async function unitTests() {
   const env = { ...process.env };
   delete env.TEST_DATABASE_URL;
   return summarize(await run(TSX, ["--test", ...UNIT_TESTS], env));
+}
+
+async function dbTests() {
+  return summarize(
+    await run(TSX, ["--test", "--test-force-exit", "--test-concurrency=1", ...DB_TESTS], process.env),
+  );
+}
+
+async function testFor(needsDb) {
+  if (needsDb) return { ...(await dbTests()), suite: "db" };
+  return { ...(await unitTests()), suite: "unit" };
 }
 
 async function countMutantMarkers() {
@@ -124,14 +215,32 @@ if ((await countMutantMarkers()) !== 0) {
 const baselineUnit = await unitTests();
 if (baselineUnit.code !== 0) {
   console.error(`baseline (unit) is not green (fail ${baselineUnit.fail}) — refusing to mutate.`);
+  console.error(baselineUnit.failed.join("\n"));
   process.exit(2);
 }
-console.log(`baseline: green (unit fail ${baselineUnit.fail})\n`);
+let baselineDb = null;
+if (HAS_DB) {
+  baselineDb = await dbTests();
+  if (baselineDb.code !== 0) {
+    console.error(`baseline (db) is not green (fail ${baselineDb.fail}) — refusing to mutate.`);
+    console.error(baselineDb.failed.join("\n"));
+    process.exit(2);
+  }
+}
+console.log(
+  `baseline: green (unit fail ${baselineUnit.fail}${baselineDb ? `, db fail ${baselineDb.fail}` : ", db not run — TEST_DATABASE_URL is not set"})\n`,
+);
 
 const rows = [];
 let survived = 0;
+let notRun = 0;
 for (const m of MUTATIONS) {
-  const path = join(ROOT, m.file ?? PAYER);
+  if (m.needsDb && !HAS_DB) {
+    notRun += 1;
+    rows.push({ ...m, fail: "-", verdict: "NOT RUN", failed: [], note: "needs TEST_DATABASE_URL" });
+    continue;
+  }
+  const path = join(ROOT, m.file);
   const original = await readFile(path, "utf8");
   let stale = null;
   if (!m.replace.includes("MUTANT")) stale = "replace lacks MUTANT marker";
@@ -144,33 +253,43 @@ for (const m of MUTATIONS) {
   }
   try {
     await writeFile(path, original.replace(m.find, m.replace));
-    const r = await unitTests();
+    const r = await testFor(Boolean(m.needsDb));
     const killed = r.code !== 0;
     if (!killed) survived += 1;
     rows.push({ ...m, fail: r.fail, verdict: killed ? "KILLED" : "SURVIVED", failed: r.failed });
   } finally {
     await writeFile(path, original);
     if ((await readFile(path, "utf8")) !== original) {
-      console.error(`RESTORE FAILED for ${path} at ${m.id}`);
+      console.error(`RESTORE FAILED for ${m.file} at ${m.id}`);
       process.exit(3);
     }
   }
 }
 
-const W = { id: 4, what: 70, rule: 52, fail: 7 };
-console.log(`${pad("#", W.id)} | ${pad("変異", W.what)} | ${pad("壊した規則", W.rule)} | ${pad("fail 数", W.fail)} | KILLED/SURVIVED`);
-console.log(`${"-".repeat(W.id)}-|-${"-".repeat(W.what)}-|-${"-".repeat(W.rule)}-|-${"-".repeat(W.fail)}-|----------------`);
+const W = { id: 4, what: 52, rule: 48, suite: 5, fail: 7 };
+console.log(
+  `${pad("#", W.id)} | ${pad("変異", W.what)} | ${pad("壊した規則", W.rule)} | ${pad("suite", W.suite)} | ${pad("fail 数", W.fail)} | KILLED/SURVIVED`,
+);
+console.log(
+  `${"-".repeat(W.id)}-|-${"-".repeat(W.what)}-|-${"-".repeat(W.rule)}-|-${"-".repeat(W.suite)}-|-${"-".repeat(W.fail)}-|----------------`,
+);
 for (const r of rows) {
-  console.log(`${pad(r.id, W.id)} | ${pad(r.what, W.what)} | ${pad(r.rule, W.rule)} | ${pad(r.fail, W.fail)} | ${r.verdict}`);
+  console.log(
+    `${pad(r.id, W.id)} | ${pad(r.what, W.what)} | ${pad(r.rule, W.rule)} | ${pad(r.needsDb ? "db" : "unit", W.suite)} | ${pad(r.fail, W.fail)} | ${r.verdict}`,
+  );
 }
 console.log("");
 for (const r of rows) {
   if (r.verdict === "KILLED" && r.failed.length > 0) {
-    console.log(`${r.id}  ${PAYER}  ✖ ${r.failed.slice(0, 3).join(" / ")}${r.failed.length > 3 ? ` … +${r.failed.length - 3}` : ""}`);
+    console.log(
+      `${r.id}  ${r.file}  ✖ ${r.failed.slice(0, 3).join(" / ")}${r.failed.length > 3 ? ` … +${r.failed.length - 3}` : ""}`,
+    );
   } else if (r.verdict === "SURVIVED") {
-    console.log(`${r.id}  ${PAYER}  SURVIVED ← この関門はテストに守られていない。消さずに報告する`);
+    console.log(`${r.id}  ${r.file}  SURVIVED ← この関門はテストに守られていない。消さずに報告する`);
   } else if (r.verdict === "STALE") {
-    console.log(`${r.id}  ${PAYER}  STALE ← ${r.note}`);
+    console.log(`${r.id}  ${r.file}  STALE ← ${r.note}`);
+  } else if (r.verdict === "NOT RUN") {
+    console.log(`${r.id}  ${r.file}  NOT RUN ← ${r.note}（走らせていないものは緑ではない）`);
   }
 }
 console.log("");
@@ -181,12 +300,17 @@ if (leftover !== 0) {
   process.exit(3);
 }
 const afterUnit = await unitTests();
-if (afterUnit.code !== 0) {
-  console.error(`RESTORE FAILED — the tree is not green after restoring (unit fail ${afterUnit.fail}).`);
+const afterDb = HAS_DB ? await dbTests() : null;
+if (afterUnit.code !== 0 || (afterDb && afterDb.code !== 0)) {
+  console.error(
+    `RESTORE FAILED — the tree is not green after restoring (unit fail ${afterUnit.fail}${afterDb ? `, db fail ${afterDb.fail}` : ""}).`,
+  );
   process.exit(3);
 }
 const secs = ((Date.now() - t0) / 1000).toFixed(1);
-console.log(`restored: green (unit fail ${afterUnit.fail}) — MUTANT markers in src: 0`);
-if (survived === 0) console.log(`all ${rows.length} mutations killed in ${secs}s`);
-else console.log(`${survived} of ${rows.length} mutation(s) survived (or stale) in ${secs}s`);
-process.exitCode = survived === 0 ? 0 : 1;
+console.log(`restored: green (unit fail ${afterUnit.fail}${afterDb ? `, db fail ${afterDb.fail}` : ""}) — MUTANT markers in src: 0`);
+const ran = rows.length - notRun;
+if (survived === 0 && notRun === 0) console.log(`all ${rows.length} mutations killed in ${secs}s`);
+else if (survived === 0) console.log(`all ${ran} mutations that ran were killed; ${notRun} not run (needs TEST_DATABASE_URL) in ${secs}s`);
+else console.log(`${survived} of ${ran} mutation(s) survived (or stale)${notRun ? `; ${notRun} not run` : ""} in ${secs}s`);
+process.exitCode = survived === 0 && notRun === 0 ? 0 : 1;

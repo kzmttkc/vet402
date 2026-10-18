@@ -295,6 +295,16 @@ type Candidate = {
  * （旗 OFF のとき `@x402/stellar` を読まない。署名器は loadStellarPayerModule だけが読む）。
  */
 const STELLAR_PUBNET_CAIP2 = "stellar:pubnet";
+
+/**
+ * 行に書く network。Stellar は壁の文字列を使わない（完全一致で選んでも、表記は定数に固定する）。
+ * 壁の値をそのまま書く変異は、壁が定数と違う文字列でも定数を返すことで落ちる。
+ */
+export function purchaseLedgerNetwork(input: { isXrpl: boolean; isStellar: boolean; acceptNetwork: string }): string {
+  if (input.isXrpl) return XRPL_MAINNET_CAIP2;
+  if (input.isStellar) return STELLAR_PUBNET_CAIP2;
+  return input.acceptNetwork;
+}
 const STELLAR_USDC_CLASSIC = "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
 const STELLAR_USDC_SAC = "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75";
 
@@ -1256,7 +1266,9 @@ export async function runL1Batch(
     // レーンが無効（フラグ無し or 鍵が読めない）か別枠が尽きた間は、候補から SQL の段階で
     // 外す——「試行して skip」の雑音でなく、最初から対象外。行も書かない。
     laneSelectable.set(lane.chain, selectable);
-    if (!selectable) {
+    // 旗 OFF の stellar:pubnet は origin/main と同じく候補 SQL から外さない。未知の network として主候補に残り、
+    // purchaseOne は EVM の selectAccept に落とす。旗 ON で準備が足りないときだけ外す。
+    if (!selectable && !(lane.chain === "stellar" && process.env.OBSERVATORY_STELLAR_L1_ENABLED !== "true")) {
       laneExclusions.push(sql`AND (e.network IS NULL OR e.network NOT LIKE ${CHAIN_DAILY_CAPS[lane.chain].networkLike})`);
     }
   }
@@ -2194,7 +2206,10 @@ async function purchaseOne(input: {
   const method = (candidate.method ?? "GET").toUpperCase();
   const startedAt = Date.now();
   const isSolana = candidate.network === SOLANA_MAINNET_CAIP2;
-  const isStellar = candidate.network === STELLAR_PUBNET_CAIP2;
+  // 旗 OFF では Stellar として扱わない。origin/main と同じく EVM の selectAccept へ落とす
+  // （:2255 の早期 return も、このとき走らない）。
+  const isStellar =
+    process.env.OBSERVATORY_STELLAR_L1_ENABLED === "true" && candidate.network === STELLAR_PUBNET_CAIP2;
   // Tempo（MPP・2026-09-17）: 壁は x402 の封筒ではなく WWW-Authenticate: Payment。
   const isTempo = candidate.network === TEMPO_MAINNET_CAIP2;
   // XRPL レール（2026-09-18）: 主ネットワークが XRPL の行は最初から、Base 先頭の行は壁の 402 を読んで
@@ -2450,7 +2465,7 @@ async function purchaseOne(input: {
   const amountUnitsText = String(amount);
   // 行に書く network は定数（2026-09-17 レビュー #1）。selectXrplAccept は完全一致しか通さないので accept.network と
   // 同じ値だが、別枠の `LIKE 'xrpl:%'` と照合の `=== "xrpl:0"` が壁の表記に依存しないことをここで固定する。
-  const ledgerNetwork = isXrpl ? XRPL_MAINNET_CAIP2 : isStellar ? STELLAR_PUBNET_CAIP2 : accept.network;
+  const ledgerNetwork = purchaseLedgerNetwork({ isXrpl, isStellar, acceptNetwork: accept.network });
   // asset も定数の大文字 hex で書く（2026-09-18 レビュー S2）: 壁が `RLUSD` リテラルや小文字 hex を名乗っても、
   // 台帳・照合・索引（index-xrpl.ts）が同じ 1 つの表記を読む。封筒の accepted には壁の原文をそのまま返す。
   // Arc も定数で書く（2026-09-19 レビュー N3）: selectAccept は固定 USDC と大小無視で一致した accept しか通さないので

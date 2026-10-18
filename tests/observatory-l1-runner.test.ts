@@ -412,7 +412,7 @@ if (!TEST_DB) {
     // Stellar（2026-10-18）。差し込み口は上の Solana と同じ: カタログ同期 → L0 pass → runL1Batch の options。
     // 署名は createStellarPayment、残高は getPayerUsdcBalance。どちらもスタブで、RPC / Horizon には出ない。
     // 秘密はテストの中で作り、失敗メッセージにも台帳の JSON にも載せない。
-    const STELLAR_ENV = ["OBSERVATORY_STELLAR_L1_ENABLED", "STELLAR_PAYER_SECRET", "STELLAR_HORIZON_URL", "STELLAR_RPC_URL"] as const;
+    const STELLAR_ENV = ["OBSERVATORY_STELLAR_L1_ENABLED", "STELLAR_PAYER_SECRET", "STELLAR_HORIZON_URL", "STELLAR_RPC_URL", "L1_STELLAR_DAILY_CAP_USD"] as const;
     const savedStellarEnv = Object.fromEntries(STELLAR_ENV.map((k) => [k, process.env[k]]));
     const restoreStellarEnv = () => {
       for (const k of STELLAR_ENV) {
@@ -496,11 +496,230 @@ if (!TEST_DB) {
         },
       });
       try {
-        assert.ok(seen.every((u) => !u.includes("stellarseller")), "旗 OFF の stellar 候補には 1 リクエストも出ない");
+        // origin/main は stellar:pubnet を知らない。候補から外さず、無払いの要求のあと EVM の selectAccept が
+        // no_eligible_accept を書く。署名も、network = stellar:pubnet の行もしない。
+        assert.ok(seen.some((u) => u.includes("stellarseller")), "旗 OFF でも main と同じく無払いの要求は出る");
         assert.equal(signed, 0, "旗 OFF では署名口を呼ばない");
         const rows = await db.select().from(schema.x402L1Purchases);
-        assert.ok(rows.every((r) => r.network !== STELLAR_PUBNET_CAIP2), "stellar の行を書かない");
+        assert.ok(rows.every((r) => r.network !== STELLAR_PUBNET_CAIP2), "stellar の network では書かない");
+        const eps = await db.select().from(schema.x402Endpoints);
+        const stellarEp = eps.find((e) => e.resourceUrl.includes("stellarseller"));
+        assert.ok(stellarEp, "カタログに stellar の出品がある");
+        const row = rows.find((r) => r.endpointId === stellarEp.id);
+        assert.ok(row, "main と同じく行を書く");
+        assert.equal(row.status, "no_eligible_accept");
+        assert.equal(typeof row.payer, "string");
+        assert.match(row.payer ?? "", /^0x[0-9a-f]{40}$/, "払い手の表記は EVM の番地（stellar_key_missing ではない）");
       } finally {
+        await restoreBaseCatalog();
+      }
+    });
+
+    await t.test("Stellar: 旗 ON でも RPC が無いときは候補に触れない", async () => {
+      const { Keypair } = await import("@stellar/stellar-sdk");
+      const { STELLAR_PUBNET_CAIP2, STELLAR_USDC_SAC } = await import("@/lib/observatory/stellar402-payer");
+      const payer = Keypair.random();
+      const payTo = Keypair.random().publicKey();
+      const amount = "1000000";
+      process.env.OBSERVATORY_L1_ENABLED = "true";
+      process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
+      process.env.OBSERVATORY_STELLAR_L1_ENABLED = "true";
+      process.env.STELLAR_PAYER_SECRET = payer.secret();
+      process.env.STELLAR_HORIZON_URL = "http://127.0.0.1:9";
+      delete process.env.STELLAR_RPC_URL;
+      try {
+        await db.execute(sql`TRUNCATE x402_l1_purchases`);
+        await syncCatalog({
+          fetchResult: {
+            items: [
+              parseCatalogItem({
+                resource: "https://stellarseller.example/api",
+                accepts: [{ amount, asset: STELLAR_USDC_SAC, network: STELLAR_PUBNET_CAIP2, payTo }],
+                extensions: { bazaar: { info: { input: { method: "GET" } } } },
+                quality: { l30DaysTotalCalls: 9000, l30DaysUniquePayers: 90 },
+              }),
+            ],
+            totalCount: 1,
+            fetchedCount: 1,
+            complete: true,
+          },
+          today: "2026-08-16",
+        });
+        const stellarChallenge = JSON.stringify({
+          x402Version: 2,
+          accepts: [{ scheme: "exact", network: STELLAR_PUBNET_CAIP2, amount, asset: STELLAR_USDC_SAC, payTo, maxTimeoutSeconds: 60, extra: { areFeesSponsored: true } }],
+        });
+        await runL0ProbeBatch({
+          limit: 5,
+          concurrency: 1,
+          fetchImpl: async () => new Response(stellarChallenge, { status: 402, headers: { "content-type": "application/json" } }),
+        });
+        const seen: string[] = [];
+        let signed = 0;
+        await runL1Batch({
+          limit: 5,
+          getPayerUsdcBalance: FUNDED_PAYER,
+          createStellarPayment: async () => {
+            signed++;
+            return { transaction: "must-not-sign" };
+          },
+          fetchImpl: async (url: string) => {
+            seen.push(url);
+            return new Response(stellarChallenge, { status: 402, headers: { "content-type": "application/json" } });
+          },
+        });
+        assert.ok(seen.every((u) => !u.includes("stellarseller")), "RPC が無ければ 1 リクエストも出ない");
+        assert.equal(signed, 0);
+        const rows = await db.select().from(schema.x402L1Purchases);
+        assert.equal(rows.length, 0);
+        assert.equal(JSON.stringify(rows).includes(payer.secret()), false);
+      } finally {
+        restoreStellarEnv();
+        await restoreBaseCatalog();
+      }
+    });
+
+    await t.test("Stellar: v1 の壁には署名しない", async () => {
+      const { Keypair } = await import("@stellar/stellar-sdk");
+      const { STELLAR_PUBNET_CAIP2, STELLAR_USDC_SAC } = await import("@/lib/observatory/stellar402-payer");
+      const payer = Keypair.random();
+      const payTo = Keypair.random().publicKey();
+      const amount = "1000000";
+      process.env.OBSERVATORY_L1_ENABLED = "true";
+      process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
+      process.env.OBSERVATORY_STELLAR_L1_ENABLED = "true";
+      process.env.STELLAR_PAYER_SECRET = payer.secret();
+      process.env.STELLAR_HORIZON_URL = "http://127.0.0.1:9";
+      process.env.STELLAR_RPC_URL = "http://127.0.0.1:9";
+      try {
+        await db.execute(sql`TRUNCATE x402_l1_purchases`);
+        await syncCatalog({
+          fetchResult: {
+            items: [
+              parseCatalogItem({
+                resource: "https://stellarseller.example/api",
+                accepts: [{ amount, asset: STELLAR_USDC_SAC, network: STELLAR_PUBNET_CAIP2, payTo }],
+                extensions: { bazaar: { info: { input: { method: "GET" } } } },
+                quality: { l30DaysTotalCalls: 9000, l30DaysUniquePayers: 90 },
+              }),
+            ],
+            totalCount: 1,
+            fetchedCount: 1,
+            complete: true,
+          },
+          today: "2026-08-16",
+        });
+        const v2 = JSON.stringify({
+          x402Version: 2,
+          accepts: [{ scheme: "exact", network: STELLAR_PUBNET_CAIP2, amount, asset: STELLAR_USDC_SAC, payTo, maxTimeoutSeconds: 60, extra: { areFeesSponsored: true } }],
+        });
+        const v1 = JSON.stringify({
+          x402Version: 1,
+          accepts: [{ scheme: "exact", network: STELLAR_PUBNET_CAIP2, amount, asset: STELLAR_USDC_SAC, payTo, maxTimeoutSeconds: 60, extra: { areFeesSponsored: true } }],
+        });
+        await runL0ProbeBatch({
+          limit: 5,
+          concurrency: 1,
+          fetchImpl: async () => new Response(v2, { status: 402, headers: { "content-type": "application/json" } }),
+        });
+        let signed = 0;
+        await runL1Batch({
+          limit: 5,
+          getPayerUsdcBalance: FUNDED_PAYER,
+          createStellarPayment: async () => {
+            signed++;
+            return { transaction: "must-not-sign" };
+          },
+          fetchImpl: async () => new Response(v1, { status: 402, headers: { "content-type": "application/json" } }),
+        });
+        assert.equal(signed, 0, "v1 の壁では署名口を呼ばない");
+        const rows = await db.select().from(schema.x402L1Purchases);
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0].status, "no_eligible_accept");
+        const meta = rows[0].rawResponseMeta as { reason?: string } | null;
+        assert.equal(meta?.reason, "x402_v1_unsupported");
+        assert.equal(JSON.stringify(rows).includes(payer.secret()), false);
+      } finally {
+        restoreStellarEnv();
+        await restoreBaseCatalog();
+      }
+    });
+
+    await t.test("Stellar: 1 日の別枠を超える 2 件目は reserveSpend が署名しない", async () => {
+      const { Keypair } = await import("@stellar/stellar-sdk");
+      const { STELLAR_PUBNET_CAIP2, STELLAR_USDC_SAC } = await import("@/lib/observatory/stellar402-payer");
+      const payer = Keypair.random();
+      const sellers = [Keypair.random().publicKey(), Keypair.random().publicKey()];
+      const amount = "1000000";
+      process.env.OBSERVATORY_L1_ENABLED = "true";
+      process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
+      process.env.OBSERVATORY_STELLAR_L1_ENABLED = "true";
+      process.env.STELLAR_PAYER_SECRET = payer.secret();
+      process.env.STELLAR_HORIZON_URL = "http://127.0.0.1:9";
+      process.env.STELLAR_RPC_URL = "http://127.0.0.1:9";
+      process.env.L1_STELLAR_DAILY_CAP_USD = "0.10";
+      try {
+        await db.execute(sql`TRUNCATE x402_l1_purchases`);
+        await syncCatalog({
+          fetchResult: {
+            items: sellers.map((payTo, i) =>
+              parseCatalogItem({
+                resource: `https://stellarseller${i + 1}.example/api`,
+                accepts: [{ amount, asset: STELLAR_USDC_SAC, network: STELLAR_PUBNET_CAIP2, payTo }],
+                extensions: { bazaar: { info: { input: { method: "GET" } } } },
+                quality: { l30DaysTotalCalls: 9000 - i, l30DaysUniquePayers: 90 },
+              }),
+            ),
+            totalCount: 2,
+            fetchedCount: 2,
+            complete: true,
+          },
+          today: "2026-08-16",
+        });
+        const challengeForUrl = (url: string) => {
+          const i = /stellarseller(\d)/.exec(url)?.[1];
+          const payTo = sellers[i ? Number(i) - 1 : 0];
+          return JSON.stringify({
+            x402Version: 2,
+            accepts: [{ scheme: "exact", network: STELLAR_PUBNET_CAIP2, amount, asset: STELLAR_USDC_SAC, payTo, maxTimeoutSeconds: 60, extra: { areFeesSponsored: true } }],
+          });
+        };
+        await runL0ProbeBatch({
+          limit: 5,
+          concurrency: 1,
+          fetchImpl: async (url: string) =>
+            new Response(challengeForUrl(url), { status: 402, headers: { "content-type": "application/json" } }),
+        });
+        let signed = 0;
+        await runL1Batch({
+          limit: 5,
+          getPayerUsdcBalance: FUNDED_PAYER,
+          createStellarPayment: async () => {
+            signed++;
+            return { transaction: "AAAA-test-xdr" };
+          },
+          fetchImpl: async (url: string, init?: RequestInit) => {
+            const headers = new Headers(init?.headers);
+            const paid = headers.has("PAYMENT-SIGNATURE") || headers.has("X-PAYMENT");
+            if (!paid) {
+              return new Response(challengeForUrl(url), { status: 402, headers: { "content-type": "application/json" } });
+            }
+            return new Response(JSON.stringify({ data: "stellar goods" }), {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+                "PAYMENT-RESPONSE": Buffer.from(JSON.stringify({ success: true, transaction: "ab".repeat(32), network: STELLAR_PUBNET_CAIP2 })).toString("base64"),
+              },
+            });
+          },
+        });
+        assert.equal(signed, 1, "別枠 $0.10 では $0.10 の 2 件目に署名しない");
+        const rows = await db.select().from(schema.x402L1Purchases);
+        const stellarRows = rows.filter((r) => r.network === STELLAR_PUBNET_CAIP2);
+        assert.equal(stellarRows.length, 1);
+        assert.equal(JSON.stringify(rows).includes(payer.secret()), false);
+      } finally {
+        restoreStellarEnv();
         await restoreBaseCatalog();
       }
     });

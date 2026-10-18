@@ -18,6 +18,7 @@ import {
   loadStellarPayer,
   redactStellarSecrets,
   selectStellarAccept,
+  stellarAuthorizationWindow,
   stellarDailyCapUnits,
   stellarFundsVerdict,
   stellarUnitsToLedgerUnits,
@@ -130,7 +131,8 @@ test("network は stellar:pubnet の完全一致。testnet / スラグは選ば�
 
 test("1 件の上限は OBSERVATORY_L1_MAX_PURCHASE_UNITS（6 桁）を 7 桁に直して比べる。超えたら署名しない", () => {
   withEnv("OBSERVATORY_STELLAR_L1_ENABLED", "true", () => {
-    const overStellar = String(MAX_PER_PURCHASE_UNITS * 10n + 1n);
+    // +10 stroops: 上限の 1 単位ぶん上で、かつ 10 stroops の倍数（端数は unbuildable で先に落ちる）。
+    const overStellar = String(MAX_PER_PURCHASE_UNITS * 10n + 10n);
     const over = selectStellarAccept([{ ...SAC_ACCEPT, amount: overStellar }], { declaredAmount: null, declaredPayTo: null });
     assert.equal(over.reason, "over_cap");
     assert.equal(over.accept, null);
@@ -214,5 +216,70 @@ test("loadStellarPayer: 壊れた秘密で throw した文字列にも S... を�
     }
     assert.equal(threw, null, "読めなければ null（throw しない）");
     assert.equal(loadStellarPayer(), null);
+  });
+});
+
+test("申告額は 7 桁どうしだけ。amount 1000000 と declaredAmount 100000 は一致しない", () => {
+  withEnv("OBSERVATORY_STELLAR_L1_ENABLED", "true", () => {
+    const sel = selectStellarAccept([{ ...SAC_ACCEPT, amount: "1000000" }], {
+      declaredAmount: "100000",
+      declaredPayTo: null,
+    });
+    assert.equal(sel.accept, null);
+    assert.equal(sel.reason, "price_mismatch");
+    const same = selectStellarAccept([{ ...SAC_ACCEPT, amount: "1000000" }], {
+      declaredAmount: "1000000",
+      declaredPayTo: null,
+    });
+    assert.equal(same.reason, null);
+    assert.equal(same.stellarUnits, 1_000_000n);
+  });
+});
+
+test("宣言した payTo と違う壁は payto_mismatch。署名する accept を返さない", () => {
+  withEnv("OBSERVATORY_STELLAR_L1_ENABLED", "true", () => {
+    const other = Keypair.random().publicKey();
+    const sel = selectStellarAccept([SAC_ACCEPT], { declaredAmount: null, declaredPayTo: other });
+    assert.equal(sel.accept, null);
+    assert.equal(sel.reason, "payto_mismatch");
+    const same = selectStellarAccept([SAC_ACCEPT], { declaredAmount: null, declaredPayTo: SAC_ACCEPT.payTo });
+    assert.equal(same.reason, null);
+  });
+});
+
+test("10 stroops の倍数でない額は no_eligible_accept / unbuildable。1234567 は買わない", () => {
+  withEnv("OBSERVATORY_STELLAR_L1_ENABLED", "true", () => {
+    const odd = selectStellarAccept([{ ...SAC_ACCEPT, amount: "1234567" }], { declaredAmount: null, declaredPayTo: null });
+    assert.equal(odd.accept, null);
+    assert.equal(odd.reason, "no_eligible_accept");
+    assert.equal(odd.detail, "unbuildable");
+    const even = selectStellarAccept([{ ...SAC_ACCEPT, amount: "1234560" }], { declaredAmount: null, declaredPayTo: null });
+    assert.equal(even.reason, null);
+    assert.equal(even.stellarUnits, 1_234_560n);
+  });
+});
+
+test("maxTimeoutSeconds の 0・負・非整数は予約の前に unbuildable。窓は 60〜120 秒", () => {
+  withEnv("OBSERVATORY_STELLAR_L1_ENABLED", "true", () => {
+    for (const bad of [0, -1, -30, 1.5, Number.NaN]) {
+      const sel = selectStellarAccept([{ ...SAC_ACCEPT, maxTimeoutSeconds: bad }], {
+        declaredAmount: null,
+        declaredPayTo: null,
+      });
+      assert.equal(sel.accept, null, `timeout ${String(bad)}`);
+      assert.equal(sel.reason, "no_eligible_accept");
+      assert.equal(sel.detail, "unbuildable");
+    }
+    const long = selectStellarAccept([{ ...SAC_ACCEPT, maxTimeoutSeconds: 300 }], {
+      declaredAmount: null,
+      declaredPayTo: null,
+    });
+    assert.equal(long.reason, null, "120 秒を超える正の整数は落とさず、署名時に頭打ちする");
+    assert.equal(stellarAuthorizationWindow(300), 120);
+    assert.equal(stellarAuthorizationWindow(90), 90);
+    assert.equal(stellarAuthorizationWindow(30), 60);
+    assert.equal(stellarAuthorizationWindow(60), 60);
+    assert.equal(stellarAuthorizationWindow(undefined), 60);
+    assert.equal(stellarAuthorizationWindow(0), 60);
   });
 });

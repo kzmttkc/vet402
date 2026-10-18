@@ -20,7 +20,7 @@ import { Keypair } from "@stellar/stellar-sdk";
 import { validateStellarDestinationAddress } from "@x402/stellar";
 import { DAILY_BUDGET_USD } from "./budget";
 import { redactUrls } from "./redact";
-import { MAX_PER_PURCHASE_UNITS, type ChallengeAccept } from "./x402-payer";
+import { MAX_AUTHORIZATION_WINDOW_SECONDS, MAX_PER_PURCHASE_UNITS, type ChallengeAccept } from "./x402-payer";
 
 /** CAIP-2。選別は完全一致（`stellar` / `stellar:mainnet` / testnet は選ばない）。 */
 export const STELLAR_PUBNET_CAIP2 = "stellar:pubnet";
@@ -165,10 +165,28 @@ function isStellarPubnet(a: ChallengeAccept): boolean {
   return a.network === STELLAR_PUBNET_CAIP2;
 }
 
+/** 0・負・非整数の maxTimeoutSeconds は署名しない（予約より前に落とす）。未指定は通す。 */
+function stellarTimeoutAccepted(maxTimeoutSeconds: number): boolean {
+  return Number.isInteger(maxTimeoutSeconds) && maxTimeoutSeconds > 0;
+}
+
+/**
+ * 署名に使う認可の窓（秒）。売り手の値は 60 秒未満なら 60、120 秒を超えるなら
+ * {@link MAX_AUTHORIZATION_WINDOW_SECONDS} に頭打ち。未指定・受け取れない値は 60。
+ * 0・負・非整数をここで 60 に持ち上げても、select が先に unbuildable で落とす。
+ */
+export function stellarAuthorizationWindow(maxTimeoutSeconds: number | undefined): number {
+  const requested = maxTimeoutSeconds !== undefined && stellarTimeoutAccepted(maxTimeoutSeconds) ? maxTimeoutSeconds : 60;
+  return Math.min(Math.max(requested, 60), MAX_AUTHORIZATION_WINDOW_SECONDS);
+}
+
 function isBuildableStellarAccept(a: ChallengeAccept): boolean {
   if (!validateStellarDestinationAddress(a.payTo)) return false;
-  if (parseStellarUnits(a.amount) === null) return false;
-  if (a.maxTimeoutSeconds !== undefined && !Number.isInteger(a.maxTimeoutSeconds)) return false;
+  const units = parseStellarUnits(a.amount);
+  if (units === null) return false;
+  // 7 桁目が残ると 6 桁の台帳へ切り上げで載る。払う額と記帳がずれるので、予約の前に組まない。
+  if (units % 10n !== 0n) return false;
+  if (a.maxTimeoutSeconds !== undefined && !stellarTimeoutAccepted(a.maxTimeoutSeconds)) return false;
   // 改造していない @x402/stellar の ExactStellarScheme は extra.areFeesSponsored === true を要求する。
   if (a.extra?.areFeesSponsored !== true) return false;
   return true;
@@ -190,11 +208,12 @@ function stellarProtocolEligible(accepts: readonly unknown[]): { eligible: Chall
   return { eligible: [], detail };
 }
 
-function declaredMatches(declaredAmount: string | null, stellarUnits: bigint, ledgerUnits: bigint): boolean {
+/** 申告額は壁の 7 桁（stroops）とだけ比べる。6 桁へ丸めた額とは一致させない。 */
+function declaredMatches(declaredAmount: string | null, stellarUnits: bigint): boolean {
   if (declaredAmount === null) return true;
   const parsed = parseStellarUnits(declaredAmount);
   if (parsed === null) return false;
-  return parsed === stellarUnits || parsed === ledgerUnits;
+  return parsed === stellarUnits;
 }
 
 /**
@@ -223,7 +242,7 @@ export function selectStellarAccept(
   for (const accept of eligible) {
     const stellarUnits = parseStellarUnits(accept.amount)!;
     const amountUnits = stellarUnitsToLedgerUnits(stellarUnits);
-    if (!declaredMatches(options.declaredAmount, stellarUnits, amountUnits)) continue;
+    if (!declaredMatches(options.declaredAmount, stellarUnits)) continue;
     if (stellarUnits > maxStellarUnits) continue;
     return {
       accept,
@@ -247,6 +266,10 @@ export function selectStellarAccept(
  * `@x402/stellar` の exact client で支払い XDR を作る。額は 7 桁（stroops）。
  * 秘密は環境変数から読むだけで、返り値にも誤りにも入れない。RPC の URL も誤りに残さない。
  * テストは l1-runner の createStellarPayment を差し替え、ここを呼ばない。
+ *
+ * RpcConfig は Soroban の `url`（STELLAR_RPC_URL）だけ。`getHorizonClient` は URL を受け取らず、
+ * pubnet では `https://horizon.stellar.org` 固定。createPaymentPayload が台帳間隔の見積もりでそこを読む。
+ * STELLAR_HORIZON_URL は残高と照合だけに効き、この client には渡せない。
  */
 export async function createStellarPaymentPayload(input: {
   accept: ChallengeAccept;
@@ -267,7 +290,7 @@ export async function createStellarPaymentPayload(input: {
       asset: STELLAR_USDC_SAC,
       amount: String(input.stellarUnits),
       payTo: input.accept.payTo,
-      maxTimeoutSeconds: input.accept.maxTimeoutSeconds ?? 60,
+      maxTimeoutSeconds: stellarAuthorizationWindow(input.accept.maxTimeoutSeconds),
       extra: { ...(input.accept.extra ?? {}), areFeesSponsored: true },
     });
     const transaction =

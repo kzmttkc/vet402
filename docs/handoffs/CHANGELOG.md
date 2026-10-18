@@ -13,10 +13,16 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-18 — L1 Stellar: 独立点検 NO-SHIP の直し（未 commit）
+- **何を**: 段 3。`declaredMatches` は壁の額と申告額を 7 桁（stroops）同士の `===` だけにする（6 桁へ丸めた比較は残さない。`amount "1000000"` と `declaredAmount "100000"` は `price_mismatch`）。壁の額が 10 stroops の倍数でないときは予約の前に `no_eligible_accept` / `unbuildable`（1234567 は買わない）。`maxTimeoutSeconds` は `stellarAuthorizationWindow` が `Math.min(Math.max(requested, 60), MAX_AUTHORIZATION_WINDOW_SECONDS)`（120）。0・負・非整数は予約の前に unbuildable。旗 OFF の `stellar:pubnet` は候補 SQL から外さない（origin/main と同じく無払いの要求のあと EVM の `selectAccept` が `no_eligible_accept` を書く。払い手の表記は EVM）。旗 ON で秘密・Horizon・RPC のどれかが無いときだけ SQL で外す。行の network は `purchaseLedgerNetwork` が `stellar:pubnet` に固定する。`@stellar/stellar-sdk` は lock に入っている 16.3.1 を直接依存にした。
+- **なぜ**: 独立点検が NO-SHIP（62）。申告額の桁がずれても通り、端数が 6 桁の台帳とずれ、認可の窓に頭が無く、旗 OFF が main と違い、変異が金の経路（`payerFunds.check`・`reserveSpend`・v1・RPC・payTo・値段・別枠）を見ていなかった。
+- **影響**: 旗 OFF の pubnet 出品は、未知の network と同じく 1 回聞いて行を書く（署名はしない）。laneFloor の鍵 `stellar` は旗 OFF でも 0 のまま。他レーンの関門は変えていない。公開 export の status / held_reason に新しい値は足していない。`@x402/stellar` 2.28.0 の `ExactStellarScheme` は RpcConfig に Soroban の `url`（`STELLAR_RPC_URL`）しか受け取らない。`getHorizonClient` は pubnet で `https://horizon.stellar.org` を固定で読む。`STELLAR_HORIZON_URL` は残高・trustline と決済の再読だけに効き、署名時のその読み先には向けられない。axios は上げていない（`@stellar/stellar-sdk@16.3.1` が `axios@1.18.0` を固定）。
+- **実測**: この項の検証コマンドのあとで埋める。
+
 ## 2026-10-18 — L1: Stellar pubnet のレーン（既定 OFF・未 commit）
 - **何を**: `stellar:pubnet` の USDC（classic `USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN` と SAC `CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75`）を、旗 `OBSERVATORY_STELLAR_L1_ENABLED` が正確に `true` のときだけ買う。署名は改造していない `@x402/stellar` の exact client（`createStellarPaymentPayload`）。秘密は `STELLAR_PAYER_SECRET`（S...）。1 件の上限は既存の `OBSERVATORY_L1_MAX_PURCHASE_UNITS`（6 桁）を 10 倍して 7 桁と比べる。1 日の別枠は `L1_STELLAR_DAILY_CAP_USD`（既定 $0.5・`stellar:pubnet` の完全一致）。未入金は署名せず行を書かず、そのバッチの残り pubnet を閉じる。購入バッチの行は従来どおり `settle_claimed`（形式の通った申告で summary.settled）。チェーン照合は段 2a の `verifyStellarSettlement`。RPC / Horizon の URL は記録に残さない。段 2a は `98b9f891`。配線（budget・redact・log-safe・settlement-tx・l1-runner・x402-payer・stellar402-payer）は作業ツリー。
 - **なぜ**: Stellar メインネットの売り手からも、既存レーンと同じ関門（旗・上限・未入金・資産・照合してから settled）で買えるようにするため。既定 OFF なので、入金と環境変数が揃うまで金は動かない。
-- **影響**: 旗 OFF のとき候補 SQL が `stellar:pubnet` を外す。summary.laneFloor に鍵 `stellar` が増える（旗 OFF なら 0）。他レーンの件数・関門は変えていない。公開 export の status / held_reason に新しい値は足していない。
+- **影響（訂正・同日の点検）**: 当初は旗 OFF の候補 SQL が `stellar:pubnet` を外していた。点検で origin/main に戻した。旗 OFF は候補に残し、無払いの要求のあと EVM の `selectAccept` が `no_eligible_accept` を書く。旗 ON で準備が足りないときだけ SQL で外す。summary.laneFloor に鍵 `stellar` が増える（旗 OFF なら 0）。他レーンの件数・関門は変えていない。公開 export の status / held_reason に新しい値は足していない。
 - **実測（10/18・手元。本番の RPC には出していない）**: `npx tsc --noEmit -p .` exit 0。`TEST_DATABASE_URL` を手元の複製 DB に向けた `npx tsx --test --test-concurrency=1 tests/observatory-l1-runner.test.ts tests/*stellar*.test.ts` は `ℹ tests 51` / `ℹ fail 0`。budget・redact・log-safe・settlement-tx の既存テストは `ℹ tests 34` / `ℹ fail 0`。`tests/l1-lane-floor.pg.test.ts` は `ℹ tests 7` / `ℹ fail 0`。全体の `npm test` は同じ日の報告に書く。
 
 ## 2026-10-17 — L1 ordinary candidates: equal demand goes to the endpoint that has waited longest, then id

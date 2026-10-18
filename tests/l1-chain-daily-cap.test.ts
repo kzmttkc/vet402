@@ -100,6 +100,16 @@ test("Celo の既定は Arc と同じ $2。0 は Celo を止める。壊れた�
   withEnv("L1_CELO_DAILY_CAP_USD", "100", () => assert.equal(chainDailyCapUnits("celo"), BigInt(DAILY_BUDGET_USD) * 1_000_000n));
 });
 
+test("Stellar: stellar:pubnet だけが stellar の別枠。testnet・スラグは持たない", () => {
+  assert.equal(cappedChainFor("stellar:pubnet"), "stellar");
+  assert.equal(cappedChainFor("stellar:testnet"), null);
+  assert.equal(cappedChainFor("stellar"), null);
+  assert.equal(cappedChainFor("stellar:pubnet "), null);
+  assert.equal(CHAIN_DAILY_CAPS.stellar.env, "L1_STELLAR_DAILY_CAP_USD");
+  assert.equal(CHAIN_DAILY_CAPS.stellar.networkLike, "stellar:pubnet", "ワイルドカード無し＝完全一致");
+  assert.ok(!/[%_]/.test(CHAIN_DAILY_CAPS.stellar.networkLike));
+});
+
 test("Celo の別枠は他のチェーンの環境変数に動かされず、他のチェーンの別枠も動かさない", () => {
   withEnv("L1_CELO_DAILY_CAP_USD", "0", () => {
     withEnv("L1_ARC_DAILY_CAP_USD", undefined, () => {
