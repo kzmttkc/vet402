@@ -55,17 +55,18 @@ export async function ingestL1(options: { onlyPurchaseRowId?: string; limit?: nu
       JOIN x402_endpoints e ON e.id = pu.endpoint_id
       -- 照合済みの行は settlementBlockTime を後から書かない。台帳時刻は照合のたびに
       -- observed_purchases.block_timestamp へ残っている（observed_by は購入 id）。
-      -- observed_by に一意制約は無いので、あるときは block_timestamp の新しい 1 件だけ採る。
-      LEFT JOIN LATERAL (
-        SELECT block_timestamp
-        FROM observed_purchases
-        WHERE observed_by = 'observatory-l1-verified:' || pu.id::text
-        ORDER BY block_timestamp DESC NULLS LAST
-        LIMIT 1
-      ) op ON true
+      -- tx_hash は一意索引（observed_purchases_tx_hash_idx）なので、それで結ぶ（observed_by には索引が無い。
+      -- 2026-10-19 点検: 行ごとの全件読みで窓 6 千行×4 万行が約 16 秒、tx_hash で結ぶと約 0.2 秒）。
+      LEFT JOIN observed_purchases op
+        ON op.tx_hash IN (pu.tx_hash, lower(pu.tx_hash))
+       AND op.observed_by = 'observatory-l1-verified:' || pu.id::text
       WHERE pu.status = 'settled' AND pu.tx_hash IS NOT NULL AND pu.network IS NOT NULL
         ${onlyPurchaseRowId ? sql`AND pu.id = ${onlyPurchaseRowId}::uuid` : sql`AND pu.attempted_at > now() - make_interval(days => ${sinceDays})`}
-      ORDER BY (EXISTS (SELECT 1 FROM settlements s WHERE s.purchase_id = pu.network || ':' || pu.tx_hash)) ASC,
+      -- 並び: まだ settlements に無い行 → 入っているが台帳時刻（chain）になっていない行 → 新しい順。
+      -- tx_hash で引く（purchase_id は正規化した表記なので、v1 の base・solana などの表記と合わない）。
+      ORDER BY (EXISTS (SELECT 1 FROM settlements s WHERE s.tx_hash IN (pu.tx_hash, lower(pu.tx_hash)))) ASC,
+               (EXISTS (SELECT 1 FROM settlements s WHERE s.tx_hash IN (pu.tx_hash, lower(pu.tx_hash))
+                          AND s.raw->>'blockTimeSource' = 'chain')) ASC,
                pu.attempted_at DESC
       LIMIT ${limit}
     `),

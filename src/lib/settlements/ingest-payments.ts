@@ -13,6 +13,7 @@ import { toCaip2 } from "@/lib/observatory/chains";
 import { BASE_USDC } from "@/lib/observatory/x402-payer";
 import { attribute } from "./attribution";
 import { loadWashClassifier, type WashClassifier } from "./context";
+import { RAW_RETENTION_DAYS } from "./rollup";
 import { buildRow, rowsOf, upsertSettlement } from "./upsert";
 import type { Attribution } from "./types";
 
@@ -82,7 +83,8 @@ export async function resolveEndpointForSettlement(
 export async function ingestPayments(options: { limit?: number; sinceDays?: number; classifier?: WashClassifier } = {}) {
   const db = getDb();
   if (!db) throw new Error("ingestPayments: DATABASE_URL is not configured");
-  const { limit = 2000, sinceDays = 45 } = options;
+  // 2026-10-19: 窓は生行の保持の内側（ingest-l1 と同じ理由。畳んだ日を入れ直すと rollup の加算で二重に数える）。
+  const { limit = 2000, sinceDays = Math.max(1, RAW_RETENTION_DAYS - 1) } = options;
   const classifier = options.classifier ?? (await loadWashClassifier());
   const rows = rowsOf<PaymentRow>(
     await db.execute(sql`

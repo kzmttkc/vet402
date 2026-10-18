@@ -64,10 +64,12 @@ if (!TEST_DB) {
     await t.test("窓は生行の保持の内側（29 日）。まだ settlements に無い行を先に取り込む", async () => {
       const old = "0x" + "4".repeat(64);
       const mid = "0x" + "5".repeat(64);
+      const edge = "0x" + "6".repeat(64);
       await db.execute(sql`
         INSERT INTO x402_l1_purchases (endpoint_id, status, network, asset, pay_to, amount_units, spent_units, payer, tx_hash, http_status_paid, payload_non_empty, attempted_at)
         VALUES (${endpointId}::uuid, 'settled', 'eip155:8453', ${USDC}, ${PAY_TO}, '3000', '3000', ${OUR_PAYER}, ${old}, 200, true, now() - interval '40 days'),
-               (${endpointId}::uuid, 'settled', 'eip155:8453', ${USDC}, ${PAY_TO}, '3000', '3000', ${OUR_PAYER}, ${mid}, 200, true, now() - interval '10 days')
+               (${endpointId}::uuid, 'settled', 'eip155:8453', ${USDC}, ${PAY_TO}, '3000', '3000', ${OUR_PAYER}, ${mid}, 200, true, now() - interval '10 days'),
+               (${endpointId}::uuid, 'settled', 'eip155:8453', ${USDC}, ${PAY_TO}, '3000', '3000', ${OUR_PAYER}, ${edge}, 200, true, now() - interval '29 days 12 hours')
       `);
       // 上限 1 件: 既に入っている新しい行（0x111…）より、まだ無い 10 日前の行が先に来る。
       const r = await ingestL1({ limit: 1 });
@@ -81,8 +83,10 @@ if (!TEST_DB) {
       // 40 日前の行は、上限を外しても既定の窓では入らない（畳んで消した日を入れ直さない）。
       await ingestL1();
       assert.equal(await has(old), 0);
-      await db.execute(sql`DELETE FROM x402_l1_purchases WHERE tx_hash IN (${old}, ${mid})`);
-      await db.execute(sql`DELETE FROM settlements WHERE tx_hash IN (${old}, ${mid})`);
+      // 境目: 29 日半前の行も入らない（窓は 29 日。30 日にすると畳む日の手前 1 日の余裕が消える）。
+      assert.equal(await has(edge), 0);
+      await db.execute(sql`DELETE FROM x402_l1_purchases WHERE tx_hash IN (${old}, ${mid}, ${edge})`);
+      await db.execute(sql`DELETE FROM settlements WHERE tx_hash IN (${old}, ${mid}, ${edge})`);
     });
 
     await t.test("payments_api: 封筒一致は confirmed、amount 不一致は probable、第三者なので wash none", async () => {
