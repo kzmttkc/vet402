@@ -220,8 +220,8 @@ const MUTATIONS = [
     rule: "署名後は予約を残し、Base では買わない",
     file: RUNNER,
     needsDb: true,
-    find: "        if (!isStellarPrimary && stellarSignFailedPre(error)) {",
-    replace: "        if (!isStellarPrimary && /* MUTANT */ true) {",
+    find: "        if (!stellarSignFailedPre(error)) {",
+    replace: "        if (/* MUTANT */ false) {",
   },
 ];
 
