@@ -23,6 +23,17 @@
 
 const URL_RE = /(https?|wss?|postgres(?:ql)?):\/\/\S+/g;
 
+/**
+ * Stellar の seed（`S` + 55 文字）。stellar402-payer を import しない
+ * （このモジュールはログ経路の全部から読まれる。SDK を旗 OFF の束に入れない）。
+ * G アドレスは公開なので伏せない。
+ */
+const STELLAR_SECRET_RE = /\bS[A-Z2-7]{55}\b/g;
+
+function redactStellarSecrets(text: string): string {
+  return text.replace(STELLAR_SECRET_RE, "<stellar-secret>");
+}
+
 /** 文字列中の接続 URL を `<url>` に伏せる。長さは変えない。 */
 export function redactUrls(text: string): string {
   return text.replace(URL_RE, "<url>");
@@ -30,7 +41,7 @@ export function redactUrls(text: string): string {
 
 /** 台帳・summary へ書く誤り文字列。伏せてから 300 字に切る。 */
 export function redactForLog(error: unknown): string {
-  return redactUrls(String(error)).slice(0, 300);
+  return redactStellarSecrets(redactUrls(String(error))).slice(0, 300);
 }
 
 /**
@@ -42,5 +53,5 @@ export function redactForLog(error: unknown): string {
  * ログは診断のためにあるから。
  */
 export function redactedError(error: unknown): Error {
-  return new Error(redactUrls(String(error)));
+  return new Error(redactStellarSecrets(redactUrls(String(error))));
 }

@@ -26,6 +26,8 @@ import { redactUrls } from "@/lib/observatory/redact";
 const ANY_SCHEME_URL_RE = /\b[a-z][a-z0-9+.-]{1,20}:\/\/[^\s"'<>`]+/gi;
 
 const SECRET_PATTERNS: Array<[RegExp, string]> = [
+  // Stellar の seed（S + 55）。0x の tx hash や G アドレス（公開）は対象外。SDK の誤り本文に素で出ても残さない。
+  [/\bS[A-Z2-7]{55}\b/g, "<stellar-secret>"],
   // 空白を含む秘密（mnemonic・seed phrase）は JSON の値の引用符の終わりまで伏せる。
   [/("(?:mnemonic|seed[_-]?phrase|seed)"\s*:\s*")[^"]*"/gi, "$1<redacted>\""],
   // `apikey=XYZ` / `api_key: "XYZ"` / `dkey=XYZ` / `access_token=XYZ` など（URL の外に出た query 片も含む）

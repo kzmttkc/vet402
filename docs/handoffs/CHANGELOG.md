@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-18 — L1: Stellar pubnet のレーン（既定 OFF・未 commit）
+- **何を**: `stellar:pubnet` の USDC（classic `USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN` と SAC `CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75`）を、旗 `OBSERVATORY_STELLAR_L1_ENABLED` が正確に `true` のときだけ買う。署名は改造していない `@x402/stellar` の exact client（`createStellarPaymentPayload`）。秘密は `STELLAR_PAYER_SECRET`（S...）。1 件の上限は既存の `OBSERVATORY_L1_MAX_PURCHASE_UNITS`（6 桁）を 10 倍して 7 桁と比べる。1 日の別枠は `L1_STELLAR_DAILY_CAP_USD`（既定 $0.5・`stellar:pubnet` の完全一致）。未入金は署名せず行を書かず、そのバッチの残り pubnet を閉じる。購入バッチの行は従来どおり `settle_claimed`（形式の通った申告で summary.settled）。チェーン照合は段 2a の `verifyStellarSettlement`。RPC / Horizon の URL は記録に残さない。段 2a は `98b9f891`。配線（budget・redact・log-safe・settlement-tx・l1-runner・x402-payer・stellar402-payer）は作業ツリー。
+- **なぜ**: Stellar メインネットの売り手からも、既存レーンと同じ関門（旗・上限・未入金・資産・照合してから settled）で買えるようにするため。既定 OFF なので、入金と環境変数が揃うまで金は動かない。
+- **影響**: 旗 OFF のとき候補 SQL が `stellar:pubnet` を外す。summary.laneFloor に鍵 `stellar` が増える（旗 OFF なら 0）。他レーンの件数・関門は変えていない。公開 export の status / held_reason に新しい値は足していない。
+- **実測（10/18・手元。本番の RPC には出していない）**: `npx tsc --noEmit -p .` exit 0。`TEST_DATABASE_URL` を手元の複製 DB に向けた `npx tsx --test --test-concurrency=1 tests/observatory-l1-runner.test.ts tests/*stellar*.test.ts` は `ℹ tests 51` / `ℹ fail 0`。budget・redact・log-safe・settlement-tx の既存テストは `ℹ tests 34` / `ℹ fail 0`。`tests/l1-lane-floor.pg.test.ts` は `ℹ tests 7` / `ℹ fail 0`。全体の `npm test` は同じ日の報告に書く。
+
 ## 2026-10-17 — L1 ordinary candidates: equal demand goes to the endpoint that has waited longest, then id
 - **何を**: `src/lib/observatory/l1-runner.ts` の `targetsSql`（通常候補とチェーンのレーン枠が使う方）の `ORDER BY` の末尾に、決め手を 3 つ足した。その出品の購入行の `max(attempted_at)` ASC NULLS FIRST → `e.first_seen_at` ASC NULLS LAST → `e.id` ASC。並びの頭（C2 階層 → 購入行の無い出品が先 → 優先ホスト → 需要 `quality_payers_30d`・`quality_calls_30d`）は変えていない。WHERE（候補になれる行）・census / retest の並び（`censusTargetsSql`）・上限・予約も変えていない。/observatory/methodology §6 に同点の扱いを 1 文足した。テスト: `tests/l1-ordinary-tiebreak.pg.test.ts`（DB）。
 - **なぜ**: 10/10 の l1-retest のフレーク調査の所見。それまで並びは需要の値で尽きていて、同点のどれを買うかは実行計画しだいだった。本番の実測（10/17・読み取りのみ）: 候補になれる出品は約 39,000 件。通常候補の 18〜53 位が需要の値（payers 4・calls 4）の同じ 36 件だった。直近 7 日の 35 回の実行で、通常候補の購入は 1 回あたり中央値 33 件（最小 17・最大 64）。ほぼ毎回、同点の途中で止まっていた。

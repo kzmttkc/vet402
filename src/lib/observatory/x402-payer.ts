@@ -753,8 +753,12 @@ export function encodePaymentHeader(input: {
    * EVM は EIP-3009、XRPL（2026-09-17・xrpl402-payer.ts）は署名済み tx blob。封筒は同じ。
    * XRPL の `invoiceId` は型で必須（2026-09-19）: t54 の facilitator は無いと `invalid_payload` で断る。
    * xrpl402-payer.xrplPaymentPayload で作る。
+   * Stellar（2026-10-18・stellar402-payer.ts）は `{ transaction }`（base64 の XDR）。v2 だけ。
    */
-  payload: { signature: string; authorization: Eip3009Authorization } | { signedTxBlob: string; invoiceId: string };
+  payload:
+    | { signature: string; authorization: Eip3009Authorization }
+    | { signedTxBlob: string; invoiceId: string }
+    | { transaction: string };
   resourceUrl: string;
 }): { headerName: string; headerValue: string } {
   const { x402Version, accept, payload, resourceUrl } = input;

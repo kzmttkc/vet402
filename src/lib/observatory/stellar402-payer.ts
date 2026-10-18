@@ -19,6 +19,7 @@
 import { Keypair } from "@stellar/stellar-sdk";
 import { validateStellarDestinationAddress } from "@x402/stellar";
 import { DAILY_BUDGET_USD } from "./budget";
+import { redactUrls } from "./redact";
 import { MAX_PER_PURCHASE_UNITS, type ChallengeAccept } from "./x402-payer";
 
 /** CAIP-2。選別は完全一致（`stellar` / `stellar:mainnet` / testnet は選ばない）。 */
@@ -240,4 +241,43 @@ export function selectStellarAccept(
     return { accept: null, reason: "price_mismatch", detail: null };
   }
   return { accept: null, reason: "no_eligible_accept", detail: null };
+}
+
+/**
+ * `@x402/stellar` の exact client で支払い XDR を作る。額は 7 桁（stroops）。
+ * 秘密は環境変数から読むだけで、返り値にも誤りにも入れない。RPC の URL も誤りに残さない。
+ * テストは l1-runner の createStellarPayment を差し替え、ここを呼ばない。
+ */
+export async function createStellarPaymentPayload(input: {
+  accept: ChallengeAccept;
+  signingAsset: string;
+  stellarUnits: bigint;
+}): Promise<{ transaction: string }> {
+  const raw = process.env.STELLAR_PAYER_SECRET?.trim() ?? "";
+  const rpc = process.env.STELLAR_RPC_URL?.trim() ?? "";
+  if (!raw) throw new Error("stellar_payer_secret_unset");
+  if (!rpc) throw new Error("stellar_rpc_unset");
+  if (input.signingAsset !== STELLAR_USDC_SAC) throw new Error("stellar_signing_asset");
+  try {
+    const { ExactStellarScheme, createEd25519Signer } = await import("@x402/stellar");
+    const scheme = new ExactStellarScheme(createEd25519Signer(raw, STELLAR_PUBNET_CAIP2), { url: rpc });
+    const created = await scheme.createPaymentPayload(2, {
+      scheme: "exact",
+      network: STELLAR_PUBNET_CAIP2,
+      asset: STELLAR_USDC_SAC,
+      amount: String(input.stellarUnits),
+      payTo: input.accept.payTo,
+      maxTimeoutSeconds: input.accept.maxTimeoutSeconds ?? 60,
+      extra: { ...(input.accept.extra ?? {}), areFeesSponsored: true },
+    });
+    const transaction =
+      created.payload && typeof created.payload === "object"
+        ? (created.payload as { transaction?: unknown }).transaction
+        : undefined;
+    if (typeof transaction !== "string" || transaction.length === 0) throw new Error("stellar_payload_empty");
+    return { transaction };
+  } catch (error) {
+    const message = redactStellarSecrets(redactUrls(error instanceof Error ? error.message : String(error)));
+    throw new Error(message.startsWith("stellar_") ? message : `stellar_sign_failed: ${message}`);
+  }
 }

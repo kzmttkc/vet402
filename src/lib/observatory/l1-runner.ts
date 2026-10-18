@@ -55,6 +55,7 @@ import {
   buildAuthorization,
   declaredPayTosFor,
   encodePaymentHeader,
+  type ChallengeAccept,
   evmChainFor,
   isArcL1Enabled,
   isCeloL1Enabled,
@@ -289,11 +290,22 @@ type Candidate = {
  * 以後は渡さない。そのチェーンで settle_claimed 以上の行があるか、非決済（settle_failed 等）が
  * 1 度でも出た endpoint にも渡さない。
  */
+/**
+ * Stellar pubnet の定数。stellar402-payer.ts と同じ文字列。ここから static import しない
+ * （旗 OFF のとき `@x402/stellar` を読まない。署名器は loadStellarPayerModule だけが読む）。
+ */
+const STELLAR_PUBNET_CAIP2 = "stellar:pubnet";
+const STELLAR_USDC_CLASSIC = "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
+const STELLAR_USDC_SAC = "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75";
+
 const LANE_NETWORK: Partial<Record<CappedChain, string>> = {
   solana: SOLANA_MAINNET_CAIP2,
   arc: ARC_CAIP2,
   // Celo（2026-10-10）: Arc と同じ EVM の署名経路（selectAccept の preferNetworks）。
   celo: CELO_CAIP2,
+  // Stellar（2026-10-18）: Solana と同じく主ネットワークが pubnet の行だけ。preferNetworks は
+  // その行の selectStellarAccept より前には届かない（isStellar が先）。secondary は false。
+  stellar: STELLAR_PUBNET_CAIP2,
   // tempo は入れない（2026-09-17）: Tempo は MPP 方言で accept 選択の経路（mpp-payer）が別。
   // x402 の challenge に Tempo の accept が混ざることも無いので、preferNetworks の対象外。
   // xrpl も入れない（2026-09-17）: 署名器が別（xrpl402-payer・selectXrplAccept）で、EVM の
@@ -312,7 +324,9 @@ const LANE_NETWORK: Partial<Record<CappedChain, string>> = {
 // Celo（2026-10-10）: Arc と同じ EVM の署名経路・同じ EOA。10/10 の実測で、Celo を 2 番目以降の accept に置く売り手
 // （agent402.tools は 9 番目・api.describe.net は 6 番目・どちらも先頭は Base）と、先頭に置く売り手（api.blockscout.com）の
 // 両方が居る。Arc と同じく secondary を枠に入れる。
-const LANE_SECONDARY_ACCEPTS: Record<CappedChain, boolean> = { solana: false, arc: true, tempo: false, xrpl: true, celo: true };
+// Stellar（2026-10-18）: Solana と同じ。purchaseOne は主ネットワークが stellar:pubnet の行だけを Stellar で買う。
+// 2 番目以降の accept は使わない（枠に入れると Base 先頭の行を Stellar の preferNetworks に載せてしまう）。
+const LANE_SECONDARY_ACCEPTS: Record<CappedChain, boolean> = { solana: false, arc: true, tempo: false, xrpl: true, celo: true, stellar: false };
 
 /**
  * secondary の枝で raw_accepts の accept（SQL の別名 `a`）に足す条件。XRPL は RLUSD（hex か literal）かつ
@@ -375,6 +389,23 @@ async function defaultXrplSigningInputs(address: string): Promise<XrplSigningInp
   const rpc = createXrplJsonRpc();
   const [sequence, validatedLedgerIndex, feeDrops] = await Promise.all([getAccountSequence(address, rpc), getValidatedLedgerIndex(rpc), getNetworkFeeDrops(rpc)]);
   return { sequence, validatedLedgerIndex, feeDrops };
+}
+
+/**
+ * Stellar の署名器（stellar402-payer.ts）。**フラグが立っているときだけ動的に読む**——OFF の本番バンドルに
+ * `@x402/stellar` を入れない（XRPL の loadXrplPayerModule と同じ作法）。
+ */
+type StellarPayerModule = typeof import("./stellar402-payer");
+async function loadStellarPayerModule(): Promise<StellarPayerModule | null> {
+  if (process.env.OBSERVATORY_STELLAR_L1_ENABLED !== "true") return null;
+  return await import("./stellar402-payer");
+}
+
+/** テストが差し替える署名口。既定は createStellarPaymentPayload（Soroban RPC へ出る）。 */
+export type StellarPaymentInput = { accept: ChallengeAccept; signingAsset: string; stellarUnits: bigint };
+async function defaultCreateStellarPayment(input: StellarPaymentInput): Promise<{ transaction: string }> {
+  const { createStellarPaymentPayload } = await import("./stellar402-payer");
+  return createStellarPaymentPayload(input);
 }
 
 const guardedFetch = createSafeFetchImpl();
@@ -698,7 +729,7 @@ async function reserveSpend(input: {
   // 初回購入の日次枠は、別枠を持つチェーンには掛けない（2026-09-17 本番: 枠 120 が当日ぶん
   // 使い切られ、Tempo 265 件・XRPL 1 件の候補が「購入行が無い」だけで除外され、レーン枠が
   // 0 だった）。新しいチェーンの掃引は初回購入しか無いので、この枠に当たると永久に始まらない。
-  // 支出はそのチェーンの別枠（$2/日）で既に縛られている。Base の初回購入の枠は従来どおり。
+  // 支出はそのチェーンの別枠で既に縛られている（既定は $2。Stellar だけ既定 $0.5）。Base の初回購入の枠は従来どおり。
   const firstQuotaApplies = capChain === null;
   const firstQuota = input.firstPurchaseQuota ?? FIRST_PURCHASE_DAILY_QUOTA;
   // 売り手ごとの日次上限（2026-09-29 監査 5 周目・高）。受取先は台帳と同じ正規化（0x は小文字・base58 / r は原文）、
@@ -1046,6 +1077,8 @@ export async function runL1Batch(
     mppxCharge?: MppxCharge;
     /** Test seam: XRPL の Sequence と validated ledger。既定は XRPL_RPC_URL（JSON-RPC）を読む。 */
     getXrplSigningInputs?: (address: string) => Promise<XrplSigningInputs>;
+    /** Test seam: Stellar の支払い XDR。既定は STELLAR_RPC_URL へ出る。テストはここを差し替え、ネットへ出ない。 */
+    createStellarPayment?: (input: StellarPaymentInput) => Promise<{ transaction: string }>;
   } = {},
 ): Promise<L1BatchSummary> {
   // SSRF (2026-08-15 audit): resourceUrl is a seller-declared string from the
@@ -1063,6 +1096,7 @@ export async function runL1Batch(
   const deadline = createDeadline(batchBudgetMs);
   const getSolanaBlockhash = options.getSolanaBlockhash ?? defaultSolanaBlockhash;
   const getXrplSigningInputs = options.getXrplSigningInputs ?? defaultXrplSigningInputs;
+  const createStellarPayment = options.createStellarPayment ?? defaultCreateStellarPayment;
   const summary: L1BatchSummary = {
     attempted: 0,
     settled: 0,
@@ -1127,6 +1161,12 @@ export async function runL1Batch(
   // ready = フラグ + seed + XRPL_RPC_URL。RPC が無ければ SQL の段階で候補外にする——署名の材料（Sequence・
   // validated ledger）を読めない失敗を、売り手の request_error 行にしない（2026-09-17 出荷前レビュー #2）。
   const xrplReady = xrplWallet !== null && !!process.env.XRPL_RPC_URL?.trim();
+  // Stellar（2026-10-18）: 旗 + 秘密 + Horizon（残高）+ Soroban RPC（署名）。RPC が無いと予約の後に
+  // createPaymentPayload が落ちるので、SQL の段階で候補外にする（XRPL の RPC と同じ理由）。
+  const stellarPayer = await loadStellarPayerModule();
+  const stellarAccount = stellarPayer ? stellarPayer.loadStellarPayer() : null;
+  const stellarReady =
+    stellarAccount !== null && !!process.env.STELLAR_HORIZON_URL?.trim() && !!process.env.STELLAR_RPC_URL?.trim();
 
   // 2026-08-23 監査: 自己除外が VET402_OPERATOR_PAYTO の手入力だけに依存していて、
   // **本番では未設定＝完全な no-op** だった。中立性は堀そのものなので、忘れられる
@@ -1136,6 +1176,7 @@ export async function runL1Batch(
     account.address,
     solanaKeypair?.publicKey.toBase58() ?? null,
     xrplWallet?.classicAddress ?? null,
+    stellarAccount?.address ?? null,
   ]);
 
   // 1.5 Resolve orphaned reservations from earlier runs BEFORE anything else
@@ -1184,6 +1225,8 @@ export async function runL1Batch(
     // Celo（2026-10-10）: Base と同じ鍵で署名する EVM レーン。有効条件はフラグだけ（Arc と同じ）。
     // フラグが無ければ候補 SQL が Celo を主ネットワークにする行を外し、レーン枠も問い合わせない。
     { chain: "celo", ready: isCeloL1Enabled() },
+    // Stellar（2026-10-18）: 旗 + 秘密 + Horizon + RPC。どれか欠ければ主ネットワークが pubnet の行を外す。
+    { chain: "stellar", ready: stellarReady },
   ];
   const laneExclusions: SQL[] = [];
   const laneSelectable = new Map<CappedChain, boolean>();
@@ -1609,6 +1652,9 @@ export async function runL1Batch(
   // レーン枠から Celo で買おうとして毎回 payer_unfunded（行なし）になり、Celo に入金するまで Base でも買えない。
   // 閉じた後のレーン候補は Base の通常経路（preferNetworks 無し）で買う。金の関門は何も変えない。
   let celoLaneUnavailable = false;
+  // Stellar（2026-10-18）: 未入金、または署名器が落ちたら、以後の主ネットワークが pubnet の行は飛ばす。
+  // secondary は使わないので Base へ戻す経路は無い。他チェーンは止めない。summary に閉じた理由は足さない。
+  let stellarLaneUnavailable = false;
 
   // 売り手ごとの日次上限に届いた受取先・ホスト（2026-09-29 監査 5 周目）。予約が断ったら、このバッチの残りの
   // 同じ売り手の候補には 402 も取りに行かない（行も書かない）。締めるのは reserveSpend で、ここは無駄を省くだけ。
@@ -1634,6 +1680,10 @@ export async function runL1Batch(
       continue;
     }
     if (xrplLaneUnavailable && candidate.network === XRPL_MAINNET_CAIP2) {
+      summary.skipped++;
+      continue;
+    }
+    if (stellarLaneUnavailable && candidate.network === STELLAR_PUBNET_CAIP2) {
       summary.skipped++;
       continue;
     }
@@ -1675,7 +1725,7 @@ export async function runL1Batch(
         !candidate.failedNetworks.includes(laneNetwork)
           ? [laneNetwork]
           : [];
-      const purchaseInput = { candidate, xrplLanePreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge };
+      const purchaseInput = { candidate, xrplLanePreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress: stellarAccount?.address ?? null, createStellarPayment, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge };
       let outcome = await purchaseOne({ ...purchaseInput, preferNetworks });
       // Celo の残高が足りない／読めない（署名していない・行も予約も無い）。以後の Celo レーンの優先を閉じる。
       // いまの候補が「Celo を優先された Base 先頭の出品」なら、優先なしでもう 1 回だけ通す——壁の並びどおり Base の
@@ -1716,6 +1766,13 @@ export async function runL1Batch(
           xrplLaneUnavailable = true;
           summary.xrplLaneClosed ??= "payer_unfunded";
         }
+        // Stellar は secondary が無い。未入金のあとに同じレーンを歩き続けると、402 だけを積み、行は残らない。
+        if (outcome.payerChain === "stellar") stellarLaneUnavailable = true;
+      } else if (outcome.kind === "stellar_signing_unavailable") {
+        // 署名器が落ちた（RPC・秘密・空の payload）。予約は request_error・spent 0 に戻してある。
+        // 以後の pubnet 行は同じ失敗を書かない。summary の列は足さない（skipped に数える）。
+        stellarLaneUnavailable = true;
+        summary.skipped++;
       } else if (outcome.kind === "xrpl_fee_over_cap") {
         // 網の open_ledger_fee が上限超。署名していない・行も無い。このバッチの XRPL は閉じ、
         // 他チェーンの候補は歩き続ける。理由は summary とサーバログに残す。
@@ -2106,6 +2163,9 @@ async function purchaseOne(input: {
   xrplPayer: XrplPayerModule | null;
   xrplWallet: XrplWallet | null;
   getXrplSigningInputs: (address: string) => Promise<XrplSigningInputs>;
+  stellarPayer: StellarPayerModule | null;
+  stellarAddress: string | null;
+  createStellarPayment: (input: StellarPaymentInput) => Promise<{ transaction: string }>;
   fetchImpl: (url: string, init?: RequestInit, call?: SafeFetchCallOptions) => Promise<Response>;
   timeoutMs: number;
   db: NonNullable<ReturnType<typeof getDb>>;
@@ -2116,7 +2176,7 @@ async function purchaseOne(input: {
   tempoEnabled: boolean;
   mppxCharge?: MppxCharge;
 }): Promise<{
-  kind: "attempted" | "skipped" | "budget_denied" | "halted" | "payer_unfunded" | "xrpl_fee_over_cap" | "xrpl_lane_unavailable" | "seller_capped";
+  kind: "attempted" | "skipped" | "budget_denied" | "halted" | "payer_unfunded" | "xrpl_fee_over_cap" | "xrpl_lane_unavailable" | "stellar_signing_unavailable" | "seller_capped";
   /** kind === "seller_capped" のとき、どちらの単位で届いたかと、その売り手（受取先・ホスト）。 */
   sellerCap?: { scope: "payto" | "host" | "domain"; payTo: string; host: string; domain: string };
   settled: boolean;
@@ -2130,10 +2190,11 @@ async function purchaseOne(input: {
   /** kind === "payer_unfunded" のとき、残高が足りなかった（読めなかった）購入元のチェーン。 */
   payerChain?: PayerChain;
 }> {
-  const { candidate, preferNetworks, xrplLanePreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge } = input;
+  const { candidate, preferNetworks, xrplLanePreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress, createStellarPayment, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge } = input;
   const method = (candidate.method ?? "GET").toUpperCase();
   const startedAt = Date.now();
   const isSolana = candidate.network === SOLANA_MAINNET_CAIP2;
+  const isStellar = candidate.network === STELLAR_PUBNET_CAIP2;
   // Tempo（MPP・2026-09-17）: 壁は x402 の封筒ではなく WWW-Authenticate: Payment。
   const isTempo = candidate.network === TEMPO_MAINNET_CAIP2;
   // XRPL レール（2026-09-18）: 主ネットワークが XRPL の行は最初から、Base 先頭の行は壁の 402 を読んで
@@ -2146,7 +2207,9 @@ async function purchaseOne(input: {
     ? (solanaKeypair?.publicKey.toBase58() ?? "solana_key_missing")
     : isXrpl
       ? (xrplWallet?.classicAddress ?? "xrpl_key_missing")
-      : account.address.toLowerCase();
+      : isStellar
+        ? (stellarAddress ?? "stellar_key_missing")
+        : account.address.toLowerCase();
 
   // census / retest の候補（2026-09-28）なら、この候補について書く行の raw_response_meta に selection を残す。
   // census でなければ null で、tagMeta は受け取った値をそのまま返す（従来の行と 1 バイトも変わらない）。
@@ -2187,6 +2250,9 @@ async function purchaseOne(input: {
     return { kind: "skipped", settled: false, spent: 0n };
   }
   if (isXrpl && (!xrplWallet || !xrplPayer)) {
+    return { kind: "skipped", settled: false, spent: 0n };
+  }
+  if (isStellar && (!stellarPayer || !stellarAddress)) {
     return { kind: "skipped", settled: false, spent: 0n };
   }
   // 2026-09-29 監査 5 周目（中・お金）: 買うのは https の出品だけ、かつカタログが受取先（pay_to）を宣言している
@@ -2301,10 +2367,21 @@ async function purchaseOne(input: {
     isXrpl = true;
     payerLabel = xrplWallet!.classicAddress;
   }
+  // StellarAcceptSelection は accept の有無で stellarUnits（bigint）と signingAsset が分かれる。
+  // 他レーンの selection と一つの合併に溶かすと、成功側の bigint が失敗側の undefined と混ざり、
+  // 署名口へ渡せない。Stellar だけ型を保つ。
+  const stellarSelection = isStellar
+    ? stellarPayer!.selectStellarAccept(challenge.accepts, {
+        declaredAmount: candidate.priceAmount,
+        declaredPayTo: candidate.payTo,
+      })
+    : null;
   const selection = mppSelection
     ? mppSelection
     : xrplSecondary?.accept
     ? xrplSecondary
+    : stellarSelection !== null
+    ? stellarSelection
     : isSolana
     ? selectSolanaAccept(challenge.accepts, {
         declaredAmount: candidate.priceAmount,
@@ -2331,9 +2408,11 @@ async function purchaseOne(input: {
   // 行は eip155:5042・別枠 arc・残高 arc になる（tests/l1-lane-accept-preference.pg.test.ts）。
   // XRPL の封筒は v2 だけ（正本に v1 の形が無い）。v1 の壁には署名しない。
   const xrplV1Wall = isXrpl && selection.accept !== null && challenge.x402Version !== 2;
-  if (!selection.accept || xrplV1Wall) {
+  // Stellar の exact も v2 だけ（@x402/stellar の client は v2 の payload を返す）。v1 の壁には署名しない。
+  const stellarV1Wall = isStellar && selection.accept !== null && challenge.x402Version !== 2;
+  if (!selection.accept || xrplV1Wall || stellarV1Wall) {
     await record({
-      status: xrplV1Wall ? "no_eligible_accept" : selection.reason!,
+      status: xrplV1Wall || stellarV1Wall ? "no_eligible_accept" : selection.reason!,
       rawResponseMeta: {
         phase: "select",
         declaredAmount: candidate.priceAmount,
@@ -2358,7 +2437,7 @@ async function purchaseOne(input: {
               challengeAccepts: challenge.accepts.slice(0, 4),
               ...(xrplLaneRefusal ? { xrplLane: xrplLaneRefusal } : {}),
               // XRPL の no_eligible_accept の内訳（asset_not_usd = XRP 建てだけの壁・v1 は RLUSD のみ）。
-              ...(xrplV1Wall ? { reason: "x402_v1_unsupported" } : "detail" in selection && selection.detail ? { reason: selection.detail } : {}),
+              ...(xrplV1Wall || stellarV1Wall ? { reason: "x402_v1_unsupported" } : "detail" in selection && selection.detail ? { reason: selection.detail } : {}),
             }),
       },
     });
@@ -2371,7 +2450,7 @@ async function purchaseOne(input: {
   const amountUnitsText = String(amount);
   // 行に書く network は定数（2026-09-17 レビュー #1）。selectXrplAccept は完全一致しか通さないので accept.network と
   // 同じ値だが、別枠の `LIKE 'xrpl:%'` と照合の `=== "xrpl:0"` が壁の表記に依存しないことをここで固定する。
-  const ledgerNetwork = isXrpl ? XRPL_MAINNET_CAIP2 : accept.network;
+  const ledgerNetwork = isXrpl ? XRPL_MAINNET_CAIP2 : isStellar ? STELLAR_PUBNET_CAIP2 : accept.network;
   // asset も定数の大文字 hex で書く（2026-09-18 レビュー S2）: 壁が `RLUSD` リテラルや小文字 hex を名乗っても、
   // 台帳・照合・索引（index-xrpl.ts）が同じ 1 つの表記を読む。封筒の accepted には壁の原文をそのまま返す。
   // Arc も定数で書く（2026-09-19 レビュー N3）: selectAccept は固定 USDC と大小無視で一致した accept しか通さないので
@@ -2379,7 +2458,11 @@ async function purchaseOne(input: {
   // Celo も定数で書く（2026-10-10・Arc と同じ理由）。
   const ledgerAsset = isXrpl
     ? RLUSD_CURRENCY_HEX
-    : accept.network === ARC_CAIP2
+    : isStellar
+      ? accept.asset === STELLAR_USDC_CLASSIC
+        ? STELLAR_USDC_CLASSIC
+        : STELLAR_USDC_SAC
+      : accept.network === ARC_CAIP2
       ? ARC_CHAIN.usdc
       : accept.network === CELO_CAIP2
         ? CELO_CHAIN.usdc
@@ -2503,8 +2586,8 @@ async function purchaseOne(input: {
   // Celo（2026-10-10）も同じ: 同じ EOA だが Celo の USDC は別。ここで "celo" に分けないと、Celo の accept に署名する前に
   // **Base の残高**を見てしまう（Celo が空でも署名し、売り手の 402 を settle_failed として記録する——Issue #29 と同じ事故）。
   const evmPayChainId = evmChainFor(accept.network)?.chainId;
-  const payerChain: PayerChain = isTempo ? "tempo" : isSolana ? "solana" : isXrpl ? "xrpl" : evmPayChainId === 5042 ? "arc" : evmPayChainId === 42220 ? "celo" : "base";
-  const payerOwner = isSolana ? solanaKeypair!.publicKey.toBase58() : isXrpl ? xrplWallet!.classicAddress : account.address;
+  const payerChain: PayerChain = isTempo ? "tempo" : isSolana ? "solana" : isXrpl ? "xrpl" : isStellar ? "stellar" : evmPayChainId === 5042 ? "arc" : evmPayChainId === 42220 ? "celo" : "base";
+  const payerOwner = isSolana ? solanaKeypair!.publicKey.toBase58() : isXrpl ? xrplWallet!.classicAddress : isStellar ? stellarAddress! : account.address;
   const funds = await payerFunds.check(payerChain, payerOwner, amount);
   if (!funds.ok) {
     onPayerUnfunded(payerChain, { ...funds, amountUnits: String(amount) });
@@ -2692,6 +2775,36 @@ async function purchaseOne(input: {
         payload: xrplPayer!.xrplPaymentPayload(accept, signed.signedTxBlob),
         resourceUrl: candidate.resourceUrl,
       });
+    } else if (isStellar) {
+      // 予約の後・有料の要求の前。ここで落ちたら署名は売り手に届いていないので spent_units を 0 に戻す
+      // （Tempo の mpp_credential と同じ）。レーンはバッチの残りを閉じる（同じ RPC へ request_error を積まない）。
+      let payload: { transaction: string };
+      try {
+        // accept が非 null のときだけ stellarUnits は bigint、signingAsset は SAC。
+        if (stellarSelection === null || stellarSelection.accept === null) {
+          throw new Error("stellar_selection");
+        }
+        payload = await createStellarPayment({
+          accept,
+          signingAsset: stellarSelection.signingAsset,
+          stellarUnits: stellarSelection.stellarUnits,
+        });
+      } catch (error) {
+        logServerErrorSafe("observatory.l1.stellar_sign", redactedError(error));
+        await releaseUnsignedReservation(db, reservation.rowId, {
+          status: "request_error",
+          rawResponseMeta: tagMeta({ phase: "stellar_sign", error: redactForLog(error) }),
+        });
+        invalidateDecisionCache(candidate.id);
+        return { kind: "stellar_signing_unavailable", settled: false, spent: 0n };
+      }
+      authNonce = createHash("sha256").update(payload.transaction).digest("hex");
+      header = encodePaymentHeader({
+        x402Version: 2,
+        accept,
+        payload,
+        resourceUrl: candidate.resourceUrl,
+      });
     } else {
       const authorization = buildAuthorization({
         from: account.address,
@@ -2824,7 +2937,7 @@ async function purchaseOne(input: {
     const claimedSettlement = settlement?.success === true && !!settlement.transaction;
     const settlementTxWellFormed =
       claimedSettlement &&
-      isWellFormedSettlementTx(settlement!.transaction, isSolana ? "solana" : isXrpl ? "xrpl" : "evm");
+      isWellFormedSettlementTx(settlement!.transaction, isSolana ? "solana" : isXrpl ? "xrpl" : isStellar ? "stellar" : "evm");
 
     // 2026-08-23 監査 C-4: ここで `settled` と名乗らない。
     // settled の定義は「我々がチェーンで確認した」であって、売り手が success:true と
@@ -3092,14 +3205,14 @@ async function purchaseOne(input: {
       settled: settled && recordedStatus === status,
       spent: amount,
       status: recordedStatus,
-      network: accept.network,
+      network: ledgerNetwork,
     };
   } catch (error) {
     logServerErrorSafe("observatory.l1.purchase_after_reservation", redactedError(error));
     const writtenStatus = await resolveReservationAsFailed(db, reservation.rowId, error);
     invalidateDecisionCache(candidate.id);
     // spent はこのバッチの見積もり（spentToday）用で、過大側に倒したまま（予約を戻したかは DB が正）。
-    return { kind: "attempted", settled: false, spent: amount, status: writtenStatus, network: accept.network };
+    return { kind: "attempted", settled: false, spent: amount, status: writtenStatus, network: ledgerNetwork };
   }
 }
 

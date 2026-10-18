@@ -31,7 +31,13 @@ const SOLANA_SIG_RE = /^[1-9A-HJ-NP-Za-km-z]{80,90}$/;
 /** XRPL: 32 バイトの 16 進（0x 無し）。ノードは大文字で返すが、小文字も同じ tx なので通す。 */
 const XRPL_TX_RE = /^[0-9A-Fa-f]{64}$/;
 
-export type SettlementChain = "evm" | "solana" | "xrpl";
+/**
+ * Stellar: 32 バイトの 16 進（0x 無し）。形は XRPL と同じだが、チェーンは呼び手が分ける。
+ * `0x` 付きの EVM ハッシュを stellar と言わない（EVM 側の検査も、0x の無い 64 桁を通さない）。
+ */
+const STELLAR_TX_RE = /^[0-9A-Fa-f]{64}$/;
+
+export type SettlementChain = "evm" | "solana" | "xrpl" | "stellar";
 
 /**
  * 申告された決済識別子が、そのチェーンのトランザクションIDとして**あり得る形**か。
@@ -46,5 +52,6 @@ export function isWellFormedSettlementTx(
   if (trimmed.length === 0) return false;
   if (chain === "solana") return SOLANA_SIG_RE.test(trimmed);
   if (chain === "xrpl") return XRPL_TX_RE.test(trimmed);
+  if (chain === "stellar") return STELLAR_TX_RE.test(trimmed);
   return EVM_TX_RE.test(trimmed);
 }
