@@ -155,6 +155,14 @@ const MUTATIONS = [
     find: "    stellarAccount !== null && !!process.env.STELLAR_HORIZON_URL?.trim() && !!process.env.STELLAR_RPC_URL?.trim();",
     replace: "    stellarAccount !== null && !!process.env.STELLAR_HORIZON_URL?.trim() /* MUTANT */;",
   },
+  {
+    id: "S15",
+    what: "secondary の payTo 照合を外す",
+    rule: "宣言した stellar の payTo 集合と違う壁には署名しない",
+    file: PAYER,
+    find: "    const setEligible = protocolEligible.filter((a) => declaredPayToSet.has(a.payTo));",
+    replace: "    const setEligible = /* MUTANT */ protocolEligible;",
+  },
 ];
 
 const HAS_DB = Boolean(process.env.TEST_DATABASE_URL);

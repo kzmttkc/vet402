@@ -19,8 +19,9 @@
 import { Keypair } from "@stellar/stellar-sdk";
 import { validateStellarDestinationAddress } from "@x402/stellar";
 import { DAILY_BUDGET_USD } from "./budget";
+import { toCaip2 } from "./chains";
 import { redactUrls } from "./redact";
-import { MAX_AUTHORIZATION_WINDOW_SECONDS, MAX_PER_PURCHASE_UNITS, type ChallengeAccept } from "./x402-payer";
+import { MAX_AUTHORIZATION_WINDOW_SECONDS, MAX_PER_PURCHASE_UNITS, selectAccept, type ChallengeAccept } from "./x402-payer";
 
 /** CAIP-2。選別は完全一致（`stellar` / `stellar:mainnet` / testnet は選ばない）。 */
 export const STELLAR_PUBNET_CAIP2 = "stellar:pubnet";
@@ -217,17 +218,94 @@ function declaredMatches(declaredAmount: string | null, stellarUnits: bigint): b
 }
 
 /**
+ * 2 番目以降の accept（2026-10-18・段4）。カタログの宣言額は先頭（Base・6 桁）。壁の額は 7 桁。
+ * 台帳の 6 桁に直して比べる。宣言 network の accept が壁にあり宣言どおり払えるときだけ、
+ * 宣言額以下（$1 も超えない）を免除する。それ以外は 6 桁が一致しなければ払わない。
+ */
+function selectStellarSecondaryPriced(
+  eligible: ChallengeAccept[],
+  accepts: readonly unknown[],
+  options: { declaredAmount: string | null; declaredPayTo: string | null; declaredNetwork?: string | null },
+): StellarAcceptSelection {
+  const declaredUnits = ((): bigint | null => {
+    if (options.declaredAmount === null || !/^\d+$/.test(options.declaredAmount)) return null;
+    const v = BigInt(options.declaredAmount);
+    return v > 0n ? v : null;
+  })();
+  const declaredNetwork = options.declaredNetwork ?? null;
+  const declaredLeg =
+    declaredNetwork === null || declaredNetwork === STELLAR_PUBNET_CAIP2
+      ? null
+      : selectAccept(accepts, {
+          declaredAmount: options.declaredAmount,
+          declaredPayTo: options.declaredPayTo,
+          declaredNetwork,
+        }).accept;
+  const declaredOnNetwork = declaredLeg !== null && declaredLeg.network === toCaip2(declaredNetwork);
+  const exempt = declaredUnits !== null && options.declaredPayTo !== null && declaredOnNetwork;
+  const relativeCap =
+    declaredUnits === null ? 0n : declaredUnits < MAX_PER_PURCHASE_UNITS ? declaredUnits : MAX_PER_PURCHASE_UNITS;
+  const maxStellarUnits = MAX_PER_PURCHASE_UNITS * STELLAR_LEDGER_SCALE;
+
+  let sawOverCap = false;
+  for (const accept of eligible) {
+    const stellarUnits = parseStellarUnits(accept.amount)!;
+    const ledgerUnits = stellarUnitsToLedgerUnits(stellarUnits);
+    if (stellarUnits > maxStellarUnits || ledgerUnits > MAX_PER_PURCHASE_UNITS) {
+      sawOverCap = true;
+      continue;
+    }
+    if (exempt) {
+      if (ledgerUnits > relativeCap) {
+        sawOverCap = true;
+        continue;
+      }
+    } else if (declaredUnits === null || ledgerUnits !== declaredUnits) {
+      continue;
+    }
+    return {
+      accept,
+      reason: null,
+      detail: null,
+      amountUnits: ledgerUnits,
+      stellarUnits,
+      signingAsset: STELLAR_USDC_SAC,
+    };
+  }
+  return { accept: null, reason: sawOverCap ? "over_cap" : "price_mismatch", detail: null };
+}
+
+/**
  * 拒否語彙は EVM / Solana / XRPL の selectAccept と同じ順序（payTo → 価格 → 上限）。
  * 旗が OFF なら accept があっても選ばない。
+ *
+ * `declaredPayTos` を渡したとき（secondary）: 単一の declaredPayTo ではなく、その集合と完全一致。
+ * カタログの pay_to は Base の 0x で、G/C アドレスとは比べられない。空の集合は誰とも一致しない。
  */
 export function selectStellarAccept(
   accepts: readonly unknown[],
-  options: { declaredAmount: string | null; declaredPayTo: string | null },
+  options: {
+    declaredAmount: string | null;
+    declaredPayTo: string | null;
+    /** secondary だけ。カタログが宣言した stellar:pubnet の USDC accept の payTo。 */
+    declaredPayTos?: readonly string[];
+    /** secondary の宣言額の免除に使う（e.network）。主ネットワークの選択では渡さない。 */
+    declaredNetwork?: string | null;
+  },
 ): StellarAcceptSelection {
   if (!isStellarL1Enabled()) {
     return { accept: null, reason: "no_eligible_accept", detail: null };
   }
   const { eligible: protocolEligible, detail: refusalDetail } = stellarProtocolEligible(accepts);
+  if (options.declaredPayTos !== undefined) {
+    const declaredPayToSet = new Set(options.declaredPayTos);
+    const setEligible = protocolEligible.filter((a) => declaredPayToSet.has(a.payTo));
+    if (protocolEligible.length === 0) {
+      return { accept: null, reason: "no_eligible_accept", detail: refusalDetail };
+    }
+    if (setEligible.length === 0) return { accept: null, reason: "payto_mismatch", detail: null };
+    return selectStellarSecondaryPriced(setEligible, accepts, options);
+  }
   if (protocolEligible.length === 0) {
     return { accept: null, reason: "no_eligible_accept", detail: refusalDetail };
   }

@@ -27,7 +27,7 @@ import {
   stellarUnitsToLedgerUnits,
   wouldExceedStellarDailyCap,
 } from "@/lib/observatory/stellar402-payer";
-import { MAX_PER_PURCHASE_UNITS } from "@/lib/observatory/x402-payer";
+import { BASE_USDC, MAX_PER_PURCHASE_UNITS } from "@/lib/observatory/x402-payer";
 
 function withEnv(name: string, value: string | undefined, fn: () => void) {
   const saved = process.env[name];
@@ -317,4 +317,51 @@ test("署名器に渡す有効期限は頭打ちした値。売り手の 10 億�
     if (saved.s === undefined) delete process.env.STELLAR_PAYER_SECRET; else process.env.STELLAR_PAYER_SECRET = saved.s;
     if (saved.r === undefined) delete process.env.STELLAR_RPC_URL; else process.env.STELLAR_RPC_URL = saved.r;
   }
+});
+
+const BASE_PAYTO = "0x1111111111111111111111111111111111111111";
+const baseAccept = {
+  scheme: "exact",
+  network: "eip155:8453",
+  asset: BASE_USDC,
+  payTo: BASE_PAYTO,
+  amount: "10000",
+  maxTimeoutSeconds: 300,
+  extra: { name: "USD Coin", version: "2" },
+};
+const secondaryOpts = (declaredPayTos: readonly string[]) => ({
+  declaredAmount: "10000",
+  declaredPayTo: BASE_PAYTO,
+  declaredPayTos,
+  declaredNetwork: "eip155:8453",
+});
+
+test("secondary: Base $0.01 の後ろの 7 桁 100000 を選び、台帳は 6 桁 10000", () => {
+  withEnv("OBSERVATORY_STELLAR_L1_ENABLED", "true", () => {
+    const sel = selectStellarAccept([baseAccept, { ...SAC_ACCEPT, amount: "100000" }], secondaryOpts([PAYTO]));
+    assert.equal(sel.reason, null);
+    assert.equal(sel.accept?.payTo, PAYTO);
+    assert.equal(sel.stellarUnits, 100_000n);
+    assert.equal(sel.amountUnits, 10_000n);
+    assert.equal(sel.signingAsset, STELLAR_USDC_SAC);
+    const cheap = selectStellarAccept([baseAccept, { ...SAC_ACCEPT, amount: "50000" }], secondaryOpts([PAYTO]));
+    assert.equal(cheap.reason, null, "宣言額より安い Stellar は払う");
+    assert.equal(cheap.amountUnits, 5_000n);
+    const expensive = selectStellarAccept([baseAccept, { ...SAC_ACCEPT, amount: "200000" }], secondaryOpts([PAYTO]));
+    assert.equal(expensive.accept, null);
+    assert.equal(expensive.reason, "over_cap");
+  });
+});
+
+test("secondary: 宣言した payTo と違う壁は payto_mismatch。小文字化した住所も一致しない", () => {
+  withEnv("OBSERVATORY_STELLAR_L1_ENABLED", "true", () => {
+    const other = Keypair.random().publicKey();
+    const wrong = selectStellarAccept([baseAccept, { ...SAC_ACCEPT, amount: "100000", payTo: other }], secondaryOpts([PAYTO]));
+    assert.equal(wrong.accept, null);
+    assert.equal(wrong.reason, "payto_mismatch");
+    const lower = selectStellarAccept([baseAccept, { ...SAC_ACCEPT, amount: "100000" }], secondaryOpts([PAYTO.toLowerCase()]));
+    assert.equal(lower.reason, "payto_mismatch");
+    const empty = selectStellarAccept([baseAccept, { ...SAC_ACCEPT, amount: "100000" }], secondaryOpts([]));
+    assert.equal(empty.reason, "payto_mismatch");
+  });
 });
