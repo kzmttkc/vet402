@@ -34,8 +34,10 @@ import { redactForLog } from "./redact";
  * "xrpl"（2026-09-17）: 残高は RLUSD（account_lines・6 桁 units に切り捨て）。XRPL は手数料を
  * 我々が XRP で払うので、準備金を引いた XRP が手数料に足りなければ **読めなかった扱いで throw**
  * ——署名しない側へ倒れ、行を書かず、ログに理由（xrpl_fee_unfunded）が残る。
+ * "stellar"（2026-10-18）: classic USDC の trustline を Horizon で読む。7 桁 stroops を 6 桁 units に
+ * 切り捨てる。trustline が無い・未承認・読めないは throw（署名しない側）。公開 Horizon へは倒れない。
  */
-export type PayerChain = "base" | "solana" | "arc" | "tempo" | "xrpl" | "celo";
+export type PayerChain = "base" | "solana" | "arc" | "tempo" | "xrpl" | "celo" | "stellar";
 
 /** 購入元（owner）の USDC 残高を基本単位（6 桁）で返す。読めなければ throw する。 */
 export type PayerUsdcBalanceReader = (input: { chain: PayerChain; owner: string }) => Promise<bigint>;
@@ -109,6 +111,7 @@ const ERC20_BALANCE_OF_ABI = [
  * 本番の読み手。Base は BASE_RPC_URL、Solana は SOLANA_RPC_URL。未設定は throw（公開 RPC へ無言で倒れない）。
  * Arc は ARC_RPC_URL、未設定なら公開 RPC https://rpc.mainnet.arc.io（オーナー指定 2026-09-17・chain/arc.ts）。
  * Celo は CELO_RPC_URL、未設定なら公開 RPC https://forno.celo.org（2026-10-10・chain/celo.ts・Arc と同じ扱い）。
+ * Stellar は STELLAR_HORIZON_URL。未設定は throw（公開 Horizon へ無言で倒れない）。
  * どのチェーンも、読めなければ throw → 呼び手は署名しない側へ倒す。
  */
 export const defaultPayerUsdcBalance: PayerUsdcBalanceReader = async ({ chain, owner }) => {
@@ -122,6 +125,10 @@ export const defaultPayerUsdcBalance: PayerUsdcBalanceReader = async ({ chain, o
       throw new Error(`xrpl_fee_unfunded: ${spendable} drops spendable after reserve < fee ${XRPL_FEE_DROPS}`);
     }
     return rlusd;
+  }
+  if (chain === "stellar") {
+    const { readStellarUsdcLedgerUnits } = await import("./settlement-verify-stellar");
+    return await readStellarUsdcLedgerUnits(owner);
   }
   if (chain === "arc") {
     const client = getArcPublicClient("live");

@@ -229,6 +229,12 @@ export async function verifyL1Settlement(
     const { verifyXrplSettlement } = await import("./settlement-verify-xrpl");
     return verifyXrplSettlement(input);
   }
+  // Stellar（2026-10-18）: Horizon で successful・払い手・宛先・額（7 桁で完全一致）・USDC（classic か SAC）。
+  // Base の client で読むと chain_not_yet_verifiable のままになる。
+  if (network.startsWith("stellar:")) {
+    const { verifyStellarSettlement } = await import("./settlement-verify-stellar");
+    return verifyStellarSettlement(input);
+  }
 
   // Tempo（MPP・2026-09-17）: USDC.e の Transfer / TransferWithMemo を TEMPO_RPC_URL で読む専用の照合器。
   // ここ（Base の client・Base の USDC）で読むと wrong_chain にしかならない。
