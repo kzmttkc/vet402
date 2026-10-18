@@ -562,6 +562,11 @@ export type SettlementRef = {
   amount: string | null;
   asset: string | null;
   block_time: string | null;
+  /**
+   * block_time の時計。chain は照合時に残した台帳時刻。attempted_at は台帳時刻が無いときの試行時刻。
+   * verified_at は、古い行が照合の完了時刻を block_time に入れていた印。
+   */
+  block_time_source: "chain" | "attempted_at" | "verified_at" | null;
   attribution: string;
   wash_flag: string;
   resource_id: string | null;

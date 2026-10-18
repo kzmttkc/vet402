@@ -600,6 +600,12 @@ export async function runSettlementVerification(options?: {
     });
 
     if (result.ok) {
+      // 台帳のブロック時刻。無い（null・Invalid Date）ときはキーを足さない。
+      // raw_response_meta は SQL の中で結合し、既存のキーは消さない。
+      const blockIso =
+        result.blockTimestamp && Number.isFinite(result.blockTimestamp.getTime())
+          ? result.blockTimestamp.toISOString()
+          : null;
       // §10 / §6.2: バックフィルで確定した状態変化は訂正ログに残す——2026-09-29 から同じ文で。
       await updateWithCorrection(db!, {
         update: sql`
@@ -608,7 +614,14 @@ export async function runSettlementVerification(options?: {
               settlement_verified = true,
               settlement_verified_at = now(),
               settlement_verify_reason = NULL,
-              settlement_block_number = ${String(result.blockNumber)}::bigint
+              settlement_block_number = ${String(result.blockNumber)}::bigint,
+              raw_response_meta = CASE
+                WHEN ${blockIso}::text IS NULL THEN raw_response_meta
+                ELSE coalesce(
+                       CASE WHEN jsonb_typeof(raw_response_meta) = 'object' THEN raw_response_meta ELSE '{}'::jsonb END,
+                       '{}'::jsonb
+                     ) || jsonb_build_object('settlementBlockTime', ${blockIso}::text)
+              END
           WHERE id = ${row.id}::uuid
           RETURNING id::text AS correction_subject_id`,
         subjectType: "purchase",

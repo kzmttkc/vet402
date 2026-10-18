@@ -19,10 +19,17 @@ type L1Row = {
   payer: string | null;
   pay_to: string | null;
   attempted_at: string;
-  settlement_verified_at: string | null;
+  settlement_block_time: string | null;
   resource_id: string | null;
   endpoint_id: string;
 };
+
+/** 照合器が raw_response_meta.settlementBlockTime に残した台帳時刻。読めなければ null。 */
+export function chainBlockTime(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
 
 export async function ingestL1(options: { onlyPurchaseRowId?: string; limit?: number; sinceDays?: number } = {}) {
   const db = getDb();
@@ -31,7 +38,8 @@ export async function ingestL1(options: { onlyPurchaseRowId?: string; limit?: nu
   const rows = rowsOf<L1Row>(
     await db.execute(sql`
       SELECT pu.id::text AS id, pu.tx_hash, pu.network, pu.asset, pu.amount_units, pu.payer, pu.pay_to,
-             pu.attempted_at::text AS attempted_at, pu.settlement_verified_at::text AS settlement_verified_at,
+             pu.attempted_at::text AS attempted_at,
+             pu.raw_response_meta->>'settlementBlockTime' AS settlement_block_time,
              e.resource_id, e.id::text AS endpoint_id
       FROM x402_l1_purchases pu
       JOIN x402_endpoints e ON e.id = pu.endpoint_id
@@ -45,6 +53,8 @@ export async function ingestL1(options: { onlyPurchaseRowId?: string; limit?: nu
   let updated = 0;
   for (const r of rows) {
     const chain = toCaip2(r.network) ?? r.network!;
+    // 台帳時刻が残っていればそれを使う。無ければ試行時刻。照合が終わった時刻は使わない。
+    const chainTime = chainBlockTime(r.settlement_block_time);
     const row = buildRow(
       {
         chain,
@@ -53,10 +63,9 @@ export async function ingestL1(options: { onlyPurchaseRowId?: string; limit?: nu
         amount: r.amount_units,
         payer: r.payer,
         payee: r.pay_to,
-        // ブロック時刻は照合時刻で近似（確定を確認した時刻）。無ければ試行時刻。
-        blockTime: new Date(r.settlement_verified_at ?? r.attempted_at),
+        blockTime: chainTime ?? new Date(r.attempted_at),
         source: "l1_purchase",
-        raw: { purchaseRowId: r.id, blockTimeSource: r.settlement_verified_at ? "settlement_verified_at" : "attempted_at" },
+        raw: { purchaseRowId: r.id, blockTimeSource: chainTime ? "chain" : "attempted_at" },
       },
       { attribution: "confirmed", washFlag: "test", resourceId: r.resource_id, endpointId: r.endpoint_id },
     );

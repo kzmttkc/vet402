@@ -35,11 +35,33 @@ export type SettlementRef = {
   amount: string | null;
   asset: string | null;
   block_time: string | null;
+  /**
+   * block_time の時計。chain は照合時に残した台帳時刻。attempted_at は台帳時刻が無いときの試行時刻。
+   * verified_at は、古い行が照合の完了時刻を block_time に入れていた印（attempted_at とは書かない）。
+   */
+  block_time_source: "chain" | "attempted_at" | "verified_at" | null;
   attribution: string;
   wash_flag: string;
   resource_id: string | null;
   endpoint_id: string | null;
 };
+
+/** settlements.raw.blockTimeSource を公開の block_time_source にする。未知の値は null。 */
+export function blockTimeSourceFromRaw(raw: unknown): SettlementRef["block_time_source"] {
+  let value: unknown = raw;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const source = (value as { blockTimeSource?: unknown }).blockTimeSource;
+  if (source === "chain" || source === "attempted_at") return source;
+  if (source === "settlement_verified_at") return "verified_at";
+  return null;
+}
 
 export type ResolveResult = {
   query: { kind: QueryKind; value: string };
@@ -231,14 +253,17 @@ export async function payeesByEndpoint(ref: string): Promise<{ payee_id: string;
 export async function settlementByTx(txHash: string): Promise<SettlementRef | null> {
   const db = getDb();
   if (!db) return null;
-  const rows = rowsOf<SettlementRef & { endpoint_id: string | null }>(
+  const rows = rowsOf<SettlementRef & { endpoint_id: string | null; raw: unknown }>(
     await db.execute(sql`
       SELECT purchase_id, chain, tx_hash, payer_id, payee_id, amount, asset, block_time::text AS block_time,
-             attribution, wash_flag, resource_id, endpoint_id::text AS endpoint_id
+             attribution, wash_flag, resource_id, endpoint_id::text AS endpoint_id, raw
       FROM settlements WHERE tx_hash = ${txHash} OR lower(tx_hash) = ${txHash.toLowerCase()} LIMIT 1
     `),
   );
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (!row) return null;
+  const { raw, ...settlement } = row;
+  return { ...settlement, block_time_source: blockTimeSourceFromRaw(raw) };
 }
 
 /**

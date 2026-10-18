@@ -49,7 +49,15 @@ export async function upsertSettlement(row: SettlementRow): Promise<"inserted" |
       payee_id = COALESCE(EXCLUDED.payee_id, settlements.payee_id),
       block_time = COALESCE(EXCLUDED.block_time, settlements.block_time),
       resource_id = COALESCE(EXCLUDED.resource_id, settlements.resource_id),
-      endpoint_id = COALESCE(EXCLUDED.endpoint_id, settlements.endpoint_id)
+      endpoint_id = COALESCE(EXCLUDED.endpoint_id, settlements.endpoint_id),
+      -- l1 の再取込だけ raw を結合する。block_time は上の COALESCE で新しい非 NULL が勝つが、
+      -- raw を置いたままだと blockTimeSource が古い「照合時刻」のまま残る。他の source は触らない。
+      raw = CASE
+        WHEN EXCLUDED.source = 'l1_purchase' THEN
+          coalesce(CASE WHEN jsonb_typeof(settlements.raw) = 'object' THEN settlements.raw ELSE '{}'::jsonb END, '{}'::jsonb)
+          || coalesce(EXCLUDED.raw, '{}'::jsonb)
+        ELSE settlements.raw
+      END
     RETURNING (xmax = 0) AS inserted
   `);
   const r = rowsOf<{ inserted: boolean }>(raw)[0];

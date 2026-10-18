@@ -4688,7 +4688,7 @@ components:
     SettlementRef:
       type: object
       description: One indexed settlement (§7.2), with its attribution and wash flag.
-      required: [purchase_id, chain, tx_hash, payer_id, payee_id, amount, asset, block_time, attribution, wash_flag, resource_id, endpoint_id]
+      required: [purchase_id, chain, tx_hash, payer_id, payee_id, amount, asset, block_time, block_time_source, attribution, wash_flag, resource_id, endpoint_id]
       properties:
         purchase_id: { type: string }
         chain: { type: string, description: CAIP-2 }
@@ -4698,6 +4698,15 @@ components:
         amount: { type: string, nullable: true, description: Smallest units, as a decimal string. }
         asset: { type: string, nullable: true }
         block_time: { type: string, nullable: true }
+        block_time_source:
+          type: string
+          nullable: true
+          enum: [chain, attempted_at, verified_at]
+          description: >-
+            Clock behind block_time. chain is the ledger time stored at
+            verification. attempted_at is the purchase attempt time, used when
+            the ledger time was not stored. verified_at marks an older row
+            whose block_time is the time verification finished.
         attribution: { type: string, description: confirmed | probable | unmatched }
         wash_flag: { type: string, description: none | self_deal | circular | test }
         resource_id: { type: string, nullable: true }

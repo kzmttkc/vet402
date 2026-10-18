@@ -360,6 +360,7 @@ const SURFACES: Surface[] = [
       "amount",
       "asset",
       "block_time",
+      "block_time_source",
       "attribution",
       "wash_flag",
       "resource_id",
