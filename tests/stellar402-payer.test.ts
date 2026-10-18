@@ -365,3 +365,122 @@ test("secondary: 宣言した payTo と違う壁は payto_mismatch。小文字�
     assert.equal(empty.reason, "payto_mismatch");
   });
 });
+
+test("secondary: Base の壁が宣言と合わないとき、宣言額以下でも一致しない Stellar は払わない", () => {
+  withEnv("OBSERVATORY_STELLAR_L1_ENABLED", "true", () => {
+    // 宣言は $0.10。壁の Base は $0.01 で宣言と合わないので免除は立たない。
+    // Stellar の $0.08 は壁より高く、宣言額より安い。6 桁は一致しない。
+    // 免除を「宣言額があるだけ」に緩めると、この額を払ってしまう。
+    const wall = { ...baseAccept, amount: "10000" };
+    const stellar = { ...SAC_ACCEPT, amount: "800000" };
+    const sel = selectStellarAccept([wall, stellar], {
+      declaredAmount: "100000",
+      declaredPayTo: BASE_PAYTO,
+      declaredPayTos: [PAYTO],
+      declaredNetwork: "eip155:8453",
+    });
+    assert.equal(sel.accept, null);
+    assert.equal(sel.reason, "price_mismatch");
+  });
+});
+
+test("secondary: 免除が無いとき 6 桁が宣言額と完全一致しなければ払わない", () => {
+  withEnv("OBSERVATORY_STELLAR_L1_ENABLED", "true", () => {
+    // 壁に宣言 network の accept が無いので免除は立たない。宣言 $0.01 に対し Stellar は $0.02（上限未満）。
+    const sel = selectStellarAccept([{ ...SAC_ACCEPT, amount: "200000" }], {
+      declaredAmount: "10000",
+      declaredPayTo: BASE_PAYTO,
+      declaredPayTos: [PAYTO],
+      declaredNetwork: "eip155:8453",
+    });
+    assert.equal(sel.accept, null);
+    assert.equal(sel.reason, "price_mismatch");
+  });
+});
+
+test("secondary: 宣言額が 1 件の上限を超える額と 6 桁で一致しても払わない", () => {
+  withEnv("OBSERVATORY_STELLAR_L1_ENABLED", "true", () => {
+    const over = MAX_PER_PURCHASE_UNITS + 10_000n;
+    const sel = selectStellarAccept(
+      [
+        { ...baseAccept, amount: String(over) },
+        { ...SAC_ACCEPT, amount: String(over * STELLAR_LEDGER_SCALE) },
+      ],
+      {
+        declaredAmount: String(over),
+        declaredPayTo: BASE_PAYTO,
+        declaredPayTos: [PAYTO],
+        declaredNetwork: "eip155:8453",
+      },
+    );
+    assert.equal(sel.accept, null);
+    assert.equal(sel.reason, "over_cap");
+  });
+});
+
+test("署名器の誤りは署名前と署名後で印が違う。秘密と URL は出ない", async () => {
+  const secret = Keypair.random().secret();
+  const saved = { s: process.env.STELLAR_PAYER_SECRET, r: process.env.STELLAR_RPC_URL };
+  const dyn = (await import("@x402/stellar")) as { ExactStellarScheme: typeof ExactStellarScheme };
+  const cjs = createRequire(import.meta.url)("@x402/stellar") as { ExactStellarScheme: typeof ExactStellarScheme };
+  const protos = [...new Set([ExactStellarScheme.prototype, dyn.ExactStellarScheme.prototype, cjs.ExactStellarScheme.prototype])];
+  const input = { accept: SAC_ACCEPT, signingAsset: STELLAR_USDC_SAC, stellarUnits: 1_000_000n };
+  async function signThen(this: { signer: { signAuthEntry: (entry: string) => Promise<unknown> } }, after: () => unknown) {
+    await this.signer.signAuthEntry("AAAA");
+    return after();
+  }
+  const cases: { name: string; fake: (this: { signer: { signAuthEntry: (entry: string) => Promise<unknown> } }) => Promise<unknown>; prefix: string }[] = [
+    {
+      name: "pre",
+      fake: async () => {
+        throw new Error(`connect ${secret} https://rpc.example/x`);
+      },
+      prefix: "stellar_sign_failed_pre:",
+    },
+    {
+      name: "post",
+      fake: async function (this: { signer: { signAuthEntry: (entry: string) => Promise<unknown> } }) {
+        return signThen.call(this, () => {
+          throw new Error(`resimulate ${secret} https://rpc.example/x`);
+        });
+      },
+      prefix: "stellar_sign_failed_post:",
+    },
+    {
+      name: "empty",
+      fake: async function (this: { signer: { signAuthEntry: (entry: string) => Promise<unknown> } }) {
+        return signThen.call(this, () => ({ x402Version: 2, payload: { transaction: "" } }));
+      },
+      prefix: "stellar_sign_failed_post:",
+    },
+  ];
+  process.env.STELLAR_PAYER_SECRET = secret;
+  process.env.STELLAR_RPC_URL = "https://rpc.invalid";
+  try {
+    delete process.env.STELLAR_PAYER_SECRET;
+    await assert.rejects(createStellarPaymentPayload(input), (error: Error) => {
+      assert.match(error.message, /^stellar_sign_failed_pre: stellar_payer_secret_unset$/);
+      return true;
+    });
+    process.env.STELLAR_PAYER_SECRET = secret;
+    for (const c of cases) {
+      const stubs = protos.map((p) => mock.method(p, "createPaymentPayload", c.fake));
+      try {
+        await assert.rejects(createStellarPaymentPayload(input), (error: Error) => {
+          assert.match(error.message, new RegExp(`^${c.prefix}`), c.name);
+          assert.equal(error.message.includes(secret), false, c.name);
+          assert.equal(error.message.includes("rpc.example"), false, c.name);
+          assert.equal(error.message.includes("https://"), false, c.name);
+          return true;
+        });
+      } finally {
+        stubs.forEach((s) => s.mock.restore());
+      }
+    }
+  } finally {
+    if (saved.s === undefined) delete process.env.STELLAR_PAYER_SECRET;
+    else process.env.STELLAR_PAYER_SECRET = saved.s;
+    if (saved.r === undefined) delete process.env.STELLAR_RPC_URL;
+    else process.env.STELLAR_RPC_URL = saved.r;
+  }
+});

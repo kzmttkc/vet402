@@ -422,6 +422,15 @@ async function loadStellarPayerModule(): Promise<StellarPayerModule | null> {
   return await import("./stellar402-payer");
 }
 
+/**
+ * createStellarPaymentPayload が付けた印。auth entry に署名する前だけ true。
+ * 署名後（`stellar_sign_failed_post:`）と、印の無い誤りは false（予約を残し、Base では買わない）。
+ */
+function stellarSignFailedPre(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.startsWith("stellar_sign_failed_pre:");
+}
+
 /** テストが差し替える署名口。既定は createStellarPaymentPayload（Soroban RPC へ出る）。 */
 export type StellarPaymentInput = { accept: ChallengeAccept; signingAsset: string; stellarUnits: bigint };
 async function defaultCreateStellarPayment(input: StellarPaymentInput): Promise<{ transaction: string }> {
@@ -1685,8 +1694,9 @@ export async function runL1Batch(
   // Stellar（2026-10-18・段4）: 未入金、または署名器が落ちたら、以後の stellar の優先を閉じる
   // （Celo の celoLaneUnavailable と同じ型）。閉じないと、Base 先頭で Stellar の accept も持つ出品は
   // レーン枠から Stellar で買おうとして毎回 payer_unfunded（行なし）になり、入金するまで Base でも買えない。
-  // 閉じたあとの Base 先頭の候補は Base の通常経路で 1 回だけ買い直す。主ネットワークが pubnet の行は
-  // 他に買う経路が無いので飛ばす。summary に閉じた理由は足さない。
+  // 署名前の故障だけ、その Base 先頭の候補を Base の通常経路で 1 回買い直す。署名後
+  // （auth entry に署名したあとの再シミュレーション・空の payload）は予約を残し、買い直さない。
+  // 主ネットワークが pubnet の行は他に買う経路が無いので飛ばす。summary に閉じた理由は足さない。
   let stellarLaneUnavailable = false;
 
   // 売り手ごとの日次上限に届いた受取先・ホスト（2026-09-29 監査 5 周目）。予約が断ったら、このバッチの残りの
@@ -1778,13 +1788,14 @@ export async function runL1Batch(
         celoLaneUnavailable = true;
         if (preferNetworks.includes(CELO_CAIP2)) outcome = await purchaseOne({ ...purchaseInput, preferNetworks: [] });
       }
-      // Stellar も同じ。未入金も署名器の故障も、優先を閉じてから Base 先頭の候補だけ 1 回買い直す。
+      // Stellar の未入金は、優先を閉じてから Base 先頭の候補だけ 1 回買い直す。
       // 主ネットワークが pubnet の行は stellarLanePreferred が偽なので買い直さない。
       if (outcome.kind === "payer_unfunded" && outcome.payerChain === "stellar") {
         stellarLaneUnavailable = true;
         if (stellarLanePreferred) outcome = await purchaseOne({ ...purchaseInput, stellarLanePreferred: false, preferNetworks: [] });
       }
-      if (outcome.kind === "stellar_signing_unavailable" && stellarLanePreferred) {
+      // 署名前の故障だけ（retryBase）。署名後は行を残したまま下の枝でレーンを閉じ、Base では買わない。
+      if (outcome.kind === "stellar_signing_unavailable" && outcome.retryBase === true && stellarLanePreferred) {
         stellarLaneUnavailable = true;
         outcome = await purchaseOne({ ...purchaseInput, stellarLanePreferred: false, preferNetworks: [] });
       }
@@ -1823,9 +1834,8 @@ export async function runL1Batch(
         // 返したときのために印を残す。secondary の Base 買い直しが通ったあとはここへ来ない。
         if (outcome.payerChain === "stellar") stellarLaneUnavailable = true;
       } else if (outcome.kind === "stellar_signing_unavailable") {
-        // 署名器が落ちた（RPC・秘密・空の payload）。secondary の買い直しは上で済ませてある。
-        // ここへ来るのは主ネットワークが pubnet の行。予約は request_error・spent 0 に戻してある。
-        // summary の列は足さない（skipped に数える）。
+        // 署名後の故障、または主ネットワークが pubnet の行。予約は request_error・spent 0 のまま。
+        // secondary でも Base では買い直さない（署名が外に出ているかもしれない）。summary の列は足さない。
         stellarLaneUnavailable = true;
         summary.skipped++;
       } else if (outcome.kind === "xrpl_fee_over_cap") {
@@ -2247,6 +2257,11 @@ async function purchaseOne(input: {
   network?: string;
   /** kind === "payer_unfunded" のとき、残高が足りなかった（読めなかった）購入元のチェーン。 */
   payerChain?: PayerChain;
+  /**
+   * Stellar の署名前の故障で、secondary の未署名予約を消したときだけ true。
+   * バッチはその候補を Base で 1 回買い直す。署名後は付けない。
+   */
+  retryBase?: boolean;
 }> {
   const { candidate, preferNetworks, xrplLanePreferred, stellarLanePreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress, createStellarPayment, fetchImpl, timeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge } = input;
   const method = (candidate.method ?? "GET").toUpperCase();
@@ -2865,13 +2880,14 @@ async function purchaseOne(input: {
         resourceUrl: candidate.resourceUrl,
       });
     } else if (isStellar) {
-      // 予約の後・有料の要求の前。ここで落ちたら署名は売り手に届いていないので spent_units を 0 に戻す
-      // （Tempo の mpp_credential と同じ）。レーンはバッチの残りを閉じる（同じ RPC へ request_error を積まない）。
+      // 予約の後・有料の要求の前。署名前に落ちたら署名は売り手に届いていないので、secondary は予約を消して
+      // Base を買い直す。署名後（auth entry のあと）は spent_units を 0 に戻して request_error を残し、
+      // Base では買わない。どちらの故障でもレーンの残りは閉じる（同じ RPC へ署名を積み直さない）。
       let payload: { transaction: string };
       try {
         // accept が非 null のときだけ stellarUnits は bigint、signingAsset は SAC。
         if (stellarSelection === null || stellarSelection.accept === null) {
-          throw new Error("stellar_selection");
+          throw new Error("stellar_sign_failed_pre: stellar_selection");
         }
         payload = await createStellarPayment({
           accept,
@@ -2880,16 +2896,17 @@ async function purchaseOne(input: {
         });
       } catch (error) {
         logServerErrorSafe("observatory.l1.stellar_sign", redactedError(error));
-        // secondary（Base 先頭）: 署名は売り手に届いていない。行を残すと掃引窓の dup が、同じ候補の
-        // Base の買い直しを拒む。未署名・in_flight の予約だけ消す。主ネットワークが pubnet の行は
-        // 従来どおり request_error を残す（同じ RPC へ request_error を積み直さない）。
-        if (!isStellarPrimary) {
+        // 署名前（stellar_sign_failed_pre）かつ secondary だけ、未署名の予約を消す。
+        // 行が残ると掃引窓の dup が、同じ候補の Base の買い直しを拒む。
+        // 署名後（再シミュレーション・空の payload）は消さない。request_error を残し、Base では買わない。
+        // 主ネットワークが pubnet の行は署名前でも request_error を残す（買い直す経路が無い）。
+        if (!isStellarPrimary && stellarSignFailedPre(error)) {
           try {
             await db.delete(x402L1Purchases).where(
               and(eq(x402L1Purchases.id, reservation.rowId), eq(x402L1Purchases.status, "in_flight"), isNull(x402L1Purchases.authNonce)),
             );
             invalidateDecisionCache(candidate.id);
-            return { kind: "stellar_signing_unavailable", settled: false, spent: 0n };
+            return { kind: "stellar_signing_unavailable", settled: false, spent: 0n, retryBase: true };
           } catch (deleteError) {
             logServerErrorSafe("observatory.l1.stellar_sign_release", redactedError(deleteError));
           }

@@ -1239,6 +1239,240 @@ if (!TEST_DB) {
       }
     });
 
+    function captureErrors(): { logs: string[]; restore: () => void } {
+      const logs: string[] = [];
+      const origError = console.error;
+      console.error = (...args: unknown[]) => {
+        logs.push(args.map((a) => String(a)).join(" "));
+      };
+      return { logs, restore: () => (console.error = origError) };
+    }
+
+    await t.test("Stellar secondary: 署名前の故障は未署名の予約を消す", async () => {
+      const { Keypair } = await import("@stellar/stellar-sdk");
+      const payer = Keypair.random();
+      const host = "stellardual.example";
+      process.env.OBSERVATORY_L1_ENABLED = "true";
+      process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
+      process.env.OBSERVATORY_STELLAR_L1_ENABLED = "true";
+      process.env.STELLAR_PAYER_SECRET = payer.secret();
+      process.env.STELLAR_HORIZON_URL = "http://127.0.0.1:9";
+      process.env.STELLAR_RPC_URL = "http://127.0.0.1:9";
+      const cap = captureErrors();
+      try {
+        await withDualStellar(
+          [{ host, basePayTo: payToFor(8), stellarPayTo: Keypair.random().publicKey() }],
+          new Map(),
+          async (challengeForUrl) => {
+            await runL1Batch({
+              limit: 10,
+              getPayerUsdcBalance: FUNDED_PAYER,
+              createStellarPayment: async () => {
+                throw new Error(`stellar_sign_failed_pre: rpc ${payer.secret()} https://rpc.example/x`);
+              },
+              fetchImpl: async (url: string, init?: RequestInit) => {
+                const headers = new Headers(init?.headers);
+                const raw = headers.get("PAYMENT-SIGNATURE") ?? headers.get("X-PAYMENT");
+                if (!raw) {
+                  return new Response(challengeForUrl(url), { status: 402, headers: { "content-type": "application/json" } });
+                }
+                return new Response(JSON.stringify({ data: "base goods" }), {
+                  status: 200,
+                  headers: {
+                    "content-type": "application/json",
+                    "PAYMENT-RESPONSE": Buffer.from(
+                      JSON.stringify({ success: true, transaction: `0x${"cd".repeat(32)}`, network: "eip155:8453" }),
+                    ).toString("base64"),
+                  },
+                });
+              },
+            });
+            const rows = await db.select().from(schema.x402L1Purchases);
+            assert.equal(rows.filter((r) => r.status === "in_flight" || r.status === "request_error").length, 0, "署名前の予約は残さない");
+            const dumped = JSON.stringify(rows) + cap.logs.join("\n");
+            assert.equal(dumped.includes(payer.secret()), false);
+            assert.equal(dumped.includes("rpc.example"), false);
+          },
+        );
+      } finally {
+        cap.restore();
+        restoreStellarEnv();
+      }
+    });
+
+    await t.test("Stellar secondary: 署名前の故障はその候補を Base で 1 回買い直す", async () => {
+      const { Keypair } = await import("@stellar/stellar-sdk");
+      const payer = Keypair.random();
+      const host = "stellardual.example";
+      process.env.OBSERVATORY_L1_ENABLED = "true";
+      process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
+      process.env.OBSERVATORY_STELLAR_L1_ENABLED = "true";
+      process.env.STELLAR_PAYER_SECRET = payer.secret();
+      process.env.STELLAR_HORIZON_URL = "http://127.0.0.1:9";
+      process.env.STELLAR_RPC_URL = "http://127.0.0.1:9";
+      try {
+        await withDualStellar(
+          [{ host, basePayTo: payToFor(8), stellarPayTo: Keypair.random().publicKey() }],
+          new Map(),
+          async (challengeForUrl) => {
+            const paidNetworks: string[] = [];
+            await runL1Batch({
+              limit: 10,
+              getPayerUsdcBalance: FUNDED_PAYER,
+              createStellarPayment: async () => {
+                throw new Error("stellar_sign_failed_pre: rpc down");
+              },
+              fetchImpl: async (url: string, init?: RequestInit) => {
+                const headers = new Headers(init?.headers);
+                const raw = headers.get("PAYMENT-SIGNATURE") ?? headers.get("X-PAYMENT");
+                if (!raw) {
+                  return new Response(challengeForUrl(url), { status: 402, headers: { "content-type": "application/json" } });
+                }
+                const envelope = JSON.parse(Buffer.from(raw, "base64").toString("utf8")) as { accepted: { network: string } };
+                paidNetworks.push(envelope.accepted.network);
+                return new Response(JSON.stringify({ data: "base goods" }), {
+                  status: 200,
+                  headers: {
+                    "content-type": "application/json",
+                    "PAYMENT-RESPONSE": Buffer.from(
+                      JSON.stringify({ success: true, transaction: `0x${"cd".repeat(32)}`, network: "eip155:8453" }),
+                    ).toString("base64"),
+                  },
+                });
+              },
+            });
+            assert.deepEqual(paidNetworks, ["eip155:8453"]);
+            const rows = await db.select().from(schema.x402L1Purchases);
+            assert.equal(rows.length, 1);
+            assert.equal(rows[0].network, "eip155:8453");
+            assert.equal(rows[0].status, "settle_claimed");
+            assert.equal(JSON.stringify(rows).includes(payer.secret()), false);
+          },
+        );
+      } finally {
+        restoreStellarEnv();
+      }
+    });
+
+    await t.test("Stellar secondary: 署名後の故障は Base を買わず request_error を残す", async () => {
+      const { Keypair } = await import("@stellar/stellar-sdk");
+      const { STELLAR_PUBNET_CAIP2 } = await import("@/lib/observatory/stellar402-payer");
+      const payer = Keypair.random();
+      const host = "stellardual.example";
+      process.env.OBSERVATORY_L1_ENABLED = "true";
+      process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
+      process.env.OBSERVATORY_STELLAR_L1_ENABLED = "true";
+      process.env.STELLAR_PAYER_SECRET = payer.secret();
+      process.env.STELLAR_HORIZON_URL = "http://127.0.0.1:9";
+      process.env.STELLAR_RPC_URL = "http://127.0.0.1:9";
+      const cap = captureErrors();
+      try {
+        await withDualStellar(
+          [{ host, basePayTo: payToFor(8), stellarPayTo: Keypair.random().publicKey() }],
+          new Map(),
+          async (challengeForUrl) => {
+            const paidNetworks: string[] = [];
+            await runL1Batch({
+              limit: 10,
+              getPayerUsdcBalance: FUNDED_PAYER,
+              createStellarPayment: async () => {
+                throw new Error(`stellar_sign_failed_post: resimulate ${payer.secret()} https://rpc.example/x`);
+              },
+              fetchImpl: async (url: string, init?: RequestInit) => {
+                const headers = new Headers(init?.headers);
+                const raw = headers.get("PAYMENT-SIGNATURE") ?? headers.get("X-PAYMENT");
+                if (!raw) {
+                  return new Response(challengeForUrl(url), { status: 402, headers: { "content-type": "application/json" } });
+                }
+                const envelope = JSON.parse(Buffer.from(raw, "base64").toString("utf8")) as { accepted: { network: string } };
+                paidNetworks.push(envelope.accepted.network);
+                return new Response(JSON.stringify({ data: "base goods" }), {
+                  status: 200,
+                  headers: {
+                    "content-type": "application/json",
+                    "PAYMENT-RESPONSE": Buffer.from(
+                      JSON.stringify({ success: true, transaction: `0x${"cd".repeat(32)}`, network: "eip155:8453" }),
+                    ).toString("base64"),
+                  },
+                });
+              },
+            });
+            assert.deepEqual(paidNetworks, [], "署名後は Base の支払いを出さない");
+            const rows = await db.select().from(schema.x402L1Purchases);
+            assert.equal(rows.length, 1);
+            assert.equal(rows[0].status, "request_error");
+            assert.equal(rows[0].network, STELLAR_PUBNET_CAIP2);
+            assert.equal(rows[0].spentUnits, "0");
+            assert.equal(rows[0].authNonce, null);
+            const dumped = JSON.stringify(rows) + cap.logs.join("\n");
+            assert.equal(dumped.includes(payer.secret()), false);
+            assert.equal(dumped.includes("rpc.example"), false);
+          },
+        );
+      } finally {
+        cap.restore();
+        restoreStellarEnv();
+      }
+    });
+
+    await t.test("Stellar secondary: 別枠が尽きた日は stellar を開かず Base で買う", async () => {
+      const { Keypair } = await import("@stellar/stellar-sdk");
+      const payer = Keypair.random();
+      const host = "stellardual.example";
+      process.env.OBSERVATORY_L1_ENABLED = "true";
+      process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
+      process.env.OBSERVATORY_STELLAR_L1_ENABLED = "true";
+      process.env.STELLAR_PAYER_SECRET = payer.secret();
+      process.env.STELLAR_HORIZON_URL = "http://127.0.0.1:9";
+      process.env.STELLAR_RPC_URL = "http://127.0.0.1:9";
+      process.env.L1_STELLAR_DAILY_CAP_USD = "0";
+      try {
+        await withDualStellar(
+          [{ host, basePayTo: payToFor(8), stellarPayTo: Keypair.random().publicKey() }],
+          new Map(),
+          async (challengeForUrl) => {
+            let signed = 0;
+            const paidNetworks: string[] = [];
+            const summary = await runL1Batch({
+              limit: 10,
+              getPayerUsdcBalance: FUNDED_PAYER,
+              createStellarPayment: async () => {
+                signed++;
+                return { transaction: "must-not-sign" };
+              },
+              fetchImpl: async (url: string, init?: RequestInit) => {
+                const headers = new Headers(init?.headers);
+                const raw = headers.get("PAYMENT-SIGNATURE") ?? headers.get("X-PAYMENT");
+                if (!raw) {
+                  return new Response(challengeForUrl(url), { status: 402, headers: { "content-type": "application/json" } });
+                }
+                const envelope = JSON.parse(Buffer.from(raw, "base64").toString("utf8")) as { accepted: { network: string } };
+                paidNetworks.push(envelope.accepted.network);
+                return new Response(JSON.stringify({ data: "base goods" }), {
+                  status: 200,
+                  headers: {
+                    "content-type": "application/json",
+                    "PAYMENT-RESPONSE": Buffer.from(
+                      JSON.stringify({ success: true, transaction: `0x${"cd".repeat(32)}`, network: "eip155:8453" }),
+                    ).toString("base64"),
+                  },
+                });
+              },
+            });
+            assert.equal(summary.laneFloor.stellar, 1, "別枠が 0 でも secondary の候補は枠に残る");
+            assert.equal(signed, 0, "別枠が尽きているので Stellar には署名しない");
+            assert.deepEqual(paidNetworks, ["eip155:8453"]);
+            const rows = await db.select().from(schema.x402L1Purchases);
+            assert.equal(rows.length, 1);
+            assert.equal(rows[0].network, "eip155:8453");
+            assert.equal(JSON.stringify(rows).includes(payer.secret()), false);
+          },
+        );
+      } finally {
+        restoreStellarEnv();
+      }
+    });
+
     await t.test("a challenge over-charging vs catalog is recorded, never signed", async () => {
       await db.execute(sql`TRUNCATE x402_l1_purchases`);
       // payTo must be the endpoint's OWN declared payee: since 2026-08-22 the

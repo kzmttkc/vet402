@@ -343,6 +343,8 @@ export function selectStellarAccept(
 /**
  * `@x402/stellar` の exact client で支払い XDR を作る。額は 7 桁（stroops）。
  * 秘密は環境変数から読むだけで、返り値にも誤りにも入れない。RPC の URL も誤りに残さない。
+ * 誤りは `stellar_sign_failed_pre:`（auth entry に署名する前）か `stellar_sign_failed_post:`
+ * （署名が返ったあとの再シミュレーション・空の payload）。ランナーはこの印で分岐する。
  * テストは l1-runner の createStellarPayment を差し替え、ここを呼ばない。
  *
  * RpcConfig は Soroban の `url`（STELLAR_RPC_URL）だけ。`getHorizonClient` は URL を受け取らず、
@@ -356,12 +358,25 @@ export async function createStellarPaymentPayload(input: {
 }): Promise<{ transaction: string }> {
   const raw = process.env.STELLAR_PAYER_SECRET?.trim() ?? "";
   const rpc = process.env.STELLAR_RPC_URL?.trim() ?? "";
-  if (!raw) throw new Error("stellar_payer_secret_unset");
-  if (!rpc) throw new Error("stellar_rpc_unset");
-  if (input.signingAsset !== STELLAR_USDC_SAC) throw new Error("stellar_signing_asset");
+  // 署名器に入る前。印は stellar_sign_failed_pre。秘密も URL も無い。
+  if (!raw) throw new Error("stellar_sign_failed_pre: stellar_payer_secret_unset");
+  if (!rpc) throw new Error("stellar_sign_failed_pre: stellar_rpc_unset");
+  if (input.signingAsset !== STELLAR_USDC_SAC) throw new Error("stellar_sign_failed_pre: stellar_signing_asset");
+  // auth entry の署名が返ったあと（再シミュレーション・空の payload）は post。それより前は pre。
+  // ランナーは pre だけ予約を消して Base を買い直す。post は行を残し、Base では買わない。
+  let signedAuth = false;
   try {
     const { ExactStellarScheme, createEd25519Signer } = await import("@x402/stellar");
-    const scheme = new ExactStellarScheme(createEd25519Signer(raw, STELLAR_PUBNET_CAIP2), { url: rpc });
+    const signer = createEd25519Signer(raw, STELLAR_PUBNET_CAIP2);
+    const watched = {
+      ...signer,
+      signAuthEntry: async (...args: Parameters<typeof signer.signAuthEntry>) => {
+        const signed = await signer.signAuthEntry(...args);
+        signedAuth = true;
+        return signed;
+      },
+    };
+    const scheme = new ExactStellarScheme(watched, { url: rpc });
     const created = await scheme.createPaymentPayload(2, {
       scheme: "exact",
       network: STELLAR_PUBNET_CAIP2,
@@ -379,6 +394,10 @@ export async function createStellarPaymentPayload(input: {
     return { transaction };
   } catch (error) {
     const message = redactStellarSecrets(redactUrls(error instanceof Error ? error.message : String(error)));
-    throw new Error(message.startsWith("stellar_") ? message : `stellar_sign_failed: ${message}`);
+    if (message.startsWith("stellar_sign_failed_pre:") || message.startsWith("stellar_sign_failed_post:")) {
+      throw new Error(message);
+    }
+    const phase = signedAuth ? "post" : "pre";
+    throw new Error(`stellar_sign_failed_${phase}: ${message}`);
   }
 }

@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-18 — L1 Stellar: 署名後の故障では Base を買い直さない（作業ツリー・未 commit）
+- **何を**: 段 5。`createStellarPaymentPayload` の誤りに `stellar_sign_failed_pre:`（auth entry に署名が返る前）と `stellar_sign_failed_post:`（署名が返ったあとの再シミュレーション・空の payload）を付ける。秘密と URL は今までどおり伏せる。ランナーは secondary で **署名前**に落ちたときだけ未署名の予約を消して Base で 1 回買い直す。**署名後**は予約を消さず `request_error`（spent 0）を残し、Base では買わない。主ネットワークが pubnet の行は署名前でも `request_error` のまま（買い直す経路が無い）。別枠が尽きた日の `laneOpen("stellar")`、免除が壁の宣言と合うときだけであること、免除が無いときの 6 桁の完全一致、宣言額が 1 件の上限を超える secondary は払わない、をテストで固定した。
+- **なぜ**: 署名後も予約を消して Base で買い直すと、auth entry に署名した支払いと Base の支払いが重なる。独立点検で残った変異（免除の緩め・6 桁の一致・secondary の 1 件上限・予約の削除・Base の買い直し・`laneOpen("stellar")`）が緑のままだった。
+- **影響**: 公開 export の status / held_reason / settlement_source に新しい値は足していない。`request_error` は既存。他レーンの関門は変えていない。新しい RPC の読み先は無い。
+- **実測（10/18・手元。本番の RPC には出していない。TEST_DATABASE_URL は未設定）**: `npx tsc --noEmit -p .` exit 0。`npx tsx --test tests/*stellar*.test.ts tests/observatory-l1-runner.test.ts` は `ℹ tests 43` / `ℹ pass 42` / `ℹ fail 0` / `ℹ skipped 1`（l1-runner は DB 未設定でファイルごと SKIP）/ `ℹ duration_ms 1617.63`。`node scripts/test-mutations-stellar-lane.mjs` は exit 1。走った 14 本はすべて KILLED（S16 fail 2、S17 fail 2、S18 fail 1）。S19–S22 を含む DB 要の 8 本は `NOT RUN ← needs TEST_DATABASE_URL`。復元後は unit fail 0、src の MUTANT は 0（16.3s）。全体の `npm test` はこの段では回していない。
+
 ## 2026-10-18 — L1 Stellar: Base 先頭の出品でも、2 番目以降の stellar:pubnet を買う（作業ツリー・未 commit）
 - **何を**: 段 4。`LANE_SECONDARY_ACCEPTS.stellar` を true。枠の条件は classic `USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN` か SAC `CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75`。候補 SQL がカタログの `stellar:pubnet` USDC accept の payTo を集め、`stellarDeclaredPayTos` にする。レーン由来で `laneChain === "stellar"` かつ主ネットワークが pubnet でない行だけ `stellarLanePreferred`。`purchaseOne` は壁から `selectStellarAccept`（`declaredPayTos`）で選び、通れば既存の isStellar（署名・台帳 network・payerChain・照合）に乗る。通らなければ Base の通常経路。payTo は集合と完全一致（大文字小文字を区別。空集合は払わない）。未入金か署名器の故障では以後の stellar の優先を閉じ、その Base 先頭の候補は Base で 1 回だけ買い直す。主ネットワークが pubnet の行は買い直さない。secondary の署名失敗は、未署名の in_flight 行を消してから買い直す（掃引窓の dup が Base を拒むため）。主ネットワークの失敗は従来どおり `request_error`。値段はカタログ先頭（Base・6 桁）と壁（7 桁）を台帳単位で比べる。宣言側の accept が払えるときは、台帳単位が `min(宣言額, 1 件上限)` 以下なら安い方を許す。それを超える高い方は `over_cap`。宣言側が払えないときは台帳単位の完全一致だけ。拒否は `raw_response_meta.stellarLane`（公開 export の列ではない）。
 - **なぜ**: 10/18 の本番 DB の実測で、`stellar:pubnet` を accept に含む出品は 692 件・7 ホスト、全部が Base（`eip155:8453`）を主ネットワークにしていた。主ネットワークが pubnet の行は 0 件。主ネットワークだけのレーンは 1 件も買えない。
