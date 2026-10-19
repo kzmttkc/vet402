@@ -101,8 +101,8 @@ const MUTATIONS = [
     what: "申告額の文字列一致を外す",
     rule: "申告額は 18 桁どうしの完全一致",
     file: PAYER,
-    find: "    if (priceDeclaredFor(accept) && comparable(accept) && accept.amount !== options.declaredAmount) continue;",
-    replace: "    if (/* MUTANT */ false && priceDeclaredFor(accept) && comparable(accept) && accept.amount !== options.declaredAmount) continue;",
+    find: "    if (priceDeclaredFor(accept) && accept.amount !== options.declaredAmount) continue;",
+    replace: "    if (/* MUTANT */ false && priceDeclaredFor(accept) && accept.amount !== options.declaredAmount) continue;",
   },
   {
     id: "B09",
