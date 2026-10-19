@@ -44,8 +44,9 @@ export async function GET(request: NextRequest) {
     // （読んだ行には印を付け、次からは読まない。溜まった分は一度きりの再照合で流す）。
     // 2026-10-11: Celo の行（応答なしで settle_failed になったが、売り手は決済していた）も Celo のチェーンを直接読む。
     // Base とは別枠で 1 回 20 行まで・CELO_RPC_URL が無ければ読まない・貼るのはレシートの nonce が行の nonce と合う tx だけ。
-    // 各段の持ち時間の合計: EVM の索引 120 + Solana 60 + XRPL 20 + Base の直読み 45 + Celo の直読み 30 = 275 秒。
-    // 持ち時間の無い段が長引いた回は、Celo の段が deadlineAt の手前で止まる（読まなかった行は次回）。
+    // 2026-10-19: BNB（eip155:56）の USD1 も同じ。BNB_RPC_URL が無ければ読まない。額は 18 桁を 6 桁にしてから貼る。
+    // 各段の持ち時間の合計: EVM の索引 120 + Solana 60 + XRPL 20 + Base の直読み 45 + Celo の直読み 30 + BNB の直読み 30 = 305 秒。
+    // 持ち時間の無い段が長引いた回は、Celo と BNB の段が deadlineAt の手前で止まる（読まなかった行は次回）。
     const lateSettlements = await recoverLateSettlements({
       readNonces: readAuthorizationNonces,
       readTransfers: makeChainTransferReader(),

@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-19 — L1: BNB Chain の USD1 を索引と遅延回収に足す（段B2b・旗は既定 OFF・作業ツリー・未 commit）
+- **何を**: 決済索引（`index-evm.ts`）に eip155:56 の行を足した。トークンは USD1 `0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d`。`BNB_RPC_URL` が無いときは skipped で、公開 RPC には倒れない。ログの額は 18 桁を 10^12 で割った 6 桁だけを書く。割り切れない額は行にしない。受取先は主ネットワークが eip155:56 の出品の pay_to だけ（Celo と同じ）。遅延回収（`recover-late.ts`）に BNB のレーンを足した。Celo と同じく、形の正しい `auth_nonce` の行だけを、nonce がレシートにある tx に貼る。読み手は USD1 の Transfer を窓の中で読み、返す額は 6 桁。割り切れない額は候補にしない。`BNB_RPC_URL` が無ければ読まない。ブロック間隔は 2026-10-19 に測っていないので、窓の見積もりは Celo と同じ 1 秒で、ブロックの実時刻で直す。ランナーの段B2a（`efc05024`）はそのまま。テストは Base 先頭・BNB 2 番目の 5 本（買う・payTo・未入金・旗 OFF・permit2/USDT）と、別枠 0、索引 1 本、遅延回収の読み手 1 本。変異 B19〜B22。
+- **なぜ**: 段B1 は署名と照合まで、段B2a はランナーの配線までだった。索引が 18 桁のままだと台帳の 6 桁（`amount_units`）と突き合わない。遅延回収が無いと、Base 先頭の出品を BNB で買って応答が落ちた行は、お金が動いても tx が付かない。
+- **影響**: 旗 OFF のとき、購入の選択は origin/main と同じ（secondary の枠に bnb は出ない）。Base・Solana・Arc・Tempo・XRPL・Celo・Stellar の索引と直読みの選び方は変えていない。cron `index-settlements` の名目の持ち時間は Celo 30 秒のあとに BNB 30 秒が足され、合計 305 秒になる。Celo と BNB は開始から 285 秒の締切で止まる。`BNB_RPC_URL` が無ければ BNB の段は行を選ばない。新しい外部の読み先は、`BNB_RPC_URL` を置いたときのその URL だけ（公開 RPC は索引にも遅延回収にも使わない。プライバシーポリシーの委託先の追記は、旗を立てて買う段で要る）。
+- **実測**: このエントリを書いた時点では未測定。測定後に下へ追記する。
+
 ## 2026-10-19 — L1: BNB Chain（eip155:56）の USD1 レーンを足す（段B1・旗は既定 OFF・作業ツリー・未 commit）
 - **何を**: 払い手の表に BNB Chain を 4 行目として足した。chain id 56、USD1 `0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d`、decimals 18、EIP-712 name "World Liberty Financial USD" / version "1"。署名するのはこの USD1 の eip3009 だけ。`OBSERVATORY_BNB_L1_ENABLED` が正確に `"true"` のときだけ選ぶ（既定 OFF）。1 日の別枠 `L1_BNB_DAILY_CAP_USD` の既定は $0.5。台帳は 6 桁のまま、18 桁との倍率は 10^12。1 件の上限は 6 桁を 18 桁に直して比べる。申告額は 18 桁どうしの完全一致。10^12 で割り切れない額は予約の前に unbuildable。台帳に書く額は割り切れた 6 桁（`selectAccept` の `amountUnits`。Base・Arc・Celo の返り値にはこの鍵を付けない）。残高は同じ EOA の USD1 を 6 桁へ切り捨てる。ガスの BNB は見ない。照合は Transfer の 18 桁が台帳 × 10^12 と一致するときだけ。`BNB_RPC_URL` が無い再読は未確認のまま（公開 RPC に倒れない）。残高読みだけ、未設定なら `https://bsc-dataseed.bnbchain.org`。
 - **なぜ**: カタログに eip155:56 の accept が 1,106 件ある。ほとんどは Base が主ネットワークなので、段B2で secondary として買う。USD1 は 18 桁で、今の EVM の 6 桁の関門のままでは $0.10（1e17）が上限超えになる。

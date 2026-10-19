@@ -9,7 +9,8 @@
  *   node scripts/test-mutations-bnb-lane.mjs
  *
  * 構造は `scripts/test-mutations-stellar-lane.mjs` と同じ。
- * 段B1はランナー（l1-runner.ts）の配線をしないので、DB の変異は無い。テストはネットに出ない。
+ * 段B2b: ランナーの変異（B19〜B21）は DB のテスト。TEST_DATABASE_URL が無ければ NOT RUN。
+ * 索引の 18→6 桁（B22）は DB 無しで落ちる。テストはネットに出ない。
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
@@ -21,14 +22,19 @@ const PAYER = "src/lib/observatory/x402-payer.ts";
 const BUDGET = "src/lib/observatory/budget.ts";
 const VERIFY = "src/lib/observatory/settlement-verify.ts";
 const FUNDS = "src/lib/observatory/payer-funds.ts";
-const SOURCES = [PAYER, BUDGET, VERIFY, FUNDS];
+const RUNNER = "src/lib/observatory/l1-runner.ts";
+const INDEX = "src/lib/settlements/index-evm.ts";
+const SOURCES = [PAYER, BUDGET, VERIFY, FUNDS, RUNNER, INDEX];
 
 const UNIT_TESTS = [
   "tests/x402-bnb-lane.test.ts",
   "tests/settlement-verify-bnb.test.ts",
   "tests/l1-chain-daily-cap.test.ts",
   "tests/payer-funds.test.ts",
+  "tests/settlements-index-bnb.test.ts",
+  "tests/late-settlement-bnb-reader.test.ts",
 ];
+const DB_TESTS = ["tests/observatory-l1-runner.test.ts"];
 
 /**
  * `find` は対象ファイルにちょうど 1 回。`replace` は必ず MUTANT を含む。
@@ -178,7 +184,44 @@ const MUTATIONS = [
     find: "    return value === expectedValue;",
     replace: "    return /* MUTANT */ value >= 0n || value === expectedValue;",
   },
+  {
+    id: "B19",
+    what: "BNB の宣言 payTo の集合を空にする",
+    rule: "優先した BNB の payTo はカタログの eip155:56 の宣言と照合する",
+    file: RUNNER,
+    needsDb: true,
+    find: "[BNB_CAIP2]: candidate.bnbDeclaredPayTos",
+    replace: "[BNB_CAIP2]: /* MUTANT */ []",
+  },
+  {
+    id: "B20",
+    what: "未入金のあと bnb の優先を閉じない",
+    rule: "未入金なら以後の bnb を閉じ、その候補は Base で買う",
+    file: RUNNER,
+    needsDb: true,
+    find: '      if (outcome.kind === "payer_unfunded" && outcome.payerChain === "bnb") {',
+    replace: '      if (/* MUTANT */ false && outcome.kind === "payer_unfunded" && outcome.payerChain === "bnb") {',
+  },
+  {
+    id: "B21",
+    what: "別枠が尽きても laneOpen(bnb) を通す",
+    rule: "別枠が尽きた日は bnb を優先しない",
+    file: RUNNER,
+    needsDb: true,
+    find: 'candidate.laneChain === "bnb" ? laneOpen("bnb") : laneOpen(candidate.laneChain)',
+    replace: 'candidate.laneChain === "bnb" ? /* MUTANT */ true : laneOpen(candidate.laneChain)',
+  },
+  {
+    id: "B22",
+    what: "索引が 18 桁の USD1 を 6 桁に割らない",
+    rule: "索引と遅延回収の額は 10^12 で割った 6 桁。割り切れない額は記録しない",
+    file: INDEX,
+    find: "  return bnbLedgerUnits(value);",
+    replace: "  return /* MUTANT */ value;",
+  },
 ];
+
+const HAS_DB = Boolean(process.env.TEST_DATABASE_URL);
 
 const TSX = join(ROOT, "node_modules", ".bin", "tsx");
 
@@ -205,6 +248,17 @@ async function unitTests() {
   return summarize(await run(TSX, ["--test", "--test-concurrency=1", ...UNIT_TESTS], env));
 }
 
+async function dbTests() {
+  return summarize(
+    await run(TSX, ["--test", "--test-force-exit", "--test-concurrency=1", ...DB_TESTS], process.env),
+  );
+}
+
+async function testFor(needsDb) {
+  if (needsDb) return dbTests();
+  return unitTests();
+}
+
 async function countMutantMarkers() {
   let n = 0;
   for (const f of SOURCES) n += (await readFile(join(ROOT, f), "utf8")).split("MUTANT").length - 1;
@@ -229,11 +283,28 @@ if (baselineUnit.code !== 0) {
   console.error(baselineUnit.failed.join("\n"));
   process.exit(2);
 }
-console.log(`baseline: green (unit fail ${baselineUnit.fail})\n`);
+let baselineDb = null;
+if (HAS_DB) {
+  baselineDb = await dbTests();
+  if (baselineDb.code !== 0) {
+    console.error(`baseline (db) is not green (fail ${baselineDb.fail}) — refusing to mutate.`);
+    console.error(baselineDb.failed.join("\n"));
+    process.exit(2);
+  }
+}
+console.log(
+  `baseline: green (unit fail ${baselineUnit.fail}${baselineDb ? `, db fail ${baselineDb.fail}` : ", db not run — TEST_DATABASE_URL is not set"})\n`,
+);
 
 const rows = [];
 let survived = 0;
+let notRun = 0;
 for (const m of MUTATIONS) {
+  if (m.needsDb && !HAS_DB) {
+    notRun += 1;
+    rows.push({ ...m, fail: "-", verdict: "NOT RUN", failed: [], note: "needs TEST_DATABASE_URL" });
+    continue;
+  }
   const path = join(ROOT, m.file);
   const original = await readFile(path, "utf8");
   let stale = null;
@@ -247,7 +318,7 @@ for (const m of MUTATIONS) {
   }
   try {
     await writeFile(path, original.replace(m.find, m.replace));
-    const r = await unitTests();
+    const r = await testFor(Boolean(m.needsDb));
     const killed = r.code !== 0;
     if (!killed) survived += 1;
     rows.push({ ...m, fail: r.fail, verdict: killed ? "KILLED" : "SURVIVED", failed: r.failed });
@@ -274,6 +345,8 @@ for (const r of rows) {
     console.log(`${r.id}  ${r.file}  SURVIVED ← この関門はテストに守られていない。消さずに報告する`);
   } else if (r.verdict === "STALE") {
     console.log(`${r.id}  ${r.file}  STALE ← ${r.note}`);
+  } else if (r.verdict === "NOT RUN") {
+    console.log(`${r.id}  ${r.file}  NOT RUN ← ${r.note}（走らせていないものは緑ではない）`);
   }
 }
 console.log("");
@@ -284,12 +357,17 @@ if (leftover !== 0) {
   process.exit(3);
 }
 const afterUnit = await unitTests();
-if (afterUnit.code !== 0) {
-  console.error(`RESTORE FAILED — the tree is not green after restoring (unit fail ${afterUnit.fail}).`);
+const afterDb = HAS_DB ? await dbTests() : null;
+if (afterUnit.code !== 0 || (afterDb && afterDb.code !== 0)) {
+  console.error(
+    `RESTORE FAILED — the tree is not green after restoring (unit fail ${afterUnit.fail}${afterDb ? `, db fail ${afterDb.fail}` : ""}).`,
+  );
   process.exit(3);
 }
 const secs = ((Date.now() - t0) / 1000).toFixed(1);
-console.log(`restored: green (unit fail ${afterUnit.fail}) — MUTANT markers in src: 0`);
-if (survived === 0) console.log(`all ${rows.length} mutations killed in ${secs}s`);
-else console.log(`${survived} of ${rows.length} mutation(s) survived (or stale) in ${secs}s`);
-process.exitCode = survived === 0 ? 0 : 1;
+console.log(`restored: green (unit fail ${afterUnit.fail}${afterDb ? `, db fail ${afterDb.fail}` : ""}) — MUTANT markers in src: 0`);
+const ran = rows.length - notRun;
+if (survived === 0 && notRun === 0) console.log(`all ${rows.length} mutations killed in ${secs}s`);
+else if (survived === 0) console.log(`all ${ran} mutations that ran were killed; ${notRun} not run (needs TEST_DATABASE_URL) in ${secs}s`);
+else console.log(`${survived} of ${ran} mutation(s) survived (or stale)${notRun ? `; ${notRun} not run` : ""} in ${secs}s`);
+process.exitCode = survived === 0 && notRun === 0 ? 0 : 1;

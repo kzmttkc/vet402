@@ -46,7 +46,7 @@ export function bnbRpcUrl(): string {
  * BNB Chain の読み取りクライアント。型は Base のクライアントに合わせる（chain/celo.ts と同じ理由——
  * 呼び手は chain 非依存の read 面しか使わない）。
  *  - live: 残高や照合の 1 回読み（短いタイムアウト・1 リトライ）
- *  - batch: 決済索引の eth_getLogs（長いタイムアウト・3 リトライ）。索引の行は段B1では足していない。
+ *  - batch: 残高以外の長い読み。決済索引（index-evm）はこの関数を使わず、BNB_RPC_URL が無いときは公開 RPC へ倒れない。
  */
 export function getBnbPublicClient(mode: "live" | "batch" = "live") {
   return createPublicClient({

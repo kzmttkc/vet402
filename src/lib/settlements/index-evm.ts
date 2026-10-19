@@ -9,14 +9,18 @@
 // Arc（eip155:5042・2026-09-17）は ARC_RPC_URL が入れば有効。scoring の CHAINS 登録簿には
 // 載せない（chain/arc.ts 参照）ので、クライアントは行の makeClient で組む。
 // Celo（eip155:42220・2026-10-10）は CELO_RPC_URL が入れば有効（Arc と同じ作り・chain/celo.ts）。
+// BNB Chain（eip155:56・2026-10-19）は BNB_RPC_URL が入れば有効。トークンは USD1（18 桁）。
+// 索引に書く額は 6 桁（10^12 で割る）。割り切れない額は行にしない。公開 RPC へは倒れない。
 // ============================================================
 import { createPublicClient, http, parseAbiItem, type Address } from "viem";
-import { tempo as tempoChain } from "viem/chains";
+import { bsc, tempo as tempoChain } from "viem/chains";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { getLogScanClient } from "@/lib/chain/client";
 import { ARC_CHAIN_ID, ARC_USDC_ADDRESS, getArcPublicClient } from "@/lib/chain/arc";
+import { BNB_CAIP2, BNB_CHAIN_ID, BNB_USD1_ADDRESS } from "@/lib/chain/bnb";
 import { CELO_CAIP2, CELO_CHAIN_ID, CELO_USDC_ADDRESS, getCeloPublicClient } from "@/lib/chain/celo";
+import { bnbLedgerUnits } from "@/lib/observatory/x402-payer";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { getLogsChunked } from "@/lib/chain/chunked-logs";
 import { DeadlineExceededError } from "@/lib/util/deadline";
@@ -133,6 +137,31 @@ export const EVM_INDEX_CHAINS: EvmIndexChain[] = [
     blocksPerDay: 86_400n,
     makeClient: () => getCeloPublicClient("batch"),
   },
+  // BNB Chain mainnet（2026-10-19・BNB レーン）。走査の数字は Celo と同じ値を置く。
+  // ブロック間隔は 2026-10-19 に測っていない（再導出しない）。1 秒ブロックとしての 86,400/日は、
+  // viem の bsc.blockTime（750ms）より遅めの見積もりで、1 回の走査（2 日ぶん）は日次の増加より広い。
+  //  - BNB_RPC_URL が無ければ skipped（`BNB_RPC_URL_unset`）。makeClient も公開 RPC を使わない。
+  //  - 読むトークンは USD1 だけ。額は evmIndexLedgerAmount（18 桁 → 6 桁）。10^12 で割り切れない額は行にしない。
+  //  - 受取先は eip155:56 を主ネットワークにする出品の pay_to だけ（下の SELECT・Celo と同じ規則）。
+  //    Base が先頭の出品の USD1 の受取先は入らない。遅れて決済された購入は recover-late.ts が読む。
+  {
+    caip2: BNB_CAIP2,
+    chainId: BNB_CHAIN_ID,
+    usdc: BNB_USD1_ADDRESS,
+    rpcEnv: "BNB_RPC_URL",
+    initialLookbackBlocks: 86_400n * 7n,
+    maxBlocksPerRun: 86_400n * 2n,
+    confirmations: 64n,
+    blocksPerDay: 86_400n,
+    makeClient: () => {
+      const rpc = process.env.BNB_RPC_URL?.trim();
+      if (!rpc) throw new Error("BNB_RPC_URL_unset");
+      return createPublicClient({
+        chain: bsc as unknown as typeof tempoChain,
+        transport: http(rpc, { timeout: 20_000, retryCount: 3 }),
+      }) as unknown as ReturnType<typeof getLogScanClient>;
+    },
+  },
   // Tempo（MPP・2026-09-17 Tempo レーン）。~1 秒/ブロック = 86,400/日（blocksPerDay）。
   //   initialLookbackBlocks 259,200 = 3 日（Base の 7 日は 302,400 ブロックで、同じ桁に収める）。
   //   maxBlocksPerRun 172,800 = 2 日ぶん（Arc と同じ理由: 日次 cron が 1 日 86,400 に追いつき、
@@ -174,6 +203,8 @@ export type EvmIndexSummary = {
   skippedKnown?: number;
   /** 額を decode できず行にしなかった transfer log の数（event 宣言と実物のずれの fail-loud）。 */
   undecodable?: number;
+  /** BNB の USD1 で、18 桁を 6 桁に割り切れず行にしなかった transfer log の数。 */
+  unbuildable?: number;
   /** 走査後もチェックポイントが安全な先端から 1 日ぶん以上遅れているとき、その差（ブロック）。 */
   lagBlocks?: string;
 };
@@ -201,6 +232,16 @@ export function perChainBudgetMs(budgetMs: number, chains: readonly EvmIndexChai
 export function isEvmChainIndexable(chain: EvmIndexChain): boolean {
   // Base は既定 RPC がある。それ以外は env が要る（未設定は skipped として開示）。
   return chain.chainId === 8453 || Boolean(process.env[chain.rpcEnv]?.trim());
+}
+
+/**
+ * 索引の行に書く額。BNB の USD1 だけ 18 桁 → 6 桁（{@link bnbLedgerUnits}）。
+ * 正でない、または 10^12 で割り切れない額は null（行にしない。丸めない）。
+ * 他のチェーンはログの額をそのまま返す（Base・Arc・Celo の USDC は既に 6 桁）。
+ */
+export function evmIndexLedgerAmount(chainId: number, value: bigint): bigint | null {
+  if (chainId !== BNB_CHAIN_ID) return value;
+  return bnbLedgerUnits(value);
 }
 
 export async function indexEvmChain(
@@ -261,6 +302,17 @@ export async function indexEvmChain(
     list.push(e);
     epsByPayee.set(e.pay_to, list);
   }
+  // BNB のカタログ値段は 18 桁。索引の額は 6 桁なので、帰属の比較も同じ換算を通す。
+  // 他のチェーンは宣言額の文字列をそのまま使う（Base・Arc・Celo は 1 バイトも変えない）。
+  const declaredMatchAmount = (price: string | null): string | null => {
+    if (price === null || chain.chainId !== BNB_CHAIN_ID) return price;
+    try {
+      const booked = evmIndexLedgerAmount(BNB_CHAIN_ID, BigInt(price));
+      return booked === null ? null : booked.toString();
+    } catch {
+      return null;
+    }
+  };
   const resolveLocal = (payee: string, amount: string, blockTime: Date) => {
     const eps = epsByPayee.get(payee) ?? [];
     if (eps.length === 0) return { attribution: "unmatched" as const, resourceId: null, endpointId: null };
@@ -268,12 +320,12 @@ export async function indexEvmChain(
       const e = eps[0];
       const a = attribute(
         { payee, amount, asset: chain.usdc, chain: chain.caip2, blockTime },
-        { payTo: e.pay_to, amount: e.price_amount, asset: e.price_asset, network: e.network, observedAt: blockTime },
+        { payTo: e.pay_to, amount: declaredMatchAmount(e.price_amount), asset: e.price_asset, network: e.network, observedAt: blockTime },
       );
       return { attribution: a === "unmatched" ? ("probable" as const) : a, resourceId: e.resource_id, endpointId: e.id };
     }
     // 複数 resource が同じ payTo: amount が宣言と一致するものがあれば confirmed でそれに帰属
-    const exact = eps.find((e) => e.price_amount === amount);
+    const exact = eps.find((e) => declaredMatchAmount(e.price_amount) === amount);
     if (exact) return { attribution: "confirmed" as const, resourceId: exact.resource_id, endpointId: exact.id };
     return { attribution: "probable" as const, resourceId: null, endpointId: null };
   };
@@ -386,7 +438,13 @@ export async function indexEvmChain(
         const blockTime = blockTimeOf(log.blockNumber);
         const payee = log.args.to.toLowerCase();
         const payer = log.args.from.toLowerCase();
-        const amount = log.args.value.toString();
+        const booked = evmIndexLedgerAmount(chain.chainId, log.args.value);
+        if (booked === null) {
+          summary.unbuildable = (summary.unbuildable ?? 0) + 1;
+          if (log.blockNumber > sliceLast) sliceLast = log.blockNumber;
+          continue;
+        }
+        const amount = booked.toString();
         const resolved = resolveLocal(payee, amount, blockTime);
         const payerId = toPartyId(chain.caip2, payer);
         const payeeId = toPartyId(chain.caip2, payee);

@@ -1476,6 +1476,369 @@ if (!TEST_DB) {
       }
     });
 
+    // BNB secondary（2026-10-19・段B2b）。Base が先頭、eip155:56 の USD1（eip3009・18 桁）が 2 番目。
+    // 額は Base 100000（6 桁・$0.10）と USD1 1e17（18 桁・同じ $0.10）。台帳は 6 桁の 100000。
+    // 署名はランナーの EVM 経路（テスト鍵）。残高はスタブ。RPC には出ない。
+    const BNB_ENV = ["OBSERVATORY_BNB_L1_ENABLED", "BNB_RPC_URL", "L1_BNB_DAILY_CAP_USD"] as const;
+    const savedBnbEnv = Object.fromEntries(BNB_ENV.map((k) => [k, process.env[k]]));
+    const restoreBnbEnv = () => {
+      for (const k of BNB_ENV) {
+        const v = savedBnbEnv[k];
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    };
+    t.after(restoreBnbEnv);
+    const bnbBaseAmount = "100000";
+    const dualUsd1 = "100000000000000000";
+    const { BNB_CAIP2, BNB_USD1 } = await import("@/lib/observatory/x402-payer");
+    const { privateKeyToAccount } = await import("viem/accounts");
+    const bnbPayer = privateKeyToAccount(TEST_PK as `0x${string}`);
+    const usd1Extra = { name: "World Liberty Financial USD", version: "1", assetTransferMethod: "eip3009" };
+    async function withDualBnb(
+      items: { host: string; basePayTo: string; bnbPayTo: string }[],
+      wall: ReadonlyMap<string, { bnbPayTo?: string; bnbAccepts?: Record<string, unknown>[] }>,
+      run: (challengeForUrl: (url: string) => string) => Promise<void>,
+    ) {
+      const challengeForUrl = (url: string) => {
+        const item = items.find((i) => url.includes(i.host));
+        if (!item) return challengeFor(url);
+        const over = wall.get(item.host);
+        const bnbAccepts = over?.bnbAccepts ?? [
+          {
+            scheme: "exact",
+            network: BNB_CAIP2,
+            amount: dualUsd1,
+            asset: BNB_USD1,
+            payTo: over?.bnbPayTo ?? item.bnbPayTo,
+            maxTimeoutSeconds: 60,
+            extra: usd1Extra,
+          },
+        ];
+        return JSON.stringify({
+          x402Version: 2,
+          accepts: [
+            {
+              scheme: "exact",
+              network: "eip155:8453",
+              amount: bnbBaseAmount,
+              asset: BASE_USDC,
+              payTo: item.basePayTo,
+              maxTimeoutSeconds: 300,
+              extra: { name: "USD Coin", version: "2" },
+            },
+            ...bnbAccepts,
+          ],
+        });
+      };
+      await db.execute(
+        sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_payee_watchers, x402_l1_purchases, observed_purchases`,
+      );
+      await syncCatalog({
+        fetchResult: {
+          items: items.map((item) =>
+            parseCatalogItem({
+              resource: `https://${item.host}/api`,
+              accepts: [
+                { scheme: "exact", amount: bnbBaseAmount, asset: BASE_USDC, network: "eip155:8453", payTo: item.basePayTo, maxTimeoutSeconds: 300, extra: { name: "USD Coin", version: "2" } },
+                { scheme: "exact", amount: dualUsd1, asset: BNB_USD1, network: BNB_CAIP2, payTo: item.bnbPayTo, maxTimeoutSeconds: 60, extra: usd1Extra },
+              ],
+              extensions: { bazaar: { info: { input: { method: "GET" } } } },
+              quality: { l30DaysTotalCalls: 1, l30DaysUniquePayers: 1 },
+            }),
+          ),
+          totalCount: items.length,
+          fetchedCount: items.length,
+          complete: true,
+        },
+        today: "2026-10-19",
+      });
+      await runL0ProbeBatch({
+        limit: 10,
+        concurrency: 2,
+        fetchImpl: async (url: string) =>
+          new Response(challengeForUrl(url), { status: 402, headers: { "content-type": "application/json" } }),
+      });
+      try {
+        await run(challengeForUrl);
+      } finally {
+        await restoreBaseCatalog();
+      }
+    }
+    const enableBnb = () => {
+      process.env.OBSERVATORY_L1_ENABLED = "true";
+      process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
+      process.env.OBSERVATORY_BNB_L1_ENABLED = "true";
+      process.env.BNB_RPC_URL = "http://127.0.0.1:9";
+    };
+    const paidResponse = (network: string, n = 1) =>
+      new Response(JSON.stringify({ data: "goods" }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "PAYMENT-RESPONSE": Buffer.from(
+            JSON.stringify({ success: true, transaction: `0x${n.toString(16).padStart(64, "0")}`, network }),
+          ).toString("base64"),
+        },
+      });
+
+    await t.test("BNB secondary: Base 先頭の出品をレーン枠から USD1 で買う", async () => {
+      const host = "bnbdual.example";
+      const bnbPayTo = payToFor(9);
+      enableBnb();
+      try {
+        await withDualBnb([{ host, basePayTo: payToFor(8), bnbPayTo }], new Map(), async (challengeForUrl) => {
+          const chains: string[] = [];
+          let signedValue = "";
+          const summary = await runL1Batch({
+            limit: 10,
+            getPayerUsdcBalance: async ({ chain }) => {
+              chains.push(chain);
+              return 1_000_000_000n;
+            },
+            fetchImpl: async (url: string, init?: RequestInit) => {
+              const headers = new Headers(init?.headers);
+              const raw = headers.get("PAYMENT-SIGNATURE") ?? headers.get("X-PAYMENT");
+              if (!raw) return new Response(challengeForUrl(url), { status: 402, headers: { "content-type": "application/json" } });
+              const envelope = JSON.parse(Buffer.from(raw, "base64").toString("utf8")) as {
+                accepted: { network: string };
+                payload: { authorization: { value: string; to: string } };
+              };
+              assert.equal(envelope.accepted.network, BNB_CAIP2);
+              signedValue = envelope.payload.authorization.value;
+              assert.equal(envelope.payload.authorization.to.toLowerCase(), bnbPayTo);
+              return paidResponse(BNB_CAIP2);
+            },
+          });
+          assert.equal(summary.laneFloor.bnb, 1, "レーン枠に載る");
+          assert.equal(signedValue, dualUsd1, "署名する額は 18 桁");
+          assert.ok(chains.includes("bnb"), "payerChain は bnb");
+          assert.equal(chains.includes("base"), false);
+          const rows = await db.select().from(schema.x402L1Purchases);
+          assert.equal(rows.length, 1);
+          assert.equal(rows[0].network, BNB_CAIP2);
+          assert.equal(rows[0].asset, BNB_USD1);
+          assert.equal(rows[0].payTo, bnbPayTo);
+          assert.equal(rows[0].payer, bnbPayer.address.toLowerCase());
+          assert.equal(rows[0].amountUnits, "100000", "台帳は 6 桁。1e17 USD1 = $0.10");
+          assert.equal(rows[0].spentUnits, "100000");
+          assert.equal(rows[0].status, "settle_claimed");
+        });
+      } finally {
+        restoreBnbEnv();
+      }
+    });
+
+    await t.test("BNB secondary: 宣言の payTo と違う壁は払わず Base へ落とす", async () => {
+      const host = "bnbdual.example";
+      const basePayTo = payToFor(8);
+      enableBnb();
+      try {
+        await withDualBnb(
+          [{ host, basePayTo, bnbPayTo: payToFor(9) }],
+          new Map([[host, { bnbPayTo: basePayTo }]]),
+          async (challengeForUrl) => {
+            const paidNetworks: string[] = [];
+            await runL1Batch({
+              limit: 10,
+              getPayerUsdcBalance: FUNDED_PAYER,
+              fetchImpl: async (url: string, init?: RequestInit) => {
+                const headers = new Headers(init?.headers);
+                const raw = headers.get("PAYMENT-SIGNATURE") ?? headers.get("X-PAYMENT");
+                if (!raw) return new Response(challengeForUrl(url), { status: 402, headers: { "content-type": "application/json" } });
+                const envelope = JSON.parse(Buffer.from(raw, "base64").toString("utf8")) as { accepted: { network: string; payTo: string } };
+                paidNetworks.push(envelope.accepted.network);
+                assert.equal(envelope.accepted.payTo.toLowerCase(), basePayTo);
+                return paidResponse("eip155:8453");
+              },
+            });
+            assert.deepEqual(paidNetworks, ["eip155:8453"]);
+            const rows = await db.select().from(schema.x402L1Purchases);
+            assert.equal(rows.length, 1);
+            assert.equal(rows[0].network, "eip155:8453");
+            assert.equal(rows[0].payTo, basePayTo);
+          },
+        );
+      } finally {
+        restoreBnbEnv();
+      }
+    });
+
+    await t.test("BNB secondary: 未入金なら優先を閉じ、その候補は Base で買う", async () => {
+      const hosts = ["bnbdual1.example", "bnbdual2.example"];
+      enableBnb();
+      try {
+        await withDualBnb(
+          hosts.map((host, i) => ({ host, basePayTo: payToFor(8 + i), bnbPayTo: payToFor(4 + i) })),
+          new Map(),
+          async (challengeForUrl) => {
+            let bnbChecks = 0;
+            let paidN = 0;
+            const summary = await runL1Batch({
+              limit: 10,
+              getPayerUsdcBalance: async ({ chain }) => {
+                if (chain === "bnb") {
+                  bnbChecks++;
+                  return 0n;
+                }
+                return 1_000_000_000n;
+              },
+              fetchImpl: async (url: string, init?: RequestInit) => {
+                const headers = new Headers(init?.headers);
+                const raw = headers.get("PAYMENT-SIGNATURE") ?? headers.get("X-PAYMENT");
+                if (!raw) return new Response(challengeForUrl(url), { status: 402, headers: { "content-type": "application/json" } });
+                paidN++;
+                const envelope = JSON.parse(Buffer.from(raw, "base64").toString("utf8")) as { accepted: { network: string } };
+                assert.equal(envelope.accepted.network, "eip155:8453");
+                return paidResponse("eip155:8453", paidN);
+              },
+            });
+            assert.equal(summary.laneFloor.bnb, 2);
+            assert.equal(bnbChecks, 1, "1 件目の未入金で以後の bnb の優先を閉じる");
+            assert.equal(summary.payerUnfunded, 1);
+            const rows = await db.select().from(schema.x402L1Purchases);
+            assert.equal(rows.length, 2, "未入金の候補も、次の候補も Base で買う");
+            assert.ok(rows.every((r) => r.network === "eip155:8453"));
+          },
+        );
+      } finally {
+        restoreBnbEnv();
+      }
+    });
+
+    await t.test("BNB secondary: 旗 OFF なら枠に bnb が出ず、Base で買う", async () => {
+      const host = "bnbdual.example";
+      process.env.OBSERVATORY_L1_ENABLED = "true";
+      process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
+      delete process.env.OBSERVATORY_BNB_L1_ENABLED;
+      delete process.env.BNB_RPC_URL;
+      try {
+        await withDualBnb([{ host, basePayTo: payToFor(8), bnbPayTo: payToFor(9) }], new Map(), async (challengeForUrl) => {
+          const paidNetworks: string[] = [];
+          const summary = await runL1Batch({
+            limit: 10,
+            getPayerUsdcBalance: FUNDED_PAYER,
+            fetchImpl: async (url: string, init?: RequestInit) => {
+              const headers = new Headers(init?.headers);
+              const raw = headers.get("PAYMENT-SIGNATURE") ?? headers.get("X-PAYMENT");
+              if (!raw) return new Response(challengeForUrl(url), { status: 402, headers: { "content-type": "application/json" } });
+              const envelope = JSON.parse(Buffer.from(raw, "base64").toString("utf8")) as { accepted: { network: string } };
+              paidNetworks.push(envelope.accepted.network);
+              return paidResponse("eip155:8453");
+            },
+          });
+          assert.equal(summary.laneFloor.bnb ?? 0, 0, "旗 OFF の secondary 枠に bnb は出ない");
+          assert.deepEqual(paidNetworks, ["eip155:8453"]);
+          const rows = await db.select().from(schema.x402L1Purchases);
+          assert.equal(rows.length, 1);
+          assert.equal(rows[0].network, "eip155:8453");
+        });
+      } finally {
+        restoreBnbEnv();
+      }
+    });
+
+    await t.test("BNB secondary: USD1 以外（permit2・USDT）だけの壁は Base で買う", async () => {
+      const host = "bnbdual.example";
+      const basePayTo = payToFor(8);
+      const usdt = "0x55d398326f99059fF775485246999027B3197955";
+      enableBnb();
+      try {
+        await withDualBnb(
+          [{ host, basePayTo, bnbPayTo: payToFor(9) }],
+          new Map([
+            [
+              host,
+              {
+                bnbAccepts: [
+                  {
+                    scheme: "exact",
+                    network: BNB_CAIP2,
+                    amount: dualUsd1,
+                    asset: BNB_USD1,
+                    payTo: payToFor(9),
+                    maxTimeoutSeconds: 60,
+                    extra: { name: "World Liberty Financial USD", version: "1", assetTransferMethod: "permit2" },
+                  },
+                  {
+                    scheme: "exact",
+                    network: BNB_CAIP2,
+                    amount: dualUsd1,
+                    asset: usdt,
+                    payTo: payToFor(9),
+                    maxTimeoutSeconds: 60,
+                    extra: { name: "Tether USD", version: "1", assetTransferMethod: "eip3009" },
+                  },
+                ],
+              },
+            ],
+          ]),
+          async (challengeForUrl) => {
+            const chains: string[] = [];
+            const paidNetworks: string[] = [];
+            await runL1Batch({
+              limit: 10,
+              getPayerUsdcBalance: async ({ chain }) => {
+                chains.push(chain);
+                return 1_000_000_000n;
+              },
+              fetchImpl: async (url: string, init?: RequestInit) => {
+                const headers = new Headers(init?.headers);
+                const raw = headers.get("PAYMENT-SIGNATURE") ?? headers.get("X-PAYMENT");
+                if (!raw) return new Response(challengeForUrl(url), { status: 402, headers: { "content-type": "application/json" } });
+                const envelope = JSON.parse(Buffer.from(raw, "base64").toString("utf8")) as { accepted: { network: string } };
+                paidNetworks.push(envelope.accepted.network);
+                return paidResponse("eip155:8453");
+              },
+            });
+            assert.deepEqual(paidNetworks, ["eip155:8453"]);
+            assert.equal(chains.includes("bnb"), false, "USD1 の eip3009 が無いので bnb の残高は見ない");
+            const rows = await db.select().from(schema.x402L1Purchases);
+            assert.equal(rows.length, 1);
+            assert.equal(rows[0].network, "eip155:8453");
+            assert.equal(rows[0].payTo, basePayTo);
+          },
+        );
+      } finally {
+        restoreBnbEnv();
+      }
+    });
+
+    await t.test("BNB secondary: 別枠が尽きた日は bnb を開かず Base で買う", async () => {
+      const host = "bnbdual.example";
+      enableBnb();
+      process.env.L1_BNB_DAILY_CAP_USD = "0";
+      try {
+        await withDualBnb([{ host, basePayTo: payToFor(8), bnbPayTo: payToFor(9) }], new Map(), async (challengeForUrl) => {
+          const chains: string[] = [];
+          const paidNetworks: string[] = [];
+          const summary = await runL1Batch({
+            limit: 10,
+            getPayerUsdcBalance: async ({ chain }) => {
+              chains.push(chain);
+              return 1_000_000_000n;
+            },
+            fetchImpl: async (url: string, init?: RequestInit) => {
+              const headers = new Headers(init?.headers);
+              const raw = headers.get("PAYMENT-SIGNATURE") ?? headers.get("X-PAYMENT");
+              if (!raw) return new Response(challengeForUrl(url), { status: 402, headers: { "content-type": "application/json" } });
+              const envelope = JSON.parse(Buffer.from(raw, "base64").toString("utf8")) as { accepted: { network: string } };
+              paidNetworks.push(envelope.accepted.network);
+              return paidResponse("eip155:8453");
+            },
+          });
+          assert.equal(summary.laneFloor.bnb, 1, "別枠が 0 でも secondary の候補は枠に残る");
+          assert.equal(chains.includes("bnb"), false);
+          assert.deepEqual(paidNetworks, ["eip155:8453"]);
+          const rows = await db.select().from(schema.x402L1Purchases);
+          assert.equal(rows.length, 1);
+          assert.equal(rows[0].network, "eip155:8453");
+        });
+      } finally {
+        restoreBnbEnv();
+      }
+    });
+
     await t.test("a challenge over-charging vs catalog is recorded, never signed", async () => {
       await db.execute(sql`TRUNCATE x402_l1_purchases`);
       // payTo must be the endpoint's OWN declared payee: since 2026-08-22 the

@@ -88,13 +88,20 @@
 //   よう、行の上限と持ち時間はレーンごとに持つ。
 //   Arc（eip155:5042）は足していない: 同じ形の穴はあるが、Arc の Transfer の読み方（ブロック間隔・RPC の範囲の上限）を
 //   実測していない。足すときは CHAIN_READ_LANES に 1 行と、その chain の読み手。
+//
+// 2026-10-19（BNB レーン）: 同じ形の直読みを eip155:56 にも通す。Celo のレーンの選び方・nonce の束縛・
+// 行ごとの窓・応答なしを先に読む順は変えない。BNB は USD1（18 桁）なので、返す額は 6 桁（evmIndexLedgerAmount）。
+// 10^12 で割り切れない額は候補にしない。RPC は BNB_RPC_URL 必須（公開 RPC へ黙って倒れない）。
+// ブロック間隔は 2026-10-19 に測っていないので、窓の見積もりは Celo と同じ 1 秒を置き、ブロックの実時刻で直す。
 // ============================================================
 import { createPublicClient, http, parseAbiItem, type Address } from "viem";
-import { base, celo } from "viem/chains";
+import { base, bsc, celo } from "viem/chains";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { getLogScanClient } from "@/lib/chain/client";
+import { BNB_CAIP2, BNB_CHAIN_ID, BNB_USD1_ADDRESS } from "@/lib/chain/bnb";
 import { CELO_CAIP2, CELO_CHAIN_ID, CELO_USDC_ADDRESS } from "@/lib/chain/celo";
+import { evmIndexLedgerAmount } from "@/lib/settlements/index-evm";
 import { updateWithCorrection } from "@/lib/observatory/corrections";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
@@ -181,6 +188,11 @@ export const CHAIN_READ_AFTER_MINUTES = LATE_SETTLEMENT_WINDOW_MINUTES + 5;
  * cron は締切（deadlineAt）を渡し、Celo の段はその手前で止まる（recoverLateSettlements の deadlineAt）。
  */
 export const CELO_CHAIN_READ_BUDGET_MS = 30_000;
+/**
+ * BNB のレーンの持ち時間（2026-10-19）。Celo と同じ 30 秒を別枠で持つ。cron の締切（deadlineAt）で頭打ちにする
+ * （名目の合計は 300 秒を超える。Celo のあとに走り、残りが無ければこの回は読まない）。
+ */
+export const BNB_CHAIN_READ_BUDGET_MS = 30_000;
 
 export type LateSettlementSummary = {
   recovered: number;
@@ -200,6 +212,12 @@ export type LateSettlementSummary = {
   chainRowsReadCelo?: number;
   /** Celo のレーンで、この回は読めなかった行の数（RPC の失敗・時間切れ。行は変えていない・次回また選ばれる）。 */
   chainRowsUnreadCelo?: number;
+  /** recoveredFromChain のうち BNB のレーンで貼った数（2026-10-19・nonce で持ち主を決めた行だけ）。 */
+  recoveredFromChainBnb?: number;
+  /** chainRowsRead のうち BNB のレーンで読んだ行の数。 */
+  chainRowsReadBnb?: number;
+  /** BNB のレーンで、この回は読めなかった行の数（行は変えていない）。 */
+  chainRowsUnreadBnb?: number;
   /** 1 本の貼り付けの文が落ちた数（その 1 本は台帳も訂正ログも書かれていない・次回に再試行）。 */
   linkErrors?: number;
   /** 結びつけた (purchase_id, tx_hash) の対。cron の応答に出る。 */
@@ -216,6 +234,8 @@ export async function recoverLateSettlements(
     chainReadBudgetMs?: number;
     /** Celo のレーンの持ち時間（ms）。 */
     celoChainReadBudgetMs?: number;
+    /** BNB のレーンの持ち時間（ms）。 */
+    bnbChainReadBudgetMs?: number;
     /**
      * 呼び手の締切（epoch ms）。Celo のレーンの持ち時間を「締切までの残り」で頭打ちにする（cron が 300 秒を越えない）。
      * Base のレーンには掛けない（従来どおり）。
@@ -345,7 +365,24 @@ export async function recoverLateSettlements(
           options.readNonces,
         )
       : { linked: [], read: 0, unread: 0 };
-  const fromChain = [...chain.linked, ...celoChain.linked];
+  // 2026-10-19: BNB のレーン。Celo と同じく、Transfer の読み手と nonce の読み手の両方が要る。
+  // 行の上限は別枠。持ち時間は締切までの残りで頭打ち（Celo の段が先に使う）。
+  const bnbChain =
+    options.readTransfers && options.readNonces
+      ? await linkFromChain(
+          db,
+          BNB_CHAIN_READ_LANE,
+          options.readTransfers,
+          options.chainReadLimit ?? CHAIN_READ_ROWS_PER_RUN,
+          Math.min(
+            options.bnbChainReadBudgetMs ?? BNB_CHAIN_READ_BUDGET_MS,
+            typeof options.deadlineAt === "number" ? options.deadlineAt - Date.now() : Infinity,
+          ),
+          errors,
+          options.readNonces,
+        )
+      : { linked: [], read: 0, unread: 0 };
+  const fromChain = [...chain.linked, ...celoChain.linked, ...bnbChain.linked];
   rows.push(...fromChain);
   const promoted = await promoteNamedTx(db);
 
@@ -355,10 +392,13 @@ export async function recoverLateSettlements(
     recoveredBySet: bySet.length,
     recoveredFromChain: fromChain.length,
     promotedNamedTx: promoted.length,
-    chainRowsRead: chain.read + celoChain.read,
+    chainRowsRead: chain.read + celoChain.read + bnbChain.read,
     recoveredFromChainCelo: celoChain.linked.length,
     chainRowsReadCelo: celoChain.read,
     chainRowsUnreadCelo: celoChain.unread,
+    recoveredFromChainBnb: bnbChain.linked.length,
+    chainRowsReadBnb: bnbChain.read,
+    chainRowsUnreadBnb: bnbChain.unread,
     linkErrors: errors.count,
     links: rows.map((r) => ({ purchaseId: r.purchase_id, txHash: r.tx_hash })),
   };
@@ -741,7 +781,7 @@ const EVM_AUTH_NONCE_RE = /^0x[0-9a-f]{64}$/;
  * linkAmbiguousByNonce）が Celo の受取先を持たないので、この段が nonce で決める。
  */
 type ChainReadLane = {
-  key: "base" | "celo";
+  key: "base" | "celo" | "bnb";
   networks: readonly string[];
   nonceBound: boolean;
   noAnswerFirst: boolean;
@@ -749,8 +789,9 @@ type ChainReadLane = {
 };
 const BASE_CHAIN_READ_LANE: ChainReadLane = { key: "base", networks: BASE_NETWORK_KEYS, nonceBound: false, noAnswerFirst: false, rowWindows: false };
 const CELO_CHAIN_READ_LANE: ChainReadLane = { key: "celo", networks: [CELO_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true };
+const BNB_CHAIN_READ_LANE: ChainReadLane = { key: "bnb", networks: [BNB_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true };
 /** 直読みのレーンの表（テストと点検が読む）。Arc は載せていない（ファイル冒頭の 2026-10-11 の節）。 */
-export const CHAIN_READ_LANES: readonly ChainReadLane[] = [BASE_CHAIN_READ_LANE, CELO_CHAIN_READ_LANE];
+export const CHAIN_READ_LANES: readonly ChainReadLane[] = [BASE_CHAIN_READ_LANE, CELO_CHAIN_READ_LANE, BNB_CHAIN_READ_LANE];
 
 /**
  * 索引に候補の無い行について、チェーンの Transfer（from = 行の payer・to = 行の pay_to）を直接読んで貼る。
@@ -1263,12 +1304,105 @@ function boundedCeloClient(timeoutMs: number | undefined): CeloTransferClient | 
   }) as unknown as CeloTransferClient;
 }
 
+/** BNB のブロック間隔（秒）。2026-10-19 には測っていない。Celo と同じ 1 秒で見積もり、ブロックの実時刻で直す。 */
+const BNB_BLOCK_SECONDS = 1;
+/** Celo の読み手と同じ幅。BSC の eth_getLogs の上限は 2026-10-19 に測っていないので、それより広い範囲は問わない。 */
+export const BNB_TRANSFER_READ_CHUNK_BLOCKS = 2_000n;
+const BNB_BLOCK_LOCATE_TOLERANCE_SECONDS = 30;
+const BNB_TRANSFER_READ_MARGIN_BLOCKS = 35n;
+
+type BnbTransferClient = Pick<ReturnType<typeof getLogScanClient>, "getBlock" | "getLogs" | "getChainId">;
+
 /**
- * cron が linkFromChain に渡す読み手（2026-10-11）: Celo の行は Celo の読み手、それ以外は Base の読み手
- * （Base の読み手は Base 以外の network に null を返す＝従来どおり読まない）。
+ * BNB の USD1 の Transfer（from → to）を時刻の窓で読む読み手（2026-10-19・linkFromChain の BNB のレーン）。
+ * 規則は makeCeloTransferReader と同じ。違いはトークンと額だけ: チェーン上の額は 18 桁で、返す value は
+ * 6 桁（evmIndexLedgerAmount）。10^12 で割り切れない額は配列に入れない（記録しない）。
+ * BNB 以外の network は null。BNB_RPC_URL が無い・chainId が 56 でない・先端が窓に届いていない・
+ * 時刻からブロックを特定できないときは null か例外（空配列は、窓を読み切って記録できる Transfer が無かったときだけ）。
  */
-export function makeChainTransferReader(readers: { base?: TransferReader; celo?: TransferReader } = {}): TransferReader {
+export function makeBnbTransferReader(client?: BnbTransferClient): TransferReader {
+  return async ({ network, payer, payTo, from, to, timeoutMs }) => {
+    if (network !== BNB_CAIP2) return null;
+    const c = client ?? boundedBnbClient(timeoutMs);
+    if (!c) return null;
+    const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
+    const expired = () => {
+      if (Date.now() > deadline) throw new Error("transfer read ran past its time limit");
+    };
+    const [chainId, head] = await Promise.all([c.getChainId(), c.getBlock({ blockTag: "latest" })]);
+    if (chainId !== BNB_CHAIN_ID) return null;
+    const headMs = Number(head.timestamp) * 1000;
+    if (headMs < to.getTime()) return null;
+    const locate = async (t: Date): Promise<bigint> => {
+      let n = head.number - BigInt(Math.max(0, Math.ceil((headMs - t.getTime()) / (BNB_BLOCK_SECONDS * 1000))));
+      for (let i = 0; i < 3; i++) {
+        expired();
+        if (n < 0n) n = 0n;
+        if (n > head.number) n = head.number;
+        const block = await c.getBlock({ blockNumber: n });
+        const driftSeconds = Math.round((Number(block.timestamp) * 1000 - t.getTime()) / 1000);
+        if (Math.abs(driftSeconds) <= BNB_BLOCK_LOCATE_TOLERANCE_SECONDS) return n;
+        if ((n === 0n && driftSeconds > 0) || (n === head.number && driftSeconds < 0)) break;
+        n -= BigInt(Math.trunc(driftSeconds / BNB_BLOCK_SECONDS));
+      }
+      throw new Error("could not locate the BNB block for the window");
+    };
+    const [fromAt, toAt] = await Promise.all([locate(from), locate(to)]);
+    const first = fromAt - BNB_TRANSFER_READ_MARGIN_BLOCKS;
+    const last = toAt + BNB_TRANSFER_READ_MARGIN_BLOCKS;
+    const fromBlock = first < 0n ? 0n : first;
+    const toBlock = last > head.number ? head.number : last;
+    if (fromBlock > toBlock) throw new Error("empty BNB block range for the window");
+    const times = new Map<bigint, number>();
+    const out: ChainTransfer[] = [];
+    for (let lo = fromBlock; lo <= toBlock; lo += BNB_TRANSFER_READ_CHUNK_BLOCKS) {
+      expired();
+      const hi = lo + BNB_TRANSFER_READ_CHUNK_BLOCKS - 1n < toBlock ? lo + BNB_TRANSFER_READ_CHUNK_BLOCKS - 1n : toBlock;
+      const logs = await c.getLogs({
+        address: BNB_USD1_ADDRESS,
+        event: TRANSFER_LOG,
+        args: { from: payer as Address, to: payTo as Address },
+        fromBlock: lo,
+        toBlock: hi,
+      });
+      for (const l of logs) {
+        if (l.blockNumber === null || !l.transactionHash || typeof l.args.value !== "bigint") {
+          throw new Error("a BNB transfer log came back without a block, a hash or a value");
+        }
+        const booked = evmIndexLedgerAmount(BNB_CHAIN_ID, l.args.value);
+        if (booked === null) continue;
+        expired();
+        if (!times.has(l.blockNumber)) times.set(l.blockNumber, Number((await c.getBlock({ blockNumber: l.blockNumber })).timestamp) * 1000);
+        out.push({
+          txHash: l.transactionHash,
+          from: String(l.args.from),
+          to: String(l.args.to),
+          value: booked.toString(),
+          blockTime: new Date(times.get(l.blockNumber)!).toISOString(),
+        });
+      }
+    }
+    return out;
+  };
+}
+
+/** BNB_RPC_URL を、呼び手の時間で切り・再試行しないクライアント。BNB_RPC_URL が無ければ null（公開 RPC を使わない）。 */
+function boundedBnbClient(timeoutMs: number | undefined): BnbTransferClient | null {
+  const url = process.env.BNB_RPC_URL?.trim();
+  if (!url) return null;
+  return createPublicClient({
+    chain: bsc as unknown as typeof base,
+    transport: http(url, { timeout: Math.max(1_000, Math.trunc(timeoutMs ?? 20_000)), retryCount: 0 }),
+  }) as unknown as BnbTransferClient;
+}
+
+/**
+ * cron が linkFromChain に渡す読み手（2026-10-11、BNB は 2026-10-19）: Celo の行は Celo、BNB の行は BNB、
+ * それ以外は Base（Base の読み手は Base 以外の network に null を返す＝従来どおり読まない）。
+ */
+export function makeChainTransferReader(readers: { base?: TransferReader; celo?: TransferReader; bnb?: TransferReader } = {}): TransferReader {
   const baseReader = readers.base ?? makeBaseTransferReader();
   const celoReader = readers.celo ?? makeCeloTransferReader();
-  return (q) => (q.network === CELO_CAIP2 ? celoReader(q) : baseReader(q));
+  const bnbReader = readers.bnb ?? makeBnbTransferReader();
+  return (q) => (q.network === CELO_CAIP2 ? celoReader(q) : q.network === BNB_CAIP2 ? bnbReader(q) : baseReader(q));
 }

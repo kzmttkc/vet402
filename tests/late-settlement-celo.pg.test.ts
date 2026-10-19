@@ -400,6 +400,7 @@ if (!TEST_DB) {
       assert.deepEqual(late.CHAIN_READ_LANES.map((l) => [l.key, [...l.networks], l.nonceBound]), [
         ["base", ["eip155:8453", "base"], false],
         ["celo", ["eip155:42220"], true],
+        ["bnb", ["eip155:56"], true],
       ]);
     });
 
@@ -630,6 +631,7 @@ if (!TEST_DB) {
       assert.deepEqual(late.CHAIN_READ_LANES.map((l) => [l.key, l.noAnswerFirst, l.rowWindows]), [
         ["base", false, false],
         ["celo", true, true],
+        ["bnb", true, true],
       ]);
       assert.equal(late.CHAIN_READ_BUDGET_MS, 45_000, "Base の持ち時間は変えていない");
       assert.equal(late.CELO_CHAIN_READ_BUDGET_MS, 30_000);
