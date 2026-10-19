@@ -15,10 +15,9 @@
 // 2026-09-16) is the second row, off by default (OBSERVATORY_ARC_L1_ENABLED).
 // 2026-10-10 (Celo lane): Celo mainnet (eip155:42220) is the third row, off by
 // default (OBSERVATORY_CELO_L1_ENABLED). Nothing about the Base or Arc rows changed.
-// 2026-10-19 (BNB lane, stage B1): BNB Chain mainnet (eip155:56) is the fourth row,
-// off by default (OBSERVATORY_BNB_L1_ENABLED). The token is USD1 (18 decimals), not
-// USDC. Nothing about the Base, Arc or Celo rows changed. The runner does not
-// prefer this row yet (stage B2).
+// 2026-10-19 (BNB lane): BNB Chain mainnet (eip155:56) is the fourth row, off by
+// default (OBSERVATORY_BNB_L1_ENABLED). The token is USD1 (18 decimals), not USDC.
+// Nothing about the Base, Arc or Celo rows changed. Stage B2 wires the runner.
 //
 // Spec grounding (fetched 2026-08-14, coinbase/x402):
 //  - specs/schemes/exact/scheme_exact_evm.md — EIP-3009 payload:
