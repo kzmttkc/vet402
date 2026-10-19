@@ -645,22 +645,29 @@ export function selectAccept(
   // 2026-09-19（XRPL の W3 と同じ扱い）: カタログの pay_to が null の行では免除を開かない。宣言の無い payTo は
   // 何とも照合されないので、「宣言 network の accept が壁にある」の証拠が network の一致だけになる。そのときは
   // 別チェーンの accept にも宣言額との一致を要求する（declaredAmount が null の行は従来どおり $1 の上限だけ）。
+  // BNB が主ネットワークの行は宣言額が 18 桁。相対上限は台帳の 6 桁なので、作る前に割る。
+  // 割り切れなければ相対上限の免除は開かない（6 桁の上限を 18 桁の生値では組まない）。
+  const relativeDeclaredUnits =
+    declaredUnits === null ? null : declaredNetwork === BNB_CAIP2 ? bnbLedgerUnits(declaredUnits) : declaredUnits;
   const exemptFromDeclaredPrice = (a: ChallengeAccept): boolean =>
-    declaredUnits !== null &&
+    relativeDeclaredUnits !== null &&
     options.declaredPayTo !== null &&
     declaredPresent &&
     a.network !== declaredNetwork &&
     preferred.has(a.network);
   const priceDeclaredFor = (a: ChallengeAccept): boolean => options.declaredAmount !== null && !exemptFromDeclaredPrice(a);
+  // 6 桁の宣言額を BNB の 18 桁と比べるのは、BNB が主ネットワークのときだけ。それ以外は比べられない額で、売り手の所見にしない。
+  const comparable = (a: ChallengeAccept): boolean => !isBnbAccept(a) || declaredNetwork === BNB_CAIP2;
   /**
    * Ceiling for an exempt (other-chain, preferred) accept: the declared price itself, never above the hard cap.
    * 2026-09-29 audit round 5 (low): this was 3 × the declared price, so a seller could price its Arc accept at
    * three times what its catalog listing says and be paid that. The lane may be priced LOWER than the listing
    * (the seller prices each chain), never higher.
+   * BNB primary: the ceiling is the 6-digit ledger quotient of the 18-digit declaration.
    */
   const relativeCapUnits = ((): bigint => {
-    if (declaredUnits === null) return MAX_PER_PURCHASE_UNITS; // 免除自体が効かないので使われない
-    return declaredUnits < MAX_PER_PURCHASE_UNITS ? declaredUnits : MAX_PER_PURCHASE_UNITS;
+    if (relativeDeclaredUnits === null) return MAX_PER_PURCHASE_UNITS; // 免除自体が効かないので使われない
+    return relativeDeclaredUnits < MAX_PER_PURCHASE_UNITS ? relativeDeclaredUnits : MAX_PER_PURCHASE_UNITS;
   })();
   const overRelativeCap = (a: ChallengeAccept, amount: bigint): boolean =>
     options.declaredAmount !== null && exemptFromDeclaredPrice(a) && amount > relativeCapUnits;
@@ -685,8 +692,9 @@ export function selectAccept(
       ledger = converted;
     }
     // Declared price is an exact string match in the asset's own units
-    // (BNB: 18-digit to 18-digit, not the 6-digit quotient).
-    if (priceDeclaredFor(accept) && accept.amount !== options.declaredAmount) continue;
+    // (BNB primary: 18-digit to 18-digit). A 6-digit declaration is not compared
+    // to a BNB accept unless BNB is the declared network — that mismatch is not a seller finding.
+    if (priceDeclaredFor(accept) && comparable(accept) && accept.amount !== options.declaredAmount) continue;
     if (overRelativeCap(accept, ledger)) continue;
     if (ledger > MAX_PER_PURCHASE_UNITS) continue;
     return isBnbAccept(accept) ? { accept, reason: null, amountUnits: ledger } : { accept, reason: null };
@@ -711,7 +719,7 @@ export function selectAccept(
       return false;
     }
   });
-  if (eligible.some((a) => priceDeclaredFor(a) && a.amount !== options.declaredAmount) || relativeOver) {
+  if (eligible.some((a) => priceDeclaredFor(a) && comparable(a) && a.amount !== options.declaredAmount) || relativeOver) {
     // A seller charging other than it advertised is the more specific finding
     // unless everything was simply over the ceiling.
     const allOverCap = eligible.every((a) => {

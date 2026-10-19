@@ -1839,6 +1839,96 @@ if (!TEST_DB) {
       }
     });
 
+    async function seedBnbPrimary(host: string) {
+      const payTo = payToFor(7);
+      await db.execute(
+        sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_payee_watchers, x402_l1_purchases, observed_purchases`,
+      );
+      await syncCatalog({
+        fetchResult: {
+          items: [
+            parseCatalogItem({
+              resource: `https://${host}/api`,
+              accepts: [{ scheme: "exact", amount: dualUsd1, asset: BNB_USD1, network: BNB_CAIP2, payTo, maxTimeoutSeconds: 60, extra: usd1Extra }],
+              extensions: { bazaar: { info: { input: { method: "GET" } } } },
+              quality: { l30DaysTotalCalls: 8000, l30DaysUniquePayers: 80 },
+            }),
+          ],
+          totalCount: 1,
+          fetchedCount: 1,
+          complete: true,
+        },
+        today: "2026-10-19",
+      });
+      const challenge = JSON.stringify({
+        x402Version: 2,
+        accepts: [{ scheme: "exact", network: BNB_CAIP2, amount: dualUsd1, asset: BNB_USD1, payTo, maxTimeoutSeconds: 60, extra: usd1Extra }],
+      });
+      await runL0ProbeBatch({
+        limit: 5,
+        concurrency: 1,
+        fetchImpl: async () => new Response(challenge, { status: 402, headers: { "content-type": "application/json" } }),
+      });
+      return challenge;
+    }
+
+    await t.test("BNB primary: 旗 OFF でも eip155:56 が主ネットワークの行は候補に残る", async () => {
+      const host = "bnbonly.example";
+      process.env.OBSERVATORY_L1_ENABLED = "true";
+      process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
+      delete process.env.OBSERVATORY_BNB_L1_ENABLED;
+      delete process.env.BNB_RPC_URL;
+      try {
+        const challenge = await seedBnbPrimary(host);
+        const seen: string[] = [];
+        let paid = 0;
+        await runL1Batch({
+          limit: 5,
+          getPayerUsdcBalance: FUNDED_PAYER,
+          fetchImpl: async (url: string, init?: RequestInit) => {
+            seen.push(url);
+            const headers = new Headers(init?.headers);
+            if (headers.get("PAYMENT-SIGNATURE") || headers.get("X-PAYMENT")) paid++;
+            return new Response(challenge, { status: 402, headers: { "content-type": "application/json" } });
+          },
+        });
+        assert.ok(seen.some((u) => u.includes(host)), "旗 OFF でも main と同じく無払いの要求は出る");
+        assert.equal(paid, 0, "旗 OFF では署名しない");
+        const rows = await db.select().from(schema.x402L1Purchases);
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0].status, "no_eligible_accept");
+      } finally {
+        restoreBnbEnv();
+        await restoreBaseCatalog();
+      }
+    });
+
+    await t.test("BNB primary: 旗 ON でも BNB_RPC_URL が無いときは候補に触れない", async () => {
+      const host = "bnbonly.example";
+      process.env.OBSERVATORY_L1_ENABLED = "true";
+      process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
+      process.env.OBSERVATORY_BNB_L1_ENABLED = "true";
+      delete process.env.BNB_RPC_URL;
+      try {
+        const challenge = await seedBnbPrimary(host);
+        const seen: string[] = [];
+        await runL1Batch({
+          limit: 5,
+          getPayerUsdcBalance: FUNDED_PAYER,
+          fetchImpl: async (url: string) => {
+            seen.push(url);
+            return new Response(challenge, { status: 402, headers: { "content-type": "application/json" } });
+          },
+        });
+        assert.ok(seen.every((u) => !u.includes(host)), "BNB_RPC_URL が無ければ 1 リクエストも出ない");
+        const rows = await db.select().from(schema.x402L1Purchases);
+        assert.equal(rows.length, 0);
+      } finally {
+        restoreBnbEnv();
+        await restoreBaseCatalog();
+      }
+    });
+
     await t.test("a challenge over-charging vs catalog is recorded, never signed", async () => {
       await db.execute(sql`TRUNCATE x402_l1_purchases`);
       // payTo must be the endpoint's OWN declared payee: since 2026-08-22 the

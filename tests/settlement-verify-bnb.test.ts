@@ -26,9 +26,9 @@ const LEDGER = "100000";
 const ASSET = 10n ** 17n; // $0.10
 const pad = (addr: string) => `0x${addr.slice(2).toLowerCase().padStart(64, "0")}`;
 
-const transferLog = (amount: bigint, token = BNB_USD1) => ({
+const transferLog = (amount: bigint, token = BNB_USD1, from = PAYER) => ({
   address: token.toLowerCase(),
-  topics: [TRANSFER_TOPIC, pad(PAYER), pad(PAY_TO)],
+  topics: [TRANSFER_TOPIC, pad(from), pad(PAY_TO)],
   data: `0x${amount.toString(16).padStart(64, "0")}`,
 });
 const authUsedLog = (token = BNB_USD1) => ({
@@ -75,6 +75,13 @@ test("BNB: 1e17+1, the bare ledger units, and a different token are not the sett
   const other = await run([authUsedLog("0x3333333333333333333333333333333333333333"), transferLog(ASSET, "0x3333333333333333333333333333333333333333")]);
   assert.equal(other.ok === false && other.reason, "no_matching_transfer");
   assert.equal(ASSET, BigInt(LEDGER) * BNB_LEDGER_SCALE);
+});
+
+test("BNB: a Transfer from another payer is not our settlement", async () => {
+  const other = "0x3333333333333333333333333333333333333333";
+  const result = await run([authUsedLog(), transferLog(ASSET, BNB_USD1, other)]);
+  assert.equal(result.ok, false);
+  assert.equal(result.ok === false && result.reason, "no_matching_transfer");
 });
 
 test("BNB: an RPC that reports another chain id is wrong_chain", async () => {

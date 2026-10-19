@@ -200,7 +200,8 @@ if (!TEST_DB) {
       // Tempo レーン（2026-09-17・MPP）と XRPL レーン（feat/xrpl-lane）は旗 off なので 0（レーンの表に居るぶん、鍵だけは出る）。
       // 2026-10-10: Celo のレーンが表に入ったので鍵が 1 つ増えた（旗 off なので 0）。
       // 2026-10-18: Stellar も表に入った。旗 off なので 0。他レーンの件数は変えない。
-      assert.deepEqual(summary.laneFloor, { solana: 3, arc: 0, tempo: 0, xrpl: 0, celo: 0, stellar: 0 });
+      // 2026-10-19: BNB も表に入った。旗 off なので 0。他レーンの件数は変えない。
+      assert.deepEqual(summary.laneFloor, { solana: 3, arc: 0, tempo: 0, xrpl: 0, celo: 0, stellar: 0, bnb: 0 });
       assert.equal(await solanaRows(), SOL_COUNT);
     });
 

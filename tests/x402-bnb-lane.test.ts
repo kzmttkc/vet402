@@ -267,6 +267,61 @@ test("only USD1 eip3009 is payable: other assets, permit2 and permit2-exact are 
   });
 });
 
+test("a Base permit2 wall plus USD1 at 1e17 is not price_mismatch against a 6-digit $0.10 declaration", () => {
+  const wall = [
+    baseAccept({ extra: { name: "USD Coin", version: "2", assetTransferMethod: "permit2" } }),
+    bnbAccept(),
+  ];
+  const declared = {
+    declaredAmount: DIME_LEDGER.toString(),
+    declaredPayTo: PAY_TO,
+    declaredNetwork: BASE_CAIP2,
+  };
+  const check = (prefer: boolean) => {
+    const chosen = selectAccept(
+      wall,
+      prefer
+        ? { ...declared, preferNetworks: [BNB_CAIP2], declaredPayTosByNetwork: { [BNB_CAIP2]: [PAY_TO] } }
+        : declared,
+    );
+    assert.notEqual(chosen.reason, "price_mismatch");
+    if (chosen.accept === null) {
+      assert.equal(chosen.reason, "no_eligible_accept");
+      return;
+    }
+    assert.equal(chosen.accept.network, BNB_CAIP2);
+    assert.equal(chosen.amountUnits, DIME_LEDGER);
+  };
+  withFlag(undefined, () => {
+    check(false);
+    check(true);
+  });
+  withFlag("true", () => {
+    check(false);
+    check(true);
+  });
+});
+
+test("BNB primary: the relative cap is the 18-digit declaration in ledger units, and an unbuildable declaration does not exempt", () => {
+  withFlag("true", () => {
+    const listing = {
+      declaredAmount: DIME_TEXT,
+      declaredPayTo: PAY_TO,
+      declaredNetwork: BNB_CAIP2,
+      preferNetworks: [BASE_CAIP2],
+    };
+    const atListing = selectAccept([bnbAccept(), baseAccept({ amount: DIME_LEDGER.toString() })], listing);
+    assert.equal(atListing.accept?.network, BASE_CAIP2, "a preferred Base accept at the 6-digit listing is payable");
+    const overListing = selectAccept([bnbAccept(), baseAccept({ amount: (DIME_LEDGER + 1n).toString() })], listing);
+    assert.equal(overListing.accept?.network, BNB_CAIP2, "one ledger unit above the listing is not paid on the preferred chain");
+    const unbuildable = selectAccept([bnbAccept({ amount: (DIME + 1n).toString() }), baseAccept()], {
+      ...listing,
+      declaredAmount: (DIME + 1n).toString(),
+    });
+    assert.notEqual(unbuildable.accept?.network, BASE_CAIP2, "an unbuildable BNB declaration does not open the relative-cap exemption");
+  });
+});
+
 test("lane preference buys the secondary USD1 accept at the Base listing's 6-digit price", () => {
   withFlag("true", () => {
     const lane = {

@@ -1299,8 +1299,8 @@ export async function runL1Batch(
     // Celo（2026-10-10）: Base と同じ鍵で署名する EVM レーン。有効条件はフラグだけ（Arc と同じ）。
     // フラグが無ければ候補 SQL が Celo を主ネットワークにする行を外し、レーン枠も問い合わせない。
     { chain: "celo", ready: isCeloL1Enabled() },
-    // BNB（2026-10-19・段B2）: 同じ EOA。有効条件は旗 + BNB_RPC_URL。どちらか欠ければレーン枠を問い合わせない。
-    // 残高読みの公開 RPC へは倒れない（索引・遅延回収と同じ。公開 RPC で「買える」と見なさない）。
+    // BNB（2026-10-19・段B2）: 同じ EOA。レーン枠の有効条件は旗 + BNB_RPC_URL。どちらか欠ければレーン枠を問い合わせない。
+    // レーン外で BNB が選ばれたら、残高は公開 RPC で読む（chain/bnb.ts の既定。規則では可）。
     { chain: "bnb", ready: isBnbL1Enabled() && !!process.env.BNB_RPC_URL?.trim() },
     // Stellar（2026-10-18）: 旗 + 秘密 + Horizon + RPC。どれか欠ければ主ネットワークが pubnet の行を外す。
     { chain: "stellar", ready: stellarReady },
@@ -1832,7 +1832,7 @@ export async function runL1Batch(
       const preferNetworks =
         candidate.laneChain !== null &&
         laneNetwork !== undefined &&
-        (candidate.laneChain === "bnb" ? laneOpen("bnb") : laneOpen(candidate.laneChain)) &&
+        laneOpen(candidate.laneChain) &&
         !(candidate.laneChain === "celo" && celoLaneUnavailable) &&
         !(candidate.laneChain === "stellar" && stellarLaneUnavailable) &&
         !(candidate.laneChain === "bnb" && bnbLaneUnavailable) &&
