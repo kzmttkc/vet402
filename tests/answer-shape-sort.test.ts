@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sortAnswerShape, sortAnswerShapeFromRun, type AnswerShapeSort, type AnswerShapeSortRow } from "../src/lib/observatory/answer-shape-sort";
+import { sortAnswerShape, sortAnswerShapeCaught, sortAnswerShapeFromRun, type AnswerShapeSort, type AnswerShapeSortRow } from "../src/lib/observatory/answer-shape-sort";
 
 // 2026-09-15〜10-15 の 68 件（人が 2026-10-18 に仕分けたもの）。本文の頭と、クエリ・本文を送ったかだけ。
-// 売り手の名前は書かない。件数 n は同じ形の行数。human が関数と違う行だけ diverge に理由を書く。
+// 売り手の名前も、売り手の経路も、固有の文言も書かない。件数 n は同じ形の行数。
+// human が関数と違う行だけ diverge に理由を書く。段S1b で unknown に移った行は、vet402 の誤りと示せないため。
 
 type Human = AnswerShapeSort;
 type Case = {
@@ -61,7 +62,9 @@ const CASES: Case[] = [
   {
     n: 3,
     human: "vet402_input",
-    expect: "vet402_input",
+    expect: "unknown",
+    diverge:
+      "人は vet402_input。宣言どおり型 string に合う amount=100 を送っており、例は無い。本文の missing/invalid だけでは vet402 の誤りと示せないので unknown。seller_suspect にはしない。",
     row: {
       answerShape: "error_object",
       bodyHead: '{"error":"missing or invalid \'amount\' query param, e.g. ?amount=100"}',
@@ -76,7 +79,9 @@ const CASES: Case[] = [
   {
     n: 3,
     human: "vet402_input",
-    expect: "vet402_input",
+    expect: "unknown",
+    diverge:
+      "人は vet402_input。本文に validation があるが、必須項目が無く、送った値の型の落ち度も無い。語だけでは vet402_input にしないので unknown。",
     row: {
       answerShape: "error_object",
       bodyHead: '{"success":false,"error":"Validation errors","validationErrors":[{"field":"query","message":"empty_query_error"}]}',
@@ -90,7 +95,9 @@ const CASES: Case[] = [
   {
     n: 2,
     human: "vet402_input",
-    expect: "vet402_input",
+    expect: "unknown",
+    diverge:
+      "人は vet402_input。本文の required と、一社の書式で空だと書いてあることだけでは vet402 の誤りと示せない。その書式は見ない。unknown。",
     row: {
       answerShape: "error_object",
       bodyHead: '{"validationErrors":[{"field":"companyOrDomain","message":"field_required","actual":""}],"success":false}',
@@ -104,10 +111,12 @@ const CASES: Case[] = [
   {
     n: 2,
     human: "vet402_input",
-    expect: "vet402_input",
+    expect: "unknown",
+    diverge:
+      "人は vet402_input。url は型 string に合う値を送っている。一社の message の接頭辞や見本の URL では、売り手も vet402 も決めない。unknown。",
     row: {
       answerShape: "error_object",
-      bodyHead: '{"validationErrors":[{"field":"url","message":"wrong_linkedin_url","actual":"https://url/"}],"success":false}',
+      bodyHead: '{"validationErrors":[{"field":"url","message":"bad_profile_url","actual":"https://url/"}],"success":false}',
       requestQuery: "declared",
       requestBody: "none",
       declaredInput: null,
@@ -119,7 +128,9 @@ const CASES: Case[] = [
   {
     n: 1,
     human: "vet402_input",
-    expect: "vet402_input",
+    expect: "unknown",
+    diverge:
+      "人は vet402_input。validation の語だけで、送った値が型の名前だと示す材料が行に無い。unknown。",
     row: {
       answerShape: "error_object",
       bodyHead: '{"validationErrors":[{"type":"email","expected":"email","actual":"email","field":"email","message":"validation_email"}],"success":false}',
@@ -133,7 +144,9 @@ const CASES: Case[] = [
   {
     n: 1,
     human: "vet402_input",
-    expect: "vet402_input",
+    expect: "unknown",
+    diverge:
+      "人は vet402_input。validation の語だけで、送った中身の落ち度は示せない。unknown。",
     row: {
       answerShape: "error_object",
       bodyHead: '{"validationErrors":[{"expected":"non empty array","type":"arrayEmpty","actual":[],"field":"data"}],"success":false}',
@@ -354,7 +367,7 @@ const CASES: Case[] = [
     expect: "seller_suspect",
     row: {
       answerShape: "error_object",
-      bodyHead: '{"success":false,"error":"Cannot find package \'node-fetch\'"}',
+      bodyHead: '{"success":false,"error":"a dependency is not installed"}',
       requestQuery: null,
       requestBody: null,
       declaredInput: null,
@@ -367,7 +380,7 @@ const CASES: Case[] = [
     expect: "seller_suspect",
     row: {
       answerShape: "error_object",
-      bodyHead: '{"error":"endpoint deprecated","message":"Use GET /satellites/precision instead"}',
+      bodyHead: '{"error":"this route is retired","message":"use the replacement route"}',
       requestQuery: null,
       requestBody: null,
       declaredInput: null,
@@ -380,7 +393,7 @@ const CASES: Case[] = [
     expect: "seller_suspect",
     row: {
       answerShape: "error_object",
-      bodyHead: '{"error":"Reddit: 403","success":false}',
+      bodyHead: '{"error":"the upstream refused","success":false}',
       requestQuery: null,
       requestBody: "none",
       declaredInput: null,
@@ -393,7 +406,7 @@ const CASES: Case[] = [
     expect: "seller_suspect",
     row: {
       answerShape: "error_object",
-      bodyHead: '{"error":"No outbound number configured","status":"error"}',
+      bodyHead: '{"error":"a setting on this service is empty","status":"error"}',
       requestQuery: null,
       requestBody: "declared",
       declaredInput: null,
@@ -432,12 +445,10 @@ const CASES: Case[] = [
   {
     n: 1,
     human: "unknown",
-    expect: "seller_suspect",
-    diverge:
-      "人は unknown。宣言に無い登録（POST /register）を先に求めていて、どちらの落ち度か本文からは決まらない。関数は、宣言した本文を送ったあとの error_object で missing/required/invalid/validation が無いので seller_suspect。登録が宣言に無いことは入力に無いので、合わせない。",
+    expect: "unknown",
     row: {
       answerShape: "error_object",
-      bodyHead: '{"error":"tenant_id is not registered — call POST /register first to claim your namespace and receive your owner_token"}',
+      bodyHead: '{"error":"the caller is not on the list — complete the setup step first"}',
       requestQuery: null,
       requestBody: "declared",
       declaredInput: null,
@@ -447,21 +458,28 @@ const CASES: Case[] = [
   },
 ];
 
-test("68件は人の仕分けと 67 件一致し、ずれる 1 件は理由を残す", () => {
+test("68件は人の仕分けと 56 件一致し、unknown に移った 12 件は理由を残す", () => {
   let total = 0;
   let matched = 0;
   const byHuman = { vet402_input: 0, valid_answer: 0, seller_suspect: 0, unknown: 0 };
+  const gotCount = { vet402_input: 0, valid_answer: 0, seller_suspect: 0, unknown: 0 };
   for (const c of CASES) {
     total += c.n;
     byHuman[c.human] += c.n;
     const got = sortAnswerShape(c.row);
+    gotCount[got] += c.n;
     assert.equal(got, c.expect, c.diverge ?? c.row.bodyHead.slice(0, 80));
     if (got === c.human) matched += c.n;
     else assert.ok(c.diverge, "人と違う行には diverge を書く");
   }
   assert.equal(total, 68);
   assert.deepEqual(byHuman, { vet402_input: 42, valid_answer: 17, seller_suspect: 4, unknown: 5 });
-  assert.equal(matched, 67);
+  // 人の vet402_input 42 のうち 12 が unknown（3+3+2+2+1+1）。登録を先に求める 1 件は人と unknown で一致する。
+  assert.equal(matched, 56);
+  assert.equal(gotCount.seller_suspect, 4);
+  assert.equal(gotCount.vet402_input, 30);
+  assert.equal(gotCount.valid_answer, 17);
+  assert.equal(gotCount.unknown, 17);
 });
 
 test("各分類から 3 件以上、本文の頭が人の仕分けと一致する", () => {
@@ -475,7 +493,7 @@ test("各分類から 3 件以上、本文の頭が人の仕分けと一致す�
   }
 });
 
-test("送った値が宣言の型・例と違うときだけ vet402_input（語だけでは決めない）", () => {
+test("型に合わない値と、例と同じ値は vet402_input。例と同じことを売り手の根拠にしない", () => {
   const base: AnswerShapeSortRow = {
     answerShape: "error_object",
     bodyHead: '{"error":"missing \'amount\'"}',
@@ -486,10 +504,13 @@ test("送った値が宣言の型・例と違うときだけ vet402_input（語�
     fields: [{ name: "amount", in: "query", type: "number", example: 100 }],
   };
   assert.equal(sortAnswerShape({ ...base, sentQuery: { amount: "abc" } }), "vet402_input");
-  // 例と同じ値を送っている。本文は missing だが invalid/validation ではないので、売り手側に残す。
-  assert.equal(sortAnswerShape({ ...base, sentQuery: { amount: "100" } }), "seller_suspect");
+  // 例と同じ値。本文は missing。売り手の落ち度にはしない。
+  assert.equal(sortAnswerShape({ ...base, sentQuery: { amount: "100" } }), "vet402_input");
+  assert.equal(sortAnswerShape({ ...base, sentQuery: { amount: "string" } }), "vet402_input");
   // 宣言のクエリを送っていない。
   assert.equal(sortAnswerShape({ ...base, requestQuery: null, sentQuery: null }), "vet402_input");
+  // 型に合う別の値。本文の missing だけでは vet402 の誤りと示せない。
+  assert.equal(sortAnswerShape({ ...base, sentQuery: { amount: "50" } }), "unknown");
 });
 
 test("declared_input がクエリを宣言しているのに送っていない", () => {
@@ -531,6 +552,165 @@ test("ランナーと同じ入口: schema の必須クエリを送っていな�
     sentBody: null,
   });
   assert.equal(got, "vet402_input");
+});
+
+test("refused は、それだけで vet402_input", () => {
+  assert.equal(
+    sortAnswerShape({
+      answerShape: "error_object",
+      bodyHead: '{"error":"a dependency is not installed"}',
+      requestQuery: "refused",
+      requestBody: "none",
+      declaredInput: null,
+      required: none,
+    }),
+    "vet402_input",
+  );
+});
+
+test("型の名前・空・0・example を送ったときは vet402_input", () => {
+  const base: AnswerShapeSortRow = {
+    answerShape: "error_object",
+    bodyHead: '{"error":"a dependency is not installed"}',
+    requestQuery: "declared",
+    requestBody: "none",
+    declaredInput: null,
+    required: none,
+    fields: [{ name: "q", in: "query", type: "string", example: null }],
+  };
+  for (const value of ["string", "number", "integer", "boolean", "example", "placeholder", "", "0"]) {
+    assert.equal(sortAnswerShape({ ...base, sentQuery: { q: value } }), "vet402_input", value);
+  }
+  assert.equal(
+    sortAnswerShape({
+      ...base,
+      fields: [{ name: "n", in: "query", type: "number", example: null }],
+      sentQuery: { n: "0" },
+    }),
+    "vet402_input",
+  );
+});
+
+test("schema の fields にある項目を本文が欠けていると言い、送っていなければ vet402_input", () => {
+  assert.equal(
+    sortAnswerShape({
+      answerShape: "error_object",
+      bodyHead: '{"error":"missing \'symbol\'"}',
+      requestQuery: "declared",
+      requestBody: "none",
+      declaredInput: null,
+      required: none,
+      fields: [{ name: "symbol", in: "query", type: "string", example: null }],
+      sentQuery: { vs: "USD" },
+    }),
+    "vet402_input",
+  );
+});
+
+test("script src があり本文の文字がほぼ無い HTML は unknown。枠組みのパスは見ない", () => {
+  const vite = '<!doctype html><html><head><script type="module" src="/src/main.ts"></script></head><body><div id="app"></div></body></html>';
+  assert.equal(
+    sortAnswerShape({
+      answerShape: "html_page",
+      bodyHead: vite,
+      requestQuery: "declared",
+      requestBody: "declared",
+      declaredInput: null,
+      required: none,
+    }),
+    "unknown",
+  );
+  const titled = '<!doctype html><html><head><title>502 Bad Gateway</title></head><body><p>502 Bad Gateway</p></body></html>';
+  assert.equal(
+    sortAnswerShape({
+      answerShape: "html_page",
+      bodyHead: titled,
+      requestQuery: "empty",
+      requestBody: "declared",
+      declaredInput: null,
+      required: none,
+    }),
+    "unknown",
+  );
+});
+
+test("success:false に障害の語があるときは valid_answer にしない", () => {
+  const base: AnswerShapeSortRow = {
+    answerShape: "error_flag",
+    bodyHead: "",
+    requestQuery: "declared",
+    requestBody: "none",
+    declaredInput: null,
+    required: none,
+    fields: [{ name: "q", in: "query", type: "string", example: null }],
+    sentQuery: { q: "eth" },
+  };
+  for (const bodyHead of [
+    '{"success":false,"error":"Internal server error"}',
+    '{"success":false,"detail":"502"}',
+    '{"success":false,"detail":"503"}',
+    '{"success":false,"detail":"timeout"}',
+  ]) {
+    assert.equal(sortAnswerShape({ ...base, bodyHead }), "unknown", bodyHead);
+  }
+});
+
+test("仕分けが throw しても unknown で、例外は出ない", () => {
+  assert.equal(
+    sortAnswerShapeCaught(() => {
+      throw new Error("sort failed");
+    }),
+    "unknown",
+  );
+  const boom = new Proxy({} as Record<string, string>, {
+    ownKeys() {
+      throw new Error("boom");
+    },
+  });
+  assert.equal(
+    sortAnswerShapeCaught(() =>
+      sortAnswerShape({
+        answerShape: "error_object",
+        bodyHead: '{"error":"a dependency is not installed"}',
+        requestQuery: "declared",
+        requestBody: "none",
+        declaredInput: null,
+        required: none,
+        sentQuery: boom,
+      }),
+    ),
+    "unknown",
+  );
+  assert.equal(sortAnswerShapeCaught(() => "seller_suspect"), "seller_suspect");
+});
+
+test("見本でない値を宣言どおり送り、入力の落ち度を名指さない error だけが seller_suspect", () => {
+  assert.equal(
+    sortAnswerShape({
+      answerShape: "error_object",
+      bodyHead: '{"error":"a dependency is not installed"}',
+      requestQuery: "declared",
+      requestBody: "none",
+      declaredInput: null,
+      required: none,
+      fields: [{ name: "symbol", in: "query", type: "string", example: "BTC" }],
+      sentQuery: { symbol: "ETH" },
+    }),
+    "seller_suspect",
+  );
+  assert.equal(
+    sortAnswerShape({
+      answerShape: "error_object",
+      bodyHead: '{"error":"missing \'symbol\'"}',
+      requestQuery: "declared",
+      requestBody: "none",
+      declaredInput: null,
+      required: none,
+      fields: [{ name: "symbol", in: "query", type: "string", example: null }],
+      sentQuery: { symbol: "ETH" },
+    }),
+    "unknown",
+  );
 });
 
 test("答えの形をしている本文は仕分けない", () => {

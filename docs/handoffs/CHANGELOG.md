@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-19 — L1: 影の仕分けを、売り手を責めない側に倒す（段S1b・作業ツリー・未 commit）
+- **何を**: `sortAnswerShape` の2つ目の確かめ。`requestQuery === "refused"` はそれだけで `vet402_input`。本文が欠けていると名指す項目が schema の fields にあり、送っていなければ `vet402_input`。型の名前・空文字・"0"・example などの見本を送ったとき、および例と同じ値を送って本文が入力の落ち度を名指すときは `vet402_input`（例との一致は売り手が悪い根拠にしない）。落ち度の語（missing・required・invalid・validation）があって vet402 の誤りと示せないときは `unknown`。`wrong_`・`"actual":""`・`/_next/`・`__next`・`__variable_` は見ない。サイト枠は script src があり本文の文字がほぼ無いこと。`success:false` に Internal server error・502・503・timeout があるもの、title が 5xx の HTML は `valid_answer` にしない。`l1-runner.ts` は仕分けを try/catch し、落ちたら `answerShapeSort` は `"unknown"`。
+- **なぜ**: 段S1（commit 831934fc）の独立点検 NO-SHIP。vet402 の誤りと示せないのに `seller_suspect` へ倒すと、売り手を誤って責める。公開する前の影の記録は、迷ったら unknown。
+- **影響**: 公開の面（/sellers・export・判定 API・方法論・L1 の status・L2）は変えていない。`answerShapeSort` は `raw_response_meta` の中だけ。68 件との一致は 56／68（段S1 は 67／68）。人の vet402_input 42 のうち 12 が unknown に移った（宣言どおり型に合う値を送った 3、validation の語だけで必須も型の落ち度も無い 3、一社の空の書式 2、型に合う url 2、送った値が行に無い validation 2）。登録を先に求める 1 件は人と同じ unknown。関数が `seller_suspect` にしたのは 4 件（見本でない値を宣言どおり送り、入力の落ち度を名指さない error）。
+- **実測（10/19・手元。本番の RPC には出していない）**: `npx tsc --noEmit -p .` exit 0。全体の `npm test` を `TEST_DATABASE_URL` 未設定で 1 回（exit 0）。ゲートは `TEST_DATABASE_URL is NOT set — 108 DB-backed suites will SKIP locally.`。要約は 5 スイートとも `ℹ fail 0`。ルート `tsx --test tests/*.test.ts` は `ℹ tests 2694` / `ℹ pass 2585` / `ℹ fail 0` / `ℹ skipped 109` / `ℹ duration_ms 291591.167208`。sdk は `ℹ tests 1791` / `ℹ pass 1791` / `ℹ fail 0` / `ℹ duration_ms 1323.617667`。middleware は `ℹ tests 64` / `ℹ pass 64` / `ℹ fail 0` / `ℹ duration_ms 170.484292`。mcp は `ℹ tests 844` / `ℹ pass 844` / `ℹ fail 0` / `ℹ duration_ms 2759.428542`。rwa は `ℹ tests 244` / `ℹ pass 244` / `ℹ fail 0` / `ℹ duration_ms 4951.748209`。`tests/observatory-l1-runner.test.ts` は、この回では DB 未設定のため skip。commit も push もしていない。
+
 ## 2026-10-19 — L1: 答えの形をしていない有料の 2xx を影の記録の中で仕分ける（段S1・作業ツリー・未 commit）
 - **何を**: `src/lib/observatory/answer-shape-sort.ts` の純関数 `sortAnswerShape`。`answerShape`・本文の頭・その行の requestQuery／requestBody・出品の declared_input・宣言の必須項目から、`vet402_input`／`valid_answer`／`seller_suspect`／`unknown` を返す。キーワード（missing・required・invalid・validation、値の違い、サイト枠）は定数 `ANSWER_SHAPE_SORT_WORDS` だけ。`l1-runner.ts` は answerShape を書くとき、同じ `raw_response_meta` に `answerShapeSort` を足す。`tests/answer-shape-sort.test.ts`。
 - **なぜ**: 2026-09-15〜10-15 の 68 件を人が仕分けると vet402 の入力 42・正当な答え 17・判断できない 5・売り手 4 だった。件数が増えると人では回らない。公開する前の 2 つ目の確かめを、影の記録として残す。

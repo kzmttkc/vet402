@@ -5,26 +5,30 @@
 // 規則は 2026-09-15〜10-15 の 68 件を人が仕分けた理由（vet402 42・正当 17・売り手 4・判断できない 5）から取る。
 // キーワードは下の定数だけ。本文の「rate limit」等では決めない（answer-shape.ts と同じく、言葉だけの規則は誤検出が多かった）。
 //
-// 決め方（先に当たったもの）:
-//   vet402_input    本文が missing/required/invalid/validation を含み、宣言どおり送っていないか、送った値が宣言の型・例と違う。
-//                   または empty_structure で、宣言の必須入力を送っていない（空の data に必須の id が無い、生の本文を {} で送った）。
-//   valid_answer    必須は送ってあり、空の配列・空の結果が宣言の出力の型と矛盾しない。業務上の「no」（ok:false かつ changed:false 等、
-//                   エラー文が無い）。宣言どおり送った結果の HTML で、売り手のサイト枠（/_next/ 等）ではないもの。
-//   seller_suspect  宣言どおり送った（送るものが無い含む）のに error_object / error_flag / html_page。
-//   unknown         サイト枠の HTML、材料が足りないもの。
+// 決め方（先に当たったもの。vet402 の誤りと示せない限り seller_suspect にしない。迷ったら unknown）:
+//   vet402_input    requestQuery が refused（宣言したクエリを送らなかった記録）。
+//                   型の名前・空文字・"0"・example などの見本を送った。本文が欠けていると名指す項目が
+//                   schema の fields にあり、その項目を送っていない。宣言の必須を送っていない。
+//                   送った値が宣言の型に合わない。例と同じ値を送り、本文が入力の落ち度を名指す。
+//   valid_answer    必須は送ってあり、空の配列・空の結果が宣言の出力の型と矛盾しない。業務上の「no」
+//                   （ok:false かつ changed:false 等。success:false に障害の語があるものは除く）。
+//                   宣言どおり送った HTML で、script src の枠でも、title が 5xx でもないもの。
+//   seller_suspect  入力を宣言どおり、見本でない値で送り、本文が入力の落ち度を名指さない error_object / error_flag。
+//   unknown         入力の落ち度の語があるが vet402 の誤りと示せない。サイト枠。5xx。障害。材料が足りない。
 // ============================================================
 
 import type { AnswerShape } from "./answer-shape";
 
-/** 仕分けの語。ここ以外にキーワードを置かない。 */
+/** 仕分けの語。ここ以外にキーワードを置かない。1社の書式や特定の枠組みの印は置かない。 */
 export const ANSWER_SHAPE_SORT_WORDS = {
   /** 本文が入力の落ち度を名指す語。missing_agentId・field_required・validationErrors のように、語の一部でも当たる。 */
   inputFault: ["missing", "required", "invalid", "validation"],
-  /** 送った値が違う、と本文が言っている印。 */
-  badValue: ["invalid", "validation", "wrong_"],
-  /** 売り手のサイトそのもの。API が返した文書（取得した頁・図）とは分ける。 */
-  siteShell: ["/_next/", "__next", "__variable_"],
+  /** success:false の本文にある、業務上の no ではない障害の語。 */
+  outage: ["internal server error", "timeout"],
 } as const;
+
+/** 送った値が型の名前や見本そのもの。空文字と "0" を含む。 */
+const PLACEHOLDER_VALUES = new Set(["string", "number", "integer", "boolean", "example", "placeholder", "0"]);
 
 export type AnswerShapeSort = "vet402_input" | "valid_answer" | "seller_suspect" | "unknown";
 
@@ -70,6 +74,8 @@ function hasWord(body: string, words: readonly string[]): boolean {
 }
 
 function expectsQuery(row: AnswerShapeSortRow): boolean {
+  // refused は「売り手が宣言したクエリを、vet402 が送らなかった」という行の記録そのもの。
+  if (row.requestQuery === "refused") return true;
   const q = row.declaredInput?.query;
   if (q === "declared" || q === "refused") return true;
   return row.required.query.length > 0;
@@ -80,8 +86,9 @@ function expectsBody(row: AnswerShapeSortRow): boolean {
   return row.required.body.length > 0 || row.bodyType === "string";
 }
 
-/** 宣言された入力を、その行は送っていない。 */
+/** 宣言された入力を、その行は送っていない。refused だけで送っていない。 */
 function inputNotSent(row: AnswerShapeSortRow): boolean {
+  if (row.requestQuery === "refused") return true;
   const queryMiss = expectsQuery(row) && row.requestQuery !== "declared";
   const bodyMiss = expectsBody(row) && row.requestBody !== "declared";
   return queryMiss || bodyMiss;
@@ -101,12 +108,34 @@ function readSent(row: AnswerShapeSortRow, field: AnswerShapeSortField): unknown
   return undefined;
 }
 
+/** 送った値が宣言の例と等しいか。等しいことは売り手が悪い根拠にしない（呼び手は vet402 の見本として扱う）。 */
 function sameValue(sent: unknown, example: unknown): boolean {
   if (sent === example) return true;
   if (typeof example === "number" && typeof sent === "string" && sent.trim() !== "" && Number(sent) === example) return true;
   if (typeof example === "boolean" && (sent === "true" || sent === "false")) return sent === String(example);
   if (typeof example === "string" && (typeof sent === "number" || typeof sent === "boolean")) return String(sent) === example;
   return false;
+}
+
+function isPlaceholderValue(sent: unknown): boolean {
+  if (typeof sent === "number") return sent === 0;
+  if (typeof sent !== "string") return false;
+  const t = sent.trim().toLowerCase();
+  return t === "" || PLACEHOLDER_VALUES.has(t);
+}
+
+function sentValues(row: AnswerShapeSortRow): unknown[] {
+  const out: unknown[] = [];
+  if (row.sentQuery) out.push(...Object.values(row.sentQuery));
+  const body = row.sentBody;
+  if (typeof body === "string" || typeof body === "number" || typeof body === "boolean") out.push(body);
+  else if (Array.isArray(body)) out.push(...body);
+  else if (typeof body === "object" && body !== null) out.push(...Object.values(body as Record<string, unknown>));
+  return out;
+}
+
+function sentPlaceholder(row: AnswerShapeSortRow): boolean {
+  return sentValues(row).some(isPlaceholderValue);
 }
 
 function matchesType(sent: unknown, type: string): boolean {
@@ -123,34 +152,47 @@ function matchesType(sent: unknown, type: string): boolean {
   return true;
 }
 
-/** 送った値を宣言の型・例と比べる。比べる材料が無いときは "none"。 */
-function compareSent(row: AnswerShapeSortRow): "mismatch" | "match" | "none" {
-  const fields = row.fields ?? [];
-  if (fields.length === 0) return "none";
-  let checked = 0;
-  for (const field of fields) {
+function escapeReg(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** 本文が、その項目名を欠けているものとして挙げている。語の境界で見る（requestedUrl の required には当たらない）。 */
+function bodyNamesField(body: string, name: string): boolean {
+  const n = name.toLowerCase();
+  if (n.length < 2) return false;
+  return new RegExp(`(?:^|[^a-z0-9])${escapeReg(n)}(?:[^a-z0-9]|$)`).test(lower(body));
+}
+
+/** 本文が入力の落ち度を名指し、その項目が schema の fields にあり、送っていない。 */
+function namedFieldNotSent(row: AnswerShapeSortRow): boolean {
+  if (!hasWord(row.bodyHead, ANSWER_SHAPE_SORT_WORDS.inputFault)) return false;
+  for (const field of row.fields ?? []) {
+    if (!bodyNamesField(row.bodyHead, field.name)) continue;
+    const sent = readSent(row, field);
+    if (sent === undefined || sent === null) return true;
+  }
+  return false;
+}
+
+/** 送った値が宣言の型に合わない。例と違うだけでは合わないことにしない。 */
+function typeMismatch(row: AnswerShapeSortRow): boolean {
+  for (const field of row.fields ?? []) {
+    if (!field.type) continue;
+    const sent = readSent(row, field);
+    if (sent === undefined || sent === null) continue;
+    if (!matchesType(sent, field.type)) return true;
+  }
+  return false;
+}
+
+/** 送った値が宣言の例そのもの。売り手が悪い根拠には使わない。 */
+function sentEqualsExample(row: AnswerShapeSortRow): boolean {
+  for (const field of row.fields ?? []) {
+    if (field.example === undefined || field.example === null) continue;
     const sent = readSent(row, field);
     if (sent === undefined) continue;
-    checked += 1;
-    if (field.example !== undefined && field.example !== null && !sameValue(sent, field.example)) return "mismatch";
-    if (field.type && !matchesType(sent, field.type)) return "mismatch";
+    if (sameValue(sent, field.example)) return true;
   }
-  return checked > 0 ? "match" : "none";
-}
-
-function textSaysBadValue(body: string): boolean {
-  if (hasWord(body, ANSWER_SHAPE_SORT_WORDS.badValue)) return true;
-  return /"actual"\s*:\s*(?:""|\[\]|null)/.test(body);
-}
-
-/** 送った値が宣言の型・例と違う。本文がそう言っているときも含む。 */
-function valueDiffers(row: AnswerShapeSortRow): boolean {
-  const compared = compareSent(row);
-  if (compared === "mismatch") return true;
-  if (compared === "match") return textSaysBadValue(row.bodyHead);
-  if (textSaysBadValue(row.bodyHead)) return true;
-  // 宣言のチャネルは送った記録があるのに、本文が missing と言う。中身を持っていないので、例と違うとみなす。
-  if (lower(row.bodyHead).includes("missing") && (row.requestQuery === "declared" || row.requestBody === "declared")) return true;
   return false;
 }
 
@@ -181,8 +223,57 @@ function isBusinessNo(body: string): boolean {
   return keys.some((k) => !FLAG_KEY.test(k));
 }
 
+/** success:false かつ障害の語。業務上の no にしない。 */
+function successFalseOutage(body: string): boolean {
+  if (!/"success"\s*:\s*false/.test(body)) return false;
+  if (hasWord(body, ANSWER_SHAPE_SORT_WORDS.outage)) return true;
+  return /\b502\b/.test(body) || /\b503\b/.test(body);
+}
+
+function htmlTitleIs5xx(body: string): boolean {
+  const title = body.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  return title !== null && /\b5\d\d\b/.test(title[1]);
+}
+
+function hasScriptSrc(body: string): boolean {
+  return /<script\b[^>]*\bsrc\s*=/i.test(body);
+}
+
+/** タグと script/style を除いた、人が読む文字。 */
+function visibleText(body: string): string {
+  return body
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** script src があり、本文の文字がほぼ無い。枠組みのパスには頼らない。 */
 function isSiteShell(body: string): boolean {
-  return hasWord(body, ANSWER_SHAPE_SORT_WORDS.siteShell);
+  return hasScriptSrc(body) && visibleText(body).length <= 20;
+}
+
+/**
+ * 見本でない値を、宣言どおり送ったと示せる。
+ * 必須があるのに送った値を持っていないときは、示せない。
+ */
+function declaredRealInput(row: AnswerShapeSortRow): boolean {
+  if (inputNotSent(row) || sentPlaceholder(row) || sentEqualsExample(row)) return false;
+  const fields = row.fields ?? [];
+  if (fields.length > 0) {
+    for (const field of fields) {
+      const sent = readSent(row, field);
+      if (sent === undefined || sent === null || isPlaceholderValue(sent)) return false;
+    }
+    return true;
+  }
+  if (row.required.query.length > 0 || row.required.body.length > 0) {
+    const querySent = row.sentQuery != null && Object.keys(row.sentQuery).length > 0;
+    const bodySent = row.sentBody !== undefined && row.sentBody !== null;
+    return querySent || bodySent;
+  }
+  return true;
 }
 
 /**
@@ -191,19 +282,31 @@ function isSiteShell(body: string): boolean {
  */
 export function sortAnswerShape(row: AnswerShapeSortRow): AnswerShapeSort {
   if (!row.answerShape) return "unknown";
+  // refused は、それだけで「宣言したクエリを送っていない」。
+  if (row.requestQuery === "refused") return "vet402_input";
+  if (sentPlaceholder(row)) return "vet402_input";
+  if (namedFieldNotSent(row)) return "vet402_input";
+
   const fault = hasWord(row.bodyHead, ANSWER_SHAPE_SORT_WORDS.inputFault);
   const missed = inputNotSent(row);
-  if ((fault && (missed || valueDiffers(row))) || (row.answerShape === "empty_structure" && missed)) return "vet402_input";
+  if (missed && (fault || row.answerShape === "empty_structure")) return "vet402_input";
+  if (typeMismatch(row)) return "vet402_input";
+  // 例と同じ値を送ったことは、売り手が悪い根拠にしない。落ち度の語があるなら見本を送った側。
+  if (sentEqualsExample(row) && fault) return "vet402_input";
+
+  if (successFalseOutage(row.bodyHead) || htmlTitleIs5xx(row.bodyHead)) return "unknown";
+  // 落ち度の語があるのに、上で vet402 の誤りと示せなかった。業務上の no にも売り手にもしない。
+  if (fault) return "unknown";
   if (row.answerShape === "empty_structure" && emptyConsistent(row)) return "valid_answer";
   if (isBusinessNo(row.bodyHead)) return "valid_answer";
   if (row.answerShape === "html_page") {
-    if (isSiteShell(row.bodyHead)) return "unknown";
-    if (row.requestQuery === "declared" || row.requestBody === "declared") return "valid_answer";
+    if (isSiteShell(row.bodyHead) || hasScriptSrc(row.bodyHead)) return "unknown";
+    if ((row.requestQuery === "declared" || row.requestBody === "declared") && visibleText(row.bodyHead).length > 0) {
+      return "valid_answer";
+    }
+    return "unknown";
   }
-  if (
-    (row.answerShape === "error_object" || row.answerShape === "error_flag" || row.answerShape === "html_page") &&
-    !missed
-  ) {
+  if ((row.answerShape === "error_object" || row.answerShape === "error_flag") && !missed && declaredRealInput(row)) {
     return "seller_suspect";
   }
   return "unknown";
@@ -305,4 +408,16 @@ export function sortAnswerShapeFromRun(input: {
     sentQuery: parseSentQuery(input.sentQuery ?? null),
     sentBody: parseSentBody(input.sentBody ?? null),
   });
+}
+
+/**
+ * 仕分けが落ちたら unknown。支払い済みの行の記録（status・tx）を巻き込まない。
+ * l1-runner は answerShape を書く直前に、この関数で sortAnswerShapeFromRun を囲む。
+ */
+export function sortAnswerShapeCaught(sort: () => AnswerShapeSort): AnswerShapeSort {
+  try {
+    return sort();
+  } catch {
+    return "unknown";
+  }
 }

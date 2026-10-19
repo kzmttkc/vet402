@@ -27,7 +27,7 @@
 // ============================================================
 import { L1_CELO_PAID_TIMEOUT_MS, L1_REQUEST_TIMEOUT_MS, l1PaidTimeoutMs } from "./l1-timing";
 import { answerShapeOf } from "./answer-shape";
-import { sortAnswerShapeFromRun } from "./answer-shape-sort";
+import { sortAnswerShapeCaught, sortAnswerShapeFromRun } from "./answer-shape-sort";
 import { privateKeyToAccount } from "viem/accounts";
 import { and, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
@@ -3137,17 +3137,25 @@ async function purchaseOne(input: {
         ? answerShapeOf(paidBody, contentType)
         : null;
     // 2026-10-19 段S1: 上の型を、影の記録の中だけで仕分ける（answer-shape-sort.ts）。status・L2・公開の値は変えない。
-    const answerShapeSort = answerShape
-      ? sortAnswerShapeFromRun({
-          answerShape,
-          bodyHead: paidBody.slice(0, 500),
-          requestQuery: paidRequestUrl?.source ?? null,
-          requestBody: requestBodyRecord(paidRequestBody).requestBody,
-          declaredSchema: candidate.declaredSchema,
-          sentQuery: paidRequestUrl?.query ?? null,
-          sentBody: paidRequestBody?.body ?? null,
-        })
-      : null;
+    // 段S1b: 仕分けが落ちても、支払い済みの行の記録を巻き込まない。落ちたら answerShapeSort は unknown。
+    let answerShapeSort: ReturnType<typeof sortAnswerShapeFromRun> | null = null;
+    if (answerShape) {
+      try {
+        answerShapeSort = sortAnswerShapeCaught(() =>
+          sortAnswerShapeFromRun({
+            answerShape,
+            bodyHead: paidBody.slice(0, 500),
+            requestQuery: paidRequestUrl?.source ?? null,
+            requestBody: requestBodyRecord(paidRequestBody).requestBody,
+            declaredSchema: candidate.declaredSchema,
+            sentQuery: paidRequestUrl?.query ?? null,
+            sentBody: paidRequestBody?.body ?? null,
+          }),
+        );
+      } catch {
+        answerShapeSort = "unknown";
+      }
+    }
 
     // 2026-08-23 監査: ここまで `transaction` は「空でない文字列」以外を何も見ていなかった。
     // 値は売り手の PAYMENT-RESPONSE ヘッダそのままで、決済せずに success:true と
