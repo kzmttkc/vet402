@@ -250,6 +250,10 @@ test("決済済み: 全チェーンで charged_unsent_input。classifyRow は qu
   // 上限より前の tx あり未決済は今までどおり vet402。
   const withTx = row({ txHash: TX });
   assertSameReaders(withTx, "query_not_sent", "vet402");
+  // settle_failed でも tx があり照合でお金が動いたと確かめた行は、決済済みと同じく charged_unsent_input。
+  const confirmed = row({ status: "settle_failed", txHash: TX, settlementConfirmed: true });
+  assert.equal(classifySellerRow(confirmed).bucket, "unsorted");
+  assert.equal(classifySellerRow(confirmed).mode?.key, "charged_unsent_input");
   // 上限以降の決済済みは、記録が無いだけでは charged_unsent_input にしない。
   const after = row({ status: "settled", txHash: TX, httpStatusPaid: 400, attemptedAt: "2026-10-19T04:05:17Z" });
   assert.notEqual(classifySellerRow(after).mode?.key, "charged_unsent_input");

@@ -1073,7 +1073,8 @@ export function sellerCandidateClass(r: SellerRowFacts, now: number = Date.now()
   if (base.mode?.key === "body_not_sent" && r.status === "settled") {
     return { bucket: "unsorted", mode: fixMode("charged_unsent_input"), held: base.held };
   }
-  if (base.mode?.key === "query_not_sent" && r.status === "settled") {
+  // 2026-10-19 点検: settle_failed でも tx があり照合でお金が動いたと確かめた行（moneyOf が moved）も同じ。
+  if (base.mode?.key === "query_not_sent" && moneyOf(r) === "moved") {
     return { bucket: "unsorted", mode: fixMode("charged_unsent_input"), held: base.held };
   }
   // 2026-09-29 監査 6 周目: 宣言の入力が例示用のドメインなら、入力が妥当だったと示せない（seller の側に置かない）。
