@@ -32,8 +32,8 @@ export const BNB_USD1_DECIMALS = 18;
 /**
  * 公開 RPC。BNB_RPC_URL が未設定のときの既定（Celo の CELO_PUBLIC_RPC_URL と同じ扱い）。
  * これに倒れてよいのは**購入元の USD1 残高読みだけ**——読めなければ署名しない側へ倒れるので、
- * 公開 RPC の不調は「買わない」にしかならない。決済の再読（settlement-verify）は BNB_RPC_URL が
- * 無ければ動かない（公開 RPC へ黙って倒れて「確認済み」を刻まない）。
+ * 公開 RPC の不調は「買わない」にしかならない。決済の再読（settlement-verify）は BNB_VERIFY_RPC_URL も
+ * BNB_RPC_URL も無ければ動かない（この既定へ黙って倒れて「確認済み」を刻まない。下の bnbVerifyRpcUrl）。
  */
 export const BNB_PUBLIC_RPC_URL = "https://bsc-dataseed.bnbchain.org";
 

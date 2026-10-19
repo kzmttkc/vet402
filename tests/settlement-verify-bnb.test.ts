@@ -188,9 +188,51 @@ test("BNB with only BNB_VERIFY_RPC_URL set reads the chain (not chain_not_yet_ve
     assert.equal(result.ok, false);
     // 届かない RPC は「読めなかった」（rpc_unavailable）であって、未設定でも「無い」でもない。
     assert.equal(result.ok === false && result.reason, "rpc_unavailable");
-    // 最新の状態を読む readAuthorizationState は BNB_RPC_URL のまま（照合用の env では読まない）。
-    assert.equal(await readAuthorizationState({ network: "eip155:56", payer: PAYER, nonce: NONCE }), null);
+
   } finally {
+    if (saved.bnb === undefined) delete process.env.BNB_RPC_URL;
+    else process.env.BNB_RPC_URL = saved.bnb;
+    if (saved.verify === undefined) delete process.env.BNB_VERIFY_RPC_URL;
+    else process.env.BNB_VERIFY_RPC_URL = saved.verify;
+  }
+});
+
+// readAuthorizationState（期限の否定を止める最後の関門）は BNB_RPC_URL で読む。照合用の env では読まない。
+// 答える偽の RPC を立て、照合用の env だけを向けたときに 1 回も呼ばれないことを数える（届かない宛先では区別できない）。
+test("readAuthorizationState reads BNB_RPC_URL only, never BNB_VERIFY_RPC_URL", async () => {
+  const { createServer } = await import("node:http");
+  let hits = 0;
+  const server = createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      hits++;
+      const msg = JSON.parse(body) as { id: number; method: string } | { id: number; method: string }[];
+      const one = (m: { id: number; method: string }) => ({
+        jsonrpc: "2.0",
+        id: m.id,
+        result: m.method === "eth_chainId" ? "0x38" : `0x${"0".repeat(63)}1`,
+      });
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify(Array.isArray(msg) ? msg.map(one) : one(msg)));
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+  const port = (server.address() as { port: number }).port;
+  const url = `http://127.0.0.1:${port}`;
+  const saved = { bnb: process.env.BNB_RPC_URL, verify: process.env.BNB_VERIFY_RPC_URL };
+  try {
+    delete process.env.BNB_RPC_URL;
+    process.env.BNB_VERIFY_RPC_URL = url;
+    assert.equal(await readAuthorizationState({ network: "eip155:56", payer: PAYER, nonce: NONCE }), null);
+    assert.equal(hits, 0, "readAuthorizationState called the verify RPC");
+    // 同じ偽の RPC を BNB_RPC_URL に向ければ読む（偽の RPC が答えることの確かめ）。
+    process.env.BNB_RPC_URL = url;
+    delete process.env.BNB_VERIFY_RPC_URL;
+    assert.equal(await readAuthorizationState({ network: "eip155:56", payer: PAYER, nonce: NONCE }), true);
+    assert.ok(hits > 0);
+  } finally {
+    server.close();
     if (saved.bnb === undefined) delete process.env.BNB_RPC_URL;
     else process.env.BNB_RPC_URL = saved.bnb;
     if (saved.verify === undefined) delete process.env.BNB_VERIFY_RPC_URL;

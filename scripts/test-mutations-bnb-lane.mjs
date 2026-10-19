@@ -24,7 +24,8 @@ const VERIFY = "src/lib/observatory/settlement-verify.ts";
 const FUNDS = "src/lib/observatory/payer-funds.ts";
 const RUNNER = "src/lib/observatory/l1-runner.ts";
 const INDEX = "src/lib/settlements/index-evm.ts";
-const SOURCES = [PAYER, BUDGET, VERIFY, FUNDS, RUNNER, INDEX];
+const BNB = "src/lib/chain/bnb.ts";
+const SOURCES = [PAYER, BUDGET, VERIFY, FUNDS, RUNNER, INDEX, BNB];
 
 const UNIT_TESTS = [
   "tests/x402-bnb-lane.test.ts",
@@ -162,11 +163,27 @@ const MUTATIONS = [
   },
   {
     id: "B16",
-    what: "BNB_RPC_URL が無いとき Base の client で BNB の行を読む",
-    rule: "BNB_RPC_URL が無ければ未確認のまま置く",
+    what: "BNB_VERIFY_RPC_URL も BNB_RPC_URL も無いとき Base の client で BNB の行を読む",
+    rule: "照合の RPC が無ければ未確認のまま置く（2026-10-20 から照合は getBnbVerifyClient）",
     file: VERIFY,
-    find: "    if (!process.env.BNB_RPC_URL?.trim()) return null;",
-    replace: "    if (!process.env.BNB_RPC_URL?.trim()) return /* MUTANT */ getPublicClient();",
+    find: "  if (chain.chainId === BNB_CHAIN_ID) return getBnbVerifyClient();",
+    replace: "  if (chain.chainId === BNB_CHAIN_ID) return /* MUTANT */ getBnbVerifyClient() ?? getPublicClient();",
+  },
+  {
+    id: "B16b",
+    what: "照合の RPC の優先順を逆にする（BNB_RPC_URL を先に読む）",
+    rule: "照合は古いレシートを返す BNB_VERIFY_RPC_URL を先に使う",
+    file: BNB,
+    find: "  const verify = process.env.BNB_VERIFY_RPC_URL?.trim();",
+    replace: "  const verify = /* MUTANT */ process.env.BNB_RPC_URL?.trim() || process.env.BNB_VERIFY_RPC_URL?.trim();",
+  },
+  {
+    id: "B16c",
+    what: "最新の状態（authorizationState）を照合用の RPC で読む",
+    rule: "authorizationState は BNB_RPC_URL で読む（期限の否定を止める最後の関門は照合とは別の情報源）",
+    file: VERIFY,
+    find: '  else if (chain.chainId === BNB_CHAIN_ID) client = process.env.BNB_RPC_URL?.trim() ? getBnbPublicClient("live") : null;',
+    replace: "  else if (chain.chainId === BNB_CHAIN_ID) client = /* MUTANT */ getBnbVerifyClient();",
   },
   {
     id: "B17",

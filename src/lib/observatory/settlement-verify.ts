@@ -71,7 +71,8 @@ export const AUTHORIZATION_USED_TOPIC = keccak256(toBytes("AuthorizationUsed(add
  * フォールバックは署名を止める側に倒れるので別扱い）。
  * Celo（2026-10-10）も Arc と同じ: **CELO_RPC_URL 必須**。無ければ null（未確認のまま置く）。Base の client へ
  * 落とさない——落とすと Celo の行をいつも wrong_chain（計器の故障）として鳴らし、そのバッチの Celo の行を全部飛ばす。
- * BNB Chain（2026-10-19）も同じ: **BNB_RPC_URL 必須**。公開 RPC へ黙って倒さない。Base の client へ落とさない。
+ * BNB Chain（2026-10-19）も同じ: 公開 RPC へ黙って倒さない。Base の client へ落とさない。2026-10-20 から照合のレシート読みは
+ * BNB_VERIFY_RPC_URL（無ければ BNB_RPC_URL・どちらも無ければ null。chain/bnb.ts の bnbVerifyRpcUrl）。
  * 表に無い EVM は照合器が無い＝ chain_not_yet_verifiable のまま置く。
  */
 function clientFor(chain: EvmPayChain): EvmVerifyClient | null {
