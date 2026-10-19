@@ -284,13 +284,9 @@ test("a Base permit2 wall plus USD1 at 1e17 is not price_mismatch against a 6-di
         ? { ...declared, preferNetworks: [BNB_CAIP2], declaredPayTosByNetwork: { [BNB_CAIP2]: [PAY_TO] } }
         : declared,
     );
-    assert.notEqual(chosen.reason, "price_mismatch");
-    if (chosen.accept === null) {
-      assert.equal(chosen.reason, "no_eligible_accept");
-      return;
-    }
-    assert.equal(chosen.accept.network, BNB_CAIP2);
-    assert.equal(chosen.amountUnits, DIME_LEDGER);
+    // 宣言は Base の 6 桁。BNB の 18 桁とは比べられないので、払わず、売り手の所見（price_mismatch）にもしない。
+    assert.equal(chosen.accept, null);
+    assert.equal(chosen.reason, "no_eligible_accept");
   };
   withFlag(undefined, () => {
     check(false);
@@ -429,5 +425,28 @@ test("signX402Payment signs the 18-digit USD1 amount under the pinned domain, an
       signature: signature as `0x${string}`,
     });
     assert.equal(wrongDomain, false);
+  });
+});
+
+test("USD1 at $0.90 against a $0.10 declaration is never signed, whatever the declaration looks like", () => {
+  const over = (10n ** 17n * 9n).toString(); // $0.90 in 18 digits
+  const dimeDeclared = { declaredAmount: DIME_LEDGER.toString(), declaredPayTo: PAY_TO, declaredNetwork: BASE_CAIP2 };
+  const cases: Array<[string, ChallengeAccept[], Parameters<typeof selectAccept>[1]]> = [
+    ["Base permit2 plus USD1", [baseAccept({ extra: { name: "USD Coin", version: "2", assetTransferMethod: "permit2" } }), bnbAccept({ amount: over })], dimeDeclared],
+    ["raw network spelling", [baseAccept(), bnbAccept({ amount: over })], { ...dimeDeclared, declaredNetwork: "base-mainnet" }],
+    ["no declared payTo", [baseAccept(), bnbAccept({ amount: over })], { ...dimeDeclared, declaredPayTo: null }],
+    ["USD1 only", [bnbAccept({ amount: over })], dimeDeclared],
+  ];
+  withFlag("true", () => {
+    for (const [name, wall, opts] of cases) {
+      for (const prefer of [false, true]) {
+        const chosen = selectAccept(
+          wall,
+          prefer ? { ...opts, preferNetworks: [BNB_CAIP2], declaredPayTosByNetwork: { [BNB_CAIP2]: [PAY_TO] } } : opts,
+        );
+        const signsUsd1 = chosen.accept !== null && chosen.accept.network === BNB_CAIP2;
+        assert.equal(signsUsd1, false, `${name} prefer=${prefer} must not sign USD1 $0.90`);
+      }
+    }
   });
 });

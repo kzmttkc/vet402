@@ -694,7 +694,10 @@ export function selectAccept(
     // Declared price is an exact string match in the asset's own units
     // (BNB primary: 18-digit to 18-digit). A 6-digit declaration is not compared
     // to a BNB accept unless BNB is the declared network — that mismatch is not a seller finding.
-    if (priceDeclaredFor(accept) && comparable(accept) && accept.amount !== options.declaredAmount) continue;
+    // 比べられない額（宣言が BNB 以外で、accept が 18 桁の USD1）は払わない。比較を飛ばして払うと、
+    // 値段の関門が消えて 1 件の上限だけで払う（2026-10-19 独立点検の高）。売り手の所見にもしない（下の分類）。
+    if (priceDeclaredFor(accept) && !comparable(accept)) continue;
+    if (priceDeclaredFor(accept) && accept.amount !== options.declaredAmount) continue;
     if (overRelativeCap(accept, ledger)) continue;
     if (ledger > MAX_PER_PURCHASE_UNITS) continue;
     return isBnbAccept(accept) ? { accept, reason: null, amountUnits: ledger } : { accept, reason: null };
