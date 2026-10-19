@@ -9,7 +9,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import { heldReasonSql } from "./delivery";
 import { bodyNotSentOnOurSideSql } from "./request-body";
-import { queryNotSentOnOurSideSql } from "./request-query";
+import { queryNotSentOnBaseBeforeCutoffSql } from "./request-query";
 
 /**
  * census（2026-09-28）の「売り手」の単位＝ホスト名。resource_key は host+path に正規化済み
@@ -37,8 +37,9 @@ export const censusHostSql = (resourceKey: SQL) => sql`lower(regexp_replace(spli
  *      Base で宣言クエリを送り始めた時刻（request-query.ts BASE_DECLARED_QUERY_SINCE）より前で、行に requestQuery の
  *      記録が無い（または empty）、かつ今のカタログのそのエンドポイントが**必須の**クエリを宣言している
  *      （declared_schema の properties.input.properties.queryParams.required が空でない・2026-09-28）か、送る規則なら宣言の
- *      クエリを足す（declared_input.query = declared・2026-09-29。見本値だけで宣言する売り手を拾う）。XRPL は 2026-09-21 から
- *      送っていたので (c) に入らない。メソッドは問わない（クエリは GET にも POST にも足す）。
+ *      クエリを足す（declared_input.query = declared・2026-09-29。見本値だけで宣言する売り手を拾う）。メソッドは問わない
+ *      （クエリは GET にも POST にも足す）。他チェーンでクエリを送らなかった行は /sellers の query_not_sent には入るが、
+ *      (c) には入れない（queryNotSentOnBaseBeforeCutoffSql。買い直しは主ネットワーク Base の出品を買うため）。
  *
  * 返すのは売り手ごとに host・reason（"unfunded" | "body" | "query"）・その最新の行の endpoint_id。(b)(c) では失敗した
  * 出品そのものを優先して買い直す（runL1Batch の retest の段）。
@@ -51,7 +52,7 @@ export const censusHostSql = (resourceKey: SQL) => sql`lower(regexp_replace(spli
 // (b)(c) の判定は request-body.ts / request-query.ts が正典（/sellers と共有・JS の述語と SQL の断片の組）。
 // 2026-09-29: 宣言の有無は送る規則と同じ情報源（declared_input）でも見る。本文は 415 も入る。
 const RETEST_BODY_COND = sql.raw(bodyNotSentOnOurSideSql({ row: "lr", method: "lr.method", schema: "lr.declared_schema", input: "lr.declared_input" }));
-const RETEST_QUERY_COND = sql.raw(queryNotSentOnOurSideSql({ row: "lr", schema: "lr.declared_schema", input: "lr.declared_input" }));
+const RETEST_QUERY_COND = sql.raw(queryNotSentOnBaseBeforeCutoffSql({ row: "lr", schema: "lr.declared_schema", input: "lr.declared_input" }));
 export const RETEST_SELLERS_SQL = sql`
   SELECT lr.host,
          CASE WHEN lr.held = 'payer_unfunded' THEN 'unfunded' WHEN ${RETEST_BODY_COND} THEN 'body' ELSE 'query' END AS reason,

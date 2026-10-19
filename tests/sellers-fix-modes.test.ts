@@ -258,10 +258,10 @@ const KNOWN: [string, SellerRowFacts, string | null, string][] = [
     "unsorted",
   ],
   [
-    "Solana の 400・クエリを宣言（Base の境目は Base だけ）",
+    "Solana の 400・クエリを宣言・requestQuery の記録なし（2026-09-20 以降は vet402 の側）",
     row({ status: "settle_failed", httpStatusPaid: 400, declaresQuery: true, network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", attemptedAt: "2026-09-20T00:00:00Z" }),
-    "refused_no_charge",
-    "unsorted",
+    "query_not_sent",
+    "vet402",
   ],
   ["settled 404", row({ status: "settled", httpStatusPaid: 404, txHash: TX }), "settled_then_rejected", "unsorted"],
   ["settled 422", row({ status: "settled", httpStatusPaid: 422, txHash: TX }), "settled_then_rejected", "unsorted"],
@@ -576,6 +576,8 @@ test("文面: 本文とクエリの送り始めを分けて書き、「宣言ど
   assert.match(fixMode("refused_no_charge").what, /since 2026-09-27 23:27 UTC it adds the query parameters the seller's 402 declares on Base/);
   assert.doesNotMatch(all, /query parameters the listing declares|request body the listing declares/);
   assert.match(fixMode("query_not_sent").what, /Before 2026-09-27 23:27 UTC/);
+  assert.match(fixMode("query_not_sent").what, /vet402 did not send the query the listing declares/);
+  assert.doesNotMatch(fixMode("query_not_sent").what, /\b(we|our|us)\b|[;]|[—–]/);
 });
 
 test("/sellers の本文・クエリの判定は共有の判定（request-body.ts / request-query.ts）そのもの", async () => {

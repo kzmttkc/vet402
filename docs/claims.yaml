@@ -1033,7 +1033,7 @@ claims:
     quote: "A second try when the failure was ours: the retest."
     means: "2026-09-28 から、最新の行がこちらの側の理由（購入元の残高切れ＝payer_unfunded／宣言された本文を送る実装（本番 2026-09-16T23:25:55Z）より前の POST が 400 または 422 で決済されず、今の掲載は本文を宣言している／Base で宣言クエリを送り始めた時刻（本番 2026-09-27T23:27:16Z・request-query.ts BASE_DECLARED_QUERY_SINCE）より前の 400 または 422 で、今の掲載は必須のクエリ（queryParams.required が空でない）を宣言している）で失敗している Base の売り手を、同じ上限の内側で 1 回ずつ買い直す。本文・クエリの失敗は同じ出品がまだ買えればそれを、それ以外は census と同じ規則（最安）で選ぶ。前の行は消さない"
     check: null
-    why_unverifiable: "公開 GET は候補の選び方を返さない。条件は request-body.ts の bodyNotSentOnOurSide(Sql)・DECLARED_BODY_SENT_SINCE と request-query.ts の queryNotSentOnOurSide(Sql)・BASE_DECLARED_QUERY_SINCE が正典（l1-runner の RETEST_SELLERS_SQL と /sellers が共有）で、tests/request-not-sent.pg.test.ts と tests/l1-retest.pg.test.ts が固定する。旗 OBSERVATORY_L1_CENSUS が on のときだけ働く"
+    why_unverifiable: "公開 GET は候補の選び方を返さない。本文は request-body.ts の bodyNotSentOnOurSideSql。クエリの買い直しは request-query.ts の queryNotSentOnBaseBeforeCutoffSql（BASE_DECLARED_QUERY_SINCE より前の Base だけ）。/sellers の query_not_sent は queryNotSentOnOurSide 全体を読む。tests/request-not-sent.pg.test.ts と tests/l1-retest.pg.test.ts と tests/query-not-sent-chains.test.ts が固定する。旗 OBSERVATORY_L1_CENSUS が on のときだけ働く"
     verified_at: 2026-09-28
   - id: audit_e_fairness_is_pipeline_not_cadence
     surface: src/app/observatory/methodology/page.tsx
@@ -1876,9 +1876,9 @@ claims:
   - id: sellers_query_not_sent_before_cutover
     surface: src/lib/sellers/fix-modes.ts
     quote: "Before 2026-09-27 23:27 UTC, vet402 did not add the query parameters the seller's 402 declares to paid requests on Base"
-    means: "Base の有料の要求で、出品がクエリを宣言している（2026-09-29 から: 送る規則と同じ情報源＝`bazaar.info.input.queryParams` の見本値を掲載に当てた declared_input.query = declared、またはスキーマの queryParams.required が空でない）のにクエリを足していなかった期間の 400/422（requestQuery の記録が無いか empty）は vet402 の側（query_not_sent）。決済済みの行も同じ条件でこちらの側"
+    means: "Base の有料の要求で、出品がクエリを宣言している（2026-09-29 から: 送る規則と同じ情報源＝`bazaar.info.input.queryParams` の見本値を掲載に当てた declared_input.query = declared、またはスキーマの queryParams.required が空でない）のにクエリを足していなかった期間の 400/422（requestQuery の記録が無いか empty）は vet402 の側（query_not_sent）。決済済みの Base の行は classifyRow ではこちらの側で、classifySellerRow は charged_unsent_input。2026-10-19 から、Base 以外（Tempo を除く）で署名済み・400/422・2026-09-20 以降・requestQuery の記録が無い・宣言ありの行も同じ種類。retest の (c) は Base の条だけ"
     check: null
-    why_unverifiable: "時刻と条件は src/lib/observatory/request-query.ts の BASE_DECLARED_QUERY_SINCE と queryNotSentOnOurSide（retest の (c) と共有）。/sellers は fix-modes.ts の isQueryNotSent でそれを呼ぶだけで、tests/sellers-fix-modes.test.ts が共有の判定と行ごとに同じ答えを出すことを固定する"
+    why_unverifiable: "時刻と条件は src/lib/observatory/request-query.ts の BASE_DECLARED_QUERY_SINCE・DECLARED_QUERY_RECORD_SINCE と queryNotSentOnOurSide。retest の (c) は queryNotSentOnBaseBeforeCutoffSql だけを使う。/sellers は fix-modes.ts の isQueryNotSent で共有の判定を呼ぶ。tests/sellers-fix-modes.test.ts と tests/query-not-sent-chains.test.ts が固定する"
     verified_at: 2026-09-28
   - id: sellers_pays_declared_price
     surface: src/lib/sellers/fix-modes.ts

@@ -21,6 +21,7 @@ import {
 } from "@/lib/observatory/request-body";
 import {
   BASE_DECLARED_QUERY_SINCE,
+  DECLARED_QUERY_RECORD_SINCE,
   declaresRequiredQuery,
   queryNotSentOnOurSide,
   queryNotSentOnOurSideSql,
@@ -60,7 +61,7 @@ const CASES: [string, NotSentRowInput, boolean, boolean][] = [
   ["query: required not an array", { ...base, declaredSchema: BAD_REQ_QUERY }, false, false],
   ["query: no schema", { ...base, declaredSchema: null }, false, false],
   ["query: after cutoff", { ...base, attemptedAt: BASE_DECLARED_QUERY_SINCE }, false, false],
-  ["query: xrpl", { ...base, network: "xrpl:0" }, false, false],
+  ["query: xrpl without a record", { ...base, network: "xrpl:0" }, true, false],
   ["query: 401", { ...base, httpStatusPaid: 401 }, false, false],
   ["query: 404", { ...base, httpStatusPaid: 404 }, false, false],
   ["query: settled", { ...base, status: "settled" }, false, false],
@@ -84,6 +85,24 @@ const CASES: [string, NotSentRowInput, boolean, boolean][] = [
   ["body: declared_input empty", { ...base, method: "POST", attemptedAt: "2026-09-15T03:00:00Z", declaredSchema: OPT_QUERY, declaredInput: { query: "empty", body: "empty" } }, false, false],
   ["body: 415 after cutoff", { ...base, method: "POST", httpStatusPaid: 415, attemptedAt: DECLARED_BODY_SENT_SINCE, declaredSchema: BODY }, false, false],
   ["both: POST before with body and required query", { ...base, method: "POST", attemptedAt: "2026-09-15T03:00:00Z", declaredSchema: schemaWith({ body: { type: "object" }, queryParams: { type: "object", required: ["q"] } }) }, true, true],
+  // 2026-10-19: 許可リストに無かったチェーン。署名済み・400/422・2026-09-20 以降・requestQuery の記録なし・Tempo でない・宣言あり。
+  ["query: celo", { ...base, network: "eip155:42220", attemptedAt: "2026-10-01T00:00:00Z" }, true, false],
+  ["query: bnb 422", { ...base, network: "eip155:56", httpStatusPaid: 422, attemptedAt: "2026-10-11T00:00:00Z" }, true, false],
+  ["query: stellar", { ...base, network: "stellar:pubnet", attemptedAt: "2026-10-01T00:00:00Z" }, true, false],
+  ["query: arc", { ...base, network: "eip155:5042", attemptedAt: "2026-10-01T00:00:00Z" }, true, false],
+  ["query: other chain at record start", { ...base, network: "eip155:42220", attemptedAt: DECLARED_QUERY_RECORD_SINCE }, true, false],
+  ["query: other chain before record start", { ...base, network: "eip155:42220", attemptedAt: "2026-09-19T23:59:59Z" }, false, false],
+  ["query: celo requestQuery declared", { ...base, network: "eip155:42220", attemptedAt: "2026-10-01T00:00:00Z", rawResponseMeta: { requestQuery: "declared" } }, false, false],
+  ["query: celo requestQuery empty is a record", { ...base, network: "eip155:42220", attemptedAt: "2026-10-01T00:00:00Z", rawResponseMeta: { requestQuery: "empty" } }, false, false],
+  ["query: celo no declaration", { ...base, network: "eip155:42220", attemptedAt: "2026-10-01T00:00:00Z", declaredSchema: null }, false, false],
+  ["query: tempo", { ...base, network: "eip155:4217", attemptedAt: "2026-10-01T00:00:00Z" }, false, false],
+  ["query: tempo moderato", { ...base, network: "eip155:42431", attemptedAt: "2026-10-01T00:00:00Z" }, false, false],
+  ["query: celo settled", { ...base, network: "eip155:42220", status: "settled", txHash: "0xabc", attemptedAt: "2026-10-01T00:00:00Z" }, true, false],
+  ["query: celo tx present", { ...base, network: "eip155:42220", txHash: "0xabc", attemptedAt: "2026-10-01T00:00:00Z" }, true, false],
+  ["query: celo 401", { ...base, network: "eip155:42220", httpStatusPaid: 401, attemptedAt: "2026-10-01T00:00:00Z" }, false, false],
+  ["query: network null", { ...base, network: null, attemptedAt: "2026-10-01T00:00:00Z" }, false, false],
+  ["query: network empty", { ...base, network: "", attemptedAt: "2026-10-01T00:00:00Z" }, false, false],
+  ["query: celo declared_input only", { ...base, network: "eip155:42220", attemptedAt: "2026-10-01T00:00:00Z", declaredSchema: EMPTY_QUERY, declaredInput: { query: "declared", body: "empty" } }, true, false],
 ];
 
 test("JS の述語: 期待どおり（必須のクエリ・本文の宣言・境目・ネットワーク・ステータス）", () => {

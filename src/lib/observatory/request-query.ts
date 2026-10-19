@@ -41,7 +41,14 @@
 // 「ランナーがこの 2 つのキー名で書いている」を固定する。
 // ============================================================
 import type { RequestQuerySource } from "./declared-input";
-import { assertSqlExpr, declaredInputProperty, refusedUnsettled, refusedUnsettledSql, type NotSentRowInput } from "./request-body";
+import {
+  assertSqlExpr,
+  declaredInputProperty,
+  NOT_SENT_REFUSAL_HTTP,
+  refusedUnsettled,
+  refusedUnsettledSql,
+  type NotSentRowInput,
+} from "./request-body";
 import { declaredInputQuerySql, declaredInputSendsQuery } from "./declared-input-summary";
 
 /**
@@ -57,6 +64,32 @@ import { declaredInputQuerySql, declaredInputSendsQuery } from "./declared-input
  * 使う側（l1-runner の retest (c)・/sellers）はこの定数を import する。場所と名前を変えない。
  */
 export const BASE_DECLARED_QUERY_SINCE = "2026-09-27T23:27:16Z";
+
+/**
+ * 許可リストに載ったチェーンの支払い付き行へ `requestQuery` を書き始めた日（2026-09-20・方法論の「rows before 2026-09-20」）。
+ * この時刻以降、記録が無い行は許可リストに無く、宣言クエリを送っていない。Base はこの定数を使わない
+ * （BASE_DECLARED_QUERY_SINCE より前の Base だけが従来の条）。Tempo は許可リストに載せても書かないので対象外。
+ */
+export const DECLARED_QUERY_RECORD_SINCE = "2026-09-20T00:00:00Z";
+
+/**
+ * Tempo（MPP）。`mpp-payer.ts` の TEMPO_MAINNET_CAIP2 / TEMPO_MODERATO_CAIP2 と同じ 2 つ
+ * （ここから viem を import しない。tests が一致を固定する）。
+ */
+export const TEMPO_QUERY_NETWORKS = ["eip155:4217", "eip155:42431"] as const;
+
+/**
+ * 署名した（支払い付きの要求を送った）status。fix-modes.ts の SIGNED_ROW_STATUSES と同じ集合
+ * （tests が一致を固定する）。判定の述語はここを見る。照合待ちの行は classifyRow が先に pending にする。
+ */
+export const QUERY_NOT_SENT_SIGNED_STATUSES = [
+  "settled",
+  "settle_claimed",
+  "settle_claim_refuted",
+  "settle_claimed_unverifiable",
+  "delivered_no_receipt",
+  "settle_failed",
+] as const;
 
 /** raw_response_meta.requestQuery の語彙＝公開 export の request_query の値。 */
 export const REQUEST_QUERY_KINDS = ["declared", "empty", "refused"] as const;
@@ -169,15 +202,40 @@ export function declaresQueryForSending(row: Pick<NotSentRowInput, "declaredSche
   return declaresRequiredQuery(row.declaredSchema) || declaredInputSendsQuery(row.declaredInput);
 }
 
+function isBaseNetwork(network: string | null): boolean {
+  return (BASE_NETWORKS as readonly string[]).includes(network ?? "");
+}
+
+function isTempoNetwork(network: string | null): boolean {
+  return (TEMPO_QUERY_NETWORKS as readonly string[]).includes(network ?? "");
+}
+
+/** 行に requestQuery の記録が無い（キーが無い・null・meta がオブジェクトでない）。`empty` は記録がある。 */
+function requestQueryAbsent(meta: unknown): boolean {
+  if (typeof meta !== "object" || meta === null || Array.isArray(meta)) return true;
+  if (!Object.prototype.hasOwnProperty.call(meta, "requestQuery")) return true;
+  const q = (meta as Record<string, unknown>).requestQuery;
+  return q === undefined || q === null;
+}
+
+/** 署名済みで、支払い付きの要求が 400 か 422。決済の有無は問わない（retest は未決済の条だけを使う）。 */
+function signedQueryRefusal(row: NotSentRowInput): boolean {
+  return (
+    row.status !== null &&
+    (QUERY_NOT_SENT_SIGNED_STATUSES as readonly string[]).includes(row.status) &&
+    typeof row.httpStatusPaid === "number" &&
+    (NOT_SENT_REFUSAL_HTTP as readonly number[]).includes(row.httpStatusPaid)
+  );
+}
+
 /**
- * こちらがクエリを送っていなかったための失敗（retest の (c)・/sellers の query_not_sent）:
- * Base の行・400/422 で未決済・BASE_DECLARED_QUERY_SINCE より前・行の requestQuery が無いか empty・
- * 今の出品がクエリを宣言している（declaresQueryForSending）。メソッドは問わない（クエリは GET にも POST にも足す）。
- * XRPL は 2026-09-21 から送っていたので入らない。
+ * Base の境目より前（従来の条・1 文字も条件を変えない）:
+ * Base・400/422 で未決済・BASE_DECLARED_QUERY_SINCE より前・requestQuery が無いか empty・
+ * 今の出品がクエリを宣言している。メソッドは問わない。
  */
-export function queryNotSentOnOurSide(row: NotSentRowInput): boolean {
+function queryNotSentOnBaseBeforeCutoff(row: NotSentRowInput): boolean {
   if (!refusedUnsettled(row)) return false;
-  if (!(BASE_NETWORKS as readonly string[]).includes(row.network ?? "")) return false;
+  if (!isBaseNetwork(row.network)) return false;
   const at = epochMs(row.attemptedAt);
   if (at === null || at >= Date.parse(BASE_DECLARED_QUERY_SINCE)) return false;
   const meta = row.rawResponseMeta;
@@ -187,19 +245,88 @@ export function queryNotSentOnOurSide(row: NotSentRowInput): boolean {
 }
 
 /**
+ * Base 以外・Tempo 以外。署名済み・400/422・DECLARED_QUERY_RECORD_SINCE 以降・requestQuery の記録が無い・
+ * 出品がクエリを宣言している。`empty` は記録なので入れない。network が無い行はチェーンを言えないので入れない。
+ */
+function queryNotSentOnOtherChain(row: NotSentRowInput): boolean {
+  if (row.network === null || row.network === "") return false;
+  if (isBaseNetwork(row.network) || isTempoNetwork(row.network)) return false;
+  if (!signedQueryRefusal(row)) return false;
+  const at = epochMs(row.attemptedAt);
+  if (at === null || at < Date.parse(DECLARED_QUERY_RECORD_SINCE)) return false;
+  if (!requestQueryAbsent(row.rawResponseMeta)) return false;
+  return declaresQueryForSending(row);
+}
+
+/**
+ * こちらがクエリを送っていなかったための失敗（/sellers の query_not_sent）:
+ * Base の境目より前の従来の条、または他チェーンの「記録が無い」条。メソッドは問わない。
+ * retest の (c) は Base の条だけを使う（queryNotSentOnBaseBeforeCutoffSql）。他チェーンの買い直しはしない。
+ */
+export function queryNotSentOnOurSide(row: NotSentRowInput): boolean {
+  return queryNotSentOnBaseBeforeCutoff(row) || queryNotSentOnOtherChain(row);
+}
+
+function declaresQuerySql(cols: { schema: string; input?: string }): string {
+  return cols.input
+    ? `(${declaresRequiredQuerySql(cols.schema)} OR coalesce(${declaredInputQuerySql(cols.input)}, false))`
+    : declaresRequiredQuerySql(cols.schema);
+}
+
+function sqlList(values: readonly string[]): string {
+  return values.map((n) => `'${n}'`).join(", ");
+}
+
+/**
+ * queryNotSentOnBaseBeforeCutoff と同じ規則の SQL。retest の (c) はこれだけを使う
+ * （他チェーンの行を買い直さない。理由は CHANGELOG 2026-10-19）。
+ */
+export function queryNotSentOnBaseBeforeCutoffSql(cols: { row: string; schema: string; input?: string }): string {
+  const a = assertSqlExpr("queryNotSentOnBaseBeforeCutoffSql", cols.row);
+  return (
+    `(${refusedUnsettledSql(a)}` +
+    ` AND ${a}.network IN (${sqlList(BASE_NETWORKS)})` +
+    ` AND ${a}.attempted_at < '${BASE_DECLARED_QUERY_SINCE}'::timestamptz` +
+    ` AND coalesce(${a}.raw_response_meta->>'requestQuery', 'empty') = 'empty'` +
+    ` AND ${declaresQuerySql(cols)})`
+  );
+}
+
+/**
+ * 行に requestQuery の記録が無い、と同じ規則の SQL。
+ * CASE で型を先に見る（スカラーへの `?` は落ちる。OR は評価順を保証しない）。
+ */
+function requestQueryAbsentSql(rowAlias: string): string {
+  const m = `${rowAlias}.raw_response_meta`;
+  return (
+    `(CASE WHEN ${m} IS NULL THEN true` +
+    ` WHEN jsonb_typeof(${m}) <> 'object' THEN true` +
+    ` WHEN NOT (${m} ? 'requestQuery') THEN true` +
+    ` WHEN jsonb_typeof(${m}->'requestQuery') = 'null' THEN true` +
+    ` ELSE false END)`
+  );
+}
+
+function queryNotSentOnOtherChainSql(cols: { row: string; schema: string; input?: string }): string {
+  const a = assertSqlExpr("queryNotSentOnOtherChainSql", cols.row);
+  const statuses = sqlList(QUERY_NOT_SENT_SIGNED_STATUSES);
+  const codes = NOT_SENT_REFUSAL_HTTP.join(", ");
+  return (
+    `(${a}.status IN (${statuses}) AND ${a}.http_status_paid IN (${codes})` +
+    ` AND ${a}.network IS NOT NULL AND ${a}.network <> ''` +
+    ` AND ${a}.network NOT IN (${sqlList(BASE_NETWORKS)})` +
+    ` AND ${a}.network NOT IN (${sqlList(TEMPO_QUERY_NETWORKS)})` +
+    ` AND ${a}.attempted_at >= '${DECLARED_QUERY_RECORD_SINCE}'::timestamptz` +
+    ` AND ${requestQueryAbsentSql(a)}` +
+    ` AND ${declaresQuerySql(cols)})`
+  );
+}
+
+/**
  * queryNotSentOnOurSide と同じ規則の SQL。`row` は購入行の別名、`schema`・`input` は出品の列の式
  * （`input` は declared_input。省略すればスキーマだけで判定する）。
  */
 export function queryNotSentOnOurSideSql(cols: { row: string; schema: string; input?: string }): string {
-  const a = assertSqlExpr("queryNotSentOnOurSideSql", cols.row);
-  const declares = cols.input
-    ? `(${declaresRequiredQuerySql(cols.schema)} OR coalesce(${declaredInputQuerySql(cols.input)}, false))`
-    : declaresRequiredQuerySql(cols.schema);
-  return (
-    `(${refusedUnsettledSql(a)}` +
-    ` AND ${a}.network IN (${BASE_NETWORKS.map((n) => `'${n}'`).join(", ")})` +
-    ` AND ${a}.attempted_at < '${BASE_DECLARED_QUERY_SINCE}'::timestamptz` +
-    ` AND coalesce(${a}.raw_response_meta->>'requestQuery', 'empty') = 'empty'` +
-    ` AND ${declares})`
-  );
+  assertSqlExpr("queryNotSentOnOurSideSql", cols.row);
+  return `(${queryNotSentOnBaseBeforeCutoffSql(cols)} OR ${queryNotSentOnOtherChainSql(cols)})`;
 }
