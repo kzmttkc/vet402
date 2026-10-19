@@ -165,6 +165,8 @@ if (!TEST_DB) {
     add("https://qc.example/get", "1200", { past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE }] });
     // XRPL の行（2026-09-21 から送っていた）→ (c) に入らない。
     add("https://qd.example/get", "1200", { declaresQuery: true, past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE, network: "xrpl:0" }] });
+    // Celo の該当行（署名済み・400・宣言あり・requestQuery の記録なし・Celo の上限より前）→ (c) で買い直さない。
+    add("https://qj.example/get", "1200", { declaresQuery: true, past: [{ status: "settle_failed", http: 400, at: "2026-10-01T00:00:00Z", network: "eip155:42220" }] });
     // 宣言クエリを送った行（declared）→ 選ばない。
     add("https://qe.example/get", "1200", { declaresQuery: true, past: [{ status: "settle_failed", http: 400, at: QUERY_BEFORE, requestQuery: "declared" }] });
     // 必須の無いクエリ（properties だけ・required が空・queryParams が空）で、見本値も無い（送る規則では何も足さない）
@@ -417,8 +419,8 @@ if (!TEST_DB) {
       assert.ok(!paid.includes("https://rb.example/cheapget"), "(b) は失敗した出品そのものを買い直す（同じ売り手の安い GET ではない・W2）");
       assert.ok(!paid.includes("https://rm.example/post"), "$1 超の出品は買わない（最安に落ちる）");
       assert.ok(!paid.includes("https://qa.example/cheap"), "(c) も失敗した出品そのものを買い直す（同じ売り手の安い出品ではない）");
-      for (const h of ["qb.example", "qc.example", "qd.example", "qe.example", "qg.example", "qh.example", "qi.example"]) {
-        assert.ok(!paid.some((u) => hostOf(u) === h), `${h} は (c) に入らない（境目の後・宣言なし・XRPL・送った行・必須なし）`);
+      for (const h of ["qb.example", "qc.example", "qd.example", "qe.example", "qg.example", "qh.example", "qi.example", "qj.example"]) {
+        assert.ok(!paid.some((u) => hostOf(u) === h), `${h} は (c) に入らない（境目の後・宣言なし・XRPL・送った行・必須なし・Celo）`);
       }
       for (const h of ["rc.example", "rd.example", "rj.example", "rl.example", "re.example", "rf.example", "rg.example", "rh.example"]) {
         assert.ok(!paid.some((u) => hostOf(u) === h), `${h} は選ばない`);
@@ -488,6 +490,20 @@ if (!TEST_DB) {
       // ly/fail は $1 超。同じ売り手の /ok は見ない——通常の掃引が買う回がある（上の段のコメント・2026-10-10）。
       const paid = w.paidUrls();
       for (const u of ["https://lx.example/fail", "https://lz.example/post", "https://ly.example/fail"]) assert.ok(!paid.includes(u), u);
+    });
+
+    await t.test("Celo の該当行は retest (c) で買い直さない", async () => {
+      arm(true);
+      await seed();
+      const { readRetestSellers } = await import("@/lib/observatory/l1-runner");
+      const listed = await readRetestSellers(db);
+      assert.ok(listed);
+      const hosts = JSON.parse(listed.hostsJson) as string[];
+      assert.ok(!hosts.includes("qj.example"), `retest が Celo の行を選んだ: ${hosts.join(", ")}`);
+      const w = wall();
+      await run(w);
+      assert.ok(!w.paidUrls().some((u) => hostOf(u) === "qj.example"), "Celo の該当行を買い直した");
+      assert.ok(!(await bySelection("retest")).some((u) => u.includes("qj.example")));
     });
   });
 }

@@ -103,6 +103,15 @@ const CASES: [string, NotSentRowInput, boolean, boolean][] = [
   ["query: network null", { ...base, network: null, attemptedAt: "2026-10-01T00:00:00Z" }, false, false],
   ["query: network empty", { ...base, network: "", attemptedAt: "2026-10-01T00:00:00Z" }, false, false],
   ["query: celo declared_input only", { ...base, network: "eip155:42220", attemptedAt: "2026-10-01T00:00:00Z", declaredSchema: EMPTY_QUERY, declaredInput: { query: "declared", body: "empty" } }, true, false],
+  // 上限より前は vet402。上限の時刻と、それより後は外す。比較を反転するとこの組が落ちる。
+  ["query: xrpl before until", { ...base, network: "xrpl:0", attemptedAt: "2026-09-21T06:00:29.999Z" }, true, false],
+  ["query: xrpl at until", { ...base, network: "xrpl:0", attemptedAt: "2026-09-21T06:00:30Z" }, false, false],
+  ["query: solana before until", { ...base, network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", attemptedAt: "2026-10-01T12:00:19.999Z" }, true, false],
+  ["query: solana at until", { ...base, network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", attemptedAt: "2026-10-01T12:00:20Z" }, false, false],
+  ["query: celo before until", { ...base, network: "eip155:42220", attemptedAt: "2026-10-19T04:05:16.999Z" }, true, false],
+  ["query: celo at until", { ...base, network: "eip155:42220", attemptedAt: "2026-10-19T04:05:17Z" }, false, false],
+  ["query: celo outcomeWriteFailed", { ...base, network: "eip155:42220", attemptedAt: "2026-10-01T00:00:00Z", rawResponseMeta: { phase: "paid", outcomeWriteFailed: { cause: null, error: "x" } } }, false, false],
+  ["query: network not in the until table", { ...base, network: "eip155:1", attemptedAt: "2026-10-01T00:00:00Z" }, false, false],
 ];
 
 test("JS の述語: 期待どおり（必須のクエリ・本文の宣言・境目・ネットワーク・ステータス）", () => {

@@ -42,6 +42,7 @@ import { L0_BODY_CAP_BYTES, L0_BODY_CAP_RAISED_ON } from "@/lib/observatory/l0-p
 import { RULE_CHANGE_PRIORITY_PER_HOST } from "@/lib/observatory/l0-rule-change";
 import { TableScroll } from "@/components/site/TableScroll";
 import { SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS, SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS } from "@/lib/sellers/fix-modes";
+import { queryUnsentUntilLabel } from "@/lib/observatory/request-query";
 import { BASE_PAYER_PERIODS, shortPayer } from "@/lib/sellers/payers";
 
 const MAX_PER_PURCHASE_USD = Number(MAX_PER_PURCHASE_UNITS) / 1_000_000;
@@ -470,7 +471,13 @@ export default async function ObservatoryMethodologyPage() {
           was refused with <code>400</code>, <code>415</code> or <code>422</code> before 2026-09-16
           23:25 UTC, when we sent an empty JSON body although the listing declares one; a paid request on
           Base was refused with <code>400</code> or <code>422</code> before 2026-09-27 23:27 UTC, when we
-          did not add the query the listing declares; or our own limits and errors. &ldquo;Declares&rdquo;
+          did not add the query the listing declares; or our own limits and errors. On XRPL before{" "}
+          {queryUnsentUntilLabel("xrpl:0")}, on Solana before{" "}
+          {queryUnsentUntilLabel("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp")}, and on Arc, Celo, Stellar and BNB
+          before {queryUnsentUntilLabel("eip155:42220")}, a signed paid request that the seller refused with{" "}
+          <code>400</code> or <code>422</code>, with no record of the query we sent, is on our side when the listing
+          declares a query. A row at or after that time on its chain, with no record of the query, is not on our side
+          for this reason. &ldquo;Declares&rdquo;
           is read from the same place our request is built from: the example values in the
           listing&apos;s <code>extensions.bazaar.info.input</code>, as well as the names its schema
           marks required. <em>Not sorted</em>: a failed purchase that cannot show (b) to (e); a failure at a

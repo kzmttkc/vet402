@@ -38,8 +38,9 @@ export const censusHostSql = (resourceKey: SQL) => sql`lower(regexp_replace(spli
  *      記録が無い（または empty）、かつ今のカタログのそのエンドポイントが**必須の**クエリを宣言している
  *      （declared_schema の properties.input.properties.queryParams.required が空でない・2026-09-28）か、送る規則なら宣言の
  *      クエリを足す（declared_input.query = declared・2026-09-29。見本値だけで宣言する売り手を拾う）。メソッドは問わない
- *      （クエリは GET にも POST にも足す）。他チェーンでクエリを送らなかった行は /sellers の query_not_sent には入るが、
- *      (c) には入れない（queryNotSentOnBaseBeforeCutoffSql。買い直しは主ネットワーク Base の出品を買うため）。
+ *      （クエリは GET にも POST にも足す）。他チェーンで、上限の時刻より前にクエリを送らなかった行は /sellers の
+ *      query_not_sent には入るが、(c) には入れない（queryNotSentOnBaseBeforeCutoffSql。買い直しは主ネットワーク Base の
+ *      出品を買うため。Celo の該当行も買い直さない）。
  *
  * 返すのは売り手ごとに host・reason（"unfunded" | "body" | "query"）・その最新の行の endpoint_id。(b)(c) では失敗した
  * 出品そのものを優先して買い直す（runL1Batch の retest の段）。

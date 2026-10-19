@@ -11,9 +11,12 @@ import { notCountedReasonOf, rowViewOf, type PurchaseInput } from "@/lib/decisio
 import { TEMPO_MAINNET_CAIP2, TEMPO_MODERATO_CAIP2 } from "@/lib/observatory/mpp-payer";
 import {
   DECLARED_QUERY_RECORD_SINCE,
+  OTHER_CHAIN_QUERY_UNSENT_UNTIL,
   QUERY_NOT_SENT_SIGNED_STATUSES,
   TEMPO_QUERY_NETWORKS,
+  otherChainQueryUnsentUntil,
   queryNotSentOnOurSide,
+  queryNotSentOnOurSideSql,
 } from "@/lib/observatory/request-query";
 import { buildSellerExportRows } from "@/lib/sellers/export";
 import {
@@ -29,6 +32,8 @@ const CELO = "eip155:42220";
 const BNB = "eip155:56";
 const STELLAR = "stellar:pubnet";
 const ARC = "eip155:5042";
+const XRPL = "xrpl:0";
+const SOLANA = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
 const TX = `0x${"ab".repeat(32)}`;
 
 function row(p: Partial<SellerRowFacts> & { declaresQuery?: boolean }): SellerRowFacts {
@@ -131,6 +136,7 @@ test("条件を 1 つ外すと今までどおり（query_not_sent にしない�
   stay("2026-09-20 より前", row({ attemptedAt: "2026-09-19T23:59:59Z" }), "refused_no_charge");
   stay("401", row({ httpStatusPaid: 401 }), "refused_no_charge");
   stay("network が空", row({ network: "" }), "refused_no_charge");
+  stay("表に無い network", row({ network: "eip155:1" }), "refused_no_charge");
 });
 
 test("境目の瞬間（2026-09-20T00:00:00Z）は対象。日付の比較を反転すると落ちる", () => {
@@ -142,7 +148,81 @@ test("境目の瞬間（2026-09-20T00:00:00Z）は対象。日付の比較を反
   assert.equal(classifyRow(before).mode?.key, "refused_no_charge");
 });
 
-test("決済済み: Base は今までどおり charged_unsent_input。他チェーンは vet402 の側のまま", () => {
+test("上限の時刻は表に 1 回で、SQL は表から作る", () => {
+  const src = readFileSync(join(process.cwd(), "src/lib/observatory/request-query.ts"), "utf8");
+  const sql = queryNotSentOnOurSideSql({ row: "lr", schema: "lr.declared_schema", input: "lr.declared_input" });
+  assert.equal(otherChainQueryUnsentUntil(XRPL), "2026-09-21T06:00:30Z");
+  assert.equal(otherChainQueryUnsentUntil(SOLANA), "2026-10-01T12:00:20Z");
+  assert.equal(otherChainQueryUnsentUntil(CELO), "2026-10-19T04:05:17Z");
+  assert.equal(otherChainQueryUnsentUntil(ARC), otherChainQueryUnsentUntil(CELO));
+  assert.equal(otherChainQueryUnsentUntil(STELLAR), otherChainQueryUnsentUntil(CELO));
+  assert.equal(otherChainQueryUnsentUntil(BNB), otherChainQueryUnsentUntil(CELO));
+  assert.equal(otherChainQueryUnsentUntil("eip155:8453"), null);
+  assert.equal(otherChainQueryUnsentUntil("eip155:1"), null);
+  for (const group of OTHER_CHAIN_QUERY_UNSENT_UNTIL) {
+    assert.equal(src.split(`"${group.until}"`).length - 1, 1, group.until);
+    assert.match(sql, new RegExp(group.until));
+    for (const network of group.networks) assert.match(sql, new RegExp(network.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  assert.match(sql, /outcomeWriteFailed/);
+});
+
+/** /sellers と export。判定の fallback（rowViewOf）は payTo を持たないので、ここは見ない。 */
+function assertUnrecorded(r: SellerRowFacts, label: string) {
+  assert.equal(classifyRow(r).mode?.key, "input_unrecorded", label);
+  assert.equal(classifyRow(r).bucket, "unsorted", label);
+  const sellers = classifySellerRow(r);
+  assert.equal(sellers.mode?.key, "input_unrecorded", label);
+  assert.equal(sellers.bucket, "unsorted", label);
+  const exported = buildSellerExportRows(
+    [{ endpointId: r.endpointId, resourceKey: "h.example/api", host: "h.example" }],
+    [{ ...r, host: "h.example" }],
+  )[0];
+  assert.equal(exported.outcome, "unsorted", label);
+  assert.equal(exported.fix_mode, "input_unrecorded", label);
+}
+
+/** 上限の時刻以降・tx あり。記録が無いので input_unrecorded（query_not_sent にしない）。 */
+function afterCutoff(network: string, at: string): SellerRowFacts {
+  return row({
+    network,
+    attemptedAt: at,
+    txHash: TX,
+    amountUnits: "20000",
+    payTo: `0x${"11".repeat(20)}`,
+    asset: `0x${"22".repeat(20)}`,
+    declaresHeaders: false,
+    pathTemplate: false,
+  });
+}
+
+test("上限の前後（XRPL・Solana・Celo）。比較を反転すると落ちる", () => {
+  const bounds = [
+    [XRPL, "2026-09-21T06:00:30Z"],
+    [SOLANA, "2026-10-01T12:00:20Z"],
+    [CELO, "2026-10-19T04:05:17Z"],
+  ] as const;
+  for (const [network, until] of bounds) {
+    const before = row({ network, attemptedAt: new Date(Date.parse(until) - 1).toISOString() });
+    assert.equal(queryNotSentOnOurSide(notSentInput(before)), true, `${network} before`);
+    assertSameReaders(before, "query_not_sent", "vet402");
+    const at = afterCutoff(network, until);
+    assert.equal(queryNotSentOnOurSide(notSentInput(at)), false, `${network} at cutoff`);
+    assertUnrecorded(at, network);
+    const later = afterCutoff(network, new Date(Date.parse(until) + 1).toISOString());
+    assert.equal(queryNotSentOnOurSide(notSentInput(later)), false, `${network} after`);
+    assertUnrecorded(later, `${network} later`);
+  }
+});
+
+test("outcomeWriteFailed の行は、記録が無くても query_not_sent にしない", () => {
+  const dropped = row({ meta: { outcomeWriteFailed: { cause: null, error: "db" } } });
+  assert.equal(queryNotSentOnOurSide(notSentInput(dropped)), false);
+  assert.notEqual(classifyRow(dropped).mode?.key, "query_not_sent");
+  assert.equal(classifyRow(dropped).mode?.key, "refused_no_charge");
+});
+
+test("決済済み: 全チェーンで charged_unsent_input。classifyRow は query_not_sent のまま", () => {
   const base = row({
     network: "eip155:8453",
     status: "settled",
@@ -155,8 +235,23 @@ test("決済済み: Base は今までどおり charged_unsent_input。他チェ�
   assert.equal(classifySellerRow(base).bucket, "unsorted");
 
   const celo = row({ status: "settled", txHash: TX, httpStatusPaid: 400 });
-  assertSameReaders(celo, "query_not_sent", "vet402");
-  // tx がある settle_failed（記録が無く input_unrecorded になっていた形）もこちらの側。
+  assert.equal(classifyRow(celo).mode?.key, "query_not_sent");
+  assert.equal(classifySellerRow(celo).mode?.key, "charged_unsent_input");
+  assert.equal(classifySellerRow(celo).bucket, "unsorted");
+  const exported = buildSellerExportRows(
+    [{ endpointId: celo.endpointId, resourceKey: "h.example/api", host: "h.example" }],
+    [{ ...celo, host: "h.example" }],
+  )[0];
+  assert.equal(exported.outcome, "unsorted");
+  assert.equal(exported.fix_mode, "charged_unsent_input");
+  const view = rowViewOf(purchaseOf(celo), { method: celo.method, declaredSchema: celo.schema, declaredInput: celo.declaredInput });
+  assert.equal(view.bucket, "unsorted");
+  assert.equal(view.modeKey, "charged_unsent_input");
+  // 上限より前の tx あり未決済は今までどおり vet402。
   const withTx = row({ txHash: TX });
   assertSameReaders(withTx, "query_not_sent", "vet402");
+  // 上限以降の決済済みは、記録が無いだけでは charged_unsent_input にしない。
+  const after = row({ status: "settled", txHash: TX, httpStatusPaid: 400, attemptedAt: "2026-10-19T04:05:17Z" });
+  assert.notEqual(classifySellerRow(after).mode?.key, "charged_unsent_input");
+  assert.notEqual(classifyRow(after).mode?.key, "query_not_sent");
 });

@@ -13,11 +13,12 @@
 // side は「その失敗は誰の側で起きたか」（2026-09-29 敵対的監査で規則を締めた・判定の順もこの順）:
 //   vet402   こちらの落ち度・こちらの制限。売り手に直すものは無い。
 //            payer_unfunded（購入元の残高切れ）、body_not_sent（宣言本文を送っていなかった期間の 400/422）、
-//            query_not_sent（宣言クエリを送っていなかった 400/422。Base は境目より前。他チェーンは 2026-09-20 以降で
-//            requestQuery の記録が無い行。Tempo は対象外）。classifyRow は決済済みの行もこちらの側に置く
+//            query_not_sent（宣言クエリを送っていなかった 400/422。Base は境目より前。他チェーンは
+//            チェーンごとの上限より前で requestQuery の記録が無い行。Tempo と表に無い network は対象外）。
+//            classifyRow は決済済みの行もこちらの側に置く
 //            （独立レビュー 2026-09-28: 入力を送らなかったのはこちら）。その上の classifySellerRow（2026-09-29 第4巡）は
-//            決済済みの Base の行を charged_unsent_input（両方の事実・not sorted）に分ける。他チェーンの決済済みは
-//            query_not_sent のまま（vet402 の側）。retest の対象
+//            決済済み（settled）の行を、チェーンを問わず charged_unsent_input（両方の事実・not sorted）に分ける。
+//            retest の対象
 //            （買い直しの予定）とは別の判定で、頁が「eligible for a re-buy」と書くのは retest の SQL の結果がある時だけ（board.ts）。
 //            本文・クエリの「宣言」は、送る規則と同じ情報源（x402_endpoints.declared_input＝`bazaar.info.input` の
 //            見本値に送る規則を当てた要約）とスキーマの両方で見る（2026-09-29）。本文は 415 も入る。
@@ -63,9 +64,9 @@ import {
 import {
   BASE_DECLARED_QUERY_SINCE,
   BASE_NETWORKS,
-  DECLARED_QUERY_RECORD_SINCE,
   declaresQueryForSending,
   queryNotSentOnOurSide,
+  queryUnsentUntilLabel,
 } from "@/lib/observatory/request-query";
 import { requestBodyKindOf } from "@/lib/observatory/request-body";
 import { L1_REQUEST_TIMEOUT_MS } from "@/lib/observatory/l1-timing";
@@ -258,7 +259,7 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   {
     key: "query_not_sent",
     title: "vet402 did not send the declared query",
-    what: `vet402 did not send the query the listing declares. Before 2026-09-27 23:27 UTC, vet402 did not add the query parameters the seller's 402 declares to paid requests on Base, and this listing declares them (example values, or required names). The seller refused the request with 400 or 422. On any other chain except Tempo, a signed paid request on or after ${DECLARED_QUERY_RECORD_SINCE.slice(0, 10)} with no record of the query sent is the same miss.`,
+    what: `vet402 did not send the query the listing declares. Before 2026-09-27 23:27 UTC, vet402 did not add the query parameters the seller's 402 declares to paid requests on Base, and this listing declares them (example values, or required names). The seller refused the request with 400 or 422. The same miss covers a signed paid request with no record of the query sent on XRPL before ${queryUnsentUntilLabel("xrpl:0")}, on Solana before ${queryUnsentUntilLabel("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp")}, and on Arc, Celo, Stellar and BNB before ${queryUnsentUntilLabel("eip155:42220")}. A row at or after that time on its chain is not this miss.`,
     fix: NOTHING_FOR_SELLER,
     side: "vet402",
     effort: 1,
@@ -286,7 +287,7 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   {
     key: "charged_unsent_input",
     title: "Charged, then refused an input vet402 had not sent",
-    what: "The payment settled on-chain, and then the paid request got 400, 415 or 422. At the time vet402 did not send the input this listing declares: the request body before 2026-09-16 23:25 UTC, or on Base the query before 2026-09-27 23:27 UTC. Both facts stand: the seller took the payment, and the request lacked the declared input. This page counts the row against neither side.",
+    what: `The payment settled on-chain, and then the paid request got 400, 415 or 422. At the time vet402 did not send the input this listing declares: the request body before 2026-09-16 23:25 UTC, the query on Base before 2026-09-27 23:27 UTC, or the query on XRPL before ${queryUnsentUntilLabel("xrpl:0")}, on Solana before ${queryUnsentUntilLabel("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp")}, and on Arc, Celo, Stellar and BNB before ${queryUnsentUntilLabel("eip155:42220")}. Both facts stand: the seller took the payment, and the request lacked the declared input. This page counts the row against neither side.`,
     fix: "This page does not count it as the seller's fault. Checking the input before settling avoids taking a payment for a request you refuse.",
     side: "unsorted",
     effort: 2,
@@ -1067,12 +1068,12 @@ export function sellerCandidateClass(r: SellerRowFacts, now: number = Date.now()
   const base = classifyRow(r);
   if (isAnsweredWithNamedTx(r)) return { bucket: "pending", mode: null, held: base.held };
   if (base.bucket !== "delivered" && isAwaitingLateLink(r, now)) return { bucket: "pending", mode: null, held: base.held };
-  // 決済済みで入力を送っていなかった行は、Base のクエリと本文だけ charged_unsent_input（両方の事実）。
-  // 他チェーンでクエリを送らなかった行は、決済済みでも query_not_sent（vet402 の側）のまま。
+  // 決済済み（settled）で入力を送っていなかった行は、本文もクエリも、チェーンを問わず charged_unsent_input
+  // （両方の事実。vet402 の側にまとめると、売り手が代金を取った事実が消える。2026-09-29）。
   if (base.mode?.key === "body_not_sent" && r.status === "settled") {
     return { bucket: "unsorted", mode: fixMode("charged_unsent_input"), held: base.held };
   }
-  if (base.mode?.key === "query_not_sent" && r.status === "settled" && isBaseNetwork(r.network)) {
+  if (base.mode?.key === "query_not_sent" && r.status === "settled") {
     return { bucket: "unsorted", mode: fixMode("charged_unsent_input"), held: base.held };
   }
   // 2026-09-29 監査 6 周目: 宣言の入力が例示用のドメインなら、入力が妥当だったと示せない（seller の側に置かない）。

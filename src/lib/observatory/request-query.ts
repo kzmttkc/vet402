@@ -67,10 +67,38 @@ export const BASE_DECLARED_QUERY_SINCE = "2026-09-27T23:27:16Z";
 
 /**
  * 許可リストに載ったチェーンの支払い付き行へ `requestQuery` を書き始めた日（2026-09-20・方法論の「rows before 2026-09-20」）。
- * この時刻以降、記録が無い行は許可リストに無く、宣言クエリを送っていない。Base はこの定数を使わない
- * （BASE_DECLARED_QUERY_SINCE より前の Base だけが従来の条）。Tempo は許可リストに載せても書かないので対象外。
+ * 他チェーンの「記録が無い＝送っていない」は、この時刻以降かつ OTHER_CHAIN_QUERY_UNSENT_UNTIL のその network の上限より前。
+ * Base はこの定数を使わない（BASE_DECLARED_QUERY_SINCE より前の Base だけが従来の条）。Tempo と表に無い network は対象外。
  */
 export const DECLARED_QUERY_RECORD_SINCE = "2026-09-20T00:00:00Z";
+
+/**
+ * その network で `requestQuery` の記録が付き始めた時刻（本番 DB の最初の記録と、env の切り替えの ready）。
+ * この時刻より前の行だけを「vet402 がクエリを送っていない」とする。上限の時刻以降で記録が無い行は input_unrecorded。
+ * 時刻の文字列はここだけ。SQL はこの表から作る。Base は BASE_DECLARED_QUERY_SINCE。表に無い network は対象外。
+ */
+export const OTHER_CHAIN_QUERY_UNSENT_UNTIL = [
+  { until: "2026-09-21T06:00:30Z", networks: ["xrpl:0"] },
+  { until: "2026-10-01T12:00:20Z", networks: ["solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"] },
+  { until: "2026-10-19T04:05:17Z", networks: ["eip155:5042", "eip155:42220", "stellar:pubnet", "eip155:56"] },
+] as const;
+
+/** 表にある network の上限（ISO）。表に無ければ null。 */
+export function otherChainQueryUnsentUntil(network: string): string | null {
+  for (const group of OTHER_CHAIN_QUERY_UNSENT_UNTIL) {
+    for (const name of group.networks) {
+      if (name === network) return group.until;
+    }
+  }
+  return null;
+}
+
+/** 公開文用。ISO の T と Z を外して "YYYY-MM-DD HH:MM:SS UTC"。表に無い network では落ちる。 */
+export function queryUnsentUntilLabel(network: string): string {
+  const iso = otherChainQueryUnsentUntil(network);
+  if (iso === null) throw new Error(`queryUnsentUntilLabel: ${network} is not in OTHER_CHAIN_QUERY_UNSENT_UNTIL`);
+  return `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC`;
+}
 
 /**
  * Tempo（MPP）。`mpp-payer.ts` の TEMPO_MAINNET_CAIP2 / TEMPO_MODERATO_CAIP2 と同じ 2 つ
@@ -218,6 +246,15 @@ function requestQueryAbsent(meta: unknown): boolean {
   return q === undefined || q === null;
 }
 
+/**
+ * 結果の UPDATE が落ちたあとの小さい記録（l1-runner.ts の outcomeWriteFailed）。
+ * requestQuery を書かずに残すので、「記録が無い＝送っていない」には数えない。
+ */
+function outcomeWriteFailedPresent(meta: unknown): boolean {
+  if (typeof meta !== "object" || meta === null || Array.isArray(meta)) return false;
+  return Object.prototype.hasOwnProperty.call(meta, "outcomeWriteFailed");
+}
+
 /** 署名済みで、支払い付きの要求が 400 か 422。決済の有無は問わない（retest は未決済の条だけを使う）。 */
 function signedQueryRefusal(row: NotSentRowInput): boolean {
   return (
@@ -245,22 +282,26 @@ function queryNotSentOnBaseBeforeCutoff(row: NotSentRowInput): boolean {
 }
 
 /**
- * Base 以外・Tempo 以外。署名済み・400/422・DECLARED_QUERY_RECORD_SINCE 以降・requestQuery の記録が無い・
- * 出品がクエリを宣言している。`empty` は記録なので入れない。network が無い行はチェーンを言えないので入れない。
+ * 表にある network だけ。署名済み・400/422・DECLARED_QUERY_RECORD_SINCE 以降かつその network の上限より前・
+ * requestQuery の記録が無い・outcomeWriteFailed が無い・出品がクエリを宣言している。
+ * `empty` は記録なので入れない。上限の時刻以降、表に無い network、Base、Tempo は入れない。
  */
 function queryNotSentOnOtherChain(row: NotSentRowInput): boolean {
   if (row.network === null || row.network === "") return false;
   if (isBaseNetwork(row.network) || isTempoNetwork(row.network)) return false;
+  const until = otherChainQueryUnsentUntil(row.network);
+  if (until === null) return false;
   if (!signedQueryRefusal(row)) return false;
   const at = epochMs(row.attemptedAt);
-  if (at === null || at < Date.parse(DECLARED_QUERY_RECORD_SINCE)) return false;
+  if (at === null || at < Date.parse(DECLARED_QUERY_RECORD_SINCE) || at >= Date.parse(until)) return false;
+  if (outcomeWriteFailedPresent(row.rawResponseMeta)) return false;
   if (!requestQueryAbsent(row.rawResponseMeta)) return false;
   return declaresQueryForSending(row);
 }
 
 /**
  * こちらがクエリを送っていなかったための失敗（/sellers の query_not_sent）:
- * Base の境目より前の従来の条、または他チェーンの「記録が無い」条。メソッドは問わない。
+ * Base の境目より前の従来の条、または他チェーンの上限より前の「記録が無い」条。メソッドは問わない。
  * retest の (c) は Base の条だけを使う（queryNotSentOnBaseBeforeCutoffSql）。他チェーンの買い直しはしない。
  */
 export function queryNotSentOnOurSide(row: NotSentRowInput): boolean {
@@ -307,6 +348,28 @@ function requestQueryAbsentSql(rowAlias: string): string {
   );
 }
 
+/** outcomeWriteFailedPresent と同じ規則の SQL。オブジェクトでそのキーがある行だけ true。 */
+function outcomeWriteFailedSql(rowAlias: string): string {
+  const m = `${rowAlias}.raw_response_meta`;
+  return (
+    `(CASE WHEN ${m} IS NULL THEN false` +
+    ` WHEN jsonb_typeof(${m}) <> 'object' THEN false` +
+    ` WHEN ${m} ? 'outcomeWriteFailed' THEN true` +
+    ` ELSE false END)`
+  );
+}
+
+/** OTHER_CHAIN_QUERY_UNSENT_UNTIL と同じ窓。上限より前だけ。時刻の文字列は表から入れる。 */
+function otherChainUnsentWindowSql(rowAlias: string): string {
+  const arms = OTHER_CHAIN_QUERY_UNSENT_UNTIL.map((group) => {
+    const match = group.networks.length === 1
+      ? `${rowAlias}.network = ${sqlList(group.networks)}`
+      : `${rowAlias}.network IN (${sqlList(group.networks)})`;
+    return `(${match} AND ${rowAlias}.attempted_at < '${group.until}'::timestamptz)`;
+  });
+  return `(${arms.join(" OR ")})`;
+}
+
 function queryNotSentOnOtherChainSql(cols: { row: string; schema: string; input?: string }): string {
   const a = assertSqlExpr("queryNotSentOnOtherChainSql", cols.row);
   const statuses = sqlList(QUERY_NOT_SENT_SIGNED_STATUSES);
@@ -317,6 +380,8 @@ function queryNotSentOnOtherChainSql(cols: { row: string; schema: string; input?
     ` AND ${a}.network NOT IN (${sqlList(BASE_NETWORKS)})` +
     ` AND ${a}.network NOT IN (${sqlList(TEMPO_QUERY_NETWORKS)})` +
     ` AND ${a}.attempted_at >= '${DECLARED_QUERY_RECORD_SINCE}'::timestamptz` +
+    ` AND ${otherChainUnsentWindowSql(a)}` +
+    ` AND NOT ${outcomeWriteFailedSql(a)}` +
     ` AND ${requestQueryAbsentSql(a)}` +
     ` AND ${declaresQuerySql(cols)})`
   );

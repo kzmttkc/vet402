@@ -1876,7 +1876,7 @@ claims:
   - id: sellers_query_not_sent_before_cutover
     surface: src/lib/sellers/fix-modes.ts
     quote: "Before 2026-09-27 23:27 UTC, vet402 did not add the query parameters the seller's 402 declares to paid requests on Base"
-    means: "Base の有料の要求で、出品がクエリを宣言している（2026-09-29 から: 送る規則と同じ情報源＝`bazaar.info.input.queryParams` の見本値を掲載に当てた declared_input.query = declared、またはスキーマの queryParams.required が空でない）のにクエリを足していなかった期間の 400/422（requestQuery の記録が無いか empty）は vet402 の側（query_not_sent）。決済済みの Base の行は classifyRow ではこちらの側で、classifySellerRow は charged_unsent_input。2026-10-19 から、Base 以外（Tempo を除く）で署名済み・400/422・2026-09-20 以降・requestQuery の記録が無い・宣言ありの行も同じ種類。retest の (c) は Base の条だけ"
+    means: "Base の有料の要求で、出品がクエリを宣言している（2026-09-29 から: 送る規則と同じ情報源＝`bazaar.info.input.queryParams` の見本値を掲載に当てた declared_input.query = declared、またはスキーマの queryParams.required が空でない）のにクエリを足していなかった期間の 400/422（requestQuery の記録が無いか empty）は vet402 の側（query_not_sent）。決済済み（settled）の行は、チェーンを問わず、classifyRow ではこちらの側で、classifySellerRow は charged_unsent_input。他チェーンは表にある network だけを、その上限の時刻より前に限る（xrpl:0 は 2026-09-21T06:00:30Z、solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp は 2026-10-01T12:00:20Z、eip155:5042・eip155:42220・stellar:pubnet・eip155:56 は 2026-10-19T04:05:17Z）。2026-09-20 より前、上限の時刻以降、表に無い network、Tempo、requestQuery の記録がある行、outcomeWriteFailed がある行は vet402 の側にしない。retest の (c) は Base の条だけ"
     check: null
     why_unverifiable: "時刻と条件は src/lib/observatory/request-query.ts の BASE_DECLARED_QUERY_SINCE・DECLARED_QUERY_RECORD_SINCE と queryNotSentOnOurSide。retest の (c) は queryNotSentOnBaseBeforeCutoffSql だけを使う。/sellers は fix-modes.ts の isQueryNotSent で共有の判定を呼ぶ。tests/sellers-fix-modes.test.ts と tests/query-not-sent-chains.test.ts が固定する"
     verified_at: 2026-09-28
@@ -1976,7 +1976,7 @@ claims:
   - id: sellers_charged_unsent_input
     surface: src/lib/sellers/fix-modes.ts
     quote: "Both facts stand: the seller took the payment, and the request lacked the declared input"
-    means: "決済済み（settled）で 400/415/422、しかもこちらが宣言の本文（2026-09-16 23:25 UTC より前）か Base のクエリ（2026-09-27 23:27 UTC より前）を送っていなかった行は、売り手頁で charged_unsent_input（not sorted: charged, then rejected an input vet402 had not sent）。2026-09-29 の本番の読み取りで一覧の最新の行 44 件"
+    means: "決済済み（settled）で 400/415/422、しかもこちらが宣言の本文（2026-09-16 23:25 UTC より前）かクエリ（Base は 2026-09-27 23:27 UTC より前、他チェーンは request-query.ts のチェーンごとの上限より前）を送っていなかった行は、チェーンを問わず売り手頁で charged_unsent_input（not sorted: charged, then rejected an input vet402 had not sent）。2026-09-29 の本番の読み取りで一覧の最新の行 44 件"
     check: null
     why_unverifiable: "行ごとの事実は export.csv の status（settled）・http_status_paid・request_body / request_query で確かめられる。分類は fix-modes.ts の sellerCandidateClass で、tests/sellers-attribution-r4.test.ts が固定する"
     verified_at: 2026-09-29
