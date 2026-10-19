@@ -44,6 +44,7 @@ import { TableScroll } from "@/components/site/TableScroll";
 import { SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS, SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS } from "@/lib/sellers/fix-modes";
 import { BASE_DECLARED_QUERY_SINCE_LABEL, queryUnsentUntilSentence, utcSecondsLabel } from "@/lib/observatory/request-query";
 import { DECLARED_BODY_SENT_SINCE } from "@/lib/observatory/request-body";
+import { PAYER_FUNDS_GATE_SINCE } from "@/lib/observatory/payer-balance-history";
 import { BASE_PAYER_PERIODS, shortPayer } from "@/lib/sellers/payers";
 
 const MAX_PER_PURCHASE_USD = Number(MAX_PER_PURCHASE_UNITS) / 1_000_000;
@@ -411,7 +412,7 @@ export default async function ObservatoryMethodologyPage() {
           <em>not bought: vet402 did not pay</em> and is not an L1 result. (b) It signed the{" "}
           <code>exact</code> scheme for USDC at the price and <code>payTo</code> the listing declares;
           the signed amount, asset and <code>payTo</code> are on the row. (c) Its payer wallet held at
-          least the price when it signed. Since {utcSecondsLabel(DECLARED_BODY_SENT_SINCE)} the runner reads the balance before
+          least the price when it signed. Since {utcSecondsLabel(PAYER_FUNDS_GATE_SINCE)} the runner reads the balance before
           signing and does not sign when it is short; for earlier purchases on Base the balance is rebuilt
           from the wallet&apos;s own USDC transfers on-chain. The payer on Base has been{" "}
           {BASE_PAYER_PERIODS.map((p, i) => (

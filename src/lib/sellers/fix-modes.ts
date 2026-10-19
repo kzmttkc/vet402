@@ -364,7 +364,7 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   {
     key: "funds_unproven",
     title: "vet402 cannot show its wallet held the price",
-    what: `This purchase is from before vet402 checked its wallet's balance before signing (${PAYER_FUNDS_GATE_SINCE.slice(0, 16).replace("T", " ")} UTC), and the balance rebuilt from the wallet's on-chain transfers does not show that it held the price at the time. This page does not count the row as the seller's fault.`,
+    what: `This purchase is from before vet402 checked its wallet's balance before signing (${utcSecondsLabel(PAYER_FUNDS_GATE_SINCE)}), and the balance rebuilt from the wallet's on-chain transfers does not show that it held the price at the time. This page does not count the row as the seller's fault.`,
     fix: NOT_COUNTED,
     side: "unsorted",
     effort: 1,
@@ -382,7 +382,7 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   {
     key: "input_unrecorded",
     title: "No record of the input vet402 sent",
-    what: `This purchase is from before vet402 recorded the body and the query it sent on each paid request (the query on Base since ${BASE_DECLARED_QUERY_SINCE.slice(0, 16).replace("T", " ")} UTC), so it cannot show that it sent the input the listing declares. This page does not count the row as the seller's fault.`,
+    what: `This purchase is from before vet402 recorded the body and the query it sent on each paid request (the query on Base since ${BASE_DECLARED_QUERY_SINCE_LABEL}), so it cannot show that it sent the input the listing declares. This page does not count the row as the seller's fault.`,
     fix: NOT_COUNTED,
     side: "unsorted",
     effort: 1,

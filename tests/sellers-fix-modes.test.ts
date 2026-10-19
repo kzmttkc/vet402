@@ -572,10 +572,10 @@ test("BASE_DECLARED_QUERY_SINCE の値は request-query.ts の 1 か所だけ（
 test("文面: 本文とクエリの送り始めを分けて書き、「宣言どおり送る」を無条件に言わない", () => {
   const all = FIX_MODES.map((m) => `${m.what} ${m.fix}`).join("\n");
   assert.doesNotMatch(all, /vet402 sends the body and query the listing declares/);
-  assert.match(fixMode("refused_no_charge").what, /Since 2026-09-16 23:25 UTC vet402 sends the request body the seller's 402 declares/);
-  assert.match(fixMode("refused_no_charge").what, /since 2026-09-27 23:27 UTC it adds the query parameters the seller's 402 declares on Base/);
+  assert.match(fixMode("refused_no_charge").what, /Since 2026-09-16 23:25:55 UTC vet402 sends the request body the seller's 402 declares/);
+  assert.match(fixMode("refused_no_charge").what, /since 2026-09-27 23:27:16 UTC it adds the query parameters the seller's 402 declares on Base/);
   assert.doesNotMatch(all, /query parameters the listing declares|request body the listing declares/);
-  assert.match(fixMode("query_not_sent").what, /Before 2026-09-27 23:27 UTC/);
+  assert.match(fixMode("query_not_sent").what, /Before 2026-09-27 23:27:16 UTC/);
   assert.match(fixMode("query_not_sent").what, /vet402 did not send the query the listing declares/);
   assert.doesNotMatch(fixMode("query_not_sent").what, /\b(we|our|us)\b|[;]|[—–]/);
 });
@@ -608,20 +608,20 @@ test("任意のクエリだけの出品（Base・境目より前）には、こ�
   const c = classifyRow(opt);
   assert.equal(c.bucket, "unsorted");
   assert.equal(c.mode?.key, "refused_no_charge");
-  assert.equal(rowNote(opt, c.mode!.key), "Before 2026-09-27 23:27 UTC, vet402 did not add query parameters to paid requests on Base; this listing declares optional ones.");
+  assert.equal(rowNote(opt, c.mode!.key), "Before 2026-09-27 23:27:16 UTC, vet402 did not add query parameters to paid requests on Base; this listing declares optional ones.");
   assert.equal(rowNote({ ...opt, attemptedAt: "2026-09-27T23:27:16Z" }, "refused_no_charge"), null, "after the Base query cutover");
   assert.equal(rowNote({ ...opt, network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" }, "refused_no_charge"), null, "Base only");
   assert.equal(rowNote({ ...opt, meta: { requestQuery: "declared" } }, "refused_no_charge"), null, "query was sent");
   assert.equal(rowNote(row({ status: "settle_failed", httpStatusPaid: 400, attemptedAt: "2026-09-20T00:00:00Z" }), "refused_no_charge"), null, "no queryParams at all");
   // 本文と両方当たれば 2 つ並べる
   const both = row({ status: "settled", httpStatusPaid: 400, txHash: TX, method: "POST", optionalQueryOnly: true, attemptedAt: "2026-09-10T00:00:00Z" });
-  assert.match(rowNote(both, "settled_then_rejected") ?? "", /declares no body\. Before 2026-09-27 23:27 UTC/);
+  assert.match(rowNote(both, "settled_then_rejected") ?? "", /declares no body\. Before 2026-09-27 23:27:16 UTC/);
 });
 
-test("文面の時刻は共有の境目の定数と同じ（表示用に分まで）", async () => {
+test("文面の時刻は共有の境目の定数と同じ（秒まで・2026-10-19 から）", async () => {
   const { DECLARED_BODY_SENT_SINCE: B } = await import("@/lib/observatory/request-body");
   const { BASE_DECLARED_QUERY_SINCE: Q } = await import("@/lib/observatory/request-query");
-  const show = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
+  const show = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC`;
   const all = FIX_MODES.map((m) => m.what).join("\n");
   assert.ok(all.includes(show(B)), show(B));
   assert.ok(all.includes(show(Q)), show(Q));

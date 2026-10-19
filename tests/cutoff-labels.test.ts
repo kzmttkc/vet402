@@ -62,6 +62,7 @@ test("公開面に手書きの境目の時刻が無い（分まで・秒まで�
   for (const f of files) {
     const src = readFileSync(f, "utf8");
     for (const re of literals) assert.ok(!re.test(src), `${f} still hand-writes ${re.source}`);
+    assert.ok(!/SINCE\.slice\(0, 16\)/.test(src), `${f} still rounds a cutoff to the minute`);
   }
 });
 
