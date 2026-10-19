@@ -314,6 +314,12 @@ function declaredRealInput(row: AnswerShapeSortRow): boolean {
   return true;
 }
 
+/** 本文が入力を求める言い方をしているか（宣言に無い入力の要求を売り手の落ち度にしないため）。 */
+function asksForInput(bodyHead: string): boolean {
+  const t = lower(bodyHead);
+  return /\bplease provide\b|\bmust (be|include|provide|specify)\b|\bexpected (a|an|the)?\s*[a-z_]+ (field|param|parameter)\b|\bbad request\b/.test(t);
+}
+
 /**
  * 影の仕分け。答えの形をしている本文（answerShape が null）は unknown。
  * 呼び手は 2xx で最後まで読めた空でない本文だけを渡す（answer-shape.ts と同じ入口）。
@@ -346,6 +352,8 @@ export function sortAnswerShape(row: AnswerShapeSortRow): AnswerShapeSort {
     }
     return "unknown";
   }
+  // 宣言に無い入力を売り手が求めている（provide・must・expected・bad request）。宣言の不足だけを根拠に責めない。
+  if (asksForInput(row.bodyHead)) return "unknown";
   if ((row.answerShape === "error_object" || row.answerShape === "error_flag") && !missed && declaredRealInput(row)) {
     return "seller_suspect";
   }

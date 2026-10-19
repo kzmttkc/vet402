@@ -460,7 +460,7 @@ const CASES: Case[] = [
       requestQuery: null,
       requestBody: "declared",
       declaredInput: null,
-      required: { query: [], body: ["tenant_id", "agent_id", "chain_id"] },
+      required: { query: [], body: ["acct_ref", "bot_ref", "net_ref"] },
       bodyType: "object",
     },
   },
@@ -922,4 +922,21 @@ test("2文字以下の項目名は、引用などで単独の語のときだけ�
   );
   assert.equal(sortAnswerShape({ ...base, bodyHead: '{"error":"missing \'id\'"}' }), "vet402_input");
   assert.equal(sortAnswerShape({ ...base, bodyHead: '{"error":"missing_id"}' }), "vet402_input");
+});
+
+test("宣言に無い入力を本文が求めるときは seller_suspect にしない（T1e・T3）", () => {
+  for (const bodyHead of ['{"error":"Please provide a symbol"}', '{"error":"Bad request: expected a url field"}']) {
+    assert.equal(
+      sortAnswerShape({
+        answerShape: "error_object",
+        bodyHead,
+        requestQuery: null,
+        requestBody: "none",
+        declaredInput: { query: "empty", body: "empty" },
+        required: none,
+      }),
+      "unknown",
+      bodyHead,
+    );
+  }
 });
