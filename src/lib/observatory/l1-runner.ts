@@ -27,6 +27,7 @@
 // ============================================================
 import { L1_CELO_PAID_TIMEOUT_MS, L1_REQUEST_TIMEOUT_MS, l1PaidTimeoutMs } from "./l1-timing";
 import { answerShapeOf } from "./answer-shape";
+import { sortAnswerShapeFromRun } from "./answer-shape-sort";
 import { privateKeyToAccount } from "viem/accounts";
 import { and, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
@@ -3135,6 +3136,18 @@ async function purchaseOne(input: {
       paid && isDeliveryHttp(paid.status) && payloadNonEmpty && !paidBodyRead.incomplete
         ? answerShapeOf(paidBody, contentType)
         : null;
+    // 2026-10-19 段S1: 上の型を、影の記録の中だけで仕分ける（answer-shape-sort.ts）。status・L2・公開の値は変えない。
+    const answerShapeSort = answerShape
+      ? sortAnswerShapeFromRun({
+          answerShape,
+          bodyHead: paidBody.slice(0, 500),
+          requestQuery: paidRequestUrl?.source ?? null,
+          requestBody: requestBodyRecord(paidRequestBody).requestBody,
+          declaredSchema: candidate.declaredSchema,
+          sentQuery: paidRequestUrl?.query ?? null,
+          sentBody: paidRequestBody?.body ?? null,
+        })
+      : null;
 
     // 2026-08-23 監査: ここまで `transaction` は「空でない文字列」以外を何も見ていなかった。
     // 値は売り手の PAYMENT-RESPONSE ヘッダそのままで、決済せずに success:true と
@@ -3235,8 +3248,8 @@ async function purchaseOne(input: {
       // §6.3: L2 の判定材料。mismatch の公開に要る宣言ハッシュ・応答ハッシュ・欠落キー。
       // 2026-09-29: reason（何で決まったか）を足した。body_over_cap の行の responseHash は読んだ分だけのハッシュ。
       ...(l2Detail ? { l2: l2Detail } : {}),
-      // 答えの形をしていない本文の型（2026-10-15・影の記録・小さいので縮めた記録にも残す）。
-      ...(answerShape ? { answerShape } : {}),
+      // 答えの形をしていない本文の型と、その影の仕分け（2026-10-15・2026-10-19・小さいので縮めた記録にも残す）。
+      ...(answerShape ? { answerShape, answerShapeSort } : {}),
       // 読んだ本文のバイト数（上限で頭打ち）と、上限を超えて切ったか（2026-09-29）。
       ...(paid ? { bodyBytes: paidBodyRead.bytes, bodyCapBytes: L1_PAID_BODY_CAP_BYTES } : {}),
       ...(paidBodyRead.incomplete === L1_BODY_OVER_CAP_REASON ? { bodyTruncated: true } : {}),
@@ -3347,8 +3360,8 @@ async function purchaseOne(input: {
               ...(transportSide ? { transportFailure: { side: transportSide, code: transportErrorCode(paidErrorRaw) } } : {}),
               // L2 の証拠（宣言と応答のハッシュ・欠落キー）は小さいので残す（独立レビュー W1）。
               ...(l2Detail ? { l2: l2Detail } : {}),
-              // 答えの形をしていない本文の型（2026-10-15・影の記録・小さいので縮めた記録にも残す）。
-              ...(answerShape ? { answerShape } : {}),
+              // 答えの形をしていない本文の型と、その影の仕分け（2026-10-15・2026-10-19・小さいので縮めた記録にも残す）。
+              ...(answerShape ? { answerShape, answerShapeSort } : {}),
               // 本文の読んだバイト数と切った印も L2 の証拠（2026-09-29・小さいので残す）。
               ...(paid ? { bodyBytes: paidBodyRead.bytes, bodyCapBytes: L1_PAID_BODY_CAP_BYTES } : {}),
               ...(paidBodyRead.incomplete === L1_BODY_OVER_CAP_REASON ? { bodyTruncated: true } : {}),
