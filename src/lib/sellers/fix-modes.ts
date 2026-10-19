@@ -65,8 +65,10 @@ import {
   BASE_DECLARED_QUERY_SINCE,
   BASE_NETWORKS,
   declaresQueryForSending,
+  BASE_DECLARED_QUERY_SINCE_LABEL,
   queryNotSentOnOurSide,
-  queryUnsentUntilLabel,
+  queryUnsentUntilSentence,
+  utcSecondsLabel,
 } from "@/lib/observatory/request-query";
 import { requestBodyKindOf } from "@/lib/observatory/request-body";
 import { L1_REQUEST_TIMEOUT_MS } from "@/lib/observatory/l1-timing";
@@ -91,6 +93,9 @@ export interface FixMode {
 
 /** 宣言本文を送り始めた時刻（retest と同じ値・定義は request-body.ts の 1 か所）。 */
 export { DECLARED_BODY_SENT_SINCE };
+
+/** 本文の境目（DECLARED_BODY_SENT_SINCE）の公開文用の時刻。 */
+const DECLARED_BODY_SENT_SINCE_LABEL = utcSecondsLabel(DECLARED_BODY_SENT_SINCE);
 /** Base で宣言クエリを送り始めた時刻（定義は request-query.ts の 1 か所）。 */
 export { BASE_DECLARED_QUERY_SINCE };
 
@@ -251,7 +256,7 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   {
     key: "body_not_sent",
     title: "vet402 did not send the declared request body",
-    what: "Before 2026-09-16 23:25 UTC, vet402 sent an empty JSON body on paid POST requests, even when the listing declares a body. The seller refused it with 400, 415 or 422, and the payment did not settle (a payment that settled is under \"Charged, then refused an input vet402 had not sent\").",
+    what: `Before ${DECLARED_BODY_SENT_SINCE_LABEL}, vet402 sent an empty JSON body on paid POST requests, even when the listing declares a body. The seller refused it with 400, 415 or 422, and the payment did not settle (a payment that settled is under "Charged, then refused an input vet402 had not sent").`,
     fix: NOTHING_FOR_SELLER,
     side: "vet402",
     effort: 1,
@@ -259,7 +264,7 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   {
     key: "query_not_sent",
     title: "vet402 did not send the declared query",
-    what: `vet402 did not send the query the listing declares. Before 2026-09-27 23:27 UTC, vet402 did not add the query parameters the seller's 402 declares to paid requests on Base, and this listing declares them (example values, or required names). The seller refused the request with 400 or 422. The same miss covers a signed paid request with no record of the query sent on XRPL before ${queryUnsentUntilLabel("xrpl:0")}, on Solana before ${queryUnsentUntilLabel("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp")}, and on Arc, Celo, Stellar and BNB before ${queryUnsentUntilLabel("eip155:42220")}. A row at or after that time on its chain is not this miss.`,
+    what: `vet402 did not send the query the listing declares. Before ${BASE_DECLARED_QUERY_SINCE_LABEL}, vet402 did not add the query parameters the seller's 402 declares to paid requests on Base, and this listing declares them (example values, or required names). The seller refused the request with 400 or 422. The same miss covers a signed paid request with no record of the query sent ${queryUnsentUntilSentence()}. A row at or after that time on its chain is not this miss.`,
     fix: NOTHING_FOR_SELLER,
     side: "vet402",
     effort: 1,
@@ -287,7 +292,7 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   {
     key: "charged_unsent_input",
     title: "Charged, then refused an input vet402 had not sent",
-    what: `The payment settled on-chain, and then the paid request got 400, 415 or 422. At the time vet402 did not send the input this listing declares: the request body before 2026-09-16 23:25 UTC, the query on Base before 2026-09-27 23:27 UTC, or the query on XRPL before ${queryUnsentUntilLabel("xrpl:0")}, on Solana before ${queryUnsentUntilLabel("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp")}, and on Arc, Celo, Stellar and BNB before ${queryUnsentUntilLabel("eip155:42220")}. Both facts stand: the seller took the payment, and the request lacked the declared input. This page counts the row against neither side.`,
+    what: `The payment settled on-chain, and then the paid request got 400, 415 or 422. At the time vet402 did not send the input this listing declares: the request body before ${DECLARED_BODY_SENT_SINCE_LABEL}, the query on Base before ${BASE_DECLARED_QUERY_SINCE_LABEL}, or the query ${queryUnsentUntilSentence()}. Both facts stand: the seller took the payment, and the request lacked the declared input. This page counts the row against neither side.`,
     fix: "This page does not count it as the seller's fault. Checking the input before settling avoids taking a payment for a request you refuse.",
     side: "unsorted",
     effort: 2,
@@ -340,7 +345,7 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   {
     key: "refused_no_charge",
     title: "Refused, and no payment was taken",
-    what: "vet402 signed the payment and the paid request got a 4xx other than 402, with no settlement receipt and no transaction on the row. No money moved, and vet402 cannot rule out that its own request was the problem (held_reason unsettled_4xx), so this page does not count the row as the seller's fault. Since 2026-09-16 23:25 UTC vet402 sends the request body the seller's 402 declares (an empty JSON body when it declares none), and since 2026-09-27 23:27 UTC it adds the query parameters the seller's 402 declares on Base.",
+    what: `vet402 signed the payment and the paid request got a 4xx other than 402, with no settlement receipt and no transaction on the row. No money moved, and vet402 cannot rule out that its own request was the problem (held_reason unsettled_4xx), so this page does not count the row as the seller's fault. Since ${DECLARED_BODY_SENT_SINCE_LABEL} vet402 sends the request body the seller's 402 declares (an empty JSON body when it declares none), and since ${BASE_DECLARED_QUERY_SINCE_LABEL} it adds the query parameters the seller's 402 declares on Base.`,
     fix: "This page does not count it as the seller's fault. If the request was meant to succeed, declare the input in the listing (body or query) with example values that work as written.",
     side: "unsorted",
     effort: 1,
@@ -939,7 +944,7 @@ function bodyNote(r: SellerRowFacts): string | null {
   if ((r.method ?? "").toUpperCase() !== "POST" || (r.meta !== null && "requestBody" in r.meta)) return null;
   if (declaresBodyForSending({ declaredSchema: r.schema, declaredInput: r.declaredInput ?? null })) return null;
   if (!(Date.parse(r.attemptedAt) < Date.parse(DECLARED_BODY_SENT_SINCE))) return null;
-  return "This purchase is from before 2026-09-16 23:25 UTC, when vet402 sent an empty JSON body on paid POST requests; this listing declares no body.";
+  return `This purchase is from before ${DECLARED_BODY_SENT_SINCE_LABEL}, when vet402 sent an empty JSON body on paid POST requests; this listing declares no body.`;
 }
 
 /**
@@ -954,7 +959,7 @@ function optionalQueryNote(r: SellerRowFacts): string | null {
   const qp = declaredInputProperty(r.schema, "queryParams");
   if (typeof qp !== "object" || qp === null || Array.isArray(qp)) return null;
   if (declaresQueryForSending({ declaredSchema: r.schema, declaredInput: r.declaredInput ?? null })) return null;
-  return "Before 2026-09-27 23:27 UTC, vet402 did not add query parameters to paid requests on Base; this listing declares optional ones.";
+  return `Before ${BASE_DECLARED_QUERY_SINCE_LABEL}, vet402 did not add query parameters to paid requests on Base; this listing declares optional ones.`;
 }
 
 /** 1 行を分類する（届いた行は mode が null）。決定的・DB 無し。 */

@@ -42,7 +42,8 @@ import { L0_BODY_CAP_BYTES, L0_BODY_CAP_RAISED_ON } from "@/lib/observatory/l0-p
 import { RULE_CHANGE_PRIORITY_PER_HOST } from "@/lib/observatory/l0-rule-change";
 import { TableScroll } from "@/components/site/TableScroll";
 import { SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS, SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS } from "@/lib/sellers/fix-modes";
-import { queryUnsentUntilLabel } from "@/lib/observatory/request-query";
+import { BASE_DECLARED_QUERY_SINCE_LABEL, queryUnsentUntilSentence, utcSecondsLabel } from "@/lib/observatory/request-query";
+import { DECLARED_BODY_SENT_SINCE } from "@/lib/observatory/request-body";
 import { BASE_PAYER_PERIODS, shortPayer } from "@/lib/sellers/payers";
 
 const MAX_PER_PURCHASE_USD = Number(MAX_PER_PURCHASE_UNITS) / 1_000_000;
@@ -410,7 +411,7 @@ export default async function ObservatoryMethodologyPage() {
           <em>not bought: vet402 did not pay</em> and is not an L1 result. (b) It signed the{" "}
           <code>exact</code> scheme for USDC at the price and <code>payTo</code> the listing declares;
           the signed amount, asset and <code>payTo</code> are on the row. (c) Its payer wallet held at
-          least the price when it signed. Since 2026-09-16 23:25 UTC the runner reads the balance before
+          least the price when it signed. Since {utcSecondsLabel(DECLARED_BODY_SENT_SINCE)} the runner reads the balance before
           signing and does not sign when it is short; for earlier purchases on Base the balance is rebuilt
           from the wallet&apos;s own USDC transfers on-chain. The payer on Base has been{" "}
           {BASE_PAYER_PERIODS.map((p, i) => (
@@ -424,7 +425,7 @@ export default async function ObservatoryMethodologyPage() {
           (body, query, headers and path parameters), and the row records what it sent. vet402 sends no
           request headers of the seller&apos;s and does not fill path parameters, so a listing that
           declares them is not sorted; a row from before vet402 recorded the query it sent on Base
-          (2026-09-27 23:27 UTC) is not sorted. (e) The seller answered explicitly (an HTTP status, a
+          ({BASE_DECLARED_QUERY_SINCE_LABEL}) is not sorted. (e) The seller answered explicitly (an HTTP status, a
           receipt that does not match the chain, a signed payment refused with <code>402</code>) or had
           its full declared time: when the paid request got no answer within{" "}
           {(L1_REQUEST_TIMEOUT_MS / 1000).toString()} seconds, the seller&apos;s side needs the
@@ -468,13 +469,11 @@ export default async function ObservatoryMethodologyPage() {
           <em>vet402&apos;s side</em>: the row shows the cause was ours or a limit of ours. Our payer
           wallet had run out of USDC (<code>payer_unfunded</code>, 2026-09-13 to 2026-09-15), or held
           less than the price by the rebuilt balance (for example on 2026-09-12 18:02 UTC); a paid POST
-          was refused with <code>400</code>, <code>415</code> or <code>422</code> before 2026-09-16
-          23:25 UTC, when we sent an empty JSON body although the listing declares one; a paid request on
-          Base was refused with <code>400</code> or <code>422</code> before 2026-09-27 23:27 UTC, when we
-          did not add the query the listing declares; or our own limits and errors. On XRPL before{" "}
-          {queryUnsentUntilLabel("xrpl:0")}, on Solana before{" "}
-          {queryUnsentUntilLabel("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp")}, and on Arc, Celo, Stellar and BNB
-          before {queryUnsentUntilLabel("eip155:42220")}, a signed paid request that the seller refused with{" "}
+          was refused with <code>400</code>, <code>415</code> or <code>422</code> before{" "}
+          {utcSecondsLabel(DECLARED_BODY_SENT_SINCE)}, when we sent an empty JSON body although the listing declares one; a paid request on
+          Base was refused with <code>400</code> or <code>422</code> before {BASE_DECLARED_QUERY_SINCE_LABEL}, when we
+          did not add the query the listing declares; or our own limits and errors.{" "}
+          {queryUnsentUntilSentence({ capitalize: true })}, a signed paid request that the seller refused with{" "}
           <code>400</code> or <code>422</code>, with no record of the query we sent, is on our side when the listing
           declares a query. A row at or after that time on its chain, with no record of the query, is not on our side
           for this reason. &ldquo;Declares&rdquo;

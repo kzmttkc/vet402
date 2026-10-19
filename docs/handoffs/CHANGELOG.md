@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-19 — 公開文: 境目の時刻を定数から秒まで組み、他チェーンの文を表から作る（作業ツリー）
+- **何を**: `request-query.ts` に `utcSecondsLabel`（"YYYY-MM-DD HH:MM:SS UTC"・形が違えば落ちる）、`BASE_DECLARED_QUERY_SINCE_LABEL`、`QUERY_UNSENT_CHAIN_NAMES`、`queryUnsentUntilSentence()` を足した。文は `OTHER_CHAIN_QUERY_UNSENT_UNTIL` の各グループから組む（XRPL・Solana・Arc/Celo/Stellar/BNB）。方法論の頁と `fix-modes.ts` の body_not_sent・query_not_sent・charged_unsent_input・unsettled_4xx・bodyNote・optionalQueryNote の手書きの時刻（`2026-09-16 23:25 UTC`・`2026-09-27 23:27 UTC`・Celo 1 つで 4 チェーンを代表させた文）をこれに置き換えた。`tests/cutoff-labels.test.ts` を足した（表の全 network に名前があること・各グループの名前と時刻が同じ節に並ぶこと・2 つの公開ファイルに手書きの境目の時刻が無いこと）。
+- **なぜ**: 帰属の段（2899e1b1）の独立点検の中1・中2。表の分け方が変わると文が黙って誤る。分で丸めると境目の分の中の行（23:25:00〜23:25:55 など）を文が言い違える。
+- **影響**: 判定・分類・SQL は変えていない。公開文の時刻が秒までになる（例 `2026-09-27 23:27:16 UTC`）。点検の中3（他チェーンの `settle_claimed_unverifiable` の行が vet402 の側になる）はコードを変えない: 公開 export（10/19 12:3x UTC）で、他チェーン（Tempo を除く）の 400/422・クエリの記録なし・上限前の行に `settle_claimed_unverifiable` は 0 行。お金が分からない行は BNB の `settle_claimed` 1 行だけで、照合が settled にすれば charged_unsent_input、否定すれば not_moved に動く。上限（04:05:17Z）の後は新しく入らない。
+- **実測**: 下の commit の本文を見る。
+
 ## 2026-10-19 — L1: 影の仕分けで、クエリを送っていない行を売り手にしない（段S1c・作業ツリー・未 commit）
 - **何を**: `declaredRealInput` は `requestQuery === null`（許可リスト外・Tempo でクエリを送っていない）のとき、`declaredInput.query === "empty"`（宣言にクエリが無いと分かっている）の場合を除いて false。`l1-runner.ts` は許可リストとは別に `declaredRequestUrl` の source を計算し、仕分けの `declaredInput.query` だけに渡す。送る URL・支払い・行の `requestQuery` は変えない。Tempo は x402 の文書を読まないので source を付けない（empty と読むと、クエリが無いと分かったことになり seller_suspect が開く）。"0" と任意項目の空文字は見本から外した（page=0・offset=0 は普通の値。必須項目の空文字は見本のまま）。宣言の例そのものを送り本文が invalid と言うときは unknown。項目名は語の境界で、2文字以下は引用・`_`・`:`・`=` で項目として書かれたときだけ（「upstream request id missing」の id には当てない）。
 - **なぜ**: 段S1b（commit 32f50027）の独立点検 NO-SHIP 84。schema が無く `requestQuery` が null の「Please provide a symbol」や「q must be provided」、queryParams の properties が空の「symbol not supported」を seller_suspect にしていた。vet402 の誤りと示せない限り売り手にしない。迷ったら unknown。

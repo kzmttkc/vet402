@@ -93,11 +93,55 @@ export function otherChainQueryUnsentUntil(network: string): string | null {
   return null;
 }
 
-/** 公開文用。ISO の T と Z を外して "YYYY-MM-DD HH:MM:SS UTC"。表に無い network では落ちる。 */
+/**
+ * 公開文用の時刻。秒まで・Z 付きの ISO から "YYYY-MM-DD HH:MM:SS UTC"。形が違えば落ちる。
+ * 境目の時刻は公開面でこれだけを使う（分で丸めると、境目の分の中の行を文が言い違える。2026-10-19 点検）。
+ */
+export function utcSecondsLabel(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(iso)) throw new Error(`utcSecondsLabel: ${iso} is not YYYY-MM-DDTHH:MM:SSZ`);
+  return `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC`;
+}
+
+/** Base の境目（BASE_DECLARED_QUERY_SINCE）の公開文用の時刻。 */
+export const BASE_DECLARED_QUERY_SINCE_LABEL = utcSecondsLabel(BASE_DECLARED_QUERY_SINCE);
+
+/** 公開文用。表に無い network では落ちる。 */
 export function queryUnsentUntilLabel(network: string): string {
   const iso = otherChainQueryUnsentUntil(network);
   if (iso === null) throw new Error(`queryUnsentUntilLabel: ${network} is not in OTHER_CHAIN_QUERY_UNSENT_UNTIL`);
-  return `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC`;
+  return utcSecondsLabel(iso);
+}
+
+/** 公開文のチェーン名（OTHER_CHAIN_QUERY_UNSENT_UNTIL の network を全部覆う。tests が固定する）。 */
+export const QUERY_UNSENT_CHAIN_NAMES: Readonly<Record<string, string>> = {
+  "xrpl:0": "XRPL",
+  "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "Solana",
+  "eip155:5042": "Arc",
+  "eip155:42220": "Celo",
+  "stellar:pubnet": "Stellar",
+  "eip155:56": "BNB",
+};
+
+function englishList(names: readonly string[]): string {
+  if (names.length <= 1) return names.join("");
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/**
+ * 公開文用。表の各グループから "on XRPL before …, on Solana before …, and on Arc, Celo, Stellar and BNB before …"。
+ * 表の分け方が変わっても文が表と食い違わない（2026-10-19 点検の中1）。名前の無い network があれば落ちる。
+ */
+export function queryUnsentUntilSentence(opts: { capitalize?: boolean } = {}): string {
+  const parts = OTHER_CHAIN_QUERY_UNSENT_UNTIL.map((group) => {
+    const names = group.networks.map((n) => {
+      const name = QUERY_UNSENT_CHAIN_NAMES[n];
+      if (name === undefined) throw new Error(`queryUnsentUntilSentence: no public name for ${n}`);
+      return name;
+    });
+    return `on ${englishList(names)} before ${utcSecondsLabel(group.until)}`;
+  });
+  const text = parts.length <= 1 ? parts.join("") : `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+  return opts.capitalize ? `O${text.slice(1)}` : text;
 }
 
 /**
