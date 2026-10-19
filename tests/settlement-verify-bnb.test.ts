@@ -91,9 +91,10 @@ test("BNB: an RPC that reports another chain id is wrong_chain", async () => {
 });
 
 test("BNB without BNB_RPC_URL is chain_not_yet_verifiable and does not fall through to the Base client", async () => {
-  const saved = { bnb: process.env.BNB_RPC_URL, base: process.env.BASE_RPC_URL };
+  const saved = { bnb: process.env.BNB_RPC_URL, verify: process.env.BNB_VERIFY_RPC_URL, base: process.env.BASE_RPC_URL };
   try {
     delete process.env.BNB_RPC_URL;
+    delete process.env.BNB_VERIFY_RPC_URL;
     process.env.BASE_RPC_URL = "http://127.0.0.1:9";
     const result = await verifyL1Settlement({
       txHash: TX,
@@ -105,7 +106,7 @@ test("BNB without BNB_RPC_URL is chain_not_yet_verifiable and does not fall thro
     });
     assert.equal(result.ok, false);
     assert.equal(result.ok === false && result.reason, "chain_not_yet_verifiable");
-    assert.match((result.ok === false && result.detail) || "", /eip155:56: BNB_RPC_URL_unset/);
+    assert.match((result.ok === false && result.detail) || "", /eip155:56: BNB_VERIFY_RPC_URL_and_BNB_RPC_URL_unset/);
     assert.equal(await readAuthorizationState({ network: "eip155:56", payer: PAYER, nonce: NONCE }), null);
     assert.equal(await readAuthorizationNonces({ network: "eip155:56", txHash: TX, payer: PAYER }), null);
     const chapel = await verifyL1Settlement({
@@ -119,6 +120,8 @@ test("BNB without BNB_RPC_URL is chain_not_yet_verifiable and does not fall thro
   } finally {
     if (saved.bnb === undefined) delete process.env.BNB_RPC_URL;
     else process.env.BNB_RPC_URL = saved.bnb;
+    if (saved.verify === undefined) delete process.env.BNB_VERIFY_RPC_URL;
+    else process.env.BNB_VERIFY_RPC_URL = saved.verify;
     if (saved.base === undefined) delete process.env.BASE_RPC_URL;
     else process.env.BASE_RPC_URL = saved.base;
   }
@@ -143,4 +146,52 @@ test("BNB: readAuthorizationState asks USD1 on chain id 56", async () => {
     await readAuthorizationState({ network: "eip155:56", payer: PAYER, nonce: NONCE }, { client: client(8453) }),
     null,
   );
+});
+
+// 2026-10-20: 照合は古いレシートを読む。BNB_RPC_URL（PublicNode）は 1〜2 時間より前を断るので、
+// BNB_VERIFY_RPC_URL があればそれを先に使い、無ければ BNB_RPC_URL、どちらも無ければ null。
+test("bnbVerifyRpcUrl: BNB_VERIFY_RPC_URL first, then BNB_RPC_URL, then null (never the public RPC)", async () => {
+  const { bnbVerifyRpcUrl, getBnbVerifyClient } = await import("@/lib/chain/bnb");
+  const saved = { bnb: process.env.BNB_RPC_URL, verify: process.env.BNB_VERIFY_RPC_URL };
+  try {
+    process.env.BNB_RPC_URL = "https://rpc.example/live";
+    process.env.BNB_VERIFY_RPC_URL = "https://rpc.example/archive";
+    assert.equal(bnbVerifyRpcUrl(), "https://rpc.example/archive");
+    process.env.BNB_VERIFY_RPC_URL = "   ";
+    assert.equal(bnbVerifyRpcUrl(), "https://rpc.example/live");
+    delete process.env.BNB_VERIFY_RPC_URL;
+    assert.equal(bnbVerifyRpcUrl(), "https://rpc.example/live");
+    delete process.env.BNB_RPC_URL;
+    assert.equal(bnbVerifyRpcUrl(), null);
+    assert.equal(getBnbVerifyClient(), null);
+  } finally {
+    if (saved.bnb === undefined) delete process.env.BNB_RPC_URL;
+    else process.env.BNB_RPC_URL = saved.bnb;
+    if (saved.verify === undefined) delete process.env.BNB_VERIFY_RPC_URL;
+    else process.env.BNB_VERIFY_RPC_URL = saved.verify;
+  }
+});
+
+test("BNB with only BNB_VERIFY_RPC_URL set reads the chain (not chain_not_yet_verifiable)", async () => {
+  const saved = { bnb: process.env.BNB_RPC_URL, verify: process.env.BNB_VERIFY_RPC_URL };
+  try {
+    delete process.env.BNB_RPC_URL;
+    process.env.BNB_VERIFY_RPC_URL = "http://127.0.0.1:9";
+    const result = await verifyL1Settlement({
+      txHash: TX,
+      network: "eip155:56",
+      expectedPayTo: PAY_TO,
+      expectedPayer: PAYER,
+      expectedAmountUnits: LEDGER,
+      expectedAuthNonce: NONCE,
+    });
+    assert.equal(result.ok, false);
+    // 届かない RPC は「読めなかった」（rpc_unavailable）であって、未設定でも「無い」でもない。
+    assert.equal(result.ok === false && result.reason, "rpc_unavailable");
+  } finally {
+    if (saved.bnb === undefined) delete process.env.BNB_RPC_URL;
+    else process.env.BNB_RPC_URL = saved.bnb;
+    if (saved.verify === undefined) delete process.env.BNB_VERIFY_RPC_URL;
+    else process.env.BNB_VERIFY_RPC_URL = saved.verify;
+  }
 });

@@ -32,7 +32,7 @@
 import { keccak256, parseAbi, toBytes, TransactionReceiptNotFoundError } from "viem";
 import { getPublicClient } from "@/lib/chain/client";
 import { getArcPublicClient } from "@/lib/chain/arc";
-import { getBnbPublicClient } from "@/lib/chain/bnb";
+import { getBnbPublicClient, getBnbVerifyClient } from "@/lib/chain/bnb";
 import { getCeloPublicClient } from "@/lib/chain/celo";
 import { BNB_CHAIN_ID, BNB_LEDGER_SCALE, evmChainFor, type EvmPayChain } from "./x402-payer";
 import { isWellFormedSettlementTx } from "@/lib/validation/settlement-tx";
@@ -83,17 +83,15 @@ function clientFor(chain: EvmPayChain): EvmVerifyClient | null {
     if (!process.env.CELO_RPC_URL?.trim()) return null;
     return getCeloPublicClient("live");
   }
-  if (chain.chainId === BNB_CHAIN_ID) {
-    if (!process.env.BNB_RPC_URL?.trim()) return null;
-    return getBnbPublicClient("live");
-  }
+  // BNB（2026-10-20）: 照合は古いレシートを読むので BNB_VERIFY_RPC_URL を先に見る（bnbVerifyRpcUrl の注記）。
+  if (chain.chainId === BNB_CHAIN_ID) return getBnbVerifyClient();
   return getPublicClient();
 }
 
 /** clientFor が null を返したチェーンの、未設定の env の名前（照合の detail に残す）。 */
 function rpcEnvOf(chain: EvmPayChain): string {
   if (chain.chainId === 42220) return "CELO_RPC_URL";
-  if (chain.chainId === BNB_CHAIN_ID) return "BNB_RPC_URL";
+  if (chain.chainId === BNB_CHAIN_ID) return "BNB_VERIFY_RPC_URL_and_BNB_RPC_URL";
   return "ARC_RPC_URL";
 }
 

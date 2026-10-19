@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-20 — BNB: 照合のレシート読みを BNB_VERIFY_RPC_URL（1RPC）へ（作業ツリー）
+- **何を**: `src/lib/chain/bnb.ts` に `bnbVerifyRpcUrl()`（BNB_VERIFY_RPC_URL → BNB_RPC_URL → null）と `getBnbVerifyClient()` を足し、`settlement-verify.ts` の `clientFor` の BNB をこれに替えた（`verifyL1Settlement` と `readAuthorizationNonces` が使う）。`readAuthorizationState`（最新の状態を読む）、索引（index-evm）、遅延回収の直読み（recover-late）は BNB_RPC_URL のまま。プライバシーの頁に Automata 1RPC を足し、改訂日を 10/20 にした。
+- **なぜ**: 10/19 の BNB の settle_claimed 13 行が 14:00 UTC の照合の後も動かなかった。BNB_RPC_URL（PublicNode）は直近 1〜2 時間より前のレシートを "Archive requests require a personal token" で断り、照合は 1 日 1 回なので毎回 rpc_unavailable で素通りしていた（実測 10/19 14:3x UTC: PublicNode はレシートを拒否、1rpc.io/bnb と bsc-dataseed.bnbchain.org は返す）。
+- **残す課題**: 遅延回収（harvestpulse の 10/19 03:31 の行・お金は動いたが tx が行に無い）と索引は eth_getLogs で古い範囲を読むので、PublicNode では読めず、1RPC は 50 ブロックまで（BNB は約 0.45 秒/ブロック・30 分の窓で約 80 回）。別の段で設計する。
+- **実測**: 下の commit の本文を見る。
+
 ## 2026-10-19 — 公開文: 境目の時刻を定数から秒まで組み、他チェーンの文を表から作る（作業ツリー）
 - **何を**: `request-query.ts` に `utcSecondsLabel`（"YYYY-MM-DD HH:MM:SS UTC"・形が違えば落ちる）、`BASE_DECLARED_QUERY_SINCE_LABEL`、`QUERY_UNSENT_CHAIN_NAMES`、`queryUnsentUntilSentence()` を足した。文は `OTHER_CHAIN_QUERY_UNSENT_UNTIL` の各グループから組む（XRPL・Solana・Arc/Celo/Stellar/BNB）。方法論の頁と `fix-modes.ts` の body_not_sent・query_not_sent・charged_unsent_input・unsettled_4xx・bodyNote・optionalQueryNote の手書きの時刻（`2026-09-16 23:25 UTC`・`2026-09-27 23:27 UTC`・Celo 1 つで 4 チェーンを代表させた文）をこれに置き換えた。`tests/cutoff-labels.test.ts` を足した（表の全 network に名前があること・各グループの名前と時刻が同じ節に並ぶこと・2 つの公開ファイルに手書きの境目の時刻が無いこと）。
 - **なぜ**: 帰属の段（2899e1b1）の独立点検の中1・中2。表の分け方が変わると文が黙って誤る。分で丸めると境目の分の中の行（23:25:00〜23:25:55 など）を文が言い違える。

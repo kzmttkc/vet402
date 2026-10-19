@@ -36,7 +36,7 @@ export default async function PrivacyPage() {
             <span>Instrument: privacy policy</span>
             <span>
               {/* この頁のシアン1点。改訂日という事実。 */}
-              Revision: <span className="text-signal">October 19, 2026</span>
+              Revision: <span className="text-signal">October 20, 2026</span>
             </span>
           </div>
           <div className="doc-head-col">
@@ -47,7 +47,7 @@ export default async function PrivacyPage() {
         </div>
         <h1 className="doc-title mt-10">Privacy Policy</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-        <p className="doc-note text-center">Last updated: October 19, 2026</p>
+        <p className="doc-note text-center">Last updated: October 20, 2026</p>
 
         {/* 2026-09-29 監査 4 周目: GDPR 13 条 1 項 (a) の管理者の身元と連絡先を明記。 */}
         <section className="space-y-2">
@@ -345,10 +345,20 @@ export default async function PrivacyPage() {
             <li>
               <strong>Allnodes PublicNode</strong> public BNB Chain RPC{" "}
               (<code>bsc-rpc.publicnode.com</code>). Read by vet402&apos;s servers on BNB Chain for vet402&apos;s
-              payer balance, for the payments vet402 checks and recovers, and for the index of USD1 payments
-              that listed sellers receive. Those reads carry vet402&apos;s payer address, transaction hashes and
-              the payout addresses of listed sellers. Their responses include the addresses of other payers to
-              those sellers. These are already public on BNB Chain. No visitor data is sent to it.
+              payer balance, for whether a payment authorization vet402 signed has been used, for the payments
+              vet402 recovers, and for the index of USD1 payments that listed sellers receive. Those reads carry
+              vet402&apos;s payer address, transaction hashes and the payout addresses of listed sellers. Their
+              responses include the addresses of other payers to those sellers. These are already public on BNB
+              Chain. No visitor data is sent to it.
+            </li>
+            {/* 2026-10-20: BNB_VERIFY_RPC_URL は Automata の 1RPC。PublicNode は 1〜2 時間より前のレシートを断るので、
+                照合（settlement-verify の verifyL1Settlement・readAuthorizationNonces）のレシート読みだけをこちらで行う。 */}
+            <li>
+              <strong>Automata 1RPC</strong> public BNB Chain RPC (<code>1rpc.io/bnb</code>). Read by
+              vet402&apos;s servers to re-check the payments vet402 made on BNB Chain: the receipt of each
+              settlement transaction it checks. Those reads carry transaction hashes. The receipts include
+              vet402&apos;s payer address, the seller payout address and the amount. These are already public on
+              BNB Chain. No visitor data is sent to it.
             </li>
             <li>
               <strong>Resend</strong> (United States) — email delivery for the record-change

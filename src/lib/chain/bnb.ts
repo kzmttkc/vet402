@@ -54,3 +54,28 @@ export function getBnbPublicClient(mode: "live" | "batch" = "live") {
     transport: http(bnbRpcUrl(), mode === "batch" ? { timeout: 20_000, retryCount: 3 } : { timeout: 5_000, retryCount: 1 }),
   });
 }
+
+/**
+ * 決済の再読（settlement-verify）の RPC（2026-10-20）。BNB_VERIFY_RPC_URL があればそれ、無ければ BNB_RPC_URL。
+ * どちらも無ければ null（公開 RPC へ黙って倒れて「確認済み」を刻まない。上の BNB_PUBLIC_RPC_URL の注記と同じ）。
+ * 実測 2026-10-19/20: BNB_RPC_URL（PublicNode）は直近 1〜2 時間より前のレシートを
+ * "Archive requests require a personal token" で断る。照合は 1 日 1 回（14:00 UTC）なので、BNB の settle_claimed は
+ * 毎回 rpc_unavailable で素通りしていた（10/19 の 13 行）。1rpc.io/bnb は古いレシートを返す。
+ * ただし 1rpc の eth_getLogs は 50 ブロックまで（BNB は約 0.45 秒/ブロック）なので、索引と遅延回収には使わない。
+ */
+export function bnbVerifyRpcUrl(): string | null {
+  const verify = process.env.BNB_VERIFY_RPC_URL?.trim();
+  if (verify) return verify;
+  const rpc = process.env.BNB_RPC_URL?.trim();
+  return rpc ? rpc : null;
+}
+
+/** 照合の 1 回読み（live と同じ短いタイムアウト・1 リトライ）。bnbVerifyRpcUrl が null なら null。 */
+export function getBnbVerifyClient() {
+  const url = bnbVerifyRpcUrl();
+  if (!url) return null;
+  return createPublicClient({
+    chain: bsc as unknown as typeof base,
+    transport: http(url, { timeout: 5_000, retryCount: 1 }),
+  });
+}
