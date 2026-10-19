@@ -13,10 +13,10 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
-## 2026-10-20 — BNB: 照合のレシート読みを BNB_VERIFY_RPC_URL（1RPC）へ（作業ツリー）
-- **何を**: `src/lib/chain/bnb.ts` に `bnbVerifyRpcUrl()`（BNB_VERIFY_RPC_URL → BNB_RPC_URL → null）と `getBnbVerifyClient()` を足し、`settlement-verify.ts` の `clientFor` の BNB をこれに替えた（`verifyL1Settlement` と `readAuthorizationNonces` が使う）。`readAuthorizationState`（最新の状態を読む）、索引（index-evm）、遅延回収の直読み（recover-late）は BNB_RPC_URL のまま。プライバシーの頁に Automata 1RPC を足し、改訂日を 10/20 にした。
-- **なぜ**: 10/19 の BNB の settle_claimed 13 行が 14:00 UTC の照合の後も動かなかった。BNB_RPC_URL（PublicNode）は直近 1〜2 時間より前のレシートを "Archive requests require a personal token" で断り、照合は 1 日 1 回なので毎回 rpc_unavailable で素通りしていた（実測 10/19 14:3x UTC: PublicNode はレシートを拒否、1rpc.io/bnb と bsc-dataseed.bnbchain.org は返す）。
-- **残す課題**: 遅延回収（harvestpulse の 10/19 03:31 の行・お金は動いたが tx が行に無い）と索引は eth_getLogs で古い範囲を読むので、PublicNode では読めず、1RPC は 50 ブロックまで（BNB は約 0.45 秒/ブロック・30 分の窓で約 80 回）。別の段で設計する。
+## 2026-10-20 — BNB: 照合のレシート読みを BNB_VERIFY_RPC_URL（BNB Chain の公開 dataseed）へ（作業ツリー）
+- **何を**: `src/lib/chain/bnb.ts` に `bnbVerifyRpcUrl()`（BNB_VERIFY_RPC_URL → BNB_RPC_URL → null）と `getBnbVerifyClient()` を足し、`settlement-verify.ts` の `clientFor` の BNB をこれに替えた（`verifyL1Settlement` と `readAuthorizationNonces` が使う）。`readAuthorizationState`（最新の状態を読む）、索引（index-evm）、遅延回収の直読み（recover-late）は BNB_RPC_URL のまま。本番の BNB_VERIFY_RPC_URL は https://bsc-dataseed.bnbchain.org。プライバシーの頁に BNB Chain の公開 dataseed を足し、改訂日を 10/20 にした。
+- **なぜ**: 10/19 の BNB の settle_claimed 13 行が 14:00 UTC の照合の後も動かなかった。BNB_RPC_URL（PublicNode）は直近 1〜2 時間より前のレシートを "Archive requests require a personal token" で断り、照合は 1 日 1 回なので毎回 rpc_unavailable で素通りしていた（実測 10/19 14:3x UTC: PublicNode はレシートを拒否。10/20 の独立点検の実測: dataseed は約 2〜90 日前の実在の tx のレシートを返し、117 回続けて読んでエラー 0。1rpc.io/bnb は約 4 日より古い tx に null を返し 429 も出るので不採用）。
+- **残す課題**: 遅延回収（harvestpulse の 10/19 03:31 の行・お金は動いたが tx が行に無い）と索引は eth_getLogs で古い範囲を読むので、PublicNode では読めず、dataseed は getLogs を断り、1rpc は 50 ブロックまで（BNB は約 0.45 秒/ブロック・30 分の窓で約 80 回）。別の段で設計する。
 - **実測**: 下の commit の本文を見る。
 
 ## 2026-10-19 — 公開文: 境目の時刻を定数から秒まで組み、他チェーンの文を表から作る（作業ツリー）

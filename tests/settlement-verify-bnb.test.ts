@@ -188,6 +188,8 @@ test("BNB with only BNB_VERIFY_RPC_URL set reads the chain (not chain_not_yet_ve
     assert.equal(result.ok, false);
     // 届かない RPC は「読めなかった」（rpc_unavailable）であって、未設定でも「無い」でもない。
     assert.equal(result.ok === false && result.reason, "rpc_unavailable");
+    // 最新の状態を読む readAuthorizationState は BNB_RPC_URL のまま（照合用の env では読まない）。
+    assert.equal(await readAuthorizationState({ network: "eip155:56", payer: PAYER, nonce: NONCE }), null);
   } finally {
     if (saved.bnb === undefined) delete process.env.BNB_RPC_URL;
     else process.env.BNB_RPC_URL = saved.bnb;

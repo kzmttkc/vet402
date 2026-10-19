@@ -351,14 +351,14 @@ export default async function PrivacyPage() {
               responses include the addresses of other payers to those sellers. These are already public on BNB
               Chain. No visitor data is sent to it.
             </li>
-            {/* 2026-10-20: BNB_VERIFY_RPC_URL は Automata の 1RPC。PublicNode は 1〜2 時間より前のレシートを断るので、
+            {/* 2026-10-20: BNB_VERIFY_RPC_URL は BNB Chain の公開 dataseed。PublicNode は 1〜2 時間より前のレシートを断るので、
                 照合（settlement-verify の verifyL1Settlement・readAuthorizationNonces）のレシート読みだけをこちらで行う。 */}
             <li>
-              <strong>Automata 1RPC</strong> public BNB Chain RPC (<code>1rpc.io/bnb</code>). Read by
-              vet402&apos;s servers to re-check the payments vet402 made on BNB Chain: the receipt of each
-              settlement transaction it checks. Those reads carry transaction hashes. The receipts include
-              vet402&apos;s payer address, the seller payout address and the amount. These are already public on
-              BNB Chain. No visitor data is sent to it.
+              <strong>BNB Chain public dataseed</strong> RPC (<code>bsc-dataseed.bnbchain.org</code>), run for
+              BNB Chain. Read by vet402&apos;s servers to re-check the payments vet402 made on BNB Chain: the
+              receipt of each settlement transaction it checks. Those reads carry transaction hashes. The receipts
+              include vet402&apos;s payer address, the seller payout address and the amount. These are already
+              public on BNB Chain. No visitor data is sent to it.
             </li>
             <li>
               <strong>Resend</strong> (United States) — email delivery for the record-change

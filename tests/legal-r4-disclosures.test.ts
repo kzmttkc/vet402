@@ -97,8 +97,8 @@ test("privacy: seller notices, controller identity, storage countries, security 
   assert.match(privacy, /plausible\.io/);
   assert.match(privacy, /Revision: <span className="text-signal">October 20, 2026/);
   assert.match(privacy, /bsc-rpc\.publicnode\.com/);
-  // 2026-10-20: BNB の照合のレシート読みは Automata 1RPC（BNB_VERIFY_RPC_URL）。
-  assert.match(privacy, /<strong>Automata 1RPC<\/strong> public BNB Chain RPC \(<code>1rpc\.io\/bnb<\/code>\)/);
+  // 2026-10-20: BNB の照合のレシート読みは BNB Chain の公開 dataseed（BNB_VERIFY_RPC_URL）。
+  assert.match(privacy, /<strong>BNB Chain public dataseed<\/strong> RPC \(<code>bsc-dataseed\.bnbchain\.org<\/code>\)/);
   assert.match(privacy, /addresses of other payers to\s+those sellers/);
   // 2026-10-14: getLogs の予備の読み先を委託先に載せる（何が渡るかを事実どおりに）。
   assert.match(privacy, /<strong>Tenderly<\/strong> public Base RPC gateway/);
