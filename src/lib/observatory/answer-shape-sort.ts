@@ -5,16 +5,21 @@
 // 規則は 2026-09-15〜10-15 の 68 件を人が仕分けた理由（vet402 42・正当 17・売り手 4・判断できない 5）から取る。
 // キーワードは下の定数だけ。本文の「rate limit」等では決めない（answer-shape.ts と同じく、言葉だけの規則は誤検出が多かった）。
 //
-// 決め方（先に当たったもの。vet402 の誤りと示せない限り seller_suspect にしない。迷ったら unknown）:
+// 決め方（先に当たったもの。vet402 の誤りと示せない限り seller_suspect にしない。迷ったら unknown。探索はしない）:
 //   vet402_input    requestQuery が refused（宣言したクエリを送らなかった記録）。
-//                   型の名前・空文字・"0"・example などの見本を送った。本文が欠けていると名指す項目が
-//                   schema の fields にあり、その項目を送っていない。宣言の必須を送っていない。
-//                   送った値が宣言の型に合わない。例と同じ値を送り、本文が入力の落ち度を名指す。
+//                   型の名前・example などの見本、必須項目の空文字を送った（"0" と任意項目の空文字は見本にしない。
+//                   page=0・offset=0 は普通の値）。本文が欠けていると名指す項目が schema の fields にあり、
+//                   その項目を送っていない（2文字以下の項目名は、引用などで単独の語のときだけ）。
+//                   宣言の必須を送っていない。送った値が宣言の型に合わない。
+//                   例と同じ値を送り、本文が入力の落ち度を名指す。本文が invalid と言うときはここへ入れない。
 //   valid_answer    必須は送ってあり、空の配列・空の結果が宣言の出力の型と矛盾しない。業務上の「no」
 //                   （ok:false かつ changed:false 等。success:false に障害の語があるものは除く）。
 //                   宣言どおり送った HTML で、script src の枠でも、title が 5xx でもないもの。
 //   seller_suspect  入力を宣言どおり、見本でない値で送り、本文が入力の落ち度を名指さない error_object / error_flag。
-//   unknown         入力の落ち度の語があるが vet402 の誤りと示せない。サイト枠。5xx。障害。材料が足りない。
+//                   requestQuery が null（許可リスト外・Tempo でクエリを送っていない）のときは、
+//                   declaredInput.query === "empty"（宣言にクエリが無いと分かっている）のときだけ。
+//   unknown         入力の落ち度の語があるが vet402 の誤りと示せない。宣言の例そのものを送り本文が invalid。
+//                   サイト枠。5xx。障害。材料が足りない。
 // ============================================================
 
 import type { AnswerShape } from "./answer-shape";
@@ -27,8 +32,8 @@ export const ANSWER_SHAPE_SORT_WORDS = {
   outage: ["internal server error", "timeout"],
 } as const;
 
-/** 送った値が型の名前や見本そのもの。空文字と "0" を含む。 */
-const PLACEHOLDER_VALUES = new Set(["string", "number", "integer", "boolean", "example", "placeholder", "0"]);
+/** 送った値が型の名前や見本そのもの。"0" と任意項目の空文字は入れない（page=0・offset=0 は普通の値）。 */
+const PLACEHOLDER_VALUES = new Set(["string", "number", "integer", "boolean", "example", "placeholder"]);
 
 export type AnswerShapeSort = "vet402_input" | "valid_answer" | "seller_suspect" | "unknown";
 
@@ -117,25 +122,41 @@ function sameValue(sent: unknown, example: unknown): boolean {
   return false;
 }
 
-function isPlaceholderValue(sent: unknown): boolean {
-  if (typeof sent === "number") return sent === 0;
+/**
+ * 型の名前・見本語。空文字は必須項目のときだけ見本（任意項目の空は普通の値）。
+ * 数の 0 と文字列の "0" は見本にしない。
+ */
+function isPlaceholderValue(sent: unknown, emptyIsPlaceholder: boolean): boolean {
   if (typeof sent !== "string") return false;
   const t = sent.trim().toLowerCase();
-  return t === "" || PLACEHOLDER_VALUES.has(t);
+  if (t === "") return emptyIsPlaceholder;
+  return PLACEHOLDER_VALUES.has(t);
 }
 
-function sentValues(row: AnswerShapeSortRow): unknown[] {
-  const out: unknown[] = [];
-  if (row.sentQuery) out.push(...Object.values(row.sentQuery));
-  const body = row.sentBody;
-  if (typeof body === "string" || typeof body === "number" || typeof body === "boolean") out.push(body);
-  else if (Array.isArray(body)) out.push(...body);
-  else if (typeof body === "object" && body !== null) out.push(...Object.values(body as Record<string, unknown>));
-  return out;
+/** その項目が宣言の必須か。必須でなければ空文字を見本にしない。 */
+function emptyIsPlaceholder(row: AnswerShapeSortRow, name: string, where: "query" | "body"): boolean {
+  const required = where === "query" ? row.required.query : row.required.body;
+  return required.includes(name);
 }
 
 function sentPlaceholder(row: AnswerShapeSortRow): boolean {
-  return sentValues(row).some(isPlaceholderValue);
+  if (row.sentQuery) {
+    for (const [name, value] of Object.entries(row.sentQuery)) {
+      if (isPlaceholderValue(value, emptyIsPlaceholder(row, name, "query"))) return true;
+    }
+  }
+  const body = row.sentBody;
+  if (typeof body === "string" || typeof body === "number" || typeof body === "boolean") {
+    // 本文そのもの。項目ではないので、空文字は見本のまま。
+    if (isPlaceholderValue(body, true)) return true;
+  } else if (Array.isArray(body)) {
+    if (body.some((value) => isPlaceholderValue(value, true))) return true;
+  } else if (typeof body === "object" && body !== null) {
+    for (const [name, value] of Object.entries(body as Record<string, unknown>)) {
+      if (isPlaceholderValue(value, emptyIsPlaceholder(row, name, "body"))) return true;
+    }
+  }
+  return false;
 }
 
 function matchesType(sent: unknown, type: string): boolean {
@@ -156,11 +177,23 @@ function escapeReg(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** 本文が、その項目名を欠けているものとして挙げている。語の境界で見る（requestedUrl の required には当たらない）。 */
+/**
+ * 本文が、その項目名を欠けているものとして挙げている。語の境界で見る（requestedUrl の url には当たらない）。
+ * 2文字以下（id など）は、引用・`_`・`:`・`=` で項目として書かれたときだけ。
+ * 「upstream request id missing」の id には当てない。
+ */
 function bodyNamesField(body: string, name: string): boolean {
   const n = name.toLowerCase();
-  if (n.length < 2) return false;
-  return new RegExp(`(?:^|[^a-z0-9])${escapeReg(n)}(?:[^a-z0-9]|$)`).test(lower(body));
+  if (n.length === 0) return false;
+  const text = lower(body);
+  const word = new RegExp(`(?:^|[^a-z0-9])${escapeReg(n)}(?:[^a-z0-9]|$)`);
+  if (!word.test(text)) return false;
+  if (n.length > 2) return true;
+  if (text.trim() === n) return true;
+  const marked = new RegExp(
+    `[^a-z0-9\\s]${escapeReg(n)}(?:[^a-z0-9]|$)` + `|` + `(?:^|[^a-z0-9])${escapeReg(n)}[^a-z0-9\\s]`,
+  );
+  return marked.test(text);
 }
 
 /** 本文が入力の落ち度を名指し、その項目が schema の fields にあり、送っていない。 */
@@ -257,14 +290,19 @@ function isSiteShell(body: string): boolean {
 /**
  * 見本でない値を、宣言どおり送ったと示せる。
  * 必須があるのに送った値を持っていないときは、示せない。
+ * requestQuery が null（許可リスト外・Tempo。クエリを送っていない）のときは、
+ * declaredInput.query === "empty"（宣言にクエリが無いと分かっている）のときだけ先へ進む。
  */
 function declaredRealInput(row: AnswerShapeSortRow): boolean {
   if (inputNotSent(row) || sentPlaceholder(row) || sentEqualsExample(row)) return false;
+  if (row.requestQuery === null && row.declaredInput?.query !== "empty") return false;
   const fields = row.fields ?? [];
   if (fields.length > 0) {
     for (const field of fields) {
       const sent = readSent(row, field);
-      if (sent === undefined || sent === null || isPlaceholderValue(sent)) return false;
+      if (sent === undefined || sent === null || isPlaceholderValue(sent, emptyIsPlaceholder(row, field.name, field.in))) {
+        return false;
+      }
     }
     return true;
   }
@@ -291,7 +329,9 @@ export function sortAnswerShape(row: AnswerShapeSortRow): AnswerShapeSort {
   const missed = inputNotSent(row);
   if (missed && (fault || row.answerShape === "empty_structure")) return "vet402_input";
   if (typeMismatch(row)) return "vet402_input";
-  // 例と同じ値を送ったことは、売り手が悪い根拠にしない。落ち度の語があるなら見本を送った側。
+  // 宣言の例そのものを送り、本文が invalid と言う。売り手が自分の例を拒んでいる。見本を送った側の落ち度にしない。
+  if (sentEqualsExample(row) && lower(row.bodyHead).includes("invalid")) return "unknown";
+  // 例と同じ値。invalid 以外の落ち度の語があるなら見本を送った側。売り手が悪い根拠にはしない。
   if (sentEqualsExample(row) && fault) return "vet402_input";
 
   if (successFalseOutage(row.bodyHead) || htmlTitleIs5xx(row.bodyHead)) return "unknown";

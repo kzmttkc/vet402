@@ -3138,9 +3138,19 @@ async function purchaseOne(input: {
         : null;
     // 2026-10-19 段S1: 上の型を、影の記録の中だけで仕分ける（answer-shape-sort.ts）。status・L2・公開の値は変えない。
     // 段S1b: 仕分けが落ちても、支払い済みの行の記録を巻き込まない。落ちたら answerShapeSort は unknown。
+    // 段S1c: 許可リスト外でも、宣言クエリの source だけを仕分けへ渡す。送る URL・支払い・行の requestQuery は変えない。
+    // Tempo は x402 の文書を読まない。ここで empty と読むと「宣言にクエリが無い」と誤るので、source は付けない。
     let answerShapeSort: ReturnType<typeof sortAnswerShapeFromRun> | null = null;
     if (answerShape) {
       try {
+        const declaredQuerySource: RequestQuerySource | null = isTempo
+          ? null
+          : (paidRequestUrl?.source ??
+            declaredRequestUrl({
+              resourceUrl: candidate.resourceUrl,
+              bodyText: firstBody,
+              headers: first.headers,
+            }).source);
         answerShapeSort = sortAnswerShapeCaught(() =>
           sortAnswerShapeFromRun({
             answerShape,
@@ -3148,6 +3158,9 @@ async function purchaseOne(input: {
             requestQuery: paidRequestUrl?.source ?? null,
             requestBody: requestBodyRecord(paidRequestBody).requestBody,
             declaredSchema: candidate.declaredSchema,
+            declaredInput: declaredQuerySource
+              ? { query: declaredQuerySource, body: paidRequestBody?.source ?? "empty" }
+              : null,
             sentQuery: paidRequestUrl?.query ?? null,
             sentBody: paidRequestBody?.body ?? null,
           }),
