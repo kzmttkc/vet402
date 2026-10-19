@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-19 — L1: 宣言クエリの許可リストを Arc・Celo・Stellar・BNB に広げた（env だけ・コードは変えない）
+- **何を**: 本番の env `OBSERVATORY_L1_DECLARED_QUERY_NETWORKS` を `eip155:8453,base,solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp,xrpl:0,eip155:5042,eip155:42220,stellar:pubnet,eip155:56` にした（Tempo は l1-runner の !isTempo で除外のまま）。同時に BNB のレーンを戻した（12:5x JST に一時 OFF にしていた）。
+- **なぜ**: 10/15 以降の公開 export で、支払い付きの要求に宣言クエリが付いていたのは Base 647/647・Solana 111/111・XRPL 20/20 だけで、Arc 19・Celo 44・Stellar 7・BNB 5 は 0 件だった。後から足したレーンの network が許可リストに入っていなかった。例: BNB の最初の購入で citepulse.theaslangroupllc.com/api/paper（declared_input の query は declared）にクエリを送らず、$0.02 払って missing_identifier の 400 を受けた。
+- **影響**: 4 つのチェーンの支払い付きの行に requestQuery の記録が付くようになる。過去の行は記録が無いので input_unrecorded のまま（売り手のせいにも vet402 のせいにも数えない）。独立点検（読み取りのみ）で、クエリは無払いの 402 の本文から全チェーン同じ1か所で作られ、売り手の帰属は行の requestQuery の有無だけで決まることを確かめた。
+- **境目の実測（後から取り直せない数字）**: env を書いた時刻 2026-10-19T04:03:50Z、それを読む Production の再デプロイが ready になった時刻 2026-10-19T04:05:17Z（agent-trust-aubjgb762）。
+- **残り**: 「署名済み・支払い付きの要求に 400/422・2026-09-20 以降・requestQuery の記録なし・Tempo でない」行を vet402 のせいと判定する直しは、判定 API・/sellers・export が同じ判定を読むので、独立レビューを通してから入れる。
+
 ## 2026-10-19 — L1: BNB レーンの段B3（独立点検 NO-SHIP 78・旗は既定 OFF・作業ツリー・未 commit）
 - **何を**: 6 桁の宣言額を BNB の 18 桁と比べるのは、主ネットワークが eip155:56 のときだけにした。比べられない額は `price_mismatch` にしない。BNB が主の行では、相対上限を作る前に宣言額を `bnbLedgerUnits` で 6 桁へ直し、直せなければ相対上限の免除を開かない。`EXPIRY_NETWORKS` に eip155:56 を足し、`sellerNamedTxExpiryChain` と揃えた。`preferNetworks` の関門は `laneOpen(candidate.laneChain)` に戻した。`.env.example` に `OBSERVATORY_BNB_L1_ENABLED`・`L1_BNB_DAILY_CAP_USD`・`BNB_RPC_URL` を足した。`laneFloor` の期待に `bnb: 0` を足した。変異 X14（旗 OFF の eip155:56 主ネットワークを候補に残す）・X15（`ready` は `BNB_RPC_URL` を要する）・X18（照合は BNB の払い手を見る）をテストと `scripts/test-mutations-bnb-lane.mjs` に足した。ランナーのコメントは、レーン外で BNB が選ばれたら残高を公開 RPC で読む（規則では可）と書いた。
 - **なぜ**: カタログの $0.10（100000）と USD1 の 1e17 を文字列で比べると、正直な売り手を `price_mismatch` として公開する。BNB 主の宣言額は 18 桁なので、相対上限を生のまま作ると $0.10 の出品が $1 まで免除される。期限の SELECT に eip155:56 が無く、旗 OFF の主ネットワークと `BNB_RPC_URL` と照合の払い手が検査されていなかった。
