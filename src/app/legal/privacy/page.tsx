@@ -36,7 +36,7 @@ export default async function PrivacyPage() {
             <span>Instrument: privacy policy</span>
             <span>
               {/* この頁のシアン1点。改訂日という事実。 */}
-              Revision: <span className="text-signal">October 18, 2026</span>
+              Revision: <span className="text-signal">October 19, 2026</span>
             </span>
           </div>
           <div className="doc-head-col">
@@ -47,7 +47,7 @@ export default async function PrivacyPage() {
         </div>
         <h1 className="doc-title mt-10">Privacy Policy</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-        <p className="doc-note text-center">Last updated: October 18, 2026</p>
+        <p className="doc-note text-center">Last updated: October 19, 2026</p>
 
         {/* 2026-09-29 監査 4 周目: GDPR 13 条 1 項 (a) の管理者の身元と連絡先を明記。 */}
         <section className="space-y-2">
@@ -338,6 +338,17 @@ export default async function PrivacyPage() {
               the seller payout address, and the amount. The signed payment is sent to the seller, and
               the seller&apos;s payment service submits it to Stellar, not Ankr. No visitor data is sent
               to it.
+            </li>
+            {/* 2026-10-19: BNB Chain の購入レーン（既定 OFF）。BNB_RPC_URL は PublicNode（Allnodes）の公開 RPC。
+                購入元の残高・決済の照合・遅延回収・売り手の受取先あての USD1 の索引で読む。
+                BNB Chain の公開 dataseed は BNB_RPC_URL が無いときの残高読みの予備（本番は BNB_RPC_URL を入れる）。 */}
+            <li>
+              <strong>Allnodes PublicNode</strong> public BNB Chain RPC{" "}
+              (<code>bsc-rpc.publicnode.com</code>). Read by vet402&apos;s servers on BNB Chain for vet402&apos;s
+              payer balance, for the payments vet402 checks and recovers, and for the index of USD1 payments
+              that listed sellers receive. Those reads carry vet402&apos;s payer address, transaction hashes and
+              the payout addresses of listed sellers. Their responses include the addresses of other payers to
+              those sellers. These are already public on BNB Chain. No visitor data is sent to it.
             </li>
             <li>
               <strong>Resend</strong> (United States) — email delivery for the record-change
