@@ -2,7 +2,17 @@
 
 A testnet sample that pays a seller only for a call the public record shows was delivered.
 
-The contract holds the buyer's tokens until release or refund. It is a sample for a test network and holds no real funds. Do not put tokens that have value in it.
+## Who deposits, and for what
+
+The row a release checks is one of vet402's own purchases. When it says `settled`, vet402 has already paid that seller
+the price over x402. So the deposit here is not the price. It is a separate payment on top of it, for example a fund
+that rewards Stellar x402 sellers only for calls that vet402's public record shows were delivered.
+
+In the code, `buyer` is the depositor (who gets a refund) and `seller` is the payee named at deposit (who gets a
+release). The record does not name either one.
+
+The contract holds the deposited tokens until release or refund. It is a sample for a test network and holds no real
+funds. Do not put tokens that have value in it.
 
 The stellar-roots contract is fixed in the constructor and never changes. Each `purchase_id` has one escrow, including after that escrow is closed.
 
