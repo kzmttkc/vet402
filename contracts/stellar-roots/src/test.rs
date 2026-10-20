@@ -157,16 +157,13 @@ fn a_changed_row_a_wrong_proof_or_another_day_does_not_verify() {
 
 #[test]
 fn a_one_row_day_verifies_with_an_empty_proof() {
-    // One row: the root is the leaf itself, sha256(0x00 || digest), and the proof is empty.
+    // One row: tools/roots.mjs prints, for [{"a":1}], the root 99f1... (sha256(0x00 || digest)) and an empty proof.
     let (env, _writer, client) = setup();
     env.mock_all_auths();
+    let root = b32(&env, "99f1dca178a56705d03d47e75719615122fb66199487917faa038d7bb5e791b8");
     let digest = b32(&env, ROWS[0].0);
-    let mut buf = soroban_sdk::Bytes::new(&env);
-    buf.push_back(0x00);
-    buf.append(&soroban_sdk::Bytes::from_array(&env, &digest.to_array()));
-    let leaf: BytesN<32> = env.crypto().sha256(&buf).into();
-    client.commit_root(&DAY, &leaf, &1);
+    client.commit_root(&DAY, &root, &1);
     assert!(client.verify(&DAY, &digest, &vec![&env]));
     // The leaf hash itself is not a row.
-    assert!(!client.verify(&DAY, &leaf, &vec![&env]));
+    assert!(!client.verify(&DAY, &root, &vec![&env]));
 }

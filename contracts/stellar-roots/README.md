@@ -51,7 +51,7 @@ stellar contract invoke --id CCWWBZ2GBKDPRSUMT32CPB7LBUGHHKL37R5YNQC6RAWRV6PVIEK
 
 ## How long a root stays
 
-A committed root lives in persistent storage with a time to live. The daily job extends every committed day each run (`stellar contract extend`, about 180 days, capped by the network). Anyone can extend or restore an entry too. An archived root makes `verify` fail until it is restored, so a `false` on an old day is worth one restore before reading it as a mismatch.
+A committed root lives in persistent storage with a time to live. The contract instance and its wasm code have a time to live too. The daily job extends the instance, the code and every committed day each run (`stellar contract extend`, about 180 days, capped by the network). Anyone can extend or restore an entry too. An archived root makes `verify` fail until it is restored, so a `false` on an old day is worth one restore before reading it as a mismatch.
 
 ## Check the deployed code
 
@@ -73,6 +73,6 @@ node tools/day.mjs export.csv 2026-10-19 days/2026-10-19.json   # one day's snap
 tools/commit-day.sh 2026-10-19   # build the snapshot from the live export and commit it (writer key only)
 ```
 
-A job runs `tools/commit-day.sh` every hour. Before 14:30 UTC it does nothing. After that it commits yesterday (UTC) once, because vet402 re-checks settlements at 14:00 UTC. A root on chain that differs from the snapshot stops it and is not marked committed.
+A job runs `tools/commit-day.sh` every hour. Before 14:30 UTC it does nothing. After that it commits every day from the one after the last committed day up to yesterday (UTC), once each, because vet402 re-checks settlements at 14:00 UTC. A day missed while the machine was off is picked up on the next run. A root on chain that differs from the snapshot stops it, is not marked committed, and is reported.
 
 MIT.

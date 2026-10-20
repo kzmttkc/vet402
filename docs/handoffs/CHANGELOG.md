@@ -14,11 +14,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 ---
 
 ## 2026-10-20 — Stellar: Soroban の日次 root 契約を testnet に（contracts/stellar-roots・作業ツリー）
-- **何を**: `contracts/stellar-roots`（Rust・soroban-sdk 29.0.1・MIT）。`commit_root(day, root, count)` は配備時に決めた writer だけ・1 日 1 回・上書き不可、`get_root(day)`、`verify(day, digest, proof)`。資金は持たない。木は Celo DeliveryRoots と同じ形で sha256（leaf = sha256(0x00||digest)、node = sha256(0x01||min||max)、余りは持ち上げ）。`tools/roots.mjs`（別実装の Node・テストの期待値もここから）、`tools/day.mjs`（公開 export の stellar:pubnet の 1 日分を写して root を作る）、`tools/commit-day.sh`（毎日の書き込み。launchd が UTC 17:40 に前日分）。`days/` は root が覆う行の写し（export は後で変わるので写しが記録）。
+- **何を**: `contracts/stellar-roots`（Rust・soroban-sdk 29.0.1・MIT）。`commit_root(day, root, count)` は配備時に決めた writer だけ・1 日 1 回・上書き不可、`get_root(day)`、`verify(day, digest, proof)`。資金は持たない。木は Celo DeliveryRoots と同じ形で sha256（leaf = sha256(0x00||digest)、node = sha256(0x01||min||max)、余りは持ち上げ）。`tools/roots.mjs`（別実装の Node・テストの期待値もここから）、`tools/day.mjs`（公開 export の stellar:pubnet の 1 日分を写して root を作る）、`tools/commit-day.sh`（毎日の書き込み。launchd が毎時起動し、UTC 14:30 以降に、最後に書いた日の翌日から昨日までを書く。送信前に写しを .pending で残し、送信後に chain の root と照合、違えば止めて state/ALERTS.md に1行。毎回、契約の instance・wasm code・書いた全日の TTL を延ばす）。`days/` は root が覆う行の写し（export は後で変わるので写しが記録）。
 - **testnet**: 契約 `CCWWBZ2GBKDPRSUMT32CPB7LBUGHHKL37R5YNQC6RAWRV6PVIEKOBKRB`、writer `GDAUF55VCANOEOLIT547GRH2FEIALYIOWNUHSSGWSWWHVNO53V5DCJIW`（testnet 専用・Claude が 10/20 に作った）。10/18（3 行）・10/19（17 行）を書いた。
 - **なぜ**: SCF #46 の出し直し（グラント戦略の発注・WORK_ORDERS 先頭）。Interest Form が「Stellar をデータ置き場に使うだけ」「該当の道具の経験」に当てる実物が無く 10/20 に不採用。
 - **影響**: vet402.com の公開面・判定・支払いは変えていない。本番の鍵は使わない。
-- **実測**: `cargo test` 6 件緑。testnet で、公開 export の実際の行の verify=true、digest を 1 文字変えると false、writer 以外の commit_root は署名不足で拒否。配備した wasm と手元の build の sha256 が一致（4ff8e335…0c07）。
+- **実測**: `cargo test` 7 件緑（1 行の木を含む）。testnet で、公開 export の実際の行の verify=true、digest を 1 文字変えると false、writer 以外の commit_root は署名不足で拒否。配備した wasm と手元の build の sha256 が一致（4ff8e335…0c07）。
 
 ## 2026-10-20 — BNB: 照合のレシート読みを BNB_VERIFY_RPC_URL（BNB Chain の公開 dataseed）へ（作業ツリー）
 - **何を**: `src/lib/chain/bnb.ts` に `bnbVerifyRpcUrl()`（BNB_VERIFY_RPC_URL → BNB_RPC_URL → null）と `getBnbVerifyClient()` を足し、`settlement-verify.ts` の `clientFor` の BNB をこれに替えた（`verifyL1Settlement` と `readAuthorizationNonces` が使う）。`readAuthorizationState`（最新の状態を読む）、索引（index-evm）、遅延回収の直読み（recover-late）は BNB_RPC_URL のまま。本番の BNB_VERIFY_RPC_URL は https://bsc-dataseed.bnbchain.org。プライバシーの頁に BNB Chain の公開 dataseed を足し、改訂日を 10/20 にした。
