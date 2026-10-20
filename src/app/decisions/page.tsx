@@ -163,6 +163,7 @@ export default async function DecisionsPage() {
                     <td className="whitespace-nowrap text-brand-lift">
                       {r.txHash ? (
                         (() => {
+                          // r.network は購入の鎖。null の行だけカタログ（decisions.ts の coalesce）。
                           const url = explorerTxUrl(r.network, r.txHash);
                           const short = `${r.txHash.slice(0, 10)}…${r.txHash.slice(-4)}`;
                           return url ? (

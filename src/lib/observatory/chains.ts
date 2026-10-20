@@ -159,6 +159,8 @@ const EVM_TX_RE = /^0x[0-9a-fA-F]{64}$/;
 const SOLANA_TX_RE = /^[1-9A-HJ-NP-Za-km-z]{86,88}$/;
 /** XRPL transaction hash: 32 bytes as bare hex（0x 無し・慣例は大文字）。 */
 const XRPL_TX_RE = /^[0-9A-Fa-f]{64}$/;
+/** Stellar transaction hash: 32 bytes as bare hex（0x 無し）。 */
+const STELLAR_TX_RE = /^[0-9A-Fa-f]{64}$/;
 
 const EVM_EXPLORERS: Record<string, string> = {
   Base: "https://basescan.org/tx/",
@@ -169,18 +171,45 @@ const EVM_EXPLORERS: Record<string, string> = {
   // 2026-10-10 Celo レーン。mainnet（eip155:42220）だけ——ラベル "Celo Sepolia" / "Celo Alfajores" はここに無いので
   // テストネットの tx にはリンクを作らない（Arc と同じ: 壊れたリンクより「—」）。
   Celo: "https://celoscan.io/tx/",
+  // 2026-10-21: BSC mainnet（eip155:56）。chainLabel は "BSC"。"BSC Testnet"（eip155:97）はここに無いので
+  // テストネットの tx にはリンクを作らない。
+  BSC: "https://bscscan.com/tx/",
 };
+
+/**
+ * Network a receipt link should name. The purchase row's network is the chain
+ * that was paid. Null falls back to the catalog network.
+ */
+export function receiptNetwork(paid: string | null | undefined, catalog: string | null | undefined): string | null {
+  // 空文字は欠落と同じ（metrics-rollup.ts の nullif(pu.network, '') と揃える。点検 低3）。
+  const p = typeof paid === "string" && paid !== "" ? paid : null;
+  const c = typeof catalog === "string" && catalog !== "" ? catalog : null;
+  return p ?? c ?? null;
+}
+
+/** 購入表の「Payment chain」列の表示名。KNOWN に無い stellar:pubnet は公開名 Stellar で出す（isMainnet と l1.byChain の鍵は動かさない。点検 低2）。 */
+export function paymentChainLabel(network: string): string {
+  if (network === "stellar:pubnet") return "Stellar";
+  return chainLabel(network);
+}
 
 /** Block-explorer URL for a settlement tx on the given network, or null when the chain has no explorer here or the tx is not well-formed for it. */
 export function explorerTxUrl(network: unknown, tx: unknown): string | null {
   if (typeof tx !== "string" || tx === "") return null;
   // "polygon" などの v1 スラグは KNOWN に無いので、先に CAIP-2 へ寄せてからラベルを引く。
-  const label = chainLabel(toCaip2(network));
+  const caip = toCaip2(network);
+  const label = chainLabel(caip);
   if (label === "Solana") {
     return SOLANA_TX_RE.test(tx) ? `https://solscan.io/tx/${tx}` : null;
   }
   if (label === "XRPL") {
     return XRPL_TX_RE.test(tx) ? `https://livenet.xrpl.org/transactions/${tx}` : null;
+  }
+  // stellar:pubnet は chainLabel が id をそのまま返す。KNOWN に "Stellar" を足すと
+  // isMainnet と L0/L1 の公開集計の鍵まで動くので、リンクだけ id の完全一致で作る。
+  // stellar:testnet などは一致しない（壊れたリンクより「—」）。
+  if (caip === "stellar:pubnet") {
+    return STELLAR_TX_RE.test(tx) ? `https://stellar.expert/explorer/public/tx/${tx}` : null;
   }
   const base = EVM_EXPLORERS[label];
   if (!base) return null;

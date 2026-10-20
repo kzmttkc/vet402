@@ -118,9 +118,11 @@ export async function getDecisionFeed(days: number, limit = 200): Promise<Decisi
   };
   if (!db) return empty;
 
+  // 受領証リンクは払った鎖。null の行だけカタログへ戻す（記録頁の receiptNetwork と同じ。/impact は既にこうしている）。
   const raw = await db.execute(sql`
     SELECT to_char(pu.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS at,
-           e.id AS endpoint_id, e.resource_key, e.network, pu.status, pu.amount_units,
+           e.id AS endpoint_id, e.resource_key, coalesce(pu.network, e.network) AS network,
+           pu.status, pu.amount_units,
            coalesce(pu.spent_units, '0') AS spent_units, pu.tx_hash
     FROM x402_l1_purchases pu
     JOIN x402_endpoints e ON e.id = pu.endpoint_id

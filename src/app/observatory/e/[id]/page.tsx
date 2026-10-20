@@ -14,7 +14,7 @@ import { TableScroll } from "@/components/site/TableScroll";
 import CodeBlock from "@/components/docs/CodeBlock";
 import { SITE_URL } from "@/lib/site-url";
 import { getEndpointDetail } from "@/lib/observatory/reader";
-import { explorerTxUrl } from "@/lib/observatory/chains";
+import { chainLabel, explorerTxUrl, receiptNetwork, paymentChainLabel } from "@/lib/observatory/chains";
 import RecordSubscribe from "@/components/site/RecordSubscribe";
 import { VerdictWord, ProbeTimeline, SettleGauge, type L0Verdict } from "@/components/site/Figures";
 import { getDb } from "@/lib/db/client";
@@ -247,7 +247,7 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                 <td>{endpoint.method ?? "undeclared"}</td>
               </tr>
               <tr>
-                <td>Network</td>
+                <td>Catalog network</td>
                 <td>{endpoint.network ?? "—"}</td>
               </tr>
               <tr>
@@ -452,6 +452,8 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                       HTTP
                     </th>
                     <th scope="col">On-chain tx</th>
+                    {/* 5 列目。先頭 4 列は動かさない（parseRecordPage は 4 列目を tx として読む）。 */}
+                    <th scope="col">Payment chain</th>
                     <th scope="col" className="num">
                       Latency
                     </th>
@@ -462,7 +464,9 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                       （表 731px・紙面 665px）。この製品の主張は「受領証がある」なので、
                       受領証を 3 列目に置き、金額・HTTP・L2 は同じ行の 2 段目に落とす。
                       2026-09-04 P2-18: HTTP を 3 列目へ戻し（配達失敗が見えるように）、受領証は 4 列目。 */}
-                  {purchases.map((p, i) => (
+                  {purchases.map((p, i) => {
+                    const paidOn = receiptNetwork(p.network, endpoint.network);
+                    return (
                     <Fragment key={i}>
                       {/* 2 段目に続くので 1 段目の罫線は消す。globals.css は触らない——Turbopack の
                           ビルドキャッシュがグローバル CSS の変更だけを落とす事故（2026-08-12・
@@ -500,7 +504,7 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                               リンクにしない。 */}
                           {p.txHash ? (
                             (() => {
-                              const url = explorerTxUrl(endpoint.network, p.txHash);
+                              const url = explorerTxUrl(paidOn, p.txHash);
                               const short = `${p.txHash.slice(0, 10)}…${p.txHash.slice(-4)}`;
                               return url ? (
                                 <a href={url} className="underline" rel="noopener noreferrer">
@@ -514,10 +518,11 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                             "—"
                           )}
                         </td>
+                        <td className="whitespace-nowrap border-b-0 pb-0.5">{paidOn ? paymentChainLabel(paidOn) : "—"}</td>
                         <td className="num border-b-0 pb-0.5">{p.latencyMs === null ? "—" : `${p.latencyMs} ms`}</td>
                       </tr>
                       <tr className="fact-subrow">
-                        <td colSpan={5} className="pt-0 font-[family-name:var(--font-mono)] text-xs font-normal text-brand-lift">
+                        <td colSpan={6} className="pt-0 font-[family-name:var(--font-mono)] text-xs font-normal text-brand-lift">
                           {p.amountUnits
                             ? `${p.amountUnits} units${usd(p.amountUnits) ? ` (≈ ${usd(p.amountUnits)} USDC)` : ""}`
                             : "amount —"}
@@ -533,7 +538,8 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                         </td>
                       </tr>
                     </Fragment>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </TableScroll>

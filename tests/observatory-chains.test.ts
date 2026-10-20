@@ -10,7 +10,7 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chainLabel, isTestnet } from "@/lib/observatory/chains";
+import { chainLabel, isMainnet, isTestnet } from "@/lib/observatory/chains";
 
 test("chainLabel collapses known CAIP-2 / legacy-slug aliases to one name", () => {
   assert.equal(chainLabel("eip155:8453"), "Base");
@@ -155,4 +155,14 @@ test("Tempo mainnet / Moderato are recognized by CAIP-2 id; Moderato is a testne
   assert.equal(explorerTxUrl("eip155:4217", "not-a-hash"), null);
   // テストネットの受領証リンクは作らない（探索器の URL を持たない）。
   assert.equal(explorerTxUrl("eip155:42431", tx), null);
+});
+
+// 2026-10-21: stellar:pubnet を KNOWN の "Stellar" にすると isMainnet が true になり、
+// L0 の mainnet 表と l1.byChain の鍵が動く。リンクは explorerTxUrl が id の完全一致で作る。
+test("stellar:pubnet stays unlabeled so the mainnet census does not move", () => {
+  assert.equal(chainLabel("stellar:pubnet"), "stellar:pubnet");
+  assert.equal(chainLabel("stellar:testnet"), "stellar:testnet");
+  assert.equal(isMainnet("stellar:pubnet"), false);
+  assert.equal(isTestnet("stellar:pubnet"), false);
+  assert.equal(isTestnet("stellar:testnet"), false);
 });

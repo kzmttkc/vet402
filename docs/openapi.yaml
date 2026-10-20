@@ -3000,6 +3000,12 @@ paths:
                         status: { type: string, description: "settled | settle_failed | delivered_no_receipt | …" }
                         amountUnits: { type: string, nullable: true }
                         txHash: { type: string, nullable: true, description: Present on settled rows — the on-chain receipt. }
+                        network:
+                          type: string
+                          nullable: true
+                          description: >-
+                            Chain this purchase paid on (CAIP-2 or a legacy slug). Null when the
+                            row has none. The catalog network is the parent object's network.
                         httpStatusPaid: { type: integer, nullable: true }
                         latencyMs: { type: integer, nullable: true }
                         l2Schema: { type: string, nullable: true }

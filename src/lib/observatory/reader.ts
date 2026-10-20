@@ -323,6 +323,8 @@ export type EndpointDetail = {
     status: string;
     amountUnits: string | null;
     txHash: string | null;
+    /** この購入が払った鎖（x402_l1_purchases.network）。null の行は記録頁がカタログの network に戻す。 */
+    network: string | null;
     httpStatusPaid: number | null;
     latencyMs: number | null;
     l2Schema: string | null;
@@ -534,6 +536,7 @@ export async function getEndpointDetail(id: string): Promise<EndpointDetail> {
           status: x402L1Purchases.status,
           amountUnits: x402L1Purchases.amountUnits,
           txHash: x402L1Purchases.txHash,
+          network: x402L1Purchases.network,
           httpStatusPaid: x402L1Purchases.httpStatusPaid,
           latencyMs: x402L1Purchases.latencyMs,
           l2Schema: x402L1Purchases.l2Schema,
@@ -672,6 +675,7 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
           status: x402L1Purchases.status,
           amountUnits: x402L1Purchases.amountUnits,
           txHash: x402L1Purchases.txHash,
+          network: x402L1Purchases.network,
           httpStatusPaid: x402L1Purchases.httpStatusPaid,
           latencyMs: x402L1Purchases.latencyMs,
           l2Schema: x402L1Purchases.l2Schema,
