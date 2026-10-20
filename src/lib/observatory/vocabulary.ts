@@ -167,13 +167,13 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "mismatch",
     group: "l2",
     definition:
-      "mismatch means the complete paid response is not JSON at all, is JSON that is not closed, is JSON but not an object, lacks a key the seller's declared output schema marks as required, or has a non-JSON content type despite a declaration. Since 2026-09-29 the row's raw_response_meta.l2.reason says which (not_json_body, unparseable, not_object, missing_keys or not_json_content_type), and missing keys are listed only when the body was read as JSON. Until 2026-09-29 vet402 read only the first 16,000 bytes of a paid response, so a longer JSON response could not be parsed and was recorded as a mismatch listing every declared required key as missing; the decision does not count such an older row as a mismatch when a key recorded as missing shows at the top level of the stored start of the body, and keeps an older row whose listing declares no output as a mismatch with no missing keys unless its stored body is complete and valid JSON. In the decision, a mismatch with recorded missing keys is a BLOCK, and one without is a WARN (l2_mismatch_unexplained).",
+      "mismatch means the paid response has a non-JSON content type despite declared required keys, or the paid response read in full is not JSON at all, is JSON that is not closed, is JSON but not an object or array, or lacks a key the seller's declared output schema marks as required. Since 2026-09-29 the row's raw_response_meta.l2.reason says which (not_json_body, unparseable, not_object, missing_keys or not_json_content_type), and missing keys are listed only when the body was read as JSON. Until 2026-09-29 vet402 read only the first 16,000 bytes of a paid response, so a longer JSON response could not be parsed and was recorded as a mismatch listing every declared required key as missing; the decision does not count such an older row as a mismatch when a key recorded as missing shows at the top level of the stored start of the body, and keeps an older row whose listing declares no output as a mismatch with no missing keys unless its stored body is complete and valid JSON. In the decision, a mismatch with recorded missing keys is a BLOCK, and one without is a WARN (l2_mismatch_unexplained).",
   },
   {
     term: "no_declaration",
     group: "l2",
     definition:
-      "no_declaration means the catalog entry declares no output schema, or one with no required keys and no example properties, so there is nothing to check against. It is never counted as a failure.",
+      "no_declaration means the listing's output schema gave vet402 nothing to check the response against: no schema, a schema with no required keys and no example properties, or example properties and a response whose content type is not JSON. An output example the seller puts in the 402 (extensions.bazaar.info.output.example) is not checked yet. It is never counted as a failed delivery.",
   },
   {
     term: "not_checked",

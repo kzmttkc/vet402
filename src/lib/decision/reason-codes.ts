@@ -199,7 +199,7 @@ export const REASON_CODES: readonly ReasonCodeDoc[] = [
     code: "l2_undeclared",
     role: "payer",
     effect: "none",
-    meaning: "The listing declares no output schema.",
+    meaning: "The listing declares no output schema, or one with no required keys and no example properties.",
     forPayer: "Nothing to compare; this alone does not stop an ALLOW.",
     sellerCanFix: "partly",
   },

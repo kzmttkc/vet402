@@ -1327,11 +1327,11 @@ claims:
     verified_at: 2026-09-05
   - id: seo_vocab_no_declaration_is_never_a_failure
     surface: src/lib/observatory/vocabulary.ts
-    quote: "It is never counted as a failure."
-    means: "売り手が出力スキーマを宣言していない場合、L2 は照合できないだけで、失敗として数えない"
+    quote: "It is never counted as a failed delivery."
+    means: "カタログの宣言に照合できる出力が無い場合（スキーマ無し・必須キーも例のプロパティも無い・例のプロパティだけで Content-Type が JSON でない）、L2 は照合できないだけで、配達の失敗として数えない（isDeliveryVerified は mismatch だけを見る）。判定は例のプロパティだけの宣言で直近が no_declaration なら l2_not_checked の WARN になりうる。402 の見本はまだ照合しない"
     check: null
     why_unverifiable: "集計規則であって、公開 GET が数値で返す種類の主張ではない。方法論 §7 が同じ定義を散文で公開している"
-    verified_at: 2026-09-05
+    verified_at: 2026-10-20
   - id: seo_vocab_l2_not_checked_is_never_a_failure
     surface: src/lib/observatory/vocabulary.ts
     quote: "so it is never counted as a failure"
@@ -1751,11 +1751,11 @@ claims:
     verified_at: 2026-09-19
   - id: method_l2_no_declaration_never_counted_as_failure
     surface: src/app/observatory/methodology/page.tsx
-    quote: "output schema; never counted as a failure."
-    means: "カタログの entry が出力スキーマを宣言していない（no_declaration）場合、それを失敗として数えない"
+    quote: "It is never counted as a failed delivery."
+    means: "カタログの宣言に照合できる出力が無い行（no_declaration）は配達の失敗として数えない（isDeliveryVerified は mismatch だけを見る）。判定は例のプロパティだけの宣言で直近が no_declaration なら l2_not_checked の WARN になりうる。402 の extensions.bazaar.info.output.example はまだ照合しない（2026-10-20 から影で記録するだけ）"
     check: null
-    why_unverifiable: "減点しないことは集計 GET の単一の値では表せない。判定は src/lib/observatory/l1-runner.ts の L2 評価（宣言が無ければ no_declaration を返す）にあり、同じファイルの isDeliveryVerified（l1-runner.ts:596）が l2Schema !== 'mismatch' で見る。tests/observatory-l1-delivery-verified.test.ts が no_declaration を減点しないことを固定する"
-    verified_at: 2026-09-19
+    why_unverifiable: "減点しないことは集計 GET の単一の値では表せない。判定は src/lib/observatory/l2-check.ts の checkL2Detailed（使える宣言が無ければ no_declaration）にあり、src/lib/observatory/l1-runner.ts の isDeliveryVerified が l2Schema !== 'mismatch' で見る。tests/observatory-l1-delivery-verified.test.ts が no_declaration を減点しないことを固定し、tests/l2-v2-output-example.test.ts が 402 の見本を固定する"
+    verified_at: 2026-10-20
   - id: method_l2_match_requires_every_declared_required_key
     surface: src/app/observatory/methodology/page.tsx
     quote: "the response parses and every declared required key is present."

@@ -983,11 +983,16 @@ export default async function ObservatoryMethodologyPage() {
           L2 runs only when the paid request in the same purchase returned <code>200</code>. It is
           a minimal structural check, not a full JSON-Schema validation: the response must parse
           as JSON and carry the top-level keys the catalog&apos;s own declared output schema marks
-          as required. <strong>no_declaration</strong> — the catalog entry does not declare an
-          output schema; never counted as a failure. <strong>match</strong> — the response parses
+          as required. <strong>no_declaration</strong>: the listing&apos;s output schema gave
+          vet402 nothing to check this response against (no schema, a schema with no required
+          keys and no example properties, or example properties with a content type that
+          is not JSON). An output example the seller puts in the 402 (
+          <code>extensions.bazaar.info.output.example</code>
+          ) is not checked yet. It is never counted as a failed delivery.{" "}
+          <strong>match</strong> — the response parses
           and every declared required key is present. <strong>mismatch</strong> — the body does
-          not parse as JSON, a required key is missing, or the content type is not JSON despite a
-          declaration. <strong>not_checked</strong> — the paid request did not return{" "}
+          not parse as JSON, is JSON but not an object or array, a required key is missing, or the
+          content type is not JSON despite declared required keys. <strong>not_checked</strong> — the paid request did not return{" "}
           <code>200</code>, so there was nothing to check. L2 does not verify that the values are
           correct or that the content is any good — that judgement is L3, and L3 is not built.
         </p>
