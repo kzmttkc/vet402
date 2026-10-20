@@ -2,9 +2,9 @@
 //   node roots.mjs <rows.json>          -> {"n", "root", "rows": [{"digest", "proof"}]}
 // digest = sha256(canonical JSON of the row), keys sorted, no whitespace
 // leaf   = sha256(0x00 || digest)
-// node   = sha256(0x01 || min(a, b) || max(a, b)); an odd node at the end of a level is carried up.
-// proof  = the sibling of each level from the leaf up; a carried level has no sibling.
-// The contract (src/lib.rs) folds a proof the same way; its tests use vectors printed by this file.
+// node   = sha256(0x01 || min(a, b) || max(a, b)). An odd node at the end of a level is carried up.
+// proof  = the sibling of each level from the leaf up. A carried level has no sibling.
+// The contract (src/lib.rs) folds a proof the same way. Its tests use vectors printed by this file.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

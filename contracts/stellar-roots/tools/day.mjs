@@ -3,7 +3,7 @@
 // Rows: every row of https://vet402.com/api/v1/observatory/export.csv whose network is stellar:pubnet and whose
 // attempted_at falls on that UTC day, with every column as the export prints it (strings), sorted by purchase_id.
 // The export keeps changing (a settle_claimed row later becomes settled), so the snapshot written here is what the
-// root covers; the export of a later day is not. The output holds the rows, each row's digest and proof, the root,
+// root covers. The export of a later day is not. The output holds the rows, each row's digest and proof, the root,
 // and the day number the contract takes (days since 1970-01-01 UTC).
 import { readFileSync, writeFileSync } from "node:fs";
 import { digestOf, tree } from "./roots.mjs";
@@ -48,8 +48,12 @@ const [header, ...body] = parseCsv(readFileSync(csvPath, "utf8"));
 for (const col of ["network", "attempted_at", "purchase_id"]) {
   if (!header.includes(col)) throw new Error(`the export has no ${col} column`);
 }
+body.forEach((cells, i) => {
+  if (cells.length === 1 && cells[0] === "") return; // a trailing newline
+  if (cells.length !== header.length) throw new Error(`export record ${i + 1} has ${cells.length} columns, the header has ${header.length}`);
+});
 const rows = body
-  .filter((cells) => cells.length === header.length)
+  .filter((cells) => !(cells.length === 1 && cells[0] === ""))
   .map((cells) => Object.fromEntries(header.map((h, i) => [h, cells[i]])))
   .filter((r) => r.network === "stellar:pubnet" && r.attempted_at.slice(0, 10) === date)
   .sort((a, b) => (a.purchase_id < b.purchase_id ? -1 : a.purchase_id > b.purchase_id ? 1 : 0));

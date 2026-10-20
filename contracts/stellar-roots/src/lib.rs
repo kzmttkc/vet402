@@ -15,7 +15,8 @@
 
 use soroban_sdk::{contract, contracterror, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, Vec};
 
-/// About 30 days of ledgers (5 s each). Roots are kept alive this long after each touch.
+/// About 30 days of ledgers (5 s each). A root gets this much life when it is committed. After that it is kept
+/// alive from outside (tools/commit-day.sh extends every committed day on each run, and anyone can extend it).
 const ROOT_TTL_LEDGERS: u32 = 518_400;
 const ROOT_TTL_THRESHOLD: u32 = ROOT_TTL_LEDGERS / 2;
 

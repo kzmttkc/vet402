@@ -4,7 +4,7 @@ One Merkle root per UTC day over vet402's public purchase records on Stellar: th
 https://vet402.com/api/v1/observatory/export.csv. Only the writer fixed at deploy time can commit, once per day, and a
 day's root can never be replaced. Anyone can read a root and check a row against it. The contract holds no funds.
 
-The same shape as vet402's Solana observation roots and Celo DeliveryRoots, with sha256:
+The same tree as vet402's Celo DeliveryRoots (https://vet402.com/data/celo-roots/2026-10-16/README.txt), with sha256:
 
 ```
 digest = sha256(canonical JSON of the row)      keys sorted, no whitespace, every value as the export prints it
@@ -23,7 +23,7 @@ an odd node at the end of a level is carried up unchanged
   later export.
 
 The Stellar testnet is reset from time to time. After a reset the contract is deployed again and the days in `days/`
-are committed again; the files here stay the same.
+are committed again. The files here stay the same.
 
 ## Functions
 
@@ -36,16 +36,22 @@ are committed again; the files here stay the same.
 
 ## Check a row yourself
 
+Run these in `contracts/stellar-roots`. `--source` can be any testnet account address (G...). A read needs no key and sends nothing.
+
 ```bash
 # 1. recompute the digest of a row from the row itself (here the first row of 2026-10-19)
 node --input-type=module -e 'import {digestOf} from "./tools/roots.mjs"; import {readFileSync} from "node:fs"; const d = JSON.parse(readFileSync("days/2026-10-19.json", "utf8")); console.log(digestOf(d.rows[0].row).toString("hex"), JSON.stringify(d.rows[0].proof))'
 # 2. ask the contract with that digest and the proof printed next to it (a read, nothing is sent)
-stellar contract invoke --id CCWWBZ2GBKDPRSUMT32CPB7LBUGHHKL37R5YNQC6RAWRV6PVIEKOBKRB --network testnet --source <any testnet key> --send=no \
+stellar contract invoke --id CCWWBZ2GBKDPRSUMT32CPB7LBUGHHKL37R5YNQC6RAWRV6PVIEKOBKRB --network testnet --source <any testnet G address> --send=no \
   -- verify --day 20745 --digest <digest> --proof '<proof>'
 # true. Change any field of the row, recompute the digest, and the same call returns false.
 ```
 
-`day` is days since 1970-01-01 UTC (2026-10-19 is 20745). `get_root --day 20745` returns the root and row count.
+`day` is days since 1970-01-01 UTC (2026-10-19 is 20745). `get_root --day 20745` returns the root and row count. The contract does not check `count`. Count the rows in `days/<date>.json` to check it.
+
+## How long a root stays
+
+A committed root lives in persistent storage with a time to live. The daily job extends every committed day each run (`stellar contract extend`, about 180 days, capped by the network). Anyone can extend or restore an entry too. An archived root makes `verify` fail until it is restored, so a `false` on an old day is worth one restore before reading it as a mismatch.
 
 ## Check the deployed code
 
@@ -61,12 +67,12 @@ shasum -a 256 onchain.wasm target/wasm32v1-none/release/vet402_stellar_roots.was
 ## Build and test
 
 ```bash
-cargo test                 # 6 tests; vectors from tools/roots.mjs, a separate Node implementation
+cargo test                 # vectors from tools/roots.mjs, a separate Node implementation
 stellar contract build     # target/wasm32v1-none/release/vet402_stellar_roots.wasm
 node tools/day.mjs export.csv 2026-10-19 days/2026-10-19.json   # one day's snapshot and root
 tools/commit-day.sh 2026-10-19   # build the snapshot from the live export and commit it (writer key only)
 ```
 
-A daily job runs `tools/commit-day.sh` after 14:30 UTC for the day before (vet402 re-checks settlements at 14:00 UTC).
+A job runs `tools/commit-day.sh` every hour. Before 14:30 UTC it does nothing. After that it commits yesterday (UTC) once, because vet402 re-checks settlements at 14:00 UTC. A root on chain that differs from the snapshot stops it and is not marked committed.
 
 MIT.

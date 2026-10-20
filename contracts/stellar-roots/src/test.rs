@@ -120,7 +120,9 @@ fn someone_other_than_the_writer_cannot_commit() {
             sub_invokes: &[],
         },
     }]);
-    assert!(client.try_commit_root(&DAY, &root, &5).is_err());
+    // The refusal is the missing authorization, not anything else.
+    let err = client.try_commit_root(&DAY, &root, &5).unwrap_err().unwrap_err();
+    assert_eq!(err, soroban_sdk::InvokeError::Abort);
     assert_eq!(client.get_root(&DAY), None);
 }
 
@@ -151,4 +153,20 @@ fn a_changed_row_a_wrong_proof_or_another_day_does_not_verify() {
     assert!(!client.verify(&DAY, &b32(&env, ROOT), &vec![&env]));
     // A day with no root.
     assert!(!client.verify(&(DAY + 1), &b32(&env, ROWS[0].0), &proof(&env, ROWS[0].1)));
+}
+
+#[test]
+fn a_one_row_day_verifies_with_an_empty_proof() {
+    // One row: the root is the leaf itself, sha256(0x00 || digest), and the proof is empty.
+    let (env, _writer, client) = setup();
+    env.mock_all_auths();
+    let digest = b32(&env, ROWS[0].0);
+    let mut buf = soroban_sdk::Bytes::new(&env);
+    buf.push_back(0x00);
+    buf.append(&soroban_sdk::Bytes::from_array(&env, &digest.to_array()));
+    let leaf: BytesN<32> = env.crypto().sha256(&buf).into();
+    client.commit_root(&DAY, &leaf, &1);
+    assert!(client.verify(&DAY, &digest, &vec![&env]));
+    // The leaf hash itself is not a row.
+    assert!(!client.verify(&DAY, &leaf, &vec![&env]));
 }
