@@ -1,0 +1,28 @@
+[package]
+name = "vet402-stellar-escrow"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Testnet sample that pays a seller only when vet402's public Stellar record shows the call was delivered. Holds no real funds."
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = "29.0.1"
+
+[dev-dependencies]
+soroban-sdk = { version = "29.0.1", features = ["testutils"] }
+vet402-stellar-roots = { path = "../stellar-roots" }
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
