@@ -20,8 +20,8 @@ WASM_HASH="${VET402_ROOTS_WASM_HASH:-4ff8e33502298ebf9bc4e8434a6c74fce26f96b7a9b
 FIRST_DAY="${VET402_ROOTS_FIRST_DAY:-2026-10-18}"
 # About 180 days of ledgers. The network caps it. It is renewed once per UTC day.
 EXTEND_LEDGERS="${VET402_ROOTS_EXTEND_LEDGERS:-3000000}"
-# Where a failure is said out loud (one line). Unset or missing file means the log only.
-ALERTS="${VET402_ROOTS_ALERTS:-$HOME/Takeshi_Automation/state/ALERTS.md}"
+# Where a failure is said out loud (one line). A missing file means the log only.
+ALERTS="${VET402_ROOTS_ALERTS:-$STATE/ALERTS.md}"
 mkdir -p "$STATE/days"
 LOG="$STATE/commit.log"
 log() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" | tee -a "$LOG"; }

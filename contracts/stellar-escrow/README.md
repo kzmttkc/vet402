@@ -43,8 +43,10 @@ The field checks are exact `"key":"value"` byte sequences. They are sound for th
   (https://stellar.expert/explorer/testnet/tx/488eac7623d699f16f06964f3ba2f641a07ee712607e4e0ddbcdd8263630d7bc).
 - Refused (2026-10-20): 1 XLM deposited for a purchase whose row says `settle_failed`
   (https://stellar.expert/explorer/testnet/tx/375a34f263b86ea3186fd4c433b06c29a091974a8365d4465bee08b9ada44811). `release`
-  with that row and its valid proof returns `Error(Contract, #10)`, NotDelivered. After the deadline, `refund` returns it to
-  the buyer.
+  with that row and its valid proof returns `Error(Contract, #10)`, NotDelivered. After the deadline, `refund` returned it to
+  the buyer (https://stellar.expert/explorer/testnet/tx/c9d167d83982b62bb091bc8ebee15b3aedde10b5524e3e8d923530c25911cde2).
+- A row longer than 4096 bytes cannot be released (the search stops there). vet402's rows are under 700 bytes today. Such
+  an escrow can only be refunded.
 
 ## Storage
 
