@@ -10,7 +10,8 @@
 # contracts/stellar-roots/days in the repository by hand with each push.
 # No secrets are read here. The stellar CLI signs with its own testnet identity "vet402-roots-writer".
 set -euo pipefail
-PATH="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+# VET402_ROOTS_PATH_PREFIX lets a test put fake stellar/curl first (they would otherwise be the real ones in /opt/homebrew/bin).
+PATH="${VET402_ROOTS_PATH_PREFIX:+$VET402_ROOTS_PATH_PREFIX:}/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 STATE="${VET402_ROOTS_STATE:-$HOME/.local/state/vet402-stellar-roots}"
 CONTRACT="${VET402_ROOTS_CONTRACT:-CCWWBZ2GBKDPRSUMT32CPB7LBUGHHKL37R5YNQC6RAWRV6PVIEKOBKRB}"
@@ -36,18 +37,31 @@ writer_call() { stellar "$@" --source vet402-roots-writer --network testnet; }
 # Keep the contract instance, its wasm code and every committed root alive. An archived entry stops answering until
 # it is restored, and the instance and code otherwise only get life when a root is committed.
 extend_all() {
+  local today mark failed=0
+  today="$(date -u +%Y-%m-%d)"
+  mark="$STATE/extended-$today"
+  [ -e "$mark" ] && return 0
   writer_call contract extend --id "$CONTRACT" --durability persistent --ledgers-to-extend "$EXTEND_LEDGERS" >/dev/null 2>&1 \
-    || log "extend of the contract instance failed. Next run tries again."
+    || { log "extend of the contract instance failed"; failed=1; }
   writer_call contract extend --wasm-hash "$WASM_HASH" --durability persistent --ledgers-to-extend "$EXTEND_LEDGERS" >/dev/null 2>&1 \
-    || log "extend of the contract code failed. Next run tries again."
+    || { log "extend of the contract code failed"; failed=1; }
   for f in "$STATE"/days/*.committed; do
     [ -e "$f" ] || continue
     local d n
     d="$(basename "$f" .committed)"
     n="$(day_number "$d")"
     writer_call contract extend --id "$CONTRACT" --key-xdr "$(day_key "$n")" --durability persistent \
-      --ledgers-to-extend "$EXTEND_LEDGERS" >/dev/null 2>&1 || log "extend failed for $d (day $n). Next run tries again."
+      --ledgers-to-extend "$EXTEND_LEDGERS" >/dev/null 2>&1 || { log "extend failed for $d (day $n)"; failed=1; }
   done
+  if [ $failed -eq 0 ]; then
+    rm -f "$STATE"/extended-*
+    : > "$mark"
+  else
+    if [ ! -e "$STATE/extend-alerted-$today" ]; then
+      alert "keeping the contract alive failed on $today (see the log). The next hourly run tries again."
+      : > "$STATE/extend-alerted-$today"
+    fi
+  fi
 }
 
 onchain_root() {
@@ -58,8 +72,8 @@ onchain_root() {
 EXPORT=""
 fetch_export() {
   [ -n "$EXPORT" ] && return 0
+  curl -sSfL -o "$TMP/export.csv" https://vet402.com/api/v1/observatory/export.csv || return 1
   EXPORT="$TMP/export.csv"
-  curl -sSfL -o "$EXPORT" https://vet402.com/api/v1/observatory/export.csv
 }
 
 # Commit one day. Returns 0 when the day is committed or has no rows, 1 on a failure (already said out loud).
@@ -113,6 +127,8 @@ else
     const out = [];
     while (d.toISOString().slice(0, 10) <= y && out.length < 14) { out.push(d.toISOString().slice(0, 10)); d = new Date(d.getTime() + 86400000); }
     console.log(out.join("\n"));' "$last")
+  # A day whose commit failed earlier keeps its .pending snapshot. Try it again on every run.
+  for p in "$STATE"/days/*.json.pending; do [ -e "$p" ] && DATES+=("$(basename "$p" .json.pending)"); done
 fi
 status=0
 for d in "${DATES[@]+"${DATES[@]}"}"; do

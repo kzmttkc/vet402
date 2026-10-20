@@ -47,7 +47,7 @@ stellar contract invoke --id CCWWBZ2GBKDPRSUMT32CPB7LBUGHHKL37R5YNQC6RAWRV6PVIEK
 # true. Change any field of the row, recompute the digest, and the same call returns false.
 ```
 
-`day` is days since 1970-01-01 UTC (2026-10-19 is 20745). `get_root --day 20745` returns the root and row count. The contract does not check `count`. Count the rows in `days/<date>.json` to check it.
+`day` is days since 1970-01-01 UTC (2026-10-19 is 20745). `get_root --day 20745` returns the root and row count. The contract does not check `count` against the rows (only that it is not zero). Count the rows in `days/<date>.json` to check it.
 
 ## How long a root stays
 
