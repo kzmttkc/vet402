@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-20 — Stellar: Soroban の日次 root 契約を testnet に（contracts/stellar-roots・作業ツリー）
+- **何を**: `contracts/stellar-roots`（Rust・soroban-sdk 29.0.1・MIT）。`commit_root(day, root, count)` は配備時に決めた writer だけ・1 日 1 回・上書き不可、`get_root(day)`、`verify(day, digest, proof)`。資金は持たない。木は Celo DeliveryRoots と同じ形で sha256（leaf = sha256(0x00||digest)、node = sha256(0x01||min||max)、余りは持ち上げ）。`tools/roots.mjs`（別実装の Node・テストの期待値もここから）、`tools/day.mjs`（公開 export の stellar:pubnet の 1 日分を写して root を作る）、`tools/commit-day.sh`（毎日の書き込み。launchd が UTC 17:40 に前日分）。`days/` は root が覆う行の写し（export は後で変わるので写しが記録）。
+- **testnet**: 契約 `CCWWBZ2GBKDPRSUMT32CPB7LBUGHHKL37R5YNQC6RAWRV6PVIEKOBKRB`、writer `GDAUF55VCANOEOLIT547GRH2FEIALYIOWNUHSSGWSWWHVNO53V5DCJIW`（testnet 専用・Claude が 10/20 に作った）。10/18（3 行）・10/19（17 行）を書いた。
+- **なぜ**: SCF #46 の出し直し（グラント戦略の発注・WORK_ORDERS 先頭）。Interest Form が「Stellar をデータ置き場に使うだけ」「該当の道具の経験」に当てる実物が無く 10/20 に不採用。
+- **影響**: vet402.com の公開面・判定・支払いは変えていない。本番の鍵は使わない。
+- **実測**: `cargo test` 6 件緑。testnet で、公開 export の実際の行の verify=true、digest を 1 文字変えると false、writer 以外の commit_root は署名不足で拒否。配備した wasm と手元の build の sha256 が一致（4ff8e335…0c07）。
+
 ## 2026-10-20 — BNB: 照合のレシート読みを BNB_VERIFY_RPC_URL（BNB Chain の公開 dataseed）へ（作業ツリー）
 - **何を**: `src/lib/chain/bnb.ts` に `bnbVerifyRpcUrl()`（BNB_VERIFY_RPC_URL → BNB_RPC_URL → null）と `getBnbVerifyClient()` を足し、`settlement-verify.ts` の `clientFor` の BNB をこれに替えた（`verifyL1Settlement` と `readAuthorizationNonces` が使う）。`readAuthorizationState`（最新の状態を読む）、索引（index-evm）、遅延回収の直読み（recover-late）は BNB_RPC_URL のまま。本番の BNB_VERIFY_RPC_URL は https://bsc-dataseed.bnbchain.org。プライバシーの頁に BNB Chain の公開 dataseed を足し、改訂日を 10/20 にした。
 - **なぜ**: 10/19 の BNB の settle_claimed 13 行が 14:00 UTC の照合の後も動かなかった。BNB_RPC_URL（PublicNode）は直近 1〜2 時間より前のレシートを "Archive requests require a personal token" で断り、照合は 1 日 1 回なので毎回 rpc_unavailable で素通りしていた（実測 10/19 14:3x UTC: PublicNode はレシートを拒否。10/20 の独立点検の実測: dataseed は約 2〜90 日前の実在の tx のレシートを返し、117 回続けて読んでエラー 0。1rpc.io/bnb は約 4 日より古い tx に null を返し 429 も出るので不採用）。
