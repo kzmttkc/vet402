@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-20 — Stellar: testnet の escrow の見本（contracts/stellar-escrow）
+- **何を**: deposit（buyer の署名・purchase_id は [0-9a-z-] の 1〜64 バイト・同じ purchase_id は 1 回）、release（誰でも呼べる。期限内・roots 契約の verify(day, sha256(row), proof) が true・row に `"purchase_id":"<id>"`・`"status":"settled"`・`"http_status_paid":"200"`・`"l2_reading":"match"` があるときだけ seller へ）、refund（期限後に buyer へ）、get、roots。作ったのは Grok Build、点検は独立の2人（88 NO-SHIP → 95 SHIP）。点検の残りの低（テストの穴3つ・.gitignore・writer 鍵を信頼する旨）はこちらで直し、ロジックを壊して新しいテストが落ちることを確かめた。stellar-roots の crate-type に rlib を足した（テスト用。wasm は 4ff8e335…0c07 のまま）。
+- **testnet**: 契約 `CBWZJ6IF25ZCPBSEP4YGZOJL4MS43Q2QDWN7PWRDP6AQKOXEXURUS7BG`（wasm 48417bb9…74b5）。10/20 に 1 XLM を預け、10/19 の実際の行（agent402.tools・settled・200・match）で release して seller に渡った。settle_failed の行では Error(Contract, #10) NotDelivered で止まった。
+- **なぜ**: SCF #46 の出し直し（WORK_ORDERS の発注の 3）。
+- **影響**: 本番の支払い・公開面は変えていない。testnet の XLM だけ。
+
 ## 2026-10-20 — Stellar: Soroban の日次 root 契約を testnet に（contracts/stellar-roots・作業ツリー）
 - **何を**: `contracts/stellar-roots`（Rust・soroban-sdk 29.0.1・MIT）。`commit_root(day, root, count)` は配備時に決めた writer だけ・1 日 1 回・上書き不可、`get_root(day)`、`verify(day, digest, proof)`。資金は持たない。木は Celo DeliveryRoots と同じ形で sha256（leaf = sha256(0x00||digest)、node = sha256(0x01||min||max)、余りは持ち上げ）。`tools/roots.mjs`（別実装の Node・テストの期待値もここから）、`tools/day.mjs`（公開 export の stellar:pubnet の 1 日分を写して root を作る）、`tools/commit-day.sh`（毎日の書き込み。launchd が毎時起動し、UTC 14:30 以降に、最後に書いた日の翌日から昨日までを書く。送信前に写しを .pending で残し、送信後に chain の root と照合、違えば止めて state/ALERTS.md に1行。毎回、契約の instance・wasm code・書いた全日の TTL を延ばす）。`days/` は root が覆う行の写し（export は後で変わるので写しが記録）。
 - **testnet**: 契約 `CCWWBZ2GBKDPRSUMT32CPB7LBUGHHKL37R5YNQC6RAWRV6PVIEKOBKRB`、writer `GDAUF55VCANOEOLIT547GRH2FEIALYIOWNUHSSGWSWWHVNO53V5DCJIW`（testnet 専用・Claude が 10/20 に作った）。10/18（3 行）・10/19（17 行）を書いた。
