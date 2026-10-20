@@ -2,7 +2,7 @@
 # Commit UTC days' roots to the Stellar roots contract on testnet, keep each day's snapshot, and keep the contract
 # and every committed root alive.
 #   commit-day.sh YYYY-MM-DD    one day
-#   commit-day.sh               every day from the one after the last committed day up to yesterday (UTC), at most 14
+#   commit-day.sh               every day of the last 14 up to yesterday (UTC) that is not committed or known empty
 # Without a date it does nothing before 14:30 UTC: vet402 re-checks settlements at 14:00 UTC, so yesterday's rows
 # are settled by then. A scheduler can run it every hour. A day already committed is not committed again, and a day
 # missed while the machine was asleep is picked up on the next run.
@@ -16,7 +16,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 STATE="${VET402_ROOTS_STATE:-$HOME/.local/state/vet402-stellar-roots}"
 CONTRACT="${VET402_ROOTS_CONTRACT:-CCWWBZ2GBKDPRSUMT32CPB7LBUGHHKL37R5YNQC6RAWRV6PVIEKOBKRB}"
 WASM_HASH="${VET402_ROOTS_WASM_HASH:-4ff8e33502298ebf9bc4e8434a6c74fce26f96b7a9bc14c193739207390b0c07}"
-# About 180 days of ledgers. The network caps it, and the call is repeated every run.
+# The first UTC day the contract covers. Days before it are never tried.
+FIRST_DAY="${VET402_ROOTS_FIRST_DAY:-2026-10-18}"
+# About 180 days of ledgers. The network caps it. It is renewed once per UTC day.
 EXTEND_LEDGERS="${VET402_ROOTS_EXTEND_LEDGERS:-3000000}"
 # Where a failure is said out loud (one line). Unset or missing file means the log only.
 ALERTS="${VET402_ROOTS_ALERTS:-$HOME/Takeshi_Automation/state/ALERTS.md}"
@@ -54,7 +56,7 @@ extend_all() {
       --ledgers-to-extend "$EXTEND_LEDGERS" >/dev/null 2>&1 || { log "extend failed for $d (day $n)"; failed=1; }
   done
   if [ $failed -eq 0 ]; then
-    rm -f "$STATE"/extended-*
+    rm -f "$STATE"/extended-* "$STATE"/extend-alerted-*
     : > "$mark"
   else
     if [ ! -e "$STATE/extend-alerted-$today" ]; then
@@ -117,18 +119,21 @@ if [ $# -ge 1 ]; then
 else
   now_min=$((10#$(date -u +%H) * 60 + 10#$(date -u +%M)))
   if [ "$now_min" -lt $((14 * 60 + 30)) ]; then exit 0; fi
-  # From the day after the last committed day (or yesterday if none) up to yesterday, at most 14 days.
-  last="$(ls "$STATE"/days/ 2>/dev/null | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}\.(committed|empty)$' | sed -E 's/\.(committed|empty)$//' | sort | tail -1 || true)"
+  # Every day in the last 14 (up to yesterday, UTC, and not before the contract's first day) that is neither
+  # committed nor known to be empty. A day that failed for any reason stays in this list until it succeeds.
   DATES=()
-  while IFS= read -r line; do [ -n "$line" ] && DATES+=("$line"); done < <(node -e '
-    const y = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-    const last = process.argv[1];
-    let d = last ? new Date(Date.parse(last + "T00:00:00Z") + 86400000) : new Date(Date.parse(y + "T00:00:00Z"));
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    [ -e "$STATE/days/$line.committed" ] || [ -e "$STATE/days/$line.empty" ] || DATES+=("$line")
+  done < <(node -e '
+    const start = process.argv[1];
+    const y = Date.parse(new Date(Date.now() - 86400000).toISOString().slice(0, 10) + "T00:00:00Z");
     const out = [];
-    while (d.toISOString().slice(0, 10) <= y && out.length < 14) { out.push(d.toISOString().slice(0, 10)); d = new Date(d.getTime() + 86400000); }
-    console.log(out.join("\n"));' "$last")
-  # A day whose commit failed earlier keeps its .pending snapshot. Try it again on every run.
-  for p in "$STATE"/days/*.json.pending; do [ -e "$p" ] && DATES+=("$(basename "$p" .json.pending)"); done
+    for (let t = y - 13 * 86400000; t <= y; t += 86400000) {
+      const d = new Date(t).toISOString().slice(0, 10);
+      if (d >= start) out.push(d);
+    }
+    console.log(out.join("\n"));' "$FIRST_DAY")
 fi
 status=0
 for d in "${DATES[@]+"${DATES[@]}"}"; do
