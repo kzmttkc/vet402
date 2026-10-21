@@ -34,7 +34,21 @@ alert() {
 
 day_number() { node -e 'console.log(Math.floor(Date.parse(process.argv[1] + "T00:00:00Z") / 86400000))' "$1"; }
 day_key() { stellar xdr encode --type ScVal "{\"vec\":[{\"symbol\":\"Root\"},{\"u32\":$1}]}"; }
-writer_call() { stellar "$@" --source vet402-roots-writer --network testnet; }
+# The global options go before the "--" that starts the contract function's own arguments. Anything after it is
+# parsed as an argument of the contract function (2026-10-21: get_root got "--source" and stellar exited with a usage
+# error, so every hourly run from 15:11 UTC read "could not read the chain" and 2026-10-20 was not committed).
+writer_call() {
+  local args=() placed=0 a
+  for a in "$@"; do
+    if [ "$a" = "--" ] && [ "$placed" = 0 ]; then
+      args+=(--source vet402-roots-writer --network testnet --); placed=1
+    else
+      args+=("$a")
+    fi
+  done
+  [ "$placed" = 1 ] || args+=(--source vet402-roots-writer --network testnet)
+  stellar "${args[@]}"
+}
 
 # Keep the contract instance, its wasm code and every committed root alive. An archived entry stops answering until
 # it is restored, and the instance and code otherwise only get life when a root is committed.
