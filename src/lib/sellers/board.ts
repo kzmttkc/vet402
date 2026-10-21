@@ -4,7 +4,7 @@
 // 1 出品は「最新の購入行」1 つで数える（Base の行と、network の無い行＝支払い前に止まった行）。
 // 数字は頁に書かない。毎回ここを通して DB の行から出す。
 // ============================================================
-import { chainLabel, explorerTxUrl } from "@/lib/observatory/chains";
+import { explorerTxUrl, paymentChainLabel } from "@/lib/observatory/chains";
 import {
   classifySellerRow,
   exportReasonLine,
@@ -250,13 +250,47 @@ export function filterSellersBySide(sellers: readonly SellerSummary[], side: Sel
   return side ? sellers.filter((s) => s[side] > 0) : [...sellers];
 }
 
+/** 検索語からホスト名（小文字・scheme と path と末尾のポートを落とす）。 */
+export function sellerSearchNeedle(q: string): string {
+  return q.trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0].replace(/:[0-9]+$/, "");
+}
+
 /** 検索: ホスト名の完全一致を先頭に、部分一致を続ける（最大 limit 件）。 */
 export function searchSellers(sellers: readonly SellerSummary[], q: string, limit = 50): { exact: SellerSummary | null; matches: SellerSummary[] } {
-  const needle = q.trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0].replace(/:[0-9]+$/, "");
+  const needle = sellerSearchNeedle(q);
   if (!needle) return { exact: null, matches: [] };
   const exact = sellers.find((s) => s.host === needle) ?? null;
   const matches = sellers.filter((s) => s.host !== needle && s.host.includes(needle)).slice(0, limit);
   return { exact, matches };
+}
+
+/**
+ * 完全一致のホストを記録頁へ送る。Base の一覧にいるホストに加え、購入行のあるホスト
+ * （Base の出品が無くても）も送る。部分一致が 1 件でもあれば送らない（一覧に残す）。
+ */
+export function sellerExactRedirectHost(
+  sellers: readonly { host: string }[],
+  q: string,
+  purchasedHosts: readonly string[],
+): string | null {
+  const needle = sellerSearchNeedle(q);
+  if (!needle) return null;
+  if (sellers.some((s) => s.host !== needle && s.host.includes(needle))) return null;
+  const exact = sellers.find((s) => s.host === needle);
+  if (exact) return exact.host;
+  return purchasedHosts.includes(needle) ? needle : null;
+}
+
+/**
+ * 検索の転送。購入ホストの読み取り失敗は空配列と分ける（空なら一致が無い。失敗は頁が障害と書く）。
+ */
+export function sellerSearchRedirect(
+  sellers: readonly { host: string }[],
+  q: string,
+  purchased: { ok: true; hosts: readonly string[] } | { ok: false },
+): { host: string | null; failed: boolean } {
+  if (!purchased.ok) return { host: null, failed: true };
+  return { host: sellerExactRedirectHost(sellers, q, purchased.hosts), failed: false };
 }
 
 // ------------------------------------------------------------
@@ -312,6 +346,24 @@ export interface SellerListing extends SellerEndpointFacts {
   lastSellerSignal: { at: string; bucket: "delivered" | "seller" } | null;
   /** 次に vet402 がこの出品を買う目安（next-buy.ts・計算できなければ null・2026-09-29 第6巡）。 */
   nextBuy: NextBuy | null;
+  /**
+   * 出品の、Base 以外の最新の署名済み購入。Base より古くても付ける。
+   * 先頭の件数とカードの Result・Whose side には入れない。頁は別の欄に出す。
+   */
+  otherChain: OtherChainAttempt | null;
+}
+
+/** 出品の、Base 以外の最新の購入（reader が 1 出品 1 行で渡す）。 */
+export interface OtherChainAttempt {
+  endpointId: string;
+  network: string;
+  status: string;
+  attemptedAt: string;
+  httpStatusPaid: number | null;
+  /** 決済 tx。無い行はリンクを出さない。 */
+  txHash?: string | null;
+  /** 支払い付き要求の本文が空でなかったか。未記録は null。Base の件数には使わない。 */
+  payloadNonEmpty?: boolean | null;
 }
 
 export interface SellerDetail {
@@ -351,10 +403,36 @@ export function showRow(r: SellerRowFacts, days?: Iterable<string>, now: number 
   };
 }
 
-/** 出品の並び: 購入のある出品を新しい順、まだの出品は resource_key 順。 */
+/** 並びと題に使う時刻。Base の最新行と、それより新しい otherChain の新しい方。 */
+function listingSortAt(l: SellerListing): string | null {
+  const base = l.latest?.facts.attemptedAt ?? null;
+  const other = l.otherChain?.attemptedAt ?? null;
+  if (base && other) return base > other ? base : other;
+  return base ?? other;
+}
+
+/**
+ * 題と dateModified の時刻。Base の lastAttemptAt と otherChain.attemptedAt の新しい方。
+ * 新しい方が Base 以外なら、その鎖の公開名。
+ */
+export function sellerHeadline(detail: Pick<SellerDetail, "summary" | "listings">): { at: string | null; chain: string | null } {
+  let at = detail.summary.lastAttemptAt;
+  let chain: string | null = null;
+  for (const l of detail.listings) {
+    const o = l.otherChain;
+    if (!o) continue;
+    if (!at || o.attemptedAt > at) {
+      at = o.attemptedAt;
+      chain = paymentChainLabel(o.network);
+    }
+  }
+  return { at, chain };
+}
+
+/** 出品の並び: 購入のある出品を新しい順、まだの出品は resource_key 順。時刻は Base と otherChain の新しい方。 */
 function compareListings(a: SellerListing, b: SellerListing): number {
-  const at = a.latest?.facts.attemptedAt ?? null;
-  const bt = b.latest?.facts.attemptedAt ?? null;
+  const at = listingSortAt(a);
+  const bt = listingSortAt(b);
   if (at && bt) return bt.localeCompare(at) || a.resourceKey.localeCompare(b.resourceKey);
   if (at) return -1;
   if (bt) return 1;
@@ -370,6 +448,7 @@ export function buildSellerDetail(
   rows: readonly SellerRowFacts[],
   fetchedAt: string,
   days?: FailureDays,
+  otherAttempts: readonly OtherChainAttempt[] = [],
 ): SellerDetail {
   const now = nowOf(fetchedAt);
   const allDays = mergeDays(rows, days, now);
@@ -380,6 +459,8 @@ export function buildSellerDetail(
     byEndpoint.set(r.endpointId, list);
   }
   const selectedBy = { census: 0, retest: 0 };
+  const otherByEndpoint = new Map<string, OtherChainAttempt>();
+  for (const a of otherAttempts) otherByEndpoint.set(a.endpointId, a);
   const listings: SellerListing[] = endpoints.map((e) => {
     const own = (byEndpoint.get(e.endpointId) ?? []).slice().sort((a, b) => b.attemptedAt.localeCompare(a.attemptedAt));
     const shown = own.slice(0, 1 + EARLIER_ROWS_SHOWN).map((r) => showRow(r, allDays.get(e.endpointId), now));
@@ -388,17 +469,27 @@ export function buildSellerDetail(
       if (s.facts.selection === "retest") selectedBy.retest++;
     }
     const latest = shown[0] ?? null;
+    const otherChain = otherByEndpoint.get(e.endpointId) ?? null;
     const earlier = shown.slice(1);
     const deliveredAfterFailure = latest?.bucket === "delivered" && shown.slice(1).some((r) => r.bucket !== "delivered");
     const signal = shown.find((r) => r.bucket === "delivered" || r.bucket === "seller");
     const lastSellerSignal = signal ? { at: signal.facts.attemptedAt, bucket: signal.bucket as "delivered" | "seller" } : null;
-    return { ...e, latest, earlier, deliveredAfterFailure, lastSellerSignal, nextBuy: nextBuyOf(e, e.nextBuyFacts, Date.parse(fetchedAt)) };
+    return {
+      ...e,
+      latest,
+      earlier,
+      deliveredAfterFailure,
+      lastSellerSignal,
+      nextBuy: nextBuyOf(e, e.nextBuyFacts, Date.parse(fetchedAt)),
+      otherChain,
+    };
   });
   listings.sort(compareListings);
   const latestRows: LatestRow[] = listings.filter((l) => l.latest).map((l) => ({ ...l.latest!.facts, host }));
   const board = buildSellerBoard([{ host, listings: endpoints.length }], latestRows, fetchedAt, null, allDays);
   const summary = board.sellers[0] ?? { host, listings: 0, ...zero(), lastAttemptAt: null, rebuyEligible: false, rebuyEndpointId: null };
   const hasConfirmedSeller = listings.some((l) => [l.latest, ...l.earlier].some((r) => r?.confirmedSeller));
+  // 先頭の 4 数は Base の行だけ。他チェーンの購入はここへ入れない（origin/main と同じループ）。
   const sellerView = { delivered: 0, seller: 0, none: 0 };
   for (const l of listings) {
     if (!l.latest) continue;
@@ -467,7 +558,7 @@ export function buildSellerOtherChains(
     .map((r) => ({
       endpointId: r.facts.endpointId,
       resourceKey: r.resourceKey,
-      chain: chainLabel(r.facts.network ?? r.catalogNetwork),
+      chain: paymentChainLabel(r.facts.network ?? r.catalogNetwork ?? ""),
       latest: showRow(r.facts, undefined, nowOf(fetchedAt)),
     }))
     .sort(

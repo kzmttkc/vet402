@@ -3,7 +3,8 @@
 //
 // 1 回の頁の描画で走る問い合わせは軽いものに限る（鍵なしの公開面・Vercel に支出上限を置いていない）:
 //   readSellerBoard   2 本。本番 READ ONLY の EXPLAIN ANALYZE（2026-09-28）で 37 ms と 88 ms。
-//   readSellerDetail  2 本。1 ホストの出品と、その購入行（出品ごとに新しい 5 行まで）。
+//   readSellerDetail  3 本。1 ホストの出品と、その Base の購入行（出品ごとに新しい 5 行まで）と、
+//                     Base 以外の最新の購入行（「未購入」と書かないため）。
 //   readPurchasedHosts      1 本。購入行のある host の集合（Base の出品が無い host を 404 にしないための関門）。
 //   readSellerOtherChains   1 本。1 ホストの出品ごとの最新の購入行（チェーンを問わない）。
 //   readSellerFailureDays   1 本（2026-09-29 第4巡）。seller の側の候補が最新・表示中にある出品だけ、その出品の
@@ -22,6 +23,7 @@ import {
   buildSellerOtherChains,
   EARLIER_ROWS_SHOWN,
   type LatestRow,
+  type OtherChainAttempt,
   type RetestQueue,
   type SellerBoard,
   type SellerDetail,
@@ -365,7 +367,37 @@ export async function readSellerDetail(db: Db, host: string): Promise<SellerDeta
   );
   const rows = rowsOf(rowsRaw).map(toRowFacts);
   const days = await readSellerFailureDays(db, rows.filter((r) => sellerCandidateDay(r) !== null).map((r) => r.endpointId));
-  return buildSellerDetail(host, endpoints, rows, fetchedAt, days);
+  const otherRaw = await db.execute(sql`
+    SELECT DISTINCT ON (pu.endpoint_id)
+      pu.endpoint_id::text AS endpoint_id,
+      pu.network,
+      pu.status,
+      to_char(pu.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS attempted_at,
+      pu.http_status_paid,
+      pu.tx_hash,
+      pu.payload_non_empty
+    FROM x402_l1_purchases pu
+    WHERE pu.endpoint_id IN (SELECT (jsonb_array_elements_text(${ids}::jsonb))::uuid)
+      AND coalesce(pu.network, '') NOT IN (${BASE_A}, ${BASE_B}, '')
+      AND pu.status IN (${sql.join([...SIGNED_ROW_STATUSES].map((s) => sql`${s}`), sql`, `)})
+    ORDER BY pu.endpoint_id, pu.attempted_at DESC, pu.id DESC`);
+  const otherAttempts: OtherChainAttempt[] = [];
+  for (const r of rowsOf(otherRaw)) {
+    const network = str(r.network);
+    const status = str(r.status);
+    const attemptedAt = str(r.attempted_at);
+    if (!network || !status || !attemptedAt) continue;
+    otherAttempts.push({
+      endpointId: String(r.endpoint_id),
+      network,
+      status,
+      attemptedAt,
+      httpStatusPaid: toInt(r.http_status_paid),
+      txHash: str(r.tx_hash),
+      payloadNonEmpty: typeof r.payload_non_empty === "boolean" ? r.payload_non_empty : null,
+    });
+  }
+  return buildSellerDetail(host, endpoints, rows, fetchedAt, days, otherAttempts);
 }
 
 const SIGNED_LIST = [...SIGNED_ROW_STATUSES];

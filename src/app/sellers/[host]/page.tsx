@@ -5,7 +5,7 @@ import { breadcrumbJsonLd, pageMetadata, publisherOrg } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site-url";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
-import { resolveSellerPage, type SellerPageData } from "@/lib/sellers/board";
+import { resolveSellerPage, sellerHeadline, type SellerPageData } from "@/lib/sellers/board";
 import {
   getPurchasedHostsCached,
   getSellerBoardCached,
@@ -19,6 +19,7 @@ import {
   SellersNotice,
   sellerHeading,
   sellerOtherChainsTitle,
+  sellerDescription,
   sellerPageTitle,
   sellerPath,
   UNDER_RECHECK,
@@ -69,23 +70,25 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
   // 2026-09-29 敵対的監査: 売り手側とした失敗の一部が実は vet402 側・判定保留・宣言どおりの無料応答
   // だった。帰属の規則を直して再確認するまで、他社名の頁を検索に出さない（頁は売り手が見られるよう残す）。
-  // 2026-09-29: 表題に最新の購入日を入れる（sellerHeading）。一覧（キャッシュ済み）の同じ host の値を使う。
-  const lastAttemptAt = await getSellerBoardCached()
-    .then((b) => b.sellers.find((x) => x.host === host)?.lastAttemptAt ?? null)
-    .catch(() => null);
+  // 表題の日付は Base 行と otherChain の新しい方（sellerHeadline）。詳細の読み取りに失敗したときは一覧の lastAttemptAt に戻す。
+  const detailForTitle = await getSellerDetailCached(host).catch(() => null);
+  const head = detailForTitle
+    ? sellerHeadline(detailForTitle)
+    : {
+        at: await getSellerBoardCached()
+          .then((b) => b.sellers.find((x) => x.host === host)?.lastAttemptAt ?? null)
+          .catch(() => null),
+        chain: null,
+      };
   const meta = pageMetadata({
-    title: sellerHeading(host, lastAttemptAt),
-    description: sellerDescription(host),
+    title: sellerHeading(host, head.at, head.chain),
+    description: sellerDescription(host, head.chain),
     path: `/sellers/${host}`,
     noindex: true,
   });
   // 2026-09-28 SEO 監査: layout の template（"%s | vet402"）を通さず、長さを見て接尾辞を
   // 付けるかどうかを sellerPageTitle が決める。OG/Twitter の表題は素のまま（site_name が担う）。
-  return { ...meta, title: { absolute: sellerPageTitle(host, lastAttemptAt) } };
-}
-
-function sellerDescription(host: string): string {
-  return `What happened when vet402 paid ${host} over x402 on Base: each purchase result, what to fix, and whose side a failure was on.`;
+  return { ...meta, title: { absolute: sellerPageTitle(host, head.at, head.chain) } };
 }
 
 export default async function SellerPage({ params, searchParams }: Props) {
@@ -120,17 +123,18 @@ export default async function SellerPage({ params, searchParams }: Props) {
   // （CSP の nonce 付き・safeJsonLd で "<" を逃がす）。ホスト名は DB 由来なので関門を必ず通す。
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   const path = sellerPath(detail.host);
+  const head = sellerHeadline(detail);
   const webPage = {
     "@context": "https://schema.org",
     "@type": "WebPage",
-    name: sellerHeading(detail.host, detail.summary.lastAttemptAt),
-    description: sellerDescription(detail.host),
+    name: sellerHeading(detail.host, head.at, head.chain),
+    description: sellerDescription(detail.host, head.chain),
     url: `${SITE_URL}${path}`,
     inLanguage: "en",
     isPartOf: { "@type": "WebSite", name: "vet402", url: SITE_URL },
     publisher: publisherOrg(),
     about: { "@type": "Thing", name: detail.host },
-    ...(detail.summary.lastAttemptAt ? { dateModified: detail.summary.lastAttemptAt } : {}),
+    ...(head.at ? { dateModified: head.at } : {}),
   };
   const breadcrumb = breadcrumbJsonLd([
     { name: "Home", path: "/" },

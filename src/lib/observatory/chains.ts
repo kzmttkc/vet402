@@ -193,6 +193,99 @@ export function paymentChainLabel(network: string): string {
   return chainLabel(network);
 }
 
+/**
+ * 名前・短い id・CAIP を、観測所の network 絞り込みが同じ鎖として扱うための綴り。
+ * chainLabel の戻り値は変えない（isMainnet と l1.byChain の鍵を動かさない）。
+ * "bnb" / "bsc" は eip155:56、"stellar" は stellar:pubnet。テストネットは別の鍵のまま。
+ */
+const FILTER_ALIAS_TO_CANONICAL: Record<string, string> = {
+  bnb: "eip155:56",
+  bsc: "eip155:56",
+  stellar: "stellar:pubnet",
+  celo: "eip155:42220",
+  ethereum: "eip155:1",
+  arbitrum: "eip155:42161",
+  optimism: "eip155:10",
+  avalanche: "eip155:43114",
+  tempo: "eip155:4217",
+};
+
+const NETWORK_FILTER_SPELLINGS: readonly string[] = [
+  ...Object.keys(KNOWN),
+  `solana:${SOLANA_MAINNET_GENESIS}`,
+  `solana:${SOLANA_DEVNET_GENESIS}`,
+  "solana",
+  "solana-mainnet",
+  "solana-devnet",
+  "stellar:pubnet",
+  "stellar",
+  "bnb",
+  "bsc",
+  "celo",
+  "polygon",
+  "xrpl",
+  "xrpl:mainnet",
+  "ethereum",
+  "arbitrum",
+  "optimism",
+  "avalanche",
+  "tempo",
+];
+
+function canonicalNetworkId(raw: string): string {
+  const trimmed = raw.trim();
+  const alias = FILTER_ALIAS_TO_CANONICAL[trimmed.toLowerCase()];
+  if (alias) return alias;
+  return toCaip2(trimmed) ?? trimmed;
+}
+
+function networkGroupKey(raw: string): string {
+  return paymentChainLabel(canonicalNetworkId(raw)).toLowerCase();
+}
+
+/**
+ * Network 列の title。絞り込みの鎖がカタログの network と違う行は、購入の network で入ったと書く。
+ * カタログの network が絞り込みに入る行は、今までどおり台帳の id を title にする。
+ */
+export function networkFilterCellTitle(catalogNetwork: string | null, filter: string | null): string | undefined {
+  if (!filter) return catalogNetwork ?? undefined;
+  const catalogHit =
+    !!catalogNetwork && networkFilterIds(filter).some((id) => id.toLowerCase() === catalogNetwork.toLowerCase());
+  if (catalogHit) return catalogNetwork ?? undefined;
+  const catalog = catalogNetwork ? ` Catalog network: ${catalogNetwork}.` : "";
+  return `In this filter because a purchase network matched.${catalog}`;
+}
+
+/**
+ * Network 列の見える語。カタログの network が絞り込みの鎖なら chainLabel のまま。
+ * 絞り込みの外なら、セルは絞り込みの鎖の公開名。カタログの id は title（networkFilterCellTitle）に残す。
+ */
+export function networkFilterCellLabel(catalogNetwork: string | null, filter: string | null): string {
+  if (filter) {
+    const catalogHit =
+      !!catalogNetwork && networkFilterIds(filter).some((id) => id.toLowerCase() === catalogNetwork.toLowerCase());
+    if (!catalogHit) return paymentChainLabel(canonicalNetworkId(filter));
+  }
+  return catalogNetwork ? chainLabel(catalogNetwork) : "—";
+}
+
+/** 絞り込みの入力と同じ鎖を指す、台帳に現れうる network 文字列。未知の id はそれ自身だけ。 */
+export function networkFilterIds(raw: string): string[] {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  const key = networkGroupKey(trimmed);
+  const out = new Set<string>();
+  for (const spelling of NETWORK_FILTER_SPELLINGS) {
+    if (networkGroupKey(spelling) === key) {
+      out.add(spelling);
+      out.add(canonicalNetworkId(spelling));
+    }
+  }
+  out.add(canonicalNetworkId(trimmed));
+  if (!/\s/.test(trimmed)) out.add(trimmed);
+  return [...out].sort();
+}
+
 /** Block-explorer URL for a settlement tx on the given network, or null when the chain has no explorer here or the tx is not well-formed for it. */
 export function explorerTxUrl(network: unknown, tx: unknown): string | null {
   if (typeof tx !== "string" || tx === "") return null;

@@ -8,9 +8,10 @@
 // chainLabel() is the single normalization point so a grant-outreach page
 // counting "Base" doesn't undercount by missing the alias.
 // ============================================================
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chainLabel, isMainnet, isTestnet } from "@/lib/observatory/chains";
+import { chainLabel, isMainnet, isTestnet, networkFilterCellLabel, networkFilterCellTitle, networkFilterIds } from "@/lib/observatory/chains";
 
 test("chainLabel collapses known CAIP-2 / legacy-slug aliases to one name", () => {
   assert.equal(chainLabel("eip155:8453"), "Base");
@@ -165,4 +166,101 @@ test("stellar:pubnet stays unlabeled so the mainnet census does not move", () =>
   assert.equal(isMainnet("stellar:pubnet"), false);
   assert.equal(isTestnet("stellar:pubnet"), false);
   assert.equal(isTestnet("stellar:testnet"), false);
+});
+
+function includesAll(ids: readonly string[], want: readonly string[], label: string) {
+  for (const w of want) assert.ok(ids.includes(w), `${label}: ${w} missing from ${ids.join(",")}`);
+}
+
+test("networkFilterIds treats a name, a short id, and a CAIP id as one chain", () => {
+  const solana = networkFilterIds("Solana");
+  includesAll(solana, ["solana", "solana-mainnet", `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`], "Solana");
+  includesAll(networkFilterIds("solana"), ["solana", "solana-mainnet", `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`], "solana");
+  assert.equal(solana.includes("solana-devnet"), false);
+  assert.equal(solana.includes("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"), false);
+
+  const stellar = networkFilterIds("Stellar");
+  includesAll(stellar, ["stellar", "stellar:pubnet"], "Stellar");
+  includesAll(networkFilterIds("stellar:pubnet"), ["stellar", "stellar:pubnet"], "stellar:pubnet");
+  assert.equal(stellar.includes("stellar:testnet"), false);
+
+  const bnb = networkFilterIds("BNB");
+  includesAll(bnb, ["bnb", "bsc", "eip155:56"], "BNB");
+  includesAll(networkFilterIds("bsc"), ["bnb", "bsc", "eip155:56"], "bsc");
+  includesAll(networkFilterIds("eip155:56"), ["bnb", "bsc", "eip155:56"], "eip155:56");
+  assert.equal(bnb.includes("eip155:97"), false);
+
+  const base = networkFilterIds("base");
+  includesAll(base, ["base", "eip155:8453"], "base");
+  assert.equal(base.includes("base-sepolia"), false);
+  assert.equal(base.includes("eip155:84532"), false);
+
+  const celo = networkFilterIds("celo");
+  assert.equal(celo.includes("eip155:42220"), true);
+  assert.equal(celo.includes("eip155:11142220"), false);
+  assert.equal(networkFilterIds("eip155:11142220").includes("eip155:42220"), false);
+
+  assert.deepEqual(networkFilterIds("eip155:999999"), ["eip155:999999"]);
+  assert.deepEqual(networkFilterIds("  "), []);
+});
+
+test("networkFilterCellTitle: カタログの鎖が絞り込みの外なら、購入の network で入ったと書く", () => {
+  assert.equal(
+    networkFilterCellTitle("eip155:8453", "Stellar"),
+    "In this filter because a purchase network matched. Catalog network: eip155:8453.",
+  );
+  assert.equal(networkFilterCellTitle("eip155:8453", null), "eip155:8453");
+  assert.equal(networkFilterCellTitle("stellar:pubnet", "Stellar"), "stellar:pubnet");
+  assert.equal(networkFilterCellTitle("eip155:8453", "base"), "eip155:8453");
+  assert.equal(networkFilterCellTitle(null, "Stellar"), "In this filter because a purchase network matched.");
+});
+
+test("networkFilterCellLabel: カタログの鎖が絞り込みの外なら、セルは絞り込みの公開名", () => {
+  assert.equal(networkFilterCellLabel("eip155:8453", "Stellar"), "Stellar");
+  assert.equal(networkFilterCellLabel("eip155:8453", null), "Base");
+  assert.equal(networkFilterCellLabel("stellar:pubnet", "Stellar"), "stellar:pubnet");
+  assert.equal(networkFilterCellLabel("eip155:8453", "base"), "Base");
+  assert.equal(networkFilterCellLabel(null, "Stellar"), "Stellar");
+  assert.equal(networkFilterCellLabel(null, null), "—");
+});
+
+test("getObservatoryOverview の絞り込み SQL は購入 network と L0 の n_pass を残す", () => {
+  const src = readFileSync("src/lib/observatory/reader.ts", "utf8");
+  const start = src.indexOf("export async function getObservatoryOverview");
+  const end = src.indexOf("export const PAID_ATTEMPT_STATUSES", start);
+  assert.ok(start >= 0 && end > start);
+  const slice = src.slice(start, end);
+  assert.match(slice, /pn\.network IN/);
+  assert.match(slice, /p\.network IN/);
+  assert.match(slice, /n_pass/);
+  assert.match(slice, /n_fail/);
+  assert.match(slice, /n_unverified/);
+  assert.doesNotMatch(slice, /e\.network = \$\{network\}/);
+  const countStart = slice.indexOf("const countRaw");
+  const rowStart = slice.indexOf("const raw = await db.execute", countStart);
+  assert.ok(countStart >= 0 && rowStart > countStart);
+  const countSql = slice.slice(countStart, rowStart);
+  assert.match(countSql, /\$\{scopeFilters\}/);
+  assert.doesNotMatch(countSql, /tableVerdict/);
+  assert.match(countSql, /count\(\*\) FILTER \(WHERE \$\{verdictCase\} = 'pass'\)/);
+  const rowSql = slice.slice(rowStart, slice.indexOf("const list", rowStart));
+  assert.match(rowSql, /\$\{scopeFilters\}/);
+  assert.match(rowSql, /\$\{tableVerdict\}/);
+});
+
+test("観測所の絞り込み文は合格率を L0 の探査だと書き、Network 列は title 関数を使う", () => {
+  const src = readFileSync("src/app/observatory/page.tsx", "utf8");
+  assert.match(
+    src,
+    /The pass rate above is the L0 probe of the rows in this filter\. It is not the purchase result\.\s+Choosing a verdict does not change that rate\./,
+  );
+  assert.match(src, /observatoryRateFilters\(query\)/);
+  assert.doesNotMatch(src, /after search, network, and the settled filter/);
+  assert.match(src, /networkFilterCellLabel\(row\.network, query\.network\)/);
+  assert.match(src, /networkFilterCellTitle\(row\.network, query\.network\)/);
+  const filtered = src.slice(src.indexOf("if (filtered)"), src.indexOf("if (!stats)"));
+  assert.match(filtered, /overview\.verdictCounts\.pass/);
+  assert.match(filtered, /overview\.verdictCounts\.fail/);
+  assert.match(filtered, /overview\.verdictCounts\.unverified/);
+  assert.doesNotMatch(filtered, /stats\.publishedPass/);
 });

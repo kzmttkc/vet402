@@ -6,6 +6,7 @@ import {
   boardAsOfDay,
   exportDaysFor,
   filterSellersBySide,
+  sellerHeadline,
   type SellerSideFilter,
   type FixGroup,
   type OutcomeCounts,
@@ -20,6 +21,8 @@ import { EFFORT_LABEL, HELD_GLOSS, isAnsweredWithNamedTx, LATE_LINK_PENDING_MINU
 import DecisionAnswer, { REASON_CODES_HREF } from "./DecisionAnswer";
 import { SELLERS_PAGE_DECISION_TEXT } from "@/lib/decision/rules-text";
 import { l0ProbeLine, nextBuyLine } from "@/lib/sellers/next-buy";
+import { explorerTxUrl, paymentChainLabel } from "@/lib/observatory/chains";
+import type { OtherChainAttempt } from "@/lib/sellers/board";
 
 /**
  * /sellers・/sellers/[host]・/sellers/fix-first の描画（純粋なコンポーネント・DB を読まない）。
@@ -69,9 +72,12 @@ export const TITLE_MAX = 60;
  * 2026-09-29 第5巡: 「as of <日付>」は頁を読み出した時刻と読み違えられた。日付は最新の試行の日だと書く
  * （読み出した時刻は h1 の下と doc-head に別に出す）。
  */
-export function sellerHeading(host: string, lastAttemptAt: string | null): string {
+export function sellerHeading(host: string, lastAttemptAt: string | null, chain: string | null = null): string {
   const day = lastAttemptAt && /^\d{4}-\d{2}-\d{2}/.test(lastAttemptAt) ? lastAttemptAt.slice(0, 10) : null;
-  return day ? `${host}: x402 purchase results on Base, latest attempt ${day}` : `${host}: x402 purchase results on Base`;
+  if (!day) return `${host}: x402 purchase results on Base`;
+  return chain
+    ? `${host}: x402 purchase results on Base, latest attempt ${day} on ${chain}`
+    : `${host}: x402 purchase results on Base, latest attempt ${day}`;
 }
 
 /** /sellers の表題（2026-09-29 第2巡: いつの結果かを日付で言う）。day は boardAsOfDay。 */
@@ -84,10 +90,18 @@ export function fixFirstHeading(day: string | null): string {
   return day ? `What to fix first, as of ${day}` : "What to fix first";
 }
 
-export function sellerPageTitle(host: string, lastAttemptAt: string | null = null): string {
-  const bare = sellerHeading(host, lastAttemptAt);
+export function sellerPageTitle(host: string, lastAttemptAt: string | null = null, chain: string | null = null): string {
+  const bare = sellerHeading(host, lastAttemptAt, chain);
   const full = `${bare} | vet402`;
   return full.length <= TITLE_MAX ? full : bare;
+}
+
+/** meta description と JSON-LD。最新の購入が Base 以外なら、その鎖の公開名を入れる。 */
+export function sellerDescription(host: string, chain: string | null = null): string {
+  const lead = chain
+    ? `What happened when vet402 paid ${host} over x402. The latest purchase is on ${chain}`
+    : `What happened when vet402 paid ${host} over x402 on Base`;
+  return `${lead}: each purchase result, what to fix, and whose side a failure was on.`;
 }
 
 function FetchedAt({ at, revalidateSec }: { at: string; revalidateSec: number }) {
@@ -127,7 +141,7 @@ function DocHead({ title, fetched }: { title: string; fetched: ReactNode }) {
   );
 }
 
-function CountsLine({ c }: { c: OutcomeCounts }) {
+function CountsLine({ c, notTriedWord = "with no Base purchase" }: { c: OutcomeCounts; notTriedWord?: string }) {
   return (
     <>
       <strong>{n(c.delivered)}</strong> delivered · <strong>{n(c.seller)}</strong> failed on the seller&apos;s side ·{" "}
@@ -150,7 +164,7 @@ function CountsLine({ c }: { c: OutcomeCounts }) {
           · <strong>{n(c.notPaid)}</strong> not bought (vet402 did not pay)
         </>
       )}{" "}
-      · <strong>{n(c.notTried)}</strong> not tried yet
+      · <strong>{n(c.notTried)}</strong> {notTriedWord}
     </>
   );
 }
@@ -364,6 +378,7 @@ export function SellersIndexView({
   search,
   revalidateSec,
   side = null,
+  purchasedLookupFailed = false,
 }: {
   board: SellerBoard;
   page: number;
@@ -372,6 +387,8 @@ export function SellersIndexView({
   revalidateSec: number;
   /** 区分の絞り込み（GET ?side=・2026-09-29 第6巡）。null は全部。 */
   side?: SellerSideFilter | null;
+  /** 購入ホストの読み取りに失敗した（空の結果とは別）。 */
+  purchasedLookupFailed?: boolean;
 }) {
   const listed = filterSellersBySide(board.sellers, side);
   const totalPages = Math.max(1, Math.ceil(listed.length / SELLERS_PAGE_SIZE));
@@ -400,11 +417,15 @@ export function SellersIndexView({
               — {n(search.exact.listings)} Base {search.exact.listings === 1 ? "listing" : "listings"}.
             </p>
           ) : search.matches.length === 0 ? (
-            <p className="doc-p">
-              No seller on Base matches <code>{q}</code>. Enter the host of the seller you care about (for example{" "}
-              <code>api.yourcompany.com</code>). This page holds Base purchase results; for other chains, search the{" "}
-              <Link href={`/observatory?q=${encodeURIComponent(q)}`} className="doc-link">observatory</Link>.
-            </p>
+            purchasedLookupFailed ? (
+              <p className="doc-p">Reading the ledger failed. Please reload in a minute.</p>
+            ) : (
+              <p className="doc-p">
+                No seller on Base matches <code>{q}</code>. Enter the host of the seller you care about (for example{" "}
+                <code>api.yourcompany.com</code>). This page holds Base purchase results; for other chains, search the{" "}
+                <Link href={`/observatory?q=${encodeURIComponent(q)}`} className="doc-link">observatory</Link>.
+              </p>
+            )
           ) : null}
           {search.matches.length > 0 && <SellersTable sellers={search.matches} label="Sellers whose host contains the search" />}
         </section>
@@ -416,7 +437,7 @@ export function SellersIndexView({
       </h2>
       <p className="doc-p">
         {n(t.sellers)} sellers with {n(t.listings)} Base listings; vet402 has tried to buy from {n(t.sellersTried)} of
-        the sellers. By the latest attempt at each listing: <CountsLine c={t} />.{" "}
+        the sellers. By the latest attempt at each listing: <CountsLine c={t} notTriedWord="with no Base purchase" />.{" "}
         <Link href="/sellers/fix-first" className="underline">
           What to fix first
         </Link>{" "}
@@ -651,21 +672,37 @@ function Evidence({ r }: { r: ShownRow }) {
   );
 }
 
+/** 他チェーンの購入が、その出品の Base の最新行より新しい（Base の行が無いときを含む）。 */
+function otherPurchaseIsNewer(l: SellerListing | undefined): boolean {
+  const other = l?.otherChain;
+  if (!other) return false;
+  const baseAt = l.latest?.facts.attemptedAt;
+  return !baseAt || other.attemptedAt > baseAt;
+}
+
 /** 売り手について何かを言う最新の行（最新の行が vet402 の側などのとき・2026-09-29 第4巡）。 */
 function SellerSignalLine({ l, rebuyEligible }: { l: SellerListing; rebuyEligible: boolean }) {
   const r = l.latest;
   if (!r || r.bucket === "delivered" || r.bucket === "seller") return null;
   const sig = l.lastSellerSignal;
+  // より新しい他チェーンの購入があるとき、Base の行を latest attempt と呼ばない。Result は Base の行のまま。
+  const laterOther = otherPurchaseIsNewer(l);
+  const attempt = laterOther ? "latest Base attempt" : "latest attempt";
   const latestPhrase =
     r.bucket === "vet402"
-      ? "The latest attempt failed on vet402's side"
+      ? `The ${attempt} failed on vet402's side`
       : r.bucket === "not_bought"
-        ? "The latest attempt was not a purchase (vet402 did not pay)"
+        ? `The ${attempt} was not a purchase (vet402 did not pay)`
         : r.bucket === "pending"
-          ? "The latest purchase is awaiting on-chain verification"
-          : "The latest attempt is not sorted";
-  // 2026-09-29 第6巡: 最新の試行は購入とは限らない（tx の無い行・vet402 が払っていない行）。「bought again」と書かない。
-  const after = rebuyEligible ? "; this listing is eligible for a re-buy." : "; there has been no attempt since.";
+          ? laterOther
+            ? "The latest Base purchase is awaiting on-chain verification"
+            : "The latest purchase is awaiting on-chain verification"
+          : `The ${attempt} is not sorted`;
+  const after = rebuyEligible
+    ? "; this listing is eligible for a re-buy."
+    : laterOther
+      ? "."
+      : "; there has been no attempt since.";
   return (
     <span className="block">
       <strong>Last result about the seller:</strong>{" "}
@@ -729,6 +766,7 @@ function EarlierRow({ e, endpointId }: { e: ShownRow; endpointId: string }) {
 function AfterFix({ l, rebuyEligible }: { l: SellerListing; rebuyEligible: boolean }) {
   const next = nextBuyLine(l.nextBuy);
   const r = l.latest;
+  const disputeAt = r?.facts.attemptedAt ?? l.otherChain?.attemptedAt ?? null;
   return (
     <div className="mt-2 border-l-2 border-hair pl-3 text-xs" aria-label="After a fix">
       <span className="block font-semibold text-brand-lift">After a fix</span>
@@ -748,9 +786,50 @@ function AfterFix({ l, rebuyEligible }: { l: SellerListing; rebuyEligible: boole
       )}
       <span className="flex flex-wrap gap-x-4">
         <NotifyLink endpointId={l.endpointId} />
-        <DisputeLink endpointId={l.endpointId} attemptedAt={r ? r.facts.attemptedAt : null} />
+        <DisputeLink endpointId={l.endpointId} attemptedAt={disputeAt} />
       </span>
+      {r && otherPurchaseIsNewer(l) ? (
+        <span className="block">The time filled in for the dispute is the latest Base attempt.</span>
+      ) : null}
     </div>
+  );
+}
+
+/** Base の行の文。他チェーンの方が新しいときは Latest Base attempt の下に置く。 */
+function BaseAttemptBody({ l, r, now, rebuyEligible }: { l: SellerListing; r: ShownRow; now: number; rebuyEligible: boolean }) {
+  return (
+    <>
+      <span className="block">
+        <strong>What we saw:</strong> {seenLine(r)}
+      </span>
+      <SellerSignalLine l={l} rebuyEligible={rebuyEligible} />
+      {r.seen402 && (
+        <span className="block">
+          <strong>{termsLabel(r)}</strong> {r.seen402}
+        </span>
+      )}
+      <Evidence r={r} />
+      {r.mode && (
+        <span className="block">
+          <strong>What to fix:</strong> {r.mode.fix}
+          {r.mode.side === "seller" && <span className="text-brand-lift"> ({EFFORT_LABEL[r.mode.effort]})</span>}
+        </span>
+      )}
+      {r.note && <span className="block">{r.note}</span>}
+      {r.exportReason && <span className="block">{r.exportReason}</span>}
+      {r.mode?.side === "vet402" && (
+        <span className="block">This failure was on vet402&apos;s side, not the seller&apos;s.</span>
+      )}
+      {l.deliveredAfterFailure && (
+        <span className="block">The latest purchase delivered. An earlier attempt listed below did not.</span>
+      )}
+      <span className="block break-words font-[family-name:var(--font-mono)] text-xs text-brand-lift">
+        {recordedLabel(r)}: <RecordedFacts r={r} />
+      </span>
+      <span className="block break-words text-xs text-brand-lift">
+        <ExportTrace r={r} resourceKey={l.resourceKey} now={now} />
+      </span>
+    </>
   );
 }
 
@@ -771,8 +850,9 @@ function ListingCard({
   autoDecision?: boolean;
 }) {
   const r = l.latest;
-  const failed = r && (r.bucket === "seller" || r.bucket === "vet402");
+  const failed = !!r && (r.bucket === "seller" || r.bucket === "vet402");
   const l0Line = l0ProbeLine(l.nextBuyFacts, now);
+  const baseAttemptLabel = r && otherPurchaseIsNewer(l) ? "Latest Base attempt" : "Latest attempt";
   return (
     <li className="border-b border-hair py-4" id={`listing-${l.endpointId}`}>
       <Link href={`/observatory/e/${l.endpointId}`} className={`${TAP} font-semibold [overflow-wrap:anywhere]`} title={l.resourceUrl}>
@@ -780,12 +860,20 @@ function ListingCard({
       </Link>
       <span className="block text-xs font-normal text-brand-lift">{l.method ?? "method undeclared"}</span>
       <dl className="mt-2 grid grid-cols-[minmax(7rem,auto)_1fr] gap-x-4 gap-y-0.5 text-[0.8125rem]">
-        <dt className="text-brand-lift">Latest attempt</dt>
-        <dd className="m-0">{r ? fmtUtc(r.facts.attemptedAt) : "not tried yet"}</dd>
+        <dt className="text-brand-lift">{baseAttemptLabel}</dt>
+        <dd className="m-0">{r ? fmtUtc(r.facts.attemptedAt) : "not tried on Base yet"}</dd>
         <dt className="text-brand-lift">Result</dt>
-        <dd className={`m-0 ${failed ? "text-[#9f0712]" : ""}`}>{r ? <ResultWord r={r} /> : "—"}</dd>
+        <dd className={`m-0 ${failed ? "text-[#9f0712]" : ""}`}>{r ? <ResultWord r={r} /> : "not tried on Base yet"}</dd>
         <dt className="text-brand-lift">Whose side</dt>
-        <dd className="m-0">{r ? <WhoseSide r={r} /> : "—"}</dd>
+        <dd className="m-0">{r ? <WhoseSide r={r} /> : "not tried on Base yet"}</dd>
+        {l.otherChain ? (
+          <>
+            <dt className="text-brand-lift">Other chains</dt>
+            <dd className="m-0">
+              <OtherChainFacts a={l.otherChain} />
+            </dd>
+          </>
+        ) : null}
       </dl>
       {/* 2026-09-29 第6巡: 判定 API の答えはカードの先頭近く（以前は 375px で 2 画面以上下）。 */}
       {/* 2026-09-29 監査 7 周目: 購入していない出品にも判定 API の答えを出す（未プローブ・unverified の BLOCK が見えなかった）。 */}
@@ -797,41 +885,9 @@ function ListingCard({
       {l0Line && <span className="mt-1 block text-[0.8125rem]">{l0Line}</span>}
       <div className="mt-2 space-y-1 text-[0.8125rem]">
         {r ? (
-          <>
-            <span className="block">
-              <strong>What we saw:</strong> {seenLine(r)}
-            </span>
-            <SellerSignalLine l={l} rebuyEligible={rebuyEligible} />
-            {r.seen402 && (
-              <span className="block">
-                <strong>{termsLabel(r)}</strong> {r.seen402}
-              </span>
-            )}
-            <Evidence r={r} />
-            {r.mode && (
-              <span className="block">
-                <strong>What to fix:</strong> {r.mode.fix}
-                {r.mode.side === "seller" && <span className="text-brand-lift"> ({EFFORT_LABEL[r.mode.effort]})</span>}
-              </span>
-            )}
-            {r.note && <span className="block">{r.note}</span>}
-            {r.exportReason && <span className="block">{r.exportReason}</span>}
-            {r.mode?.side === "vet402" && (
-              <span className="block">This failure was on vet402&apos;s side, not the seller&apos;s.</span>
-            )}
-            {l.deliveredAfterFailure && (
-              <span className="block">The latest purchase delivered. An earlier attempt listed below did not.</span>
-            )}
-            <span className="block break-words font-[family-name:var(--font-mono)] text-xs text-brand-lift">
-              {recordedLabel(r)}:{" "}
-              <RecordedFacts r={r} />
-            </span>
-            <span className="block break-words text-xs text-brand-lift">
-              <ExportTrace r={r} resourceKey={l.resourceKey} now={now} />
-            </span>
-          </>
+          <BaseAttemptBody l={l} r={r} now={now} rebuyEligible={rebuyEligible} />
         ) : (
-          <span className="block text-brand-lift">vet402 has not tried to buy this listing yet.</span>
+          <span className="block text-brand-lift">No Base purchase is on this listing.</span>
         )}
         <AfterFix l={l} rebuyEligible={rebuyEligible} />
         {l.earlier.length > 0 && (
@@ -850,7 +906,47 @@ function ListingCard({
 }
 
 function latestFailedOnOurSide(d: SellerDetail): boolean {
-  return d.listings[0]?.latest?.mode?.side === "vet402";
+  const first = d.listings[0];
+  if (otherPurchaseIsNewer(first)) return false;
+  return first?.latest?.mode?.side === "vet402";
+}
+
+/** 先頭の件数の下の 1 文。他チェーンの最新購入がある出品を、鎖の公開名で数える。 */
+function otherChainSummaryLine(listings: readonly SellerListing[]): string | null {
+  const counts = new Map<string, number>();
+  let nListings = 0;
+  for (const l of listings) {
+    if (!l.otherChain) continue;
+    nListings += 1;
+    const chain = paymentChainLabel(l.otherChain.network);
+    counts.set(chain, (counts.get(chain) ?? 0) + 1);
+  }
+  if (nListings === 0) return null;
+  const parts = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([chain, count]) => `${chain} ${count}`);
+  const word = nListings === 1 ? "listing" : "listings";
+  return `Also bought on other chains: ${n(nListings)} ${word} (${parts.join(", ")}). Each card lists them under Other chains.`;
+}
+
+/** カードの Other chains。Base の Result とは別の欄。 */
+function OtherChainFacts({ a }: { a: OtherChainAttempt }) {
+  const http = a.httpStatusPaid !== null ? `, HTTP ${a.httpStatusPaid}` : "";
+  const body = a.payloadNonEmpty === false ? ", body empty" : "";
+  const tx = a.txHash ? explorerTxUrl(a.network, a.txHash) : null;
+  return (
+    <>
+      {paymentChainLabel(a.network)}, {fmtUtc(a.attemptedAt)}, {a.status}
+      {http}
+      {body}
+      {tx ? (
+        <>
+          {" "}
+          <a href={tx} className="underline">transaction</a>
+        </>
+      ) : null}
+    </>
+  );
 }
 
 /**
@@ -861,21 +957,28 @@ function latestFailedOnOurSide(d: SellerDetail): boolean {
 function SellerSummaryLines({ d, revalidateSec }: { d: SellerDetail; revalidateSec: number }) {
   const s = d.summary;
   const v = d.sellerView;
+  const head = sellerHeadline(d);
+  const otherLine = otherChainSummaryLine(d.listings);
   return (
     <>
       <p className="doc-p">
         {n(s.listings)} Base {s.listings === 1 ? "listing" : "listings"}. <strong>Latest result about the seller</strong>{" "}
         at each listing: <strong>{n(v.delivered)}</strong> delivered · <strong>{n(v.seller)}</strong> failed on the
         seller&apos;s side · <strong>{n(v.none)}</strong> with no such result among the attempts shown ·{" "}
-        <strong>{n(s.notTried)}</strong> not tried yet. This counts, for each listing, the newest purchase that
-        delivered or the newest failure on the seller&apos;s side. Attempts on vet402&apos;s side, not bought, not
-        sorted, or awaiting on-chain verification are skipped.
+        <strong>{n(s.notTried)}</strong> with no Base purchase. This counts, for each listing, the newest Base purchase
+        that delivered or the newest Base failure on the seller&apos;s side. Attempts on vet402&apos;s side, not bought,
+        not sorted, or awaiting on-chain verification are skipped.
+      </p>
+      {otherLine ? <p className="doc-p">{otherLine}</p> : null}
+      <p className="doc-p text-[0.8125rem] text-brand-lift">
+        By the latest attempt at each listing, whatever it was: <CountsLine c={s} notTriedWord="with no Base purchase" />.
       </p>
       <p className="doc-p text-[0.8125rem] text-brand-lift">
-        By the latest attempt at each listing, whatever it was: <CountsLine c={s} />.
-      </p>
-      <p className="doc-p text-[0.8125rem] text-brand-lift">
-        {s.lastAttemptAt ? <>Latest attempt: {fmtUtc(s.lastAttemptAt)}. </> : null}
+        {head.at ? (
+          <>
+            Latest attempt{head.chain ? ` on ${head.chain}` : ""}: {fmtUtc(head.at)}.{" "}
+          </>
+        ) : null}
         This page read the ledger at {fmtUtc(d.fetchedAt)} and reuses that read for up to{" "}
         {Math.round(revalidateSec / 60)} min.
       </p>
@@ -911,14 +1014,15 @@ export function SellerDetailView({
   );
   const newest = detail.listings[0];
   const newestSignal = newest?.lastSellerSignal;
+  const head = sellerHeadline(detail);
   return (
     <article className="sheet">
       <DocHead title="Seller: purchase results on Base" fetched={<FetchedAt at={detail.fetchedAt} revalidateSec={revalidateSec} />} />
       {/* 2026-09-29: 表題は最新の購入日つきの事実の言い方（sellerHeading）。ホスト名は長いのでどこででも折り返す。 */}
-      <h1 className="doc-title mt-10 break-words [overflow-wrap:anywhere]">{sellerHeading(detail.host, s.lastAttemptAt)}</h1>
+      <h1 className="doc-title mt-10 break-words [overflow-wrap:anywhere]">{sellerHeading(detail.host, head.at, head.chain)}</h1>
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
       <SellerSummaryLines d={detail} revalidateSec={revalidateSec} />
-      {s.rebuyEligible ? (
+      {s.rebuyEligible && !otherPurchaseIsNewer(detail.listings[0]) ? (
         <p className="doc-p">
           <strong>Your most recent purchase failed on vet402&apos;s side.</strong> This seller is eligible for a re-buy
           under the rules on the{" "}
@@ -972,7 +1076,11 @@ export function SellerDetailView({
         <span>How to read this</span>
       </h2>
       <p className="doc-p">
-        Each listing shows its latest attempt on Base and up to four earlier ones. A row where vet402 signed a
+        Each listing shows its latest Base attempt and up to four earlier Base attempts. Result and Whose side follow
+        that Base attempt. A purchase on another chain is listed under Other chains, with the chain name, time, status,
+        HTTP status, and a transaction link when one was recorded. The record page shows that purchase in the Payment
+        chain column. A row where
+        vet402 signed a
         payment and sent the paid request is an <strong>L1</strong> result: &ldquo;Recorded (L1 paid
         purchase)&rdquo; when the payment settled on-chain, and &ldquo;signed, not settled on-chain&rdquo; when it
         did not. A row where vet402 did not sign is marked &ldquo;not bought&rdquo; and is not an L1 result. The listing&apos;s record page also shows the <strong>L0</strong> state (&ldquo;Published
@@ -981,14 +1089,14 @@ export function SellerDetailView({
         at fault: it signed on the listing&apos;s terms, its wallet held the price, it sent the declared input, and the
         seller answered explicitly or had its declared time. Even then, one such failure is &ldquo;not sorted: one
         failure so far&rdquo;: a failure goes on the seller&apos;s side only when the same listing has one on two
-        different days (UTC), and those rows are marked &ldquo;{UNDER_RECHECK}&rdquo; while we re-check them. A row
+        different days (UTC), and those rows are marked &ldquo;{UNDER_RECHECK}&rdquo; while vet402 re-checks them. A row
         that cannot show all of that is &ldquo;not sorted&rdquo;, and so is a <strong>held</strong> row (
         <code>held_reason</code> in the export), a failure where no payment was taken (&ldquo;no charge&rdquo;), and a
         payment that settled before the seller refused an input vet402 had not sent. &ldquo;Signed payment&rdquo;
         and &ldquo;Answer to the paid request&rdquo; show what the row recorded, and nothing else: the answer&apos;s
         body and header values are not published. The maxTimeoutSeconds on a row is the listing&apos;s value today;
         a declared price or address on a not-bought row is the value recorded at the time of the attempt. The
-        transaction link opens the settlement on Basescan. &ldquo;Decision API now&rdquo; is what the decision API
+        transaction link opens the settlement on Basescan when the purchase is on Base. &ldquo;Decision API now&rdquo; is what the decision API
         (<code>GET /api/v1/resources/&#123;id&#125;/decision?role=payer</code>, no key) answers for the listing when
         you open this page; your browser asks it for the first {DECISION_AUTO_LISTINGS} listings, and for the others
         when you ask. {SELLERS_PAGE_DECISION_TEXT} The codes that decided the answer come first, each with the meaning
@@ -1016,13 +1124,14 @@ export function SellerDetailView({
       <p className="doc-p">
         Use &ldquo;Dispute this purchase&rdquo; on the row: it opens{" "}
         {newest ? (
-          <Link href={disputeHref(newest.endpointId, newest.latest?.facts.attemptedAt ?? null)} className="underline">
+          <Link href={disputeHref(newest.endpointId, newest.latest?.facts.attemptedAt ?? newest.otherChain?.attemptedAt ?? null)} className="underline">
             Dispute this record
           </Link>
         ) : (
           <>&ldquo;Dispute this record&rdquo;</>
         )}{" "}
-        on the listing&apos;s record page with the purchase time filled in. Say what you saw instead. The row is not
+        on the listing&apos;s record page with the purchase time filled in. The time filled in is the latest Base
+        attempt when that listing has a Base purchase. Say what you saw instead. The row is not
         deleted on dispute; a correction is published with the same weight.
       </p>
     </article>
@@ -1035,6 +1144,14 @@ export function SellerDetailView({
 
 export function sellerOtherChainsTitle(host: string): string {
   return `x402 purchase records for ${host}`;
+}
+
+function chainPhrase(labels: readonly string[]): string {
+  const names = [...new Set(labels)];
+  if (names.length === 0) return "another chain";
+  if (names.length === 1) return names[0]!;
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
 }
 
 /** 平易な結果（Base の頁の ResultWord と同じ言葉）。台帳の status は括弧で添える。 */
@@ -1061,12 +1178,12 @@ export function SellerOtherChainsView({ other, revalidateSec }: { other: SellerO
       </h1>
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
       <p className="doc-p">
-        This seller has no active Base listing, so it is not on the{" "}
+        {other.host} has no active Base listing. Purchase records on {chainPhrase(other.listings.map((l) => l.chain))} are
+        on this page. The host is absent from the{" "}
         <Link href="/sellers" className="underline">
           Base seller list
         </Link>
-        . vet402 did buy from its listings on other chains (or from listings since removed). Each purchase is on the
-        listing&apos;s record page, linked below.
+        .
       </p>
       <TableScroll label="Listings of this seller that vet402 bought, most recent purchase first">
         <table className="fact-table">
@@ -1090,7 +1207,15 @@ export function SellerOtherChainsView({ other, revalidateSec }: { other: SellerO
                     <NotifyLink endpointId={l.endpointId} />
                   </span>
                 </td>
-                <td className="whitespace-nowrap">{l.chain}</td>
+                <td className="whitespace-nowrap">
+                  {l.chain}
+                  {l.latest.facts.network ? (
+                    <>
+                      {" "}
+                      <code>{l.latest.facts.network}</code>
+                    </>
+                  ) : null}
+                </td>
                 <td className="whitespace-nowrap">{fmtUtc(l.latest.facts.attemptedAt)}</td>
                 <td className={l.latest.bucket !== "delivered" ? "text-[#9f0712]" : ""}>
                   <OtherChainResult l={l} />

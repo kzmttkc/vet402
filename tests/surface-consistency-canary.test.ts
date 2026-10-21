@@ -229,6 +229,14 @@ test("売り手頁: 最新の段の Recorded / held だけを読み、前の試�
   assert.equal(l.heldAs, null);
   assert.equal(l.decisionResourceId, "c".repeat(64));
   assert.equal(l.attemptedAtIso, "2026-09-27T12:02:37Z");
+  assert.equal(l.latestAttempt, "2026-09-27 12:02 UTC");
+  const baseLabeled = parseSellerHostPage(
+    `<h2>Your listings</h2><ul><li id="listing-22222222-2222-4222-8222-222222222222"><dl><dt>Latest Base attempt</dt><dd>2026-10-06 09:32 UTC</dd></dl></li></ul>`,
+  );
+  assert.equal(
+    baseLabeled?.listings.get("22222222-2222-4222-8222-222222222222")?.latestAttempt,
+    "2026-10-06 09:32 UTC",
+  );
 });
 
 test("誰の側かの語: 照合待ちは not sorted の語でも pending", () => {

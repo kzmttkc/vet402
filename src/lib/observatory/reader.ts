@@ -28,7 +28,7 @@ import { publishedVerdict, MIN_CONSECUTIVE_FAILS_TO_PUBLISH } from "./l0-probe";
 import { l0ReasonDetail, type L0ProbeDetail } from "./l0-reasons";
 import { isOperatorPayTo } from "./operator";
 import { isOperatorExclusionConfigured, operatorExclusionPredicate, operatorMatchPredicate } from "./operator-sql";
-import { chainLabel, isMainnet, isTestnet, toCaip2 } from "./chains";
+import { chainLabel, isMainnet, isTestnet, networkFilterIds, toCaip2 } from "./chains";
 import { deliveredPredicate, heldReasonSql, inconclusivePredicate, inconclusiveSettledPredicate } from "./delivery";
 import { l2ReadingOf } from "./l2-check";
 import {
@@ -79,6 +79,8 @@ export type ObservatoryOverview = {
     totalCount: number;
     fetchedCount: number;
   } | null;
+  /** 同じ絞り込みの L0 判定の件数。図の母数はこれを使う（全台帳の合格率を絞り込みの上に出さない）。 */
+  verdictCounts: { pass: number; fail: number; unverified: number; settledEndpoints: number };
 };
 
 /**
@@ -96,11 +98,9 @@ const SEARCH_MAX_LENGTH = 80;
  * and `_` are wildcards INSIDE a bound value, and neither they nor the length
  * were constrained on this path. `/observatory` is a keyless page, so a
  * pattern like `%_%_%_%_%_%…` over the endpoint table is a cheap way to make
- * the database do quadratic work on someone else's behalf. The page's own
- * parser (parseObservatorySearchParams) strips those characters and caps the
- * length, so the live surface was already covered — this closes the door for
- * every OTHER caller of an exported reader, rather than trusting each one to
- * remember.
+ * the database do quadratic work on someone else's behalf. The page parser
+ * caps the length and keeps `_` `%` `\` (a resource id may contain `_`).
+ * escapeLike makes those characters literals for every caller of this reader.
  *
  * Escaped with backslash, which is Postgres's default LIKE escape character,
  * so no ESCAPE clause is needed at the call site.
@@ -136,29 +136,44 @@ export async function getObservatoryOverview(
     pageSize,
     totalEndpoints: 0,
     latestSnapshot: null,
+    verdictCounts: { pass: 0, fail: 0, unverified: 0, settledEndpoints: 0 },
   };
   if (!db) return empty;
 
   const like = searchLikePattern(q);
-  const filters = sql`
+  const networkIds = network ? networkFilterIds(network) : [];
+  const networkList = networkIds.length > 0 ? sql.join(networkIds.map((id) => sql`${id}`), sql`, `) : null;
+  const paidStatuses = sql.join(PAID_ATTEMPT_STATUSES.map((st) => sql`${st}`), sql`, `);
+  const verdictCase = sql`(
+    CASE
+      WHEN (lp.verdicts)[1] = 'pass' THEN 'pass'
+      WHEN (
+        SELECT count(*) FROM unnest(lp.verdicts) WITH ORDINALITY AS u(x, n)
+        WHERE n <= ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH} AND x = 'fail'
+      ) = ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH} THEN 'fail'
+      ELSE 'unverified'
+    END
+  )`;
+  // q・network・l1 のあと。合格率の pass / fail / unverified はここで取る。verdict は表の行と頁の総数だけ。
+  const scopeFilters = sql`
     ${like ? sql`AND e.resource_key ILIKE ${like}` : sql``}
-    ${network ? sql`AND e.network = ${network}` : sql``}
     ${
-      verdict
+      networkList
         ? sql`AND (
-            CASE
-              WHEN (lp.verdicts)[1] = 'pass' THEN 'pass'
-              WHEN (
-                SELECT count(*) FROM unnest(lp.verdicts) WITH ORDINALITY AS u(x, n)
-                WHERE n <= ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH} AND x = 'fail'
-              ) = ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH} THEN 'fail'
-              ELSE 'unverified'
-            END
-          ) = ${verdict}`
+            e.network IN (${networkList})
+            OR EXISTS (
+              SELECT 1 FROM x402_l1_purchases pn
+              WHERE pn.endpoint_id = e.id
+                AND pn.network IN (${networkList})
+                AND pn.status IN (${paidStatuses})
+            )
+          )`
         : sql``
     }
     ${onlyReceipts ? sql`AND COALESCE(l1.l1_settled, 0) >= 1` : sql``}
   `;
+  const tableVerdict = verdict ? sql`AND ${verdictCase} = ${verdict}` : sql``;
+  const countedVerdict = verdict ? sql`${verdictCase} = ${verdict}` : sql`TRUE`;
 
   // 2026-09-02 導線監査 F2: 受領証つきの行がどれか一覧から分からなかった。endpoint ごとの
   // L1 を同じ分母（PAID_ATTEMPT_STATUSES）で数える——endpoint 頁・State of x402 と食い違わない。
@@ -169,7 +184,8 @@ export async function getObservatoryOverview(
              count(*)::int AS l1_attempts
       FROM x402_l1_purchases p
       WHERE p.endpoint_id = e.id
-        AND p.status IN (${sql.join(PAID_ATTEMPT_STATUSES.map((st) => sql`${st}`), sql`, `)})
+        AND p.status IN (${paidStatuses})
+        ${networkList ? sql`AND p.network IN (${networkList})` : sql``}
     ) l1 ON true
   `;
 
@@ -187,18 +203,28 @@ export async function getObservatoryOverview(
 
   try {
     const countRaw = await db.execute(sql`
-      SELECT count(*)::int AS n
+      SELECT count(*) FILTER (WHERE ${countedVerdict})::int AS n,
+             count(*) FILTER (WHERE ${verdictCase} = 'pass')::int AS n_pass,
+             count(*) FILTER (WHERE ${verdictCase} = 'fail')::int AS n_fail,
+             count(*) FILTER (WHERE ${verdictCase} = 'unverified')::int AS n_unverified,
+             count(*) FILTER (WHERE COALESCE(l1.l1_settled, 0) >= 1)::int AS n_settled
       FROM x402_endpoints e
       ${lateral}
       ${l1Lateral}
       WHERE true
-      ${filters}
+      ${scopeFilters}
     `);
     const countList = (Array.isArray(countRaw) ? countRaw : (countRaw as { rows?: unknown[] }).rows ?? []) as Record<
       string,
       unknown
     >[];
     const totalEndpoints = Number(countList[0]?.n ?? 0);
+    const verdictCounts = {
+      pass: Number(countList[0]?.n_pass ?? 0),
+      fail: Number(countList[0]?.n_fail ?? 0),
+      unverified: Number(countList[0]?.n_unverified ?? 0),
+      settledEndpoints: Number(countList[0]?.n_settled ?? 0),
+    };
 
     const raw = await db.execute(sql`
       SELECT e.id, e.resource_key, e.network, e.method, e.status,
@@ -212,7 +238,8 @@ export async function getObservatoryOverview(
       ${lateral}
       ${l1Lateral}
       WHERE true
-      ${filters}
+      ${scopeFilters}
+      ${tableVerdict}
       -- 2026-09-02 UX 監査: 既定表示（呼出量順）は上位 20 行が全部 unverified で、初見の人が
       -- 「測れていない製品」と読んだ。測定済み（pass / fail）を先に並べ、その中を呼出量順にする。
       -- verdict で絞っているときは元の並び（全行同じ判定なので同じ結果）。
@@ -266,7 +293,7 @@ export async function getObservatoryOverview(
       .orderBy(desc(x402CatalogSnapshots.snapshotDate))
       .limit(1);
 
-    return { rows, page, pageSize, totalEndpoints, latestSnapshot: snap ?? null };
+    return { rows, page, pageSize, totalEndpoints, latestSnapshot: snap ?? null, verdictCounts };
   } catch (error) {
     if (isMissingSchemaError(error)) return empty;
     throw error;

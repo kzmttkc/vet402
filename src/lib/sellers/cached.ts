@@ -10,6 +10,9 @@
 // 2026-09-29 第4巡: 返す形が変わった（ShownRow の証拠・SellerDetail の hasConfirmedSeller / sellerView）ので
 // 鍵を v2 に上げた。配備の直後に古い形のキャッシュを新しい描画へ渡さない。
 // 2026-09-29 第5巡: 行の事実に照合の確定時刻（verifiedAt）が増えたので v3 に。出品の判定 API の resource id を足した。
+// 2026-10-21: 出品に otherChain（Base 以外の最新購入）を足したので detail は v4。
+// 2026-10-21: otherChain に payloadNonEmpty を足したので detail は v5（空の本文を届いたに数えない）。
+// 2026-10-21: 他チェーンは Base の件数に混ぜず、txHash を欄のリンクに使うので detail は v6。
 // ============================================================
 import { unstable_cache } from "next/cache";
 import { getDb } from "@/lib/db/client";
@@ -35,7 +38,7 @@ export const getSellerDetailCached: (host: string) => Promise<SellerDetail | nul
     if (!db) throw new SellersUnavailable("database not configured");
     return readSellerDetail(db, host);
   },
-  ["sellers:detail:v3"],
+  ["sellers:detail:v6"],
   { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
 );
 

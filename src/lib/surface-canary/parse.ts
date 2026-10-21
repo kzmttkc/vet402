@@ -201,7 +201,8 @@ export function parseSellerHostPage(html: string): { listings: Map<string, Selle
     const recorded = rAt < 0 ? "" : block.slice(rAt, rEnd < 0 ? undefined : rEnd);
     listings.set(starts[i]![1]!, {
       observatoryId: starts[i]![1]!,
-      latestAttempt: dd("Latest attempt"),
+      // 他チェーンの方が新しいカードは「Latest Base attempt」。どちらも Base の行の時刻。
+      latestAttempt: dd("Latest Base attempt") ?? dd("Latest attempt"),
       result: dd("Result"),
       whoseSide: dd("Whose side"),
       lastResultAboutSeller: strong("Last result about the seller:"),

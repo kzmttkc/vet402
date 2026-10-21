@@ -8,8 +8,8 @@ import { TableScroll } from "@/components/site/TableScroll";
 import { buttonClass } from "@/components/ui/Button";
 import { getObservatoryOverview } from "@/lib/observatory/reader";
 import { getObservatoryStatsCached } from "@/lib/observatory/cached-reads";
-import { parseObservatorySearchParams, observatoryHref } from "@/lib/observatory/query";
-import { chainLabel } from "@/lib/observatory/chains";
+import { parseObservatorySearchParams, observatoryHref, observatoryRateFilters } from "@/lib/observatory/query";
+import { networkFilterCellLabel, networkFilterCellTitle } from "@/lib/observatory/chains";
 import TrackView from "@/components/site/TrackView";
 import { L1Ratio, VerdictShareBar, VerdictWord } from "@/components/site/Figures";
 
@@ -168,6 +168,7 @@ export default async function ObservatoryPage({
         <form method="get" action="/observatory" className="mt-5">
           <p className="doc-caption">Find an endpoint</p>
           {query.l1 && <input type="hidden" name="l1" value="1" />}
+          {query.qTruncated && <input type="hidden" name="qCut" value="1" />}
           {/* 390px: 4 段積み（266px）だと Figure 1 が最初の画面に入らない。Contains を 1 行、
               L0 / Network / Apply を 2 行目に並べる。 */}
           <div className="mt-3 flex flex-wrap items-end gap-3">
@@ -209,6 +210,9 @@ export default async function ObservatoryPage({
               Apply
             </button>
           </div>
+          {query.qTruncated && (
+            <p className="doc-p text-brand-lift">The search was cut at 80 characters.</p>
+          )}
         </form>
 
         {/* 2026-08-23 UX: .sec-head の既定は margin-top 3.5rem（56px）で、
@@ -220,15 +224,61 @@ export default async function ObservatoryPage({
         {/* 2026-09-02 UI/UX 監査（続）: 「文字だらけで直感的でない」。件数チップを
             判定の積み上げバー（Figure 1）にする。数字はそのまま、形が加わるだけ。
             凡例がチップを兼ね、クリックで絞る。 */}
-        {stats && (
+        {(() => {
+          const filtered = Boolean(query.q || query.verdict || query.network || query.l1);
+          const hrefs = {
+            pass: observatoryHref({ ...query, verdict: query.verdict === "pass" ? null : "pass" }, 1),
+            fail: observatoryHref({ ...query, verdict: query.verdict === "fail" ? null : "fail" }, 1),
+            unverified: observatoryHref({ ...query, verdict: query.verdict === "unverified" ? null : "unverified" }, 1),
+          };
+          if (filtered) {
+            const settledEndpoints = overview.verdictCounts.settledEndpoints;
+            const rateFilters = observatoryRateFilters(query);
+            return (
+              <VerdictShareBar
+                n={1}
+                counts={{
+                  pass: overview.verdictCounts.pass,
+                  fail: overview.verdictCounts.fail,
+                  unverified: overview.verdictCounts.unverified,
+                }}
+                hrefs={hrefs}
+                active={query.verdict ?? null}
+                legendExtra={
+                  settledEndpoints > 0 ? (
+                    <a
+                      href={observatoryHref({ ...query, l1: !query.l1 }, 1)}
+                      aria-current={query.l1 ? "true" : undefined}
+                      className={`whitespace-nowrap tabular-nums underline ${query.l1 ? "text-brand-deep decoration-2" : "text-brand hover:text-brand-deep hover:decoration-2"}`}
+                    >
+                      [settled on-chain {settledEndpoints.toLocaleString()}]
+                    </a>
+                  ) : null
+                }
+                caption={
+                  <>
+                    The pass rate above is the L0 probe of the rows in this filter. It is not the purchase result.
+                    Choosing a verdict does not change that rate.
+                    {rateFilters ? <> {rateFilters}</> : null}
+                    {query.network ? (
+                      <>
+                        {" "}
+                        Network accepts a chain name or a network id. Solana, solana, and
+                        solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp are the same chain. The L1 cell counts purchases on
+                        the chain named in the filter.
+                      </>
+                    ) : null}
+                  </>
+                }
+              />
+            );
+          }
+          if (!stats) return null;
+          return (
           <VerdictShareBar
             n={1}
             counts={{ pass: stats.publishedPass, fail: stats.publishedFail, unverified: stats.publishedUnverified }}
-            hrefs={{
-              pass: observatoryHref({ ...query, verdict: query.verdict === "pass" ? null : "pass" }, 1),
-              fail: observatoryHref({ ...query, verdict: query.verdict === "fail" ? null : "fail" }, 1),
-              unverified: observatoryHref({ ...query, verdict: query.verdict === "unverified" ? null : "unverified" }, 1),
-            }}
+            hrefs={hrefs}
             active={query.verdict ?? null}
             legendExtra={
               stats.l1.endpointsSettled > 0 ? (
@@ -254,7 +304,8 @@ export default async function ObservatoryPage({
               </>
             }
           />
-        )}
+          );
+        })()}
 
         <h2 className="sec-head mt-5">
           <span className="sec-no">1.</span>
@@ -331,9 +382,9 @@ export default async function ObservatoryPage({
                       <L1Ratio settled={row.l1Settled} attempts={row.l1Attempts} delivered={row.l1Delivered} />
                     </td>
                     <td className="whitespace-nowrap">{fmtDate(row.lastProbedAt)}</td>
-                    {/* 2026-09-02 可用性監査 P2: eip155:8453 と base が混在。chainLabel で同じ鎖は同じ語に。 */}
-                    <td className="whitespace-nowrap" title={row.network ?? undefined}>
-                      {row.network ? chainLabel(row.network) : "—"}
+                    {/* カタログの鎖が絞り込みの外なら、セルは絞り込みの公開名。カタログの id は title。 */}
+                    <td className="whitespace-nowrap" title={networkFilterCellTitle(row.network, query.network)}>
+                      {networkFilterCellLabel(row.network, query.network)}
                     </td>
                     <td>{row.method ?? "undeclared"}</td>
                     <td>{row.status}</td>
