@@ -456,7 +456,7 @@ function ReadingNotes() {
       <p className="doc-p">
         A seller is a host name from the catalog, with the port dropped, as in the census. A listing counts once,
         by its latest attempt on Base, paid or stopped before payment. <strong>Delivered</strong>{" "}
-        means vet402 re-read the transfer on-chain in that chain's pinned settlement asset and the paid request answered 2xx.{" "}
+        means vet402 re-read the transfer on-chain in that chain&apos;s pinned settlement asset and the paid request answered 2xx.{" "}
         <strong>Seller&apos;s side</strong> is used for a failed purchase when the row itself shows that vet402 was
         not at fault: vet402 signed the payment on the terms the listing declares, its wallet held the price, it
         sent the input the listing declares, and the seller gave an explicit answer (or had its full declared time to

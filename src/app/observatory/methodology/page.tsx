@@ -798,7 +798,7 @@ export default async function ObservatoryMethodologyPage() {
         <p className="doc-p">
           <strong>settled</strong> — <em>vet402 re-read the transaction on-chain</em> and found
           the transfer it paid for: from the vet402 payer, to the catalog-declared payee, for
-          the declared amount, in that chain's pinned settlement asset (USDC on Base, Arc, Celo,
+          the declared amount, in that chain&apos;s pinned settlement asset (USDC on Base, Arc, Celo,
           Solana and Stellar, USDC.e on Tempo, RLUSD from its fixed issuer on XRPL, and USD1 on
           BNB Chain). On Base that means an ERC-20{" "}
           <code>Transfer</code> log matching all four of those with at least{" "}
@@ -976,7 +976,7 @@ export default async function ObservatoryMethodologyPage() {
           transaction hash itself). Stellar is re-read for payer, payee, amount and asset, and is published
           as amount and payee. A purchase on a chain with no re-reader stays at{" "}
           <code>settle_claimed</code> rather than being promoted on evidence that re-read does not exist. When
-          vet402's own RPC cannot answer, or reports a different cluster than the purchase declared, the
+          vet402&apos;s own RPC cannot answer, or reports a different cluster than the purchase declared, the
           row stays unverified rather than being called refuted. An instrument vet402 could not read
           is not a finding about the seller.
         </p>

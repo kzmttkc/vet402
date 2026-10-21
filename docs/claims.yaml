@@ -1917,7 +1917,7 @@ claims:
     verified_at: 2026-09-28
   - id: sellers_delivered_definition
     surface: src/components/site/sellers/SellersViews.tsx
-    quote: "means vet402 re-read the transfer on-chain in that chain's pinned settlement asset and the paid request answered 2xx"
+    quote: "means vet402 re-read the transfer on-chain in that chain&apos;s pinned settlement asset and the paid request answered 2xx"
     means: "delivered は settled（そのチェーンの固定資産で転送を読み直した）かつ有料の要求が 2xx。delivery.ts の isDelivered と同じ"
     check: null
     why_unverifiable: "定義の宣言。src/lib/observatory/delivery.ts の isDelivered が正典で、tests/sellers-fix-modes.test.ts が分類の delivered をそれに揃える"
