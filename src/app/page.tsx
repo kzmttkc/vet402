@@ -18,8 +18,7 @@ import {
   getObservatoryStatsCached,
 } from "@/lib/observatory/cached-reads";
 import { FunnelFigure } from "@/components/site/Figures";
-import { SupportedChains } from "@/components/site/SupportedChains";
-import { chainsLegend, settledByChainOf } from "@/components/site/supported-chains-data";
+import { LedgerSection, SettledChainsSection, homeLedgerOf } from "@/components/site/HomeLedger";
 
 /**
  * The front page is the memo.
@@ -32,9 +31,12 @@ import { chainsLegend, settledByChainOf } from "@/components/site/supported-chai
  *
  * Copy is the approved deck, verbatim except for typesetting breaks. Nothing on
  * this page claims a measurement that has not been made: §4 lists only what is
- * running today (including the live observatory), §5 states each chain row by row
- * (2026-09-19; the state and the count come from the ledger, the words from
- * supported-chains-data.ts), §6 is only work that has not shipped.
+ * running today (including the live observatory), §5 is only work that has not shipped.
+ *
+ * 2026-10-21 owner decision (option A): the first screen stays exactly as it is. Directly under
+ * it sit "The public ledger" and "Where purchases settled" (src/components/site/HomeLedger.tsx), both
+ * from the same cached ledger read as Fig. 1. The chain table replaced the memo's former §5
+ * "Chains" and keeps its anchor `#chains`; the old §6 "Status of this work" is §5 now.
  */
 
 const HEAD_LEFT = [
@@ -67,8 +69,7 @@ const CONTENTS = [
   { no: "2.", title: "Verification levels", href: "#methodology", kind: "method" },
   { no: "3.", title: "What a verdict must carry", href: "#evidence", kind: "policy" },
   { no: "4.", title: "Implemented and live", href: "#working", kind: "live" },
-  { no: "5.", title: "Chains", href: "#chains", kind: "lanes" },
-  { no: "6.", title: "Status of this work", href: "#status", kind: "building" },
+  { no: "5.", title: "Status of this work", href: "#status", kind: "building" },
   { no: "A.", title: "Access tiers", href: "#pricing", kind: "terms" },
   { no: "B.", title: "References", href: "#references", kind: "sources" },
 ];
@@ -117,9 +118,9 @@ export default async function Home() {
   const coverage = await getCoverageShareCached().catch(() => null);
   // 2026-09-02 UI/UX 監査（続）: §4 に図を 1 枚——登録 → L0 pass → L1 受領証あり。実数のみ。
   const stats = await getObservatoryStatsCached().catch(() => null);
-  // §5 Chains: 関門は L1 台帳そのもの（byChain が空 = 読めなかった → null）。導入文の凡例と行が
-  // 同じ 1 つの読みから出るよう、ここで 1 回だけ畳む。
-  const settledByChain = settledByChainOf(stats?.l1.byChain);
+  // 2026-10-21 オーナー決定（案 A）: 第 1 画面の直下の 2 節（The public ledger・Where purchases settled）。
+  // 同じ 1 回の読み（stats）から畳む。読めない・空の形・読んだ時刻が無い → null で 2 節とも出さない。
+  const ledger = homeLedgerOf(stats);
   const organization = organizationJsonLd(
     "Independent verification of the x402 agent-payment economy. vet402 buys what x402 endpoints sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence.",
   );
@@ -244,6 +245,7 @@ export default async function Home() {
             <input
               id="home-seller-q"
               name="q"
+              aria-describedby="home-seller-q-help"
               type="search"
               placeholder="api.example.com"
               required
@@ -256,6 +258,10 @@ export default async function Home() {
               Check a seller
             </button>
           </div>
+          {/* 2026-10-21 監査 A-05: 検索が引くのは /sellers（Base の購入結果）だけ。載っていない host を「測っていない」と読ませない。 */}
+          <p id="home-seller-q-help" className="doc-note mt-1">
+            Results are Base purchases. A host with purchases on another chain, or one missing here, can still be listed in the observatory.
+          </p>
           <p className="mt-3 text-center sm:text-left">
             <TrackedLink
               href="/signup"
@@ -295,6 +301,12 @@ export default async function Home() {
           <dt className="font-semibold">What we do not do</dt>
           <dd>Guarantee a seller, refund, handle chargebacks, check identity (KYC), approve payments, or cap your spending.</dd>
         </dl>
+
+        {/* ================= Under the first screen: the ledger ================= */}
+        {/* 2026-10-21 オーナー決定（案 A・「推奨で」）: 第 1 画面は据え置き、その直下に台帳の 2 数とチェーン別の表。
+            数は getObservatoryStatsCached() の 1 回の読みから（/api/v1/observatory/state と同じ reader）。読めなければ出さない。 */}
+        {ledger ? <LedgerSection ledger={ledger} /> : null}
+        {ledger ? <SettledChainsSection ledger={ledger} /> : null}
 
         {/* ================= RFC first page ================= */}
         {/* 640px 未満ではヘッダの2列が縦に積まれて8行になる（.doc-head の
@@ -867,32 +879,11 @@ export default async function Home() {
           />
         </div>
 
-        {/* ================= 5. Chains ================= */}
-        {/* 2026-09-19: 対応チェーンの節。§4 は「この節はぜんぶ今動いている」、§6 は「まだ出していない
-            ものだけ」と言い切っているので、稼働・初回購入待ち・実装中が混ざるこの表はどちらにも置けない。
-            §4 の直後に独立の節として置き、行ごとの状態印（§4 / §6 と同じ文法）で混在を読めるようにする。
-            件数は静的に書かない——Fig. 1 と同じ `stats`（l1.byChain）から引き、読めない時は件数も状態の上書きも出さない。
-            文言と状態の正典は supported-chains-data.ts。2026-09-20 Arc の初購入が成立し settled_on_record へ。
-            導入文の凡例（chainsLegend）は、pending の行が実際に描かれる時だけ pending を説明する。
-            2026-09-28: Robinhood Chain の行は building から live（公開中の製品・購入レーンではない・件数なし）へ。RWA と合意。 */}
-        <h2 id="chains" className="sec-head scroll-mt-24">
-          <span className="sec-no">5.</span>
-          <span>Chains</span>
-        </h2>
-        <p className="doc-p">
-          What vet402 does on each chain today. {chainsLegend(settledByChain)}{" "}
-          <Link href="/observatory/state" className="doc-link">
-            L1 figures by chain
-          </Link>
-          .
-        </p>
-        {/* 関門は L1 台帳そのもの（byChain が空 = 読めなかった）。totalEndpoints は L0 カタログの件数で、
-            L1 が読めたかどうかを語らない（2026-09-19 レビュー C1）。 */}
-        <SupportedChains settledByChain={settledByChain} />
-
-        {/* ================= 6. Status of this work ================= */}
+        {/* 2026-10-21: 旧 §5「Chains」は第 1 画面の直下の「Where purchases settled」（HomeLedger.tsx・アンカー #chains を引き継ぐ）
+            に一本化した。同じ台帳のチェーン別件数を 2 か所に出さない。Robinhood Chain の合意文とリンク（/rwa）はその表の下に残る。 */}
+        {/* ================= 5. Status of this work ================= */}
         <h2 id="status" className="sec-head scroll-mt-24">
-          <span className="sec-no">6.</span>
+          <span className="sec-no">5.</span>
           <span>Status of this work</span>
         </h2>
         <p className="doc-p">
@@ -927,7 +918,7 @@ export default async function Home() {
           />
         </div>
 
-        {/* 2026-09-02 Takeshi「ここだけ浮いている」: 破線の囲み（dashbox）は §5（2026-09-19 から §6）の
+        {/* 2026-09-02 Takeshi「ここだけ浮いている」: 破線の囲み（dashbox）は §5（2026-09-19 から §6・2026-10-21 から再び §5）の
             登録簿の直後に唯一の「箱」として置かれ、紙面の文法（罫と段落）から外れていた。
             RFC の back matter に倣い、§5 を閉じる 1 文として同じ段落文法で置く。
             イベント名 follow_click と channel は据え置き。フッタの About 列にも同じ 2 本を置く。 */}
@@ -1015,9 +1006,9 @@ export default async function Home() {
 }
 
 /**
- * ItemRow — one entry in §4 / §6. The state marker is the whole point of the
+ * ItemRow — one entry in §4 / §5. The state marker is the whole point of the
  * row: `live` means it runs today, `building` means it does not. Keeping the
- * two states in one visual grammar is what stops §6 from reading as a claim.
+ * two states in one visual grammar is what stops §5 from reading as a claim.
  */
 function ItemRow({
   state,

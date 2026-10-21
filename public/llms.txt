@@ -116,7 +116,7 @@ On npm, all from the same repository: `@vet402/sdk` (spend guard), `@vet402/midd
 
 ## Being built (not measurements yet)
 
-- Writing verification records to the ERC-8004 Validation Registry. Not done yet because the registry is written in one direction: an agent's owner names a validator and opens the request, and the validator answers it. A validator cannot open a request about someone else's agent (`validationRequest` reverts with `Not authorized`, which is what vet402's fourteen attempts between 2026-08-21 and 2026-09-03 did). vet402 can answer the first request the day an agent owner sends one; none has named vet402 so far. The same account is §6 of https://vet402.com/#status
+- Writing verification records to the ERC-8004 Validation Registry. Not done yet because the registry is written in one direction: an agent's owner names a validator and opens the request, and the validator answers it. A validator cannot open a request about someone else's agent (`validationRequest` reverts with `Not authorized`, which is what vet402's fourteen attempts between 2026-08-21 and 2026-09-03 did). vet402 can answer the first request the day an agent owner sends one; none has named vet402 so far. The same account is §5 of https://vet402.com/#status
 
 ## Use cases
 

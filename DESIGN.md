@@ -8,7 +8,7 @@ Navy / paper. Martian + Fragment Mono. Running head, sheet, `doc-head`, `doc-tit
 
 Applies to: the memo, observatory, methodology, FAQ, docs, legal, blog, `/payee`, `/agent`, 404s.
 
-The approved LP memo body and hero (Abstract + two CTAs) are not to be redesigned. 2026-09-02 owner decision: the product's core moved to endpoint verification, so the primary CTA is “Open the observatory” → `/observatory` (event `lp_cta_click`, position `hero_observatory`); the secondary “Read the methodology” and the Abstract copy stay as approved. Payee lookup lives in §4 (“Verified Payee”), not in the hero.
+The approved LP memo body and hero (Abstract + two CTAs) are not to be redesigned. 2026-09-02 owner decision: the product's core moved to endpoint verification, so the primary CTA is “Open the observatory” → `/observatory` (event `lp_cta_click`, position `hero_observatory`); the secondary “Read the methodology” and the Abstract copy stay as approved. Payee lookup lives in §4 (“Verified Payee”), not in the hero. 2026-10-21 owner decision: the current first screen (title, one-line description, seller search, two buttons, three-row table) stays as it is, and “The public ledger” (counts cover the whole ledger, read at `readAt`) and the “Where purchases settled” chain table sit directly under it, drawn from the cached ledger read (`src/components/site/HomeLedger.tsx`). That table replaced the memo’s former §5 “Chains”.
 
 ## Operate (dashboard)
 

@@ -242,11 +242,13 @@ test("an unread ledger: the legend does not define the markers by the ledger, an
   }
 });
 
-test("the page folds the ledger once and feeds the legend and the rows from that one read", () => {
+// 2026-10-21: the front page no longer draws this section. Its chain counts moved to "Where purchases
+// settled" (src/components/site/HomeLedger.tsx, tests/home-ledger.test.ts), which keeps the #chains
+// anchor and prints the Robinhood Chain row's agreed sentence from this file.
+test("the front page draws the chains from HomeLedger, not from this section (2026-10-21)", () => {
   const home = read("src/app/page.tsx");
-  assert.equal(home.split("settledByChainOf(").length - 1, 1, "one fold");
-  assert.ok(home.includes("{chainsLegend(settledByChain)}"));
-  assert.ok(home.includes("<SupportedChains settledByChain={settledByChain} />"));
+  assert.ok(!home.includes("<SupportedChains"), "the old section is not drawn a second time");
+  assert.ok(home.includes("<SettledChainsSection ledger={ledger} />"));
 });
 
 test("the Robinhood Chain row carries the agreed sentence and nothing else (2026-09-28)", () => {
@@ -296,12 +298,15 @@ test("no static count in the section copy — counts come from stats.l1.byChain"
   assert.ok(data.includes("ARC-SWAP"), "the Arc swap line stays marked");
 });
 
-test("the contents row for the section points at the heading that exists", () => {
+test("no contents row points at an anchor the page does not have (2026-10-21)", () => {
   const home = read("src/app/page.tsx");
-  const toc = home.match(/\{ no: "5\.", title: "Chains", href: "#([a-z-]+)"/);
-  assert.ok(toc, "the contents list carries a row for section 5, Chains");
-  const heading = home.match(/<h2 id="([a-z-]+)" className="sec-head scroll-mt-24">\s*<span className="sec-no">5\.<\/span>\s*<span>Chains<\/span>/);
-  assert.ok(heading, "section 5 has an <h2> with an id");
-  assert.equal(toc[1], heading[1], "the contents href and the heading id are the same anchor");
-  assert.equal(heading[1], "chains");
+  const ledger = read("src/components/site/HomeLedger.tsx");
+  const pricing = read("src/components/site/PricingSection.tsx");
+  const hrefs = [...home.matchAll(/\{ no: "[0-9A-Z]+\.", title: "[^"]+", href: "#([a-z-]+)"/g)].map((m) => m[1]);
+  assert.ok(hrefs.length >= 5, "the contents list is still there");
+  const ids = new Set([...`${home}\n${ledger}\n${pricing}`.matchAll(/<(?:h2|section) id="([a-z-]+)"/g)].map((m) => m[1]));
+  for (const h of hrefs) assert.ok(ids.has(h), `contents row #${h} has a heading`);
+  assert.ok(!home.includes('title: "Chains"'), "the removed section has no contents row");
+  // The old anchor still resolves: the chain table under the first screen carries it.
+  assert.ok(ledger.includes('<h2 id="chains" className="sec-head scroll-mt-24">'));
 });

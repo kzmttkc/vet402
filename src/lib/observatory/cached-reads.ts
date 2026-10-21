@@ -46,8 +46,13 @@ import {
 /** 窓の値と理由は public-read-revalidate.ts（/sellers が reader.ts の依存を読まずに同じ値を使うため・2026-09-28）。 */
 export { PUBLIC_READ_REVALIDATE };
 
-export const getObservatoryStatsCached: () => Promise<ObservatoryStats> = unstable_cache(
-  () => getObservatoryStats(),
+/**
+ * `readAt` は DB を読んだ時刻（キャッシュを埋めた時点・ISO8601 UTC）。2026-10-21: トップ頁の
+ * 「The public ledger」はこの日付を出す。描画時刻ではなく読んだ時刻なので、窓の中で頁を開いても嘘にならない。
+ * 型は optional——デプロイ直後に旧い形のエントリが返る 5 分間は無い（トップ頁はその間その節を出さない）。
+ */
+export const getObservatoryStatsCached: () => Promise<ObservatoryStats & { readAt?: string }> = unstable_cache(
+  async () => ({ ...(await getObservatoryStats()), readAt: new Date().toISOString() }),
   ["observatory:stats"],
   { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
 );
