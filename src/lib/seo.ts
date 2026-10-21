@@ -159,12 +159,12 @@ export function pageMetadata({
 export const DATA_LICENSE_URL = "https://creativecommons.org/licenses/by/4.0/";
 
 /**
- * 推奨引用文。public/llms.txt の "Cite as:" と 1 文字も違ってはいけない
- * （tests/dataset-json-ld.test.ts が突合する）。取得日を必須にしているのは、
- * ここの数字が全部動くから — 日付の無い引用は測定ではない。
+ * 推奨引用文。第3引数を省いた形が public/llms.txt の "Cite as:" の型
+ * （取得日の位置は YYYY-MM-DD）。頁が読んだ時刻を持つときはその時刻を渡して埋める。
+ * 型と埋めた文を同一とは扱わない（tests/dataset-json-ld.test.ts）。
  */
-export function citeAs(datasetName: string, contentUrl: string): string {
-  return `KIZUNA Creation. vet402 ${datasetName}. Dataset, retrieved YYYY-MM-DD. ${contentUrl}`;
+export function citeAs(datasetName: string, contentUrl: string, retrievedAt = "YYYY-MM-DD"): string {
+  return `KIZUNA Creation. vet402 ${datasetName}. Dataset, retrieved ${retrievedAt}. ${contentUrl}`;
 }
 
 export type DatasetDistribution = {
@@ -198,6 +198,11 @@ type DatasetInput = {
   /** ISO 8601 の期間または日付。不明なら渡さない（推測で埋めない）。 */
   temporalCoverage?: string;
   dateModified?: string;
+  /**
+   * creditText の取得時刻。渡した値をそのまま埋める。
+   * 省くと llms.txt の型（YYYY-MM-DD）のまま。
+   */
+  retrievedAt?: string;
 };
 
 export function datasetJsonLd(input: DatasetInput) {
@@ -213,7 +218,7 @@ export function datasetJsonLd(input: DatasetInput) {
     publisher: publisherOrg(),
     license: DATA_LICENSE_URL,
     isAccessibleForFree: true,
-    creditText: citeAs(input.citeName ?? input.name, input.citeUrl),
+    creditText: citeAs(input.citeName ?? input.name, input.citeUrl, input.retrievedAt),
     measurementTechnique: input.measurementTechnique,
     variableMeasured: input.variableMeasured,
     keywords: input.keywords,

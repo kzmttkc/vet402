@@ -1004,15 +1004,16 @@ export default async function ObservatoryMethodologyPage() {
           correct or that the content is any good — that judgement is L3, and L3 is not built.
         </p>
         <p className="doc-p">
-          <strong>One vocabulary, and its older summary form.</strong> The four words above are the
-          canonical set: they are what the ledger column <code>l2_schema</code> stores and what
-          every API returns. Short summaries of the levels have historically used a three-word form
-          (<code>conform / mismatch / undeclared</code>), and a reader comparing the two surfaces
-          could not tell whether they described the same measurement. They do:{" "}
-          <code>conform</code> is <code>match</code>, <code>mismatch</code> is{" "}
-          <code>mismatch</code>, and <code>undeclared</code> is <code>no_declaration</code>. The
-          summary form has no word for <code>not_checked</code>, because a level summary is not
-          reporting rows that were never checked. Where the two disagree, the four-word set wins.
+          <strong>Ledger words and decision words.</strong> The ledger column{" "}
+          <code>l2_schema</code> stores match, mismatch, no_declaration, or not_checked. The
+          decision document and the facts document store conform, mismatch, undeclared, or
+          not_checked. <code>conform</code> is written when the re-read L2 value (l2_reading) of the latest delivery is
+          match. <code>mismatch</code> is written when that re-read value is mismatch. An older mismatch row with no recorded reason is re-read first, and a cut body reads not_checked.
+          In the other cases the decision word is not_checked when the current declaration names
+          output (a required key or an example property), and undeclared when it does not. The
+          quickstart resource <code>https://api.exa.ai/search</code> is an example of where to read
+          that resource&apos;s decision and its purchase rows. Read <code>facts.l2.status</code> on
+          its decision and on its facts document, and <code>l2_schema</code> on its purchase rows.
         </p>
 
         <h2 className="sec-head">

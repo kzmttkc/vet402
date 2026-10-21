@@ -13,8 +13,8 @@
 //   1. Dataset に distribution / license / measurementTechnique がある
 //   2. distribution の URL は自ドメインで、llms.txt が公開だと宣言した面だけ
 //      （実在しない配布 URL を構造化データに書かない）
-//   3. 推奨引用文が public/llms.txt の "Cite as:" と 1 文字も違わない
-//      （同じデータに 2 通りの引用文を出回らせない）
+//   3. 時刻を省いた推奨引用文は public/llms.txt の "Cite as:" の型と一致する。
+//      頁が読んだ時刻を渡した creditText は、その型の YYYY-MM-DD をその時刻で埋める。
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -55,15 +55,36 @@ test("Dataset は distribution / license / measurementTechnique を必ず持つ"
   assert.equal(sample.isBasedOn, `${SITE_URL}/observatory/methodology`);
 });
 
-test("推奨引用文は llms.txt の Cite as と同一（取得日つき）", () => {
-  const cite = citeAs("observatory", `${SITE_URL}/api/v1/observatory/state`);
-  assert.equal(sample.creditText, cite);
-  assert.ok(cite.includes("retrieved YYYY-MM-DD"), "取得日を書く場所が引用文に無い");
+test("llms.txt の Cite as は型で、時刻を渡した creditText はその型を埋める", () => {
+  const template = citeAs("observatory", `${SITE_URL}/api/v1/observatory/state`);
+  assert.equal(sample.creditText, template);
+  assert.ok(template.includes("retrieved YYYY-MM-DD"), "型は取得日の位置を YYYY-MM-DD で示す");
   const llms = read("public/llms.txt");
   assert.ok(
-    llms.includes(`Cite as: ${cite}`),
-    `llms.txt の Cite as が構造化データと違う。期待: ${cite}`,
+    llms.includes(`Cite as: ${template}`),
+    `llms.txt の定型が citeAs の省略形と違う。期待: ${template}`,
   );
+  const filled = "2026-10-21T04:35:00.000Z";
+  const dated = datasetJsonLd({
+    name: "State of x402",
+    citeName: "observatory",
+    description: "d",
+    path: "/observatory/state",
+    citeUrl: `${SITE_URL}/api/v1/observatory/state`,
+    measurementTechnique: "m",
+    variableMeasured: ["a"],
+    keywords: ["x402"],
+    retrievedAt: filled,
+    distribution: [
+      { name: "n", encodingFormat: "application/json", contentUrl: `${SITE_URL}/api/v1/observatory/state` },
+    ],
+  });
+  assert.equal(dated.creditText, citeAs("observatory", `${SITE_URL}/api/v1/observatory/state`, filled));
+  assert.equal(dated.creditText.includes("YYYY-MM-DD"), false);
+  assert.equal(dated.creditText.includes("{"), false);
+  assert.ok(dated.creditText.includes(`retrieved ${filled}`));
+  const state = read("src/app/observatory/state/page.tsx");
+  assert.match(state, /retrievedAt:\s*stats\.readAt/);
 });
 
 test("Dataset を出す 2 頁は共通ビルダを通る（手書きの Dataset を残さない）", () => {

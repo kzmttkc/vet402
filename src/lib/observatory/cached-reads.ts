@@ -18,15 +18,16 @@
 // 集計だけを Next の Data Cache に載せる。TTFB は Core Web Vitals の
 // server response time に直接効き、クロール時の 1 頁あたりのコストも下がる。
 //
-// 鮮度は「表示している値の更新頻度」から決める。これらの値を書き換えるのは
-// vercel.json の日次 cron（catalog-sync 01:00 / l0-probe 10:30 /
-// l1-purchase 12:00 / metrics-rollup 10:30 UTC）だけなので、分単位の窓では
-// 実質何も古くならない。窓を跨いだ瞬間に次の読み手が新しい値を引く。
+// 鮮度の窓は SSR のコストを下げる再利用である。2026-10-20 の実測では被覆の
+// 分子が 6 分で動いた。プローブは cron の間も終わるので、この窓は件数が
+// 次の cron まで凍るという意味ではない。頁は readAt を出し、API の
+// retrievedAt とは別に読む。
 //
 // **API ルートはここを使わない。** `/api/v1/observatory/state` は body に
 // `retrievedAt` を入れて「取得時刻つきで引用してよい」と宣言している面なので、
-// キャッシュを噛ませるとその時刻が嘘になる。読み取りキャッシュは
-// 時刻を主張しない HTML 頁だけに閉じる（tests/public-page-cache.test.ts が固定）。
+// このキャッシュを API に噛ませると、その時刻が充填時刻のまま残る。HTML 頁は
+// 同じ充填で readAt を刻み、描画のたびに新しい Date を出さない
+// （tests/public-page-cache.test.ts が、API ルートがこのファイルを import しないことを固定する）。
 // ============================================================
 import { unstable_cache } from "next/cache";
 import { PUBLIC_READ_REVALIDATE } from "./public-read-revalidate";
@@ -43,29 +44,36 @@ import {
   type UnverifiedBreakdown,
 } from "@/lib/observatory/reader";
 
+/** 頁が描いた集計の読んだ時刻。キャッシュが埋まった時刻で、描画のたびに進まない。 */
+export type ObservatoryStatsRead = ObservatoryStats & { readAt: string };
+export type CoverageShareRead = CoverageShare & { readAt: string };
+
 /** 窓の値と理由は public-read-revalidate.ts（/sellers が reader.ts の依存を読まずに同じ値を使うため・2026-09-28）。 */
 export { PUBLIC_READ_REVALIDATE };
 
 /**
  * `readAt` は DB を読んだ時刻（キャッシュを埋めた時点・ISO8601 UTC）。2026-10-21: トップ頁の
  * 「The public ledger」はこの日付を出す。描画時刻ではなく読んだ時刻なので、窓の中で頁を開いても嘘にならない。
- * 型は optional——デプロイ直後に旧い形のエントリが返る 5 分間は無い（トップ頁はその間その節を出さない）。
+ * キーは readAt の無い旧い形と分けた（observatory:stats:readAt）ので、デプロイ直後も readAt は必ずある。
  */
-export const getObservatoryStatsCached: () => Promise<ObservatoryStats & { readAt?: string }> = unstable_cache(
+export const getObservatoryStatsCached: () => Promise<ObservatoryStatsRead> = unstable_cache(
   async () => ({ ...(await getObservatoryStats()), readAt: new Date().toISOString() }),
-  ["observatory:stats"],
+  ["observatory:stats:readAt"],
   { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
 );
 
-export const getCoverageShareCached: () => Promise<CoverageShare> = unstable_cache(
-  () => getCoverageShare(),
-  ["observatory:coverage-share"],
+export const getCoverageShareCached: () => Promise<CoverageShareRead> = unstable_cache(
+  async () => ({ ...(await getCoverageShare()), readAt: new Date().toISOString() }),
+  ["observatory:coverage-share:readAt"],
   { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
 );
 
-export const getObservatoryStatsByChainCached: () => Promise<ChainStats[]> = unstable_cache(
-  () => getObservatoryStatsByChain(),
-  ["observatory:stats-by-chain"],
+/** チェーン表の読み。配列のままキャッシュしていた世代と形が違うのでキーを分けた。 */
+export type ChainStatsRead = { rows: ChainStats[]; readAt: string };
+
+export const getObservatoryStatsByChainCached: () => Promise<ChainStatsRead> = unstable_cache(
+  async () => ({ rows: await getObservatoryStatsByChain(), readAt: new Date().toISOString() }),
+  ["observatory:stats-by-chain:readAt"],
   { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
 );
 

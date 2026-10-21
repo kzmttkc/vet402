@@ -4456,6 +4456,15 @@ components:
     L2Status:
       type: string
       enum: [conform, mismatch, undeclared, not_checked]
+      description: >-
+        The decision document and the facts document store conform, mismatch,
+        undeclared, or not_checked. The ledger column l2_schema stores match,
+        mismatch, no_declaration, or not_checked. conform is written when the
+        re-read L2 value (l2_reading) of the latest delivery is match. mismatch is
+        written when that re-read value is mismatch. An older mismatch row with no
+        recorded reason is re-read first, and a cut body reads not_checked. In the other cases the decision
+        word is not_checked when the current declaration names output (a required
+        key or an example property), and undeclared when it does not.
     OfferStability:
       type: string
       enum: [stable, drifting, unknown]

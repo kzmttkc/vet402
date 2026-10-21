@@ -555,7 +555,8 @@ const DETECTION_FLOOR: Record<string, number> = {
   // 2026-09-28: 43 -> 45. The census paragraph ("One row for each seller") added two detections ([all] and [daily]) in one sentence, registered as method_census_one_row_per_seller.
   // 2026-09-28 (review W1-W3): 45 -> 46. The rewrap of the census paragraph split "bought from at all" into its own text node ([all], covered by allow_phrase " at all").
   // 2026-09-29: retest の段落を 400/415/422・見本値のクエリで書き直し、検出が 1 つ減った（文の削除ではなく言い換え）。
-  "src/app/observatory/methodology/page.tsx": 45,
+  // 2026-10-21: 45 -> 43. 「every API returns」と「rows that were never checked」を、対応表の段落に替えた。どちらも誤りで、新しい段落に断定語は無い。
+  "src/app/observatory/methodology/page.tsx": 43,
   // 2026-09-29 監査 6 周目: 8 → 7。「[receipts] … keeps only rows with a receipt」を「[settled on-chain] … lists the endpoints …」に
   // 言い換え（receipt を売り手の受領証の意味だけにした）。主張は減っていない。
   "src/app/observatory/page.tsx": 7,
@@ -568,7 +569,7 @@ const DETECTION_FLOOR: Record<string, number> = {
   "src/components/site/faq-data.ts": 15,
   "src/lib/observatory/vocabulary.ts": 15,
   // 2026-10-21: public/llms.txt を走査に加えた時点の検出数。バッククォートで切れた断片。
-  "public/llms.txt": 25,
+  "public/llms.txt": 23, // 2026-10-21: two L2 mapping sentences merged into one (audit A-06), so two fewer assertions
   // 2026-09-28: /sellers の 5 面（src/app/sellers/**/page.tsx・src/components/site/sellers/SellersViews.tsx・
   // src/lib/sellers/fix-modes.ts）は断定語を使わずに書いたので検出が 0 件。床を 0 で書いても何も守らないので置かない。
   // 事実の主張は docs/claims.yaml に sellers_* として引用で登録してある（引用が面から消えたら「every registered quote」が赤）。

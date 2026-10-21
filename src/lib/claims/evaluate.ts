@@ -10,7 +10,7 @@
 
 export type EvalResult = { ok: boolean; actual: unknown; expected: string };
 
-const EXPR = /^\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*)\s*(>=|<=|==|!=|>|<)\s*(.+?)\s*$/;
+const EXPR = /^\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*)\s*(>=|<=|==|!=|>|<|~)\s*(.+?)\s*$/;
 
 function parseLiteral(raw: string): unknown {
   if (/^"(?:[^"\\]|\\.)*"$/.test(raw)) return JSON.parse(raw);
@@ -42,6 +42,18 @@ export function evaluateAssertion(expr: string, data: unknown): EvalResult {
 
   if (op === "==") return { ok: actual === want, actual, expected };
   if (op === "!=") return { ok: actual !== want, actual, expected };
+  // `~` は文字列の正規表現。cite が retrieved の直後に数字を持ち、`{` を含まないことをカナリアが見る。
+  if (op === "~") {
+    if (typeof want !== "string") return { ok: false, actual, expected };
+    let re: RegExp;
+    try {
+      re = new RegExp(want);
+    } catch {
+      throw new Error(`unsupported assertion regex: ${want}`);
+    }
+    if (typeof actual !== "string") return { ok: false, actual, expected };
+    return { ok: re.test(actual), actual, expected };
+  }
 
   if (typeof actual !== "number" || typeof want !== "number") {
     return { ok: false, actual, expected };

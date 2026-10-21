@@ -365,13 +365,13 @@ claims:
       url: https://vet402.com/api/v1/observatory/corrections
       assert: "corrections.0.reason != null"
     verified_at: 2026-09-04
-  - id: api_never_touches_keys_funds_or
+  - id: api_census_example_is_shape_only
     surface: src/app/docs/api/page.tsx
-    quote: "never touches keys, funds, or signing &mdash; execution stays with your wallet stack."
-    means: "API リファレンスが述べる契約仕様（レスポンスの形・レート・既定ポリシー）"
+    quote: "Example of the shape only"
+    means: "census の枠は応答の形の見本で、枠の数は実測ではない。実測は同じ URL を取り、応答の retrievedAt を引用する。枠の 980 を最新値に書き換えない"
     check: null
-    why_unverifiable: "キー必須または POST の面で、読み取り専用・キー無しのカナリアからは判定できない。契約は tests/openapi-route-parity.test.ts と tests/openapi-schema-parity.test.ts が守る"
-    verified_at: 2026-09-04
+    why_unverifiable: "見本だと書く編集方針で、公開 GET の数値そのものではない。枠が 980 を持たず example と書くことは tests/audit-text-batch2.test.ts が固定する"
+    verified_at: 2026-10-21
   - id: api_every_scored_response_carries_a
     surface: src/app/docs/api/page.tsx
     quote: "Every scored response carries a numeric score and a"
@@ -709,8 +709,8 @@ claims:
     verified_at: 2026-09-04
   - id: state_daily_l0_probes_and_passes
     surface: src/app/observatory/state/page.tsx
-    quote: "Daily L0 probes and passes,"
-    means: "折れ線の代替テキスト。日次の probes/pass 系列が実在すること"
+    quote: "Daily L0 probes vet402 sent and probes that passed,"
+    means: "折れ線の代替テキスト。日次の probes/pass 系列が実在し、最終日は未完の点である"
     check:
       url: https://vet402.com/api/v1/observatory/state
       assert: "coverage7d.measuredLast7d > 0"
@@ -741,7 +741,7 @@ claims:
     verified_at: 2026-09-04
   - id: state_no_rolled_up_days_yet
     surface: src/app/observatory/state/page.tsx
-    quote: "No rolled-up days yet — the daily rollup starts filling this section from its first"
+    quote: "No rolled-up days yet. The daily rollup starts filling this section from its first"
     means: "日次ロールアップが未生成のときの説明"
     check:
       url: https://vet402.com/api/v1/observatory/state
@@ -1111,11 +1111,11 @@ claims:
     verified_at: 2026-10-21
   - id: audit_e_l2_vocabulary_has_one_canon
     surface: src/app/observatory/methodology/page.tsx
-    quote: "One vocabulary, and its older summary form."
-    means: "L2 の正典は match / mismatch / no_declaration / not_checked。3 語形はその要約であり、対応表を置く"
+    quote: "Ledger words and decision words."
+    means: "台帳列 l2_schema は match, mismatch, no_declaration, not_checked。decision と facts は conform, mismatch, undeclared, not_checked。conform は直近の配達の l2_schema が match のとき。mismatch は mismatch のとき。それ以外は、今の宣言が出力（必須キーか例のプロパティ）を持つかで not_checked か undeclared。JSON の列挙はこの日は変えない。undeclared は no_declaration の言い換えではない"
     check: null
-    why_unverifiable: "語彙の対応そのものは公開 GET が数値で返す種類の主張ではない。台帳列 l2_schema の値域は tests/docs-surface-parity.test.ts 側で固定する"
-    verified_at: 2026-09-04
+    why_unverifiable: "語彙の対応そのものは公開 GET が数値で返す種類の主張ではない。列挙を変えていないことは tests/audit-text-batch2.test.ts と src/lib/decision/types.ts の L2_STATUSES が固定する"
+    verified_at: 2026-10-21
   - id: audit_e_decision_is_the_canonical_route
     surface: src/components/site/faq-data.ts
     quote: "The canonical integration since 2026-09-02 is GET /api/v1/resources/:resourceId/decision"
@@ -1765,18 +1765,18 @@ claims:
     verified_at: 2026-09-19
   - id: method_l2_canon_is_what_every_api_returns
     surface: src/app/observatory/methodology/page.tsx
-    quote: "stores and what every API returns"
-    means: "L2 の 4 語（match / mismatch / no_declaration / not_checked）が正典で、台帳列 l2_schema の値域と API の返す値はこれ。3 語形は要約であって別の測定ではない"
+    quote: "stores match, mismatch, no_declaration, or not_checked."
+    means: "台帳列 l2_schema が持つ 4 語。decision と facts は conform, mismatch, undeclared, not_checked。conform は直近の配達の l2_schema が match のとき。mismatch は mismatch のとき。それ以外は、今の宣言が出力（必須キーか例のプロパティ）を持つかで not_checked か undeclared。全 API が台帳の 4 語を返す、という文は消した。undeclared は no_declaration、という 1 対 1 も消した"
     check: null
-    why_unverifiable: "語彙の一致そのものは公開 GET が数値で返す種類の主張ではない。列の値域は src/lib/db/schema.ts と l1-runner.ts、面どうしの一致は tests/docs-surface-parity.test.ts が固定する"
-    verified_at: 2026-09-19
-  - id: method_summary_form_has_no_word_for_not_checked
+    why_unverifiable: "語彙の対応そのものは公開 GET が数値で返す種類の主張ではない。写像は src/lib/decision/seller-facts.ts が match を conform、mismatch を mismatch に上書きするだけ。列挙の改名はこの日はしない。tests/audit-text-batch2.test.ts が固定する"
+    verified_at: 2026-10-21
+  - id: method_l2_undeclared_is_no_declaration
     surface: src/app/observatory/methodology/page.tsx
-    quote: "because a level summary is not reporting rows that were never checked"
-    means: "3 語の要約形に not_checked に当たる語が無いのは、要約が「検査しなかった行」を報告する場ではないから。食い違ったら 4 語形が正典"
+    quote: "In the other cases the decision word is not_checked when the current declaration names"
+    means: "直近の配達が match でも mismatch でもないとき、decision の語は今の宣言が出力を持つかで分かれる。必須キーがある出品でも直近の l2_schema が no_declaration なら facts.l2.status は初期値の not_checked のまま。undeclared は no_declaration の言い換えではない"
     check: null
-    why_unverifiable: "語彙の対応の理由づけで、公開 GET が数値で返す種類の主張ではない。対応表は同じ段落に書いてあり、audit_e_l2_vocabulary_has_one_canon と対になる"
-    verified_at: 2026-09-19
+    why_unverifiable: "写像は src/lib/decision/seller-facts.ts が match を conform、mismatch を mismatch に上書きするだけ。公開文は tests/audit-text-batch2.test.ts がソースを見る。live の 1 行の status は、その resource の decision を読めば足りる"
+    verified_at: 2026-10-21
   - id: method_only_the_cadence_differs_for_priority_hosts
     surface: src/app/observatory/methodology/page.tsx
     quote: "uniform is purchase frequency: the hosts in the"
@@ -1794,11 +1794,11 @@ claims:
   - id: method_every_number_moves_cite_with_retrieval_date
     surface: src/app/observatory/methodology/page.tsx
     quote: "Every number here moves, so a measurement without its retrieval date is not a"
-    means: "ここの数字は動くので、取得日の無い引用は測定ではない。JSON 側は license / licenseUrl / retrievedAt / cite を応答に載せる"
+    means: "ここの数字は動くので、取得日の無い引用は測定ではない。state の cite は retrieved のあとに数字を持ち、未展開の枠（{）を残さない。license は CC-BY-4.0。展開のソースは tests/audit-text-batch2.test.ts が固定する"
     check:
       url: https://vet402.com/api/v1/observatory/state
-      assert: "cite == \"KIZUNA Creation. vet402 observatory. Dataset, retrieved {retrievedAt}. https://vet402.com/api/v1/observatory/state\""
-    verified_at: 2026-09-19
+      assert: "cite ~ \"^(?!.*\\\\{).*retrieved [0-9]\""
+    verified_at: 2026-10-21
   - id: docs_api_vouchscore_scope_kept_for_existing_installs
     surface: src/app/docs/api/page.tsx
     quote: "in place only so existing installs keep resolving"

@@ -38,6 +38,10 @@ type Endpoint = {
   note: ReactNode;
   request?: string;
   response: string;
+  /** Visible heading above the response frame. Defaults to "Response". */
+  responseHeading?: string;
+  /** Sentence under that heading. */
+  responseNote?: string;
 };
 
 const endpoints: Endpoint[] = [
@@ -240,7 +244,7 @@ const endpoints: Endpoint[] = [
     path: "/api/v1/resources/:resourceId/decision?role=payer|payee&payer=…&caller_dialect=v1|v2&allow_without_l1=false&amount_usd=…&max_per_tx_usd=1&min_l1_deliveries=0&require_vet402_allow=true",
     note: (
       <>
-        {"The canonical integration since 2026-09-02 (spec §8.3 / §9.1) — 1 unit per call with a key, or key-less at 10/min per IP with the same body (since 2026-09-07; 429 rate_limited when the window is spent; Idempotency-Key and customer allow/block lists apply to keyed calls only). role=payer (default) answers \"does this URL deliver as declared, right now?\" from L0 liveness, L1 settle-through and L2 conformance; role=payee answers \"should this seller serve this payer?\" and requires payer. facts and recommendation always arrive in the same document; the transitional score is left out of the body unless you pass include_score=1 (0 or 1; anything else is 400 invalid_include_score), and then it carries superseded_by: \"recommendation\" and is not the basis of the recommendation. facts.l1.last_attempt_at is when we last attempted an L1 purchase against this resource (ISO 8601 UTC, null before the first attempt) — distinct from observed_at, which is when we last paid. spending_halted is vet402's own spending halt: a fact about the measurer, not the seller, and while it is true the L1 facts here are not today's observation. not_attempted_reason (spending_halted | no_eligible_accept) qualifies the reason code l1_not_attempted; it is null for the other ways an attempt ends before the signature, which are published per attempt in the decision ledger rather than summarised here. " + DECISION_RULES_TEXT + " " + METHOD_LIMIT_TEXT + " verified_terms (since 2026-09-29, role=payer) carries the terms vet402 actually paid on the last purchase whose delivery it confirmed: pay_to, asset, amount (base units, 6 decimals), network, scheme, protocol and verified_at, or null when nothing was ever delivered, and null on XRPL until the issuer is recorded (a currency code alone cannot tell RLUSD from a look-alike). 0x addresses are lowercase. Compare it with the 402 you received before you pay: if the 402's payTo, asset, network or scheme differ from verified_terms, or its amount is higher, do not pay. An ALLOW is the fact that these terms delivered; it is not a guarantee for a different recipient or a higher price. Each row of evidence[] names the ledger it was observed in: evidence[].source is vet402 for our own L0\u2013L2 record (the row carries purchase_id and a public receipt URL), and subgraph for a row read from The Graph's x402 subgraph. This route emits vet402 rows; "}
+        {"The ledger column l2_schema stores match, mismatch, no_declaration, or not_checked. The decision document and the facts document store conform, mismatch, undeclared, or not_checked. conform is written when the re-read L2 value (l2_reading) of the latest delivery is match. mismatch is written when that re-read value is mismatch. An older mismatch row with no recorded reason is re-read first, and a cut body reads not_checked. In the other cases the decision word is not_checked when the current declaration names output (a required key or an example property), and undeclared when it does not. The canonical integration since 2026-09-02 (spec §8.3 / §9.1) — 1 unit per call with a key, or key-less at 10/min per IP with the same body (since 2026-09-07; 429 rate_limited when the window is spent; Idempotency-Key and customer allow/block lists apply to keyed calls only). role=payer (default) answers \"does this URL deliver as declared, right now?\" from L0 liveness, L1 settle-through and L2 conformance; role=payee answers \"should this seller serve this payer?\" and requires payer. facts and recommendation always arrive in the same document; the transitional score is left out of the body unless you pass include_score=1 (0 or 1; anything else is 400 invalid_include_score), and then it carries superseded_by: \"recommendation\" and is not the basis of the recommendation. facts.l1.last_attempt_at is when we last attempted an L1 purchase against this resource (ISO 8601 UTC, null before the first attempt) — distinct from observed_at, which is when we last paid. spending_halted is vet402's own spending halt: a fact about the measurer, not the seller, and while it is true the L1 facts here are not today's observation. not_attempted_reason (spending_halted | no_eligible_accept) qualifies the reason code l1_not_attempted; it is null for the other ways an attempt ends before the signature, which are published per attempt in the decision ledger rather than summarised here. " + DECISION_RULES_TEXT + " " + METHOD_LIMIT_TEXT + " verified_terms (since 2026-09-29, role=payer) carries the terms vet402 actually paid on the last purchase whose delivery it confirmed: pay_to, asset, amount (base units, 6 decimals), network, scheme, protocol and verified_at, or null when nothing was ever delivered, and null on XRPL until the issuer is recorded (a currency code alone cannot tell RLUSD from a look-alike). 0x addresses are lowercase. Compare it with the 402 you received before you pay: if the 402's payTo, asset, network or scheme differ from verified_terms, or its amount is higher, do not pay. An ALLOW is the fact that these terms delivered; it is not a guarantee for a different recipient or a higher price. Each row of evidence[] names the ledger it was observed in: evidence[].source is vet402 for our own L0\u2013L2 record (the row carries purchase_id and a public receipt URL), and subgraph for a row read from The Graph's x402 subgraph. This route emits vet402 rows; "}
         the subgraph rows are added to the same array by the{" "}
         <a
           href="https://github.com/kzmttkc/vet402/blob/main/SKILL.md"
@@ -309,7 +313,7 @@ const endpoints: Endpoint[] = [
   {
     method: "GET",
     path: "/api/v1/observatory/endpoints/:id/facts",
-    note: "L0–L2 seller facts for one endpoint — no key, 120/min. :id is the observatory uuid or the endpoint_id. The same facts object /decision carries, without the recommendation: this route contains no score and no verdict by design (§8.3). n_probe_error counts attempts where our own request was malformed, kept apart from the seller's non-delivery; settlement_30d_test is vet402's own measurement purchases, disclosed and excluded from the wash_dominated denominator.",
+    note: "L0–L2 seller facts for one endpoint — no key, 120/min. :id is the observatory uuid or the endpoint_id. The same facts object /decision carries, without the recommendation: this route contains no score and no verdict by design (§8.3). n_probe_error counts attempts where our own request was malformed, kept apart from the seller's non-delivery; settlement_30d_test is vet402's own measurement purchases, disclosed and excluded from the wash_dominated denominator. The ledger column l2_schema stores match, mismatch, no_declaration, or not_checked. The decision document and the facts document store conform, mismatch, undeclared, or not_checked. conform is written when the re-read L2 value (l2_reading) of the latest delivery is match. mismatch is written when that re-read value is mismatch. An older mismatch row with no recorded reason is re-read first, and a cut body reads not_checked. In the other cases the decision word is not_checked when the current declaration names output (a required key or an example property), and undeclared when it does not.",
     response: `{
   "subject": { "type": "resource", "id": "9a7e…", "endpoint_id": "3f1c…", "observatory_id": "521e929e-…", "canonical_url": "…", "method": "GET" },
   "facts": { "l0": {…}, "l1": {…}, "l2": {…}, "availability_7d": 1, "availability_30d": 0.97, "offer_stability": "stable", "payees": ["…"], "settlement_30d_real": 41, "settlement_30d_raw": 44, "settlement_30d_test": 3, "unique_payers_30d_real": 9, "wash_dominated": false },
@@ -323,23 +327,26 @@ const endpoints: Endpoint[] = [
     method: "GET",
     path: "/api/v1/census/summary?chain=eip155:8453&window=30d",
     note: "Settlement census — no key, 60/min, cached 5 minutes. settlements_raw counts every indexed x402-related settlement in the window; settlements_real excludes wash_flag self_deal / circular / test (including every wallet vet402 pays from). Both are always returned together and never merged. chain is CAIP-2 or a v1 slug (base, solana); omit for all chains. window is 7d or 30d. indexed_since reports how far back the index actually reaches, overall and per chain, so window_covered_days is never more than window_requested_days and the counts are a floor rather than a total whenever window_fully_covered is false. 400 invalid_window / invalid_chain.",
+    responseHeading: "Example of the shape only",
+    responseNote:
+      "These counts are not a reading. Fetch the URL and cite retrievedAt from that response.",
     response: `{
   "chain": "eip155:8453", "window": "30d",
-  "settlements_raw": 980, "settlements_real": 520,
-  "wash": { "self_deal": 12, "circular": 0, "test": 448 },
-  "attribution": { "confirmed": 410, "probable": 70, "unmatched": 40 },
-  "unique_payers_raw": 31, "unique_payers_real": 24, "unique_payees_real": 57,
-  "endpoints_with_real_settlement": 61,
-  "by_source": { "l1_purchase": 448, "payments_api": 2, "chain_index": 530 },
+  "settlements_raw": "<count>", "settlements_real": "<count>",
+  "wash": { "self_deal": "<count>", "circular": "<count>", "test": "<count>" },
+  "attribution": { "confirmed": "<count>", "probable": "<count>", "unmatched": "<count>" },
+  "unique_payers_raw": "<count>", "unique_payers_real": "<count>", "unique_payees_real": "<count>",
+  "endpoints_with_real_settlement": "<count>",
+  "by_source": { "l1_purchase": "<count>", "payments_api": "<count>", "chain_index": "<count>" },
   "indexed_since": {
-    "all": "2026-08-23", "byChain": { "eip155:8453": "2026-08-23" },
-    "all_chains_since": "2026-08-23",
-    "window_requested_days": 30, "window_covered_days": 13, "window_fully_covered": false,
+    "all": "<YYYY-MM-DD>", "byChain": { "eip155:8453": "<YYYY-MM-DD>" },
+    "all_chains_since": "<YYYY-MM-DD>",
+    "window_requested_days": "<days>", "window_covered_days": "<days>", "window_fully_covered": "<boolean>",
     "note": "indexed_since.all is the oldest UTC day this index holds …"
   },
   "definition": "settlements_raw counts every indexed …",
   "disclaimer": "…",
-  "retrievedAt": "…"
+  "retrievedAt": "<ISO-8601>"
 }`,
   },
   {
@@ -575,6 +582,16 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
             <code>suggestion</code>; and an unknown id gets 404 <code>not_found</code> from{" "}
             <code>/decision</code>.
           </p>
+          <p className="mt-1 text-sm text-brand-lift">
+            The ledger column l2_schema stores match, mismatch, no_declaration, or not_checked.
+            The decision document and the facts document store conform, mismatch, undeclared, or
+            not_checked. conform is written when the re-read L2 value (l2_reading) of the latest delivery is match.
+            mismatch is written when that re-read value is mismatch. An older mismatch row with no recorded reason is re-read first, and a cut body reads not_checked. In the other cases
+            the decision word is not_checked when the current declaration names output (a required
+            key or an example property), and undeclared when it does not. For the quickstart
+            resource https://api.exa.ai/search, read facts.l2.status on its decision and on its
+            facts document, and l2_schema on its purchase rows.
+          </p>
         </div>
 
         <div>
@@ -800,30 +817,44 @@ console.log(d.recommendation, d.reason_codes);`}
 
         <h3 className="text-base font-semibold text-brand-deep">SDK: gate a payment</h3>
         <p className="text-sm text-brand">
-          SpendGuard answers &ldquo;may my agent send this payment?&rdquo; and nothing else. It
-          never touches keys, funds, or signing &mdash; execution stays with your wallet stack.
-          Under the default <code>allow-only</code> policy, anything that is not a clean{" "}
-          <code>ALLOW</code> denies.
+          Gate the payment on the resource decision for the URL, not on the payee wallet score.
+          Pay when <code>recommendation</code> is <code>ALLOW</code> and <code>degraded</code> is
+          false. A missing resource, a WARN, a BLOCK, or a degraded read stays unpaid.
         </p>
         <CodeBlock
-          label="TypeScript: gate an agent payment with SpendGuard"
+          label="TypeScript: gate a payment on the resource decision"
+          code={`import { createVouchClient } from "@vet402/sdk";
+
+const vouch = createVouchClient({}); // no apiKey: key-less, 10/min per IP
+
+const { resource } = await vouch.resolve("https://api.exa.ai/search");
+if (!resource?.resource_id) throw new Error("not in the vet402 catalog");
+const d = await vouch.getDecision(resource.resource_id, { role: "payer" });
+
+if (d.recommendation === "ALLOW" && d.degraded === false) {
+  // the caller pays from here. this sample does not sign or send
+  console.log("gate open", d.recommendation, d.degraded);
+} else {
+  console.error(d.recommendation, d.reason_codes, d.degraded);
+}`}
+        />
+
+        <h3 className="text-base font-semibold text-brand-deep">SDK: payee wallet score</h3>
+        <p className="text-sm text-brand">
+          This sample checks the payee wallet score. It does not call the resource decision. A
+          wallet score can read ALLOW when the decision for one URL paid to that wallet reads WARN
+          or BLOCK. Call getDecision for that URL. Pay only when recommendation is ALLOW and
+          degraded is false.
+        </p>
+        <CodeBlock
+          label="TypeScript: read a payee wallet score with SpendGuard"
           code={`const guard = vouch.createSpendGuard({
-  maxPerTxUsd: 10,      // deny any single payment above $10
-  dailyBudgetUsd: 50,   // deny once today's allowed total would pass $50
+  maxPerTxUsd: 10,
+  dailyBudgetUsd: 50,
 });
 
-const decision = await guard.evaluate({ payee: "0xabc...", amountUsd: 5 });
-
-if (decision.allow) {
-  // hand off to AgentKit / Privy / your own signer
-} else {
-  console.error(decision.reasons);
-  // ["payee_recommendation_not_allow"]   verdict was WARN or BLOCK
-  // ["payee_score_degraded"]             the score came from a degraded read
-  // ["payee_partial_measurement"]        some inputs could not be measured
-  // ["payee_trust_unauthenticated"]      your API key is missing or invalid
-  // ["payee_trust_unavailable"]          the lookup failed upstream — retryable
-}`}
+const scored = await guard.evaluate({ payee: "0xabc...", amountUsd: 5 });
+console.log(scored.allow, scored.reasons);`}
         />
 
         <h3 className="text-base font-semibold text-brand-deep">
@@ -1224,9 +1255,15 @@ app.use("/api/paid", createExpressGate({
 
             <div>
               <p className="mb-1 text-xs font-medium uppercase tracking-wide text-brand-lift">
-                Response
+                {ep.responseHeading ?? "Response"}
               </p>
-              <CodeBlock code={ep.response} label={`Response for ${ep.method} ${ep.path}`} />
+              {ep.responseNote ? (
+                <p className="mb-1 text-sm text-brand">{ep.responseNote}</p>
+              ) : null}
+              <CodeBlock
+                code={ep.response}
+                label={ep.responseHeading ?? `Response for ${ep.method} ${ep.path}`}
+              />
             </div>
           </div>
         ))}

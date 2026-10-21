@@ -47,6 +47,8 @@ export async function GET(request: NextRequest) {
       getDailyMetricsCoverage(),
     ]);
     const window = metricsRollupLookbackDays();
+    const span = Math.min(Math.max(Math.trunc(days) || 0, 1), 366);
+    const retrievedAt = new Date().toISOString();
     return NextResponse.json(
       {
         days: rows,
@@ -60,6 +62,10 @@ export async function GET(request: NextRequest) {
           "Daily L0/L1 aggregates per chain, rolled up from the same raw measurements the Observatory publishes. Counts with denominators, not an assessment. Chain 'unknown' means neither the payment rail nor the catalog row declares a network. Endpoints paying vet402's own addresses are left out of the rollup as of 2026-09-19, matching /api/v1/observatory/state. Each run restates the trailing recomputeWindowDays days, so days inside that window carry the new population and older days keep the old one — the step sits at the oldest day still inside the window at the first run after 2026-09-19. That boundary then stays where it is: a restated day is not restated back.",
         humanReadable: "https://vet402.com/observatory/state",
         methodology: "https://vet402.com/observatory/methodology",
+        license: "CC-BY-4.0",
+        licenseUrl: "https://creativecommons.org/licenses/by/4.0/",
+        retrievedAt,
+        cite: `KIZUNA Creation. vet402 observatory. Dataset, retrieved ${retrievedAt}. https://vet402.com/api/v1/observatory/history?days=${span}`,
       },
       {
         headers: {

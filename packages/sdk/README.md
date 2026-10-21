@@ -59,9 +59,9 @@ if (resourceId) {
 }
 ```
 
-`getDecision` needs a key (1 rate-limit unit per call; pass `idempotencyKey` to retry
-without spending a second one). `resolve` is key-less on the wire but is sent through
-the same client. Both are read-only; wiring the decision into `SpendGuard` is a later
+With a key, `getDecision` spends 1 rate-limit unit per call. Pass `idempotencyKey` to retry
+without spending a second one. `resolve` is key-less on the wire but is sent through the same
+client. getDecision and resolve are read-only. Wiring the decision into `SpendGuard` is a later
 release.
 
 ### Two fields that outrank `recommendation`

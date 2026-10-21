@@ -106,7 +106,9 @@ test("src の凍結外ファイルは util/log を直接 import しない（esli
 // 伏字の入口（logServerErrorSafe / logServerWarnSafe / logServerInfoSafe）を通す。コメントは数えない。
 // 例外は docs/api の頁だけ: 読者向けのコード見本（テンプレート文字列の中）で、サーバでは実行されない。件数で固定する。
 const CONSOLE_CALL_RE = /\bconsole\s*\.\s*(?:error|warn|log|info|debug|trace)\s*\(/g;
-const CONSOLE_SAMPLE_FILES: Record<string, number> = { "src/app/docs/api/page.tsx": 4 };
+// 2026-10-21 A-07: 支払いの見本が判定の console.log / console.error と、
+// ウォレットスコア見本の console.log を足した。サーバでは実行されない。
+const CONSOLE_SAMPLE_FILES: Record<string, number> = { "src/app/docs/api/page.tsx": 6 };
 
 /** ブロックコメントと行コメント（行頭から）を落とす。文字列の中の `//`（URL）は落とさない。 */
 function stripComments(text: string): string {

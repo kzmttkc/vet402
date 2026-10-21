@@ -31,6 +31,7 @@ export const revalidate = 900;
 
 
 export default async function ImpactPage() {
+  const drawnAt = new Date().toISOString();
   const [stats, coverage, backtest, decisions, anchors, receipts] = await Promise.all([
     getObservatoryStats(),
     getCoverageShare(),
@@ -93,7 +94,9 @@ export default async function ImpactPage() {
             <>
               <strong>{coverage.measuredLast7d.toLocaleString()}</strong> of them (
               <strong>{coverage.pct}%</strong>) carry an independent L0 measurement from the last 7
-              days — the machine definition of &quot;under regular verification&quot;.
+              days. That is the machine definition of &quot;under regular verification&quot;. This
+              page drew that share at {drawnAt}. The response at /api/v1/observatory/state carries
+              its own retrievedAt.
             </>
           )}{" "}
           <Link href="/api/v1/observatory/state" className="underline">

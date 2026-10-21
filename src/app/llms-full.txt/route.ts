@@ -44,7 +44,8 @@ The production URL is ${SITE_URL}. Formerly named "Vouch"; renamed to vet402 in 
 
 - L0 Liveness — does the endpoint answer correctly? Probe, no purchase. Output: pass / fail / unverified.
 - L1 Settle-through — does payment settle and a response arrive? Real purchase. Output: n of m settled, n delivered, latency. settled = vet402 re-read the transfer on-chain; delivered = settled AND the paid request answered 2xx. A settled attempt that answered 4xx or 5xx moved money without returning the thing being sold, and is never reported as delivered.
-- L2 Conformance — does the response match the seller's own declaration? Purchase plus machine diff. Output: match / mismatch / no_declaration / not_checked (the canonical set, and what the ledger column l2_schema stores).
+- L2 Conformance — does the response match the seller's own declaration? Purchase plus machine diff. Output: match / mismatch / no_declaration / not_checked (the ledger column l2_schema).
+  Decision and facts documents store conform, mismatch, undeclared, or not_checked: conform is written when the re-read L2 value (l2_reading) of the latest delivery is match, mismatch is written when that re-read value is mismatch (an older mismatch row with no recorded reason is re-read first, and a cut body reads not_checked), and in the other cases the decision word is not_checked when the current declaration names output (a required key or an example property) and undeclared when it does not.
 - L3 Quality — is the content any good? Published rubric. Output: opinion, never mixed into an L0–L2 fact. L3 is not built; no opinion is published.
 
 A result is labelled by the level that produced it and never moves up a level. The 0–100 ALLOW / WARN / BLOCK score is a different, older API and is never reported as an L0–L2 result.

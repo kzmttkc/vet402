@@ -13,7 +13,8 @@ import {
   getObservatoryStatsCached,
   getCoverageShareCached,
 } from "@/lib/observatory/cached-reads";
-import { getDailyMetricsHistory, type DailyMetricsRow } from "@/lib/observatory/metrics-rollup";
+import { getDailyMetricsCoverage, getDailyMetricsHistory, type DailyMetricsRow } from "@/lib/observatory/metrics-rollup";
+import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
 import { getAnchors } from "@/lib/observatory/anchors";
 import { CATALOG_SOURCE } from "@/lib/observatory/catalog-source";
 import { MPP_DIRECTORY_SOURCE } from "@/lib/observatory/mpp-payer";
@@ -57,7 +58,9 @@ function catalogSourceLabel(source: string): string {
  * 入れないのは紙面様式と自己完結（CSP・自己ホスト）のため。色は
  * currentColor 継承で、既存のテキスト色クラスに追従する。
  */
-function HistoryChart({ rows }: { rows: DailyMetricsRow[] }) {
+const HISTORY_DAYS = 60;
+
+function HistoryChart({ rows, lastRollupAt }: { rows: DailyMetricsRow[]; lastRollupAt: string | null }) {
   const byDay = new Map<string, { probes: number; pass: number }>();
   for (const r of rows) {
     const d = byDay.get(r.day) ?? { probes: 0, pass: 0 };
@@ -84,7 +87,7 @@ function HistoryChart({ rows }: { rows: DailyMetricsRow[] }) {
       <svg
         viewBox={`0 0 ${W} ${H}`}
         role="img"
-        aria-label={`Daily L0 probes and passes, ${first} to ${last}. Latest day: ${latest.probes} probes, ${latest.pass} pass.`}
+        aria-label={`Daily L0 probes vet402 sent and probes that passed, ${first} to ${last}. The last day is partial. Latest point: ${latest.probes} probes, ${latest.pass} pass. The last point is not a finished day.`}
         className="w-full max-w-[640px] text-brand-deep"
       >
         <line x1={PAD.left} y1={y(0)} x2={W - PAD.right} y2={y(0)} stroke="currentColor" strokeWidth="1" opacity="0.5" />
@@ -105,7 +108,10 @@ function HistoryChart({ rows }: { rows: DailyMetricsRow[] }) {
         <path d={path((d) => d.pass)} fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3" opacity="0.75" />
       </svg>
       <figcaption className="doc-caption mt-1">
-        solid: probes · dashed: pass — per UTC day, all chains
+        Solid line: L0 probes vet402 sent. Dashed line: probes that passed. All chains in the
+        rollup, testnets included. The last day is partial because the rollup clock is lastRollupAt
+        in the history response{lastRollupAt ? ` (${lastRollupAt})` : ""}. The last point is not a
+        finished day.
       </figcaption>
     </figure>
   );
@@ -113,10 +119,13 @@ function HistoryChart({ rows }: { rows: DailyMetricsRow[] }) {
 
 export default async function ObservatoryStatePage() {
   const stats = await getObservatoryStatsCached();
-  const chainStats = await getObservatoryStatsByChainCached();
+  const chainRead = await getObservatoryStatsByChainCached();
+  const chainStats = chainRead.rows;
+  const chainReadAt = chainRead.readAt;
   // 2026-09-29 監査 5 周目: 表は「mainnet と分かっている」network だけ。外した testnet と、名前で分からない id の件数。
   const chainScope = await getChainScopeCached().catch(() => null);
-  const history = await getDailyMetricsHistory(60);
+  const history = await getDailyMetricsHistory(HISTORY_DAYS);
+  const historyCoverage = await getDailyMetricsCoverage();
   // 2026-09-29 監査: 注記が history.length（チェーン×日の行数、当時 293）を「日数」と
   // 書いていた。日数は行の day の異なり数で数え、範囲は実データの最初と最後の日から出す。
   const historyDays = [...new Set(history.map((r) => r.day))].sort();
@@ -171,6 +180,7 @@ export default async function ObservatoryStatePage() {
       "L1 delivered (settled and a 2xx response)",
     ],
     keywords: ["x402", "agent payments", "HTTP 402", "endpoint liveness", "settlement", "USDC"],
+    retrievedAt: stats.readAt,
     distribution: [
       {
         name: "Aggregate snapshot (JSON)",
@@ -180,7 +190,7 @@ export default async function ObservatoryStatePage() {
       {
         name: "Daily series per chain (JSON)",
         encodingFormat: "application/json",
-        contentUrl: `${SITE_URL}/api/v1/observatory/history`,
+        contentUrl: `${SITE_URL}/api/v1/observatory/history?days=${HISTORY_DAYS}`,
       },
       {
         name: "L1 purchase ledger, one row per paid attempt (CSV)",
@@ -249,6 +259,19 @@ export default async function ObservatoryStatePage() {
         </div>
 
         <h1 className="doc-title mt-10">State of x402</h1>
+        <p className="doc-p mt-6">
+          {`KIZUNA Creation. vet402 observatory. Dataset, retrieved ${stats.readAt}. ${SITE_URL}/api/v1/observatory/state`}
+        </p>
+        <p className="doc-p">
+          This citation names the state aggregate, read at {stats.readAt}. It covers the headline
+          totals, the L1 purchase counts, and the listing-change counts. Those three come from that
+          read. It does not cover the chain table in section 2, the history graph, or the coverage
+          share. The history graph uses lastRollupAt from the history response
+          {historyCoverage.lastRollupAt ? ` (${historyCoverage.lastRollupAt})` : ""}. The coverage
+          share states its own read time in section 5. The shared read behind the state aggregate
+          is reused for up to {PUBLIC_READ_REVALIDATE} seconds, so a later API response can carry a
+          different retrievedAt and different counts.
+        </p>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 
         <div className="mt-8 flex flex-col gap-1 sm:flex-row sm:gap-0">
@@ -381,6 +404,7 @@ export default async function ObservatoryStatePage() {
               ? `As this page was rendered that exclusion was taking out ${(stats.operatorEndpointsExcluded ?? 0).toLocaleString()} of them — the count is printed rather than the rule, so a day when it removes nothing reads as nothing removed.`
               : "As this page was rendered no such address was on file, so the exclusion is a no-op here: it takes out nothing because there is nothing to take out, which is a different state from having checked and found none."}
         </p>
+        <p className="doc-p">This chain table was read at {chainReadAt}.</p>
         {chainStats.length === 0 ? (
           <p className="doc-p text-brand-lift">No chain data yet.</p>
         ) : (
@@ -776,7 +800,10 @@ export default async function ObservatoryStatePage() {
             ? "no active endpoints on record"
             : `${coverage.measuredLast7d.toLocaleString()} of ${coverage.activeEndpoints.toLocaleString()} active listed endpoints (${coverage.pct}% of active listed endpoints) carry an L0 measurement from the last 7 days`}
           . This is the machine definition behind &quot;endpoints under regular
-          verification&quot; — numerator and denominator as stated, nothing else.
+          verification&quot;. Numerator and denominator as stated, nothing else. This page read
+          that share at {coverage.readAt}. The response at {SITE_URL}/api/v1/observatory/state
+          carries its own retrievedAt. This page reuses the shared read for up to{" "}
+          {PUBLIC_READ_REVALIDATE} seconds.
         </p>
         <p className="doc-p">
           <strong>Ledger integrity:</strong>{" "}
@@ -812,9 +839,11 @@ export default async function ObservatoryStatePage() {
         </h2>
         {history.length === 0 ? (
           <p className="doc-p">
-            No rolled-up days yet — the daily rollup starts filling this section from its first
+            No rolled-up days yet. The daily rollup starts filling this section from its first
             run. The machine-readable series will appear at{" "}
-            <code>/api/v1/observatory/history</code>.
+            <Link href={`/api/v1/observatory/history?days=${HISTORY_DAYS}`}>
+              /api/v1/observatory/history?days={HISTORY_DAYS}
+            </Link>.
           </p>
         ) : (
           <>
@@ -822,10 +851,13 @@ export default async function ObservatoryStatePage() {
               L0 probes per UTC day (upper line) and how many of them measured{" "}
               <em>pass</em> (lower line), all chains combined, {historyDays.length}{" "}
               {historyDays.length === 1 ? "day" : "days"} with data ({historyFirstDay} to{" "}
-              {historyLastDay}).
-              Machine-readable, per-chain: <code>/api/v1/observatory/history</code>.
+              {historyLastDay}). Machine-readable, per chain:{" "}
+              <Link href={`/api/v1/observatory/history?days=${HISTORY_DAYS}`}>
+                /api/v1/observatory/history?days={HISTORY_DAYS}
+              </Link>
+              .
             </p>
-            <HistoryChart rows={history} />
+            <HistoryChart rows={history} lastRollupAt={historyCoverage.lastRollupAt} />
           </>
         )}
 

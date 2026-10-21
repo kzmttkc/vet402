@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
       isSpendingHalted(),
     ]);
 
+    const retrievedAt = new Date().toISOString();
     return NextResponse.json(
       {
         ...stats,
@@ -83,14 +84,16 @@ export async function GET(request: NextRequest) {
         // 機械が引いた数字は出所を失う（2026-08-25）。
         license: "CC-BY-4.0",
         licenseUrl: "https://creativecommons.org/licenses/by/4.0/",
-        retrievedAt: new Date().toISOString(),
-        cite: "KIZUNA Creation. vet402 observatory. Dataset, retrieved {retrievedAt}. https://vet402.com/api/v1/observatory/state",
+        retrievedAt,
+        cite: `KIZUNA Creation. vet402 observatory. Dataset, retrieved ${retrievedAt}. https://vet402.com/api/v1/observatory/state`,
       },
       {
         headers: {
           ...shared,
-          // Recomputed at most daily (the catalog/probe crons) — 15 min shared
-          // cache keeps the CDN in front of scans.
+          // Counts move as probes finish, including within minutes (coverage moved
+          // inside six minutes on 2026-10-20). This 15 min shared cache sits in
+          // front of scans. It is not a claim that the body stays frozen until
+          // the next cron. Quote retrievedAt from this body.
           "Cache-Control": "public, s-maxage=900, stale-while-revalidate=1800",
         },
       },

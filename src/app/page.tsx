@@ -17,6 +17,7 @@ import {
   getCoverageShareCached,
   getObservatoryStatsCached,
 } from "@/lib/observatory/cached-reads";
+import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
 import { FunnelFigure } from "@/components/site/Figures";
 import { LedgerSection, SettledChainsSection, homeLedgerOf } from "@/components/site/HomeLedger";
 
@@ -526,8 +527,10 @@ export default async function Home() {
                 数字と語（adjusted / wash and test）に合わせ、URL・発行者・
                 発行月・データ基準日を References に全部書く。 */}
             <p className="min-w-0 max-w-[64ch] text-brand">
-              Directory metrics can be manufactured: 38.5% of x402 transactions fall away as wash
-              or test activity before the totals mean anything.{" "}
+              As of 2026-04-21, the Visa and Artemis PDF reports raw x402 activity of $135.7M
+              across 178.3M transactions, and the article reports wash-and-test-adjusted totals of
+              $15.0M across 109.6M transactions. The gap between those two published totals is
+              38.5% of transactions and 88.9% of volume.{" "}
               <a href="#ref-artemis" className="ref-mark">
                 [VISA-ARTEMIS-2026]
               </a>
@@ -632,6 +635,16 @@ export default async function Home() {
             </div>
           ))}
         </dl>
+
+        <p className="doc-p">
+          The L2 output words in that table are the ledger column l2_schema: match, mismatch,
+          no_declaration, or not_checked. The decision document and the facts document store
+          conform, mismatch, undeclared, or not_checked. conform is written when the re-read L2 value
+          (l2_reading) of the latest delivery is match. mismatch is written when that re-read
+          value is mismatch. An older mismatch row with no recorded reason is re-read first, and
+          a cut body reads not_checked. In the other cases the decision word is not_checked when
+          the current declaration names output (a required key or an example property), and undeclared when it does not.
+        </p>
 
         {/* 2026-08-13 UX監査2巡目 [M5]: この §2 の L0–L3 と、API/SDK が今日返して
             いる trust score (0–100 / ALLOW-WARN-BLOCK) は別の物差しなのに、両方が
@@ -774,7 +787,7 @@ export default async function Home() {
                 payment wall answer a valid 402. The catalog is re-fetched daily; endpoints are
                 probed on a rolling schedule
                 {coverage && coverage.pct !== null
-                  ? ` — ${coverage.pct}% of ${coverage.activeEndpoints.toLocaleString()} active endpoints carry a probe from the last 7 days`
+                  ? `. ${coverage.pct}% of ${coverage.activeEndpoints.toLocaleString()} active endpoints carry a probe from the last 7 days (page read ${coverage.readAt}). The response at ${SITE_URL}/api/v1/observatory/state carries its own retrievedAt. This page reuses that shared read for up to ${PUBLIC_READ_REVALIDATE} seconds`
                   : ""}
                 . The table shows L0 (payment-wall check) and L1 (real purchases whose transfer
                 vet402 re-read on-chain, whether the seller&apos;s receipt or vet402&apos;s own index
@@ -972,9 +985,12 @@ export default async function Home() {
           <div id="ref-artemis" className="flex flex-col gap-1 sm:flex-row sm:gap-4">
             <dt className="shrink-0 text-brand-deep sm:w-[16ch]">[VISA-ARTEMIS-2026]</dt>
             <dd className="min-w-0 max-w-[58ch] text-brand">
-              Raw x402 activity of $135.7M across 178.3M transactions falls to $15.0M across 109.6M
-              once wash and test transactions are excluded &mdash; 38.5% of transactions, 88.9% of
-              volume. Visa and Artemis,{" "}
+              As of 2026-04-21, the Visa and Artemis PDF reports raw x402 activity of $135.7M
+              across 178.3M transactions, and the article reports wash-and-test-adjusted totals of
+              $15.0M across 109.6M transactions. The gap between those two published totals is
+              38.5% of transactions and 88.9% of volume. $135.7M and 178.3M are in the PDF. $15.0M
+              and 109.6M are in the article and in the archived copy. The two rates are that gap,
+              not a rate printed in either document. Visa and Artemis,{" "}
               <a
                 href="https://www.visa.com/en-us/thought-leadership/innovation/agentic-payments-from-the-ground-up"
                 target="_blank"
@@ -992,11 +1008,19 @@ export default async function Home() {
               >
                 archived copy
               </a>
-              ; the live page returned HTTP 500 for part of September 2026 and answered HTTP 200
-              again when rechecked on 2026-09-29); Artemis Analytics
-              on-chain data as of April 21, 2026. The split between
-              self-dealing and wash trading inside that excluded share is not published, so this
-              page does not state one.
+              ). The PDF is{" "}
+              <a
+                href="https://www.visa.com/vcom-assets/content/dam/visa/reimagine-visa/thought-leadership/documents/agentic-payments-report.pdf"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="doc-link"
+              >
+                Agentic Payments report (PDF)
+              </a>
+              . The PDF states the raw totals and dates them as Artemis Analytics data as of April 21,
+              2026. The live
+              article page returned HTTP 500 for part of September 2026 and answered HTTP 200 again
+              when rechecked on 2026-09-29.
             </dd>
           </div>
         </dl>

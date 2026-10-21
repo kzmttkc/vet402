@@ -140,7 +140,7 @@ export default function SignupPage() {
         ? `${window.location.origin}/api/v1`
         : `${SITE_URL}/api/v1`;
     const curlExample = `curl -H "Authorization: Bearer ${apiKey}" \\
-  ${base}/payees/${SAMPLE_WALLET}/score`;
+  "${base}/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8af2f92f0313ddef8bdb/decision?role=payer"`;
 
     return (
       <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
@@ -172,11 +172,11 @@ export default function SignupPage() {
 
           <h2 className="sec-head">
             <span className="sec-no">1.</span>
-            <span>Try your first lookup</span>
+            <span>Read a resource decision</span>
           </h2>
           <p className="doc-p">
-            Score any Base wallet. The address below is a public example — swap it for the payee
-            you are about to pay:
+            This call reads the decision for https://api.exa.ai/search. The same path answers
+            with no key. A payee score is a separate call and needs this key.
           </p>
           {/* 2026-08-13 全盲ペルソナ監査 R2: ここは素の <pre className="overflow-x-auto">
               だった。サイト内の他 24 個のコードブロックには role="region" +
@@ -189,7 +189,7 @@ export default function SignupPage() {
               付くこと自体も効く。 */}
           <CodeBlock
             className="mt-4"
-            label="First lookup: score a wallet with your new API key"
+            label="curl: read a resource decision"
             code={curlExample}
           />
           <p className="doc-p">
@@ -240,17 +240,15 @@ export default function SignupPage() {
           </div>
         </div>
 
-        {/* 2026-07-27 growth施策(週次): 見出しコピーは 2026-07-27 のもののまま。
-            2026-08-13 の改装では組版だけを直し、文言には触れていない
-            （抽象的な製品説明から具体的なユースケース訴求へ、という判断を保つ）。
-            eyebrow の "Vouch" は削除した — craft-floor が kicker/eyebrow を
-            明示的に禁じており、ワードマークは走り出しに既に在る。 */}
+        {/* 2026-07-27 growth施策(週次)の見出しはスコアだけを入口にしていた。
+            2026-10-21 A-07: 無料鍵は受取人スコア、リソース判定は鍵なし、の2文。
+            ダッシュは使わない。eyebrow の "Vouch" は削除済み。 */}
         <h1 className="doc-title mt-10 max-w-[42ch]">
-          Score a payee before you pay — one API call.
+          A free key reads a payee score. A resource decision stays available without a key.
         </h1>
         <p className="mx-auto mt-3 max-w-[56ch] text-center text-brand-lift">
-          A key is for programmatic lookups. The observatory and payee lookup stay public without
-          one. Free: 1,000 lookups a month. No card.
+          A key is for programmatic lookups. The observatory, a resource decision, and payee lookup
+          stay public without one. Free: 1,000 lookups a month. No card.
         </p>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 
