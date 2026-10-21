@@ -22,6 +22,9 @@ import { readRecordSides } from "@/lib/sellers/reader";
 import { recordPageNoindex, recordRowKey, type RecordSides } from "@/lib/sellers/board";
 import { HELD_GLOSS, STATUS_GLOSS } from "@/lib/sellers/fix-modes";
 import { DISPUTE_NO_PURCHASE, RECORD_DISPUTE_ANCHOR, UNDER_RECHECK, WhoseSide } from "@/components/site/sellers/SellersViews";
+import { formDisputeListingSentence, formDisputeReprobeOf } from "@/lib/observatory/dispute-ack";
+import { isPathTemplate } from "@/lib/observatory/path-template";
+import { l0ProbeScheduleLabel } from "@/lib/observatory/l0-schedule";
 
 /**
  * /observatory/e/[id] — one endpoint's full fact history (design §5).
@@ -140,6 +143,8 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
   const { endpoint, probes, events, publishedVerdict, l1, purchases } = detail;
   const sides = await recordSides(id);
   const disputePurchase = purchaseParam((await searchParams)?.purchase);
+  // D-03: フォーム異議が L0 の優先の列に入る出品か（掲載中でパステンプレート以外）。入らない頁では「次の実行で」を言わない。
+  const disputeReprobe = formDisputeReprobeOf({ status: endpoint.status, pathTemplate: isPathTemplate(endpoint.resourceUrl) });
   const shownSides = purchases.map((p) => sides?.rows.get(recordRowKey(p.attemptedAt, p.status, p.txHash)) ?? null);
   // バッジの文言は 1 箇所（receipt-badge.ts）から出す。ここで組み直すと、
   // 埋め込まれる SVG と、その隣で「バッジはこう読める」と説明する散文がずれる。
@@ -640,7 +645,8 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
         <p className="doc-p">
           Think a measurement above is wrong? Say which probe or purchase and what you observed
           instead. One person reads it and replies. The record is never deleted on dispute: if it
-          was wrong, the correction is published with the same weight; if it was right, it stands.
+          was wrong, the correction is published with the same weight. If it was right, it stands.{" "}
+          {formDisputeListingSentence(l0ProbeScheduleLabel(), disputeReprobe)}{" "}
           Operators who control the receiving address can also sign a dispute via{" "}
           <code>POST /api/v1/observatory/disputes</code> (
           <Link href="/docs/api" className="underline">
@@ -658,6 +664,7 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
         <RecordSubscribe
           endpointId={id}
           kind="dispute"
+          disputeReprobe={disputeReprobe}
           initialReason={disputePurchase ? `Purchase at ${disputePurchase} (UTC). What I saw instead: ` : undefined}
         />
       </article>

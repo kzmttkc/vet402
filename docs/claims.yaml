@@ -1191,14 +1191,14 @@ claims:
   - id: audit_e_no_retest_deadline_is_promised
     surface: src/app/legal/terms/page.tsx
     quote: "We do not promise a"
-    means: "再測定の期限を約束しない（それを守らせる仕組みが無いため）。異議が起こすのは L0 プローブ 1 回"
+    means: "フォームの異議を測る分単位の時刻は約束しない。フォームの異議は active かつパステンプレート以外の出品だけ優先の列に入り、その実行の普通の列より前に測る。1 回 50 件まで・1 登録ドメイン 5 件まで・公開 fail が先で異議は残りの枠・直近 60 分に測った出品は次の回・7 日で列から落ちる。Vercel の L0 は vercel.json の時刻で、それ以外の時刻の実行（c2）が先に測ることもある。署名付き異議は受理時に L0 を 1 回測る"
     check: null
     why_unverifiable: "約束しないという宣言であって、公開 GET が数値で返す種類の主張ではない"
     verified_at: 2026-09-04
   - id: audit_e_dispute_runs_one_l0_probe
     surface: src/app/page.tsx
     quote: "which runs one fresh L0 probe of the"
-    means: "異議が起こすのは L0 プローブ 1 回で、公開ゲートは変わらない（1 回で pass にはならない）"
+    means: "署名付き異議は受理時に L0 を 1 回測り、公開ゲートは変わらない。1 回の fail では公開 fail にならず（2 回連続が要る）、1 回の pass は次のプローブまでの公開判定になる（publishedVerdict: 最新が pass なら pass）。フォームの異議は active でパステンプレート以外の出品を優先の列に置き、その実行の普通の列より前に測る。1 回 50 件まで・1 登録ドメイン 5 件まで・公開 fail が先で異議は残りの枠・直近 60 分に測った出品は次の回・7 日で列から落ちる"
     check: null
     why_unverifiable: "処理内容の記載であって、公開 GET が数値で返す種類の主張ではない。実装は disputes.ts、固定は tests/observatory-disputes.test.ts"
     verified_at: 2026-09-04
@@ -1544,12 +1544,12 @@ claims:
     why_unverifiable: "「消していない」は公開 GET の応答からは判定できない。台帳が追記のみであることは src/lib/observatory/corrections.ts と /corrections の公開ログが示す"
     verified_at: 2026-09-19
   - id: api_subscribe_records_are_never_deleted
-    surface: src/app/api/v1/observatory/endpoints/[id]/subscribe/route.ts
-    quote: "A person reads this. Records are never deleted on dispute — corrections publish with the same weight."
-    means: "購読の申請文は人が読む。異議で記録を消さないという同じ約束を、この応答でも同じ文で返す"
+    surface: src/lib/observatory/dispute-ack.ts
+    quote: "When a run measures the listing, the new probe is added to its history."
+    means: "フォームの異議で記録は消えない。新しいプローブ行が同じ記録頁の履歴に足されるのは、実行が実際に測ったときだけ（active かつパステンプレート以外・その実行の普通の列より前・1 回 50 件まで・1 登録ドメイン 5 件まで・公開 fail が先で異議は残りの枠・直近 60 分に測った出品は次の回・7 日で列から落ちる）。掲載外とパステンプレートの頁ではこの文を出さず、列に入らないことと理由を書く。送信後の表示と subscribe の note は formDisputeAck"
     check: null
-    why_unverifiable: "「消していない」は公開 GET の応答からは判定できない（api_disputes_records_are_never_deleted と同じ理由）"
-    verified_at: 2026-09-19
+    why_unverifiable: "記録を消していないことは公開 GET の数値では判定できない。文面は formDisputeAck で、subscribe route と記録頁の送信後表示が同じ関数を返す"
+    verified_at: 2026-10-21
   - id: api_history_is_a_recomputed_daily_rollup
     surface: src/app/api/v1/observatory/history/route.ts
     quote: "Daily rollup, recomputed for the trailing ${window} days on each run"

@@ -20,6 +20,8 @@ import {
 import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
 import { FunnelFigure } from "@/components/site/Figures";
 import { LedgerSection, SettledChainsSection, homeLedgerOf } from "@/components/site/HomeLedger";
+import { formDisputeQueueSummary } from "@/lib/observatory/dispute-ack";
+import { l0ProbeScheduleLabel } from "@/lib/observatory/l0-schedule";
 
 /**
  * The front page is the memo.
@@ -711,10 +713,11 @@ export default async function Home() {
                 無かった。異議申立は ToS §8（全文の27%地点）だけ、訂正ログは
                 2箇所で約束しながら該当ページが 404 だった。 */}
             <p className="min-w-0 max-w-[64ch] text-brand">
-              Sellers can dispute any result for free, which runs one fresh L0 probe of the
-              endpoint straight away and records it like any other probe — the publication gate is
-              unchanged, so one probe can lift a published fail back to unverified but cannot by
-              itself produce a pass. A dispute does not trigger a new L1 purchase.{" "}
+              Sellers can dispute any result for free. {formDisputeQueueSummary(l0ProbeScheduleLabel())}{" "}
+              A signed dispute, which runs one fresh L0 probe of the endpoint when it is accepted,
+              records it like any other probe. The publication gate is unchanged. One failing probe
+              does not publish a fail, and one passing probe becomes the published verdict until the
+              next probe. A dispute does not trigger a new L1 purchase.{" "}
               <Link href="/legal/terms#corrections" className="doc-link">
                 How to dispute a result
               </Link>

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClientIp } from "@/lib/api/client-ip";
 import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
+import { formDisputeAck } from "@/lib/observatory/dispute-ack";
+import { l0ProbeScheduleLabel } from "@/lib/observatory/l0-schedule";
 import {
   SUBSCRIBE_RL_LIMIT,
   SUBSCRIBE_RL_WINDOW_MS,
@@ -55,6 +57,7 @@ export async function POST(request: NextRequest, ctx: Ctx) {
         email: validated.value.email,
         reason: validated.value.reason,
         lastVerdict: result.lastVerdict,
+        reprobe: result.reprobe ?? "not_active",
       });
     }
     const mailDown = result.confirmation === "mail_unset" || result.confirmation === "mail_failed";
@@ -72,7 +75,7 @@ export async function POST(request: NextRequest, ctx: Ctx) {
             ? mailDown
               ? "The confirmation email could not be sent right now. Nothing will be sent to this address until it is confirmed; submit again later."
               : "If this address is not yet confirmed for this record, a confirmation email is on its way. Nothing is sent until you press Confirm on the linked page; after that, one email per verdict change."
-            : "A person reads this. Records are never deleted on dispute — corrections publish with the same weight.",
+            : formDisputeAck(l0ProbeScheduleLabel(), result.reprobe ?? "not_active"),
       },
       { status: 201, headers: perCaller },
     );

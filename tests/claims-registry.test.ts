@@ -484,6 +484,9 @@ function publicSurfaces(): string[] {
   // 素通りする経路ができる。lib 全体を歩くとコードで溢れるため、公開面を
   // 描画するこの 1 本だけを名指しで足す。同種のモジュールを作ったらここに足す。
   out.push(relative(ROOT, join(ROOT, "src/lib/observatory/vocabulary.ts")));
+  // 2026-10-21: フォーム異議の送信後の文（dispute-ack.ts）は記録頁と subscribe の note が
+  // そのまま出す。語彙と同じく、lib に置いた公開文をこの関門に入れる。
+  out.push(relative(ROOT, join(ROOT, "src/lib/observatory/dispute-ack.ts")));
   // 2026-09-28: /sellers の失敗の分類表。各種類の「What we saw」「What to fix」を頁にそのまま出す。
   out.push(relative(ROOT, join(ROOT, "src/lib/sellers/fix-modes.ts")));
   // 2026-09-29.3: 判定の理由コードの表。/docs/api#reason-codes にそのまま出す。

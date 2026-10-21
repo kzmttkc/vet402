@@ -3,6 +3,8 @@ import { headers } from "next/headers";
 import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "@/lib/support";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
+import { formDisputeQueueSentence } from "@/lib/observatory/dispute-ack";
+import { l0ProbeScheduleLabel } from "@/lib/observatory/l0-schedule";
 
 /**
  * Terms of Service.
@@ -526,7 +528,8 @@ export default async function TermsPage() {
             signed route runs one fresh L0 probe of the endpoint immediately, recorded like any
             other probe under the same publication gate; it does not trigger a new purchase. We
             publish corrections openly and record them in a corrections log. We do not promise a
-            re-test deadline here, because no scheduler enforces one.
+            minute at which a dispute filed on the record form is measured.{" "}
+            {formDisputeQueueSentence(l0ProbeScheduleLabel())}
           </p>
           {/* 2026-09-29 監査 4 周目: L1（購入）の結果への異議の扱い。実装にあることだけを書く——
               異議は L0 を 1 回測り直すだけで購入はしない（src/lib/observatory/disputes.ts）。

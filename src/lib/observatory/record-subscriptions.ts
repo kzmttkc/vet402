@@ -35,6 +35,10 @@ import { SITE_URL } from "@/lib/site-url";
 import { SUPPORT_EMAIL } from "@/lib/support";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { publishedVerdict, MIN_CONSECUTIVE_FAILS_TO_PUBLISH } from "./l0-probe";
+import { formDisputeOperatorLine, formDisputeReprobeOf, type FormDisputeReprobe } from "./dispute-ack";
+import { isPathTemplate } from "./path-template";
+import { l0ProbeScheduleLabel } from "./l0-schedule";
+import { DISPUTE_PRIORITY_DAYS } from "./reprobe-priority-const";
 
 export const SUBSCRIBE_RL_LIMIT = 5;
 export const SUBSCRIBE_RL_WINDOW_MS = 3_600_000;
@@ -228,7 +232,15 @@ export type ConfirmationOutcome =
   | "mail_failed";
 
 export type SubmitResult =
-  | { ok: true; id: string; receipt: string; lastVerdict: Verdict; confirmation: ConfirmationOutcome }
+  | {
+      ok: true;
+      id: string;
+      receipt: string;
+      lastVerdict: Verdict;
+      confirmation: ConfirmationOutcome;
+      /** kind=dispute だけ。この出品が L0 の優先の列に入るか（reprobe-priority.ts と同じ判定）。 */
+      reprobe?: FormDisputeReprobe;
+    }
   | { ok: false; reason: "db_unavailable" | "endpoint_not_found" };
 
 export type SubmitDeps = {
@@ -250,11 +262,12 @@ export async function submitSubscription(
   const db = getDb();
   if (!db) return { ok: false, reason: "db_unavailable" };
   const found = await db
-    .select({ id: x402Endpoints.id })
+    .select({ id: x402Endpoints.id, status: x402Endpoints.status, resourceUrl: x402Endpoints.resourceUrl })
     .from(x402Endpoints)
     .where(eq(x402Endpoints.id, value.endpointId))
     .limit(1);
   if (found.length === 0) return { ok: false, reason: "endpoint_not_found" };
+  const listing = found[0] as { status?: unknown; resourceUrl?: unknown };
 
   const lastVerdict = await readPublishedVerdict(db, value.endpointId);
   const ipHash = hashIp(ip);
@@ -273,11 +286,31 @@ export async function submitSubscription(
       })
       .onConflictDoUpdate({
         target,
-        set: { reason: value.reason, lastVerdict, ipHash, createdAt: sql`now()` },
+        // 送り直しで created_at を進めるのは、前の異議が 7 日を過ぎたか、その後にプローブが入ったときだけ。
+        // 未測定のまま送り直しても優先の列の順（一番古い異議の時刻）は動かない（D-01 (b)）。
+        // probed_at = created_at は測り済み（reprobe-priority.ts の disputeAtSql と同じ境界）。
+        set: {
+          reason: value.reason,
+          lastVerdict,
+          ipHash,
+          createdAt: sql`CASE
+            WHEN record_subscriptions.created_at > now() - make_interval(days => ${DISPUTE_PRIORITY_DAYS})
+              AND NOT EXISTS (
+                SELECT 1 FROM x402_l0_probes p
+                WHERE p.endpoint_id = record_subscriptions.endpoint_id AND p.probed_at >= record_subscriptions.created_at
+              )
+            THEN record_subscriptions.created_at
+            ELSE now()
+          END`,
+        },
       })
       .returning();
     const id = idOf(rows);
-    return { ok: true, id, receipt: id.slice(0, 8), lastVerdict, confirmation: "not_required" };
+    const reprobe = formDisputeReprobeOf({
+      status: String(listing.status ?? ""),
+      pathTemplate: isPathTemplate(String(listing.resourceUrl ?? "")),
+    });
+    return { ok: true, id, receipt: id.slice(0, 8), lastVerdict, confirmation: "not_required", reprobe };
   }
 
   // notify: 確定済みの行には触らない。
@@ -433,6 +466,7 @@ export async function forwardDispute(input: {
   email: string;
   reason: string;
   lastVerdict: Verdict;
+  reprobe: FormDisputeReprobe;
 }): Promise<void> {
   const url = `${SITE_URL}/observatory/e/${input.endpointId}`;
   const text = [
@@ -445,7 +479,7 @@ export async function forwardDispute(input: {
     `Reason:`,
     input.reason,
     ``,
-    `Records are never deleted on dispute. Re-measure through the normal gate; publish a correction if the record was wrong.`,
+    formDisputeOperatorLine(input.reprobe, l0ProbeScheduleLabel()),
   ].join("\n");
   try {
     await sendMail({

@@ -3,6 +3,8 @@
 import { useId, useRef, useState } from "react";
 import { buttonClass } from "@/components/ui/Button";
 import { track } from "@/lib/analytics";
+import { formDisputeAck, type FormDisputeReprobe } from "@/lib/observatory/dispute-ack";
+import { l0ProbeScheduleLabel } from "@/lib/observatory/l0-schedule";
 
 /**
  * RecordSubscribe — 段 2「名前を取る」の欄（2026-09-02 敵対的監査 F6 / F7）。
@@ -20,9 +22,12 @@ export default function RecordSubscribe({
   endpointId,
   kind,
   initialReason,
+  disputeReprobe = "not_active",
 }: {
   endpointId: string;
   kind: "notify" | "dispute";
+  /** kind=dispute: この出品が L0 の優先の列に入るか（記録頁が formDisputeReprobeOf で渡す）。送信後の文を変える。 */
+  disputeReprobe?: FormDisputeReprobe;
   /** 異議欄の書き出し（2026-09-29 第4巡: 売り手頁の行の「Dispute this purchase」が購入の時刻を渡す）。 */
   initialReason?: string;
 }) {
@@ -33,6 +38,7 @@ export default function RecordSubscribe({
   const [receipt, setReceipt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mailDown, setMailDown] = useState(false);
+  const [serverNote, setServerNote] = useState<string | null>(null);
   const uid = useId();
   const disputeStarted = useRef(false);
   const emailRef = useRef<HTMLInputElement>(null);
@@ -76,9 +82,16 @@ export default function RecordSubscribe({
         headers: { "content-type": "application/json" },
         body: JSON.stringify(kind === "dispute" ? { email, kind, reason, website } : { email, kind, website }),
       });
-      const json = (await res.json().catch(() => ({}))) as { receipt?: string; error?: string; confirmation?: string };
+      const json = (await res.json().catch(() => ({}))) as {
+        receipt?: string;
+        error?: string;
+        confirmation?: string;
+        note?: string;
+      };
       if (res.ok && json.receipt) {
         setReceipt(json.receipt);
+        // 異議はサーバが送信時の掲載状態で組んだ note を出す（頁を開いた後に掲載が外れても食い違わない）。
+        setServerNote(kind === "dispute" && typeof json.note === "string" && json.note !== "" ? json.note : null);
         setMailDown(json.confirmation === "not_sent");
         setState("done");
         track("record_subscribe", { kind });
@@ -101,7 +114,7 @@ export default function RecordSubscribe({
           ? mailDown
             ? "The confirmation email could not be sent right now. Nothing is sent to this address until it is confirmed; try again later."
             : "Check your inbox: one confirmation email. Nothing is sent until you press Confirm on the page it links to; after that, one email per verdict change, each with an unsubscribe link."
-          : "A person reads this and replies to the address you gave. The record stays published while it is examined."}
+          : (serverNote ?? formDisputeAck(l0ProbeScheduleLabel(), disputeReprobe))}
       </p>
     );
   }
