@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-21 — next 16.4.2 for the Server Actions advisory
+
+- **何を**: `next` is `16.4.2` in `package.json` and `package-lock.json` (was `16.3.4`). The lockfile also moves `@next/env` and the `@next/swc-*` packages to `16.4.2`, and `sharp` to `0.35.5`, because `next@16.4.2` depends on those. `eslint-config-next` stays `16.3.0`. `tests/security-headers.test.ts` checks HSTS from `next.config.ts` and the per request CSP from `src/proxy.ts`.
+- **なぜ**: GitHub advisory GHSA-p3m5-59mp-jv5r (published 2026-10-14, High) lists npm `next` `>= 16.0.0 <= 16.4.0` as affected and `16.4.1` as the patched version. npm `latest` is `16.4.2` (published 2026-10-15). The v16.4.2 release notes are fixes on top of v16.4.1. Signup and dashboard login use Server Actions. The advisory says upgrading is the workaround.
+- **影響**: No new direct dependency. No schema change. CSP stays in `src/proxy.ts`. HSTS stays in `next.config.ts`. This worktree was not deployed.
+- **実測**: `npx eslint src --quiet` exit 0. `npx tsc --noEmit` exit 0. `npm run build` exit 0 (`Next.js 16.4.2`). `npx tsx --test 'tests/**/*.test.ts'` is `ℹ tests 2755` / `ℹ suites 1` / `ℹ pass 2646` / `ℹ fail 0` / `ℹ cancelled 0` / `ℹ skipped 109` / `ℹ todo 0` / `ℹ duration_ms 287648.438834`, exit 0. No commit and no push.
+
 ## 2026-10-21 — A newer other chain stays out of the Base attempt label, and the pass rate names its filters (working tree, not committed)
 - **何を**: When another chain is newer, the card label is Latest Base attempt and the signal says the latest Base attempt failed on vet402's side. The heading still names that newer chain. The dispute link still fills in the Base row, and the page says so. Whose side says "not tried on Base yet" when the listing has no Base purchase. Other chains adds "body empty" when the paid body was empty. The observatory pass rate says it is the L0 probe of the rows in this filter, then names the search, the network, or the settled filter when that filter is on. Choosing a verdict does not change the rate. A cut search sends qCut=1 from the form. The sellers search page keeps the redirect of a purchased host through sellerPath.
 - **なぜ**: The heading and the card both said latest attempt and showed two different times. The pass rate sentence listed search, network, and the settled filter even when one of them was off. Whose side was a dash while Result said the listing was not tried on Base. An empty body on another chain was left out of that card. Apply dropped the cut-search note. A test accepted the search page without the redirect line.
