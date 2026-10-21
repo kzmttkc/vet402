@@ -60,10 +60,16 @@ test("TryItPanel: disabled でなく aria-busy・結果は常設の role=status�
   assert.match(src, /aria-label=\{`Response body of \$\{label\}`\}/);
 });
 
-test("SiteHeader: メニューボタンは aria-label（Menu / Close menu）と aria-controls を持つ", () => {
+test("SiteHeader: モバイルの一覧は details で、最初の HTML に Menu と遷移先がある", () => {
   const src = read("src/components/site/SiteHeader.tsx");
-  assert.match(src, /aria-label=\{mobileOpen \? "Close menu" : "Menu"\}/);
-  assert.match(src, /aria-controls=\{mobileNavId\}/);
-  assert.match(src, /id=\{mobileNavId\}/);
-  assert.match(src, /hidden=\{!mobileOpen\}/, "the controlled nav stays in the DOM");
+  assert.match(src, /<details/);
+  assert.match(src, /<summary/);
+  assert.match(src, /site-menu-open">Menu</);
+  assert.match(src, /site-menu-close">Close</);
+  assert.match(src, /href: "\/observatory"/);
+  assert.match(src, /href: "\/sellers"/);
+  assert.match(src, /href: "\/docs\/api"/);
+  assert.doesNotMatch(src, /hidden=\{!mobileOpen\}/);
+  assert.doesNotMatch(src, /aria-label=\{mobileOpen/);
+  assert.match(src, /ariaCurrent=\{currentNav/);
 });

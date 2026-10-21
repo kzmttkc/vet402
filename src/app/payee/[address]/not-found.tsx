@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { INVALID_PAYEE_DETAIL, INVALID_PAYEE_H1 } from "@/lib/payee/invalid-address-page";
 
 // 2026-08-06 (UX audit item 8): PayeePage calls notFound() only when the
 // address fails isValidAddress — a valid-but-unregistered wallet still renders
@@ -21,10 +22,11 @@ export default function PayeeNotFound() {
           </div>
         </div>
 
-        <h1 className="doc-title mt-10">That is not a valid wallet address</h1>
+        <h1 className="doc-title mt-10">{INVALID_PAYEE_H1}</h1>
         <p className="mx-auto mt-3 max-w-[56ch] text-center text-brand-lift">
-          A payee profile URL must be a full Ethereum-style address: <code>0x</code> followed by 40
-          hexadecimal characters — 42 characters in total.
+          {INVALID_PAYEE_DETAIL.split("0x")[0]}
+          <code>0x</code>
+          {INVALID_PAYEE_DETAIL.split("0x")[1]}
         </p>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 

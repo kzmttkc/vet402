@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isSellersPath, sellersRateLimitResponse } from "@/lib/sellers/page-limit";
+import { invalidPayeeAddressHtml, isMalformedPayeePath } from "@/lib/payee/invalid-address-page";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -21,6 +22,21 @@ function generateNonce(): string {
 }
 
 export async function proxy(request: NextRequest) {
+  // 形の違う /payee/:address は、頁を描き始める前に 404 の HTML を返す。
+  // 頁の notFound() はステータスを 404 にできるが、本文はフライトデータに残り、
+  // スクリプト無しでは案内が出ない（A-15）。
+  if (isMalformedPayeePath(request.nextUrl.pathname)) {
+    return new NextResponse(invalidPayeeAddressHtml(), {
+      status: 404,
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        "x-robots-tag": "noindex",
+        "content-security-policy":
+          "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      },
+    });
+  }
   // /sellers（鍵なしの公開面）: IP ごとの上限を超えたら頁を描かずに 429 を返す（src/lib/sellers/page-limit.ts）。
   if (isSellersPath(request.nextUrl.pathname)) {
     const limited = await sellersRateLimitResponse(request);

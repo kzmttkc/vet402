@@ -54,6 +54,10 @@ export async function generateMetadata({
   params: Promise<{ address: string }>;
 }): Promise<Metadata> {
   const { address } = await params;
+  // 形が違うアドレスは、タイトルを書き始める前に 404 にする。loading.tsx が
+  // あると Next は先に 200 の殻を流し、その後の notFound() ではステータスを
+  // 戻せない（/agent/[agentId] と同じ。tests/agent-soft-404.test.ts）。
+  if (!isValidAddress(address)) notFound();
   // 2026-08-14: openGraph/twitter/canonical を pageMetadata で個別化。
   return pageMetadata({
     title: `Payee ${address.slice(0, 10)}…`,

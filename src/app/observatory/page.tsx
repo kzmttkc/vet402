@@ -178,7 +178,7 @@ export default async function ObservatoryPage({
                 name="q"
                 type="search"
                 defaultValue={query.q ?? ""}
-                className="doc-input mt-1"
+                className="doc-input mt-1 max-sm:text-base"
               />
             </label>
             <label className="block text-[0.8125rem]">
@@ -186,7 +186,7 @@ export default async function ObservatoryPage({
               <select
                 name="verdict"
                 defaultValue={query.verdict ?? ""}
-                className="doc-input mt-1"
+                className="doc-input mt-1 max-sm:text-base"
               >
                 <option value="">any</option>
                 <option value="pass">pass</option>
@@ -200,7 +200,7 @@ export default async function ObservatoryPage({
                 name="network"
                 defaultValue={query.network ?? ""}
                 placeholder="eip155:8453"
-                className="doc-input mt-1"
+                className="doc-input mt-1 max-sm:text-base"
               />
             </label>
             {/* 2026-08-23 UX: underline のテキストリンクに見えており、フィルタを

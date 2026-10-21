@@ -639,6 +639,14 @@ a {
     font-size: 0.8125rem;
     line-height: 1.4;
   }
+  /* 640px 未満は 16px。iOS Safari は 16px 未満の欄に焦点を当てると頁を拡大する。
+     ホームと signup は text-base で既に避けている。テキスト欄、select、
+     Playground の実行ボタンはどれも .doc-input。 */
+  @media (max-width: 639px) {
+    .doc-input {
+      font-size: 1rem;
+    }
+  }
   .doc-input::placeholder {
     color: #55688c;
   }
@@ -788,6 +796,36 @@ a {
   }
   .doc-error-panel p {
     color: var(--color-block-ink);
+  }
+
+  /* モバイルの目次。三角マーカーは出さない。閉じている語は Menu、開いている語は Close。
+     開いているあいだ、走り出しの紺罫は一覧の下へ移す（閉じているときはヘッダの下のまま）。 */
+  .site-menu > summary {
+    list-style: none;
+  }
+  .site-menu > summary::-webkit-details-marker {
+    display: none;
+  }
+  .site-menu > summary .site-menu-close {
+    display: none;
+  }
+  .site-menu[open] > summary .site-menu-open {
+    display: none;
+  }
+  .site-menu[open] > summary .site-menu-close {
+    display: inline;
+  }
+  /* flex を nav の class に置くと、閉じた details の display:none に勝って一覧が常に出る。 */
+  .site-menu:not([open]) > nav {
+    display: none;
+  }
+  .site-header:has(.site-menu[open]) {
+    border-bottom-color: transparent;
+  }
+  .site-menu[open] > nav {
+    display: flex;
+    flex-direction: column;
+    border-bottom: 1px solid var(--color-brand-deep);
   }
 }
 
