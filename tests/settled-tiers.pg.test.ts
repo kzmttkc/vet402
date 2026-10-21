@@ -50,6 +50,7 @@ if (!TEST_DB) {
         (${eid}::uuid, 'settled', 'base',        '0x${sql.raw("d".repeat(64))}', NULL, true, 400, ${t0}::timestamptz),
         (${eid}::uuid, 'settled', 'eip155:8453', '0x${sql.raw("e".repeat(64))}', NULL, true, 200, ${t0}::timestamptz),
         (${eid}::uuid, 'settled', 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp', 'SoLtx1', NULL, true, 200, ${t0}::timestamptz),
+        (${eid}::uuid, 'settled', 'stellar:pubnet', ${"f".repeat(64)}, ${"ab".repeat(32)}, true, 200, ${t0}::timestamptz),
         (${eid}::uuid, 'settle_failed', 'eip155:8453', NULL, NULL, NULL, NULL, ${t0}::timestamptz)
     `);
     // 決済ブロック時刻: a=+30 秒(窓内) / b=+3600 秒(窓外) / c=-10 秒(窓内)。d,e,SoLtx1 は記録なし。
@@ -64,15 +65,15 @@ if (!TEST_DB) {
     const l1 = stats.l1;
 
     await t.test("2 層の和が settled と一致する", () => {
-      assert.equal(l1.settled, 6);
+      assert.equal(l1.settled, 7);
       assert.equal(l1.settledNonceBound, 2);
-      assert.equal(l1.settledAmountPayeeOnly, 4);
+      assert.equal(l1.settledAmountPayeeOnly, 5);
       assert.equal(l1.settledNonceBound + l1.settledAmountPayeeOnly, l1.settled);
     });
 
     await t.test("時刻窓は記録のある行だけを数え、残りは unknown", () => {
       assert.equal(l1.settledTimeWindowOk, 2, "a(+30s) と c(-10s)");
-      assert.equal(l1.settledTimeWindowUnknown, 3, "d / e / SoLtx1 は block_timestamp 無し");
+      assert.equal(l1.settledTimeWindowUnknown, 4, "d / e / SoLtx1 / stellar は block_timestamp 無し");
       // b は窓外。窓外でも settled から外さない（表示・集計のみ）。
       assert.equal(
         l1.settled - l1.settledTimeWindowOk - l1.settledTimeWindowUnknown,
@@ -92,6 +93,10 @@ if (!TEST_DB) {
       assert.equal(chains.Base.delivered, 4, "http 400 の 1 行は delivered ではない");
       assert.equal(chains.Solana.settled, 1);
       assert.equal(chains.Solana.settledNonceBound, 0);
+      assert.ok(chains["stellar:pubnet"], `stellar:pubnet が無い: ${JSON.stringify(l1.byChain)}`);
+      assert.equal(chains["stellar:pubnet"].settled, 1);
+      assert.equal(chains["stellar:pubnet"].settledNonceBound, 0);
+      assert.equal(chains["stellar:pubnet"].settledAmountPayeeOnly, 1);
       assert.equal(
         l1.byChain.reduce((n, c) => n + c.settled, 0),
         l1.settled,

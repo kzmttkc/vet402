@@ -1160,7 +1160,7 @@ export function paidEvidenceLines(r: SellerRowFacts): { signed: string; answer: 
 
 /** 台帳の status の 1 文の説明（頁で status の語の隣に出す）。 */
 export const STATUS_GLOSS: Readonly<Record<string, string>> = {
-  settled: "vet402 confirmed the USDC transfer on-chain",
+  settled: "vet402 re-read the transfer on-chain in that chain's pinned settlement asset",
   settle_claimed: "the seller returned a receipt that vet402 has not re-read on-chain yet",
   settle_failed: "vet402 signed a payment and got no settlement receipt back",
   delivered_no_receipt: "the paid request answered 2xx without a settlement receipt",

@@ -9,8 +9,11 @@
 //                      AuthorizationUsed(authorizer, nonce) / Solana: 我々が
 //                      生成した memo）まで一致した。その tx が **この購入のもの**
 //                      だと言える。
-//   amount_payee_only  payer → payTo へ期待額の USDC が動いた tx が実在する、
-//                      までしか言えない。同じ payTo・同じ価格の endpoint は
+//   amount_payee_only  payer → payTo へ期待額の固定資産
+//                      （USDC on Base, Arc, Celo, Solana and Stellar, USDC.e on Tempo,
+//                      RLUSD from its fixed issuer on XRPL, and USD1 on BNB Chain）
+//                      が動いた tx が実在する、までしか言えない。同じ payTo・同じ価格の
+//                      endpoint は
 //                      本番で 253 群・1,477 試行あるので、売り手は自分宛の
 //                      過去の tx を返すだけでこの判定を通せた。
 //
@@ -27,8 +30,15 @@
 // 一致するが、「nonce を持つが照合が nonce 段で落ちた行」は refuted 側へ抜けるので
 // settled には残らない、という前提に依存している（settlement-verify.ts の
 // nonce_not_used が refute を呼ぶ。2026-09-19 から、遅延回収で vet402 が貼った tx だけは refuted ではなく
-// 回収前の status へ戻る——どちらも settled には残らない）。前提が崩れたら層の意味も崩れるため、
-// tests/settled-tiers.test.ts が定義そのものを固定している。
+// 回収前の status へ戻る——どちらも settled には残らない）。
+//
+// その前提は Stellar では最初から偽だった（2026-10-21・A-10）。署名の直後に
+// sha256(payload.transaction) を auth_nonce へ書くが、照合器は expectedAuthNonce を見ない
+// （手数料の sponsor が hash を変える。settlement-verify-stellar.ts）。空でない auth_nonce
+// だけで nonce_bound にすると、払い手・宛先・額・資産までしか見ていない行が強い層に入る。
+// stellar:pubnet の settled は amount_payee_only に付ける。auth_nonce は消さない
+// （署名前に落ちた行と、資格情報を出した行の区別に使っている）。settled の件数は動かさない。
+// 前提が崩れたら層の意味も崩れるため、tests/settled-tiers.test.ts が定義そのものを固定している。
 // ============================================================
 
 /** 強い順。settled のどの行も必ずどちらか一方に入る。 */
@@ -46,11 +56,22 @@ export const SETTLEMENT_WINDOW_BEFORE_SEC = 300;
 /** 決済ブロック時刻が試行より後で許す幅（秒）。 */
 export const SETTLEMENT_WINDOW_AFTER_SEC = 900;
 
+/**
+ * 購入行の network。Stellar pubnet は auth_nonce に署名直後の sha256 を残すが、
+ * 再読はそれを見ないので amount_payee_only にする（purchaseLedgerNetwork と同じ文字列）。
+ */
+export const STELLAR_AMOUNT_PAYEE_NETWORK = "stellar:pubnet";
+
 export type SettledTierRow = {
   status: string;
   settlementVerified?: boolean | null;
   authNonce?: string | null;
+  network?: string | null;
 };
+
+function stellarAmountPayee(network: string | null | undefined): boolean {
+  return typeof network === "string" && network.trim().toLowerCase() === STELLAR_AMOUNT_PAYEE_NETWORK;
+}
 
 /**
  * 1 行の証拠強度。settled でない行に強度は無い（null）——0 と書くと
@@ -58,6 +79,8 @@ export type SettledTierRow = {
  */
 export function settledTier(row: SettledTierRow): SettledTier | null {
   if (row.status !== "settled") return null;
+  // Stellar は auth_nonce が空でなくても一回性の値を照合していない。
+  if (stellarAmountPayee(row.network)) return "amount_payee_only";
   const nonce = typeof row.authNonce === "string" ? row.authNonce.trim() : "";
   return nonce !== "" && row.settlementVerified === true ? "nonce_bound" : "amount_payee_only";
 }
@@ -98,7 +121,10 @@ function assertAlias(alias: string, what: string): string {
  */
 export function settledTierPredicate(tier: SettledTier, alias = ""): string {
   const p = assertAlias(alias, "settledTierPredicate");
-  const bound = `${p}status = 'settled' AND ${p}settlement_verified IS TRUE AND ${p}auth_nonce IS NOT NULL AND btrim(${p}auth_nonce) <> ''`;
+  // network が NULL の行は Stellar ではない（IS DISTINCT FROM）。<> だと NULL が落ちて件数の層が割れる。
+  const bound =
+    `${p}status = 'settled' AND ${p}settlement_verified IS TRUE AND ${p}auth_nonce IS NOT NULL AND btrim(${p}auth_nonce) <> ''` +
+    ` AND lower(btrim(${p}network)) IS DISTINCT FROM '${STELLAR_AMOUNT_PAYEE_NETWORK}'`;
   if (tier === "nonce_bound") return bound;
   // 独立に条件を書くと定義が 2 箇所に分かれ、片方だけ直る事故になる。否定で書く。
   return `${p}status = 'settled' AND NOT (${bound})`;

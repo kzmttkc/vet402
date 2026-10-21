@@ -2547,14 +2547,14 @@ paths:
                     type: object
                     description: |
                       L1 real-purchase totals. `settled` is a transfer vet402 re-read
-                      on-chain; `delivered` is a settled attempt whose paid request also
-                      answered 2xx.
+                      on-chain. `delivered` is a settled attempt whose paid request also
+                      answered 2xx. The settlement asset is USDC on Base, Arc, Celo, Solana, and Stellar, USDC.e on Tempo, RLUSD from its fixed issuer on XRPL, and USD1 on BNB Chain. BNB Chain binds the EIP-3009 authorization nonce. Stellar is re-read for payer, payee, amount and asset, and is published as amount and payee.
 
                       `settled` is published at two evidence strengths, and
                       `settledNonceBound + settledAmountPayeeOnly` always equals
-                      `settled` — the split labels strength, it does not change the
+                      `settled`. The split labels strength. It does not change the
                       count. Rows that settled before the nonce binding shipped
-                      (2026-09-04T12:00:00Z) are not demoted: vet402 does not refute a
+                      (2026-09-04T12:00:00Z), and Stellar rows, are not demoted. vet402 does not refute a
                       seller on evidence it does not hold.
                     properties:
                       attempts: { type: integer }
@@ -2584,18 +2584,19 @@ paths:
                       settledNonceBound:
                         type: integer
                         description: >-
-                          Settled rows where the re-read also matched the signature nonce
-                          vet402 itself generated (the EIP-3009 authorization nonce on EVM,
-                          our own memo on Solana, the indexed memo of a TIP-20 TransferWithMemo on
+                          Settled rows where the re-read matched the one-time value stored
+                          for that purchase (the EIP-3009 authorization nonce on Base, Arc, Celo and BNB Chain,
+                          a memo vet402 wrote on Solana, the indexed memo of a TIP-20 TransferWithMemo on
                           Tempo, the hash of the signed blob on XRPL), so the transaction
-                          provably belongs to
-                          that purchase.
+                          is the one for
+                          that purchase. Stellar is not in this count. The Stellar re-read checks payer, payee, amount and asset.
                       settledAmountPayeeOnly:
                         type: integer
                         description: >-
-                          Settled rows matched on amount, payee, asset and chain only —
-                          no nonce was recorded at purchase time, so the evidence does not
-                          rule out a transaction the seller had received earlier.
+                          Settled rows where the re-read matched payer, payee, amount and asset
+                          and did not bind a one-time value. That tier holds rows that settled
+                          before 2026-09-04T12:00:00Z, and it holds Stellar rows. A transfer of the
+                          same amount to the same payee can match.
                       settledTimeWindowOk:
                         type: integer
                         description: >-

@@ -40,7 +40,7 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "L1",
     group: "levels",
     definition:
-      "L1 is a real, budget-capped USDC purchase from the endpoint that asks whether the payment settles on-chain and a response comes back. It is bought under vet402's own User-Agent, at most once per endpoint per sweep window, and every refusal before a signature is recorded alongside every purchase.",
+      "L1 is a real, budget-capped purchase of that chain's pinned asset (USDC on Base, Arc, Celo, Solana and Stellar, USDC.e on Tempo, RLUSD on XRPL, USD1 on BNB Chain). It is bought under vet402's own User-Agent, at most once per endpoint per sweep window, and every refusal before a signature is recorded alongside every purchase.",
   },
   {
     term: "L2",
@@ -94,7 +94,7 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "settled",
     group: "l1",
     definition:
-      "settled means vet402 re-read the transaction on-chain and found a transfer from our payer, to the catalog-declared payee, for the declared amount, in that chain's canonical settlement asset (USDC on Base, Arc, Celo and Solana; USDC.e on Tempo; RLUSD from its fixed issuer on XRPL). How tightly that transfer is tied to the one purchase is published at two strengths, and each settled row is in exactly one: nonce-bound, where the transaction also carries the one-time value vet402 generated for that purchase (the EIP-3009 authorization nonce on Base, Arc and Celo, our own memo on Solana, the indexed memo of a TIP-20 TransferWithMemo on Tempo, the hash of the signed blob on XRPL), so it is that purchase's transfer; and amount-and-payee only, where payer, payee, amount and asset matched but no such value was checked — the rows that settled before that binding shipped at 2026-09-04T12:00:00Z — so a transfer of the same amount between the same two wallets would also have matched. The counts are l1.settledNonceBound and l1.settledAmountPayeeOnly in /api/v1/observatory/state. It is a statement about the money, and it is never inferred from the seller's own claim.",
+      "settled means vet402 re-read the transaction on-chain and found a transfer from the vet402 payer, to the catalog-declared payee, for the declared amount, in that chain's canonical settlement asset (USDC on Base, Arc, Celo, Solana and Stellar, USDC.e on Tempo, RLUSD from its fixed issuer on XRPL, and USD1 on BNB Chain). How tightly that transfer is tied to the one purchase is published at two strengths, and each settled row is in exactly one. Nonce-bound means the re-read matched the one-time value stored for that purchase, so the transaction is the one for this purchase. That value is the EIP-3009 authorization nonce on Base, Arc, Celo and BNB Chain, a memo vet402 wrote on Solana, the indexed memo of a TIP-20 TransferWithMemo on Tempo, or the hash of the signed blob on XRPL. Stellar is not in this count. The Stellar re-read checks payer, payee, amount and asset. Amount and payee means the re-read matched payer, payee, amount and asset and did not bind a one-time value. That tier holds the rows that settled before the binding shipped at 2026-09-04T12:00:00Z, and it holds Stellar rows. A transfer of the same amount between the same two wallets would also have matched. The counts are l1.settledNonceBound and l1.settledAmountPayeeOnly in /api/v1/observatory/state. It is a statement about the money, and it is never inferred from the seller's own claim.",
   },
   {
     term: "delivered",

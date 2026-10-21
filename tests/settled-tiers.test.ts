@@ -58,6 +58,40 @@ test("nonce が空文字なら束縛の証拠にならない", () => {
   );
 });
 
+test("stellar:pubnet は auth_nonce があっても amount_payee_only（A-10）", () => {
+  const row = {
+    status: "settled",
+    settlementVerified: true,
+    // image-ocr 2026-10-18T21:30:44.700Z は stellar:pubnet で nonce を持ったまま settled だった。
+    authNonce: "cf9599017134ce255dba5919734484983fbbbddec34fcdb38d0ec361463b3814",
+    network: "stellar:pubnet",
+  };
+  assert.equal(settledTier(row), "amount_payee_only");
+  assert.equal(
+    settledTier({ ...row, network: "  Stellar:Pubnet " }),
+    "amount_payee_only",
+    "前後の空白と大文字は同じネットワーク",
+  );
+  assert.equal(
+    settledTier({ ...row, network: "eip155:56" }),
+    "nonce_bound",
+    "BNB Chain は EIP-3009 の nonce を照合するので nonce_bound のまま",
+  );
+  assert.equal(
+    settledTier({ ...row, network: "eip155:8453" }),
+    "nonce_bound",
+  );
+  assert.equal(
+    settledTier({ ...row, network: "eip155:42220" }),
+    "nonce_bound",
+  );
+  assert.equal(
+    settledTier({ status: "settled", settlementVerified: true, authNonce: row.authNonce }),
+    "nonce_bound",
+    "network が無い行は今日の規則のまま",
+  );
+});
+
 test("nonce があっても照合が未了/否定なら nonce_bound を名乗らない", () => {
   const nonce = `0x${"cd".repeat(32)}`;
   assert.equal(
@@ -130,6 +164,9 @@ test("2 つの述語は排他で、和が settled になる形をしている", 
   // amount_payee_only は「settled かつ nonce_bound でない」——独立に条件を書くと
   // 定義が 2 箇所に分かれ、片方だけ直る事故になる。
   assert.ok(only.includes("NOT ("), `amount_payee_only は否定形で書く: ${only}`);
+  assert.ok(bound.includes("stellar:pubnet"), bound);
+  assert.ok(bound.includes("IS DISTINCT FROM"), bound);
+  assert.ok(!bound.includes("<> 'stellar:pubnet'"), bound);
 });
 
 test("時刻窓の述語は秒数の定数を本文に持つ（コードと文書がずれない）", () => {
@@ -154,6 +191,42 @@ test("方法論ページが nonce 束縛と 2 層公開を述べている", () =
     src.includes("settledNonceBound") && src.includes("settledAmountPayeeOnly"),
     "方法論が state API の該当フィールド名を示していない",
   );
+  assert.ok(src.includes("USD1 on BNB Chain"), "方法論が BNB Chain の USD1 を書いていない");
+  // 列挙は折り返される。空白を潰してから見ないと "and Stellar" だけ消しても "USDC on Base, Arc, Celo" が残る。
+  assert.ok(
+    src.replace(/\s+/g, " ").includes("USDC on Base, Arc, Celo, Solana and Stellar"),
+    "方法論が Solana and Stellar までの USDC の列挙を書いていない",
+  );
+  assert.ok(src.includes("Stellar is not in this count"), "方法論が Stellar を nonce-bound から外していない");
+  assert.ok(
+    !/no re-reader[\s\S]{0,80}Stellar/.test(src) && !/no re-reader[\s\S]{0,80}BNB/.test(src),
+    "再読の無いチェーンの例に Stellar か BNB がある",
+  );
+});
+
+test("FAQ と語彙は USD1 と Stellar を資産の列挙に含む", () => {
+  for (const rel of ["src/components/site/faq-data.ts", "src/lib/observatory/vocabulary.ts"]) {
+    const src = read(rel);
+    assert.ok(src.includes("USD1 on BNB Chain"), `${rel} に USD1 on BNB Chain が無い`);
+    assert.ok(src.includes("Solana and Stellar"), `${rel} に Solana and Stellar が無い`);
+  }
+});
+
+test("記録頁の分類は network を渡し、渡さない呼び出しは amount_payee_only にならない", () => {
+  const src = read("src/lib/observatory/reader.ts");
+  assert.ok(
+    src.includes("settledTier({ status: rest.status, authNonce, settlementVerified, network: rest.network })"),
+    "記録頁が購入行の network を settledTier に渡していない",
+  );
+  // image-ocr の settled 行。network を落とすと nonce があるだけで nonce_bound に戻る。
+  const imageOcr = {
+    status: "settled" as const,
+    settlementVerified: true,
+    authNonce: "cf9599017134ce255dba5919734484983fbbbddec34fcdb38d0ec361463b3814",
+  };
+  assert.equal(settledTier(imageOcr), "nonce_bound");
+  assert.notEqual(settledTier(imageOcr), "amount_payee_only");
+  assert.equal(settledTier({ ...imageOcr, network: "stellar:pubnet" }), "amount_payee_only");
 });
 
 test("corrections に 2026-09-05 の記録があり、件数を変えないと書いてある", () => {

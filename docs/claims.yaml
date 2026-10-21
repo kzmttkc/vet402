@@ -1342,7 +1342,7 @@ claims:
   # ---- 2026-09-05 セキュリティ監査 S-4 / S-17: settled の証拠強度を 2 層で公開する ----
   - id: s4_settled_tiers_sum_to_settled
     surface: src/app/observatory/state/page.tsx
-    quote: "settled (nonce-bound): the re-read also matched the signature nonce we generated,"
+    quote: "settled (nonce-bound): the re-read matched the one-time value stored for that purchase"
     means: "settled は nonce 束縛の有無で 2 層に分けて公開し、2 層の合計は l1.settled と一致する（層は強度のラベルであって、件数を動かさない）"
     check:
       url: https://vet402.com/api/v1/observatory/state
@@ -1350,8 +1350,8 @@ claims:
     verified_at: 2026-09-05
   - id: s4_settled_amount_payee_only_is_disclosed
     surface: src/app/observatory/state/page.tsx
-    quote: "settled (amount + payee): matched on amount, payee, asset and chain, with no nonce"
-    means: "nonce 束縛の無い settled（2026-09-04 12:00 UTC より前に確定した行）を、件数のまま自社に不利な形で公開する。2026-09-05 の実測は 1,629 のうち 1,558 件"
+    quote: "settled (amount + payee): the re-read matched payer, payee, amount and asset and did not bind a one-time value"
+    means: "一回性の値を結んでいない settled（2026-09-04 12:00 UTC より前の行と、Stellar pubnet の行）を、件数のまま公開する。2026-09-05 の実測は 1,629 のうち 1,558 件。2026-10-21 の付け替えは Stellar をこの層へ移すだけで、settled の件数は動かさない"
     check:
       url: https://vet402.com/api/v1/observatory/state
       assert: "l1.settledAmountPayeeOnly >= 1558"
@@ -1917,8 +1917,8 @@ claims:
     verified_at: 2026-09-28
   - id: sellers_delivered_definition
     surface: src/components/site/sellers/SellersViews.tsx
-    quote: "means vet402 confirmed the USDC transfer on-chain and the paid request answered 2xx"
-    means: "delivered は settled（オンチェーンで転送を読み直した）かつ有料の要求が 2xx。delivery.ts の isDelivered と同じ"
+    quote: "means vet402 re-read the transfer on-chain in that chain's pinned settlement asset and the paid request answered 2xx"
+    means: "delivered は settled（そのチェーンの固定資産で転送を読み直した）かつ有料の要求が 2xx。delivery.ts の isDelivered と同じ"
     check: null
     why_unverifiable: "定義の宣言。src/lib/observatory/delivery.ts の isDelivered が正典で、tests/sellers-fix-modes.test.ts が分類の delivered をそれに揃える"
     verified_at: 2026-09-28

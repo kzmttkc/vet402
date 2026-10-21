@@ -156,7 +156,7 @@ export default async function ObservatoryStatePage() {
     temporalCoverage: snap?.snapshotDate ?? undefined,
     dateModified: snap?.snapshotDate ?? undefined,
     measurementTechnique:
-      "L0: one unpaid HTTP probe per catalog-listed endpoint, using the method the catalog entry declares, checking for HTTP 402 and whether the advertised price, asset, network and payee agree with the catalog; fail is published only after consecutive failing probes. L1: a real-money USDC purchase made under vet402's own User-Agent, with the settlement transaction re-read on-chain before it is called settled.",
+      "L0: one unpaid HTTP probe per catalog-listed endpoint, using the method the catalog entry declares, checking for HTTP 402 and whether the advertised price, asset, network and payee agree with the catalog; fail is published only after consecutive failing probes. L1: a real-money purchase of that chain's pinned asset (USDC on Base, Arc, Celo, Solana and Stellar, USDC.e on Tempo, RLUSD from its fixed issuer on XRPL, and USD1 on BNB Chain) made under vet402's own User-Agent, with the settlement transaction re-read on-chain before it is called settled. Stellar is not in the nonce-bound count.",
     variableMeasured: [
       "endpoints on record",
       "currently listed in catalog",
@@ -478,16 +478,14 @@ export default async function ObservatoryStatePage() {
                     2 行の和は必ず上の settled と一致する。 */}
                 <tr>
                   <td className="text-brand">
-                    settled (nonce-bound): the re-read also matched the signature nonce we generated,
-                    so that transaction belongs to this purchase
+                    settled (nonce-bound): the re-read matched the one-time value stored for that purchase, so the transaction is the one for this purchase. Stellar is not in this count. The Stellar re-read checks payer, payee, amount and asset
                   </td>
                   <td className="num">{stats.l1.settledNonceBound.toLocaleString()}</td>
                   <td className="num">{pct(stats.l1.settledNonceBound, stats.l1.settled)} of settled</td>
                 </tr>
                 <tr>
                   <td className="text-brand">
-                    settled (amount + payee): matched on amount, payee, asset and chain, with no nonce
-                    recorded — settled before the binding shipped on 2026-09-04
+                    settled (amount + payee): the re-read matched payer, payee, amount and asset and did not bind a one-time value. This tier holds rows settled before 2026-09-04 12:00 UTC, and Stellar rows
                   </td>
                   <td className="num">{stats.l1.settledAmountPayeeOnly.toLocaleString()}</td>
                   <td className="num">
@@ -703,12 +701,14 @@ export default async function ObservatoryStatePage() {
         )}
         <p className="doc-p">
           The two settled rows above split the same {stats.l1.settled.toLocaleString()} receipts by how
-          strong the evidence behind each is, and they sum back to it — the split labels strength, it
-          does not change the count. Signature-nonce binding shipped at 2026-09-04 12:00 UTC; receipts
-          confirmed before then were matched on amount, payee, asset and chain, which a seller holding
-          several listings at the same price and payee could satisfy with a transfer it had received
-          earlier. Those rows keep the settled label because demoting one would assert something we
-          cannot show. The machine-readable form is <code>l1.settledNonceBound</code> and{" "}
+          strong the evidence behind each is, and they sum back to it. The split labels strength. It
+          does not change the count. Signature-nonce binding shipped at 2026-09-04 12:00 UTC. Receipts
+          confirmed before then were matched on payer, payee, amount and asset. A seller holding
+          several listings at the same price and payee could satisfy that check with a transfer received
+          earlier. Stellar rows are in the amount and payee count. The Stellar re-read checks payer,
+          payee, amount and asset and does not bind a one-time value. Those rows keep the settled label.
+          Demoting one would assert that the transfer was not the one bought, and the record does not
+          show that. The machine-readable form is <code>l1.settledNonceBound</code> and{" "}
           <code>l1.settledAmountPayeeOnly</code>, per chain in <code>l1.byChain</code> (this L1
           breakdown is not mainnet-filtered, so it sums to the L1 totals; the §2 table above is L0 and
           mainnets-only).{" "}

@@ -351,6 +351,7 @@ function withSettledTier<
   T extends {
     status: string;
     txHash: string | null;
+    network: string | null;
     authNonce: string | null;
     settlementVerified: boolean | null;
     lateSettlement: unknown;
@@ -369,7 +370,7 @@ function withSettledTier<
 })[] {
   return rows.map(({ authNonce, settlementVerified, lateSettlement, l2Detail, l2BodyHead, l2ContentType, ...rest }) => ({
     ...rest,
-    settledTier: settledTier({ status: rest.status, authNonce, settlementVerified }),
+    settledTier: settledTier({ status: rest.status, authNonce, settlementVerified, network: rest.network }),
     settlementSource: settlementSourceOf({ txHash: rest.txHash, lateSettlement }),
     // 2026-09-29 監査 7 周目: 判定・export.csv の l2_reading と同じ読み直し（l2Schema は記録した値のまま）。本文の先頭は出さない。
     l2Reading: rest.l2Schema === null ? null : l2ReadingOf({ l2Schema: rest.l2Schema, l2Detail, bodyHead: l2BodyHead, contentType: l2ContentType }, declaredSchema),

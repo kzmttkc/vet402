@@ -57,6 +57,25 @@ type Correction = {
  */
 const CORRECTIONS: Correction[] = [
   {
+    date: "2026-10-21",
+    subject:
+      "Publishing Stellar pubnet settlements in the nonce-bound count, and describing settled with a shorter asset list than the chains vet402 pays",
+    wrong:
+      "Stellar pubnet settled rows were published as nonce-bound. The re-read checks payer, payee, amount and asset. " +
+      "It does not compare the one-time value stored for that purchase. A fee sponsor changes the transaction hash, " +
+      "so a transfer of the same amount to the same payee can match. The state reading at 2026-10-20T22:55:08Z " +
+      "is not stored elsewhere in the repository. This correction is the remaining source for that reading: " +
+      "stellar:pubnet.settled was 30, with 30 in the nonce-bound count and 0 in the amount and payee count. " +
+      "The public asset sentence stopped at USDC on Base, Arc, Celo and Solana, USDC.e on Tempo, and RLUSD from its " +
+      "fixed issuer on XRPL. It left out USDC on Stellar and USD1 on BNB Chain. BNB Chain does bind the EIP-3009 authorization nonce.",
+    action:
+      "Reclassification. The settled count was not moved. A stellar:pubnet row that is settled is published as amount and payee. " +
+      "It stays settled. l1.settledNonceBound plus l1.settledAmountPayeeOnly still equals l1.settled. No purchase status changed. " +
+      "The asset list on the state page, the state API disclaimer, the FAQ, the methodology and the vocabulary now name " +
+      "USDC on Stellar and USD1 on BNB Chain. BNB Chain stays in the nonce-bound count. The chain key in l1.byChain stays stellar:pubnet. " +
+      "Live counts are on /observatory/state.",
+  },
+  {
     date: "2026-09-17",
     subject:
       "Counting a seller's refusal of a request we formed wrongly against the seller, because the seller refused before settling",

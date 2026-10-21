@@ -664,15 +664,17 @@ export default async function ObservatoryMethodologyPage() {
           scheme <code>exact</code>, a network whose payer lane is switched on for that run (Base
           is on by default; each other lane sits behind its own flag, and the chains L1 has
           actually bought on are the rows of the by-chain table in the State of x402 report), the
-          canonical USDC asset for
-          that network, and a price that
-          matches what the catalog declared when we chose the target. Any deviation — a
-          different asset, a different chain, a higher price — is recorded as a refusal, never
+          canonical USDC asset for that network (Base, Arc, Celo, Solana and Stellar). Named
+          exceptions of the same kind as USDC.e on Tempo are RLUSD from its fixed issuer on XRPL
+          and USD1 on BNB Chain. The price
+          matches what the catalog declared when the target was chosen. Any deviation (a
+          different asset, a different chain, a higher price) is recorded as a refusal, never
           paid. A hard per-purchase ceiling (${MAX_PER_PURCHASE_USD.toFixed(2)}) and a daily
           budget (${DAILY_BUDGET_USD}) are checked against a database ledger, not memory, before
-          every signature, so a restart or a concurrent run cannot double-spend. Once we sign, the
-          spend is recorded whether or not the seller delivers — a signed EIP-3009 authorization
-          is live money the moment it exists.
+          every signature, so a restart or a concurrent run cannot double-spend. A signed spend
+          stays on the record whether or not the seller delivers. On Base, Arc, Celo and BNB Chain
+          the signature is an EIP-3009 authorization, and a signed EIP-3009 authorization is live
+          money the moment it exists.
         </p>
         <p className="doc-p">
           <strong>Tempo (MPP).</strong> Tempo has no x402 wall. Services listed in the MPP directory
@@ -795,8 +797,10 @@ export default async function ObservatoryMethodologyPage() {
         </p>
         <p className="doc-p">
           <strong>settled</strong> — <em>vet402 re-read the transaction on-chain</em> and found
-          the exact USDC transfer it paid for: from our payer, to the catalog-declared payee, for
-          the declared amount, in the canonical USDC contract. On Base that means an ERC-20{" "}
+          the transfer it paid for: from the vet402 payer, to the catalog-declared payee, for
+          the declared amount, in that chain's pinned settlement asset (USDC on Base, Arc, Celo,
+          Solana and Stellar, USDC.e on Tempo, RLUSD from its fixed issuer on XRPL, and USD1 on
+          BNB Chain). On Base that means an ERC-20{" "}
           <code>Transfer</code> log matching all four of those with at least{" "}
           {REQUIRED_CONFIRMATIONS.toString()} confirmations; on
           Solana it means the transaction is <code>finalized</code>, succeeded, and the
@@ -850,16 +854,17 @@ export default async function ObservatoryMethodologyPage() {
         </p>
         <p className="doc-p">
           <strong>settled comes at two evidence strengths, and both counts are published.</strong>{" "}
-          Since 2026-09-04 12:00 UTC each purchase carries a one-time value we generate
-          ourselves — the EIP-3009 authorization nonce on Base, Arc and Celo, our own memo on Solana,
-          the memo of a TIP-20 transfer on Tempo, the hash of the signed blob on XRPL — and
-          the re-read binds the transaction to that value. We publish those rows as{" "}
-          <strong>nonce-bound</strong>: the transaction is the one that paid for this purchase.
-          Rows that settled before that timestamp were matched on amount, payee, asset and
-          chain, with nothing tying the transaction to the purchase it was offered for. We
-          publish those as <strong>amount + payee</strong>. The gap is not hypothetical: a
-          seller holding several catalog entries at the same price and the same payee could
-          have answered with a transfer it had received earlier and passed that check.{" "}
+          Since 2026-09-04 12:00 UTC a purchase on Base, Arc, Celo, BNB Chain, Solana, Tempo or XRPL
+          stores a one-time value for that purchase (the EIP-3009 authorization nonce on Base, Arc,
+          Celo and BNB Chain, a memo written on Solana, the memo of a TIP-20 transfer on Tempo, the
+          hash of the signed blob on XRPL) and the re-read matches that value. Those rows are
+          published as <strong>nonce-bound</strong>: the re-read matched the one-time value stored
+          for that purchase, so the transaction is the one for this purchase. Stellar is not in this count.
+          The Stellar re-read checks payer, payee, amount and asset. Rows that settled before
+          that timestamp, and Stellar rows, matched on payer, payee, amount and asset, and the re-read
+          did not bind a one-time value. Those rows are published as <strong>amount + payee</strong>.
+          A seller holding several catalog entries at the same price and the same payee could have
+          answered with a transfer received earlier and passed that check.{" "}
           {l1Tiers && l1Tiers.settled > 0 ? (
             <>
               At the current reading, {l1Tiers.settledAmountPayeeOnly.toLocaleString()} of{" "}
@@ -964,14 +969,15 @@ export default async function ObservatoryMethodologyPage() {
           — is closed: <strong>Solana settlements are now re-read on-chain</strong> by a
           Solana-specific verifier, and a Solana purchase is promoted to <code>settled</code> only
           on the same evidence Base requires. What remains open is narrower and still worth naming:
-          the re-read is chain-specific, because what binds a transfer to the signature we hold
-          differs by chain — on Base, Arc and Celo the EIP-3009 authorization nonce, on Solana a memo we
-          wrote ourselves, on Tempo the indexed memo of a TIP-20{" "}
-          <code>TransferWithMemo</code>, on XRPL the hash of the blob we signed (which is the
-          transaction hash itself). A purchase on a chain we have built no re-reader for stays at{" "}
-          <code>settle_claimed</code> rather than being promoted on evidence we do not have. When
-          our own RPC cannot answer, or reports a different cluster than the purchase declared, the
-          row stays unverified rather than being called refuted — an instrument we could not read
+          the re-read is chain-specific, because what binds a transfer to the signature vet402 holds
+          differs by chain: on Base, Arc, Celo and BNB Chain the EIP-3009 authorization nonce, on Solana a memo
+          vet402 wrote, on Tempo the indexed memo of a TIP-20{" "}
+          <code>TransferWithMemo</code>, on XRPL the hash of the blob vet402 signed (which is the
+          transaction hash itself). Stellar is re-read for payer, payee, amount and asset, and is published
+          as amount and payee. A purchase on a chain with no re-reader stays at{" "}
+          <code>settle_claimed</code> rather than being promoted on evidence that re-read does not exist. When
+          vet402's own RPC cannot answer, or reports a different cluster than the purchase declared, the
+          row stays unverified rather than being called refuted. An instrument vet402 could not read
           is not a finding about the seller.
         </p>
 

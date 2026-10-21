@@ -91,8 +91,8 @@ function purchaseParam(v: string | string[] | undefined): string | null {
 
 /** 表の用語の 1 文の説明（その場で読めるように・2026-09-29 第4巡）。 */
 const TIER_GLOSS = {
-  nonce: "the on-chain re-read also matched the one-time nonce vet402 signed for that purchase",
-  amountPayee: "the on-chain re-read matched amount, payee, asset and chain; no nonce was on record (rows before 2026-09-04)",
+  nonce: "the on-chain re-read matched the one-time value stored for that purchase, so the transaction is the one for this purchase. Stellar is not in this count",
+  amountPayee: "the on-chain re-read matched payer, payee, amount and asset and did not bind a one-time value (rows before 2026-09-04, and Stellar)",
 } as const;
 const L2_GLOSS: Readonly<Record<string, string>> = {
   not_checked: "not checked: the paid request did not answer 200, so there was no response to check against the listing's output schema",
@@ -369,18 +369,19 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
               carries its on-chain transaction hash, and that transaction is the evidence. On this page a{" "}
               <em>receipt</em> means the seller&apos;s own settlement receipt (<code>PAYMENT-RESPONSE</code>); a
               settled row can have none (see &ldquo;tx from our index&rdquo;).{" "}A settled
-              row reads as <strong>nonce-bound</strong> when the on-chain re-read also matched the
-              one-time signature nonce we generated for that purchase, and{" "}
-              <strong>amount + payee</strong> when it matched amount, payee, asset and chain with no
-              nonce on record — the binding shipped on 2026-09-04, so earlier rows carry the weaker
-              evidence and keep their label rather than being demoted (
+              row reads as <strong>nonce-bound</strong> when the on-chain re-read matched the
+              one-time value stored for that purchase, so the transaction is the one for this purchase.
+              Stellar is not in this count. The Stellar re-read checks payer, payee, amount and asset. A row reads as{" "}
+              <strong>amount + payee</strong> when the re-read matched payer, payee, amount and asset and did not
+              bind a one-time value. That tier holds rows from before 2026-09-04 and Stellar rows. They keep the settled
+              label rather than being demoted (
               <Link href="/observatory/methodology" className="underline">
                 methodology
               </Link>
               ).{" "}
-              <strong>settled</strong> is the transfer we confirmed on-chain; <strong>delivered</strong>{" "}
+              <strong>settled</strong> is the transfer vet402 confirmed on-chain. <strong>delivered</strong>{" "}
               is the response arriving. A settled row whose paid request answered 5xx counts as
-              settled and not as delivered —{" "}
+              settled and not as delivered.{" "}
               <Link href="/observatory/methodology" className="underline">
                 definitions
               </Link>
@@ -679,7 +680,7 @@ function RecordTerms({
   };
   for (const p of purchases) {
     if (p.settledTier === "nonce_bound") add("settled (nonce-bound)", `${STATUS_GLOSS.settled}, and ${TIER_GLOSS.nonce}`);
-    else if (p.settledTier === "amount_payee_only") add("settled (amount + payee)", `${STATUS_GLOSS.settled}; ${TIER_GLOSS.amountPayee}`);
+    else if (p.settledTier === "amount_payee_only") add("settled (amount + payee)", `${STATUS_GLOSS.settled}: ${TIER_GLOSS.amountPayee}`);
     else add(p.status, STATUS_GLOSS[p.status]);
   }
   for (const h of held) if (h) add(h, (HELD_GLOSS as Readonly<Record<string, string>>)[h] ? `held_reason in the export: ${(HELD_GLOSS as Readonly<Record<string, string>>)[h]}` : undefined);

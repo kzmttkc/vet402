@@ -473,6 +473,8 @@ export async function verifyStellarSettlement(
     /**
      * 使わない。XRPL は署名 blob の hash をここに載せるが、Stellar は facilitator が
      * fee を載せてから hash が決まるので、一致を要求すると本物が落ちる。
+     * 行の auth_nonce に sha256 が残っていても、公開の層は nonce-bound に入れない
+     * （settled-tier.ts の stellar:pubnet）。
      */
     expectedAuthNonce?: string | null;
   },
