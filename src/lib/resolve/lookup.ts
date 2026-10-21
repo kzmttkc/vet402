@@ -13,6 +13,7 @@ import { escapeLike } from "@/lib/util/like";
 import { classifyQuery, type QueryKind } from "./classify";
 import { UUID_RE } from "@/lib/validation/uuid";
 import { canonicalIdForAlias } from "./aliases";
+import { LISTING_SOURCES, NOT_LISTED_DOC_URL, type ListingSource } from "@/lib/observatory/listing-sources";
 
 export type EndpointRef = {
   endpoint_id: string;
@@ -83,8 +84,21 @@ export type ResolveResult = {
    * ほぼ空の本文だけが返り、「無い」のか「壊れている」のか読めなかった。何も見つからなかった
    * ときだけ載せ、endpoints は空配列で必ず返す。
    */
-  not_found?: { reason: "not_in_catalog"; note: string; next: string };
+  not_found?: NotInCatalog;
   disclaimer: string;
+};
+
+/**
+ * 2026-10-21: 売り手（CedarProof）が not_in_catalog を受け取り、vet402 がどこから掲載を読むのか・どうすれば
+ * 載るのかが応答のどこにも無い、と問い合わせてきた。reason / note / next は従来どおり（型も同じ）。
+ * listing_sources（出どころと同期時刻）と documentation（/faq の節）を足した。値は listing-sources.ts が正典。
+ */
+export type NotInCatalog = {
+  reason: "not_in_catalog";
+  note: string;
+  next: string;
+  listing_sources: ListingSource[];
+  documentation: string;
 };
 
 const NOT_FOUND_NEXT = "https://vet402.com/docs/api#endpoints";
@@ -104,13 +118,21 @@ export function withNotFound(out: ResolveResult): ResolveResult {
       : kind === "domain"
         ? "this domain"
         : "an endpoint that declares this address as its payee";
+  // 公開の英文: we/our/us・セミコロン・ダッシュを使わない。
   const note =
-    `vet402 has no x402 endpoint on record for ${what}. The catalog is read from public x402 discovery listings, ` +
-    `so an endpoint that is not listed there has not been measured — this is not a finding about it.`;
+    `vet402 has no x402 endpoint on record for ${what}. vet402 reads listings from the sources in listing_sources, ` +
+    `with syncs that start at the times shown there. There is no application or fee. An endpoint that is not in those sources has not been measured, ` +
+    `and this is not a finding about it. The documentation link explains how a listing gets into the CDP Bazaar.`;
   return {
     ...out,
     endpoints: out.endpoints ?? [],
-    not_found: { reason: "not_in_catalog", note, next: NOT_FOUND_NEXT },
+    not_found: {
+      reason: "not_in_catalog",
+      note,
+      next: NOT_FOUND_NEXT,
+      listing_sources: LISTING_SOURCES.map((s) => ({ ...s, sync_times_utc: [...s.sync_times_utc] })),
+      documentation: NOT_LISTED_DOC_URL,
+    },
   };
 }
 

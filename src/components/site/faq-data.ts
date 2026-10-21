@@ -9,7 +9,22 @@
  *
  * 中身は /faq が持っていたものと1文字も変えていない。
  */
-export type FaqItem = { question: string; answer: string };
+import {
+  CDP_GET_DISCOVERED_URL,
+  listingSource,
+  NOT_LISTED_FAQ_ID,
+  syncTimesText,
+} from "@/lib/observatory/listing-sources";
+import { DECLARED_BODY_MAX_BYTES } from "@/lib/observatory/declared-input-rules";
+
+/** id は /faq の節の錨（任意）。resolver の not_found.documentation が指す節に付ける。 */
+export type FaqItem = { question: string; answer: string; id?: string };
+
+// 2026-10-21: 売り手が resolver の not_in_catalog を受け取り、どこから掲載を読むのか・どうすれば載るのかが
+// どこにも書かれていないと問い合わせてきた。出どころと時刻は listing-sources.ts が正典（resolver と同じ値）。
+// 読み手は英語が母語でない売り手を想定し、短い文と日常語で書く。we/our/us・セミコロン・ダッシュを使わない。
+const BAZAAR = listingSource("cdp_bazaar");
+const MPP = listingSource("mpp_directory");
 
 export const FAQS: FaqItem[] = [
   {
@@ -91,6 +106,27 @@ export const FAQS: FaqItem[] = [
     question: "How do I integrate it?",
     answer:
       "The canonical integration since 2026-09-02 is GET /api/v1/resources/:resourceId/decision, which returns the L0/L1/L2 facts and an ALLOW / WARN / BLOCK recommendation in one document. The older per-subject score routes still work and are still documented: a payee (GET /api/v1/payees/:address/score), a payer wallet (GET /api/v1/wallets/:address/score), or an agent ID (GET /api/v1/agents/:agentId/score), batched up to 25 at once, plus attesting an x402 settlement after verification. Full request/response shapes, error codes, and an OpenAPI schema are on the API reference page.",
+  },
+  {
+    id: NOT_LISTED_FAQ_ID,
+    question: "Why is my endpoint not listed?",
+    answer:
+      `vet402 lists an x402 endpoint when the endpoint is in the ${BAZAAR.name}, which is the one source of x402 listings vet402 reads (${BAZAAR.url}). ` +
+      `The syncs of that catalog start at ${syncTimesText(BAZAAR.sync_times_utc)}. A sync reads the catalog page by page. A sync that stops early adds the pages it read and not the rest. ` +
+      `So your route appears on vet402 after a sync that reads the page with your route. ` +
+      `For Tempo, vet402 also reads the MPP directory (${MPP.url}), with a sync that starts at ${syncTimesText(MPP.sync_times_utc)}. ` +
+      `There is no application to vet402 and no fee. ` +
+      `The catalog belongs to CDP. Whether a route enters it is decided by CDP's index, not by vet402. ` +
+      `CDP's docs say a route is indexed after it declares the Bazaar extension, answers 402, and a payment for it settles through the CDP facilitator. ` +
+      `A route that does those things can still be left out by CDP. ` +
+      `vet402 does not read the PayAI discovery list as listings. ` +
+      `How vet402 checks a listed route: the unpaid L0 check of a POST route sends {} as the body. ` +
+      `If that unpaid POST gets 400 or 422 with neither a WWW-Authenticate nor a PAYMENT-REQUIRED header, L0 records it as unverified, not as a failure. ` +
+      `On a GET route, a 400 or 422 is an L0 fail. Tempo routes, which are measured as MPP, are the exception. ` +
+      `L1 buys from a route whose latest L0 check passed. When the unpaid request of L1 does not get a 402, L1 records no_402. ` +
+      `For the paid POST, L1 reads extensions.bazaar.info.input.body from the same document as the payment terms: the PAYMENT-REQUIRED header when it parses as a payment challenge, and otherwise the response body. ` +
+      `When that value is a JSON object or array of ${DECLARED_BODY_MAX_BYTES / 1024} KB or less as encoded JSON, L1 sends it as the body. Otherwise L1 sends {}. ` +
+      `CDP's guide to getting listed: ${CDP_GET_DISCOVERED_URL}`,
   },
 ];
 

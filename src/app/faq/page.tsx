@@ -83,7 +83,7 @@ export default async function FaqPage() {
             ヘアラインなら、10件が1つの文書の中の連番として読める。 */}
         <section className="mt-10 border-t border-brand-deep">
           {FAQS.map((item, i) => (
-            <div key={item.question} className="border-b border-hair py-6">
+            <div key={item.question} id={item.id} className="scroll-mt-32 border-b border-hair py-6">
               <div className="flex gap-4">
                 <span className="w-[4ch] shrink-0 text-brand-lift">Q{i + 1}</span>
                 {/* 2026-08-06 a11y (screen-reader persona audit): the questions

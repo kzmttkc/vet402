@@ -22,9 +22,11 @@
 import { normalizeResourceKey, type CatalogFetchResult, type ParsedCatalogItem } from "./catalog-source";
 import { syncCatalog, type SyncSummary } from "./catalog-sync";
 import { MPP_CHARGE_SCHEME, MPP_DIRECTORY_SOURCE, TEMPO_CHAIN_ID, TEMPO_MAINNET_CAIP2 } from "./mpp-payer";
+import { MPP_DIRECTORY_PUBLIC_URL } from "./listing-sources";
 
 export { MPP_DIRECTORY_SOURCE };
-export const MPP_DIRECTORY_URL_DEFAULT = "https://mpp.dev/api/services";
+/** 既定の取得先。正典は listing-sources.ts（resolver の not_found と /faq が同じ値を出す・2026-10-21）。 */
+export const MPP_DIRECTORY_URL_DEFAULT = MPP_DIRECTORY_PUBLIC_URL;
 /** 1 回の同期で受け取る endpoint の上限（実測 1,457 の余裕）。超えたぶんは切り、complete=false。 */
 export const MPP_DIRECTORY_MAX_ITEMS = 2_000;
 
