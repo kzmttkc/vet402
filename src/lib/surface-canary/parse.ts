@@ -86,6 +86,8 @@ export function sideFromWords(words: string | null | undefined): Side | null {
   if (w.startsWith("no failure")) return "delivered";
   // 照合待ち（settle_claimed）は頁では「not sorted: awaiting on-chain verification」、export.csv では outcome=pending
   if (w.includes("awaiting on-chain")) return "pending";
+  // 2026-10-21: 遅延回収の待ちは「not sorted yet: HTTP 503, vet402 is still checking the chain」（export.csv では pending）
+  if (w.includes("still checking the chain")) return "pending";
   if (w.startsWith("vet402's side") || w.startsWith("vet402’s side")) return "vet402";
   if (w.startsWith("seller's side") || w.startsWith("seller’s side")) return "seller";
   if (w.startsWith("not sorted")) return "unsorted";

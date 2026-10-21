@@ -21,7 +21,7 @@ import { getDb } from "@/lib/db/client";
 import { readRecordSides } from "@/lib/sellers/reader";
 import { recordPageNoindex, recordRowKey, type RecordSides } from "@/lib/sellers/board";
 import { HELD_GLOSS, STATUS_GLOSS } from "@/lib/sellers/fix-modes";
-import { RECORD_DISPUTE_ANCHOR, UNDER_RECHECK, WhoseSide } from "@/components/site/sellers/SellersViews";
+import { DISPUTE_NO_PURCHASE, RECORD_DISPUTE_ANCHOR, UNDER_RECHECK, WhoseSide } from "@/components/site/sellers/SellersViews";
 
 /**
  * /observatory/e/[id] — one endpoint's full fact history (design §5).
@@ -633,6 +633,10 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
           <span className="sec-no">5.</span>
           <span>Dispute this record</span>
         </h2>
+        {/* 2026-10-21 A-16: 異議で買い直すと読ませない。見出しの直下に、売り手頁の After a fix と同じ文。 */}
+        <p className="doc-p">
+          <strong>{DISPUTE_NO_PURCHASE}</strong>
+        </p>
         <p className="doc-p">
           Think a measurement above is wrong? Say which probe or purchase and what you observed
           instead. One person reads it and replies. The record is never deleted on dispute: if it
@@ -642,7 +646,8 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
           <Link href="/docs/api" className="underline">
             API reference
           </Link>
-          ), which re-measures through the normal publication gate.
+          ). That route runs one fresh L0 check under the normal publication gate. A later purchase
+          comes from the regular schedule.
         </p>
         {disputePurchase && (
           <p className="doc-p">

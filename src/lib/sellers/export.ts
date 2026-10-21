@@ -12,7 +12,7 @@
 // 純関数（DB 無し）。DB から読むのは reader.ts の readSellerExport。
 // ============================================================
 import { failureDaysOf, type FailureDays, type LatestRow } from "./board";
-import { BUCKET_DOCS, classifySellerRow, NOT_IN_EXPORT_STATUSES, sideLabelOf } from "./fix-modes";
+import { ATTRIBUTION_REVIEW_NOTE, BUCKET_DOCS, classifySellerRow, NOT_IN_EXPORT_STATUSES, sideLabelOf } from "./fix-modes";
 
 export const SELLER_EXPORT_COLUMNS = [
   "host",
@@ -29,7 +29,12 @@ export const SELLER_EXPORT_COLUMNS = [
   "latest_http_status_paid",
   "purchase_id",
   "in_ledger_export",
+  // 2026-10-21 A-17: 末尾に足す（列は後ろへ足すだけ）。seller の行は帰属が見直し中だと、ヘッダを捨てた写しにも残す。
+  "attribution_review",
 ] as const;
+
+/** attribution_review 列の値（seller の行だけ・他は空）。 */
+export const ATTRIBUTION_REVIEW_VALUE = "under_review";
 
 export type SellerExportColumn = (typeof SELLER_EXPORT_COLUMNS)[number];
 
@@ -84,6 +89,7 @@ export function buildSellerExportRows(
         latest_http_status_paid: "",
         purchase_id: "",
         in_ledger_export: "",
+        attribution_review: "",
       });
       continue;
     }
@@ -104,6 +110,7 @@ export function buildSellerExportRows(
       latest_http_status_paid: r.httpStatusPaid === null ? "" : String(r.httpStatusPaid),
       purchase_id: r.rowId ?? "",
       in_ledger_export: String(inExport),
+      attribution_review: c.bucket === "seller" ? ATTRIBUTION_REVIEW_VALUE : "",
     });
   }
   out.sort(
@@ -126,10 +133,12 @@ export function countSellerExportOutcomes(rows: readonly SellerExportRow[]): Rec
  * CSV はコメント行を持てないので、列の定義をレスポンスヘッダで運ぶ（ASCII のみ）。
  */
 export const SELLER_EXPORT_COLUMN_NOTES =
+  `${ATTRIBUTION_REVIEW_NOTE} ` +
   "One row per active Base listing (the rows /sellers counts), classified by its latest purchase row with the same function /sellers uses. " +
   `outcome = ${SELLER_EXPORT_OUTCOMES.filter((o) => o !== "not_tried").map((o) => BUCKET_DOCS[o as keyof typeof BUCKET_DOCS]).join(" | ")} | not_tried (no purchase row); counting rows by outcome gives the /sellers totals; the decision API blocks on L1 only for seller rows. ` +
   "fix_mode = the failure kind key (blank for delivered, pending, not_tried); side_label = the words of the /sellers 'whose side' column; " +
   "confirmed_seller = true when a seller's-side failure was seen on 2 or more UTC days (blank unless outcome=seller); " +
   "held_reason = as in /api/v1/observatory/export.csv; purchase_id = the latest row's id (the purchase_id column of the ledger export and the subject_id in /api/v1/observatory/corrections); " +
   "in_ledger_export = whether that row appears in /api/v1/observatory/export.csv (rows in vet402-side states such as halted or request_error do not). " +
+  `attribution_review = ${ATTRIBUTION_REVIEW_VALUE} on seller rows, whose attribution is under review (blank otherwise). ` +
   "Full definitions: https://vet402.com/openapi.yaml";

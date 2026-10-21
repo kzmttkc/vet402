@@ -372,9 +372,9 @@ const endpoints: Endpoint[] = [
   {
     method: "GET",
     path: "/api/v1/sellers/export.csv",
-    note: "The /sellers classification, as CSV — no key, 6/min, cached up to 15 minutes, served noindex like the page. One row per active Base listing, classified by its latest purchase row with the same function /sellers uses; counting rows by outcome gives the page's totals. Columns: host, endpoint_id, resource_key, outcome (delivered | pending | seller | vet402 | unsorted | not_bought | not_tried), fix_mode, side_label, confirmed_seller, held_reason, latest_attempted_at, latest_status, latest_network, latest_http_status_paid, purchase_id (the ledger export's purchase_id), in_ledger_export. Definitions in the x-vet402-column-notes header, retrieval time in x-vet402-retrieved-at. Since 2026-09-29.",
-    response: `host,endpoint_id,resource_key,outcome,fix_mode,side_label,confirmed_seller,held_reason,latest_attempted_at,latest_status,latest_network,latest_http_status_paid,purchase_id,in_ledger_export
-api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02:29Z,settled,eip155:8453,200,c4d4b20f-…,true`,
+    note: "The /sellers classification, as CSV — no key, 6/min, cached up to 15 minutes, served noindex like the page. One row per active Base listing, classified by its latest purchase row with the same function /sellers uses; counting rows by outcome gives the page's totals. Columns: host, endpoint_id, resource_key, outcome (delivered | pending | seller | vet402 | unsorted | not_bought | not_tried), fix_mode, side_label, confirmed_seller, held_reason, latest_attempted_at, latest_status, latest_network, latest_http_status_paid, purchase_id (the ledger export's purchase_id), in_ledger_export, attribution_review (under_review on seller rows, whose attribution is under review). Definitions in the x-vet402-column-notes header, retrieval time in x-vet402-retrieved-at. Since 2026-09-29.",
+    response: `host,endpoint_id,resource_key,outcome,fix_mode,side_label,confirmed_seller,held_reason,latest_attempted_at,latest_status,latest_network,latest_http_status_paid,purchase_id,in_ledger_export,attribution_review
+api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02:29Z,settled,eip155:8453,200,c4d4b20f-…,true,`,
   },
 ];
 

@@ -444,8 +444,8 @@ export default async function ObservatoryMethodologyPage() {
           <strong>Two days before the seller&apos;s side.</strong> A row that shows all of (a) to (e) is not yet on the
           seller&apos;s side on its own. It goes there only when the same listing has such a failure on at least two
           different days (UTC); until then it reads <em>not sorted: one failure so far</em>, with what happened and the
-          fix shown as they are. The rows on the seller&apos;s side are marked &ldquo;under re-check&rdquo; while we
-          re-check them, and a seller page carries the re-check notice when it has such a row. For each signed row
+          fix shown as they are. The rows on the seller&apos;s side are marked &ldquo;attribution under review&rdquo; while
+          that review runs (it has no set date), and a seller page carries the review notice when it has such a row. For each signed row
           the seller page publishes what the row recorded about the payment and the answer: the scheme, amount,{" "}
           <code>payTo</code> and one-time nonce vet402 signed (<code>validBefore</code> is not recorded, and the page
           says so), and the paid request&apos;s HTTP status, <code>Content-Type</code>, and whether a{" "}

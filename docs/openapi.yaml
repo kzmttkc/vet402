@@ -1169,7 +1169,10 @@ paths:
         `subject_id` in `/api/v1/observatory/corrections`),
         `in_ledger_export` (whether that row appears in the ledger export;
         rows in vet402-side states such as `halted` or `request_error` do
-        not). The definitions also travel in the `x-vet402-column-notes`
+        not), `attribution_review` (`under_review` on `outcome=seller` rows,
+        blank otherwise, since 2026-10-21). Which side a failed purchase is on
+        is still under review, and the `x-vet402-column-notes` header starts
+        with that sentence. The definitions also travel in the `x-vet402-column-notes`
         header; the retrieval time in `x-vet402-retrieved-at`. IP-throttled to
         6/min; CDN-cached for up to 15 minutes. Takes no query parameters: any
         is 400 `invalid_query` (since 2026-09-29). Reads the store one export
@@ -3949,7 +3952,7 @@ components:
             than 90 minutes ago while vet402 links late settlements; the
             ledger status is left as recorded); seller (the seller's side:
             vet402 can show from the row that the failure was not its own,
-            and the same kind of failure was seen at the listing on 2 or
+            and such a failure, of any kind, was seen at the listing on 2 or
             more different UTC days); vet402 (vet402's side: its wallet was
             short, it did not send the declared input, or one of its own
             limits or errors); unsorted (not sorted: held for vet402's own

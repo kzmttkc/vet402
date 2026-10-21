@@ -17,10 +17,22 @@ import {
   type SellerSummary,
   type ShownRow,
 } from "@/lib/sellers/board";
-import { EFFORT_LABEL, HELD_GLOSS, isAnsweredWithNamedTx, LATE_LINK_PENDING_MINUTES, sideLabelOf, STATUS_GLOSS } from "@/lib/sellers/fix-modes";
+import {
+  ATTRIBUTION_REVIEW_NOTE,
+  ATTRIBUTION_UNDER_REVIEW,
+  EFFORT_LABEL,
+  fixMode,
+  HELD_GLOSS,
+  isAnsweredWithNamedTx,
+  LATE_LINK_PENDING_MINUTES,
+  ONCE_SUFFIX,
+  sideLabelOf,
+  STATUS_GLOSS,
+  utcDayOf,
+} from "@/lib/sellers/fix-modes";
 import DecisionAnswer, { REASON_CODES_HREF } from "./DecisionAnswer";
 import { SELLERS_PAGE_DECISION_TEXT } from "@/lib/decision/rules-text";
-import { l0ProbeLine, nextBuyLine } from "@/lib/sellers/next-buy";
+import { l0ProbeLine, nextBuyLine, NON_SETTLING_COOLDOWN_STREAK, type NextBuy } from "@/lib/sellers/next-buy";
 import { explorerTxUrl, paymentChainLabel } from "@/lib/observatory/chains";
 import type { OtherChainAttempt } from "@/lib/sellers/board";
 
@@ -194,7 +206,7 @@ function SellersCards({ sellers, label }: { sellers: readonly SellerSummary[]; l
   const facts: { label: string; value: (s: SellerSummary) => string }[] = [
     { label: "Listings", value: (s) => n(s.listings) },
     { label: "Delivered", value: (s) => n(s.delivered) },
-    { label: "Seller's side", value: (s) => n(s.seller) },
+    { label: `Seller's side (${ATTRIBUTION_UNDER_REVIEW})`, value: (s) => n(s.seller) },
     { label: "vet402's side", value: (s) => n(s.vet402) },
     { label: "Not sorted", value: (s) => n(s.unsorted) },
     { label: "Awaiting verification", value: (s) => n(s.pending) },
@@ -251,6 +263,7 @@ function SellersTableWide({ sellers, label }: { sellers: readonly SellerSummary[
             </th>
             <th scope="col" className="num">
               Seller&apos;s side
+              <span className="block text-xs font-normal">{ATTRIBUTION_UNDER_REVIEW}</span>
             </th>
             <th scope="col" className="num">
               vet402&apos;s side
@@ -402,7 +415,7 @@ export function SellersIndexView({
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
       <p className="doc-p">
         vet402 buys x402 listings with real USDC on Base and publishes what happened. Type your domain to see each
-        of your Base listings: when we last bought it, what we saw, what to fix, and whether a failure was on your
+        of your Base listings: when vet402 last bought it, what it saw, what to fix, and whether a failure was on your
         side or on vet402&apos;s.
       </p>
       <SearchForm q={q} />
@@ -427,7 +440,12 @@ export function SellersIndexView({
               </p>
             )
           ) : null}
-          {search.matches.length > 0 && <SellersTable sellers={search.matches} label="Sellers whose host contains the search" />}
+          {search.matches.length > 0 && (
+            <>
+              <AttributionReviewNote />
+              <SellersTable sellers={search.matches} label="Sellers whose host contains the search" />
+            </>
+          )}
         </section>
       )}
 
@@ -443,6 +461,8 @@ export function SellersIndexView({
         </Link>{" "}
         groups the failures by kind.
       </p>
+      {/* 2026-10-21 A-17: 個別頁の帯と同じく、一覧の表の上でも帰属が見直し中だと言う（CSV の column notes と同じ文）。 */}
+      <AttributionReviewNote />
       <SideFilter board={board} side={side} />
       {side && (
         <p className="doc-p text-[0.8125rem]">
@@ -464,6 +484,15 @@ export function SellersIndexView({
       <Pager page={p} totalPages={totalPages} href={(x) => sellersIndexHref(side, x)} label="Seller pages" />
       <ReadingNotes />
     </article>
+  );
+}
+
+/** 帰属の見直しの注記（/sellers・/sellers/fix-first・sellers の CSV の column notes で同じ文）。 */
+export function AttributionReviewNote() {
+  return (
+    <p className="doc-note mt-3" data-attribution-review="">
+      <strong>{upperFirst(ATTRIBUTION_UNDER_REVIEW)}.</strong> {ATTRIBUTION_REVIEW_NOTE}
+    </p>
   );
 }
 
@@ -513,7 +542,8 @@ function pendingLine(r: ShownRow): string {
       ? "The seller returned a settlement receipt, and vet402 has not confirmed that transaction on-chain yet. Until it is confirmed or refuted, this purchase is neither delivered nor failed."
       : isAnsweredWithNamedTx(r.facts)
         ? `The paid request answered HTTP ${r.facts.httpStatusPaid ?? "—"} and the seller named a settlement transaction, although its receipt did not say success. vet402 has not confirmed that transaction on-chain yet. Until it is confirmed or refuted, this purchase is neither delivered nor failed.`
-        : `vet402 signed this payment less than ${LATE_LINK_PENDING_MINUTES} minutes before this read and is still looking for the transfer on-chain (late linking). Until then it is not known whether money moved, and this purchase is neither delivered nor failed.`;
+        : // 2026-10-21 A-16: 5xx の行を「失敗ではない」と読ませない。HTTP の値を先に言い、数え方だけを保留と書く。
+          `${paidAnswerSentence(r)} vet402 signed this payment less than ${LATE_LINK_PENDING_MINUTES} minutes before this read and is still looking for the transfer on-chain (late linking), so this row is not counted as delivered or failed yet. Until then it is not known whether money moved.`;
   const reason = r.facts.verifyReason;
   return reason ? `${base} vet402 looked for that transaction on-chain and has not found it yet (${reason}).` : base;
 }
@@ -526,21 +556,66 @@ function seenLine(r: ShownRow): string {
   return r.mode?.what ?? "";
 }
 
+/** 支払い付き要求への答えの 1 文（記録した HTTP の値だけ）。 */
+function paidAnswerSentence(r: ShownRow): string {
+  return r.facts.httpStatusPaid !== null
+    ? `The paid request answered HTTP ${r.facts.httpStatusPaid}.`
+    : "The paid request got no HTTP answer.";
+}
+
+/**
+ * 遅延回収の待ちの行（署名した失敗の行で、試行から LATE_LINK_PENDING_MINUTES 分のうち）。照合待ち（settle_claimed）と
+ * 2xx で tx を名指した行は別（売り手がレシートか tx を返している）。
+ */
+export function isLateLinkPendingRow(r: ShownRow): boolean {
+  return r.bucket === "pending" && r.facts.status !== "settle_claimed" && !isAnsweredWithNamedTx(r.facts);
+}
+
+/** 遅延回収の待ちが明ける時刻（試行 + LATE_LINK_PENDING_MINUTES 分）。読めなければ null。 */
+function lateLinkUntil(r: ShownRow): string | null {
+  const t = Date.parse(r.facts.attemptedAt);
+  if (!Number.isFinite(t)) return null;
+  return fmtUtc(new Date(t + LATE_LINK_PENDING_MINUTES * 60_000).toISOString());
+}
+
+/**
+ * Result の語。2026-10-21 A-16: 遅延回収の待ちの行は「awaiting on-chain verification」だけにしない
+ * （HTTP 503 の行が、見出しで「まだ失敗ではない」と読まれた）。記録した HTTP の値を先に出す。
+ */
+export function resultWordText(r: ShownRow): string {
+  if (r.bucket === "delivered") return "delivered";
+  if (r.bucket === "pending") {
+    if (!isLateLinkPendingRow(r)) return "awaiting on-chain verification";
+    return r.facts.httpStatusPaid !== null
+      ? `HTTP ${r.facts.httpStatusPaid} on the paid request, payment still being checked`
+      : "no answer to the paid request, payment still being checked";
+  }
+  return r.mode?.title ?? "";
+}
+
 function ResultWord({ r }: { r: ShownRow }) {
-  if (r.bucket === "delivered") return <>delivered</>;
-  if (r.bucket === "pending") return <>awaiting on-chain verification</>;
-  return <>{r.mode?.title}</>;
+  return <>{resultWordText(r)}</>;
 }
 
 /** 「どちらの側か」の語（delivered・照合待ちは側を持たない）。 */
 function sideWord(r: ShownRow): string {
   if (r.bucket === "delivered") return "no failure (delivered)";
-  if (r.bucket === "pending") return "not sorted: awaiting on-chain verification";
+  if (r.bucket === "pending") {
+    // 2026-10-21 A-16 再点検: 遅延回収の待ちは HTTP の値を言う（awaiting on-chain は照合待ちと tx を名指した 2xx だけ）。
+    // 「still checking the chain」は surface-canary の sideFromWords が pending と読む語。
+    if (!isLateLinkPendingRow(r)) return "not sorted: awaiting on-chain verification";
+    return r.facts.httpStatusPaid !== null
+      ? `not sorted yet: HTTP ${r.facts.httpStatusPaid}, vet402 is still checking the chain`
+      : "not sorted yet: no HTTP answer, vet402 is still checking the chain";
+  }
   return r.mode ? sideLabelOf(r.mode) : "—";
 }
 
-/** seller の側（確定）の行の印。頁の冒頭の帯と同じ語。 */
-export const UNDER_RECHECK = "under re-check";
+/**
+ * seller の側（確定）の行の印。頁の冒頭の帯と同じ語。2026-10-21 A-17: 一覧・CSV と同じ「attribution under review」に揃えた
+ * （以前は "under re-check"。語が 2 つあると、母語でない売り手には別のことに読める）。
+ */
+export const UNDER_RECHECK = ATTRIBUTION_UNDER_REVIEW;
 
 export function WhoseSide({ r }: { r: ShownRow }) {
   return (
@@ -583,10 +658,10 @@ export function termsLabel(r: ShownRow): string {
  * 署名したが決済が成立していない行（tx の無い行・照合待ち・反証された行）は「signed」、署名していない行は「attempt」。
  */
 export function recordedLabel(r: ShownRow): string {
-  if (!r.signed) return "Recorded (attempt; vet402 did not pay, not an L1 result)";
+  if (!r.signed) return "Recorded (attempt, vet402 did not pay, not an L1 result)";
   return r.facts.status === "settled"
     ? "Recorded (L1 paid purchase)"
-    : "Recorded (L1 attempt; vet402 signed a payment, not settled on-chain)";
+    : "Recorded (L1 attempt, vet402 signed a payment, not settled on-chain)";
 }
 
 function RecordedFacts({ r }: { r: ShownRow }) {
@@ -641,6 +716,13 @@ function ExportTrace({ r, resourceKey, now }: { r: ShownRow; resourceKey: string
   );
 }
 
+/**
+ * 異議は購入を始めない（2026-10-21 A-16）。署名付きの経路（src/lib/observatory/disputes.ts）は L0 を 1 回測り直すだけ。
+ * 売り手頁の After a fix と記録頁の異議欄で同じ文。
+ */
+export const DISPUTE_NO_PURCHASE =
+  "A dispute does not start a purchase. The signed dispute route runs one fresh L0 check, an unpaid request.";
+
 /** 記録頁の異議欄（observatory/e/[id] の id="dispute"）。購入の時刻を ?purchase= で渡し、欄に書き込ませる。 */
 export const RECORD_DISPUTE_ANCHOR = "dispute";
 
@@ -694,15 +776,19 @@ function SellerSignalLine({ l, rebuyEligible }: { l: SellerListing; rebuyEligibl
       : r.bucket === "not_bought"
         ? `The ${attempt} was not a purchase (vet402 did not pay)`
         : r.bucket === "pending"
-          ? laterOther
-            ? "The latest Base purchase is awaiting on-chain verification"
-            : "The latest purchase is awaiting on-chain verification"
+          ? isLateLinkPendingRow(r)
+            ? `The ${laterOther ? "latest Base purchase" : "latest purchase"} ${
+                r.facts.httpStatusPaid !== null ? `answered HTTP ${r.facts.httpStatusPaid}` : "got no HTTP answer"
+              }. vet402 is still checking the chain`
+            : laterOther
+              ? "The latest Base purchase is awaiting on-chain verification"
+              : "The latest purchase is awaiting on-chain verification"
           : `The ${attempt} is not sorted`;
   const after = rebuyEligible
-    ? "; this listing is eligible for a re-buy."
+    ? ". This listing is eligible for a re-buy."
     : laterOther
       ? "."
-      : "; there has been no attempt since.";
+      : ". There has been no attempt since.";
   return (
     <span className="block">
       <strong>Last result about the seller:</strong>{" "}
@@ -788,6 +874,8 @@ function AfterFix({ l, rebuyEligible }: { l: SellerListing; rebuyEligible: boole
         <NotifyLink endpointId={l.endpointId} />
         <DisputeLink endpointId={l.endpointId} attemptedAt={disputeAt} />
       </span>
+      {/* 2026-10-21 A-16: 異議で買い直すと読ませない（disputes.ts は L0 を 1 回測り直すだけ・利用規約と同じ）。 */}
+      <span className="block">{DISPUTE_NO_PURCHASE}</span>
       {r && otherPurchaseIsNewer(l) ? (
         <span className="block">The time filled in for the dispute is the latest Base attempt.</span>
       ) : null}
@@ -800,7 +888,7 @@ function BaseAttemptBody({ l, r, now, rebuyEligible }: { l: SellerListing; r: Sh
   return (
     <>
       <span className="block">
-        <strong>What we saw:</strong> {seenLine(r)}
+        <strong>What vet402 saw:</strong> {seenLine(r)}
       </span>
       <SellerSignalLine l={l} rebuyEligible={rebuyEligible} />
       {r.seen402 && (
@@ -833,6 +921,124 @@ function BaseAttemptBody({ l, r, now, rebuyEligible }: { l: SellerListing; r: Sh
   );
 }
 
+/** 直し方の文の最初の節（「:」「;」「.」の前）。種類の fix は命令形の節で始まる。 */
+function firstClause(fix: string): string {
+  return fix.split(/[:;]/)[0].replace(/\.\s*$/, "").trim();
+}
+
+function lowerFirst(x: string): string {
+  return x ? x[0].toLowerCase() + x.slice(1) : x;
+}
+
+function upperFirst(x: string): string {
+  return x ? x[0].toUpperCase() + x.slice(1) : x;
+}
+
+function joinAnd(xs: readonly string[]): string {
+  if (xs.length <= 1) return xs.join("");
+  return `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
+}
+
+/** 次の購入の時期（next-buy.ts の計算だけ・予約は無い）。カードの先頭の 3 文目の後半。 */
+function nextBuyWhen(nb: NextBuy | null): string {
+  if (!nb) return "vet402 has no computed time for its next purchase here";
+  if (nb.kind === "not_bought") {
+    return nb.reason === "path_template"
+      ? "vet402 does not buy this listing, because its URL has a path parameter vet402 cannot fill"
+      : "vet402 does not buy this listing, because its URL is not https";
+  }
+  if (nb.kind === "cooldown") {
+    return `the regular sweep does not pick this listing for now, because the last ${NON_SETTLING_COOLDOWN_STREAK} paid attempts here did not settle`;
+  }
+  // 2026-10-21 再点検 中1: 窓が明けていても「いつでも買える」と読ませない。時刻は notBefore だけ（日数の理由は nextBuyLine）。
+  const l0 = nb.l0 === "pass" ? "" : ` (it needs a passing L0 check first, and the latest one reads ${nb.l0 ?? "not probed"})`;
+  return `the next purchase by vet402 is not before ${nb.notBefore}${l0}, with no booked time. After that it depends on the daily budget and the order of demand`;
+}
+
+/** 2 日の規則が数える失敗（方法論の (a)〜(e)）。種類は問わない。 */
+const SUCH_A_FAILURE = "such a failure (a failure vet402 can show was not its own)";
+
+/**
+ * 2026-10-21 A-16（個人開発の売り手の所見）: 失敗のカードは平易な 3 文で始める。
+ *   1. 何が起きたか（記録した HTTP の値）  2. どちらの側か（なぜそうなのか）  3. 売り手にできることと、次に vet402 が買う時期
+ * 時期は next-buy.ts の計算だけ（予約の日付を作らない）。異議は購入を始めない（AfterFix に書く）。
+ * delivered の行・購入の無い出品には出さない。
+ */
+export function cardLead(l: Pick<SellerListing, "latest" | "earlier" | "nextBuy">): [string, string, string] | null {
+  const r = l.latest;
+  if (!r || r.bucket === "delivered") return null;
+  const at = fmtUtc(r.facts.attemptedAt);
+  const paid = r.facts.httpStatusPaid;
+  const unpaid = r.facts.unpaidStatus ?? null;
+  const notBoughtWhy = r.mode ? lowerFirst(r.mode.title.replace(/^Not bought:\s*/, "")) : "no recorded reason";
+
+  // 1. 何が起きたか
+  let what: string;
+  if (!r.signed) {
+    if (r.bucket === "vet402") what = `On ${at}, vet402 stopped before paying (${r.mode ? lowerFirst(r.mode.title) : "its own limit"}).`;
+    else if (unpaid !== null && unpaid !== 402) what = `On ${at}, the unpaid request answered HTTP ${unpaid} instead of a 402, so vet402 did not sign a payment.`;
+    else what = `On ${at}, vet402 did not sign a payment (${notBoughtWhy}).`;
+  } else if (r.facts.status === "settled") {
+    what =
+      paid !== null
+        ? `On ${at}, vet402 paid, the payment settled on-chain, and the paid request answered HTTP ${paid}.`
+        : `On ${at}, vet402 paid, the payment settled on-chain, and the paid request got no HTTP answer.`;
+  } else if (r.facts.status === "settle_claimed") {
+    what = `On ${at}, vet402 signed a payment and the seller returned a settlement receipt.`;
+  } else {
+    what =
+      paid !== null
+        ? `On ${at}, vet402 signed a payment and the paid request answered HTTP ${paid}.`
+        : `On ${at}, vet402 signed a payment and the paid request got no HTTP answer.`;
+  }
+
+  // 2. どちらの側か
+  let side: string;
+  const once = !!r.mode && r.mode.key.endsWith(ONCE_SUFFIX);
+  if (r.bucket === "seller") {
+    // 2026-10-21 再点検 高: 2 日の規則は種類を分けずに数える（429 の日と 503 の日でも確定する）。理由は「such a failure」
+    // （(a)〜(e) を満たす失敗・方法論と同じ語）で言い、日付は最新の行と同じ種類の日だけを挙げる。
+    const kind = r.mode?.key ?? null;
+    const sameKindDays = [
+      ...new Set([r, ...l.earlier].filter((x) => x.confirmedSeller && x.mode?.key === kind).map((x) => utcDayOf(x.facts.attemptedAt))),
+    ].sort();
+    const kindDays = sameKindDays.length > 0 ? `, and the kind of failure on this row was seen on ${joinAnd(sameKindDays)}` : "";
+    side = `This row is on the seller's side (${ATTRIBUTION_UNDER_REVIEW}), because ${SUCH_A_FAILURE} happened at this listing on two or more different UTC days${kindDays}.`;
+  } else if (once) {
+    side = `This row is not on the seller's side yet, because that needs ${SUCH_A_FAILURE} at this listing on two different UTC days.`;
+  } else if (r.bucket === "vet402") {
+    side = "This failure is on vet402's side, not the seller's.";
+  } else if (r.bucket === "pending") {
+    const until = isLateLinkPendingRow(r) ? lateLinkUntil(r) : null;
+    side = until
+      ? `vet402 is still looking for the transfer on-chain until ${until}, so this row is not counted as delivered or failed yet.`
+      : "vet402 has not confirmed the named transaction on-chain yet, so this row is not counted as delivered or failed yet.";
+  } else if (r.bucket === "not_bought") {
+    side = "This is not a purchase result, so it is not counted against the seller.";
+  } else {
+    side = `This row is not counted against the seller (${r.mode ? sideLabelOf(r.mode) : "not sorted yet"}).`;
+  }
+
+  // 3. 売り手にできることと、次に vet402 が買う時期
+  let act: string | null = null;
+  if (r.bucket === "seller" && r.mode) act = firstClause(r.mode.fix);
+  else if (once && r.mode) act = `If the failure is real, ${lowerFirst(firstClause(fixMode(r.mode.key.slice(0, -ONCE_SUFFIX.length)).fix))}`;
+  else if (r.bucket === "vet402") act = "Nothing is needed from the seller";
+  if (!act) {
+    const code = r.signed ? paid : unpaid;
+    if (code !== null && code >= 500) act = `If HTTP ${code} is unexpected, check the route's logs`;
+  }
+  const when = nextBuyWhen(l.nextBuy);
+  const next = act ? `${act}, and ${when}.` : `${upperFirst(when)}.`;
+  return [what, side, next];
+}
+
+function CardLead({ l }: { l: SellerListing }) {
+  const lead = cardLead(l);
+  if (!lead) return null;
+  return <p className="mt-2 mb-0 max-w-[70ch] text-[0.8125rem]">{lead.join(" ")}</p>;
+}
+
 /**
  * 1 出品を 1 枚のカードに（2026-09-29 第4巡: 4 列の表は電話の幅で横スクロールになり、文が切れていた）。
  * 見出しの事実（最新の試行・結果・どちらの側か）はラベル付きの 2 列、文はその下に表の外で折り返す。
@@ -859,6 +1065,7 @@ function ListingCard({
         {l.resourceKey}
       </Link>
       <span className="block text-xs font-normal text-brand-lift">{l.method ?? "method undeclared"}</span>
+      <CardLead l={l} />
       <dl className="mt-2 grid grid-cols-[minmax(7rem,auto)_1fr] gap-x-4 gap-y-0.5 text-[0.8125rem]">
         <dt className="text-brand-lift">{baseAttemptLabel}</dt>
         <dd className="m-0">{r ? fmtUtc(r.facts.attemptedAt) : "not tried on Base yet"}</dd>
@@ -980,7 +1187,7 @@ function SellerSummaryLines({ d, revalidateSec }: { d: SellerDetail; revalidateS
           </>
         ) : null}
         This page read the ledger at {fmtUtc(d.fetchedAt)} and reuses that read for up to{" "}
-        {Math.round(revalidateSec / 60)} min.
+        {Math.round(revalidateSec / 60)} min. The first view after a quiet period can show an older read.
       </p>
     </>
   );
@@ -1089,7 +1296,7 @@ export function SellerDetailView({
         at fault: it signed on the listing&apos;s terms, its wallet held the price, it sent the declared input, and the
         seller answered explicitly or had its declared time. Even then, one such failure is &ldquo;not sorted: one
         failure so far&rdquo;: a failure goes on the seller&apos;s side only when the same listing has one on two
-        different days (UTC), and those rows are marked &ldquo;{UNDER_RECHECK}&rdquo; while vet402 re-checks them. A row
+        different days (UTC), and those rows are marked &ldquo;{UNDER_RECHECK}&rdquo; while that review runs. The review has no set date. A row
         that cannot show all of that is &ldquo;not sorted&rdquo;, and so is a <strong>held</strong> row (
         <code>held_reason</code> in the export), a failure where no payment was taken (&ldquo;no charge&rdquo;), and a
         payment that settled before the seller refused an input vet402 had not sent. &ldquo;Signed payment&rdquo;
@@ -1326,6 +1533,7 @@ export function FixFirstView({ board, revalidateSec }: { board: SellerBoard; rev
         <span className="sec-no">1.</span>
         <span>On the seller&apos;s side</span>
       </h2>
+      <AttributionReviewNote />
       {seller.length === 0 ? <p className="doc-p text-brand-lift">None.</p> : <ol className="list-none p-0">{seller.map((g, i) => <GroupCard key={g.key} g={g} i={i} />)}</ol>}
       <h2 className="sec-head">
         <span className="sec-no">2.</span>

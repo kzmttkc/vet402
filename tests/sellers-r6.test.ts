@@ -177,13 +177,13 @@ test("1: BLOCK を決めたコードと WARN だけのコードを分ける（l1
   assert.equal(codeExplanation("l1_waived_by_operator", { reasonCodes: [], basis: null, l2MissingKeys: null, l0FailReason: null }), null, "判定を動かさない語は書かない");
 });
 
-test("1: 判定の答えはカードの先頭近く（What we saw より前）で、理由コードの説明へリンクする", () => {
+test("1: 判定の答えはカードの先頭近く（What vet402 saw より前）で、理由コードの説明へリンクする", () => {
   const rows = [proven({ endpointId: "e1", status: "settle_failed", httpStatusPaid: 500 })];
   const d = buildSellerDetail("s.example", [ep("e1")], rows, FETCHED);
   const html = renderToStaticMarkup(createElement(SellerDetailView, { detail: d, page: 1, now: Date.parse(FETCHED), revalidateSec: 300 }));
   const decision = html.indexOf("Decision API now:");
-  const saw = html.indexOf("What we saw:");
-  assert.ok(decision > 0 && saw > 0 && decision < saw, "判定の行が What we saw より前");
+  const saw = html.indexOf("What vet402 saw:");
+  assert.ok(decision > 0 && saw > 0 && decision < saw, "判定の行が What vet402 saw より前");
   assert.equal(REASON_CODES_HREF, "/docs/api#reason-codes");
   assert.match(html, /href="\/docs\/api#reason-codes"/);
   const src = read("src/components/site/sellers/DecisionAnswer.tsx");
@@ -227,10 +227,10 @@ test("3: 最新の公開 L0 判定が pass でない記録頁は noindex（届�
 
 test("4: 決済が成立していない行は signed、署名していない行は attempt。「vet402 signed:」を重ねない", () => {
   const unsettled = showRow(proven({ status: "settle_failed", httpStatusPaid: 500 }));
-  assert.equal(recordedLabel(unsettled), "Recorded (L1 attempt; vet402 signed a payment, not settled on-chain)");
+  assert.equal(recordedLabel(unsettled), "Recorded (L1 attempt, vet402 signed a payment, not settled on-chain)");
   const settled = showRow(proven({ status: "settled", httpStatusPaid: 500, txHash: TX }));
   assert.equal(recordedLabel(settled), "Recorded (L1 paid purchase)");
-  assert.equal(recordedLabel(showRow(row({ status: "no_eligible_accept", network: null }))), "Recorded (attempt; vet402 did not pay, not an L1 result)");
+  assert.equal(recordedLabel(showRow(row({ status: "no_eligible_accept", network: null }))), "Recorded (attempt, vet402 did not pay, not an L1 result)");
   const line = `${termsLabel(unsettled)} ${unsettled.seen402}`;
   assert.match(line, /^The 402 terms vet402 signed: exact · /);
   assert.doesNotMatch(line, /vet402 signed: vet402 signed/);
@@ -244,7 +244,7 @@ test("4: 決済が成立していない行は signed、署名していない行�
   const d = buildSellerDetail("s.example", [ep("e1")], rows, FETCHED);
   const html = renderToStaticMarkup(createElement(SellerDetailView, { detail: d, page: 1, now: Date.parse(FETCHED), revalidateSec: 300 }));
   assert.doesNotMatch(html, /has not bought (this listing|it) again/);
-  assert.match(html, /there has been no attempt since\./);
+  assert.match(html, /There has been no attempt since\./);
 });
 
 // ---------------------------------------------------------------- 5

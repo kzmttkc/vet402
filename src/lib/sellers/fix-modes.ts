@@ -1017,11 +1017,20 @@ export type MoneyMoved = "moved" | "not_moved" | "unknown";
 export const BUCKET_DOCS: Readonly<Record<Bucket, string>> = {
   delivered: "delivered (settled on-chain, then a 2xx other than 202 Accepted with a non-empty body)",
   pending: `pending (not yet known whether money moved: a receipt awaiting on-chain verification, a 2xx naming a transaction, or a signed attempt that failed less than ${LATE_LINK_PENDING_MINUTES} minutes ago while vet402 links late settlements; the ledger status is left as recorded)`,
-  seller: `seller (the seller's side: vet402 can show from the row that the failure was not its own, and the same kind of failure was seen at the listing on ${SELLER_CONFIRM_DAYS} or more different UTC days)`,
+  seller: `seller (the seller's side: vet402 can show from the row that the failure was not its own, and such a failure, of any kind, was seen at the listing on ${SELLER_CONFIRM_DAYS} or more different UTC days)`,
   vet402: "vet402 (vet402's side: its wallet was short, it did not send the declared input, or one of its own limits or errors)",
   unsorted: "unsorted (not sorted: held for vet402's own request shape, no charge taken, a paid answer with no result in it, seen on one UTC day so far, or vet402 cannot show the failure was not its own)",
   not_bought: "not_bought (vet402 did not sign a payment, so it is not a purchase result)",
 };
+
+/**
+ * 2026-10-21 A-17: 帰属（どちら側の失敗か）は見直し中（2026-09-29 の敵対的監査から・終わる日付は無い）。
+ * seller の側（確定）の行に付ける印の語と、/sellers・/sellers/fix-first・sellers の CSV が同じ語で言う注記。
+ * 個別頁の印（SellersViews の UNDER_RECHECK）・CSV の attribution_review 列もこの語に揃える。
+ */
+export const ATTRIBUTION_UNDER_REVIEW = "attribution under review";
+export const ATTRIBUTION_REVIEW_NOTE =
+  "Which side a failed purchase is on is still under review. Seller-side counts and vet402-side counts are a working classification, not a finished finding about a seller.";
 
 /** お金が動いたかの説明（英語・公開面の正典）。 */
 export const MONEY_DOC =
@@ -1275,8 +1284,8 @@ export function observed402Line(r: SellerRowFacts): string | null {
     ].filter((x): x is string => x !== null);
     const mts =
       typeof r.listingMaxTimeoutSeconds === "number"
-        ? `The listing's maxTimeoutSeconds is ${r.listingMaxTimeoutSeconds}; vet402 waits ${paidWaitSeconds(r)} seconds for the paid answer.`
-        : `The listing states no maxTimeoutSeconds vet402 could match; vet402 waits ${paidWaitSeconds(r)} seconds for the paid answer.`;
+        ? `The listing's maxTimeoutSeconds is ${r.listingMaxTimeoutSeconds}. vet402 waits ${paidWaitSeconds(r)} seconds for the paid answer.`
+        : `The listing states no maxTimeoutSeconds vet402 could match. vet402 waits ${paidWaitSeconds(r)} seconds for the paid answer.`;
     // 2026-09-29 監査 6 周目: 頁の見出し（termsLabel「The 402 terms vet402 signed:」）が同じ語を言うので、ここでは繰り返さない。
     return `${terms.join(" · ")}. Input sent: ${sent.join(", ")}. ${mts}`;
   }

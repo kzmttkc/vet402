@@ -75,8 +75,8 @@ export function l0ProbeLine(f: NextBuyFacts | null | undefined, nowMs: number = 
   const due = t + L0_REPROBE_WITHIN_HOURS * 3_600_000;
   const next =
     due <= nowMs
-      ? "The next probe is due; probes run oldest first, so there is no booked time."
-      : `Probes run oldest first, so there is no booked time; the next one usually comes by ${new Date(due).toISOString().slice(0, 16).replace("T", " ")} UTC (within ${L0_REPROBE_WITHIN_HOURS} hours of the last).`;
+      ? "The next probe is due. Probes run oldest first, so there is no booked time."
+      : `Probes run oldest first, so there is no booked time. The next one usually comes by ${new Date(due).toISOString().slice(0, 16).replace("T", " ")} UTC (within ${L0_REPROBE_WITHIN_HOURS} hours of the last).`;
   const unverified = f.latestL0Verdict === "unverified" ? " Unverified is not a failure." : "";
   return `Latest L0 check (the 402 to an unpaid request): ${f.latestL0Verdict}${reason} at ${at} UTC.${unverified} ${next}`;
 }

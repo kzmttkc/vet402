@@ -1966,10 +1966,18 @@ claims:
     why_unverifiable: "実装の記述で、公開 GET が返す値ではない。根拠は src/lib/observatory/disputes.ts の submitDispute（probeEndpoint を 1 回・購入の呼び出しなし）"
     verified_at: 2026-09-29
   # 2026-09-29 第4巡の敵対的監査（名指しされた売り手の弁護士・逆方向の誤り）。分類の正典は fix-modes.ts の classifySellerRow。
+  # 2026-10-21 A-16 再点検: 失敗カードの先頭 3 文目。次の購入の時刻は next-buy.ts の notBefore だけで、その後は日次予算と需要の順。
+  - id: sellers_card_lead_next_buy_depends_on_daily_budget
+    surface: src/components/site/sellers/SellersViews.tsx
+    quote: "After that it depends on the daily budget and the order of demand"
+    means: "カードの先頭の次の購入は「この時刻より前には買わない」の目安で予約ではない。窓が明けた後に買う時期は、1 UTC 日の予算（DAILY_BUDGET_USD）と需要の順で日ごとに変わる"
+    check: null
+    why_unverifiable: "時刻は src/lib/sellers/next-buy.ts の nextBuyOf（l1-runner.ts の窓の写し・tests/sellers-r6.test.ts が一致を固定）。予算と需要の順は日ごとに動くので公開 GET が返す値ではない。文は tests/sellers-a16-a17.test.ts が固定する"
+    verified_at: 2026-10-21
   - id: sellers_seller_side_needs_two_days
     surface: src/app/observatory/methodology/page.tsx
     quote: "It goes there only when the same listing has such a failure on at least two"
-    means: "(a)〜(e) を満たす失敗でも、同じ出品で別の UTC の日に 2 回以上なければ seller の側にしない（not sorted: one failure so far）。seller の側の行には under re-check の印を付け、そういう行がある売り手頁だけに見直し中の帯を出す"
+    means: "(a)〜(e) を満たす失敗でも、同じ出品で別の UTC の日に 2 回以上なければ seller の側にしない（not sorted: one failure so far）。seller の側の行には attribution under review の印を付け（2026-10-21 A-17 で under re-check から改名）、そういう行がある売り手頁だけに見直し中の帯を出す。見直しに期限は無い"
     check: null
     why_unverifiable: "件数は台帳で日々動く。規則は src/lib/sellers/fix-modes.ts の classifySellerRow（SELLER_CONFIRM_DAYS）と reader.ts の readSellerFailureDays で、tests/sellers-attribution-r4.test.ts と tests/late-settlement-r4.pg.test.ts が固定する"
     verified_at: 2026-09-29

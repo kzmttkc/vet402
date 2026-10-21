@@ -757,7 +757,7 @@ test("そのとき見た 402: 署名した行は払った条件、署名前に�
   const line = observed402Line(paid) ?? "";
   // 2026-09-29 監査 6 周目: 見出し（termsLabel「The 402 terms vet402 signed:」）と重ねないので「vet402 signed:」で始めない。
   assert.match(line, /^exact · 0\.05 USDC · payTo 0x1111…1111\. Input sent: body none, query empty\./);
-  assert.match(line, /The listing's maxTimeoutSeconds is 300; vet402 waits 20 seconds for the paid answer\./);
+  assert.match(line, /The listing's maxTimeoutSeconds is 300\. vet402 waits 20 seconds for the paid answer\./);
   const upto = row({
     status: "no_eligible_accept",
     network: null,

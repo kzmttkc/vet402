@@ -241,7 +241,7 @@ test("先頭の件数とカードの Result・Whose side は Base の行だけ�
   assert.match(overHtml, /Other chains<\/dt>\s*<dd class="m-0">\s*Stellar, 2026-10-18 21:30 UTC, settled, HTTP 200\s*<a href="https:\/\/stellar\.expert\/explorer\/public\/tx\/ab(?:ab){31}" class="underline">transaction<\/a>\s*<\/dd>/);
   assert.match(overHtml, /The latest Base attempt failed on vet402&#x27;s side\./);
   assert.doesNotMatch(overHtml, /The latest attempt failed on vet402/);
-  assert.doesNotMatch(overHtml, /there has been no attempt since/);
+  assert.doesNotMatch(overHtml, /[Tt]here has been no attempt since/);
   assert.doesNotMatch(overHtml, /Your most recent purchase failed on vet402/);
   assert.match(overHtml, /<h1[^>]*>[^<]*latest attempt 2026-10-18 on Stellar<\/h1>/);
   assert.match(overHtml, /The time filled in for the dispute is the latest Base attempt\./);
@@ -566,7 +566,7 @@ test("売り手一覧は 640px 未満でラベル付きのカードになり、�
   const board = buildSellerBoard([{ host: "shop.example", listings: 3 }], [], FETCHED);
   const html = renderToStaticMarkup(createElement(SellersIndexView, { board, page: 1, q: "", search: null, revalidateSec: 300 }));
   assert.match(html, /<ul[^>]*class="[^"]*sm:hidden/);
-  assert.match(html, /<dt[^>]*>Seller&#x27;s side<\/dt>/);
+  assert.match(html, /<dt[^>]*>Seller&#x27;s side \(attribution under review\)<\/dt>/, "2026-10-21 A-17: 一覧のカードも見直し中と言う");
   assert.match(html, /<div class="hidden sm:block">/);
   assert.match(html, /<input[^>]*class="[^"]*text-base[^"]*"[^>]*name="q"/, "iOS の自動拡大を避ける 16px");
 });

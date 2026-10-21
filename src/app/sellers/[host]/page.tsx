@@ -155,11 +155,17 @@ export default async function SellerPage({ params, searchParams }: Props) {
         suppressHydrationWarning
         dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
       />
-      {/* 2026-09-29 第4巡: 帯は seller の側（確定）の行がある頁だけ。該当の行には同じ語（UNDER_RECHECK）の印が付く。 */}
+      {/* 2026-09-29 第4巡: 帯は seller の側（確定）の行がある頁だけ。該当の行には同じ語（UNDER_RECHECK）の印が付く。
+          2026-10-21 A-16: 見直しに期限は無い（コードに日付が無い）。期限を作らず、無いと書く。時期はカードごとの次の購入の目安だけ。 */}
       {detail.hasConfirmedSeller && (
         <p className="doc-note mx-auto mb-4 max-w-[70ch]">
-          We are re-checking the failures this page puts on the seller&apos;s side (marked &ldquo;{UNDER_RECHECK}&rdquo;
-          below). Some may move to vet402&apos;s side or to not sorted.
+          Which side a failure is on is still under review, and the review has no set date. Rows on the seller&apos;s
+          side are marked &ldquo;{UNDER_RECHECK}&rdquo; below. A card with a computed time gives the earliest time
+          vet402 can buy that listing again. If an attribution turns out wrong, the correction is published on{" "}
+          <a className="underline" href="/corrections">
+            /corrections
+          </a>
+          .
         </p>
       )}
       <SellerDetailView detail={detail} page={page} now={Date.parse(detail.fetchedAt)} revalidateSec={PUBLIC_READ_REVALIDATE} />
