@@ -377,23 +377,22 @@ export default async function ObservatoryPage({
                 といった、表を読む前には要らない但し書き——消したのではなく、
                 すぐ下の §1 と既存のリンク群が同じことを言っている。 */}
             Every endpoint in the public x402 discovery catalog: is it still listed, and does its
-            payment wall answer a valid <code>402</code> challenge when approached with the method
-            it declares. The catalog is re-fetched daily; endpoints are probed on a rolling
-            schedule, and each row shows when it was last probed. The L0 cell is the payment-wall
-            measurement alone; the L1 cell counts real purchases whose transfer vet402 re-read
-            on-chain (settled / paid attempts; the transaction named by the seller&apos;s receipt or,
-            when the seller returned none, found by vet402&apos;s own index) above the count that
+            payment wall answer a valid <code>402</code> challenge. The probe uses the HTTP method
+            the listing declares when that method is GET, POST, HEAD, or DELETE, and GET when the
+            listing declares no method or a method outside that set. Two failures in a row on that
+            probe can be published as fail. The catalog is re-fetched daily. Endpoints are probed on a rolling
+            schedule. A probed row shows the probe time under Last probed, after the L1 column. A
+            row that has not been probed shows no probe time. The L0 cell is the payment-wall
+            measurement alone. The L1 cell counts real purchases whose transfer vet402 re-read
+            on-chain (settled / paid attempts). The transaction named by the seller&apos;s receipt, or found by vet402&apos;s own index when the seller returned none, is what that count places above the count that
             also returned a 2xx response (delivered), with every transaction listed on the
             endpoint&apos;s page. The
             two are never mixed.{" "}
-            <strong>pass / fail / unverified</strong> are defined measurements, not opinions —{" "}
+            <strong>pass / fail / unverified</strong> are defined measurements, not opinions.{" "}
             <Link href="/observatory/methodology" className="underline">
-              definitions here
+              Definitions are here
             </Link>
-            . <em>unverified is not a failure</em>: it means we do not have grounds to publish
-            either of the other two yet. Most often that is because the rolling schedule has not
-            reached the endpoint, or a single failing probe has not met the publication gate; the
-            entry declaring too little to check is one cause among several, and the current
+            . unverified means vet402 does not have grounds to publish either pass or fail yet. It is not a failure and is never counted as one: it is an entry not yet reached by the rolling schedule, an entry whose failing probe has not met the publication gate, an entry recorded as path_template, or the remainder after the three above. The remainder includes a latest reason of rate_limited, tls, request_shape, or unsafe_target. It also includes a latest reason of method_undeclared, for which no request was sent before 2026-09-02, and body_over_cap, for which a 402 came back and the body was not read to the end. A listing that declares no HTTP method, or a method other than GET, POST, HEAD, or DELETE, is measured with GET, and two consecutive failures of that probe can be published as fail. The current
             breakdown is counted out in{" "}
             <Link href="/observatory/methodology" className="underline">
               the methodology
@@ -440,12 +439,11 @@ export default async function ObservatoryPage({
           <strong>Catalog</strong> is presence in the public discovery catalog: <code>active</code>{" "}
           means listed as of the latest snapshot; <code>delisted</code> means the entry was present
           on an earlier day and absent on a complete fetch — with the before/after recorded on the
-          endpoint&apos;s page. <strong>L0</strong> is the payment-wall measurement:{" "}
-          <code>pass</code> — a probe using the declared method received HTTP 402 with a parseable{" "}
-          <code>accepts</code> array consistent with the catalog declaration; <code>fail</code> —
-          two or more consecutive probes contradicted that (each with a recorded reason);{" "}
-          <code>unverified</code> — not enough declared to measure, or the evidence threshold is
-          not yet met. A day on which our own fetch was incomplete produces no delisting
+          endpoint&apos;s page. <strong>L0</strong> is the payment-wall measurement.{" "}
+          <code>pass</code> means a probe received HTTP 402 with a parseable{" "}
+          <code>accepts</code> array consistent with the catalog declaration. The probe uses the HTTP method the listing declares when that method is GET, POST, HEAD, or DELETE, and GET when the listing declares no method or a method outside that set.{" "}
+          <code>fail</code> means two or more consecutive probes contradicted the catalog declaration (each with a recorded reason).{" "}
+          <code>unverified</code>. unverified means vet402 does not have grounds to publish either pass or fail yet. It is not a failure and is never counted as one: it is an entry not yet reached by the rolling schedule, an entry whose failing probe has not met the publication gate, an entry recorded as path_template, or the remainder after the three above. The remainder includes a latest reason of rate_limited, tls, request_shape, or unsafe_target. It also includes a latest reason of method_undeclared, for which no request was sent before 2026-09-02, and body_over_cap, for which a 402 came back and the body was not read to the end. A listing that declares no HTTP method, or a method other than GET, POST, HEAD, or DELETE, is measured with GET, and two consecutive failures of that probe can be published as fail. A day on which vet402&apos;s own fetch was incomplete produces no delisting
           judgements at all.
         </p>
         <p className="doc-p">

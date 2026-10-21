@@ -22,7 +22,7 @@ What the API returns today is a different, older thing: a 0–100 trust or payee
 ## Primary
 
 - https://vet402.com/ — the memo: problem, verification levels, what is live, what is still being built
-- https://vet402.com/observatory — the L0 register: every catalog-listed x402 endpoint, probed daily against its own declared method, pass / fail / unverified with timestamped evidence
+- https://vet402.com/observatory. The L0 register. The catalog is re-fetched on the schedule in Freshness. Endpoints are probed on a rolling schedule, not as a sweep of the catalog on one day. A probe uses the HTTP method the listing declares when the listing declares GET, POST, HEAD, or DELETE, and GET when the listing declares no method or a method outside that set. Two failures in a row on that probe can be published as fail. The share of active endpoints with a probe from the last 7 days is coverage7d on https://vet402.com/api/v1/observatory/state (activeEndpoints, measuredLast7d, pct). pct is null when activeEndpoints is 0. A published verdict is pass, fail, or unverified. When a probe has run, the Last probed column shows that time. The L1 column sits between the verdict and Last probed. A row that has not been probed shows no probe time.
 - https://vet402.com/observatory/state — aggregate rates for the whole observed catalog, broken out by chain
 - https://vet402.com/observatory/methodology — full definitions for L0 Liveness, L1 Settle-through and L2 Conformance: what each level measures, what it cannot measure, and the publication gate that keeps one bad sample from branding an endpoint dead
 - https://vet402.com/docs/api — API reference, including copy-paste curl commands that need no key
@@ -112,7 +112,7 @@ On npm, all from the same repository: `@vet402/sdk` (spend guard), `@vet402/midd
 - Address control verified: prove control of a wallet by signature, get a public page and an SVG badge
 - Drop-in x402 middleware, REST API, and MCP tool
 - Public accuracy ledger, published whether or not the numbers flatter us
-- The x402 Observatory: L0 liveness probes across the full public discovery catalog, multi-chain (see /observatory/state for the breakdown), with delisting alerts for claimed sellers. L1 settle-through: real purchases of that chain's pinned asset (USDC on Base, Arc, Celo, Solana and Stellar, USDC.e on Tempo, RLUSD on XRPL, USD1 on BNB Chain) on the chains whose payer lane is switched on (the chains reached so far, with their counts, are the `l1.byChain` rows of https://vet402.com/api/v1/observatory/state), budget-capped, one purchase per endpoint per sweep window, recording every settlement and every refusal. L2 is a minimal structural check of the response against the seller's own declared schema
+- The x402 Observatory: L0 liveness probes across the full public discovery catalog, multi-chain (see /observatory/state for the breakdown), with delisting alerts for claimed sellers. L1 settle-through: real purchases of that chain's pinned asset (USDC on Base, Arc, Celo, Solana and Stellar, USDC.e on Tempo, RLUSD on XRPL, USD1 on BNB Chain) on the chains whose payer lane is switched on (the chains reached so far, with their counts, are the `l1.byChain` rows of https://vet402.com/api/v1/observatory/state), budget-capped, one purchase per endpoint per sweep window, recording each settlement and each refusal. L2 is a minimal structural check of the response against the seller's own declared schema
 
 ## Being built (not measurements yet)
 
@@ -146,13 +146,13 @@ Corrections that are issued are published at https://vet402.com/corrections, and
 - You may cite the content on this site (front page, API docs, FAQ, accuracy ledger, blog) as long as you credit the source with the corresponding vet402.com URL.
 - The same statement is published for human readers in section 4 of https://vet402.com/accuracy — this file is not the only place it exists.
 - Figures on the accuracy ledger are rolling 90-day aggregates; cite them with the retrieval date, or quote the `generatedAt` timestamp from `GET /api/v1/accuracy`.
-- Content current as of 2026-09-29. The measurements it points at are not: read them from the endpoints above, with the schedule in Freshness.
+- Content current as of 2026-10-21. The measurements it points at are not: read them from the endpoints above, with the schedule in Freshness.
 
 ## Freshness
 
 Every number on this site moves, so it is published with the schedule that moves it rather than as a timeless fact.
 
-- Catalog sync (what is listed, what was delisted): daily, 01:00 UTC.
+- Catalog sync (what is listed, what was delisted): daily, 01:00 UTC and 13:00 UTC. Both runs refetch the Bazaar catalog. The MPP directory is fetched once a day, at 01:30 UTC. A listing that leaves the MPP directory is not judged delisted until the next complete 01:30 UTC fetch.
 - L0 probes and the daily metrics rollup: daily, 10:30 UTC.
 - L1 purchases: several runs a day. The scheduled run is 12:00 UTC; the operator adds runs at 00:00, 06:00 and 18:00 UTC, and, until 2026-10-05, further runs at 03:30, 09:30, 15:30 and 21:30 UTC. Read the time of each attempt from the ledger (`/api/v1/observatory/export.csv`) rather than from this list. On-chain settlement re-read: daily, 14:00 UTC. Most `settle_claimed` rows move to `settled` (or `settle_claim_refuted`) at the first re-read after the attempt, but a row stays at `settle_claimed` while the chain read cannot settle it either way, so some rows wait far longer than a day. Read the current count, the counts older than 1 and 7 days and the oldest attempt from `l1.awaitingReread`, `l1.awaitingRereadOlderThan1d`, `l1.awaitingRereadOlderThan7d` and `l1.awaitingRereadOldestAttemptAt` on `/api/v1/observatory/state` rather than assuming a day.
 - Caches: the longest a copy you receive can lag the database, per surface. A shared-cache copy is served fresh for `s-maxage` and, with `stale-while-revalidate`, for that much longer while a fresh one is computed, so the most it can lag is the sum of the two. The `Age` response header says how long the copy you received sat in the cache. A page and the JSON can therefore show different numbers for a while after a run — compare their retrieval times rather than assume either is newer.

@@ -1447,6 +1447,44 @@ export async function getCoverageShare(): Promise<CoverageShare> {
   }
 }
 
+/**
+ * 方法論が到達側として名指しする直近理由。分類はこの配列を見ない。
+ * 直近が fail でも path_template でもない unverified は全部 otherNotReached。
+ * body_over_cap は 402 を受け取って本文を読み切っていないので、到達失敗ではなく、この配列に入れない。
+ * method_undeclared は 2026-09-02 より前に要求を送っていない記録なので、入れない。
+ * method が null でも枠を分けない。
+ */
+export const UNVERIFIED_REACH_REASONS = [
+  "rate_limited",
+  "tls",
+  "request_shape",
+  "unsafe_target",
+] as const;
+
+export type UnverifiedBreakdownPart =
+  | "notYetProbed"
+  | "singleFailGateNotMet"
+  | "pathTemplate"
+  | "otherNotReached";
+
+/**
+ * 公開 unverified の 1 行が内訳のどの枠か。null は内訳の外（公開 pass、または公開 fail）。
+ * getUnverifiedBreakdown の SQL と同じ分け方。method は受け取るが分類に使わない。
+ */
+export function unverifiedBreakdownPart(row: {
+  method: string | null;
+  verdicts: readonly string[] | null;
+  reason: string | null;
+}): UnverifiedBreakdownPart | null {
+  if (row.verdicts === null) return "notYetProbed";
+  if (publishedVerdict(row.verdicts) !== "unverified") return null;
+  if (row.verdicts[0] === "fail") return "singleFailGateNotMet";
+  if (row.reason === "path_template") return "pathTemplate";
+  // UNVERIFIED_REACH_REASONS（rate_limited ほか）も、それ以外の残りもここ。
+  // method が null でも枠を分けない。分けると内訳の和が total からずれる。
+  return "otherNotReached";
+}
+
 export type UnverifiedBreakdown = {
   /** 公開判定が unverified の endpoint 総数（publishedUnverified と同じ数）。 */
   total: number;
@@ -1456,9 +1494,10 @@ export type UnverifiedBreakdown = {
   singleFailGateNotMet: number;
   /** 直近が unverified で、理由が path_template（URL に未埋めのパラメータ）。 */
   pathTemplate: number;
-  /** 直近が unverified で、カタログが HTTP メソッドを申告していない。 */
-  methodUndeclared: number;
-  /** 直近が unverified で、上のどれでもない（レート制限・TLS など、我々側の到達失敗）。 */
+  /**
+   * 上の 3 枠の残り。到達失敗の理由も、method_undeclared（要求を送っていない）も、
+   * body_over_cap（402 を受け取って本文を読み切っていない）も落とさずここへ入れ、4 つの和を total に保つ。
+   */
   otherNotReached: number;
 };
 
@@ -1467,7 +1506,6 @@ const EMPTY_UNVERIFIED: UnverifiedBreakdown = {
   notYetProbed: 0,
   singleFailGateNotMet: 0,
   pathTemplate: 0,
-  methodUndeclared: 0,
   otherNotReached: 0,
 };
 
@@ -1478,7 +1516,9 @@ const EMPTY_UNVERIFIED: UnverifiedBreakdown = {
  * 言い続けていた。本番実測ではそれが 1 件、unverified は 12,305 件で、実際の主因は
  * 「まだ到達していない」と「単発 fail が公開ゲートに届いていない」だった。散文で
  * 順位を書くとまた腐るので、順位を書かずに実測を出す。分類は publishedVerdict() と
- * 同じゲートで、この 5 つの合計が publishedUnverified に一致する。
+ * 同じゲートで、この 4 つの合計が publishedUnverified に一致する。
+ * method が null であることは枠にしない。null は GET で測る。
+ * otherNotReached は未プローブ・単発 fail・path_template の残りで、到達失敗ではない理由も残す。
  */
 export async function getUnverifiedBreakdown(): Promise<UnverifiedBreakdown> {
   const db = getDb();
@@ -1487,12 +1527,13 @@ export async function getUnverifiedBreakdown(): Promise<UnverifiedBreakdown> {
   try {
     const raw = await db.execute(sql`
       WITH latest AS (
-        SELECT e.id, e.method, lp.verdicts, lp.reasons
+        SELECT e.id, lp.verdicts, lp.reasons
         FROM x402_endpoints e
         LEFT JOIN LATERAL (
-          SELECT array_agg(v.verdict) AS verdicts, array_agg(v.fail_reason) AS reasons
+          SELECT array_agg(v.verdict ORDER BY v.probed_at DESC) AS verdicts,
+                 array_agg(v.fail_reason ORDER BY v.probed_at DESC) AS reasons
           FROM (
-            SELECT verdict, fail_reason FROM x402_l0_probes p
+            SELECT verdict, fail_reason, probed_at FROM x402_l0_probes p
             WHERE p.endpoint_id = e.id
             ORDER BY probed_at DESC
             LIMIT ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH}
@@ -1516,10 +1557,12 @@ export async function getUnverifiedBreakdown(): Promise<UnverifiedBreakdown> {
              count(*) FILTER (WHERE verdicts IS NULL)::int AS not_yet_probed,
              count(*) FILTER (WHERE verdicts IS NOT NULL AND verdicts[1] = 'fail')::int AS single_fail,
              count(*) FILTER (WHERE verdicts IS NOT NULL AND verdicts[1] <> 'fail' AND reasons[1] = 'path_template')::int AS path_template,
+             -- 上の 3 枠の残り。method が null でも外さない。4 つの和を total に保つ。
              count(*) FILTER (
-               WHERE verdicts IS NOT NULL AND verdicts[1] <> 'fail'
-                 AND coalesce(reasons[1], '') <> 'path_template' AND method IS NULL
-             )::int AS method_undeclared
+               WHERE verdicts IS NOT NULL
+                 AND coalesce(verdicts[1], '') <> 'fail'
+                 AND coalesce(reasons[1], '') <> 'path_template'
+             )::int AS other_not_reached
       FROM unverified
     `);
     const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as Record<
@@ -1531,17 +1574,13 @@ export async function getUnverifiedBreakdown(): Promise<UnverifiedBreakdown> {
     const notYetProbed = Number(r.not_yet_probed ?? 0);
     const singleFailGateNotMet = Number(r.single_fail ?? 0);
     const pathTemplate = Number(r.path_template ?? 0);
-    const methodUndeclared = Number(r.method_undeclared ?? 0);
+    const otherNotReached = Number(r.other_not_reached ?? 0);
     return {
       total,
       notYetProbed,
       singleFailGateNotMet,
       pathTemplate,
-      methodUndeclared,
-      otherNotReached: Math.max(
-        0,
-        total - notYetProbed - singleFailGateNotMet - pathTemplate - methodUndeclared,
-      ),
+      otherNotReached,
     };
   } catch (error) {
     if (isMissingSchemaError(error)) return EMPTY_UNVERIFIED;

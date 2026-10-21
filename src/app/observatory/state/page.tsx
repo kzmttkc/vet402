@@ -156,7 +156,7 @@ export default async function ObservatoryStatePage() {
     temporalCoverage: snap?.snapshotDate ?? undefined,
     dateModified: snap?.snapshotDate ?? undefined,
     measurementTechnique:
-      "L0: one unpaid HTTP probe per catalog-listed endpoint, using the method the catalog entry declares, checking for HTTP 402 and whether the advertised price, asset, network and payee agree with the catalog; fail is published only after consecutive failing probes. L1: a real-money purchase of that chain's pinned asset (USDC on Base, Arc, Celo, Solana and Stellar, USDC.e on Tempo, RLUSD from its fixed issuer on XRPL, and USD1 on BNB Chain) made under vet402's own User-Agent, with the settlement transaction re-read on-chain before it is called settled. Stellar is not in the nonce-bound count.",
+      "L0: one unpaid HTTP probe per catalog-listed endpoint, using the method the catalog entry declares when that method is GET, POST, HEAD, or DELETE, and GET when the entry declares none or a method outside that set, checking for HTTP 402 and whether the advertised price, asset, network and payee agree with the catalog. Fail is published only after consecutive failing probes. L1: a real-money purchase of that chain's pinned asset (USDC on Base, Arc, Celo, Solana and Stellar, USDC.e on Tempo, RLUSD from its fixed issuer on XRPL, and USD1 on BNB Chain) made under vet402's own User-Agent, with the settlement transaction re-read on-chain before it is called settled. Stellar is not in the nonce-bound count.",
     variableMeasured: [
       "endpoints on record",
       "currently listed in catalog",
@@ -331,7 +331,7 @@ export default async function ObservatoryStatePage() {
               </tr>
               <tr>
                 <td className="text-brand">
-                  Catalog entries declaring no HTTP method (not machine-checkable)
+                  No HTTP method, or a method other than GET, POST, HEAD, or DELETE (the probe uses GET)
                 </td>
                 <td className="num">{stats.methodUndeclared.toLocaleString()}</td>
                 <td className="num">{pct(stats.methodUndeclared, denom)}</td>

@@ -81,20 +81,49 @@ test("宣言した cron の時刻は vercel.json の実物と一致する", () =
   const vercel = JSON.parse(readFileSync(join(ROOT, "vercel.json"), "utf8")) as {
     crons: { path: string; schedule: string }[];
   };
-  const at = (path: string) => {
-    const c = vercel.crons.find((x) => x.path === path);
-    assert.ok(c, `vercel.json に ${path} が無い`);
-    const [minute, hour] = c.schedule.split(" ");
-    return `${hour.padStart(2, "0")}:${minute.padStart(2, "0")} UTC`;
+  const timesFor = (path: string) => {
+    const rows = vercel.crons.filter((x) => x.path === path);
+    assert.ok(rows.length > 0, `vercel.json に ${path} が無い`);
+    return rows.map((c) => {
+      const [minute, hour] = c.schedule.split(" ");
+      return `${hour.padStart(2, "0")}:${minute.padStart(2, "0")} UTC`;
+    });
   };
   const section = LLMS.slice(LLMS.indexOf("## Freshness"), LLMS.indexOf("## Legal"));
-  for (const path of [
-    "/api/cron/catalog-sync",
-    "/api/cron/l0-probe",
-    "/api/cron/l1-purchase",
-    "/api/cron/verify-settlements",
-  ]) {
-    assert.ok(section.includes(at(path)), `${path} の実際の時刻 ${at(path)} が Freshness 節に無い`);
+  const bullet = (prefix: string) => {
+    const line = section.split("\n").find((l) => l.startsWith(prefix));
+    assert.ok(line, `${prefix} の行が無い`);
+    return line;
+  };
+  const sentencesOf = (line: string) => line.split(/(?<=\.)\s+/);
+  // 時刻は Freshness のどこかではなく、その path の句にある。Catalog sync の行は
+  // Bazaar（catalog-sync）と MPP directory（catalog-sync-aux）を同じ行に書く。
+  // L1 の行は購入（l1-purchase）と決済の再読（verify-settlements）を同じ行に書く。
+  const catalogSentences = sentencesOf(bullet("- Catalog sync"));
+  const auxClause = catalogSentences.filter((s) => s.includes("MPP directory")).join(" ");
+  const bazaarClause = catalogSentences.filter((s) => !s.includes("MPP directory")).join(" ");
+  assert.ok(auxClause.length > 0, "catalog-sync-aux の句（MPP directory）が無い");
+  assert.ok(bazaarClause.length > 0, "catalog-sync の句が無い");
+  for (const t of timesFor("/api/cron/catalog-sync")) {
+    assert.ok(bazaarClause.includes(t), `catalog-sync の時刻 ${t} がその句に無い`);
+  }
+  for (const t of timesFor("/api/cron/catalog-sync-aux")) {
+    assert.ok(auxClause.includes(t), `catalog-sync-aux の時刻 ${t} がその句に無い`);
+  }
+  const l0Line = bullet("- L0 probes");
+  for (const t of timesFor("/api/cron/l0-probe")) {
+    assert.ok(l0Line.includes(t), `l0-probe の時刻 ${t} が L0 の行に無い`);
+  }
+  const l1Sentences = sentencesOf(bullet("- L1 purchases"));
+  const settleIdx = l1Sentences.findIndex((s) => s.includes("On-chain settlement re-read"));
+  assert.ok(settleIdx > 0, "verify-settlements の句（On-chain settlement re-read）が無い");
+  const purchaseClause = l1Sentences.slice(0, settleIdx).join(" ");
+  const settleClause = l1Sentences[settleIdx];
+  for (const t of timesFor("/api/cron/l1-purchase")) {
+    assert.ok(purchaseClause.includes(t), `l1-purchase の時刻 ${t} がその句に無い`);
+  }
+  for (const t of timesFor("/api/cron/verify-settlements")) {
+    assert.ok(settleClause.includes(t), `verify-settlements の時刻 ${t} がその句に無い`);
   }
 });
 

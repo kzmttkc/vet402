@@ -132,9 +132,10 @@ export function parseCatalogItem(item: unknown): ParsedCatalogItem {
   const rec = stripNul(asRecord(item) ?? {});
   const resourceUrl = asString(rec.resource) ?? "";
 
-  // Declared method: extensions.bazaar.info.input.method. Unknown strings are
-  // treated as undeclared (null) — fail-closed toward `unverified`, not toward
-  // probing with a guessed method (#3113 class).
+  // Declared method: extensions.bazaar.info.input.method. A missing method and
+  // any method outside GET, POST, HEAD, and DELETE are stored as null. The
+  // probe measures null with GET. Two consecutive failures of that probe can
+  // be published as fail.
   const bazaar = asRecord(asRecord(rec.extensions)?.bazaar);
   const input = asRecord(asRecord(bazaar?.info)?.input);
   const rawMethod = asString(input?.method)?.toUpperCase() ?? null;

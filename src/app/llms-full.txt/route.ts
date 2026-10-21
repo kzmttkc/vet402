@@ -90,7 +90,7 @@ The measurement schedule is in the Freshness section of ${SITE_URL}/llms.txt. Ho
 - ${FRESHNESS_LEAD}
 ${freshnessLines().map((l) => `  ${l}`).join("\n")}
 
-Cite with the page URL and a retrieval date. Content current as of 2026-09-29.
+Cite with the page URL and a retrieval date. Content current as of 2026-10-21.
 `;
 
   return new Response(body, {

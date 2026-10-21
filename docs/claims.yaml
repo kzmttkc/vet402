@@ -678,11 +678,11 @@ claims:
     verified_at: 2026-09-04
   - id: method_unverified_is_not_a_failure
     surface: src/app/observatory/methodology/page.tsx
-    quote: "unverified is not a failure and is never counted as one."
-    means: "unverified は失敗ではなく、失敗として数えない"
+    quote: "It is not a failure and is never counted as one"
+    means: "unverified は未プローブ、公開ゲート未達、path_template、上の 3 つの残りであり、失敗として数えない。残りには rate_limited、tls、request_shape、unsafe_target と、method_undeclared（2026-09-02 より前は要求を送っていない）、body_over_cap（402 が返り本文を読み切っていない）を名指しする。メソッド無し、または GET/POST/HEAD/DELETE 以外は GET で測り、そのプローブの連続 2 回失敗は fail として公開され得る。"
     check: null
-    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
-    verified_at: 2026-09-04
+    why_unverifiable: "語の定義であって公開 GET の数値ではない。プローブは src/lib/observatory/l0-probe.ts の target.method ?? GET と MIN_CONSECUTIVE_FAILS_TO_PUBLISH。4 種以外は src/lib/observatory/catalog-source.ts が null にする。tests/review-84-public-text.test.ts が同じ文を固定する。"
+    verified_at: 2026-10-21
   - id: obs_daily_measurements_over_the_public
     surface: src/app/observatory/page.tsx
     quote: "Daily measurements over the public x402 catalog: does each endpoint's payment wall"
@@ -1103,12 +1103,12 @@ claims:
     verified_at: 2026-09-04
   - id: audit_e_method_undeclared_is_not_the_main_cause
     surface: src/app/observatory/page.tsx
-    quote: "entry declaring too little to check is one cause among several, and the current"
-    means: "unverified の主因は method の未申告ではない（実測でそれは 1 件台）"
+    quote: "It is not a failure and is never counted as one"
+    means: "unverified は未プローブ、公開ゲート未達、path_template、上の 3 つの残りであり、失敗として数えない。残りには rate_limited、tls、request_shape、unsafe_target と、method_undeclared（2026-09-02 より前は要求を送っていない）、body_over_cap（402 が返り本文を読み切っていない）を名指しする。未宣言メソッドはその主因ではない。状態頁の methodUndeclared は 100 未満。"
     check:
       url: https://vet402.com/api/v1/observatory/state
       assert: "methodUndeclared < 100"
-    verified_at: 2026-09-04
+    verified_at: 2026-10-21
   - id: audit_e_l2_vocabulary_has_one_canon
     surface: src/app/observatory/methodology/page.tsx
     quote: "One vocabulary, and its older summary form."
@@ -1306,7 +1306,7 @@ claims:
   - id: seo_vocab_unverified_is_never_counted_as_failure
     surface: src/lib/observatory/vocabulary.ts
     quote: "It is not a failure and is never counted as one"
-    means: "unverified は fail の分子にも分母にも入れない。独立のバケツとして公開する"
+    means: "unverified は失敗として数えない。中身は未プローブ、公開ゲート未達、path_template、上の 3 つの残り。残りには rate_limited、tls、request_shape、unsafe_target と、method_undeclared（2026-09-02 より前は要求を送っていない）、body_over_cap（402 が返り本文を読み切っていない）を名指しする。メソッド無し、または GET/POST/HEAD/DELETE 以外は GET で測り、そのプローブの連続 2 回失敗は fail として公開され得る。"
     check:
       url: https://vet402.com/api/v1/observatory/state
       assert: "publishedUnverified >= 0"
@@ -1654,9 +1654,9 @@ claims:
   - id: method_catalog_refetched_daily_with_reported_total
     surface: src/app/observatory/methodology/page.tsx
     quote: "The public discovery catalog is re-fetched daily, and every fetch is compared with the catalog&apos;s own reported total for that day"
-    means: "カタログの再取得は日次（cron catalog-sync が 0 1 * * *）。取得件数とカタログ自身の申告総数は latestSnapshot として公開し、取得が欠けた日は delisting の判定をしない"
+    means: "カタログの再取得は出どころごと。括弧の 2 回は Bazaar（cron catalog-sync が 0 1 * * * と 0 13 * * *）。MPP directory は 01:30 UTC の 1 回（cron catalog-sync-aux が 30 1 * * *）。directory から消えた行の delist は次の完全な 01:30 UTC まで来ない。取得件数とカタログ自身の申告総数は latestSnapshot として公開する。同じ日に完全なスナップショットがあるとき、後の不完全な実行はそれを置き換えない。取得が欠けた日は delisting の判定をしない"
     check: null
-    why_unverifiable: "カナリアの式（path op literal）では『日次であること』を検査できない——`latestSnapshot.fetchedCount > 0` は取得が何日止まっても古い値で真を返すので、この主張を見ていない check になる。日次は vercel.json の cron `catalog-sync`（0 1 * * *）が持ち、取得が欠けた日に delisting を判定しない規則は src/lib/observatory/catalog-diff.ts と tests/observatory-diff.test.ts が固定する（「an endpoint present yesterday and absent today is delisted — only on a complete fetch」）"
+    why_unverifiable: "カナリアの式（path op literal）では『日次であること』を検査できない——`latestSnapshot.fetchedCount > 0` は取得が何日止まっても古い値で真を返すので、この主張を見ていない check になる。Bazaar の 2 回は vercel.json の cron `catalog-sync`（0 1 * * * と 0 13 * * *）、MPP directory の 1 回は `catalog-sync-aux`（30 1 * * *）。tests/llms-txt-current.test.ts の timesFor が両 path の時刻を Freshness と突き合わせる。取得が欠けた日に delisting を判定しない規則は src/lib/observatory/catalog-diff.ts と tests/observatory-diff.test.ts が固定する（「an endpoint present yesterday and absent today is delisted — only on a complete fetch」）。delist は source ごと（src/lib/observatory/catalog-sync.ts）"
     verified_at: 2026-09-19
   - id: method_l1_refuses_unless_every_condition_holds
     surface: src/app/observatory/methodology/page.tsx
@@ -2016,3 +2016,81 @@ claims:
     check: null
     why_unverifiable: "サーバの中の処理の記述で、公開 GET が返す値ではない。根拠は src/lib/api/client-usage.ts の clientUsageLabel と isOwnPageRequest（返すのは決まった名前だけ）で、tests/client-usage.test.ts と tests/client-usage.pg.test.ts が表に UA の文字列・Referer・IP が入らないことを固定する"
     verified_at: 2026-10-11
+  # 2026-10-21: public/llms.txt を走査に加えた。抽出器は .txt を TSX として読み、バッククォートを文字列の境界にするため、断定は文ではなく断片になる。引用はその断片とファイルの両方にある短い範囲。
+  - id: llms_levels_l0_span
+    surface: public/llms.txt
+    quote: "anywhere on the site. - **L0 Liveness** — does"
+    means: "llms.txt の検証レベル。L3 は未実装。L0 は購入しないプローブで pass / fail / unverified。"
+    check: null
+    why_unverifiable: "抽出器がバッククォートで切った断片で、公開 GET の 1 式にはならない。同じ定義は /observatory/methodology にあり、そちらで登録済み。"
+    verified_at: 2026-10-21
+  - id: llms_cache_counter_span
+    surface: public/llms.txt
+    quote: "that belongs to whoever populated the cache. A"
+    means: "共有キャッシュの 200 は RateLimit-Remaining を付けない。付けたカウンタはキャッシュを埋めた呼び手のものだから。"
+    check: null
+    why_unverifiable: "応答ヘッダの方針で、公開 GET の JSON の値ではない。根拠は src/lib/api/ip-rate-limit.ts と各 route の Cache-Control。"
+    verified_at: 2026-10-21
+  - id: llms_intro_span
+    surface: public/llms.txt
+    quote: "wallets on Base, so an x402 API provider or a s"
+    means: "冒頭の説明。vet402 は売っているものを買い、宣言と照合し、証拠つきで公開する。スコアは Base の payee。"
+    check: null
+    why_unverifiable: "製品の説明で、公開 GET が返す数値ではない。同じ導入はトップと /observatory/methodology にある。"
+    verified_at: 2026-10-21
+  - id: llms_history_daily_series
+    surface: public/llms.txt
+    quote: "the daily series per chain. - `GET /api/v1/ob"
+    means: "/api/v1/observatory/history はチェーン別の日次系列。"
+    check: null
+    why_unverifiable: "系列の粒の説明。件数は日々動く。route は src/app/api/v1/observatory/history/route.ts。"
+    verified_at: 2026-10-21
+  - id: llms_resolve_identifiers_only
+    surface: public/llms.txt
+    quote: "reverse lookup: whatever you hold in, the ca"
+    means: "/api/v1/resolve は識別子だけを返し、recommendation は返さない。"
+    check: null
+    why_unverifiable: "応答の形の説明。根拠は src/app/api/v1/resolve/route.ts。数値の式にはできない。"
+    verified_at: 2026-10-21
+  - id: llms_score_not_an_l0_result
+    surface: public/llms.txt
+    quote: "is never reported as an L0–L2 result. The front"
+    means: "0–100 のスコアは L0–L2 の結果としては出さない。"
+    check: null
+    why_unverifiable: "API の区別の説明。同じ文は方法論と語彙にあり、そちらで登録済み。"
+    verified_at: 2026-10-21
+  - id: llms_badge_states_claim_only
+    surface: public/llms.txt
+    quote: "carries no score, because a cached score on a t"
+    means: "payee の SVG バッジは署名済みの請求があるかどうかだけを述べ、スコアは載らない。"
+    check: null
+    why_unverifiable: "バッジの描画方針。根拠は src/app/api/badge/[address]/route.ts。"
+    verified_at: 2026-10-21
+  - id: llms_payee_endpoints_every
+    surface: public/llms.txt
+    quote: "/endpoints` — every endpoint that declares that"
+    means: "GET /api/v1/payees/{address}/endpoints は、その payee を payTo として宣言している endpoint を返す。"
+    check: null
+    why_unverifiable: "ルートの定義。件数はカタログで動く。根拠は src/app/api/v1/payees/[address]/endpoints/route.ts。"
+    verified_at: 2026-10-21
+  - id: llms_spent_units_signed_amount
+    surface: public/llms.txt
+    quote: "`spent_units` is the amount vet402 signed for o"
+    means: "spent_units は署名した額で、動いた額ではない。tx の無い settle_failed にも価格が入る。"
+    check: null
+    why_unverifiable: "列の定義。根拠は src/lib/observatory/export-columns.ts と export.csv の route。confirmed_units が再読した額。"
+    verified_at: 2026-10-21
+  - id: llms_endpoint_payees_every
+    surface: public/llms.txt
+    quote: "/payees` — every `payee_id` (chain:address) decl"
+    means: "GET /api/v1/endpoints/{endpointId}/payees は、その endpoint が宣言している payee_id を返す。"
+    check: null
+    why_unverifiable: "ルートの定義。根拠は src/app/api/v1/endpoints/[endpointId]/payees/route.ts。"
+    verified_at: 2026-10-21
+  - id: terms_unverified_is_not_a_failure
+    surface: src/app/legal/terms/page.tsx
+    quote: "It is not a failure and is never counted as one"
+    means: "unverified は未プローブ、公開ゲート未達、path_template、上の 3 つの残りであり、失敗として数えない。残りには rate_limited、tls、request_shape、unsafe_target と、method_undeclared（2026-09-02 より前は要求を送っていない）、body_over_cap（402 が返り本文を読み切っていない）を名指しする。メソッド無し、または GET/POST/HEAD/DELETE 以外は GET で測り、そのプローブの連続 2 回失敗は fail として公開され得る。"
+    check: null
+    why_unverifiable: "語の定義であって公開 GET の数値ではない。正典は src/lib/observatory/vocabulary.ts。プローブは src/lib/observatory/l0-probe.ts の target.method ?? GET と MIN_CONSECUTIVE_FAILS_TO_PUBLISH。tests/review-84-public-text.test.ts が同じ文を固定する。"
+    verified_at: 2026-10-21

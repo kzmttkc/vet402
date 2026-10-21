@@ -56,6 +56,20 @@ type Correction = {
  * 載らない（訂正ではないため）が、それは §2 に書いてある。
  */
 const CORRECTIONS: Correction[] = [
+  // 2026-10-21: 2026-09-05 の action に残した "harder test" を撤回する。履歴の文は消さない。
+  {
+    date: "2026-10-21",
+    subject: "Withdrawing the sentence that called a named purchase the harder test",
+    wrong:
+      "The correction dated 2026-09-05 about purchases described as covert left this claim in its account of the fix: " +
+      "naming vet402 is the harder test, and a seller that knows who is watching and still takes the payment without " +
+      "delivering has been measured under the best conditions it will get. That claim does not follow from the measurement. " +
+      "A purchase that succeeds for vet402 does not stand in for another buyer.",
+    action:
+      "The 2026-09-05 entry stays in this log unchanged, including the sentence this entry withdraws. The methodology " +
+      "page states the limit in its place: a purchase that succeeds for vet402 does not stand in for another buyer, and " +
+      "the same seller can return a different answer to a request that does not carry the vet402 User-Agent.",
+  },
   {
     date: "2026-10-21",
     subject:

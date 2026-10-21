@@ -115,15 +115,18 @@ export default async function PlaygroundPage() {
           <span>What you just ran</span>
         </h2>
         <p className="doc-p">
-          The probe approached the endpoint with the HTTP method its catalog entry declares, and
-          read the wall&apos;s answer: did it return <code>402</code> with a parseable{" "}
+          The probe uses the HTTP method the catalog entry declares when that method is GET, POST,
+          HEAD, or DELETE, and GET when the entry declares no method or a method outside that set.
+          It reads the wall&apos;s answer: did it return <code>402</code> with a parseable{" "}
           <code>accepts</code> array, and does that answer agree with what the catalog promised
-          (price, asset, network, payee)? That is L0 — no payment attached, the challenge itself is
+          (price, asset, network, payee)? That is L0. No payment is attached. The challenge itself is
           the observable. It is the same measurement the{" "}
           <Link href="/observatory" className="underline">
             Observatory
           </Link>{" "}
-          performs over the public catalog. The catalog itself is re-fetched daily; the probes run
+          performs over the public catalog. On that Observatory measurement, two failures in a row
+          on that probe can be published as fail. Demo probes are not written into the public
+          register. The catalog itself is re-fetched daily. The probes run
           on a rolling schedule rather than sweeping every endpoint every day
           {coverage && coverage.pct !== null ? (
             <>
@@ -132,7 +135,7 @@ export default async function PlaygroundPage() {
               active listed endpoints) carry an L0 measurement from the last 7 days
             </>
           ) : null}
-          . Demo probes are not written into the public register.
+          .
         </p>
         <p className="doc-p">
           L1 receipts on each endpoint&apos;s page are real purchases made under a hard daily

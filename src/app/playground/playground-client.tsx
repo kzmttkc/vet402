@@ -111,7 +111,7 @@ export default function PlaygroundClient({ candidates }: { candidates: Playgroun
       )}
       {state.phase === "running" && (
         <p className="mt-3 text-brand" aria-live="polite">
-          Approaching the payment wall with the catalog-declared method…
+          Approaching the payment wall. The request uses the HTTP method the listing declares when that method is GET, POST, HEAD, or DELETE, and GET when the listing declares no method or a method outside that set.
         </p>
       )}
       {state.phase === "error" && (
@@ -172,8 +172,7 @@ export default function PlaygroundClient({ candidates }: { candidates: Playgroun
           </table>
           <p className="mt-2 max-w-[62ch] text-[0.8125rem] text-brand-lift">
             Measured in {(state.elapsedMs / 1000).toFixed(1)}s against the live endpoint.{" "}
-            <em>unverified</em> means the catalog entry does not declare enough for a machine to
-            check — it is not a failure.
+            unverified means vet402 does not have grounds to publish either pass or fail yet. It is not a failure and is never counted as one: it is an entry not yet reached by the rolling schedule, an entry whose failing probe has not met the publication gate, an entry recorded as path_template, or the remainder after the three above. The remainder includes a latest reason of rate_limited, tls, request_shape, or unsafe_target. It also includes a latest reason of method_undeclared, for which no request was sent before 2026-09-02, and body_over_cap, for which a 402 came back and the body was not read to the end. A listing that declares no HTTP method, or a method other than GET, POST, HEAD, or DELETE, is measured with GET, and two consecutive failures of that probe can be published as fail. This demo is not written into the public register.
           </p>
         </div>
       )}

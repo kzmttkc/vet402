@@ -70,7 +70,7 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "unverified",
     group: "l0",
     definition:
-      "unverified means vet402 does not have grounds to publish either pass or fail yet. It is not a failure and is never counted as one: it covers entries not yet reached by the rolling schedule, entries whose failing probe has not met the publication gate, entries that declare too little to measure, and entries we could not reach for a reason of our own.",
+      "unverified means vet402 does not have grounds to publish either pass or fail yet. It is not a failure and is never counted as one: it is an entry not yet reached by the rolling schedule, an entry whose failing probe has not met the publication gate, an entry recorded as path_template, or the remainder after the three above. The remainder includes a latest reason of rate_limited, tls, request_shape, or unsafe_target. It also includes a latest reason of method_undeclared, for which no request was sent before 2026-09-02, and body_over_cap, for which a 402 came back and the body was not read to the end. A listing that declares no HTTP method, or a method other than GET, POST, HEAD, or DELETE, is measured with GET, and two consecutive failures of that probe can be published as fail.",
   },
   {
     term: "path_template",

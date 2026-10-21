@@ -179,9 +179,11 @@ export default async function ObservatoryMethodologyPage() {
           <span>What L0 measures</span>
         </h2>
         <p className="doc-p">
-          An L0 probe sends one request to a catalog-listed endpoint using{" "}
-          <strong>the HTTP method the catalog entry itself declares</strong>, with no payment
-          attached. Under the x402 protocol a compliant server answers{" "}
+          An L0 probe sends one request to a catalog-listed endpoint, with no payment
+          attached. The request uses the HTTP method the catalog entry declares when that
+          method is GET, POST, HEAD, or DELETE. When the entry declares no method, or a
+          method outside that set, the request uses GET. Two failures in a row on that
+          request can be published as fail (section 3). Under the x402 protocol a compliant server answers{" "}
           <code>HTTP 402 Payment Required</code> with an <code>accepts</code> array before
           executing anything, so the probe is free, side-effect free, and observable. We record:
           whether 402 came back, whether <code>accepts</code> parses, whether the advertised
@@ -198,13 +200,7 @@ export default async function ObservatoryMethodologyPage() {
           catalog declaration. <strong>fail</strong> — the probe contradicted that: no 402 (any
           other status), a DNS, timeout or connection failure, a challenge with no payable accept,
           or a challenge whose price or receiving address contradicts the catalog; the specific
-          reason code is always recorded, and each code is defined in the table below. <strong>unverified</strong> — we do not have grounds to publish either of
-          the other two yet. That covers an entry that does not declare enough to measure (no
-          declared method: probing with a guessed method reports false deaths), an entry the
-          rolling probe schedule has not reached, an entry whose failing probe has not met the
-          publication gate in section 3, and an entry we could not reach for a reason of our own
-          (rate limiting, a TLS failure on our side).{" "}
-          <em>unverified is not a failure and is never counted as one.</em>
+          reason code is always recorded, and each code is defined in the table below. <strong>unverified</strong>. unverified means vet402 does not have grounds to publish either pass or fail yet. It is not a failure and is never counted as one: it is an entry not yet reached by the rolling schedule, an entry whose failing probe has not met the publication gate, an entry recorded as path_template, or the remainder after the three above. The remainder includes a latest reason of rate_limited, tls, request_shape, or unsafe_target. It also includes a latest reason of method_undeclared, for which no request was sent before 2026-09-02, and body_over_cap, for which a 402 came back and the body was not read to the end. A listing that declares no HTTP method, or a method other than GET, POST, HEAD, or DELETE, is measured with GET, and two consecutive failures of that probe can be published as fail.
         </p>
         {unverified && unverified.total > 0 && (
           <>
@@ -222,22 +218,26 @@ export default async function ObservatoryMethodologyPage() {
                 met the publication gate in section 3
               </li>
               <li>
-                {unverified.otherNotReached.toLocaleString()} we could not reach for a reason of our
-                own (rate limiting, TLS, or an MPP wall that checks the request before asking for
-                payment: <code>request_shape</code>)
-              </li>
-              <li>
                 {unverified.pathTemplate.toLocaleString()} whose listed URL still contains an
                 unfilled path parameter (<code>path_template</code>, below)
               </li>
-              <li>{unverified.methodUndeclared.toLocaleString()} that declare no HTTP method</li>
+              <li>
+                {unverified.otherNotReached.toLocaleString()} are the remainder after the three
+                counts above. The remainder includes a latest reason of <code>rate_limited</code>,{" "}
+                <code>tls</code>, <code>request_shape</code>, or <code>unsafe_target</code>. It also
+                includes a latest reason of <code>method_undeclared</code>, for which no request was
+                sent before 2026-09-02, and <code>body_over_cap</code>, for which a 402 came back
+                and the body was not read to the end.
+              </li>
             </ul>
             <p className="doc-p">
-              Those five sum to {unverified.total.toLocaleString()}, which is the same figure{" "}
+              Those four sum to {unverified.total.toLocaleString()}, which is the same figure{" "}
               <code>publishedUnverified</code> reports at{" "}
               <code>/api/v1/observatory/state</code>. Until 2026-09-04 this section said the usual
-              cause was the undeclared method; the counts above contradict that, so the counts are
-              printed instead of a sentence that can go stale between readings.
+              cause was the undeclared method. The four counts above are what the bucket is made of.
+              A listing with no declared HTTP method does not have a line of its own in this breakdown. A listing with no
+              declared HTTP method, or a method other than GET, POST, HEAD, or DELETE, is probed
+              with GET. Two failures in a row on that probe can be published as fail.
             </p>
           </>
         )}
@@ -619,13 +619,14 @@ export default async function ObservatoryMethodologyPage() {
         </h2>
         <p className="doc-p">
           The public discovery catalog is re-fetched daily, and every fetch is compared with the
-          catalog&apos;s own reported total for that day — both counts are published as{" "}
-          <code>latestSnapshot</code> (<code>fetchedCount</code> and <code>totalCount</code>), so a
-          short day is visible rather than smoothed over. An endpoint present on an earlier
+          catalog&apos;s own reported total for that day (01:00 UTC and 13:00 UTC for the Bazaar catalog). Both counts are published as{" "}
+          <code>latestSnapshot</code> (<code>fetchedCount</code> and <code>totalCount</code>). A later incomplete run does not replace a complete snapshot of that day. The MPP directory is fetched once a day, at 01:30 UTC.
+          A listing that leaves the MPP directory is not judged delisted until the next complete 01:30 UTC fetch.
+          An endpoint present on an earlier
           day and absent from a <strong>complete</strong> fetch is recorded as{" "}
-          <code>delisted</code>, with the before/after values kept on the event. On any day our
-          own fetch is incomplete (fetched count below the catalog&apos;s reported total), no
-          delisting judgements are made — a gap in our data must never read as a disappearance in
+          <code>delisted</code>, with the before/after values kept on the event. On any day
+          vet402&apos;s own fetch is incomplete (fetched count below the catalog&apos;s reported total), no
+          delisting judgements are made. A gap in vet402 data must never read as a disappearance in
           yours. Reappearance is recorded as <code>relisted</code>. A fall in the
           catalog-reported 30-day call count of {Math.round(SETTLE_DROP_RATIO * 100)}% or more,
           from a base of at least {SETTLE_DROP_MIN_PREV_CALLS} calls, is recorded as{" "}
@@ -701,10 +702,10 @@ export default async function ObservatoryMethodologyPage() {
           and <code>vet402-observatory-l1/1.0</code>, each with{" "}
           <code>(+https://vet402.com/observatory/methodology)</code>. There is no rotation, no
           disguise and no attempt to look like an ordinary buyer. A seller who wants to treat vet402
-          differently can, and can do so from the first byte of the request.{" "}
-          <strong>That is the harder test, not the easier one.</strong> A seller who knows exactly
-          who is watching and still takes the payment without delivering has been measured under
-          the best conditions it will ever get; the record below is what happened anyway. Until
+          differently can, and can do so from the first byte of the request. A purchase that
+          succeeds for vet402 does not stand in for another buyer. The same seller can return a
+          different answer to a request that does not carry this User-Agent, and this row does
+          not show what that buyer received. Until
           2026-09-05 this page said purchases were made &ldquo;covertly&rdquo; &mdash; that was
           never true of the implementation, and it is corrected on{" "}
           <Link href="/corrections" className="underline">
@@ -1074,9 +1075,38 @@ export default async function ObservatoryMethodologyPage() {
           else&apos;s disk still knows where it came from.
         </p>
         <p className="doc-p">
-          The ledger is append-only and ordered by <code>attempted_at</code>, so a row that was
-          published does not change afterwards; a re-download with a wider{" "}
-          <code>?days=</code> window returns the same earlier rows plus older ones. Rows are
+          Purchase rows are ordered by <code>attempted_at</code>. A published row can change
+          later. A settlement re-read can confirm the transfer or withdraw the claim. Before that
+          re-read, the settlements index can set the status to <code>settle_claimed</code>. The rows
+          it can move are <code>delivered_no_receipt</code>, <code>settle_failed</code>,{" "}
+          <code>settle_claimed_unverifiable</code>, and a <code>request_error</code> row that
+          carries an authorization nonce. That status change is written in one database statement
+          and appears at{" "}
+          <Link href="/corrections" className="underline">
+            /corrections
+          </Link>{" "}
+          as a ledger status change (<code>settlement_backfill</code>). It is not counted in the
+          correction count. A <code>request_error</code> row sits outside the file. The index brings it in by
+          setting <code>settle_claimed</code>. If the re-read sends that row back to{" "}
+          <code>request_error</code>, the next file leaves it out. The export also omits{" "}
+          <code>budget_denied</code>, <code>halted</code>, and <code>in_flight</code>. A later
+          download with a wider <code>?days=</code> window returns the rows the export still
+          includes from that window, with status as it stands at retrieval. The query accepts a
+          day count from 1 to 366, written without a leading zero. A digit string of 1 to 9 digits
+          that is not a count from 1 to 366 written without a leading zero answers 308 and points
+          at the count inside that range. A longer digit string, and a value that is not a digit
+          string, answers 400. To line the file up with{" "}
+          <code>l1.attempts</code> on <code>/api/v1/observatory/state</code>, count rows whose
+          status is <code>settled</code>, <code>settle_failed</code>,{" "}
+          <code>delivered_no_receipt</code>, <code>settle_claimed_unverifiable</code>,{" "}
+          <code>settle_claimed</code>, or <code>settle_claim_refuted</code>.{" "}
+          <code>l1.attempts</code> counts those statuses over the whole ledger, with no day window.
+          The count of those statuses in the file matches it when{" "}
+          <code>x-vet402-truncated</code> is false, the window reaches the oldest such row, and no
+          purchase in that count is missing its endpoint row. When the oldest such row is more than
+          366 days before retrieval, the file does not contain it, so the counts can differ while{" "}
+          <code>x-vet402-truncated</code> is false. Rows in other statuses sit outside{" "}
+          <code>l1.attempts</code>. Rows are
           capped at 50,000 per request and the cap is declared in{" "}
           <code>x-vet402-truncated</code> rather than passed off as the whole ledger. If we get a
           number wrong we correct it in public under the{" "}

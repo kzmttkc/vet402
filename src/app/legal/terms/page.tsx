@@ -511,11 +511,7 @@ export default async function TermsPage() {
             .
           </p>
           <p>
-            &quot;Unverified&quot; is not a negative assessment. Most endpoints start unverified,
-            and an endpoint can be unverified simply because we have not probed it yet, because a
-            single failing probe has not met the publication gate, or because the entry does not
-            declare enough for a machine to check. We do not treat &quot;unknown&quot; as
-            &quot;bad,&quot; and neither should you.
+            &quot;Unverified&quot; is not a negative assessment. unverified means vet402 does not have grounds to publish either pass or fail yet. It is not a failure and is never counted as one: it is an entry not yet reached by the rolling schedule, an entry whose failing probe has not met the publication gate, an entry recorded as path_template, or the remainder after the three above. The remainder includes a latest reason of rate_limited, tls, request_shape, or unsafe_target. It also includes a latest reason of method_undeclared, for which no request was sent before 2026-09-02, and body_over_cap, for which a 402 came back and the body was not read to the end. A listing that declares no HTTP method, or a method other than GET, POST, HEAD, or DELETE, is measured with GET, and two consecutive failures of that probe can be published as fail.
           </p>
           <p>
             Results age. We re-test on a published cadence and update results automatically, but
