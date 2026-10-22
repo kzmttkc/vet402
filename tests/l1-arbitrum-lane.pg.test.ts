@@ -433,7 +433,7 @@ if (!TEST_DB) {
         { status: "settle_claimed", network: BASE_CAIP2, asset: BASE_USDC, pay_to: TOOLS_PAYTO.toLowerCase(), spent_units: "1000" },
       ]);
       assert.equal(await arbSpent(), 0);
-      assert.deepEqual([...new Set(chains)].sort(), ["base", "arbitrum"], "Arbitrum を読んで足りず、Base を読んで買った");
+      assert.deepEqual([...new Set(chains)].sort(), ["arbitrum", "base"], "Arbitrum を読んで足りず、Base を読んで買った");
       assert.equal(w.requests(TOOLS_URL).filter((r) => !r.paid).length, 2, "無払いの要求は Arbitrum の試行とやり直しの 2 回まで");
     });
 
