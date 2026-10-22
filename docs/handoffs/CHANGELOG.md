@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+
+## 2026-10-22 Arbitrum One lane turned on
+
+- **What**: Production now has `OBSERVATORY_ARBITRUM_L1_ENABLED=true` and `ARBITRUM_RPC_URL` set to the Offchain Labs public RPC (`arb1.arbitrum.io`). The privacy page lists that RPC and its revision date is October 22, 2026.
+- **Why**: The first Arbitrum One purchase is due by 2026-10-31. The payer `0xc9c7b38C0942914fC8EA12063BC92dcd3b581670` holds 10.0 native USDC on Arbitrum One and 0 USDC.e (balanceOf read 2026-10-22 23:46 JST). The public RPC returned a receipt about one million blocks old with status 1, so the daily re-read can use it.
+- **Impact**: Arbitrum purchases stay inside the 2 USD daily cap. The declared query is not sent on Arbitrum yet, and request-query.ts has no Arbitrum row until it is.
+
 ## 2026-10-22 — Arbitrum One (eip155:42161) purchase lane, off by default (OBSERVATORY_ARBITRUM_L1_ENABLED)
 
 - **What**: Fifth row of the pinned EVM payer table: chain id 42161, native Circle USDC `0xaf88d065e77c8cC2239327C5EDb3A432268e5831`, EIP-712 domain "USD Coin"/"2". Measured by RPC against https://arb1.arbitrum.io/rpc on 2026-10-22T11:16:31Z. The domain hash computed from the pinned row equals the token's own `DOMAIN_SEPARATOR()` (`0x08d11903…112c78`), and a test recomputes it. Bridged USDC.e is never signed for. Same places the Celo lane touches: own daily cap `L1_ARBITRUM_DAILY_CAP_USD` (default $2, 0 stops the lane), runner flag and lane floor, catalog-declared Arbitrum payees, ledger asset, payer balance read as "arbitrum", settlement re-read and index requiring `ARBITRUM_RPC_URL` (no silent public-RPC fallback), late recovery by a nonce-bound chain read, arbiscan receipt links, `.env.example`. Public copy does not name Arbitrum as a supported purchase chain while the lane is off.

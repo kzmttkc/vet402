@@ -36,7 +36,7 @@ export default async function PrivacyPage() {
             <span>Instrument: privacy policy</span>
             <span>
               {/* この頁のシアン1点。改訂日という事実。 */}
-              Revision: <span className="text-signal">October 20, 2026</span>
+              Revision: <span className="text-signal">October 22, 2026</span>
             </span>
           </div>
           <div className="doc-head-col">
@@ -47,7 +47,7 @@ export default async function PrivacyPage() {
         </div>
         <h1 className="doc-title mt-8">Privacy Policy</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-        <p className="doc-note text-center">Last updated: October 20, 2026</p>
+        <p className="doc-note text-center">Last updated: October 22, 2026</p>
 
         {/* 2026-09-29 監査 4 周目: GDPR 13 条 1 項 (a) の管理者の身元と連絡先を明記。 */}
         <section className="space-y-2">
@@ -359,6 +359,16 @@ export default async function PrivacyPage() {
               receipt of each settlement transaction it checks. Those reads carry transaction hashes. The receipts
               include vet402&apos;s payer address, the seller payout address and the amount. These are already
               public on BNB Chain. No visitor data is sent to it.
+            </li>
+            {/* 2026-10-22: Arbitrum One の購入レーン。ARBITRUM_RPC_URL は Offchain Labs の公開 RPC（arb1.arbitrum.io）。
+                購入元の残高・決済の照合・遅延回収・売り手の受取先あてのネイティブ USDC の索引で読む。 */}
+            <li>
+              <strong>Offchain Labs</strong> public Arbitrum One RPC (<code>arb1.arbitrum.io</code>). Read by
+              vet402&apos;s servers on Arbitrum One for vet402&apos;s payer balance, for whether a payment
+              authorization vet402 signed has been used, for the payments vet402 recovers, and for the index of USDC
+              payments that listed sellers receive. Those reads carry vet402&apos;s payer address, transaction hashes
+              and the payout addresses of listed sellers. Their responses include the addresses of other payers to
+              those sellers. These are already public on Arbitrum One. No visitor data is sent to it.
             </li>
             <li>
               <strong>Resend</strong> (United States) — email delivery for the record-change

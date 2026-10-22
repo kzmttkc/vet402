@@ -95,7 +95,7 @@ test("privacy: seller notices, controller identity, storage countries, security 
   assert.match(privacy, /id="security"/);
   assert.match(privacy, /id="external-transmission"/);
   assert.match(privacy, /plausible\.io/);
-  assert.match(privacy, /Revision: <span className="text-signal">October 20, 2026/);
+  assert.match(privacy, /Revision: <span className="text-signal">October 22, 2026/);
   assert.match(privacy, /bsc-rpc\.publicnode\.com/);
   // 2026-10-20: BNB の照合のレシート読みは BNB Chain の公開 dataseed（BNB_VERIFY_RPC_URL）。
   assert.match(privacy, /<strong>BNB Chain public dataseed<\/strong> RPC \(<code>bsc-dataseed\.bnbchain\.org<\/code>\)/);
