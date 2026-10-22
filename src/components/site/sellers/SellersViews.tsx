@@ -127,7 +127,7 @@ function FetchedAt({ at, revalidateSec }: { at: string; revalidateSec: number })
 
 function DocHead({ title, fetched }: { title: string; fetched: ReactNode }) {
   return (
-    <div className="doc-head">
+    <div className="doc-head doc-head-compact">
       <div className="doc-head-col">
         <span>Independent Measurement</span>
         <span>{title}</span>
@@ -291,8 +291,8 @@ function SellersTableWide({ sellers, label }: { sellers: readonly SellerSummary[
           {sellers.map((s) => (
             <tr key={s.host}>
               <td className="whitespace-nowrap">
-                <Link href={sellerPath(s.host)} className="flex min-h-11 min-w-0 max-w-[14rem] items-center truncate underline decoration-1 hover:decoration-2 sm:max-w-[24rem]" title={s.host}>
-                  {s.host}
+                <Link href={sellerPath(s.host)} className="flex min-h-11 min-w-0 max-w-[14rem] items-center underline decoration-1 hover:decoration-2 sm:max-w-[24rem]" title={s.host}>
+                  <span className="min-w-0 truncate">{s.host}</span>
                 </Link>
               </td>
               <td className="num">{n(s.listings)}</td>

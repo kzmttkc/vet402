@@ -2,7 +2,7 @@
  * Button — the app's only button/CTA styling source.
  *
  * 2026-08-11 UI監査: 同じ「主ボタン」が page.tsx(hero: px-6 py-3 text-base
- * font-semibold / final: px-5 py-2.5 text-[0.84375rem] font-medium)・SiteHeader(px-4 py-2)・
+ * font-semibold / final: px-5 py-2.5 text-sm font-medium)・SiteHeader(px-4 py-2)・
  * signup(px-4 py-2 ×2) で 3サイズ3ウェイトに散らばっていた。ここへ2段
  * (sm / md) × 2系統 (primary / secondary) へ畳む。
  *

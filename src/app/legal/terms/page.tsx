@@ -63,7 +63,7 @@ export default async function TermsPage() {
           suppressHydrationWarning
           dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
         />
-        <div className="doc-head">
+        <div className="doc-head doc-head-compact">
           <div className="doc-head-col">
             <span>Independent Measurement</span>
             <span>Instrument: terms of service</span>

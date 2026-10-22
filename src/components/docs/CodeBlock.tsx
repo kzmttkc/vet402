@@ -69,7 +69,7 @@ export default function CodeBlock({
   }, [code]);
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={`code-dark relative ${className}`}>
       <pre
         ref={preRef}
         tabIndex={0}

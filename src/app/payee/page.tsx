@@ -126,7 +126,7 @@ export default async function PayeeIndexPage({
         dangerouslySetInnerHTML={{ __html: safeJsonLd(howTo) }}
       />
       <article className="sheet">
-        <div className="doc-head">
+        <div className="doc-head doc-head-compact">
           <div className="doc-head-col">
             <span>Address control verified</span>
             {/* 2026-08-13 [M5]: "Level: L0 identity claim" をやめた。LP §2 の

@@ -145,7 +145,7 @@ export default function SignupPage() {
     return (
       <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
         <article className="sheet">
-          <div className="doc-head">
+          <div className="doc-head doc-head-compact">
             <div className="doc-head-col">
               <span>Access granted</span>
               <span>
@@ -226,7 +226,7 @@ export default function SignupPage() {
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
       <article className="sheet">
-        <div className="doc-head">
+        <div className="doc-head doc-head-compact">
           <div className="doc-head-col">
             <span>Access request</span>
             <span>

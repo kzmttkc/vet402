@@ -29,7 +29,7 @@ test("LP Fig.1: first stage is 'Endpoints on record' and the caption says it inc
 
 test("observatory doc-head names fetched vs catalog total in words", () => {
   const page = read("src/app/observatory/page.tsx");
-  const head = page.slice(page.indexOf('className="doc-head"'), page.indexOf("doc-title"));
+  const head = page.slice(page.indexOf('className="doc-head'), page.indexOf("doc-title"));
   assert.match(head, /fetched/, "the first number is called fetched");
   assert.match(head, /of catalog/, "the second number is called the catalog total");
   // fetched > total の理由（重複 URL の正規化前の生件数）が本文で読める

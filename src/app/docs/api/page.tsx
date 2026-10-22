@@ -476,7 +476,7 @@ export default async function ApiDocsPage() {
       <WideColumn />
       <article className="sheet sheet-wide mt-6 space-y-10">
         <div>
-          <div className="doc-head">
+          <div className="doc-head doc-head-compact">
             <div className="doc-head-col">
               <span>Independent Measurement</span>
               <span>Interface: REST v1</span>

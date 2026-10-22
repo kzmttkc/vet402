@@ -145,7 +145,7 @@ export default async function LeaderboardPage({
           dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
         />
 
-        <div className="doc-head">
+        <div className="doc-head doc-head-compact">
           <div className="doc-head-col">
             <span>Independent Measurement</span>
             <span>Register of recently verified subjects</span>

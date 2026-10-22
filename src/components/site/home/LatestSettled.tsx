@@ -35,7 +35,7 @@ export function LatestSettled({ rows }: { rows: readonly HomeReceipt[] }) {
                   <td className="[overflow-wrap:anywhere]">{row.host}</td>
                   <td>{row.chain}</td>
                   <td className="num">{row.httpStatus ?? "none"}</td>
-                  <td className={delivered.strong ? "font-[family-name:var(--font-display)] font-semibold" : undefined}>{delivered.text}</td>
+                  <td className={delivered.strong && delivered.text.startsWith("yes") ? "font-[family-name:var(--font-display)] font-semibold" : undefined}>{delivered.text}</td>
                 </tr>
               );
             })}

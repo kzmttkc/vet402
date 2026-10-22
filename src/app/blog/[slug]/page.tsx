@@ -82,7 +82,7 @@ export default async function BlogPostPage({
           dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
         />
 
-        <div className="doc-head">
+        <div className="doc-head doc-head-compact">
           <div className="doc-head-col">
             <span>Independent Measurement</span>
             <span>Note</span>

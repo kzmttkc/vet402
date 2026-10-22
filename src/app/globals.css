@@ -221,7 +221,10 @@ figcaption {
   outline-offset: 2px;
 }
 /* 紺地の上では同じ 2px・offset 2px を紙色にする。紺の輪郭は紺地に溶ける。 */
-.bg-brand-deep :focus-visible {
+.bg-brand-deep :focus-visible,
+.bg-zinc-900 :focus-visible,
+.bg-zinc-950 :focus-visible,
+.code-dark :focus-visible {
   outline-color: #ffffff;
 }
 
@@ -882,32 +885,33 @@ a:hover {
   }
 }
 
-/* 狭い画面の書誌。レイヤの中に置くと inline-flex などのユーティリティに
+/* 狭い画面の書誌（.doc-head-compact を付けたページだけ。2026-10-22 審査: 全ページに当てると
+   記録ページの Published state や審査中の提出面の行まで消えた）。レイヤの中に置くと inline-flex などのユーティリティに
    display が負けて、隠す行が残る。読み取り時刻（.doc-asof）とリンクは残す。 */
 @media (max-width: 640px) {
-  .doc-head {
+  .doc-head-compact {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.125rem;
     line-height: 1.3;
   }
-  .doc-head-col {
+  .doc-head-compact .doc-head-col {
     max-width: 100%;
   }
-  .doc-head-col:last-child {
+  .doc-head-compact .doc-head-col:last-child {
     text-align: left;
   }
-  .doc-head-col > :not(:first-child):not(.doc-asof):not(:has(a)),
-  .doc-head-col:last-child > :first-child:not(.doc-asof):not(:has(a)) {
+  .doc-head-compact .doc-head-col > :not(:first-child):not(.doc-asof):not(:has(a)),
+  .doc-head-compact .doc-head-col:last-child > :first-child:not(.doc-asof):not(:has(a)) {
     display: none;
   }
-  .doc-head-col > :has(a) {
+  .doc-head-compact .doc-head-col > :has(a) {
     display: inline;
   }
-  .doc-head-col > :has(a) + :has(a)::before {
+  .doc-head-compact .doc-head-col > :has(a) + :has(a)::before {
     content: " · ";
   }
-  .doc-head-links {
+  .doc-head-compact .doc-head-links {
     font-size: var(--type-12);
   }
 }

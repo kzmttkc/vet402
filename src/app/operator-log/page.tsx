@@ -52,7 +52,7 @@ export default async function OperatorLogPage() {
           suppressHydrationWarning
           dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
         />
-        <div className="doc-head">
+        <div className="doc-head doc-head-compact">
           <div className="doc-head-col">
             <span>Credible Neutrality</span>
             <span>Register: operator overrides</span>

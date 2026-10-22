@@ -126,7 +126,7 @@ export default async function ObservatoryMethodologyPage() {
           dangerouslySetInnerHTML={{ __html: safeJsonLd(vocabulary) }}
         />
 
-        <div className="doc-head">
+        <div className="doc-head doc-head-compact">
           <div className="doc-head-col">
             <span>Independent Measurement</span>
             <span>Methodology: L0, L1, L2</span>

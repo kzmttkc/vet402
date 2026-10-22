@@ -107,7 +107,7 @@ export default async function StatusPage() {
           dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
         />
 
-        <div className="doc-head">
+        <div className="doc-head doc-head-compact">
           <div className="doc-head-col">
             <span>Independent Measurement</span>
             <span>Instrument: own uptime</span>

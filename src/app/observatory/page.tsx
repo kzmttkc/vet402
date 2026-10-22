@@ -110,7 +110,7 @@ export default async function ObservatoryPage({
           dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
         />
 
-        <div className="doc-head">
+        <div className="doc-head doc-head-compact">
           <div className="doc-head-col">
             <span>Independent Measurement</span>
             <span>Register: x402 endpoints, L0 · L1</span>
