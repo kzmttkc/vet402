@@ -2,6 +2,7 @@
 
 Two Soroban contracts, built on 2026-10-20. Both run on the Stellar testnet and hold testnet tokens only.
 Who wrote and who checked them: [AI_USAGE.md](AI_USAGE.md).
+How they fit with the Stellar payer and the public record, and the planned work: [docs/stellar/technical-architecture.md](../docs/stellar/technical-architecture.md).
 
 | Contract | Testnet id | What it does | Details |
 |---|---|---|---|

@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-22 — Stellar technical architecture document for SCF #46
+- **何を**: `docs/stellar/technical-architecture.md` を足し、`contracts/README.md` から1行でリンクした。Stellar の payer、行と digest、day file、Merkle と proof、root 契約、日次ジョブ、escrow、決定 API、信頼モデル、T1〜T3 の計画と確認方法、テスト計画を一か所にまとめた。
+- **なぜ**: SCF #46 の Build Award 本提出の必須欄 "Technical Architecture Document"（Stellar に特化した公開文書）。
+- **影響**: 文書だけ。独立レビュー 90（高1）→ 96 で合格。
+
 ## 2026-10-22 — Stellar roots: the daily commit job passed --source and --network after "--"
 - **何を**: `contracts/stellar-roots/tools/commit-day.sh` の `writer_call` が `--source` と `--network` を `--` の後ろに付けていた。stellar-cli はそれを契約の関数の引数として読み、使い方のエラーで終わる。`writer_call` は、最初の `--` の前にその2つを入れる（`--` の無い `contract extend` は末尾）。
 - **なぜ**: 2026-10-21 15:11 UTC から毎時の実行が "could not read the chain" で止まり、2026-10-20 の root が入らなかった（10/18・10/19 は手で流した実行で入っていた）。グラントの T1「testnet に30日続けて毎日 commit」の起点に関わる。
