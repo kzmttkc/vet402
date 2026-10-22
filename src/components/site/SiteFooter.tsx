@@ -89,7 +89,7 @@ export function SiteFooter() {
     // ヘッダと同じ式で紙面の本文列に揃える（外は main と同じ余白、内は .sheet と
     // 同じ余白）。奥付が本文と同じ走り出しに乗る。
     <footer className="mt-16 bg-ground px-4 pb-12 sm:px-6 md:px-8">
-      <div className="mx-auto w-full max-w-[var(--column)] px-[var(--sheet-pad)] pt-1">
+      <div className="mx-auto w-full max-w-[var(--column)] px-[var(--sheet-pad)] pt-1 lg:max-w-[1200px]">
         <div className="rule-double" />
 
         {/* RFC page foot — three parts, left / centre / right. */}

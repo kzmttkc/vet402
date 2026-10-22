@@ -72,8 +72,10 @@ export function SiteHeader() {
             .sheet と同じ余白で、max-width も同じ式（72ch + 紙の左右余白）。これで
             ワードマークの左端が Abstract の左端と 1px も違わずに揃う。
             検分1回目の実測ではナビが 1440px 全幅・紙が 763px で、どの端も一致して
-            いなかった。罫線だけは全幅で引く（RFC の走り出し罫）。 */}
-        <div className="mx-auto flex h-14 w-full max-w-[var(--column)] items-center justify-between gap-6 px-[var(--sheet-pad)]">
+            いなかった。罫線だけは全幅で引く（RFC の走り出し罫）。
+            2026-10-22: 1024px 以上はどのページでも 1200px（トップと表のページの紙の幅）に固定する。
+            紙の幅ごとにヘッダが伸び縮みすると、ページを移るたびに Get API key の位置が 240px 動いていた。 */}
+        <div className="mx-auto flex h-14 w-full max-w-[var(--column)] items-center justify-between gap-6 px-[var(--sheet-pad)] lg:max-w-[1200px]">
           <Link href="/" className="inline-flex h-11 shrink-0 items-center">
             <Wordmark className="text-[1.0625rem] leading-none" />
           </Link>
