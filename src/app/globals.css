@@ -318,8 +318,13 @@ a:hover {
     font-size: var(--type-13);
     line-height: var(--leading-table);
   }
+  .doc-head-col {
+    min-width: 0;
+  }
   .doc-head-col > * {
     display: block;
+    /* /decisions の "Machine: /api/v1/observatory/decisions" が 360px で 31px はみ出した（2026-10-22）。 */
+    overflow-wrap: anywhere;
   }
   .doc-head-col:first-child {
     color: #233456;
@@ -343,6 +348,17 @@ a:hover {
     }
     .doc-head-links {
       white-space: nowrap;
+    }
+  }
+  /* main と同じ狭い幅の既定（全ページ）。2026-10-22 の圧縮は .doc-head-compact だけが上に重ねる。 */
+  @media (max-width: 640px) {
+    .doc-head {
+      flex-direction: column;
+      gap: 0.9rem;
+      line-height: 1.5;
+    }
+    .doc-head-col:last-child {
+      text-align: left;
     }
   }
 
