@@ -1,20 +1,11 @@
 import type { HomeLedger } from "@/components/site/HomeLedger";
-import { fmt, type HomeExample } from "@/lib/observatory/home-example";
+import { fmt, lowestChainShareLine, type HomeExample } from "@/lib/observatory/home-example";
 import { CheckPanel } from "./CheckPanel";
 import { GapFigure } from "./GapFigure";
 import { ReceiptSlip } from "./ReceiptSlip";
 import { TwoPaths } from "./TwoPaths";
 
 const DISPLAY = "font-[family-name:var(--font-display)]";
-
-/** Chains below this many settled purchases are left out of the "lowest share" sentence. */
-const LOWEST_MIN_SETTLED = 100;
-
-function lowestShare(ledger: HomeLedger): HomeLedger["chains"][number] | null {
-  const eligible = ledger.chains.filter((c) => c.settled >= LOWEST_MIN_SETTLED);
-  if (eligible.length === 0) return null;
-  return eligible.reduce((a, b) => (b.delivered / b.settled < a.delivered / a.settled ? b : a));
-}
 
 export function HomeIntro({
   ledger,
@@ -28,7 +19,7 @@ export function HomeIntro({
   example: HomeExample | null;
 }) {
   const big = `${DISPLAY} font-bold tracking-[-0.03em] text-brand-deep`;
-  const lowest = ledger ? lowestShare(ledger) : null;
+  const share = ledger ? lowestChainShareLine(ledger.chains) : "";
   const paidNo2xx = ledger ? Math.max(0, ledger.settled - ledger.delivered) : 0;
   return (
     <>
@@ -78,9 +69,7 @@ export function HomeIntro({
               {ledger.readDate} {ledger.readTime} UTC
             </time>
             : {fmt(ledger.attempts)} paid attempts, {fmt(ledger.settled)} settled, {fmt(ledger.delivered)} answered 2xx.
-            {lowest
-              ? ` Lowest share among chains with ${LOWEST_MIN_SETTLED} or more settled: ${lowest.label}, ${fmt(lowest.delivered)} of ${fmt(lowest.settled)}.`
-              : ""}
+            {share}
             {settled4xx !== null
               ? ` ${fmt(settled4xx)} answered 4xx, held as inconclusive because a 4xx can come from the shape of vet402's request.`
               : ""}{" "}

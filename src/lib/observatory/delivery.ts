@@ -228,3 +228,11 @@ export function inconclusiveSettledPredicate(alias = ""): string {
   assertAlias("inconclusiveSettledPredicate", alias);
   return `(${heldReasonSql(alias)}) = 'settled_4xx'`;
 }
+
+/**
+ * deliveryRatePct の分母（reader.ts）。settled から、settled のまま保留にした行
+ * （inconclusiveSettled、held が settled_4xx）を除く。判定できた行が無いときは 0。
+ */
+export function judgedSettledCount(settled: number, heldSettled: number): number {
+  return Math.max(0, settled - heldSettled);
+}

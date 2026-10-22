@@ -120,7 +120,7 @@ export function CheckPanel({ example }: { example: HomeExample | null }) {
             <ResultLine k="L1">
               {decision ? (
                 <>
-                  {fmt(decision.l1.settled)} of {fmt(decision.l1.attempts)} settled, {fmt(decision.l1.delivered)} answered 2xx
+                  {fmt(decision.l1.settled)} of {fmt(decision.l1.attempts)} settled, {fmt(decision.l1.delivered)} delivered
                   {decision.l1.windowDays ? <span className="text-white/70"> last {decision.l1.windowDays} days</span> : null}
                 </>
               ) : (

@@ -32,7 +32,7 @@ export type HomeLedger = {
   /** Active listings whose latest verdict is fail or unverified. */
   notPassActive: number;
   /** l1.byChain rows with at least one settled purchase, in the reader's order. */
-  chains: { chain: string; label: string; asset: string; settled: number; delivered: number }[];
+  chains: { chain: string; label: string; asset: string; settled: number; delivered: number; inconclusiveSettled: number }[];
 };
 
 /**
@@ -83,7 +83,14 @@ export function homeLedgerOf(stats: HomeLedgerStats | null | undefined): HomeLed
       .filter((r) => r.settled > 0)
       .map((r) => {
         const label = paymentChainLabel(r.chain);
-        return { chain: r.chain, label, asset: settlementAssetOf(label), settled: r.settled, delivered: r.delivered };
+        return {
+          chain: r.chain,
+          label,
+          asset: settlementAssetOf(label),
+          settled: r.settled,
+          delivered: r.delivered,
+          inconclusiveSettled: typeof r.inconclusiveSettled === "number" ? r.inconclusiveSettled : 0,
+        };
       }),
   };
 }

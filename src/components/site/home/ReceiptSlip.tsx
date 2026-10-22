@@ -13,6 +13,13 @@ function Corner({ className }: { className: string }) {
   );
 }
 
+/** A 202 or an empty 2xx body is a 2xx that isDelivered does not count, so "no 2xx" would be false there. */
+function notDeliveredWord(http: number | null): string {
+  if (http === 202) return "no, 202 accepted only";
+  if (http !== null && http >= 200 && http < 300) return "no, empty body";
+  return "no 2xx";
+}
+
 export function ReceiptSlip({ receipt }: { receipt: HomeReceipt }) {
   const r = receipt;
   const rows: { k: string; v: React.ReactNode; strong?: boolean }[] = [
@@ -32,7 +39,11 @@ export function ReceiptSlip({ receipt }: { receipt: HomeReceipt }) {
       v: `settled, re-read on chain${r.settlementSource === "vet402_index" ? ", found by vet402's index" : ""}`,
     },
     { k: "HTTP after payment", v: r.httpStatus ?? "none" },
-    { k: "Delivered", v: r.delivered ? "yes, 2xx" : "no 2xx", strong: true },
+    {
+      k: "Delivered",
+      v: r.held ? "held, inconclusive" : r.delivered ? "yes, 2xx" : notDeliveredWord(r.httpStatus),
+      strong: !r.held,
+    },
     { k: "Against declaration", v: r.l2 },
     {
       k: "Transaction",
@@ -45,7 +56,7 @@ export function ReceiptSlip({ receipt }: { receipt: HomeReceipt }) {
       ),
     },
   ];
-  const reproduce = `curl -sL "${SITE_URL}/api/v1/observatory/export.csv?days=90" | grep ${r.purchaseId.slice(0, 8)}`;
+  const reproduce = `curl -sL "${SITE_URL}/api/v1/observatory/export.csv?days=1" | grep ${r.purchaseId.slice(0, 8)}`;
   return (
     <figure aria-labelledby="receipt-title" className="relative mt-16 min-w-0 border-y border-dashed border-brand-deep px-1 py-6 sm:mt-20 sm:px-5">
       <Corner className="-left-1.5 -top-1.5" />

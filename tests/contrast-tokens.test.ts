@@ -114,8 +114,8 @@ const WEAK_BORDERS = WEAK_BORDER_COLORS.map((c) => `border-${c}`);
  * （lists / lookup の入力欄はすべてこの形をしている＝関門が素通りになる）。
  * 波括弧の深さと文字列リテラルを見ながら、深さ0の `>` まで進む。
  */
-function controlTags(source: string): { line: number; body: string; tag: string }[] {
-  const out: { line: number; body: string; tag: string }[] = [];
+function controlTags(source: string): { line: number; index: number; body: string; tag: string }[] {
+  const out: { line: number; index: number; body: string; tag: string }[] = [];
   const open = /<(input|select|textarea)(?=[\s/>])/g;
   let m: RegExpExecArray | null;
   while ((m = open.exec(source)) !== null) {
@@ -135,11 +135,71 @@ function controlTags(source: string): { line: number; body: string; tag: string 
     }
     out.push({
       tag: m[1],
+      index: m.index,
       line: source.slice(0, m.index).split("\n").length,
       body: source.slice(m.index, i),
     });
   }
   return out;
+}
+
+function classValuesBefore(source: string, index: number): string[] {
+  const out: string[] = [];
+  const re = /className\s*[:=]\s*(?:\{?\s*)?(["'`])([\s\S]*?)\1/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(source)) !== null) {
+    if (m.index >= index) break;
+    out.push(m[2]);
+  }
+  return out;
+}
+
+/** Resting background token (no variant prefix). The last one in the class string wins. */
+function restingBg(value: string): string | null {
+  const tokens = value.split(/\s+/).filter((t) => t.startsWith("bg-"));
+  return tokens.length > 0 ? tokens[tokens.length - 1] : null;
+}
+
+/** brand-deep is #233456. A slash sets the opacity percent. No slash is 100. */
+function navyOpacityOfBg(token: string): number | null {
+  const m = /^bg-(?:brand-deep|\[#233456\])(?:\/(\d+))?$/.exec(token);
+  if (!m) return null;
+  return m[1] === undefined ? 100 : Number(m[1]);
+}
+
+function groundNavyOpacity(body: string, ancestors: readonly string[]): number | null {
+  const own = restingBg(body);
+  if (own && !own.startsWith("bg-transparent")) return navyOpacityOfBg(own);
+  for (let i = ancestors.length - 1; i >= 0; i--) {
+    const bg = restingBg(ancestors[i]);
+    if (!bg || bg.startsWith("bg-transparent")) continue;
+    return navyOpacityOfBg(bg);
+  }
+  return null;
+}
+
+function borderWhiteOpacity(body: string): number | null {
+  let found: number | null = null;
+  for (const t of body.split(/\s+/)) {
+    if (t.includes(":")) continue;
+    const m = /^border-white(?:\/(\d+))?$/.exec(t);
+    if (m) found = m[1] === undefined ? 100 : Number(m[1]);
+  }
+  return found;
+}
+
+/**
+ * The white-border exception is only a field whose text is white, whose resting
+ * border is white at 40% opacity or more, on a navy ground (#233456, brand-deep)
+ * that is itself at 40% opacity or more. text-white alone does not qualify.
+ */
+function whiteBorderOnNavy(body: string, ancestors: readonly string[]): boolean {
+  const hasWhiteText = body.split(/\s+/).some((t) => t === "text-white" || /^text-white\/\d+$/.test(t));
+  if (!hasWhiteText) return false;
+  const border = borderWhiteOpacity(body);
+  if (border === null || border < 40) return false;
+  const ground = groundNavyOpacity(body, ancestors);
+  return ground !== null && ground >= 40;
 }
 
 test("入力欄の枠線に白地3:1未満のトークンを使わない（WCAG 1.4.11）", () => {
@@ -151,10 +211,9 @@ test("入力欄の枠線に白地3:1未満のトークンを使わない（WCAG 
         // ないので対象外にする（直前が `:` なら variant）。
         const re = new RegExp(`(?<![\\w:-])${token}(?![\\w-])`);
         if (!re.test(t.body)) continue;
-        // 白文字の欄は紺地（brand-deep #233456）の上にある。そこでは紙色の枠が境界で、
-        // 40% の白を紺に乗せると 3.34:1。白地向けの brand-lift は同じ地で 2.21:1 になり、
-        // こちらの関門が勧める側が 3:1 を割る。
-        if (token === `border-${"white"}` && /\btext-white\b/.test(t.body)) continue;
+        // 白文字かつ枠の白が 40% 以上で、地が紺（#233456 / brand-deep）の 40% 以上のときだけ通す。
+        // 40% の白を不透明な #233456 に乗せると 3.34:1。text-white だけでは通さない。
+        if (token === `border-${"white"}` && whiteBorderOnNavy(t.body, classValuesBefore(f.text, t.index))) continue;
         hits.push(`${f.path}:${t.line} <${t.tag}> ${token}`);
       }
     }
@@ -164,4 +223,17 @@ test("入力欄の枠線に白地3:1未満のトークンを使わない（WCAG 
     [],
     `入力欄の枠線が白地 3:1 未満。border-zinc-500 (#71717A・4.83:1) 以上、または brand-lift (#55688c・5.61:1) 以上を使う: ${hits.join(", ")}`,
   );
+});
+
+test("白枠の例外は紺地かつ白の不透明度 40% 以上のときだけ", () => {
+  const navy = "bg-brand-deep text-white";
+  const field = "border border-white/40 bg-transparent text-white";
+  assert.equal(whiteBorderOnNavy(field, [navy]), true);
+  assert.equal(whiteBorderOnNavy("border border-white text-white", ["bg-[#233456]"]), true);
+  assert.equal(whiteBorderOnNavy(field, ["bg-brand-deep/40"]), true);
+  assert.equal(whiteBorderOnNavy(field, ["bg-brand-deep/39"]), false, "navy below 40% is not the measured ground");
+  assert.equal(whiteBorderOnNavy("border border-white/39 text-white", [navy]), false, "white below 40% misses 3:1");
+  assert.equal(whiteBorderOnNavy(field, ["bg-paper"]), false, "text-white on paper is not enough");
+  assert.equal(whiteBorderOnNavy(field, []), false, "no navy ancestor");
+  assert.equal(whiteBorderOnNavy("border border-white/40 bg-white text-white", [navy]), false, "the field's own ground wins");
 });

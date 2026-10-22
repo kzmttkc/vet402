@@ -29,7 +29,7 @@ import { l0ReasonDetail, type L0ProbeDetail } from "./l0-reasons";
 import { isOperatorPayTo } from "./operator";
 import { isOperatorExclusionConfigured, operatorExclusionPredicate, operatorMatchPredicate } from "./operator-sql";
 import { chainLabel, isMainnet, isTestnet, networkFilterIds, toCaip2 } from "./chains";
-import { deliveredPredicate, heldReasonSql, inconclusivePredicate, inconclusiveSettledPredicate } from "./delivery";
+import { deliveredPredicate, heldReasonSql, inconclusivePredicate, inconclusiveSettledPredicate, judgedSettledCount } from "./delivery";
 import { l2ReadingOf } from "./l2-check";
 import {
   settledTier,
@@ -741,7 +741,7 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
     // 2026-09-05: 判定できた settled だけを分母にする。保留にした行を分母に残すと、
     // 「売り手の不履行として数えない」と言いながら率では不履行として効いてしまう。
     // 2026-09-17: 分母は settled なので、差し引くのも settled の保留分だけ。
-    const judged = Math.max(0, settledCount - inconclusiveSettledCount);
+    const judged = judgedSettledCount(settledCount, inconclusiveSettledCount);
     return {
       endpointId: e.id,
       resourceKey: e.resourceKey,
@@ -918,6 +918,8 @@ export type L1ChainStats = {
   delivered: number;
   /** 判定保留の署名済み試行（delivery.ts の heldReasonOf・settled とは限らない）。delivered とは足し合わせない。 */
   inconclusive: number;
+  /** inconclusive のうち settled（settled_4xx）。このチェーンの deliveryRatePct の分母は settled − これ。 */
+  inconclusiveSettled: number;
   settledNonceBound: number;
   settledAmountPayeeOnly: number;
 };
@@ -1157,6 +1159,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
                count(*) FILTER (WHERE status = 'settled')::int AS settled,
                count(*) FILTER (WHERE ${sql.raw(deliveredPredicate())})::int AS delivered,
                count(*) FILTER (WHERE ${sql.raw(inconclusivePredicate())})::int AS inconclusive,
+               count(*) FILTER (WHERE ${sql.raw(inconclusiveSettledPredicate())})::int AS inconclusive_settled,
                count(*) FILTER (WHERE ${sql.raw(settledTierPredicate("nonce_bound"))})::int AS settled_nonce_bound,
                count(*) FILTER (WHERE ${sql.raw(settledTierPredicate("amount_payee_only"))})::int AS settled_amount_payee_only
         FROM x402_l1_purchases
@@ -1171,6 +1174,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
         settled: number;
         delivered: number;
         inconclusive: number;
+        inconclusive_settled: number;
         settled_nonce_bound: number;
         settled_amount_payee_only: number;
       }[];
@@ -1185,6 +1189,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
           settled: 0,
           delivered: 0,
           inconclusive: 0,
+          inconclusiveSettled: 0,
           settledNonceBound: 0,
           settledAmountPayeeOnly: 0,
         };
@@ -1192,6 +1197,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
         entry.settled += Number(row.settled ?? 0);
         entry.delivered += Number(row.delivered ?? 0);
         entry.inconclusive += Number(row.inconclusive ?? 0);
+        entry.inconclusiveSettled += Number(row.inconclusive_settled ?? 0);
         entry.settledNonceBound += Number(row.settled_nonce_bound ?? 0);
         entry.settledAmountPayeeOnly += Number(row.settled_amount_payee_only ?? 0);
         folded.set(chain, entry);

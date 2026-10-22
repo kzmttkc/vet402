@@ -6,22 +6,24 @@
 // Ties keep the smaller purchase id, which is what the export's ascending (attempted_at, id)
 // order yields when the reader keeps the first row of the latest time.
 //
-// The decision facts come from resolve() and loadSellerFacts(), the same functions the
-// decision route uses, without recording a lookup and without an HTTP call back to this process.
+// The decision facts come from loadSellerFacts() on the purchase row's endpoint id, the same
+// function the decision route uses, without recording a lookup and without an HTTP call back
+// to this process. Resolving the URL again would pick another listing when one URL has two.
 // A missing database, an empty window, or a row that cannot be formatted returns null.
 // The page then draws no purchase. It does not print a zero or a stand-in.
+// A thrown read is not cached. The caller turns that throw into null.
 import { unstable_cache } from "next/cache";
 import { sql } from "drizzle-orm";
 import { settlementAssetOf } from "@/components/site/HomeLedger";
 import { getDb } from "@/lib/db/client";
 import { l1BasisOf } from "@/lib/decision/rules";
 import { loadSellerFacts } from "@/lib/decision/seller-facts";
+import { explorerTxUrl, paymentChainLabel } from "@/lib/observatory/chains";
+import { heldReasonSql, isDelivered, judgedSettledCount } from "@/lib/observatory/delivery";
 import { confirmedUnitsSql } from "@/lib/observatory/export-columns";
 import { l2ReadingColumnsSql, l2ReadingOf } from "@/lib/observatory/l2-check";
-import { explorerTxUrl, paymentChainLabel } from "@/lib/observatory/chains";
 import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
 import { settlementSourceSql } from "@/lib/observatory/settlement-source";
-import { resolve } from "@/lib/resolve/lookup";
 import { rowsOf } from "@/lib/settlements/upsert";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
@@ -40,7 +42,11 @@ export type HomeReceipt = {
   asset: string;
   amount: string;
   httpStatus: number | null;
+  /** delivery.ts isDelivered: settled, 2xx except 202, body not recorded empty. */
   delivered: boolean;
+  /** heldReasonSql returned a reason (a settled 4xx is settled_4xx). Not a failed delivery. */
+  held: boolean;
+  endpointId: string;
   l2: string;
   settlementSource: string;
   tx: string;
@@ -67,6 +73,26 @@ export type HomeExample = {
 };
 
 export const fmt = (n: number) => n.toLocaleString("en-US");
+
+/**
+ * Lowest delivered share among chains with at least `minSettled` settled purchases.
+ * The denominator is judgedSettledCount, the same one as deliveryRatePct. A chain
+ * with nothing left to judge is left out. Empty when no chain qualifies.
+ */
+export function lowestChainShareLine(
+  chains: readonly { label: string; settled: number; delivered: number; inconclusiveSettled: number }[],
+  minSettled = 100,
+): string {
+  const eligible = chains.filter((c) => c.settled >= minSettled && judgedSettledCount(c.settled, c.inconclusiveSettled) > 0);
+  if (eligible.length === 0) return "";
+  const picked = eligible.reduce((a, b) => {
+    const aShare = a.delivered / judgedSettledCount(a.settled, a.inconclusiveSettled);
+    const bShare = b.delivered / judgedSettledCount(b.settled, b.inconclusiveSettled);
+    return bShare < aShare ? b : a;
+  });
+  const judged = judgedSettledCount(picked.settled, picked.inconclusiveSettled);
+  return ` Lowest share among chains with ${minSettled} or more settled, over settled purchases that are not held: ${picked.label}, ${fmt(picked.delivered)} of ${fmt(judged)}.`;
+}
 
 /** Ledger units are 6-digit USD base units (spent_units / confirmed_units). */
 export function unitsToAmount(units: string): string | null {
@@ -102,11 +128,31 @@ type ExportRow = {
   confirmed_units?: string;
   tx_hash?: string;
   http_status_paid?: string | null;
+  payload_non_empty?: boolean | null;
+  held_reason?: string | null;
+  endpoint_id?: string | null;
   l2_schema?: string | null;
   l2_reading?: string | null;
   settlement_source?: string | null;
   id?: string;
 };
+
+/** Ledger column l2_schema, and the decision words mapped onto that column. */
+const L2_LEDGER = new Set(["match", "mismatch", "no_declaration", "not_checked"]);
+
+export function ledgerL2Word(status: string | null | undefined): string {
+  if (status === "conform") return "match";
+  if (status === "undeclared") return "no_declaration";
+  if (status && L2_LEDGER.has(status)) return status;
+  return "not_checked";
+}
+
+function payloadFlag(v: unknown): boolean | null {
+  if (v === true || v === false) return v;
+  if (v === "true" || v === "t") return true;
+  if (v === "false" || v === "f") return false;
+  return null;
+}
 
 export function formatSettledReceipt(
   row: ExportRow,
@@ -128,6 +174,11 @@ export function formatSettledReceipt(
   const httpStatus = Number.isInteger(http) && http > 0 ? http : null;
   const reading = typeof row.l2_reading === "string" && row.l2_reading !== "" ? row.l2_reading : "";
   const schema = typeof row.l2_schema === "string" && row.l2_schema !== "" ? row.l2_schema : "";
+  const heldReason = typeof row.held_reason === "string" ? row.held_reason.trim() : "";
+  const held = heldReason !== "";
+  const delivered =
+    !held &&
+    isDelivered({ status: "settled", httpStatusPaid: httpStatus, payloadNonEmpty: payloadFlag(row.payload_non_empty) });
   return {
     attemptedAt: row.attempted_at as string,
     date: at.date,
@@ -140,8 +191,10 @@ export function formatSettledReceipt(
     asset: settlementAssetOf(chain),
     amount,
     httpStatus,
-    delivered: httpStatus !== null && httpStatus >= 200 && httpStatus < 300,
-    l2: (reading || schema || "not_checked").replace(/_/g, " "),
+    delivered,
+    held,
+    endpointId: typeof row.endpoint_id === "string" ? row.endpoint_id : "",
+    l2: ledgerL2Word(reading || schema),
     settlementSource: typeof row.settlement_source === "string" ? row.settlement_source : "",
     tx,
     txShort: shortHash(tx),
@@ -192,7 +245,10 @@ async function loadLatestReceipt(): Promise<HomeReceipt | null> {
              pu.network,
              pu.spent_units::text AS spent_units,
              pu.tx_hash,
+             pu.endpoint_id::text AS endpoint_id,
              pu.http_status_paid::text AS http_status_paid,
+             pu.payload_non_empty,
+             (${sql.raw(heldReasonSql("pu"))}) AS held_reason,
              pu.l2_schema,
              (${sql.raw(settlementSourceSql("pu"))}) AS settlement_source,
              (${sql.raw(confirmedUnitsSql("pu"))}) AS confirmed_units,
@@ -232,6 +288,9 @@ async function loadLatestReceipt(): Promise<HomeReceipt | null> {
       confirmed_units: str(row.confirmed_units),
       tx_hash: str(row.tx_hash),
       http_status_paid: row.http_status_paid == null ? null : str(row.http_status_paid),
+      payload_non_empty: payloadFlag(row.payload_non_empty),
+      held_reason: row.held_reason == null ? null : str(row.held_reason),
+      endpoint_id: str(row.endpoint_id),
       l2_schema: l2Schema,
       l2_reading: l2Reading,
       settlement_source: row.settlement_source == null ? null : str(row.settlement_source),
@@ -246,11 +305,9 @@ async function loadLatestReceipt(): Promise<HomeReceipt | null> {
   );
 }
 
-async function loadDecision(url: string): Promise<HomeDecision | null> {
-  const resolved = await resolve(url);
-  const id = resolved.resource?.observatory_id;
-  if (!id) return null;
-  const loaded = await loadSellerFacts(id);
+async function loadDecision(endpointId: string): Promise<HomeDecision | null> {
+  if (!endpointId) return null;
+  const loaded = await loadSellerFacts(endpointId);
   if (!loaded) return null;
   const l1 = loaded.facts.l1;
   if (![l1.n_attempts, l1.n_settled, l1.n_delivered].every((n) => typeof n === "number" && Number.isFinite(n))) return null;
@@ -265,26 +322,29 @@ async function loadDecision(url: string): Promise<HomeDecision | null> {
       delivered: l1.n_delivered,
       windowDays: basis.window_days,
     },
-    l2: (loaded.facts.l2.status || "not_checked").replace(/_/g, " "),
+    l2: ledgerL2Word(loaded.facts.l2.status),
   };
 }
 
-async function loadHomeExample(): Promise<HomeExample | null> {
+/** Uncached read. A thrown decision read propagates, so the cache below does not store it. */
+export async function readHomeExample(): Promise<HomeExample | null> {
   const receipt = await loadLatestReceipt();
   if (!receipt) return null;
-  let decision: HomeDecision | null = null;
-  try {
-    decision = await loadDecision(receipt.url);
-  } catch (error) {
-    logServerErrorSafe("home_example_decision", error);
-    decision = null;
-  }
+  const decision = await loadDecision(receipt.endpointId);
   return { receipt, decision };
 }
 
-/** Same window as the other public HTML reads. A failed read is not cached, so the next render tries again. */
-export const getHomeExampleCached: () => Promise<HomeExample | null> = unstable_cache(
-  loadHomeExample,
-  ["home:example:v1"],
-  { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
-);
+const readHomeExampleCached = unstable_cache(readHomeExample, ["home:example:v2"], {
+  revalidate: PUBLIC_READ_REVALIDATE,
+  tags: ["observatory"],
+});
+
+/** Same window as the other public HTML reads. A thrown read is not cached. This catch turns it into null. */
+export async function getHomeExampleCached(): Promise<HomeExample | null> {
+  try {
+    return await readHomeExampleCached();
+  } catch (error) {
+    logServerErrorSafe("home_example_decision", error);
+    return null;
+  }
+}
