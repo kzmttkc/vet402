@@ -224,7 +224,7 @@ figcaption {
 .bg-brand-deep :focus-visible,
 .bg-zinc-900 :focus-visible,
 .bg-zinc-950 :focus-visible,
-.code-dark :focus-visible {
+.code-dark button:focus-visible {
   outline-color: #ffffff;
 }
 

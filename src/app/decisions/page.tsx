@@ -51,7 +51,7 @@ export default async function DecisionsPage() {
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
       <article className="sheet sheet-wide">
         <WideColumn />
-        <div className="doc-head doc-head-compact">
+        <div className="doc-head">
           <div className="doc-head-col">
             <span>Independent Measurement</span>
             <span>Register: pay-or-refuse decisions (last {DECISION_WINDOW_DAYS} days)</span>
