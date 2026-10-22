@@ -61,7 +61,7 @@ function ChainRow({ row, settled }: { row: SupportedChain; settled: number | nul
               )}
         </p>
         {row.kind === "lane" && settled !== null ? (
-          <p className="mt-2 text-[0.8125rem] text-brand-lift">
+          <p className="mt-2 text-[0.84375rem] text-brand-lift">
             Settled purchases on record: {settled.toLocaleString()}
           </p>
         ) : null}

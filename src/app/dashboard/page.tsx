@@ -74,20 +74,20 @@ export default function DashboardOverviewPage() {
             <p className="dash-caption">Monthly quota</p>
             <p className="mt-2 font-[family-name:var(--font-display)] text-[1.75rem] font-semibold tracking-tight text-zinc-900">
               {data.usage.count.toLocaleString()}
-              <span className="text-base font-normal text-zinc-500">
+              <span className="text-[1.0625rem] font-normal text-zinc-500">
                 {" "}
                 / {data.usage.limit.toLocaleString()}
               </span>
             </p>
           </div>
-          <p className="text-sm tabular-nums text-zinc-600">{usagePct}%</p>
+          <p className="text-[0.84375rem] tabular-nums text-zinc-600">{usagePct}%</p>
         </div>
         <div className="mt-4 h-1.5 overflow-hidden rounded-[2px] bg-zinc-100">
           <div className="h-full bg-brand-deep" style={{ width: `${usagePct}%` }} />
         </div>
         <p className="mt-3 text-xs text-zinc-600">Period: {data.usage.period}</p>
         {data.usage.remaining <= Math.max(50, Math.floor(data.usage.limit * 0.1)) && (
-          <p className="mt-3 text-sm text-zinc-700">
+          <p className="mt-3 text-[0.84375rem] text-zinc-700">
             Quota is running low.{" "}
             <Link href="/dashboard/billing" className="font-medium text-zinc-900 underline">
               Upgrade on Billing
@@ -102,22 +102,22 @@ export default function DashboardOverviewPage() {
       <dl className="dash-card grid gap-6 sm:grid-cols-3">
         <div>
           <dt className="dash-caption">Plan</dt>
-          <dd className="mt-2 text-lg font-semibold capitalize text-zinc-900">{data.plan}</dd>
-          <p className="mt-1 text-sm text-zinc-600">{data.apiKey?.name ?? "Unnamed key"}</p>
+          <dd className="mt-2 text-[1.0625rem] font-semibold capitalize text-zinc-900">{data.plan}</dd>
+          <p className="mt-1 text-[0.84375rem] text-zinc-600">{data.apiKey?.name ?? "Unnamed key"}</p>
         </div>
         <div>
           <dt className="dash-caption">Total lookups</dt>
-          <dd className="mt-2 text-lg font-semibold tabular-nums text-zinc-900">
+          <dd className="mt-2 text-[1.0625rem] font-semibold tabular-nums text-zinc-900">
             {data.totalQueries.toLocaleString()}
           </dd>
-          <p className="mt-1 text-sm text-zinc-600">All-time API queries</p>
+          <p className="mt-1 text-[0.84375rem] text-zinc-600">All-time API queries</p>
         </div>
         <div>
           <dt className="dash-caption">x402 settlements</dt>
-          <dd className="mt-2 text-lg font-semibold tabular-nums text-zinc-900">
+          <dd className="mt-2 text-[1.0625rem] font-semibold tabular-nums text-zinc-900">
             {data.settlementAttestations.toLocaleString()}
           </dd>
-          <p className="mt-1 text-sm text-zinc-600">Attestations from this key</p>
+          <p className="mt-1 text-[0.84375rem] text-zinc-600">Attestations from this key</p>
         </div>
       </dl>
 
@@ -125,25 +125,25 @@ export default function DashboardOverviewPage() {
         <p className="dash-caption">Next</p>
         <ul className="mt-4 divide-y divide-zinc-100">
           <li className="py-2.5 first:pt-0 last:pb-0">
-            <a className="text-sm text-zinc-900 underline" href="/dashboard/lookup">
+            <a className="text-[0.84375rem] text-zinc-900 underline" href="/dashboard/lookup">
               Lookup
             </a>
-            <span className="text-sm text-zinc-600"> — score a wallet from this session</span>
+            <span className="text-[0.84375rem] text-zinc-600"> — score a wallet from this session</span>
           </li>
           <li className="py-2.5 first:pt-0 last:pb-0">
-            <a className="text-sm text-zinc-900 underline" href="/dashboard/billing">
+            <a className="text-[0.84375rem] text-zinc-900 underline" href="/dashboard/billing">
               Billing
             </a>
-            <span className="text-sm text-zinc-600"> — raise the monthly quota</span>
+            <span className="text-[0.84375rem] text-zinc-600"> — raise the monthly quota</span>
           </li>
           <li className="py-2.5 first:pt-0 last:pb-0">
-            <a className="text-sm text-zinc-900 underline" href="/dashboard/integrations">
+            <a className="text-[0.84375rem] text-zinc-900 underline" href="/dashboard/integrations">
               Integrations
             </a>
-            <span className="text-sm text-zinc-600"> — REST, MCP, x402 middleware</span>
+            <span className="text-[0.84375rem] text-zinc-600"> — REST, MCP, x402 middleware</span>
           </li>
           <li className="py-2.5 first:pt-0 last:pb-0">
-            <a className="text-sm text-zinc-900 underline" href="/docs/api">
+            <a className="text-[0.84375rem] text-zinc-900 underline" href="/docs/api">
               API reference
             </a>
           </li>
@@ -172,7 +172,7 @@ function UsageHistoryChart({ history }: { history: { period: string; count: numb
               style={{ height: `${Math.max(4, Math.round((h.count / max) * 100))}%` }}
               title={`${h.period}: ${h.count.toLocaleString()} lookups`}
             />
-            <span className="text-[0.6875rem] text-zinc-500">{h.period.slice(5)}</span>
+            <span className="text-[0.75rem] text-zinc-500">{h.period.slice(5)}</span>
           </div>
         ))}
       </div>
@@ -193,16 +193,16 @@ function FirstCallGuide({ hasKey }: { hasKey: boolean }) {
   ${base}/payees/0xd8da6bf26964af9d7eed9e03e53415d37aa96045/score`;
   return (
     <div className="dash-card bg-zinc-900 p-6 text-zinc-100">
-      <p className="font-[family-name:var(--font-display)] text-sm font-semibold">
+      <p className="font-[family-name:var(--font-display)] text-[0.84375rem] font-semibold">
         Make your first score lookup
       </p>
-      <p className="mt-1 text-sm text-zinc-300">
+      <p className="mt-1 text-[0.84375rem] text-zinc-300">
         No lookups yet. Run one call and this panel is replaced by your live usage.
       </p>
       <pre className="mt-4 overflow-x-auto rounded-[2px] bg-black/50 p-4 text-xs text-zinc-100">
         <code>{curl}</code>
       </pre>
-      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-sm">
+      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-[0.84375rem]">
         {!hasKey && (
           <Link href="/dashboard/keys" className="text-white underline">
             Create an API key

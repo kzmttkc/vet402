@@ -80,7 +80,7 @@ export default function CodeBlock({
         // 枠の高さを top-1 + 44 = 48px 以上にしておく。
         // 2026-08-13 vet402: 地色を zinc-900 から brand-deep (#233456) へ。
         // 紙面に落ちる黒い箱は世界に無い。#eef0f3 on #233456 = 10.4:1。
-        className={`${styles.scroll} min-h-12 overflow-x-auto rounded-[2px] bg-brand-deep py-3 pl-3 pr-14 text-xs leading-relaxed text-ground focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-focus`}
+        className={`${styles.scroll} min-h-12 overflow-x-auto rounded-[2px] bg-brand-deep py-3 pl-3 pr-14 text-xs leading-[1.45] text-ground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white`}
       >
         <code>{code}</code>
       </pre>

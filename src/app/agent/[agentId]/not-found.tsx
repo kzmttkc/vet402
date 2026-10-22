@@ -27,7 +27,7 @@ export default function AgentNotFound() {
           </div>
         </div>
 
-        <h1 className="doc-title mt-10">That is not a valid agent id</h1>
+        <h1 className="doc-title mt-8">That is not a valid agent id</h1>
         <p className="mx-auto mt-3 max-w-[56ch] text-center text-brand-lift">
           An agent passport URL is an ERC-8004 agent id — a whole number, e.g.{" "}
           <code>/agent/42</code>.

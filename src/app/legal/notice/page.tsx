@@ -57,7 +57,7 @@ export default async function LegalNoticePage() {
 
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
-      <article className="sheet space-y-8 text-sm text-brand">
+      <article className="sheet space-y-8 text-[0.84375rem] text-brand">
         <script
           type="application/ld+json"
           nonce={nonce}
@@ -80,7 +80,7 @@ export default async function LegalNoticePage() {
           </div>
         </div>
         <div>
-          <h1 className="doc-title mt-10">Legal Notice</h1>
+          <h1 className="doc-title mt-8">Legal Notice</h1>
           <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
           <p className="doc-note mt-3 text-center">Last updated: September 29, 2026</p>
         </div>

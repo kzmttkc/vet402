@@ -70,18 +70,19 @@ test("proxy answers a malformed payee with 404 HTML before the page renders", as
   assert.notEqual(index.status, 404);
 });
 
-test("inputs under 640px use 16px, including the observatory fields", () => {
+test("inputs under 640px stay at least 16px, including the observatory fields", () => {
   const css = read("src/app/globals.css");
-  assert.match(css, /@media \(max-width: 639px\) \{\s*\.doc-input \{\s*font-size: 1rem;/);
+  // The type scale has no 16px step. 17px (--type-17) is the nearest step at or above 16px, so iOS still does not zoom.
+  assert.match(css, /@media \(max-width: 639px\) \{\s*\.doc-input \{\s*font-size: var\(--type-17\);/);
   assert.match(css, /\.site-menu:not\(\[open\]\) > nav \{\s*display: none;/);
   const header = read("src/components/site/SiteHeader.tsx");
   const mobileNav = header.slice(header.indexOf('aria-label="Mobile navigation"'), header.indexOf("</nav>", header.indexOf('aria-label="Mobile navigation"')));
   assert.doesNotMatch(mobileNav, /\bflex\b/, "display:flex on the details panel overrides the closed state");
   const observatory = read("src/app/observatory/page.tsx");
   const form = observatory.slice(observatory.indexOf('action="/observatory"'), observatory.indexOf("</form>"));
-  assert.match(form, /name="q"[\s\S]*max-sm:text-base/);
-  assert.match(form, /name="verdict"[\s\S]*max-sm:text-base/);
-  assert.match(form, /name="network"[\s\S]*max-sm:text-base/);
+  assert.match(form, /name="q"[\s\S]*max-sm:text-\[1\.0625rem\]/);
+  assert.match(form, /name="verdict"[\s\S]*max-sm:text-\[1\.0625rem\]/);
+  assert.match(form, /name="network"[\s\S]*max-sm:text-\[1\.0625rem\]/);
   const playground = read("src/app/playground/playground-client.tsx");
   assert.match(playground, /className="doc-input mt-1 w-full"/);
   assert.match(playground, /className="doc-input shrink-0/);

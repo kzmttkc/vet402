@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-22 Public type scale, tap size, and a richer first page
+
+- **What**: Public type now steps at 12, 13.5, 15, 17, 20, 28, 44 and 64 px. Body stays 15px on a small screen. Table headers are 12px. Section headings share one size and a 64px gap. Focus is a 2px navy outline offset 2px. The same outline is paper white on a navy surface. Figure 1 draws lines 1 to 5 in 1.6 seconds. Reduced motion shows the finished figure. The ledger sentence and each chain row carry a thin share rule. Answered 2xx is solid. The rest is a hatch in the same navy. The receipt gains a perforation and a SETTLED mark. Up to five newest settled purchases from the same one day export window sit under the receipt.
+- **Why**: The owner asked for type, tap size, overflow, and a richer first page inside the RFC paper world.
+- **Impact**: Inputs on a small screen are 17px, so iOS still does not zoom. `/ethonline`, `/tokyo`, `/rwa`, and `AI_USAGE.md` are untouched. Receipt words and the delivered judgment are unchanged.
+
 ## 2026-10-22 Home: direction C is the front page
 
 - **What**: `/` now opens on the direction C screen. A bibliographic line, the heading, Figure 1, and the seller-domain check sit above a ledger sentence whose numbers come from the cached observatory read. When the last day of the public export has a settled row, that purchase is printed once as a paper receipt. The chain table adds a Paid, no 2xx column (settled minus delivered on that chain). The three definition rows, the two entries, the memo from the RFC header down, the three JSON-LD blocks, and the existing click names stay.

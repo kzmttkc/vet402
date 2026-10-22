@@ -229,7 +229,7 @@ export default async function Home() {
       {/* max-sm:py-5 — 紙の天地の余白だけ 32px → 20px。.sheet 自体（全ページ共通）
           は触らず、この1枚にだけ当てている。lg では案 C の 1200px 幅に合わせ、
           ヘッダの列幅（--column）もこの頁だけ同じにする。 */}
-      <article className="sheet max-w-[1200px] max-sm:py-5">
+      <article className="sheet max-w-[1200px] max-sm:py-4">
         <style>{`@media (min-width: 1024px) { :root { --column: 1200px; } }`}</style>
         {/* 2026-10-22 オーナー決定（案 C）: 第 1 画面は見出しと Figure 1、右に check。
             書誌欄・Abstract・#gap 以降は下に残す。ETHOnline の導線も書誌欄に残る。 */}
@@ -241,7 +241,7 @@ export default async function Home() {
         />
 
         {/* 2026-09-29 ペルソナ監査: 初見が掴む 3 点。文言は据え置き。2 列の直下。 */}
-        <dl className="mx-auto mt-10 grid max-w-[62ch] gap-1 text-sm text-brand sm:grid-cols-[max-content_1fr] sm:gap-x-3">
+        <dl className="mx-auto mt-8 grid max-w-[62ch] gap-1 text-[0.84375rem] text-brand sm:grid-cols-[max-content_1fr] sm:gap-x-4">
           <dt className="font-semibold">What this is</dt>
           <dd>x402 is how an agent pays an API. vet402 buys from those APIs itself and publishes whether what was paid for arrived.</dd>
           <dt className="font-semibold">What you give us</dt>
@@ -320,7 +320,7 @@ export default async function Home() {
           </div>
         </div>
 
-        <p className="mx-auto mt-4 max-w-[52ch] text-center text-brand-lift max-sm:leading-[1.5] sm:mt-6">
+        <p className="mx-auto mt-4 max-w-[52ch] text-center text-brand-lift sm:mt-6">
           We buy. We settle. We publish the measurements.
         </p>
 
@@ -340,7 +340,7 @@ export default async function Home() {
 
         <div className="mt-2 flex flex-col gap-0.5 sm:mt-5 sm:flex-row sm:gap-0">
           <p className="shrink-0 text-brand-deep sm:w-[10ch]">Abstract</p>
-          <p className="min-w-0 max-w-[62ch] text-brand max-sm:leading-[1.5]">
+          <p className="min-w-0 max-w-[62ch] text-brand">
             {/* 引用符は straight。RFC の原典はプレーンテキストで、curly quote は
                 存在しない。/faq と /legal も straight で統一されている。
 
@@ -589,7 +589,7 @@ export default async function Home() {
               <dt className="font-[family-name:var(--font-display)] font-semibold text-brand-deep">
                 {row.level} {row.name}
               </dt>
-              <dd className="mt-2 space-y-1 text-[0.8125rem] text-brand">
+              <dd className="mt-2 space-y-1 text-[0.84375rem] text-brand">
                 <p>{row.question}</p>
                 <p className="text-brand-lift">How: {row.how}</p>
                 <p className="text-brand-deep">Output: {row.output}</p>
@@ -807,7 +807,7 @@ export default async function Home() {
               <>
                 An x402 middleware package, a REST API, and an MCP tool that answers the question a
                 spending agent should ask before it pays.
-                <span className="mt-3 block text-[0.8125rem] text-brand-lift">
+                <span className="mt-3 block text-[0.84375rem] text-brand-lift">
                   On npm:{" "}
                   <code className="break-all text-brand-deep">npm i @vet402/sdk</code>,{" "}
                   <code className="break-all text-brand-deep">@vet402/middleware</code>,{" "}
@@ -875,7 +875,7 @@ export default async function Home() {
               <>
                 Verification records will be written to the ERC-8004 Validation Registry, which is
                 nearly unused so far and holds nothing from vet402.
-                <span className="mt-3 block text-[0.8125rem] text-brand-lift">
+                <span className="mt-3 block text-[0.84375rem] text-brand-lift">
                   {/* 2026-09-03: 8/21 以来 14 件が失敗し続けた理由を、事実として出す。
                       小さく弱みとして書くのではなく、仕様がそうなっているという測定結果として。 */}
                   Why it has not happened yet, stated plainly: the registry is written in one
@@ -928,7 +928,7 @@ export default async function Home() {
           <span className="sec-no">B.</span>
           <span>References</span>
         </h2>
-        <dl className="mt-6 space-y-5 text-[0.8125rem]">
+        <dl className="mt-6 space-y-5 text-[0.84375rem]">
           <div id="ref-arxiv" className="flex flex-col gap-1 sm:flex-row sm:gap-4">
             <dt className="shrink-0 text-brand-deep sm:w-[16ch]">[ARXIV-2606]</dt>
             <dd className="min-w-0 max-w-[58ch] text-brand">

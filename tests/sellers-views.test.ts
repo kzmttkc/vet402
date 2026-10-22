@@ -568,5 +568,6 @@ test("売り手一覧は 640px 未満でラベル付きのカードになり、�
   assert.match(html, /<ul[^>]*class="[^"]*sm:hidden/);
   assert.match(html, /<dt[^>]*>Seller&#x27;s side \(attribution under review\)<\/dt>/, "2026-10-21 A-17: 一覧のカードも見直し中と言う");
   assert.match(html, /<div class="hidden sm:block">/);
-  assert.match(html, /<input[^>]*class="[^"]*text-base[^"]*"[^>]*name="q"/, "iOS の自動拡大を避ける 16px");
+  const search = html.match(/<input\b[^>]*name="q"[^>]*>/)?.[0] ?? "";
+  assert.match(search, /text-\[1\.0625rem\]/, "iOS の自動拡大を避ける。階段に 16px は無いので 17px");
 });

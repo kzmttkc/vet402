@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Mark402 } from "@/components/site/Mark402";
-import { fmt, utc, type HomeReceipt } from "@/lib/observatory/home-example";
+import { deliveredLine, fmt, utc, type HomeReceipt } from "@/lib/observatory/home-example";
 import { SITE_URL } from "@/lib/site-url";
 
 const DISPLAY = "font-[family-name:var(--font-display)]";
@@ -13,15 +13,9 @@ function Corner({ className }: { className: string }) {
   );
 }
 
-/** A 202 or an empty 2xx body is a 2xx that isDelivered does not count, so "no 2xx" would be false there. A 202 is undecided (WARN in delivery.ts), so it is not a no. */
-function notDeliveredWord(http: number | null): string {
-  if (http === 202) return "not confirmed, 202 accepted";
-  if (http !== null && http >= 200 && http < 300) return "no, empty body";
-  return "no 2xx";
-}
-
 export function ReceiptSlip({ receipt }: { receipt: HomeReceipt }) {
   const r = receipt;
+  const delivered = deliveredLine(r);
   const rows: { k: string; v: React.ReactNode; strong?: boolean }[] = [
     {
       k: "Endpoint",
@@ -41,8 +35,8 @@ export function ReceiptSlip({ receipt }: { receipt: HomeReceipt }) {
     { k: "HTTP after payment", v: r.httpStatus ?? "none" },
     {
       k: "Delivered",
-      v: r.held ? "held, inconclusive" : r.delivered ? "yes, 2xx" : notDeliveredWord(r.httpStatus),
-      strong: !r.held && r.httpStatus !== 202,
+      v: delivered.text,
+      strong: delivered.strong,
     },
     { k: "Against declaration", v: r.l2 },
     {
@@ -58,7 +52,7 @@ export function ReceiptSlip({ receipt }: { receipt: HomeReceipt }) {
   ];
   const reproduce = `curl -sL "${SITE_URL}/api/v1/observatory/export.csv?days=1" | grep ${r.purchaseId.slice(0, 8)}`;
   return (
-    <figure aria-labelledby="receipt-title" className="relative mt-16 min-w-0 border-y border-dashed border-brand-deep px-1 py-6 sm:mt-20 sm:px-5">
+    <figure aria-labelledby="receipt-title" className="slip relative mt-16 min-w-0 border-y border-dashed border-brand-deep px-4 py-6 sm:px-6">
       <Corner className="-left-1.5 -top-1.5" />
       <Corner className="-right-1.5 -top-1.5" />
       <Corner className="-bottom-1.5 -left-1.5" />
@@ -68,15 +62,32 @@ export function ReceiptSlip({ receipt }: { receipt: HomeReceipt }) {
           <p id="receipt-title" className={`${DISPLAY} text-[1.0625rem] font-semibold text-brand-deep`}>
             One purchase
           </p>
-          <p className="mt-1 text-[0.8125rem] text-brand-lift">
+          <p className="mt-1 text-[0.84375rem] text-brand-lift">
             <time dateTime={r.attemptedAt}>
               {r.date} {r.time} UTC
             </time>
           </p>
         </div>
-        <Mark402 className="h-auto w-11 shrink-0" />
+        <div className="flex shrink-0 items-center gap-3">
+          <svg aria-hidden="true" viewBox="0 0 88 32" className="h-8 w-auto -rotate-[4deg] text-brand-deep">
+            <rect x="1" y="1" width="86" height="30" fill="none" stroke="currentColor" strokeWidth="1.25" />
+            <rect x="3.5" y="3.5" width="81" height="25" fill="none" stroke="currentColor" strokeWidth="0.6" />
+            <text
+              x="44"
+              y="21"
+              textAnchor="middle"
+              fill="currentColor"
+              fontSize="12"
+              letterSpacing="1.4"
+              style={{ fontFamily: "var(--font-display), ui-monospace, monospace" }}
+            >
+              SETTLED
+            </text>
+          </svg>
+          <Mark402 className="h-auto w-11 shrink-0" />
+        </div>
       </div>
-      <dl className="mt-5 border-t border-dashed border-brand-mist text-[0.8125rem] leading-[1.55] sm:text-[0.875rem]">
+      <dl className="mt-6 border-t border-dashed border-brand-mist text-[0.84375rem] leading-[1.45]">
         {rows.map((row) => (
           <div key={row.k} className="grid grid-cols-[9.5rem_minmax(0,1fr)] gap-3 border-b border-hair py-2 max-sm:grid-cols-[7.5rem_minmax(0,1fr)]">
             <dt className="text-brand-lift">{row.k}</dt>
@@ -84,7 +95,7 @@ export function ReceiptSlip({ receipt }: { receipt: HomeReceipt }) {
           </div>
         ))}
       </dl>
-      <p className="mt-5 text-[0.75rem] uppercase tracking-[0.18em] text-brand-lift">Reproduce this line</p>
+      <p className="mt-6 text-[0.75rem] uppercase tracking-[0.18em] text-brand-lift">Reproduce this line</p>
       <pre
         tabIndex={0}
         aria-label="Command that prints this purchase from the public export"
@@ -92,7 +103,7 @@ export function ReceiptSlip({ receipt }: { receipt: HomeReceipt }) {
       >
         <code>{reproduce}</code>
       </pre>
-      <figcaption className="doc-note mt-5 border-t border-dashed border-brand-mist pt-4">
+      <figcaption className="doc-note mt-6 border-t border-dashed border-brand-mist pt-4">
         Rule: the settled purchase with the latest time in the public export of the last day. It is 1 of{" "}
         {fmt(r.windowSettled)} settled in {fmt(r.windowRows)} rows from {utc(r.windowFrom, false)} to {utc(r.windowTo, false)} UTC.
         {r.chain === "Base" ? (

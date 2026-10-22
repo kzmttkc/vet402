@@ -99,7 +99,7 @@ export default async function BlogPostPage({
           </div>
         </div>
 
-        <h1 className="doc-title mt-10">{post.title}</h1>
+        <h1 className="doc-title mt-8">{post.title}</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 
         {post.editorsNote ? (
@@ -114,7 +114,7 @@ export default async function BlogPostPage({
           ))}
         </div>
 
-        <p className="mt-10 text-[0.8125rem]">
+        <p className="mt-10 text-[0.84375rem]">
           <Link href="/blog" className="doc-link">
             All posts
           </Link>

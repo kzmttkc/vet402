@@ -24,7 +24,7 @@ function VerdictMark({ status }: { status: string }) {
 
 function ResultLine({ k, children }: { k: string; children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-3 border-t border-white/15 py-2.5 sm:grid-cols-[9rem_minmax(0,1fr)]">
+    <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-3 border-t border-white/15 py-3 sm:grid-cols-[9rem_minmax(0,1fr)]">
       <dt className="text-white/70">{k}</dt>
       <dd className="min-w-0 text-white">{children}</dd>
     </div>
@@ -37,15 +37,15 @@ export function CheckPanel({ example }: { example: HomeExample | null }) {
   return (
     <section
       aria-labelledby="check-title"
-      className="min-w-0 bg-brand-deep text-[0.8125rem] leading-[1.6] text-white selection:bg-paper selection:text-brand-deep sm:text-[0.875rem]"
+      className="min-w-0 bg-brand-deep text-[0.84375rem] leading-[1.65] text-white selection:bg-paper selection:text-brand-deep"
     >
-      <div className="flex items-baseline justify-between gap-4 border-b border-white/15 px-5 py-3 sm:px-6">
+      <div className="flex items-baseline justify-between gap-4 border-b border-white/15 px-4 py-3 sm:px-6">
         <h2 id="check-title" className={`${DISPLAY} text-[0.9375rem] font-semibold`}>
           vet402 check
         </h2>
         <p className="text-[0.75rem] text-white/70">Public, no account</p>
       </div>
-      <form method="get" action="/sellers" role="search" className="px-5 pt-5 sm:px-6">
+      <form method="get" action="/sellers" role="search" className="px-4 pt-6 sm:px-6">
         <label htmlFor="home-seller-q" className="text-[0.75rem] uppercase tracking-[0.18em] text-white/70">
           Seller domain
         </label>
@@ -60,11 +60,11 @@ export function CheckPanel({ example }: { example: HomeExample | null }) {
             autoComplete="off"
             autoCapitalize="none"
             spellCheck={false}
-            className="min-w-0 rounded-[2px] border border-white/40 bg-transparent px-3 py-2.5 text-base text-white caret-white placeholder:text-white/60 focus-visible:border-white sm:flex-1"
+            className="min-h-11 min-w-0 rounded-[2px] border border-white/40 bg-transparent px-3 py-3 text-[1.0625rem] text-white caret-white placeholder:text-white/60 focus-visible:border-white sm:flex-1"
           />
           <button
             type="submit"
-            className={`${DISPLAY} rounded-[2px] bg-paper px-6 py-2.5 text-[0.9375rem] font-semibold text-brand-deep transition-[background-color] hover:bg-ground`}
+            className={`${DISPLAY} inline-flex min-h-11 items-center justify-center rounded-[2px] bg-paper px-6 py-3 text-[0.9375rem] font-semibold text-brand-deep underline decoration-transparent decoration-1 underline-offset-[0.22em] hover:decoration-2 hover:decoration-brand-deep`}
           >
             Check a seller
           </button>
@@ -93,7 +93,7 @@ export function CheckPanel({ example }: { example: HomeExample | null }) {
       </form>
 
       {r ? (
-        <div className="mt-6 border-t border-dashed border-white/40 px-5 pb-6 pt-5 sm:px-6">
+        <div className="mt-6 border-t border-dashed border-white/40 px-4 pb-6 pt-6 sm:px-6">
           <p className="text-[0.75rem] uppercase tracking-[0.18em] text-white/70">Example result</p>
           <p className="mt-1 text-[0.75rem] text-white/70">The latest settled purchase in the public export of the last day.</p>
           <dl className="mt-4">
@@ -135,7 +135,7 @@ export function CheckPanel({ example }: { example: HomeExample | null }) {
                 href={`/observatory/e/${decision.observatoryId}`}
                 event="lp_cta_click"
                 props={{ position: "hero_example_record" }}
-                className="underline decoration-white/40 underline-offset-[0.22em] hover:decoration-white"
+                className="underline decoration-1 decoration-white/40 underline-offset-[0.22em] hover:decoration-2 hover:decoration-white"
               >
                 Open this endpoint&apos;s record
               </TrackedLink>

@@ -74,7 +74,7 @@ export default function PlaygroundClient({ candidates }: { candidates: Playgroun
     <div className="mt-8">
       <p className="doc-caption">1. Pick a listed endpoint</p>
       <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
-        <label className="block min-w-0 flex-1 text-[0.8125rem]">
+        <label className="block min-w-0 flex-1 text-[0.84375rem]">
           <span className="doc-caption block">Endpoint (from the live catalog)</span>
           <select
             className="doc-input mt-1 w-full"
@@ -128,7 +128,7 @@ export default function PlaygroundClient({ candidates }: { candidates: Playgroun
       )}
       {state.phase === "done" && "ok" in state.result && (
         <div className="mt-3" aria-live="polite">
-          <table className="w-full max-w-[62ch] border-t border-brand-deep text-[0.8125rem]">
+          <table className="w-full max-w-[62ch] border-t border-brand-deep text-[0.84375rem]">
             <tbody>
               <tr className="border-b border-brand-lift/40">
                 <td className="py-1.5 pr-4 text-brand-lift">Verdict (L0)</td>
@@ -170,7 +170,7 @@ export default function PlaygroundClient({ candidates }: { candidates: Playgroun
               )}
             </tbody>
           </table>
-          <p className="mt-2 max-w-[62ch] text-[0.8125rem] text-brand-lift">
+          <p className="mt-2 max-w-[62ch] text-[0.84375rem] text-brand-lift">
             Measured in {(state.elapsedMs / 1000).toFixed(1)}s against the live endpoint.{" "}
             unverified means vet402 does not have grounds to publish either pass or fail yet. It is not a failure and is never counted as one: it is an entry not yet reached by the rolling schedule, an entry whose failing probe has not met the publication gate, an entry recorded as path_template, or the remainder after the three above. The remainder includes a latest reason of rate_limited, tls, request_shape, or unsafe_target. It also includes a latest reason of method_undeclared, for which no request was sent before 2026-09-02, and body_over_cap, for which a 402 came back and the body was not read to the end. A listing that declares no HTTP method, or a method other than GET, POST, HEAD, or DELETE, is measured with GET, and two consecutive failures of that probe can be published as fail. This demo is not written into the public register.
           </p>

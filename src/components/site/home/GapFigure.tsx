@@ -44,7 +44,7 @@ export function GapFigure({ id, className = "", compact = false }: Props) {
         x={x}
         y={28}
         fill={NAVY}
-        fontSize={14}
+        fontSize={13.5}
         fontWeight={600}
         textAnchor="middle"
         style={{ fontFamily: "var(--font-martian), ui-monospace, monospace" }}
@@ -53,8 +53,10 @@ export function GapFigure({ id, className = "", compact = false }: Props) {
       </text>
     </g>
   );
-  const msg = (from: number, to: number, y: number, dashed = false, color = NAVY) => (
+  const msg = (n: number, from: number, to: number, y: number, dashed = false, color = NAVY) => (
     <line
+      className={`gap-line gap-line-${n}`}
+      pathLength={dashed ? undefined : 1}
       x1={from}
       y1={y}
       x2={to + (to > from ? -2 : 2)}
@@ -101,17 +103,17 @@ export function GapFigure({ id, className = "", compact = false }: Props) {
       {box(cx, 64, "Chain")}
 
       {label((ax + px) / 2, rows[0] - 8, "1  request")}
-      {msg(ax, px, rows[0])}
+      {msg(1, ax, px, rows[0])}
       {label((ax + px) / 2, rows[1] - 8, "2  402 Payment Required")}
-      {msg(px, ax, rows[1])}
+      {msg(2, px, ax, rows[1])}
       {label((ax + px) / 2, rows[2] - 8, "3  retry, paid")}
-      {msg(ax, px, rows[2])}
+      {msg(3, ax, px, rows[2])}
       {label((px + cx) / 2, rows[3] - 8, "4  settle")}
-      {msg(px, cx, rows[3])}
+      {msg(4, px, cx, rows[3])}
       {label(cx - 8, rows[3] + 22, "tx on chain", { anchor: "end", fill: NAVY })}
       {label(cx - 8, rows[3] + 41, "proof of payment", { anchor: "end", fill: NAVY })}
       {label((ax + px) / 2, rows[4] - 8, "5  response ?")}
-      {msg(px, ax, rows[4], true, BLOCK)}
+      {msg(5, px, ax, rows[4], true, BLOCK)}
       {label(ax + 8, rows[4] + 24, "proof of delivery: none", { anchor: "start", fill: BLOCK })}
     </svg>
   );

@@ -32,7 +32,7 @@ export default function PartnersClient() {
   }
   return (
     <div className="mt-6 flex max-w-[62ch] flex-col gap-3">
-      <label className="block text-[0.8125rem]">
+      <label className="block text-[0.84375rem]">
         <span className="doc-caption block">Email</span>
         <input
           type="email"
@@ -42,7 +42,7 @@ export default function PartnersClient() {
           placeholder="you@project.xyz"
         />
       </label>
-      <label className="block text-[0.8125rem]">
+      <label className="block text-[0.84375rem]">
         <span className="doc-caption block">Interest</span>
         <select className="doc-input mt-1" value={interest} onChange={(e) => setInterest(e.target.value)}>
           <option value="design_partner">Design partner (agent builder / endpoint operator)</option>
@@ -50,7 +50,7 @@ export default function PartnersClient() {
           <option value="other">Other</option>
         </select>
       </label>
-      <label className="block text-[0.8125rem]">
+      <label className="block text-[0.84375rem]">
         <span className="doc-caption block">What are you building? (optional)</span>
         <input
           type="text"
@@ -69,7 +69,7 @@ export default function PartnersClient() {
         {state === "sending" ? "Recording…" : "Join the list"}
       </button>
       {state === "error" && (
-        <p className="text-[0.8125rem] font-semibold text-brand-deep" aria-live="polite">
+        <p className="text-[0.84375rem] font-semibold text-brand-deep" aria-live="polite">
           Could not record that — check the email format and retry.
         </p>
       )}

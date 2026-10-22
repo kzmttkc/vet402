@@ -138,7 +138,7 @@ test("A3・C9・C13・C14: 帯の印・カード・行ごとの異議（購入�
   assert.doesNotMatch(html1, /<table/, "売り手頁の出品は表でなくカード");
   assert.match(html1, /href="\/observatory\/e\/a\?purchase=2026-09-20T12%3A00%3A00Z#dispute"/);
   assert.match(html1, /Dispute this purchase/);
-  assert.match(html1, /class="inline-flex min-h-6 items-center underline"[^>]*>Dispute this purchase/);
+  assert.match(html1, /class="inline-flex min-h-11 items-center underline decoration-1 hover:decoration-2"[^>]*>Dispute this purchase/);
   assert.match(html1, /Dispute this record<\/a>/, "「Dispute this record」はリンク");
   const twice = buildSellerDetail(
     "s.example",

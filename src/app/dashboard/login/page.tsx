@@ -39,6 +39,7 @@ function LoginForm({ redirectError }: { redirectError: string | null }) {
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (loading) return;
     setLoading(true);
     setError(null);
 
@@ -86,13 +87,13 @@ function LoginForm({ redirectError }: { redirectError: string | null }) {
       <form
         action={loginAction}
         onSubmit={onSubmit}
-        className="dash-card w-full max-w-md space-y-5 p-8"
+        className="dash-card w-full max-w-md space-y-6 p-8"
       >
         <div>
           {/* 2026-08-12 FIX-8: このページは <nav> も <footer> も無く、リンクは
               /signup の1本だけ。「Vouch」も非リンクだったので、キーを持たない
               訪問者はブラウザバック以外にサイトへ戻る手段が無かった。 */}
-          <Link href="/" className="inline-block">
+          <Link href="/" className="inline-flex h-11 items-center">
             <Wordmark className="text-[1.0625rem] leading-none" />
           </Link>
           <h1 className="dash-title mt-3">Sign in</h1>
@@ -113,10 +114,9 @@ function LoginForm({ redirectError }: { redirectError: string | null }) {
         {/* 2026-08-12: 枠線を zinc-300 → zinc-500 にした（下の signup と同じ是正）。
             ここだけ持っていた `outline-none focus:border-zinc-500` も外した。地色が
             zinc-500 になった時点で focus 時の枠色変化は差分ゼロの死んだ指定になり、
-            フォーカス表示は globals.css の :focus-visible（シアン 2px・白地 3.68:1）が
-            実際に描画している側なので、他の入力欄と同じ挙動へ揃う。実測で確認済み
-            （Tab 移動時 outline: solid 2px rgb(8,145,178)）。 */}
-        <label className="block space-y-1 text-sm">
+            フォーカス表示は globals.css の :focus-visible（navy 2px・offset 2px。
+            紺地の上だけ白）が実際に描画している側なので、他の入力欄と同じ挙動へ揃う。 */}
+        <label className="block space-y-2 text-[0.84375rem]">
           <span className="font-medium text-zinc-700">API key</span>
           <input
             type="password"
@@ -127,24 +127,27 @@ function LoginForm({ redirectError }: { redirectError: string | null }) {
             placeholder="vouch_live_..."
             className="dash-input"
             required
+            aria-invalid={shownError ? true : undefined}
+            aria-describedby={shownError ? "login-error" : undefined}
           />
         </label>
 
         {shownError && (
-          <p role="alert" className="dash-alert dash-alert-error">
+          <p id="login-error" role="alert" className="dash-alert dash-alert-error">
             {dashboardErrorMessage(shownError)}
           </p>
         )}
 
         <button
           type="submit"
-          disabled={loading}
+          aria-disabled={loading || undefined}
+          aria-busy={loading || undefined}
           className={buttonClass({ className: "w-full" })}
         >
           {loading ? "Signing in..." : "Continue"}
         </button>
 
-        <p className="text-center text-sm text-zinc-600">
+        <p className="text-center text-[0.84375rem] text-zinc-600">
           No account?{" "}
           <a href="/signup" className="font-medium text-zinc-900 underline">
             Sign up free

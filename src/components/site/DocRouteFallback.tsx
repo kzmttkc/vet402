@@ -17,8 +17,8 @@ export function DocErrorPanel({
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
       <div className="sheet">
         <div className="doc-error-panel" role="alert">
-          <p className="doc-title !text-lg">Could not load {title}</p>
-          <p className="mt-3 text-[0.8125rem]">
+          <p className="doc-title !text-[1.0625rem]">Could not load {title}</p>
+          <p className="mt-3 text-[0.84375rem]">
             This is a fault on our side, not with your input or connection.
           </p>
           {error.digest ? (
@@ -27,7 +27,7 @@ export function DocErrorPanel({
           <button
             type="button"
             onClick={reset}
-            className="mt-5 border border-current px-4 py-2 text-[0.8125rem] font-semibold uppercase tracking-wide hover:bg-white"
+            className="mt-5 border border-current px-4 py-2 text-[0.84375rem] font-semibold uppercase tracking-wide hover:bg-white"
           >
             Try again
           </button>

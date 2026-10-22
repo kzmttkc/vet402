@@ -125,7 +125,7 @@ export default async function StatusPage() {
           </div>
         </div>
 
-        <h1 className="doc-title mt-10">Status</h1>
+        <h1 className="doc-title mt-8">Status</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 
         <div className="mt-8 flex flex-col gap-1 sm:flex-row sm:gap-0">

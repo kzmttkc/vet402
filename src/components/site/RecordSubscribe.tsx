@@ -128,7 +128,7 @@ export default function RecordSubscribe({
           nothing else goes out until you confirm.
         </p>
       ) : null}
-      <div className="text-[0.8125rem]">
+      <div className="text-[0.84375rem]">
         <label htmlFor={`${uid}-email`} className="block">
           <span className="doc-caption block">Email</span>
         </label>
@@ -154,7 +154,7 @@ export default function RecordSubscribe({
         ) : null}
       </div>
       {kind === "dispute" ? (
-        <div className="text-[0.8125rem]">
+        <div className="text-[0.84375rem]">
           <label htmlFor={`${uid}-reason`} className="block">
             <span className="doc-caption block">What is wrong with this record</span>
           </label>
@@ -213,7 +213,7 @@ export default function RecordSubscribe({
         </button>
       </div>
       {/* live 領域は常に置き、中身だけ替える（出てから live になるのでは読まれない）。 */}
-      <p className="text-[0.8125rem] font-semibold text-brand-deep empty:sr-only" role="status">
+      <p className="text-[0.84375rem] font-semibold text-brand-deep empty:sr-only" role="status">
         {state === "error" && error ? error : null}
       </p>
     </form>

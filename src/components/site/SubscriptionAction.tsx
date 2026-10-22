@@ -83,7 +83,7 @@ export default function SubscriptionAction({ mode }: { mode: "confirm" | "unsubs
         </button>
       </div>
       {state === "error" && error ? (
-        <p className="text-[0.8125rem] font-semibold text-brand-deep" aria-live="polite">
+        <p className="text-[0.84375rem] font-semibold text-brand-deep" aria-live="polite">
           {error}
         </p>
       ) : null}

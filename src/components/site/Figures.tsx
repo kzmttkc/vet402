@@ -12,7 +12,7 @@
  * すべて SVG の属性で描く（CSS 変更なし。Turbopack のグローバル CSS 事故を避ける）。
  */
 import type { ReactNode } from "react";
-import { shareSegments, gaugeCells, timelinePositions, funnelWidths, timelineLanes } from "@/lib/figures/share";
+import { shareSegments, gaugeCells, timelinePositions, funnelWidths, timelineLanes, ratioParts } from "@/lib/figures/share";
 
 export type L0Verdict = "pass" | "fail" | "unverified";
 
@@ -123,7 +123,7 @@ export function VerdictShareBar({
         )}
         <rect x="0" y="0.5" width="100%" height="9" fill="none" stroke={INK} strokeWidth="1" />
       </svg>
-      <p className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[0.8125rem]">
+      <p className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[0.84375rem]">
         {segs.map((s) => {
           const isActive = active === s.key;
           return (
@@ -131,7 +131,7 @@ export function VerdictShareBar({
               key={s.key}
               href={hrefs[s.key]}
               aria-current={isActive ? "true" : undefined}
-              className={`inline-flex items-center gap-1.5 whitespace-nowrap tabular-nums underline ${isActive ? "text-brand-deep decoration-2" : "text-brand hover:text-brand-deep hover:decoration-2"}`}
+              className={`inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap tabular-nums underline decoration-1 hover:decoration-2 ${isActive ? "text-brand-deep decoration-2" : "text-brand hover:text-brand-deep"}`}
             >
               <VerdictMark verdict={s.key} />
               {s.key} {s.n.toLocaleString()}
@@ -256,7 +256,7 @@ export function FunnelFigure({ n, stages, caption }: { n: number; stages: readon
     <Figure n={n} caption={caption}>
       <div className="flex flex-col gap-2">
         {stages.map((s, i) => (
-          <div key={s.label} className="flex items-center gap-3 text-[0.8125rem]">
+          <div key={s.label} className="flex items-center gap-3 text-[0.84375rem]">
             <span className="w-[15ch] shrink-0 text-brand sm:w-[28ch]">
               {s.href ? <a href={s.href} className="underline">{s.label}</a> : s.label}
             </span>
@@ -272,5 +272,26 @@ export function FunnelFigure({ n, stages, caption }: { n: number; stages: readon
         ))}
       </div>
     </Figure>
+  );
+}
+
+/**
+ * Thin ratio. Solid is answered 2xx (`part` of `whole`). The rest is a navy hatch.
+ * No bar when the ratio is not a number.
+ */
+export function ShareRule({ id, part, whole, label }: { id: string; part: number; whole: number; label: string }) {
+  const parts = ratioParts(part, whole);
+  if (!parts) return null;
+  const hatch = `${id}-hatch`;
+  return (
+    <svg viewBox="0 0 100 6" preserveAspectRatio="none" width="100%" height="6" role="img" aria-label={label} className="mt-2 block">
+      <defs>
+        <pattern id={hatch} width="4" height="4" patternUnits="userSpaceOnUse">
+          <path d="M-1 1 L1 -1 M0 4 L4 0 M3 5 L5 3" stroke={INK} strokeWidth="0.7" />
+        </pattern>
+      </defs>
+      <rect x="0" y="0" width="100" height="6" fill={`url(#${hatch})`} />
+      <rect x="0" y="0" width={parts.solidPct} height="6" fill={INK} />
+    </svg>
   );
 }

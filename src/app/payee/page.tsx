@@ -187,13 +187,13 @@ export default async function PayeeIndexPage({
           </div>
 
           {empty ? (
-            <p id="address-error" role="alert" className="mt-3 text-[0.8125rem] text-brand-deep">
+            <p id="address-error" role="alert" className="field-error">
               Nothing was submitted &mdash; the address field was empty. Enter a Base address:{" "}
               <code>0x</code> followed by 40 hexadecimal characters, 42 characters in total. The
               field is focused, or pick one of the examples below.
             </p>
           ) : invalid ? (
-            <p id="address-error" role="alert" className="mt-3 text-[0.8125rem] text-brand-deep">
+            <p id="address-error" role="alert" className="field-error">
               That is not a Base address. An address is <code>0x</code> followed by 40 hexadecimal
               characters &mdash; 42 characters in total. You entered {submitted.length}.
             </p>
@@ -214,7 +214,7 @@ export default async function PayeeIndexPage({
           {/* .doc-caption は line-height:1 なので、375px で2行に折れると行が
               重なって見える。1行に収まる長さにしてある。 */}
           <p className="doc-caption">Try one of these</p>
-          <ul className="mt-3 space-y-2 text-[0.8125rem]">
+          <ul className="mt-3 space-y-2 text-[0.84375rem]">
             {SAMPLE_PAYEES.map((sample) => (
               <li key={sample.address} className="flex flex-col gap-0.5">
                 <Link href={`/payee/${sample.address}`} className="doc-link break-all">

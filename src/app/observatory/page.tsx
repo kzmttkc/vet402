@@ -153,7 +153,7 @@ export default async function ObservatoryPage({
           </div>
         </div>
 
-        <h1 className="doc-title mt-10">The x402 Observatory</h1>
+        <h1 className="doc-title mt-8">The x402 Observatory</h1>
         {/* 2026-08-23 UX: 表が何であるかを、Abstract を読む前に1行で言う。
             RFC の版面を壊さないよう新しい枠は足さず、表題直下の弱いインクの
             1行として置く。 */}
@@ -165,28 +165,28 @@ export default async function ObservatoryPage({
         {/* 2026-09-02 デザイン監査 P1: 1280×800 で最初の画面に操作対象が無かった（検索 y=831・
             図 y=1046・表 y=1177、Abstract 11 行が y=766–1140）。rule-double の直下を
             検索 → Figure 1 → §1 表にし、Abstract は §2「Reading this table」の冒頭へ移す（文は同じ）。 */}
-        <form method="get" action="/observatory" className="mt-5">
+        <form method="get" action="/observatory" className="mt-6">
           <p className="doc-caption">Find an endpoint</p>
           {query.l1 && <input type="hidden" name="l1" value="1" />}
           {query.qTruncated && <input type="hidden" name="qCut" value="1" />}
           {/* 390px: 4 段積み（266px）だと Figure 1 が最初の画面に入らない。Contains を 1 行、
               L0 / Network / Apply を 2 行目に並べる。 */}
           <div className="mt-3 flex flex-wrap items-end gap-3">
-            <label className="block min-w-0 basis-full text-[0.8125rem] sm:basis-auto sm:flex-1">
+            <label className="block min-w-0 basis-full text-[0.84375rem] sm:basis-auto sm:flex-1">
               <span className="doc-caption block">Contains</span>
               <input
                 name="q"
                 type="search"
                 defaultValue={query.q ?? ""}
-                className="doc-input mt-1 max-sm:text-base"
+                className="doc-input mt-1 max-sm:text-[1.0625rem]"
               />
             </label>
-            <label className="block text-[0.8125rem]">
+            <label className="block text-[0.84375rem]">
               <span className="doc-caption block">L0</span>
               <select
                 name="verdict"
                 defaultValue={query.verdict ?? ""}
-                className="doc-input mt-1 max-sm:text-base"
+                className="doc-input mt-1 max-sm:text-[1.0625rem]"
               >
                 <option value="">any</option>
                 <option value="pass">pass</option>
@@ -194,13 +194,13 @@ export default async function ObservatoryPage({
                 <option value="unverified">unverified</option>
               </select>
             </label>
-            <label className="block min-w-0 flex-1 text-[0.8125rem] sm:min-w-[16ch] sm:flex-none">
+            <label className="block min-w-0 flex-1 text-[0.84375rem] sm:min-w-[16ch] sm:flex-none">
               <span className="doc-caption block">Network</span>
               <input
                 name="network"
                 defaultValue={query.network ?? ""}
                 placeholder="eip155:8453"
-                className="doc-input mt-1 max-sm:text-base"
+                className="doc-input mt-1 max-sm:text-[1.0625rem]"
               />
             </label>
             {/* 2026-08-23 UX: underline のテキストリンクに見えており、フィルタを
@@ -215,12 +215,9 @@ export default async function ObservatoryPage({
           )}
         </form>
 
-        {/* 2026-08-23 UX: .sec-head の既定は margin-top 3.5rem（56px）で、
+        {/* 2026-08-23 UX: .sec-head の既定は 4rem。
             フィルタと、そのフィルタが操作する表とが無関係な2つの節に見えていた。
-            ここだけ 24px へ寄せて1つのまとまりにする。globals.css が
-            「Tailwind のユーティリティに負ける必要があるので @layer components」と
-            明記しているとおり、局所の上書きが正規の手段。他ページの版面律動は
-            触っていない。 */}
+            ここだけ 24px（mt-6）へ寄せて1つのまとまりにする。 */}
         {/* 2026-09-02 UI/UX 監査（続）: 「文字だらけで直感的でない」。件数チップを
             判定の積み上げバー（Figure 1）にする。数字はそのまま、形が加わるだけ。
             凡例がチップを兼ね、クリックで絞る。 */}
@@ -249,7 +246,7 @@ export default async function ObservatoryPage({
                     <a
                       href={observatoryHref({ ...query, l1: !query.l1 }, 1)}
                       aria-current={query.l1 ? "true" : undefined}
-                      className={`whitespace-nowrap tabular-nums underline ${query.l1 ? "text-brand-deep decoration-2" : "text-brand hover:text-brand-deep hover:decoration-2"}`}
+                      className={`inline-flex min-h-11 items-center whitespace-nowrap tabular-nums underline decoration-1 hover:decoration-2 ${query.l1 ? "text-brand-deep decoration-2" : "text-brand hover:text-brand-deep"}`}
                     >
                       [settled on-chain {settledEndpoints.toLocaleString()}]
                     </a>
@@ -285,7 +282,7 @@ export default async function ObservatoryPage({
                 <a
                   href={observatoryHref({ ...query, l1: !query.l1 }, 1)}
                   aria-current={query.l1 ? "true" : undefined}
-                  className={`whitespace-nowrap tabular-nums underline ${query.l1 ? "text-brand-deep decoration-2" : "text-brand hover:text-brand-deep hover:decoration-2"}`}
+                  className={`inline-flex min-h-11 items-center whitespace-nowrap tabular-nums underline decoration-1 hover:decoration-2 ${query.l1 ? "text-brand-deep decoration-2" : "text-brand hover:text-brand-deep"}`}
                 >
                   [settled on-chain {stats.l1.endpointsSettled.toLocaleString()}]
                 </a>
@@ -307,7 +304,7 @@ export default async function ObservatoryPage({
           );
         })()}
 
-        <h2 className="sec-head mt-5">
+        <h2 className="sec-head mt-6">
           <span className="sec-no">1.</span>
           <span>Observed endpoints</span>
         </h2>
@@ -364,7 +361,7 @@ export default async function ObservatoryPage({
                     <td className="whitespace-nowrap">
                       <Link
                         href={`/observatory/e/${row.id}`}
-                        className="block max-w-[11rem] truncate underline sm:max-w-[24rem]"
+                        className="flex min-h-11 min-w-0 max-w-[11rem] items-center truncate underline decoration-1 hover:decoration-2 sm:max-w-[24rem]"
                         title={row.resourceKey}
                       >
                         {row.resourceKey}
@@ -400,7 +397,7 @@ export default async function ObservatoryPage({
 
         <nav aria-label="Observatory pages" className="doc-p flex flex-wrap items-center gap-x-4 gap-y-2">
           {page > 1 && (
-            <Link href={observatoryHref(query, page - 1)} className="underline">
+            <Link href={observatoryHref(query, page - 1)} className="inline-flex min-h-11 items-center underline decoration-1 hover:decoration-2">
               ← Previous
             </Link>
           )}
@@ -408,7 +405,7 @@ export default async function ObservatoryPage({
             Page {page} of {totalPages}
           </span>
           {page < totalPages && (
-            <Link href={observatoryHref(query, page + 1)} className="underline">
+            <Link href={observatoryHref(query, page + 1)} className="inline-flex min-h-11 items-center underline decoration-1 hover:decoration-2">
               Next →
             </Link>
           )}

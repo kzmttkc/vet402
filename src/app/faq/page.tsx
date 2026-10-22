@@ -72,7 +72,7 @@ export default async function FaqPage() {
           </div>
         </div>
 
-        <h1 className="doc-title mt-10">Frequently asked questions</h1>
+        <h1 className="doc-title mt-8">Frequently asked questions</h1>
         <p className="mx-auto mt-3 max-w-[56ch] text-center text-brand-lift">
           x402 payments, public measurements, and the score API.
         </p>
@@ -121,7 +121,7 @@ export default async function FaqPage() {
           </p>
         </div>
 
-        <p className="mt-8 text-[0.8125rem]">
+        <p className="mt-8 text-[0.84375rem]">
           <Link href="/" className="doc-link">
             The memo
           </Link>

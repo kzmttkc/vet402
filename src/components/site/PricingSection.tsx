@@ -89,7 +89,7 @@ export function PricingSection() {
                 <span>{plan.name}</span>
                 <span className="whitespace-nowrap tabular-nums">{plan.priceLabel}</span>
               </dt>
-              <dd className="mt-2 space-y-1 text-[0.8125rem] text-brand">
+              <dd className="mt-2 space-y-1 text-[0.84375rem] text-brand">
                 <p className="text-brand-deep">
                   {plan.monthlyLimit.toLocaleString("en-US")} lookups / month
                 </p>

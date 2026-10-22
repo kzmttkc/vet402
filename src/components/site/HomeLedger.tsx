@@ -1,5 +1,6 @@
 import Link from "next/link";
 import TrackedLink from "@/components/site/TrackedLink";
+import { ShareRule } from "@/components/site/Figures";
 import { TableScroll } from "@/components/site/TableScroll";
 import { SUPPORTED_CHAINS } from "@/components/site/supported-chains-data";
 import { buttonClass } from "@/components/ui/Button";
@@ -111,21 +112,21 @@ export function LedgerSection({ ledger }: { ledger: HomeLedger }) {
       <div className="mt-3 grid gap-6 min-[800px]:grid-cols-2 min-[800px]:gap-x-6">
         <div className="border-t border-brand-deep pt-3">
           <p className="doc-caption">Paid attempts that settled</p>
-          <p className="mt-2 text-[1.5rem] leading-[1.4]">
+          <p className="mt-2 text-[1.75rem] leading-[1.2]">
             <span className={NUM}>{fmt(ledger.settled)}</span>
             <span className="text-[0.9375rem] text-brand"> of {fmt(ledger.attempts)}</span>
           </p>
-          <p className="mt-1 text-[0.8125rem] text-brand">
+          <p className="mt-1 text-[0.84375rem] text-brand">
             {fmt(ledger.delivered)} of the settled purchases also returned a 2xx answer.
           </p>
         </div>
         <div className="border-t border-brand-deep pt-3">
           <p className="doc-caption">Latest L0 verdict on listed endpoints</p>
-          <p className="mt-2 text-[1.5rem] leading-[1.4]">
+          <p className="mt-2 text-[1.75rem] leading-[1.2]">
             <span className={NUM}>{fmt(ledger.passActive)}</span>
             <span className="text-[0.9375rem] text-brand"> pass of {fmt(ledger.activeEndpoints)} listed</span>
           </p>
-          <p className="mt-1 text-[0.8125rem] text-brand">
+          <p className="mt-1 text-[0.84375rem] text-brand">
             {fmt(ledger.notPassActive)} listed endpoints do not have pass as their latest probe. That includes a published fail, unverified, and endpoints not yet probed.
           </p>
         </div>
@@ -139,7 +140,7 @@ export function LedgerSection({ ledger }: { ledger: HomeLedger }) {
         </a>{" "}
         (CC BY 4.0).
       </p>
-      <p className="mt-5 flex flex-wrap gap-2 sm:gap-3">
+      <p className="mt-6 flex flex-wrap gap-2 sm:gap-4">
         <TrackedLink
           href="/observatory"
           event="lp_cta_click"
@@ -182,7 +183,7 @@ export function SettledChainsSection({ ledger }: { ledger: HomeLedger }) {
         </Link>
         .
       </p>
-      <TableScroll label="Settled purchases by chain" className="mt-5">
+      <TableScroll label="Settled purchases by chain" className="mt-6">
         {ledger.chains.length > 0 ? (
         <table className="fact-table">
           <caption className="sr-only">Settled purchases by chain</caption>
@@ -204,7 +205,15 @@ export function SettledChainsSection({ ledger }: { ledger: HomeLedger }) {
           <tbody>
             {ledger.chains.map((r) => (
               <tr key={r.chain}>
-                <td title={r.chain}>{r.label}</td>
+                <td title={r.chain}>
+                  <span className="block">{r.label}</span>
+                  <ShareRule
+                    id={`chain-${r.chain.replace(/[^a-zA-Z0-9]+/g, "-")}`}
+                    part={r.delivered}
+                    whole={r.settled}
+                    label={`${fmt(r.delivered)} of ${fmt(r.settled)} settled on ${r.label} answered 2xx`}
+                  />
+                </td>
                 <td>{r.asset}</td>
                 <td className="num">{fmt(r.settled)}</td>
                 <td className="num">{fmt(r.delivered)}</td>

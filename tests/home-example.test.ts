@@ -9,6 +9,7 @@ import { CheckPanel } from "@/components/site/home/CheckPanel";
 import { ReceiptSlip } from "@/components/site/home/ReceiptSlip";
 import {
   PUBLIC_EXPORT_EXCLUDED_STATUSES,
+  deliveredLine,
   formatSettledReceipt,
   getHomeExampleCached,
   ledgerL2Word,
@@ -146,7 +147,7 @@ test("the receipt and the panel use the ledger L2 words", () => {
     l2: "not_checked",
   };
   const panel = renderToStaticMarkup(
-    createElement(CheckPanel, { example: { receipt: receipt!, decision } }),
+    createElement(CheckPanel, { example: { receipt: receipt!, decision, latest: [receipt!] } }),
   );
   assert.match(panel, />not_checked</);
   assert.equal(panel.includes("not checked"), false);
@@ -358,4 +359,40 @@ test("a thrown decision read is not stored as decision null inside the cached re
   } finally {
     __setDbForTests(null);
   }
+});
+
+test("deliveredLine uses the receipt words and keeps a negation out of the host cell", () => {
+  assert.deepEqual(deliveredLine({ held: true, delivered: false, httpStatus: 402 }), {
+    text: "held, inconclusive",
+    strong: false,
+  });
+  assert.deepEqual(deliveredLine({ held: false, delivered: true, httpStatus: 200 }), { text: "yes, 2xx", strong: true });
+  assert.deepEqual(deliveredLine({ held: false, delivered: false, httpStatus: 202 }), {
+    text: "not confirmed, 202 accepted",
+    strong: false,
+  });
+  assert.deepEqual(deliveredLine({ held: false, delivered: false, httpStatus: 204 }), { text: "no, empty body", strong: true });
+  assert.deepEqual(deliveredLine({ held: false, delivered: false, httpStatus: 500 }), { text: "no 2xx", strong: true });
+  assert.deepEqual(deliveredLine({ held: false, delivered: false, httpStatus: null }), { text: "no 2xx", strong: true });
+});
+
+test("the latest list is the same one day window, newest first, at most five", () => {
+  const src = readFileSync("src/lib/observatory/home-example.ts", "utf8");
+  assert.match(src, /ORDER BY pu\.attempted_at DESC, pu\.id ASC/);
+  assert.match(src, /LIMIT 8/);
+  assert.match(src, /formatted\.length === 5/);
+  assert.match(src, /\["home:example:v3"\]/);
+  const reader = src.slice(src.indexOf("export async function readHomeExample"), src.indexOf("const readHomeExampleCached"));
+  assert.equal(reader.includes("catch"), false);
+  const slip = readFileSync("src/components/site/home/ReceiptSlip.tsx", "utf8");
+  const latest = readFileSync("src/components/site/home/LatestSettled.tsx", "utf8");
+  const intro = readFileSync("src/components/site/home/HomeIntro.tsx", "utf8");
+  assert.match(slip, /deliveredLine\(r\)/);
+  assert.match(slip, /className="slip /);
+  assert.match(slip, /SETTLED/);
+  assert.match(latest, /deliveredLine\(row\)/);
+  assert.match(latest, /Latest settled purchases/);
+  assert.match(intro, /id="ledger-share"/);
+  assert.match(intro, /<LatestSettled/);
+  assert.match(readFileSync("src/components/site/HomeLedger.tsx", "utf8"), /<ShareRule/);
 });

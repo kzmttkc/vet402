@@ -93,8 +93,8 @@ export function SiteFooter() {
         <div className="rule-double" />
 
         {/* RFC page foot — three parts, left / centre / right. */}
-        <div className="flex items-baseline justify-between gap-3 pt-3 text-[0.8125rem] text-brand-lift">
-          <Wordmark className="text-[0.8125rem]" />
+        <div className="flex items-baseline justify-between gap-3 pt-3 text-[0.84375rem] text-brand-lift">
+          <Wordmark className="text-[0.84375rem]" />
           <span className="hidden sm:inline">Building in public</span>
           <span>[Page 1]</span>
         </div>
@@ -104,10 +104,10 @@ export function SiteFooter() {
           {COLUMNS.map((col) => (
             <nav key={col.caption} aria-label={col.label}>
               <p className="doc-caption">{col.caption}</p>
-              <ul className="mt-4 space-y-2 text-sm">
+              <ul className="mt-3 space-y-0 text-[0.84375rem] sm:mt-4 sm:space-y-1">
                 {col.links.map((item) => (
                   <li key={item.href}>
-                    <Link href={item.href} className="text-brand hover:text-brand-deep">
+                    <Link href={item.href} className="inline-flex min-h-8 items-center text-brand hover:text-brand-deep">
                       {item.label}
                     </Link>
                   </li>
@@ -118,11 +118,11 @@ export function SiteFooter() {
         </div>
 
         <nav aria-label="Legal and machine-readable" className="mt-10 border-t border-hair pt-5">
-          <ul className="flex flex-wrap gap-x-2 gap-y-1 text-[0.8125rem] text-brand-lift">
+          <ul className="flex flex-wrap gap-x-2 gap-y-1 text-[0.84375rem] text-brand-lift">
             {SMALL_PRINT_LINKS.map((item, i) => (
               <li key={item.href} className="flex items-center gap-x-2">
                 {i > 0 && <span aria-hidden="true">·</span>}
-                <Link href={item.href} className="hover:text-brand-deep">
+                <Link href={item.href} className="inline-flex min-h-8 items-center hover:text-brand-deep">
                   {item.label}
                 </Link>
               </li>
@@ -132,7 +132,7 @@ export function SiteFooter() {
 
         {/* 免責は 1 文。2026-10-01 オーナー指示で運営者名（KIZUNA Creation）をフッタから外した（将来戻す可能性あり）。
             運営者の情報は /legal/notice に残る。 */}
-        <p className="mt-5 max-w-[72ch] text-[0.8125rem] leading-relaxed text-brand-lift">
+        <p className="mt-5 max-w-[72ch] text-[0.84375rem] leading-relaxed text-brand-lift">
           © {year} vet402. Results are
           measurements offered for B2B API use — not a guarantee, credit assessment, or legal
           certification.

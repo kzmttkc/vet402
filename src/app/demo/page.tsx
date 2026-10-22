@@ -20,8 +20,8 @@ const SHOTS = [
 export default function DemoPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-16">
-      <h1 className="text-2xl font-semibold tracking-tight">vet402 in 60 seconds</h1>
-      <p className="mt-3 text-sm leading-relaxed opacity-80">
+      <h1 className="text-[1.75rem] font-semibold tracking-tight">vet402 in 60 seconds</h1>
+      <p className="mt-3 text-[0.84375rem] leading-relaxed opacity-80">
         No narration, no slides — every frame is a live page you can open yourself. Recorded 2026-09-03.
       </p>
       <video
@@ -31,7 +31,7 @@ export default function DemoPage() {
         playsInline
         preload="metadata"
       />
-      <ul className="mt-8 space-y-2 text-sm">
+      <ul className="mt-8 space-y-2 text-[0.84375rem]">
         {SHOTS.map(([t, label]) => (
           <li key={t} className="flex gap-3">
             <span className="font-mono opacity-60">{t}</span>
@@ -39,7 +39,7 @@ export default function DemoPage() {
           </li>
         ))}
       </ul>
-      <p className="mt-8 text-sm opacity-80">
+      <p className="mt-8 text-[0.84375rem] opacity-80">
         Check it without us:{" "}
         {/* 2026-08-26: API のパスは Link ではなく a のままにする（ページではなく
             JSON の実物を開かせたい導線なので、クライアント遷移は誤り）。

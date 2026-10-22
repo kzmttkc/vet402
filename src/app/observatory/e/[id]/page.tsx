@@ -220,9 +220,9 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
           </div>
         </div>
 
-        <h1 className="doc-title mt-10 break-words [overflow-wrap:anywhere]">{endpoint.resourceKey}</h1>
+        <h1 className="doc-title mt-8 break-words [overflow-wrap:anywhere]">{endpoint.resourceKey}</h1>
         {endpoint.isOperatorEndpoint && (
-          <p className="mt-4 border border-brand-line bg-brand-wash px-4 py-3 text-[0.8125rem] text-brand-lift">
+          <p className="mt-4 border border-brand-line bg-brand-wash px-4 py-3 text-[0.84375rem] text-brand-lift">
             This is vet402&rsquo;s own endpoint. It is shown here for
             transparency but is <strong>excluded from the network measurements</strong> — a
             measurer is not a neutral third party in its own numbers, and the L1 buyer never
@@ -537,7 +537,7 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                           {p.l2Reading && p.l2Schema && p.l2Reading !== p.l2Schema ? ` (recorded ${p.l2Schema})` : ""}
                           {/* 2026-09-29 第4巡: 売り手頁と同じ語で「どちらの側か」。 */}
                           {shownSides[i] && (
-                            <span className="block font-[family-name:var(--font-sans)] text-[0.8125rem] text-brand-ink">
+                            <span className="block font-[family-name:var(--font-sans)] text-[0.84375rem] text-brand-ink">
                               Whose side: <WhoseSide r={shownSides[i]!} />
                             </span>
                           )}
@@ -702,7 +702,7 @@ function RecordTerms({
   }
   if (items.length === 0) return null;
   return (
-    <div className="mt-4 text-[0.8125rem]">
+    <div className="mt-4 text-[0.84375rem]">
       <p className="doc-caption">Terms in this table</p>
       <dl className="mt-1 grid grid-cols-1 gap-y-0.5 sm:grid-cols-[minmax(10rem,auto)_1fr] sm:gap-x-4">
         {items.map((x) => (

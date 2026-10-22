@@ -61,6 +61,17 @@ export function gaugeCells(settled: number, attempts: number, maxCells = 20): { 
   return { cells: [...Array<GaugeCell>(k).fill("settled"), ...Array<GaugeCell>(maxCells - k).fill("failed")], scaled: true };
 }
 
+/**
+ * A thin share rule. `part` is the solid length (answered 2xx). The rest of
+ * `whole` is the hatch (no 2xx). Null when the bar would not be a ratio.
+ */
+export function ratioParts(part: number, whole: number): { solidPct: number; hatchPct: number } | null {
+  if (!Number.isFinite(part) || !Number.isFinite(whole) || whole <= 0 || part < 0) return null;
+  const solid = Math.min(part, whole);
+  const solidPct = (solid / whole) * 100;
+  return { solidPct, hatchPct: 100 - solidPct };
+}
+
 export type TimelinePoint<V extends string = string> = { at: Date; verdict: V };
 
 /**

@@ -490,7 +490,7 @@ export default async function ApiDocsPage() {
             </div>
           </div>
 
-          <h1 className="doc-title mt-10">API reference</h1>
+          <h1 className="doc-title mt-8">API reference</h1>
           <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
         </div>
 
@@ -505,7 +505,7 @@ export default async function ApiDocsPage() {
           <code className="text-brand-deep">Authorization: Bearer</code>. Base URL:{" "}
           <code className="whitespace-nowrap text-brand-deep">{`${SITE_URL}/api/v1`}</code>
         </p>
-        <p className="text-sm text-brand-lift">
+        <p className="text-[0.84375rem] text-brand-lift">
           Full machine-readable schema:{" "}
           {/* 2026-08-06 growth: openapi_click — pulling the machine-readable
               schema signals codegen/tooling-level integration intent, deeper
@@ -537,7 +537,7 @@ export default async function ApiDocsPage() {
           下の2本は 2026-08-13 に本番 (vet402.com) で実行して応答を確認済み。 */}
       <section id="quickstart" className="scroll-mt-32 space-y-3">
         <h2 className="sec-head">Quickstart</h2>
-        <p className="text-sm text-brand">
+        <p className="text-[0.84375rem] text-brand">
           The first four need no account, no key and no signature &mdash; paste them into a
           terminal as they are. The first one is the integration itself: a URL in, a decision out.
         </p>
@@ -564,7 +564,7 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
             path="/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8af2f92f0313ddef8bdb/decision?role=payer"
             label="GET /api/v1/resources/{resource_id}/decision"
           />
-          <p className="mt-1 text-sm text-brand-lift">
+          <p className="mt-1 text-[0.84375rem] text-brand-lift">
             Copy <code className="text-brand-deep">resource.resource_id</code> from the first
             answer into the second. The decision carries <code>recommendation</code>,{" "}
             <code>reason_codes</code> (each one is in{" "}
@@ -582,7 +582,7 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
             <code>suggestion</code>; and an unknown id gets 404 <code>not_found</code> from{" "}
             <code>/decision</code>.
           </p>
-          <p className="mt-1 text-sm text-brand-lift">
+          <p className="mt-1 text-[0.84375rem] text-brand-lift">
             The ledger column l2_schema stores match, mismatch, no_declaration, or not_checked.
             The decision document and the facts document store conform, mismatch, undeclared, or
             not_checked. conform is written when the re-read L2 value (l2_reading) of the latest delivery is match.
@@ -606,7 +606,7 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
             path="/api/v1/observatory/endpoints/521e929e-5f89-4603-a964-d1812caf118f/purchases"
             label="GET /api/v1/observatory/endpoints/{id}/purchases"
           />
-          <p className="mt-1 text-sm text-brand-lift">
+          <p className="mt-1 text-[0.84375rem] text-brand-lift">
             n paid attempts, m settled, each settled row carrying its on-chain{" "}
             <code className="text-brand-deep">txHash</code>. This is the record vet402 exists to
             keep. Swap the id for any endpoint on{" "}
@@ -626,7 +626,7 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
             code={`curl "${SITE_URL}/api/v1/accuracy"`}
           />
           <TryItPanel path="/api/v1/accuracy" label="GET /api/v1/accuracy" />
-          <p className="mt-1 text-sm text-brand-lift">
+          <p className="mt-1 text-[0.84375rem] text-brand-lift">
             Aggregate counts only. The same numbers{" "}
             <Link href="/accuracy" className="doc-link">
               /accuracy
@@ -647,7 +647,7 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
             path="/api/v1/payees/verify?wallet=0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045&name=Acme%20API"
             label="GET /api/v1/payees/verify"
           />
-          <p className="mt-1 text-sm text-brand-lift">
+          <p className="mt-1 text-[0.84375rem] text-brand-lift">
             Returns{" "}
             <code className="text-brand-deep">{`{ "message": "…" }`}</code> &mdash; sign it with
             that wallet and POST it back to the same path to publish a verified-payee page and a
@@ -664,7 +664,7 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
             code={`curl -H "Authorization: Bearer vouch_live_…" \\
   "${SITE_URL}/api/v1/payees/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045/score"`}
           />
-          <p className="mt-1 text-sm text-brand-lift">
+          <p className="mt-1 text-[0.84375rem] text-brand-lift">
             The buyer-side question.{" "}
             <Link href="/signup" className="doc-link">
               Get a key
@@ -677,7 +677,7 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
               例を直すだけでなく、正しい形をここに1行置いて典拠にする。
               2026-09-28 監査: 頁の冒頭（最初の画面）に旧名が出ていたので、鍵を初めて使う
               この例の直後へ移した。事実は変えていない。 */}
-          <p className="mt-1 text-sm text-brand">
+          <p className="mt-1 text-[0.84375rem] text-brand">
             Keys look like{" "}
             <code className="text-brand-deep">vouch_live_…</code> — send them
             as{" "}
@@ -692,7 +692,7 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
               発行済みのキー接頭辞と webhook のヘッダ名は動いている連携を壊すので
               据え置いた。docs で名前が2つ出てくる理由をここで1行明示する。
               これが無いと「ドキュメントが古い」ようにしか読めない。 */}
-          <p className="mt-1 text-sm text-brand-lift">
+          <p className="mt-1 text-[0.84375rem] text-brand-lift">
             API keys and webhook headers retain the{" "}
             <code className="text-brand-deep">vouch_</code> /{" "}
             <code className="text-brand-deep">Vouch-</code> prefixes for backward
@@ -711,7 +711,7 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
             Note &mdash; the key-less demo scorer
           </p>
           <TryItPanel path="/api/demo/score" label="GET /api/demo/score" />
-          <p className="mt-2 text-sm text-brand-lift">
+          <p className="mt-2 text-[0.84375rem] text-brand-lift">
             <code className="text-brand-deep">GET /api/demo/score</code> scores one fixed demo
             agent chosen server-side, so anyone can watch a real verdict get computed without a
             key. Nothing in the request selects what it scores &mdash; it is a demo, not a free
@@ -733,7 +733,7 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
           名前を名指しする必要がある（打ち間違いの行き先が他人のコードになる）。 */}
       <section id="packages" className="scroll-mt-32 space-y-3">
         <h2 className="sec-head">Packages</h2>
-        <p className="text-sm text-brand">
+        <p className="text-[0.84375rem] text-brand">
           Three published packages, all from{" "}
           <a
             href="https://github.com/kzmttkc/vet402"
@@ -752,7 +752,7 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
 npm i @vet402/middleware   # x402 request gate for an API provider
 npm i @vet402/mcp-server   # MCP tool, so an agent can ask before it pays`}
         />
-        <p className="text-sm text-brand-lift">
+        <p className="text-[0.84375rem] text-brand-lift">
           <code className="text-brand-deep">@vet402/*</code> is the canonical scope.{" "}
           <code className="text-brand-deep">@vouchscore/*</code> is the old name (the product
           was called Vouch until August 2026) and is published from the same npm account and left
@@ -770,8 +770,8 @@ npm i @vet402/mcp-server   # MCP tool, so an agent can ask before it pays`}
             うち JS は webhook の HMAC 検証だけ）。「30分でデモに組み込めるか」を
             計測したペルソナは、インストール行の次に何を書けばいいかをサイトから
             得られず npm ページへ出ていった。npm README の完動例をここへ引く。 */}
-        <h3 className="text-base font-semibold text-brand-deep">SDK: read a score</h3>
-        <p className="text-sm text-brand">
+        <h3 className="text-[1.0625rem] font-semibold text-brand-deep">SDK: read a score</h3>
+        <p className="text-[0.84375rem] text-brand">
           <code>apiUrl</code> defaults to the hosted API, so a key is the only thing you have to
           supply. Copy this into a <code>.mjs</code> file and it runs.
         </p>
@@ -793,8 +793,8 @@ console.log(payee.score, payee.recommendation, payee.dataDepth);`}
             「鍵が要る」の両方を書いている（packages/sdk は凍結中で直せない）。実物は
             createVouchClient の apiKey が任意で、未設定なら Authorization を付けない
             （packages/sdk/src/index.ts・09-07、npm の 0.6.0 に含まれる）。正しい挙動をここに書く。 */}
-        <h3 className="text-base font-semibold text-brand-deep">SDK: ask before paying, with or without a key</h3>
-        <p className="text-sm text-brand">
+        <h3 className="text-[1.0625rem] font-semibold text-brand-deep">SDK: ask before paying, with or without a key</h3>
+        <p className="text-[0.84375rem] text-brand">
           <code>getDecision</code> and <code>resolve</code> work with no key. Leave{" "}
           <code>apiKey</code> unset and the client sends no <code>Authorization</code> header:{" "}
           <code>getDecision</code> is then key-less at 10 requests per minute per IP (429{" "}
@@ -815,8 +815,8 @@ const d = await vouch.getDecision(resource.resource_id, { role: "payer" });
 console.log(d.recommendation, d.reason_codes);`}
         />
 
-        <h3 className="text-base font-semibold text-brand-deep">SDK: gate a payment</h3>
-        <p className="text-sm text-brand">
+        <h3 className="text-[1.0625rem] font-semibold text-brand-deep">SDK: gate a payment</h3>
+        <p className="text-[0.84375rem] text-brand">
           Gate the payment on the resource decision for the URL, not on the payee wallet score.
           Pay when <code>recommendation</code> is <code>ALLOW</code> and <code>degraded</code> is
           false. A missing resource, a WARN, a BLOCK, or a degraded read stays unpaid.
@@ -839,8 +839,8 @@ if (d.recommendation === "ALLOW" && d.degraded === false) {
 }`}
         />
 
-        <h3 className="text-base font-semibold text-brand-deep">SDK: payee wallet score</h3>
-        <p className="text-sm text-brand">
+        <h3 className="text-[1.0625rem] font-semibold text-brand-deep">SDK: payee wallet score</h3>
+        <p className="text-[0.84375rem] text-brand">
           This sample checks the payee wallet score. It does not call the resource decision. A
           wallet score can read ALLOW when the decision for one URL paid to that wallet reads WARN
           or BLOCK. Call getDecision for that URL. Pay only when recommendation is ALLOW and
@@ -857,7 +857,7 @@ const scored = await guard.evaluate({ payee: "0xabc...", amountUsd: 5 });
 console.log(scored.allow, scored.reasons);`}
         />
 
-        <h3 className="text-base font-semibold text-brand-deep">
+        <h3 className="text-[1.0625rem] font-semibold text-brand-deep">
           Middleware: gate an x402 endpoint
         </h3>
         <CodeBlock
@@ -871,12 +871,12 @@ app.use("/api/paid", createExpressGate({
   getAddress: (req) => req.payer,   // the counterparty to vet
 }));`}
         />
-        <p className="text-sm text-brand-lift">
+        <p className="text-[0.84375rem] text-brand-lift">
           Anything but <code>ALLOW</code> returns{" "}
           <code>403 {"{ error: \"trust_blocked\" }"}</code> before your handler runs; an{" "}
           <code>ALLOW</code> continues with the full decision on <code>req.vouchTrust</code>.
         </p>
-        <p className="text-sm text-brand">
+        <p className="text-[0.84375rem] text-brand">
           <strong>Both the SDK and the middleware default to allow-only.</strong> Only an{" "}
           <code>ALLOW</code> passes; a <code>WARN</code>, a <code>BLOCK</code>, a degraded verdict
           and a partially measured one are all denied unless the caller explicitly opts out. That
@@ -891,8 +891,8 @@ app.use("/api/paid", createExpressGate({
             install 一行でしか触れず、設定ブロック・tool 名・mcpServers JSON が
             無かった（SDK/middleware は完備）。MCP 経由の実装者はここで手が
             止まる。設定は packages/mcp-server/README.md の実物をそのまま写す。 */}
-        <h3 className="text-base font-semibold text-brand-deep">MCP: let an agent ask before it pays</h3>
-        <p className="text-sm text-brand">
+        <h3 className="text-[1.0625rem] font-semibold text-brand-deep">MCP: let an agent ask before it pays</h3>
+        <p className="text-[0.84375rem] text-brand">
           <code>@vet402/mcp-server</code> exposes the score as Model Context Protocol tools, so an
           MCP-capable agent (Claude Desktop and other MCP clients) can check a counterparty before it
           settles. Your client launches it with <code>npx</code> — no clone, no build. Add this to the
@@ -917,7 +917,7 @@ app.use("/api/paid", createExpressGate({
             7 本（check_resource_decision と pay_if_trusted が 09-02 / 09-05 に増えた）で、
             鍵は 09-07 から任意（/decision は鍵なしで答える）。packages/mcp-server/src/index.ts の
             server.tool 呼び出しと README の表に合わせる。 */}
-        <p className="text-sm text-brand">
+        <p className="text-[0.84375rem] text-brand">
           <code>VOUCH_API_KEY</code> is optional. Without it the two <code>/decision</code> tools
           work key-less (10/min per IP) and the five score and attest tools answer{" "}
           <code>missing_api_key</code>; with one, created at <code>/dashboard/keys</code>, those
@@ -941,7 +941,7 @@ app.use("/api/paid", createExpressGate({
           正典で、docs/openapi.yaml の DecisionReasonCode と tests/decision-reason-codes.test.ts が一致を固定する。 */}
       <section id="verdicts" className="scroll-mt-32 space-y-3">
         <h2 className="sec-head">Decision verdicts &amp; reason codes</h2>
-        <p className="text-sm text-brand">
+        <p className="text-[0.84375rem] text-brand">
           <code className="text-brand-deep">GET /api/v1/resources/&#123;id&#125;/decision</code> answers{" "}
           <code>ALLOW</code>, <code>WARN</code> or <code>BLOCK</code> from vet402&rsquo;s own L0&ndash;L2
           records, and lists the reasons in <code>reason_codes</code>. There is no score behind it: the
@@ -950,17 +950,17 @@ app.use("/api/paid", createExpressGate({
           <code>superseded_by: &quot;recommendation&quot;</code> and is not used for the decision.
         </p>
         {/* 2026-09-29 監査 7 周目: 3 語の説明は rules-text.ts の VERDICT_DOCS（手で書かない）。 */}
-        <ul className="list-disc space-y-2 pl-5 text-sm text-brand">
+        <ul className="list-disc space-y-2 pl-5 text-[0.84375rem] text-brand">
           {(["BLOCK", "WARN", "ALLOW"] as const).map((v) => (
             <li key={v}>
               <strong>{v}</strong>: {VERDICT_DOCS[v]}
             </li>
           ))}
         </ul>
-        <h3 id="reason-codes" className="scroll-mt-32 text-base font-semibold text-brand-deep">
+        <h3 id="reason-codes" className="scroll-mt-32 text-[1.0625rem] font-semibold text-brand-deep">
           Reason codes (rules {DECISION_RULES_VERSION})
         </h3>
-        <p className="text-sm text-brand-lift">
+        <p className="text-[0.84375rem] text-brand-lift">
           &ldquo;Verdict&rdquo; is what the code causes on its own; &mdash; means it explains without
           changing the verdict. Codes in angle brackets stand for a family.
         </p>
@@ -1004,7 +1004,7 @@ app.use("/api/paid", createExpressGate({
           同じ場所で言わないと「WARN は通るのだろう」と読まれる。 */}
       <section id="score-bands" className="scroll-mt-32 space-y-3">
         <h2 className="sec-head">Score bands (agent, wallet and payee scores)</h2>
-        <p className="text-sm text-brand">
+        <p className="text-[0.84375rem] text-brand">
           Every scored response carries a numeric score and a{" "}
           <code className="text-brand-deep">recommendation</code>. The bands are fixed and the same
           for the agent, wallet and payee engines:
@@ -1062,7 +1062,7 @@ app.use("/api/paid", createExpressGate({
             </tbody>
           </table>
         </TableScroll>
-        <ul className="list-disc space-y-2 pl-5 text-sm text-brand">
+        <ul className="list-disc space-y-2 pl-5 text-[0.84375rem] text-brand">
           <li>
             <strong>Band the recommendation, not the number.</strong> Read{" "}
             <code>recommendation</code>, not <code>trustScore &gt;= 70</code>. A blacklisted address
@@ -1096,7 +1096,7 @@ app.use("/api/paid", createExpressGate({
           ip-rate-limit call sites), not asserted. */}
       <section id="rate-limits" className="scroll-mt-32 space-y-3">
         <h2 className="sec-head">Rate limits</h2>
-        <p className="text-sm text-brand">
+        <p className="text-[0.84375rem] text-brand">
           Scoring is synchronous, so plan for both the monthly quota and the
           burst behaviour below.
         </p>
@@ -1116,7 +1116,7 @@ app.use("/api/paid", createExpressGate({
             </tbody>
           </table>
         </TableScroll>
-        <ul className="list-disc space-y-2 pl-5 text-sm text-brand">
+        <ul className="list-disc space-y-2 pl-5 text-[0.84375rem] text-brand">
           <li>
             <strong>Quota is per calendar month (UTC)</strong> and shared across
             all keys on an account. Each <code>/score</code> call is 1 unit; a{" "}
@@ -1204,7 +1204,7 @@ app.use("/api/paid", createExpressGate({
             </tbody>
           </table>
         </TableScroll>
-        <p className="text-sm text-brand-lift">
+        <p className="text-[0.84375rem] text-brand-lift">
           The header families are deliberately different names:{" "}
           <code className="text-brand-deep">X-RateLimit-*</code> reports the monthly plan quota,{" "}
           <code className="text-brand-deep">RateLimit-*</code> (IETF draft names) reports the
@@ -1217,7 +1217,7 @@ app.use("/api/paid", createExpressGate({
           <div
             key={ep.path}
             id={endpointId(ep)}
-            className="scroll-mt-32 space-y-3 border-t border-hair pt-6 text-[0.8125rem] first:border-t-brand-deep"
+            className="scroll-mt-32 space-y-3 border-t border-hair pt-6 text-[0.84375rem] first:border-t-brand-deep"
           >
             <div>
               {/* 2026-08-06 a11y (screen-reader persona audit): these endpoint
@@ -1258,7 +1258,7 @@ app.use("/api/paid", createExpressGate({
                 {ep.responseHeading ?? "Response"}
               </p>
               {ep.responseNote ? (
-                <p className="mb-1 text-sm text-brand">{ep.responseNote}</p>
+                <p className="mb-1 text-[0.84375rem] text-brand">{ep.responseNote}</p>
               ) : null}
               <CodeBlock
                 code={ep.response}
@@ -1274,14 +1274,14 @@ app.use("/api/paid", createExpressGate({
             number" — the breakdown answers it in the response itself, so a
             compliance log can record the arithmetic, not just the verdict. */}
         <h2 className="sec-head">Score breakdown</h2>
-        <p className="text-sm text-brand">
+        <p className="text-[0.84375rem] text-brand">
           Every scored verdict (agent and wallet endpoints, and each element of a
           batch) carries a <code className="text-brand-deep">breakdown</code>{" "}
           object that decomposes the chain score into its four weighted
           components. It is derived from the same numbers the verdict used, so it
           can never disagree with <code className="text-brand-deep">trustScore</code>.
         </p>
-        <ul className="list-disc space-y-2 pl-5 text-sm text-brand">
+        <ul className="list-disc space-y-2 pl-5 text-[0.84375rem] text-brand">
           <li>
             <strong>components</strong> — each of <code>identity</code>,{" "}
             <code>reputation</code>, <code>wallet</code>, <code>x402</code> reports
@@ -1313,7 +1313,7 @@ app.use("/api/paid", createExpressGate({
             explanation stays separable from policy.
           </li>
         </ul>
-        <p className="text-sm text-brand">
+        <p className="text-[0.84375rem] text-brand">
           Hard-blocked verdicts (wallet mismatch, unregistered agent) omit{" "}
           <code className="text-brand-deep">breakdown</code> — no weighting
           ran — and carry a <code className="text-brand-deep">blockReason</code>{" "}
@@ -1327,7 +1327,7 @@ app.use("/api/paid", createExpressGate({
             l1DeliveryDepth / WEIGHTS_BY_DEPTH を写している。 */}
         <div id="payee-score" className="scroll-mt-32 space-y-3">
           <h3 className="sub-head">Payee score</h3>
-          <p className="text-sm text-brand">
+          <p className="text-[0.84375rem] text-brand">
             <code className="break-all text-brand-deep">
               GET /api/v1/payees/:address/score
             </code>{" "}
@@ -1394,7 +1394,7 @@ app.use("/api/paid", createExpressGate({
               </tbody>
             </table>
           </TableScroll>
-          <ul className="list-disc space-y-2 pl-5 text-sm text-brand">
+          <ul className="list-disc space-y-2 pl-5 text-[0.84375rem] text-brand">
             <li>
               <strong>What lifts a payee out of &ldquo;thin&rdquo; is an observed fact, never a
               claim.</strong>{" "}
@@ -1450,7 +1450,7 @@ app.use("/api/paid", createExpressGate({
             not prove a "ALLOW→BLOCK" notice was really from us. This section is
             written from src/lib/webhooks.ts, not from memory. */}
         <h2 className="sec-head">Webhooks</h2>
-        <p className="text-sm text-brand">
+        <p className="text-[0.84375rem] text-brand">
           vet402 is otherwise a pull API. Webhooks turn it into a monitoring
           service: register an endpoint once and we POST you a signed event when
           something you care about changes — most importantly a watched target
@@ -1476,27 +1476,27 @@ app.use("/api/paid", createExpressGate({
                 <tr>
                   <td className="text-brand-deep">watch.verdict_changed</td>
                   <td className="text-brand">A watchlist target&apos;s recommendation changes on a re-scan (daily cron). Verdict changes only — not score jitter.</td>
-                  <td className="break-all text-[0.6875rem] text-brand">watchId, targetType, target, chainId, previous&#123;score,recommendation&#125;, current&#123;score,recommendation&#125;</td>
+                  <td className="break-all text-[0.75rem] text-brand">watchId, targetType, target, chainId, previous&#123;score,recommendation&#125;, current&#123;score,recommendation&#125;</td>
                 </tr>
                 <tr>
                   <td className="text-brand-deep">outcome.recorded</td>
                   <td className="text-brand">An outcome (auto-detected or partner-reported) lands on a verdict you requested.</td>
-                  <td className="break-all text-[0.6875rem] text-brand">trustEventId, outcomeType, source, wallet, agentId</td>
+                  <td className="break-all text-[0.75rem] text-brand">trustEventId, outcomeType, source, wallet, agentId</td>
                 </tr>
                 <tr>
                   <td className="text-brand-deep">list.changed</td>
                   <td className="text-brand">Your own manual whitelist/blacklist changes (also on import) — a team audit trail.</td>
-                  <td className="break-all text-[0.6875rem] text-brand">action, wallet, listType</td>
+                  <td className="break-all text-[0.75rem] text-brand">action, wallet, listType</td>
                 </tr>
                 <tr>
                   <td className="text-brand-deep">endpoint.delisted</td>
                   <td className="text-brand">An x402 endpoint paying a wallet you claim-proved via POST /api/v1/observatory/watch vanished from the public discovery catalog on a complete fetch (daily observatory sync). Factual listing-state notice, not an operator assessment.</td>
-                  <td className="break-all text-[0.6875rem] text-brand">resourceKey, resourceUrl, payTo, detectedOn, lastSeenAt, historyUrl</td>
+                  <td className="break-all text-[0.75rem] text-brand">resourceKey, resourceUrl, payTo, detectedOn, lastSeenAt, historyUrl</td>
                 </tr>
               </tbody>
             </table>
           </TableScroll>
-          <p className="mt-2 text-sm text-brand">
+          <p className="mt-2 text-[0.84375rem] text-brand">
             A score is never pushed — scores are computed on demand and pushing a
             cached one would invite treating a stale number as fresh.
           </p>
@@ -1504,7 +1504,7 @@ app.use("/api/paid", createExpressGate({
 
         <div>
           <h3 className="sub-head">Delivery payload</h3>
-          <p className="mt-1 text-sm text-brand">
+          <p className="mt-1 text-[0.84375rem] text-brand">
             Every delivery is a JSON POST with this envelope. <code>id</code> is
             unique per event — dedupe on it (see idempotency below).
           </p>
@@ -1534,7 +1534,7 @@ User-Agent: vouch-webhooks/1
 
         <div>
           <h3 className="sub-head">Verifying the signature</h3>
-          <p className="mt-1 text-sm text-brand">
+          <p className="mt-1 text-[0.84375rem] text-brand">
             The <code>Vouch-Signature</code> header is{" "}
             <code>t=&lt;unix seconds&gt;,v1=&lt;hex&gt;</code>, where{" "}
             <code>v1</code> is <code>HMAC-SHA256(secret, `${"{"}t{"}"}.${"{"}rawBody{"}"}`)</code>{" "}
@@ -1566,7 +1566,7 @@ function verify(secret, rawBody, header, toleranceSec = 300) {
 
         <div>
           <h3 className="sub-head">Delivery, retries &amp; idempotency</h3>
-          <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-brand">
+          <ul className="mt-2 list-disc space-y-2 pl-5 text-[0.84375rem] text-brand">
             <li>
               <strong>At-most-once, no retry.</strong> Each event is delivered
               once with a 5-second timeout. A non-2xx response or timeout is not
@@ -1606,7 +1606,7 @@ function verify(secret, rawBody, header, toleranceSec = 300) {
         {/* 2026-09-29 敵対的監査: 「closed beta」と書いていたが、本番は招待コードを求めず
             （GET /api/signup が inviteRequired:false）、無料キーは誰でも発行できる。
             招待制に戻したときに文言が嘘にならないよう、同じ関数（BETA_INVITE_CODE）で分ける。 */}
-        <p className="text-sm text-brand">
+        <p className="text-[0.84375rem] text-brand">
           vet402 is an early-stage service run by a single operator.{" "}
           {inviteRequired() ? (
             <>Keys are issued by invite code for now.</>
@@ -1622,7 +1622,7 @@ function verify(secret, rawBody, header, toleranceSec = 300) {
           We publish our real operating posture rather than a contractual uptime figure we
           can&apos;t yet stand behind:
         </p>
-        <ul className="list-disc space-y-2 pl-5 text-sm text-brand">
+        <ul className="list-disc space-y-2 pl-5 text-[0.84375rem] text-brand">
           <li>
             <strong>No SLA credits during beta.</strong> Service is best-effort,
             with no financial uptime guarantee. When we commit to a numeric target
@@ -1694,12 +1694,12 @@ function verify(secret, rawBody, header, toleranceSec = 300) {
             </tbody>
           </table>
         </TableScroll>
-        <p className="text-sm text-brand">
+        <p className="text-[0.84375rem] text-brand">
           Error bodies are shaped as <code className="text-brand-deep">{`{ "error": string, "details"?: object }`}</code>.
         </p>
       </section>
 
-        <p className="text-[0.8125rem]">
+        <p className="text-[0.84375rem]">
           <Link href="/" className="doc-link">
             The memo
           </Link>

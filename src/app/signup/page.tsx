@@ -159,14 +159,14 @@ export default function SignupPage() {
             </div>
           </div>
 
-          <h1 className="doc-title mt-10">Your API key</h1>
+          <h1 className="doc-title mt-8">Your API key</h1>
           <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 
           <p className="doc-p mt-8">
             Copy this key now. <strong>It will not be shown again.</strong> You are signed in to the
             dashboard.
           </p>
-          <code className="mt-4 block break-all border border-dashed border-brand-lift bg-paper px-4 py-3 text-[0.8125rem] text-brand-deep">
+          <code className="mt-4 block break-all border border-dashed border-brand-lift bg-paper px-4 py-3 text-[0.84375rem] text-brand-deep">
             {apiKey}
           </code>
 
@@ -243,7 +243,7 @@ export default function SignupPage() {
         {/* 2026-07-27 growth施策(週次)の見出しはスコアだけを入口にしていた。
             2026-10-21 A-07: 無料鍵は受取人スコア、リソース判定は鍵なし、の2文。
             ダッシュは使わない。eyebrow の "Vouch" は削除済み。 */}
-        <h1 className="doc-title mt-10 max-w-[42ch]">
+        <h1 className="doc-title mt-8 max-w-[42ch]">
           A free key reads a payee score. A resource decision stays available without a key.
         </h1>
         <p className="mx-auto mt-3 max-w-[56ch] text-center text-brand-lift">
@@ -258,7 +258,7 @@ export default function SignupPage() {
           string), so a no-JS user gets their key on the next render instead of a
           silently wiped form. */}
       <noscript>
-        <p className="mt-8 border border-dashed border-brand-lift px-4 py-3 text-[0.8125rem] text-brand-deep">
+        <p className="mt-8 border border-dashed border-brand-lift px-4 py-3 text-[0.84375rem] text-brand-deep">
           JavaScript is off — that is fine. Submitting will reload this page with your new API key
           shown once. Copy it before navigating away.
         </p>
@@ -278,7 +278,7 @@ export default function SignupPage() {
           setFormError(null);
           track("signup_started");
         }}
-        className="mt-10 space-y-5 border-t border-brand-deep pt-8"
+        className="mt-8 space-y-6 border-t border-brand-deep pt-8"
       >
         {/* 2026-08-12: 入力欄の枠線は白地 3:1 を満たす階調でなければならない。
             それまでの zinc-300 (#D4D4D8) は白地 1.48:1 で、WCAG 2.2 の 1.4.11
@@ -287,9 +287,9 @@ export default function SignupPage() {
             2026-08-13 vet402: 紺の階調へ移して brand-lift (#55688c・白地 5.61:1)。
             brand-mist (#8f9cb2) は 2.78:1 なので枠線には使えない。
             tests/contrast-tokens.test.ts が入力欄の弱い枠線を静的に禁じている。 */}
-        {/* 2026-09-28 監査: 入力欄は text-base（16px）。iOS Safari は 16px 未満の欄にフォーカスすると
-            頁を拡大し、送信ボタンが画面の外へ出る。 */}
-        <label className="block space-y-2 text-sm">
+        {/* 2026-09-28 監査: iOS Safari は 16px 未満の欄にフォーカスすると頁を拡大する。
+            字の階段に 16px は無いので、16px 以上で一番近い 17px（--type-17）。 */}
+        <label className="block space-y-2 text-[0.84375rem]">
           <span className="doc-caption block">Email</span>
           {/* autoComplete (WCAG 1.3.5 Identify Input Purpose) — lets the browser
               and assistive tech fill known values instead of retyping them. */}
@@ -297,29 +297,29 @@ export default function SignupPage() {
             type="email"
             name="email"
             autoComplete="email"
-            className="doc-input text-base"
+            className="doc-input text-[1.0625rem]"
             required
             onInvalid={handleInvalid}
           />
         </label>
 
-        <label className="block space-y-2 text-sm">
+        <label className="block space-y-2 text-[0.84375rem]">
           <span className="doc-caption block">Name (optional)</span>
           <input
             name="name"
             autoComplete="name"
-            className="doc-input text-base"
+            className="doc-input text-[1.0625rem]"
           />
         </label>
 
         {inviteRequired && (
-          <label className="block space-y-2 text-sm">
+          <label className="block space-y-2 text-[0.84375rem]">
             <span className="doc-caption block">Invite code</span>
             <input
               name="inviteCode"
               value={inviteCode}
               onChange={(e) => setInviteCode(e.target.value)}
-              className="doc-input text-base"
+              className="doc-input text-[1.0625rem]"
               required
               onInvalid={handleInvalid}
             />
@@ -333,7 +333,7 @@ export default function SignupPage() {
             to the page the user actually asked for. */}
         <label
           htmlFor="accept-terms"
-          className="flex cursor-pointer items-start gap-3 text-[0.8125rem] text-brand"
+          className="flex min-h-11 cursor-pointer items-center gap-3 text-[0.84375rem] text-brand"
         >
           <input
             id="accept-terms"
@@ -345,7 +345,7 @@ export default function SignupPage() {
               // 直したものについてのエラーを読み上げ続けない。
               if (e.target.checked) setFormError(null);
             }}
-            className="mt-0.5 h-4 w-4 shrink-0 rounded-[2px] border-brand-lift accent-brand-deep"
+            className="h-6 w-6 shrink-0 rounded-[2px] border-brand-lift accent-brand-deep"
             required
             onInvalid={handleInvalid}
           />
@@ -369,12 +369,12 @@ export default function SignupPage() {
           <p
             key={`client-${formError.nonce}`}
             role="alert"
-            className="border-l-[3px] border-red-700 bg-red-50 px-4 py-3 text-[0.8125rem] text-red-800"
+            className="field-error"
           >
             {formError.text}
           </p>
         ) : state.status === "error" && state.error ? (
-          <p role="alert" className="border-l-[3px] border-red-700 bg-red-50 px-4 py-3 text-[0.8125rem] text-red-800">{dashboardErrorMessage(state.error)}</p>
+          <p role="alert" className="field-error">{dashboardErrorMessage(state.error)}</p>
         ) : null}
 
         {/* 2026-08-13 全盲ペルソナ監査 R2: 同意が前提であることを、送信して失敗する
@@ -391,6 +391,7 @@ export default function SignupPage() {
         <button
           type="submit"
           aria-disabled={pending || undefined}
+          aria-busy={pending || undefined}
           aria-describedby="signup-terms-note"
           className={buttonClass({
             size: "md",
@@ -403,13 +404,13 @@ export default function SignupPage() {
       </form>
 
       {/* 2026-09-29 ペルソナ監査: キーは一度しか出ない。失くしたときの次の一手を発行の画面にも置く。 */}
-      <p className="mt-6 text-center text-[0.8125rem] text-brand">
+      <p className="mt-6 text-center text-[0.84375rem] text-brand">
         The key is shown once. Lost it?{" "}
         <Link href="/faq" className="doc-link">
           FAQ: I lost my API key
         </Link>
       </p>
-      <p className="mt-3 text-center text-[0.8125rem] text-brand">
+      <p className="mt-3 text-center text-[0.84375rem] text-brand">
           Already have a key?{" "}
           <Link href="/dashboard/login" className="doc-link">
             Sign in

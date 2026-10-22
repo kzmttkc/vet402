@@ -103,7 +103,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-6">
         <div className="dash-card max-w-md text-center">
-          <p className="text-sm text-red-700">{dashboardErrorMessage(serviceError)}</p>
+          <p className="text-[0.84375rem] text-red-700">{dashboardErrorMessage(serviceError)}</p>
           <button
             type="button"
             onClick={() => window.location.reload()}
@@ -131,14 +131,14 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
           <div className="flex items-baseline gap-3">
             <Wordmark className="text-[1.0625rem] leading-none" />
-            <h1 className="font-[family-name:var(--font-display)] text-[0.8125rem] font-semibold text-zinc-500">
+            <h1 className="font-[family-name:var(--font-display)] text-[0.84375rem] font-semibold text-zinc-500">
               Dashboard
             </h1>
           </div>
           <button
             type="button"
             onClick={logout}
-            className="rounded-[2px] px-2 py-1.5 text-[0.8125rem] text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+            className="rounded-[2px] px-2 py-1.5 text-[0.84375rem] text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
           >
             Sign out
           </button>
@@ -147,7 +147,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
       <div className="mx-auto grid w-full max-w-6xl flex-1 gap-8 px-6 py-8 lg:grid-cols-[200px_minmax(0,1fr)]">
         <details className="dash-card-flush lg:hidden">
-          <summary className="min-h-11 cursor-pointer px-4 py-3 text-sm font-medium text-zinc-800">
+          <summary className="min-h-11 cursor-pointer px-4 py-3 text-[0.84375rem] font-medium text-zinc-800">
             Menu
           </summary>
           <nav className="space-y-0.5 border-t border-zinc-200 p-2">{navLinks(pathname)}</nav>
@@ -205,7 +205,7 @@ function navLinks(pathname: string) {
       <Link
         key={item.href}
         href={item.href}
-        className={`block rounded-[2px] px-3 py-2 text-[0.8125rem] ${
+        className={`block rounded-[2px] px-3 py-2 text-[0.84375rem] ${
           active
             ? "bg-brand-deep font-medium text-white"
             : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
@@ -232,7 +232,7 @@ function DashboardLoading() {
         <div className="dash-skel w-full" />
         <div className="dash-skel w-5/6" />
       </div>
-      <p className="text-sm text-zinc-600">
+      <p className="text-[0.84375rem] text-zinc-600">
         {slow ? "Still loading. If this persists, refresh or sign in again." : "Loading dashboard…"}
       </p>
       {slow ? (

@@ -70,7 +70,19 @@ export type HomeDecision = {
 export type HomeExample = {
   receipt: HomeReceipt;
   decision: HomeDecision | null;
+  /** Newest settled rows in the same window, at most 5. The first is `receipt`. */
+  latest: HomeReceipt[];
 };
+
+/** The Delivered cell. `strong` matches the receipt: a negation is not bold beside the host. */
+export function deliveredLine(row: { held: boolean; delivered: boolean; httpStatus: number | null }): { text: string; strong: boolean } {
+  let text = "no 2xx";
+  if (row.held) text = "held, inconclusive";
+  else if (row.delivered) text = "yes, 2xx";
+  else if (row.httpStatus === 202) text = "not confirmed, 202 accepted";
+  else if (row.httpStatus !== null && row.httpStatus >= 200 && row.httpStatus < 300) text = "no, empty body";
+  return { text, strong: !row.held && row.httpStatus !== 202 };
+}
 
 export const fmt = (n: number) => n.toLocaleString("en-US");
 
@@ -213,7 +225,7 @@ function str(v: unknown): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
-async function loadLatestReceipt(): Promise<HomeReceipt | null> {
+async function loadLatestReceipt(): Promise<{ receipt: HomeReceipt; latest: HomeReceipt[] } | null> {
   const db = getDb();
   if (!db) return null;
   const windowWhere = () => sql`
@@ -261,48 +273,56 @@ async function loadLatestReceipt(): Promise<HomeReceipt | null> {
         AND pu.tx_hash IS NOT NULL AND pu.tx_hash <> ''
         AND e.resource_key IS NOT NULL AND e.resource_key <> ''
       ORDER BY pu.attempted_at DESC, pu.id ASC
-      LIMIT 1
+      LIMIT 8
     `),
   );
-  const row = latest[0];
-  if (!row) return null;
-  const l2Schema = typeof row.l2_schema === "string" ? row.l2_schema : null;
-  const l2Reading =
-    l2Schema === null
-      ? null
-      : l2ReadingOf(
-          {
-            l2Schema,
-            l2Detail: row.l2_detail,
-            bodyHead: typeof row.l2_body_head === "string" ? row.l2_body_head : null,
-            contentType: typeof row.l2_content_type === "string" ? row.l2_content_type : null,
-          },
-          row.l2_declared_schema ?? null,
-        );
-  return formatSettledReceipt(
-    {
-      attempted_at: str(row.attempted_at),
-      resource_key: str(row.resource_key),
-      network: str(row.network),
-      spent_units: str(row.spent_units),
-      confirmed_units: str(row.confirmed_units),
-      tx_hash: str(row.tx_hash),
-      http_status_paid: row.http_status_paid == null ? null : str(row.http_status_paid),
-      payload_non_empty: payloadFlag(row.payload_non_empty),
-      held_reason: row.held_reason == null ? null : str(row.held_reason),
-      endpoint_id: str(row.endpoint_id),
-      l2_schema: l2Schema,
-      l2_reading: l2Reading,
-      settlement_source: row.settlement_source == null ? null : str(row.settlement_source),
-      id: str(row.id),
-    },
-    {
-      rows: Number(count.window_rows),
-      settled: Number(count.window_settled),
-      from: str(count.window_from),
-      to: str(count.window_to),
-    },
-  );
+  const window = {
+    rows: Number(count.window_rows),
+    settled: Number(count.window_settled),
+    from: str(count.window_from),
+    to: str(count.window_to),
+  };
+  const formatted: HomeReceipt[] = [];
+  for (const row of latest) {
+    const l2Schema = typeof row.l2_schema === "string" ? row.l2_schema : null;
+    const l2Reading =
+      l2Schema === null
+        ? null
+        : l2ReadingOf(
+            {
+              l2Schema,
+              l2Detail: row.l2_detail,
+              bodyHead: typeof row.l2_body_head === "string" ? row.l2_body_head : null,
+              contentType: typeof row.l2_content_type === "string" ? row.l2_content_type : null,
+            },
+            row.l2_declared_schema ?? null,
+          );
+    const receipt = formatSettledReceipt(
+      {
+        attempted_at: str(row.attempted_at),
+        resource_key: str(row.resource_key),
+        network: str(row.network),
+        spent_units: str(row.spent_units),
+        confirmed_units: str(row.confirmed_units),
+        tx_hash: str(row.tx_hash),
+        http_status_paid: row.http_status_paid == null ? null : str(row.http_status_paid),
+        payload_non_empty: payloadFlag(row.payload_non_empty),
+        held_reason: row.held_reason == null ? null : str(row.held_reason),
+        endpoint_id: str(row.endpoint_id),
+        l2_schema: l2Schema,
+        l2_reading: l2Reading,
+        settlement_source: row.settlement_source == null ? null : str(row.settlement_source),
+        id: str(row.id),
+      },
+      window,
+    );
+    if (!receipt) continue;
+    formatted.push(receipt);
+    if (formatted.length === 5) break;
+  }
+  const receipt = formatted[0];
+  if (!receipt) return null;
+  return { receipt, latest: formatted };
 }
 
 async function loadDecision(endpointId: string): Promise<HomeDecision | null> {
@@ -328,13 +348,13 @@ async function loadDecision(endpointId: string): Promise<HomeDecision | null> {
 
 /** Uncached read. A thrown decision read propagates, so the cache below does not store it. */
 export async function readHomeExample(): Promise<HomeExample | null> {
-  const receipt = await loadLatestReceipt();
-  if (!receipt) return null;
-  const decision = await loadDecision(receipt.endpointId);
-  return { receipt, decision };
+  const loaded = await loadLatestReceipt();
+  if (!loaded) return null;
+  const decision = await loadDecision(loaded.receipt.endpointId);
+  return { receipt: loaded.receipt, decision, latest: loaded.latest };
 }
 
-const readHomeExampleCached = unstable_cache(readHomeExample, ["home:example:v2"], {
+const readHomeExampleCached = unstable_cache(readHomeExample, ["home:example:v3"], {
   revalidate: PUBLIC_READ_REVALIDATE,
   tags: ["observatory"],
 });

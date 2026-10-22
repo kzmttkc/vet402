@@ -22,7 +22,7 @@ export default function PayeeNotFound() {
           </div>
         </div>
 
-        <h1 className="doc-title mt-10">{INVALID_PAYEE_H1}</h1>
+        <h1 className="doc-title mt-8">{INVALID_PAYEE_H1}</h1>
         <p className="mx-auto mt-3 max-w-[56ch] text-center text-brand-lift">
           {INVALID_PAYEE_DETAIL.split("0x")[0]}
           <code>0x</code>
@@ -31,7 +31,7 @@ export default function PayeeNotFound() {
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 
         <p className="doc-caption mt-8">Correct form</p>
-        <p className="mt-2 break-all font-mono text-[0.8125rem] text-brand-deep">
+        <p className="mt-2 break-all font-mono text-[0.84375rem] text-brand-deep">
           /payee/0xd8da6bf26964af9d7eed9e03e53415d37aa96045
         </p>
         <p className="doc-p mt-6">

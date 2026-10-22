@@ -77,7 +77,7 @@ export default function DocsToc({ items }: { items: TocItem[] }) {
   const linkClass = (href: string, indented: boolean) =>
     [
       "block rounded-[2px] px-2 py-1.5 underline-offset-4 hover:underline",
-      indented ? "pl-5 text-[11px]" : "",
+      indented ? "pl-5 text-[0.75rem]" : "",
       // 現在地は地色ではなく「左の1本罫＋紺のインク」で示す。紙面に灰色の
       // 塗りブロックが乗るとこの世界の文法から外れる。
       href === activeHref

@@ -35,11 +35,11 @@ export default function DashboardSettlementsPage() {
   }, []);
 
   if (error) {
-    return <p className="text-sm text-red-600">{dashboardErrorMessage(error)}</p>;
+    return <p className="text-[0.84375rem] text-red-600">{dashboardErrorMessage(error)}</p>;
   }
 
   if (!data) {
-    return <p className="text-sm text-zinc-600">Loading settlements...</p>;
+    return <p className="text-[0.84375rem] text-zinc-600">Loading settlements...</p>;
   }
 
   const { settlements } = data;

@@ -64,7 +64,7 @@ export default function LiveClient() {
           the probe or purchase runs fire — it does not simulate activity in between.
         </p>
       ) : (
-        <table className="mt-3 w-full max-w-[72ch] border-t border-brand-deep text-[0.8125rem]">
+        <table className="mt-3 w-full max-w-[72ch] border-t border-brand-deep text-[0.84375rem]">
           <tbody>
             {rows.map((r) => (
               <tr key={r.key} className="border-b border-brand-lift/40">

@@ -35,11 +35,11 @@ export default function DashboardLogsPage() {
   }, []);
 
   if (error) {
-    return <p className="text-sm text-red-600">{dashboardErrorMessage(error)}</p>;
+    return <p className="text-[0.84375rem] text-red-600">{dashboardErrorMessage(error)}</p>;
   }
 
   if (!data) {
-    return <p className="text-sm text-zinc-600">Loading query logs...</p>;
+    return <p className="text-[0.84375rem] text-zinc-600">Loading query logs...</p>;
   }
 
   const { logs } = data;
@@ -47,12 +47,12 @@ export default function DashboardLogsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold">Query logs</h2>
-        <p className="text-sm text-zinc-600">Recent trust score lookups for your API key.</p>
+        <h2 className="text-[1.75rem] font-semibold">Query logs</h2>
+        <p className="text-[0.84375rem] text-zinc-600">Recent trust score lookups for your API key.</p>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-        <table className="min-w-full text-left text-sm">
+        <table className="min-w-full text-left text-[0.84375rem]">
           <thead className="border-b border-zinc-200 bg-zinc-50 text-zinc-600">
             <tr>
               <th className="px-4 py-3 font-medium">Time</th>

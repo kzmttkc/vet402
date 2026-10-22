@@ -95,7 +95,7 @@ export default function DashboardLookupPage() {
       </div>
 
       <form onSubmit={onSubmit} className="dash-card space-y-4">
-        <label className="block space-y-1.5 text-sm">
+        <label className="block space-y-1.5 text-[0.84375rem]">
           <span className="font-medium text-zinc-800">Payee wallet</span>
           <input
             value={wallet}
@@ -104,7 +104,7 @@ export default function DashboardLookupPage() {
             className="dash-input"
           />
         </label>
-        <label className="block space-y-1.5 text-sm">
+        <label className="block space-y-1.5 text-[0.84375rem]">
           <span className="font-medium text-zinc-800">Payer agent ID (optional)</span>
           <input
             value={agentId}
@@ -131,10 +131,10 @@ export default function DashboardLookupPage() {
       {result && isPayee(result) && (
         <div className="dash-card space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">Payee score</h3>
+            <h3 className="text-[1.0625rem] font-semibold">Payee score</h3>
             <Badge value={result.recommendation} />
           </div>
-          <dl className="grid gap-3 text-sm sm:grid-cols-2">
+          <dl className="grid gap-3 text-[0.84375rem] sm:grid-cols-2">
             <Item label="Payee" value={result.payee} />
             <Item label="Score" value={String(result.score)} />
             <Item label="Data depth" value={result.dataDepth} />
@@ -151,12 +151,12 @@ export default function DashboardLookupPage() {
             />
           </dl>
           {result.signalsUnavailable.length > 0 && (
-            <p className="text-sm text-zinc-600">
+            <p className="text-[0.84375rem] text-zinc-600">
               Unread inputs: {result.signalsUnavailable.join(", ")}
             </p>
           )}
           {result.signals.flags.length > 0 && (
-            <p className="text-sm text-zinc-600">Flags: {result.signals.flags.join(", ")}</p>
+            <p className="text-[0.84375rem] text-zinc-600">Flags: {result.signals.flags.join(", ")}</p>
           )}
         </div>
       )}
@@ -164,10 +164,10 @@ export default function DashboardLookupPage() {
       {result && !isPayee(result) && (
         <div className="dash-card space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">Payer score</h3>
+            <h3 className="text-[1.0625rem] font-semibold">Payer score</h3>
             <Badge value={result.recommendation} />
           </div>
-          <dl className="grid gap-3 text-sm sm:grid-cols-2">
+          <dl className="grid gap-3 text-[0.84375rem] sm:grid-cols-2">
             <Item label="Agent ID" value={result.agentId} />
             <Item label="Trust score" value={String(result.trustScore)} />
             <Item label="Wallet" value={result.wallet ?? "—"} />
@@ -183,7 +183,7 @@ export default function DashboardLookupPage() {
             <Item label="Sybil risk" value={result.signals.sybil.risk} />
           </dl>
           {result.signals.sybil.flags.length > 0 && (
-            <p className="text-sm text-zinc-600">
+            <p className="text-[0.84375rem] text-zinc-600">
               Flags: {result.signals.sybil.flags.join(", ")}
             </p>
           )}

@@ -74,13 +74,13 @@ export function SiteHeader() {
             検分1回目の実測ではナビが 1440px 全幅・紙が 763px で、どの端も一致して
             いなかった。罫線だけは全幅で引く（RFC の走り出し罫）。 */}
         <div className="mx-auto flex h-14 w-full max-w-[var(--column)] items-center justify-between gap-6 px-[var(--sheet-pad)]">
-          <Link href="/" className="shrink-0">
+          <Link href="/" className="inline-flex h-11 shrink-0 items-center">
             <Wordmark className="text-[1.0625rem] leading-none" />
           </Link>
 
           <nav
             aria-label="Main navigation"
-            className="hidden items-center gap-4 text-[0.8125rem] text-brand-lift md:flex lg:gap-5"
+            className="hidden items-center gap-4 text-[0.84375rem] text-brand-lift md:flex lg:gap-6"
           >
             {/* 2026-09-02 敵対的監査 F8: header の主 CTA と nav に計測がなく、LP 側の
                 lp_cta_click{position} だけでは「どの入口が効いたか」の分母が欠けていた。
@@ -92,7 +92,7 @@ export function SiteHeader() {
                 event="nav_click"
                 props={{ label: item.label }}
                 ariaCurrent={currentNav(pathname, item.href)}
-                className={item.wideOnly ? "hidden hover:text-brand-deep lg:inline" : "hover:text-brand-deep"}
+                className={item.wideOnly ? "hidden h-11 items-center hover:text-brand-deep lg:inline-flex" : "inline-flex h-11 items-center hover:text-brand-deep"}
               >
                 {item.label}
               </TrackedLink>
@@ -105,7 +105,7 @@ export function SiteHeader() {
               event="nav_click"
               props={{ label: "Dashboard" }}
               ariaCurrent={currentNav(pathname, "/dashboard/login")}
-              className="text-[0.8125rem] text-brand-lift hover:text-brand-deep"
+              className="inline-flex h-11 items-center text-[0.84375rem] text-brand-lift hover:text-brand-deep"
             >
               Dashboard
             </TrackedLink>
@@ -125,7 +125,7 @@ export function SiteHeader() {
               開いた一覧はバーの下へ全幅で重なる。高さは残り画面で内部スクロール
               （2026-08-06 landscape: sticky が画面より高くなると下の項目に届かない）。 */}
           <details key={pathname} className="site-menu md:hidden">
-            <summary className="-mr-2 flex h-11 w-16 cursor-pointer list-none items-center justify-end text-[0.8125rem] text-brand-deep">
+            <summary className="-mr-2 flex h-11 w-16 cursor-pointer list-none items-center justify-end text-[0.84375rem] text-brand-deep">
               <span className="site-menu-open">Menu</span>
               <span className="site-menu-close">Close</span>
             </summary>
@@ -145,7 +145,7 @@ export function SiteHeader() {
                 event="nav_click"
                 props={{ label: item.label }}
                 ariaCurrent={currentNav(pathname, item.href)}
-                className="border-b border-hair py-3 text-sm text-brand hover:text-brand-deep"
+                className="min-h-11 border-b border-hair py-3 text-[0.84375rem] text-brand hover:text-brand-deep"
               >
                 {item.label}
               </TrackedLink>
@@ -155,7 +155,7 @@ export function SiteHeader() {
               event="nav_click"
               props={{ label: "Dashboard" }}
               ariaCurrent={currentNav(pathname, "/dashboard/login")}
-              className="border-b border-hair py-3 text-sm text-brand hover:text-brand-deep"
+              className="min-h-11 border-b border-hair py-3 text-[0.84375rem] text-brand hover:text-brand-deep"
             >
               Dashboard
             </TrackedLink>

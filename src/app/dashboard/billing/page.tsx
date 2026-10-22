@@ -88,12 +88,12 @@ export default function DashboardBillingPage() {
   if (!info) {
     if (error) {
       return (
-        <p role="alert" aria-live="assertive" className="text-sm text-red-700">
+        <p role="alert" aria-live="assertive" className="text-[0.84375rem] text-red-700">
           {dashboardErrorMessage(error)}
         </p>
       );
     }
-    return <p className="text-sm text-zinc-700">Loading billing...</p>;
+    return <p className="text-[0.84375rem] text-zinc-700">Loading billing...</p>;
   }
 
   return (
@@ -149,10 +149,10 @@ export default function DashboardBillingPage() {
 
       <div className="dash-card">
         <p className="dash-caption">Current plan</p>
-        <p className="mt-2 font-[family-name:var(--font-display)] text-2xl font-semibold capitalize tracking-tight">
+        <p className="mt-2 font-[family-name:var(--font-display)] text-[1.75rem] font-semibold capitalize tracking-tight">
           {info.plan}
         </p>
-        {info.email && <p className="mt-1 text-sm text-zinc-600">{info.email}</p>}
+        {info.email && <p className="mt-1 text-[0.84375rem] text-zinc-600">{info.email}</p>}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -165,10 +165,10 @@ export default function DashboardBillingPage() {
               className={`dash-card ${isCurrent ? "border-zinc-900 bg-zinc-50" : ""}`}
             >
               <p className="font-semibold text-zinc-900">{plan.name}</p>
-              <p className="mt-2 font-[family-name:var(--font-display)] text-2xl font-semibold tracking-tight">
+              <p className="mt-2 font-[family-name:var(--font-display)] text-[1.75rem] font-semibold tracking-tight">
                 {plan.priceLabel}
               </p>
-              <p className="mt-2 text-sm text-zinc-600">
+              <p className="mt-2 text-[0.84375rem] text-zinc-600">
                 {plan.monthlyLimit.toLocaleString()} lookups / month
               </p>
               {planId !== "free" && info.stripeConfigured && !isCurrent && info.canChangePlan && (
@@ -218,7 +218,7 @@ export default function DashboardBillingPage() {
           >
             {loading === "portal" ? "Opening..." : "Manage subscription"}
           </button>
-          <p className="text-sm text-zinc-600">
+          <p className="text-[0.84375rem] text-zinc-600">
             Change card, download invoices, or cancel from the Stripe portal. Cancel returns the
             account to Free at period end.
           </p>
@@ -226,7 +226,7 @@ export default function DashboardBillingPage() {
       )}
 
       {!info.stripeConfigured && (
-        <p className="text-sm text-zinc-600">
+        <p className="text-[0.84375rem] text-zinc-600">
           Paid upgrades are not enabled on this deploy. The Free quota still applies.
         </p>
       )}
@@ -268,7 +268,7 @@ function OrderConfirmation({
       <h3 id="order-confirmation-title" className="font-semibold text-zinc-900">
         Confirm your order: {plan.name}
       </h3>
-      <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-[max-content_1fr]">
+      <dl className="grid gap-x-6 gap-y-3 text-[0.84375rem] sm:grid-cols-[max-content_1fr]">
         <dt className="text-zinc-600">Plan</dt>
         <dd className="text-zinc-900">
           {plan.name} — {plan.monthlyLimit.toLocaleString("en-US")} lookups a month, shared across
@@ -299,7 +299,7 @@ function OrderConfirmation({
           Free. No refunds for unused lookups or unused time.
         </dd>
       </dl>
-      <p className="text-sm text-zinc-600">
+      <p className="text-[0.84375rem] text-zinc-600">
         By continuing you agree to the{" "}
         <a className="underline" href="/legal/terms#paid-subscriptions">
           Terms of Service

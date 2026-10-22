@@ -15,7 +15,7 @@ export function TwoPaths() {
         <div className="flex min-w-0 flex-col border-t border-brand-deep pt-5">
           <h3 className={`${DISPLAY} text-[1.25rem] font-semibold text-brand-deep`}>For agent developers</h3>
           <p className="mt-2 text-brand">The same facts, inside your agent. Three lines after the import.</p>
-          <p className="mt-4 text-[0.8125rem] text-brand-deep">
+          <p className="mt-4 text-[0.84375rem] text-brand-deep">
             <code>{DEV_INSTALL}</code>
           </p>
           <CodeBlock className="mt-2" label="TypeScript: check an endpoint before paying" code={DEV_CODE} />
@@ -31,7 +31,7 @@ export function TwoPaths() {
           <p className="mt-2 text-brand">
             vet402 may already have bought from your API. Put your domain in the check above to see each purchase.
           </p>
-          <dl className="mt-4 divide-y divide-hair border-y border-hair text-[0.875rem]">
+          <dl className="mt-4 divide-y divide-hair border-y border-hair text-[0.84375rem]">
             <div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-3 py-2.5">
               <dt className="text-brand-deep">See</dt>
               <dd className="text-brand">Each purchase, with its transaction and HTTP status.</dd>

@@ -120,12 +120,26 @@
      1ch の定義値。本文の字級で一度だけ計算する。 */
   --column-font: 0.9375rem;
   --column: calc(72 * 0.618 * var(--column-font) + var(--sheet-pad) * 2);
+
+  /* 字の階段（2026-10-22）。この8段だけ。表示用の大数字は --type-44 と --type-64。
+     本文はどの幅でも 15px。列幅の --column-font も本文と同じにして、段組がずれない。 */
+  --type-12: 0.75rem;
+  --type-13: 0.84375rem;
+  --type-15: 0.9375rem;
+  --type-17: 1.0625rem;
+  --type-20: 1.25rem;
+  --type-28: 1.75rem;
+  --type-44: 2.75rem;
+  --type-64: 4rem;
+  --leading-body: 1.65;
+  --leading-head: 1.2;
+  --leading-table: 1.45;
+  --section-gap: 4rem;
 }
 
 @media (max-width: 640px) {
   :root {
     --sheet-pad: 1rem;
-    --column-font: 0.84375rem;
   }
 }
 
@@ -150,23 +164,13 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
-  font-size: 0.9375rem; /* 15px — ブランドシートの本文と同値 */
-  line-height: 1.7;
+  font-size: var(--type-15); /* 15px。狭い幅でも下げない（2026-10-22） */
+  line-height: var(--leading-body);
   /* 事実の表で桁が揃うこと。Fragment Mono は等幅なので既に揃うが、フォールバック
      （ui-monospace 等）へ落ちた時にも崩さないために明示する。 */
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-}
-
-/* 等幅の 15px は 390px の画面では1行 34 桁しか入らず、文字が大きすぎて紙面に
-   見えない（実測・2026-08-13 の検分1回目）。13.5px で 40 桁まで戻る。
-   72 桁には届かないが、届かせようとすると本文が読めない大きさになる。 */
-@media (max-width: 640px) {
-  body {
-    font-size: 0.84375rem;
-    line-height: 1.72;
-  }
 }
 
 /* 等幅の紙面では1語が長いだけで紙からはみ出す。320px の内寸は 30 桁しかなく、
@@ -211,13 +215,14 @@ figcaption {
    dims on some elements), and no reduced-motion handling at all. One global
    rule each; component classes may add to it but can no longer remove it. */
 :focus-visible {
-  /* 2026-08-11: #18181b（ほぼ黒）はプライマリボタンの紺地(#233456)の上で
-     1.4:1 しかなく、キーボード操作の主要導線でリングが見えなかった。
-     シアン(#0891b2)は白地 3.68:1・紺地 3.36:1 でどちらでも 3:1 を満たす。
-     これは非テキストなので 1.4.11 の 3:1 が適用され、4.5:1 は要らない。 */
-  outline: 2px solid var(--color-focus);
+  /* 2026-10-22: 操作要素は同じ輪郭。紺 2px、外側 2px。
+     offset があるので、白地の上の紺ボタンでも輪郭は紙の上に乗る。 */
+  outline: 2px solid #233456;
   outline-offset: 2px;
-  border-radius: 2px;
+}
+/* 紺地の上では同じ 2px・offset 2px を紙色にする。紺の輪郭は紺地に溶ける。 */
+.bg-brand-deep :focus-visible {
+  outline-color: #ffffff;
 }
 
 /* 入力キャレットも既定の黒のままにしない。 */
@@ -231,7 +236,11 @@ select {
    離して太さも揃える。 */
 a {
   text-underline-offset: 0.22em;
-  text-decoration-thickness: from-font;
+  text-decoration-thickness: 1px;
+}
+a:hover {
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -264,6 +273,7 @@ a {
   .sheet {
     width: 100%;
     max-width: var(--column);
+    min-width: 0;
     margin-inline: auto;
     background: #ffffff;
     border: var(--rule) solid #dfe3e9;
@@ -290,7 +300,8 @@ a {
     justify-content: space-between;
     align-items: flex-start;
     gap: 1.5rem;
-    line-height: 1.7;
+    font-size: var(--type-13);
+    line-height: var(--leading-table);
   }
   .doc-head-col > * {
     display: block;
@@ -305,12 +316,10 @@ a {
   @media (max-width: 640px) {
     .doc-head {
       flex-direction: column;
-      gap: 0.9rem;
-      /* 2026-08-23 UX: 640px 未満では2列が縦に積まれるので、1.7 の行間だと
-         メタデータだけで最初の一画面をかなり食う。表題より先にヘッダが
-         主役になるのは RFC の版面でも正しくない。狭い幅のときだけ 1.5 へ。
-         フォント・色・順序は変えていない。 */
-      line-height: 1.5;
+      gap: 1rem;
+      /* 狭い幅ではメタデータが縦に積まれる。行間 1.6 は本文の下限で、
+         表題より先にヘッダが画面を埋めない。 */
+      line-height: 1.6;
     }
     .doc-head-col:last-child {
       text-align: left;
@@ -338,30 +347,34 @@ a {
     font-family: var(--font-display);
     font-weight: 600;
     letter-spacing: -0.01em;
-    line-height: 1.35;
+    line-height: var(--leading-head);
     color: #233456;
-    /* 上限 1.75rem = 28px。この書体の advance は 0.70em なので、表題の最長行
-       "vet402 — Independent Verification"（33桁）が 33 × 0.7 × 28 = 647px。
-       72桁の紙面の内寸 667px にちょうど収まり、承認された comp と同じ2行組みに
-       なる。30px だと 693px で入らず3行に割れた（検分1回目の実測）。 */
-    font-size: clamp(1.0625rem, 3.6vw, 1.75rem);
+    /* 768px 未満は 20px、以上は 28px。どちらも字の階段。
+       28px は最長の表題が紙面の2行に収まる上限（advance 0.70em）。
+       clamp は途中の幅で階段に無い大きさになるので使わない。 */
+    font-size: var(--type-20);
     max-width: 100%;
     margin-inline: auto;
     text-align: center;
     text-wrap: balance;
   }
+  @media (min-width: 768px) {
+    .doc-title {
+      font-size: var(--type-28);
+    }
+  }
   .sec-head {
     font-family: var(--font-display);
     font-weight: 600;
-    font-size: clamp(1rem, 2.1vw, 1.1875rem);
-    line-height: 1.4;
+    font-size: var(--type-20);
+    line-height: var(--leading-head);
     letter-spacing: -0.01em;
     color: #233456;
-    margin-top: 3.5rem;
-    padding-bottom: 0.625rem;
+    margin-top: var(--section-gap);
+    padding-bottom: 0.75rem;
     border-bottom: 1px solid #233456;
     display: flex;
-    gap: 0.85em;
+    gap: 0.75rem;
     align-items: baseline;
   }
   .sec-head > .sec-no {
@@ -371,9 +384,10 @@ a {
   .sub-head {
     font-family: var(--font-display);
     font-weight: 600;
-    font-size: 0.9375rem;
+    font-size: var(--type-17);
+    line-height: 1.25;
     color: #233456;
-    margin-top: 1.75rem;
+    margin-top: 2rem;
   }
 
   /* ---- 本文 ---------------------------------------------------------- */
@@ -390,14 +404,14 @@ a {
   }
   .doc-note {
     color: #55688c;
-    font-size: 0.8125rem;
-    line-height: 1.65;
+    font-size: var(--type-13);
+    line-height: var(--leading-body);
   }
 
   /* ---- キャプション（大文字 + 字間 0.22em。ブランドシート準拠）-------- */
   .doc-caption {
-    font-size: 0.75rem;
-    line-height: 1;
+    font-size: var(--type-12);
+    line-height: var(--leading-head);
     letter-spacing: 0.22em;
     text-transform: uppercase;
     color: #55688c;
@@ -408,8 +422,8 @@ a {
   .fact-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.8125rem;
-    line-height: 1.6;
+    font-size: var(--type-13);
+    line-height: var(--leading-table);
     font-variant-numeric: tabular-nums;
     text-align: left;
   }
@@ -418,14 +432,14 @@ a {
     color: #55688c;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    font-size: 0.6875rem;
-    padding: 0 1.25rem 0.5rem 0;
+    font-size: var(--type-12);
+    padding: 0 1rem 0.5rem 0;
     border-bottom: 1px solid #233456;
     vertical-align: bottom;
     white-space: nowrap;
   }
   .fact-table td {
-    padding: 0.6875rem 1.25rem 0.6875rem 0;
+    padding: 0.75rem 1rem 0.75rem 0;
     border-bottom: 1px solid #dfe3e9;
     color: #3e537c;
     vertical-align: top;
@@ -479,7 +493,13 @@ a {
      ひとつの縁。左右のカバーは紙の白と同色なので、スクロール位置が端に
      ある側では影が完全に隠れる。 */
   .table-scroll {
+    /* 2026-10-22: sr-only（position:absolute）の見出し注が、この容器を抜けて頁を横に 14px 広げていた（360px の /observatory）。 */
+    position: relative;
     overflow-x: auto;
+    max-width: 100%;
+    min-width: 0;
+    /* 中身の最小幅で親（flex の main）を広げない。表はここで横に送る。 */
+    contain: inline-size;
     margin-top: 1.5rem;
     background:
       linear-gradient(to right, #ffffff 60%, rgba(255, 255, 255, 0)) left center,
@@ -565,7 +585,7 @@ a {
     }
     .toc-page {
       grid-column: 2;
-      font-size: 0.6875rem;
+      font-size: var(--type-12);
       letter-spacing: 0.08em;
       text-transform: uppercase;
     }
@@ -583,8 +603,8 @@ a {
     padding: 0.05em 0.45em;
     font-family: var(--font-sans);
     font-weight: 400;
-    font-size: 0.6875rem;
-    line-height: 1.5;
+    font-size: var(--type-12);
+    line-height: var(--leading-table);
     letter-spacing: 0.06em;
     text-transform: uppercase;
     white-space: nowrap;
@@ -636,15 +656,15 @@ a {
     background: #ffffff;
     color: #233456;
     padding: 0.625rem 0.75rem;
-    font-size: 0.8125rem;
+    font-size: var(--type-13);
     line-height: 1.4;
+    min-height: 44px;
   }
-  /* 640px 未満は 16px。iOS Safari は 16px 未満の欄に焦点を当てると頁を拡大する。
-     ホームと signup は text-base で既に避けている。テキスト欄、select、
-     Playground の実行ボタンはどれも .doc-input。 */
+  /* 640px 未満は 17px。字の階段に 16px は無く、15px だと iOS Safari が欄に
+     焦点を当てたとき頁を拡大する。17px は階段の次の段で、16px 以上。 */
   @media (max-width: 639px) {
     .doc-input {
-      font-size: 1rem;
+      font-size: var(--type-17);
     }
   }
   .doc-input::placeholder {
@@ -667,6 +687,7 @@ a {
   }
   .doc-link:hover {
     text-decoration-color: #233456;
+    text-decoration-thickness: 2px;
   }
 
   /* ---- 参照マーカー [ARXIV-2606] ------------------------------------- */
@@ -692,14 +713,14 @@ a {
     color: #18181b;
   }
   .dash-lede {
-    margin-top: 0.35rem;
-    font-size: 0.875rem;
-    line-height: 1.5;
+    margin-top: 0.5rem;
+    font-size: var(--type-13);
+    line-height: var(--leading-body);
     color: #52525b;
   }
   .dash-caption {
-    font-size: 0.6875rem;
-    line-height: 1;
+    font-size: var(--type-12);
+    line-height: var(--leading-head);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: #52525b;
@@ -725,8 +746,16 @@ a {
     background: #ffffff;
     color: #18181b;
     padding: 0.5rem 0.75rem;
-    font-size: 0.875rem;
+    font-size: var(--type-13);
     line-height: 1.4;
+    min-height: 44px;
+  }
+  @media (max-width: 639px) {
+    .dash-input,
+    .dash-select,
+    .dash-textarea {
+      font-size: var(--type-17);
+    }
   }
   .dash-input {
     font-family: var(--font-mono);
@@ -739,7 +768,8 @@ a {
     width: 100%;
     border-collapse: collapse;
     text-align: left;
-    font-size: 0.875rem;
+    font-size: var(--type-13);
+    line-height: var(--leading-table);
   }
   .dash-th {
     padding: 0.75rem 1rem;
@@ -757,7 +787,8 @@ a {
   .dash-alert {
     border-radius: 0.375rem;
     padding: 0.5rem 0.75rem;
-    font-size: 0.875rem;
+    font-size: var(--type-13);
+    line-height: var(--leading-table);
   }
   .dash-alert-error {
     background: #fef2f2;
@@ -827,6 +858,11 @@ a {
     flex-direction: column;
     border-bottom: 1px solid var(--color-brand-deep);
   }
+  .site-menu[open] > nav a {
+    display: flex;
+    align-items: center;
+    min-height: 2.75rem;
+  }
 }
 
 @keyframes doc-skel-pulse {
@@ -856,4 +892,81 @@ a {
 
 .mark-edge {
   animation: rule-settle 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Figure 1。線は 1→5 の順に引かれる。合計 1.6 秒。5 の赤い破線が最後。
+   動きを切ったときは最初から完成形。 */
+@keyframes gap-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes gap-reveal {
+  from {
+    clip-path: inset(0 0 0 100%);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .gap-line {
+    stroke-dasharray: 1;
+    animation: gap-draw 0.32s linear both;
+  }
+  .gap-line-1 {
+    animation-delay: 0s;
+  }
+  .gap-line-2 {
+    animation-delay: 0.32s;
+  }
+  .gap-line-3 {
+    animation-delay: 0.64s;
+  }
+  .gap-line-4 {
+    animation-delay: 0.96s;
+  }
+  .gap-line-5 {
+    stroke-dasharray: 5 5;
+    stroke-dashoffset: 0;
+    animation-name: gap-reveal;
+    animation-delay: 1.28s;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gap-line {
+    animation: none !important;
+    stroke-dashoffset: 0 !important;
+    clip-path: none !important;
+  }
+}
+
+/* 受領証のミシン目。地の色の穴を上下に並べる。 */
+.slip {
+  background-image:
+    radial-gradient(circle at 8px 0, #eef0f3 3.5px, transparent 4px),
+    radial-gradient(circle at 8px 100%, #eef0f3 3.5px, transparent 4px);
+  background-size: 16px 8px, 16px 8px;
+  background-position: 0 0, 0 100%;
+  background-repeat: repeat-x, repeat-x;
+}
+
+/* 公開フォームのエラー。signup と payee で同じ形。色は既存の block-ink。 */
+.field-error {
+  margin-top: 0.75rem;
+  border: 1px solid var(--color-block-ink);
+  padding: 0.75rem 1rem;
+  background: var(--color-paper);
+  color: var(--color-block-ink);
+  font-size: var(--type-13);
+  line-height: var(--leading-table);
+}
+
+@media (max-width: 640px) {
+  .fact-table th.num {
+    white-space: normal;
+  }
 }

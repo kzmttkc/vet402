@@ -98,14 +98,14 @@ export default function DashboardListsPage() {
 
   if (error && !data) {
     return (
-      <p role="alert" aria-live="assertive" className="text-sm text-red-700">
+      <p role="alert" aria-live="assertive" className="text-[0.84375rem] text-red-700">
         {dashboardErrorMessage(error)}
       </p>
     );
   }
 
   if (!data) {
-    return <p className="text-sm text-zinc-600">Loading lists...</p>;
+    return <p className="text-[0.84375rem] text-zinc-600">Loading lists...</p>;
   }
 
   const { entries } = data;
@@ -148,7 +148,7 @@ export default function DashboardListsPage() {
       </form>
 
       <form onSubmit={importCsv} className="dash-card space-y-3">
-        <h3 className="text-sm font-medium text-zinc-800">CSV import</h3>
+        <h3 className="text-[0.84375rem] font-medium text-zinc-800">CSV import</h3>
         <textarea
           value={csv}
           onChange={(event) => setCsv(event.target.value)}
@@ -159,7 +159,7 @@ export default function DashboardListsPage() {
         <button type="submit" className={buttonClass({ variant: "secondary" })}>
           Import CSV
         </button>
-        {importMessage && <p className="text-sm text-emerald-700">{importMessage}</p>}
+        {importMessage && <p className="text-[0.84375rem] text-emerald-700">{importMessage}</p>}
       </form>
 
       <div className="dash-card-flush">

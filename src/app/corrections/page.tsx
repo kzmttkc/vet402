@@ -361,7 +361,7 @@ export default async function CorrectionsPage() {
           </div>
         </div>
 
-        <h1 className="doc-title mt-10">Corrections</h1>
+        <h1 className="doc-title mt-8">Corrections</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 
         <div className="mt-8 flex flex-col gap-1 sm:flex-row sm:gap-0">
@@ -462,7 +462,7 @@ export default async function CorrectionsPage() {
           <div className="mt-6 divide-y divide-hair border-t border-brand-deep">
             {CORRECTIONS.map((entry) => (
               <div key={`${entry.date}-${entry.subject}`} className="py-5">
-                <p className="text-[0.8125rem] text-brand-lift">{entry.date}</p>
+                <p className="text-[0.84375rem] text-brand-lift">{entry.date}</p>
                 <p className="mt-1 break-all font-[family-name:var(--font-display)] font-semibold text-brand-deep">
                   {entry.subject}
                 </p>
@@ -632,7 +632,7 @@ export default async function CorrectionsPage() {
           is the full text of both.
         </p>
 
-        <p className="mt-8 text-[0.8125rem]">
+        <p className="mt-8 text-[0.84375rem]">
           <Link href="/accuracy" className="doc-link">
             Measured accuracy
           </Link>

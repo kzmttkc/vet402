@@ -120,9 +120,11 @@ test("Where purchases settled: one row per chain with a settled purchase, names 
   const html = renderToStaticMarkup(createElement(SettledChainsSection, { ledger }));
   assert.ok(html.includes("Where purchases settled"));
   for (const h of ["Chain", "Asset", "Settled purchases", "Answered 2xx", "Paid, no 2xx"]) assert.ok(html.includes(`>${h}<`), h);
-  const rows = [...html.matchAll(/<tr><td title="([^"]*)">([^<]*)<\/td><td>([^<]*)<\/td><td class="num">([^<]*)<\/td><td class="num">([^<]*)<\/td><td class="num">([^<]*)<\/td><\/tr>/g)].map(
-    (m) => m.slice(1),
+  // The first cell also draws a share rule, so its label is no longer the only child. The title and the six values stay the same.
+  const rows = [...html.matchAll(/<tr><td title="([^"]*)">([\s\S]*?)<\/td><td>([^<]*)<\/td><td class="num">([^<]*)<\/td><td class="num">([^<]*)<\/td><td class="num">([^<]*)<\/td><\/tr>/g)].map(
+    (m) => [m[1], m[2].replace(/<[^>]+>/g, "").trim(), m[3], m[4], m[5], m[6]],
   );
+  assert.ok(html.includes('aria-label="3,300 of 3,500 settled on Base answered 2xx"'));
   // The new column is settled − delivered for that chain. The fixture's counts are unchanged.
   assert.deepEqual(rows, [
     ["Base", "Base", "USDC", "3,500", "3,300", "200"],

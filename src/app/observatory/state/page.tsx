@@ -258,7 +258,7 @@ export default async function ObservatoryStatePage() {
           </div>
         </div>
 
-        <h1 className="doc-title mt-10">State of x402</h1>
+        <h1 className="doc-title mt-8">State of x402</h1>
         <p className="doc-p mt-6">
           {`KIZUNA Creation. vet402 observatory. Dataset, retrieved ${stats.readAt}. ${SITE_URL}/api/v1/observatory/state`}
         </p>

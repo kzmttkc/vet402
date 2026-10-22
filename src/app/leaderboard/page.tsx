@@ -52,7 +52,7 @@ function SeedGap() {
  * 「SCORE、49」だけ——**どのアドレスの 49 なのかが分からない**。行の主キーは
  * Subject なので、ここを `th scope="row"` にする。
  *
- * ただし globals.css の `.fact-table th` は見出し行（大文字・0.6875rem・字間
+ * ただし globals.css の `.fact-table th` は見出し行（大文字・12px・字間
  * 0.08em・下罫は紺・vertical-align:bottom）向けに書かれていて、そのまま当たると
  * 本文行の組版が崩れる。globals.css は他部門が並行で触っているので、打ち消しは
  * ユーティリティ側で行う（`@layer components` はユーティリティに負けるよう
@@ -60,7 +60,7 @@ function SeedGap() {
  * 実測値をそのまま写したもので、見た目は 1px も変わらない。
  */
 const SUBJECT_CELL =
-  "font-[family-name:var(--font-sans)] font-normal normal-case tracking-[normal] whitespace-normal align-top border-b border-hair py-[0.6875rem] pr-5 text-[0.8125rem] text-brand";
+  "font-[family-name:var(--font-sans)] font-normal normal-case tracking-[normal] whitespace-normal align-top border-b border-hair py-3 pr-5 text-[0.84375rem] text-brand";
 
 /**
  * 既定で紙面に載せる行数。
@@ -172,7 +172,7 @@ export default async function LeaderboardPage({
 
         {/* 2026-09-02 監査: title / 見出し行 / H1 で呼称が 3 つあった。Register に統一。
             ヘッダーのナビ「Leaderboard」は SiteHeader.tsx 側（別系統）。 */}
-        <h1 className="doc-title mt-10">Register of recently verified subjects, ranked</h1>
+        <h1 className="doc-title mt-8">Register of recently verified subjects, ranked</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 
         <div className="mt-8 flex flex-col gap-1 sm:flex-row sm:gap-0">
@@ -341,7 +341,7 @@ export default async function LeaderboardPage({
         {/* 2026-08-06 a11y (WCAG 2.4.4): the link text was the bare path
             "/accuracy", which a screen reader's link list renders as "slash
             accuracy" with no indication of where it goes. */}
-        <p className="mt-8 text-[0.8125rem]">
+        <p className="mt-8 text-[0.84375rem]">
           <Link href="/accuracy" className="doc-link">
             Methodology and measured accuracy
           </Link>

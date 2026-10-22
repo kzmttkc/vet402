@@ -183,12 +183,12 @@ function CountsLine({ c, notTriedWord = "with no Base purchase" }: { c: OutcomeC
 
 function SearchForm({ q }: { q: string }) {
   return (
-    <form method="get" action="/sellers" className="mt-5">
+    <form method="get" action="/sellers" className="mt-6">
       <div className="mt-3 flex flex-wrap items-end gap-3">
-        <label className="block min-w-0 basis-full text-[0.8125rem] sm:basis-auto sm:flex-1">
+        <label className="block min-w-0 basis-full text-[0.84375rem] sm:basis-auto sm:flex-1">
           <span className="doc-caption block">Your domain</span>
-          {/* text-base（16px）: iOS Safari は 16px 未満の入力欄にフォーカスすると頁を拡大する（2026-09-28 監査）。 */}
-          <input name="q" type="search" defaultValue={q} placeholder="api.example.com" className="doc-input mt-1 text-base" />
+          {/* 17px: iOS Safari は 16px 未満の入力欄にフォーカスすると頁を拡大する。階段に 16px は無い（2026-09-28 監査、2026-10-22 に 17px）。 */}
+          <input name="q" type="search" defaultValue={q} placeholder="api.example.com" className="doc-input mt-1 text-[1.0625rem]" />
         </label>
         <button type="submit" className={buttonClass({ size: "sm" })}>
           Find
@@ -218,10 +218,10 @@ function SellersCards({ sellers, label }: { sellers: readonly SellerSummary[]; l
     <ul aria-label={label} className="mt-4 list-none border-t border-hair p-0 sm:hidden">
       {sellers.map((s) => (
         <li key={s.host} className="border-b border-hair py-3">
-          <Link href={sellerPath(s.host)} className="block font-semibold underline [overflow-wrap:anywhere]">
+          <Link href={sellerPath(s.host)} className="flex min-h-11 items-center font-semibold underline decoration-1 hover:decoration-2 [overflow-wrap:anywhere]">
             {s.host}
           </Link>
-          <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 text-[0.8125rem]">
+          <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 text-[0.84375rem]">
             {facts.map((f) => (
               <div key={f.label} className="contents">
                 <dt className="text-brand-lift">{f.label}</dt>
@@ -287,7 +287,7 @@ function SellersTableWide({ sellers, label }: { sellers: readonly SellerSummary[
           {sellers.map((s) => (
             <tr key={s.host}>
               <td className="whitespace-nowrap">
-                <Link href={sellerPath(s.host)} className="block max-w-[14rem] truncate underline sm:max-w-[24rem]" title={s.host}>
+                <Link href={sellerPath(s.host)} className="flex min-h-11 min-w-0 max-w-[14rem] items-center truncate underline decoration-1 hover:decoration-2 sm:max-w-[24rem]" title={s.host}>
                   {s.host}
                 </Link>
               </td>
@@ -368,7 +368,7 @@ function SideFilter({ board, side }: { board: SellerBoard; side: SellerSideFilte
     })),
   ];
   return (
-    <nav aria-label="Show sellers by result" className="doc-p mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[0.8125rem]">
+    <nav aria-label="Show sellers by result" className="doc-p mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[0.84375rem]">
       <span className="text-brand-lift">Show sellers with at least one listing whose latest attempt is:</span>
       {items.map((it) => (
         <Link
@@ -411,7 +411,7 @@ export function SellersIndexView({
   return (
     <article className="sheet">
       <DocHead title="Sellers on Base: purchase results" fetched={<FetchedAt at={board.fetchedAt} revalidateSec={revalidateSec} />} />
-      <h1 className="doc-title mt-10">{sellersIndexHeading(boardAsOfDay(board))}</h1>
+      <h1 className="doc-title mt-8">{sellersIndexHeading(boardAsOfDay(board))}</h1>
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
       <p className="doc-p">
         vet402 buys x402 listings with real USDC on Base and publishes what happened. Type your domain to see each
@@ -465,7 +465,7 @@ export function SellersIndexView({
       <AttributionReviewNote />
       <SideFilter board={board} side={side} />
       {side && (
-        <p className="doc-p text-[0.8125rem]">
+        <p className="doc-p text-[0.84375rem]">
           Showing {n(listed.length)} of {n(board.sellers.length)} sellers: those with at least one Base listing whose
           latest attempt is <strong>{SIDE_FILTER_PHRASE[side]}</strong>.{" "}
           <Link href={sellersIndexHref(null)} className={TAP}>
@@ -632,7 +632,7 @@ export function WhoseSide({ r }: { r: ShownRow }) {
 }
 
 /** 行内のリンク: タップ領域を 24px 以上にする（2026-09-29 第4巡・WCAG 2.5.8）。 */
-const TAP = "inline-flex min-h-6 items-center underline";
+const TAP = "inline-flex min-h-11 items-center underline decoration-1 hover:decoration-2";
 
 function StatusWord({ status }: { status: string }) {
   const gloss = STATUS_GLOSS[status];
@@ -826,7 +826,7 @@ function EarlierRow({ e, endpointId }: { e: ShownRow; endpointId: string }) {
       </span>
       {(e.evidence || e.seen402 || e.note || e.exportReason) && (
         <details className="mt-0.5">
-          <summary className="inline-flex min-h-6 cursor-pointer items-center text-brand-lift">What vet402 recorded</summary>
+          <summary className="inline-flex min-h-11 cursor-pointer items-center text-brand-lift">What vet402 recorded</summary>
           <span className="block">{seenLine(e)}</span>
           {e.seen402 && (
             <span className="block">
@@ -1036,7 +1036,7 @@ export function cardLead(l: Pick<SellerListing, "latest" | "earlier" | "nextBuy"
 function CardLead({ l }: { l: SellerListing }) {
   const lead = cardLead(l);
   if (!lead) return null;
-  return <p className="mt-2 mb-0 max-w-[70ch] text-[0.8125rem]">{lead.join(" ")}</p>;
+  return <p className="mt-2 mb-0 max-w-[70ch] text-[0.84375rem]">{lead.join(" ")}</p>;
 }
 
 /**
@@ -1066,7 +1066,7 @@ function ListingCard({
       </Link>
       <span className="block text-xs font-normal text-brand-lift">{l.method ?? "method undeclared"}</span>
       <CardLead l={l} />
-      <dl className="mt-2 grid grid-cols-[minmax(7rem,auto)_1fr] gap-x-4 gap-y-0.5 text-[0.8125rem]">
+      <dl className="mt-2 grid grid-cols-[minmax(7rem,auto)_1fr] gap-x-4 gap-y-0.5 text-[0.84375rem]">
         <dt className="text-brand-lift">{baseAttemptLabel}</dt>
         <dd className="m-0">{r ? fmtUtc(r.facts.attemptedAt) : "not tried on Base yet"}</dd>
         <dt className="text-brand-lift">Result</dt>
@@ -1085,12 +1085,12 @@ function ListingCard({
       {/* 2026-09-29 第6巡: 判定 API の答えはカードの先頭近く（以前は 375px で 2 画面以上下）。 */}
       {/* 2026-09-29 監査 7 周目: 購入していない出品にも判定 API の答えを出す（未プローブ・unverified の BLOCK が見えなかった）。 */}
       {l.resourceId && (
-        <div className="mt-2 text-[0.8125rem]">
+        <div className="mt-2 text-[0.84375rem]">
           <DecisionAnswer resourceId={l.resourceId} auto={autoDecision} sellerSide={r?.bucket === "seller"} />
         </div>
       )}
-      {l0Line && <span className="mt-1 block text-[0.8125rem]">{l0Line}</span>}
-      <div className="mt-2 space-y-1 text-[0.8125rem]">
+      {l0Line && <span className="mt-1 block text-[0.84375rem]">{l0Line}</span>}
+      <div className="mt-2 space-y-1 text-[0.84375rem]">
         {r ? (
           <BaseAttemptBody l={l} r={r} now={now} rebuyEligible={rebuyEligible} />
         ) : (
@@ -1177,10 +1177,10 @@ function SellerSummaryLines({ d, revalidateSec }: { d: SellerDetail; revalidateS
         not sorted, or awaiting on-chain verification are skipped.
       </p>
       {otherLine ? <p className="doc-p">{otherLine}</p> : null}
-      <p className="doc-p text-[0.8125rem] text-brand-lift">
+      <p className="doc-p text-[0.84375rem] text-brand-lift">
         By the latest attempt at each listing, whatever it was: <CountsLine c={s} notTriedWord="with no Base purchase" />.
       </p>
-      <p className="doc-p text-[0.8125rem] text-brand-lift">
+      <p className="doc-p text-[0.84375rem] text-brand-lift">
         {head.at ? (
           <>
             Latest attempt{head.chain ? ` on ${head.chain}` : ""}: {fmtUtc(head.at)}.{" "}
@@ -1226,7 +1226,7 @@ export function SellerDetailView({
     <article className="sheet">
       <DocHead title="Seller: purchase results on Base" fetched={<FetchedAt at={detail.fetchedAt} revalidateSec={revalidateSec} />} />
       {/* 2026-09-29: 表題は最新の購入日つきの事実の言い方（sellerHeading）。ホスト名は長いのでどこででも折り返す。 */}
-      <h1 className="doc-title mt-10 break-words [overflow-wrap:anywhere]">{sellerHeading(detail.host, head.at, head.chain)}</h1>
+      <h1 className="doc-title mt-8 break-words [overflow-wrap:anywhere]">{sellerHeading(detail.host, head.at, head.chain)}</h1>
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
       <SellerSummaryLines d={detail} revalidateSec={revalidateSec} />
       {s.rebuyEligible && !otherPurchaseIsNewer(detail.listings[0]) ? (
@@ -1380,7 +1380,7 @@ export function SellerOtherChainsView({ other, revalidateSec }: { other: SellerO
   return (
     <article className="sheet">
       <DocHead title="Seller: purchase records" fetched={<FetchedAt at={other.fetchedAt} revalidateSec={revalidateSec} />} />
-      <h1 className="doc-title mt-10 break-words">
+      <h1 className="doc-title mt-8 break-words">
         Purchase records for <span className="[overflow-wrap:anywhere]">{other.host}</span>
       </h1>
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
@@ -1454,7 +1454,7 @@ function GroupCard({ g, i }: { g: FixGroup; i: number }) {
   const rest = g.sellers.slice(HOSTS_SHOWN);
   const hostLink = (s: { host: string; listings: number }) => (
     <li key={s.host}>
-      <Link href={sellerPath(s.host)} className="underline">
+      <Link href={sellerPath(s.host)} className="inline-flex min-h-11 items-center underline decoration-1 hover:decoration-2">
         {s.host}
       </Link>{" "}
       <span className="text-brand-lift">{n(s.listings)}</span>
@@ -1462,7 +1462,7 @@ function GroupCard({ g, i }: { g: FixGroup; i: number }) {
   );
   return (
     <li id={g.key} className="mt-8">
-      <h3 className="text-base font-semibold">
+      <h3 className="text-[1.0625rem] font-semibold">
         <span className="text-brand-lift">{i + 1}.</span> {g.title}
       </h3>
       <p className="doc-p mt-1">
@@ -1488,9 +1488,9 @@ function GroupCard({ g, i }: { g: FixGroup; i: number }) {
             </span>
           ))}
       </p>
-      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[0.8125rem]">{first.map(hostLink)}</ul>
+      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[0.84375rem]">{first.map(hostLink)}</ul>
       {rest.length > 0 && (
-        <details className="mt-1 text-[0.8125rem]">
+        <details className="mt-1 text-[0.84375rem]">
           <summary className="cursor-pointer text-brand-lift">{n(rest.length)} more sellers</summary>
           <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1">{rest.map(hostLink)}</ul>
         </details>
@@ -1509,7 +1509,7 @@ export function FixFirstView({ board, revalidateSec }: { board: SellerBoard; rev
   return (
     <article className="sheet">
       <DocHead title="What to fix first (Base)" fetched={<FetchedAt at={board.fetchedAt} revalidateSec={revalidateSec} />} />
-      <h1 className="doc-title mt-10">{fixFirstHeading(boardAsOfDay(board))}</h1>
+      <h1 className="doc-title mt-8">{fixFirstHeading(boardAsOfDay(board))}</h1>
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
       <p className="doc-p">
         The Base listings whose latest purchase did not deliver ({n(failed)} of {n(paid)} that vet402 paid for),

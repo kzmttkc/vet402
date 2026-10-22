@@ -56,7 +56,7 @@ export default async function TermsPage() {
 
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
-      <article className="sheet space-y-6 text-sm text-brand">
+      <article className="sheet space-y-6 text-[0.84375rem] text-brand">
         <script
           type="application/ld+json"
           nonce={nonce}
@@ -78,7 +78,7 @@ export default async function TermsPage() {
             <span>September 2026</span>
           </div>
         </div>
-        <h1 className="doc-title mt-10">Terms of Service</h1>
+        <h1 className="doc-title mt-8">Terms of Service</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
         <p className="doc-note text-center">Last updated: September 29, 2026</p>
 

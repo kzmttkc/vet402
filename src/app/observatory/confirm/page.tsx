@@ -34,7 +34,7 @@ export default function Page() {
             </span>
           </div>
         </div>
-        <h1 className="doc-title mt-10">Confirm your email</h1>
+        <h1 className="doc-title mt-8">Confirm your email</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
         <div className="mt-8">
           <SubscriptionAction mode="confirm" />

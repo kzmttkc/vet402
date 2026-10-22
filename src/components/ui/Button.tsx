@@ -2,7 +2,7 @@
  * Button — the app's only button/CTA styling source.
  *
  * 2026-08-11 UI監査: 同じ「主ボタン」が page.tsx(hero: px-6 py-3 text-base
- * font-semibold / final: px-5 py-2.5 text-sm font-medium)・SiteHeader(px-4 py-2)・
+ * font-semibold / final: px-5 py-2.5 text-[0.84375rem] font-medium)・SiteHeader(px-4 py-2)・
  * signup(px-4 py-2 ×2) で 3サイズ3ウェイトに散らばっていた。ここへ2段
  * (sm / md) × 2系統 (primary / secondary) へ畳む。
  *
@@ -49,22 +49,22 @@ export type ButtonSize = "sm" | "md";
 // ブラウザの合成ボールドで輪郭が濁る。押せるものだけが本文より重い、という
 // 一段のコントラストを実在するウェイトで作る。
 const BASE =
-  "inline-flex items-center justify-center rounded-[2px] font-[family-name:var(--font-display)] font-semibold tracking-[-0.01em] transition-[background-color,border-color] disabled:bg-ground disabled:text-brand disabled:ring-1 disabled:ring-hair";
+  "inline-flex min-h-11 items-center justify-center rounded-[2px] font-[family-name:var(--font-display)] font-semibold tracking-[-0.01em] underline decoration-transparent decoration-1 underline-offset-[0.22em] transition-[text-decoration-thickness] hover:decoration-current hover:decoration-2 disabled:bg-ground disabled:text-brand disabled:no-underline disabled:ring-1 disabled:ring-hair";
 
 const SIZES: Record<ButtonSize, string> = {
-  sm: "px-4 py-2 text-[0.8125rem]",
+  sm: "px-4 py-2 text-[0.84375rem]",
   md: "px-6 py-3 text-[0.9375rem]",
 };
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  // 白文字 on #233456 = 12.37:1。hover は同じ紺階調の1段明るい #3e537c(7.68:1)。
-  primary: "bg-brand-deep text-white hover:bg-brand",
+  // 白文字 on #233456 = 12.37:1。hover は下線の太さだけ。地色は変えない。
+  primary: "bg-brand-deep text-white",
   // 2026-08-13: 罫線を brand-mist(#8f9cb2・白地 2.78:1) から brand-deep へ。
   // この1本がボタンの形を表す唯一の表現なので WCAG 1.4.11 の 3:1 が要る
   // （2026-08-12 に入力欄で同じ穴を塞いだのに、ボタン側は残っていた）。
   // ring（内側）のままなのは高さを変えないため — border だと primary 48px /
   // secondary 50px と2pxずれる（2026-08-12 実測）。
-  secondary: "ring-1 ring-inset ring-brand-deep bg-paper text-brand-deep hover:bg-ground",
+  secondary: "ring-1 ring-inset ring-brand-deep bg-paper text-brand-deep",
 };
 
 export function buttonClass({

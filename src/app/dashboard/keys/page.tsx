@@ -79,11 +79,11 @@ export default function DashboardKeysPage() {
   }
 
   if (error && !data) {
-    return <p className="text-sm text-red-600">{dashboardErrorMessage(error)}</p>;
+    return <p className="text-[0.84375rem] text-red-600">{dashboardErrorMessage(error)}</p>;
   }
 
   if (!data) {
-    return <p className="text-sm text-zinc-600">Loading API keys...</p>;
+    return <p className="text-[0.84375rem] text-zinc-600">Loading API keys...</p>;
   }
 
   const { keys, currentKeyId } = data;
@@ -168,7 +168,7 @@ export default function DashboardKeysPage() {
       </button>
 
       {newKey && (
-        <div className="dash-card border-amber-200 bg-amber-50 text-sm text-amber-900">
+        <div className="dash-card border-amber-200 bg-amber-50 text-[0.84375rem] text-amber-900">
           <p className="font-medium">New API key (copy now — shown once):</p>
           <code className="mt-2 block break-all font-mono text-xs">{newKey}</code>
         </div>

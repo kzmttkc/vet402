@@ -282,7 +282,7 @@ export default async function PayeePage({
         <h1
           id="payee-subject"
           tabIndex={-1}
-          className="mt-10 break-all text-center text-[clamp(0.8125rem,2.6vw,1.125rem)] text-brand-deep"
+          className="mt-8 break-all text-center text-[0.84375rem] text-brand-deep sm:text-[1.0625rem]"
         >
           <span className="sr-only">Payee verification result for wallet </span>
           {checksummed}
@@ -296,7 +296,7 @@ export default async function PayeePage({
           <p className="doc-caption">Should your agent pay this wallet?</p>
           <p
             id="pay-decision"
-            className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 font-[family-name:var(--font-display)] text-[2rem] font-semibold leading-none text-brand-deep"
+            className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 font-[family-name:var(--font-display)] text-[1.75rem] font-semibold leading-none text-brand-deep"
           >
             <span>{decision.word}</span>
             {decision.verdict ? (
@@ -309,7 +309,7 @@ export default async function PayeePage({
         {entry ? (
           <div className="mt-8 border-l-[3px] border-emerald-700 bg-emerald-50 px-5 py-4">
             <p className="text-emerald-900">{entry.name}</p>
-            <p className="mt-2 text-[0.8125rem] text-emerald-800">
+            <p className="mt-2 text-[0.84375rem] text-emerald-800">
               Control of this wallet was proven by signature
               {entry.verifiedAt ? ` on ${entry.verifiedAt.toISOString().slice(0, 10)}` : ""}.
               {entry.url ? (
@@ -366,10 +366,10 @@ export default async function PayeePage({
                   なかった。判定行そのものを h2 にする（組版クラスは据え置き。
                   Tailwind の preflight が見出しの既定字級・余白を潰しているので、
                   要素名を変えても紙面は1px も動かない）。 */}
-              <h2 className="mt-3 font-[family-name:var(--font-display)] text-[1.375rem] font-semibold leading-tight text-brand-deep">
+              <h2 className="mt-3 font-[family-name:var(--font-display)] text-[1.25rem] font-semibold leading-tight text-brand-deep">
                 Not verifiable right now
               </h2>
-              <p className="mt-2 text-[0.8125rem] text-brand-lift">
+              <p className="mt-2 text-[0.84375rem] text-brand-lift">
                 One or more upstream checks could not be completed, so no score is published for
                 this wallet. This is not a finding against it. Callers of the API receive a
                 fail-closed <code className="text-brand-deep">BLOCK</code> until the checks
@@ -412,7 +412,7 @@ export default async function PayeePage({
             {/* データの厚みは「判定」ではなく「どれだけ材料があったか」なので、
                 判定行から降ろして自分の1行にした。thin/moderate/rich の閾値は
                 エンジン側の determineDataDepth と同じものを写している。 */}
-            <p className="mt-3 text-[0.8125rem] text-brand-lift">
+            <p className="mt-3 text-[0.84375rem] text-brand-lift">
               <span className="text-brand-deep">data: {score.dataDepth}</span>
               {DATA_DEPTH_NOTE[score.dataDepth] ? ` — ${DATA_DEPTH_NOTE[score.dataDepth]}` : null}{" "}
               <Link href="/docs/api#payee-score" className="doc-link">
@@ -424,7 +424,7 @@ export default async function PayeePage({
               // Partial measurement, disclosed rather than absorbed. The score
               // above is backed by the legs that DID answer, and is capped
               // below ALLOW precisely because this line is here.
-              <p className="mt-2 border-l-[3px] border-amber-600 bg-amber-50 px-3 py-2 text-[0.8125rem] text-amber-900">
+              <p className="mt-2 border-l-[3px] border-amber-600 bg-amber-50 px-3 py-2 text-[0.84375rem] text-amber-900">
                 Partial measurement — {unmeasuredNote} (upstream outage). The score above reflects
                 only the checks that completed and is capped below ALLOW until the rest can be
                 read.
@@ -496,7 +496,7 @@ export default async function PayeePage({
             末尾の .svg を落としてから照合する。 */}
         <div className="dashbox mt-8">
           <p className="doc-caption">Badge for your site</p>
-          <p className="mt-3 text-[0.8125rem] text-brand-lift">
+          <p className="mt-3 text-[0.84375rem] text-brand-lift">
             The badge reports whether a signed claim exists for this wallet. It carries no score
             &mdash; a cached number on someone else&apos;s page would outlive its freshness window.
           </p>
@@ -509,7 +509,7 @@ export default async function PayeePage({
           />
         </div>
 
-        <p className="mt-8 text-[0.8125rem]">
+        <p className="mt-8 text-[0.84375rem]">
           <Link href="/payee" className="doc-link">
             Verify another payee
           </Link>

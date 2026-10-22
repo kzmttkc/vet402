@@ -71,7 +71,7 @@ export function StatusBanner() {
   return (
     <div
       role="status"
-      className="border-b border-amber-700 bg-amber-50 px-4 py-2 text-center text-[0.8125rem] text-amber-900 sm:px-6 md:px-8"
+      className="border-b border-amber-700 bg-amber-50 px-4 py-2 text-center text-[0.84375rem] text-amber-900 sm:px-6 md:px-8"
     >
       {message}
     </div>

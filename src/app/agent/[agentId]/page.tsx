@@ -197,19 +197,19 @@ export default async function AgentPage({
           </div>
         </div>
 
-        <h1 className="doc-title mt-10">Agent #{agentId.toString()}</h1>
+        <h1 className="doc-title mt-8">Agent #{agentId.toString()}</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 
         {entry ? (
           <div className="mt-8 border-l-[3px] border-emerald-700 bg-emerald-50 px-5 py-4">
             <p className="text-emerald-900">{entry.name}</p>
-            <p className="mt-2 text-[0.8125rem] text-emerald-800">
+            <p className="mt-2 text-[0.84375rem] text-emerald-800">
               Control of this agent was proven by a signature from its on-chain wallet
               {entry.verifiedAt ? ` on ${entry.verifiedAt.toISOString().slice(0, 10)}` : ""}.
             </p>
             <p className="mt-1 break-all font-mono text-xs text-emerald-800">{entry.wallet}</p>
             {entry.url ? (
-              <p className="mt-2 text-[0.8125rem] text-emerald-800">
+              <p className="mt-2 text-[0.84375rem] text-emerald-800">
                 Site:{" "}
                 <a href={entry.url} rel="noopener noreferrer nofollow" target="_blank" className="underline">
                   {entry.url}
@@ -241,10 +241,10 @@ export default async function AgentPage({
           <p className="doc-caption">Live trust score</p>
           {score?.degraded ? (
             <>
-              <h2 className="mt-3 font-[family-name:var(--font-display)] text-[1.375rem] font-semibold leading-tight text-brand-deep">
+              <h2 className="mt-3 font-[family-name:var(--font-display)] text-[1.25rem] font-semibold leading-tight text-brand-deep">
                 Not verifiable right now
               </h2>
-              <p className="mt-2 text-[0.8125rem] text-brand-lift">
+              <p className="mt-2 text-[0.84375rem] text-brand-lift">
                 One or more upstream checks could not be completed, so no score is published for this
                 agent. This is not a finding against it. Callers of the API receive a fail-closed{" "}
                 <code className="text-brand-deep">BLOCK</code> until the checks succeed.
@@ -257,7 +257,7 @@ export default async function AgentPage({
                 aria-label={`Trust score ${score.value} out of 100, recommendation ${score.recommendation}`}
               >
                 {score.value}
-                <span className="align-baseline text-base font-normal text-brand-lift"> / 100</span>{" "}
+                <span className="align-baseline text-[0.9375rem] font-normal text-brand-lift"> / 100</span>{" "}
                 <VerdictBadge verdict={score.recommendation} className="align-middle" />
               </span>
             </p>
@@ -265,7 +265,7 @@ export default async function AgentPage({
             <p className="mt-3 text-brand-lift">Score unavailable right now.</p>
           )}
           {score && !score.degraded ? (
-            <p className="mt-2 text-[0.8125rem] text-brand-lift">
+            <p className="mt-2 text-[0.84375rem] text-brand-lift">
               x402 settlement record: {score.paymentCount} payment{score.paymentCount === 1 ? "" : "s"} over{" "}
               {score.uniqueDays} distinct day{score.uniqueDays === 1 ? "" : "s"}.{" "}
               <Link href="/docs/api#score-breakdown" className="doc-link">
@@ -274,7 +274,7 @@ export default async function AgentPage({
               .
             </p>
           ) : null}
-          <p className="mt-2 text-[0.8125rem] text-brand-lift">
+          <p className="mt-2 text-[0.84375rem] text-brand-lift">
             This is an agent/wallet-engine score, not an observatory measurement and not a payee score.{" "}
             <Link href="/accuracy" className="doc-link">Methodology and measured accuracy</Link>.{" "}
             Machine-readable passport:{" "}

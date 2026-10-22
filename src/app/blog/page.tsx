@@ -64,7 +64,7 @@ export default async function BlogIndexPage() {
           </div>
         </div>
 
-        <h1 className="doc-title mt-10">Blog</h1>
+        <h1 className="doc-title mt-8">Blog</h1>
         <p className="mx-auto mt-3 max-w-[56ch] text-center text-brand-lift">
           Notes on agent-to-agent payments, x402, and trust scoring on Base.
         </p>
@@ -82,7 +82,7 @@ export default async function BlogIndexPage() {
           ))}
         </ul>
 
-        <p className="mt-8 text-[0.8125rem]">
+        <p className="mt-8 text-[0.84375rem]">
           <Link href="/" className="doc-link">
             Home
           </Link>

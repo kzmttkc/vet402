@@ -67,7 +67,7 @@ export default async function OperatorLogPage() {
           </div>
         </div>
 
-        <h1 className="doc-title mt-10">Operator overrides</h1>
+        <h1 className="doc-title mt-8">Operator overrides</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 
         <div className="mt-8 flex flex-col gap-1 sm:flex-row sm:gap-0">
@@ -106,7 +106,7 @@ export default async function OperatorLogPage() {
           <div className="mt-6 divide-y divide-hair border-t border-brand-deep">
             {overrides.map((entry) => (
               <div key={`${entry.createdAt}-${entry.wallet}-${entry.action}`} className="py-5">
-                <p className="text-[0.8125rem] text-brand-lift">
+                <p className="text-[0.84375rem] text-brand-lift">
                   {entry.createdAt.slice(0, 19).replace("T", " ")} UTC &middot; {entry.action}
                 </p>
                 <p className="mt-1 break-all font-[family-name:var(--font-display)] font-semibold text-brand-deep">
@@ -181,7 +181,7 @@ export default async function OperatorLogPage() {
           records any block we concede was wrong and reverse.
         </p>
 
-        <p className="mt-8 text-[0.8125rem]">
+        <p className="mt-8 text-[0.84375rem]">
           <Link href="/corrections" className="doc-link">
             Corrections log
           </Link>{" "}

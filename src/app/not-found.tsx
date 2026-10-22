@@ -24,13 +24,13 @@ export default function NotFound() {
           </div>
         </div>
 
-        <h1 className="doc-title mt-10">404 Not Found</h1>
+        <h1 className="doc-title mt-8">404 Not Found</h1>
         <p className="mx-auto mt-3 max-w-[56ch] text-center text-brand-lift">
           The requested path does not exist on this server.
         </p>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 
-        <p className="mt-8 text-center text-[0.8125rem]">
+        <p className="mt-8 text-center text-[0.84375rem]">
           <Link href="/" className="doc-link">
             Home
           </Link>

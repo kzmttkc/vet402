@@ -190,7 +190,7 @@ function fmtUtc(iso: string | null): string | null {
   return iso && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(iso) ? `${iso.slice(0, 16).replace("T", " ")} UTC` : null;
 }
 
-const TAP = "inline-flex min-h-6 items-center underline";
+const TAP = "inline-flex min-h-11 items-center underline decoration-1 hover:decoration-2";
 
 /**
  * 同じタブで読んだ答えを持つ時間（判定 API の応答のキャッシュと同じ 5 分）。頁を開き直すたびに鍵なしの枠

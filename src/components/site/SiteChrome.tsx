@@ -60,7 +60,7 @@ export function SiteChrome({
       </a>
       <StatusBanner />
       <SiteHeader />
-      <div id="main-content" ref={mainRef} tabIndex={-1} className="flex-1">
+      <div id="main-content" ref={mainRef} tabIndex={-1} className="min-w-0 flex-1">
         {children}
       </div>
       <SiteFooter />
