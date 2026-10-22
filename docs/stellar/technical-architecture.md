@@ -272,7 +272,7 @@ Verified by: the guide URL and a recorded testnet run of the script.
 ### Tranche 3
 
 **D1. Root contract v2 on mainnet.**
-Design: the v2 contract from T2 D2 deployed on mainnet with a mainnet writer, committing every UTC day, with `verify` open to any contract. The mainnet job writes each UTC day within 48 hours after that day ends. A day still missing after 48 hours fails this deliverable, and a later retry does not repair that miss.
+Design: the v2 contract from T2 D2 deployed on mainnet with a mainnet writer, committing every UTC day, with `verify` open to any contract. The mainnet job writes each UTC day within 48 hours after that day ends. A day not committed within 48 hours of its end is not repaired by a later commit, and the 30 days count again from the next day.
 Verified by: the mainnet contract id and a root committed on the mainnet v2 contract for each UTC day for 30 consecutive days, each within 48 hours of the end of its day, checked by the T1 D3 tool against the published day files. Testnet roots do not count toward the 30 days.
 
 **D2. Escrow v2 audit ready and submitted to the SCF audit.**
