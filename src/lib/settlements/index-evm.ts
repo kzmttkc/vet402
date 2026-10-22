@@ -162,7 +162,9 @@ export const EVM_INDEX_CHAINS: EvmIndexChain[] = [
     initialLookbackBlocks: 310_500n * 3n,
     maxBlocksPerRun: 310_500n * 2n,
     // 受取先で絞った問い合わせ。2026-10-22 実測: 公開 RPC は宛先で絞った 10,000 ブロックの getLogs に答える
-    // （2,000 は絞らない問い合わせの 10,000 件上限で測った値で、ここには効かない）。1 日 ≈ 31 回。
+    // （2,000 は絞らない問い合わせの 10,000 件上限で測った値で、ここには効かない）。
+    // 2026-10-22 審査: getLogsChunked は区切りの幅を渡されないと既定の 2,000 で刻むので、問い合わせは 1 日 ≈ 155 回のまま。
+    // この値が効くのは並列で読む区間の幅。刻みを 10,000 にするなら getLogsChunked に幅を渡す。
     subWindowBlocks: 10_000n,
     confirmations: 256n,
     blocksPerDay: 310_500n,
