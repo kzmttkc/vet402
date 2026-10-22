@@ -10,6 +10,7 @@ import { computeSpendGuardBacktest } from "@/lib/observatory/backtest";
 import { getDecisionFeed, getLatestSettledReceipts } from "@/lib/observatory/decisions";
 import { getAnchors } from "@/lib/observatory/anchors";
 import { explorerTxUrl } from "@/lib/observatory/chains";
+import { WideColumn } from "@/components/site/WideColumn";
 import { TableScroll } from "@/components/site/TableScroll";
 
 /**
@@ -44,7 +45,8 @@ export default async function ImpactPage() {
 
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
-      <article className="sheet">
+      <article className="sheet sheet-wide">
+        <WideColumn />
         <div className="doc-head">
           <div className="doc-head-col">
             <span>Independent Measurement</span>

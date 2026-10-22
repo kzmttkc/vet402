@@ -57,12 +57,12 @@ export function ReceiptSlip({ receipt }: { receipt: HomeReceipt }) {
       <Corner className="-right-1.5 -top-1.5" />
       <Corner className="-bottom-1.5 -left-1.5" />
       <Corner className="-bottom-1.5 -right-1.5" />
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p id="receipt-title" className={`${DISPLAY} text-[1.0625rem] font-semibold text-brand-deep`}>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="min-w-0">
+          <p id="receipt-title" className={`${DISPLAY} whitespace-nowrap text-[1.0625rem] font-semibold text-brand-deep`}>
             One purchase
           </p>
-          <p className="mt-1 text-[0.84375rem] text-brand-lift">
+          <p className="mt-1 whitespace-nowrap text-[0.84375rem] text-brand-lift">
             <time dateTime={r.attemptedAt}>
               {r.date} {r.time} UTC
             </time>

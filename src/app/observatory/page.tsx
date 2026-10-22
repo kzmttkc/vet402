@@ -12,6 +12,7 @@ import { parseObservatorySearchParams, observatoryHref, observatoryRateFilters }
 import { networkFilterCellLabel, networkFilterCellTitle } from "@/lib/observatory/chains";
 import TrackView from "@/components/site/TrackView";
 import { L1Ratio, VerdictShareBar, VerdictWord } from "@/components/site/Figures";
+import { WideColumn } from "@/components/site/WideColumn";
 
 /**
  * /observatory — the L0 fact table over the x402 catalog (design §5).
@@ -94,7 +95,8 @@ export default async function ObservatoryPage({
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
       <TrackView event="observatory_view" />
-      <article className="sheet">
+      <article className="sheet sheet-wide">
+        <WideColumn />
         <script
           type="application/ld+json"
           nonce={nonce}
@@ -112,7 +114,7 @@ export default async function ObservatoryPage({
           <div className="doc-head-col">
             <span>Independent Measurement</span>
             <span>Register: x402 endpoints, L0 · L1</span>
-            <span>
+            <span className="doc-asof">
               {overview.latestSnapshot ? (
                 <>
                   {/* 1 行に収める（"Catalog snapshot: … (N of N fetched)" は 2 行に折れていた）。数字はそのまま。 */}

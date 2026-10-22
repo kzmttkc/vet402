@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { TableScroll } from "@/components/site/TableScroll";
+import { WideColumn } from "@/components/site/WideColumn";
 import { currentVerdict, getStatusHistory, STATUS_STALE_AFTER_MS, type CurrentVerdict } from "@/lib/health/snapshot";
 
 /**
@@ -97,7 +98,8 @@ export default async function StatusPage() {
 
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
-      <article className="sheet">
+      <article className="sheet sheet-wide">
+        <WideColumn />
         <script
           type="application/ld+json"
           nonce={nonce}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { buttonClass } from "@/components/ui/Button";
+import { WideColumn } from "@/components/site/WideColumn";
 import { TableScroll } from "@/components/site/TableScroll";
 import {
   boardAsOfDay,
@@ -118,7 +119,7 @@ export function sellerDescription(host: string, chain: string | null = null): st
 
 function FetchedAt({ at, revalidateSec }: { at: string; revalidateSec: number }) {
   return (
-    <span>
+    <span className="doc-asof">
       Read from the database {fmtUtc(at)} · reused for up to {Math.round(revalidateSec / 60)} min
     </span>
   );
@@ -134,19 +135,22 @@ function DocHead({ title, fetched }: { title: string; fetched: ReactNode }) {
       </div>
       <div className="doc-head-col">
         <span>vet402</span>
-        <span>
-          <Link href="/sellers" className={TAP}>
+        <span className="doc-head-links">
+          <Link href="/sellers" className="underline">
             Sellers
           </Link>
-          {" · "}
-          <Link href="/sellers/fix-first" className={TAP}>
-            What to fix first
-          </Link>
-        </span>
-        <span>
-          <Link href="/observatory/methodology" className={TAP}>
-            Methodology
-          </Link>
+          <span className="doc-head-join">
+            {" · "}
+            <Link href="/sellers/fix-first" className="underline">
+              What to fix first
+            </Link>
+          </span>
+          <span className="doc-head-join">
+            {" · "}
+            <Link href="/observatory/methodology" className="underline">
+              Methodology
+            </Link>
+          </span>
         </span>
       </div>
     </div>
@@ -409,7 +413,8 @@ export function SellersIndexView({
   const shown = listed.slice((p - 1) * SELLERS_PAGE_SIZE, p * SELLERS_PAGE_SIZE);
   const t = board.totals;
   return (
-    <article className="sheet">
+    <article className="sheet sheet-wide">
+      <WideColumn />
       <DocHead title="Sellers on Base: purchase results" fetched={<FetchedAt at={board.fetchedAt} revalidateSec={revalidateSec} />} />
       <h1 className="doc-title mt-8">{sellersIndexHeading(boardAsOfDay(board))}</h1>
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
@@ -1223,7 +1228,8 @@ export function SellerDetailView({
   const newestSignal = newest?.lastSellerSignal;
   const head = sellerHeadline(detail);
   return (
-    <article className="sheet">
+    <article className="sheet sheet-wide">
+      <WideColumn />
       <DocHead title="Seller: purchase results on Base" fetched={<FetchedAt at={detail.fetchedAt} revalidateSec={revalidateSec} />} />
       {/* 2026-09-29: 表題は最新の購入日つきの事実の言い方（sellerHeading）。ホスト名は長いのでどこででも折り返す。 */}
       <h1 className="doc-title mt-8 break-words [overflow-wrap:anywhere]">{sellerHeading(detail.host, head.at, head.chain)}</h1>
@@ -1378,7 +1384,8 @@ function OtherChainResult({ l }: { l: SellerOtherChains["listings"][number] }) {
 
 export function SellerOtherChainsView({ other, revalidateSec }: { other: SellerOtherChains; revalidateSec: number }) {
   return (
-    <article className="sheet">
+    <article className="sheet sheet-wide">
+      <WideColumn />
       <DocHead title="Seller: purchase records" fetched={<FetchedAt at={other.fetchedAt} revalidateSec={revalidateSec} />} />
       <h1 className="doc-title mt-8 break-words">
         Purchase records for <span className="[overflow-wrap:anywhere]">{other.host}</span>
@@ -1507,7 +1514,8 @@ export function FixFirstView({ board, revalidateSec }: { board: SellerBoard; rev
   const failed = board.totals.seller + board.totals.vet402 + board.totals.unsorted;
   const paid = failed + board.totals.delivered + board.totals.pending;
   return (
-    <article className="sheet">
+    <article className="sheet sheet-wide">
+      <WideColumn />
       <DocHead title="What to fix first (Base)" fetched={<FetchedAt at={board.fetchedAt} revalidateSec={revalidateSec} />} />
       <h1 className="doc-title mt-8">{fixFirstHeading(boardAsOfDay(board))}</h1>
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
@@ -1588,7 +1596,8 @@ export function FixFirstView({ board, revalidateSec }: { board: SellerBoard; rev
 
 export function SellersNotice({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <article className="sheet">
+    <article className="sheet sheet-wide">
+      <WideColumn />
       <h1 className="doc-title mt-4">{title}</h1>
       <p className="doc-p">{children}</p>
     </article>

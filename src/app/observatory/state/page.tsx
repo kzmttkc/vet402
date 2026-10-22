@@ -18,6 +18,7 @@ import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate
 import { getAnchors } from "@/lib/observatory/anchors";
 import { CATALOG_SOURCE } from "@/lib/observatory/catalog-source";
 import { MPP_DIRECTORY_SOURCE } from "@/lib/observatory/mpp-payer";
+import { WideColumn } from "@/components/site/WideColumn";
 
 /**
  * /observatory/state — the State of x402 headline numbers (design §7).
@@ -88,7 +89,7 @@ function HistoryChart({ rows, lastRollupAt }: { rows: DailyMetricsRow[]; lastRol
         viewBox={`0 0 ${W} ${H}`}
         role="img"
         aria-label={`Daily L0 probes vet402 sent and probes that passed, ${first} to ${last}. The last day is partial. Latest point: ${latest.probes} probes, ${latest.pass} pass. The last point is not a finished day.`}
-        className="w-full max-w-[640px] text-brand-deep"
+        className="chart-svg h-auto w-full text-brand-deep"
       >
         <line x1={PAD.left} y1={y(0)} x2={W - PAD.right} y2={y(0)} stroke="currentColor" strokeWidth="1" opacity="0.5" />
         <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={y(0)} stroke="currentColor" strokeWidth="1" opacity="0.5" />
@@ -208,7 +209,8 @@ export default async function ObservatoryStatePage() {
 
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
-      <article className="sheet">
+      <article className="sheet sheet-wide">
+        <WideColumn />
         <script
           type="application/ld+json"
           nonce={nonce}
@@ -230,10 +232,10 @@ export default async function ObservatoryStatePage() {
                 Tempo の MPP ディレクトリ側の「取得が不完全」が Bazaar 由来の件数にも
                 付いていた（source のタイブレーク無しで LIMIT 1 していたため）。 */}
             {catalogSnapshots.length === 0 ? (
-              <span>No catalog snapshot yet</span>
+              <span className="doc-asof">No catalog snapshot yet</span>
             ) : (
               catalogSnapshots.map((s) => (
-                <span key={s.source}>
+                <span key={s.source} className="doc-asof">
                   {catalogSourceLabel(s.source)} as of{" "}
                   <span className="text-signal">{s.snapshotDate}</span>
                   {s.fetchedCount >= s.totalCount

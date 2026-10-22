@@ -21,6 +21,7 @@ import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate
 import { FunnelFigure } from "@/components/site/Figures";
 import { SettledChainsSection, homeLedgerOf } from "@/components/site/HomeLedger";
 import { HomeIntro } from "@/components/site/home/HomeIntro";
+import { WideColumn } from "@/components/site/WideColumn";
 import { getHomeExampleCached } from "@/lib/observatory/home-example";
 import { formDisputeQueueSummary } from "@/lib/observatory/dispute-ack";
 import { l0ProbeScheduleLabel } from "@/lib/observatory/l0-schedule";
@@ -226,11 +227,9 @@ export default async function Home() {
         dangerouslySetInnerHTML={{ __html: safeJsonLd(softwareApplicationJsonLd) }}
       />
 
-      {/* max-sm:py-5 — 紙の天地の余白だけ 32px → 20px。.sheet 自体（全ページ共通）
-          は触らず、この1枚にだけ当てている。lg では案 C の 1200px 幅に合わせ、
-          ヘッダの列幅（--column）もこの頁だけ同じにする。 */}
-      <article className="sheet max-w-[1200px] max-sm:py-4">
-        <style>{`@media (min-width: 1024px) { :root { --column: 1200px; } }`}</style>
+      {/* 紙の天地は .sheet の共通値。1200px の列は WideColumn（表の頁も同じ）。 */}
+      <article className="sheet max-w-[1200px]">
+        <WideColumn />
         {/* 2026-10-22 オーナー決定（案 C）: 第 1 画面は見出しと Figure 1、右に check。
             書誌欄・Abstract・#gap 以降は下に残す。ETHOnline の導線も書誌欄に残る。 */}
         <HomeIntro

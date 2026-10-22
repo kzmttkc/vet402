@@ -7,6 +7,7 @@ import { fetchLeaderboard } from "@/lib/db/leaderboard";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { SITE_URL } from "@/lib/site-url";
+import { WideColumn } from "@/components/site/WideColumn";
 
 // N-17 — public agent leaderboard. Latest verdict per agent, aggregate only.
 // Honest empty state, same discipline as /accuracy.
@@ -129,7 +130,8 @@ export default async function LeaderboardPage({
 
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
-      <article className="sheet">
+      <article className="sheet sheet-wide">
+        <WideColumn />
         <script
           type="application/ld+json"
           nonce={nonce}

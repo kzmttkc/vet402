@@ -7,6 +7,7 @@ import { SITE_URL } from "@/lib/site-url";
 import { formatPct1 } from "@/lib/util/pct";
 import { VerdictBadge } from "@/components/site/VerdictBadge";
 import { TableScroll } from "@/components/site/TableScroll";
+import { WideColumn } from "@/components/site/WideColumn";
 import { computeAccuracyReport, type AccuracyReport } from "@/lib/scoring/accuracy";
 import { computeBenchmarkReport, type BenchmarkReport } from "@/lib/scoring/benchmark-report";
 import { fetchAccuracyRows, fetchBenchmarkRows } from "@/lib/db/outcome-reader";
@@ -196,7 +197,8 @@ export default async function AccuracyPage() {
 
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
-      <article className="sheet">
+      <article className="sheet sheet-wide">
+        <WideColumn />
         <script
           type="application/ld+json"
           nonce={nonce}

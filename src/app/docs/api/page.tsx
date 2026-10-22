@@ -8,6 +8,7 @@ import CodeBlock from "@/components/docs/CodeBlock";
 import { TryItPanel } from "@/components/docs/TryItPanel";
 import DocsToc, { type TocItem } from "@/components/docs/DocsToc";
 import { TableScroll } from "@/components/site/TableScroll";
+import { WideColumn } from "@/components/site/WideColumn";
 import { SITE_URL } from "@/lib/site-url";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
@@ -472,7 +473,8 @@ export default async function ApiDocsPage() {
           h-14 なので、この帯は top-14、飛び先は scroll-mt-32（帯2本ぶん）。 */}
       <DocsToc items={TOC} />
 
-      <article className="sheet mt-6 space-y-10">
+      <WideColumn />
+      <article className="sheet sheet-wide mt-6 space-y-10">
         <div>
           <div className="doc-head">
             <div className="doc-head-col">

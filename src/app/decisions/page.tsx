@@ -5,6 +5,7 @@ import { formatUsdcUnits } from "@/lib/util/usd";
 import { getDecisionFeed } from "@/lib/observatory/decisions";
 import { computeSpendGuardBacktest } from "@/lib/observatory/backtest";
 import { TableScroll } from "@/components/site/TableScroll";
+import { WideColumn } from "@/components/site/WideColumn";
 import { explorerTxUrl } from "@/lib/observatory/chains";
 
 /**
@@ -48,7 +49,8 @@ export default async function DecisionsPage() {
 
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
-      <article className="sheet">
+      <article className="sheet sheet-wide">
+        <WideColumn />
         <div className="doc-head">
           <div className="doc-head-col">
             <span>Independent Measurement</span>

@@ -17,6 +17,7 @@ import { getEndpointDetail } from "@/lib/observatory/reader";
 import { chainLabel, explorerTxUrl, receiptNetwork, paymentChainLabel } from "@/lib/observatory/chains";
 import RecordSubscribe from "@/components/site/RecordSubscribe";
 import { VerdictWord, ProbeTimeline, SettleGauge, type L0Verdict } from "@/components/site/Figures";
+import { WideColumn } from "@/components/site/WideColumn";
 import { getDb } from "@/lib/db/client";
 import { readRecordSides } from "@/lib/sellers/reader";
 import { recordPageNoindex, recordRowKey, type RecordSides } from "@/lib/sellers/board";
@@ -186,7 +187,8 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
 
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
-      <article className="sheet">
+      <article className="sheet sheet-wide">
+        <WideColumn />
         <script
           type="application/ld+json"
           nonce={nonce}
@@ -203,7 +205,7 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
             </span>
             {/* 2026-09-02 UX 監査: 「毎日プローブ」と読まれないよう、この記録の鮮度を
                 doc-head で明示する。日付は UTC、日数は表示時点との差。 */}
-            <span>Last probed: {lastProbed}</span>
+            <span className="doc-asof">Last probed: {lastProbed}</span>
           </div>
           <div className="doc-head-col">
             <span>vet402</span>

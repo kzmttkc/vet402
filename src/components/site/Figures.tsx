@@ -48,7 +48,7 @@ export function VerdictWord({ verdict }: { verdict: L0Verdict }) {
 
 function Figure({ n, caption, children }: { n: number; caption: ReactNode; children: ReactNode }) {
   return (
-    <figure className="mt-5 max-w-[var(--measure)]">
+    <figure className="mt-5 w-full">
       {children}
       <figcaption className="mt-2 max-w-[72ch] text-[0.75rem] leading-relaxed text-brand-lift">
         <span className="font-[family-name:var(--font-display)] font-semibold text-brand-deep">Figure {n}.</span> {caption}

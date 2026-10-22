@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "@/lib/support";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
+import { WideColumn } from "@/components/site/WideColumn";
 import {
   CORRECTIONS_PAGE_MAX,
   countCorrectionsByReason,
@@ -333,7 +334,8 @@ export default async function CorrectionsPage() {
 
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
-      <article className="sheet">
+      <article className="sheet sheet-wide">
+        <WideColumn />
         <script
           type="application/ld+json"
           nonce={nonce}
