@@ -195,7 +195,7 @@ test("the read-side constants (chain/arbitrum.ts) agree with the pinned row, and
   assert.equal(row.usdc, ARBITRUM_USDC);
   assert.equal(row.rpcEnv, "ARBITRUM_RPC_URL");
   assert.equal(row.blocksPerDay, 310_500n, "278.25 ms blocks measured 2026-10-22");
-  assert.equal(row.subWindowBlocks, 2_000n, "public RPC answers a 2,000-block USDC Transfer query and refuses 5,000");
+  assert.equal(row.subWindowBlocks, 10_000n, "the index filters by payee, and the public RPC answered a payee-filtered 10,000-block query on 2026-10-22");
   assert.ok(row.maxBlocksPerRun >= row.blocksPerDay, "a daily cron must be able to keep up");
 });
 

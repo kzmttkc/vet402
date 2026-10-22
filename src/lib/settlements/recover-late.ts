@@ -1448,7 +1448,8 @@ const ARBITRUM_BLOCK_SECONDS = 0.28;
  */
 export const ARBITRUM_TRANSFER_READ_CHUNK_BLOCKS = 2_000n;
 const ARBITRUM_BLOCK_LOCATE_TOLERANCE_SECONDS = 30;
-const ARBITRUM_TRANSFER_READ_MARGIN_BLOCKS = 35n;
+// 余裕は見積もりの許容（30 秒 ≈ 108 ブロック）より広く取る。Celo の「余裕は許容より広く」と同じ規則（2026-10-22 審査）。
+const ARBITRUM_TRANSFER_READ_MARGIN_BLOCKS = 120n;
 
 type ArbitrumTransferClient = Pick<ReturnType<typeof getLogScanClient>, "getBlock" | "getLogs" | "getChainId">;
 

@@ -387,6 +387,9 @@ const LANE_SECONDARY_ACCEPT_FILTER: Partial<Record<CappedChain, SQL>> = {
   // BNB: USD1 の eip3009 だけ。permit2・permit2-exact・USDC(BSC)・USDT・United Stables は枠に載せない
   // （載せても selectAccept が断って Base で買われるだけで、枠を埋める）。asset は大小を無視する。
   bnb: sql`AND lower(a->>'asset') = ${BNB_CHAIN.usdc.toLowerCase()} AND a->'extra'->>'assetTransferMethod' = 'eip3009'`,
+  // Arbitrum（2026-10-22 審査）: ネイティブ USDC で、eip3009（または方式の記載なし）だけ。USDC.e・permit2 だけの行を
+  // 枠に載せても selectAccept が断って Base で買われるだけで、枠を埋める（BNB で直した型と同じ）。
+  arbitrum: sql`AND lower(a->>'asset') = ${ARBITRUM_CHAIN.usdc.toLowerCase()} AND coalesce(a->'extra'->>'assetTransferMethod', 'eip3009') = 'eip3009'`,
 };
 
 /**
@@ -1316,9 +1319,9 @@ export async function runL1Batch(
     // BNB（2026-10-19・段B2）: 同じ EOA。レーン枠の有効条件は旗 + BNB_RPC_URL。どちらか欠ければレーン枠を問い合わせない。
     // レーン外で BNB が選ばれたら、残高は公開 RPC で読む（chain/bnb.ts の既定。規則では可）。
     { chain: "bnb", ready: isBnbL1Enabled() && !!process.env.BNB_RPC_URL?.trim() },
-    // Arbitrum（2026-10-22）: Base と同じ鍵で署名する EVM レーン。有効条件はフラグだけ（Celo と同じ）。
-    // フラグが無ければ候補 SQL が Arbitrum を主ネットワークにする行を外し、レーン枠も問い合わせない。
-    { chain: "arbitrum", ready: isArbitrumL1Enabled() },
+    // Arbitrum（2026-10-22）: Base と同じ鍵で署名する EVM レーン。有効条件は旗 + ARBITRUM_RPC_URL（BNB と同じ。
+    // RPC が無いまま買うと照合も遅延回収もできない行が積み上がる。2026-10-22 審査）。
+    { chain: "arbitrum", ready: isArbitrumL1Enabled() && !!process.env.ARBITRUM_RPC_URL?.trim() },
     // Stellar（2026-10-18）: 旗 + 秘密 + Horizon + RPC。どれか欠ければ主ネットワークが pubnet の行を外す。
     { chain: "stellar", ready: stellarReady },
   ];

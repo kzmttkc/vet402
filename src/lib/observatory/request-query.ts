@@ -81,7 +81,6 @@ export const OTHER_CHAIN_QUERY_UNSENT_UNTIL = [
   { until: "2026-09-21T06:00:30Z", networks: ["xrpl:0"] },
   { until: "2026-10-01T12:00:20Z", networks: ["solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"] },
   { until: "2026-10-19T04:05:17Z", networks: ["eip155:5042", "eip155:42220", "stellar:pubnet", "eip155:56"] },
-  { until: "2026-10-22T12:00:00Z", networks: ["eip155:42161"] },
 ] as const;
 
 /** 表にある network の上限（ISO）。表に無ければ null。 */
@@ -121,7 +120,6 @@ export const QUERY_UNSENT_CHAIN_NAMES: Readonly<Record<string, string>> = {
   "eip155:42220": "Celo",
   "stellar:pubnet": "Stellar",
   "eip155:56": "BNB",
-  "eip155:42161": "Arbitrum",
 };
 
 function englishList(names: readonly string[]): string {

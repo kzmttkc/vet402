@@ -86,6 +86,7 @@ if (!TEST_DB) {
       "L1_DOMAIN_DAILY_CAP_USD",
       "L1_LANE_FLOOR_PER_RUN",
       "VET402_OPERATOR_PAYTO",
+      "ARBITRUM_RPC_URL",
     ] as const;
     const saved = Object.fromEntries(ENV.map((k) => [k, process.env[k]]));
     t.after(() => {
@@ -97,6 +98,8 @@ if (!TEST_DB) {
     for (const k of ENV) delete process.env[k];
     process.env.OBSERVATORY_L1_ENABLED = "true";
     process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
+    // レーンの準備条件は旗 + ARBITRUM_RPC_URL（2026-10-22 審査）。どこへも繋がない住所を置く。
+    process.env.ARBITRUM_RPC_URL = "http://127.0.0.1:9/arbitrum-test-rpc";
 
     const arbUsdc = (payTo: string, amount: string) => ({
       scheme: "exact", network: ARB_CAIP2, amount, asset: ARB_USDC, payTo, maxTimeoutSeconds: 60, extra: { name: "USD Coin", version: "2" },

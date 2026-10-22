@@ -49,8 +49,8 @@ const MUTATIONS = [
     rule: "フラグ off なら Arbitrum の候補に 1 リクエストも出さない",
     file: RUNNER,
     needsDb: true,
-    find: '    { chain: "arbitrum", ready: isArbitrumL1Enabled() },',
-    replace: '    { chain: "arbitrum", ready: /* MUTANT */ true },',
+    find: '    { chain: "arbitrum", ready: isArbitrumL1Enabled() && !!process.env.ARBITRUM_RPC_URL?.trim() },',
+    replace: '    { chain: "arbitrum", ready: /* MUTANT */ !!process.env.ARBITRUM_RPC_URL?.trim() },',
   },
   {
     id: "A03",
