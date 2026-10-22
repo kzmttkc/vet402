@@ -150,7 +150,12 @@ test("入力欄の枠線に白地3:1未満のトークンを使わない（WCAG 
         // `focus:border-zinc-300` のような variant 付きは休止時の境界表現では
         // ないので対象外にする（直前が `:` なら variant）。
         const re = new RegExp(`(?<![\\w:-])${token}(?![\\w-])`);
-        if (re.test(t.body)) hits.push(`${f.path}:${t.line} <${t.tag}> ${token}`);
+        if (!re.test(t.body)) continue;
+        // 白文字の欄は紺地（brand-deep #233456）の上にある。そこでは紙色の枠が境界で、
+        // 40% の白を紺に乗せると 3.34:1。白地向けの brand-lift は同じ地で 2.21:1 になり、
+        // こちらの関門が勧める側が 3:1 を割る。
+        if (token === `border-${"white"}` && /\btext-white\b/.test(t.body)) continue;
+        hits.push(`${f.path}:${t.line} <${t.tag}> ${token}`);
       }
     }
   }

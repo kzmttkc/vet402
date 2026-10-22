@@ -19,7 +19,9 @@ import {
 } from "@/lib/observatory/cached-reads";
 import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
 import { FunnelFigure } from "@/components/site/Figures";
-import { LedgerSection, SettledChainsSection, homeLedgerOf } from "@/components/site/HomeLedger";
+import { SettledChainsSection, homeLedgerOf } from "@/components/site/HomeLedger";
+import { HomeIntro } from "@/components/site/home/HomeIntro";
+import { getHomeExampleCached } from "@/lib/observatory/home-example";
 import { formDisputeQueueSummary } from "@/lib/observatory/dispute-ack";
 import { l0ProbeScheduleLabel } from "@/lib/observatory/l0-schedule";
 
@@ -118,11 +120,13 @@ export default async function Home() {
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   // 2026-09-02 UX 監査: 「probed daily」は事実ではなかった（毎日なのはカタログ取得。
   // プローブはローリングで、7 日以内に測定済みは 37.6%）。§4 の文は実値で埋める。
-  const coverage = await getCoverageShareCached().catch(() => null);
-  // 2026-09-02 UI/UX 監査（続）: §4 に図を 1 枚——登録 → L0 pass → L1 受領証あり。実数のみ。
-  const stats = await getObservatoryStatsCached().catch(() => null);
-  // 2026-10-21 オーナー決定（案 A）: 第 1 画面の直下の 2 節（The public ledger・Where purchases settled）。
-  // 同じ 1 回の読み（stats）から畳む。読めない・空の形・読んだ時刻が無い → null で 2 節とも出さない。
+  // 2026-10-22 オーナー決定（案 C）: 第 1 画面は check。台帳は同じ cached read。
+  // 受領証は export.csv?days=1 と同じ窓をプロセス内で読む（home-example.ts）。
+  const [coverage, stats, example] = await Promise.all([
+    getCoverageShareCached().catch(() => null),
+    getObservatoryStatsCached().catch(() => null),
+    getHomeExampleCached().catch(() => null),
+  ]);
   const ledger = homeLedgerOf(stats);
   const organization = organizationJsonLd(
     "Independent verification of the x402 agent-payment economy. vet402 buys what x402 endpoints sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence.",
@@ -223,80 +227,21 @@ export default async function Home() {
       />
 
       {/* max-sm:py-5 — 紙の天地の余白だけ 32px → 20px。.sheet 自体（全ページ共通）
-          は触らず、この1枚にだけ当てている。 */}
-      <article className="sheet max-sm:py-5">
-        {/* ================= First screen ================= */}
-        {/* 2026-09-28 監査: 最初の画面が RFC の書誌欄（Network Working Group …）から始まり、
-            初見の読者が「何ができるのか」「どこから触るのか」を得る前に画面を使っていた。
-            表題の直下に平易な 1 文、その下に売り手の検索（/sellers が受ける ?q=）と入口 2 つを
-            置き、書誌欄は入口の下へ下げた（要素は消していない。ETHOnline の導線もそこに残る）。
-            2026-08-23 の「平易な1文」はこの 1 文に置き換えた（同じことを言う 2 文を並べない）。 */}
-        <h1 className="doc-title mt-1 sm:mt-4">
-          vet402 — Independent Verification of the x402 Agent-Payment Economy
-        </h1>
-        <p className="mx-auto mt-2 max-w-[62ch] text-center text-brand max-sm:leading-[1.5] sm:mt-3">
-          See whether an x402 API actually delivers before your agent pays it. We buy it and
-          publish what happened.
-        </p>
+          は触らず、この1枚にだけ当てている。lg では案 C の 1200px 幅に合わせ、
+          ヘッダの列幅（--column）もこの頁だけ同じにする。 */}
+      <article className="sheet max-w-[1200px] max-sm:py-5">
+        <style>{`@media (min-width: 1024px) { :root { --column: 1200px; } }`}</style>
+        {/* 2026-10-22 オーナー決定（案 C）: 第 1 画面は見出しと Figure 1、右に check。
+            書誌欄・Abstract・#gap 以降は下に残す。ETHOnline の導線も書誌欄に残る。 */}
+        <HomeIntro
+          ledger={ledger}
+          readAt={stats?.readAt ?? null}
+          settled4xx={ledger ? (stats?.l1.inconclusiveSettled ?? null) : null}
+          example={example}
+        />
 
-        <form method="get" action="/sellers" role="search" className="mx-auto mt-4 max-w-[60ch] sm:mt-6">
-          <label htmlFor="home-seller-q" className="doc-caption block">
-            Seller domain
-          </label>
-          <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:gap-3">
-            {/* text-base（16px）: iOS Safari が 16px 未満の欄で頁を拡大するのを避ける。 */}
-            <input
-              id="home-seller-q"
-              name="q"
-              aria-describedby="home-seller-q-help"
-              type="search"
-              placeholder="api.example.com"
-              required
-              autoComplete="off"
-              autoCapitalize="none"
-              spellCheck={false}
-              className="doc-input min-w-0 text-base sm:flex-1"
-            />
-            <button type="submit" className={buttonClass({ size: "md", className: "w-full max-sm:py-2.5 sm:w-auto" })}>
-              Check a seller
-            </button>
-          </div>
-          {/* 2026-10-21 監査 A-05: 検索が引くのは /sellers（Base の購入結果）だけ。載っていない host を「測っていない」と読ませない。 */}
-          <p id="home-seller-q-help" className="doc-note mt-1">
-            Results are Base purchases. A host with purchases on another chain, or one missing here, can still be listed in the observatory.
-          </p>
-          <p className="mt-3 text-center sm:text-left">
-            <TrackedLink
-              href="/signup"
-              event="lp_cta_click"
-              props={{ position: "hero_signup" }}
-              className={buttonClass({
-                variant: "secondary",
-                size: "md",
-                className: "w-full max-sm:py-2.5 sm:w-auto",
-              })}
-            >
-              Get a free API key
-            </TrackedLink>{" "}
-            {/* 2026-09-29 ペルソナ監査: キー無しで 1 回測れる /playground が、どの頁からも辿れなかった。 */}
-            <TrackedLink
-              href="/playground"
-              event="lp_cta_click"
-              props={{ position: "hero_playground" }}
-              className={buttonClass({
-                variant: "secondary",
-                size: "md",
-                className: "mt-2 w-full max-sm:py-2.5 sm:mt-0 sm:w-auto",
-              })}
-            >
-              Try one check, no account
-            </TrackedLink>
-          </p>
-        </form>
-
-        {/* 2026-09-29 ペルソナ監査: 初見が 15 秒で掴む 3 点。x402 と vet402 の違い、出さなくてよいもの、
-            保証しないもの。書誌欄（RFC 風）はこの下に下がる。 */}
-        <dl className="mx-auto mt-5 grid max-w-[62ch] gap-1 text-sm text-brand sm:grid-cols-[max-content_1fr] sm:gap-x-3">
+        {/* 2026-09-29 ペルソナ監査: 初見が掴む 3 点。文言は据え置き。2 列の直下。 */}
+        <dl className="mx-auto mt-10 grid max-w-[62ch] gap-1 text-sm text-brand sm:grid-cols-[max-content_1fr] sm:gap-x-3">
           <dt className="font-semibold">What this is</dt>
           <dd>x402 is how an agent pays an API. vet402 buys from those APIs itself and publishes whether what was paid for arrived.</dd>
           <dt className="font-semibold">What you give us</dt>
@@ -305,10 +250,25 @@ export default async function Home() {
           <dd>Guarantee a seller, refund, handle chargebacks, check identity (KYC), approve payments, or cap your spending.</dd>
         </dl>
 
-        {/* ================= Under the first screen: the ledger ================= */}
-        {/* 2026-10-21 オーナー決定（案 A・「推奨で」）: 第 1 画面は据え置き、その直下に台帳の 2 数とチェーン別の表。
-            数は getObservatoryStatsCached() の 1 回の読みから（/api/v1/observatory/state と同じ reader）。読めなければ出さない。 */}
-        {ledger ? <LedgerSection ledger={ledger} /> : null}
+        <div className="rule-double mt-16" />
+        <p className="doc-note mt-4">
+          Customer count and revenue: not published. Counts on this page are read from{" "}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+          <a href="/api/v1/observatory/state" className="doc-link">
+            observatory/state
+          </a>
+          ,{" "}
+          <a href="/api/v1/observatory/export.csv?days=1" className="doc-link">
+            export.csv
+          </a>{" "}
+          and the decision document for the purchase line, at the time of the read.{" "}
+          <Link href="/observatory/methodology" className="doc-link">
+            Methodology
+          </Link>
+          .
+        </p>
+
+        {/* チェーン表は残す。Paid, no 2xx は settled − delivered。読めなければ出さない。 */}
         {ledger ? <SettledChainsSection ledger={ledger} /> : null}
 
         {/* ================= RFC first page ================= */}

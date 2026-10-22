@@ -189,6 +189,9 @@ export function SettledChainsSection({ ledger }: { ledger: HomeLedger }) {
               <th scope="col" className="num">
                 Delivered
               </th>
+              <th scope="col" className="num">
+                Paid, no 2xx
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -198,6 +201,7 @@ export function SettledChainsSection({ ledger }: { ledger: HomeLedger }) {
                 <td>{r.asset}</td>
                 <td className="num">{fmt(r.settled)}</td>
                 <td className="num">{fmt(r.delivered)}</td>
+                <td className="num">{fmt(Math.max(0, r.settled - r.delivered))}</td>
               </tr>
             ))}
           </tbody>

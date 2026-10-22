@@ -54,12 +54,15 @@ function fixture(over: Partial<HomeLedgerStats> = {}): HomeLedgerStats {
 
 test("the page reads the numbers from the cached reader, not over HTTP", () => {
   assert.ok(HOME.includes('from "@/lib/observatory/cached-reads"'));
-  assert.ok(HOME.includes("const stats = await getObservatoryStatsCached().catch(() => null);"));
+  assert.ok(HOME.includes("getObservatoryStatsCached().catch(() => null)"));
+  assert.ok(HOME.includes("getHomeExampleCached().catch(() => null)"));
   assert.ok(HOME.includes("const ledger = homeLedgerOf(stats);"));
-  for (const src of [HOME, LEDGER_SRC]) {
+  const example = read("src/lib/observatory/home-example.ts");
+  for (const src of [HOME, LEDGER_SRC, example]) {
     assert.ok(!/\bfetch\(/.test(src), "no fetch() on the front page or in its ledger sections");
     assert.ok(!src.includes("https://vet402.com/api"), "no absolute API URL is read");
   }
+  assert.ok(!HOME.includes("force-dynamic"), "the page keeps the existing cache policy");
 });
 
 test("the cached reader stamps the time it read the database", () => {
@@ -80,12 +83,13 @@ test("an unusable read draws neither section", () => {
   assert.ok(homeLedgerOf(fixture()));
 });
 
-test("both sections sit directly under the first screen, each behind the gate", () => {
+test("the chain table sits under the new first screen and above the memo, behind the same gate", () => {
+  const introAt = HOME.indexOf("<HomeIntro");
   const dlEnd = HOME.indexOf("</dl>");
-  const ledgerAt = HOME.indexOf("{ledger ? <LedgerSection ledger={ledger} /> : null}");
   const chainsAt = HOME.indexOf("{ledger ? <SettledChainsSection ledger={ledger} /> : null}");
   const rfcHead = HOME.indexOf('<div className="doc-head');
-  assert.ok(dlEnd > 0 && ledgerAt > dlEnd && chainsAt > ledgerAt && rfcHead > chainsAt, "order: first screen, ledger, chains, memo");
+  assert.ok(!HOME.includes("<LedgerSection"), "the two-count block is replaced by the sentence in HomeIntro");
+  assert.ok(introAt > 0 && dlEnd > introAt && chainsAt > dlEnd && rfcHead > chainsAt, "order: intro, definitions, chains, memo");
 });
 
 // ---------- what the sections print ----------
@@ -115,15 +119,16 @@ test("Where purchases settled: one row per chain with a settled purchase, names 
   assert.ok(ledger);
   const html = renderToStaticMarkup(createElement(SettledChainsSection, { ledger }));
   assert.ok(html.includes("Where purchases settled"));
-  for (const h of ["Chain", "Asset", "Settled purchases", "Delivered"]) assert.ok(html.includes(`>${h}<`), h);
-  const rows = [...html.matchAll(/<tr><td title="([^"]*)">([^<]*)<\/td><td>([^<]*)<\/td><td class="num">([^<]*)<\/td><td class="num">([^<]*)<\/td><\/tr>/g)].map(
+  for (const h of ["Chain", "Asset", "Settled purchases", "Delivered", "Paid, no 2xx"]) assert.ok(html.includes(`>${h}<`), h);
+  const rows = [...html.matchAll(/<tr><td title="([^"]*)">([^<]*)<\/td><td>([^<]*)<\/td><td class="num">([^<]*)<\/td><td class="num">([^<]*)<\/td><td class="num">([^<]*)<\/td><\/tr>/g)].map(
     (m) => m.slice(1),
   );
+  // The new column is settled − delivered for that chain. The fixture's counts are unchanged.
   assert.deepEqual(rows, [
-    ["Base", "Base", "USDC", "3,500", "3,300"],
-    ["stellar:pubnet", "Stellar", "USDC", "250", "240"],
-    ["BSC", "BSC", "USD1", "150", "140"],
-    ["eip155:999999", "eip155:999999", NO_ASSET, "7", "5"],
+    ["Base", "Base", "USDC", "3,500", "3,300", "200"],
+    ["stellar:pubnet", "Stellar", "USDC", "250", "240", "10"],
+    ["BSC", "BSC", "USD1", "150", "140", "10"],
+    ["eip155:999999", "eip155:999999", NO_ASSET, "7", "5", "2"],
   ]);
   assert.ok(!html.includes("Base Sepolia"), "a chain with no settled purchase has no row");
 });
@@ -158,21 +163,31 @@ test("no count is written into the ledger sections' source", () => {
   assert.ok(!/\d{2,}/.test(jsxText.replace(/2xx|402|CC BY 4\.0|L[0-3]/g, "")), `no number in the copy: ${jsxText}`);
 });
 
-// ---------- the first screen is unchanged ----------
+// ---------- direction C keeps the search, the two entries, and the three definitions ----------
 
-test("the first screen copy is unchanged (2026-10-21)", () => {
-  const firstScreen = HOME.slice(HOME.indexOf("{/* ================= First screen ================= */}"), HOME.indexOf("</dl>") + 5);
+test("direction C keeps the seller search, the two entries, and the three definitions", () => {
+  const panel = read("src/components/site/home/CheckPanel.tsx");
   const squash = (s: string) => s.replace(/\s+/g, " ");
-  const text = squash(firstScreen);
+  const intro = squash(read("src/components/site/home/HomeIntro.tsx"));
+  assert.ok(intro.includes("Paid is on chain."));
+  assert.ok(intro.includes("Delivered is not."));
   for (const piece of [
-    "vet402 — Independent Verification of the x402 Agent-Payment Economy",
-    "See whether an x402 API actually delivers before your agent pays it. We buy it and publish what happened.",
     '<form method="get" action="/sellers" role="search"',
+    'id="home-seller-q"',
+    'name="q"',
+    'aria-describedby="home-seller-q-help"',
     "Seller domain",
     'placeholder="api.example.com"',
     "Check a seller",
+    'props={{ position: "hero_signup" }}',
     "Get a free API key",
+    'props={{ position: "hero_playground" }}',
     "Try one check, no account",
+  ]) {
+    assert.ok(squash(panel).includes(squash(piece)), `check panel still says: ${piece}`);
+  }
+  const defs = HOME.slice(HOME.indexOf("<dl "), HOME.indexOf("</dl>") + 5);
+  for (const piece of [
     '<dt className="font-semibold">What this is</dt>',
     "<dd>x402 is how an agent pays an API. vet402 buys from those APIs itself and publishes whether what was paid for arrived.</dd>",
     '<dt className="font-semibold">What you give us</dt>',
@@ -180,16 +195,16 @@ test("the first screen copy is unchanged (2026-10-21)", () => {
     '<dt className="font-semibold">What we do not do</dt>',
     "<dd>Guarantee a seller, refund, handle chargebacks, check identity (KYC), approve payments, or cap your spending.</dd>",
   ]) {
-    assert.ok(text.includes(squash(piece)), `first screen still says: ${piece}`);
+    assert.ok(squash(defs).includes(squash(piece)), `definitions still say: ${piece}`);
   }
-  assert.equal((firstScreen.match(/<dt /g) ?? []).length, 3, "the table has three rows");
-  assert.equal((firstScreen.match(/<TrackedLink/g) ?? []).length, 2, "two buttons under the search");
+  assert.equal((defs.match(/<dt /g) ?? []).length, 3, "the table has three rows");
 });
 
 test("the search names what it searches (audit A-05)", () => {
-  assert.ok(HOME.includes('aria-describedby="home-seller-q-help"'));
+  const panel = read("src/components/site/home/CheckPanel.tsx");
+  assert.ok(panel.includes('aria-describedby="home-seller-q-help"'));
   assert.match(
-    HOME,
-    /<p id="home-seller-q-help" className="doc-note mt-1">\s*Results are Base purchases\. A host with purchases on another chain, or one missing here, can still be listed in the observatory\.\s*<\/p>/,
+    panel,
+    /<p id="home-seller-q-help" className="mt-2 text-\[0\.75rem\] text-white\/70">\s*Results are Base purchases\. A host with purchases on another chain, or one missing here, can still be listed in the observatory\.\s*<\/p>/,
   );
 });
