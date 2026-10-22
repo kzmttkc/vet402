@@ -13,9 +13,9 @@ function Corner({ className }: { className: string }) {
   );
 }
 
-/** A 202 or an empty 2xx body is a 2xx that isDelivered does not count, so "no 2xx" would be false there. */
+/** A 202 or an empty 2xx body is a 2xx that isDelivered does not count, so "no 2xx" would be false there. A 202 is undecided (WARN in delivery.ts), so it is not a no. */
 function notDeliveredWord(http: number | null): string {
-  if (http === 202) return "no, 202 accepted only";
+  if (http === 202) return "not confirmed, 202 accepted";
   if (http !== null && http >= 200 && http < 300) return "no, empty body";
   return "no 2xx";
 }
@@ -42,7 +42,7 @@ export function ReceiptSlip({ receipt }: { receipt: HomeReceipt }) {
     {
       k: "Delivered",
       v: r.held ? "held, inconclusive" : r.delivered ? "yes, 2xx" : notDeliveredWord(r.httpStatus),
-      strong: !r.held,
+      strong: !r.held && r.httpStatus !== 202,
     },
     { k: "Against declaration", v: r.l2 },
     {

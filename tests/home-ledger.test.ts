@@ -119,7 +119,7 @@ test("Where purchases settled: one row per chain with a settled purchase, names 
   assert.ok(ledger);
   const html = renderToStaticMarkup(createElement(SettledChainsSection, { ledger }));
   assert.ok(html.includes("Where purchases settled"));
-  for (const h of ["Chain", "Asset", "Settled purchases", "Delivered", "Paid, no 2xx"]) assert.ok(html.includes(`>${h}<`), h);
+  for (const h of ["Chain", "Asset", "Settled purchases", "Answered 2xx", "Paid, no 2xx"]) assert.ok(html.includes(`>${h}<`), h);
   const rows = [...html.matchAll(/<tr><td title="([^"]*)">([^<]*)<\/td><td>([^<]*)<\/td><td class="num">([^<]*)<\/td><td class="num">([^<]*)<\/td><td class="num">([^<]*)<\/td><\/tr>/g)].map(
     (m) => m.slice(1),
   );

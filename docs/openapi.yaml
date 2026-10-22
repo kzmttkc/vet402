@@ -2694,6 +2694,13 @@ paths:
                                 The chain's share of l1.inconclusive — paid attempts held
                                 rather than counted against the seller. Not a subset of
                                 that chain's settled.
+                            inconclusiveSettled:
+                              type: integer
+                              description: >-
+                                The chain's settled purchases that are held as
+                                inconclusive (for example a 4xx after payment). A subset
+                                of that chain's settled, so settled minus this is the
+                                denominator of the chain's delivery rate.
                             settledNonceBound: { type: integer }
                             settledAmountPayeeOnly: { type: integer }
                   byChain:

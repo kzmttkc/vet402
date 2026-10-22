@@ -113,7 +113,8 @@ test("202, an empty 200, and a held 4xx are not delivered on the receipt", () =>
   const heldHtml = renderToStaticMarkup(createElement(ReceiptSlip, { receipt: held }));
   assert.equal(deliveredCell(acceptedHtml).includes("yes, 2xx"), false);
   assert.equal(deliveredCell(emptyHtml).includes("yes, 2xx"), false);
-  assert.match(deliveredCell(acceptedHtml), />no, 202 accepted only</);
+  assert.match(deliveredCell(acceptedHtml), />not confirmed, 202 accepted</);
+  assert.equal(deliveredCell(acceptedHtml).includes("font-semibold"), false);
   assert.match(deliveredCell(emptyHtml), />no, empty body</);
   assert.match(deliveredCell(heldHtml), />held, inconclusive</);
   assert.equal(deliveredCell(heldHtml).includes("font-semibold"), false);
