@@ -93,12 +93,18 @@
 // 行ごとの窓・応答なしを先に読む順は変えない。BNB は USD1（18 桁）なので、返す額は 6 桁（evmIndexLedgerAmount）。
 // 10^12 で割り切れない額は候補にしない。RPC は BNB_RPC_URL 必須（公開 RPC へ黙って倒れない）。
 // ブロック間隔は 2026-10-19 に測っていないので、窓の見積もりは Celo と同じ 1 秒を置き、ブロックの実時刻で直す。
+//
+// 2026-10-22（Arbitrum レーン）: 同じ形の直読みを eip155:42161 にも通す。Celo のレーンの選び方・nonce の束縛・
+// 行ごとの窓・応答なしを先に読む順は変えない。トークンはネイティブ USDC。RPC は ARBITRUM_RPC_URL 必須
+// （公開 RPC へ黙って倒れない）。ブロック間隔は 2026-10-22 実測 278.25 ms。窓の見積もりは 0.28 秒で、ブロックの実時刻で直す。
+// 1 行の窓（≈ 6,900 ブロック）は 2,000 ブロックずつ読む（公開 RPC の eth_getLogs 上限）。
 // ============================================================
 import { createPublicClient, http, parseAbiItem, type Address } from "viem";
-import { base, bsc, celo } from "viem/chains";
+import { arbitrum, base, bsc, celo } from "viem/chains";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { getLogScanClient } from "@/lib/chain/client";
+import { ARBITRUM_CAIP2, ARBITRUM_CHAIN_ID, ARBITRUM_USDC_ADDRESS } from "@/lib/chain/arbitrum";
 import { BNB_CAIP2, BNB_CHAIN_ID, BNB_USD1_ADDRESS } from "@/lib/chain/bnb";
 import { CELO_CAIP2, CELO_CHAIN_ID, CELO_USDC_ADDRESS } from "@/lib/chain/celo";
 import { evmIndexLedgerAmount } from "@/lib/settlements/index-evm";
@@ -193,6 +199,11 @@ export const CELO_CHAIN_READ_BUDGET_MS = 30_000;
  * （名目の合計は 300 秒を超える。Celo のあとに走り、残りが無ければこの回は読まない）。
  */
 export const BNB_CHAIN_READ_BUDGET_MS = 30_000;
+/**
+ * Arbitrum のレーンの持ち時間（2026-10-22）。Celo と同じ 30 秒を別枠で持つ。cron の締切（deadlineAt）で頭打ちにする
+ * （名目の合計は 300 秒を超える。BNB のあとに走り、残りが無ければこの回は読まない）。
+ */
+export const ARBITRUM_CHAIN_READ_BUDGET_MS = 30_000;
 
 export type LateSettlementSummary = {
   recovered: number;
@@ -218,6 +229,12 @@ export type LateSettlementSummary = {
   chainRowsReadBnb?: number;
   /** BNB のレーンで、この回は読めなかった行の数（行は変えていない）。 */
   chainRowsUnreadBnb?: number;
+  /** recoveredFromChain のうち Arbitrum のレーンで貼った数（2026-10-22・nonce で持ち主を決めた行だけ）。 */
+  recoveredFromChainArbitrum?: number;
+  /** chainRowsRead のうち Arbitrum のレーンで読んだ行の数。 */
+  chainRowsReadArbitrum?: number;
+  /** Arbitrum のレーンで、この回は読めなかった行の数（行は変えていない）。 */
+  chainRowsUnreadArbitrum?: number;
   /** 1 本の貼り付けの文が落ちた数（その 1 本は台帳も訂正ログも書かれていない・次回に再試行）。 */
   linkErrors?: number;
   /** 結びつけた (purchase_id, tx_hash) の対。cron の応答に出る。 */
@@ -236,6 +253,8 @@ export async function recoverLateSettlements(
     celoChainReadBudgetMs?: number;
     /** BNB のレーンの持ち時間（ms）。 */
     bnbChainReadBudgetMs?: number;
+    /** Arbitrum のレーンの持ち時間（ms）。 */
+    arbitrumChainReadBudgetMs?: number;
     /**
      * 呼び手の締切（epoch ms）。Celo のレーンの持ち時間を「締切までの残り」で頭打ちにする（cron が 300 秒を越えない）。
      * Base のレーンには掛けない（従来どおり）。
@@ -382,7 +401,24 @@ export async function recoverLateSettlements(
           options.readNonces,
         )
       : { linked: [], read: 0, unread: 0 };
-  const fromChain = [...chain.linked, ...celoChain.linked, ...bnbChain.linked];
+  // 2026-10-22: Arbitrum のレーン。Celo と同じく、Transfer の読み手と nonce の読み手の両方が要る。
+  // 行の上限は別枠。持ち時間は締切までの残りで頭打ち（Celo / BNB の段が先に使う）。
+  const arbitrumChain =
+    options.readTransfers && options.readNonces
+      ? await linkFromChain(
+          db,
+          ARBITRUM_CHAIN_READ_LANE,
+          options.readTransfers,
+          options.chainReadLimit ?? CHAIN_READ_ROWS_PER_RUN,
+          Math.min(
+            options.arbitrumChainReadBudgetMs ?? ARBITRUM_CHAIN_READ_BUDGET_MS,
+            typeof options.deadlineAt === "number" ? options.deadlineAt - Date.now() : Infinity,
+          ),
+          errors,
+          options.readNonces,
+        )
+      : { linked: [], read: 0, unread: 0 };
+  const fromChain = [...chain.linked, ...celoChain.linked, ...bnbChain.linked, ...arbitrumChain.linked];
   rows.push(...fromChain);
   const promoted = await promoteNamedTx(db);
 
@@ -392,13 +428,16 @@ export async function recoverLateSettlements(
     recoveredBySet: bySet.length,
     recoveredFromChain: fromChain.length,
     promotedNamedTx: promoted.length,
-    chainRowsRead: chain.read + celoChain.read + bnbChain.read,
+    chainRowsRead: chain.read + celoChain.read + bnbChain.read + arbitrumChain.read,
     recoveredFromChainCelo: celoChain.linked.length,
     chainRowsReadCelo: celoChain.read,
     chainRowsUnreadCelo: celoChain.unread,
     recoveredFromChainBnb: bnbChain.linked.length,
     chainRowsReadBnb: bnbChain.read,
     chainRowsUnreadBnb: bnbChain.unread,
+    recoveredFromChainArbitrum: arbitrumChain.linked.length,
+    chainRowsReadArbitrum: arbitrumChain.read,
+    chainRowsUnreadArbitrum: arbitrumChain.unread,
     linkErrors: errors.count,
     links: rows.map((r) => ({ purchaseId: r.purchase_id, txHash: r.tx_hash })),
   };
@@ -781,7 +820,7 @@ const EVM_AUTH_NONCE_RE = /^0x[0-9a-f]{64}$/;
  * linkAmbiguousByNonce）が Celo の受取先を持たないので、この段が nonce で決める。
  */
 type ChainReadLane = {
-  key: "base" | "celo" | "bnb";
+  key: "base" | "celo" | "bnb" | "arbitrum";
   networks: readonly string[];
   nonceBound: boolean;
   noAnswerFirst: boolean;
@@ -790,8 +829,9 @@ type ChainReadLane = {
 const BASE_CHAIN_READ_LANE: ChainReadLane = { key: "base", networks: BASE_NETWORK_KEYS, nonceBound: false, noAnswerFirst: false, rowWindows: false };
 const CELO_CHAIN_READ_LANE: ChainReadLane = { key: "celo", networks: [CELO_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true };
 const BNB_CHAIN_READ_LANE: ChainReadLane = { key: "bnb", networks: [BNB_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true };
+const ARBITRUM_CHAIN_READ_LANE: ChainReadLane = { key: "arbitrum", networks: [ARBITRUM_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true };
 /** 直読みのレーンの表（テストと点検が読む）。Arc は載せていない（ファイル冒頭の 2026-10-11 の節）。 */
-export const CHAIN_READ_LANES: readonly ChainReadLane[] = [BASE_CHAIN_READ_LANE, CELO_CHAIN_READ_LANE, BNB_CHAIN_READ_LANE];
+export const CHAIN_READ_LANES: readonly ChainReadLane[] = [BASE_CHAIN_READ_LANE, CELO_CHAIN_READ_LANE, BNB_CHAIN_READ_LANE, ARBITRUM_CHAIN_READ_LANE];
 
 /**
  * 索引に候補の無い行について、チェーンの Transfer（from = 行の payer・to = 行の pay_to）を直接読んで貼る。
@@ -1397,12 +1437,123 @@ function boundedBnbClient(timeoutMs: number | undefined): BnbTransferClient | nu
 }
 
 /**
- * cron が linkFromChain に渡す読み手（2026-10-11、BNB は 2026-10-19）: Celo の行は Celo、BNB の行は BNB、
- * それ以外は Base（Base の読み手は Base 以外の network に null を返す＝従来どおり読まない）。
+ * Arbitrum のブロック間隔（秒）。2026-10-22T11:16:31Z 実測（https://arb1.arbitrum.io/rpc）:
+ * 直近 345,600 ブロックの時刻差 96,162 秒 → 278.25 ms。0.28 で見積もり、ブロックの実時刻で直す。
  */
-export function makeChainTransferReader(readers: { base?: TransferReader; celo?: TransferReader; bnb?: TransferReader } = {}): TransferReader {
+const ARBITRUM_BLOCK_SECONDS = 0.28;
+/**
+ * Arbitrum の eth_getLogs を 1 回で問うブロック数。2026-10-22 実測: 公開 RPC はネイティブ USDC の Transfer を
+ * 2,000 ブロックで答え（7,313 件）、5,000 ブロックは "Missing or invalid parameters"（10,000 件のログ上限）で断る。
+ * 1 行の窓（2 分前〜30 分後 ≈ 1,920 秒 / 0.28 ≈ 6,900 ブロック + 余裕）は 4 回に割る。
+ */
+export const ARBITRUM_TRANSFER_READ_CHUNK_BLOCKS = 2_000n;
+const ARBITRUM_BLOCK_LOCATE_TOLERANCE_SECONDS = 30;
+const ARBITRUM_TRANSFER_READ_MARGIN_BLOCKS = 35n;
+
+type ArbitrumTransferClient = Pick<ReturnType<typeof getLogScanClient>, "getBlock" | "getLogs" | "getChainId">;
+
+/**
+ * Arbitrum のネイティブ USDC（0xaf88…5831）の Transfer（from → to）を時刻の窓で読む読み手（2026-10-22・linkFromChain の Arbitrum のレーン）。
+ * 規則は makeCeloTransferReader と同じ。トークンはネイティブ USDC だけ（USDC.e は読まない）。
+ * Arbitrum 以外の network は null。**読めたと言えないときは必ず null か例外**（呼び手は貼らず、印も付けない）:
+ *   - ARBITRUM_RPC_URL が無い（公開 RPC へ黙って倒れない。決済の再読・索引と同じ規律）
+ *   - RPC が chainId 42161 を名乗らない（別のチェーンの空の結果を「着金なし」と読まない）
+ *   - RPC の先端が窓の終わりに届いていない（遅れているノードの空の結果を「着金なし」と読まない）
+ *   - 時刻 → ブロック番号の見積もりが、ブロックの実際の時刻と合わない（読む範囲が窓を外している）
+ * 空の配列（[]）を返すのは、窓を読み切って Transfer が無かったときだけ——呼び手はそれを「決まった」と印す。
+ */
+export function makeArbitrumTransferReader(client?: ArbitrumTransferClient): TransferReader {
+  return async ({ network, payer, payTo, from, to, timeoutMs }) => {
+    if (network !== ARBITRUM_CAIP2) return null;
+    const c = client ?? boundedArbitrumClient(timeoutMs);
+    if (!c) return null;
+    const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
+    const expired = () => {
+      if (Date.now() > deadline) throw new Error("transfer read ran past its time limit");
+    };
+    const [chainId, head] = await Promise.all([c.getChainId(), c.getBlock({ blockTag: "latest" })]);
+    if (chainId !== ARBITRUM_CHAIN_ID) return null;
+    const headMs = Number(head.timestamp) * 1000;
+    if (headMs < to.getTime()) return null;
+    const locate = async (t: Date): Promise<bigint> => {
+      let n = head.number - BigInt(Math.max(0, Math.ceil((headMs - t.getTime()) / (ARBITRUM_BLOCK_SECONDS * 1000))));
+      for (let i = 0; i < 3; i++) {
+        expired();
+        if (n < 0n) n = 0n;
+        if (n > head.number) n = head.number;
+        const block = await c.getBlock({ blockNumber: n });
+        const driftSeconds = Math.round((Number(block.timestamp) * 1000 - t.getTime()) / 1000);
+        if (Math.abs(driftSeconds) <= ARBITRUM_BLOCK_LOCATE_TOLERANCE_SECONDS) return n;
+        if ((n === 0n && driftSeconds > 0) || (n === head.number && driftSeconds < 0)) break;
+        n -= BigInt(Math.trunc(driftSeconds / ARBITRUM_BLOCK_SECONDS));
+      }
+      throw new Error("could not locate the Arbitrum block for the window");
+    };
+    const [fromAt, toAt] = await Promise.all([locate(from), locate(to)]);
+    const first = fromAt - ARBITRUM_TRANSFER_READ_MARGIN_BLOCKS;
+    const last = toAt + ARBITRUM_TRANSFER_READ_MARGIN_BLOCKS;
+    const fromBlock = first < 0n ? 0n : first;
+    const toBlock = last > head.number ? head.number : last;
+    if (fromBlock > toBlock) throw new Error("empty Arbitrum block range for the window");
+    const times = new Map<bigint, number>();
+    const out: ChainTransfer[] = [];
+    for (let lo = fromBlock; lo <= toBlock; lo += ARBITRUM_TRANSFER_READ_CHUNK_BLOCKS) {
+      expired();
+      const hi = lo + ARBITRUM_TRANSFER_READ_CHUNK_BLOCKS - 1n < toBlock ? lo + ARBITRUM_TRANSFER_READ_CHUNK_BLOCKS - 1n : toBlock;
+      const logs = await c.getLogs({
+        address: ARBITRUM_USDC_ADDRESS,
+        event: TRANSFER_LOG,
+        args: { from: payer as Address, to: payTo as Address },
+        fromBlock: lo,
+        toBlock: hi,
+      });
+      for (const l of logs) {
+        if (l.blockNumber === null || !l.transactionHash || typeof l.args.value !== "bigint") {
+          throw new Error("an Arbitrum transfer log came back without a block, a hash or a value");
+        }
+        expired();
+        if (!times.has(l.blockNumber)) times.set(l.blockNumber, Number((await c.getBlock({ blockNumber: l.blockNumber })).timestamp) * 1000);
+        out.push({
+          txHash: l.transactionHash,
+          from: String(l.args.from),
+          to: String(l.args.to),
+          value: l.args.value.toString(),
+          blockTime: new Date(times.get(l.blockNumber)!).toISOString(),
+        });
+      }
+    }
+    return out;
+  };
+}
+
+/** ARBITRUM_RPC_URL を、呼び手の時間で切り・再試行しないクライアント。ARBITRUM_RPC_URL が無ければ null（公開 RPC を使わない）。 */
+function boundedArbitrumClient(timeoutMs: number | undefined): ArbitrumTransferClient | null {
+  const url = process.env.ARBITRUM_RPC_URL?.trim();
+  if (!url) return null;
+  return createPublicClient({
+    chain: arbitrum as unknown as typeof base,
+    transport: http(url, { timeout: Math.max(1_000, Math.trunc(timeoutMs ?? 20_000)), retryCount: 0 }),
+  }) as unknown as ArbitrumTransferClient;
+}
+
+/**
+ * cron が linkFromChain に渡す読み手（2026-10-11、BNB は 2026-10-19、Arbitrum は 2026-10-22）:
+ * Celo の行は Celo、BNB の行は BNB、Arbitrum の行は Arbitrum、それ以外は Base
+ * （Base の読み手は Base 以外の network に null を返す＝従来どおり読まない）。
+ */
+export function makeChainTransferReader(
+  readers: { base?: TransferReader; celo?: TransferReader; bnb?: TransferReader; arbitrum?: TransferReader } = {},
+): TransferReader {
   const baseReader = readers.base ?? makeBaseTransferReader();
   const celoReader = readers.celo ?? makeCeloTransferReader();
   const bnbReader = readers.bnb ?? makeBnbTransferReader();
-  return (q) => (q.network === CELO_CAIP2 ? celoReader(q) : q.network === BNB_CAIP2 ? bnbReader(q) : baseReader(q));
+  const arbitrumReader = readers.arbitrum ?? makeArbitrumTransferReader();
+  return (q) =>
+    q.network === CELO_CAIP2
+      ? celoReader(q)
+      : q.network === BNB_CAIP2
+        ? bnbReader(q)
+        : q.network === ARBITRUM_CAIP2
+          ? arbitrumReader(q)
+          : baseReader(q);
 }

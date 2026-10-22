@@ -174,6 +174,9 @@ const EVM_EXPLORERS: Record<string, string> = {
   // 2026-10-21: BSC mainnet（eip155:56）。chainLabel は "BSC"。"BSC Testnet"（eip155:97）はここに無いので
   // テストネットの tx にはリンクを作らない。
   BSC: "https://bscscan.com/tx/",
+  // 2026-10-22 Arbitrum レーン。mainnet（eip155:42161）だけ——ラベル "Arbitrum Sepolia" はここに無いので
+  // テストネットの tx にはリンクを作らない（Celo と同じ: 壊れたリンクより「—」）。
+  Arbitrum: "https://arbiscan.io/tx/",
 };
 
 /**

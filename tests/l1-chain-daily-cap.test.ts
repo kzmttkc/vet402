@@ -11,6 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   ARC_DAILY_CAP_USD_DEFAULT,
+  ARBITRUM_DAILY_CAP_USD_DEFAULT,
   BNB_DAILY_CAP_USD_DEFAULT,
   CELO_DAILY_CAP_USD_DEFAULT,
   CHAIN_DAILY_CAPS,
@@ -123,6 +124,35 @@ test("BNB: eip155:56 だけが bnb の別枠。テストネットと前後に文
   assert.equal(CHAIN_DAILY_CAPS.bnb.networkLike, "eip155:56", "ワイルドカード無し＝完全一致");
   assert.ok(!/[%_]/.test(CHAIN_DAILY_CAPS.bnb.networkLike));
   assert.equal(BNB_DAILY_CAP_USD_DEFAULT, 0.5);
+});
+
+test("Arbitrum: eip155:42161 だけが arbitrum の別枠。テストネット・スラグ・前後に文字の付いた id は持たない", () => {
+  assert.equal(cappedChainFor("eip155:42161"), "arbitrum");
+  assert.equal(cappedChainFor("eip155:421614"), null, "Arbitrum Sepolia");
+  assert.equal(cappedChainFor("eip155:42170"), null, "Arbitrum Nova");
+  assert.equal(cappedChainFor("arbitrum"), null);
+  assert.equal(cappedChainFor("eip155:421610"), null);
+  assert.equal(cappedChainFor("eip155:4216"), null);
+  assert.equal(CHAIN_DAILY_CAPS.arbitrum.env, "L1_ARBITRUM_DAILY_CAP_USD");
+  assert.equal(CHAIN_DAILY_CAPS.arbitrum.networkLike, "eip155:42161", "ワイルドカード無し＝完全一致");
+  assert.ok(!/[%_]/.test(CHAIN_DAILY_CAPS.arbitrum.networkLike), "LIKE のワイルドカードを含まない");
+});
+
+test("Arbitrum の既定は Celo と同じ $2。0 は Arbitrum を止める。壊れた値・負の値は既定へ倒す。共有上限で頭打ち", () => {
+  assert.equal(ARBITRUM_DAILY_CAP_USD_DEFAULT, CELO_DAILY_CAP_USD_DEFAULT);
+  withEnv("L1_ARBITRUM_DAILY_CAP_USD", undefined, () => assert.equal(chainDailyCapUnits("arbitrum"), 2_000_000n));
+  withEnv("L1_ARBITRUM_DAILY_CAP_USD", "0.5", () => assert.equal(chainDailyCapUnits("arbitrum"), 500_000n));
+  withEnv("L1_ARBITRUM_DAILY_CAP_USD", "0", () => assert.equal(chainDailyCapUnits("arbitrum"), 0n, "0 は 1 件も払わない"));
+  for (const v of ["", "abc", "-1", "NaN", "Infinity"]) {
+    withEnv("L1_ARBITRUM_DAILY_CAP_USD", v, () => assert.equal(chainDailyCapUnits("arbitrum"), 2_000_000n, `value ${JSON.stringify(v)}`));
+  }
+  withEnv("L1_ARBITRUM_DAILY_CAP_USD", "100", () => assert.equal(chainDailyCapUnits("arbitrum"), BigInt(DAILY_BUDGET_USD) * 1_000_000n));
+  withEnv("L1_ARBITRUM_DAILY_CAP_USD", "0", () => {
+    withEnv("L1_CELO_DAILY_CAP_USD", undefined, () => {
+      assert.equal(chainDailyCapUnits("arbitrum"), 0n);
+      assert.equal(chainDailyCapUnits("celo"), 2_000_000n);
+    });
+  });
 });
 
 test("BNB の既定は $0.5。0 は BNB を止める。壊れた値は既定へ倒す。共有上限で頭打ち。他チェーンに効かない", () => {

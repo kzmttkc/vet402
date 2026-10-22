@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-22 — Arbitrum One (eip155:42161) purchase lane, off by default (OBSERVATORY_ARBITRUM_L1_ENABLED)
+
+- **What**: Fifth row of the pinned EVM payer table: chain id 42161, native Circle USDC `0xaf88d065e77c8cC2239327C5EDb3A432268e5831`, EIP-712 domain "USD Coin"/"2". Measured by RPC against https://arb1.arbitrum.io/rpc on 2026-10-22T11:16:31Z. The domain hash computed from the pinned row equals the token's own `DOMAIN_SEPARATOR()` (`0x08d11903…112c78`), and a test recomputes it. Bridged USDC.e is never signed for. Same places the Celo lane touches: own daily cap `L1_ARBITRUM_DAILY_CAP_USD` (default $2, 0 stops the lane), runner flag and lane floor, catalog-declared Arbitrum payees, ledger asset, payer balance read as "arbitrum", settlement re-read and index requiring `ARBITRUM_RPC_URL` (no silent public-RPC fallback), late recovery by a nonce-bound chain read, arbiscan receipt links, `.env.example`. Public copy does not name Arbitrum as a supported purchase chain while the lane is off.
+- **Why**: A production Arbitrum One purchase is due by 2026-10-31 (Arbitrum Open House Dubai). CDP Bazaar measurement on 2026-10-21: 5,890 of 28,000 listings / 331 hosts accept `eip155:42161`.
+- **Impact**: Nothing is paid on Arbitrum until the env flag is exactly `"true"`. The payer is the existing Base EOA (`OBSERVATORY_WALLET_PRIVATE_KEY`). Index `eth_getLogs` windows: 2,000-block chunks (public RPC answered a 2,000-block native USDC Transfer query with 7,313 logs and refused 5,000), 310,500 blocks/day (278.25 ms/block measured), 2-day max per run, 3-day initial lookback, 256 confirmations (~71 s). Paid request wait stays at 20 s.
+
 ## 2026-10-22 Public type scale, tap size, and a richer first page
 
 - **What**: Public type now steps at 12, 13.5, 15, 17, 20, 28, 44 and 64 px. Body stays 15px on a small screen. Table headers are 12px. Section headings share one size and a 64px gap. Focus is a 2px navy outline offset 2px. The same outline is paper white on a navy surface. Figure 1 draws lines 1 to 5 in 1.6 seconds. Reduced motion shows the finished figure. The ledger sentence and each chain row carry a thin share rule. Answered 2xx is solid. The rest is a hatch in the same navy. The receipt gains a perforation and a SETTLED mark. Up to five newest settled purchases from the same one day export window sit under the receipt.

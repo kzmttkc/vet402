@@ -43,7 +43,7 @@ export type HomeLedger = {
  * Stellar", "USD1 on BNB Chain"). tests/home-ledger.test.ts pins both sources. A chain named in
  * neither prints "not named".
  */
-const ASSET_FROM_METHODOLOGY: Record<string, string> = { Stellar: "USDC", BSC: "USD1" };
+const ASSET_FROM_METHODOLOGY: Record<string, string> = { Stellar: "USDC", BSC: "USD1", Arbitrum: "USDC" };
 export const NO_ASSET = "not named";
 
 export function settlementAssetOf(label: string): string {

@@ -33,8 +33,9 @@ import { keccak256, parseAbi, toBytes, TransactionReceiptNotFoundError } from "v
 import { getPublicClient } from "@/lib/chain/client";
 import { getArcPublicClient } from "@/lib/chain/arc";
 import { getBnbPublicClient, getBnbVerifyClient } from "@/lib/chain/bnb";
+import { getArbitrumPublicClient } from "@/lib/chain/arbitrum";
 import { getCeloPublicClient } from "@/lib/chain/celo";
-import { BNB_CHAIN_ID, BNB_LEDGER_SCALE, evmChainFor, type EvmPayChain } from "./x402-payer";
+import { ARBITRUM_CHAIN, BNB_CHAIN_ID, BNB_LEDGER_SCALE, evmChainFor, type EvmPayChain } from "./x402-payer";
 import { isWellFormedSettlementTx } from "@/lib/validation/settlement-tx";
 // 2026-09-19（横断監査 W4）: detail は DB に残る。RPC の URL（鍵入りの形がある）を伏せてから書く。
 import { redactForLog } from "./redact";
@@ -73,7 +74,9 @@ export const AUTHORIZATION_USED_TOPIC = keccak256(toBytes("AuthorizationUsed(add
  * 落とさない——落とすと Celo の行をいつも wrong_chain（計器の故障）として鳴らし、そのバッチの Celo の行を全部飛ばす。
  * BNB Chain（2026-10-19）も同じ: 公開 RPC へ黙って倒さない。Base の client へ落とさない。2026-10-20 から照合のレシート読みは
  * BNB_VERIFY_RPC_URL（無ければ BNB_RPC_URL・どちらも無ければ null。chain/bnb.ts の bnbVerifyRpcUrl）。
- * 表に無い EVM は照合器が無い＝ chain_not_yet_verifiable のまま置く。
+ * Arbitrum One（2026-10-22）も Arc / Celo と同じ: **ARBITRUM_RPC_URL 必須**。無ければ null（未確認のまま置く）。
+ * Base の client へ落とさない——落とすと Arbitrum の行をいつも wrong_chain（計器の故障）として鳴らし、そのバッチの
+ * Arbitrum の行を全部飛ばす。表に無い EVM は照合器が無い＝ chain_not_yet_verifiable のまま置く。
  */
 function clientFor(chain: EvmPayChain): EvmVerifyClient | null {
   if (chain.chainId === 5042) {
@@ -86,6 +89,10 @@ function clientFor(chain: EvmPayChain): EvmVerifyClient | null {
   }
   // BNB（2026-10-20）: 照合は古いレシートを読むので BNB_VERIFY_RPC_URL を先に見る（bnbVerifyRpcUrl の注記）。
   if (chain.chainId === BNB_CHAIN_ID) return getBnbVerifyClient();
+  if (chain.chainId === ARBITRUM_CHAIN.chainId) {
+    if (!process.env.ARBITRUM_RPC_URL?.trim()) return null;
+    return getArbitrumPublicClient("live");
+  }
   return getPublicClient();
 }
 
@@ -93,6 +100,7 @@ function clientFor(chain: EvmPayChain): EvmVerifyClient | null {
 function rpcEnvOf(chain: EvmPayChain): string {
   if (chain.chainId === 42220) return "CELO_RPC_URL";
   if (chain.chainId === BNB_CHAIN_ID) return "BNB_VERIFY_RPC_URL_and_BNB_RPC_URL";
+  if (chain.chainId === ARBITRUM_CHAIN.chainId) return "ARBITRUM_RPC_URL";
   return "ARC_RPC_URL";
 }
 
@@ -181,6 +189,8 @@ export async function readAuthorizationState(
   else if (chain.chainId === 42220) client = process.env.CELO_RPC_URL?.trim() ? getCeloPublicClient("live") : null;
   // BNB（2026-10-19）: Celo と同じく env 必須。無ければ null＝「確かめられない」。
   else if (chain.chainId === BNB_CHAIN_ID) client = process.env.BNB_RPC_URL?.trim() ? getBnbPublicClient("live") : null;
+  // Arbitrum（2026-10-22）: Celo と同じく env 必須。無ければ null＝「確かめられない」。
+  else if (chain.chainId === ARBITRUM_CHAIN.chainId) client = process.env.ARBITRUM_RPC_URL?.trim() ? getArbitrumPublicClient("live") : null;
   else client = getPublicClient();
   if (!client) return null;
   try {

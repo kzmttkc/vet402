@@ -30,6 +30,7 @@ test("支払い付きの待ちは Celo だけ 45 秒。ほかは 20 秒。近傍
   assert.equal(l1PaidTimeoutMs("eip155:42220"), 45_000);
   assert.equal(l1PaidTimeoutMs("eip155:8453"), 20_000);
   assert.equal(l1PaidTimeoutMs("eip155:5042"), 20_000);
+  assert.equal(l1PaidTimeoutMs("eip155:42161"), 20_000, "Arbitrum keeps the default wait");
   assert.equal(l1PaidTimeoutMs("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"), 20_000);
   assert.equal(l1PaidTimeoutMs("eip155:42221"), 20_000);
   assert.equal(l1PaidTimeoutMs("eip155:42220 "), 20_000);

@@ -105,6 +105,9 @@ export const SUPPORTED_CHAINS: SupportedChain[] = [
   // buying since 2026-10-11 and /api/v1/observatory/state already counts it (42 settled on
   // 10-15), but this list was hand-written and never got the row. The count comes from the ledger.
   { kind: "lane", chain: "Celo", asset: "USDC", rail: "x402", state: "settled_on_record" },
+  // 2026-10-22: the Arbitrum One lane (eip155:42161, native Circle USDC,
+  // OBSERVATORY_ARBITRUM_L1_ENABLED) is built and off by default. It is not listed here
+  // until the first settled purchase (same withdrawal as Celo in 31de09d3).
   // Robinhood Chain: the wording is fixed by agreement with the RWA session (2026-09-28,
   // English only). The agreement as handed over in Japanese (the delegation brief's summary,
   // not a verbatim quote of the RWA session's message):

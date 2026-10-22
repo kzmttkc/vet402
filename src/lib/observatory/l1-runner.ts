@@ -48,6 +48,8 @@ import { operatorExclusionPredicate } from "./operator-sql";
 import {
   ARC_CAIP2,
   ARC_CHAIN,
+  ARBITRUM_CAIP2,
+  ARBITRUM_CHAIN,
   BASE_CAIP2,
   BASE_USDC,
   BNB_CAIP2,
@@ -61,6 +63,7 @@ import {
   type ChallengeAccept,
   evmChainFor,
   isArcL1Enabled,
+  isArbitrumL1Enabled,
   isBnbL1Enabled,
   isCeloL1Enabled,
   parseChallenge,
@@ -293,6 +296,12 @@ type Candidate = {
    * レーンとして優先された BNB の accept の payTo は、この集合と照合する。先頭（Base）の pay_to とは比べない。
    */
   bnbDeclaredPayTos: string[];
+  /**
+   * Arbitrum（2026-10-22）で同じもの: カタログの raw_accepts が宣言した eip155:42161 の accept のうち、
+   * 署名の関門と同じ述語（declaredPayTosFor(ARBITRUM_CHAIN, …)）を通ったものの payTo。ネイティブ USDC だけ。
+   * レーンとして優先された Arbitrum の accept の payTo は、この集合と照合する。先頭（Base）の pay_to とは比べない。
+   */
+  arbitrumDeclaredPayTos: string[];
 };
 
 /**
@@ -331,6 +340,8 @@ const LANE_NETWORK: Partial<Record<CappedChain, string>> = {
   celo: CELO_CAIP2,
   // BNB（2026-10-19・段B2）: 同じ EVM の署名経路・同じ EOA。USD1 の eip3009 だけ。
   bnb: BNB_CAIP2,
+  // Arbitrum（2026-10-22）: 同じ EVM の署名経路・同じ EOA。ネイティブ USDC の eip3009 だけ。
+  arbitrum: ARBITRUM_CAIP2,
   // Stellar（2026-10-18・段4）: 主ネットワークが pubnet の行は isStellar が先に selectStellarAccept へ入る。
   // preferNetworks はその選択より前には届かない。2 番目以降（Base 先頭）は XRPL と同じく
   // stellarLanePreferred のときだけ、壁の stellar:pubnet を selectStellarAccept で選ぶ。
@@ -360,7 +371,9 @@ const LANE_NETWORK: Partial<Record<CappedChain, string>> = {
 // BNB（2026-10-19・段B2）: 実測で eip155:56 の accept は 1,106 件。BNB が先頭なのは 1 件だけで、
 // 1,105 件は Base が主ネットワーク。Celo と同じく secondary を枠に入れる。署名するのは USD1 の eip3009 だけ
 // （下の LANE_SECONDARY_ACCEPT_FILTER）。permit2・USDT だけの行は枠に載せない。
-const LANE_SECONDARY_ACCEPTS: Record<CappedChain, boolean> = { solana: false, arc: true, tempo: false, xrpl: true, celo: true, stellar: true, bnb: true };
+// Arbitrum（2026-10-22）: 実測で eip155:42161 の accept は CDP Bazaar 28,000 件中 5,890 件・331 ホスト（2026-10-21）。
+// Celo と同じく secondary を枠に入れる。署名するのはネイティブ USDC だけ。USDC.e だけの行は selectAccept が断る。
+const LANE_SECONDARY_ACCEPTS: Record<CappedChain, boolean> = { solana: false, arc: true, tempo: false, xrpl: true, celo: true, stellar: true, bnb: true, arbitrum: true };
 
 /**
  * secondary の枝で raw_accepts の accept（SQL の別名 `a`）に足す条件。XRPL は RLUSD（hex か literal）かつ
@@ -1303,6 +1316,9 @@ export async function runL1Batch(
     // BNB（2026-10-19・段B2）: 同じ EOA。レーン枠の有効条件は旗 + BNB_RPC_URL。どちらか欠ければレーン枠を問い合わせない。
     // レーン外で BNB が選ばれたら、残高は公開 RPC で読む（chain/bnb.ts の既定。規則では可）。
     { chain: "bnb", ready: isBnbL1Enabled() && !!process.env.BNB_RPC_URL?.trim() },
+    // Arbitrum（2026-10-22）: Base と同じ鍵で署名する EVM レーン。有効条件はフラグだけ（Celo と同じ）。
+    // フラグが無ければ候補 SQL が Arbitrum を主ネットワークにする行を外し、レーン枠も問い合わせない。
+    { chain: "arbitrum", ready: isArbitrumL1Enabled() },
     // Stellar（2026-10-18）: 旗 + 秘密 + Horizon + RPC。どれか欠ければ主ネットワークが pubnet の行を外す。
     { chain: "stellar", ready: stellarReady },
   ];
@@ -1429,6 +1445,10 @@ export async function runL1Batch(
            (SELECT coalesce(jsonb_agg(ba), '[]'::jsonb)
               FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE '[]'::jsonb END) ba
               WHERE ba->>'network' = ${BNB_CAIP2}) AS bnb_declared_accepts,
+           -- Arbitrum の lane accept（2026-10-22）: Celo と同じ取り方。どの payTo を宣言と数えるかは declaredPayTosFor。
+           (SELECT coalesce(jsonb_agg(aa), '[]'::jsonb)
+              FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE '[]'::jsonb END) aa
+              WHERE aa->>'network' = ${ARBITRUM_CAIP2}) AS arbitrum_declared_accepts,
            -- Stellar の secondary accept（2026-10-18・段4）: カタログが宣言した stellar:pubnet の USDC accept の payTo。
            -- asset は枠の LANE_SECONDARY_ACCEPT_FILTER と同じ完全一致。照合の述語は selectStellarAccept。
            (SELECT coalesce(array_agg(DISTINCT sa->>'payTo'), '{}'::text[])
@@ -1751,6 +1771,9 @@ export async function runL1Batch(
   // Base 先頭のその候補は優先なしで 1 回だけ買い直す。主ネットワークが eip155:56 の行はやり直さない。
   // 支払い付きの待ちは 20 秒のまま（Celo の 45 秒には広げない）。
   let bnbLaneUnavailable = false;
+  // Arbitrum（2026-10-22）: Celo の celoLaneUnavailable と同じ型。未入金のあと、以後の arbitrum の優先を閉じ、
+  // Base 先頭のその候補は優先なしで 1 回だけ買い直す。主ネットワークが eip155:42161 の行はやり直さない。
+  let arbitrumLaneUnavailable = false;
   // Stellar（2026-10-18・段4）: 未入金、または署名器が落ちたら、以後の stellar の優先を閉じる
   // （Celo の celoLaneUnavailable と同じ型）。閉じないと、Base 先頭で Stellar の accept も持つ出品は
   // レーン枠から Stellar で買おうとして毎回 payer_unfunded（行なし）になり、入金するまで Base でも買えない。
@@ -1837,6 +1860,7 @@ export async function runL1Batch(
         !(candidate.laneChain === "celo" && celoLaneUnavailable) &&
         !(candidate.laneChain === "stellar" && stellarLaneUnavailable) &&
         !(candidate.laneChain === "bnb" && bnbLaneUnavailable) &&
+        !(candidate.laneChain === "arbitrum" && arbitrumLaneUnavailable) &&
         !candidate.settledNetworks.includes(laneNetwork) &&
         !candidate.failedNetworks.includes(laneNetwork)
           ? [laneNetwork]
@@ -1857,6 +1881,13 @@ export async function runL1Batch(
       if (outcome.kind === "payer_unfunded" && outcome.payerChain === "bnb") {
         bnbLaneUnavailable = true;
         if (preferNetworks.includes(BNB_CAIP2)) outcome = await purchaseOne({ ...purchaseInput, preferNetworks: [] });
+      }
+      // Arbitrum の残高が足りない／読めない（署名していない・行も予約も無い）。以後の Arbitrum レーンの優先を閉じる。
+      // いまの候補が「Arbitrum を優先された Base 先頭の出品」なら、優先なしでもう 1 回だけ通す。Arbitrum が主ネットワークの
+      // 候補はやり直さない。残高の読み取りはバッチ内でキャッシュ済みなので RPC は増えない。
+      if (outcome.kind === "payer_unfunded" && outcome.payerChain === "arbitrum") {
+        arbitrumLaneUnavailable = true;
+        if (preferNetworks.includes(ARBITRUM_CAIP2)) outcome = await purchaseOne({ ...purchaseInput, preferNetworks: [] });
       }
       // Stellar の未入金は、優先を閉じてから Base 先頭の候補だけ 1 回買い直す。
       // 主ネットワークが pubnet の行は stellarLanePreferred が偽なので買い直さない。
@@ -1966,6 +1997,7 @@ function rowToCandidate(r: Record<string, unknown>): Candidate {
     arcDeclaredPayTos: declaredPayTosFor(ARC_CHAIN, r.arc_declared_accepts),
     celoDeclaredPayTos: declaredPayTosFor(CELO_CHAIN, r.celo_declared_accepts),
     bnbDeclaredPayTos: declaredPayTosFor(BNB_CHAIN, r.bnb_declared_accepts),
+    arbitrumDeclaredPayTos: declaredPayTosFor(ARBITRUM_CHAIN, r.arbitrum_declared_accepts),
     stellarDeclaredPayTos: parseTextArray(r.stellar_declared_pay_tos),
     laneChain: null,
     selection: null,
@@ -2577,7 +2609,7 @@ async function purchaseOne(input: {
           preferNetworks,
           // 優先された別チェーン（Arc・Celo）の accept の payTo は、カタログがそのチェーンについて宣言した集合と照合する
           // （2026-09-19）。優先していない accept（Base）の照合先は従来どおり candidate.payTo。
-          declaredPayTosByNetwork: { [ARC_CAIP2]: candidate.arcDeclaredPayTos, [CELO_CAIP2]: candidate.celoDeclaredPayTos, [BNB_CAIP2]: candidate.bnbDeclaredPayTos },
+          declaredPayTosByNetwork: { [ARC_CAIP2]: candidate.arcDeclaredPayTos, [CELO_CAIP2]: candidate.celoDeclaredPayTos, [BNB_CAIP2]: candidate.bnbDeclaredPayTos, [ARBITRUM_CAIP2]: candidate.arbitrumDeclaredPayTos },
         });
   // ここから先の台帳の network・別枠（reserveSpend の cappedChainFor）・残高の chain（payerChain）は
   // すべて「選んだ accept の network」で決まる——Base 先頭の exa の行を Arc の accept で買えば、
@@ -2645,7 +2677,9 @@ async function purchaseOne(input: {
         ? CELO_CHAIN.usdc
         : accept.network === BNB_CAIP2
           ? BNB_CHAIN.usdc
-          : accept.asset;
+          : accept.network === ARBITRUM_CAIP2
+            ? ARBITRUM_CHAIN.usdc
+            : accept.asset;
   // 支払い付き POST の本文（2026-09-17 Issue #29）。売り手が 402 で宣言した input.body を
   // そのまま送り、無ければ従来どおり `{}`。規則は declared-input.ts。
   const paidRequestBody: { body: string; source: RequestBodySource } | null =
@@ -2765,7 +2799,7 @@ async function purchaseOne(input: {
   // Celo（2026-10-10）も同じ: 同じ EOA だが Celo の USDC は別。ここで "celo" に分けないと、Celo の accept に署名する前に
   // **Base の残高**を見てしまう（Celo が空でも署名し、売り手の 402 を settle_failed として記録する——Issue #29 と同じ事故）。
   const evmPayChainId = evmChainFor(accept.network)?.chainId;
-  const payerChain: PayerChain = isTempo ? "tempo" : isSolana ? "solana" : isXrpl ? "xrpl" : isStellar ? "stellar" : evmPayChainId === 5042 ? "arc" : evmPayChainId === 42220 ? "celo" : evmPayChainId === 56 ? "bnb" : "base";
+  const payerChain: PayerChain = isTempo ? "tempo" : isSolana ? "solana" : isXrpl ? "xrpl" : isStellar ? "stellar" : evmPayChainId === 5042 ? "arc" : evmPayChainId === 42220 ? "celo" : evmPayChainId === 56 ? "bnb" : evmPayChainId === 42161 ? "arbitrum" : "base";
   const payerOwner = isSolana ? solanaKeypair!.publicKey.toBase58() : isXrpl ? xrplWallet!.classicAddress : isStellar ? stellarAddress! : account.address;
   const funds = await payerFunds.check(payerChain, payerOwner, amount);
   if (!funds.ok) {

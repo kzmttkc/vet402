@@ -139,6 +139,16 @@ flowchart LR
   listings, so the index never holds those transfers. The read needs
   `CELO_RPC_URL` too, and links a transfer only when the receipt shows the
   purchase's own EIP-3009 nonce consumed; the verifier then decides `settled`.
+- **Arbitrum One (EVM)**: a fifth row of the same pinned table (chain id 42161,
+  native Circle USDC `0xaf88…5831`, EIP-712 domain "USD Coin"/"2" — measured by
+  RPC on 2026-10-22 and checked against the token's own `DOMAIN_SEPARATOR()`).
+  Same EOA as Base, funded with Arbitrum USDC separately; no ETH is needed.
+  Bridged USDC.e is never signed for. Off by default
+  (`OBSERVATORY_ARBITRUM_L1_ENABLED`); while off, Arbitrum candidates are
+  excluded in SQL and no row is written. Its own $2/day cap
+  (`L1_ARBITRUM_DAILY_CAP_USD`) inside the shared $25. The on-chain re-read
+  and the settlement index need `ARBITRUM_RPC_URL`. Late recovery is the same
+  nonce-bound chain read as Celo.
 - **Solana**: `sol402-payer.ts` — the `exact` scheme per
   `scheme_exact_svm.md`: a partially-signed versioned transaction
   (ComputeBudget → TransferChecked → Memo) with the facilitator as sponsored

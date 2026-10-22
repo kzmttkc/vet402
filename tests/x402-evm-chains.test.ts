@@ -114,7 +114,7 @@ function withArcFlag<T>(value: string | undefined, fn: () => T): T {
 test("the table pins Base exactly as before and Arc as measured on-chain 2026-09-17", () => {
   // 2026-10-10: Celo is the third row (tests/x402-celo-lane.test.ts pins it and the order).
   // 2026-10-19: BNB is the fourth row (tests/x402-bnb-lane.test.ts pins it). Base and Arc are unchanged.
-  assert.equal(EVM_PAY_CHAINS.length, 4, "exactly Base, Arc, Celo and BNB — nothing else can be signed on");
+  assert.equal(EVM_PAY_CHAINS.length, 5, "exactly Base, Arc, Celo, BNB and Arbitrum — nothing else can be signed on");
   assert.equal(BASE_CHAIN.caip2, BASE_CAIP2);
   assert.equal(BASE_CHAIN.chainId, 8453);
   assert.equal(BASE_CHAIN.usdc, BASE_USDC);

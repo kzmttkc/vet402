@@ -3,7 +3,7 @@
 //
 // This module SIGNS MONEY, so its shape is a funnel of refusals: everything
 // is a skip unless it is exactly scheme `exact`, EIP-3009, one of the PINNED
-// EVM chains (EVM_PAY_CHAINS: Base always; Arc, Celo and BNB each behind its own flag), that chain's
+// EVM chains (EVM_PAY_CHAINS: Base always; Arc, Celo, BNB and Arbitrum each behind its own flag), that chain's
 // canonical USDC, at a price that matches what the catalog advertised when we
 // chose the target, under a hard per-purchase ceiling. The facilitator/seller
 // can choose to not deliver after settlement — that is a FINDING we publish —
@@ -18,6 +18,9 @@
 // 2026-10-19 (BNB lane): BNB Chain mainnet (eip155:56) is the fourth row, off by
 // default (OBSERVATORY_BNB_L1_ENABLED). The token is USD1 (18 decimals), not USDC.
 // Nothing about the Base, Arc or Celo rows changed. Stage B2 wires the runner.
+// 2026-10-22 (Arbitrum lane): Arbitrum One (eip155:42161) is the fifth row, off by
+// default (OBSERVATORY_ARBITRUM_L1_ENABLED). Native Circle USDC only. Nothing about
+// the Base, Arc, Celo or BNB rows changed.
 //
 // Spec grounding (fetched 2026-08-14, coinbase/x402):
 //  - specs/schemes/exact/scheme_exact_evm.md — EIP-3009 payload:
@@ -131,6 +134,35 @@ export const BNB_USD1_EIP712_VERSION = "1";
 export const BNB_LEDGER_SCALE = 10n ** 12n;
 
 /**
+ * Arbitrum One. Measured 2026-10-22T11:16:31Z by RPC against
+ * https://arb1.arbitrum.io/rpc — not re-derived here, and NOT taken from the
+ * facilitator's /supported document:
+ *   eth_chainId 0xa4b1 = 42161
+ *   USDC 0xaf88d065e77c8cC2239327C5EDb3A432268e5831 / decimals() 6
+ *   name() "USD Coin" / version() "2"  ← like Base, not Celo/Arc's "USDC"
+ *   DOMAIN_SEPARATOR() 0x08d11903f8419e68b1b8721bcbe2e9fc68569122a77ef18c216f10b3b5112c78
+ *     — equal to the EIP-712 domain hash of { "USD Coin", "2", 42161, the USDC address }
+ *     computed locally (ARBITRUM_USDC_DOMAIN_SEPARATOR below; tests/x402-arbitrum-lane.test.ts
+ *     recomputes it from the pinned row, so a wrong pin fails a test, not a payment).
+ *   authorizationState(address,bytes32) present → EIP-3009 is available.
+ *   TRANSFER_WITH_AUTHORIZATION_TYPEHASH 0x7c7c6cdb67a18743f49ec6fa9b35f50d52ed05cbed4cc592e13b44501c1a2267
+ * Only native Circle USDC is pinned. Bridged USDC.e (0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8)
+ * is not in the table, so an accept that names it is never signed.
+ * The payer is the same EOA as Base and is funded with Arbitrum USDC separately
+ * (payer-funds.ts reads it per chain). The buyer needs no ETH: the facilitator
+ * submits the transfer. Duplicated in src/lib/chain/arbitrum.ts on purpose (same
+ * reason as BASE_USDC).
+ */
+export const ARBITRUM_CAIP2 = "eip155:42161";
+export const ARBITRUM_USDC = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831";
+export const ARBITRUM_USDC_EIP712_NAME = "USD Coin";
+export const ARBITRUM_USDC_EIP712_VERSION = "2";
+/** What the token itself returns from DOMAIN_SEPARATOR() (eth_call, 2026-10-22T11:16:31Z). A measurement, not an input to signing. */
+export const ARBITRUM_USDC_DOMAIN_SEPARATOR = "0x08d11903f8419e68b1b8721bcbe2e9fc68569122a77ef18c216f10b3b5112c78";
+/** Bridged USDC.e. Not pinned. tests/x402-arbitrum-lane.test.ts refuses an accept that names it. */
+export const ARBITRUM_USDC_E = "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8";
+
+/**
  * 18-digit USD1 base units → ledger units (6 digits), or null when the amount
  * cannot be booked exactly (not positive, or not divisible by {@link BNB_LEDGER_SCALE}).
  * Null is unbuildable: the caller refuses before a reservation. No rounding.
@@ -215,8 +247,21 @@ export const BNB_CHAIN: EvmPayChain = {
   flagEnv: "OBSERVATORY_BNB_L1_ENABLED",
 };
 
+export const ARBITRUM_CHAIN: EvmPayChain = {
+  caip2: ARBITRUM_CAIP2,
+  chainId: 42161,
+  usdc: ARBITRUM_USDC,
+  eip712Name: ARBITRUM_USDC_EIP712_NAME,
+  eip712Version: ARBITRUM_USDC_EIP712_VERSION,
+  label: "Arbitrum",
+  // No v1 slug in the money path. A v1 accept that names the chain "arbitrum" is not
+  // resolved by evmChainFor. A v1 header echoes the CAIP-2 id the seller's challenge used.
+  v1Slug: null,
+  flagEnv: "OBSERVATORY_ARBITRUM_L1_ENABLED",
+};
+
 /** The whole pinned table. Order is irrelevant; nothing outside it can be signed on. */
-export const EVM_PAY_CHAINS: readonly EvmPayChain[] = [BASE_CHAIN, ARC_CHAIN, CELO_CHAIN, BNB_CHAIN];
+export const EVM_PAY_CHAINS: readonly EvmPayChain[] = [BASE_CHAIN, ARC_CHAIN, CELO_CHAIN, BNB_CHAIN, ARBITRUM_CHAIN];
 
 export function isArcL1Enabled(): boolean {
   return process.env.OBSERVATORY_ARC_L1_ENABLED === "true";
@@ -230,6 +275,11 @@ export function isCeloL1Enabled(): boolean {
 /** BNB lane switch (2026-10-19). Off unless the env is exactly "true" — same discipline as Celo. */
 export function isBnbL1Enabled(): boolean {
   return process.env.OBSERVATORY_BNB_L1_ENABLED === "true";
+}
+
+/** Arbitrum lane switch (2026-10-22). Off unless the env is exactly "true" — same discipline as Celo. */
+export function isArbitrumL1Enabled(): boolean {
+  return process.env.OBSERVATORY_ARBITRUM_L1_ENABLED === "true";
 }
 
 /** Base is always on; a flagged chain only when its env is exactly "true" (same discipline as OBSERVATORY_L1_ENABLED). */
@@ -818,7 +868,7 @@ function isSignableEvmAccept(accept: ChallengeAccept): boolean {
  * seller: chainId and verifyingContract were always pinned, and since
  * 2026-08-22 name/version are too (measured on-chain, not assumed — Base
  * "USD Coin"/"2", Arc "USDC"/"2", Celo "USDC"/"2",
- * BNB USD1 "World Liberty Financial USD"/"1").
+ * BNB USD1 "World Liberty Financial USD"/"1", Arbitrum "USD Coin"/"2").
  *
  * selectAccept already refuses any accept whose chain is unknown or disabled or
  * whose `extra` contradicts the pin, so the guards below are belt-and-braces for

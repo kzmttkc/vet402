@@ -156,6 +156,7 @@ test("asset words are taken from supported-chains-data.ts and the methodology se
   assert.ok(vocab.includes("USD1 on BNB Chain"), "BNB Chain's asset is USD1 in the methodology");
   assert.equal(settlementAssetOf("Stellar"), "USDC");
   assert.equal(settlementAssetOf("BSC"), "USD1");
+  assert.equal(settlementAssetOf("Arbitrum"), "USDC");
   assert.equal(settlementAssetOf("Polygon"), NO_ASSET);
 });
 

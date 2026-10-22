@@ -401,6 +401,7 @@ if (!TEST_DB) {
         ["base", ["eip155:8453", "base"], false],
         ["celo", ["eip155:42220"], true],
         ["bnb", ["eip155:56"], true],
+        ["arbitrum", ["eip155:42161"], true],
       ]);
     });
 
@@ -632,6 +633,7 @@ if (!TEST_DB) {
         ["base", false, false],
         ["celo", true, true],
         ["bnb", true, true],
+        ["arbitrum", true, true],
       ]);
       assert.equal(late.CHAIN_READ_BUDGET_MS, 45_000, "Base の持ち時間は変えていない");
       assert.equal(late.CELO_CHAIN_READ_BUDGET_MS, 30_000);

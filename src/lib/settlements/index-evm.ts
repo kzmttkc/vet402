@@ -9,6 +9,7 @@
 // Arc（eip155:5042・2026-09-17）は ARC_RPC_URL が入れば有効。scoring の CHAINS 登録簿には
 // 載せない（chain/arc.ts 参照）ので、クライアントは行の makeClient で組む。
 // Celo（eip155:42220・2026-10-10）は CELO_RPC_URL が入れば有効（Arc と同じ作り・chain/celo.ts）。
+// Arbitrum One（eip155:42161・2026-10-22）は ARBITRUM_RPC_URL が入れば有効（Celo と同じ作り・chain/arbitrum.ts）。
 // BNB Chain（eip155:56・2026-10-19）は BNB_RPC_URL が入れば有効。トークンは USD1（18 桁）。
 // 索引に書く額は 6 桁（10^12 で割る）。割り切れない額は行にしない。公開 RPC へは倒れない。
 // ============================================================
@@ -19,6 +20,7 @@ import { getDb } from "@/lib/db/client";
 import { getLogScanClient } from "@/lib/chain/client";
 import { ARC_CHAIN_ID, ARC_USDC_ADDRESS, getArcPublicClient } from "@/lib/chain/arc";
 import { BNB_CAIP2, BNB_CHAIN_ID, BNB_USD1_ADDRESS } from "@/lib/chain/bnb";
+import { ARBITRUM_CAIP2, ARBITRUM_CHAIN_ID, ARBITRUM_USDC_ADDRESS, getArbitrumPublicClient } from "@/lib/chain/arbitrum";
 import { CELO_CAIP2, CELO_CHAIN_ID, CELO_USDC_ADDRESS, getCeloPublicClient } from "@/lib/chain/celo";
 import { bnbLedgerUnits } from "@/lib/observatory/x402-payer";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
@@ -136,6 +138,33 @@ export const EVM_INDEX_CHAINS: EvmIndexChain[] = [
     confirmations: 64n,
     blocksPerDay: 86_400n,
     makeClient: () => getCeloPublicClient("batch"),
+  },
+  // Arbitrum One（2026-10-22 Arbitrum レーン）。数字は 2026-10-22T11:16:31Z に https://arb1.arbitrum.io/rpc で測った値:
+  //  - ブロックは 278.25 ms（直近 345,600 ブロックの時刻差 96,162 秒）。1 日 ≈ 310,500 ブロック。
+  //  - eth_getLogs: ネイティブ USDC の Transfer を 2,000 ブロックで問うと 7,313 件で答える。5,000 ブロックは
+  //    "Missing or invalid parameters"（10,000 件のログ上限）で断る。走査の区切りは 2,000 ブロック
+  //    （GET_LOGS_CHUNK_BLOCKS の既定と同じ）。区切りごとにチェックポイントを保存する——1 日 310,500 ブロックを
+  //    2,000 ずつ読むので、途中で予算切れても同じ区間をやり直さない（Base の subWindow と同じ理由）。
+  //  - 1 回の走査は 2 日ぶん（621,000 ブロック）。日次 cron が 1 日 310,500 ブロックに追いつき、遅れた日も翌日に回収できる。
+  //  - 初回の遡りは 3 日（931,500 ブロック）。Celo の 7 日だと 2.17M ブロックになり、公開 RPC の 2,000 ブロック窓では
+  //    初回だけで数千チャンクになる。3 日なら日次の 2 日走査で追いつける。Tempo と同じ理由。
+  //  - 確定待ち 256 ブロック（≈ 71 秒 at 278 ms）。Celo / Arc の 64 ブロック ≈ 64 秒に壁時計を合わせる。
+  //    ブロック数で 64 だと 18 秒しかなく、reorg 余裕として浅い。
+  //  - ARBITRUM_RPC_URL が無ければ skipped（`ARBITRUM_RPC_URL_unset`）——公開 RPC へ無言で倒れない（Celo と同じ）。
+  //  - 受取先は Arbitrum を主ネットワークにする出品の pay_to だけ（下の SELECT・他のチェーンの行と同じ規則）。
+  //    Base が先頭の出品の Arbitrum の accept（我々が実際に Arbitrum で買う相手）の受取先は、この索引に入らない。
+  //    その購入が遅れて決済されたときの回収は recover-late.ts の Arbitrum のチェーン直読み（nonce で決める）が持つ。
+  {
+    caip2: ARBITRUM_CAIP2,
+    chainId: ARBITRUM_CHAIN_ID,
+    usdc: ARBITRUM_USDC_ADDRESS,
+    rpcEnv: "ARBITRUM_RPC_URL",
+    initialLookbackBlocks: 310_500n * 3n,
+    maxBlocksPerRun: 310_500n * 2n,
+    subWindowBlocks: 2_000n,
+    confirmations: 256n,
+    blocksPerDay: 310_500n,
+    makeClient: () => getArbitrumPublicClient("batch"),
   },
   // BNB Chain mainnet（2026-10-19・BNB レーン）。走査の数字は Celo と同じ値を置く。
   // ブロック間隔は 2026-10-19 に測っていない（再導出しない）。1 秒ブロックとしての 86,400/日は、

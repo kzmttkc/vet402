@@ -103,6 +103,9 @@ test("explorerTxUrl: BSC, Celo, Stellar, Base, Solana, XRPL, malformed hashes, a
   assert.equal(explorerTxUrl("eip155:11142220", EVM_TX), null, "Celo Sepolia");
   assert.equal(explorerTxUrl("eip155:44787", EVM_TX), null, "Celo Alfajores");
 
+  assert.equal(explorerTxUrl("eip155:42161", EVM_TX), `https://arbiscan.io/tx/${EVM_TX}`);
+  assert.equal(explorerTxUrl("eip155:421614", EVM_TX), null, "Arbitrum Sepolia");
+
   assert.equal(explorerTxUrl("stellar:pubnet", HEX64), `https://stellar.expert/explorer/public/tx/${HEX64}`);
   assert.equal(explorerTxUrl("stellar:pubnet", HEX64.toUpperCase()), `https://stellar.expert/explorer/public/tx/${HEX64.toUpperCase()}`);
   assert.equal(explorerTxUrl("stellar:pubnet", `0x${HEX64}`), null, "a 0x prefix is not a Stellar tx");
