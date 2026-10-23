@@ -187,6 +187,41 @@ if (!TEST_DB) {
       assert.ok(overview.latestSnapshot);
       assert.equal(overview.latestSnapshot!.fetchedCount, 3);
     });
+
+    // 2026-10-24: カタログから消えた経路（status delisted）の失敗連続は fail に数えない。
+    // 上の断言は delist 前の状態を見ている。ここから先だけ status を動かす。
+    await t.test("a delisted fail streak is withdrawn, not a published fail", async () => {
+      const { getObservatoryStatsByChain } = await import("@/lib/observatory/reader");
+      const { readL0Export } = await import("@/lib/observatory/l0-export");
+      const { sql } = await import("drizzle-orm");
+      await db.execute(sql`UPDATE x402_endpoints SET status = 'delisted' WHERE resource_key = 'dead.example/api'`);
+      const stats = await getObservatoryStats();
+      assert.equal(stats.publishedFail, 1);
+      assert.equal(stats.withdrawnFail, 1);
+      assert.equal(stats.publishedPass, 1);
+      assert.equal(stats.publishedUnverified, 0);
+      const overview = await getObservatoryOverview();
+      const dead = overview.rows.find((r) => r.resourceKey === "dead.example/api");
+      assert.ok(dead);
+      assert.equal(dead.publishedVerdict, "withdrawn");
+      const detail = await getEndpointDetail(dead.id);
+      assert.equal(detail?.publishedVerdict, "withdrawn");
+      const fails = await getObservatoryOverview({ verdict: "fail" });
+      assert.equal(
+        fails.rows.some((r) => r.resourceKey === "dead.example/api"),
+        false,
+      );
+      const byChain = await getObservatoryStatsByChain();
+      const base = byChain.find((c) => c.chain === "Base");
+      assert.ok(base);
+      assert.equal(base.publishedFail, 1);
+      assert.equal(base.withdrawnFail, 1);
+      const exp = await readL0Export();
+      assert.ok(exp);
+      const row = exp.rows.find((r) => r.resource_key === "dead.example/api");
+      assert.equal(row?.published_verdict, "withdrawn");
+      assert.equal(exp.rows.filter((r) => r.published_verdict === "fail").length, stats.publishedFail);
+    });
   });
 
   test("observatory marks and excludes vet402's own endpoint (self-neutrality)", async (t) => {

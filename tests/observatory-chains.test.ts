@@ -218,7 +218,8 @@ test("networkFilterCellTitle: カタログの鎖が絞り込みの外なら、�
 test("networkFilterCellLabel: カタログの鎖が絞り込みの外なら、セルは絞り込みの公開名", () => {
   assert.equal(networkFilterCellLabel("eip155:8453", "Stellar"), "Stellar");
   assert.equal(networkFilterCellLabel("eip155:8453", null), "Base");
-  assert.equal(networkFilterCellLabel("stellar:pubnet", "Stellar"), "stellar:pubnet");
+  // 見える語は公開名。台帳 id は title（networkFilterCellTitle）に残す。
+  assert.equal(networkFilterCellLabel("stellar:pubnet", "Stellar"), "Stellar");
   assert.equal(networkFilterCellLabel("eip155:8453", "base"), "Base");
   assert.equal(networkFilterCellLabel(null, "Stellar"), "Stellar");
   assert.equal(networkFilterCellLabel(null, null), "—");

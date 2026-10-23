@@ -155,9 +155,9 @@ test("SellerDetailView: Base の購入が無い出品は、他チェーンの署
   assert.equal(d.summary.notTried, 1);
   assert.match(html, /Result<\/dt>\s*<dd class="m-0[^"]*">\s*not tried on Base yet\s*<\/dd>/);
   assert.match(html, /Whose side<\/dt>\s*<dd class="m-0">\s*not tried on Base yet\s*<\/dd>/);
-  assert.match(html, /Other chains<\/dt>\s*<dd class="m-0">\s*BSC, 2026-10-19 03:31 UTC, settled, HTTP 200\s*<\/dd>/);
-  assert.match(html, /Also bought on other chains: 1 listing \(BSC 1\)\. Each card lists them under Other chains\./);
-  assert.match(html, /<h1[^>]*>[^<]*latest attempt 2026-10-19 on BSC<\/h1>/);
+  assert.match(html, /Other chains<\/dt>\s*<dd class="m-0">\s*BNB Chain, 2026-10-19 03:31 UTC, settled, HTTP 200\s*<\/dd>/);
+  assert.match(html, /Also bought on other chains: 1 listing \(BNB Chain 1\)\. Each card lists them under Other chains\./);
+  assert.match(html, /<h1[^>]*>[^<]*latest attempt 2026-10-19 on BNB Chain<\/h1>/);
   assert.match(html, /No Base purchase is on this listing\./);
   assert.match(html, /record page shows that purchase in the Payment chain column/);
   assert.match(html, /opens the settlement on Basescan when the purchase is on Base/);
@@ -285,8 +285,8 @@ test("他チェーンの行は先頭の下の 1 文で、件数の多い鎖か�
   assert.equal(d.sellerView.delivered + d.sellerView.seller + d.sellerView.none + d.summary.notTried, d.summary.listings);
   const html = renderToStaticMarkup(createElement(SellerDetailView, { detail: d, page: 1, now: 0, revalidateSec: 300 }));
   assert.equal(leadCountSum(html), d.summary.listings);
-  assert.match(html, /Also bought on other chains: 3 listings \(BSC 2, Stellar 1\)\. Each card lists them under Other chains\./);
-  assert.match(html, /Other chains<\/dt>\s*<dd class="m-0">\s*BSC, 2026-10-19 03:31 UTC, settled, HTTP 200\s*<\/dd>/);
+  assert.match(html, /Also bought on other chains: 3 listings \(BNB Chain 2, Stellar 1\)\. Each card lists them under Other chains\./);
+  assert.match(html, /Other chains<\/dt>\s*<dd class="m-0">\s*BNB Chain, 2026-10-19 03:31 UTC, settled, HTTP 200\s*<\/dd>/);
   assert.match(html, /Other chains<\/dt>\s*<dd class="m-0">\s*Stellar, 2026-10-17 03:31 UTC, settled, HTTP 200\s*<\/dd>/);
 });
 
@@ -312,7 +312,7 @@ test("SellerDetailView: otherChain の空の本文は delivered に数えない"
   assert.doesNotMatch(html, /no failure \(delivered\)/);
   assert.match(html, /Result<\/dt>\s*<dd class="m-0[^"]*">\s*not tried on Base yet\s*<\/dd>/);
   assert.match(html, /Whose side<\/dt>\s*<dd class="m-0">\s*not tried on Base yet\s*<\/dd>/);
-  assert.match(html, /Other chains<\/dt>\s*<dd class="m-0">\s*BSC, 2026-10-19 03:31 UTC, settled, HTTP 200, body empty\s*<\/dd>/);
+  assert.match(html, /Other chains<\/dt>\s*<dd class="m-0">\s*BNB Chain, 2026-10-19 03:31 UTC, settled, HTTP 200, body empty\s*<\/dd>/);
   assert.equal(leadCountSum(html), d.summary.listings);
   const reader = readFileSync("src/lib/sellers/reader.ts", "utf8");
   const otherQuery = reader.slice(reader.indexOf("const otherRaw"), reader.indexOf("return buildSellerDetail"));

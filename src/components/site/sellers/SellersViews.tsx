@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { buttonClass } from "@/components/ui/Button";
+import { purchaseShownAsWithdrawn, withdrawnBySellerSentence } from "@/lib/observatory/l0-verdict";
 import { WideColumn } from "@/components/site/WideColumn";
 import { TableScroll } from "@/components/site/TableScroll";
 import {
@@ -1235,6 +1236,25 @@ export function SellerDetailView({
       <h1 className="doc-title mt-8 break-words [overflow-wrap:anywhere]">{sellerHeading(detail.host, head.at, head.chain)}</h1>
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
       <SellerSummaryLines d={detail} revalidateSec={revalidateSec} />
+      {(detail.withdrawnRoutes ?? []).length > 0 && (
+        <>
+          <h2 className="sec-head">
+            <span>Withdrawn by the seller</span>
+          </h2>
+          <p className="doc-p">
+            {withdrawnBySellerSentence()} These routes are not in the counts above.
+          </p>
+          <ul className="doc-p list-disc pl-5">
+            {(detail.withdrawnRoutes ?? []).map((w) => (
+              <li key={w.endpointId}>
+                <Link href={`/observatory/e/${w.endpointId}`} className="underline">
+                  {w.resourceKey}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       {s.rebuyEligible && !otherPurchaseIsNewer(detail.listings[0]) ? (
         <p className="doc-p">
           <strong>Your most recent purchase failed on vet402&apos;s side.</strong> This seller is eligible for a re-buy
@@ -1431,8 +1451,15 @@ export function SellerOtherChainsView({ other, revalidateSec }: { other: SellerO
                   ) : null}
                 </td>
                 <td className="whitespace-nowrap">{fmtUtc(l.latest.facts.attemptedAt)}</td>
-                <td className={l.latest.bucket !== "delivered" ? "text-[#9f0712]" : ""}>
-                  <OtherChainResult l={l} />
+                <td className={!purchaseShownAsWithdrawn(l.catalogStatus, l.latest.facts.status) && l.latest.bucket !== "delivered" ? "text-[#9f0712]" : ""}>
+                  {purchaseShownAsWithdrawn(l.catalogStatus, l.latest.facts.status) ? (
+                    <>
+                      withdrawn by the seller
+                      <span className="block text-xs font-normal text-brand-lift">Not counted as a failure.</span>
+                    </>
+                  ) : (
+                    <OtherChainResult l={l} />
+                  )}
                 </td>
               </tr>
             ))}

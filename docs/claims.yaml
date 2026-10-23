@@ -969,6 +969,13 @@ claims:
     check: null
     why_unverifiable: "製品の設計上の性質（保管しない・別 API である等）であって、公開 GET が数値で返す種類の主張ではない"
     verified_at: 2026-09-04
+  - id: faq_score_never_printed_as_l0
+    surface: src/components/site/faq-data.ts
+    quote: "A score is never printed as an L0 to L2 result."
+    means: "0 から 100 のスコアは L0 から L2 の結果としては出さない。発注の英文をそのまま載せる"
+    check: null
+    why_unverifiable: "公開面の編集方針であって、公開 GET が数値で返す種類の主張ではない"
+    verified_at: 2026-10-24
 
   # ============================================================
   # 2026-09-04 外部監査 E が「計器では拾えない矛盾」として挙げた主張。

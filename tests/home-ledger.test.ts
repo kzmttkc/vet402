@@ -129,7 +129,7 @@ test("Where purchases settled: one row per chain with a settled purchase, names 
   assert.deepEqual(rows, [
     ["Base", "Base", "USDC", "3,500", "3,300", "200"],
     ["stellar:pubnet", "Stellar", "USDC", "250", "240", "10"],
-    ["BSC", "BSC", "USD1", "150", "140", "10"],
+    ["BSC", "BNB Chain", "USD1", "150", "140", "10"],
     ["eip155:999999", "eip155:999999", NO_ASSET, "7", "5", "2"],
   ]);
   assert.ok(!html.includes("Base Sepolia"), "a chain with no settled purchase has no row");

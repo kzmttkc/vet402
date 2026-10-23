@@ -50,6 +50,7 @@ import {
   type NotSentRowInput,
 } from "./request-body";
 import { declaredInputQuerySql, declaredInputSendsQuery } from "./declared-input-summary";
+import { publicChainLabel } from "./chains";
 
 /**
  * Base で、売り手が 402 で宣言したクエリ（input.queryParams）を支払い付き要求に足し始めた時刻（2026-09-28 実測）。
@@ -112,14 +113,14 @@ export function queryUnsentUntilLabel(network: string): string {
   return utcSecondsLabel(iso);
 }
 
-/** 公開文のチェーン名（OTHER_CHAIN_QUERY_UNSENT_UNTIL の network を全部覆う。tests が固定する）。 */
+/** 公開文のチェーン名。正は publicChainLabel（chains.ts）。手書きの別名を置かない。 */
 export const QUERY_UNSENT_CHAIN_NAMES: Readonly<Record<string, string>> = {
-  "xrpl:0": "XRPL",
-  "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "Solana",
-  "eip155:5042": "Arc",
-  "eip155:42220": "Celo",
-  "stellar:pubnet": "Stellar",
-  "eip155:56": "BNB",
+  "xrpl:0": publicChainLabel("xrpl:0"),
+  "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": publicChainLabel("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"),
+  "eip155:5042": publicChainLabel("eip155:5042"),
+  "eip155:42220": publicChainLabel("eip155:42220"),
+  "stellar:pubnet": publicChainLabel("stellar:pubnet"),
+  "eip155:56": publicChainLabel("eip155:56"),
 };
 
 function englishList(names: readonly string[]): string {
@@ -128,7 +129,7 @@ function englishList(names: readonly string[]): string {
 }
 
 /**
- * 公開文用。表の各グループから "on XRPL before …, on Solana before …, and on Arc, Celo, Stellar and BNB before …, and on Arbitrum before …"。
+ * 公開文用。表の各グループから "on XRPL before …, on Solana before …, and on Arc, Celo, Stellar and BNB Chain before …"。
  * 表の分け方が変わっても文が表と食い違わない（2026-10-19 点検の中1）。名前の無い network があれば落ちる。
  */
 export function queryUnsentUntilSentence(opts: { capitalize?: boolean } = {}): string {

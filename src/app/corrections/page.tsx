@@ -57,6 +57,14 @@ type Correction = {
  * 載らない（訂正ではないため）が、それは §2 に書いてある。
  */
 const CORRECTIONS: Correction[] = [
+  {
+    date: "2026-10-24",
+    subject: "Counting a route the catalog no longer lists as a published fail",
+    wrong:
+      "A route absent from a complete fetch of the public discovery catalog stayed in the published fail count when its newest probes failed. Catalog status delisted is that absence. It is written when a complete fetch no longer lists a route that the previous snapshot listed. The seller's own discovery document is not what this count reads.",
+    action:
+      "From 2026-10-24 that route is published as withdrawn by the seller. It is left out of publishedFail and counted as withdrawnFail on /observatory/state. Probe rows and purchase rows stay as recorded. A pass on a delisted route stays a pass.",
+  },
   // 2026-10-21: 2026-09-05 の action に残した "harder test" を撤回する。履歴の文は消さない。
   {
     date: "2026-10-21",

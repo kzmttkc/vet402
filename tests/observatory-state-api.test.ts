@@ -28,6 +28,7 @@ test("state API returns the aggregate shape with RateLimit headers", async () =>
     "delistedEndpoints",
     "publishedPass",
     "publishedFail",
+    "withdrawnFail",
     "publishedUnverified",
   ]) {
     assert.equal(typeof body[key], "number", `${key} must be a number`);

@@ -50,6 +50,7 @@ const COLUMNS: { caption: string; label: string; links: { label: string; href: s
       { label: "Get an API key", href: "/signup" },
       { label: "Dashboard", href: "/dashboard" },
       { label: "Verify a payee", href: "/payee" },
+      { label: "Sellers", href: "/sellers" },
     ],
   },
   {

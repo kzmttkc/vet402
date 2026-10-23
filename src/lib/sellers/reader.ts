@@ -38,6 +38,12 @@ import { COOLDOWN_STATUSES, NON_SETTLING_COOLDOWN_STREAK, type NextBuyFacts } fr
 import { buildSellerExportRows, type SellerExportRow, type SellerListingRef } from "./export";
 import { BASE_NETWORKS, sellerHostSql } from "./host";
 import { ACCEPTED_NOT_DONE_HTTP, DELIVERED_HTTP_MAX, DELIVERED_HTTP_MIN } from "@/lib/observatory/delivery";
+import {
+  MIN_CONSECUTIVE_FAILS_TO_PUBLISH,
+  NONSETTLED_PAID_ATTEMPT_STATUSES,
+  parseProbeVerdicts,
+  publicProbeWord,
+} from "@/lib/observatory/l0-verdict";
 
 type Db = NonNullable<ReturnType<typeof getDb>>;
 
@@ -397,7 +403,52 @@ export async function readSellerDetail(db: Db, host: string): Promise<SellerDeta
       payloadNonEmpty: typeof r.payload_non_empty === "boolean" ? r.payload_non_empty : null,
     });
   }
-  return buildSellerDetail(host, endpoints, rows, fetchedAt, days, otherAttempts);
+  return buildSellerDetail(
+    host,
+    endpoints,
+    rows,
+    fetchedAt,
+    days,
+    otherAttempts,
+    await readWithdrawnRoutes(db, host),
+  );
+}
+
+/** Delisted routes of this host whose public L0 word is withdrawn, or that have a non-settled paid attempt. */
+async function readWithdrawnRoutes(db: Db, host: string): Promise<NonNullable<SellerDetail["withdrawnRoutes"]>> {
+  const paid = sql.join(
+    NONSETTLED_PAID_ATTEMPT_STATUSES.map((s) => sql`${s}`),
+    sql`, `,
+  );
+  const raw = await db.execute(sql`
+    SELECT e.id::text AS endpoint_id, e.resource_key, e.status,
+           lp.verdicts,
+           EXISTS (
+             SELECT 1 FROM x402_l1_purchases pu
+             WHERE pu.endpoint_id = e.id
+               AND pu.status IN (${paid})
+           ) AS l1_open
+    FROM x402_endpoints e
+    LEFT JOIN LATERAL (
+      SELECT array_agg(v.verdict ORDER BY v.probed_at DESC) AS verdicts
+      FROM (
+        SELECT verdict, probed_at FROM x402_l0_probes p
+        WHERE p.endpoint_id = e.id
+        ORDER BY probed_at DESC
+        LIMIT ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH}
+      ) v
+    ) lp ON true
+    WHERE e.status = 'delisted' AND ${HOST_SQL} = ${host}
+  `);
+  const out: NonNullable<SellerDetail["withdrawnRoutes"]> = [];
+  for (const r of rowsOf(raw)) {
+    const word = publicProbeWord(String(r.status), parseProbeVerdicts(r.verdicts as string[] | string | null));
+    const open = r.l1_open === true || r.l1_open === "t" || r.l1_open === "true";
+    if (word !== "withdrawn" && !open) continue;
+    out.push({ endpointId: String(r.endpoint_id), resourceKey: String(r.resource_key) });
+  }
+  out.sort((a, b) => a.resourceKey.localeCompare(b.resourceKey));
+  return out;
 }
 
 const SIGNED_LIST = [...SIGNED_ROW_STATUSES];
@@ -477,7 +528,7 @@ export async function readSellerOtherChains(db: Db, host: string): Promise<Selle
   const fetchedAt = new Date().toISOString();
   const raw = await db.execute(
     withExampleInput(sql`
-    SELECT DISTINCT ON (pu.endpoint_id) ${ROW_COLUMNS_BASE}, e.resource_key, e.network AS catalog_network
+    SELECT DISTINCT ON (pu.endpoint_id) ${ROW_COLUMNS_BASE}, e.resource_key, e.network AS catalog_network, e.status AS catalog_status
     FROM x402_l1_purchases pu JOIN x402_endpoints e ON e.id = pu.endpoint_id
     WHERE ${HOST_SQL} = ${host}
     ORDER BY pu.endpoint_id, pu.attempted_at DESC, pu.id DESC`),
@@ -485,6 +536,7 @@ export async function readSellerOtherChains(db: Db, host: string): Promise<Selle
   const rows = rowsOf(raw).map((r) => ({
     resourceKey: String(r.resource_key),
     catalogNetwork: str(r.catalog_network),
+    catalogStatus: str(r.catalog_status),
     facts: toRowFacts(r),
   }));
   return buildSellerOtherChains(host, rows, fetchedAt);

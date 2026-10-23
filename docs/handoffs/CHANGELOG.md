@@ -15,6 +15,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 
 
+## 2026-10-24 Public names, withdrawn routes, API catalog, dispute path
+
+- **What**: `l1.byChain` and the L0 chain table keep the join key in `chain` and add `label` (Base, Solana, Tempo, XRPL, Celo, Arc, Stellar, BNB Chain, Arbitrum One) plus `network` (CAIP-2). Screens read `label`. FAQ Q3 names the three measurements. The footer links to /sellers. The blog subtitle and the 2026-07-21 note separate a purchase record from the score. The SDK package description matches that. A catalog status of `delisted` with a fail streak is `withdrawn`, left out of `publishedFail`, and counted as `withdrawnFail`. The record page, the register, /sellers, the state page, and the L0 CSV use that word. One corrections entry dated 2026-10-24 records the counting change. /docs/api lists every path in `docs/openapi.yaml`. `GET /api/v1/guarantee/quote` stays out of both, because the route is off. The endpoint record's dispute section names support@vet402.com, links to /corrections, and states the next L0 run from the cron in vercel.json.
+- **Why**: The public surface was still joining screens on raw ids (`stellar:pubnet`, `BSC`), describing vet402 as a score company, counting a seller-withdrawn route as a failure, omitting public routes from the human API page, and leaving a dispute without an address or a re-probe time.
+- **Impact**: JSON `chain` is unchanged, so a caller joining on `BSC` still matches. `publishedFail` no longer includes a delisted fail streak. Probe rows are not rewritten. The pay-or-refuse decision still treats a two-fail streak as fail, including a delisted one. npm is not published from this change.
+
 ## 2026-10-23 README lists the nine chains vet402 buys on
 
 - **What**: README gets a "Chains vet402 buys on" section near the top: one row per chain with the network id, the asset paid and the whole-ledger counts read from /api/v1/observatory/state at 2026-10-23 09:10 UTC, and a BNB Chain paragraph (USD1 by EIP-3009, every settled row nonce-bound, a grep of the public export for eip155:56).

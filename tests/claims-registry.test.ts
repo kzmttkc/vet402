@@ -487,6 +487,8 @@ function publicSurfaces(): string[] {
   // 2026-10-21: フォーム異議の送信後の文（dispute-ack.ts）は記録頁と subscribe の note が
   // そのまま出す。語彙と同じく、lib に置いた公開文をこの関門に入れる。
   out.push(relative(ROOT, join(ROOT, "src/lib/observatory/dispute-ack.ts")));
+  // 2026-10-24: 取り下げ済みの公開文。記録頁と売り手頁がこの関数を出す。
+  out.push(relative(ROOT, join(ROOT, "src/lib/observatory/l0-verdict.ts")));
   // 2026-09-28: /sellers の失敗の分類表。各種類の「What we saw」「What to fix」を頁にそのまま出す。
   out.push(relative(ROOT, join(ROOT, "src/lib/sellers/fix-modes.ts")));
   // 2026-09-29.3: 判定の理由コードの表。/docs/api#reason-codes にそのまま出す。

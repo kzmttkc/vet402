@@ -47,7 +47,7 @@ test("文は表の各グループを覆う: 各グループの名前と、その
 test("今の表での文（表を変えたらここも見直す）", () => {
   assert.equal(
     queryUnsentUntilSentence(),
-    "on XRPL before 2026-09-21 06:00:30 UTC, on Solana before 2026-10-01 12:00:20 UTC, and on Arc, Celo, Stellar and BNB before 2026-10-19 04:05:17 UTC",
+    "on XRPL before 2026-09-21 06:00:30 UTC, on Solana before 2026-10-01 12:00:20 UTC, and on Arc, Celo, Stellar and BNB Chain before 2026-10-19 04:05:17 UTC",
   );
   assert.ok(queryUnsentUntilSentence({ capitalize: true }).startsWith("On XRPL before "));
 });

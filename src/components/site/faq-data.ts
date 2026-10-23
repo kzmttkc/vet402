@@ -40,7 +40,7 @@ export const FAQS: FaqItem[] = [
   {
     question: "What does vet402 actually compute?",
     answer:
-      "Given an ERC-8004 agent ID or a wallet address, vet402 returns a trust score (0-100), a recommendation (ALLOW / WARN / BLOCK), and the underlying signal breakdown: identity, reputation, wallet history, x402 payment history, and sybil-risk indicators. It's meant to be checked in the request path — before you accept a payment or complete a transaction — not reviewed after the fact.",
+      "vet402 publishes three measurements. L0 asks whether the payment wall answers a valid 402. L1 asks whether a real purchase settled and the response arrived. L2 asks whether that response matches the seller's own declaration. The 0 to 100 score with ALLOW, WARN, or BLOCK is an older signal for API callers. A score is never printed as an L0 to L2 result.",
   },
   {
     question: "Is a vet402 score a guarantee or a credit assessment?",
@@ -50,7 +50,7 @@ export const FAQS: FaqItem[] = [
   {
     question: "Who is vet402 for — agents, or the providers agents pay?",
     answer:
-      "Primarily the agent developer who is about to pay an x402 endpoint and wants to know, before the money moves, whether that endpoint actually settles and delivers — the observatory's L0/L1/L2 facts and the decision API exist for that call. The other direction is served too: an x402 API provider that accepts payment from agents it has never seen can check the payer's score first. The API doesn't assume which side of the transaction is calling it.",
+      "Primarily the agent developer who is about to pay an x402 endpoint and wants to know, before the money moves, whether that endpoint actually settles and delivers — the observatory's L0/L1/L2 facts and the decision API exist for that call. The other direction is served too: an x402 API provider that accepts payment from agents it has never seen can check the payer's score first. The API doesn't assume which side of the transaction is calling it. Providers look up their own purchase results at /sellers.",
   },
   {
     question: "Is there an established competitor doing this already?",

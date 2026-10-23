@@ -33,6 +33,7 @@
 // ============================================================
 import { randomBytes } from "node:crypto";
 import { isAddress, type Account } from "viem";
+import { chainLabel, publicChainLabel } from "./chains";
 
 /**
  * Canonical Base USDC. Same value as chain/config.BASE_USDC_ADDRESS —
@@ -189,7 +190,11 @@ export type EvmPayChain = {
   usdc: string;
   eip712Name: string;
   eip712Version: string;
-  /** Human label, matches chains.ts chainLabel(). */
+  /**
+   * Join key into l1.byChain for Arbitrum (`chainLabel`, "Arbitrum").
+   * BNB's row is the public name (`publicChainLabel`, "BNB Chain"), which the lane tests pin.
+   * Screens use publicChainLabel, not this field.
+   */
   label: string;
   /** x402 v1 transport slug, or null when the chain has none we have verified. */
   v1Slug: string | null;
@@ -203,7 +208,7 @@ export const BASE_CHAIN: EvmPayChain = {
   usdc: BASE_USDC,
   eip712Name: BASE_USDC_EIP712_NAME,
   eip712Version: BASE_USDC_EIP712_VERSION,
-  label: "Base",
+  label: publicChainLabel(BASE_CAIP2),
   v1Slug: "base",
   flagEnv: null,
 };
@@ -214,7 +219,7 @@ export const ARC_CHAIN: EvmPayChain = {
   usdc: ARC_USDC,
   eip712Name: ARC_USDC_EIP712_NAME,
   eip712Version: ARC_USDC_EIP712_VERSION,
-  label: "Arc",
+  label: publicChainLabel(ARC_CAIP2),
   // No v1 slug: we have not seen a v1 (X-PAYMENT) Arc seller and will not
   // guess one. v1 headers carry the CAIP-2 id verbatim for Arc.
   v1Slug: null,
@@ -227,7 +232,7 @@ export const CELO_CHAIN: EvmPayChain = {
   usdc: CELO_USDC,
   eip712Name: CELO_USDC_EIP712_NAME,
   eip712Version: CELO_USDC_EIP712_VERSION,
-  label: "Celo",
+  label: publicChainLabel(CELO_CAIP2),
   // No v1 slug in the money path: a v1 (X-PAYMENT) accept that names the chain as "celo" is not
   // resolved by evmChainFor, and a v1 header echoes the CAIP-2 id the seller's own challenge used.
   v1Slug: null,
@@ -240,7 +245,7 @@ export const BNB_CHAIN: EvmPayChain = {
   usdc: BNB_USD1,
   eip712Name: BNB_USD1_EIP712_NAME,
   eip712Version: BNB_USD1_EIP712_VERSION,
-  label: "BNB Chain",
+  label: publicChainLabel(BNB_CAIP2),
   // No v1 slug in the money path. A v1 accept that names the chain "bnb" or "bsc" is not
   // resolved by evmChainFor. A v1 header echoes the CAIP-2 id the seller's challenge used.
   v1Slug: null,
@@ -253,7 +258,7 @@ export const ARBITRUM_CHAIN: EvmPayChain = {
   usdc: ARBITRUM_USDC,
   eip712Name: ARBITRUM_USDC_EIP712_NAME,
   eip712Version: ARBITRUM_USDC_EIP712_VERSION,
-  label: "Arbitrum",
+  label: chainLabel(ARBITRUM_CAIP2),
   // No v1 slug in the money path. A v1 accept that names the chain "arbitrum" is not
   // resolved by evmChainFor. A v1 header echoes the CAIP-2 id the seller's challenge used.
   v1Slug: null,

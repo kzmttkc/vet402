@@ -298,8 +298,9 @@ export default async function ObservatoryPage({
                 vet402 re-read on-chain, listed or not: {stats.l1.endpointsSettledSellerReceipt.toLocaleString()} with a transaction the
                 seller named in its own settlement receipt and {stats.l1.endpointsSettledIndexOnly.toLocaleString()}{" "}
                 where the seller returned no receipt and vet402&apos;s own settlements index found the settled
-                transfers, as reported by <code>/api/v1/observatory/state</code>. Select a legend entry to filter the
-                table.
+                transfers, as reported by <code>/api/v1/observatory/state</code>.{" "}
+                {(stats.withdrawnFail ?? 0).toLocaleString()} withdrawn by the seller are not in the fail count. Select a
+                legend entry to filter the table.
               </>
             }
           />
@@ -370,7 +371,11 @@ export default async function ObservatoryPage({
                       </Link>
                     </td>
                     <td>
-                      <VerdictWord verdict={row.publishedVerdict} />
+                      {row.publishedVerdict === "withdrawn" ? (
+                        <span className="text-brand-lift">withdrawn</span>
+                      ) : (
+                        <VerdictWord verdict={row.publishedVerdict} />
+                      )}
                     </td>
                     {/* 2026-09-04 外部監査 E・P0-3: settled だけを出していた。settled は
                         転送の確認、delivered は応答の到着。同じ数のときも省略しない

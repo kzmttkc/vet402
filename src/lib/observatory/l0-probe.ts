@@ -126,29 +126,10 @@ export type ProbeOptions = {
 // own tests in tests/outbound-ssrf.test.ts.
 const guardedFetch = createSafeFetchImpl();
 
-/** Published-fail gate: fewer consecutive fails than this renders as `unverified`. */
-export const MIN_CONSECUTIVE_FAILS_TO_PUBLISH = 2;
-
-/**
- * The verdict the PUBLIC page may show, from probe verdicts ordered newest
- * first. A pass or unverified passes through; a fail is only publishable
- * when the newest MIN_CONSECUTIVE_FAILS_TO_PUBLISH probes all failed —
- * a single fail (transient blip, our own network hiccup) must never brand
- * an endpoint dead in public.
- */
-export function publishedVerdict(newestFirst: readonly string[]): "pass" | "fail" | "unverified" {
-  const latest = newestFirst[0];
-  if (latest === "pass") return "pass";
-  if (latest === "fail") {
-    let streak = 0;
-    for (const v of newestFirst) {
-      if (v !== "fail") break;
-      streak++;
-    }
-    return streak >= MIN_CONSECUTIVE_FAILS_TO_PUBLISH ? "fail" : "unverified";
-  }
-  return "unverified";
-}
+// The streak gate and the public word for a delisted fail live in l0-verdict.ts.
+// Re-exported so existing imports of this module keep working. /sellers must
+// import the leaf, not this file: this file loads the payment lanes.
+export { MIN_CONSECUTIVE_FAILS_TO_PUBLISH, publishedVerdict } from "./l0-verdict";
 
 function classifyNetworkError(
   error: unknown,

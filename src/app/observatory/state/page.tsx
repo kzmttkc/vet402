@@ -19,6 +19,7 @@ import { getAnchors } from "@/lib/observatory/anchors";
 import { CATALOG_SOURCE } from "@/lib/observatory/catalog-source";
 import { MPP_DIRECTORY_SOURCE } from "@/lib/observatory/mpp-payer";
 import { WideColumn } from "@/components/site/WideColumn";
+import { publicChainLabel } from "@/lib/observatory/chains";
 
 /**
  * /observatory/state — the State of x402 headline numbers (design §7).
@@ -344,10 +345,17 @@ export default async function ObservatoryStatePage() {
               </tr>
               <tr>
                 <td className="text-brand">
-                  Payment wall failing on ≥2 consecutive probes (published fail)
+                  Payment wall failing on ≥2 consecutive probes, and still listed (published fail)
                 </td>
                 <td className="num">{stats.publishedFail.toLocaleString()}</td>
                 <td className="num">{pct(stats.publishedFail, denom)}</td>
+              </tr>
+              <tr>
+                <td className="text-brand">
+                  Withdrawn by the seller (delisted, and the newest probes would publish as fail). Not in the fail count.
+                </td>
+                <td className="num">{(stats.withdrawnFail ?? 0).toLocaleString()}</td>
+                <td className="num">{pct(stats.withdrawnFail ?? 0, denom)}</td>
               </tr>
               <tr>
                 <td className="text-brand">Unverified (gate unmet, or not yet probed)</td>
@@ -407,6 +415,7 @@ export default async function ObservatoryStatePage() {
               : "As this page was rendered no such address was on file, so the exclusion is a no-op here: it takes out nothing because there is nothing to take out, which is a different state from having checked and found none."}
         </p>
         <p className="doc-p">This chain table was read at {chainReadAt}.</p>
+        <p className="doc-p">Fail in this table leaves out routes withdrawn by the seller. Wdn is that share of n.</p>
         {chainStats.length === 0 ? (
           <p className="doc-p text-brand-lift">No chain data yet.</p>
         ) : (
@@ -432,6 +441,9 @@ export default async function ObservatoryStatePage() {
                     Fail
                   </th>
                   <th scope="col" className="num">
+                    <abbr title="Withdrawn by the seller" className="no-underline">Wdn</abbr>
+                  </th>
+                  <th scope="col" className="num">
                     Unverified
                   </th>
                 </tr>
@@ -441,14 +453,15 @@ export default async function ObservatoryStatePage() {
                   <tr key={c.chain}>
                     {/* 生の CAIP-2 id（solana:EtWT… 44 字）が 600px の列を作っていた。390px では 9rem で切る（title に全文）。 */}
                     <td className="text-brand">
-                      <span className="block max-w-[9rem] truncate sm:max-w-none" title={c.chain}>
-                        {c.chain}
+                      <span className="block max-w-[9rem] truncate sm:max-w-none" title={c.network || c.chain}>
+                        {c.label || publicChainLabel(c.chain)}
                       </span>
                     </td>
                     <td className="num">{c.totalEndpoints.toLocaleString()}</td>
                     <td className="num">{pct(c.activeEndpoints, c.totalEndpoints)}</td>
                     <td className="num">{pct(c.publishedPass, c.totalEndpoints)}</td>
                     <td className="num">{pct(c.publishedFail, c.totalEndpoints)}</td>
+                    <td className="num">{pct(c.withdrawnFail ?? 0, c.totalEndpoints)}</td>
                     <td className="num">{pct(c.publishedUnverified, c.totalEndpoints)}</td>
                   </tr>
                 ))}
@@ -709,8 +722,8 @@ export default async function ObservatoryStatePage() {
                 {stats.l1.byChain.map((c) => (
                   <tr key={c.chain}>
                     <td className="text-brand">
-                      <span className="block max-w-[9rem] truncate sm:max-w-none" title={c.chain}>
-                        {c.chain}
+                      <span className="block max-w-[9rem] truncate sm:max-w-none" title={c.network || c.chain}>
+                        {c.label || publicChainLabel(c.chain)}
                       </span>
                     </td>
                     <td className="num">{c.attempts.toLocaleString()}</td>

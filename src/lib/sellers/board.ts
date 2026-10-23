@@ -380,6 +380,11 @@ export interface SellerDetail {
    * delivered も seller の側も無い出品（vet402 の側・not sorted・not bought・照合待ちだけ）。
    */
   sellerView: { delivered: number; seller: number; none: number };
+  /**
+   * Catalog status delisted, and the public L0 word is withdrawn or a
+   * non-settled paid attempt exists. Not in summary counts.
+   */
+  withdrawnRoutes?: { endpointId: string; resourceKey: string }[];
 }
 
 export const EARLIER_ROWS_SHOWN = 4;
@@ -449,6 +454,7 @@ export function buildSellerDetail(
   fetchedAt: string,
   days?: FailureDays,
   otherAttempts: readonly OtherChainAttempt[] = [],
+  withdrawnRoutes: SellerDetail["withdrawnRoutes"] = [],
 ): SellerDetail {
   const now = nowOf(fetchedAt);
   const allDays = mergeDays(rows, days, now);
@@ -496,7 +502,7 @@ export function buildSellerDetail(
     if (l.lastSellerSignal) sellerView[l.lastSellerSignal.bucket]++;
     else sellerView.none++;
   }
-  return { fetchedAt, host, summary, listings, selectedBy, hasConfirmedSeller, sellerView };
+  return { fetchedAt, host, summary, listings, selectedBy, hasConfirmedSeller, sellerView, withdrawnRoutes };
 }
 
 /**
@@ -535,6 +541,8 @@ export interface OtherChainListing {
   resourceKey: string;
   /** 最新の購入行の network（支払い前に止まった行は無いので、カタログの代表 network）の表示名。 */
   chain: string;
+  /** x402_endpoints.status. Absent means the row was not read as delisted. */
+  catalogStatus?: string | null;
   latest: ShownRow;
 }
 
@@ -550,7 +558,12 @@ export interface SellerOtherChains {
  */
 export function buildSellerOtherChains(
   host: string,
-  rows: ReadonlyArray<{ resourceKey: string; catalogNetwork: string | null; facts: SellerRowFacts }>,
+  rows: ReadonlyArray<{
+    resourceKey: string;
+    catalogNetwork: string | null;
+    catalogStatus?: string | null;
+    facts: SellerRowFacts;
+  }>,
   fetchedAt: string,
 ): SellerOtherChains | null {
   if (rows.length === 0) return null;
@@ -559,6 +572,7 @@ export function buildSellerOtherChains(
       endpointId: r.facts.endpointId,
       resourceKey: r.resourceKey,
       chain: paymentChainLabel(r.facts.network ?? r.catalogNetwork ?? ""),
+      catalogStatus: r.catalogStatus ?? null,
       latest: showRow(r.facts, undefined, nowOf(fetchedAt)),
     }))
     .sort(

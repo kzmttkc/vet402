@@ -40,7 +40,7 @@
     "typescript": "^5",
     "viem": "^2.55.1"
   },
-  "description": "Trust scores for AI agents and x402 payees. Read a score, gate a payment with SpendGuard, or let payOrRefuse pay on Base or Solana only after every check passes.",
+  "description": "Independent checks for x402 sellers. Read a measured decision before a payment, or let payOrRefuse pay on a supported chain only after every check passes.",
   "license": "MIT",
   "author": "KIZUNA Creation",
   "homepage": "https://vet402.com",

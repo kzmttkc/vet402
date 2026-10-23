@@ -49,7 +49,7 @@ export const BLOG_POSTS: BlogPost[] = [
     slug: "why-agent-payments-need-a-trust-score",
     title: "Why agent-to-agent payments need a trust score",
     description:
-      "x402 lets an AI agent pay for an API call in one HTTP round trip, but it says nothing about whether the wallet on the other end is worth paying. Here's the gap vet402 fills, and how the score is built.",
+      "x402 lets an AI agent pay for an API call in one HTTP round trip, but it says nothing about whether the wallet on the other end is worth paying. Here's the gap vet402 fills, and how the score is built. A purchase record is a separate result from the score.",
     seoDescription:
       "x402 lets an AI agent pay for an API call in one HTTP round trip, but says nothing about whether the wallet on the other end is worth paying. What vet402 adds.",
     publishedAt: "2026-07-21",

@@ -157,5 +157,6 @@ test("receiptNetwork は空文字を欠落として扱い、Payment chain の表
   assert.equal(receiptNetwork(null, ""), null);
   assert.equal(receiptNetwork("eip155:56", "eip155:8453"), "eip155:56");
   assert.equal(paymentChainLabel("stellar:pubnet"), "Stellar");
-  assert.equal(paymentChainLabel("eip155:56"), "BSC");
+  // 公開名は BNB Chain。結合キー chainLabel("eip155:56") は上のテストの通り BSC のまま。
+  assert.equal(paymentChainLabel("eip155:56"), "BNB Chain");
 });

@@ -4,12 +4,12 @@
 // /observatory/state の L0 の件数（publishedPass・publishedPassActive・publishedFail・チェーン別表）は、元になる
 // 「出品ごとの最新の公開判定」が公開の export に無く、数え直せなかった。ここは getObservatoryStats /
 // getObservatoryStatsByChain と同じ母集団（運営自身の endpoint を除いた全出品・掲載落ちを含む）を、同じ規則
-// （l0-probe.ts の publishedVerdict・chains.ts の chainLabel / isMainnet）で 1 行ずつ出すだけ。新しい判定は作らない。
+// （l0-verdict.ts の publicProbeWord・chains.ts の chainLabel / isMainnet）で 1 行ずつ出すだけ。新しい判定は作らない。
 // ============================================================
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { chainLabel, isMainnet, isTestnet, toCaip2 } from "./chains";
-import { MIN_CONSECUTIVE_FAILS_TO_PUBLISH, publishedVerdict } from "./l0-probe";
+import { MIN_CONSECUTIVE_FAILS_TO_PUBLISH, publicProbeWord } from "./l0-verdict";
 import { operatorExclusionPredicate } from "./operator-sql";
 
 export const L0_EXPORT_COLUMNS = [
@@ -58,7 +58,7 @@ export function toL0ExportRow(
     chain: chainLabel(toCaip2(r.network)),
     network_class: networkClassOf(r.network),
     listed: String(r.status === "active"),
-    published_verdict: publishedVerdict(verdicts),
+    published_verdict: publicProbeWord(r.status, verdicts),
     latest_probe_verdict: verdicts[0] ?? "",
     last_probed_at: last ?? "",
     latest_probe_older_than_7d: Number.isFinite(lastMs) ? String(now - lastMs >= 7 * 86_400_000) : "",
@@ -111,8 +111,8 @@ function parsePgArray(v: string[] | string | null): string[] | null {
 
 export const L0_EXPORT_COLUMN_NOTES =
   "One row per endpoint on record (listed or not), excluding endpoints paying vet402's own addresses, the population /api/v1/observatory/state counts. " +
-  "published_verdict = pass (latest probe passed) | fail (the newest 2 probes both failed) | unverified (anything else, including no probe); " +
-  "counting published_verdict=pass gives publishedPass, adding listed=true gives publishedPassActive, and adding latest_probe_older_than_7d=true gives publishedPassActiveProbeOlderThan7d. " +
+  "published_verdict = pass (latest probe passed) | fail (the newest 2 probes both failed, and the route is still listed) | withdrawn (those same two failing probes on a route absent from a complete catalog fetch) | unverified (anything else, including no probe). " +
+  "counting published_verdict=pass gives publishedPass, adding listed=true gives publishedPassActive, and adding latest_probe_older_than_7d=true gives publishedPassActiveProbeOlderThan7d. counting published_verdict=fail gives publishedFail. counting published_verdict=withdrawn gives withdrawnFail. " +
   "network_class = mainnet (a network id vet402 knows to be a mainnet: the rows of the state byChain table) | testnet | unclassified (an id vet402 cannot name, listed in byChainUnclassified). " +
   "listed = the catalog still lists it (status active). last_probed_at = the newest L0 probe (UTC). " +
   "Full definitions: https://vet402.com/openapi.yaml";

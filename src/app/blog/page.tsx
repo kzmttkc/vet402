@@ -11,7 +11,7 @@ export const metadata: Metadata = pageMetadata({
   // 2026-08-13 [m2]: 接尾辞は layout の template "%s | vet402" が付ける。
   // ここに書くと「Blog — vet402 | vet402」になる。
   title: "Blog",
-  description: "Notes on agent-to-agent payments, x402, and trust scoring on Base.",
+  description: "Notes on agent-to-agent payments, x402, and what a buyer can check before paying.",
   path: "/blog",
 });
 
@@ -66,7 +66,7 @@ export default async function BlogIndexPage() {
 
         <h1 className="doc-title mt-8">Blog</h1>
         <p className="mx-auto mt-3 max-w-[56ch] text-center text-brand-lift">
-          Notes on agent-to-agent payments, x402, and trust scoring on Base.
+          Notes on agent-to-agent payments, x402, and what a buyer can check before paying.
         </p>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 

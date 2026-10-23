@@ -24,11 +24,11 @@ import {
   x402L1Purchases,
 } from "@/lib/db/schema";
 import { CATALOG_SOURCE } from "./catalog-source";
-import { publishedVerdict, MIN_CONSECUTIVE_FAILS_TO_PUBLISH } from "./l0-probe";
+import { MIN_CONSECUTIVE_FAILS_TO_PUBLISH, publicProbeWord, publishedVerdict } from "./l0-verdict";
 import { l0ReasonDetail, type L0ProbeDetail } from "./l0-reasons";
 import { isOperatorPayTo } from "./operator";
 import { isOperatorExclusionConfigured, operatorExclusionPredicate, operatorMatchPredicate } from "./operator-sql";
-import { chainLabel, isMainnet, isTestnet, networkFilterIds, toCaip2 } from "./chains";
+import { chainIdentity, chainLabel, isMainnet, isTestnet, networkFilterIds, toCaip2 } from "./chains";
 import { deliveredPredicate, heldReasonSql, inconclusivePredicate, inconclusiveSettledPredicate, judgedSettledCount } from "./delivery";
 import { l2ReadingOf } from "./l2-check";
 import {
@@ -53,7 +53,7 @@ export type ObservatoryListRow = {
   network: string | null;
   method: string | null;
   status: string;
-  publishedVerdict: "pass" | "fail" | "unverified";
+  publishedVerdict: "pass" | "fail" | "unverified" | "withdrawn";
   lastProbedAt: Date | null;
   qualityCalls30d: number | null;
   /** L1 paid attempts that settled with a receipt (PAID_ATTEMPT_STATUSES denominator). 0 when never purchased. */
@@ -147,6 +147,10 @@ export async function getObservatoryOverview(
   const verdictCase = sql`(
     CASE
       WHEN (lp.verdicts)[1] = 'pass' THEN 'pass'
+      WHEN (
+        SELECT count(*) FROM unnest(lp.verdicts) WITH ORDINALITY AS u(x, n)
+        WHERE n <= ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH} AND x = 'fail'
+      ) = ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH} AND e.status = 'delisted' THEN 'withdrawn'
       WHEN (
         SELECT count(*) FROM unnest(lp.verdicts) WITH ORDINALITY AS u(x, n)
         WHERE n <= ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH} AND x = 'fail'
@@ -267,7 +271,7 @@ export async function getObservatoryOverview(
       network: (r.network as string | null) ?? null,
       method: (r.method as string | null) ?? null,
       status: String(r.status),
-      publishedVerdict: publishedVerdict(((r.verdicts as string[] | null) ?? []) as string[]),
+      publishedVerdict: publicProbeWord(String(r.status), ((r.verdicts as string[] | null) ?? []) as string[]),
       lastProbedAt: r.last_probed_at ? new Date(String(r.last_probed_at)) : null,
       qualityCalls30d:
         r.quality_calls_30d === null || r.quality_calls_30d === undefined
@@ -323,7 +327,7 @@ export type EndpointDetail = {
      * neutral third party in its own measurements. */
     isOperatorEndpoint: boolean;
   };
-  publishedVerdict: "pass" | "fail" | "unverified";
+  publishedVerdict: "pass" | "fail" | "unverified" | "withdrawn";
   /** 直近プローブからの経過日数（表示時点・UTC）。未測定なら null。データ層で計算する（描画は純粋に保つ）。 */
   lastProbedAgeDays: number | null;
   probes: {
@@ -613,7 +617,7 @@ export async function getEndpointDetail(id: string): Promise<EndpointDetail> {
         qualityPayers30d: e.qualityPayers30d,
         isOperatorEndpoint: isOperatorPayTo(e.payTo),
       },
-      publishedVerdict: publishedVerdict(probes.map((p) => p.verdict)),
+      publishedVerdict: publicProbeWord(e.status, probes.map((p) => p.verdict)),
       // 2026-09-29 敵対的監査 4 周目: 経過 24 時間で丸めていたので、09-28 16:40 UTC の probe を 09-29 00:22 UTC に
       // 「today」と出していた。UTC の暦日の差で数える（09-28 の probe は 09-29 に 1）。
       lastProbedAgeDays: probes[0]?.probedAt ? utcCalendarDaysBetween(probes[0].probedAt, new Date()) : null,
@@ -778,8 +782,13 @@ export type ObservatoryStats = {
   totalEndpoints: number;
   activeEndpoints: number;
   delistedEndpoints: number;
-  /** Endpoints whose PUBLISHED verdict is fail (≥2 consecutive fails). */
+  /** Endpoints whose published word is fail. A delisted fail streak is withdrawnFail, not this. */
   publishedFail: number;
+  /**
+   * Delisted endpoints whose newest probes would publish as fail.
+   * Left out of publishedFail. Since 2026-10-24.
+   */
+  withdrawnFail: number;
   /**
    * 最新の probe が pass の endpoint。**掲載落ち（delisted）を含む**——分母は totalEndpoints。
    * 2026-09-29 敵対的監査 4 周目: トップが「L0 pass 21,229」を掲載中 20,086 より大きい数として
@@ -912,7 +921,12 @@ export type CatalogSnapshot = {
 
 /** 1 チェーン分の L1 実測。settledNonceBound + settledAmountPayeeOnly = settled。 */
 export type L1ChainStats = {
+  /** Join key from chainLabel(). Unchanged (BSC, stellar:pubnet, Arbitrum, …). */
   chain: string;
+  /** Public name from publicChainLabel(). Screens show this. */
+  label: string;
+  /** Canonical CAIP-2 for this chain. */
+  network: string;
   attempts: number;
   settled: number;
   delivered: number;
@@ -930,6 +944,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
     activeEndpoints: 0,
     delistedEndpoints: 0,
     publishedFail: 0,
+    withdrawnFail: 0,
     publishedPass: 0,
     publishedPassActive: 0,
     publishedPassActiveProbeOlderThan7d: 0,
@@ -1009,7 +1024,16 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
             AND NOT EXISTS (
               SELECT 1 FROM unnest(verdicts) AS u(v) WHERE u.v <> 'fail'
             )
-        )::int AS published_fail
+            AND status <> 'delisted'
+        )::int AS published_fail,
+        count(*) FILTER (
+          WHERE verdicts[1] = 'fail'
+            AND cardinality(verdicts) >= ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH}
+            AND NOT EXISTS (
+              SELECT 1 FROM unnest(verdicts) AS u(v) WHERE u.v <> 'fail'
+            )
+            AND status = 'delisted'
+        )::int AS withdrawn_fail
       FROM latest
     `);
     const list = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as Record<
@@ -1020,6 +1044,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
     const total = Number(agg.total ?? 0);
     const publishedPass = Number(agg.published_pass ?? 0);
     const publishedFail = Number(agg.published_fail ?? 0);
+    const withdrawnFail = Number(agg.withdrawn_fail ?? 0);
 
     // 2026-09-19 再レビュー V2: 除外が**今日何件取り除いているか**を数えて出す。
     // 「自社を外している」とだけ書くと、env が外れて 0 件になった日にも同じ文が
@@ -1183,8 +1208,11 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
         // v1 スラグ（"base" / "solana" / "xrpl" …）は先に CAIP-2 へ寄せてからラベルを引く
         // （explorerTxUrl と同じ流儀）。同じラベルに畳まれた行は下で合算される。
         const chain = chainLabel(toCaip2(row.network));
+        const id = chainIdentity(chain);
         const entry = folded.get(chain) ?? {
-          chain,
+          chain: id.chain,
+          label: id.label,
+          network: id.network,
           attempts: 0,
           settled: 0,
           delivered: 0,
@@ -1277,10 +1305,11 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       activeEndpoints: Number(agg.active ?? 0),
       delistedEndpoints: Number(agg.delisted ?? 0),
       publishedFail,
+      withdrawnFail,
       publishedPass,
       publishedPassActive: Number(agg.published_pass_active ?? 0),
       publishedPassActiveProbeOlderThan7d: Number(agg.published_pass_active_stale ?? 0),
-      publishedUnverified: Math.max(0, total - publishedPass - publishedFail),
+      publishedUnverified: Math.max(0, total - publishedPass - publishedFail - withdrawnFail),
       methodUndeclared: Number(agg.method_undeclared ?? 0),
       eventCounts: {
         delisted: ev.delisted ?? 0,
@@ -1299,11 +1328,18 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
 }
 
 export type ChainStats = {
+  /** Join key from chainLabel(). Unchanged. */
   chain: string;
+  /** Public name from publicChainLabel(). Screens show this. */
+  label: string;
+  /** Canonical CAIP-2 for this chain. */
+  network: string;
   totalEndpoints: number;
   activeEndpoints: number;
   publishedPass: number;
   publishedFail: number;
+  /** Delisted fail streaks. Left out of publishedFail. */
+  withdrawnFail: number;
   publishedUnverified: number;
 };
 
@@ -1363,19 +1399,24 @@ export async function getObservatoryStatsByChain(
       // getChainScope の unclassified に出る。
       if (!options.includeTestnets && !isMainnet(network)) continue;
       const chain = chainLabel(network);
+      const id = chainIdentity(chain);
       const entry = byChain.get(chain) ?? {
-        chain,
+        chain: id.chain,
+        label: id.label,
+        network: id.network,
         totalEndpoints: 0,
         activeEndpoints: 0,
         publishedPass: 0,
         publishedFail: 0,
+        withdrawnFail: 0,
         publishedUnverified: 0,
       };
       entry.totalEndpoints++;
       if (row.status === "active") entry.activeEndpoints++;
-      const verdict = publishedVerdict(row.verdicts ?? []);
+      const verdict = publicProbeWord(row.status, row.verdicts ?? []);
       if (verdict === "pass") entry.publishedPass++;
       else if (verdict === "fail") entry.publishedFail++;
+      else if (verdict === "withdrawn") entry.withdrawnFail++;
       else entry.publishedUnverified++;
       byChain.set(chain, entry);
     }

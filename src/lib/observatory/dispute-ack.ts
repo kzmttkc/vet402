@@ -65,6 +65,16 @@ export function formDisputeNotQueuedSentence(reprobe: Exclude<FormDisputeReprobe
     : "This listing's URL has an unfilled path parameter, so vet402 cannot build a request for it and a dispute filed on the record form does not put it on the re-probe list.";
 }
 
+/**
+ * 記録頁の「次の測り直し」の1文。時刻は l0ProbeScheduleLabel()（vercel.json の l0-probe）。
+ * 列に入る出品は予定時刻と、別の時刻の L0 が先に測りうること。
+ * 取り下げ済みとパステンプレートは、その回の列に乗らないことだけを言う。
+ */
+export function recordRemeasureSentence(scheduleLabel: string, reprobe: FormDisputeReprobe): string {
+  if (reprobe === "queued") return l0ScheduleSentence(scheduleLabel);
+  return `The scheduled L0 run is at ${scheduleLabel}. This listing is not on that run.`;
+}
+
 /** 記録頁の段落に出す、この出品についての文。 */
 export function formDisputeListingSentence(scheduleLabel: string, reprobe: FormDisputeReprobe): string {
   return reprobe === "queued"

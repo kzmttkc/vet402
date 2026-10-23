@@ -2537,7 +2537,19 @@ paths:
                       The part of `publishedPassActive` whose latest probe is
                       more than 7 days old (a pass stands until the next
                       probe). Since 2026-09-29.
-                  publishedFail: { type: integer }
+                  publishedFail:
+                    type: integer
+                    description: >-
+                      Endpoints whose newest probes publish as fail and whose
+                      catalog status is not delisted. A delisted fail streak is
+                      withdrawnFail. Since 2026-10-24.
+                  withdrawnFail:
+                    type: integer
+                    description: >-
+                      Endpoints with catalog status delisted whose newest probes
+                      would publish as fail. Left out of publishedFail. A pass
+                      on a delisted endpoint stays in publishedPass. Since
+                      2026-10-24.
                   publishedUnverified: { type: integer }
                   methodUndeclared: { type: integer }
                   eventCounts:
@@ -2684,7 +2696,25 @@ paths:
                         items:
                           type: object
                           properties:
-                            chain: { type: string }
+                            chain:
+                              type: string
+                              description: >-
+                                Join key. Unchanged. BSC stays BSC. stellar:pubnet stays
+                                stellar:pubnet. Arbitrum stays Arbitrum. Callers that join
+                                on this field keep working.
+                            label:
+                              type: string
+                              description: >-
+                                Public name of this chain. Base, Solana, Tempo, XRPL, Celo,
+                                Arc, Stellar, BNB Chain, or Arbitrum One when the chain is
+                                one of those. Other chains keep the name in chain. Screens
+                                show this field.
+                            network:
+                              type: string
+                              description: >-
+                                Canonical CAIP-2 id for this chain. eip155:56 when chain is
+                                BSC. stellar:pubnet when chain is stellar:pubnet.
+                                eip155:42161 when chain is Arbitrum.
                             attempts: { type: integer }
                             settled: { type: integer }
                             delivered: { type: integer }
@@ -2713,11 +2743,27 @@ paths:
                     items:
                       type: object
                       properties:
-                        chain: { type: string }
+                        chain:
+                          type: string
+                          description: >-
+                            Join key from the same names as l1.byChain.chain. Unchanged.
+                        label:
+                          type: string
+                          description: >-
+                            Public name of this chain, from the same list as l1.byChain.label.
+                            Screens show this field.
+                        network:
+                          type: string
+                          description: >-
+                            Canonical CAIP-2 id for this chain, from the same list as
+                            l1.byChain.network.
                         totalEndpoints: { type: integer }
                         activeEndpoints: { type: integer }
                         publishedPass: { type: integer }
                         publishedFail: { type: integer }
+                        withdrawnFail:
+                          type: integer
+                          description: This chain's share of withdrawnFail.
                         publishedUnverified: { type: integer }
                   byChainScope: { type: string, enum: [mainnet_only] }
                   byChainTestnetEndpoints:

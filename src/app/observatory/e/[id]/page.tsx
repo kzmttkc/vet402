@@ -14,7 +14,7 @@ import { TableScroll } from "@/components/site/TableScroll";
 import CodeBlock from "@/components/docs/CodeBlock";
 import { SITE_URL } from "@/lib/site-url";
 import { getEndpointDetail } from "@/lib/observatory/reader";
-import { chainLabel, explorerTxUrl, receiptNetwork, paymentChainLabel } from "@/lib/observatory/chains";
+import { explorerTxUrl, receiptNetwork, paymentChainLabel } from "@/lib/observatory/chains";
 import RecordSubscribe from "@/components/site/RecordSubscribe";
 import { VerdictWord, ProbeTimeline, SettleGauge, type L0Verdict } from "@/components/site/Figures";
 import { WideColumn } from "@/components/site/WideColumn";
@@ -23,9 +23,11 @@ import { readRecordSides } from "@/lib/sellers/reader";
 import { recordPageNoindex, recordRowKey, type RecordSides } from "@/lib/sellers/board";
 import { HELD_GLOSS, STATUS_GLOSS } from "@/lib/sellers/fix-modes";
 import { DISPUTE_NO_PURCHASE, RECORD_DISPUTE_ANCHOR, UNDER_RECHECK, WhoseSide } from "@/components/site/sellers/SellersViews";
-import { formDisputeListingSentence, formDisputeReprobeOf } from "@/lib/observatory/dispute-ack";
+import { formDisputeListingSentence, formDisputeReprobeOf, recordRemeasureSentence } from "@/lib/observatory/dispute-ack";
+import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "@/lib/support";
 import { isPathTemplate } from "@/lib/observatory/path-template";
 import { l0ProbeScheduleLabel } from "@/lib/observatory/l0-schedule";
+import { purchaseShownAsWithdrawn, withdrawnBySellerSentence } from "@/lib/observatory/l0-verdict";
 
 /**
  * /observatory/e/[id] — one endpoint's full fact history (design §5).
@@ -146,6 +148,8 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
   const disputePurchase = purchaseParam((await searchParams)?.purchase);
   // D-03: フォーム異議が L0 の優先の列に入る出品か（掲載中でパステンプレート以外）。入らない頁では「次の実行で」を言わない。
   const disputeReprobe = formDisputeReprobeOf({ status: endpoint.status, pathTemplate: isPathTemplate(endpoint.resourceUrl) });
+  const showWithdrawn =
+    publishedVerdict === "withdrawn" || purchases.some((p) => purchaseShownAsWithdrawn(endpoint.status, p.status));
   const shownSides = purchases.map((p) => sides?.rows.get(recordRowKey(p.attemptedAt, p.status, p.txHash)) ?? null);
   // バッジの文言は 1 箇所（receipt-badge.ts）から出す。ここで組み直すと、
   // 埋め込まれる SVG と、その隣で「バッジはこう読める」と説明する散文がずれる。
@@ -201,7 +205,12 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
             <span>Independent Measurement</span>
             <span>Endpoint record (L0 · L1)</span>
             <span className="inline-flex items-center gap-1.5">
-              Published state: <VerdictWord verdict={publishedVerdict as L0Verdict} />
+              Published state:{" "}
+              {publishedVerdict === "withdrawn" ? (
+                <span className="text-brand-lift">withdrawn</span>
+              ) : (
+                <VerdictWord verdict={publishedVerdict} />
+              )}
             </span>
             {/* 2026-09-02 UX 監査: 「毎日プローブ」と読まれないよう、この記録の鮮度を
                 doc-head で明示する。日付は UTC、日数は表示時点との差。 */}
@@ -223,6 +232,7 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
         </div>
 
         <h1 className="doc-title mt-8 break-words [overflow-wrap:anywhere]">{endpoint.resourceKey}</h1>
+        {showWithdrawn && <p className="doc-p">{withdrawnBySellerSentence()}</p>}
         {endpoint.isOperatorEndpoint && (
           <p className="mt-4 border border-brand-line bg-brand-wash px-4 py-3 text-[0.84375rem] text-brand-lift">
             This is vet402&rsquo;s own endpoint. It is shown here for
@@ -474,6 +484,7 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                       2026-09-04 P2-18: HTTP を 3 列目へ戻し（配達失敗が見えるように）、受領証は 4 列目。 */}
                   {purchases.map((p, i) => {
                     const paidOn = receiptNetwork(p.network, endpoint.network);
+                    const shownWithdrawn = purchaseShownAsWithdrawn(endpoint.status, p.status);
                     return (
                     <Fragment key={i}>
                       {/* 2 段目に続くので 1 段目の罫線は消す。globals.css は触らない——Turbopack の
@@ -490,11 +501,13 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                             nonce 束縛が入ったのは 2026-09-04 12:00 UTC で、それ以前の行は
                             金額・宛先・資産の一致まで。行ごとに強度を出す。 */}
                         <td className="border-b-0 pb-0.5">
-                          {p.settledTier === "nonce_bound"
-                            ? "settled (nonce-bound)"
-                            : p.settledTier === "amount_payee_only"
-                              ? "settled (amount + payee)"
-                              : p.status}
+                          {shownWithdrawn
+                            ? "withdrawn by the seller"
+                            : p.settledTier === "nonce_bound"
+                              ? "settled (nonce-bound)"
+                              : p.settledTier === "amount_payee_only"
+                                ? "settled (amount + payee)"
+                                : p.status}
                           {/* 2026-09-20: その tx を名指したのが売り手でなく vet402 の決済索引なら、行でそう言う
                               （settlement-source.ts）。売り手がレシートを返した行と同じ顔で出さない。 */}
                           {p.settlementSource === "vet402_index" && (
@@ -502,7 +515,7 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                           )}
                         </td>
                         <td
-                          className={`num border-b-0 pb-0.5 ${typeof p.httpStatusPaid === "number" && p.httpStatusPaid >= 400 ? "text-[#9f0712]" : ""}`}
+                          className={`num border-b-0 pb-0.5 ${!shownWithdrawn && typeof p.httpStatusPaid === "number" && p.httpStatusPaid >= 400 ? "text-[#9f0712]" : ""}`}
                         >
                           {p.httpStatusPaid ?? "—"}
                         </td>
@@ -541,6 +554,11 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                           {shownSides[i] && (
                             <span className="block font-[family-name:var(--font-sans)] text-[0.84375rem] text-brand-ink">
                               Whose side: <WhoseSide r={shownSides[i]!} />
+                            </span>
+                          )}
+                          {shownWithdrawn && (
+                            <span className="block font-[family-name:var(--font-sans)] text-[0.84375rem] text-brand-ink">
+                              Not counted as a failure.
                             </span>
                           )}
                         </td>
@@ -649,7 +667,16 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
           instead. One person reads it and replies. The record is never deleted on dispute: if it
           was wrong, the correction is published with the same weight. If it was right, it stands.{" "}
           {formDisputeListingSentence(l0ProbeScheduleLabel(), disputeReprobe)}{" "}
-          Operators who control the receiving address can also sign a dispute via{" "}
+          {recordRemeasureSentence(l0ProbeScheduleLabel(), disputeReprobe)}{" "}
+          Send the dispute to{" "}
+          <a className="underline" href={SUPPORT_MAILTO}>
+            {SUPPORT_EMAIL}
+          </a>
+          . Published corrections are listed at{" "}
+          <Link href="/corrections" className="underline">
+            /corrections
+          </Link>
+          . Operators who control the receiving address can also sign a dispute via{" "}
           <code>POST /api/v1/observatory/disputes</code> (
           <Link href="/docs/api" className="underline">
             API reference

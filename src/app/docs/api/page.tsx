@@ -33,7 +33,7 @@ export const metadata: Metadata = pageMetadata({
 });
 
 type Endpoint = {
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "DELETE";
   path: string;
   // 2026-09-07 ETHOnline (F13): a note may carry a link. Only /decision uses it, once.
   note: ReactNode;
@@ -210,7 +210,7 @@ const endpoints: Endpoint[] = [
   },
   {
     method: "GET",
-    path: "/api/v1/agents/42/passport",
+    path: "/api/v1/agents/:agentId/passport",
     note: "The portable, third-party-verifiable passport — no API key. Returns the signed identity claim, the verification material (canonical message + signature, so any counterparty can re-run verifyMessage and cross-check the wallet against getAgentWallet on-chain), and a live score with explicit freshness (scoredAt / cacheExpiresAt).",
     response: `{ "agentId": "42", "verified": true, "identity": { "name": "Acme Agent", "wallet": "0x…", "proof": { "message": "…", "signature": "0x…", "scheme": "eip191-personal-sign" } }, "score": { "trustScore": 78, "recommendation": "ALLOW", "x402": { "paymentCount": 12, "uniqueDays": 6 }, "scoredAt": "…", "cacheExpiresAt": "…" } }`,
   },
@@ -366,7 +366,7 @@ const endpoints: Endpoint[] = [
   {
     method: "GET",
     path: "/api/v1/observatory/l0/export.csv",
-    note: "The latest public L0 verdict per endpoint, as CSV — no key, 6/min, cached up to 15 minutes. One row per endpoint on record (listed or not, excluding endpoints paying vet402's own addresses): the data behind the L0 counts of /api/v1/observatory/state. Columns: endpoint_id, resource_key, network, chain, network_class (mainnet | testnet | unclassified), listed, published_verdict (pass | fail | unverified), latest_probe_verdict, last_probed_at, latest_probe_older_than_7d. Counting published_verdict=pass gives publishedPass; network_class=mainnet rows grouped by chain give byChain. Definitions in the x-vet402-column-notes header, retrieval time in x-vet402-retrieved-at. Since 2026-09-29.",
+    note: "The latest public L0 verdict per endpoint, as CSV — no key, 6/min, cached up to 15 minutes. One row per endpoint on record (listed or not, excluding endpoints paying vet402's own addresses): the data behind the L0 counts of /api/v1/observatory/state. Columns: endpoint_id, resource_key, network, chain, network_class (mainnet | testnet | unclassified), listed, published_verdict (pass | fail | unverified | withdrawn), latest_probe_verdict, last_probed_at, latest_probe_older_than_7d. Counting published_verdict=pass gives publishedPass. Counting published_verdict=withdrawn gives withdrawnFail, a delisted fail streak left out of publishedFail. network_class=mainnet rows grouped by chain give byChain. Definitions in the x-vet402-column-notes header, retrieval time in x-vet402-retrieved-at. Since 2026-09-29.",
     response: `endpoint_id,resource_key,network,chain,network_class,listed,published_verdict,latest_probe_verdict,last_probed_at,latest_probe_older_than_7d
 521e929e-…,api.example.com/v1/x,eip155:8453,Base,mainnet,true,pass,pass,2026-09-29T10:31:02Z,false`,
   },
@@ -376,6 +376,235 @@ const endpoints: Endpoint[] = [
     note: "The /sellers classification, as CSV — no key, 6/min, cached up to 15 minutes, served noindex like the page. One row per active Base listing, classified by its latest purchase row with the same function /sellers uses; counting rows by outcome gives the page's totals. Columns: host, endpoint_id, resource_key, outcome (delivered | pending | seller | vet402 | unsorted | not_bought | not_tried), fix_mode, side_label, confirmed_seller, held_reason, latest_attempted_at, latest_status, latest_network, latest_http_status_paid, purchase_id (the ledger export's purchase_id), in_ledger_export, attribution_review (under_review on seller rows, whose attribution is under review). Definitions in the x-vet402-column-notes header, retrieval time in x-vet402-retrieved-at. Since 2026-09-29.",
     response: `host,endpoint_id,resource_key,outcome,fix_mode,side_label,confirmed_seller,held_reason,latest_attempted_at,latest_status,latest_network,latest_http_status_paid,purchase_id,in_ledger_export,attribution_review
 api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02:29Z,settled,eip155:8453,200,c4d4b20f-…,true,`,
+  },
+  // 2026-10-24: paths: にある公開窓口で、上のカードに path が無かったもの。
+  // /api/v1/guarantee/quote は paths に無い（休眠中の金融商品）。ここにも載せない。
+  {
+    method: "POST",
+    path: "/api/v1/events/:trustEventId/outcome",
+    note: "Report a result label for a past score verdict this key requested. outcomeType is confirmed_fraud, confirmed_legitimate, chargeback_dispute, or other. Repeating the same outcomeType for the same event returns the existing row. A trustEventId this key does not own answers 404, the same answer as an unknown id. Bearer key.",
+    request: `{ "outcomeType": "confirmed_legitimate" }`,
+    response: `HTTP 201 when the label is new. HTTP 200 when this key already reported that outcomeType for this event.`,
+  },
+  {
+    method: "DELETE",
+    path: "/api/v1/webhooks/:id",
+    note: "Remove a webhook endpoint this key owns. An id this key does not own answers 404. Bearer key.",
+    response: `HTTP 200`,
+  },
+  {
+    method: "DELETE",
+    path: "/api/v1/watchlist/:id",
+    note: "Remove a watch this key owns. An id this key does not own answers 404. Bearer key.",
+    response: `{ "ok": true }`,
+  },
+  {
+    method: "POST",
+    path: "/api/v1/demo/verify",
+    note: "One live L0 probe of a catalog-listed endpoint, for /playground. The probe is not written into the public register. level l1 asks for one real purchase and runs when DEMO_L1_ENABLED and the Observatory L1 flag are both on. While the runtime spending halt is engaged, level l1 answers 503 spending_halted and signs nothing. Key-less. 5 requests per minute per IP.",
+    request: `{ "endpointId": "<uuid>", "level": "l0" }`,
+    response: `HTTP 200 with the live measurement.`,
+  },
+  {
+    method: "GET",
+    path: "/api/frame/endpoint/:id",
+    note: "Farcaster Frame HTML for one endpoint receipt record. An unknown id answers 404. Key-less.",
+    response: `text/html`,
+  },
+  {
+    method: "POST",
+    path: "/api/v1/observatory/contributions",
+    note: "Submit an externally observed L0 result. Intake answers 403 unless an operator flag is on. A stored row is not folded into a published verdict. Key-less. 10 requests per minute per IP.",
+    request: `{ "endpointId": "<uuid>", "verdict": "pass", "address": "0x…", "signature": "0x…", "issued": "<RFC3339>" }`,
+    response: `HTTP 201 when stored. HTTP 403 when intake is off.`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/observatory/export.csv",
+    note: "Paid-attempt ledger as CSV. days is an integer from 1 to 366. A non-canonical days value answers 308 to the canonical query. Another query parameter, or days given twice, answers 400 invalid_query. Output stops at 50000 rows and sets x-vet402-truncated. A cell whose text starts with =, +, -, @, a tab, or a carriage return is written with a leading apostrophe. Key-less. 6 requests per minute per IP. Columns in order: attempted_at, resource_key, network, status, amount_units, spent_units, tx_hash, http_status_paid, latency_ms, l2_schema, held_reason, request_body, request_body_sha256, settlement_source, request_query, request_query_sha256, confirmed_units, purchase_id, l2_reading.",
+    response: `attempted_at,resource_key,network,status,amount_units,spent_units,tx_hash,...`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/graph/payto/:address",
+    note: "Endpoints one payTo wallet receives on, and other payTo values receiving on the same hosts. Adjacency facts. Bearer key. 1 unit.",
+    response: `HTTP 200. Graph with definition in the body.`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/observatory/anchors",
+    note: "One hash root per UTC day over that day's L1 rows. An older root describes the ledger as it stood when the root was computed. Query days from 1 to 366, default 30. Key-less. 30 requests per minute per IP.",
+    response: `HTTP 200. Anchors newest day first, with the recompute recipe.`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/rwa/facts/:address",
+    note: "Stock Token track record of one address on Robinhood Chain (eip155:4663), rebuilt from public chain data. The response field scope states what was scanned. Key-less.",
+    response: `HTTP 200. Facts JSON. scope states the scan. gaps names what was not scanned.`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/rwa/paid/facts/:address",
+    note: "The same JSON as GET /api/v1/rwa/facts/:address, paid per call over x402 v2 in USDG on Robinhood Chain (eip155:4663). Without a PAYMENT-SIGNATURE header the answer is 402. Asset 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168, amount 10000 base units (0.01 USDG), payTo 0x973cD8a91A771C2C04C6036888F8175D6b4F6227, facilitator Dexter. Key-less aside from that payment header.",
+    response: `HTTP 200 with the facts JSON after a valid payment. HTTP 402 with PAYMENT-REQUIRED when the header is absent.`,
+  },
+  {
+    method: "POST",
+    path: "/api/v1/observatory/endpoints/:id/subscribe",
+    note: "Leave an email on one endpoint record. kind notify starts pending until POST /api/v1/observatory/subscriptions/confirm. Opening the confirm link changes nothing by itself. kind dispute records an objection (reason, 20 to 2000 characters) and forwards it to support. website is a honeypot and is left empty. Key-less. 5 requests per hour per IP.",
+    request: `{ "email": "person@example.com", "kind": "notify", "website": "" }`,
+    response: `{ "ok": true, "receipt": "<8 chars>", "kind": "notify", "verdictAtSubmission": "pass", "note": "…" }`,
+  },
+  {
+    method: "POST",
+    path: "/api/v1/observatory/subscriptions/confirm",
+    note: "Confirm a pending change-notice subscription. The button on /observatory/confirm POSTs the token. Opening the email link does not confirm. The token is single-use and valid for 72 hours from the confirmation email. Key-less. 30 requests per hour per IP.",
+    request: `{ "token": "<token>" }`,
+    response: `{ "ok": true, "status": "confirmed" }`,
+  },
+  {
+    method: "POST",
+    path: "/api/v1/observatory/subscriptions/unsubscribe",
+    note: "Stop change-notice email for one subscription. The page POSTs JSON with id and token. A mail client can POST List-Unsubscribe=One-Click with id and t in the query (RFC 8058). There is no GET. Key-less. 30 requests per hour per IP.",
+    request: `{ "id": "<uuid>", "token": "<token>" }`,
+    response: `{ "ok": true, "status": "unsubscribed" }`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/observatory/backtest",
+    note: "vet402 signed purchase attempts, split into avoided (signalled attempts that did not settle) and forgone (signalled attempts that settled). Both figures are in the body with definition. Key-less. 12 requests per minute per IP. Cached 1 hour.",
+    response: `HTTP 200. attemptsTotal, avoided, forgone, and definition.`,
+  },
+  {
+    method: "POST",
+    path: "/api/v1/observatory/disputes",
+    note: "File a dispute for one endpoint. The payTo key signs an EIP-191 message over endpointId, subject (l0, l1, or listing), reason, address, and issued. issued is within 10 minutes of server time. Acceptance runs one L0 re-measurement under the publication gate. Key-less. 5 requests per minute per IP.",
+    request: `{ "endpointId": "<uuid>", "subject": "l0", "reason": "…", "address": "0x…", "signature": "0x…", "issued": "<RFC3339>" }`,
+    response: `HTTP 201 when accepted. HTTP 403 when the signer is not the endpoint payTo.`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/observatory/live",
+    note: "Server-sent events for new L0 probes and L1 purchases. The stream closes after about 55 seconds and a client reconnects with Last-Event-ID. Key-less. 10 connections per minute per IP.",
+    response: `text/event-stream. Event names are probe and purchase.`,
+  },
+  {
+    method: "POST",
+    path: "/api/v1/observatory/requests",
+    note: "Queue one listed endpoint for the next L0 run. Repeated requests for one endpoint stay one row. Key-less. 5 requests per minute per IP.",
+    request: `{ "endpointId": "<uuid>" }`,
+    response: `HTTP 201 when queued. HTTP 200 when that endpoint was already queued.`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/payees/:address/history-flags",
+    note: "History predicates for one payTo wallet, with counts and definition in the body. Bearer key. 1 unit.",
+    response: `HTTP 200. Flags, counts, and definition.`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/payees/:address/verdict-fast",
+    note: "Deprecated. Returns a cached verdict for a payTo wallet, or cache_cold when the cache has no confident verdict. This route does not compute a fresh score. Bearer key. 1 unit.",
+    response: `HTTP 200. Branch on hit or cache_cold. The body carries deprecated and deprecation.`,
+  },
+  {
+    method: "POST",
+    path: "/api/v1/waitlist",
+    note: "Store an email and an interest of premium_data, design_partner, or other. This route sends no mail. Key-less. 5 requests per minute per IP.",
+    request: `{ "email": "person@example.com", "interest": "premium_data" }`,
+    response: `HTTP 201 when recorded.`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/observatory/decisions",
+    note: "Pay-or-refuse decisions recorded by the scheduled L1 run. Refusals before signing and outcomes after paying are both included. budget_denied, halted, request_error, in_flight, and payer_unfunded are left out. Query days from 1 to 366, default 30. Key-less. 30 requests per minute per IP. Cached 15 minutes.",
+    response: `HTTP 200. Decision rows newest first, with totals and the cumulative backtest.`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/observatory/concentration",
+    note: "Receiving-structure aggregates over the active catalog, with denominators. No host or payTo is named. Key-less. 12 requests per minute per IP. Cached 1 hour.",
+    response: `HTTP 200. Aggregates with definition in the body.`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/observatory/history",
+    note: "L0 and L1 aggregates per UTC day and CAIP-2 chain, oldest day first. l1Attempts uses the paid-attempt denominator of /api/v1/observatory/state. Query days from 1 to 366, default 30. Key-less. 30 requests per minute per IP.",
+    response: `HTTP 200. days, coverageFrom, rolledUpThrough, lastRollupAt, recomputeWindowDays.`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/observatory/state",
+    note: "Aggregate L0 and L1 measurements, from the same readers as /observatory/state. On each byChain row, chain stays the join key. label is the public chain name and network is the CAIP-2 id. withdrawnFail counts catalog-delisted endpoints whose newest probes would publish as fail, and those endpoints are left out of publishedFail. Key-less. 30 requests per minute per IP.",
+    response: `HTTP 200. publishedPass, publishedFail, withdrawnFail, publishedUnverified, and l1.byChain with chain, label, and network.`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/observatory/watch?wallet=0x…",
+    note: "Preview the message this key has signed by the receiving wallet, plus the catalog endpoints paying that wallet. Fetch this message and sign it. Do not build the message locally. Bearer key.",
+    response: `{ "message": "…", "endpointsPayingThisWallet": [] }`,
+  },
+  {
+    method: "POST",
+    path: "/api/v1/observatory/watch",
+    note: "Register for endpoint.delisted events on a payee wallet this key has claimed. The body carries the wallet and the EIP-191 signature from the GET preview. Up to 20 wallets per key. Bearer key.",
+    request: `{ "wallet": "0x…", "signature": "0x…" }`,
+    response: `{ "ok": true, "wallet": "0x…" }`,
+  },
+  {
+    method: "DELETE",
+    path: "/api/v1/observatory/watch",
+    note: "Remove this key's observatory watch on a wallet. Bearer key.",
+    request: `{ "wallet": "0x…" }`,
+    response: `{ "ok": true }`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/observatory/endpoints/:id/purchases",
+    note: "L1 receipt series for one endpoint: attemptCount, settledCount, and the tx hash on a settled row. The record page reads the same series. Key-less. 30 requests per minute per IP. Cached 10 minutes.",
+    response: `HTTP 200. endpointId, resourceKey, attemptCount, settledCount, and the purchase rows.`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/accuracy",
+    note: "The public accuracy ledger as JSON over a rolling 90-day window. Aggregate counts, with no wallet addresses and no agent ids. Key-less.",
+    response: `HTTP 200. AccuracyReport, including l0, slo, and coverageWeekly.`,
+  },
+  {
+    method: "GET",
+    path: "/api/demo/score",
+    note: "Scores one agent chosen server-side, so a caller can see a computed verdict with no key. The request does not choose the agent. When a verdict cannot be computed the body says live false. 10 requests per minute per IP.",
+    response: `HTTP 200. Branch on live. A cached value names cacheExpiresAt.`,
+  },
+  {
+    method: "GET",
+    path: "/api/badge/:address",
+    note: "SVG badge stating whether a signed payee claim exists. The badge carries no score. A .svg suffix on the address is accepted. Key-less. 60 requests per minute per IP.",
+    response: `image/svg+xml`,
+  },
+  {
+    method: "GET",
+    path: "/api/badge/agent/:agentId",
+    note: "SVG badge for an ERC-8004 agent. A claim exists or it does not, and the badge carries no score. A .svg suffix on the agent id is accepted. Key-less. 60 requests per minute per IP.",
+    response: `image/svg+xml`,
+  },
+  {
+    method: "GET",
+    path: "/api/badge/endpoint/:id.svg",
+    note: "SVG receipt badge for one x402 endpoint. The text states paid attempts that settled against paid attempts. An unknown endpoint still answers HTTP 200 with a not-yet-measured badge. The .svg suffix is part of the path. Key-less. 60 requests per minute per IP.",
+    response: `image/svg+xml`,
+  },
+  {
+    method: "GET",
+    path: "/api/transparency/operator-overrides",
+    note: "Public log of global operator blacklist actions. Each row has wallet, action, reason, and created_at. Customer-scoped lists are not in this response. Key-less.",
+    response: `{ "overrides": [], "count": "<count>", "note": "…" }`,
+  },
+  {
+    method: "GET",
+    path: "/api/health",
+    note: "Liveness for an uptime poller. The public body is up, degraded, or error, from a probe of both scoring engines. degraded and error answer HTTP 503. ?deep=1 returns per-check detail and requires the admin bearer token. Without that token it answers 403. The plain call is key-less.",
+    response: `HTTP 200 when the body is up. HTTP 503 when the body is degraded or error.`,
   },
 ];
 
@@ -1217,7 +1446,7 @@ app.use("/api/paid", createExpressGate({
       <section id="endpoints" className="scroll-mt-32 space-y-5">
         {endpoints.map((ep) => (
           <div
-            key={ep.path}
+            key={endpointId(ep)}
             id={endpointId(ep)}
             className="scroll-mt-32 space-y-3 border-t border-hair pt-6 text-[0.84375rem] first:border-t-brand-deep"
           >

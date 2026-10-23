@@ -126,6 +126,104 @@ export function toCaip2(network: unknown): string | null {
   return network;
 }
 
+/**
+ * Public name for a chain. `chainLabel()` stays the join key (JSON `chain`,
+ * `isMainnet`, L0/L1 grouping). Screens, `l1.byChain[].label`, and generated
+ * public sentences use this function and no other list of names.
+ *
+ * Named chains: Base, Solana, Tempo, XRPL, Celo, Arc, Stellar, BNB Chain,
+ * Arbitrum One. Any other id falls through to `chainLabel()` so an unknown
+ * chain is not given a name it does not have.
+ */
+const PUBLIC_CHAIN_LABELS: Record<string, string> = {
+  Base: "Base",
+  "eip155:8453": "Base",
+  base: "Base",
+  Solana: "Solana",
+  [`solana:${SOLANA_MAINNET_GENESIS}`]: "Solana",
+  solana: "Solana",
+  "solana-mainnet": "Solana",
+  Tempo: "Tempo",
+  "eip155:4217": "Tempo",
+  tempo: "Tempo",
+  XRPL: "XRPL",
+  "xrpl:0": "XRPL",
+  xrpl: "XRPL",
+  "xrpl:mainnet": "XRPL",
+  Celo: "Celo",
+  "eip155:42220": "Celo",
+  celo: "Celo",
+  Arc: "Arc",
+  "eip155:5042": "Arc",
+  arc: "Arc",
+  "stellar:pubnet": "Stellar",
+  stellar: "Stellar",
+  Stellar: "Stellar",
+  BSC: "BNB Chain",
+  "eip155:56": "BNB Chain",
+  bsc: "BNB Chain",
+  bnb: "BNB Chain",
+  "BNB Chain": "BNB Chain",
+  Arbitrum: "Arbitrum One",
+  "eip155:42161": "Arbitrum One",
+  arbitrum: "Arbitrum One",
+  "Arbitrum One": "Arbitrum One",
+};
+
+/** Canonical CAIP-2 for each public name. One id per chain, not the alias that happened to arrive first. */
+const PUBLIC_CHAIN_NETWORKS: Record<string, string> = {
+  Base: "eip155:8453",
+  Solana: `solana:${SOLANA_MAINNET_GENESIS}`,
+  Tempo: "eip155:4217",
+  XRPL: "xrpl:0",
+  Celo: "eip155:42220",
+  Arc: "eip155:5042",
+  Stellar: "stellar:pubnet",
+  "BNB Chain": "eip155:56",
+  "Arbitrum One": "eip155:42161",
+};
+
+/** Public name. Accepts a CAIP-2 id, a legacy slug, or a `chainLabel()` key such as `BSC`. */
+export function publicChainLabel(networkOrChain: unknown): string {
+  if (typeof networkOrChain !== "string" || networkOrChain === "") return chainLabel(networkOrChain);
+  if (PUBLIC_CHAIN_LABELS[networkOrChain]) return PUBLIC_CHAIN_LABELS[networkOrChain];
+  const lower = networkOrChain.toLowerCase();
+  if (PUBLIC_CHAIN_LABELS[lower]) return PUBLIC_CHAIN_LABELS[lower];
+  const caip = toCaip2(networkOrChain);
+  if (caip && PUBLIC_CHAIN_LABELS[caip]) return PUBLIC_CHAIN_LABELS[caip];
+  const joined = chainLabel(caip ?? networkOrChain);
+  if (PUBLIC_CHAIN_LABELS[joined]) return PUBLIC_CHAIN_LABELS[joined];
+  return joined;
+}
+
+/**
+ * Canonical CAIP-2 for a chain key or a raw network id.
+ * Unknown ids that already look like CAIP-2 pass through. A name with no id returns null.
+ */
+export function chainNetwork(networkOrChain: unknown): string | null {
+  if (typeof networkOrChain !== "string" || networkOrChain === "") return null;
+  const label = publicChainLabel(networkOrChain);
+  if (PUBLIC_CHAIN_NETWORKS[label]) return PUBLIC_CHAIN_NETWORKS[label];
+  for (const [k, v] of Object.entries(KNOWN)) {
+    if (v === label && k.includes(":")) return k;
+  }
+  if (label === "Solana") return `solana:${SOLANA_MAINNET_GENESIS}`;
+  if (label === "Solana Devnet") return `solana:${SOLANA_DEVNET_GENESIS}`;
+  const caip = toCaip2(networkOrChain);
+  if (typeof caip === "string" && caip.includes(":")) return caip;
+  if (networkOrChain.includes(":")) return networkOrChain;
+  return null;
+}
+
+/** `l1.byChain` / L0 `byChain` identity. `chain` is the join key and does not change. */
+export function chainIdentity(chain: string): { chain: string; label: string; network: string } {
+  return {
+    chain,
+    label: publicChainLabel(chain),
+    network: chainNetwork(chain) ?? chain,
+  };
+}
+
 export function isTestnet(network: unknown): boolean {
   return TESTNET_LABELS.has(chainLabel(network));
 }
@@ -190,10 +288,9 @@ export function receiptNetwork(paid: string | null | undefined, catalog: string 
   return p ?? c ?? null;
 }
 
-/** 購入表の「Payment chain」列の表示名。KNOWN に無い stellar:pubnet は公開名 Stellar で出す（isMainnet と l1.byChain の鍵は動かさない。点検 低2）。 */
+/** 購入表の「Payment chain」列の公開名。正は publicChainLabel。chainLabel の結合キーは変えない。 */
 export function paymentChainLabel(network: string): string {
-  if (network === "stellar:pubnet") return "Stellar";
-  return chainLabel(network);
+  return publicChainLabel(network);
 }
 
 /**
@@ -260,8 +357,7 @@ export function networkFilterCellTitle(catalogNetwork: string | null, filter: st
 }
 
 /**
- * Network 列の見える語。カタログの network が絞り込みの鎖なら chainLabel のまま。
- * 絞り込みの外なら、セルは絞り込みの鎖の公開名。カタログの id は title（networkFilterCellTitle）に残す。
+ * Network 列の見える語。公開名は publicChainLabel。台帳の id は title（networkFilterCellTitle）に残す。
  */
 export function networkFilterCellLabel(catalogNetwork: string | null, filter: string | null): string {
   if (filter) {
@@ -269,7 +365,7 @@ export function networkFilterCellLabel(catalogNetwork: string | null, filter: st
       !!catalogNetwork && networkFilterIds(filter).some((id) => id.toLowerCase() === catalogNetwork.toLowerCase());
     if (!catalogHit) return paymentChainLabel(canonicalNetworkId(filter));
   }
-  return catalogNetwork ? chainLabel(catalogNetwork) : "—";
+  return catalogNetwork ? publicChainLabel(catalogNetwork) : "—";
 }
 
 /** 絞り込みの入力と同じ鎖を指す、台帳に現れうる network 文字列。未知の id はそれ自身だけ。 */
