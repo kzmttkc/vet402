@@ -14,6 +14,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 ---
 
 
+
+## 2026-10-23 README lists the nine chains vet402 buys on
+
+- **What**: README gets a "Chains vet402 buys on" section near the top: one row per chain with the network id, the asset paid and the whole-ledger counts read from /api/v1/observatory/state at 2026-10-23 09:10 UTC, and a BNB Chain paragraph (USD1 by EIP-3009, every settled row nonce-bound, a grep of the public export for eip155:56).
+- **Why**: The grant session asked for BNB Chain in the README that the BNB Chain Builder Grant links to. It had no chain list at all, so every chain is listed the same way.
+- **Impact**: Docs only. The counts are dated and the section points to the live state page.
+
 ## 2026-10-22 Arbitrum One lane turned on
 
 - **What**: Production now has `OBSERVATORY_ARBITRUM_L1_ENABLED=true` and `ARBITRUM_RPC_URL` set to the Offchain Labs public RPC (`arb1.arbitrum.io`). The privacy page lists that RPC and its revision date is October 22, 2026.

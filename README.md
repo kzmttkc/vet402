@@ -6,6 +6,28 @@
 
 *vet402 buys. It settles. It publishes the measurements.*
 
+## Chains vet402 buys on
+
+vet402 pays x402 sellers on nine chains with its own funds and publishes every attempt. Counts below were read from https://vet402.com/api/v1/observatory/state at 2026-10-23 09:10 UTC (whole ledger). They grow daily, so read the live page for current numbers.
+
+| Chain | Network id | Asset paid | Paid attempts | Settled | Settled and answered 2xx |
+|---|---|---|---:|---:|---:|
+| Base | eip155:8453 | USDC | 15,208 | 9,616 | 8,912 |
+| Solana | solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp | USDC | 983 | 724 | 683 |
+| Tempo | eip155:4217 | USDC.e | 312 | 282 | 79 |
+| XRPL | xrpl:0 | RLUSD | 195 | 81 | 61 |
+| Celo | eip155:42220 | USDC | 168 | 140 | 135 |
+| Arc | eip155:5042 | USDC | 138 | 68 | 68 |
+| Stellar | stellar:pubnet | USDC | 77 | 70 | 70 |
+| BNB Chain | eip155:56 | USD1 | 59 | 41 | 38 |
+| Arbitrum One | eip155:42161 | USDC | 30 | 14 | 14 |
+
+**BNB Chain.** vet402 pays sellers that accept USD1 (`0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d`) by EIP-3009 on eip155:56, and every settled BNB Chain row is bound to the nonce vet402 signed. To list them:
+
+```bash
+curl -sL "https://vet402.com/api/v1/observatory/export.csv?days=90" | grep "eip155:56"
+```
+
 ## Arbitrum Open House Singapore (vet402 /rwa)
 
 Paste a Robinhood Chain wallet and see its Stock Token track record rebuilt from public chain data, including look-alike tokens it was sent and the corporate actions (share multiplier changes) it held through. Live at https://vet402.com/rwa . Start with [docs/rwa/README.md](docs/rwa/README.md) (30-second path, verify-it-yourself, what is not trustless).
