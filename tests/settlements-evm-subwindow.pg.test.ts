@@ -64,7 +64,7 @@ if (!TEST_DB) {
       }
       return out;
     };
-    const classifier = { classify: async () => "none" as const, testWallets: new Set<string>(), sameCluster: () => false };
+    const classifier = { classify: async () => "none" as const, testWallets: new Set<string>(), measurementPayers: new Set<string>(), sameCluster: () => false };
     const checkpoint = async () =>
       rows<{ last_block: string }>(await db.execute(sql`SELECT last_block::text AS last_block FROM indexer_checkpoints WHERE scope = 'settlements:eip155:8453'`))[0]?.last_block;
 

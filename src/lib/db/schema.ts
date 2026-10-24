@@ -930,7 +930,7 @@ export const settlements = pgTable(
     attribution: text("attribution").notNull().default("unmatched"),
     resourceId: text("resource_id"),
     endpointId: uuid("endpoint_id"),
-    /** none | self_deal | circular | test */
+    /** none | self_deal | circular | test | measurement */
     washFlag: text("wash_flag").notNull().default("none"),
     /** l1_purchase | payments_api | chain_index */
     source: text("source").notNull(),
@@ -1252,7 +1252,7 @@ export const settlementDaily = pgTable(
     chain: text("chain").notNull(),
     payeeId: text("payee_id"),
     payerId: text("payer_id"),
-    /** none | self_deal | circular | test */
+    /** none | self_deal | circular | test | measurement */
     washFlag: text("wash_flag").notNull(),
     /** l1_purchase | payments_api | chain_index */
     source: text("source").notNull(),

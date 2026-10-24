@@ -30,7 +30,7 @@ function loaded(n: number, over: Partial<SellerFactsLoaded["facts"]> = {}): Sell
       payees: [],
       settlement_30d_real: 0,
       settlement_30d_raw: 0,
-      settlement_30d_test: 0,
+      settlement_30d_test: 0, settlement_30d_measurement: 0,
       unique_payers_30d_real: 0,
       wash_dominated: false,
       ...over,

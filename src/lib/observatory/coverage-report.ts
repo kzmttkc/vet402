@@ -32,7 +32,7 @@ export async function getCoverageWeekly(): Promise<CoverageWeekly> {
     real_settlements: 0,
     raw_settlements: 0,
     definition:
-      "listed = active catalog endpoints seen in the last 30 days; l0_measured = of those, probed (L0) in the last 7 days; l1_measured = of those, purchased (L1 attempt) in the last 7 days; real_settlements / raw_settlements = indexed settlements in the last 7 days with and without wash/test exclusion.",
+      "listed = active catalog endpoints seen in the last 30 days; l0_measured = of those, probed (L0) in the last 7 days; l1_measured = of those, purchased (L1 attempt) in the last 7 days; real_settlements / raw_settlements = indexed settlements in the last 7 days with and without the wash, test, and measurement exclusion.",
   };
   if (!db) return empty;
   const r = rowsOf<Record<string, number>>(

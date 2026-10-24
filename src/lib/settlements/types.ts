@@ -4,12 +4,13 @@
 // オンチェーン索引）が同じ行の形に落ちる。
 //
 //   attribution: confirmed | probable | unmatched
-//   wash_flag:   none | self_deal | circular | test
+//   wash_flag:   none | self_deal | circular | test | measurement
 //
-// 「実需」= wash / test を除外した値。生値も出す。混ぜて一つの数字にしない（§7.2）。
+// 「実需」= wash_flag none。test は vet402 自身の測定購入。measurement は
+// 公開一覧の他社の測定・点検サービス。生値も出す。混ぜて一つの数字にしない（§7.2）。
 // ============================================================
 
-export type WashFlag = "none" | "self_deal" | "circular" | "test";
+export type WashFlag = "none" | "self_deal" | "circular" | "test" | "measurement";
 export type Attribution = "confirmed" | "probable" | "unmatched";
 export type SettlementSource = "l1_purchase" | "payments_api" | "chain_index";
 

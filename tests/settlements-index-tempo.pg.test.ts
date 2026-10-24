@@ -88,7 +88,7 @@ if (!TEST_DB) {
       return [];
     }) as never;
 
-    const classifier = { classify: async () => "none" as const, testWallets: new Set<string>(), sameCluster: () => false };
+    const classifier = { classify: async () => "none" as const, testWallets: new Set<string>(), measurementPayers: new Set<string>(), sameCluster: () => false };
     const summary = await indexEvmChain(chain, { client: client as never, getLogs, classifier, budgetMs: 30_000 });
     assert.equal(summary.skipped, undefined, JSON.stringify(summary));
     assert.equal(summary.payees, 1);

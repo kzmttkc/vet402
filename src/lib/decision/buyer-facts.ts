@@ -65,13 +65,13 @@ export async function loadBuyerFacts(payerId: string): Promise<BuyerFacts> {
       WITH u AS (
         SELECT payee_id, coalesce(block_time, observed_at) AS at, 1::bigint AS n
         FROM settlements
-        WHERE payer_id = ${payerId} AND wash_flag = 'none' AND ${SETTLEMENT_DAY} > ${UTC_TODAY} - 30
+        WHERE payer_id = ${payerId} AND wash_flag IN ('none', 'measurement') AND ${SETTLEMENT_DAY} > ${UTC_TODAY} - 30
         ${
           daily
             ? sql`UNION ALL
         SELECT payee_id, (day::timestamp AT TIME ZONE 'UTC') AS at, n::bigint
         FROM settlement_daily
-        WHERE payer_id = ${payerId} AND wash_flag = 'none' AND day > ${UTC_TODAY} - 30`
+        WHERE payer_id = ${payerId} AND wash_flag IN ('none', 'measurement') AND day > ${UTC_TODAY} - 30`
             : sql``
         }
       )

@@ -178,7 +178,7 @@ test("buildDecision: role=payer は verified_terms を載せ（省略は null）
     payees: ["eip155:8453:0xb"],
     settlement_30d_real: 1,
     settlement_30d_raw: 1,
-    settlement_30d_test: 0,
+    settlement_30d_test: 0, settlement_30d_measurement: 0,
     unique_payers_30d_real: 1,
     wash_dominated: false,
   };

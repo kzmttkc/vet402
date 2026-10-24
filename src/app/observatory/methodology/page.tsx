@@ -41,6 +41,7 @@ import { L0_REASON_CODES } from "@/lib/observatory/l0-reasons";
 import { L0_BODY_CAP_BYTES, L0_BODY_CAP_RAISED_ON } from "@/lib/observatory/l0-probe";
 import { RULE_CHANGE_PRIORITY_PER_HOST } from "@/lib/observatory/l0-rule-change";
 import { TableScroll } from "@/components/site/TableScroll";
+import { MEASUREMENT_PAYERS } from "@/lib/settlements/measurement-payers";
 import { SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS, SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS } from "@/lib/sellers/fix-modes";
 import { BASE_DECLARED_QUERY_SINCE_LABEL, queryUnsentUntilSentence, utcSecondsLabel } from "@/lib/observatory/request-query";
 import { DECLARED_BODY_SENT_SINCE } from "@/lib/observatory/request-body";
@@ -1038,6 +1039,62 @@ export default async function ObservatoryMethodologyPage() {
           </Link>
           .
         </p>
+
+        <h3 className="doc-p font-semibold" id="measurement-payers">
+          Other measurement services
+        </h3>
+        <p className="doc-p">
+          <code>settlement_30d_real</code> counts indexed settlements whose <code>wash_flag</code> is{" "}
+          <code>none</code>. A payer that vet402 pays from stays <code>test</code> and is published as{" "}
+          <code>settlement_30d_test</code>. A payer on the list below is stored as <code>wash_flag</code>{" "}
+          <code>measurement</code> and published as <code>settlement_30d_measurement</code>. Both leave{" "}
+          <code>settlement_30d_real</code>, and both leave the <code>wash_dominated</code> denominator.
+          The denominator is raw minus test minus measurement. A payer is listed when the public page
+          of that service describes the work as measurement or inspection, and a seller report names the
+          address. A generic User-Agent, with no such page, does not put an address on this list.
+          Crosspeel says the wallet that pays for probes is rotated between runs, so this row is the
+          address named in the seller report together with that page. A later wallet is a separate row
+          when a page of the same kind names it. Rows already in the index take the new flag when the
+          backfill for this list runs. On the buyer side, a listed service&apos;s own purchases still count
+          in its 30-day history, because they are real payments that service made.
+        </p>
+        <TableScroll label="Measurement payers">
+          <table className="fact-table">
+            <caption className="sr-only">Payers listed as other measurement services</caption>
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Chain</th>
+                <th scope="col">Address</th>
+                <th scope="col">Source</th>
+                <th scope="col">Added</th>
+                <th scope="col">Basis</th>
+              </tr>
+            </thead>
+            <tbody>
+              {MEASUREMENT_PAYERS.map((p) => (
+                <tr key={p.payerId}>
+                  <td>{p.name}</td>
+                  <td>
+                    <code>{p.chain}</code>
+                  </td>
+                  <td>
+                    <code>{p.address}</code>
+                  </td>
+                  <td>
+                    <a href={p.sourceUrl} className="underline" rel="noopener noreferrer" target="_blank">
+                      {p.sourceUrl}
+                    </a>
+                  </td>
+                  <td>{p.addedOn}</td>
+                  <td>
+                    {p.basis} <q>{p.sourceQuote}</q>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
 
         <h2 className="sec-head">
           <span className="sec-no">9.</span>

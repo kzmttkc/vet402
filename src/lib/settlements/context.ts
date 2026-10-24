@@ -12,12 +12,15 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { payeeId as toPartyId, parsePartyId } from "@/lib/ids/canonical";
 import { classifyWash, type WashContext } from "./wash";
+import { MEASUREMENT_PAYER_IDS } from "./measurement-payers";
 import type { WashFlag } from "./types";
 import { rowsOf } from "./upsert";
 
 export type WashClassifier = {
   classify: (s: { payerId: string | null; payeeId: string | null; blockTime: Date | null }) => Promise<WashFlag>;
   testWallets: ReadonlySet<string>;
+  /** 公開一覧の測定・点検 payer。test（vet402 自身）とは別。 */
+  measurementPayers: ReadonlySet<string>;
   /** 同一 funder（メモリ上・同期）。索引のバッチ処理が直接使う。 */
   sameCluster: (payerId: string, payeeId: string) => boolean;
 };
@@ -72,16 +75,23 @@ export async function loadWashClassifier(): Promise<WashClassifier> {
     return rows.length > 0;
   };
 
+  const measurementPayers = MEASUREMENT_PAYER_IDS;
   return {
     testWallets,
+    measurementPayers,
     sameCluster,
     classify: async (s) => {
       // 純関数に渡す前に、非同期の逆方向照会だけ先に済ませる（判定順序は classifyWash が持つ）。
+      // test と measurement は往復を見る前に決まるので、その照会はしない。
       let reverse = false;
-      if (s.payerId && s.payeeId && s.blockTime && !testWallets.has(s.payerId) && s.payerId !== s.payeeId) {
+      const listed =
+        s.payerId !== null &&
+        (measurementPayers.has(s.payerId) ||
+          (s.payerId.startsWith("eip155:") && measurementPayers.has(s.payerId.toLowerCase())));
+      if (s.payerId && s.payeeId && s.blockTime && !testWallets.has(s.payerId) && !listed && s.payerId !== s.payeeId) {
         if (!sameCluster(s.payerId, s.payeeId)) reverse = await reverseWithin(s.payerId, s.payeeId, s.blockTime, 24);
       }
-      const ctx: WashContext = { testWallets, sameCluster, reverseWithinHours: () => reverse };
+      const ctx: WashContext = { testWallets, measurementPayers, sameCluster, reverseWithinHours: () => reverse };
       return classifyWash(s, ctx);
     },
   };

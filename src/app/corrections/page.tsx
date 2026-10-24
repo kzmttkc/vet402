@@ -60,6 +60,23 @@ type Correction = {
 const CORRECTIONS: Correction[] = [
   {
     date: "2026-10-24",
+    subject: "Counting other measurement services as real buyers",
+    wrong:
+      "settlement_30d_real counted a payment as a real buyer when the row was not self_deal, not circular, and not a wallet vet402 pays from. " +
+      "The seller of api.ozdreamtools.de reported in public that two payers on that route describe themselves as measurement or inspection services " +
+      "(github.com/kzmttkc/vet402/issues/43). Those payments sat in settlement_30d_real. " +
+      "Two further payers on the same route sent a generic node User-Agent. Nothing public names what those two are, so they stay in the real count.",
+    action:
+      "Changed on 2026-10-24. A payer on the published measurement list is stored as wash_flag measurement and leaves settlement_30d_real. " +
+      "The count is published as settlement_30d_measurement, separate from settlement_30d_test. " +
+      "The list, with the public page each row came from, is on the methodology page. " +
+      "The two listed addresses on Base are Crosspeel 0x8d2a47cbd262e1bc5ee0645c81899f9896957d37 and Mizan 0xe3badbd4f38214b9eae528a1a5398f6678f63fb3. " +
+      "Rows already in the index move when the backfill for this list is run. " +
+      "A short run of payments from one payer on one route was checked as a second signal. " +
+      "It was not used to mark rows, and it was not used to move rows out of the real count, because that shape also fits payers with no public measurement page.",
+  },
+  {
+    date: "2026-10-24",
     subject: "Counting a route the catalog no longer lists as a published fail",
     wrong:
       "A route absent from a complete fetch of the public discovery catalog stayed in the published fail count when its newest probes failed. Catalog status delisted is that absence. It is written when a complete fetch no longer lists a route that the previous snapshot listed. The seller's own discovery document is not what this count reads.",

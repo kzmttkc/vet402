@@ -20,7 +20,8 @@
 //                      2026-09-29: 印（l2.reason）の無い古い mismatch は legacyL2SchemaOf で読み直す。16,000 バイトで
 //                      切った JSON が読めずに「全部欠けた」と記録された行を、売り手の不一致として数えない（l2-check.ts）
 //   offer_stability  = 24h 窓で (amount, asset, payTo) の実質変更 ≥ 3 → drifting
-//   wash_dominated   = raw ≥ 10 かつ real ≤ raw × 10%
+//   wash_dominated   = (raw − test − measurement) ≥ 10 かつ real ≤ その 10%
+//                      test と measurement は開示して分母から外す（測った店ほど BLOCK にしない）
 // trustScore はここに入れない（§8.3）。
 // ============================================================
 import { createHash } from "node:crypto";
@@ -176,7 +177,7 @@ export type SellerFactsInput = {
   probes: ProbeInput[];
   /** newest first */
   purchases: PurchaseInput[];
-  settlements30d: { raw: number; real: number; test: number; uniquePayersReal: number };
+  settlements30d: { raw: number; real: number; test: number; measurement?: number; uniquePayersReal: number };
   payees: string[];
   declaredSchema: unknown | null;
   /** 2026-09-29: 帰属の判定に使う出品の宣言メソッドと宣言の要約（declared_input）。 */
@@ -429,7 +430,10 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
   const availability = (list: ProbeInput[]) => (list.length === 0 ? null : list.filter((p) => p.verdict === "pass").length / list.length);
 
   const { raw, real, test, uniquePayersReal } = input.settlements30d;
-  const thirdPartyRaw = Math.max(0, raw - test);
+  const measurement = input.settlements30d.measurement ?? 0;
+  // test（vet402 自身）と measurement（公開一覧の他社）は wash ではない。分母に入れると、
+  // 測定の支払いが多い店が wash_dominated になる。どちらも開示したうえで外す。
+  const thirdPartyRaw = Math.max(0, raw - test - measurement);
   return {
     l0: {
       status: l0Status,
@@ -467,6 +471,7 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
     settlement_30d_real: real,
     settlement_30d_raw: raw,
     settlement_30d_test: test,
+    settlement_30d_measurement: measurement,
     unique_payers_30d_real: uniquePayersReal,
     wash_dominated: thirdPartyRaw >= WASH_DOMINATED_MIN_RAW && real <= thirdPartyRaw * WASH_DOMINATED_REAL_SHARE,
   };

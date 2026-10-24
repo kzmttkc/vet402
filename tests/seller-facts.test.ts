@@ -92,9 +92,18 @@ test("inconclusive（2026-09-08）: 決済は確定したが 4xx（我々のリ�
 test("wash_dominated の分母は第三者の raw——自社の測定購入（test）だけの店は BLOCK にならない", () => {
   const f = assembleSellerFacts({ ...base, settlements30d: { raw: 10, real: 0, test: 10, uniquePayersReal: 0 } });
   assert.equal(f.settlement_30d_test, 10);
+  assert.equal(f.settlement_30d_measurement, 0);
   assert.equal(f.wash_dominated, false);
   const g = assembleSellerFacts({ ...base, settlements30d: { raw: 25, real: 1, test: 5, uniquePayersReal: 1 } });
   assert.equal(g.wash_dominated, true); // 第三者 raw 20・real 1
+});
+
+test("wash_dominated の分母は measurement も外す。他社の測定だけの差は BLOCK にならない", () => {
+  const f = assembleSellerFacts({ ...base, settlements30d: { raw: 24, real: 2, test: 0, measurement: 22, uniquePayersReal: 2 } });
+  assert.equal(f.settlement_30d_measurement, 22);
+  assert.equal(f.wash_dominated, false); // 第三者 raw 2
+  const g = assembleSellerFacts({ ...base, settlements30d: { raw: 40, real: 1, test: 0, measurement: 10, uniquePayersReal: 1 } });
+  assert.equal(g.wash_dominated, true); // 第三者 raw 30・real 1
 });
 
 // 2026-09-02 監査 P1-11: L2 mismatch の公開に宣言ハッシュ・応答ハッシュ・差分ハッシュを付ける

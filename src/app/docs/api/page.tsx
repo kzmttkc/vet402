@@ -270,7 +270,7 @@ const endpoints: Endpoint[] = [
     "l2": { "status": "undeclared", "declaration_hash": null, "response_hash": null, "diff_hash": null, "missing_keys": null, "observed_at": null },
     "availability_7d": 1, "availability_30d": 0.97, "offer_stability": "stable",
     "payees": ["eip155:8453:0x…"],
-    "settlement_30d_real": 41, "settlement_30d_raw": 44, "settlement_30d_test": 3,
+    "settlement_30d_real": 41, "settlement_30d_raw": 44, "settlement_30d_test": 3, "settlement_30d_measurement": 0,
     "unique_payers_30d_real": 9, "wash_dominated": false
   },
   "spending_halted": false,
@@ -314,10 +314,10 @@ const endpoints: Endpoint[] = [
   {
     method: "GET",
     path: "/api/v1/observatory/endpoints/:id/facts",
-    note: "L0–L2 seller facts for one endpoint — no key, 120/min. :id is the observatory uuid or the endpoint_id. The same facts object /decision carries, without the recommendation: this route contains no score and no verdict by design (§8.3). n_probe_error counts attempts where our own request was malformed, kept apart from the seller's non-delivery; settlement_30d_test is vet402's own measurement purchases, disclosed and excluded from the wash_dominated denominator. The ledger column l2_schema stores match, mismatch, no_declaration, or not_checked. The decision document and the facts document store conform, mismatch, undeclared, or not_checked. conform is written when the re-read L2 value (l2_reading) of the latest delivery is match. mismatch is written when that re-read value is mismatch. An older mismatch row with no recorded reason is re-read first, and a cut body reads not_checked. In the other cases the decision word is not_checked when the current declaration names output (a required key or an example property), and undeclared when it does not.",
+    note: "L0–L2 seller facts for one endpoint — no key, 120/min. :id is the observatory uuid or the endpoint_id. The same facts object /decision carries, without the recommendation: this route contains no score and no verdict by design (§8.3). n_probe_error counts attempts where our own request was malformed, kept apart from the seller's non-delivery; settlement_30d_test is vet402's own measurement purchases, disclosed and excluded from the wash_dominated denominator. settlement_30d_measurement counts payers on the published measurement list (wash_flag measurement) and is left out of settlement_30d_real and out of that denominator. The list is at https://vet402.com/observatory/methodology#measurement-payers. The ledger column l2_schema stores match, mismatch, no_declaration, or not_checked. The decision document and the facts document store conform, mismatch, undeclared, or not_checked. conform is written when the re-read L2 value (l2_reading) of the latest delivery is match. mismatch is written when that re-read value is mismatch. An older mismatch row with no recorded reason is re-read first, and a cut body reads not_checked. In the other cases the decision word is not_checked when the current declaration names output (a required key or an example property), and undeclared when it does not.",
     response: `{
   "subject": { "type": "resource", "id": "9a7e…", "endpoint_id": "3f1c…", "observatory_id": "521e929e-…", "canonical_url": "…", "method": "GET" },
-  "facts": { "l0": {…}, "l1": {…}, "l2": {…}, "availability_7d": 1, "availability_30d": 0.97, "offer_stability": "stable", "payees": ["…"], "settlement_30d_real": 41, "settlement_30d_raw": 44, "settlement_30d_test": 3, "unique_payers_30d_real": 9, "wash_dominated": false },
+  "facts": { "l0": {…}, "l1": {…}, "l2": {…}, "availability_7d": 1, "availability_30d": 0.97, "offer_stability": "stable", "payees": ["…"], "settlement_30d_real": 41, "settlement_30d_raw": 44, "settlement_30d_test": 3, "settlement_30d_measurement": 0, "unique_payers_30d_real": 9, "wash_dominated": false },
   "freshness": { "l0": "…", "l1": "…", "l2": null },
   "evidence": [ { "level": "L0", "url": "…" }, { "level": "L1", "purchase_id": "…", "url": "…" } ],
   "disclaimer": "…",
@@ -327,14 +327,14 @@ const endpoints: Endpoint[] = [
   {
     method: "GET",
     path: "/api/v1/census/summary?chain=eip155:8453&window=30d",
-    note: "Settlement census — no key, 60/min, cached 5 minutes. settlements_raw counts every indexed x402-related settlement in the window; settlements_real excludes wash_flag self_deal / circular / test (including every wallet vet402 pays from). Both are always returned together and never merged. chain is CAIP-2 or a v1 slug (base, solana); omit for all chains. window is 7d or 30d. indexed_since reports how far back the index actually reaches, overall and per chain, so window_covered_days is never more than window_requested_days and the counts are a floor rather than a total whenever window_fully_covered is false. 400 invalid_window / invalid_chain.",
+    note: "Settlement census — no key, 60/min, cached 5 minutes. settlements_raw counts every indexed x402-related settlement in the window; settlements_real excludes wash_flag self_deal / circular / test (including every wallet vet402 pays from) and measurement (payers on the published list of other measurement or inspection services, counted in wash.measurement). Both are always returned together and never merged. chain is CAIP-2 or a v1 slug (base, solana); omit for all chains. window is 7d or 30d. indexed_since reports how far back the index actually reaches, overall and per chain, so window_covered_days is never more than window_requested_days and the counts are a floor rather than a total whenever window_fully_covered is false. 400 invalid_window / invalid_chain.",
     responseHeading: "Example of the shape only",
     responseNote:
       "These counts are not a reading. Fetch the URL and cite retrievedAt from that response.",
     response: `{
   "chain": "eip155:8453", "window": "30d",
   "settlements_raw": "<count>", "settlements_real": "<count>",
-  "wash": { "self_deal": "<count>", "circular": "<count>", "test": "<count>" },
+  "wash": { "self_deal": "<count>", "circular": "<count>", "test": "<count>", "measurement": "<count>" },
   "attribution": { "confirmed": "<count>", "probable": "<count>", "unmatched": "<count>" },
   "unique_payers_raw": "<count>", "unique_payers_real": "<count>", "unique_payees_real": "<count>",
   "endpoints_with_real_settlement": "<count>",

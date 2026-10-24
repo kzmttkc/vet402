@@ -152,7 +152,7 @@ if (!TEST_DB) {
       assert.equal(c.by_source.payments_api, 3);
       assert.equal(c.by_source.chain_index, 1);
       const per = await getSettlementCounts({ endpointId });
-      assert.deepEqual(per, { raw: 4, real: 2, test: 1, uniquePayersReal: 1 }); // endpoint 紐付きの行だけ（chain_index 行は endpoint null）
+      assert.deepEqual(per, { raw: 4, real: 2, test: 1, measurement: 0, uniquePayersReal: 1 }); // endpoint 紐付きの行だけ（chain_index 行は endpoint null）
     });
   });
 }

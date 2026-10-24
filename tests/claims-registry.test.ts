@@ -496,6 +496,8 @@ function publicSurfaces(): string[] {
   // 2026-10-21: public/llms.txt は静的ファイルで、page.tsx の走査に入らない。
   // 機械が引用する正典なので、同じ関門に名指しで足す。
   out.push(relative(ROOT, join(ROOT, "public/llms.txt")));
+  // 2026-10-24: 他社の測定 payer 一覧。basis と sourceQuote を方法論の表にそのまま出す。
+  out.push(relative(ROOT, join(ROOT, "src/lib/settlements/measurement-payers.ts")));
   return out.sort();
 }
 

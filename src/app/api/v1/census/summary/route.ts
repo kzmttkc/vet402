@@ -5,7 +5,7 @@ import { toCaip2 } from "@/lib/observatory/chains";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // §9.1: GET /api/v1/census/summary?chain=&window=7d|30d
-// 生値（raw）と実需（real = wash/test 除外）を同じ応答で両方返す。混ぜない（§7.2）。
+// 生値（raw）と実需（real = wash_flag none。self_deal / circular / test / measurement を除く）を同じ応答で両方返す。混ぜない（§7.2）。
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 

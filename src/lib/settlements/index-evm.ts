@@ -484,7 +484,12 @@ export async function indexEvmChain(
         const reverseInWindow = pairs.has(`${payee}>${payer}`);
         const washFlag = classifyWash(
           { payerId, payeeId, blockTime },
-          { testWallets: classifier.testWallets, sameCluster: classifier.sameCluster, reverseWithinHours: () => reverseInWindow },
+          {
+            testWallets: classifier.testWallets,
+            measurementPayers: classifier.measurementPayers,
+            sameCluster: classifier.sameCluster,
+            reverseWithinHours: () => reverseInWindow,
+          },
         );
         const memo = memoByTx.get(log.transactionHash.toLowerCase()) ?? null;
         pending.push(

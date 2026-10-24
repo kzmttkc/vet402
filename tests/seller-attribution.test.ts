@@ -263,7 +263,7 @@ const okFacts: SellerFacts = {
   payees: ["eip155:8453:0xb"],
   settlement_30d_real: 259,
   settlement_30d_raw: 300,
-  settlement_30d_test: 0,
+  settlement_30d_test: 0, settlement_30d_measurement: 0,
   unique_payers_30d_real: 19,
   wash_dominated: false,
 };

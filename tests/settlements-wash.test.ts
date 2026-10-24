@@ -38,3 +38,44 @@ test("payer か payee が不明なら none（分類できないものに旗を�
 });
 test("blockTime が無ければ circular は判定しない", () =>
   assert.equal(classifyWash({ ...base, blockTime: null }, ctx({ reverseWithinHours: () => true })), "none"));
+
+const CROSS = "eip155:8453:0x8d2a47cbd262e1bc5ee0645c81899f9896957d37";
+const NODE = "eip155:8453:0x7dd81398fac7de0bf843bfd874cbea68face17d2";
+const CROSS_MIXED = "eip155:8453:0x8D2A47CBD262E1BC5EE0645C81899F9896957D37";
+
+test("公開一覧の payer は measurement。集合を省略しても一覧を使う", () => {
+  assert.equal(classifyWash({ ...base, payerId: CROSS }, ctx()), "measurement");
+});
+
+test("空の measurementPayers は一覧を無効にし、渡した集合にあれば measurement", () => {
+  assert.equal(classifyWash({ ...base, payerId: CROSS }, ctx({ measurementPayers: new Set() })), "none");
+  assert.equal(
+    classifyWash({ ...base, payerId: CROSS }, ctx({ measurementPayers: new Set([CROSS]) })),
+    "measurement",
+  );
+});
+
+test("一覧に無い payer（汎用 node User-Agent の住所）は none のまま", () => {
+  assert.equal(classifyWash({ ...base, payerId: NODE }, ctx()), "none");
+});
+
+test("test は measurement より先。vet402 自身の payer は test のまま", () => {
+  assert.equal(
+    classifyWash({ ...base, payerId: CROSS }, ctx({ testWallets: new Set([CROSS]), measurementPayers: new Set([CROSS]) })),
+    "test",
+  );
+});
+
+test("measurement は self_deal と circular より先", () => {
+  assert.equal(
+    classifyWash(
+      { ...base, payerId: CROSS, payeeId: CROSS },
+      ctx({ measurementPayers: new Set([CROSS]), sameCluster: () => true, reverseWithinHours: () => true }),
+    ),
+    "measurement",
+  );
+});
+
+test("eip155 の大文字住所も一覧に当たる", () => {
+  assert.equal(classifyWash({ ...base, payerId: CROSS_MIXED }, ctx()), "measurement");
+});

@@ -1930,9 +1930,10 @@ paths:
       summary: Settlement census — raw and real side by side
       description: |
         Product spec §7.2 / §9.1. `settlements_raw` counts every indexed
-        x402-related settlement in the window; `settlements_real` excludes
-        wash_flag self_deal / circular / test (including every wallet vet402
-        pays from). Both numbers are always returned together and never merged.
+        x402-related settlement in the window. `settlements_real` leaves out
+        wash_flag self_deal, circular, test (wallets vet402 pays from), and
+        measurement (the published list of other measurement services). Both
+        numbers are always returned together and never merged.
         Attribution and source breakdowns are included, with the definition
         text in `definition`. `indexed_since` states how far back the index
         actually reaches — overall, per chain, and as a day count against the
@@ -4543,7 +4544,7 @@ components:
       description: >-
         §8.1 seller facts for a Resource / Endpoint / Payee. Measurement
         records only — no trustScore, no recommendation (§8.3).
-      required: [l0, l1, l2, availability_7d, availability_30d, offer_stability, payees, settlement_30d_real, settlement_30d_raw, settlement_30d_test, unique_payers_30d_real, wash_dominated]
+      required: [l0, l1, l2, availability_7d, availability_30d, offer_stability, payees, settlement_30d_real, settlement_30d_raw, settlement_30d_test, settlement_30d_measurement, unique_payers_30d_real, wash_dominated]
       properties:
         l0:
           type: object
@@ -4624,17 +4625,20 @@ components:
           type: array
           items: { type: string }
           description: payee_id values (chain:address) declared by resources under this endpoint.
-        settlement_30d_real: { type: integer, description: 30-day settlements after wash / test exclusion. }
-        settlement_30d_raw: { type: integer, description: Every indexed 30-day settlement, including wash and test. }
+        settlement_30d_real: { type: integer, description: 30-day settlements with wash_flag none. self_deal, circular, test, and measurement are left out. }
+        settlement_30d_raw: { type: integer, description: Indexed 30-day settlements, including wash, test, and measurement. }
         settlement_30d_test:
           type: integer
-          description: Of raw, vet402's own measurement purchases (wash_flag test). Excluded from the wash_dominated denominator.
+          description: Of raw, wallets vet402 pays from (wash_flag test). Left out of the wash_dominated denominator. Other measurement services are settlement_30d_measurement.
+        settlement_30d_measurement:
+          type: integer
+          description: Of raw, payers on the published measurement list (wash_flag measurement). Separate from settlement_30d_test. Left out of settlement_30d_real and out of the wash_dominated denominator.
         unique_payers_30d_real: { type: integer }
         wash_dominated:
           type: boolean
           description: >-
             Real demand is near zero while listings are thick (§8.3 BLOCK
-            condition). Denominator is third-party raw (raw − test).
+            condition). Denominator is third-party raw (raw minus test minus measurement).
     BuyerFacts:
       type: object
       description: §8.2 buyer facts for a Payer / Agent (role=payee decisions).
@@ -4797,7 +4801,7 @@ components:
             is the time verification finished. null when the row names none
             of these clocks.
         attribution: { type: string, description: confirmed | probable | unmatched }
-        wash_flag: { type: string, description: none | self_deal | circular | test }
+        wash_flag: { type: string, description: none | self_deal | circular | test | measurement }
         resource_id: { type: string, nullable: true }
         endpoint_id: { type: string, nullable: true }
     PayeeRef:
@@ -4947,11 +4951,12 @@ components:
         settlements_real: { type: integer }
         wash:
           type: object
-          required: [self_deal, circular, test]
+          required: [self_deal, circular, test, measurement]
           properties:
             self_deal: { type: integer }
             circular: { type: integer }
-            test: { type: integer, description: Known measurement wallets, including every wallet vet402 pays from. }
+            test: { type: integer, description: Wallets vet402 pays from (wash_flag test). }
+            measurement: { type: integer, description: Payers on the published measurement list (wash_flag measurement). }
         attribution:
           type: object
           required: [confirmed, probable, unmatched]

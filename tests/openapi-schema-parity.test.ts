@@ -163,6 +163,7 @@ const SURFACES: Surface[] = [
       "settlement_30d_raw",
       // vet402 自身の測定購入。分母から外して開示する（2026-09-02 exa.ai の誤 BLOCK）。
       "settlement_30d_test",
+      "settlement_30d_measurement",
       "unique_payers_30d_real",
       "wash_dominated",
     ],

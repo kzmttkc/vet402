@@ -14,7 +14,7 @@ export type CensusSummary = {
   window: CensusWindow;
   settlements_raw: number;
   settlements_real: number;
-  wash: { self_deal: number; circular: number; test: number };
+  wash: { self_deal: number; circular: number; test: number; measurement: number };
   attribution: { confirmed: number; probable: number; unmatched: number };
   unique_payers_raw: number;
   unique_payers_real: number;
@@ -51,7 +51,7 @@ export type CensusSummary = {
 };
 
 export const CENSUS_DEFINITION =
-  "settlements_raw counts every indexed x402-related settlement in the window (chain index of USDC transfers to payTo addresses declared in any accept of the catalog, plus on Solana the payTo addresses published by the PayAI facilitator's public discovery list; on Solana the index reads each payTo's USDC token account, verified POST /payments/x402 rows, and vet402's own L1 purchases). settlements_real excludes wash_flag self_deal (same EOA or same funder), circular (reverse transfer within 24h), and test (known measurement wallets, including every wallet vet402 pays from). Both numbers are published; they are never merged. attribution: confirmed = payTo, amount and time all match a catalog envelope; probable = payTo matches, amount or time is loose; unmatched = a receipt with no resource. ERC-8004 owner identity is not yet used for self_deal clustering (disclosed limitation). The window is counted in whole UTC days. Raw rows are kept " +
+  "settlements_raw counts every indexed x402-related settlement in the window (chain index of USDC transfers to payTo addresses declared in any accept of the catalog, plus on Solana the payTo addresses published by the PayAI facilitator's public discovery list; on Solana the index reads each payTo's USDC token account, verified POST /payments/x402 rows, and vet402's own L1 purchases). settlements_real excludes wash_flag self_deal (same EOA or same funder), circular (reverse transfer within 24h), test (wallets vet402 pays from), and measurement (payers on the published list at https://vet402.com/observatory/methodology#measurement-payers, services whose own page describes measurement or inspection). Both numbers are published; they are never merged. attribution: confirmed = payTo, amount and time all match a catalog envelope; probable = payTo matches, amount or time is loose; unmatched = a receipt with no resource. ERC-8004 owner identity is not yet used for self_deal clustering (disclosed limitation). The window is counted in whole UTC days. Raw rows are kept " +
   RAW_RETENTION_DAYS +
   " days; older days are held as daily (payee, payer) aggregates; counts are exact, per-transaction receipts older than " +
   RAW_RETENTION_DAYS +
@@ -107,7 +107,7 @@ export async function getCensusSummary(chain: string | null, window: CensusWindo
     window,
     settlements_raw: 0,
     settlements_real: 0,
-    wash: { self_deal: 0, circular: 0, test: 0 },
+    wash: { self_deal: 0, circular: 0, test: 0, measurement: 0 },
     attribution: { confirmed: 0, probable: 0, unmatched: 0 },
     unique_payers_raw: 0,
     unique_payers_real: 0,
@@ -151,6 +151,7 @@ export async function getCensusSummary(chain: string | null, window: CensusWindo
         coalesce(sum(n) FILTER (WHERE wash_flag = 'self_deal'), 0)::int AS self_deal,
         coalesce(sum(n) FILTER (WHERE wash_flag = 'circular'), 0)::int AS circular,
         coalesce(sum(n) FILTER (WHERE wash_flag = 'test'), 0)::int AS test,
+        coalesce(sum(n) FILTER (WHERE wash_flag = 'measurement'), 0)::int AS measurement,
         coalesce(sum(n) FILTER (WHERE attribution = 'confirmed'), 0)::int AS confirmed,
         coalesce(sum(n) FILTER (WHERE attribution = 'probable'), 0)::int AS probable,
         coalesce(sum(n) FILTER (WHERE attribution = 'unmatched'), 0)::int AS unmatched,
@@ -210,7 +211,7 @@ export async function getCensusSummary(chain: string | null, window: CensusWindo
     ...empty,
     settlements_raw: n("raw"),
     settlements_real: n("real"),
-    wash: { self_deal: n("self_deal"), circular: n("circular"), test: n("test") },
+    wash: { self_deal: n("self_deal"), circular: n("circular"), test: n("test"), measurement: n("measurement") },
     attribution: { confirmed: n("confirmed"), probable: n("probable"), unmatched: n("unmatched") },
     unique_payers_raw: n("payers_raw"),
     unique_payers_real: n("payers_real"),
@@ -231,9 +232,9 @@ export async function getCensusSummary(chain: string | null, window: CensusWindo
 export async function getSettlementCounts(
   where: { endpointId?: string; payeeId?: string },
   days = 30,
-): Promise<{ raw: number; real: number; test: number; uniquePayersReal: number }> {
+): Promise<{ raw: number; real: number; test: number; measurement: number; uniquePayersReal: number }> {
   const db = getDb();
-  if (!db) return { raw: 0, real: 0, test: 0, uniquePayersReal: 0 };
+  if (!db) return { raw: 0, real: 0, test: 0, measurement: 0, uniquePayersReal: 0 };
   // 生行と集約で列名が同じなので、同じ条件式をそのまま両方に当てられる。
   const cond = where.endpointId
     ? sql`endpoint_id = ${where.endpointId}::uuid`
@@ -255,13 +256,20 @@ export async function getSettlementCounts(
       SELECT coalesce(sum(n), 0)::int AS raw,
              coalesce(sum(n) FILTER (WHERE wash_flag = 'none'), 0)::int AS real,
              coalesce(sum(n) FILTER (WHERE wash_flag = 'test'), 0)::int AS test,
+             coalesce(sum(n) FILTER (WHERE wash_flag = 'measurement'), 0)::int AS measurement,
              count(DISTINCT payer_id) FILTER (WHERE wash_flag = 'none')::int AS payers
       FROM u
     `;
   const rows = await withDailyFallback(
-    async () => rowsOf<{ raw: number; real: number; test: number; payers: number }>(await db.execute(q(true))),
-    async () => rowsOf<{ raw: number; real: number; test: number; payers: number }>(await db.execute(q(false))),
+    async () => rowsOf<{ raw: number; real: number; test: number; measurement: number; payers: number }>(await db.execute(q(true))),
+    async () => rowsOf<{ raw: number; real: number; test: number; measurement: number; payers: number }>(await db.execute(q(false))),
   );
   const r = rows[0];
-  return { raw: Number(r?.raw ?? 0), real: Number(r?.real ?? 0), test: Number(r?.test ?? 0), uniquePayersReal: Number(r?.payers ?? 0) };
+  return {
+    raw: Number(r?.raw ?? 0),
+    real: Number(r?.real ?? 0),
+    test: Number(r?.test ?? 0),
+    measurement: Number(r?.measurement ?? 0),
+    uniquePayersReal: Number(r?.payers ?? 0),
+  };
 }

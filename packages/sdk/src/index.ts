@@ -398,6 +398,8 @@ export type SellerFacts = {
   settlement_30d_raw: number;
   /** raw のうち vet402 自身の測定購入（wash_flag test）。 */
   settlement_30d_test: number;
+  /** raw のうち公開一覧の他社の測定・点検サービス（wash_flag measurement）。test とは別。 */
+  settlement_30d_measurement: number;
   unique_payers_30d_real: number;
   wash_dominated: boolean;
 };
@@ -596,7 +598,7 @@ export type CensusSummary = {
   window: "7d" | "30d";
   settlements_raw: number;
   settlements_real: number;
-  wash: { self_deal: number; circular: number; test: number };
+  wash: { self_deal: number; circular: number; test: number; measurement: number };
   attribution: { confirmed: number; probable: number; unmatched: number };
   unique_payers_raw: number;
   unique_payers_real: number;

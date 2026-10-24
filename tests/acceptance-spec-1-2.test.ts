@@ -34,7 +34,7 @@ const facts: SellerFacts = {
   payees: [],
   settlement_30d_real: 0,
   settlement_30d_raw: 0,
-  settlement_30d_test: 0,
+  settlement_30d_test: 0, settlement_30d_measurement: 0,
   unique_payers_30d_real: 0,
   wash_dominated: false,
 };
@@ -59,7 +59,7 @@ test("§15: wash_flag 付き決済を除外した数字と生値が両方見え�
   const keys: (keyof CensusSummary)[] = ["settlements_raw", "settlements_real", "unique_payers_raw", "unique_payers_real", "wash"];
   const sample: CensusSummary = {
     chain: "all", window: "30d", settlements_raw: 4, settlements_real: 2,
-    wash: { self_deal: 1, circular: 0, test: 1 }, attribution: { confirmed: 2, probable: 1, unmatched: 1 },
+    wash: { self_deal: 1, circular: 0, test: 1, measurement: 0 }, attribution: { confirmed: 2, probable: 1, unmatched: 1 },
     unique_payers_raw: 3, unique_payers_real: 1, unique_payees_real: 1, endpoints_with_real_settlement: 1,
     by_source: { l1_purchase: 1, payments_api: 3, chain_index: 0 },
     indexed_since: {
