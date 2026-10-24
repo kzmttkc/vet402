@@ -2,6 +2,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { FAQS } from "@/components/site/faq-data";
 import { BLOG_POSTS } from "@/lib/blog";
 
@@ -20,6 +22,24 @@ test("/faq Q3 opens on the three measurements and the L0 sentence comes before L
   assert.ok(sentences[1].startsWith("L0"), `Q3 measurement sentence does not start with L0: ${sentences[1]}`);
   assert.ok(read("src/app/faq/page.tsx").includes("FAQS.map"), "/faq renders FAQS, so this answer is the page");
   assert.ok(FAQS.some((item) => item.answer.includes("/sellers")), "/faq does not point providers at /sellers");
+});
+
+test("画面の Q5 の答えは、決済と配信の句と観測所の句をピリオドでつなぎ、ダッシュを描かない", () => {
+  const item = FAQS[4];
+  assert.equal(item?.question, "Who is vet402 for — agents, or the providers agents pay?");
+  const html = renderToStaticMarkup(
+    createElement(
+      "div",
+      null,
+      createElement("span", null, "Q5"),
+      createElement("h2", null, item!.question),
+      createElement("p", null, item!.answer),
+    ),
+  );
+  const answer = html.slice(html.indexOf("<p>"));
+  assert.match(answer, /settles and delivers\. The observatory&#x27;s L0\/L1\/L2 facts/);
+  assert.equal(/[—–]|--/.test(answer), false);
+  assert.match(html, /<h2>Who is vet402 for — agents, or the providers agents pay\?<\/h2>/);
 });
 
 test("/blog does not say trust scoring, and the 2026-07-21 note separates a purchase record from the score", () => {

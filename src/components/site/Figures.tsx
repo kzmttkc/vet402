@@ -57,7 +57,20 @@ function Figure({ n, caption, children }: { n: number; caption: ReactNode; child
   );
 }
 
-const VERDICT_FILL: Record<L0Verdict, string> = { pass: INK, fail: BLOCK, unverified: HAIR };
+/** 帯の4段。L0Verdict に withdrawn を足さない（時間軸の記号は3語のまま）。色は既存の4つ。 */
+export type ShareVerdict = L0Verdict | "withdrawn";
+
+const SHARE_FILL: Record<ShareVerdict, string> = { pass: INK, fail: BLOCK, unverified: HAIR, withdrawn: INK_MIST };
+
+function ShareMark({ verdict, size = 10 }: { verdict: ShareVerdict; size?: number }) {
+  if (verdict !== "withdrawn") return <VerdictMark verdict={verdict} size={size} />;
+  const common = { width: size, height: size, viewBox: "0 0 10 10", "aria-hidden": true as const, className: "inline-block shrink-0 align-[-0.5px]" };
+  return (
+    <svg {...common}>
+      <rect x="0.5" y="0.5" width="9" height="9" fill={INK_MIST} stroke={INK_MIST} />
+    </svg>
+  );
+}
 
 /**
  * 判定の積み上げバー。/observatory の表の直上。凡例は件数チップを兼ね、
@@ -77,14 +90,14 @@ export function VerdictShareBar({
   legendExtra,
 }: {
   n: number;
-  counts: Record<L0Verdict, number>;
-  hrefs: Record<L0Verdict, string>;
-  active: L0Verdict | null;
+  counts: Record<ShareVerdict, number>;
+  hrefs: Record<ShareVerdict, string>;
+  active: ShareVerdict | null;
   caption: ReactNode;
   /** 凡例の行の末尾に置く追加のリンク（/observatory の [settled on-chain N]）。 */
   legendExtra?: ReactNode;
 }) {
-  const order: L0Verdict[] = ["pass", "fail", "unverified"];
+  const order: ShareVerdict[] = ["pass", "fail", "unverified", "withdrawn"];
   const segs = shareSegments(order.map((k) => ({ key: k, n: counts[k] })));
   const offsets = segs.reduce<number[]>((acc, s, i) => [...acc, (acc[i - 1] ?? 0) + (i > 0 ? segs[i - 1].widthPct : 0)], []);
   // 最小幅で膨らんだ段があるか。pct は表示用に丸めた値なので、丸める前の比で比べる（2026-09-29）。
@@ -115,7 +128,7 @@ export function VerdictShareBar({
               y="0"
               width={`${s.widthPct}%`}
               height="10"
-              fill={s.key === "fail" ? `url(#${hatchId})` : VERDICT_FILL[s.key]}
+              fill={s.key === "fail" ? `url(#${hatchId})` : SHARE_FILL[s.key]}
               stroke={s.key === "fail" ? BLOCK : "none"}
               strokeWidth="1"
             />
@@ -133,7 +146,7 @@ export function VerdictShareBar({
               aria-current={isActive ? "true" : undefined}
               className={`inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap tabular-nums underline decoration-1 hover:decoration-2 ${isActive ? "text-brand-deep decoration-2" : "text-brand hover:text-brand-deep"}`}
             >
-              <VerdictMark verdict={s.key} />
+              <ShareMark verdict={s.key} />
               {s.key} {s.n.toLocaleString()}
               <span className="text-brand-lift">({s.pct.toFixed(1)}%)</span>
             </a>

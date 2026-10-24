@@ -76,11 +76,70 @@ export function purchaseShownAsWithdrawn(
   );
 }
 
-export const WITHDRAWN_BY_SELLER = "withdrawn by the seller";
+export const WITHDRAWN_FROM_CATALOG = "withdrawn from the catalog";
 
-/** One public sentence. No first person, no semicolon, no dash. */
-export function withdrawnBySellerSentence(): string {
-  return "Withdrawn by the seller. This route is absent from a complete fetch of the public discovery catalog, so its L0 and L1 failures are not counted as failures.";
+/** One public sentence. No first person, no semicolon, no dash. Names the public L0 fail count only. */
+export function withdrawnFromCatalogSentence(): string {
+  return "Withdrawn from the catalog. This route is absent from a complete fetch of the public discovery catalog, so it is left out of the public L0 fail count.";
+}
+
+/** Short note under a purchase row that is shown as withdrawn. */
+export function withdrawnL0FailNote(): string {
+  return "Left out of the public L0 fail count.";
+}
+
+export function withdrawnRoutesHeading(): string {
+  return "Withdrawn from the catalog";
+}
+
+export function withdrawnRoutesParagraph(): string {
+  return `${withdrawnFromCatalogSentence()} These routes are not in the counts above.`;
+}
+
+export function withdrawnStateLabel(): string {
+  return "Withdrawn from the catalog (delisted, and the newest probes would publish as fail). Left out of the public L0 fail count.";
+}
+
+export function withdrawnChainNote(): string {
+  return "Fail in this table leaves out routes withdrawn from the catalog. Wdn is that share of n.";
+}
+
+export function withdrawnAbbrTitle(): string {
+  return "Withdrawn from the catalog";
+}
+
+/** Figure 1 caption clause. `n` is the withdrawn segment. */
+export function withdrawnBandCountSentence(n: number): string {
+  return `${n.toLocaleString()} withdrawn from the catalog are left out of the public L0 fail count.`;
+}
+
+/**
+ * Reading of the production L0 CSV at retrievedAt, before this wording shipped.
+ * published_verdict had no withdrawn value yet. listed=false fail rows are the
+ * streaks the delisted rule moves out of the public L0 fail count.
+ */
+export const L0_CSV_WITHDRAWAL_READING = {
+  retrievedAt: "2026-10-23T22:46:17.388Z",
+  rows: 85939,
+  publishedVerdictFail: 7376,
+  listedFail: 2483,
+  notListedFail: 4893,
+} as const;
+
+/** Past tense. The counts are the retrieval above, not a live query. */
+export function catalogWithdrawalCorrectionAction(): string {
+  const r = L0_CSV_WITHDRAWAL_READING;
+  const n = (v: number) => v.toLocaleString("en-US");
+  return [
+    "From 2026-10-24 a route absent from a complete fetch of the public discovery catalog is published as withdrawn from the catalog.",
+    "It is left out of the public L0 fail count and counted as withdrawnFail on /observatory/state.",
+    "Probe rows and purchase rows stay as recorded.",
+    "A pass on a delisted route stays a pass.",
+    `On the L0 CSV retrieved at ${r.retrievedAt}, published_verdict fail was ${n(r.publishedVerdictFail)} of ${n(r.rows)} rows.`,
+    `Of that fail count, ${n(r.listedFail)} rows were still listed and ${n(r.notListedFail)} were not listed.`,
+    `Fail streaks removed from the listing on that retrieval were ${n(r.notListedFail)}.`,
+    "/decision stays BLOCK on two consecutive L0 fails, including a route withdrawn from the catalog.",
+  ].join(" ");
 }
 
 /** Driver may return a text[] as a JS array or as `{fail,fail}`. */

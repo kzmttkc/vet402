@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { buttonClass } from "@/components/ui/Button";
-import { purchaseShownAsWithdrawn, withdrawnBySellerSentence } from "@/lib/observatory/l0-verdict";
+import { purchaseShownAsWithdrawn, WITHDRAWN_FROM_CATALOG, withdrawnL0FailNote, withdrawnRoutesHeading, withdrawnRoutesParagraph } from "@/lib/observatory/l0-verdict";
 import { WideColumn } from "@/components/site/WideColumn";
 import { TableScroll } from "@/components/site/TableScroll";
 import {
@@ -1239,10 +1239,10 @@ export function SellerDetailView({
       {(detail.withdrawnRoutes ?? []).length > 0 && (
         <>
           <h2 className="sec-head">
-            <span>Withdrawn by the seller</span>
+            <span>{withdrawnRoutesHeading()}</span>
           </h2>
           <p className="doc-p">
-            {withdrawnBySellerSentence()} These routes are not in the counts above.
+            {withdrawnRoutesParagraph()}
           </p>
           <ul className="doc-p list-disc pl-5">
             {(detail.withdrawnRoutes ?? []).map((w) => (
@@ -1454,8 +1454,8 @@ export function SellerOtherChainsView({ other, revalidateSec }: { other: SellerO
                 <td className={!purchaseShownAsWithdrawn(l.catalogStatus, l.latest.facts.status) && l.latest.bucket !== "delivered" ? "text-[#9f0712]" : ""}>
                   {purchaseShownAsWithdrawn(l.catalogStatus, l.latest.facts.status) ? (
                     <>
-                      withdrawn by the seller
-                      <span className="block text-xs font-normal text-brand-lift">Not counted as a failure.</span>
+                      {WITHDRAWN_FROM_CATALOG}
+                      <span className="block text-xs font-normal text-brand-lift">{withdrawnL0FailNote()}</span>
                     </>
                   ) : (
                     <OtherChainResult l={l} />

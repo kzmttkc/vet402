@@ -418,7 +418,7 @@ test("送信後の文と記録頁は、その出品の判定で文を選ぶ", ()
   assert.match(route, /reprobe: result\.reprobe/);
   assert.match(form, /formDisputeAck\(l0ProbeScheduleLabel\(\), disputeReprobe\)/);
   assert.match(page, /formDisputeReprobeOf\(\{ status: endpoint\.status, pathTemplate: isPathTemplate\(endpoint\.resourceUrl\) \}\)/);
-  assert.match(page, /formDisputeListingSentence\(l0ProbeScheduleLabel\(\), disputeReprobe\)/);
+  assert.match(page, /recordPageDisputeText\(l0ProbeScheduleLabel\(\), disputeReprobe\)/);
   assert.match(page, /disputeReprobe=\{disputeReprobe\}/);
   const home = read("src/app/page.tsx");
   assert.match(home, /which runs one fresh L0 probe of the/);

@@ -50,7 +50,7 @@ export const FAQS: FaqItem[] = [
   {
     question: "Who is vet402 for — agents, or the providers agents pay?",
     answer:
-      "Primarily the agent developer who is about to pay an x402 endpoint and wants to know, before the money moves, whether that endpoint actually settles and delivers — the observatory's L0/L1/L2 facts and the decision API exist for that call. The other direction is served too: an x402 API provider that accepts payment from agents it has never seen can check the payer's score first. The API doesn't assume which side of the transaction is calling it. Providers look up their own purchase results at /sellers.",
+      "Primarily the agent developer who is about to pay an x402 endpoint and wants to know, before the money moves, whether that endpoint actually settles and delivers. The observatory's L0/L1/L2 facts and the decision API exist for that call. The other direction is served too: an x402 API provider that accepts payment from agents it has never seen can check the payer's score first. The API doesn't assume which side of the transaction is calling it. Providers look up their own purchase results at /sellers.",
   },
   {
     question: "Is there an established competitor doing this already?",

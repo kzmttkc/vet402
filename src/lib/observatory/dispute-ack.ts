@@ -82,6 +82,16 @@ export function formDisputeListingSentence(scheduleLabel: string, reprobe: FormD
     : `${formDisputeNotQueuedSentence(reprobe)} ${FORM_DISPUTE_RECORD_STAYS}`;
 }
 
+/**
+ * 記録頁に出す異議の文。列に入る出品は formDisputeListingSentence が予定時刻を
+ * 既に1回含むので、recordRemeasureSentence を足さない。
+ */
+export function recordPageDisputeText(scheduleLabel: string, reprobe: FormDisputeReprobe): string {
+  const listing = formDisputeListingSentence(scheduleLabel, reprobe);
+  if (reprobe === "queued") return listing;
+  return `${listing} ${recordRemeasureSentence(scheduleLabel, reprobe)}`;
+}
+
 /** フォームの送信後表示と、subscribe API の note。同じ文。 */
 export function formDisputeAck(scheduleLabel: string, reprobe: FormDisputeReprobe): string {
   return `A person reads this and replies to the address you gave. ${formDisputeListingSentence(scheduleLabel, reprobe)}`;

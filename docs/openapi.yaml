@@ -1119,8 +1119,12 @@ paths:
         wrote it), `chain` (vet402's label), `network_class` (`mainnet` |
         `testnet` | `unclassified`), `listed` (`true` while the catalog lists
         it), `published_verdict` (`pass` = the latest probe passed; `fail` =
-        the newest 2 probes both failed; `unverified` = anything else,
-        including no probe), `latest_probe_verdict`, `last_probed_at` (UTC),
+        the newest 2 probes both failed and the route is still listed;
+        `withdrawn` = those same two failing probes on a route absent from
+        a complete catalog fetch, left out of the public L0 fail count;
+        `unverified` = anything else, including no probe; the allowed values
+        are the `L0PublishedVerdict` enum), `latest_probe_verdict`,
+        `last_probed_at` (UTC),
         `latest_probe_older_than_7d`. The definitions also travel in the
         `x-vet402-column-notes` header; the retrieval time in
         `x-vet402-retrieved-at`. IP-throttled to 6/min; CDN-cached for up to
@@ -3533,6 +3537,16 @@ components:
         pattern: "^0x[a-fA-F0-9]{40}$"
 
   schemas:
+    L0PublishedVerdict:
+      type: string
+      description: |
+        Public word in the L0 CSV column `published_verdict`. `pass` is a
+        latest probe that passed. `fail` is the newest 2 probes both failed
+        on a route the catalog still lists. `withdrawn` is those same two
+        failing probes on a route absent from a complete catalog fetch, and
+        that row is left out of the public L0 fail count. `unverified` is
+        anything else, including no probe.
+      enum: [pass, fail, unverified, withdrawn]
     ScoreDeprecationNotice:
       type: object
       description: |

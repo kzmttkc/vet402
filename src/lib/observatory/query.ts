@@ -1,4 +1,4 @@
-export type ObservatoryVerdict = "pass" | "fail" | "unverified";
+export type ObservatoryVerdict = "pass" | "fail" | "unverified" | "withdrawn";
 
 export type ObservatoryQuery = {
   page: number;
@@ -16,7 +16,7 @@ export type ObservatoryQuery = {
   l1: boolean;
 };
 
-const VERDICTS = new Set<ObservatoryVerdict>(["pass", "fail", "unverified"]);
+const VERDICTS = new Set<ObservatoryVerdict>(["pass", "fail", "unverified", "withdrawn"]);
 const NETWORK_RE = /^[a-z0-9:-]{1,40}$/i;
 
 export function parseObservatorySearchParams(

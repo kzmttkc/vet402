@@ -23,11 +23,11 @@ import { readRecordSides } from "@/lib/sellers/reader";
 import { recordPageNoindex, recordRowKey, type RecordSides } from "@/lib/sellers/board";
 import { HELD_GLOSS, STATUS_GLOSS } from "@/lib/sellers/fix-modes";
 import { DISPUTE_NO_PURCHASE, RECORD_DISPUTE_ANCHOR, UNDER_RECHECK, WhoseSide } from "@/components/site/sellers/SellersViews";
-import { formDisputeListingSentence, formDisputeReprobeOf, recordRemeasureSentence } from "@/lib/observatory/dispute-ack";
+import { formDisputeReprobeOf, recordPageDisputeText } from "@/lib/observatory/dispute-ack";
 import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "@/lib/support";
 import { isPathTemplate } from "@/lib/observatory/path-template";
 import { l0ProbeScheduleLabel } from "@/lib/observatory/l0-schedule";
-import { purchaseShownAsWithdrawn, withdrawnBySellerSentence } from "@/lib/observatory/l0-verdict";
+import { purchaseShownAsWithdrawn, WITHDRAWN_FROM_CATALOG, withdrawnFromCatalogSentence, withdrawnL0FailNote } from "@/lib/observatory/l0-verdict";
 
 /**
  * /observatory/e/[id] — one endpoint's full fact history (design §5).
@@ -232,7 +232,7 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
         </div>
 
         <h1 className="doc-title mt-8 break-words [overflow-wrap:anywhere]">{endpoint.resourceKey}</h1>
-        {showWithdrawn && <p className="doc-p">{withdrawnBySellerSentence()}</p>}
+        {showWithdrawn && <p className="doc-p">{withdrawnFromCatalogSentence()}</p>}
         {endpoint.isOperatorEndpoint && (
           <p className="mt-4 border border-brand-line bg-brand-wash px-4 py-3 text-[0.84375rem] text-brand-lift">
             This is vet402&rsquo;s own endpoint. It is shown here for
@@ -502,7 +502,7 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                             金額・宛先・資産の一致まで。行ごとに強度を出す。 */}
                         <td className="border-b-0 pb-0.5">
                           {shownWithdrawn
-                            ? "withdrawn by the seller"
+                            ? WITHDRAWN_FROM_CATALOG
                             : p.settledTier === "nonce_bound"
                               ? "settled (nonce-bound)"
                               : p.settledTier === "amount_payee_only"
@@ -558,7 +558,7 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                           )}
                           {shownWithdrawn && (
                             <span className="block font-[family-name:var(--font-sans)] text-[0.84375rem] text-brand-ink">
-                              Not counted as a failure.
+                              {withdrawnL0FailNote()}
                             </span>
                           )}
                         </td>
@@ -666,8 +666,7 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
           Think a measurement above is wrong? Say which probe or purchase and what you observed
           instead. One person reads it and replies. The record is never deleted on dispute: if it
           was wrong, the correction is published with the same weight. If it was right, it stands.{" "}
-          {formDisputeListingSentence(l0ProbeScheduleLabel(), disputeReprobe)}{" "}
-          {recordRemeasureSentence(l0ProbeScheduleLabel(), disputeReprobe)}{" "}
+          {recordPageDisputeText(l0ProbeScheduleLabel(), disputeReprobe)}{" "}
           Send the dispute to{" "}
           <a className="underline" href={SUPPORT_MAILTO}>
             {SUPPORT_EMAIL}

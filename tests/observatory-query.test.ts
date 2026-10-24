@@ -51,6 +51,7 @@ test("verdict only accepts the closed vocabulary", () => {
   assert.equal(parseObservatorySearchParams({ verdict: "pass" }).verdict, "pass");
   assert.equal(parseObservatorySearchParams({ verdict: "fail" }).verdict, "fail");
   assert.equal(parseObservatorySearchParams({ verdict: "unverified" }).verdict, "unverified");
+  assert.equal(parseObservatorySearchParams({ verdict: "withdrawn" }).verdict, "withdrawn");
   assert.equal(parseObservatorySearchParams({ verdict: "ALLOW" }).verdict, null);
 });
 

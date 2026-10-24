@@ -6,6 +6,7 @@ import { safeJsonLd } from "@/lib/util/json-ld";
 import { SITE_URL } from "@/lib/site-url";
 import { deliveredRates } from "@/lib/observatory/delivered-rates";
 import { formatPct1 } from "@/lib/util/pct";
+import { withdrawnAbbrTitle, withdrawnChainNote, withdrawnStateLabel } from "@/lib/observatory/l0-verdict";
 import { TableScroll } from "@/components/site/TableScroll";
 import {
   getObservatoryStatsByChainCached,
@@ -352,7 +353,7 @@ export default async function ObservatoryStatePage() {
               </tr>
               <tr>
                 <td className="text-brand">
-                  Withdrawn by the seller (delisted, and the newest probes would publish as fail). Not in the fail count.
+                  {withdrawnStateLabel()}
                 </td>
                 <td className="num">{(stats.withdrawnFail ?? 0).toLocaleString()}</td>
                 <td className="num">{pct(stats.withdrawnFail ?? 0, denom)}</td>
@@ -415,7 +416,7 @@ export default async function ObservatoryStatePage() {
               : "As this page was rendered no such address was on file, so the exclusion is a no-op here: it takes out nothing because there is nothing to take out, which is a different state from having checked and found none."}
         </p>
         <p className="doc-p">This chain table was read at {chainReadAt}.</p>
-        <p className="doc-p">Fail in this table leaves out routes withdrawn by the seller. Wdn is that share of n.</p>
+        <p className="doc-p">{withdrawnChainNote()}</p>
         {chainStats.length === 0 ? (
           <p className="doc-p text-brand-lift">No chain data yet.</p>
         ) : (
@@ -441,7 +442,7 @@ export default async function ObservatoryStatePage() {
                     Fail
                   </th>
                   <th scope="col" className="num">
-                    <abbr title="Withdrawn by the seller" className="no-underline">Wdn</abbr>
+                    <abbr title={withdrawnAbbrTitle()} className="no-underline">Wdn</abbr>
                   </th>
                   <th scope="col" className="num">
                     Unverified

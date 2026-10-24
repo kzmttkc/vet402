@@ -29,6 +29,12 @@ test("openapi の公開パスは全部 /docs/api の path カードにある", (
   assert.deepEqual(missing, []);
 });
 
+test("/docs/api のカードのパスは全部 openapi の公開パスにある", () => {
+  const keys = new Set(publicOpenApiPaths(yaml).map((key) => key.replace(/\{([^}]+)\}/g, ":$1")));
+  const missing = cardPaths(page).filter((path) => path.startsWith("/api/") && !keys.has(path));
+  assert.deepEqual(missing, []);
+});
+
 test("guarantee/quote は paths にも /docs/api のカードにも無い", () => {
   assert.equal(publicOpenApiPaths(yaml).includes("/api/v1/guarantee/quote"), false);
   assert.equal(cardPaths(page).includes("/api/v1/guarantee/quote"), false);

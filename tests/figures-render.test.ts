@@ -8,11 +8,11 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { VerdictShareBar, FunnelFigure, ProbeTimeline } from "@/components/site/Figures";
 
-const hrefs = { pass: "/observatory?verdict=pass", fail: "/observatory?verdict=fail", unverified: "/observatory?verdict=unverified" };
+const hrefs = { pass: "/observatory?verdict=pass", fail: "/observatory?verdict=fail", unverified: "/observatory?verdict=unverified", withdrawn: "/observatory?verdict=withdrawn" };
 
 test("VerdictShareBar: fail 段は斜線ハッチ（塗りではなく pattern）で描く", () => {
   const html = renderToStaticMarkup(
-    createElement(VerdictShareBar, { n: 1, counts: { pass: 3342, fail: 5, unverified: 17117 }, hrefs, active: null, caption: "c" }),
+    createElement(VerdictShareBar, { n: 1, counts: { pass: 3342, fail: 5, unverified: 17117, withdrawn: 0 }, hrefs, active: null, caption: "c" }),
   );
   assert.match(html, /<pattern[^>]*id="[^"]*fail[^"]*"/, "a hatch pattern is defined");
   assert.match(html, /fill="url\(#[^"]*fail[^"]*\)"/, "the fail segment is filled with it");
@@ -20,25 +20,25 @@ test("VerdictShareBar: fail 段は斜線ハッチ（塗りではなく pattern�
 
 test("VerdictShareBar: 最小幅で膨らんだ段があるときだけ注記を出す", () => {
   const inflated = renderToStaticMarkup(
-    createElement(VerdictShareBar, { n: 1, counts: { pass: 3342, fail: 5, unverified: 17117 }, hrefs, active: null, caption: "c" }),
+    createElement(VerdictShareBar, { n: 1, counts: { pass: 3342, fail: 5, unverified: 17117, withdrawn: 0 }, hrefs, active: null, caption: "c" }),
   );
   assert.match(inflated, /segments under 1\.5% are drawn at 1\.5%/i);
   const even = renderToStaticMarkup(
-    createElement(VerdictShareBar, { n: 1, counts: { pass: 10, fail: 10, unverified: 10 }, hrefs, active: null, caption: "c" }),
+    createElement(VerdictShareBar, { n: 1, counts: { pass: 10, fail: 10, unverified: 10, withdrawn: 0 }, hrefs, active: null, caption: "c" }),
   );
   assert.doesNotMatch(even, /drawn at 1\.5%/);
 });
 
 test("VerdictShareBar: 凡例リンクは hover で brand-deep へ", () => {
   const html = renderToStaticMarkup(
-    createElement(VerdictShareBar, { n: 1, counts: { pass: 1, fail: 1, unverified: 1 }, hrefs, active: null, caption: "c" }),
+    createElement(VerdictShareBar, { n: 1, counts: { pass: 1, fail: 1, unverified: 1, withdrawn: 0 }, hrefs, active: null, caption: "c" }),
   );
   assert.match(html, /<a [^>]*class="[^"]*hover:text-brand-deep/);
 });
 
 test("figcaption の measure は 72ch", () => {
   const html = renderToStaticMarkup(
-    createElement(VerdictShareBar, { n: 1, counts: { pass: 1, fail: 1, unverified: 1 }, hrefs, active: null, caption: "c" }),
+    createElement(VerdictShareBar, { n: 1, counts: { pass: 1, fail: 1, unverified: 1, withdrawn: 0 }, hrefs, active: null, caption: "c" }),
   );
   assert.match(html, /<figcaption class="[^"]*max-w-\[72ch\]/);
 });
@@ -74,7 +74,7 @@ test("VerdictShareBar: legendExtra は凡例の行の中に描かれる（[recei
   const html = renderToStaticMarkup(
     createElement(VerdictShareBar, {
       n: 1,
-      counts: { pass: 1, fail: 1, unverified: 1 },
+      counts: { pass: 1, fail: 1, unverified: 1, withdrawn: 0 },
       hrefs,
       active: null,
       caption: "c",

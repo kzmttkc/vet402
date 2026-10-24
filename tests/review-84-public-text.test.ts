@@ -141,7 +141,10 @@ test("直した公開文に、名指しされたセミコロンとダッシュ�
   assert.match(obs, /measurement alone\. The L1 cell counts/);
   assert.equal(obs.includes("paid attempts;"), false);
   assert.match(obs, /settled \/ paid attempts\)\. The transaction named/);
-  assert.match(obs, /are defined measurements, not opinions\.\{" "\}/);
+  assert.match(
+    obs,
+    /are defined measurements, not opinions\.\s+A withdrawn row is absent from a complete catalog fetch/,
+  );
   const method = read("src/app/observatory/methodology/page.tsx");
   assert.equal(method.includes("our own fetch"), false);
   assert.equal(method.includes("our data"), false);

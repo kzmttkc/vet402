@@ -12,6 +12,8 @@ import { parseObservatorySearchParams, observatoryHref, observatoryRateFilters }
 import { networkFilterCellLabel, networkFilterCellTitle } from "@/lib/observatory/chains";
 import TrackView from "@/components/site/TrackView";
 import { L1Ratio, VerdictShareBar, VerdictWord } from "@/components/site/Figures";
+import { l0BandFromStats, l0BandFromVerdictCounts } from "@/lib/observatory/l0-band";
+import { withdrawnBandCountSentence } from "@/lib/observatory/l0-verdict";
 import { WideColumn } from "@/components/site/WideColumn";
 
 /**
@@ -20,7 +22,7 @@ import { WideColumn } from "@/components/site/WideColumn";
  * What this page is NOT: a ranking, a score, or an opinion. Every cell is a
  * measurement with a definition (see /observatory/methodology): the catalog
  * said X, the payment wall answered Y. The verdict vocabulary is closed —
- * pass / fail / unverified — and a fail only appears after the publication
+ * pass / fail / unverified / withdrawn — and a fail only appears after the publication
  * gate (two consecutive failing probes), because a single blip must never
  * brand an endpoint dead in public.
  *
@@ -194,6 +196,7 @@ export default async function ObservatoryPage({
                 <option value="pass">pass</option>
                 <option value="fail">fail</option>
                 <option value="unverified">unverified</option>
+                <option value="withdrawn">withdrawn</option>
               </select>
             </label>
             <label className="block min-w-0 flex-1 text-[0.84375rem] sm:min-w-[16ch] sm:flex-none">
@@ -229,18 +232,16 @@ export default async function ObservatoryPage({
             pass: observatoryHref({ ...query, verdict: query.verdict === "pass" ? null : "pass" }, 1),
             fail: observatoryHref({ ...query, verdict: query.verdict === "fail" ? null : "fail" }, 1),
             unverified: observatoryHref({ ...query, verdict: query.verdict === "unverified" ? null : "unverified" }, 1),
+            withdrawn: observatoryHref({ ...query, verdict: query.verdict === "withdrawn" ? null : "withdrawn" }, 1),
           };
           if (filtered) {
+            const band = l0BandFromVerdictCounts(overview.verdictCounts, query.verdict);
             const settledEndpoints = overview.verdictCounts.settledEndpoints;
             const rateFilters = observatoryRateFilters(query);
             return (
               <VerdictShareBar
                 n={1}
-                counts={{
-                  pass: overview.verdictCounts.pass,
-                  fail: overview.verdictCounts.fail,
-                  unverified: overview.verdictCounts.unverified,
-                }}
+                counts={band.counts}
                 hrefs={hrefs}
                 active={query.verdict ?? null}
                 legendExtra={
@@ -257,7 +258,7 @@ export default async function ObservatoryPage({
                 caption={
                   <>
                     The pass rate above is the L0 probe of the rows in this filter. It is not the purchase result.
-                    Choosing a verdict does not change that rate.
+                    Choosing a verdict does not change that rate. This rate covers {band.total.toLocaleString()} endpoints.
                     {rateFilters ? <> {rateFilters}</> : null}
                     {query.network ? (
                       <>
@@ -273,10 +274,11 @@ export default async function ObservatoryPage({
             );
           }
           if (!stats) return null;
+          const band = l0BandFromStats(stats);
           return (
           <VerdictShareBar
             n={1}
-            counts={{ pass: stats.publishedPass, fail: stats.publishedFail, unverified: stats.publishedUnverified }}
+            counts={band.counts}
             hrefs={hrefs}
             active={query.verdict ?? null}
             legendExtra={
@@ -292,14 +294,14 @@ export default async function ObservatoryPage({
             }
             caption={
               <>
-                Published L0 verdict, {stats.totalEndpoints.toLocaleString()} endpoints on record (includes
+                Published L0 verdict, {band.total.toLocaleString()} endpoints on record (includes
                 delisted; {stats.activeEndpoints.toLocaleString()} active; {stats.publishedPassActive.toLocaleString()}{" "}
                 of the passes are currently listed). Settled on-chain counts endpoints with at least one purchase
                 vet402 re-read on-chain, listed or not: {stats.l1.endpointsSettledSellerReceipt.toLocaleString()} with a transaction the
                 seller named in its own settlement receipt and {stats.l1.endpointsSettledIndexOnly.toLocaleString()}{" "}
                 where the seller returned no receipt and vet402&apos;s own settlements index found the settled
                 transfers, as reported by <code>/api/v1/observatory/state</code>.{" "}
-                {(stats.withdrawnFail ?? 0).toLocaleString()} withdrawn by the seller are not in the fail count. Select a
+                {withdrawnBandCountSentence(band.counts.withdrawn)} Select a
                 legend entry to filter the table.
               </>
             }
@@ -443,7 +445,9 @@ export default async function ObservatoryPage({
             also returned a 2xx response (delivered), with every transaction listed on the
             endpoint&apos;s page. The
             two are never mixed.{" "}
-            <strong>pass / fail / unverified</strong> are defined measurements, not opinions.{" "}
+            <strong>pass / fail / unverified / withdrawn</strong> are defined measurements, not opinions.
+            A withdrawn row is absent from a complete catalog fetch and its newest probes would publish as fail.
+            It is left out of the public L0 fail count.{" "}
             <Link href="/observatory/methodology" className="underline">
               Definitions are here
             </Link>

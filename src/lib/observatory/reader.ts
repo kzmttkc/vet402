@@ -80,7 +80,7 @@ export type ObservatoryOverview = {
     fetchedCount: number;
   } | null;
   /** 同じ絞り込みの L0 判定の件数。図の母数はこれを使う（全台帳の合格率を絞り込みの上に出さない）。 */
-  verdictCounts: { pass: number; fail: number; unverified: number; settledEndpoints: number };
+  verdictCounts: { pass: number; fail: number; unverified: number; withdrawn: number; settledEndpoints: number };
 };
 
 /**
@@ -136,7 +136,7 @@ export async function getObservatoryOverview(
     pageSize,
     totalEndpoints: 0,
     latestSnapshot: null,
-    verdictCounts: { pass: 0, fail: 0, unverified: 0, settledEndpoints: 0 },
+    verdictCounts: { pass: 0, fail: 0, unverified: 0, withdrawn: 0, settledEndpoints: 0 },
   };
   if (!db) return empty;
 
@@ -158,7 +158,7 @@ export async function getObservatoryOverview(
       ELSE 'unverified'
     END
   )`;
-  // q・network・l1 のあと。合格率の pass / fail / unverified はここで取る。verdict は表の行と頁の総数だけ。
+  // q・network・l1 のあと。合格率の pass / fail / unverified / withdrawn はここで取る。verdict は表の行と頁の総数だけ。
   const scopeFilters = sql`
     ${like ? sql`AND e.resource_key ILIKE ${like}` : sql``}
     ${
@@ -211,6 +211,7 @@ export async function getObservatoryOverview(
              count(*) FILTER (WHERE ${verdictCase} = 'pass')::int AS n_pass,
              count(*) FILTER (WHERE ${verdictCase} = 'fail')::int AS n_fail,
              count(*) FILTER (WHERE ${verdictCase} = 'unverified')::int AS n_unverified,
+             count(*) FILTER (WHERE ${verdictCase} = 'withdrawn')::int AS n_withdrawn,
              count(*) FILTER (WHERE COALESCE(l1.l1_settled, 0) >= 1)::int AS n_settled
       FROM x402_endpoints e
       ${lateral}
@@ -227,6 +228,7 @@ export async function getObservatoryOverview(
       pass: Number(countList[0]?.n_pass ?? 0),
       fail: Number(countList[0]?.n_fail ?? 0),
       unverified: Number(countList[0]?.n_unverified ?? 0),
+      withdrawn: Number(countList[0]?.n_withdrawn ?? 0),
       settledEndpoints: Number(countList[0]?.n_settled ?? 0),
     };
 

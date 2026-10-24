@@ -236,6 +236,7 @@ test("getObservatoryOverview の絞り込み SQL は購入 network と L0 の n_
   assert.match(slice, /n_pass/);
   assert.match(slice, /n_fail/);
   assert.match(slice, /n_unverified/);
+  assert.match(slice, /n_withdrawn/);
   assert.doesNotMatch(slice, /e\.network = \$\{network\}/);
   const countStart = slice.indexOf("const countRaw");
   const rowStart = slice.indexOf("const raw = await db.execute", countStart);
@@ -244,6 +245,7 @@ test("getObservatoryOverview の絞り込み SQL は購入 network と L0 の n_
   assert.match(countSql, /\$\{scopeFilters\}/);
   assert.doesNotMatch(countSql, /tableVerdict/);
   assert.match(countSql, /count\(\*\) FILTER \(WHERE \$\{verdictCase\} = 'pass'\)/);
+  assert.match(countSql, /count\(\*\) FILTER \(WHERE \$\{verdictCase\} = 'withdrawn'\)/);
   const rowSql = slice.slice(rowStart, slice.indexOf("const list", rowStart));
   assert.match(rowSql, /\$\{scopeFilters\}/);
   assert.match(rowSql, /\$\{tableVerdict\}/);
@@ -260,8 +262,6 @@ test("観測所の絞り込み文は合格率を L0 の探査だと書き、Netw
   assert.match(src, /networkFilterCellLabel\(row\.network, query\.network\)/);
   assert.match(src, /networkFilterCellTitle\(row\.network, query\.network\)/);
   const filtered = src.slice(src.indexOf("if (filtered)"), src.indexOf("if (!stats)"));
-  assert.match(filtered, /overview\.verdictCounts\.pass/);
-  assert.match(filtered, /overview\.verdictCounts\.fail/);
-  assert.match(filtered, /overview\.verdictCounts\.unverified/);
+  assert.match(filtered, /l0BandFromVerdictCounts\(overview\.verdictCounts, query\.verdict\)/);
   assert.doesNotMatch(filtered, /stats\.publishedPass/);
 });

@@ -2102,6 +2102,13 @@ claims:
     check: null
     why_unverifiable: "ルートの定義。根拠は src/app/api/v1/endpoints/[endpointId]/payees/route.ts。"
     verified_at: 2026-10-21
+  - id: withdrawn_left_out_of_public_l0_fail
+    surface: src/lib/observatory/l0-verdict.ts
+    quote: "Withdrawn from the catalog. This route is absent from a complete fetch of the public discovery catalog, so it is left out of the public L0 fail count."
+    means: "カタログの完全取得から外れた経路は withdrawn from the catalog と出し、公開の L0 fail の数に入れない。L1 の失敗については何も言わない。"
+    check: null
+    why_unverifiable: "語の定義。公開の語は publicProbeWord、帯の分母は l0BandFromStats。tests/withdrawn-route.test.ts が文と /decision の BLOCK を固定する。"
+    verified_at: 2026-10-24
   - id: terms_unverified_is_not_a_failure
     surface: src/app/legal/terms/page.tsx
     quote: "It is not a failure and is never counted as one"
