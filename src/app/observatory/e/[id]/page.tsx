@@ -501,8 +501,10 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                             nonce 束縛が入ったのは 2026-09-04 12:00 UTC で、それ以前の行は
                             金額・宛先・資産の一致まで。行ごとに強度を出す。 */}
                         <td className="border-b-0 pb-0.5">
+                          {/* 2026-10-24 review: keep the purchase's own status. The route being withdrawn from the catalog
+                              is added after it, so the row still says what happened to the payment. */}
                           {shownWithdrawn
-                            ? WITHDRAWN_FROM_CATALOG
+                            ? `${p.status} (${WITHDRAWN_FROM_CATALOG})`
                             : p.settledTier === "nonce_bound"
                               ? "settled (nonce-bound)"
                               : p.settledTier === "amount_payee_only"

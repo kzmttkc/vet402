@@ -137,7 +137,6 @@ export function catalogWithdrawalCorrectionAction(): string {
     "A pass on a delisted route stays a pass.",
     `On the L0 CSV retrieved at ${r.retrievedAt}, published_verdict fail was ${n(r.publishedVerdictFail)} of ${n(r.rows)} rows.`,
     `Of that fail count, ${n(r.listedFail)} rows were still listed and ${n(r.notListedFail)} were not listed.`,
-    `Fail streaks removed from the listing on that retrieval were ${n(r.notListedFail)}.`,
     "/decision stays BLOCK on two consecutive L0 fails, including a route withdrawn from the catalog.",
   ].join(" ");
 }
