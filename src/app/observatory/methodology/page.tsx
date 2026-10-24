@@ -1055,7 +1055,7 @@ export default async function ObservatoryMethodologyPage() {
           Crosspeel says the wallet that pays for probes is rotated between runs, so this row is the
           address named in the seller report together with that page. A later wallet is a separate row
           when a page of the same kind names it. Rows already in the index take the new flag when the
-          backfill for this list runs. The first run moved 1,632 payments across 840 daily rows on 2026-10-24. On the buyer side, the purchases a listed service makes still count
+          backfill for this list runs. The first run moved 1,632 payments in 840 rows of the per-day rollup on 2026-10-24. On the buyer side, the purchases a listed service makes still count
           in the 30-day history of that service, because they are real payments it made.
         </p>
         <TableScroll label="Measurement payers">
