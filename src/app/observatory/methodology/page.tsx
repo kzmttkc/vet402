@@ -1055,8 +1055,8 @@ export default async function ObservatoryMethodologyPage() {
           Crosspeel says the wallet that pays for probes is rotated between runs, so this row is the
           address named in the seller report together with that page. A later wallet is a separate row
           when a page of the same kind names it. Rows already in the index take the new flag when the
-          backfill for this list runs. On the buyer side, a listed service&apos;s own purchases still count
-          in its 30-day history, because they are real payments that service made.
+          backfill for this list runs. On the buyer side, the purchases a listed service makes still count
+          in the 30-day history of that service, because they are real payments it made.
         </p>
         <TableScroll label="Measurement payers">
           <table className="fact-table">
