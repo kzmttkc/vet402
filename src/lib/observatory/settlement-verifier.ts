@@ -27,7 +27,7 @@ import { isDeliveryVerified } from "./l1-runner";
 import { ingestL1 } from "@/lib/settlements/ingest-l1";
 import { LATE_PRIOR_STATUSES } from "@/lib/settlements/recover-late";
 import { updateWithCorrection } from "./corrections";
-import { reconcileArcGatewayClaims } from "./arc-gateway-verify";
+import { reconcileArcGatewayClaims, type GatewayAuth } from "./arc-gateway-verify";
 import { fireL1RegistryHook, fireL2RegistryHook } from "@/lib/chain/registry-hook";
 import { SELLER_NAMED_TX_NOT_FOUND, SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS, SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS } from "@/lib/sellers/fix-modes";
 
@@ -196,6 +196,10 @@ export type VerifySettlementsSummary = {
   instrumentFailure: string | null;
   /** `wrong_chain` を出して以後スキップしたチェーン（network）。空が正常。 */
   wrongChainNetworks: string[];
+  /** Gateway の照合が保留にした件数。0 が正常。 */
+  gatewayDeferred: number;
+  /** Gateway の照合が署名不正として印だけ残した件数。0 が正常。 */
+  gatewayNoted: number;
 };
 
 /**
@@ -214,6 +218,10 @@ export type SettlementVerifierDeps = {
   gatewayFetch?: typeof fetch;
   /** バッチ tx での購入元の GatewayWallet 残高の減り。未指定なら ARC_RPC_URL。読めなければ照合は保留。 */
   readGatewayDebit?: (txHash: string, buyer: string) => Promise<bigint | null>;
+  /** 1 回の Gateway API 呼び出しの上限。未指定は数秒。 */
+  gatewayFetchTimeoutMs?: number;
+  /** 署名の回復。未指定はピンしたドメインでの EIP-712。 */
+  verifySignature?: (auth: GatewayAuth, payer: string) => Promise<boolean>;
 };
 
 export async function runSettlementVerification(options?: {
@@ -253,6 +261,8 @@ export async function runSettlementVerification(options?: {
     deadlineHit: false,
     instrumentFailure: null,
     wrongChainNetworks: [],
+    gatewayDeferred: 0,
+    gatewayNoted: 0,
   };
   // wrong_chain を出したチェーン。その行は読みに行かず wrong_chain として deferred に積む。
   const wrongChain = new Set<string>();
@@ -262,14 +272,20 @@ export async function runSettlementVerification(options?: {
   // Circle Gateway の行は tx_hash が空なので下の SELECT に入らない。請求とバッチ tx の残高の減りは
   // 別経路。ここで落ちてもネイティブの照合は続ける。scanned には数えない（下の SELECT の件数のまま）。
   try {
+    const gatewayDeadline = createDeadline(Math.min(8_000, deadline.remaining()));
     const gateway = await reconcileArcGatewayClaims({
       db,
       ...(options?.deps?.gatewayFetch ? { fetchImpl: options.deps.gatewayFetch } : {}),
       ...(options?.deps?.readGatewayDebit ? { readDebit: options.deps.readGatewayDebit } : {}),
+      ...(options?.deps?.gatewayFetchTimeoutMs !== undefined ? { fetchTimeoutMs: options.deps.gatewayFetchTimeoutMs } : {}),
+      ...(options?.deps?.verifySignature ? { verifySignature: options.deps.verifySignature } : {}),
+      deadline: gatewayDeadline,
       limit,
     });
     summary.verified += gateway.settled;
     summary.refuted += gateway.refuted;
+    summary.gatewayDeferred = gateway.deferred;
+    summary.gatewayNoted = gateway.noted;
   } catch (error) {
     logServerErrorSafe("settlement-verifier.arc_gateway", error);
   }

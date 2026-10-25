@@ -58,3 +58,117 @@ export function sortedMerkleRoot(leaves: readonly Hex[]): Hex {
   if (root === undefined) throw new Error("empty_merkle");
   return root;
 }
+
+const HEX32 = /^0x[0-9a-fA-F]{64}$/;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+export type GatewayDaySourceRow = {
+  attemptedAt: string;
+  resourceUrl: string;
+  method: string | null;
+  httpStatus: number | null;
+  circleGateway: Record<string, unknown> | null;
+};
+
+export type GatewayDayRecord = {
+  day: string;
+  index: number;
+  resource: string;
+  method: string;
+  attemptedAt: string;
+  authorization: { nonce: string; from: string; to: string; value: string; validAfter: string; validBefore: string };
+  signature: string | null;
+  verifyingContract: string | null;
+  resourceHash: string;
+  requestHash: string;
+  responseHash: string;
+  httpStatus: number;
+  delivered: boolean;
+  leaf: Hex;
+};
+
+export type GatewayDayDocument = {
+  day: string;
+  root: Hex;
+  purchases: number;
+  delivered: number;
+  records: GatewayDayRecord[];
+};
+
+function hex32(value: unknown): string | null {
+  return typeof value === "string" && HEX32.test(value) ? value : null;
+}
+
+function text(value: unknown): string | null {
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
+/**
+ * One UTC day of settled Gateway rows, as records.json plus its Merkle root.
+ * A settled row with a missing leaf hash fails the whole day. Nothing is written here.
+ */
+export function buildGatewayDayRecords(day: string, rows: readonly GatewayDaySourceRow[]): { ok: true; document: GatewayDayDocument } | { ok: false; reason: "empty" | "missing_hash" | "bad_day" } {
+  if (!DAY.test(day)) return { ok: false, reason: "bad_day" };
+  if (rows.length === 0) return { ok: false, reason: "empty" };
+  const ordered = [...rows].sort((a, b) => a.attemptedAt.localeCompare(b.attemptedAt));
+  const records: GatewayDayRecord[] = [];
+  for (const row of ordered) {
+    const gw = row.circleGateway;
+    const nonce = hex32(gw?.nonce);
+    const from = text(gw?.from);
+    const to = text(gw?.to);
+    const value = text(gw?.value);
+    const resourceHash = hex32(gw?.resourceHash);
+    const requestHash = hex32(gw?.requestHash);
+    const responseHash = hex32(gw?.responseHash);
+    if (!gw || !nonce || !from || !to || !value || !/^[0-9]+$/.test(value) || !resourceHash || !requestHash || !responseHash) {
+      return { ok: false, reason: "missing_hash" };
+    }
+    const httpStatus = typeof gw.httpStatus === "number" ? gw.httpStatus : row.httpStatus ?? 0;
+    const delivered = typeof httpStatus === "number" && httpStatus >= 200 && httpStatus <= 299;
+    const leaf = gatewayLeafV1({
+      nonce: nonce as Hex,
+      from: from as Address,
+      to: to as Address,
+      value: BigInt(value),
+      resourceHash: resourceHash as Hex,
+      requestHash: requestHash as Hex,
+      httpStatus,
+      responseHash: responseHash as Hex,
+    });
+    records.push({
+      day,
+      index: records.length + 1,
+      resource: row.resourceUrl,
+      method: row.method ?? "GET",
+      attemptedAt: row.attemptedAt,
+      authorization: {
+        nonce,
+        from,
+        to,
+        value,
+        validAfter: text(gw.validAfter) ?? "0",
+        validBefore: text(gw.validBefore) ?? "0",
+      },
+      signature: text(gw.signature),
+      verifyingContract: text(gw.verifyingContract),
+      resourceHash,
+      requestHash,
+      responseHash,
+      httpStatus,
+      delivered,
+      leaf,
+    });
+  }
+  const delivered = records.filter((r) => r.delivered).length;
+  return {
+    ok: true,
+    document: {
+      day,
+      root: sortedMerkleRoot(records.map((r) => r.leaf)),
+      purchases: records.length,
+      delivered,
+      records,
+    },
+  };
+}

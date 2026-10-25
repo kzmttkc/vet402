@@ -505,6 +505,21 @@ export function hasSignableNativeArcAccept(accepts: readonly unknown[]): boolean
 }
 
 /**
+ * True when an enabled EVM rail would sign one of these accepts today.
+ * GatewayWalletBatched falls out of signableUsdcAccept. Pass `exceptCaip2` to skip one chain
+ * (the Gateway picker skips Arc here because nativeArcSignable already covers it).
+ */
+export function hasSignableEnabledEvmAccept(accepts: readonly unknown[], exceptCaip2?: string): boolean {
+  for (const raw of accepts) {
+    const hit = signableUsdcAccept(raw);
+    if (!hit || !isEvmPayChainEnabled(hit.chain)) continue;
+    if (exceptCaip2 && hit.chain.caip2 === exceptCaip2) continue;
+    return true;
+  }
+  return false;
+}
+
+/**
  * The payTos the CATALOG declared for `chain` (2026-09-19 review W1): of the endpoint's
  * raw_accepts, only accepts that pass signableUsdcAccept on exactly that chain contribute their
  * payTo (lowercased; the match in selectAccept is case-insensitive). A GatewayWalletBatched

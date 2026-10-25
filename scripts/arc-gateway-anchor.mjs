@@ -10,6 +10,13 @@ if (args.some((a) => a === "--send" || a === "--broadcast")) {
   process.exit(2);
 }
 
+const recorderAddress = (process.env.ARC_GATEWAY_RECORDER ?? "").trim().toLowerCase();
+const payerAddress = (process.env.ARC_GATEWAY_PAYER ?? "").trim().toLowerCase();
+if (recorderAddress !== "" && payerAddress !== "" && recorderAddress === payerAddress) {
+  console.error("recorder address matches the payer address");
+  process.exit(2);
+}
+
 function leafV1(p) {
   const httpStatus = Number.isInteger(p.httpStatus) && p.httpStatus >= 0 && p.httpStatus <= 65535 ? p.httpStatus : 0;
   return keccak256(

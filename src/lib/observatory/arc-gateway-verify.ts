@@ -1,12 +1,26 @@
 // Circle Gateway charge check for Arc purchase rows.
-// A row stays settle_claimed until the Gateway API shows a confirmed transfer
-// and the buyer's GatewayWallet debit in that batch tx matches.
+// A signed row stays unverified until a nonce lookup names a batch transaction
+// and that transaction's debit for the buyer matches the sum of our rows in the batch.
 // The batch tx is stored on raw_response_meta.circleGateway.batchTx, not tx_hash.
 // This module never deposits, withdraws, or broadcasts.
 
-import { getAddress, verifyTypedData, type Hex } from "viem";
+import {
+  decodeAbiParameters,
+  decodeFunctionData,
+  encodeAbiParameters,
+  encodeFunctionData,
+  getAddress,
+  keccak256,
+  parseAbi,
+  parseAbiParameters,
+  toBytes,
+  verifyTypedData,
+  type Hex,
+} from "viem";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
+import type { Deadline } from "@/lib/util/deadline";
 import { updateWithCorrection } from "./corrections";
 import { ARC_USDC } from "./x402-payer";
 import {
@@ -14,6 +28,9 @@ import {
   ARC_GATEWAY_DOMAIN_NAME,
   ARC_GATEWAY_DOMAIN_VERSION,
   ARC_GATEWAY_WALLET,
+  GATEWAY_FETCH_TIMEOUT_MS,
+  GATEWAY_NOT_CHARGED_EXPIRED,
+  GATEWAY_NOT_CHARGED_GRACE_SECONDS,
 } from "./arc-gateway";
 
 const TRANSFER_TYPES = {
@@ -26,6 +43,11 @@ const TRANSFER_TYPES = {
     { name: "nonce", type: "bytes32" },
   ],
 } as const;
+
+const SUBMIT_BATCH_ABI = parseAbi(["function submitBatch(bytes calldataBytes, bytes signature)"]);
+const BATCH_PARAMS = parseAbiParameters("(address depositor, int256 value)[], bytes32, uint32, address, address");
+const INSUFFICIENT_PARAMS = parseAbiParameters("uint256 value, uint256 available, uint256 withdrawing");
+const INSUFFICIENT_TOPIC = keccak256(toBytes("InsufficientBalance(address,address,uint256,uint256,uint256)"));
 
 export type GatewayAuth = {
   from: string;
@@ -52,6 +74,10 @@ type TransferView = {
   from: string | null;
   amount: string | null;
 };
+
+export type TxLog = { address: string; topics: readonly string[]; data: string };
+
+export type GatewayDebitRead = { kind: "amount"; debit: bigint } | { kind: "use_balance" } | { kind: "defer" };
 
 function asRecord(v: unknown): Record<string, unknown> | null {
   return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
@@ -114,32 +140,114 @@ export function interpretGatewayTransfers(body: unknown, nonce: string): Gateway
 }
 
 /**
- * Sum of confirmed transfers from this buyer in this batch tx.
- * Incomplete page or an unreadable amount makes the sum null (defer, do not refute).
+ * Settle when the batch debit equals the sum of our rows in that batch.
+ * An unread debit, or a signed sibling whose nonce is still unread, defers.
+ * A different debit refutes. The buyer's full transfer history is not an input.
  */
-export function sumBuyerCharges(body: unknown, txHash: string, buyer: string): bigint | null {
-  const rec = asRecord(body);
-  if (!rec || !Array.isArray(rec.transfers)) return null;
-  if (pageIncomplete(rec, rec.transfers)) return null;
-  const tx = txHash.toLowerCase();
-  const who = buyer.toLowerCase();
-  let sum = 0n;
-  for (const raw of rec.transfers) {
-    const t = transferView(raw);
-    if (!t?.txHash || t.txHash.toLowerCase() !== tx) continue;
-    if (!t.from || t.from.toLowerCase() !== who) continue;
-    if (t.status !== "confirmed" && t.status !== "completed") continue;
-    if (!t.amount || !/^[0-9]+$/.test(t.amount)) return null;
-    sum += BigInt(t.amount);
-  }
-  return sum;
-}
-
-/** A === S and D === S settles. A === S and a different debit refutes. Anything else defers. */
-export function judgeGatewayBatch(input: { apiSum: bigint | null; rowSum: bigint; debit: bigint | null }): "settle" | "refute" | "defer" {
-  if (input.apiSum === null || input.apiSum !== input.rowSum || input.debit === null) return "defer";
+export function judgeGatewayBatch(input: { rowSum: bigint; debit: bigint | null; unresolved?: boolean }): "settle" | "refute" | "defer" {
+  if (input.unresolved || input.debit === null) return "defer";
   if (input.debit === input.rowSum) return "settle";
   return "refute";
+}
+
+function addressTopic(addr: string): string {
+  return `0x${addr.toLowerCase().replace(/^0x/, "").padStart(64, "0")}`;
+}
+
+/** Sum of USDC actually taken from this buyer, from InsufficientBalance logs. Null when no such log. */
+function insufficientTaken(logs: readonly TxLog[], buyer: string): bigint | null | "unreadable" {
+  const who = addressTopic(buyer);
+  const token = addressTopic(ARC_USDC);
+  let sum = 0n;
+  let saw = false;
+  for (const log of logs) {
+    if (log.address.toLowerCase() !== ARC_GATEWAY_WALLET.toLowerCase()) continue;
+    if ((log.topics[0] ?? "").toLowerCase() !== INSUFFICIENT_TOPIC.toLowerCase()) continue;
+    if ((log.topics[1] ?? "").toLowerCase() !== token) continue;
+    if ((log.topics[2] ?? "").toLowerCase() !== who) continue;
+    saw = true;
+    try {
+      const decoded = decodeAbiParameters(INSUFFICIENT_PARAMS, log.data as Hex);
+      const available = decoded[1];
+      const withdrawing = decoded[2];
+      if (typeof available !== "bigint" || typeof withdrawing !== "bigint") return "unreadable";
+      sum += available + withdrawing;
+    } catch {
+      return "unreadable";
+    }
+  }
+  return saw ? sum : null;
+}
+
+type DecodeDebit = { kind: "amount"; debit: bigint } | { kind: "defer" } | { kind: "undecoded" };
+
+function tryDecodeBuyerDebit(calldata: string | null, logs: readonly TxLog[], buyer: string): DecodeDebit {
+  if (!calldata || !calldata.startsWith("0x") || calldata.length < 10) return { kind: "undecoded" };
+  let inner: unknown;
+  try {
+    const decoded = decodeFunctionData({ abi: SUBMIT_BATCH_ABI, data: calldata as Hex });
+    if (decoded.functionName !== "submitBatch") return { kind: "undecoded" };
+    inner = decoded.args[0];
+  } catch {
+    return { kind: "undecoded" };
+  }
+  if (typeof inner !== "string") return { kind: "undecoded" };
+  let deltas: readonly { depositor: string; value: bigint }[];
+  let token = "";
+  let wallet = "";
+  try {
+    const params = decodeAbiParameters(BATCH_PARAMS, inner as Hex);
+    deltas = params[0] as readonly { depositor: string; value: bigint }[];
+    token = String(params[3]);
+    wallet = String(params[4]);
+  } catch {
+    return { kind: "undecoded" };
+  }
+  if (token.toLowerCase() !== ARC_USDC.toLowerCase()) return { kind: "defer" };
+  if (wallet.toLowerCase() !== ARC_GATEWAY_WALLET.toLowerCase()) return { kind: "defer" };
+  const taken = insufficientTaken(logs, buyer);
+  if (taken === "unreadable") return { kind: "defer" };
+  if (taken !== null) return { kind: "amount", debit: taken };
+  const who = buyer.toLowerCase();
+  let requested = 0n;
+  let saw = false;
+  for (const delta of deltas) {
+    if (delta.depositor.toLowerCase() !== who || delta.value >= 0n) continue;
+    saw = true;
+    requested += -delta.value;
+  }
+  if (!saw) return { kind: "defer" };
+  return { kind: "amount", debit: requested };
+}
+
+/**
+ * Debit of this buyer inside one GatewayWallet transaction.
+ * A decoded submitBatch amount stands on its own. Other movement in the block does not change it.
+ * When the calldata cannot be decoded, a balance delta is usable only if nothing else in the block
+ * touched this buyer. Otherwise defer.
+ */
+export function gatewayBuyerDebit(input: {
+  status: string;
+  to: string | null;
+  calldata: string | null;
+  logs: readonly TxLog[];
+  buyer: string;
+  otherBuyerMovement: boolean;
+}): GatewayDebitRead {
+  if (input.status !== "success") return { kind: "defer" };
+  if (!input.to || input.to.toLowerCase() !== ARC_GATEWAY_WALLET.toLowerCase()) return { kind: "defer" };
+  const decoded = tryDecodeBuyerDebit(input.calldata, input.logs, input.buyer);
+  if (decoded.kind === "amount") return decoded;
+  if (decoded.kind === "defer") return { kind: "defer" };
+  if (input.otherBuyerMovement) return { kind: "defer" };
+  return { kind: "use_balance" };
+}
+
+/** Turn a debit read into the number judgeGatewayBatch compares. A rising balance is not a debit. */
+export function resolveGatewayDebit(read: GatewayDebitRead, balanceDelta: bigint | null): bigint | null {
+  if (read.kind === "amount") return read.debit;
+  if (read.kind === "use_balance" && balanceDelta !== null && balanceDelta >= 0n) return balanceDelta;
+  return null;
 }
 
 /** EIP-712 recover against the pinned GatewayWalletBatched domain. False on any mismatch. */
@@ -177,13 +285,14 @@ export type GatewayClaimRow = {
   status: string;
   payer: string | null;
   circleGateway: unknown;
-  /** Already settled sibling. Counted in S, not written again. */
+  /** Already settled sibling. Counted in the batch sum, not written again. */
   settled?: boolean;
 };
 
 export type GatewayPlan =
   | { id: string; action: "settle"; batchTx: string; gatewayStatus: string }
   | { id: string; action: "refute"; reason: "gateway_debit_mismatch" }
+  | { id: string; action: "expire"; reason: typeof GATEWAY_NOT_CHARGED_EXPIRED }
   | { id: string; action: "note"; reason: "gateway_signature_invalid" }
   | { id: string; action: "defer"; reason: string };
 
@@ -199,22 +308,40 @@ function valueOf(auth: GatewayAuth | null): bigint | null {
   }
 }
 
+function pastGrace(auth: GatewayAuth, nowSec: number): boolean {
+  const before = Number(auth.validBefore);
+  return Number.isFinite(before) && before + GATEWAY_NOT_CHARGED_GRACE_SECONDS < nowSec;
+}
+
 /**
- * Pure plan. No charge stays deferred. A charge whose debit does not match, when the API sum
- * equals the row sum, is a refute. A bad signature is a note, not a seller finding.
+ * Pure plan. No charge stays deferred until validBefore plus the grace, then it expires.
+ * Expiry is not a refutation. A charge whose debit does not match the sum of our rows in
+ * that batch is a refute. A bad signature is a note, not a seller finding.
+ * A signed row for the same buyer whose nonce is still unread defers the whole batch.
  */
 export async function planGatewayReconcile(input: {
   rows: GatewayClaimRow[];
+  nowSec?: number;
   lookupNonce: (nonce: string) => Promise<Lookup>;
-  listFromBuyer: (buyer: string) => Promise<Lookup>;
   readDebit: (txHash: string, buyer: string) => Promise<bigint | null>;
-  loadSettled?: (txHash: string, buyer: string) => Promise<GatewayClaimRow[]>;
+  loadBatch?: (txHash: string, buyer: string) => Promise<{ rows: GatewayClaimRow[]; unresolved: number }>;
+  rememberLookup?: (id: string, lookup: string, batchTx: string | null) => Promise<void>;
   verifySignature?: (auth: GatewayAuth, payer: string) => Promise<boolean>;
 }): Promise<GatewayPlan[]> {
+  const nowSec = input.nowSec ?? Math.floor(Date.now() / 1000);
   const verify = input.verifySignature ?? gatewayAuthorizationRecovers;
   const plans = new Map<string, GatewayPlan>();
   type Member = { row: GatewayClaimRow; auth: GatewayAuth; value: bigint; gatewayStatus: string };
   const groups = new Map<string, Member[]>();
+  const buyersBlocked = new Set<string>();
+
+  const remember = async (id: string, buyer: string, lookup: string, batchTx: string | null) => {
+    try {
+      await input.rememberLookup?.(id, lookup, batchTx);
+    } catch {
+      buyersBlocked.add(buyer);
+    }
+  };
 
   for (const row of input.rows) {
     if (row.settled) continue;
@@ -224,6 +351,7 @@ export async function planGatewayReconcile(input: {
       plans.set(row.id, { id: row.id, action: "defer", reason: "gateway_auth_unreadable" });
       continue;
     }
+    const buyer = auth.from.toLowerCase();
     const meta = asRecord(row.circleGateway);
     if (meta?.note === "gateway_signature_invalid") {
       plans.set(row.id, { id: row.id, action: "defer", reason: "gateway_signature_invalid" });
@@ -236,6 +364,7 @@ export async function planGatewayReconcile(input: {
       signed = false;
     }
     if (!signed) {
+      await remember(row.id, buyer, "unsigned", null);
       plans.set(row.id, { id: row.id, action: "note", reason: "gateway_signature_invalid" });
       continue;
     }
@@ -247,15 +376,23 @@ export async function planGatewayReconcile(input: {
     }
     if (!lookup.ok) {
       plans.set(row.id, { id: row.id, action: "defer", reason: "gateway_api_error" });
+      buyersBlocked.add(buyer);
       continue;
     }
     const hit = interpretGatewayTransfers(lookup.body, auth.nonce);
-    if (hit.kind === "absent") {
-      plans.set(row.id, { id: row.id, action: "defer", reason: "gateway_not_charged" });
+    if (hit.kind === "incomplete") {
+      plans.set(row.id, { id: row.id, action: "defer", reason: "gateway_incomplete" });
+      buyersBlocked.add(buyer);
       continue;
     }
-    if (hit.kind !== "charged") {
-      plans.set(row.id, { id: row.id, action: "defer", reason: `gateway_${hit.kind}` });
+    if (hit.kind === "absent" || hit.kind === "pending" || hit.kind === "failed") {
+      await remember(row.id, buyer, hit.kind, null);
+      if (pastGrace(auth, nowSec)) {
+        plans.set(row.id, { id: row.id, action: "expire", reason: GATEWAY_NOT_CHARGED_EXPIRED });
+      } else {
+        const reason = hit.kind === "absent" ? "gateway_not_charged" : `gateway_${hit.kind}`;
+        plans.set(row.id, { id: row.id, action: "defer", reason });
+      }
       continue;
     }
     const value = valueOf(auth);
@@ -263,7 +400,7 @@ export async function planGatewayReconcile(input: {
       plans.set(row.id, { id: row.id, action: "defer", reason: "gateway_value_unreadable" });
       continue;
     }
-    const buyer = auth.from.toLowerCase();
+    await remember(row.id, buyer, "charged", hit.txHash);
     const key = `${hit.txHash.toLowerCase()}|${buyer}`;
     const list = groups.get(key) ?? [];
     list.push({ row, auth, value, gatewayStatus: hit.status });
@@ -274,18 +411,28 @@ export async function planGatewayReconcile(input: {
     const split = key.indexOf("|");
     const batchTx = key.slice(0, split);
     const buyer = key.slice(split + 1);
-    let siblings: GatewayClaimRow[] = [];
-    try {
-      siblings = (await input.loadSettled?.(batchTx, buyer)) ?? [];
-    } catch {
-      for (const m of members) plans.set(m.row.id, { id: m.row.id, action: "defer", reason: "gateway_settled_unreadable" });
+    if (buyersBlocked.has(buyer)) {
+      for (const m of members) plans.set(m.row.id, { id: m.row.id, action: "defer", reason: "gateway_batch_unresolved" });
       continue;
     }
+    let loaded: { rows: GatewayClaimRow[]; unresolved: number } = { rows: [], unresolved: 0 };
+    try {
+      loaded = (await input.loadBatch?.(batchTx, buyer)) ?? loaded;
+    } catch {
+      for (const m of members) plans.set(m.row.id, { id: m.row.id, action: "defer", reason: "gateway_batch_unreadable" });
+      continue;
+    }
+    if (loaded.unresolved > 0) {
+      for (const m of members) plans.set(m.row.id, { id: m.row.id, action: "defer", reason: "gateway_batch_unresolved" });
+      continue;
+    }
+    const seen = new Set(members.map((m) => m.row.id));
     let rowSum = 0n;
     let broken = false;
     for (const m of members) rowSum += m.value;
-    for (const s of siblings) {
-      const auth = readGatewayAuth(s.circleGateway);
+    for (const sibling of loaded.rows) {
+      if (seen.has(sibling.id)) continue;
+      const auth = readGatewayAuth(sibling.circleGateway);
       const value = valueOf(auth);
       if (value === null) {
         broken = true;
@@ -297,20 +444,13 @@ export async function planGatewayReconcile(input: {
       for (const m of members) plans.set(m.row.id, { id: m.row.id, action: "defer", reason: "gateway_row_sum_incomplete" });
       continue;
     }
-    let apiSum: bigint | null = null;
-    try {
-      const listed = await input.listFromBuyer(buyer);
-      apiSum = listed.ok ? sumBuyerCharges(listed.body, batchTx, buyer) : null;
-    } catch {
-      apiSum = null;
-    }
     let debit: bigint | null = null;
     try {
       debit = await input.readDebit(batchTx, buyer);
     } catch {
       debit = null;
     }
-    const verdict = judgeGatewayBatch({ apiSum, rowSum, debit });
+    const verdict = judgeGatewayBatch({ rowSum, debit, unresolved: false });
     const gatewayStatus = members[0]?.gatewayStatus ?? "confirmed";
     for (const m of members) {
       if (verdict === "settle") plans.set(m.row.id, { id: m.row.id, action: "settle", batchTx, gatewayStatus });
@@ -330,15 +470,22 @@ function rowsOf(raw: unknown): Record<string, unknown>[] {
   return Array.isArray(rows) ? (rows as Record<string, unknown>[]) : [];
 }
 
-async function gatewayFetch(url: string, fetchImpl: typeof fetch): Promise<Lookup> {
+async function gatewayFetch(url: string, fetchImpl: typeof fetch, fetchTimeoutMs: number, deadline?: Deadline): Promise<Lookup> {
+  if (deadline?.expired()) return { ok: false };
+  const budget = deadline ? deadline.budgetFor(fetchTimeoutMs) : fetchTimeoutMs;
+  if (budget <= 0) return { ok: false };
+  const signal = AbortSignal.timeout(budget);
   try {
-    const res = await fetchImpl(url);
+    const res = await fetchImpl(url, { signal });
     if (!res.ok) return { ok: false };
     return { ok: true, body: await res.json() };
-  } catch {
+  } catch (error) {
+    logServerErrorSafe("arc-gateway-verify.fetch", error);
     return { ok: false };
   }
 }
+
+export type GatewayReconcileSummary = { settled: number; refuted: number; deferred: number; noted: number; expired: number };
 
 /** Load Gateway rows and apply the plan. A throw here must not fail the native verifier. */
 export async function reconcileArcGatewayClaims(options?: {
@@ -346,12 +493,18 @@ export async function reconcileArcGatewayClaims(options?: {
   fetchImpl?: typeof fetch;
   readDebit?: (txHash: string, buyer: string) => Promise<bigint | null>;
   limit?: number;
-}): Promise<{ settled: number; refuted: number; deferred: number; noted: number }> {
-  const empty = { settled: 0, refuted: 0, deferred: 0, noted: 0 };
+  fetchTimeoutMs?: number;
+  deadline?: Deadline;
+  nowSec?: number;
+  verifySignature?: (auth: GatewayAuth, payer: string) => Promise<boolean>;
+}): Promise<GatewayReconcileSummary> {
+  const empty: GatewayReconcileSummary = { settled: 0, refuted: 0, deferred: 0, noted: 0, expired: 0 };
   const db = options?.db === undefined ? getDb() : options.db;
   if (!db) return empty;
+  if (options?.deadline?.expired()) return empty;
   const fetchImpl = options?.fetchImpl ?? fetch;
-  const readDebit = options?.readDebit ?? readArcGatewayDebit;
+  const fetchTimeoutMs = options?.fetchTimeoutMs ?? GATEWAY_FETCH_TIMEOUT_MS;
+  const readDebit = options?.readDebit ?? ((tx, buyer) => readArcGatewayDebit(tx, buyer, options?.deadline));
   const limit = options?.limit ?? 100;
   const raw = await db.execute(sql`
     SELECT pu.id::text AS id, pu.status, pu.payer, pu.raw_response_meta->'circleGateway' AS circle_gateway
@@ -359,8 +512,8 @@ export async function reconcileArcGatewayClaims(options?: {
     WHERE pu.settlement_verified IS NULL
       AND pu.raw_response_meta->>'circleGatewayRail' = 'true'
       AND jsonb_typeof(pu.raw_response_meta->'circleGateway') = 'object'
-      AND pu.status IN ('settle_claimed', 'settle_failed')
-    ORDER BY pu.attempted_at ASC
+      AND pu.status IN ('settle_claimed', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable')
+    ORDER BY (coalesce(pu.raw_response_meta->'circleGateway'->>'nonceLookup', '') = '') DESC, pu.attempted_at ASC
     LIMIT ${limit}
   `);
   const rows: GatewayClaimRow[] = rowsOf(raw).map((r) => ({
@@ -372,29 +525,70 @@ export async function reconcileArcGatewayClaims(options?: {
   if (rows.length === 0) return empty;
   const plans = await planGatewayReconcile({
     rows,
-    lookupNonce: (nonce) => gatewayFetch(`${ARC_GATEWAY_API}/x402/transfers?network=eip155:5042&nonce=${encodeURIComponent(nonce)}`, fetchImpl),
-    listFromBuyer: (buyer) =>
-      gatewayFetch(`${ARC_GATEWAY_API}/x402/transfers?network=eip155:5042&from=${encodeURIComponent(buyer)}&pageSize=100`, fetchImpl),
+    ...(options?.nowSec !== undefined ? { nowSec: options.nowSec } : {}),
+    ...(options?.verifySignature ? { verifySignature: options.verifySignature } : {}),
+    lookupNonce: (nonce) =>
+      gatewayFetch(
+        `${ARC_GATEWAY_API}/x402/transfers?network=eip155:5042&nonce=${encodeURIComponent(nonce)}`,
+        fetchImpl,
+        fetchTimeoutMs,
+        options?.deadline,
+      ),
     readDebit,
-    loadSettled: async (txHash, buyer) => {
+    rememberLookup: async (id, lookup, batchTx) => {
+      if (batchTx) {
+        await db.execute(sql`
+          UPDATE x402_l1_purchases
+          SET raw_response_meta = jsonb_set(
+            jsonb_set(raw_response_meta, '{circleGateway,nonceLookup}', to_jsonb(${lookup}::text), true),
+            '{circleGateway,batchTxSeen}', to_jsonb(${batchTx}::text), true)
+          WHERE id = ${id}::uuid AND settlement_verified IS NULL
+        `);
+      } else {
+        await db.execute(sql`
+          UPDATE x402_l1_purchases
+          SET raw_response_meta = jsonb_set(raw_response_meta, '{circleGateway,nonceLookup}', to_jsonb(${lookup}::text), true)
+          WHERE id = ${id}::uuid AND settlement_verified IS NULL
+        `);
+      }
+    },
+    loadBatch: async (txHash, buyer) => {
       const sib = await db.execute(sql`
         SELECT pu.id::text AS id, pu.status, pu.payer, pu.raw_response_meta->'circleGateway' AS circle_gateway
         FROM x402_l1_purchases pu
-        WHERE pu.status = 'settled'
-          AND lower(pu.raw_response_meta->'circleGateway'->>'batchTx') = lower(${txHash})
-          AND lower(pu.raw_response_meta->'circleGateway'->>'from') = lower(${buyer})
+        WHERE pu.raw_response_meta->>'circleGatewayRail' = 'true'
+          AND lower(coalesce(pu.raw_response_meta->'circleGateway'->>'batchTxSeen', pu.raw_response_meta->'circleGateway'->>'batchTx', '')) = lower(${txHash})
+          AND lower(coalesce(pu.raw_response_meta->'circleGateway'->>'from', pu.payer, '')) = lower(${buyer})
       `);
-      return rowsOf(sib).map((r) => ({
-        id: String(r.id),
-        status: String(r.status),
-        payer: typeof r.payer === "string" ? r.payer : null,
-        circleGateway: r.circle_gateway,
-        settled: true,
-      }));
+      const unresolvedRaw = await db.execute(sql`
+        SELECT count(*)::text AS n
+        FROM x402_l1_purchases pu
+        WHERE pu.settlement_verified IS NULL
+          AND pu.raw_response_meta->>'circleGatewayRail' = 'true'
+          AND jsonb_typeof(pu.raw_response_meta->'circleGateway') = 'object'
+          AND pu.raw_response_meta->'circleGateway'->>'signature' IS NOT NULL
+          AND coalesce(pu.raw_response_meta->'circleGateway'->>'note', '') <> 'gateway_signature_invalid'
+          AND coalesce(pu.raw_response_meta->'circleGateway'->>'nonceLookup', '') = ''
+          AND lower(coalesce(pu.raw_response_meta->'circleGateway'->>'from', pu.payer, '')) = lower(${buyer})
+          AND pu.status = ANY (ARRAY['settle_claimed','settle_failed','delivered_no_receipt','settle_claimed_unverifiable'])
+      `);
+      const n = rowsOf(unresolvedRaw)[0]?.n;
+      const unresolved = typeof n === "string" && /^[0-9]+$/.test(n) ? Number(n) : 1;
+      return {
+        rows: rowsOf(sib).map((r) => ({
+          id: String(r.id),
+          status: String(r.status),
+          payer: typeof r.payer === "string" ? r.payer : null,
+          circleGateway: r.circle_gateway,
+          settled: String(r.status) === "settled",
+        })),
+        unresolved,
+      };
     },
   });
   const summary = { ...empty };
   for (const plan of plans) {
+    if (options?.deadline?.expired()) break;
     if (plan.action === "defer") {
       summary.deferred++;
       continue;
@@ -402,13 +596,34 @@ export async function reconcileArcGatewayClaims(options?: {
     if (plan.action === "note") {
       await db.execute(sql`
         UPDATE x402_l1_purchases
-        SET raw_response_meta = jsonb_set(raw_response_meta, '{circleGateway,note}', '"gateway_signature_invalid"'::jsonb, true)
+        SET raw_response_meta = jsonb_set(
+          jsonb_set(raw_response_meta, '{circleGateway,note}', '"gateway_signature_invalid"'::jsonb, true),
+          '{circleGateway,nonceLookup}', '"unsigned"'::jsonb, true)
         WHERE id = ${plan.id}::uuid AND settlement_verified IS NULL
       `);
       summary.noted++;
       continue;
     }
     const before = rows.find((r) => r.id === plan.id);
+    if (plan.action === "expire") {
+      await updateWithCorrection(db, {
+        update: sql`
+          UPDATE x402_l1_purchases
+          SET status = ${GATEWAY_NOT_CHARGED_EXPIRED},
+              settlement_verified = false,
+              settlement_verified_at = now(),
+              settlement_verify_reason = ${GATEWAY_NOT_CHARGED_EXPIRED}
+          WHERE id = ${plan.id}::uuid AND settlement_verified IS NULL
+          RETURNING id::text AS correction_subject_id`,
+        subjectType: "purchase",
+        level: "l1",
+        before: { json: { status: before?.status ?? "settle_claimed" } },
+        after: { json: { status: GATEWAY_NOT_CHARGED_EXPIRED, reason: GATEWAY_NOT_CHARGED_EXPIRED } },
+        reason: "settlement_backfill",
+      });
+      summary.expired++;
+      continue;
+    }
     if (plan.action === "settle") {
       await updateWithCorrection(db, {
         update: sql`
@@ -451,17 +666,83 @@ export async function reconcileArcGatewayClaims(options?: {
   return summary;
 }
 
-/** On-chain GatewayWallet.totalBalance drop for this buyer in the batch tx. Null defers. */
-export async function readArcGatewayDebit(txHash: string, buyer: string): Promise<bigint | null> {
+type BlockReceipt = { transactionHash?: string; to?: string | null; logs?: TxLog[] };
+
+function logTouchesBuyer(logs: readonly TxLog[], buyer: string): boolean {
+  const topic = addressTopic(buyer);
+  return logs.some(
+    (log) =>
+      log.address.toLowerCase() === ARC_GATEWAY_WALLET.toLowerCase() &&
+      log.topics.some((t) => t.toLowerCase() === topic),
+  );
+}
+
+/** On-chain debit for this buyer in the batch tx. Null defers. Never uses a mixed balance delta to refute. */
+export async function readArcGatewayDebit(txHash: string, buyer: string, deadline?: Deadline): Promise<bigint | null> {
+  if (deadline?.expired()) return null;
   const rpc = process.env.ARC_RPC_URL?.trim();
   if (!rpc) return null;
   try {
-    const { createPublicClient, http, parseAbi } = await import("viem");
-    const client = createPublicClient({ transport: http(rpc, { timeout: 8_000, retryCount: 0 }) });
+    const { createPublicClient, http } = await import("viem");
+    const timeout = Math.min(4_000, deadline ? Math.max(1, deadline.budgetFor(4_000)) : 4_000);
+    const client = createPublicClient({ transport: http(rpc, { timeout, retryCount: 0 }) });
     const rc = await client.getTransactionReceipt({ hash: txHash as Hex });
-    if (rc.status !== "success") return null;
-    if (!rc.to || rc.to.toLowerCase() !== ARC_GATEWAY_WALLET.toLowerCase()) return null;
+    const tx = await client.getTransaction({ hash: txHash as Hex });
+    const logs = (rc.logs ?? []).map((log) => ({
+      address: log.address,
+      topics: log.topics,
+      data: log.data,
+    }));
+    let otherBuyerMovement = false;
+    const decodedNow = tryDecodeBuyerDebit(tx.input, logs, buyer);
+    if (decodedNow.kind === "undecoded" && rc.blockNumber > 0n) {
+      if (deadline?.expired()) return null;
+      let blockReceipts: BlockReceipt[] = [];
+      try {
+        const raw = await client.request({
+          method: "eth_getBlockReceipts" as never,
+          params: [`0x${rc.blockNumber.toString(16)}`] as never,
+        });
+        blockReceipts = Array.isArray(raw) ? (raw as BlockReceipt[]) : [];
+        if (!Array.isArray(raw)) otherBuyerMovement = true;
+      } catch {
+        otherBuyerMovement = true;
+      }
+      for (const other of blockReceipts) {
+        if (deadline?.expired()) return null;
+        const hash = typeof other.transactionHash === "string" ? other.transactionHash.toLowerCase() : "";
+        if (hash === txHash.toLowerCase()) continue;
+        const otherLogs = other.logs ?? [];
+        if (logTouchesBuyer(otherLogs, buyer)) {
+          otherBuyerMovement = true;
+          break;
+        }
+        if (other.to && other.to.toLowerCase() === ARC_GATEWAY_WALLET.toLowerCase()) {
+          try {
+            const otherTx = await client.getTransaction({ hash: hash as Hex });
+            const otherDecoded = tryDecodeBuyerDebit(otherTx.input, otherLogs, buyer);
+            if (otherDecoded.kind !== "defer") {
+              otherBuyerMovement = true;
+              break;
+            }
+          } catch {
+            otherBuyerMovement = true;
+            break;
+          }
+        }
+      }
+    }
+    const read = gatewayBuyerDebit({
+      status: rc.status,
+      to: rc.to ?? null,
+      calldata: tx.input,
+      logs,
+      buyer,
+      otherBuyerMovement,
+    });
+    if (read.kind !== "use_balance") return resolveGatewayDebit(read, null);
     if (rc.blockNumber <= 0n) return null;
+    if (deadline?.expired()) return null;
     const abi = parseAbi(["function totalBalance(address token,address depositor) view returns (uint256)"]);
     const wallet = getAddress(ARC_GATEWAY_WALLET);
     const token = getAddress(ARC_USDC);
@@ -482,8 +763,19 @@ export async function readArcGatewayDebit(txHash: string, buyer: string): Promis
         blockNumber: rc.blockNumber,
       }),
     ]);
-    return before - after;
-  } catch {
+    return resolveGatewayDebit(read, before - after);
+  } catch (error) {
+    logServerErrorSafe("arc-gateway-verify.debit", error);
     return null;
   }
+}
+
+/** Encode a submitBatch calldata for tests and for a local round trip of the decoder. */
+export function encodeSubmitBatchCalldata(input: {
+  deltas: readonly { depositor: `0x${string}`; value: bigint }[];
+  token: `0x${string}`;
+  wallet: `0x${string}`;
+}): Hex {
+  const inner = encodeAbiParameters(BATCH_PARAMS, [input.deltas as { depositor: `0x${string}`; value: bigint }[], keccak256(toBytes("batch")), 26, input.token, input.wallet]);
+  return encodeFunctionData({ abi: SUBMIT_BATCH_ABI, functionName: "submitBatch", args: [inner, "0x"] });
 }

@@ -97,11 +97,14 @@ import {
   arcGatewayCapOpen,
   arcGatewayFundsOk,
   chainCapNetworkSql,
+  gatewayAuthWindowOk,
   gatewayCandidateInclusionSql,
   gatewayDeclaredPayTosFor,
   gatewayLeafFacts,
   gatewayPrimaryExclusionSql,
+  gatewaySignedStatus,
   hasSignableNativeArcAccept,
+  hasSignableOtherRailAccept,
   isArcGatewayL1Enabled,
   readArcGatewayAvailable as readArcGatewayAvailableProd,
   selectArcGatewayAccept,
@@ -1715,6 +1718,21 @@ export async function runL1Batch(
     : (rawTargets as { rows?: unknown[] }).rows ?? []) as Record<string, unknown>[];
   let candidates: Candidate[] = targetList.map(rowToCandidate);
 
+  // 旗 on で 1 件を名指ししたときだけ、Gateway 以外に署名できる accept が無い出品をレーンに戻す。
+  // 旗 off ではこの問い合わせを出さない。主候補の SQL は origin/main のまま。
+  if (onlyEndpointId && isArcGatewayL1Enabled() && laneSelectable.get("arc_gateway") === true) {
+    const pinnedRaw = await withDailyFallback(
+      async () => await db.execute(targetsSql(true, undefined, undefined, undefined, gatewayCandidateInclusionSql(), gatewayExclusions)),
+      async () => await db.execute(targetsSql(false, undefined, undefined, undefined, gatewayCandidateInclusionSql(), gatewayExclusions)),
+    );
+    const pinnedRows = (Array.isArray(pinnedRaw) ? pinnedRaw : (pinnedRaw as { rows?: unknown[] }).rows ?? []) as Record<string, unknown>[];
+    const pinnedOne = pinnedRows[0];
+    if (pinnedOne && String(pinnedOne.id) === onlyEndpointId) {
+      const pinned = { ...rowToCandidate(pinnedOne), laneChain: "arc_gateway" as const };
+      candidates = [pinned, ...candidates.filter((c) => c.id !== pinned.id)];
+    }
+  }
+
   // 3.5 チェーンごとの候補の最低枠（2026-09-17・budget.ts laneFloorPerRun）。需要順の主候補は
   //     EVM の未購入の裾野に埋まり、Solana（候補 204・未購入 192）は別枠 $2 を一度も使い切れずに
   //     1 件/日だった。別枠を持つレーンごとに、同じ WHERE で network を絞った候補を先頭に置く。
@@ -1845,11 +1863,16 @@ export async function runL1Batch(
   let gatewayCommitted = 0n;
   const readArcGatewayAvailable = async (): Promise<bigint | null> => {
     if (!gatewayRead) {
-      const read = options.readArcGatewayAvailable ?? (() => readArcGatewayAvailableProd(pk as `0x${string}`));
-      gatewayRead = read().then(
-        (v) => (typeof v === "bigint" && v >= 0n ? v : null),
-        () => null,
-      );
+      const read = options.readArcGatewayAvailable ?? (() => readArcGatewayAvailableProd(account.address));
+      gatewayRead = Promise.resolve()
+        .then(() => read())
+        .then(
+          (v) => (typeof v === "bigint" && v >= 0n ? v : null),
+          (error) => {
+            logServerErrorSafe("observatory.l1.arc_gateway_balance", error);
+            return null;
+          },
+        );
     }
     const available = await gatewayRead;
     if (available === null) return null;
@@ -2693,19 +2716,26 @@ async function purchaseOne(input: {
           declaredPayTo: candidate.payTo,
         })
       : null;
-  // Gateway は、ネイティブ Arc の accept が署名できる出品では選ばない（native_present は下の selectAccept へ落とす）。
-  // それ以外の拒否は行に残し、同じ呼び出しで Base へは落とさない。
+  // Gateway は、他の有効チェーンに署名できる accept がある出品では選ばない（native_present は下の selectAccept へ落とす）。
+  // 署名できる accept が他に無いときの拒否だけ行に残す。
   const gatewayPick =
     arcGatewayPreferred && !isSolana && !isTempo && !isXrpl && !isStellar
       ? selectArcGatewayAccept(challenge.accepts, {
           nativeArcSignable: hasSignableNativeArcAccept(challenge.accepts),
+          otherChainSignable: hasSignableOtherRailAccept(challenge.accepts),
           declaredAmount: candidate.priceAmount,
           declaredPayTo: candidate.payTo,
           declaredNetwork: candidate.network,
           gatewayDeclaredPayTos: candidate.gatewayDeclaredPayTos,
         })
       : null;
-  if (gatewayPick && !gatewayPick.accept && gatewayPick.reason !== "native_present") {
+  if (
+    gatewayPick &&
+    !gatewayPick.accept &&
+    gatewayPick.reason !== "native_present" &&
+    !hasSignableOtherRailAccept(challenge.accepts) &&
+    !hasSignableNativeArcAccept(challenge.accepts)
+  ) {
     await record({
       status: gatewayPick.reason,
       rawResponseMeta: tagMeta({
@@ -3225,10 +3255,33 @@ async function purchaseOne(input: {
         });
       } catch (error) {
         logServerErrorSafe("observatory.l1.arc_gateway_sign", redactedError(error));
+        if (error instanceof Error && error.message === "gateway_validity_window") {
+          try {
+            await db.delete(x402L1Purchases).where(
+              and(eq(x402L1Purchases.id, reservation.rowId), eq(x402L1Purchases.status, "in_flight"), isNull(x402L1Purchases.authNonce)),
+            );
+          } catch (deleteError) {
+            logServerErrorSafe("observatory.l1.arc_gateway_sign_release", redactedError(deleteError));
+          }
+          invalidateDecisionCache(candidate.id);
+          return { kind: "skipped", settled: false, spent: 0n, capChain: "arc_gateway" };
+        }
         await releaseUnsignedReservation(db, reservation.rowId, {
           status: "request_error",
           rawResponseMeta: tagMeta({ phase: "arc_gateway_sign", error: redactForLog(error), circleGatewayRail: "true" }),
         });
+        invalidateDecisionCache(candidate.id);
+        return { kind: "skipped", settled: false, spent: 0n, capChain: "arc_gateway" };
+      }
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (!gatewayAuthWindowOk(gatewaySigned.authorization.validBefore, nowSec)) {
+        try {
+          await db.delete(x402L1Purchases).where(
+            and(eq(x402L1Purchases.id, reservation.rowId), eq(x402L1Purchases.status, "in_flight"), isNull(x402L1Purchases.authNonce)),
+          );
+        } catch (deleteError) {
+          logServerErrorSafe("observatory.l1.arc_gateway_window_release", redactedError(deleteError));
+        }
         invalidateDecisionCache(candidate.id);
         return { kind: "skipped", settled: false, spent: 0n, capChain: "arc_gateway" };
       }
@@ -3476,8 +3529,9 @@ async function purchaseOne(input: {
     // から外れ、売り手が後で決済した tx が台帳に結び付かない。status は常に settle_failed のままにし、
     // 我々の機械の中の失敗だったことは transportFailure.side の印だけで残す（今は印を残すだけで、読む側はまだ無い）。
     const transportSide = !paid ? paidTransportFailureSide(paidErrorRaw) : null;
-    // Gateway はバッチ決済で、この場に支払いごとの tx が無い。請求が確認できるまで settle_claimed。
-    const status = isArcGateway ? "settle_claimed" : !paid
+    // Gateway には支払いごとの tx が無い。応答なし・402・500 は settle_failed。
+    // 200 で受領証が無い行は delivered_no_receipt。請求は照合が settled に上げる。
+    const status = isArcGateway ? gatewaySignedStatus(paid, claimedSettlement) : !paid
       ? "settle_failed"
       : claimedAndWellFormed
         ? "settle_claimed"

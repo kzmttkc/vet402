@@ -11,11 +11,15 @@ import { chainDailyCapUnits, type CappedChain } from "./budget";
 import {
   ARC_CAIP2,
   ARC_USDC,
+  EVM_PAY_CHAINS,
   encodePaymentHeader,
+  hasSignableEnabledEvmAccept,
   hasSignableNativeArcAccept,
+  isEvmPayChainEnabled,
   MAX_PER_PURCHASE_UNITS,
   type ChallengeAccept,
   type Eip3009Authorization,
+  type EvmPayChain,
 } from "./x402-payer";
 
 /** Pinned GatewayWallet on Arc. Sellers do not choose this address. */
@@ -24,6 +28,18 @@ export const ARC_GATEWAY_DOMAIN_NAME = "GatewayWalletBatched";
 export const ARC_GATEWAY_DOMAIN_VERSION = "1";
 /** Unauthenticated Circle Gateway API. The verifier reads transfers here. */
 export const ARC_GATEWAY_API = "https://gateway-api.circle.com/v1";
+/** Circle's domain id for Arc mainnet. The balance read sends this and does not open an RPC. */
+export const ARC_GATEWAY_DOMAIN = 26;
+/**
+ * Longest authorization this rail will sign.
+ * The SDK uses max(seller maxTimeoutSeconds, 7 days + 100 seconds) and has no upper bound.
+ */
+export const ARC_GATEWAY_MAX_TIMEOUT_SECONDS = 7 * 24 * 60 * 60 + 100;
+/** After validBefore, wait this long before closing an uncharged row. */
+export const GATEWAY_NOT_CHARGED_GRACE_SECONDS = 24 * 60 * 60;
+export { GATEWAY_NOT_CHARGED_EXPIRED } from "./arc-gateway-words";
+/** One Gateway API call. The verifier also keeps a budget and then moves on to native rows. */
+export const GATEWAY_FETCH_TIMEOUT_MS = 2_000;
 /** Reservation marker. Native Arc cap counts rows that lack it. */
 export const ARC_GATEWAY_RAIL_KEY = "circleGatewayRail";
 /** Signed authorization plus the batch tx, once Circle names one. */
@@ -80,6 +96,7 @@ export function arcGatewayAcceptOf(raw: unknown): ChallengeAccept | null {
   if (extra.salt !== undefined) return null;
   if (extra.chainId !== undefined && extra.chainId !== 5042 && extra.chainId !== "5042") return null;
   if (rec.maxTimeoutSeconds !== undefined && !Number.isInteger(rec.maxTimeoutSeconds)) return null;
+  if (typeof rec.maxTimeoutSeconds === "number" && rec.maxTimeoutSeconds > ARC_GATEWAY_MAX_TIMEOUT_SECONDS) return null;
   return {
     scheme: "exact",
     network: ARC_CAIP2,
@@ -114,7 +131,13 @@ export function gatewayDeclaredPayTosFor(rawAccepts: unknown): string[] {
   return [...out];
 }
 
-export type GatewayAcceptReason = "no_eligible_accept" | "price_mismatch" | "payto_mismatch" | "over_cap" | "native_present";
+export type GatewayAcceptReason =
+  | "no_eligible_accept"
+  | "price_mismatch"
+  | "payto_mismatch"
+  | "over_cap"
+  | "native_present"
+  | "timeout_too_long";
 
 export type GatewayAcceptSelection =
   | { accept: ChallengeAccept; reason: null }
@@ -130,15 +153,26 @@ function declaredUnitsOf(amount: string | null): bigint | null {
   }
 }
 
+function gatewayTimeoutTooLong(raw: unknown): boolean {
+  const rec = asRecord(raw);
+  if (!rec || rec.scheme !== "exact" || rec.network !== ARC_CAIP2) return false;
+  const extra = asRecord(rec.extra);
+  if (!extra || extra.name !== ARC_GATEWAY_DOMAIN_NAME) return false;
+  return typeof rec.maxTimeoutSeconds === "number" && rec.maxTimeoutSeconds > ARC_GATEWAY_MAX_TIMEOUT_SECONDS;
+}
+
 /**
  * Gateway accept for this challenge, or a refusal.
  * `nativeArcSignable` (hasSignableNativeArcAccept, flag-aware) means the direct Arc rail
- * can pay, so this rail does not. Callers record a seller finding only for the other reasons.
+ * can pay, so this rail does not. `otherChainSignable` means some other enabled rail can
+ * sign an accept on this challenge, so this rail does not. Callers record a seller finding
+ * only when neither is true.
  */
 export function selectArcGatewayAccept(
   accepts: readonly unknown[],
   options: {
     nativeArcSignable: boolean;
+    otherChainSignable?: boolean;
     declaredAmount: string | null;
     declaredPayTo: string | null;
     declaredNetwork: string | null;
@@ -146,8 +180,12 @@ export function selectArcGatewayAccept(
   },
 ): GatewayAcceptSelection {
   if (options.nativeArcSignable) return { accept: null, reason: "native_present" };
+  if (options.otherChainSignable) return { accept: null, reason: "native_present" };
   const protocol = accepts.map(arcGatewayAcceptOf).filter((a): a is ChallengeAccept => a !== null);
-  if (protocol.length === 0) return { accept: null, reason: "no_eligible_accept" };
+  if (protocol.length === 0) {
+    if (accepts.some(gatewayTimeoutTooLong)) return { accept: null, reason: "timeout_too_long" };
+    return { accept: null, reason: "no_eligible_accept" };
+  }
 
   const declaredPayTo = options.declaredPayTo === null ? null : options.declaredPayTo.toLowerCase();
   const declaredGateway = new Set(options.gatewayDeclaredPayTos.map((p) => p.toLowerCase()).filter((p) => p !== ""));
@@ -201,8 +239,9 @@ export function selectArcGatewayAccept(
       return false;
     }
   });
-  if (priceOff) return { accept: null, reason: anyOverCap && !priceOff ? "over_cap" : "price_mismatch" };
-  return { accept: null, reason: anyOverCap ? "over_cap" : "no_eligible_accept" };
+  if (anyOverCap) return { accept: null, reason: "over_cap" };
+  if (priceOff) return { accept: null, reason: "price_mismatch" };
+  return { accept: null, reason: "no_eligible_accept" };
 }
 
 /** Re-export so the runner and tests share one native-Arc predicate. */
@@ -225,35 +264,148 @@ const GATEWAY_ACCEPT_WHERE = `
     OR (jsonb_typeof(g->'maxTimeoutSeconds') = 'number' AND g->>'maxTimeoutSeconds' !~ '\\.')
   )`;
 
-/** Signable native Arc USDC accept inside e.raw_accepts. Alias `n`. Mirrors signableUsdcAccept. */
-const NATIVE_ARC_ACCEPT_WHERE = `
-  n->>'scheme' = 'exact'
-  AND n->>'network' = 'eip155:5042'
-  AND lower(n->>'asset') = '${ARC_USDC.toLowerCase()}'
-  AND coalesce(n->'extra'->>'assetTransferMethod', 'eip3009') = 'eip3009'
-  AND (n->'extra'->>'name' IS NULL OR n->'extra'->>'name' = 'USDC')
-  AND (n->'extra'->>'version' IS NULL OR n->'extra'->>'version' = '2')
-  AND (n->'extra'->>'verifyingContract' IS NULL OR lower(n->'extra'->>'verifyingContract') = '${ARC_USDC.toLowerCase()}')
-  AND n->'extra'->>'salt' IS NULL
-  AND coalesce(n->'extra'->>'name', '') <> 'GatewayWalletBatched'
-  AND n->>'payTo' ~ '^0x[0-9a-fA-F]{40}$'
-  AND n->>'amount' ~ '^[1-9][0-9]{0,29}$'`;
-
 function existsGateway(): string {
   return `EXISTS (SELECT 1 FROM ${RAW_ACCEPTS} g WHERE ${GATEWAY_ACCEPT_WHERE})`;
 }
-function existsNativeArc(): string {
-  return `EXISTS (SELECT 1 FROM ${RAW_ACCEPTS} n WHERE ${NATIVE_ARC_ACCEPT_WHERE})`;
+
+function sqlQuote(value: string): string {
+  return value.replace(/'/g, "''");
 }
 
-/** Primary network is Arc, Gateway accept present, native Arc accept absent. */
+/** Signable exact accept on one pinned EVM chain. Alias `o`. GatewayWalletBatched is not signable. */
+function evmSignableWhere(chain: EvmPayChain): string {
+  return `
+    o->>'scheme' = 'exact'
+    AND o->>'network' = '${sqlQuote(chain.caip2)}'
+    AND lower(o->>'asset') = '${chain.usdc.toLowerCase()}'
+    AND coalesce(o->'extra'->>'assetTransferMethod', 'eip3009') = 'eip3009'
+    AND (o->'extra'->>'name' IS NULL OR o->'extra'->>'name' = '${sqlQuote(chain.eip712Name)}')
+    AND (o->'extra'->>'version' IS NULL OR o->'extra'->>'version' = '${sqlQuote(chain.eip712Version)}')
+    AND (o->'extra'->>'verifyingContract' IS NULL OR lower(o->'extra'->>'verifyingContract') = '${chain.usdc.toLowerCase()}')
+    AND o->'extra'->>'salt' IS NULL
+    AND coalesce(o->'extra'->>'name', '') <> 'GatewayWalletBatched'
+    AND o->>'payTo' ~ '^0x[0-9a-fA-F]{40}$'
+    AND o->>'amount' ~ '^[1-9][0-9]{0,29}$'`;
+}
+
+function envSet(name: string): boolean {
+  return (process.env[name]?.trim() ?? "") !== "";
+}
+
+function solanaRailConfigured(): boolean {
+  return process.env.OBSERVATORY_SOLANA_L1_ENABLED === "true" && envSet("OBSERVATORY_SOLANA_SECRET_KEY") && envSet("SOLANA_RPC_URL");
+}
+function xrplRailConfigured(): boolean {
+  return process.env.OBSERVATORY_XRPL_L1_ENABLED === "true" && envSet("OBSERVATORY_XRPL_SEED") && envSet("XRPL_RPC_URL");
+}
+function stellarRailConfigured(): boolean {
+  return (
+    process.env.OBSERVATORY_STELLAR_L1_ENABLED === "true" &&
+    envSet("STELLAR_PAYER_SECRET") &&
+    envSet("STELLAR_RPC_URL") &&
+    envSet("STELLAR_HORIZON_URL")
+  );
+}
+
+/**
+ * True when an enabled rail other than native Arc would sign one of these accepts.
+ * Arc is excluded here because nativeArcSignable already covers it.
+ * A non-EVM rail counts when its flag is on and the key and RPC env vars are non-empty.
+ * The values of those env vars are not read.
+ */
+export function hasSignableOtherRailAccept(accepts: readonly unknown[]): boolean {
+  if (hasSignableEnabledEvmAccept(accepts, ARC_CAIP2)) return true;
+  for (const raw of accepts) {
+    const rec = asRecord(raw);
+    if (!rec || rec.scheme !== "exact") continue;
+    const network = typeof rec.network === "string" ? rec.network : "";
+    const payTo = typeof rec.payTo === "string" ? rec.payTo : "";
+    const asset = typeof rec.asset === "string" ? rec.asset : "";
+    if (payTo === "" || !/^[1-9][0-9]{0,29}$/.test(typeof rec.amount === "string" ? rec.amount : "")) continue;
+    if (solanaRailConfigured() && network === "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" && asset === "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v") {
+      return true;
+    }
+    if (
+      xrplRailConfigured() &&
+      network === "xrpl:0" &&
+      (asset === "RLUSD" || asset.toUpperCase() === "524C555344000000000000000000000000000000")
+    ) {
+      return true;
+    }
+    if (stellarRailConfigured() && network === "stellar:pubnet") return true;
+  }
+  return false;
+}
+
+/** Exists-clause for an accept vet402 could sign on a chain other than Gateway. */
+function existsOtherSignable(): string {
+  const parts: string[] = [];
+  for (const chain of EVM_PAY_CHAINS) {
+    if (!isEvmPayChainEnabled(chain)) continue;
+    parts.push(`EXISTS (SELECT 1 FROM ${RAW_ACCEPTS} o WHERE ${evmSignableWhere(chain)})`);
+  }
+  if (solanaRailConfigured()) {
+    parts.push(`EXISTS (SELECT 1 FROM ${RAW_ACCEPTS} o WHERE o->>'scheme' = 'exact' AND o->>'network' = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp' AND o->>'asset' = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' AND o->>'payTo' <> '' AND o->>'amount' ~ '^[1-9][0-9]{0,29}$')`);
+  }
+  if (xrplRailConfigured()) {
+    parts.push(`EXISTS (SELECT 1 FROM ${RAW_ACCEPTS} o WHERE o->>'scheme' = 'exact' AND o->>'network' = 'xrpl:0' AND (upper(o->>'asset') = '524C555344000000000000000000000000000000' OR o->>'asset' = 'RLUSD') AND o->>'payTo' <> '' AND o->>'amount' ~ '^[1-9][0-9]{0,29}$')`);
+  }
+  if (stellarRailConfigured()) {
+    parts.push(`EXISTS (SELECT 1 FROM ${RAW_ACCEPTS} o WHERE o->>'scheme' = 'exact' AND o->>'network' = 'stellar:pubnet' AND o->>'payTo' <> '' AND o->>'amount' ~ '^[1-9][0-9]{0,29}$')`);
+  }
+  return parts.length === 0 ? "FALSE" : parts.join(" OR ");
+}
+
+/**
+ * With the flag off this is empty, so primary candidates match the selection from before this rail.
+ * With the flag on, a listing vet402 can sign on no other chain, and that has a Gateway accept, leaves the primary list.
+ */
 export function gatewayPrimaryExclusionSql(): SQL {
-  return sql.raw(`AND NOT (e.network = 'eip155:5042' AND ${existsGateway()} AND NOT ${existsNativeArc()})`);
+  if (!isArcGatewayL1Enabled()) return sql``;
+  return sql.raw(`AND NOT (${existsGateway()} AND NOT (${existsOtherSignable()}))`);
 }
 
-/** Any primary network. Gateway accept present, native Arc accept absent. */
+/** Gateway lane: a Gateway accept, and no accept vet402 can sign on another chain. */
 export function gatewayCandidateInclusionSql(): SQL {
-  return sql.raw(`AND ${existsGateway()} AND NOT ${existsNativeArc()}`);
+  if (!isArcGatewayL1Enabled()) return sql`AND false`;
+  return sql.raw(`AND ${existsGateway()} AND NOT (${existsOtherSignable()})`);
+}
+
+/**
+ * Outcome of a signed Gateway purchase. There is no per-payment transaction id here,
+ * so the well-formed-tx branch of the native purchase does not apply.
+ * No response, a 402, and a 500 stay settle_failed. A 200 with no settlement receipt
+ * stays delivered_no_receipt until the Gateway API shows the charge.
+ */
+export function gatewaySignedStatus(
+  paid: { status: number } | null,
+  claimedSettlement: boolean,
+): "settle_failed" | "settle_claimed" | "delivered_no_receipt" {
+  if (paid === null) return "settle_failed"; // gateway_no_seller_response
+  if (paid.status === 402 || paid.status >= 500) return "settle_failed"; // gateway_seller_refused
+  if (claimedSettlement) return "settle_claimed"; // gateway_receipt_not_settled
+  if (paid.status === 200) return "delivered_no_receipt";
+  return "settle_failed";
+}
+
+/** True when validBefore is still ahead and the remaining window is within the cap. */
+export function gatewayAuthWindowOk(validBefore: string, nowSec: number): boolean {
+  if (!/^[0-9]+$/.test(validBefore)) return false;
+  const before = Number(validBefore);
+  if (!Number.isFinite(before)) return false;
+  const left = before - nowSec;
+  return left > 0 && left <= ARC_GATEWAY_MAX_TIMEOUT_SECONDS;
+}
+
+/** USDC base units from a Gateway API decimal string. Scientific notation is refused. */
+export function parseGatewayUsdc(raw: unknown): bigint | null {
+  if (typeof raw !== "string" || !/^\d+(\.\d{1,6})?$/.test(raw)) return null;
+  const [whole, frac = ""] = raw.split(".");
+  try {
+    return BigInt(whole) * 1_000_000n + BigInt(frac.padEnd(6, "0"));
+  } catch {
+    return null;
+  }
 }
 
 export type ArcGatewaySigned = {
@@ -272,18 +424,20 @@ export type ArcGatewaySigner = (input: {
 
 /**
  * Sign a Gateway authorization with BatchEvmScheme. The domain is the pinned wallet.
- * The scheme does not broadcast. Validity is the SDK window (about 7 days), not the 120s native window.
+ * The scheme does not broadcast. Validity is capped at 7 days + 100 seconds, not the 120s native window.
  */
 export const signArcGatewayPayment: ArcGatewaySigner = async (input) => {
   const { BatchEvmScheme } = await import("@circle-fin/x402-batching/client");
   const scheme = new BatchEvmScheme(input.account as never);
+  const maxTimeoutSeconds = input.accept.maxTimeoutSeconds ?? 0;
+  if (maxTimeoutSeconds > ARC_GATEWAY_MAX_TIMEOUT_SECONDS) throw new Error("gateway_validity_window");
   const created = await scheme.createPaymentPayload(input.x402Version, {
     scheme: "exact",
     network: ARC_CAIP2,
     amount: input.accept.amount,
     asset: ARC_USDC,
     payTo: input.accept.payTo,
-    maxTimeoutSeconds: input.accept.maxTimeoutSeconds ?? 0,
+    maxTimeoutSeconds,
     extra: {
       name: ARC_GATEWAY_DOMAIN_NAME,
       version: ARC_GATEWAY_DOMAIN_VERSION,
@@ -293,6 +447,8 @@ export const signArcGatewayPayment: ArcGatewaySigner = async (input) => {
   const authorization = created.payload.authorization;
   if (authorization.value !== input.accept.amount) throw new Error("gateway_value_mismatch");
   if (authorization.to.toLowerCase() !== input.accept.payTo.toLowerCase()) throw new Error("gateway_payto_mismatch");
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (!gatewayAuthWindowOk(authorization.validBefore, nowSec)) throw new Error("gateway_validity_window");
   const header = encodePaymentHeader({
     x402Version: input.x402Version,
     accept: {
@@ -339,17 +495,20 @@ export function gatewayLeafFacts(input: {
   };
 }
 
-/** Gateway available balance (6 decimals). Throws when the API cannot be read. Never deposits. */
-export async function readArcGatewayAvailable(privateKey: `0x${string}`): Promise<bigint> {
-  const { GatewayClient } = await import("@circle-fin/x402-batching/client");
-  const rpcUrl = process.env.ARC_RPC_URL?.trim();
-  const client = new GatewayClient({
-    chain: "arc",
-    privateKey,
-    ...(rpcUrl ? { rpcUrl } : {}),
+/**
+ * Gateway available balance (6 decimals) from the Gateway API alone.
+ * Does not open an RPC and does not read a private key. Throws when the API cannot be read. Never deposits.
+ */
+export async function readArcGatewayAvailable(depositor: string): Promise<bigint> {
+  const res = await fetch(`${ARC_GATEWAY_API}/balances`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token: "USDC", sources: [{ depositor, domain: ARC_GATEWAY_DOMAIN }] }),
+    signal: AbortSignal.timeout(GATEWAY_FETCH_TIMEOUT_MS),
   });
-  const balances = await client.getBalances();
-  const available = balances.gateway.available;
-  if (typeof available !== "bigint" || available < 0n) throw new Error("gateway_balance_invalid");
+  if (!res.ok) throw new Error("gateway_balance_http");
+  const body = (await res.json()) as { balances?: { balance?: unknown }[] };
+  const available = parseGatewayUsdc(body.balances?.[0]?.balance);
+  if (available === null) throw new Error("gateway_balance_invalid");
   return available;
 }

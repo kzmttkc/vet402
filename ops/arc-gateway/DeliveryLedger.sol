@@ -22,14 +22,18 @@ contract DeliveryLedger {
 
     error NotRecorder();
     error EmptyRoot();
+    error ZeroRecorder();
+    error DeliveredExceedsPurchases();
 
     constructor(address recorder_) {
+        if (recorder_ == address(0)) revert ZeroRecorder();
         recorder = recorder_;
     }
 
     function anchor(bytes32 root, uint32 purchases, uint32 delivered, string calldata uri) external returns (uint256 round) {
         if (msg.sender != recorder) revert NotRecorder();
         if (root == bytes32(0)) revert EmptyRoot();
+        if (delivered > purchases) revert DeliveredExceedsPurchases();
         round = ++rounds;
         _rounds[round] = Round(root, purchases, delivered, uint64(block.timestamp), uri);
         emit RoundAnchored(round, root, purchases, delivered, uri);

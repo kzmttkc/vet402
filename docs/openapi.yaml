@@ -1020,7 +1020,7 @@ paths:
           (no receipt came back; vet402's own settlements index found the
           transfer by payer, payee, exact amount and time window, and the row
           then went through the same on-chain re-read), or `circle_gateway`
-          (a Circle Gateway batch transaction stored beside the row). That
+          (a Circle Gateway batch transaction stored beside the row). This value is absent while the Arc Gateway lane flag is off. That
           value can be set when `tx_hash` is empty, because the batch
           transaction is not the row's own `tx_hash`. Blank when the row has
           no `tx_hash` and no Circle Gateway batch transaction. The settled
@@ -3084,6 +3084,7 @@ paths:
                             (`seller_claim`), vet402's own settlements index after no
                             receipt came back (`vet402_index`), or a Circle Gateway
                             batch transaction stored beside the row (`circle_gateway`).
+                            This value is absent while the Arc Gateway lane flag is off.
                             `circle_gateway` can be set when `txHash` is empty, because
                             the batch transaction is not the row's own `txHash`. Null
                             when the row has no `txHash` and no Circle Gateway batch

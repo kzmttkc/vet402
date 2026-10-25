@@ -73,6 +73,7 @@ import {
 import { requestBodyKindOf } from "@/lib/observatory/request-body";
 import { L1_REQUEST_TIMEOUT_MS } from "@/lib/observatory/l1-timing";
 import { PAYER_FUNDS_GATE_SINCE, payerFundsAtSigning, type FundsAtSigning } from "@/lib/observatory/payer-balance-history";
+import { GATEWAY_NOT_CHARGED_EXPIRED } from "@/lib/observatory/arc-gateway-words";
 
 /** not_bought = vet402 が署名しなかった行（L1 の結果ではない・2026-09-29）。 */
 export type FixSide = "seller" | "vet402" | "unsorted" | "not_bought";
@@ -964,6 +965,9 @@ function optionalQueryNote(r: SellerRowFacts): string | null {
 
 /** 1 行を分類する（届いた行は mode が null）。決定的・DB 無し。 */
 export function classifyRow(r: SellerRowFacts): RowClass {
+  if (r.status === GATEWAY_NOT_CHARGED_EXPIRED || r.verifyReason === GATEWAY_NOT_CHARGED_EXPIRED) {
+    return { bucket: "unsorted", mode: fixMode("other"), held: null };
+  }
   const held = heldReasonOf({
     status: r.status,
     httpStatusPaid: r.httpStatusPaid,
