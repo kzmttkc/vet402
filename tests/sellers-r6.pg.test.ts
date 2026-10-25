@@ -89,10 +89,16 @@ if (!TEST_DB) {
     for (const id of [inSchema, inAccepts, inUrl, onlyDescription]) await buy(id, "settle_failed", "2026-09-20T12:00:00Z");
 
     // 次に買う目安: settled 3 件（成熟）・Solana の行が最新・L0 の最新は fail
+    // 成熟の窓は 30 日。最新の試行を今の 20 日前に置くと、窓はまだ開いていない。
+    // 2026-09-25 08:00 UTC 固定だと、2026-10-25 08:00 UTC を過ぎた瞬間に open が true になる。
+    const latest = new Date(Date.now() - 20 * 86_400_000);
+    latest.setUTCHours(8, 0, 0, 0);
+    const latestIso = latest.toISOString().replace(".000Z", "Z");
+    const notBefore = `${new Date(latest.getTime() + 30 * 86_400_000).toISOString().slice(0, 16).replace("T", " ")} UTC`;
     await buy(onlyDescription, "settled", "2026-09-01T00:00:00Z");
     await buy(onlyDescription, "settled", "2026-09-02T00:00:00Z");
     await buy(onlyDescription, "settled", "2026-09-03T00:00:00Z");
-    await buy(onlyDescription, "no_eligible_accept", "2026-09-25T08:00:00Z", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp");
+    await buy(onlyDescription, "no_eligible_accept", latestIso, "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp");
     await db.insert(schema.x402L0Probes).values([
       { endpointId: onlyDescription, probedAt: new Date("2026-09-24T00:00:00Z"), method: "GET", verdict: "pass" },
       { endpointId: onlyDescription, probedAt: new Date("2026-09-26T00:00:00Z"), method: "GET", verdict: "fail" },
@@ -114,7 +120,7 @@ if (!TEST_DB) {
 
     const nb = (id: string) => byId.get(id)?.nextBuyFacts;
     assert.deepEqual(nb(onlyDescription), {
-      lastAttemptAnyAt: "2026-09-25T08:00:00Z",
+      lastAttemptAnyAt: latestIso,
       settledCount: 3,
       cooldown: false,
       latestL0Verdict: "fail",
@@ -127,7 +133,7 @@ if (!TEST_DB) {
     assert.equal(nb(inAccepts)?.latestL0Verdict, null);
     assert.deepEqual(byId.get(onlyDescription)?.nextBuy, {
       kind: "window",
-      notBefore: "2026-10-25 08:00 UTC",
+      notBefore,
       windowDays: 30,
       basis: "mature",
       l0: "fail",
