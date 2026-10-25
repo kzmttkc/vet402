@@ -30,7 +30,7 @@ export const MPP_DIRECTORY_URL_DEFAULT = MPP_DIRECTORY_PUBLIC_URL;
 /** 1 回の同期で受け取る endpoint の上限（実測 1,457 の余裕）。超えたぶんは切り、complete=false。 */
 export const MPP_DIRECTORY_MAX_ITEMS = 2_000;
 
-const DECLARED_METHODS = new Set(["GET", "POST", "HEAD", "DELETE"]);
+const DECLARED_METHODS = new Set(["GET", "POST", "HEAD", "DELETE", "PATCH", "PUT"]);
 
 export function mppDirectoryUrl(): string {
   const raw = process.env.MPP_DIRECTORY_URL?.trim();

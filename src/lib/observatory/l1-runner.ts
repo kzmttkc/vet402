@@ -414,7 +414,33 @@ const LANE_SECONDARY_ACCEPT_FILTER: Partial<Record<CappedChain, SQL>> = {
   // Arbitrum（2026-10-22 審査）: ネイティブ USDC で、eip3009（または方式の記載なし）だけ。USDC.e・permit2 だけの行を
   // 枠に載せても selectAccept が断って Base で買われるだけで、枠を埋める（BNB で直した型と同じ）。
   arbitrum: sql`AND lower(a->>'asset') = ${ARBITRUM_CHAIN.usdc.toLowerCase()} AND coalesce(a->'extra'->>'assetTransferMethod', 'eip3009') = 'eip3009'`,
+  // Arc: GatewayWalletBatched はネイティブ枠に入れない（BNB と同じ型）。旗 off のとき
+  // Gateway だけの行が no_eligible_accept で枠を埋め、旗 on のとき Base で買える行が
+  // Arc の枠に入って「Arc の購入がまだ無い」のまま戻ってくるのを止める。
+  arc: sql`AND coalesce(a->'extra'->>'name','') <> 'GatewayWalletBatched'`,
 };
+
+/**
+ * 主候補から外す。network が Arc で、Arc の accept が GatewayWalletBatched だけの行。
+ * 旗 off の gatewayPrimaryExclusionSql は空なので、ここが無いと主ネットワークを Arc にした
+ * Gateway だけの行がネイティブ Arc の主掃引に戻り、no_eligible_accept を書き続ける。
+ * レーン枠の primary 枝と同じ条件。Gateway レーンの inclusion には掛けない。
+ */
+function nativeArcGatewayOnlyExclusionSql(): SQL {
+  const arc = "eip155:5042";
+  // Gateway だけの行だけを外す。Base の exact も持つ行（主ネットワークが Arc でも）は
+  // 主掃引に残し、Base で買う。レーン枠の primary 枝とは違い、他チェーンの accept は残す。
+  return sql`AND NOT (
+    e.network LIKE ${arc}
+    AND jsonb_typeof(e.raw_accepts) = 'array'
+    AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.raw_accepts) g WHERE g->>'network' LIKE ${arc} AND coalesce(g->'extra'->>'name','') = 'GatewayWalletBatched')
+    AND NOT EXISTS (
+      SELECT 1 FROM jsonb_array_elements(e.raw_accepts) n
+      WHERE coalesce(n->'extra'->>'name','') <> 'GatewayWalletBatched'
+        AND coalesce(n->>'scheme', 'exact') = 'exact'
+    )
+  )`;
+}
 
 /**
  * OBSERVATORY_SOLANA_SECRET_KEY: JSON配列（solana-keygenの出力）または
@@ -1570,7 +1596,15 @@ export async function runL1Batch(
         // （レビュー W5）: 実行時は `arc` スラグを Arc に寄せない（署名の経路に推測を入れない）ので、
         // SQL でも寄せない。`arc` とだけ書く行は枠にも署名にも載らない——同じ集合。
         lane
-          ? sql`AND (e.network LIKE ${lane.networkLike}${
+          ? sql`AND ((e.network LIKE ${lane.networkLike}${
+              lane.chain === "arc"
+                ? sql` AND NOT (
+                      jsonb_typeof(e.raw_accepts) = 'array'
+                      AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.raw_accepts) g WHERE g->>'network' LIKE ${lane.networkLike} AND coalesce(g->'extra'->>'name','') = 'GatewayWalletBatched')
+                      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(e.raw_accepts) n WHERE n->>'network' LIKE ${lane.networkLike} AND coalesce(n->'extra'->>'name','') <> 'GatewayWalletBatched')
+                    )`
+                : sql``
+            })${
               LANE_SECONDARY_ACCEPTS[lane.chain]
                 ? sql` OR (jsonb_typeof(e.raw_accepts) = 'array'
                       AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.raw_accepts) a WHERE a->>'network' LIKE ${lane.networkLike} ${LANE_SECONDARY_ACCEPT_FILTER[lane.chain] ?? sql``})
@@ -1613,6 +1647,8 @@ export async function runL1Batch(
       -- （purchaseOne の isL1PurchasableListing と同じ条件）。平文 http の 402 は経路上で payTo を差し替えられる。
       AND e.pay_to IS NOT NULL AND e.pay_to <> ''
       AND lower(e.resource_url) LIKE 'https://%'
+      -- PATCH と PUT は宣言どおりに測らない（L0 も要求を出さない）。NULL は GET のまま。
+      AND coalesce(upper(e.method), 'GET') NOT IN ('PATCH', 'PUT')
       -- 売り手ごとの日次上限（budget.ts SELLER_DAILY_CAP_USD）に当日もう届いた受取先・ホストは候補にしない。
       -- 締めるのは reserveSpend の同じ 1 文（ここは 402 を取りに行く無駄を省くだけ・バッチ開始時点の値）。
       ${sellerCapExclusionSql()}
@@ -1709,9 +1745,10 @@ export async function runL1Batch(
     ORDER BY d.census_price::numeric ASC, d.census_host ASC
     LIMIT ${censusLimit}
   `;
+  const primaryExtra = sql`${gatewayPrimaryExclusionSql()} ${nativeArcGatewayOnlyExclusionSql()}`;
   const rawTargets = await withDailyFallback(
-    async () => await db.execute(targetsSql(true)),
-    async () => await db.execute(targetsSql(false)),
+    async () => await db.execute(targetsSql(true, undefined, undefined, undefined, primaryExtra)),
+    async () => await db.execute(targetsSql(false, undefined, undefined, undefined, primaryExtra)),
   );
   const targetList = (Array.isArray(rawTargets)
     ? rawTargets
@@ -2500,6 +2537,10 @@ async function purchaseOne(input: {
 }> {
   const { candidate, preferNetworks, xrplLanePreferred, stellarLanePreferred, arcGatewayPreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress, createStellarPayment, fetchImpl, timeoutMs, celoPaidTimeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge, readArcGatewayAvailable, commitArcGateway, signArcGateway } = input;
   const method = (candidate.method ?? "GET").toUpperCase();
+  // PATCH と PUT は候補 SQL でも外している。署名の入口でも払わない。行は書かない。
+  if (method === "PATCH" || method === "PUT") {
+    return { kind: "skipped", settled: false, spent: 0n };
+  }
   const startedAt = Date.now();
   const isSolana = candidate.network === SOLANA_MAINNET_CAIP2;
   // 旗 OFF では Stellar として扱わない。origin/main と同じく EVM の selectAccept へ落とす

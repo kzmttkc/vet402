@@ -12,10 +12,12 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { Keypair } from "@solana/web3.js";
 import {
   DISCOVERY_PAYEE_SOURCE_PAYAI,
   extractSolanaPayTos,
+  PAYAI_FETCH_DEADLINE_MS,
   refreshDiscoveryPayees,
 } from "@/lib/settlements/discovery-payees";
 import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
@@ -105,4 +107,13 @@ test("取り込み: 取得が失敗したら upsert せず、理由つきで返�
   assert.equal(calls, 0);
   assert.equal(summary.payees, 0);
   assert.match(summary.error ?? "", /503/);
+});
+
+test("PayAI の取得には締切があり、Circle の記録が残る余地がある", () => {
+  const src = readFileSync("src/lib/settlements/discovery-payees.ts", "utf8");
+  assert.equal(PAYAI_FETCH_DEADLINE_MS, 90_000);
+  assert.match(src, /deadlineMs: PAYAI_FETCH_DEADLINE_MS/);
+  const route = readFileSync("src/app/api/cron/catalog-sync-aux/route.ts", "utf8");
+  assert.match(route, /export const maxDuration = 300/);
+  assert.ok(PAYAI_FETCH_DEADLINE_MS + 60_000 < 300_000);
 });

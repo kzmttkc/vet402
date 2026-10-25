@@ -23,6 +23,8 @@ export const PAYAI_DISCOVERY_URL = "https://facilitator.payai.network/discovery/
 export const DISCOVERY_PAYEE_SOURCE_PAYAI = "payai_facilitator";
 /** 索引の受取人として使う鮮度。discovery から消えた受取人も、この日数は索引を続ける。 */
 export const DISCOVERY_PAYEE_FRESH_DAYS = 14;
+/** aux の 300 秒のうち PayAI に使う上限。残りで MPP と Circle（60 秒）が終わる。 */
+export const PAYAI_FETCH_DEADLINE_MS = 90_000;
 const UPSERT_CHUNK = 500;
 
 const asRecord = (v: unknown): Record<string, unknown> | null =>
@@ -114,7 +116,9 @@ export async function refreshSolanaDiscoveryPayees(): Promise<DiscoveryRefreshSu
       source: DISCOVERY_PAYEE_SOURCE_PAYAI,
       async fetchRawItems() {
         // PayAI は 1 ページ 1000 件を返す（2026-09-15 実測: 28,655 件を 29 ページ・約 60 秒）。
-        const r = await fetchFullCatalog({ baseUrl: PAYAI_DISCOVERY_URL, pageLimit: 1000, sleepMs: 150 });
+        // aux は 300 秒。この締切のあと MPP（1 リクエスト）と Circle（60 秒）が残る。
+        // 途中で止まっても、読めた payee は upsert する（last_seen_at で新しさを見る。消さない）。
+        const r = await fetchFullCatalog({ baseUrl: PAYAI_DISCOVERY_URL, pageLimit: 1000, sleepMs: 150, deadlineMs: PAYAI_FETCH_DEADLINE_MS });
         return { items: r.items.map((i) => ({ accepts: i.rawAccepts })), complete: r.complete, totalCount: r.totalCount };
       },
       upsert: (rows) => upsertDiscoveryPayees(db, rows),

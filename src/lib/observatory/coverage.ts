@@ -162,13 +162,21 @@ export function l0TierWhere(tier: "c1" | "c2", daily = true): SQL {
  * 順位で並べてホストを交互にする——並行 40 の worker が同じ売り手へ一度に向かわないため。
  * 上限を超えた分は通常の並びに戻る（一度に掃くのは scripts/reprobe-legacy-l0-fails.ts）。
  * c2 / all: 従来どおり古い順（未測定が先）。
+ *
+ * circleUnprobedCap（c1 の実行だけ）: circle_discovery で未測定の行は、残り枠の
+ * この件数までを未測定の組（2）に残し、超えた分は測定済み（3）の後ろ（4）へ下げる。
+ * CDP の未測定は組 2 のまま。1 回失敗の組（1）は上限を掛けない。
  */
-export function l0OrderBy(tier: "c1" | "c2" | "all"): SQL {
+export function l0OrderBy(tier: "c1" | "c2" | "all", circleUnprobedCap?: number): SQL {
   const oldestFirst = sql`lp.last_probed_at ASC NULLS FIRST, e.first_seen_at ASC`;
   if (tier !== "c1") return oldestFirst;
   const host = sql`lower(split_part(split_part(e.resource_url, '://', 2), '/', 1))`;
   const hostRank = sql`row_number() OVER (PARTITION BY ${host}, lp.rule_change_reprobe ORDER BY ${oldestFirst})`;
-  return sql`CASE WHEN lp.rule_change_reprobe AND ${hostRank} <= ${RULE_CHANGE_PRIORITY_PER_HOST} THEN 0 WHEN lp.probe_count = 1 AND lp.last_verdict = 'fail' THEN 1 WHEN lp.last_probed_at IS NULL THEN 2 ELSE 3 END, CASE WHEN lp.rule_change_reprobe THEN ${hostRank} ELSE 0 END, ${oldestFirst}`;
+  const circleRank = sql`row_number() OVER (PARTITION BY (e.source = 'circle_discovery' AND lp.last_probed_at IS NULL) ORDER BY e.first_seen_at ASC NULLS LAST, e.id ASC)`;
+  if (circleUnprobedCap === undefined) {
+    return sql`CASE WHEN lp.rule_change_reprobe AND ${hostRank} <= ${RULE_CHANGE_PRIORITY_PER_HOST} THEN 0 WHEN lp.probe_count = 1 AND lp.last_verdict = 'fail' THEN 1 WHEN lp.last_probed_at IS NULL THEN 2 ELSE 3 END, CASE WHEN lp.rule_change_reprobe THEN ${hostRank} ELSE 0 END, ${oldestFirst}`;
+  }
+  return sql`CASE WHEN lp.rule_change_reprobe AND ${hostRank} <= ${RULE_CHANGE_PRIORITY_PER_HOST} THEN 0 WHEN lp.probe_count = 1 AND lp.last_verdict = 'fail' THEN 1 WHEN lp.last_probed_at IS NULL AND e.source = 'circle_discovery' AND ${circleRank} > ${circleUnprobedCap} THEN 4 WHEN lp.last_probed_at IS NULL THEN 2 ELSE 3 END, CASE WHEN lp.rule_change_reprobe THEN ${hostRank} ELSE 0 END, ${oldestFirst}`;
 }
 
 /**

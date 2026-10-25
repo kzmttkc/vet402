@@ -170,7 +170,7 @@ export async function runL0ProbeBatch(
       ${freshness}
       ${recentlyProbed}
       ${excludePriority}
-      ORDER BY ${l0OrderBy(tier)}
+      ORDER BY ${l0OrderBy(tier, tier === "c1" ? Math.floor(restLimit / 3) : undefined)}
       LIMIT ${restLimit}
     `;
     const rows = await withDailyFallback(
